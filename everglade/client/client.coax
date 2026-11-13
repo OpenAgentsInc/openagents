@@ -37,6 +37,7 @@
 #load "create.coax";   // Character Create, in this world: /worlds/character-creator
 #load "../../metaverse-engine/character/material.coax" as cmat;   // the characters' material table (#13012)
 #load "cull.coax";   // what the host's instance cull reads each frame (#13050)
+#load "../../metaverse-engine/render/frame-plan.coax";   // the frame's order, as words for the host (#13303)
 #load "cell-view.coax";  // the world's cells as the frame reads them; the controller is everglade/client/cells.coax, in the step's unit (#13280)
 #load "../../metaverse-engine/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
 #load "../world/environment.coax";   // the world's places and their light (#13065)
@@ -96,6 +97,7 @@ E2 :: struct {
   mats: [cmat.CM_MAX * cmat.CM_FLOATS] f32; mat_table: [cmat.CM_MAX] cmat.CharMaterial; mats_n: int; mats_v: int;
   film: bool; maps_off: bool;   // ?film, ?maps=0 (e2_material_facts)
   inst: [E2_VISIBLE * E2_ITEM_FLOATS] f32; inst_n: int;
+  fly: trk.CamTrack; fly_from: f32;   // #fly=PATH: the flyover benchmark flies the camera (e2_hash)
   draws: [E2_DRAWS * 4] u32; draw_n: int;
   shadow: [E2_DRAWS * 4] u32; shadow_n: int;
   frame: [16] f32;
@@ -1186,6 +1188,10 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   e2i_step(s);
   chase := figs.cam_shoulder_shot(figs.cam_shot(s[0].view, s[0].orbit, s[0].eye_pitch, s[0].press), s[0].ml[0].shown);
   shot := e2st_shot(s, e2w_shot(s, e2_familiar_shot(s,e2c_view(s, figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), chase, step))));
+  if e2_flying(s) {   // #fly=: the benchmark's path has the camera
+    fv := trk.cam_track_at(s[0].fly, s[0].clock - s[0].fly_from);
+    shot = figs.Shot.{eye = figs.v3(fv.ex, fv.ey, fv.ez), at = figs.v3(fv.lx, fv.ly, fv.lz)};
+  }
   f := [3]f32.[shot.at.x - shot.eye.x, shot.at.y - shot.eye.y, shot.at.z - shot.eye.z];
   l := sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]); if l < 0.0001 { l = 1; } for q: 0..<3 { f[q] /= l; }
   r := [3]f32.[-f[2], 0, f[0]]; rl := sqrt(r[0] * r[0] + r[2] * r[2]); if rl < 0.0001 { rl = 1; } r[0] /= rl; r[2] /= rl;
@@ -1682,6 +1688,23 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   s[0].draw_n = n; s[0].shadow_n = sn;
   return n;
 }
+// The frame's order for the host (the face's coaxial_frame_plan_v1, #13303): the engine's pass
+// program (metaverse-engine/render/passes.coax) for this frame's counts, the shadow tile the
+// cascades name, the separate shadow list, the instance cull's runs and the bloom stages the
+// quality asks for. `features` is the host's word (frame-plan.coax FPH_*), `hud` the HUD's
+// vertices this frame and `runs` the cull's runs (e2_cull_fill). The words written, 0 refused.
+e2_frame_plan :: (s: [] E2, features: u32, w: int, h: int, hud: int, runs: int, out: [] u32) -> int #export_c #effects(all) {
+  c := FrameCounts.{width = w, height = h, vertex_stride = E2_VERTEX_FLOATS, hud_vertices = hud, draw_count = s[0].draw_n,
+                    particle_instances = s[0].casts[0].puffs[0].out_n};
+  x := RenderShipping.{shadow_draws = s[0].shadow_n, cull = runs > 0, cull_runs = runs, sort = true, grass_last = true, bloom_passes = e2_bloom_passes(s)};
+  k := s[0].casc[0];
+  if k.on && k.tier.count <= RENDER_SHADOW_TILES {
+    x.tiles = true; x.tile_count = k.tier.count; x.tile = k.draw;
+    if k.draw >= 0 { x.clears = 1 << cast(u64) k.draw; }
+    for t: 0..<k.tier.count { side := cascade_rect_px(k.tier, t, 2); x.rects[t] = [4] int.[cascade_rect_px(k.tier, t, 0), cascade_rect_px(k.tier, t, 1), side, side]; }
+  }
+  return frame_plan_page(features, c, x, out);
+}
 e2_record_bytes :: (s: [] E2) -> int #export_c #effects(all) { return E2_RECORDS * 24 * 4; }
 e2_inst_bytes :: (s: [] E2) -> int #export_c #effects(all) { return s[0].inst_n * E2_ITEM_FLOATS * 4; }
 // The host action this frame (everglade2-face.c coaxial_action): its code, its bytes; done clears it.
@@ -1695,7 +1718,35 @@ coaxial_e2_uniform_floats :: () -> int #export_c #effects(all) { return E2_UNIFO
 // Read-only observations for headless checks (coaxial_field_probe): 0 draws, 1 shadow draws, 2 kit
 // pieces stored, 3 pieces planted, 4 kit rows read, 5 your z in centimetres, 173 where the woods came
 // from (0 not yet, 1 the pack's P lines, 2 planted here).
+// The page's hash (the face's coaxial_hash). "fly=T,EX,EY,EZ,AX,AY,AZ~...": the flyover benchmark
+// (coax/web/flyover.coax) takes the camera along that path from now and holds its last key; "fly="
+// (or any path metaverse-engine/cam/track.coax's cam_track_fly refuses) hands it back. Nothing else is read.
+e2_hash :: (s: [] E2, hash: string) #export_c #effects(all) {
+  if hash.count >= 4 && hash[0..<4] == "fly=" { s[0].fly = trk.cam_track_fly(hash[4..<hash.count]); s[0].fly_from = s[0].clock; }
+}
+e2_flying :: (s: [] E2) -> bool #effects(all) { return s[0].fly.flight.count >= 2; }
+// The flyover benchmark's probe (coaxial.fieldProbe(30)): 0 when no #fly= path has the camera, else
+// 1 + the milliseconds it has flown.
+e2_fly_ms :: (s: [] E2) -> int #effects(all) {
+  if !e2_flying(s) { return 0; }
+  t := s[0].clock - s[0].fly_from;
+  return 1 + cast(int) ((ifx t < 0 then 0.0f32 else ifx t > 86400 then 86400.0f32 else t) * 1000);
+}
+#test "e2 fly: a #fly= path takes the camera and says how long it has flown; an empty one hands it back" {
+  s: [1] E2; s[0].clock = 5;
+  #assert e2_fly_ms(s[..]) == 0;
+  e2_hash(s[..], "fly=0,0,10,0,0,2,-40~4,0,10,-80,0,2,-120");
+  #assert e2_flying(s[..]) && e2_probe(s[..], 30) == 1;
+  s[0].clock = 7.5; #assert e2_probe(s[..], 30) == 2501;
+  mid := trk.cam_track_at(s[0].fly, s[0].clock - s[0].fly_from);
+  #assert mid.ez < -30 && mid.ez > -70 && mid.ey > 9.9 && mid.ey < 10.1;
+  e2_hash(s[..], "something else"); #assert e2_flying(s[..]);
+  e2_hash(s[..], "fly="); #assert !e2_flying(s[..]) && e2_fly_ms(s[..]) == 0 && e2_probe(s[..], 30) <= 0;
+  e2_hash(s[..], "fly=0,1,2"); #assert !e2_flying(s[..]);
+}
 e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
+  // 30 while a #fly= path has the camera: the flyover benchmark's probe (otherwise the room's rest code, below)
+  if field == 30 && e2_flying(s) { return e2_fly_ms(s); }
   #if BUILD_DEBUG { if field >= 980 && field < 1000 { return e2a_probe(s, field); } }
   if field == 0 { return s[0].draw_n; } if field == 1 { return s[0].shadow_n; } if field == 2 { return s[0].inst_n; }
   if field == 3 { return s[0].planted; } if field == 173 { return s[0].plant_route; }

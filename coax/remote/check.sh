@@ -266,6 +266,7 @@ reports() {
   generated
   pack_reader_c
   frame_plan_h
+  frame_plan_walk
   app_realms
   pack_cells
   cards
@@ -296,6 +297,9 @@ pack_reader_c() {
 frame_plan_h() {
   step frame-plan-h bash -c 'coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax | cmp -s - metaverse-engine/host/frame-plan.h || { echo "metaverse-engine/host/frame-plan.h is not what metaverse-engine/render/frame-plan.coax writes; run: coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax > metaverse-engine/host/frame-plan.h"; exit 1; }' || status=1
 }
+# The frame plan's walk for C hosts (#13303): metaverse-engine/host/core/frame-plan-walk.h calls what Coax says a
+# walk of each plan must call, and refuses a malformed plan with no call.
+frame_plan_walk() { step frame-plan-walk metaverse-engine/host/core/check-frame-plan-walk.sh || status=1; }
 # The Mac and iPhone apps' realms and passes still resolve, emit and compile (#13389): a client's
 # Coax moved (#13268) and both apps stopped building with no check saying so. Their Swift and
 # Objective-C need a Mac (apps/shared/host/apple/check.sh); this is the part any host can do.
@@ -514,6 +518,7 @@ reports_since() {
   # Its sources: the reader, its face and the compiler that writes the C.
   if grep -Eq '^(metaverse-engine/host/pack-table|metaverse/native/pack-table-gen\.h|coax/(src|lib/compiler|bootstrap)/|coax/VERSION)' "$out/changed"; then pack_reader_c; fi
   if grep -Eq '^(metaverse-engine/render/(frame-plan|passes|types)\.coax|metaverse-engine/host/frame-plan\.h|metaverse-engine/tools/frame-plan-header\.coax)' "$out/changed"; then frame_plan_h; fi
+  if grep -Eq '^(metaverse-engine/render/(frame-plan|passes|types)\.coax|metaverse-engine/host/(frame-plan\.h|core/)|metaverse-engine/tools/frame-plan-fixture\.coax)' "$out/changed"; then frame_plan_walk; fi
   if grep -Eq '^(apps/openagents-web/(realms|og/)|coax/web/og\.ts)' "$out/changed"; then
     cards
   fi

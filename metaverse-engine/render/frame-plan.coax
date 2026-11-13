@@ -13,6 +13,9 @@
 //   word 3  flags (1 keep, 2 store depth, 4 state valid, 8 depth write, 16 aux write) | bias << 8 | slope << 16
 //   word 4  first    word 5  count    word 6  instances
 //   word 7  a bloom draw's step, four whole numbers of 0 to 255, one a byte, the first lowest
+// A viewport or scissor operation's rectangle is in words 4 and 5: x | y << 16, then w | h << 16
+// (a viewport of no width is the whole target). cull_early, cull_late and a late draw carry the
+// cull's runs in word 5.
 // Every number is an enum's member in passes.coax. Members are only added at the end, so a number
 // never changes its meaning; a host reads them from metaverse-engine/host/frame-plan.h, which
 // frame_plan_header writes (metaverse-engine/tools/frame-plan-header.coax) and check.sh reports compares.
@@ -30,12 +33,53 @@ FRAME_PLAN_VERSION :: 1;
 FRAME_PLAN_WORDS :: 8;
 FP_KEEP :: 1; FP_STORE_DEPTH :: 2; FP_VALID :: 4; FP_DEPTH_WRITE :: 8; FP_AUX_WRITE :: 16;
 
-FP_KINDS :: [8] string.["BEGIN", "END", "DRAW", "COPY", "EACH_BEGIN", "EACH_END", "MEDIA_BEFORE", "MEDIA_AFTER"];
-FP_PASSES :: [13] string.["BACKGROUND", "SHADOW", "CASTER", "GRASS", "SURFACE", "SCENE", "WATER_TRANSMIT", "WATER_EMIT", "PARTICLE_OVER", "PARTICLE", "BLOOM", "POST", "HUD"];
+FP_KINDS :: [13] string.["BEGIN", "END", "DRAW", "COPY", "EACH_BEGIN", "EACH_END", "MEDIA_BEFORE", "MEDIA_AFTER", "CULL_EARLY", "CULL_LATE", "VIEWPORT", "SCISSOR", "PARTICLE_SORT"];
+FP_PASSES :: [18] string.["BACKGROUND", "SHADOW", "CASTER", "GRASS", "SURFACE", "SCENE", "WATER_TRANSMIT", "WATER_EMIT", "PARTICLE_OVER", "PARTICLE", "BLOOM", "POST", "HUD", "INVALID", "SHADOW_CLEAR", "CHARACTER_CAST", "CHARACTER", "SCENE_LATE"];
 FP_TARGETS :: [12] string.["NONE", "SCREEN", "LIGHT", "AUX", "SCENE_DEPTH", "SHADOW_MAP", "WATER_LIGHT", "WATER_DEPTH", "Q0", "Q1", "E0", "E1"];
 FP_DEPTHS :: [3] string.["NONE", "ALWAYS", "LESS"];
 FP_BLENDS :: [7] string.["REPLACE", "MAXIMUM", "MULTIPLY", "ADD", "KEEP", "OVER", "UNDER"];
-FP_SOURCES :: [3] string.["VERTICES", "RECORDS", "CURRENT"];
+FP_SOURCES :: [5] string.["VERTICES", "RECORDS", "CURRENT", "SHADOW_RECORDS", "LATE"];
+
+// The host's word to coaxial_frame_plan_v1: what it has and what is ready this frame. Bits 0 to 13
+// are RenderFeatures' fields in their order (a pipeline the page's shader module gave the host);
+// the rest say what the host did before it asked: the shadow atlas is tiled, the instance cull's
+// first phase has runs to draw, its character pass has a character, it sorts particles, the
+// scene's assets are all in, and the particles' group is.
+FPH_FEATURES :: 14;
+FPH_TILES :: 1 << 14; FPH_CULL :: 1 << 15; FPH_CHARACTER :: 1 << 16; FPH_SORT :: 1 << 17; FPH_SCENE_READY :: 1 << 18; FPH_PARTICLES_READY :: 1 << 19;
+FPH_ALL :: (1 << 20) - 1;
+FP_HOST :: [20] string.["SCENE", "SHADOW", "CASTERS", "GRASS", "SURFACE", "WATER", "WATER_COPY", "POST", "POST_DEPTH", "TRACED_DEPTH", "PARTICLES", "PARTICLE_DEPTH", "PARTICLE_OVER", "MEDIA",
+                        "TILES", "CULL", "CHARACTER", "SORT", "SCENE_READY", "PARTICLES_READY"];
+
+frame_plan_features :: (bits: u32) -> RenderFeatures #effects(all) {
+  b := cast(int) bits;
+  return RenderFeatures.{scene = (b & 1) != 0, shadow = (b & 2) != 0, casters = (b & 4) != 0, grass = (b & 8) != 0, surface = (b & 16) != 0, water = (b & 32) != 0,
+    water_copy = (b & 64) != 0, post = (b & 128) != 0, post_depth = (b & 256) != 0, traced_depth = (b & 512) != 0, particles = (b & 1024) != 0,
+    particle_depth = (b & 2048) != 0, particle_over = (b & 4096) != 0, media = (b & 8192) != 0};
+}
+// A page's frame as words for its host (coaxial_frame_plan_v1's whole body): the host's bits, the
+// page's counts and its shipping facts. The page says what it would do (x); the host's bits say
+// what it can: tiles, the cull, the character and the sort are drawn only when both do. The
+// result is the words written, 0 when the plan is refused (the host then draws nothing new).
+frame_plan_page :: (bits: u32, c: FrameCounts, x: RenderShipping, out: [] u32) -> int #effects(all) {
+  if out.count > 0 { out[0] = 0; }
+  b := cast(int) bits;
+  if b < 0 || b > FPH_ALL { return 0; }
+  y := x;
+  if (b & FPH_TILES) == 0 { y.tiles = false; y.tile = -1; y.tile_count = 0; y.clears = 0; }
+  if (b & FPH_CULL) == 0 { y.cull = false; }
+  if !y.cull { y.cull_runs = 0; }
+  if (b & FPH_CHARACTER) == 0 { y.character = false; y.character_cast = false; }
+  if (b & FPH_SORT) == 0 { y.sort = false; }
+  // a host without the pipeline a fact needs (a quality level with no shadow, say) drops the fact
+  f := frame_plan_features(bits);
+  if !f.shadow { y.tiles = false; y.tile = -1; y.tile_count = 0; y.clears = 0; y.shadow_draws = -1; y.character = false; y.character_cast = false; }
+  if !f.scene { y.cull = false; y.cull_runs = 0; y.character = false; y.character_cast = false; }
+  if !f.particles { y.sort = false; }
+  q: [1] RenderPlan;
+  q[0] = render_plan_shipping(f, c, y, ifx (b & FPH_SCENE_READY) != 0 then RenderReadiness.ready else RenderReadiness.background, (b & FPH_PARTICLES_READY) != 0);
+  return frame_plan_write(q[..], out);
+}
 
 fp_byte_ok :: (v: int) -> bool #effects(all) { return v >= 0 && v <= 255; }
 fp_count_ok :: (v: int) -> bool #effects(all) { return v >= 0 && v <= 0x7fffffff; }
@@ -147,8 +191,9 @@ frame_plan_header :: (o: [] FpText) -> int #effects(all) {
   fp_define(o, "", "MOST_OPS", RENDER_OPS);
   fp_define(o, "FLAG_", "KEEP", FP_KEEP); fp_define(o, "FLAG_", "STORE_DEPTH", FP_STORE_DEPTH); fp_define(o, "FLAG_", "VALID", FP_VALID);
   fp_define(o, "FLAG_", "DEPTH_WRITE", FP_DEPTH_WRITE); fp_define(o, "FLAG_", "AUX_WRITE", FP_AUX_WRITE);
-  fp_group(o, "OP_", FP_KINDS[..]); fp_group(o, "PASS_", FP_PASSES[..]); fp_group(o, "TARGET_", FP_TARGETS[..]);
+  fp_group(o, "OP_", FP_KINDS[..]); for k: 0..<FP_PASSES.count { if k != cast(int) RenderPassId.invalid { fp_define(o, "PASS_", FP_PASSES[k], k); } } fp_group(o, "TARGET_", FP_TARGETS[..]);
   fp_group(o, "DEPTH_", FP_DEPTHS[..]); fp_group(o, "BLEND_", FP_BLENDS[..]); fp_group(o, "SOURCE_", FP_SOURCES[..]);
+  for k: 0..<FP_HOST.count { fp_define(o, "HOST_", FP_HOST[k], 1 << cast(u64) k); }
   fp_put(o, "#endif\n");
   return o[0].n;
 }

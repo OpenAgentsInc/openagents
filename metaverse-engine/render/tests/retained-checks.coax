@@ -1,0 +1,122 @@
+// Checks for metaverse-engine/render/retained.coax, which loads this file with #test.
+//   coax/bin/coax test metaverse-engine/render/retained.coax
+
+RT_CAP :: 16;
+RtStore :: struct { rows: [RT_CAP * RETAINED_ROW] f32; mesh: [RT_CAP] int; material: [RT_CAP] int; scale: [RT_CAP] f32; base: [3] f64; n: [RS_COUNTERS] int; }
+rtc_of :: (b: [] RtStore) -> RetainedStore #effects(all) {
+  return RetainedStore.{rows = b[0].rows[..], mesh = b[0].mesh[..], material = b[0].material[..], scale = b[0].scale[..], base = b[0].base[..], n = b[0].n[..]};
+}
+// A World of RT_CAP slots with one earlier system (id 3, it moves things) and the render system (id 9) last.
+rtc_world :: (b: [] WorldStore, s: [] RtStore) -> World #effects(all) {
+  w := world_of(b, RT_CAP); _ := world_init(w, 8);
+  _ = world_system(w, 3, WORLD_TRANSFORM, WORLD_TRANSFORM);
+  r := rtc_of(s); _ = retained_init(w, r); _ = retained_register(w, r, 9);
+  return w;
+}
+rtc_put :: (w: World, r: RetainedStore, x: f32, z: f32, mesh: int) -> int #effects(all) {
+  made := world_spawn(w, WORLD_TRANSFORM | WORLD_KIND); s := entity_slot(made.handle);
+  _ := world_set_f(w, WF_X, s, x); _ = world_set_f(w, WF_Z, s, z); _ = world_set_f(w, WF_Y, s, 1);
+  _ = world_commit(w); _ = retained_set(r, s, mesh, 2, 1);
+  return s;
+}
+// One step: system 3 moves slot `move` (-1 none) by dx, then the render system runs. Its result.
+rtc_step :: (w: World, r: RetainedStore, move: int, dx: f32, ox: f64) -> int #effects(all) {
+  _ := world_step_begin(w);
+  _ = world_system_begin(w, 3);
+  if move >= 0 { _ = world_set_f(w, WF_X, move, world_f(w, WF_X, move) + dx); }
+  world_system_end(w);
+  n := retained_system(w, r, ox, 0, 0);
+  _ = world_step_end(w);
+  return n;
+}
+
+#test "retained: storage is taken whole or refused; the render system registers once and must be last" {
+  b: [1] WorldStore; s: [1] RtStore; w := world_of(b[..], RT_CAP); r := rtc_of(s[..]);
+  #assert !retained_init(w, r);   // the World is not ready
+  #assert world_init(w, 8) && retained_init(w, r) && s[0].n[RS_READY] == 1 && s[0].scale[5] == 1;
+  short := RetainedStore.{rows = s[0].rows[0..<RT_CAP * RETAINED_ROW - 1], mesh = s[0].mesh[..], material = s[0].material[..], scale = s[0].scale[..], base = s[0].base[..], n = s[0].n[..]};
+  #assert !retained_init(w, short) && s[0].n[RS_READY] == 0 && retained_init(w, r);
+  #assert !retained_is_last(w, r) && retained_register(w, r, 9) && retained_is_last(w, r) && !retained_register(w, r, 10);
+  #assert w.sys_reads[0] == (WORLD_TRANSFORM | WORLD_KIND) && w.sys_writes[0] == 0;
+  // a system added after it: the render system is no longer last and refuses to run
+  #assert world_system(w, 4, 0, 0) && !retained_is_last(w, r);
+  #assert world_step_begin(w) && retained_system(w, r, 0, 0, 0) == -1 && s[0].n[RS_RUNS] == 0;
+  #assert !retained_set(r, -1, 1, 1, 1) && !retained_set(r, RT_CAP, 1, 1, 1) && !retained_set(r, 0, 1, 1, 0) && !retained_set(r, 0, -1, 1, 1) && retained_set(r, 0, 1, 1, 2);
+}
+
+#test "retained: a row is written only when its slot's row changed; a still world uploads nothing" {
+  b: [1] WorldStore; s: [1] RtStore; w := rtc_world(b[..], s[..]); r := rtc_of(s[..]);
+  a := rtc_put(w, r, 10, 20, 7); c := rtc_put(w, r, 30, 40, 8); e := rtc_put(w, r, 50, 60, 9);
+  #assert a == 0 && c == 1 && e == 2;
+  #assert rtc_step(w, r, -1, 0, 0) == 3;
+  sp := retained_take(r); #assert sp.first == 0 && sp.count == 3 && retained_take(r).count == 0;
+  #assert s[0].rows[RR_X] == 10 && s[0].rows[RR_Y] == 1 && s[0].rows[RR_Z] == 20 && s[0].rows[RR_MESH] == 7 && s[0].rows[RR_MATERIAL] == 2 && s[0].rows[RR_LIVE] == 1 && s[0].rows[RR_PX] == 10;
+  // nothing moved: no row, no span, however many steps
+  for k: 0..<5 { #assert rtc_step(w, r, -1, 0, 0) == 0 && retained_span(r).count == 0; }
+  // one moves: its row alone, with where it stood before
+  #assert rtc_step(w, r, c, 2.5, 0) == 1;
+  sp = retained_span(r); #assert sp.first == 1 && sp.count == 1;
+  #assert s[0].rows[RETAINED_ROW + RR_X] == 32.5 && s[0].rows[RETAINED_ROW + RR_PX] == 30 && s[0].rows[RR_X] == 10;
+  // it stops: one more row (its previous place catches up), then nothing
+  #assert rtc_step(w, r, -1, 0, 0) == 1 && s[0].rows[RETAINED_ROW + RR_PX] == 32.5 && rtc_step(w, r, -1, 0, 0) == 0;
+  sp = retained_take(r); #assert sp.first == 1 && sp.count == 1 && s[0].n[RS_UPLOADED] == 4;
+  // the first and the last move: the span covers both ends
+  #assert rtc_step(w, r, a, 1, 0) == 1 && rtc_step(w, r, e, 1, 0) == 2;
+  sp = retained_take(r); #assert sp.first == 0 && sp.count == 3;
+  // a new mesh for a slot is a changed row
+  #assert rtc_step(w, r, -1, 0, 0) == 1 && retained_take(r).count == 1 && rtc_step(w, r, -1, 0, 0) == 0;
+  #assert retained_set(r, c, 12, 3, 2) && rtc_step(w, r, -1, 0, 0) == 1 && s[0].rows[RETAINED_ROW + RR_MESH] == 12 && s[0].rows[RETAINED_ROW + RR_SCALE] == 2;
+}
+
+#test "retained: the render system writes nothing in the World: the digest holds, the audit finds nothing, no access is refused" {
+  b: [1] WorldStore; s: [1] RtStore; w := rtc_world(b[..], s[..]); r := rtc_of(s[..]);
+  a := rtc_put(w, r, 1, 2, 3); c := rtc_put(w, r, 4, 5, 6);
+  #assert world_audit(w, true);
+  _ := world_step_begin(w); _ = world_system_begin(w, 3); world_system_end(w);
+  before := world_digest(w);
+  #assert retained_system(w, r, 0, 0, 0) == 2 && world_digest(w) == before;
+  #assert world_step_end(w) && world_violations(w) == 0 && b[0].n[WORLD_AUDITED] == 0 && b[0].n[WORLD_SKIPPED] == 0 && world_tick(w) == 1;
+  // outside a step, or before the earlier system has run, it is refused and writes nothing
+  #assert retained_system(w, r, 0, 0, 0) == -1;
+  _ = world_step_begin(w); #assert retained_system(w, r, 0, 0, 0) == -1 && s[0].n[RS_RUNS] == 1;
+  _ = world_system_begin(w, 3); world_system_end(w);
+  #assert retained_system(w, r, 0, 0, 0) == 0 && world_step_end(w) && a != c;
+}
+
+#test "retained: a despawned slot's row is cleared once; a slot with no mesh has no row" {
+  b: [1] WorldStore; s: [1] RtStore; w := rtc_world(b[..], s[..]); r := rtc_of(s[..]);
+  a := rtc_put(w, r, 1, 2, 3); c := rtc_put(w, r, 4, 5, 0);
+  #assert rtc_step(w, r, -1, 0, 0) == 1 && s[0].rows[RR_LIVE] == 1 && s[0].rows[RETAINED_ROW + RR_LIVE] == 0 && c == 1;
+  _ := retained_take(r);
+  world_despawn(w, world_at(w, a)); _ = world_commit(w);
+  #assert rtc_step(w, r, -1, 0, 0) == 1 && s[0].rows[RR_LIVE] == 0 && s[0].rows[RR_X] == 0;
+  sp := retained_take(r); #assert sp.first == 0 && sp.count == 1 && rtc_step(w, r, -1, 0, 0) == 0;
+}
+
+#test "retained: the origin moves on the GPU as one uniform; only a far move writes the rows again" {
+  b: [1] WorldStore; s: [1] RtStore; w := rtc_world(b[..], s[..]); r := rtc_of(s[..]);
+  a := rtc_put(w, r, 100, 20, 7); c := rtc_put(w, r, 3000, 40, 8);
+  #assert rtc_step(w, r, -1, 0, 0) == 2; _ := retained_take(r);
+  u: [4] f32;
+  // the page's origin moves 512 m: no row, the uniform carries it
+  #assert rtc_step(w, r, -1, 0, 512) == 0 && retained_span(r).count == 0;
+  #assert retained_origin(r, 512, 0, 0, u[..]) && u[0] == -512 && u[1] == 0 && u[2] == 0 && u[3] == 0;
+  #assert s[0].rows[RR_X] + u[0] == 100 - 512 && a == 0;
+  // past RETAINED_REBASE_FAR: every row again, from the new base, at rest; counted
+  #assert rtc_step(w, r, -1, 0, 2560) == 2 && s[0].n[RS_REBASES] == 1;
+  #assert s[0].rows[RR_X] == 100 - 2560 && s[0].rows[RR_PX] == 100 - 2560 && s[0].rows[RETAINED_ROW + RR_X] == 3000 - 2560 && c == 1;
+  #assert retained_origin(r, 2560, 0, 0, u[..]) && u[0] == 0 && u[3] == 1;
+  #assert retained_take(r).count == 2 && rtc_step(w, r, -1, 0, 2560) == 0 && rtc_step(w, r, -1, 0, 2600) == 0;
+  short: [3] f32; #assert !retained_origin(r, 0, 0, 0, short[..]);
+}
+
+#test "retained: the visible list is the spatial index's answer at the camera, live rows only" {
+  b: [1] WorldStore; s: [1] RtStore; w := rtc_world(b[..], s[..]); r := rtc_of(s[..]);
+  near := rtc_put(w, r, 10, 10, 7); far := rtc_put(w, r, 200, 200, 7); bare := rtc_put(w, r, 12, 10, 0);
+  #assert rtc_step(w, r, -1, 0, 0) == 2;
+  out: [RT_CAP] int;
+  n := retained_visible(w, r, 11, 10, 20, out[..]);
+  #assert n == 1 && out[0] == near && far != bare;
+  #assert retained_visible(w, r, 100, 100, 500, out[..]) == 2;
+  #assert retained_visible(w, r, 5000, 5000, 20, out[..]) == 0;
+}

@@ -65,10 +65,16 @@ class InstanceCull {
     u[22] = hiz ? 1 : 0; u[23] = this.levels.length; u[24] = this.size[0]; u[25] = this.size[1]; u[26] = this.levels[0].w; u[27] = this.levels[0].h;
     this.levels.forEach((l, k) => { u[52 + k] = l.at; u[64 + k] = l.w; u[76 + k] = l.h; });
   }
-  // Before the frame's passes: phase 1, encoded into its own compute pass. Returns each draw's run
-  // (-1: drawn as the page drew it), or null when nothing is culled this frame.
+  // Before the frame's passes: phase 1. want() decides and stages it (each draw's run, -1: drawn as
+  // the page drew it; null when nothing is culled this frame); early() encodes it into its own
+  // compute pass, where the frame's plan puts it (metaverse-engine/render/passes.coax cull_early).
   frame(encoder, x, state, memory, scene, depth, w, h) {
-    this.active = null;
+    const active = this.want(x, state, memory, scene, depth, w, h);
+    if (active) this.early(encoder);
+    return active;
+  }
+  want(x, state, memory, scene, depth, w, h) {
+    this.active = null; this.staged = null;
     if (this.off || !scene.index || !scene.vertices || !scene.store) return null;
     const runs = x.coaxial_cull_v1(state, 0);
     if (runs <= 0) return null;
@@ -112,25 +118,35 @@ class InstanceCull {
         depth: this.group(this.pipes.hizDepth, [[0, this.u], [7, this.hiz], [8, this.depthView]]),
         down: this.levels.map((_, l) => (l === 0 ? null : this.group(this.pipes.hizDown, [[0, this.u], [9, this.hz[l]], [7, this.hiz]]))) };
     }
-    if (!this.boundsDone) {
+    if (!this.boundsDone && !this.boundsGroup) {
       // once: each kit piece's box from the pack's own vertices
       q.writeBuffer(this.buckets, 0, table);
       const start = new Uint32Array(kits * 4); for (let b = 0; b < kits; b++) start[b * 4] = 0xffffffff;
       q.writeBuffer(this.bounds, 0, start);
-      const p = encoder.beginComputePass();
-      p.setPipeline(this.pipes.bounds);
-      p.setBindGroup(0, this.group(this.pipes.bounds, [[0, this.u], [10, this.buckets], [11, scene.index], [12, scene.vertices], [13, this.bounds]]));
-      p.dispatchWorkgroups(groupsOf(kits * CHUNKS)); p.end();
-      encoder.copyBufferToBuffer(this.bounds, 0, this.boxes, 0, kits * 16);
-      this.boundsDone = true;
+      this.boundsGroup = this.group(this.pipes.bounds, [[0, this.u], [10, this.buckets], [11, scene.index], [12, scene.vertices], [13, this.bounds]]);
     }
-    const p = encoder.beginComputePass();
-    p.setPipeline(this.pipes.one); p.setBindGroup(0, this.groups.one); p.dispatchWorkgroups(groupsOf(total)); p.end();
     const run = new Int32Array(Math.max(...at) + 1).fill(-1);
     for (let r = 0; r < runs; r++) run[at[r]] = r;
     let picked = 0; for (let r = 0; r < runs; r++) picked += words[r * 4 + 1];
     this.active = { runs, total, run, picked };
+    this.staged = { kits, total };
     return this.active;
+  }
+  // What want() staged, encoded. `real` false: a recording only (host.js's plan check), so the
+  // boxes are still to be made.
+  early(encoder, real = true) {
+    if (!this.staged) return;
+    const { kits, total } = this.staged;
+    if (!this.boundsDone) {
+      const p = encoder.beginComputePass();
+      p.setPipeline(this.pipes.bounds);
+      p.setBindGroup(0, this.boundsGroup);
+      p.dispatchWorkgroups(groupsOf(kits * CHUNKS)); p.end();
+      encoder.copyBufferToBuffer(this.bounds, 0, this.boxes, 0, kits * 16);
+      if (real) { this.boundsDone = true; this.boundsGroup = null; }
+    }
+    const p = encoder.beginComputePass();
+    p.setPipeline(this.pipes.one); p.setBindGroup(0, this.groups.one); p.dispatchWorkgroups(groupsOf(total)); p.end();
   }
   // Draw i of the list: its run's first indirect draw, or false to draw it as the page did.
   draw(pass, i) {
@@ -140,12 +156,13 @@ class InstanceCull {
     return true;
   }
   // After the opaque draws (their depth stored): the pyramid, then phase 2.
-  late(encoder) {
+  late(encoder, real = true) {
     if (!this.active) return;
     const p = encoder.beginComputePass();
     p.setPipeline(this.pipes.hizDepth); p.setBindGroup(0, this.groups.depth); p.dispatchWorkgroups(groupsOf(this.levels[0].w * this.levels[0].h));
     for (let l = 1; l < this.levels.length; l++) { p.setPipeline(this.pipes.hizDown); p.setBindGroup(0, this.groups.down[l]); p.dispatchWorkgroups(groupsOf(this.levels[l].w * this.levels[l].h)); }
     p.setPipeline(this.pipes.two); p.setBindGroup(0, this.groups.two); p.dispatchWorkgroups(groupsOf(this.active.total)); p.end();
+    if (!real) return;
     this.ready = true;
     // a benchmark's counts (coaxial.cullStats), now and then, never waited for
     if (globalThis.coaxialPassTimer === true && !this.read.busy && this.frames++ % 15 === 0) {

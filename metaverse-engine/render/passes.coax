@@ -12,12 +12,19 @@ RenderFeatures :: struct {
 }
 RenderReadiness :: enum u8 { loading; background; ready; invalid; }
 RenderPlanStatus :: enum u8 { ok; loading; invalid; }
-RenderPassId :: enum u8 { background; shadow; caster; grass; surface; scene; water_transmit; water_emit; particle_over; particle; bloom; post; hud; invalid; }
+// Members are only added at the end (hosts carry the numbers), so `invalid` keeps 13 and the
+// shipping passes (#13303) follow it: a shadow tile's clear, the host's character in the shadow
+// and in the scene, and the instance cull's second scene draws.
+RenderPassId :: enum u8 { background; shadow; caster; grass; surface; scene; water_transmit; water_emit; particle_over; particle; bloom; post; hud; invalid; shadow_clear; character_cast; character; scene_late; }
 RenderTarget :: enum u8 { none; screen; light; aux; scene_depth; shadow_map; water_light; water_depth; q0; q1; e0; e1; invalid; }
 RenderDepth :: enum u8 { none; always; less; }
 RenderBlend :: enum u8 { replace; maximum; multiply; add; keep; over; under; }
-RenderDrawSource :: enum u8 { vertices; records; current; }
-RenderOpKind :: enum u8 { begin; end; draw; copy; each_begin; each_end; media_before; media_after; }
+// shadow_records: the page's separate shadow list. late: every cull run's second indirect draw.
+RenderDrawSource :: enum u8 { vertices; records; current; shadow_records; late; }
+// cull_early and cull_late are the instance cull's compute phases; particle_sort the particles'.
+// viewport and scissor carry a rectangle in texels: first is x | y << 16, count is w | h << 16;
+// a viewport of no width is the whole target.
+RenderOpKind :: enum u8 { begin; end; draw; copy; each_begin; each_end; media_before; media_after; cull_early; cull_late; viewport; scissor; particle_sort; }
 RenderPassState :: struct {
   valid:bool; depth:RenderDepth; depth_write:bool; bias:int; slope:int;
   colour:RenderBlend; alpha:RenderBlend; outputs:int=1; aux_write:bool=true;
@@ -29,6 +36,19 @@ RenderOp :: struct {
   source:RenderTarget; target:RenderTarget;
   draw_source:RenderDrawSource; first:int; count:int; instances:int=1;
   bloom_step:[4]f32;
+}
+// What a shipping page's frame has beyond the features (#13303): the key light's shadow tiles
+// (render/cascades.coax: at most one tile a frame into an atlas, some tiles cleared first), a
+// separate shadow list, the instance cull's two phases, the host's character pass, the particles'
+// sort and the bloom stages this frame. The default is none of them: render_plan's program.
+RENDER_SHADOW_TILES :: 8;
+RENDER_RECT_MOST :: 32767;
+RenderShipping :: struct {
+  tiles:bool; tile:int=-1; tile_count:int; clears:int; rects:[RENDER_SHADOW_TILES][4]int;
+  shadow_draws:int=-1;       // the separate shadow list's draws; -1: the scene's list casts
+  cull:bool; cull_runs:int;  // the cull's first phase ran, over this many runs
+  character:bool; character_cast:bool;
+  sort:bool; grass_last:bool; bloom_passes:int=5;
 }
 RenderPlan :: struct { status:RenderPlanStatus=RenderPlanStatus.invalid; readiness:RenderReadiness; count:int; ops:[RENDER_OPS]RenderOp; }
 
@@ -213,6 +233,8 @@ RenderPlan :: struct { status:RenderPlanStatus=RenderPlanStatus.invalid; readine
   if mode==3 {#assert q.ops[0].depth==RenderTarget.scene_depth && q.ops[2].first==0 && q.ops[2].count==1 && q.ops[2].instances==1;}
 }
 
+#load "tests/passes-shipping-checks.coax" #test;
+
 render_features :: (f:RenderFeatures)->bool #effects(all) {
   if !f.scene && (f.shadow || f.casters || f.grass || f.water || f.post || f.particles) {return false;}
   if f.scene && f.surface {return false;}
@@ -233,8 +255,12 @@ render_pass_state :: (f:RenderFeatures,p:RenderPassId)->RenderPassState #effects
   } else if p==RenderPassId.shadow || p==RenderPassId.caster {
     r.valid=ifx p==RenderPassId.shadow then f.shadow else f.casters;
     r.outputs=0;r.depth=RenderDepth.less;r.depth_write=true;r.bias=2;r.slope=2;
-  } else if p==RenderPassId.scene || p==RenderPassId.grass || p==RenderPassId.surface {
-    r.valid=ifx p==RenderPassId.scene then f.scene else (ifx p==RenderPassId.grass then f.grass else f.surface);
+  } else if p==RenderPassId.shadow_clear {
+    r.valid=f.shadow;r.outputs=0;r.depth=RenderDepth.always;r.depth_write=true;
+  } else if p==RenderPassId.character_cast {
+    r.valid=f.shadow;r.outputs=0;r.depth=RenderDepth.less;r.depth_write=true;r.bias=2;r.slope=2;
+  } else if p==RenderPassId.scene || p==RenderPassId.grass || p==RenderPassId.surface || p==RenderPassId.character || p==RenderPassId.scene_late {
+    r.valid=ifx p==RenderPassId.grass then f.grass else (ifx p==RenderPassId.surface then f.surface else f.scene);
     r.outputs=ifx f.post then 2 else 1;r.depth=RenderDepth.less;r.depth_write=true;
   } else if p==RenderPassId.water_transmit || p==RenderPassId.water_emit {
     r.valid=f.water;r.outputs=ifx f.post then 2 else 1;r.depth=RenderDepth.less;r.aux_write=false;
@@ -253,7 +279,7 @@ render_pass_state :: (f:RenderFeatures,p:RenderPassId)->RenderPassState #effects
 }
 
 rp_emit :: (q:[]RenderPlan,o:RenderOp) #effects(all) {
-  // The fixed graph below emits at most 42 ops. Counts become symbolic draw
+  // The fixed graph below emits at most 72 ops (42 and the shipping ones: 16 for tile clears). Counts become symbolic draw
   // ranges, never more program instructions; the 256-entry array cannot fill.
   q[0].ops[q[0].count]=o;q[0].count+=1;
 }
@@ -263,9 +289,32 @@ rp_begin :: (q:[]RenderPlan,a:RenderTarget,b:RenderTarget,d:RenderTarget,keep:bo
 rp_draw :: (q:[]RenderPlan,f:RenderFeatures,p:RenderPassId,from:RenderDrawSource,first:int,n:int,instances:int) #effects(all) {
   rp_emit(q,RenderOp.{kind=RenderOpKind.draw,pass=p,state=render_pass_state(f,p),draw_source=from,first=first,count=n,instances=instances});
 }
+rp_rect :: (q:[]RenderPlan,kind:RenderOpKind,r:[4]int) #effects(all) {
+  rp_emit(q,RenderOp.{kind=kind,first=r[0]|(r[1]<<16),count=r[2]|(r[3]<<16)});
+}
+// Whether the shipping facts hold together with the features: a refused set gives no program.
+render_shipping :: (f:RenderFeatures,x:RenderShipping)->bool #effects(all) {
+  if x.tile_count<0 || x.tile_count>RENDER_SHADOW_TILES || x.tile< -1 || x.tile>=x.tile_count {return false;}
+  if x.clears<0 || x.clears>=(1<<cast(u64)x.tile_count) {return false;}
+  if !x.tiles && (x.tile>=0 || x.tile_count>0) {return false;}
+  if x.tiles && !f.shadow {return false;}
+  for k:0..<x.tile_count {for j:0..<4 {if x.rects[k][j]<0 || x.rects[k][j]>RENDER_RECT_MOST {return false;}}if x.rects[k][2]<1 || x.rects[k][3]<1 {return false;}}
+  if x.shadow_draws< -1 || x.shadow_draws>4294967295 {return false;}
+  if x.shadow_draws>=0 && !f.shadow {return false;}
+  if x.cull_runs<0 || x.cull_runs>4294967295 || (x.cull && (!f.scene || x.cull_runs<1)) {return false;}
+  if x.character && (!f.scene || !f.shadow) {return false;}
+  if x.character_cast && !x.character {return false;}
+  if x.sort && !f.particles {return false;}
+  if x.bloom_passes<0 || x.bloom_passes>5 {return false;}
+  return true;
+}
 render_plan :: (f:RenderFeatures,c:FrameCounts,ready:RenderReadiness,particles_ready:bool)->RenderPlan #effects(all) {
+  return render_plan_shipping(f,c,RenderShipping.{},ready,particles_ready);
+}
+// The one pass order (#13303). Every host walks this program; none names a pass or orders one.
+render_plan_shipping :: (f:RenderFeatures,c:FrameCounts,x:RenderShipping,ready:RenderReadiness,particles_ready:bool)->RenderPlan #effects(all) {
   out:[1]RenderPlan;q:=out[..];q[0].readiness=ready;
-  if !render_features(f) || ready==RenderReadiness.invalid || c.width<1 || c.height<1 || c.vertex_stride<1 {return q[0];}
+  if !render_features(f) || !render_shipping(f,x) || ready==RenderReadiness.invalid || c.width<1 || c.height<1 || c.vertex_stride<1 {return q[0];}
   counts:=[8]int.[c.hud_vertices,c.draw_count,c.water_draws,c.grass_instances,c.particle_instances,c.surface_vertices,c.caster_vertices,c.caster_instances];
   for n:counts {if n<0 || n>4294967295 {return q[0];}}
   if c.water_draws>c.draw_count {return q[0];}
@@ -275,20 +324,52 @@ render_plan :: (f:RenderFeatures,c:FrameCounts,ready:RenderReadiness,particles_r
   if draws==0 {wet=0;}
   sparks:=ifx f.particles && particles_ready && draws>0 then c.particle_instances else 0;
   scene:=draws-wet;
-  if f.shadow || f.casters {
+  culled:=x.cull && draws>0;
+  hero:=x.character && draws>0;
+  // what casts: the page's separate shadow list, or the scene's opaque draws
+  cast_from:=ifx x.shadow_draws>=0 then RenderDrawSource.shadow_records else RenderDrawSource.records;
+  casting:=ifx x.shadow_draws<0 then scene else (ifx ready==RenderReadiness.ready && f.scene then x.shadow_draws else 0);
+  if culled {rp_emit(q,RenderOp.{kind=RenderOpKind.cull_early,count=x.cull_runs});}
+  if x.tiles {
+    // at most the one tile the engine names, into its rectangle of the atlas, which keeps the others
+    if x.tile>=0 && casting>0 {
+      rp_begin(q,RenderTarget.none,RenderTarget.none,RenderTarget.shadow_map,true,true);
+      for k:0..<x.tile_count {if (x.clears&(1<<cast(u64)k))!=0 {rp_rect(q,RenderOpKind.viewport,x.rects[k]);rp_draw(q,f,RenderPassId.shadow_clear,RenderDrawSource.vertices,0,3,1);}}
+      rp_rect(q,RenderOpKind.viewport,[4]int.[0,0,0,0]);rp_rect(q,RenderOpKind.scissor,x.rects[x.tile]);
+      rp_draw(q,f,RenderPassId.shadow,cast_from,0,casting,1);
+      if hero && x.character_cast {rp_draw(q,f,RenderPassId.character_cast,RenderDrawSource.current,0,1,1);}
+      rp_emit(q,RenderOp.{kind=RenderOpKind.end});
+    }
+  } else if f.shadow || f.casters {
     rp_begin(q,RenderTarget.none,RenderTarget.none,RenderTarget.shadow_map,false,true);
-    if f.shadow && scene>0 {rp_draw(q,f,RenderPassId.shadow,RenderDrawSource.records,0,scene,1);}
+    if f.shadow && casting>0 {rp_draw(q,f,RenderPassId.shadow,cast_from,0,casting,1);}
     if f.casters && c.caster_vertices>0 && c.caster_instances>0 {rp_draw(q,f,RenderPassId.caster,RenderDrawSource.vertices,0,c.caster_vertices,c.caster_instances);}
+    if hero {rp_draw(q,f,RenderPassId.character_cast,RenderDrawSource.current,0,1,1);}
     rp_emit(q,RenderOp.{kind=RenderOpKind.end});
   }
+  // the sort runs whenever the scene draws: its first result is what makes the particles' group
+  if x.sort && draws>0 {rp_emit(q,RenderOp.{kind=RenderOpKind.particle_sort});}
   colour:=ifx f.post then RenderTarget.light else RenderTarget.screen;
   auxiliary:=ifx f.post then RenderTarget.aux else RenderTarget.none;
   depth:=ifx f.scene || f.surface then RenderTarget.scene_depth else RenderTarget.none;
-  rp_begin(q,colour,auxiliary,depth,false,f.post);
+  rp_begin(q,colour,auxiliary,depth,false,f.post || culled);
   rp_draw(q,f,RenderPassId.background,RenderDrawSource.vertices,0,3,1);
-  if f.grass && (f.casters || ready==RenderReadiness.ready) && c.grass_instances>0 {rp_draw(q,f,RenderPassId.grass,RenderDrawSource.vertices,0,3,c.grass_instances);}
+  blades:=f.grass && (f.casters || ready==RenderReadiness.ready) && c.grass_instances>0;
+  // an opaque scene's grass is drawn after it, so hidden blades are never shaded
+  last:=x.grass_last && draws>0;
+  if blades && !last {rp_draw(q,f,RenderPassId.grass,RenderDrawSource.vertices,0,3,c.grass_instances);}
   if f.surface && c.surface_vertices>0 {rp_draw(q,f,RenderPassId.surface,RenderDrawSource.vertices,0,c.surface_vertices,1);}
   if scene>0 {rp_draw(q,f,RenderPassId.scene,RenderDrawSource.records,0,scene,1);}
+  if culled {
+    // the cull's second phase: the pyramid of what was just drawn, then the pieces it no longer
+    // hides, in a pass that keeps the light and depth
+    rp_emit(q,RenderOp.{kind=RenderOpKind.end});
+    rp_emit(q,RenderOp.{kind=RenderOpKind.cull_late,count=x.cull_runs});
+    rp_begin(q,colour,auxiliary,depth,true,f.post);
+    rp_draw(q,f,RenderPassId.scene_late,RenderDrawSource.late,0,x.cull_runs,1);
+  }
+  if blades && last {rp_draw(q,f,RenderPassId.grass,RenderDrawSource.vertices,0,3,c.grass_instances);}
+  if hero {rp_draw(q,f,RenderPassId.character,RenderDrawSource.current,0,1,1);}
   if (wet>0 || (sparks>0 && f.particle_depth)) && f.water_copy {
     rp_emit(q,RenderOp.{kind=RenderOpKind.end});
     rp_emit(q,RenderOp.{kind=RenderOpKind.copy,source=RenderTarget.light,target=RenderTarget.water_light});
@@ -310,7 +391,7 @@ render_plan :: (f:RenderFeatures,c:FrameCounts,ready:RenderReadiness,particles_r
     targets:=[5]RenderTarget.[RenderTarget.q0,RenderTarget.q1,RenderTarget.q0,RenderTarget.e1,RenderTarget.e0];
     sources:=[5]RenderTarget.[RenderTarget.light,RenderTarget.q0,RenderTarget.q1,RenderTarget.q0,RenderTarget.e1];
     steps:=[5][4]f32.[[4]f32.[0,0,0,4],[4]f32.[1,0,1,1],[4]f32.[0,1,1,1],[4]f32.[1,0,1,2],[4]f32.[0,1,1,1]];
-    for i:0..<5 {
+    for i:0..<x.bloom_passes {
       rp_begin(q,targets[i],RenderTarget.none,RenderTarget.none,false,false);
       rp_emit(q,RenderOp.{kind=RenderOpKind.draw,pass=RenderPassId.bloom,state=render_pass_state(f,RenderPassId.bloom),count=3,source=sources[i],bloom_step=steps[i]});
       rp_emit(q,RenderOp.{kind=RenderOpKind.end});

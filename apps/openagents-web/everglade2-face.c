@@ -97,6 +97,7 @@ EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) {
 static float cull_u[100];
 static uint32_t cull_buckets[2 * 36 * 3], cull_runs[4 * 384], cull_draws[384];
 static int64_t cull_n;
+static int64_t hud_n;   /* the HUD's vertices this frame, for the frame plan */
 /* One step of the controller: the world round you, Everglade II's pace, its two halves over the trunks
    and the rocks' hulls, then kept where you may stand. The room's world2_step (coax/web/room/room-world.c) is the same. */
 static coax_t_Body step_frame(cx_face_addr state, coax_t_Body p, coax_t_EgMoveIn input, float step, float frame) {
@@ -259,9 +260,15 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   if (n > 0 && !entered && track_state.ready) { entered = true; track_world(tr(), track_cstr("everglade2")); track_loaded(tr(), track_cstr("load-engine")); }
   track_drain();
   frames += 1;
+  hud_n = n < 0 ? 0 : n;
   return n < 0 ? 0u : (uint32_t)n;
 }
 
+/* The frame's order (metaverse-engine/render/passes.coax, #13303): the host walks these records
+   (metaverse-engine/render/frame-plan.coax) and decides no order of its own. */
+EXPORT("coaxial_frame_plan_v1") uint32_t coaxial_frame_plan_v1(cx_face_addr state, uint32_t features, cx_face_addr out, uint32_t cap) {
+  return (uint32_t)e2_frame_plan(at(state), features, (int64_t)width, (int64_t)height, hud_n, cull_n, (coax_v_u32){(uint32_t *)(uintptr_t)out, cap});
+}
 // ---- the pack's catalog; the draws and the separate shadow list over the three stores
 EXPORT("coaxial_asset") cx_face_addr coaxial_asset(cx_face_addr state, int32_t i, uint32_t bytes) {
   (void)state; return i == 0 && bytes <= sizeof catalog ? (cx_face_addr)(uintptr_t)catalog : 0u;
@@ -400,6 +407,10 @@ EXPORT("coaxial_message") void coaxial_message(cx_face_addr state, int32_t kind,
   if (kind >= 256 && kind < 512) net_drain(state);
 }
 // Character Create's actions (everglade/client/create.coax): 16 keeps the record, 19 says the address.
+/* the page's hash (host.js sendHash): #fly=PATH hands the camera to the flyover benchmark (e2_hash) */
+EXPORT("coaxial_hash") void coaxial_hash(cx_face_addr state, uint32_t length) {
+  if (length <= sizeof inbox) e2_hash(at(state), (coax_string){(const char *)inbox, length});
+}
 EXPORT("coaxial_action") int32_t coaxial_action(cx_face_addr state) { return (int32_t)e2_action(at(state)); }
 EXPORT("coaxial_outbox") cx_face_addr coaxial_outbox(cx_face_addr state) { return (cx_face_addr)(uintptr_t)e2_at(state)->outbox.e; }
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(cx_face_addr state) { return (uint32_t)e2_at(state)->out_n; }

@@ -362,6 +362,8 @@ let socketQueues=null,lastSocketQueueRetired=null,socketDeliveryHeld=false,socke
 function hostLifeEvent(kind,nowUs=Math.floor(performance.now()*1000),arg=0){const actions=hostLifecycle?.event(kind,nowUs,arg)??0;if(actions&1)call("coaxial_blur");return actions;}
 let engineBytes = null;   // the running engine's wasm: a rescue save names it (rescueIdentity)
 let engineInstalling = false;
+// The frame plan's words (coaxial_frame_plan_v1): the version record and at most 256 operations of 8 words.
+const PLAN_WORDS = 257 * 8, PLAN_BYTES = PLAN_WORDS * 4;
 let arena = null;    // { state, vertices, uniforms, floats, uniformFloats, maxVertices }
 let gpu = null;      // { device, context, format, bindGroup, uniformBuffer, vertexBuffer, bg, fx }
 let wanted = 0;      // the newest requested engine; an older finished build never replaces it
@@ -562,9 +564,10 @@ async function loadEngine(bytes, generation) {
     // module's data segments never land on live state.
     const base = align(Math.max(heapBase, memory.buffer.byteLength), 65536);
     const stateCap = align(Math.max(stateSize, 1024), 16);
-    const need = base + stateCap + maxVertices * floats * 4 + uniformFloats * 4 + 64;
+    const need = base + stateCap + maxVertices * floats * 4 + uniformFloats * 4 + 64 + PLAN_BYTES;
     if (need > memory.buffer.byteLength) memory.grow(Math.ceil((need - memory.buffer.byteLength) / 65536));
-    arena = { base, stateCap, state: base, vertices: base + stateCap, uniforms: base + stateCap + maxVertices * floats * 4, floats, maxVertices, uniformFloats, layout: -1 };
+    arena = { base, stateCap, state: base, vertices: base + stateCap, uniforms: base + stateCap + maxVertices * floats * 4,
+      plan: base + stateCap + maxVertices * floats * 4 + uniformFloats * 4 + 64, floats, maxVertices, uniformFloats, layout: -1 };
     if (gpu) makeBuffers();
   }
   // A swap keeps the state. With both field tables: where the state's layout is unchanged it stays
@@ -3043,6 +3046,45 @@ function a11yMirror(now) {
   if (a11y.status.textContent !== say) a11y.status.textContent = say;
 }
 let frameCost = 0;   // ms of main thread the drawing itself takes, smoothed: socket events get what's left
+// ---- the frame plan's numbers (metaverse-engine/render/passes.coax's enums, as metaverse-engine/host/frame-plan.h
+// has them for C hosts; coax/web/frame-plan.test.ts holds these to that header).
+const FP = { magic: 0x31504641, version: 1,
+  op: { begin: 0, end: 1, draw: 2, copy: 3, each_begin: 4, each_end: 5, media_before: 6, media_after: 7, cull_early: 8, cull_late: 9, viewport: 10, scissor: 11, particle_sort: 12 },
+  pass: { background: 0, shadow: 1, caster: 2, grass: 3, surface: 4, scene: 5, water_transmit: 6, water_emit: 7, particle_over: 8, particle: 9, bloom: 10, post: 11, hud: 12,
+    shadow_clear: 14, character_cast: 15, character: 16, scene_late: 17 },
+  target: { none: 0, screen: 1, light: 2, aux: 3, scene_depth: 4, shadow_map: 5, water_light: 6, water_depth: 7, q0: 8, q1: 9, e0: 10, e1: 11 },
+  source: { vertices: 0, records: 1, current: 2, shadow_records: 3, late: 4 } };
+// ?plan=off draws a page that has a plan in the built-in order; ?plan=check (or coaxialPlanCheck) records both
+// orders each frame and counts the frames whose GPU calls differ (coaxial.framePlan()). Development and tests only.
+const planAsk = new URLSearchParams(location.search).get("plan");
+const planMode = globalThis.coaxialPlanCheck === true ? "check" : globalThis.coaxialPlan === "off" ? "off" : dev && (planAsk === "off" || planAsk === "check") ? planAsk : "on";
+const planStats = { mode: planMode, frames: 0, ops: 0, refused: 0, checked: 0, differing: 0, first: null, calls: 0 };
+const planIds = new WeakMap(); let planIdNext = 1;
+const planId = (o) => { if (o === null || typeof o !== "object") return o; if (o.__planTexture) o = o.__planTexture; let id = planIds.get(o); if (!id) { id = planIdNext++; planIds.set(o, id); } return `#${id}`; };
+if (planMode === "check" && globalThis.GPUTexture) {
+  // a view is named by its texture, so the two recordings agree only when they draw into the same textures
+  const make = GPUTexture.prototype.createView;
+  GPUTexture.prototype.createView = function (...a) { const v = make.apply(this, a); try { v.__planTexture = this; } catch {} return v; };
+}
+// An encoder that records its calls and its passes' (and makes them on `real`, when there is one).
+function planRecorder(real) {
+  const log = [];
+  const word = (v) => Array.isArray(v) ? `[${v.map(word)}]` : v && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype
+    ? `{${Object.keys(v).filter((k) => k !== "timestampWrites" && k !== "clearValue").sort().map((k) => `${k}:${word(v[k])}`)}}` : String(planId(v ?? null));
+  const wrap = (target, name) => new Proxy({}, { get: (_, key) => (...args) => {
+    log.push(`${name}.${String(key)}(${args.map(word)})`);
+    const made = target ? target[key](...args) : undefined;
+    return key === "beginRenderPass" || key === "beginComputePass" ? wrap(made, key === "beginRenderPass" ? "pass" : "compute") : made;
+  } });
+  return { log, encoder: wrap(real, "encoder") };
+}
+function planCompare(a, b) {
+  planStats.checked++; planStats.calls = b.length;
+  let at = 0; while (at < a.length && at < b.length && a[at] === b[at]) at++;
+  if (at === a.length && at === b.length) return;
+  planStats.differing++;
+  planStats.first ||= { frame: planStats.checked, at, builtin: a.slice(Math.max(0, at - 2), at + 3), plan: b.slice(Math.max(0, at - 2), at + 3), lengths: [a.length, b.length] };
+}
 function draw(now) {
   if (engineInstalling || !engine || !gpu?.bg || recovering) return;
   releaseWaiting();   // once this frame, which draws the state as the loss found it, is done
@@ -3121,8 +3163,8 @@ function draw(now) {
   const post = gpu.post && gpu.postGroup;
   const encoder = device.createCommandEncoder();
   const passTimer = passTimerFor(device);
-  // the instance cull's first phase (instance-cull.js), before every pass; null when it culls nothing
-  const culled = gpu.cull && draws && gpu.depth && x.coaxial_cull_v1 ? gpu.cull.frame(encoder, x, arena.state, memory,
+  // the instance cull's first phase (instance-cull.js), staged here and encoded before every pass; null when it culls nothing
+  const culled = gpu.cull && draws && gpu.depth && x.coaxial_cull_v1 ? gpu.cull.want(x, arena.state, memory,
     { index: gpu.index, vertices: assets.find((a) => a.kind === "storage")?.buffer, store: gpu.stores?.[x.coaxial_cull_v1(arena.state, 5)] }, gpu.depth, w, h) : null;
   const list = draws ? new Uint32Array(memory.buffer, x.coaxial_draws(arena.state), draws * 4) : null;
   const shadowList = separateShadow && shadowDraws ? new Uint32Array(memory.buffer, x.coaxial_shadow_draws_v1(arena.state), shadowDraws * 4) : list;
@@ -3157,15 +3199,147 @@ function draw(now) {
   const cast = gpu.caster && x.coaxial_caster_instances ? [x.coaxial_caster_vertices(arena.state), x.coaxial_caster_instances(arena.state)] : [0, 0];
   // the character pass (character-host.js): a detailed character the world places, in its passes
   const hero = draws && gpu.shadow ? characters.want(x, arena.state, memory, now) : false;
+  const hudVertices = n;
+  let timed = false;
   if (gpu.shadow && gpu.shadowLayout) shadowTexture();
+  // The shadow tiles (metaverse-engine/render/cascades.coax): open them once the atlas is new or the engine
+  // has none yet; then this frame draws at most the one tile the engine names, cleared, into its rect.
+  let tile = -1;
   if (gpu.shadow && gpu.shadowTiles) {
-    // The shadow tiles (metaverse-engine/render/cascades.coax): open them once the atlas is new or the engine
-    // has none yet; then this frame draws at most the one tile the engine names, cleared, into its rect.
     const st = arena.state;
     if (gpu.shadowFresh || x.coaxial_shadow_v1(st, 6) <= 0) { x.coaxial_shadow_event_v1(st, 0, gpu.shadowCoarse); gpu.shadowFresh = false; }
-    const tile = x.coaxial_shadow_v1(st, 0);
-    if (tile >= 0 && !shadowDraws) x.coaxial_shadow_event_v1(st, 2, 0);   // nothing to draw it with: empty again
-    else if (tile >= 0) {
+    tile = x.coaxial_shadow_v1(st, 0);
+    if (tile >= 0 && !shadowDraws) { x.coaxial_shadow_event_v1(st, 2, 0); tile = -1; }   // nothing to draw it with: empty again
+  }
+  const target = (view) => ({ view, loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } });
+  const texture = context.getCurrentTexture();
+  const screen = () => target(texture.createView());
+  const blades = gpu.grass && (gpu.caster || gpu.sceneGroup) ? x.coaxial_grass_instances(arena.state) : 0;
+  const grassInto = (pass) => {
+    if (!blades) return;
+    if (!gpu.caster) { pass.setBindGroup(1, gpu.sceneGroup); if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup); }
+    pass.setPipeline(gpu.grass);
+    if (x.coaxial_grass_range_count_v1 && x.coaxial_grass_range_v1) {
+      const count = x.coaxial_grass_range_count_v1(arena.state);
+      for (let i = 0; i < count; i++) pass.draw(3, x.coaxial_grass_range_v1(arena.state, i, 1), 0, x.coaxial_grass_range_v1(arena.state, i, 0));
+    } else pass.draw(3, blades);
+  };
+  // The particles' rows, uploaded when they changed; false when there is nothing to draw them with.
+  const sparksInto = (count) => {
+    const group = count ? particleGroupNow() : null;
+    const bytes = group && (!gpu.particleDepth || gpu.waterCopyGroup) ? Math.min(x.coaxial_particle_bytes(arena.state), gpu.particleBuffer.size) & ~3 : 0;
+    if (!bytes) return null;
+    const version = x.coaxial_particle_version?.(arena.state);
+    if (version === undefined || version !== gpu.particleVersion) {
+      device.queue.writeBuffer(gpu.particleBuffer, 0, memory.buffer, x.coaxial_particles(arena.state), bytes); gpu.particleVersion = version;
+    }
+    return group;
+  };
+  // ---- the frame's plan (metaverse-engine/render/passes.coax, #13303). A page whose engine exports
+  // coaxial_frame_plan_v1 is drawn by walking the engine's operations: this host maps a pass to its
+  // pipeline, bind groups and targets and decides no order. `real` false is a recording only.
+  const walk = (encoder, passTimer, words, count, real) => {
+    const views = { [FP.target.screen]: () => texture.createView(), [FP.target.light]: () => gpu.light.createView(), [FP.target.aux]: () => gpu.aux.createView(),
+      [FP.target.q0]: () => gpu.postTextures[2].createView(), [FP.target.q1]: () => gpu.postTextures[3].createView(),
+      [FP.target.e0]: () => gpu.postTextures[4].createView(), [FP.target.e1]: () => gpu.postTextures[5].createView() };
+    const textures = { [FP.target.light]: () => gpu.light, [FP.target.scene_depth]: () => gpu.depth, [FP.target.water_light]: () => gpu.waterLight, [FP.target.water_depth]: () => gpu.waterDepth };
+    const plain = { [FP.pass.background]: () => gpu.bg, [FP.pass.surface]: () => gpu.surface, [FP.pass.caster]: () => gpu.caster,
+      [FP.pass.water_transmit]: () => gpu.waterTransmit, [FP.pass.water_emit]: () => gpu.waterEmit };
+    let pass = null, sorted = false, timed = false, mains = 0, blooms = 0, before = -1, bound0 = false, sparkGroup = undefined, tiled = false;
+    for (let i = 0; i < count; i++) {
+      const at = (i + 1) * 8, kind = words[at] & 255, id = (words[at] >> 8) & 255, source = (words[at] >> 16) & 255;
+      const colour0 = words[at + 1] & 255, colour1 = (words[at + 1] >> 8) & 255, depth = (words[at + 1] >> 16) & 255, from = words[at + 1] >>> 24;
+      const flags = words[at + 3], keep = !!(flags & 1), store = !!(flags & 2), first = words[at + 4], n = words[at + 5], instances = words[at + 6];
+      if (kind === FP.op.cull_early) gpu.cull.early(encoder, real);
+      else if (kind === FP.op.cull_late) gpu.cull.late(encoder, real);
+      else if (kind === FP.op.particle_sort) { sorted = sortFrame(encoder, x); timed = sorted && gpu.timing && !gpu.timer.busy; }
+      else if (kind === FP.op.copy) encoder.copyTextureToTexture({ texture: textures[from]() }, { texture: textures[words[at + 2] & 255]() }, [w, h]);
+      else if (kind === FP.op.begin) {
+        const colours = [colour0, colour1].filter((t) => t !== FP.target.none).map((t) => keep ? { view: views[t](), loadOp: "load", storeOp: "store" } : target(views[t]()));
+        bound0 = false; sparkGroup = undefined;
+        if (depth === FP.target.shadow_map) {
+          // the key light's map: a tile's pass keeps the atlas (its clear pipeline first), the whole map is cleared
+          tiled = keep;
+          pass = timedPass(encoder, passTimer, { colorAttachments: [], depthStencilAttachment: keep ? { view: gpu.shadowView, depthLoadOp: "load", depthStoreOp: "store" }
+            : { view: gpu.shadowMap.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" } });
+          if (keep) pass.setPipeline(shadowClear()); else { pass.setBindGroup(0, gpu.bindGroup); bound0 = true; }
+        } else if (depth === FP.target.scene_depth || !mains) {
+          // the scene's pass, and the passes that go on from it keeping the light and depth
+          const stamps = !mains && timed ? { timestampWrites: { querySet: gpu.timer.set, beginningOfPassWriteIndex: 2, endOfPassWriteIndex: 3 } } : {};
+          pass = timedPass(encoder, passTimer, { colorAttachments: colours,
+            ...(depth === FP.target.scene_depth ? { depthStencilAttachment: keep ? { view: gpu.depth.createView(), depthLoadOp: "load", depthStoreOp: store ? "store" : "discard" }
+              : { view: gpu.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: store ? "store" : "discard" } } : {}), ...stamps });
+          pass.setBindGroup(0, gpu.bindGroup);
+          if (!keep) { if (gpu.caster) { pass.setBindGroup(1, gpu.emptyGroup); pass.setBindGroup(2, gpu.shadowGroup); } }
+          else if (before === FP.op.cull_late) {
+            pass.setBindGroup(1, gpu.sceneGroup);
+            if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup);
+            if (gpu.index) pass.setIndexBuffer(gpu.index, "uint32");
+          } else {
+            pass.setBindGroup(1, gpu.sceneGroup);
+            pass.setBindGroup(2, gpu.shadow ? gpu.shadowGroup : (emptyLayout(), gpu.emptyGroup));
+            pass.setBindGroup(3, gpu.waterCopyGroup);
+            pass.setIndexBuffer(gpu.index, "uint32");
+          }
+          mains++;
+        } else pass = timedPass(encoder, passTimer, { colorAttachments: colours });   // a bloom stage's target, or the screen for the post pass
+      } else if (kind === FP.op.end) {
+        pass.end(); pass = null;
+        if (tiled && real) shadowTilesDrawn++;
+        tiled = false;
+      } else if (kind === FP.op.viewport) {
+        if (n >>> 16) pass.setViewport(first & 65535, first >>> 16, n & 65535, n >>> 16, 0, 1);
+        else pass.setViewport(0, 0, gpu.shadowMap.width, gpu.shadowMap.height, 0, 1);
+      } else if (kind === FP.op.scissor) pass.setScissorRect(first & 65535, first >>> 16, n & 65535, n >>> 16);
+      else if (kind === FP.op.media_before) drawMedia(x, pass, w, h, !!(gpu.scene || gpu.surface) && !post);
+      else if (kind === FP.op.media_after) drawMedia(x, pass, w, h, !!(gpu.scene || gpu.surface) && !post, true);
+      else if (kind === FP.op.each_begin) {
+        // each wet draw in turn through the operations up to each_end
+        let end = i + 1; while (end < count && (words[(end + 1) * 8] & 255) !== FP.op.each_end) end++;
+        for (let d = first; d < first + n; d++) for (let k = i + 1; k < end; k++) { pass.setPipeline(plain[(words[(k + 1) * 8] >> 8) & 255]()); drawOne(pass, d); }
+        i = end;
+      } else if (kind === FP.op.draw) {
+        if (id === FP.pass.shadow_clear) pass.draw(n);
+        else if (id === FP.pass.shadow) {
+          if (!bound0) { pass.setBindGroup(0, gpu.bindGroup); bound0 = true; }
+          pass.setPipeline(gpu.shadow); drawScene(pass, false, source === FP.source.shadow_records ? shadowList : list, n, true);
+        } else if (id === FP.pass.character_cast) characters.cast(pass);
+        else if (id === FP.pass.scene) {
+          pass.setPipeline(gpu.scene);
+          if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup);
+          drawScene(pass, true, list, n);
+        } else if (id === FP.pass.scene_late) { pass.setPipeline(gpu.scene); gpu.cull.second(pass); }
+        else if (id === FP.pass.grass) grassInto(pass);
+        else if (id === FP.pass.character) {
+          // after the world's opaque geometry, before its water and particles; then the world's groups again
+          characters.draw(pass);
+          pass.setBindGroup(0, gpu.bindGroup); pass.setBindGroup(1, gpu.sceneGroup); pass.setBindGroup(2, gpu.shadowGroup);
+          if (gpu.index) pass.setIndexBuffer(gpu.index, "uint32");
+        } else if (id === FP.pass.particle_over || id === FP.pass.particle) {
+          if (sparkGroup === undefined) {
+            sparkGroup = sparksInto(instances);
+            if (sparkGroup) { pass.setBindGroup(1, sparkGroup); if (gpu.particleDepth) { pass.setBindGroup(2, (emptyLayout(), gpu.emptyGroup)); pass.setBindGroup(3, gpu.waterCopyGroup); } }
+          }
+          if (sparkGroup) { pass.setPipeline(id === FP.pass.particle ? gpu.particles : gpu.particlesOver); pass.draw(n, instances); }
+        } else if (id === FP.pass.bloom) {
+          pass.setBindGroup(0, gpu.bindGroup); pass.setBindGroup(1, gpu.blooms[blooms++][1]); pass.setPipeline(gpu.bloom); pass.draw(n);
+        } else if (id === FP.pass.post) { pass.setBindGroup(0, gpu.bindGroup); pass.setBindGroup(1, gpu.postGroup); pass.setPipeline(gpu.post); pass.draw(n); }
+        else if (id === FP.pass.hud) {
+          const most = Math.min(n, hudVertices);
+          if (most && (!gpu.fxScene || gpu.sceneGroup)) { if (gpu.fxScene) pass.setBindGroup(1, gpu.sceneGroup); pass.setPipeline(gpu.fx); pass.setVertexBuffer(0, gpu.vertexBuffer); pass.draw(most); }
+        } else if (id === FP.pass.caster) { pass.setPipeline(gpu.caster); pass.draw(n, instances); }
+        else { pass.setPipeline(plain[id]()); pass.draw(n); }   // the background's triangle, a traced page's surface
+      }
+      before = kind;
+    }
+    return timed;
+  };
+  // ---- the built-in order, for a page whose engine has no plan yet (pages move one at a time, #13303)
+  const builtin = (encoder, passTimer, real) => {
+  if (culled) gpu.cull.early(encoder, real);
+  if (gpu.shadow && gpu.shadowTiles) {
+    const st = arena.state;
+    if (tile >= 0) {
       const [rx, ry, rw, rh] = [1, 2, 3, 4].map((f) => x.coaxial_shadow_v1(st, f));
       const shade = timedPass(encoder, passTimer, { colorAttachments: [],
         depthStencilAttachment: { view: gpu.shadowView, depthLoadOp: "load", depthStoreOp: "store" } });
@@ -3180,7 +3354,7 @@ function draw(now) {
       drawScene(shade, false, shadowList, separateShadow ? shadowDraws : draws - wet, true);
       if (hero && x.coaxial_shadow_v1(st, 5) === 1) characters.cast(shade);
       shade.end();
-      shadowTilesDrawn++;
+      if (real) shadowTilesDrawn++;
     }
   } else if (((draws || shadowDraws) && gpu.shadow) || gpu.caster) {
     // cleared every frame even with nothing to cast, so a traced scene never reads a stale map
@@ -3195,25 +3369,13 @@ function draw(now) {
   // the particles' sort (the header's "Sorting"), before the pass that draws them; timed when asked
   const sorted = gpu.sort && gpu.particles && draws ? sortFrame(encoder, x) : false;
   const timed = sorted && gpu.timing && !gpu.timer.busy;
-  const target = (view) => ({ view, loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } });
-  const texture = context.getCurrentTexture();
-  const screen = () => target(texture.createView());
   let pass = timedPass(encoder, passTimer, { colorAttachments: post ? [target(gpu.light.createView()), target(gpu.aux.createView())] : [screen()],
     ...(gpu.scene || gpu.surface ? { depthStencilAttachment: { view: gpu.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: post || culled ? "store" : "discard" } } : {}),
     ...(timed ? { timestampWrites: { querySet: gpu.timer.set, beginningOfPassWriteIndex: 2, endOfPassWriteIndex: 3 } } : {}) });
   pass.setBindGroup(0, gpu.bindGroup);
   if (gpu.caster) { pass.setBindGroup(1, gpu.emptyGroup); pass.setBindGroup(2, gpu.shadowGroup); }
   pass.setPipeline(gpu.bg); pass.draw(3);
-  const blades = gpu.grass && (gpu.caster || gpu.sceneGroup) ? x.coaxial_grass_instances(arena.state) : 0;
-  const drawGrass = () => {
-    if (!blades) return;
-    if (!gpu.caster) { pass.setBindGroup(1, gpu.sceneGroup); if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup); }
-    pass.setPipeline(gpu.grass);
-    if (x.coaxial_grass_range_count_v1 && x.coaxial_grass_range_v1) {
-      const count = x.coaxial_grass_range_count_v1(arena.state);
-      for (let i = 0; i < count; i++) pass.draw(3, x.coaxial_grass_range_v1(arena.state, i, 1), 0, x.coaxial_grass_range_v1(arena.state, i, 0));
-    } else pass.draw(3, blades);
-  };
+  const drawGrass = () => grassInto(pass);
   // Without a blend ABI the scene is opaque: populate depth before shading hidden blades.
   // Blended producers retain their existing ordering relative to grass.
   const opaqueGrass = draws && !x.coaxial_draw_blend_v1;
@@ -3228,7 +3390,7 @@ function draw(now) {
       // the cull's second phase: the pyramid of what was just drawn, then the pieces it no longer
       // hides, drawn on in a pass that keeps the light and depth
       pass.end();
-      gpu.cull.late(encoder);
+      gpu.cull.late(encoder, real);
       const keep = (view) => ({ view, loadOp: "load", storeOp: "store" });
       pass = timedPass(encoder, passTimer, { colorAttachments: post ? [keep(gpu.light.createView()), keep(gpu.aux.createView())] : [keep(texture.createView())],
         depthStencilAttachment: { view: gpu.depth.createView(), depthLoadOp: "load", depthStoreOp: post ? "store" : "discard" } });
@@ -3264,13 +3426,8 @@ function draw(now) {
       pass.setPipeline(gpu.waterTransmit); drawOne(pass, i);
       pass.setPipeline(gpu.waterEmit); drawOne(pass, i);
     }
-    const sparkGroup = sparks ? particleGroupNow() : null;
-    const bytes = sparkGroup && (!gpu.particleDepth || gpu.waterCopyGroup) ? Math.min(x.coaxial_particle_bytes(arena.state), gpu.particleBuffer.size) & ~3 : 0;
-    if (bytes) {
-      const version = x.coaxial_particle_version?.(arena.state);
-      if (version === undefined || version !== gpu.particleVersion) {
-        device.queue.writeBuffer(gpu.particleBuffer, 0, memory.buffer, x.coaxial_particles(arena.state), bytes); gpu.particleVersion = version;
-      }
+    const sparkGroup = sparksInto(sparks);
+    if (sparkGroup) {
       pass.setBindGroup(1, sparkGroup);
       if (gpu.particleDepth) { pass.setBindGroup(2, (emptyLayout(), gpu.emptyGroup)); pass.setBindGroup(3, gpu.waterCopyGroup); }
       if (gpu.particlesOver) { pass.setPipeline(gpu.particlesOver); pass.draw(6, sparks); }
@@ -3303,6 +3460,33 @@ function draw(now) {
   if (n && (!gpu.fxScene || gpu.sceneGroup)) { if (gpu.fxScene) pass.setBindGroup(1, gpu.sceneGroup); pass.setPipeline(gpu.fx); pass.setVertexBuffer(0, gpu.vertexBuffer); pass.draw(n); }
   if (x.coaxial_media) drawMedia(x, pass, w, h, !!(gpu.scene || gpu.surface) && !post, true);
   pass.end();
+  return timed;
+  };
+  // Ask the page's engine for its plan: this host's word (frame-plan.coax FPH_*) in, the operations out.
+  let planned = 0;
+  if (x.coaxial_frame_plan_v1 && planMode !== "off") {
+    const has = (on, bit) => (on ? 1 << bit : 0);
+    const copies = !!(post && gpu.waterCopyGroup && gpu.waterTransmit);
+    const bits = has(gpu.scene, 0) | has(gpu.scene && gpu.shadow, 1) | has(gpu.scene && gpu.caster, 2) | has(gpu.scene && gpu.grass, 3) | has(!gpu.scene && gpu.surface, 4)
+      | has(gpu.scene && gpu.waterTransmit, 5) | has(copies, 6) | has(post, 7) | has(gpu.scene && gpu.particles, 10) | has(copies && gpu.particles && gpu.particleDepth, 11)
+      | has(gpu.scene && gpu.particles && gpu.particlesOver, 12) | has(x.coaxial_media, 13) | has(gpu.shadow && gpu.shadowTiles, 14) | has(culled, 15) | has(hero, 16)
+      | has(gpu.scene && gpu.sort && gpu.particles, 17) | has(gpu.scene && gpu.sceneGroup, 18) | has(gpu.scene && gpu.particles, 19);
+    const wrote = x.coaxial_frame_plan_v1(arena.state, bits >>> 0, arena.plan, PLAN_WORDS);
+    const words = new Uint32Array(memory.buffer, arena.plan, PLAN_WORDS);
+    if (wrote >= 8 && words[0] === FP.magic && words[1] === FP.version && words[2] === 8 && (words[3] + 1) * 8 === wrote) planned = words[3];
+    else planStats.refused++;
+    if (planned) {
+      if (planMode === "check") {
+        // the proof of the swap (#13303): the built-in order and the plan's walk, recorded on the same frame
+        const a = planRecorder(null), b = planRecorder(encoder);
+        try { builtin(a.encoder, null, false); } catch (e) { a.log.push(`threw ${e.message}`); }
+        timed = walk(b.encoder, passTimer, words, planned, true);
+        planCompare(a.log, b.log);
+      } else timed = walk(encoder, passTimer, words, planned, true);
+      planStats.frames++; planStats.ops = planned;
+    }
+  }
+  if (!planned) timed = builtin(encoder, passTimer, true);
   if (timed) {
     encoder.resolveQuerySet(gpu.timer.set, 0, 4, gpu.timer.resolve, 0);
     encoder.copyBufferToBuffer(gpu.timer.resolve, 0, gpu.timer.read, 0, 32);
@@ -3533,7 +3717,7 @@ function send(kind, text = "") {
 }
 globalThis.coaxial = { send, ready: false, sceneReady: false, loadMarks: () => loadMarks.map((row) => row.slice()), facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
   roomTrace:()=>({active:sockets.flatMap(ws=>ws?.__roomTrace?[ws.__roomTrace.snapshot()]:[]),retired:roomTraceRetired.map(x=>x.snapshot()),error:globalThis.coaxial.roomTraceError||null}),
-  setWorldPaused, worldLoop: () => ({paused:worldPaused,frames:worldFrames,submissions:worldSubmissions,shadowTiles:shadowTilesDrawn,socketFrames,pending:gpu?.device.__coaxialFrames||0}),
+  framePlan: () => ({ ...planStats }), setWorldPaused, worldLoop: () => ({paused:worldPaused,frames:worldFrames,submissions:worldSubmissions,shadowTiles:shadowTilesDrawn,socketFrames,pending:gpu?.device.__coaxialFrames||0}),
   takeFrameTrace: () => frameTrace?.splice(0) ?? [], takePassTimes: () => passTimes?.splice(0) ?? [],
   // the instance cull (instance-cull.js): on or off for this page, and its latest counts when the pass timer is on
   cull: (on) => { if (gpu?.cull) gpu.cull.off = !on; return !!gpu?.cull && !gpu.cull.off; },

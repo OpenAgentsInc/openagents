@@ -2,9 +2,11 @@
 //   coax/bin/coax test metaverse-engine/render/frame-plan.coax
 
 #test "the name tables are the enums: one name a member, in the enums' order" {
-  #assert cast(int) RenderPassId.invalid == FP_PASSES.count && cast(int) RenderTarget.invalid == FP_TARGETS.count;
-  #assert cast(int) RenderOpKind.media_after == FP_KINDS.count - 1 && cast(int) RenderDepth.less == FP_DEPTHS.count - 1;
-  #assert cast(int) RenderBlend.under == FP_BLENDS.count - 1 && cast(int) RenderDrawSource.current == FP_SOURCES.count - 1;
+  #assert cast(int) RenderPassId.scene_late == FP_PASSES.count - 1 && cast(int) RenderPassId.invalid == 13 && cast(int) RenderTarget.invalid == FP_TARGETS.count;
+  #assert cast(int) RenderOpKind.particle_sort == FP_KINDS.count - 1 && cast(int) RenderOpKind.media_after == 7 && cast(int) RenderDepth.less == FP_DEPTHS.count - 1;
+  #assert cast(int) RenderBlend.under == FP_BLENDS.count - 1 && cast(int) RenderDrawSource.late == FP_SOURCES.count - 1 && cast(int) RenderDrawSource.current == 2;
+  #assert cast(int) RenderPassId.shadow_clear == 14 && cast(int) RenderOpKind.cull_early == 8 && cast(int) RenderOpKind.scissor == 11;
+  #assert FP_HOST.count == 20 && FPH_FEATURES == 14 && FPH_TILES == 16384 && FPH_PARTICLES_READY == 524288 && FPH_ALL == 1048575;
   #assert cast(int) RenderPassId.hud == 12 && cast(int) RenderTarget.e1 == 11 && cast(int) RenderOpKind.begin == 0 && cast(int) RenderOpKind.copy == 3;
 }
 
@@ -154,9 +156,73 @@ fpc_has :: (o: [] FpText, t: string) -> bool #effects(all) {
   #assert fpc_has(o[..], "/* The frame plan's numbers (GitHub #13303). Written by metaverse-engine/render/frame-plan.coax:\n *   coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax > metaverse-engine/host/frame-plan.h\n * Never edit it by hand. The record layout is stated at the top of frame-plan.coax. */\n#ifndef");
   #assert fpc_has(o[..], "#ifndef AETHYR_FRAME_PLAN_H\n#define AETHYR_FRAME_PLAN_H\n#define AETHYR_FP_MAGIC 827344449u\n#define AETHYR_FP_VERSION 1u\n#define AETHYR_FP_WORDS 8u\n#define AETHYR_FP_MOST_OPS 256u\n");
   #assert fpc_has(o[..], "#define AETHYR_FP_FLAG_KEEP 1u\n#define AETHYR_FP_FLAG_STORE_DEPTH 2u\n#define AETHYR_FP_FLAG_VALID 4u\n#define AETHYR_FP_FLAG_DEPTH_WRITE 8u\n#define AETHYR_FP_FLAG_AUX_WRITE 16u\n#define AETHYR_FP_OP_BEGIN 0u\n");
-  #assert fpc_has(o[..], "#define AETHYR_FP_OP_MEDIA_AFTER 7u\n#define AETHYR_FP_PASS_BACKGROUND 0u\n") && fpc_has(o[..], "#define AETHYR_FP_PASS_HUD 12u\n#define AETHYR_FP_TARGET_NONE 0u\n");
+  #assert fpc_has(o[..], "#define AETHYR_FP_OP_MEDIA_AFTER 7u\n#define AETHYR_FP_OP_CULL_EARLY 8u\n") && fpc_has(o[..], "#define AETHYR_FP_OP_PARTICLE_SORT 12u\n#define AETHYR_FP_PASS_BACKGROUND 0u\n") && fpc_has(o[..], "#define AETHYR_FP_PASS_HUD 12u\n#define AETHYR_FP_PASS_SHADOW_CLEAR 14u\n") && fpc_has(o[..], "#define AETHYR_FP_PASS_SCENE_LATE 17u\n#define AETHYR_FP_TARGET_NONE 0u\n");
   #assert fpc_has(o[..], "#define AETHYR_FP_TARGET_E1 11u\n#define AETHYR_FP_DEPTH_NONE 0u\n#define AETHYR_FP_DEPTH_ALWAYS 1u\n#define AETHYR_FP_DEPTH_LESS 2u\n#define AETHYR_FP_BLEND_REPLACE 0u\n");
-  #assert fpc_has(o[..], "#define AETHYR_FP_BLEND_UNDER 6u\n#define AETHYR_FP_SOURCE_VERTICES 0u\n#define AETHYR_FP_SOURCE_RECORDS 1u\n#define AETHYR_FP_SOURCE_CURRENT 2u\n#endif\n");
+  #assert fpc_has(o[..], "#define AETHYR_FP_BLEND_UNDER 6u\n#define AETHYR_FP_SOURCE_VERTICES 0u\n#define AETHYR_FP_SOURCE_RECORDS 1u\n#define AETHYR_FP_SOURCE_CURRENT 2u\n#define AETHYR_FP_SOURCE_SHADOW_RECORDS 3u\n#define AETHYR_FP_SOURCE_LATE 4u\n#define AETHYR_FP_HOST_SCENE 1u\n") && fpc_has(o[..], "#define AETHYR_FP_HOST_PARTICLES_READY 524288u\n#endif\n");
   #assert o[0].b[n - 1] == '\n' && !fpc_has(o[..], "AETHYR_FP_PASS_INVALID");
   again: [1] FpText; again[0].n = 77; #assert frame_plan_header(again[..]) == n && again[0].b[0] == '/';
+}
+
+// ---- a page's plan from the host's bits (#13303)
+fpc_page_x :: () -> RenderShipping #effects(all) {
+  x := RenderShipping.{tiles = true, tile = 0, tile_count = 2, clears = 1, shadow_draws = 3, cull = true, cull_runs = 6, character = true, sort = true, bloom_passes = 3};
+  x.rects[0] = [4] int.[0, 0, 1024, 1024]; x.rects[1] = [4] int.[1024, 0, 1024, 1024];
+  return x;
+}
+fpc_page_has :: (w: [] u32, kind: RenderOpKind, pass: RenderPassId) -> int #effects(all) {
+  n := 0;
+  for i: 0..<frame_plan_count(w) { o := frame_plan_op(w, i); if o.kind == kind && (kind != RenderOpKind.draw || o.pass == pass) { n += 1; } }
+  return n;
+}
+#test "a page's plan: the host's feature bits are RenderFeatures' fields in order" {
+  for k: 0..<14 {
+    f := frame_plan_features(cast(u32) (1 << cast(u64) k));
+    got := [14] bool.[f.scene, f.shadow, f.casters, f.grass, f.surface, f.water, f.water_copy, f.post, f.post_depth, f.traced_depth, f.particles, f.particle_depth, f.particle_over, f.media];
+    for j: 0..<14 { #assert got[j] == (j == k); }
+  }
+}
+#test "a page's plan: tiles, the cull, the character and the sort are drawn only when the host and the page both have them" {
+  c := FrameCounts.{width = 640, height = 360, vertex_stride = 16, hud_vertices = 12, draw_count = 9, particle_instances = 4};
+  feat: u32 = 1 | 2 | 128 | 1024 | 8192;
+  base: u32 = feat | cast(u32) FPH_SCENE_READY | cast(u32) FPH_PARTICLES_READY;
+  w: [2072] u32;
+  n := frame_plan_page(base | cast(u32) (FPH_TILES | FPH_CULL | FPH_CHARACTER | FPH_SORT), c, fpc_page_x(), w[..]);
+  #assert n > 0 && frame_plan_count(w[0..<n]) * 8 + 8 == n;
+  #assert fpc_page_has(w[0..<n], RenderOpKind.cull_early, RenderPassId.invalid) == 1 && fpc_page_has(w[0..<n], RenderOpKind.cull_late, RenderPassId.invalid) == 1;
+  #assert fpc_page_has(w[0..<n], RenderOpKind.scissor, RenderPassId.invalid) == 1 && fpc_page_has(w[0..<n], RenderOpKind.particle_sort, RenderPassId.invalid) == 1;
+  #assert fpc_page_has(w[0..<n], RenderOpKind.draw, RenderPassId.character) == 1 && fpc_page_has(w[0..<n], RenderOpKind.draw, RenderPassId.bloom) == 3;
+  #assert fpc_page_has(w[0..<n], RenderOpKind.draw, RenderPassId.scene_late) == 1 && fpc_page_has(w[0..<n], RenderOpKind.draw, RenderPassId.shadow_clear) == 1;
+  // a rectangle read back from its two words
+  for i: 0..<frame_plan_count(w[0..<n]) { o := frame_plan_op(w[0..<n], i); if o.kind == RenderOpKind.scissor { #assert o.first == 0 && o.count == (1024 | (1024 << 16)); } }
+  // the host without each: the page's fact is dropped, the rest of the frame stands
+  n = frame_plan_page(base | cast(u32) (FPH_CULL | FPH_CHARACTER | FPH_SORT), c, fpc_page_x(), w[..]);
+  #assert n > 0 && fpc_page_has(w[0..<n], RenderOpKind.scissor, RenderPassId.invalid) == 0 && fpc_page_has(w[0..<n], RenderOpKind.draw, RenderPassId.shadow) == 1 && fpc_page_has(w[0..<n], RenderOpKind.draw, RenderPassId.character_cast) == 1;
+  n = frame_plan_page(base | cast(u32) (FPH_TILES | FPH_CHARACTER | FPH_SORT), c, fpc_page_x(), w[..]);
+  #assert n > 0 && fpc_page_has(w[0..<n], RenderOpKind.cull_early, RenderPassId.invalid) == 0 && fpc_page_has(w[0..<n], RenderOpKind.draw, RenderPassId.scene_late) == 0;
+  n = frame_plan_page(base | cast(u32) (FPH_TILES | FPH_CULL | FPH_SORT), c, fpc_page_x(), w[..]);
+  #assert n > 0 && fpc_page_has(w[0..<n], RenderOpKind.draw, RenderPassId.character) == 0;
+  n = frame_plan_page(base | cast(u32) (FPH_TILES | FPH_CULL | FPH_CHARACTER), c, fpc_page_x(), w[..]);
+  #assert n > 0 && fpc_page_has(w[0..<n], RenderOpKind.particle_sort, RenderPassId.invalid) == 0;
+  // the scene's assets pending: the background, the post chain and the HUD only
+  n = frame_plan_page(feat | cast(u32) (FPH_TILES | FPH_CULL | FPH_PARTICLES_READY), c, fpc_page_x(), w[..]);
+  #assert n > 0 && fpc_page_has(w[0..<n], RenderOpKind.draw, RenderPassId.scene) == 0 && fpc_page_has(w[0..<n], RenderOpKind.cull_early, RenderPassId.invalid) == 0 && fpc_page_has(w[0..<n], RenderOpKind.draw, RenderPassId.hud) == 1;
+  // the particles' group not in yet
+  n = frame_plan_page(feat | cast(u32) (FPH_SORT | FPH_SCENE_READY), c, fpc_page_x(), w[..]);
+  #assert n > 0 && fpc_page_has(w[0..<n], RenderOpKind.draw, RenderPassId.particle) == 0 && fpc_page_has(w[0..<n], RenderOpKind.particle_sort, RenderPassId.invalid) == 1;
+}
+#test "a page's plan: bits past the host's set, features that do not hold together and a short buffer are refused, the first word cleared" {
+  c := FrameCounts.{width = 640, height = 360, vertex_stride = 16};
+  w: [2072] u32; w[0] = 7;
+  #assert frame_plan_page(cast(u32) (FPH_ALL + 1), c, RenderShipping.{}, w[..]) == 0 && w[0] == 0;
+  w[0] = 7; #assert frame_plan_page(2, c, RenderShipping.{}, w[..]) == 0 && w[0] == 0;   // a shadow with no scene
+  w[0] = 7; #assert frame_plan_page(1, c, RenderShipping.{}, w[0..<16]) == 0 && w[0] == 0;
+  x := RenderShipping.{bloom_passes = 9};
+  w[0] = 7; #assert frame_plan_page(1, c, x, w[..]) == 0 && w[0] == 0;
+  #assert frame_plan_page(cast(u32) (FPH_ALL - 16 - 512), FrameCounts.{width = 1, height = 1, vertex_stride = 1}, RenderShipping.{}, w[..]) > 0;
+  #assert frame_plan_page(0, c, RenderShipping.{}, w[..]) == 32 && frame_plan_count(w[0..<32]) == 3;
+}
+#test "the header has the host's bits and the shipping members" {
+  o: [1] FpText; n := frame_plan_header(o[..]);
+  #assert n > 0 && fpc_has(o[..], "#define AETHYR_FP_HOST_SCENE 1u\n") && fpc_has(o[..], "#define AETHYR_FP_HOST_TILES 16384u\n") && fpc_has(o[..], "#define AETHYR_FP_HOST_PARTICLES_READY 524288u\n");
+  #assert fpc_has(o[..], "#define AETHYR_FP_OP_CULL_EARLY 8u\n") && fpc_has(o[..], "#define AETHYR_FP_PASS_SCENE_LATE 17u\n") && fpc_has(o[..], "#define AETHYR_FP_SOURCE_LATE 4u\n");
 }

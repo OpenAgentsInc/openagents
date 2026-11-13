@@ -12,27 +12,14 @@
 // seven numbers of 12 digits are all it can hold.)
 //   coax/bin/coax test metaverse-engine/cam/flyover.coax
 #load "cinematic.coax";
+#load "fly-number.coax";   // FLY_FAR, fly_number: a path's numbers, shared with cam/track.coax's cam_track_fly
 
 FLY_KEYS :: FLIGHT_KEYS;
-FLY_FAR :: 100000.0;       // metres, or seconds: past this a number is refused
 
 FlyPath :: struct { ok: bool; flight: Flight; length: f32; }
-FlyNumber :: struct { ok: bool; v: f32; }
 // Parsing: the flight so far, the current key's numbers, and where the current number began.
 FlyRead :: struct { bad: bool; f: Flight; v: [7] f32; field: int; from: int; }
 
-// An optional '-', digits, and an optional '.' and digits; at most 12 digits.
-fly_number :: (s: string) -> FlyNumber {
-  i := 0; sign: f64 = 1; v: f64 = 0; digits := 0;
-  if i < s.count && s[i] == '-' { sign = -1; i += 1; }
-  while i < s.count && s[i] >= '0' && s[i] <= '9' { v = v * 10 + cast(f64) (s[i] - '0'); digits += 1; i += 1; }
-  if i < s.count && s[i] == '.' {
-    i += 1; scale: f64 = 0.1;
-    while i < s.count && s[i] >= '0' && s[i] <= '9' { v += scale * cast(f64) (s[i] - '0'); scale *= 0.1; digits += 1; i += 1; }
-  }
-  if digits == 0 || digits > 12 || i != s.count || v > FLY_FAR { return FlyNumber.{}; }
-  return FlyNumber.{ok = true, v = cast(f32) (sign * v)};
-}
 
 // One number ends at `at` (a ',' or, with `key`, the '~' or the end that closes a key).
 fly_take :: (r: [] FlyRead, text: string, at: int, key: bool) {

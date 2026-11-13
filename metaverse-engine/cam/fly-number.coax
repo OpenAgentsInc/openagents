@@ -1,0 +1,18 @@
+// One number of a flyover path's text (metaverse-engine/cam/flyover.coax states the text). Its own file so
+// the two readers of that text share it: flyover.coax (a cinematic Flight) and cam/track.coax's
+// cam_track_fly (a camera track, for a zone that already loads tracks). It joins whichever loads it.
+FLY_FAR :: 100000.0;       // metres, or seconds: past this a number is refused
+FlyNumber :: struct { ok: bool; v: f32; }
+
+// An optional '-', digits, and an optional '.' and digits; at most 12 digits.
+fly_number :: (s: string) -> FlyNumber {
+  i := 0; sign: f64 = 1; v: f64 = 0; digits := 0;
+  if i < s.count && s[i] == '-' { sign = -1; i += 1; }
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { v = v * 10 + cast(f64) (s[i] - '0'); digits += 1; i += 1; }
+  if i < s.count && s[i] == '.' {
+    i += 1; scale: f64 = 0.1;
+    while i < s.count && s[i] >= '0' && s[i] <= '9' { v += scale * cast(f64) (s[i] - '0'); scale *= 0.1; digits += 1; i += 1; }
+  }
+  if digits == 0 || digits > 12 || i != s.count || v > FLY_FAR { return FlyNumber.{}; }
+  return FlyNumber.{ok = true, v = cast(f32) (sign * v)};
+}

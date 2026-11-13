@@ -12,6 +12,7 @@
 //
 //   coax/bin/coax test metaverse-engine/cam/track.coax --library
 #module "aethyr.cam.track";
+#load "fly-number.coax";   // a flyover path's numbers (cam_track_fly)
 
 TRACK_KEYS :: 16;
 EASE_LINEAR :: 0;
@@ -89,6 +90,44 @@ cam_track_load :: (rows: [] f32, day0: f32, day_rate: f32) -> CamTrack {
   if !finite(day0) { t.day0 = 0.5; }
   if !finite(day_rate) { t.day_rate = 0; }
   return t;
+}
+
+// The flyover benchmark's path text as a track (metaverse-engine/cam/flyover.coax states the text:
+// keys split by '~', each seven numbers split by ',': seconds, the eye, the point looked at), for a
+// zone whose camera is already a track (#13303). The rules are flyover.coax's fly_parse: the first
+// key at 0, each later than the one before, 2 to TRACK_KEYS keys, and bad text refused whole (a
+// track of no keys: cam_track_length 0). Flown without easing, so the speed is the path's.
+cam_track_fly :: (text: string) -> CamTrack {
+  none := CamTrack.{day0 = 0.5};
+  rows: [TRACK_KEYS * CAM_TRACK_ROW] f32; n := 0; v: [7] f32; field := 0; from := 0;
+  for i: 0..<text.count + 1 {
+    last := i == text.count;
+    if !last && text[i] != ',' && text[i] != '~' { continue; }
+    num := fly_number(text[from..<i]); from = i + 1;
+    if !num.ok || field == 7 { return none; }
+    v[field] = num.v; field += 1;
+    if !last && text[i] == ',' { continue; }
+    if field != 7 || n == TRACK_KEYS || (n == 0 && v[0] != 0) { return none; }
+    if n > 0 && v[0] <= rows[(n - 1) * CAM_TRACK_ROW] { return none; }
+    for j: 0..<7 { rows[n * CAM_TRACK_ROW + j] = v[j]; }
+    rows[n * CAM_TRACK_ROW + 7] = f32(EASE_LINEAR); n += 1; field = 0;
+  }
+  if n < 2 { return none; }
+  return cam_track_load(rows[0..<n * CAM_TRACK_ROW], 0.5, 0);
+}
+#test "track: a flyover path's text is a track through its keys; bad text is refused whole" {
+  k := cam_track_fly("0,240,20,-70,140,8,-8~7,185,11,-48,140,9,-8~13,150,13,32,138,12,-8");
+  #assert k.flight.count == 3 && cam_track_length(k) == 13;
+  a := cam_track_at(k, 0); b := cam_track_at(k, 7); c := cam_track_at(k, 99);
+  #assert a.ex == 240 && a.ey == 20 && a.ez == -70 && a.lx == 140 && a.ly == 8 && a.lz == -8;
+  #assert b.ex == 185 && b.ey == 11 && b.ez == -48 && c.ex == 150 && c.lz == -8;
+  m := cam_track_at(k, 3.5); #assert m.ex < 240 && m.ex > 185 && m.ez > -70 && m.ez < -48;
+  bad := [9] string.["", "0,1,2,3,4,5,6", "1,1,2,3,4,5,6~2,1,2,3,4,5,6", "0,1,2,3,4,5,6~0,1,2,3,4,5,6", "0,1,2,3,4,5~1,1,2,3,4,5,6", "0,1,2,3,4,5,6,7~1,1,2,3,4,5,6",
+                     "0,1,2,3,4,5,x~1,1,2,3,4,5,6", "0,1,2,3,4,5,6~1,1,2,3,4,5,200000", "0,1,2,3,4,5,6~"];
+  for t: bad { r := cam_track_fly(t); #assert r.flight.count == 0 && cam_track_length(r) == 0; }
+  many: [400] u8; mn := 0;
+  for q: 0..<17 { row := "0,1,2,3,4,5,6~"; row2 := "9,1,2,3,4,5,6~"; for ch: (ifx q == 0 then row else row2) { many[mn] = ch; mn += 1; } if q > 0 { many[mn - 14] = cast(u8) ('0' + q % 10); } }
+  #assert cam_track_fly(cast(string) many[0..<mn - 1]).flight.count == 0;   // 17 keys (and times that do not rise)
 }
 
 // The shot `t` seconds into the track (before the first key its first, after the last its last).

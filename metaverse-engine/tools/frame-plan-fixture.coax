@@ -1,0 +1,61 @@
+// The frame plan walk's fixture (GitHub #13303): plans as words, each with the calls a walk of it
+// must make, for metaverse-engine/host/core/frame-plan-walk-check.c. Coax says what must be called;
+// the C walk only reports.
+//   coax/web/tool.sh metaverse-engine/tools/frame-plan-fixture.coax | frame-plan-walk-check
+// One plan is a `plan N` line, N hexadecimal words on the next, then the calls and `done`.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../render/frame-plan.coax";
+
+fpf_hex :: (v: u32) {
+  d := "0123456789abcdef"; b: [8] u8;
+  for k: 0..<8 { b[7 - k] = d[cast(int) ((v >> cast(u32) (k * 4)) & 15)]; }
+  print("%", cast(string) b[..]);
+}
+fpf_draw :: (o: RenderOp, item: int) {
+  print("draw % % % % % %\n", cast(int) o.pass, cast(int) o.draw_source, o.first, o.count, o.instances, item);
+}
+fpf_plan :: (bits: u32, c: FrameCounts, x: RenderShipping) {
+  w: [2072] u32; n := frame_plan_page(bits, c, x, w[..]);
+  print("plan %\n", n);
+  for i: 0..<n { fpf_hex(w[i]); print("%", ifx i + 1 < n then " " else ""); }
+  print("\n");
+  ops := frame_plan_count(w[0..<n]); i := 0;
+  while i < ops {
+    o := frame_plan_op(w[0..<n], i);
+    if o.kind == RenderOpKind.begin { print("begin % % % % %\n", cast(int) o.colour0, cast(int) o.colour1, cast(int) o.depth, ifx o.keep then 1 else 0, ifx o.store_depth then 1 else 0); }
+    else if o.kind == RenderOpKind.end { print("end\n"); }
+    else if o.kind == RenderOpKind.draw { fpf_draw(o, 0); }
+    else if o.kind == RenderOpKind.copy { print("copy % %\n", cast(int) o.source, cast(int) o.target); }
+    else if o.kind == RenderOpKind.cull_early || o.kind == RenderOpKind.cull_late || o.kind == RenderOpKind.particle_sort { print("compute % %\n", cast(int) o.kind, o.count); }
+    else if o.kind == RenderOpKind.viewport || o.kind == RenderOpKind.scissor { print("rect % % % % %\n", ifx o.kind == RenderOpKind.scissor then 1 else 0, o.first & 65535, o.first >> 16, o.count & 65535, o.count >> 16); }
+    else if o.kind == RenderOpKind.media_before { print("media 0\n"); }
+    else if o.kind == RenderOpKind.media_after { print("media 1\n"); }
+    else if o.kind == RenderOpKind.each_begin {
+      end := i + 1; while frame_plan_op(w[0..<n], end).kind != RenderOpKind.each_end { end += 1; }
+      for d: 0..<o.count { for k: i + 1..<end { fpf_draw(frame_plan_op(w[0..<n], k), o.first + d); } }
+      i = end;
+    }
+    i += 1;
+  }
+  print("done\n");
+}
+tool_main :: () -> int #export_c #effects(all) {
+  flat := FrameCounts.{width = 320, height = 180, vertex_stride = 16, hud_vertices = 6};
+  fpf_plan(0, flat, RenderShipping.{});
+  // Everglade II: shadow tiles, the separate shadow list, the cull's two phases, three bloom stages
+  c := FrameCounts.{width = 1440, height = 900, vertex_stride = 16, hud_vertices = 96, draw_count = 40, particle_instances = 9};
+  x := RenderShipping.{tiles = true, tile = 2, tile_count = 4, clears = 5, shadow_draws = 7, cull = true, cull_runs = 12, character = true, character_cast = true, sort = true, grass_last = true, bloom_passes = 3};
+  for k: 0..<4 { x.rects[k] = [4] int.[(k % 2) * 2048, (k / 2) * 2048, 2048, 2048]; }
+  ever: u32 = 1 | 2 | 128 | 1024 | 8192 | cast(u32) (FPH_TILES | FPH_CULL | FPH_CHARACTER | FPH_SORT | FPH_SCENE_READY | FPH_PARTICLES_READY);
+  fpf_plan(ever, c, x);
+  fpf_plan(ever - cast(u32) FPH_CULL - cast(u32) FPH_TILES, c, x);
+  // every feature at once: water's each loop over three wet draws, the copies, the casters, the grass
+  full := FrameCounts.{width = 1280, height = 800, vertex_stride = 16, hud_vertices = 96, draw_count = 9, water_draws = 3, grass_instances = 4000,
+                       particle_instances = 64, caster_vertices = 300, caster_instances = 5};
+  fpf_plan(cast(u32) (FPH_ALL - 16 - 512 - FPH_TILES), full, RenderShipping.{});
+  fpf_plan(cast(u32) (FPH_ALL - 16 - 512), full, x);
+  // a traced page's surface
+  fpf_plan(16 | 512, FrameCounts.{width = 64, height = 64, vertex_stride = 16, surface_vertices = 36, hud_vertices = 3}, RenderShipping.{});
+  return 0;
+}

@@ -400,14 +400,34 @@ A page's engine may export `uint32_t coaxial_frame_plan_v1(state, uint32_t featu
 record. [`metaverse-engine/render/frame-plan.coax`](../render/frame-plan.coax) states the layout, writes the
 records from `passes.coax`'s plan and reads them back. A host walks them and maps a pass id to its
 pipeline and bindings; it decides no order, and it refuses a plan whose version record is not the
-one it was built for. A page without the export keeps the host's built-in order. No page exports it
-yet. C hosts read the numbers from [`frame-plan.h`](frame-plan.h), which that module writes:
+one it was built for. A page without the export keeps the host's built-in order.
+
+`features` is the host's word: bits 0 to 13 are the pipelines the page's shader module gave it
+(`RenderFeatures`' fields in order), and the rest say what it did before it asked: the shadow atlas
+is tiled, the instance cull staged runs, its character pass has a character, it sorts particles,
+the scene's assets are in (`AETHYR_FP_HOST_*`). The page says what it would draw; a fact is drawn
+only when both have it.
+
+Everglade II (`apps/openagents-web/everglade2-face.c`, `e2_frame_plan`) is the first page on it: its
+shadow tile (clears, viewport and scissor as operations), the separate shadow list, the instance
+cull's two phases and the second scene pass, the bloom stages the quality asks for, the post pass
+and the HUD between the media layers are all `passes.coax`'s order.
+
+- The browser: `coax/web/host.js` walks the records (`walk` in `draw`). `?plan=check` on a
+  development server records the built-in order and the walk on the same frame and counts the
+  frames whose GPU calls differ (`coaxial.framePlan()`); `?plan=off` draws the built-in order.
+- C hosts: [`core/frame-plan-walk.h`](core/frame-plan-walk.h) checks the whole plan, then calls the
+  host back once an operation (`begin`, `end`, `draw`, `copy`, `rect`, `compute`, `media`). A
+  malformed or newer plan gives -1 and no call. The numbers are [`frame-plan.h`](frame-plan.h)'s,
+  which `frame-plan.coax` writes:
 
 ```sh
 coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax > metaverse-engine/host/frame-plan.h
+metaverse-engine/host/core/check-frame-plan-walk.sh   # the walk against what Coax says it must call
 ```
 
-`check.sh reports` has a `frame-plan-h` step that fails when the committed header is stale.
+`check.sh reports` has a `frame-plan-h` step that fails when the committed header is stale, and a
+`frame-plan-walk` step that runs the second command.
 
 ### Packs paged by world cell
 
