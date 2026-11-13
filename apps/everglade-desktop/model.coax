@@ -33,7 +33,7 @@ ws_model_bake_floats :: () -> int #export_c #effects(all) { return figs.BD_BAKE_
 ws_model_bake :: (m: []WsModel, out: []f32) -> bool #export_c #effects(all) {
   if out.count < figs.BD_BAKE_FLOATS { return false; }
   figs.people_load(m[0].people[..]);
-  figs.bd_bake(m[0].people[..], out, false);
+  figs.bd_bake(m[0].people[..], out);
   return true;
 }
 // The clip your walking calls for (metaverse-engine/move/walk.coax's Act): idle, the walk, the run, or the jump's loop.

@@ -301,7 +301,7 @@ zone_catalog :: (s: [] EgZone, text: string) #export_c #effects(all) {
 }
 
 // The clips baked into the bake store, once (fivelab-face.c).
-zone_bake :: (s: [] EgZone, d: [] figs.People, out: [] f32) #export_c #effects(all) { figs.people_load(d); figs.bd_bake(d, out, s[0].creator[0].dev_animations); figs.bd_bake_owned(out); figs.bd_bake_bow(d, out); figs.bd_keep_hands(s[0].bodies[..], d, out); }
+zone_bake :: (s: [] EgZone, d: [] figs.People, out: [] f32) #export_c #effects(all) { figs.people_load(d); figs.bd_bake(d, out); if s[0].creator[0].dev_animations { previews: [1] figs.Preview; figs.bd_bake_previews(out, previews[..]); } figs.bd_bake_owned(out); figs.bd_bake_bow(d, out); figs.bd_keep_hands(s[0].bodies[..], d, out); }
 // Existing optional layer-size hook: Character Create owns its quality choice.
 zone_layers_side :: (s:[] EgZone)->int #export_c #effects(all) {return cc.texture_side(s[0].creator[0]);}
 // Character Create's shadow tiles for the host (coaxial_shadow_*_v1; charactercreator.coax shadow_frame): none on the lab's own pages.
