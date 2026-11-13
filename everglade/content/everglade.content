@@ -1,4 +1,4 @@
-aethyr.content.v1 everglade 3
+aethyr.content.v1 everglade 2
 reach 100000
 table ability id name:text
 128|Rage
@@ -121,7 +121,7 @@ table point id name:text x:cm z:cm r:int
 12|Camp perch, east|1865|-45000|300
 13|Camp perch, south|465|-45866|300
 14|Guard post|347|-1800|300
-15|Glade's edge|300|-500|600
+15|Glade's edge|300|-500|800
 table quest id name:text
 1|Thin the pack
 2|The goblin camp

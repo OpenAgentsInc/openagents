@@ -37,7 +37,7 @@
 ES_CAP_S :: 120;        // s a fight lasts at most
 ES_RETRY :: 3;          // ticks before a player that pressed nothing the room took tries again
 ES_PACK_N :: 3;         // the most Wolves in a pack
-// An encounter's pack (creatures.coax E2M_SPAWN): its first monster, and how many it holds. The third
+// An encounter's pack (the content tables' troops, creatures.coax E2Zoo): its first monster, and how many it holds. The third
 // pack is monsters 5, 6 and 7; the first is monster 0; the second monsters 3 and 4.
 es_pack :: (enc: int) -> int { return ifx enc == ES_WOLF then 0 else (ifx enc == ES_PAIR then 3 else 5); }
 es_pack_n :: (enc: int) -> int { return ifx enc == ES_WOLF then 1 else (ifx enc == ES_PAIR then 2 else 3); }
