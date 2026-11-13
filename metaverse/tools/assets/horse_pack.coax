@@ -3,14 +3,16 @@
 // Each frame in model-space metres: the hooves' middle at the origin, the head toward +Z, scaled
 // from the source by GP_HORSE_SCALE so the saddle stands about 1.45 m up (a riding horse's back).
 // They draw as the familiars do, on the shared moved-mesh record (charactercreator.coax mode 18).
-// Loaded by character_glade_pack.coax with its packed vertex writer.
+// Loaded by character_glade_pack.coax with its packed vertex writer. Experimental
+// uses familiar kind 8; Everglade II uses baked-model kind 9, since its kind 8
+// is foliage and receives the foliage palette and deformation.
 
 GP_HORSE_SOURCE :: 247;
 GP_HORSE_FRAMES :: 36;
 GP_HORSE_CLIP :: 12;
 GP_HORSE_SCALE :: 0.52;
 
-gp_horse_meshes :: (w:[]Gp,root:string,first:[]int,count:[]int) {
+gp_horse_meshes :: (w:[]Gp,root:string,first:[]int,count:[]int,vertex_kind:int) {
   anchor:[3]f32;
   for frame:0..<GP_HORSE_FRAMES {
     pb:[4096]u8;s:[1]Sb;s[0]=sb(pb[..]);sb_put(s[..],root);sb_put(s[..],"/Horse_White-mount-");sb_int(s[..],frame);sb_put(s[..],".bin");
@@ -27,7 +29,7 @@ gp_horse_meshes :: (w:[]Gp,root:string,first:[]int,count:[]int) {
       if seen[hash]!=0 {mapped[v]=mapped[seen[hash]-1];}
       else {seen[hash]=v+1;p:[3]f32;normal:[3]f32;colour:[3]f32;
         for k:0..<3 {p[k]=(f32_from_bits(cast(u32)gl_u32(b[..],at+k*4))-anchor[k])*f32(GP_HORSE_SCALE);normal[k]=f32_from_bits(cast(u32)gl_u32(b[..],at+12+k*4));colour[k]=f32(b[at+24+k])/255;}
-        mapped[v]=gp_v(w,p,normal,[2]f32.[0.5,0.5],colour,0,GP_FAMILIAR_KIND);}
+        mapped[v]=gp_v(w,p,normal,[2]f32.[0.5,0.5],colour,0,vertex_kind);}
       if v%3==2 {gp_tri(w,mapped[v-2],mapped[v-1],mapped[v]);}
     }
     count[frame]=w[0].ni-first[frame];

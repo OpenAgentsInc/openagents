@@ -10,13 +10,17 @@ head, where the rider sits) x y z in the same space, then the clip's seconds.
 
 Run Blender in background with --disable-autoexec; the source files are data only:
   Blender --background --factory-startup --disable-autoexec --python-exit-code 1 \
-    --python metaverse/tools/assets/horse_bake.py -- ANIMALS_SOURCE_ROOT OUTPUT_DIR
+    --python metaverse/tools/assets/horse_bake.py -- ANIMALS_SOURCE_ROOT OUTPUT_DIR [RATIO]
 """
 import bpy, json, math, struct, sys
 from pathlib import Path
 
 args = sys.argv[sys.argv.index('--') + 1:]
 root, output = Path(args[0]), Path(args[1])
+# The web world shares a 64 MiB pack with the wardrobe and the woods. Blender
+# simplifies the bind mesh once, keeping weights, before the ordinary animation bake.
+ratio = float(args[2]) if len(args) == 3 else 1.0
+if not 0 < ratio <= 1: raise ValueError("horse ratio must be in (0, 1]")
 output.mkdir(parents=True, exist_ok=True)
 FRAMES = 12
 CLIPS = ['Idle', 'Walk', 'Gallop']
@@ -38,6 +42,14 @@ bpy.ops.import_scene.gltf(filepath=str(path))
 arm = next(o for o in bpy.context.scene.objects if o.type == 'ARMATURE')
 arm.animation_data_create()
 meshes = sorted((o for o in bpy.context.scene.objects if o.type == 'MESH' and o.parent == arm), key=lambda o: o.name)
+if ratio < 1:
+    for obj in meshes:
+        bpy.context.view_layer.objects.active = obj
+        modifier = obj.modifiers.new(name='Web horse', type='DECIMATE')
+        modifier.ratio = ratio
+        # Apply in bind space, before the armature deforms each frame.
+        bpy.ops.object.modifier_move_up(modifier=modifier.name)
+        bpy.ops.object.modifier_apply(modifier=modifier.name)
 counts = []; seats = []
 for ci, clip in enumerate(CLIPS):
     action = bpy.data.actions.get(clip)

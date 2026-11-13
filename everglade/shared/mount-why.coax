@@ -1,0 +1,53 @@
+// Everglade's shared driver diagnostics. Pages supply their actual mount colliders
+// and land boundary; this reads them without advancing the simulation (#13491).
+#load "../../metaverse-engine/agent/why.coax";
+#load "mount-kinds.coax";
+
+#test "mount why names a box, a post, missing frames and the land edge (#13491)" {
+  d: [1] Drive; d[0].on = true;
+  drv_add(d[..], DRV_MOUNT, "horse", 0, "Horse", 0, 0, 0, -1, -1, false);
+  w := [6] f32.[-2, 0, 1.4, 2, 3, 2]; h := mount_place(0, 0, 0);
+  a := emw_mount(d[..], "horse-0", h, MountTune.{}, true, w[..], 1, false);
+  #assert cp_has(a, "box-0") && cp_has(a, "system-paused") && cp_has(a, "1.4");
+  mount_post(w[..], 0, 0, 1.9, 0.5, 0, 3);
+  #assert cp_has(emw_mount(d[..], "horse-0", h, MountTune.{}, true, w[..], 1, false), "post-0");
+  #assert cp_has(emw_mount(d[..], "horse-0", h, MountTune.{}, false, w[..], 1, false), "asset-missing");
+  #assert cp_has(emw_mount(d[..], "horse-0", h, MountTune.{}, true, w[..], 0, true), "land edge");
+  #assert cp_has(emw_mount(d[..], "horse-0", h, MountTune.{}, true, w[..], 0, false), "horse-0: ok");
+  #assert cp_has(emw_entity(d[..], "missing"), "not-in-state");
+}
+
+// The ordinary tree can establish existence; later links require realm facts.
+emw_entity :: (d: [] Drive, id: string) -> string {
+  if id == "caps" {
+    b: [1024] u8; head: [1200] u8;
+    n := why_cap(b[..], 0, WHY_BUDGET_HIT, "tree.entities", DRV_ENTS, d[0].lost);
+    return drv_say3(d, why_caps_answer(b[..], 0, n, head[..]), "", "");
+  }
+  w: [1] Why; why_begin(w[..], id);
+  if drv_find(d, id) < 0 { why_fail(w[..], WHY_NOT_IN_STATE, "drive.entities", "an id in tree", id); }
+  else { why_pass(w[..], WHY_STATE); }
+  a := why_answer(w[..], d[0].out[..]); return drv_say(d, a.count);
+}
+emw_mount :: (d: [] Drive, id: string, h: Mount, t: MountTune, ready: bool, walls: [] f32, n: int, edge: bool) -> string {
+  w: [1] Why; why_begin(w[..], id);
+  why_pass(w[..], WHY_STATE);
+  why_judge(w[..], WHY_SPAWNED, h.on, WHY_DESPAWNED, "mount.on", "true", "false");
+  // Visibility and draw admission are not inferred from the tree.
+  why_skip(w[..], WHY_VIEW); why_skip(w[..], WHY_DRAWN);
+  why_judge(w[..], WHY_ASSET, ready, WHY_ASSET_MISSING, "mount.frames", "all frames for this kind", "incomplete catalog");
+  why_pass(w[..], WHY_COLLIDER);
+  step := ifx h.speed < 0 then -0.25f32 else 0.25f32;
+  lift := ifx h.flies then h.wing.y else h.hop;
+  hit := mount_stop(t, lift, h.x, h.z, h.face, h.x + sin(h.face) * step, h.z + cos(h.face) * step, h.face, walls, n);
+  if hit >= 0 {
+    b: [WHY_TEXT] u8; o := hit * 6;
+    k := drv_put_s(b[..], 0, ifx mount_is_post(walls, o) then "post-" else "box-"); k = drv_put_i(b[..], k, hit);
+    k = drv_put_s(b[..], k, " [");
+    for q: 0..<6 { if q > 0 { k = drv_put_s(b[..], k, " "); } k = drv_put_f(b[..], k, walls[o + q]); if mount_is_post(walls, o) && q == 4 { break; } }
+    k = drv_put_s(b[..], k, "]");
+    why_fail(w[..], WHY_SYSTEM_PAUSED, "mount.forward", "a clear quarter metre", cast(string) b[0..<k]);
+  } else if edge { why_fail(w[..], WHY_SYSTEM_PAUSED, "mount.forward", "inside the land", "land edge"); }
+  else { why_pass(w[..], WHY_SYSTEM); }
+  a := why_answer(w[..], d[0].out[..]); return drv_say(d, a.count);
+}

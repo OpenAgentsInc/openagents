@@ -1,3 +1,4 @@
+#load "shared/mount-why.coax";
 // An Everglade zone's wiring for the agent driver (metaverse-engine/agent/drive.coax, GitHub #13095):
 // what it lists (you, the imps, gremlins and puglins by their slot in the hostiles' list, so an id
 // stays the same while that creature lives, and the horses and dragons by their mount slot), and
@@ -91,7 +92,23 @@ fd_press :: (s: [] EgZone) {
   drv_no_ability(d, cast(string) names[0..<nn]);
 }
 // A driver's command (host message 700): the answer goes back through coaxial_drive_out.
-fd_message :: (s: [] EgZone, t: string) { if s[0].drive.count > 0 { _ := drv_command(s[0].drive, t, s[0].creator[0].clock); } }
+fd_message :: (s: [] EgZone, t: string) {
+  if s[0].drive.count == 0 { return; }
+  d := s[0].drive; id := why_asks(t);
+  if id == "-" { _ := drv_command(d, t, s[0].creator[0].clock); return; }
+  d[0].on = true;
+  c := s[0].creator[..]; m := c[0].mounts[..];
+  for k: 0..<m[0].n {
+    nb: [32] u8; nn := drv_put_s(nb[..], 0, ifx m[0].kind[k] == egm.EG_DRAGON then "dragon-" else "horse-"); nn = drv_put_i(nb[..], nn, k);
+    if id != cast(string) nb[0..<nn] { continue; }
+    h := m[0].mounts[k]; near: [1] village.EvNear; n := cc.xh_walls(c, h.x, h.z, cc.xh_reach(c, k), near[..]);
+    step := ifx h.speed < 0 then -0.25f32 else 0.25f32;
+    edge := !c[0].field && !mount_aloft(h) && xdungeon.dg_inside(h.x + sin(h.face) * step, h.z + cos(h.face) * step, 1.5);
+    ready := ifx m[0].kind[k] == egm.EG_DRAGON then egm.eg_dragon_ready(m[0]) else egm.eg_mounts_ready(m[0]);
+    _ := emw_mount(d, id, h, egm.eg_tune(m[0], k), ready, near[0].walls[..], n, edge); return;
+  }
+  _ := emw_entity(d, id);
+}
 zone_drive_out :: (s: [] EgZone) -> [] u8 #export_c #effects(all) { return ifx s[0].drive.count > 0 then s[0].drive[0].out[0..<s[0].drive[0].out_n] else s[0].outbox[0..<0]; }
 #test "the driver does nothing until the face attaches one, then answers" {
   s: [1] EgZone; fd_message(s[..], "tree"); #assert zone_drive_out(s[..]).count == 0 && !fd_move_in(s[..]).ok;
@@ -106,4 +123,27 @@ zone_drive_out :: (s: [] EgZone) -> [] u8 #export_c #effects(all) { return ifx s
   x := s[0].xc[..]; x[0].w = 1280; x[0].h = 800; x[0].k = 1; x[0].started = true; x[0].bar_n = 2;
   fd_frame(s[..]);
   #assert d[0].n == 1 && d[0].ents[0].kind == DRV_PLAYER && d[0].trace[0].n == 0;
+}
+
+#test "zone driver why reads the mount's actual props and missing frames (#13491)" #steps 400000000 {
+  s: [1] EgZone; d: [1] Drive; zone_drive_attach(s[..], d[..]);
+  c := s[0].creator[..]; c[0].experimental = true; c[0].field = true;
+  c[0].mounts[0].n = 1; c[0].mounts[0].mounts[0] = mount_place(0, 0, 0);
+  fd_message(s[..], "why horse-0"); #assert cp_has(drv_said(d[..]), "asset-missing");
+  c[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  for f: 0..<egm.EG_HORSE_FRAMES { c[0].mounts[0].count[f] = 3; }
+  b := [6] f32.[-2, 0, 1.4, 2, 10, 2]; _ := wprops.props_set(c[0].props[..], b[..], 1);
+  fd_message(s[..], "why horse-0"); #assert cp_has(drv_said(d[..]), "box-0");
+  #assert d[0].status == DRV_IDLE && c[0].mounts[0].mounts[0].z == 0;
+}
+
+#test "the village stop after the corner is a real box, with no added zone props (#13491)" #steps 400000000 {
+  s: [1] EgZone; d: [1] Drive; zone_drive_attach(s[..], d[..]);
+  c := s[0].creator[..]; c[0].experimental = true;
+  m := c[0].mounts[..]; m[0].n = 1; m[0].frames = egm.EG_HORSE_FRAMES;
+  for f: 0..<egm.EG_HORSE_FRAMES { m[0].count[f] = 3; }
+  m[0].mounts[0] = mount_place(6.45, -15.59, atan2(17 - 6.45, 18 + 15.59));
+  #assert c[0].props[0].n == 0;
+  fd_message(s[..], "why horse-0");
+  #assert cp_has(drv_said(d[..]), "box-0 [4.9 -0.5 -14.3 6.6 4.9 -12.0]");
 }

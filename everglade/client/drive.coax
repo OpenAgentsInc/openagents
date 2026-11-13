@@ -1,3 +1,4 @@
+#load "../shared/mount-why.coax";
 // Everglade II's wiring for the agent driver (metaverse-engine/agent/drive.coax, GitHub #13095): what it lists
 // (you, the others in the room, the path's guard, the wolves and goblins, by the room's own slots, so
 // an id stays the same while that creature lives), and how its world operations turn into a player's
@@ -89,5 +90,28 @@ e2d_bar :: (s: [] E2) {
   }
 }
 // A driver's command (host message 700): the answer goes back through coaxial_drive_out.
-e2d_message :: (s: [] E2, t: string) { _ := drv_command(s[0].drive[..], t, s[0].clock); }
+e2d_message :: (s: [] E2, t: string) {
+  d := s[0].drive[..]; id := why_asks(t);
+  if id == "-" { _ := drv_command(d, t, s[0].clock); return; }
+  d[0].on = true;
+  r := s[0].net[0].ride[0].m[..];
+  for k: 0..<r[0].n {
+    nb: [32] u8; nn := drv_put_s(nb[..], 0, ifx r[0].kind[k] == MK_DRAGON then "dragon-" else "horse-"); nn = drv_put_i(nb[..], nn, k);
+    if id != cast(string) nb[0..<nn] { continue; }
+    h := r[0].m[k]; walls: [E2ML_BOXES * 6] f32; none: [] E2Still;
+    n := e2ml_boxes(none, s[0].items[..], s[0].kinds[..], s[0].first[..], s[0].plant_done, h.x, h.z, e2ml_reach(r[0], k), walls[..]);
+    step := ifx h.speed < 0 then -0.25f32 else 0.25f32;
+    nx := h.x + sin(h.face) * step; nz := h.z + cos(h.face) * step; kept := e2m_keep(nx, nz, h.x, h.z);
+    _ := emw_mount(d, id, h, mk_tune(r[0].kind[k]), e2rv_ready(s, r[0].kind[k]), walls[..], n, kept.x != nx || kept.z != nz); return;
+  }
+  _ := emw_entity(d, id);
+}
 e2_drive_out :: (s: [] E2) -> [] u8 #export_c #effects(all) { return s[0].drive[0].out[0..<s[0].drive[0].out_n]; }
+
+#test "client driver why answers from room mounts and their catalog (#13491)" #steps 400000000 {
+  s: [1] E2; r := s[0].net[0].ride[0].m[..];
+  r[0].n = 1; r[0].m[0] = mount_place(10, 9, 0);
+  e2d_message(s[..], "why horse-0"); #assert cp_has(drv_said(s[0].drive[..]), "asset-missing");
+  #assert s[0].net[0].ride[0].asked == 0 && r[0].m[0].x == 10;
+  e2d_message(s[..], "why missing"); #assert cp_has(drv_said(s[0].drive[..]), "not-in-state");
+}

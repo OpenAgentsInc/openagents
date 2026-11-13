@@ -926,10 +926,10 @@ gp_entry :: (out:[]u8,row:int,kind:int,license:int,name:string,offset:int,size:i
 // Append the shared meshes to an existing world pack without rebuilding its
 // other assets. The appended model indices start at their own vertex base.
 // model: GP_APPEND_FAMILIARS, or the horse's (horse_bake.py) or the cat's (cat_bake.py) frames in `frames`.
-GP_APPEND_FAMILIARS :: 0; GP_APPEND_HORSE :: 1; GP_APPEND_CAT :: 2; GP_APPEND_WEAPONS :: 3;   // weapons: `frames` names an uncompressed glade.pack (weapon_pack.coax)
+GP_APPEND_FAMILIARS :: 0; GP_APPEND_HORSE :: 1; GP_APPEND_CAT :: 2; GP_APPEND_WEAPONS :: 3; GP_APPEND_HORSE_E2 :: 4;   // weapons: `frames` names an uncompressed glade.pack (weapon_pack.coax)
 gp_append_familiars :: (input:string,output:string)->int {return gp_append_models(input,output,GP_APPEND_FAMILIARS,"");}
 gp_append_models :: (input:string,output:string,model:int,frames:string)->int {
-  horse:=model==GP_APPEND_HORSE; kitty:=model==GP_APPEND_CAT; arms:=model==GP_APPEND_WEAPONS;
+  horse:=model==GP_APPEND_HORSE || model==GP_APPEND_HORSE_E2; kitty:=model==GP_APPEND_CAT; arms:=model==GP_APPEND_WEAPONS;
   w:[1]Gp; src:=w[0].out[..];
   size:=fs_read(input,src);
   if size<32 || cast(string)src[0..<4]!="VPK1" || gl_u32(src,8)!=size { return 1; }
@@ -970,7 +970,7 @@ gp_append_models :: (input:string,output:string,model:int,frames:string)->int {
     n:=fs_read(frames,out[..]);
     if n<=0 || !gp_weapon_meshes(w[..],out[0..<n],vertex_bytes/32-sword.word/8,first[..],count[..]) { tool_errln("missing or invalid glade.pack weapons"); return 1; }
   }
-  else if horse { gp_horse_meshes(w[..],frames,first[..],count[..]); } else if kitty { gp_cat_meshes(w[..],frames,first[..],count[..]); } else { gp_familiar_meshes(w[..],first[..],count[..]); }
+  else if horse { gp_horse_meshes(w[..],frames,first[..],count[..],ifx model==GP_APPEND_HORSE_E2 then 9 else GP_FAMILIAR_KIND); } else if kitty { gp_cat_meshes(w[..],frames,first[..],count[..]); } else { gp_familiar_meshes(w[..],first[..],count[..]); }
   extra:[8192]u8; c:[1]Sb; c[0]=sb(extra[..]);
   sb_byte(c[..],'\n');
   if arms { gp_weapon_catalog(c[..],first[..],count[..],index_bytes/4,sword.word); } else if horse { gp_horse_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4); } else if kitty { gp_cat_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4); } else { gp_familiar_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4); }
@@ -1001,6 +1001,7 @@ gp_append_models :: (input:string,output:string,model:int,frames:string)->int {
 tool_main :: ()->int #export_c #effects(all) {
  args:[1]Args;if !args_load(args[..]) {return 2;}
  if args_count(args[..])==3 && args_at(args[..],0)=="--append-familiars" {return gp_append_familiars(args_at(args[..],1),args_at(args[..],2));}
+ if args_count(args[..])==4 && args_at(args[..],0)=="--append-horse-e2" {return gp_append_models(args_at(args[..],1),args_at(args[..],2),GP_APPEND_HORSE_E2,args_at(args[..],3));}
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-horse" {return gp_append_models(args_at(args[..],1),args_at(args[..],2),GP_APPEND_HORSE,args_at(args[..],3));}
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-weapons" {return gp_append_models(args_at(args[..],1),args_at(args[..],2),GP_APPEND_WEAPONS,args_at(args[..],3));}
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-cat" {return gp_append_models(args_at(args[..],1),args_at(args[..],2),GP_APPEND_CAT,args_at(args[..],3));}

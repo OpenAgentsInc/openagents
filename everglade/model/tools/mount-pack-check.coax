@@ -1,0 +1,48 @@
+// Verify the shipped horse's frame ranges and vertex kind against Everglade II's
+// shader contract: kind 9 is a baked model; kind 8 is recoloured foliage (#13491).
+// coax/web/tool.sh everglade/model/tools/mount-pack-check.coax PACK
+// tool.sh: release
+#import "Basic";
+#load "../../../metaverse-engine/editor/pack.coax";
+#load "../../mounts.coax" as egm;
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+
+#test "horse frame validation follows its index and vertex bases and refuses foliage or bad ranges" {
+  v: [64] u8; v[15] = 9; v[47] = 9;
+  i: [12] u8; i[4] = 1;
+  #assert mp_frame(cast(string) v[..], cast(string) i[..], 0, 3, 0);
+  v[47] = 8; #assert !mp_frame(cast(string) v[..], cast(string) i[..], 0, 3, 0);
+  v[47] = 9; i[4] = 2; #assert !mp_frame(cast(string) v[..], cast(string) i[..], 0, 3, 0);
+  i[4] = 1;
+  #assert !mp_frame(cast(string) v[..], cast(string) i[..], -1, 3, 0);
+  #assert !mp_frame(cast(string) v[..], cast(string) i[..], 0, 4, 0);
+  #assert !mp_frame(cast(string) v[..], cast(string) i[..], 0, 3, 1);
+}
+mp_frame :: (vertices: string, indices: string, first: int, count: int, word: int) -> bool {
+  if first < 0 || count <= 0 || count % 3 != 0 || first > indices.count / 4 || count > indices.count / 4 - first || word < 0 || word > vertices.count / 4 { return false; }
+  for k: 0..<count {
+    index := pack_u32(indices, (first + k) * 4);
+    left := vertices.count - word * 4;
+    if index >= left / 32 { return false; }
+    at := word * 4 + index * 32;
+    if (pack_u32(vertices, at + 12) >> 24) != 9 { return false; }
+  }
+  return true;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("mount-pack-check PACK"); return 2; }
+  b: [67108864] u8; n := fs_read(args_at(a[..], 0), b[..]); r: [1] PackRead;
+  if n < 0 || !pack_read(cast(string) b[0..<n], r[..]) { tool_errln("mount-pack: refused pack"); return 1; }
+  catalog := ""; vertices := ""; indices := "";
+  for k: 0..<r[0].count {
+    e := r[0].entries[k]; bytes := cast(string) b[e.at..<e.at + e.n];
+    if e.kind == PACK_CATALOG { catalog = bytes; } if e.kind == PACK_VERTICES { vertices = bytes; } if e.kind == PACK_INDICES { indices = bytes; }
+  }
+  m: [1] egm.EgMounts; egm.eg_mounts_catalog(m[..], catalog);
+  if !egm.eg_mounts_ready(m[0]) { tool_errln("mount-pack: missing horse frames"); return 1; }
+  for f: 0..<egm.EG_HORSE_FRAMES {
+    if !mp_frame(vertices, indices, m[0].first[f], m[0].count[f], m[0].word[f]) { print("mount-pack: horse frame % has invalid ranges or is not model kind 9\n", f); return 1; }
+  }
+  print("mount-pack: all 36 horse frames have valid ranges and model kind 9\n"); return 0;
+}

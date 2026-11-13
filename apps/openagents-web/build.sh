@@ -193,6 +193,7 @@ vpk3s() {
   # point can be walked to, and a creature walks the named points' routes on the navigation cells.
   "$here/../../coax/web/tool.sh" "$here/../../everglade/model/tools/zone-cells.coax" --check "$here/../../everglade/world/zone-cells.coax" "$here/../../everglade/content/everglade.content" > /dev/null
   for vpk3 in "$here"/realms/everglade2/assets/everglade2.vpk3; do
+    "$here/../../coax/web/tool.sh" "$here/../../everglade/model/tools/mount-pack-check.coax" "${vpk3%.vpk3}.pack" > /dev/null
     # the people's rig as its rig entry: the page bakes from it. It goes in first, because ...
     rigged="$here/build/$(basename "${vpk3%.vpk3}")-rigged.pack"
     "$here/../../coax/web/tool.sh" "$here/../../everglade/model/tools/rig-pack.coax" --into "$here/../../everglade/model/rigs.vrg" "${vpk3%.vpk3}.pack" "$rigged" people > /dev/null

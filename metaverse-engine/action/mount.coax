@@ -20,7 +20,7 @@
 //   (no taller than brush_high and no wider than brush_wide: a tuft, a stone, a stump). Everything
 //   else stops it, so a wall, a tree or a house is as solid as it looks. A zone gathers the boxes
 //   mount_reach round it, so a long body meets a wall at its nose, not at its middle; a body that is
-//   somehow in a box anyway is never held by it (mount_stopped): only a box it is clear of stops it;
+//   somehow in a box may leave or slide along it, but cannot deepen its overlap (mount_stopped);
 //   its gait (mount_clip, mount_frame): idle, walk or gallop by speed, played by the ground covered
 //   so the hooves keep pace; the trot is the walk played faster, the canter the gallop slower;
 //   the seat (mount_seat): a model-space saddle point (a game's per-frame table) placed in the world;
@@ -145,16 +145,36 @@ mount_body_clear_at :: (t: MountTune, lift: f32, x: f32, z: f32, face: f32, wall
 }
 // The same on the ground.
 mount_body_clear :: (t: MountTune, x: f32, z: f32, face: f32, walls: [] f32, n: int) -> bool { return mount_body_clear_at(t, 0, x, z, face, walls, n); }
-// Whether a box stops the body going from (x0, z0, face0) to (x, z, face): one it would reach into
-// and is clear of now. A box it is already in (it stood there as the box came, or the ground fell
-// away under it) never holds it: it walks out the way it likes, and the box stops it again after.
-mount_stopped :: (t: MountTune, lift: f32, x0: f32, z0: f32, face0: f32, x: f32, z: f32, face: f32, walls: [] f32, n: int) -> bool {
+// Separation of the capsule and collider along their separating axes. Using the
+// whole body keeps this continuous as individual body samples cross a thick wall.
+mount_body_gap :: (t: MountTune, x: f32, z: f32, face: f32, walls: [] f32, o: int) -> f32 {
+  fx := sin(face); fz := cos(face);
+  if mount_is_post(walls, o) {
+    along := mt_clamp((walls[o] - x) * fx + (walls[o + 2] - z) * fz, -t.half_length, t.half_length);
+    dx := x + fx * along - walls[o]; dz := z + fz * along - walls[o + 2];
+    return sqrt(dx * dx + dz * dz) - walls[o + 3] - t.radius;
+  }
+  cx := (walls[o] + walls[o + 3]) * 0.5; cz := (walls[o + 2] + walls[o + 5]) * 0.5;
+  bx := (walls[o + 3] - walls[o]) * 0.5; bz := (walls[o + 5] - walls[o + 2]) * 0.5;
+  gap := mt_abs(x - cx) - bx - mt_abs(fx) * t.half_length;
+  gz := mt_abs(z - cz) - bz - mt_abs(fz) * t.half_length;
+  side := mt_abs((x - cx) * fz - (z - cz) * fx) - bx * mt_abs(fz) - bz * mt_abs(fx);
+  if gz > gap { gap = gz; } if side > gap { gap = side; }
+  return gap - t.radius;
+}
+// Index of the first box or post that would be entered more deeply, -1 if clear.
+// An existing overlap may shrink or slide along its boundary, never deepen.
+mount_stop :: (t: MountTune, lift: f32, x0: f32, z0: f32, face0: f32, x: f32, z: f32, face: f32, walls: [] f32, n: int) -> int {
   for i: 0..<n {
     o := i * 6; if o + 6 > walls.count { break; }
     if !mount_counts(t, lift, walls, o) { continue; }
-    if mount_body_touch(t, x, z, face, walls, o) && !mount_body_touch(t, x0, z0, face0, walls, o) { return true; }
+    gap := mount_body_gap(t, x, z, face, walls, o);
+    if mount_body_touch(t, x, z, face, walls, o) && (!mount_body_touch(t, x0, z0, face0, walls, o) || gap < mount_body_gap(t, x0, z0, face0, walls, o)) { return i; }
   }
-  return false;
+  return -1;
+}
+mount_stopped :: (t: MountTune, lift: f32, x0: f32, z0: f32, face0: f32, x: f32, z: f32, face: f32, walls: [] f32, n: int) -> bool {
+  return mount_stop(t, lift, x0, z0, face0, x, z, face, walls, n) >= 0;
 }
 // The rider on foot beside it: a walker's step and height, and no clutter to ride through.
 mount_rider_tune :: (t: MountTune) -> MountTune { r := t; r.low = 0.5; r.high = 1.8; r.brush_high = 0; r.brush_wide = 0; return r; }
@@ -498,7 +518,7 @@ mt_ride :: (t: MountTune, walls: [] f32, n: int, steps: int) -> Mount {
   beside := [6] f32.[0.8, 0, -0.3, 1.4, 0.85, 0.3];
   #assert mount_body_clear(h, 0, 0, 0, beside[..], 1) && mount_step_off(mount_place(0, 0, 0), h, beside[..], 1).x < 0;
 }
-#test "a box the body is already in never holds it: it walks out, and the box stops it again after" {
+#test "a body already in a box can back out, and the box stops it again after" {
   t := MT_BIG; w := [6] f32.[-10, 0, 2, 10, 6, 4];   // a wall across its neck (its nose reaches z 6.1)
   m: [1] Mount; m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN;
   #assert !mount_body_clear(t, 0, 0, 0, w[..], 1);
@@ -722,4 +742,17 @@ mt_fly :: (m: [] Mount, t: MountTune, p: WingProfile, i: MountIn, steps: int, wa
   o: [1] Mount; o[0] = mount_place(0, 0, 0); o[0].state = MOUNT_RIDDEN; none: [6] f32;
   mount_step(o[..], t, MountIn.{turn = 1}, 1.0f32 / 60, none[..], 0); #assert o[0].x == 0 && o[0].z == 0 && o[0].face < 0;
   #assert MOUNT_PIVOT_TRIES == 3;
+}
+
+#test "a body touching two boxes by a hair can leave but cannot deepen either overlap (#13491)" {
+  t := MountTune.{};
+  w := [12] f32.[-10, 0, 1.3699, 10, 3, 2, -10, 0, -2, 10, 3, -1.3699];
+  #assert mount_body_touch(t, 0, 0, 0, w[..], 0) && mount_body_touch(t, 0, 0, 0, w[..], 6);
+  #assert mount_stopped(t, 0, 0, 0, 0, 0, 0.01, 0, w[..], 2);
+  #assert mount_stopped(t, 0, 0, 0, 0, 0, -0.01, 0, w[..], 2);
+  #assert !mount_stopped(t, 0, 0, 0, 0, 0.1, 0, 0, w[..], 2);
+  #assert !mount_stopped(t, 0, 0, 0, 0, 0, -0.01, 0, w[..], 1);
+  post: [6] f32; mount_post(post[..], 0, 0, 1.8699, 0.5, 0, 3);
+  #assert mount_stopped(t, 0, 0, 0, 0, 0, 0.01, 0, post[..], 1);
+  #assert !mount_stopped(t, 0, 0, 0, 0, 0, -0.01, 0, post[..], 1);
 }

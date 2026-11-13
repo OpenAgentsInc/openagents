@@ -397,8 +397,9 @@ multiplayer realm.
    looks. In the air the dragon tests nothing under its feet; it never comes
    down inside a roof or a tree, it glides on until it is past. A zone
    gathers the boxes `mount_reach` round the mount, so a dragon's nose meets
-   a wall its middle is 6 m from, and a box a body is already in never holds
-   it. Route walks check it: the horse and the dragon across Experimental's
+   a wall its middle is 6 m from. An existing overlap may shrink or slide
+   along its boundary, but cannot deepen (#13491): touching two boxes by a
+   hair must not let the body walk through both. Route walks check it: the horse and the dragon across Experimental's
    glade, meadow and village (`everglade/zone-mounts.coax`, "route walk")
    and down the Archery Range (`archery-range.coax`).
    **A mount never stands stuck on open ground** (GitHub #13449). Four

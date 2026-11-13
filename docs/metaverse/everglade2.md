@@ -150,7 +150,7 @@ in the clearing, and that trees crowd the path.
 ## The pack
 
 `metaverse/tools/assets/everglade2_pack.coax` writes `realms/everglade2/assets/everglade2.pack`
-(57 MB). The pack holds:
+(about 60 MiB). The pack holds:
 
 - Character Create's people pack (the wardrobe and the rig).
 - The glade's own composition, placed on Everglade II's land.
@@ -198,6 +198,33 @@ Puglin's Idle, Jog, Sword, Shoot and Death, eight frames each), the goblin camp'
 Woodfire and the Fantasy Props stall, crates, barrel and bench) and the guard's Sword. The pack holds
 them as `glade/monster0..31`, `glade/gremlin0..39` and `glade/weapon1`; the camp stands in the glade's
 environment where `everglade/world/camp.coax` puts it.
+
+The rideable horse is appended with the shared horse packer's `--append-horse-e2`
+mode (baked-model vertex kind 9; the Experimental kind 8 is foliage here). The web bake simplifies
+its bind mesh to a quarter of the triangles before animation; the full source and the
+Experimental bake stay in the shared asset library. All 36 Idle, Walk and Gallop
+frames retain the same timing, scale and saddle bone. This keeps the wardrobe,
+woods, horse, rig and cells inside the 64 MiB arena, including the pack
+reader's heap base (#13491). The final image is 65,379,852 bytes; its reader
+needs another 1,263,344 bytes. See [the verification record](../verification/mounts-13491/README.md).
+
+```sh
+H="$A/cache/horse-white-mount-web"
+$B --background --factory-startup --disable-autoexec --python-exit-code 1 \
+  --python metaverse/tools/assets/horse_bake.py -- "$(src ultimate-animals)" "$H" 0.25
+P=apps/openagents-web/realms/everglade2/assets/everglade2.pack
+coax/web/tool.sh metaverse-engine/tools/pack-seal.coax --working "$P" /tmp/e2-working.pack
+coax/web/tool.sh metaverse/tools/assets/character_glade_pack.coax --append-horse-e2 \
+  /tmp/e2-working.pack /tmp/e2-horse.pack "$H"
+coax/web/tool.sh metaverse-engine/tools/pack-seal.coax /tmp/e2-horse.pack "$P"
+```
+
+Both the zone pages and Everglade II answer `coax drive why horse-0` (and
+`dragon-1`). Missing frames are named as an asset failure. A quarter metre probe
+along the mount's current forward/backing direction names the first stopping
+`box-N` or `post-N`, including its bounds, or the land edge. The colliders come
+from the actual riding path, including zone props; the query never moves a body.
+Other tree IDs report existence and explicitly leave later links unjudged.
 
 The path's guard is the SRD Fighter at level 10 (`rs_path_guard` in `rules/srd/npcs.coax`):
 AC 19 (Chain Mail, a Shield and the Defense style), 84 Hit Points, Str 18, Proficiency +4, and two
