@@ -1,0 +1,439 @@
+// A battle's creatures and what befalls them (GitHub #13287, split from battle.coax): adding one,
+// the order of the first turns and whose is due, dropping an effect and the effects a turn's end
+// takes, what follows a creature dropping to 0, damage with all it sets off, and Hellish Rebuke.
+//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-life.coax
+#authority;
+
+rs_add :: (b: [] RsBattle, c: RsCreature, x: int, y: int) -> int #effects(all) {
+  rs_room(b);
+  if b[0].n >= b[0].c.count { return -1; }
+  i := b[0].n;
+  b[0].c[i] = c;   // rs_place puts it on its square; the square its record names was another battle's
+  rs_rest_seed(b[0].c[i..<b[0].c.count]);
+  rs_place(b, i, x, y);
+  b[0].n += 1;
+  rs_rest_retire_dead(b,i);
+  rolled:=rs_roll_initiative(b,i);
+  if rolled { _ := rs_uncanny_metabolism(b,i); }
+  _ := rs_stable_arm(b,i);
+  return i;
+}
+// The turns begin: the highest initiative first, the rest spread over the 6-second round.
+rs_begin :: (b: [] RsBattle) #effects(all) {
+  rs_seal_timing(b);
+  rs_index(b);
+  b[0].who = -1;
+  // each creature's rank: those with a higher initiative, then those before it with the same (a
+  // count of each initiative, so a big battle begins in one pass rather than every pair)
+  higher: [RS_INIT_SPAN] int; seen: [RS_INIT_SPAN] int;
+  for i: 0..<b[0].n { higher[rs_init_slot(b[0].c[i].initiative)] += 1; }
+  above := 0; v := RS_INIT_SPAN - 1;
+  while v >= 0 { here := higher[v]; higher[v] = above; above += here; v -= 1; }
+  for i: 0..<b[0].n {
+    q := rs_init_slot(b[0].c[i].initiative);
+    rank := higher[q] + seen[q]; seen[q] += 1;
+    b[0].c[i].turn_at = b[0].clock + RS_FIRST_TURN + rank * rs_beat(b) / b[0].n;
+    b[0].c[i].round_at = b[0].c[i].turn_at;
+  }
+}
+RS_FIRST_TURN :: 400000;   // ticks from the battle's start to its first turn (0.4 s)
+// Initiatives counted by slot: -64 to 191 (a d20 and a modifier fall well inside).
+RS_INIT_SPAN :: 256;
+rs_init_slot :: (v: int) -> int #effects(all) { return rs_max(0, rs_min(RS_INIT_SPAN - 1, v + 64)); }
+// Whose turn is due on the clock, or -1.
+rs_due :: (b: [] RsBattle) -> int #effects(all) {
+  best := -1;
+  for i: 0..<b[0].n {
+    if b[0].c[i].dead || b[0].c[i].turn_at > b[0].clock { continue; }
+    if best < 0 || b[0].c[i].turn_at < b[0].c[best].turn_at { best = i; }
+  }
+  return best;
+}
+
+rs_drop_effect :: (b: [] RsBattle, j: int, k: int) #effects(all) {
+  c: [1] RsCreature; c[0] = b[0].c[j];
+  rs_effect_end(c[..], k);
+  b[0].c[j] = c[0];
+}
+// When the caster's next turn ends, and when it starts (its turns are instants on the clock).
+// Both are the tick of that turn exactly; no slack either side (#13287). What ends before the turn
+// is an effect or field the clock ends at that tick: the tick that reaches it drops it before the
+// turn is taken. What ends after the turn is an effect its owner's turn end drops (rs_turn_effect).
+rs_next_turn_tick :: (b: [] RsBattle, i: int) -> int #effects(all) { return rs_feature_next_turn_at(b,i); }
+// An effect that lasts until the end of creature `whose`'s turn at tick `until`.
+rs_turn_effect :: (e: RsEffect, whose: int, until: int) -> RsEffect #effects(all) { o := e; o.until = until; o.turn_end = whose + 1; return o; }
+// Creature i's turn at tick `at` has ended: what lasted until its end is gone, on every creature.
+rs_turn_effects_end :: (b: [] RsBattle, i: int, at: int) #effects(all) {
+  for j: 0..<b[0].n { for k: 0..<RS_EFFECTS {
+    e := b[0].c[j].eff[k];
+    if rs_effect_turn_ended(e.kind, e.turn_end - 1, e.until, i, at) { rs_drop_effect(b, j, k); }
+  } }
+}
+
+// What follows a creature dropping to 0: a Hex on it can move on a later turn, and a Fiend
+// Warlock who dropped it, or stands within 10 feet of it, has Dark One's Blessing.
+rs_dropped :: (b: [] RsBattle, by: int, j: int) #effects(all) {
+  for k: 0..<b[0].n {
+    // only a Hex or a Hunter's Mark held, or Dark One's Blessing, has anything to do here (the
+    // look first, before a creature's copy: a big battle has thousands)
+    if !b[0].c[k].dark_blessing && b[0].c[k].conc != SP_HEX && b[0].c[k].conc != SP_HUNTERS_MARK { continue; }
+    c := b[0].c[k];
+    for e: 0..<RS_EFFECTS {
+      ek := b[0].c[j].eff[e].kind;
+      if b[0].c[j].eff[e].by == k && ((ek == EF_HEX && c.conc == SP_HEX) || (ek == EF_MARK && c.conc == SP_HUNTERS_MARK)) {
+        b[0].c[k].hex_free = true;
+        b[0].c[k].hex_free_after = ifx rs_turn_owner(b) == k then c.turn_at else c.turn_at - rs_beat(b);
+      }
+    }
+    if !c.dark_blessing || !rs_up(c) || c.team == b[0].c[j].team { continue; }
+    if k != by && rs_feet_to(b, k, j) >= 10 + RS_SQUARE { continue; }   // within 10 feet: nearer than the next square out
+    gain := rs_max(rs_mod(c.score[RS_CHA]) + c.level, 1);
+    if gain <= c.temp { continue; }
+    b[0].c[k].temp = gain;
+    l: [1] RsLine;
+    rs_add_name(l[..], b, k); rs_add_text(l[..], " has Dark One's Blessing: "); rs_add_int(l[..], gain); rs_add_text(l[..], " Temporary Hit Points");
+    rs_tell_ft(b, RS_EV_HEAL, -1, k, k, gain, 0, RS_FT_DARK_BLESSING, l[..]);
+  }
+}
+// Damage, with dropping to 0 and the concentration save the SRD calls for.
+// Damage the world deals outside any attack or spell (a fall, a blow a realm's own rules strike):
+// Bludgeoning, never a Critical Hit, no spell's.
+rs_world_damage :: (b: [] RsBattle, by: int, j: int, amount: int) #effects(all) { rs_damage_dealt(b, by, j, amount, false, false, -1); }
+// An amount already counted against Resistance and the rest, of damage type `kind`. To what follows
+// here a type is one thing only: Radiant or not (Undead Fortitude saves against no Radiant damage).
+rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: bool, spell: int) #effects(all) {
+  rs_damage_dealt(b, by, j, amount, kind == RS_RADIANT, crit, spell);
+}
+// A creature holding a spell by Concentration saves with Advantage if it has Eldritch Mind (p. 72):
+// the Advantages its save counts.
+rs_concentration_ups :: (c: RsCreature) -> int #effects(all) { return ifx c.eldritch_mind then 1 else 0; }
+rs_damage_dealt :: (b: [] RsBattle, by: int, j: int, amount: int, radiant: bool, crit: bool, spell: int) #effects(all) {
+  rs_rest_damage_before(b,j,amount);
+  dealt:=rs_damage_floor(b[0].c[j],amount);
+  // A knockout replaces dropping to 0, so Undead Fortitude has nothing to save against.
+  ko:=rs_knockout_due(b,by,j,dealt);
+  protected_hp:=ifx ko then 1 else rs_damage_protection(b,by,j,dealt,radiant,crit);
+  // Saving throws may consume creature-local rescue resources. Snapshot only
+  // after the rest cause and protection save have committed that state.
+  hurt:[1]RsCreature; hurt[0]=b[0].c[j];
+  r:=rs_hurt_protected(hurt[..],dealt,crit,protected_hp);
+  b[0].c[j] = hurt[0];
+  if r.killed { rs_record_combat_death(b,j); }
+  rs_rest_retire_dead(b,j);
+  // Turn Undead ends early on a creature that takes any damage
+  if r.taken > 0 {
+    for k: 0..<RS_EFFECTS {
+      if b[0].c[j].eff[k].kind == EF_DAZED { rs_drop_effect(b, j, k); continue; }
+      if b[0].c[j].eff[k].kind == EF_TURNED {
+        rs_drop_effect(b, j, k);
+        if !b[0].c[j].dead { l: [1] RsLine; rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is no longer turned"); rs_tell(b, RS_EV_END, -1, by, j, 0, 0, l[..]); }
+      }
+    }
+  }
+  if ko { rs_knock_out(b,by,j); }
+  if r.dropped || r.killed {
+    l: [1] RsLine;
+    rs_add_name(l[..], b, j); rs_add_text(l[..], ifx r.killed then " dies" else " drops to 0 Hit Points");
+    rs_tell(b, ifx r.killed then RS_EV_DEATH else RS_EV_DOWN, spell, by, j, 0, 0, l[..]);
+    rs_interrupt_incapacitated(b,j);
+    if r.dropped { rs_dropped(b, by, j); }
+    if b[0].c[j].familiar_owner>0 { rs_familiar_retire(b,j); }
+    return;
+  }
+  // the damage called for a save (its DC is never 0), and the spell is still held (a knockout ended it)
+  if r.conc_dc != 0 && b[0].c[j].conc >= 0 {
+    saving := rs_saving_throw_edges(b,j,RS_CON,r.conc_dc,rs_concentration_ups(b[0].c[j]),0);
+    total := saving.total;
+    if !saving.passed {
+      l: [1] RsLine;
+      rs_add_text(l[..], " (Con save "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], r.conc_dc); rs_add_text(l[..], ")");
+      why := cast(string) l[0].buf[0..<l[0].n];
+      rs_end_concentration(b, j, why);
+    }
+  }
+  if r.taken > 0 { ok := rs_hellish_rebuke(b, j, by); }
+}
+// Hellish Rebuke (p. 140): a Reaction to taking damage from a creature it can see within 60 feet;
+// that creature makes a Dex save, 2d10 Fire on a failure (1d10 more a slot level above 1), half on
+// a success. With its lowest free slot (a Warlock's are its Pact slots, never an Arcanum's).
+rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool #effects(all) {
+  if by < 0 { return false; }
+  c := b[0].c[j];
+  sp := SP_HELLISH_REBUKE; fire := RS_FIRE;
+  if !c.rebuke || c.reacted || !rs_capable(c) || rs_casting_barred(c) || !rs_spell_ready(c, sp) { return false; }
+  if !rs_cast_sees(b, j, by, sp) { return false; }   // a creature of this battle that it can see
+  // its own team's damage, its own too, is never answered; 60 feet: nearer than the next square out
+  if b[0].c[by].dead || b[0].c[by].team == c.team || rs_feet_to(b, j, by) >= 60 + RS_SQUARE { return false; }
+  slot := 0;
+  for k: 1..<6 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
+  if slot == 0 { return false; }
+  if !rs_cast_reaction_slot(b,j,sp,slot,true) { return false; }
+  dc := rs_dc(b, j);
+  saving := rs_saving_throw_magic(b,by,RS_DEX,dc,0);
+  st := saving.total;
+  n := 1 + slot;
+  dmg := rs_sum(b[0].dice[..], n, 10);
+  if saving.passed { dmg = dmg / 2; }
+  got := rs_resisted(b, by, dmg, fire);
+  l: [1] RsLine;
+  rs_add_name(l[..], b, j); rs_add_text(l[..], " casts Hellish Rebuke ("); rs_add_text(l[..], RS_ORDINAL[slot]); rs_add_text(l[..], "-level slot) at ");
+  rs_add_name(l[..], b, by); rs_add_text(l[..], ": DEX save "); rs_add_int(l[..], st); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
+  rs_add_text(l[..], ifx saving.passed then ": success" else ": failure");
+  rs_tell(b, RS_EV_CAST, sp, j, by, slot, 0, l[..]);
+  dl: [1] RsLine;
+  rs_add_text(dl[..], "  "); rs_add_name(dl[..], b, by); rs_add_text(dl[..], " takes "); rs_add_int(dl[..], got); rs_add_text(dl[..], " Fire (");
+  rs_add_int(dl[..], n); rs_add_text(dl[..], "d10"); if saving.passed { rs_add_text(dl[..], ", halved"); } rs_add_text(dl[..], ")");
+  rs_tell(b, RS_EV_DAMAGE, sp, j, by, got, fire, dl[..]);
+  rs_damage_dealt(b, j, by, got, false, false, sp);   // Fire: not Radiant
+  return true;
+}
+
+// ---- checks
+
+#test "life: whose turn is due: the earliest at or before the clock, the first of equals, never the dead" {
+  b: [1] RsBattle; b[0].w = 8; b[0].h = 8;
+  x := rs_add(b[..], rs_fighter("A", 0, 1), 1, 1); y := rs_add(b[..], rs_fighter("B", 1, 1), 2, 1); z := rs_add(b[..], rs_fighter("C", 1, 1), 3, 1);
+  b[0].c[x].turn_at = 10; b[0].c[y].turn_at = 5; b[0].c[z].turn_at = 5;
+  b[0].clock = 4; #assert rs_due(b[..]) == -1;
+  b[0].clock = 5; #assert rs_due(b[..]) == y;
+  b[0].c[y].dead = true; #assert rs_due(b[..]) == z;
+  b[0].clock = 10; #assert rs_due(b[..]) == z;
+  b[0].c[z].turn_at = 11; #assert rs_due(b[..]) == x;
+  // the first of them keeps its place when a later one is due later
+  b[0].c[x].turn_at = 5; b[0].c[y].dead = true; b[0].c[z].turn_at = 7; #assert rs_due(b[..]) == x;
+  b[0].c[x].turn_at = 10; b[0].c[z].turn_at = 11;
+  b[0].c[y].dead = false; b[0].c[y].turn_at = 9; #assert rs_due(b[..]) == y;
+  empty: [1] RsBattle; #assert rs_due(empty[..]) == -1;
+}
+#test "life: an effect until a turn's end carries that turn's tick and its owner, and nothing else changes" {
+  e := RsEffect.{kind = EF_EXPOSED, cond = 3, by = 4, spell = 5, until = 6, save = 7, dc = 8, turn_end = 9};
+  o := rs_turn_effect(e, 0, 77);
+  #assert o.until == 77 && o.turn_end == 1 && o.kind == EF_EXPOSED && o.cond == 3 && o.by == 4 && o.spell == 5 && o.save == 7 && o.dc == 8;
+  #assert rs_turn_effect(e, 11, 0).turn_end == 12 && rs_turn_effect(e, 11, 0).until == 0;
+}
+#test "life: the world's damage is plain: the amount, no Critical Hit, no spell's name" {
+  b: [1] RsBattle; b[0].w = 8; b[0].h = 8; b[0].dice[0].fixed = true;
+  a := rs_add(b[..], rs_fighter("A", 0, 1), 1, 1);
+  z := rs_add(b[..], rs_zombie("Zombie", 1), 2, 1);
+  hp := b[0].c[a].hp;
+  rs_world_damage(b[..], z, a, 3); #assert b[0].c[a].hp == hp - 3;
+  // Undead Fortitude saves against it, as against any blow that is no Critical Hit (DC 9, its 13: it stands at 1)
+  b[0].c[z].hp = 4; rs_world_damage(b[..], a, z, 4); #assert b[0].c[z].hp == 1 && !b[0].c[z].dead;
+  seq := b[0].book[0].seq; b[0].c[a].hp = 2; rs_world_damage(b[..], z, a, 2);
+  found := false;
+  for k: 0..<b[0].book[0].seq - seq { ev := rs_recent_at(b[0].book[..], k); if ev.kind == RS_EV_DOWN { found = true; #assert ev.spell == -1 && ev.to == a && ev.by == z; } }
+  #assert found && b[0].c[a].hp == 0;
+}
+#test "life: a creature added takes the next place, its square, its Hit Dice and its Initiative; a Monk's Uncanny Metabolism answers the roll" {
+  b: [1] RsBattle; b[0].w = 8; b[0].h = 8; b[0].dice[0].fixed = true;
+  i := rs_add(b[..], rs_fighter("Garr", 0, 3), 2, 5);
+  #assert i == 0 && b[0].n == 1 && b[0].c[0].x == 2 && b[0].c[0].y == 5 && rs_at(b[..], 2, 5) == 0;
+  #assert b[0].c[0].rest.seeded && b[0].c[0].rest.die == 10 && b[0].c[0].rest.dice == 3 && b[0].c[0].rest.dice_max == 3;
+  m := rs_monk("Sen", 0, 3); m.focus = 0;
+  #assert m.metabolism && m.uses[RS_USE_METABOLISM] == 1 && m.focus_max == 3;
+  j := rs_add(b[..], m, 3, 5);
+  #assert j == 1 && b[0].c[j].focus == 3 && b[0].c[j].uses[RS_USE_METABOLISM] == 0;
+}
+#test "life: the turns begin in Initiative order, equals in the order they joined, spread evenly over the round from 0.4 s on" {
+  b: [1] RsBattle; b[0].w = 16; b[0].h = 8;
+  inits := [8] int.[10, 21, 10, -64, 200, -100, 21, 0];
+  for k: 0..<8 { i := rs_add(b[..], rs_fighter("F", k % 2, 1), k, 1); b[0].c[i].initiative = inits[k]; }
+  b[0].clock = 7; b[0].who = 3;
+  rs_begin(b[..]);
+  ranks := [8] int.[3, 1, 4, 6, 0, 7, 2, 5];
+  for k: 0..<8 { #assert b[0].c[k].turn_at == 7 + 400000 + ranks[k] * 750000 && b[0].c[k].round_at == b[0].c[k].turn_at; }
+  #assert b[0].who == -1 && b[0].timing_sealed && rs_beat(b[..]) == 6000000 && RS_FIRST_TURN == 400000;
+  #assert rs_init_slot(-64) == 0 && rs_init_slot(-65) == 0 && rs_init_slot(-63) == 1 && rs_init_slot(0) == 64 && rs_init_slot(190) == 254 && rs_init_slot(191) == 255 && rs_init_slot(192) == 255;
+  // one creature alone goes first; a battle of none begins
+  one: [1] RsBattle; one[0].w = 4; one[0].h = 4; _ := rs_add(one[..], rs_fighter("F", 0, 1), 1, 1); rs_begin(one[..]); #assert one[0].c[0].turn_at == 400000;
+  none: [1] RsBattle; none[0].who = 2; rs_begin(none[..]); #assert none[0].who == -1;
+  // the squares' index is rebuilt from where every creature stands
+  one[0].c[0].x = 3; #assert rs_at(one[..], 3, 1) == -1;
+  rs_begin(one[..]); #assert rs_at(one[..], 3, 1) == 0 && rs_at(one[..], 1, 1) == -1;
+}
+#test "life: a turn's end takes what lasted until it, from the first creature on, and nothing of another's turn or a later one" {
+  b: [1] RsBattle; b[0].w = 8; b[0].h = 8;
+  _ := rs_add(b[..], rs_fighter("A", 0, 1), 1, 1); _ = rs_add(b[..], rs_fighter("B", 1, 1), 2, 1);
+  #assert rs_effect_add(b[0].c[0..<1], rs_turn_effect(RsEffect.{kind = EF_EXPOSED, by = 1, spell = -1, save = -1}, 1, 50));
+  rs_turn_effects_end(b[..], 0, 50); #assert rs_effect(b[0].c[0], EF_EXPOSED);
+  rs_turn_effects_end(b[..], 1, 49); #assert rs_effect(b[0].c[0], EF_EXPOSED);
+  rs_turn_effects_end(b[..], 1, 50); #assert !rs_effect(b[0].c[0], EF_EXPOSED);
+}
+#test "life: a creature drops: a Hex or a Hunter's Mark on it is free to move for the one who holds that spell, from that one's next turn" {
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  w := rs_add(b[..], rs_warlock("Vesk", 0, 1, SP_ELDRITCH_BLAST), 1, 1);   // level 1: no Dark One's Blessing
+  r := rs_add(b[..], rs_ranger("Wren", 0, 1), 2, 1);
+  x := rs_add(b[..], rs_warlock("Ilse", 0, 1, SP_ELDRITCH_BLAST), 3, 1);   // holds a Hex of its own, on no one here
+  f := rs_add(b[..], rs_fighter("Garr", 0, 1), 4, 1);
+  t := rs_add(b[..], rs_fighter("Target", 1, 1), 5, 1);
+  u := rs_add(b[..], rs_fighter("Other", 1, 1), 6, 1);
+  #assert !b[0].c[w].dark_blessing && !b[0].c[x].dark_blessing && !b[0].c[r].dark_blessing;
+  far := 9000000000;
+  b[0].c[w].conc = SP_HEX; b[0].c[w].conc_until = far; b[0].c[x].conc = SP_HEX; b[0].c[x].conc_until = far; b[0].c[r].conc = SP_HUNTERS_MARK; b[0].c[r].conc_until = far;
+  b[0].c[w].turn_at = 100; b[0].c[r].turn_at = 200; b[0].who = w;
+  #assert rs_put_effect(b[..], t, RsEffect.{kind = EF_HEX, by = w, spell = SP_HEX, until = far, save = -1});
+  #assert rs_put_effect(b[..], t, RsEffect.{kind = EF_MARK, by = r, spell = SP_HUNTERS_MARK, until = far, save = -1});
+  b[0].c[t].hp = 1; seq := b[0].book[0].seq;
+  rs_damage(b[..], f, t, 5, RS_SLASHING, false, SP_FIRE_BOLT);
+  #assert b[0].c[t].hp == 0 && !b[0].c[t].dead && b[0].c[w].hex_free && b[0].c[w].hex_free_after == 100 && b[0].c[r].hex_free && b[0].c[r].hex_free_after == 200 - rs_beat(b[..]);
+  #assert !b[0].c[x].hex_free && !b[0].c[f].hex_free;
+  // the drop is told in the name of the spell that did it, with no amount of its own
+  ev := rs_recent_at(b[0].book[..], 0);
+  #assert b[0].book[0].seq == seq + 1 && ev.kind == RS_EV_DOWN && ev.spell == SP_FIRE_BOLT && ev.by == f && ev.to == t && ev.amount == 0 && ev.damage == 0 && cast(string) ev.text[0..<ev.text_n] == "Target drops to 0 Hit Points";
+  // another effect of theirs frees nothing, nor a Hex from the one who holds a Hunter's Mark, nor a Mark from one who holds a Hex
+  b[0].c[w].hex_free = false; b[0].c[r].hex_free = false;
+  #assert rs_put_effect(b[..], u, RsEffect.{kind = EF_EXPOSED, by = w, spell = -1, until = far, save = -1}) && rs_put_effect(b[..], u, RsEffect.{kind = EF_EXPOSED, by = r, spell = -1, until = far, save = -1});
+  #assert rs_put_effect(b[..], u, RsEffect.{kind = EF_HEX, by = r, spell = SP_HEX, until = far, save = -1}) && rs_put_effect(b[..], u, RsEffect.{kind = EF_MARK, by = w, spell = SP_HUNTERS_MARK, until = far, save = -1});
+  b[0].c[u].hp = 1; rs_damage(b[..], f, u, 5, RS_SLASHING, false, -1);
+  #assert b[0].c[u].hp == 0 && !b[0].c[w].hex_free && !b[0].c[r].hex_free && !b[0].c[x].hex_free;
+}
+#test "life: Dark One's Blessing: within 10 feet or its own doing, up, of the other team; never less than it holds, never less than 1; told as it is" {
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  killer := rs_add(b[..], rs_fighter("Garr", 0, 3), 3, 1);                     // 10 feet away, and no Fiend's
+  near := rs_add(b[..], rs_warlock("Vesk", 0, 3, SP_ELDRITCH_BLAST), 7, 1);    // 10 feet
+  far := rs_add(b[..], rs_warlock("Ilse", 0, 3, SP_ELDRITCH_BLAST), 8, 1);     // 15 feet
+  down := rs_add(b[..], rs_warlock("Down", 0, 3, SP_ELDRITCH_BLAST), 5, 2); b[0].c[down].hp = 0;
+  kin := rs_add(b[..], rs_warlock("Kin", 1, 3, SP_ELDRITCH_BLAST), 4, 1);      // of the team of the one that drops
+  t := rs_add(b[..], rs_fighter("Target", 1, 1), 5, 1);
+  #assert b[0].c[near].dark_blessing && b[0].c[far].dark_blessing && b[0].c[down].dark_blessing && b[0].c[kin].dark_blessing && !b[0].c[killer].dark_blessing;
+  b[0].c[t].hp = 1; seq := b[0].book[0].seq;
+  rs_damage(b[..], killer, t, 5, RS_SLASHING, false, -1);
+  #assert b[0].c[near].temp == 6 && b[0].c[far].temp == 0 && b[0].c[down].temp == 0 && b[0].c[kin].temp == 0 && b[0].c[killer].temp == 0;
+  ev := rs_recent_at(b[0].book[..], 0);
+  #assert b[0].book[0].seq == seq + 2 && ev.kind == RS_EV_HEAL && ev.spell == -1 && ev.by == near && ev.to == near && ev.amount == 6 && ev.damage == 0 && ev.feat == RS_FT_DARK_BLESSING;
+  #assert cast(string) ev.text[0..<ev.text_n] == "Vesk has Dark One's Blessing: 6 Temporary Hit Points";
+  // its own doing reaches from any distance
+  t2 := rs_add(b[..], rs_fighter("Second", 1, 1), 15, 1); b[0].c[t2].hp = 1;
+  rs_damage(b[..], far, t2, 5, RS_FORCE, false, -1); #assert b[0].c[far].temp == 6 && b[0].c[near].temp == 6;
+  // what it holds already is not given again
+  t3 := rs_add(b[..], rs_fighter("Third", 1, 1), 7, 2); b[0].c[t3].hp = 1; seq = b[0].book[0].seq;
+  rs_damage(b[..], killer, t3, 5, RS_SLASHING, false, -1); #assert b[0].book[0].seq == seq + 1 && b[0].c[near].temp == 6 && b[0].c[far].temp == 6;
+  // Charisma 1 and level 3: never less than 1
+  b[0].c[near].score[RS_CHA] = 1; b[0].c[near].temp = 0;
+  t4 := rs_add(b[..], rs_fighter("Fourth", 1, 1), 7, 0); b[0].c[t4].hp = 1;
+  rs_damage(b[..], killer, t4, 5, RS_SLASHING, false, -1); #assert b[0].c[near].temp == 1;
+}
+#test "life: damage ends Turn Undead and a stupor and says so of the living; none taken ends neither; a death is told plainly" {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8; b[0].dice[0].fixed = true;
+  a := rs_add(b[..], rs_fighter("Garr", 0, 3), 1, 1);
+  z := rs_add(b[..], rs_zombie("Zombie", 1), 2, 1); y := rs_add(b[..], rs_zombie("Second", 1), 3, 1);
+  far := 9000000000;
+  #assert rs_put_effect(b[..], z, RsEffect.{kind = EF_TURNED, cond = RS_FRIGHTENED, by = a, spell = -1, until = far, save = -1});
+  #assert rs_put_effect(b[..], z, RsEffect.{kind = EF_DAZED, cond = RS_CHARMED, by = a, spell = -1, until = far, save = -1});
+  rs_damage(b[..], a, z, 0, RS_SLASHING, false, -1); #assert rs_effect(b[0].c[z], EF_TURNED) && rs_effect(b[0].c[z], EF_DAZED);
+  seq := b[0].book[0].seq;
+  rs_damage(b[..], a, z, 1, RS_SLASHING, false, -1);
+  #assert !rs_effect(b[0].c[z], EF_TURNED) && !rs_effect(b[0].c[z], EF_DAZED) && b[0].c[z].hp == 14 && b[0].book[0].seq == seq + 1;
+  ev := rs_recent_at(b[0].book[..], 0);
+  #assert ev.kind == RS_EV_END && ev.spell == -1 && ev.by == a && ev.to == z && ev.amount == 0 && ev.damage == 0 && cast(string) ev.text[0..<ev.text_n] == "  Zombie is no longer turned";
+  // one the damage kills is not told of; its death is
+  #assert rs_put_effect(b[..], y, RsEffect.{kind = EF_TURNED, cond = RS_FRIGHTENED, by = a, spell = -1, until = far, save = -1});
+  b[0].c[y].hp = 1; b[0].c[y].fortitude = false; seq = b[0].book[0].seq;
+  rs_damage(b[..], a, y, 9, RS_SLASHING, false, -1);
+  dv := rs_recent_at(b[0].book[..], 0);
+  #assert b[0].c[y].dead && !rs_saw(b[..], seq, "no longer turned") && b[0].book[0].seq == seq + 1;
+  #assert dv.kind == RS_EV_DEATH && dv.spell == -1 && dv.by == a && dv.to == y && dv.amount == 0 && dv.damage == 0 && cast(string) dv.text[0..<dv.text_n] == "Second dies";
+  // Undead Fortitude saves against anything but Radiant damage (2 damage, DC 7, its 13)
+  b[0].c[z].hp = 2; rs_damage(b[..], a, z, 2, RS_SLASHING, false, -1); #assert b[0].c[z].hp == 1 && !b[0].c[z].dead;
+  rs_damage(b[..], a, z, 1, RS_RADIANT, false, -1); #assert b[0].c[z].dead;
+}
+#test "life: a knockout leaves 1 Hit Point, and no save for the spell it ends" {
+  b: [1] RsBattle; b[0].w = 8; b[0].h = 8; b[0].dice[0].fixed = true;
+  a := rs_add(b[..], rs_fighter("Garr", 0, 3), 1, 1); t := rs_add(b[..], rs_wizard("Mordra", 1, 3), 2, 1);
+  b[0].c[t].conc = SP_BLESS; b[0].c[t].conc_until = 9000000000; b[0].c[t].hp = 5;
+  b[0].ko_by = a + 1; rolls := b[0].dice[0].rolled;
+  rs_damage(b[..], a, t, 9, RS_SLASHING, false, -1);
+  #assert b[0].c[t].hp == 1 && rs_knocked_out(b[0].c[t]) && rs_has(b[0].c[t], RS_UNCONSCIOUS) && b[0].c[t].conc == -1 && b[0].dice[0].rolled == rolls;
+}
+#test "life: damage to one holding a spell: a Constitution save against half the damage, 10 at least; Eldritch Mind's Advantage; its end told with the save" {
+  b: [1] RsBattle; b[0].w = 8; b[0].h = 8; b[0].dice[0].fixed = true;
+  a := rs_add(b[..], rs_fighter("Garr", 0, 3), 1, 1); t := rs_add(b[..], rs_wizard("Mordra", 1, 3), 2, 1);
+  b[0].c[t].hp = 200; b[0].c[t].conc = SP_BLESS; b[0].c[t].conc_until = 9000000000; b[0].c[t].score[RS_INT] = 1;
+  // none taken: no save
+  rolls := b[0].dice[0].rolled; rs_damage(b[..], a, t, 0, RS_SLASHING, false, -1); #assert b[0].dice[0].rolled == rolls && b[0].c[t].conc == SP_BLESS;
+  // 5 damage: DC 10 against a 10 and Constitution's +1, rolled once
+  rs_damage(b[..], a, t, 5, RS_SLASHING, false, -1); #assert b[0].dice[0].rolled == rolls + 1 && b[0].c[t].conc == SP_BLESS;
+  rs_damage(b[..], a, t, 23, RS_SLASHING, false, -1); #assert b[0].c[t].conc == SP_BLESS;   // DC 11
+  // Eldritch Mind rolls twice
+  #assert rs_concentration_ups(b[0].c[t]) == 0;
+  b[0].c[t].eldritch_mind = true; #assert rs_concentration_ups(b[0].c[t]) == 1;
+  rolls = b[0].dice[0].rolled; rs_damage(b[..], a, t, 5, RS_SLASHING, false, -1); #assert b[0].dice[0].rolled == rolls + 2 && b[0].c[t].conc == SP_BLESS;
+  // 24 damage: DC 12
+  rs_damage(b[..], a, t, 24, RS_SLASHING, false, -1);
+  ev := rs_recent_at(b[0].book[..], 0);
+  #assert b[0].c[t].conc == -1 && ev.kind == RS_EV_END && ev.spell == SP_BLESS && ev.by == t && cast(string) ev.text[0..<ev.text_n] == "Mordra's Bless ends (Con save 11 vs DC 12)";
+  // the first spell of the list is held like any other
+  b[0].c[t].conc = 0; b[0].c[t].conc_until = 9000000000; rs_damage(b[..], a, t, 24, RS_SLASHING, false, -1); #assert b[0].c[t].conc == -1;
+}
+#test "life: Hellish Rebuke: a Reaction and its lowest slot at one who hurt it within 60 feet that it sees; a Dexterity save, a d10 more than the slot's level of Fire, half on a success" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+  g := rs_add(b[..], rs_fighter("Guard", 1, 3), 13, 1);   // the first creature of the battle, 60 feet away
+  w := rs_add(b[..], rs_warlock("Vesk", 0, 3, SP_ELDRITCH_BLAST), 1, 1);
+  keys := [2] int.[RS_EXEC_SOURCE[SP_HEX], RS_EXEC_SOURCE[SP_HELLISH_REBUKE]];
+  b[0].c[w].rebuke = true; #assert rs_set_spells(b[0].c[w..<w+1], keys[..]);
+  b[0].c[g].hp = 200; b[0].c[w].hp = 200;
+  #assert g == 0 && b[0].c[w].slots[2] == 2 && b[0].c[w].slots[1] == 0 && rs_dc(b[..], w) == 13;
+  // none taken, or from its own team: no answer
+  rs_damage(b[..], g, w, 0, RS_SLASHING, false, -1); #assert !b[0].c[w].reacted && b[0].c[w].slots[2] == 2;
+  // hurt: it answers, with a 2nd-level slot: 3d10 against a failed save (a 10 and Dexterity's +1)
+  seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled;
+  rs_damage(b[..], g, w, 3, RS_SLASHING, false, -1);
+  #assert b[0].c[w].reacted && b[0].c[w].slots[2] == 1 && b[0].c[g].hp == 185 && b[0].book[0].seq == seq + 2 && b[0].dice[0].rolled == rolls + 4;
+  dv := rs_recent_at(b[0].book[..], 0); cv := rs_recent_at(b[0].book[..], 1);
+  #assert cv.kind == RS_EV_CAST && cv.spell == SP_HELLISH_REBUKE && cv.by == w && cv.to == g && cv.amount == 2 && cv.damage == 0;
+  #assert cast(string) cv.text[0..<cv.text_n] == "Vesk casts Hellish Rebuke (2nd-level slot) at Guard: DEX save 11 vs DC 13: failure";
+  #assert dv.kind == RS_EV_DAMAGE && dv.spell == SP_HELLISH_REBUKE && dv.by == w && dv.to == g && dv.amount == 15 && dv.damage == RS_FIRE;
+  #assert cast(string) dv.text[0..<dv.text_n] == "  Guard takes 15 Fire (3d10)";
+  // its Reaction is spent
+  #assert !rs_hellish_rebuke(b[..], w, g) && b[0].c[w].slots[2] == 1;
+  // one that has not the Reaction ready does not answer, though it knows the spell
+  b[0].c[w].reacted = false; b[0].c[w].rebuke = false; #assert !rs_hellish_rebuke(b[..], w, g) && b[0].c[w].slots[2] == 1 && !b[0].c[w].reacted;
+  b[0].c[w].rebuke = true;
+  // a dead attacker, or one of its own team, is not answered
+  b[0].c[g].dead = true; #assert !rs_hellish_rebuke(b[..], w, g);
+  b[0].c[g].dead = false; b[0].c[g].team = 0; #assert !rs_hellish_rebuke(b[..], w, g) && !b[0].c[w].reacted;
+  b[0].c[g].team = 1;
+  // no one outside the battle is answered, however alive its record looks
+  b[0].c[w].reacted = false; b[0].c[b[0].n] = b[0].c[g];
+  #assert !rs_hellish_rebuke(b[..], w, -1) && !rs_hellish_rebuke(b[..], w, b[0].n) && !b[0].c[w].reacted;
+  // 65 feet is too far; one it can't see is not answered
+  rs_place(b[..], g, 14, 1); #assert !rs_hellish_rebuke(b[..], w, g);
+  rs_place(b[..], g, 13, 1); b[0].c[g].cond |= RS_INVISIBLE; #assert !rs_hellish_rebuke(b[..], w, g) && !b[0].c[w].reacted;
+  b[0].c[g].cond = 0;
+  // a success halves it, and Resistance again: 15, 7, 3
+  // (on its own turn the slot is that turn's one spell with a slot)
+  b[0].c[g].score[RS_DEX] = 30; b[0].c[g].resist = 1 << RS_FIRE; b[0].c[g].hp = 200;
+  rs_fresh(b[..], w); #assert !b[0].turn.slot_spent;
+  #assert rs_hellish_rebuke(b[..], w, g) && b[0].c[g].hp == 197 && b[0].c[w].slots[2] == 0 && b[0].turn.slot_spent;
+  b[0].who = -1; b[0].turn = RsTurn.{};
+  hv := rs_recent_at(b[0].book[..], 0); sv := rs_recent_at(b[0].book[..], 1);
+  #assert cast(string) sv.text[0..<sv.text_n] == "Vesk casts Hellish Rebuke (2nd-level slot) at Guard: DEX save 20 vs DC 13: success" && cast(string) hv.text[0..<hv.text_n] == "  Guard takes 3 Fire (3d10, halved)";
+  b[0].c[g].score[RS_DEX] = 13; b[0].c[g].resist = 0;
+  // no slot, or only a Mystic Arcanum's 6th: no answer
+  b[0].c[w].reacted = false; #assert !rs_hellish_rebuke(b[..], w, g) && !b[0].c[w].reacted;
+  b[0].c[w].slots[6] = 1; #assert !rs_hellish_rebuke(b[..], w, g) && b[0].c[w].slots[6] == 1;
+  // the lowest slot it has: the 1st, 2d10
+  b[0].c[w].slots[6] = 0; b[0].c[w].slots[1] = 1; b[0].c[w].slots[3] = 1; b[0].c[g].hp = 200;
+  #assert rs_hellish_rebuke(b[..], w, g) && b[0].c[w].slots[1] == 0 && b[0].c[w].slots[3] == 1 && b[0].c[g].hp == 190;
+  lv := rs_recent_at(b[0].book[..], 1); #assert lv.amount == 1 && cast(string) lv.text[0..<lv.text_n] == "Vesk casts Hellish Rebuke (1st-level slot) at Guard: DEX save 11 vs DC 13: failure";
+  // it drops its attacker in the spell's name; Undead Fortitude saves against it, as against Fire that is no Critical Hit
+  b[0].c[w].reacted = false; b[0].c[w].slots[1] = 1; b[0].c[g].hp = 3; seq = b[0].book[0].seq;
+  #assert rs_hellish_rebuke(b[..], w, g) && b[0].c[g].hp == 0;
+  found := false;
+  for k: 0..<b[0].book[0].seq - seq { ev := rs_recent_at(b[0].book[..], k); if ev.kind == RS_EV_DOWN { found = true; #assert ev.spell == SP_HELLISH_REBUKE && ev.to == g && ev.by == w; } }
+  #assert found;
+  z := rs_add(b[..], rs_zombie("Zombie", 1), 3, 1); b[0].c[z].hp = 4; b[0].c[z].score[RS_CON] = 30;   // DC 15 against a 20
+  b[0].c[w].reacted = false; b[0].c[w].slots[1] = 1;
+  #assert rs_hellish_rebuke(b[..], w, z) && b[0].c[z].hp == 1 && !b[0].c[z].dead;
+  // 1d10 a die: seeded dice, the same dice rolled beside it, at one that can't save
+  for seed: 1..<7 {
+    s: [1] RsBattle; s[0].w = 8; s[0].h = 8;
+    sg := rs_add(s[..], rs_fighter("Guard", 1, 3), 3, 1); sw := rs_add(s[..], rs_warlock("Vesk", 0, 3, SP_ELDRITCH_BLAST), 1, 1);
+    s[0].c[sw].rebuke = true; #assert rs_set_spells(s[0].c[sw..<sw+1], keys[..]);
+    s[0].c[sg].hp = 200; s[0].c[sg].cond = RS_PARALYZED;
+    s[0].dice[0].state = cast(u64) seed; beside: [1] RsDice; beside[0] = s[0].dice[0];
+    want := rs_sum(beside[..], 3, 10);
+    #assert rs_hellish_rebuke(s[..], sw, sg) && s[0].c[sg].hp == 200 - want;
+  }
+}
+

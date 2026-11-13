@@ -91,13 +91,14 @@ rs_fire_breath_on :: (b: [] RsBattle, i: int, picks: [] const int) -> int #effec
   }
   return n;
 }
-// The same aimed on the battle's own grid: the cone from i's square along (fx, fy).
+// The same aimed on the battle's own grid: the cone from i's square along (fx, fy), on the first
+// RS_MAX creatures it finds there.
 rs_fire_breath :: (b: [] RsBattle, i: int, fx: f32, fy: f32) -> int #effects(all) {
   picks: [RS_MAX] int; n := 0;
   for j: 0..<b[0].n {
     if !rs_area_target(b, i, j) { continue; }
     dx := f32((b[0].c[j].x - b[0].c[i].x) * RS_SQUARE); dy := f32((b[0].c[j].y - b[0].c[i].y) * RS_SQUARE);
-    if rs_in_cone(dx, dy, fx, fy, f32(RS_BREATH_FT)) { picks[n] = j; n += 1; }
+    if n < picks.count && rs_in_cone(dx, dy, fx, fy, f32(RS_BREATH_FT)) { picks[n] = j; n += 1; }
   }
   return rs_fire_breath_on(b, i, picks[0..<n]);
 }
@@ -480,3 +481,13 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   for k: 0..<60 { rs_dragon_turn_start(b[..], f); #assert b[0].c[f].breath_spent; }
   #assert b[0].c[f].hp == 200 && b[0].c[f].burning == 0;
 }
+#test "Fire Breath on a battle larger than the rules' own room: the first RS_MAX creatures in the cone, and no more" {
+  room: [RS_MAX + 4] RsCreature; occ: [1] int;
+  b: [1] RsBattle; rs_use(b[..], room[..], occ[..]); b[0].w = 40; b[0].h = 40; b[0].dice[0].fixed = true;
+  d := rs_add(b[..], rs_monster(MON_ADULT_RED_DRAGON, "", 0), 10, 10);
+  for k: 0..<RS_MAX + 3 { _ := dragon_foe(b[..], 10, 14); }
+  rs_fresh(b[..], d);
+  #assert b[0].n == RS_MAX + 4 && rs_fire_breath(b[..], d, 0, 1) == RS_MAX;
+  #assert b[0].c[RS_MAX].hp == 149 && b[0].c[RS_MAX + 1].hp == 200 && b[0].c[RS_MAX + 3].hp == 200 && b[0].c[1].hp == 149;
+}
+

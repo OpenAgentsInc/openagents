@@ -15,14 +15,14 @@
 }
 #test "Fortitude eligibility observes exact HP and temporary HP thresholds and exclusions" {
   c:RsCreature; c.fortitude=true; c.hp=2; c.temp=3;
-  #assert !rs_fortitude_needed(c,4,RS_FIRE,false) && rs_fortitude_needed(c,5,RS_FIRE,false);
-  #assert !rs_fortitude_needed(c,5,RS_RADIANT,false) && !rs_fortitude_needed(c,5,RS_FIRE,true);
-  c.fortitude=false; #assert !rs_fortitude_needed(c,5,RS_FIRE,false);
-  c.fortitude=true; c.dead=true; #assert !rs_fortitude_needed(c,5,RS_FIRE,false);
-  c.dead=false; c.hp=0; #assert !rs_fortitude_needed(c,5,RS_FIRE,false);
-  c.hp=1; c.temp=0; #assert !rs_fortitude_needed(c,-1,RS_FIRE,false);
+  #assert !rs_fortitude_needed(c,4,false,false) && rs_fortitude_needed(c,5,false,false);
+  #assert !rs_fortitude_needed(c,5,true,false) && !rs_fortitude_needed(c,5,false,true);
+  c.fortitude=false; #assert !rs_fortitude_needed(c,5,false,false);
+  c.fortitude=true; c.dead=true; #assert !rs_fortitude_needed(c,5,false,false);
+  c.dead=false; c.hp=0; #assert !rs_fortitude_needed(c,5,false,false);
+  c.hp=1; c.temp=0; #assert !rs_fortitude_needed(c,-1,false,false);
   c.hp=9223372036854775807; c.temp=9223372036854775807;
-  #assert !rs_fortitude_needed(c,9223372036854775807,RS_FIRE,false);
+  #assert !rs_fortitude_needed(c,9223372036854775807,false,false);
   #assert rs_fortitude_dc(0)==5 && rs_fortitude_dc(1)==6;
   #assert rs_fortitude_dc(9223372036854775801)==9223372036854775806;
   #assert rs_fortitude_dc(9223372036854775802)==9223372036854775807;
@@ -31,16 +31,16 @@
 #test "Fortitude reports qualifying save outcomes with their source actor and DC" {
   b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1; b[0].dice[0].fixed=true;
   c[0]=rs_cleric("Priest",0,3); c[1]=rs_zombie("Zombie",1); c[1].hp=1;
-  #assert rs_damage_protection(b[..],0,1,1,RS_FIRE,false)==1;
+  #assert rs_damage_protection(b[..],0,1,1,false,false)==1;
   #assert b[0].book[0].count==1;
   e:=b[0].book[0].ev[0];
   #assert e.kind==RS_EV_SAVE && e.spell == -1 && e.by==0 && e.to==1 && e.amount==13 && e.damage==0 && e.at==0;
   #assert cast(string)e.text[0..<e.text_n]=="  Zombie Undead Fortitude: Con save 13 vs DC 6: it drops to 1 Hit Point";
-  #assert rs_damage_protection(b[..],0,1,100,RS_FIRE,false)==0;
+  #assert rs_damage_protection(b[..],0,1,100,false,false)==0;
   e=b[0].book[0].ev[1];
   #assert e.kind==RS_EV_SAVE && e.amount==13 && e.damage==0;
   #assert cast(string)e.text[0..<e.text_n]=="  Zombie Undead Fortitude: Con save 13 vs DC 105: failure";
-  #assert rs_damage_protection(b[..],0,1,1,RS_RADIANT,false)==0 && b[0].book[0].count==2;
+  #assert rs_damage_protection(b[..],0,1,1,true,false)==0 && b[0].book[0].count==2;
 }
 
 #test "damage with successful HP protection still makes its own concentration save" {
@@ -57,12 +57,12 @@ rs_damage_floor :: (c:RsCreature,amount:int)->int #effects(all) {
   if c.floor<=0 || c.dead { return amount; }
   return rs_max(rs_min(amount,add_sat(c.hp-c.floor,c.temp)),0);
 }
-rs_fortitude_needed :: (c:RsCreature,amount:int,kind:int,crit:bool)->bool #effects(all) {
-  return c.fortitude && !c.dead && c.hp>0 && kind!=RS_RADIANT && !crit && rs_max(amount,0)-c.temp>=c.hp;
+rs_fortitude_needed :: (c:RsCreature,amount:int,radiant:bool,crit:bool)->bool #effects(all) {
+  return c.fortitude && !c.dead && c.hp>0 && !radiant && !crit && rs_max(amount,0)-c.temp>=c.hp;
 }
 rs_fortitude_dc :: (amount:int)->int #effects(all) { return rs_min(amount,9223372036854775802)+5; }
-rs_damage_protection :: (b:[]RsBattle,by:int,j:int,amount:int,kind:int,crit:bool)->int #effects(all) {
-  if !rs_fortitude_needed(b[0].c[j],amount,kind,crit) { return 0; }
+rs_damage_protection :: (b:[]RsBattle,by:int,j:int,amount:int,radiant:bool,crit:bool)->int #effects(all) {
+  if !rs_fortitude_needed(b[0].c[j],amount,radiant,crit) { return 0; }
   dc:=rs_fortitude_dc(amount);
   saving:=rs_saving_throw(b,j,RS_CON,dc);
   l:[1]RsLine; rs_add_text(l[..],"  "); rs_add_name(l[..],b,j); rs_add_text(l[..]," Undead Fortitude: Con save ");
