@@ -97,7 +97,8 @@ ra_take :: (a: [] RealmAgent, p_url: [] u8, p_body: [] u8, lens: [] int) -> int 
   u := redit_put(p_url, 0, RA_SEATS);
   b := 0;
   if k == RAQ_OPEN {
-    b = redit_put(p_body, 0, "{\"slug\":"); b = redit_quote(p_body, b, cast(string) a[0].slug[0..<a[0].slug_n]); b = redit_put(p_body, b, ",\"hosted\":true}");
+    b = seatw_open_body(cast(string) a[0].slug[0..<a[0].slug_n], true, p_body);   // seat.proto's OpenRequest
+    if b < 0 { b = 0; }
   } else {
     u = redit_put(p_url, u, "/"); u = redit_put(p_url, u, ra_seat(a)); u = redit_put(p_url, u, ifx k == RAQ_ACT then "/act" else "/close");
     b = ifx k == RAQ_ACT then redit_put(p_body, 0, cast(string) a[0].act[0..<a[0].act_n]) else redit_put(p_body, 0, "{}");
@@ -118,10 +119,10 @@ ra_unsent :: (a: [] RealmAgent) {
 ra_answer :: (a: [] RealmAgent, status: int, p_body: string) {
   k := a[0].sent; a[0].sent = RAQ_NONE;
   if k == RAQ_OPEN {
-    at := redit_json_at(p_body, "id");
-    e := at; while e >= 0 && e < p_body.count && p_body[e] >= '0' && p_body[e] <= '9' { e += 1; }
-    if status == 200 && at >= 0 && e > at && e - at <= 18 {
-      a[0].seat_n = redit_copy(a[0].seat[..], p_body[at..<e]);
+    g: [1] SeatwGrant;   // seat.proto's Grant, read whole or not at all
+    if status == 200 && seatw_read_grant(p_body, g[..]) {
+      o: [1] Jo; jo_start(o[..], a[0].seat[..]); jo_int(o[..], g[0].id);
+      a[0].seat_n = seatw_len(o[..]);
       ra_add(a, RAL_NOTE, "Your agent is in the realm.");
       a[0].act_n = redit_put(a[0].act[..], 0, "{\"op\":\"see\"}");
       a[0].state = RA_ACTING; a[0].due = RAQ_ACT;

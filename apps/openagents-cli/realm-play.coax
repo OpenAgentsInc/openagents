@@ -9,6 +9,7 @@
 // profile: a verb for another realm closes the old seat first. A seat closes after 10 minutes
 // without an action, on `realm leave`, or when its browser goes.
 #load "../../coax/lib/media/realm_seat.coax";
+#load "../../coax/lib/media/realm_seat_wire.coax";   // a seat's bodies on the server (seat.proto): one writer and reader
 
 SEAT_IDLE_MS :: 600000;
 SEAT_OPEN_MS :: 120000;     // the browser starts and the realm lays out
@@ -80,26 +81,18 @@ seat_dir_make :: () -> bool {
 
 SG_SEATED :: 0; SG_VISITOR :: 1; SG_REFUSED :: 2;
 SeatGrant :: struct { id: int; player: [320] u8; player_n: int; }
-seat_open_body :: (slug: string, hosted: bool, out: [] u8) -> string {
-  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]); jo_key(o[..], "slug"); jo_str(o[..], slug);
-  if hosted { jo_key(o[..], "hosted"); jo_bool(o[..], true); }
-  jo_end(o[..]);
-  return ifx o[0].bad then "" else jo_text(o[..]);
-}
-// The server's {id, player: {id, key}}: g's id and the player as the page keeps it ({"key","id"}).
+// The request is realm_seat_wire.coax's (seatw_open_body), and so is the reader of the server's
+// grant: g's id and the player as the page keeps it ({"key","id"}). A body that is not a whole
+// grant (seat.proto's Grant) is refused.
 seat_grant_read :: (body: string, g: [] SeatGrant) -> bool {
   g[0] = SeatGrant.{};
-  nodes: [64] JvNode; d: [1] Jv;
-  if !jv_parse(d[..], body, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
-  id := jv_int(d[0], jv_get(d[0], 0, "id"), 0);
-  p := jv_get(d[0], 0, "player");
-  kb: [200] u8; ib: [64] u8;
-  kn := jv_str(d[0], jv_get(d[0], p, "key"), kb[..]); pn := jv_str(d[0], jv_get(d[0], p, "id"), ib[..]);
-  if id <= 0 { return false; }
-  g[0].id = id;
-  if kn <= 0 || pn <= 0 { return true; }   // a hosted seat's key stays with the runner
+  w: [1] SeatwGrant;
+  if !seatw_read_grant(body, w[..]) { return false; }
+  g[0].id = w[0].id;
+  if w[0].key_n == 0 { return true; }   // a hosted seat's key stays with the runner
   o: [1] Jo; jo_start(o[..], g[0].player[..]); jo_obj(o[..]);
-  jo_key(o[..], "key"); jo_str(o[..], cast(string) kb[0..<kn]); jo_key(o[..], "id"); jo_str(o[..], cast(string) ib[0..<pn]); jo_end(o[..]);
+  jo_key(o[..], "key"); jo_str(o[..], seatw_grant_key(w[..])); jo_key(o[..], "id"); jo_str(o[..], seatw_grant_pid(w[..])); jo_end(o[..]);
+  for i: 0..<w[0].key.count { w[0].key[i] = 0; }
   g[0].player_n = ifx o[0].bad then 0 else jo_text(o[..]).count;
   return g[0].player_n > 0;
 }
@@ -111,15 +104,15 @@ seat_grant_says :: (answered: bool, status: int, keyed: bool) -> int {
   if !keyed { return SG_VISITOR; }
   return SG_REFUSED;
 }
-#test "a seat on the server: the body, the grant read back, and what an answer means" {
-  b: [256] u8;
-  #assert seat_open_body("village-green", false, b[..]) == "{\"slug\":\"village-green\"}";
-  #assert seat_open_body("village-green", true, b[..]) == "{\"slug\":\"village-green\",\"hosted\":true}";
+#test "a seat on the server: the grant read back, and what an answer means" {
   g: [1] SeatGrant;
-  #assert seat_grant_read("{\"id\":7,\"slug\":\"g\",\"hosted\":false,\"player\":{\"id\":\"p-1a\",\"key\":\"k0123\"},\"until\":9}", g[..]);
+  // as the server answers (proto/verse/realm-seat-v1alpha1.json: grant, grant-hosted)
+  #assert seat_grant_read("{\"id\": 7, \"slug\": \"g\", \"until\": 9, \"hosted\": false, \"player\": {\"id\": \"p-1a\", \"key\": \"k0123\"}}", g[..]);
   #assert g[0].id == 7 && cast(string) g[0].player[0..<g[0].player_n] == "{\"key\":\"k0123\",\"id\":\"p-1a\"}";
-  #assert seat_grant_read("{\"id\":8,\"hosted\":true,\"player\":{\"id\":\"p-1a\"}}", g[..]) && g[0].id == 8 && g[0].player_n == 0;
-  #assert !seat_grant_read("{\"error\":\"no such realm\"}", g[..]) && !seat_grant_read("nope", g[..]) && !seat_grant_read("{\"id\":0}", g[..]);
+  #assert seat_grant_read("{\"id\": 8, \"slug\": \"g\", \"until\": 9, \"hosted\": true, \"player\": {\"id\": \"p-1a\"}}", g[..]) && g[0].id == 8 && g[0].player_n == 0;
+  #assert !seat_grant_read("{\"error\":\"no such realm\"}", g[..]) && g[0].id == 0 && !seat_grant_read("nope", g[..]) && !seat_grant_read("{\"id\":0}", g[..]);
+  // a grant with a member missing is not one
+  #assert !seat_grant_read("{\"id\":8,\"hosted\":true,\"player\":{\"id\":\"p-1a\"}}", g[..]) && !seat_grant_read("{\"id\": 8, \"slug\": \"g\", \"until\": 9, \"hosted\": true}", g[..]);
   #assert seat_grant_says(true, 200, true) == SG_SEATED && seat_grant_says(true, 200, false) == SG_SEATED;
   #assert seat_grant_says(true, 401, false) == SG_VISITOR && seat_grant_says(false, 0, false) == SG_VISITOR;
   #assert seat_grant_says(true, 404, true) == SG_REFUSED && seat_grant_says(true, 429, true) == SG_REFUSED && seat_grant_says(false, 0, true) == SG_REFUSED;
@@ -127,7 +120,8 @@ seat_grant_says :: (answered: bool, status: int, keyed: bool) -> int {
 // Opens the account's seat in slug (hosted: on the runner): what the answer means, and g.
 seat_grant :: (a: [] Args, profile: string, slug: string, hosted: bool, g: [] SeatGrant, why: [] u8) -> int {
   bb: [256] u8; out: [4096] u8;
-  res := api_call(a, profile, "POST", "/api/playtest/seats", seat_open_body(slug, hosted, bb[..]), out[..]);
+  bn := seatw_open_body(slug, hosted, bb[..]);
+  res := api_call(a, profile, "POST", "/api/playtest/seats", ifx bn < 0 then "" else cast(string) bb[0..<bn], out[..]);
   body := cast(string) out[0..<res.n];
   // a server from before seats (0110) has no such route: the seat goes on as a visitor, as it did
   w0: [64] u8; before_seats := res.error == HTTP_OK && res.status == 404 && api_why(body, w0[..]) == "not found";

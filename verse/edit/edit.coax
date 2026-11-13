@@ -46,6 +46,7 @@
 #load "../../aethyr/forge/change.coax";   // the edits' bodies (edits.proto): one writer
 #load "../../aethyr/forge/lists.coax";   // the feature list's, the panes' and the proposals' lines: one reader
 #load "computer.coax";
+#load "../../coax/lib/media/realm_seat_wire.coax";   // a seat's bodies (seat.proto): one writer and reader
 #load "agent.coax";
 
 REDIT_ROWS :: 16; REDIT_KEY :: 32; REDIT_LABEL :: 48;
