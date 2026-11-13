@@ -119,6 +119,7 @@ RmServer :: struct {
   st: RmStats;                           // refusals and rejoins, for the room view (room-stats.coax)
   trv: RmTravels;                        // journeys from one room to another in flight (room-travel.coax)
   e2land: [] E2MoveGround;               // Everglade II's planting, room-world.c's (everglade/server/arrows.coax rm_e2_land)
+  zoo: [1] E2Zoo;                        // the creatures a room's monsters and guard are, from the content tables (everglade/server/creatures.coax, #13293)
   nav: [1] E2NavShared;                  // the navigation pages every Everglade room shares, and their builder (everglade/server/nav.coax, #13281)
   dice_pool: [1] RsDice;                 // where each room's rules' dice come from: the host's OS random key (rm_dice_key, #13258); never on the wire
 }
@@ -134,6 +135,7 @@ rm_init :: (v: [] RmServer) #export_c #effects(all) {
   for k: 0..<EG_ROOMS { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
   v[0].q_head = 0; v[0].q_n = 0;
   rm_games_init(v);
+  e2zoo_shipped(v);
   v[0].dice_pool[0] = RsDice.{};
 }
 // book:end server-start

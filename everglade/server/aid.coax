@@ -82,7 +82,7 @@ e2_aid_commit :: (v:[] RmServer,k:int) {
     st[0].aid=E2Aid.{last=aid.last};
     if !st[0].live || st[0].conn<0 { continue; }
     id:=SeatId.{value=s};
-    ok:=false;
+    ok:=false; was:=ifx aid.target>=0 then b[0].c[EGB_SEAT+aid.target].hp else 0;
     if aid.clear && !eg_travel_drops(v,k,id) && !rm_checkpoint_paused(v,k) && ck_can_play(v,k,id) {
       turn:=rules[0].seat[s..<s+1];
       fb_seat_in(b,turn);
@@ -90,6 +90,7 @@ e2_aid_commit :: (v:[] RmServer,k:int) {
       fb_seat_out(b,turn);
     }
     if !ok { eg_refuse(v,k,id,aid.pending,EGF_KIT_REFUSED); continue; }
+    if aid.target>=0 { e2_monster_healed(v,k,s,aid.target,b[0].c[EGB_SEAT+aid.target].hp-was); }   // a heal is a threat to whatever fights the healed (#13293)
     out:[64]u8;
     eg_event_only(v,k,cast(string)out[0..<egf_kit_put(out[..],EgfKit.{seq=aid.pending,left=b[0].c[EGB_SEAT+s].healer_kit})],s);   // an e entry told to the asker alone
   }

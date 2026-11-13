@@ -68,7 +68,7 @@ ppt_room :: (v: [] RmServer, code: string, tables: string, before: string, p0: W
 #test "previous pins: a page on the tables before sits beside one on this room's; two revisions back, or the next, is refused" #steps 4000000000 #traversal 1073741824 {
   a: [CT_BODY] u8; b: [CT_BODY] u8; o: [CT_BODY] u8; next := ppt_next(a[..], b[..], o[..]);
   v: [1] RmServer; k := ppt_room(v[..], "pair-e2-pins-sit", next, EC_FIXTURE, wire_pins_at(1), wire_pins_at(2)); #assert k >= 0;
-  #assert pprev_doc_rev(next) == 2 && pprev_doc_rev(EC_FIXTURE) == 1 && pprev_doc_rev(EC_PREVIOUS) == v[0].itm.prev[0].rev;   // the first line's revision is the reader's
+  #assert pprev_doc_rev(next) == 2 && pprev_doc_rev(EC_FIXTURE) == 1 && pprev_doc_rev(EC_FIXTURE) == v[0].itm.prev[0].rev;   // the first line's revision is the reader's
   #assert rm_content_rev(v[..]) == 2 && rm_content_was(v[..]) == 1 && v[0].eg[k].stale_n == 0 && !v[0].conns[0].kicked && !v[0].conns[1].kicked;
   mine := eg_server(v[..]);
   #assert mine.pins.content == wire_content_pin(2) && mine.prev.on && mine.prev.content == wire_content_pin(1) && mine.prev.engine == PPREV_SERVES.engine && mine.prev.rules == PPREV_SERVES.rules;
@@ -116,7 +116,7 @@ ppt_room :: (v: [] RmServer, code: string, tables: string, before: string, p0: W
   v[0].eg[k].seat[0].pose.x = 0.0; v[0].eg[k].seat[0].pose.z = -175.0; v[0].eg[k].seat[1].pose.x = 0.0; v[0].eg[k].seat[1].pose.z = -175.0;
   #assert !ri_say(v[..], k, old, 3) && ri_say(v[..], k, new, 3);
   // twenty Wolves each. Revision 2 drops a ring every time; revision 1 a pelt in 60 of 100, and never a ring
-  for i: 0..<20 { ri_kill(v[..], k, old, 0); ri_kill(v[..], k, new, 0); ri_test_drain(v[..], st[..]); }
+  for i: 0..<20 { ri_kill(v[..], k, old, 1); ri_kill(v[..], k, new, 1); ri_test_drain(v[..], st[..]); }
   ro := v[0].itm.c[co]; rn := v[0].itm.c[cn]; old_ring := 0; old_pelt := 0; new_ring := 0; new_other := 0;
   for i: 0..<ro.rec.bag_n { if ro.kinds[i] == 4 { old_ring += 1; } if ro.kinds[i] == 1 { old_pelt += 1; } }
   for i: 0..<rn.rec.bag_n { if rn.kinds[i] == 4 { new_ring += 1; } else { new_other += 1; } }

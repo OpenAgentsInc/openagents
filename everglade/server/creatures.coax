@@ -1,6 +1,8 @@
-// Everglade II's monsters: three packs of Wolves in the woods along the middle of the path and a camp of
-// four Goblin Warriors at the clearing's near edge (everglade/world/camp.coax), each a creature of the
-// room's battle with its SRD 5.2.1 stat block (rules/srd/monsters.coax MON_WOLF, MON_GOBLIN_WARRIOR).
+// Everglade's creature runtime (#13293): a room's monsters are rows of the content tables
+// (everglade/content/everglade.content: creature, template, spawn, troop), each a creature of the
+// room's battle with its template's SRD 5.2.1 stat block (rules/srd/monsters.coax). Today's rows: three
+// packs of Wolves in the woods along the middle of the path (one, two and three) and a camp of two
+// Goblin Warriors and two Goblin Archers at the clearing's near edge (everglade/world/camp.coax).
 // The room moves them on its own tick, so every page sees the same monsters; their blows are the shared
 // rules' strikes (stat-attack.coax rs_stat_strike: the Wolf's Bite with Pack Tactics and its Prone rider,
 // the Goblin's Scimitar and Shortbow, each with the extra die on Advantage) and their Hit Points are the
@@ -15,8 +17,9 @@
 // whole again when it gets there. Nothing spawns, chases or shoots in the glade (z above E2M_SAFE_Z): a
 // player there is no one's quarry, and the leash takes a monster back before the glade's edge. A felled
 // monster gives its SRD XP, split among the players who hurt it (room-events.coax ev_award), lies
-// E2M_CORPSE_S, and a new one stands at home E2M_RESPAWN_S after it fell, once no player is near enough
-// to see it appear.
+// E2M_CORPSE_S, and a new one stands at home its troop's respawn seconds after it fell, once no player
+// is near enough to see it appear. Whom a monster fights is the top of its threat list: harm, healing
+// and taunts move it.
 // The room tells each page the monsters within EG_VIEW m (h2: ACT 1 a blow, 2 a shot, its tell from
 // ACT_TICK; FOE a seat or -1) and their events (h3: a blow or arrow at a seat, AMOUNT 0 a miss; harm at
 // one; an arrow loosed with its flight; a fall) through the creature frames' codec, creature-wire.coax
@@ -34,21 +37,17 @@ e2_heading :: (dx: f32, dz: f32) -> f32 {
   if dz < 0 { a = 3.1415927 - a; }
   return ifx dx < 0 then -a else a;
 }
-E2M_WOLF :: 0; E2M_GOBLIN :: 1;
-E2M_N :: 12;                // 8 wolf rows (packs of 1, 2 and 3; two rows retired) and the camp's 4 goblins
+E2M_WOLF :: 0; E2M_GOBLIN :: 1;   // the looks a monster's row names (its P2: the creature table's kind)
+E2M_N :: 12;                // the monsters a room holds at most: the numbers the creature frames carry
 #test "e2 monsters: the creature frames name every monster" { #assert E2M_N == EGC_MONS; }
-E2M_GROUPS :: 4;            // the three packs, then the camp
+E2M_TPLS :: 8;              // the templates a room holds at most
 E2M_IDLE :: 0; E2M_CHASE :: 1; E2M_RETURN :: 2; E2M_DEAD :: 3; E2M_GONE :: 4; E2M_ESCAPE :: 5;
 E2M_ACT_BLOW :: 1; E2M_ACT_SHOT :: 2;
 E2M_SAFE_Z :: -55.0;        // north of this the glade's safe ground: no quarry, no monster
 E2M_LEASH_Z :: -70.0;       // a monster turns home before it comes this far north
-E2M_NOTICE :: [2] f32.[15, 18];       // m: a wolf, a goblin notices you
-E2M_LEASH :: [2] f32.[40, 30];        // m from home past which it lets you go
-E2M_RUN :: [2] f32.[9.0, 5.5];        // m/s: a Wolf's 40 feet, a Goblin's 30 (everglade5e-beasts.coax EGB_RUN)
-E2M_CIRCLE :: 3.2;          // m/s a wolf circles its quarry while its bite readies
+E2M_CIRCLE :: 3.2;          // m/s a pack hunter circles its quarry while its bite readies
 E2M_RING :: 2.6;            // m out it circles
 E2M_REACH :: 1.9;           // m middle to middle: a blow's 5 feet (EGB_REACH, a little slack)
-E2M_TELL_BLOW :: [2] f32.[0.45, 0.6]; // s of a blow's swing before it lands
 E2M_TELL_SHOT :: 0.6;       // s an archer draws
 E2M_ARROW :: 30.0;          // m/s an arrow flies (verse/experimental-hostiles.coax hostile_shot_speed)
 E2M_BOW :: 24.38;           // m: the Shortbow's 80 feet
@@ -56,29 +55,55 @@ E2M_BOW_MIN :: 4.0;         // m: nearer than this an archer steps back (Nimble 
 E2M_ESCAPE_S :: 1.4;        // s it steps back
 E2M_AIM :: 1.6;             // m: a cast aimed this near a monster is aimed at it
 E2M_CORPSE_S :: 8.0;        // s a fallen monster lies
-E2M_RESPAWN_S :: 180.0;     // s from its fall to the next at home
-E2M_RESPAWN_DEV_S :: 25.0;  // in a --dev room (room-dev.coax), so a check can see it
+E2M_RESPAWN_DEV_S :: 25.0;  // the longest a respawn takes in a --dev room (room-dev.coax), so a check can see it
 E2M_UNSEEN :: 45.0;         // m: no player this near its home when one appears
 E2M_HOME_REACH :: 3.0;      // m: how far a home moves to stand on ground a creature can (everglade/server/nav.coax)
 E2M_HOME_S :: 20.0;         // s on its way home after which it is simply there: no way home is a wait, not a monster lost
-E2M_XP :: [2] int.[50, 50]; // SRD XP: Wolf (CR 1/4) 50, Goblin Warrior (CR 1/4) 50
+E2M_HOME_RING :: 1.5;       // m from a spawn's point its members stand when it has more than one
 E2M_SHOTS :: 8;
 E2M_FORM :: 1;              // its form in the rules' list (EGB_FORM_WOLF): never a raider's
+
+// ---- behaviors (#13293): what a template's style names. A creature that uses one of these is rows in the
+// content tables (creature, template, spawn, troop), never code here.
+//   pack    runs in, circles its quarry while its blow readies and closes from its own side
+//   melee   closes and strikes
+//   archer  looses from where it stands, and steps back (a Disengage) from anyone who closes on it
+//   patrol  the path's guard: friendly, walks a beat, fights whoever harms him (everglade/server/guard.coax)
+//   stands  a speaker (a dialogue's npc): the pages draw them where their spawn is; they never fight
+E2S_PACK :: EC_STYLE_PACK; E2S_MELEE :: EC_STYLE_MELEE; E2S_ARCHER :: EC_STYLE_ARCHER; E2S_PATROL :: EC_STYLE_PATROL; E2S_STANDS :: EC_STYLE_STANDS; E2S_N :: EC_STYLES;
+E2Style :: struct { fights: bool; circles: bool; shoots: bool; tell: f32; }   // tell: s of a blow's swing before it lands
+E2M_STYLE :: [E2S_N] E2Style.[
+  E2Style.{fights = true, circles = true, tell = 0.45},
+  E2Style.{fights = true, tell = 0.6},
+  E2Style.{fights = true, shoots = true, tell = 0.6},
+  E2Style.{},
+  E2Style.{}];
+
+// ---- the threat list (#13293): whom a creature fights is the top of its own list. Harm adds what it
+// took; healing someone on a creature's list adds half of what was healed to the healer; noticing
+// someone, or a packmate's quarry, adds one. A taunt puts the taunter on top. Another seat takes a
+// creature off its quarry only with E2M_PULL percent of the quarry's threat. Going home clears it.
+E2M_THREAT :: 8;            // the seats a creature keeps count of
+E2M_PULL :: 110;            // percent of its quarry's threat that pulls it onto another
+E2M_THREAT_MAX :: 1000000;
+E2Threat :: struct { seat: int = -1; amount: int; }
 
 E2Mon :: struct {
   q: int = -1; id: int;      // its beast slot in the rules (-1 none) and its id
   life: int;                 // each new one a new life: the pages fade it in
   told_life: int;            // the life its row last said (e2_monsters_rows)
-  kind: int; group: int; archer: bool;
+  kind: int; group: int; archer: bool;   // its look (the creature table's kind), its troop's group, whether it shoots
+  tpl: int;                  // its template in the room's (E2Zoo.tpl)
   state: int = E2M_GONE;
   x: f32; z: f32; yaw: f32; hx: f32; hz: f32; hyaw: f32;
-  foe: int = -1;             // the seat it fights
+  foe: int = -1;             // the seat it fights: the top of its threat list
+  threat: [E2M_THREAT] E2Threat; threat_n: int;
   act: int; act_t: int;      // its blow or shot under way (E2M_ACT_*) and the tick it began; 0 none
   ready: int;                // the tick its next blow may begin
-  orbit: f32; spin: f32 = 1; // where round its quarry a wolf circles, and which way
+  orbit: f32; spin: f32 = 1; // where round its quarry a pack hunter circles, and which way
   escape_t: int;             // the tick its Nimble Escape ends
   down_t: int = -100000;     // the tick it fell
-  hurt_by: [EG_SEAT_WORDS] int;   // the seats that hurt it (a set of seats, metaverse-engine/core/slot-set.coax): its XP's share
+  hurt_by: [EG_SEAT_WORDS] int;   // the seats that hurt it or healed against it (a set of seats, metaverse-engine/core/slot-set.coax): its XP's share
   hit_t: int = -100000; hit_seat: int = -1;   // when it last struck at a player, and whom (the guard's word)
   ray: int = -1; ray_seat: int = -1; seen: bool;   // this tick's line-of-sight question (rm_eg_sights)
   way_x: f32; way_z: f32;    // the way its last step went (0, 0: it stood): what it faces as it walks
@@ -87,86 +112,163 @@ E2Mon :: struct {
 E2Shot :: struct { live: bool; m: int; seat: int; tx: f32; tz: f32; land: int; }
 E2Monsters :: struct { mon: [E2M_N] E2Mon; shots: [E2M_SHOTS] E2Shot; started: bool; }
 
-// Everglade II's spawns (#13286): one row a monster, named by its content number (the M the creature
-// frames carry, everglade/model/content-ids.coax "everglade2/..."): its stat block (a creature
-// template's content number, rules/srd/monsters.coax), its group (the three packs, then the camp) and
-// whether it is the camp's archer. A monster is what its row says, never what its place in a list implies.
-// The packs are sized by the SRD's encounter budget for one level 1 character (#13284): one Wolf (50 XP,
-// Low), then two (100, High), then three along the path. A retired row keeps its number (content IDs
-// never renumber) and never spawns.
-E2Spawn :: struct { id: int; key: string; block: int; group: int; archer: bool; retired: bool; }
-E2M_SPAWN :: [E2M_N] E2Spawn.[
-  E2Spawn.{id = 0, key = "everglade2/pack-1/wolf-1", block = MON_WOLF, group = 0},
-  E2Spawn.{id = 1, key = "everglade2/pack-1/wolf-2", block = MON_WOLF, group = 0, retired = true},
-  E2Spawn.{id = 2, key = "everglade2/pack-1/wolf-3", block = MON_WOLF, group = 0, retired = true},
-  E2Spawn.{id = 3, key = "everglade2/pack-2/wolf-1", block = MON_WOLF, group = 1},
-  E2Spawn.{id = 4, key = "everglade2/pack-2/wolf-2", block = MON_WOLF, group = 1},
-  E2Spawn.{id = 5, key = "everglade2/pack-3/wolf-1", block = MON_WOLF, group = 2},
-  E2Spawn.{id = 6, key = "everglade2/pack-3/wolf-2", block = MON_WOLF, group = 2},
-  E2Spawn.{id = 7, key = "everglade2/pack-3/wolf-3", block = MON_WOLF, group = 2},
-  E2Spawn.{id = 8, key = "everglade2/camp/goblin-1", block = MON_GOBLIN_WARRIOR, group = 3},
-  E2Spawn.{id = 9, key = "everglade2/camp/goblin-2", block = MON_GOBLIN_WARRIOR, group = 3},
-  E2Spawn.{id = 10, key = "everglade2/camp/archer-1", block = MON_GOBLIN_WARRIOR, group = 3, archer = true},
-  E2Spawn.{id = 11, key = "everglade2/camp/archer-2", block = MON_GOBLIN_WARRIOR, group = 3, archer = true}
-];
-// The stat block each monster kind on the wire (its row's P2: E2M_WOLF, E2M_GOBLIN) fields.
-E2M_TEMPLATE :: [2] int.[MON_WOLF, MON_GOBLIN_WARRIOR];
-e2mo_spawn_row :: (m: int) -> E2Spawn { return ifx m >= 0 && m < E2M_N then E2M_SPAWN[m] else E2Spawn.{id = -1, block = MON_NONE, group = -1}; }
-e2mo_kind :: (m: int) -> int { return ifx e2mo_spawn_row(m).block == MON_GOBLIN_WARRIOR then E2M_GOBLIN else E2M_WOLF; }
-e2mo_group :: (m: int) -> int { return e2mo_spawn_row(m).group; }
-e2mo_archer :: (m: int) -> bool { return e2mo_spawn_row(m).archer; }
-e2mo_retired :: (m: int) -> bool { return e2mo_spawn_row(m).retired; }
-// Monster m's place among its group's of its own role (0 on): the first wolf of its pack, the camp's second archer.
-e2mo_place :: (m: int) -> int {
-  me := e2mo_spawn_row(m); n := 0;
-  for o: 0..<m { r := E2M_SPAWN[o]; if r.group == me.group && r.archer == me.archer { n += 1; } }
-  return n;
-}
-#test "e2 monsters: every spawn's number, key and stat block are the content registry's" {
-  for m: 0..<E2M_N {
-    r := E2M_SPAWN[m];
-    #assert r.id == m && content_spawn(r.key).value == m && content_key(CT_SPAWN, m) == r.key;
-    #assert content_template(RS_MON_ID[r.block - 1]).value == r.block && E2M_TEMPLATE[e2mo_kind(m)] == r.block;
-    #assert e2mo_archer(m) == (m >= 10) && e2mo_kind(m) == (ifx m < 8 then E2M_WOLF else E2M_GOBLIN);
+// ---- the room's creatures, from the content tables (#13293; everglade/model/content.coax):
+//   creature  its name, its look (kind) and its XP
+//   template  its stat block (a creature template's content number, rules/srd/monsters.coax), its behavior,
+//             how far it notices and follows, its run
+//   spawn     `count` of a creature round a point
+//   troop     a spawn's group (the spawns of one group fight as one), the way it faces, its respawn and
+//             the number its first member carries on the wire (a monster's M; content IDs never renumber,
+//             so a number no troop names never spawns)
+// A room reads them once, at start: from the tables it is built with (everglade/content/shipped.coax),
+// then from the host's file when that holds these tables (rm_content_load). A new creature that uses
+// the behaviors above is rows.
+#load "../content/shipped.coax";
+E2Tpl :: struct { creature: int; kind: int; xp: int; block: int; style: int; notice: f32; leash: f32; run: f32; }
+E2Row :: struct { live: bool; tpl: int; spawn: int; x: f32; z: f32; yaw: f32; group: int; respawn: f32; }
+E2Zoo :: struct { tpl: [E2M_TPLS] E2Tpl; tpl_n: int; row: [E2M_N] E2Row; guard: E2Row; }
+e2zoo_tpl :: (z: [] E2Zoo, creature: int) -> int { for i: 0..<z[0].tpl_n { if z[0].tpl[i].creature == creature { return i; } } return -1; }
+// The room's creatures from tables d. False, and the room's stay as they were, when d holds no
+// template and troop tables. A template of no behavior or no stat block, and a troop whose creature
+// has no template or whose number is taken or past the room's, are left out.
+e2zoo_load :: (v: [] RmServer, d: [] ContentDoc) -> bool {
+  if !ec_ok(d) || !ec_wild(d) { return false; }
+  z := v[0].zoo[..]; z[0] = E2Zoo.{};
+  for r: 0..<ct_rows(d, EC_TEMPLATE) {
+    creature := ct_get(d, EC_TEMPLATE, r, EC_TEMPLATE_CREATURE); cr := ct_find(d, EC_CREATURE, creature);
+    style := ct_get(d, EC_TEMPLATE, r, EC_TEMPLATE_STYLE); block := ct_get(d, EC_TEMPLATE, r, EC_TEMPLATE_BLOCK);
+    if z[0].tpl_n >= E2M_TPLS || style >= E2S_N || e2zoo_tpl(z, creature) >= 0 { continue; }
+    if E2M_STYLE[style].fights && (block <= MON_NONE || block >= MON_N) { continue; }
+    z[0].tpl[z[0].tpl_n] = E2Tpl.{creature = creature, kind = ct_get(d, EC_CREATURE, cr, EC_CREATURE_KIND), xp = ct_get(d, EC_CREATURE, cr, EC_CREATURE_XP), block = block, style = style,
+      notice = f32(ct_get(d, EC_TEMPLATE, r, EC_TEMPLATE_NOTICE)) / 100, leash = f32(ct_get(d, EC_TEMPLATE, r, EC_TEMPLATE_LEASH)) / 100, run = f32(ct_get(d, EC_TEMPLATE, r, EC_TEMPLATE_RUN)) / 100};
+    z[0].tpl_n += 1;
   }
-  groups := [E2M_N] int.[0, 0, 0, 1, 1, 2, 2, 2, 3, 3, 3, 3]; places := [E2M_N] int.[0, 1, 2, 0, 1, 0, 1, 2, 0, 1, 0, 1];
-  for m: 0..<E2M_N { #assert e2mo_group(m) == groups[m] && e2mo_place(m) == places[m]; }
-  #assert e2mo_spawn_row(-1).id == -1 && e2mo_spawn_row(E2M_N).block == MON_NONE && e2mo_group(E2M_N) == -1 && !e2mo_archer(-1);
-  // the packs along the path hold one, two and three Wolves; the camp four
-  size: [E2M_GROUPS] int; for m: 0..<E2M_N { if !e2mo_retired(m) { size[e2mo_group(m)] += 1; } }
-  #assert size[0] == 1 && size[1] == 2 && size[2] == 3 && size[3] == 4 && e2mo_retired(1) && e2mo_retired(2) && !e2mo_retired(0) && !e2mo_retired(-1) && !e2mo_retired(E2M_N);
+  for r: 0..<ct_rows(d, EC_TROOP) {
+    spawn := ct_get(d, EC_TROOP, r, EC_TROOP_SPAWN); sr := ct_find(d, EC_SPAWN, spawn);
+    t := e2zoo_tpl(z, ct_get(d, EC_SPAWN, sr, EC_SPAWN_CREATURE)); pr := ct_find(d, EC_POINT, ct_get(d, EC_SPAWN, sr, EC_SPAWN_POINT));
+    if t < 0 { continue; }
+    px := f32(ct_get(d, EC_POINT, pr, EC_POINT_X)) / 100; pz := f32(ct_get(d, EC_POINT, pr, EC_POINT_Z)) / 100;
+    count := ct_get(d, EC_SPAWN, sr, EC_SPAWN_COUNT); yaw := e2mo_wrap(f32(ct_get(d, EC_TROOP, r, EC_TROOP_FACE) % 360) * 0.017453293);
+    for j: 0..<count {
+      // one stands on the point; more stand round it, evenly
+      a := yaw + f32(j) * 6.2831853 / f32(count); ring := ifx count > 1 then f32(E2M_HOME_RING) else 0.0f32;
+      row := E2Row.{live = true, tpl = t, spawn = spawn, x = px + sin(a) * ring, z = pz + cos(a) * ring, yaw = yaw,
+        group = ct_get(d, EC_TROOP, r, EC_TROOP_GROUP), respawn = f32(ct_get(d, EC_TROOP, r, EC_TROOP_RESPAWN))};
+      style := z[0].tpl[t].style;
+      if style == E2S_PATROL { if !z[0].guard.live { z[0].guard = row; } continue; }
+      m := ct_get(d, EC_TROOP, r, EC_TROOP_SLOT) + j;
+      if !E2M_STYLE[style].fights || m >= E2M_N || z[0].row[m].live { continue; }
+      z[0].row[m] = row;
+    }
+  }
+  return true;
+}
+// The creatures a room is built with: the tables its page is built with too.
+e2zoo_shipped :: (v: [] RmServer) {
+  d: [1] ContentDoc;
+  if !ct_read(d[..], EC_SHIPPED) || !e2zoo_load(v, d[..]) { v[0].zoo[0] = E2Zoo.{}; }
+}
+e2mo_row :: (v: [] RmServer, m: int) -> E2Row { return ifx m >= 0 && m < E2M_N then v[0].zoo[0].row[m] else E2Row.{}; }
+e2mo_tpl :: (v: [] RmServer, mo: E2Mon) -> E2Tpl { return v[0].zoo[0].tpl[ifx mo.tpl >= 0 && mo.tpl < E2M_TPLS then mo.tpl else 0]; }
+// Whether no troop names monster number m: it never spawns.
+e2mo_retired :: (v: [] RmServer, m: int) -> bool { return !e2mo_row(v, m).live; }
+// Monster m's home (x, z and the way it faces), by its troop.
+e2mo_home :: (v: [] RmServer, m: int) -> [3] f32 { r := e2mo_row(v, m); return [3] f32.[r.x, r.z, r.yaw]; }
+#test "e2 monsters: the room's creatures are the content tables' rows: packs of one, two and three Wolves, the camp's four, the guard (#13293)" {
+  v: [1] RmServer; rm_init(v[..]); z := v[0].zoo[..];
+  #assert z[0].tpl_n == 5 && z[0].guard.live && z[0].tpl[z[0].guard.tpl].style == E2S_PATROL && z[0].guard.z == -18 && z[0].guard.respawn == 20;
+  wolf := z[0].tpl[e2zoo_tpl(z, 1)]; goblin := z[0].tpl[e2zoo_tpl(z, 2)]; archer := z[0].tpl[e2zoo_tpl(z, 3)];
+  #assert wolf.block == MON_WOLF && wolf.style == E2S_PACK && wolf.kind == E2M_WOLF && wolf.xp == 50 && wolf.notice == 15 && wolf.leash == 40 && wolf.run == 9;
+  #assert goblin.block == MON_GOBLIN_WARRIOR && goblin.style == E2S_MELEE && goblin.kind == E2M_GOBLIN && goblin.notice == 18 && goblin.leash == 30 && goblin.run == 5.5;
+  #assert archer.block == MON_GOBLIN_WARRIOR && archer.style == E2S_ARCHER && archer.kind == E2M_GOBLIN && z[0].tpl[e2zoo_tpl(z, 5)].style == E2S_STANDS && e2zoo_tpl(z, 99) < 0;
+  // each monster's number is a spawn of the content registry, and its stat block one of its templates
+  size: [8] int; live := 0;
+  for m: 0..<E2M_N {
+    r := e2mo_row(v[..], m); if !r.live { #assert e2mo_retired(v[..], m); continue; }
+    live += 1; size[r.group] += 1; t := z[0].tpl[r.tpl];
+    #assert content_key(CT_SPAWN, m).count > 0 && content_template(RS_MON_ID[t.block - 1]).value == t.block && r.respawn == 180;
+    #assert (t.style == E2S_ARCHER) == (m >= 10) && t.kind == (ifx m < 8 then E2M_WOLF else E2M_GOBLIN);
+  }
+  #assert live == 10 && size[1] == 1 && size[2] == 2 && size[3] == 3 && size[4] == 4 && e2mo_retired(v[..], 1) && e2mo_retired(v[..], 2) && !e2mo_retired(v[..], 0) && e2mo_retired(v[..], -1) && e2mo_retired(v[..], E2M_N);
+  h := e2mo_home(v[..], 0); #assert abs(h[0] - 8.46) < 0.001 && abs(h[1] + 177.4) < 0.001 && abs(h[2] + 1.5707963) < 0.0001;
   n := 0; for i: 0..<CONTENT_N { if CONTENT[i].kind == CT_SPAWN { n += 1; } } #assert n == E2M_N;
+  // tables with no template and troop leave the room's creatures as they were; the room's own are read again
+  d: [1] ContentDoc; #assert ct_read(d[..], EC_FIXTURE) && !e2zoo_load(v[..], d[..]) && z[0].tpl_n == 5;
+  #assert ct_read(d[..], EC_SHIPPED) && e2zoo_load(v[..], d[..]) && z[0].tpl_n == 5 && z[0].row[0].live;
+}
+#test "e2 monsters: a new creature that uses a behavior the room has is rows: a pack of three Bears round a point (#13293)" {
+  v: [1] RmServer; rm_init(v[..]); z := v[0].zoo[..]; o: [CT_BODY] u8; p: [CT_BODY] u8; q: [CT_BODY] u8; d: [1] ContentDoc;
+  // a Bear: a creature, its template (the SRD Black Bear, a pack hunter), a spawn of three and its troop on numbers 1 and 2 (and 3, taken)
+  t1 := ec_sub(EC_SHIPPED, "5|Warden|3|0\n", "5|Warden|3|0\n6|Bear|0|100\n", o[..]);
+  t2 := ec_sub(t1, "12|5|15|1\n", "12|5|15|1\n13|6|2|3\n", p[..]);
+  t3 := ec_sub(t2, "5|5|0|4|0|0|0\n", "5|5|0|4|0|0|0\n6|6|11|0|2000|5000|1200\n", q[..]);
+  t4 := ec_sub(t3, "12|12|6|329|0|0\n", "12|12|6|329|0|0\n13|13|7|0|60|1\n", o[..]);
+  #assert ct_read(d[..], t4) && e2zoo_load(v[..], d[..]) && z[0].tpl_n == 6;
+  bear := z[0].tpl[e2zoo_tpl(z, 6)]; #assert bear.block == MON_BLACK_BEAR && bear.xp == 100 && bear.run == 12 && bear.leash == 50;
+  // two stand round the Wolf woods' middle, 1.5 m out, evenly; the third's number is a Wolf's, so it is left out
+  for m: 1..<3 { r := e2mo_row(v[..], m); #assert r.live && r.tpl == e2zoo_tpl(z, 6) && r.group == 7 && r.respawn == 60 && abs(e2mo_dist(r.x, r.z, 0, -175) - 1.5) < 0.001; }
+  #assert abs(e2mo_row(v[..], 1).z - (-175 + 1.5)) < 0.001 && e2mo_row(v[..], 3).tpl == e2zoo_tpl(z, 1) && e2mo_dist(e2mo_row(v[..], 1).x, e2mo_row(v[..], 1).z, e2mo_row(v[..], 2).x, e2mo_row(v[..], 2).z) > 2;
+  // they stand in a room, with the Bear's stat block
+  rm_clock(v[..], 0, 1762190000000);
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-bears HTTP/1.1\r\n\r\n") == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay); rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-fighter 0 -"); eg_test_tick(v[..], k); e2mt_tick(v[..], k);
+  mo := v[0].eg[k].monsters[0].mon[1]; c := v[0].eg[k].rules[0].b[0].c[EGB_BEAST0 + mo.q];
+  #assert mo.state == E2M_IDLE && mo.group == 7 && c.hp == rs_monster(MON_BLACK_BEAR, "Black Bear", EGB_BEAST_TEAM).hp_max && e2mo_melee(MON_BLACK_BEAR).name.count > 0;
+  // a template of no behavior the room has, a fighter of no stat block, a second template of one creature: left out
+  #assert ct_read(d[..], ec_sub(t4, "6|6|11|0|2000|5000|1200\n", "6|6|11|9|2000|5000|1200\n", p[..])) && e2zoo_load(v[..], d[..]) && z[0].tpl_n == 5 && !e2mo_row(v[..], 1).live;
+  #assert ct_read(d[..], ec_sub(t4, "6|6|11|0|2000|5000|1200\n", "6|6|0|0|2000|5000|1200\n", p[..])) && e2zoo_load(v[..], d[..]) && z[0].tpl_n == 5;
+  #assert ct_read(d[..], ec_sub(t4, "6|6|11|0|2000|5000|1200\n", "6|6|999|0|2000|5000|1200\n", p[..])) && e2zoo_load(v[..], d[..]) && z[0].tpl_n == 5;
+  #assert ct_read(d[..], ec_sub(t4, "6|6|11|0|2000|5000|1200\n", "6|6|11|0|2000|5000|1200\n7|6|6|1|1|1|1\n", p[..])) && e2zoo_load(v[..], d[..]) && z[0].tpl_n == 6 && z[0].tpl[e2zoo_tpl(z, 6)].block == MON_BLACK_BEAR;
+  // a troop past the room's numbers is left out, and a second guard
+  #assert ct_read(d[..], ec_sub(t4, "13|13|7|0|60|1\n", "13|13|7|0|60|11\n", p[..])) && e2zoo_load(v[..], d[..]) && !e2mo_row(v[..], 1).live && e2mo_row(v[..], 11).tpl == e2zoo_tpl(z, 3);
+  #assert ct_read(d[..], ec_sub(t4, "13|6|2|3\n", "13|4|2|3\n", p[..])) && e2zoo_load(v[..], d[..]) && z[0].guard.z == -18 && !e2mo_row(v[..], 1).live;
+  e2zoo_shipped(v[..]); #assert z[0].tpl_n == 5 && !e2mo_row(v[..], 1).live;
 }
 #test "the P frame's content pin is sealed with the content registry's hash" { #assert WIRE_CONTENT_IDS == CONTENT_HASH && WIRE_CONTENT_IDS == content_hash(); }
-// Monster m's home: a pack's in the woods 7 to 9 m off the path's middle; the camp's two by the fire and
-// its two archers on their perches.
-e2mo_home :: (m: int) -> [3] f32 {
-  g := e2mo_group(m); j := e2mo_place(m);
-  if g == 3 {
-    if e2mo_archer(m) { p := e2_camp_perch(j); return [3] f32.[p[0], p[1], e2_heading(e2_road_x(p[1]) - p[0], 0)]; }
-    x := e2_camp_x() + ifx j == 0 then -1.4f32 else 1.5f32; z := E2_CAMP_Z + ifx j == 0 then 0.9f32 else -0.7f32;
-    return [3] f32.[x, z, e2_heading(e2_camp_x() - x, E2_CAMP_Z - z)];
-  }
-  z0 := ifx g == 0 then -175.0f32 else ifx g == 1 then -245.0f32 else -315.0f32;
-  side := ifx g == 1 then -1.0f32 else 1.0f32;
-  z := z0 + f32(j) * 2.4 - 2.4;
-  x := e2_road_x(z) + side * (7.2 + f32(j % 2) * 1.6);
-  return [3] f32.[x, z, e2_heading(e2_road_x(z) - x, 0)];
-}
-e2mo_rules_creature :: (kind: int) -> RsCreature {
-  return rs_monster(e2mo_block(kind), RS_MON_NAME[e2mo_block(kind) - 1], EGB_BEAST_TEAM);
-}
-e2mo_block :: (kind: int) -> int { return E2M_TEMPLATE[ifx kind == E2M_GOBLIN then E2M_GOBLIN else E2M_WOLF]; }
-// Its block's melee attack (the Bite, the Scimitar) and its ranged one (the Shortbow; the Wolf none).
-e2mo_melee :: (kind: int) -> RsStatAttack {
-  a := rs_monster_action(e2mo_block(kind));
+e2mo_rules_creature :: (block: int) -> RsCreature { return rs_monster(block, RS_MON_NAME[block - 1], EGB_BEAST_TEAM); }
+// A stat block's melee attack (the Bite, the Scimitar) and its ranged one (the Shortbow; the Wolf none).
+e2mo_melee :: (block: int) -> RsStatAttack {
+  a := rs_monster_action(block);
   for q: 0..<a.n { if a.attacks[q].range_ft == 0 { return a.attacks[q]; } }
   return a.attacks[0];
 }
-e2mo_ranged :: (kind: int) -> RsStatAttack {
-  a := rs_monster_action(e2mo_block(kind));
+e2mo_ranged :: (block: int) -> RsStatAttack {
+  a := rs_monster_action(block);
   for q: 0..<a.n { if a.attacks[q].range_ft > 0 { return a.attacks[q]; } }
   return RsStatAttack.{};
+}
+
+// ---- threat
+e2th_of :: (mo: E2Mon, s: int) -> int { for i: 0..<mo.threat_n { if mo.threat[i].seat == s { return mo.threat[i].amount; } } return 0; }
+// Seat s is `amount` more of a threat to it. A full list drops its least for one who is more.
+e2th_add :: (mo: [] E2Mon, s: int, amount: int) {
+  if s < 0 || amount <= 0 { return; }
+  low := 0;
+  for i: 0..<mo[0].threat_n {
+    if mo[0].threat[i].seat == s { mo[0].threat[i].amount = rs_min(mo[0].threat[i].amount + amount, E2M_THREAT_MAX); return; }
+    if mo[0].threat[i].amount < mo[0].threat[low].amount { low = i; }
+  }
+  if mo[0].threat_n < E2M_THREAT { mo[0].threat[mo[0].threat_n] = E2Threat.{seat = s, amount = rs_min(amount, E2M_THREAT_MAX)}; mo[0].threat_n += 1; return; }
+  if amount > mo[0].threat[low].amount { mo[0].threat[low] = E2Threat.{seat = s, amount = rs_min(amount, E2M_THREAT_MAX)}; }
+}
+// A taunt: seat s goes to the top of its list, by enough to pull it.
+e2th_taunt :: (mo: [] E2Mon, s: int) {
+  top := 0; for i: 0..<mo[0].threat_n { if mo[0].threat[i].seat != s && mo[0].threat[i].amount > top { top = mo[0].threat[i].amount; } }
+  want := top * E2M_PULL / 100 + 1; have := e2th_of(mo[0], s);
+  if want > have { e2th_add(mo, s, want - have); }
+}
+// Whom it fights: the seat of most threat that is still a quarry (-1 none). Its quarry keeps it until
+// another has E2M_PULL percent of the quarry's threat.
+e2th_top :: (v: [] RmServer, k: int, mo: E2Mon) -> int {
+  best := -1; most := 0;
+  for i: 0..<mo.threat_n {
+    if mo.threat[i].amount > most && e2mo_quarry(v, k, mo.threat[i].seat) { most = mo.threat[i].amount; best = mo.threat[i].seat; }
+  }
+  if best >= 0 && best != mo.foe && e2mo_quarry(v, k, mo.foe) {
+    held := e2th_of(mo, mo.foe);
+    if held > 0 && most * 100 < held * E2M_PULL { return mo.foe; }
+  }
+  return best;
 }
 
 e2mo_room :: (v: [] RmServer, k: int) -> [] E2Monsters { return v[0].eg[k].monsters[..]; }
@@ -187,15 +289,16 @@ e2mo_spawn :: (v: [] RmServer, k: int, m: int) -> bool {
   r := v[0].eg[k].rules[..]; b := r[0].b[..]; mo := e2mo_room(v, k)[0].mon[m..<m + 1];
   q := -1; for o: 0..<EGB_BEASTS { if q < 0 && r[0].beasts[o].id == 0 { q = o; } }
   if q < 0 { return false; }
-  h := e2mo_home(m); kind := e2mo_kind(m);
+  row := e2mo_row(v, m); tp := v[0].zoo[0].tpl[row.tpl];
+  h := e2mo_home(v, m);
   i := EGB_BEAST0 + q;
-  c := e2mo_rules_creature(kind);
+  c := e2mo_rules_creature(tp.block);
   c.x = egb_sq(h[0]); c.y = egb_z_cell(r, h[1]); c.turn_at = b[0].clock + 100000; c.round_at = b[0].clock;
   b[0].c[i] = c;
   id := r[0].next_id; r[0].next_id += 1;
   r[0].beasts[q] = EgBeast.{id = id, tag = id, by = -1, spell = -1, form = E2M_FORM, wild = true, x = h[0], z = h[1], yaw = h[2], goal_x = h[0], goal_z = h[1]};
   life := mo[0].life + 1;
-  mo[0] = E2Mon.{q = q, id = id, life = life, kind = kind, group = e2mo_group(m), archer = e2mo_archer(m), state = E2M_IDLE,
+  mo[0] = E2Mon.{q = q, id = id, life = life, kind = tp.kind, tpl = row.tpl, group = row.group, archer = E2M_STYLE[tp.style].shoots, state = E2M_IDLE,
                  x = h[0], z = h[1], yaw = h[2], hx = h[0], hz = h[1], hyaw = h[2], spin = ifx m % 2 == 0 then 1.0f32 else -1.0f32};
   return true;
 }
@@ -241,31 +344,32 @@ e2mo_rouse :: (v: [] RmServer, k: int, group: int, s: int) {
   for m: 0..<E2M_N {
     mo := ms[0].mon[m..<m + 1];
     if mo[0].group != group || mo[0].state != E2M_IDLE { continue; }
-    mo[0].state = E2M_CHASE; mo[0].foe = s;
+    mo[0].state = E2M_CHASE; mo[0].foe = s; if e2th_of(mo[0], s) == 0 { e2th_add(mo, s, 1); }   // noticed: 1 of a threat
     p := v[0].eg[k].seat[s].pose;
     mo[0].orbit = e2_heading(mo[0].x - p.x, mo[0].z - p.z);
   }
 }
-e2mo_home_again :: (mo: [] E2Mon) { mo[0].state = E2M_RETURN; mo[0].foe = -1; mo[0].act = 0; }
+e2mo_home_again :: (mo: [] E2Mon) { mo[0].state = E2M_RETURN; mo[0].foe = -1; mo[0].act = 0; mo[0].threat_n = 0; }
 // Monster m is at home, whole again, as an MMO's monster is: its place, its Hit Points and its conditions.
 e2mo_rest_home :: (v: [] RmServer, k: int, m: int) {
   mo := e2mo_room(v, k)[0].mon[m..<m + 1]; b := v[0].eg[k].rules[0].b[..]; i := e2mo_creature(mo[0]);
   mo[0].x = mo[0].hx; mo[0].z = mo[0].hz; mo[0].yaw = mo[0].hyaw;
   b[0].c[i].hp = b[0].c[i].hp_max; b[0].c[i].cond = 0; b[0].c[i].temp = 0;
-  mo[0].state = E2M_IDLE; slot_set_clear(mo[0].hurt_by[..]); mo[0].act = 0; mo[0].foe = -1; mo[0].home_t = 0;
+  mo[0].state = E2M_IDLE; slot_set_clear(mo[0].hurt_by[..]); mo[0].act = 0; mo[0].foe = -1; mo[0].home_t = 0; mo[0].threat_n = 0;
 }
 
 // ---- the tick (before the rules' step): spawns, notices, chases, blows and arrows
 e2_monsters_tick :: (v: [] RmServer, k: int) {
   ms := e2mo_room(v, k); r := v[0].eg[k].rules[..]; b := r[0].b[..];
   t := v[0].eg[k].tick; dt := 1.0f32 / f32(EG_HZ);
-  respawn := e2mo_hz(ifx v[0].dev.on then f32(E2M_RESPAWN_DEV_S) else f32(E2M_RESPAWN_S));
   for m: 0..<E2M_N {
     mo := ms[0].mon[m..<m + 1];
     if mo[0].state == E2M_GONE {
-      if e2mo_retired(m) { continue; }   // a retired row never spawns
+      row := e2mo_row(v, m);
+      if !row.live { continue; }   // a number no troop names never spawns
+      respawn := e2mo_hz(ifx v[0].dev.on && row.respawn > f32(E2M_RESPAWN_DEV_S) then f32(E2M_RESPAWN_DEV_S) else row.respawn);
       if ms[0].started && t - mo[0].down_t < respawn { continue; }
-      h := e2mo_home(m);
+      h := e2mo_home(v, m);
       if ms[0].started && e2mo_seen(v, k, h[0], h[1]) { continue; }   // never appears before a player's eyes
       _ := e2mo_spawn(v, k, m); continue;
     }
@@ -309,8 +413,8 @@ e2mo_seen :: (v: [] RmServer, k: int, x: f32, z: f32) -> bool {
 }
 e2mo_step :: (v: [] RmServer, k: int, m: int, t: int, dt: f32) {
   ms := e2mo_room(v, k); mo := ms[0].mon[m..<m + 1]; r := v[0].eg[k].rules[..]; b := r[0].b[..];
-  kind := mo[0].kind; i := e2mo_creature(mo[0]);
-  run := f32(E2M_RUN[kind]);
+  tp := e2mo_tpl(v, mo[0]); style := E2M_STYLE[tp.style]; i := e2mo_creature(mo[0]);
+  run := tp.run;
   if mo[0].state == E2M_IDLE {
     // home: it faces the way it stands, and wakes for the one its line of sight found last tick
     if mo[0].seen && mo[0].ray_seat >= 0 && e2mo_quarry(v, k, mo[0].ray_seat) { e2mo_rouse(v, k, mo[0].group, mo[0].ray_seat); }
@@ -325,24 +429,27 @@ e2mo_step :: (v: [] RmServer, k: int, m: int, t: int, dt: f32) {
     if e2mo_dist(mo[0].x, mo[0].z, mo[0].hx, mo[0].hz) < 0.05 { yaw := mo[0].yaw; e2mo_rest_home(v, k, m); mo[0].yaw = yaw; }
     return;
   }
-  foe := mo[0].foe;
+  // whom it fights: the top of its threat list
+  foe := e2th_top(v, k, mo[0]);
+  if foe < 0 { foe = mo[0].foe; }
   if !e2mo_quarry(v, k, foe) {
-    // its quarry fell, left or fled into the glade: another of the group's still fighting, else home
+    // no one on its list is left to fight (fallen, gone, or fled into the glade): another of the group's quarry, else home
     foe = -1;
     for o: 0..<E2M_N { other := ms[0].mon[o]; if o != m && other.group == mo[0].group && other.state == E2M_CHASE && e2mo_quarry(v, k, other.foe) { foe = other.foe; } }
     if foe < 0 { e2mo_home_again(mo); return; }
-    mo[0].foe = foe;
+    e2th_add(mo, foe, 1);
   }
+  mo[0].foe = foe;
   p := v[0].eg[k].seat[foe].pose;
   gap := e2mo_dist(mo[0].x, mo[0].z, p.x, p.z);
-  if e2mo_dist(mo[0].x, mo[0].z, mo[0].hx, mo[0].hz) > f32(E2M_LEASH[kind]) || e2mo_dist(p.x, p.z, mo[0].hx, mo[0].hz) > f32(E2M_LEASH[kind]) + 6 || mo[0].z > f32(E2M_LEASH_Z) {
+  if e2mo_dist(mo[0].x, mo[0].z, mo[0].hx, mo[0].hz) > tp.leash || e2mo_dist(p.x, p.z, mo[0].hx, mo[0].hz) > tp.leash + 6 || mo[0].z > f32(E2M_LEASH_Z) {
     e2mo_home_again(mo); return;
   }
   face := e2_heading(p.x - mo[0].x, p.z - mo[0].z);
   // a blow or a shot under way: it stands to it, facing its quarry, until its tell is out
   if mo[0].act != 0 {
     mo[0].yaw = e2mo_turn(mo[0].yaw, face, 10, dt);
-    tell := ifx mo[0].act == E2M_ACT_SHOT then f32(E2M_TELL_SHOT) else f32(E2M_TELL_BLOW[kind]);
+    tell := ifx mo[0].act == E2M_ACT_SHOT then f32(E2M_TELL_SHOT) else style.tell;
     if t - mo[0].act_t < e2mo_hz(tell) { return; }
     if mo[0].act == E2M_ACT_BLOW {
       if gap <= f32(E2M_REACH) + 0.6 { e2mo_blow(v, k, m, foe); }
@@ -373,7 +480,7 @@ e2mo_step :: (v: [] RmServer, k: int, m: int, t: int, dt: f32) {
     mo[0].yaw = e2mo_turn(mo[0].yaw, face, 8, dt);
     return;
   }
-  if kind == E2M_WOLF {
+  if style.circles {
     // the pack circles its quarry, each wolf round its own side, and closes when its bite is ready
     mo[0].orbit += mo[0].spin * f32(E2M_CIRCLE) / f32(E2M_RING) * dt;
     near := ifx ready then 1.2f32 else f32(E2M_RING);
@@ -391,7 +498,7 @@ e2mo_step :: (v: [] RmServer, k: int, m: int, t: int, dt: f32) {
 e2mo_blow :: (v: [] RmServer, k: int, m: int, s: int) {
   mo := e2mo_room(v, k)[0].mon[m..<m + 1]; b := v[0].eg[k].rules[0].b[..];
   j := EGB_SEAT + s; was := b[0].c[j].hp;
-  _ := e2mo_strike(b, e2mo_creature(mo[0]), j, e2mo_melee(mo[0].kind), 1);
+  _ := e2mo_strike(b, e2mo_creature(mo[0]), j, e2mo_melee(e2mo_tpl(v, mo[0]).block), 1);
   mo[0].hit_t = v[0].eg[k].tick; mo[0].hit_seat = s;
   e2mo_tell(v, k, 1, m, s, rs_max(was - b[0].c[j].hp, 0), mo[0].x, mo[0].z);
 }
@@ -431,7 +538,7 @@ e2mo_arrows :: (v: [] RmServer, k: int, t: int) {
     p := v[0].eg[k].seat[s].pose;
     if !e2mo_quarry(v, k, s) || e2mo_dist(p.x, p.z, sh[0].tx, sh[0].tz) > 1.0 { e2mo_tell(v, k, 1, sh[0].m, s, 0, mo.x, mo.z); continue; }
     j := EGB_SEAT + s; was := b[0].c[j].hp;
-    _ := e2mo_strike(b, e2mo_creature(mo), j, e2mo_ranged(mo.kind), 2);
+    _ := e2mo_strike(b, e2mo_creature(mo), j, e2mo_ranged(e2mo_tpl(v, mo).block), 2);
     e2mo_tell(v, k, 1, sh[0].m, s, rs_max(was - b[0].c[j].hp, 0), mo.x, mo.z);
   }
 }
@@ -445,13 +552,13 @@ e2_monsters_after :: (v: [] RmServer, k: int) {
     i := EGB_BEAST0 + mo[0].q; id := r[0].beasts[mo[0].q].id;
     if id == mo[0].id && !b[0].c[i].dead && b[0].c[i].hp > 0 { continue; }
     if id == mo[0].id { egb_beast_gone(r, mo[0].q); }
-    mo[0].state = E2M_DEAD; mo[0].down_t = t; mo[0].act = 0; mo[0].foe = -1;
+    mo[0].state = E2M_DEAD; mo[0].down_t = t; mo[0].act = 0; mo[0].foe = -1; mo[0].threat_n = 0;
     e2mo_tell(v, k, 4, m, -1, 0, mo[0].x, mo[0].z);
     // its SRD XP, split evenly among the seats that hurt it
     n := 0; for s: 0..<EG_SEATS { if slot_set_has(mo[0].hurt_by[..], s) && v[0].eg[k].seat[s].live { n += 1; } }
-    if n > 0 { for s: 0..<EG_SEATS { if slot_set_has(mo[0].hurt_by[..], s) && v[0].eg[k].seat[s].live { ev_award(v, k, SeatId.{value = s}, rs_max(E2M_XP[mo[0].kind] / n, 1)); } } }
+    if n > 0 { for s: 0..<EG_SEATS { if slot_set_has(mo[0].hurt_by[..], s) && v[0].eg[k].seat[s].live { ev_award(v, k, SeatId.{value = s}, rs_max(e2mo_tpl(v, mo[0]).xp / n, 1)); } } }
     // its drop and its place in their quests, by the content tables (coax/web/room/room-items.coax, #13291, #13292)
-    for s: 0..<EG_SEATS { if slot_set_has(mo[0].hurt_by[..], s) && v[0].eg[k].seat[s].live { ri_kill(v, k, SeatId.{value = s}, mo[0].kind); } }
+    for s: 0..<EG_SEATS { if slot_set_has(mo[0].hurt_by[..], s) && v[0].eg[k].seat[s].live { ri_kill(v, k, SeatId.{value = s}, e2mo_tpl(v, mo[0]).creature); } }
   }
 }
 
@@ -477,9 +584,31 @@ e2_monster_struck :: (v: [] RmServer, k: int, s: int, i: int, hp_before: int) {
     if mo[0].q < 0 || EGB_BEAST0 + mo[0].q != i { continue; }
     hp := v[0].eg[k].rules[0].b[0].c[i].hp;
     _ := slot_set_put(mo[0].hurt_by[..], s, true);
+    if mo[0].state != E2M_RETURN { e2th_add(mo, s, rs_max(hp_before - hp, 1)); }
     if mo[0].state == E2M_IDLE && e2mo_quarry(v, k, s) { e2mo_rouse(v, k, mo[0].group, s); }
     e2mo_tell(v, k, 2, m, s, rs_max(hp_before - hp, 0), mo[0].x, mo[0].z);
     return;
+  }
+}
+// Seat `healer` healed seat `healed` of `amount` Hit Points: to every monster fighting that has `healed`
+// on its list, the healer is half of that more of a threat, and has taken part in its fall.
+e2_monster_healed :: (v: [] RmServer, k: int, healer: int, healed: int, amount: int) {
+  ms := e2mo_room(v, k);
+  if amount <= 0 || healer < 0 || healer >= EG_SEATS { return; }
+  for m: 0..<E2M_N {
+    mo := ms[0].mon[m..<m + 1];
+    if !e2mo_up(v, k, m) || mo[0].state == E2M_IDLE || mo[0].state == E2M_RETURN || e2th_of(mo[0], healed) <= 0 { continue; }
+    e2th_add(mo, healer, rs_max(amount / 2, 1)); _ := slot_set_put(mo[0].hurt_by[..], healer, true);
+  }
+}
+// Seat s taunts the monster whose creature is i: it turns on s.
+e2_monster_taunted :: (v: [] RmServer, k: int, s: int, i: int) {
+  ms := e2mo_room(v, k);
+  for m: 0..<E2M_N {
+    mo := ms[0].mon[m..<m + 1];
+    if mo[0].q < 0 || EGB_BEAST0 + mo[0].q != i || !e2mo_up(v, k, m) || mo[0].state == E2M_RETURN || !e2mo_quarry(v, k, s) { continue; }
+    e2th_taunt(mo, s);
+    if mo[0].state == E2M_IDLE { e2mo_rouse(v, k, mo[0].group, s); }
   }
 }
 // For the path's guard: the creature of a monster that struck at a player standing within `reach` m of
@@ -523,7 +652,7 @@ e2_monster_sights :: (v: [] RmServer, k: int, first: int) -> int {
     if !e2mo_up(v, k, m) { continue; }
     s := -1;
     if mo[0].state == E2M_IDLE {
-      best := f32(E2M_NOTICE[mo[0].kind]) + 0.001;
+      best := e2mo_tpl(v, mo[0]).notice + 0.001;
       for o: 0..<EG_SEATS {
         if !e2mo_quarry(v, k, o) { continue; }
         p := v[0].eg[k].seat[o].pose; d := e2mo_dist(p.x, p.z, mo[0].x, mo[0].z);
@@ -609,7 +738,7 @@ e2mt_count :: (v: [] RmServer, k: int, states: int) -> int {
   // every standing monster has its row, in its own slot, with its fields from its record and the battle
   for m: 0..<E2M_N {
     w := wire_test_row(h, EG_SLOT_MON + m, now); o := ms[0].mon[m];
-    if e2mo_retired(m) { #assert o.state == E2M_GONE && h[0].id[(now % WIRE_BASES) * WIRE_SLOTS + EG_SLOT_MON + m] == 0; continue; }   // a retired row never stands, and has no row
+    if e2mo_retired(v[..], m) { #assert o.state == E2M_GONE && h[0].id[(now % WIRE_BASES) * WIRE_SLOTS + EG_SLOT_MON + m] == 0; continue; }   // a retired row never stands, and has no row
     #assert o.state != E2M_GONE && cast(int) h[0].id[(now % WIRE_BASES) * WIRE_SLOTS + EG_SLOT_MON + m] == WIRE_ID_MADE + WIRE_MON_EID + m + 1;
     #assert w.kind == WK_MONSTER && w.p1 == m && w.p2 == o.kind && w.g == o.state && w.hp > 0 && w.max == room[0].rules[0].b[0].c[EGB_BEAST0 + o.q].hp_max && w.life > 0;
     #assert abs(w.x - o.x) < 0.006 && abs(w.z - o.z) < 0.006 && w.cond == 0 && w.dur == 0 && w.form == 0;
@@ -681,7 +810,7 @@ e2mt_fight_bytes :: (v: [] RmServer, ticks: int) -> int {
   wolves := 0; goblins := 0;
   for m: 0..<E2M_N {
     mo := ms[0].mon[m];
-    if e2mo_retired(m) { #assert mo.state == E2M_GONE && mo.q < 0; continue; }
+    if e2mo_retired(v[..], m) { #assert mo.state == E2M_GONE && mo.q < 0; continue; }
     #assert mo.state == E2M_IDLE && mo.q >= 0 && e2mo_up(v[..], k, m);
     #assert mo.z < f32(E2M_LEASH_Z) - 40 && e2_may_stand(mo.x, mo.z);
     c := v[0].eg[k].rules[0].b[0].c[EGB_BEAST0 + mo.q];
@@ -689,7 +818,7 @@ e2mt_fight_bytes :: (v: [] RmServer, ticks: int) -> int {
     else { goblins += 1; #assert c.hp == 10 && c.ac == 15 && e2_clearing(mo.x, mo.z) > 0.5; }
   }
   #assert wolves == 6 && goblins == 4;   // packs of one, two and three
-  #assert e2mo_melee(E2M_WOLF).name == "Bite" && e2mo_melee(E2M_GOBLIN).name == "Scimitar" && e2mo_ranged(E2M_GOBLIN).name == "Shortbow";
+  #assert e2mo_melee(MON_WOLF).name == "Bite" && e2mo_melee(MON_GOBLIN_WARRIOR).name == "Scimitar" && e2mo_ranged(MON_GOBLIN_WARRIOR).name == "Shortbow";
   // the archers stand higher than the fire
   #assert e2_height(ms[0].mon[10].x, ms[0].mon[10].z) >= e2_height(e2_camp_x(), E2_CAMP_Z) - 0.05;
 }
@@ -714,7 +843,7 @@ e2mt_fight_bytes :: (v: [] RmServer, ticks: int) -> int {
     if b[0].c[EGB_SEAT].hp < 200 { bit = true; }
   }
   #assert most == 3 && bit;
-  for m: 0..<E2M_N { if (m < 5 || m > 7) && !e2mo_retired(m) { #assert ms[0].mon[m].state == E2M_IDLE; } }
+  for m: 0..<E2M_N { if (m < 5 || m > 7) && !e2mo_retired(v[..], m) { #assert ms[0].mon[m].state == E2M_IDLE; } }
   // they circle you, round their own sides
   a0 := e2_heading(ms[0].mon[5].x - px, ms[0].mon[5].z - pz); a1 := e2_heading(ms[0].mon[6].x - px, ms[0].mon[6].z - pz);
   #assert abs(a0 - a1) > 0.2 && e2mo_dist(ms[0].mon[5].x, ms[0].mon[5].z, px, pz) < 4;
@@ -747,10 +876,10 @@ e2mt_fight_bytes :: (v: [] RmServer, ticks: int) -> int {
   for q: 0..<EG_HZ * 40 {
     z += f32(E2_RUN_SPEED) / f32(EG_HZ); if z > -30 { z = -30; }
     e2mt_at(v[..], k, e2_road_x(z), z); e2mt_tick(v[..], k);
-    for m: 0..<3 { if e2mo_retired(m) { continue; } if ms[0].mon[m].z > north { north = ms[0].mon[m].z; } if ms[0].mon[m].state == E2M_RETURN { went = true; } }
+    for m: 0..<3 { if e2mo_retired(v[..], m) { continue; } if ms[0].mon[m].z > north { north = ms[0].mon[m].z; } if ms[0].mon[m].state == E2M_RETURN { went = true; } }
   }
   #assert went && north < f32(E2M_LEASH_Z) + 4.5;
-  for m: 0..<3 { if e2mo_retired(m) { continue; } #assert ms[0].mon[m].state == E2M_IDLE && e2mo_dist(ms[0].mon[m].x, ms[0].mon[m].z, ms[0].mon[m].hx, ms[0].mon[m].hz) < 0.1; }
+  for m: 0..<3 { if e2mo_retired(v[..], m) { continue; } #assert ms[0].mon[m].state == E2M_IDLE && e2mo_dist(ms[0].mon[m].x, ms[0].mon[m].z, ms[0].mon[m].hx, ms[0].mon[m].hz) < 0.1; }
   #assert b[0].c[i].hp == b[0].c[i].hp_max;
 }
 #test "e2 monsters: a goblin archer looses an arrow that flies before it lands; a step aside makes it miss" #steps 4000000000 #traversal 1073741824 {
@@ -806,6 +935,64 @@ e2mt_fight_bytes :: (v: [] RmServer, ticks: int) -> int {
   #assert ms[0].mon[3].state == E2M_IDLE && ms[0].mon[3].life == life + 1 && e2mo_up(v[..], k, 3);
   // the guard's word: a monster that struck at a player near him
   #assert e2_monster_assailant(v[..], k, 0, -10, 8) == -1;
+}
+
+e2mt_seat_at :: (v: [] RmServer, k: int, s: int, x: f32, z: f32) { v[0].eg[k].seat[s].pose.x = x; v[0].eg[k].seat[s].pose.z = z; egb_place(v[0].eg[k].rules[..], s, x, z); }
+#test "e2 monsters: whom a monster fights is the top of its threat list: harm, a healer and a taunt move it, and home clears it (#13293)" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-threat"); #assert k >= 0;
+  #assert rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-e2-threat HTTP/1.1\r\n\r\n") == 1;
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 srd-cleric 0 -"); eg_test_tick(v[..], k);
+  ms := v[0].eg[k].monsters[..]; b := v[0].eg[k].rules[0].b[..];
+  for s: 0..<2 { b[0].c[EGB_SEAT + s].hp = 5000; b[0].c[EGB_SEAT + s].hp_max = 5000; b[0].c[EGB_SEAT + s].ac = 30; }
+  for q: 0..<3 { e2mt_tick(v[..], k); }
+  // the fighter and the healer stand 25 m from the third pack: no one has noticed them
+  w := ms[0].mon[5]; i := EGB_BEAST0 + w.q; px := w.x + 25; pz := w.z;
+  e2mt_seat_at(v[..], k, 0, px, pz); e2mt_seat_at(v[..], k, 1, px + 2, pz); e2mt_tick(v[..], k);
+  #assert ms[0].mon[5].state == E2M_IDLE && ms[0].mon[5].threat_n == 0 && e2mo_quarry(v[..], k, 0) && e2mo_quarry(v[..], k, 1);
+  // a heal while nothing fights is no one's threat
+  e2_monster_healed(v[..], k, 1, 0, 20); #assert ms[0].mon[5].threat_n == 0;
+  // the fighter harms one Wolf for 3: it is 3 of a threat to that Wolf and 1 to its packmates, who come
+  b[0].c[i].hp_max = 500; b[0].c[i].hp = 497; e2_monster_struck(v[..], k, 0, i, 500);
+  #assert e2th_of(ms[0].mon[5], 0) == 3 && e2th_of(ms[0].mon[6], 0) == 1 && e2th_of(ms[0].mon[7], 0) == 1 && e2th_of(ms[0].mon[5], 1) == 0;
+  e2mt_seat_at(v[..], k, 0, px, pz); e2mt_seat_at(v[..], k, 1, px + 2, pz); e2mt_tick(v[..], k);
+  for m: 5..<8 { #assert ms[0].mon[m].state == E2M_CHASE && ms[0].mon[m].foe == 0; }
+  // the healer heals the fighter of 20: half of it is the healer's threat on each Wolf that has the fighter on its list
+  e2_monster_healed(v[..], k, 1, 0, 20);
+  #assert e2th_of(ms[0].mon[5], 1) == 10 && e2th_of(ms[0].mon[6], 1) == 10 && slot_set_has(ms[0].mon[5].hurt_by[..], 1) && e2th_top(v[..], k, ms[0].mon[5]) == 1;
+  e2mt_seat_at(v[..], k, 0, px, pz); e2mt_seat_at(v[..], k, 1, px + 2, pz); e2mt_tick(v[..], k);
+  for m: 5..<8 { #assert ms[0].mon[m].foe == 1; }
+  // the fighter's next 7 make 10: level with the healer is not enough, nor 1 more; 110 percent pulls it back
+  b[0].c[i].hp = 490; e2_monster_struck(v[..], k, 0, i, 497); #assert e2th_of(ms[0].mon[5], 0) == 10 && e2th_top(v[..], k, ms[0].mon[5]) == 1;
+  b[0].c[i].hp = 490; e2_monster_struck(v[..], k, 0, i, 490); #assert e2th_of(ms[0].mon[5], 0) == 11 && e2th_top(v[..], k, ms[0].mon[5]) == 0;   // a miss is 1
+  e2mt_seat_at(v[..], k, 0, px, pz); e2mt_seat_at(v[..], k, 1, px + 2, pz); e2mt_tick(v[..], k);
+  #assert ms[0].mon[5].foe == 0 && ms[0].mon[6].foe == 1;
+  // a heal of 1 is still 1 of a threat; the healer's taunt puts the healer on top by enough to pull
+  e2_monster_healed(v[..], k, 1, 0, 1); #assert e2th_of(ms[0].mon[5], 1) == 11 && e2th_top(v[..], k, ms[0].mon[5]) == 0;
+  e2_monster_taunted(v[..], k, 1, i); #assert e2th_of(ms[0].mon[5], 1) == 13 && e2th_top(v[..], k, ms[0].mon[5]) == 1 && e2th_of(ms[0].mon[6], 1) == 11;
+  e2_monster_taunted(v[..], k, 1, i); #assert e2th_of(ms[0].mon[5], 1) == 13;   // already on top: nothing more
+  // the healer steps into the glade: no quarry, so the next on the list is fought
+  e2mt_seat_at(v[..], k, 0, px, pz); e2mt_seat_at(v[..], k, 1, 0, -10); e2mt_tick(v[..], k);
+  for m: 5..<8 { #assert ms[0].mon[m].state == E2M_CHASE && ms[0].mon[m].foe == 0; }
+  #assert e2th_top(v[..], k, ms[0].mon[5]) == 0;
+  // with no one left to fight it goes home, its list empty; on its way it takes no threat and no taunt
+  e2mt_seat_at(v[..], k, 0, 0, -10); e2mt_tick(v[..], k);
+  #assert ms[0].mon[5].state != E2M_CHASE && ms[0].mon[5].threat_n == 0 && ms[0].mon[5].foe == -1;
+  ms[0].mon[5].state = E2M_RETURN;
+  e2mt_seat_at(v[..], k, 0, px, pz); e2_monster_struck(v[..], k, 0, i, 490); e2_monster_taunted(v[..], k, 0, i); e2_monster_healed(v[..], k, 0, 0, 50);
+  #assert ms[0].mon[5].threat_n == 0;
+  // a taunt wakes one at home, and its pack
+  for q: 0..<EG_HZ * 12 { e2mt_seat_at(v[..], k, 0, 0, -10); e2mt_seat_at(v[..], k, 1, 0, -10); e2mt_tick(v[..], k); }
+  #assert ms[0].mon[5].state == E2M_IDLE && ms[0].mon[5].threat_n == 0;
+  e2mt_seat_at(v[..], k, 0, px, pz); e2_monster_taunted(v[..], k, 0, i);
+  #assert ms[0].mon[5].state == E2M_CHASE && ms[0].mon[6].state == E2M_CHASE && e2th_of(ms[0].mon[5], 0) == 1 && e2th_top(v[..], k, ms[0].mon[5]) == 0;
+  // a full list drops its least for one who is more of a threat, and never for one who is less
+  mo: [1] E2Mon;
+  for s: 0..<E2M_THREAT { e2th_add(mo[..], s, s + 2); }
+  #assert mo[0].threat_n == E2M_THREAT && e2th_of(mo[0], 0) == 2;
+  e2th_add(mo[..], 20, 2); #assert e2th_of(mo[0], 20) == 0 && e2th_of(mo[0], 0) == 2;
+  e2th_add(mo[..], 21, 5); #assert e2th_of(mo[0], 21) == 5 && e2th_of(mo[0], 0) == 0 && mo[0].threat_n == E2M_THREAT;
+  e2th_add(mo[..], 21, E2M_THREAT_MAX); e2th_add(mo[..], 21, E2M_THREAT_MAX); #assert e2th_of(mo[0], 21) == E2M_THREAT_MAX;
+  e2th_add(mo[..], -1, 5); e2th_add(mo[..], 3, 0); #assert e2th_of(mo[0], -1) == 0 && e2th_of(mo[0], 3) == 5;
 }
 
 #test "e2 monsters: the path's guard goes for a wolf that bites a player near him, and strikes it" #steps 4000000000 #traversal 1073741824 {

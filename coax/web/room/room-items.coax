@@ -83,6 +83,7 @@ RmItems :: struct {
 // With them, the release before's (EC_PREVIOUS), kept when they are the revision before these.
 rm_content_load :: (v: [] RmServer, text: string) -> bool #export_c #effects(all) {
   v[0].itm.content = ct_read(v[0].itm.doc[..], text) && ec_ok(v[0].itm.doc[..]);
+  if v[0].itm.content { _ := e2zoo_load(v, v[0].itm.doc[..]); }   // the room's creatures, when these tables hold them (#13293)
   _ := rm_content_prev(v, EC_PREVIOUS);
   return v[0].itm.content;
 }
@@ -355,14 +356,13 @@ ri_roll :: (v: [] RmServer) -> int {
   v[0].itm.rng = x;
   return x / 1000 % EC_LOOT_WHOLE;
 }
-// Seat s of room k took part in killing a creature of the room's template `kind` (creatures.coax
+// Seat s of room k took part in killing a creature, named by its content ID (creatures.coax
 // e2_monsters_after): its drop, by the creature's loot table, and its quests' kills.
-ri_kill :: (v: [] RmServer, k: int, seat_id: SeatId, kind: int) {
+ri_kill :: (v: [] RmServer, k: int, seat_id: SeatId, creature: int) {
   c := ri_seat(v, k, seat_id.value);
   if c < 0 || !v[0].itm.content { return; }
   d := ri_doc(v, c);
-  creature := ec_creature(d, kind);
-  if creature == 0 { return; }
+  if ct_find(d, EC_CREATURE, creature) < 0 { return; }
   drop := ec_drop(d, creature, ri_roll(v));
   if drop != 0 { _ := ri_push(v, c, RI_LOOT, LOP_GRANT, 0, drop, CharClaim.{}); }
   ri_happened(v, c, EQ_KILL, creature);
@@ -527,7 +527,7 @@ ri_test_heard :: (v: [] RmServer, k: int, text: string) -> bool {
   c := ri_open(v[..], 0, 0, "p-a", 7);
   #assert c == 0 && ri_seat(v[..], 0, 0) == 0 && ri_seat(v[..], 0, 1) == -1 && ri_seat(v[..], -1, 0) == -1 && rm_items_pending(v[..]) == 1 && !v[0].itm.c[0].synced;
   // nothing happens for a character not yet read: no drop, no quest
-  ri_kill(v[..], 0, SeatId.{value = 0}, 0); _ := ri_say(v[..], 0, SeatId.{value = 0}, 1);
+  ri_kill(v[..], 0, SeatId.{value = 0}, 1); _ := ri_say(v[..], 0, SeatId.{value = 0}, 1);
   n := rm_items_due(v[..]); body := cast(string) v[0].itm.out[0..<n];
   #assert n > 0 && io_find(body, "\"op\":\"read\"") > 0 && io_find(body, "\"pid\":\"p-a\"") > 0 && io_find(body, "\"gen\":7") > 0 && io_find(body, "\"id\":\"s1-1762190000000-1\"") > 0;
   #assert rm_items_due(v[..]) == 0;   // one post flies at a time
@@ -538,7 +538,7 @@ ri_test_heard :: (v: [] RmServer, k: int, text: string) -> bool {
   w: [1] RmServer; rm_init(w[..]); rm_clock(w[..], 1000, 1762190000000);
   #assert !rm_content_load(w[..], "aethyr.content.v1 d 1\nreach 1\n") && !rm_content_load(w[..], "nope") && rm_content_rev(w[..]) == 0;
   c = ri_open(w[..], 0, 0, "p-a", 7); rm_items_local(w[..]); #assert rm_items_due(w[..]) > 0; rm_items_local(w[..]);
-  ri_kill(w[..], 0, SeatId.{value = 0}, 0); #assert !ri_say(w[..], 0, SeatId.{value = 0}, 1) && !ri_wear(w[..], 0, SeatId.{value = 0}, 1) && rm_items_pending(w[..]) == 0;
+  ri_kill(w[..], 0, SeatId.{value = 0}, 1); #assert !ri_say(w[..], 0, SeatId.{value = 0}, 1) && !ri_wear(w[..], 0, SeatId.{value = 0}, 1) && rm_items_pending(w[..]) == 0;
 }
 #test "items: a quest from its giver to its reward, each step one ledger operation; the seat hears each change" #steps 4000000000 {
   v: [1] RmServer; st: [1] RiStore; ri_test_init(v[..], 1762190000000);
@@ -549,11 +549,11 @@ ri_test_heard :: (v: [] RmServer, k: int, text: string) -> bool {
   v[0].eg[0].seat[0].pose.z = -59.0; #assert ri_say(v[..], 0, seat, 1) && !ri_say(v[..], 0, seat, 9) && ri_test_heard(v[..], 0, "e say 0 1");
   ri_test_drain(v[..], st[..]); #assert char_stage(v[0].itm.c[0].rec, 1) == 1;
   // four Wolves (the room's template 0); a Goblin is not one
-  ri_kill(v[..], 0, seat, 1); ri_test_drain(v[..], st[..]); #assert char_stage(v[0].itm.c[0].rec, 1) == 1;
-  for i: 0..<4 { ri_kill(v[..], 0, seat, 0); }
+  ri_kill(v[..], 0, seat, 2); ri_test_drain(v[..], st[..]); #assert char_stage(v[0].itm.c[0].rec, 1) == 1;
+  for i: 0..<4 { ri_kill(v[..], 0, seat, 1); }
   #assert ri_soon(v[..], 0, 1) == 5; ri_test_drain(v[..], st[..]); #assert char_stage(v[0].itm.c[0].rec, 1) >= 5;
   // more Wolves until two pelts have dropped: each pelt in the bag is used up as the quest asks
-  for i: 0..<40 { if char_stage(v[0].itm.c[0].rec, 1) >= 7 { break; } ri_kill(v[..], 0, seat, 0); ri_test_drain(v[..], st[..]); }
+  for i: 0..<40 { if char_stage(v[0].itm.c[0].rec, 1) >= 7 { break; } ri_kill(v[..], 0, seat, 1); ri_test_drain(v[..], st[..]); }
   #assert char_stage(v[0].itm.c[0].rec, 1) == 7 && ri_test_wrote(st[..], LOP_CONSUME) == 2;
   // the Warden again: the talk, then the reward at once: the cloak, 25 coin, 100 XP
   #assert ri_say(v[..], 0, seat, 1); ri_test_drain(v[..], st[..]);
@@ -570,7 +570,7 @@ ri_test_heard :: (v: [] RmServer, k: int, text: string) -> bool {
   tb: [48] u8; n := wire_put_own(tb[..], 0, WO_ITEM, WireOwn.{ss = 0, a = cloak, b = 3, c = 2});
   #assert ri_test_heard(v[..], 0, "e coin 0 25") && ri_test_heard(v[..], 0, "e quest 0 1 9") && ri_test_heard(v[..], 0, cast(string) tb[0..<n]);
   // nothing more is owed: more kills and talks move nothing
-  ri_kill(v[..], 0, seat, 0); _ := ri_say(v[..], 0, seat, 1); ri_test_drain(v[..], st[..]);
+  ri_kill(v[..], 0, seat, 1); _ := ri_say(v[..], 0, seat, 1); ri_test_drain(v[..], st[..]);
   #assert char_stage(v[0].itm.c[0].rec, 1) == 9 && v[0].itm.c[0].rec.coin == 25 && ri_test_items(st[..], 3) == 1;
   #assert ledger_reconcile(st[0].l[..], st[0].l[0].out_n) && v[0].itm.refused == 0 && v[0].itm.failures == 0;
 }
@@ -653,7 +653,7 @@ ri_test_play :: (v: [] RmServer, st: [] RiStore, seed: int) -> bool {
     // the player's next act, from what the server has told it; only when nothing of its is waiting
     if v[0].itm.c[0].synced && rm_items_pending(v) == 0 {
       if stage == 0 || stage == 7 { _ := ri_say(v, 0, seat, 1); }
-      else if stage < 7 && kills < 24 { ri_kill(v, 0, seat, 0); kills += 1; }
+      else if stage < 7 && kills < 24 { ri_kill(v, 0, seat, 1); kills += 1; }
       else if stage == 9 && cloak > 0 && rec.worn[1] != cloak { _ := ri_wear(v, 0, seat, cloak); }
     }
     // an old room's post that the API only now takes

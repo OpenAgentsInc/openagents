@@ -182,11 +182,11 @@ dr_mac :: (key: string, text: string, out: [] u8) {
   mine := eg_server(v[..]); page := mine.pins;
   #assert compat_admit(mine, page) == CP_OK;
   page.content = wire_content_pin(2); #assert compat_admit(mine, page) == CP_CONTENT;
-  // the tables two revisions on: the room's pin moves with them, and the page at the old one is refused
+  // tables many revisions on: the room's pin moves with them, and the page at the old one is refused
   // (the revision just before is seated for one release: everglade/server/pins-prev.coax, #13408)
-  o: [CT_BODY] u8; next := ec_swap("aethyr.content.v1 everglade 1\n", "aethyr.content.v1 everglade 3\n", o[..]);
+  o: [CT_BODY] u8; next := ec_swap("aethyr.content.v1 everglade 1\n", "aethyr.content.v1 everglade 9\n", o[..]);
   w: [1] RmServer; ck_test_init(w[..]);
-  #assert rm_content_load(w[..], next) && rm_content_rev(w[..]) == 3 && eg_server(w[..]).pins.content == wire_content_pin(3) && !eg_server(w[..]).prev.on;
+  #assert rm_content_load(w[..], next) && rm_content_rev(w[..]) == 9 && eg_server(w[..]).pins.content == wire_content_pin(9) && !eg_server(w[..]).prev.on;
   #assert compat_admit(eg_server(w[..]), mine.pins) == CP_CONTENT;
 }
 #test "everglade room (#12845): live storage cannot step before world initialization completes" {

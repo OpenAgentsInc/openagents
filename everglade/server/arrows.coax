@@ -67,7 +67,7 @@ e2a_bodies :: (v: [] RmServer, k: int, tick: int, out: [] arch.ArcheryBody) -> i
   for b: 0..<E2AR_BODIES {
     at := net_past_at(a[0].past[..], b, tick, 0);
     if !at.up || n >= out.count { continue; }
-    out[n] = ifx b == E2AR_GUARD then e2ar_guard(at.x, at.z) else e2ar_monster(b, e2mo_kind(b), at.x, at.z);
+    out[n] = ifx b == E2AR_GUARD then e2ar_guard(at.x, at.z) else e2ar_monster(b, e2mo_room(v, k)[0].mon[b].kind, at.x, at.z);
     n += 1;
   }
   return n;

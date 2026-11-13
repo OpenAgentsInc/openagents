@@ -12,9 +12,17 @@
 //   point     id name x z r                            a named place: centimetres, and its radius
 //   quest     id name
 //   reward    id quest item coin xp                    paid in ID order once a quest's steps are done
-//   spawn     id creature point count
+//   spawn     id creature point count              `count` of a creature round a point (one stands on it)
 //   step      id quest creature point item talk count  one objective, in ID order: kill `count` of a creature,
 //                                                      reach a point, bring `count` of an item, or talk
+//   template  id creature block style notice leash run  how a creature fights (#13293): its stat block, its
+//                                                      behavior (everglade/server/creatures.coax E2S_*), how far it
+//                                                      notices and how far it follows (cm), its run (cm a second)
+//   troop     id spawn group face respawn slot         a spawn's place in the room: spawns of one group fight as
+//                                                      one; the way it faces at home (degrees); seconds from a fall
+//                                                      to the next; the number its first member has on the wire
+// The tables of revisions 1 and 2 had no template and no troop: such a document is still Everglade's
+// (a room keeps the release before's tables, #13408), and a room that loads one has no creatures.
 //
 // A quest's stage (the character record's, everglade/model/character.coax) counts what is done:
 // 0 not taken; 1 taken; each unit of a step done adds one (a kill, an item brought, a point reached,
@@ -25,8 +33,10 @@
 #load "../../metaverse-engine/content/tables.coax";
 #load "content-checks.coax" #test;   // the checks' fixture and helpers
 
-EC_TABLES :: 10;
+EC_TABLES :: 12;
+EC_TABLES_WAS :: 10;     // the tables of revisions 1 and 2: the first ten
 EC_ABILITY :: 0; EC_CREATURE :: 1; EC_DIALOGUE :: 2; EC_ITEM :: 3; EC_LOOT :: 4; EC_POINT :: 5; EC_QUEST :: 6; EC_REWARD :: 7; EC_SPAWN :: 8; EC_STEP :: 9;
+EC_TEMPLATE :: 10; EC_TROOP :: 11;
 EC_HEAD :: [EC_TABLES] string.[
   "table ability id name:text",
   "table creature id name:text kind:int xp:int",
@@ -37,7 +47,9 @@ EC_HEAD :: [EC_TABLES] string.[
   "table quest id name:text",
   "table reward id quest:ref.quest item:opt.item coin:int xp:int",
   "table spawn id creature:ref.creature point:ref.point count:int",
-  "table step id quest:ref.quest creature:opt.creature point:opt.point item:opt.item talk:opt.dialogue count:int"];
+  "table step id quest:ref.quest creature:opt.creature point:opt.point item:opt.item talk:opt.dialogue count:int",
+  "table template id creature:ref.creature block:int style:int notice:int leash:int run:int",
+  "table troop id spawn:ref.spawn group:int face:int respawn:int slot:int"];
 EC_NAME :: 1;
 EC_CREATURE_KIND :: 2; EC_CREATURE_XP :: 3;
 EC_DIALOGUE_POINT :: 2; EC_DIALOGUE_QUEST :: 3; EC_DIALOGUE_LINE :: 4;
@@ -46,7 +58,10 @@ EC_LOOT_CREATURE :: 1; EC_LOOT_ITEM :: 2; EC_LOOT_WEIGHT :: 3;
 EC_POINT_X :: 2; EC_POINT_Z :: 3; EC_POINT_R :: 4;
 EC_REWARD_QUEST :: 1; EC_REWARD_ITEM :: 2; EC_REWARD_COIN :: 3; EC_REWARD_XP :: 4;
 EC_SPAWN_CREATURE :: 1; EC_SPAWN_POINT :: 2; EC_SPAWN_COUNT :: 3;
+EC_TEMPLATE_CREATURE :: 1; EC_TEMPLATE_BLOCK :: 2; EC_TEMPLATE_STYLE :: 3; EC_TEMPLATE_NOTICE :: 4; EC_TEMPLATE_LEASH :: 5; EC_TEMPLATE_RUN :: 6;
+EC_TROOP_SPAWN :: 1; EC_TROOP_GROUP :: 2; EC_TROOP_FACE :: 3; EC_TROOP_RESPAWN :: 4; EC_TROOP_SLOT :: 5;
 EC_STEP_QUEST :: 1; EC_STEP_CREATURE :: 2; EC_STEP_POINT :: 3; EC_STEP_ITEM :: 4; EC_STEP_TALK :: 5; EC_STEP_COUNT :: 6;
+EC_STYLE_PACK :: 0; EC_STYLE_MELEE :: 1; EC_STYLE_ARCHER :: 2; EC_STYLE_PATROL :: 3; EC_STYLE_STANDS :: 4; EC_STYLES :: 5;   // a template's style: the behaviors (everglade/server/creatures.coax)
 EC_LOOT_WHOLE :: 100;    // a creature's loot weights add up to this
 EC_SLOTS :: 10;          // the record's equipment slots (CHAR_WORN)
 EC_STAGE_MAX :: 255;     // the record's highest stage (CHAR_STAGE_MAX)
@@ -78,8 +93,8 @@ ec_rewards :: (d: [] ContentDoc, quest: int) -> int #effects(all) {
 // one objective with a count (one for a point or a talk); each quest with a step, and stages the
 // record can hold.
 ec_ok :: (d: [] ContentDoc) -> bool #effects(all) {
-  if !d[0].ok || d[0].t_n != EC_TABLES { return false; }
-  for t: 0..<EC_TABLES {
+  if !d[0].ok || (d[0].t_n != EC_TABLES && d[0].t_n != EC_TABLES_WAS) { return false; }
+  for t: 0..<d[0].t_n {
     hb: [320] u8;
     if cast(string) hb[0..<ct_put_table(d, t, hb[..], 0)] != EC_HEAD[t] { return false; }
   }
@@ -98,11 +113,8 @@ ec_ok :: (d: [] ContentDoc) -> bool #effects(all) {
   return true;
 }
 
-// The creature of the room's template `kind` (the first, by ID), or 0.
-ec_creature :: (d: [] ContentDoc, kind: int) -> int #effects(all) {
-  for r: 0..<ct_rows(d, EC_CREATURE) { if ct_get(d, EC_CREATURE, r, EC_CREATURE_KIND) == kind { return ct_get(d, EC_CREATURE, r, 0); } }
-  return 0;
-}
+// Whether d holds the creature runtime's tables (template and troop): a room's creatures come from them.
+ec_wild :: (d: [] ContentDoc) -> bool #effects(all) { return d[0].ok && d[0].t_n == EC_TABLES; }
 // An item's slot in the record (0 to 9), or -1 for an item that is not worn, or no item.
 ec_slot :: (d: [] ContentDoc, item: int) -> int #effects(all) { return ct_get(d, EC_ITEM, ct_find(d, EC_ITEM, item), EC_ITEM_SLOT) - 1; }
 // What a creature drops for a roll of 0 to 99: an item's content ID, or 0 for nothing. Its loot
@@ -164,7 +176,7 @@ eq_advances :: (d: [] ContentDoc, quest: int, stage: int, kind: int, target: int
   with_zone := ec_swap("1|1|1|0|0|0|4\n2|1|0|0|1|0|2\n3|1|0|0|0|1|1\n4|2|0|3|0|0|1\n5|2|2|0|0|0|2\n6|2|0|0|0|2|1\n", "1|1|1|0|0|0|4\n2|1|0|0|1|0|2\n3|1|0|0|0|1|1\n4|2|0|3|0|0|1\n5|2|2|0|0|0|2\n6|2|0|0|0|2|1\ntable zone id\n", o[..]);
   #assert ec_reads(with_zone) && !ec_takes(with_zone);
   no_ability := ec_swap("table ability id name:text\n", "", o[..]); #assert ec_reads(no_ability) && !ec_takes(no_ability);
-  for t: 0..<EC_TABLES {
+  for t: 0..<EC_TABLES_WAS {
     // each table's header, a column added: still a document, not Everglade's
     hb: [400] u8; n := ct_put(hb[..], 0, EC_HEAD[t]); n = ct_put(hb[..], n, " extra:opt.item");
     more := ec_swap(EC_HEAD[t], cast(string) hb[0..<n], o[..]);
@@ -173,6 +185,19 @@ eq_advances :: (d: [] ContentDoc, quest: int, stage: int, kind: int, target: int
   }
   renamed := ec_swap("table quest id name:text", "table quest id title:text", o[..]); #assert ec_reads(renamed) && !ec_takes(renamed);
   empty: [1] ContentDoc; #assert !ec_ok(empty[..]);
+}
+#test "everglade content: the creature runtime's tables come both or not at all, with their own columns (#13293)" {
+  o: [CT_BODY] u8; p: [CT_BODY] u8; d: [1] ContentDoc;
+  wild := ec_swap("6|2|0|0|0|2|1\n", "6|2|0|0|0|2|1\ntable template id creature:ref.creature block:int style:int notice:int leash:int run:int\n1|1|6|0|1500|4000|900\ntable troop id spawn:ref.spawn group:int face:int respawn:int slot:int\n1|1|1|270|180|0\n", o[..]);
+  #assert ct_read(d[..], wild) && ec_ok(d[..]) && ec_wild(d[..]) && d[0].t_n == EC_TABLES && ct_get(d[..], EC_TEMPLATE, 0, EC_TEMPLATE_RUN) == 900 && ct_get(d[..], EC_TROOP, 0, EC_TROOP_FACE) == 270;
+  d[0].ok = false; #assert !ec_wild(d[..]);
+  // the first ten alone are the tables of revisions 1 and 2: Everglade's, with no creatures
+  #assert ct_read(d[..], EC_FIXTURE) && ec_ok(d[..]) && !ec_wild(d[..]) && d[0].t_n == EC_TABLES_WAS;
+  // one of the two without the other, or either with another column, is not Everglade's
+  half := ec_swap("6|2|0|0|0|2|1\n", "6|2|0|0|0|2|1\ntable template id creature:ref.creature block:int style:int notice:int leash:int run:int\n1|1|6|0|1500|4000|900\n", p[..]);
+  #assert ec_reads(half) && !ec_takes(half);
+  #assert ec_reads(ec_sub(wild, "leash:int run:int", "leash:int walk:int", p[..])) && !ec_takes(ec_sub(wild, "leash:int run:int", "leash:int walk:int", p[..]));
+  #assert ec_reads(ec_sub(wild, "respawn:int slot:int", "respawn:int place:int", p[..])) && !ec_takes(ec_sub(wild, "respawn:int slot:int", "respawn:int place:int", p[..]));
 }
 #test "everglade content: loot adds up to 100 for each creature, an item's slot is the record's, a step is one objective" {
   o: [CT_BODY] u8;
@@ -193,7 +218,6 @@ eq_advances :: (d: [] ContentDoc, quest: int, stage: int, kind: int, target: int
 }
 #test "everglade content: a creature's template, an item's slot and what a roll drops" {
   d: [1] ContentDoc; #assert ct_read(d[..], EC_FIXTURE);
-  #assert ec_creature(d[..], 0) == 1 && ec_creature(d[..], 1) == 2 && ec_creature(d[..], 2) == 0 && ec_creature(d[..], -1) == 0;
   #assert ec_slot(d[..], 3) == 1 && ec_slot(d[..], 4) == 6 && ec_slot(d[..], 1) == -1 && ec_slot(d[..], 9) == -1 && ec_slot(d[..], 0) == -1;
   // a Wolf: 60 rolls a pelt, 40 nothing; a Goblin: 50 an ear; no creature, nothing; a roll outside 0 to 99, nothing
   #assert ec_drop(d[..], 1, 0) == 1 && ec_drop(d[..], 1, 59) == 1 && ec_drop(d[..], 1, 60) == 0 && ec_drop(d[..], 1, 99) == 0 && ec_drop(d[..], 1, 100) == 0 && ec_drop(d[..], 1, -1) == 0;
@@ -245,7 +269,7 @@ eq_advances :: (d: [] ContentDoc, quest: int, stage: int, kind: int, target: int
   one := ec_sub(ec_swap("2|The goblin camp\n", "2|The goblin camp\n3|One step\n", o[..]), "6|2|0|0|0|2|1\n", "6|2|0|0|0|2|1\n7|3|0|1|0|0|1\n", p[..]);
   #assert ec_takes(one) && ct_read(d[..], one) && ec_total(d[..], 3) == 1 && eq_next(d[..], 3, 1).kind == EQ_REACH && eq_next(d[..], 3, 2).kind == EQ_DONE && eq_next(d[..], 3, 0).kind == EQ_NONE;
   // a third creature, an item no loot row shares an ID with, a drop on a creature's last loot row
-  #assert ct_read(d[..], ec_swap("2|Goblin Warrior|1|50\n", "2|Goblin Warrior|1|50\n7|Bear|2|10\n", o[..])) && ec_ok(d[..]) && ec_creature(d[..], 2) == 7 && ec_creature(d[..], 1) == 2;
+  #assert ct_read(d[..], ec_swap("2|Goblin Warrior|1|50\n", "2|Goblin Warrior|1|50\n7|Bear|2|10\n", o[..])) && ec_ok(d[..]) && ct_find(d[..], EC_CREATURE, 7) == 2;
   #assert ct_read(d[..], ec_swap("4|Traveller's ring|7\n", "4|Traveller's ring|7\n9|Hat|1\n", o[..])) && ec_ok(d[..]) && ec_slot(d[..], 9) == 0 && ec_slot(d[..], 4) == 6;
   #assert ct_read(d[..], ec_swap("3|2|2|50\n4|2|0|50", "3|2|0|50\n4|2|2|50", o[..])) && ec_drop(d[..], 2, 49) == 0 && ec_drop(d[..], 2, 50) == 2 && ec_drop(d[..], 2, 99) == 2;
   // a quest offered by the fifth dialogue (more dialogues than items), whose ID is no item's

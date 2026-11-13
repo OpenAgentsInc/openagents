@@ -1,4 +1,5 @@
-// Everglade II's path guard: one guard of the room's battle (the SRD 5.2.1 Fighter at level 10,
+// Everglade II's path guard: the room's creature of the patrol behavior (#13293: his creature, template,
+// spawn and troop are rows of the content tables; a room whose tables have no patrol has no guard), one guard of the room's battle (the SRD 5.2.1 Fighter at level 10,
 // rules/srd/npcs.coax rs_path_guard: AC 19, HP 84, two Longsword attacks at +8 for 1d8 + 4, Second
 // Wind and Action Surge) who walks the forest path from the glade to the clearing and back.
 // The room walks him on its own tick, so every page sees him where the room has him; the rules' turn
@@ -35,7 +36,7 @@ E2G_SIDE_V :: 0.7;          // m/s he moves across
 E2G_REACH :: 1.5;           // m from the one he fights: within his Longsword's 5 feet (the steering service rings him inside it, E2G_NAV reach)
 E2G_LEASH :: 28.0;          // m from where he was struck past which he lets them go
 E2G_CALM_S :: 15.0;         // s without a blow either way after which he goes back to his walk
-E2G_RESPAWN_S :: 20.0;      // s from his fall to the next guard
+E2G_RESPAWN_S :: 20.0;      // s from his fall to the next guard: his troop's respawn in the content tables
 E2G_AIM :: 1.6;
 E2G_DEFEND :: 12.0;         // m: a monster that strikes a player this near him is his foe             // m: a cast aimed this near him is aimed at him
 E2G_BLOW_S :: 0.7;          // s between his turn's attacks as the pages see and hear them
@@ -106,11 +107,14 @@ e2g_blocker :: (v: [] RmServer, k: int, g: E2Guard, yaw: f32) -> f32 {
   }
   return side;
 }
+// His post, the glade end of his beat: his troop's point in the content tables (#13293; everglade/server/creatures.coax E2Zoo).
+e2g_post :: (v: [] RmServer) -> f32 { return ifx v[0].zoo[0].guard.live then v[0].zoo[0].guard.z else f32(E2G_Z0); }
 // A new guard at the glade's end of the path (or the clearing's when someone stands at the glade's),
 // walking toward the other: his creature the rules' first free beast.
 e2g_spawn :: (v: [] RmServer, k: int) -> bool {
   r := v[0].eg[k].rules[..]; b := r[0].b[..]; g := v[0].eg[k].guard[..];
-  z := f32(E2G_Z0); dir: f32 = -1;
+  if !v[0].zoo[0].guard.live { return false; }   // no troop of a patrol in the room's tables: no guard
+  z := e2g_post(v); dir: f32 = -1;
   if e2g_seat_near(v, k, e2_road_x(z), z, 2.5) { z = f32(E2G_Z1); dir = 1; }
   x := e2_road_x(z);
   if e2g_seat_near(v, k, x, z, 2.5) { return false; }
@@ -179,7 +183,7 @@ e2g_walk :: (v: [] RmServer, k: int, dt: f32) {
     if abs(e2g_wrap(goal - g[0].yaw)) < 0.02 { g[0].turning = false; }
     return;
   }
-  end := ifx g[0].dir < 0 then f32(E2G_Z1) else f32(E2G_Z0);
+  end := ifx g[0].dir < 0 then f32(E2G_Z1) else e2g_post(v);
   if (g[0].dir < 0 && g[0].z <= end) || (g[0].dir > 0 && g[0].z >= end) { g[0].rest = f32(E2G_REST_S); g[0].off_to = 0; g[0].state = E2G_STANDING; return; }
   // the side step: out while a player keeps him stopped, back once the way has been clear a while
   path := e2_heading(e2_road_x(g[0].z + g[0].dir * f32(E2G_AHEAD)) - e2_road_x(g[0].z), g[0].dir * f32(E2G_AHEAD));
@@ -260,7 +264,7 @@ e2_guard_tick :: (v: [] RmServer, k: int) {
   g := v[0].eg[k].guard[..]; r := v[0].eg[k].rules[..]; b := r[0].b[..];
   dt := 1.0f32 / f32(EG_HZ); t := v[0].eg[k].tick;
   if g[0].q < 0 {
-    if g[0].down_at >= 0 && t - g[0].down_at < cast(int)(f32(E2G_RESPAWN_S) * f32(EG_HZ)) { return; }
+    if g[0].down_at >= 0 && t - g[0].down_at < cast(int)(v[0].zoo[0].guard.respawn * f32(EG_HZ)) { return; }
     if !e2g_spawn(v, k) { return; }
   }
   q := g[0].q; i := EGB_BEAST0 + q; bt := r[0].beasts[q..<q + 1];
