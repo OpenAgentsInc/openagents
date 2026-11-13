@@ -1,34 +1,35 @@
 // The classes' features (GitHub #13287, split from battle.coax): rs_release_turned to rs_dash. A
 // feature is a row of steps (#13285: rs_feature, run by rs_feature_use).
-// Not #authority yet: it owes its mutation pass (and a check for each procedure the issue lists).
-//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-features.coax
+// Its own checks are battle-features-checks.coax, which battle.coax loads.
+//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-features.coax --traversal 16000000000
+#authority;
 
 // ---- the classes' features
 
 // Who i has turned (Turn Undead) is let go: i dropped, or is Incapacitated.
-rs_release_turned :: (b: [] RsBattle, i: int) {
+rs_release_turned :: (b: [] RsBattle, i: int) #effects(all) {
   if !rs_has_feature(b[0].c[i], RS_FT_TURN_UNDEAD) { return; }   // only Turn Undead turns (rs_turn_undead)
   for j: 0..<b[0].n {
     for k: 0..<RS_EFFECTS { if b[0].c[j].eff[k].kind == EF_TURNED && b[0].c[j].eff[k].by == i { rs_drop_effect(b, j, k); } }
   }
 }
 // Who turned j (Turn Undead), or -1.
-rs_turned_by :: (c: RsCreature) -> int {
+rs_turned_by :: (c: RsCreature) -> int #effects(all) {
   for k: 0..<RS_EFFECTS { if c.eff[k].kind == EF_TURNED { return c.eff[k].by; } }
   return -1;
 }
 // A creature's own Bonus Action feature may run: its turn, its Bonus Action free, able to act.
-rs_bonus_free :: (b: [] RsBattle, i: int) -> bool { return b[0].who == i && !b[0].turn.bonus && rs_can_act(b[0].c[i]); }
-rs_action_free :: (b: [] RsBattle, i: int) -> bool { return b[0].who == i && !b[0].turn.action && rs_can_act(b[0].c[i]); }
-rs_say :: (b: [] RsBattle, kind: int, i: int, j: int, amount: int, t: string) { rs_say_ft(b, kind, i, j, amount, RS_FT_NONE, t); }
-rs_say_ft :: (b: [] RsBattle, kind: int, i: int, j: int, amount: int, feat: int, t: string) {
+rs_bonus_free :: (b: [] RsBattle, i: int) -> bool #effects(all) { return b[0].who == i && !b[0].turn.bonus && rs_can_act(b[0].c[i]); }
+rs_action_free :: (b: [] RsBattle, i: int) -> bool #effects(all) { return b[0].who == i && !b[0].turn.action && rs_can_act(b[0].c[i]); }
+rs_say :: (b: [] RsBattle, kind: int, i: int, j: int, amount: int, t: string) #effects(all) { rs_say_ft(b, kind, i, j, amount, RS_FT_NONE, t); }
+rs_say_ft :: (b: [] RsBattle, kind: int, i: int, j: int, amount: int, feat: int, t: string) #effects(all) {
   l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], t);
   rs_tell_ft(b, kind, -1, i, j, amount, 0, feat, l[..]);
 }
 // A feature that has no line of its own (a Dash): told quietly, for the worlds that draw it.
-rs_quiet_ft :: (b: [] RsBattle, i: int, feat: int) { l: [1] RsLine; rs_tell_ft(b, RS_EV_FEAT, -1, i, i, 0, 0, feat, l[..]); }
+rs_quiet_ft :: (b: [] RsBattle, i: int, feat: int) #effects(all) { l: [1] RsLine; rs_tell_ft(b, RS_EV_FEAT, -1, i, i, 0, 0, feat, l[..]); }
 // Healing from a feature (not a spell): the log line, and Hit Points back.
-rs_feature_heal :: (b: [] RsBattle, i: int, j: int, amount: int, what: string, feat: int) -> int {
+rs_feature_heal :: (b: [] RsBattle, i: int, j: int, amount: int, what: string, feat: int) -> int #effects(all) {
   was_down := b[0].c[j].hp == 0;
   h: [1] RsCreature; h[0] = b[0].c[j];
   got := rs_heal(h[..], amount);
@@ -87,10 +88,10 @@ RsFeature :: struct { st: [RS_FEAT_STEPS] RsFeatStep; n: int; }
 // What a use is aimed at and asks for: a creature (-1 none), a point, an amount (Lay On Hands).
 // `give` is what the needs worked out it gives.
 RsUse :: struct { j: int = -1; x: int; y: int; amount: int; give: int; feat: int; }   // feat: the feature its line told (its heals tell the same)
-rs_fp :: (f: [] RsFeature, kind: int, a: int, b: int, c: int, t: string) { f[0].st[f[0].n] = RsFeatStep.{kind = kind, a = a, b = b, c = c, t = t}; f[0].n += 1; }
+rs_fp :: (f: [] RsFeature, kind: int, a: int, b: int, c: int, t: string) #effects(all) { f[0].st[f[0].n] = RsFeatStep.{kind = kind, a = a, b = b, c = c, t = t}; f[0].n += 1; }
 
 // The features' rows (SRD 5.2.1; the page is the feature's). n 0: no such row.
-rs_feature :: (kind: int) -> RsFeature {
+rs_feature :: (kind: int) -> RsFeature #effects(all) {
   f: [1] RsFeature;
   if kind == RS_AB_RAGE {   // Rage (p. 29): a Bonus Action, one of its uses; no Concentration while it lasts
     rs_fp(f[..], RS_FS_N_BONUS, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_USE, RS_USE_RAGE, 0, 0, ""); rs_fp(f[..], RS_FS_N_NO_STATE, EF_RAGE, 0, 0, "");
@@ -162,7 +163,7 @@ rs_feature :: (kind: int) -> RsFeature {
   return f[0];
 }
 // Whether a need holds for creature i's use u (and, for a gift, what it gives).
-rs_feat_need :: (b: [] RsBattle, i: int, u: [] RsUse, st: RsFeatStep) -> bool {
+rs_feat_need :: (b: [] RsBattle, i: int, u: [] RsUse, st: RsFeatStep) -> bool #effects(all) {
   k := st.kind; j := u[0].j;
   if k == RS_FS_N_TURN { return b[0].who == i; }
   if k == RS_FS_N_ACT { return rs_can_act(b[0].c[i]); }
@@ -196,7 +197,7 @@ rs_feat_need :: (b: [] RsBattle, i: int, u: [] RsUse, st: RsFeatStep) -> bool {
   if k == RS_FS_N_TURNABLE {
     for q: 0..<b[0].n {
       c := b[0].c[q];
-      if c.undead && rs_up(c) && c.team != b[0].c[i].team && rs_feet_to(b,i,q) <= st.a && rs_effect_condition_mask(c,RS_FRIGHTENED|RS_INCAPACITATED) != 0 && rs_effect_room(c,false,0,-1) < 1 { return false; }
+      if c.undead && rs_up(c) && c.team != b[0].c[i].team && rs_feet_to(b,i,q) <= st.a && rs_effect_condition_mask(c,RS_FRIGHTENED|RS_INCAPACITATED) != 0 && rs_effect_free(c) < 1 { return false; }
     }
     return true;
   }
@@ -210,12 +211,12 @@ rs_feat_need :: (b: [] RsBattle, i: int, u: [] RsUse, st: RsFeatStep) -> bool {
   return false;
 }
 // A creature's lowest spell slot level with a slot left, 0 none.
-rs_lowest_slot :: (c: RsCreature) -> int {
+rs_lowest_slot :: (c: RsCreature) -> int #effects(all) {
   for l: 1..<10 { if c.slots[l] > 0 { return l; } }
   return 0;
 }
 // One step done for creature i's use u. False: it refused (only a step that stands before any spending can).
-rs_feat_do :: (b: [] RsBattle, i: int, u: [] RsUse, st: RsFeatStep) -> bool {
+rs_feat_do :: (b: [] RsBattle, i: int, u: [] RsUse, st: RsFeatStep) -> bool #effects(all) {
   k := st.kind; j := u[0].j;
   if k == RS_FS_BONUS { b[0].turn.bonus = true; }
   else if k == RS_FS_ACTION { b[0].turn.action = true; }
@@ -266,8 +267,9 @@ rs_feat_do :: (b: [] RsBattle, i: int, u: [] RsUse, st: RsFeatStep) -> bool {
 }
 // Creature i uses the feature `kind` (an RS_AB_* with a row, or an RS_FP_*), aimed as u says. False,
 // and nothing spent or told, when a need does not hold or the feature has no row.
-rs_feature_use :: (b: [] RsBattle, i: int, kind: int, u: RsUse) -> bool {
-  f := rs_feature(kind);
+rs_feature_use :: (b: [] RsBattle, i: int, kind: int, u: RsUse) -> bool #effects(all) { return rs_feature_run(b, i, rs_feature(kind), u); }
+// Creature i runs row f (no row has no steps).
+rs_feature_run :: (b: [] RsBattle, i: int, f: RsFeature, u: RsUse) -> bool #effects(all) {
   if f.n == 0 { return false; }
   use: [1] RsUse; use[0] = u;
   for k: 0..<f.n { if f.st[k].kind < RS_FS_DO && !rs_feat_need(b, i, use[..], f.st[k]) { return false; } }
@@ -275,31 +277,32 @@ rs_feature_use :: (b: [] RsBattle, i: int, kind: int, u: RsUse) -> bool {
   return true;
 }
 // The features by name: each is its row.
-rs_font :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_FP_FONT, RsUse.{}); }
-rs_inspire :: (b: [] RsBattle, i: int, j: int) -> bool { return rs_feature_use(b, i, RS_AB_INSPIRE, RsUse.{j = j}); }
-rs_turn_undead :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_TURN, RsUse.{}); }
-rs_preserve_life :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_PRESERVE, RsUse.{}); }
-rs_second_wind :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_SECOND, RsUse.{}); }
-rs_action_surge :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_SURGE, RsUse.{}); }
-rs_lay_on_hands :: (b: [] RsBattle, i: int, j: int, amount: int) -> bool { return rs_feature_use(b, i, RS_AB_LAY, RsUse.{j = j, amount = amount}); }
-rs_sacred_weapon :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_SACRED, RsUse.{}); }
-rs_steady_aim :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_AIM, RsUse.{}); }
-rs_innate_sorcery :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_INNATE, RsUse.{}); }
-rs_wild_resurgence :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_RESURGE, RsUse.{}); }
-rs_resurge_slot :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_FP_RESURGE_SLOT, RsUse.{}); }
-rs_lands_aid :: (b: [] RsBattle, i: int, tx: int, ty: int, heal: int) -> bool { return rs_feature_use(b, i, RS_AB_LANDS, RsUse.{j = heal, x = tx, y = ty}); }
-rs_rage :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_RAGE, RsUse.{}); }
-rs_wholeness :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_WHOLE, RsUse.{}); }
+rs_font :: (b: [] RsBattle, i: int) -> bool #effects(all) { return rs_feature_use(b, i, RS_FP_FONT, RsUse.{}); }
+rs_inspire :: (b: [] RsBattle, i: int, j: int) -> bool #effects(all) { return rs_feature_use(b, i, RS_AB_INSPIRE, RsUse.{j = j}); }
+rs_turn_undead :: (b: [] RsBattle, i: int) -> bool #effects(all) { return rs_feature_use(b, i, RS_AB_TURN, RsUse.{}); }
+rs_preserve_life :: (b: [] RsBattle, i: int) -> bool #effects(all) { return rs_feature_use(b, i, RS_AB_PRESERVE, RsUse.{}); }
+rs_second_wind :: (b: [] RsBattle, i: int) -> bool #effects(all) { return rs_feature_use(b, i, RS_AB_SECOND, RsUse.{}); }
+rs_action_surge :: (b: [] RsBattle, i: int) -> bool #effects(all) { return rs_feature_use(b, i, RS_AB_SURGE, RsUse.{}); }
+rs_lay_on_hands :: (b: [] RsBattle, i: int, j: int, amount: int) -> bool #effects(all) { return rs_feature_use(b, i, RS_AB_LAY, RsUse.{j = j, amount = amount}); }
+rs_sacred_weapon :: (b: [] RsBattle, i: int) -> bool #effects(all) { return rs_feature_use(b, i, RS_AB_SACRED, RsUse.{}); }
+rs_steady_aim :: (b: [] RsBattle, i: int) -> bool #effects(all) { return rs_feature_use(b, i, RS_AB_AIM, RsUse.{}); }
+rs_innate_sorcery :: (b: [] RsBattle, i: int) -> bool #effects(all) { return rs_feature_use(b, i, RS_AB_INNATE, RsUse.{}); }
+rs_wild_resurgence :: (b: [] RsBattle, i: int) -> bool #effects(all) { return rs_feature_use(b, i, RS_AB_RESURGE, RsUse.{}); }
+rs_resurge_slot :: (b: [] RsBattle, i: int) -> bool #effects(all) { return rs_feature_use(b, i, RS_FP_RESURGE_SLOT, RsUse.{}); }
+rs_lands_aid :: (b: [] RsBattle, i: int, tx: int, ty: int, heal: int) -> bool #effects(all) { return rs_feature_use(b, i, RS_AB_LANDS, RsUse.{j = heal, x = tx, y = ty}); }
+rs_rage :: (b: [] RsBattle, i: int) -> bool #effects(all) { return rs_feature_use(b, i, RS_AB_RAGE, RsUse.{}); }
+rs_wholeness :: (b: [] RsBattle, i: int) -> bool #effects(all) { return rs_feature_use(b, i, RS_AB_WHOLE, RsUse.{}); }
 
 // Turn Undead's own step: each Undead foe within `feet` makes a Wisdom save or is Frightened and
 // Incapacitated for 1 minute; it ends early if the creature takes damage, or the Cleric is
 // Incapacitated or dies.
-rs_turn_undead_step :: (b: [] RsBattle, i: int, feet: int) {
+rs_turn_undead_step :: (b: [] RsBattle, i: int, feet: int) #effects(all) {
   dc := rs_dc(b, i);
   // Sear Undead: Wisdom-modifier d8s (at least one), rolled once, Radiant on each that fails
-  sear := ifx rs_has_feature(b[0].c[i], RS_FT_SEAR_UNDEAD) then rs_sum(b[0].dice[..], rs_max(rs_mod(b[0].c[i].score[RS_WIS]), 1), 8) else 0;
+  sears := rs_has_feature(b[0].c[i], RS_FT_SEAR_UNDEAD);
+  sear: int; if sears { sear = rs_sum(b[0].dice[..], rs_max(rs_mod(b[0].c[i].score[RS_WIS]), 1), 8); }
+  radiant := RS_RADIANT;
   for j: 0..<b[0].n {
-    if !b[0].c[j].undead || rs_feet_to(b, i, j) > feet { continue; }
     c := b[0].c[j];
     if !c.undead || !rs_up(c) || c.team == b[0].c[i].team || rs_feet_to(b, i, j) > feet { continue; }
     saving := rs_saving_throw_magic(b,j,RS_WIS,dc,0);
@@ -308,27 +311,31 @@ rs_turn_undead_step :: (b: [] RsBattle, i: int, feet: int) {
     rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " WIS save "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
     rs_add_text(l[..], ifx ok then ": success" else ": turned, Frightened and Incapacitated");
     rs_tell(b, ifx ok then RS_EV_SAVE else RS_EV_CONDITION, -1, i, j, total, 0, l[..]);
-    if !ok && sear > 0 {
+    if !ok && sears {
       // the damage first, so it doesn't end the turning
-      amount := rs_resisted(b, j, sear, RS_RADIANT);
+      amount := rs_resisted(b, j, sear, radiant);
       sl: [1] RsLine; rs_add_text(sl[..], "  "); rs_add_name(sl[..], b, j); rs_add_text(sl[..], " takes "); rs_add_int(sl[..], amount); rs_add_text(sl[..], " Radiant (Sear Undead)");
-      rs_tell(b, RS_EV_DAMAGE, -1, i, j, amount, RS_RADIANT, sl[..]);
-      rs_damage(b, i, j, amount, RS_RADIANT, false, -1);
+      rs_feature_hurt(b, i, j, amount, radiant, sl[..]);
     }
     if !ok && !b[0].c[j].dead { _ := rs_put_effect(b, j, RsEffect.{kind = EF_TURNED, cond = RS_FRIGHTENED | RS_INCAPACITATED, by = i, spell = -1, until = b[0].clock + rs_secs(60), save = -1, dc = 0}); }
   }
 }
+// Damage from a feature (not a spell, not a critical hit): its line, then the damage.
+rs_feature_hurt :: (b: [] RsBattle, i: int, j: int, amount: int, kind: int, l: [] RsLine) #effects(all) {
+  rs_tell(b, RS_EV_DAMAGE, -1, i, j, amount, kind, l);
+  rs_damage(b, i, j, amount, kind, false, -1);
+}
 // Preserve Life's own step: five times the Cleric's level in Hit Points, divided among Bloodied
 // creatures within `feet` (its side, itself too), none above half its Hit Point maximum. The most
 // hurt first.
-rs_preserve_life_step :: (b: [] RsBattle, i: int, feet: int) {
+rs_preserve_life_step :: (b: [] RsBattle, i: int, feet: int) #effects(all) {
   pool := 5 * b[0].c[i].level;
   while pool > 0 {
     best := -1; bv := 2.0f32;
     for j: 0..<b[0].n {
       c := b[0].c[j];
       if c.team != b[0].c[i].team || c.dead || c.hp >= c.hp_max / 2 || rs_effect(c, EF_NOHEAL) || rs_feet_to(b, i, j) > feet { continue; }
-      v := f32(c.hp) / f32(rs_max(c.hp_max, 1));
+      v := f32(c.hp) / f32(c.hp_max);   // above 1: it is below half of it
       if v < bv { bv = v; best = j; }
     }
     if best < 0 { break; }
@@ -339,35 +346,35 @@ rs_preserve_life_step :: (b: [] RsBattle, i: int, feet: int) {
 }
 // Land's Aid's own step: each foe in the 10-foot-radius Sphere at the use's point makes a Con save,
 // 2d6 Necrotic or half; one creature there (the use's, -1 none) regains 2d6 Hit Points.
-rs_lands_aid_step :: (b: [] RsBattle, i: int, u: [] RsUse) {
+rs_lands_aid_step :: (b: [] RsBattle, i: int, u: [] RsUse) #effects(all) {
   n6 := ifx b[0].c[i].level >= 14 then 4 else ifx b[0].c[i].level >= 10 then 3 else 2;
   e: RsEvent; e.kind = RS_EV_ZONE; e.spell.value = -1; e.by.value = i; e.to.value = -1; e.feat = RS_FT_LANDS_AID; e.x = u[0].x - 2; e.y = u[0].y - 2; e.amount = 5; e.at = b[0].clock;
   k := rs_emit(b[0].book[..], e);
   dc := rs_dc(b, i);
+  necrotic := RS_NECROTIC;
   for j: 0..<b[0].n {
     c := b[0].c[j];
-    if c.team == b[0].c[i].team || !rs_up(c) || rs_range_ft(b, u[0].x, u[0].y, c.x, c.y) > 10 { continue; }
+    if c.team == b[0].c[i].team || !rs_up(c) || rs_range_ft(b, u[0].x, u[0].y, c.x, c.y) >= 10 + RS_SQUARE { continue; }
     saving := rs_saving_throw_magic(b,j,RS_CON,dc,0);
     total := saving.total; ok := saving.passed;
     amount := rs_sum(b[0].dice[..], n6, 6);
     if ok { amount = amount / 2; }
-    amount = rs_resisted(b, j, amount, RS_NECROTIC);
+    amount = rs_resisted(b, j, amount, necrotic);
     l: [1] RsLine;
     rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " CON save "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
     rs_add_text(l[..], ifx ok then ": half, " else ": "); rs_add_int(l[..], amount); rs_add_text(l[..], " Necrotic");
-    rs_tell(b, RS_EV_DAMAGE, -1, i, j, amount, RS_NECROTIC, l[..]);
-    rs_damage(b, i, j, amount, RS_NECROTIC, false, -1);
+    rs_feature_hurt(b, i, j, amount, necrotic, l[..]);
   }
-  if u[0].j >= 0 && u[0].j < b[0].n && !b[0].c[u[0].j].dead && rs_range_ft(b, u[0].x, u[0].y, b[0].c[u[0].j].x, b[0].c[u[0].j].y) <= 10 {
+  if u[0].j >= 0 && u[0].j < b[0].n && !b[0].c[u[0].j].dead && rs_range_ft(b, u[0].x, u[0].y, b[0].c[u[0].j].x, b[0].c[u[0].j].y) < 10 + RS_SQUARE {
     got := rs_feature_heal(b, i, u[0].j, rs_sum(b[0].dice[..], n6, 6), "Land's Aid", RS_FT_LANDS_AID);
   }
 }
 
 // Cunning Action (p. 62): Dash as a Bonus Action.
-rs_cunning_dash :: (b: [] RsBattle, i: int) -> bool {
+rs_cunning_dash :: (b: [] RsBattle, i: int) -> bool #effects(all) {
   return rs_dash_use(b,i,RS_DASH_CUNNING);
 }
 // The Dash action: its Speed again.
-rs_dash :: (b: [] RsBattle, i: int) -> bool {
+rs_dash :: (b: [] RsBattle, i: int) -> bool #effects(all) {
   return rs_dash_use(b,i,RS_DASH_ACTION);
 }
