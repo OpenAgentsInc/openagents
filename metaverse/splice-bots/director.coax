@@ -3,8 +3,9 @@
 //
 //   Sneak       hold Left Shift: slower, and robots sense her from half as far (the engine's stance,
 //               metaverse-engine/move/stance.coax).
-//   Hoverboard  Q on and off, casual; very fast while Ctrl is held or after a double tap of W (the
-//               engine's board, metaverse-engine/action/hoverboard.coax, with the stance's fast).
+//   Hoverboard  everything on Q (#13505, Nov 13): Q calls the board up at casual speed, then each Q
+//               switches casual and fast; a double tap of Q is super fast; holding Q steps off (the
+//               engine's board, metaverse-engine/action/hoverboard.coax, and its board_super_cms).
 //   Digger      follows her and picks up any part in his sensor's range himself; she can't choose. A
 //               better sensor (the landmark LM_SENSOR) widens his range. A left click points him at
 //               what is under the crosshair: he digs it, picks it up or attacks it. At zero health he
@@ -40,6 +41,8 @@ T_FOE_STUN :: 4.0f32;        // seconds an F stun holds a robot
 T_POINT_FAR :: 40.0f32;      // metres the pointer reaches
 T_GIVE_UP_FIGHT :: 25.0f32;  // metres from her: Digger lets a fight go
 T_CROUCH :: 0.35f32;         // metres the view sinks while sneaking
+T_Q_TAP :: 0.3f32;           // seconds: a second Q within this of the last is a double tap (super fast)
+T_Q_OFF :: 0.5f32;           // seconds: Q held this long on the board steps off
 LM_SENSOR :: 31;             // where the better sensor lies (optional: no landmark, no sensor)
 // what a slot holds: the haves (H_*), and these
 DK_CELL :: 7; DK_SCRAP :: 8;
@@ -61,6 +64,8 @@ SpDir :: struct {
   full_said: [PICKS] bool;                // "inventory full" said for this part, once until it fits again
   say: int; say_t: f32;
   move: int; moves: int;                  // the last battle move key (1 to 4) and presses not yet taken
+  q_held: bool; q_since: f32 = 1000; q_hold: f32 = -1;   // Q is down, seconds since its last press, how long held (-1: this press won't step off)
+  super: bool;                            // the board rides super fast (a double tap of Q)
   sw: f32 = 1280; sh: f32 = 800;          // the screen at the last frame: the pointer's crosshair
   bag_x: f32; bag_y: f32; bag_s: f32; bag_gap: f32;   // the grid as last drawn, for a click
 }
@@ -291,10 +296,8 @@ d_key :: (g: [] SpGame, key: int, down: bool) -> int {
     return ifx down then 1 else -1;
   }
   if key == -13 { d[0].st = stance_sneak(d[0].st, down); return ifx g[0].mode == M_PLAY then 1 else 0; }
-  if key == -14 { d[0].st = stance_hold(d[0].st, down); return ifx g[0].mode == M_PLAY then 1 else 0; }
-  if key == 'w' || key == 'W' || key == -6 { d[0].st = stance_forward(d[0].st, down); return -1; }
+  if key == 'q' || key == 'Q' { return d_board_q(g, down); }
   if !down || g[0].mode != M_PLAY { return -1; }
-  if key == 'q' || key == 'Q' { if g_board_given(g) { g_board_key(g); return 1; } return 0; }
   if key == 'i' || key == 'I' { d[0].bag = !d[0].bag; d[0].map = false; return 1; }
   if key == 'm' || key == 'M' { d[0].map = !d[0].map; d[0].bag = false; return 1; }
   if key == -1 { if d[0].bag || d[0].map { d[0].bag = false; d[0].map = false; g[0].look_free = false; } else { d_pause(g); } return 1; }
@@ -304,6 +307,22 @@ d_key :: (g: [] SpGame, key: int, down: bool) -> int {
   }
   if key == -15 && !d_in_rover(g) { d_say(g, DS_BAY); return 1; }
   return -1;
+}
+// Q, everything the board does: up at casual, then casual and fast in turn, super fast on a double
+// tap, and held (d_pre) off. A key's repeats while it is held are not presses.
+d_board_q :: (g: [] SpGame, down: bool) -> int {
+  d := g[0].dr[..];
+  if !down { d[0].q_held = false; d[0].q_hold = -1; return 0; }
+  if d[0].q_held { return 1; }
+  d[0].q_held = true;
+  if g[0].mode != M_PLAY || !g_board_given(g) { return 0; }
+  b := g[0].board[..];
+  if !g_riding(g) { g_board_key(g); b[0].fast = false; d[0].super = false; d[0].q_since = 0; d[0].q_hold = -1; return 1; }
+  if d[0].q_since <= T_Q_TAP { d[0].super = true; b[0].fast = true; }
+  else if b[0].fast { b[0].fast = false; d[0].super = false; }
+  else { b[0].fast = true; }
+  d[0].q_since = 0; d[0].q_hold = 0;
+  return 1;
 }
 // E at a powered-down Digger: tow him (or let him go).
 d_use :: (g: [] SpGame) -> bool {
@@ -335,7 +354,12 @@ d_lock :: (g: [] SpGame, status: int) {
 d_pre :: (g: [] SpGame, dt: f32) {
   d := g[0].dr[..];
   d[0].st = stance_tick(d[0].st, dt);
-  if g_riding(g) { g[0].board[0].fast = stance_fast(d[0].st); }
+  if d[0].q_since < 1000 { d[0].q_since += dt; }
+  if d[0].q_held && d[0].q_hold >= 0 && g_riding(g) {
+    d[0].q_hold += dt;
+    if d[0].q_hold >= T_Q_OFF { g_board_key(g); d[0].q_hold = -1; d[0].super = false; g[0].board[0].fast = false; }
+  }
+  if !g_riding(g) { d[0].super = false; }
   if d[0].say_t > 0 { d[0].say_t -= dt; if d[0].say_t <= 0 { d[0].say = DS_NONE; } }
 }
 // After the walk: Heat's floor and Digger.
@@ -485,7 +509,7 @@ D_KEYS :: 15;
 d_controls :: () -> [D_KEYS * 2] string {
   return [D_KEYS * 2] string.[
     "W A S D", "Walk", "Mouse", "Look", "Space", "Jump", "Hold Shift", "Sneak: slower, harder to sense",
-    "Q", "Hoverboard on and off", "Hold Ctrl or W W", "Hoverboard very fast",
+    "Q", "Hoverboard on, then casual or fast", "Q Q, hold Q", "Hoverboard super fast; hold Q to step off",
     "E", "Interact, enter the rover, swap a core, tow Digger", "Tab", "Edit bay, inside Sniper", "I", "Inventory",
     "Left click", "Point Digger: dig, pick up, attack", "F", "Stun a robot within 2 m", "1 2 3 4", "Battle moves",
     "M", "Map", "Esc", "Pause", "G", "Graybox"];

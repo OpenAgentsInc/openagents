@@ -116,6 +116,10 @@ board_up :: (b: [] Board, who: int, x: f32, z: f32, face: f32) {
 // Steps off: the rider stands where the board was, and it is gone.
 board_down :: (b: [] Board) { fast := b[0].fast; b[0] = Board.{fast = fast}; }
 board_switch :: (b: [] Board) { b[0].fast = !b[0].fast; }
+// Super fast: the very fast speed times BOARD_SUPER, never past BOARD_SPEED_MAX. A game picks it as
+// its tune's fast speed (board_tune(casual, board_super_cms(fast))) while the rider asks for it.
+BOARD_SUPER :: 1.6;
+board_super_cms :: (fast_cms: int) -> int { s := cast(int) (cast(f32) fast_cms * BOARD_SUPER); return ifx s > BOARD_SPEED_MAX then BOARD_SPEED_MAX else s; }
 mtb_ease :: (v: f32, to: f32, rate: f32, dt: f32) -> f32 { k := mt_clamp(rate * dt, 0, 1); return v + (to - v) * k; }
 // One step of riding, dt seconds: forward -1 to 1, turn -1 (left) to 1 (right), jump held. walls and n
 // are mount_step's boxes (n 0: the realm resolves its own colliders after, board_resolve).
@@ -162,6 +166,9 @@ BT_DT :: 1.0f32 / 60;
 bt_ride :: (b: [] Board, t: MountTune, forward: f32, turn: f32, steps: int) {
   none: [6] f32;
   for k: 0..<steps { board_step(b, t, forward, turn, false, BT_DT, none[..], 0); }
+}
+#test "super fast is the very fast speed times BOARD_SUPER, at most BOARD_SPEED_MAX" {
+  #assert board_super_cms(2200) == 3520 && board_super_cms(5000) == BOARD_SPEED_MAX;
 }
 #test "the board table's row: on or off and two speeds, the fast one faster; its text is a whole row" {
   #assert board_row_why(1, "on", 700, 2200) == BRW_OK && board_row_why(1, "off", 100, 6000) == BRW_OK;

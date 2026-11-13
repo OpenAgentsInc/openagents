@@ -94,8 +94,9 @@ The key map follows the slice's beat sheet (#13505). The pause screen (Esc) list
 | W A S D, mouse | Walk and look |
 | Space | Jump (on the hoverboard, hop) |
 | Hold Left Shift | Sneak: you walk at 45 % of your speed and Imperial robots sense you from half as far |
-| Q | Hoverboard on and off, casual speed |
-| Hold Ctrl, or double-tap W | Hoverboard very fast |
+| Q | Hoverboard: the first press steps on at casual speed, then each press switches casual and fast |
+| Double-tap Q | Hoverboard super fast (the fast speed times 1.6, `board_super_cms`) |
+| Hold Q | Step off the hoverboard |
 | E | Interact: enter the rover, take the core, go through a portal, swap a core, tow a powered-down Digger |
 | Tab | The edit bay, only inside Sniper (the rover) |
 | I | The inventory: six slots. A click on a slot drops what is in it |
@@ -230,8 +231,9 @@ openagents realm world-board splice on --casual 700 --fast 2200 --origin http://
 ```
 
 The editor's agent does the same with the `realm_world_board` tool. As shipped it is on (#13505). In
-play, Q calls the board up and steps off; it rides casual, and very fast while Ctrl is held or after
-a double tap of W (until W lets go). W and S speed up and slow, A and D carve, and Space hops. The board is the Metaverse Engine's (`metaverse-engine/action/hoverboard.coax`, on
+play, everything is on Q: Q calls the board up at casual speed, each Q after switches casual and
+fast, a double tap of Q (within 0.3 s) rides super fast, and holding Q for half a second steps off.
+Ctrl and W have no board role. W and S speed up and slow, A and D carve, and Space hops. The board is the Metaverse Engine's (`metaverse-engine/action/hoverboard.coax`, on
 its mount); Splice Bots' own colliders push it, and the camera widens, pulls back and shakes at speed,
 with Anime Lab's speed lines.
 

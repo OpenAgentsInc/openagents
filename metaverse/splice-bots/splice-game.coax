@@ -455,9 +455,13 @@ g_walk :: (g: [] SpGame, dt: f32) {
   g_collide(g);
 }
 // ---- The hoverboard (#13485): the world's board table gives it (realm world-board), B calls it up
-// and steps off, Q switches casual and very fast, W and S speed up and slow, A and D carve, Space hops.
+// at casual, Q switches casual and fast, Q Q is super fast and holding Q steps off (director.coax);
+// W and S speed up and slow, A and D carve, Space hops.
 // The engine's board (metaverse-engine/action/hoverboard.coax) steps it; Splice Bots' own colliders push it.
-g_board_tune :: (g: [] SpGame) -> MountTune { return board_tune(g[0].c[0].board.casual, g[0].c[0].board.fast); }
+g_board_tune :: (g: [] SpGame) -> MountTune {
+  b := g[0].c[0].board;
+  return board_tune(b.casual, ifx g[0].dr[0].super then board_super_cms(b.fast) else b.fast);   // a double tap of Q: super fast (director.coax)
+}
 g_board_given :: (g: [] SpGame) -> bool { return g[0].c[0].board.ok && g[0].c[0].board.on; }
 g_riding :: (g: [] SpGame) -> bool { return board_riding(g[0].board[0]); }
 g_board_key :: (g: [] SpGame) {
@@ -691,7 +695,7 @@ g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
   if fr_front(g) { return down && fr_key(g, key); }   // the title, creation and credits screens (front.coax)
   if sb_ride_key(g, key, down) { return true; }   // on the drive: E battles the raider mech, 1 to 4 are Sniper's cards (splice-battle.coax)
   if g[0].mode == M_DRIVE { if down && (key == ' ' || key == -2) { dv_arrive(g); } return true; }   // Space or Enter: there now
-  mine := d_key(g, key, down);   // the Director's keys first: Shift, Ctrl, Q, I, M, Esc, 1 to 4 (director.coax)
+  mine := d_key(g, key, down);   // the Director's keys first: Shift, Q, I, M, Esc, 1 to 4 (director.coax)
   if mine >= 0 { return mine == 1; }
   if key == 'w' || key == 'W' || key == -6 { g[0].fwd = down; return true; }
   if key == 's' || key == 'S' || key == -7 { g[0].back = down; return true; }
@@ -1332,10 +1336,10 @@ g_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
     ui_panel(g, u, pad, y0, pad + 272 * k, y0 + 50 * k, ifx on then ink else paper, 0.96);
     n = ui_box(out, n, pad, y0, pad + 272 * k, y0 + 50 * k, 3 * k, ink);
     fg := ifx on then paper else ink;
-    what := ifx !on then "BOARD OFF" else ifx bd.fast then "BOARD · VERY FAST" else "BOARD · CASUAL";
+    what := ifx !on then "BOARD OFF" else ifx g[0].dr[0].super then "BOARD · SUPER FAST" else ifx bd.fast then "BOARD · FAST" else "BOARD · CASUAL";
     n = ui_text(out, n, what, pad + 12 * k, y0 + 20 * k, 9.5 * k, ifx on && bd.fast then HEAT() else fg);
     if on { n = ui_right(out, n, num(buf[..], "", cast(int) (abs(bd.m.speed) * 3.6 + 0.5), " km/h"), pad + 260 * k, y0 + 20 * k, 9.5 * k, fg); }
-    n = ui_text(out, n, ifx on then "Q off · hold Ctrl or W W very fast · Space hop" else "Q board · Space jump", pad + 12 * k, y0 + 40 * k, 7.5 * k, fg);
+    n = ui_text(out, n, ifx on then "Q fast/casual · Q Q super fast · hold Q off" else "Q board · Space jump", pad + 12 * k, y0 + 40 * k, 7.5 * k, fg);
   }
   // top centre: the phase, four chips on an ink bar
   bw := 380 * k; bx := w * 0.5 - bw * 0.5;
@@ -1661,14 +1665,15 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
   for i: 0..<600 { g_step(g[..], 0.02); }
   #assert abs(g[0].px) < 0.01 && abs(g[0].pz - (g[0].at.rubble_z + 1 + T_RADIUS)) < 0.01;
 }
-// The hoverboard (#13485): only when the world's board table gives it; Q on and off, casual unless Ctrl is held or W double-tapped.
-#test "the board: Q calls it only when the world gives one, it rides casual and very fast while Ctrl is held, walls slide it, and Q steps off" #steps 60000000 {
+// The hoverboard (#13485): only when the world's board table gives it; everything on Q (#13505).
+sp_q :: (g: [] SpGame) -> bool { t := g_key(g, 'q', true); _ := g_key(g, 'q', false); return t; }
+#test "the board: Q calls it only when the world gives one, Q switches casual and fast, Q Q is super fast, holding Q steps off; Ctrl and W W do nothing" #steps 60000000 {
   g := [1] SpGame.[SpGame.{}];
   g_stage(g[..], 5);
   g[0].c[0].board = board_row_read(1, "off", 700, 2200);
-  #assert !g_board_given(g[..]) && !g_key(g[..], 'q', true) && !g_riding(g[..]);   // no board: Q does nothing
+  #assert !g_board_given(g[..]) && !sp_q(g[..]) && !g_riding(g[..]);   // no board: Q does nothing
   g[0].c[0].board = board_row_read(1, "on", 700, 2200);
-  #assert g_key(g[..], 'q', true) && g_riding(g[..]) && !g[0].board[0].fast;
+  #assert sp_q(g[..]) && g_riding(g[..]) && !g[0].board[0].fast && !g[0].dr[0].super;
   // the open ground of the mine's mouth toward the scrap room: casual first
   g[0].px = 0; g[0].pz = -3; g[0].yaw = PI; g[0].board[0].m.x = 0; g[0].board[0].m.z = -3;
   #assert g_key(g[..], 'w', true);
@@ -1677,26 +1682,40 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
   // the rubble stops it head on, and its speed goes into the wall
   for i: 0..<600 { g_step(g[..], 1.0f32 / 60); }
   #assert g[0].pz >= g[0].at.rubble_z + 1 + T_RADIUS - 0.01 && g[0].board[0].m.speed < 1;
-  #assert g_key(g[..], -14, true); g_step(g[..], 1.0f32 / 60);
-  #assert g[0].board[0].fast && g_camera(g[..]).fov == board_fov(g[0].board[0], 0.82);
-  _ = g_key(g[..], -14, false); g_step(g[..], 1.0f32 / 60);
-  #assert !g[0].board[0].fast;   // let go of Ctrl: casual again
-  // Q steps off where it is, and walking takes over
+  // Ctrl and a double tap of W are no longer the board's
+  _ = g_key(g[..], -14, true); _ = g_key(g[..], 'w', false); _ = g_key(g[..], 'w', true); _ = g_key(g[..], 'w', false); _ = g_key(g[..], 'w', true);
+  g_step(g[..], 1.0f32 / 60); #assert !g[0].board[0].fast; _ = g_key(g[..], -14, false);
+  // Q: fast, and the view widens
+  #assert sp_q(g[..]); g_step(g[..], 1.0f32 / 60);
+  #assert g[0].board[0].fast && !g[0].dr[0].super && g_camera(g[..]).fov == board_fov(g[0].board[0], 0.82);
+  for i: 0..<30 { g_step(g[..], 1.0f32 / 60); }
+  #assert sp_q(g[..]); g_step(g[..], 1.0f32 / 60);
+  #assert !g[0].board[0].fast;   // Q again: casual
+  for i: 0..<30 { g_step(g[..], 1.0f32 / 60); }
+  // a double tap: super fast, its tune past very fast
+  #assert sp_q(g[..]); g_step(g[..], 1.0f32 / 60); #assert sp_q(g[..]); g_step(g[..], 1.0f32 / 60);
+  #assert g[0].dr[0].super && g[0].board[0].fast && g_board_tune(g[..]).gallop > 22.1;
+  // a key repeat while Q is held is not a press
+  for i: 0..<30 { g_step(g[..], 1.0f32 / 60); }
+  #assert g_key(g[..], 'q', true) && !g[0].dr[0].super && g_key(g[..], 'q', true) && !g[0].dr[0].super && g_riding(g[..]);
+  // held: off the board where it is, and walking takes over
   z := g[0].pz;
-  #assert g_key(g[..], 'q', true) && !g_riding(g[..]) && g[0].pz == z;
+  for i: 0..<40 { g_step(g[..], 1.0f32 / 60); }
+  #assert !g_riding(g[..]) && abs(g[0].pz - z) < 0.5;
+  _ = g_key(g[..], 'q', false);
   // the edit bay, or the world taking the board away, puts you on your feet
-  #assert g_key(g[..], 'q', true) && g_riding(g[..]);
-  g[0].c[0].board = board_row_read(1, "off", 700, 2200); g_step(g[..], 1.0f32 / 60); #assert !g_riding(g[..]) && !g_key(g[..], 'q', true);
+  #assert sp_q(g[..]) && g_riding(g[..]);
+  g[0].c[0].board = board_row_read(1, "off", 700, 2200); g_step(g[..], 1.0f32 / 60); #assert !g_riding(g[..]) && !sp_q(g[..]);
 }
 #test "the board at very fast reaches its speed on the open desert, carves, and the view widens" #steps 60000000 {
   g := [1] SpGame.[SpGame.{}];
   g_stage(g[..], 5); g[0].zone = Z_RAIL; g[0].mode = M_PLAY;
   c := rail_at(g[..], T_RAIL_PING); g[0].px = c.x + 6; g[0].pz = c.z - 20; g[0].yaw = 0;   // beside the stopped rover
   g[0].c[0].board = board_row_read(1, "on", 700, 2200);
-  // a double tap of W: very fast while it stays held
-  #assert g_key(g[..], 'q', true) && g_key(g[..], 'w', true);
-  g_step(g[..], 1.0f32 / 60); _ = g_key(g[..], 'w', false); g_step(g[..], 1.0f32 / 60);
-  #assert g_key(g[..], 'w', true);
+  // Q up, Q fast
+  #assert sp_q(g[..]); g_step(g[..], 1.0f32 / 60); g_step(g[..], 1.0f32 / 60); g_step(g[..], 1.0f32 / 60);
+  for i: 0..<20 { g_step(g[..], 1.0f32 / 60); }
+  #assert sp_q(g[..]) && g_key(g[..], 'w', true);
   top := 0.0f32; for i: 0..<150 { g_step(g[..], 1.0f32 / 60); if g[0].board[0].m.speed > top { top = g[0].board[0].m.speed; } }
   #assert top > 15 && g[0].board[0].rush > 0.3 && g_camera(g[..]).fov > 0.85;
   y0 := g[0].yaw; #assert g_key(g[..], 'd', true);
@@ -1912,13 +1931,15 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
   #assert g[0].pz < 10.6 - 0.47 - T_RADIUS && g[0].air[0].on_ground && g_feet_y(g[..]) == 0;
   // on the hoverboard Space hops the board, not you
   g[0].c[0].board = board_row_read(1, "on", 700, 2200);
-  #assert g_key(g[..], 'q', true) && g_riding(g[..]);
+  #assert sp_q(g[..]) && g_riding(g[..]);
   taken := g[0].air[0].presses.taken;
   #assert g_key(g[..], ' ', true);
   for i: 0..<6 { g_step(g[..], 1.0f32 / 60); }
   #assert mount_jumping(g[0].board[0].m) && g_feet_y(g[..]) == 0 && g[0].air[0].presses.taken == taken;
   _ = g_key(g[..], ' ', false);
-  #assert g_key(g[..], 'q', true) && !g_riding(g[..]);
+  #assert g_key(g[..], 'q', true);   // held: off the board
+  for i: 0..<40 { g_step(g[..], 1.0f32 / 60); }
+  _ = g_key(g[..], 'q', false); #assert !g_riding(g[..]);
   // in the edit bay Space is still SPLICE: it deploys the Digger (here, with no hardware, it says what it needs)
   g[0].mode = M_BAY; g[0].msg = MSG_NONE;
   #assert g_key(g[..], ' ', true) && g[0].mode == M_BAY && g[0].msg == MSG_NEED && g[0].air[0].presses.waiting == 0;
