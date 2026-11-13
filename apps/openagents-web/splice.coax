@@ -22,6 +22,7 @@ Splice :: struct {
   time: f32;
   over: bool;
   draws: [8] u32;
+  built_gray: bool;           // the world store was built in graybox
   scene: int;                 // ?scene=N in the page's URL: which scene (SP_SCENES)
   built_scene: int = -1;
   world_gen: int;             // counts the world's writes: the page copies the store when it changes
@@ -266,6 +267,8 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
     return;
   }
   if kind != 600 || s.count < 1 { return; }
+  gray := "gray";   // ?gray opens in graybox
+  for i: 0..<body.count { if i + gray.count <= body.count && i > 0 && (body[i - 1] == '?' || body[i - 1] == '&') && cast(string) body[i..<i + gray.count] == gray { s[0].game[0].gray = true; } }
   target := "scene=";
   for i: 0..<body.count {
     hit := true;
@@ -306,8 +309,9 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   if s.count < 1 || u.count < UNIFORM_FLOATS || !(width >= 1) || !(height >= 1) { return 0; }
   g := s[0].game[..];
   if !s[0].started { s[0].started = true; s[0].time = 0; g_reset(g); }
+  if !s[0].gallery && s[0].built_gray != g[0].gray { s[0].world_built = false; s[0].built_gray = g[0].gray; }
   if !s[0].world_built || (s[0].gallery && s[0].built_scene != s[0].scene) {
-    pen := [1] Pen.[Pen.{}];
+    pen := [1] Pen.[Pen.{graybox = !s[0].gallery && g[0].gray}];
     if s[0].gallery { sp_build_world(world, pen[..], s[0].scene); } else { g_world(g, world, pen[..]); }
     s[0].world_n = pen[0].n; s[0].world_built = true; s[0].built_scene = s[0].scene;
     s[0].over = pen[0].over; s[0].world_gen += 1;
@@ -322,7 +326,7 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   if !s[0].gallery {
     g_step(g, step);
     view = g_camera(g); key = g_key_light(g); flash = g[0].flash;
-    pen := [1] Pen.[Pen.{}];
+    pen := [1] Pen.[Pen.{graybox = g[0].gray}];
     g_live(g, live, pen[..]);
     s[0].live_n = pen[0].n;
     lights: [LIGHTS * LIGHT_FLOATS] f32;
@@ -334,7 +338,9 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   if s[0].gallery { shadow_rows(u, key); } else { sp_shadow_rows(u, key, view.at); }
   put4(u, U_SIZE, width, height, t, dpr);
   ink := hi(1, lo(width, height) / 720);
-  put4(u, U_FX, flash, 0, 0, ink);   // a hit or a breakthrough flashes; no speed lines
+  // a hit or a breakthrough flashes; Splice draws no speed lines, and a speed below zero asks its
+  // post and overlay passes for the graybox (gpu/splice.coax)
+  put4(u, U_FX, flash, 0, ifx !s[0].gallery && g[0].gray then -1.0f32 else 0.0f32, ink);
   put4(u, U_DRAW, 0, 0, 0, -1);
   put4(u, U_MISC, ifx animelab_phone(width, dpr) then 1.0f32 else 0.0f32, 0.5, 0.45, 1);
   s[0].draws[0] = 0; s[0].draws[1] = cast(u32) s[0].world_n; s[0].draws[2] = 0x80000000; s[0].draws[3] = 1;
@@ -343,7 +349,9 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   return g_overlay(g, out, u, width, height);
 }
 splice_key :: (s: [] Splice, key: int, down: bool) -> bool #export_c #effects(all) {
-  if s[0].gallery || !s[0].started { return false; }
+  if s[0].gallery { return false; }
+  if down && (key == 'g' || key == 'G') { s[0].game[0].gray = !s[0].game[0].gray; return true; }   // graybox, in any mode
+  if !s[0].started { return false; }
   return g_key(s[0].game[..], key, down);
 }
 // Mouse look (the host holds the pointer while you walk): 0 a still scene, 1 the cursor is free, 2 hold it.
@@ -371,4 +379,16 @@ splice_draw_count :: (s: [] Splice) -> int #export_c #effects(all) { return ifx 
   #assert s[0].scene == 7;
   splice_message(s[..], 600, "?scene=99");
   #assert s[0].scene == 0;
+}
+
+#test "G turns the graybox on and off, and a new run keeps it" {
+  s := [1] Splice.[Splice.{}];
+  #assert(splice_key(s[..], 'g', true));
+  #assert(s[0].game[0].gray);
+  g_reset(s[0].game[..]);
+  #assert(s[0].game[0].gray);
+  #assert(splice_key(s[..], 'G', true));
+  #assert(!s[0].game[0].gray);
+  splice_message(s[..], 600, "https://x/worlds/splice?gray");
+  #assert(s[0].game[0].gray);
 }

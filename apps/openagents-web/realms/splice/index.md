@@ -46,6 +46,8 @@ the inventory you had when you last stood there. Heat cools only by the rover or
 - In the edit bay, drag or click a part or card to place it. Keys also work: **1, 2, 3** cards,
   **4, 5, 6** parts, **C** clears the strip, **Enter** is SPLICE, **X** is SPLICE CORE.
 - **F** stuns a weak point within 2 m, or hits a raider or an Imperial robot in reach.
+- **G** switches graybox on and off: the whole world in grays, with only orange, yellow and cyan
+  left in colour. `?gray` in the address opens in it.
 
 ## Look
 

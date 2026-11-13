@@ -1,0 +1,38 @@
+// Graybox: a picture in grays with a few accent hues left in colour. A level in block-out is gray
+// so its shapes read on their own; what stays coloured (orange and yellow, cyan) marks what matters.
+// One rule, used where a mesh takes its colour (cel-mesh.coax, Pen.graybox) and in a page's post
+// and overlay passes, so a surface and the light on it agree. No loads: plain arithmetic a shader
+// can run too.
+
+// How much of a colour's hue graybox keeps, 0 (all gray) to 1: orange to yellow once its saturation
+// passes `warm`, cyan once it passes `cyan`. Reds, pinks, greens, blues and purples keep nothing.
+graybox_keep :: (r:f32,g:f32,b:f32,warm:f32,cyan:f32)->f32 {
+  mx:f32=r; if g>mx {mx=g;} if b>mx {mx=b;}
+  mn:f32=r; if g<mn {mn=g;} if b<mn {mn=b;}
+  span:f32=mx-mn;
+  if span<0.0001f32 {return 0.0f32;}
+  sat:f32=span/mx;
+  lo:f32=1.0f32;
+  // orange to yellow: blue least, red at or near the most, green clear of blue (not a red)
+  if (b<=g)&&(r>=g*0.85f32)&&((g-b)>span*0.15f32) {lo=warm;}
+  // cyan: red least, green and blue both well above it
+  gb:f32=g; if b<gb {gb=b;}
+  if (r<=gb)&&((gb-r)>span*0.6f32) {lo=cyan;}
+  t:f32=(sat-lo)/0.1f32;
+  if t<0.0f32 {t=0.0f32;} if t>1.0f32 {t=1.0f32;}
+  return t*t*(3.0f32-2.0f32*t);
+}
+// The gray a colour turns to (its luminance).
+graybox_gray :: (r:f32,g:f32,b:f32)->f32 {return 0.2126f32*r+0.7152f32*g+0.0722f32*b;}
+
+#test "graybox keeps orange, yellow and cyan and grays the rest" {
+  #assert(graybox_keep(0.722, 0.263, 0.122, 0.75, 0.5) > 0.9);   // heat orange
+  #assert(graybox_keep(0.95, 0.80, 0.10, 0.75, 0.5) > 0.9);      // yellow
+  #assert(graybox_keep(0.310, 0.702, 0.851, 0.75, 0.5) > 0.9);   // glow cyan
+  #assert(graybox_keep(0.82, 0.55, 0.25, 0.75, 0.5) < 0.01);     // sand
+  #assert(graybox_keep(1.0, 0.30, 0.62, 0.75, 0.5) < 0.01);      // pink
+  #assert(graybox_keep(0.62, 0.40, 1.0, 0.75, 0.5) < 0.01);      // purple
+  #assert(graybox_keep(0.2, 0.8, 0.3, 0.75, 0.5) < 0.01);        // green
+  #assert(graybox_keep(0.9, 0.1, 0.1, 0.75, 0.5) < 0.01);        // red
+  #assert(graybox_keep(0.5, 0.5, 0.5, 0.75, 0.5) < 0.01);
+}

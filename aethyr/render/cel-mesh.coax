@@ -8,6 +8,7 @@
 // (apps/openagents-web/animelab-mesh.coax) so every cel realm shares one copy.
 //   coax/bin/coax test --library aethyr/render/cel-mesh.coax
 #load "../core/points.coax";
+#load "graybox.coax";
 
 VERTEX_WORDS :: 6;
 MAT_WORLD :: 0; MAT_SKIN :: 1; MAT_HAIR :: 2; MAT_GLOW :: 3; MAT_FLAT :: 4; MAT_FLOOR :: 5; MAT_MADE :: 6;
@@ -15,7 +16,8 @@ MAT_INK :: 7; MAT_SMOKE :: 8; MAT_WINDOW :: 9; MAT_CLOTH :: 10;
 
 // What the next triangles are: their object, material, colour and parameter, and how many vertices
 // are written. A pen that runs out of room stops writing (over), never past its store.
-Pen :: struct { n: int; obj: int; mat: int; r: f32; g: f32; b: f32; param: f32; over: bool; }
+// graybox: every vertex takes its colour through graybox.coax (grays, with orange, yellow and cyan kept).
+Pen :: struct { n: int; obj: int; mat: int; r: f32; g: f32; b: f32; param: f32; over: bool; graybox: bool; }
 // A place and its axes: x right, y up, z ahead, all unit and square to each other.
 Frame :: struct { o: Point; x: Point; y: Point; z: Point; }
 
@@ -50,13 +52,20 @@ frame_along :: (a: Point, b: Point, side: Point) -> Frame {
 pen_set :: (p: [] Pen, obj: int, mat: int, r: f32, g: f32, b: f32) {
   p[0].obj = obj; p[0].mat = mat; p[0].r = r; p[0].g = g; p[0].b = b; p[0].param = 1;
 }
+// A graybox pen keeps a surface's hue from this saturation up: sand and rust go gray, a marker stays.
+GRAYBOX_WARM :: 0.75; GRAYBOX_CYAN :: 0.5;
 byte_of :: (x: f32) -> u32 { return cast(u32) (cast(int) floor(clamp01(x) * 255 + 0.5)); }
 // One vertex: where, its normal (unit).
 vtx :: (buf: [] u32, p: [] Pen, at: Point, n: Point) {
   i := p[0].n * VERTEX_WORDS;
   buf[i] = f32_bits(at.x); buf[i + 1] = f32_bits(at.y); buf[i + 2] = f32_bits(at.z);
   buf[i + 3] = byte_of(n.x * 0.5 + 0.5) | (byte_of(n.y * 0.5 + 0.5) << 8) | (byte_of(n.z * 0.5 + 0.5) << 16) | (cast(u32) (p[0].obj & 255) << 24);
-  buf[i + 4] = byte_of(p[0].r) | (byte_of(p[0].g) << 8) | (byte_of(p[0].b) << 16) | (cast(u32) (p[0].mat & 255) << 24);
+  r := p[0].r; g := p[0].g; b := p[0].b;
+  if p[0].graybox {
+    keep := graybox_keep(r, g, b, GRAYBOX_WARM, GRAYBOX_CYAN); gray := graybox_gray(r, g, b);
+    r = gray + (r - gray) * keep; g = gray + (g - gray) * keep; b = gray + (b - gray) * keep;
+  }
+  buf[i + 4] = byte_of(r) | (byte_of(g) << 8) | (byte_of(b) << 16) | (cast(u32) (p[0].mat & 255) << 24);
   buf[i + 5] = f32_bits(p[0].param);
   p[0].n += 1;
 }

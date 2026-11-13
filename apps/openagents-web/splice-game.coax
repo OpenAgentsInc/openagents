@@ -56,6 +56,7 @@ B_SWEEP :: 1; B_CUT :: 2;
 SpSave :: struct { have: [HAVES] bool; taken: [PICKS] bool; slot: [3] bool; strip: [3] int; strip_n: int; scrap: int; cells: int; }
 
 SpGame :: struct {
+  gray: bool;                 // graybox (G): the world in grays, orange, yellow and cyan kept; outlives a reset
   mode: int; zone: int; phase: int; t: f32;
   px: f32; pz: f32; yaw: f32; pitch: f32; stride: f32;
   fwd: bool; back: bool; left: bool; right: bool; turn_l: bool; turn_r: bool;
@@ -152,7 +153,9 @@ g_respawn :: (g: [] SpGame) {
   g[0].bot = g[0].slot[0] && g[0].slot[1] && g[0].slot[2]; g_bot_home(g);
 }
 g_reset :: (g: [] SpGame) {
+  gray := g[0].gray;   // the graybox toggle is the viewer's, not the run's
   g[0] = SpGame.{};
+  g[0].gray = gray;
   g_layout(g);
   g[0].mode = M_TITLE; g[0].zone = Z_VILLAGE; g[0].phase = PH_DAWN; g[0].drag = -1;
   g[0].px = VIL_X; g[0].pz = VIL_Z - 3; g[0].yaw = 0; g[0].hearts = T_HEARTS; g[0].rail_v = T_RAIL_SPEED;
@@ -1252,7 +1255,7 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
     n = ui_box(out, n, fx0 + 14 * k, fy0 + 14 * k, fx0 + 646 * k, fy0 + 286 * k, 2 * k, ink);
     n = ui_title_mid(out, n, "SPLICE", w * 0.5, fy0 + 142 * k, 64 * k, ink);
     if fract(g[0].t * 0.8) < 0.7 { n = ui_button(g, out, n, "CLICK TO PLAY", w * 0.5 - 170 * k, fy0 + 184 * k, w * 0.5 + 170 * k, fy0 + 236 * k, 0, -2); }
-    n = ui_mid(out, n, "WASD move · mouse look · E interact · TAB edit bay · F stun", w * 0.5, fy0 + 268 * k, 8 * k, ink);
+    n = ui_mid(out, n, "WASD move · mouse look · E interact · TAB edit bay · F stun · G graybox", w * 0.5, fy0 + 268 * k, 8 * k, ink);
     return n;
   }
   if g[0].mode == M_BANNER {
