@@ -74,14 +74,14 @@ RcEnv :: struct {
   // --intel: the compiler session (opened at the first question: ix_state 1 open, 2 no compiler) and its counts
   intel: bool; coax: string; ix_state: int;
   ix: [1] Ix;
-  decls: [RC_DECLS] IxDecl; uses: [RC_USES] IxUse; diags: [RC_DIAGS] IxDiag; fx: [RC_FX] IxEffect; loaders: [4] string;
+  decls: [RC_DECLS] IxDecl; uses: [RC_USES] IxUse; diags: [RC_DIAGS] IxDiag; fx: [RC_FX] IxEffect; via: [FS_PATH_MAX] u8;
   xops: [12] int; asked: int; unanswered: int; stale_edits: int;
   // --memory: the run store and its counts; read_turn: the turn each read row was first read at, plus one
   memory: bool;
   wm: [1] Wmf;
   read_turn: [WM_READS] int;
   mem_reads: int; repeats: int; turn_reads: int; turn_repeats: int; notes: int; finish_refused: int;
-  cmds: [RC_CMDS] string; ncmds: int;
+  task: [1] WmTask;              // the task's backtick spans (workmem/task.coax)
   view: [RC_VIEW] u8; notel: [160] u8; unproven: [RC_VIEW] u8; nunproven: int;
 }
 RC_DECLS :: 80; RC_USES :: 40; RC_DIAGS :: 20; RC_FX :: 24;   // records one compiler answer shows at most
@@ -426,7 +426,7 @@ rc_step :: (env: [] RcEnv, r: [] Rs, st: [] RlmState) {
 // Steps the run to its end, serving its effects; progress lines on stderr when live.
 rc_drive :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, task: string, live: bool) {
   rlm_start(r, st, task);
-  if env[0].memory { rc_task_cmds(env, task); }
+  if env[0].memory { wm_task_scan(task, env[0].task[..]); }
   calls := 0; t0 := cxproc_now_ms();
   while st[0].nlev > 0 {
     rc_step(env, r, st);
@@ -470,7 +470,6 @@ RC_MEMORY_NOTE :: "\n\nYou have a working memory. What you read, change and run 
 RC_ANS :: 24000;                 // bytes of one compiler answer at most
 RC_VIEW :: 6000;                 // bytes of known(), changed() and open_items() at most
 RC_REFUSALS :: 2;                // times FINAL is refused before it is accepted with what is open
-RC_CMDS :: 64;                   // backtick spans of the task kept
 
 // Whether the run may do one more effect (reads against np_read_budget, commands and edits
 // against np_budget, both against the run's time); when not, the refusal that stops the run.
@@ -513,50 +512,6 @@ rc_no_answer_text :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, what: string, ar
   return t;
 }
 rc_no_answer :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, what: string, arg: string, why: string) -> RcResult { return rc_ok(rc_no_answer_text(env, r, st, what, arg, why)); }
-
-// What an answer left out, a line each.
-rc_left_out :: (out: [] u8, at: int, a: IxAnswer, what: string) -> int {
-  n := at;
-  if a.n < a.total { n = rp_put(out, n, "["); n = rp_put_int(out, n, a.total - a.n); n = rp_put(out, n, " more "); n = rp_put(out, n, what); n = rp_put(out, n, " not listed]\n"); }
-  if a.unchecked > 0 { n = rp_put(out, n, "["); n = rp_put_int(out, n, a.unchecked); n = rp_put(out, n, " files that name it were not checked: they do not compile, or the question's limit of compiler runs was reached]\n"); }
-  if a.ok && a.n > 0 && a.why.count > 0 { n = rp_put(out, n, "note: "); n = rp_put(out, n, a.why); n = rp_put(out, n, "\n"); }
-  return n;
-}
-rc_none :: (out: [] u8, a: IxAnswer, otherwise: string) -> int {
-  n := rp_put(out, 0, "none: "); n = rp_put(out, n, ifx a.why.count > 0 then a.why else otherwise);
-  return rp_put(out, n, "\n");
-}
-rc_hash12 :: (hash: string) -> string { return ifx hash.count > IX_SEEN_LEAST then cast(string) hash[0..<IX_SEEN_LEAST] else hash; }
-
-// A file's diagnostics in env.diags. A file that is a part of a larger unit fails alone on names
-// its loader gives it; then the answer is the first loader's check, and via names that loader.
-RcChecked :: struct { a: IxAnswer; via: string; }
-rc_check_file :: (env: [] RcEnv, r: [] Rs, path: string, alone: IxAnswer, asked: bool) -> RcChecked {
-  s := env[0].ix[..];
-  c := RcChecked.{a = alone};
-  if !asked { c.a = ix_check(s, path, env[0].diags[0..<RC_DIAGS]); }
-  if !c.a.ok || c.a.status == 0 { return c; }
-  l := ix_loaders(s, path, env[0].loaders[..]);
-  if !l.ok || l.n == 0 {
-    // the loaders question used the session's strings: ask the check again so its records stand
-    c.a = ix_check(s, path, env[0].diags[0..<RC_DIAGS]);
-    return c;
-  }
-  c.via = rs_copy(r, env[0].loaders[0]);
-  c.a = ix_check(s, c.via, env[0].diags[0..<RC_DIAGS]);
-  return c;
-}
-
-// A check's records for the model as text: "clean", or each diagnostic with its notes and fixes.
-rc_checked_text :: (env: [] RcEnv, out: [] u8, at: int, c: RcChecked) -> int {
-  n := rp_put(out, at, "check");
-  if c.via.count > 0 { n = rp_put(out, n, " (through "); n = rp_put(out, n, c.via); n = rp_put(out, n, ", which loads it)"); }
-  if !c.a.ok { n = rp_put(out, n, ": no answer: "); n = rp_put(out, n, c.a.why); return rp_put(out, n, "\n"); }
-  if c.a.total == 0 { return rp_put(out, n, ": clean\n"); }
-  n = rp_put(out, n, ": "); n = rp_put_int(out, n, c.a.total); n = rp_put(out, n, ifx c.a.total == 1 then " diagnostic\n" else " diagnostics\n");
-  n = ix_diags_text(env[0].diags[0..<c.a.n], out, n);
-  return rc_left_out(out, n, c.a, "diagnostics");
-}
 
 // One field of a check record: no byte that parts records or fields.
 rc_field :: (out: [] u8, at: int, s: string) -> int {
@@ -616,45 +571,12 @@ rc_wm_before :: (env: [] RcEnv, full: string) -> string {
   return cast(string) env[0].file[0..<ifx n < 0 then 0 else n];
 }
 
-// The task's commands: its spans in single backticks, each on one line (a run of two or more
-// backticks, a code fence, is no span).
-rc_task_cmds :: (env: [] RcEnv, task: string) {
-  env[0].ncmds = 0;
-  i := 0;
-  while i < task.count {
-    if task[i] != '`' { i += 1; continue; }
-    e := i; while e < task.count && task[e] == '`' { e += 1; }
-    if e - i != 1 { i = e; continue; }
-    c := e; while c < task.count && task[c] != '`' && task[c] != 10 { c += 1; }
-    if c >= task.count || task[c] == 10 { i = c; continue; }
-    a := e; b := c;
-    while a < b && task[a] == ' ' { a += 1; }
-    while b > a && task[b - 1] == ' ' { b -= 1; }
-    span := cast(string) task[a..<b];
-    known := false;
-    for k: 0..<env[0].ncmds { if env[0].cmds[k] == span { known = true; } }
-    if !known && span.count >= 2 && span.count <= 400 && env[0].ncmds < RC_CMDS { env[0].cmds[env[0].ncmds] = span; env[0].ncmds += 1; }
-    i = c + 1;
-    while i < task.count && task[i] == '`' { i += 1; }
-  }
-}
-// The check of the task that cmd is a run of: the longest of the task's backtick spans that is
-// the whole command, or has a space (a command with arguments) and is part of it. "" for none.
-rc_task_check :: (env: [] RcEnv, cmd: string) -> string {
-  best := "";
-  for k: 0..<env[0].ncmds {
-    c := env[0].cmds[k];
-    spaced := false; for ch: c { if ch == ' ' { spaced = true; } }
-    if (c == cmd || (spaced && rs_find_sub(cmd, c, 0) >= 0)) && c.count > best.count { best = c; }
-  }
-  return best;
-}
 // A command ran: the working memory sees which files it changed, then keeps the run, as a run of
 // the task's check it is (the check's row is made at its first run).
 rc_wm_ran :: (env: [] RcEnv, cmd: string, s: RcSh, ms: int) {
   w := env[0].wm[..];
   x := wmf_refresh(w);
-  check := rc_task_check(env, cmd);
+  check := wm_task_check(env[0].task[..], cmd);
   if check.count > 0 {
     have := false;
     for i: 0..<w[0].s[0].nchecks { if w[0].s[0].checks[i].name == check { have = true; } }
@@ -726,19 +648,19 @@ rc_intel_fn :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, q: RcReq) -> RcResult 
   if op == "defines" {
     a := ix_defines(s, arg, env[0].decls[0..<16]);
     if !a.ok { return rc_no_answer(env, r, st, op, arg, a.why); }
-    n := ifx a.n == 0 then rc_none(out, a, "no declaration has this name") else rc_left_out(out, ix_decls_text(env[0].decls[0..<a.n], out, 0), a, "declarations");
+    n := ifx a.n == 0 then ix_none(out, a, "no declaration has this name") else ix_left_out(out, ix_decls_text(env[0].decls[0..<a.n], out, 0), a, "declarations");
     return rc_ok(rs_copy(r, cast(string) out[0..<n]));
   }
   if op == "uses" {
     a := ix_uses_of(s, arg, q.f[2], env[0].decls[0..<8], env[0].uses[0..<RC_USES]);
     if !a.ok { return rc_no_answer(env, r, st, op, arg, a.why); }
-    n := rc_left_out(out, ifx a.n == 0 then rc_none(out, a, "nothing uses this name") else ix_uses_text(env[0].uses[0..<a.n], a.defs > 1, out, 0), a, "uses");
+    n := ix_left_out(out, ifx a.n == 0 then ix_none(out, a, "nothing uses this name") else ix_uses_text(env[0].uses[0..<a.n], a.defs > 1, out, 0), a, "uses");
     return rc_ok(rs_copy(r, cast(string) out[0..<n]));
   }
   if op == "exports" {
     a := ix_exports(s, arg, env[0].decls[0..<RC_DECLS]);
     if !a.ok { return rc_no_answer(env, r, st, op, arg, a.why); }
-    n := ifx a.n == 0 then rc_none(out, a, "the file declares nothing") else rc_left_out(out, ix_decls_text(env[0].decls[0..<a.n], out, 0), a, "declarations");
+    n := ifx a.n == 0 then ix_none(out, a, "the file declares nothing") else ix_left_out(out, ix_decls_text(env[0].decls[0..<a.n], out, 0), a, "declarations");
     return rc_ok(rs_copy(r, cast(string) out[0..<n]));
   }
   if op == "explain" {
@@ -749,7 +671,7 @@ rc_intel_fn :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, q: RcReq) -> RcResult 
   if op == "effects" {
     a := ix_effects_of(s, arg, q.f[2], env[0].fx[0..<RC_FX]);
     if !a.ok { return rc_no_answer(env, r, st, op, arg, a.why); }
-    n := ifx a.n == 0 then rc_none(out, a, "no effects are recorded for it") else rc_left_out(out, ix_effects_text(env[0].fx[0..<a.n], out, 0), a, "effects");
+    n := ifx a.n == 0 then ix_none(out, a, "no effects are recorded for it") else ix_left_out(out, ix_effects_text(env[0].fx[0..<a.n], out, 0), a, "effects");
     return rc_ok(rs_copy(r, cast(string) out[0..<n]));
   }
   if op == "check" { return rc_intel_check(env, r, st, arg); }
@@ -761,7 +683,7 @@ rc_intel_fn :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, q: RcReq) -> RcResult 
 rc_intel_check :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, arg: string) -> RcResult {
   op := "check"; out := env[0].show[0..<RC_ANS];
   {
-    c := rc_check_file(env, r, arg, IxAnswer.{}, false);
+    c := ix_check_via(env[0].ix[..], arg, IxAnswer.{}, false, env[0].diags[0..<RC_DIAGS], env[0].via[..]);
     n := 0;
     if !c.a.ok { n = rc_record(out, 0, "no answer", 0, rc_no_answer_text(env, r, st, op, arg, c.a.why), "", ""); return rc_ok(rs_copy(r, cast(string) out[0..<n])); }
     if c.via.count > 0 && c.a.total > 0 { n = rc_record(out, n, "note", 0, "these are the diagnostics of the file that loads it: ", c.via, ""); }
@@ -787,7 +709,7 @@ rc_intel_show :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, arg: string, file_ar
       return rc_no_answer(env, r, st, op, arg, sh.why);
     }
     n := rp_put(out, 0, sh.file); n = rp_put(out, n, ":"); n = rp_put_int(out, n, sh.from); n = rp_put(out, n, "-"); n = rp_put_int(out, n, sh.to);
-    n = rp_put(out, n, "  "); n = rp_put(out, n, sh.decl.kind); n = rp_put(out, n, " "); n = rp_put(out, n, sh.decl.name); n = rp_put(out, n, "  hash "); n = rp_put(out, n, rc_hash12(sh.hash)); n = rp_put(out, n, "\n");
+    n = rp_put(out, n, "  "); n = rp_put(out, n, sh.decl.kind); n = rp_put(out, n, " "); n = rp_put(out, n, sh.decl.name); n = rp_put(out, n, "  hash "); n = rp_put(out, n, ix_hash12(sh.hash)); n = rp_put(out, n, "\n");
     n = rp_put(out, n, sh.text);
     if sh.cut { n = rp_put(out, n, "[cut: ask for lines "); n = rp_put_int(out, n, sh.next); n = rp_put(out, n, " on with lines(path, a, b)]\n"); }
     text := rs_copy(r, cast(string) out[0..<n]);
@@ -822,18 +744,18 @@ rc_intel_replace :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, q: RcReq) -> RcRe
   res := ix_replace(s, IxEdit.{file = path, from = d.line, to = d.end_line, seen = q.f[2], text = q.f[3]}, env[0].dst[0..<RC_ANS - 2000], env[0].diags[0..<RC_DIAGS]);
   if res.stale {
     env[0].stale_edits += 1; env[0].failed += 1;
-    n := rp_put(out, 0, "replace refused: "); n = rp_put(out, n, arg); n = rp_put(out, n, " is not what you read (its hash is "); n = rp_put(out, n, rc_hash12(res.hash)); n = rp_put(out, n, " now): nothing was written. It is now, at "); n = rp_put(out, n, path); n = rp_put(out, n, ":"); n = rp_put_int(out, n, res.from); n = rp_put(out, n, "-"); n = rp_put_int(out, n, res.to); n = rp_put(out, n, ":\n");
+    n := rp_put(out, 0, "replace refused: "); n = rp_put(out, n, arg); n = rp_put(out, n, " is not what you read (its hash is "); n = rp_put(out, n, ix_hash12(res.hash)); n = rp_put(out, n, " now): nothing was written. It is now, at "); n = rp_put(out, n, path); n = rp_put(out, n, ":"); n = rp_put_int(out, n, res.from); n = rp_put(out, n, "-"); n = rp_put_int(out, n, res.to); n = rp_put(out, n, ":\n");
     n = rp_put(out, n, res.text);
     return rc_ok(rs_copy(r, cast(string) out[0..<n]));
   }
   if !res.ok { env[0].failed += 1; return rc_ok(rs_cat(r, "replace failed: ", res.why)); }
   env[0].writes += 1;
   n := rp_put(out, 0, "replaced "); n = rp_put(out, n, kind); n = rp_put(out, n, " "); n = rp_put(out, n, arg); n = rp_put(out, n, ": "); n = rp_put(out, n, path); n = rp_put(out, n, ":"); n = rp_put_int(out, n, res.from); n = rp_put(out, n, "-"); n = rp_put_int(out, n, res.to);
-  if res.hash.count > 0 { n = rp_put(out, n, "  hash "); n = rp_put(out, n, rc_hash12(res.hash)); }
+  if res.hash.count > 0 { n = rp_put(out, n, "  hash "); n = rp_put(out, n, ix_hash12(res.hash)); }
   n = rp_put(out, n, "\n"); n = rp_put(out, n, res.text);
   if res.cut { n = rp_put(out, n, "[cut: the rest is in the file]\n"); }
-  c := rc_check_file(env, r, path, res.checked, true);
-  n = rc_checked_text(env, out, n, c);
+  c := ix_check_via(env[0].ix[..], path, res.checked, true, env[0].diags[0..<RC_DIAGS], env[0].via[..]);
+  n = ix_checked_text(env[0].diags[0..<c.a.n], out, n, c);
   text := rs_copy(r, cast(string) out[0..<n]);
   if env[0].memory { rc_wm_change(env, path, rc_path(env, path, true), before); }
   return rc_ok(text);
@@ -974,7 +896,7 @@ rc_init :: (m: [] RcMem, limits: RlmLimits, cwd: string, profile: string, manage
   m[0].r[0].env_more = m[0].none[0..<0];
   e[0].intel = false; e[0].memory = false; e[0].coax = ""; e[0].ix_state = 0;
   e[0].asked = 0; e[0].unanswered = 0; e[0].stale_edits = 0;
-  e[0].mem_reads = 0; e[0].repeats = 0; e[0].turn_reads = 0; e[0].turn_repeats = 0; e[0].notes = 0; e[0].finish_refused = 0; e[0].ncmds = 0; e[0].nunproven = 0;
+  e[0].mem_reads = 0; e[0].repeats = 0; e[0].turn_reads = 0; e[0].turn_repeats = 0; e[0].notes = 0; e[0].finish_refused = 0; e[0].task[0].n = 0; e[0].nunproven = 0;
   for i: 0..<RC_XOPS.count { e[0].xops[i] = 0; }
   for i: 0..<WM_READS { e[0].read_turn[i] = 0; }
 }
@@ -1191,25 +1113,13 @@ rc_names :: (text: string, name: string) -> bool {
   #assert rs_count_sub(RC_INTEL_NOTE, "{") == 0 && rs_count_sub(RC_MEMORY_NOTE, "{") == 0 && rs_count_sub(RC_SYSTEM, "{WORKER}") == 1;
 }
 
-#test "the task's commands are its spans in single backticks; a command is a run of the longest one it holds" {
-  eb: [1] RcEnv; env := eb[..];
-  rc_task_cmds(env, "Reply with no ``` fence. Fix `area` in `shapes.coax`; run `sh test.sh` and ` coax test shapes.coax ` then `sh test.sh` again.\nAn open `span\nends at its line. ``two ticks`` are no span. `x`");
-  #assert env[0].ncmds == 4 && env[0].cmds[0] == "area" && env[0].cmds[1] == "shapes.coax" && env[0].cmds[2] == "sh test.sh" && env[0].cmds[3] == "coax test shapes.coax";
-  #assert rc_task_check(env, "sh test.sh") == "sh test.sh" && rc_task_check(env, "cd . && sh test.sh 2>&1 | tail -5") == "sh test.sh";
-  // a span with no space names a check only as the whole command: a grep for area is no check
-  #assert rc_task_check(env, "grep area shapes.coax") == "" && rc_task_check(env, "area") == "area" && rc_task_check(env, "sh other.sh") == "";
-  #assert rc_task_check(env, "coax test shapes.coax && sh test.sh") == "coax test shapes.coax";
-  rc_task_cmds(env, "no spans here");
-  #assert env[0].ncmds == 0 && rc_task_check(env, "sh test.sh") == "";
-}
-
 #test "a check's record: four fields, and no byte that would part them" {
   b: [64] u8; msg := [3] u8.['a', 31, 'b'];
   n := rc_record(b[..], 0, "E1", 12, "in f: ", cast(string) msg[..], "fix");
   #assert n == 20 && b[2] == 31 && cast(string) b[3..<5] == "12" && b[5] == 31 && cast(string) b[6..<15] == "in f: a b" && b[15] == 31 && cast(string) b[16..<19] == "fix" && b[19] == 30;
   env_rel: [1] RcEnv; e := env_rel[..]; e[0].cwd = "/r/w";
   #assert rc_rel(e, "./a/b.c") == "a/b.c" && rc_rel(e, "/r/w/a.c") == "a.c" && rc_rel(e, "a.c") == "a.c" && rc_rel(e, "././x") == "x";
-  #assert rc_hash12("0123456789abcdef0123") == "0123456789ab" && rc_hash12("0123") == "0123";
+  #assert ix_hash12("0123456789abcdef0123") == "0123456789ab" && ix_hash12("0123") == "0123";
 }
 
 // ---------------------------------------------------------------- the self-test (real files and commands)

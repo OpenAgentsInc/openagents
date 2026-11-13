@@ -19,6 +19,7 @@
 // Checked by `coax/web/tool.sh coax/lib/agent/workmem/workmem.coax selftest`
 // (foreign effects do not run under `coax test`).
 #load "view.coax";
+#load "task.coax";
 #load "../../sys/fs.coax";
 #load "../../sys/openagents-paths.coax";
 

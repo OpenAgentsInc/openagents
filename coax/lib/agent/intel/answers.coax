@@ -430,6 +430,21 @@ ix_head :: (out: [] u8, at: int, version: string, a: IxAnswer) -> int {
   if a.why.count > 0 { n = rp_put(out, n, ifx a.ok then "note: " else "no answer: "); n = rp_put(out, n, a.why); n = rp_put(out, n, "\n"); }
   return n;
 }
+// What an answer left out, a line each.
+ix_left_out :: (out: [] u8, at: int, a: IxAnswer, what: string) -> int {
+  n := at;
+  if a.n < a.total { n = rp_put(out, n, "["); n = rp_put_int(out, n, a.total - a.n); n = rp_put(out, n, " more "); n = rp_put(out, n, what); n = rp_put(out, n, " not listed]\n"); }
+  if a.unchecked > 0 { n = rp_put(out, n, "["); n = rp_put_int(out, n, a.unchecked); n = rp_put(out, n, " files that name it were not checked: they do not compile, or the question's limit of compiler runs was reached]\n"); }
+  if a.ok && a.n > 0 && a.why.count > 0 { n = rp_put(out, n, "note: "); n = rp_put(out, n, a.why); n = rp_put(out, n, "\n"); }
+  return n;
+}
+// An answer with no records: "none: " and why, or otherwise when the compiler gave no reason.
+ix_none :: (out: [] u8, a: IxAnswer, otherwise: string) -> int {
+  n := rp_put(out, 0, "none: "); n = rp_put(out, n, ifx a.why.count > 0 then a.why else otherwise);
+  return rp_put(out, n, "\n");
+}
+// The start of a hash an edit may name (IX_SEEN_LEAST hex digits).
+ix_hash12 :: (hash: string) -> string { return ifx hash.count > IX_SEEN_LEAST then cast(string) hash[0..<IX_SEEN_LEAST] else hash; }
 ix_short :: (hash: string) -> string { return ifx hash.count > 16 then cast(string) hash[0..<16] else hash; }
 // "proc area  shapes.coax:4-4  exported  file 9f297d0e69d1dc0f"
 ix_decls_text :: (decls: [] IxDecl, out: [] u8, at: int) -> int {

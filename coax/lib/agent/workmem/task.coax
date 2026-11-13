@@ -1,0 +1,93 @@
+// The checks a task names (GitHub #13444 part 4, #13445 step 4): a task's
+// text names its checks as commands in single backticks ("run `sh test.sh`").
+// A loop scans the task once (wm_task_scan), and for each command it runs
+// asks which of the task's spans that command is a run of (wm_task_check).
+// The span is then the check's name in the run store, so the finish rule
+// (finish.coax) can ask for its latest run to pass on the tree as it is now.
+//
+// One copy for both loops: the RLM coder (coax/lib/rlm/code.coax) and
+// Microcoder (coax/lib/microcoder/aware.coax). No effects.
+
+WM_TASK_CMDS :: 64;              // backtick spans of the task kept
+WM_TASK_SPAN :: 400;             // bytes of one span, at most
+
+WmTask :: struct { cmds: [WM_TASK_CMDS] string; n: int; }
+
+// The task's spans in single backticks, each on one line, each once, in
+// order. A run of two or more backticks (a code fence) is no span. The
+// strings are parts of task and live as long as it does.
+wm_task_scan :: (task: string, t: [] WmTask) {
+  t[0].n = 0;
+  i := 0;
+  while i < task.count {
+    if task[i] != '`' { i += 1; continue; }
+    e := i; while e < task.count && task[e] == '`' { e += 1; }
+    if e - i != 1 { i = e; continue; }
+    c := e; while c < task.count && task[c] != '`' && task[c] != 10 { c += 1; }
+    if c >= task.count || task[c] == 10 { i = c; continue; }
+    a := e; b := c;
+    while a < b && task[a] == ' ' { a += 1; }
+    while b > a && task[b - 1] == ' ' { b -= 1; }
+    span := cast(string) task[a..<b];
+    known := false;
+    for k: 0..<t[0].n { if t[0].cmds[k] == span { known = true; } }
+    if !known && span.count >= 2 && span.count <= WM_TASK_SPAN && t[0].n < WM_TASK_CMDS { t[0].cmds[t[0].n] = span; t[0].n += 1; }
+    i = c + 1;
+    while i < task.count && task[i] == '`' { i += 1; }
+  }
+}
+
+// Whether needle is somewhere in hay.
+wm_task_within :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > hay.count { return needle.count == 0; }
+  for i: 0..<hay.count - needle.count + 1 {
+    same := true;
+    for j: 0..<needle.count { if hay[i + j] != needle[j] { same = false; break; } }
+    if same { return true; }
+  }
+  return false;
+}
+
+// The check of the task that cmd is a run of: the longest of the task's
+// spans that is the whole command, or has a space (a command with
+// arguments) and is part of it. "" for none.
+wm_task_check :: (t: [] WmTask, cmd: string) -> string {
+  best := "";
+  for k: 0..<t[0].n {
+    c := t[0].cmds[k];
+    spaced := false; for ch: c { if ch == ' ' { spaced = true; } }
+    if (c == cmd || (spaced && wm_task_within(cmd, c))) && c.count > best.count { best = c; }
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a task's single-backtick spans are its commands; a command is a run of the longest span it holds" {
+  t: [1] WmTask;
+  wm_task_scan("Reply with no ``` fence. Fix `area` in `shapes.coax`; run `sh test.sh` and ` coax test shapes.coax ` then `sh test.sh` again.\nAn open `span\nends at its line. ``two ticks`` are no span. `x`", t[..]);
+  #assert t[0].n == 4 && t[0].cmds[0] == "area" && t[0].cmds[1] == "shapes.coax" && t[0].cmds[2] == "sh test.sh" && t[0].cmds[3] == "coax test shapes.coax";
+  #assert wm_task_check(t[..], "sh test.sh") == "sh test.sh" && wm_task_check(t[..], "cd . && sh test.sh 2>&1 | tail -5") == "sh test.sh";
+  #assert wm_task_check(t[..], "grep area shapes.coax") == "" && wm_task_check(t[..], "area") == "area" && wm_task_check(t[..], "sh other.sh") == "";
+  #assert wm_task_check(t[..], "coax test shapes.coax && sh test.sh") == "coax test shapes.coax";
+  wm_task_scan("no spans here", t[..]);
+  #assert t[0].n == 0 && wm_task_check(t[..], "sh test.sh") == "";
+}
+
+#test "within: a part anywhere, the whole, and not a longer needle" {
+  #assert wm_task_within("abc", "abc") && wm_task_within("xabc", "abc") && wm_task_within("abcx", "abc") && wm_task_within("abc", "");
+  #assert !wm_task_within("ab", "abc") && !wm_task_within("abd", "abc") && !wm_task_within("", "a");
+}
+
+#test "a span over the limit, or of one byte, is not kept; the table holds 64" {
+  buf: [2048] u8; n := 0;
+  for k: 0..<70 { buf[n] = '`'; buf[n + 1] = 'c'; buf[n + 2] = cast,trunc(u8) ('0' + k / 10); buf[n + 3] = cast,trunc(u8) ('0' + k % 10); buf[n + 4] = '`'; buf[n + 5] = ' '; n += 6; }
+  t: [1] WmTask;
+  wm_task_scan(cast(string) buf[0..<n], t[..]);
+  #assert t[0].n == WM_TASK_CMDS && t[0].cmds[0] == "c00" && t[0].cmds[63] == "c63";
+  long: [500] u8; long[0] = '`'; for i: 1..<420 { long[i] = 'a'; } long[420] = '`';
+  wm_task_scan(cast(string) long[0..<421], t[..]);
+  #assert t[0].n == 0;
+  wm_task_scan("`ab`", t[..]);
+  #assert t[0].n == 1;
+}

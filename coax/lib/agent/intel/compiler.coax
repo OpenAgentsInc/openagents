@@ -603,6 +603,41 @@ ix_loaders :: (s: [] Ix, file: string, out: [] string) -> IxAnswer {
   return ix_end(s, a);
 }
 
+// A file's diagnostics in out, for a loop that edits files. A file that is a part of a larger unit
+// fails alone on names its loader gives it; then the answer is the first loader's check, and via
+// (copied into via_buf) names that loader. alone is the file's own check when the caller already
+// asked it (asked), as ix_replace does.
+IxChecked :: struct { a: IxAnswer; via: string; }
+ix_check_via :: (s: [] Ix, file: string, alone: IxAnswer, asked: bool, out: [] IxDiag, via_buf: [] u8) -> IxChecked {
+  c := IxChecked.{a = alone};
+  if !asked { c.a = ix_check(s, file, out); }
+  if !c.a.ok || c.a.status == 0 { return c; }
+  loaders: [4] string;
+  l := ix_loaders(s, file, loaders[..]);
+  if !l.ok || l.n == 0 {
+    // the loaders question used the session's strings: ask the check again so its records stand
+    c.a = ix_check(s, file, out);
+    return c;
+  }
+  n := 0;
+  for ch: loaders[0] { if n < via_buf.count { via_buf[n] = ch; n += 1; } }
+  c.via = cast(string) via_buf[0..<n];
+  c.a = ix_check(s, c.via, out);
+  return c;
+}
+
+// A check's records as text for a model: "clean", or each diagnostic with its notes and fixes.
+// diags are the records c.a counted (the first c.a.n of the array ix_check_via filled).
+ix_checked_text :: (diags: [] IxDiag, out: [] u8, at: int, c: IxChecked) -> int {
+  n := rp_put(out, at, "check");
+  if c.via.count > 0 { n = rp_put(out, n, " (through "); n = rp_put(out, n, c.via); n = rp_put(out, n, ", which loads it)"); }
+  if !c.a.ok { n = rp_put(out, n, ": no answer: "); n = rp_put(out, n, c.a.why); return rp_put(out, n, "\n"); }
+  if c.a.total == 0 { return rp_put(out, n, ": clean\n"); }
+  n = rp_put(out, n, ": "); n = rp_put_int(out, n, c.a.total); n = rp_put(out, n, ifx c.a.total == 1 then " diagnostic\n" else " diagnostics\n");
+  n = ix_diags_text(diags, out, n);
+  return ix_left_out(out, n, c.a, "diagnostics");
+}
+
 // A declaration, or lines of a file, as read: numbered text, the hash of exactly those lines
 // (what an edit names as seen) and the file's hash.
 IxShown :: struct {
