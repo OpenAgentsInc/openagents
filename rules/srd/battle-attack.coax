@@ -1,0 +1,153 @@
+// Attack rolls and what can change one after the dice (GitHub #13287, split from battle.coax): rs_shield
+// to rs_save_edge_from. Advantage and Disadvantage on an attack and on a save are two flags each
+// (rs_attack_edge_from, rs_save_edge_from): nothing counts them.
+// Not #authority yet: it owes its mutation pass (and a check for each procedure the issue lists).
+//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-attack.coax
+
+// ---- attack rolls, and what can change one after the dice
+
+// Shield (p. 161): a Reaction when it is hit by an attack roll, +5 AC until the start of its next
+// turn, including against the triggering attack; its lowest free slot.
+rs_shield :: (b: [] RsBattle, j: int) -> bool {
+  c := b[0].c[j];
+  if !c.shield_spell || c.reacted || !rs_capable(c) || rs_casting_barred(c) || !rs_spell_ready(c, SP_SHIELD) { return false; }
+  slot := 0;
+  for k: 1..<10 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
+  // a stat block casts it with Protective Magic's own uses (npcs.coax: its 1st-level slots), never a Fireball's
+  if c.npc != RS_NPC_NONE && slot != 1 { return false; }
+  if slot == 0 { return false; }
+  if !rs_cast_reaction_slot(b,j,SP_SHIELD,slot,c.npc != RS_NPC_MAGE) { return false; }
+  rs_shield_begin(b[0].c[j..<j+1]);
+  l: [1] RsLine;
+  rs_add_name(l[..], b, j); rs_add_text(l[..], " casts Shield ("); rs_add_text(l[..], RS_ORDINAL[slot]); rs_add_text(l[..], "-level slot): AC ");
+  rs_add_int(l[..], c.ac + 5);
+  rs_tell(b, RS_EV_CAST, SP_SHIELD, j, j, slot, 0, l[..]);
+  return true;
+}
+// Cutting Words (College of Lore, p. 35): a Bard within 60 feet of an enemy's successful attack roll
+// spends a Reaction and a Bardic Inspiration use and subtracts its die from the roll; it does so
+// only when the die could turn the hit (by `margin`, the roll over the AC). The amount taken off.
+rs_cutting_words :: (b: [] RsBattle, i: int, margin: int) -> int {
+  for k: 0..<b[0].n {
+    if !b[0].c[k].cutting { continue; }
+    c := b[0].c[k];
+    if !c.cutting || c.team == b[0].c[i].team || c.reacted || !rs_capable(c) || c.uses[RS_USE_INSPIRE] <= 0 { continue; }
+    if margin >= c.insp_die || rs_feet_to(b, k, i) > 60 { continue; }
+    b[0].c[k].reacted = true; b[0].c[k].uses[RS_USE_INSPIRE] -= 1;
+    cut := rs_roll(b[0].dice[..], c.insp_die);
+    l: [1] RsLine;
+    rs_add_name(l[..], b, k); rs_add_text(l[..], " mocks "); rs_add_name(l[..], b, i); rs_add_text(l[..], " with Cutting Words: -"); rs_add_int(l[..], cut);
+    rs_tell_ft(b, RS_EV_CONDITION, -1, k, i, cut, 0, RS_FT_CUTTING_WORDS, l[..]);
+    return cut;
+  }
+  return 0;
+}
+// Dark One's Own Luck (p. 75): a Fiend Warlock adds 1d10 to a save or check it sees fail, when the
+// die can make it; once a roll, a use each time.
+rs_own_luck :: (b: [] RsBattle, j: int, total: int, need: int) -> int {
+  if !b[0].c[j].own_luck || total >= need || total + 10 < need || b[0].c[j].uses[RS_USE_LUCK] <= 0 { return 0; }
+  b[0].c[j].uses[RS_USE_LUCK] -= 1;
+  luck := rs_roll(b[0].dice[..], 10);
+  l: [1] RsLine; rs_add_name(l[..], b, j); rs_add_text(l[..], ": Dark One's Own Luck, +"); rs_add_int(l[..], luck);
+  rs_tell_ft(b, RS_EV_CONDITION, -1, j, j, luck, 0, RS_FT_OWN_LUCK, l[..]);
+  return luck;
+}
+// A Bardic Inspiration die a creature holds, rolled on a failed D20 Test of `total` against `need`:
+// the number it adds (0 when it holds none or did not fail).
+rs_inspired_roll :: (b: [] RsBattle, j: int, total: int, need: int) -> int {
+  if b[0].c[j].inspired <= 0 || total >= need { return 0; }
+  die := rs_roll(b[0].dice[..], b[0].c[j].inspired);
+  b[0].c[j].inspired = 0;
+  return die;
+}
+// One attack roll by i at j: the d20 with `edge`, `bonus`, a Critical Hit from `crit_min` up. A
+// missed spell attack can reroll with Seeking Spell (a Sorcery Point); a miss adds a held Bardic
+// Inspiration die; a hit can be cut by an enemy Bard's Cutting Words, or turned by Shield.
+RsAttackRoll :: struct { roll: int; edge: int; total: int; hit: bool; crit: bool; insp: int; seek: bool; cut: int; exhaustion: int; shield: bool; ac: int; parry: bool; boon: int; }
+rs_roll_attack :: (b: [] RsBattle, i: int, j: int, edge: int, bonus: int, crit_min: int, spell: bool) -> RsAttackRoll {
+  return rs_roll_attack_from(b,i,j,edge,bonus,crit_min,spell,i);
+}
+rs_roll_attack_from :: (b: [] RsBattle, i: int, j: int, edge: int, bonus: int, crit_min: int, spell: bool, origin: int) -> RsAttackRoll {
+  r: RsAttackRoll;
+  d := rs_d20(b[0].dice[..], edge);
+  r.roll = d.roll; r.edge = d.edge;
+  r.ac = rs_ac(b, j) + rs_cover_bonus(rs_cover(b, origin, j));   // Half and Three-Quarters Cover (p.15)
+  r.exhaustion = rs_exhaustion_penalty(b[0].c[i]);
+  if spell && b[0].c[i].seeking && b[0].c[i].uses[RS_USE_SORCERY] > 0 && r.roll < crit_min && (r.roll == 1 || r.roll + bonus - r.exhaustion < r.ac) {
+    b[0].c[i].uses[RS_USE_SORCERY] -= 1; r.seek = true;
+    r.roll = rs_roll(b[0].dice[..], 20);
+  }
+  r.crit = r.roll >= crit_min;
+  // Bless's 1d4 more, Bane's 1d4 less
+  r.boon = rs_boon_roll(b, i);
+  r.total = r.roll + bonus + r.boon - r.exhaustion;
+  r.hit = r.roll != 1 && (r.crit || r.total >= r.ac);
+  if !r.hit && r.roll != 1 { r.insp = rs_inspired_roll(b, i, r.total, r.ac); r.total += r.insp; r.hit = r.total >= r.ac; }
+  if r.hit && !r.crit { r.cut = rs_cutting_words(b, i, r.total - r.ac); r.total -= r.cut; r.hit = r.total >= r.ac; }
+  if r.hit && !r.crit && r.total < r.ac + 5 && rs_shield(b, j) { r.shield = true; r.hit = false; r.ac += 5; }
+  return r;
+}
+// The roll's line: "12 + 5 + 3 Inspiration - 2 Cutting Words = 18 vs AC 15".
+rs_add_roll :: (l: [] RsLine, r: RsAttackRoll, bonus: int) {
+  rs_add_int(l, r.roll);
+  if r.edge > 0 { rs_add_text(l, " (Advantage)"); }
+  if r.edge < 0 { rs_add_text(l, " (Disadvantage)"); }
+  if r.seek { rs_add_text(l, " (Seeking Spell)"); }
+  rs_add_text(l, " + "); rs_add_int(l, bonus);
+  if r.exhaustion > 0 { rs_add_text(l, " - "); rs_add_int(l,r.exhaustion); rs_add_text(l," Exhaustion"); }
+  if r.boon > 0 { rs_add_text(l, " + "); rs_add_int(l, r.boon); rs_add_text(l, " Bless"); }
+  if r.boon < 0 { rs_add_text(l, " - "); rs_add_int(l, -r.boon); rs_add_text(l, " Bane"); }
+  if r.insp > 0 { rs_add_text(l, " + "); rs_add_int(l, r.insp); rs_add_text(l, " Inspiration"); }
+  if r.cut > 0 { rs_add_text(l, " - "); rs_add_int(l, r.cut); rs_add_text(l, " Cutting Words"); }
+  rs_add_text(l, " = "); rs_add_int(l, r.total);
+  rs_add_text(l, " vs AC "); rs_add_int(l, r.ac);
+  if r.shield { rs_add_text(l, " (Shield)"); }
+  if r.parry { rs_add_text(l, " (Parry)"); }
+}
+
+// Advantage (1), Disadvantage (-1) or neither on i's attack roll against j: every source the SRD
+// names for what the battle tracks, cancelling as the SRD says. Uses up a pending EF_WEAK.
+rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) -> int {
+  return rs_attack_edge_from(b,i,j,melee,strength,i);
+}
+rs_attack_edge_from :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool, origin: int) -> int {
+  conditions := rs_condition_edges(b[0].c[i],b[0].c[j]);
+  sight:=rs_attack_sight(b,i,j);
+  t := b[0].clock; feet := rs_feet_to(b,origin,j);
+  // What this roll spends is taken first, each on its own line, so none is skipped by another's answer:
+  // Weakness, Guiding Bolt's light, Vex, a Help, and Steady Aim.
+  weak := rs_take_weak(b, i);
+  exposed := rs_take_pending(b, j, EF_EXPOSED, -1);
+  vexed := rs_take_pending(b, i, EF_VEX, j);
+  helped := rs_take_help_attack(b,i,j);
+  aimed := b[0].who == i && b[0].turn.aimed;
+  if aimed { b[0].turn.aimed = false; }
+  // Advantage: one source is as good as many (rs_edge_of), so these are flags, not counts
+  up := conditions.advantage || !sight.target_sees || rs_aura_on(b[0].c[j], EF_OUTLINED, t) || rs_prone_ups(rs_has(b[0].c[j],RS_PRONE),feet) > 0;
+  // Reckless Attack: Advantage on its Strength attacks, and on attacks against it
+  up = up || rs_aura_on(b[0].c[j], EF_RECKLESS, t) || (strength && rs_aura_on(b[0].c[i], EF_RECKLESS, t));
+  // Pack Tactics (monster-traits.coax)
+  up = up || exposed || vexed || helped || aimed || rs_pack_tactics(b, i, j);
+  down := conditions.disadvantage || !sight.actor_sees || weak || (!melee && rs_threatened(b, i)) || rs_prone_downs(rs_has(b[0].c[i],RS_PRONE),rs_has(b[0].c[j],RS_PRONE),feet) > 0;
+  // the Dodge action
+  down = down || (rs_dodge_live(b,j) && rs_dodge_sight(b[0].c[j],b[0].c[i]) && rs_obscured(b,i) != 2);
+  // Frightened: Disadvantage on attack rolls while a source of its fear is in line of sight (p.182)
+  down = down || rs_fear_sighted(b, i) || rs_protected_from(b,j,i) || rs_grapple_down(b[0].c[i],j);
+  return rs_edge_of(up, down);
+}
+// Advantage (1), Disadvantage (-1) or neither (0) from whether any source of each stands: both cancel.
+rs_edge_of :: (up: bool, down: bool) -> int { return ifx up == down then 0 else (ifx up then 1 else -1); }
+
+// Advantage or Disadvantage on j's saving throw of an ability.
+rs_save_edge :: (b: [] RsBattle, j: int, ability: int) -> int { return rs_save_edge_with(b,j,ability,0); }
+// `extra` more Disadvantage sources from the effect itself (a spell's save rider, save-riders.coax)
+rs_save_edge_with :: (b: [] RsBattle, j: int, ability: int, extra: int) -> int { return rs_save_edge_from(b,j,ability,0,extra); }
+// and `more` Advantage sources from the effect (Magic Resistance against a magical one)
+rs_save_edge_from :: (b: [] RsBattle, j: int, ability: int, more: int, extra: int) -> int {
+  c := b[0].c[j];
+  down := extra > 0 || (ability == RS_DEX && rs_has(c, RS_RESTRAINED)) || (ability == RS_STR && rs_effect(c, EF_ENFEEBLED));
+  up := more > 0 || (ability == RS_STR && c.raging) || (ability == RS_DEX && c.danger_sense && !rs_has(c, RS_INCAPACITATED) && rs_capable(c)) || (ability == RS_DEX && rs_dodge_live(b,j));
+  return rs_edge_of(up, down);
+}
+
+// The effect program on one creature.
