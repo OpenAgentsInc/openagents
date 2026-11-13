@@ -550,7 +550,7 @@ if [[ -x "$cli_coax" ]]; then
   # bucket or with OA_ENGINE_TEMPLATE, which this run's fake bucket isn't, so it runs on its own.)
   if runs realms; then
   mkdir -p "$work/walk"
-  for f in realm_engine_pin realm_shapes realm_edit_log; do
+  for f in realm_engine_pin realm_shapes realm_edit_log realm_places; do
     (cd "$repo_root" && PGURL="$OA_API_DATABASE" PSQL="$pgbin/psql" PIN_SQL="coax/web/api/tests/$f.sql" COAX="$cli_coax" coax/web/tool.sh coax/web/api/tests/realm_engine_pin.coax) || exit 1
   done
   (cd "$repo_root" && PGURL="$OA_API_DATABASE" PSQL="$pgbin/psql" WORK="$work/walk" COAX="$cli_coax" coax/web/tool.sh coax/web/api/tests/realm_walkthrough.coax) || exit 1

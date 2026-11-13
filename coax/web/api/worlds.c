@@ -188,11 +188,12 @@ static coax_string role_of(PGresult *r, int k, int at, bool site_admin) {
   return wr_edit_role(f[0], f[1], f[2], site_admin, f[3], f[4]);
 }
 // A realm's facts for the asker (migrations/0050, 0099): whether it is hidden from them, their role ("" for none) and
-// its spec (malloc'd; NULL when it is no realm). False on a database error.
+// its spec as its world reads it (malloc'd; NULL when it is no realm; 0190's realm_world_spec: what it places too).
+// False on a database error.
 static bool realm_facts(PGconn *db, const char *id, const world_asker *a, bool *hidden, char role[16], char **spec) {
   const char *v[3] = {id, a->key, a->admin ? "true" : "false"};
   PGresult *r = PQexecParams(db, "SELECT verse.realm_hidden($1, $2, $3::boolean), " API_REALM_ROLE_FACTS("$1", "$2") ", "
-    "verse.edit_spec($1, $2, $3::boolean) FROM " API_REALM_ROLE_FROM("$1", "$2"), 3, NULL, v, NULL, NULL, 0);
+    "verse.realm_world_spec($1, $2, $3::boolean) FROM " API_REALM_ROLE_FROM("$1", "$2"), 3, NULL, v, NULL, NULL, 0);
   bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
   *hidden = false; role[0] = 0; *spec = NULL;
   if (ok) {
@@ -439,10 +440,11 @@ static bool batch_save(PGconn *db, const char *id, const world_row *w, int64_t w
   return ok && run(db, "COMMIT", 0, NULL);
 }
 
-// A realm's world (#13422): the batch is the realm's switches, checked on its board by metaverse/edit/realm-world.coax
-// and carried out one by one by the realm's own SQL (verse.edit_switch, verse.edit_settings), whose rules and words
-// are the ones the realm's page meets; a refusal there takes the whole batch back. The row is locked; the transaction
-// is open.
+// A realm's world (#13422): the batch is the realm's switches and places, checked on its board by
+// metaverse/edit/realm-world.coax and carried out one by one by the realm's own SQL (verse.edit_switch,
+// verse.edit_settings, and 0190's verse.realm_spawn and verse.realm_despawn), whose rules and words are the ones the
+// realm's page meets; a refusal there takes the whole batch back. While it runs, verse.world_edit is on, so a made
+// realm's own undo log takes no step: the world's is the one log (#13506). The row is locked; the transaction is open.
 static void realm_post(const request *q, PGconn *db, const char *id, world_row *w, int64_t what, const world_asker *a) {
   int64_t step; size_t text_n; bool fenced;
   char *text = batch_text(q, db, id, what, w, &step, &text_n, &fenced);
@@ -465,24 +467,41 @@ static void realm_post(const request *q, PGconn *db, const char *id, world_row *
     if (!scripts_edit_ok(db, id, was, scripts, said, sizeof said)) { rollback(db); refuse(q->fd, 422, cs(said), -1); goto done; }
     if (fenced && !scripts_publish_ok(q, db, id, scripts, was)) { rollback(db); goto done; }
   }
-  // each switch by the realm's own SQL, in order: "switch KEY 0|1" or "tool NAME 0|1"
+  // each switch and place by the realm's own SQL, in order: "switch KEY 0|1", "tool NAME 0|1", "place ID THING X Z YAW",
+  // "spawn ID THING X Z YAW" or "despawn ID" (realm-world.coax rw_batch). A thing placed must get the ID the batch as
+  // taken gave it, or the realm changed since the board was read: the batch is refused and the page reads it again.
+  if (!run(db, "SELECT set_config('verse.world_edit', 'on', true)", 0, NULL)) { rollback(db); refuse(q->fd, 500, cs("not saved"), -1); goto done; }
   int edit = 0;
   for (char *line = acts; *line; edit++) {
     char *end = strchr(line, '\n'); if (!end) break;
     *end = 0;
-    char verb[8] = "", name[64] = "", on[2] = "";
-    if (sscanf(line, "%7s %63s %1s", verb, name, on) != 3) { rollback(db); refuse(q->fd, 500, cs("not read"), edit); goto done; }
-    const char *v[5] = {id, name, !strcmp(on, "1") ? "true" : "false", a->key, a->admin ? "true" : "false"};
-    PGresult *r = PQexecParams(db, !strcmp(verb, "switch")
-      ? "SELECT (x->>'status')::int, coalesce(x->>'error', '') FROM verse.edit_switch($1, jsonb_build_object('row', $2::text, 'on', $3::boolean), $4, $5::boolean) x"
-      : "SELECT (x->>'status')::int, coalesce(x->>'error', '') FROM verse.edit_settings($1, jsonb_build_object('tools', jsonb_build_object($2::text, $3::boolean)), $4, $5::boolean) x",
-      5, NULL, v, NULL, NULL, 0);
+    char verb[8] = "", name[64] = "", on[2] = "", num[12] = "", xs[12] = "", zs[12] = "", ys[12] = "";
+    bool place = !strncmp(line, "place ", 6) || !strncmp(line, "spawn ", 6), gone = !strncmp(line, "despawn ", 8);
+    int got = place ? sscanf(line, "%7s %11s %63s %11s %11s %11s", verb, num, name, xs, zs, ys) : gone ? sscanf(line, "%7s %11s", verb, num) : sscanf(line, "%7s %63s %1s", verb, name, on);
+    if (got != (place ? 6 : gone ? 2 : 3)) { rollback(db); refuse(q->fd, 500, cs("not read"), edit); goto done; }
+    const char *v[8] = {id, name, !strcmp(on, "1") ? "true" : "false", a->key, a->admin ? "true" : "false"};
+    const char *sql = !strcmp(verb, "switch")
+      ? "SELECT (x->>'status')::int, coalesce(x->>'error', ''), '' FROM verse.edit_switch($1, jsonb_build_object('row', $2::text, 'on', $3::boolean), $4, $5::boolean) x"
+      : "SELECT (x->>'status')::int, coalesce(x->>'error', ''), '' FROM verse.edit_settings($1, jsonb_build_object('tools', jsonb_build_object($2::text, $3::boolean)), $4, $5::boolean) x";
+    int nv = 5;
+    if (place) {
+      const char *pv[8] = {id, !strcmp(verb, "place") ? "0" : num, name, xs, zs, ys, a->key, a->admin ? "true" : "false"};
+      memcpy(v, pv, sizeof pv); nv = 8;
+      sql = "SELECT (x->>'status')::int, coalesce(x->>'error', ''), coalesce(x->>'id', '') FROM verse.realm_spawn($1, $2::int, $3, $4::int, $5::int, $6::int, $7, $8::boolean) x";
+    } else if (gone) {
+      const char *dv[4] = {id, num, a->key, a->admin ? "true" : "false"};
+      memcpy(v, dv, sizeof dv); nv = 4;
+      sql = "SELECT (x->>'status')::int, coalesce(x->>'error', ''), coalesce(x->>'id', '') FROM verse.realm_despawn($1, $2::int, $3, $4::boolean) x";
+    }
+    PGresult *r = PQexecParams(db, sql, nv, NULL, v, NULL, NULL, 0);
     bool read = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
     int http = read ? atoi(PQgetvalue(r, 0, 0)) : 500;
     char said[200]; snprintf(said, sizeof said, "%s", read ? PQgetvalue(r, 0, 1) : "not saved");
+    bool numbered = !read || strcmp(verb, "place") || !strcmp(PQgetvalue(r, 0, 2), num);
     if (!read) api_log("worlds: %s", PQerrorMessage(db));
     PQclear(r);
     if (http != 200) { rollback(db); refuse(q->fd, http, cs(said[0] ? said : "not saved"), edit); goto done; }
+    if (!numbered) { rollback(db); refuse(q->fd, 409, cs("the realm changed since: read it again"), edit); goto done; }
     line = end + 1;
   }
   char dry[4] = "";

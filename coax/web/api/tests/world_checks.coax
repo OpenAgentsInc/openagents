@@ -544,8 +544,8 @@ wc_realm_checks :: (t: [] Ap, w: [] Wc) {
   ap_check(t, "realm world: its switches reach everyone at once, so its live is its dev", st == 200 && we_state_read(ap_body(t), w[0].doc[..], w[0].did[..], w[0].scratch[..]).lane == WL_DEV, ap_body(t));
   st = ap_call(t, "GET", "/api/worlds/the-grid/content", "", t[0].no[0..<0]);
   body := ap_body(t);
-  ap_check(t, "realm world: the board and the settings are content tables", st == 200 && ap_starts(body, "aethyr.content.v1 realm 1\nreach 1\ntable rows id key:text on:int label:text\n1|") && ap_has(body, "\ntable tools id name:text on:int\n"), body);
-  row := ct_part(body, '\n', 3);
+  ap_check(t, "realm world: the board and the settings are content tables", st == 200 && ap_starts(body, "aethyr.content.v1 realm 1\nreach 40000\ntable kinds id name:text\ntable rows id key:text on:int label:text\n1|") && ap_has(body, "\ntable things id kind:ref.kinds x:cm z:cm turn:int size:int\ntable tools id name:text on:int\n"), body);
+  row := ct_part(body, '\n', 4);
   key: [64] u8; kn := ct_copy(key[..], ct_part(row, '|', 1));
   was := ct_part(row, '|', 2) == "1";
   turn := ifx was then "0" else "1";
@@ -562,14 +562,46 @@ wc_realm_checks :: (t: [] Ap, w: [] Wc) {
   now := ap_sql(t, sb_text(ks[..]), q[..]);
   ap_check(t, "realm world: an admin's switch is the realm's: its board changes, the revision moves one, one event", st == 200 && w[0].st.rev == 1 && w[0].st.undo == 1 && now == (ifx was then "false" else "true") && ap_sql(t, "SELECT count(*) FROM verse.world_outbox WHERE world = 'the-grid'", q[..]) == "1", ap_body(t));
   st = ap_call(t, "GET", "/api/worlds/the-grid/content", "", t[0].no[0..<0]);
-  ap_check(t, "realm world: the tables read as switched", st == 200 && ct_part(ct_part(ap_body(t), '\n', 3), '|', 2) == turn, ap_body(t));
+  ap_check(t, "realm world: the tables read as switched", st == 200 && ct_part(ct_part(ap_body(t), '\n', 4), '|', 2) == turn, ap_body(t));
   // an undo sets it back, through the same SQL
   st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 1, "undo", "");
   ap_check(t, "realm world: an undo switches it back as an edit of its own", st == 200 && w[0].st.rev == 2 && w[0].st.undo == 0 && w[0].st.redo == 1 && ap_sql(t, sb_text(ks[..]), q[..]) == (ifx was then "true" else "false"), ap_body(t));
   // what a realm's world does not take, in words, and nothing to publish
   st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 2, "apply", WC_SPAWNS);
-  ap_check(t, "realm world: a thing placed through the world is refused in words, at its edit", st == 422 && ap_has(wc_refusal(t, w, edit[..]), "switches") && edit[0] == 0 && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'the-grid'", q[..]) == "2", ap_body(t));
+  ap_check(t, "realm world: a thing of a kind the realm doesn't place is refused in words, at its edit", st == 422 && wc_refusal(t, w, edit[..]) == "no such kind of thing here" && edit[0] == 0 && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'the-grid'", q[..]) == "2", ap_body(t));
   st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 2, "publish-now", "");
   ap_check(t, "realm world: there is nothing to publish", st == 422 && wc_refusal(t, w, edit[..]) == "a realm's switches and scripts reach everyone at once: there is nothing to publish", ap_body(t));
   ap_check(t, "realm world: a realm nobody made is no world", ap_call(t, "GET", "/api/worlds/no-such-realm-here?lane=dev", "", t[0].no[0..<0]) == 404 && ap_call(t, "GET", "/api/worlds/no-such-realm-here/content", "", t[0].no[0..<0]) == 404, ap_body(t));
+  wc_realm_places(t, w);
+}
+// ---- places as world edits (#13506, migrations/0190): The Grid given two kinds of thing for these checks
+wc_realm_places :: (t: [] Ap, w: [] Wc) {
+  edit: [1] int; q: [400] u8;
+  ap_do(t, "UPDATE verse.realm_rights SET things = ARRAY['crate', 'bench'] WHERE slug = 'the-grid'; UPDATE verse.realm_edit SET placed = '[]' WHERE slug = 'the-grid';");
+  placed := "SELECT coalesce((SELECT placed::text FROM verse.realm_edit WHERE slug = 'the-grid'), '[]')";
+  two := "{\"op\":\"spawn\",\"id\":0,\"kind\":2,\"x\":150,\"y\":0,\"z\":-250,\"yaw\":90,\"scale\":100},{\"op\":\"spawn\",\"id\":0,\"kind\":1,\"x\":-300,\"y\":0,\"z\":0,\"yaw\":0,\"scale\":100}";
+  st := wc_post_to(t, w, t[0].admin_key, WC_REALM, 2, "apply", two);
+  did := cast(string) w[0].did[0..<w[0].st.did_n];
+  ap_check(t, "realm places: a spawn places a thing through the realm's SQL; the batch as taken numbers them 1 and 2",
+           st == 200 && w[0].st.rev == 4 && ap_has(did, "\"op\":\"spawn\",\"id\":1,\"kind\":2") && ap_has(did, "\"id\":2,\"kind\":1")
+           && ap_sql(t, placed, q[..]) == "[{\"x\": 1.5, \"z\": -2.5, \"yaw\": 1.571, \"thing\": \"bench\"}, {\"x\": -3, \"z\": 0, \"yaw\": 0, \"thing\": \"crate\"}]", ap_body(t));
+  st = ap_call(t, "GET", "/api/worlds/the-grid/content", "", t[0].no[0..<0]);
+  ap_check(t, "realm places: the kinds and the things are tables", st == 200 && ap_has(ap_body(t), "table kinds id name:text\n1|crate\n2|bench\n") && ap_has(ap_body(t), "table things id kind:ref.kinds x:cm z:cm turn:int size:int\n1|2|150|-250|90|100\n2|1|-300|0|0|100\n"), ap_body(t));
+  // a despawn marks thing 1 gone: thing 2 keeps its ID, and the next spawn is 3
+  st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 4, "apply", "{\"op\":\"despawn\",\"id\":1}");
+  gone := ap_sql(t, "SELECT (placed->0->>'gone') || ' ' || jsonb_array_length(placed) FROM verse.realm_edit WHERE slug = 'the-grid'", q[..]) == "true 2";
+  ap_check(t, "realm places: a despawn marks the thing gone and shifts no ID", st == 200 && w[0].st.rev == 5 && gone, ap_body(t));
+  st = ap_call(t, "GET", "/api/worlds/the-grid/content", "", t[0].no[0..<0]);
+  ap_check(t, "realm places: a gone thing is no row of the things table", st == 200 && ap_has(ap_body(t), "table things id kind:ref.kinds x:cm z:cm turn:int size:int\n2|1|-300|0|0|100\ntable tools"), ap_body(t));
+  // the undo brings it back as it was; the redo takes it away again
+  st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 5, "undo", "");
+  back := st == 200 && ap_sql(t, "SELECT (placed->0)::text FROM verse.realm_edit WHERE slug = 'the-grid'", q[..]) == "{\"x\": 1.5, \"z\": -2.5, \"yaw\": 1.571, \"thing\": \"bench\"}";
+  st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 6, "redo", "");
+  ap_check(t, "realm places: undo and redo are the world's: the thing comes back exactly, then goes again", back && st == 200 && w[0].st.rev == 7 && ap_sql(t, "SELECT placed->0->>'gone' FROM verse.realm_edit WHERE slug = 'the-grid'", q[..]) == "true", ap_body(t));
+  // the realm's own words, at the edit
+  st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 7, "apply", "{\"op\":\"despawn\",\"id\":1}");
+  ap_check(t, "realm places: a thing gone already is refused in words, at its edit", st == 422 && wc_refusal(t, w, edit[..]) == "that thing is gone already" && edit[0] == 0, ap_body(t));
+  st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 7, "apply", "{\"op\":\"spawn\",\"id\":0,\"kind\":1,\"x\":40001,\"y\":0,\"z\":0,\"yaw\":0,\"scale\":100}");
+  ap_check(t, "realm places: one too far is the realm's SQL's refusal, in words", st == 422 && wc_refusal(t, w, edit[..]) == "a thing stands within 400 m of the middle" && ap_sql(t, "SELECT jsonb_array_length(placed) FROM verse.realm_edit WHERE slug = 'the-grid'", q[..]) == "2", ap_body(t));
+  ap_do(t, "UPDATE verse.realm_rights SET things = ARRAY[]::text[] WHERE slug = 'the-grid'; UPDATE verse.realm_edit SET placed = '[]' WHERE slug = 'the-grid';");
 }

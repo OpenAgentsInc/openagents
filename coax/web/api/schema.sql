@@ -12284,9 +12284,11 @@ END $$;
 CREATE FUNCTION verse.edit_spec(s text, k text, site_admin boolean) RETURNS text
     LANGUAGE sql STABLE
     AS $$
-  SELECT CASE WHEN out IS NULL OR NOT verse.edit_may(s, k, site_admin) THEN out
-              ELSE out || coalesce((SELECT 'redo ' || jsonb_array_length(redo) || E'\n' FROM verse.made_realms WHERE slug = s AND base IS NULL), '') END
-  FROM (SELECT verse.edit_spec_0109(s, k, site_admin) AS out) x $$;
+  SELECT CASE WHEN out IS NULL OR verse.edit_made(s) THEN out
+              ELSE out || coalesce((SELECT string_agg('shaped placed:' || (o - 1) || E' 0 100 1', E'\n' ORDER BY o) || E'\n'
+                                    FROM verse.realm_edit e, jsonb_array_elements(e.placed) WITH ORDINALITY AS t(p, o)
+                                    WHERE e.slug = s AND jsonb_typeof(p) = 'object' AND coalesce((p->>'gone')::boolean, false)), '') END
+  FROM (SELECT verse.edit_spec_0190(s, k, site_admin) AS out) x $$;
 
 
 --
@@ -12409,6 +12411,18 @@ CREATE FUNCTION verse.edit_spec_0109(s text, k text, site_admin boolean) RETURNS
                                     FROM jsonb_array_elements(coalesce(verse.realm_doc_of(s, k, site_admin)->'doc'->'shaped', '[]')) WITH ORDINALITY AS t(v, o)), '')
                        || E'shapes 1\n' END
   FROM (SELECT verse.edit_spec_0107(s, k, site_admin) AS out) x $$;
+
+
+--
+-- Name: edit_spec_0190(text, text, boolean); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.edit_spec_0190(s text, k text, site_admin boolean) RETURNS text
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT CASE WHEN out IS NULL OR NOT verse.edit_may(s, k, site_admin) THEN out
+              ELSE out || coalesce((SELECT 'redo ' || jsonb_array_length(redo) || E'\n' FROM verse.made_realms WHERE slug = s AND base IS NULL), '') END
+  FROM (SELECT verse.edit_spec_0109(s, k, site_admin) AS out) x $$;
 
 
 --
@@ -13484,7 +13498,8 @@ DECLARE
   ops jsonb;
   card bigint;
 BEGIN
-  IF NEW.rev <> OLD.rev AND coalesce(current_setting('verse.restoring', true), '') <> 'on' THEN
+  IF NEW.rev <> OLD.rev AND coalesce(current_setting('verse.restoring', true), '') <> 'on'
+     AND coalesce(current_setting('verse.world_edit', true), '') <> 'on' THEN
     ops := verse.realm_ops(OLD, NEW);
     card := nullif(coalesce(current_setting('verse.card', true), ''), '')::bigint;
     IF ops <> '[]' OR card IS NOT NULL THEN
@@ -14831,6 +14846,48 @@ CREATE FUNCTION verse.realm_card_gone(s text) RETURNS boolean
 
 
 --
+-- Name: realm_despawn(text, integer, text, boolean); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.realm_despawn(s text, id integer, k text, site_admin boolean) RETURNS jsonb
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  role text := verse.edit_role(s, k, site_admin);
+  m verse.made_realms;
+  e verse.realm_edit;
+  ent text := 'placed:' || (id - 1);
+  p jsonb;
+  sh jsonb;
+BEGIN
+  IF role IS NULL THEN RETURN '{"status":404,"error":"no such realm"}'; END IF;
+  IF role NOT IN ('owner', 'admin') THEN RETURN '{"status":403,"error":"only its owner and admins"}'; END IF;
+  IF id IS NULL OR id < 1 THEN RETURN '{"status":400,"error":"a thing"}'; END IF;
+  SELECT * INTO m FROM verse.made_realms WHERE slug = s FOR UPDATE;
+  IF m.slug IS NOT NULL THEN
+    p := nullif(m.placed -> (id - 1), 'null');
+    IF p IS NULL THEN RETURN jsonb_build_object('status', 404, 'error', 'no thing ' || id); END IF;
+    SELECT v INTO sh FROM jsonb_array_elements(m.shaped) v WHERE v->>'entity' = ent LIMIT 1;
+    IF coalesce((sh->>'gone')::boolean, false) THEN RETURN jsonb_build_object('status', 409, 'error', 'thing ' || id || ' is gone already'); END IF;
+    -- 0109's rule: at most 64 things moved, turned, resized or taken away
+    IF (SELECT count(DISTINCT x) FROM (SELECT v->>'entity' x FROM jsonb_array_elements(m.moved || m.shaped) v UNION ALL SELECT ent) u) > 64 THEN
+      RETURN '{"status":409,"error":"at most 64 things moved, turned, resized or taken away"}';
+    END IF;
+    UPDATE verse.made_realms SET shaped = verse.realm_entry(shaped, ent,
+             jsonb_build_object('entity', ent, 'yaw', coalesce((sh->>'yaw')::int, 0), 'scale', coalesce((sh->>'scale')::int, 100), 'gone', true)), settings_ms = verse.now_ms()
+    WHERE slug = s;
+    RETURN jsonb_build_object('status', 200, 'id', id);
+  END IF;
+  SELECT * INTO e FROM verse.realm_edit WHERE slug = s FOR UPDATE;
+  p := nullif(coalesce(e.placed, '[]') -> (id - 1), 'null');
+  IF p IS NULL THEN RETURN jsonb_build_object('status', 404, 'error', 'no thing ' || id); END IF;
+  IF coalesce((p->>'gone')::boolean, false) THEN RETURN jsonb_build_object('status', 409, 'error', 'thing ' || id || ' is gone already'); END IF;
+  UPDATE verse.realm_edit SET placed = jsonb_set(placed, ARRAY[(id - 1)::text], p || '{"gone": true}'), ms = verse.now_ms() WHERE slug = s;
+  RETURN jsonb_build_object('status', 200, 'id', id);
+END $$;
+
+
+--
 -- Name: realm_doc(verse.made_realms); Type: FUNCTION; Schema: verse; Owner: -
 --
 
@@ -15646,6 +15703,68 @@ END $$;
 
 
 --
+-- Name: realm_spawn(text, integer, text, integer, integer, integer, text, boolean); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.realm_spawn(s text, id integer, thing text, x integer, z integer, yaw integer, k text, site_admin boolean) RETURNS jsonb
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  role text := verse.edit_role(s, k, site_admin);
+  m verse.made_realms;
+  h verse.realm_rights := verse.edit_hand(s);
+  e verse.realm_edit;
+  ent text := 'placed:' || (id - 1);
+  p jsonb;
+  sh jsonb;
+  far int;
+  n int;
+BEGIN
+  IF role IS NULL THEN RETURN '{"status":404,"error":"no such realm"}'; END IF;
+  IF role NOT IN ('owner', 'admin') THEN RETURN '{"status":403,"error":"only its owner and admins"}'; END IF;
+  IF id IS NULL OR id < 0 OR thing IS NULL OR x IS NULL OR z IS NULL OR yaw IS NULL THEN RETURN '{"status":400,"error":"a thing and where"}'; END IF;
+  SELECT * INTO m FROM verse.made_realms WHERE slug = s FOR UPDATE;
+  IF m.slug IS NOT NULL THEN
+    IF id = 0 THEN
+      IF NOT thing = ANY (verse.builder_things()) THEN RETURN jsonb_build_object('status', 422, 'error', 'a ' || thing || ' is not a thing this realm places'); END IF;
+      IF abs(x) > 4000 OR abs(z) > 4000 THEN RETURN '{"status":422,"error":"a thing stands within 40 m of the middle"}'; END IF;
+      IF jsonb_array_length(m.placed) >= 200 THEN RETURN '{"status":409,"error":"the realm is full: 200 things"}'; END IF;
+      UPDATE verse.made_realms SET placed = placed || jsonb_build_array(jsonb_build_object('thing', thing, 'x', trim_scale(round(x / 100.0, 2)), 'z', trim_scale(round(z / 100.0, 2)),
+                                                                                          'yaw', trim_scale(round(radians(yaw)::numeric, 3)))), settings_ms = verse.now_ms()
+      WHERE slug = s RETURNING jsonb_array_length(placed) INTO n;
+      RETURN jsonb_build_object('status', 200, 'id', n);
+    END IF;
+    p := nullif(m.placed -> (id - 1), 'null');
+    IF p IS NULL THEN RETURN jsonb_build_object('status', 404, 'error', 'no thing ' || id); END IF;
+    IF p->>'thing' IS DISTINCT FROM thing THEN RETURN jsonb_build_object('status', 422, 'error', 'thing ' || id || ' is a ' || coalesce(p->>'thing', 'thing')); END IF;
+    SELECT v INTO sh FROM jsonb_array_elements(m.shaped) v WHERE v->>'entity' = ent LIMIT 1;
+    IF NOT coalesce((sh->>'gone')::boolean, false) THEN RETURN jsonb_build_object('status', 409, 'error', 'thing ' || id || ' stands already'); END IF;
+    UPDATE verse.made_realms SET shaped = verse.realm_entry(shaped, ent,
+             CASE WHEN (sh->>'yaw')::int = 0 AND (sh->>'scale')::int = 100 THEN NULL ELSE sh || '{"gone": false}' END), settings_ms = verse.now_ms()
+    WHERE slug = s;
+    RETURN jsonb_build_object('status', 200, 'id', id);
+  END IF;
+  SELECT * INTO e FROM verse.realm_edit WHERE slug = s FOR UPDATE;
+  IF id = 0 THEN
+    IF NOT thing = ANY (h.things) THEN RETURN jsonb_build_object('status', 422, 'error', 'a ' || thing || ' is not a thing this realm places'); END IF;
+    IF abs(x) > 40000 OR abs(z) > 40000 THEN RETURN '{"status":422,"error":"a thing stands within 400 m of the middle"}'; END IF;
+    IF jsonb_array_length(coalesce(e.placed, '[]')) >= 200 THEN RETURN '{"status":409,"error":"the realm is full: 200 things"}'; END IF;
+    p := jsonb_build_object('thing', thing, 'x', trim_scale(round(x / 100.0, 2)), 'z', trim_scale(round(z / 100.0, 2)), 'yaw', trim_scale(round(radians(yaw)::numeric, 3)));
+    INSERT INTO verse.realm_edit (slug, placed, ms, by_player) VALUES (s, jsonb_build_array(p), verse.now_ms(), (verse.builder_player(k)).id)
+    ON CONFLICT (slug) DO UPDATE SET placed = verse.realm_edit.placed || jsonb_build_array(p), ms = excluded.ms, by_player = excluded.by_player
+    RETURNING jsonb_array_length(placed) INTO n;
+    RETURN jsonb_build_object('status', 200, 'id', n);
+  END IF;
+  p := nullif(coalesce(e.placed, '[]') -> (id - 1), 'null');
+  IF p IS NULL THEN RETURN jsonb_build_object('status', 404, 'error', 'no thing ' || id); END IF;
+  IF p->>'thing' IS DISTINCT FROM thing THEN RETURN jsonb_build_object('status', 422, 'error', 'thing ' || id || ' is a ' || coalesce(p->>'thing', 'thing')); END IF;
+  IF NOT coalesce((p->>'gone')::boolean, false) THEN RETURN jsonb_build_object('status', 409, 'error', 'thing ' || id || ' stands already'); END IF;
+  UPDATE verse.realm_edit SET placed = jsonb_set(placed, ARRAY[(id - 1)::text], p - 'gone'), ms = verse.now_ms() WHERE slug = s;
+  RETURN jsonb_build_object('status', 200, 'id', id);
+END $$;
+
+
+--
 -- Name: realm_undo(text, jsonb, text, boolean); Type: FUNCTION; Schema: verse; Owner: -
 --
 
@@ -15777,6 +15896,18 @@ BEGIN
   DELETE FROM verse.world_docs WHERE id = OLD.slug AND kind = 'realm';
   RETURN OLD;
 END $$;
+
+
+--
+-- Name: realm_world_spec(text, text, boolean); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.realm_world_spec(s text, k text, site_admin boolean) RETURNS text
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT CASE WHEN out IS NULL OR NOT verse.edit_made(s) THEN out
+              ELSE out || coalesce((SELECT string_agg('thing ' || t, E'\n' ORDER BY o) || E'\n' FROM unnest(verse.builder_things()) WITH ORDINALITY AS x(t, o)), '') END
+  FROM (SELECT verse.edit_spec(s, k, site_admin) AS out) x $$;
 
 
 --
