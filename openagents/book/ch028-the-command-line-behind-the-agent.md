@@ -62,6 +62,21 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | A command as a member | `openagents.capability.v1` `Definition` ([spec 19.3](../../docs/protocol/openagents-protocol-spec.md#193-openagentscapabilityv1)), generated from the command table | Nostr kind 30180 when published; MCP for other agents | Spec sketch; no `.proto` file. MCP is an external format |
 | A command's `--json` output | None yet ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step C8) | Standard output | Hand-written JSON |
 
+### The chapter's check
+
+- **Source:** the generated descriptors in
+  `openagents/agent/members/cli.coax`, read from
+  `apps/openagents-cli/commands.coax`, with a fake decision service.
+- **Trace:** "show the Test-Time Capabilities deck" routes to the deck
+  member, the parser reads the deck's name, and `state` shows that deck
+  open. The trace prints one descriptor for each command in the table.
+- **Refusal:** "export my key" hits the deny list and prints `refused: key
+  export can't run from chat`. A command that changes something waits for
+  approval and does not run before it.
+- **Independent check:** the descriptor names match the commands that
+  `apps/openagents-cli/mcp.coax` lists over MCP and the commands in
+  `apps/openagents-cli/help-generated.coax`.
+
 Planned paths: `openagents/agent/members/cli.coax`.
 
 ## Sources

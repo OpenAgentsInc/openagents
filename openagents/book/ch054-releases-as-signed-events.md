@@ -63,6 +63,22 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | Release, listing and revocation | `openagents.extension.v1` `Release`, `Listing`, `Revocation` ([spec 20.2](../../docs/protocol/openagents-protocol-spec.md#202-openagentsextensionv1)) | Nostr kinds 3184, 30184 and 3185, public (NIP-EXT) | Spec sketch; no `.proto` file. `coax/lib/nostr/ext` handles the NIP's JSON |
 
+### The chapter's check
+
+- **Source:** the release and listing events, the publish command and the
+  registry reader in `openagents/registry/`.
+- **Trace:** a fixture key publishes a release to two fake relays. The
+  reader gathers from both, verifies every signature and component hash, and
+  prints the package, its one release and `candidate`, since it has no
+  evidence. One relay goes away and the reader still prints the release.
+- **Refusal:** a release signed by a key other than the package's root is
+  refused with `EXT_NAMESPACE`, as
+  [`coax/lib/nostr/ext/install.coax`](../../coax/lib/nostr/ext/install.coax)
+  answers today. Two releases of one version naming different manifests are
+  refused with `EXT_CONFLICT`.
+- **Independent check:** another Nostr implementation verifies the fixture
+  events' ids and signatures, which follow NIP-01 and BIP-340.
+
 Planned paths: `openagents/registry/`.
 
 ## Sources

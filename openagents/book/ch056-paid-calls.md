@@ -65,6 +65,23 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Payment required, payment and settlement | `openagents.x402.v1` `PaymentRequired`, `PaymentPayload`, `SettleResponse`, kept exactly as x402 defines them ([spec 26.4](../../docs/protocol/openagents-protocol-spec.md#264-openagentsx402v1)) | HTTP 402 body; a native record in a kind 3188 envelope (NIP-X402) | Spec sketch; no `.proto` file. `coax/lib/x402` has the settle and verify steps |
 | A price | `openagents.market.v1` `Offering` ([spec 26.2](../../docs/protocol/openagents-protocol-spec.md#262-openagentsmarketv1)) | Nostr kinds 3192 and 30192 (NIP-MKT) | Spec sketch; no `.proto` file. `coax/lib/nostr/mkt` handles the NIP's JSON |
 
+### The chapter's check
+
+- **Source:** the price field in a release, `pay/price-policy.coax`, and the
+  payment step in the request, on
+  [`coax/lib/x402`](../../coax/lib/x402).
+- **Trace:** a fake service and a fake Lightning wallet with recorded
+  answers, on the controlled clock. The plan shows the price in sats; the
+  call answers 402 with the amount; the wallet pays; the retry carries the
+  preimage, and the call settles. No real money moves.
+- **Refusal:** a retry after the invoice's time plus 60 seconds is refused
+  with `the invoice has expired`, and an invoice for another amount with
+  `the invoice's amount is not the terms' amount`, as
+  [`coax/lib/x402/settle.coax`](../../coax/lib/x402/settle.coax) prints today.
+- **Independent check:** BOLT 11's published test vectors, in
+  [`coax/tests/lightning/invoice_vectors.coax`](../../coax/tests/lightning/invoice_vectors.coax),
+  and `shasum -a 256` over the fixture preimage giving the payment hash.
+
 Planned paths: `pay/price-policy.coax`, an `#authority` file in the Payments
 context ([`pay/`](../../pay)).
 

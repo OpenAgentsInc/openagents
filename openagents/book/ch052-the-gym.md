@@ -59,6 +59,22 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Results board | `openagents.gym.v1` `ResultsPublication`, `Leaderboard` ([spec 21.2](../../docs/protocol/openagents-protocol-spec.md#212-openagentsgymv1)) | Nostr kind 3195, public | Spec sketch; no `.proto` file |
 | A run on the hosted runner | `openagents.gym.v1` `GymRequest`, `GymReply` ([spec 21.2](../../docs/protocol/openagents-protocol-spec.md#212-openagentsgymv1)) | Nostr (NIP-EVAL's Gym profile) | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** the hosted runner, board and trainer cards in
+  `openagents/eval/gym/`, and the capstone that repeats the repository map's
+  adoption.
+- **Trace:** the capstone runs on recorded answers and a fake relay: a
+  two-arm run, three checks under other keys, a validation, a marginal run
+  and an adoption. On the web app, `tree gym.board` lists the result with
+  its checks and validation beside it, and `state` prints the trainers'
+  credit.
+- **Refusal:** a run request to the hosted runner with no test set is
+  refused, and nothing is queued.
+- **Independent check:** the capstone's verdict matches the 2026-09-29
+  adoption in the old tree's records: 5 of 6 against 2 of 6, validated at 4
+  of 6 against 2 of 6.
+
 Planned paths: `openagents/eval/gym/`.
 
 ## Sources

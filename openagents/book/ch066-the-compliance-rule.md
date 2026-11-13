@@ -74,6 +74,24 @@ It builds on what exists today:
 - [`coax/web/api/agent-wire.coax`](../../coax/web/api/agent-wire.coax)
 - [`coax/proto.md`](../../coax/proto.md)
 
+### The chapter's check
+
+- **Source:** `coax/web/tool.sh wire-check`,
+  [`wire-check.coax`](../../coax/web/wire-check.coax),
+  [`proto/registry.json`](../../proto/registry.json) and
+  [`proto/wire-allowlist.txt`](../../proto/wire-allowlist.txt), run on the
+  tree as it is.
+- **Trace:** `wire-check --list` prints every schema ID with its file and
+  `codec`, `allowlist`, `UNREGISTERED` or `SECOND FILE`. The eight compliant
+  shapes this chapter names show `codec`.
+- **Refusal:** a planted route file that writes a new schema ID fails with
+  `FAIL rule 1: <file> writes schema id "<id>", which proto/registry.json
+  does not list`. A new allowlist line with no reason fails rule 6.
+- **Independent check:** the eight compliant shapes are counted by hand from
+  the registry, and their fixtures are read outside the codec: Python's
+  protobuf `json_format` for generated codecs, the profile's listed bytes
+  for the Everglade session.
+
 Planned paths: none. The rule is checked by `wire-check` and
 [`proto/registry.json`](../../proto/registry.json).
 

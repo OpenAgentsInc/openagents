@@ -93,6 +93,23 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Balance, invoice and history | `openagents.payment.v1` `WalletView`, `Invoice`, `PaymentReceipt`; amounts are `openagents.common.v1` `Amount` ([spec 26.5](../../docs/protocol/openagents-protocol-spec.md#265-openagentspaymentv1), [spec 9.8](../../docs/protocol/openagents-protocol-spec.md#98-amounts)) | HTTP | Spec sketch; no `.proto` file |
 | A Lightning Address | `openagents.payment.v1` `LightningAddress` ([spec 26.5](../../docs/protocol/openagents-protocol-spec.md#265-openagentspaymentv1)); the lookup and callback are LNURL's | HTTP: `/.well-known/lnurlp/NAME` | Built ([Lightning Addresses](../../docs/auth/lightning-addresses.md), #13208): forward mode, and the iPhone wallet's own address, claimed with its Spark key. LNURL is an external format |
 
+### The chapter's check
+
+- **Source:** the wallet member over `pay/wallet.coax` and
+  `pay/wallet-policy.coax`, with a fake wallet service in place of the
+  Spark SDK. It replays recorded answers on a test network, so no real
+  money moves.
+- **Trace:** `balance` prints `5000 sats`. The wallet makes a Lightning
+  invoice for 1000 sats, and the fake service records it paid. `history`
+  lists the payment in, and `balance` prints `6000 sats`. Every amount is
+  whole sats.
+- **Refusal:** a quote above the daily limit in `pay/wallet-policy.coax` is
+  refused with a reason that names the limit, and the fake service records
+  no send.
+- **Independent check:** the invoice is decoded by
+  `coax/tests/lightning/bolt11.py`, a BOLT 11 reader that shares no code
+  with Coax. It gives the same amount and payment hash as the trace.
+
 Planned paths: none. The wallet is the iPhone app's Spark wallet and the rules
 in `pay/`; this chapter adds no `openagents/wallet/` copy.
 

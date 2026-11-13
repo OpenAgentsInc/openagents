@@ -54,6 +54,21 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | Validation and transfer results | `openagents.eval.v1` `Publication` ([spec 21.1](../../docs/protocol/openagents-protocol-spec.md#211-openagentsevalv1)) | Nostr kind 3189, public | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** the `validates` and `transfer` results in
+  `openagents/eval/validate.coax`, and the independence check.
+- **Trace:** the repository map's fixture records replay: the original
+  report reads `5 of 6` against `2 of 6`, and the second test set reads `4
+  of 6` against `2 of 6`. The reader prints `validates`, with the effect
+  `+3` on the author's tests and `+2` on the outside tests.
+- **Refusal:** a second test set signed by the subject's author, or created
+  before the subject's release, is refused as a validation; the reader names
+  the signer or the time that failed.
+- **Independent check:** the effects are hand-derived from the published
+  counts, and the signers and times are read straight from the fixture
+  events' `pubkey` and `created_at` fields.
+
 Planned paths: `openagents/eval/validate.coax`.
 
 ## Sources

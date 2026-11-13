@@ -57,6 +57,22 @@ It builds on what exists today:
 - [`docs/transcripts/README.md`](../../docs/transcripts/README.md)
 - [`README.md`](../../README.md)
 
+### The chapter's check
+
+- **Source:** `openagents/book/ONE-POINT-ZERO.md`: P1 to P16, each with the
+  chapters that cover it, the platforms they name, and whether a program or
+  a person checks it. It gathers those chapters' checks.
+- **Trace:** one line per promise: each covering chapter's check result per
+  platform, and for a person check, the dated record of who did the thing
+  and what they saw.
+- **Refusal:** a promise with a failing or missing check, or a person check
+  with no record, is marked not done, and 1.0 is refused until every line
+  passes.
+- **Independent check:** the checklist is compared line by line with the
+  sixteen promises in [the
+  audit](../../docs/audits/2026-11-10-episode-289-port-audit.md), and each
+  person check is done by someone outside the company.
+
 Planned paths: `openagents/book/ONE-POINT-ZERO.md`.
 
 ## Sources

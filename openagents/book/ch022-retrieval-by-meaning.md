@@ -51,6 +51,20 @@ It builds on what exists today:
 - [`coax/lib/systemone`](../../coax/lib/systemone)
 - [`coax/lib/nostr/kb`](../../coax/lib/nostr/kb)
 
+### The chapter's check
+
+- **Source:** the index and retrieval step in
+  `openagents/knowledge/index.coax`, with a fake embedding service that
+  returns recorded vectors.
+- **Trace:** for one question, the trace prints the top three entries with
+  their cosine scores, then the answer with those entries cited. A run on
+  the retrieval test set prints the hit rate.
+- **Refusal:** when no entry scores above the cutoff, the agent answers
+  `We don't have an entry for that.` and cites nothing.
+- **Independent check:** cosine scores for three small recorded vectors,
+  worked by hand, give the same order. The hit rate is recounted by a
+  separate script from the test set's known sources.
+
 Planned paths: `openagents/knowledge/index.coax`.
 
 ## Sources

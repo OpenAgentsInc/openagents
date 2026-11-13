@@ -59,6 +59,22 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Adoption | `openagents.policy.v1`, which holds adoption authority ([spec 19.2](../../docs/protocol/openagents-protocol-spec.md#192-openagentspolicyv1)) | Nostr (NIP-POL) | Spec sketch; no `.proto` file |
 | The defaults set | `openagents.extension.v1` `ComponentSet`, `SetSlot` ([spec 20.2](../../docs/protocol/openagents-protocol-spec.md#202-openagentsextensionv1)) | Inside a release event (chapter 54) | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** the adoption policy and record in `openagents/eval/adopt.coax`,
+  and a defaults release in `openagents/registry/defaults/` that cites it.
+- **Trace:** fixture reports, three confirming checks and one validation go
+  in; the marginal run against today's defaults uses recorded answers. The
+  record prints its citations and the verdict `admit`, and the defaults
+  release names the adoption's id.
+- **Refusal:** an adoption that cites no validation is refused, as the
+  existing reader refuses one today with `EA_VALIDATION`. A subject whose
+  marginal run makes the default set worse is rejected, however well it did
+  alone.
+- **Independent check:** the admission reader in
+  [`coax/lib/nostr/eval/report.coax`](../../coax/lib/nostr/eval/report.coax),
+  written before this chapter, reads the same record and agrees.
+
 Planned paths: `openagents/eval/adopt.coax`, `openagents/registry/defaults/`.
 
 ## Sources

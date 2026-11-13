@@ -62,6 +62,20 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Install, grant and admit | `openagents.extension.v1` `Release` ([spec 20.2](../../docs/protocol/openagents-protocol-spec.md#202-openagentsextensionv1)), `openagents.capability.v1` `Grant` ([spec 19.3](../../docs/protocol/openagents-protocol-spec.md#193-openagentscapabilityv1)), `openagents.run.v1` `Admitted` ([spec 22.1](../../docs/protocol/openagents-protocol-spec.md#221-openagentsrunv1)) | Nostr: the release is public; grants and run records are private | Spec sketch; no `.proto` file |
 | Presence | `openagents.capability.v1` `Presence` ([spec 19.3](../../docs/protocol/openagents-protocol-spec.md#193-openagentscapabilityv1)) | Nostr: a private record in a kind 3188 envelope | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** the lock record in `openagents/plugins/lock.coax` and the
+  separate install, enable, grant and admit records.
+- **Trace:** install a plugin from a fixture release, then print its state
+  after each step: `installed`, `enabled`, `granted`, `admitted`. A run
+  journal starts and records the lock: the hash of each admitted component.
+  Change the defaults mid-run; the running journal keeps its first lock.
+- **Refusal:** fetched bytes whose hash differs from the release are refused
+  and nothing is installed. A plugin that is granted but whose service the
+  fake reports as down is shown as absent, and the agent does not claim it.
+- **Independent check:** `shasum -a 256` over the fixture's component files
+  gives the hashes in the lock.
+
 Planned paths: `openagents/plugins/lock.coax`.
 
 ## Sources

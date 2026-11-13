@@ -62,6 +62,23 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | A pinned install | `openagents.common.v1` locks ([spec 9.2](../../docs/protocol/openagents-protocol-spec.md#92-locks)) | A file on the device | Spec sketch; no `.proto` file |
 | The defaults update | `openagents.extension.v1` `ComponentSet`, `Registry` ([spec 20.2](../../docs/protocol/openagents-protocol-spec.md#202-openagentsextensionv1)) | Nostr: a signed release | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** install by hash in `openagents/registry/install.coax` and the
+  defaults package in `openagents/registry/defaults/`.
+- **Trace:** an app installs a fixture release from a fake relay, and
+  `state plugins` prints it pinned at its hash. A new defaults release that
+  cites an adoption is published; after the next sync, `state plugins` lists
+  the member, and the provenance view walks to the release, the adoption and
+  the report.
+- **Refusal:** a component whose bytes do not match the release's hash is
+  refused, and the install stays at the old pin. A run in progress keeps its
+  lock across the defaults update.
+- **Independent check:** `shasum -a 256` over the fixture components gives
+  the pinned hashes, and the existing EXT reader,
+  [`coax/lib/nostr/ext/install.coax`](../../coax/lib/nostr/ext/install.coax),
+  accepts the release with `EXT_OK`.
+
 Planned paths: `openagents/registry/install.coax`, `openagents/registry/defaults/`.
 
 ## Sources

@@ -61,6 +61,23 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | The log | Coder's transcript log, id `openagents.session.v1` on disk; planned package `openagents.session.log.v1alpha1` ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step C1) | A file of JSON lines; not sent | Planned. Written by hand in `coax/lib/agent/session/log.coax` |
 
+### The chapter's check
+
+- **Source:** the loop in `openagents/agent/loop.coax`, run against a fake
+  gateway that replays one recorded model reply. No network is used.
+- **Trace:** chapter 11's first-milestone case, with the loop in place of
+  the fixture replies: `type composer.input hello`, `tap composer.send`,
+  then `state transcript` prints `you: hello` and the recorded reply,
+  byte for byte. `logs` prints one line for the message and one for the
+  reply.
+- **Refusal:** the fake gateway answers the model call with an error. No
+  reply part appears, the transcript ends with `notice: model call
+  failed`, and `logs` records the failed call.
+- **Independent check:** chapter 11's cases pass unchanged on cpu, web and
+  ios-simulator, and the session record's own checks
+  (`coax/bin/coax test coax/lib/agent/session/session.coax`) still pass.
+  The logged reply matches the fixture's reply, written by hand.
+
 Planned paths: `openagents/agent/loop.coax`. It drives the engines and the
 session record in [`coax/lib/agent/`](../../coax/lib/agent) and adds no
 second session record.

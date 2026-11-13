@@ -79,6 +79,24 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Agent account, key and grant | `openagents.account.v1alpha1` ([`agents.proto`](../../proto/openagents/account/v1alpha1/agents.proto)) | HTTP, as binary protobuf | In use ([chapter 8](ch008-accounts-and-login.md)) |
 | A key's name and its owner | `openagents.identity.v1` `KeyIdentity`, `OwnerAttestation` ([spec 15.4](../../docs/protocol/openagents-protocol-spec.md#154-openagentsidentityv1)) | Nostr: kind 0, NIP-05, and an `auth` tag (NIP-OA) | Spec sketch; no `.proto` file. `coax/lib/nostr/nip05.coax` and `coax/lib/nostr/nipoa.coax` handle the events |
 
+### The chapter's check
+
+- **Source:** a case in the shared app that logs in with an email code from
+  a fake mail service, adds a Nostr key, links one device key and approves
+  an agent grant with a scope, a spend cap and an expiry.
+- **Trace:** `state account` shows one account ID with three ways in and one
+  device. `state grant` prints the scope, the cap in millisats and the
+  expiry. A NIP-05 lookup against a fake domain with a recorded answer maps
+  the name to the key.
+- **Refusal:** the agent spends past its cap and is refused; after `clock`
+  moves past the expiry, every action is refused; a revoked grant is refused
+  at once. A recovery started from email stays pending at 71 hours, and a
+  staff request to skip the wait is refused.
+- **Independent check:** keys from a seed match the published test vectors
+  in NIP-06, and the agent's `auth` tag verifies under the independent
+  reader
+  [`coax/tests/nostr/nipoa_reference.py`](../../coax/tests/nostr/nipoa_reference.py).
+
 Planned paths: none. Identity extends the login in
 [`coax/web/api/`](../../coax/web/api) (chapter 8) and the keys in
 [`coax/lib/nostr/`](../../coax/lib/nostr).

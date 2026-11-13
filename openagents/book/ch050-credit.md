@@ -59,6 +59,20 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | Award and revocation | `openagents.xp.v1` `Award`, `Revocation`, `Quest` ([spec 28.1](../../docs/protocol/openagents-protocol-spec.md#281-openagentsxpv1)) | Nostr kinds 3193, 3194 and 30193, public (NIP-XP) | Spec sketch; no `.proto` file. `coax/lib/nostr/xp_ledger.coax` handles the NIP's JSON |
 
+### The chapter's check
+
+- **Source:** the award rules and referee in `openagents/eval/credit.coax`.
+- **Trace:** one fixture check and one fixture adoption replay. The referee
+  signs awards to the checker, the original evaluator and the test set's
+  author for the check, and to the author, the test set's author and the
+  cited evaluators for the adoption. The trace prints the derived ledger.
+- **Refusal:** an author running their own test earns nothing, and the trace
+  shows no award. A revoked award leaves the ledger.
+- **Independent check:** the ledger is recomputed from the same public
+  events by [`coax/lib/nostr/xp_ledger.coax`](../../coax/lib/nostr/xp_ledger.coax),
+  written before this chapter, and the totals are counted by hand from the
+  fixture.
+
 Planned paths: `openagents/eval/credit.coax`.
 
 ## Sources

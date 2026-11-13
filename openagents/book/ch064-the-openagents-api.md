@@ -87,6 +87,22 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Agent grants | `openagents.account.v1alpha1` ([`agents.proto`](../../proto/openagents/account/v1alpha1/agents.proto)) | HTTP, as binary protobuf | In use: the generated codec `coax/web/api/agent-wire.coax` |
 | The machine-readable description | `openagents.discovery.v1` `ApiDocument` ([spec 30.3](../../docs/protocol/openagents-protocol-spec.md#303-openagentsdiscoveryv1)), generated from the schema | HTTP | Planned |
 
+### The chapter's check
+
+- **Source:** the sample partner app, run against the API on loopback with
+  an `oa_key_` key, a fake model service with recorded answers and the
+  controlled clock. It sends one message that needs an approval.
+- **Trace:** the stream in order: route, plan, approval, the approval's
+  answer, each step and the result, as exact JSON lines inside the envelope.
+- **Refusal:** a request with no credentials, a key whose grant lacks the
+  scope, and a request over the published limit. Each gets the envelope's
+  error with its code, and the over-limit error states the limit.
+- **Independent check:** the agent grant's bytes are decoded by Python's
+  protobuf library against
+  [`agents.proto`](../../proto/openagents/account/v1alpha1/agents.proto),
+  and the NIP-98 tags match the independent
+  [`nip98_tags.py`](../../coax/tests/nostr/nip98_tags.py).
+
 Planned paths: none. The API is [`coax/web/api/`](../../coax/web/api), and new
 rules follow its [COAX.md](../../coax/web/api/COAX.md).
 

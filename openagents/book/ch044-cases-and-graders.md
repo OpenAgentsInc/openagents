@@ -61,6 +61,21 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | Test set, case and grader | `openagents.eval.v1` `Suite`, `Case`, `Grader` ([spec 21.1](../../docs/protocol/openagents-protocol-spec.md#211-openagentsevalv1)) | Nostr kind 3189 (NIP-EVAL) | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** the test-set format and graders in
+  `openagents/eval/suite.coax`, and the linter.
+- **Trace:** a fixture test set of six cases, four should-fire and two
+  should-not-fire, each with a deterministic grader. The trace prints each
+  case's kind, grader and result, then `6 cases: 4 should-fire, 2
+  should-not-fire`.
+- **Refusal:** a test set with no should-not-fire case is refused by the
+  linter with the reason named. So is a case whose check passes only on its
+  given example, or that depends on state left by an earlier case.
+- **Independent check:** each grader's expected result is written by hand
+  for the fixture, and the old tree's repository map test set at
+  `coder-v1.0.0` reads with the same case count and kinds.
+
 Planned paths: `openagents/eval/suite.coax`.
 
 ## Sources

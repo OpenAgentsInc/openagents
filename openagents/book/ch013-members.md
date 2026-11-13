@@ -58,6 +58,21 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Member descriptor | `openagents.capability.v1` `Definition`, listed by a `DiscoveryHead` ([spec 19.3](../../docs/protocol/openagents-protocol-spec.md#193-openagentscapabilityv1)) | Nostr kind 30180, public (NIP-CAP) | Spec sketch; no `.proto` file. The NIP's JSON, read and written by `coax/lib/nostr/cap`, is the definition today |
 | An agent's public definition | `openagents.agent.v1` `AgentDefinition`, `PublicDefinition` ([spec 18.1](../../docs/protocol/openagents-protocol-spec.md#181-openagentsagentv1)) | Nostr kind 30187; HTTP `/v1/agents` | Spec sketch; no `.proto` file. `coax/lib/nostr/agent` handles the NIP's JSON |
 
+### The chapter's check
+
+- **Source:** the members list in `openagents/agent/members.coax`, with the
+  three first members: conversation, answers and Coder.
+- **Trace:** `state members` prints three rows. Each row has the member's
+  name, summary, effects and claim status, and the two stubs read `stub`.
+  Asking the agent "what can you do?" through the fixture loop prints the
+  same three names in the same order.
+- **Refusal:** a descriptor with no effects list fails to load with
+  `member descriptor: missing effects`. The list keeps the other members,
+  and the front never sees the broken one.
+- **Independent check:** each descriptor is written as NIP-CAP JSON and
+  read back by the existing reader in `coax/lib/nostr/cap`. The name,
+  summary and effects match the hand-written fields of the three members.
+
 Planned paths: `openagents/agent/members.coax`.
 
 ## Sources

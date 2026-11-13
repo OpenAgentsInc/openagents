@@ -59,6 +59,23 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | A public card for an agent that takes work | `openagents.agent.v1` `PublicDefinition` ([spec 18.1](../../docs/protocol/openagents-protocol-spec.md#181-openagentsagentv1)) | Nostr kind 30187, public (NIP-AGENT) | Spec sketch; no `.proto` file |
 | What the actor shows | The session's records (chapters 18 and 26) | As those chapters say | No new record |
 
+### The chapter's check
+
+- **Source:** a `coax drive` case in a realm with one agent whose session
+  records are replayed from a fixture: trajectory steps and run-journal
+  states, under the controlled clock.
+- **Trace:** `state` on the agent's actor prints `working`, then `waiting on
+  you` when the journal asks for an approval. `tap` the actor opens the same
+  conversation as chat. After the approval, it prints `working`, then
+  `done`.
+- **Refusal:** the person denies the approval. The actor shows `blocked`,
+  and the step does not run. With no new records, `clock` moves on and the
+  actor stays idle; it never acts out work.
+- **Independent check:** the expected state at each step is written by hand
+  from the fixture's journal, and the same fixture read by
+  [`coax/lib/agent/observe/`](../../coax/lib/agent/observe) gives the same
+  states.
+
 Planned paths: none. Agents in a world extend
 [`metaverse-engine/agent/`](../../metaverse-engine/agent) and read
 [`coax/lib/agent/observe/`](../../coax/lib/agent/observe).

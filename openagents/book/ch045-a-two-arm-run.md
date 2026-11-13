@@ -60,6 +60,22 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | Report | `openagents.eval.v1` `Report`, `Measurement`, `RunCoverage` ([spec 21.1](../../docs/protocol/openagents-protocol-spec.md#211-openagentsevalv1)) | Nostr kind 3189, public | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** the two-arm runner in `openagents/eval/run.coax` and a gate
+  file that names one primary outcome.
+- **Trace:** the six-case fixture set runs twice on a fake model with
+  recorded answers and the controlled clock. The report prints the baseline
+  arm `2 of 6`, the subject arm `5 of 6`, the change `+3`, its uncertainty,
+  the time for each arm, the gate's digest and the verdict.
+- **Refusal:** a gate edited after the run no longer matches the digest in
+  the report, and the verdict is refused. Arms that differ in more than the
+  subject, such as the model version, are refused before either arm runs.
+- **Independent check:** the counts are hand-derived from the recorded
+  answers. The report reads through
+  [`coax/lib/nostr/eval/report.coax`](../../coax/lib/nostr/eval/report.coax),
+  whose coverage counts must sum per arm.
+
 Planned paths: `openagents/eval/run.coax`.
 
 ## Sources

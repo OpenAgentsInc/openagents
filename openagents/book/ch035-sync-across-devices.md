@@ -70,6 +70,23 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | A chat that syncs | A log of thin entries, with blobs for large output | Inside sync frames | Planned. The entry format follows the session log ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step C1) |
 | A save | A document with a revision | HTTP today | Built for realm progress, with hand-written bodies |
 
+### The chapter's check
+
+- **Source:** the rows step of the sync plan: settings and profile, pulled
+  after a cursor and pushed in batches, as `hello`, `push` and `changes`
+  frames from `proto/openagents/sync/v1alpha1/`.
+- **Trace:** two app hosts on one fake sync server with recorded answers and
+  the controlled clock. Device A runs `tap settings.theme.dark`; after
+  `clock advance 1s`, `state settings.theme` on device B prints `dark`.
+  Device C starts offline, then connects with its cursor and gets only that
+  one change.
+- **Refusal:** a save sent from a revision that is no longer current gets
+  a 409 and the server keeps the current save, as
+  `coax/web/api/progress-policy.coax` does today. A sync frame that carries a
+  session token is refused before it is sent.
+- **Independent check:** `protoc --decode` reads each recorded frame from the
+  `.proto` files and prints the same fields the trace shows.
+
 Planned paths: `proto/openagents/sync/v1alpha1/`.
 
 ## Sources

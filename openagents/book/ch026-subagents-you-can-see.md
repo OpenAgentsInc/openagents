@@ -57,6 +57,21 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | A subagent and its parent | `openagents.session.v1` `ChildSession` ([spec 18.3](../../docs/protocol/openagents-protocol-spec.md#183-openagentssessionv1)); a claim on a task is `openagents.coordination.v1` `Claim` ([spec 22.2](../../docs/protocol/openagents-protocol-spec.md#222-openagentscoordinationv1)) | Nostr: private records in a kind 3188 envelope | Spec sketch; no `.proto` file |
 | Tier rubric and the AI-call ledger | None yet ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step C6) | Files on one machine | Hand-written JSON with two encoders. Step C6 leaves one |
 
+### The chapter's check
+
+- **Source:** fan-out in the plan and the fleet view in
+  `coax/lib/agent/observe/`, with fake engines that replay recorded
+  sessions.
+- **Trace:** "fix these three issues" starts three child calls. `tree`
+  shows three cards, each with its name, what it was asked, its tier and
+  the model it ran on. After `clock` advances past the last recorded
+  reply, each child reports done and the parent prints one report.
+- **Refusal:** `tap fleet.stop` on the parent stops every child. Each card
+  shows stopped, and the fake engines record no further calls.
+- **Independent check:** the model on each card matches the model the fake
+  engine recorded serving that call. The tier for each issue matches a
+  table written by hand from the tier rubric.
+
 Planned paths: none. The fleet view extends
 [`coax/lib/agent/observe/`](../../coax/lib/agent/observe) and
 [`coax/lib/agent/tier.coax`](../../coax/lib/agent/tier.coax).

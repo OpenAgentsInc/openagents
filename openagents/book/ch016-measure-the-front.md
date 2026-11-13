@@ -57,6 +57,21 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | Labeled messages and calibration | `openagents.decision.v1` `CalibrationSet`, `CalibrationRecord` ([spec 16.1](../../docs/protocol/openagents-protocol-spec.md#161-openagentsdecisionv1)) | Files; not sent | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** the eval tool in `openagents/agent/front/eval/`, run over a
+  labeled message set with a held-out split. The front's answers come from
+  recorded decisions, so the run needs no network.
+- **Trace:** the tool prints route accuracy, counts per route and the
+  calibration bins for the held-out split. With recorded decisions the
+  output is the same bytes on every run.
+- **Refusal:** a new question set whose held-out accuracy is lower than the
+  current one fails the release gate. The tool prints both numbers and
+  `not released`, and the current question set stays in place.
+- **Independent check:** a ten-row labeled set worked by hand. Seven rows
+  have the right route, so accuracy is 0.7, and the hand-counted
+  calibration bins match the tool's output for the same rows.
+
 Planned paths: `openagents/agent/front/eval/`.
 
 ## Sources

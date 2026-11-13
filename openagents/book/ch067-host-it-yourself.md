@@ -65,6 +65,22 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | What an instance offers | `openagents.discovery.v1` `Manifest` ([spec 30.3](../../docs/protocol/openagents-protocol-spec.md#303-openagentsdiscoveryv1)) | HTTP | Spec sketch; no `.proto` file |
 | Everything else it sends | The same schemas as ours ([chapter 65](ch065-one-schema-three-carriages.md)) | All three carriages | A self-hosted instance passes the same fixtures ([chapter 66](ch066-the-compliance-rule.md)) |
 
+### The chapter's check
+
+- **Source:** the bundle in `openagents/selfhost/` and its one configuration
+  file, started on loopback with a fake model provider and a recorded copy
+  of the public registry, at two sizes: the mirror and the full instance.
+- **Trace:** the mirror serves the release listing from its own relay. The
+  full instance installs one public release by hash, makes one paid call
+  against a fake Lightning payer, and prints its receipt.
+- **Refusal:** a release whose bytes do not match its listed hash is refused
+  at install. A configuration that names no model access stops the instance
+  at start, and it prints the missing setting.
+- **Independent check:** the receipt passes chapter 57's meter and its
+  signature checks under
+  [`event_reference.cjs`](../../coax/tests/nostr/event_reference.cjs), and
+  the instance's records pass the same fixtures as ours (chapter 66).
+
 Planned paths: `openagents/selfhost/`.
 
 ## Sources

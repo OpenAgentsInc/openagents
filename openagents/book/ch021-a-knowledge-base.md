@@ -57,6 +57,20 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | Knowledge entry, head and withdrawal | `openagents.knowledge.v1` `Entry`, `Head`, `Withdrawal` ([spec 20.4](../../docs/protocol/openagents-protocol-spec.md#204-openagentsknowledgev1)) | Nostr kinds 3190, 30190 and 3191, public (NIP-KB) | Spec sketch; no `.proto` file. `coax/lib/nostr/kb` handles the NIP's JSON |
 
+### The chapter's check
+
+- **Source:** the store, importer and knowledge member in
+  `openagents/knowledge/`, with one book chapter imported as the fixture.
+- **Trace:** the importer prints each entry it made with the source path
+  it cites. The head points at the latest version. Asked a question the
+  chapter answers, the knowledge member replies and lists the entry IDs it
+  used.
+- **Refusal:** an entry with a bad signature is refused by the store with
+  `refused: bad signature`. A withdrawn entry is never used in an answer.
+- **Independent check:** each entry's event ID is recomputed by hand as the
+  SHA-256 of its NIP-01 serialization, and its signature is verified by a
+  NIP-01 library outside the tree.
+
 Planned paths: `openagents/knowledge/`.
 
 ## Sources

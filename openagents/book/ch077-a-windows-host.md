@@ -57,6 +57,20 @@ It builds on what exists today:
 - [`apps/openagents-cli`](../../apps/openagents-cli)
 - [`psionic/lib/pylon`](../../psionic/lib/pylon)
 
+### The chapter's check
+
+- **Source:** `metaverse-engine/host/windows/`, run through
+  [`conformance.coax`](../../metaverse-engine/host/conformance.coax), plus
+  the Pylon and the command line on Windows.
+- **Trace:** the conformance result: one line per check, the same lines the
+  Linux host prints, and a hash of the test realm's frame equal to the other
+  hosts' hash.
+- **Refusal:** an operation the Windows host does not yet provide reports
+  its check as refused, not passed, and the run fails.
+- **Independent check:** the same conformance run on the Linux and browser
+  hosts, and the Windows frame compared pixel by pixel with the Linux host's
+  frame.
+
 Planned paths: `metaverse-engine/host/windows/`.
 
 ## Sources

@@ -61,6 +61,21 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Run journal | `openagents.run.v1` `RunRecord` in a `RunRecordEnvelope`, with a `RunHead` ([spec 22.1](../../docs/protocol/openagents-protocol-spec.md#221-openagentsrunv1)) | Nostr kinds 3187 and 30186, encrypted (NIP-RUN) | Spec sketch; no `.proto` file. `coax/lib/nostr/run` handles the NIP's JSON. The local journal is a hash-chained binary file. It stays hand-packed, and a fixture to pin it is planned |
 | Trajectory | `openagents.trace.v1` `Manifest`, `Chunk` ([spec 21.4](../../docs/protocol/openagents-protocol-spec.md#214-openagentstracev1)) | Nostr kinds 3198 and 3199 (NIP-ATIF) | Spec sketch; no `.proto` file. `coax/lib/nostr/atif` handles the NIP's JSON |
 
+### The chapter's check
+
+- **Source:** the run journal, extending `coax/lib/agent/journal.coax`, for
+  one fixture turn with a recorded decision, plan, grant and member call.
+- **Trace:** after the turn, the journal lists in order: the message, the
+  decision and its probabilities, the plan, the grant, the member call,
+  its result and its cost. The trajectory links the parent step to the
+  member's own trace.
+- **Refusal:** a journal file with one byte changed fails the hash chain at
+  the changed record. Replay stops there and prints that record's number.
+- **Independent check:** replay rebuilds every model request from the
+  journal, and each one matches, byte for byte, the request the fake
+  gateway recorded when the turn ran. The gateway's record is written by
+  the fake service, not by the journal.
+
 Planned paths: none. The record extends
 [`coax/lib/agent/journal.coax`](../../coax/lib/agent/journal.coax) and the
 session record in [`coax/lib/agent/session/`](../../coax/lib/agent/session);

@@ -53,6 +53,22 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | Answer-bank entry | `openagents.chat.v1` `AnswerBankEntry` ([spec 17.1](../../docs/protocol/openagents-protocol-spec.md#171-openagentschatv1)) | A file the runtime loads | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** the answer bank in `openagents/knowledge/answers/`, served by
+  the threshold rule, with a fake decision service that replays recorded
+  probabilities.
+- **Trace:** for "How do I install it?" the recorded fit is above the
+  threshold. The transcript shows the stored answer byte for byte, with its
+  link or command. The log names the bank entry, and the fake gateway
+  records no generation call.
+- **Refusal:** the same question with a recorded fit just below the
+  threshold serves no bank answer, and the log says `below threshold`.
+  After the entry's source file changes, the check flags the entry with
+  `stale: source changed`, and the entry is not served.
+- **Independent check:** the source digest stored in the entry equals
+  `shasum -a 256` of the source file, run by hand.
+
 Planned paths: `openagents/knowledge/answers/`.
 
 ## Sources

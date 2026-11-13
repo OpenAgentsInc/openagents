@@ -60,6 +60,21 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Who may see an input | `openagents.policy.v1` `DisclosurePolicy` ([spec 19.2](../../docs/protocol/openagents-protocol-spec.md#192-openagentspolicyv1)) | Nostr: a private record (NIP-POL) | Spec sketch; no `.proto` file |
 | Consent to publish or share | None yet | Planned | Gap. This chapter's consent record needs a schema |
 
+### The chapter's check
+
+- **Source:** the memory store in `openagents/knowledge/memory.coax` and
+  the consent record, with a fake gateway that records each model request.
+- **Trace:** you tell the agent which project you work on. `state memory`
+  lists the fact and where it came from. You edit it, and the next model
+  request in the gateway's record carries the new version. You delete it,
+  and the next request carries none.
+- **Refusal:** a publish step with no consent record stops with
+  `refused: no consent record`, and nothing is shared. A member without a
+  memory grant gets a request with no memory in it.
+- **Independent check:** the stored ciphertext follows NIP-44, checked
+  against the upstream vector corpus that `coax/lib/nostr/nip44.coax`
+  loads. A search of the stored bytes finds no plaintext fact.
+
 Planned paths: `openagents/knowledge/memory.coax`.
 
 ## Sources

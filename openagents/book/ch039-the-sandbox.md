@@ -59,6 +59,20 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | A call into a plugin and a call back to the host | `openagents.program.v1` `PacketRequest`, `PacketResponse`, `HostCall` ([spec 20.1](../../docs/protocol/openagents-protocol-spec.md#201-openagentsprogramv1)) | Binary, across the sandbox boundary | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** the Wasm host in `openagents/plugins/sandbox/` and one plugin
+  compiled from Coax to Wasm.
+- **Trace:** the plugin runs with one admitted host function and returns its
+  output; the trace prints the result, the host calls it made, and the time
+  and memory it used against its bounds, on the controlled clock.
+- **Refusal:** an escape test module imports a host function it was not
+  granted, such as a file read. The host refuses it before it runs, names the
+  function, and logs the refusal. A module that loops past its time bound
+  stops with the reason `time limit`.
+- **Independent check:** the same `.wasm` file runs in an existing Wasm
+  runtime with the same imports and gives the same output.
+
 Planned paths: `openagents/plugins/sandbox/`.
 
 ## Sources

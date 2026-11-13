@@ -66,6 +66,24 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | A spend request and its receipt | `openagents.payment.v1` `SpendRequest`, `SpendReceipt` ([spec 26.5](../../docs/protocol/openagents-protocol-spec.md#265-openagentspaymentv1)) | Nostr: private records in a kind 3188 envelope (NIP-HOST) | Spec sketch; no `.proto` file |
 | Approval of one payment | `openagents.policy.v1` `ApprovalRequest`, `ApprovalDecision` ([spec 19.2](../../docs/protocol/openagents-protocol-spec.md#192-openagentspolicyv1)) | With the plan's stream | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** the approval step and `pay/spend-approval-policy.coax`, with
+  a fake wallet service that replays recorded Lightning answers. No real
+  money moves.
+- **Trace:** "send a thousand sats" opens the wallet. `tree` shows 1000
+  sats, the destination, the fee and the balance after. Until `tap
+  approval.approve`, the fake service records no payment. After it, the
+  service records one payment and a receipt. Sending again with the same
+  payment ID records nothing new.
+- **Refusal:** an agent with a cap of 500 sats a payment asks to send 1000
+  sats. The cap check refuses it with a reason that names the cap, and no
+  payment is recorded.
+- **Independent check:** the balance after is worked by hand: 5000 sats
+  less 1000 less a 3-sat fee is 3997 sats. The destination invoice,
+  decoded by `coax/tests/lightning/bolt11.py`, gives the same amount and
+  payee as the approval screen.
+
 Planned paths: `pay/spend-approval-policy.coax`, an `#authority` file beside
 [`pay/wallet.coax`](../../pay/wallet.coax) and
 [`pay/wallet-policy.coax`](../../pay/wallet-policy.coax).

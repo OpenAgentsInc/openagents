@@ -61,6 +61,25 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | Decision request and answer | `openagents.decision.v1alpha1` `SystemOneRequest`, `SystemOneResponse` ([`systemone.proto`](../../proto/openagents/decision/v1alpha1/systemone.proto); [spec 16.1](../../docs/protocol/openagents-protocol-spec.md#161-openagentsdecisionv1)) | HTTP `POST /api/v1/systemone`; Nostr kind 25910, encrypted (NIP-DEC) | In use on the server: the generated codec `psionic/lib/serve-proto.coax`. The client writes the JSON by hand in `coax/lib/systemone/request.coax`. The JSON contract stays the definition, and a fixture to pin it is planned ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md)) |
 
+### The chapter's check
+
+- **Source:** the front in `openagents/agent/front/`, asking the Decisions
+  API through a fake decision service that replays recorded
+  probabilities. The clock is controlled.
+- **Trace:** for the message `hello`, the trace prints the pinned question
+  set's digest, each question's probabilities, the chosen route
+  (conversation) and the plan built from it. The log names the door that
+  answered: Gemini Decision 1.
+- **Refusal:** the first door times out on the controlled clock. The front
+  asks the fallback, and the log names the fallback as the door that
+  answered. A recorded answer for a different question-set digest is
+  refused with `refused: question set digest mismatch`, and no plan is
+  built.
+- **Independent check:** the client's hand-written request JSON from
+  `coax/lib/systemone/request.coax` is read by the generated server codec
+  `psionic/lib/serve-proto.coax`, a separate implementation of
+  `systemone.proto`, and the fields match.
+
 Planned paths: `openagents/agent/front/`.
 
 ## Sources

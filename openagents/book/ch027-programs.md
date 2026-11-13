@@ -63,6 +63,20 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Program and its steps | `openagents.program.v1` `Program`, `Step`, published by a `ProgramHead` ([spec 20.1](../../docs/protocol/openagents-protocol-spec.md#201-openagentsprogramv1)) | Nostr kind 30182 (NIP-PRG) | Spec sketch; no `.proto` file |
 | A recorded step | `openagents.program.v1` `StepEnvelope` ([spec 20.1](../../docs/protocol/openagents-protocol-spec.md#201-openagentsprogramv1)) | In the run journal (chapter 18) | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** the program runner in `openagents/agent/programs/` and the
+  answer-question port, with a fake decision service and fake members.
+- **Trace:** the runner logs each step: the decide step with its pinned
+  question's digest, the call step with its member, and the result. Each
+  step is written to the run journal as a step record.
+- **Refusal:** a program that calls a member its grant doesn't cover is
+  refused before that step runs, with a reason that names the step and
+  the member.
+- **Independent check:** the old tree's answer-question program at
+  `coder-v1.0.0`, run on the same recorded inputs, takes the same sequence
+  of steps.
+
 Planned paths: `openagents/agent/programs/`.
 
 ## Sources

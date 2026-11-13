@@ -66,6 +66,23 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | A realm session | Text frames, described frame by frame in [`everglade-session-v7.json`](../../proto/verse/everglade-session-v7.json) | Frames on a WebSocket or WebTransport | In use: one hand-packed codec, `everglade/shared/everglade-wire.coax`, pinned by that profile. The compliance rule allows this kind ([chapter 66](ch066-the-compliance-rule.md)) |
 | Presence in a world | `openagents.verse.presence.v1alpha1` ([`presence.proto`](../../proto/openagents/verse/presence/v1alpha1/presence.proto)) | None yet. NIP-MV carries poses as kinds 23300 and 33301, unchanged | Schema file; no product consumer |
 
+### The chapter's check
+
+- **Source:** a `coax drive` case in headless Chrome: open a realm, open the
+  chat panel, send `hello` to a fake runtime with a recorded reply, then
+  open `/chat` in the same session.
+- **Trace:** `tap` the panel, `type hello`, `tap` send, then `state
+  transcript` in the world and on `/chat`. Both print `you: hello` and the
+  same reply, in one conversation with one ID.
+- **Refusal:** a grant revoked from `/chat` is revoked in the world too. The
+  panel's next action that needs it is refused with the same message chat
+  shows.
+- **Independent check:** the realm session's frames are compared with the
+  bytes listed in
+  [`everglade-session-v7.json`](../../proto/verse/everglade-session-v7.json),
+  and the chat side gives the transcript that the existing
+  [`first-milestone`](../examples/cases/first-milestone.trace) case expects.
+
 Planned paths: none. The Metaverse surface is a realm route in
 [`apps/openagents-web`](../../apps/openagents-web) over
 [`metaverse-engine/talk`](../../metaverse-engine/talk).

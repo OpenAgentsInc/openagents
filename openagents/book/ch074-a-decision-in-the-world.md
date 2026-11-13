@@ -63,6 +63,23 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | The Pylon's receipt | `openagents.pylon.v1alpha1` `ServiceReceipt` ([`mesh.proto`](../../proto/openagents/pylon/v1alpha1/mesh.proto)) | Nostr kind 3201 | Schema file: a projection of NIP-PYLON's JSON. The signed JSON stays the authority |
 | A question to a character | Planned `openagents.verse.npc.v1alpha1` ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step E4) | HTTP | Four hand-written client encoders today |
 
+### The chapter's check
+
+- **Source:** the capstone's demonstration in
+  [`a-guard-decision-is-paid-for.md`](../../docs/books/capstones/a-guard-decision-is-paid-for.md),
+  run end to end with a local Pylon, a fake relay, a fake Lightning payer
+  and the controlled clock.
+- **Trace:** the guard's state, its `SystemOneRequest`, the Pylon's answer
+  `chase` with its probabilities, a recompute that matches, the kind 3201
+  receipt, and the Pylon owner's payout record.
+- **Refusal:** a Pylon answer that differs on recompute gets no receipt and
+  no payout, and the guard falls back to its script for that turn.
+- **Independent check:** the request and response bytes are decoded by
+  Python's protobuf library against
+  [`systemone.proto`](../../proto/openagents/decision/v1alpha1/systemone.proto),
+  and the kind 25910 event matches the vectors from
+  [`dec_eval_vectors.py`](../../coax/tests/nostr/dec_eval_vectors.py).
+
 Planned paths: none. The decision runs in the engine's
 [`metaverse-engine/ai/decide.coax`](../../metaverse-engine/ai/decide.coax).
 

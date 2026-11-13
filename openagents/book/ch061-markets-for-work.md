@@ -64,6 +64,23 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Job terms, submission and acceptance | `openagents.labor.v1` `Terms`, `Submission`, `Acceptance` ([spec 26.3](../../docs/protocol/openagents-protocol-spec.md#263-openagentslaborv1)) | Nostr: private records in a kind 3188 envelope (NIP-LAB) | Spec sketch; no `.proto` file |
 | An offering and its order records | `openagents.market.v1` `Offering`, `Record` ([spec 26.2](../../docs/protocol/openagents-protocol-spec.md#262-openagentsmarketv1)) | Nostr kinds 3192 and 30192 (NIP-MKT) | Spec sketch; no `.proto` file. `coax/lib/nostr/mkt` handles the NIP's JSON |
 
+### The chapter's check
+
+- **Source:** `openagents/registry/jobs.coax` and `pay/jobs-policy.coax`,
+  run on a case with one buyer agent and two workers, a fake relay that
+  replays recorded events, a fake Lightning payer and the controlled clock.
+- **Trace:** the job, two offers, the buyer's pick, the result, the
+  acceptance and the payment, as signed events in that order. No payment
+  appears before the acceptance event.
+- **Refusal:** a result that fails the acceptance terms is rejected and
+  nothing is paid. In worker mode, a job above the set price or outside the
+  set hours is declined, and the worker prints which limit it broke.
+- **Independent check:** every event's ID and signature are recomputed by
+  the independent NIP-01 oracle
+  [`coax/tests/nostr/event_reference.cjs`](../../coax/tests/nostr/event_reference.cjs),
+  and the order records match the NIP-MKT fixtures in
+  [`mkt_order_fixtures.coax`](../../coax/tests/nostr/mkt_order_fixtures.coax).
+
 Planned paths: `openagents/registry/jobs.coax`, with its money rules in
 `pay/jobs-policy.coax`.
 

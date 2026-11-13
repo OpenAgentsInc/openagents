@@ -57,6 +57,23 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | Conversation request, result and feedback | `openagents.chat.v1` `ConversationRequest`, `ConversationResult`, `ConversationFeedback` ([spec 17.1](../../docs/protocol/openagents-protocol-spec.md#171-openagentschatv1)) | Nostr kinds 25900, 26900 and 27000, encrypted (NIP-CJ); HTTP chat routes | Spec sketch; no `.proto` file. The reply stream to the page is hand-written lines today ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step C9) |
 
+### The chapter's check
+
+- **Source:** the conversation member in
+  `openagents/agent/members/conversation.coax`, behind a fake gateway that
+  streams a recorded reply, and the policy route over its written rules.
+- **Trace:** `hello` routes to conversation, and the reply arrives in its
+  recorded parts as the clock releases them. The fake gateway's record
+  shows the turn's surface and project in the request. A policy question
+  asked twice prints the same answer both times, and the gateway records
+  no model call for it.
+- **Refusal:** the fake gateway cuts the stream after two parts. The
+  transcript keeps the two parts and ends with one notice. The agent does
+  not invent the rest of the reply.
+- **Independent check:** the hand-labeled small talk, policy and general
+  rows in chapter 16's held-out set, scored by the eval tool, which is
+  not this member's code.
+
 Planned paths: `openagents/agent/members/conversation.coax`.
 
 ## Sources

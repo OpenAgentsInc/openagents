@@ -64,6 +64,22 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | A claim's key | `openagents.eval.v1` `Subject` and the locks it names ([spec 21.1](../../docs/protocol/openagents-protocol-spec.md#211-openagentsevalv1)); the digest follows the canonical-bytes rule ([spec 7.4](../../docs/protocol/openagents-protocol-spec.md#74-canonical-bytes-and-hashing)) | Inside the report | Spec sketch; no `.proto` file. A digest depends on exact bytes, so this record needs a fixture before any codec changes ([chapter 66](ch066-the-compliance-rule.md)) |
 
+### The chapter's check
+
+- **Source:** the key type with seven parts and its digest in
+  `openagents/eval/key.coax`.
+- **Trace:** two fixture keys that differ only in the grant print different
+  digests, and the reader prints `differs: G`. Two keys built in a different
+  field order print the same digest. A key over a hosted model lists the
+  model under what could not be pinned.
+- **Refusal:** a key with a part missing, such as no environment, is refused
+  with that part named, and no digest is made.
+- **Independent check:** the canonical bytes come from
+  [`coax/lib/nostr/jcs.coax`](../../coax/lib/nostr/jcs.coax), which follows
+  RFC 8785. `shasum -a 256` over a committed fixture of those bytes gives the
+  digest, and an RFC 8785 implementation in another language gives the same
+  bytes.
+
 Planned paths: `openagents/eval/key.coax`.
 
 ## Sources

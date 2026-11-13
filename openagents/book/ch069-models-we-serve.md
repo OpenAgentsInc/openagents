@@ -64,6 +64,23 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | A served decision | `openagents.decision.v1alpha1` `SystemOneRequest`, `SystemOneResponse` ([`systemone.proto`](../../proto/openagents/decision/v1alpha1/systemone.proto)) | HTTP `POST /v1/systemone` on Psionic | In use on the server: the generated codec `psionic/lib/serve-proto.coax` |
 
+### The chapter's check
+
+- **Source:** the front's decisions sent through the gateway to Psionic's
+  `POST /v1/systemone`, on chapter 16's test set, beside the hosted route's
+  recorded answers.
+- **Trace:** one line per question: the served answer and its probabilities,
+  the hosted answer and the expected label. Then accuracy and cost for each
+  route. Time is a separate live record, since it is real nondeterminism.
+- **Refusal:** a malformed `SystemOneRequest` is refused by the generated
+  codec and nothing is served. A recompute whose probabilities differ from
+  the served ones marks that decision as not reproduced.
+- **Independent check:** the request and response bytes are decoded by
+  Python's protobuf library against
+  [`systemone.proto`](../../proto/openagents/decision/v1alpha1/systemone.proto),
+  the test set's labels are chapter 16's hand-written ones, and a second
+  machine recomputes each served decision.
+
 Planned paths: none. Serving is Psionic's ([`psionic/`](../../psionic)).
 
 ## Sources

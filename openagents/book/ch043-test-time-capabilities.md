@@ -63,6 +63,20 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | A claim and its evidence | `openagents.eval.v1` `Publication` ([spec 21.1](../../docs/protocol/openagents-protocol-spec.md#211-openagentsevalv1)); evidence types are in `openagents.common.v1` ([spec 9.4](../../docs/protocol/openagents-protocol-spec.md#94-evidence-observation-and-context-manifests)) | Nostr kind 3189, public (NIP-EVAL) | Spec sketch; no `.proto` file. `coax/lib/nostr/eval` handles the NIP's JSON |
 | Policy | `openagents.policy.v1` ([spec 19.2](../../docs/protocol/openagents-protocol-spec.md#192-openagentspolicyv1)) | Nostr (NIP-POL) | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** the record types for a candidate, a claim, an evidence record
+  and a policy, under `openagents/eval/`. This chapter adds no runner.
+- **Trace:** a fixture report for the repository map reads as a claim with
+  its subject, baseline, task kind, grant and measurement printed, and the
+  verdict `pass`.
+- **Refusal:** a record that names a subject but no baseline is refused as a
+  claim; it stays a candidate.
+- **Independent check:** the same fixture reads through the existing NIP-EVAL
+  reader, [`coax/lib/nostr/eval/report.coax`](../../coax/lib/nostr/eval/report.coax),
+  with the same verdict. The runnable checks of these terms are in chapters
+  44 to 51.
+
 Planned paths: `openagents/eval/`.
 
 ## Sources

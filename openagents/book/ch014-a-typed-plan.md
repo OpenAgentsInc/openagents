@@ -51,6 +51,21 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | Plan | None yet. The nearest are `openagents.chat.v1` `ConversationResult` ([spec 17.1](../../docs/protocol/openagents-protocol-spec.md#171-openagentschatv1)) and `openagents.program.v1` `Step` ([spec 20.1](../../docs/protocol/openagents-protocol-spec.md#201-openagentsprogramv1)) | Planned: the stream a surface draws ([chapter 64](ch064-the-openagents-api.md)) | Gap. The plan needs a schema in `proto/` before any surface draws it ([chapter 66](ch066-the-compliance-rule.md)) |
 
+### The chapter's check
+
+- **Source:** the plan type and executor in `openagents/agent/plan.coax`,
+  run with fake members that return recorded results.
+- **Trace:** a one-step plan hands a question to the answers member with a
+  read grant. The log prints the plan value, then one line for the step and
+  its result. Replaying the logged plan prints the same log bytes.
+- **Refusal:** a plan whose step needs a grant you haven't given stops
+  before any step runs and prints `refused: step 1 (coder) needs grant
+  repo.write`. A plan type with a money step and no approval step fails
+  the Coax check at build time, so no such plan is ever built.
+- **Independent check:** a table of plans and their expected verdicts
+  (run or refused, and the reason), written by hand before the executor.
+  The build failure comes from the compiler, not the executor.
+
 Planned paths: `openagents/agent/plan.coax`.
 
 ## Sources

@@ -93,6 +93,24 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 Today the decision message has a schema file, in use on the server, and the
 rest are sketches in the spec. Each chapter's own table gives the status.
 
+### The chapter's check
+
+- **Source:** `openagents/book/PROTOCOL.md` and the small second reader, run
+  on a recorded set of public events for one agent: its member descriptions,
+  releases and evaluation publications.
+- **Trace:** the reader rebuilds the agent's member list. It prints one line
+  per member with its release hash, then each piece of evidence with its
+  event kind and ID.
+- **Refusal:** an event with a bad signature or a kind the table does not
+  list is skipped, and the reader prints its ID and the reason. A step with
+  no carrier prints as a gap with its issue number, never as covered.
+- **Independent check:** each row of the table is compared with the spec's
+  kind registry, and the reader's input includes events from vector writers
+  built from the NIPs alone:
+  [`dec_eval_vectors.py`](../../coax/tests/nostr/dec_eval_vectors.py),
+  [`ext_release_vectors.py`](../../coax/tests/nostr/ext_release_vectors.py)
+  and [`xp_mv_vectors.py`](../../coax/tests/nostr/xp_mv_vectors.py).
+
 Planned paths: `openagents/book/PROTOCOL.md`.
 
 ## Sources

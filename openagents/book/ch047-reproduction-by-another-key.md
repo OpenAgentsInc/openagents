@@ -60,6 +60,21 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | Confirmation or dispute | `openagents.eval.v1` `Publication` that cites the first ([spec 21.1](../../docs/protocol/openagents-protocol-spec.md#211-openagentsevalv1)) | Nostr kind 3189, signed by the checker | Spec sketch; no `.proto` file. A reader verifies a signature over the bytes it received, never over bytes it wrote again ([spec 35](../../docs/protocol/openagents-protocol-spec.md#35-conformance-and-verification)) |
 
+### The chapter's check
+
+- **Source:** the `check` action in `openagents/eval/check.coax` and the
+  reader that decides from two signed events whether one confirms the other.
+- **Trace:** a fixture report signed by key A; key B reruns the same test
+  set, subject lock and gate on recorded answers, and publishes to a fake
+  relay. The reader prints `confirms`. A second rerun with a different
+  verdict prints `disputes`, and both stay listed.
+- **Refusal:** a check signed by the same key as the report is refused as a
+  reproduction. A check whose subject lock differs from the report's is
+  refused, with the lock named.
+- **Independent check:** the fixture events use keys and signatures checked
+  against the BIP-340 test vectors, and NIP-01 event ids from another Nostr
+  implementation match the ids the reader computes.
+
 Planned paths: `openagents/eval/check.coax`.
 
 ## Sources

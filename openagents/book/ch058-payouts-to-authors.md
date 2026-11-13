@@ -65,6 +65,25 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | What an author is owed and was paid | `openagents.ledger.v1` `Earnings`, `Statement` ([spec 26.6](../../docs/protocol/openagents-protocol-spec.md#266-openagentsledgerv1-and-openagentsbillingv1)) | HTTP; a signed payout record on Nostr | Spec sketch; no `.proto` file |
 | Where to pay an author | `openagents.payment.v1` `LightningAddress` ([spec 26.5](../../docs/protocol/openagents-protocol-spec.md#265-openagentspaymentv1)) | HTTP: LNURL | Built in forward mode ([Lightning Addresses](../../docs/auth/lightning-addresses.md), #13208). LNURL is an external format |
 
+### The chapter's check
+
+- **Source:** `pay/payout-policy.coax`, run on the meter totals from chapter
+  57's case, with a fake Lightning payer that replays recorded answers and
+  the controlled clock. Author A has an address, author B is owed less than
+  the minimum, and author C has no address.
+- **Trace:** one signed payout record for A that cites the receipts it
+  covers, a held balance for B and C, and `p-1: already sent, nothing paid`
+  when the same payout runs again. The fake payer fails A's first try; after
+  `clock` moves past the retry time, the payout is sent once.
+- **Refusal:** a payout that would make payouts plus balances differ from
+  the author shares in the receipts is refused before anything is sent:
+  `refused: payouts and balances do not equal author shares`.
+- **Independent check:** each invoice the fake payee issues is read by the
+  independent BOLT 11 reader,
+  [`coax/tests/lightning/bolt11.py`](../../coax/tests/lightning/bolt11.py),
+  and the sum of payouts and balances is worked out by hand from the
+  receipts.
+
 Planned paths: `pay/payout-policy.coax`, in the Payments context
 ([`pay/`](../../pay)) beside the tips in
 [`pay/makerpay-policy.coax`](../../pay/makerpay-policy.coax).

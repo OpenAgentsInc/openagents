@@ -62,6 +62,20 @@ It builds on what exists today:
 - [`coax/lib/text`](../../coax/lib/text)
 - [`coax/lib/json`](../../coax/lib/json)
 
+### The chapter's check
+
+- **Source:** the action-items walk-through plugin in
+  `openagents/plugins/examples/`, with its descriptor and tests.
+- **Trace:** fixture meeting notes with three action items go in; the
+  plugin returns exactly three items, one per action, in the order the notes
+  give them. The trace prints them byte for byte.
+- **Refusal:** in a should-not-fire case, notes with no action in them
+  return an empty list. The plugin asks for no grant, so a host call to read
+  a file is refused by the sandbox (chapter 39).
+- **Independent check:** the expected items for each fixture are written by
+  hand. The old tree's `plugin-action-items` crate at `coder-v1.0.0` runs on
+  the same notes and gives the same items.
+
 Planned paths: `openagents/plugins/examples/`.
 
 ## Sources

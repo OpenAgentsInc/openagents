@@ -66,6 +66,23 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | A Pylon's announcement | `openagents.pylon.v1` `Beacon` ([spec 27.1](../../docs/protocol/openagents-protocol-spec.md#271-openagentspylonv1)) | Nostr kind 30200, public (NIP-PYLON) | Spec sketch; no `.proto` file |
 | Service receipt and pool totals | `openagents.pylon.v1alpha1` `ServiceReceipt`, `PoolAggregate` ([`mesh.proto`](../../proto/openagents/pylon/v1alpha1/mesh.proto)) | Nostr kinds 3201 and 30201 | Schema file: a projection of NIP-PYLON's JSON. The signed JSON stays the authority |
 
+### The chapter's check
+
+- **Source:** a Pylon from the one-command install, a fake relay that
+  records events, the gateway, a fake Lightning payer and the controlled
+  clock.
+- **Trace:** the Pylon's kind 30200 beacon; a decision routed to it and
+  answered; a recompute of a sampled result on a second machine that
+  matches; a kind 3201 service receipt; and the payout record from chapter
+  58.
+- **Refusal:** a Pylon that returns a wrong answer on a sampled result gets
+  no receipt for it and is not paid. The gateway prints the job ID and `not
+  reproduced`, and stops routing to that Pylon.
+- **Independent check:** event IDs and signatures are recomputed by
+  [`event_reference.cjs`](../../coax/tests/nostr/event_reference.cjs), and
+  the receipt's bytes are decoded by Python's protobuf library against
+  [`mesh.proto`](../../proto/openagents/pylon/v1alpha1/mesh.proto).
+
 Planned paths: none. Pylons are [`psionic/lib/pylon`](../../psionic/lib/pylon).
 
 ## Sources

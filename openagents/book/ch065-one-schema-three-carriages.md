@@ -80,6 +80,21 @@ Where the schemas stand today:
 | Spec sketch | Drafted in the spec only. The NIP's JSON, written by a Coax library, is the definition today | Most of this book: `chat`, `capability`, `policy`, `run`, `trace`, `knowledge`, `extension`, `eval`, `xp`, `market`, `labor`, `payment`, `receipt` |
 | Planned | Named, not drafted | `openagents.sync.v1alpha1`, `openagents.session.log.v1alpha1`, `openagents.verse.doc.v1alpha1` |
 
+### The chapter's check
+
+- **Source:** the worked example's fixture: one `Release` message, its NIP
+  JSON, the signed event, and the message read back from that event.
+- **Trace:** byte for byte: the message, the JSON with amounts as decimal
+  strings, the event's ID and signature, and the message parsed back, equal
+  to the first.
+- **Refusal:** the event with one content byte changed fails its check over
+  the received bytes. JSON with an amount written as a number is refused at
+  parsing, and the reader names the field.
+- **Independent check:** the signed event matches the one written by
+  [`ext_release_vectors.py`](../../coax/tests/nostr/ext_release_vectors.py)
+  from NIP-01, BIP-340 and NIP-EXT, and Python's protobuf `json_format`
+  reads the same JSON to the same message.
+
 Planned paths: none. Schemas go in [`proto/`](../../proto).
 
 ## Sources

@@ -71,6 +71,24 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | A model request and its stream | `openagents.psionic.responses.v1alpha1` `CreateRequest`, `Response`, `StreamEvent` ([`responses.proto`](../../proto/openagents/psionic/responses/v1alpha1/responses.proto)); the wider package is `openagents.inference.v1` ([spec 16.2](../../docs/protocol/openagents-protocol-spec.md#162-openagentsinferencev1)) | HTTP, with a server-sent event stream | Schema file for the Psionic profile; the rest is a spec sketch. Each provider's request body is an external format |
 | Which route answered and what it cost | `openagents.decision.v1` `DecisionCall` ([spec 16.1](../../docs/protocol/openagents-protocol-spec.md#161-openagentsdecisionv1)); usage is in `openagents.common.v1` ([spec 9.9](../../docs/protocol/openagents-protocol-spec.md#99-usage)) | In the run journal (chapter 18) | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** the routing policy in
+  [`plan.coax`](../../coax/lib/gateway/plan.coax) and
+  [`rates.coax`](../../coax/lib/gateway/rates.coax), with fake providers
+  that replay the recorded streams in
+  [`coax/lib/gateway/fixtures/`](../../coax/lib/gateway/fixtures) and the
+  controlled clock.
+- **Trace:** a conversation call goes to Vertex first and records the route,
+  the time and the cost. The fake Vertex then answers that the account is
+  out of credits, and the next call fails over to OpenRouter and records
+  that route.
+- **Refusal:** with every route down, the call fails with an error that
+  lists each route tried and why. It never returns an empty answer.
+- **Independent check:** the cost of each call is worked out by hand from
+  the token counts in the recorded stream and the published rates, and
+  compared with the usage the provider reported.
+
 Planned paths: none. The gateway is [`coax/lib/gateway`](../../coax/lib/gateway).
 
 ## Sources

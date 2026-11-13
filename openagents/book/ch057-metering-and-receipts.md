@@ -60,6 +60,26 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Proof of payment | `openagents.payment.v1` `PaymentReceipt`, `PaymentEvidence` ([spec 26.5](../../docs/protocol/openagents-protocol-spec.md#265-openagentspaymentv1)) | With the receipt | Spec sketch; no `.proto` file |
 | Totals | `openagents.ledger.v1` `Entry`, `Statement` ([spec 26.6](../../docs/protocol/openagents-protocol-spec.md#266-openagentsledgerv1-and-openagentsbillingv1)) | HTTP | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** `pay/receipt-policy.coax` and `pay/call-meter.coax`, run on a
+  case of four paid calls to a fake x402 service with recorded answers: a
+  plain call, a call that fails after payment, a plugin that calls another
+  paid plugin, and a test call of our own.
+- **Trace:** under the controlled clock, the five receipts and the meter's
+  totals per release, per author and per day. Each receipt prints the
+  release hash, the price in millisats, the split and the payment proof, and
+  no request text. The failed call's receipt reads `refunded`. Our test call
+  is left out of the use totals and kept in the author totals.
+- **Refusal:** a receipt whose split does not add up to its price, or whose
+  signature does not verify, is not counted. The meter prints the receipt's
+  ID and `refused: split does not equal price` or `refused: bad signature`,
+  and the totals do not change.
+- **Independent check:** the totals, worked out by hand from the five
+  receipts and written in the case file, and a second meter of a few dozen
+  lines, written from spec 26.6 alone, that sums the same receipts and
+  prints the same totals.
+
 Planned paths: `pay/receipt-policy.coax` and `pay/call-meter.coax`, beside
 the speech meter in [`pay/voice-meter.coax`](../../pay/voice-meter.coax).
 

@@ -66,6 +66,21 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | How to reach a host | `openagents.reach.v1` ([`reach.proto`](../../proto/openagents/reach/v1/reach.proto), [spec 23.4](../../docs/protocol/openagents-protocol-spec.md#234-openagentsreachv1)) | Frames on a direct channel | Schema file; no product consumer |
 | Terminals and environments | `openagents.terminal.v1`, `openagents.environment.v1` ([spec 23.5](../../docs/protocol/openagents-protocol-spec.md#235-openagentsterminalv1), [spec 23.2](../../docs/protocol/openagents-protocol-spec.md#232-openagentsenvironmentv1)) | Nostr kind 3188 envelope, or a REACH frame | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** the computer field in `openagents/agent/computers.coax`, with
+  a fake paired host and a fake hosted computer, and the clock controlled.
+- **Trace:** a phone asks the paired computer to fix an issue. The owner's
+  policy allows it, and the plan names that computer. With the computer
+  off, the plan names a hosted computer and shows its cost before it
+  starts.
+- **Refusal:** a phone that asks for more than the owner's policy allows is
+  refused by the host, with a reason that names the policy. Nothing runs,
+  and the phone's record holds no key material.
+- **Independent check:** the host request JSON is checked by hand against
+  NIP-HOST's examples. The hosted cost shown equals the rate times the
+  controlled clock's run time, worked by hand.
+
 Planned paths: `openagents/agent/computers.coax`.
 
 ## Sources

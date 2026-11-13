@@ -61,6 +61,22 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | A task and its result | `openagents.exec.v1` `ExecRequest`, `ExecResult` ([spec 17.2](../../docs/protocol/openagents-protocol-spec.md#172-openagentsexecv1)) | Nostr kinds 25920 and 26920, encrypted (NIP-CJ); HTTP `POST /v1/jobs` | Spec sketch; no `.proto` file |
 | Coder's session log and stream records | Planned `openagents.session.log.v1alpha1`; `coder.observability`, `coder.reply-stream`, `coder.route` ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), steps C1 to C3) | Files and a line stream | Hand-written JSON today. The compliance plan moves each to one codec |
 
+### The chapter's check
+
+- **Source:** the adapter in `openagents/agent/members/coder.coax`, with a
+  fake engine that replays a recorded Coder session on a fixture
+  repository.
+- **Trace:** "fix the typo in the README" routes to Coder with a grant for
+  the fixture repository. The result shows the change, the checks that
+  ran and that they passed. The fixture remote receives one push.
+- **Refusal:** a recorded run whose checks fail returns a red result that
+  names the failing check, and the fixture remote is unchanged. A task
+  with no repository grant is refused before Coder starts.
+- **Independent check:** the fixture repository's own tests, run directly,
+  and `git log` on the fixture remote. The hand-labeled rows that separate
+  "work on my repository" from a question about code are scored by chapter
+  16's eval tool.
+
 Planned paths: `openagents/agent/members/coder.coax`.
 
 ## Sources

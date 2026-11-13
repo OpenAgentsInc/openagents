@@ -64,6 +64,24 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Approval of one action | `openagents.policy.v1` `ApprovalRequest`, `ApprovalDecision` ([spec 19.2](../../docs/protocol/openagents-protocol-spec.md#192-openagentspolicyv1)) | Nostr: a private record in a kind 3188 envelope (NIP-POL) | Spec sketch; no `.proto` file |
 | What an agent may do in its owner's name | `openagents.account.v1alpha1` `GrantRequest`, `Grant` ([`agents.proto`](../../proto/openagents/account/v1alpha1/agents.proto)) | HTTP, as binary protobuf | In use: the generated codec `coax/web/api/agent-wire.coax` ([chapter 8](ch008-accounts-and-login.md)) |
 
+### The chapter's check
+
+- **Source:** the grant records in `openagents/agent/grants.coax` and the
+  shared approval step, with a fake member whose one effect writes a file.
+- **Trace:** installing the member leaves `state grants` empty. A plan
+  that needs the write opens the approval step, and `tree` shows what will
+  happen, to what file and the cost. `tap approval.approve` lets the
+  member write the file once, and `logs` records the grant and the
+  approval as separate lines.
+- **Refusal:** a plan that asks for more than the grant gives returns a
+  refusal result with its reason, such as `refused: no grant for
+  files.write`, and the file is not written. A paired phone that asks to
+  widen the owner's policy gets the same kind of refusal.
+- **Independent check:** chapter 8's existing checks on the agent grant
+  codec, `coax/web/api/agent-wire.coax`, show an agent can't widen its own
+  grant. The approval step's text in `tree` is the same on web and on the
+  iPhone simulator.
+
 Planned paths: `openagents/agent/grants.coax`.
 
 ## Sources

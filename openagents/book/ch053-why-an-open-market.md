@@ -57,6 +57,19 @@ It builds on what exists today:
 
 - [`nostr/nips/openagents/README.md`](../../nostr/nips/openagents/README.md)
 
+### The chapter's check
+
+- **Source:** this chapter has no code. Its one mechanism is the part's
+  test, and it rests on chapters 54 and 56: a release anyone can sign, and a
+  paid call.
+- **Trace:** chapter 54's check, which publishes a stranger's release to a
+  fake relay, then chapter 56's, where a second key pays a priced call on a
+  fake Lightning wallet and the first key's author is paid.
+- **Refusal:** chapter 54's refusal, a release signed by a key that is not
+  the package root.
+- **Independent check:** in the combined trace, no step waits on an
+  approval from us: the trace has no review step between publish and pay.
+
 Planned paths: none. This chapter states the case for the market; chapters 54
 to 61 build it.
 

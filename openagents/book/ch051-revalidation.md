@@ -61,6 +61,23 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | --- | --- | --- | --- |
 | Quarantine and revocation | `openagents.extension.v1` `Revocation`, `Checkpoint` ([spec 20.2](../../docs/protocol/openagents-protocol-spec.md#202-openagentsextensionv1)) | Nostr kinds 3185 and 30185, public (NIP-EXT) | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** the watcher and canary schedule in
+  `openagents/eval/revalidate.coax`.
+- **Trace:** an adopted fixture claim; the fake model service changes its
+  recorded answers behind the same name. After `clock advance` past the
+  canary's interval, the canary runs, the watcher prints which key part
+  changed, and the default's last-evidence date updates.
+- **Refusal:** when the canary's verdict no longer holds, the member is
+  quarantined and a signed revocation cites the change and the run. A
+  default whose evidence is older than the policy allows is shown as stale.
+- **Independent check:** the expected verdicts for both sets of recorded
+  answers are written by hand, and the revocation reads through the existing
+  EXT reader,
+  [`coax/lib/nostr/ext/install.coax`](../../coax/lib/nostr/ext/install.coax),
+  which then refuses the release with `EXT_REVOKED`.
+
 Planned paths: `openagents/eval/revalidate.coax`.
 
 ## Sources

@@ -66,6 +66,23 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | A realm, character or asset release | `openagents.extension.v1` `Release`, `Listing` ([spec 20.2](../../docs/protocol/openagents-protocol-spec.md#202-openagentsextensionv1)) | Nostr kinds 3184 and 30184, public | Spec sketch; no `.proto` file |
 | A realm document and its edits | `openagents.verse.doc.v1alpha1` ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step E6) | HTTP | Built in SQL; `metaverse-engine/editor/doc.coax` and `edit.coax` are the client's one codec, and one fixture of stored bytes and SHA-256 checks both |
 
+### The chapter's check
+
+- **Source:** `openagents/registry/realms.coax`, run on a case that
+  publishes a realm, publishes a fork that depends on it, and buys an
+  upgrade in place, with a fake x402 service, a fake Lightning payer and the
+  controlled clock.
+- **Trace:** the two kind 3184 releases, the purchase's receipt with the
+  split between the fork's maker and the original's maker, and each maker's
+  payout record from chapter 58.
+- **Refusal:** a purchase with too little in the wallet is refused and
+  nothing is sent. A fork whose dependency hash matches no published release
+  is refused at publishing.
+- **Independent check:** the release events match ones written by
+  [`ext_release_vectors.py`](../../coax/tests/nostr/ext_release_vectors.py),
+  and the split is worked out by hand from the price and the recorded
+  policy.
+
 Planned paths: `openagents/registry/realms.coax`.
 
 ## Sources

@@ -54,6 +54,22 @@ It builds on what exists today:
 - [`coax/lib/nostr/att.coax`](../../coax/lib/nostr/att.coax)
 - [`coax/lib/nostr/nip58.coax`](../../coax/lib/nostr/nip58.coax)
 
+### The chapter's check
+
+- **Source:** `openagents/registry/reputation.coax`, run on a fixed set of
+  recorded public events: one plugin with two claims, checks from four keys,
+  a validation, receipts and one honest dispute.
+- **Trace:** the reader's summary for the plugin and for each person, line
+  by line: each claim with its count of distinct signers, whose tests
+  validated it, whether it is disputed, and when its evidence last ran, read
+  from the controlled clock.
+- **Refusal:** three checks signed by keys that the written rule treats as
+  one signer count once. A validation that runs only the author's own tests
+  is not counted. The reader lists each set-aside record with its reason.
+- **Independent check:** a second reader, written in another language from
+  the published rules alone, prints the same summary from the same events,
+  and the counts in the case file are worked out by hand.
+
 Planned paths: `openagents/registry/reputation.coax`.
 
 ## Sources

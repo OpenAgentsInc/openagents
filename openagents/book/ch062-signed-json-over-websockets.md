@@ -86,6 +86,24 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | A private record | `envelope.v1alpha1` `ArtifactEnvelope` ([spec 8.3](../../docs/protocol/openagents-protocol-spec.md#83-encrypted-carriages)) | Nostr kind 3188, encrypted with NIP-44 | Spec sketch; no `.proto` file. `coax/lib/nostr/envelope.coax` writes the JSON |
 | Any record in this book | One message in `proto/` ([spec 8.1](../../docs/protocol/openagents-protocol-spec.md#81-the-rule)) | Nostr, HTTP or binary frames | See each chapter's table and [chapter 65](ch065-one-schema-three-carriages.md) |
 
+### The chapter's check
+
+- **Source:** the short tour: one event, signed with a fixed test key and a
+  fixed `created_at`, published to two local relays from
+  [`relay_server.coax`](../../nostr/relay/relay_server.coax) and read back
+  from each.
+- **Trace:** the event's JSON, `["OK", <id>, true, ""]` from both relays,
+  then a `REQ` to each that returns the same event bytes followed by `EOSE`.
+- **Refusal:** the same event with one content byte changed after signing.
+  Each relay answers `false` with `invalid: event id does not match its
+  content`. With the ID fixed up and the old signature kept, it answers
+  `invalid: bad signature`.
+- **Independent check:** the ID and signature are recomputed by
+  [`event_reference.cjs`](../../coax/tests/nostr/event_reference.cjs) and
+  [`event_sign_vectors.py`](../../coax/tests/nostr/event_sign_vectors.py),
+  which share no code with Coax, and the relay's answers by
+  [`relay_rust_differential.py`](../../coax/tests/nostr/relay_rust_differential.py).
+
 Planned paths: none. The carriage is [`coax/lib/nostr`](../../coax/lib/nostr)
 and the relay in [`nostr/relay`](../../nostr/relay).
 

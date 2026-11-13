@@ -64,6 +64,22 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Manifest and operation descriptor | `openagents.extension.v1` `Manifest`, `OperationDescriptor` ([spec 20.2](../../docs/protocol/openagents-protocol-spec.md#202-openagentsextensionv1)) | Inside a release event (chapter 54) | Spec sketch; no `.proto` file. `coax/lib/nostr/ext` handles the NIP's JSON. Coder's plugin manifests are plain files or signed NIP-78 events today |
 | Skill listing | `openagents.skill.v1` `Listing` ([spec 20.3](../../docs/protocol/openagents-protocol-spec.md#203-openagentsskillv1)) | Nostr kind 30188 (NIP-SKILL) | Spec sketch; no `.proto` file |
 
+### The chapter's check
+
+- **Source:** a plugin manifest with one operation descriptor, under
+  `openagents/plugins/`, and the owned registration that comes with it.
+- **Trace:** load the manifest, enable the plugin and print the front's
+  routes: the plugin's operation appears with its name, summary, input and
+  output types. Turn the plugin off and print the routes again: its
+  operation, hooks and commands are gone, and its state reads `stopping`
+  then `installed`.
+- **Refusal:** a manifest whose operation has no input type is refused with
+  the field named, and nothing is registered.
+- **Independent check:** Coder's existing plugin,
+  [`coder/plugins/hello`](../../coder/plugins/hello), read through the new
+  manifest reader, gives the same operation that
+  `coder/tui/plugins.coax` registers for it today.
+
 Planned paths: `openagents/plugins/`.
 
 ## Sources

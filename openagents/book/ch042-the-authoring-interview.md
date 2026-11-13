@@ -64,6 +64,21 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | The drafted test set and plugin | `openagents.eval.v1` `EvalDraft` ([spec 21.1](../../docs/protocol/openagents-protocol-spec.md#211-openagentsevalv1)) | In the conversation result (chapter 19) | Spec sketch; no `.proto` file |
 | A login to another service | `openagents.vault.v1` `VaultObject` ([spec 15.3](../../docs/protocol/openagents-protocol-spec.md#153-openagentsvaultv1)) | Nostr: ciphertext in a kind 3188 envelope (NIP-VAULT) | Spec sketch; no `.proto` file. `coax/lib/nostr/vault.coax` builds the `user` tier |
 
+### The chapter's check
+
+- **Source:** the interview program in `openagents/eval/author/` and the
+  offer the front makes when no member fits.
+- **Trace:** on a fake model with recorded answers, `type composer "Turn my
+  meeting notes into Linear tickets."`, then `tap composer.send`. `tree`
+  shows the offer to build a plugin. The case answers each question, and
+  `state` prints the drafted test set: should-fire cases from "one ticket per
+  action" and should-not-fire cases from what it shouldn't do.
+- **Refusal:** with the test set not yet approved, `tap interview.run`
+  answers `interview.run can't be pressed now`, and nothing runs.
+- **Independent check:** the package the interview writes is measured by
+  the two-arm runner of chapter 45 with no changes, and its cases match a
+  test set written by hand from the same answers.
+
 Planned paths: `openagents/eval/author/`.
 
 ## Sources
