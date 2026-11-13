@@ -29,6 +29,9 @@ These four issues are one change to how a room holds and tells its entities, so 
 - Familiars and arrows in flight are rows too. What happened (a blow, a fall, a shot loosed, a familiar's answer) is an `e` entry of the `D` frame on the reliable event class.
 - `g2 g3 h2 h3`, `m1` to `m8`, `M1` to `M7`, `U1` and `u1` are deleted with their codecs, profiles and allowlist lines. Commands a player sends become `E` (use) kinds. The projectile frames `F a d` stay.
 - The wire version rises (5 to 6), so a page and a room on either side of the change never meet.
+- **Built in two changes.** The guard and the monsters are on `main` at wire 6 (cd7854a3a5): `g2 g3 h2 h3` are gone, and what the two did are `e guard` and `e mon` entries. Familiars and the kit (`m1` to `m8`, `M1` to `M7`, `U1`, `u1`) follow at wire 7.
+- **`e guard` and `e mon` are not in `WIRE_OUTCOMES`.** That list is the town's: a page that counts fewer of them asks for the town again (`O`). A creature's entry is kept another way (`egc_kept`): it has the outcomes' room in a tick's events, is outside the cue budget, and goes to the seats near and to the seat it names.
+- **A player's arrow keeps `F a d`.** A launch with a deterministic flight is one frame at each end; a row a tick would cost more and be less exact. A monster's arrow is the `e mon` loosed entry.
 
 **Prediction (#13277, engine half built).** `aethyr/net/predict.coax` keeps a page's inputs by number, the room's ACK and the re-run, and a ledger of actions that wait for the room. `aethyr/net/interp.coax` is the interpolation buffer, its clock and the easing of corrections. A realm supplies its step and its row's fields.
 
