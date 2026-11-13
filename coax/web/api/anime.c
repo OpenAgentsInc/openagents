@@ -83,7 +83,7 @@ static void finish(const char *id, int status) {
 }
 
 static void answer(const request *q, const char *prepared, const char *id, long timeout_ms, bool animation) {
-  const char *model = configured("OA_ANIME_MODEL", configured("OA_NPC_MODEL", "gemini-3.8-flash"));
+  const char *model = configured("OA_ANIME_MODEL", configured("OA_NPC_MODEL", "gemini-4-hydrogen"));
   char *got = NULL; size_t got_n = 0;
   long http = npc_ask_model_twice_n("OA_ANIME_URL", model, prepared, timeout_ms, &got, &got_n);
   int status = (int)aar_upstream(http);

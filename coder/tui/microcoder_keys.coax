@@ -12,7 +12,7 @@
 // GOOGLE_CLOUD_LOCATION), read the way that engine reads them: a variable
 // already in this process's environment wins over the file. Without them,
 // ~/work/.secrets/vertex-sa-inference.json, openagentsgemini, global. The
-// owner's --model (gemini-4-argon, gemini-4-carbon, gemini-3.8-flash; Flash
+// owner's --model (gemini-4-argon, gemini-4-carbon, gemini-4-hydrogen; Hydrogen
 // by default) goes to Vertex's native streamGenerateContent, which reports
 // thoughts and cached tokens; recorded answers (GW_REPLAY) stay on the
 // OpenAI endpoint they were recorded from.
@@ -142,7 +142,7 @@ mk_vertex :: (k: [] MkKeys) -> string {
   return gw_vertex_token_file(k[0].vx[..], cast(string) k[0].gcloud[0..<k[0].ngc], cast(string) k[0].keyfile[0..<k[0].nkf], cast(string) k[0].config[0..<k[0].ncf]);
 }
 
-// The Vertex model for the owner's --model: a Gemini name without "google/", else Flash.
+// The Vertex model for the owner's --model: a Gemini name without "google/", else Hydrogen.
 mk_vertex_model :: (model: string) -> string {
   m := gw_gemini_model(model);
   if m.count > 7 && m[0..<7] == "gemini-" { return m; }
@@ -280,7 +280,7 @@ mk_facts :: (h: [] MkTurns, os: string, cwd: string, command_seconds: int, o: []
   mk_vertex_place(k[..], "", "");
   #assert k[0].vx[0].project == GW_VERTEX_PROJECT && k[0].vx[0].location == GW_VERTEX_LOCATION;
   #assert mk_vertex_model("gemini-4-carbon") == "gemini-4-carbon" && mk_vertex_model("google/gemini-4-argon") == "gemini-4-argon";
-  #assert mk_vertex_model("") == "gemini-3.8-flash" && mk_vertex_model("claude-sonnet-5-5") == "gemini-3.8-flash";
+  #assert mk_vertex_model("") == "gemini-4-hydrogen" && mk_vertex_model("claude-sonnet-5-5") == "gemini-4-hydrogen";
   p: [1] GwPlan;
   mk_plan_limits(p[..], "low");
   #assert p[0].retries == MK_RETRIES && p[0].first_limit_ms == 90000 && p[0].idle_limit_ms == MK_IDLE_LIMIT_MS;

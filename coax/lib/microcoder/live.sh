@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Live Microcoder smoke on Vertex gemini-3.8-flash (falling back to the
+# Live Microcoder smoke on Vertex gemini-4-hydrogen (falling back to the
 # Gemini API and OpenRouter): "what is 2+2" in one step, and "how many Swift
 # files are in this folder" in one command on a scratch folder of three. Credentials as in
 # coax/lib/gateway/live.sh; skipped when there is none. Never prints a key.

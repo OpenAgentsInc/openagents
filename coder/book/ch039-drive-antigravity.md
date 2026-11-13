@@ -80,8 +80,8 @@ The Antigravity CLI (agy) was not found. Install it with: curl -fsSL https://ant
 ## Models, effort and mode
 
 `session/new` lists models (`models.availableModels`, such as
-`gemini-3.8-flash-low`) and config options (`model` with base names such as
-`gemini-3.8-flash`, and `thought_level` low, medium or high).
+`gemini-4-hydrogen-low`) and config options (`model` with base names such as
+`gemini-4-hydrogen`, and `thought_level` low, medium or high).
 
 - `--model` that agy lists goes by `session/set_model`. A base model name
   goes by `session/set_config_option` on the `model` option. Anything else

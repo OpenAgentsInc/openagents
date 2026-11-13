@@ -17,7 +17,7 @@
 GW_GEMINI_BUDGET :: 4;           // Gateway.flags: a Gemini 2.5 model takes a token budget, not a level
 GW_GEMINI_KEY_ENV :: "GEMINI_API_KEY";
 GW_GEMINI_HOST :: "https://generativelanguage.googleapis.com";
-GW_GEMINI_FLASH :: "gemini-3.8-flash";
+GW_GEMINI_FLASH :: "gemini-4-hydrogen";
 
 gw_gemini_model :: (model: string) -> string {
   if model.count > 7 && model[0..<7] == "google/" { return cast(string) model[7..<model.count]; }
@@ -109,14 +109,14 @@ gw_gemini :: (model: string, streamed: bool, url_buf: [] u8) -> Gateway {
   msgs[0] = GwMessage.{role = "user", text = "Count from one to five."};
   msgs[1] = GwMessage.{role = "user", text = "One word per line."};
   msgs[2] = GwMessage.{role = "assistant", text = "One"};
-  g := gw_gemini("google/gemini-3.8-flash", true, ub[..]);
-  #assert g.url == "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse";
+  g := gw_gemini("google/gemini-4-hydrogen", true, ub[..]);
+  #assert g.url == "https://generativelanguage.googleapis.com/v1beta/models/gemini-4-hydrogen:streamGenerateContent?alt=sse";
   #assert g.key_header == "x-goog-api-key" && g.scheme == "" && g.key_env == "GEMINI_API_KEY" && g.wire == GW_WIRE_GEMINI;
-  req := GwRequest.{model = "gemini-3.8-flash", system = "You are terse.", messages = msgs[..], max_tokens = 100, effort = "low", schema = "{\"type\":\"object\"}"};
+  req := GwRequest.{model = "gemini-4-hydrogen", system = "You are terse.", messages = msgs[..], max_tokens = 100, effort = "low", schema = "{\"type\":\"object\"}"};
   body := gw_translate(g, req, out[..], why[..]);
   #assert body == "{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"Count from one to five.\"},{\"text\":\"One word per line.\"}]},{\"role\":\"model\",\"parts\":[{\"text\":\"One\"}]}],\"systemInstruction\":{\"parts\":[{\"text\":\"You are terse.\"}]},\"generationConfig\":{\"maxOutputTokens\":100,\"responseMimeType\":\"application/json\",\"responseJsonSchema\":{\"type\":\"object\"},\"thinkingConfig\":{\"includeThoughts\":true,\"thinkingLevel\":\"low\"}}}";
   #assert json_valid(body);
-  #assert gw_gemini("gemini-3.8-flash", false, ub[..]).url == "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent";
+  #assert gw_gemini("gemini-4-hydrogen", false, ub[..]).url == "https://generativelanguage.googleapis.com/v1beta/models/gemini-4-hydrogen:generateContent";
 }
 
 #test "Gemini 2.5 budgets: none turns thoughts off, no effort keeps the model's default" {

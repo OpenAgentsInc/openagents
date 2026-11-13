@@ -6,7 +6,7 @@
 // ask, base and full (one plain call with the whole context) print one JSON line with the
 // answer, its score against --expect N (OOLONG's 0.75^|error|, in thousandths), the calls,
 // tokens, price on the rates card and time; --log FILE appends it there, --trace FILE writes
-// the run's turns; --must-score exits 3 unless the answer's number is --expect. Models: --root-model (gemini-4-argon), --sub-model (gemini-3.8-flash),
+// the run's turns; --must-score exits 3 unless the answer's number is --expect. Models: --root-model (gemini-4-argon), --sub-model (gemini-4-hydrogen),
 // --root-effort and --sub-effort (low). Limits: --max-depth 1, --max-turns 20, --max-calls 400,
 // --max-usd 2 (a run's cap, priced on the card), --max-minutes 30.
 //

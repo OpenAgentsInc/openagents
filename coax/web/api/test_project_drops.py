@@ -246,7 +246,7 @@ check("drops: the model reads the kept files from the bucket, with the schema an
       and not any("cover" in json.dumps(p) and "fileData" in p for p in parts)
       and asked["generationConfig"]["responseMimeType"] == "application/json" and "verse-quadruped" in asked["systemInstruction"]["parts"][0]["text"], asked)
 check("drops: the draft is kept, its slug made a slug", status == 200 and drafted["status"] == "ready"
-      and drafted["draft"]["card"]["slug"] == "planetary-villa" and drafted["model"] == "gemini-3.8-flash", drafted)
+      and drafted["draft"]["card"]["slug"] == "planetary-villa" and drafted["model"] == "gemini-4-hydrogen", drafted)
 check("drops: and read back", dcall("GET", f"/api/drops/{d}/draft", cookie=jar)[1]["draft"]["roadmap"]["milestones"][0]["title"] == "Flowers")
 check("drops: someone else can't read or start it", dcall("GET", f"/api/drops/{d}/draft", cookie=mjar)[0] == 404
       and dcall("POST", f"/api/drops/{d}/draft", {}, cookie=mjar)[0] == 404)

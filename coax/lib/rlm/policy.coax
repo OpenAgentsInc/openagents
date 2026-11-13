@@ -83,11 +83,11 @@ rlm_stop_name :: (v: int) -> string #effects(all) {
 // ---------------------------------------------------------------- checks
 
 #test "the floor: input tokens rounded up at the card's input price, -1 off the card" {
-  // Flash on Vertex: $1.50 a million input tokens
-  #assert rlm_floor_micros("vertex", "gemini-3.8-flash", 4000000) == 1500000;
-  #assert rlm_floor_micros("vertex", "gemini-3.8-flash", 4) == 2;          // one token: 1.5 micro-USD, rounded up
-  #assert rlm_floor_micros("vertex", "gemini-3.8-flash", 5) == 3;          // two tokens: 3
-  #assert rlm_floor_micros("vertex", "gemini-3.8-flash", 0) == 0;
+  // Hydrogen on Vertex: $1.50 a million input tokens
+  #assert rlm_floor_micros("vertex", "gemini-4-hydrogen", 4000000) == 1500000;
+  #assert rlm_floor_micros("vertex", "gemini-4-hydrogen", 4) == 2;          // one token: 1.5 micro-USD, rounded up
+  #assert rlm_floor_micros("vertex", "gemini-4-hydrogen", 5) == 3;          // two tokens: 3
+  #assert rlm_floor_micros("vertex", "gemini-4-hydrogen", 0) == 0;
   #assert rlm_floor_micros("vertex", "gemini-4-argon", 400000) == 400000;  // 100,000 tokens at $4
   #assert rlm_floor_micros("vertex", "gemini-4-argon", 3) == 4;            // one token at $4: 4 micro-USD exactly
   #assert rlm_floor_micros("vertex", "no-such-model", 10) == -1;
@@ -106,13 +106,13 @@ rlm_stop_name :: (v: int) -> string #effects(all) {
 #test "money: spent plus the call's floor may reach the cap but not pass it; an unpriced model is refused under a cap" {
   l := RlmLimits.{max_usd_micros = 100};
   s := RlmSpent.{usd_micros = 98};
-  // 4 bytes on Flash: a floor of 2 micro-USD; 98 + 2 = 100 fits
-  #assert rlm_may_call(l, s, 0, "vertex", "gemini-3.8-flash", 4) == RLM_OK;
+  // 4 bytes on Hydrogen: a floor of 2 micro-USD; 98 + 2 = 100 fits
+  #assert rlm_may_call(l, s, 0, "vertex", "gemini-4-hydrogen", 4) == RLM_OK;
   // 5 bytes: a floor of 3; 101 passes the cap
-  #assert rlm_may_call(l, s, 0, "vertex", "gemini-3.8-flash", 5) == RLM_STOP_COST;
+  #assert rlm_may_call(l, s, 0, "vertex", "gemini-4-hydrogen", 5) == RLM_STOP_COST;
   #assert rlm_may_call(l, s, 0, "vertex", "unknown-model", 1) == RLM_STOP_UNPRICED;
   s.usd_micros = 101;
-  #assert rlm_may_call(l, s, 0, "vertex", "gemini-3.8-flash", 0) == RLM_STOP_COST;
+  #assert rlm_may_call(l, s, 0, "vertex", "gemini-4-hydrogen", 0) == RLM_STOP_COST;
   // the smallest cap is a cap
   #assert rlm_may_call(RlmLimits.{max_usd_micros = 1}, RlmSpent.{}, 0, "vertex", "unknown-model", 1) == RLM_STOP_UNPRICED;
 }

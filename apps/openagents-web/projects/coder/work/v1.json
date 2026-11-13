@@ -74,7 +74,7 @@
       ],
       "acceptance": [
         "The recorded Vertex fixture parses",
-        "A live smoke answers with gemini-3.8-flash when a credential is present and skips otherwise"
+        "A live smoke answers with gemini-4-hydrogen when a credential is present and skips otherwise"
       ],
       "blocked_by": [
         "gw-chat"

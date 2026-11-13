@@ -249,11 +249,11 @@ GY_T_TIER :: "{\"schema\":\"openagents.ai-call.v1\",\"app\":\"everglade-desktop\
   n = gy_write_call(tier, out[..]);
   #assert cast(string) out[0..<n] == GY_T_TIER;
   // An Antigravity coding turn: the issue, its thought tokens and the card's row it is priced at; no modelUsage.
-  agy := GyCall.{at = 100, app = "everglade-desktop", purpose = "issue.code", harness = "antigravity", model = "gemini-3.8-flash-high", issue = 7,
-    session = "s", has_session = true, turn = 0, output_tokens = 12, thought_tokens = 8, cost_priced_as = "gemini-3.8-flash", has_cost_priced_as = true,
+  agy := GyCall.{at = 100, app = "everglade-desktop", purpose = "issue.code", harness = "antigravity", model = "gemini-4-hydrogen-high", issue = 7,
+    session = "s", has_session = true, turn = 0, output_tokens = 12, thought_tokens = 8, cost_priced_as = "gemini-4-hydrogen", has_cost_priced_as = true,
     cost_usd_e6 = 340, session_cost_usd_e6 = 340, duration_ms = 1000, duration_api_ms = 0, model_turns = 1, prompt_bytes = 0, has_caches = true};
   n = gy_write_call(agy, out[..]);
-  #assert cast(string) out[0..<n] == "{\"schema\":\"openagents.ai-call.v1\",\"at\":100,\"app\":\"everglade-desktop\",\"purpose\":\"issue.code\",\"harness\":\"antigravity\",\"model\":\"gemini-3.8-flash-high\",\"issue\":7,\"session\":\"s\",\"turn\":0,\"input_tokens\":0,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0,\"output_tokens\":12,\"thought_tokens\":8,\"cost_priced_as\":\"gemini-3.8-flash\",\"cost_usd_e6\":340,\"session_cost_usd_e6\":340,\"duration_ms\":1000,\"duration_api_ms\":0,\"model_turns\":1,\"prompt_bytes\":0,\"caches\":\"\"}";
+  #assert cast(string) out[0..<n] == "{\"schema\":\"openagents.ai-call.v1\",\"at\":100,\"app\":\"everglade-desktop\",\"purpose\":\"issue.code\",\"harness\":\"antigravity\",\"model\":\"gemini-4-hydrogen-high\",\"issue\":7,\"session\":\"s\",\"turn\":0,\"input_tokens\":0,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0,\"output_tokens\":12,\"thought_tokens\":8,\"cost_priced_as\":\"gemini-4-hydrogen\",\"cost_usd_e6\":340,\"session_cost_usd_e6\":340,\"duration_ms\":1000,\"duration_api_ms\":0,\"model_turns\":1,\"prompt_bytes\":0,\"caches\":\"\"}";
   // A modelUsage that is not an object, or too long, is left out; a line that does not fit is not written.
   turn.model_usage = "[]"; n = gy_write_call(turn, out[..]); #assert n > 0 && !gy_has(cast(string) out[0..<n], "model_usage");
   #assert gy_write_call(tier, out[0..<40]) == 0;

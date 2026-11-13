@@ -374,7 +374,7 @@ gw_plan_stop :: (p: [] GwPlan) {
 
 #test "an attempt's log line names the gateway, model, outcome and numbers, and has nowhere to put the prompt" {
   buf: [512] u8;
-  e := GwAttemptLog.{gateway = "vertex", model = "google/gemini-3.8-flash", outcome = GW_OUT_BENCHED, status = 401, first_ms = -1, latency_ms = 120, cost_usd_micros = -1};
+  e := GwAttemptLog.{gateway = "vertex", model = "google/gemini-4-hydrogen", outcome = GW_OUT_BENCHED, status = 401, first_ms = -1, latency_ms = 120, cost_usd_micros = -1};
   line := gw_attempt_line(e, buf[..]);
-  #assert line == "gateway=vertex model=google/gemini-3.8-flash outcome=benched status=401 first_ms=-1 ms=120 in=0 out=0 card_usd_micros=0 msats=0 cost_usd_micros=-1";
+  #assert line == "gateway=vertex model=google/gemini-4-hydrogen outcome=benched status=401 first_ms=-1 ms=120 in=0 out=0 card_usd_micros=0 msats=0 cost_usd_micros=-1";
 }

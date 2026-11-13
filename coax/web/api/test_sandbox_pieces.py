@@ -47,7 +47,7 @@ def make(sentence, answer=None, key=None):
 
 
 status, a = make("a flock of birds follows me", {"piece": "flock", "count": 9, "kind": "crow"})
-check("a sentence makes the piece the model picked, with its fields", status == 200 and a == {"piece": "flock", "count": 9, "kind": "crow", "model": "gemini-3.8-flash"}, a)
+check("a sentence makes the piece the model picked, with its fields", status == 200 and a == {"piece": "flock", "count": 9, "kind": "crow", "model": "gemini-4-hydrogen"}, a)
 sent = piece_seen[-1]["body"]
 check("the service's token goes with it", piece_seen[-1]["auth"] == "Bearer test-token")
 check("the sentence is the model's only words from the visitor", sent["contents"] == [{"role": "user", "parts": [{"text": "a flock of birds follows me"}]}], sent["contents"])
@@ -80,13 +80,13 @@ for i, n in enumerate(names):
 check("the server's catalogue is the page's (metaverse/setpiece.coax)", same, cat)
 
 status, a = make("forty blue bats", {"piece": "flock", "count": 40, "kind": "bat", "colour": "blue", "size": "large"})
-check("a count is held to the piece's range, and fields it doesn't have are left out", status == 200 and a == {"piece": "flock", "count": 12, "kind": "bat", "model": "gemini-3.8-flash"}, a)
+check("a count is held to the piece's range, and fields it doesn't have are left out", status == 200 and a == {"piece": "flock", "count": 12, "kind": "bat", "model": "gemini-4-hydrogen"}, a)
 status, a = make("a grove of palms", {"piece": "grove", "kind": "palm", "count": 2.6})
 check("a kind not the piece's is its default; a count is rounded and held", status == 200 and a["kind"] == "round" and a["count"] == 3 and a["size"] == "medium", a)
 status, a = make("lanterns please", {"piece": "lanterns"})
-check("missing fields are the piece's defaults", status == 200 and a == {"piece": "lanterns", "count": 8, "colour": "orange", "size": "medium", "model": "gemini-3.8-flash"}, a)
+check("missing fields are the piece's defaults", status == 200 and a == {"piece": "lanterns", "count": 8, "colour": "orange", "size": "medium", "model": "gemini-4-hydrogen"}, a)
 status, a = make("a little pond", {"piece": "pond", "size": "small", "count": 5})
-check("a pond has a size only", status == 200 and a == {"piece": "pond", "size": "small", "model": "gemini-3.8-flash"}, a)
+check("a pond has a size only", status == 200 and a == {"piece": "pond", "size": "small", "model": "gemini-4-hydrogen"}, a)
 status, a = make("build me a castle", {"piece": "none"})
 check("nothing in the catalogue fits: a 422", status == 422 and a["error"] == "none fit", a)
 status, a = make("a dragon", {"piece": "dragon", "count": 1})

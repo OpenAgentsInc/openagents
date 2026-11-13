@@ -420,9 +420,11 @@ static void chat_end(long long id, const char *status, const char *answer, const
 
 // A Gemini model: the turn runs Microcoder with the repo tool host (chat-micro.coax), which needs the repo service.
 static bool chat_gemini(const char *m) {
-  return !strcmp(m, "google/gemini-3.8-flash") || !strcmp(m, "google/gemini-4-argon") || !strcmp(m, "google/gemini-4-carbon");
+  return !strcmp(m, "google/gemini-4-hydrogen") || !strcmp(m, "google/gemini-4-argon") || !strcmp(m, "google/gemini-4-carbon");
 }
+// A turn asked of Gemini 3.8 Flash before it was replaced (#13479) runs on Gemini 4 Hydrogen.
 static const char *chat_model(const char *m) {
+  if (!strcmp(m, "google/gemini-3.8-flash")) return "google/gemini-4-hydrogen";
   return !strcmp(m, "claude-haiku-5-5") || !strcmp(m, "claude-sonnet-5-5") || chat_gemini(m) ? m : "claude-opus-5-5";
 }
 
@@ -487,7 +489,7 @@ static void chat_turn(const char *next) {
   }
   if (mkdir(dir, 0700) || mkdir(home, 0700) || mkdir(cfg, 0700)) { chat_end(id, "failed", "\"\"", "\"the runner could not make a work directory\"", 0, false); goto out; }
   // the credential: the asker's own, else ours
-  bool gemini = chat_gemini(model);
+  bool gemini = chat_gemini(chat_model(model));
   if (gemini && !chat_service()) { chat_end(id, "failed", "\"\"", "\"The Gemini agent reads the code through the repository service, which isn't connected yet. Pick a Claude model.\"", 0, false); goto out; }
   if (!gemini && !turn_credential(next)) { chat_end(id, "failed", "\"\"", "\"Your saved key could not be opened. Save it again under KEY.\"", 0, false); goto out; }
   // the session: put back where the CLI looks for it

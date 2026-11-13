@@ -570,9 +570,9 @@ gw_replay_provider :: (r: [] GwReplay) -> string { return cast(string) r[0].prov
   msgs[0] = GwMessage.{role = "user", text = "say \"hi\""};
   msgs[1] = GwMessage.{role = "assistant", text = "hi"};
   g := Gateway.{name = "vercel", url = "https://ai-gateway.vercel.sh/v1/responses", key_env = "AI_GATEWAY_API_KEY", wire = GW_WIRE_RESPONSES};
-  req := GwRequest.{model = "google/gemini-3.8-flash", system = "You are terse.", messages = msgs[..], max_tokens = 64, effort = "low", schema = "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\"}},\"required\":[\"a\"],\"additionalProperties\":false}"};
+  req := GwRequest.{model = "google/gemini-4-hydrogen", system = "You are terse.", messages = msgs[..], max_tokens = 64, effort = "low", schema = "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\"}},\"required\":[\"a\"],\"additionalProperties\":false}"};
   body := gw_translate(g, req, out[..], why[..]);
-  #assert body == "{\"model\":\"google/gemini-3.8-flash\",\"stream\":true,\"store\":false,\"instructions\":\"You are terse.\",\"input\":[{\"role\":\"user\",\"content\":\"say \\\"hi\\\"\"},{\"role\":\"assistant\",\"content\":\"hi\"}],\"max_output_tokens\":64,\"reasoning\":{\"effort\":\"low\"},\"text\":{\"format\":{\"type\":\"json_schema\",\"name\":\"reply\",\"strict\":true,\"schema\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\"}},\"required\":[\"a\"],\"additionalProperties\":false}}}}";
+  #assert body == "{\"model\":\"google/gemini-4-hydrogen\",\"stream\":true,\"store\":false,\"instructions\":\"You are terse.\",\"input\":[{\"role\":\"user\",\"content\":\"say \\\"hi\\\"\"},{\"role\":\"assistant\",\"content\":\"hi\"}],\"max_output_tokens\":64,\"reasoning\":{\"effort\":\"low\"},\"text\":{\"format\":{\"type\":\"json_schema\",\"name\":\"reply\",\"strict\":true,\"schema\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\"}},\"required\":[\"a\"],\"additionalProperties\":false}}}}";
   #assert json_valid(body);
   // a schema that isn't JSON, a buffer too small, a wire without a translator
   bad := req; bad.schema = "{nope";
@@ -584,7 +584,7 @@ gw_replay_provider :: (r: [] GwReplay) -> string { return cast(string) r[0].prov
 }
 
 #test "the client carries the gateway's key variable and header, never a key" {
-  g := Gateway.{name = "gemini", url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse", key_env = "GEMINI_API_KEY", key_header = "x-goog-api-key", scheme = "", wire = GW_WIRE_GEMINI};
+  g := Gateway.{name = "gemini", url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-4-hydrogen:streamGenerateContent?alt=sse", key_env = "GEMINI_API_KEY", key_header = "x-goog-api-key", scheme = "", wire = GW_WIRE_GEMINI};
   c := gw_client(g);
   #assert c.key_env == "GEMINI_API_KEY" && c.key_header == "x-goog-api-key" && c.scheme == "" && c.key_value == "";
 }

@@ -1,6 +1,6 @@
 // Microcoder in the Lab (docs/coder/microcoder.md, "What the Lab shows"):
 // a Lab message Elephant routes to other runs Microcoder, the small agent
-// loop in coax/lib/microcoder, through a gateway plan (Vertex Gemini Flash,
+// loop in coax/lib/microcoder, through a gateway plan (Vertex Gemini 4 Hydrogen,
 // then the Gemini API, then OpenRouter), on whichever of them this Mac has a
 // credential for. Lab only: the Claude, Psionic and Codex modes and web /chat
 // never come here.
@@ -237,7 +237,7 @@ lab_mc_start :: (m: [] LabMc, task: string, effort: int, level: int, local_work:
   return "";
 }
 
-// One attempt's row: "vertex · google/gemini-3.8-flash", its log line in the fold.
+// One attempt's row: "vertex · google/gemini-4-hydrogen", its log line in the fold.
 lab_mc_attempt :: (m: [] LmcView, s: [] Session, a: GwAttemptLog) {
   k := s_part(s, P_TOOL);
   if k < 0 { return; }

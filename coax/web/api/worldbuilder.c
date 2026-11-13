@@ -18,13 +18,13 @@
 // could cost before it starts, in the same transaction that reads the day's total, so calls running
 // side by side never go past the cap together; it settles at what Vertex reports it used.
 //
-// The model is Google's: Gemini 3.8 Flash on Vertex (OA_WORLDBUILDER_MODEL), structured output under
+// The model is Google's: Gemini 4 Hydrogen on Vertex (OA_WORLDBUILDER_MODEL), structured output under
 // the schema below, its thinking low. The catalogue it chooses from (worldbuilder-assets.h) is
 // written with the page's asset pack by metaverse/tools/assets/worldbuilder_pack.coax. A call takes
 // seconds and this service answers one request at a time, so a child process makes it, settles the
 // spend on its own database connection and answers the page.
 //   OA_WORLDBUILDER_URL    the generateContent URL (tests point it at a fake)
-//   OA_WORLDBUILDER_MODEL  the model (gemini-3.8-flash)
+//   OA_WORLDBUILDER_MODEL  the model (gemini-4-hydrogen)
 #include "api.h"
 #include "worldbuilder-assets.h"
 #include "worldbuilder-policy.generated.h"
@@ -214,7 +214,7 @@ static int wb_reserve(PGconn *db, long long reserve, char day[16]) {
 
 // In the child: asks the model, settles the spend, answers the page.
 static void wb_answer(int fd, const char *request_json, long long reserve, const char *day) {
-  const char *model = env_or("OA_WORLDBUILDER_MODEL", "gemini-3.8-flash");
+  const char *model = env_or("OA_WORLDBUILDER_MODEL", "gemini-4-hydrogen");
   double t0 = api_now_ms();
   char *got = NULL; size_t got_n = 0;
   long status = npc_ask_model_twice_n("OA_WORLDBUILDER_URL", model, request_json, 20000, &got, &got_n);

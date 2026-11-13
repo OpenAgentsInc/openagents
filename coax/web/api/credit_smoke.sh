@@ -43,7 +43,7 @@ while :; do
   sleep 5
 done
 echo "credit after top-up: $(balance)"
-ask='{"model":"google/gemini-3.8-flash","messages":[{"role":"user","content":"Say OK."}],"max_tokens":16}'
+ask='{"model":"google/gemini-4-hydrogen","messages":[{"role":"user","content":"Say OK."}],"max_tokens":16}'
 printf '%s' "$ask" > "$work/ask.json"
 iurl="$origin/api/v1/inference"
 code="$(curl -sS -m 120 -o "$work/answer.json" -w '%{http_code}' -H 'Content-Type: application/json' -H "Authorization: Nostr $("$work/sign" --key "$key" POST "$iurl" "$work/ask.json")" --data-binary @"$work/ask.json" "$iurl")"

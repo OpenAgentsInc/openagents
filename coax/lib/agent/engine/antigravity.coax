@@ -168,8 +168,8 @@ agy_watch_limits :: (stall_word: string, recover_word: string) -> AgyWatch {
 
 // The owner's model and effort, and agy's default mode, for the session that just opened
 // (result: session/new's or session/resume's). A model agy lists (models.availableModels, such
-// as gemini-3.8-flash-low) is set with session/set_model, else a model config option's value
-// (gemini-3.8-flash) with session/set_config_option; the effort is the thought_level option's
+// as gemini-4-hydrogen-low) is set with session/set_model, else a model config option's value
+// (gemini-4-hydrogen) with session/set_config_option; the effort is the thought_level option's
 // value. Every setting sent holds the first message until it is answered. Returns which were
 // not applied (AGY_MODEL_NOT_APPLIED, AGY_EFFORT_NOT_APPLIED).
 //
@@ -292,7 +292,7 @@ agy_test :: (x: [] CuEngine, c: [] CuClient, p: [] ClProcess, line: [] u8, arena
   cue_agent(x, agy_agent());
 }
 
-AGY_OPENED :: "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"g-1\",\"models\":{\"availableModels\":[{\"modelId\":\"gemini-3.8-flash-low\",\"name\":\"Gemini 3.8 Flash (Low)\"}],\"currentModelId\":\"gemini-4-carbon-medium\"},\"modes\":{\"currentModeId\":\"default\",\"availableModes\":[{\"id\":\"default\"},{\"id\":\"auto\"}]},\"configOptions\":[{\"id\":\"model\",\"category\":\"model\",\"type\":\"select\",\"options\":[{\"value\":\"gemini-3.8-flash\"},{\"value\":\"gemini-4-carbon\"}]},{\"id\":\"thought_level\",\"category\":\"thought_level\",\"type\":\"select\",\"options\":[{\"value\":\"low\"},{\"value\":\"medium\"},{\"value\":\"high\"}]}]}}";
+AGY_OPENED :: "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"g-1\",\"models\":{\"availableModels\":[{\"modelId\":\"gemini-4-hydrogen-low\",\"name\":\"Gemini 4 Hydrogen (Low)\"}],\"currentModelId\":\"gemini-4-carbon-medium\"},\"modes\":{\"currentModeId\":\"default\",\"availableModes\":[{\"id\":\"default\"},{\"id\":\"auto\"}]},\"configOptions\":[{\"id\":\"model\",\"category\":\"model\",\"type\":\"select\",\"options\":[{\"value\":\"gemini-4-hydrogen\"},{\"value\":\"gemini-4-carbon\"}]},{\"id\":\"thought_level\",\"category\":\"thought_level\",\"type\":\"select\",\"options\":[{\"value\":\"low\"},{\"value\":\"medium\"},{\"value\":\"high\"}]}]}}";
 
 AGY_OPENED_MEDIUM :: "{\"sessionId\":\"g-1\",\"models\":{\"availableModels\":[{\"modelId\":\"gemini-4-argon-medium\"},{\"modelId\":\"gemini-4-argon-low\"}]},\"configOptions\":[{\"id\":\"model\",\"category\":\"model\",\"type\":\"select\",\"options\":[{\"value\":\"gemini-4-argon\"}]},{\"id\":\"thought_level\",\"category\":\"thought_level\",\"type\":\"select\",\"options\":[{\"value\":\"low\"},{\"value\":\"medium\"}]}]}";
 
@@ -339,8 +339,8 @@ AGY_OPENED_MEDIUM :: "{\"sessionId\":\"g-1\",\"models\":{\"availableModels\":[{\
   ev = cue_feed(x, AGY_OPENED);
   opened := ev.result;
   cu_outbox_clear(x[0].c);
-  #assert agy_configure(x, opened, "gemini-3.8-flash-low", "high") == 0 && x[0].hold == 2;
-  #assert agy_out_has(x, "\"method\":\"session/set_model\",\"params\":{\"sessionId\":\"g-1\",\"modelId\":\"gemini-3.8-flash-low\"}");
+  #assert agy_configure(x, opened, "gemini-4-hydrogen-low", "high") == 0 && x[0].hold == 2;
+  #assert agy_out_has(x, "\"method\":\"session/set_model\",\"params\":{\"sessionId\":\"g-1\",\"modelId\":\"gemini-4-hydrogen-low\"}");
   #assert agy_out_has(x, "\"configId\":\"thought_level\",\"value\":\"high\"") && !agy_out_has(x, "session/set_mode\"");
   cue_owed(x, true); #assert !agy_out_has(x, "session/prompt");
   ev = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{}}");
@@ -351,7 +351,7 @@ AGY_OPENED_MEDIUM :: "{\"sessionId\":\"g-1\",\"models\":{\"availableModels\":[{\
   cu_outbox_clear(x[0].c);
   #assert agy_configure(x, ev.result, "", "") == 0;   // (ev.result is an error's: nothing advertised, nothing asked)
   x[0].c[0].ar[0].at = 0; x[0].c[0].ar[0].full = false;    // (as a fed line resets it)
-  #assert agy_configure(x, opened, "gemini-3.8-flash", "medium") == 0 && agy_out_has(x, "\"configId\":\"model\",\"value\":\"gemini-3.8-flash\"") && agy_out_has(x, "\"value\":\"medium\"");
+  #assert agy_configure(x, opened, "gemini-4-hydrogen", "medium") == 0 && agy_out_has(x, "\"configId\":\"model\",\"value\":\"gemini-4-hydrogen\"") && agy_out_has(x, "\"value\":\"medium\"");
   x[0].c[0].ar[0].at = 0; x[0].c[0].ar[0].full = false;
   #assert agy_configure(x, opened, "nope", "xhigh") == AGY_MODEL_NOT_APPLIED | AGY_EFFORT_NOT_APPLIED && x[0].hold == 0;
 }
@@ -366,8 +366,8 @@ agy_t_reset :: (x: [] CuEngine) { cu_outbox_clear(x[0].c); x[0].c[0].ar[0].at = 
   opened := ev.result;
   agy_t_reset(x);
   // a base model with a listed -low variant: that variant, and no thought level besides
-  #assert agy_configure(x, opened, "gemini-3.8-flash", "") == 0 && x[0].hold == 1;
-  #assert agy_out_has(x, "\"method\":\"session/set_model\",\"params\":{\"sessionId\":\"g-1\",\"modelId\":\"gemini-3.8-flash-low\"}") && !agy_out_has(x, "thought_level");
+  #assert agy_configure(x, opened, "gemini-4-hydrogen", "") == 0 && x[0].hold == 1;
+  #assert agy_out_has(x, "\"method\":\"session/set_model\",\"params\":{\"sessionId\":\"g-1\",\"modelId\":\"gemini-4-hydrogen-low\"}") && !agy_out_has(x, "thought_level");
   agy_t_reset(x);
   // a base model with none listed: the model as named, at thought_level low
   #assert agy_configure(x, opened, "gemini-4-carbon", "") == 0 && x[0].hold == 2;
@@ -377,7 +377,7 @@ agy_t_reset :: (x: [] CuEngine) { cu_outbox_clear(x[0].c); x[0].c[0].ar[0].at = 
   #assert agy_configure(x, opened, "", "") == 0 && x[0].hold == 1 && agy_out_has(x, "\"configId\":\"thought_level\",\"value\":\"low\"") && !agy_out_has(x, "set_model");
   agy_t_reset(x);
   // a model agy lists, named with its level: as given, nothing lowered
-  #assert agy_configure(x, opened, "gemini-3.8-flash-low", "") == 0 && x[0].hold == 1 && !agy_out_has(x, "thought_level");
+  #assert agy_configure(x, opened, "gemini-4-hydrogen-low", "") == 0 && x[0].hold == 1 && !agy_out_has(x, "thought_level");
   agy_t_reset(x);
   #assert agy_configure(x, AGY_OPENED_MEDIUM, "gemini-4-argon-medium", "") == 0 && x[0].hold == 1;
   #assert agy_out_has(x, "\"modelId\":\"gemini-4-argon-medium\"") && !agy_out_has(x, "thought_level") && !agy_out_has(x, "argon-low");

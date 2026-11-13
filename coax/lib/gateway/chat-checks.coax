@@ -9,9 +9,9 @@
   msgs[0] = GwMessage.{role = "user", text = "Count from one to five, one word per line."};
   msgs[1] = GwMessage.{role = "assistant", text = "One"};
   g := Gateway.{name = "openrouter", url = "https://openrouter.ai/api/v1/chat/completions", key_env = "OPENROUTER_API_KEY", wire = GW_WIRE_CHAT};
-  req := GwRequest.{model = "google/gemini-3.8-flash", system = "You are terse.", messages = msgs[..], max_tokens = 200, effort = "low", schema = "{\"type\":\"object\"}", schema_name = "next_action"};
+  req := GwRequest.{model = "google/gemini-4-hydrogen", system = "You are terse.", messages = msgs[..], max_tokens = 200, effort = "low", schema = "{\"type\":\"object\"}", schema_name = "next_action"};
   body := gw_translate(g, req, out[..], why[..]);
-  #assert body == "{\"model\":\"google/gemini-3.8-flash\",\"messages\":[{\"role\":\"system\",\"content\":\"You are terse.\"},{\"role\":\"user\",\"content\":\"Count from one to five, one word per line.\"},{\"role\":\"assistant\",\"content\":\"One\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"next_action\",\"schema\":{\"type\":\"object\"},\"strict\":true}},\"max_completion_tokens\":200,\"reasoning_effort\":\"low\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}";
+  #assert body == "{\"model\":\"google/gemini-4-hydrogen\",\"messages\":[{\"role\":\"system\",\"content\":\"You are terse.\"},{\"role\":\"user\",\"content\":\"Count from one to five, one word per line.\"},{\"role\":\"assistant\",\"content\":\"One\"}],\"response_format\":{\"type\":\"json_schema\",\"json_schema\":{\"name\":\"next_action\",\"schema\":{\"type\":\"object\"},\"strict\":true}},\"max_completion_tokens\":200,\"reasoning_effort\":\"low\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}";
   #assert json_valid(body);
 }
 
@@ -87,7 +87,7 @@
 #test "Vertex's whole answer, with no completion_tokens, counts output as the total less the prompt" {
   arena: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = arena[..]};
   ev: [8] GwEvent;
-  n := gw_parse_whole(GW_WIRE_CHAT, ar[..], "{\"choices\":[{\"finish_reason\":\"length\",\"index\":0,\"message\":{\"content\":\"Hi\",\"extra_content\":{\"google\":{\"thought_signature\":\"AY89\"}},\"role\":\"assistant\"}}],\"model\":\"google/gemini-3.8-flash\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens_details\":{\"reasoning_tokens\":45},\"extra_properties\":{\"google\":{\"traffic_type\":\"ON_DEMAND\"}},\"prompt_tokens\":6,\"total_tokens\":51}}", ev[..]);
+  n := gw_parse_whole(GW_WIRE_CHAT, ar[..], "{\"choices\":[{\"finish_reason\":\"length\",\"index\":0,\"message\":{\"content\":\"Hi\",\"extra_content\":{\"google\":{\"thought_signature\":\"AY89\"}},\"role\":\"assistant\"}}],\"model\":\"google/gemini-4-hydrogen\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens_details\":{\"reasoning_tokens\":45},\"extra_properties\":{\"google\":{\"traffic_type\":\"ON_DEMAND\"}},\"prompt_tokens\":6,\"total_tokens\":51}}", ev[..]);
   #assert n == 2 && ev[0].text == "Hi" && ev[1].kind == GW_EV_DONE && ev[1].reason == "length";
   #assert ev[1].usage.input_tokens == 6 && ev[1].usage.output_tokens == 45 && ev[1].usage.reasoning_tokens == 45;
 }

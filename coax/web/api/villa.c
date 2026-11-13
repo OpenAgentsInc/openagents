@@ -31,7 +31,7 @@
 //
 // A write comes from this site's pages (Origin). Nothing anyone shared is logged.
 //   OA_DROPS_BUCKET, OA_DROPS_PREFIX   the bucket and this environment's folder (drops.c)
-//   OA_VILLA_MODEL   the agent's model (gemini-3.8-flash, on the global endpoint)
+//   OA_VILLA_MODEL   the agent's model (gemini-4-hydrogen, on the global endpoint)
 //   OA_VILLA_URL     its generateContent URL (tests point it at a fake)
 #include "api.h"
 #include <ctype.h>
@@ -154,7 +154,7 @@ static void agent(const request *q, PGconn *db, answer a) {
   PQclear(r); free(a.body); free(a.all);
   if (!request) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
   if (!in_child()) { free(request); return; }
-  const char *model = env_or("OA_VILLA_MODEL", "gemini-3.8-flash");
+  const char *model = env_or("OA_VILLA_MODEL", "gemini-4-hydrogen");
   char url[512], tok[4096], auth[4200], http[16], took[16];
   const char *given = getenv("OA_VILLA_URL");
   if (given && *given) snprintf(url, sizeof url, "%s", given);

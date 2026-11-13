@@ -1,5 +1,5 @@
 // Live Microcoder smoke (live.sh runs it), through a fast plan with Vertex
-// gemini-3.8-flash first: "what is 2+2" must finish in one step with no
+// gemini-4-hydrogen first: "what is 2+2" must finish in one step with no
 // commands, and "how many Swift files are in this folder" (a scratch folder
 // with three) must run one command and answer 3. Prints the endings, the
 // replies and the attempt log; never a key or the prompt.

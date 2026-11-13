@@ -36,9 +36,9 @@ cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 
 GS_LINE :: 262144;
 GS_SESSION :: "agy-standin-1";
-GS_MODELS :: "\"models\":{\"availableModels\":[{\"modelId\":\"gemini-4-carbon-medium\",\"name\":\"Gemini 4 Carbon (Medium)\"},{\"modelId\":\"gemini-3.8-flash-low\",\"name\":\"Gemini 3.8 Flash (Low)\"}],\"currentModelId\":\"gemini-4-carbon-medium\"}";
+GS_MODELS :: "\"models\":{\"availableModels\":[{\"modelId\":\"gemini-4-carbon-medium\",\"name\":\"Gemini 4 Carbon (Medium)\"},{\"modelId\":\"gemini-4-hydrogen-low\",\"name\":\"Gemini 4 Hydrogen (Low)\"}],\"currentModelId\":\"gemini-4-carbon-medium\"}";
 GS_MODES :: "\"modes\":{\"currentModeId\":\"default\",\"availableModes\":[{\"id\":\"default\",\"name\":\"Default\"},{\"id\":\"accept-edits\",\"name\":\"Accept edits\"},{\"id\":\"auto\",\"name\":\"Auto\"},{\"id\":\"plan\",\"name\":\"Plan\"}]}";
-GS_CONFIG :: "\"configOptions\":[{\"id\":\"model\",\"name\":\"Model\",\"category\":\"model\",\"type\":\"select\",\"currentValue\":\"gemini-4-carbon\",\"options\":[{\"value\":\"gemini-4-carbon\",\"name\":\"Gemini 4 Carbon\"},{\"value\":\"gemini-3.8-flash\",\"name\":\"Gemini 3.8 Flash\"}]},{\"id\":\"thought_level\",\"name\":\"Thinking Level\",\"category\":\"thought_level\",\"type\":\"select\",\"currentValue\":\"medium\",\"options\":[{\"value\":\"low\",\"name\":\"Low\"},{\"value\":\"medium\",\"name\":\"Medium\"},{\"value\":\"high\",\"name\":\"High\"}]}]";
+GS_CONFIG :: "\"configOptions\":[{\"id\":\"model\",\"name\":\"Model\",\"category\":\"model\",\"type\":\"select\",\"currentValue\":\"gemini-4-carbon\",\"options\":[{\"value\":\"gemini-4-carbon\",\"name\":\"Gemini 4 Carbon\"},{\"value\":\"gemini-4-hydrogen\",\"name\":\"Gemini 4 Hydrogen\"}]},{\"id\":\"thought_level\",\"name\":\"Thinking Level\",\"category\":\"thought_level\",\"type\":\"select\",\"currentValue\":\"medium\",\"options\":[{\"value\":\"low\",\"name\":\"Low\"},{\"value\":\"medium\",\"name\":\"Medium\"},{\"value\":\"high\",\"name\":\"High\"}]}]";
 Gs :: struct {
   line: [GS_LINE] u8; n: int; eof: bool;
   out: [1024] u8; nout: int;
@@ -254,7 +254,7 @@ gs_answer :: (s: [] Gs, d: Jv) {
   if method == "session/set_model" {
     vb: [256] u8; vn := jv_str(d, jv_path(d, 0, "params.modelId"), vb[..]);
     v := ifx vn > 0 then cast(string) vb[0..<vn] else "";
-    if v == "gemini-4-carbon-medium" || v == "gemini-3.8-flash-low" { gs_result(id, "{}"); return; }
+    if v == "gemini-4-carbon-medium" || v == "gemini-4-hydrogen-low" { gs_result(id, "{}"); return; }
     wb: [400] u8; wn := gs_put(wb[..], 0, "Unknown model ID: "); wn = gs_put(wb[..], wn, v);
     gs_error(id, "-32602", cast(string) wb[0..<wn]); return;
   }

@@ -12,7 +12,7 @@
 
 GW_OPENROUTER_URL :: "https://openrouter.ai/api/v1/chat/completions";
 GW_OPENROUTER_KEY_ENV :: "OPENROUTER_API_KEY";
-GW_OPENROUTER_FLASH :: "google/gemini-3.8-flash";
+GW_OPENROUTER_FLASH :: "google/gemini-4-hydrogen";
 
 // The headers OpenRouter attributes a request by; pass to gw_call_start.
 GW_OPENROUTER_HEADERS :: [2] string.["X-Title: OpenAgents", "HTTP-Referer: https://openagents.com"];
@@ -29,8 +29,8 @@ gw_openrouter :: (zdr: bool) -> Gateway {
   out: [1024] u8; why: [1] string;
   msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "hi"};
   req := GwRequest.{model = GW_OPENROUTER_FLASH, messages = msgs[..]};
-  #assert gw_translate(gw_openrouter(false), req, out[..], why[..]) == "{\"model\":\"google/gemini-3.8-flash\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true},\"provider\":{\"data_collection\":\"deny\"}}";
-  #assert gw_translate(gw_openrouter(true), req, out[..], why[..]) == "{\"model\":\"google/gemini-3.8-flash\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true},\"provider\":{\"data_collection\":\"deny\",\"zdr\":true}}";
+  #assert gw_translate(gw_openrouter(false), req, out[..], why[..]) == "{\"model\":\"google/gemini-4-hydrogen\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true},\"provider\":{\"data_collection\":\"deny\"}}";
+  #assert gw_translate(gw_openrouter(true), req, out[..], why[..]) == "{\"model\":\"google/gemini-4-hydrogen\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true},\"provider\":{\"data_collection\":\"deny\",\"zdr\":true}}";
   g := gw_openrouter(false);
   #assert g.key_env == "OPENROUTER_API_KEY" && g.scheme == "Bearer" && g.key_value == "";
   h := GW_OPENROUTER_HEADERS;

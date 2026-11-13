@@ -1,6 +1,6 @@
 // The microcoder engine: OpenAgents' own small agent loop
 // (coax/lib/microcoder, Coder book chapter 9) through a gateway plan of
-// Vertex Gemini Flash, then the Gemini API, then OpenRouter. It runs as a
+// Vertex Gemini 4 Hydrogen, then the Gemini API, then OpenRouter. It runs as a
 // process of its own, coder/tui/mcworker.coax, which this side starts with
 // coax/web/tool.sh on the first message and talks to in JSON lines, the way
 // the claude and codex engines talk to their CLIs. The psionic engine is

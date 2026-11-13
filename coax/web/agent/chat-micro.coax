@@ -21,7 +21,7 @@
 
 TURN_LINE :: 1048576;
 MODEL_REPLY :: 2097152;          // one model call's whole answer, at most
-CM_MODELS :: [3] string.["gemini-3.8-flash", "gemini-4-argon", "gemini-4-carbon"];
+CM_MODELS :: [3] string.["gemini-4-hydrogen", "gemini-4-argon", "gemini-4-carbon"];
 
 // The model a turn names, as our inference route names it ("google/gemini-4-carbon"), or "" when
 // it isn't one this engine runs.
@@ -121,7 +121,7 @@ cm_request :: (l: [] McLoop, model: string, out: [] u8, why: [] string) -> strin
 #test "the models this engine runs, as our route names them" {
   b: [64] u8;
   #assert cm_model("gemini-4-carbon", b[..]) == "google/gemini-4-carbon";
-  #assert cm_model("google/gemini-3.8-flash", b[..]) == "google/gemini-3.8-flash";
+  #assert cm_model("google/gemini-4-hydrogen", b[..]) == "google/gemini-4-hydrogen";
   #assert cm_model("claude-opus-5-5", b[..]) == "" && cm_model("google/", b[..]) == "" && cm_model("", b[..]) == "";
 }
 #test "a command shows as its tool and the rest" {
@@ -153,9 +153,9 @@ cm_request :: (l: [] McLoop, model: string, out: [] u8, why: [] string) -> strin
   sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
   mc_init(l[..], sb[..], lb[..], "{}", "where is rg_mint defined?", "{\"local_work\":0.9}", 0.9);
   out: [65536] u8; why: [1] string;
-  body := cm_request(l[..], "google/gemini-3.8-flash", out[..], why[..]);
+  body := cm_request(l[..], "google/gemini-4-hydrogen", out[..], why[..]);
   #assert body.count > 0 && json_valid(body);
-  #assert cl_raw(body, "model") == "\"google/gemini-3.8-flash\"" && cl_raw(body, "stream") == "false";
+  #assert cl_raw(body, "model") == "\"google/gemini-4-hydrogen\"" && cl_raw(body, "stream") == "false";
   #assert cl_raw(body, "response_format").count > 0;
 }
 

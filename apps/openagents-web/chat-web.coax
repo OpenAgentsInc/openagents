@@ -6,7 +6,7 @@
 // answer, Copy copies it. The page before this one is /chat-gpu (chat.coax).
 //
 // Who answers is the model chosen in the menu at the composer's foot:
-// - Gemini (3.8 Flash, 4 Argon, 4 Carbon): one model call with the
+// - Gemini (4 Hydrogen, 4 Argon, 4 Carbon): one model call with the
 //   conversation so far, streamed, through OpenAgents' own inference route
 //   (coax/web/api/inference.c: Vertex, its caps and its metering) by /chat's
 //   door to it, POST /api/chat/complete. No tools, no memory.
@@ -17,7 +17,7 @@
 //   credential. It reads the public openagents repository and the web, and
 //   its tools show while it works. Its answer comes whole when the turn ends,
 //   and it remembers its own turns of this visit, not Gemini's.
-// - Microcoder on Gemini 3.8 Flash (offered once the repo service is live,
+// - Microcoder on Gemini 4 Hydrogen (offered once the repo service is live,
 //   CW_REPO_LIVE): a turn of the same hosted agent with no account needed, run by Microcoder's loop with the repo tool host
 //   (coax/web/agent/chat-micro.coax): it reads the public openagents
 //   repository at one commit through the repo service (oa-repo), with no
@@ -82,11 +82,11 @@ CW_CHAT :: 0;
 CW_MODELS :: 11; CW_GEMINIS :: 3; CW_GEMINI_AGENT :: 6; CW_HOSTED :: 7;
 // Microcoder on Gemini reads the code through the repo service (oa-repo, #13326); it is offered once that is live.
 CW_REPO_LIVE :: false;
-CW_MODEL_IDS :: [11] string.["google/gemini-3.8-flash", "google/gemini-4-argon", "google/gemini-4-carbon", "claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5",
-  "google/gemini-3.8-flash",
+CW_MODEL_IDS :: [11] string.["google/gemini-4-hydrogen", "google/gemini-4-argon", "google/gemini-4-carbon", "claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5",
+  "google/gemini-4-hydrogen",
   "claude", "codex", "antigravity", "micro"];
-CW_MODEL_NAMES :: [11] string.["Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon", "Claude Haiku 5.5", "Claude Sonnet 5.5", "Claude Opus 5.5",
-  "Microcoder on Gemini 3.8 Flash",
+CW_MODEL_NAMES :: [11] string.["Gemini 4 Hydrogen", "Gemini 4 Argon", "Gemini 4 Carbon", "Claude Haiku 5.5", "Claude Sonnet 5.5", "Claude Opus 5.5",
+  "Microcoder on Gemini 4 Hydrogen",
   "Claude Code", "Codex", "Antigravity", "Microcoder"];
 CW_MODEL_NOTES :: [11] string.["Google. Answers from what it knows", "Google. Answers from what it knows", "Google. Answers from what it knows",
   "Anthropic, on your account. Reads our code and the web", "Anthropic, on your account. Reads our code and the web", "Anthropic, on your account. Reads our code and the web",
@@ -104,9 +104,9 @@ CW_LM_N :: [4] int.[4, 1, 3, 3];
 CW_LM_DEFAULT :: [4] int.[3, 0, 0, 0];
 // Each named for what it is: an agent's own "default" was whatever its config file on this machine said.
 CW_LM_NAMES :: [20] string.["Opus 5.5", "Fable 5.2", "Sonnet 5.5", "Haiku 5.5", "",   "GPT 6.1 Sol", "", "", "", "",
-  "Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon", "", "",   "Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon", "", ""];
+  "Gemini 4 Hydrogen", "Gemini 4 Argon", "Gemini 4 Carbon", "", "",   "Gemini 4 Hydrogen", "Gemini 4 Argon", "Gemini 4 Carbon", "", ""];
 CW_LM_IDS :: [20] string.["claude-opus-5-5", "claude-fable-5-2", "claude-sonnet-5-5", "claude-haiku-5-5", "",   "gpt-6.1-sol", "", "", "", "",
-  "gemini-3.8-flash", "gemini-4-argon", "gemini-4-carbon", "", "",   "gemini-3.8-flash", "gemini-4-argon", "gemini-4-carbon", "", ""];
+  "gemini-4-hydrogen", "gemini-4-argon", "gemini-4-carbon", "", "",   "gemini-4-hydrogen", "gemini-4-argon", "gemini-4-carbon", "", ""];
 CF_NONE :: 0; CF_ACCOUNT :: 1; CF_KEY :: 2; CF_UNKEY :: 3; CF_COMPLETE :: 4; CF_SEND :: 5; CF_TURN :: 6; CF_STOP :: 7;
 CF_LIST :: 8; CF_LOG :: 9; CF_RUN :: 10; CF_LSEND :: 11; CF_LSTOP :: 12; CF_CLAUDE :: 13; CF_IMPORT :: 14;
 CF_PLAN :: 15;          // a hosted turn in the editor: the model's typed answer, talk or a plan of world tools (turn.coax wp_schema)
@@ -1569,7 +1569,7 @@ cw_test_enter :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_SUBMI
   #assert n > 0 && t[0].lost == 0 && tr_class(t, 0) == "chat" && tr_find(t, "log") < 0 && tr_find(t, "settings.title") < 0;
   #assert coaxial_chatweb_asking(s) && coaxial_chatweb_ask(s) == 0 && cw_test_door(s) == "/api/chat/account";
   #assert t[0].nodes[tr_find(t, "composer")].tag == TG_TEXTAREA && tr_has(t, tr_find(t, "composer"), AT_FOCUS);
-  #assert tr_attr_of(t, tr_find(t, "settings"), AT_LABEL) == "Settings" && tr_text_of(t, tr_find(t, "model.l")) == "Gemini 3.8 Flash";
+  #assert tr_attr_of(t, tr_find(t, "settings"), AT_LABEL) == "Settings" && tr_text_of(t, tr_find(t, "model.l")) == "Gemini 4 Hydrogen";
   #assert tr_has(t, tr_find(t, "composer.send"), AT_DISABLED);
   cw_test_answer(s, 200, "{\"claude\":null}");
   #assert s[0].known && s[0].claude == CA_NONE && !coaxial_chatweb_asking(s);
@@ -1593,8 +1593,8 @@ cw_test_enter :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_SUBMI
   #assert tr_text_of(t, tr_find(t, "composer.send.l")) == "Stop" && !tr_has(t, tr_find(t, "composer.send"), AT_DISABLED);
   body := cw_test_body(s);
   #assert coaxial_chatweb_ask(s) > 0 && cw_test_door(s) == "/api/chat/complete";
-  #assert cw_test_has(body, "\"model\":\"google/gemini-3.8-flash\"") && cw_test_has(body, "{\"role\":\"system\",\"content\":\"You are OpenAgents");
-  #assert cw_test_has(body, "the model answering is Gemini 3.8 Flash (google/gemini-3.8-flash) on Google's Vertex AI.");
+  #assert cw_test_has(body, "\"model\":\"google/gemini-4-hydrogen\"") && cw_test_has(body, "{\"role\":\"system\",\"content\":\"You are OpenAgents");
+  #assert cw_test_has(body, "the model answering is Gemini 4 Hydrogen (google/gemini-4-hydrogen) on Google's Vertex AI.");
   #assert cw_test_has(body, "{\"role\":\"user\",\"content\":\"first\\nline \\\"two\\\"\"}") && cw_test_has(body, "\"stream\":true") && cw_test_has(body, "\"reasoning_effort\":\"low\"");
   #assert !cw_test_has(body, "assistant");
   coaxial_chatweb_asked(s);
@@ -1624,7 +1624,7 @@ cw_test_enter :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_SUBMI
   #assert !s[0].live && s[0].error_n == 0 && cw_text(s, 1) == "We are **OpenAgents**.\n\n- one";
   #assert !tr_has(t, tr_find(t, "m.1"), AT_STATE) && tr_find(t, "m.1.copy") > 0 && tr_find(t, "failed") < 0;
   #assert t[0].nodes[tr_find(t, "m.1.md.b0.1")].tag == TG_STRONG && tr_text_of(t, tr_find(t, "m.1.md.b1.i0.0")) == "one";
-  #assert tr_text_of(t, tr_find(t, "composer.send.l")) == "Send" && tr_text_of(t, tr_find(t, "m.1.meta")) == "Gemini 3.8 Flash";
+  #assert tr_text_of(t, tr_find(t, "composer.send.l")) == "Send" && tr_text_of(t, tr_find(t, "m.1.meta")) == "Gemini 4 Hydrogen";
   cw_test_type(s, "composer", "and then?");
   cw_test_enter(s, "composer");
   #assert cw_test_has(cw_test_body(s), "{\"role\":\"user\",\"content\":\"hi\"},{\"role\":\"assistant\",\"content\":\"We are **OpenAgents**.\\n\\n- one\"},{\"role\":\"user\",\"content\":\"and then?\"}");
@@ -1679,7 +1679,7 @@ cw_test_enter :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_SUBMI
   cw_test_press(s, "model");
   n := coaxial_chatweb_frame(s, 0.016, true);
   t := s[0].tree[..];
-  #assert tr_text_of(t, tr_find(t, "model.0.t")) == "Gemini 3.8 Flash" && tr_text_of(t, tr_find(t, "model.1.t")) == "Gemini 4 Argon" && tr_text_of(t, tr_find(t, "model.2.t")) == "Gemini 4 Carbon";
+  #assert tr_text_of(t, tr_find(t, "model.0.t")) == "Gemini 4 Hydrogen" && tr_text_of(t, tr_find(t, "model.1.t")) == "Gemini 4 Argon" && tr_text_of(t, tr_find(t, "model.2.t")) == "Gemini 4 Carbon";
   #assert tr_find(t, "model.3") < 0 && tr_find(t, "model.hint") > 0 && tr_attr_of(t, tr_find(t, "model.0"), AT_CURRENT) == "true";
   cw_test_press(s, "model.2");
   n = coaxial_chatweb_frame(s, 0.016, true);
@@ -1715,7 +1715,7 @@ cw_test_enter :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_SUBMI
   #assert cw_model(s) == CW_GEMINI_AGENT && cw_agent(s) == 0 && !cw_claude_model(CW_GEMINI_AGENT);
   cw_test_type(s, "composer", "where is rg_mint defined?");
   cw_test_enter(s, "composer");
-  #assert cw_test_door(s) == "/api/chat/send" && cw_test_body(s) == "{\"text\":\"where is rg_mint defined?\",\"model\":\"google/gemini-3.8-flash\"}";
+  #assert cw_test_door(s) == "/api/chat/send" && cw_test_body(s) == "{\"text\":\"where is rg_mint defined?\",\"model\":\"google/gemini-4-hydrogen\"}";
 }
 
 // A run's calls by what each is called, a line each (in the page's scratch for a run).
@@ -1831,7 +1831,7 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   cw_test_press(l, "agent"); b = coaxial_chatweb_frame(l, 0.016, true);
   #assert tr_find(t, "agent.0") >= 0 && tr_find(t, "agent.4") >= 0 && tr_text_of(t, tr_find(t, "agent.4.t")) == "Microcoder" && tr_find(t, "model.0") < 0;
   cw_test_press(l, "agent.4"); b = coaxial_chatweb_frame(l, 0.016, true);
-  #assert l[0].model == 10 && cw_agent(l) == 4 && !l[0].amenu && tr_text_of(t, tr_find(t, "agent.l")) == "Microcoder" && tr_text_of(t, tr_find(t, "model.l")) == "Gemini 3.8 Flash";
+  #assert l[0].model == 10 && cw_agent(l) == 4 && !l[0].amenu && tr_text_of(t, tr_find(t, "agent.l")) == "Microcoder" && tr_text_of(t, tr_find(t, "model.l")) == "Gemini 4 Hydrogen";
   cw_test_press(l, "model"); b = coaxial_chatweb_frame(l, 0.016, true);
   #assert tr_find(t, "lm.0") >= 0 && tr_find(t, "lm.2") >= 0 && tr_find(t, "lm.3") < 0 && tr_find(t, "model.0") < 0;
   cw_test_press(l, "lm.2"); b = coaxial_chatweb_frame(l, 0.016, true);
@@ -2194,7 +2194,7 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
   cw_test_enter(s, "composer");
   cw_test_planned(s, "{\"route\":\"edit\",\"say\":\"We put a crate there and took the rover away.\",\"steps\":[{\"tool\":\"place\",\"kind\":1001,\"id\":0,\"x\":420,\"z\":-75,\"yaw\":0,\"percent\":0},{\"tool\":\"remove\",\"kind\":0,\"id\":2,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}");
   #assert !s[0].live && s[0].count == 5 && s[0].who[3] == CW_TOOL && cw_test_labels(s, 3) == "Place Cargo crate at 420, -75\nRemove Parked rover 2";
-  #assert s[0].who[4] == CW_AGENT && cw_text(s, 4) == "We put a crate there and took the rover away." && cast(string) s[0].meta[4][0..<s[0].meta_n[4]] == "Gemini 3.8 Flash";
+  #assert s[0].who[4] == CW_AGENT && cw_text(s, 4) == "We put a crate there and took the rover away." && cast(string) s[0].meta[4][0..<s[0].meta_n[4]] == "Gemini 4 Hydrogen";
   #assert coaxial_chatweb_act_kind(s) == CW_PLANNED && cast(string) s[0].planned[0..<coaxial_chatweb_act_len(s)] == "world.plan.v1 splice 7\nplace 1001 420 -75 0\nremove 2\n";
   coaxial_chatweb_act_done(s);
   #assert coaxial_chatweb_act_kind(s) == 0;

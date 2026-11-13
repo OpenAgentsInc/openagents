@@ -7,7 +7,7 @@
 //        {"stop":true}                    STOP the run
 //        {"forget":true}                  forget the conversation
 //        {"task":...,"gated":true}        each command waits for an answer: {"answer":true,"ticket":N} or {"answer":false,"ticket":N,"why":"..."}
-//        {"task":...,"model":"gemini-4-argon","effort":"low"}   the owner's model and thinking level (Flash and low by default)
+//        {"task":...,"model":"gemini-4-argon","effort":"low"}   the owner's model and thinking level (Hydrogen and low by default)
 //        {"embed":"TEXT","query":true}    a Vertex embedding of TEXT (a query's when query is set, else a document's)
 //   out  {"kind":"ready"}
 //        {"kind":"reply","text":"..."}    more of the reply as it streams

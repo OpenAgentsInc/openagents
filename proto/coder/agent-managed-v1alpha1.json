@@ -109,9 +109,9 @@
       "writer": "model",
       "values": {
         "id": 3,
-        "body": "{\"model\":\"google/gemini-3.8-flash\",\"stream\":false,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
+        "body": "{\"model\":\"google/gemini-4-hydrogen\",\"stream\":false,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
       },
-      "line": "{\"t\":\"model\",\"id\":3,\"body\":{\"model\":\"google/gemini-3.8-flash\",\"stream\":false,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}}"
+      "line": "{\"t\":\"model\",\"id\":3,\"body\":{\"model\":\"google/gemini-4-hydrogen\",\"stream\":false,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}}"
     },
     {
       "name": "done-project",

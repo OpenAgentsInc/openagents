@@ -19,7 +19,7 @@
 //
 // The tiers can name either of two families of models (GitHub #13193), by a setting the app reads
 // (EVERGLADE_TIER_FAMILY): Claude's, the default, run by Claude Code; or Gemini's, run by the
-// Antigravity CLI (agy): Gemini 3.8 Flash for housekeeping and ordinary work, Gemini 4 Argon (the
+// Antigravity CLI (agy): Gemini 4 Hydrogen for housekeeping and ordinary work, Gemini 4 Argon (the
 // one agy's own `pro` subagent runs) for advanced work and Gemini 4 Carbon, the newest, for the
 // hardest. The family changes only the names: the scores and the thresholds are the same.
 
@@ -38,11 +38,11 @@ TIER_FABLE_MODEL :: "claude-fable-5-2";
 
 // The families: which models the tiers name, and the engine that runs them.
 TIER_CLAUDE :: 0; TIER_GEMINI :: 1;
-// Flash's level is the tiers' choice: low for housekeeping, high for ordinary work, the only
+// Hydrogen's level is the tiers' choice: low for housekeeping, high for ordinary work, the only
 // difference between them. Argon and Carbon are named without a level, so agy runs them at the
 // Antigravity engine's default, low (antigravity.coax, AGY_EFFORT): at medium and high their long
 // thinking made the task-fit runs minutes slower (docs/research/2026-11-11-antigravity-task-fit.md).
-TIER_GEMINI_MODELS :: [4] string.["gemini-3.8-flash-low", "gemini-3.8-flash-high", "gemini-4-argon", "gemini-4-carbon"];
+TIER_GEMINI_MODELS :: [4] string.["gemini-4-hydrogen-low", "gemini-4-hydrogen-high", "gemini-4-argon", "gemini-4-carbon"];
 
 TierScores :: struct { scope: int; ambiguity: int; risk: int; depth: int; delegable: bool; }
 
@@ -139,8 +139,8 @@ TIER_REQUIRED :: "\"scope\",\"ambiguity\",\"risk\",\"depth\",\"delegable\"";
   #assert tier_model(TIER_OPUS) == "claude-opus-5-5" && tier_model(TIER_FABLE) == "claude-fable-5-2";
   #assert TIER_SONNET_AT < TIER_OPUS_AT && TIER_OPUS_AT < TIER_FABLE_AT && TIER_FABLE_AT <= 12;
 }
-#test "tiers: the Gemini family names Flash, Argon and Carbon for the same tiers, Claude's stays the default" {
-  #assert tier_model_in(TIER_HAIKU, TIER_GEMINI) == "gemini-3.8-flash-low" && tier_model_in(TIER_SONNET, TIER_GEMINI) == "gemini-3.8-flash-high";
+#test "tiers: the Gemini family names Hydrogen, Argon and Carbon for the same tiers, Claude's stays the default" {
+  #assert tier_model_in(TIER_HAIKU, TIER_GEMINI) == "gemini-4-hydrogen-low" && tier_model_in(TIER_SONNET, TIER_GEMINI) == "gemini-4-hydrogen-high";
   #assert tier_model_in(TIER_OPUS, TIER_GEMINI) == "gemini-4-argon" && tier_model_in(TIER_FABLE, TIER_GEMINI) == "gemini-4-carbon";
   #assert tier_model_in(TIER_NONE, TIER_GEMINI) == "" && tier_model_in(5, TIER_GEMINI) == "" && tier_model_in(-1, TIER_GEMINI) == "";
   for t: [5] int.[TIER_NONE, TIER_HAIKU, TIER_SONNET, TIER_OPUS, TIER_FABLE] { #assert tier_model_in(t, TIER_CLAUDE) == tier_model(t); }

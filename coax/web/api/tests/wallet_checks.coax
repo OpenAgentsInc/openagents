@@ -69,7 +69,7 @@ wk_lower :: (t: [] Ap, session: string, sats: string) -> int {
 }
 // A model call signed by keyfile (NIP-98), as the Mac app makes one: its status.
 wk_infer :: (t: [] Ap, keyfile: string) -> int {
-  body := "{\"model\":\"google/gemini-3.8-flash\",\"messages\":[{\"role\":\"user\",\"content\":\"What is the capital of France?\"}]}";
+  body := "{\"model\":\"google/gemini-4-hydrogen\",\"messages\":[{\"role\":\"user\",\"content\":\"What is the capital of France?\"}]}";
   url: [1] Sb; sb(url[..], t[0].api); sb(url[..], "/api/v1/inference");
   sigb: [4096] u8; sig := ap_nostr(t, keyfile, "POST", sb_text(url[..]), body, true, sigb[..]);
   ah: [1] Sb; sb(ah[..], "Authorization: Nostr "); sb(ah[..], sig);
@@ -315,17 +315,17 @@ wk_checks :: (t: [] Ap, dir: string) {
   wk_old(t, acct2);
   st = wk_infer(t, K2);
   ap_check(t, "under the limit a model call paid from credit goes with no prompt", wk_went(st) && !ap_has(ap_body(t), "step_up"), ap_body(t));
-  m1 := ap_whole(ap_sql(t, pc_q(q[..], "SELECT inference.finish('", pk2, "', 'google/gemini-3.8-flash', 200, 1000, 200, 10, false)"), out[..]));
+  m1 := ap_whole(ap_sql(t, pc_q(q[..], "SELECT inference.finish('", pk2, "', 'google/gemini-4-hydrogen', 200, 1000, 200, 10, false)"), out[..]));
   ap_check(t, "credit counts: a call's debit is added to the account that holds the key, in msat, and the day's count shows it in sats", m1 > 0
            && ap_whole(ap_sql(t, pc_q(q[..], "SELECT sum(msat) FROM auth.credit_spends WHERE account = '", acct2, "'"), out[..])) == m1
            && pc_with(t, "GET", "/api/wallet", "", SB) == 200 && ap_member_int(ap_body(t), "limit.credit_sat", -1) == (m1 + 999) / 1000
            && ap_member_int(ap_body(t), "limit.spent_sat", -1) == (m1 + 999) / 1000 && ap_member(ap_body(t), "limit.credit_enforced_by", mb[..]) == "server", ap_body(t));
   ap_check(t, "a free call counts nothing, and another account's key counts nothing here",
-           ap_sql(t, pc_q(q[..], "SELECT inference.finish('", pk2, "', 'google/gemini-3.8-flash', 200, 1000, 200, 10, true)"), out[..]) == "0"
+           ap_sql(t, pc_q(q[..], "SELECT inference.finish('", pk2, "', 'google/gemini-4-hydrogen', 200, 1000, 200, 10, true)"), out[..]) == "0"
            && ap_whole(ap_sql(t, pc_q(q[..], "SELECT sum(msat) FROM auth.credit_spends WHERE account = '", acct2, "'"), out[..])) == m1
            && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.credit_spends WHERE account = '", acct, "'"), out[..]) == "0", cast(string) out[0..<40]);
   // a big day: its calls' credit passes the 20,000-sat limit
-  ap_do(t, pc_q(q[..], "SELECT inference.finish('", pk2, "', 'google/gemini-3.8-flash', 200, 1000000, 0, 10, false)"));
+  ap_do(t, pc_q(q[..], "SELECT inference.finish('", pk2, "', 'google/gemini-4-hydrogen', 200, 1000000, 0, 10, false)"));
   ap_do(t, pc_q(q[..], "UPDATE inference.credit SET msat = 1000000000000 WHERE pubkey = '", pk2, "'"));
   n0 := ap_sql(t, pc_q(q[..], "SELECT coalesce(sum(n), 0) FROM inference.account_day WHERE pubkey = '", pk2, "'"), out[..]);
   day0: [16] u8; for i: 0..<n0.count { day0[i] = n0[i]; }

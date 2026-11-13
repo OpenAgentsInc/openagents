@@ -19,11 +19,11 @@
 #authority;
 
 WB_CAP_MICROS :: 50000000;      // $50 a day, in millionths of a dollar
-// Gemini 3.8 Flash on Vertex, micro-USD per million tokens (coax/lib/gateway/rates.coax's row:
-// input 750000, cached input 75000, output 3750000; thinking counts as output).
-WB_INPUT_RATE :: 750000;
+// Gemini 4 Hydrogen on Vertex, micro-USD per million tokens (coax/lib/gateway/card.coax's row:
+// input 1500000, cached input 75000, output 7500000; thinking counts as output).
+WB_INPUT_RATE :: 1500000;
 WB_CACHED_RATE :: 75000;
-WB_OUTPUT_RATE :: 3750000;
+WB_OUTPUT_RATE :: 7500000;
 WB_MAX_OUTPUT :: 2048;          // the output allowance a call asks for (maxOutputTokens)
 WB_BURST :: 4;                  // commands an address may send at once
 WB_REFILL_MS :: 1500;           // and then one every this many milliseconds
@@ -31,14 +31,14 @@ WB_FULL :: 6000;                // a full bucket: WB_BURST commands of WB_REFILL
 
 #test "a call's cost: uncached input, cached input and output at their own rates, rounded up" {
   #assert wb_cost_micros(0, 0, 0) == 0;
-  #assert wb_cost_micros(1000000, 0, 0) == 750000;
+  #assert wb_cost_micros(1000000, 0, 0) == 1500000;
   #assert wb_cost_micros(1000000, 1000000, 0) == 75000;
-  #assert wb_cost_micros(0, 0, 1000000) == 3750000;
-  #assert wb_cost_micros(1, 0, 0) == 1;
-  #assert wb_cost_micros(4, 0, 0) == 3;
-  #assert wb_cost_micros(10000, 8000, 200) == 1500 + 600 + 750;
+  #assert wb_cost_micros(0, 0, 1000000) == 7500000;
+  #assert wb_cost_micros(1, 0, 0) == 2;
+  #assert wb_cost_micros(4, 0, 0) == 6;
+  #assert wb_cost_micros(10000, 8000, 200) == 3000 + 600 + 1500;
   #assert wb_cost_micros(10, 10, 0) == 1;
-  #assert wb_cost_micros(1000000000, 0, 0) == 750000000;
+  #assert wb_cost_micros(1000000000, 0, 0) == 1500000000;
   #assert wb_cost_micros(1000001, 1000001, 0) == 75001;
 }
 #test "usage that can't be (negative, or more cached than sent) has no cost: the host keeps the reservation" {
@@ -50,7 +50,7 @@ WB_FULL :: 6000;                // a full bucket: WB_BURST commands of WB_REFILL
 #test "a reservation is the prompt plus the whole output allowance" {
   #assert wb_reserve_micros(0) == wb_cost_micros(0, 0, WB_MAX_OUTPUT);
   #assert wb_reserve_micros(12000) == wb_cost_micros(12000, 0, WB_MAX_OUTPUT);
-  #assert wb_reserve_micros(12000) == 9000 + 7680;
+  #assert wb_reserve_micros(12000) == 18000 + 15360;
 }
 #test "the host reads the allowance and the cap from here" {
   #assert WB_FULL == WB_BURST * WB_REFILL_MS;

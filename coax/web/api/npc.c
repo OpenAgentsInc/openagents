@@ -16,7 +16,7 @@
 // verse.npc_request, verse.npc_answer, which also keeps every question and answer;
 // 0157_npc_ask_keyed.sql verse.npc_ask, the limits counted in Postgres so every instance shares
 // them). The numbers are NPC_LIMITS below, which /docs/limits is made from. The model is Google's
-// first: Gemini on Vertex AI (OA_NPC_MODEL, default gemini-3.8-flash on the global endpoint), with
+// first: Gemini on Vertex AI (OA_NPC_MODEL, default gemini-4-hydrogen on the global endpoint), with
 // the service's own token from the metadata server. A model call takes seconds and this service
 // answers one request at a time, so a child process makes it and answers, with its own database
 // connection, while the parent goes on; how many run at once is one of the limits.
@@ -137,7 +137,7 @@ long npc_ask_model_twice_n(const char *url_env, const char *model, const char *r
 
 // In the child: asks the model, keeps the answer, answers the page.
 static void answer(int fd, const char *asked, const char *request) {
-  const char *model = getenv("OA_NPC_MODEL"); if (!model || !*model) model = "gemini-3.8-flash";
+  const char *model = getenv("OA_NPC_MODEL"); if (!model || !*model) model = "gemini-4-hydrogen";
   buf b = {0};
   double t0 = api_now_ms();
   long status = ask_model("OA_NPC_URL", model, request, &b);
@@ -278,10 +278,10 @@ bool npc_route(const request *q) {
 // answer to it; the page lays it out (metaverse/setpiece.coax). As a question
 // is, the model call is made by a child.
 //   OA_PIECE_URL    the generateContent URL (tests point it at a fake)
-//   OA_PIECE_MODEL  the model (gemini-3.8-flash)
+//   OA_PIECE_MODEL  the model (gemini-4-hydrogen)
 //   OA_PIECE_DAILY_CAP  set pieces a day across the server (2000)
 static void piece_answer(int fd, const char *asked, const char *request) {
-  const char *model = getenv("OA_PIECE_MODEL"); if (!model || !*model) model = "gemini-3.8-flash";
+  const char *model = getenv("OA_PIECE_MODEL"); if (!model || !*model) model = "gemini-4-hydrogen";
   buf b = {0};
   double t0 = api_now_ms();
   long status = ask_model("OA_PIECE_URL", model, request, &b);

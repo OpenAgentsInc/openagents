@@ -219,7 +219,7 @@ if "infer_seen" in globals():   # test_inference.py's fake model, when it ran
     infer_mode["status"] = 200
     sql(f"delete from inference.account_day where pubkey = '{infer_admin}'")
     def wf_turn(ids, keyfile=admin):
-        ask = {"model": "google/gemini-3.8-flash", "stream": False, "messages": [{"role": "system", "content": "the world"}, {"role": "user", "content": "what does the garage look like?"}],
+        ask = {"model": "google/gemini-4-hydrogen", "stream": False, "messages": [{"role": "system", "content": "the world"}, {"role": "user", "content": "what does the garage look like?"}],
                "attachments": {"world": "splice", "ids": ids}}
         before = len(infer_seen)
         s1, b1, _ = wf_call("POST", "/api/chat/complete", json.dumps(ask).encode(), keyfile=keyfile)

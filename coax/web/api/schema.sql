@@ -3372,7 +3372,8 @@ $$;
 CREATE FUNCTION chat.model_ok(m text) RETURNS boolean
     LANGUAGE sql IMMUTABLE
     AS $$ SELECT m IN ('claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5',
-                  'google/gemini-3.8-flash', 'google/gemini-4-argon', 'google/gemini-4-carbon') $$;
+                  'google/gemini-4-hydrogen', 'google/gemini-4-argon', 'google/gemini-4-carbon',
+                  'google/gemini-3.8-flash') $$;
 
 
 --

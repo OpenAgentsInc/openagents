@@ -38,7 +38,7 @@
 //   OA_DROPS_PREFIX  this environment's folder in it (staging, production; default dev)
 //   OA_DROPS_GCS     the storage API's origin (tests point it at a fake)
 //   OA_DROPS_TOKEN   a token to send instead of the metadata server's (tests)
-//   OA_DRAFT_MODEL   the drafting model (gemini-3.8-flash, on the global endpoint)
+//   OA_DRAFT_MODEL   the drafting model (gemini-4-hydrogen, on the global endpoint)
 //   OA_DRAFT_URL     its generateContent URL (tests point it at a fake)
 #include "api.h"
 #include "nostr.h"
@@ -379,7 +379,7 @@ static void file_done(const request *q, PGconn *db, const char *pk, const char *
 
 // In the child: asks the model for the draft, keeps it, answers.
 static void draft_child(int fd, const char *drop, const char *request) {
-  const char *model = env_or("OA_DRAFT_MODEL", "gemini-3.8-flash");
+  const char *model = env_or("OA_DRAFT_MODEL", "gemini-4-hydrogen");
   char url[512], tok[4096], auth[4200], http[16], took[16];
   const char *given = getenv("OA_DRAFT_URL");
   if (given && *given) snprintf(url, sizeof url, "%s", given);

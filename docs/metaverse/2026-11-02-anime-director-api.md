@@ -216,7 +216,7 @@ profile, not a claim that every bounded schema is unsupported. Google documents
 [complex-schema rejection and simplification](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/capabilities/control-generated-output).
 
 The model is `OA_ANIME_MODEL`, falling back to `OA_NPC_MODEL` and then
-`gemini-3.8-flash`. `OA_ANIME_URL` overrides the normal Vertex endpoint for
+`gemini-4-hydrogen`. `OA_ANIME_URL` overrides the normal Vertex endpoint for
 isolated qualification. Provider output, including a syntactically valid output,
 is untrusted until the Coax holder accepts the whole response.
 

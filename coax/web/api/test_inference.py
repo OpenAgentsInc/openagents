@@ -51,7 +51,7 @@ def infer_pubkey(keyfile):
     return subprocess.run([os.environ["SIGN"], "--key", keyfile, "--pubkey"], capture_output=True, text=True, check=True).stdout.strip()
 
 
-infer_ask = {"model": "google/gemini-3.8-flash", "messages": [{"role": "user", "content": "What is the capital of France?"}]}
+infer_ask = {"model": "google/gemini-4-hydrogen", "messages": [{"role": "user", "content": "What is the capital of France?"}]}
 infer_user = infer_pubkey(os.environ["INFER_KEY"])
 
 check("inference: unsigned is a 401", infer(infer_ask, keyfile=None)[0] == 401)
@@ -68,10 +68,13 @@ check("inference: a signed request gets Vertex's answer", s == 200 and json.load
 infer_sent = infer_seen[-1]
 check("inference: the service's token goes to Vertex, not the caller's signature", infer_sent["auth"] == "Bearer test-token", infer_sent["auth"])
 check("inference: Vertex gets the messages, its model name, the output capped at 8192, nothing stored",
-      infer_sent["body"]["messages"] == infer_ask["messages"] and infer_sent["body"]["model"] == "google/gemini-3.8-flash" and infer_sent["body"]["max_tokens"] == 8192
+      infer_sent["body"]["messages"] == infer_ask["messages"] and infer_sent["body"]["model"] == "google/gemini-4-hydrogen" and infer_sent["body"]["max_tokens"] == 8192
       and "store" not in infer_sent["body"] and "user" not in infer_sent["body"], infer_sent["body"])
 check("inference: the call is kept with its tokens and its cost at the card's rates",
-      sql(f"select status||'|'||in_tokens||'|'||out_tokens||'|'||usd_micros from inference.calls where pubkey = '{infer_user}' order by id desc limit 1") == "200|1000|200|1500")
+      sql(f"select status||'|'||in_tokens||'|'||out_tokens||'|'||usd_micros from inference.calls where pubkey = '{infer_user}' order by id desc limit 1") == "200|1000|200|3000")
+check("inference: the old Gemini 3.8 Flash name is still served, asked of Gemini 4 Hydrogen at its price (#13479)",
+      sql("select (inference.request('alias-check', '{\"model\":\"google/gemini-3.8-flash\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}', 5, 1000000))->'request'->>'model'") == "google/gemini-4-hydrogen"
+      and sql("select upstream||'|'||input_micros||'|'||output_micros from inference.models where name = 'google/gemini-3.8-flash'") == "google/gemini-4-hydrogen|1500000|7500000")
 
 s, b, h = infer(dict(infer_ask, stream=True))
 infer_text = b.decode()
@@ -79,7 +82,7 @@ check("inference: a stream comes back as server-sent events", s == 200 and h.get
       and '"content": "Par"' in infer_text, (h, infer_text))
 check("inference: a stream asks Vertex for its usage", infer_seen[-1]["body"].get("stream_options") == {"include_usage": True}, infer_seen[-1]["body"])
 check("inference: a stream's usage, from its last chunk, is metered",
-      sql(f"select in_tokens||'|'||out_tokens||'|'||usd_micros from inference.calls where pubkey = '{infer_user}' order by id desc limit 1") == "2000|400|3000")
+      sql(f"select in_tokens||'|'||out_tokens||'|'||usd_micros from inference.calls where pubkey = '{infer_user}' order by id desc limit 1") == "2000|400|6000")
 
 infer_mode["status"] = 429
 s, b, _ = infer(infer_ask)
@@ -93,7 +96,7 @@ check("inference: an admin's key may use the route", s == 200)
 infer_codes = [infer(infer_ask)[0] for _ in range(3)]
 check("inference: an account's day is five requests here; the sixth is a 429 and never reaches Vertex", infer_codes == [200, 200, 429], infer_codes)
 check("inference: the day's count and spend are the account's",
-      sql(f"select n||'|'||usd_micros from inference.account_day where pubkey = '{infer_user}'") == "6|7500")
+      sql(f"select n||'|'||usd_micros from inference.account_day where pubkey = '{infer_user}'") == "6|15000")
 infer_admin = infer_pubkey(os.environ["ADMIN_KEY"])
 sql(f"update inference.account_day set usd_micros = 2000000 where pubkey = '{infer_admin}'")
 s, b, _ = infer(infer_ask, keyfile=os.environ["ADMIN_KEY"])
@@ -267,9 +270,9 @@ s, b, _ = infer(infer_ask, keyfile=other_key)
 time.sleep(0.5)
 check("drawdown: with credit and a price, the key's request is answered", s == 200 and json.loads(b)["choices"][0]["message"]["content"] == "Paris.", b)
 check("drawdown: the price was asked of our wallet and kept", sql("select usd_per_btc from inference.btc_usd") == "100000")
-check("drawdown: the call's cost ($0.0015) is taken from its credit in msat at the kept price (1500 msat at $100,000)",
-      sql(f"select msat from inference.credit where pubkey = '{other}'") == "68500"
-      and sql(f"select usd_micros||'|'||msat from inference.calls where pubkey = '{other}' order by id desc limit 1") == "1500|1500")
+check("drawdown: the call's cost ($0.0030) is taken from its credit in msat at the kept price (3000 msat at $100,000)",
+      sql(f"select msat from inference.credit where pubkey = '{other}'") == "67000"
+      and sql(f"select usd_micros||'|'||msat from inference.calls where pubkey = '{other}' order by id desc limit 1") == "3000|3000")
 sql(f"delete from inference.account_day where pubkey = '{infer_user}'")
 s, _, _ = infer(infer_ask)
 time.sleep(0.5)

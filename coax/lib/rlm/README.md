@@ -189,7 +189,7 @@ line for each question the compiler could not answer and `--- final refused ---`
 
 ```sh
 coax/web/tool.sh coax/lib/rlm/code.coax run --cwd DIR (--task TEXT | --task-file F) [--manager] [--max-depth 2] [--root-model gemini-4-argon] \
-  [--sub-model gemini-3.8-flash] [--root-effort low] [--max-turns 40] [--max-usd 5] [--max-minutes 15] \
+  [--sub-model gemini-4-hydrogen] [--root-effort low] [--max-turns 40] [--max-usd 5] [--max-minutes 15] \
   [--profile workspace-write] [--trace F] [--log F] [--intel [--coax PATH]] [--memory [--session ID | --memory-dir DIR]]
 coax/web/tool.sh coax/lib/rlm/code.coax selftest      # every function, confinement, reruns, a whole run, limits: a scratch git repo, the scripted model; then --intel and --memory on a scratch Coax repo with the real compiler
 ```
@@ -228,7 +228,7 @@ coax/web/tool.sh coax/lib/rlm/rlm.coax full --file ctx.txt --question Q         
 coax/web/tool.sh coax/lib/rlm/rlm.coax oolong --data train_5500.label --n 3000 --seed 7 --out DIR
 ```
 
-Flags: `--root-model` (`gemini-4-argon`), `--sub-model` (`gemini-3.8-flash`), `--root-effort` and
+Flags: `--root-model` (`gemini-4-argon`), `--sub-model` (`gemini-4-hydrogen`), `--root-effort` and
 `--sub-effort` (`low`), `--max-depth` (1), `--max-turns` (20), `--max-calls` (400), `--max-usd` (2),
 `--max-minutes` (30), `--expect N` (scores the first number in the answer as OOLONG does,
 0.75^|error|), `--log FILE` (appends the JSON line), `--trace FILE`. Credentials are Microcoder's

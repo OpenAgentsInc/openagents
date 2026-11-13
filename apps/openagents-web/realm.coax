@@ -2202,7 +2202,7 @@ plated :: (u: [] f32, b: Box) -> f32 {
 
 #test "the character's words come out of the server's answer, unescaped, on one line" {
   out: [64] u8;
-  n := realm_npc_text("{\"text\": \"Good \\\"evening\\\".\\nCaf\\u00e9 \\ud83d\\ude00\", \"model\": \"gemini-3.8-flash\"}", out[..]);
+  n := realm_npc_text("{\"text\": \"Good \\\"evening\\\".\\nCaf\\u00e9 \\ud83d\\ude00\", \"model\": \"gemini-4-hydrogen\"}", out[..]);
   #assert n == 26 && cast(string) out[0..<16] == "Good \"evening\". " && out[19] == 0xC3 && out[20] == 0xA9 && out[22] == 0xF0 && out[25] == 0x80;
   #assert realm_npc_text("{\"text\":\"Hello.\"}", out[..]) == 6;
   #assert realm_npc_text("{\"error\": \"the day's answers are used up\"}", out[..]) == -1;

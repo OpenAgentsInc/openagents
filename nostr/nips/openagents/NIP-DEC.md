@@ -249,7 +249,7 @@ these doors in order, each only when every door before it could not answer:
    the next. A busy pylon is asked again shortly.
 3. **Jev**, TypeSafe's API directly, under the gateway's own house key
    (`TYPESAFE_API_KEY`, else the Secret Manager secret `jev_secret`).
-4. **Gemini on Vertex AI** (`gemini-3.8-flash`, the prepaid Google credit):
+4. **Gemini on Vertex AI** (`gemini-4-hydrogen`, the prepaid Google credit):
    the same state and questions with a response schema that asks one
    probability per option (`p_yes` for a noul), clamped and normalized
    into the answer shape above.

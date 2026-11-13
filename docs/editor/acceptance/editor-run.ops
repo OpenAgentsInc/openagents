@@ -112,9 +112,9 @@ tap agent=Claude Code
 clock +300
 tap agent=OpenAgents
 clock +300
-tap model=Gemini 3.8 Flash
+tap model=Gemini 4 Hydrogen
 clock +300
-tap model=Gemini 3.8 Flash
+tap model=Gemini 4 Hydrogen
 tap agent
 # the agent's pane put away, the scene's frame grows to the window's foot: a frame drawn at the new size
 clock +300

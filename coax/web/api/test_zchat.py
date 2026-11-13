@@ -473,7 +473,7 @@ check("wire: the runner seals the goldens' credential to the goldens' bytes, ope
 # ---- POST /api/chat/complete: the rebuilt page's door to our inference route (inference.c inference_ask).
 # An admin's cookie asks without a Nostr signature; anyone else is refused as on every /chat route. The model
 # here is the checks' fake on INFER_PORT while test_inference.py's server is up; with none, the route says 502.
-_ask = {"model": "google/gemini-3.8-flash", "messages": [{"role": "user", "content": "hello"}], "stream": False}
+_ask = {"model": "google/gemini-4-hydrogen", "messages": [{"role": "user", "content": "hello"}], "stream": False}
 s, b = cpage("POST", "complete", _ask, cookie=False)
 check("chat complete: no session is 401", s == 401, (s, b[:120]))
 s, b = cpage("POST", "complete", _ask, origin="https://evil.example")
@@ -495,7 +495,7 @@ def runner_complete(turn, body, key=None, n=[0]):
     raw = json.dumps(body).encode()
     s, b, _ = call("POST", path, raw, {"Authorization": chat_signed(key or os.environ["RUN_KEY_FILE"], "POST", path, raw), "Content-Type": "application/json"})
     return s, b.decode()
-GT = sql(f"insert into chat.turns (conv, owner, text, model, status, asked_ms) select id, owner, 'gemini', 'google/gemini-3.8-flash', 'running', 0 "
+GT = sql(f"insert into chat.turns (conv, owner, text, model, status, asked_ms) select id, owner, 'gemini', 'google/gemini-4-hydrogen', 'running', 0 "
          f"from chat.conversations where id = {C} returning id").split("\n")[0]
 s, b = runner_complete(GT, _ask)
 check("chat runner complete: a running Gemini turn's model call reaches the inference route for its asker (200, 429 or 502)", s in (200, 429, 502), (s, b[:160]))
@@ -507,7 +507,7 @@ sql(f"update chat.turns set status = 'done' where id = {GT}")
 s, b = runner_complete(GT, _ask)
 check("chat runner complete: a turn that has ended asks nothing", s == 409, (s, b[:120]))
 check("chat: the Gemini models are offered for hosted turns (chat.model_ok)",
-      sql("select chat.model_ok('google/gemini-4-carbon') and chat.model_ok('google/gemini-3.8-flash') and not chat.model_ok('google/gemini-2')") == "t")
+      sql("select chat.model_ok('google/gemini-4-carbon') and chat.model_ok('google/gemini-4-hydrogen') and chat.model_ok('google/gemini-3.8-flash') and not chat.model_ok('google/gemini-2')") == "t")
 
 # ---- GET /api/chat/account and /api/chat/turn?t=ID: what the rebuilt page reads, as JSON.
 s, b = cpage("GET", "account")

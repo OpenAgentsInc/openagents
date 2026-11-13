@@ -36,7 +36,7 @@ RlmModel :: struct {
   fake_ms: int = 1000; fake_now: int;
   gateway: string = "vertex";    // the card's gateway name for both roles
   root_gw: Gateway; root_model: string = "gemini-4-argon"; root_effort: string = "low";
-  sub_gw: Gateway; sub_model: string = "gemini-3.8-flash"; sub_effort: string = "low";
+  sub_gw: Gateway; sub_model: string = "gemini-4-hydrogen"; sub_effort: string = "low";
   root_schema: string = "";      // when set, the root answers as this JSON schema (run.coax: RLM_ROOT_SCHEMA); Gemini then writes no native function call
   plans: [] GwPlan; pbufs: [] GwPlanBuffers;   // RLM_SLOTS of each when live
   bench: [1] GwBench;
@@ -159,7 +159,7 @@ rm_call :: (m: [] RlmModel, role: int, system: string, msgs: [] GwMessage) {
   msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "12345678"};
   rm_call(m[..], RLM_SUB, "", msgs[..]);
   #assert m[0].slots[0].ok && rm_text(m[..], 0) == "sub" && m[0].slots[0].usage.input_tokens == 2 && m[0].slots[0].usage.output_tokens == 1;
-  // Flash: 2 in at $1.50 and 1 out at $7.50 a million: 3 + 7.5, rounded to 11 micro-USD
+  // Hydrogen: 2 in at $1.50 and 1 out at $7.50 a million: 3 + 7.5, rounded to 11 micro-USD
   #assert m[0].slots[0].usage.card_usd_micros == 11;
   rm_call(m[..], RLM_ROOT, "sys", msgs[..]);
   #assert rm_text(m[..], 0) == "root one" && m[0].fake_now == 2000 && m[0].slots[0].ms == 1000;

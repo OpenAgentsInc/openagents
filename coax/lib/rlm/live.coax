@@ -1,6 +1,6 @@
 // The live models and the limits from a command line, shared by the RLM's tools (rlm.coax,
 // code.coax; README.md): Gemini on Vertex with Microcoder's credentials, or the gateway's replay.
-// --root-model (gemini-4-argon), --sub-model (gemini-3.8-flash), --root-effort and --sub-effort
+// --root-model (gemini-4-argon), --sub-model (gemini-4-hydrogen), --root-effort and --sub-effort
 // (low); --max-depth, --max-turns, --max-calls, --max-usd, --max-minutes over the caller's defaults.
 
 #load "run.coax";
@@ -17,7 +17,7 @@ rlm_live_models :: (st: [] RlmState, lv: [] RlmLive, a: [] Args) -> string {
   md := st[0].model[..];
   md[0].plans = lv[0].plans[..]; md[0].pbufs = lv[0].pbufs[..];
   md[0].root_model = mk_vertex_model(args_value(a, "--root-model", "gemini-4-argon"));
-  md[0].sub_model = mk_vertex_model(args_value(a, "--sub-model", "gemini-3.8-flash"));
+  md[0].sub_model = mk_vertex_model(args_value(a, "--sub-model", "gemini-4-hydrogen"));
   md[0].root_effort = args_value(a, "--root-effort", "low");
   md[0].sub_effort = args_value(a, "--sub-effort", "low");
   rb: [1024] u8;

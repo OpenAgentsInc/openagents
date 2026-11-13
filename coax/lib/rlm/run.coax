@@ -869,7 +869,7 @@ rlm_test_block :: (r: [] Rs, st: [] RlmState, src: string) {
   // the second turn saw the first's output
   #assert rs_find_sub(st[0].msgs[2].text, "REPL output:\n50 apple pear\na\n", 0) == 0;
   #assert rs_count_sub(st[0].msgs[2].text, "Turn 2/20:") == 1;
-  // priced on the card: the sub prompts "count apples: " plus their chunk, one-byte answers, on Flash
+  // priced on the card: the sub prompts "count apples: " plus their chunk, one-byte answers, on Hydrogen
   #assert st[0].sub_usd_micros > 0 && st[0].root_usd_micros > 0 && st[0].spent.usd_micros == st[0].sub_usd_micros + st[0].root_usd_micros;
   #assert st[0].spent.calls == 7 && st[0].in_tokens == st[0].root_in + st[0].sub_in;
   #assert rs_find_sub(cast(string) st[0].trace[0..<st[0].ntr], "--- final ---\n3 apples", 0) > 0;

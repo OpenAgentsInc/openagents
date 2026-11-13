@@ -387,17 +387,17 @@
       "name": "the checks' fake model's answer, as the API writes it",
       "source": "coax/web/api/npc.c answer (verse.npc_answer, jsonb text), the fake Gemini in test_npc.py",
       "text": "Mortimer, at your service. The house keeps its own counsel.",
-      "model": "gemini-3.8-flash",
+      "model": "gemini-4-hydrogen",
       "line": "Mortimer, at your service. The house keeps its own counsel.",
-      "json": "{\"text\": \"Mortimer, at your service. The house keeps its own counsel.\", \"model\": \"gemini-3.8-flash\"}"
+      "json": "{\"text\": \"Mortimer, at your service. The house keeps its own counsel.\", \"model\": \"gemini-4-hydrogen\"}"
     },
     {
       "name": "quotes, a line break, other scripts",
       "source": "jsonb text escaping: \\\" \\\\ \\n, UTF-8 as it is",
       "text": "Good \"evening\".\nCafé, 鍵 😀",
-      "model": "gemini-3.8-flash",
+      "model": "gemini-4-hydrogen",
       "line": "Good \"evening\". Café, 鍵 😀",
-      "json": "{\"text\": \"Good \\\"evening\\\".\\nCafé, 鍵 😀\", \"model\": \"gemini-3.8-flash\"}"
+      "json": "{\"text\": \"Good \\\"evening\\\".\\nCafé, 鍵 😀\", \"model\": \"gemini-4-hydrogen\"}"
     }
   ],
   "refused_answers": [
@@ -407,7 +407,7 @@
     },
     {
       "name": "empty words",
-      "json": "{\"text\": \"\", \"model\": \"gemini-3.8-flash\"}"
+      "json": "{\"text\": \"\", \"model\": \"gemini-4-hydrogen\"}"
     },
     {
       "name": "a member that is not words",

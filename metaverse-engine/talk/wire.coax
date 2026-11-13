@@ -202,8 +202,8 @@ npc_test_marta :: (history: [] NpcTurn) -> NpcAsk #effects(all) {
     for byte: out { #assert byte == 0xA5; }
   }
   said: [27] u8; for c, k: "Good \"evening\".\nCafé 😀" { said[k] = c; } said[26] = 1;
-  n := npc_answer_write(cast(string) said[..], "gemini-3.8-flash", out[..]);
-  body := "{\"text\": \"Good \\\"evening\\\".\\nCafé 😀\\u0001\", \"model\": \"gemini-3.8-flash\"}";
+  n := npc_answer_write(cast(string) said[..], "gemini-4-hydrogen", out[..]);
+  body := "{\"text\": \"Good \\\"evening\\\".\\nCafé 😀\\u0001\", \"model\": \"gemini-4-hydrogen\"}";
   #assert n == body.count && cast(string) out[0..<n] == body;
   words: [64] u8; r := npc_answer_decode(body, words[..]);
   #assert r.status == NpcStatus.ok && r.count == 27 && cast(string) words[0..<r.count] == cast(string) said[..];

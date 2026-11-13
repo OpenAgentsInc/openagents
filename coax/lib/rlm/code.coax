@@ -4,7 +4,7 @@
 // edit, replace_lines, write and sh (script.coax RS_ENV), and each turn it sees only what its
 // blocks printed. Run it with
 //   coax/web/tool.sh coax/lib/rlm/code.coax run --cwd DIR (--task TEXT | --task-file F)
-//     [--root-model gemini-4-argon] [--sub-model gemini-3.8-flash] [--root-effort low]
+//     [--root-model gemini-4-argon] [--sub-model gemini-4-hydrogen] [--root-effort low]
 //     [--max-turns 40] [--max-usd 5] [--max-minutes 15] [--profile workspace-write]
 //     [--manager] [--max-depth 2] [--trace F] [--log F]   (--manager: the root delegates to workers, README.md)
 //     [--intel [--coax PATH]]                       the Coax compiler's answers as functions, and replace by hash

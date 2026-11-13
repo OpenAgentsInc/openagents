@@ -44,17 +44,17 @@ gw_price :: (gateway: string, model: string, u: GwUsage, usd_per_btc: int) -> Gw
 #test "one row per gateway and model, and every gateway's flash model is on the card" {
   rows := GW_RATES;
   for a, i: rows { for b, j: rows { if i < j { #assert !(a.gateway == b.gateway && a.model == b.model); } } }
-  #assert gw_rate("vertex", "google/gemini-3.8-flash").ok && gw_rate("gemini", "gemini-3.8-flash").ok && gw_rate("openrouter", "google/gemini-3.8-flash").ok;
-  #assert gw_rate("vercel", "google/gemini-3.8-flash").ok && gw_rate("zai", "glm-5.3-flash").ok && gw_rate("anthropic", "claude-haiku-4-5").ok;
+  #assert gw_rate("vertex", "google/gemini-4-hydrogen").ok && gw_rate("gemini", "gemini-4-hydrogen").ok && gw_rate("openrouter", "google/gemini-4-hydrogen").ok;
+  #assert gw_rate("vercel", "google/gemini-4-hydrogen").ok && gw_rate("zai", "glm-5.3-flash").ok && gw_rate("anthropic", "claude-haiku-4-5").ok;
   #assert !gw_rate("openai", "gpt-5.4-mini").ok && !gw_rate("vertex", "zai/glm-5.3-flash").ok;
 }
 
 #test "a cost: plain, cached and written input, and output, at the row's prices" {
-  f := gw_rate("vercel", "google/gemini-3.8-flash");
-  // the recorded Vercel stream's usage: 25 in, 130 out (the old card's derivation)
-  #assert gw_cost(f.rate, GwUsage.{ok = true, input_tokens = 25, output_tokens = 130}) == 506;
+  f := gw_rate("vercel", "google/gemini-4-hydrogen");
+  // the recorded Vercel stream's usage: 25 in, 130 out, at Gemini 4 Hydrogen's $1.50 and $7.50 a million
+  #assert gw_cost(f.rate, GwUsage.{ok = true, input_tokens = 25, output_tokens = 130}) == 1013;
   // a million in with 400k cached, a million out
-  #assert gw_cost(f.rate, GwUsage.{ok = true, input_tokens = 1000000, cached_tokens = 400000, output_tokens = 1000000}) == 450000 + 30000 + 3750000;
+  #assert gw_cost(f.rate, GwUsage.{ok = true, input_tokens = 1000000, cached_tokens = 400000, output_tokens = 1000000}) == 900000 + 30000 + 7500000;
   h := gw_rate("anthropic", "claude-haiku-4-5");
   #assert gw_cost(h.rate, GwUsage.{ok = true, input_tokens = 1000000, cached_tokens = 500000, cache_write_tokens = 200000, output_tokens = 0}) == 300000 + 50000 + 250000;
   #assert gw_cost(h.rate, GwUsage.{}) == 0;
@@ -85,9 +85,9 @@ gw_price :: (gateway: string, model: string, u: GwUsage, usd_per_btc: int) -> Gw
 
 #test "a price on usage: the card's micros, msats at a bitcoin price, -1 off the card" {
   u := GwUsage.{ok = true, input_tokens = 25, output_tokens = 130};
-  p := gw_price("vercel", "google/gemini-3.8-flash", u, 100000);
-  #assert p.card_usd_micros == 506 && p.cost_msats == 506 && p.input_tokens == 25;
-  #assert gw_price("vercel", "google/gemini-3.8-flash", u, 0).cost_msats == 0;
+  p := gw_price("vercel", "google/gemini-4-hydrogen", u, 100000);
+  #assert p.card_usd_micros == 1013 && p.cost_msats == 1013 && p.input_tokens == 25;
+  #assert gw_price("vercel", "google/gemini-4-hydrogen", u, 0).cost_msats == 0;
   #assert gw_price("openai", "gpt-5.4-mini", u, 100000).card_usd_micros == -1;
   #assert gw_msats(1000000, 50000) == 2000000;   // a dollar at $50k is 2,000 sats
 }
@@ -104,8 +104,9 @@ gw_price :: (gateway: string, model: string, u: GwUsage, usd_per_btc: int) -> Gw
   r[0] = GwReplay.{};
   gw_replay(GW_WIRE_GEMINI, ff[..], r[..]);
   #assert json_valid(gw_replay_text(r[..])) && r[0].done == 1 && r[0].thoughts == 0;
-  // Flash thinks a little at low: 28 reasoning tokens, billed as output, and no thought text streams
-  #assert r[0].usage.input_tokens == 541 && r[0].usage.reasoning_tokens == 28 && r[0].usage.output_tokens == 91 && gw_price("vertex", "gemini-3.8-flash", r[0].usage, 0).card_usd_micros == 1494;
+  // Flash thinks a little at low: 28 reasoning tokens, billed as output, and no thought text streams;
+  // priced at Gemini 4 Hydrogen's row, which replaced Flash's on the card (same Vertex input and output rates)
+  #assert r[0].usage.input_tokens == 541 && r[0].usage.reasoning_tokens == 28 && r[0].usage.output_tokens == 91 && gw_price("vertex", "gemini-4-hydrogen", r[0].usage, 0).card_usd_micros == 1494;
   r[0] = GwReplay.{};
   gw_replay(GW_WIRE_GEMINI, fc[..], r[..]);
   #assert json_valid(gw_replay_text(r[..])) && r[0].done == 1;

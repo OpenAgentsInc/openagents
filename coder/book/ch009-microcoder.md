@@ -2,7 +2,7 @@
 
 > **Status: implemented.** The loop runs in Coder: `coder run
 > "TASK" --engine micro` and the terminal UI's third agent both drive
-> `coax/lib/microcoder/` through a gateway plan of Vertex Gemini Flash, the
+> `coax/lib/microcoder/` through a gateway plan of Vertex Gemini 4 Hydrogen, the
 > Gemini API and OpenRouter. Its checks cover every ending, the state's
 > caps and the reply streaming out of a partial action. Gateway streams
 > recorded live replay through the loop with no credentials, the same each

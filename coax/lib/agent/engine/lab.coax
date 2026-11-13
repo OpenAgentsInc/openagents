@@ -46,7 +46,7 @@ LAB_HARNESS_LABELS :: [4] string.[
   "Claude Code, Anthropic's coding agent on this Mac: strong at reading, writing and refactoring code, running commands, and long careful tasks",
   "Psionic, our own open model (gpt-oss-20b) on our GPU: fast for small talk, plain questions and short explanations",
   "Codex, OpenAI's coding agent CLI: strong at code changes, terminal work and quick fixes",
-  "Microcoder, our small agent on hosted models (Gemini Flash), answering in seconds: the default for plain questions, small talk, quick facts, explanations and small jobs on this Mac"];
+  "Microcoder, our small agent on hosted models (Gemini 4 Hydrogen), answering in seconds: the default for plain questions, small talk, quick facts, explanations and small jobs on this Mac"];
 // With Microcoder on offer, Psionic keeps the turns that ask for our own model.
 LAB_PSIONIC_BESIDE_MC :: "Psionic, our own open model (gpt-oss-20b) on our GPU, which can take 40 seconds to load: for when the user asks for our own model, or wants the text kept off hosted providers";
 LAB_HARNESS_NAMES :: [4] string.["Claude Code", "Psionic", "Codex", "Microcoder"];
@@ -208,7 +208,7 @@ lab_headline :: (out: [] u8, d: LabDecision, round_ms: int) -> string {
   names := LAB_HARNESS_NAMES; models := MODEL_NAMES; efforts := EFFORT_NAMES;
   k := e_set(out, 0, "Routed to "); k = e_set(out, k, names[d.harness]);
   if d.harness == 1 { k = e_set(out, k, " · gpt-oss-20b"); }
-  else if d.harness == 3 { k = e_set(out, k, " · Gemini Flash"); }
+  else if d.harness == 3 { k = e_set(out, k, " · Gemini 4 Hydrogen"); }
   else if d.harness == 0 { k = e_set(out, k, " · "); k = e_set(out, k, models[d.model]); }
   k = e_set(out, k, " · "); k = e_set(out, k, efforts[d.effort]);
   k = e_set(out, k, " · "); k = s_int(out, k, round_ms / 1000); k = e_set(out, k, ".");
@@ -655,7 +655,7 @@ LAB_TEST_PSIONIC :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\
   #assert b[0].options[0] == 4 && so_check(b[..], LAB_TEST_OTHER) == "";
   d := lab_read(LAB_TEST_OTHER);
   hb: [256] u8; db: [4096] u8;
-  #assert d.ok && d.harness == 3 && lab_headline(hb[..], d, 1200) == "Routed to Microcoder · Gemini Flash · Low · 1.2 s";
+  #assert d.ok && d.harness == 3 && lab_headline(hb[..], d, 1200) == "Routed to Microcoder · Gemini 4 Hydrogen · Low · 1.2 s";
   #assert s_has(lab_details(db[..], LAB_TEST_OTHER, d, true, true, 1200), "harness       other 0.90 · psionic 0.06 · claude_code 0.03 · codex 0.01\n");
   // without it attached (the checks, or a host that didn't give one) the route never starts it
   pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);
@@ -669,17 +669,17 @@ LAB_TEST_PSIONIC :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\
   v: [1] LmcView; v[0].running = true;
   s_user(ss[..], "hi");
   ev: [4] McRunEvent;
-  ev[0] = McRunEvent.{kind = MR_ATTEMPT, log = GwAttemptLog.{gateway = "ours", model = "google/gemini-3.8-flash", outcome = GW_OUT_BENCHED, status = 402, first_ms = -1, cost_usd_micros = -1}};
+  ev[0] = McRunEvent.{kind = MR_ATTEMPT, log = GwAttemptLog.{gateway = "ours", model = "google/gemini-4-hydrogen", outcome = GW_OUT_BENCHED, status = 402, first_ms = -1, cost_usd_micros = -1}};
   ev[1] = McRunEvent.{kind = MR_ENDED, ending = MC_END_NO_CAPACITY, text = "every gateway in the plan refused"};
   lab_mc_take(v[..], ss[..], ev[..], 2);
   #assert v[0].need_credit && v[0].paying && ss[0].live && ss[0].parts[ss[0].n - 1].kind == P_TOOL;
   s_turn_end(ss[..], false, "");
   s_user(ss[..], "hi"); v[0] = LmcView.{running = true};
-  ev[0] = McRunEvent.{kind = MR_ATTEMPT, log = GwAttemptLog.{gateway = "vertex", model = "google/gemini-3.8-flash", outcome = GW_OUT_BENCHED, status = 402, first_ms = -1, cost_usd_micros = -1}};
+  ev[0] = McRunEvent.{kind = MR_ATTEMPT, log = GwAttemptLog.{gateway = "vertex", model = "google/gemini-4-hydrogen", outcome = GW_OUT_BENCHED, status = 402, first_ms = -1, cost_usd_micros = -1}};
   lab_mc_take(v[..], ss[..], ev[..], 2);
   #assert !v[0].need_credit && !v[0].paying && !ss[0].live;
   s_user(ss[..], "hi"); v[0] = LmcView.{running = true};
-  ev[0] = McRunEvent.{kind = MR_ATTEMPT, log = GwAttemptLog.{gateway = "ours", model = "google/gemini-3.8-flash", outcome = GW_OUT_DONE, status = 200, first_ms = 10, cost_usd_micros = -1}};
+  ev[0] = McRunEvent.{kind = MR_ATTEMPT, log = GwAttemptLog.{gateway = "ours", model = "google/gemini-4-hydrogen", outcome = GW_OUT_DONE, status = 200, first_ms = 10, cost_usd_micros = -1}};
   ev[1] = McRunEvent.{kind = MR_ENDED, ending = MC_END_FINISHED, text = "Hello."};
   lab_mc_take(v[..], ss[..], ev[..], 2);
   #assert !v[0].paying && !ss[0].live;
@@ -704,12 +704,12 @@ LAB_TEST_OTHER :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\"o
   v: [1] LmcView; v[0].running = true;
   s_user(ss[..], "how many swift files");
   ev: [8] McRunEvent;
-  ev[0] = McRunEvent.{kind = MR_ATTEMPT, log = GwAttemptLog.{gateway = "vertex", model = "google/gemini-3.8-flash", outcome = GW_OUT_DONE, status = 200, first_ms = 900, latency_ms = 1200, input_tokens = 461, output_tokens = 98, card_usd_micros = 713, cost_usd_micros = -1}};
+  ev[0] = McRunEvent.{kind = MR_ATTEMPT, log = GwAttemptLog.{gateway = "vertex", model = "google/gemini-4-hydrogen", outcome = GW_OUT_DONE, status = 200, first_ms = 900, latency_ms = 1200, input_tokens = 461, output_tokens = 98, card_usd_micros = 713, cost_usd_micros = -1}};
   ev[1] = McRunEvent.{kind = MR_COMMAND, text = "ls *.swift | wc -l", exit = 0, output = "3\n"};
   ev[2] = McRunEvent.{kind = MR_COMMAND, text = "cat missing", exit = 1, output = "cat: missing: No such file or directory\n"};
   ev[3] = McRunEvent.{kind = MR_STEP, step = 1};
   lab_mc_take(v[..], ss[..], ev[..], 4);
-  #assert ss[0].n == 4 && ss[0].parts[1].tk == TK_TOOL && ss[0].parts[1].detail == "vertex · google/gemini-3.8-flash · done" && !ss[0].parts[1].failed;
+  #assert ss[0].n == 4 && ss[0].parts[1].tk == TK_TOOL && ss[0].parts[1].detail == "vertex · google/gemini-4-hydrogen · done" && !ss[0].parts[1].failed;
   #assert s_has(ss[0].parts[1].output, "in=461 out=98 card_usd_micros=713");
   #assert ss[0].parts[2].tk == TK_EXEC && ss[0].parts[2].arg == "ls *.swift | wc -l" && ss[0].parts[2].output == "3\n" && !ss[0].parts[2].failed;
   #assert ss[0].parts[3].failed && s_has(ss[0].parts[3].output, "[exit 1]") && ss[0].live;

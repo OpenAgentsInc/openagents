@@ -196,7 +196,7 @@ Code, in the normal flow and in Autopilot. The picker stays Claude Haiku.
 | --- | --- |
 | `EVERGLADE_CODER_ENGINE=antigravity` (or `agy`) | The coder runs on Antigravity, and the rubric names Gemini models |
 | `EVERGLADE_TIER_FAMILY=gemini` | The same, said from the rubric's side |
-| `EVERGLADE_CODER_MODEL=gemini-3.8-flash-low` | Any model `agy models` lists; one agy doesn't offer fails the run before any turn |
+| `EVERGLADE_CODER_MODEL=gemini-4-hydrogen-low` | Any model `agy models` lists; one agy doesn't offer fails the run before any turn |
 | Neither | Claude, as before. Two that disagree (`claude` with `gemini`) are refused with why |
 
 It runs on the shared ACP engine with Antigravity's agent
@@ -212,7 +212,7 @@ Claude coder has, and how it maps:
 | The in-process `report` tool | A last line, `REPORT: done SUMMARY` or `REPORT: blocked SUMMARY`, read from the turn's words when it ends. agy takes no in-process tool, and an MCP server over ACP's `mcpServers` would be a second process to build, ship and wire back; a file can't be written in rehearsal. The line needs nothing and works read-only |
 | Nudges (three) | The same, with the REPORT line named |
 | Stop | Ends the agy process |
-| Ledger line per turn | `harness` `antigravity`, `thought_tokens`, and `cost_priced_as`: agy reports tokens but no cost, so the turn is priced from the rates card (`coax/lib/gateway/card.coax`, Vertex): the model less its level (`gemini-3.8-flash-low` is `gemini-3.8-flash`); a model the card lacks (Gemini 4 Argon) at Carbon's row, so it is never free. Thought tokens are billed as output |
+| Ledger line per turn | `harness` `antigravity`, `thought_tokens`, and `cost_priced_as`: agy reports tokens but no cost, so the turn is priced from the rates card (`coax/lib/gateway/card.coax`, Vertex): the model less its level (`gemini-4-hydrogen-low` is `gemini-4-hydrogen`); a model the card lacks (Gemini 4 Argon) at Carbon's row, so it is never free. Thought tokens are billed as output |
 | The budget (`NP_BUDGET_E6`) | Counts those prices |
 
 **Headless.** The Workshop window runs only on the Mac, so the flow has a
@@ -222,7 +222,7 @@ runs `next-context` for the panel's requests, appends the ledger lines and
 decisions where the app does, prints the chat, and stops after N coding turns.
 
 ```sh
-EVERGLADE_CODER_ENGINE=antigravity EVERGLADE_CODER_MODEL=gemini-3.8-flash-low EVERGLADE_CODER_MODE=rehearsal \
+EVERGLADE_CODER_ENGINE=antigravity EVERGLADE_CODER_MODEL=gemini-4-hydrogen-low EVERGLADE_CODER_MODE=rehearsal \
   coax/web/tool.sh apps/everglade-desktop/next-drive.coax --laps 2 --minutes 14 --repo-dir CHECKOUT
 ```
 
@@ -268,8 +268,8 @@ thresholds don't change. Claude stays the default until the experiments in
 
 | Tier | Claude (default) | Gemini |
 | --- | --- | --- |
-| Haiku | `claude-haiku-5-5` | `gemini-3.8-flash-low` |
-| Sonnet | `claude-sonnet-5-5` | `gemini-3.8-flash-high` |
+| Haiku | `claude-haiku-5-5` | `gemini-4-hydrogen-low` |
+| Sonnet | `claude-sonnet-5-5` | `gemini-4-hydrogen-high` |
 | Opus | `claude-opus-5-5` | `gemini-4-argon` (the model agy's own `pro` subagent runs) |
 | Fable | `claude-fable-5-2` | `gemini-4-carbon` (the newest) |
 

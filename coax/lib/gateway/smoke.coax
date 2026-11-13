@@ -119,7 +119,7 @@ smoke_plans :: (base: string, refuse: string, cut: string) -> bool {
   gw_plan_init(p[..], b[..]);
   x := gw_plan_add(p[..], Gateway.{name = "first", url = refuse, key_env = KEY_ENV, wire = GW_WIRE_RESPONSES}, "m1", none[0..<0]);
   // named for a row on the rates card, so its answer is priced (7 in, 3 out: 17 micro-USD)
-  x = gw_plan_add(p[..], Gateway.{name = "vercel", url = base, key_env = KEY_ENV, wire = GW_WIRE_RESPONSES}, "google/gemini-3.8-flash", none[0..<0]);
+  x = gw_plan_add(p[..], Gateway.{name = "vercel", url = base, key_env = KEY_ENV, wire = GW_WIRE_RESPONSES}, "google/gemini-4-hydrogen", none[0..<0]);
   p[0].usd_per_btc = 100000;
   text: [256] u8; nt: [1] int;
   msgs: [1] GwMessage;

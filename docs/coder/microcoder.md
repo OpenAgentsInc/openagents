@@ -191,7 +191,7 @@ effort, then maps it to a gateway plan:
 
 | Tier | First choice | Fallbacks |
 | --- | --- | --- |
-| `fast` (trivial, easy) | Vertex `gemini-3.8-flash` | Gemini API flash, OpenRouter, Z.ai `glm-5.3-flash` |
+| `fast` (trivial, easy) | Vertex `gemini-4-hydrogen` | Gemini API Hydrogen, OpenRouter, Z.ai `glm-5.3-flash` |
 | `strong` (moderate and up) | Vertex Gemini Pro | OpenRouter (a strong open model), Anthropic or OpenAI direct |
 | `local` (the user chose it) | psionic on this machine | none |
 

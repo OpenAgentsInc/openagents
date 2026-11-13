@@ -1161,7 +1161,7 @@ np_max_vertices :: () -> int #export_c #effects(all) { return NP_MAX_VERTICES; }
 // stand-in agy (coder/tui/agy_standin.coax) and agy 1.5.6 send.
 
 NP_T_INIT :: "{\"jsonrpc\":\"2.0\",\"result\":{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true},\"agentInfo\":{\"name\":\"Antigravity ACP Server\",\"version\":\"1.5.6\"}},\"id\":1}";
-NP_T_OPENED :: "{\"jsonrpc\":\"2.0\",\"result\":{\"sessionId\":\"agy-standin-1\",\"models\":{\"availableModels\":[{\"modelId\":\"gemini-4-carbon-medium\"},{\"modelId\":\"gemini-3.8-flash-low\"}],\"currentModelId\":\"gemini-4-carbon-medium\"},\"modes\":{\"currentModeId\":\"default\",\"availableModes\":[{\"id\":\"default\"},{\"id\":\"plan\"}]}},\"id\":2}";
+NP_T_OPENED :: "{\"jsonrpc\":\"2.0\",\"result\":{\"sessionId\":\"agy-standin-1\",\"models\":{\"availableModels\":[{\"modelId\":\"gemini-4-carbon-medium\"},{\"modelId\":\"gemini-4-hydrogen-low\"}],\"currentModelId\":\"gemini-4-carbon-medium\"},\"modes\":{\"currentModeId\":\"default\",\"availableModes\":[{\"id\":\"default\"},{\"id\":\"plan\"}]}},\"id\":2}";
 NP_T_MODEL_SET :: "{\"jsonrpc\":\"2.0\",\"result\":{},\"id\":3}";
 NP_T_USAGE :: "\"usage\":{\"inputTokens\":120,\"outputTokens\":12,\"cachedReadTokens\":64,\"cachedWriteTokens\":0,\"thoughtTokens\":8,\"totalTokens\":204}";
 
@@ -1212,8 +1212,8 @@ np_agy_ends :: (s: []NextPanel, id: int, reason: string) {
   #assert np_coder_choice("codex", "").problem.count > 0 && np_coder_choice("", "flash").problem.count > 0;
   // The model: the one named, else the tier's in the family, else the engine's default.
   g := np_coder_choice("antigravity", "");
-  #assert np_coder_model(g, "gemini-3.8-flash-low", TIER_FABLE) == "gemini-3.8-flash-low";
-  #assert np_coder_model(g, "", TIER_HAIKU) == "gemini-3.8-flash-low" && np_coder_model(g, "", TIER_FABLE) == "gemini-4-carbon";
+  #assert np_coder_model(g, "gemini-4-hydrogen-low", TIER_FABLE) == "gemini-4-hydrogen-low";
+  #assert np_coder_model(g, "", TIER_HAIKU) == "gemini-4-hydrogen-low" && np_coder_model(g, "", TIER_FABLE) == "gemini-4-carbon";
   #assert np_coder_model(g, "", TIER_NONE) == NP_AGY_CODER_MODEL && NP_AGY_CODER_MODEL == tier_model_in(TIER_OPUS, TIER_GEMINI);
   cl := np_coder_choice("", "");
   #assert np_coder_model(cl, "", TIER_SONNET) == "claude-sonnet-5-5" && np_coder_model(cl, "", TIER_NONE) == NP_CODER_MODEL;
@@ -1238,21 +1238,21 @@ np_agy_ends :: (s: []NextPanel, id: int, reason: string) {
   #assert np_agy_inside("/w", "{\"rawInput\":{\"Path\":\"/w/notes.txt\"},\"locations\":[{\"path\":\"/w/notes.txt\"}]}", ar[..]);
   #assert !np_agy_inside("/w", "{\"rawInput\":{\"TargetFile\":\"/home/x/notes.txt\"}}", ar[..]) && !np_agy_inside("/w", "{\"rawInput\":{\"Path\":\"/w/../etc\"}}", ar[..]);
   #assert !np_agy_inside("/w", "{\"locations\":[{\"path\":\"/tmp/a\"}]}", ar[..]) && !np_agy_inside("/w", "{\"rawInput\":{\"Cwd\":\"/\"}}", ar[..]);
-  // Priced from the card: Flash's row without its level; a model the card lacks at Carbon's.
-  #assert np_agy_rate_model("gemini-3.8-flash-low") == "gemini-3.8-flash" && np_agy_rate_model("gemini-4-carbon-high") == "gemini-4-carbon" && np_agy_rate_model("gemini-3.5-flash") == "gemini-3.5-flash";
-  p := np_agy_price("gemini-3.8-flash-low", 120, 64, 0, 12, 8);
-  #assert p.row == "gemini-3.8-flash" && p.e6 == 340;     // 120 at $1.50, 64 cached at $0.15, 20 out at $7.50 a million (Vertex on-demand)
+  // Priced from the card: Hydrogen's row without its level; a model the card lacks at Carbon's.
+  #assert np_agy_rate_model("gemini-4-hydrogen-low") == "gemini-4-hydrogen" && np_agy_rate_model("gemini-4-carbon-high") == "gemini-4-carbon" && np_agy_rate_model("gemini-3.5-flash") == "gemini-3.5-flash";
+  p := np_agy_price("gemini-4-hydrogen-low", 120, 64, 0, 12, 8);
+  #assert p.row == "gemini-4-hydrogen" && p.e6 == 335;     // 120 at $1.50, 64 cached at $0.075, 20 out at $7.50 a million (Vertex on-demand)
   q := np_agy_price("gemini-4-argon-high", 1000000, 0, 0, 0, 0);
   #assert q.row == "gemini-4-argon" && q.e6 == 4000000;   // Argon has its own row on the card
   z := np_agy_price("gemini-3.5-flash", 1000000, 0, 0, 0, 0);
   #assert z.row == NP_AGY_PRICE_FALLBACK && z.e6 == 4000000;   // a model the card lacks is priced at Carbon's, never free
 }
 #test "antigravity coder: a turn that reports done is written down and Autopilot goes round" {
-  s: [1] NextPanel; np_agy_test(s[..], false, "gemini-3.8-flash-low");
+  s: [1] NextPanel; np_agy_test(s[..], false, "gemini-4-hydrogen-low");
   np_agy_feed(s[..], NP_T_INIT);
   #assert np_agy_sent(s[..], "\"method\":\"session/new\"") && np_agy_sent(s[..], "\"cwd\":\"/w\"");
   np_agy_feed(s[..], NP_T_OPENED);
-  #assert np_agy_sent(s[..], "\"method\":\"session/set_model\"") && np_agy_sent(s[..], "gemini-3.8-flash-low") && !np_agy_sent(s[..], "session/prompt") && s[0].agy_owed;
+  #assert np_agy_sent(s[..], "\"method\":\"session/set_model\"") && np_agy_sent(s[..], "gemini-4-hydrogen-low") && !np_agy_sent(s[..], "session/prompt") && s[0].agy_owed;
   np_agy_feed(s[..], NP_T_MODEL_SET);
   #assert np_agy_sent(s[..], "\"method\":\"session/prompt\"") && np_agy_sent(s[..], "Complete GitHub issue #13193") && !s[0].agy_owed;
   np_agy_feed(s[..], "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"agy-standin-1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"c1\",\"name\":\"run_command\",\"kind\":\"execute\",\"title\":\"git push\",\"rawInput\":{\"CommandLine\":\"git push origin HEAD:main\",\"Cwd\":\"/w\"},\"status\":\"in_progress\"}}}");
@@ -1263,18 +1263,18 @@ np_agy_ends :: (s: []NextPanel, id: int, reason: string) {
   np_agy_ends(s[..], 4, "end_turn");
   #assert s[0].reported == 1 && np_text_has(s[..], "> done: abc123, #13193 closed") && s[0].runs == 1 && s[0].worked_n == 1 && s[0].worked[0] == 13193;
   #assert s[0].state == NP_CONTEXT_WAIT && s[0].request == 2 && !s[0].agy && !s[0].started;   // Autopilot asks the picker again
-  #assert np_usage_has(s[..], "\"harness\":\"antigravity\"") && np_usage_has(s[..], "\"purpose\":\"issue.code\"") && np_usage_has(s[..], "\"model\":\"gemini-3.8-flash-low\"");
+  #assert np_usage_has(s[..], "\"harness\":\"antigravity\"") && np_usage_has(s[..], "\"purpose\":\"issue.code\"") && np_usage_has(s[..], "\"model\":\"gemini-4-hydrogen-low\"");
   #assert np_usage_has(s[..], "\"session\":\"agy-standin-1\"") && np_usage_has(s[..], "\"input_tokens\":120") && np_usage_has(s[..], "\"cache_read_input_tokens\":64");
-  #assert np_usage_has(s[..], "\"output_tokens\":12") && np_usage_has(s[..], "\"thought_tokens\":8") && np_usage_has(s[..], "\"cost_priced_as\":\"gemini-3.8-flash\"") && np_usage_has(s[..], "\"cost_usd_e6\":340");
-  #assert s[0].run_cost_e6 == 340;
+  #assert np_usage_has(s[..], "\"output_tokens\":12") && np_usage_has(s[..], "\"thought_tokens\":8") && np_usage_has(s[..], "\"cost_priced_as\":\"gemini-4-hydrogen\"") && np_usage_has(s[..], "\"cost_usd_e6\":335");
+  #assert s[0].run_cost_e6 == 335;
 }
 #test "antigravity coder: a turn that reports blocked ends the issue too, and one without a report is told to finish" {
-  s: [1] NextPanel; np_agy_test(s[..], false, "gemini-3.8-flash-low"); np_agy_open(s[..]);
+  s: [1] NextPanel; np_agy_test(s[..], false, "gemini-4-hydrogen-low"); np_agy_open(s[..]);
   np_agy_says(s[..], "The build hosts are out of budget.\nREPORT: blocked the hosts are out of budget");
   np_agy_ends(s[..], 4, "end_turn");
   #assert s[0].reported == 2 && np_text_has(s[..], "> blocked: the hosts are out of budget") && s[0].runs == 1 && s[0].state == NP_CONTEXT_WAIT;
 
-  t: [1] NextPanel; np_agy_test(t[..], false, "gemini-3.8-flash-low"); np_agy_open(t[..]);
+  t: [1] NextPanel; np_agy_test(t[..], false, "gemini-4-hydrogen-low"); np_agy_open(t[..]);
   np_agy_says(t[..], "I started the remote check and will wait.");
   np_agy_ends(t[..], 4, "end_turn");
   #assert t[0].reported == 0 && t[0].nudges == 1 && t[0].runs == 0 && t[0].state == NP_RUNNING && t[0].agy;
@@ -1284,20 +1284,20 @@ np_agy_ends :: (s: []NextPanel, id: int, reason: string) {
   #assert t[0].reported == 1 && t[0].runs == 1 && t[0].state == NP_CONTEXT_WAIT && t[0].turn == 0;   // (np_ask begins the next round at turn 0)
 }
 #test "antigravity coder: Stop ends its turn, and a barred tool stops it" {
-  s: [1] NextPanel; np_agy_test(s[..], false, "gemini-3.8-flash-low"); np_agy_open(s[..]); s[0].open = true;
+  s: [1] NextPanel; np_agy_test(s[..], false, "gemini-4-hydrogen-low"); np_agy_open(s[..]); s[0].open = true;
   out: [8] f32; box: [8] f32; b := np_button(1320);
   #assert np_busy(s[..]) && np_pointer(s[..], b.x + 5, b.y + 5, 0, 1320, 880) && np_pointer(s[..], b.x + 5, b.y + 5, 2, 1320, 880) && s[0].want_stop;
   n := np_frame(s[..], out[..], box[..], 0, 0, 0, 0.016, 1);
   #assert s[0].state == NP_STOPPED && !s[0].started && !s[0].agy && !s[0].ag[0].cue[0].live && s[0].runs == 0;
 
-  t: [1] NextPanel; np_agy_test(t[..], false, "gemini-3.8-flash-low"); np_agy_open(t[..]);
+  t: [1] NextPanel; np_agy_test(t[..], false, "gemini-4-hydrogen-low"); np_agy_open(t[..]);
   np_agy_feed(t[..], "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"agy-standin-1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"c2\",\"name\":\"invoke_subagent\",\"kind\":\"other\",\"title\":\"Ask the browser agent\",\"status\":\"in_progress\"}}}");
   #assert t[0].agy_barred && np_agy_sent(t[..], "\"method\":\"session/cancel\"") && np_text_has(t[..], "> refused: invoke_subagent is not allowed here");
   np_agy_ends(t[..], 4, "cancelled");
   #assert t[0].state == NP_FAILED && np_text_has(t[..], "a tool it may not use") && t[0].runs == 0;
 }
 #test "antigravity coder: a silent turn is cancelled and continued, said in the chat; past the limit it fails" {
-  s: [1] NextPanel; np_agy_test(s[..], false, "gemini-3.8-flash-low"); np_agy_open(s[..]);
+  s: [1] NextPanel; np_agy_test(s[..], false, "gemini-4-hydrogen-low"); np_agy_open(s[..]);
   cue_watch_set(s[0].ag[0].cue[..], 2000, 1);
   s[0].now = 100; np_agy_watch(s[..]);                         // the turn's clock starts
   s[0].now = 101; np_agy_watch(s[..]); #assert !np_agy_sent(s[..], "session/cancel");
@@ -1305,7 +1305,7 @@ np_agy_ends :: (s: []NextPanel, id: int, reason: string) {
   #assert np_text_has(s[..], "> Antigravity sent nothing for 2 s. The turn was cancelled and asked to continue (recovery 1 of 1).") && np_agy_sent(s[..], "\"method\":\"session/cancel\"");
   np_agy_ends(s[..], 4, "cancelled");
   #assert s[0].state == NP_RUNNING && np_agy_sent(s[..], "\"method\":\"session/prompt\"") && np_agy_sent(s[..], "Continue where you left off.");
-  #assert s[0].run_cost_e6 == 340;                              // the cancelled part's tokens are counted
+  #assert s[0].run_cost_e6 == 335;                              // the cancelled part's tokens are counted
   np_agy_says(s[..], "Back at it.");
   s[0].now = 103; np_agy_watch(s[..]);
   s[0].now = 105; np_agy_watch(s[..]);
@@ -1314,7 +1314,7 @@ np_agy_ends :: (s: []NextPanel, id: int, reason: string) {
   #assert s[0].state == NP_FAILED && np_text_has(s[..], "Antigravity stopped answering: silent for 2 s after 1 recovery.") && s[0].runs == 0;
 
   // a tool running for minutes is not a silence
-  t: [1] NextPanel; np_agy_test(t[..], false, "gemini-3.8-flash-low"); np_agy_open(t[..]);
+  t: [1] NextPanel; np_agy_test(t[..], false, "gemini-4-hydrogen-low"); np_agy_open(t[..]);
   cue_watch_set(t[0].ag[0].cue[..], 2000, 1);
   t[0].now = 100; np_agy_watch(t[..]);
   np_agy_feed(t[..], "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"agy-standin-1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"c9\",\"name\":\"run_command\",\"kind\":\"execute\",\"title\":\"coax test\",\"rawInput\":{\"CommandLine\":\"coax/bin/coax test a.coax\"},\"status\":\"in_progress\"}}}");
@@ -1322,7 +1322,7 @@ np_agy_ends :: (s: []NextPanel, id: int, reason: string) {
   #assert !np_text_has(t[..], "sent nothing") && t[0].state == NP_RUNNING;
 }
 #test "antigravity coder: rehearsal refuses an edit and a command, allows a read" {
-  s: [1] NextPanel; np_agy_test(s[..], true, "gemini-3.8-flash-low"); np_agy_open(s[..]);
+  s: [1] NextPanel; np_agy_test(s[..], true, "gemini-4-hydrogen-low"); np_agy_open(s[..]);
   np_agy_feed(s[..], "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"session/request_permission\",\"params\":{\"toolCall\":{\"name\":\"edit_file\",\"kind\":\"edit\",\"title\":\"Edit notes.txt\",\"rawInput\":{\"Path\":\"/w/notes.txt\"}},\"options\":[{\"optionId\":\"allow\",\"kind\":\"allow_once\"},{\"optionId\":\"deny\",\"kind\":\"reject_once\"}]}}");
   #assert np_agy_sent(s[..], "\"optionId\":\"deny\"") && !np_agy_sent(s[..], "\"optionId\":\"allow\"") && np_text_has(s[..], "refused: Edit notes.txt");
   np_agy_feed(s[..], "{\"jsonrpc\":\"2.0\",\"id\":\"2\",\"method\":\"session/request_permission\",\"params\":{\"toolCall\":{\"name\":\"run_command\",\"kind\":\"execute\",\"title\":\"ls\",\"rawInput\":{\"CommandLine\":\"ls\"}},\"options\":[{\"optionId\":\"allow\",\"kind\":\"allow_once\"},{\"optionId\":\"deny\",\"kind\":\"reject_once\"}]}}");
@@ -1334,17 +1334,17 @@ np_agy_ends :: (s: []NextPanel, id: int, reason: string) {
   #assert s[0].reported == 1 && np_usage_has(s[..], "\"purpose\":\"issue.rehearse\"") && s[0].runs == 1;
 }
 #test "antigravity coder: the priced turns stop Autopilot at its budget, and a model agy lacks is refused" {
-  s: [1] NextPanel; np_agy_test(s[..], false, "gemini-3.8-flash-low"); np_agy_open(s[..]);
+  s: [1] NextPanel; np_agy_test(s[..], false, "gemini-4-hydrogen-low"); np_agy_open(s[..]);
   s[0].run_cost_e6 = NP_BUDGET_E6 - 100;
   np_agy_says(s[..], "REPORT: done abc123");
   np_agy_ends(s[..], 4, "end_turn");
-  #assert s[0].run_cost_e6 == NP_BUDGET_E6 + 240 && s[0].runs == 1 && s[0].state == NP_YOURS && s[0].request == 0;
+  #assert s[0].run_cost_e6 == NP_BUDGET_E6 + 235 && s[0].runs == 1 && s[0].state == NP_YOURS && s[0].request == 0;
   #assert np_text_has(s[..], "> Autopilot stopped: this run has spent its budget.");
 
   t: [1] NextPanel; np_agy_test(t[..], false, "gemini-9-nope");
   np_agy_feed(t[..], NP_T_INIT); np_agy_feed(t[..], NP_T_OPENED);
   #assert t[0].state == NP_FAILED && np_text_has(t[..], "Antigravity does not offer the model gemini-9-nope") && !np_agy_sent(t[..], "session/prompt");
-  u: [1] NextPanel; np_agy_test(u[..], false, "gemini-3.8-flash-low");
+  u: [1] NextPanel; np_agy_test(u[..], false, "gemini-4-hydrogen-low");
   np_agy_feed(u[..], NP_T_INIT); np_agy_feed(u[..], "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Authentication required\"},\"id\":2}");
   #assert u[0].state == NP_FAILED && np_text_has(u[..], "Antigravity is not signed in");
 }
