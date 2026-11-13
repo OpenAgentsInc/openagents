@@ -1,0 +1,145 @@
+// The checks of metaverse-engine/physics/query-near.coax (#13279): with an index, every query answers
+// what the scan of every collider answers, bit for bit, in scenes of a few hundred colliders spread
+// over a field, some of them refused, some wide; and the index does ask fewer.
+QN_BOXES :: 160;
+QN_CAPSULES :: 96;
+QN_SLOTS :: QN_BOXES + QN_CAPSULES;
+QN_PICK :: 96;
+QnScene :: struct {
+  boxes: [QN_BOXES * QUERY_BOX] f32; capsules: [QN_CAPSULES * QUERY_CAPSULE] f32;
+  head: [256] int; next: [QN_SLOTS] int; prev: [QN_SLOTS] int; at: [QN_SLOTS] int; cx: [QN_SLOTS] int; cz: [QN_SLOTS] int;
+  x: [QN_SLOTS] f32; z: [QN_SLOTS] f32; cell: [1] f32; gn: [SPATIAL_COUNTERS] int;
+  wide: [QN_SLOTS] int; found: [QN_PICK] int; pb: [QN_PICK * QUERY_BOX] f32; pc: [QN_PICK * QUERY_CAPSULE] f32;
+  bid: [QN_PICK] int; cid: [QN_PICK] int; reach: [1] f32; n: [QUERY_NEAR_COUNTERS] int;
+  near: [1] QueryNear;
+}
+qn_view :: (s: [] QnScene) -> QueryNear {
+  g := SpatialGrid.{head = s[0].head[..], next = s[0].next[..], prev = s[0].prev[..], at = s[0].at[..], cx = s[0].cx[..], cz = s[0].cz[..],
+    x = s[0].x[..], z = s[0].z[..], cell = s[0].cell[..], n = s[0].gn[..]};
+  return QueryNear.{grid = g, wide = s[0].wide[..], found = s[0].found[..], boxes = s[0].pb[..], capsules = s[0].pc[..],
+    box_id = s[0].bid[..], capsule_id = s[0].cid[..], reach = s[0].reach[..], n = s[0].n[..]};
+}
+// Scene `seed`: boxes and capsules over a field 120 m a side; every 23rd box is refused (inside out,
+// or not finite), every 29th is wide, every 19th capsule has no radius and every 31st is long.
+qn_scene :: (s: [] QnScene, r: [] OracleDraw) {
+  for i: 0..<QN_BOXES {
+    x := oracle_draw(r) * 120 - 60; y := oracle_draw(r) * 3 - 0.5; z := oracle_draw(r) * 120 - 60;
+    w := 0.3 + oracle_draw(r) * 4; h := 0.2 + oracle_draw(r) * 3; d := 0.3 + oracle_draw(r) * 4;
+    if i % 29 == 7 { w = 30 + oracle_draw(r) * 40; }
+    o := i * QUERY_BOX;
+    s[0].boxes[o] = x; s[0].boxes[o + 1] = y; s[0].boxes[o + 2] = z; s[0].boxes[o + 3] = x + w; s[0].boxes[o + 4] = y + h; s[0].boxes[o + 5] = z + d;
+    if i % 23 == 5 { s[0].boxes[o + 3] = x - 1; }
+    if i % 46 == 11 { zero: f32 = 0; s[0].boxes[o + 2] = zero / zero; }
+  }
+  for i: 0..<QN_CAPSULES {
+    x := oracle_draw(r) * 120 - 60; z := oracle_draw(r) * 120 - 60; span := ifx i % 31 == 3 then 70.0f32 else 3.0f32;
+    o := i * QUERY_CAPSULE;
+    s[0].capsules[o] = x; s[0].capsules[o + 1] = oracle_draw(r) * 2; s[0].capsules[o + 2] = z;
+    s[0].capsules[o + 3] = x + (oracle_draw(r) - 0.5) * span; s[0].capsules[o + 4] = oracle_draw(r) * 3; s[0].capsules[o + 5] = z + (oracle_draw(r) - 0.5) * span;
+    s[0].capsules[o + 6] = ifx i % 19 == 4 then 0.0f32 else 0.15 + oracle_draw(r) * 0.8;
+  }
+}
+qn_point :: (r: [] OracleDraw) -> WorldPoint { return world_point(oracle_draw(r) * 126 - 63, oracle_draw(r) * 5 - 0.5, oracle_draw(r) * 126 - 63); }
+qn_same_point :: (a: WorldPoint, b: WorldPoint) -> bool { return f32_bits(a.x) == f32_bits(b.x) && f32_bits(a.y) == f32_bits(b.y) && f32_bits(a.z) == f32_bits(b.z); }
+qn_same_hit :: (a: QueryHit, b: QueryHit) -> bool {
+  return a.hit == b.hit && f32_bits(a.t) == f32_bits(b.t) && qn_same_point(a.point, b.point) && qn_same_point(a.normal, b.normal) && a.shape == b.shape && a.index == b.index && a.status == b.status;
+}
+qn_same_ground :: (a: QueryGround, b: QueryGround) -> bool {
+  return f32_bits(a.y) == f32_bits(b.y) && f32_bits(a.gx) == f32_bits(b.gx) && f32_bits(a.gz) == f32_bits(b.gz) && a.steep == b.steep && a.shape == b.shape && a.index == b.index && a.status == b.status;
+}
+// Every query both ways in scene `seed`; how many answers named a box or a capsule.
+qn_compare :: (seed: int, cell: f32, ground: bool) -> int {
+  s: [1] QnScene; r := [1] OracleDraw.[OracleDraw.{rng = seed * 7919 + 3}];
+  qn_scene(s[..], r[..]);
+  s[0].near[0] = qn_view(s[..]);
+  plain := Colliders.{ground = -0.25, ground_enabled = ground, boxes = s[0].boxes[..], capsules = s[0].capsules[..]};
+  #assert query_near_build(s[0].near[..], plain, cell);
+  fast := plain; fast.near = s[0].near[..];
+  named := 0;
+  for q: 0..<40 {
+    p := qn_point(r[..]); e := qn_point(r[..]);
+    span := ifx q % 5 == 0 then 1.0f32 else 0.06f32;      // most rays and sweeps are short; some cross the field
+    d := world_point((e.x - p.x) * span, (e.y - p.y) * span * 0.2, (e.z - p.z) * span);
+    far := 0.5 + oracle_draw(r[..]) * 1.5; radius := 0.1 + oracle_draw(r[..]) * 2.5;
+    a := query_ray(plain, p, d, far); b := query_ray(fast, p, d, far); #assert qn_same_hit(a, b);
+    if a.hit && (a.shape == QueryShape.box || a.shape == QueryShape.capsule) { named += 1; }
+    #assert query_clear(plain, p, d, far).clear == query_clear(fast, p, d, far).clear && query_clear(plain, p, d, far).status == query_clear(fast, p, d, far).status;
+    a = query_sweep(plain, p, radius * 0.3, d); b = query_sweep(fast, p, radius * 0.3, d); #assert qn_same_hit(a, b);
+    if a.hit && (a.shape == QueryShape.box || a.shape == QueryShape.capsule) { named += 1; }
+    a = query_sweep(plain, p, radius, world_point(0, 0, 0)); b = query_sweep(fast, p, radius, world_point(0, 0, 0)); #assert qn_same_hit(a, b);
+    ia: [12] QueryId; ib: [12] QueryId;
+    oa := query_overlap_checked(plain, p, radius * 2, ia[..]); ob := query_overlap_checked(fast, p, radius * 2, ib[..]);
+    #assert oa.count == ob.count && oa.status == ob.status;
+    for k: 0..<12 { if k < oa.count { #assert ia[k].shape == ib[k].shape && ia[k].index == ib[k].index; if ia[k].shape != QueryShape.ground { named += 1; } } }
+    ga := query_ground(plain, p.x, p.z, p.y + 2, radius * 0.5); gb := query_ground(fast, p.x, p.z, p.y + 2, radius * 0.5); #assert qn_same_ground(ga, gb);
+    if ga.shape == QueryShape.box { named += 1; }
+    ga = query_stand_checked(plain, p.x, p.z, p.y, 0.3); gb = query_stand_checked(fast, p.x, p.z, p.y, 0.3); #assert qn_same_ground(ga, gb);
+  }
+  // most queries ran on a pick, and the picks held a small share of the colliders
+  #assert s[0].n[QUERY_NEAR_PICKS] > 150 && s[0].n[QUERY_NEAR_ASKED] < s[0].n[QUERY_NEAR_PICKS] * QN_SLOTS / 4;
+  return named;
+}
+#forall "near: every query answers as the scan of every collider does, bit for bit, in cells of 8 m (1 of 2)" seed: 0..<12 #steps 400000000 { #assert qn_compare(seed, 8, true) > 8; }
+#forall "near: every query answers as the scan of every collider does, bit for bit, in cells of 8 m (2 of 2)" seed: 12..<24 #steps 400000000 { #assert qn_compare(seed, 8, false) > 8; }
+#forall "near: the same in cells of 3 m and of 25 m, where more colliders are wide or share a cell" seed: 0..<8 #steps 400000000 {
+  #assert qn_compare(seed + 100, 3, true) > 8 && qn_compare(seed + 200, 25, true) > 8;
+}
+#test "near: the build files each collider once, the wide and the refused apart" {
+  s: [1] QnScene; r := [1] OracleDraw.[OracleDraw.{rng = 99}];
+  qn_scene(s[..], r[..]); s[0].near[0] = qn_view(s[..]);
+  c := Colliders.{boxes = s[0].boxes[..], capsules = s[0].capsules[..]};
+  #assert query_near_build(s[0].near[..], c, 8) && s[0].n[QUERY_NEAR_BUILT] == 1;
+  refused := 0; wide := s[0].n[QUERY_NEAR_WIDE];
+  for i: 0..<QN_BOXES { if !query_box(c, i).ok { refused += 1; #assert !spatial_has(s[0].near[0].grid, i); } }
+  for i: 0..<QN_CAPSULES { if !query_capsule(c, i).ok { refused += 1; #assert !spatial_has(s[0].near[0].grid, QN_BOXES + i); } }
+  #assert refused >= 10 && wide >= 6 && spatial_count(s[0].near[0].grid) + wide + refused == QN_SLOTS;
+  for w: 0..<wide { #assert !spatial_has(s[0].near[0].grid, s[0].wide[w]); if w > 0 { #assert s[0].wide[w] > s[0].wide[w - 1]; } }
+  #assert s[0].reach[0] > 2 && s[0].reach[0] <= 8;
+  // a footprint: a box's corners, a capsule's ends grown by its radius
+  one := [QUERY_CAPSULE] f32.[1, 0, 5, -2, 3, 4, 0.5]; f := query_near_footprint(Colliders.{capsules = one[..]}, 0, 0);
+  #assert f.ok && f.x0 == -2.5 && f.x1 == 1.5 && f.z0 == 3.5 && f.z1 == 5.5;
+  // views too small, or no cell: no index
+  n := s[0].near[0]; n.grid.next = s[0].next[0..<QN_SLOTS - 1]; small := [1] QueryNear.[n];
+  #assert !query_near_build(small[..], c, 8) && s[0].n[QUERY_NEAR_BUILT] == 0;
+  #assert query_near_build(s[0].near[..], c, 8) && !query_near_build(s[0].near[..], c, 0) && !query_near_build(s[0].near[..], c, -1) && s[0].n[QUERY_NEAR_BUILT] == 0;
+  n = s[0].near[0]; n.wide = s[0].wide[0..<2]; small[0] = n; #assert !query_near_build(small[..], c, 8);
+  n = s[0].near[0]; n.n = s[0].n[0..<QUERY_NEAR_COUNTERS - 1]; small[0] = n; #assert !query_near_build(small[..], c, 8);
+  n = s[0].near[0]; n.reach = s[0].reach[0..<0]; small[0] = n; #assert !query_near_build(small[..], c, 8);
+  none: [] QueryNear; #assert !query_near_build(none, c, 8);
+}
+#test "near: a query the index cannot serve runs on every collider, and says so" {
+  s: [1] QnScene; r := [1] OracleDraw.[OracleDraw.{rng = 5}];
+  qn_scene(s[..], r[..]); s[0].near[0] = qn_view(s[..]);
+  plain := Colliders.{boxes = s[0].boxes[..], capsules = s[0].capsules[..]};
+  #assert query_near_build(s[0].near[..], plain, 8);
+  fast := plain; fast.near = s[0].near[..];
+  o := world_point(-100, 1, -100); d := world_point(1, 0, 1);
+  // a short ray: a pick; a ray across the field: every collider
+  h := query_ray(fast, o, d, 2); #assert s[0].n[QUERY_NEAR_PICKED] == 1 && s[0].n[QUERY_NEAR_PICKS] == 1 && s[0].n[QUERY_NEAR_WHOLE] == 0;
+  h = query_ray(fast, o, d, 200); #assert s[0].n[QUERY_NEAR_PICKED] == 0 && s[0].n[QUERY_NEAR_WHOLE] == 1 && qn_same_hit(h, query_ray(plain, o, d, 200));
+  // not a region: a reach below zero, a point that is not finite
+  g := query_ground(fast, 0, 0, 5, -1); #assert s[0].n[QUERY_NEAR_WHOLE] == 2 && qn_same_ground(g, query_ground(plain, 0, 0, 5, -1));
+  zero: f32 = 0; h = query_ray(fast, world_point(zero / zero, 0, 0), d, 2); #assert h.status == QueryStatus.invalid && s[0].n[QUERY_NEAR_WHOLE] == 3;
+  // the colliders changed length since the build
+  fewer := fast; fewer.boxes = s[0].boxes[0..<QUERY_BOX * 10];
+  h = query_ray(fewer, o, d, 2); #assert s[0].n[QUERY_NEAR_WHOLE] == 4 && qn_same_hit(h, query_ray(Colliders.{boxes = s[0].boxes[0..<QUERY_BOX * 10], capsules = s[0].capsules[..]}, o, d, 2));
+  fewer = fast; fewer.capsules = s[0].capsules[0..<QUERY_CAPSULE];
+  h = query_ray(fewer, o, d, 2); #assert s[0].n[QUERY_NEAR_WHOLE] == 5;
+  // scratch too small for the pick: the found slots, the boxes, the capsules, their ids
+  mid := world_point(0, 1, 0); ids: [8] QueryId;
+  want := query_overlap_checked(plain, mid, 40, ids[..]);
+  for cut: 0..<5 {
+    n := s[0].near[0];
+    if cut == 0 { n.found = s[0].found[0..<2]; } if cut == 1 { n.boxes = s[0].pb[0..<QUERY_BOX]; } if cut == 2 { n.capsules = s[0].pc[0..<QUERY_CAPSULE]; }
+    if cut == 3 { n.box_id = s[0].bid[0..<1]; } if cut == 4 { n.capsule_id = s[0].cid[0..<1]; }
+    tight := [1] QueryNear.[n]; t := plain; t.near = tight[..];
+    before := s[0].n[QUERY_NEAR_WHOLE];
+    got := query_overlap_checked(t, mid, 40, ids[..]); #assert got.count == want.count && want.count > 4 && s[0].n[QUERY_NEAR_WHOLE] == before + 1;
+  }
+  // never built, or counters too short: every collider
+  s[0].n[QUERY_NEAR_BUILT] = 0; before := s[0].n[QUERY_NEAR_WHOLE];
+  h = query_ray(fast, o, d, 2); #assert s[0].n[QUERY_NEAR_WHOLE] == before + 1;
+  n := s[0].near[0]; n.n = s[0].n[0..<2]; tight := [1] QueryNear.[n]; t := plain; t.near = tight[..];
+  h = query_ray(t, o, d, 2); #assert qn_same_hit(h, query_ray(plain, o, d, 2)) && s[0].n[QUERY_NEAR_WHOLE] == before + 1;
+  #assert query_near_index(t, QueryShape.box, 3) == 3 && stand_count(2, 5) == 2 && stand_count(5, 2) == 2;
+}

@@ -191,7 +191,7 @@ icecream 500000
 memorial 60000
 # The jump clips in everglade/scene/people-rig.coax (da98ab3915): 273,378 bytes measured; about 5% headroom.
 metahumanlab 290000
-myrealm 660000
+myrealm 670000
 newland 1150000
 nip01 90000
 nip-guide 130000
@@ -271,7 +271,7 @@ character-host 64000
 # Valley's bounded source-page admission, source LOD selection and index-bank ABI add ~4 KiB.
 # Keep the shared canyon code's Slay replay control and face-view hero lighting.
 # Spatial source companions, bounded tree admission and independent exact-range cuts add ~4.3 KiB.
-valleyworld 146000
+valleyworld 152000
 # #12921: buffered V2 frame input adds checked per-step control state.
 # Linux measured garden 286741, villa 524872, fairy 660104, realm 517429 bytes; about 5% room.
 # Optional socket-owned room timing and clock intervals; 21,910 release bytes.

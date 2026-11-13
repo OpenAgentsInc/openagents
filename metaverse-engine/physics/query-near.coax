@@ -1,0 +1,172 @@
+// A broadphase behind query_* (#13279): a realm with thousands of colliders asks only the ones near
+// a query. The realm builds the index once (query_near_build) over its boxes and capsules and puts
+// it in Colliders.near; query_ground, query_ray, query_clear, query_overlap_checked and query_sweep
+// then run on the colliders the query's region can reach, picked in collider order, and name what
+// they found by its index in the realm's own arrays.
+//
+// The answer is the linear scan's, bit for bit (tests/query-near.coax compares the two in random
+// scenes). That holds because the pick only leaves colliders out, never reorders them:
+//  - the index is the engine's uniform grid (../core/spatial.coax), a collider's slot at the middle
+//    of its footprint (box i: slot i; capsule i: slot boxes + i). A collider whose footprint reaches
+//    more than a cell from its middle, or sits too far out for the grid, is "wide": every query asks it;
+//  - a query's region is the rectangle on the ground it can touch (a ray's or a sweep's two ends, an
+//    overlap's sphere, a ground query's reach). The pick is every slot within the region's
+//    half-diagonal, plus the farthest any indexed footprint reaches, plus a pad far above float
+//    rounding, of the region's middle: a superset of the colliders the region touches;
+//  - a collider query_box or query_capsule refuses (not finite, inside out, no radius) never
+//    answers, so it is in no list;
+//  - a region too large, a pick that does not fit the scratch space, or colliders whose counts
+//    changed since the build: the query runs on every collider, as with no index.
+// Floors, hulls, heightfields and the flat ground are not indexed: they pass through as they are.
+// The index's storage is the realm's (views, as SpatialGrid's): the scratch arrays hold the last
+// pick, so one index serves one query at a time. Rebuild after changing a box or a capsule.
+// metaverse-engine/physics/collide.coax's walker still asks every collider it is given.
+//   coax/bin/coax test metaverse-engine/physics/query.coax --library
+#load "../core/spatial.coax";
+
+QUERY_NEAR_CELLS :: 12;          // a pick reaching past this many cells from its middle asks every collider instead
+QUERY_NEAR_PAD :: 0.5;           // m added to a pick's radius, far above rounding
+QUERY_NEAR_BUILT :: 0;           // n: 1 once built
+QUERY_NEAR_BOX_NUMBERS :: 1;     // n: boxes.count and capsules.count at the build
+QUERY_NEAR_CAPSULE_NUMBERS :: 2;
+QUERY_NEAR_WIDE :: 3;            // n: how many colliders every query asks
+QUERY_NEAR_PICKED :: 4;          // n: 1 when the last query ran on a pick (its indices are the pick's)
+QUERY_NEAR_PICKS :: 5;           // n: queries that ran on a pick, since the build
+QUERY_NEAR_WHOLE :: 6;           // n: queries that ran on every collider
+QUERY_NEAR_ASKED :: 7;           // n: colliders the picks held (the cost), since the build
+QUERY_NEAR_COUNTERS :: 8;
+
+QueryNear :: struct {
+  grid: SpatialGrid;             // one slot a box, then one a capsule
+  wide: [] int;                  // the slots every query asks, ascending
+  found: [] int;                 // scratch: a pick's slots
+  boxes: [] f32;                 // scratch: the picked boxes, QUERY_BOX numbers each
+  capsules: [] f32;              // scratch: the picked capsules, QUERY_CAPSULE numbers each
+  box_id: [] int;                // scratch: which box each picked one is
+  capsule_id: [] int;
+  reach: [] f32;                 // [0]: how far an indexed footprint reaches from its middle, at most
+  n: [] int;                     // the counters
+}
+
+// Builds the index over c's boxes and capsules, with grid cells `cell` metres a side. False, and
+// no index, when the views are too small for them or the cell is not a size.
+query_near_build :: (near: [] QueryNear, c: Colliders, cell: f32) -> bool #effects(all) {
+  if near.count < 1 { return false; }
+  k := near[0];
+  if k.n.count < QUERY_NEAR_COUNTERS || k.reach.count < 1 { return false; }
+  k.n[QUERY_NEAR_BUILT] = 0;
+  nb := query_boxes(c); nc := query_capsules(c);
+  if !(cell > 0) || !query_finite(cell) || k.grid.next.count < nb + nc || !spatial_init(k.grid, cell) { return false; }
+  reach: f32 = 0; w := 0;
+  for slot: 0..<nb + nc {
+    f := query_near_footprint(c, slot, nb);
+    if !f.ok { continue; }
+    hx := (f.x1 - f.x0) / 2; hz := (f.z1 - f.z0) / 2;
+    mx := f.x0 + hx; mz := f.z0 + hz;
+    h := sqrt(hx * hx + hz * hz);
+    if !(h <= cell) || spatial_coord(k.grid, mx) > SPATIAL_FAR || spatial_coord(k.grid, mz) > SPATIAL_FAR {
+      if w >= k.wide.count { return false; }
+      k.wide[w] = slot; w += 1;
+      continue;
+    }
+    if h > reach { reach = h; }
+    _ := spatial_put(k.grid, slot, mx, mz);
+  }
+  k.reach[0] = reach;
+  k.n[QUERY_NEAR_BOX_NUMBERS] = c.boxes.count; k.n[QUERY_NEAR_CAPSULE_NUMBERS] = c.capsules.count; k.n[QUERY_NEAR_WIDE] = w;
+  k.n[QUERY_NEAR_PICKED] = 0; k.n[QUERY_NEAR_PICKS] = 0; k.n[QUERY_NEAR_WHOLE] = 0; k.n[QUERY_NEAR_ASKED] = 0;
+  k.n[QUERY_NEAR_BUILT] = 1;
+  return true;
+}
+// A slot's footprint on the ground, when its collider is one query_box or query_capsule takes.
+QueryNearFootprint :: struct { x0: f32; z0: f32; x1: f32; z1: f32; ok: bool; }
+query_near_footprint :: (c: Colliders, slot: int, nb: int) -> QueryNearFootprint #effects(all) {
+  if slot < nb {
+    b := query_box(c, slot);
+    return QueryNearFootprint.{x0 = b.low.x, z0 = b.low.z, x1 = b.high.x, z1 = b.high.z, ok = b.ok};
+  }
+  q := query_capsule(c, slot - nb);
+  return QueryNearFootprint.{x0 = stand_lo(q.a.x, q.b.x) - q.r, z0 = stand_lo(q.a.z, q.b.z) - q.r, x1 = stand_hi(q.a.x, q.b.x) + q.r, z1 = stand_hi(q.a.z, q.b.z) + q.r, ok = q.ok};
+}
+// c with no index: what a query falls back to, and what a pick starts from.
+query_near_whole :: (c: Colliders) -> Colliders #effects(all) {
+  none: [] QueryNear; all := c; all.near = none;
+  if c.near.count > 0 && c.near[0].n.count >= QUERY_NEAR_COUNTERS { c.near[0].n[QUERY_NEAR_PICKED] = 0; c.near[0].n[QUERY_NEAR_WHOLE] += 1; }
+  return all;
+}
+// The colliders that can touch the rectangle (x0, z0) to (x1, z1) on the ground, as Colliders of
+// their own in collider order (QUERY_NEAR_PICKED says so, and box_id and capsule_id say which each
+// is); or c with no index when the rectangle is not one, is too large, or the pick does not fit.
+query_near_pick :: (c: Colliders, x0: f32, z0: f32, x1: f32, z1: f32) -> Colliders #effects(all) {
+  k := c.near[0];
+  if k.n.count < QUERY_NEAR_COUNTERS || k.n[QUERY_NEAR_BUILT] != 1 || k.n[QUERY_NEAR_BOX_NUMBERS] != c.boxes.count || k.n[QUERY_NEAR_CAPSULE_NUMBERS] != c.capsules.count { return query_near_whole(c); }
+  if !query_finite(x0) || !query_finite(z0) || !query_finite(x1) || !query_finite(z1) || x1 < x0 || z1 < z0 { return query_near_whole(c); }
+  hx := (x1 - x0) / 2; hz := (z1 - z0) / 2; mx := x0 + hx; mz := z0 + hz;
+  r := sqrt(hx * hx + hz * hz) + k.reach[0] + f32(QUERY_NEAR_PAD) + (abs(mx) + abs(mz) + hx + hz) * 0.000002;
+  if !(r <= k.grid.cell[0] * f32(QUERY_NEAR_CELLS)) { return query_near_whole(c); }
+  m := spatial_query(k.grid, mx, mz, r, k.found);
+  if m > k.found.count { return query_near_whole(c); }
+  // collider order: the slots ascending (an insertion sort of a short list), the wide ones merged in
+  for a: 1..<m {
+    v := k.found[a]; b := a;
+    while b > 0 && k.found[b - 1] > v { k.found[b] = k.found[b - 1]; b -= 1; }
+    k.found[b] = v;
+  }
+  nb := query_boxes(c); w := k.n[QUERY_NEAR_WIDE];
+  i := 0; j := 0; bn := 0; cn := 0;
+  while i < m || j < w {
+    slot := 0;
+    if j >= w || (i < m && k.found[i] < k.wide[j]) { slot = k.found[i]; i += 1; } else { slot = k.wide[j]; j += 1; }
+    if slot < nb {
+      if bn >= k.box_id.count || (bn + 1) * QUERY_BOX > k.boxes.count { return query_near_whole(c); }
+      for q: 0..<QUERY_BOX { k.boxes[bn * QUERY_BOX + q] = c.boxes[slot * QUERY_BOX + q]; }
+      k.box_id[bn] = slot; bn += 1;
+    } else {
+      if cn >= k.capsule_id.count || (cn + 1) * QUERY_CAPSULE > k.capsules.count { return query_near_whole(c); }
+      for q: 0..<QUERY_CAPSULE { k.capsules[cn * QUERY_CAPSULE + q] = c.capsules[(slot - nb) * QUERY_CAPSULE + q]; }
+      k.capsule_id[cn] = slot - nb; cn += 1;
+    }
+  }
+  none: [] QueryNear; s := c; s.near = none;
+  s.boxes = k.boxes[0..<bn * QUERY_BOX]; s.capsules = k.capsules[0..<cn * QUERY_CAPSULE];
+  k.n[QUERY_NEAR_PICKED] = 1; k.n[QUERY_NEAR_PICKS] += 1; k.n[QUERY_NEAR_ASKED] += bn + cn;
+  return s;
+}
+// A picked collider's index in the realm's own array (any other shape's is its own).
+query_near_index :: (c: Colliders, shape: QueryShape, index: int) -> int #effects(all) {
+  k := c.near[0];
+  if k.n.count < QUERY_NEAR_COUNTERS || k.n[QUERY_NEAR_PICKED] != 1 || index < 0 { return index; }
+  if shape == QueryShape.box && index < k.box_id.count { return k.box_id[index]; }
+  if shape == QueryShape.capsule && index < k.capsule_id.count { return k.capsule_id[index]; }
+  return index;
+}
+
+query_near_ground :: (c: Colliders, x: f32, z: f32, below: f32, reach: f32) -> QueryGround #effects(all) {
+  g := query_ground(query_near_pick(c, x - reach, z - reach, x + reach, z + reach), x, z, below, reach);
+  g.index = query_near_index(c, g.shape, g.index);
+  return g;
+}
+// The rectangle a segment from o along d * far covers, grown by r.
+query_near_along :: (c: Colliders, o: WorldPoint, d: WorldPoint, far: f32, r: f32) -> Colliders #effects(all) {
+  ex := o.x + d.x * far; ez := o.z + d.z * far;
+  return query_near_pick(c, stand_lo(o.x, ex) - r, stand_lo(o.z, ez) - r, stand_hi(o.x, ex) + r, stand_hi(o.z, ez) + r);
+}
+query_near_ray :: (c: Colliders, o: WorldPoint, d: WorldPoint, far: f32) -> QueryHit #effects(all) {
+  h := query_ray(query_near_along(c, o, d, stand_hi(far, 0), 0), o, d, far);
+  h.index = query_near_index(c, h.shape, h.index);
+  return h;
+}
+query_near_clear :: (c: Colliders, o: WorldPoint, d: WorldPoint, far: f32) -> QueryClear #effects(all) {
+  return query_clear(query_near_along(c, o, d, stand_hi(far, 0), 0), o, d, far);
+}
+query_near_overlap :: (c: Colliders, centre: WorldPoint, r: f32, out: [] QueryId) -> QueryOverlapResult #effects(all) {
+  q := query_overlap_checked(query_near_pick(c, centre.x - r, centre.z - r, centre.x + r, centre.z + r), centre, r, out);
+  for e: 0..<stand_count(q.count, out.count) { out[e].index = query_near_index(c, out[e].shape, out[e].index); }
+  return q;
+}
+stand_count :: (a: int, b: int) -> int #effects(all) { return ifx a < b then a else b; }
+query_near_sweep :: (c: Colliders, from: WorldPoint, r: f32, by: WorldPoint) -> QueryHit #effects(all) {
+  h := query_sweep(query_near_along(c, from, by, 1, r), from, r, by);
+  h.index = query_near_index(c, h.shape, h.index);
+  return h;
+}
