@@ -38,11 +38,13 @@ nostr-chat 398000
 components 210000
 # /kit, the control kit's page (kit.coax): 80,287 bytes measured 2026-11-11 on a Linux build host; about 10% room.
 # With the dock (components/kit/dock.coax, #13416: panes, props and facts, and their section on the page): 89,924 bytes measured 2026-11-13 on a Mac; about 11% room.
-kit 100000
+# With a row's control (k_row_with, #13414), whose icon is the caller's to name, so the icons' names table is kept whole: 112,566 bytes measured 2026-11-13 on a Mac; about 10% room.
+kit 125000
 # The editor shell ?edit opens over an engine page (metaverse-engine/editor/shell.coax, #13416): the frames set, the dock,
 # the browser backend, the world edit codec and the editor model's: 103,413 bytes measured 2026-11-13 on a Mac; about 8% room.
 # With the viewport's strip (E8, #13417: tool, grid, Add, fly, pause, step, simulate): 106,452 bytes measured 2026-11-13 on a Mac; about 11% room.
-editor-shell 120000
+# With groups, templates and counts (E5, #13414: the placement planner's template codec, the group's card, Add's templates) and content cells as fields (E10, #13419): 119,716 bytes measured 2026-11-13 on a Mac; about 11% room.
+editor-shell 135000
 agents 120000
 # the shared host ABI every renderer carrier exports kept growing on 11-05 (#12869): 81,594 measured at 882146be65; about 5% room (#12922)
 connect-pylon 86000
@@ -316,4 +318,5 @@ painted 200000
 # codec with its JSON (world-edit.coax), the page's follower (world-follow.coax) and Splice's own carrying out of an edit (world.coax):
 # 335,873 bytes measured 2026-11-13 on a Linux build host; about 5% room.
 # With the editor's model for the shell (E7, #13416) and the viewport's tools on the page (E8, #13417: picking through query_ray, the gizmos, the fly camera, the clock): 362,089 bytes measured 2026-11-13 on a Linux build host; about 6% room.
-splice 385000
+# With the content tables on the edit log (E10, #13419) and the placement planner with templates (E5, #13414): 378,810 bytes measured 2026-11-13 on a Linux build host; about 6% room.
+splice 405000

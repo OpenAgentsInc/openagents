@@ -338,10 +338,15 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   // own main (a canvas page's words for readers) does not hide this one
   n = mc(out, n, ".dock:has(.pane-bm){grid-template-rows:auto minmax(0,1fr) auto}.pane-bm{grid-column:1/-1;grid-row:3}.dock-over>.pane-bm{height:min(42vh,420px)}.pane[aria-hidden=true]{display:none}");
   n = mc(out, n, ".slot{flex:1;min-height:0;display:flex;flex-direction:column}.slot .chat{position:static;clip-path:none;white-space:normal;height:100%;max-width:none;width:100%;margin:0;padding:0}.slot .side{display:none}.slot .chat:has(.side){margin-left:0}");
+  // a row with a control beside it
+  n = mc(out, n, ".row-x{display:flex;align-items:center;gap:2px}.row-x>.row{flex:1;min-width:0;width:auto}");
   // a prop: its name, then its field
   n = mc(out, n, ".prop{display:grid;grid-template-columns:76px minmax(0,1fr);gap:10px;align-items:center}.prop .field{padding:6px 10px;max-width:none}.fact{overflow-wrap:anywhere}");
   // a select in a pane opens downward, and in the right pane toward the middle
   n = mc(out, n, ".pane .menu.pop{bottom:auto;top:calc(100% + 10px)}.pane-r .menu.pop{left:auto;right:0}");
+  // a long menu is two columns, and a very long one three, so its last row is still on the screen
+  n = mc(out, n, ".pane .menu.pop:has(>.row:nth-of-type(10)){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:min(560px,calc(100vw - 48px))}");
+  n = mc(out, n, ".pane .menu.pop:has(>.row:nth-of-type(25)){grid-template-columns:repeat(3,minmax(0,1fr));width:min(820px,calc(100vw - 48px))}");
   n = mc(out, n, "@media (max-width:760px){.dock{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.pane-l,.pane-r{max-height:38vh;align-self:start}.pane-r{grid-column:2}}");
   return n;
 }

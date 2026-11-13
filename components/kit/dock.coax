@@ -43,6 +43,17 @@ k_prop :: (t: [] Tree, u: [] Ui, id: string, name: string, placeholder: string) 
   tr_close(t);
   return f;
 }
+// Row with a control: a row, and beside it an icon button that acts on what the row names without
+// picking it (add it to a group, pin it). The button's id is the row's with ".x"; `on` marks it as done.
+k_row_with :: (t: [] Tree, u: [] Ui, id: string, title: string, meta: string, current: bool, icon: int, label: string, on: bool) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  w := tr_open(t, tr_cat(ida[..], id, ".w"), TG_DIV, "row-x");
+  r := k_row(t, u, id, title, meta, current);
+  b := k_icon_button(t, tr_cat(idb[..], id, ".x"), icon, label);
+  if on { tr_attr(t, b, AT_STATE, "done"); tr_attr(t, b, AT_PRESSED, "true"); }
+  tr_close(t);
+  return r;
+}
 // Fact: a name and what it is, as text, set as a prop is.
 k_fact :: (t: [] Tree, id: string, name: string, value: string) -> int {
   ida: [UI_ID] u8; idb: [UI_ID] u8;
@@ -64,6 +75,7 @@ DkTest :: struct { t: [1] Tree; u: [1] Ui; }
   k_pane_end(t);
   b := k_pane(t, u, "things", DK_LEFT, "Things");
   r := k_row(t, u, "thing.1", "Cargo crate", "", true);
+  rw := k_row_with(t, u, "thing.2", "Parked rover", "No. 2", false, IC_PLUS, "Add to the group", true);
   k_pane_end(t);
   c := k_pane(t, u, "one", DK_RIGHT, "Selected");
   f := k_prop(t, u, "x", "X cm", "0");
@@ -80,6 +92,7 @@ DkTest :: struct { t: [1] Tree; u: [1] Ui; }
   #assert tr_class(t, d) == "dock dock-over" && tr_class(t, a) == "pane pane-t" && tr_class(t, b) == "pane pane-l" && tr_class(t, c) == "pane pane-r";
   #assert tr_find(t, "bar.h") < 0 && tr_text_of(t, tr_find(t, "things.h")) == "Things" && tr_find(t, "one.b") > 0;
   #assert f == tr_find(t, "x") && tr_text_of(t, tr_find(t, "x.n")) == "X cm" && tr_class(t, tr_find(t, "x.prop")) == "prop";
+  #assert tr_class(t, tr_find(t, "thing.2.w")) == "row-x" && rw == tr_find(t, "thing.2") && tr_attr_of(t, tr_find(t, "thing.2.x"), AT_PRESSED) == "true" && tr_attr_of(t, tr_find(t, "thing.2.x"), AT_LABEL) == "Add to the group";
   #assert tr_class(t, g) == "prop" && tr_text_of(t, tr_find(t, "kit.n")) == "Kit" && tr_text_of(t, tr_find(t, "kit.v")) == "rover";
   tr_begin(t);
   d = k_dock(t, "dock", false);

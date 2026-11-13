@@ -31,7 +31,7 @@ WebPage :: struct {
   ready: bool; time: f32; dirty: bool; animating: bool;
   presses: int;
   tool_open: bool;
-  row: int; model: int; thing: int;
+  row: int; model: int; thing: int; grouped: [3] bool;
   answer: int;                       // the approval notice: 0 not answered, 1 allowed, 2 denied
   draft: [WG_DRAFT] u8; draft_n: int;
   sent: [WG_SENT] [WG_DRAFT] u8; sent_n: [WG_SENT] int; nsent: int;
@@ -142,7 +142,7 @@ wg_build :: (s: [] WebPage) {
   dl := tr_open(t, "dock.list", TG_NAV, "list");
   tr_attr(t, dl, AT_LABEL, "Things");
   pieces := WG_THINGS;
-  for k: 0..<3 { r := k_row(t, u, tr_join(buf[..], "thing.", k), pieces[k], tr_join(buf2[..], "No. ", k + 1), k == s[0].thing); }
+  for k: 0..<3 { r := k_row_with(t, u, tr_join(buf[..], "thing.", k), pieces[k], tr_join(buf2[..], "No. ", k + 1), k == s[0].thing, IC_PLUS, "Add to the group", s[0].grouped[k]); }
   tr_close(t);
   k_pane_end(t);
   one := k_pane(t, u, "dock.one", DK_RIGHT, "Selected");
@@ -209,6 +209,7 @@ wg_click :: (s: [] WebPage, id: string) {
   else if id == "composer.send" { wg_send(s); }
   else if id == "code.1.copy" { s[0].clip_n = 0; for c: WG_CODE { if s[0].clip_n < WG_DRAFT { s[0].clip[s[0].clip_n] = c; s[0].clip_n += 1; } } }
   else if wg_index(id, "row.") >= 0 { s[0].row = wg_index(id, "row."); }
+  else if id.count == 9 && wg_id_is(id, "thing.") && cast(string) id[7..<9] == ".x" && id[6] >= '0' && id[6] <= '2' { k := cast(int) (id[6] - '0'); s[0].grouped[k] = !s[0].grouped[k]; }
   else if wg_index(id, "thing.") >= 0 { s[0].thing = wg_index(id, "thing."); }
   else if wg_index(id, "model.") >= 0 { s[0].model = wg_index(id, "model."); }
 }
@@ -278,6 +279,9 @@ WgTest :: struct { s: [1] WebPage; }
   coaxial_kit_event(s, WG_CLICK, dm_find(s[0].dom[..], "thing.1"), 0);
   n = coaxial_kit_frame(s, 0.016, true);
   #assert s[0].thing == 1 && tr_text_of(t, tr_find(t, "dock.card.h")) == "Parked rover";
+  coaxial_kit_event(s, WG_CLICK, dm_find(s[0].dom[..], "thing.2.x"), 0);
+  n = coaxial_kit_frame(s, 0.016, true);
+  #assert s[0].grouped[2] && s[0].thing == 1 && tr_has(t, tr_find(t, "thing.2.x"), AT_PRESSED) && !tr_has(t, tr_find(t, "thing.0.x"), AT_PRESSED);
 }
 
 #test "a press, a pick and an answer each change only their own nodes" {

@@ -1,0 +1,384 @@
+// The placement planner (GitHub #13414, the browser editor's E5;
+// docs/editor/2026-11-12-browser-editor.md): where things go when someone asks for them by an
+// anchor and a side, and how several are spread. One module for every editor: WorldBuilder's
+// chat, a realm's edit layer, the editor shell's Add.
+//
+// Where things go is worked out from an anchor (a spot and how far its things reach) and a side as
+// the camera sees it (left, right, toward you, away from you, around): a thing placed beside
+// another stands clear of it, its footprint and the other's apart plus the distance asked.
+// Several are spread over a disc, each clear of the others; around is a ring. One thing asked
+// for with no spot named goes where nothing stands. A growing thing is turned any which way and
+// sized a little differently each; a made thing faces the camera.
+//
+// The planner knows no pack and no table. It asks a catalogue one thing of a kind (PlaceKind: its
+// footprint's radius and whether it grows), and the caller says what stands already (PlaceSpot).
+// WorldBuilder fills the catalogue from the Quaternius pack's boxes and Splice from its `pieces`
+// table. The plan is a list of places; carrying them out, as scene edits or as a world's batch,
+// is the caller's.
+//
+// A template is a group of things saved as one row and placed as one edit (pl_template_*): each
+// part is a kind and where it stands from the group's middle, in whole centimetres and degrees.
+//   coax/bin/coax test metaverse-engine/editor/place.coax --library
+#load "../core/rand.coax";
+
+PLS_AT :: 0; PLS_LEFT :: 1; PLS_RIGHT :: 2; PLS_FRONT :: 3; PLS_BEHIND :: 4; PLS_AROUND :: 5;
+PL_WALK_AHEAD :: 8.0;   // metres ahead of your character, past the thing's own reach, that a thing put by you goes
+PL_TURN :: 6.2831853;
+PL_PARTS :: 32;         // parts a template holds
+PL_TEMPLATE :: 480;     // bytes a template's parts take as text, at most (a content cell)
+PL_REACH :: 100000;     // centimetres a part may stand from its template's middle
+
+// What the planner asks of a kind: its footprint's radius at scale 1, in metres, and whether it is
+// a growing thing (turned any which way when placed) or a made one (turned to face you).
+PlaceKind :: struct { radius: f32 = 0.5; natural: bool; }
+// Where the person is looking from: the tapped spot (if any), the middle of the view, and the
+// camera's yaw (0 looks along -z; left and right, toward and away follow it).
+// `walker`: here is your character on the ground, under a follow camera that looks along yaw;
+// then what goes "here", ahead of you or beside you goes where you can see it (pl_walk_spot).
+PlaceView :: struct { has_here: bool; here_x: f32; here_z: f32; view_x: f32; view_z: f32; yaw: f32; walker: bool; }
+// A spot and how far its things reach from it.
+PlaceSpot :: struct { x: f32; z: f32; r: f32; ok: bool; }
+PlaceDir :: struct { x: f32; z: f32; }
+// What is asked: how many, on which side of the anchor and how far, over how wide a disc (0: as
+// wide as they need), at what size. `here`: the anchor is "here" (your character, when walking).
+// `nudge`: one thing with no spot named, put where nothing stands. `seed`: the draws' seed, one an edit.
+// `clear`: several spread out also keep clear of what stands already (a world whose server refuses an overlap).
+PlaceAsk :: struct { count: int = 1; side: int; distance: f32; spread: f32; size: f32 = 1; here: bool; nudge: bool; seed: int; clear: bool; }
+PlaceOut :: struct { x: f32; z: f32; yaw: f32; scale: f32 = 1; }
+
+pl_hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+pl_away :: (v: PlaceView) -> PlaceDir { return PlaceDir.{x = sin(v.yaw), z = -cos(v.yaw)}; }
+pl_right :: (v: PlaceView) -> PlaceDir { return PlaceDir.{x = cos(v.yaw), z = sin(v.yaw)}; }
+// The way a side is, as the camera sees it; nothing for "at" and "around".
+pl_side_dir :: (v: PlaceView, side: int) -> PlaceDir {
+  f := pl_away(v); r := pl_right(v);
+  if side == PLS_LEFT { return PlaceDir.{x = -r.x, z = -r.z}; }
+  if side == PLS_RIGHT { return r; }
+  if side == PLS_FRONT { return PlaceDir.{x = -f.x, z = -f.z}; }
+  if side == PLS_BEHIND { return f; }
+  return PlaceDir.{};
+}
+// Walking, where a thing of reach r asked for by your character goes: "here" or "in front of me" a
+// little way ahead where the follow camera sees it, never on top of you; "on my left" or "right"
+// ahead and to that side; "behind me" behind you. ok is false when the edit isn't about your
+// character (another anchor, or not walking), and the anchor and side decide as usual.
+pl_walk_spot :: (v: PlaceView, here: bool, side: int, distance: f32, r: f32) -> PlaceSpot {
+  if !v.walker || !here || side == PLS_AROUND { return PlaceSpot.{}; }
+  f := pl_away(v); rt := pl_right(v);
+  gap := pl_hi(distance, 0);
+  if side == PLS_BEHIND { far := r + 1.5 + gap; return PlaceSpot.{x = v.here_x - f.x * far, z = v.here_z - f.z * far, r = r, ok = true}; }
+  ahead := PL_WALK_AHEAD + r + (ifx side == PLS_AT || side == PLS_FRONT then gap else 0.0f32);
+  x := v.here_x + f.x * ahead; z := v.here_z + f.z * ahead;
+  if side == PLS_LEFT || side == PLS_RIGHT {
+    off := r + 1 + gap; sign := ifx side == PLS_RIGHT then 1.0f32 else -1.0f32;
+    x += rt.x * off * sign; z += rt.z * off * sign;
+  }
+  return PlaceSpot.{x = x, z = z, r = r, ok = true};
+}
+// The middle and reach of a set of things (each a spot and its own reach).
+pl_group :: (stood: [] PlaceSpot) -> PlaceSpot {
+  if stood.count == 0 { return PlaceSpot.{}; }
+  sx: f32 = 0; sz: f32 = 0;
+  for o: stood { sx += o.x; sz += o.z; }
+  cx := sx / cast(f32) stood.count; cz := sz / cast(f32) stood.count;
+  r: f32 = 0;
+  for o: stood {
+    dx := o.x - cx; dz := o.z - cz;
+    r = pl_hi(r, sqrt(dx * dx + dz * dz) + o.r);
+  }
+  return PlaceSpot.{x = cx, z = cz, r = r, ok = true};
+}
+// Whether a footprint at (x, z) of radius r is clear of every thing standing.
+pl_clear :: (stood: [] PlaceSpot, x: f32, z: f32, r: f32) -> bool {
+  for o: stood {
+    room := r + o.r * 0.8;
+    dx := o.x - x; dz := o.z - z;
+    if dx * dx + dz * dz < room * room { return false; }
+  }
+  return true;
+}
+// The spot a side of an anchor is, for things that reach `reach` from their own middle.
+pl_beside :: (p: PlaceSpot, v: PlaceView, side: int, distance: f32, reach: f32) -> PlaceSpot {
+  if side == PLS_AT || side == PLS_AROUND { return p; }
+  d := pl_side_dir(v, side);
+  far := p.r + reach + pl_hi(distance, 0) + 0.4;
+  return PlaceSpot.{x = p.x + d.x * far, z = p.z + d.z * far, r = p.r, ok = p.ok};
+}
+
+// The plan: where `ask.count` things of a kind go from the anchor `p`, into out. How many places.
+// stood: what stands already (one thing with no spot named keeps clear of them).
+pl_plan :: (k: PlaceKind, p: PlaceSpot, v: PlaceView, ask: PlaceAsk, stood: [] PlaceSpot, out: [] PlaceOut) -> int {
+  count := ifx ask.count > out.count then out.count else ask.count;
+  if count < 1 { return 0; }
+  size := ifx ask.size > 0.05 && ask.size < 20 then ask.size else 1.0f32;
+  r := k.radius * size;
+  at := p;
+  spread_r := ifx count > 1 then (ifx ask.spread > 0 then ask.spread else r * 1.3 * sqrt(cast(f32) count)) else r;
+  walk := pl_walk_spot(v, ask.here, ask.side, ask.distance, spread_r);
+  if walk.ok { at = PlaceSpot.{x = walk.x, z = walk.z, ok = true}; }
+  else { at = pl_beside(p, v, ask.side, ask.distance, spread_r); }
+  if ask.side == PLS_AROUND {
+    ring := at.r + r + pl_hi(ask.distance, 0) + 0.4;
+    for i: 0..<count {
+      t := (cast(f32) i + 0.3 * rand_unit(ask.seed, 1, i)) / cast(f32) count * PL_TURN;
+      out[i] = PlaceOut.{x = at.x + ring * cos(t), z = at.z + ring * sin(t), yaw = ifx k.natural then rand_unit(ask.seed, 2, i) * PL_TURN else -v.yaw, scale = size};
+    }
+    return count;
+  }
+  if count == 1 {
+    x := at.x; z := at.z;
+    // put where nothing stands, unless it was asked for on a tapped spot or a thing's side
+    if ask.nudge || walk.ok {
+      n := 0;
+      while n < 64 && !pl_clear(stood, x, z, r) {
+        n += 1; t := cast(f32) n * 2.3999632; rr := (r + 0.5) * sqrt(cast(f32) n);
+        x = at.x + rr * cos(t); z = at.z + rr * sin(t);
+      }
+    }
+    out[0] = PlaceOut.{x = x, z = z, yaw = ifx k.natural then rand_unit(ask.seed, 2, 0) * PL_TURN else -v.yaw, scale = size};
+    return 1;
+  }
+  // several: spread over a disc, each clear of the others placed with it
+  disc := ifx ask.spread > 0 then ask.spread else r * 1.3 * sqrt(cast(f32) count) + r;
+  for i: 0..<count {
+    x := at.x; z := at.z; tries := 0;
+    while tries < 24 {
+      u := rand_unit(ask.seed, 3, i * 31 + tries); t := rand_unit(ask.seed, 4, i * 31 + tries) * PL_TURN;
+      rr := disc * sqrt(u);
+      x = at.x + rr * cos(t); z = at.z + rr * sin(t);
+      clear := !ask.clear || pl_clear(stood, x, z, r * 0.7);
+      for j: 0..<i {
+        room := r * 0.7 + k.radius * out[j].scale * 0.8;
+        dx := out[j].x - x; dz := out[j].z - z;
+        if dx * dx + dz * dz < room * room { clear = false; break; }
+      }
+      if clear { break; }
+      tries += 1;
+    }
+    jit := 1.0f32 + (rand_unit(ask.seed, 5, i) - 0.5) * 0.3 * (ifx k.natural then 1.0f32 else 0.0f32);
+    out[i] = PlaceOut.{x = x, z = z, yaw = ifx k.natural then rand_unit(ask.seed, 2, i) * PL_TURN else -v.yaw, scale = size * jit};
+  }
+  return count;
+}
+
+// ---- templates: a group of things saved as one row, placed as one edit
+
+// A part: its kind, and where it stands from the group's middle: centimetres, degrees and percent.
+PlacePart :: struct { kind: int; dx: int; dz: int; yaw: int; scale: int = 100; }
+pl_put :: (out: [] u8, at: int, s: string) -> int {
+  if at + s.count > out.count { return out.count + 1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+pl_put_int :: (out: [] u8, at: int, v: int) -> int {
+  d: [12] u8; m := 0; x := ifx v < 0 then -v else v;
+  while true { d[m] = cast(u8) ('0' + x % 10); m += 1; x = x / 10; if x == 0 { break; } }
+  if v < 0 { d[m] = '-'; m += 1; }
+  if at + m > out.count { return out.count + 1; }
+  for i: 0..<m { out[at + i] = d[m - 1 - i]; }
+  return at + m;
+}
+pl_part_ok :: (p: PlacePart) -> bool {
+  return p.kind >= 0 && p.dx >= -PL_REACH && p.dx <= PL_REACH && p.dz >= -PL_REACH && p.dz <= PL_REACH && p.yaw > -180 && p.yaw <= 180 && p.scale >= 1 && p.scale <= 10000;
+}
+// The parts as one cell of text: "KIND DX DZ YAW SCALE" each, a comma between ("" when a part is
+// not one, there are none or too many, or they do not fit).
+pl_template_write :: (parts: [] PlacePart, out: [] u8) -> string {
+  if parts.count < 1 || parts.count > PL_PARTS { return ""; }
+  n := 0;
+  for p, i: parts {
+    if !pl_part_ok(p) { return ""; }
+    if i > 0 { n = pl_put(out, n, ","); }
+    n = pl_put_int(out, n, p.kind); n = pl_put(out, n, " "); n = pl_put_int(out, n, p.dx); n = pl_put(out, n, " "); n = pl_put_int(out, n, p.dz);
+    n = pl_put(out, n, " "); n = pl_put_int(out, n, p.yaw); n = pl_put(out, n, " "); n = pl_put_int(out, n, p.scale);
+  }
+  if n > out.count || n > PL_TEMPLATE { return ""; }
+  return cast(string) out[0..<n];
+}
+pl_word :: (s: string, sep: u8, k: int) -> string {
+  a := 0; n := 0;
+  for i: 0..<s.count + 1 {
+    if i < s.count && s[i] != sep { continue; }
+    if n == k { return s[a..<i]; }
+    n += 1; a = i + 1;
+  }
+  return "";
+}
+pl_words :: (s: string, sep: u8) -> int { n := 1; for b: s { if b == sep { n += 1; } } return n; }
+PlaceNum :: struct { ok: bool; v: int; }
+pl_num :: (s: string) -> PlaceNum {
+  a := ifx s.count > 0 && s[0] == '-' then 1 else 0;
+  if s.count == a || s.count > 9 { return PlaceNum.{}; }
+  v := 0;
+  for i: a..<s.count { if s[i] < '0' || s[i] > '9' { return PlaceNum.{}; } v = v * 10 + cast(int) (s[i] - '0'); }
+  return PlaceNum.{ok = true, v = ifx a == 1 then -v else v};
+}
+// The parts a cell of text holds: how many, or -1 for any text pl_template_write would not write.
+pl_template_read :: (text: string, parts: [] PlacePart, scratch: [] u8) -> int {
+  if text.count == 0 || text.count > PL_TEMPLATE { return -1; }
+  n := pl_words(text, ',');
+  if n > PL_PARTS || n > parts.count { return -1; }
+  for i: 0..<n {
+    w := pl_word(text, ',', i);
+    if pl_words(w, ' ') != 5 { return -1; }
+    k := pl_num(pl_word(w, ' ', 0)); dx := pl_num(pl_word(w, ' ', 1)); dz := pl_num(pl_word(w, ' ', 2)); yaw := pl_num(pl_word(w, ' ', 3)); sc := pl_num(pl_word(w, ' ', 4));
+    if !k.ok || !dx.ok || !dz.ok || !yaw.ok || !sc.ok { return -1; }
+    parts[i] = PlacePart.{kind = k.v, dx = dx.v, dz = dz.v, yaw = yaw.v, scale = sc.v};
+  }
+  if pl_template_write(parts[0..<n], scratch) != text { return -1; }
+  return n;
+}
+// A group of things as a template's parts: each from the group's middle (whole centimetres). The
+// things are given as their kind, place in centimetres, turn and size. How many parts, or -1.
+PlaceThing :: struct { kind: int; x: int; z: int; yaw: int; scale: int = 100; }
+pl_template_of :: (things: [] PlaceThing, parts: [] PlacePart) -> int {
+  if things.count < 1 || things.count > PL_PARTS || things.count > parts.count { return -1; }
+  sx := 0; sz := 0;
+  for t: things { sx += t.x; sz += t.z; }
+  cx := sx / things.count; cz := sz / things.count;
+  for t, i: things {
+    parts[i] = PlacePart.{kind = t.kind, dx = t.x - cx, dz = t.z - cz, yaw = t.yaw, scale = t.scale};
+    if !pl_part_ok(parts[i]) { return -1; }
+  }
+  return things.count;
+}
+// Where a template's part stands when the template is put at (x, z) and turned by `turn` degrees
+// (a quarter turn at a time keeps whole centimetres whole).
+pl_template_at :: (p: PlacePart, x: int, z: int, turn: int) -> PlaceThing {
+  q := ((turn % 360) + 360) % 360;
+  dx := p.dx; dz := p.dz;
+  if q == 90 { dx = p.dz; dz = -p.dx; }
+  if q == 180 { dx = -p.dx; dz = -p.dz; }
+  if q == 270 { dx = -p.dz; dz = p.dx; }
+  yaw := p.yaw + q;
+  while yaw > 180 { yaw -= 360; }
+  return PlaceThing.{kind = p.kind, x = x + dx, z = z + dz, yaw = yaw, scale = p.scale};
+}
+
+// ---- checks
+
+PlTest :: struct { out: [64] PlaceOut; stood: [8] PlaceSpot; parts: [PL_PARTS] PlacePart; text: [PL_TEMPLATE] u8; scratch: [PL_TEMPLATE] u8; }
+pl_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.001; }
+pl_test_view :: () -> PlaceView { return PlaceView.{has_here = true, here_x = 2, here_z = -5, view_x = 0, view_z = -8, yaw = 0}; }
+
+#test "sides are as the camera sees them: away is -z at yaw 0, right is +x, and they turn with the view" {
+  v := pl_test_view();
+  #assert pl_near(pl_away(v).z, -1) && pl_near(pl_right(v).x, 1) && pl_near(pl_side_dir(v, PLS_LEFT).x, -1) && pl_near(pl_side_dir(v, PLS_BEHIND).z, -1) && pl_near(pl_side_dir(v, PLS_FRONT).z, 1);
+  #assert pl_side_dir(v, PLS_AT).x == 0 && pl_side_dir(v, PLS_AROUND).z == 0;
+  v.yaw = 1.5707963;
+  #assert pl_near(pl_away(v).x, 1) && pl_near(pl_right(v).z, 1);
+}
+
+#test "one thing goes on the anchor; beside a thing it stands clear of it by both footprints and the distance asked" {
+  h: [1] PlTest; v := pl_test_view();
+  k := PlaceKind.{radius = 1};
+  n := pl_plan(k, PlaceSpot.{x = 2, z = -5, ok = true}, v, PlaceAsk.{}, h[0].stood[0..<0], h[0].out[..]);
+  #assert n == 1 && h[0].out[0].x == 2 && h[0].out[0].z == -5 && h[0].out[0].yaw == 0 && h[0].out[0].scale == 1;
+  // right of a thing that reaches 3: 3 + 1 + 2 asked + 0.4
+  n = pl_plan(k, PlaceSpot.{x = 0, z = 0, r = 3, ok = true}, v, PlaceAsk.{side = PLS_RIGHT, distance = 2}, h[0].stood[0..<0], h[0].out[..]);
+  #assert n == 1 && pl_near(h[0].out[0].x, 6.4) && pl_near(h[0].out[0].z, 0);
+  // twice the size reaches twice as far
+  n = pl_plan(k, PlaceSpot.{x = 0, z = 0, r = 3, ok = true}, v, PlaceAsk.{side = PLS_BEHIND, size = 2}, h[0].stood[0..<0], h[0].out[..]);
+  #assert pl_near(h[0].out[0].z, -5.4) && h[0].out[0].scale == 2;
+  // a made thing faces the camera, whatever the camera's turn
+  v.yaw = 0.7;
+  n = pl_plan(k, PlaceSpot.{ok = true}, v, PlaceAsk.{}, h[0].stood[0..<0], h[0].out[..]);
+  #assert pl_near(h[0].out[0].yaw, -0.7);
+  #assert pl_plan(k, PlaceSpot.{ok = true}, v, PlaceAsk.{count = 0}, h[0].stood[0..<0], h[0].out[..]) == 0;
+}
+
+#test "one thing with no spot named goes where nothing stands; on a tapped spot it goes there" {
+  h: [1] PlTest; v := pl_test_view();
+  k := PlaceKind.{radius = 1};
+  h[0].stood[0] = PlaceSpot.{x = 0, z = 0, r = 1, ok = true};
+  n := pl_plan(k, PlaceSpot.{ok = true}, v, PlaceAsk.{nudge = true}, h[0].stood[0..<1], h[0].out[..]);
+  o := h[0].out[0];
+  #assert n == 1 && (o.x != 0 || o.z != 0) && pl_clear(h[0].stood[0..<1], o.x, o.z, 1) && !pl_clear(h[0].stood[0..<1], 0.5, 0, 1);
+  n = pl_plan(k, PlaceSpot.{ok = true}, v, PlaceAsk.{}, h[0].stood[0..<1], h[0].out[..]);
+  #assert h[0].out[0].x == 0 && h[0].out[0].z == 0;
+}
+
+#test "several are spread over a disc, each clear of the others; a growing kind is turned and sized each its own way; the same seed plans the same places" {
+  h: [1] PlTest; v := pl_test_view(); k := PlaceKind.{radius = 0.6, natural = true};
+  ask := PlaceAsk.{count = 12, seed = 77};
+  n := pl_plan(k, PlaceSpot.{x = 10, z = 10, ok = true}, v, ask, h[0].stood[0..<0], h[0].out[..]);
+  #assert n == 12;
+  disc := 0.6 * 1.3 * sqrt(12.0f32) + 0.6;
+  turned := 0; sized := 0;
+  for i: 0..<n {
+    o := h[0].out[i];
+    dx := o.x - 10; dz := o.z - 10;
+    #assert dx * dx + dz * dz <= disc * disc + 0.001;
+    if o.yaw != h[0].out[0].yaw { turned += 1; }
+    if o.scale != h[0].out[0].scale { sized += 1; }
+    #assert o.scale > 0.84 && o.scale < 1.16;
+    for j: 0..<i { p := h[0].out[j]; d := sqrt((p.x - o.x) * (p.x - o.x) + (p.z - o.z) * (p.z - o.z)); #assert d > 0.3; }
+  }
+  #assert turned >= 10 && sized >= 10;
+  first := h[0].out[5];
+  m := pl_plan(k, PlaceSpot.{x = 10, z = 10, ok = true}, v, ask, h[0].stood[0..<0], h[0].out[..]);
+  #assert m == 12 && h[0].out[5].x == first.x && h[0].out[5].yaw == first.yaw;
+  ask.seed = 78;
+  m = pl_plan(k, PlaceSpot.{x = 10, z = 10, ok = true}, v, ask, h[0].stood[0..<0], h[0].out[..]);
+  #assert h[0].out[5].x != first.x;
+  // asked to keep clear of what stands, none of them is on it
+  h[0].stood[0] = PlaceSpot.{x = 10, z = 10, r = 1.5, ok = true};
+  ask.clear = true; ask.count = 8;
+  m = pl_plan(k, PlaceSpot.{x = 10, z = 10, ok = true}, v, ask, h[0].stood[0..<1], h[0].out[..]);
+  #assert m == 8;
+  for i: 0..<m { #assert pl_clear(h[0].stood[0..<1], h[0].out[i].x, h[0].out[i].z, 0.6 * 0.7); }
+  ask.clear = false;
+  // a spread asked for is the disc; more than there is room for in the list is cut to the list
+  ask.spread = 30; ask.count = 500;
+  m = pl_plan(k, PlaceSpot.{ok = true}, v, ask, h[0].stood[0..<0], h[0].out[..]);
+  far: f32 = 0;
+  for i: 0..<m { o := h[0].out[i]; far = pl_hi(far, sqrt(o.x * o.x + o.z * o.z)); }
+  #assert m == 64 && far > 15 && far <= 30.001;
+}
+
+#test "around is a ring outside the anchor's reach; walking, a thing asked for here goes ahead where the camera sees it" {
+  h: [1] PlTest; v := pl_test_view(); k := PlaceKind.{radius = 1};
+  n := pl_plan(k, PlaceSpot.{x = 0, z = 0, r = 4, ok = true}, v, PlaceAsk.{count = 6, side = PLS_AROUND, seed = 3}, h[0].stood[0..<0], h[0].out[..]);
+  #assert n == 6;
+  for i: 0..<n { o := h[0].out[i]; #assert pl_near(sqrt(o.x * o.x + o.z * o.z), 5.4); }
+  v.walker = true;
+  n = pl_plan(k, PlaceSpot.{x = 2, z = -5, ok = true}, v, PlaceAsk.{here = true}, h[0].stood[0..<0], h[0].out[..]);
+  #assert n == 1 && pl_near(h[0].out[0].x, 2) && pl_near(h[0].out[0].z, -5 - PL_WALK_AHEAD - 1);
+  w := pl_walk_spot(v, true, PLS_LEFT, 0, 1);
+  #assert w.ok && pl_near(w.x, 2 - 2) && !pl_walk_spot(v, false, PLS_LEFT, 0, 1).ok && !pl_walk_spot(v, true, PLS_AROUND, 0, 1).ok;
+  b := pl_walk_spot(v, true, PLS_BEHIND, 1, 1);
+  #assert b.ok && pl_near(b.z, -5 + 3.5);
+}
+
+#test "a group's middle and reach, and what is clear of what stands" {
+  h: [1] PlTest;
+  h[0].stood[0] = PlaceSpot.{x = 0, z = 0, r = 1}; h[0].stood[1] = PlaceSpot.{x = 4, z = 0, r = 2};
+  g := pl_group(h[0].stood[0..<2]);
+  #assert g.ok && pl_near(g.x, 2) && pl_near(g.z, 0) && pl_near(g.r, 4) && !pl_group(h[0].stood[0..<0]).ok;
+  #assert pl_clear(h[0].stood[0..<2], 2, 3, 1) && !pl_clear(h[0].stood[0..<2], 4, 2, 1) && pl_clear(h[0].stood[0..<0], 0, 0, 5);
+}
+
+#test "a template: a group becomes parts from its middle, the parts one cell of text and back, and a turn of quarter turns keeps whole centimetres" {
+  h: [1] PlTest; parts := h[0].parts[..];
+  things := [3] PlaceThing.[PlaceThing.{kind = 116, x = 1000, z = 2000, yaw = 0}, PlaceThing.{kind = 117, x = 1300, z = 2000, yaw = 90}, PlaceThing.{kind = 117, x = 1000, z = 2300, yaw = -45, scale = 150}];
+  n := pl_template_of(things[..], parts);
+  #assert n == 3 && parts[0].dx == -100 && parts[0].dz == -100 && parts[1].dx == 200 && parts[2].dz == 200 && parts[2].scale == 150;
+  text := pl_template_write(parts[0..<n], h[0].text[..]);
+  #assert text == "116 -100 -100 0 100,117 200 -100 90 100,117 -100 200 -45 150";
+  back: [PL_PARTS] PlacePart;
+  #assert pl_template_read(text, back[..], h[0].scratch[..]) == 3 && back[2].kind == 117 && back[2].yaw == -45 && back[1].dx == 200;
+  // placed where it was, each thing is where it stood
+  a := pl_template_at(back[1], 1100, 2100, 0);
+  #assert a.kind == 117 && a.x == 1300 && a.z == 2000 && a.yaw == 90 && a.scale == 100;
+  // a quarter turn carries a part round the middle and turns it
+  q := pl_template_at(back[1], 0, 0, 90);
+  #assert q.x == -100 && q.z == -200 && q.yaw == 180;
+  r := pl_template_at(back[1], 0, 0, 180);
+  #assert r.x == -200 && r.z == 100 && r.yaw == -90;
+  // what is not a template is refused: no parts, a part with a word missing, a number that is not one, bytes the writer would not write
+  #assert pl_template_read("", back[..], h[0].scratch[..]) == -1 && pl_template_read("116 0 0 0", back[..], h[0].scratch[..]) == -1 && pl_template_read("116 0 0 0 x", back[..], h[0].scratch[..]) == -1;
+  #assert pl_template_read("116 0 0 0 100,", back[..], h[0].scratch[..]) == -1 && pl_template_read("116 00 0 0 100", back[..], h[0].scratch[..]) == -1 && pl_template_read("116 0 0 181 100", back[..], h[0].scratch[..]) == -1;
+  #assert pl_template_write(parts[0..<0], h[0].text[..]) == "" && pl_template_of(things[0..<0], parts) == -1;
+  bad := [1] PlacePart.[PlacePart.{kind = 1, dx = PL_REACH + 1}];
+  #assert pl_template_write(bad[..], h[0].text[..]) == "" && pl_template_write(parts[0..<n], h[0].text[0..<10]) == "";
+}

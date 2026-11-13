@@ -228,14 +228,14 @@ worldbuilder_walking :: (s: [] WorldBuilder) -> bool #export_c #effects(all) { r
 worldbuilder_roams :: (s: [] WorldBuilder) -> bool #export_c #effects(all) { return walking(s) && !s[0].typing; }
 // Where "here" is for an edit. Walking, it is where your character stands, the view's middle a few
 // metres ahead of it, and left, right, front and behind follow the camera behind it.
-wb_view :: (s: [] WorldBuilder) -> WbView {
+wb_view :: (s: [] WorldBuilder) -> PlaceView {
   if walking(s) {
     fx := s[0].cam_fwd[0]; fz := s[0].cam_fwd[2];
     fl := sqrt(fx * fx + fz * fz);
     if fl < 0.0001 { fx = 0; fz = -1; fl = 1; }
-    return WbView.{has_here = true, here_x = s[0].me_x, here_z = s[0].me_z, view_x = s[0].me_x + fx / fl * 6, view_z = s[0].me_z + fz / fl * 6, yaw = s[0].cam_yaw, walker = true};
+    return PlaceView.{has_here = true, here_x = s[0].me_x, here_z = s[0].me_z, view_x = s[0].me_x + fx / fl * 6, view_z = s[0].me_z + fz / fl * 6, yaw = s[0].cam_yaw, walker = true};
   }
-  return WbView.{has_here = s[0].has_here, here_x = s[0].here_x, here_z = s[0].here_z, view_x = s[0].gx, view_z = s[0].gz, yaw = s[0].yaw};
+  return PlaceView.{has_here = s[0].has_here, here_x = s[0].here_x, here_z = s[0].here_z, view_x = s[0].gx, view_z = s[0].gz, yaw = s[0].yaw};
 }
 
 take_act :: (s: [] WorldBuilder, text: string) {
@@ -588,7 +588,7 @@ field_offset :: (s: [] WorldBuilder, lx: f32) -> int {
 
 // Where a screen point's ray meets the ground: the terrain tile where it is shaped (Aethyr's exact
 // ground ray, metaverse-engine/physics/ground-query.coax), else the level floor.
-ground_at :: (s: [] WorldBuilder, x: f32, y: f32) -> WbSpot {
+ground_at :: (s: [] WorldBuilder, x: f32, y: f32) -> PlaceSpot {
   nx := x / hi(s[0].width, 1) * 2 - 1; ny := 1 - y / hi(s[0].height, 1) * 2;
   rx := s[0].fwd[0] + nx * s[0].right[0] + ny * s[0].up[0];
   ry := s[0].fwd[1] + nx * s[0].right[1] + ny * s[0].up[1];
@@ -596,12 +596,12 @@ ground_at :: (s: [] WorldBuilder, x: f32, y: f32) -> WbSpot {
   l := s[0].world[0].land[..];
   if l[0].on && !l[0].bare {
     hit := ground_ray(wb_land_ground(), l[0].heights[..], world_point(s[0].eye[0], s[0].eye[1], s[0].eye[2]), world_point(rx, ry, rz), 2000, GROUND_RAY_CELLS);
-    if hit.status == GroundRayStatus.ok && hit.hit { return WbSpot.{x = hit.point.x, z = hit.point.z, ok = true}; }
+    if hit.status == GroundRayStatus.ok && hit.hit { return PlaceSpot.{x = hit.point.x, z = hit.point.z, ok = true}; }
   }
-  if ry > -0.0001 { return WbSpot.{}; }
+  if ry > -0.0001 { return PlaceSpot.{}; }
   t := -s[0].eye[1] / ry;
-  if t > 2000 || t < 0 { return WbSpot.{}; }
-  return WbSpot.{x = s[0].eye[0] + rx * t, z = s[0].eye[2] + rz * t, ok = true};
+  if t > 2000 || t < 0 { return PlaceSpot.{}; }
+  return PlaceSpot.{x = s[0].eye[0] + rx * t, z = s[0].eye[2] + rz * t, ok = true};
 }
 set_here :: (s: [] WorldBuilder, x: f32, y: f32) {
   g := ground_at(s, x, y);

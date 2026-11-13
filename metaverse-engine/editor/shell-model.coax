@@ -15,10 +15,15 @@
 //   e ID KIND X Y Z YAW SCALE           an entity: its ID on the wire, its kind, where it stands in whole
 //                                       centimetres, its turn in whole degrees, its size in whole percent
 //   c KIND COLUMN VALUE                 a cell of a kind's content row
+//   templates NAME                      the content table templates are rows of, when the realm keeps them
+//                                       (E5, #13414): saved groups of things, each placed as one edit
+//   t ID NAME                           a template: its row's ID and its name
+//   tp ID PARTS                         its parts (place.coax pl_template_write)
 //   here X Z                            the last point tapped on the ground, whole centimetres (E8, #13417);
 //                                       left out until a point is tapped
 //   no WORDS                            the last refusal, in words
-// Lines come in that order. Every number is whole. A name and a value are one line of printable
+// Lines come in the order they are listed in, the `templates` line after `table`, and each `tp` after its `t`.
+// (The lists above are in the order the lines were added to the shape.) Every number is whole. A name and a value are one line of printable
 // bytes. em_read refuses any bytes but the ones em_write writes (it writes what it read and
 // compares).
 //   coax/bin/coax test metaverse-engine/editor/shell-model.coax --library
@@ -31,7 +36,9 @@ EM_CELLS :: 256;       // content cells
 EM_NAME :: 40;         // bytes in a kind's name
 EM_VALUE :: 80;        // bytes in a cell's value
 EM_WORDS :: 240;       // bytes in a refusal
-EM_BYTES :: 32768;     // bytes a model may take
+EM_TEMPLATES :: 32;    // templates
+EM_PARTS :: 480;       // bytes in a template's parts (place.coax PL_TEMPLATE)
+EM_BYTES :: 65536;     // bytes a model may take
 
 EdModel :: struct {
   ok: bool;
@@ -39,6 +46,8 @@ EdModel :: struct {
   lane: int; rev: int; undo: int; redo: int; sel: int;
   cols: [WE_COLS] bool;
   table: [WE_NAME] u8; table_n: int;
+  ttable: [WE_NAME] u8; ttable_n: int;
+  nt: int; t_id: [EM_TEMPLATES] int; t_name: [EM_TEMPLATES] [EM_NAME] u8; t_name_n: [EM_TEMPLATES] int; t_parts: [EM_TEMPLATES] [EM_PARTS] u8; t_parts_n: [EM_TEMPLATES] int;
   nk: int; kind_id: [EM_KINDS] int; kind_name: [EM_KINDS] [EM_NAME] u8; kind_n: [EM_KINDS] int;
   ne: int; e_id: [EM_ENTS] int; e_kind: [EM_ENTS] int; e_x: [EM_ENTS] int; e_y: [EM_ENTS] int; e_z: [EM_ENTS] int; e_yaw: [EM_ENTS] int; e_scale: [EM_ENTS] int;
   nc: int; c_kind: [EM_CELLS] int; c_col: [EM_CELLS] [WE_NAME] u8; c_col_n: [EM_CELLS] int; c_val: [EM_CELLS] [EM_VALUE] u8; c_val_n: [EM_CELLS] int;
@@ -75,6 +84,18 @@ em_cols :: (out: [] u8, at: int, cols: [] bool) -> int {
 em_table :: (out: [] u8, at: int, name: string) -> int {
   if !ct_name_ok(name) { return out.count + 1; }
   n := ct_put(out, at, "table "); n = ct_put(out, n, name);
+  return ct_put(out, n, "\n");
+}
+em_templates :: (out: [] u8, at: int, name: string) -> int {
+  if !ct_name_ok(name) { return out.count + 1; }
+  n := ct_put(out, at, "templates "); n = ct_put(out, n, name);
+  return ct_put(out, n, "\n");
+}
+// A template: its name line, then its parts line.
+em_template :: (out: [] u8, at: int, id: int, name: string, parts: string) -> int {
+  if id < 1 || !em_text_ok(name, EM_NAME) || !em_text_ok(parts, EM_PARTS) { return out.count + 1; }
+  n := ct_put(out, at, "t "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put(out, n, name);
+  n = ct_put(out, n, "\ntp "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put(out, n, parts);
   return ct_put(out, n, "\n");
 }
 em_kind :: (out: [] u8, at: int, id: int, name: string) -> int {
@@ -115,9 +136,11 @@ em_write :: (m: [] EdModel, out: [] u8) -> string {
   n := em_begin(out, cast(string) m[0].world[0..<m[0].world_n], m[0].lane, m[0].rev, m[0].undo, m[0].redo, m[0].sel);
   n = em_cols(out, n, m[0].cols[..]);
   if m[0].table_n > 0 { n = em_table(out, n, cast(string) m[0].table[0..<m[0].table_n]); }
+  if m[0].ttable_n > 0 { n = em_templates(out, n, cast(string) m[0].ttable[0..<m[0].ttable_n]); }
   for k: 0..<m[0].nk { n = em_kind(out, n, m[0].kind_id[k], cast(string) m[0].kind_name[k][0..<m[0].kind_n[k]]); }
   for k: 0..<m[0].ne { n = em_entity(out, n, m[0].e_id[k], m[0].e_kind[k], m[0].e_x[k], m[0].e_y[k], m[0].e_z[k], m[0].e_yaw[k], m[0].e_scale[k]); }
   for k: 0..<m[0].nc { n = em_cell(out, n, m[0].c_kind[k], cast(string) m[0].c_col[k][0..<m[0].c_col_n[k]], cast(string) m[0].c_val[k][0..<m[0].c_val_n[k]]); }
+  for k: 0..<m[0].nt { n = em_template(out, n, m[0].t_id[k], cast(string) m[0].t_name[k][0..<m[0].t_name_n[k]], cast(string) m[0].t_parts[k][0..<m[0].t_parts_n[k]]); }
   if m[0].here { n = em_here(out, n, m[0].here_x, m[0].here_z); }
   if m[0].no_n > 0 { n = em_no(out, n, cast(string) m[0].no[0..<m[0].no_n]); }
   if n > out.count { return ""; }
@@ -139,7 +162,7 @@ em_copy :: (to: [] u8, s: string) -> int {
 }
 // The model in text, into m. False (and m not ok) for any bytes em_write would not write.
 em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
-  m[0].ok = false; m[0].nk = 0; m[0].ne = 0; m[0].nc = 0; m[0].no_n = 0; m[0].world_n = 0; m[0].here = false; m[0].table_n = 0;
+  m[0].ok = false; m[0].nk = 0; m[0].ne = 0; m[0].nc = 0; m[0].no_n = 0; m[0].world_n = 0; m[0].here = false; m[0].table_n = 0; m[0].ttable_n = 0; m[0].nt = 0;
   for k: 0..<WE_COLS { m[0].cols[k] = false; }
   if text.count < EM_SCHEMA.count || text.count > EM_BYTES { return false; }
   lines := ct_parts(text, '\n');
@@ -157,6 +180,17 @@ em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
       for k: 1..<ct_parts(line, ' ') { c := we_col(ct_part(line, ' ', k)); if c >= 0 { m[0].cols[c] = true; } }
     } else if word == "table" {
       m[0].table_n = em_copy(m[0].table[..], em_rest(line, 1));
+    } else if word == "templates" {
+      m[0].ttable_n = em_copy(m[0].ttable[..], em_rest(line, 1));
+    } else if word == "t" && m[0].nt < EM_TEMPLATES {
+      k := m[0].nt;
+      m[0].t_id[k] = ct_num(ct_part(line, ' ', 1)).v;
+      m[0].t_name_n[k] = em_copy(m[0].t_name[k][..], em_rest(line, 2));
+      m[0].t_parts_n[k] = 0;
+      m[0].nt += 1;
+    } else if word == "tp" && m[0].nt > 0 {
+      // the parts of the template named on the line before
+      m[0].t_parts_n[m[0].nt - 1] = em_copy(m[0].t_parts[m[0].nt - 1][..], em_rest(line, 2));
     } else if word == "k" && m[0].nk < EM_KINDS {
       k := m[0].nk;
       m[0].kind_id[k] = ct_num(ct_part(line, ' ', 1)).v;
@@ -205,12 +239,14 @@ em_test_text :: (out: [] u8) -> string {
   n := em_begin(out, "splice", 0, 7, 3, 1, 2);
   n = em_cols(out, n, cols[..]);
   n = em_table(out, n, "pieces");
+  n = em_templates(out, n, "templates");
   n = em_kind(out, n, 1001, "Cargo crate");
   n = em_kind(out, n, 1002, "Parked rover");
   n = em_entity(out, n, 1, 1001, 350, 0, -1200, 90, 100);
   n = em_entity(out, n, 2, 1002, -40, 12, 600, -179, 100);
   n = em_cell(out, n, 1002, "kit", "rover");
   n = em_cell(out, n, 1002, "scale", "1.5");
+  n = em_template(out, n, 3, "Crate by a rover", "1001 -150 0 0 100,1002 150 0 90 100");
   n = em_here(out, n, 420, -75);
   n = em_no(out, n, "That spot is inside the Scanner gate, which stays clear.");
   return ifx n > out.count then "" else cast(string) out[0..<n];
@@ -231,6 +267,8 @@ em_test_text :: (out: [] u8) -> string {
   #assert m[0].here && m[0].here_x == 420 && m[0].here_z == -75;
   tb := m[0].table;
   #assert cast(string) tb[0..<m[0].table_n] == "pieces";
+  tt := m[0].ttable; tn := m[0].t_name[0]; tp := m[0].t_parts[0];
+  #assert cast(string) tt[0..<m[0].ttable_n] == "templates" && m[0].nt == 1 && m[0].t_id[0] == 3 && cast(string) tn[0..<m[0].t_name_n[0]] == "Crate by a rover" && cast(string) tp[0..<m[0].t_parts_n[0]] == "1001 -150 0 0 100,1002 150 0 90 100";
 }
 
 #test "a model with nothing in it reads, and bytes the writer would not write are refused" {
@@ -241,6 +279,8 @@ em_test_text :: (out: [] u8) -> string {
   #assert em_read(m, cast(string) h[0].out[0..<n], h[0].scratch[..]) && m[0].lane == 1 && m[0].ne == 0 && m[0].no_n == 0 && !m[0].here;
   #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nhere 1\n", h[0].scratch[..]) && !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nhere 1 2 3\n", h[0].scratch[..]);
   #assert em_here(h[0].out[..], 0, WE_REACH + 1, 0) > EM_BYTES && m[0].table_n == 0;
+  #assert em_template(h[0].out[..], 0, 0, "x", "1 0 0 0 100") > EM_BYTES && em_template(h[0].out[..], 0, 1, "", "1 0 0 0 100") > EM_BYTES && em_template(h[0].out[..], 0, 1, "x", "") > EM_BYTES && em_templates(h[0].out[..], 0, "T") > EM_BYTES && m[0].nt == 0;
+  #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nt 1 A template with no parts\n", h[0].scratch[..]) && !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\ntp 1 1 0 0 0 100\n", h[0].scratch[..]);
   #assert em_table(h[0].out[..], 0, "Pieces") > EM_BYTES && !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\ntable two words\n", h[0].scratch[..]);
   #assert !em_read(m, "editor.model.v2 splice dev 0 0 0 0\ncols\n", h[0].scratch[..]);
   #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\ne 1 5 0 0 0 0 100 extra\n", h[0].scratch[..]);

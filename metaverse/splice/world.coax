@@ -196,6 +196,7 @@ spw_why :: (g: [] SpGame, r: SpwEdit, out: [] u8) -> string {
 // ---- the content tables, edited (GitHub #13419, the browser editor's E10)
 
 SPW_KINDS :: "pieces";   // the table a placed piece's kind is a row of
+SPW_TEMPLATES :: "templates";   // the table a saved group of pieces is a row of (place.coax pl_template_*)
 SPW_TABLES :: 16384;   // bytes the content tables' document may take (the shipped one is about 4,000)
 SPE_CELL :: 25;      // no such table, row or column, or a value the column does not take
 SPE_RULES :: 26;     // the tables' rules do not hold with that value
@@ -453,6 +454,7 @@ spw_model :: (g: [] SpGame, p: [] SpwPage) -> string {
   n := em_begin(out, SPW_ID, f[0].lane, ifx f[0].rev < 0 then 0 else f[0].rev, f[0].undo, f[0].redo, p[0].sel);
   n = em_cols(out, n, cols[..]);
   n = em_table(out, n, SPW_KINDS);
+  n = em_templates(out, n, SPW_TEMPLATES);
   for r: 0..<c[0].piece_n { n = em_kind(out, n, c[0].pieces[r].id, sc_piece_name(c, r)); }
   for i: 0..<l[0].st[0].n {
     item := l[0].items[i];
@@ -460,11 +462,13 @@ spw_model :: (g: [] SpGame, p: [] SpwPage) -> string {
   }
   // each kind's row of the pieces table, cell by cell as the tables hold it: the shell edits them (a cell edit, spw_cell)
   tables := ifx p[0].ct[0].open then spw_tables_text(p[0].ct[..]) else SC_SHIPPED;
-  head := ""; inside := false;
+  head := ""; inside := false; saved := false;
   for k: 0..<ct_parts(tables, '\n') {
     line := ct_part(tables, '\n', k);
-    if ct_part(line, ' ', 0) == "table" { inside = ct_part(line, ' ', 1) == SPW_KINDS; head = line; continue; }
+    if ct_part(line, ' ', 0) == "table" { inside = ct_part(line, ' ', 1) == SPW_KINDS; saved = ct_part(line, ' ', 1) == SPW_TEMPLATES; head = line; continue; }
     row := ct_num(ct_part(line, '|', 0));
+    // a saved group: its row is ID|NAME|PARTS
+    if saved && row.ok && ct_parts(line, '|') == 3 { n = em_template(out, n, row.v, ct_part(line, '|', 1), ct_part(line, '|', 2)); }
     if !inside || !row.ok { continue; }
     // the header is "table NAME id COL:KIND ...": column c of a row is its word c + 2
     for ci: 1..<ct_parts(line, '|') {
@@ -557,4 +561,41 @@ spv_mark :: (g: [] SpGame, p: [] SpwPage, vp: [] Viewport, v: VpView) -> SpvMark
   }
   m.ok = true;
   return m;
+}
+
+// ---- the placement planner on Splice (GitHub #13414, the browser editor's E5; metaverse-engine/editor/place.coax)
+
+// What the planner asks of a piece's kind, from the pieces table: its footprint's reach, and
+// whether it grows (a palm is turned any which way; a made thing faces the camera).
+spw_kind :: (g: [] SpGame, kind: int) -> PlaceKind {
+  r := sc_piece(g[0].c[..], kind);
+  if r < 0 { return PlaceKind.{}; }
+  pc := g[0].c[0].pieces[r];
+  return PlaceKind.{radius = hi(pc.hx, pc.hz), natural = pc.kit == PK_PALM};
+}
+SPW_ROOM :: 1.35;   // how much wider than its footprint's corner a piece is planned, so the planner's spacing never lets two touch
+spw_round :: (g: [] SpGame, kind: int) -> f32 {
+  r := sc_piece(g[0].c[..], kind);
+  if r < 0 { return 0.5; }
+  pc := g[0].c[0].pieces[r];
+  return sqrt(pc.hx * pc.hx + pc.hz * pc.hz) * SPW_ROOM;
+}
+// `count` pieces of a kind planned from the point last tapped, clear of each other, as one batch of
+// spawns sent as this page's own write (one step: one undo takes them all back). The server checks
+// each where it stands, as any edit. False when there is no point, no such kind, or the batch did not go.
+spw_plan_add :: (g: [] SpGame, p: [] SpwPage, w: [] SpvWork, v: PlaceView, kind: int, count: int) -> bool {
+  if !p[0].here || sc_piece(g[0].c[..], kind) < 0 || count < 1 || count > WE_BATCH { return false; }
+  l := g[0].layer[..];
+  // the server refuses a piece that touches another, so each is planned as a circle round its whole footprint,
+  // with room to spare, clear of the others and of what stands
+  stood: [SL_ITEMS] PlaceSpot; ns := 0;
+  for i: 0..<l[0].st[0].n { item := l[0].items[i]; stood[ns] = PlaceSpot.{x = item.x, z = item.z, r = spw_round(g, item.mesh), ok = true}; ns += 1; }
+  out: [WE_BATCH] PlaceOut;
+  at := PlaceSpot.{x = cast(f32) p[0].here_x / 100, z = cast(f32) p[0].here_z / 100, ok = true};
+  kd := spw_kind(g, kind); kd.radius = spw_round(g, kind);
+  n := pl_plan(kd, at, v, PlaceAsk.{count = count, nudge = true, clear = true, seed = l[0].rev * 7919 + kind}, stood[0..<ns], out[..]);
+  edits: [WE_BATCH] WorldEdit;
+  for i: 0..<n { edits[i] = WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = kind, x = vp_cm(out[i].x), z = vp_cm(out[i].z), yaw = vp_wrap(we_deg(out[i].yaw))}; }
+  body: [WE_BATCH_BODY] u8;
+  return n > 0 && spw_shell_batch(p, we_batch_write(p[0].f[0].rev, WB_APPLY, edits[..], n, body[..]));
 }

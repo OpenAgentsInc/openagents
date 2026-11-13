@@ -404,6 +404,12 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
   // the editor shell's actions (metaverse-engine/editor/shell.coax): 520 a batch of edits, sent as this page's own write; 521 the piece to select
   if kind == 520 && s.count > 0 && s[0].edit && s[0].follow == 2 { _ := spw_shell_batch(s[0].page[..], body); return; }
   if kind == 521 && s.count > 0 && s[0].edit { spw_select(s[0].game[..], s[0].page[..], sp_whole(body, 0)); return; }
+  // "add KIND COUNT": several of a kind, planned from the point last tapped (world.coax spw_plan_add)
+  if kind == 523 && s.count > 0 && s[0].edit && s[0].follow == 2 && ct_part(body, ' ', 0) == "add" && ct_parts(body, ' ') == 3 {
+    k := ct_num(ct_part(body, ' ', 1)); c := ct_num(ct_part(body, ' ', 2));
+    if k.ok && c.ok { _ := spw_plan_add(s[0].game[..], s[0].page[..], s[0].vw[..], PlaceView.{view_x = s[0].vview.ax, view_z = s[0].vview.az, yaw = s[0].vp[0].fyaw}, k.v, c.v); }
+    return;
+  }
   if kind == 522 && s.count > 0 && s[0].edit { _ := vp_act(s[0].vp[..], body, s[0].vview); return; }   // the viewport's tool, grid, camera and clock
   if kind == 610 && s.count > 0 && body.count > 0 {   // a moment of the game to stand in: "0" to "10"
     n := 0;

@@ -9,7 +9,7 @@ The site's index is [llms.txt](https://openagents.com/llms.txt). Look a Coax nam
 - realm: splice
 - page: `/worlds/splice` (module `splice`, source `apps/openagents-web/realms/splice/`)
 - wire: none. The page decides the simulation; there is no room to speak to
-- content: `metaverse/splice/content/splice.content`, revision 1, sha256 `5dd80f42dd4af4316bd736abfea52eab22334dd94439824478697b2600dc7712`
+- content: `metaverse/splice/content/splice.content`, revision 2, sha256 `a812b8788a6b9194e1eb44eff9965c4e306de4fc92d32fe35fb54266ed7dcd4b`
 - diagnostics: `engine-diagnostics-v1`, 17 codes, sha256 `55aa5a9b50ff02e1256e64909abf901a29f9c98a1575ae6b669281410b69c31c` (`proto/verse/engine-diagnostics-v1.json`)
 - language: Coax; the compiler's version is in `coax/release-status.json` and what it claims to do in `coax/book/capability-claims.json`
 - reference: the last line of this file is the sha256 of everything above it. Two builds with the same line have the same reference
@@ -40,7 +40,7 @@ From `metaverse-engine/editor/authority.coax` (INVARIANTS.md, "Authoring never w
 
 - format: `aethyr.content.v1` (docs/protocol/aethyr-content-v1.md): one text document; a `table NAME COLUMNS` line, then a row a line, cells split by `|`
 - document: splice
-- revision: 1
+- revision: 2
 - reach, cm: 30000
 
 | Table | Columns | Rows |
@@ -50,6 +50,7 @@ From `metaverse-engine/editor/authority.coax` (INVARIANTS.md, "Authoring never w
 | `landmarks` | `id name:text x:cm z:cm r:int` | 53 |
 | `looks` | `id name:text a:int b:int c:int` | 8 |
 | `pieces` | `id name:text kit:text scale:int look:ref.looks hx:int hz:int top:int` | 18 |
+| `templates` | `id name:text parts:text` | 0 |
 
 A table's first column is `id`. Another column is `NAME:int`, `NAME:text`, `NAME:cm` (centimetres), `NAME:ref.TABLE` (the id of a row of TABLE) or `NAME:opt.TABLE` (the same, or 0 for none). A row's id is never changed or used again.
 
@@ -153,4 +154,4 @@ table areas id name:text x:cm z:cm hx:int hz:int r:int
 1|Dome village|17500|-7500|0|0|630
 ```
 
-reference sha256: 0ae732a7e04144023fd8eef110dfc2e602867b00b2cbfdaad4f4e90c54ec18ce
+reference sha256: cc217173e3026673a8c63889dee6fdd48e92e3840155d5f152ebd0c8690931df

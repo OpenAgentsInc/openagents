@@ -182,6 +182,16 @@ not a flat folder scan.
   rules, and saved with the lane's tables. Pages carry the event out in
   place. Splice is the first realm
   ([the cell edit](../protocol/world-edit-v1.md)).
+- **As built (E5, #13414):** `metaverse-engine/editor/place.coax` is the one
+  placement planner: an anchor, a side as the camera sees it, a spread over a
+  disc or a ring, and one thing nudged to where nothing stands. It asks a
+  catalogue one thing of a kind (its footprint and whether it grows).
+  WorldBuilder fills that from the Quaternius pack and Splice from its
+  `pieces` table, and WorldBuilder's own copy is gone. A template is a group
+  of things saved as one row of a realm's `templates` table and placed as one
+  batch, so one undo takes it back. In the shell, a row's control gathers a
+  thing into a group, the group saves under a name, and Add lists the
+  templates after the kinds and places several of a kind spread out.
 - **Assets:** an asset browser over the realm's pack and the shared kits.
   Drop a glTF, PNG or audio file to add it: it is packed with a declared
   licence (`metaverse-engine/editor/pack.coax`) and appears in the browser.

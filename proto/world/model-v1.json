@@ -13,20 +13,25 @@
   "name_bytes": 40,
   "value_bytes": 80,
   "refusal_bytes": 240,
-  "bytes": 32768
+  "bytes": 65536,
+  "templates": 32,
+  "parts_bytes": 480
  },
  "lines": [
   "editor.model.v1 WORLD LANE REV UNDO REDO SELECTED",
   "cols NAME ...",
   "table NAME",
+  "templates NAME",
   "k KIND NAME",
   "e ID KIND X Y Z YAW SCALE",
   "c KIND COLUMN VALUE",
+  "t ID NAME",
+  "tp ID PARTS",
   "here X Z",
   "no WORDS"
  ],
  "model": {
-  "wire": "editor.model.v1 splice dev 7 3 1 2\ncols x z yaw\ntable pieces\nk 1001 Cargo crate\nk 1002 Parked rover\ne 1 1001 350 0 -1200 90 100\ne 2 1002 -40 12 600 -179 100\nc 1002 kit rover\nc 1002 scale 1.5\nhere 420 -75\nno That spot is inside the Scanner gate, which stays clear.\n",
+  "wire": "editor.model.v1 splice dev 7 3 1 2\ncols x z yaw\ntable pieces\ntemplates templates\nk 1001 Cargo crate\nk 1002 Parked rover\ne 1 1001 350 0 -1200 90 100\ne 2 1002 -40 12 600 -179 100\nc 1002 kit rover\nc 1002 scale 1.5\nt 3 Crate by a rover\ntp 3 1001 -150 0 0 100,1002 150 0 90 100\nhere 420 -75\nno That spot is inside the Scanner gate, which stays clear.\n",
   "world": "splice",
   "lane": "dev",
   "rev": 7,
@@ -40,7 +45,8 @@
    420,
    -75
   ],
-  "table": "pieces"
+  "table": "pieces",
+  "templates": 1
  },
  "empty": {
   "wire": "editor.model.v1 splice live 0 0 0 0\ncols\n"
@@ -55,6 +61,7 @@
   "editor.model.v1 splice dev 0 0 0 0\ncols\nx what\n",
   "editor.model.v1 splice test 0 0 0 0\ncols\n",
   "editor.model.v1 splice dev 0 0 0 0\ncols\nhere 1\n",
-  "editor.model.v1 splice dev 0 0 0 0\ncols\ntable two words\n"
+  "editor.model.v1 splice dev 0 0 0 0\ncols\ntable two words\n",
+  "editor.model.v1 splice dev 0 0 0 0\ncols\nt 1 A template with no parts\n"
  ]
 }

@@ -1,4 +1,4 @@
-aethyr.content.v1 splice 1
+aethyr.content.v1 splice 2
 reach 30000
 table areas id name:text x:cm z:cm hx:int hz:int r:int
 1|Dome village|17500|-7500|0|0|630
@@ -117,3 +117,4 @@ table pieces id name:text kit:text scale:int look:ref.looks hx:int hz:int top:in
 116|Crate|crate|1500|5|90|70|127
 117|Small crate|crate|1000|5|60|47|85
 118|Banned bot|robot|800|4|136|42|262
+table templates id name:text parts:text
