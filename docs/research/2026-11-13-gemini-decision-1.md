@@ -123,6 +123,7 @@ Gemini Decision 1 first, and the model it used before is the fallback:
 | Coder's engine route (`coax/lib/agent/engine/route.coax`) | `gemini-decision-1` with a Gemini key | `elephant-1` at the router.json URL, else `mammoth-1` |
 | `coder decide` and the router's checks (`coder/tui/route.coax`, `router.coax`) | `gemini-decision-1` with a Gemini key | `mammoth-1` |
 | The desktop router (`apps/openagents-desktop/router.coax`) | `gemini-decision-1` with `GEMINI_API_KEY` | `mammoth-1` |
+| Everglade's guards (`everglade/npc/guard-*.coax`), through `/api/v1/systemone` with `"model":"auto"` | `gemini-decision-1` | `elephant-1`, the pinned checkpoint |
 
 The fallback answers when there is no Gemini key, and when Google fails for
 any reason other than a rule of the request or a safety block
@@ -131,11 +132,6 @@ a missing model, a server error or no response.
 
 These callers still name another model first, on purpose:
 
-- **Everglade's guards** (`everglade/npc/guard-*.coax`) ask
-  `/api/v1/systemone` for `elephant-1` by name. They check the answer's pinned
-  checkpoint identity (`elephant-1@sha256:...`) and replay and evaluate
-  against it. A Gemini answer has no checkpoint digest, so moving them needs
-  a new identity rule in their `#authority` files.
 - **The Lab** (`coax/lib/agent/engine/lab.coax`, `gpu.coax`) exists to
   exercise our own Elephant on this Mac's GPU.
 - **Psionic and Pylon** (`psionic/`, `apps/openagents-cli/pylon.coax`) serve
@@ -143,6 +139,48 @@ These callers still name another model first, on purpose:
   decision door.
 - **The legacy captain** (`everglade/legacy/v1/captain.coax`) is frozen with
   the rest of v1.
+
+### Everglade's guards
+
+Since 2026-11-13 (#13476) both guard consumers, the ambient guard
+(`guard-decision.coax`) and Directions (`guard-guide.coax`), send
+`"model":"auto"`. The server answers from the first door in its order, and the
+guard accepts the answer by the identity it names. Two identities pass
+(`everglade/npc/guard-door.coax`):
+
+| Door | `model` | `service.identity` | `service.provider` | `service.door` | Numbers |
+| --- | --- | --- | --- | --- | --- |
+| Gemini Decision 1 | `gemini-decision-1` | `gemini-decision-1` | `google` | `gemini` | Doubles in full, up to 32 bytes, with an optional `e-N` exponent |
+| Elephant | `elephant-1` | `elephant-1@sha256:682f...d0ba`, the pinned checkpoint | 32-byte hex | `pylon:...`, with `service.version` `psionic-pylon-v1` | At most nine decimals |
+
+Everything else is refused: an unknown identity, Elephant with another digest,
+and one door's identity under the other door's model.
+
+The door that answered stays with the choice:
+
+- **Replay.** The decision ticket holds the choice and the door as one value.
+  Elephant's value is the choice itself, so earlier records still replay, and
+  Gemini's values follow. A record made from a Gemini answer replays as
+  Gemini's.
+- **Evaluation.** A scored row keeps its door, and one set of totals scores
+  one door. A summary names the identity that answered and refuses rows from
+  two doors. A row with no contract (a 503, a malformed body) has no door.
+- **Probes.** Probe 17 (ambient) and 219 (Directions) report the door of the
+  last accepted choice: 0 none, 1 Elephant, 2 Gemini Decision 1.
+
+`everglade/npc/guard-door-server-checks.coax` runs the guards' requests through
+the server's own order, rename and Gemini mapping
+(`mesh-policy.coax`, `mesh-gemini.coax`) and holds the result to the answer
+bytes the guard checks use. No check calls a model.
+
+The Directions evaluation's frozen requests changed with the model field, so
+they have a new version, `psionic/fixtures/guard-guide-requests-v2/`. Version 1
+stays as the request set of the dated Elephant records.
+
+Not verified: no guard request was sent to production. The recorded Google
+answer (`GD_FX_TICKET_ANSWER`) writes its probabilities as plain decimals.
+The exponent form is read because Google may write a small double that way,
+but no recorded answer shows it.
 
 ### /api/v1/systemone
 

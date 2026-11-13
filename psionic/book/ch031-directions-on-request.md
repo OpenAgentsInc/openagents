@@ -50,9 +50,15 @@ prove a usable route to it.
 The independently authored
 [label manifest](../fixtures/guard-guide-labels-v1.jsonl) is
 `guard-guide-editorial-v1`. Its split and labels were fixed before any new model
-calls. The [five request artifacts](../fixtures/guard-guide-requests-v1/) record
-the exact Coax-written bytes; their [hash inventory](../fixtures/guard-guide-requests-v1/SHA256SUMS)
-keeps later prompt changes visible.
+calls. The [five request artifacts](../fixtures/guard-guide-requests-v2/) record
+the exact Coax-written bytes; their [hash inventory](../fixtures/guard-guide-requests-v2/SHA256SUMS)
+keeps later prompt changes visible. Version 2 (2026-11-13, GitHub #13476)
+differs from [version 1](../fixtures/guard-guide-requests-v1/) in one field:
+the model is `auto`, not `elephant-1`. The server asks Gemini Decision 1 first
+and Elephant behind it, and the decoder accepts either door's identity
+([chapter 29](ch029-a-guard-asks-a-pylon.md)). Version 1 stays as the request
+set of the dated live records. An evaluation row keeps the door that answered
+it, and a summary refuses rows from two doors.
 
 | Case | Current requested goal | Authored useful tip | Split |
 | --- | --- | --- | --- |

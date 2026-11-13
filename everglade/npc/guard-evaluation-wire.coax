@@ -1,5 +1,8 @@
 // Reproducible observation records and reports. Raw response bodies stay data;
 // record parsing, admission, distinct-case counts and serialization are Coax.
+// A result and a summary name the identity that answered ("identity": Gemini
+// Decision 1's, the pinned Elephant checkpoint's, or null when no row held a
+// contract), and a summary refuses rows from two doors (#13476).
 #load "guard-evaluation.coax";
 #load "guard-latency.coax";
 #authority;
@@ -26,9 +29,11 @@
 }
 #test "score reports preserve every independent admission and editorial flag" {
     b:[4096]u8;r:=gev_evaluate(4,"200\n",GA_RESPONSE,1);n:=gew_result(r,b[..]);
-    #assert cast(string)b[0..<n]=="{\"case\":4,\"valid\":true,\"contract\":true,\"deadline\":true,\"covered\":true,\"action\":1,\"disagree\":true,\"acceptable\":true,\"preferred\":true,\"editorial_useful\":true,\"remote_forbidden\":false}";
+    #assert cast(string)b[0..<n]=="{\"case\":4,\"valid\":true,\"contract\":true,\"deadline\":true,\"covered\":true,\"action\":1,\"disagree\":true,\"acceptable\":true,\"preferred\":true,\"editorial_useful\":true,\"remote_forbidden\":false,\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\"}";
+    r=gev_evaluate(4,"200\n",GA_GEMINI_RESPONSE,1);n=gew_result(r,b[..]);
+    #assert cast(string)b[0..<n]=="{\"case\":4,\"valid\":true,\"contract\":true,\"deadline\":true,\"covered\":true,\"action\":1,\"disagree\":true,\"acceptable\":true,\"preferred\":true,\"editorial_useful\":true,\"remote_forbidden\":false,\"identity\":\"gemini-decision-1\"}";
     r=GeResult.{};r.forbidden=true;n=gew_result(r,b[..]);
-    #assert cast(string)b[0..<n]=="{\"case\":-1,\"valid\":false,\"contract\":false,\"deadline\":false,\"covered\":false,\"action\":-1,\"disagree\":false,\"acceptable\":false,\"preferred\":false,\"editorial_useful\":false,\"remote_forbidden\":true}";
+    #assert cast(string)b[0..<n]=="{\"case\":-1,\"valid\":false,\"contract\":false,\"deadline\":false,\"covered\":false,\"action\":-1,\"disagree\":false,\"acceptable\":false,\"preferred\":false,\"editorial_useful\":false,\"remote_forbidden\":true,\"identity\":null}";
     #assert gew_result(r,b[0..<0])==-1;
 }
 #test "JSONL summary never double counts, hides a missing cohort or calls preference proven utility" {
@@ -93,17 +98,21 @@ gew_observation :: (line:string)->GeResult #export_c #effects(all) {
     return gev_evaluate(i.value,cast(string)head[0..<h],cast(string)raw[0..<n],e.value);
 }
 gew_bool :: (out:[]u8,at:int,value:bool)->int #effects(all) {return json_raw(out,at,ifx value then "true" else "false");}
+// The identity of a door as a JSON string, or null for no door.
+gew_identity :: (out:[]u8,at:int,door:int)->int #effects(all) {
+    if door==GDR_NONE {return json_raw(out,at,"null");}return json_write_string(out,at,gdr_identity(door));
+}
 gew_result :: (r:GeResult,out:[]u8)->int #export_c #effects(all) {
     n:=json_raw(out,0,"{\"case\":");n=json_write_int(out,n,r.index);n=json_raw(out,n,",\"valid\":");n=gew_bool(out,n,r.valid);
     n=json_raw(out,n,",\"contract\":");n=gew_bool(out,n,r.contract);n=json_raw(out,n,",\"deadline\":");n=gew_bool(out,n,r.deadline);
     n=json_raw(out,n,",\"covered\":");n=gew_bool(out,n,r.covered);n=json_raw(out,n,",\"action\":");n=json_write_int(out,n,r.action);
     n=json_raw(out,n,",\"disagree\":");n=gew_bool(out,n,r.disagree);n=json_raw(out,n,",\"acceptable\":");n=gew_bool(out,n,r.acceptable);
     n=json_raw(out,n,",\"preferred\":");n=gew_bool(out,n,r.preferred);n=json_raw(out,n,",\"editorial_useful\":");n=gew_bool(out,n,r.useful);
-    n=json_raw(out,n,",\"remote_forbidden\":");n=gew_bool(out,n,r.forbidden);return json_raw(out,n,"}");
+    n=json_raw(out,n,",\"remote_forbidden\":");n=gew_bool(out,n,r.forbidden);n=json_raw(out,n,",\"identity\":");n=gew_identity(out,n,r.door);return json_raw(out,n,"}");
 }
 gew_totals :: (t:GeTotals,out:[]u8)->int #export_c #effects(all) {
     quiet_preferred:=0;for i:0..<4 {if (t.seen&(1<<i))!=0 {quiet_preferred+=1;}}
-    n:=json_raw(out,0,"{\"corpus\":\"guard-editorial-v1\",\"expected_eligible\":16,\"observed\":");n=json_write_int(out,n,t.observed);
+    n:=json_raw(out,0,"{\"corpus\":\"guard-editorial-v1\",\"identity\":");n=gew_identity(out,n,t.door);n=json_raw(out,n,",\"expected_eligible\":16,\"observed\":");n=json_write_int(out,n,t.observed);
     n=json_raw(out,n,",\"eligible_observed\":");n=json_write_int(out,n,t.eligible);n=json_raw(out,n,",\"all_eligible_observed\":");n=gew_bool(out,n,gev_complete(t));
     n=json_raw(out,n,",\"contract\":");n=json_write_int(out,n,t.contract);n=json_raw(out,n,",\"deadline\":");n=json_write_int(out,n,t.deadline);
     n=json_raw(out,n,",\"covered\":");n=json_write_int(out,n,t.covered);n=json_raw(out,n,",\"disagreement_vs_quiet\":");n=json_write_int(out,n,t.disagree);
@@ -136,4 +145,19 @@ gew_summary :: (text:string,out:[]u8)->int #export_c #effects(all) {
         if at==text.count {break;}
     }
     return gew_report(totals[0],attempts[0..<totals[0].observed],covered[0..<covered_n],out);
+}
+#test "a summary names the one identity that answered and refuses rows from two doors" {
+    a:[16384]u8;lines:[32768]u8;out:[4096]u8;
+    for first:[2]int.[GDR_ELEPHANT,GDR_GEMINI] {
+        own:=ifx first==GDR_GEMINI then GA_GEMINI_RESPONSE else GA_RESPONSE;other:=ifx first==GDR_GEMINI then GA_RESPONSE else GA_GEMINI_RESPONSE;
+        n:=gew_record(0,10,503,"",a[..]);k:=json_raw(lines[..],0,cast(string)a[0..<n]);k=json_raw(lines[..],k,"\n");
+        n=gew_record(4,1,200,own,a[..]);k=json_raw(lines[..],k,cast(string)a[0..<n]);
+        m:=gew_summary(cast(string)lines[0..<k],out[..]);text:=cast(string)out[0..<m];
+        #assert m>0 && json_valid(text) && ga_is(ga_get(text,"identity"),gdr_identity(first)) && json_int(ga_get(text,"covered").text).value==1;
+        k=json_raw(lines[..],k,"\n");n=gew_record(5,1,200,other,a[..]);k=json_raw(lines[..],k,cast(string)a[0..<n]);
+        #assert gew_summary(cast(string)lines[0..<k],out[..])==-1;
+    }
+    n:=gew_record(0,10,503,"",a[..]);m:=gew_summary(cast(string)a[0..<n],out[..]);#assert ga_get(cast(string)out[0..<m],"identity").token==JSON_NULL;
+    m=gew_summary("",out[..]);#assert ga_get(cast(string)out[0..<m],"identity").token==JSON_NULL;
+    #assert gew_identity(out[..],0,GDR_GEMINI)==19 && cast(string)out[0..<19]=="\"gemini-decision-1\"" && gew_identity(out[..],0,GDR_NONE)==4 && gew_identity(out[0..<3],0,GDR_NONE)==-1;
 }

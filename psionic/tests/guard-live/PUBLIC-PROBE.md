@@ -37,7 +37,9 @@ first small probe should pass before a separately authorized larger cohort:
 
 An explicitly authorized control uses `control 1` in place of `START COUNT` and
 belongs in its own file. Its `pinned` field checks provider/checkpoint metadata;
-the ambient decoder is used only for guard cases. Record the control's actual
+the ambient decoder is used only for guard cases. A guard case asks for
+`"model":"auto"` (GitHub #13476), and its `pinned` holds for Gemini Decision 1's
+identity, or for Elephant's pinned checkpoint with the configured provider. Record the control's actual
 model/answer and reference comparison separately. The initial failed observation
 must remain separate if a new diagnostic cohort is later authorized; never
 replace it with a successful retry or feed duplicate case indices into a summary.

@@ -1,5 +1,7 @@
 // Frozen before candidate calls: finite editorial route labels, not gameplay
 // outcome measurements. Labels/reference actions never enter model requests.
+// A scored row keeps the door that answered it, and one set of totals scores
+// one door: a row from the other door is refused (guard-door.coax, #13476).
 #load "guard-guide.coax";
 #load "guard-guide-fixtures.coax";
 #load "guard-latency.coax";
@@ -12,8 +14,8 @@ GGE_EXPECTED :: [5]int.[1,2,3,4,1];
 GGE_SPLIT :: [5]int.[0,0,1,1,0];
 GGE_NAMES :: [13]string.["ask-for-work-at-the-gate","current-waystone-objective","current-ruins-objective","current-river-objective","current-return-to-board-objective","no-directions-request","gameplay-gate-refuses","route-not-known-available","already-at-destination","guide-tip-already-visible","no-current-visible-objective","negative-goal-refuses","unknown-goal-refuses"];
 GgeCase :: struct {valid:bool;index:int=-1;name:string;split:int=2;observation:GgObservation;remote:bool;legal_mask:int=1;reference:int;}
-GgeResult :: struct {valid:bool;index:int=-1;split:int;elapsed_ms:int;contract:bool;deadline:bool;legal:bool;admitted:bool;covered:bool;raw_action:int=-1;effective_action:int;raw_correct:bool;raw_quiet:bool;raw_wrong:bool;model_useful:bool;effective_correct:bool;rule_correct:bool;quiet_correct:bool;forbidden:bool;}
-GgeTotals :: struct {seen:int;observed:int;contract:int;deadline:int;legal:int;admitted:int;covered:int;raw_correct:int;raw_quiet:int;raw_wrong:int;model_useful:int;effective_correct:int;rule_correct:int;quiet_correct:int;forbidden:int;development:int;development_useful:int;heldout:int;heldout_useful:int;elapsed:[5]int;covered_elapsed:[5]int;}
+GgeResult :: struct {valid:bool;index:int=-1;split:int;elapsed_ms:int;contract:bool;deadline:bool;legal:bool;admitted:bool;covered:bool;raw_action:int=-1;effective_action:int;raw_correct:bool;raw_quiet:bool;raw_wrong:bool;model_useful:bool;effective_correct:bool;rule_correct:bool;quiet_correct:bool;forbidden:bool;door:int;}
+GgeTotals :: struct {seen:int;observed:int;contract:int;deadline:int;legal:int;admitted:int;covered:int;raw_correct:int;raw_quiet:int;raw_wrong:int;model_useful:int;effective_correct:int;rule_correct:int;quiet_correct:int;forbidden:int;development:int;development_useful:int;heldout:int;heldout_useful:int;elapsed:[5]int;covered_elapsed:[5]int;door:int;}
 
 #test "fresh goal labels and splits are independent of the product baseline" {
   for i:0..<5 {c:=gge_case(i);#assert c.valid && c.remote && c.index==i && c.name==GGE_NAMES[i] && c.observation.goal==i+1;
@@ -58,6 +60,32 @@ GgeTotals :: struct {seen:int;observed:int;contract:int;deadline:int;legal:int;a
   for index:[4]int.[-1,5,13,9223372036854775807] {#assert !gge_add(t[..],GgeResult.{valid=true,index=index});}
   fresh:[1]GgeTotals;#assert !gge_add(fresh[..],GgeResult.{}) && !gge_add(fresh[..],gge_evaluate(0,"503\n","",-1)) && !gge_add(fresh[..],gge_evaluate(0,"503\n","",GL_MAX_MS+1));
 }
+#test "a scored row keeps the door that answered, and both doors score alike on the same choice" {
+  b:[8192]u8;c:[8192]u8;
+  for i:0..<5 {for action:0..<5 {
+    e:=gge_evaluate(i,"200\n",gge_fixture(action,b[..]),7999);g:=gge_evaluate(i,"200\n",gge_fixture_gemini(action,c[..]),7999);
+    #assert e.door==GDR_ELEPHANT && g.door==GDR_GEMINI && g.contract && g.raw_action==action;
+    #assert g.legal==e.legal && g.admitted==e.admitted && g.covered==e.covered && g.model_useful==e.model_useful && g.effective_action==e.effective_action;
+  }}
+  #assert gge_fixture_gemini(-1,b[..])=="" && gge_fixture_gemini(5,b[..])=="" && gge_fixture(-1,b[..])=="" && gge_fixture(5,b[..])=="";
+  // The synthetic Gemini answer is the server's mapped shape, byte for byte (guard-door-server-checks.coax holds the real mapping to it).
+  #assert gge_fixture_gemini(2,b[..])=="{\"model\":\"gemini-decision-1\",\"answers\":{\"guide\":{\"type\":\"choice\",\"choice\":\"east_gate\",\"confidence\":0.6,\"probabilities\":{\"east_gate\":0.6,\"north_trail\":0.1,\"quest_board\":0.1,\"quiet\":0.1,\"west_gate\":0.1}}},\"usage\":{\"input_tokens\":188,\"output_tokens\":0},\"service\":{\"door\":\"gemini\",\"identity\":\"gemini-decision-1\",\"provider\":\"google\"}}";
+  body:=gge_fixture_gemini(1,b[..]);
+  #assert gge_evaluate(0,"200\n",body,8000).door==GDR_GEMINI && gge_evaluate(5,"200\n",body,1).door==GDR_GEMINI;
+  #assert gge_evaluate(0,"503\n",body,1).door==GDR_NONE && gge_evaluate(0,"200\n","{}",1).door==GDR_NONE && gge_evaluate(-1,"200\n",body,1).door==GDR_NONE;
+}
+#test "one set of totals scores one door: the other door's row is refused, and a failed row joins either" {
+  b:[8192]u8;c:[8192]u8;
+  for first:[2]int.[GDR_ELEPHANT,GDR_GEMINI] {
+    t:[1]GgeTotals;#assert gge_add(t[..],gge_evaluate(0,"503\n","",1)) && t[0].door==GDR_NONE;
+    own:=ifx first==GDR_GEMINI then gge_fixture_gemini(2,b[..]) else gge_fixture(2,b[..]);
+    other:=ifx first==GDR_GEMINI then gge_fixture(3,c[..]) else gge_fixture_gemini(3,c[..]);
+    #assert gge_add(t[..],gge_evaluate(1,"200\n",own,2)) && t[0].door==first && t[0].observed==2;
+    #assert !gge_add(t[..],gge_evaluate(2,"200\n",other,3)) && t[0].door==first && t[0].observed==2 && t[0].seen==3 && t[0].contract==1;
+    #assert gge_add(t[..],gge_evaluate(3,"503\n","",4)) && gge_add(t[..],gge_evaluate(2,"200\n",own,3)) && t[0].door==first && t[0].observed==4 && t[0].contract==2;
+    #assert !gge_add(t[..],gge_evaluate(4,"200\n",other,8000)) && t[0].observed==4;
+  }
+}
 
 // End of pre-implementation checks.
 
@@ -80,7 +108,7 @@ gge_evaluate :: (index:int,status:string,body:string,elapsed_ms:int)->GgeResult 
   a:=gg_decode(body);contract:=gge_contract(status,a.ok,body.count);
   raw:=ifx contract then a.action else -1;
   admission:=gg_admit(c.observation,GgAnswer.{ok=contract,action=raw},elapsed_ms);
-  return gge_score(c,contract,raw,elapsed_ms,admission);
+  r:=gge_score(c,contract,raw,elapsed_ms,admission);if contract {r.door=a.door;}return r;
 }
 // Independent score seam also detects a regressed candidate admission result.
 gge_score :: (c:GgeCase,contract:bool,raw:int,elapsed_ms:int,admission:GgAdmit)->GgeResult #effects(all) {
@@ -96,7 +124,10 @@ gge_score :: (c:GgeCase,contract:bool,raw:int,elapsed_ms:int,admission:GgAdmit)-
 }
 gge_add :: (s:[]GgeTotals,r:GgeResult)->bool #export_c #effects(all) {
   if s.count!=1 || !r.valid || r.index<0 || r.index>=5 || r.elapsed_ms<0 || r.elapsed_ms>GL_MAX_MS {return false;}
+  // A row another door answered is not this door's evidence.
+  if r.door!=GDR_NONE && s[0].door!=GDR_NONE && r.door!=s[0].door {return false;}
   bit:=1<<r.index;if (s[0].seen&bit)!=0 {return false;}s[0].seen|=bit;
+  if r.door!=GDR_NONE {s[0].door=r.door;}
   s[0].elapsed[s[0].observed]=r.elapsed_ms;s[0].observed+=1;
   if r.contract {s[0].contract+=1;}if r.deadline {s[0].deadline+=1;}if r.legal {s[0].legal+=1;}if r.admitted {s[0].admitted+=1;}
   if r.covered {s[0].covered_elapsed[s[0].covered]=r.elapsed_ms;s[0].covered+=1;}

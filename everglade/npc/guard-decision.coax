@@ -1,21 +1,24 @@
 // Everglade's cosmetic guard consumer: fixed authored choices only.
 // Unknown extra result fields are inert. Required fields are unique and exact.
+// The request asks for "model":"auto"; an answer passes from Gemini Decision 1
+// or the pinned Elephant checkpoint only, and the choice keeps the door that
+// answered (guard-door.coax, #13476).
 #load "../../coax/lib/nostr/json.coax";
 #load "guard-types.coax";
+#load "guard-door.coax";
 #load "guard-metrics.coax";
 #load "guard-fixtures.coax";
 #load "../../psionic/lib/game/decision.coax";
 #authority;
-GA_IDENTITY :: "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba";
-GA_MODEL :: "elephant-1";
+GA_IDENTITY :: GDR_ELEPHANT_IDENTITY;
+GA_MODEL :: GDR_ELEPHANT_MODEL;
+GA_CHOICES :: 3;
 GA_OPTIONS :: [3]string.["quiet","greeting","weather"];
 GA_BODY_MAX :: 8192;
 GA_UNIT :: 1000000000;
 GA_TOL :: 1000;
 GaField :: struct {ok:bool;token:int;raw:string;text:string;}
-GaNumber :: struct {ok:bool;units:int;}
-GaAnswer :: struct {ok:bool;action:int=-1;}
-GA_RESPONSE :: "{\"model\":\"elephant-1\",\"answers\":{\"ambient\":{\"type\":\"choice\",\"choice\":\"greeting\",\"confidence\":0.8,\"probabilities\":{\"quiet\":0.1,\"greeting\":0.8,\"weather\":0.1}}},\"service\":{\"version\":\"psionic-pylon-v1\",\"door\":\"pylon:test\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\",\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\"}}";
+GaAnswer :: struct {ok:bool;action:int=-1;door:int;}
 #test "guard mode is explicit and duplicate or unknown values turn it off" {
   #assert ga_mode("https://openagents.com/realms/everglade")==0;
   #assert ga_mode("https://openagents.com/realms/everglade?guard-ai=shadow#gate")==1;
@@ -31,18 +34,33 @@ GA_RESPONSE :: "{\"model\":\"elephant-1\",\"answers\":{\"ambient\":{\"type\":\"c
   o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true,day=0,weather=0};
   #assert ga_eligible(o);o.day=4;#assert !ga_eligible(o);o.day=1;o.weather=4;#assert !ga_eligible(o);
 }
-#test "ordinary decimal probabilities have independent bounds and no coercion" {
-  #assert ga_probability("0").ok && ga_probability("1.000000000").units==GA_UNIT;
-  #assert ga_probability("0.000000001").units==1;
-  for text:[12]string.["","-0.1","1.000000001","2","01",".1","1.","1e0","0.0000000001","NaN","\"0.5\"","0x1"] {#assert !ga_probability(text).ok;}
-}
 #test "a guard answer binds its model, one question, every option and the declared choice" {
-  a:=ga_decode(GA_RESPONSE);#assert a.ok && a.action==1;
+  a:=ga_decode(GA_RESPONSE);#assert a.ok && a.action==1 && a.door==GDR_ELEPHANT;
   old:=[13]string.["elephant-1\",","elephant-1@sha256:","\"ambient\":","\"choice\",\"choice\"","\"greeting\",\"confidence\"","\"confidence\":0.8","\"greeting\":0.8","\"quiet\":0.1","\"weather\":0.1","\"door\":\"pylon:test\"","59e443","\"answers\":{","\"service\":{"];
   fresh:=[13]string.["mammoth-1\",","mammoth-1@sha256:","\"other\":","\"noul\",\"choice\"","\"quiet\",\"confidence\"","\"confidence\":1.000000001","\"greeting\":1.000000001","\"quiet\":-0.1","\"weather\":0.2","\"door\":\"psionic\"","Z9e443","\"answers\":[],\"ignored\":{","\"service\":[],\"ignored\":{"];
   b:[8192]u8;for i:0..<old.count {#assert !ga_decode(ga_swap(b[..],GA_RESPONSE,old[i],fresh[i])).ok;}
   #assert !ga_decode("{}").ok && !ga_decode("{} x").ok;
   #assert !ga_get("{\"x\":1,\"\\u0078\":2}","x").ok;
+}
+#test "Gemini Decision 1's answer passes by its own identity, and keeps its door" {
+  a:=ga_decode(GA_GEMINI_RESPONSE);#assert a.ok && a.action==1 && a.door==GDR_GEMINI;
+  b:[8192]u8;
+  old:=[11]string.["\"model\":\"gemini-decision-1\"","\"model\":\"gemini-decision-1\"","\"identity\":\"gemini-decision-1\"","\"identity\":\"gemini-decision-1\"","\"identity\":\"gemini-decision-1\"","\"provider\":\"google\"","\"provider\":\"google\"","\"door\":\"gemini\"","\"door\":\"gemini\"","\"identity\":\"gemini-decision-1\"","\"service\":{"];
+  fresh:=[11]string.["\"model\":\"gemini-decision-2\"","\"model\":\"elephant-1\"","\"identity\":\"gemini-decision-2\"","\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\"","\"identity\":1","\"provider\":\"goog1e\"","\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\"","\"door\":\"pylon:test\"","\"door\":7","\"identity\":\"gemini-decision-1\",\"identity\":\"gemini-decision-1\"","\"service\":[],\"ignored\":{"];
+  for i:0..<old.count {#assert !ga_decode(ga_swap(b[..],GA_GEMINI_RESPONSE,old[i],fresh[i])).ok;}
+  // Google's exponent form for a small probability is read; a version field is inert.
+  #assert ga_decode(ga_swap(b[..],GA_GEMINI_RESPONSE,"0.0013040344500838044","1.3040344500838044e-03")).ok;
+  #assert ga_decode(ga_swap(b[..],GA_GEMINI_RESPONSE,"\"door\":\"gemini\"","\"version\":\"x\",\"door\":\"gemini\"")).door==GDR_GEMINI;
+}
+#test "neither door's identity passes under the other's model, service or number form" {
+  b:[8192]u8;
+  old:=[7]string.["\"model\":\"elephant-1\"","\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\"","682f02348d","\"confidence\":0.8","\"quiet\":0.1","\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\"","\"door\":\"pylon:test\""];
+  fresh:=[7]string.["\"model\":\"gemini-decision-1\"","\"identity\":\"gemini-decision-1\"","782f02348d","\"confidence\":0.8000000000","\"quiet\":1e-1","\"provider\":\"google\"","\"door\":\"gemini\""];
+  for i:0..<old.count {#assert !ga_decode(ga_swap(b[..],GA_RESPONSE,old[i],fresh[i])).ok;}
+  // Gemini's whole service object does not make Elephant's model a Gemini answer, nor the reverse.
+  c:[8192]u8;mixed:=ga_swap(b[..],GA_RESPONSE,"\"version\":\"psionic-pylon-v1\",\"door\":\"pylon:test\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\",\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\"","\"door\":\"gemini\",\"identity\":\"gemini-decision-1\",\"provider\":\"google\"");
+  #assert mixed.count>0 && !ga_decode(mixed).ok && ga_decode(ga_swap(c[..],mixed,"\"model\":\"elephant-1\"","\"model\":\"gemini-decision-1\"")).door==GDR_GEMINI;
+  #assert ga_door("{}")==GDR_NONE && ga_door(GA_RESPONSE)==GDR_ELEPHANT && ga_door(GA_GEMINI_RESPONSE)==GDR_GEMINI;
 }
 #test "duplicate options and questions cannot become accepted observations" {
   b:[8192]u8;#assert !ga_decode(ga_swap(b[..],GA_RESPONSE,"\"quiet\":0.1","\"quiet\":0.1,\"quiet\":0.1")).ok;
@@ -60,13 +78,6 @@ ga_mode :: (url:string)->int #effects(all) {
   }return mode;
 }
 ga_eligible :: (o:GaObservation)->bool #effects(all) {return o.calm && o.alive && o.near && o.visible && o.safe && o.playable && o.day>=0 && o.day<4 && o.weather>=0 && o.weather<4;}
-ga_probability :: (text:string)->GaNumber #effects(all) {
-  if text.count<1 || (text[0]!='0' && text[0]!='1') {return GaNumber.{};}
-  units:=cast(int)(text[0]-'0')*GA_UNIT;if text.count==1 {return GaNumber.{ok=true,units=units};}
-  if text.count<3 || text.count>11 || text[1]!='.' {return GaNumber.{};}scale:=100000000;
-  for i:2..<text.count {if text[i]<'0' || text[i]>'9' {return GaNumber.{};}units+=cast(int)(text[i]-'0')*scale;scale/=10;}
-  return GaNumber.{ok=units<=GA_UNIT,units=units};
-}
 ga_get :: (text:string,key:string)->GaField #effects(all) {
   f:GaField;if !json_valid(text) {return f;}j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return f;}
   while true {t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}name:=json_text(j[..]);t=json_next(j[..]);value:=json_text(j[..]);raw:=value;if t==JSON_OBJECT || t==JSON_ARRAY {start:=j[0].from;_:=json_skip(j[..]);raw=text[start..<j[0].at];}
@@ -80,34 +91,41 @@ ga_count :: (text:string)->int #effects(all) {
   return n;
 }
 ga_hex :: (s:string)->bool #effects(all) {if s.count!=64 {return false;}for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;}
+// The door a response names by its model and service fields (guard-door.coax); GDR_NONE refuses it.
+ga_door :: (text:string)->int #effects(all) {
+  model:=ga_get(text,"model");service:=ga_get(text,"service");
+  identity:=ga_get(service.raw,"identity");provider:=ga_get(service.raw,"provider");door:=ga_get(service.raw,"door");
+  if ga_is(model,GDR_GEMINI_MODEL) && ga_is(identity,GDR_GEMINI_IDENTITY) && ga_is(provider,GDR_GEMINI_PROVIDER) && ga_is(door,GDR_GEMINI_DOOR) {return GDR_GEMINI;}
+  if !ga_is(model,GA_MODEL) || !ga_is(ga_get(service.raw,"version"),GDR_ELEPHANT_VERSION) || !ga_is(identity,GA_IDENTITY) {return GDR_NONE;}
+  if provider.token!=JSON_STRING || !ga_hex(provider.text) || door.token!=JSON_STRING || door.text.count<7 || door.text.count>86 || door.text[0..<6]!="pylon:" {return GDR_NONE;}
+  return GDR_ELEPHANT;
+}
 ga_decode :: (text:string)->GaAnswer #effects(all) {
   bad:GaAnswer;if text.count>GA_BODY_MAX || !json_valid(text) {return bad;}
-  if !ga_is(ga_get(text,"model"),GA_MODEL) {return bad;}
-  service:=ga_get(text,"service");if !ga_is(ga_get(service.raw,"version"),"psionic-pylon-v1") || !ga_is(ga_get(service.raw,"identity"),GA_IDENTITY) {return bad;}
-  provider:=ga_get(service.raw,"provider");door:=ga_get(service.raw,"door");
-  if provider.token!=JSON_STRING || !ga_hex(provider.text) || door.token!=JSON_STRING || door.text.count<7 || door.text.count>86 || door.text[0..<6]!="pylon:" {return bad;}
+  door:=ga_door(text);if door==GDR_NONE {return bad;}long:=door==GDR_GEMINI;
   answers:=ga_get(text,"answers");if answers.token!=JSON_OBJECT || ga_count(answers.raw)!=1 {return bad;}
   answer:=ga_get(answers.raw,"ambient");if answer.token!=JSON_OBJECT || !ga_is(ga_get(answer.raw,"type"),"choice") {return bad;}
-  choice:=ga_get(answer.raw,"choice");confidence:=ga_get(answer.raw,"confidence");c:=ga_probability(confidence.text);
+  choice:=ga_get(answer.raw,"choice");confidence:=ga_get(answer.raw,"confidence");c:=gdr_probability(confidence.text,long);
   if confidence.token!=JSON_NUMBER || !c.ok {return bad;}
   probs:=ga_get(answer.raw,"probabilities");if ga_count(probs.raw)!=3 {return bad;}
   units:[3]int;sum:=0;
-  for i:0..<3 {f:=ga_get(probs.raw,GA_OPTIONS[i]);v:=ga_probability(f.text);if f.token!=JSON_NUMBER || !v.ok {return bad;}units[i]=v.units;sum+=v.units;}
+  for i:0..<3 {f:=ga_get(probs.raw,GA_OPTIONS[i]);v:=gdr_probability(f.text,long);if f.token!=JSON_NUMBER || !v.ok {return bad;}units[i]=v.units;sum+=v.units;}
   if sum<GA_UNIT-GA_TOL || sum>GA_UNIT+GA_TOL {return bad;}
   // Lexical ties: greeting, quiet, weather. Confidence is checked independently.
   best:=1;if units[0]>units[best] {best=0;}if units[2]>units[best] {best=2;}
   if !ga_is(choice,GA_OPTIONS[best]) || c.units<units[best]-GA_TOL || c.units>units[best]+GA_TOL {return bad;}
-  return GaAnswer.{ok=true,action=best};
+  return GaAnswer.{ok=true,action=best,door=door};
 }
 
 // One realm-wide flight, six attempts per visit, sixty seconds between starts.
-// Counters contain enums only; no question text, identity, or model prose.
+// Counters contain enums only (a choice and the door that made it); no
+// question text, identity string, or model prose.
 GA_CADENCE :: 60000;
 GA_TIMEOUT :: 8000;
 GaSession :: struct {
   metrics:[1]GaMetrics; ticket:[1]GdState; mode:int; configured:bool; disabled:bool; suspended:bool;
   epoch:int=1; page_epoch:int; initialized:bool; attempts:int; due_ms:int; send:bool; body:[1024]u8; body_n:int;
-  accepted:int; refused:int; last_action:int=-1; context:GdContext;
+  accepted:int; refused:int; last_action:int=-1; context:GdContext; last_door:int;
 }
 #test "a shadow visit is bounded, cancelled locally and never accepts a stale reply" {
   s:[1]GaSession;s[0].mode=1;o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true,day=1,weather=0};
@@ -148,7 +166,7 @@ ga_invalidate :: (s:[]GaSession) #effects(all) {
 // book:begin request
 ga_request :: (out:[]u8,o:GaObservation)->int #effects(all) {
   days:=[4]string.["night","morning","afternoon","evening"];weather:=[4]string.["clear","cloudy","rain","storm"];
-  n:=json_raw(out,0,"{\"model\":\"elephant-1\",\"state\":\"A calm healthy town guard and a nearby peaceful living player. Time: ");
+  n:=json_raw(out,0,"{\"model\":\"auto\",\"state\":\"A calm healthy town guard and a nearby peaceful living player. Time: ");
   n=json_raw(out,n,days[o.day]);n=json_raw(out,n,". Weather: ");n=json_raw(out,n,weather[o.weather]);
   return json_raw(out,n,".\",\"questions\":{\"ambient\":{\"type\":\"choice\",\"instructions\":\"Choose one harmless ambient action. Never affect movement, crime, combat or rewards.\",\"criteria\":{\"quiet\":\"Remain quiet\",\"greeting\":\"Offer an authored greeting\",\"weather\":\"Make an authored weather remark\"}}}}");
 }
@@ -164,8 +182,9 @@ ga_frame :: (s:[]GaSession,o:GaObservation,generation:int,revision:int,now_ms:in
   }
   s[0].context=c;
   if s[0].ticket[0].phase==GD_READY {
-    a:=gd_take(s[0].ticket[..],s[0].ticket[0].sequence,c,now_ms,7);
-    if a.code==GdCode.ok {_:=gm_admit(s[0].metrics[..],s[0].ticket[0].sequence,now_ms);s[0].accepted+=1;s[0].last_action=a.action;}else {_:=gm_end(s[0].metrics[..],s[0].ticket[0].sequence,GM_STALE);ga_invalidate(s);}
+    // The staged value is a choice and the door that made it; either door's three choices are legal.
+    a:=gd_take(s[0].ticket[..],s[0].ticket[0].sequence,c,now_ms,gdr_mask(7,GA_CHOICES));
+    if a.code==GdCode.ok {_:=gm_admit(s[0].metrics[..],s[0].ticket[0].sequence,now_ms);s[0].accepted+=1;s[0].last_action=gdr_action(a.action,GA_CHOICES);s[0].last_door=gdr_door(a.action,GA_CHOICES);}else {_:=gm_end(s[0].metrics[..],s[0].ticket[0].sequence,GM_STALE);ga_invalidate(s);}
   }
   if s[0].mode!=1 || s[0].disabled || s[0].suspended || !ga_eligible(o) || s[0].ticket[0].phase!=0 || s[0].attempts>=6 || now_ms<s[0].due_ms {return;}
   b:=gd_begin(s[0].ticket[..],c,now_ms,GA_TIMEOUT);if b.code!=GdCode.ok {return;}
@@ -191,7 +210,7 @@ ga_reply :: (s:[]GaSession,sequence:int,now_ms:int,status:string,body:string) #e
   if now_ms>=s[0].ticket[0].ticket.expires_ms {_:=gm_end(s[0].metrics[..],sequence,GM_TIMEOUT);ga_invalidate(s);return;}
   if status!="200\n" {_:=gm_end(s[0].metrics[..],sequence,GM_HTTP);ga_invalidate(s);return;}
   a:=ga_decode(body);if !a.ok {_:=gm_end(s[0].metrics[..],sequence,GM_MALFORMED);ga_invalidate(s);return;}
-  if gd_offer(s[0].ticket[..],sequence,now_ms,a.action)!=GdCode.ok {_:=gm_end(s[0].metrics[..],sequence,GM_STALE);ga_invalidate(s);}
+  if gd_offer(s[0].ticket[..],sequence,now_ms,gdr_pack(a.door,a.action,GA_CHOICES))!=GdCode.ok {_:=gm_end(s[0].metrics[..],sequence,GM_STALE);ga_invalidate(s);}
 }
 
 // The face forwards data and ticks. Only a page simulation boundary may apply/start.
@@ -215,7 +234,9 @@ ga_receive :: (s:[]GaSession,sequence:int,now_ms:int,text:string) #export_c #eff
 }
 ga_probe :: (s:[]GaSession,field:int)->int #export_c #effects(all) {
   a:=s[0];if field==0 {return a.mode;}if field==1 {return a.attempts;}if field==2 {return a.ticket[0].phase;}
-  if field==3 {return a.accepted;}if field==4 {return a.refused;}if field==5 {return a.last_action;}if field==6 {return ifx a.disabled then 1 else 0;}return gm_probe(s[0].metrics[..],field);
+  if field==3 {return a.accepted;}if field==4 {return a.refused;}if field==5 {return a.last_action;}if field==6 {return ifx a.disabled then 1 else 0;}
+  // 17: the door of the last accepted choice (0 none, 1 Elephant, 2 Gemini Decision 1).
+  if field==17 {return a.last_door;}return gm_probe(s[0].metrics[..],field);
 }
 
 #test "mode query boundaries and finite observation category edges are explicit" {
@@ -228,14 +249,10 @@ ga_probe :: (s:[]GaSession,field:int)->int #export_c #effects(all) {
   o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true};
   for d:[4]int.[-1,0,3,4] {for w:[4]int.[-1,0,3,4] {o.day=d;o.weather=w;#assert ga_eligible(o)==(d>=0 && d<=3 && w>=0 && w<=3);}}
 }
-#test "decimal units and provider bytes have exact classifications" {
+#test "provider bytes have exact classifications" {
   b:[64]u8;for i:0..<64 {b[i]='a';}
   for byte:0..<256 {b[0]=cast(u8)byte;#assert ga_hex(cast(string)b[..])==((byte>='0' && byte<='9') || (byte>='a' && byte<='f'));}
   #assert !ga_hex(cast(string)b[0..<63]) && !ga_hex("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-  #assert ga_probability("0.0").units==0 && ga_probability("0.0").ok;
-  #assert ga_probability("0.123456789").units==123456789;
-  #assert ga_probability("1.0").ok && ga_probability("1.0").units==1000000000;
-  digit:[3]u8;digit[0]='0';digit[1]='.';for byte:0..<256 {digit[2]=cast(u8)byte;p:=ga_probability(cast(string)digit[..]);#assert p.ok==(byte>='0' && byte<='9');if p.ok {#assert p.units==(byte-'0')*100000000;}}
 }
 #test "confidence and normalization tolerate only one part per million on either side" {
   b:[8192]u8;
@@ -322,7 +339,7 @@ ga_probe :: (s:[]GaSession,field:int)->int #export_c #effects(all) {
   ga_frame(s[..],o,1,0,60000);#assert s[0].ticket[0].ticket.context.epoch==2;
   ga_frame(s[..],o,1,0,120000);#assert s[0].ticket[0].ticket.context.epoch==3 && s[0].epoch==3;
   ga_frame(s[..],o,1,0,120001);#assert ga_pending(s[..],3);
-  #assert gd_offer(s[0].ticket[..],3,120002,4)==GdCode.ok;ga_frame(s[..],o,1,0,120003);#assert s[0].ticket[0].phase==0 && s[0].accepted==0;
+  #assert gd_offer(s[0].ticket[..],3,120002,6)==GdCode.ok;ga_frame(s[..],o,1,0,120003);#assert s[0].ticket[0].phase==0 && s[0].accepted==0;
   ga_frame(s[..],o,1,0,180000);ga_sent(s[..],4,false);#assert !ga_pending(s[..],4) && !s[0].send;
   ga_invalidate(s[..]);#assert s[0].epoch==6;
 }
@@ -408,7 +425,7 @@ ga_observed_revoke :: (s:[]GaSession,now_ms:int) #effects(all) {
   o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true};
   for k:0..<2 {
     s:[1]GaSession;s[0].mode=1;ga_frame(s[..],o,1,0,0);
-    if k==0 {#assert gd_offer(s[0].ticket[..],1,1,4)==GdCode.ok;ga_frame(s[..],o,1,0,2);}
+    if k==0 {#assert gd_offer(s[0].ticket[..],1,1,6)==GdCode.ok;ga_frame(s[..],o,1,0,2);}
     else {ga_reply(s[..],1,-1,"200\n",GA_RESPONSE);}
     #assert ga_probe(s[..],11)==GM_STALE && ga_probe(s[..],27)==1 && ga_probe(s[..],10)==1;
     #assert s[0].ticket[0].phase==0 && s[0].accepted==0 && s[0].refused==1;
@@ -419,4 +436,33 @@ ga_observed_revoke :: (s:[]GaSession,now_ms:int) #effects(all) {
   ga_frame(s[..],o,1,0,0);ga_reply(s[..],1,8000,"200\n",GA_RESPONSE);
   #assert !ga_pending(s[..],1) && s[0].ticket[0].phase==0 && s[0].refused==1;
   #assert ga_probe(s[..],11)==GM_TIMEOUT && ga_probe(s[..],24)==1 && ga_probe(s[..],9)==1;
+}
+#test "the request asks for the door order, never one model by name" {
+  o:=GaObservation.{day=2,weather=3};b:[1024]u8;n:=ga_request(b[..],o);
+  #assert ga_is(ga_get(cast(string)b[0..<n],"model"),"auto") && GDR_AUTO=="auto";
+  // The fixture the server-path checks send (guard-door-server-checks.coax) is this writer's bytes.
+  o.day=1;o.weather=0;n=ga_request(b[..],o);#assert cast(string)b[0..<n]==GA_REQUEST_MORNING_CLEAR;
+}
+#test "a shadow visit accepts either door's answer and keeps which door answered" {
+  s:[1]GaSession;s[0].mode=1;o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true};
+  ga_frame(s[..],o,1,0,0);#assert ga_probe(s[..],17)==GDR_NONE;
+  ga_reply(s[..],1,1,"200\n",GA_GEMINI_RESPONSE);#assert s[0].ticket[0].phase==GD_READY && s[0].ticket[0].action==4 && s[0].last_door==GDR_NONE;
+  ga_frame(s[..],o,1,0,2);#assert s[0].accepted==1 && s[0].last_action==1 && s[0].last_door==GDR_GEMINI && ga_probe(s[..],17)==2 && ga_probe(s[..],5)==1;
+  ga_frame(s[..],o,1,0,60000);ga_reply(s[..],2,60001,"200\n",GA_RESPONSE);#assert s[0].ticket[0].action==1;
+  ga_frame(s[..],o,1,0,60002);#assert s[0].accepted==2 && s[0].last_action==1 && s[0].last_door==GDR_ELEPHANT && ga_probe(s[..],17)==1;
+}
+#test "every staged value is one door's choice or is refused" {
+  o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true};
+  for value:0..<8 {
+    s:[1]GaSession;s[0].mode=1;ga_frame(s[..],o,1,0,0);
+    #assert gd_offer(s[0].ticket[..],1,1,value)==GdCode.ok;ga_frame(s[..],o,1,0,2);
+    #assert s[0].accepted==(ifx value<6 then 1 else 0) && s[0].ticket[0].phase==0;
+    #assert s[0].last_action==(ifx value<6 then value%3 else -1) && s[0].last_door==(ifx value<3 then GDR_ELEPHANT else ifx value<6 then GDR_GEMINI else GDR_NONE);
+  }
+}
+#test "the fixture rewriter replaces every occurrence, at either end, and refuses what does not fit" {
+  b:[8]u8;
+  #assert ga_swap(b[..],"abc","b","xy")=="axyc" && ga_swap(b[..],"abc","bc","x")=="ax" && ga_swap(b[..],"abc","a","")=="bc";
+  #assert ga_swap(b[..],"abab","ab","c")=="cc" && ga_swap(b[..],"abc","x","y")=="abc" && ga_swap(b[..],"abc","","x")=="abc" && ga_swap(b[..],"","a","b")=="";
+  #assert ga_swap(b[..],"abcdefgh","h","i")=="abcdefgi" && ga_swap(b[..],"abcdefgh","h","ij")=="" && ga_swap(b[0..<2],"abc","x","y")=="";
 }

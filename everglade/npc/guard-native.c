@@ -9,6 +9,12 @@ static coax_v_t_GaSession view(coax_t_GaSession *s) { return (coax_v_t_GaSession
 static coax_string str(const char *s) { return (coax_string){s,(int64_t)strlen(s)}; }
 static int equal(coax_string s,const char *text) { return s.count==(int64_t)strlen(text) && !memcmp(s.data,text,(size_t)s.count); }
 static const char good[] = "200\n{\"model\":\"elephant-1\",\"answers\":{\"ambient\":{\"type\":\"choice\",\"choice\":\"greeting\",\"confidence\":0.8,\"probabilities\":{\"quiet\":0.1,\"greeting\":0.8,\"weather\":0.1}}},\"service\":{\"version\":\"psionic-pylon-v1\",\"door\":\"pylon:test\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\",\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\"}}";
+// The same question answered by Gemini Decision 1 through the server (guard-decision.coax GA_GEMINI_RESPONSE).
+static const char gemini[] = "200\n{\"model\":\"gemini-decision-1\",\"answers\":{\"ambient\":{\"type\":\"choice\",\"choice\":\"greeting\",\"confidence\":0.7986959655499162,\"probabilities\":{\"greeting\":0.7986959655499162,\"quiet\":0.2,\"weather\":0.0013040344500838044}}},\"usage\":{\"input_tokens\":131,\"output_tokens\":0},\"service\":{\"door\":\"gemini\",\"identity\":\"gemini-decision-1\",\"provider\":\"google\"}}";
+// Neither door's answer under the other's name, and an identity that is neither.
+static const char crossed[] = "200\n{\"model\":\"elephant-1\",\"answers\":{\"ambient\":{\"type\":\"choice\",\"choice\":\"greeting\",\"confidence\":0.8,\"probabilities\":{\"greeting\":0.8,\"quiet\":0.1,\"weather\":0.1}}},\"service\":{\"door\":\"gemini\",\"identity\":\"gemini-decision-1\",\"provider\":\"google\"}}";
+static const char unknown[] = "200\n{\"model\":\"gemini-decision-2\",\"answers\":{\"ambient\":{\"type\":\"choice\",\"choice\":\"greeting\",\"confidence\":0.8,\"probabilities\":{\"greeting\":0.8,\"quiet\":0.1,\"weather\":0.1}}},\"service\":{\"door\":\"gemini\",\"identity\":\"gemini-decision-2\",\"provider\":\"google\"}}";
+static const char redigested[] = "200\n{\"model\":\"elephant-1\",\"answers\":{\"ambient\":{\"type\":\"choice\",\"choice\":\"greeting\",\"confidence\":0.8,\"probabilities\":{\"quiet\":0.1,\"greeting\":0.8,\"weather\":0.1}}},\"service\":{\"version\":\"psionic-pylon-v1\",\"door\":\"pylon:test\",\"identity\":\"elephant-1@sha256:782f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\",\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\"}}";
 static int oracle_bin(int64_t milliseconds) {
   const int64_t upper[] = {10,50,100,250,500,1000,2000,4000,8000,30000};
   for (int n=0;n<10;n++) if (milliseconds<upper[n]) return n;
@@ -28,10 +34,23 @@ int main(void) {
     coax_t_GaEffect e=ga_effect(view(&s),1);assert(equal(e.url,"/api/v1/systemone")&&e.flags==5&&e.timeout_ms==7999&&e.body.count>0&&e.body.count<1024);
     assert(ga_pending(view(&s),1));ga_sent(view(&s),1,true);ga_receive(view(&s),1,2,str(good));assert(ga_probe(view(&s),2)==2&&ga_probe(view(&s),3)==0);
     i.boundary=false;ga_page(view(&s),i,3);assert(ga_probe(view(&s),3)==0);
-    i.boundary=true;ga_page(view(&s),i,4);assert(ga_probe(view(&s),3)==1&&ga_probe(view(&s),5)==1);
+    assert(ga_probe(view(&s),17)==0);
+    i.boundary=true;ga_page(view(&s),i,4);assert(ga_probe(view(&s),3)==1&&ga_probe(view(&s),5)==1);assert(ga_probe(view(&s),17)==1);
     ga_receive(view(&s),1,5,str(good));assert(ga_probe(view(&s),3)==1);
     for(int n=1;n<6;n++){ga_page(view(&s),i,(int64_t)n*60000);assert(ga_probe(view(&s),1)==n+1);ga_sent(view(&s),n+1,false);}
     ga_page(view(&s),i,360000);assert(ga_probe(view(&s),1)==6&&!ga_pending(view(&s),6));cases++;
+  }
+  {
+    // The request asks for the door order; Gemini Decision 1's answer is accepted as door 2.
+    coax_t_GaSession s={0};coax_t_GaInput i=input();ga_page(view(&s),i,0);
+    coax_t_GaEffect e=ga_effect(view(&s),1);assert(e.body.count>16&&!memcmp(e.body.data,"{\"model\":\"auto\",",16));
+    ga_sent(view(&s),1,true);ga_receive(view(&s),1,2,str(gemini));assert(ga_probe(view(&s),2)==2&&ga_probe(view(&s),17)==0);
+    ga_page(view(&s),i,4);assert(ga_probe(view(&s),3)==1&&ga_probe(view(&s),5)==1&&ga_probe(view(&s),17)==2&&ga_probe(view(&s),11)==1);cases++;
+  }
+  for(int other=0;other<3;other++) {
+    coax_t_GaSession s={0};coax_t_GaInput i=input();ga_page(view(&s),i,0);ga_sent(view(&s),1,true);
+    ga_receive(view(&s),1,2,str(other==0?crossed:other==1?unknown:redigested));ga_page(view(&s),i,4);
+    assert(ga_probe(view(&s),3)==0&&ga_probe(view(&s),11)==6&&ga_probe(view(&s),17)==0);cases++;
   }
   for(int flag=0;flag<10;flag++) {
     coax_t_GaSession s={0};coax_t_GaInput i=input();ga_page(view(&s),i,0);ga_receive(view(&s),1,1,str(good));

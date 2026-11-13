@@ -13,7 +13,15 @@ model selects an enum; it cannot generate dialogue, award items, move a guard,
 invent a crime, change wanted status, choose an attack or override a spell.
 
 Start with Elephant, keeping its configured original checkpoint identity.
-Mammoth is a later measured comparison, not an implicit substitute. Current
+Mammoth is a later measured comparison, not an implicit substitute.
+
+Since 2026-11-13 (GitHub #13476) the guards ask for `"model":"auto"`: Gemini
+Decision 1 answers first, with Elephant's pinned checkpoint behind it. A guard
+accepts either door's identity and nothing else, and its replay records and
+evaluation rows stay bound to the door that answered
+([the door order](../research/2026-11-13-gemini-decision-1.md#everglades-guards),
+`everglade/npc/guard-door.coax`). The measurements below are Elephant's and
+predate the change. Current
 guard beats remain deterministic functions of the shared clock. Existing crime,
 combat, interruption and return-to-duty rules always take precedence. Ambient
 state is separate from combat shout indices and never mutates combat state.

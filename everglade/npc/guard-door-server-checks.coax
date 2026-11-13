@@ -1,0 +1,63 @@
+// The guards' requests and answers through the server's own code (#13476): no
+// network and no model. /api/v1/systemone runs these steps for a body whose
+// model is "auto" (coax/web/api/mesh.c): mg_order picks the door, mg_rename
+// puts the door's name in the body, and for the Gemini door mgg_request maps
+// the body to Google's and mgg_response maps Google's answer back. The checks
+// run a guard's request through them and hold the result to the bytes the
+// guard files keep as fixtures (GA_GEMINI_RESPONSE, GG_GEMINI_RESPONSE), so a
+// guard accepts what the server sends rather than a guessed shape.
+// The ambient guard's own file is not loaded here: its decision tickets
+// (psionic/lib/game/decision.coax) and Google's Decisions codec both spell
+// gd_. Its request and answers come from guard-fixtures.coax, which
+// guard-decision.coax checks against its writer and its decoder.
+//   coax/bin/coax test everglade/npc/guard-door-server-checks.coax
+#load "../../coax/web/api/mesh-policy.coax";
+#load "../../coax/web/api/mesh-gemini.coax";
+#load "guard-fixtures.coax";
+#load "guard-guide.coax";
+#load "guard-guide-fixtures.coax";
+
+// Production's routes and order (docs/research/2026-11-13-gemini-decision-1.md, "Production settings"),
+// with a local URL and the pinned checkpoint for Elephant's door.
+GDS_ROUTES :: "{\"gemini-decision-1\":{\"backend\":\"gemini\"},\"elephant-1\":{\"url\":\"http://127.0.0.1:8801/v1/systemone\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\",\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\"}}";
+GDS_ORDER :: "gemini-decision-1,elephant-1";
+// Google's answers in Google's shape (the fields in the order it sent them on 2026-11-13, GD_FX_TICKET_ANSWER).
+GDS_GOOGLE_AMBIENT :: "{\"answers\":{\"ambient\":{\"confidence\":0.7986959655499162,\"choice\":\"greeting\",\"probabilities\":{\"greeting\":0.7986959655499162,\"quiet\":0.2,\"weather\":0.0013040344500838044},\"type\":\"choice\"}},\"usage\":{\"total_tokens\":131,\"total_input_tokens\":131,\"input_tokens_by_modality\":[{\"modality\":\"text\",\"tokens\":131}],\"total_output_tokens\":0}}";
+GDS_GOOGLE_GUIDE :: "{\"answers\":{\"guide\":{\"confidence\":0.5986959655499162,\"choice\":\"east_gate\",\"probabilities\":{\"east_gate\":0.5986959655499162,\"north_trail\":0.2,\"quest_board\":0.1,\"quiet\":0.1,\"west_gate\":0.0013040344500838044},\"type\":\"choice\"}},\"usage\":{\"total_tokens\":188,\"total_input_tokens\":188,\"input_tokens_by_modality\":[{\"modality\":\"text\",\"tokens\":188}],\"total_output_tokens\":0}}";
+
+#test "guard doors: the ambient request takes the door order, and each door's answer is the guard's fixture" {
+  renamed:[2048]u8;google:[8192]u8;out:[8192]u8;text:=GA_REQUEST_MORNING_CLEAR;
+  #assert mg_auto(text) && mg_http("POST","application/json",text.count)==200;
+  first:=mg_order(GDS_ROUTES,GDS_ORDER,0);#assert first.status==200 && first.backend==MG_GEMINI && first.model=="gemini-decision-1" && first.identity==GDR_GEMINI_IDENTITY && first.provider==GDR_GEMINI_PROVIDER;
+  m:=mg_rename(text,first.model,renamed[..]);#assert m>0 && mgg_request(cast(string)renamed[0..<m],google[..])>0;
+  a:=mgg_response(cast(string)renamed[0..<m],200,GDS_GOOGLE_AMBIENT,out[..]);
+  #assert a.status==200 && cast(string)out[0..<a.count]==GA_GEMINI_RESPONSE;
+  // A Gemini failure the order survives hands the same body to Elephant's door, whose answer passes as Elephant's.
+  #assert mg_retry(mgg_response(cast(string)renamed[0..<m],429,GD_FX_QUOTA,out[..]).status);
+  second:=mg_order(GDS_ROUTES,GDS_ORDER,first.next);#assert second.status==200 && second.backend==MG_FLEET && second.identity==GDR_ELEPHANT_IDENTITY;
+  m=mg_rename(text,second.model,renamed[..]);#assert mg_response(cast(string)renamed[0..<m],GA_RESPONSE,second);
+  // The server never passes one door's answer as the other's.
+  #assert !mg_response(cast(string)renamed[0..<m],GA_GEMINI_RESPONSE,second) && !mg_response(cast(string)renamed[0..<m],GA_RESPONSE,first);
+}
+#test "guard doors: every directions request takes the door order, and each door's answer is the guard's fixture" {
+  body:[4096]u8;renamed:[8192]u8;google:[16384]u8;out:[8192]u8;fixture:[8192]u8;
+  o:=GgObservation.{help_requested=true,eligible=true,destination_available=true};
+  for goal:1..<6 {
+    o.goal=goal;n:=gg_request(o,body[..]);text:=cast(string)body[0..<n];
+    #assert n>0 && mg_auto(text) && mg_http("POST","application/json",n)==200;
+    first:=mg_order(GDS_ROUTES,GDS_ORDER,0);m:=mg_rename(text,first.model,renamed[..]);
+    #assert m>0 && mgg_request(cast(string)renamed[0..<m],google[..])>0;
+    a:=mgg_response(cast(string)renamed[0..<m],200,GDS_GOOGLE_GUIDE,out[..]);
+    #assert a.status==200 && cast(string)out[0..<a.count]==GG_GEMINI_RESPONSE;
+    d:=gg_decode(cast(string)out[0..<a.count]);#assert d.ok && d.action==2 && d.door==GDR_GEMINI;
+    second:=mg_order(GDS_ROUTES,GDS_ORDER,first.next);m=mg_rename(text,second.model,renamed[..]);
+    #assert mg_response(cast(string)renamed[0..<m],GG_RESPONSE,second) && gg_decode(GG_RESPONSE).door==GDR_ELEPHANT;
+    #assert !mg_response(cast(string)renamed[0..<m],GG_GEMINI_RESPONSE,second);
+  }
+  // The evaluation's synthetic Gemini answers have the mapped answer's fields in its order.
+  for action:0..<5 {
+    f:=gge_fixture_gemini(action,fixture[..]);d:=gg_decode(f);#assert d.ok && d.action==action && d.door==GDR_GEMINI;
+    head:="{\"model\":\"gemini-decision-1\",\"answers\":{\"guide\":{\"type\":\"choice\",\"choice\":";tail:="},\"usage\":{\"input_tokens\":188,\"output_tokens\":0},\"service\":{\"door\":\"gemini\",\"identity\":\"gemini-decision-1\",\"provider\":\"google\"}}";
+    #assert f[0..<head.count]==head && f[f.count-tail.count..<f.count]==tail && GG_GEMINI_RESPONSE[0..<head.count]==head && GG_GEMINI_RESPONSE[GG_GEMINI_RESPONSE.count-tail.count..<GG_GEMINI_RESPONSE.count]==tail;
+  }
+}

@@ -15,8 +15,13 @@ refusals: no intent, ineligible gameplay, unavailable route, already arrived,
 already-visible guide tip, and goals 0, -1 and 6. Never query these local cases.
 Do not pad the remote sample with irrelevant time/weather duplicates.
 
-The [five exact requests](../../fixtures/guard-guide-requests-v1/) were frozen
-before calls; `SHA256SUMS` records their byte identities. No labels, case IDs or
+The [five exact requests](../../fixtures/guard-guide-requests-v2/) were frozen
+before calls; `SHA256SUMS` records their byte identities. Version 2
+(2026-11-13, GitHub #13476) asks for `"model":"auto"`, so Gemini Decision 1
+answers first with Elephant behind it;
+[version 1](../../fixtures/guard-guide-requests-v1/) named `elephant-1` and
+stays as the request set of the dated records. A result and a summary name the
+identity that answered, and a summary refuses rows from two doors. No labels, case IDs or
 split names are sent to the model. Do not change prompts between development
 and held-out calls, and do not relabel after outputs. Changed requests require
 a new candidate/corpus and a fresh pre-call freeze. Preserve failed attempts;
@@ -38,7 +43,7 @@ coax/web/tool.sh psionic/tests/guard-guide/guard-guide-evaluate.coax manifest
 coax/web/tool.sh psionic/tests/guard-guide/guard-guide-evaluate.coax request 0
 coax/web/tool.sh psionic/tests/guard-guide/guard-guide-evaluate.coax observation capture-case0.json
 coax/web/tool.sh psionic/tests/guard-guide/guard-guide-evaluate.coax summary captures.jsonl
-shasum -a 256 -c psionic/fixtures/guard-guide-requests-v1/SHA256SUMS
+shasum -a 256 -c psionic/fixtures/guard-guide-requests-v2/SHA256SUMS
 ```
 
 The shared tool runner invalidates cached binaries for imported Coax changes in

@@ -1,6 +1,8 @@
 // Authored before live outputs. All three choices are harmless in each eligible
 // context. Preferred/useful labels are editorial utility hypotheses, not
 // calibrated truth, observed player benefit, or a promotion criterion.
+// A scored row keeps the door that answered it, and one set of totals scores
+// one door: a row from the other door is refused (guard-door.coax, #13476).
 #load "guard-decision.coax";
 #authority;
 // book:begin cohort
@@ -11,8 +13,8 @@ GEV_PREFERRED :: [16]int.[1,1,1,1,2,4,4,4,2,4,4,4,2,4,4,4];
 GEV_USEFUL :: [16]int.[0,0,0,0,2,4,4,4,2,4,4,4,2,4,4,4];
 // book:end cohort
 GeCase :: struct {valid:bool;index:int=-1;observation:GaObservation;remote_mask:int;acceptable_mask:int;preferred_mask:int;useful_mask:int;fallback_mask:int=1;}
-GeResult :: struct {index:int=-1;valid:bool;contract:bool;deadline:bool;covered:bool;action:int=-1;disagree:bool;acceptable:bool;preferred:bool;useful:bool;forbidden:bool;}
-GeTotals :: struct {seen:int;observed:int;eligible:int;contract:int;deadline:int;covered:int;disagree:int;acceptable:int;preferred:int;useful:int;}
+GeResult :: struct {index:int=-1;valid:bool;contract:bool;deadline:bool;covered:bool;action:int=-1;disagree:bool;acceptable:bool;preferred:bool;useful:bool;forbidden:bool;door:int;}
+GeTotals :: struct {seen:int;observed:int;eligible:int;contract:int;deadline:int;covered:int;disagree:int;acceptable:int;preferred:int;useful:int;door:int;}
 
 #test "the frozen day-major labels predate observations and every harmless option stays acceptable" {
     #assert GEV_ELIGIBLE==16 && GEV_CASES==26;
@@ -72,6 +74,22 @@ GeTotals :: struct {seen:int;observed:int;eligible:int;contract:int;deadline:int
     many:[2]GeTotals;#assert !gev_add(many[..],r);
     for index:[4]int.[-1,16,26,9223372036854775807] {#assert !gev_add(totals[..],GeResult.{valid=true,index=index});}
 }
+#test "a scored row keeps the door that answered, and a row with no contract has none" {
+    r:=gev_evaluate(4,"200\n",GA_RESPONSE,1);#assert r.contract && r.covered && r.door==GDR_ELEPHANT;
+    g:=gev_evaluate(4,"200\n",GA_GEMINI_RESPONSE,1);#assert g.contract && g.covered && g.action==1 && g.useful && g.door==GDR_GEMINI;
+    #assert gev_evaluate(4,"200\n",GA_GEMINI_RESPONSE,8000).door==GDR_GEMINI && gev_evaluate(16,"200\n",GA_GEMINI_RESPONSE,1).door==GDR_GEMINI;
+    #assert gev_evaluate(4,"503\n",GA_GEMINI_RESPONSE,1).door==GDR_NONE && gev_evaluate(4,"200\n","{}",1).door==GDR_NONE && gev_evaluate(-1,"200\n",GA_RESPONSE,1).door==GDR_NONE;
+}
+#test "one set of totals scores one door: the other door's row is refused, and a failed row joins either" {
+    for first:[2]int.[GDR_ELEPHANT,GDR_GEMINI] {
+        own:=ifx first==GDR_GEMINI then GA_GEMINI_RESPONSE else GA_RESPONSE;other:=ifx first==GDR_GEMINI then GA_RESPONSE else GA_GEMINI_RESPONSE;
+        t:[1]GeTotals;#assert gev_add(t[..],gev_evaluate(1,"503\n","",1)) && t[0].door==GDR_NONE;
+        #assert gev_add(t[..],gev_evaluate(4,"200\n",own,1)) && t[0].door==first && t[0].observed==2;
+        #assert !gev_add(t[..],gev_evaluate(5,"200\n",other,1)) && t[0].door==first && t[0].observed==2 && t[0].seen==18 && t[0].contract==1;
+        #assert gev_add(t[..],gev_evaluate(5,"200\n",own,1)) && gev_add(t[..],gev_evaluate(6,"503\n","",1)) && t[0].door==first && t[0].observed==4 && t[0].contract==2;
+        #assert !gev_add(t[..],gev_evaluate(7,"200\n",other,8000)) && t[0].observed==4;
+    }
+}
 #test "the published label manifest has stable identities and preserves inclusive output capacity" {
     b:[1024]u8;
     for i:0..<26 {
@@ -102,7 +120,7 @@ gev_request :: (index:int,out:[]u8)->int #export_c #effects(all) {
 gev_evaluate :: (index:int,status:string,body:string,elapsed_ms:int)->GeResult #export_c #effects(all) {
     c:=gev_case(index);if !c.valid {return GeResult.{};}
     r:=GeResult.{valid=true,index=index,deadline=elapsed_ms>=0 && elapsed_ms<GA_TIMEOUT,forbidden=c.remote_mask==0};
-    if status!="200\n" {return r;}a:=ga_decode(body);r.contract=a.ok;if !a.ok {return r;}r.action=a.action;
+    if status!="200\n" {return r;}a:=ga_decode(body);r.contract=a.ok;if !a.ok {return r;}r.action=a.action;r.door=a.door;
     if !r.deadline || r.forbidden {return r;}
     r.covered=true;r.disagree=a.action!=0;
     // Every authored eligible option is harmless; acceptability is not a
@@ -113,7 +131,10 @@ gev_evaluate :: (index:int,status:string,body:string,elapsed_ms:int)->GeResult #
 // book:end score
 gev_add :: (totals:[]GeTotals,r:GeResult)->bool #export_c #effects(all) {
     if totals.count!=1 || !r.valid || r.index<0 || r.index>=GEV_ELIGIBLE {return false;}
+    // A row another door answered is not this door's evidence.
+    if r.door!=GDR_NONE && totals[0].door!=GDR_NONE && r.door!=totals[0].door {return false;}
     bit:=1<<r.index;if (totals[0].seen&bit)!=0 {return false;}totals[0].seen|=bit;totals[0].observed+=1;
+    if r.door!=GDR_NONE {totals[0].door=r.door;}
     totals[0].eligible+=1;if r.contract {totals[0].contract+=1;}if r.deadline {totals[0].deadline+=1;}
     if r.covered {totals[0].covered+=1;}if r.disagree {totals[0].disagree+=1;}if r.acceptable {totals[0].acceptable+=1;}
     if r.preferred {totals[0].preferred+=1;}if r.useful {totals[0].useful+=1;}return true;

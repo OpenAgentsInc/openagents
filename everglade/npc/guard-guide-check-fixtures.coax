@@ -1,5 +1,8 @@
 // Synthetic wire fixtures only; never model outputs or utility labels.
 GG_RESPONSE :: "{\"model\":\"elephant-1\",\"answers\":{\"guide\":{\"type\":\"choice\",\"choice\":\"east_gate\",\"confidence\":0.6,\"probabilities\":{\"quiet\":0.1,\"quest_board\":0.1,\"east_gate\":0.6,\"north_trail\":0.1,\"west_gate\":0.1}}},\"service\":{\"version\":\"psionic-pylon-v1\",\"door\":\"pylon:fixture\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\",\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\"}}";
+// The same question answered by Gemini Decision 1, as the server's mapping writes it
+// (guard-door-server-checks.coax builds these bytes): Google's full doubles, its options sorted.
+GG_GEMINI_RESPONSE :: "{\"model\":\"gemini-decision-1\",\"answers\":{\"guide\":{\"type\":\"choice\",\"choice\":\"east_gate\",\"confidence\":0.5986959655499162,\"probabilities\":{\"east_gate\":0.5986959655499162,\"north_trail\":0.2,\"quest_board\":0.1,\"quiet\":0.1,\"west_gate\":0.0013040344500838044}}},\"usage\":{\"input_tokens\":188,\"output_tokens\":0},\"service\":{\"door\":\"gemini\",\"identity\":\"gemini-decision-1\",\"provider\":\"google\"}}";
 gg_test_replace :: (out:[]u8,text:string,old:string,fresh:string)->string {
     at:=-1;for i:0..<text.count-old.count+1 {if text[i..<i+old.count]==old {at=i;break;}}
     if at<0 {return "";}n:=text.count-old.count+fresh.count;if n>out.count {return "";}k:=0;

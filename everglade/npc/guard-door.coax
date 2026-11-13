@@ -1,0 +1,156 @@
+// Which decision door answered a guard, for both guard consumers (#13476).
+// A guard sends "model":"auto" to /api/v1/systemone. The server asks the doors
+// in the deployment's order, gemini-decision-1 then elephant-1
+// (coax/web/api/mesh-policy.coax), and the answer names the door that
+// answered. Two identities pass, and nothing else:
+//   Gemini Decision 1: model and service.identity "gemini-decision-1",
+//     provider "google", door "gemini" (coax/lib/systemone/google.coax).
+//   Elephant: model "elephant-1", the pinned checkpoint identity, a 32-byte
+//     hex provider, a "pylon:" door and service version "psionic-pylon-v1".
+// Each decoder checks those fields with its own JSON reader. This file holds
+// the names, the one probability reader, and the door that rides beside a
+// choice on a decision ticket, so a replay record and an evaluation row stay
+// bound to the door that answered.
+#authority;
+GDR_AUTO :: "auto";
+GDR_NONE :: 0;
+GDR_ELEPHANT :: 1;
+GDR_GEMINI :: 2;
+GDR_ELEPHANT_MODEL :: "elephant-1";
+GDR_ELEPHANT_IDENTITY :: "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba";
+GDR_ELEPHANT_VERSION :: "psionic-pylon-v1";
+GDR_GEMINI_MODEL :: "gemini-decision-1";
+GDR_GEMINI_IDENTITY :: "gemini-decision-1";
+GDR_GEMINI_PROVIDER :: "google";
+GDR_GEMINI_DOOR :: "gemini";
+GDR_UNIT :: 1000000000;
+GDR_SHORT :: 11;              // "1.000000000": Elephant writes at most nine decimals
+GDR_LONG :: 32;               // Google writes a double in full, with an exponent when it is small
+GDR_POWERS :: [10]int.[1,10,100,1000,10000,100000,1000000,10000000,100000000,1000000000];
+GdrNumber :: struct {ok:bool;units:int;}
+
+#test "a door has one identity, and an unknown door has none" {
+  #assert gdr_identity(GDR_ELEPHANT)==GDR_ELEPHANT_IDENTITY && gdr_identity(GDR_GEMINI)=="gemini-decision-1";
+  for door:[5]int.[-9223372036854775807-1,-1,0,3,9223372036854775807] {#assert gdr_identity(door)=="";}
+  #assert GDR_ELEPHANT_IDENTITY.count==82 && GDR_GEMINI_IDENTITY!=GDR_ELEPHANT_MODEL && GDR_AUTO=="auto";
+}
+#test "a ticket value carries one door and one choice, and Elephant's value is the choice itself" {
+  for options:[2]int.[3,5] {
+    for action:0..<options {
+      e:=gdr_pack(GDR_ELEPHANT,action,options);g:=gdr_pack(GDR_GEMINI,action,options);
+      #assert e==action && g==action+options;
+      #assert gdr_action(e,options)==action && gdr_action(g,options)==action;
+      #assert gdr_door(e,options)==GDR_ELEPHANT && gdr_door(g,options)==GDR_GEMINI;
+    }
+    for door:[4]int.[-1,0,3,9223372036854775807] {#assert gdr_pack(door,0,options)==-1;}
+    for action:[4]int.[-9223372036854775807-1,-1,options,9223372036854775807] {#assert gdr_pack(GDR_ELEPHANT,action,options)==-1 && gdr_pack(GDR_GEMINI,action,options)==-1;}
+    for value:[4]int.[-9223372036854775807-1,-1,2*options,9223372036854775807] {#assert gdr_action(value,options)==-1 && gdr_door(value,options)==GDR_NONE;}
+    #assert gdr_action(2*options-1,options)==options-1 && gdr_door(2*options-1,options)==GDR_GEMINI && gdr_door(options-1,options)==GDR_ELEPHANT;
+  }
+}
+#test "a legal mask admits the same choices from either door and no others" {
+  #assert gdr_mask(7,3)==63 && gdr_mask(1,3)==9 && gdr_mask(5,5)==165 && gdr_mask(0,5)==0;
+  for mask:0..<32 {
+    wide:=gdr_mask(mask,5);
+    for value:0..<10 {#assert ((wide&(1<<value))!=0)==((mask&(1<<gdr_action(value,5)))!=0);}
+    #assert wide<1024;
+  }
+}
+#test "Elephant's decimals keep their exact bounds: at most nine places, no exponent, no coercion" {
+  #assert gdr_probability("0",false).ok && gdr_probability("0",false).units==0 && gdr_probability("1",false).units==GDR_UNIT;
+  #assert gdr_probability("1.000000000",false).ok && gdr_probability("1.000000000",false).units==GDR_UNIT;
+  #assert gdr_probability("0.000000001",false).units==1 && gdr_probability("0.123456789",false).units==123456789;
+  #assert gdr_probability("0.0",false).ok && gdr_probability("0.0",false).units==0 && gdr_probability("1.0",false).units==GDR_UNIT;
+  #assert gdr_probability("0.000000000",false).ok;
+  for text:[18]string.["","-0.1","1.000000001","2","01",".1","1.","1e0","0.0000000001","NaN","\"0.5\"","0x1","1e-1","5e-1","0.5e-1","0.5E-1","0,5","0.99869596554"] {#assert !gdr_probability(text,false).ok;}
+}
+#test "every byte is classified at the whole, the point and the fraction, for both doors" {
+  one:[1]u8;three:=[3]u8.['0','.','5'];
+  for long:[2]bool.[false,true] {
+    for byte:0..<256 {
+      one[0]=cast(u8)byte;#assert gdr_probability(cast(string)one[..],long).ok==(byte=='0' || byte=='1');
+      three[0]=cast(u8)byte;three[1]='.';three[2]='5';p:=gdr_probability(cast(string)three[..],long);
+      #assert p.ok==(byte=='0');if p.ok {#assert p.units==500000000;}
+      three[0]='0';three[1]=cast(u8)byte;#assert gdr_probability(cast(string)three[..],long).ok==(byte=='.');
+      three[1]='.';three[2]=cast(u8)byte;p=gdr_probability(cast(string)three[..],long);
+      #assert p.ok==(byte>='0' && byte<='9');if p.ok {#assert p.units==(byte-'0')*100000000;}
+    }
+  }
+}
+#test "Google's long decimals keep their first nine places, and each later place must be a digit" {
+  #assert gdr_probability("0.9986959655499161",true).units==998695965 && gdr_probability("0.9986959655499161",true).ok;
+  #assert gdr_probability("0.0013040344500838044",true).units==1304034;
+  #assert gdr_probability("0.5671853791721988",true).units==567185379;
+  #assert gdr_probability("1.0000000001",true).ok && gdr_probability("1.0000000001",true).units==GDR_UNIT;
+  #assert !gdr_probability("1.000000001",true).ok && !gdr_probability("0.99869596554x",true).ok && !gdr_probability("0.9986959655-",true).ok;
+  text:[33]u8;for i:0..<33 {text[i]='9';}text[0]='0';text[1]='.';
+  #assert gdr_probability(cast(string)text[0..<32],true).ok && gdr_probability(cast(string)text[0..<32],true).units==999999999;
+  #assert !gdr_probability(cast(string)text[..],true).ok;
+  #assert gdr_probability(cast(string)text[0..<11],false).ok && !gdr_probability(cast(string)text[0..<12],false).ok;
+}
+#test "Google's exponent form moves the point left by its exact count and takes no other shape" {
+  #assert gdr_probability("1.3040344500838044e-05",true).ok && gdr_probability("1.3040344500838044e-05",true).units==13040;
+  #assert gdr_probability("1.3040344500838044E-05",true).units==13040;
+  #assert gdr_probability("9.9e-1",true).units==990000000 && gdr_probability("5e-1",true).units==500000000 && gdr_probability("5e-01",true).units==500000000;
+  #assert gdr_probability("5.5e-2",true).units==55000000 && gdr_probability("1e-9",true).units==1 && gdr_probability("1.5e-9",true).units==1;
+  #assert gdr_probability("1e-10",true).ok && gdr_probability("1e-10",true).units==0 && gdr_probability("9e-12",true).units==0 && gdr_probability("1.5e-12",true).units==0;
+  #assert gdr_probability("1e-0",true).units==GDR_UNIT && gdr_probability("1e-0",true).ok && gdr_probability("1.0e-00",true).units==GDR_UNIT;
+  #assert gdr_probability("9e-123",true).ok && gdr_probability("9e-123",true).units==0 && gdr_probability("9e-999",true).ok;
+  #assert gdr_probability("1e-19",true).units==0 && gdr_probability("2.5e-19",true).units==0;
+  for text:[24]string.["1e-:","1e-/","1e-1:","e-12","2e-0","1.1e-0","9.9e-0","1e","1e-","1e-1234","1e+1","1e1","1e-1x","1e-x","e-1",".5e-1","1.e-1","12e-1","1e-1e-1","1e--1","1 e-1","1e- 1","-1e-1","1e-1."] {#assert !gdr_probability(text,true).ok;}
+}
+
+// The identity a report names for a door; "" for no door.
+gdr_identity :: (door:int)->string #effects(all) {
+  if door==GDR_ELEPHANT {return GDR_ELEPHANT_IDENTITY;}
+  if door==GDR_GEMINI {return GDR_GEMINI_IDENTITY;}
+  return "";
+}
+// A ticket's value for a door's choice among options: Elephant's is the choice
+// itself, as before there were two doors, and Gemini's follows; -1 for no such door or choice.
+gdr_pack :: (door:int,action:int,options:int)->int #effects(all) {
+  if action<0 || action>=options {return -1;}
+  if door==GDR_ELEPHANT {return action;}
+  if door==GDR_GEMINI {return action+options;}
+  return -1;
+}
+// The choice in a ticket's value, or -1.
+gdr_action :: (value:int,options:int)->int #effects(all) {
+  if value<0 || value>=2*options {return -1;}
+  return value%options;
+}
+// The door in a ticket's value, or GDR_NONE.
+gdr_door :: (value:int,options:int)->int #effects(all) {
+  if value<0 || value>=2*options {return GDR_NONE;}
+  return ifx value<options then GDR_ELEPHANT else GDR_GEMINI;
+}
+// The ticket values a mask of legal choices admits, from either door.
+gdr_mask :: (mask:int,options:int)->int #effects(all) {return mask|(mask<<options);}
+// A probability in billionths. Short (Elephant): a whole 0 or 1, or one with a
+// point and one to nine places. Long (Gemini): up to GDR_LONG bytes, places
+// past the ninth checked as digits and dropped (each is under one unit, against
+// a tolerance of a thousand), and an optional exponent "e-N" of one to three
+// digits that moves the point left.
+gdr_probability :: (text:string,long:bool)->GdrNumber #effects(all) {
+  bad:GdrNumber;limit:=ifx long then GDR_LONG else GDR_SHORT;
+  if text.count<1 || text.count>limit {return bad;}
+  // An exponent starts no earlier than the second byte; the first is the whole digit.
+  end:=text.count;shift:=0;
+  if long {for i:1..<text.count {if text[i]=='e' || text[i]=='E' {end=i;break;}}}
+  if end<text.count {
+    digits:=text.count-end-2;
+    if digits<1 || digits>3 || text[end+1]!='-' {return bad;}
+    // Only the last digit can leave a place inside the table: "-05" is five, "-10" is past it.
+    for i:end+2..<text.count {c:=text[i];if c<'0' || c>'9' {return bad;}shift=ifx shift==0 then cast(int)(c-'0') else GDR_POWERS.count;}
+  }
+  if end==2 {return bad;}
+  units:=0;place:=shift;
+  for i:0..<end {
+    c:=text[i];
+    if i==1 {if c!='.' {return bad;}continue;}
+    if c<'0' || c>'9' {return bad;}
+    if place<GDR_POWERS.count {units+=cast(int)(c-'0')*GDR_POWERS[9-place];}
+    place+=1;
+  }
+  return GdrNumber.{ok=units<=GDR_UNIT,units=units};
+}

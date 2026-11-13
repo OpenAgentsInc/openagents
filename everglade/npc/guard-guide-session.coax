@@ -1,5 +1,6 @@
 // Explicit Directions: immediate authored LOCAL line; remote choices are SHADOW
 // telemetry only. The fixed goal-to-tip rule remains the displayed authority.
+// A staged choice keeps the door that answered it (guard-door.coax, #13476).
 #load "guard-guide-session-types.coax";
 #load "guard-guide.coax";
 #load "guard-metrics.coax";
@@ -12,7 +13,7 @@ GgsSession :: struct {
   initialized:bool;have_key:bool;mode:int;disabled:bool;last_ms:int;last_intent:int;
   send:bool;start:bool;started_ms:int;due_ms:int;body:[1024]u8;body_n:int;
   offer:bool;external_hint:bool;local_action:int;local_intent:int;until_ms:int;cooldown_until_ms:int;
-  local_shown:int;admitted:int;fallback:int;last_raw:int;last_admitted:int;
+  local_shown:int;admitted:int;fallback:int;last_raw:int;last_admitted:int;last_door:int;
 }
 
 #test "Directions mode is exact, bounded, fragment-safe and duplicate-safe" {
@@ -236,12 +237,13 @@ ggs_step :: (s:[]GgsSession,i:GgsInput,now_ms:int) #export_c #effects(all) {
   }
   if !i.boundary {return;}
   if s[0].ticket[0].phase==GD_READY {
-    answer:=gg_admit(o,GgAnswer.{ok=true,action=s[0].ticket[0].action},now_ms-s[0].started_ms);
+    // The staged value is a choice and the door that made it (guard-door.coax).
+    answer:=gg_admit(o,GgAnswer.{ok=true,action=gdr_action(s[0].ticket[0].action,GG_CHOICES)},now_ms-s[0].started_ms);
     if !answer.ok {ggs_finish(s,GM_STALE);}
     else {
-      taken:=gd_take(s[0].ticket[..],s[0].ticket[0].sequence,ggs_context(i),now_ms,gg_legal(o));
+      taken:=gd_take(s[0].ticket[..],s[0].ticket[0].sequence,ggs_context(i),now_ms,gdr_mask(gg_legal(o),GG_CHOICES));
       if taken.code==GdCode.ok {
-        _:=gm_admit(s[0].metrics[..],s[0].ticket[0].sequence,now_ms);s[0].admitted+=1;s[0].last_admitted=taken.action;
+        _:=gm_admit(s[0].metrics[..],s[0].ticket[0].sequence,now_ms);s[0].admitted+=1;s[0].last_admitted=gdr_action(taken.action,GG_CHOICES);s[0].last_door=gdr_door(taken.action,GG_CHOICES);
       }else {ggs_finish(s,GM_STALE);}
     }
   }
@@ -286,9 +288,10 @@ ggs_receive :: (s:[]GgsSession,sequence:int,now_ms:int,text:string) #export_c #e
   if now_ms>=s[0].ticket[0].ticket.expires_ms {ggs_finish(s,GM_TIMEOUT);return;}
   if status!="200\n" {ggs_finish(s,GM_HTTP);return;}
   a:=gg_decode(body);if !a.ok {ggs_finish(s,GM_MALFORMED);return;}s[0].last_raw=a.action;
-  if gd_offer(s[0].ticket[..],sequence,now_ms,a.action)!=GdCode.ok {ggs_finish(s,GM_STALE);}
+  if gd_offer(s[0].ticket[..],sequence,now_ms,gdr_pack(a.door,a.action,GG_CHOICES))!=GdCode.ok {ggs_finish(s,GM_STALE);}
 }
-// This range is separate from the old ambient probe. No body/identity is kept.
+// This range is separate from the old ambient probe. No body is kept, and of the
+// identity only the door enum: 219door (0 none, 1 Elephant, 2 Gemini Decision 1).
 // 200version,201mode,202local,203starts,204replies,205admit,206fallback,
 // 207raw,208admittedAction,209reason,210terminal,211late,212phase,213seq,
 // 214disabled,215localAction,216localIntent,217lastIntent,218cooldown.
@@ -301,6 +304,7 @@ ggs_probe :: (s:[]GgsSession,field:int)->int #export_c #effects(all) {
   if field==209 {return s[0].metrics[0].last_reason;}if field==210 {return s[0].metrics[0].terminals;}if field==211 {return s[0].metrics[0].late;}
   if field==212 {return s[0].ticket[0].phase;}if field==213 {return ifx s[0].ticket[0].phase!=0 then s[0].ticket[0].sequence else 0;}
   if field==214 {return ifx s[0].disabled then 1 else 0;}if field==215 {return s[0].local_action;}if field==216 {return s[0].local_intent;}if field==217 {return s[0].last_intent;}if field==218 {return s[0].cooldown_until_ms;}
+  if field==219 {return s[0].last_door;}
   if field>=220 && field<229 {return s[0].metrics[0].outcomes[field-220].value;}
   if field>=400 && field<411 {return s[0].metrics[0].network[field-400].value;}
   if field>=420 && field<431 {return s[0].metrics[0].queue[field-420].value;}
@@ -370,7 +374,8 @@ ggs_probe :: (s:[]GgsSession,field:int)->int #export_c #effects(all) {
   for at:0..<11 {s[0].metrics[0].network[at].value=at+200;s[0].metrics[0].queue[at].value=at+300;s[0].metrics[0].total[at].value=at+400;#assert ggs_probe(s[..],400+at)==200+at && ggs_probe(s[..],420+at)==300+at && ggs_probe(s[..],440+at)==400+at;}
   s[0].metrics[0].last_network=20;s[0].metrics[0].last_queue=30;s[0].metrics[0].last_total=50;s[0].metrics[0].network_clipped=true;s[0].metrics[0].total_clipped=true;
   #assert ggs_probe(s[..],293)==20 && ggs_probe(s[..],294)==30 && ggs_probe(s[..],295)==50 && ggs_probe(s[..],296)==5;
-  for at:[17]int.[199,219,229,239,240,244,292,297,399,411,419,431,439,451,500,-1,GD_TIME_MAX] {#assert ggs_probe(s[..],at)==-1;}
+  s[0].last_door=2;#assert ggs_probe(s[..],219)==2;
+  for at:[16]int.[199,229,239,240,244,292,297,399,411,419,431,439,451,500,-1,GD_TIME_MAX] {#assert ggs_probe(s[..],at)==-1;}
   #assert s[0].local_shown==11 && s[0].last_ms==0;
 }
 #test "pre-boundary world changes and new intents cancel a not-yet-minted candidate" {
@@ -397,4 +402,21 @@ ggs_probe :: (s:[]GgsSession,field:int)->int #export_c #effects(all) {
   s:[1]GgsSession;i:=ggs_test_input();i.intent=GD_SEQUENCE_MAX+1;ggs_step(s[..],i,0);
   #assert s[0].last_intent==0 && s[0].local_shown==0;
   i.intent=1;ggs_step(s[..],i,1);#assert s[0].last_intent==1 && s[0].local_shown==1 && s[0].metrics[0].used==1;
+}
+#test "either door's answer stages with its door, and the admitted choice keeps it" {
+  for door:[2]int.[GDR_ELEPHANT,GDR_GEMINI] {
+    s:[1]GgsSession;i:=ggs_test_input();ggs_step(s[..],i,0);ggs_sent(s[..],1,true);#assert ggs_probe(s[..],219)==GDR_NONE;
+    ggs_test_deliver_body(s[..],1,1,ifx door==GDR_GEMINI then GG_GEMINI_RESPONSE else GG_RESPONSE);
+    #assert s[0].ticket[0].phase==GD_READY && s[0].last_raw==2 && s[0].ticket[0].action==(ifx door==GDR_GEMINI then 7 else 2) && s[0].last_door==GDR_NONE;
+    ggs_step(s[..],i,2);#assert s[0].admitted==1 && s[0].last_admitted==2 && s[0].last_door==door && ggs_probe(s[..],208)==2 && ggs_probe(s[..],219)==door;
+  }
+}
+#test "every staged value is one door's legal choice or is refused" {
+  for value:0..<12 {
+    s:[1]GgsSession;i:=ggs_test_input();ggs_step(s[..],i,0);ggs_sent(s[..],1,true);
+    #assert gd_offer(s[0].ticket[..],1,1,value)==GdCode.ok;ggs_step(s[..],i,2);
+    legal:=value==0 || value==2 || value==5 || value==7;
+    #assert s[0].admitted==(ifx legal then 1 else 0) && s[0].fallback==(ifx legal then 0 else 1) && s[0].ticket[0].phase==0;
+    #assert s[0].last_admitted==(ifx legal then value%5 else -1) && s[0].last_door==(ifx !legal then GDR_NONE else ifx value<5 then GDR_ELEPHANT else GDR_GEMINI);
+  }
 }

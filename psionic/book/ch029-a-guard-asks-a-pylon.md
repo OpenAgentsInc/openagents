@@ -27,7 +27,7 @@ categories. It contains no conversation, private history or hidden information.
 ```jai
 ga_request :: (out:[]u8,o:GaObservation)->int #effects(all) {
   days:=[4]string.["night","morning","afternoon","evening"];weather:=[4]string.["clear","cloudy","rain","storm"];
-  n:=json_raw(out,0,"{\"model\":\"elephant-1\",\"state\":\"A calm healthy town guard and a nearby peaceful living player. Time: ");
+  n:=json_raw(out,0,"{\"model\":\"auto\",\"state\":\"A calm healthy town guard and a nearby peaceful living player. Time: ");
   n=json_raw(out,n,days[o.day]);n=json_raw(out,n,". Weather: ");n=json_raw(out,n,weather[o.weather]);
   return json_raw(out,n,".\",\"questions\":{\"ambient\":{\"type\":\"choice\",\"instructions\":\"Choose one harmless ambient action. Never affect movement, crime, combat or rewards.\",\"criteria\":{\"quiet\":\"Remain quiet\",\"greeting\":\"Offer an authored greeting\",\"weather\":\"Make an authored weather remark\"}}}}");
 }
@@ -38,18 +38,37 @@ session. A Metaverse player key is not sent as authentication. A guest's 401 and
 account's 429 disable guard attempts for that visit. A missing provider, bad
 body or exhausted browser slot leaves ordinary play running.
 
-Only the pinned Elephant checkpoint is accepted. The decoder requires the
-exact model/service identity and `psionic-pylon-v1` service version, a unique `ambient` choice question and exactly
+Since 2026-11-13 the request asks for `"model":"auto"` (GitHub #13476). The
+server asks Gemini Decision 1 first and Elephant behind it, and the answer
+names the door that answered. Two identities are accepted, and nothing else:
+
+- **Gemini Decision 1:** model and service identity `gemini-decision-1`,
+  provider `google` and door `gemini`.
+- **Elephant:** model `elephant-1`, the pinned checkpoint identity, a 32-byte
+  hex provider, a `pylon:` door and the `psionic-pylon-v1` service version.
+
+An unknown identity, Elephant with another digest, and one door's identity
+under the other door's model all refuse. The names and the rule's shared parts
+are in [`guard-door.coax`](../../everglade/npc/guard-door.coax).
+
+The decoder also requires a unique `ambient` choice question and exactly
 these three probability keys. Each probability and confidence independently
 lies in `[0,1]`; the distribution sums to one within one part per million.
-Choice and confidence must agree with the lexical maximum. Its numeric profile
-is ordinary decimal notation with up to nine fractional digits, matching the
-current service serializer. Other encodings refuse. Unknown additional fields
-grant no authority. The maximum answer body is 8192 bytes.
+Choice and confidence must agree with the lexical maximum. Elephant's numeric
+profile is ordinary decimal notation with up to nine fractional digits,
+matching its service serializer. Gemini's numbers are doubles written in full:
+up to 32 bytes, with an optional `e-N` exponent, read to nine places. Other
+encodings refuse. Unknown additional fields grant no authority. The maximum
+answer body is 8192 bytes.
+
+The accepted choice keeps its door. The decision ticket holds the choice and
+the door as one value, so a replay record made from a Gemini answer replays as
+Gemini's and never as Elephant's. Probe 17 reports the door of the last
+accepted choice (0 none, 1 Elephant, 2 Gemini Decision 1).
 
 This establishes a response contract, not model calibration or useful choices.
 The provider/door fields are declarations carried by the authenticated edge;
-matching a checkpoint string is not remote attestation of GPU execution.
+matching a checkpoint or model string is not remote attestation of what ran.
 
 ## Observe after the game has stepped
 
@@ -75,8 +94,9 @@ ga_frame :: (s:[]GaSession,o:GaObservation,generation:int,revision:int,now_ms:in
   }
   s[0].context=c;
   if s[0].ticket[0].phase==GD_READY {
-    a:=gd_take(s[0].ticket[..],s[0].ticket[0].sequence,c,now_ms,7);
-    if a.code==GdCode.ok {_:=gm_admit(s[0].metrics[..],s[0].ticket[0].sequence,now_ms);s[0].accepted+=1;s[0].last_action=a.action;}else {_:=gm_end(s[0].metrics[..],s[0].ticket[0].sequence,GM_STALE);ga_invalidate(s);}
+    // The staged value is a choice and the door that made it; either door's three choices are legal.
+    a:=gd_take(s[0].ticket[..],s[0].ticket[0].sequence,c,now_ms,gdr_mask(7,GA_CHOICES));
+    if a.code==GdCode.ok {_:=gm_admit(s[0].metrics[..],s[0].ticket[0].sequence,now_ms);s[0].accepted+=1;s[0].last_action=gdr_action(a.action,GA_CHOICES);s[0].last_door=gdr_door(a.action,GA_CHOICES);}else {_:=gm_end(s[0].metrics[..],s[0].ticket[0].sequence,GM_STALE);ga_invalidate(s);}
   }
   if s[0].mode!=1 || s[0].disabled || s[0].suspended || !ga_eligible(o) || s[0].ticket[0].phase!=0 || s[0].attempts>=6 || now_ms<s[0].due_ms {return;}
   b:=gd_begin(s[0].ticket[..],c,now_ms,GA_TIMEOUT);if b.code!=GdCode.ok {return;}

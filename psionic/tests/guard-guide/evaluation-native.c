@@ -10,7 +10,8 @@ static coax_string str(const char *s){return (coax_string){s,(int64_t)strlen(s)}
 static coax_v_u8 bytes(unsigned char *p,int64_t n){return (coax_v_u8){p,n};}
 static coax_v_t_GgeTotals totals(coax_t_GgeTotals *p){return (coax_v_t_GgeTotals){p,1};}
 static const int reference[]={1,2,3,4,1};
-static const char *hashes[]={"20e1e73063819ef195b71d05f4a851005dc69a26b3855561c1c4bdb4c14c501c","f1cd74cd6fa39c01e8562d3ecebf6258a8b4316d402820c4a0f91e0d92ee69ad","ae9d34e90e2f9034956cf3f1a423c93bac14baab755991a9654b1fd91a838f8c","7621a9d1697cc81319688a6b7736b6e0c0b5715373b3e8e1bd96e6e584566367","8a73362b06c8468afd33dd2bcaed8a1b2c0a72fa68584247e20f503b4dae170a"};
+// The frozen requests ask for "model":"auto" (psionic/fixtures/guard-guide-requests-v2/SHA256SUMS).
+static const char *hashes[]={"dd1f89661035143b3d345080fdded1e9a154537f2ee70df0a8bf53ee1ff5bdf4","7ddba0866b6a74b6412372018121f36c3e50aabcd39d497110bbf77e75e5b58f","fbba20fab320a90fcaf095f6ffd264ac8fde74ecc11692b86f8a9e49e1a48fee","220fbcce20656ad8a92e6ba010d4a03a43accb9b092ceabc4a93b92cb252227d","b4a6d8626600e6c6acd1f11d47f3bba51ab511defd1c4cfc05563d1e0ae7a755"};
 int main(void){
   unsigned count=0;unsigned char body[8192],record[16384],report[16384],request[4096],digest[64];
   struct {uint64_t before;coax_t_GgeTotals value;uint64_t after;} box={0};box.before=box.after=UINT64_C(0x92345678abcdef01);
@@ -50,6 +51,20 @@ int main(void){
     assert(t.observed==5&&t.rule_correct==5&&t.quiet_correct==0&&t.forbidden==0);
     assert(t.raw_quiet==(mode==0?5:0)&&t.raw_wrong==(mode==1?5:0)&&t.raw_correct==((mode==3||mode==4)?5:0));
     assert(t.model_useful==(mode==4?5:0)&&t.effective_correct==(mode==4?5:0));count++;
+  }
+  // Either door answers (door 1 Elephant, 2 Gemini Decision 1). A row keeps its door, both doors
+  // score alike, and one set of totals never holds rows from both.
+  for(int i=0;i<5;i++)for(int a=0;a<5;a++){
+    unsigned char other[8192];
+    coax_t_GgeResult e=gge_evaluate(i,str("200\n"),gge_fixture(a,bytes(body,sizeof body)),1);
+    coax_t_GgeResult g=gge_evaluate(i,str("200\n"),gge_fixture_gemini(a,bytes(other,sizeof other)),1);
+    assert(e.door==1&&g.door==2&&g.contract&&g.raw_action==a&&g.legal==e.legal&&g.admitted==e.admitted&&g.covered==e.covered&&g.model_useful==e.model_useful&&g.effective_action==e.effective_action);
+    for(int first=0;first<2;first++){
+      coax_t_GgeTotals t={0};coax_t_GgeResult later=gge_evaluate((i+1)%5,str("200\n"),first?gge_fixture(a,bytes(body,sizeof body)):gge_fixture_gemini(a,bytes(other,sizeof other)),1);
+      assert(gge_add(totals(&t),first?g:e)&&t.door==(first?2:1)&&!gge_add(totals(&t),later)&&t.observed==1);
+      assert(gge_add(totals(&t),gge_evaluate((i+1)%5,str("503\n"),str(""),1))&&t.observed==2&&t.door==(first?2:1));
+    }
+    count++;
   }
   assert(!gge_case(-1).valid&&!gge_case(13).valid&&ggew_request(-1,bytes(request,sizeof request))==-1&&ggew_request(0,bytes(request,0))==-1);
   assert(!ggew_observation(str("{}")).valid&&ggew_summary(str("\n"),bytes(report,sizeof report))==-1&&ggew_summary(str(""),bytes(report,sizeof report))>0);count++;

@@ -14,6 +14,7 @@ CP_TIME_MAX :: 9007199254740991;
     good:="{\"model\":\"elephant-1\",\"state\":\"s\",\"questions\":{}}";
     #assert cp_request(good);
     #assert cp_request("{\"questions\":{},\"state\":{},\"model\":\"mammoth-1\"}");
+    #assert cp_request("{\"model\":\"auto\",\"state\":\"s\",\"questions\":{}}") && !cp_request("{\"model\":\"gemini-decision-1\",\"state\":\"s\",\"questions\":{}}");
     for bad:[11]string.["","abcdef0123456789","null","[]","{}",
       "{\"model\":\"other\",\"state\":\"s\",\"questions\":{}}",
       "{\"model\":\"elephant-1\",\"state\":0,\"questions\":{}}",
@@ -40,7 +41,7 @@ cp_request :: (text:string)->bool #export_c #effects(all) {
     if !jv_parse(d[..],text,nodes[..]) {return false;}
     model:=gg_member(d[0],0,"model");state:=gg_member(d[0],0,"state");questions:=gg_member(d[0],0,"questions");
     kind:=jv_kind(d[0],state);
-    return jv_len(d[0],0)==3 && (gg_is(d[0],model,"elephant-1") || gg_is(d[0],model,"mammoth-1")) && (kind==JV_STRING || kind==JV_OBJECT) && jv_kind(d[0],questions)==JV_OBJECT;
+    return jv_len(d[0],0)==3 && (gg_is(d[0],model,"auto") || gg_is(d[0],model,"elephant-1") || gg_is(d[0],model,"mammoth-1")) && (kind==JV_STRING || kind==JV_OBJECT) && jv_kind(d[0],questions)==JV_OBJECT;
 }
 cp_capture :: (status:int,elapsed:int,bytes:int)->bool #export_c #effects(all) {
     return status>=0 && status<=599 && elapsed>=0 && elapsed<=CP_TIME_MAX && bytes>=0 && bytes<=CP_BODY_MAX;

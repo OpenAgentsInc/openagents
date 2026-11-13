@@ -18,11 +18,13 @@ GP_PROVIDER :: "59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7
     #assert gp_status(1,"{}\nmesh: HTTP503\n")==503;
     for text:[6]string.["","mesh: HTTP200","\nmesh: HTTP099\n","\nmesh: HTTP600\n","\nmesh: HTTP503x\n","\nmesh: HTTP503\nextra"] {#assert gp_status(1,text)==0;}
 }
-#test "a response must retain the original configured provider and checkpoint" {
-    #assert gp_pin(GA_RESPONSE);
+#test "a response must come from Gemini Decision 1, or retain the original configured provider and checkpoint" {
+    #assert gp_pin(GA_RESPONSE) && gp_pin(GA_GEMINI_RESPONSE);
     b:[8192]u8;#assert !gp_pin(ga_swap(b[..],GA_RESPONSE,"59e443","000000"));
     #assert !gp_pin(ga_swap(b[..],GA_RESPONSE,"elephant-1@sha256:","other@sha256:"));
     #assert !gp_pin("{}");
+    #assert !gp_pin(ga_swap(b[..],GA_GEMINI_RESPONSE,"\"provider\":\"google\"","\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\""));
+    #assert !gp_pin(ga_swap(b[..],GA_GEMINI_RESPONSE,"\"identity\":\"gemini-decision-1\"","\"identity\":\"gemini-decision-2\""));
 }
 gp_range :: (start:int,count:int)->bool #effects(all) {return start>=0 && count>=1 && count<=16-start;}
 gp_status :: (exit:int,error:string)->int #effects(all) {
@@ -30,7 +32,12 @@ gp_status :: (exit:int,error:string)->int #effects(all) {
     if at<0 || error[at..<at+marker.count]!=marker || error[error.count-1]!='\n' {return 0;}
     n:=json_int(error[at+marker.count..<error.count-1]);return ifx n.ok && n.value>=100 && n.value<=599 then n.value else 0;
 }
-gp_pin :: (body:string)->bool #effects(all) {return ga_decode(body).ok && ga_is(ga_get(ga_get(body,"service").raw,"provider"),GP_PROVIDER);}
+// The cases ask for "model":"auto" (#13476): Gemini Decision 1's answer holds by its own identity
+// (ga_decode), and Elephant's must also name the configured provider.
+gp_pin :: (body:string)->bool #effects(all) {
+    a:=ga_decode(body);if !a.ok {return false;}
+    return a.door==GDR_GEMINI || ga_is(ga_get(ga_get(body,"service").raw,"provider"),GP_PROVIDER);
+}
 #test "HTTP endpoint codes and empty diagnostic bodies have exact boundaries" {
     #assert gp_status(1,"\nmesh: HTTP503\n")==503;
     #assert gp_status(1,"{}\nmesh: HTTP600\n")==0;

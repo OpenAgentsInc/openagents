@@ -114,7 +114,7 @@ tool_main :: ()->int #export_c #effects(all) {
     if group!="all" && group!="local" && group!="responses" && group!="cancellations" && group!="reuse" && group!="combat" && group!="queued" && group!="edited" {return 2;}
     out:=args_at(a[..],1);if fs_kind(out)!=FS_NONE {tool_errln("directions browser: output already exists");return 2;}
     s:[1]DbRun;origin:=args_at(a[..],0);s[0].origin_n=origin.count;for i:0..<origin.count {s[0].origin[i]=origin[i];}s[0].deadline=proc_now_ms()+DB_DEADLINE;
-    s[0].expected_n=fs_read("psionic/fixtures/guard-guide-requests-v1/case0.json",s[0].expected[..]);if s[0].expected_n<1 {tool_errln("directions browser: frozen request unavailable");return 2;}
+    s[0].expected_n=fs_read("psionic/fixtures/guard-guide-requests-v2/case0.json",s[0].expected[..]);if s[0].expected_n<1 {tool_errln("directions browser: frozen request unavailable");return 2;}
     if !db_hash_module(s[0].wasm_sha[..]) {tool_errln("directions browser: module identity unavailable");return 2;}
     server:=db_server(origin);if server<0 {tool_errln("directions browser: owned static server unavailable");return 1;}
     c:[1]Cdp;if !cdp_launch(c[..],960,640,"directions-browser-") {tool_errln(cdp_error(c[..]));cdp_close(c[..]);db_stop_server(server);return 1;}

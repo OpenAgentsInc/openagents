@@ -4,14 +4,14 @@
 contract and a strong local reference rule. Now a player can use that rule in
 Everglade: approach Bram, press **G** or touch the **Directions** button, and
 receive an authored navigation tip on the first eligible frame. The local game
-provides the tip immediately. An optional Elephant request runs beside it as a
-shadow observation.
+provides the tip immediately. An optional decision request (Gemini Decision 1
+first, Elephant behind it) runs beside it as a shadow observation.
 
 This distinction matters. We already know the route from the current objective.
 Waiting for a model would add latency and failure to a five-state task with a
 perfect deterministic answer. The integration exercises real request ownership,
 current-world checks and measurement while keeping useful help available.
-Elephant's choice cannot replace the displayed line, advance a quest, open
+The model's choice cannot replace the displayed line, advance a quest, open
 conversation, move a guard, or affect combat, crime or rewards.
 
 ## Ask for a current need
@@ -113,8 +113,10 @@ further shadow attempts for the visit and keeps local help available. An owned
 401/429 retains that classification even if it arrives after the lease; other
 expired callbacks close as timeouts. No expired answer can be admitted.
 
-The session validates the existing pinned checkpoint, service identity, complete
-option distribution and current legal route through Gg. Arrival only stages a
+The session validates the answering door's identity (Gemini Decision 1's, or
+the pinned Elephant checkpoint's), the complete
+option distribution and current legal route through Gg. The staged choice
+keeps its door; probe 219 reports it. Arrival only stages a
 bounded enum through Gd. It cannot modify a page view:
 
 <!-- source: psionic/examples/guard-gives-directions.coax shadow -->

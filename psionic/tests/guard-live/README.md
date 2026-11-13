@@ -64,8 +64,12 @@ malformed records and ineligible case IDs refuse the report. Missing cases do
 not become successes or fabricated failures. The report exposes expected=16,
 observed counts and `all_eligible_observed` separately.
 
-Contract validity uses the actual guard decoder: exact model/checkpoint/service,
+Contract validity uses the actual guard decoder: the identity of one of the two
+accepted doors (Gemini Decision 1, or Elephant's exact model/checkpoint/service;
+the requests ask for `"model":"auto"` since GitHub #13476),
 one question, all options, selected argmax, numeric bounds and normalization.
+A result and the summary name the identity that answered in `identity`, and a
+summary refuses rows from two doors.
 Deadline success means elapsed is strictly below 8000ms. Coverage requires both
 contract and deadline. Disagreement counts covered nonquiet actions relative
 to local quiet. Acceptable/preferred/editorial-useful coverage are separate

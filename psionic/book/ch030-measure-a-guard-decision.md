@@ -64,18 +64,27 @@ main :: () {
 
 ## A contract is only the first gate
 
-An observation needs the exact pinned response contract and an elapsed time
+An observation needs the exact response contract of one of the two accepted
+doors (Gemini Decision 1, or the pinned Elephant checkpoint;
+[chapter 29](ch029-a-guard-asks-a-pylon.md)) and an elapsed time
 strictly below eight seconds to count as covered. A late HTTP200 does not become
 usable because its option was sensible. An early 503 is an on-time refusal,
 not a covered answer. Missing cases remain missing; a duplicate case refuses
 the aggregate instead of improving its denominator.
+
+Each scored row keeps the door that answered it, and one set of totals scores
+one door. A row answered by the other door refuses the aggregate, so a summary
+never credits Elephant with a Gemini answer or the reverse. A row with no
+contract (a 503, a malformed body) has no door and counts in either. The
+result and the summary name the identity in an `identity` field, `null` when
+no row held a contract.
 
 <!-- source: everglade/npc/guard-evaluation.coax score -->
 ```jai
 gev_evaluate :: (index:int,status:string,body:string,elapsed_ms:int)->GeResult #export_c #effects(all) {
     c:=gev_case(index);if !c.valid {return GeResult.{};}
     r:=GeResult.{valid=true,index=index,deadline=elapsed_ms>=0 && elapsed_ms<GA_TIMEOUT,forbidden=c.remote_mask==0};
-    if status!="200\n" {return r;}a:=ga_decode(body);r.contract=a.ok;if !a.ok {return r;}r.action=a.action;
+    if status!="200\n" {return r;}a:=ga_decode(body);r.contract=a.ok;if !a.ok {return r;}r.action=a.action;r.door=a.door;
     if !r.deadline || r.forbidden {return r;}
     r.covered=true;r.disagree=a.action!=0;
     // Every authored eligible option is harmless; acceptability is not a

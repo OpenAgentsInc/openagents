@@ -1,6 +1,8 @@
 // Versioned adapters around the actual cosmetic consumers. Their existing
 // pure policy runs on a private copy; a decision must enter the replay log
 // before the result, counters or transport capability can be published.
+// A record holds each choice with the door that made it (guard-door.coax), so
+// a decision Gemini Decision 1 made replays as Gemini's and never as Elephant's.
 #load "guard-decision.coax";
 #load "guard-guide-session.coax";
 #load "../../metaverse-engine/core/decision-trace.coax" as receipt;
@@ -13,9 +15,9 @@ ga_page_v2 :: (s:[]GaSession,trace:[]receipt.DecisionTraceV1,input:GaInput,now:i
   ga_page(next[..],input,now);
   if next[0].accepted!=s[0].accepted {
     #assert next[0].accepted==s[0].accepted+1;
-    choice:=receipt.dr_take(trace,before[..],next[0].context,now,7);
+    choice:=receipt.dr_take(trace,before[..],next[0].context,now,gdr_mask(7,GA_CHOICES));
     if choice.code!=GdCode.ok {s[0].disabled=true;s[0].send=false;return;}
-    #assert choice.action==next[0].last_action;
+    #assert choice.action==gdr_pack(next[0].last_door,next[0].last_action,GA_CHOICES);
   }
   if next[0].ticket[0].sequence!=s[0].ticket[0].sequence {
     started:=receipt.dr_started(trace,next[0].ticket[0].ticket);
@@ -30,9 +32,9 @@ ggs_step_v2 :: (s:[]GgsSession,trace:[]receipt.DecisionTraceV1,input:GgsInput,no
   ggs_step(next[..],input,now);
   if next[0].admitted!=s[0].admitted {
     #assert next[0].admitted==s[0].admitted+1;
-    choice:=receipt.dr_take(trace,before[..],ggs_context(input),now,gg_legal(ggs_observation(next[..],input)));
+    choice:=receipt.dr_take(trace,before[..],ggs_context(input),now,gdr_mask(gg_legal(ggs_observation(next[..],input)),GG_CHOICES));
     if choice.code!=GdCode.ok {s[0].disabled=true;s[0].send=false;return;}
-    #assert choice.action==next[0].last_admitted;
+    #assert choice.action==gdr_pack(next[0].last_door,next[0].last_admitted,GG_CHOICES);
   }
   if next[0].ticket[0].sequence!=s[0].ticket[0].sequence {
     started:=receipt.dr_started(trace,next[0].ticket[0].ticket);
@@ -96,5 +98,49 @@ guard_trace_v1_load :: (trace:[]receipt.DecisionTraceV1,bytes:[]u8,context:GdCon
     ggs_step_v2(live[..],trace[..],input,4);
     #assert live[0].disabled && !live[0].send && live[0].admitted==0 && live[0].local_action==2;
     #assert live[0].ticket[0].sequence==(ifx at_start then 0 else 1);
+  }
+}
+#test "an ambient record replays as the door that answered it, and the two doors' records differ" {
+  kept:[2][1024]u8;sizes:[2]int;
+  input:=GaInput.{configured=true,boundary=true,epoch=1,generation=1,revision=1,url="/?guard-ai=shadow",observation=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true,day=1}};
+  for door:[2]int.[GDR_ELEPHANT,GDR_GEMINI] {
+    trace:=[1]receipt.DecisionTraceV1.[guard_trace_v1_reset()];live:[1]GaSession;
+    ga_page_v2(live[..],trace[..],input,0);context:=live[0].ticket[0].ticket.context;
+    ga_sent(live[..],1,true);ga_reply(live[..],1,1,"200\n",ifx door==GDR_GEMINI then GA_GEMINI_RESPONSE else GA_RESPONSE);
+    ga_page_v2(live[..],trace[..],input,2);#assert live[0].accepted==1 && live[0].last_action==1 && live[0].last_door==door && !live[0].disabled;
+    n:=guard_trace_v1_save(trace[..],kept[door-1][..],false);#assert n==200;sizes[door-1]=n;
+    replay:[1]receipt.DecisionTraceV1;again:[1]GaSession;
+    #assert guard_trace_v1_load(replay[..],kept[door-1][0..<n],context,false);
+    ga_page_v2(again[..],replay[..],input,0);#assert !again[0].send;
+    ga_page_v2(again[..],replay[..],input,2);#assert again[0].accepted==1 && again[0].last_action==1 && again[0].last_door==door && ga_probe(again[..],17)==door;
+    #assert replay_matched(receipt.dr_session(replay[..]));
+  }
+  #assert sizes[0]==sizes[1] && cast(string)kept[0][0..<sizes[0]]!=cast(string)kept[1][0..<sizes[1]];
+}
+#test "a directions record replays as the door that answered it, and the two doors' records differ" {
+  kept:[2][1024]u8;sizes:[2]int;
+  for door:[2]int.[GDR_ELEPHANT,GDR_GEMINI] {
+    trace:[1]receipt.DecisionTraceV1;live:[1]GgsSession;input:=ggs_test_input();input.boundary=false;
+    ggs_step_v2(live[..],trace[..],input,0);input.boundary=true;input.observation.hint_visible=true;input.hint_intent=1;
+    ggs_step_v2(live[..],trace[..],input,1);context:=live[0].ticket[0].ticket.context;ggs_sent(live[..],1,true);
+    ggs_test_deliver_body(live[..],1,2,ifx door==GDR_GEMINI then GG_GEMINI_RESPONSE else GG_RESPONSE);
+    ggs_step_v2(live[..],trace[..],input,4);#assert live[0].admitted==1 && live[0].last_admitted==2 && live[0].last_door==door && !live[0].disabled;
+    n:=guard_trace_v1_save(trace[..],kept[door-1][..],false);#assert n==200;sizes[door-1]=n;
+    replay:[1]receipt.DecisionTraceV1;again:[1]GgsSession;#assert guard_trace_v1_load(replay[..],kept[door-1][0..<n],context,false);
+    input.boundary=false;input.observation.hint_visible=false;input.hint_intent=0;
+    ggs_step_v2(again[..],replay[..],input,0);input.boundary=true;input.observation.hint_visible=true;input.hint_intent=1;
+    ggs_step_v2(again[..],replay[..],input,1);#assert !again[0].send;
+    ggs_step_v2(again[..],replay[..],input,4);#assert again[0].admitted==1 && again[0].last_admitted==2 && again[0].last_door==door && ggs_probe(again[..],219)==door;
+    #assert replay_matched(receipt.dr_session(replay[..]));
+  }
+  #assert sizes[0]==sizes[1] && cast(string)kept[0][0..<sizes[0]]!=cast(string)kept[1][0..<sizes[1]];
+}
+#test "each of the six staged ambient values crosses the recorded boundary as its own door and choice" {
+  input:=GaInput.{configured=true,boundary=true,epoch=1,generation=1,revision=1,url="/?guard-ai=shadow",observation=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true}};
+  for value:0..<8 {
+    trace:[1]receipt.DecisionTraceV1;live:[1]GaSession;ga_page_v2(live[..],trace[..],input,0);
+    #assert gd_offer(live[0].ticket[..],1,1,value)==GdCode.ok;ga_page_v2(live[..],trace[..],input,2);
+    #assert !live[0].disabled && live[0].accepted==(ifx value<6 then 1 else 0);
+    #assert live[0].last_action==(ifx value<6 then value%3 else -1) && live[0].last_door==(ifx value<3 then GDR_ELEPHANT else ifx value<6 then GDR_GEMINI else GDR_NONE);
   }
 }

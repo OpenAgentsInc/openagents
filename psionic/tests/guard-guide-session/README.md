@@ -2,8 +2,9 @@
 
 `everglade/npc/guard-guide-session.coax` owns the explicit Directions
 interaction. Its displayed action always comes from the fixed local goal-to-tip
-rule. Elephant responses are shadow observations and never select the displayed
-line. The data-only page contract is `guard-guide-session-types.coax`; the policy
+rule. Model responses (Gemini Decision 1 first, Elephant behind it) are shadow
+observations and never select the displayed line. Probe 219 reports the door
+of the last admitted choice. The data-only page contract is `guard-guide-session-types.coax`; the policy
 is linked separately from the large game page.
 
 A new, monotonic intent serial consumes one opportunity: the local line appears

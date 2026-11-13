@@ -1,9 +1,12 @@
 // Requested directions candidate. Nothing here mutates quests, movement,
 // combat, crime, rewards or dialogue. A caller still owns current Gd lifecycle
 // tickets and the page frame boundary; an enum is not game authority by itself.
+// The request asks for "model":"auto"; an answer passes from Gemini Decision 1
+// or the pinned Elephant checkpoint only, and names its door (guard-door.coax, #13476).
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/nostr/json.coax"; // shared UTF-8 lexical helper only
 #load "guard-guide-types.coax";
+#load "guard-door.coax";
 #load "guard-guide-check-fixtures.coax";
 #authority;
 GG_UNIT :: 1000000000;
@@ -34,10 +37,6 @@ GG_BODY_MAX :: 8192;
     }
     #assert gg_request(o,out[0..<0])==-1;o.help_requested=false;#assert gg_request(o,out[..])==-1;
 }
-#test "unit decimals have independent exact bounds and typed profiles" {
-    #assert gg_probability("0").ok && gg_probability("1").units==GG_UNIT && gg_probability("0.000000001").units==1 && gg_probability("0.123456789").units==123456789;
-    for bad:[12]string.["","-0.1","1.000000001","2","01",".1","1.","1e0","0.0000000001","NaN","\"0.5\"","0x1"] {#assert !gg_probability(bad).ok;}
-}
 #test "unique decoded object keys and exact string types are required" {
     nodes:[24]JvNode;d:[1]Jv;
     #assert jv_parse(d[..],"{\"x\":1,\"\\u0078\":2}",nodes[..]) && gg_member(d[0],0,"x")==-1;
@@ -45,7 +44,8 @@ GG_BODY_MAX :: 8192;
     #assert !gg_is(d[0],-1,"yes");#assert gg_member(d[0],gg_member(d[0],0,"other"),"x")==-1;
 }
 #test "synthetic original-checkpoint answers bind exact guide question and option distribution" {
-    a:=gg_decode(GG_RESPONSE);#assert a.ok && a.action==2;
+    a:=gg_decode(GG_RESPONSE);#assert a.ok && a.action==2 && a.door==GDR_ELEPHANT;
+    #assert GG_MODEL==GDR_ELEPHANT_MODEL && GG_IDENTITY==GDR_ELEPHANT_IDENTITY;
     out:[8192]u8;
     old:=[12]string.["\"elephant-1\"","\"guide\":","\"choice\",\"choice\"","\"east_gate\",\"confidence\"","\"confidence\":0.6","\"east_gate\":0.6","\"quiet\":0.1","\"west_gate\":0.1","psionic-pylon-v1","elephant-1@sha256:","pylon:fixture","59e443"];
     fresh:=[12]string.["\"mammoth-1\"","\"ambient\":","\"score\",\"choice\"","\"quiet\",\"confidence\"","\"confidence\":1.000000001","\"east_gate\":\"0.6\"","\"quiet\":-0.1","\"west_gate\":0.2","psionic-pylon-v2","mammoth-1@sha256:","direct:fixture","Z9e443"];
@@ -53,6 +53,29 @@ GG_BODY_MAX :: 8192;
     #assert !gg_decode("{}").ok && !gg_decode("{} trailing").ok;
     #assert !gg_decode(gg_test_replace(out[..],GG_RESPONSE,"\"quiet\":0.1","\"quiet\":0.1,\"quiet\":0.1")).ok;
     #assert !gg_decode(gg_test_replace(out[..],GG_RESPONSE,"\"guide\":{","\"other\":{},\"guide\":{")).ok;
+}
+#test "Gemini Decision 1's answer passes by its own identity, and names its door" {
+    a:=gg_decode(GG_GEMINI_RESPONSE);#assert a.ok && a.action==2 && a.door==GDR_GEMINI;
+    out:[8192]u8;
+    old:=[11]string.["\"model\":\"gemini-decision-1\"","\"model\":\"gemini-decision-1\"","\"identity\":\"gemini-decision-1\"","\"identity\":\"gemini-decision-1\"","\"identity\":\"gemini-decision-1\"","\"provider\":\"google\"","\"provider\":\"google\"","\"door\":\"gemini\"","\"door\":\"gemini\"","\"identity\":\"gemini-decision-1\"","\"service\":{"];
+    fresh:=[11]string.["\"model\":\"gemini-decision-2\"","\"model\":\"elephant-1\"","\"identity\":\"gemini-decision-2\"","\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\"","\"identity\":1","\"provider\":\"goog1e\"","\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\"","\"door\":\"pylon:fixture\"","\"door\":7","\"identity\":\"gemini-decision-1\",\"identity\":\"gemini-decision-1\"","\"service\":[],\"ignored\":{"];
+    for i:0..<old.count {changed:=gg_test_replace(out[..],GG_GEMINI_RESPONSE,old[i],fresh[i]);#assert changed.count>0 && !gg_decode(changed).ok;}
+    // Google's exponent form for a small probability is read; a version field is inert.
+    #assert gg_decode(gg_test_replace(out[..],GG_GEMINI_RESPONSE,"0.0013040344500838044","1.3040344500838044e-03")).ok;
+    #assert gg_decode(gg_test_replace(out[..],GG_GEMINI_RESPONSE,"\"door\":\"gemini\"","\"version\":\"x\",\"door\":\"gemini\"")).door==GDR_GEMINI;
+}
+#test "neither door's identity passes under the other's model, service or number form" {
+    out:[8192]u8;more:[8192]u8;
+    old:=[7]string.["\"model\":\"elephant-1\"","\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\"","682f02348d","\"confidence\":0.6","\"quiet\":0.1","\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\"","\"door\":\"pylon:fixture\""];
+    fresh:=[7]string.["\"model\":\"gemini-decision-1\"","\"identity\":\"gemini-decision-1\"","782f02348d","\"confidence\":0.6000000000","\"quiet\":1e-1","\"provider\":\"google\"","\"door\":\"gemini\""];
+    for i:0..<old.count {changed:=gg_test_replace(out[..],GG_RESPONSE,old[i],fresh[i]);#assert changed.count>0 && !gg_decode(changed).ok;}
+    // Gemini's whole service object does not make Elephant's model a Gemini answer, nor the reverse.
+    mixed:=gg_test_replace(out[..],GG_RESPONSE,"\"version\":\"psionic-pylon-v1\",\"door\":\"pylon:fixture\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\",\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\"","\"door\":\"gemini\",\"identity\":\"gemini-decision-1\",\"provider\":\"google\"");
+    #assert mixed.count>0 && !gg_decode(mixed).ok && gg_decode(gg_test_replace(more[..],mixed,"\"model\":\"elephant-1\"","\"model\":\"gemini-decision-1\"")).door==GDR_GEMINI;
+}
+#test "the request asks for the door order, never one model by name" {
+    out:[4096]u8;nodes:[96]JvNode;d:[1]Jv;o:=GgObservation.{help_requested=true,eligible=true,destination_available=true,goal=2};
+    n:=gg_request(o,out[..]);#assert jv_parse(d[..],cast(string)out[0..<n],nodes[..]) && gg_is(d[0],gg_member(d[0],0,"model"),"auto") && GDR_AUTO=="auto";
 }
 #test "current context, exact deadline and relevant route are rechecked independently of the decoder" {
     o:=GgObservation.{help_requested=true,eligible=true,destination_available=true,goal=2};a:=gg_decode(GG_RESPONSE);
@@ -67,14 +90,12 @@ GG_BODY_MAX :: 8192;
     #assert gg_door("pylon:a-1_2") && !gg_door("pylon:") && !gg_door("direct:a") && !gg_door("pylon:a b");
     #assert gg_utf8("plain") && gg_utf8("é");bad:=[1]u8.[255];#assert !gg_utf8(cast(string)bad[..]);
 }
-#test "decimal and metadata byte classes include their exact edges only" {
-    digit:=[3]u8.['0','.',0];provider:[64]u8;for i:0..<64 {provider[i]='a';}door:=[7]u8.['p','y','l','o','n',':',0];
+#test "metadata byte classes include their exact edges only" {
+    provider:[64]u8;for i:0..<64 {provider[i]='a';}door:=[7]u8.['p','y','l','o','n',':',0];
     for byte:0..<256 {
-        digit[2]=cast(u8)byte;number:=gg_probability(cast(string)digit[..]);#assert number.ok==(byte>='0' && byte<='9');
         provider[0]=cast(u8)byte;#assert gg_provider(cast(string)provider[..])==((byte>='0' && byte<='9') || (byte>='a' && byte<='f'));
         door[6]=cast(u8)byte;#assert gg_door(cast(string)door[..])==((byte>='a' && byte<='z') || (byte>='0' && byte<='9') || byte=='-' || byte=='_');
     }
-    #assert gg_probability("1.0").ok && gg_probability("1.000000000").ok;
     long:[87]u8;for i:0..<87 {long[i]='a';}for i:0..<6 {long[i]="pylon:"[i];}
     #assert gg_door(cast(string)long[0..<86]) && !gg_door(cast(string)long[..]);
 }
@@ -121,7 +142,7 @@ gg_legal :: (o:GgObservation)->int #export_c #effects(all) {return 1|(1<<gg_base
 gg_line :: (action:int)->string #export_c #effects(all) {if action<1 || action>4 {return "";}return GG_LINES[action];}
 gg_request :: (o:GgObservation,out:[]u8)->int #export_c #effects(all) {
     if !gg_ready(o) {return -1;}w:[1]Jo;jo_start(w[..],out);
-    jo_obj(w[..]);jo_key(w[..],"model");jo_str(w[..],GG_MODEL);jo_key(w[..],"state");jo_obj(w[..]);
+    jo_obj(w[..]);jo_key(w[..],"model");jo_str(w[..],GDR_AUTO);jo_key(w[..],"state");jo_obj(w[..]);
     jo_key(w[..],"policy");jo_str(w[..],GG_POLICY);jo_key(w[..],"help");jo_str(w[..],"requested_directions");
     jo_key(w[..],"current_goal");jo_str(w[..],GG_GOALS[o.goal]);jo_key(w[..],"canonical_route_available");jo_bool(w[..],true);
     jo_key(w[..],"at_destination");jo_bool(w[..],false);jo_key(w[..],"guide_tip_visible");jo_bool(w[..],false);jo_end(w[..]);
@@ -131,13 +152,6 @@ gg_request :: (o:GgObservation,out:[]u8)->int #export_c #effects(all) {
     labels:=[5]string.["No relevant requested orientation remains.","Commons board: find_work or return_to_board.","East Gate to Deep Wood/waystone: waystone.","North Trail to old ruins: ruins.","West Gate to river crossing: river."];
     for i:0..<5 {jo_key(w[..],GG_OPTIONS[i]);jo_str(w[..],labels[i]);}
     jo_end(w[..]);jo_end(w[..]);jo_end(w[..]);jo_end(w[..]);return ifx w[0].bad then -1 else w[0].n;
-}
-gg_probability :: (text:string)->GgNumber #effects(all) {
-    if text.count<1 || (text[0]!='0' && text[0]!='1') {return GgNumber.{};}
-    units:=cast(int)(text[0]-'0')*GG_UNIT;if text.count==1 {return GgNumber.{ok=true,units=units};}
-    if text.count<3 || text.count>11 || text[1]!='.' {return GgNumber.{};}scale:=100000000;
-    for i:2..<text.count {if text[i]<'0' || text[i]>'9' {return GgNumber.{};}units+=cast(int)(text[i]-'0')*scale;scale/=10;}
-    return GgNumber.{ok=units<=GG_UNIT,units=units};
 }
 gg_member :: (d:Jv,object:int,key:string)->int #effects(all) {
     if jv_kind(d,object)!=JV_OBJECT {return -1;}found:=-1;
@@ -153,29 +167,41 @@ gg_door :: (text:string)->bool #effects(all) {
     for i:6..<text.count {c:=text[i];if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-' || c=='_') {return false;}}return true;
 }
 gg_utf8 :: (text:string)->bool #effects(all) {i:=0;while i<text.count {n:=json_utf8(text,i);if n==0 {return false;}i+=n;}return true;}
+// The door a parsed response names by its model and service fields (guard-door.coax); GDR_NONE refuses it.
+gg_door_of :: (d:Jv)->int #effects(all) {
+    model:=gg_member(d,0,"model");service:=gg_member(d,0,"service");identity:=gg_member(d,service,"identity");
+    if gg_is(d,model,GDR_GEMINI_MODEL) && gg_is(d,identity,GDR_GEMINI_IDENTITY) && gg_is(d,gg_member(d,service,"provider"),GDR_GEMINI_PROVIDER) && gg_is(d,gg_member(d,service,"door"),GDR_GEMINI_DOOR) {return GDR_GEMINI;}
+    if !gg_is(d,model,GG_MODEL) || !gg_is(d,gg_member(d,service,"version"),GDR_ELEPHANT_VERSION) || !gg_is(d,identity,GG_IDENTITY) {return GDR_NONE;}
+    provider:[64]u8;door:[86]u8;p:=jv_str(d,gg_member(d,service,"provider"),provider[..]);q:=jv_str(d,gg_member(d,service,"door"),door[..]);
+    if p!=64 {return GDR_NONE;}if q<7 {return GDR_NONE;}
+    if !gg_provider(cast(string)provider[..]) || !gg_door(cast(string)door[0..<q]) {return GDR_NONE;}
+    return GDR_ELEPHANT;
+}
 gg_decode :: (text:string)->GgAnswer #export_c #effects(all) {
     bad:GgAnswer;if text.count>GG_BODY_MAX || !gg_utf8(text) {return bad;}
     nodes:[128]JvNode;parsed:[1]Jv;if !jv_parse(parsed[..],text,nodes[..]) {return bad;}d:=parsed[0];
-    if !gg_is(d,gg_member(d,0,"model"),GG_MODEL) {return bad;}
-    service:=gg_member(d,0,"service");
-    if !gg_is(d,gg_member(d,service,"version"),"psionic-pylon-v1") || !gg_is(d,gg_member(d,service,"identity"),GG_IDENTITY) {return bad;}
-    provider:[64]u8;door:[86]u8;p:=jv_str(d,gg_member(d,service,"provider"),provider[..]);q:=jv_str(d,gg_member(d,service,"door"),door[..]);
-    if p!=64 {return bad;}if q<7 {return bad;}
-    if !gg_provider(cast(string)provider[..]) || !gg_door(cast(string)door[0..<q]) {return bad;}
+    from:=gg_door_of(d);if from==GDR_NONE {return bad;}long:=from==GDR_GEMINI;
     answers:=gg_member(d,0,"answers");if jv_kind(d,answers)!=JV_OBJECT || jv_len(d,answers)!=1 {return bad;}
     answer:=gg_member(d,answers,"guide");if !gg_is(d,gg_member(d,answer,"type"),"choice") {return bad;}
     probs:=gg_member(d,answer,"probabilities");if jv_kind(d,probs)!=JV_OBJECT || jv_len(d,probs)!=5 {return bad;}
     units:[5]int;sum:=0;
-    for i:0..<5 {field:=gg_member(d,probs,GG_OPTIONS[i]);number:=gg_probability(jv_raw(d,field));if jv_kind(d,field)!=JV_NUMBER || !number.ok {return bad;}units[i]=number.units;sum+=number.units;}
-    confidence:=gg_member(d,answer,"confidence");c:=gg_probability(jv_raw(d,confidence));
+    for i:0..<5 {field:=gg_member(d,probs,GG_OPTIONS[i]);number:=gdr_probability(jv_raw(d,field),long);if jv_kind(d,field)!=JV_NUMBER || !number.ok {return bad;}units[i]=number.units;sum+=number.units;}
+    confidence:=gg_member(d,answer,"confidence");c:=gdr_probability(jv_raw(d,confidence),long);
     if jv_kind(d,confidence)!=JV_NUMBER || !c.ok || sum<GG_UNIT-GG_TOL || sum>GG_UNIT+GG_TOL {return bad;}
     best:=2;for i:[4]int.[3,1,0,4] {if units[i]>units[best] {best=i;}}
     if !gg_is(d,gg_member(d,answer,"choice"),GG_OPTIONS[best]) || c.units<units[best]-GG_TOL || c.units>units[best]+GG_TOL {return bad;}
-    return GgAnswer.{ok=true,action=best};
+    return GgAnswer.{ok=true,action=best,door=from};
 }
 gg_admit :: (o:GgObservation,a:GgAnswer,elapsed_ms:int)->GgAdmit #export_c #effects(all) {
     if !gg_ready(o) || !a.ok || elapsed_ms<0 || elapsed_ms>=GG_TIMEOUT {return GgAdmit.{};}
     // Compare bounded authored identities directly; never shift by an untrusted
     // answer integer. Quiet is abstention, not a bypass of request eligibility.
     if a.action!=0 && a.action!=gg_baseline(o) {return GgAdmit.{};}return GgAdmit.{ok=true,action=a.action};
+}
+#test "the fixture rewriter replaces the first occurrence, at either end, and refuses an absent or oversized one" {
+    out:[8]u8;
+    #assert gg_test_replace(out[..],"abc","a","x")=="xbc" && gg_test_replace(out[..],"abc","c","x")=="abx" && gg_test_replace(out[..],"abc","b","xy")=="axyc";
+    #assert gg_test_replace(out[..],"abab","ab","c")=="cab" && gg_test_replace(out[..],"abc","abc","")=="" && gg_test_replace(out[..],"abc","b","")=="ac";
+    #assert gg_test_replace(out[..],"abc","x","y")=="" && gg_test_replace(out[..],"abc","abcd","y")=="";
+    #assert gg_test_replace(out[0..<4],"abc","b","xy")=="axyc" && gg_test_replace(out[0..<3],"abc","b","xy")=="" && gg_test_replace(out[0..<3],"abc","b","x")=="axc";
 }

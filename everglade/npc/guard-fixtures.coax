@@ -1,5 +1,11 @@
 // Test fixture byte rewriting only; it is never a guard effect or policy.
 ga_swap :: (out:[]u8,text:string,from:string,to:string)->string {
-  n:=0;i:=0;while i<text.count {if from.count>0 && i+from.count<=text.count && text[i..<i+from.count]==from {n=json_raw(out,n,to);i+=from.count;}else {n=json_raw(out,n,text[i..<i+1]);i+=1;}}return ifx n<0 then "" else cast(string)out[0..<n];
+  n:=0;i:=0;while i<text.count {if from.count>0 && i+from.count<=text.count && text[i..<i+from.count]==from {n=json_raw(out,n,to);i+=from.count;}else {n=json_raw(out,n,text[i..<i+1]);i+=1;}}if n==-1 {return "";}return cast(string)out[0..<n];
 }
-
+// Synthetic wire fixtures, never model outputs. Elephant's answer to the ambient question:
+GA_RESPONSE :: "{\"model\":\"elephant-1\",\"answers\":{\"ambient\":{\"type\":\"choice\",\"choice\":\"greeting\",\"confidence\":0.8,\"probabilities\":{\"quiet\":0.1,\"greeting\":0.8,\"weather\":0.1}}},\"service\":{\"version\":\"psionic-pylon-v1\",\"door\":\"pylon:test\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\",\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\"}}";
+// What the server sends when Gemini Decision 1 answers the same question (guard-door-server-checks.coax
+// builds these bytes with the server's mapping). Google writes its doubles in full and sorts the options.
+GA_GEMINI_RESPONSE :: "{\"model\":\"gemini-decision-1\",\"answers\":{\"ambient\":{\"type\":\"choice\",\"choice\":\"greeting\",\"confidence\":0.7986959655499162,\"probabilities\":{\"greeting\":0.7986959655499162,\"quiet\":0.2,\"weather\":0.0013040344500838044}}},\"usage\":{\"input_tokens\":131,\"output_tokens\":0},\"service\":{\"door\":\"gemini\",\"identity\":\"gemini-decision-1\",\"provider\":\"google\"}}";
+// ga_request's bytes for a clear morning (guard-decision.coax checks the writer against them).
+GA_REQUEST_MORNING_CLEAR :: "{\"model\":\"auto\",\"state\":\"A calm healthy town guard and a nearby peaceful living player. Time: morning. Weather: clear.\",\"questions\":{\"ambient\":{\"type\":\"choice\",\"instructions\":\"Choose one harmless ambient action. Never affect movement, crime, combat or rewards.\",\"criteria\":{\"quiet\":\"Remain quiet\",\"greeting\":\"Offer an authored greeting\",\"weather\":\"Make an authored weather remark\"}}}}";
