@@ -214,7 +214,28 @@ sp_stairs :: (buf: [] u32, p: [] Pen) {
   sp_robot(buf, p, frame_at(v3(-1, 0, 5), 3.0), 1);
 }
 
-SP_SCENES :: 17;
+// 17 to 23, the cast (splice-cast.coax) to review: the five of the slice on plinths under a big empty
+// sky, at their sizes in the game. 17 is the line-up, 18 to 22 one each, 23 the line-up from behind.
+SP_CAST :: 17;
+cast_spot :: (who: int) -> Point { return ifx who == 0 then v3(-9.0, 0.25, 0) else ifx who == 1 then v3(-5.6, 0.25, 0) else ifx who == 2 then v3(0.2, 0.25, 0) else ifx who == 3 then v3(5.6, 0.25, 0) else v3(11.0, 0.25, -1.5); }
+sp_cast :: (buf: [] u32, p: [] Pen) {
+  kit_ground(buf, p, 1, sc(0.93, 0.84, 0.68), false);
+  kit_mesas(buf, p, 2, sc(0.74, 0.62, 0.78), 7, 1700, 120, 34, 10, 24);
+  kit_dunes(buf, p, 3, sc(0.95, 0.78, 0.56), 8, 1710, 60, -70, -30, 6, 12);
+  for who: 0..<5 {
+    at := cast_spot(who); r := ifx who == 2 then 3.6f32 else ifx who == 4 then 3.4f32 else ifx who == 1 then 2.3f32 else 1.2f32;
+    kit_pen(p, 4 + who, MAT_WORLD, sc(0.80, 0.70, 0.56));
+    tube(buf, p, frame_at(v3(at.x, 0, at.z), 0), 0.25, r + 0.15, r + 0.15, r, r, 24, true);
+  }
+  c := cast_colour();
+  cast_smuggler(buf, p, frame_at(cast_spot(0), 0.35), 1, 20, 0.6, c);
+  cast_digger(buf, p, frame_at(cast_spot(1), 0.55), 1, 40, CAST_AMBER(), true, true, true, 0.4, c);
+  cast_rover(buf, p, frame_at(cast_spot(2), 0.95), 1.5, 60, 0, c);
+  cast_raider(buf, p, frame_at(cast_spot(3), -0.3), 1, 80, sc(1.0, 0.36, 0.62), 0.5, c);
+  cast_boss(buf, p, frame_at(cast_spot(4), -0.35), 1, 100, sc(0.22, 0.34, 0.56), sc(0.12, 0.14, 0.24), CAST_CYAN(), true, c);
+}
+
+SP_SCENES :: 24;
 // Each scene's world, written once when the scene is chosen.
 sp_build_world :: (buf: [] u32, p: [] Pen, scene: int) {
   if scene == 1 { sp_arch(buf, p); } else if scene == 2 { sp_crabs(buf, p); } else if scene == 3 { sp_walker(buf, p); }
@@ -222,7 +243,7 @@ sp_build_world :: (buf: [] u32, p: [] Pen, scene: int) {
   else if scene == 7 { sp_palace(buf, p); } else if scene == 8 { sp_spider(buf, p); } else if scene == 9 { sp_tanks(buf, p); }
   else if scene == 10 { sp_caravan(buf, p); } else if scene == 11 { sp_windmill(buf, p); } else if scene == 12 { sp_skycity(buf, p); }
   else if scene == 13 { sp_mech(buf, p); } else if scene == 14 { sp_spire(buf, p); } else if scene == 15 { sp_sea(buf, p); }
-  else if scene == 16 { sp_stairs(buf, p); } else { sp_dunes(buf, p); }
+  else if scene == 16 { sp_stairs(buf, p); } else if scene >= SP_CAST { sp_cast(buf, p); } else { sp_dunes(buf, p); }
 }
 scam :: (ex: f32, ey: f32, ez: f32, ax: f32, ay: f32, az: f32, fov: f32) -> CamNow { return CamNow.{eye = v3(ex, ey, ez), at = v3(ax, ay, az), fov = fov}; }
 // Each scene's camera (one fixed view per scene).
@@ -243,12 +264,20 @@ sp_camera :: (scene: int) -> CamNow {
   if scene == 14 { return scam(3, 1.6, 12, 0, 18, -40, 0.8); }
   if scene == 15 { return scam(-5, 2.6, 12, 0, 2.6, -6, 0.62); }
   if scene == 16 { return scam(5, 4.5, 22, 0, 8, -14, 0.7); }
+  if scene == 17 { return scam(1.8, 1.2, 26, 1.8, 4.8, 0, 0.6); }
+  if scene == 18 { return scam(-7.6, 1.7, 4.9, -9.0, 1.42, 0, 0.6); }
+  if scene == 19 { return scam(-7.9, 1.9, 4.9, -5.4, 1.2, 0.4, 0.6); }
+  if scene == 20 { return scam(5.0, 3.2, 10.5, 0.2, 2.2, 0, 0.6); }
+  if scene == 21 { return scam(4.4, 1.7, 4.8, 5.6, 1.42, 0, 0.6); }
+  if scene == 22 { return scam(8.0, 2.4, 12.0, 11.0, 3.2, -1.5, 0.6); }
+  if scene == 23 { return scam(1.8, 1.2, -27, 1.8, 4.8, 0, 0.6); }
   return scam(-5.6, 2.6, 13, 0.5, 1.7, 0, 0.52);
 }
 slook :: (variant: int, clock: f32, kx: f32, ky: f32, kz: f32) -> SpLook { return SpLook.{variant = variant, clock = clock, key = unit_or(v3(kx, ky, kz), v3(0, 1, 0))}; }
 // Each scene's look: a noon pastoral for the bright pins, dusk for the sunset ones, neon for night.
 sp_look :: (scene: int) -> SpLook {
-  if scene == 5 || scene == 7 || scene == 9 || scene == 10 || scene == 13 { return slook(SP_PASTORAL, 0.5, -0.45, 0.62, -0.64); }
+  if scene == 23 { return slook(SP_PASTORAL, 0.5, 0.45, 0.62, 0.64); }
+  if scene == 5 || scene == 7 || scene == 9 || scene == 10 || scene == 13 || scene >= SP_CAST { return slook(SP_PASTORAL, 0.5, -0.45, 0.62, -0.64); }
   if scene == 6 || scene == 12 || scene == 16 { return slook(SP_PASTORAL, 0.62, -0.6, 0.45, -0.66); }
   if scene == 8 { return slook(SP_NEON, 0.0, 0.5, 0.4, -0.76); }
   if scene == 11 || scene == 15 { return slook(SP_DUSK, 0.80, 0.55, 0.2, -0.81); }

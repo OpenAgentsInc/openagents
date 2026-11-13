@@ -48,6 +48,13 @@ the inventory you had when you last stood there. Heat cools only by the rover or
 - **G** switches graybox on and off: the whole world in grays, with only orange, yellow and cyan
   left in colour. `?gray` in the address opens in it.
 
+## Cast
+
+The five characters of the slice are our own designs (`splice-cast.coax`): the Smuggler, the Rover,
+the Digger, a raider and the banned bot. To review them outside the game, open `?scene=17` (the
+line-up at true sizes), `?scene=18` to `?scene=22` (one each) or `?scene=23` (the line-up from
+behind).
+
 ## Look
 
 The interface follows the Game UI board: ink on cream paper (paper `#EADBC4`, ink `#1E1B18`,

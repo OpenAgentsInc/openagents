@@ -10,6 +10,7 @@
 // layout, style and shader.
 #load "../../apps/openagents-web/animelab.coax";
 #load "../../aethyr/kit/land.coax";
+#load "splice-cast.coax";
 
 // ---- Tuning (the document's DA_Tuning): every number the run is balanced with
 T_WALK :: 5.6f32; T_TURN :: 2.5f32; T_LOOK :: 0.0032f32; T_RADIUS :: 0.45f32;
@@ -593,9 +594,7 @@ g_world :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     kit_wall(buf, p, 6 + (i % 4) * 2, face, band, g[0].walls[o], g[0].walls[o + 1], g[0].walls[o + 2], g[0].walls[o + 3], h, cast(f32) i * 17);
   }
   // the rover (the hidden edit bay) parked at the mine, the checkpoint post, the stash crate
-  kit_rover(buf, p, frame_at(v3(ROVER_X, 0, ROVER_Z), 0.2), 1.5, 20, t3(0.93, 0.88, 0.76), t3(0.76, 0.34, 0.20), INK());
-  kit_pen(p, 24, MAT_CLOTH, t3(0.70, 0.52, 0.36));
-  box(buf, p, frame_at(v3(ROVER_X, 2.9, ROVER_Z - 0.9), 0.2), 1.1, 0.5, 1.3);
+  cast_rover(buf, p, frame_at(v3(ROVER_X, 0, ROVER_Z), 0.2), 1.5, 180, 0, cast_colour());
   kit_pen(p, 25, MAT_SKIN, t3(0.93, 0.88, 0.76));
   tube(buf, p, frame_at(v3(POST_X, 0, POST_Z), 0), 3.2, 0.14, 0.14, 0.1, 0.1, 8, true);
   kit_pen(p, 26, MAT_GLOW, t3(1.0, 0.72, 0.30));
@@ -723,9 +722,7 @@ g_world :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
 
 // ---- What moves, written every frame
 g_draw_rover :: (buf: [] u32, p: [] Pen, at: Point, yaw: f32) {
-  kit_rover(buf, p, frame_at(at, yaw), 1.5, 150, t3(0.93, 0.88, 0.76), t3(0.76, 0.34, 0.20), INK());
-  kit_pen(p, 154, MAT_CLOTH, t3(0.70, 0.52, 0.36));
-  box(buf, p, kit_at(frame_at(at, yaw), 0, 2.9, -0.9), 1.1, 0.5, 1.3);
+  cast_rover(buf, p, frame_at(at, yaw), 1.5, 150, at.x + at.z, cast_colour());   // the wheels turn as it travels
 }
 g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   t := g[0].t; blue := GLOW();
@@ -734,15 +731,15 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     // robots and people working side by side, all hologram blue
     for i: 0..<3 {
       k := cast(f32) i; bob := sin(t * 2 + k * 2) * 0.08;
-      kit_digger(buf, p, frame_at(v3(MEM_X - 6 + k * 6, 0.05 + bob, MEM_Z - 2), 0.6 + k * 0.4), 1.2, 50, blue, GLOW_INK(), blue, blue, true, true, true, t * 6);
-      kit_figure(buf, p, frame_at(v3(MEM_X - 4 + k * 6, 0.05, MEM_Z + 0.5 + sin(t * 0.7 + k) * 0.6), 2.4 + k * 0.5), 1.1, 60, blue, blue, GLOW_INK(), blue, t * 4 + k);
+      cast_digger(buf, p, frame_at(v3(MEM_X - 6 + k * 6, 0.05 + bob, MEM_Z - 2), 0.6 + k * 0.4), 1.2, 50 + i * 20, blue, true, true, true, t * 6, cast_mono(ifx i == 1 then GLOW_INK() else blue));
+      cast_smuggler(buf, p, frame_at(v3(MEM_X - 4 + k * 6, 0.05, MEM_Z + 0.5 + sin(t * 0.7 + k) * 0.6), 2.4 + k * 0.5), 1.0, 60 + i * 20, t * 4 + k, cast_mono(ifx i == 1 then blue else GLOW_INK()));
     }
     return;
   }
   if g[0].mode == M_BAY {
     // the Digger on the bay's stage, wearing the hardware spliced into it
-    kit_digger(buf, p, frame_at(v3(BAY_X, 0.05, BAY_Z), 0.7 + sin(t * 0.5) * 0.25), 1.15, 50, t3(0.93, 0.88, 0.76), INK(), HEAT(), ifx g[0].have[H_PLUS] then blue else t3(1.0, 0.72, 0.30),
-               g[0].slot[0], g[0].slot[1], g[0].slot[2], t * 3);
+    cast_digger(buf, p, frame_at(v3(BAY_X, 0.05, BAY_Z), 0.7 + sin(t * 0.5) * 0.25), 1.15, 50, ifx g[0].have[H_PLUS] then blue else CAST_AMBER(),
+                g[0].slot[0], g[0].slot[1], g[0].slot[2], t * 3, cast_colour());
     return;
   }
   if g[0].zone == Z_RAIL {
@@ -759,16 +756,11 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   y := ifx g[0].zone == Z_MINE then ground_y(g[0].px, g[0].pz) else 0.0f32;
   blink := g[0].hit_cool > 0 && fract(t * 8) < 0.5;
   if !blink {
-    // the smuggler: a cylinder, with a visor band that shows which way it faces
+    // the smuggler (splice-cast.coax), walking when a move key is held
     pf := frame_at(v3(g[0].px, y, g[0].pz), g[0].yaw);
-    sk := g_thing(g, p, TK_SMUGGLER, 0, pf, 1, g[0].stride);
+    sk := g_thing(g, p, TK_SMUGGLER, 0, pf, 0.85, g[0].stride);
     if sk >= 0 {
-    kit_pen(p, 60, MAT_SKIN, t3(0.76, 0.34, 0.20));
-    tube(buf, p, pf, 1.6, 0.42, 0.42, 0.42, 0.42, 14, true);
-    kit_pen(p, 61, MAT_WINDOW, INK());
-    box(buf, p, kit_at(pf, 0, 1.25, 0.36), 0.3, 0.1, 0.08);
-    kit_pen(p, 62, MAT_SKIN, t3(0.93, 0.86, 0.70));
-    tube(buf, p, kit_at(pf, 0, 1.6, 0), 0.08, 0.46, 0.46, 0.46, 0.46, 14, true);
+    cast_smuggler(buf, p, pf, 0.85, 200, g[0].stride, cast_colour());
     g_thing_end(g, p, sk); }
   }
   if g[0].zone != Z_MINE { return; }
@@ -806,7 +798,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     df := frame_at(v3(g[0].bot_x + shake, ground_y(g[0].bot_x, g[0].bot_z), g[0].bot_z), g[0].bot_yaw);
     dk := g_thing(g, p, TK_DIGGER, ifx g[0].have[H_PLUS] then 1 else 0, df, 0.85, t);
     if dk >= 0 {
-    kit_digger(buf, p, frame_at(v3(g[0].bot_x + shake, ground_y(g[0].bot_x, g[0].bot_z), g[0].bot_z), g[0].bot_yaw), 0.85, 95, t3(0.93, 0.88, 0.76), INK(), HEAT(), ifx g[0].have[H_PLUS] then blue else t3(1.0, 0.72, 0.30), true, true, true, g[0].bot_spin);
+    cast_digger(buf, p, df, 0.85, 190, ifx g[0].have[H_PLUS] then blue else CAST_AMBER(), true, true, true, g[0].bot_spin, cast_colour());
     g_thing_end(g, p, dk); }
   }
   // the party's people: raiders dancing where they stand, Imperial robots on patrol
@@ -820,11 +812,9 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
       dance := !g[0].fhost[i];
       beat := t * 7.5 + cast(f32) i * 1.3;
       f := frame_at(v3(g[0].fx[i] + reel, fy + (ifx dance then abs(sin(beat)) * 0.22 else 0.0f32), g[0].fz[i]), ifx dance then sin(beat * 0.5) * 0.9 + cast(f32) i else face);
-      fk := g_thing(g, p, TK_RAIDER, ifx g[0].fhost[i] then 1 else 0, f, 1.15, ifx dance then beat else t * 9);
+      fk := g_thing(g, p, TK_RAIDER, ifx g[0].fhost[i] then 1 else 0, f, 0.95, ifx dance then beat else t * 9);
       if fk >= 0 {
-      kit_figure(buf, p, f, 1.15, 100 + i * 5, t3(0.16, 0.12, 0.18), t3(0.16, 0.12, 0.18), t3(0.10, 0.08, 0.12), t3(0.30, 0.14, 0.20), ifx dance then beat else t * 9);
-      kit_pen(p, 104 + i * 5, MAT_GLOW, ifx g[0].fhost[i] then t3(1.0, 0.30, 0.12) else t3(1.0, 0.36, 0.62));
-      box(buf, p, kit_at(f, 0, 1.9, 0.19), 0.12, 0.03, 0.02);
+      cast_raider(buf, p, f, 0.95, 100 + i * 5, ifx g[0].fhost[i] then t3(1.0, 0.30, 0.12) else t3(1.0, 0.36, 0.62), ifx dance then beat else t * 9, cast_colour());
       g_thing_end(g, p, fk); }
     } else {
       // an Imperial robot: white plates, an orange band, a red eye once it has seen you
@@ -857,15 +847,17 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   // the banned bot, its arm and its three weak points
   bf := frame_at(v3(BOSS_X, 0, BOSS_Z), 0);
   grey := t3(0.40, 0.40, 0.46);
-  bk := g_thing(g, p, TK_BOSS, ifx g[0].boss_down then 1 else 0, bf, 1.25, g[0].boss_t);
+  swinging := !g[0].boss_down && g[0].wall_gone;
+  bk := g_thing(g, p, TK_BOSS, ifx g[0].boss_down then 1 else 0, bf, 1, g[0].boss_t);
   if bk >= 0 {
-  kit_mech(buf, p, bf, 1.25, 130, ifx g[0].boss_down then grey else t3(0.22, 0.34, 0.56), ifx g[0].boss_down then t3(0.3, 0.3, 0.34) else blue, t3(0.12, 0.14, 0.24), ifx g[0].boss_down then t3(0.3, 0.3, 0.34) else blue);
+  cast_boss(buf, p, bf, 1, 210, ifx g[0].boss_down then grey else t3(0.22, 0.34, 0.56), t3(0.12, 0.14, 0.24), ifx g[0].boss_down then t3(0.3, 0.3, 0.34) else blue, !swinging, cast_colour());
   g_thing_end(g, p, bk); }
-  if !g[0].boss_down && g[0].wall_gone {
+  if swinging {
     a := boss_arm(g);
     warn := g[0].boss_t > T_SWEEP_EVERY - T_SWEEP_WARN && g[0].boss_t <= T_SWEEP_EVERY && fract(t * 6) < 0.5;
     kit_pen(p, 136, ifx warn then MAT_GLOW else MAT_SKIN, ifx warn then t3(1.0, 0.36, 0.14) else t3(0.22, 0.34, 0.56));
-    limb(buf, p, v3(BOSS_X, 3.4, BOSS_Z), v3(BOSS_X + sin(a) * T_ARM, 1.1, BOSS_Z + cos(a) * T_ARM), 0.5, 0.34, v3(0, 1, 0), 8);
+    ball(buf, p, v3(BOSS_X + 1.88, 4.15, BOSS_Z), 0.62, 10);
+    limb(buf, p, v3(BOSS_X + 1.88, 4.15, BOSS_Z), v3(BOSS_X + sin(a) * T_ARM, 1.1, BOSS_Z + cos(a) * T_ARM), 0.5, 0.34, v3(0, 1, 0), 8);
     ball(buf, p, v3(BOSS_X + sin(a) * T_ARM, 1.1, BOSS_Z + cos(a) * T_ARM), 0.6, 10);
   }
   for i: 0..<3 {
