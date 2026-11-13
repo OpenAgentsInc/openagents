@@ -108,9 +108,9 @@ ih_page :: (out: string, name: string) -> bool {
   n := fs_read(from, src[..]);
   if n < 0 { tool_err("int-hash: no "); tool_errln(from); return false; }
   times := ih_count(cast(string) src[0..<n], IH_COAX_SIN);
-  stars := ih_count(cast(string) src[0..<n], "#load \"../../../verse/stars.coax\"") == 1;
-  styled := ih_count(cast(string) src[0..<n], "#load \"../../../verse/style.coax\"") == 1;
-  moving := ih_count(cast(string) src[0..<n], "#load \"../../../aethyr/render/particle-motion.coax\"") == 1;
+  stars := ih_count(cast(string) src[0..<n], "#load \"../../../metaverse/stars.coax\"") == 1;
+  styled := ih_count(cast(string) src[0..<n], "#load \"../../../metaverse/style.coax\"") == 1;
+  moving := ih_count(cast(string) src[0..<n], "#load \"../../../metaverse-engine/render/particle-motion.coax\"") == 1;
   // a page with no sin hash (Orbit League) is written as it is, its loads made whole
   body: [1024] u8;
   r := ih_cat3(" x:=p.x;y:=p.y;\n", IH_STYLE_INT, "", body[..]);
@@ -135,11 +135,11 @@ ih_page :: (out: string, name: string) -> bool {
     st := ih_replace(star_text, IH_STARS, sr, sd[..], star_times);
     if st.count==0 {tool_errln("int-hash: unknown stars hash source");return false;}
     star_whole:[IH_FILE]u8;star_cwd:[1024]u8;star_dir:[2048]u8;
-    st=ih_whole_loads(st,ih_cat3(fs_cwd(star_cwd[..]),"/verse/","",star_dir[..]),star_whole[..]);
+    st=ih_whole_loads(st,ih_cat3(fs_cwd(star_cwd[..]),"/metaverse/","",star_dir[..]),star_whole[..]);
     if st.count==0 {tool_errln("int-hash: cannot rewrite stars loads");return false;}
     sp2 := fs_join(out, "stars.coax", sb[..]);
     if !fs_write(sp2, st) { tool_err("int-hash: cannot write "); tool_errln(sp2); return false; }
-    text = ih_replace(text, "#load \"../../../verse/stars.coax\"", ih_cat3("#load \"", sp2, "\"", lb[..]), xb[..], 1);
+    text = ih_replace(text, "#load \"../../../metaverse/stars.coax\"", ih_cat3("#load \"", sp2, "\"", lb[..]), xb[..], 1);
     for k: 0..<text.count { tmp[k] = text[k]; }
     text = cast(string) tmp[0..<text.count];
   }
@@ -154,11 +154,11 @@ ih_page :: (out: string, name: string) -> bool {
     if sty.count == 0 { tool_errln("int-hash: metaverse/style.coax does not have metaverse_style_hash"); return false; }
     // its own loads whole, as it moves beside the page
     yw: [IH_FILE] u8; vb: [1024] u8; vd: [1024] u8;
-    sty = ih_whole_loads(sty, ih_cat3(fs_cwd(vb[..]), "/verse/", "", vd[..]), yw[..]);
+    sty = ih_whole_loads(sty, ih_cat3(fs_cwd(vb[..]), "/metaverse/", "", vd[..]), yw[..]);
     if sty.count == 0 { tool_errln("int-hash: cannot rewrite metaverse/style.coax's loads"); return false; }
     yp := fs_join(out, "style.coax", yb[..]);
     if !fs_write(yp, sty) { tool_err("int-hash: cannot write "); tool_errln(yp); return false; }
-    text = ih_replace(text, "#load \"../../../verse/style.coax\"", ih_cat3("#load \"", yp, "\"", yl[..]), yx[..], 1);
+    text = ih_replace(text, "#load \"../../../metaverse/style.coax\"", ih_cat3("#load \"", yp, "\"", yl[..]), yx[..], 1);
     for k: 0..<text.count { tmp[k] = text[k]; }
     text = cast(string) tmp[0..<text.count];
   }
@@ -172,7 +172,7 @@ ih_page :: (out: string, name: string) -> bool {
     if mo.count == 0 { tool_errln("int-hash: cannot rewrite metaverse-engine/render/particle-motion.coax"); return false; }
     mp := fs_join(out, "particle-motion.coax", mb[..]);
     if !fs_write(mp, mo) { tool_err("int-hash: cannot write "); tool_errln(mp); return false; }
-    text = ih_replace(text, "#load \"../../../aethyr/render/particle-motion.coax\"", ih_cat3("#load \"", mp, "\"", ml[..]), mx[..], 1);
+    text = ih_replace(text, "#load \"../../../metaverse-engine/render/particle-motion.coax\"", ih_cat3("#load \"", mp, "\"", ml[..]), mx[..], 1);
     for k: 0..<text.count { tmp[k] = text[k]; }
     text = cast(string) tmp[0..<text.count];
   }

@@ -18,8 +18,8 @@ host="${1:?usage: check.sh HOST [REALM]}"
 realm="${2:-everglade}"
 work="$(mktemp -d "${TMPDIR:-/tmp}/verse-native.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
-m="$root/verse"
-a="$root/aethyr"   # the engine modules (#12609)
+m="$root/metaverse"
+a="$root/metaverse-engine"   # the engine modules (#12609)
 web="$root/apps/openagents-web"
 module="$realm"   # the module a realm runs (the haunted house and the sandbox: realm)
 case "$realm" in
