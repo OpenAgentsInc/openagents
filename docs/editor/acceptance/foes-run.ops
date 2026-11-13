@@ -1,8 +1,8 @@
 # The foes' plans in the editor (#13466), for coax drive (docs/editor/acceptance/README.md, "Foes").
-# Start from an empty world on the dev server. Size 1280x800, query "edit&stage=5", --real-time: each edit
-# verb fails the run unless the world takes it and the page stands at its revision; `state` shows the rest.
-clock +3000
-state page.f.rev
+# Start from an empty world on the dev server. Size 1280x800, query "edit&stage=5": each edit verb fails the
+# run unless the world takes it and the page stands at its revision; `state` shows the rest.
+# the page reaches its world's first revision from the dev server
+clock until page.f.rev >= 0 within 60000
 type - key Enter
 clock +800
 type - key Escape

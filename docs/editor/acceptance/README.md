@@ -101,7 +101,7 @@ the first pass, then:
 ```sh
 coax/web/tool.sh drive web apps/openagents-web /worlds/splice \
   --query "edit&stage=5" --size 1280x800 --live http://127.0.0.1:9538 \
-  --real-time --ops docs/editor/acceptance/foes-run.ops
+  --ops docs/editor/acceptance/foes-run.ops
 ```
 
 It reads the actors and their plans, sets the editor's time to dusk, sets two
@@ -111,9 +111,10 @@ unless the world takes it and the page stands at its revision. It leaves
 `foes-dusk.png`, `foes-simulate.png` and `foes-dawn.png` in
 `apps/openagents-web/build/`.
 
-It runs with `--real-time` because under the agent clock the page does not
-reach its world's first revision on the dev server (#13475), so `state`
-shows the time of day and the actor where `clock until` would hold them.
+It runs on the agent clock: it waits with `clock until` for the page to
+reach its world's first revision from the dev server. Start it after the
+server's log says `engine rebuilt` when a source changed: while the server
+rebuilds, the page gets no world and every edit verb fails.
 
 ## Splice's front door
 
