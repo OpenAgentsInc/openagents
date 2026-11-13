@@ -214,12 +214,12 @@ saved; the report line of each job does.
 
 ### The default build and the old set
 
-`apps/openagents-web/build.sh` makes the pages of what is live. Sixteen
+`apps/openagents-web/build.sh` makes the pages of what is live. Seventeen
 modules are the old set (#13269): v1 Everglade (`everglade`, `fivemmo`,
 `everglade5e`), Experimental and the 5E Lab (`fivelab`), and the lab pages
 (`animationlab`, `animelab`, `audiolab`, `bitcoin-lab`, `bitcoin-lab-walk`,
-`metahumanlab`, `nostr-lab-walk`, `ocarinalab`, `portallab`, `splatlab`,
-`valleylab`, `waterlab`). Their lines in `build.sh` start with `old`, and they
+`coax-lab-walk`, `metahumanlab`, `nostr-lab-walk`, `ocarinalab`, `portallab`,
+`splatlab`, `valleylab`, `waterlab`). Their lines in `build.sh` start with `old`, and they
 build only under `COAXIAL_PAGES=all`.
 
 - A release sets `COAXIAL_PAGES=all` (`coax/web/deploy.sh`,

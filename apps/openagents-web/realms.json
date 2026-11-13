@@ -632,6 +632,18 @@
         "assets": ["pack:/realms/everglade-experimental/assets/glade.pack.gz", "particles:/bitcoin-lab-fx.wgsl",
           "sounds:/realms/everglade/sfx/", "sound:step-1-e1=/realms/everglade/sfx/step-1-e1.ogg", "sound:step-2-e1=/realms/everglade/sfx/step-2-e1.ogg", "sound:step-3-e1=/realms/everglade/sfx/step-3-e1.ogg"]
       } },
+    { "id": "coax-lab", "name": "COAX LAB", "kind": "open", "listed": false,
+      "orbit": { "r": 0.45, "a": 3.05, "size": 0.018 },
+      "realm": {
+        "slug": "coax-lab", "title": "Coax Lab",
+        "description": "An unlisted walk on the Grid through the Coax programming language: declarations, a byte that stops at 255, a struct byte by byte, a table the compiler built, a check over 1,974 cases and a planted bug, each run live in Coax or shown as the compiler printed it.",
+        "alt": "Your Everglade character on a glowing Grid lane beside lit stations showing Coax source code, a byte counter stopped at 255 and a grid of green check cases",
+        "module": "coax-lab-walk", "slot": "coax-lab", "style": "painterly", "clock": "fixed:0.5",
+        "golden": { "lit": 0.02, "settle": 3000, "blocks": 6 },
+        "ui_font_src": "/realms/everglade2/assets/fonts/Spectral-Medium.ttf", "ui_font_family": "EvergladeSpectral", "ui_title_font_src": "/realms/everglade2/assets/fonts/Cinzel.ttf", "ui_title_font_family": "EvergladeCinzel", "ui_title_font_weight": "600",
+        "assets": ["pack:/realms/everglade-experimental/assets/glade.pack.gz", "particles:/bitcoin-lab-fx.wgsl",
+          "sounds:/realms/everglade/sfx/", "sound:step-1-e1=/realms/everglade/sfx/step-1-e1.ogg", "sound:step-2-e1=/realms/everglade/sfx/step-2-e1.ogg", "sound:step-3-e1=/realms/everglade/sfx/step-3-e1.ogg"]
+      } },
     { "id": "frontier", "name": "PENULTIMATE FRONTIER", "kind": "open", "listed": false, "orbit": { "r": 0.32, "a": 1.4, "size": 0.026 },
       "realm": {
         "slug": "penultimate-frontier",

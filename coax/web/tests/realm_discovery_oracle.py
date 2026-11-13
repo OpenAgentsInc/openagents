@@ -16,7 +16,7 @@ observed = set(subprocess.check_output(
     [str(ROOT / "coax/web/tool.sh"), "discovery-realms", str(APP / "realms.json")],
     cwd=ROOT, text=True).splitlines())
 assert observed == expected_hidden
-assert "realms/bitcoin-lab/" in observed and "realms/nostr-lab/" in observed
+assert "realms/bitcoin-lab/" in observed and "realms/nostr-lab/" in observed and "realms/coax-lab/" in observed
 
 # Execute exactly the discovery code that deploy.sh runs, with isolated files.
 source = (ROOT / "coax/web/deploy.sh").read_text()
@@ -44,7 +44,7 @@ with tempfile.TemporaryDirectory(prefix="realm-discovery-oracle-") as tmp:
     assert set(scope["public"]) == {"docs/public/index.md", "realms/public/index.md", "projects/public/index.md"}
     for output in ["sitemap.xml", "llms-full.txt"]:
         text = (site / output).read_text()
-        assert "bitcoin-lab" not in text and "nostr-lab" not in text
+        assert "bitcoin-lab" not in text and "nostr-lab" not in text and "coax-lab" not in text
         assert all(prefix.rstrip("/") not in text for prefix in expected_hidden)
 
 # Compare generated status/source rows independently with the canonical registry.
@@ -76,6 +76,7 @@ for row, link, chapter in zip(parser.rows, parser.links, chapters):
         assert (ROOT / "bitcoin/book/PLAN.md").read_text().splitlines()[line-1].startswith(f'| {chapter["number"]}. ')
 for path in ["realms/index.html", "realms/index.md", "realms/list.coax", "index.html", "llms.txt"]:
     assert "bitcoin-lab" not in (APP / path).read_text() and "nostr-lab" not in (APP / path).read_text(), path
+    assert "coax-lab" not in (APP / path).read_text(), path
 for world in worlds:
     if world.get("listed") is False and world.get("realm"):
         html = (APP / "realms" / world["realm"]["slug"] / "index.html").read_text()

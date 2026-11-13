@@ -119,6 +119,10 @@ bitcoin-lab-walk 2950000
 # word list), scrypt and NFKC for key backup, Negentropy and the rest: 3,520,351 bytes measured;
 # about 3% headroom.
 nostr-lab-walk 3630000
+# Coax Lab's walk (coax-lab-walk.coax): the same lab walk with the Coax lesson (the compiler's lexer,
+# the CRC-32 and Mandelbrot tables built at compile time, Life, the refund cases, the engine camera's
+# dolly and the wave field): 2,918,913 bytes measured on the remote hosts; about 3% headroom.
+coax-lab-walk 3000000
 # Everglade II's graphics governor (metaverse-engine/core/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade/client/create.coax,
 # #13023) to 319,706; about 6% headroom.

@@ -399,6 +399,11 @@ bitcoin_lab_walk=$!
 COAXIAL_RUN_STEPS=250000000 old timed nostr-lab-walk "$here/../../coax/web/wasm.sh" "$here/nostr-lab-walk.coax" "$here/nostr-lab-walk-face.c" "$here/build/nostr-lab-walk.wasm" \
   "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 nostr_lab_walk=$!
+# /worlds/coax-lab (unlisted): Coax Lab, the Coax language as a walk on the Grid (Episode 296), on the same lab walk.
+# Its Mandelbrot table is drawn at compile time: the larger budget.
+COAXIAL_RUN_STEPS=60000000 old timed coax-lab-walk "$here/../../coax/web/wasm.sh" "$here/coax-lab-walk.coax" "$here/coax-lab-walk-face.c" "$here/build/coax-lab-walk.wasm" \
+  "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
+coax_lab_walk=$!
 # /worlds/valley-lab/cull (unlisted): the GPU cull's lab (#13008), its residency and its fixture.
 timed cullstream "$here/../../coax/web/wasm.sh" "$here/cullstream.coax" "$here/cullstream-face.c" "$here/build/cullstream.wasm" &
 cullstream=$!
@@ -545,6 +550,7 @@ wait "$fivelab"
 wait "$archery_range"
 wait "$bitcoin_lab_walk"
 wait "$nostr_lab_walk"
+wait "$coax_lab_walk"
 wait "$everglade2"
 # Everglade II's admin mode is a dev build's only (everglade/client/admin.coax, wasm.sh's --build-profile):
 # a release everglade2.wasm holding its panel's words or its room lines is refused.

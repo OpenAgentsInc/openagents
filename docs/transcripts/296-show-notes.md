@@ -7,10 +7,11 @@ outline, not a script. The lines are written to be said out loud, in the
 voice of Episodes 290, 293, 294 and 295. Read them, change the words, and
 say them your own way.
 
-Episodes 294 and 295 each walked a world. **Coax Lab is not built yet.**
-[Section 7](#7-coax-lab-proposed) proposes its stations.
-[Section 6](#6-the-terminal-tour) is a tour you can record today in a
-terminal: every command in it was run on 2026-11-13 with `coax0` 0.52.0.
+Episodes 294 and 295 each walked a world. This one has a world too: **Coax
+Lab is built** (`/worlds/coax-lab`, unlisted, on `main`, not deployed yet).
+[Section 7](#7-coax-lab) lists its seventeen stations.
+[Section 6](#6-the-terminal-tour) is a tour you can record in a terminal:
+every command in it was run on 2026-11-13 with `coax0` 0.52.0.
 [Check before recording](#check-before-recording) lists what to decide.
 
 ## The short version
@@ -302,43 +303,78 @@ files that aren't in the repo. They are written out under
 Steps 4 to 7 and 10 to 12 are the argument of section 4, shown. If you
 cut the tour down, keep 2, 5, 11 and 12.
 
-## 7. Coax Lab (proposed)
+## 7. Coax Lab
 
 The 294 and 295 format: a world on the Grid at
-`openagents.com/worlds/coax-lab`, walked with your Everglade character,
-built on the same lab walk as Bitcoin Lab and Nostr Lab
-(`metaverse/lab-walk.coax`). One station a book chapter, in book order.
+`openagents.com/worlds/coax-lab`, unlisted, walked with your Everglade
+character, built on the same lab walk as Bitcoin Lab and Nostr Lab
+(`metaverse/lab-walk.coax`). You come in on a plaza. Five avenues leave
+it, one a district, and the stations follow the book.
 
-Thirteen stations. "Live" means the page works the value out as you
-stand there, the way Nostr Lab does. "Recorded" means the station shows
-the compiler's real output, because the compiler doesn't run in the page.
+It is on `main` and runs locally. It is not deployed: it goes out with the
+next release. To see it now:
+
+```sh
+coax/remote/pages.sh origin/main
+coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9296
+# then open http://127.0.0.1:9296/worlds/coax-lab
+```
+
+Every station ends with a line that says where its values come from.
+"Live" means the page works the value out as you stand there, with Coax
+compiled into the page. "Recorded" means the station shows what `coax0`
+0.52.0 printed on 2026-11-13, because the compiler doesn't run in the page.
+The source code on the stations is coloured by the compiler's own lexer,
+running in the page.
 
 | Station | Name | What it shows | Chapter | Live or recorded |
 | --- | --- | --- | --- | --- |
-| 1 | A name and a value | `LIMIT :: 64`, `x := 1`, `y: int = 2`: the only ways to declare | 1, 3 | Recorded |
-| 2 | A procedure | `progress` from the camera, each part lit as it's named | 3 | Live: the dolly runs |
-| 3 | Numbers that stop | A `u8` counting up from 250; at 255 the next add stops with the file and line | 3 | Live |
-| 4 | An error with a fix | The shadowing error: the code, the caret, the fix line, then the JSON | 4, 22 | Recorded |
-| 5 | A struct, byte by byte | `Pulse`: 16 bytes, each field's offset and size as boxes | 5, 13 | Live: `size_of` and the offsets |
-| 6 | An array and a view | A fixed array, a view into it, and an index past the end refused | 6 | Live |
-| 7 | Cleanup you can see | `defer` running in reverse order; a `Result` passed up with `try` | 7 | Live |
-| 8 | Work done while compiling | The CRC-32 table, built by `#run`, already there when the page loads | 9 | Live: the table is in the page |
-| 9 | A check | A `#forall` over refunds: 1,974 cases ticking by, all green | 11 | Live |
-| 10 | Authority | A procedure with no check: `E0380`, the file refused | 11, 22 | Recorded |
-| 11 | A planted bug | One operator changed, a check goes red; then `43 mutants, 43 killed` | 11 | Live for the one mutant, recorded for the count |
-| 12 | One source, three targets | One shader procedure as C, as WebAssembly and as WGSL, side by side | 17, 20, 21 | Recorded text; the WGSL one is drawing the station |
-| 13 | Built with it | The folders from section 5 with their counts; the last line: "this world" | 22, 28 | Recorded |
+| 1 | A name and a value | `LIMIT :: 64`, `x := 1`, `y: int = 2`, a written conversion and a procedure. Each part lights up in turn with its value | 1, 3 | Live |
+| 2 | A procedure | `progress` from the engine's camera, read a part at a time, while the same procedure moves a light along a track | 3 | Live: the engine's own procedure runs |
+| 3 | Numbers that stop | Two bytes count up from 250. The checked one stops at 255. The wrapping one goes round and ends at 4 | 3, 7 | Live counters (`add_checked`, `add_wrap`); the line `over.coax:4: integer overflow in '+'` is recorded |
+| 4 | A struct, byte by byte | `Pulse` (16 bytes) and the same four fields in two orders: 24 bytes with 10 of padding, 16 with 2 | 5, 13 | Live: `size_of` and `field_info` |
+| 5 | An array and a view | Eight cells, a view over four of them, an index stepping along it. One past the view's end is refused, even where the array has a value | 6 | Live reads; the line `index out of bounds` is recorded |
+| 6 | Cleanup you can see | Three `defer` lines set aside, then run in reverse. A parser passes an error up with `try` and its cleanup still runs | 7 | Live |
+| 7 | Life | Conway's Life: a struct holding an array, copied by value every generation | 5, 6 | Live |
+| 8 | The lexer | The compiler's stages, and the first one running: a line of source read into tokens one at a time, each named by its kind | 27 | Live: the compiler's own lexer, written in Coax |
+| 9 | Work done while compiling | A CRC-32 table of 256 numbers built by `#run`. The page holds the table and sums a text with it as it is typed | 9 | Live: the table is in the page |
+| 10 | The compiler drew this | A Mandelbrot set of 3,128 points, each worked out by the compiler. A probe calls the same procedure now and compares | 9 | Live |
+| 11 | An error with a fix | The shadowing error: `E0303`, the place, the caret, the fix line. Then the JSON and `coax explain` | 4, 22 | Recorded |
+| 12 | A check | A `#forall` over refunds: 1,974 cases fill a grid in the check's order, all holding | 11 | Live |
+| 13 | A planted bug | `<=` becomes `<`. Forty cases go red. Then `43 mutants, 43 killed, 0 survived` | 11 | Live for the planted bug; the `coax mutate` count is recorded |
+| 14 | Authority | An `#authority` file with a procedure no check runs: `E0380`. With a check added, it builds | 11, 22 | Recorded |
+| 15 | One source, three targets | One procedure as Coax, as the C the compiler writes and as the WGSL it writes. Two panels run it: the page for 728 cells, the GPU for every pixel | 17, 20, 21 | Live panels; the C and WGSL text is recorded |
+| 16 | Beside Jai, C and Rust | A constant, a variable, a loop, a conversion and a procedure in each language | Appendix C | From the book |
+| 17 | Built with it | The folders from section 5 with their counts, then this world and the number of quads it is drawing | 22, 28 | Recorded counts; the quad count is live |
+
+The districts: START HERE (1 to 3), DATA (4 to 7), THE COMPILER (8 to 10),
+FOR AGENTS (11 to 14) and WHERE IT RUNS (15 to 17). INDEX (or M) lists them,
+NEXT and PREV (] and [) step through, and every station has an address,
+such as `?at=overflow` or `?at=mutant`.
 
 How to walk it on camera:
 
 > This is Coax Lab. Same character, same controls. Every one of these
 > panels is a chapter of the book.
 
-Stop longest at 3, 4, 10 and 11. Those four are the "for agents" argument.
+Stop longest at 3, 11, 13 and 14. Those four are the "for agents" argument.
+Stations 10 and 15 are the ones to hold on for the picture.
 
 The last station is the close: the world you're standing in, the
 character you're walking and the page around it are all the language the
 panels describe.
+
+To record it without walking, the check that tours it writes a picture of
+every station, and every frame with `--frames`:
+
+```sh
+coax/web/tool.sh coax-lab-check http://127.0.0.1:9296 OUT_DIR --size 1920x1080 --dwell 7 --frames
+ffmpeg -framerate 30 -i OUT_DIR/frames/f%05d.jpg -c:v libx264 -pix_fmt yuv420p coax-lab.mp4
+```
+
+Station 17's counts were taken at commit `ed22cd4c22` on 2026-11-13. They
+are a little higher than the table in section 5, which was counted earlier
+that day (for example 2,020 against 2,015 for `coax/`).
 
 ## 8. The book
 
@@ -433,13 +469,18 @@ things in this order:
 5. "It's open and there's a book. Point your agents at it."
 
 Footage for each line: the repo filter (1), the changelog's first and
-latest entries (2), tour steps 5, 11 and 12 or stations 4, 10 and 11 (3),
-the folder table or station 13 (4), the book's contents (5).
+latest entries (2), tour steps 5, 11 and 12 or stations 11, 14 and 13 (3),
+the folder table or station 17 (4), the book's contents (5).
 
 ## Check before recording
 
-- **Coax Lab doesn't exist.** Decide whether the episode waits for it or
-  uses the terminal tour and the book alone.
+- **Coax Lab isn't deployed.** It is on `main` and runs locally
+  ([section 7](#7-coax-lab) has the command). Record it from a local
+  server, or wait for the next release so the link works for viewers.
+- **What Coax Lab doesn't show.** The compiler doesn't run in the page, so
+  errors, `coax mutate` and the generated C and WGSL are recorded text.
+  On an upright phone a station is wider than the screen: turn the phone, or
+  drag to look along it.
 - **The Jai story.** "Closed beta", "ten years" and "in the training
   data" are from Episode 290 and were not checked again. Say "from what's
   public" if you'd rather be careful. Don't say Coax is Jai or is
@@ -514,4 +555,8 @@ the folder table or station 13 (4), the book's contents (5).
 - [Episode 290, *Enter the Verse*](290.md): 14:00, the Jai story and the book
 - [Episode 294 show notes](294-show-notes.md): what Coax is missing
 - The lab walk the labs share: `metaverse/lab-walk.coax`
+- Coax Lab: `apps/openagents-web/coax-lab-walk.coax` (the stations),
+  `apps/openagents-web/coax-lab-lesson.coax` (their values and checks),
+  `apps/openagents-web/realms/coax-lab/index.md` (its page text) and
+  `coax/web/coax-lab-check.coax` (the headless tour)
 - The examples: `coax/examples/`

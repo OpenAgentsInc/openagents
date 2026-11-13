@@ -1,0 +1,9 @@
+// Tours Coax Lab in muted headless Chrome, as a player does: every station in the tour's order, its
+// live values checked in the page, the address following, a picture of each (coax/web/lab-tour.coax
+// has the tour and its options).
+//   coax/web/tool.sh coax-lab-check [BASE_URL] [OUT_DIR] [--size WxH] [--scale N] [--dwell SECONDS]
+//       [--from N] [--to N] [--frames] [--no-pictures] [--screenshots] [--turn PIXELS] [--lift PIXELS]
+#load "lab-tour.coax";
+// Every station answers for itself: 1 when the page checked its live values and they held
+// (coax-lab-walk.coax coaxlab_probe).
+tool_main :: () -> int #export_c #effects(all) { return lab_tour_main("coax-lab", "Coax Lab", 0); }

@@ -7,7 +7,7 @@
 // the stations are the walk's quads, drawn after it as the page's particles by bitcoin-lab-fx.wgsl
 // (metaverse-engine/fx/gpu-quads.coax), 16 floats a quad.
 //
-// A world's face (bitcoin-lab-walk-face.c, nostr-lab-walk-face.c) includes its module's header, names
+// A world's face (bitcoin-lab-walk-face.c, nostr-lab-walk-face.c, coax-lab-walk-face.c) includes its module's header, names
 // these and includes this file once:
 //   LAB_STATE            the world's state type, holding `w: [1] LabWalk`
 //   LAB_VIEW             a view of one
