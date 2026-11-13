@@ -137,6 +137,7 @@ sl_build :: (g: [] SpGame) {
   for s: 0..<SL_CAP { g[0].ws[0].ox[s] = 0; g[0].ws[0].oz[s] = 0; g[0].ws[0].ex[s] = 0; g[0].ws[0].ez[s] = 0; g[0].ws[0].shape[s] = 0; }
   _ := world_init(w, SL_CELL);
   for i: 0..<g[0].wall_n { o := i * 5; sl_box(g, SK_WALL, i, g[0].walls[o], g[0].walls[o + 1], g[0].walls[o + 2], g[0].walls[o + 3], g[0].walls[o + 4]); }
+  ga_colliders(g);   // the garage's piers (garage.coax)
   sl_box(g, SK_RUBBLE, 0, -3, 3, g[0].at.rubble_z - 1, g[0].at.rubble_z + 1, 0);
   sl_box(g, SK_BOSS_WALL, 0, -4, 4, g[0].at.wall_z - 1, g[0].at.wall_z + 1, 0);
   g[0].ws[0].boss = sl_round(g, SK_BOSS, 0, g[0].at.boss_x, 0, g[0].at.boss_z, 0, SH_ALONG_Z, 2.1 - T_RADIUS, 0, 0);
@@ -364,6 +365,7 @@ sl_check :: (g: [] SpGame, piece: int, x: f32, z: f32, yaw: f32, skip: int) -> S
     if sl_seg_box(e, zn.x, zn.z, zn.hx, zn.hz) < e.r + zn.r { return SlVerdict.{why = SL_KEPT, which = k}; }
   }
   if sl_seg_seg(e, SlSeg.{ax = g[0].px, az = g[0].pz, bx = g[0].px, bz = g[0].pz}) < e.r + T_RADIUS { return SlVerdict.{why = SL_PLAYER}; }
+  if ga_rock(g, e.ax, e.az, e.r) || ga_rock(g, e.bx, e.bz, e.r) { return SlVerdict.{why = SL_COLLIDER, which = -1}; }   // the garage's rock (garage.coax)
   hit := sl_touch(g, e, SK_WALL, false, false, skip);
   if hit >= 0 { return SlVerdict.{why = SL_COLLIDER, which = hit}; }
   return SlVerdict.{};
@@ -377,7 +379,7 @@ sl_why :: (g: [] SpGame, v: SlVerdict, out: [] u8) -> string {
   if v.why == SL_KEPT { n = ct_put(out, n, "in the kept-clear zone '"); n = ct_put(out, n, sc_kept_name(g[0].c[..], v.which)); n = ct_put(out, n, "'"); }
   if v.why == SL_PLAYER { n = ct_put(out, n, "on top of the player"); }
   if v.why == SL_COLLIDER {
-    w := sl_world(g); kind := world_i(w, WI_KIND, v.which);
+    w := sl_world(g); kind := ifx v.which >= 0 then world_i(w, WI_KIND, v.which) else SK_WALL;
     if kind >= SK_PIECE { n = ct_put(out, n, "inside the placed piece "); n = ct_put_int(out, n, world_i(w, WI_ROW, v.which)); }
     else { n = ct_put(out, n, ifx kind == SK_BOSS then "inside the banned bot" else "inside a wall or a thing that already stands there"); }
   }

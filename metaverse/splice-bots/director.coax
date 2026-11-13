@@ -273,7 +273,7 @@ d_point :: (g: [] SpGame) -> int {
 
 // ---- keys, the pointer and the step
 // Rover: where the edit bay is. Inside Sniper, or at its door until the rover's room is built.
-d_in_rover :: (g: [] SpGame) -> bool { return g[0].zone == Z_MINE && near_rover(g, T_USE_RANGE); }
+d_in_rover :: (g: [] SpGame) -> bool { return g[0].zone == Z_MINE && (near_rover(g, T_USE_RANGE) || sp_in_room(g)); }   // at Sniper, or in its room (drive.coax)
 d_cursor :: (g: [] SpGame) -> bool { d := g[0].dr[0]; return d.paused || d.bag; }
 d_pause :: (g: [] SpGame) {
   d := g[0].dr[..]; d[0].paused = true; d[0].bag = false; d[0].map = false;

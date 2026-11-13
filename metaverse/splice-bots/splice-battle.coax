@@ -441,8 +441,8 @@ sb_boss_step :: (g: [] SpGame, dt: f32) {
   else if t[0].rush > 0 {
     // the charge: straight on until its time is up or it meets the chamber's wall; anyone in its path is hit once
     dx[0] += t[0].rush_dx * SB_CHARGE_SPEED * dt; dz[0] += t[0].rush_dz * SB_CHARGE_SPEED * dt; t[0].rush -= dt;
-    wall := dx[0] < -7 || dx[0] > 7 || dz[0] > g[0].at.wall_z - 3 || dz[0] < -80;
-    dx[0] = clamp(dx[0], -7, 7); dz[0] = clamp(dz[0], -80, g[0].at.wall_z - 3);
+    wall := dx[0] < -7 || dx[0] > 7 || dz[0] > g[0].at.wall_z - 3 || dz[0] < ga_lab_back(g);
+    dx[0] = clamp(dx[0], -7, 7); dz[0] = clamp(dz[0], ga_lab_back(g), g[0].at.wall_z - 3);
     if !t[0].rush_hit && dist2(g[0].px, g[0].pz, dx[0], dz[0]) < 2.4 { t[0].rush_hit = true; g_hurt(g); }
     me := sb_body_at(g, sb_fielded(g));
     if !t[0].rush_hit && dist2(me.x, me.z, dx[0], dz[0]) < 3.2 { t[0].rush_hit = true; _ := bb_strike(t[0].fight[..], 0, SB_CHARGE_HIT); t[0].hit_t = 0.9; t[0].hit_side = 0; t[0].hit_dmg = SB_CHARGE_HIT; }
@@ -454,7 +454,7 @@ sb_boss_step :: (g: [] SpGame, dt: f32) {
   } else if !stunned {
     // it faces the mech and closes in on it
     _ := sb_toward(dx[..], dz[..], dy[..], target.x, target.z, ifx t[0].half then 2.4f32 else 1.4f32, 4.5, dt);
-    dx[0] = clamp(dx[0], -7, 7); dz[0] = clamp(dz[0], -80, g[0].at.wall_z - 3);
+    dx[0] = clamp(dx[0], -7, 7); dz[0] = clamp(dz[0], ga_lab_back(g), g[0].at.wall_z - 3);
     if t[0].half { t[0].charge_t += dt; if t[0].charge_t >= SB_CHARGE_EVERY { t[0].charge_t = 0; t[0].wind = SB_CHARGE_WIND; } }
     else {
       // phase one's arm sweep (boss_t, as the stills draw it): you or the mech in its arc are hit

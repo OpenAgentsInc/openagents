@@ -1,11 +1,11 @@
 // The checks of Splice's outcome replay (replay.coax; GitHub #13438). splice-game.coax loads this
 // file with `#load ... #test;`. The recorded run is the first one made against the world `splice`:
 // a palm by the scanner gate and a small crate by the rover's door, the crate moved and turned, a
-// crab-bot put in the lounge, the palm removed, and the removal undone.
+// crab-bot put in the garage's bay B1, the palm removed, and the removal undone.
 SPR_RUN :: [5] string.[
   "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100},{\"op\":\"spawn\",\"id\":0,\"kind\":117,\"x\":280,\"y\":0,\"z\":150,\"yaw\":0,\"scale\":100}]}",
   "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"move\",\"id\":2,\"x\":300,\"y\":0,\"z\":120},{\"op\":\"rotate\",\"id\":2,\"yaw\":45}]}",
-  "{\"schema\":\"world.edit.v1\",\"rev\":4,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":103,\"x\":2330,\"y\":0,\"z\":-4900,\"yaw\":-60,\"scale\":100}]}",
+  "{\"schema\":\"world.edit.v1\",\"rev\":4,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":103,\"x\":10253,\"y\":0,\"z\":-9247,\"yaw\":-60,\"scale\":100}]}",
   "{\"schema\":\"world.edit.v1\",\"rev\":5,\"do\":\"apply\",\"edits\":[{\"op\":\"despawn\",\"id\":1}]}",
   "{\"schema\":\"world.edit.v1\",\"rev\":6,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":1,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100}]}"];
 // What the run was for: three things stand, each stops a body where it stands, the gate's own
@@ -13,7 +13,7 @@ SPR_RUN :: [5] string.[
 SPR_PROBES :: [9 * SPR_PROBE] int.[
   PR_COUNT, 3, 0, 0,
   PR_STANDS, 1, 113, 0,   PR_STANDS, 2, 117, 0,   PR_STANDS, 3, 103, 0,
-  PR_BLOCKS, 17720, -7060, 0,   PR_BLOCKS, 300, 120, 0,   PR_BLOCKS, 2330, -4900, 0,
+  PR_BLOCKS, 17720, -7060, 0,   PR_BLOCKS, 300, 120, 0,   PR_BLOCKS, 10253, -9247, 0,
   PR_FREE, 17500, -6700, 0,
   PR_WALKS, 0, 0, 0];
 

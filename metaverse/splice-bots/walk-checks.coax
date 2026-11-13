@@ -5,7 +5,7 @@
   g := [1] SpGame.[SpGame.{}]; k: [1] SwWalker; o: [120] u8;
   v := sw_replay(g[..], k[..]);
   #assert v.why == SW_OK && sw_why(g[..], v, o[..]) == "ok";
-  #assert g[0].rubble_gone && g[0].wall_gone && dist2(g[0].px, g[0].pz, 0, -67.5) <= SW_ARRIVE;
+  #assert g[0].rubble_gone && g[0].wall_gone && dist2(g[0].px, g[0].pz, 0, -401.5) <= SW_ARRIVE;
 }
 
 // The game with an empty layer and the player out of the way of any edit (on the edit bay's stage).
@@ -20,11 +20,11 @@ wc_zone_row :: (g: [] SpGame, id: int) -> int {
   wc_blank(g[..]);
   #assert sl_fixture(g[..]) == SL_FIXTURE_N && g[0].layer[0].st[0].n == SL_FIXTURE_N;
   c := g[0].c[..];
-  // every kept-clear zone has its piece, but the boss chamber (ID 29), which only rock is beside
+  // every kept-clear zone has its piece, but the lab (ID 29) and the hallway (ID 30): only walls, the boss wall and each other are beside them
   for r: 0..<c[0].kept_n {
     rows := 0;
     for i: 0..<SL_FIXTURE_N { if SL_FIXTURE[i * 5] == c[0].kept[r].id { rows += 1; } }
-    #assert rows == (ifx c[0].kept[r].id == 29 then 0 else 1);
+    #assert rows == (ifx c[0].kept[r].id == 29 || c[0].kept[r].id == 30 then 0 else 1);
   }
   for i: 0..<SL_FIXTURE_N {
     o := i * 5; zr := wc_zone_row(g[..], SL_FIXTURE[o]);
@@ -36,28 +36,31 @@ wc_zone_row :: (g: [] SpGame, id: int) -> int {
   }
   #assert sl_all_ok(g[..]).why == SL_OK;
 }
-// Why the fixture has no row for the boss chamber (#13442): no ground beside it takes a piece. Every half
-// metre for 14 m round its middle, the smallest piece (a small crate) either is refused or stands more
-// than a metre from the zone. If the mine is ever opened up there, this fails and the fixture gets its row.
-#test "no spot within a metre of the boss chamber takes even the smallest piece: rock and the boss wall are all that is beside it" #steps 400000000 {
+// Why the fixture has no row for the hallway or the lab (#13442, #13505): no ground beside them takes a
+// piece. Every metre for 40 m either side and from the boss wall's drill line to past the lab, the smallest piece (a small crate)
+// either is refused or stands more than a metre from the zone. If the lab is ever opened up, this fails
+// and the fixture gets its row.
+#test "no spot within a metre of the hallway or the lab takes even the smallest piece: walls, the boss wall and each other are all that is beside them" #steps 800000000 {
   g := [1] SpGame.[SpGame.{}];
   wc_blank(g[..]);
   c := g[0].c[..];
-  zr := wc_zone_row(g[..], 29);
-  #assert zr >= 0 && sc_piece(c, 117) >= 0;
-  zn := c[0].kept[zr];
+  za := wc_zone_row(g[..], 29); zb := wc_zone_row(g[..], 30);
+  #assert za >= 0 && zb >= 0 && sc_piece(c, 117) >= 0;
   beside := 0; open := 0;
-  for xi: -28..<29 {
-    for zi: -28..<29 {
-      x := xi * 50; z := -7250 + zi * 50;
+  for xi: -40..<41 {
+    for zi: 0..<89 {
+      x := xi * 100; z := -34600 - zi * 100;
       if sl_check(g[..], 117, sc_m(x), sc_m(z), 0, -1).why != SL_OK { continue; }
       open += 1;
       f := sl_foot(g[..], sc_piece(c, 117), sc_m(x), sc_m(z), 0);
-      gap := sl_seg_box(f, zn.x, zn.z, zn.hx, zn.hz) - f.r - zn.r;
-      if gap >= 0 && gap <= 1.0 { beside += 1; }
+      for zr: [2] int.[za, zb] {
+        zn := c[0].kept[zr];
+        gap := sl_seg_box(f, zn.x, zn.z, zn.hx, zn.hz) - f.r - zn.r;
+        if gap >= 0 && gap <= 1.0 { beside += 1; }
+      }
     }
   }
-  #assert beside == 0 && open > 0;   // open: the scan does reach ground a piece may stand on (north of the boss wall)
+  #assert beside == 0 && open > 0;   // open: the scan does reach ground a piece may stand on (past the berm)
 }
 #test "the whole run plays with the fixture layer in, a piece beside every kept-clear zone" #steps 1200000000 {
   g := [1] SpGame.[SpGame.{}];
@@ -83,42 +86,45 @@ wc_zone_row :: (g: [] SpGame, id: int) -> int {
 // The mutant check. A blocker for each kept-clear zone: [zone, piece, x, z, turn, the leg the walk
 // starts at, the leg it must stop at, and why]. With the tables whole the check refuses it and names the zone. With that one zone
 // taken out of the tables the check lets it in, and then the walk replay refuses the layer.
-WC_BLOCKERS :: 29;
+WC_BLOCKERS :: 31;
 WC_BLOCK :: [WC_BLOCKERS * 8] int.[
   1, 117, 17500, -7800, 0, 0, 1, SW_START,
   2, 116, 17500, -6700, 0, 0, 2, SW_WAY,
   3, 117, 16703, 10500, 0, 0, 3, SW_LANE,
   4, 117, 18700, 9500, 0, 4, 6, SW_WAY,
-  5, 117, 0, 900, 0, 8, 9, SW_START,
+  5, 117, 0, 900, 0, 8, 13, SW_START,
   6, 117, 280, 350, 0, 8, 14, SW_WAY,
   7, 117, 260, 650, 0, 8, 15, SW_WAY,
-  8, 117, -600, -1400, 0, 8, 10, SW_WAY,
-  9, 117, 600, -1300, 0, 8, 11, SW_WAY,
-  10, 117, 500, -2000, 0, 8, 12, SW_WAY,
-  11, 117, 0, -1700, 0, 8, 13, SW_WAY,
+  8, 117, -600, -1400, 0, 8, 9, SW_START,
+  9, 117, 600, -1300, 0, 8, 10, SW_WAY,
+  10, 117, 500, -2000, 0, 8, 11, SW_WAY,
+  11, 117, 0, -1700, 0, 8, 12, SW_WAY,
   12, 117, 0, -600, 0, 8, 16, SW_LANE,
   13, 117, 0, -2600, 0, 8, 16, SW_LANE,
   14, 104, 0, -3760, 0, 8, 18, SW_WAY,
-  15, 116, -1600, -4300, 90, 8, 20, SW_WAY,
-  16, 117, -2900, -4200, 0, 8, 21, SW_WAY,
-  17, 116, -2550, -5100, 0, 8, 22, SW_WAY,
-  18, 117, -1900, -6000, 0, 8, 23, SW_WAY,
-  19, 116, -3200, -5750, 90, 8, 24, SW_WAY,
-  20, 117, -4050, -5950, 0, 8, 25, SW_WAY,
-  21, 117, -950, -5700, 0, 8, 29, SW_WAY,
-  22, 116, 950, -5850, 90, 8, 30, SW_WAY,
-  23, 117, 1300, -5100, 0, 8, 31, SW_WAY,
-  24, 116, 950, -4350, 90, 8, 36, SW_WAY,
-  25, 116, 1600, -5100, 90, 8, 32, SW_WAY,
-  26, 117, 2700, -4600, 0, 8, 33, SW_WAY,
-  27, 117, 0, -5700, 0, 8, 38, SW_LANE,
-  28, 117, 260, -6200, 0, 8, 39, SW_GATE,
-  29, 117, 0, -6750, 0, 8, 41, SW_WAY];
-#test "the mutant check: with any one kept-clear zone gone, the walk replay refuses what that zone kept out" #steps 4000000000 #traversal 2000000000 {
+  15, 116, -3391, -6846, 0, 8, 20, SW_WAY,
+  16, 117, -3831, -5204, 0, 8, 21, SW_WAY,
+  17, 116, -9263, -10237, 0, 8, 22, SW_WAY,
+  18, 117, -10465, -9035, 0, 8, 23, SW_WAY,
+  19, 116, -12654, -16109, 0, 8, 24, SW_WAY,
+  20, 117, -14392, -15644, 0, 8, 25, SW_WAY,
+  21, 117, 3631, -5354, 0, 8, 29, SW_WAY,
+  22, 116, 13950, -20250, 90, 8, 30, SW_WAY,
+  23, 117, 14300, -19500, 0, 8, 31, SW_WAY,
+  24, 116, 13950, -18750, 90, 8, 36, SW_WAY,
+  25, 116, 11345, -12950, 0, 8, 32, SW_WAY,
+  26, 117, 12817, -12100, 0, 8, 33, SW_WAY,
+  27, 117, 0, -34600, 0, 8, 38, SW_LANE,
+  28, 117, 180, -35100, 0, 8, 39, SW_GATE,
+  29, 117, 0, -40150, 0, 8, 42, SW_WAY,
+  30, 104, 0, -37000, 0, 8, 42, SW_WAY,   // a walker fills the hallway (#13505)
+  31, 114, 14006, -23253, 0, 8, 37, SW_WAY];   // and stands on the drill mech's place
+// The mutant check, zones `from` up to `to` (rows of WC_BLOCK): split in six checks, each in its budget.
+wc_mutants :: (from: int, to: int) {
   g := [1] SpGame.[SpGame.{}]; k: [1] SwWalker;
   g_reset(g[..]);
   #assert g[0].c[0].kept_n == WC_BLOCKERS;
-  for i: 0..<WC_BLOCKERS {
+  for i: from..<to {
     o := i * 8;
     wc_blank(g[..]);
     row := wc_zone_row(g[..], WC_BLOCK[o]);
@@ -134,10 +140,16 @@ WC_BLOCK :: [WC_BLOCKERS * 8] int.[
     // and with the piece taken away again, the same legs are walked
     #assert sl_undo(g[..]).ok && sw_replay_legs(g[..], k[..], WC_BLOCK[o + 5], WC_BLOCK[o + 6] + 1).why == SW_OK;
     if i == 2 { o1: [120] u8; #assert sw_why(g[..], w, o1[..]) == "something stands on the rail line"; }
-    if i == 14 { o2: [120] u8; #assert sw_why(g[..], w, o2[..]) == "the run can't be walked: the way to 'Bar door' is blocked"; }
+    if i == 14 { o2: [120] u8; #assert sw_why(g[..], w, o2[..]) == "the run can't be walked: the way to 'HA bay' is blocked"; }
     if i == 27 { o3: [120] u8; #assert sw_why(g[..], w, o3[..]) == "something stands in 'Boss wall', which the Digger opens"; }
     // the tables are read again for the next zone
     g[0].c[0].ok = false; g_reset(g[..]);
     #assert g[0].c[0].kept_n == WC_BLOCKERS;
   }
 }
+#test "the mutant check, zones 1 to 6: with any one kept-clear zone gone, the walk replay refuses what that zone kept out" #steps 16000000000 #traversal 8000000000 { wc_mutants(0, 6); }
+#test "the mutant check, zones 7 to 11" #steps 16000000000 #traversal 8000000000 { wc_mutants(6, 11); }
+#test "the mutant check, zones 12 to 16" #steps 16000000000 #traversal 8000000000 { wc_mutants(11, 16); }
+#test "the mutant check, zones 17 to 21" #steps 16000000000 #traversal 8000000000 { wc_mutants(16, 21); }
+#test "the mutant check, zones 22 to 26" #steps 16000000000 #traversal 8000000000 { wc_mutants(21, 26); }
+#test "the mutant check, zones 27 to 31" #steps 16000000000 #traversal 8000000000 { wc_mutants(26, WC_BLOCKERS); }

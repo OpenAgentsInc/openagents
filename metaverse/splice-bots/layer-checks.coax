@@ -24,6 +24,7 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
   for i: 0..<g[0].wall_n { o := i * 5; q = lc_old_push(q, g[0].walls[o], g[0].walls[o + 1], g[0].walls[o + 2], g[0].walls[o + 3], T_RADIUS); }
   if !g[0].rubble_gone { q = lc_old_push(q, -3, 3, g[0].at.rubble_z - 1, g[0].at.rubble_z + 1, T_RADIUS); }
   if !g[0].wall_gone { q = lc_old_push(q, -4, 4, g[0].at.wall_z - 1, g[0].at.wall_z + 1, T_RADIUS); }
+  q = ga_push(g, q.x, q.z, T_RADIUS);   // the garage's round back wall (garage.coax)
   dx := q.x - g[0].at.boss_x; dz := q.z - g[0].at.boss_z; d := sqrt(dx * dx + dz * dz);
   if d < 2.1 && d > 0.001 { q = v3(g[0].at.boss_x + dx / d * 2.1, 0, g[0].at.boss_z + dz / d * 2.1); }
   return q;
@@ -33,19 +34,21 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
   g := [1] SpGame.[SpGame.{}];
   lc_mine(g[..]);
   w := sl_world(g[..]);
-  #assert world_ready(w) && g[0].ws[0].refused == 0 && g[0].wall_n == 30 && g[0].wall_n <= WALLS;
-  seen: [WALLS] int; gates := 0; boss := 0; stop := 0;
+  #assert world_ready(w) && g[0].ws[0].refused == 0 && g[0].wall_n == 20 && g[0].wall_n <= WALLS;
+  seen: [WALLS] int; gates := 0; boss := 0; stop := 0; piers := 0;
   for s: 0..<world_high(w) {
     #assert world_at(w, s) != ENTITY_NONE && world_has(w, s, WORLD_TRANSFORM | WORLD_BODY | WORLD_KIND | WORLD_ROW) && !world_has(w, s, WORLD_HEALTH);
     kind := world_i(w, WI_KIND, s); row := world_i(w, WI_ROW, s);
-    if kind == SK_WALL && row >= 0 { seen[row] += 1; }
+    if kind == SK_WALL && row >= 0 && row < WALLS { seen[row] += 1; }
+    if kind == SK_WALL && row >= GA_ROW { piers += 1; }
     if kind == SK_WALL && row < 0 { stop += 1; }
     if kind == SK_RUBBLE || kind == SK_BOSS_WALL { gates += 1; }
     if kind == SK_BOSS { boss += 1; }
     #assert world_f(w, WF_RADIUS, s) <= SL_CELL * 0.71;   // no part reaches further than a cell's half diagonal
   }
   for i: 0..<g[0].wall_n { #assert seen[i] >= 1; }
-  #assert seen[0] == 3 && seen[23] == 6 && gates == 2 && boss == 1 && stop == 1;   // the mine mouth's 40 m wall, the 88 m back wall
+  #assert seen[0] == 3 && gates == 2 && boss == 1 && stop == 1;   // the mine mouth's 40 m wall in three parts
+  #assert piers == GA_SECTIONS * 2;   // the garage's piers, each in two parts (garage.coax)
   #assert world_count(w) > 90 && world_count(w) < SL_CAP - SL_ITEMS && g[0].ws[0].reach < SL_CELL;
 }
 #test "a step asks the index, not the list: it looks at a few entities of more than ninety" {
@@ -56,7 +59,7 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
   g[0].px = -3.9; g[0].pz = -6; g_collide(g[..]);
   #assert w.grid.n[SPATIAL_VISITS] - before <= 24 && world_count(w) > 90 && g[0].ws[0].crowded == 0;
 }
-// Every 0.74 m across the mine, the party and the boss chamber, with the rubble and the boss
+// Every 2.4 m by 3 m across the mine, the garage's field (not its bays), the hallway and the lab, with the rubble and the boss
 // wall shut and then open: the World's walk puts the smuggler where the old list's walk did,
 // wherever a step can take a walker (up to 0.6 m into a wall).
 #test "the World's walk is the old wall list's walk, to a tenth of a millimetre inside no wall" #steps 2000000000 #traversal 1000000000 {
@@ -65,8 +68,10 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
   for pass: 0..<2 {
     g[0].rubble_gone = pass == 1; g[0].wall_gone = pass == 1;
     free := 0; pushed := 0;
-    for i: 0..<120 { for k: 0..<140 {
-      x := -44.2 + cast(f32) i * 0.74; z := -82.3 + cast(f32) k * 0.74;
+    for i: 0..<120 { for k: 0..<150 {
+      x := -144.2 + cast(f32) i * 2.4; z := -430.3 + cast(f32) k * 3.0;
+      ring := dist2(x, z, g[0].at.gar_x, g[0].at.gar_z);
+      if ring > g[0].at.gar_r - 2 && ring < ga_back(g[..]) + 2 * GA_BACK + 1 { continue; }   // the bays: their piers are World colliders only
       g[0].px = x; g[0].pz = z; g_collide(g[..]);
       old := lc_old_collide(g[..], x, z);
       moved := dist2(x, z, old.x, old.z);
@@ -74,7 +79,7 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
       #assert dist2(g[0].px, g[0].pz, old.x, old.z) < 0.0001;
       if moved == 0 { free += 1; } else { pushed += 1; }
     } }
-    #assert free > 2500 && pushed > 700;
+    #assert free > 6000 && pushed > 60;
   }
 }
 #test "a placed piece is a collider: it stops the smuggler at its footprint, and not once it is removed" {
@@ -126,7 +131,7 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
   #assert sl_place(g[..], 999, 2000, 1000, 0).v.why == SL_NO_PIECE;
   #assert sl_place(g[..], 117, 2000, 1000, 181).v.why == SL_TURN && sl_place(g[..], 117, 2000, 1000, -180).v.why == SL_TURN;
   // the edge: outside every area, and half over the mine's
-  #assert sl_place(g[..], 117, 9000, 1000, 0).v.why == SL_EDGE && sl_place(g[..], 117, 4380, 1000, 0).v.why == SL_EDGE && sl_place(g[..], 117, -10000, 13600, 0).v.why == SL_EDGE;
+  #assert sl_place(g[..], 117, 17000, 1000, 0).v.why == SL_EDGE && sl_place(g[..], 117, 15980, 1000, 0).v.why == SL_EDGE && sl_place(g[..], 117, -10000, 13600, 0).v.why == SL_EDGE;
   #assert sl_why(g[..], SlVerdict.{why = SL_EDGE}, o[..]).count > 20;
   // a kept-clear zone, by name: the scanner gate's corridor, a pickup's reach, the Digger's lane
   v := sl_place(g[..], 117, 17500, -6700, 0).v;

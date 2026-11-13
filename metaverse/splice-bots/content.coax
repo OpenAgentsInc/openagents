@@ -341,6 +341,20 @@ sc_upgrade_front :: (text: string, out: [] u8) -> string {
   n = ct_put(out, n, text[at..<text.count]);
   return ifx n > out.count then text else cast(string) out[0..<n];
 }
+// Tables saved when the map reached 300 m from its middle (before the garage and the solar farm moved
+// out, #13505): the same tables reaching as far as the shipped ones, into out. Tables that reach as far
+// already, or whose reach line can't be read, come back as they were.
+SC_REACH :: 60000;   // centimetres: the shipped tables' reach
+sc_upgrade_reach :: (text: string, out: [] u8) -> string {
+  a := sc_at(text, "\nreach ");
+  if a < 0 { return text; }
+  e := a + 7; v := 0; digits := 0;
+  while e < text.count && text[e] >= '0' && text[e] <= '9' && digits < 9 { v = v * 10 + cast(int) text[e] - 48; e += 1; digits += 1; }
+  want := SC_REACH;
+  if digits == 0 || e >= text.count || text[e] != '\n' || v >= want { return text; }
+  n := ct_put(out, 0, text[0..<a + 7]); n = ct_put_int(out, n, want); n = ct_put(out, n, text[e..<text.count]);
+  return ifx n > out.count then text else cast(string) out[0..<n];
+}
 // "\ntable NAME ", for a table name of at most 24 bytes.
 SC_HEADS :: [3] string.["\ntable credits ", "\ntable dolly ", "\ntable menu "];
 sc_head_of :: (nm: string) -> string { names := SC_FRONT_TABLES; heads := SC_HEADS; for w, i: names { if w == nm { return heads[i]; } } return "\ntable ?"; }
@@ -367,7 +381,8 @@ sc_shipped_table :: (s: string, name: string) -> string {
 sc_load :: (c: [] SpContent, text: string) -> bool {
   c[0].ok = false; c[0].area_n = 0; c[0].kept_n = 0; c[0].mark_n = 0; c[0].piece_n = 0; c[0].portal_n = 0; c[0].start_n = 0; c[0].beat_n = 0;
   d: [1] ContentDoc; up: [CT_BODY] u8; up2: [CT_BODY] u8;
-  if !ct_read(d[..], sc_upgrade_front(sc_upgrade(text, up[..]), up2[..])) || !sc_ok(d[..]) { return false; }
+  up3: [CT_BODY] u8;
+  if !ct_read(d[..], sc_upgrade_reach(sc_upgrade_front(sc_upgrade(text, up[..]), up2[..]), up3[..])) || !sc_ok(d[..]) { return false; }
   c[0].rev = d[0].rev;
   for r: 0..<ct_rows(d[..], SC_AREAS) { c[0].areas[r] = sc_zone(d[..], SC_AREAS, r); }
   c[0].area_n = ct_rows(d[..], SC_AREAS);
@@ -541,22 +556,22 @@ sc_plan :: (c: [] SpContent, i: int, when: int) -> NplPlan {
   #assert sc_load(c[..], sc_swap("\n1|story\n", "\n1|dusk\n", o[..])) && c[0].clock == 2;
   #assert sc_load(c[..], sc_swap("\n1|story\n", "\n1|dawn\n", o[..])) && c[0].clock == 0;
   #assert !sc_load(c[..], sc_swap("\n1|story\n", "\n1|noon\n", o[..])) && sc_plans_words(sc_swap("\n1|story\n", "\n1|noon\n", o[..]), w[..]) == "the clock's row 1 is story, dawn, day, dusk or night";
-  bad := sc_swap("62|6|dusk|patrol|850 -4500, 850 -5700|", "62|6|dusk|patrol|17500 -6700, 850 -5700|", o[..]);
-  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "plan 62: a foe's route stays in the mine (x -4400 to 4400, z -8200 to 2000 centimetres) or an area added after it (ID 5 and up); the dome village, the gate corridor and the rail stop are stages of their own, with no foes in them";
+  bad := sc_swap("62|6|dusk|patrol|1010 -18880, 1010 -20080|", "62|6|dusk|patrol|17500 4000, 1010 -20080|", o[..]);
+  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "plan 62: a foe's route stays in the mine (x -16000 to 16000, z -43000 to 2000 centimetres) or an area added after it (ID 5 and up); the dome village, the gate corridor and the rail stop are stages of their own, with no foes in them";
   // an area added after the mine is ground the foes walk too: a box, or a circle
-  far := sc_swap("62|6|dusk|patrol|850 -4500, 850 -5700|", "62|6|dusk|patrol|850 -4500, 1500 4000|", o[..]);
+  far := sc_swap("62|6|dusk|patrol|1010 -18880, 1010 -20080|", "62|6|dusk|patrol|1010 -18880, 1500 4000|", o[..]);
   #assert !sc_load(c[..], far);
-  w2: [CT_BODY] u8; desert := sc_swap2(far, "4|Mine|0|-3100|4400|5100|0\n", "4|Mine|0|-3100|4400|5100|0\n5|Desert|0|5000|3000|3000|0\n", w2[..]);
+  w2: [CT_BODY] u8; desert := sc_swap2(far, "4|Mine|0|-20500|16000|22500|0\n", "4|Mine|0|-20500|16000|22500|0\n5|Desert|0|5000|3000|3000|0\n", w2[..]);
   #assert sc_load(c[..], desert) && sc_plan(c[..], 5, 2).z[1] == 4000;
-  w3: [CT_BODY] u8; round := sc_swap2(far, "4|Mine|0|-3100|4400|5100|0\n", "4|Mine|0|-3100|4400|5100|0\n5|Solar farm|1500|4000|0|0|500\n", w3[..]);
+  w3: [CT_BODY] u8; round := sc_swap2(far, "4|Mine|0|-20500|16000|22500|0\n", "4|Mine|0|-20500|16000|22500|0\n5|Solar farm|1500|4000|0|0|500\n", w3[..]);
   #assert sc_load(c[..], round);
-  w4: [CT_BODY] u8; edge := sc_swap2(far, "4|Mine|0|-3100|4400|5100|0\n", "4|Mine|0|-3100|4400|5100|0\n5|Solar farm|1500|4500|0|0|499\n", w4[..]);
+  w4: [CT_BODY] u8; edge := sc_swap2(far, "4|Mine|0|-20500|16000|22500|0\n", "4|Mine|0|-20500|16000|22500|0\n5|Solar farm|1500|4500|0|0|499\n", w4[..]);
   #assert !sc_load(c[..], edge);
   bad = sc_swap("62|6|dusk|patrol|", "62|6|dusk|fly|", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "plan 62: DO is stand, dance, sleep, guard, patrol, wander or follow";
-  bad = sc_swap("62|6|dusk|patrol|850 -4500, 850 -5700|180|500|chase\n", "", o[..]);
+  bad = sc_swap("62|6|dusk|patrol|1010 -18880, 1010 -20080|180|500|chase\n", "", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "every foe keeps a plan for dawn, day, dusk and night: set a plan's cells, never drop its row";
-  good := sc_swap("62|6|dusk|patrol|850 -4500, 850 -5700|180|500|chase", "62|6|dusk|guard|0 -3700, 0 -3000|0|800|call", o[..]);
+  good := sc_swap("62|6|dusk|patrol|1010 -18880, 1010 -20080|180|500|chase", "62|6|dusk|guard|0 -3700, 0 -3000|0|800|call", o[..]);
   #assert sc_load(c[..], good) && sc_plan(c[..], 5, 2).act == NPD_GUARD && sc_plans_words(good, w[..]) == "" && sc_plans_words("oops", w[..]) == "";
 }
 #test "tables saved before the actors, the plans and the clock read with the shipped ones put in" {
@@ -692,4 +707,12 @@ sc_cm :: (m: f32) -> int { return cast(int) floor(m * 100 + 0.5); }
   n = ct_put(t[..], 0, odd); odd = cast(string) t[0..<n];
   odd = sc_cut(odd, sc_shipped_table(SC_SHIPPED, "beats"), o[..]);
   #assert sc_upgrade(odd, up[..]) == odd && !sc_load(c[..], odd);
+}
+
+#test "tables saved when the map reached 300 m reach as far as the shipped ones, and nothing else changes (#13505)" {
+  out: [CT_BODY] u8; c: [1] SpContent;
+  #assert sc_at(SC_SHIPPED, "\nreach 60000\n") > 0 && sc_upgrade_reach(SC_SHIPPED, out[..]) == SC_SHIPPED;
+  o2: [CT_BODY] u8; old := sc_swap("\nreach 60000\n", "\nreach 30000\n", o2[..]);
+  #assert old.count == SC_SHIPPED.count && old != SC_SHIPPED && sc_upgrade_reach(old, out[..]) == SC_SHIPPED && sc_load(c[..], old);
+  #assert sc_upgrade_reach("", out[..]) == "" && sc_upgrade_reach("reach 1", out[..]) == "reach 1";
 }

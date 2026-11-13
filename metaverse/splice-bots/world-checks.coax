@@ -164,7 +164,7 @@ spt_round :: (x: [] SptPage, dt: f32, text: string) -> int {
   #assert g[0].px == px && g[0].pz == pz && g[0].have[H_ARM] && g[0].heat == 37 && g[0].mode == stage_mode && g[0].zone == Z_MINE;
   count := world_count(sl_world(g));
   // an outside batch (a second tab, the CLI): a move of piece 2 and a new crab-bot, as events 3 and 4
-  out := "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"move\",\"id\":2,\"x\":300,\"y\":0,\"z\":120},{\"op\":\"spawn\",\"id\":3,\"kind\":103,\"x\":2330,\"y\":0,\"z\":-4900,\"yaw\":-60,\"scale\":100}]}";
+  out := "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"move\",\"id\":2,\"x\":300,\"y\":0,\"z\":120},{\"op\":\"spawn\",\"id\":3,\"kind\":103,\"x\":10253,\"y\":0,\"z\":-9247,\"yaw\":-60,\"scale\":100}]}";
   #assert spt_round(x[..], 1.1, spt_events(x[..], out, 3)) == WFQ_EVENTS;
   #assert f[0].rev == 4 && f[0].taken == 2 && g[0].layer[0].head == 4 && g[0].layer[0].st[0].n == 3 && we_cm(g[0].layer[0].items[1].x) == 300 && g[0].layer[0].items[2].mesh == 103;
   #assert world_count(sl_world(g)) == count + 1 && g[0].px == px && g[0].have[H_ARM] && g[0].zone == Z_MINE;
@@ -270,7 +270,7 @@ SptShell :: struct { m: [1] EdModel; scratch: [EM_BYTES] u8; name: [EM_NAME] u8;
   // the foes and their plans by time of day, the clock the story's, no foe shown (#13466)
   pt := m[0].ptable; ck := m[0].clock; an := m[0].a_name[5]; pr := m[0].p_route[em_plan_at(m, 6, "dusk")];
   #assert m[0].na == FOES && m[0].np == FOES * 4 && m[0].asel == 0 && cast(string) pt[0..<m[0].ptable_n] == "plans" && cast(string) ck[0..<m[0].clock_n] == "story";
-  #assert cast(string) an[0..<m[0].a_name_n[5]] == "Imperial 1" && cast(string) pr[0..<m[0].p_route_n[em_plan_at(m, 6, "dusk")]] == "850 -4500, 850 -5700";
+  #assert cast(string) an[0..<m[0].a_name_n[5]] == "Imperial 1" && cast(string) pr[0..<m[0].p_route_n[em_plan_at(m, 6, "dusk")]] == "1010 -18880, 1010 -20080";
   // a foe shown: the model says so, the game draws its plan, and a page in the village goes to the mine
   spw_actor(g, p, 6);
   #assert em_read(m, spw_model(g, p), k[0].scratch[..]) && m[0].asel == 6 && g[0].shown == 5 && g[0].zone == Z_MINE;
@@ -397,7 +397,7 @@ spt_cell :: (out: [] u8, rev: int, table: string, row: int, col: string, value: 
   // the dome village has no foes: a route there is refused, and says where a route may go
   w := [1] SpwWork.[SpwWork.{}];
   b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "plans", 62, "route", "17720 -7060, 17720 -6000"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
-  #assert b.status == SPB_REFUSED && spt_why(t[..], b) == "plan 62: a foe's route stays in the mine (x -4400 to 4400, z -8200 to 2000 centimetres) or an area added after it (ID 5 and up); the dome village, the gate corridor and the rail stop are stages of their own, with no foes in them" && !w[0].ct[0].changed;
+  #assert b.status == SPB_REFUSED && spt_why(t[..], b) == "plan 62: a foe's route stays in the mine (x -16000 to 16000, z -43000 to 2000 centimetres) or an area added after it (ID 5 and up); the dome village, the gate corridor and the rail stop are stages of their own, with no foes in them" && !w[0].ct[0].changed;
   b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "plans", 62, "do", "stand"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
   #assert b.status == SPB_REFUSED && spt_why(t[..], b) == "plan 62: stand, dance, sleep and wander take one point, guard one or two (the post, then where it looks), patrol 2 to 8";
   b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "clock", 1, "when", "noon"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
@@ -405,18 +405,18 @@ spt_cell :: (out: [] u8, rev: int, table: string, row: int, col: string, value: 
   // a point in the mine where no one can stand: the route is refused, naming the plan
   wx := 0; wz := 0;
   for i: 0..<40 { for j: 0..<40 {
-    if wx == 0 { px := -4400 + i * 220; pz := -8200 + j * 255; q := sl_push(g, mp_m(px), mp_m(pz), 0.3, true);
+    if wx == 0 { px := -16000 + i * 800; pz := -43000 + j * 1125; q := sl_push(g, mp_m(px), mp_m(pz), 0.3, true);
       if abs(q.x - mp_m(px)) > 0.01 || abs(q.z - mp_m(pz)) > 0.01 { wx = px; wz = pz; } }
   } }
   #assert wx != 0;
-  rt: [64] u8; n := ct_put_int(rt[..], 0, wx); n = ct_put(rt[..], n, " "); n = ct_put_int(rt[..], n, wz); n = ct_put(rt[..], n, ", 850 -5700");
+  rt: [64] u8; n := ct_put_int(rt[..], 0, wx); n = ct_put(rt[..], n, " "); n = ct_put_int(rt[..], n, wz); n = ct_put(rt[..], n, ", 1010 -20080");
   b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "plans", 62, "route", cast(string) rt[0..<n]), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
   why := spt_why(t[..], b);
   #assert b.status == SPB_REFUSED && !w[0].ct[0].changed && ct_parts(why, ' ') == 21 && ct_part(why, ' ', 0) == "plan" && ct_part(why, ' ', 1) == "62:";
   #assert ct_num(ct_part(why, ' ', 5)).v == wx && ct_num(ct_part(why, ' ', 6)).v == wz && ct_part(why, ' ', 3) == "route's" && ct_part(why, ' ', 12) == "nearest";
   // the nearest place it names is one a foe can stand: a route through it is taken
   nx := ct_num(ct_part(why, ' ', 19)).v; nz := ct_num(ct_part(why, ' ', 20)).v;
-  n = ct_put_int(rt[..], 0, nx); n = ct_put(rt[..], n, " "); n = ct_put_int(rt[..], n, nz); n = ct_put(rt[..], n, ", 850 -5700");
+  n = ct_put_int(rt[..], 0, nx); n = ct_put(rt[..], n, " "); n = ct_put_int(rt[..], n, nz); n = ct_put(rt[..], n, ", 1010 -20080");
   b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "plans", 62, "route", cast(string) rt[0..<n]), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
   #assert b.status == SPB_OK;
 }
