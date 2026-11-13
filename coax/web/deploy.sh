@@ -112,6 +112,9 @@ for f in pages:
             # An asset under /private/ never ships (private-guard below): the page keeps its address,
             # which only a local address with the owner's private build serves (Valley World's detail pages).
             if u.group(3).startswith("/private/"): return u.group(0)
+            # An asset the API answers (/api/worlds/ID/assets/pack, a world's imports, #13420) is no file
+            # of the app: the page asks the API for it as it runs, so its address stays as it is.
+            if u.group(3).startswith("/api/"): return u.group(0)
             stem = u.group(3)[1:]
             # A sounds:/DIR/ asset: the page names its files at run time (DIR/NAME.ogg), so they
             # keep their names, under the site at the same path (metaverse-engine/audio/SOURCES.md).
