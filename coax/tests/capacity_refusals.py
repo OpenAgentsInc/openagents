@@ -451,6 +451,29 @@ class CapacityRefusals(unittest.TestCase):
 
     # ---- generic instances (E0339) ----
 
+    def test_a_native_check_at_its_wall_time_limit_says_so(self):
+        # #13392: a check whose native run is stopped at COAX_CHECK_SECONDS runs
+        # in the evaluator. When it fails there, the FAIL line and a note name
+        # the stopped native run; pass or fail, the near-limit report names it.
+        slow = ('spin :: (n: int) -> int #effects(all) { s := 0; for i: 0..<n { s += i & 1; } return s; }\n'
+                '#test "quick" { #assert spin(10) == 5; }\n'
+                '#test "only native" { #assert spin(3000000000) == 1500000000; }\n'
+                'main :: () {}\n')
+        env = {'COAX_NATIVE_CHECKS': '1', 'COAX_CHECK_SECONDS': '0.2'}
+        r = self.run_coax('test', slow, '--steps', '1000', env=env)
+        self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('FAIL #test only native (', r.stdout)
+        self.assertIn('after its native run stopped at the 0.2 s limit', r.stdout)
+        self.assertIn('its native run stopped at the 0.2 s wall-time limit (COAX_CHECK_SECONDS)', r.stderr)
+        self.assertIn('note[E0400]: native check wall time: 200 of 200 used (100%)', r.stderr)
+        self.assertIn("#test 'only native' (stopped at the limit; the evaluator ran it)", r.stderr)
+        self.assertIn('ok   #test quick', r.stdout)
+        # Inside the limit: no word of it.
+        fast = self.run_coax('test', slow.replace('3000000000', '30').replace('1500000000', '15'), env={'COAX_NATIVE_CHECKS': '1'})
+        self.assertEqual(fast.returncode, 0, fast.stdout + fast.stderr)
+        self.assertNotIn('native check wall time', fast.stderr)
+        self.assertNotIn('native run stopped', fast.stdout + fast.stderr)
+
     def test_generic_instance_refusal_names_the_template(self):
         source = instances(257)
         capacity, text = self.refusal('check', source, 'generic instances', 'E0339')

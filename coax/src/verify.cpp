@@ -192,10 +192,14 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
     ok = false;
     if (failures) ++*failures;
     if (verbose) {
+      // A check that passes only as native code fails this way on a busy host (#13392).
+      char native_note[96] = "";
+      if (native_timed_out(file, (size_t)index))
+        snprintf(native_note, sizeof native_note, " in the evaluator, after its native run stopped at the %g s limit", g_native.limit);
       if (r.over_budget)
-        printf("FAIL %s %s (out of steps: %llu used, its budget is %llu, %lld ms)\n", kind, name.c_str(), (unsigned long long)r.steps,
-               (unsigned long long)r.budget, ms);
-      else printf("FAIL %s %s (%lld ms)\n", kind, name.c_str(), ms);
+        printf("FAIL %s %s (out of steps: %llu used, its budget is %llu, %lld ms%s)\n", kind, name.c_str(), (unsigned long long)r.steps,
+               (unsigned long long)r.budget, ms, native_note);
+      else printf("FAIL %s %s (%lld ms%s)\n", kind, name.c_str(), ms, native_note);
       fflush(stdout);
       if (profile) print_step_profile(file, r);
     }
@@ -206,6 +210,13 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
                 (c->steps ? "its own #steps" : "the file's: coax test --steps N, or #steps N on the check for its own") + ")";
     diagnostic_note(file->src, c->loc, true, "in " + std::string(kind) + " " + name);
     if (!r.counterexample.empty()) diagnostic_note(file->src, c->loc, false, "counterexample: " + r.counterexample);
+    // A check that passes only as native code fails this way on a busy host (#13392).
+    if (native_timed_out(file, (size_t)index)) {
+      char limit[32];
+      snprintf(limit, sizeof limit, "%g", g_native.limit);
+      diagnostic_note(file->src, c->loc, false, "its native run stopped at the " + std::string(limit) +
+                      " s wall-time limit (COAX_CHECK_SECONDS), so the evaluator ran it: this failure is the evaluator's, and the check may pass as native code on an idle host");
+    }
     if (g_json_errors && !g_diagnostics_json) {
       message += " [" + std::string(kind) + " " + name + "]";
       if (!r.counterexample.empty()) message += "; counterexample: " + r.counterexample;
@@ -215,6 +226,8 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
     if (!g_json_errors) {
       fprintf(stderr, "  note: in %s %s\n", kind, name.c_str());
       if (!r.counterexample.empty()) fprintf(stderr, "  counterexample: %s\n", r.counterexample.c_str());
+      if (native_timed_out(file, (size_t)index))
+        fprintf(stderr, "  note: its native run stopped at the %g s wall-time limit (COAX_CHECK_SECONDS), so the evaluator ran it: this failure is the evaluator's, and the check may pass as native code on an idle host\n", g_native.limit);
     }
   }
   // The checks' value slots at their peak, with who held them (#12926).

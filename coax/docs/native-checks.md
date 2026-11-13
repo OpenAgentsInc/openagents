@@ -93,6 +93,16 @@ first runs them as native code:
    time, ends that process; the runner starts it again at the process's next
    check.
 
+A check's wall time is reported like the other limits (#13392). The check
+that used the largest share of the limit, above the near-limit threshold
+(three quarters, `--near-limit`), gets a `note[E0400]: native check wall
+time: USED of LIMIT used` line with its name; a check stopped at the limit
+counts as the whole limit. When the evaluator then fails a check whose native
+run was stopped, its `FAIL` line and a note on the error say so: the failure
+is the evaluator's, and the check may pass natively on an idle host. Wall
+time on a shared build host grows with the other jobs, so treat the note as a
+check to make cheaper or to split.
+
 `COAX_NATIVE_CHECKS_TRACE=1` prints one line per native run on stderr
 (eligible, passed, trapped, refused, timed out and crashed counts, and the
 emit, compile and run times). Set it to a file name to append the lines to

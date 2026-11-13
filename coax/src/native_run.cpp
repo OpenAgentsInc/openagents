@@ -16,7 +16,10 @@
 //                               reported (COAX_NATIVE_CHECKS_REPORT FILE
 //                               appends one JSON line per check)
 //   COAX_NATIVE_CHECKS_OPT=N    the C optimization level (default 0)
-//   COAX_CHECK_SECONDS=N        one native check's wall-time limit (default 120)
+//   COAX_CHECK_SECONDS=N        one native check's wall-time limit (default 120).
+//                               A check near it, or stopped at it, gets a
+//                               near-limit note; one the evaluator then fails
+//                               says its native run stopped at the limit (#13392)
 #include <poll.h>
 #include <signal.h>
 #include <spawn.h>
@@ -73,6 +76,7 @@ struct NativeRun {
   std::vector<NativeResult> results;  // by check index
   size_t eligible = 0, passed = 0;
   double emit = 0, compile = 0, run = 0;
+  double limit = 120;  // one check's wall-time limit in this run (COAX_CHECK_SECONDS)
   std::string why;  // why no check ran natively ("" when they did)
   std::string small;  // why COAX_NATIVE_CHECKS_MIN left a run's checks to the evaluator ("" when it didn't): said only in the trace
 };
@@ -276,6 +280,7 @@ static void native_run(File *file, const std::vector<bool> &want, uint64_t steps
   // Checks share no state (coax0 has no globals), so the split changes no verdict.
   double limit = 120;
   if (const char *s = getenv("COAX_CHECK_SECONDS")) { double v = strtod(s, nullptr); if (v > 0) limit = v; }
+  g_native.limit = limit;
   t0 = std::chrono::steady_clock::now();
   const size_t rows = plan.checks.size();
   const char *jobs_env = getenv("COAX_NATIVE_CHECKS_JOBS");
@@ -411,6 +416,25 @@ static void native_run(File *file, const std::vector<bool> &want, uint64_t steps
   }
   g_native.run = seconds_since(t0);
   laps.lap("native.run");
+  // A check's wall time against the limit, as the other limits are reported
+  // (#13392): the check nearest it gets the near-limit note, and one stopped
+  // at it counts as the whole limit. Wall time depends on the host's other
+  // jobs, so a check near the limit alone is over it on a busy host.
+  for (size_t i = 0; i < g_native.results.size(); i++) {
+    const NativeResult &nr = g_native.results[i];
+    if (nr.state != NativeResult::passed && nr.state != NativeResult::timed_out) continue;
+    const uint64_t limit_ms = (uint64_t)(limit * 1000);
+    const uint64_t used_ms = nr.state == NativeResult::timed_out ? limit_ms : std::min<uint64_t>((uint64_t)(nr.seconds * 1000), limit_ms);
+    if (!capacity_near(used_ms, limit_ms)) continue;
+    const CheckDecl *c = file->checks[(int32_t)i];
+    CapacityDetail d;
+    d.src = file->src;
+    d.unit = "ms";
+    d.consumers.push_back({std::string(c->forall ? "#forall" : "#test") + " '" + to_std(c->name) + "'" +
+                           (nr.state == NativeResult::timed_out ? " (stopped at the limit; the evaluator ran it)" : ""), c->loc, true, used_ms, "", "", ""});
+    d.fix = "make the check cheaper or split it: wall time on a shared host grows with the other jobs (COAX_CHECK_SECONDS sets the limit)";
+    capacity_use("native check wall time", "E0400", used_ms, limit_ms, d);
+  }
   if (g_timings.on()) {
     g_timings.detail["native.checks"] += (double)g_native.passed;
     g_timings.detail["native.eligible"] += (double)g_native.eligible;
@@ -418,6 +442,10 @@ static void native_run(File *file, const std::vector<bool> &want, uint64_t steps
   (void)began;
 }
 
+// Did check i's native run stop at the wall-time limit (so the evaluator ran it)?
+static bool native_timed_out(const File *file, size_t i) {
+  return g_native.file == file && i < g_native.results.size() && g_native.results[i].state == NativeResult::timed_out;
+}
 static bool native_passed(const File *file, size_t i) {
   return g_native.file == file && i < g_native.results.size() && g_native.results[i].state == NativeResult::passed;
 }

@@ -408,8 +408,10 @@ static std::string capacity_text(const std::string &name, const CapacityUse &c) 
   const uint64_t percent = (uint64_t)((unsigned __int128)c.used * 100 / c.limit);
   const uint32_t near = capacity_near_percent();
   const std::string threshold = near == 75 ? "above three quarters of the limit" : "above the near-limit threshold of " + std::to_string(near) + "%";
-  return name + ": " + std::to_string(c.used) + " of " + std::to_string(c.limit) + " used (" + std::to_string(percent) +
-         "%), " + threshold + "; more than " + std::to_string(c.limit) + " fails with " + c.code;
+  // A native check past its wall-time limit is not refused: the evaluator runs it (native_run.cpp, #13392).
+  const std::string past = name == "native check wall time" ? "; a check past " + std::to_string(c.limit) + " ms runs in the evaluator instead"
+                                                            : "; more than " + std::to_string(c.limit) + " fails with " + c.code;
+  return name + ": " + std::to_string(c.used) + " of " + std::to_string(c.limit) + " used (" + std::to_string(percent) + "%), " + threshold + past;
 }
 // A consumer as text: "60000 steps  a.coax:3:1  in 'build_table'".
 static std::string consumer_text(const CapacityDetail &d, const CapacityConsumer &c) {
