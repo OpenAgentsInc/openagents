@@ -10,17 +10,17 @@ FS_SESSION_SCHEMA :: "aethyrforge.scene-session.v1";
 FS_SESSION_ORIGIN :: "http://127.0.0.1:";   // the api is this loopback origin and a port, nothing more
 FS_SESSION_FRESH_MS :: 5000;                // a session older than this is the app gone
 FS_SESSION_CM :: 16000;                     // x_cm and z_cm are within this either way
-ForgeSceneSession :: struct {api:[128]u8;n:int;x:int;z:int;}
+EditorSceneSession :: struct {api:[128]u8;n:int;x:int;z:int;}
 
 #test "scene sessions bind a fresh exact loopback origin and bounded observed player position" {
-  s:[1]ForgeSceneSession;
+  s:[1]EditorSceneSession;
   good:="{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:1234\",\"x_cm\":0,\"z_cm\":-5000,\"observed_ms\":100}";
   #assert fs_session(good,100,s[..]) && s[0].x==0 && s[0].z==-5000 && cast(string)s[0].api[0..<s[0].n]=="http://127.0.0.1:1234";
   #assert fs_session(good,5100,s[..]) && !fs_session(good,5101,s[..]) && !fs_session(good,99,s[..]);
   for bad:[5]string.["{}","[]","{\"schema\":\"wrong\"}","{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://example.com:1234\"}","{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:1234/x\"}"] {#assert !fs_session(bad,100,s[..]);}
 }
 #test "scene session ports positions and age boundaries are enforced" {
-  s:[1]ForgeSceneSession;
+  s:[1]EditorSceneSession;
   for port:[2]string.["1","65535"] {
     b:[512]u8;n:=fss_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:");n=fss_put(b[..],n,port);n=fss_put(b[..],n,"\",\"observed_ms\":0,\"x_cm\":-16000,\"z_cm\":16000}");
     #assert fs_session(cast(string)b[0..<n],0,s[..]) && s[0].x== -16000 && s[0].z==16000;
@@ -35,7 +35,7 @@ ForgeSceneSession :: struct {api:[128]u8;n:int;x:int;z:int;}
   #assert !fs_session("oops",0,s[..]);
 }
 #test "scene origin validation separates its prefix digit count numeric range and coordinate ends" {
-  s:[1]ForgeSceneSession;
+  s:[1]EditorSceneSession;
   for port:[3]string.["10","9","00001"] {
     b:[512]u8;n:=fss_put(b[..],0,"{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:");n=fss_put(b[..],n,port);n=fss_put(b[..],n,"\",\"observed_ms\":0,\"x_cm\":16000,\"z_cm\":-16000}");
     #assert fs_session(cast(string)b[0..<n],0,s[..]) && s[0].x==16000 && s[0].z== -16000;
@@ -45,7 +45,7 @@ ForgeSceneSession :: struct {api:[128]u8;n:int;x:int;z:int;}
   }
 }
 #test "the app's session is written in one order and read back by the CLI's reader" {
-  b:[512]u8;s:[1]ForgeSceneSession;
+  b:[512]u8;s:[1]EditorSceneSession;
   n:=fs_session_put(b[..],51234,-120,4500,321,1794000000123);
   #assert cast(string)b[0..<n]=="{\"schema\":\"aethyrforge.scene-session.v1\",\"api\":\"http://127.0.0.1:51234\",\"x_cm\":-120,\"z_cm\":4500,\"pid\":321,\"observed_ms\":1794000000123}";
   #assert fs_session(cast(string)b[0..<n],1794000000123,s[..]) && s[0].x== -120 && s[0].z==4500 && cast(string)s[0].api[0..<s[0].n]=="http://127.0.0.1:51234";
@@ -82,7 +82,7 @@ fs_session_put :: (out:[]u8,port:int,x_cm:int,z_cm:int,pid:int,observed_ms:int)-
 }
 // A session as `aethyrforge scene` reads it at now (ms): false unless it names this schema, an exact
 // loopback origin and port, a moment within FS_SESSION_FRESH_MS, and a bounded position.
-fs_session :: (text:string,now:int,out:[]ForgeSceneSession)->bool #effects(all) {
+fs_session :: (text:string,now:int,out:[]EditorSceneSession)->bool #effects(all) {
   nodes:[24]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {return false;}
   v:=d[0];if jv_raw(v,jv_get(v,0,"schema"))!=FS_SESSION_SCHEMA {return false;}
   api:=jv_raw(v,jv_get(v,0,"api"));prefix:=FS_SESSION_ORIGIN;

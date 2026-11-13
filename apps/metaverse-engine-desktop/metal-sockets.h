@@ -1,6 +1,6 @@
 // Platform effects over the shared Coax socket/retained-storage authorities.
-#ifndef FORGE_METAL_SOCKETS_H
-#define FORGE_METAL_SOCKETS_H
+#ifndef EDITOR_METAL_SOCKETS_H
+#define EDITOR_METAL_SOCKETS_H
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

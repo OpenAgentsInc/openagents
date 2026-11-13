@@ -1,6 +1,6 @@
 // Native-width addresses; counts and all data words retain the browser ABI.
-#ifndef FORGE_METAL_PRODUCER_H
-#define FORGE_METAL_PRODUCER_H
+#ifndef EDITOR_METAL_PRODUCER_H
+#define EDITOR_METAL_PRODUCER_H
 #include <stdint.h>
 #define MF_FACE(F) \
  F(uint32_t,host_contract_version,(void)) \

@@ -15,7 +15,7 @@ scp_str :: (d: Jv, at: int, out: [] u8) -> string {
   return ifx n >= 0 then cast(string) out[0..<n] else "";
 }
 
-scp_write_v1 :: (buf: [] u8, c: ForgeSceneCommand) -> int #effects(all) {
+scp_write_v1 :: (buf: [] u8, c: EditorSceneCommand) -> int #effects(all) {
   o: [1] Jo; jo_start(o[..], buf);
   jo_obj(o[..]);
   jo_key(o[..], "op");
@@ -46,7 +46,7 @@ scp_write_v1 :: (buf: [] u8, c: ForgeSceneCommand) -> int #effects(all) {
   return o[0].n;
 }
 
-scp_write_resize :: (buf: [] u8, c: ForgeResize) -> int #effects(all) {
+scp_write_resize :: (buf: [] u8, c: EditorResize) -> int #effects(all) {
   o: [1] Jo; jo_start(o[..], buf);
   jo_obj(o[..]);
   jo_key(o[..], "op"); jo_str(o[..], "resize");
@@ -67,9 +67,9 @@ scp_fixture :: (d: Jv, fx: int, ver: int) -> bool #effects(all) {
   buf: [512] u8;
   if op == "resize" {
     if ver < 2 { return false; }
-    v1: [1] ForgeSceneCommand;
+    v1: [1] EditorSceneCommand;
     if fs_command(text, v1[..]) { return false; }
-    r: [1] ForgeResize;
+    r: [1] EditorResize;
     if !fsr_command(text, r[..]) { return false; }
     if r[0].index != jv_int(d, jv_get(d, fx, "index"), -1) { return false; }
     if r[0].version != jv_int(d, jv_get(d, fx, "version"), -1) { return false; }
@@ -78,9 +78,9 @@ scp_fixture :: (d: Jv, fx: int, ver: int) -> bool #effects(all) {
     n := scp_write_resize(buf[..], r[0]);
     return n >= 0 && cast(string) buf[0..<n] == text;
   }
-  r2: [1] ForgeResize;
+  r2: [1] EditorResize;
   if fsr_command(text, r2[..]) { return false; }
-  c: [1] ForgeSceneCommand;
+  c: [1] EditorSceneCommand;
   if !fs_command(text, c[..]) { return false; }
   want_op := ifx op == "place" then FS_PLACE else (ifx op == "move" then FS_MOVE else (ifx op == "remove" then FS_REMOVE else 0));
   if want_op == 0 || c[0].op != want_op { return false; }
@@ -121,7 +121,7 @@ scp_check :: (profile_json: string) -> int #effects(all) {
   if jv_kind(d, rej) != JV_ARRAY || jv_len(d, rej) < 2 { return 0; }
   for i: 0..<jv_len(d, rej) {
     bad := scp_str(d, jv_at(d, rej, i), rbuf[..]);
-    c1: [1] ForgeSceneCommand; c2: [1] ForgeResize;
+    c1: [1] EditorSceneCommand; c2: [1] EditorResize;
     if bad.count == 0 || fs_command(bad, c1[..]) || (ver == 2 && fsr_command(bad, c2[..])) { return 0; }
   }
   return ver;

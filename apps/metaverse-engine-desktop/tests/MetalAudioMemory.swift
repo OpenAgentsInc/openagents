@@ -7,29 +7,29 @@ import Foundation
 struct MetalAudioMemory {
     static func main() throws {
         guard CommandLine.arguments.count == 2 || CommandLine.arguments.count == 5 else { fatalError("MetalAudioMemory REPORT [RESOURCES PRODUCER GOLDEN_PCM]") }
-        let memory = ForgeAudioMemory()
+        let memory = EditorAudioMemory()
         var rows: [Int64] = []
         for (frames,channels): (Int64,Int64) in [(-1,1),(0,1),(Int64.max,1),(1,0),(1,3),(4_194_305,2)] {
-            rows.append(ForgeDecodedPCM(frames:frames,channels:channels,memory:memory) == nil ? 1:0)
+            rows.append(EditorDecodedPCM(frames:frames,channels:channels,memory:memory) == nil ? 1:0)
         }
         rows.append(memory.total)
-        var full = ForgeDecodedPCM(frames:4_194_304,channels:2,memory:memory)
+        var full = EditorDecodedPCM(frames:4_194_304,channels:2,memory:memory)
         rows.append(Int64(full?.count ?? -1)); rows.append(memory.total)
-        rows.append(ForgeDecodedPCM(frames:1,channels:1,memory:memory) == nil ? 1:0)
+        rows.append(EditorDecodedPCM(frames:1,channels:1,memory:memory) == nil ? 1:0)
         full = nil; rows.append(memory.total)
-        var tiny: [ForgeDecodedPCM] = []
-        for _ in 0..<128 { if let pcm = ForgeDecodedPCM(frames:1,channels:1,memory:memory) { tiny.append(pcm) } }
+        var tiny: [EditorDecodedPCM] = []
+        for _ in 0..<128 { if let pcm = EditorDecodedPCM(frames:1,channels:1,memory:memory) { tiny.append(pcm) } }
         rows.append(Int64(tiny.count)); rows.append(memory.total)
-        rows.append(ForgeDecodedPCM(frames:1,channels:1,memory:memory) == nil ? 1:0)
+        rows.append(EditorDecodedPCM(frames:1,channels:1,memory:memory) == nil ? 1:0)
         tiny.removeLast()
-        if let pcm = ForgeDecodedPCM(frames:1,channels:2,memory:memory) { tiny.append(pcm) }
+        if let pcm = EditorDecodedPCM(frames:1,channels:2,memory:memory) { tiny.append(pcm) }
         rows.append(memory.total)
         tiny.removeAll(); rows.append(memory.total)
         let format = AVAudioFormat(commonFormat:.pcmFormatFloat32,sampleRate:48000,channels:2,interleaved:true)!
         let sdk = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:3)!
         sdk.frameLength = 3
         for i in 0..<6 { sdk.floatChannelData![0][i] = Float(i)/8 }
-        var copy = ForgeDecodedPCM(sdk,memory:memory)
+        var copy = EditorDecodedPCM(sdk,memory:memory)
         rows.append(Int64(copy?.count ?? -1)); rows.append(memory.total)
         rows.append(copy?.samples[5] == 0.625 ? 1:0)
         copy = nil; rows.append(memory.total)
@@ -54,7 +54,7 @@ struct MetalAudioMemory {
             defer { mf_close(host) }
             var metadata = 0, capacity = 0
             _ = mf_sound_bank(host,&metadata); _ = mf_sound_bank_storage(host,&capacity)
-            let audio = ForgeMetalAudio(host:host,resources:resources,muted:true,memory:memory)
+            let audio = EditorMetalAudio(host:host,resources:resources,muted:true,memory:memory)
             defer { audio.close() }
             audio.bank()
             for name in audio.bankWav.keys.sorted() { _ = audio.buffer(name) }
@@ -72,8 +72,8 @@ struct MetalAudioMemory {
             var retained = audio.buffers
             withExtendedLifetime(retained) { audio.close(); observed.append(memory.total) }
             retained.removeAll(); observed.append(memory.total)
-            var full = ForgeDecodedPCM(frames:4_194_304,channels:2,memory:memory)
-            let refused = ForgeMetalAudio(host:host,resources:resources,muted:true,memory:memory)
+            var full = EditorDecodedPCM(frames:4_194_304,channels:2,memory:memory)
+            let refused = EditorMetalAudio(host:host,resources:resources,muted:true,memory:memory)
             withExtendedLifetime(full) {
                 refused.bank(); observed.append(Int64(refused.bankWav.count)); observed.append(Int64(refused.buffers.count)); observed.append(refused.buffer("fire-hit") == nil ? 1:0)
                 refused.close()

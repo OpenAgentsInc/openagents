@@ -2,20 +2,20 @@
 // proto/openagents/verse/doc/v1alpha1/edits.proto): the bodies that change a realm through
 // coax/web/api/realms.c, written here for every caller: the realm edit layer (metaverse/edit/edit.coax),
 // My Realm (apps/openagents-web/myrealm.coax) and the CLI (apps/openagents-cli/realm.coax).
-//   POST .../<slug>/settings   {"tools":{"build":true,...}}                     forge_settings_body
-//   POST .../<slug>/switch     {"row":KEY,"on":true}                            forge_switch_body
-//   POST .../<slug>/revise     {"prompt":WORDS}                                 forge_words_body
-//   POST .../<slug>/asks       {"words":WORDS}                                  forge_words_body
-//   POST .../<slug>/asks/<id>/done   {"commit":HASH}                            forge_words_body
-//   POST .../<slug>/asks/doc   {"name":FILE,"data":BASE64}                      forge_ask_doc_body
-//   POST .../<slug>/place      {"thing":THING,"x":X,"z":Z,"yaw":YAW}            forge_place_body
-//   POST .../<slug>/lore       {"who":WHO,"text":TEXT}                          forge_lore_body
-//   POST .../<slug>/quest      {"giver":WHO,"ask":ASK,"steps":[..],"reward":R}  forge_quest_body
+//   POST .../<slug>/settings   {"tools":{"build":true,...}}                     editor_settings_body
+//   POST .../<slug>/switch     {"row":KEY,"on":true}                            editor_switch_body
+//   POST .../<slug>/revise     {"prompt":WORDS}                                 editor_words_body
+//   POST .../<slug>/asks       {"words":WORDS}                                  editor_words_body
+//   POST .../<slug>/asks/<id>/done   {"commit":HASH}                            editor_words_body
+//   POST .../<slug>/asks/doc   {"name":FILE,"data":BASE64}                      editor_ask_doc_body
+//   POST .../<slug>/place      {"thing":THING,"x":X,"z":Z,"yaw":YAW}            editor_place_body
+//   POST .../<slug>/lore       {"who":WHO,"text":TEXT}                          editor_lore_body
+//   POST .../<slug>/quest      {"giver":WHO,"ask":ASK,"steps":[..],"reward":R}  editor_quest_body
 // Under .../<slug>/edit-v1/ an edit names the revision it was made from, and "rev" is the body's
 // first member (rev >= 1); with no revision the body starts with the edit's own first member.
 // Words a page took from its own text fields have their control bytes dropped (drop); the CLI's
 // are escaped as JSON. A writer returns the body's length, or -1 when it does not fit.
-// The server answers each edit as jsonb's text; forge_change_deleted reads what a deletion did.
+// The server answers each edit as jsonb's text; editor_change_deleted reads what a deletion did.
 // proto/verse/realm-edits-v1.json holds the bodies as each caller sends them and what the server
 // answers; metaverse-engine/editor/change-goldens.coax holds them through this file and
 // coax/web/api/tests/realm_record_checks.coax sends them to the API.
@@ -24,7 +24,7 @@
 #load "../../coax/lib/json/json.coax";
 
 // text as a JSON string: drop leaves control bytes out (a page's words), else they are escaped.
-forge_change_quote :: (o: [] Jo, text: string, drop: bool) {
+editor_change_quote :: (o: [] Jo, text: string, drop: bool) {
   if !drop { jo_quoted(o, text); return; }
   jo_byte(o, '"');
   for c: text {
@@ -35,14 +35,14 @@ forge_change_quote :: (o: [] Jo, text: string, drop: bool) {
   jo_byte(o, '"');
 }
 // "{" and, for an edit made from a revision, "rev":N and the comma before its next member.
-forge_change_open :: (o: [] Jo, rev: int) {
+editor_change_open :: (o: [] Jo, rev: int) {
   jo_byte(o, '{');
   if rev >= 1 { jo_put(o, "\"rev\":"); jo_int(o, rev); jo_byte(o, ','); }
 }
-forge_change_done :: (o: [] Jo) -> int { jo_byte(o, '}'); return ifx o[0].bad then -1 else o[0].n; }
+editor_change_done :: (o: [] Jo) -> int { jo_byte(o, '}'); return ifx o[0].bad then -1 else o[0].n; }
 // A number as a caller wrote it ("3.80", "-1.5", "90"): digits with at most one minus first and at
 // most one point, and a digit somewhere.
-forge_change_number_ok :: (t: string) -> bool {
+editor_change_number_ok :: (t: string) -> bool {
   digits := 0; points := 0;
   for i: 0..<t.count {
     c := t[i];
@@ -53,9 +53,9 @@ forge_change_number_ok :: (t: string) -> bool {
   return digits > 0 && points <= 1;
 }
 
-forge_settings_body :: (rev: int, names: [] string, on: [] bool, buf: [] u8) -> int {
+editor_settings_body :: (rev: int, names: [] string, on: [] bool, buf: [] u8) -> int {
   o: [1] Jo; jo_start(o[..], buf);
-  forge_change_open(o[..], rev);
+  editor_change_open(o[..], rev);
   jo_put(o[..], "\"tools\":{");
   for i: 0..<names.count {
     if i >= on.count { return -1; }
@@ -63,113 +63,113 @@ forge_settings_body :: (rev: int, names: [] string, on: [] bool, buf: [] u8) -> 
     jo_quoted(o[..], names[i]); jo_put(o[..], ifx on[i] then ":true" else ":false");
   }
   jo_byte(o[..], '}');
-  return forge_change_done(o[..]);
+  return editor_change_done(o[..]);
 }
-forge_switch_body :: (rev: int, row: string, on: bool, drop: bool, buf: [] u8) -> int {
+editor_switch_body :: (rev: int, row: string, on: bool, drop: bool, buf: [] u8) -> int {
   o: [1] Jo; jo_start(o[..], buf);
-  forge_change_open(o[..], rev);
-  jo_put(o[..], "\"row\":"); forge_change_quote(o[..], row, drop); jo_put(o[..], ifx on then ",\"on\":true" else ",\"on\":false");
-  return forge_change_done(o[..]);
+  editor_change_open(o[..], rev);
+  jo_put(o[..], "\"row\":"); editor_change_quote(o[..], row, drop); jo_put(o[..], ifx on then ",\"on\":true" else ",\"on\":false");
+  return editor_change_done(o[..]);
 }
 // One member of words: key is "prompt" (revise), "words" (an ask) or "commit" (an ask marked done).
-forge_words_body :: (rev: int, key: string, words: string, drop: bool, buf: [] u8) -> int {
+editor_words_body :: (rev: int, key: string, words: string, drop: bool, buf: [] u8) -> int {
   if key != "prompt" && key != "words" && key != "commit" { return -1; }
   o: [1] Jo; jo_start(o[..], buf);
-  forge_change_open(o[..], rev);
-  jo_quoted(o[..], key); jo_byte(o[..], ':'); forge_change_quote(o[..], words, drop);
-  return forge_change_done(o[..]);
+  editor_change_open(o[..], rev);
+  jo_quoted(o[..], key); jo_byte(o[..], ':'); editor_change_quote(o[..], words, drop);
+  return editor_change_done(o[..]);
 }
 // x, z and yaw are numbers as the caller wrote them (metres with two decimals; yaw in the
 // caller's unit: the pages' radians with two decimals, the CLI's whole degrees).
-forge_place_body :: (rev: int, thing: string, x: string, z: string, yaw: string, drop: bool, buf: [] u8) -> int {
-  if !forge_change_number_ok(x) || !forge_change_number_ok(z) || !forge_change_number_ok(yaw) { return -1; }
+editor_place_body :: (rev: int, thing: string, x: string, z: string, yaw: string, drop: bool, buf: [] u8) -> int {
+  if !editor_change_number_ok(x) || !editor_change_number_ok(z) || !editor_change_number_ok(yaw) { return -1; }
   o: [1] Jo; jo_start(o[..], buf);
-  forge_change_open(o[..], rev);
-  jo_put(o[..], "\"thing\":"); forge_change_quote(o[..], thing, drop);
+  editor_change_open(o[..], rev);
+  jo_put(o[..], "\"thing\":"); editor_change_quote(o[..], thing, drop);
   jo_put(o[..], ",\"x\":"); jo_put(o[..], x); jo_put(o[..], ",\"z\":"); jo_put(o[..], z); jo_put(o[..], ",\"yaw\":"); jo_put(o[..], yaw);
-  return forge_change_done(o[..]);
+  return editor_change_done(o[..]);
 }
-forge_lore_body :: (rev: int, who: string, text: string, drop: bool, buf: [] u8) -> int {
+editor_lore_body :: (rev: int, who: string, text: string, drop: bool, buf: [] u8) -> int {
   o: [1] Jo; jo_start(o[..], buf);
-  forge_change_open(o[..], rev);
-  jo_put(o[..], "\"who\":"); forge_change_quote(o[..], who, drop); jo_put(o[..], ",\"text\":"); forge_change_quote(o[..], text, drop);
-  return forge_change_done(o[..]);
+  editor_change_open(o[..], rev);
+  jo_put(o[..], "\"who\":"); editor_change_quote(o[..], who, drop); jo_put(o[..], ",\"text\":"); editor_change_quote(o[..], text, drop);
+  return editor_change_done(o[..]);
 }
 // steps: the quest's steps as the caller has them (the pages send all three, empty ones too; the
 // CLI sends the ones given).
-forge_quest_body :: (rev: int, giver: string, ask: string, steps: [] string, reward: string, drop: bool, buf: [] u8) -> int {
+editor_quest_body :: (rev: int, giver: string, ask: string, steps: [] string, reward: string, drop: bool, buf: [] u8) -> int {
   o: [1] Jo; jo_start(o[..], buf);
-  forge_change_open(o[..], rev);
-  jo_put(o[..], "\"giver\":"); forge_change_quote(o[..], giver, drop); jo_put(o[..], ",\"ask\":"); forge_change_quote(o[..], ask, drop);
+  editor_change_open(o[..], rev);
+  jo_put(o[..], "\"giver\":"); editor_change_quote(o[..], giver, drop); jo_put(o[..], ",\"ask\":"); editor_change_quote(o[..], ask, drop);
   jo_put(o[..], ",\"steps\":[");
-  for t: 0..<steps.count { if t > 0 { jo_byte(o[..], ','); } forge_change_quote(o[..], steps[t], drop); }
-  jo_put(o[..], "],\"reward\":"); forge_change_quote(o[..], reward, drop);
-  return forge_change_done(o[..]);
+  for t: 0..<steps.count { if t > 0 { jo_byte(o[..], ','); } editor_change_quote(o[..], steps[t], drop); }
+  jo_put(o[..], "],\"reward\":"); editor_change_quote(o[..], reward, drop);
+  return editor_change_done(o[..]);
 }
 // POST .../<slug>/asks/doc from the CLI: a design document's file name and its bytes in base64
 // (the pages' host builds the same body from a picked file).
-forge_ask_doc_body :: (rev: int, name: string, data: string, buf: [] u8) -> int {
+editor_ask_doc_body :: (rev: int, name: string, data: string, buf: [] u8) -> int {
   o: [1] Jo; jo_start(o[..], buf);
-  forge_change_open(o[..], rev);
+  editor_change_open(o[..], rev);
   jo_put(o[..], "\"name\":"); jo_quoted(o[..], name); jo_put(o[..], ",\"data\":"); jo_quoted(o[..], data);
-  return forge_change_done(o[..]);
+  return editor_change_done(o[..]);
 }
 // What a deletion answered (POST .../asks/<id>/delete, .../rows/<key>/delete): true when it has a
 // "deleted" member (the row or ask is gone), false when it is only switched off for now
 // ({"ask": ID, "state": ...}) or the body is no object.
-forge_change_deleted :: (body: string) -> bool {
+editor_change_deleted :: (body: string) -> bool {
   nodes: [32] JvNode; j: [1] Jv;
   return jv_parse(j[..], body, nodes[..]) && jv_kind(j[0], 0) == JV_OBJECT && jv_get(j[0], 0, "deleted") >= 0;
 }
 
 #test "the edits' bodies as the pages send them and, with a revision, as the CLI does" {
   buf: [512] u8;
-  n := forge_switch_body(0, "feature:2", true, true, buf[..]);
+  n := editor_switch_body(0, "feature:2", true, true, buf[..]);
   #assert cast(string) buf[0..<n] == "{\"row\":\"feature:2\",\"on\":true}";
-  n = forge_switch_body(7, "night", false, false, buf[..]);
-  #assert cast(string) buf[0..<n] == "{\"rev\":7,\"row\":\"night\",\"on\":false}" && forge_switch_body(7, "night", false, false, buf[0..<n - 1]) == -1;
-  n = forge_switch_body(-1, "a", true, false, buf[..]);
+  n = editor_switch_body(7, "night", false, false, buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"rev\":7,\"row\":\"night\",\"on\":false}" && editor_switch_body(7, "night", false, false, buf[0..<n - 1]) == -1;
+  n = editor_switch_body(-1, "a", true, false, buf[..]);
   #assert cast(string) buf[0..<n] == "{\"row\":\"a\",\"on\":true}";
   names := [3] string.["build", "fly", "map"]; on := [3] bool.[true, false, true];
-  n = forge_settings_body(0, names[..], on[..], buf[..]);
+  n = editor_settings_body(0, names[..], on[..], buf[..]);
   #assert cast(string) buf[0..<n] == "{\"tools\":{\"build\":true,\"fly\":false,\"map\":true}}";
-  n = forge_settings_body(3, names[0..<1], on[0..<1], buf[..]);
+  n = editor_settings_body(3, names[0..<1], on[0..<1], buf[..]);
   #assert cast(string) buf[0..<n] == "{\"rev\":3,\"tools\":{\"build\":true}}";
-  n = forge_settings_body(0, names[0..<0], on[0..<0], buf[..]);
-  #assert cast(string) buf[0..<n] == "{\"tools\":{}}" && forge_settings_body(0, names[..], on[0..<2], buf[..]) == -1 && forge_settings_body(0, names[..], on[..], buf[0..<20]) == -1;
-  n = forge_words_body(0, "words", "more \"bats\"\n", true, buf[..]);
+  n = editor_settings_body(0, names[0..<0], on[0..<0], buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"tools\":{}}" && editor_settings_body(0, names[..], on[0..<2], buf[..]) == -1 && editor_settings_body(0, names[..], on[..], buf[0..<20]) == -1;
+  n = editor_words_body(0, "words", "more \"bats\"\n", true, buf[..]);
   #assert cast(string) buf[0..<n] == "{\"words\":\"more \\\"bats\\\"\"}";
-  n = forge_words_body(4, "prompt", "no\tbats\\", false, buf[..]);
+  n = editor_words_body(4, "prompt", "no\tbats\\", false, buf[..]);
   #assert cast(string) buf[0..<n] == "{\"rev\":4,\"prompt\":\"no\\tbats\\\\\"}";
-  n = forge_words_body(4, "commit", "abcdef0", false, buf[..]);
-  #assert cast(string) buf[0..<n] == "{\"rev\":4,\"commit\":\"abcdef0\"}" && forge_words_body(4, "note", "x", false, buf[..]) == -1 && forge_words_body(4, "commit", "abcdef0", false, buf[0..<12]) == -1;
-  n = forge_place_body(0, "barrel", "0.00", "3.80", "0.00", true, buf[..]);
+  n = editor_words_body(4, "commit", "abcdef0", false, buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"rev\":4,\"commit\":\"abcdef0\"}" && editor_words_body(4, "note", "x", false, buf[..]) == -1 && editor_words_body(4, "commit", "abcdef0", false, buf[0..<12]) == -1;
+  n = editor_place_body(0, "barrel", "0.00", "3.80", "0.00", true, buf[..]);
   #assert cast(string) buf[0..<n] == "{\"thing\":\"barrel\",\"x\":0.00,\"z\":3.80,\"yaw\":0.00}";
-  n = forge_place_body(9, "crate", "-2.25", "1.00", "-90", false, buf[..]);
-  #assert cast(string) buf[0..<n] == "{\"rev\":9,\"thing\":\"crate\",\"x\":-2.25,\"z\":1.00,\"yaw\":-90}" && forge_place_body(9, "crate", "-2.25", "1.00", "-90", false, buf[0..<n - 1]) == -1;
-  #assert forge_place_body(0, "crate", "", "1", "0", true, buf[..]) == -1 && forge_place_body(0, "crate", "1", "x", "0", true, buf[..]) == -1 && forge_place_body(0, "crate", "1", "1", "1e3", true, buf[..]) == -1;
-  #assert forge_change_number_ok("0") && forge_change_number_ok("-0.50") && forge_change_number_ok("12.") && forge_change_number_ok(".5") && !forge_change_number_ok("") && !forge_change_number_ok("-") && !forge_change_number_ok(".");
-  #assert !forge_change_number_ok("1-2") && !forge_change_number_ok("1.2.3") && !forge_change_number_ok("1,2") && !forge_change_number_ok("+1") && !forge_change_number_ok(" 1") && !forge_change_number_ok("1/2") && !forge_change_number_ok("1:2") && forge_change_number_ok("90") && forge_change_number_ok("-9");
-  n = forge_lore_body(0, "Old Mott", "He kept the \"bridge\".\n", true, buf[..]);
+  n = editor_place_body(9, "crate", "-2.25", "1.00", "-90", false, buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"rev\":9,\"thing\":\"crate\",\"x\":-2.25,\"z\":1.00,\"yaw\":-90}" && editor_place_body(9, "crate", "-2.25", "1.00", "-90", false, buf[0..<n - 1]) == -1;
+  #assert editor_place_body(0, "crate", "", "1", "0", true, buf[..]) == -1 && editor_place_body(0, "crate", "1", "x", "0", true, buf[..]) == -1 && editor_place_body(0, "crate", "1", "1", "1e3", true, buf[..]) == -1;
+  #assert editor_change_number_ok("0") && editor_change_number_ok("-0.50") && editor_change_number_ok("12.") && editor_change_number_ok(".5") && !editor_change_number_ok("") && !editor_change_number_ok("-") && !editor_change_number_ok(".");
+  #assert !editor_change_number_ok("1-2") && !editor_change_number_ok("1.2.3") && !editor_change_number_ok("1,2") && !editor_change_number_ok("+1") && !editor_change_number_ok(" 1") && !editor_change_number_ok("1/2") && !editor_change_number_ok("1:2") && editor_change_number_ok("90") && editor_change_number_ok("-9");
+  n = editor_lore_body(0, "Old Mott", "He kept the \"bridge\".\n", true, buf[..]);
   #assert cast(string) buf[0..<n] == "{\"who\":\"Old Mott\",\"text\":\"He kept the \\\"bridge\\\".\"}";
-  n = forge_lore_body(2, "Old Mott", "", false, buf[..]);
-  #assert cast(string) buf[0..<n] == "{\"rev\":2,\"who\":\"Old Mott\",\"text\":\"\"}" && forge_lore_body(2, "Old Mott", "", false, buf[0..<n - 1]) == -1;
+  n = editor_lore_body(2, "Old Mott", "", false, buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"rev\":2,\"who\":\"Old Mott\",\"text\":\"\"}" && editor_lore_body(2, "Old Mott", "", false, buf[0..<n - 1]) == -1;
   three := [3] string.["Find the oar", "", ""];
-  n = forge_quest_body(0, "Old Mott", "Bring my oar", three[..], "A lantern", true, buf[..]);
+  n = editor_quest_body(0, "Old Mott", "Bring my oar", three[..], "A lantern", true, buf[..]);
   #assert cast(string) buf[0..<n] == "{\"giver\":\"Old Mott\",\"ask\":\"Bring my oar\",\"steps\":[\"Find the oar\",\"\",\"\"],\"reward\":\"A lantern\"}";
-  n = forge_quest_body(5, "Old Mott", "Bring my oar", three[0..<1], "", false, buf[..]);
+  n = editor_quest_body(5, "Old Mott", "Bring my oar", three[0..<1], "", false, buf[..]);
   #assert cast(string) buf[0..<n] == "{\"rev\":5,\"giver\":\"Old Mott\",\"ask\":\"Bring my oar\",\"steps\":[\"Find the oar\"],\"reward\":\"\"}";
-  n = forge_quest_body(5, "M", "", three[0..<0], "", false, buf[..]);
-  #assert cast(string) buf[0..<n] == "{\"rev\":5,\"giver\":\"M\",\"ask\":\"\",\"steps\":[],\"reward\":\"\"}" && forge_quest_body(5, "M", "", three[0..<0], "", false, buf[0..<n - 1]) == -1;
+  n = editor_quest_body(5, "M", "", three[0..<0], "", false, buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"rev\":5,\"giver\":\"M\",\"ask\":\"\",\"steps\":[],\"reward\":\"\"}" && editor_quest_body(5, "M", "", three[0..<0], "", false, buf[0..<n - 1]) == -1;
 }
 #test "a design document's body" {
   buf: [128] u8;
-  n := forge_ask_doc_body(4, "idea \"one\".txt", "SG9yc2Vz", buf[..]);
-  #assert cast(string) buf[0..<n] == "{\"rev\":4,\"name\":\"idea \\\"one\\\".txt\",\"data\":\"SG9yc2Vz\"}" && forge_ask_doc_body(4, "idea.txt", "SG9yc2Vz", buf[0..<20]) == -1;
-  n = forge_ask_doc_body(0, "a.md", "", buf[..]);
+  n := editor_ask_doc_body(4, "idea \"one\".txt", "SG9yc2Vz", buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"rev\":4,\"name\":\"idea \\\"one\\\".txt\",\"data\":\"SG9yc2Vz\"}" && editor_ask_doc_body(4, "idea.txt", "SG9yc2Vz", buf[0..<20]) == -1;
+  n = editor_ask_doc_body(0, "a.md", "", buf[..]);
   #assert cast(string) buf[0..<n] == "{\"name\":\"a.md\",\"data\":\"\"}";
 }
 #test "what a deletion answered" {
-  #assert forge_change_deleted("{\"deleted\": true, \"reverted\": false}") && forge_change_deleted("{\"rev\": 3, \"deleted\": true}") && !forge_change_deleted("{\"ask\": 4, \"state\": \"removing\"}");
-  #assert !forge_change_deleted("") && !forge_change_deleted("[\"deleted\"]") && !forge_change_deleted("{\"error\": \"deleted\"}") && !forge_change_deleted("{\"deleted\"");
+  #assert editor_change_deleted("{\"deleted\": true, \"reverted\": false}") && editor_change_deleted("{\"rev\": 3, \"deleted\": true}") && !editor_change_deleted("{\"ask\": 4, \"state\": \"removing\"}");
+  #assert !editor_change_deleted("") && !editor_change_deleted("[\"deleted\"]") && !editor_change_deleted("{\"error\": \"deleted\"}") && !editor_change_deleted("{\"deleted\"");
 }

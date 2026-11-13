@@ -11,28 +11,28 @@
 #include "../face.h"
 #include "../../shared/host/apple/ui-host-apple.h"
 
-@class ForgeMetalWorld;
+@class EditorMetalWorld;
 
 // What a check or a startup step throws: the message the app shows (fail:).
-void forge_throw(NSString *message) __attribute__((noreturn));
+void editor_throw(NSString *message) __attribute__((noreturn));
 // A function, not a macro: a condition with Objective-C messages holds commas the preprocessor would split.
-void forge_require(BOOL ok, NSString *format, ...) NS_FORMAT_FUNCTION(2, 3);
-#define FORGE_REQUIRE forge_require
-NSString *forge_json(id object);          // sorted keys; "{}" when it cannot
-NSString *forge_json_pretty(id object);
-id forge_parse(NSString *json);           // nil when it is not JSON
-void forge_write(NSString *text, NSURL *url);   // atomically; throws on failure
-void forge_sleep_ms(int ms);
-double forge_uptime(void);
-NSString *forge_setup_text(int64_t field);
+void editor_require(BOOL ok, NSString *format, ...) NS_FORMAT_FUNCTION(2, 3);
+#define EDITOR_REQUIRE editor_require
+NSString *editor_json(id object);          // sorted keys; "{}" when it cannot
+NSString *editor_json_pretty(id object);
+id editor_parse(NSString *json);           // nil when it is not JSON
+void editor_write(NSString *text, NSURL *url);   // atomically; throws on failure
+void editor_sleep_ms(int ms);
+double editor_uptime(void);
+NSString *editor_setup_text(int64_t field);
 
 // Runs a local CLI off the main thread: its stdout (at most 64 KiB), or throws.
-NSData *forge_cli(NSURL *executable, NSArray<NSString *> *arguments, double timeout, NSDictionary *environment);
+NSData *editor_cli(NSURL *executable, NSArray<NSString *> *arguments, double timeout, NSDictionary *environment);
 
 // The Coder chat: transcript and composer text views, buttons and labels as native children of
 // the host's view (under its layer), and its two HUDs (the composer's frame and the message feed)
 // drawn on the host's layer from Coax's twelve-float strokes (metaverse-engine/ui/feed-draw.coax).
-@interface ForgeChat : NSView
+@interface EditorChat : NSView
 @property(nonatomic, strong) NSTextView *transcript, *input;
 @property(nonatomic, strong) NSScrollView *transcriptScroll, *inputScroll;
 @property(nonatomic, strong) NSTextField *router, *heading, *status;
@@ -72,14 +72,14 @@ NSData *forge_cli(NSURL *executable, NSArray<NSString *> *arguments, double time
 - (id<MTLRenderPipelineState>)pipelineOn:(id<MTLDevice>)device;   // HUD.metal's, nil when it did not load
 @end
 
-@interface ForgeApp : NSObject <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply>
+@interface EditorApp : NSObject <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply>
 @property(nonatomic) UiHost *host;
 @property(nonatomic, strong) NSWindow *window;
 @property(nonatomic, strong) NSArray<NSString *> *args;
 @property(nonatomic, strong) WKWebView *web;
-@property(nonatomic, strong) ForgeMetalWorld *metalWorld;
+@property(nonatomic, strong) EditorMetalWorld *metalWorld;
 @property(nonatomic, strong) NSTextField *notice;
-@property(nonatomic, strong) ForgeChat *chat;
+@property(nonatomic, strong) EditorChat *chat;
 @property(nonatomic, strong) NSTask *room, *page, *voiceHost;
 @property(nonatomic, strong) NSURL *dataURL, *pageURL, *resources;
 @property(nonatomic) BOOL sceneReady, stopping, setupHidden, statusMode, checking, verifying, worldPaused;
@@ -155,7 +155,7 @@ NSData *forge_cli(NSURL *executable, NSArray<NSString *> *arguments, double time
 @end
 
 // The checks (checks.m), each run off the main thread after startup; each ends the app.
-@interface ForgeApp (Checks)
+@interface EditorApp (Checks)
 - (void)runCheck;          // the one the arguments name, if any
 - (void)chatSmokeCheck;
 - (void)measureWebPreview:(NSURL *)plan;

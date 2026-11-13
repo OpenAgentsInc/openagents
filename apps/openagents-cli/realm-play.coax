@@ -337,7 +337,7 @@ realm_seat :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
     sb: [API_OUT] u8; sp: [128] u8;
     seen := api_call(a, profile, "GET", realm_path(slug, "", sp[..]), "", sb[..]);
     if !api_ok(seen) { return api_fail(r, seen, cast(string) sb[0..<seen.n]); }
-    if !seen.keyed && forge_spec_value(cast(string) sb[0..<seen.n], "visibility") == "private" {   // with a key, the seat is the account's (0110)
+    if !seen.keyed && editor_spec_value(cast(string) sb[0..<seen.n], "visibility") == "private" {   // with a key, the seat is the account's (0110)
       said: [400] u8; n := copy(slug, said[..]);
       n += copy(" is private, and a seat is a visitor's: make it unlisted or public first: openagents realm visibility ", said[n..<said.count]);
       n += copy(slug, said[n..<said.count]); n += copy(" unlisted", said[n..<said.count]);

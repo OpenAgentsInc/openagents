@@ -31,7 +31,7 @@ struct MetalAudioPrefetch {
         mf_network_config(host,"http://127.0.0.1:9","ws://127.0.0.1:9")
         let facts=Data("url=http://127.0.0.1:9/worlds/everglade?offline=1\n".utf8)
         facts.withUnsafeBytes { mf_message(host,600,$0.bindMemory(to:UInt8.self).baseAddress,$0.count) }
-        let memory=ForgeAudioMemory(),audio=ForgeMetalAudio(host:host,resources:resources,muted:true,memory:memory,bankDirectory:report.deletingLastPathComponent().appendingPathComponent("bank"))
+        let memory=EditorAudioMemory(),audio=EditorMetalAudio(host:host,resources:resources,muted:true,memory:memory,bankDirectory:report.deletingLastPathComponent().appendingPathComponent("bank"))
         defer { audio.close() }
         audio.bank()
         let registered=audio.bankWav.count,bankAssets=audio.buffers.count,bankWords=memory.total
@@ -81,7 +81,7 @@ struct MetalAudioPrefetch {
             try FileManager.default.createDirectory(at:companions,withIntermediateDirectories:true)
             let hit=try Data(contentsOf:resources.appendingPathComponent("web/realms/everglade/sfx/fire-hit-e2.ogg")),cast=try Data(contentsOf:resources.appendingPathComponent("web/realms/everglade/sfx/fire-cast-e2.ogg")),companion=try Data(contentsOf:resources.appendingPathComponent("web/realms/everglade/pcm-v1/fire-hit-e2.apc"))
             try hit.write(to:sfx.appendingPathComponent("fire-hit-e2.ogg"));try cast.write(to:sfx.appendingPathComponent("fire-cast-e2.ogg"));try cast.write(to:sfx.appendingPathComponent("probe-safe.ogg"))
-            let owner=ForgeMetalAudio(host:host,resources:root,muted:true)
+            let owner=EditorMetalAudio(host:host,resources:root,muted:true)
             func observe(_ name: String) {
                 let sdk=owner.sdkDecodes,canonical=owner.companionDecodes
                 var pcm=owner.loadAsset(name);faults.append(Int64(pcm?.count ?? 0));faults.append(Int64(owner.sdkDecodes-sdk));faults.append(Int64(owner.companionDecodes-canonical));pcm=nil;faults.append(owner.memory.total)

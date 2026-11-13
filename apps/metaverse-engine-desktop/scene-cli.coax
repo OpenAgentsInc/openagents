@@ -18,7 +18,7 @@ scene_request :: (api:string,method:string,body:string,out:[]u8)->HttpResult {
   w:[1]HttpWork;headers:=[1]string.["Content-Type: application/json"];
   return http_do(w[..],method,cast(string)url[0..<n],headers[..],body,10000,0,out);
 }
-scene_show :: (e:EgEdits,version:int,s:ForgeSceneSession,out:[]u8)->string {
+scene_show :: (e:EgEdits,version:int,s:EditorSceneSession,out:[]u8)->string {
   j:[1]Jo;jo_start(j[..],out);jo_obj(j[..]);jo_key(j[..],"ok");jo_bool(j[..],true);jo_key(j[..],"version");jo_int(j[..],version);
   jo_key(j[..],"player_x_cm");jo_int(j[..],s.x);jo_key(j[..],"player_z_cm");jo_int(j[..],s.z);
   jo_key(j[..],"catalogue");jo_arr(j[..]);for name:EG_EDIT_NAME {jo_str(j[..],name);}jo_end(j[..]);
@@ -74,7 +74,7 @@ tool_main :: ()->int #export_c #effects(all) {
   env:[4096]u8;path:[4096]u8;session:=args_value(a[..],"--session","");
   if session=="" {session=(ifx proc_getenv("METAVERSE_ENGINE_SCENE_SESSION",env[..])!="" then proc_getenv("METAVERSE_ENGINE_SCENE_SESSION",env[..]) else proc_getenv("AETHYRFORGE_SCENE_SESSION",env[..]));}
   if session=="" {home:[4096]u8;session=fs_join(proc_getenv("HOME",home[..]),".openagents/aethyrforge/scene-session.json",path[..]);}
-  data:[65536]u8;n:=fs_read(session,data[..]);s:[1]ForgeSceneSession;
+  data:[65536]u8;n:=fs_read(session,data[..]);s:[1]EditorSceneSession;
   if n<0 || !fs_session(cast(string)data[0..<n],proc_now_ms(),s[..]) {return scene_error("No fresh local Aethyrforge scene session. Open the desktop app.");}
   api:=cast(string)s[0].api[0..<s[0].n];extra:=args_at(a[..],1);if extra=="--session" {extra="";}
   if verb=="raid" {return scene_raid(api,extra);}
@@ -85,7 +85,7 @@ tool_main :: ()->int #export_c #effects(all) {
   e:[1]EgEdits;version:=eg_edits_answer(cast(string)answer[0..<an],e[..]);
   if version<0 {return scene_error("The local world document is invalid.");}
   shown:[65536]u8;if verb=="show" {print("%\n",scene_show(e[0],version,s[0],shown[..]));return 0;}
-  c:[1]ForgeSceneCommand;resize:[1]ForgeResize;p:ForgeScenePlan;resizing:=false;
+  c:[1]EditorSceneCommand;resize:[1]EditorResize;p:EditorScenePlan;resizing:=false;
   if fs_command(args_at(a[..],1),c[..]) {p=fs_plan(e[0],c[0],s[0].x,s[0].z);}
   else if fsr_command(args_at(a[..],1),resize[..]) {
     if resize[0].version!=version {return scene_error("Scene changed since the selected index was read. Read show and select the object again.");}

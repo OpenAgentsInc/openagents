@@ -4,26 +4,26 @@
 #test "forge NPC movement uses live crate fences and melee damages actual building pieces" #steps 3000000000 {
   s:[1]Everglade;dm:[1]DemoWorld;everglade_room_spells_start(s[..],dm[..],"");
   everglade_world(s[..],"200\n{\"doc\":{\"everglade\":1,\"edits\":\"eg-edit 1\\nt 0 600 -1050 0 100 1\\n\"},\"version\":1}");
-  everglade_forge_prepare(s[..]);
-  #assert everglade_forge_open(s[..],6,-8) && !everglade_forge_open(s[..],6,-10.5) && !everglade_forge_open(s[..],0,0);
+  everglade_editor_prepare(s[..]);
+  #assert everglade_editor_open(s[..],6,-8) && !everglade_editor_open(s[..],6,-10.5) && !everglade_editor_open(s[..],0,0);
   ask:=[6]f32.[6,-8,0,6,-12,0.05];out:[5]f32;detour:=false;home:=false;
-  for f:0..<300 {everglade_forge_step(s[..],ask[..],out[..]);#assert everglade_forge_open(s[..],out[0],out[1]);ask[0]=out[0];ask[1]=out[1];ask[2]=out[2];if abs(out[0]-6)>0.6 {detour=true;}if flat_gap(v3(out[0],0,out[1]),v3(6,0,-12))<0.1 {home=true;break;}}
+  for f:0..<300 {everglade_editor_step(s[..],ask[..],out[..]);#assert everglade_editor_open(s[..],out[0],out[1]);ask[0]=out[0];ask[1]=out[1];ask[2]=out[2];if abs(out[0]-6)>0.6 {detour=true;}if flat_gap(v3(out[0],0,out[1]),v3(6,0,-12))<0.1 {home=true;break;}}
   #assert home && detour;
   // Even a stopped NPC is pushed clear when an object rises under its feet.
-  ask=[6]f32.[6,-10.5,0,6,-10.5,0];everglade_forge_step(s[..],ask[..],out[..]);#assert everglade_forge_open(s[..],out[0],out[1]);
+  ask=[6]f32.[6,-10.5,0,6,-10.5,0];everglade_editor_step(s[..],ask[..],out[..]);#assert everglade_editor_open(s[..],out[0],out[1]);
   w:=sp_dm(s[..]);q:=-1;for i:0..<w[0].n {p:=w[0].pieces[i];if p.state==DP_STANDING && p.cx>8 && p.cx<20 && p.cz> -76 && p.cz< -64 {q=i;break;}}
   #assert q>=0;piece:=w[0].pieces[q];
   for n:0..<20 {everglade_room_strike(s[..],-1,500,piece.cx-1,piece.cy,piece.cz,piece.cx,piece.cy,piece.cz,10);}
   #assert w[0].pieces[q].state!=DP_STANDING;
 }
-everglade_forge_prepare :: (s:[]Everglade) #export_c #effects(all) {
+everglade_editor_prepare :: (s:[]Everglade) #export_c #effects(all) {
   if !s[0].wv.started {watch_page_start(s);}
   s[0].wt[0].on=true;ab_stone_folk(s);
 }
-everglade_forge_open :: (s:[]Everglade,x:f32,z:f32)->bool #export_c #effects(all) {
+everglade_editor_open :: (s:[]Everglade,x:f32,z:f32)->bool #export_c #effects(all) {
   return watch_open(watch_w(s),x,z) && !everglade_in_woods(x,z) && abs(x-f32(EG_RIVER_X))>3;
 }
-everglade_forge_step :: (s:[]Everglade,input:[]f32,out:[]f32) #export_c #effects(all) {
+everglade_editor_step :: (s:[]Everglade,input:[]f32,out:[]f32) #export_c #effects(all) {
   a:[1]Actor;a[0].x=input[0];a[0].z=input[1];a[0].yaw=input[2];
   w:=watch_w(s);moved:=false;
   for k:0..<w[0].fence_n {if watch_fence_gap(w,k,a[0].x,a[0].z)<f32(EG_RADIUS) {p:=watch_fence_out(w,k,a[0].x,a[0].z,a[0].x,a[0].z);a[0].x=p.x;a[0].z=p.z;moved=true;}}

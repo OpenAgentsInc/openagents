@@ -6,8 +6,8 @@
 //   - every line of every board and pick is one of those kinds and comes back byte for byte from
 //     what the reader gives for it; a row has its feature, a 0 or a 1, a space and its label; a
 //     board starts with its plan line;
-//   - every request body is what the codec writes for the fields it holds (forge_plan_body,
-//     forge_make_body, forge_pick_body), and its keys are its message's in
+//   - every request body is what the codec writes for the fields it holds (editor_plan_body,
+//     editor_make_body, editor_pick_body), and its keys are its message's in
 //     proto/descriptors/verse-doc.pb (builder.proto);
 //   - a JSON answer's keys, nested ones too, are its message's (PlanReply, PickReply), and a made
 //     realm's answer reads through metaverse-engine/editor/made.coax.
@@ -41,22 +41,22 @@ bg_same :: (g: [] Bg, name: string, what: string, got: string, want: string) {
   if !g[0].quiet { print("FAIL  % (%)\n  got:  %\n  want: %\n", name, what, got, want); }
 }
 // A line written again from what the reader gives for it: its length in out, or -1.
-bg_rebuild :: (l: ForgeBoardLine, out: [] u8) -> int {
+bg_rebuild :: (l: EditorBoardLine, out: [] u8) -> int {
   if l.kind < BOARD_PLAN { return -1; }
   keys := BOARD_KEYS;
-  n := forge_put(out, forge_put(out, 0, keys[l.kind]), " ");
-  if l.kind != BOARD_ROW { return forge_put(out, n, forge_board_text(l)); }
-  r := forge_board_row(l);
+  n := editor_put(out, editor_put(out, 0, keys[l.kind]), " ");
+  if l.kind != BOARD_ROW { return editor_put(out, n, editor_board_text(l)); }
+  r := editor_board_row(l);
   if !r.ok || !r.spaced || (r.mark != '0' && r.mark != '1') || r.feature.count == 0 { return -1; }
-  n = forge_put(out, forge_put(out, n, r.feature), ifx r.mark == '1' then " 1 " else " 0 ");
-  return forge_put(out, n, r.label);
+  n = editor_put(out, editor_put(out, n, r.feature), ifx r.mark == '1' then " 1 " else " 0 ");
+  return editor_put(out, n, r.label);
 }
 // A board's or a pick's lines: every one a named kind, rebuilt the same; first is the first line's kind.
 bg_lines :: (g: [] Bg, name: string, text: string, named: [] bool, first: int) {
-  _ = bg_need(g, name, "the text ends with a newline and starts with its first line", text.count > 0 && text[text.count - 1] == '\n' && forge_board_line(text, 0).kind == first);
+  _ = bg_need(g, name, "the text ends with a newline and starts with its first line", text.count > 0 && text[text.count - 1] == '\n' && editor_board_line(text, 0).kind == first);
   at := 0; out: [1024] u8;
   while true {
-    l := forge_board_line(text, at); at = l.next;
+    l := editor_board_line(text, at); at = l.next;
     if l.kind == BOARD_END { break; }
     if !bg_need(g, name, "a line is of a kind the profile names", l.kind >= BOARD_PLAN && named[l.kind]) { continue; }
     n := bg_rebuild(l, out[..]);
@@ -81,7 +81,7 @@ bg_setup :: (j: Jv, at: int, keys: [] string, values: [] string, pool: [] u8) ->
 bg_request :: (g: [] Bg, st: [] D_State, name: string, request: string, body: string) {
   nodes: [256] JvNode; j: [1] Jv; buf: [2048] u8; text: [1024] u8; pool: [256] u8; more: [512] u8;
   if !bg_need(g, name, "the body is JSON", jv_parse(j[..], body, nodes[..]) && jv_kind(j[0], 0) == JV_OBJECT) { return; }
-  full: [128] u8; fn := forge_put(full[..], forge_put(full[..], 0, BG_PKG), request);
+  full: [128] u8; fn := editor_put(full[..], editor_put(full[..], 0, BG_PKG), request);
   kn: [256] JvNode;
   why := pk_text_keys(st, cast(string) full[0..<fn], body, false, false, kn[..]);
   if why != "" { g[0].bad += 1; if !g[0].quiet { print("FAIL  % (the body's keys are %'s: %)\n", name, request, why); } } else { g[0].pass += 1; }
@@ -92,18 +92,18 @@ bg_request :: (g: [] Bg, st: [] D_State, name: string, request: string, body: st
   w := -1;
   if request == "PlanRequest" {
     pn := jv_str(j[0], jv_get(j[0], 0, "prompt"), text[..]);
-    w = forge_plan_body(ifx pn < 0 then "" else cast(string) text[0..<pn], 2000, false, jv_int(j[0], jv_get(j[0], 0, "plan"), 0), on[0..<rows], keys[0..<sn], values[0..<sn], buf[..]);
+    w = editor_plan_body(ifx pn < 0 then "" else cast(string) text[0..<pn], 2000, false, jv_int(j[0], jv_get(j[0], 0, "plan"), 0), on[0..<rows], keys[0..<sn], values[0..<sn], buf[..]);
   } else if request == "MakeRequest" {
     dn := jv_str(j[0], jv_get(j[0], 0, "description"), more[..]);
-    w = forge_make_body(jv_int(j[0], jv_get(j[0], 0, "plan"), 0), on[0..<rows], keys[0..<sn], values[0..<sn], ifx dn < 0 then "" else cast(string) more[0..<dn], 400, buf[..]);
+    w = editor_make_body(jv_int(j[0], jv_get(j[0], 0, "plan"), 0), on[0..<rows], keys[0..<sn], values[0..<sn], ifx dn < 0 then "" else cast(string) more[0..<dn], 400, buf[..]);
   } else if request == "PickRequest" {
     fnn := jv_str(j[0], jv_get(j[0], 0, "field"), more[..]); wn := jv_str(j[0], jv_get(j[0], 0, "words"), text[..]);
-    w = forge_pick_body(ifx fnn < 0 then "" else cast(string) more[0..<fnn], ifx wn < 0 then "" else cast(string) text[0..<wn], 200, buf[..]);
+    w = editor_pick_body(ifx fnn < 0 then "" else cast(string) more[0..<fnn], ifx wn < 0 then "" else cast(string) text[0..<wn], 200, buf[..]);
   }
   bg_same(g, name, "the body, written by the codec", ifx w < 0 then "" else cast(string) buf[0..<w], body);
 }
 bg_keys :: (g: [] Bg, st: [] D_State, name: string, leaf: string, text: string) {
-  full: [128] u8; fn := forge_put(full[..], forge_put(full[..], 0, BG_PKG), leaf);
+  full: [128] u8; fn := editor_put(full[..], editor_put(full[..], 0, BG_PKG), leaf);
   nodes: [1024] JvNode;
   why := pk_text_keys(st, cast(string) full[0..<fn], text, false, false, nodes[..]);
   if why == "" { g[0].pass += 1; return; }
@@ -125,7 +125,7 @@ bg_run :: (text: string, st: [] D_State) -> int {
     if !bg_need(g[..], key, "the profile's line is a key the reader knows, named once", kind >= 0 && !named[kind]) { continue; }
     named[kind] = true;
     eb: [256] u8; en := jv_str(f[0], jv_get(f[0], e, "example"), eb[..]);
-    l := forge_board_line(ifx en < 0 then "" else cast(string) eb[0..<en], 0);
+    l := editor_board_line(ifx en < 0 then "" else cast(string) eb[0..<en], 0);
     ob: [256] u8; n := bg_rebuild(l, ob[..]);
     _ = bg_need(g[..], key, "its example reads as its kind and comes back the same", l.kind == kind && n >= 0 && cast(string) ob[0..<n] == l.line);
   }
@@ -143,8 +143,8 @@ bg_run :: (text: string, st: [] D_State) -> int {
     if message == "BoardLines" { bg_lines(g[..], name, reply, named[..], BOARD_PLAN); boards += 1; }
     else if message == "PickLines" { bg_lines(g[..], name, reply, named[..], BOARD_FIELD); picks += 1; }
     else if message == "PlanReply" || message == "PickReply" { bg_keys(g[..], st, name, message, reply); }
-    else if message == "MadeLines" { _ = bg_need(g[..], name, "the made realm's lines read", forge_read_made(reply).ok); }
-    else if message == "MadeReply" { _ = bg_need(g[..], name, "the made realm's answer reads", forge_read_made_json(reply).ok); }
+    else if message == "MadeLines" { _ = bg_need(g[..], name, "the made realm's lines read", editor_read_made(reply).ok); }
+    else if message == "MadeReply" { _ = bg_need(g[..], name, "the made realm's answer reads", editor_read_made_json(reply).ok); }
     else if message == "RouteError" { _ = bg_need(g[..], name, "the refusal is SQL's object", reply.count > 12 && reply[0..<11] == "{\"error\": \""); }
     else if message == "ErrorWords" { _ = bg_need(g[..], name, "the words are text, not JSON", reply[0] != '{'); }
     else { _ = bg_need(g[..], name, "the step names a message this check knows", false); }

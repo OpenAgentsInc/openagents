@@ -86,13 +86,13 @@ export function startVoice({ send, route, wasmUrl }) {
   let source = null, engineLoading = null, audioLoading = null, audioOwner = null, warming = null, initialized = false;
   let warmEnabled = false, disposed = false, warmResolve = null, warmReject = null;
   let heldMode = false, released = false, captureDrain = null, inputFrames = 0;
-  const trace = text => { if (globalThis.coaxialVoiceHost) globalThis.webkit?.messageHandlers?.forgeVoiceStatus?.postMessage(text); };
+  const trace = text => { if (globalThis.coaxialVoiceHost) globalThis.webkit?.messageHandlers?.editorVoiceStatus?.postMessage(text); };
   const enc = new TextEncoder(), dec = new TextDecoder();
 
   const show = (p, c = caption) => {
     if (p === phase && c === caption) return;
     phase = p; caption = c; send(VOICE_KIND, `${p}|${c.replace(/[\r\n|]+/g, " ")}`);
-    if (globalThis.coaxialVoiceHost) globalThis.webkit?.messageHandlers?.forgeVoiceStatus?.postMessage(`phase:${p}`);
+    if (globalThis.coaxialVoiceHost) globalThis.webkit?.messageHandlers?.editorVoiceStatus?.postMessage(`phase:${p}`);
     // Let go (push to talk): once the turn is answered and spoken, voice is off.
     if (letGo && p === "listening") setTimeout(() => { if (letGo) off(); }, 0);
     // For checks and agents driving the page (coax/web/voice/browser-smoke.ts): what it says, in order.
@@ -179,7 +179,7 @@ export function startVoice({ send, route, wasmUrl }) {
         warmReject = e => { clearTimeout(deadline); warmResolve = warmReject = null; reject(e); };
         if (!ws || ws.readyState > 1) connect();
       });
-      globalThis.webkit?.messageHandlers?.forgeVoiceStatus?.postMessage("warm:ready");
+      globalThis.webkit?.messageHandlers?.editorVoiceStatus?.postMessage("warm:ready");
       return true;
     })().catch(e => {
       if (!running && ctx && !node) { const failed = ctx; ctx = null; failed.close().catch(() => {}); }
@@ -229,7 +229,7 @@ export function startVoice({ send, route, wasmUrl }) {
       if (x.vw_rate() !== Math.round(ctx.sampleRate)) throw new Error(`no engine for ${ctx.sampleRate} Hz`);
     } catch (e) {
       console.warn("voice:", e);
-      if (globalThis.coaxialVoiceHost) globalThis.webkit?.messageHandlers?.forgeVoiceStatus?.postMessage(`error:${e?.name}:${e?.message}`);
+      if (globalThis.coaxialVoiceHost) globalThis.webkit?.messageHandlers?.editorVoiceStatus?.postMessage(`error:${e?.name}:${e?.message}`);
       if (owner === generation) off(e?.name === "NotAllowedError" ? (globalThis.coaxialVoiceHost ? "Microphone access was denied. Check macOS Settings → Privacy & Security → Microphone → Aethyrforge." : "Voice needs the microphone. Allow it for this site and try again.") : (globalThis.coaxialVoiceHost ? `Local voice: ${e?.message || "microphone unavailable"}` : "Voice can't use the microphone here."));
       return;
     }
@@ -291,7 +291,7 @@ export function startVoice({ send, route, wasmUrl }) {
       if (ws !== s) return;
       ws = null; welcomed = false; turn = ""; cut();
       warmReject?.(new Error("Local voice connection closed."));
-      if (!running) { globalThis.webkit?.messageHandlers?.forgeVoiceStatus?.postMessage("warm:lost"); return; }
+      if (!running) { globalThis.webkit?.messageHandlers?.editorVoiceStatus?.postMessage("warm:lost"); return; }
       if (heldMode && source) { x.vw_cancel_turn(); x.vw_hold(1); }
       show("connecting", "Voice needs a connection. Trying again…");
       setTimeout(connect, backoff * 1000); backoff = Math.min(backoff * 2, 10);

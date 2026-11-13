@@ -71,7 +71,7 @@ wbe_why :: (why: int) -> string {
 
 WbeTook :: struct { ok: bool; id: int; why: int; }
 wbe_no :: (why: int) -> WbeTook { return WbeTook.{why = why}; }
-wbe_pct :: (scale: f32) -> int { p := we_pct(scale); return ifx p < FORGE_SCALE_MIN then FORGE_SCALE_MIN else ifx p > FORGE_SCALE_MAX then FORGE_SCALE_MAX else p; }
+wbe_pct :: (scale: f32) -> int { p := we_pct(scale); return ifx p < EDITOR_SCALE_MIN then EDITOR_SCALE_MIN else ifx p > EDITOR_SCALE_MAX then EDITOR_SCALE_MAX else p; }
 // A thing's kind on the wire is its model's place in the catalogue, from 1.
 wbe_kind :: (mesh: int) -> int { return mesh + 1; }
 
@@ -85,31 +85,31 @@ wbe_thing :: (w: [] WbWorld, c: [] WbCat, e: WorldEdit) -> WbeTook {
     if e.id != 0 { return wbe_no(WBE_NUMBER); }
     if e.kind > c[0].n { return wbe_no(WBE_KIND); }
     if w[0].fg[0].n >= WB_OBJECTS { w[0].full = true; return wbe_no(WBE_FULL); }
-    id := forge_scene_place(s, e.kind - 1, we_m(e.x), 0, we_m(e.z), we_rad(e.yaw), cast(f32) e.scale / 100);
+    id := editor_scene_place(s, e.kind - 1, we_m(e.x), 0, we_m(e.z), we_rad(e.yaw), cast(f32) e.scale / 100);
     if id < 0 { return wbe_no(WBE_FULL); }
     w[0].rev += 1; wb_sync(w);
     return WbeTook.{ok = true, id = id + 1};
   }
-  i := forge_scene_find(s, e.id - 1);
+  i := editor_scene_find(s, e.id - 1);
   if i < 0 { return wbe_no(WBE_NO_THING); }
   was := w[0].objs[i];
   ok := false;
-  if e.op == WE_DESPAWN { ok = forge_scene_delete(s, was.id); }
-  else if e.op == WE_MOVE { ok = forge_scene_move(s, was.id, we_m(e.x), was.y, we_m(e.z)); }
-  else if e.op == WE_ROTATE { ok = forge_scene_rotate(s, was.id, we_rad(e.yaw)); }
-  else if e.op == WE_SCALE { ok = forge_scene_scale(s, was.id, cast(f32) e.scale / 100); }
+  if e.op == WE_DESPAWN { ok = editor_scene_delete(s, was.id); }
+  else if e.op == WE_MOVE { ok = editor_scene_move(s, was.id, we_m(e.x), was.y, we_m(e.z)); }
+  else if e.op == WE_ROTATE { ok = editor_scene_rotate(s, was.id, we_rad(e.yaw)); }
+  else if e.op == WE_SCALE { ok = editor_scene_scale(s, was.id, cast(f32) e.scale / 100); }
   else if e.op == WE_SET {
     if e.col == WEC_Y { return wbe_no(WBE_HEIGHT); }
     if e.col == WEC_X || e.col == WEC_Z {
       if e.v < -WE_REACH || e.v > WE_REACH { return wbe_no(WBE_EDGE); }
-      ok = forge_scene_move(s, was.id, ifx e.col == WEC_X then we_m(e.v) else was.x, was.y, ifx e.col == WEC_Z then we_m(e.v) else was.z);
+      ok = editor_scene_move(s, was.id, ifx e.col == WEC_X then we_m(e.v) else was.x, was.y, ifx e.col == WEC_Z then we_m(e.v) else was.z);
     } else if e.col == WEC_YAW {
       if !we_turn_ok(e.v) { return wbe_no(WBE_TURN); }
-      ok = forge_scene_rotate(s, was.id, we_rad(e.v));
+      ok = editor_scene_rotate(s, was.id, we_rad(e.v));
     } else if e.col == WEC_KIND {
       if e.v < 1 || e.v > c[0].n { return wbe_no(WBE_KIND); }
       next := was; next.mesh = e.v - 1;
-      ok = forge_scene_reshape(s, FORGE_SCENE_MOVE, was.id, next);
+      ok = editor_scene_reshape(s, EDITOR_SCENE_MOVE, was.id, next);
     } else { return wbe_no(WBE_COLUMN); }
   }
   if !ok { return wbe_no(WBE_SAME); }
@@ -161,7 +161,7 @@ wbe_stroke_end :: (w: [] WbWorld) -> WbeTook {
   for k: 0..<WB_LAND_SAMPLES {
     if l[0].heights[k] != l[0].was_h[k] || l[0].ids[k * 4] != l[0].was_ids[k * 4] || l[0].weights[k * 4] != l[0].was_w[k * 4] { changed = true; break; }
   }
-  ok := forge_scene_land_step(wb_scene(w), l[0].was_h[..], l[0].was_ids[..], l[0].was_w[..], r.i0, r.j0, r.i1, r.j1);
+  ok := editor_scene_land_step(wb_scene(w), l[0].was_h[..], l[0].was_ids[..], l[0].was_w[..], r.i0, r.j0, r.i1, r.j1);
   if ok { w[0].version += 1; wb_sync(w); return WbeTook.{ok = true}; }
   w[0].rev = w[0].stroke_rev; l[0].version += 1; wb_land_scan(l); wb_sync(w);
   return wbe_no(ifx changed then WBE_LOG else WBE_SAME);
@@ -183,9 +183,9 @@ WbeBatch :: struct { ok: bool; why: int; at: int = -1; edits: int; }
 WbeWork :: struct { e: [WE_BATCH] WorldEdit; }
 // The step kind of the log a batch's first edit makes.
 wbe_step_kind :: (e: WorldEdit) -> int {
-  if e.op == WE_SPAWN { return FORGE_SCENE_PLACE; } if e.op == WE_DESPAWN { return FORGE_SCENE_DELETE; }
-  if e.op == WE_ROTATE { return FORGE_SCENE_ROTATE; } if e.op == WE_SCALE { return FORGE_SCENE_SCALE; }
-  return FORGE_SCENE_MOVE;
+  if e.op == WE_SPAWN { return EDITOR_SCENE_PLACE; } if e.op == WE_DESPAWN { return EDITOR_SCENE_DELETE; }
+  if e.op == WE_ROTATE { return EDITOR_SCENE_ROTATE; } if e.op == WE_SCALE { return EDITOR_SCENE_SCALE; }
+  return EDITOR_SCENE_MOVE;
 }
 // Carries a batch out: fenced by the world's revision, whole or not at all, one step of the log
 // (one undo takes it back). An undo or a redo walks the log; `original` removes every thing.
@@ -201,12 +201,12 @@ wbe_batch :: (w: [] WbWorld, c: [] WbCat, x: [] WbeWork, body: string) -> WbeBat
   rev := w[0].rev;
   if batch.what == WB_ORIGINAL {
     if w[0].n == 0 { b.why = WBE_EMPTY; return b; }
-    forge_scene_begin(s, FORGE_SCENE_CLEAR);
+    editor_scene_begin(s, EDITOR_SCENE_CLEAR);
     while w[0].n > 0 {
       if !wbe_thing(w, c, WorldEdit.{ok = true, op = WE_DESPAWN, id = w[0].objs[w[0].n - 1].id + 1}).ok { break; }
       b.edits += 1;
     }
-    b.ok = forge_scene_end(s);
+    b.ok = editor_scene_end(s);
     wb_sync(w); w[0].last_n = 0; w[0].version += 1;
     return b;
   }
@@ -224,18 +224,18 @@ wbe_batch :: (w: [] WbWorld, c: [] WbCat, x: [] WbeWork, body: string) -> WbeBat
     b.ok = true; b.edits = batch.n;
     return b;
   }
-  forge_scene_begin(s, wbe_step_kind(x[0].e[0]));
+  editor_scene_begin(s, wbe_step_kind(x[0].e[0]));
   w[0].last_n = 0;
   for i: 0..<batch.n {
     r := wbe_thing(w, c, x[0].e[i]);
     if !r.ok {
-      forge_scene_cancel(s); wb_sync(w); w[0].rev = rev; w[0].last_n = 0; w[0].version += 1;
+      editor_scene_cancel(s); wb_sync(w); w[0].rev = rev; w[0].last_n = 0; w[0].version += 1;
       b.why = r.why; b.at = i;
       return b;
     }
     if x[0].e[i].op != WE_DESPAWN { wb_last_add(w, r.id - 1); }
   }
-  b.ok = forge_scene_end(s);
+  b.ok = editor_scene_end(s);
   wb_sync(w); w[0].version += 1;
   if !b.ok { b.why = WBE_SAME; w[0].rev = rev; return b; }
   b.edits = batch.n;
@@ -433,7 +433,7 @@ wbe_test_send :: (h: [] WbeTest, what: string, edits: string) -> WbeBatch { retu
 #test "the thing limit: a full world refuses one more in words, in a batch too, and the batch is taken back whole" #steps 4000000000 {
   h: [1] WbeTest; wbe_test(h[..]); w := h[0].w[..]; c := h[0].c[..];
   s := wb_scene(w);
-  for k: 0..<WB_OBJECTS - 1 { _ := forge_scene_load(s, 1, cast(f32) (k % 64), 0, cast(f32) (k / 64), 0, 1); }
+  for k: 0..<WB_OBJECTS - 1 { _ := editor_scene_load(s, 1, cast(f32) (k % 64), 0, cast(f32) (k / 64), 0, 1); }
   wb_sync(w);
   #assert w[0].n == WB_OBJECTS - 1;
   one := "{\"op\":\"spawn\",\"id\":0,\"kind\":2,\"x\":0,\"y\":0,\"z\":900,\"yaw\":0,\"scale\":100}";
@@ -520,7 +520,7 @@ wbe_test_send :: (h: [] WbeTest, what: string, edits: string) -> WbeBatch { retu
 #test "a world with more things than a model lists: the newest are listed, the selected one too, and the count says how many there are" #steps 4000000000 {
   h: [1] WbeTest; wbe_test(h[..]); w := h[0].w[..]; c := h[0].c[..]; p := h[0].p[..]; m := h[0].m[..];
   s := wb_scene(w);
-  for k: 0..<400 { _ := forge_scene_load(s, k % 3, cast(f32) k, 0, 0, 0, 1); }
+  for k: 0..<400 { _ := editor_scene_load(s, k % 3, cast(f32) k, 0, 0, 0, 1); }
   wb_sync(w);
   #assert em_read(m, wbe_model(w, c, p), h[0].scratch[..]) && m[0].ne == WBE_LISTED && m[0].e_id[0] == 400 - WBE_LISTED + 1 && m[0].e_id[WBE_LISTED - 1] == 400 && m[0].all_n == 400;
   wbe_select(w, p, 3);

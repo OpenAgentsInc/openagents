@@ -16,13 +16,13 @@
 
 FC_ENGINES :: [6]string.["codex","claude","cursor","microcoder","psionic","echo"];
 FC_LABELS :: [6]string.["Codex","Claude Code","Cursor","Microcoder","Psionic (local)","Echo (offline)"];
-ForgeChatEvent :: struct {kind:int=0; session:[128]u8; sn:int; text:[262144]u8; tn:int;live:bool=false;}
-ForgeChatModels :: struct {n:int=0; ids:[64][128]u8; levels:[64][8][16]u8; counts:[64]int;}
+EditorChatEvent :: struct {kind:int=0; session:[128]u8; sn:int; text:[262144]u8; tn:int;live:bool=false;}
+EditorChatModels :: struct {n:int=0; ids:[64][128]u8; levels:[64][8][16]u8; counts:[64]int;}
 // router.json's local default is its codec's (coax/lib/agent/engine/route.coax, coder.router.v1).
 fc_router_default :: ()->string #export_c #effects(all) {return agr_router_local();}
 
 #test "desktop routing reports the chosen engine and honest fallback without exposing controls" {
-  s:[1]ForgeChatEvent;
+  s:[1]EditorChatEvent;
   #assert fc_read(s[..],"{\"kind\":\"session\",\"id\":\"owned-session\",\"engine\":\"codex\"}")==1 && cast(string)s[0].text[0..<s[0].tn]=="codex";
   #assert fc_read(s[..],"{\"kind\":\"route\",\"schema\":\"coder.route.v2\",\"ok\":true,\"source\":\"local-elephant\",\"ran\":\"claude\",\"difficulty\":3,\"effort\":\"high\",\"model\":\"opus\"}")==10;
   #assert cast(string)s[0].text[0..<s[0].tn]=="local-elephant · claude · hard · high · opus";
@@ -59,20 +59,20 @@ fc_route_text :: (e:CstEvent,out:[]u8)->int {
 }
 
 #test "desktop model choices use visible IDs and their reported effort levels" {
-  m:[1]ForgeChatModels;
+  m:[1]EditorChatModels;
   #assert fc_models(m[..],"{\"data\":[{\"model\":\"test-model\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"high\"}]},{\"id\":\"private\",\"hidden\":true}]}");
   #assert m[0].n==1 && fc_model(m[..],0,-1)=="test-model" && fc_model(m[..],0,0)=="high";
   #assert fc_model(m[..],0,1)=="" && fc_model(m[..],-1,0)=="";
   #assert !fc_models(m[..],"not json") && m[0].n==1;
 }
 fc_cstr :: (b:[]u8)->string {n:=0;while n<b.count && b[n]!=0 {n+=1;}return cast(string)b[0..<n];}
-fc_model :: (m:[]ForgeChatModels,i:int,effort:int)->string #export_c #effects(all) {
+fc_model :: (m:[]EditorChatModels,i:int,effort:int)->string #export_c #effects(all) {
   if i<0 || i>=m[0].n {return "";}
   if effort<0 {return fc_cstr(m[0].ids[i][..]);}
   if effort>=m[0].counts[i] {return "";}
   return fc_cstr(m[0].levels[i][effort][..]);
 }
-fc_models :: (m:[]ForgeChatModels,line:string)->bool #export_c #effects(all) {
+fc_models :: (m:[]EditorChatModels,line:string)->bool #export_c #effects(all) {
   nodes:[4096]JvNode; d:[1]Jv;
   if !jv_parse(d[..],line,nodes[..]) {return false;}
   v:=d[0]; data:=jv_get(v,0,"data"); if jv_kind(v,data)!=JV_ARRAY {return false;}
@@ -96,7 +96,7 @@ fc_models :: (m:[]ForgeChatModels,line:string)->bool #export_c #effects(all) {
 }
 
 #test "chat consumes Coder events without confusing tool results with replies" {
-  s:[1]ForgeChatEvent;
+  s:[1]EditorChatEvent;
   #assert fc_read(s[..],"{\"kind\":\"session\",\"id\":\"20261104-123\"}")==1 && s[0].sn==12;
   #assert fc_read(s[..],"{\"kind\":\"reply\",\"text\":\"Hello\\nworld\"}")==3 && s[0].tn==11 && s[0].text[5]==10;
   #assert fc_read(s[..],"{\"kind\":\"tool\",\"label\":\"Read(file)\"}")==4;
@@ -109,7 +109,7 @@ fc_models :: (m:[]ForgeChatModels,line:string)->bool #export_c #effects(all) {
   #assert fc_engine(0)=="codex" && fc_engine(5)=="echo" && fc_engine(6)=="" && fc_label(-1)=="";
 }
 #test "live chunks open one reply and finish it without duplicate whole replies" {
-  s:[1]ForgeChatEvent;
+  s:[1]EditorChatEvent;
   #assert fc_read(s[..],"{\"kind\":\"reply_delta\",\"schema\":\"wrong\",\"text\":\"ignored\"}")==0;
   #assert fc_read(s[..],"{\"kind\":\"reply_delta\",\"schema\":\"coder.reply-stream.v1\",\"text\":\"Hello \"}")==11 && s[0].live;
   #assert fc_read(s[..],"{\"kind\":\"reply_delta\",\"schema\":\"coder.reply-stream.v1\",\"text\":\"world\"}")==12 && s[0].tn==5;
@@ -133,7 +133,7 @@ fc_engine :: (index:int)->string #export_c #effects(all) {return ifx index>=0 &&
 fc_label :: (index:int)->string #export_c #effects(all) {return ifx index>=0 && index<6 then FC_LABELS[index] else "";}
 // One line of Coder's JSONL as an event. The session log's lines through its reader (log.coax);
 // the stream records that ride beside them (reply_delta, reply_end, route, model: C3's, #13240) here.
-fc_read :: (s:[]ForgeChatEvent,line:string)->int #export_c #effects(all) {
+fc_read :: (s:[]EditorChatEvent,line:string)->int #export_c #effects(all) {
   s[0].kind=0; s[0].tn=0;
   r:[1]SlReader; r[0]=SlReader.{text=line}; l:[1]SlLine;
   if !sl_next(r[..],l[..]) {return 0;}
@@ -162,7 +162,7 @@ fc_read :: (s:[]ForgeChatEvent,line:string)->int #export_c #effects(all) {
 }
 // The stream records Coder prints beside the log's lines, read by their codec
 // (coax/lib/agent/session/stream.coax, cst_read).
-fc_read_stream :: (s:[]ForgeChatEvent,line:string)->int {
+fc_read_stream :: (s:[]EditorChatEvent,line:string)->int {
   ab:[SL_ARENA+4096]u8; ar:[1]ClArena; ar[0]=ClArena.{buf=ab[..]}; ev:[1]CstEvent;
   k:=cst_read(ar[..],line,ev[..]);
   if k==CST_KIND_REPLY_END {was:=s[0].live;s[0].live=false;return ifx was then 13 else 0;}

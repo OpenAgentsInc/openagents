@@ -28,14 +28,14 @@ SPEC_KEYS :: [SPEC_KINDS] string.["", "", "realm", "name", "style", "ground", "t
 // One line of a spec: its kind, its text (no newline) and where the next line starts. flush: its
 // key stands at the line's first byte (as the server writes every line); a reader that refuses a
 // malformed spec whole takes only flush lines.
-ForgeSpecLine :: struct { kind: int; line: string; next: int; flush: bool; }
-forge_spec_kind :: (key: string) -> int {
+EditorSpecLine :: struct { kind: int; line: string; next: int; flush: bool; }
+editor_spec_kind :: (key: string) -> int {
   keys := SPEC_KEYS;
   for k: SPEC_REALM..<SPEC_KINDS { if keys[k] == key { return k; } }
   return SPEC_OTHER;
 }
 // Word k of a line (0 its key), words a run of spaces apart; "" past the last.
-forge_spec_word :: (line: string, k: int) -> string {
+editor_spec_word :: (line: string, k: int) -> string {
   i := 0; n := 0;
   while i < line.count {
     while i < line.count && line[i] == ' ' { i += 1; }
@@ -46,7 +46,7 @@ forge_spec_word :: (line: string, k: int) -> string {
   return "";
 }
 // The line from word k on, as written; "" when it has no such word.
-forge_spec_rest :: (line: string, k: int) -> string {
+editor_spec_rest :: (line: string, k: int) -> string {
   i := 0; n := 0;
   while i < line.count && n < k {
     while i < line.count && line[i] == ' ' { i += 1; }
@@ -57,16 +57,16 @@ forge_spec_rest :: (line: string, k: int) -> string {
   return line[i..<line.count];
 }
 // The line that starts at byte `at` of a spec; SPEC_END at its end. A blank line is SPEC_OTHER.
-forge_spec_line :: (text: string, at: int) -> ForgeSpecLine {
-  if at < 0 || at >= text.count { return ForgeSpecLine.{kind = SPEC_END, next = text.count}; }
+editor_spec_line :: (text: string, at: int) -> EditorSpecLine {
+  if at < 0 || at >= text.count { return EditorSpecLine.{kind = SPEC_END, next = text.count}; }
   e := at; while e < text.count && text[e] != '\n' { e += 1; }
   line := text[at..<e];
-  key := forge_spec_word(line, 0);
-  return ForgeSpecLine.{kind = forge_spec_kind(key), line = line, next = e + 1, flush = line.count >= key.count && line[0..<key.count] == key};
+  key := editor_spec_word(line, 0);
+  return EditorSpecLine.{kind = editor_spec_kind(key), line = line, next = e + 1, flush = line.count >= key.count && line[0..<key.count] == key};
 }
 // The value of the first "KEY VALUE" line: everything after the key and one space; "" when there
 // is none. A key matches only at a line's start and only whole (the CLI's reading of a spec).
-forge_spec_value :: (text: string, key: string) -> string {
+editor_spec_value :: (text: string, key: string) -> string {
   at := 0;
   for end: 0..<text.count + 1 {
     if end < text.count && text[end] != '\n' { continue; }
@@ -79,170 +79,170 @@ forge_spec_value :: (text: string, key: string) -> string {
 }
 // A line's text after its key and one space ("name Moonlit Marsh" -> "Moonlit Marsh"); "" when the
 // key is all there is.
-forge_spec_text :: (l: ForgeSpecLine) -> string {
-  key := forge_spec_word(l.line, 0);
+editor_spec_text :: (l: EditorSpecLine) -> string {
+  key := editor_spec_word(l.line, 0);
   if !l.flush || l.line.count <= key.count + 1 || l.line[key.count] != ' ' { return ""; }
   return l.line[key.count + 1..<l.line.count];
 }
 // A word's leading digits as a number (at most nine are taken; what follows them is not read), or
 // -1 when it starts with none: the pages' reading of a count.
-forge_spec_digits :: (w: string) -> int {
+editor_spec_digits :: (w: string) -> int {
   v := 0; n := 0;
   while n < w.count && n < 9 && w[n] >= '0' && w[n] <= '9' { v = v * 10 + cast(int) (w[n] - '0'); n += 1; }
   return ifx n == 0 then -1 else v;
 }
 // waiting, rev, published, undo, redo: the number, or -1 when the line has none.
-forge_spec_num :: (l: ForgeSpecLine) -> int { return forge_spec_digits(forge_spec_word(l.line, 1)); }
-// owner, shapes, edit_fence: said 1. listed: not said 0 (forge_spec_off).
-forge_spec_on :: (l: ForgeSpecLine) -> bool { return forge_spec_word(l.line, 1) == "1"; }
-forge_spec_off :: (l: ForgeSpecLine) -> bool { return forge_spec_word(l.line, 1) == "0"; }
+editor_spec_num :: (l: EditorSpecLine) -> int { return editor_spec_digits(editor_spec_word(l.line, 1)); }
+// owner, shapes, edit_fence: said 1. listed: not said 0 (editor_spec_off).
+editor_spec_on :: (l: EditorSpecLine) -> bool { return editor_spec_word(l.line, 1) == "1"; }
+editor_spec_off :: (l: EditorSpecLine) -> bool { return editor_spec_word(l.line, 1) == "0"; }
 
 // tool NAME 0|1
-ForgeSpecTool :: struct { name: string; on: bool; }
-forge_spec_tool :: (l: ForgeSpecLine) -> ForgeSpecTool { return ForgeSpecTool.{name = forge_spec_word(l.line, 1), on = forge_spec_word(l.line, 2) == "1"}; }
+EditorSpecTool :: struct { name: string; on: bool; }
+editor_spec_tool :: (l: EditorSpecLine) -> EditorSpecTool { return EditorSpecTool.{name = editor_spec_word(l.line, 1), on = editor_spec_word(l.line, 2) == "1"}; }
 // row KEY 0|1 LABEL
-ForgeSpecRow :: struct { key: string; on: bool; label: string; }
-forge_spec_row :: (l: ForgeSpecLine) -> ForgeSpecRow {
-  return ForgeSpecRow.{key = forge_spec_word(l.line, 1), on = forge_spec_word(l.line, 2) == "1", label = forge_spec_rest(l.line, 3)};
+EditorSpecRow :: struct { key: string; on: bool; label: string; }
+editor_spec_row :: (l: EditorSpecLine) -> EditorSpecRow {
+  return EditorSpecRow.{key = editor_spec_word(l.line, 1), on = editor_spec_word(l.line, 2) == "1", label = editor_spec_rest(l.line, 3)};
 }
 // character NAME|ROLE: ok when it has a name's first byte; role "" when it names none.
-ForgeSpecPerson :: struct { ok: bool; name: string; role: string; }
-forge_spec_person :: (l: ForgeSpecLine) -> ForgeSpecPerson {
-  rest := forge_spec_text(l);
-  if rest == "" { return ForgeSpecPerson.{}; }
+EditorSpecPerson :: struct { ok: bool; name: string; role: string; }
+editor_spec_person :: (l: EditorSpecLine) -> EditorSpecPerson {
+  rest := editor_spec_text(l);
+  if rest == "" { return EditorSpecPerson.{}; }
   cut := 0; while cut < rest.count && rest[cut] != '|' { cut += 1; }
-  return ForgeSpecPerson.{ok = true, name = rest[0..<cut], role = ifx cut + 1 < rest.count then rest[cut + 1..<rest.count] else ""};
+  return EditorSpecPerson.{ok = true, name = rest[0..<cut], role = ifx cut + 1 < rest.count then rest[cut + 1..<rest.count] else ""};
 }
 // feature NAME [WORD ...] [COUNT]: its first two words after the name, and its count: the last of
 // its words (up to four) that is a number, or -1.
-ForgeSpecFeature :: struct { name: string; a: string; b: string; count: int; }
-forge_spec_feature :: (l: ForgeSpecLine) -> ForgeSpecFeature {
-  f := ForgeSpecFeature.{name = forge_spec_word(l.line, 1), a = forge_spec_word(l.line, 2), b = forge_spec_word(l.line, 3), count = -1};
+EditorSpecFeature :: struct { name: string; a: string; b: string; count: int; }
+editor_spec_feature :: (l: EditorSpecLine) -> EditorSpecFeature {
+  f := EditorSpecFeature.{name = editor_spec_word(l.line, 1), a = editor_spec_word(l.line, 2), b = editor_spec_word(l.line, 3), count = -1};
   for k: 2..<6 {
-    w := forge_spec_word(l.line, k);
+    w := editor_spec_word(l.line, k);
     if w.count == 0 { break; }
-    v := forge_spec_digits(w);
+    v := editor_spec_digits(w);
     if v >= 0 { f.count = v; }
   }
   return f;
 }
 // placed THING X Z YAW: the numbers as written (metres, radians).
-ForgeSpecPlaced :: struct { thing: string; x: string; z: string; yaw: string; }
-forge_spec_placed :: (l: ForgeSpecLine) -> ForgeSpecPlaced {
-  return ForgeSpecPlaced.{thing = forge_spec_word(l.line, 1), x = forge_spec_word(l.line, 2), z = forge_spec_word(l.line, 3), yaw = forge_spec_word(l.line, 4)};
+EditorSpecPlaced :: struct { thing: string; x: string; z: string; yaw: string; }
+editor_spec_placed :: (l: EditorSpecLine) -> EditorSpecPlaced {
+  return EditorSpecPlaced.{thing = editor_spec_word(l.line, 1), x = editor_spec_word(l.line, 2), z = editor_spec_word(l.line, 3), yaw = editor_spec_word(l.line, 4)};
 }
 // from SLUG REV|NAME: the realm this one was forked from, its revision then (-1 when it says
 // none) and its name. ok when the line has its bar.
-ForgeSpecFrom :: struct { ok: bool; slug: string; rev: int; name: string; }
-forge_spec_from :: (l: ForgeSpecLine) -> ForgeSpecFrom {
+EditorSpecFrom :: struct { ok: bool; slug: string; rev: int; name: string; }
+editor_spec_from :: (l: EditorSpecLine) -> EditorSpecFrom {
   cut := 0; while cut < l.line.count && l.line[cut] != '|' { cut += 1; }
-  if cut >= l.line.count { return ForgeSpecFrom.{}; }
-  return ForgeSpecFrom.{ok = true, slug = forge_spec_word(l.line, 1), rev = forge_spec_digits(forge_spec_word(l.line[0..<cut], 2)), name = l.line[cut + 1..<l.line.count]};
+  if cut >= l.line.count { return EditorSpecFrom.{}; }
+  return EditorSpecFrom.{ok = true, slug = editor_spec_word(l.line, 1), rev = editor_spec_digits(editor_spec_word(l.line[0..<cut], 2)), name = l.line[cut + 1..<l.line.count]};
 }
 // moved ENTITY X Z, one space apart: where a laid-out entity stands instead, its numbers as
 // written (metres, two decimals). ok when the line is flush and has all three; z is the rest
 // of the line, so a fourth word makes it no number.
-ForgeSpecMoved :: struct { ok: bool; entity: string; x: string; z: string; }
-forge_spec_moved :: (l: ForgeSpecLine) -> ForgeSpecMoved {
-  if !l.flush || l.line.count < 7 || l.line[5] != ' ' { return ForgeSpecMoved.{}; }
+EditorSpecMoved :: struct { ok: bool; entity: string; x: string; z: string; }
+editor_spec_moved :: (l: EditorSpecLine) -> EditorSpecMoved {
+  if !l.flush || l.line.count < 7 || l.line[5] != ' ' { return EditorSpecMoved.{}; }
   p := 6; while p < l.line.count && l.line[p] != ' ' { p += 1; }
-  if p == l.line.count { return ForgeSpecMoved.{}; }
+  if p == l.line.count { return EditorSpecMoved.{}; }
   q := p + 1; while q < l.line.count && l.line[q] != ' ' { q += 1; }
-  if q == l.line.count { return ForgeSpecMoved.{}; }
-  return ForgeSpecMoved.{ok = true, entity = l.line[6..<p], x = l.line[p + 1..<q], z = l.line[q + 1..<l.line.count]};
+  if q == l.line.count { return EditorSpecMoved.{}; }
+  return EditorSpecMoved.{ok = true, entity = l.line[6..<p], x = l.line[p + 1..<q], z = l.line[q + 1..<l.line.count]};
 }
 
 #test "a spec's lines come one at a time with their kinds; another key and a blank line are passed over" {
   spec := "realm moonlit\nname Moonlit Marsh\n\nnote x\n owner 1\nrev 7";
-  l := forge_spec_line(spec, 0);
-  #assert l.kind == SPEC_REALM && l.line == "realm moonlit" && l.next == 14 && l.flush && forge_spec_text(l) == "moonlit";
-  l = forge_spec_line(spec, l.next);
-  #assert l.kind == SPEC_NAME && forge_spec_text(l) == "Moonlit Marsh" && l.next == 33;
-  l = forge_spec_line(spec, l.next);
+  l := editor_spec_line(spec, 0);
+  #assert l.kind == SPEC_REALM && l.line == "realm moonlit" && l.next == 14 && l.flush && editor_spec_text(l) == "moonlit";
+  l = editor_spec_line(spec, l.next);
+  #assert l.kind == SPEC_NAME && editor_spec_text(l) == "Moonlit Marsh" && l.next == 33;
+  l = editor_spec_line(spec, l.next);
   #assert l.kind == SPEC_OTHER && l.line == "" && l.next == 34 && l.flush;
-  l = forge_spec_line(spec, l.next);
+  l = editor_spec_line(spec, l.next);
   #assert l.kind == SPEC_OTHER && l.line == "note x";
-  l = forge_spec_line(spec, l.next);
-  #assert l.kind == SPEC_OWNER && !l.flush && forge_spec_on(l) && forge_spec_text(l) == "";
-  l = forge_spec_line(spec, l.next);
-  #assert l.kind == SPEC_REV && forge_spec_num(l) == 7 && l.next == spec.count + 1 && l.flush;
-  l = forge_spec_line(spec, l.next);
-  #assert l.kind == SPEC_END && l.next == spec.count && forge_spec_line(spec, -1).kind == SPEC_END && forge_spec_line("", 0).kind == SPEC_END && forge_spec_line(spec, spec.count).kind == SPEC_END;
+  l = editor_spec_line(spec, l.next);
+  #assert l.kind == SPEC_OWNER && !l.flush && editor_spec_on(l) && editor_spec_text(l) == "";
+  l = editor_spec_line(spec, l.next);
+  #assert l.kind == SPEC_REV && editor_spec_num(l) == 7 && l.next == spec.count + 1 && l.flush;
+  l = editor_spec_line(spec, l.next);
+  #assert l.kind == SPEC_END && l.next == spec.count && editor_spec_line(spec, -1).kind == SPEC_END && editor_spec_line("", 0).kind == SPEC_END && editor_spec_line(spec, spec.count).kind == SPEC_END;
   // every key is its kind, and only whole
   keys := SPEC_KEYS;
-  for k: SPEC_REALM..<SPEC_KINDS { #assert forge_spec_kind(keys[k]) == k; }
-  #assert forge_spec_kind("") == SPEC_OTHER && forge_spec_kind("re") == SPEC_OTHER && forge_spec_kind("realms") == SPEC_OTHER && forge_spec_kind("Realm") == SPEC_OTHER;
-  #assert forge_spec_line("engine abc\n", 0).kind == SPEC_ENGINE && forge_spec_line("edit_fence 1\n", 0).kind == SPEC_EDIT_FENCE && forge_spec_line("realm", 0).kind == SPEC_REALM;
-  #assert forge_spec_text(forge_spec_line("name", 0)) == "" && forge_spec_text(forge_spec_line("name ", 0)) == "" && forge_spec_text(forge_spec_line("name  A", 0)) == " A";
+  for k: SPEC_REALM..<SPEC_KINDS { #assert editor_spec_kind(keys[k]) == k; }
+  #assert editor_spec_kind("") == SPEC_OTHER && editor_spec_kind("re") == SPEC_OTHER && editor_spec_kind("realms") == SPEC_OTHER && editor_spec_kind("Realm") == SPEC_OTHER;
+  #assert editor_spec_line("engine abc\n", 0).kind == SPEC_ENGINE && editor_spec_line("edit_fence 1\n", 0).kind == SPEC_EDIT_FENCE && editor_spec_line("realm", 0).kind == SPEC_REALM;
+  #assert editor_spec_text(editor_spec_line("name", 0)) == "" && editor_spec_text(editor_spec_line("name ", 0)) == "" && editor_spec_text(editor_spec_line("name  A", 0)) == " A";
 }
 #test "words, the rest of a line, values, numbers and flags" {
-  #assert forge_spec_word("tool  fly 1", 0) == "tool" && forge_spec_word("tool  fly 1", 1) == "fly" && forge_spec_word("tool  fly 1", 2) == "1" && forge_spec_word("tool  fly 1", 3) == "" && forge_spec_word("", 0) == "" && forge_spec_word("a ", 1) == "";
-  #assert forge_spec_rest("row trees 1 A few trees", 3) == "A few trees" && forge_spec_rest("row trees 1", 3) == "" && forge_spec_rest("row trees 1  A  b", 3) == "A  b" && forge_spec_rest("row", 0) == "row" && forge_spec_rest(" row x", 1) == "x";
+  #assert editor_spec_word("tool  fly 1", 0) == "tool" && editor_spec_word("tool  fly 1", 1) == "fly" && editor_spec_word("tool  fly 1", 2) == "1" && editor_spec_word("tool  fly 1", 3) == "" && editor_spec_word("", 0) == "" && editor_spec_word("a ", 1) == "";
+  #assert editor_spec_rest("row trees 1 A few trees", 3) == "A few trees" && editor_spec_rest("row trees 1", 3) == "" && editor_spec_rest("row trees 1  A  b", 3) == "A  b" && editor_spec_rest("row", 0) == "row" && editor_spec_rest(" row x", 1) == "x";
   spec := "realm moonlit\nname Moonlit Marsh\nrev 7\npublished 5\nvisibility private\nrole owner\n";
-  #assert forge_spec_value(spec, "rev") == "7" && forge_spec_value(spec, "visibility") == "private" && forge_spec_value(spec, "name") == "Moonlit Marsh";
-  #assert forge_spec_value(spec, "realm") == "moonlit" && forge_spec_value(spec, "role") == "owner" && forge_spec_value(spec, "published") == "5";
-  #assert forge_spec_value(spec, "re") == "" && forge_spec_value(spec, "listed") == "" && forge_spec_value("", "rev") == "";
-  #assert forge_spec_value("xrev 1\nrev 2", "rev") == "2" && forge_spec_value("rev 1\nrev 2\n", "rev") == "1" && forge_spec_value("rev", "rev") == "";
-  #assert forge_spec_value("rev \n", "rev") == "" && forge_spec_value("a\n\nrev 3", "rev") == "3" && forge_spec_value("\nrev 3", "rev") == "3" && forge_spec_value(" rev 3", "rev") == "";
-  #assert forge_spec_digits("0") == 0 && forge_spec_digits("999999999") == 999999999 && forge_spec_digits("1234567890") == 123456789 && forge_spec_digits("") == -1 && forge_spec_digits("-1") == -1 && forge_spec_digits("1.5") == 1 && forge_spec_digits("7a") == 7 && forge_spec_digits(":") == -1 && forge_spec_digits("/") == -1 && forge_spec_digits("9") == 9 && forge_spec_digits("90:") == 90;
-  #assert forge_spec_num(forge_spec_line("waiting 12", 0)) == 12 && forge_spec_num(forge_spec_line("waiting", 0)) == -1 && forge_spec_num(forge_spec_line("undo x", 0)) == -1;
-  #assert forge_spec_on(forge_spec_line("owner 1", 0)) && !forge_spec_on(forge_spec_line("owner 0", 0)) && !forge_spec_on(forge_spec_line("owner", 0)) && !forge_spec_on(forge_spec_line("owner 11", 0));
-  #assert forge_spec_off(forge_spec_line("listed 0", 0)) && !forge_spec_off(forge_spec_line("listed 1", 0)) && !forge_spec_off(forge_spec_line("listed", 0));
+  #assert editor_spec_value(spec, "rev") == "7" && editor_spec_value(spec, "visibility") == "private" && editor_spec_value(spec, "name") == "Moonlit Marsh";
+  #assert editor_spec_value(spec, "realm") == "moonlit" && editor_spec_value(spec, "role") == "owner" && editor_spec_value(spec, "published") == "5";
+  #assert editor_spec_value(spec, "re") == "" && editor_spec_value(spec, "listed") == "" && editor_spec_value("", "rev") == "";
+  #assert editor_spec_value("xrev 1\nrev 2", "rev") == "2" && editor_spec_value("rev 1\nrev 2\n", "rev") == "1" && editor_spec_value("rev", "rev") == "";
+  #assert editor_spec_value("rev \n", "rev") == "" && editor_spec_value("a\n\nrev 3", "rev") == "3" && editor_spec_value("\nrev 3", "rev") == "3" && editor_spec_value(" rev 3", "rev") == "";
+  #assert editor_spec_digits("0") == 0 && editor_spec_digits("999999999") == 999999999 && editor_spec_digits("1234567890") == 123456789 && editor_spec_digits("") == -1 && editor_spec_digits("-1") == -1 && editor_spec_digits("1.5") == 1 && editor_spec_digits("7a") == 7 && editor_spec_digits(":") == -1 && editor_spec_digits("/") == -1 && editor_spec_digits("9") == 9 && editor_spec_digits("90:") == 90;
+  #assert editor_spec_num(editor_spec_line("waiting 12", 0)) == 12 && editor_spec_num(editor_spec_line("waiting", 0)) == -1 && editor_spec_num(editor_spec_line("undo x", 0)) == -1;
+  #assert editor_spec_on(editor_spec_line("owner 1", 0)) && !editor_spec_on(editor_spec_line("owner 0", 0)) && !editor_spec_on(editor_spec_line("owner", 0)) && !editor_spec_on(editor_spec_line("owner 11", 0));
+  #assert editor_spec_off(editor_spec_line("listed 0", 0)) && !editor_spec_off(editor_spec_line("listed 1", 0)) && !editor_spec_off(editor_spec_line("listed", 0));
 }
 #test "a tool, a row, a character, a feature and a placed thing" {
-  t := forge_spec_tool(forge_spec_line("tool fly 1", 0));
-  #assert t.name == "fly" && t.on && !forge_spec_tool(forge_spec_line("tool fly 0", 0)).on && !forge_spec_tool(forge_spec_line("tool fly", 0)).on && forge_spec_tool(forge_spec_line("tool", 0)).name == "";
-  r := forge_spec_row(forge_spec_line("row feature:2 1 A few trees", 0));
+  t := editor_spec_tool(editor_spec_line("tool fly 1", 0));
+  #assert t.name == "fly" && t.on && !editor_spec_tool(editor_spec_line("tool fly 0", 0)).on && !editor_spec_tool(editor_spec_line("tool fly", 0)).on && editor_spec_tool(editor_spec_line("tool", 0)).name == "";
+  r := editor_spec_row(editor_spec_line("row feature:2 1 A few trees", 0));
   #assert r.key == "feature:2" && r.on && r.label == "A few trees";
-  r = forge_spec_row(forge_spec_line("row night 0", 0));
-  #assert r.key == "night" && !r.on && r.label == "" && forge_spec_row(forge_spec_line("row", 0)).key == "";
-  p := forge_spec_person(forge_spec_line("character Old Mott|the ferryman", 0));
+  r = editor_spec_row(editor_spec_line("row night 0", 0));
+  #assert r.key == "night" && !r.on && r.label == "" && editor_spec_row(editor_spec_line("row", 0)).key == "";
+  p := editor_spec_person(editor_spec_line("character Old Mott|the ferryman", 0));
   #assert p.ok && p.name == "Old Mott" && p.role == "the ferryman";
-  p = forge_spec_person(forge_spec_line("character Mott", 0));
+  p = editor_spec_person(editor_spec_line("character Mott", 0));
   #assert p.ok && p.name == "Mott" && p.role == "";
-  p = forge_spec_person(forge_spec_line("character Mott|", 0));
-  #assert p.ok && p.name == "Mott" && p.role == "" && !forge_spec_person(forge_spec_line("character", 0)).ok && !forge_spec_person(forge_spec_line("character ", 0)).ok;
-  p = forge_spec_person(forge_spec_line("character |x", 0));
+  p = editor_spec_person(editor_spec_line("character Mott|", 0));
+  #assert p.ok && p.name == "Mott" && p.role == "" && !editor_spec_person(editor_spec_line("character", 0)).ok && !editor_spec_person(editor_spec_line("character ", 0)).ok;
+  p = editor_spec_person(editor_spec_line("character |x", 0));
   #assert p.ok && p.name == "" && p.role == "x";
-  f := forge_spec_feature(forge_spec_line("feature trees pine 6", 0));
+  f := editor_spec_feature(editor_spec_line("feature trees pine 6", 0));
   #assert f.name == "trees" && f.a == "pine" && f.b == "6" && f.count == 6;
-  f = forge_spec_feature(forge_spec_line("feature house large red 3", 0));
+  f = editor_spec_feature(editor_spec_line("feature house large red 3", 0));
   #assert f.name == "house" && f.a == "large" && f.b == "red" && f.count == 3;
-  f = forge_spec_feature(forge_spec_line("feature mist", 0));
+  f = editor_spec_feature(editor_spec_line("feature mist", 0));
   #assert f.name == "mist" && f.a == "" && f.b == "" && f.count == -1;
-  f = forge_spec_feature(forge_spec_line("feature rocks 4", 0));
+  f = editor_spec_feature(editor_spec_line("feature rocks 4", 0));
   #assert f.name == "rocks" && f.a == "4" && f.count == 4;
   // the count is the last number among the four words after the name; a sixth word is not counted
-  f = forge_spec_feature(forge_spec_line("feature x 1 b 2 c 9", 0));
+  f = editor_spec_feature(editor_spec_line("feature x 1 b 2 c 9", 0));
   #assert f.count == 2;
-  f = forge_spec_feature(forge_spec_line("feature x a b c 5", 0));
+  f = editor_spec_feature(editor_spec_line("feature x a b c 5", 0));
   #assert f.count == 5;
-  f = forge_spec_feature(forge_spec_line("feature x 3 b", 0));
+  f = editor_spec_feature(editor_spec_line("feature x 3 b", 0));
   #assert f.count == 3;
-  q := forge_spec_placed(forge_spec_line("placed barrel 0 3.8 -1.571", 0));
+  q := editor_spec_placed(editor_spec_line("placed barrel 0 3.8 -1.571", 0));
   #assert q.thing == "barrel" && q.x == "0" && q.z == "3.8" && q.yaw == "-1.571";
-  q = forge_spec_placed(forge_spec_line("placed crate 1 2", 0));
-  #assert q.thing == "crate" && q.z == "2" && q.yaw == "" && forge_spec_placed(forge_spec_line("placed", 0)).thing == "";
+  q = editor_spec_placed(editor_spec_line("placed crate 1 2", 0));
+  #assert q.thing == "crate" && q.z == "2" && q.yaw == "" && editor_spec_placed(editor_spec_line("placed", 0)).thing == "";
 }
 #test "where a realm was forked from, and a moved entity" {
-  f := forge_spec_from(forge_spec_line("from old-court 2|Old Court", 0));
+  f := editor_spec_from(editor_spec_line("from old-court 2|Old Court", 0));
   #assert f.ok && f.slug == "old-court" && f.rev == 2 && f.name == "Old Court";
-  f = forge_spec_from(forge_spec_line("from old-court|Old Court", 0));
+  f = editor_spec_from(editor_spec_line("from old-court|Old Court", 0));
   #assert f.ok && f.slug == "old-court|Old" && f.rev == -1 && f.name == "Old Court";   // no revision: the slug's word runs to the first space, and is no slug
-  f = forge_spec_from(forge_spec_line("from old-court 2|", 0));
+  f = editor_spec_from(editor_spec_line("from old-court 2|", 0));
   #assert f.ok && f.name == "" && f.rev == 2;
-  f = forge_spec_from(forge_spec_line("from old-court 2|A|B 3", 0));
-  #assert f.ok && f.name == "A|B 3" && f.rev == 2 && !forge_spec_from(forge_spec_line("from old-court 2", 0)).ok && !forge_spec_from(forge_spec_line("from", 0)).ok;
-  m := forge_spec_moved(forge_spec_line("moved trees:3 4.00 -5.50", 0));
+  f = editor_spec_from(editor_spec_line("from old-court 2|A|B 3", 0));
+  #assert f.ok && f.name == "A|B 3" && f.rev == 2 && !editor_spec_from(editor_spec_line("from old-court 2", 0)).ok && !editor_spec_from(editor_spec_line("from", 0)).ok;
+  m := editor_spec_moved(editor_spec_line("moved trees:3 4.00 -5.50", 0));
   #assert m.ok && m.entity == "trees:3" && m.x == "4.00" && m.z == "-5.50";
-  m = forge_spec_moved(forge_spec_line("moved trees:3 1 2 3", 0));
+  m = editor_spec_moved(editor_spec_line("moved trees:3 1 2 3", 0));
   #assert m.ok && m.x == "1" && m.z == "2 3";
-  m = forge_spec_moved(forge_spec_line("moved  trees:3 1 2", 0));
+  m = editor_spec_moved(editor_spec_line("moved  trees:3 1 2", 0));
   #assert m.ok && m.entity == "" && m.x == "trees:3" && m.z == "1 2";
-  m = forge_spec_moved(forge_spec_line("moved a 1 ", 0));
+  m = editor_spec_moved(editor_spec_line("moved a 1 ", 0));
   #assert m.ok && m.x == "1" && m.z == "";
-  #assert !forge_spec_moved(forge_spec_line("moved", 0)).ok && !forge_spec_moved(forge_spec_line("moved ", 0)).ok && !forge_spec_moved(forge_spec_line("moved trees:3", 0)).ok && !forge_spec_moved(forge_spec_line("moved trees:3 1", 0)).ok;
-  #assert !forge_spec_moved(forge_spec_line(" moved trees:3 1 2", 0)).ok && forge_spec_moved(forge_spec_line("moved a 1 2", 0)).ok && !forge_spec_moved(forge_spec_line("moved a", 0)).ok;
+  #assert !editor_spec_moved(editor_spec_line("moved", 0)).ok && !editor_spec_moved(editor_spec_line("moved ", 0)).ok && !editor_spec_moved(editor_spec_line("moved trees:3", 0)).ok && !editor_spec_moved(editor_spec_line("moved trees:3 1", 0)).ok;
+  #assert !editor_spec_moved(editor_spec_line(" moved trees:3 1 2", 0)).ok && editor_spec_moved(editor_spec_line("moved a 1 2", 0)).ok && !editor_spec_moved(editor_spec_line("moved a", 0)).ok;
   // a line whose key only starts like moved is another line's
-  #assert forge_spec_line("movedx a 1 2", 0).kind == SPEC_OTHER;
+  #assert editor_spec_line("movedx a 1 2", 0).kind == SPEC_OTHER;
 }

@@ -20,7 +20,7 @@
 // built from this checkout; its /api requests are sent on to the local API by DevTools
 // interception, and /worlds/built (the site's address for realms/built since 0110) is answered with its own HTML on the legacy shader path (no
 // render package: it needs a release build). The realm is made in SQL, owned by a fresh key.
-//   SITE=http://127.0.0.1:8811 API=http://127.0.0.1:57411 PGURL=... PSQL=psql coax/web/tool.sh forge-access [--require-hardware]
+//   SITE=http://127.0.0.1:8811 API=http://127.0.0.1:57411 PGURL=... PSQL=psql coax/web/tool.sh editor-access [--require-hardware]
 // It prints the WebGPU adapter the realm got; --require-hardware fails a check unless it is a GPU's.
 // Exit 0 when every check passed, 1 when one failed, 2 for a usage error.
 #import "Basic";
@@ -301,7 +301,7 @@ fa_sql :: (f: [] Fa, sql: string, out: [] u8) -> string {
   a := [8] string.[f[0].psql, "-XAtq", "-v", "ON_ERROR_STOP=1", "--dbname", f[0].db, "-c", sql];
   err: [4096] u8;
   got := proc_run(a[..], 60000, out, err[..]);
-  if got.status != 0 || got.timed_out || got.cut { tool_err("forge-access sql: "); tool_errln(cast(string) err[0..<got.err_n]); return ""; }
+  if got.status != 0 || got.timed_out || got.cut { tool_err("editor-access sql: "); tool_errln(cast(string) err[0..<got.err_n]); return ""; }
   return cast(string) out[0..<got.out_n];
 }
 fa_true :: (f: [] Fa, sql: string) -> bool { o: [16] u8; return fa_sql(f, sql, o[..]) == "t"; }
@@ -317,17 +317,17 @@ tool_main :: () -> int #export_c #effects(all) {
   f[0].site = proc_getenv("SITE", b1[..]); f[0].api = proc_getenv("API", b2[..]);
   f[0].db = proc_getenv("PGURL", b3[..]); f[0].psql = proc_getenv("PSQL", b4[..]);
   if !fa_starts(f[0].site, "http://127.0.0.1:") || !fa_starts(f[0].api, "http://127.0.0.1:") || f[0].db == "" || f[0].psql == "" {
-    tool_errln("usage: SITE=http://127.0.0.1:PORT API=http://127.0.0.1:PORT PGURL=... PSQL=psql coax/web/tool.sh forge-access [--require-hardware]   (local only)");
+    tool_errln("usage: SITE=http://127.0.0.1:PORT API=http://127.0.0.1:PORT PGURL=... PSQL=psql coax/web/tool.sh editor-access [--require-hardware]   (local only)");
     return 2;
   }
   av: [1] Args; hard := args_load(av[..]) && args_has(av[..], "--require-hardware");
   raw: [FA_HTML] u8; rn := fs_read("apps/openagents-web/realms/built/index.html", raw[..]);
   f[0].html_n = ifx rn > 0 then fa_legacy(cast(string) raw[0..<rn], f[0].html[..]) else -1;
-  if f[0].html_n <= 0 { tool_errln("forge-access: run it from the repository's root"); return 2; }
+  if f[0].html_n <= 0 { tool_errln("editor-access: run it from the repository's root"); return 2; }
 
   // the realm and its owner, made as MAKE IT makes them
   stamp := proc_now_ms() % 1000000000;
-  kb: [1] FaBuf; fa_put(kb[..], "forge-access-owner-key-"); fa_int(kb[..], stamp); key := fa_text(kb[..]);
+  kb: [1] FaBuf; fa_put(kb[..], "editor-access-owner-key-"); fa_int(kb[..], stamp); key := fa_text(kb[..]);
   sb: [1] FaBuf; fa_put(sb[..], "fa-"); fa_int(sb[..], stamp); slug := fa_text(sb[..]);
   q: [1] FaBuf;
   fa_put(q[..], "INSERT INTO verse.players (id, key_sha256, created_ms) VALUES ('p-"); fa_put(q[..], slug); fa_put(q[..], "', encode(sha256(convert_to('"); fa_put(q[..], key);
@@ -341,13 +341,13 @@ tool_main :: () -> int #export_c #effects(all) {
   fa_check(f[..], "a public made realm and its owner; the owner's board has its rows", fa_doc(f[..], slug, "x.rev = 1") && fa_true(f[..], fa_text(rq[..])), 0);
 
   c: [1] Cdp;
-  if !cdp_launch(c[..], 1280, 800, "coax-forge-access-") { tool_err("forge-access: "); tool_errln(cdp_error(c[..])); return 1; }
+  if !cdp_launch(c[..], 1280, 800, "coax-editor-access-") { tool_err("editor-access: "); tool_errln(cdp_error(c[..])); return 1; }
   armed := fa_call(c[..], f[..], "Fetch.enable", "{\"patterns\":[{\"urlPattern\":\"*/api/*\",\"requestStage\":\"Request\"},{\"urlPattern\":\"*/worlds/built*\",\"requestStage\":\"Request\"}]}") >= 0;
   // a stand-in controller the page reads through navigator.getGamepads (none connected until the check says)
   pad := "performance.setResourceTimingBufferSize(1e6);globalThis.__log=[];{const e=console.error,l=console.log;console.error=(...a)=>{__log.push(a.join(' ').slice(0,300));e(...a)};console.log=(...a)=>{__log.push(a.join(' ').slice(0,300));l(...a)};}globalThis.__pad={on:false,x:0,y:0,b:false};navigator.getGamepads=()=>[__pad.on?{connected:true,axes:[__pad.x,__pad.y],buttons:[{pressed:__pad.b}]}:null];";
   pb: [1024] u8; po: [1] Jo; jo_start(po[..], pb[..]); jo_obj(po[..]); jo_key(po[..], "source"); jo_str(po[..], pad); jo_end(po[..]);
   armed = armed && fa_call(c[..], f[..], "Page.enable", "{}") >= 0 && fa_call(c[..], f[..], "Page.addScriptToEvaluateOnNewDocument", jo_text(po[..])) >= 0;
-  if !armed { tool_errln("forge-access: the browser refused the interception"); cdp_close(c[..]); return 1; }
+  if !armed { tool_errln("editor-access: the browser refused the interception"); cdp_close(c[..]); return 1; }
   // a small page: SwiftShader (a machine with no GPU for Chrome) draws it well inside the GPU's watchdog
   sized := fa_call(c[..], f[..], "Emulation.setDeviceMetricsOverride", "{\"width\":640,\"height\":400,\"deviceScaleFactor\":1,\"mobile\":false}") >= 0;
 

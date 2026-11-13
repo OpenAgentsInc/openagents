@@ -272,10 +272,10 @@ seat_read_spec :: (s: [] Seat, c: [] Cdp) {
 // (metaverse-engine/editor/spec.coax; a line with no name is passed over).
 seat_spec_people :: (s: [] Seat, text: string) {
   s[0].spec_people = 0;
-  l := forge_spec_line(text, 0);
+  l := editor_spec_line(text, 0);
   while l.kind != SPEC_END && s[0].spec_people < SEAT_PEOPLE {
-    who := ifx l.kind == SPEC_CHARACTER && l.flush then forge_spec_person(l) else ForgeSpecPerson.{};
-    l = forge_spec_line(text, l.next);
+    who := ifx l.kind == SPEC_CHARACTER && l.flush then editor_spec_person(l) else EditorSpecPerson.{};
+    l = editor_spec_line(text, l.next);
     if !who.ok { continue; }
     p := s[0].spec_people;
     n := 0; for k: 0..<who.name.count { if n < 32 { s[0].names[p * 32 + n] = who.name[k]; n += 1; } } s[0].name_n[p] = n;

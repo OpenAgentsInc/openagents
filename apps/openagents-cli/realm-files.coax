@@ -20,7 +20,7 @@ RfWork :: struct {
   body: [RF_PART + FW_HEAD] u8; head: [FW_HEAD] u8; path: [400] u8; words: [600] u8; tags: [FW_TAGS] u8; note: [FW_NOTE + 8] u8;
 }
 rf_path :: (slug: string, tail: string, extra: string, out: [] u8) -> string {
-  n := forge_put(out,0,"/api/worlds/"); n = forge_put(out,n,slug); n = forge_put(out,n,"/files"); n = forge_put(out,n,tail); n = forge_put(out,n,extra);
+  n := editor_put(out,0,"/api/worlds/"); n = editor_put(out,n,slug); n = editor_put(out,n,"/files"); n = editor_put(out,n,tail); n = editor_put(out,n,extra);
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 // The world's list, read into w.l.
@@ -111,7 +111,7 @@ rf_attach :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RfWork
     n := ifx size - at < RF_PART then size - at else RF_PART;
     head := fw_attach_head(w[0].head[..], scope, size, at, name, note, tags, hash);
     if head.count == 0 { return fail(r, EXIT_USAGE, "the name, note or tags do not fit a request's head"); }
-    k := forge_put(w[0].body[..], 0, head);
+    k := editor_put(w[0].body[..], 0, head);
     got := fs_read_at(source, at, w[0].body[k..<k + n]);
     if got != n { return fail(r, EXIT_FAIL, "FILE changed while it was sent"); }
     res := api_call(a, profile, "POST", rf_path(slug, "", "", w[0].path[..]), cast(string) w[0].body[0..<k + n], w[0].out[..]);
@@ -148,8 +148,8 @@ rf_upload :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RfWork
       n := ifx size - at < RF_PUT then size - at else RF_PUT;
       if fs_read_at(source, at, w[0].body[0..<n]) != n { return fail(r, EXIT_FAIL, "FILE changed while it was sent"); }
       range: [96] u8;
-      k := forge_put(range[..], 0, "Content-Range: bytes "); k = fw_put_int(range[..], k, at); k = forge_put(range[..], k, "-");
-      k = fw_put_int(range[..], k, at + n - 1); k = forge_put(range[..], k, "/"); k = fw_put_int(range[..], k, size);
+      k := editor_put(range[..], 0, "Content-Range: bytes "); k = fw_put_int(range[..], k, at); k = editor_put(range[..], k, "-");
+      k = fw_put_int(range[..], k, at + n - 1); k = editor_put(range[..], k, "/"); k = fw_put_int(range[..], k, size);
       hs: [1] string; hs[0] = cast(string) range[0..<k];
       hw: [1] HttpWork; got: [4096] u8;
       p := http_do(hw[..], "PUT", url, hs[..], cast(string) w[0].body[0..<n], CLI_HTTP_MS, 0, got[..]);
@@ -184,7 +184,7 @@ rf_read :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RfWork) 
   if !text && fs_exists(out) && !fs_remove(out) { return fail(r, EXIT_FAIL, "OUT is there and can't be replaced"); }
   at := 0;
   while at < f.bytes {
-    q: [40] u8; qn := forge_put(q[..], 0, "?at="); qn = fw_put_int(q[..], qn, at);
+    q: [40] u8; qn := editor_put(q[..], 0, "?at="); qn = fw_put_int(q[..], qn, at);
     res := api_call(a, profile, "GET", rf_path(slug, "/", rf_with(fid, cast(string) q[0..<qn], w[0].words[..]), w[0].path[..]), "", w[0].out[..]);
     if !api_ok(res) { return api_fail(r, res, cast(string) w[0].out[0..<res.n]); }
     if res.n == 0 || at + res.n > f.bytes { return fail(r, EXIT_FAIL, "the file came back another size than the list says"); }
@@ -198,7 +198,7 @@ rf_read :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RfWork) 
   return EXIT_OK;
 }
 rf_with :: (a: string, b: string, out: [] u8) -> string {
-  n := forge_put(out, 0, a); n = forge_put(out, n, b);
+  n := editor_put(out, 0, a); n = editor_put(out, n, b);
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 // A note, tags, name or scope changed; what is not given is kept as it is.

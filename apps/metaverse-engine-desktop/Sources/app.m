@@ -1,5 +1,5 @@
 // Firm reason: 6 (AppKit, WebKit and AVFoundation effects; world, setup, chat and voice decisions are Coax).
-// The Metaverse Engine for Mac on the shared Mac host (Forge.h). The host owns the window, the event loop and
+// The Metaverse Engine for Mac on the shared Mac host (Editor.h). The host owns the window, the event loop and
 // the menus; the world (WKWebView, or the native Metal realm), the chat's text views and the
 // notice are native children under its layer (ui_child), and its layer draws the chat's HUD and
 // the setup panel's components (chrome.coax) over them.
@@ -12,7 +12,7 @@
 //       --audio-smoke, --voice-smoke, --voice-warm-smoke, --setup-smoke REPORT (a window that is
 //       never shown); --launch-check, --microphone-check, --setup-profile, --offline-check,
 //       --frame-profile, --web-preview-plan, --metal-measure-plan, --metal-observe (shown).
-#import "Forge.h"
+#import "Editor.h"
 #import "Aethyrforge-Swift.h"
 #import <QuartzCore/QuartzCore.h>
 #include "../../shared/host/apple/ct-atlas.h"
@@ -25,39 +25,39 @@
 
 // ---- small effects shared by the files
 
-void forge_throw(NSString *message) { @throw [NSException exceptionWithName:@"Aethyrforge" reason:message ?: @"failed" userInfo:nil]; }
-NSString *forge_json(id object) {
+void editor_throw(NSString *message) { @throw [NSException exceptionWithName:@"Aethyrforge" reason:message ?: @"failed" userInfo:nil]; }
+NSString *editor_json(id object) {
   if (!object) return @"null";
   NSData *d = [NSJSONSerialization dataWithJSONObject:object options:NSJSONWritingSortedKeys | NSJSONWritingWithoutEscapingSlashes | NSJSONWritingFragmentsAllowed error:nil];
   return d ? [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] : @"{}";
 }
-NSString *forge_json_pretty(id object) {
+NSString *editor_json_pretty(id object) {
   NSData *d = [NSJSONSerialization dataWithJSONObject:object options:NSJSONWritingSortedKeys | NSJSONWritingPrettyPrinted error:nil];
   return d ? [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] : @"{}";
 }
-id forge_parse(NSString *json) {
+id editor_parse(NSString *json) {
   if (![json isKindOfClass:NSString.class]) return nil;
   return [NSJSONSerialization JSONObjectWithData:[json dataUsingEncoding:NSUTF8StringEncoding] options:NSJSONReadingFragmentsAllowed error:nil];
 }
-void forge_write(NSString *text, NSURL *url) {
+void editor_write(NSString *text, NSURL *url) {
   NSError *e = nil;
-  if (![[text dataUsingEncoding:NSUTF8StringEncoding] writeToURL:url options:NSDataWritingAtomic error:&e]) forge_throw(e.localizedDescription);
+  if (![[text dataUsingEncoding:NSUTF8StringEncoding] writeToURL:url options:NSDataWritingAtomic error:&e]) editor_throw(e.localizedDescription);
 }
-void forge_require(BOOL ok, NSString *format, ...) {
+void editor_require(BOOL ok, NSString *format, ...) {
   if (ok) return;
   va_list a; va_start(a, format);
   NSString *message = [[NSString alloc] initWithFormat:format arguments:a];
   va_end(a);
-  forge_throw(message);
+  editor_throw(message);
 }
-void forge_sleep_ms(int ms) { usleep((useconds_t)ms * 1000); }
-double forge_uptime(void) { return NSProcessInfo.processInfo.systemUptime; }
-NSString *forge_setup_text(int64_t field) {
+void editor_sleep_ms(int ms) { usleep((useconds_t)ms * 1000); }
+double editor_uptime(void) { return NSProcessInfo.processInfo.systemUptime; }
+NSString *editor_setup_text(int64_t field) {
   NSMutableData *b = [NSMutableData data];
   for (int i = 0; i < 8192; i++) { int64_t c = fgs_text_byte(field, i); if (c < 0) break; uint8_t u = (uint8_t)c; [b appendBytes:&u length:1]; }
   return [[NSString alloc] initWithData:b encoding:NSUTF8StringEncoding] ?: @"";
 }
-NSData *forge_cli(NSURL *executable, NSArray<NSString *> *arguments, double timeout, NSDictionary *environment) {
+NSData *editor_cli(NSURL *executable, NSArray<NSString *> *arguments, double timeout, NSDictionary *environment) {
   NSTask *p = [NSTask new];
   p.executableURL = executable; p.arguments = arguments;
   NSMutableDictionary *env = [(environment ?: NSProcessInfo.processInfo.environment) mutableCopy];
@@ -67,7 +67,7 @@ NSData *forge_cli(NSURL *executable, NSArray<NSString *> *arguments, double time
   NSPipe *pipe = [NSPipe pipe];
   p.standardOutput = pipe; p.standardError = NSFileHandle.fileHandleWithNullDevice;
   NSError *error = nil;
-  if (![p launchAndReturnError:&error]) forge_throw(error.localizedDescription);
+  if (![p launchAndReturnError:&error]) editor_throw(error.localizedDescription);
   dispatch_block_t limit = dispatch_block_create(0, ^{ if (p.running) [p terminate]; });
   dispatch_block_t kill9 = dispatch_block_create(0, ^{ if (p.running) kill(p.processIdentifier, SIGKILL); });
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(timeout * NSEC_PER_SEC)), dispatch_get_global_queue(0, 0), limit);
@@ -82,31 +82,31 @@ NSData *forge_cli(NSURL *executable, NSArray<NSString *> *arguments, double time
   }
   [p waitUntilExit];
   dispatch_block_cancel(limit); dispatch_block_cancel(kill9);
-  if (over) forge_throw(@"The local CLI report exceeded its size limit.");
-  if (!data.length) forge_throw(@"The local CLI did not return a status report.");
+  if (over) editor_throw(@"The local CLI report exceeded its size limit.");
+  if (!data.length) editor_throw(@"The local CLI did not return a status report.");
   return data;
 }
 
 // Keep the reservations until distinct ports are chosen; the children bind right after release.
 static int reserve_port(int *port) {
   int fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (fd < 0) forge_throw(@"Cannot reserve a local port.");
+  if (fd < 0) editor_throw(@"Cannot reserve a local port.");
   struct sockaddr_in a = {0};
   a.sin_len = sizeof a; a.sin_family = AF_INET; a.sin_addr.s_addr = inet_addr("127.0.0.1");
   socklen_t n = sizeof a;
-  if (bind(fd, (struct sockaddr *)&a, sizeof a) != 0 || getsockname(fd, (struct sockaddr *)&a, &n) != 0) { close(fd); forge_throw(@"Cannot bind a local port."); }
+  if (bind(fd, (struct sockaddr *)&a, sizeof a) != 0 || getsockname(fd, (struct sockaddr *)&a, &n) != 0) { close(fd); editor_throw(@"Cannot bind a local port."); }
   *port = ntohs(a.sin_port);
   return fd;
 }
 
 // The setup panel's atlas face (setup-face.c's fgu_ functions).
-static const CtApi forge_ct = {fgu_glyph_count, fgu_glyph_code, fgu_font_count, fgu_font_size, fgu_font_weight, fgu_icon_count, fgu_icon_size, fgu_icon_name,
+static const CtApi editor_ct = {fgu_glyph_count, fgu_glyph_code, fgu_font_count, fgu_font_size, fgu_font_weight, fgu_icon_count, fgu_icon_size, fgu_icon_name,
                                fgu_set_font, fgu_set_icon, fgu_set_atlas, fgu_set_dynamic, fgu_next_cluster, fgu_cluster, fgu_measured, fgu_next_cell, fgu_cell, fgu_cell_ready};
 
 enum { C_QUIT = 1, C_RELOAD, C_PREVIEW, C_SETUP, C_STATUS, C_CHAT, C_FOLDER };
-#define FORGE_MAX_VERTICES 32768
+#define EDITOR_MAX_VERTICES 32768
 
-@interface ForgeApp ()
+@interface EditorApp ()
 - (int)frame:(float *)v width:(float)w height:(float)h dpr:(float)dpr;
 - (void)pointerAt:(float)x y:(float)y phase:(int)phase;
 - (int)key:(int)key mods:(int)mods down:(int)down;
@@ -118,25 +118,25 @@ enum { C_QUIT = 1, C_RELOAD, C_PREVIEW, C_SETUP, C_STATUS, C_CHAT, C_FOLDER };
 - (int)drive:(const char *)op out:(char *)out cap:(int)cap;
 @end
 
-static int cb_frame(void *u, float *v, float w, float h, float dpr, float dt) { (void)dt; return [(__bridge ForgeApp *)u frame:v width:w height:h dpr:dpr]; }
-static void cb_pointer(void *u, float x, float y, int phase, int clicks, int mods) { (void)clicks; (void)mods; [(__bridge ForgeApp *)u pointerAt:x y:y phase:phase]; }
+static int cb_frame(void *u, float *v, float w, float h, float dpr, float dt) { (void)dt; return [(__bridge EditorApp *)u frame:v width:w height:h dpr:dpr]; }
+static void cb_pointer(void *u, float x, float y, int phase, int clicks, int mods) { (void)clicks; (void)mods; [(__bridge EditorApp *)u pointerAt:x y:y phase:phase]; }
 static void cb_wheel(void *u, float dy) { (void)u; (void)dy; }
-static int cb_key(void *u, int key, int mods, int down) { return [(__bridge ForgeApp *)u key:key mods:mods down:down]; }
+static int cb_key(void *u, int key, int mods, int down) { return [(__bridge EditorApp *)u key:key mods:mods down:down]; }
 static void cb_text(void *u, const char *b, size_t n) { (void)u; (void)b; (void)n; }
 static int cb_wants_text(void *u) { (void)u; return 0; }
 static int cb_text_rect(void *u, float r[4]) { (void)u; (void)r; return 0; }
-static int cb_hit(void *u, float x, float y) { (void)x; (void)y; return !((__bridge ForgeApp *)u).setupHidden; }
-static void cb_life(void *u, int event) { [(__bridge ForgeApp *)u life:event]; }
-static int cb_event(void *u, void *e) { return [(__bridge ForgeApp *)u event:(__bridge NSEvent *)e]; }
-static void cb_command(void *u, int id) { [(__bridge ForgeApp *)u command:id]; }
-static int cb_command_state(void *u, int id) { return [(__bridge ForgeApp *)u commandState:id]; }
-static void cb_focus(void *u, int on) { [(__bridge ForgeApp *)u focus:on]; }
-static int cb_drive(void *u, const char *op, char *out, int cap) { return [(__bridge ForgeApp *)u drive:op out:out cap:cap]; }
+static int cb_hit(void *u, float x, float y) { (void)x; (void)y; return !((__bridge EditorApp *)u).setupHidden; }
+static void cb_life(void *u, int event) { [(__bridge EditorApp *)u life:event]; }
+static int cb_event(void *u, void *e) { return [(__bridge EditorApp *)u event:(__bridge NSEvent *)e]; }
+static void cb_command(void *u, int id) { [(__bridge EditorApp *)u command:id]; }
+static int cb_command_state(void *u, int id) { return [(__bridge EditorApp *)u commandState:id]; }
+static void cb_focus(void *u, int on) { [(__bridge EditorApp *)u focus:on]; }
+static int cb_drive(void *u, const char *op, char *out, int cap) { return [(__bridge EditorApp *)u drive:op out:out cap:cap]; }
 static void cb_prepare(void *u, void *cmd, uint32_t w, uint32_t h, float dpr);
 static void cb_encode(void *u, void *enc, uint32_t w, uint32_t h, float dpr);
 static int cb_changed(void *u);
 
-@implementation ForgeApp {
+@implementation EditorApp {
   NSMutableArray<NSFileHandle *> *_logs;
   NSMutableSet<NSNumber *> *_coderHeldKeys;
   int _voiceReservation, _voicePort, _lockFD;
@@ -182,7 +182,7 @@ static int cb_changed(void *u);
   NSUInteger i = [self.args indexOfObject:@"--world"];
   if (i != NSNotFound && i + 1 == self.args.count) return -1;
   NSData *name = [(i != NSNotFound ? self.args[i + 1] : @"") dataUsingEncoding:NSUTF8StringEncoding];
-  return forge_world_backend_bytes(name.bytes, (int64_t)name.length);
+  return editor_world_backend_bytes(name.bytes, (int64_t)name.length);
 }
 - (BOOL)nativeWorld { return self.worldBackend == 1; }
 - (NSView *)worldView { return self.metalWorld ?: (NSView *)self.web; }
@@ -211,7 +211,7 @@ static NSString *webError(NSError *e) { return e.userInfo[@"WKJavaScriptExceptio
     [self.web evaluateJavaScript:source completionHandler:^(id r, NSError *e) { result = r; error = e; dispatch_semaphore_signal(done); }];
   });
   dispatch_semaphore_wait(done, DISPATCH_TIME_FOREVER);
-  if (error) forge_throw(webError(error));
+  if (error) editor_throw(webError(error));
   return result == NSNull.null ? nil : result;
 }
 - (id)callJS:(NSString *)body arguments:(NSDictionary *)arguments {
@@ -221,10 +221,10 @@ static NSString *webError(NSError *e) { return e.userInfo[@"WKJavaScriptExceptio
     [self.web callAsyncJavaScript:body arguments:arguments ?: @{} inFrame:nil inContentWorld:WKContentWorld.pageWorld completionHandler:^(id r, NSError *e) { result = r; error = e; dispatch_semaphore_signal(done); }];
   });
   dispatch_semaphore_wait(done, DISPATCH_TIME_FOREVER);
-  if (error) forge_throw(webError(error));
+  if (error) editor_throw(webError(error));
   return result == NSNull.null ? nil : result;
 }
-static void forge_async(dispatch_block_t block) { dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), block); }
+static void editor_async(dispatch_block_t block) { dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), block); }
 
 // ---- the window
 
@@ -232,7 +232,7 @@ static void forge_async(dispatch_block_t block) { dispatch_async(dispatch_get_gl
   BOOL hidden = self.smoke;
   UiApp app = {0};
   app.title = "Aethyrforge"; app.app_id = "com.openagents.aethyrforge";
-  app.width = 1280; app.height = 800; app.max_vertices = FORGE_MAX_VERTICES;
+  app.width = 1280; app.height = 800; app.max_vertices = EDITOR_MAX_VERTICES;
   NSString *shader = [self.resources URLByAppendingPathComponent:@"Component.metal"].path;
   app.shader = shader.fileSystemRepresentation;
   app.user = (__bridge void *)self;
@@ -270,28 +270,28 @@ static void forge_async(dispatch_block_t block) { dispatch_async(dispatch_get_gl
     if (bs) script([NSString stringWithFormat:@"globalThis.coaxialBenchmarkOptions={mode:'replay',fixture:'/build/bench/raid.json',timestamps:%@};\n%@", [self has:@"--bench-no-timestamps"] ? @"false" : @"true", bs]);
   }
   NSInteger displayHz = NSScreen.mainScreen.maximumFramesPerSecond ?: 60;
-  if (forge_high_refresh(displayHz)) self.highRefreshEnabled = [self configureHighRefresh:config.preferences];
+  if (editor_high_refresh(displayHz)) self.highRefreshEnabled = [self configureHighRefresh:config.preferences];
   NSInteger preferredHz = bench ? 60 : self.highRefreshEnabled ? displayHz : 60;
   script([NSString stringWithFormat:@"globalThis.coaxialPreferredFrameRate=%ld;globalThis.coaxialMinimumFrameRate=60;", (long)preferredHz]);
   if (self.frameProfileURL) script(@"globalThis.coaxialFrameTrace=true;");
-  [ucc addScriptMessageHandler:self name:@"forgeVoiceStatus"];
-  [ucc addScriptMessageHandler:self name:@"forgeVoiceCoder"];
-  [ucc addScriptMessageHandler:self name:@"forgeMetalMessage"];
-  [ucc addScriptMessageHandlerWithReply:self contentWorld:WKContentWorld.pageWorld name:@"forgeVoiceCapture"];
+  [ucc addScriptMessageHandler:self name:@"editorVoiceStatus"];
+  [ucc addScriptMessageHandler:self name:@"editorVoiceCoder"];
+  [ucc addScriptMessageHandler:self name:@"editorMetalMessage"];
+  [ucc addScriptMessageHandlerWithReply:self contentWorld:WKContentWorld.pageWorld name:@"editorVoiceCapture"];
   if (!self.smoke || [self has:@"--voice-smoke"] || [self has:@"--voice-warm-smoke"])
-    script(@"globalThis.coaxialVoicePrepareCapture = capture => webkit.messageHandlers.forgeVoiceCapture.postMessage({schema:'aethyrforge.microphone-capture.v1',kind:'prepare',capture});\n"
-           @"globalThis.coaxialVoiceCancelCapture = capture => webkit.messageHandlers.forgeVoiceCapture.postMessage({schema:'aethyrforge.microphone-capture.v1',kind:'cancel',capture});\n");
+    script(@"globalThis.coaxialVoicePrepareCapture = capture => webkit.messageHandlers.editorVoiceCapture.postMessage({schema:'aethyrforge.microphone-capture.v1',kind:'prepare',capture});\n"
+           @"globalThis.coaxialVoiceCancelCapture = capture => webkit.messageHandlers.editorVoiceCapture.postMessage({schema:'aethyrforge.microphone-capture.v1',kind:'cancel',capture});\n");
   { uint8_t vs[1024]; int64_t vn = fgv_page_script(vs, sizeof vs); if (vn > 0) script([[NSString alloc] initWithBytes:vs length:(NSUInteger)vn encoding:NSUTF8StringEncoding]); }
   config.websiteDataStore = WKWebsiteDataStore.nonPersistentDataStore;
-  if (self.offlineReportURL) script(@"globalThis.__forgeRoomWorkers=0;const NativeWorker=Worker;globalThis.Worker=class extends NativeWorker{constructor(...args){super(...args);__forgeRoomWorkers++;}};");
-  if (self.setupProfileURL) script(@"globalThis.__forgeErrors=[];addEventListener('error',e=>__forgeErrors.push(String(e.message)));addEventListener('unhandledrejection',e=>__forgeErrors.push(String(e.reason)));");
-  if (self.launchReport) script(@"globalThis.__forgeFrameCount=0;const nativeRAF=requestAnimationFrame;globalThis.requestAnimationFrame=f=>nativeRAF(t=>{__forgeFrameCount++;f(t);});");
+  if (self.offlineReportURL) script(@"globalThis.__editorRoomWorkers=0;const NativeWorker=Worker;globalThis.Worker=class extends NativeWorker{constructor(...args){super(...args);__editorRoomWorkers++;}};");
+  if (self.setupProfileURL) script(@"globalThis.__editorErrors=[];addEventListener('error',e=>__editorErrors.push(String(e.message)));addEventListener('unhandledrejection',e=>__editorErrors.push(String(e.reason)));");
+  if (self.launchReport) script(@"globalThis.__editorFrameCount=0;const nativeRAF=requestAnimationFrame;globalThis.requestAnimationFrame=f=>nativeRAF(t=>{__editorFrameCount++;f(t);});");
   config.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
   [self configureAudioOutput:config muted:self.mute || self.launchReport || self.microphoneReport || self.frameProfileURL || self.setupProfileURL || self.offlineReportURL];
   if (self.smoke) {
     // The check pumps the callback: WebKit throttles animation callbacks and timers in an unordered window.
-    script(@"globalThis.requestAnimationFrame = f => { globalThis.__forgeFrame = f; return 1; }; globalThis.cancelAnimationFrame = () => {globalThis.__forgeFrame = null;}; Object.defineProperty(document,'hidden',{get:()=>false}); Object.defineProperty(document,'visibilityState',{get:()=> 'visible'}); document.hasFocus=()=>true;");
-    script(@"globalThis.__forgeRequests=[]; const originalFetch=fetch; globalThis.fetch=(...a)=>{const e={url:String(a[0]),method:a[1]?.method||'GET',status:'pending'};if(e.url.includes('world/everglade'))__forgeRequests.push(e);return originalFetch(...a).then(r=>{e.status=r.status;return r;},x=>{e.status=String(x);throw x;});};");
+    script(@"globalThis.requestAnimationFrame = f => { globalThis.__editorFrame = f; return 1; }; globalThis.cancelAnimationFrame = () => {globalThis.__editorFrame = null;}; Object.defineProperty(document,'hidden',{get:()=>false}); Object.defineProperty(document,'visibilityState',{get:()=> 'visible'}); document.hasFocus=()=>true;");
+    script(@"globalThis.__editorRequests=[]; const originalFetch=fetch; globalThis.fetch=(...a)=>{const e={url:String(a[0]),method:a[1]?.method||'GET',status:'pending'};if(e.url.includes('world/everglade'))__editorRequests.push(e);return originalFetch(...a).then(r=>{e.status=r.status;return r;},x=>{e.status=String(x);throw x;});};");
   }
   NSView *content = (__bridge NSView *)ui_view(self.host);
   NSRect bounds = content.bounds;
@@ -301,7 +301,7 @@ static void forge_async(dispatch_block_t block) { dispatch_async(dispatch_get_gl
   ui_child(self.host, (__bridge void *)self.web, 0);
   if (self.nativeWorld) {
     self.web.hidden = YES;
-    ForgeMetalWorld *view = [self makeMetalWorld:bounds];
+    EditorMetalWorld *view = [self makeMetalWorld:bounds];
     view.preferredHz = (float)preferredHz; self.metalWorld = view;
     ui_child(self.host, (__bridge void *)view, 0);
   }
@@ -310,11 +310,11 @@ static void forge_async(dispatch_block_t block) { dispatch_async(dispatch_get_gl
   self.notice.alignment = NSTextAlignmentCenter; self.notice.frame = NSMakeRect(0, 0, bounds.size.width, 28);
   self.notice.autoresizingMask = NSViewWidthSizable | NSViewMaxYMargin;
   ui_child(self.host, (__bridge void *)self.notice, 0);
-  self.chat = [[ForgeChat alloc] initWithFrame:bounds];
+  self.chat = [[EditorChat alloc] initWithFrame:bounds];
   self.chat.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-  __weak ForgeApp *weak = self;
+  __weak EditorApp *weak = self;
   self.chat.onActivity = ^{ [weak cancelVoice:@"coder-activity"]; };
-  self.chat.onClose = ^{ ForgeApp *s = weak; [s.window makeFirstResponder:s.worldView]; };
+  self.chat.onClose = ^{ EditorApp *s = weak; [s.window makeFirstResponder:s.worldView]; };
   ui_child(self.host, (__bridge void *)self.chat, 0);
   fgs_reset();
   NSData *saved = [NSData dataWithContentsOfURL:self.settingsURL];
@@ -341,10 +341,10 @@ static void forge_async(dispatch_block_t block) { dispatch_async(dispatch_get_gl
   if (!muted) return;
   [config.userContentController addUserScript:[[WKUserScript alloc] initWithSource:@"globalThis.coaxialAudioTap = c => {const g=c.createGain();g.gain.value=0;g.connect(c.destination);return g;};" injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES]];
 }
-- (ForgeMetalWorld *)makeMetalWorld:(NSRect)frame {
-  ForgeMetalWorld *view = [[ForgeMetalWorld alloc] initWithFrame:frame];
+- (EditorMetalWorld *)makeMetalWorld:(NSRect)frame {
+  EditorMetalWorld *view = [[EditorMetalWorld alloc] initWithFrame:frame];
   view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-  __weak ForgeApp *weak = self;
+  __weak EditorApp *weak = self;
   view.failed = ^(NSString *m) { [weak fail:m]; };
   view.action = ^(int32_t code, NSString *text) { [weak metalAction:code text:text]; };
   return view;
@@ -355,8 +355,8 @@ static void forge_async(dispatch_block_t block) { dispatch_async(dispatch_get_gl
 - (BOOL)enterEnabled { return self.statusMode || (!self.setupError && !self.checking && !self.verifying && fgs_can_enter(self.sceneReady)); }
 - (BOOL)refreshEnabled { return !self.checking && !self.verifying; }
 - (BOOL)microphoneEnabled { return fgs_status(3) != 0; }
-- (NSString *)microphoneTitle { return forge_setup_text(15); }
-- (NSString *)microphoneStatusText { return forge_setup_text(14); }
+- (NSString *)microphoneTitle { return editor_setup_text(15); }
+- (NSString *)microphoneStatusText { return editor_setup_text(14); }
 - (void)updateSetup {
   NSData *e = [self.setupError ?: @"" dataUsingEncoding:NSUTF8StringEncoding];
   fgu_update(self.sceneReady, self.checking, self.verifying, self.statusMode, self.worldPaused, e.bytes, (int64_t)e.length);
@@ -365,7 +365,7 @@ static void forge_async(dispatch_block_t block) { dispatch_async(dispatch_get_gl
 - (BOOL)atlasAt:(float)dpr {
   if (_ct && _atlasDpr == dpr) return YES;
   ct_atlas_free(_ct); free(_full); free(_cache); free(_color); _full = _cache = _color = NULL;
-  _ct = ct_atlas_new(&forge_ct, self.resources.path.fileSystemRepresentation, dpr);
+  _ct = ct_atlas_new(&editor_ct, self.resources.path.fileSystemRepresentation, dpr);
   if (!_ct) return NO;
   _atlasDpr = dpr;
   uint32_t w = ct_atlas_width(_ct), rows = ct_atlas_height(_ct), y0 = ct_atlas_cache_y0(_ct);
@@ -391,7 +391,7 @@ static void forge_async(dispatch_block_t block) { dispatch_async(dispatch_get_gl
   if (self.setupHidden || ![self atlasAt:dpr]) return 0;
   [self updateSetup];
   int64_t n = 0;
-  for (int i = 0; i < 3; i++) { n = fgu_draw(v, (int64_t)FORGE_MAX_VERTICES * 28, w, h, dpr); [self serveAtlas]; }
+  for (int i = 0; i < 3; i++) { n = fgu_draw(v, (int64_t)EDITOR_MAX_VERTICES * 28, w, h, dpr); [self serveAtlas]; }
   self.panelVertices = (int)n;
   return (int)n;
 }
@@ -501,22 +501,22 @@ static void forge_async(dispatch_block_t block) { dispatch_async(dispatch_get_gl
 // The host's layer: the panel's GPU time (prepare) and the chat's HUD (encode).
 static void cb_prepare(void *u, void *cmd, uint32_t w, uint32_t h, float dpr) {
   (void)w; (void)h; (void)dpr;
-  ForgeApp *app = (__bridge ForgeApp *)u;
+  EditorApp *app = (__bridge EditorApp *)u;
   if (app.setupHidden) return;
   app.panelDraws++;   // a frame drawn with the panel (the host draws only changed frames)
-  __weak ForgeApp *weak = app;
+  __weak EditorApp *weak = app;
   [(__bridge id<MTLCommandBuffer>)cmd addCompletedHandler:^(id<MTLCommandBuffer> c) {
     double seconds = MAX(0, c.GPUEndTime - c.GPUStartTime);
     dispatch_async(dispatch_get_main_queue(), ^{ weak.panelGPUSeconds += seconds; });
   }];
 }
 static void cb_encode(void *u, void *enc, uint32_t w, uint32_t h, float dpr) {
-  ForgeApp *app = (__bridge ForgeApp *)u;
+  EditorApp *app = (__bridge EditorApp *)u;
   [app.chat encodeHUD:(__bridge id<MTLRenderCommandEncoder>)enc device:(__bridge id<MTLDevice>)ui_device(app.host) width:w height:h scale:dpr];
 }
 // The chat's HUD moves while it is shown (the feed's lifetime, the composer's caret), and once more as it goes.
 static int cb_changed(void *u) {
-  ForgeApp *app = (__bridge ForgeApp *)u;
+  EditorApp *app = (__bridge EditorApp *)u;
   static int64_t drawn = 0;
   int64_t now = app.chat.presentation;
   int moved = now != 0 || now != drawn;
@@ -531,12 +531,12 @@ static int cb_changed(void *u) {
     float d = ui_dpr(self.host);
     ok = [self shotOf:png width:(uint32_t)lround(view.bounds.size.width * d) height:(uint32_t)lround(view.bounds.size.height * d) dpr:d];
   }];
-  FORGE_REQUIRE(ok, @"Panel readback failed.");
+  EDITOR_REQUIRE(ok, @"Panel readback failed.");
 }
 - (BOOL)shotOf:(NSURL *)png width:(uint32_t)w height:(uint32_t)h dpr:(float)dpr {
   if (!_shot) {
     UiApp app = {0};
-    app.app_id = "com.openagents.aethyrforge"; app.max_vertices = FORGE_MAX_VERTICES;
+    app.app_id = "com.openagents.aethyrforge"; app.max_vertices = EDITOR_MAX_VERTICES;
     NSString *shader = [self.resources URLByAppendingPathComponent:@"Component.metal"].path;
     app.shader = shader.fileSystemRepresentation; app.user = (__bridge void *)self; app.frame = cb_frame; app.drive = cb_drive;
     _shot = ui_open(&app, 1);
@@ -573,13 +573,13 @@ static int cb_changed(void *u) {
   }
   [fm createFileAtPath:logURL.path contents:nil attributes:nil];
   NSFileHandle *log = [NSFileHandle fileHandleForWritingToURL:logURL error:nil];
-  if (!log) forge_throw([NSString stringWithFormat:@"Cannot write %@.", logURL.path]);
+  if (!log) editor_throw([NSString stringWithFormat:@"Cannot write %@.", logURL.path]);
   [self main:^{ [self->_logs addObject:log]; }];
   p.standardOutput = log; p.standardError = log;
-  __weak ForgeApp *weak = self;
+  __weak EditorApp *weak = self;
   p.terminationHandler = ^(NSTask *child) {
     dispatch_async(dispatch_get_main_queue(), ^{
-      ForgeApp *s = weak;
+      EditorApp *s = weak;
       if (!s || s.stopping || (child != s.page && child != s.room && child != s.voiceHost)) return;
       if (fatal) [s fail:[NSString stringWithFormat:@"%@ stopped (%d). See %@.", name, child.terminationStatus, logURL.path]];
       else {
@@ -589,21 +589,21 @@ static int cb_changed(void *u) {
     });
   };
   NSError *error = nil;
-  if (![p launchAndReturnError:&error]) forge_throw(error.localizedDescription);
+  if (![p launchAndReturnError:&error]) editor_throw(error.localizedDescription);
   [self main:^{ *slot = p; }];
 }
 - (void)waitForHTTP:(NSURL *)url {
-  double end = forge_uptime() + 30;
-  while (forge_uptime() < end && !self.stopping) {
+  double end = editor_uptime() + 30;
+  while (editor_uptime() < end && !self.stopping) {
     NSMutableURLRequest *r = [NSMutableURLRequest requestWithURL:url]; r.timeoutInterval = 1;
     __block NSInteger status = 0;
     dispatch_semaphore_t done = dispatch_semaphore_create(0);
     [[NSURLSession.sharedSession dataTaskWithRequest:r completionHandler:^(NSData *d, NSURLResponse *resp, NSError *e) { (void)d; (void)e; status = [(NSHTTPURLResponse *)resp statusCode]; dispatch_semaphore_signal(done); }] resume];
     dispatch_semaphore_wait(done, DISPATCH_TIME_FOREVER);
     if (status == 200) return;
-    forge_sleep_ms(100);
+    editor_sleep_ms(100);
   }
-  forge_throw(@"Local server did not start. Check room.log and serve.log in the local world folder.");
+  editor_throw(@"Local server did not start. Check room.log and serve.log in the local world folder.");
 }
 - (void)addPageScript:(NSString *)source {
   [self main:^{ [self.web.configuration.userContentController addUserScript:[[WKUserScript alloc] initWithSource:source injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES]]; }];
@@ -623,17 +623,17 @@ static int cb_changed(void *u) {
       NSURL *legacy = [fm.homeDirectoryForCurrentUser URLByAppendingPathComponent:@"Library/Application Support/Aethyrforge/everglade" isDirectory:YES];
       if (![fm fileExistsAtPath:self.dataURL.path] && [fm fileExistsAtPath:legacy.path]) {
         NSError *e = nil;
-        if (![fm moveItemAtURL:legacy toURL:self.dataURL error:&e]) forge_throw(e.localizedDescription);
+        if (![fm moveItemAtURL:legacy toURL:self.dataURL error:&e]) editor_throw(e.localizedDescription);
         if ([fm contentsOfDirectoryAtPath:legacy.URLByDeletingLastPathComponent.path error:nil].count == 0) [fm removeItemAtURL:legacy.URLByDeletingLastPathComponent error:nil];
       }
     }
     NSError *e = nil;
-    if (![fm createDirectoryAtURL:self.dataURL withIntermediateDirectories:YES attributes:nil error:&e]) forge_throw(e.localizedDescription);
+    if (![fm createDirectoryAtURL:self.dataURL withIntermediateDirectories:YES attributes:nil error:&e]) editor_throw(e.localizedDescription);
     _lockFD = open([self.dataURL URLByAppendingPathComponent:@".lock"].path.fileSystemRepresentation, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
-    if (_lockFD < 0 || flock(_lockFD, LOCK_EX | LOCK_NB) != 0) forge_throw(@"This local world is already open in Aethyrforge.");
+    if (_lockFD < 0 || flock(_lockFD, LOCK_EX | LOCK_NB) != 0) editor_throw(@"This local world is already open in Aethyrforge.");
     for (NSString *name in @[ @"world-everglade.json", @"room-control.txt" ]) {
       NSURL *destination = [self.dataURL URLByAppendingPathComponent:name];
-      if (![fm fileExistsAtPath:destination.path] && ![fm copyItemAtURL:[self.resources URLByAppendingPathComponent:[@"seed/" stringByAppendingString:name]] toURL:destination error:&e]) forge_throw(e.localizedDescription);
+      if (![fm fileExistsAtPath:destination.path] && ![fm copyItemAtURL:[self.resources URLByAppendingPathComponent:[@"seed/" stringByAppendingString:name]] toURL:destination error:&e]) editor_throw(e.localizedDescription);
     }
     int roomPort, pagePort, voicePort;
     int r = reserve_port(&roomPort), p = -1;
@@ -643,13 +643,13 @@ static int cb_changed(void *u) {
     if (!self.offlineWorker) [self addPageScript:[NSString stringWithFormat:@"globalThis.coaxialNativeRoomHost='ws://127.0.0.1:%d';", roomPort]];
     NSMutableData *bytes = [NSMutableData data];
     for (int i = 0; i < 256; i++) {
-      int64_t c = self.benchmarkReportURL ? forge_benchmark_url_byte(pagePort, i) : self.offlineMode ? forge_offline_url_byte(pagePort, i) : self.nativeWorld ? forge_native_url_byte(pagePort, i) : forge_url_byte(pagePort, roomPort, i);
+      int64_t c = self.benchmarkReportURL ? editor_benchmark_url_byte(pagePort, i) : self.offlineMode ? editor_offline_url_byte(pagePort, i) : self.nativeWorld ? editor_native_url_byte(pagePort, i) : editor_url_byte(pagePort, roomPort, i);
       if (c < 0) break;
       uint8_t u = (uint8_t)c; [bytes appendBytes:&u length:1];
     }
     close(r); close(p);
     NSURL *url = bytes.length ? [NSURL URLWithString:[[NSString alloc] initWithData:bytes encoding:NSUTF8StringEncoding]] : nil;
-    if (!url) forge_throw(@"Invalid local ports.");
+    if (!url) editor_throw(@"Invalid local ports.");
     self.pageURL = url;
     NSTask *__strong room = nil, *__strong page = nil;
     [self startChild:@"room" arguments:@[ @"--listen", @"127.0.0.1", @"--port", @(roomPort).stringValue, @"--dev", self.dataURL.path, @"--native-local" ] fatal:YES into:&room];
@@ -658,31 +658,31 @@ static int cb_changed(void *u) {
     [self main:^{ self.page = page; }];
     [self waitForHTTP:[NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%d/health", roomPort]]];
     [self waitForHTTP:[NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%d/worlds/everglade", pagePort]]];
-    forge_write([url.absoluteString stringByAppendingString:@"\n"], [self.dataURL URLByAppendingPathComponent:@"local-url.txt"]);
+    editor_write([url.absoluteString stringByAppendingString:@"\n"], [self.dataURL URLByAppendingPathComponent:@"local-url.txt"]);
     [self main:^{
       self.notice.stringValue = @"Loading Everglade…";
       [self refreshSetup:NO];
       if (self.metalWorld) {
         self->_metalLocalOrigin = [NSString stringWithFormat:@"ws://127.0.0.1:%d", roomPort];
         NSError *oe = nil;
-        if (![self.metalWorld openResources:self.resources storage:self.dataURL page:url local:self->_metalLocalOrigin muted:self.mute error:&oe]) forge_throw(oe.localizedDescription);
+        if (![self.metalWorld openResources:self.resources storage:self.dataURL page:url local:self->_metalLocalOrigin muted:self.mute error:&oe]) editor_throw(oe.localizedDescription);
         [self.web loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%d/metal-voice.html", pagePort]]]];
       } else [self.web loadRequest:[NSURLRequest requestWithURL:url]];
     }];
     if (self.smoke && !self.nativeWorld) {
-      forge_async(^{
+      editor_async(^{
         while (!self.stopping) {
           dispatch_semaphore_t done = dispatch_semaphore_create(0);
           dispatch_async(dispatch_get_main_queue(), ^{
-            [self.web evaluateJavaScript:@"if(globalThis.__forgeFrame){const f=globalThis.__forgeFrame;globalThis.__forgeFrame=null;f(performance.now());} true" completionHandler:^(id x, NSError *y) { (void)x; (void)y; dispatch_semaphore_signal(done); }];
+            [self.web evaluateJavaScript:@"if(globalThis.__editorFrame){const f=globalThis.__editorFrame;globalThis.__editorFrame=null;f(performance.now());} true" completionHandler:^(id x, NSError *y) { (void)x; (void)y; dispatch_semaphore_signal(done); }];
           });
           dispatch_semaphore_wait(done, DISPATCH_TIME_FOREVER);
-          forge_sleep_ms(16);
+          editor_sleep_ms(16);
         }
       });
     }
     [self waitForScene];
-    self.firstFrameSeconds = forge_uptime() - _startedAt;
+    self.firstFrameSeconds = editor_uptime() - _startedAt;
     [self main:^{
       self.notice.hidden = YES;
       self.sceneReady = YES; [self updateSetup];
@@ -696,7 +696,7 @@ static int cb_changed(void *u) {
     plan = [self arg:@"--metal-measure-plan"];
     if (plan) { [self measureMetal:[NSURL fileURLWithPath:plan]]; return; }
     NSString *observe = [self arg:@"--metal-observe"];
-    if (observe) forge_async(^{ [self observeMetal:[NSURL fileURLWithPath:observe]]; });
+    if (observe) editor_async(^{ [self observeMetal:[NSURL fileURLWithPath:observe]]; });
     [self runCheck];
   } @catch (NSException *x) {
     if (!self.stopping) { NSString *m = x.reason; [self main:^{ [self fail:m]; }]; }
@@ -706,15 +706,15 @@ static int cb_changed(void *u) {
   while (!self.stopping) {
     __block NSDictionary *state = nil;
     [self main:^{
-      ForgeMetalWorld *w = self.metalWorld; void *h = w.host;
+      EditorMetalWorld *w = self.metalWorld; void *h = w.host;
       if (!h) return;
       state = @{@"frames" : @(mf_info(h, 0)), @"completed" : @(mf_info(h, 10)), @"pending" : @(mf_info(h, 2)), @"draws" : @(mf_info(h, 1)), @"ledgerLive" : @(mf_info(h, 3)), @"ledgerWords" : @(mf_info(h, 4)), @"gpuNS" : @(mf_info(h, 11)),
                 @"net" : @(mf_info(h, 7)), @"seat" : @(mf_info(h, 8)), @"paused" : @(w.paused), @"setup" : @(!self.setupHidden), @"width" : @(self.worldView.bounds.size.width), @"height" : @(self.worldView.bounds.size.height),
                 @"scale" : @(self.window.backingScaleFactor), @"x" : @(mf_probe(h, 0)), @"z" : @(mf_probe(h, 2)), @"messages" : @(w.delivered), @"miniaturized" : @(self.window.miniaturized), @"visible" : @(self.window.visible),
                 @"key" : @(self.window.keyWindow), @"captured" : @(w.captured), @"audio" : [w audioObservations]};
     }];
-    if (state) [[forge_json(state) dataUsingEncoding:NSUTF8StringEncoding] writeToURL:path atomically:YES];
-    forge_sleep_ms(250);
+    if (state) [[editor_json(state) dataUsingEncoding:NSUTF8StringEncoding] writeToURL:path atomically:YES];
+    editor_sleep_ms(250);
   }
 }
 // The scene tool's session: the player's place and the local API, for the prebuilt Coax scene tool.
@@ -722,14 +722,14 @@ static int cb_changed(void *u) {
   NSURL *base = self.dataURL.URLByDeletingLastPathComponent;
   NSURL *session = [base URLByAppendingPathComponent:@"scene-session.json"], *instructions = [base URLByAppendingPathComponent:@"scene-coder.txt"];
   uint8_t b[8192]; int64_t n = fgc_scene_instructions(b, sizeof b);
-  if (n <= 0) forge_throw(@"Scene tool context is unavailable.");
+  if (n <= 0) editor_throw(@"Scene tool context is unavailable.");
   NSError *e = nil;
-  if (![[NSData dataWithBytes:b length:(NSUInteger)n] writeToURL:instructions options:NSDataWritingAtomic error:&e]) forge_throw(e.localizedDescription);
+  if (![[NSData dataWithBytes:b length:(NSUInteger)n] writeToURL:instructions options:NSDataWritingAtomic error:&e]) editor_throw(e.localizedDescription);
   [NSFileManager.defaultManager setAttributes:@{NSFilePosixPermissions : @0600} ofItemAtPath:instructions.path error:nil];
   [self main:^{ self.chat.sceneSessionURL = session; self.chat.sceneContextURL = instructions; }];
   [self updateSceneSession];
-  forge_async(^{
-    while (!self.stopping) { forge_sleep_ms(500); if (!self.stopping) @try { [self updateSceneSession]; } @catch (NSException *x) { (void)x; } }
+  editor_async(^{
+    while (!self.stopping) { editor_sleep_ms(500); if (!self.stopping) @try { [self updateSceneSession]; } @catch (NSException *x) { (void)x; } }
   });
 }
 - (void)updateSceneSession {
@@ -741,7 +741,7 @@ static int cb_changed(void *u) {
     if (h) value = [NSString stringWithFormat:@"{\"x_cm\":%ld,\"z_cm\":%ld}", lround(mf_probe(h, 0) / 10.0), lround(mf_probe(h, 2) / 10.0)];
   }];
   if (!value) value = [self js:@"JSON.stringify({x_cm:Math.round(coaxial.fieldProbe(0)/10),z_cm:Math.round(coaxial.fieldProbe(2)/10)})"] ?: @"{}";
-  NSDictionary *at = forge_parse(value);
+  NSDictionary *at = editor_parse(value);
   NSNumber *x = [at isKindOfClass:NSDictionary.class] ? at[@"x_cm"] : nil, *z = [at isKindOfClass:NSDictionary.class] ? at[@"z_cm"] : nil;
   struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
   // The file's bytes are scene-session.coax's (fs_session_put); a position the page
@@ -751,12 +751,12 @@ static int cb_changed(void *u) {
                                 [z isKindOfClass:NSNumber.class] ? z.longLongValue : -16001, getpid(),
                                 (int64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000, b, sizeof b);
   if (self.stopping || n <= 0) return;
-  forge_write([[NSString alloc] initWithBytes:b length:(NSUInteger)n encoding:NSUTF8StringEncoding], session);
+  editor_write([[NSString alloc] initWithBytes:b length:(NSUInteger)n encoding:NSUTF8StringEncoding], session);
   [NSFileManager.defaultManager setAttributes:@{NSFilePosixPermissions : @0600} ofItemAtPath:session.path error:nil];
 }
 - (NSString *)launchState {
-  NSString *raw = [self js:@"JSON.stringify({ready:globalThis.coaxial?.ready,scene:globalThis.coaxial?.sceneReady,frames:globalThis.__forgeFrameCount,hidden:document.hidden,focused:document.hasFocus(),canvas:!!document.querySelector('canvas'),probe:globalThis.coaxial?.probe?.()})"];
-  NSMutableDictionary *state = [forge_parse(raw) mutableCopy] ?: [NSMutableDictionary dictionary];
+  NSString *raw = [self js:@"JSON.stringify({ready:globalThis.coaxial?.ready,scene:globalThis.coaxial?.sceneReady,frames:globalThis.__editorFrameCount,hidden:document.hidden,focused:document.hasFocus(),canvas:!!document.querySelector('canvas'),probe:globalThis.coaxial?.probe?.()})"];
+  NSMutableDictionary *state = [editor_parse(raw) mutableCopy] ?: [NSMutableDictionary dictionary];
   [self main:^{
     state[@"nativeReady"] = @(self.sceneReady); state[@"enterEnabled"] = @(self.enterEnabled);
     state[@"waitPhase"] = @(self.startupPhase); state[@"longestHiddenSeconds"] = @(self.longestHiddenSeconds);
@@ -764,52 +764,52 @@ static int cb_changed(void *u) {
     state[@"firstFrameSeconds"] = @(self.firstFrameSeconds);
     state[@"hudHeight"] = @(self.chat.hudShown ? NSInsetRect([self.chat box:0], -4, -4).size.height : 0); state[@"windowHeight"] = @(self.web.frame.size.height);
   }];
-  return forge_json(state);
+  return editor_json(state);
 }
 - (void)waitForScene {
   if (self.metalWorld) {
-    double end = forge_uptime() + 60;
-    while (!self.stopping && forge_uptime() < end) {
+    double end = editor_uptime() + 60;
+    while (!self.stopping && editor_uptime() < end) {
       __block BOOL done = NO; __block NSString *error = nil;
       [self main:^{ done = self.metalWorld.completed; const char *m = self.metalWorld.host ? mf_error(self.metalWorld.host) : NULL; if (m) error = @(m); }];
       if (done) return;
-      if (error) forge_throw(error);
-      forge_sleep_ms(20);
+      if (error) editor_throw(error);
+      editor_sleep_ms(20);
     }
     __block NSString *seen = @"";
     [self main:^{
-      ForgeMetalWorld *w = self.metalWorld;
+      EditorMetalWorld *w = self.metalWorld;
       seen = [NSString stringWithFormat:@" (paused %d, frames %lld, ticks %ld, without a surface %ld, in a window %d, on a screen %d, %.0f by %.0f)", w.paused, w.host ? (long long)mf_info(w.host, 0) : -1LL, (long)w.ticks, (long)w.surfaceless,
               w.window != nil, w.window.screen != nil, w.bounds.size.width, w.bounds.size.height];
     }];
-    forge_throw([@"Metal did not complete its first real frame." stringByAppendingString:seen]);
+    editor_throw([@"Metal did not complete its first real frame." stringByAppendingString:seen]);
   }
   // During a retry WKWebView still evaluates in the previous document until navigation commits.
   NSString *current = [NSString stringWithFormat:@"location.origin === 'http://127.0.0.1:%@'", self.pageURL.port ?: @0];
   int64_t budget = 60000;
-  double previous = forge_uptime(), hiddenSince = -1;
+  double previous = editor_uptime(), hiddenSince = -1;
   BOOL wasVisible = NO;
   while (!self.stopping) {
-    if (self.launchReport) @try { forge_write([self launchState], self.launchReport); } @catch (NSException *x) { (void)x; }
+    if (self.launchReport) @try { editor_write([self launchState], self.launchReport); } @catch (NSException *x) { (void)x; }
     id ready = nil; @try { ready = [self js:[NSString stringWithFormat:@"%@ && globalThis.coaxial?.sceneReady === true", current]]; } @catch (NSException *x) { (void)x; }
     if ([ready isEqual:@YES]) return;
     NSString *message = nil;
     @try { message = [self js:[NSString stringWithFormat:@"(%@ && document.querySelector('#coaxial-load[data-state=fail] .le')?.textContent) || ''", current]]; } @catch (NSException *x) { (void)x; }
-    if ([message isKindOfClass:NSString.class] && message.length) forge_throw(message);
+    if ([message isKindOfClass:NSString.class] && message.length) editor_throw(message);
     BOOL pageVisible = NO; @try { pageVisible = [[self js:@"!document.hidden"] isEqual:@YES]; } @catch (NSException *x) { (void)x; }
     __block BOOL visible = self.smoke;
     if (!visible) [self main:^{ visible = self.window.visible && !self.window.miniaturized && (self.window.occlusionState & NSWindowOcclusionStateVisible) && pageVisible; }];
-    double now = forge_uptime();
+    double now = editor_uptime();
     if (visible) hiddenSince = -1; else { if (hiddenSince < 0) hiddenSince = now; self.longestHiddenSeconds = MAX(self.longestHiddenSeconds, now - hiddenSince); }
     int64_t elapsed = (int64_t)(MAX(0, now - previous) * 1000);
-    self.startupPhase = forge_startup_phase(budget, elapsed, visible && wasVisible);
-    budget = forge_startup_budget(budget, elapsed, visible && wasVisible);
+    self.startupPhase = editor_startup_phase(budget, elapsed, visible && wasVisible);
+    budget = editor_startup_budget(budget, elapsed, visible && wasVisible);
     previous = now; wasVisible = visible;
     if (self.startupPhase == 2) break;
-    forge_sleep_ms(200);
+    editor_sleep_ms(200);
   }
   if (self.smoke) @try { printf("Hidden view: %s\n", [[self js:@"JSON.stringify({ready:globalThis.coaxial?.ready,scene:globalThis.coaxial?.sceneReady,gpu:!!navigator.gpu,body:document.body.innerText.slice(0,1200)})"] description].UTF8String); } @catch (NSException *x) { (void)x; }
-  forge_throw(@"Everglade did not finish its first visible scene frame. Press Retry startup.");
+  editor_throw(@"Everglade did not finish its first visible scene frame. Press Retry startup.");
 }
 
 - (void)fail:(NSString *)message {
@@ -835,13 +835,13 @@ static int cb_changed(void *u) {
   self.chat.stopping = NO;
   if (self.launchReport) self.window.level = NSFloatingWindowLevel;
   self.setupError = nil; [self updateSetup];
-  forge_async(^{ [self start]; });
+  editor_async(^{ [self start]; });
 }
 - (void)acceptSetup:(NSData *)data kind:(int64_t)kind {
-  if (data.length > 65536) forge_throw(@"The setup report is too large.");
+  if (data.length > 65536) editor_throw(@"The setup report is too large.");
   const uint8_t *b = data.bytes;
   for (NSUInteger i = 0; i < data.length; i++) fgs_input_byte((int64_t)i, b[i]);
-  if (fgs_accept(kind, (int64_t)data.length) != 1) forge_throw(@"The local CLI returned an invalid setup report.");
+  if (fgs_accept(kind, (int64_t)data.length) != 1) editor_throw(@"The local CLI returned an invalid setup report.");
 }
 - (void)refreshSetup:(BOOL)verify {
   [self refreshMicrophoneSetup];
@@ -857,11 +857,11 @@ static int cb_changed(void *u) {
       dispatch_group_t three = dispatch_group_create();
       NSArray *calls = @[ @[ @"version", @"--json" ], @[ @"coder", @"agents", @"--json" ], @[ @"models", @"ls", @"--json" ] ];
       for (int i = 0; i < 3; i++) dispatch_group_async(three, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        @try { NSData *d = forge_cli(cli, calls[i], 15, nil); if (i == 0) version = d; else if (i == 1) agents = d; else models = d; }
+        @try { NSData *d = editor_cli(cli, calls[i], 15, nil); if (i == 0) version = d; else if (i == 1) agents = d; else models = d; }
         @catch (NSException *x) { @synchronized(calls) { if (!problem) problem = x.reason; } }
       });
       dispatch_group_wait(three, DISPATCH_TIME_FOREVER);
-      if (problem) forge_throw(problem);
+      if (problem) editor_throw(problem);
       __block NSString *bad = nil;
       [self main:^{
         @try {
@@ -872,9 +872,9 @@ static int cb_changed(void *u) {
           if (verify && fgs_status(1) > 0) { self.verifying = YES; [self updateSetup]; }
         } @catch (NSException *x) { bad = x.reason; }
       }];
-      if (bad) forge_throw(bad);
+      if (bad) editor_throw(bad);
       if (verify && self.verifying) {
-        NSData *verified = forge_cli(cli, @[ @"models", @"verify", @"parakeet", @"--json" ], 120, nil);
+        NSData *verified = editor_cli(cli, @[ @"models", @"verify", @"parakeet", @"--json" ], 120, nil);
         [self main:^{ @try { [self acceptSetup:verified kind:2]; } @catch (NSException *x) { self.setupError = x.reason; } }];
       }
     } @catch (NSException *x) { error = x.reason; }
@@ -892,7 +892,7 @@ static int cb_changed(void *u) {
   for (int i = 0; i < 512; i++) { int64_t c = fgs_settings_byte(i); if (c < 0) break; uint8_t u = (uint8_t)c; [bytes appendData:[NSData dataWithBytes:&u length:1]]; }
   @try {
     NSError *e = nil;
-    if (![bytes writeToURL:self.settingsURL options:NSDataWritingAtomic error:&e]) forge_throw(e.localizedDescription);
+    if (![bytes writeToURL:self.settingsURL options:NSDataWritingAtomic error:&e]) editor_throw(e.localizedDescription);
     [self acceptSetup:bytes kind:3];
     self.setupHidden = YES; [self.window makeFirstResponder:self.worldView];
     self.statusMode = NO; [self updateWorldVisibility]; [self updateSetup];
@@ -908,7 +908,7 @@ static int cb_changed(void *u) {
 - (void)updateWorldVisibility {
   if (!self.web || !self.window) return;
   BOOL smoke = self.smoke;
-  BOOL paused = forge_world_paused(self.sceneReady, !self.setupHidden, smoke || (self.window.visible && !NSApp.hidden), !smoke && self.window.miniaturized, !smoke && !(self.window.occlusionState & NSWindowOcclusionStateVisible));
+  BOOL paused = editor_world_paused(self.sceneReady, !self.setupHidden, smoke || (self.window.visible && !NSApp.hidden), !smoke && self.window.miniaturized, !smoke && !(self.window.occlusionState & NSWindowOcclusionStateVisible));
   self.worldPaused = paused;
   if (_worldPauseWanted && _worldPauseWanted.boolValue == paused) return;
   _worldPauseWanted = @(paused); [self updateSetup];
@@ -921,28 +921,28 @@ static int cb_changed(void *u) {
 
 - (void)warmVoiceIfNeeded {
   if (!self.window) return;
-  if (!forge_voice_warm(!self.stopping && self.pageURL, self.window.visible && !self.window.miniaturized, self.microphoneStatus == AVAuthorizationStatusAuthorized, fgs_status(1) > 0, self.interactive, _voiceWarming, _voiceWarmReady)) return;
-  forge_async(^{ @try { [self prepareVoice]; } @catch (NSException *x) { (void)x; } });
+  if (!editor_voice_warm(!self.stopping && self.pageURL, self.window.visible && !self.window.miniaturized, self.microphoneStatus == AVAuthorizationStatusAuthorized, fgs_status(1) > 0, self.interactive, _voiceWarming, _voiceWarmReady)) return;
+  editor_async(^{ @try { [self prepareVoice]; } @catch (NSException *x) { (void)x; } });
 }
 - (void)prepareVoice {
   __block BOOL pending = NO; __block int epoch = 0;
   [self main:^{ pending = self->_voiceWarming; if (!pending) { self->_voiceWarming = YES; } epoch = self->_voiceWarmEpoch; }];
   if (pending) {
-    while (true) { __block BOOL still = NO; [self main:^{ still = self->_voiceWarming; }]; if (!still) break; forge_sleep_ms(20); }
+    while (true) { __block BOOL still = NO; [self main:^{ still = self->_voiceWarming; }]; if (!still) break; editor_sleep_ms(20); }
     __block BOOL ready = NO; [self main:^{ ready = self->_voiceWarmReady; }];
-    if (!ready) forge_throw(@"Voice did not warm.");
+    if (!ready) editor_throw(@"Voice did not warm.");
     return;
   }
   @try {
     [self main:^{ fgs_voice_ready(1); [self updateSetup]; }];
     [self ensureVoiceHost];
-    if (self.stopping || epoch != _voiceWarmEpoch) forge_throw(@"cancelled");
+    if (self.stopping || epoch != _voiceWarmEpoch) editor_throw(@"cancelled");
     id ready = [self callJS:@"const end=performance.now()+8000;\n"
                             @"while(!globalThis.coaxial?.voice && performance.now()<end)await new Promise(r=>setTimeout(r,20));\n"
                             @"if(!globalThis.coaxial?.voice)throw new Error('Voice page is not ready');\n"
                             @"return await coaxial.voice.warm();"
                   arguments:nil];
-    if (![ready isEqual:@YES] || self.stopping || epoch != _voiceWarmEpoch) forge_throw(@"cancelled");
+    if (![ready isEqual:@YES] || self.stopping || epoch != _voiceWarmEpoch) editor_throw(@"cancelled");
     [self main:^{ self->_voiceWarmReady = YES; fgs_voice_ready(2); [self updateSetup]; if (epoch == self->_voiceWarmEpoch) self->_voiceWarming = NO; }];
   } @catch (NSException *x) {
     [self main:^{
@@ -960,11 +960,11 @@ static int cb_changed(void *u) {
     [self main:^{ starting = self->_voiceStarting; running = self.voiceHost.running; if (!starting && !running) self->_voiceStarting = YES; }];
     if (running) return;
     if (!starting) break;
-    forge_sleep_ms(20);   // another caller is starting it
+    editor_sleep_ms(20);   // another caller is starting it
   }
   @try {
-    NSString *model = forge_setup_text(6);
-    if (!self.resources || !model.length) forge_throw(@"The shared Parakeet model is unavailable.");
+    NSString *model = editor_setup_text(6);
+    if (!self.resources || !model.length) editor_throw(@"The shared Parakeet model is unavailable.");
     [self main:^{ if (self->_voiceReservation >= 0) { close(self->_voiceReservation); self->_voiceReservation = -1; } }];
     NSTask *__strong voice = nil;
     [self startChild:@"voice-host" arguments:@[ @"--listen", [NSString stringWithFormat:@"127.0.0.1:%d", _voicePort], @"--provider", @"local", @"--recognizer", @"parakeet", @"--synthesizer", @"local", @"--agent", @"echo", @"--parakeet-model", model, @"--parakeet-device", @"gpu" ] fatal:NO into:&voice];
@@ -981,7 +981,7 @@ static int cb_changed(void *u) {
 }
 - (void)armVoiceCapture {
   int64_t ticket = fgv_arm();
-  if (ticket <= 0) forge_throw(@"Voice capture generation is exhausted; reopen the app.");
+  if (ticket <= 0) editor_throw(@"Voice capture generation is exhausted; reopen the app.");
   [self js:[NSString stringWithFormat:@"globalThis.coaxialCoderVoiceTicket=%lld; true", ticket]];
 }
 - (AVAuthorizationStatus)microphoneStatus { return self.microphoneAuthorization ? self.microphoneAuthorization() : [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]; }
@@ -994,14 +994,14 @@ static int cb_changed(void *u) {
   if (!self.window) return;
   [self updateMicrophoneSetup];
   if (!fm_setup_request(!self.stopping && self.window.visible && !self.window.miniaturized, NSApp.active, !self.setupHidden, fgs_completed(), self.microphoneStatus, self.microphonePrompt, self.interactive)) return;
-  forge_async(^{ [self authorizeMicrophone]; });
+  editor_async(^{ [self authorizeMicrophone]; });
 }
 // Off the main thread: one system request at a time; a second caller waits for the first's answer.
 - (BOOL)authorizeMicrophone {
   __block BOOL asking = NO, mine = NO; __block AVAuthorizationStatus status = AVAuthorizationStatusNotDetermined;
   [self main:^{ asking = self->_microphoneAsking; status = self.microphoneStatus; if (!asking && status == AVAuthorizationStatusNotDetermined) { self->_microphoneAsking = mine = YES; self.microphonePrompt = YES; [self updateMicrophoneSetup]; } }];
   if (asking) {
-    for (;;) { __block BOOL still = NO; [self main:^{ still = self->_microphoneAsking; }]; if (!still) break; forge_sleep_ms(10); }
+    for (;;) { __block BOOL still = NO; [self main:^{ still = self->_microphoneAsking; }]; if (!still) break; editor_sleep_ms(10); }
     __block BOOL ok = NO; [self main:^{ ok = self.microphoneStatus == AVAuthorizationStatusAuthorized; }];
     return ok;
   }
@@ -1031,7 +1031,7 @@ static int cb_changed(void *u) {
   NSDictionary *body = [message.body isKindOfClass:NSDictionary.class] ? message.body : nil;
   NSNumber *captureNumber = [body[@"capture"] isKindOfClass:NSNumber.class] ? body[@"capture"] : nil;
   int64_t capture = captureNumber.longLongValue;
-  if (![message.name isEqualToString:@"forgeVoiceCapture"] || ![self trustedVoiceFrame:message.frameInfo] || ![body[@"schema"] isEqual:@"aethyrforge.microphone-capture.v1"] || !captureNumber || capture <= 0 || capture > 9007199254740991LL) { reply(nil, @"Invalid local microphone request."); return; }
+  if (![message.name isEqualToString:@"editorVoiceCapture"] || ![self trustedVoiceFrame:message.frameInfo] || ![body[@"schema"] isEqual:@"aethyrforge.microphone-capture.v1"] || !captureNumber || capture <= 0 || capture > 9007199254740991LL) { reply(nil, @"Invalid local microphone request."); return; }
   if ([body[@"kind"] isEqual:@"cancel"]) {
     if (_voiceCaptureRequest == capture) { _voiceCaptureEpoch++; _voiceCaptureRequest = 0; fgv_cancel(); }
     reply(@YES, nil); return;
@@ -1042,16 +1042,16 @@ static int cb_changed(void *u) {
   }
   _voiceCaptureEpoch++; _voiceCaptureRequest = capture;
   int epoch = _voiceCaptureEpoch;
-  forge_async(^{
+  editor_async(^{
     @try {
-      if (self.microphoneReport && self.microphoneCheckFailStartup) { self.microphoneCheckFailStartup = NO; forge_throw(@"Local voice test startup failure."); }
-      if (self.microphoneReport && self.microphoneCheckDelay) forge_sleep_ms(500);
+      if (self.microphoneReport && self.microphoneCheckFailStartup) { self.microphoneCheckFailStartup = NO; editor_throw(@"Local voice test startup failure."); }
+      if (self.microphoneReport && self.microphoneCheckDelay) editor_sleep_ms(500);
       [self ensureVoiceHost];
       __block BOOL live = NO; [self main:^{ live = epoch == self->_voiceCaptureEpoch && (fixture || self.voiceAvailable); }];
-      if (!live) forge_throw(@"Voice stopped. Hold TALK again.");
+      if (!live) editor_throw(@"Voice stopped. Hold TALK again.");
       [self armVoiceCapture];
       [self main:^{ live = epoch == self->_voiceCaptureEpoch && (fixture || self.voiceAvailable); }];
-      if (!live) forge_throw(@"Voice stopped. Hold TALK again.");
+      if (!live) editor_throw(@"Voice stopped. Hold TALK again.");
       dispatch_async(dispatch_get_main_queue(), ^{ reply(@YES, nil); });
     } @catch (NSException *x) { NSString *m = x.reason; dispatch_async(dispatch_get_main_queue(), ^{ reply(nil, m); }); }
   });
@@ -1071,18 +1071,18 @@ static int cb_changed(void *u) {
   WKSecurityOrigin *o = message.frameInfo.securityOrigin;
   NSString *line = [message.body isKindOfClass:NSString.class] ? message.body : nil;
   if (!message.frameInfo.mainFrame || ![o.protocol isEqualToString:@"http"] || ![o.host isEqualToString:@"127.0.0.1"] || o.port != self.pageURL.port.integerValue || !line) return;
-  if ([message.name isEqualToString:@"forgeMetalMessage"]) {
-    NSDictionary *packet = forge_parse(line);
+  if ([message.name isEqualToString:@"editorMetalMessage"]) {
+    NSDictionary *packet = editor_parse(line);
     if ([packet isKindOfClass:NSDictionary.class] && [packet[@"kind"] isKindOfClass:NSNumber.class] && [packet[@"text"] isKindOfClass:NSString.class]) [self.metalWorld message:[packet[@"kind"] intValue] text:packet[@"text"]];
     return;
   }
-  if ([message.name isEqualToString:@"forgeVoiceStatus"]) {
+  if ([message.name isEqualToString:@"editorVoiceStatus"]) {
     [self traceVoice:line];
     if ([line isEqualToString:@"warm:ready"]) { _voiceWarmReady = YES; fgs_voice_ready(2); [self updateSetup]; }
     if ([line isEqualToString:@"warm:lost"]) { _voiceWarmReady = NO; fgs_voice_ready(3); [self updateSetup]; [self warmVoiceIfNeeded]; }
     return;
   }
-  if (![message.name isEqualToString:@"forgeVoiceCoder"] || [line lengthOfBytesUsingEncoding:NSUTF8StringEncoding] > 131072) return;
+  if (![message.name isEqualToString:@"editorVoiceCoder"] || [line lengthOfBytesUsingEncoding:NSUTF8StringEncoding] > 131072) return;
   BOOL available = [self has:@"--voice-smoke"] || self.voiceAvailable;
   NSData *b = [line dataUsingEncoding:NSUTF8StringEncoding];
   int64_t action = fgv_message(b.bytes, (int64_t)b.length, available, self.chat.busy);
@@ -1127,7 +1127,7 @@ static int cb_changed(void *u) {
   int64_t destination = self.previewTarget;
   if (destination < 0) return;
   self.switching = YES;
-  forge_async(^{
+  editor_async(^{
     @try { [self switchWorldView:destination]; }
     @catch (NSException *x) { if (!self.stopping) { NSString *m = x.reason; [self main:^{ [self fail:m]; }]; } }
     [self main:^{ self.switching = NO; }];
@@ -1135,7 +1135,7 @@ static int cb_changed(void *u) {
 }
 // Off the main thread.
 - (void)switchWorldView:(int64_t)destination {
-  if (!self.resources || !self.pageURL) forge_throw(@"World preview is not ready.");
+  if (!self.resources || !self.pageURL) editor_throw(@"World preview is not ready.");
   [self main:^{
     self.sceneReady = NO; self->_worldPauseWanted = nil; [self updateSetup];
     [self cancelVoice:@"cancel"];
@@ -1145,7 +1145,7 @@ static int cb_changed(void *u) {
   }];
   if (destination == 0) {
     [self main:^{
-      ForgeMetalWorld *previous = self.metalWorld;
+      EditorMetalWorld *previous = self.metalWorld;
       if (previous) {
         [previous focus:NO]; [previous close]; [previous removeFromSuperview]; self.metalWorld = nil;
         self.lastPreviewRetired = @{@"ledgerLive" : @(mf_closed_info(0)), @"ledgerWords" : @(mf_closed_info(1)), @"mediaBytes" : @(mf_closed_info(2)), @"audio" : previous.closedAudio};
@@ -1157,22 +1157,22 @@ static int cb_changed(void *u) {
     @try { [self js:@"globalThis.coaxial?.setWorldPaused(true); true"]; } @catch (NSException *x) { (void)x; }
     NSURL *auxiliary = [NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%@/metal-voice.html", self.pageURL.port]];
     [self main:^{ [self.web loadRequest:[NSURLRequest requestWithURL:auxiliary]]; }];
-    double end = forge_uptime() + 10;
+    double end = editor_uptime() + 10;
     for (;;) {
       __block BOOL there = NO; [self main:^{ there = [self.web.URL isEqual:auxiliary] && !self.web.loading; }];
       if (there) break;
-      if (forge_uptime() >= end) forge_throw(@"The web preview did not close its document.");
-      forge_sleep_ms(20);
+      if (editor_uptime() >= end) editor_throw(@"The web preview did not close its document.");
+      editor_sleep_ms(20);
     }
     __block NSString *problem = nil;
     [self main:^{
       self.web.hidden = YES;
-      ForgeMetalWorld *view = [self makeMetalWorld:self.web.frame];
+      EditorMetalWorld *view = [self makeMetalWorld:self.web.frame];
       [self.web.superview addSubview:view positioned:NSWindowAbove relativeTo:self.web]; self.metalWorld = view;
       NSError *e = nil;
       if (![view openResources:self.resources storage:self.dataURL page:self.pageURL local:self->_metalLocalOrigin ?: @"" muted:self.mute error:&e]) problem = e.localizedDescription;
     }];
-    if (problem) forge_throw(problem);
+    if (problem) editor_throw(problem);
   }
   [self waitForScene];
   [self main:^{
@@ -1189,7 +1189,7 @@ static int cb_changed(void *u) {
   if (self.metalWorld) {
     NSError *e = nil;
     if (![self.metalWorld openResources:self.resources storage:self.dataURL page:self.pageURL local:_metalLocalOrigin ?: @"" muted:self.mute error:&e]) { [self fail:e.localizedDescription]; return; }
-    forge_async(^{
+    editor_async(^{
       @try { [self waitForScene]; [self main:^{ self.sceneReady = YES; [self updateSetup]; [self updateWorldVisibility]; }]; }
       @catch (NSException *x) { NSString *m = x.reason; [self main:^{ [self fail:m]; }]; }
     });
@@ -1248,7 +1248,7 @@ static int cb_changed(void *u) {
   (void)w; (void)n;
   if (self.switching) return;
   [self warmVoiceIfNeeded];
-  if (self.firstFrameSeconds > 0) forge_async(^{
+  if (self.firstFrameSeconds > 0) editor_async(^{
     @try { [self waitForScene]; [self main:^{ self.sceneReady = YES; [self updateSetup]; [self updateWorldVisibility]; }]; }
     @catch (NSException *x) { if (!self.stopping) { NSString *m = x.reason; [self main:^{ [self fail:m]; }]; } }
   });
@@ -1260,7 +1260,7 @@ static int cb_changed(void *u) {
                                               [origin.host isEqualToString:@"127.0.0.1"] && origin.port == self.pageURL.port.integerValue ? @"true" : @"false", self.window.keyWindow ? @"true" : @"false",
                                               !self.setupHidden ? @"true" : @"false", (long)[AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]]];
   if (type != WKMediaCaptureTypeMicrophone || ![self trustedVoiceFrame:frame] || self.smoke || self.stopping) { decide(WKPermissionDecisionDeny); return; }
-  forge_async(^{
+  editor_async(^{
     BOOL authorized = [self authorizeMicrophone];
     [self main:^{
       BOOL allowed = fm_permission([self trustedVoiceFrame:frame], type == WKMediaCaptureTypeMicrophone, authorized);
@@ -1275,7 +1275,7 @@ static int cb_changed(void *u) {
 
 - (int)run {
   _logs = [NSMutableArray array]; _coderHeldKeys = [NSMutableSet set];
-  _voiceReservation = -1; _lockFD = -1; _startedAt = forge_uptime();
+  _voiceReservation = -1; _lockFD = -1; _startedAt = editor_uptime();
   self.resources = NSBundle.mainBundle.resourceURL;
   NSString *shot = [self arg:@"--shot"];
   if (shot) return [self shot:shot];
@@ -1295,14 +1295,14 @@ static int cb_changed(void *u) {
       });
     });
   }
-  if ([self has:@"--chat-smoke"]) forge_async(^{ [self chatSmokeCheck]; });
-  else forge_async(^{ [self start]; });
+  if ([self has:@"--chat-smoke"]) editor_async(^{ [self chatSmokeCheck]; });
+  else editor_async(^{ [self start]; });
   while (ui_frame(self.host)) {}
   [self stopChildren];
   ui_close(self.host);
   return 0;
 }
-// --shot: one frame offscreen (Forge.h).
+// --shot: one frame offscreen (Editor.h).
 - (int)shot:(NSString *)path {
   uint32_t w = 1280, h = 800;
   NSString *size = [self arg:@"--size"];
@@ -1312,7 +1312,7 @@ static int cb_changed(void *u) {
   NSRect bounds = NSMakeRect(0, 0, w, h);
   _picture = YES;
   fgs_reset();
-  self.chat = [[ForgeChat alloc] initWithFrame:bounds];
+  self.chat = [[EditorChat alloc] initWithFrame:bounds];
   [self.chat layoutSubtreeIfNeeded];
   self.checking = YES;
   if ([scene isEqualToString:@"status"]) { self.statusMode = YES; self.sceneReady = YES; self.checking = NO; }
@@ -1352,7 +1352,7 @@ static int cb_changed(void *u) {
 
 int main(int argc, char **argv) {
   @autoreleasepool {
-    ForgeApp *app = [ForgeApp new];
+    EditorApp *app = [EditorApp new];
     NSMutableArray *args = [NSMutableArray array];
     for (int i = 0; i < argc; i++) [args addObject:@(argv[i])];
     app.args = args;

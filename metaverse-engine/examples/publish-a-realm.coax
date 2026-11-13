@@ -15,7 +15,7 @@ main :: () {
   print("%", manifest);
   e: [64] u8; engine := hex(manifest, e[..]);
   print("engine: %\n", engine);
-  d: [64] u8; doc := hex(FORGE_DOC_V1, d[..]);
+  d: [64] u8; doc := hex(EDITOR_DOC_V1, d[..]);
   print("record: rev 4, document %, engine %\n", doc, engine);
   print("the record holds: %\n", engine_record_ok(4, doc, manifest, engine));
   // A later release: a new host script. Its manifest and hash differ; the record still names the first.

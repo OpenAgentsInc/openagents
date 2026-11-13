@@ -19,7 +19,7 @@ struct HostEffects {
         guard CommandLine.arguments.count == 5 else { throw HostEffectError.failed("HostEffects RESOURCES PRODUCER PLAN RESULT") }
         let plan = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[3]))) as? [String: Any] ?? [:]
         guard plan["schema"] as? String == "aethyr.host.effects.v1", let host = mf_open(CommandLine.arguments[1], CommandLine.arguments[2], false, true) else { throw HostEffectError.failed(mf_error(nil).map { String(cString: $0) } ?? "host open") }
-        let network = ForgeMetalNetwork(host: host)
+        let network = EditorMetalNetwork(host: host)
         defer { network.close(); mf_close(host) }
         mf_network_config(host, plan["origin"] as? String ?? "http://127.0.0.1:9170", "ws://127.0.0.1:9170")
         var result: [String: Any] = ["schema":"aethyr.host.observations.v1","host":"metal","scope":plan["scope"] as? String ?? "core"]

@@ -16,7 +16,7 @@ vcp_str :: (d: Jv, obj: int, key: string) -> string {
 }
 
 vcp_accepts :: (msg: string) -> bool {
-  s: [1] ForgeVoiceCoder;
+  s: [1] EditorVoiceCoder;
   t := fv_arm(s[..]);
   if t != 1 { return false; }
   rc := fv_message(s[..], msg, true, false);

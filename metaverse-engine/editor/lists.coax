@@ -20,7 +20,7 @@
 
 // A line's fields by "|" into out: how many it took (at most out.count; what is past them is
 // not read).
-forge_list_split :: (text: string, out: [] string) -> int {
+editor_list_split :: (text: string, out: [] string) -> int {
   k := 0; from := 0;
   for j: 0..<text.count + 1 {
     if j == text.count || text[j] == '|' { if k < out.count { out[k] = text[from..<j]; k += 1; } from = j + 1; }
@@ -30,25 +30,25 @@ forge_list_split :: (text: string, out: [] string) -> int {
 
 // "ask ID STATE KIND WORDS" (the list), or "ask ID STATE" (an ask's answer: no kind, no words).
 // ok when the line's first word is ask; id -1 when it has no number.
-ForgeAsk :: struct { ok: bool; id: int; state: string; kind: string; words: string; }
-forge_read_ask :: (line: string) -> ForgeAsk {
-  if forge_spec_word(line, 0) != "ask" { return ForgeAsk.{}; }
-  return ForgeAsk.{ok = true, id = forge_spec_digits(forge_spec_word(line, 1)), state = forge_spec_word(line, 2), kind = forge_spec_word(line, 3), words = forge_spec_rest(line, 4)};
+EditorAsk :: struct { ok: bool; id: int; state: string; kind: string; words: string; }
+editor_read_ask :: (line: string) -> EditorAsk {
+  if editor_spec_word(line, 0) != "ask" { return EditorAsk.{}; }
+  return EditorAsk.{ok = true, id = editor_spec_digits(editor_spec_word(line, 1)), state = editor_spec_word(line, 2), kind = editor_spec_word(line, 3), words = editor_spec_rest(line, 4)};
 }
 // "lore WHO|TEXT" and "quest GIVER|ASK|STEP|STEP|STEP|REWARD". kind 1 lore, 2 quest, 0 neither.
 // fields: how many "|" fields the line has after its key, at most six. A lore's text is the rest
 // of the line after its first bar (the server writes a bar in lore as a space); a quest's parts
 // are its ask, three steps and reward.
-FORGE_PANE_LORE :: 1; FORGE_PANE_QUEST :: 2;
-ForgePane :: struct { kind: int; fields: int; who: string; text: string; parts: [5] string; }
-forge_read_pane :: (line: string) -> ForgePane {
-  p: ForgePane;
-  head := forge_spec_word(line, 0);
-  p.kind = ifx head == "lore" then FORGE_PANE_LORE else ifx head == "quest" then FORGE_PANE_QUEST else 0;
+EDITOR_PANE_LORE :: 1; EDITOR_PANE_QUEST :: 2;
+EditorPane :: struct { kind: int; fields: int; who: string; text: string; parts: [5] string; }
+editor_read_pane :: (line: string) -> EditorPane {
+  p: EditorPane;
+  head := editor_spec_word(line, 0);
+  p.kind = ifx head == "lore" then EDITOR_PANE_LORE else ifx head == "quest" then EDITOR_PANE_QUEST else 0;
   if p.kind == 0 { return p; }
-  rest := forge_spec_rest(line, 1);
+  rest := editor_spec_rest(line, 1);
   f: [6] string;
-  p.fields = forge_list_split(rest, f[..]);
+  p.fields = editor_list_split(rest, f[..]);
   p.who = f[0];
   p.text = ifx p.fields >= 2 then rest[f[0].count + 1..<rest.count] else "";
   for k: 0..<5 { p.parts[k] = f[k + 1]; }
@@ -56,51 +56,51 @@ forge_read_pane :: (line: string) -> ForgePane {
 }
 // "P ID|WHO|THING|X|Z|YAW|BEFORE|AFTER": ok when the line starts "P " and has its eight fields.
 // The numbers are as written.
-ForgeProposal :: struct { ok: bool; id: string; who: string; thing: string; x: string; z: string; yaw: string; before: string; after: string; }
-forge_read_proposal :: (line: string) -> ForgeProposal {
-  if line.count < 3 || line[0] != 'P' || line[1] != ' ' { return ForgeProposal.{}; }
+EditorProposal :: struct { ok: bool; id: string; who: string; thing: string; x: string; z: string; yaw: string; before: string; after: string; }
+editor_read_proposal :: (line: string) -> EditorProposal {
+  if line.count < 3 || line[0] != 'P' || line[1] != ' ' { return EditorProposal.{}; }
   f: [8] string;
-  if forge_list_split(line[2..<line.count], f[..]) < 8 { return ForgeProposal.{}; }
-  return ForgeProposal.{ok = true, id = f[0], who = f[1], thing = f[2], x = f[3], z = f[4], yaw = f[5], before = f[6], after = f[7]};
+  if editor_list_split(line[2..<line.count], f[..]) < 8 { return EditorProposal.{}; }
+  return EditorProposal.{ok = true, id = f[0], who = f[1], thing = f[2], x = f[3], z = f[4], yaw = f[5], before = f[6], after = f[7]};
 }
 
 #test "fields by a bar, and an ask's line in the list and in an answer" {
   f: [3] string;
-  #assert forge_list_split("a|b|c", f[..]) == 3 && f[0] == "a" && f[1] == "b" && f[2] == "c";
-  #assert forge_list_split("a||c|d|e", f[..]) == 3 && f[1] == "" && f[2] == "c" && forge_list_split("", f[..]) == 1 && f[0] == "" && forge_list_split("x", f[0..<0]) == 0;
-  #assert forge_list_split("a|", f[..]) == 2 && f[1] == "";
-  a := forge_read_ask("ask 12 waiting ask a waterfall, please");
+  #assert editor_list_split("a|b|c", f[..]) == 3 && f[0] == "a" && f[1] == "b" && f[2] == "c";
+  #assert editor_list_split("a||c|d|e", f[..]) == 3 && f[1] == "" && f[2] == "c" && editor_list_split("", f[..]) == 1 && f[0] == "" && editor_list_split("x", f[0..<0]) == 0;
+  #assert editor_list_split("a|", f[..]) == 2 && f[1] == "";
+  a := editor_read_ask("ask 12 waiting ask a waterfall, please");
   #assert a.ok && a.id == 12 && a.state == "waiting" && a.kind == "ask" && a.words == "a waterfall, please";
-  a = forge_read_ask("ask 7 removing remove the lanterns");
+  a = editor_read_ask("ask 7 removing remove the lanterns");
   #assert a.ok && a.id == 7 && a.state == "removing" && a.kind == "remove" && a.words == "the lanterns";
-  a = forge_read_ask("ask 9 applied");
+  a = editor_read_ask("ask 9 applied");
   #assert a.ok && a.id == 9 && a.state == "applied" && a.kind == "" && a.words == "";
-  a = forge_read_ask("ask 0 gone");
+  a = editor_read_ask("ask 0 gone");
   #assert a.ok && a.id == 0 && a.state == "gone";
-  a = forge_read_ask("ask x applied ask y");
-  #assert a.ok && a.id == -1 && a.words == "y" && !forge_read_ask("asks 1 applied ask y").ok && !forge_read_ask("row a 1 x").ok && !forge_read_ask("").ok && forge_read_ask("ask").ok && forge_read_ask("ask").id == -1;
+  a = editor_read_ask("ask x applied ask y");
+  #assert a.ok && a.id == -1 && a.words == "y" && !editor_read_ask("asks 1 applied ask y").ok && !editor_read_ask("row a 1 x").ok && !editor_read_ask("").ok && editor_read_ask("ask").ok && editor_read_ask("ask").id == -1;
 }
 #test "a pane's lore and quest, and a proposal" {
-  p := forge_read_pane("lore old-mott|He kept the bridge, and the oar.");
-  #assert p.kind == FORGE_PANE_LORE && p.fields == 2 && p.who == "old-mott" && p.text == "He kept the bridge, and the oar.";
-  p = forge_read_pane("lore old-mott|a|b");
-  #assert p.kind == FORGE_PANE_LORE && p.fields == 3 && p.text == "a|b";
-  p = forge_read_pane("lore old-mott");
-  #assert p.kind == FORGE_PANE_LORE && p.fields == 1 && p.who == "old-mott" && p.text == "";
-  p = forge_read_pane("lore old-mott|");
+  p := editor_read_pane("lore old-mott|He kept the bridge, and the oar.");
+  #assert p.kind == EDITOR_PANE_LORE && p.fields == 2 && p.who == "old-mott" && p.text == "He kept the bridge, and the oar.";
+  p = editor_read_pane("lore old-mott|a|b");
+  #assert p.kind == EDITOR_PANE_LORE && p.fields == 3 && p.text == "a|b";
+  p = editor_read_pane("lore old-mott");
+  #assert p.kind == EDITOR_PANE_LORE && p.fields == 1 && p.who == "old-mott" && p.text == "";
+  p = editor_read_pane("lore old-mott|");
   #assert p.fields == 2 && p.text == "";
-  p = forge_read_pane("quest old-mott|Bring my oar|Find the oar|||A lantern");
-  #assert p.kind == FORGE_PANE_QUEST && p.fields == 6 && p.who == "old-mott" && p.parts[0] == "Bring my oar" && p.parts[1] == "Find the oar" && p.parts[2] == "" && p.parts[3] == "" && p.parts[4] == "A lantern";
-  p = forge_read_pane("quest old-mott|a|b|c|d|e|f|g");
-  #assert p.kind == FORGE_PANE_QUEST && p.fields == 6 && p.parts[4] == "e";
-  p = forge_read_pane("quest old-mott|a|b");
-  #assert p.kind == FORGE_PANE_QUEST && p.fields == 3 && p.parts[0] == "a" && p.parts[1] == "b" && p.parts[2] == "";
-  #assert forge_read_pane("note x|y").kind == 0 && forge_read_pane("").kind == 0 && forge_read_pane("lores a|b").kind == 0 && forge_read_pane("quest").fields == 1;
-  c := forge_read_proposal("P 31|Visitor ab12|barrel|0|3.8|1.57|2|3");
+  p = editor_read_pane("quest old-mott|Bring my oar|Find the oar|||A lantern");
+  #assert p.kind == EDITOR_PANE_QUEST && p.fields == 6 && p.who == "old-mott" && p.parts[0] == "Bring my oar" && p.parts[1] == "Find the oar" && p.parts[2] == "" && p.parts[3] == "" && p.parts[4] == "A lantern";
+  p = editor_read_pane("quest old-mott|a|b|c|d|e|f|g");
+  #assert p.kind == EDITOR_PANE_QUEST && p.fields == 6 && p.parts[4] == "e";
+  p = editor_read_pane("quest old-mott|a|b");
+  #assert p.kind == EDITOR_PANE_QUEST && p.fields == 3 && p.parts[0] == "a" && p.parts[1] == "b" && p.parts[2] == "";
+  #assert editor_read_pane("note x|y").kind == 0 && editor_read_pane("").kind == 0 && editor_read_pane("lores a|b").kind == 0 && editor_read_pane("quest").fields == 1;
+  c := editor_read_proposal("P 31|Visitor ab12|barrel|0|3.8|1.57|2|3");
   #assert c.ok && c.id == "31" && c.who == "Visitor ab12" && c.thing == "barrel" && c.x == "0" && c.z == "3.8" && c.yaw == "1.57" && c.before == "2" && c.after == "3";
-  c = forge_read_proposal("P 31|V|barrel|0|3.8|1.57|2|3|extra");
+  c = editor_read_proposal("P 31|V|barrel|0|3.8|1.57|2|3|extra");
   #assert c.ok && c.after == "3";
-  #assert !forge_read_proposal("P 31|V|barrel|0|3.8|1.57|2").ok && !forge_read_proposal("P").ok && !forge_read_proposal("P ").ok && !forge_read_proposal("Q 31|V|barrel|0|3.8|1.57|2|3").ok && !forge_read_proposal("P31|V|barrel|0|3.8|1.57|2|3").ok && !forge_read_proposal("").ok;
-  c = forge_read_proposal("P |||||||");
+  #assert !editor_read_proposal("P 31|V|barrel|0|3.8|1.57|2").ok && !editor_read_proposal("P").ok && !editor_read_proposal("P ").ok && !editor_read_proposal("Q 31|V|barrel|0|3.8|1.57|2|3").ok && !editor_read_proposal("P31|V|barrel|0|3.8|1.57|2|3").ok && !editor_read_proposal("").ok;
+  c = editor_read_proposal("P |||||||");
   #assert c.ok && c.id == "" && c.after == "";
 }

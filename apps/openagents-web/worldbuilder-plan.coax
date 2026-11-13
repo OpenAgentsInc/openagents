@@ -26,7 +26,7 @@
 #load "worldbuilder-land.coax";
 #load "worldbuilder-world.coax";   // the world behind world.edit.v1: every thing edit is typed and checked there (#13422)
 
-WB_OBJECTS :: FORGE_SCENE_ITEMS;   // things a world holds (the page shows the count and this)
+WB_OBJECTS :: EDITOR_SCENE_ITEMS;   // things a world holds (the page shows the count and this)
 WB_MESHES :: 1024;                 // catalogue meshes
 WB_NAME :: 48;
 WB_PER_EDIT :: 200;                // things one edit places at most
@@ -63,10 +63,10 @@ WbAct :: struct {
 }
 // Where the person is looking from is the planner's PlaceView (place.coax).
 WbWorld :: struct {
-  fg: [1] ForgeSceneState;
-  objs: [WB_OBJECTS] ForgeItem; n: int;
-  ops: [FORGE_SCENE_OPS] ForgeItemOp;
-  steps: [FORGE_SCENE_STEPS] ForgeStep;
+  fg: [1] EditorSceneState;
+  objs: [WB_OBJECTS] EditorItem; n: int;
+  ops: [EDITOR_SCENE_OPS] EditorItemOp;
+  steps: [EDITOR_SCENE_STEPS] EditorStep;
   land: [1] WbLand;   // the ground the things stand on (worldbuilder-land.coax)
   land_rev: int;      // the forge log's land revision the ground was last seen at
   last: [WB_LAST] int; last_n: int;
@@ -269,8 +269,8 @@ wb_read :: (c: [] WbCat, line: string) -> WbRead {
 
 // ---- the world, backed by Aethyrforge's scene edit log (metaverse-engine/editor/edit.coax)
 
-wb_scene :: (w: [] WbWorld) -> ForgeScene {
-  return ForgeScene.{st = w[0].fg[..], items = w[0].objs[..], ops = w[0].ops[..], steps = w[0].steps[..],
+wb_scene :: (w: [] WbWorld) -> EditorScene {
+  return EditorScene.{st = w[0].fg[..], items = w[0].objs[..], ops = w[0].ops[..], steps = w[0].steps[..],
     land_side = WB_LAND_SIDE, heights = w[0].land[0].heights[..], land_ids = w[0].land[0].ids[..], land_weights = w[0].land[0].weights[..], land = w[0].land[0].undo[..]};
 }
 // After the log moved: the count of things, and the ground when a land step changed it.
@@ -278,30 +278,30 @@ wb_sync :: (w: [] WbWorld) {
   w[0].n = w[0].fg[0].n;
   if w[0].fg[0].land_rev != w[0].land_rev { w[0].land_rev = w[0].fg[0].land_rev; w[0].land[0].version += 1; wb_land_scan(w[0].land[..]); }
 }
-wb_reset :: (w: [] WbWorld) { forge_scene_reset(wb_scene(w)); wb_land_reset(w[0].land[..]); wb_sync(w); w[0].last_n = 0; w[0].version += 1; w[0].rev += 1; }
-wb_index :: (w: [] WbWorld, id: int) -> int { return forge_scene_find(wb_scene(w), id); }
-wb_can_undo :: (w: [] WbWorld) -> bool { return forge_scene_can_undo(wb_scene(w)); }
-wb_can_redo :: (w: [] WbWorld) -> bool { return forge_scene_can_redo(wb_scene(w)); }
+wb_reset :: (w: [] WbWorld) { editor_scene_reset(wb_scene(w)); wb_land_reset(w[0].land[..]); wb_sync(w); w[0].last_n = 0; w[0].version += 1; w[0].rev += 1; }
+wb_index :: (w: [] WbWorld, id: int) -> int { return editor_scene_find(wb_scene(w), id); }
+wb_can_undo :: (w: [] WbWorld) -> bool { return editor_scene_can_undo(wb_scene(w)); }
+wb_can_redo :: (w: [] WbWorld) -> bool { return editor_scene_can_redo(wb_scene(w)); }
 wb_last_add :: (w: [] WbWorld, id: int) { if w[0].last_n < WB_LAST { w[0].last[w[0].last_n] = id; w[0].last_n += 1; } }
 wb_last_from_top :: (w: [] WbWorld) {
   w[0].last_n = 0;
   done := w[0].fg[0].done;
   if done <= 0 { return; }
   st := w[0].steps[done - 1];
-  if st.kind == FORGE_SCENE_LAND { return; }
+  if st.kind == EDITOR_SCENE_LAND { return; }
   s := wb_scene(w);
   for k: st.first..<st.first + st.count {
     o := w[0].ops[k];
-    if o.has && forge_scene_find(s, o.a.id) >= 0 { wb_last_add(w, o.a.id); }
+    if o.has && editor_scene_find(s, o.a.id) >= 0 { wb_last_add(w, o.a.id); }
   }
 }
 wb_undo :: (w: [] WbWorld) -> bool {
-  if !forge_scene_undo(wb_scene(w)) { return false; }
+  if !editor_scene_undo(wb_scene(w)) { return false; }
   wb_sync(w); wb_last_from_top(w); w[0].version += 1; w[0].rev += 1;
   return true;
 }
 wb_redo :: (w: [] WbWorld) -> bool {
-  if !forge_scene_redo(wb_scene(w)) { return false; }
+  if !editor_scene_redo(wb_scene(w)) { return false; }
   wb_sync(w); wb_last_from_top(w); w[0].version += 1; w[0].rev += 1;
   return true;
 }
@@ -313,7 +313,7 @@ wb_add_kind :: (w: [] WbWorld, c: [] WbCat, kind: int, mesh: int, x: f32, z: f32
   return r.id - 1;
 }
 wb_add :: (w: [] WbWorld, c: [] WbCat, mesh: int, x: f32, z: f32, yaw: f32, scale: f32) -> int {
-  return wb_add_kind(w, c, FORGE_SCENE_PLACE, mesh, x, z, yaw, scale);
+  return wb_add_kind(w, c, EDITOR_SCENE_PLACE, mesh, x, z, yaw, scale);
 }
 
 // The camera's directions on the ground: away from the viewer and to their right.
@@ -460,10 +460,10 @@ wb_duplicate :: (w: [] WbWorld, c: [] WbCat, v: PlaceView, a: WbAct, idx: [] int
     far := 2 * g.r + wb_hi(a.distance, 0) + 0.5;
     dx = d.x * far; dz = d.z * far;
   }
-  copies: [WB_OBJECTS] ForgeItem; n := 0;
+  copies: [WB_OBJECTS] EditorItem; n := 0;
   for i: idx { copies[n] = w[0].objs[i]; n += 1; }
   w[0].last_n = 0;
-  for k: 0..<n { o := copies[k]; if wb_add_kind(w, c, FORGE_SCENE_DUPLICATE, o.mesh, o.x + dx, o.z + dz, o.yaw, o.scale) >= 0 { done.placed += 1; } }
+  for k: 0..<n { o := copies[k]; if wb_add_kind(w, c, EDITOR_SCENE_DUPLICATE, o.mesh, o.x + dx, o.z + dz, o.yaw, o.scale) >= 0 { done.placed += 1; } }
   done.ok = done.placed > 0;
   return done;
 }
@@ -525,7 +525,7 @@ wb_land_act :: (w: [] WbWorld, c: [] WbCat, v: PlaceView, a: WbAct) -> WbDone {
     r = wb_land_tool(l, tool, 0, shape, level, 1);
   }
   if !r.any { return done; }
-  if forge_scene_land_step(wb_scene(w), l[0].was_h[..], l[0].was_ids[..], l[0].was_w[..], r.i0, r.j0, r.i1, r.j1) {
+  if editor_scene_land_step(wb_scene(w), l[0].was_h[..], l[0].was_ids[..], l[0].was_w[..], r.i0, r.j0, r.i1, r.j1) {
     done.changed = 1; done.ground = 1; done.ok = true; w[0].version += 1; w[0].rev += 1;
   }
   wb_sync(w);
@@ -552,52 +552,52 @@ wb_apply :: (w: [] WbWorld, c: [] WbCat, v: PlaceView, a: WbAct) -> WbDone {
   s := wb_scene(w);
   if a.op == OP_CLEAR {
     removed := 0;
-    forge_scene_begin(s, FORGE_SCENE_CLEAR);
+    editor_scene_begin(s, EDITOR_SCENE_CLEAR);
     while w[0].n > 0 {
       if !wbe_thing(w, c, WorldEdit.{ok = true, op = WE_DESPAWN, id = w[0].objs[w[0].n - 1].id + 1}).ok { break; }
       removed += 1;
     }
-    _ := forge_scene_end(s);
+    _ := editor_scene_end(s);
     wb_sync(w);
     if removed > 0 { w[0].last_n = 0; done.changed = removed; done.ok = true; w[0].version += 1; }
     return done;
   }
   idx: [WB_OBJECTS] int; n := 0;
   if a.op == OP_PLACE {
-    forge_scene_begin(s, FORGE_SCENE_PLACE);
+    editor_scene_begin(s, EDITOR_SCENE_PLACE);
     done = wb_place(w, c, v, a);
-    done.ok = forge_scene_end(s);
+    done.ok = editor_scene_end(s);
   } else {
     n = wb_targets(w, c, v, a, idx[..]);
     if a.op == OP_MOVE {
-      forge_scene_begin(s, FORGE_SCENE_MOVE);
+      editor_scene_begin(s, EDITOR_SCENE_MOVE);
       done = wb_move(w, c, v, a, idx[0..<n]);
-      done.ok = forge_scene_end(s);
+      done.ok = editor_scene_end(s);
     } else if a.op == OP_ROTATE {
-      forge_scene_begin(s, FORGE_SCENE_ROTATE);
+      editor_scene_begin(s, EDITOR_SCENE_ROTATE);
       for i: idx[0..<n] {
         o := w[0].objs[i];
         if wbe_thing(w, c, WorldEdit.{ok = true, op = WE_ROTATE, id = o.id + 1, yaw = we_deg(o.yaw + a.degrees * 0.017453292)}).ok { done.changed += 1; }
       }
-      done.ok = forge_scene_end(s);
+      done.ok = editor_scene_end(s);
       if done.ok { wb_set_last(w, idx[0..<n]); }
     } else if a.op == OP_SCALE {
       f := ifx a.factor > 0.05 && a.factor < 20 then a.factor else 1.0f32;
-      forge_scene_begin(s, FORGE_SCENE_SCALE);
+      editor_scene_begin(s, EDITOR_SCENE_SCALE);
       for i: idx[0..<n] {
         o := w[0].objs[i];
         if wbe_thing(w, c, WorldEdit.{ok = true, op = WE_SCALE, id = o.id + 1, scale = wbe_pct(o.scale * f)}).ok { done.changed += 1; }
       }
-      done.ok = forge_scene_end(s);
+      done.ok = editor_scene_end(s);
       if done.ok { wb_set_last(w, idx[0..<n]); }
     } else if a.op == OP_DELETE {
-      forge_scene_begin(s, FORGE_SCENE_DELETE);
+      editor_scene_begin(s, EDITOR_SCENE_DELETE);
       done = wb_delete(w, c, idx[0..<n]);
-      done.ok = forge_scene_end(s);
+      done.ok = editor_scene_end(s);
     } else if a.op == OP_DUPLICATE {
-      forge_scene_begin(s, FORGE_SCENE_DUPLICATE);
+      editor_scene_begin(s, EDITOR_SCENE_DUPLICATE);
       done = wb_duplicate(w, c, v, a, idx[0..<n]);
-      done.ok = forge_scene_end(s);
+      done.ok = editor_scene_end(s);
     }
   }
   wb_sync(w);
@@ -680,7 +680,7 @@ wb_load :: (w: [] WbWorld, c: [] WbCat, text: string) -> int {
       z := wb_num_at(line, at[..]); ok = ok && at[0] >= 0;
       yaw := wb_num_at(line, at[..]); ok = ok && at[0] >= 0;
       sc := wb_num_at(line, at[..]); ok = ok && at[0] >= 0 && sc > 0;
-      if ok { id := forge_scene_load(s, m, x, 0, z, yaw, sc); }
+      if ok { id := editor_scene_load(s, m, x, 0, z, yaw, sc); }
     }
     i = e + 1;
   }

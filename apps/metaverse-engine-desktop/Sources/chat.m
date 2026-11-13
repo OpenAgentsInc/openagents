@@ -1,17 +1,17 @@
 // Firm reason: 6 (AppKit text and input method, Metal presentation and process effects).
-// The Coder chat (Forge.h ForgeChat). A turn runs in this process on the shared turn runner
+// The Coder chat (Editor.h EditorChat). A turn runs in this process on the shared turn runner
 // (chat-run.coax: agents, routing, consent and the session log, as Coder's plain runs have them);
 // Coax owns the HUD, the presentation and the session's events (chat.coax behind face.h).
-#import "Forge.h"
+#import "Editor.h"
 #import <Metal/Metal.h>
 #include <unistd.h>
 
 // The composer: Enter sends (without Shift, outside an input method's marked text), Escape closes.
-@interface ForgeComposer : NSTextView
+@interface EditorComposer : NSTextView
 @property(nonatomic, copy) void (^sendAction)(void);
 @property(nonatomic, copy) void (^dismiss)(void);
 @end
-@implementation ForgeComposer
+@implementation EditorComposer
 - (void)keyDown:(NSEvent *)e {
   if ((e.keyCode == 36 || e.keyCode == 76) && !(e.modifierFlags & NSEventModifierFlagShift) && !self.hasMarkedText) { if (self.sendAction) self.sendAction(); return; }
   if (e.keyCode == 53 && !self.hasMarkedText) { if (self.dismiss) self.dismiss(); return; }
@@ -23,7 +23,7 @@ static NSString *utf8(const uint8_t *b, int64_t n) { return n > 0 ? [[NSString a
 static NSColor *teal(void) { return NSColor.systemTealColor; }
 static NSColor *orange(void) { return NSColor.systemOrangeColor; }
 
-@implementation ForgeChat {
+@implementation EditorChat {
   NSTimer *_turnClock;          // polls the turn on the shared runner (fgc_run_poll)
   NSTimer *_clock;
   int64_t _rendered;
@@ -49,7 +49,7 @@ static NSColor *orange(void) { return NSColor.systemOrangeColor; }
   _rendered = -1;
   fgc_reset();
   self.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
-  _transcript = [NSTextView new]; ForgeComposer *input = [ForgeComposer new]; _input = input;
+  _transcript = [NSTextView new]; EditorComposer *input = [EditorComposer new]; _input = input;
   for (NSTextView *v in @[ _transcript, _input ]) {
     v.richText = NO; v.font = [NSFont monospacedSystemFontOfSize:13 weight:NSFontWeightRegular]; v.textColor = [NSColor colorWithWhite:0.9 alpha:1];
     v.backgroundColor = NSColor.clearColor; v.drawsBackground = NO; v.textContainerInset = NSMakeSize(4, 6);
@@ -86,8 +86,8 @@ static NSColor *orange(void) { return NSColor.systemOrangeColor; }
   _status.font = [NSFont monospacedSystemFontOfSize:10 weight:NSFontWeightMedium];
   _status.lineBreakMode = NSLineBreakByTruncatingTail;
   [_input setAccessibilityLabel:@"Message to coding agent"];
-  __weak ForgeChat *weak = self;
-  input.sendAction = ^{ ForgeChat *s = weak; if (s && !s.busy) [s submit]; };
+  __weak EditorChat *weak = self;
+  input.sendAction = ^{ EditorChat *s = weak; if (s && !s.busy) [s submit]; };
   input.dismiss = ^{ [weak closeComposer]; };
   [fm createDirectoryAtURL:_cwd withIntermediateDirectories:YES attributes:nil error:nil];
   NSData *data = [NSData dataWithContentsOfURL:self.settings];
@@ -191,15 +191,15 @@ static NSColor *orange(void) { return NSColor.systemOrangeColor; }
   NSRect frame = NSInsetRect([self box:1], -4, -4);
   int width = (int)(frame.size.width * 2), height = (int)(frame.size.height * 2);
   id<MTLRenderPipelineState> pipe = [self pipelineOn:device];
-  FORGE_REQUIRE(pipe, @"HUD Metal unavailable.");
+  EDITOR_REQUIRE(pipe, @"HUD Metal unavailable.");
   MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm width:width height:height mipmapped:NO];
   td.usage = MTLTextureUsageRenderTarget; td.storageMode = MTLStorageModeShared;
   id<MTLTexture> texture = [device newTextureWithDescriptor:td];
-  FORGE_REQUIRE(texture, @"HUD check texture unavailable.");
+  EDITOR_REQUIRE(texture, @"HUD check texture unavailable.");
   int cap = 2000000 / 12;
   float *v = malloc((size_t)cap * 48);
   int n = v ? (int)fgc_feed_draw(v, (int64_t)cap * 12, (float)self.bounds.size.width, (float)self.bounds.size.height, 2) : 0;
-  if (n <= 0) { free(v); forge_throw(@"HUD feed produced no vertices."); }
+  if (n <= 0) { free(v); editor_throw(@"HUD feed produced no vertices."); }
   for (int i = 0; i < n; i++) { v[i * 12] -= (float)frame.origin.x * 2; v[i * 12 + 1] -= (float)frame.origin.y * 2; }
   MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor new];
   pass.colorAttachments[0].texture = texture; pass.colorAttachments[0].loadAction = MTLLoadActionClear;
@@ -213,14 +213,14 @@ static NSColor *orange(void) { return NSColor.systemOrangeColor; }
   [e setVertexBytes:size length:sizeof size atIndex:1];
   [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:(NSUInteger)n]; [e endEncoding];
   [cmd commit]; [cmd waitUntilCompleted];
-  FORGE_REQUIRE(cmd.status == MTLCommandBufferStatusCompleted, @"HUD frame readback failed.");
+  EDITOR_REQUIRE(cmd.status == MTLCommandBufferStatusCompleted, @"HUD frame readback failed.");
   NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL pixelsWide:width pixelsHigh:height bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO colorSpaceName:NSDeviceRGBColorSpace bitmapFormat:0 bytesPerRow:width * 4 bitsPerPixel:32];
   uint8_t *data = bitmap.bitmapData;
   [texture getBytes:data bytesPerRow:(NSUInteger)width * 4 fromRegion:MTLRegionMake2D(0, 0, width, height) mipmapLevel:0];
   // Metal's attachment is BGRA; the PNG bitmap takes RGBA.
   for (int i = 0; i < width * height * 4; i += 4) { uint8_t b = data[i]; data[i] = data[i + 2]; data[i + 2] = b; }
   NSData *bytes = [bitmap representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
-  FORGE_REQUIRE(bytes && [bytes writeToURL:png atomically:YES], @"HUD PNG failed.");
+  EDITOR_REQUIRE(bytes && [bytes writeToURL:png atomically:YES], @"HUD PNG failed.");
   return n;
 }
 
@@ -237,9 +237,9 @@ static NSColor *orange(void) { return NSColor.systemOrangeColor; }
   for (NSView *v in @[ _inputScroll, _router, _folder, _send, _fresh, _heading, _status, _transcriptScroll ]) v.hidden = mode != 2;
   // A platform clock only: Coax owns whether the feed is alive and when its lifetime ends.
   if (mode == 1 && !_clock) {
-    __weak ForgeChat *weak = self;
+    __weak EditorChat *weak = self;
     _clock = [NSTimer timerWithTimeInterval:0.05 repeats:YES block:^(NSTimer *t) {
-      (void)t; ForgeChat *s = weak;
+      (void)t; EditorChat *s = weak;
       if (s && s.presentation != s->_rendered) [s update];
     }];
     [NSRunLoop.mainRunLoop addTimer:_clock forMode:NSRunLoopCommonModes];
@@ -337,7 +337,7 @@ static NSColor *orange(void) { return NSColor.systemOrangeColor; }
   if (!fgc_run_start(td.bytes, (int64_t)td.length, pd.bytes, (int64_t)pd.length, cd.bytes, (int64_t)cd.length, xd.bytes, (int64_t)xd.length, ed.bytes, (int64_t)ed.length)) {
     [self append:@"\nCoder: this conversation's session log is missing.\n" color:orange()]; _lastEnding = @"failed"; [self endTurn]; return;
   }
-  __weak ForgeChat *weak = self;
+  __weak EditorChat *weak = self;
   _turnClock = [NSTimer timerWithTimeInterval:0.02 repeats:YES block:^(NSTimer *t) { (void)t; [weak pumpTurn]; }];
   [NSRunLoop.mainRunLoop addTimer:_turnClock forMode:NSRunLoopCommonModes];
 }

@@ -229,7 +229,7 @@ which puts back the revision before the newest step (64 steps kept).
 
 Each revision is kept in `verse.realm_revisions` with its hash.
 A realm made or forked by a tool (the `verse-automation` cookie or `X-Verse-Automation`) is
-unlisted: `noindex` and off `/og`'s rows. `coax/web/tool.sh forge-journey URL [--phone]` walks
+unlisted: `noindex` and off `/og`'s rows. `coax/web/tool.sh editor-journey URL [--phone]` walks
 the whole maker journey (make, move, undo, play, reload before saving, move a thing that isn't a
 tree, save, reload, build and undo, publish, fork, the original unchanged), and checks that a visitor
 gets the revision published.

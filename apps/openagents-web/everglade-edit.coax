@@ -340,7 +340,7 @@ edit_button :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, b: int, box: B
 // How much of the top row EDIT (or BUILD, DONE) takes left of MAP, with its gap; 0 when it isn't drawn.
 // join_hud (everglade-join.coax) lays INVITE and CHARACTER out left of it.
 edit_button_room :: (s: [] Everglade) -> f32 {
-  if !eg_builder(s) || s[0].talk >= 0 || s[0].board || s[0].above || forge_on(s) { return 0; }
+  if !eg_builder(s) || s[0].talk >= 0 || s[0].board || s[0].above || editor_on(s) { return 0; }
   k := hi(s[0].dpr, 0.5);
   word := ifx s[0].ev.editing then "DONE" else ifx !s[0].ev.admin then "BUILD" else "EDIT";
   return text_width(word, 9 * k) + 32 * k + 8 * k;
@@ -354,7 +354,7 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   // EDIT, left of MAP: the shared layer's for its owner and admins (THE BOARD, SETTINGS, the cards
   // under it), BUILD for a visitor the owner lets build
   mb := s[0].map_button;
-  bare := forge_on(s);   // Aethyrforge's panels draw DONE and the rest (everglade-forge.coax)
+  bare := editor_on(s);   // Aethyrforge's panels draw DONE and the rest (everglade-editor.coax)
   if bare { for i: 0..<RB_N { s[0].ev.ed[0].shown[i] = false; } }
   if !s[0].above && !bare {
     visitor := !s[0].ev.admin;
@@ -534,8 +534,8 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   s[0].feet = v3(6, 0, -9); s[0].face = f32(PI);
   edit_press(s[..], EB_ITEM + 1);
   s[0].plate_n = 4;
-  // an admin's edit mode is Aethyrforge's (everglade-forge.coax): the picked thing's row, no hotbar, DONE top right
-  n := forge_hud(s[..], out[..], u[..], 0);
+  // an admin's edit mode is Aethyrforge's (everglade-editor.coax): the picked thing's row, no hotbar, DONE top right
+  n := editor_hud(s[..], out[..], u[..], 0);
   #assert n > 0 && s[0].plate_n <= PLATES && s[0].ev.boxes[EB_DONE].x1 > 0 && s[0].ev.boxes[EB_OP + EOP_DELETE].x1 > 0;
   #assert s[0].ev.boxes[EB_ITEM].x1 == 0 && s[0].ev.boxes[EB_DONE].y1 < s[0].ev.boxes[EB_OP].y0;
   // a press on DONE leaves edit mode

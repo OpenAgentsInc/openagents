@@ -13,16 +13,16 @@
 FGN_VERTICES :: 144000;
 FGN_EPOCH :: "00000000000000000000000000000000";
 FGN_LINE_MAX :: 65536;           // a longer line is more than the HUD's transport takes
-ForgeNative :: struct {
-  lab:[1]BitcoinLab;hud:[1]ForgeLinux;
+EditorNative :: struct {
+  lab:[1]BitcoinLab;hud:[1]EditorLinux;
   initialized:bool;quit:bool;shift:bool;control:bool;turn:int=-1;last:int;ended:bool;   // turn: 1 while a chat turn runs
   session:[128]u8;sn:int;workspace:[4096]u8;wn:int;engine:[16]u8;en:int;context:[4096]u8;cn:int;
-  chat:[1]ForgeChatRun;     // the turn runner and its engines
+  chat:[1]EditorChatRun;     // the turn runner and its engines
   inbox:[LAB_REPLY_MAX]u8;frame:int;px:f32;py:f32;
   lab_clip:int=-1;lab_service:int=-1;lab_port:int;lab_started:int;lab_fetch:[2]int=[2]int.[-1,-1];lab_status:[2]int;lab_deadline:[2]int;
 }
 #test "native Aethyrforge releases walking when Return opens its shared composer" {
-  s:[1]ForgeNative;s[0].hud[0].ready=true;
+  s:[1]EditorNative;s[0].hud[0].ready=true;
   #assert fgn_key(s[..],119,true,0);#assert s[0].lab[0].keys!=0;
   #assert fgn_key(s[..],-2,true,0) && s[0].hud[0].opened && s[0].lab[0].keys==0;
   #assert fgn_key(s[..],-2,false,0) && !s[0].hud[0].held;
@@ -31,13 +31,13 @@ ForgeNative :: struct {
   #assert cast(string)s[0].hud[0].draft[0..<s[0].hud[0].dn]=="h\n";
 }
 #test "native Aethyrforge owns only valid sessions its runner reports" {
-  s:[1]ForgeNative;fgn_event(s[..],"{\"kind\":\"session\",\"id\":\"owned_123\",\"engine\":\"echo\"}");
+  s:[1]EditorNative;fgn_event(s[..],"{\"kind\":\"session\",\"id\":\"owned_123\",\"engine\":\"echo\"}");
   #assert cast(string)s[0].session[0..<s[0].sn]=="owned_123";
   fgn_event(s[..],"{\"kind\":\"session\",\"id\":\"../bad\"}");
   #assert cast(string)s[0].session[0..<s[0].sn]=="owned_123";
 }
 #test "native Aethyrforge lets Lab search consume Return before opening Coder" {
-  s:[1]ForgeNative;s[0].hud[0].ready=true;lab_start(s[0].lab[..]);lab_do(s[0].lab[..],221);lab_do(s[0].lab[..],205);
+  s:[1]EditorNative;s[0].hud[0].ready=true;lab_start(s[0].lab[..]);lab_do(s[0].lab[..],221);lab_do(s[0].lab[..],205);
   #assert fgn_key(s[..],49,true,0) && s[0].lab[0].remote[0].qn==1;
   #assert fgn_key(s[..],-2,true,0) && !s[0].hud[0].opened && s[0].lab[0].remote[0].kind==7;
 }
@@ -48,10 +48,10 @@ ForgeNative :: struct {
   for i:0..<6 {#assert v[i*12+2]==cast(f32)(i+6);}
 }
 #test "native Aethyrforge lets Enter activate a focused Lab control" {
-  s:[1]ForgeNative;lab_start(s[0].lab[..]);lab_layout(s[0].lab[..],1440,900,1);lab_access(s[0].lab[..],221,false);
+  s:[1]EditorNative;lab_start(s[0].lab[..]);lab_layout(s[0].lab[..],1440,900,1);lab_access(s[0].lab[..],221,false);
   #assert s[0].lab[0].focus>=0 && fgn_key(s[..],-2,true,0) && s[0].lab[0].remote[0].active && !s[0].hud[0].opened;
 }
-fgn_boot :: (s:[]ForgeNative) #export_c #effects(all) {
+fgn_boot :: (s:[]EditorNative) #export_c #effects(all) {
   env:[4096]u8;home:=proc_getenv("HOME",env[..]);p:[4096]u8;
   workspace:=(ifx proc_getenv("METAVERSE_ENGINE_WORKSPACE",p[..])!="" then proc_getenv("METAVERSE_ENGINE_WORKSPACE",p[..]) else proc_getenv("AETHYRFORGE_WORKSPACE",p[..]));if workspace=="" {workspace=fs_join(home,".openagents/aethyrforge/workspace",p[..]);}
   s[0].wn=workspace.count;for i:0..<workspace.count {s[0].workspace[i]=workspace[i];}
@@ -63,24 +63,24 @@ fgn_boot :: (s:[]ForgeNative) #export_c #effects(all) {
   if source=="" {path:[4096]u8;selection:[1025]u8;n:=fs_read(fgn_selection_file(path[..]),selection[..]);if n>0 && n<=1024 {for i:0..<n {s[0].lab[0].inbox[i]=selection[i];}lab_hash(s[0].lab[..],n);}}
   s[0].initialized=true;
 }
-fgn_event :: (s:[]ForgeNative,line:string) {
+fgn_event :: (s:[]EditorNative,line:string) {
   fgl_event(s[0].hud[..],line);e:=s[0].hud[0].event[0];
   if e.kind==1 {s[0].sn=e.sn;for i:0..<e.sn {s[0].session[i]=e.session[i];}}
   if e.kind==7 {s[0].ended=true;}
 }
-fgn_stop :: (s:[]ForgeNative) #export_c #effects(all) {
+fgn_stop :: (s:[]EditorNative) #export_c #effects(all) {
   fcr_stop(s[0].chat[..]);
   s[0].turn=-1;s[0].hud[0].busy=false;
 }
 // A turn on the runner: a new session for each (the next forks the last).
-fgn_launch :: (s:[]ForgeNative,text:string)->bool {
+fgn_launch :: (s:[]EditorNative,text:string)->bool {
   ok:=fcr_start(s[0].chat[..],text,cast(string)s[0].session[0..<s[0].sn],cast(string)s[0].workspace[0..<s[0].wn],cast(string)s[0].context[0..<s[0].cn],cast(string)s[0].engine[0..<s[0].en]);
   if !ok {return false;}
   s[0].turn=1;s[0].ended=false;return true;
 }
 // The turn's end when Coder's own line never came (stopped here, or its process exited), built by the session log's writer.
-fgn_ended :: (s:[]ForgeNative,ending:string) {b:[128]u8;n:=sl_end(b[..],0,ending,0,0,-1,"","");if n>0 {fgn_event(s,cast(string)b[0..<n]);}}
-fgn_tick :: (s:[]ForgeNative) {
+fgn_ended :: (s:[]EditorNative,ending:string) {b:[128]u8;n:=sl_end(b[..],0,ending,0,0,-1,"","");if n>0 {fgn_event(s,cast(string)b[0..<n]);}}
+fgn_tick :: (s:[]EditorNative) {
   if s[0].hud[0].pending {
     r:=fgl_request(cast(string)s[0].hud[0].request[0..<s[0].hud[0].request_n],FGN_EPOCH,s[0].last,s[0].turn>=0);
     if r.ok {
@@ -107,7 +107,7 @@ fgn_tick :: (s:[]ForgeNative) {
   }
   if s[0].turn>=0 {s[0].hud[0].busy=true;}
 }
-fgn_key :: (s:[]ForgeNative,key:int,down:bool,mods:int)->bool #export_c #effects(all) {
+fgn_key :: (s:[]EditorNative,key:int,down:bool,mods:int)->bool #export_c #effects(all) {
   if key== -13 {s[0].shift=down;return true;}if key== -14 {s[0].control=down;return true;}
   bits:=mods | (ifx s[0].shift then 1 else 0) | (ifx s[0].control then 2 else 0);
   if !s[0].hud[0].opened && (s[0].lab[0].remote[0].search || s[0].lab[0].explorer[0].search) {return lab_key(s[0].lab[..],key,down,bits);}
@@ -122,13 +122,13 @@ fgn_key :: (s:[]ForgeNative,key:int,down:bool,mods:int)->bool #export_c #effects
   }
   return lab_key(s[0].lab[..],key,down,bits);
 }
-fgn_blur :: (s:[]ForgeNative) #export_c #effects(all) {s[0].hud[0].held=false;s[0].shift=false;s[0].control=false;lab_blur(s[0].lab[..]);}
-fgn_pointer :: (s:[]ForgeNative,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c #effects(all) {
+fgn_blur :: (s:[]EditorNative) #export_c #effects(all) {s[0].hud[0].held=false;s[0].shift=false;s[0].control=false;lab_blur(s[0].lab[..]);}
+fgn_pointer :: (s:[]EditorNative,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c #effects(all) {
   s[0].px=x;s[0].py=y;if s[0].hud[0].opened {return fgl_pointer(s[0].hud[..],x,y,phase);}
   return lab_pointer(s[0].lab[..],x,y,phase,kind,id);
 }
-fgn_hover :: (s:[]ForgeNative,x:f32,y:f32) #export_c #effects(all) {s[0].px=x;s[0].py=y;}
-fgn_message :: (s:[]ForgeNative,kind:int,n:int) #export_c #effects(all) {
+fgn_hover :: (s:[]EditorNative,x:f32,y:f32) #export_c #effects(all) {s[0].px=x;s[0].py=y;}
+fgn_message :: (s:[]EditorNative,kind:int,n:int) #export_c #effects(all) {
   if n<0 || n>s[0].inbox.count {return;}
   if kind==1 && s[0].hud[0].opened {fgl_text(s[0].hud[..],cast(string)s[0].inbox[0..<n]);return;}
   for i:0..<n {s[0].lab[0].inbox[i]=s[0].inbox[i];}lab_message(s[0].lab[..],kind,n);
@@ -142,7 +142,7 @@ fgn_crop :: (out:[]f32,count:int,h:f32,d:f32)->int {
     for i:0..<72 {out[kept*12+i]=out[q*72+i];}kept+=6;
   }return kept;
 }
-fgn_frame :: (s:[]ForgeNative,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32)->int #export_c #effects(all) {
+fgn_frame :: (s:[]EditorNative,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32)->int #export_c #effects(all) {
   if !s[0].initialized {fgn_boot(s);}fgn_tick(s);fgn_lab_tick(s);fgn_selection_save(s);
   n:=lab_frame(s[0].lab[..],out,u,w,h,d,dt,false);s[0].hud[0].ready=lab_scene_ready(s[0].lab[..]);
   if s[0].hud[0].opened {n=fgn_crop(out,n,h,d);}
@@ -150,17 +150,17 @@ fgn_frame :: (s:[]ForgeNative,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32)->int #
   if s[0].hud[0].opened {p:=HdPen.{d=1,cyan=true,top=0,bottom=h,sans=false};n=hd_line(out,n,s[0].px-7,s[0].py,s[0].px+7,s[0].py,p,0,1);n=hd_line(out,n,s[0].px,s[0].py-7,s[0].px,s[0].py+7,p,0,1);}
   s[0].frame+=1;return n;
 }
-fgn_lab_end :: (s:[]ForgeNative,slot:int) {
+fgn_lab_end :: (s:[]EditorNative,slot:int) {
   if s[0].lab_fetch[slot]>=0 {r:=proc_release(s[0].lab_fetch[slot]);s[0].lab_fetch[slot]= -1;}s[0].lab_status[slot]=0;
 }
-fgn_close :: (s:[]ForgeNative) #export_c #effects(all) {
+fgn_close :: (s:[]EditorNative) #export_c #effects(all) {
   if s[0].lab_clip>=0 {r:=proc_release(s[0].lab_clip);s[0].lab_clip= -1;}
   fgn_stop(s);for i:0..<2 {fgn_lab_end(s,i);}if s[0].lab_service>=0 {r:=proc_release(s[0].lab_service);s[0].lab_service= -1;}
 }
 fgn_lab_program :: (name:string,out:[]u8)->string {
   home:[4096]u8;root:=proc_getenv("HOME",home[..]);b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],".openagents/bin/");jo_put(o[..],name);return fs_join(root,jo_text(o[..]),out);
 }
-fgn_lab_tick :: (s:[]ForgeNative) {
+fgn_lab_tick :: (s:[]EditorNative) {
   lab:=s[0].lab[0].remote[..];now:=proc_now_ms();
   for slot:0..<2 {if lab[0].effects[slot].cancel>=0 {fgn_lab_end(s,slot);lab[0].effects[slot].cancel= -1;}}
   wanted:=lab[0].effects[0].wanted || lab[0].effects[1].wanted;
@@ -199,7 +199,7 @@ fgn_selection_file :: (out:[]u8)->string {
   env:[4096]u8;configured:=(ifx proc_getenv("METAVERSE_ENGINE_LAB_SELECTION_FILE",env[..])!="" then proc_getenv("METAVERSE_ENGINE_LAB_SELECTION_FILE",env[..]) else proc_getenv("AETHYRFORGE_LAB_SELECTION_FILE",env[..]));if configured!="" {if configured.count>out.count {return "";}for i:0..<configured.count {out[i]=configured[i];}return cast(string)out[0..<configured.count];}
   home:[4096]u8;root:=proc_getenv("HOME",home[..]);return fs_join(root,".openagents/aethyrforge/selection.txt",out);
 }
-fgn_selection_save :: (s:[]ForgeNative) #export_c #effects(all) {
+fgn_selection_save :: (s:[]EditorNative) #export_c #effects(all) {
   lab:=s[0].lab[..];if lab[0].action!=3 {return;}token:=cast(string)lab[0].outbox[0..<lab[0].out_n];if !lsp_read(token).ok {lab[0].action=0;return;}
   path:[4096]u8;temp:[4096]u8;o:[1]Jo;name:=fgn_selection_file(path[..]);jo_start(o[..],temp[..]);jo_put(o[..],name);jo_put(o[..],".new");
   if name!="" && fs_write(jo_text(o[..]),token) && fs_rename(jo_text(o[..]),name) {

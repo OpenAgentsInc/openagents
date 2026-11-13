@@ -4,11 +4,11 @@
 #load "../../everglade/legacy/v1/watch.coax";
 
 #test "resizing the middle crate updates its real NPC fence and bodies stay outside the enlarged footprint" #steps 400000000 {
-  p:=fs_plan(EgEdits.{},ForgeSceneCommand.{op=FS_PLACE,item=0,count=3,located=true,x=600,z=-1050},0,0);#assert p.ok;
+  p:=fs_plan(EgEdits.{},EditorSceneCommand.{op=FS_PLACE,item=0,count=3,located=true,x=600,z=-1050},0,0);#assert p.ok;
   f:[WATCH_FENCES*5]f32;n:=eg_edit_fences(p.edits,f[..],0);
   heights:[EG_GROUND_POINTS]f32;watch_ground(heights[..]);w:[1]Watch;watch_test_town(w[..],heights[..]);watch_fences(w[..],f[..],n);
   #assert !watch_fenced(w[..],6,-12.2);
-  p=fsr_plan(p.edits,ForgeResize.{index=1,version=1,amount=300,relative=true},1);#assert p.ok;
+  p=fsr_plan(p.edits,EditorResize.{index=1,version=1,amount=300,relative=true},1);#assert p.ok;
   n=eg_edit_fences(p.edits,f[..],0);watch_fences(w[..],f[..],n);#assert n==3 && watch_fenced(w[..],6,-12.2);
   out:=watch_fence_out(w[..],1,6,-12.2,6,-12.2);#assert !watch_fenced(w[..],out.x,out.z);
   g:=EG_SPOTS;watch_home(w[..],g,6,-14,0,false);a:=w[0].actors[g..<g+1];a[0].x=6;a[0].z=-7;
@@ -20,7 +20,7 @@
 
 #test "scene tool rows and stacks immediately make NPCs walk around their actual footprints" #steps 400000000 {
   for stack:[2]bool.[false,true] {
-    c:=ForgeSceneCommand.{op=FS_PLACE,item=0,count=ifx stack then 5 else 3,stack=stack,located=true,x=600,z=-1050};
+    c:=EditorSceneCommand.{op=FS_PLACE,item=0,count=ifx stack then 5 else 3,stack=stack,located=true,x=600,z=-1050};
     p:=fs_plan(EgEdits.{},c,0,0);#assert p.ok;
     f:[WATCH_FENCES*5]f32;n:=eg_edit_fences(p.edits,f[..],0);#assert n==(ifx stack then 1 else 3);
     heights:[EG_GROUND_POINTS]f32;watch_ground(heights[..]);w:[1]Watch;watch_test_town(w[..],heights[..]);

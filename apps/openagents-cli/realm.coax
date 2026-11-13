@@ -31,7 +31,7 @@ realm_read :: (a: [] Args, r: [] Rep, profile: string, tail: string) -> int {
 
 realm_edit_answer :: (r: [] Rep, res: ApiAnswer, body: string) -> int {
   if res.error == HTTP_OK && res.status == 409 {
-    c := forge_read_reply(body);   // realm.proto's Conflict: the revision there now
+    c := editor_read_reply(body);   // realm.proto's Conflict: the revision there now
     if c.ok { rep_int(r,"rev",c.rev); }
   }
   if !api_ok(res) { return api_fail(r,res,body); }
@@ -39,7 +39,7 @@ realm_edit_answer :: (r: [] Rep, res: ApiAnswer, body: string) -> int {
   if rev < 1 { return fail(r,EXIT_FAIL,"the edit returned no valid revision; read the realm before retrying"); }
   if !rep_object(r,body) {
     rep_str(r,"lines",body);
-    v := cli_count(forge_spec_value(body,"rev"),1,999999999);
+    v := cli_count(editor_spec_value(body,"rev"),1,999999999);
     if v >= 1 { rep_int(r,"rev",v); }
   }
   return rep_done(r,EXIT_OK);
@@ -57,9 +57,9 @@ realm_edit_refuse :: (status: int, message: string, rev: int, out: [] u8) -> Api
 realm_edit_tail :: (verb: string, id: string, out: [] u8) -> string {
   c := REALM_COMMANDS[rc_find(verb)];
   if verb == "ask-delete" || verb == "ask-done" || verb == "row-delete" || verb == "accept" || verb == "decline" {
-    n := forge_put(out,0,ifx verb == "row-delete" then "/rows/" else ifx verb == "ask-delete" || verb == "ask-done" then "/asks/" else "/proposals/");
-    n = forge_put(out,n,id);
-    n = forge_put(out,n,ifx verb == "ask-done" then "/done" else ifx verb == "accept" then "/accept" else ifx verb == "decline" then "/decline" else "/delete");
+    n := editor_put(out,0,ifx verb == "row-delete" then "/rows/" else ifx verb == "ask-delete" || verb == "ask-done" then "/asks/" else "/proposals/");
+    n = editor_put(out,n,id);
+    n = editor_put(out,n,ifx verb == "ask-done" then "/done" else ifx verb == "accept" then "/accept" else ifx verb == "decline" then "/decline" else "/delete");
     return ifx n < 0 then "" else cast(string) out[0..<n];
   }
   return c.route;
@@ -75,7 +75,7 @@ realm_edit_doc :: (a: [] Args, profile: string, slug: string, rev: int, out: [] 
   encoded: [491520] u8; en := b64_encode(cast(string) bytes[0..<n],encoded[..]);
   if en < 0 { return realm_edit_refuse(400,"the document did not encode",-1,out); }
   buf: [REALM_DOC_BODY] u8;
-  bn := forge_ask_doc_body(rev,fs_base(file),cast(string) encoded[0..<en],buf[..]);   // edits.proto's AskDocRequest (metaverse-engine/editor/change.coax)
+  bn := editor_ask_doc_body(rev,fs_base(file),cast(string) encoded[0..<en],buf[..]);   // edits.proto's AskDocRequest (metaverse-engine/editor/change.coax)
   if bn < 0 { return realm_edit_refuse(400,"the document is too large",-1,out); }
   path: [256] u8;
   return api_call(a,profile,"POST",realm_path(slug,"/edit-v1/asks/doc",path[..]),cast(string) buf[0..<bn],out);
@@ -93,7 +93,7 @@ realm_edit_run :: (a: [] Args, profile: string, verb: string, expected: int, out
     if n < 0 { return realm_edit_refuse(400,"the answer buffer is too small",-1,out); }
     read.n = n; return read;
   }
-  current := cli_count(forge_spec_value(spec,"rev"),1,999999999);
+  current := cli_count(editor_spec_value(spec,"rev"),1,999999999);
   if current < 1 { return realm_edit_refuse(400,"that realm has no versioned document",-1,out); }
   rev := expected;
   if rev < 1 && rc_has(a,verb,"--rev") { rev = cli_count(rc_option(a,verb,"--rev",""),1,999999999); }
@@ -108,54 +108,54 @@ realm_edit_run :: (a: [] Args, profile: string, verb: string, expected: int, out
       if copied < 0 { return realm_edit_refuse(400,"the answer buffer is too small",-1,out); }
       got.n=copied; return got;
     }
-    base := forge_read_base(cast(string) docbuf[0..<got.n]);   // the document's base: null, or the realm a fork came from
+    base := editor_read_base(cast(string) docbuf[0..<got.n]);   // the document's base: null, or the realm a fork came from
     if !base.ok { return realm_edit_refuse(400,"the realm has no supported publication profile",rev,out); }
     fork_publish = base.fork;
-    if fork_publish && forge_spec_value(spec,"edit_fence") != "1" { return realm_edit_refuse(400,"built-in fork publication needs revision-fenced routes (migration 0102)",rev,out); }
+    if fork_publish && editor_spec_value(spec,"edit_fence") != "1" { return realm_edit_refuse(400,"built-in fork publication needs revision-fenced routes (migration 0102)",rev,out); }
   }
-  if realm_shape_verb(verb) && forge_spec_value(spec,"shapes") != "1" {
+  if realm_shape_verb(verb) && editor_spec_value(spec,"shapes") != "1" {
     return realm_edit_refuse(400,"this server keeps no turns, sizes or removals (migration 0109)",current,out);
   }
-  if !realm_save_verb(verb) && verb != "undo" && verb != "redo" && verb != "publish" && forge_spec_value(spec,"edit_fence") != "1" {
+  if !realm_save_verb(verb) && verb != "undo" && verb != "redo" && verb != "publish" && editor_spec_value(spec,"edit_fence") != "1" {
     return realm_edit_refuse(400,"this server needs revision-fenced edit routes (migration 0102)",current,out);
   }
   if verb == "ask" && rc_has(a,verb,"--doc") { return realm_edit_doc(a,profile,slug,rev,out); }
   buf: [API_BODY_MAX] u8;
   if realm_save_verb(verb) {
-    doc: [1] ForgeDoc; forge_reset(doc[..],rev);
+    doc: [1] EditorDoc; editor_reset(doc[..],rev);
     if !cli_edit_read_moves(spec,doc[..]) { return realm_edit_refuse(400,"the realm's move list did not read",rev,out); }
     if !realm_save_edit(a,verb,doc[..]) { return realm_edit_refuse(400,"the edit does not fit the document",rev,out); }
-    n := forge_save_body(doc[..],buf[..]);
+    n := editor_save_body(doc[..],buf[..]);
     if n < 0 { return realm_edit_refuse(400,"the move body is too large",rev,out); }
     return api_call(a,profile,"POST",realm_path(slug,"/save",path[..]),cast(string) buf[0..<n],out);
   }
   if verb == "undo" || verb == "redo" {
-    n := forge_rev_body(rev,buf[..]);   // realm.proto's RevRequest, {"rev":N}
+    n := editor_rev_body(rev,buf[..]);   // realm.proto's RevRequest, {"rev":N}
     tb: [128] u8;
     return api_call(a,profile,"POST",realm_path(slug,realm_edit_tail(verb,"",tb[..]),path[..]),cast(string) buf[0..<n],out);
   }
   // record.proto's VisibilityRequest and a made realm's PublishRequest: record.coax writes them
   if verb == "visibility" || (verb == "publish" && !fork_publish) {
-    n := ifx verb == "visibility" then forge_visibility_body(rev,rc_pos(a,verb,3),buf[..])
-         else ifx rc_has(a,verb,"--listed") then forge_publish_body(rev,true,buf[..]) else forge_rev_body(rev,buf[..]);
+    n := ifx verb == "visibility" then editor_visibility_body(rev,rc_pos(a,verb,3),buf[..])
+         else ifx rc_has(a,verb,"--listed") then editor_publish_body(rev,true,buf[..]) else editor_rev_body(rev,buf[..]);
     if n < 0 { return realm_edit_refuse(400,"the visibility is private, unlisted or public",rev,out); }
     return api_call(a,profile,"POST",realm_path(slug,ifx verb == "visibility" then "/edit-v1/visibility" else "/publish",path[..]),cast(string) buf[0..<n],out);
   }
   // edits.proto's bodies, the revision first (metaverse-engine/editor/change.coax writes each)
   v := rc_pos(a,verb,3);
   bn := -1;
-  if verb == "switch" { bn = forge_switch_body(rev,v,cli_onoff(rc_pos(a,verb,4)) == 1,false,buf[..]); }
-  else if verb == "revise" { bn = forge_words_body(rev,"prompt",v,false,buf[..]); }
-  else if verb == "ask" { bn = forge_words_body(rev,"words",v,false,buf[..]); }
-  else if verb == "ask-done" { bn = forge_words_body(rev,"commit",rc_option(a,verb,"--commit",""),false,buf[..]); }
+  if verb == "switch" { bn = editor_switch_body(rev,v,cli_onoff(rc_pos(a,verb,4)) == 1,false,buf[..]); }
+  else if verb == "revise" { bn = editor_words_body(rev,"prompt",v,false,buf[..]); }
+  else if verb == "ask" { bn = editor_words_body(rev,"words",v,false,buf[..]); }
+  else if verb == "ask-done" { bn = editor_words_body(rev,"commit",rc_option(a,verb,"--commit",""),false,buf[..]); }
   else if verb == "place" {
     xb: [24] u8; zb: [24] u8; yb: [24] u8;
-    xn := forge_put_cm(xb[..],0,cli_edit_cm(rc_pos(a,verb,4))); zn := forge_put_cm(zb[..],0,cli_edit_cm(rc_pos(a,verb,5)));
+    xn := editor_put_cm(xb[..],0,cli_edit_cm(rc_pos(a,verb,4))); zn := editor_put_cm(zb[..],0,cli_edit_cm(rc_pos(a,verb,5)));
     y := rc_option(a,verb,"--yaw","0");
     neg := y.count > 0 && y[0] == '-';
     amount := cli_count(ifx neg then y[1..<y.count] else y,0,360);
-    yn := forge_put_int(yb[..],0,ifx neg then -amount else amount);
-    bn = forge_place_body(rev,v,cast(string) xb[0..<xn],cast(string) zb[0..<zn],cast(string) yb[0..<yn],false,buf[..]);
+    yn := editor_put_int(yb[..],0,ifx neg then -amount else amount);
+    bn = editor_place_body(rev,v,cast(string) xb[0..<xn],cast(string) zb[0..<zn],cast(string) yb[0..<yn],false,buf[..]);
   }
   else if verb == "settings" {
     enabled := rc_option(a,verb,"--tools",""); names := [6] string.["build","fly","jump","map","talk","voice"]; tools_on: [6] bool;
@@ -163,20 +163,20 @@ realm_edit_run :: (a: [] Args, profile: string, verb: string, expected: int, out
       at := 0;
       for end: 0..<enabled.count+1 { if end == enabled.count || enabled[end] == ',' { if enabled[at..<end] == names[i] { tools_on[i]=true; } at=end+1; } }
     }
-    bn = forge_settings_body(rev,names[..],tools_on[..],buf[..]);
+    bn = editor_settings_body(rev,names[..],tools_on[..],buf[..]);
   }
-  else if verb == "lore" { bn = forge_lore_body(rev,v,rc_pos(a,verb,4),false,buf[..]); }
+  else if verb == "lore" { bn = editor_lore_body(rev,v,rc_pos(a,verb,4),false,buf[..]); }
   else if verb == "quest" {
     steps: [3] string; sn := 0;
     for i: 0..<3 { if rc_option_index(a,verb,"--step",i) >= 0 { steps[sn] = rc_option_at(a,verb,"--step",i); sn += 1; } }
-    bn = forge_quest_body(rev,v,rc_option(a,verb,"--ask",""),steps[0..<sn],rc_option(a,verb,"--reward",""),false,buf[..]);
+    bn = editor_quest_body(rev,v,rc_option(a,verb,"--ask",""),steps[0..<sn],rc_option(a,verb,"--reward",""),false,buf[..]);
   }
-  else if verb == "publish" && rc_has(a,verb,"--listed") { bn = forge_publish_body(rev,true,buf[..]); }   // a fork's publish, listed
-  else { bn = forge_rev_body(rev,buf[..]); }   // accept, decline, the two deletes, a fork's publish: {"rev":N}
+  else if verb == "publish" && rc_has(a,verb,"--listed") { bn = editor_publish_body(rev,true,buf[..]); }   // a fork's publish, listed
+  else { bn = editor_rev_body(rev,buf[..]); }   // accept, decline, the two deletes, a fork's publish: {"rev":N}
   if bn < 0 { return realm_edit_refuse(400,"the edit body is too large",rev,out); }
   tailbuf: [128] u8; tail := realm_edit_tail(verb,v,tailbuf[..]);
   fenced: [160] u8;
-  if verb != "undo" && verb != "redo" && (verb != "publish" || fork_publish) { n := forge_put(fenced[..],0,"/edit-v1"); n = forge_put(fenced[..],n,tail); tail = cast(string) fenced[0..<n]; }
+  if verb != "undo" && verb != "redo" && (verb != "publish" || fork_publish) { n := editor_put(fenced[..],0,"/edit-v1"); n = editor_put(fenced[..],n,tail); tail = cast(string) fenced[0..<n]; }
   return api_call(a,profile,"POST",realm_path(slug,tail,path[..]),cast(string) buf[0..<bn],out);
 }
 
@@ -190,20 +190,20 @@ realm_edit :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
 realm_shape_verb :: (verb: string) -> bool { return verb == "rotate" || verb == "resize" || verb == "remove"; }
 realm_save_verb :: (verb: string) -> bool { return verb == "move" || realm_shape_verb(verb); }
 // One such edit onto the document read (metaverse-engine/editor/edit.coax's typed operations); one already so is no change.
-realm_save_edit :: (a: [] Args, verb: string, doc: [] ForgeDoc) -> bool {
-  key := rc_pos(a,verb,3); was := forge_shape_of(doc,key);
+realm_save_edit :: (a: [] Args, verb: string, doc: [] EditorDoc) -> bool {
+  key := rc_pos(a,verb,3); was := editor_shape_of(doc,key);
   if verb == "move" {
     x := cli_edit_cm(rc_pos(a,verb,4)); z := cli_edit_cm(rc_pos(a,verb,5));
-    return (was.at && was.x == x && was.z == z) || forge_move(doc,key,x,z);
+    return (was.at && was.x == x && was.z == z) || editor_move(doc,key,x,z);
   }
   if verb == "rotate" {
     y := rc_pos(a,verb,4); neg := y.count > 0 && y[0] == '-';
     amount := cli_count(ifx neg then y[1..<y.count] else y,0,360);
-    turn := forge_turn(ifx neg then -amount else amount);
-    return amount >= 0 && (was.yaw == turn || forge_rotate(doc,key,turn));
+    turn := editor_turn(ifx neg then -amount else amount);
+    return amount >= 0 && (was.yaw == turn || editor_rotate(doc,key,turn));
   }
-  if verb == "resize" { p := cli_count(rc_pos(a,verb,4),25,400); return p >= 25 && (was.scale == p || forge_resize(doc,key,p)); }
-  return was.gone || forge_remove(doc,key);
+  if verb == "resize" { p := cli_count(rc_pos(a,verb,4),25,400); return p >= 25 && (was.scale == p || editor_resize(doc,key,p)); }
+  return was.gone || editor_remove(doc,key);
 }
 
 RealmLine :: struct { first: int; end: int; next: int; }
@@ -235,14 +235,14 @@ realm_apply :: (a: [] Args, r: [] Rep, profile: string) -> int {
       rep_int(r,"applied",applied); rep_int(r,"line",line); if expected >= 1 { rep_int(r,"rev",expected); }
       if bad.field != "" { rep_str(r,"field",bad.field); }
       said: [1024] u8;
-      lt: [24] u8; m := forge_put(said[..],0,"line "); m = forge_put(said[..],m,int_text(line,lt[..]));
-      if bad.field != "" { m = forge_put(said[..],m,": field \""); m = forge_put(said[..],m,bad.field); m = forge_put(said[..],m,"\""); }
-      m = forge_put(said[..],m,ifx bad.field != "" then " " else ": "); m = forge_put(said[..],m,bad.why);
-      m = forge_put(said[..],m," (openagents help: realm apply's FILE)");
+      lt: [24] u8; m := editor_put(said[..],0,"line "); m = editor_put(said[..],m,int_text(line,lt[..]));
+      if bad.field != "" { m = editor_put(said[..],m,": field \""); m = editor_put(said[..],m,bad.field); m = editor_put(said[..],m,"\""); }
+      m = editor_put(said[..],m,ifx bad.field != "" then " " else ": "); m = editor_put(said[..],m,bad.why);
+      m = editor_put(said[..],m," (openagents help: realm apply's FILE)");
       if applied > 0 {
         at_text: [24] u8; rev_text: [24] u8;
-        m = forge_put(said[..],m,"; applied before it: "); m = forge_put(said[..],m,int_text(applied,at_text[..]));
-        m = forge_put(said[..],m,", and the realm is now at rev "); m = forge_put(said[..],m,int_text(expected,rev_text[..]));
+        m = editor_put(said[..],m,"; applied before it: "); m = editor_put(said[..],m,int_text(applied,at_text[..]));
+        m = editor_put(said[..],m,", and the realm is now at rev "); m = editor_put(said[..],m,int_text(expected,rev_text[..]));
       }
       return fail(r,EXIT_USAGE,ifx m < 0 then bad.why else cast(string) said[0..<m]);
     }
@@ -259,16 +259,16 @@ realm_apply :: (a: [] Args, r: [] Rep, profile: string) -> int {
       if !api_ok(read) {
         rep_int(r,"applied",applied); return api_fail(r,read,cast(string) specbuf[0..<read.n]);
       }
-      spec := cast(string) specbuf[0..<read.n]; current := cli_count(forge_spec_value(spec,"rev"),1,999999999);
+      spec := cast(string) specbuf[0..<read.n]; current := cli_count(editor_spec_value(spec,"rev"),1,999999999);
       if current < 1 { rep_int(r,"applied",applied); return fail(r,EXIT_USAGE,"that realm has no versioned document"); }
       if expected < 1 { expected=current; }
       if current != expected {
         rep_int(r,"applied",applied); res=realm_edit_refuse(409,"changed since",current,out[..]);
         return realm_edit_answer(r,res,cast(string) out[0..<res.n]);
       }
-      doc: [1] ForgeDoc; forge_reset(doc[..],expected);
+      doc: [1] EditorDoc; editor_reset(doc[..],expected);
       if !cli_edit_read_moves(spec,doc[..]) { rep_int(r,"applied",applied); return fail(r,EXIT_FAIL,"the realm's move list did not read"); }
-      shapes := forge_spec_value(spec,"shapes") == "1";
+      shapes := editor_spec_value(spec,"shapes") == "1";
       count := 0;
       while at < text.count && applied+count < 256 {
         span=realm_line(text,at);
@@ -282,7 +282,7 @@ realm_apply :: (a: [] Args, r: [] Rep, profile: string) -> int {
         count+=1; at=span.next; line+=1;
       }
       if count == 0 { rep_int(r,"applied",applied); rep_int(r,"line",line); return fail(r,EXIT_USAGE,"the move, turn, size or removal group does not fit the document"); }
-      body: [API_BODY_MAX] u8; bn := forge_save_body(doc[..],body[..]);
+      body: [API_BODY_MAX] u8; bn := editor_save_body(doc[..],body[..]);
       if bn < 0 { rep_int(r,"applied",applied); return fail(r,EXIT_USAGE,"the move group body does not fit"); }
       res=api_call(a,profile,"POST",realm_path(slug,"/save",path[..]),cast(string) body[0..<bn],out[..]);
       if !api_ok(res) { rep_int(r,"applied",applied); rep_int(r,"line",line-count); return realm_edit_answer(r,res,cast(string) out[0..<res.n]); }
@@ -338,9 +338,9 @@ realm_path :: (slug: string, tail: string, out: [] u8) -> string {
 
 // text, then spaces to width (at least one).
 realm_cell :: (out: [] u8, at: int, text: string, width: int) -> int #effects(all) {
-  n := forge_put(out,forge_put(out,at,text)," ");
+  n := editor_put(out,editor_put(out,at,text)," ");
   w := text.count + 1;
-  while w < width { n = forge_put(out,n," "); w += 1; }
+  while w < width { n = editor_put(out,n," "); w += 1; }
   return n;
 }
 
@@ -374,31 +374,31 @@ realm_rows :: (text: string, out: [] u8) -> int #effects(all) {
   slug_w := 4; rows := false; at := 0;
   for end: 0..<text.count + 1 {
     if end < text.count && text[end] != '\n' { continue; }
-    m: [1] ForgeMine; m[0] = forge_read_mine_line(text[at..<end]); at = end + 1;   // record.proto's MineRealm, a line
+    m: [1] EditorMine; m[0] = editor_read_mine_line(text[at..<end]); at = end + 1;   // record.proto's MineRealm, a line
     if m[0].slug_n == 0 { continue; }
     while slug_w < m[0].slug_n { slug_w += 1; }
     rows = true;
   }
   n := 0;
   if rows {
-    n = realm_cell(out,n,"SLUG",slug_w + 2); n = realm_cell(out,n,"VISIBILITY",12); n = realm_cell(out,n,"REV",5); n = realm_cell(out,n,"PUBLISHED",11); n = forge_put(out,n,"NAME\n");
+    n = realm_cell(out,n,"SLUG",slug_w + 2); n = realm_cell(out,n,"VISIBILITY",12); n = realm_cell(out,n,"REV",5); n = realm_cell(out,n,"PUBLISHED",11); n = editor_put(out,n,"NAME\n");
   }
   at = 0; others := false;
   for end: 0..<text.count + 1 {
     if end < text.count && text[end] != '\n' { continue; }
     line := text[at..<end]; at = end + 1;
     if line.count == 0 { continue; }
-    m: [1] ForgeMine; m[0] = forge_read_mine_line(line);
-    if m[0].slug_n == 0 { n = forge_put(out,n,line); n = forge_put(out,n,"\n"); others = true; continue; }
+    m: [1] EditorMine; m[0] = editor_read_mine_line(line);
+    if m[0].slug_n == 0 { n = editor_put(out,n,line); n = editor_put(out,n,"\n"); others = true; continue; }
     rb: [24] u8; pb: [24] u8;
-    rn := forge_put_int(rb[..],0,m[0].rev); pn := forge_put_int(pb[..],0,m[0].published);
-    n = realm_cell(out,n,forge_mine_slug(m[..]),slug_w + 2);
-    n = realm_cell(out,n,forge_mine_vis(m[..]),12);
+    rn := editor_put_int(rb[..],0,m[0].rev); pn := editor_put_int(pb[..],0,m[0].published);
+    n = realm_cell(out,n,editor_mine_slug(m[..]),slug_w + 2);
+    n = realm_cell(out,n,editor_mine_vis(m[..]),12);
     n = realm_cell(out,n,cast(string) rb[0..<rn],5);
     n = realm_cell(out,n,ifx m[0].published == 0 then "never" else cast(string) pb[0..<pn],11);
-    n = forge_put(out,n,forge_mine_name(m[..])); n = forge_put(out,n,"\n");
+    n = editor_put(out,n,editor_mine_name(m[..])); n = editor_put(out,n,"\n");
   }
-  if !rows && !others { n = forge_put(out,n,"realms 0\n"); }
+  if !rows && !others { n = editor_put(out,n,"realms 0\n"); }
   return n;
 }
 
@@ -424,15 +424,15 @@ realm_show :: (a: [] Args, r: [] Rep, profile: string) -> int {
   res := api_call(a, profile, "GET", realm_path(slug, "", p[..]), "", out[..]);
   spec := cast(string) out[0..<res.n];
   if !api_ok(res) { return api_fail(r, res, spec); }
-  vis := forge_spec_value(spec, "visibility");
+  vis := editor_spec_value(spec, "visibility");
   page := realm_page(a, profile, slug, vis, pg[..]);
   if !r[0].json { print("%", spec); print("page %\n", page); return EXIT_OK; }
   rep_str(r, "slug", slug);
-  rep_str(r, "name", forge_spec_value(spec, "name"));
+  rep_str(r, "name", editor_spec_value(spec, "name"));
   rep_str(r, "visibility", ifx vis == "" then "public" else vis);
-  rep_str(r, "role", forge_spec_value(spec, "role"));
-  rev := forge_spec_value(spec, "rev");
-  if rev != "" { rep_raw(r, "rev", rev); rep_raw(r, "published", forge_spec_value(spec, "published")); }
+  rep_str(r, "role", editor_spec_value(spec, "role"));
+  rev := editor_spec_value(spec, "rev");
+  if rev != "" { rep_raw(r, "rev", rev); rep_raw(r, "published", editor_spec_value(spec, "published")); }
   rep_str(r, "page", page);
   rep_str(r, "spec", spec);
   return rep_done(r, EXIT_OK);
@@ -458,7 +458,7 @@ realm_new :: (a: [] Args, r: [] Rep, profile: string) -> int {
       flag: [16] u8; fn := copy("--", flag[..]); fn += copy(keys[f], flag[fn..<flag.count]);
       values[f] = rc_option(a, "new", cast(string) flag[0..<fn], "");
     }
-    bn := forge_plan_body(words, 2000, false, 0, none[0..<0], keys[..], values[..], buf[..]);
+    bn := editor_plan_body(words, 2000, false, 0, none[0..<0], keys[..], values[..], buf[..]);
     if bn < 0 { return fail(r, EXIT_USAGE, "those words are too long"); }
     body := cast(string) buf[0..<bn];
     res := api_call(a, profile, "POST", "/api/playtest/realms/plan?as=lines", body, out[..]);
@@ -469,13 +469,13 @@ realm_new :: (a: [] Args, r: [] Rep, profile: string) -> int {
     plan = b.plan; rows = b.rows;
   }
   nokeys: [1] string;
-  mn := forge_make_body(plan, on[0..<rows], nokeys[0..<0], nokeys[0..<0], "", 0, buf[..]);   // board.coax: {"plan":N,"on":[..]}
+  mn := editor_make_body(plan, on[0..<rows], nokeys[0..<0], nokeys[0..<0], "", 0, buf[..]);   // board.coax: {"plan":N,"on":[..]}
   if mn < 0 { return fail(r, EXIT_FAIL, "the plan's board didn't fit"); }
   res := api_call(a, profile, "POST", "/api/playtest/realms?as=lines", cast(string) buf[0..<mn], out[..]);
   made := cast(string) out[0..<res.n];
   if !api_ok(res) { return api_fail(r, res, made); }
-  mm: [1] ForgeMade; mm[0] = forge_read_made(made);   // made.proto's lines
-  slug := forge_made_slug(mm[..]);
+  mm: [1] EditorMade; mm[0] = editor_read_made(made);   // made.proto's lines
+  slug := editor_made_slug(mm[..]);
   if !mm[0].ok || !cli_slug_ok(slug) { return fail(r, EXIT_FAIL, "the server made no realm"); }
   pg: [400] u8;
   rep_int(r, "plan", plan);
@@ -491,11 +491,11 @@ realm_visibility :: (a: [] Args, r: [] Rep, profile: string, at: int) -> int {
   vis := positional(a, at + 1);
   if !cli_slug_ok(slug) || !cli_visibility_ok(vis) { return fail(r, EXIT_USAGE, "visibility SLUG private|unlisted|public"); }
   out: [API_OUT] u8; p: [128] u8; buf: [256] u8; pg: [400] u8;
-  bn := forge_visibility_body(0, vis, buf[..]);   // record.proto's VisibilityRequest, {"visibility":"V"}
+  bn := editor_visibility_body(0, vis, buf[..]);   // record.proto's VisibilityRequest, {"visibility":"V"}
   res := api_call(a, profile, "POST", realm_path(slug, "/visibility", p[..]), cast(string) buf[0..<bn], out[..]);
   body := cast(string) out[0..<res.n];
   if !api_ok(res) { return api_fail(r, res, body); }
-  if !forge_read_visibility(body).ok || !rep_object(r, body) { return fail(r, EXIT_FAIL, "the server's answer isn't a visibility"); }
+  if !editor_read_visibility(body).ok || !rep_object(r, body) { return fail(r, EXIT_FAIL, "the server's answer isn't a visibility"); }
   rep_str(r, "url", realm_page(a, profile, slug, vis, pg[..]));
   return rep_done(r, EXIT_OK);
 }
@@ -513,14 +513,14 @@ realm_publish :: (a: [] Args, r: [] Rep, profile: string) -> int {
     res := api_call(a, profile, "GET", realm_path(slug, "", p[..]), "", out[..]);
     spec := cast(string) out[0..<res.n];
     if !api_ok(res) { return api_fail(r, res, spec); }
-    rev = cli_count(forge_spec_value(spec, "rev"), 1, 999999999);
+    rev = cli_count(editor_spec_value(spec, "rev"), 1, 999999999);
     if rev < 0 { return fail(r, EXIT_USAGE, "that realm has no revisions to publish (a built-in realm?)"); }
   }
-  bn := forge_rev_body(rev, buf[..]);   // realm.proto's RevRequest, {"rev":N}
+  bn := editor_rev_body(rev, buf[..]);   // realm.proto's RevRequest, {"rev":N}
   res := api_call(a, profile, "POST", realm_path(slug, "/publish", p[..]), cast(string) buf[0..<bn], out[..]);
   body := cast(string) out[0..<res.n];
   if res.error == HTTP_OK && res.status == 409 {
-    c := forge_read_reply(body);   // a Conflict's revision; a quoted "7" is none, so only a number is printed
+    c := editor_read_reply(body);   // a Conflict's revision; a quoted "7" is none, so only a number is printed
     if c.ok { rep_int(r, "rev", c.rev); }
   }
   if !api_ok(res) { return api_fail(r, res, body); }
@@ -533,13 +533,13 @@ realm_fork :: (a: [] Args, r: [] Rep, profile: string) -> int {
   if !cli_slug_ok(slug) { return fail(r, EXIT_USAGE, "realm fork SLUG [--name NAME]"); }
   out: [API_OUT] u8; p: [128] u8; buf: [512] u8; pg: [400] u8;
   no: [1] string;
-  bn := forge_fork_body(true, no[0..<0], ifx args_has(a, "--name") then args_value(a, "--name", "") else "", buf[..]);   // made.proto's ForkRequest
+  bn := editor_fork_body(true, no[0..<0], ifx args_has(a, "--name") then args_value(a, "--name", "") else "", buf[..]);   // made.proto's ForkRequest
   if bn < 0 { return fail(r, EXIT_USAGE, "--name is too long"); }
   res := api_call(a, profile, "POST", realm_path(slug, "/fork?as=lines", p[..]), cast(string) buf[0..<bn], out[..]);
   made := cast(string) out[0..<res.n];
   if !api_ok(res) { return api_fail(r, res, made); }
-  mm: [1] ForgeMade; mm[0] = forge_read_made(made);   // made.proto's lines
-  fork := forge_made_slug(mm[..]);
+  mm: [1] EditorMade; mm[0] = editor_read_made(made);   // made.proto's lines
+  fork := editor_made_slug(mm[..]);
   if !mm[0].ok || !cli_slug_ok(fork) { return fail(r, EXIT_FAIL, "the server made no fork"); }
   rep_str(r, "slug", fork);
   rep_str(r, "from", slug);

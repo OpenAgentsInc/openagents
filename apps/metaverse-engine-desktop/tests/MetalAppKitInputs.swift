@@ -9,7 +9,7 @@ struct MetalAppKitInputs {
         let plan = try JSONSerialization.jsonObject(with:Data(contentsOf:URL(fileURLWithPath:CommandLine.arguments[3]))) as! [String:Any]
         guard plan["schema"] as? String == "aethyr.metal.appkit-events.v1", let host = mf_open(CommandLine.arguments[1],CommandLine.arguments[2],false,true) else { fatalError("fixture open") }
         _ = NSApplication.shared
-        let view = ForgeMetalWorld(frame:NSRect(x:0,y:0,width:320,height:180));view.host=host
+        let view = EditorMetalWorld(frame:NSRect(x:0,y:0,width:320,height:180));view.host=host
         defer { view.close() }
         var observations: [[String:Any]] = []
         for op in plan["operations"] as? [[String:Any]] ?? [] {

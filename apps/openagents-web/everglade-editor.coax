@@ -53,7 +53,7 @@ FG_FIXED_DIFF :: [FG_FIXED] string.[
   "~ A FRAME OVER ITS BUDGET IS REFUSED WHOLE, NOT HALF DRAWN",
   "~ RAIN AND SPELL PARTICLES: WGSL WRITTEN FROM COAX"];
 
-EgForge :: struct {
+EgEditor :: struct {
   filter: int;
   open: int;                    // the row opened (its key: -1 - live index, or fixed index), -2 none
   opened: bool;                 // a row was opened since edit mode began (else the newest is)
@@ -66,21 +66,21 @@ EgForge :: struct {
 FG_CYAN_R :: 0.216; FG_CYAN_G :: 0.851; FG_CYAN_B :: 0.851;
 FG_RED_R :: 0.92; FG_RED_G :: 0.48; FG_RED_B :: 0.42;
 
-forge_on :: (s: [] Everglade) -> bool { return s[0].ev.editing && s[0].ev.admin && !s[0].above && s[0].talk < 0 && !s[0].board; }
+editor_on :: (s: [] Everglade) -> bool { return s[0].ev.editing && s[0].ev.admin && !s[0].above && s[0].talk < 0 && !s[0].board; }
 
 #test "?forge=play starts with the builder closed and B opens it only on request" {
   s:[1]Everglade;s[0].talk=-1;
   url:="http://127.0.0.1:49152/worlds/everglade?forge=play&room=pair-aethyrforge";
-  forge_facts(s[..],url);
-  #assert s[0].fg.local && s[0].ev.admin && !s[0].ev.editing && !forge_on(s[..]);
-  #assert everglade_edit_key(s[..],'b',true) && forge_on(s[..]);
-  forge_facts(s[..],url);#assert forge_on(s[..]);
-  #assert everglade_edit_key(s[..],'b',true) && !forge_on(s[..]);
-  forge_facts(s[..],url);#assert !s[0].ev.editing;
+  editor_facts(s[..],url);
+  #assert s[0].fg.local && s[0].ev.admin && !s[0].ev.editing && !editor_on(s[..]);
+  #assert everglade_edit_key(s[..],'b',true) && editor_on(s[..]);
+  editor_facts(s[..],url);#assert editor_on(s[..]);
+  #assert everglade_edit_key(s[..],'b',true) && !editor_on(s[..]);
+  editor_facts(s[..],url);#assert !s[0].ev.editing;
 }
 
 // Local builder access. Desktop's ?forge=play leaves the editor closed until B/EDIT.
-forge_facts :: (s: [] Everglade, url: string) {
+editor_facts :: (s: [] Everglade, url: string) {
   local := fg_has(url, "://127.0.0.1") || fg_has(url, "://localhost");
   if local && fg_has(url, "forge") {
     s[0].fg.local = true; s[0].ev.admin = true;
@@ -176,7 +176,7 @@ fg_diff_line :: (key: int, j: int) -> string {
 }
 
 // Everything the forge draws in edit mode. Returns the vertices drawn so far.
-forge_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
+editor_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   k := hi(s[0].dpr, 0.5); w := s[0].width; h := s[0].height;
   g := 16 * k;
   // edit mode's picks and the picked thing's row (everglade-edit.coax, bare: no hotbar, no pane)
@@ -288,8 +288,8 @@ forge_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
 }
 
 // A press on the filter or on a row (opens it; again closes it). True when it was ours.
-forge_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int) -> bool {
-  if !forge_on(s) || phase != 0 { return false; }
+editor_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int) -> bool {
+  if !editor_on(s) || phase != 0 { return false; }
   for i: 0..<3 { if in_box(s[0].fg.tabs[i], x, y) { s[0].fg.filter = i; s[0].fg.opened = false; return true; } }
   for r: 0..<s[0].fg.row_n {
     if in_box(s[0].fg.rows[r], x, y) {
@@ -305,29 +305,29 @@ forge_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int) -> bool {
   s: [1] Everglade;
   everglade_start(s[..]);
   everglade_message(s[..], MSG_VIEWER, "A|1\n");
-  #assert everglade_key(s[..], 'b', 0) && forge_on(s[..]);
+  #assert everglade_key(s[..], 'b', 0) && editor_on(s[..]);
   s[0].width = 1600; s[0].height = 900; s[0].dpr = 1;
   out: [60000 * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   s[0].plate_n = 0;
-  n := forge_hud(s[..], out[..], u[..], 0);
+  n := editor_hud(s[..], out[..], u[..], 0);
   #assert n > 0 && s[0].fg.row_n > 0 && s[0].ev.boxes[EB_DONE].x1 > s[0].ev.boxes[EB_DONE].x0;
   #assert s[0].ev.boxes[EB_UNDO].x1 == 0;   // no hotbar
   all := s[0].fg.row_n;
   // ENGINE only: every row is an engine update
   t := s[0].fg.tabs[FG_ENGINE];
-  #assert forge_pointer(s[..], (t.x0 + t.x1) / 2, (t.y0 + t.y1) / 2, 0) && s[0].fg.filter == FG_ENGINE;
-  s[0].plate_n = 0; n = forge_hud(s[..], out[..], u[..], 0);
+  #assert editor_pointer(s[..], (t.x0 + t.x1) / 2, (t.y0 + t.y1) / 2, 0) && s[0].fg.filter == FG_ENGINE;
+  s[0].plate_n = 0; n = editor_hud(s[..], out[..], u[..], 0);
   #assert s[0].fg.row_n > 0 && s[0].fg.row_n < all;
   for r: 0..<s[0].fg.row_n { #assert fg_kind_of(s[0].fg.row_key[r]) == FG_ENGINE; }
   // a row tapped opens it; tapped again closes it
   b := s[0].fg.rows[1];
-  #assert forge_pointer(s[..], (b.x0 + b.x1) / 2, b.y0 + 4, 0) && s[0].fg.open == s[0].fg.row_key[1];
-  #assert forge_pointer(s[..], (b.x0 + b.x1) / 2, b.y0 + 4, 0) && s[0].fg.open != s[0].fg.row_key[1];
+  #assert editor_pointer(s[..], (b.x0 + b.x1) / 2, b.y0 + 4, 0) && s[0].fg.open == s[0].fg.row_key[1];
+  #assert editor_pointer(s[..], (b.x0 + b.x1) / 2, b.y0 + 4, 0) && s[0].fg.open != s[0].fg.row_key[1];
   // a thing placed is the newest realm row
-  #assert forge_pointer(s[..], (s[0].fg.tabs[FG_REALM].x0 + s[0].fg.tabs[FG_REALM].x1) / 2, (s[0].fg.tabs[FG_REALM].y0 + s[0].fg.tabs[FG_REALM].y1) / 2, 0);
+  #assert editor_pointer(s[..], (s[0].fg.tabs[FG_REALM].x0 + s[0].fg.tabs[FG_REALM].x1) / 2, (s[0].fg.tabs[FG_REALM].y0 + s[0].fg.tabs[FG_REALM].y1) / 2, 0);
   s[0].feet = v3(6, 0, -9); s[0].face = f32(PI);
   #assert everglade_key(s[..], '1', 0) && s[0].ev.edits.n == 1;
-  s[0].plate_n = 0; n = forge_hud(s[..], out[..], u[..], 0);
+  s[0].plate_n = 0; n = editor_hud(s[..], out[..], u[..], 0);
   #assert s[0].fg.row_key[0] == -1;
   // DONE leaves
   d := s[0].ev.boxes[EB_DONE];

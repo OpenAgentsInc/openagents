@@ -2,14 +2,14 @@
 // proto/verse/realm-document-v1.json holds a made realm's document as the server stores it, a run of
 // edits, and after each one the document, its SHA-256, the reply and the undo step the server logged.
 // This replays the same steps through metaverse-engine/editor/edit.coax and doc.coax and requires, byte for byte:
-//   - the body each step sends (edit.coax's forge_save_body and forge_rev_body);
-//   - the document after it (doc.coax's forge_doc_json) and the SHA-256 of that text;
-//   - the reply (forge_save_reply, forge_undo_reply, forge_conflict) and its revision read back;
-//   - an undo or redo is the server's logged step applied to the model (forge_apply_step), and every
+//   - the body each step sends (edit.coax's editor_save_body and editor_rev_body);
+//   - the document after it (doc.coax's editor_doc_json) and the SHA-256 of that text;
+//   - the reply (editor_save_reply, editor_undo_reply, editor_conflict) and its revision read back;
+//   - an undo or redo is the server's logged step applied to the model (editor_apply_step), and every
 //     logged step applies backwards to the model it was logged after;
 //   - an undo or redo gives back the revision it restores (`restores`, a step's name) byte for byte
 //     but for its `rev`, so its SHA-256 is that text's (#13354: moves and shapes in entity order);
-//   - a board row switched (forge_switch) moves between `features` and `off` as the server's does;
+//   - a board row switched (editor_switch) moves between `features` and `off` as the server's does;
 //   - every key is a json_name of its message in proto/descriptors/verse-doc.pb (realm.proto), and
 //     the messages on the JSON mapper (RevRequest, SaveReply, UndoReply, Conflict) read the bodies
 //     and replies, and write a RevRequest back byte for byte.
@@ -71,7 +71,7 @@ dg_need :: (g: [] Dg, name: string, what: string, ok: bool) -> bool {
 
 // Whether every key of the object at `at` is a json_name of the message (its leaf name in realm.proto).
 dg_keys_of :: (st: [] D_State, leaf: string, j: Jv, at: int) -> bool {
-  full: [128] u8; n := forge_put(full[..], 0, DG_PKG); n = forge_put(full[..], n, leaf);
+  full: [128] u8; n := editor_put(full[..], 0, DG_PKG); n = editor_put(full[..], n, leaf);
   m := -1;
   for i: 0..<st[0].nt { if st[0].types[i].full == cast(string) full[0..<n] { m = i; } }
   if m < 0 || jv_kind(j, at) != JV_OBJECT { return false; }
@@ -139,19 +139,19 @@ dg_mapper_rev :: (body: string, rev: int) -> bool {
 }
 
 // One edit of a step on the model; false when the model refuses it.
-dg_op :: (p: [] DgPool, d: [] ForgeDoc, j: Jv, at: int) -> bool {
+dg_op :: (p: [] DgPool, d: [] EditorDoc, j: Jv, at: int) -> bool {
   op := dg_s(p, j, at, "op"); e := dg_s(p, j, at, "entity");
-  if op == "move" { return forge_move(d, e, dg_i(j, at, "x_cm"), dg_i(j, at, "z_cm")); }
-  if op == "rotate" { return forge_rotate(d, e, dg_i(j, at, "deg")); }
-  if op == "resize" { return forge_resize(d, e, dg_i(j, at, "percent")); }
-  if op == "remove" { return forge_remove(d, e); }
-  if op == "restore" { return forge_restore(d, e); }
-  if op == "switch" { return forge_switch(d, dg_s(p, j, at, "row"), jv_kind(j, jv_get(j, at, "on")) == JV_TRUE); }
-  if op == "lore" { return forge_lore(d, dg_s(p, j, at, "who"), dg_s(p, j, at, "text")); }
+  if op == "move" { return editor_move(d, e, dg_i(j, at, "x_cm"), dg_i(j, at, "z_cm")); }
+  if op == "rotate" { return editor_rotate(d, e, dg_i(j, at, "deg")); }
+  if op == "resize" { return editor_resize(d, e, dg_i(j, at, "percent")); }
+  if op == "remove" { return editor_remove(d, e); }
+  if op == "restore" { return editor_restore(d, e); }
+  if op == "switch" { return editor_switch(d, dg_s(p, j, at, "row"), jv_kind(j, jv_get(j, at, "on")) == JV_TRUE); }
+  if op == "lore" { return editor_lore(d, dg_s(p, j, at, "who"), dg_s(p, j, at, "text")); }
   if op == "quest" {
     steps: [3] string; s := jv_get(j, at, "steps");
     for k: 0..<3 { if k < jv_len(j, s) { b := jv_at(j, s, k); w := jv_str(j, b, p[0].buf[p[0].n..<p[0].buf.count]); if w < 0 { return false; } steps[k] = cast(string) p[0].buf[p[0].n..<p[0].n + w]; p[0].n += w; } }
-    return forge_quest(d, dg_s(p, j, at, "giver"), dg_s(p, j, at, "ask"), steps, dg_s(p, j, at, "reward"));
+    return editor_quest(d, dg_s(p, j, at, "giver"), dg_s(p, j, at, "ask"), steps, dg_s(p, j, at, "reward"));
   }
   return false;
 }
@@ -161,8 +161,8 @@ dg_with_rev :: (text: string, rev: int, out: [] u8) -> string {
   key := "\"rev\": ";
   for i: 0..<text.count - key.count {
     if text[i..<i + key.count] != key { continue; }
-    e := i + key.count; while e < text.count && forge_digit(text[e]) { e += 1; }
-    n := forge_put(out, 0, text[0..<i + key.count]); n = forge_put_int(out, n, rev); n = forge_put(out, n, text[e..<text.count]);
+    e := i + key.count; while e < text.count && editor_digit(text[e]) { e += 1; }
+    n := editor_put(out, 0, text[0..<i + key.count]); n = editor_put_int(out, n, rev); n = editor_put(out, n, text[e..<text.count]);
     return ifx n < 0 then "" else cast(string) out[0..<n];
   }
   return "";
@@ -184,11 +184,11 @@ dg_run :: (raw: string, st: [] D_State) -> int {
   start := jv_get(j, 0, "start"); steps := jv_get(j, 0, "steps");
   if jv_kind(j, steps) != JV_ARRAY || jv_len(j, steps) == 0 { print("FAIL  the fixture has no steps\n"); return 1; }
   first := dg_s(p[..], j, start, "doc");
-  d: [1] ForgeDoc;
-  read := forge_read_doc(d[..], first);
+  d: [1] EditorDoc;
+  read := editor_read_doc(d[..], first);
   if !read.ok { print("FAIL  start: doc.coax does not read it (%)\n", read.why); return 1; }
-  out: [FORGE_DOC_BYTES] u8; hb: [64] u8;
-  n := forge_doc_json(d[..], first, out[..]);
+  out: [EDITOR_DOC_BYTES] u8; hb: [64] u8;
+  n := editor_doc_json(d[..], first, out[..]);
   dg_check(g[..], "start", "doc", ifx n < 0 then "" else cast(string) out[0..<n], first);
   dg_check(g[..], "start", "sha256", dg_hex(first, hb[..]), dg_s(p[..], j, start, "sha256"));
   if st.count > 0 { dg_true(g[..], "start", "keys", dg_doc_keys(st, first)); }
@@ -201,11 +201,11 @@ dg_run :: (raw: string, st: [] D_State) -> int {
     bb: [16384] u8; rb: [1024] u8;
     if kind == "stale" {
       // A save from a revision since gone: its body is a SaveRequest this model writes back, and 409 names the revision now.
-      old: [1] ForgeDoc;
-      dg_true(g[..], name, "body read", forge_read_save(old[..], body) == dg_i(j, jv_at(j, ops, 0), "rev"));
-      bn := forge_save_body(old[..], bb[..]);
+      old: [1] EditorDoc;
+      dg_true(g[..], name, "body read", editor_read_save(old[..], body) == dg_i(j, jv_at(j, ops, 0), "rev"));
+      bn := editor_save_body(old[..], bb[..]);
       dg_check(g[..], name, "body", ifx bn < 0 then "" else cast(string) bb[0..<bn], body);
-      rn := forge_conflict(rev, "changed since", rb[..]);
+      rn := editor_conflict(rev, "changed since", rb[..]);
       dg_check(g[..], name, "reply", ifx rn < 0 then "" else cast(string) rb[0..<rn], reply);
       dg_true(g[..], name, "status", status == 409);
       if st.count > 0 {
@@ -216,45 +216,45 @@ dg_run :: (raw: string, st: [] D_State) -> int {
       continue;
     }
     if kind == "undo" || kind == "redo" {
-      bn := forge_rev_body(rev, bb[..]);
+      bn := editor_rev_body(rev, bb[..]);
       dg_check(g[..], name, "body", ifx bn < 0 then "" else cast(string) bb[0..<bn], body);
       back := kind == "undo";
       have := ifx back then g[0].undo_n else g[0].redo_n;
       if !dg_need(g[..], name, "a logged step to take", have > 0) { continue; }
       step := ifx back then g[0].undo[g[0].undo_n - 1] else g[0].redo[g[0].redo_n - 1];
-      if !dg_need(g[..], name, "the logged step applies to the model", forge_apply_step(d[..], step, back)) { continue; }
+      if !dg_need(g[..], name, "the logged step applies to the model", editor_apply_step(d[..], step, back)) { continue; }
       if back { g[0].undo_n -= 1; g[0].redo[g[0].redo_n] = step; g[0].redo_n += 1; }
       else { g[0].redo_n -= 1; g[0].undo[g[0].undo_n] = step; g[0].undo_n += 1; }
     } else {
       for k: 0..<jv_len(j, ops) { if !dg_need(g[..], name, "the edit applies to the model", dg_op(p[..], d[..], j, jv_at(j, ops, k))) { break; } }
       if route == "/save" {
-        bn := forge_save_body(d[..], bb[..]);
+        bn := editor_save_body(d[..], bb[..]);
         dg_check(g[..], name, "body", ifx bn < 0 then "" else cast(string) bb[0..<bn], body);
         if st.count > 0 { dg_true(g[..], name, "body keys", dg_body_keys(st, "SaveRequest", body)); }
       }
     }
-    r := forge_read_reply(reply);
+    r := editor_read_reply(reply);
     dg_true(g[..], name, "status", status == 200 && r.ok && r.rev == rev + 1);
     rev = r.rev;
-    forge_commit(d[..], rev);
+    editor_commit(d[..], rev);
     doc := dg_s(p[..], j, s, "doc");
-    n = forge_doc_json(d[..], first, out[..]);
+    n = editor_doc_json(d[..], first, out[..]);
     got := ifx n < 0 then "" else cast(string) out[0..<n];
     dg_check(g[..], name, "doc", got, doc);
     sha := dg_hex(doc, hb[..]);
     dg_check(g[..], name, "sha256", sha, dg_s(p[..], j, s, "sha256"));
     if jv_get(j, s, "restores") >= 0 {
       // an undo or redo: the revision it restores, byte for byte but for `rev`, and so its hash
-      was := dg_doc_of(p[..], j, dg_s(p[..], j, s, "restores")); wb: [FORGE_DOC_BYTES] u8; eb: [64] u8;
+      was := dg_doc_of(p[..], j, dg_s(p[..], j, s, "restores")); wb: [EDITOR_DOC_BYTES] u8; eb: [64] u8;
       same := dg_with_rev(was, rev, wb[..]);
       dg_check(g[..], name, "restores", same, doc);
       dg_check(g[..], name, "restored sha256", dg_hex(same, eb[..]), sha);
     }
     if route == "/save" {
-      rn := forge_save_reply(rev, sha, rb[..]);
+      rn := editor_save_reply(rev, sha, rb[..]);
       dg_check(g[..], name, "reply", ifx rn < 0 then "" else cast(string) rb[0..<rn], reply);
     } else if route == "/undo" || route == "/redo" {
-      rn := forge_undo_reply(rev, g[0].undo_n, g[0].redo_n, rb[..]);
+      rn := editor_undo_reply(rev, g[0].undo_n, g[0].redo_n, rb[..]);
       dg_check(g[..], name, "reply", ifx rn < 0 then "" else cast(string) rb[0..<rn], reply);
       if st.count > 0 { dg_true(g[..], name, "body", dg_mapper_rev(body, rev - 1)); }
     }
@@ -271,8 +271,8 @@ dg_run :: (raw: string, st: [] D_State) -> int {
       logged := dg_s(p[..], j, s, "logged");
       if g[0].undo_n >= DG_STEPS { print("FAIL  % (more than % steps)\n", name, DG_STEPS); return 1; }
       g[0].undo[g[0].undo_n] = logged; g[0].undo_n += 1; g[0].redo_n = 0;
-      back: [1] ForgeDoc; back[0] = d[0];
-      dg_true(g[..], name, "the logged step takes back", forge_apply_step(back[..], logged, true));
+      back: [1] EditorDoc; back[0] = d[0];
+      dg_true(g[..], name, "the logged step takes back", editor_apply_step(back[..], logged, true));
       if st.count > 0 { dg_true(g[..], name, "logged keys", dg_step_keys(st, logged)); }
     }
     print("ok    %\n", name);

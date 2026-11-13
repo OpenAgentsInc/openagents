@@ -5,23 +5,23 @@
 #load "linux-policy.coax";
 #load "../../metaverse-engine/core/points.coax";
 FGL_VERTICES :: 64000;
-ForgeLinux :: struct {
+EditorLinux :: struct {
   initialized:bool;opened:bool;busy:bool;ready:bool;visible:bool=true;held:bool;route:int;
   now_ms:int;clock:f32;remaining:int=60000;ticket:int;pending:bool;request_n:int;
   request:[32768]u8;inbox:[262144]u8;epoch:[32]u8;epoch_n:int;
   draft:[16384]u8;dn:int;workspace:[4096]u8;wn:int;
-  status:[2048]u8;sn:int;event:[1]ForgeChatEvent;feed:[1]HudFeed;history:[1]HudFeed;
+  status:[2048]u8;sn:int;event:[1]EditorChatEvent;feed:[1]HudFeed;history:[1]HudFeed;
   replies:int;streamed:bool;w:f32;h:f32;d:f32=1;vertices:int;field:[4]f32;
 }
 #test "Linux Coder owns Return through its release and leaves idle world input alone" {
-  s:[1]ForgeLinux;s[0].ready=true;
+  s:[1]EditorLinux;s[0].ready=true;
   #assert fgl_world_key(s[..],36,true,false,0)==2 && s[0].opened && s[0].held;
   #assert fgl_world_key(s[..],36,true,true,0)==1 && fgl_world_key(s[..],36,false,false,0)==1 && !s[0].held;
   #assert fgl_world_key(s[..],13,true,false,0)==0;
   #assert fgl_key(s[..],-1,true,0) && !s[0].opened;
 }
 #test "Linux sends one bounded request and clears it only on its matching instance acknowledgement" {
-  s:[1]ForgeLinux;fgl_init(s[..],"00000000000000000000000000000000","/tmp/work","Ready",false,0);
+  s:[1]EditorLinux;fgl_init(s[..],"00000000000000000000000000000000","/tmp/work","Ready",false,0);
   s[0].opened=true;fgl_text(s[..],"hello");#assert fgl_effect(s[..],1) && s[0].pending && s[0].ticket==1;
   r:=fgl_request(cast(string)s[0].request[0..<s[0].request_n],"00000000000000000000000000000000",0,false);
   #assert r.ok && r.op==1 && cast(string)r.text[0..<r.n]=="hello";
@@ -32,15 +32,15 @@ ForgeLinux :: struct {
   fgl_init(s[..],"10000000000000000000000000000000","/tmp/work","Running",true,1);#assert !s[0].pending && s[0].busy;
 }
 #test "Linux displays the existing streamed Coder events without duplicating final replies" {
-  s:[1]ForgeLinux;s[0].busy=true;
+  s:[1]EditorLinux;s[0].busy=true;
   fgl_event(s[..],"{\"kind\":\"reply_delta\",\"schema\":\"coder.reply-stream.v1\",\"text\":\"hello\"}");
   fgl_event(s[..],"{\"kind\":\"reply\",\"text\":\"hello\"}");
   #assert hf_text(s[0].feed[..])=="hello" && s[0].replies==1;
   fgl_event(s[..],"{\"kind\":\"end\",\"ending\":\"done\"}");#assert !s[0].busy;
   #assert fc_chat_mode(false,false,s[0].feed[..],s[0].now_ms+4999)==1 && fc_chat_mode(false,false,s[0].feed[..],s[0].now_ms+5000)==0;
 }
-fgl_status :: (s:[]ForgeLinux,text:string) {s[0].sn=0;for c:text {if s[0].sn>=2048 {break;}s[0].status[s[0].sn]=c;s[0].sn+=1;}}
-fgl_init :: (s:[]ForgeLinux,epoch:string,workspace:string,status:string,busy:bool,ack:int) {
+fgl_status :: (s:[]EditorLinux,text:string) {s[0].sn=0;for c:text {if s[0].sn>=2048 {break;}s[0].status[s[0].sn]=c;s[0].sn+=1;}}
+fgl_init :: (s:[]EditorLinux,epoch:string,workspace:string,status:string,busy:bool,ack:int) {
   if !fgl_epoch(epoch) || workspace.count>4096 {return;}
   if cast(string)s[0].epoch[0..<s[0].epoch_n]!=epoch {s[0].pending=false;s[0].request_n=0;s[0].ticket=0;s[0].busy=false;}
   s[0].epoch_n=32;for i:0..<32 {s[0].epoch[i]=epoch[i];}
@@ -48,7 +48,7 @@ fgl_init :: (s:[]ForgeLinux,epoch:string,workspace:string,status:string,busy:boo
   if ack==s[0].ticket {s[0].pending=false;s[0].request_n=0;}
   s[0].initialized=true;s[0].busy=busy;fgl_status(s,status);
 }
-fgl_effect :: (s:[]ForgeLinux,op:int)->bool {
+fgl_effect :: (s:[]EditorLinux,op:int)->bool {
   text:=ifx op==1 then cast(string)s[0].draft[0..<s[0].dn] else "";
   if !s[0].initialized || s[0].pending || !fgl_allowed(op,s[0].busy,text) || s[0].ticket>=2147483647 {return false;}
   o:[1]Jo;jo_start(o[..],s[0].request[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],FGL_SCHEMA);
@@ -59,14 +59,14 @@ fgl_effect :: (s:[]ForgeLinux,op:int)->bool {
   if op==3 {hf_clear(s[0].history[..]);hf_clear(s[0].feed[..]);}
   return true;
 }
-fgl_text :: (s:[]ForgeLinux,text:string) {if !s[0].opened || text.count>16384-s[0].dn {return;}for c:text {s[0].draft[s[0].dn]=c;s[0].dn+=1;}}
-fgl_world_key :: (s:[]ForgeLinux,key:int,down:bool,repeated:bool,mods:int)->int {
+fgl_text :: (s:[]EditorLinux,text:string) {if !s[0].opened || text.count>16384-s[0].dn {return;}for c:text {s[0].draft[s[0].dn]=c;s[0].dn+=1;}}
+fgl_world_key :: (s:[]EditorLinux,key:int,down:bool,repeated:bool,mods:int)->int {
   route:=fc_enter_route(s[0].ready,s[0].opened,key,down,repeated,mods!=0,s[0].held);
   if route==2 {s[0].opened=true;s[0].held=true;}
   if !down && (key==36 || key==76) {s[0].held=false;}
   s[0].route=route;return route;
 }
-fgl_key :: (s:[]ForgeLinux,key:int,down:bool,mods:int)->bool #export_c #effects(all) {
+fgl_key :: (s:[]EditorLinux,key:int,down:bool,mods:int)->bool #export_c #effects(all) {
   if key== -2 {
     if !down {s[0].held=false;return true;}if s[0].held {return true;}s[0].held=true;
     if s[0].opened {if (mods&1)!=0 {fgl_text(s,"\n");}else {_:=fgl_effect(s,1);}}else {s[0].opened=true;}return true;
@@ -76,7 +76,7 @@ fgl_key :: (s:[]ForgeLinux,key:int,down:bool,mods:int)->bool #export_c #effects(
   if key== -3 {if s[0].dn>0 {s[0].dn-=1;while s[0].dn>0 && (s[0].draft[s[0].dn]&192)==128 {s[0].dn-=1;}}return true;}
   return false;
 }
-fgl_event :: (s:[]ForgeLinux,line:string) {
+fgl_event :: (s:[]EditorLinux,line:string) {
   kind:=fc_read(s[0].event[..],line);text:=cast(string)s[0].event[0].text[0..<s[0].event[0].tn];
   if kind==10 || kind==1 || kind==9 {fgl_status(s,text);}
   if kind==11 || kind==12 {hf_append(s[0].history[..],text);fc_feed_event(s[0].feed[..],1,text,s[0].now_ms);s[0].streamed=true;s[0].replies+=1;}
@@ -84,7 +84,7 @@ fgl_event :: (s:[]ForgeLinux,line:string) {
   if kind==4 || kind==5 || kind==6 || kind==8 {hf_append(s[0].history[..],"\n");hf_append(s[0].history[..],text);hf_append(s[0].history[..],"\n");}
   if kind==7 {s[0].busy=false;fgl_status(s,text);fc_feed_event(s[0].feed[..],2,"",s[0].now_ms);}
 }
-fgl_message :: (s:[]ForgeLinux,kind:int,n:int) #export_c #effects(all) {
+fgl_message :: (s:[]EditorLinux,kind:int,n:int) #export_c #effects(all) {
   if n<0 || n>s[0].inbox.count {return;}text:=cast(string)s[0].inbox[0..<n];
   if kind==1 {fgl_text(s,text);return;}if kind==802 {fgl_event(s,text);return;}
   nodes:[128]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {return;}v:=d[0];
@@ -95,16 +95,16 @@ fgl_message :: (s:[]ForgeLinux,kind:int,n:int) #export_c #effects(all) {
   if kind==501 {_:=fgl_world_key(s,jv_int(v,jv_get(v,0,"key"),0),jv_bool(v,jv_get(v,0,"down")),jv_bool(v,jv_get(v,0,"repeat")),jv_int(v,jv_get(v,0,"mods"),0));}
   if kind==502 {s[0].ready=jv_bool(v,jv_get(v,0,"ready"));s[0].visible=jv_bool(v,jv_get(v,0,"visible"));}
 }
-fgl_pointer :: (s:[]ForgeLinux,x:f32,y:f32,phase:int)->bool #export_c #effects(all) {
+fgl_pointer :: (s:[]EditorLinux,x:f32,y:f32,phase:int)->bool #export_c #effects(all) {
   if !s[0].opened {return false;}if phase!=2 {return true;}cx:=x/s[0].d;cy:=y/s[0].d;
   for action:1..<7 {b:=fgl_button(s,action);if hud_contains(b,cx,cy) {if action==6 {s[0].opened=false;}else {_:=fgl_effect(s,action);}return true;}}
   if !hud_contains(fc_box(0,s[0].w,s[0].h),cx,cy) && !hud_contains(fc_box(1,s[0].w,s[0].h),cx,cy) {s[0].opened=false;}return true;
 }
-fgl_button :: (s:[]ForgeLinux,action:int)->HudBox {return HudBox.{x=s[0].w-96-cast(f32)(action-1)*82,y=s[0].h-94,width=76,height=26};}
-fgl_frame :: (s:[]ForgeLinux,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32)->int #export_c #effects(all) {
+fgl_button :: (s:[]EditorLinux,action:int)->HudBox {return HudBox.{x=s[0].w-96-cast(f32)(action-1)*82,y=s[0].h-94,width=76,height=26};}
+fgl_frame :: (s:[]EditorLinux,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32)->int #export_c #effects(all) {
   if d<=0 || w<=0 || h<=0 {return 0;}s[0].w=w/d;s[0].h=h/d;s[0].d=d;
   s[0].clock+=clamp(dt,0,0.25)*1000;s[0].now_ms=cast(int)s[0].clock;
-  if !s[0].ready {s[0].remaining=forge_startup_budget(s[0].remaining,cast(int)(clamp(dt,0,0.25)*1000),s[0].visible);}
+  if !s[0].ready {s[0].remaining=editor_startup_budget(s[0].remaining,cast(int)(clamp(dt,0,0.25)*1000),s[0].visible);}
   for i:0..<88 {u[i]=0;}u[0]=w;u[1]=h;u[3]=1;
   n:=0;p:=HdPen.{d=d,cyan=true,top=0,bottom=s[0].h,sans=false};
   if s[0].opened {
@@ -119,7 +119,7 @@ fgl_frame :: (s:[]ForgeLinux,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32)->int #e
   }else if fc_chat_mode(false,s[0].busy,s[0].feed[..],s[0].now_ms)==1 {n=fc_feed_draw(out,s[0].feed[..],s[0].w,s[0].h,d);}
   s[0].field=[4]f32.[28*d,(s[0].h-68)*d,(s[0].w-124)*d,(s[0].h-38)*d];s[0].vertices=n;return n;
 }
-fgl_probe :: (s:[]ForgeLinux,k:int)->int #export_c #effects(all) {
+fgl_probe :: (s:[]EditorLinux,k:int)->int #export_c #effects(all) {
   if k==0 {return s[0].route;}if k==1 {return fc_chat_mode(s[0].opened,s[0].busy,s[0].feed[..],s[0].now_ms);}
   if k==2 {return ifx s[0].opened then 1 else 0;}if k==3 {return ifx s[0].busy then 1 else 0;}
   if k==4 {return s[0].ticket;}if k==5 {return s[0].replies;}if k==6 {return ifx s[0].ready then 1 else 0;}

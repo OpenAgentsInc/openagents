@@ -5,11 +5,11 @@ import AppKit
 import QuartzCore
 
 @MainActor
-@objc(ForgeMetalWorld)
-final class ForgeMetalWorld: NSView, @preconcurrency NSTextInputClient {
+@objc(EditorMetalWorld)
+final class EditorMetalWorld: NSView, @preconcurrency NSTextInputClient {
     @objc var host: UnsafeMutableRawPointer?
-    var network: ForgeMetalNetwork?
-    var audio: ForgeMetalAudio?
+    var network: EditorMetalNetwork?
+    var audio: EditorMetalAudio?
     var display: CADisplayLink?
     var lastTime = 0.0
     @objc var paused = false
@@ -57,10 +57,10 @@ final class ForgeMetalWorld: NSView, @preconcurrency NSTextInputClient {
         host = h; mf_layer(h, Unmanaged.passUnretained(layer!).toOpaque())
         let origin = "\(page.scheme!)://\(page.host!):\(page.port!)"
         mf_network_config(h, origin, local)
-        network = ForgeMetalNetwork(host: h)
+        network = EditorMetalNetwork(host: h)
         network?.changed = { [weak self] in self?.drain() }
         network?.frame = { [weak self] in await self?.frameJpeg() }
-        audio = ForgeMetalAudio(host: h, resources: resources, muted: muted)
+        audio = EditorMetalAudio(host: h, resources: resources, muted: muted)
         let playerData = try? Data(contentsOf:storage.appendingPathComponent("metal-player.json"))
         let player = playerData.flatMap { try? JSONSerialization.jsonObject(with:$0) as? [String:Any] }
         network?.playerKey = player?["key"] as? String ?? ""

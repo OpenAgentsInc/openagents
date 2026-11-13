@@ -3,7 +3,7 @@
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/local/inventory-wire.coax";
 
-ForgeSetup :: struct {
+EditorSetup :: struct {
   completed: bool;
   microphone:int;microphone_pending:bool;
   voice_stage:int;
@@ -17,7 +17,7 @@ FSU_NAMES :: [4] string.["Claude Code", "Codex", "Coder", "Cursor"];
 FSU_IDS :: [4] string.["claude", "codex", "coder", "cursor"];
 
 #test "setup completion comes from the saved entry receipt and survives background discovery" {
-  s:[1]ForgeSetup;fsu_reset(s[..]);#assert !fsu_completed(s[..]);
+  s:[1]EditorSetup;fsu_reset(s[..]);#assert !fsu_completed(s[..]);
   #assert fsu_read(s[..],3,"{\"schema\":\"openagents.aethyrforge.setup.v1\",\"audio_model\":\"parakeet\",\"agent_engine\":\"codex\"}") && fsu_completed(s[..]);
   #assert fsu_read(s[..],0,"{\"ok\":true,\"openagents\":\"1.0\"}") && fsu_completed(s[..]);
   fsu_reset(s[..]);#assert !fsu_completed(s[..]);
@@ -29,7 +29,7 @@ FSU_IDS :: [4] string.["claude", "codex", "coder", "cursor"];
 }
 
 #test "setup uses actual CLI, running-agent and local model reports" {
-  s: [1] ForgeSetup; fsu_reset(s[..]);
+  s: [1] EditorSetup; fsu_reset(s[..]);
   #assert !fsu_can_enter(s[..], true);
   #assert fsu_read(s[..], 0, "{\"ok\":true,\"openagents\":\"1.0.0-dev\"}");
   #assert fsu_read(s[..], 1, "{\"ok\":true,\"complete\":true,\"schema\":\"openagents.coder.agents.v1\",\"agents\":[{\"engine\":\"codex\",\"pid\":42,\"state\":\"running\",\"attached\":false}]}");
@@ -44,7 +44,7 @@ FSU_IDS :: [4] string.["claude", "codex", "coder", "cursor"];
   #assert !fsu_read(s[..], 3, "{\"agent_engine\":\"codex\"}") && s[0].selected == -1;
 }
 #test "setup distinguishes missing data, a failed scan and a verified model" {
-  s: [1] ForgeSetup; fsu_reset(s[..]);
+  s: [1] EditorSetup; fsu_reset(s[..]);
   #assert !fsu_read(s[..], 1, "{\"ok\":false,\"complete\":false}") && !s[0].agents;
   #assert !fsu_read(s[..], 2, "{}");
   #assert fsu_read(s[..], 2, "{\"ok\":true,\"schema\":\"openagents.models.v1\",\"models\":[{\"id\":\"parakeet\",\"present\":true,\"verified\":true,\"path\":\"/shared/parakeet\"}]}");
@@ -55,7 +55,7 @@ FSU_IDS :: [4] string.["claude", "codex", "coder", "cursor"];
 }
 
 #test "setup shows current microphone permission independently of model discovery and saved setup" {
-  s:[1]ForgeSetup;fsu_reset(s[..]);
+  s:[1]EditorSetup;fsu_reset(s[..]);
   #assert fsu_text(s[..],14)=="Microphone permission requested during setup" && fsu_text(s[..],15)=="Allow microphone" && fsu_status(s[..],3)==1;
   fsu_microphone(s[..],0,true);#assert fsu_text(s[..],14)=="Waiting for macOS microphone permission…" && fsu_status(s[..],3)==0;
   fsu_microphone(s[..],3,false);#assert fsu_text(s[..],14)=="Microphone allowed · Ready for TALK / V" && fsu_text(s[..],15)=="Allowed" && fsu_status(s[..],3)==0;
@@ -67,7 +67,7 @@ FSU_IDS :: [4] string.["claude", "codex", "coder", "cursor"];
 }
 
 #test "setup reports resident voice preparation independently of microphone capture" {
-  s:[1]ForgeSetup;
+  s:[1]EditorSetup;
   #assert fsu_text(s[..],16)=="Voice prepares automatically after approval";
   fsu_voice_ready(s[..],1);#assert fsu_text(s[..],16)=="Preparing local voice…";
   fsu_voice_ready(s[..],2);#assert fsu_text(s[..],16)=="Voice ready · Hold TALK / V";
@@ -75,8 +75,8 @@ FSU_IDS :: [4] string.["claude", "codex", "coder", "cursor"];
   fsu_voice_ready(s[..],99);#assert fsu_text(s[..],16)=="Voice prepares automatically after approval";
 }
 
-fsu_reset :: (s: [] ForgeSetup) #export_c #effects(all) { s[0] = ForgeSetup.{}; }
-fsu_read :: (s: [] ForgeSetup, kind: int, text: string) -> bool #export_c #effects(all) {
+fsu_reset :: (s: [] EditorSetup) #export_c #effects(all) { s[0] = EditorSetup.{}; }
+fsu_read :: (s: [] EditorSetup, kind: int, text: string) -> bool #export_c #effects(all) {
   nodes: [2048] JvNode; d: [1] Jv;
   if !jv_parse(d[..], text, nodes[..]) { s[0].problem = kind + 1; return false; }
   v := d[0];
@@ -134,14 +134,14 @@ fsu_read :: (s: [] ForgeSetup, kind: int, text: string) -> bool #export_c #effec
   }
   return false;
 }
-fsu_can_enter :: (s: [] ForgeSetup, scene: bool) -> bool #export_c #effects(all) { return scene && s[0].cli && s[0].agents && s[0].models; }
-fsu_completed :: (s: [] ForgeSetup) -> bool #export_c #effects(all) { return s[0].completed; }
-fsu_microphone :: (s:[]ForgeSetup,status:int,pending:bool) #export_c #effects(all) {s[0].microphone=status;s[0].microphone_pending=pending;}
-fsu_voice_ready :: (s:[]ForgeSetup,stage:int) #export_c #effects(all) {s[0].voice_stage=ifx stage>=0 && stage<=3 then stage else 0;}
-fsu_choose :: (s: [] ForgeSetup, kind: int) #export_c #effects(all) { if kind == -1 || (kind >= 0 && kind < 4 && s[0].counts[kind] > 0) { s[0].selected = kind; } }
-fsu_count :: (s: [] ForgeSetup, kind: int) -> int #export_c #effects(all) { return ifx kind >= 0 && kind < 4 then s[0].counts[kind] else s[0].total; }
-fsu_selected :: (s: [] ForgeSetup) -> int #export_c #effects(all) { return s[0].selected; }
-fsu_status :: (s: [] ForgeSetup, kind: int) -> int #export_c #effects(all) {
+fsu_can_enter :: (s: [] EditorSetup, scene: bool) -> bool #export_c #effects(all) { return scene && s[0].cli && s[0].agents && s[0].models; }
+fsu_completed :: (s: [] EditorSetup) -> bool #export_c #effects(all) { return s[0].completed; }
+fsu_microphone :: (s:[]EditorSetup,status:int,pending:bool) #export_c #effects(all) {s[0].microphone=status;s[0].microphone_pending=pending;}
+fsu_voice_ready :: (s:[]EditorSetup,stage:int) #export_c #effects(all) {s[0].voice_stage=ifx stage>=0 && stage<=3 then stage else 0;}
+fsu_choose :: (s: [] EditorSetup, kind: int) #export_c #effects(all) { if kind == -1 || (kind >= 0 && kind < 4 && s[0].counts[kind] > 0) { s[0].selected = kind; } }
+fsu_count :: (s: [] EditorSetup, kind: int) -> int #export_c #effects(all) { return ifx kind >= 0 && kind < 4 then s[0].counts[kind] else s[0].total; }
+fsu_selected :: (s: [] EditorSetup) -> int #export_c #effects(all) { return s[0].selected; }
+fsu_status :: (s: [] EditorSetup, kind: int) -> int #export_c #effects(all) {
   if kind==3 {
     if s[0].microphone_pending {return 0;}
     if s[0].microphone==0 {return 1;}
@@ -151,7 +151,7 @@ fsu_status :: (s: [] ForgeSetup, kind: int) -> int #export_c #effects(all) {
   if kind == 1 { return ifx s[0].models then (ifx s[0].verified then 2 else ifx s[0].voice then 1 else 0) else -1; }
   return ifx s[0].agents then 1 else 0;
 }
-fsu_text :: (s: [] ForgeSetup, field: int) -> string {
+fsu_text :: (s: [] EditorSetup, field: int) -> string {
   if field==16 {
     if s[0].voice_stage==1 {return "Preparing local voice…";}
     if s[0].voice_stage==2 {return "Voice ready · Hold TALK / V";}
@@ -179,11 +179,11 @@ fsu_text :: (s: [] ForgeSetup, field: int) -> string {
   if field >= 10 && field < 14 { return FSU_NAMES[field - 10]; }
   return "";
 }
-fsu_text_byte :: (s: [] ForgeSetup, field: int, index: int) -> int #export_c #effects(all) { text := fsu_text(s[..], field); return ifx index >= 0 && index < text.count then cast(int) text[index] else -1; }
-fsu_settings :: (s: [] ForgeSetup, out: [] u8) -> string {
+fsu_text_byte :: (s: [] EditorSetup, field: int, index: int) -> int #export_c #effects(all) { text := fsu_text(s[..], field); return ifx index >= 0 && index < text.count then cast(int) text[index] else -1; }
+fsu_settings :: (s: [] EditorSetup, out: [] u8) -> string {
   o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]); jo_key(o[..], "schema"); jo_str(o[..], "openagents.aethyrforge.setup.v1");
   jo_key(o[..], "audio_model"); jo_str(o[..], "parakeet"); jo_key(o[..], "agent_engine");
   if s[0].selected >= 0 { jo_str(o[..], FSU_IDS[s[0].selected]); } else { jo_null(o[..]); }
   jo_end(o[..]); return ifx o[0].bad then "" else jo_text(o[..]);
 }
-fsu_settings_byte :: (s: [] ForgeSetup, index: int) -> int #export_c #effects(all) { b: [512] u8; text := fsu_settings(s[..], b[..]); return ifx index >= 0 && index < text.count then cast(int) text[index] else -1; }
+fsu_settings_byte :: (s: [] EditorSetup, index: int) -> int #export_c #effects(all) { b: [512] u8; text := fsu_settings(s[..], b[..]); return ifx index >= 0 && index < text.count then cast(int) text[index] else -1; }

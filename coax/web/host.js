@@ -3115,7 +3115,7 @@ function a11yMirror(now) {
     if (had) (order[0] ?? a11y.root.querySelector("button"))?.focus();   // focus stays in the layer
   }
   // In the module's order, moving only what is out of place: a control moved in the DOM loses
-  // focus, so the one being pressed, which stays where it was, keeps it (forge-access checks).
+  // focus, so the one being pressed, which stays where it was, keeps it (editor-access checks).
   let at = a11y.root.firstChild;
   for (const b of order) { if (b === at) at = at.nextSibling; else a11y.root.insertBefore(b, at); }
   if (a11y.status.textContent !== say) a11y.status.textContent = say;

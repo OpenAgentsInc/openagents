@@ -6,7 +6,7 @@ import Foundation
 struct MetalAudioSession {
     static func main() throws {
         guard CommandLine.arguments.count == 2 || CommandLine.arguments.count == 4 else { fatalError("MetalAudioSession REPORT [RESOURCES FIXTURE]") }
-        let source=ForgePCMSource()
+        let source=EditorPCMSource()
         let format=AVAudioFormat(standardFormatWithSampleRate:48000,channels:2)!
         let buffer=AVAudioPCMBuffer(pcmFormat:format,frameCapacity:17)!
         buffer.frameLength=17
@@ -22,13 +22,13 @@ struct MetalAudioSession {
     }
     @MainActor final class Realm {
         let host: UnsafeMutableRawPointer
-        let audio: ForgeMetalAudio
+        let audio: EditorMetalAudio
         var closed=false
         init(_ mode: Int32) {
             let resources=URL(fileURLWithPath:CommandLine.arguments[2])
             guard let host=mf_open(resources.path,CommandLine.arguments[3],false,true),mf_audio_fixture_mode(host,mode) else { fatalError("audio recording realm") }
             self.host=host
-            audio=ForgeMetalAudio(host:host,resources:resources,muted:true,bankDirectory:resources.appendingPathComponent("bank-\(mode)"))
+            audio=EditorMetalAudio(host:host,resources:resources,muted:true,bankDirectory:resources.appendingPathComponent("bank-\(mode)"))
             audio.bank()
             for name in audio.bankWav.keys.sorted() { _ = audio.buffer(name) }
         }
@@ -40,7 +40,7 @@ struct MetalAudioSession {
         func close() { if !closed { audio.close();mf_close(host);closed=true } }
     }
     static func wait(_ seconds: Double) { RunLoop.main.run(until:Date().addingTimeInterval(seconds)) }
-    static func callback(_ source: ForgePCMSource, after: Int64, framesAfter: Int64 = -1) throws {
+    static func callback(_ source: EditorPCMSource, after: Int64, framesAfter: Int64 = -1) throws {
         let deadline=Date().addingTimeInterval(5)
         while Date()<deadline {
             let info=source.observations()
@@ -49,7 +49,7 @@ struct MetalAudioSession {
         }
         throw NSError(domain:"CoreAudio callback timeout",code:1)
     }
-    static func late(_ source: ForgePCMSource)->Int64 {
+    static func late(_ source: EditorPCMSource)->Int64 {
         let format=AVAudioFormat(standardFormatWithSampleRate:48000,channels:2)!,buffer=AVAudioPCMBuffer(pcmFormat:format,frameCapacity:17)!
         buffer.frameLength=17
         for channel in 0..<2 { for i in 0..<17 { buffer.floatChannelData![channel][i]=0.125 } }

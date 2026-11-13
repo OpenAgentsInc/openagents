@@ -107,7 +107,7 @@ spr_plans_fail :: (g: [] SpGame, probes: [] int) -> int {
 // Whether a game's layer holds exactly the things of `want`, under the same numbers.
 spr_same :: (g: [] SpGame, want: [] SlLayer) -> bool {
   if g[0].layer[0].st[0].n != want[0].st[0].n { return false; }
-  for i: 0..<want[0].st[0].n { if !forge_same_item(g[0].layer[0].items[i], want[0].items[i]) { return false; } }
+  for i: 0..<want[0].st[0].n { if !editor_same_item(g[0].layer[0].items[i], want[0].items[i]) { return false; } }
   return true;
 }
 // Replays `batches` from the empty world, and checks the four outcomes against `probes`.
@@ -120,8 +120,8 @@ spr_replay :: (t: [] SprWork, batches: [] string, probes: [] int, broken: int) -
   server := t[0].again[..];
   empty := spw_empty(server, t[0].x[0].k[..], t[0].doc[..]);
   doc := empty; prev := empty;
-  want := ForgeScene.{st = t[0].want[0].st[..], items = t[0].want[0].items[..], ops = t[0].want[0].ops[..], steps = t[0].want[0].steps[..]};
-  forge_scene_reset(want);
+  want := EditorScene.{st = t[0].want[0].st[..], items = t[0].want[0].items[..], ops = t[0].want[0].ops[..], steps = t[0].want[0].steps[..]};
+  editor_scene_reset(want);
   // the page: a fresh game that opened the empty document and takes each saved edit as it comes
   live := t[0].live[..];
   t[0].x[0].ct[0].text_n = 0; t[0].x[0].ct[0].open = false; t[0].x[0].ct[0].changed = false;

@@ -27,7 +27,7 @@ cg_need :: (g: [] Cg, name: string, what: string, ok: bool) -> bool {
   return false;
 }
 cg_keys :: (g: [] Cg, st: [] D_State, name: string, leaf: string, text: string) {
-  full: [128] u8; fn := forge_put(full[..], forge_put(full[..], 0, CG_PKG), leaf);
+  full: [128] u8; fn := editor_put(full[..], editor_put(full[..], 0, CG_PKG), leaf);
   nodes: [512] JvNode;
   why := pk_text_keys(st, cast(string) full[0..<fn], text, false, false, nodes[..]);
   if why == "" { g[0].pass += 1; return; }
@@ -46,27 +46,27 @@ cg_rewrite :: (request: string, body: string, buf: [] u8) -> int {
   d := j[0];
   rev := jv_int(d, jv_get(d, 0, "rev"), 0);
   a: [1] CgText; b: [1] CgText; c: [1] CgText;
-  if request == "SwitchRequest" { return forge_switch_body(rev, cg_s(d, 0, "row", a[..]), jv_kind(d, jv_get(d, 0, "on")) == JV_TRUE, false, buf); }
-  if request == "ReviseRequest" { return forge_words_body(rev, "prompt", cg_s(d, 0, "prompt", a[..]), false, buf); }
-  if request == "AskRequest" { return forge_words_body(rev, "words", cg_s(d, 0, "words", a[..]), false, buf); }
-  if request == "AskDoneRequest" { return forge_words_body(rev, "commit", cg_s(d, 0, "commit", a[..]), false, buf); }
-  if request == "AskDocRequest" { return forge_ask_doc_body(rev, cg_s(d, 0, "name", a[..]), cg_s(d, 0, "data", b[..]), buf); }
-  if request == "LoreRequest" { return forge_lore_body(rev, cg_s(d, 0, "who", a[..]), cg_s(d, 0, "text", b[..]), false, buf); }
+  if request == "SwitchRequest" { return editor_switch_body(rev, cg_s(d, 0, "row", a[..]), jv_kind(d, jv_get(d, 0, "on")) == JV_TRUE, false, buf); }
+  if request == "ReviseRequest" { return editor_words_body(rev, "prompt", cg_s(d, 0, "prompt", a[..]), false, buf); }
+  if request == "AskRequest" { return editor_words_body(rev, "words", cg_s(d, 0, "words", a[..]), false, buf); }
+  if request == "AskDoneRequest" { return editor_words_body(rev, "commit", cg_s(d, 0, "commit", a[..]), false, buf); }
+  if request == "AskDocRequest" { return editor_ask_doc_body(rev, cg_s(d, 0, "name", a[..]), cg_s(d, 0, "data", b[..]), buf); }
+  if request == "LoreRequest" { return editor_lore_body(rev, cg_s(d, 0, "who", a[..]), cg_s(d, 0, "text", b[..]), false, buf); }
   if request == "PlaceRequest" {
     // the numbers go back as they were written
-    return forge_place_body(rev, cg_s(d, 0, "thing", a[..]), jv_raw(d, jv_get(d, 0, "x")), jv_raw(d, jv_get(d, 0, "z")), jv_raw(d, jv_get(d, 0, "yaw")), false, buf);
+    return editor_place_body(rev, cg_s(d, 0, "thing", a[..]), jv_raw(d, jv_get(d, 0, "x")), jv_raw(d, jv_get(d, 0, "z")), jv_raw(d, jv_get(d, 0, "yaw")), false, buf);
   }
   if request == "SettingsRequest" {
     tools := jv_get(d, 0, "tools"); names: [8] string; on: [8] bool; k := 0;
     for i: 0..<jv_len(d, tools) { if k < 8 { e := jv_at(d, tools, i); names[k] = jv_key(d, e); on[k] = jv_kind(d, e) == JV_TRUE; k += 1; } }
-    return forge_settings_body(rev, names[0..<k], on[0..<k], buf);
+    return editor_settings_body(rev, names[0..<k], on[0..<k], buf);
   }
   if request == "QuestRequest" {
     steps := jv_get(d, 0, "steps"); texts: [3] CgText; list: [3] string; k := 0;
     for i: 0..<jv_len(d, steps) {
       if k < 3 { texts[k].n = jv_str(d, jv_at(d, steps, i), texts[k].b[..]); list[k] = ifx texts[k].n < 0 then "" else cast(string) texts[k].b[0..<texts[k].n]; k += 1; }
     }
-    return forge_quest_body(rev, cg_s(d, 0, "giver", a[..]), cg_s(d, 0, "ask", b[..]), list[0..<k], cg_s(d, 0, "reward", c[..]), false, buf);
+    return editor_quest_body(rev, cg_s(d, 0, "giver", a[..]), cg_s(d, 0, "ask", b[..]), list[0..<k], cg_s(d, 0, "reward", c[..]), false, buf);
   }
   return -1;
 }

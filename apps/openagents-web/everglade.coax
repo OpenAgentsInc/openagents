@@ -75,7 +75,7 @@
 #load "everglade-place.coax";
 #load "everglade-spells.coax";
 #load "everglade-watch.coax";
-#load "everglade-forge-npcs.coax";
+#load "everglade-editor-npcs.coax";
 #load "everglade-guard-ai.coax";
 #load "everglade-guide.coax";
 #load "everglade-items.coax";
@@ -89,7 +89,7 @@
 #load "everglade-status.coax";   // what holds or marks each body: one state every status is drawn from (#12776)
 #load "everglade-move.coax";   // the movement step the page and the room server share (with everglade-step.coax)
 #load "everglade-fork.coax";   // FORK, and a fork's rules (docs/metaverse/realm-fork.md)
-#load "everglade-forge.coax";   // EDIT opens Aethyrforge's panels (docs/metaverse/aethyrforge.md)
+#load "everglade-editor.coax";   // EDIT opens Aethyrforge's panels (docs/metaverse/aethyrforge.md)
 #load "everglade-stand.coax";   // what you stand on: roofs, rubble, the dome (metaverse-engine/physics/stand.coax)
 #load "everglade-track.coax";   // what players do, for analytics.coax
 #load "everglade-quality.coax";   // the graphics quality: tier, governor, knobs (metaverse-engine/core/quality.coax)
@@ -532,7 +532,7 @@ Everglade :: struct {
   character_shown: bool;                   // the host draws her: she is a body (everglade_character_ready)
   wt: [1] Watch; wv: WatchView;            // the town watch and what the town does about a crime (everglade-watch.coax)
   fk: [] EgFork;                           // FORK, and a fork's rules: the face holds it (everglade-fork.coax everglade_attach_fork)
-  fg: EgForge;                             // Aethyrforge's panels in edit mode (everglade-forge.coax)
+  fg: EgEditor;                             // Aethyrforge's panels in edit mode (everglade-editor.coax)
   floors: [EG_STAND_NEAR * STAND_FLOATS] f32;   // the floors round you for the controller (everglade-stand.coax)
   snd: [1] EgSound;                        // what the page plays, and SOUND's volume and MUTE (everglade-sound.coax)
 }
@@ -1159,7 +1159,7 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c #effec
     ega_facts(s, text);   // the settings record this browser kept, and ?pseudo=1 (everglade-access.coax)
     fork_facts(s, text);
     weather_facts(s, text);
-    forge_facts(s, fact(text, "url"));   // ?forge on a local server (everglade-forge.coax)
+    editor_facts(s, fact(text, "url"));   // ?forge on a local server (everglade-editor.coax)
     eg_stage(s, fact(text, "url"));   // ?stage=roof (everglade-stand.coax)
     if eg_query_is(fact(text,"url"),"pack","everglade-link") {s[0].link_materials=true;}
     rp_facts(s, fact(text, "url"));   // ?raid=preview (everglade-raid-preview.coax)
@@ -1547,9 +1547,9 @@ everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id
   if ega_pointer(s, x, y, phase, id) { return true; }   // SETTINGS and its pane (everglade-access.coax)
   if egs_pointer(s, x, y, phase, id) { return true; }   // SOUND, its slider and MUTE (everglade-sound.coax)
   if eg_quality_pointer(s, x, y, phase, id) { return true; }   // the graphics tier, bottom right
-  // Aethyrforge's panels in edit mode: only they and edit mode's own presses (everglade-forge.coax)
-  forge := forge_on(s);
-  if forge && forge_pointer(s, x, y, phase) { return true; }
+  // Aethyrforge's panels in edit mode: only they and edit mode's own presses (everglade-editor.coax)
+  forge := editor_on(s);
+  if forge && editor_pointer(s, x, y, phase) { return true; }
   if !forge && fork_pointer(s, x, y, phase, id) { return true; }
   if !forge && talk_pointer(s, x, y, phase, id) { return true; }
   if !forge && chat_pointer(s, x, y, phase, id) { return true; }
@@ -4060,7 +4060,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   // the raid preview's flight: the film clean but for the names over heads, Darian's among them (everglade-raid-preview.coax)
   if rp_hud_off(s) { s[0].map_button = Box.{}; return labels(s, out, u, 0, you); }
   if cz_creating(s) || cz_running(s) { s[0].map_button = Box.{}; return cz_hud(s, out, u); }   // Character Create's wardrobe alone, then its run's clean screen (everglade-create.coax)
-  if forge_on(s) { s[0].map_button = Box.{}; return forge_hud(s, out, u, 0); }   // EDIT: Aethyrforge's panels alone (everglade-forge.coax)
+  if editor_on(s) { s[0].map_button = Box.{}; return editor_hud(s, out, u, 0); }   // EDIT: Aethyrforge's panels alone (everglade-editor.coax)
   md_plates_clear(s);
   n := ifx s[0].paint_only || eg_pane_open(s) then 0 else labels(s, out, u, 0, you);   // the feature list's pane open: no place names over it
   if !s[0].paint_only && s[0].talk < 0 && !(phone(s) && eg_pane_open(s)) { n = room_chat_draw(s, out, u, n); }   // the room's chat (everglade-room.coax)

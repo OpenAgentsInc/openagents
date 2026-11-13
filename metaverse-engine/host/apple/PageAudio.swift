@@ -1,7 +1,7 @@
 // Firm reason: 6 (AVFoundation and CoreAudio: a page's sound through the Apple audio host).
 // A page's sound (metaverse-engine/host/README.md, Audio), for the page host on Apple (page-host.h). It is
 // the Apple audio host the Metaverse Engine desktop app plays its realm with (apps/metaverse-engine-desktop/Sources/
-// MetalAudio.swift, ForgeMetalAudio): the shared Coax interpreter (metaverse-engine/host/native-audio.coax:
+// MetalAudio.swift, EditorMetalAudio): the shared Coax interpreter (metaverse-engine/host/native-audio.coax:
 // host-pcm, the session, the bank, the memory tickets, the decoders) behind audio-host.h, and an
 // AVAudioEngine source node that copies its 1024-frame blocks to the device. This file only hands
 // it the page: the bank the realm renders, the packets it says, the gesture and the cover.
@@ -14,7 +14,7 @@ import Foundation
 
 @MainActor
 final class AEPageAudio {
-  let audio: ForgeMetalAudio
+  let audio: EditorMetalAudio
   let offline: Bool
   private var owed = 0.0              // frames of the page's time not yet rendered (offline)
   private(set) var heard: [Float] = []   // offline: the blocks rendered, interleaved stereo at 48 kHz
@@ -25,7 +25,7 @@ final class AEPageAudio {
   // sound files, as the page names them).
   init(page: AEPageHost, resources: URL, offline: Bool) {
     self.offline = offline
-    audio = ForgeMetalAudio(host: Unmanaged.passUnretained(page).toOpaque(), resources: resources, muted: offline,
+    audio = EditorMetalAudio(host: Unmanaged.passUnretained(page).toOpaque(), resources: resources, muted: offline,
                             bankDirectory: FileManager.default.temporaryDirectory.appendingPathComponent("everglade-audio-bank-\(getpid())"))
     if offline { gesture() }
   }

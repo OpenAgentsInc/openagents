@@ -2,7 +2,7 @@
 import Foundation
 
 @MainActor
-final class ForgeMetalNetwork: NSObject, @preconcurrency URLSessionDataDelegate {
+final class EditorMetalNetwork: NSObject, @preconcurrency URLSessionDataDelegate {
     struct Owner: Equatable { let id, generation, engine: Int64 }
     final class Request {
         let owner: Owner

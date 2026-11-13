@@ -9,7 +9,7 @@
 
 FCR_LINES :: 1048576;
 
-ForgeChatRun :: struct {
+EditorChatRun :: struct {
   run: [1] TrRun; chat: [1] TrBuffers; attached: bool;
   lines: [FCR_LINES] u8; n: int; at: int;     // the lines taken from the log, and how far they are read
   turn: bool;                                 // a turn runs, or its last lines wait to be read
@@ -18,7 +18,7 @@ ForgeChatRun :: struct {
 // A turn: text, forking the session parent ("" for a new conversation), in
 // folder cwd, a context file ahead of its first message ("" for none), on
 // engine ("auto" for System One's pick). False when the parent's log is not there.
-fcr_start :: (s: [] ForgeChatRun, text: string, parent: string, cwd: string, context: string, engine: string) -> bool #export_c #effects(all) {
+fcr_start :: (s: [] EditorChatRun, text: string, parent: string, cwd: string, context: string, engine: string) -> bool #export_c #effects(all) {
   r := s[0].run[..];
   if !s[0].attached { tr_buffers(r, s[0].chat[..]); s[0].attached = true; }
   tr_reset(r); r[0].log[0].live = fc_run_live();
@@ -40,7 +40,7 @@ fcr_start :: (s: [] ForgeChatRun, text: string, parent: string, cwd: string, con
 
 // One poll: what still asks is answered as chat-launch.coax says, the engine
 // runs, and its lines join those waiting. True while the turn runs or lines wait.
-fcr_poll :: (s: [] ForgeChatRun) -> bool #export_c #effects(all) {
+fcr_poll :: (s: [] EditorChatRun) -> bool #export_c #effects(all) {
   if !s[0].turn { return false; }
   r := s[0].run[..];
   if r[0].ask { tr_answer(r, fc_run_allow()); }
@@ -57,7 +57,7 @@ fcr_poll :: (s: [] ForgeChatRun) -> bool #export_c #effects(all) {
 }
 
 // The next line (without its newline) into out: its length, 0 when none waits, -1 when it does not fit (it is skipped).
-fcr_line :: (s: [] ForgeChatRun, out: [] u8) -> int #export_c #effects(all) {
+fcr_line :: (s: [] EditorChatRun, out: [] u8) -> int #export_c #effects(all) {
   if s[0].at >= s[0].n { return 0; }
   e := s[0].at; while e < s[0].n && s[0].lines[e] != '\n' { e += 1; }
   k := e - s[0].at; from := s[0].at; s[0].at = ifx e < s[0].n then e + 1 else e;
@@ -67,13 +67,13 @@ fcr_line :: (s: [] ForgeChatRun, out: [] u8) -> int #export_c #effects(all) {
 }
 
 // STOP: the turn and its engine end now; no end line is written (as when its process was stopped).
-fcr_stop :: (s: [] ForgeChatRun) #export_c #effects(all) {
+fcr_stop :: (s: [] EditorChatRun) #export_c #effects(all) {
   if s[0].attached { tr_close(s[0].run[..]); s[0].run[0].running = false; }
   s[0].turn = false; s[0].n = 0; s[0].at = 0;
 }
 
 #test "a host reads the runner's lines one at a time, and a stop drops what waits" {
-  s: [1] ForgeChatRun;
+  s: [1] EditorChatRun;
   t := "{\"kind\":\"user\",\"text\":\"hi\"}\n{\"kind\":\"end\",\"ending\":\"finished\"}\n";
   for i: 0..<t.count { s[0].lines[i] = t[i]; } s[0].n = t.count;
   o: [64] u8;

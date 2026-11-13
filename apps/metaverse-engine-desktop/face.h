@@ -2,15 +2,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "metal-host.h"
-int64_t forge_world_backend_bytes(const uint8_t *bytes,int64_t count);
+int64_t editor_world_backend_bytes(const uint8_t *bytes,int64_t count);
 int64_t fwp_target(int64_t launch,int64_t current,bool ready,bool busy);
 int64_t fwp_label_byte(int64_t current,int64_t index);
-int64_t forge_url_byte(int64_t page, int64_t room, int64_t index);
-int64_t forge_offline_url_byte(int64_t page,int64_t index);
-int64_t forge_native_url_byte(int64_t page,int64_t index);
-int64_t forge_startup_budget(int64_t remaining, int64_t elapsed, bool visible);
-int64_t forge_startup_phase(int64_t remaining, int64_t elapsed, bool visible);
-bool forge_world_paused(bool ready, bool setup, bool visible, bool minimized, bool occluded);
+int64_t editor_url_byte(int64_t page, int64_t room, int64_t index);
+int64_t editor_offline_url_byte(int64_t page,int64_t index);
+int64_t editor_native_url_byte(int64_t page,int64_t index);
+int64_t editor_startup_budget(int64_t remaining, int64_t elapsed, bool visible);
+int64_t editor_startup_phase(int64_t remaining, int64_t elapsed, bool visible);
+bool editor_world_paused(bool ready, bool setup, bool visible, bool minimized, bool occluded);
 void *fgu_state(void);
 void fgu_update(bool scene,bool checking,bool verifying,bool status,bool paused,const uint8_t *error,int64_t n);
 int64_t fgu_draw(float *out,int64_t cap,float w,float h,float d);
@@ -38,9 +38,9 @@ void fgu_measured(void *s,int32_t slot,float width,int32_t color);
 int32_t fgu_next_cell(void *s);
 int32_t fgu_cell(void *s,int32_t cell,float *out);
 void fgu_cell_ready(void *s,int32_t cell);
-uint64_t forge_process_cpu_ns(int32_t pid);
-uint64_t forge_process_resident_bytes(int32_t pid);
-int64_t forge_benchmark_url_byte(int64_t page,int64_t index);
+uint64_t editor_process_cpu_ns(int32_t pid);
+uint64_t editor_process_resident_bytes(int32_t pid);
+int64_t editor_benchmark_url_byte(int64_t page,int64_t index);
 void fgs_reset(void);
 int64_t fgs_input_byte(int64_t index, int64_t value);
 int64_t fgs_accept(int64_t kind, int64_t length);
@@ -49,8 +49,8 @@ bool fgs_completed(void);
 void fgs_microphone(int64_t status, bool pending);
 void fgs_voice_ready(int64_t stage);
 bool fm_setup_request(bool visible, bool active, bool shown, bool completed, int64_t status, bool pending, bool interactive);
-bool forge_high_refresh(int64_t display_hz);
-bool forge_voice_warm(bool scene, bool visible, bool authorized, bool installed, bool interactive, bool pending, bool ready);
+bool editor_high_refresh(int64_t display_hz);
+bool editor_voice_warm(bool scene, bool visible, bool authorized, bool installed, bool interactive, bool pending, bool ready);
 void fgs_choose(int64_t kind);
 int64_t fgs_count(int64_t kind);
 int64_t fgs_selected(void);

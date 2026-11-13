@@ -58,7 +58,7 @@ realm_a11y :: (s: [] MyRealm, buf: [] u8) -> int #export_c #effects(all) {
     if !s[0].shown[b] || a11y_word(s, b) == "" { continue; }
     n = a11y_line(buf, n, b, "button", a11y_pressed(s, b), a11y_word(s, b));
   }
-  if s[0].moving >= 0 && forge_owner(s) {
+  if s[0].moving >= 0 && editor_owner(s) {
     for k: 0..<5 { n = a11y_line(buf, n, A11Y_PICK + k, "button", "-", A11Y_PICK_WORDS[k]); }
   }
   for c: 0..<THINGS {
@@ -74,14 +74,14 @@ realm_a11y :: (s: [] MyRealm, buf: [] u8) -> int #export_c #effects(all) {
 // The picked thing's own edits: one undo step each, as a tap's would be.
 a11y_pick :: (s: [] MyRealm, k: int) -> bool {
   e := s[0].moving;
-  if e < 0 || !forge_owner(s) || !ent_laid(s, e) { return false; }
+  if e < 0 || !editor_owner(s) || !ent_laid(s, e) { return false; }
   b: [32] u8; key := ent_key(s, e, b[..]);
-  sh := forge_shape_of(s[0].fd[..], key);
+  sh := editor_shape_of(s[0].fd[..], key);
   done := false;
-  if k == 0 { done = forge_rotate(s[0].fd[..], key, sh.yaw + A11Y_TURN); }
-  if k == 1 { done = forge_resize(s[0].fd[..], key, sh.scale + A11Y_SIZE); }
-  if k == 2 { done = forge_resize(s[0].fd[..], key, sh.scale - A11Y_SIZE); }
-  if k == 3 { done = forge_remove(s[0].fd[..], key); if done { s[0].moving = -1; } }
+  if k == 0 { done = editor_rotate(s[0].fd[..], key, sh.yaw + A11Y_TURN); }
+  if k == 1 { done = editor_resize(s[0].fd[..], key, sh.scale + A11Y_SIZE); }
+  if k == 2 { done = editor_resize(s[0].fd[..], key, sh.scale - A11Y_SIZE); }
+  if k == 3 { done = editor_remove(s[0].fd[..], key); if done { s[0].moving = -1; } }
   if k == 4 { s[0].moving = -1; relay(s); set_note(s, "Let go."); return true; }
   if !done { set_note(s, ifx k == 1 then "It's as big as it goes." else ifx k == 2 then "It's as small as it goes." else "That can't change."); return false; }
   relay(s); s[0].kept_due = true;
@@ -98,7 +98,7 @@ realm_a11y_do :: (s: [] MyRealm, t: [] Track, id: int) -> bool #export_c #effect
 }
 // The picked thing's keys: R turns it, + and - size it, Delete takes it away. True when taken.
 realm_pick_key :: (s: [] MyRealm, key: int) -> bool {
-  if s[0].moving < 0 || !forge_owner(s) { return false; }
+  if s[0].moving < 0 || !editor_owner(s) { return false; }
   if key == 'r' || key == 'R' { done := a11y_pick(s, 0); return true; }
   if key == '+' || key == '=' { done := a11y_pick(s, 1); return true; }
   if key == '-' || key == '_' { done := a11y_pick(s, 2); return true; }
@@ -140,15 +140,15 @@ a11y_has :: (s: [] MyRealm, line: string) -> bool {
   #assert a11y_has(s[..], "900 status - Walk to its new place, then put it here.\n");
   // the picked thing turns, grows and is taken away, each one step; undo walks them back
   e := s[0].moving; b: [32] u8; key := ent_key(s[..], e, b[..]);
-  #assert realm_a11y_do(s[..], t[..], A11Y_PICK + 0) && forge_shape_of(s[0].fd[..], key).yaw == 45;
-  #assert realm_a11y_do(s[..], t[..], A11Y_PICK + 1) && forge_shape_of(s[0].fd[..], key).scale == 125;
-  #assert realm_a11y_do(s[..], t[..], A11Y_PICK + 3) && forge_shape_of(s[0].fd[..], key).gone && s[0].moving < 0;
+  #assert realm_a11y_do(s[..], t[..], A11Y_PICK + 0) && editor_shape_of(s[0].fd[..], key).yaw == 45;
+  #assert realm_a11y_do(s[..], t[..], A11Y_PICK + 1) && editor_shape_of(s[0].fd[..], key).scale == 125;
+  #assert realm_a11y_do(s[..], t[..], A11Y_PICK + 3) && editor_shape_of(s[0].fd[..], key).gone && s[0].moving < 0;
   n = frame_of(s[..], t[..], 2560, 1600);
   #assert a11y_has(s[..], "14 button - Undo\n") && a11y_has(s[..], "15 button - Save\n") && !a11y_has(s[..], "300 button");
-  #assert realm_a11y_do(s[..], t[..], BTN_UNDO) && !forge_shape_of(s[0].fd[..], key).gone;
+  #assert realm_a11y_do(s[..], t[..], BTN_UNDO) && !editor_shape_of(s[0].fd[..], key).gone;
   n = frame_of(s[..], t[..], 2560, 1600);
   #assert a11y_has(s[..], "18 button - Redo\n");
-  #assert realm_a11y_do(s[..], t[..], BTN_REDO) && forge_shape_of(s[0].fd[..], key).gone;
+  #assert realm_a11y_do(s[..], t[..], BTN_REDO) && editor_shape_of(s[0].fd[..], key).gone;
   // SAVE keeps the shapes; a control not shown does nothing
   #assert realm_a11y_do(s[..], t[..], BTN_SAVE) && url_is(s[..], "/api/playtest/realms/forge-court/save") && a11y_in(cast(string) s[0].req_body[0..<s[0].req_body_n], "\"shaped\":[{");
   #assert !realm_a11y_do(s[..], t[..], BTN_PUBLISH) && !realm_a11y_do(s[..], t[..], A11Y_CELL) && !realm_a11y_do(s[..], t[..], 9999);
@@ -178,11 +178,11 @@ a11y_has :: (s: [] MyRealm, line: string) -> bool {
   #assert !realm_pick_key(s[..], 'r');
   #assert realm_a11y_do(s[..], t[..], BTN_MOVE);
   e := s[0].moving; b: [32] u8; key := ent_key(s[..], e, b[..]);
-  #assert realm_key(s[..], t[..], 'r', true) && forge_shape_of(s[0].fd[..], key).yaw == 45;
-  #assert realm_key(s[..], t[..], '-', true) && forge_shape_of(s[0].fd[..], key).scale == 75;
+  #assert realm_key(s[..], t[..], 'r', true) && editor_shape_of(s[0].fd[..], key).yaw == 45;
+  #assert realm_key(s[..], t[..], '-', true) && editor_shape_of(s[0].fd[..], key).scale == 75;
   for i: 0..<3 { #assert realm_key(s[..], t[..], '-', true); }
-  #assert forge_shape_of(s[0].fd[..], key).scale == 25 && note_is(s[..], "It's as small as it goes.");
-  #assert realm_key(s[..], t[..], KEY_DELETE, true) && forge_shape_of(s[0].fd[..], key).gone;
+  #assert editor_shape_of(s[0].fd[..], key).scale == 25 && note_is(s[..], "It's as small as it goes.");
+  #assert realm_key(s[..], t[..], KEY_DELETE, true) && editor_shape_of(s[0].fd[..], key).gone;
 }
 
 #test "a11y: a controller walks and jumps through metaverse-engine/core/input.coax, for a guest too" #steps 60000000 {

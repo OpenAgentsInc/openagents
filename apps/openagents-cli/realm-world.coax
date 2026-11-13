@@ -44,11 +44,11 @@ RwWork :: struct {
   st: WorldState; words_n: int;
 }
 rw_path :: (slug: string, tail: string, out: [] u8) -> string {
-  n := forge_put(out,0,"/api/worlds/"); n = forge_put(out,n,slug); n = forge_put(out,n,tail);
+  n := editor_put(out,0,"/api/worlds/"); n = editor_put(out,n,slug); n = editor_put(out,n,tail);
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 rw_page :: (slug: string, out: [] u8) -> string {
-  n := forge_put(out,0,"/worlds/"); n = forge_put(out,n,slug);
+  n := editor_put(out,0,"/worlds/"); n = editor_put(out,n,slug);
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 // The exit code a result is: done and a dry run are 0.
@@ -84,7 +84,7 @@ rw_answer :: (r: [] Rep, w: [] RwWork, res: OpResult, words: OpWords) -> int {
 }
 // The lane's state (and its document, in w.doc): the route's answer, read through the codec.
 rw_state :: (a: [] Args, profile: string, slug: string, lane: string, w: [] RwWork) -> ApiAnswer {
-  tail: [32] u8; n := forge_put(tail[..],0,"?lane="); n = forge_put(tail[..],n,lane);
+  tail: [32] u8; n := editor_put(tail[..],0,"?lane="); n = editor_put(tail[..],n,lane);
   res := api_call(a, profile, "GET", rw_path(slug, cast(string) tail[0..<n], w[0].path[..]), "", w[0].out[..]);
   w[0].st = WorldState.{};
   if api_ok(res) { w[0].st = we_state_read(cast(string) w[0].out[0..<res.n], w[0].doc[..], w[0].did[..], w[0].scratch[..]); }
@@ -107,10 +107,10 @@ rw_edits :: (a: [] Args, verb: string, e: [] WorldEdit) -> int {
   p3 := positional(a, 3); p4 := positional(a, 4); p5 := positional(a, 5);
   id := cli_count(p3, 1, WE_ID_MAX);
   if verb == "world-place" {
-    yaw := forge_turn(args_whole_signed(rc_option(a, verb, "--yaw", "0")));
+    yaw := editor_turn(args_whole_signed(rc_option(a, verb, "--yaw", "0")));
     e[0] = WorldEdit.{op = WE_SPAWN, id = 0, kind = id, x = rw_cm(p4), z = rw_cm(p5), yaw = yaw, scale = 100};
   } else if verb == "world-move" { e[0] = WorldEdit.{op = WE_MOVE, id = id, x = rw_cm(p4), z = rw_cm(p5)}; }
-  else if verb == "world-turn" { e[0] = WorldEdit.{op = WE_ROTATE, id = id, yaw = forge_turn(args_whole_signed(p4))}; }
+  else if verb == "world-turn" { e[0] = WorldEdit.{op = WE_ROTATE, id = id, yaw = editor_turn(args_whole_signed(p4))}; }
   else if verb == "world-set" { e[0] = WorldEdit.{op = WE_SET, id = id, col = we_col(p4), v = rw_cm(p5)}; }
   else if verb == "world-remove" { e[0] = WorldEdit.{op = WE_DESPAWN, id = id}; }
   else if verb == "world-time" { e[0] = rw_cell("clock", 1, "when", p3); }
@@ -147,8 +147,8 @@ rw_row :: (table: string, id: int) -> string #effects(all) {
 }
 // The words for a write the site refused to this login.
 rw_not_permitted :: (origin: string, out: [] u8) -> string #effects(all) {
-  n := forge_put(out, 0, "this openagents login can't write to this world on "); n = forge_put(out, n, origin);
-  n = forge_put(out, n, ": only an admin's login can (openagents login). A dev server (coax/web/serve.sh) takes edits from this computer with no login");
+  n := editor_put(out, 0, "this openagents login can't write to this world on "); n = editor_put(out, n, origin);
+  n = editor_put(out, n, ": only an admin's login can (openagents login). A dev server (coax/web/serve.sh) takes edits from this computer with no login");
   return ifx n < 0 then "log in as an admin" else cast(string) out[0..<n];
 }
 #test "a refused write names the site and what can write" {
@@ -176,14 +176,14 @@ rw_board_edit :: (a: [] Args, content: string, e: [] WorldEdit, words: [] u8) ->
   if on < 0 { return -1; }
   table := rw_table(content, "board"); row := rw_row(table, 1);
   if ct_parts(row, '|') != 4 {
-    n := forge_put(words, 0, "this world has no hoverboard to give: its content has no board table (");
-    n = forge_put(words, n, BOARD_TABLE); n = forge_put(words, n, ")");
+    n := editor_put(words, 0, "this world has no hoverboard to give: its content has no board table (");
+    n = editor_put(words, n, BOARD_TABLE); n = editor_put(words, n, ")");
     return ifx n < 0 then -1 else -n;
   }
   casual := ct_num(rc_option(a, "world-board", "--casual", ct_part(row, '|', 2))).v;
   fast := ct_num(rc_option(a, "world-board", "--fast", ct_part(row, '|', 3))).v;
   why := board_row_why(1, ifx on == 1 then "on" else "off", casual, fast);
-  if why != BRW_OK { n := forge_put(words, 0, board_row_words(why)); return ifx n < 0 then -1 else -n; }
+  if why != BRW_OK { n := editor_put(words, 0, board_row_words(why)); return ifx n < 0 then -1 else -n; }
   out: [64] u8;
   text := board_row_text(on == 1, casual, fast, out[..]);
   if text.count == 0 { return -1; }
@@ -220,8 +220,8 @@ rw_plan_edit :: (a: [] Args, verb: string, content: string, e: [] WorldEdit, wor
   if foe < 1 || w < 0 || arg.count == 0 { return -1; }
   row := rw_row(rw_table(content, "plans"), npl_id(foe, w));
   if ct_parts(row, '|') != 8 {
-    n := forge_put(words, 0, "the world has no plan for actor "); n = forge_put_int(words, n, foe); n = forge_put(words, n, " at "); n = forge_put(words, n, when);
-    n = forge_put(words, n, " (realm world-foes ID lists its actors and their plans)");
+    n := editor_put(words, 0, "the world has no plan for actor "); n = editor_put_int(words, n, foe); n = editor_put(words, n, " at "); n = editor_put(words, n, when);
+    n = editor_put(words, n, " (realm world-foes ID lists its actors and their plans)");
     return ifx n < 0 then -1 else -n;
   }
   ld := NPL_DO;
@@ -328,9 +328,9 @@ rw_what :: (verb: string, when: string) -> int #effects(all) {
 // says what the picture is of: the realm, the revision, the page, the camera and the GPU (#13437).
 rw_shot :: (a: [] Args, r: [] Rep, profile: string, slug: string, out: string, rev: int, w: [] RwWork) -> bool {
   b: [1] Args; js: [400] u8; pg: [160] u8;
-  n := forge_put(js[..],0,"new Promise(done => { const t0 = Date.now(); const look = () => { const at = coaxial.fieldProbe ? coaxial.fieldProbe(0) : -1; if (at >= ");
-  n = forge_put_int(js[..],n,rev); n = forge_put(js[..],n," || Date.now() - t0 > 8000) setTimeout(() => done(String(at)), 900); else setTimeout(look, 50); }; look(); })");
-  pn := forge_put(pg[..],0,rw_page(slug, w[0].page[..])); pn = forge_put(pg[..],pn,"?edit");
+  n := editor_put(js[..],0,"new Promise(done => { const t0 = Date.now(); const look = () => { const at = coaxial.fieldProbe ? coaxial.fieldProbe(0) : -1; if (at >= ");
+  n = editor_put_int(js[..],n,rev); n = editor_put(js[..],n," || Date.now() - t0 > 8000) setTimeout(() => done(String(at)), 900); else setTimeout(look, 50); }; look(); })");
+  pn := editor_put(pg[..],0,rw_page(slug, w[0].page[..])); pn = editor_put(pg[..],pn,"?edit");
   if n < 0 || pn < 0 { return false; }
   ok := args_add(b[..],"labs") && args_add(b[..],"shot") && args_add(b[..],cast(string) pg[0..<pn]) && args_add(b[..],out) && args_add(b[..],"--eval") && args_add(b[..],cast(string) js[0..<n]) && args_add(b[..],"--fresh");
   if args_has(a,"--origin") { ok = ok && args_add(b[..],"--origin") && args_add(b[..],args_value(a,"--origin","")); }
@@ -359,10 +359,10 @@ rw_show :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RwWork) 
   cres := api_call(a, profile, "GET", rw_path(slug, ifx lane == "dev" then "/content?lane=dev" else "/content", w[0].path[..]), "", w[0].content[..]);
   content := ifx api_ok(cres) then cast(string) w[0].content[0..<cres.n] else "";
   pb: [160] u8; lb: [480] u8; bb: [64] u8;
-  bn := 0; for k: 0..<4 { if k > 0 { bn = forge_put(bb[..],bn,"."); } bn = forge_put_int(bb[..],bn,st.build[k]); }
+  bn := 0; for k: 0..<4 { if k > 0 { bn = editor_put(bb[..],bn,"."); } bn = editor_put_int(bb[..],bn,st.build[k]); }
   // the reference on the origin this read, so an agent fetches the dev server's page and not production's (#13466)
   ob: [256] u8; origin := acct_origin(a, profile, ob[..]);
-  ln := forge_put(lb[..],0,origin); ln = forge_put(lb[..],ln,rw_page(slug, pb[..])); ln = forge_put(lb[..],ln,"/llms.txt");
+  ln := editor_put(lb[..],0,origin); ln = editor_put(lb[..],ln,rw_page(slug, pb[..])); ln = editor_put(lb[..],ln,"/llms.txt");
   rep_str(r, "world", slug); rep_str(r, "lane", lane); rep_int(r, "rev", st.rev); rep_int(r, "dev", st.dev); rep_int(r, "live", st.live);
   rep_str(r, "build", cast(string) bb[0..<bn]); rep_int(r, "undo", st.undo); rep_int(r, "redo", st.redo);
   rep_str(r, "page", rw_page(slug, pb[..])); rep_str(r, "reference", cast(string) lb[0..<ln]);
@@ -429,7 +429,7 @@ rw_write :: (a: [] Args, r: [] Rep, profile: string, verb: string, slug: string,
     if fn <= 0 { return fail(r, EXIT_USAGE, "FILE is edits as JSON lines, at most 64 KiB (realm help)"); }
     n = rw_file_edits(cast(string) w[0].file[0..<fn], w[0].e[..]);
     if n < 0 {
-      wn := forge_put(w[0].words[..],0,"line "); wn = forge_put_int(w[0].words[..],wn,-n); wn = forge_put(w[0].words[..],wn," is not a world.edit.v1 edit");
+      wn := editor_put(w[0].words[..],0,"line "); wn = editor_put_int(w[0].words[..],wn,-n); wn = editor_put(w[0].words[..],wn," is not a world.edit.v1 edit");
       words.words = cast(string) w[0].words[0..<ifx wn < 0 then 0 else wn];
       return rw_answer(r, w, OpResult.{state = OR_REFUSED, code = ORC_BAD_REQUEST, edit = -n - 1}, words);
     }
@@ -523,10 +523,10 @@ rw_why :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RwWork) -
   b: [1] Args; js: [300] u8; pg: [160] u8; tmp: [1100] u8; td: [1024] u8; name: [48] u8;
   // a placed thing's number, as `realm world` lists it, is the page's piece one below it
   number := cli_count(thing, 1, 999999999);
-  if number >= 1 { tn := forge_put(name[..],0,"piece-"); tn = forge_put_int(name[..],tn,number - 1); thing = cast(string) name[0..<tn]; }
+  if number >= 1 { tn := editor_put(name[..],0,"piece-"); tn = editor_put_int(name[..],tn,number - 1); thing = cast(string) name[0..<tn]; }
   for c: thing { if c == '\'' || c == '\\' || c < 32 { return fail(r, EXIT_USAGE, "THING is a placed thing's number, or a name the page knows: you, foe-N, rubble, boss-wall, caps"); } }
-  n := forge_put(js[..],0,"new Promise(done => setTimeout(() => done(coaxial.drive.send('why "); n = forge_put(js[..],n,thing); n = forge_put(js[..],n,"') || 'the page has no driver'), 1200))");
-  pn := forge_put(pg[..],0,rw_page(slug, w[0].page[..])); pn = forge_put(pg[..],pn,"?edit");
+  n := editor_put(js[..],0,"new Promise(done => setTimeout(() => done(coaxial.drive.send('why "); n = editor_put(js[..],n,thing); n = editor_put(js[..],n,"') || 'the page has no driver'), 1200))");
+  pn := editor_put(pg[..],0,rw_page(slug, w[0].page[..])); pn = editor_put(pg[..],pn,"?edit");
   dir := fs_temp("world-why", td[..]);
   png := fs_join(dir, "why.png", tmp[..]);
   if n < 0 || pn < 0 || png == "" { return fail(r, EXIT_FAIL, "the question does not fit"); }
@@ -558,7 +558,7 @@ rw_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
   if verb == "world-script-compile" || verb == "world-script-put" || verb == "world-script-report" { return rs_send(a, r, profile, verb, slug, w[..]); }
   if verb == "world-open" {
     ob: [300] u8; ub: [500] u8;
-    n := forge_put(ub[..],0,acct_origin(a, profile, ob[..])); n = forge_put(ub[..],n,rw_page(slug, w[0].page[..])); n = forge_put(ub[..],n,"?edit");
+    n := editor_put(ub[..],0,acct_origin(a, profile, ob[..])); n = editor_put(ub[..],n,rw_page(slug, w[0].page[..])); n = editor_put(ub[..],n,"?edit");
     if n < 0 { return fail(r, EXIT_USAGE, "--origin is too long"); }
     rep_str(r, "world", slug); rep_str(r, "edit", cast(string) ub[0..<n]);
     return rep_done(r, EXIT_OK);
@@ -586,38 +586,38 @@ RsWork :: struct {
 }
 
 // The names of a manifest's handlers (kind 0), powers (1) or calls (2), joined by ", "; "none" for none.
-rs_add :: (out: [] u8, n: int, name: string) -> int #effects(all) { return forge_put(out, ifx n > 0 then forge_put(out, n, ", ") else n, name); }
+rs_add :: (out: [] u8, n: int, name: string) -> int #effects(all) { return editor_put(out, ifx n > 0 then editor_put(out, n, ", ") else n, name); }
 rs_names :: (bits: int, kind: int, out: [] u8) -> string #effects(all) {
   n := 0;
   if kind == 0 { for name, h: RH_NAMES { if (bits & (1 << h)) != 0 { n = rs_add(out, n, name); } } }
   if kind == 1 { for name, p: SM_POWERS { if (bits & (1 << p)) != 0 { n = rs_add(out, n, name); } } }
   if kind == 2 { for c, k: SCRIPT_API { if (bits & (1 << k)) != 0 { n = rs_add(out, n, c.name); } } }
-  if n == 0 { n = forge_put(out, 0, "none"); }
+  if n == 0 { n = editor_put(out, 0, "none"); }
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 // A stored script on one line: "pacer HASH 1234 bytes; handlers on_tick, on_hit; may read, write; calls sa_x, sa_move".
 rs_what :: (mf: ScriptManifest, out: [] u8) -> string #effects(all) {
   m := mf; b: [800] u8;
-  n := forge_put(out, 0, cast(string) m.name[0..<m.name_n]); n = forge_put(out, n, " "); n = forge_put(out, n, cast(string) m.hash[..]);
-  n = forge_put(out, n, " "); n = forge_put_int(out, n, m.bytes); n = forge_put(out, n, " bytes; handlers "); n = forge_put(out, n, rs_names(m.handlers, 0, b[..]));
-  n = forge_put(out, n, "; may "); n = forge_put(out, n, rs_names(m.powers, 1, b[..]));
-  n = forge_put(out, n, "; calls "); n = forge_put(out, n, rs_names(m.calls, 2, b[..]));
+  n := editor_put(out, 0, cast(string) m.name[0..<m.name_n]); n = editor_put(out, n, " "); n = editor_put(out, n, cast(string) m.hash[..]);
+  n = editor_put(out, n, " "); n = editor_put_int(out, n, m.bytes); n = editor_put(out, n, " bytes; handlers "); n = editor_put(out, n, rs_names(m.handlers, 0, b[..]));
+  n = editor_put(out, n, "; may "); n = editor_put(out, n, rs_names(m.powers, 1, b[..]));
+  n = editor_put(out, n, "; calls "); n = editor_put(out, n, rs_names(m.calls, 2, b[..]));
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 // The command that runs a stored script, for the answer to a store.
 rs_run_hint :: (slug: string, name: string, hash: string, out: [] u8) -> string #effects(all) {
-  n := forge_put(out, 0, "openagents realm world-script-run "); n = forge_put(out, n, slug); n = forge_put(out, n, " --script "); n = forge_put(out, n, hash);
-  n = forge_put(out, n, " --name "); n = forge_put(out, n, name); n = forge_put(out, n, " --for \"kind K\" (or \"who N\"), then world-publish");
+  n := editor_put(out, 0, "openagents realm world-script-run "); n = editor_put(out, n, slug); n = editor_put(out, n, " --script "); n = editor_put(out, n, hash);
+  n = editor_put(out, n, " --name "); n = editor_put(out, n, name); n = editor_put(out, n, " --for \"kind K\" (or \"who N\"), then world-publish");
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 // The limits, in words: what each of world.scripts.v1's limits is (SS_LIMIT_NAMES' order).
 RS_LIMIT_WORDS :: [SS_LIMITS] string.["scripts a world runs", "bytes a module", "modules a world stores", "fuel a call", "fuel a tick", "uploads a day", "compiles a day", "reports a day", "bytes a source", "bytes a reason", ""];
 rs_limits_line :: (l: SsLimits, out: [] u8) -> string #effects(all) {
-  n := forge_put(out, 0, "limits: ");
+  n := editor_put(out, 0, "limits: ");
   for words, k: RS_LIMIT_WORDS {
-    if k == SS_LIMITS - 1 { n = forge_put(out, n, ifx ss_limit(l, k) == 1 then "; this server compiles sources" else "; this server compiles no source (store built modules)"); continue; }
-    if k > 0 { n = forge_put(out, n, ", "); }
-    n = forge_put_int(out, n, ss_limit(l, k)); n = forge_put(out, n, " "); n = forge_put(out, n, words);
+    if k == SS_LIMITS - 1 { n = editor_put(out, n, ifx ss_limit(l, k) == 1 then "; this server compiles sources" else "; this server compiles no source (store built modules)"); continue; }
+    if k > 0 { n = editor_put(out, n, ", "); }
+    n = editor_put_int(out, n, ss_limit(l, k)); n = editor_put(out, n, " "); n = editor_put(out, n, words);
   }
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
@@ -674,7 +674,7 @@ rs_list :: (a: [] Args, r: [] Rep, profile: string, slug: string) -> int {
   return code;
 }
 rw_with2 :: (a: string, b: string, out: [] u8) -> string #effects(all) {
-  n := forge_put(out, 0, a); n = forge_put(out, n, b);
+  n := editor_put(out, 0, a); n = editor_put(out, n, b);
   return ifx n < 0 then a else cast(string) out[0..<n];
 }
 
@@ -691,24 +691,24 @@ rs_fields :: (text: string, name: string, out: [] u8) -> int {
   if mf[0].layout.n == 0 { return 0; }
   nodes: [512] JvNode; d: [1] Jv;
   if !jv_parse(d[..], t, nodes[..]) { return -1; }
-  n := forge_put(out, 0, "X-Script-Fields: "); n = forge_put(out, n, jv_raw(d[0], jv_path(d[0], 0, "state.fields")));
+  n := editor_put(out, 0, "X-Script-Fields: "); n = editor_put(out, n, jv_raw(d[0], jv_path(d[0], 0, "state.fields")));
   return n;
 }
 // The request a scripts verb's arguments make: file is FILE's bytes, fields NAME.json's ("": no --fields).
 rs_request :: (a: [] Args, verb: string, slug: string, file: string, fields: string, path: [] u8, extra: [] u8) -> RsRequest {
   q := RsRequest.{method = "POST"};
   name := rc_option(a, verb, "--name", "");
-  n := forge_put(path, 0, "/api/worlds/"); n = forge_put(path, n, slug);
+  n := editor_put(path, 0, "/api/worlds/"); n = editor_put(path, n, slug);
   if verb == "world-script-report" {
-    n = forge_put(path, n, "/scripts/"); n = forge_put(path, n, rc_pos(a, verb, 3)); n = forge_put(path, n, "/report");
+    n = editor_put(path, n, "/scripts/"); n = editor_put(path, n, rc_pos(a, verb, 3)); n = editor_put(path, n, "/report");
     q.body = rc_option(a, verb, "--why", ""); q.kind = "Content-Type: text/plain; charset=utf-8";
   } else if verb == "world-script-compile" {
     if file.count < 1 || file.count > SS_SOURCE { q.why = "FILE.coax is a realm script's Coax source, 1 to 65536 bytes"; return q; }
-    n = forge_put(path, n, "/scripts/compile?name="); n = forge_put(path, n, name);
+    n = editor_put(path, n, "/scripts/compile?name="); n = editor_put(path, n, name);
     q.body = file; q.kind = "Content-Type: text/plain; charset=utf-8";
   } else if verb == "world-script-put" {
     if file.count < 8 || file.count > WM_BYTES || file[0] != 0 || file[1..<4] != "asm" { q.why = "FILE.wasm is a built script module, at most 65536 bytes (coax/web/script.sh SOURCE.coax writes NAME.wasm and NAME.json)"; return q; }
-    n = forge_put(path, n, "/scripts?name="); n = forge_put(path, n, name);
+    n = editor_put(path, n, "/scripts?name="); n = editor_put(path, n, name);
     q.body = file; q.kind = "Content-Type: application/wasm";
     if fields.count > 0 {
       got := rs_fields(fields, name, extra);
@@ -727,11 +727,11 @@ rs_refused :: (answer: string, f: [] SsRefusal, words: [] u8, detail: [] u8, nod
   if words.count < SS_WORDS + 80 || !ss_refusal_read(answer, f, words[0..<SS_WORDS], detail, nodes) { return ""; }
   v := f[0]; n := v.words_n;
   if v.detail_n > 0 {
-    n = forge_put(words, n, " ("); n = forge_put(words, n, cast(string) detail[0..<v.detail_n]);
-    if v.at >= 0 { n = forge_put(words, n, " at byte "); n = forge_put_int(words, n, v.at); }
-    n = forge_put(words, n, ")");
+    n = editor_put(words, n, " ("); n = editor_put(words, n, cast(string) detail[0..<v.detail_n]);
+    if v.at >= 0 { n = editor_put(words, n, " at byte "); n = editor_put_int(words, n, v.at); }
+    n = editor_put(words, n, ")");
   }
-  if v.left_ms > 0 { n = forge_put(words, n, "; it lifts in "); n = forge_put_int(words, n, (v.left_ms + 59999) / 60000); n = forge_put(words, n, " minutes"); }
+  if v.left_ms > 0 { n = editor_put(words, n, "; it lifts in "); n = editor_put_int(words, n, (v.left_ms + 59999) / 60000); n = editor_put(words, n, " minutes"); }
   return ifx n < 0 then cast(string) words[0..<v.words_n] else cast(string) words[0..<n];
 }
 // A stored script, answered: what it is and the command that runs it.
@@ -798,7 +798,7 @@ rw_script_row :: (a: [] Args, content: string, e: [] WorldEdit, words: [] u8) ->
   table := rw_table(content, "scripts");
   n := 0;
   if table.count == 0 || ct_part(table, '\n', 0) != SRW_TABLE {
-    n = forge_put(words, 0, "this world runs no scripts: its content has no `"); n = forge_put(words, n, SRW_TABLE); n = forge_put(words, n, "` table");
+    n = editor_put(words, 0, "this world runs no scripts: its content has no `"); n = editor_put(words, n, SRW_TABLE); n = editor_put(words, n, "` table");
     return ifx n < 0 then -1 else -n;
   }
   place := cli_count(rc_option(a, verb, "--place", ""), 1, SH_SCRIPTS);
@@ -807,52 +807,52 @@ rw_script_row :: (a: [] Args, content: string, e: [] WorldEdit, words: [] u8) ->
     for id: 1..<SH_SCRIPTS + 1 { row := rw_row(table, id); if place < 0 && row.count > 0 && ct_part(row, '|', 1) == name { place = id; } }
     for id: 1..<SH_SCRIPTS + 1 { if place < 0 && rw_row(table, id).count == 0 { place = id; } }
     if place < 0 {
-      n = forge_put(words, 0, "the world runs "); n = forge_put_int(words, n, SH_SCRIPTS);
-      n = forge_put(words, n, " scripts already, none named so: say which row to replace with --place N (realm world ID shows its scripts table)");
+      n = editor_put(words, 0, "the world runs "); n = editor_put_int(words, n, SH_SCRIPTS);
+      n = editor_put(words, n, " scripts already, none named so: say which row to replace with --place N (realm world ID shows its scripts table)");
       return ifx n < 0 then -1 else -n;
     }
   }
   text: [WE_TEXT] u8;
-  t := forge_put_int(text[..], 0, place); t = forge_put(text[..], t, "|"); t = forge_put(text[..], t, name); t = forge_put(text[..], t, "|");
-  t = forge_put(text[..], t, hash); t = forge_put(text[..], t, "|"); t = forge_put(text[..], t, target);
+  t := editor_put_int(text[..], 0, place); t = editor_put(text[..], t, "|"); t = editor_put(text[..], t, name); t = editor_put(text[..], t, "|");
+  t = editor_put(text[..], t, hash); t = editor_put(text[..], t, "|"); t = editor_put(text[..], t, target);
   one: [1] ScriptRow;
   why := ifx t < 0 then SRW_BAD_FOR else srw_read(place, name, hash, target, one[..]);
-  if why != SRW_OK { n = forge_put(words, 0, srw_why(why)); return ifx n < 0 then -1 else -n; }
+  if why != SRW_OK { n = editor_put(words, 0, srw_why(why)); return ifx n < 0 then -1 else -n; }
   e[0] = rw_cell("scripts", place, "*", cast(string) text[0..<t]);
   return ifx we_valid(e[0]) then 1 else -1;
 }
 // The query of a world verb's batch: ?dry=1 for a dry run, and world-publish's --confirm hashes.
 rw_query :: (a: [] Args, verb: string, dry: bool, out: [] u8) -> string {
-  n := ifx dry then forge_put(out, 0, "?dry=1") else 0;
+  n := ifx dry then editor_put(out, 0, "?dry=1") else 0;
   confirm := ifx verb == "world-publish" then rc_option(a, verb, "--confirm", "") else "";
-  if confirm.count > 0 { n = forge_put(out, n, ifx n > 0 then "&confirm=" else "?confirm="); n = forge_put(out, n, confirm); }
+  if confirm.count > 0 { n = editor_put(out, n, ifx n > 0 then "&confirm=" else "?confirm="); n = editor_put(out, n, confirm); }
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 // One script a publish asks about: its name and hash, whether it is new, and what it adds.
 rs_ask_line :: (k: SsAsk, out: [] u8) -> string #effects(all) {
   q := k; b: [800] u8;
-  n := forge_put(out, 0, cast(string) q.name[0..<q.name_n]); n = forge_put(out, n, " "); n = forge_put(out, n, cast(string) q.hash[..]);
-  n = forge_put(out, n, ifx q.fresh then ": new; handlers " else ": does more than the live one; it adds handlers "); n = forge_put(out, n, rs_names(q.grows.handlers, 0, b[..]));
-  n = forge_put(out, n, "; may "); n = forge_put(out, n, rs_names(q.grows.powers, 1, b[..]));
-  n = forge_put(out, n, "; calls "); n = forge_put(out, n, rs_names(q.grows.calls, 2, b[..]));
+  n := editor_put(out, 0, cast(string) q.name[0..<q.name_n]); n = editor_put(out, n, " "); n = editor_put(out, n, cast(string) q.hash[..]);
+  n = editor_put(out, n, ifx q.fresh then ": new; handlers " else ": does more than the live one; it adds handlers "); n = editor_put(out, n, rs_names(q.grows.handlers, 0, b[..]));
+  n = editor_put(out, n, "; may "); n = editor_put(out, n, rs_names(q.grows.powers, 1, b[..]));
+  n = editor_put(out, n, "; calls "); n = editor_put(out, n, rs_names(q.grows.calls, 2, b[..]));
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 // The command that publishes again with every script asked about confirmed (and those --confirm named).
 rs_confirm_command :: (a: [] Args, slug: string, f: SsRefusal, out: [] u8) -> string {
   v := f; verb := "world-publish";
   given := rc_option(a, verb, "--confirm", "");
-  n := forge_put(out, 0, "openagents realm world-publish "); n = forge_put(out, n, slug); n = forge_put(out, n, " "); n = forge_put(out, n, rc_pos(a, verb, 3));
-  n = forge_put(out, n, " --confirm "); n = forge_put(out, n, given);
+  n := editor_put(out, 0, "openagents realm world-publish "); n = editor_put(out, n, slug); n = editor_put(out, n, " "); n = editor_put(out, n, rc_pos(a, verb, 3));
+  n = editor_put(out, n, " --confirm "); n = editor_put(out, n, given);
   first := given.count == 0;
   for i: 0..<v.asks_n {
     hash := cast(string) v.asks[i].hash[..];
     if rc_contains(given, hash) { continue; }
-    if !first { n = forge_put(out, n, ","); }
-    n = forge_put(out, n, hash); first = false;
+    if !first { n = editor_put(out, n, ","); }
+    n = editor_put(out, n, hash); first = false;
   }
-  n = forge_put(out, n, " --yes");
-  if args_has(a, "--origin") { n = forge_put(out, n, " --origin "); n = forge_put(out, n, args_value(a, "--origin", "")); }
-  if args_has(a, "--profile") { n = forge_put(out, n, " --profile "); n = forge_put(out, n, args_value(a, "--profile", "")); }
+  n = editor_put(out, n, " --yes");
+  if args_has(a, "--origin") { n = editor_put(out, n, " --origin "); n = editor_put(out, n, args_value(a, "--origin", "")); }
+  if args_has(a, "--profile") { n = editor_put(out, n, " --profile "); n = editor_put(out, n, args_value(a, "--profile", "")); }
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 // A publish refused because scripts are new or do more than live's (world.script.refusal.v1, code grows):
@@ -919,7 +919,7 @@ rs_test_manifest :: (name: string, handlers: int, powers: int, calls: int, field
   #assert q.ok && q.path == "/api/worlds/splice/scripts?name=pacer" && q.body == wasm && q.kind == "Content-Type: application/wasm";
   #assert q.extra == "X-Script-Fields: [{\"name\":\"turn_at\",\"type\":\"f32\",\"at\":4,\"size\":4}]";
   // a manifest file's newline is not part of it; a script with no fields sends no header
-  nl: [SM_TEXT + 2] u8; nn := forge_put(nl[..], 0, manifest); nn = forge_put(nl[..], nn, "\n");
+  nl: [SM_TEXT + 2] u8; nn := editor_put(nl[..], 0, manifest); nn = editor_put(nl[..], nn, "\n");
   #assert rs_request(b[..], "world-script-put", "splice", wasm, cast(string) nl[0..<nn], path[..], extra[..]).extra == q.extra;
   mb: [SM_TEXT] u8; bare := sm_write(rs_test_manifest("pacer", 1, 1, 1 << SA_X, false), mb[..]);
   q = rs_request(b[..], "world-script-put", "splice", wasm, bare, path[..], extra[..]);
@@ -985,8 +985,8 @@ rs_test_manifest :: (name: string, handlers: int, powers: int, calls: int, field
   // a world with no scripts table, or all eight taken by other names
   n := rw_script_row(a[..], "aethyr.content.v1 splice 2\nreach 30000\n", e[..], words[..]);
   #assert n < 0 && cast(string) words[0..<-n] == "this world runs no scripts: its content has no `table scripts id name:text hash:text for:text` table";
-  full: [2000] u8; fn := forge_put(full[..], 0, "table scripts id name:text hash:text for:text\n");
-  for id: 1..<9 { fn = forge_put_int(full[..], fn, id); fn = forge_put(full[..], fn, "|s"); fn = forge_put_int(full[..], fn, id); fn = forge_put(full[..], fn, "|"); fn = forge_put(full[..], fn, g); fn = forge_put(full[..], fn, "|kind 1\n"); }
+  full: [2000] u8; fn := editor_put(full[..], 0, "table scripts id name:text hash:text for:text\n");
+  for id: 1..<9 { fn = editor_put_int(full[..], fn, id); fn = editor_put(full[..], fn, "|s"); fn = editor_put_int(full[..], fn, id); fn = editor_put(full[..], fn, "|"); fn = editor_put(full[..], fn, g); fn = editor_put(full[..], fn, "|kind 1\n"); }
   a[0] = Args.{}; for s: [9] string.["realm","world-script-run","splice","--script",h,"--name","guard","--for","who 4"] { #assert args_add(a[..],s); }
   n = rw_script_row(a[..], cast(string) full[0..<fn], e[..], words[..]);
   #assert n < 0 && cast(string) words[0..<-n] == "the world runs 8 scripts already, none named so: say which row to replace with --place N (realm world ID shows its scripts table)";

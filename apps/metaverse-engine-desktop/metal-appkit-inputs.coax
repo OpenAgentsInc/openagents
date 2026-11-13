@@ -1,4 +1,4 @@
-// Deliver actual NSEvents through ForgeMetalWorld to the recording realm.
+// Deliver actual NSEvents through EditorMetalWorld to the recording realm.
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";

@@ -168,7 +168,7 @@ plays with, not a second one:
   packet read once after every handoff, refused whole when it is outside the
   face's allocation) and the spatial probe (none).
 - **The Swift.** `metaverse-engine/host/apple/PageAudio.swift` hands a page to
-  the Metaverse Engine's `ForgeMetalAudio` (`Sources/MetalAudio.swift`): the bank the
+  the Metaverse Engine's `EditorMetalAudio` (`Sources/MetalAudio.swift`): the bank the
   realm renders (Experimental's synthesized sounds, the bow's among them),
   the site's sound files and PCM companions (`/realms/everglade/sfx/`,
   `pcm-v1/`, copied into the app), the first key or press as the gesture,

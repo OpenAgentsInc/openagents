@@ -43,7 +43,7 @@ Three ways to run the module for an agent:
 | C. The native realm run (`c47fadafcd`, every realm draws natively) | Server-side and GPU-accurate | Needs a GPU host; native input and the talk routes aren't wired |
 
 **We build A.** `coax/lib/net/cdp.coax` already drives pages this way for
-`forge-journey.coax` and `realm shot`, with typed taps, keys and the page's
+`editor-journey.coax` and `realm shot`, with typed taps, keys and the page's
 probe (`coaxial.guardProbe`). B and C stay options once the engine's typed
 scene query lands (engine core, #12609 `ec-query`); a seat's protocol below
 doesn't change if the runner does.

@@ -4,15 +4,15 @@ import Foundation
 
 // Tickets live as long as the allocations they admit, including SDK converter
 // scratch and samples borrowed by a retiring audio context.
-final class ForgeAudioMemory {
+final class EditorAudioMemory {
     private let lock = NSLock()
     private let state = mf_audio_memory_open()
-    func reserve(frames: Int64, channels: Int64) -> ForgeAudioReservation? {
+    func reserve(frames: Int64, channels: Int64) -> EditorAudioReservation? {
         let words = mf_audio_extent(frames,channels)
         lock.lock(); defer { lock.unlock() }
         let ticket = mf_audio_memory_reserve(state,words)
         guard ticket >= 0 else { return nil }
-        return ForgeAudioReservation(memory:self,ticket:ticket,words:mf_audio_memory_words(state,ticket))
+        return EditorAudioReservation(memory:self,ticket:ticket,words:mf_audio_memory_words(state,ticket))
     }
     fileprivate func release(_ ticket: Int64) {
         lock.lock(); defer { lock.unlock() }
@@ -24,21 +24,21 @@ final class ForgeAudioMemory {
     }
     deinit { mf_audio_memory_close(state) }
 }
-final class ForgeAudioReservation {
-    let memory: ForgeAudioMemory
+final class EditorAudioReservation {
+    let memory: EditorAudioMemory
     let ticket: Int64
     let words: Int64
-    fileprivate init(memory: ForgeAudioMemory, ticket: Int64, words: Int64) {
+    fileprivate init(memory: EditorAudioMemory, ticket: Int64, words: Int64) {
         self.memory = memory; self.ticket = ticket; self.words = words
     }
     deinit { memory.release(ticket) }
 }
 
 // The reservation precedes the SDK read and survives every borrowed byte view.
-final class ForgeEncodedAudio {
+final class EditorEncodedAudio {
     let data: Data
-    private let reservation: ForgeAudioReservation
-    init?(_ url: URL, companion: Bool, memory: ForgeAudioMemory) {
+    private let reservation: EditorAudioReservation
+    init?(_ url: URL, companion: Bool, memory: EditorAudioMemory) {
         guard let file = try? FileHandle(forReadingFrom:url) else { return nil }
         defer { try? file.close() }
         guard let extent = try? file.seekToEnd(), let count = Int64(exactly:extent) else { return nil }
@@ -54,18 +54,18 @@ final class ForgeEncodedAudio {
 }
 
 // Stable decoded memory. Coax borrows it until engine retirement.
-final class ForgeDecodedPCM {
+final class EditorDecodedPCM {
     let samples: UnsafeMutablePointer<Float>
     let count: Int
     let channels: Int64
-    private let reservation: ForgeAudioReservation
-    init?(frames: Int64, channels: Int64, memory: ForgeAudioMemory) {
+    private let reservation: EditorAudioReservation
+    init?(frames: Int64, channels: Int64, memory: EditorAudioMemory) {
         guard let receipt = memory.reserve(frames:frames,channels:channels),
               let bytes = calloc(Int(receipt.words),MemoryLayout<Float>.stride) else { return nil }
         reservation = receipt; count = Int(receipt.words); self.channels = channels
         samples = bytes.assumingMemoryBound(to:Float.self)
     }
-    convenience init?(_ buffer: AVAudioPCMBuffer, memory: ForgeAudioMemory) {
+    convenience init?(_ buffer: AVAudioPCMBuffer, memory: EditorAudioMemory) {
         guard buffer.format.isInterleaved, let source = buffer.floatChannelData?[0] else { return nil }
         self.init(frames:Int64(buffer.frameLength),channels:Int64(buffer.format.channelCount),memory:memory)
         samples.update(from:source,count:count)
@@ -75,7 +75,7 @@ final class ForgeDecodedPCM {
 
 // Serialize command delivery with the CoreAudio callback. The callback copies
 // whole Coax blocks to device planes without allocating memory.
-final class ForgePCMSource: @unchecked Sendable {
+final class EditorPCMSource: @unchecked Sendable {
     let lock = NSLock()
     private let session = mf_audio_session_open()
     var pcm = mf_pcm_open()
@@ -94,7 +94,7 @@ final class ForgePCMSource: @unchecked Sendable {
     func sessionEvent(_ kind: Int64) -> MFAudioSessionOffer {
         lock.lock(); defer { lock.unlock() }; return mf_audio_session_event(session,kind)
     }
-    func command(_ bytes: UnsafeBufferPointer<UInt8>, _ decoded: ForgeDecodedPCM?, started: Bool? = nil) -> Int64 {
+    func command(_ bytes: UnsafeBufferPointer<UInt8>, _ decoded: EditorDecodedPCM?, started: Bool? = nil) -> Int64 {
         lock.lock(); defer { lock.unlock() }
         return mf_pcm_command(pcm,bytes.baseAddress,bytes.count,decoded?.samples,decoded?.count ?? 0,decoded?.channels ?? 0,started ?? mf_audio_session_offer(session).started)
     }
@@ -153,19 +153,19 @@ final class ForgePCMSource: @unchecked Sendable {
 }
 
 @MainActor
-final class ForgeMetalAudio {
+final class EditorMetalAudio {
     let host: UnsafeMutableRawPointer
     let resources: URL
     let engine = AVAudioEngine()
-    let source = ForgePCMSource()
+    let source = EditorPCMSource()
     let muted: Bool
-    let memory: ForgeAudioMemory
+    let memory: EditorAudioMemory
     let bankDirectory: URL
     let wav = mf_wav_open()
     var node: AVAudioSourceNode?
     var started: Bool { source.sessionOffer().started }
     var banked = false
-    var buffers: [String:ForgeDecodedPCM] = [:]
+    var buffers: [String:EditorDecodedPCM] = [:]
     var bankWav: [String:Data] = [:]
     var packets = 0
     var scheduled = 0
@@ -173,7 +173,7 @@ final class ForgeMetalAudio {
     var bankStatus: Int64 = -1
     var sdkDecodes = 0
     var companionDecodes = 0
-    init(host: UnsafeMutableRawPointer, resources: URL, muted: Bool, memory: ForgeAudioMemory = ForgeAudioMemory(), bankDirectory: URL? = nil) {
+    init(host: UnsafeMutableRawPointer, resources: URL, muted: Bool, memory: EditorAudioMemory = EditorAudioMemory(), bankDirectory: URL? = nil) {
         self.host = host; self.resources = resources; self.muted = muted; self.memory = memory
         self.bankDirectory = bankDirectory ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".openagents/aethyrforge/audio-bank")
         let source = self.source
@@ -213,17 +213,17 @@ final class ForgeMetalAudio {
             if data.withUnsafeBytes({ mf_wav_info($0.bindMemory(to:UInt8.self).baseAddress,$0.count,0) }) < 1 { bankStatus = -1 }
         }
     }
-    func decodeCanonical(_ bytes: Data) -> ForgeDecodedPCM? {
+    func decodeCanonical(_ bytes: Data) -> EditorDecodedPCM? {
         bytes.withUnsafeBytes { raw in
             let input = raw.bindMemory(to:UInt8.self)
             let frames = mf_wav_info(input.baseAddress,input.count,2)
             let channels = mf_wav_info(input.baseAddress,input.count,1)
-            guard let pcm = ForgeDecodedPCM(frames:frames,channels:channels,memory:memory) else { return nil }
+            guard let pcm = EditorDecodedPCM(frames:frames,channels:channels,memory:memory) else { return nil }
             guard mf_wav_decode(wav,input.baseAddress,input.count,pcm.samples,pcm.count) else { return nil }
             return pcm
         }
     }
-    func decode(_ url: URL, admitted: MFOpusPlan? = nil) -> ForgeDecodedPCM? {
+    func decode(_ url: URL, admitted: MFOpusPlan? = nil) -> EditorDecodedPCM? {
         guard let file = try? AVAudioFile(forReading:url),
               admitted.map({ mf_audio_opus_output($0,file.length,Int64(file.processingFormat.channelCount),file.processingFormat.sampleRate) }) ?? true,
               let inputTicket = memory.reserve(frames:admitted?.decode_frames ?? file.length,channels:Int64(file.processingFormat.channelCount)),
@@ -246,9 +246,9 @@ final class ForgeMetalAudio {
         guard status != .error, error == nil, output.frameLength > 0,
               admitted.map({ mf_audio_opus_output($0,Int64(output.frameLength),Int64(output.format.channelCount),output.format.sampleRate) }) ?? true else { return nil }
         sdkDecodes += 1
-        return ForgeDecodedPCM(output,memory:memory)
+        return EditorDecodedPCM(output,memory:memory)
     }
-    func loadAsset(_ name: String) -> ForgeDecodedPCM? {
+    func loadAsset(_ name: String) -> EditorDecodedPCM? {
         let nameBytes = Data(name.utf8)
         guard nameBytes.withUnsafeBytes({ mf_audio_asset_name($0.bindMemory(to:UInt8.self).baseAddress,$0.count) }) else { return nil }
         var asset = MFAudioAsset()
@@ -257,20 +257,20 @@ final class ForgeMetalAudio {
         guard !asset.valid || descriptor != nil else { return nil }
         let sourcePath = asset.source_url.map { String(decoding:UnsafeBufferPointer(start:$0,count:asset.source_url_count),as:UTF8.self) } ?? "/realms/everglade/sfx/\(name).ogg"
         let url = resources.appendingPathComponent("web"+sourcePath)
-        guard let source = ForgeEncodedAudio(url,companion:false,memory:memory) else { return nil }
+        guard let source = EditorEncodedAudio(url,companion:false,memory:memory) else { return nil }
         defer { withExtendedLifetime(source) {} }
         let plan = source.data.withUnsafeBytes { mf_audio_opus_plan(descriptor,$0.bindMemory(to:UInt8.self).baseAddress,$0.count) }
         guard plan.valid else { return nil }
         if asset.canonical {
             guard let pathBytes = asset.companion_url else { return nil }
             let path = String(decoding:UnsafeBufferPointer(start:pathBytes,count:asset.companion_url_count),as:UTF8.self)
-            guard let companion = ForgeEncodedAudio(resources.appendingPathComponent("web"+path),companion:true,memory:memory) else { return nil }
+            guard let companion = EditorEncodedAudio(resources.appendingPathComponent("web"+path),companion:true,memory:memory) else { return nil }
             defer { withExtendedLifetime(companion) {} }
             return source.data.withUnsafeBytes { rawSource in
                 companion.data.withUnsafeBytes { rawCompanion in
                     let input = rawSource.bindMemory(to:UInt8.self), encoded = rawCompanion.bindMemory(to:UInt8.self)
                     let shape = mf_audio_companion_plan(descriptor,input.baseAddress,input.count,encoded.baseAddress,encoded.count)
-                    guard shape.valid, let pcm = ForgeDecodedPCM(frames:shape.frames,channels:shape.channels,memory:memory),
+                    guard shape.valid, let pcm = EditorDecodedPCM(frames:shape.frames,channels:shape.channels,memory:memory),
                           mf_audio_companion_decode(descriptor,input.baseAddress,input.count,encoded.baseAddress,encoded.count,pcm.samples,pcm.count) else { return nil }
                     companionDecodes += 1; return pcm
                 }
@@ -278,7 +278,7 @@ final class ForgeMetalAudio {
         }
         return decode(url,admitted:plan)
     }
-    func buffer(_ name: String) -> ForgeDecodedPCM? {
+    func buffer(_ name: String) -> EditorDecodedPCM? {
         if let pcm = buffers[name] { return pcm }
         if let bytes = bankWav[name] {
             let pcm = decodeCanonical(bytes)

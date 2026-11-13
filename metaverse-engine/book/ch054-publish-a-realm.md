@@ -327,7 +327,7 @@ the record is refused. So is a record at revision 0.
 The program is
 [metaverse-engine/examples/publish-a-realm.coax](../examples/publish-a-realm.coax). The
 document hash here is the SHA-256 of the fixture's document text
-(`FORGE_DOC_V1`); the server hashes its own canonical document the same way:
+(`EDITOR_DOC_V1`); the server hashes its own canonical document the same way:
 
 <!-- source: metaverse-engine/examples/publish-a-realm.coax example -->
 ```jai
@@ -347,7 +347,7 @@ main :: () {
   print("%", manifest);
   e: [64] u8; engine := hex(manifest, e[..]);
   print("engine: %\n", engine);
-  d: [64] u8; doc := hex(FORGE_DOC_V1, d[..]);
+  d: [64] u8; doc := hex(EDITOR_DOC_V1, d[..]);
   print("record: rev 4, document %, engine %\n", doc, engine);
   print("the record holds: %\n", engine_record_ok(4, doc, manifest, engine));
   // A later release: a new host script. Its manifest and hash differ; the record still names the first.
@@ -445,7 +445,7 @@ nothing, a fork on its parent's engine, a server without a bucket),
 above,
 `test_realm_fork.py` (a save leaves visitors on the revision
 published, their `/doc` is its document, a visitor's fork copies it) and
-`coax/web/tool.sh forge-journey URL` (after SAVE the owner reads "not
+`coax/web/tool.sh editor-journey URL` (after SAVE the owner reads "not
 published" and a visitor's spec has the published revision; after PUBLISH,
 "live", and the visitor gets it).
 

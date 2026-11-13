@@ -240,7 +240,7 @@ def realm_fork_checks():
     check("the fork's page names its parent and plays the made-realm template", 'Forked from <a href="/worlds/forge-court">Forge Court</a> at revision 4.' in page3
           and 'data-made="forge-court-copy"' in page3, page3[:1600])
     st, auto, _ = call("POST", R + "forge-court/fork", json.dumps({"name": "Forge Court Probe"}).encode(),
-                    {"Content-Type": "application/json", "X-Verse-Player": rival, "X-Verse-Automation": "forge-journey"})
+                    {"Content-Type": "application/json", "X-Verse-Player": rival, "X-Verse-Automation": "editor-journey"})
     check("a realm a tool makes is private, like every new realm (0099): off /og's rows", st == 200
           and sql("select visibility from verse.made_realms where slug = 'forge-court-probe'") == "private"
           and sql("select unlisted from verse.made_realms where slug = 'forge-court-probe'") == "t"

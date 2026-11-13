@@ -195,8 +195,8 @@ E5_GREY :: [3] f32.[0.55, 0.53, 0.5];
 // and the frame rate, small, at the bottom right (e5_fps_draw).
 e5_finish :: (s: [] Everglade, v: [] E5, out: [] f32, u: [] f32, at: int) -> int #export_c #effects(all) {
   n := at;
-  // EDIT: Aethyrforge's panels alone, as on Everglade (everglade-forge.coax)
-  if !s[0].started || at <= 0 || u.count < UNIFORM_FLOATS || forge_on(s) { return n; }
+  // EDIT: Aethyrforge's panels alone, as on Everglade (everglade-editor.coax)
+  if !s[0].started || at <= 0 || u.count < UNIFORM_FLOATS || editor_on(s) { return n; }
   if rp_hud_off(s) || cz_creating(s) || cz_running(s) { u[5] = f32(s[0].plate_n); return n; }   // the raid preview's flight; Character Create's studio's flight (everglade-raid-preview.coax)
   if sp_on(s) && !s[0].above && v[0].hero_ok { n = e5_play_hud(s, v, out, u, n); }
   n = e5_fps_draw(s, v, out, n);
@@ -509,7 +509,7 @@ e5_fps_draw :: (s: [] Everglade, v: [] E5, out: [] f32, at: int) -> int {
   out: [60000 * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   #assert e5_finish(s[..], v[..], out[..], u[..], 6) > 6;
   everglade_message(s[..], MSG_VIEWER, "A|1\n");
-  #assert everglade_key(s[..], 'b', 0) && forge_on(s[..]);
+  #assert everglade_key(s[..], 'b', 0) && editor_on(s[..]);
   #assert e5_finish(s[..], v[..], out[..], u[..], 6) == 6;
 }
 #test "Everglade 5E: in a room you die when the server says so, lie past the page's own respawn, and stand where you fell when it says" {

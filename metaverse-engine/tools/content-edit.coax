@@ -16,22 +16,22 @@ tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: content-edit FILE check | FILE (row TABLE ROW | drop TABLE ID | table NAME HEADER)..."); return 2; }
   raw: [CT_BODY] u8; n := fs_read(args_at(a[..], 0), raw[..]);
-  d: [1] ForgeDoc;
-  if n <= 0 || !forge_content_open(d[..], cast(string) raw[0..<n]) { tool_errln("content-edit: the file is not a content document"); return 1; }
+  d: [1] EditorDoc;
+  if n <= 0 || !editor_content_open(d[..], cast(string) raw[0..<n]) { tool_errln("content-edit: the file is not a content document"); return 1; }
   if args_at(a[..], 1) == "check" { print("content: revision %, holds its rules\n", d[0].rev); return 0; }
   at := 1;
   while at < args_count(a[..]) {
     if at + 2 >= args_count(a[..]) { tool_errln("content-edit: an edit is three words"); return 2; }
     what := args_at(a[..], at); table := args_at(a[..], at + 1); arg := args_at(a[..], at + 2);
     done := false;
-    if what == "row" { done = forge_content_row(d[..], table, arg); }
-    if what == "drop" { done = forge_content_drop(d[..], table, ct_num(arg).v); }
-    if what == "table" { done = forge_content_table(d[..], table, arg); }
+    if what == "row" { done = editor_content_row(d[..], table, arg); }
+    if what == "drop" { done = editor_content_drop(d[..], table, ct_num(arg).v); }
+    if what == "table" { done = editor_content_table(d[..], table, arg); }
     if !done { tool_err("content-edit: nothing changed by: "); tool_err(what); tool_err(" "); tool_err(table); tool_err(" "); tool_errln(arg); return 1; }
     at += 3;
   }
   out: [CT_BODY] u8;
-  text := forge_content_text(d[..], d[0].rev + 1, out[..]);
+  text := editor_content_text(d[..], d[0].rev + 1, out[..]);
   if text.count == 0 { tool_errln("content-edit: the tables would not hold their rules (a dangling ID, a place out of reach, a sum that is wrong, or a row that is not its table's); nothing written"); return 1; }
   if !fs_write(args_at(a[..], 0), text) { tool_errln("content-edit: cannot write the file"); return 1; }
   print("content: revision % written\n", d[0].rev + 1);

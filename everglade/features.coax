@@ -109,7 +109,7 @@ EF_KNOWN :: [117] string.[
   "camera apps/openagents-web/everglade-create.coax cz_frame_shot",
   "hud apps/openagents-web/everglade-edit.coax everglade_edit_hud",
   "hud apps/openagents-web/everglade-events.coax ege_hud",
-  "hud apps/openagents-web/everglade-forge.coax forge_hud",
+  "hud apps/openagents-web/everglade-editor.coax editor_hud",
   "hud apps/openagents-web/everglade-fork.coax fork_hud",
   "area-targeting apps/openagents-web/everglade-grove.coax gv_aim_ring",
   "hud apps/openagents-web/everglade-guide.coax everglade_guide_hud",

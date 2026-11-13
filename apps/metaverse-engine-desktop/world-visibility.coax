@@ -4,7 +4,7 @@
 #forall "world visibility preserves startup and pauses every covered ready view" mask:0..<32 {
   ready:=(mask & 1)!=0;setup:=(mask & 2)!=0;visible:=(mask & 4)!=0;
   minimized:=(mask & 8)!=0;occluded:=(mask & 16)!=0;
-  paused:=forge_world_paused(ready,setup,visible,minimized,occluded);
+  paused:=editor_world_paused(ready,setup,visible,minimized,occluded);
   if !ready {#assert !paused;}
   if ready && setup {#assert paused;}
   if ready && !visible {#assert paused;}
@@ -13,11 +13,11 @@
   if ready && visible && !setup && !minimized && !occluded {#assert !paused;}
 }
 #test "setup cannot deadlock the first frame, and play resumes immediately" {
-  #assert !forge_world_paused(false,true,true,false,false);
-  #assert forge_world_paused(true,true,true,false,false);
-  #assert !forge_world_paused(true,false,true,false,false);
-  #assert !forge_world_paused(false,true,false,false,false);
+  #assert !editor_world_paused(false,true,true,false,false);
+  #assert editor_world_paused(true,true,true,false,false);
+  #assert !editor_world_paused(true,false,true,false,false);
+  #assert !editor_world_paused(false,true,false,false,false);
 }
-forge_world_paused :: (ready:bool,setup:bool,visible:bool,minimized:bool,occluded:bool)->bool #export_c #effects(all) {
+editor_world_paused :: (ready:bool,setup:bool,visible:bool,minimized:bool,occluded:bool)->bool #export_c #effects(all) {
   return ready && (!visible || minimized || occluded || setup);
 }

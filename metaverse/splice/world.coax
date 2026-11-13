@@ -76,11 +76,11 @@ spw_pieces :: (g: [] SpGame, k: [] SpwScratch, text: string) -> int {
     for o: 0..<s { if world_at(w, o) != ENTITY_NONE && world_i(w, WI_KIND, o) >= SK_PIECE && world_i(w, WI_ROW, o) == row { return SPW_NOT_DOC; } }
   }
   scene := sl_scene(g);
-  forge_scene_reset(scene);
+  editor_scene_reset(scene);
   for s: 0..<world_high(w) {
     if world_at(w, s) == ENTITY_NONE || world_i(w, WI_KIND, s) < SK_PIECE { continue; }
-    item := ForgeItem.{id = world_i(w, WI_ROW, s), mesh = world_i(w, WI_KIND, s), x = world_f(w, WF_X, s), y = world_f(w, WF_Y, s), z = world_f(w, WF_Z, s), yaw = world_f(w, WF_YAW, s)};
-    _ := forge_scene_apply(scene, ForgeItemOp.{kind = FORGE_SCENE_PLACE, has = true, a = item});
+    item := EditorItem.{id = world_i(w, WI_ROW, s), mesh = world_i(w, WI_KIND, s), x = world_f(w, WF_X, s), y = world_f(w, WF_Y, s), z = world_f(w, WF_Z, s), yaw = world_f(w, WF_YAW, s)};
+    _ := editor_scene_apply(scene, EditorItemOp.{kind = EDITOR_SCENE_PLACE, has = true, a = item});
   }
   g[0].layer[0].st[0].next_id = d.next - 1;
   g[0].layer[0].head = d.head;
@@ -211,7 +211,7 @@ SPE_FOOT :: 28;      // a row's footprint is not its pack mesh's bounds at the r
 // A world's content tables as they are edited: the document on the edit log
 // (metaverse-engine/editor/content-edit.coax), and its text as it was last opened or changed.
 // The tables keep the revision they shipped with: an edit changes cells, never what a build reads.
-SpwTables :: struct { d: [1] ForgeDoc; text: [SPW_TABLES] u8; text_n: int; open: bool; changed: bool; why: [240] u8; why_n: int; }
+SpwTables :: struct { d: [1] EditorDoc; text: [SPW_TABLES] u8; text_n: int; open: bool; changed: bool; why: [240] u8; why_n: int; }
 SPE_PLAN :: 29;      // a foe's plan or the clock does not hold: the words are the tables' (SpwTables.why)
 // Opens the tables from text ("": the ones the build shipped with) into the edit log and the game.
 // False, and nothing changed, for anything but Splice's content at this build's revision.
@@ -221,7 +221,7 @@ spw_tables_open :: (g: [] SpGame, ct: [] SpwTables, text: string) -> bool {
   from := sc_upgrade_front(sc_upgrade(ifx text.count == 0 then SC_SHIPPED else text, up[..]), up2[..]);
   read: [1] SpContent; shipped: [1] SpContent;
   if from.count > SPW_TABLES || !sc_load(read[..], from) || !sc_load(shipped[..], SC_SHIPPED) || read[0].rev != shipped[0].rev { return false; }
-  if !forge_content_open(ct[0].d[..], from) { return false; }
+  if !editor_content_open(ct[0].d[..], from) { return false; }
   g[0].c[0] = read[0];
   ct[0].text_n = ct_copy(ct[0].text[..], from); ct[0].open = true; ct[0].changed = false;
   return g_places(g);
@@ -251,7 +251,7 @@ spw_cell :: (g: [] SpGame, ct: [] SpwTables, e: WorldEdit) -> SpwEdit {
   a := we_content_apply(ct[0].d[..], e);
   if !a.ok { return spw_no(SPE_CELL); }
   out: [SPW_TABLES] u8; read: [1] SpContent;
-  made := forge_content_text(ct[0].d[..], g[0].c[0].rev, out[..]);
+  made := editor_content_text(ct[0].d[..], g[0].c[0].rev, out[..]);
   if made.count == 0 || !sc_load(read[..], made) {
     _ := we_content_apply(ct[0].d[..], a.inv);
     // a plan's refusal says which plan and why, in the tables' own words (content.coax sc_plans_words)
@@ -420,7 +420,7 @@ spw_batch :: (g: [] SpGame, x: [] SpwWork, doc: string, body: string, fenced: bo
 // The document of Splice with nothing placed, at head 0: what the world is before its first edit.
 spw_empty :: (g: [] SpGame, k: [] SpwScratch, out: [] u8) -> string {
   g_reset(g);
-  forge_scene_reset(sl_scene(g)); g[0].layer[0].head = 0; g[0].layer[0].rev += 1;
+  editor_scene_reset(sl_scene(g)); g[0].layer[0].head = 0; g[0].layer[0].rev += 1;
   spw_build(g);
   return spw_save(g, k, out);
 }

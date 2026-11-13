@@ -10,7 +10,7 @@ struct MetalAudioEffects {
         let res = URL(fileURLWithPath:CommandLine.arguments[1])
         let plan = try JSONSerialization.jsonObject(with:Data(contentsOf:URL(fileURLWithPath:CommandLine.arguments[3]))) as! [String:Any]
         guard plan["schema"] as? String == "aethyr.metal.audio-effects.v1", let host = mf_open(res.path,CommandLine.arguments[2],true,plan["fixture"] as? Bool ?? false) else { fatalError("audio producer open") }
-        var audio = ForgeMetalAudio(host:host,resources:res,muted:true)
+        var audio = EditorMetalAudio(host:host,resources:res,muted:true)
         defer { audio.close(); mf_close(host) }
         var events: [[String:Any]] = []
         for op in plan["operations"] as? [[String:Any]] ?? [] {
@@ -61,10 +61,10 @@ struct MetalAudioEffects {
                 let buffer = AVAudioPCMBuffer(pcmFormat:format,frameCapacity:AVAudioFrameCount(bytes.count/4/Int(channels)))!
                 buffer.frameLength = buffer.frameCapacity
                 bytes.withUnsafeBytes { buffer.floatChannelData![0].initialize(from:$0.bindMemory(to:Float.self).baseAddress!,count:bytes.count/4) }
-                audio.buffers[op["name"] as! String] = ForgeDecodedPCM(buffer,memory:audio.memory)
+                audio.buffers[op["name"] as! String] = EditorDecodedPCM(buffer,memory:audio.memory)
             case "reset":
                 let assets = audio.buffers, wav = audio.bankWav, memory = audio.memory
-                audio.close(); audio = ForgeMetalAudio(host:host,resources:res,muted:true,memory:memory)
+                audio.close(); audio = EditorMetalAudio(host:host,resources:res,muted:true,memory:memory)
                 audio.buffers = assets; audio.bankWav = wav; audio.banked = true
             case "drain":
                 var count = 0

@@ -153,7 +153,7 @@ vp_drag :: (p: [] Viewport, v: VpView, x: f32, y: f32) {
   if p[0].tool == VT_TURN { p[0].now.yaw = vp_wrap(vp_snap(h.yaw + cast(int) ((x - p[0].x0) / VP_TURN_PX), VP_TURN_STEP)); }
   if p[0].tool == VT_SIZE {
     s := vp_snap(h.scale + cast(int) ((p[0].y0 - y) / VP_SIZE_PX), VP_SIZE_STEP);
-    p[0].now.scale = ifx s < FORGE_SCALE_MIN then FORGE_SCALE_MIN else ifx s > FORGE_SCALE_MAX then FORGE_SCALE_MAX else s;
+    p[0].now.scale = ifx s < EDITOR_SCALE_MIN then EDITOR_SCALE_MIN else ifx s > EDITOR_SCALE_MAX then EDITOR_SCALE_MAX else s;
   }
 }
 // The press ended. What it was: a tap (pick at its point), a drag that made an edit, or nothing.
@@ -365,7 +365,7 @@ vp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.01; }
   s := vp_release(p);
   #assert s.edit.ok && s.edit.op == WE_SCALE && s.edit.scale == 120 && we_valid(s.edit);
   vp_press(p, 100, 100, thing); vp_drag(p, v, 100, -100000);
-  #assert p[0].now.scale == FORGE_SCALE_MAX;
+  #assert p[0].now.scale == EDITOR_SCALE_MAX;
   vp_cancel(p);
   #assert !p[0].down && !vp_release(p).edit.ok;
   // the select tool holds nothing

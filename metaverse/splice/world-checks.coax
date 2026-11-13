@@ -29,7 +29,7 @@ SPT_TWO :: "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[
   p := [1] SpGame.[SpGame.{}]; g_reset(p[..]); p[0].px = 177.2; p[0].pz = -70.6;   // you stand where the palm goes
   #assert we_batch_read(cast(string) t[0].did[0..<b.did], e[..]).ok;
   for i: 0..<n { r := spw_edit(p[..], e[i], true); #assert r.ok && r.id == i + 1; }
-  #assert p[0].layer[0].st[0].n == 2 && forge_same_item(p[0].layer[0].items[0], g[0].layer[0].items[0]) && forge_same_item(p[0].layer[0].items[1], g[0].layer[0].items[1]);
+  #assert p[0].layer[0].st[0].n == 2 && editor_same_item(p[0].layer[0].items[0], g[0].layer[0].items[0]) && editor_same_item(p[0].layer[0].items[1], g[0].layer[0].items[1]);
   #assert !spw_edit(p[..], e[0], false).ok && spw_pins(p[..]).content == p[0].c[0].rev && spw_pins(p[..]).engine == SPW_ENGINE && spw_pins(p[..]).rules == SPW_RULES && spw_pins(p[..]).wire == SPW_WIRE;
 }
 #test "Splice's world: a stale batch, a refused edit and what is no batch change nothing, and a refusal names the zone" #steps 4000000000 #traversal 2000000000 {

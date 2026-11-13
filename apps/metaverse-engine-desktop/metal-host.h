@@ -1,6 +1,6 @@
 // Scalar SDK bridge. Product decisions and all game/HUD behavior stay in Coax.
-#ifndef FORGE_METAL_HOST_H
-#define FORGE_METAL_HOST_H
+#ifndef EDITOR_METAL_HOST_H
+#define EDITOR_METAL_HOST_H
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

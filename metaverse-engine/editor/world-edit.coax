@@ -32,7 +32,7 @@
 // Every reader refuses any bytes but the ones the writer writes (it writes what it read and
 // compares), so an edit that reads is the edit a writer would write.
 //
-// we_scene_apply carries an entity edit out on the engine's edit log (edit.coax ForgeScene) and
+// we_scene_apply carries an entity edit out on the engine's edit log (edit.coax EditorScene) and
 // answers its inverse, so undo and redo are edits too; we_content_apply does the same for a cell
 // on a content document's log (content-edit.coax).
 //   coax/bin/coax test metaverse-engine/editor/world-edit.coax --library
@@ -104,7 +104,7 @@ we_col :: (word: string) -> int { cols := WE_COL; return we_index(cols[..], word
 we_in :: (v: int, lo: int, hi: int) -> bool { return v >= lo && v <= hi; }
 we_place_ok :: (e: WorldEdit) -> bool { return we_in(e.x, -WE_REACH, WE_REACH) && we_in(e.y, -WE_REACH, WE_REACH) && we_in(e.z, -WE_REACH, WE_REACH); }
 we_turn_ok :: (deg: int) -> bool { return we_in(deg, -179, 180); }
-we_scale_ok :: (pct: int) -> bool { return we_in(pct, FORGE_SCALE_MIN, FORGE_SCALE_MAX); }
+we_scale_ok :: (pct: int) -> bool { return we_in(pct, EDITOR_SCALE_MIN, EDITOR_SCALE_MAX); }
 // A cell's value: one line of printable bytes.
 we_text_ok :: (s: string) -> bool {
   if s.count > WE_TEXT { return false; }
@@ -397,15 +397,15 @@ we_refusal_read :: (text: string, words: [] u8) -> WorldRefusal {
 we_m :: (cm: int) -> f32 { return cast(f32) cm / 100; }
 we_cm :: (m: f32) -> int { return cast(int) floor(m * 100 + 0.5); }
 we_rad :: (deg: int) -> f32 { return cast(f32) deg * WE_PI / 180; }
-we_deg :: (rad: f32) -> int { return forge_turn(cast(int) floor(rad * 180 / WE_PI + 0.5)); }
+we_deg :: (rad: f32) -> int { return editor_turn(cast(int) floor(rad * 180 / WE_PI + 0.5)); }
 we_pct :: (scale: f32) -> int { return cast(int) floor(scale * 100 + 0.5); }
 // An entity's ID on the wire is 1 and up (0 asks the world to number a spawn); a scene numbers its
 // things from 0. A placed thing as the spawn that makes it, with its ID.
-we_spawn_of :: (item: ForgeItem) -> WorldEdit {
+we_spawn_of :: (item: EditorItem) -> WorldEdit {
   return WorldEdit.{ok = true, op = WE_SPAWN, id = item.id + 1, kind = item.mesh, x = we_cm(item.x), y = we_cm(item.y), z = we_cm(item.z), yaw = we_deg(item.yaw), scale = we_pct(item.scale)};
 }
-we_item_of :: (e: WorldEdit, id: int) -> ForgeItem {
-  return ForgeItem.{id = id, mesh = e.kind, x = we_m(e.x), y = we_m(e.y), z = we_m(e.z), yaw = we_rad(e.yaw), scale = cast(f32) e.scale / 100};
+we_item_of :: (e: WorldEdit, id: int) -> EditorItem {
+  return EditorItem.{id = id, mesh = e.kind, x = we_m(e.x), y = we_m(e.y), z = we_m(e.z), yaw = we_rad(e.yaw), scale = cast(f32) e.scale / 100};
 }
 // What an edit did: the entity it made or changed, and the edit that takes it back.
 WeApplied :: struct { ok: bool; id: int; inv: WorldEdit; }
@@ -413,26 +413,26 @@ WeApplied :: struct { ok: bool; id: int; inv: WorldEdit; }
 // out on a scene as one step of its log. Not ok, and the scene as it was, for an edit that is
 // none, names no thing, changes nothing, or is not a scene's (a cell, the land, a column a placed
 // thing does not carry).
-we_scene_apply :: (s: ForgeScene, e: WorldEdit) -> WeApplied {
+we_scene_apply :: (s: EditorScene, e: WorldEdit) -> WeApplied {
   if !we_valid(e) { return WeApplied.{}; }
   if e.op == WE_SPAWN {
     id := e.id - 1;
-    if e.id == 0 { id = forge_scene_place(s, e.kind, we_m(e.x), we_m(e.y), we_m(e.z), we_rad(e.yaw), cast(f32) e.scale / 100); }
-    else if s.st[0].n >= s.items.count || !forge_scene_push(s, ForgeItemOp.{kind = FORGE_SCENE_PLACE, has = true, a = we_item_of(e, id)}) { id = -1; }
+    if e.id == 0 { id = editor_scene_place(s, e.kind, we_m(e.x), we_m(e.y), we_m(e.z), we_rad(e.yaw), cast(f32) e.scale / 100); }
+    else if s.st[0].n >= s.items.count || !editor_scene_push(s, EditorItemOp.{kind = EDITOR_SCENE_PLACE, has = true, a = we_item_of(e, id)}) { id = -1; }
     if id < 0 { return WeApplied.{}; }
     return WeApplied.{ok = true, id = id + 1, inv = WorldEdit.{ok = true, op = WE_DESPAWN, id = id + 1}};
   }
-  i := forge_scene_find(s, e.id - 1);
+  i := editor_scene_find(s, e.id - 1);
   if i < 0 { return WeApplied.{}; }
   was := s.items[i]; next := was;
   inv := WorldEdit.{ok = true, op = e.op, id = e.id};
-  if e.op == WE_DESPAWN { return WeApplied.{ok = forge_scene_delete(s, e.id - 1), id = e.id, inv = we_spawn_of(was)}; }
+  if e.op == WE_DESPAWN { return WeApplied.{ok = editor_scene_delete(s, e.id - 1), id = e.id, inv = we_spawn_of(was)}; }
   if e.op == WE_MOVE {
     inv.x = we_cm(was.x); inv.y = we_cm(was.y); inv.z = we_cm(was.z);
-    return WeApplied.{ok = forge_scene_move(s, e.id - 1, we_m(e.x), we_m(e.y), we_m(e.z)), id = e.id, inv = inv};
+    return WeApplied.{ok = editor_scene_move(s, e.id - 1, we_m(e.x), we_m(e.y), we_m(e.z)), id = e.id, inv = inv};
   }
-  if e.op == WE_ROTATE { inv.yaw = we_deg(was.yaw); return WeApplied.{ok = forge_scene_rotate(s, e.id - 1, we_rad(e.yaw)), id = e.id, inv = inv}; }
-  if e.op == WE_SCALE { inv.scale = we_pct(was.scale); return WeApplied.{ok = forge_scene_scale(s, e.id - 1, cast(f32) e.scale / 100), id = e.id, inv = inv}; }
+  if e.op == WE_ROTATE { inv.yaw = we_deg(was.yaw); return WeApplied.{ok = editor_scene_rotate(s, e.id - 1, we_rad(e.yaw)), id = e.id, inv = inv}; }
+  if e.op == WE_SCALE { inv.scale = we_pct(was.scale); return WeApplied.{ok = editor_scene_scale(s, e.id - 1, cast(f32) e.scale / 100), id = e.id, inv = inv}; }
   if e.op != WE_SET { return WeApplied.{}; }
   inv.col = e.col;
   if e.col == WEC_X { inv.v = we_cm(was.x); next.x = we_m(e.v); }
@@ -442,34 +442,34 @@ we_scene_apply :: (s: ForgeScene, e: WorldEdit) -> WeApplied {
   else if e.col == WEC_KIND { if e.v < 1 { return WeApplied.{}; } inv.v = was.mesh; next.mesh = e.v; }
   else { return WeApplied.{}; }
   if (e.col <= WEC_Z) && !we_in(e.v, -WE_REACH, WE_REACH) { return WeApplied.{}; }
-  return WeApplied.{ok = forge_scene_reshape(s, FORGE_SCENE_MOVE, e.id - 1, next), id = e.id, inv = inv};
+  return WeApplied.{ok = editor_scene_reshape(s, EDITOR_SCENE_MOVE, e.id - 1, next), id = e.id, inv = inv};
 }
 // A cell edit carried out on a content document's log (content-edit.coax) as one step. Not ok,
 // and the document as it was, for a table or a row the document has not, or a value that changes
 // nothing. The tables' own rules (a dangling ID, a sum) are held when the document is written
-// (forge_content_text), as for every content edit.
-we_content_apply :: (d: [] ForgeDoc, e: WorldEdit) -> WeApplied {
+// (editor_content_text), as for every content edit.
+we_content_apply :: (d: [] EditorDoc, e: WorldEdit) -> WeApplied {
   if !we_valid(e) || e.op != WE_CELL { return WeApplied.{}; }
-  kb: [FORGE_SLOT_KEY] u8; hb: [FORGE_SLOT_KEY] u8; nb: [WE_TEXT + WE_TEXT] u8;
+  kb: [EDITOR_SLOT_KEY] u8; hb: [EDITOR_SLOT_KEY] u8; nb: [WE_TEXT + WE_TEXT] u8;
   tb := e.table; cb := e.name; xb := e.text;
   table := cast(string) tb[0..<e.table_n]; col := cast(string) cb[0..<e.name_n]; val := cast(string) xb[0..<e.text_n];
-  head := forge_slot_at(d, forge_content_key(table, 0, hb[..]));
+  head := editor_slot_at(d, editor_content_key(table, 0, hb[..]));
   if !head.found { return WeApplied.{}; }
-  old := forge_slot_at(d, forge_content_key(table, e.id, kb[..]));
-  was := ifx old.found then forge_slot_text(d, forge_content_key(table, e.id, kb[..])) else "";
+  old := editor_slot_at(d, editor_content_key(table, e.id, kb[..]));
+  was := ifx old.found then editor_slot_text(d, editor_content_key(table, e.id, kb[..])) else "";
   inv := WorldEdit.{ok = true, op = WE_CELL, id = e.id, table = e.table, table_n = e.table_n};
   if col == "*" {
     inv.name[0] = '*'; inv.name_n = 1;
     if was.count > WE_TEXT { return WeApplied.{}; }
     inv.text_n = ct_copy(inv.text[..], was);
-    if val.count == 0 { return WeApplied.{ok = old.found && forge_content_drop(d, table, e.id), id = e.id, inv = inv}; }
+    if val.count == 0 { return WeApplied.{ok = old.found && editor_content_drop(d, table, e.id), id = e.id, inv = inv}; }
     lead := ct_num(ct_part(val, '|', 0));
     if !lead.ok || lead.v != e.id { return WeApplied.{}; }
-    return WeApplied.{ok = forge_content_row(d, table, val), id = e.id, inv = inv};
+    return WeApplied.{ok = editor_content_row(d, table, val), id = e.id, inv = inv};
   }
   if !old.found { return WeApplied.{}; }
   // the column's place in the table's header: "id NAME:KIND ..." before any sum rule
-  cols := ct_part(forge_slot_text(d, forge_content_key(table, 0, hb[..])), ';', 0);
+  cols := ct_part(editor_slot_text(d, editor_content_key(table, 0, hb[..])), ';', 0);
   k := -1;
   for c: 1..<ct_parts(cols, ' ') { if ct_part(ct_part(cols, ' ', c), ':', 0) == col { k = c; } }
   if k < 1 || k >= ct_parts(was, '|') { return WeApplied.{}; }
@@ -482,7 +482,7 @@ we_content_apply :: (d: [] ForgeDoc, e: WorldEdit) -> WeApplied {
     n = ct_put(nb[..], n, ifx c == k then val else ct_part(was, '|', c));
   }
   if n > nb.count { return WeApplied.{}; }
-  return WeApplied.{ok = forge_content_row(d, table, cast(string) nb[0..<n]), id = e.id, inv = inv};
+  return WeApplied.{ok = editor_content_row(d, table, cast(string) nb[0..<n]), id = e.id, inv = inv};
 }
 
 #test "world edit: every op writes its pinned bytes and reads back the same edit" {
@@ -544,10 +544,10 @@ we_content_apply :: (d: [] ForgeDoc, e: WorldEdit) -> WeApplied {
   #assert we_event_write(0, "splice", 42, we_read(fx[0]), 1, o[..]) == "" && we_event_write(1, "", 42, we_read(fx[0]), 1, o[..]) == "" && we_event_write(1, "splice", 0, we_read(fx[0]), 1, o[..]) == "" && we_event_write(1, "splice", 1, WorldEdit.{}, 1, o[..]) == "" && we_event_write(1, "splice", 1, we_read(fx[0]), 0, o[..]) == "";
   #assert we_world_ok("splice") && we_world_ok("w-12") && !we_world_ok("") && !we_world_ok("Splice") && we_world_ok("1w") && !we_world_ok("-w") && !we_world_ok("a_b") && we_world_ok("abcdefghijabcdefghijabcdefghijabcdefghijabcdefgh") && !we_world_ok("abcdefghijabcdefghijabcdefghijabcdefghijabcdefghi");
 }
-WeTestScene :: struct { st: [1] ForgeSceneState; items: [8] ForgeItem; ops: [32] ForgeItemOp; steps: [16] ForgeStep; }
-we_test_scene :: (t: [] WeTestScene) -> ForgeScene { return ForgeScene.{st = t[0].st[..], items = t[0].items[..], ops = t[0].ops[..], steps = t[0].steps[..]}; }
+WeTestScene :: struct { st: [1] EditorSceneState; items: [8] EditorItem; ops: [32] EditorItemOp; steps: [16] EditorStep; }
+we_test_scene :: (t: [] WeTestScene) -> EditorScene { return EditorScene.{st = t[0].st[..], items = t[0].items[..], ops = t[0].ops[..], steps = t[0].steps[..]}; }
 #test "world edit: entity edits are steps of the scene's log, and each answers the edit that takes it back" {
-  t: [1] WeTestScene; s := we_test_scene(t[..]); forge_scene_reset(s); o: [WE_LINE] u8;
+  t: [1] WeTestScene; s := we_test_scene(t[..]); editor_scene_reset(s); o: [WE_LINE] u8;
   a := we_scene_apply(s, we_read("{\"op\":\"spawn\",\"id\":0,\"kind\":102,\"x\":-160,\"y\":0,\"z\":-5120,\"yaw\":90,\"scale\":100}"));
   #assert a.ok && a.id == 1 && we_write(a.inv, o[..]) == "{\"op\":\"despawn\",\"id\":1}" && s.st[0].n == 1 && we_cm(s.items[0].x) == -160 && we_deg(s.items[0].yaw) == 90;
   m := we_scene_apply(s, we_read("{\"op\":\"move\",\"id\":1,\"x\":1250,\"y\":30,\"z\":-400}"));
@@ -575,27 +575,27 @@ we_test_scene :: (t: [] WeTestScene) -> ForgeScene { return ForgeScene.{st = t[0
   b := we_scene_apply(s, d.inv);
   #assert b.ok && b.id == 1 && s.st[0].n == 1 && s.items[0].mesh == 110 && we_pct(s.items[0].scale) == 150 && !we_scene_apply(s, d.inv).ok;
   // the log undoes them like any other step
-  #assert forge_scene_undo(s) && s.st[0].n == 0 && forge_scene_undo(s) && s.st[0].n == 1 && forge_scene_redo(s) && s.st[0].n == 0;
+  #assert editor_scene_undo(s) && s.st[0].n == 0 && editor_scene_undo(s) && s.st[0].n == 1 && editor_scene_redo(s) && s.st[0].n == 0;
 }
 #test "world edit: a cell edit is a step of the content document's log, and answers the edit that takes it back" {
-  d: [1] ForgeDoc; o: [CT_BODY] u8; l: [WE_LINE] u8; c: [1] ContentDoc;
-  #assert forge_content_open(d[..], CT_FIXTURE);
+  d: [1] EditorDoc; o: [CT_BODY] u8; l: [WE_LINE] u8; c: [1] ContentDoc;
+  #assert editor_content_open(d[..], CT_FIXTURE);
   a := we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":5,\"col\":\"name\",\"v\":\"Long sword\"}"));
-  #assert a.ok && we_write(a.inv, l[..]) == "{\"op\":\"cell\",\"table\":\"item\",\"row\":5,\"col\":\"name\",\"v\":\"Short sword\"}" && forge_slot_text(d[..], "table:item-5") == "5|Long sword|8";
+  #assert a.ok && we_write(a.inv, l[..]) == "{\"op\":\"cell\",\"table\":\"item\",\"row\":5,\"col\":\"name\",\"v\":\"Short sword\"}" && editor_slot_text(d[..], "table:item-5") == "5|Long sword|8";
   n := we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":5,\"col\":\"slot\",\"v\":\"9\"}"));
-  #assert n.ok && we_text_is(n.inv, "8") && forge_slot_text(d[..], "table:item-5") == "5|Long sword|9";
+  #assert n.ok && we_text_is(n.inv, "8") && editor_slot_text(d[..], "table:item-5") == "5|Long sword|9";
   // a whole row: new, changed, and dropped; each answers what was there
   r := we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":9,\"col\":\"*\",\"v\":\"9|Rope|0\"}"));
-  #assert r.ok && we_write(r.inv, l[..]) == "{\"op\":\"cell\",\"table\":\"item\",\"row\":9,\"col\":\"*\",\"v\":\"\"}" && ct_read(c[..], forge_content_text(d[..], 8, o[..])) && ct_rows(c[..], ct_table(c[..], "item")) > 0;
+  #assert r.ok && we_write(r.inv, l[..]) == "{\"op\":\"cell\",\"table\":\"item\",\"row\":9,\"col\":\"*\",\"v\":\"\"}" && ct_read(c[..], editor_content_text(d[..], 8, o[..])) && ct_rows(c[..], ct_table(c[..], "item")) > 0;
   x := we_content_apply(d[..], r.inv);
-  #assert x.ok && we_text_is(x.inv, "9|Rope|0") && !forge_slot_at(d[..], "table:item-9").found;
+  #assert x.ok && we_text_is(x.inv, "9|Rope|0") && !editor_slot_at(d[..], "table:item-9").found;
   // refused, and the document as it was
   done := d[0].done;
   #assert !we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"zone\",\"row\":1,\"col\":\"name\",\"v\":\"x\"}")).ok && !we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":99,\"col\":\"name\",\"v\":\"x\"}")).ok;
   #assert !we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":5,\"col\":\"weight\",\"v\":\"x\"}")).ok && !we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":5,\"col\":\"name\",\"v\":\"a|b\"}")).ok;
   #assert !we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":5,\"col\":\"name\",\"v\":\"Long sword\"}")).ok && !we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":9,\"col\":\"*\",\"v\":\"8|Rope|0\"}")).ok;
   #assert !we_content_apply(d[..], we_read("{\"op\":\"cell\",\"table\":\"item\",\"row\":99,\"col\":\"*\",\"v\":\"\"}")).ok && !we_content_apply(d[..], we_read("{\"op\":\"despawn\",\"id\":1}")).ok && d[0].done == done;
-  #assert forge_undo(d[..]) && forge_undo(d[..]) && forge_undo(d[..]) && forge_undo(d[..]) && forge_content_text(d[..], 7, o[..]) == CT_FIXTURE;
+  #assert editor_undo(d[..]) && editor_undo(d[..]) && editor_undo(d[..]) && editor_undo(d[..]) && editor_content_text(d[..], 7, o[..]) == CT_FIXTURE;
 }
 #test "world edit: a publish is an event of the live lane, with its pins; an event says its kind by its id" {
   o: [WE_PUBLISHED_BODY] u8; p: [WE_PUBLISHED_BODY + 64] u8;

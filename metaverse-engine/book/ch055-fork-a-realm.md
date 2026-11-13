@@ -59,10 +59,10 @@ the server's own slug rule, or the whole document is refused:
   // A fork names the realm it was copied from and that realm's revision: {"slug": S, "rev": N}.
   parent := jv_get(j[0], at, "forked_from");   // null, or absent, when it isn't a fork
   if jv_kind(j[0], parent) > JV_NULL {
-    buf: [FORGE_SLUG + 1] u8; slug := forge_str(j[0], jv_get(j[0], parent, "slug"), buf[..]);
-    got.from_rev = forge_whole(forge_num(j[0], jv_get(j[0], parent, "rev")), 1, FORGE_REV_MOST);
-    if jv_kind(j[0], parent) != JV_OBJECT || !forge_slug_ok(slug) || got.from_rev < 1 {
-      return forge_why("a fork's parent out of bounds");
+    buf: [EDITOR_SLUG + 1] u8; slug := editor_str(j[0], jv_get(j[0], parent, "slug"), buf[..]);
+    got.from_rev = editor_whole(editor_num(j[0], jv_get(j[0], parent, "rev")), 1, EDITOR_REV_MOST);
+    if jv_kind(j[0], parent) != JV_OBJECT || !editor_slug_ok(slug) || got.from_rev < 1 {
+      return editor_why("a fork's parent out of bounds");
     }
     for i: 0..<slug.count { got.from[i] = slug[i]; }
     got.from_n = slug.count;
@@ -80,31 +80,31 @@ description of a fork:
 ```jai
 // Replay: the applied steps of `from`, in order, onto `d` as steps of its own. False at the first
 // step whose before no longer matches (the document changed under it); the steps before stay.
-forge_replay :: (d: [] ForgeDoc, from: [] ForgeDoc) -> bool {
+editor_replay :: (d: [] EditorDoc, from: [] EditorDoc) -> bool {
   i := 0;
   while i < from[0].done {
     end := i + 1; while end < from[0].done && from[0].ops[end].joined { end += 1; }
-    o: [FORGE_OPS] ForgeOp;
-    if !forge_room(d, from, i, end) { return false; }
+    o: [EDITOR_OPS] EditorOp;
+    if !editor_room(d, from, i, end) { return false; }
     for k: i..<end {
       o[k - i] = from[0].ops[k];
-      if o[k - i].kind == FORGE_SLOT {   // its values move into this document's text
-        if o[k - i].has { o[k - i].av = forge_keep(d, forge_span(from, o[k - i].av, o[k - i].av_n)); }
-        if o[k - i].had { o[k - i].bv = forge_keep(d, forge_span(from, o[k - i].bv, o[k - i].bv_n)); }
+      if o[k - i].kind == EDITOR_SLOT {   // its values move into this document's text
+        if o[k - i].has { o[k - i].av = editor_keep(d, editor_span(from, o[k - i].av, o[k - i].av_n)); }
+        if o[k - i].had { o[k - i].bv = editor_keep(d, editor_span(from, o[k - i].bv, o[k - i].bv_n)); }
       }
     }
-    if !forge_push(d, o[0..<end - i]) { return false; }
+    if !editor_push(d, o[0..<end - i]) { return false; }
     i = end;
   }
   return true;
 }
 // Room in d's text for the values of from's ops i..<end (packed first when it needs to be), so
 // keeping them packs nothing away: a value kept for an op not yet in the log is named by nothing.
-forge_room :: (d: [] ForgeDoc, from: [] ForgeDoc, i: int, end: int) -> bool {
+editor_room :: (d: [] EditorDoc, from: [] EditorDoc, i: int, end: int) -> bool {
   need := 0;
-  for k: i..<end { o := from[0].ops[k]; if o.kind == FORGE_SLOT { if o.has { need += o.av_n; } if o.had { need += o.bv_n; } } }
-  if d[0].text_n + need > FORGE_TEXT { forge_pack(d); }
-  return d[0].text_n + need <= FORGE_TEXT;
+  for k: i..<end { o := from[0].ops[k]; if o.kind == EDITOR_SLOT { if o.has { need += o.av_n; } if o.had { need += o.bv_n; } } }
+  if d[0].text_n + need > EDITOR_TEXT { editor_pack(d); }
+  return d[0].text_n + need <= EDITOR_TEXT;
 }
 ```
 
@@ -143,15 +143,15 @@ The program is
 swap :: (t: string, from: string, to: string, buf: [] u8) -> string {
   for i: 0..<t.count {
     if i + from.count <= t.count && t[i..<i + from.count] == from {
-      n := forge_put(buf, 0, t[0..<i]); n = forge_put(buf, n, to); n = forge_put(buf, n, t[i + from.count..<t.count]);
+      n := editor_put(buf, 0, t[0..<i]); n = editor_put(buf, n, to); n = editor_put(buf, n, t[i + from.count..<t.count]);
       return cast(string) buf[0..<n];
     }
   }
   return "";
 }
 // A model's text without its first line (the revision): the realm itself.
-realm :: (d: [] ForgeDoc, buf: [] u8) -> string {
-  n := forge_doc_text(d, buf);
+realm :: (d: [] EditorDoc, buf: [] u8) -> string {
+  n := editor_doc_text(d, buf);
   at := 0; while buf[at] != '\n' { at += 1; }
   return cast(string) buf[at + 1..<n];
 }
@@ -160,30 +160,30 @@ realm :: (d: [] ForgeDoc, buf: [] u8) -> string {
 // at the fork's own revision 1, naming its parent. The fork's edits are its own log; the parent's
 // model doesn't change, and the parent plus the fork's log is the fork.
 main :: () {
-  parent: [1] ForgeDoc; forge_reset(parent[..], 1);
-  read := forge_read_doc(parent[..], FORGE_DOC_V1);
+  parent: [1] EditorDoc; editor_reset(parent[..], 1);
+  read := editor_read_doc(parent[..], EDITOR_DOC_V1);
   print("parent read: %, revision %\n", read.ok, parent[0].rev);
   a: [4096] u8; b: [4096] u8;
-  doc := swap(swap(FORGE_DOC_V1, "\"rev\": 4", "\"rev\": 1", a[..]), "\"forked_from\": null",
+  doc := swap(swap(EDITOR_DOC_V1, "\"rev\": 4", "\"rev\": 1", a[..]), "\"forked_from\": null",
               "\"forked_from\": {\"rev\": 4, \"slug\": \"lamp-cove\"}", b[..]);
-  fork: [1] ForgeDoc; forge_reset(fork[..], 1);
-  r := forge_read_doc(fork[..], doc);
+  fork: [1] EditorDoc; editor_reset(fork[..], 1);
+  r := editor_read_doc(fork[..], doc);
   print("fork read: %, revision %, forked from % at revision %\n", r.ok, fork[0].rev, cast(string) r.from[0..<r.from_n], r.from_rev);
   p0: [8192] u8; f0: [8192] u8;
   print("the fork starts as its parent's realm: %\n", realm(parent[..], p0[..]) == realm(fork[..], f0[..]));
-  before: [8192] u8; bn := forge_doc_text(parent[..], before[..]);
-  edited := forge_rotate(fork[..], "trees:3", 90) && forge_resize(fork[..], "trees:3", 150) && forge_remove(fork[..], "rocks:0");
+  before: [8192] u8; bn := editor_doc_text(parent[..], before[..]);
+  edited := editor_rotate(fork[..], "trees:3", 90) && editor_resize(fork[..], "trees:3", 150) && editor_remove(fork[..], "rocks:0");
   print("the fork turns trees:3, makes it 150%%, takes rocks:0 away: %, % steps in its log\n", edited, fork[0].done);
-  after: [8192] u8; an := forge_doc_text(parent[..], after[..]);
+  after: [8192] u8; an := editor_doc_text(parent[..], after[..]);
   print("the parent is byte-identical: %\n", cast(string) before[0..<bn] == cast(string) after[0..<an]);
-  base: [1] ForgeDoc; forge_reset(base[..], 1);
-  replayed := forge_read_doc(base[..], FORGE_DOC_V1).ok && forge_replay(base[..], fork[..]);
+  base: [1] EditorDoc; editor_reset(base[..], 1);
+  replayed := editor_read_doc(base[..], EDITOR_DOC_V1).ok && editor_replay(base[..], fork[..]);
   p1: [8192] u8; f1: [8192] u8;
   print("parent + the fork's log replays: %, and is the fork: %\n", replayed, realm(base[..], p1[..]) == realm(fork[..], f1[..]));
-  body: [2048] u8; n := forge_save_body(fork[..], body[..]);
+  body: [2048] u8; n := editor_save_body(fork[..], body[..]);
   print("the fork's save: %\n", cast(string) body[0..<n]);
   c: [4096] u8;
-  no := forge_read_doc(fork[..], swap(doc, "\"rev\": 4, \"slug\"", "\"rev\": 0, \"slug\"", c[..]));
+  no := editor_read_doc(fork[..], swap(doc, "\"rev\": 4, \"slug\"", "\"rev\": 0, \"slug\"", c[..]));
   print("a parent at revision 0 -> refused: %; the fork keeps its % edits\n", no.why, fork[0].done);
 }
 ```

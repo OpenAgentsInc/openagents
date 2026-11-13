@@ -44,7 +44,7 @@ work; this chapter does not claim universal accessibility from one adoption.
 
 ```shell
 coax/bin/coax test metaverse-engine/ui/settings.coax --library
-coax/web/tool.sh coax/web/forge-access.coax
+coax/web/tool.sh coax/web/editor-access.coax
 ```
 
 The second command exercises the made-realm browser layer and requires its

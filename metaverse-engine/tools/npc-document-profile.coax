@@ -19,7 +19,7 @@ ndp_str :: (d: Jv, at: int, out: [] u8) -> string {
   n := jv_str(d, at, out);
   return ifx n >= 0 then cast(string) out[0..<n] else "";
 }
-ndp_same :: (a: ForgeNpc, b: ForgeNpc) -> bool {
+ndp_same :: (a: EditorNpc, b: EditorNpc) -> bool {
   return a.id == b.id && a.group == b.group && a.kind == b.kind && a.action == b.action && a.x == b.x && a.z == b.z && a.target_kind == b.target_kind && a.target == b.target;
 }
 
@@ -27,7 +27,7 @@ ndp_fixture :: (d: Jv, fx: int) -> bool {
   wbuf: [8192] u8;
   wire := ndp_str(d, jv_get(d, fx, "wire"), wbuf[..]);
   if wire.count == 0 { return false; }
-  doc: ForgeNpcs;
+  doc: EditorNpcs;
   doc.version = jv_int(d, jv_get(d, fx, "version"), -1); doc.serial = jv_int(d, jv_get(d, fx, "serial"), -1); doc.groups = jv_int(d, jv_get(d, fx, "groups"), -1);
   rows := jv_get(d, fx, "npcs");
   if jv_kind(d, rows) != JV_ARRAY || jv_len(d, rows) > FNP_MAX { return false; }
@@ -36,13 +36,13 @@ ndp_fixture :: (d: Jv, fx: int) -> bool {
     if jv_kind(d, r) != JV_ARRAY || jv_len(d, r) != 8 { return false; }
     c: [8] int;
     for q: 0..<8 { c[q] = jv_int(d, jv_at(d, r, q), -999999999); if c[q] == -999999999 { return false; } }
-    doc.npcs[i] = ForgeNpc.{id = c[0], group = c[1], kind = c[2], action = c[3], x = c[4], z = c[5], target_kind = c[6], target = c[7]};
+    doc.npcs[i] = EditorNpc.{id = c[0], group = c[1], kind = c[2], action = c[3], x = c[4], z = c[5], target_kind = c[6], target = c[7]};
   }
   doc.n = jv_len(d, rows);
   out: [8192] u8;
   n := fnd_write(doc, out[..]);
   if n <= 0 || cast(string) out[0..<n] != wire { print("fnd_write gives %\n", cast(string) out[0..<n]); return false; }
-  back: [1] ForgeNpcs;
+  back: [1] EditorNpcs;
   if !fnd_read(wire, back[..]) { return false; }
   if back[0].version != doc.version || back[0].serial != doc.serial || back[0].groups != doc.groups || back[0].n != doc.n { return false; }
   for i: 0..<doc.n { if !ndp_same(back[0].npcs[i], doc.npcs[i]) { return false; } }
@@ -74,7 +74,7 @@ ndp_check :: (d: Jv, path: string) -> bool {
   if jv_kind(d, bad) != JV_ARRAY || jv_len(d, bad) < 3 { return false; }
   for i: 0..<jv_len(d, bad) {
     b: [4096] u8; t := ndp_str(d, jv_at(d, bad, i), b[..]);
-    out: [1] ForgeNpcs;
+    out: [1] EditorNpcs;
     if fnd_read(t, out[..]) { print("malformed % taken: %\n", i, t); return false; }
   }
   return true;

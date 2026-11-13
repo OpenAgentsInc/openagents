@@ -30,7 +30,7 @@ realm_reply_rev :: (body: string) -> int #effects(all) {
   i := 0;
   while i < body.count && (body[i] == ' ' || body[i] == '\n' || body[i] == '\r' || body[i] == '\t') { i+=1; }
   if i < body.count && (body[i] == '{' || body[i] == '[') { return -1; }
-  return cli_count(forge_spec_value(body,"rev"),1,999999999);
+  return cli_count(editor_spec_value(body,"rev"),1,999999999);
 }
 
 // The realm and admin domains' decisions, with no host calls: which words a
@@ -215,11 +215,11 @@ cli_plan_board :: (text: string, on: [] bool) -> PlanBoard #effects(all) {
   b: PlanBoard;
   at := 0;
   while true {
-    l := forge_board_line(text, at); at = l.next;   // metaverse-engine/editor/board.coax, the board's one reader
+    l := editor_board_line(text, at); at = l.next;   // metaverse-engine/editor/board.coax, the board's one reader
     if l.kind == BOARD_END { break; }
-    if l.kind == BOARD_PLAN && l.line.count > 5 { b.plan = cli_count(forge_board_text(l), 1, 999999999); }
+    if l.kind == BOARD_PLAN && l.line.count > 5 { b.plan = cli_count(editor_board_text(l), 1, 999999999); }
     if b.rows < 0 { continue; }
-    row := forge_board_row(l);   // a line that is no row has no space after its mark
+    row := editor_board_row(l);   // a line that is no row has no space after its mark
     if !row.spaced || (row.mark != '0' && row.mark != '1') { continue; }
     if b.rows == on.count { b.rows = -1; continue; }
     on[b.rows] = row.mark == '1';
@@ -272,25 +272,25 @@ cli_plan_board :: (text: string, on: [] bool) -> PlanBoard #effects(all) {
 }
 
 #test "move lines load wholly and keep the read revision" {
-  d: [1] ForgeDoc; forge_reset(d[..], 7);
+  d: [1] EditorDoc; editor_reset(d[..], 7);
   #assert cli_edit_read_moves("realm garden\nrev 7\nmoved trees:3 4.50 -2\nmoved rocks:0 -40 40.00\n", d[..]);
   #assert d[0].rev == 7 && d[0].move_n == 2 && d[0].op_n == 0;
-  #assert forge_where(d[..], "trees:3").x == 450 && forge_where(d[..], "trees:3").z == -200;
-  #assert forge_where(d[..], "rocks:0").x == -4000 && forge_where(d[..], "rocks:0").z == 4000;
+  #assert editor_where(d[..], "trees:3").x == 450 && editor_where(d[..], "trees:3").z == -200;
+  #assert editor_where(d[..], "rocks:0").x == -4000 && editor_where(d[..], "rocks:0").z == 4000;
   #assert cli_edit_read_moves("moved trees:0 0 0", d[..]) && d[0].move_n == 1;
-  #assert forge_where(d[..], "trees:0").found && !forge_where(d[..], "trees:3").found;
-  #assert cli_edit_read_moves("\nmoved trees:9 1 2", d[..]) && forge_where(d[..], "trees:9").x == 100;
+  #assert editor_where(d[..], "trees:0").found && !editor_where(d[..], "trees:3").found;
+  #assert cli_edit_read_moves("\nmoved trees:9 1 2", d[..]) && editor_where(d[..], "trees:9").x == 100;
   #assert cli_edit_read_moves("realm garden\nrev 7\n", d[..]) && d[0].move_n == 0;
 }
 
 #test "a malformed or duplicate move refuses without losing the prior document" {
-  d: [1] ForgeDoc; forge_reset(d[..], 9);
-  #assert forge_move(d[..], "trees:1", 1, 2);
+  d: [1] EditorDoc; editor_reset(d[..], 9);
+  #assert editor_move(d[..], "trees:1", 1, 2);
   bad := [14] string.["moved", "moved ", "moved trees:0 1", "moved trees:0 1 2 3", "moved trees:0 1  2", "moved trees:0  1 2", "moved bad 1 2", "moved trees:0 40.01 0", "moved trees:0 0 -40.01", "moved trees:0 .5 0", "moved trees:0 0 x", "moved trees:0 1 2\nmoved trees:0 2 3", "moved trees:0 1 2\nmoved", "moved trees:0 1 2\nmoved rocks:0 1 2\nmoved bad 0 0"];
   for s: bad {
     #assert !cli_edit_read_moves(s, d[..]);
     #assert d[0].rev == 9 && d[0].move_n == 1 && d[0].op_n == 1 && d[0].done == 1;
-    #assert forge_where(d[..], "trees:1").x == 1 && forge_where(d[..], "trees:1").z == 2;
+    #assert editor_where(d[..], "trees:1").x == 1 && editor_where(d[..], "trees:1").z == 2;
   }
   #assert !cli_edit_read_moves("", d[0..<0]);
 }
@@ -358,59 +358,59 @@ cli_edit_tools :: (s: string) -> bool #effects(all) {
 
 // Read a complete spec into a new move projection. A bad line never changes
 // the caller's document, including its revision and undo history.
-cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool #effects(all) {
+cli_edit_read_moves :: (spec: string, d: [] EditorDoc) -> bool #effects(all) {
   if d.count < 1 { return false; }
-  next: [1] ForgeDoc; forge_reset(next[..], d[0].rev);
+  next: [1] EditorDoc; editor_reset(next[..], d[0].rev);
   at := 0;
   while true {
-    l := forge_spec_line(spec, at); at = l.next;   // metaverse-engine/editor/spec.coax, the spec's one reader
+    l := editor_spec_line(spec, at); at = l.next;   // metaverse-engine/editor/spec.coax, the spec's one reader
     if l.kind == SPEC_END { break; }
     if !l.flush { continue; }
     if l.kind == SPEC_SHAPED {
-      if !forge_read_shape_line(next[..], l.line) { return false; }
+      if !editor_read_shape_line(next[..], l.line) { return false; }
       continue;
     }
     if l.kind != SPEC_MOVED { continue; }
-    m := forge_spec_moved(l);
+    m := editor_spec_moved(l);
     if !m.ok { return false; }
     x := cli_edit_cm(m.x); z := cli_edit_cm(m.z);
-    if forge_where(next[..], m.entity).found { return false; }
-    if !forge_read_move(next[..], m.entity, x, z) { return false; }
+    if editor_where(next[..], m.entity).found { return false; }
+    if !editor_read_move(next[..], m.entity, x, z) { return false; }
   }
   d[0] = next[0];
   return true;
 }
 
 #test "shaped lines load with the moves; a malformed or repeated one refuses the whole read" {
-  d: [1] ForgeDoc; forge_reset(d[..], 4);
+  d: [1] EditorDoc; editor_reset(d[..], 4);
   #assert cli_edit_read_moves("rev 4\nmoved trees:3 1 2\nshaped trees:3 -90 150 0\nshaped rocks:0 180 25 1\nshaped props:1 0 400 0\nshapes 1\n", d[..]);
-  s := forge_shape_of(d[..], "trees:3");
+  s := editor_shape_of(d[..], "trees:3");
   #assert s.at && s.x == 100 && s.yaw == -90 && s.scale == 150 && !s.gone && d[0].move_n == 3;
-  s = forge_shape_of(d[..], "rocks:0");
-  #assert !s.at && s.yaw == 180 && s.scale == 25 && s.gone && forge_shape_of(d[..], "props:1").scale == 400;
-  #assert cli_edit_read_moves("shaped trees:1 -179 100 1\nmoved trees:1 0 0", d[..]) && forge_shape_of(d[..], "trees:1").at && forge_shape_of(d[..], "trees:1").gone;
+  s = editor_shape_of(d[..], "rocks:0");
+  #assert !s.at && s.yaw == 180 && s.scale == 25 && s.gone && editor_shape_of(d[..], "props:1").scale == 400;
+  #assert cli_edit_read_moves("shaped trees:1 -179 100 1\nmoved trees:1 0 0", d[..]) && editor_shape_of(d[..], "trees:1").at && editor_shape_of(d[..], "trees:1").gone;
   bad := [21] string.["shaped", "shaped ", "shaped trees:0 1 100", "shaped trees:0 1 100 0 0", "shaped trees:0 1  100 0", "shaped trees:0 -361 100 0",
     "shaped trees:0 361 100 0", "shaped trees:0 1 24 0", "shaped trees:0 1 401 0", "shaped trees:0 1 100 2", "shaped trees:0 1.5 100 0", "shaped bad 1 100 0",
     "shaped trees:0 1 100 0\nshaped trees:0 2 100 0", "moved trees:0 1 2\nmoved trees:0 1 2", "shaped trees:0 0 100 0", "shaped trees:0 1 100 ",
     "shaped trees:0  100 0", "shaped trees:0 - 100 0", "shaped trees:0 1 100 0 ", "shaped  trees:0 1 100 0", "shaped trees:0 -0 100 0"];
   for b: bad {
     #assert !cli_edit_read_moves(b, d[..]);
-    #assert forge_shape_of(d[..], "trees:1").gone && d[0].move_n == 1;
+    #assert editor_shape_of(d[..], "trees:1").gone && d[0].move_n == 1;
   }
-  e: [1] ForgeDoc; forge_reset(e[..], 1);
-  #assert cli_edit_read_moves("shaped trees:0 1 100 0\nmoved trees:0 1 2\n", e[..]) && forge_where(e[..], "trees:0").found;
+  e: [1] EditorDoc; editor_reset(e[..], 1);
+  #assert cli_edit_read_moves("shaped trees:0 1 100 0\nmoved trees:0 1 2\n", e[..]) && editor_where(e[..], "trees:0").found;
 }
 
 #test "all sixty four distinct moves fit and a sixty fifth refuses" {
   b: [4096] u8; n := 0;
   for i: 0..<65 {
-    n = forge_put(b[..], n, "moved trees:"); n = forge_put_int(b[..], n, i); n = forge_put(b[..], n, " 0 0\n");
+    n = editor_put(b[..], n, "moved trees:"); n = editor_put_int(b[..], n, i); n = editor_put(b[..], n, " 0 0\n");
     if i == 63 {
-      d: [1] ForgeDoc; forge_reset(d[..], 2);
+      d: [1] EditorDoc; editor_reset(d[..], 2);
       #assert cli_edit_read_moves(cast(string) b[0..<n], d[..]) && d[0].move_n == 64;
     }
   }
-  d: [1] ForgeDoc; forge_reset(d[..], 3);
+  d: [1] EditorDoc; editor_reset(d[..], 3);
   #assert !cli_edit_read_moves(cast(string) b[0..<n], d[..]) && d[0].move_n == 0 && d[0].rev == 3;
 }
 
@@ -673,10 +673,10 @@ rc_approval_ok :: (a: string) -> bool #effects(all) { for x: RC_APPROVALS { if x
 rc_needs_yes :: (c: CliCommand) -> bool #effects(all) { return c.approval == "confirm"; }
 // What a row's effect and approval add to its help: " [write; the owner]", " [destructive; asks first: --yes]", " [read]".
 rc_effect_note :: (c: CliCommand, out: [] u8) -> string #effects(all) {
-  n := forge_put(out,0," ["); n = forge_put(out,n,c.effect);
-  if c.approval == "owner" { n = forge_put(out,n,"; the owner"); }
-  if c.approval == "confirm" { n = forge_put(out,n,"; asks first: --yes"); }
-  n = forge_put(out,n,"]");
+  n := editor_put(out,0," ["); n = editor_put(out,n,c.effect);
+  if c.approval == "owner" { n = editor_put(out,n,"; the owner"); }
+  if c.approval == "confirm" { n = editor_put(out,n,"; asks first: --yes"); }
+  n = editor_put(out,n,"]");
   return ifx n == -1 then "" else cast(string) out[0..<n];
 }
 #test "every row says its effect and its approval: no write goes unapproved, and what can't be undone is two-step" {
@@ -774,7 +774,7 @@ rc_find :: (verb: string) -> int #effects(all) { for i: 0..<REALM_COMMANDS.count
 // A row's MCP tool (mcp.coax): its name is realm_VERB with each '-' a '_'; a positional argument's property is
 // named for its kind (metres and centimetres are x then z), and a flag's for the flag (--as-me is as_me).
 mcp_tool_name :: (verb: string, out: [] u8) -> string #effects(all) {
-  n := forge_put(out, 0, "realm_");
+  n := editor_put(out, 0, "realm_");
   for c: verb { if n >= 0 && n < out.count { out[n] = ifx c == '-' then '_' else c; n += 1; } else { n = -1; } }
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
@@ -837,24 +837,24 @@ rc_label_ok :: (c: CliCommand) -> bool #effects(all) {
 RC_TOOLS_FILE :: "apps/openagents-web/realm-tools.coax";
 rc_tools_text :: (out: [] u8) -> int #effects(all) {
   nb: [64] u8;
-  n := forge_put(out, 0, "// Generated from REALM_COMMANDS (apps/openagents-cli/commands.coax) by\n//   coax/web/tool.sh apps/openagents-cli/tool-labels.coax --write\n// Do not edit: each realm_* MCP tool's name, effect, label and many, for the chat's tool rows (#13481).\n");
-  n = forge_put(out, n, "RealmTool :: struct { name: string; effect: string; label: string; many: string; }\nREALM_TOOLS :: [");
-  n = forge_put_int(out, n, REALM_COMMANDS.count);
-  n = forge_put(out, n, "] RealmTool.[\n");
+  n := editor_put(out, 0, "// Generated from REALM_COMMANDS (apps/openagents-cli/commands.coax) by\n//   coax/web/tool.sh apps/openagents-cli/tool-labels.coax --write\n// Do not edit: each realm_* MCP tool's name, effect, label and many, for the chat's tool rows (#13481).\n");
+  n = editor_put(out, n, "RealmTool :: struct { name: string; effect: string; label: string; many: string; }\nREALM_TOOLS :: [");
+  n = editor_put_int(out, n, REALM_COMMANDS.count);
+  n = editor_put(out, n, "] RealmTool.[\n");
   for c, i: REALM_COMMANDS {
-    n = forge_put(out, n, "  RealmTool.{name=\""); n = forge_put(out, n, mcp_tool_name(c.verb, nb[..]));
-    n = forge_put(out, n, "\",effect=\""); n = rc_lit(out, n, c.effect);
-    n = forge_put(out, n, "\",label=\""); n = rc_lit(out, n, c.label);
-    n = forge_put(out, n, "\",many=\""); n = rc_lit(out, n, c.many);
-    n = forge_put(out, n, ifx i + 1 < REALM_COMMANDS.count then "\"},\n" else "\"}\n");
+    n = editor_put(out, n, "  RealmTool.{name=\""); n = editor_put(out, n, mcp_tool_name(c.verb, nb[..]));
+    n = editor_put(out, n, "\",effect=\""); n = rc_lit(out, n, c.effect);
+    n = editor_put(out, n, "\",label=\""); n = rc_lit(out, n, c.label);
+    n = editor_put(out, n, "\",many=\""); n = rc_lit(out, n, c.many);
+    n = editor_put(out, n, ifx i + 1 < REALM_COMMANDS.count then "\"},\n" else "\"}\n");
   }
-  return forge_put(out, n, "];\n");
+  return editor_put(out, n, "];\n");
 }
 // Text into a Coax string literal: a quote and a backslash escaped.
 rc_lit :: (out: [] u8, at: int, text: string) -> int #effects(all) {
   n := at;
   for ch: text {
-    if ch == '"' || ch == '\\' { n = forge_put(out, n, "\\"); }
+    if ch == '"' || ch == '\\' { n = editor_put(out, n, "\\"); }
     if n < 0 || n >= out.count { return -1; }
     out[n] = ch; n += 1;
   }
@@ -967,7 +967,7 @@ rc_value :: (kind: string, value: string) -> bool #effects(all) {
   if kind == "entity" {
     feature := 0;
     for c: value { if c == ':' { break; } feature += 1; }
-    return forge_key_ok(value) && feature <= 20;
+    return editor_key_ok(value) && feature <= 20;
   }
   if kind == "metres" { return cli_edit_cm(value) != 4001; }
   if kind == "id" { return cli_count(value,1,999999999) >= 1; }
@@ -1488,12 +1488,12 @@ rc_word :: (s: string, k: int) -> string #effects(all) {
   return "";
 }
 rc_help_line :: (c: CliCommand, out: [] u8) -> string #effects(all) {
-  n := forge_put(out,0,"  realm "); n = forge_put(out,n,c.verb);
-  if c.usage.count > 0 { n = forge_put(out,n," "); n = forge_put(out,n,c.usage); }
+  n := editor_put(out,0,"  realm "); n = editor_put(out,n,c.verb);
+  if c.usage.count > 0 { n = editor_put(out,n," "); n = editor_put(out,n,c.usage); }
   w := n;
-  while w < 40 { n = forge_put(out,n," "); w += 1; }
+  while w < 40 { n = editor_put(out,n," "); w += 1; }
   nb: [64] u8;
-  n = forge_put(out,n,"  "); n = forge_put(out,n,c.help); n = forge_put(out,n,rc_effect_note(c,nb[..]));
+  n = editor_put(out,n,"  "); n = editor_put(out,n,c.help); n = editor_put(out,n,rc_effect_note(c,nb[..]));
   return ifx n == -1 then "" else cast(string) out[0..<n];
 }
 
@@ -1774,13 +1774,13 @@ rb_help :: (out: [] u8) -> string #effects(all) {
   n := 0;
   for i: 0..<RB_SPECS.count {
     sp := RB_SPECS[i];
-    if i > 0 { n = forge_put(out,n,"; "); }
-    n = forge_put(out,n,sp.verb);
+    if i > 0 { n = editor_put(out,n,"; "); }
+    n = editor_put(out,n,sp.verb);
     for j: 0..<4 {
       f := sp.fields[j]; if f.key == "" { continue; }
-      n = forge_put(out,n,ifx sp.verb == "ask" && j == 1 then "|" else " ");
-      n = forge_put(out,n,f.key);
-      if f.optional { n = forge_put(out,n,"?"); }
+      n = editor_put(out,n,ifx sp.verb == "ask" && j == 1 then "|" else " ");
+      n = editor_put(out,n,f.key);
+      if f.optional { n = editor_put(out,n,"?"); }
     }
   }
   return ifx n == -1 then "" else cast(string) out[0..<n];

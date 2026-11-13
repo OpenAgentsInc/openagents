@@ -53,42 +53,42 @@ text the document and its history share, packed when it fills:
 
 <!-- source: metaverse-engine/editor/edit.coax doc -->
 ```jai
-FORGE_KEY :: 24;       // an entity's name: "trees:3"
-FORGE_MOVES :: 64;     // entities one document overrides (the server's limit too)
-FORGE_OPS :: 64;       // undo steps kept; the oldest goes first
-FORGE_REACH :: 4000;   // centimetres from the middle an entity may stand (the server's limit too)
-FORGE_TURN :: 180;     // degrees an entity turns either way, at most
-FORGE_SCALE_MIN :: 25; // percent of its laid-out size, at least
-FORGE_SCALE_MAX :: 400;
-FORGE_SLOT_KEY :: 48;  // a slot's name: "lore:mara"
-FORGE_VAL :: 2400;     // a slot's value bytes at most (a quest: 564 characters of up to four bytes; lore: 400)
-FORGE_SLOTS :: 400;    // slots one document keeps (200 placed things, 40 lore, 40 quests, setup, tools, board rows)
-FORGE_TEXT :: 65536;   // bytes of slot values the document and its history keep together (40 lore and 40 quests of plain words fit)
+EDITOR_KEY :: 24;       // an entity's name: "trees:3"
+EDITOR_MOVES :: 64;     // entities one document overrides (the server's limit too)
+EDITOR_OPS :: 64;       // undo steps kept; the oldest goes first
+EDITOR_REACH :: 4000;   // centimetres from the middle an entity may stand (the server's limit too)
+EDITOR_TURN :: 180;     // degrees an entity turns either way, at most
+EDITOR_SCALE_MIN :: 25; // percent of its laid-out size, at least
+EDITOR_SCALE_MAX :: 400;
+EDITOR_SLOT_KEY :: 48;  // a slot's name: "lore:mara"
+EDITOR_VAL :: 2400;     // a slot's value bytes at most (a quest: 564 characters of up to four bytes; lore: 400)
+EDITOR_SLOTS :: 400;    // slots one document keeps (200 placed things, 40 lore, 40 quests, setup, tools, board rows)
+EDITOR_TEXT :: 65536;   // bytes of slot values the document and its history keep together (40 lore and 40 quests of plain words fit)
 
 // An entity as the document has it: where it stands instead (`at`), its turn and size, and gone.
 // The plain shape (nothing overridden) is the entity as laid out.
-ForgeShape :: struct { at: bool; x: int; z: int; yaw: int; scale: int = 100; gone: bool; }
-ForgeMove :: struct { key: [FORGE_KEY] u8; key_n: int; x: int; z: int; at: bool = true; yaw: int; scale: int = 100; gone: bool; }
+EditorShape :: struct { at: bool; x: int; z: int; yaw: int; scale: int = 100; gone: bool; }
+EditorMove :: struct { key: [EDITOR_KEY] u8; key_n: int; x: int; z: int; at: bool = true; yaw: int; scale: int = 100; gone: bool; }
 // A slot's value is a span of the document's `text`; so are an edit's before and after values.
-ForgeSlot :: struct { key: [FORGE_SLOT_KEY] u8; key_n: int; at: int; n: int; }
-FORGE_ENTITY :: 0;
-FORGE_SLOT :: 1;
+EditorSlot :: struct { key: [EDITOR_SLOT_KEY] u8; key_n: int; at: int; n: int; }
+EDITOR_ENTITY :: 0;
+EDITOR_SLOT :: 1;
 // One edit: what it changes, as it was before and after. An entity's shapes (`b`, `a`), or a
 // slot's values (`had` false: absent before; `has` false: absent after). `joined`: part of the
 // step of the op before it.
-ForgeOp :: struct {
+EditorOp :: struct {
   kind: int; joined: bool;
-  key: [FORGE_SLOT_KEY] u8; key_n: int;
-  b: ForgeShape; a: ForgeShape;
+  key: [EDITOR_SLOT_KEY] u8; key_n: int;
+  b: EditorShape; a: EditorShape;
   had: bool; bv: int; bv_n: int;
   has: bool; av: int; av_n: int;
 }
-ForgeDoc :: struct {
+EditorDoc :: struct {
   rev: int;                        // the revision this document was read at, or last saved as
-  moves: [FORGE_MOVES] ForgeMove; move_n: int;
-  slots: [FORGE_SLOTS] ForgeSlot; slot_n: int;
-  text: [FORGE_TEXT] u8; text_n: int;   // the values slots and edits name
-  ops: [FORGE_OPS] ForgeOp; op_n: int; done: int;   // the log, and how many of it are applied
+  moves: [EDITOR_MOVES] EditorMove; move_n: int;
+  slots: [EDITOR_SLOTS] EditorSlot; slot_n: int;
+  text: [EDITOR_TEXT] u8; text_n: int;   // the values slots and edits name
+  ops: [EDITOR_OPS] EditorOp; op_n: int; done: int;   // the log, and how many of it are applied
   saved: int;                      // `done` when it was last read or saved; -1 when that state is gone
 }
 ```
@@ -108,19 +108,19 @@ in the CLI's batches:
 <!-- source: metaverse-engine/editor/edit.coax ops -->
 ```jai
 // Apply an edit: refused unless what it changes is still as the edit says it was.
-forge_apply :: (d: [] ForgeDoc, o: [] ForgeOp) -> bool {
+editor_apply :: (d: [] EditorDoc, o: [] EditorOp) -> bool {
   key := cast(string) o[0].key[0..<o[0].key_n];
-  if o[0].kind == FORGE_ENTITY {
-    if !forge_same_shape(forge_shape_of(d, key), o[0].b) { return false; }
-    return forge_set_shape(d, key, o[0].a);
+  if o[0].kind == EDITOR_ENTITY {
+    if !editor_same_shape(editor_shape_of(d, key), o[0].b) { return false; }
+    return editor_set_shape(d, key, o[0].a);
   }
-  now := forge_slot_at(d, key);
+  now := editor_slot_at(d, key);
   if now.found != o[0].had { return false; }
-  if now.found && forge_slot_text(d, key) != forge_span(d, o[0].bv, o[0].bv_n) { return false; }
-  return forge_put_slot(d, key, o[0].has, o[0].av, o[0].av_n);
+  if now.found && editor_slot_text(d, key) != editor_span(d, o[0].bv, o[0].bv_n) { return false; }
+  return editor_put_slot(d, key, o[0].has, o[0].av, o[0].av_n);
 }
 // The edit that takes it back: before and after swapped.
-forge_inverse :: (o: ForgeOp) -> ForgeOp {
+editor_inverse :: (o: EditorOp) -> EditorOp {
   r := o;
   r.b = o.a; r.a = o.b;
   r.had = o.has; r.bv = o.av; r.bv_n = o.av_n;
@@ -135,98 +135,98 @@ Every edit a made realm has is one such operation, so one log holds them all
 <!-- source: metaverse-engine/editor/edit.coax edits -->
 ```jai
 // The edits a made realm has, each one step with its inverse.
-forge_move :: (d: [] ForgeDoc, key: string, x: int, z: int) -> bool {
-  s := forge_shape_of(d, key); s.at = true; s.x = x; s.z = z;
-  return forge_reshape(d, key, s);
+editor_move :: (d: [] EditorDoc, key: string, x: int, z: int) -> bool {
+  s := editor_shape_of(d, key); s.at = true; s.x = x; s.z = z;
+  return editor_reshape(d, key, s);
 }
-forge_rotate :: (d: [] ForgeDoc, key: string, deg: int) -> bool {
-  s := forge_shape_of(d, key); s.yaw = forge_turn(deg);
-  return forge_reshape(d, key, s);
+editor_rotate :: (d: [] EditorDoc, key: string, deg: int) -> bool {
+  s := editor_shape_of(d, key); s.yaw = editor_turn(deg);
+  return editor_reshape(d, key, s);
 }
-forge_resize :: (d: [] ForgeDoc, key: string, percent: int) -> bool {
-  s := forge_shape_of(d, key); s.scale = percent;
-  return forge_reshape(d, key, s);
+editor_resize :: (d: [] EditorDoc, key: string, percent: int) -> bool {
+  s := editor_shape_of(d, key); s.scale = percent;
+  return editor_reshape(d, key, s);
 }
-forge_remove :: (d: [] ForgeDoc, key: string) -> bool {
-  s := forge_shape_of(d, key); s.gone = true;
-  return forge_reshape(d, key, s);
+editor_remove :: (d: [] EditorDoc, key: string) -> bool {
+  s := editor_shape_of(d, key); s.gone = true;
+  return editor_reshape(d, key, s);
 }
-forge_restore :: (d: [] ForgeDoc, key: string) -> bool {
-  s := forge_shape_of(d, key); s.gone = false;
-  return forge_reshape(d, key, s);
+editor_restore :: (d: [] EditorDoc, key: string) -> bool {
+  s := editor_shape_of(d, key); s.gone = false;
+  return editor_reshape(d, key, s);
 }
 // A visitor tool on or off; one of the setup fields. (A board row on or off is doc.coax's
-// forge_switch: it reads the rows' objects.)
-forge_tool :: (d: [] ForgeDoc, tool: string, on: bool) -> bool { return forge_slot_edit(d, "tool:", tool, true, ifx on then "1" else "0"); }
-forge_setting :: (d: [] ForgeDoc, what: string, value: string) -> bool {
+// editor_switch: it reads the rows' objects.)
+editor_tool :: (d: [] EditorDoc, tool: string, on: bool) -> bool { return editor_slot_edit(d, "tool:", tool, true, ifx on then "1" else "0"); }
+editor_setting :: (d: [] EditorDoc, what: string, value: string) -> bool {
   if what != "style" && what != "ground" && what != "time" && what != "camera" && what != "palette" { return false; }
-  return forge_slot_edit(d, "set:", what, true, value);
+  return editor_slot_edit(d, "set:", what, true, value);
 }
 // A character's lore ("" forgets it); a giver's quest (ask "" takes it away). No bar in a quest's words.
-forge_lore :: (d: [] ForgeDoc, who: string, text: string) -> bool { return forge_slot_edit(d, "lore:", who, text.count > 0, text); }
-forge_quest :: (d: [] ForgeDoc, giver: string, asked: string, steps: [3] string, reward: string) -> bool {
-  b: [FORGE_VAL] u8; n := 0;
+editor_lore :: (d: [] EditorDoc, who: string, text: string) -> bool { return editor_slot_edit(d, "lore:", who, text.count > 0, text); }
+editor_quest :: (d: [] EditorDoc, giver: string, asked: string, steps: [3] string, reward: string) -> bool {
+  b: [EDITOR_VAL] u8; n := 0;
   parts := [5] string.[asked, steps[0], steps[1], steps[2], reward];
   for p: 0..<5 {
     for c: parts[p] { if c == '|' { return false; } }
-    if p > 0 { n = forge_put(b[..], n, "|"); }
-    n = forge_put(b[..], n, parts[p]);
+    if p > 0 { n = editor_put(b[..], n, "|"); }
+    n = editor_put(b[..], n, parts[p]);
   }
   if n < 0 { return false; }
-  return forge_slot_edit(d, "quest:", giver, asked.count > 0, cast(string) b[0..<n]);
+  return editor_slot_edit(d, "quest:", giver, asked.count > 0, cast(string) b[0..<n]);
 }
 // A thing placed: the next "place:N" slot, THING X Z YAW (centimetres, degrees).
-forge_place :: (d: [] ForgeDoc, thing: string, x: int, z: int, yaw: int) -> bool {
-  if !forge_in_reach(x, z) || thing.count == 0 { return false; }
-  for c: thing { if !forge_lower(c) { return false; } }
-  kb: [24] u8; n := 0; while forge_slot_at(d, forge_place_key(n, kb[..])).found { n += 1; }
-  b: [64] u8; m := forge_put(b[..], 0, thing); m = forge_put(b[..], m, " "); m = forge_put_int(b[..], m, x);
-  m = forge_put(b[..], m, " "); m = forge_put_int(b[..], m, z); m = forge_put(b[..], m, " "); m = forge_put_int(b[..], m, forge_turn(yaw));
+editor_place :: (d: [] EditorDoc, thing: string, x: int, z: int, yaw: int) -> bool {
+  if !editor_in_reach(x, z) || thing.count == 0 { return false; }
+  for c: thing { if !editor_lower(c) { return false; } }
+  kb: [24] u8; n := 0; while editor_slot_at(d, editor_place_key(n, kb[..])).found { n += 1; }
+  b: [64] u8; m := editor_put(b[..], 0, thing); m = editor_put(b[..], m, " "); m = editor_put_int(b[..], m, x);
+  m = editor_put(b[..], m, " "); m = editor_put_int(b[..], m, z); m = editor_put(b[..], m, " "); m = editor_put_int(b[..], m, editor_turn(yaw));
   if m < 0 { return false; }
-  return forge_reslot(d, forge_place_key(n, kb[..]), true, cast(string) b[0..<m]);
+  return editor_reslot(d, editor_place_key(n, kb[..]), true, cast(string) b[0..<m]);
 }
 ```
 
 Replaying the applied steps of one log onto the document it started from
-gives the same document, byte for byte in `forge_doc_text`; a replay onto a
+gives the same document, byte for byte in `editor_doc_text`; a replay onto a
 document that changed under it stops at the first step that no longer fits:
 
 <!-- source: metaverse-engine/editor/edit.coax replay -->
 ```jai
 // Replay: the applied steps of `from`, in order, onto `d` as steps of its own. False at the first
 // step whose before no longer matches (the document changed under it); the steps before stay.
-forge_replay :: (d: [] ForgeDoc, from: [] ForgeDoc) -> bool {
+editor_replay :: (d: [] EditorDoc, from: [] EditorDoc) -> bool {
   i := 0;
   while i < from[0].done {
     end := i + 1; while end < from[0].done && from[0].ops[end].joined { end += 1; }
-    o: [FORGE_OPS] ForgeOp;
-    if !forge_room(d, from, i, end) { return false; }
+    o: [EDITOR_OPS] EditorOp;
+    if !editor_room(d, from, i, end) { return false; }
     for k: i..<end {
       o[k - i] = from[0].ops[k];
-      if o[k - i].kind == FORGE_SLOT {   // its values move into this document's text
-        if o[k - i].has { o[k - i].av = forge_keep(d, forge_span(from, o[k - i].av, o[k - i].av_n)); }
-        if o[k - i].had { o[k - i].bv = forge_keep(d, forge_span(from, o[k - i].bv, o[k - i].bv_n)); }
+      if o[k - i].kind == EDITOR_SLOT {   // its values move into this document's text
+        if o[k - i].has { o[k - i].av = editor_keep(d, editor_span(from, o[k - i].av, o[k - i].av_n)); }
+        if o[k - i].had { o[k - i].bv = editor_keep(d, editor_span(from, o[k - i].bv, o[k - i].bv_n)); }
       }
     }
-    if !forge_push(d, o[0..<end - i]) { return false; }
+    if !editor_push(d, o[0..<end - i]) { return false; }
     i = end;
   }
   return true;
 }
 // Room in d's text for the values of from's ops i..<end (packed first when it needs to be), so
 // keeping them packs nothing away: a value kept for an op not yet in the log is named by nothing.
-forge_room :: (d: [] ForgeDoc, from: [] ForgeDoc, i: int, end: int) -> bool {
+editor_room :: (d: [] EditorDoc, from: [] EditorDoc, i: int, end: int) -> bool {
   need := 0;
-  for k: i..<end { o := from[0].ops[k]; if o.kind == FORGE_SLOT { if o.has { need += o.av_n; } if o.had { need += o.bv_n; } } }
-  if d[0].text_n + need > FORGE_TEXT { forge_pack(d); }
-  return d[0].text_n + need <= FORGE_TEXT;
+  for k: i..<end { o := from[0].ops[k]; if o.kind == EDITOR_SLOT { if o.has { need += o.av_n; } if o.had { need += o.bv_n; } } }
+  if d[0].text_n + need > EDITOR_TEXT { editor_pack(d); }
+  return d[0].text_n + need <= EDITOR_TEXT;
 }
 ```
 
 Undo applies the inverse of the last applied operation and moves `done`
 back by one. Redo applies the next operation again. A new move after an undo
 drops the operations past `done`, so there is no redo after it. The log keeps
-the last `FORGE_OPS` steps; the oldest goes first.
+the last `EDITOR_OPS` steps; the oldest goes first.
 
 Because undo and redo only move `done`, unsaved changes are a comparison:
 the document is dirty when `done` differs from `saved`. Undoing back to the
@@ -242,36 +242,36 @@ A save sends the revision the page read, every move and (to a server with migrat
 // SaveRequest): the revision read, every move in metres, and every turn, size and removal. "shaped"
 // is always sent, empty when there are none: without it the server keeps the shapes it had (0109),
 // so restoring the last turned, sized or removed entity would not be saved (#13249).
-forge_save_body :: (d: [] ForgeDoc, buf: [] u8) -> int {
-  n := forge_put(buf, 0, "{\"rev\":"); n = forge_put_int(buf, n, d[0].rev); n = forge_put(buf, n, ",\"moved\":[");
+editor_save_body :: (d: [] EditorDoc, buf: [] u8) -> int {
+  n := editor_put(buf, 0, "{\"rev\":"); n = editor_put_int(buf, n, d[0].rev); n = editor_put(buf, n, ",\"moved\":[");
   first := true;
   for i: 0..<d[0].move_n {
     m := d[0].moves[i];
     if !m.at { continue; }
-    if !first { n = forge_put(buf, n, ","); }
+    if !first { n = editor_put(buf, n, ","); }
     first = false;
-    n = forge_put(buf, n, "{\"entity\":\""); n = forge_put(buf, n, forge_move_key(d, i));
-    n = forge_put(buf, n, "\",\"x\":"); n = forge_put_cm(buf, n, m.x);
-    n = forge_put(buf, n, ",\"z\":"); n = forge_put_cm(buf, n, m.z); n = forge_put(buf, n, "}");
+    n = editor_put(buf, n, "{\"entity\":\""); n = editor_put(buf, n, editor_move_key(d, i));
+    n = editor_put(buf, n, "\",\"x\":"); n = editor_put_cm(buf, n, m.x);
+    n = editor_put(buf, n, ",\"z\":"); n = editor_put_cm(buf, n, m.z); n = editor_put(buf, n, "}");
   }
-  n = forge_put(buf, n, "],\"shaped\":[");
+  n = editor_put(buf, n, "],\"shaped\":[");
   first = true;
   for i: 0..<d[0].move_n {
     m := d[0].moves[i];
     if m.yaw == 0 && m.scale == 100 && !m.gone { continue; }
-    if !first { n = forge_put(buf, n, ","); }
+    if !first { n = editor_put(buf, n, ","); }
     first = false;
-    n = forge_put(buf, n, "{\"entity\":\""); n = forge_put(buf, n, forge_move_key(d, i));
-    n = forge_put(buf, n, "\",\"yaw\":"); n = forge_put_int(buf, n, m.yaw);
-    n = forge_put(buf, n, ",\"scale\":"); n = forge_put_int(buf, n, m.scale);
-    n = forge_put(buf, n, ",\"gone\":"); n = forge_put(buf, n, ifx m.gone then "true" else "false"); n = forge_put(buf, n, "}");
+    n = editor_put(buf, n, "{\"entity\":\""); n = editor_put(buf, n, editor_move_key(d, i));
+    n = editor_put(buf, n, "\",\"yaw\":"); n = editor_put_int(buf, n, m.yaw);
+    n = editor_put(buf, n, ",\"scale\":"); n = editor_put_int(buf, n, m.scale);
+    n = editor_put(buf, n, ",\"gone\":"); n = editor_put(buf, n, ifx m.gone then "true" else "false"); n = editor_put(buf, n, "}");
   }
-  return forge_put(buf, n, "]}");
+  return editor_put(buf, n, "]}");
 }
 // The body of POST .../undo, .../redo and .../publish (RevRequest): the revision there now, {"rev":N}.
-forge_rev_body :: (rev: int, buf: [] u8) -> int {
-  n := forge_put(buf, 0, "{\"rev\":"); n = forge_put_int(buf, n, rev);
-  return forge_put(buf, n, "}");
+editor_rev_body :: (rev: int, buf: [] u8) -> int {
+  n := editor_put(buf, 0, "{\"rev\":"); n = editor_put_int(buf, n, rev);
+  return editor_put(buf, n, "}");
 }
 ```
 
@@ -325,47 +325,47 @@ The program is
 #import "Basic";
 
 // Where an entity stands now, in centimetres, and its turn and size.
-show :: (d: [] ForgeDoc, key: string) {
-  s := forge_shape_of(d, key); w := forge_where(d, key);
+show :: (d: [] EditorDoc, key: string) {
+  s := editor_shape_of(d, key); w := editor_where(d, key);
   print("  % at (%, %) cm, yaw %, size % percent\n", key, w.x, w.z, s.yaw, s.scale);
 }
 // The log's position: steps applied, steps kept, and whether anything is unsaved.
-step :: (d: [] ForgeDoc, what: string, ok: bool) {
-  print("%: %; done % of %, dirty %\n", what, ok, d[0].done, d[0].op_n, forge_dirty(d));
+step :: (d: [] EditorDoc, what: string, ok: bool) {
+  print("%: %; done % of %, dirty %\n", what, ok, d[0].done, d[0].op_n, editor_dirty(d));
 }
 
 // Lamp Cove at revision 4, edited in place: a move and a line of lore, undone and done again, a
 // new edit after an undo, a stale edit refused, and the save that names revision 4.
 main :: () {
-  d: [1] ForgeDoc; forge_reset(d[..], 1);
-  read := forge_read_doc(d[..], FORGE_DOC_V1);
-  print("read: %, revision %, dirty %\n", read.ok, d[0].rev, forge_dirty(d[..]));
+  d: [1] EditorDoc; editor_reset(d[..], 1);
+  read := editor_read_doc(d[..], EDITOR_DOC_V1);
+  print("read: %, revision %, dirty %\n", read.ok, d[0].rev, editor_dirty(d[..]));
   show(d[..], "trees:3");
-  step(d[..], "move trees:3 to (300, -100)", forge_move(d[..], "trees:3", 300, -100));
-  step(d[..], "lore for mara", forge_lore(d[..], "mara", "keeps the lamp lit"));
-  step(d[..], "undo", forge_undo(d[..]));
-  print("  lore:mara is there: %\n", forge_slot_at(d[..], "lore:mara").found);
-  step(d[..], "redo", forge_redo(d[..]));
-  print("  lore:mara: %\n", forge_slot_text(d[..], "lore:mara"));
-  step(d[..], "undo", forge_undo(d[..]));
-  step(d[..], "undo", forge_undo(d[..]));
+  step(d[..], "move trees:3 to (300, -100)", editor_move(d[..], "trees:3", 300, -100));
+  step(d[..], "lore for mara", editor_lore(d[..], "mara", "keeps the lamp lit"));
+  step(d[..], "undo", editor_undo(d[..]));
+  print("  lore:mara is there: %\n", editor_slot_at(d[..], "lore:mara").found);
+  step(d[..], "redo", editor_redo(d[..]));
+  print("  lore:mara: %\n", editor_slot_text(d[..], "lore:mara"));
+  step(d[..], "undo", editor_undo(d[..]));
+  step(d[..], "undo", editor_undo(d[..]));
   show(d[..], "trees:3");
-  step(d[..], "redo", forge_redo(d[..]));
-  step(d[..], "turn rocks:0 45 degrees", forge_rotate(d[..], "rocks:0", 45));
-  print("  the lore can be done again: %\n", forge_can_redo(d[..]));
+  step(d[..], "redo", editor_redo(d[..]));
+  step(d[..], "turn rocks:0 45 degrees", editor_rotate(d[..], "rocks:0", 45));
+  print("  the lore can be done again: %\n", editor_can_redo(d[..]));
   // A stale edit: made when trees:3 still stood at (125, -250); it has moved since.
-  stale: [1] ForgeOp; stale[0].kind = FORGE_ENTITY; forge_key_into(stale[..], "trees:3");
-  stale[0].b = ForgeShape.{at = true, x = 125, z = -250}; stale[0].a = ForgeShape.{at = true, x = 0, z = 0};
-  step(d[..], "a stale move of trees:3 from (125, -250)", forge_apply(d[..], stale[..]));
+  stale: [1] EditorOp; stale[0].kind = EDITOR_ENTITY; editor_key_into(stale[..], "trees:3");
+  stale[0].b = EditorShape.{at = true, x = 125, z = -250}; stale[0].a = EditorShape.{at = true, x = 0, z = 0};
+  step(d[..], "a stale move of trees:3 from (125, -250)", editor_apply(d[..], stale[..]));
   show(d[..], "trees:3");
-  body: [2048] u8; n := forge_save_body(d[..], body[..]);
+  body: [2048] u8; n := editor_save_body(d[..], body[..]);
   print("save: %\n", cast(string) body[0..<n]);
-  forge_saved(d[..], 5);
+  editor_saved(d[..], 5);
   step(d[..], "kept as revision 5", true);
   // The same steps replayed onto a fresh read of revision 4 give the same document.
-  again: [1] ForgeDoc; forge_reset(again[..], 1);
-  replayed := forge_read_doc(again[..], FORGE_DOC_V1).ok && forge_replay(again[..], d[..]);
-  a: [8192] u8; an := forge_doc_text(d[..], a[..]); b: [8192] u8; bn := forge_doc_text(again[..], b[..]);
+  again: [1] EditorDoc; editor_reset(again[..], 1);
+  replayed := editor_read_doc(again[..], EDITOR_DOC_V1).ok && editor_replay(again[..], d[..]);
+  a: [8192] u8; an := editor_doc_text(d[..], a[..]); b: [8192] u8; bn := editor_doc_text(again[..], b[..]);
   print("replayed onto revision 4: %, the same realm: %\n", replayed, cast(string) a[6..<an] == cast(string) b[6..<bn]);
 }
 ```
@@ -396,7 +396,7 @@ kept as revision 5: true; done 2 of 2, dirty false
 replayed onto revision 4: true, the same realm: true
 ```
 
-Every line is the table's. The stale move is the broken case: `forge_apply`
+Every line is the table's. The stale move is the broken case: `editor_apply`
 answers false and `trees:3` stays where step 6 put it. The last line compares
 the two documents' texts after their first line, `rev 5` and `rev 4`, which
 differ only because the edited one was saved.
@@ -431,7 +431,7 @@ thing placed, a card accepted, lore and a quest are each one step; a declined
 card is a step with no ops. `POST .../undo {rev}` applies the newest step's
 inverse, newest op first, as the next revision, so history is never
 rewritten; it is refused with 409 and nothing changes when a slot is no
-longer what the step left, the same rule as `forge_apply`. `POST .../redo
+longer what the step left, the same rule as `editor_apply`. `POST .../redo
 {rev}` applies the step last undone again under the same rule, and a card
 goes back to waiting and to settled with its step. A new edit drops what was
 undone. The spec gains `redo N` beside `undo N`. Steps kept before 0111 have
@@ -494,7 +494,7 @@ shortened to PUT HERE.
   from an older revision is refused with the revision there now; moves are
   validated and rounded to the centimetre; a save, a placement, a row switch,
   an accepted and a declined card are each undone as one step.
-- `coax/web/tool.sh forge-journey URL [--phone]`: the whole maker journey in
+- `coax/web/tool.sh editor-journey URL [--phone]`: the whole maker journey in
   headless Chrome, steps 2 to 9 (move, undo, reload before saving, move a
   thing that isn't a tree, save, reload, build and undo).
 

@@ -1729,7 +1729,7 @@ shell_no :: (k: [] WbShell) -> string { m := k[0].m[..]; return cast(string) m[0
   s: [1] WorldBuilder; k: [1] WbShell; m := k[0].m[..];
   ready_edit(s[..]);
   sc := wb_scene(s[0].world[..]);
-  for i: 0..<WB_OBJECTS { _ := forge_scene_load(sc, 1, cast(f32) (i % 64), 0, cast(f32) (i / 64), 0, 1); }
+  for i: 0..<WB_OBJECTS { _ := editor_scene_load(sc, 1, cast(f32) (i % 64), 0, cast(f32) (i / 64), 0, 1); }
   wb_sync(s[0].world[..]); s[0].world[0].version += 1;
   shell_sends(s[..], k[..], "apply", "{\"op\":\"spawn\",\"id\":0,\"kind\":2,\"x\":0,\"y\":0,\"z\":0,\"yaw\":0,\"scale\":100}");
   #assert shell_reads(s[..], k[..]) && shell_no(k[..]) == "This world is full: 4096 things at most. Delete some to add more." && s[0].world[0].n == WB_OBJECTS && s[0].world[0].rev == 0;

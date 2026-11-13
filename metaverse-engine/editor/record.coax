@@ -4,7 +4,7 @@
 //   GET  .../realms/mine                MineReply, {"realms": [...]}, or with ?as=lines a line a realm,
 //                                       "realm SLUG|REV|PUBLISHED|LISTED|NAME|VISIBILITY"
 //   POST .../realms/<slug>/visibility   VisibilityRequest -> VisibilityReply
-//   POST .../realms/<slug>/publish      (its body is doc.coax's forge_rev_body, or forge_publish_body
+//   POST .../realms/<slug>/publish      (its body is doc.coax's editor_rev_body, or editor_publish_body
 //                                       with listed) -> PublishReply
 //   GET  .../realms/<slug>/published    PublishRecord
 //   a refusal                           RouteError, {"error": "..."} (SQL's; the route's own
@@ -19,38 +19,38 @@
 #module "metaverse.engine.editor.record";
 #load "doc.coax";
 
-FORGE_NAME :: 240;       // a realm's name, at most (the server keeps 80 characters)
-FORGE_VIS :: 12;         // private, unlisted, public
-FORGE_WHY :: 16;         // a publish record's why: publish, first
-FORGE_ENGINE :: 4096;    // an engine manifest's text (metaverse-engine/editor/publish.coax)
-FORGE_ERROR :: 160;      // a refusal's words
-FORGE_MS_MOST :: 9007199254740991;
+EDITOR_NAME :: 240;       // a realm's name, at most (the server keeps 80 characters)
+EDITOR_VIS :: 12;         // private, unlisted, public
+EDITOR_WHY :: 16;         // a publish record's why: publish, first
+EDITOR_ENGINE :: 4096;    // an engine manifest's text (metaverse-engine/editor/publish.coax)
+EDITOR_ERROR :: 160;      // a refusal's words
+EDITOR_MS_MOST :: 9007199254740991;
 
-forge_visibility_ok :: (v: string) -> bool { return v == "private" || v == "unlisted" || v == "public"; }
-forge_sha_ok :: (s: string) -> bool {
+editor_visibility_ok :: (v: string) -> bool { return v == "private" || v == "unlisted" || v == "public"; }
+editor_sha_ok :: (s: string) -> bool {
   if s.count != 64 { return false; }
-  for c: s { if !forge_digit(c) && (c < 'a' || c > 'f') { return false; } }
+  for c: s { if !editor_digit(c) && (c < 'a' || c > 'f') { return false; } }
   return true;
 }
 // A string member into buf: its length, or -1 when it is absent, not a string or too long.
-forge_member :: (j: Jv, at: int, key: string, buf: [] u8) -> int { return jv_str(j, jv_get(j, at, key), buf); }
+editor_member :: (j: Jv, at: int, key: string, buf: [] u8) -> int { return jv_str(j, jv_get(j, at, key), buf); }
 // A true or false member: 1 or 0, or -1 for anything else.
-forge_flag :: (j: Jv, at: int, key: string) -> int {
+editor_flag :: (j: Jv, at: int, key: string) -> int {
   k := jv_kind(j, jv_get(j, at, key));
   return ifx k == JV_TRUE then 1 else ifx k == JV_FALSE then 0 else -1;
 }
 
 // ---- GET .../mine
-ForgeMine :: struct {
-  slug: [FORGE_SLUG] u8; slug_n: int; name: [FORGE_NAME] u8; name_n: int;
-  rev: int; published: int; listed: bool; vis: [FORGE_VIS] u8; vis_n: int;
+EditorMine :: struct {
+  slug: [EDITOR_SLUG] u8; slug_n: int; name: [EDITOR_NAME] u8; name_n: int;
+  rev: int; published: int; listed: bool; vis: [EDITOR_VIS] u8; vis_n: int;
 }
-forge_mine_slug :: (m: [] ForgeMine) -> string { return cast(string) m[0].slug[0..<m[0].slug_n]; }
-forge_mine_name :: (m: [] ForgeMine) -> string { return cast(string) m[0].name[0..<m[0].name_n]; }
-forge_mine_vis :: (m: [] ForgeMine) -> string { return cast(string) m[0].vis[0..<m[0].vis_n]; }
-forge_mine_of :: (slug: string, name: string, rev: int, published: int, listed: bool, vis: string) -> ForgeMine {
-  m: ForgeMine;
-  if !forge_slug_ok(slug) || name.count > FORGE_NAME || vis.count > FORGE_VIS { return m; }
+editor_mine_slug :: (m: [] EditorMine) -> string { return cast(string) m[0].slug[0..<m[0].slug_n]; }
+editor_mine_name :: (m: [] EditorMine) -> string { return cast(string) m[0].name[0..<m[0].name_n]; }
+editor_mine_vis :: (m: [] EditorMine) -> string { return cast(string) m[0].vis[0..<m[0].vis_n]; }
+editor_mine_of :: (slug: string, name: string, rev: int, published: int, listed: bool, vis: string) -> EditorMine {
+  m: EditorMine;
+  if !editor_slug_ok(slug) || name.count > EDITOR_NAME || vis.count > EDITOR_VIS { return m; }
   for i: 0..<slug.count { m.slug[i] = slug[i]; } m.slug_n = slug.count;
   for i: 0..<name.count { m.name[i] = name[i]; } m.name_n = name.count;
   for i: 0..<vis.count { m.vis[i] = vis[i]; } m.vis_n = vis.count;
@@ -59,56 +59,56 @@ forge_mine_of :: (slug: string, name: string, rev: int, published: int, listed: 
 }
 // {"realms": [{"rev": 1, "name": "N", "slug": "s", "listed": true, "published": 0, "visibility": "private"}]}:
 // its length, or -1 when buf is short.
-forge_mine_json :: (rows: [] ForgeMine, buf: [] u8) -> int {
+editor_mine_json :: (rows: [] EditorMine, buf: [] u8) -> int {
   o: [1] Jo; jo_start(o[..], buf);
   jo_put(o[..], "{\"realms\": [");
   for i: 0..<rows.count {
     m := rows[i..<i + 1];
     if i > 0 { jo_put(o[..], ", "); }
-    jo_put(o[..], "{\"rev\": "); forge_jo_int(o[..], m[0].rev);
-    jo_put(o[..], ", \"name\": "); jo_quoted(o[..], forge_mine_name(m));
-    jo_put(o[..], ", \"slug\": "); jo_quoted(o[..], forge_mine_slug(m));
+    jo_put(o[..], "{\"rev\": "); editor_jo_int(o[..], m[0].rev);
+    jo_put(o[..], ", \"name\": "); jo_quoted(o[..], editor_mine_name(m));
+    jo_put(o[..], ", \"slug\": "); jo_quoted(o[..], editor_mine_slug(m));
     jo_put(o[..], ", \"listed\": "); jo_put(o[..], ifx m[0].listed then "true" else "false");
-    jo_put(o[..], ", \"published\": "); forge_jo_int(o[..], m[0].published);
-    jo_put(o[..], ", \"visibility\": "); jo_quoted(o[..], forge_mine_vis(m));
+    jo_put(o[..], ", \"published\": "); editor_jo_int(o[..], m[0].published);
+    jo_put(o[..], ", \"visibility\": "); jo_quoted(o[..], editor_mine_vis(m));
     jo_byte(o[..], '}');
   }
   jo_put(o[..], "]}");
   return ifx o[0].bad then -1 else o[0].n;
 }
 // The realms of a MineReply into rows: how many, or -1 when the body isn't one or they don't fit.
-forge_read_mine :: (body: string, rows: [] ForgeMine) -> int {
+editor_read_mine :: (body: string, rows: [] EditorMine) -> int {
   nodes: [2048] JvNode; j: [1] Jv;
   if !jv_parse(j[..], body, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return -1; }
   list := jv_get(j[0], 0, "realms");
   if jv_kind(j[0], list) != JV_ARRAY || jv_len(j[0], list) > rows.count { return -1; }
   for i: 0..<jv_len(j[0], list) {
     e := jv_at(j[0], list, i);
-    m: [1] ForgeMine;
-    m[0].slug_n = forge_member(j[0], e, "slug", m[0].slug[..]);
-    m[0].name_n = forge_member(j[0], e, "name", m[0].name[..]);
-    m[0].vis_n = forge_member(j[0], e, "visibility", m[0].vis[..]);
-    m[0].rev = forge_whole(forge_num(j[0], jv_get(j[0], e, "rev")), 0, FORGE_REV_MOST);
-    m[0].published = forge_whole(forge_num(j[0], jv_get(j[0], e, "published")), 0, FORGE_REV_MOST);
-    listed := forge_flag(j[0], e, "listed");
+    m: [1] EditorMine;
+    m[0].slug_n = editor_member(j[0], e, "slug", m[0].slug[..]);
+    m[0].name_n = editor_member(j[0], e, "name", m[0].name[..]);
+    m[0].vis_n = editor_member(j[0], e, "visibility", m[0].vis[..]);
+    m[0].rev = editor_whole(editor_num(j[0], jv_get(j[0], e, "rev")), 0, EDITOR_REV_MOST);
+    m[0].published = editor_whole(editor_num(j[0], jv_get(j[0], e, "published")), 0, EDITOR_REV_MOST);
+    listed := editor_flag(j[0], e, "listed");
     if m[0].slug_n < 0 || m[0].name_n < 0 || m[0].vis_n < 0 || m[0].rev < 0 || m[0].published < 0 || listed < 0 { return -1; }
-    if !forge_slug_ok(forge_mine_slug(m[..])) || !forge_visibility_ok(forge_mine_vis(m[..])) { return -1; }
+    if !editor_slug_ok(editor_mine_slug(m[..])) || !editor_visibility_ok(editor_mine_vis(m[..])) { return -1; }
     m[0].listed = listed == 1;
     rows[i] = m[0];
   }
   return jv_len(j[0], list);
 }
 // One realm as its ?as=lines line, with its newline: where it ends, or -1 when buf is short.
-forge_mine_line :: (m: [] ForgeMine, buf: [] u8, at: int) -> int {
-  n := forge_put(buf, forge_put(buf, forge_put(buf, at, "realm "), forge_mine_slug(m)), "|");
-  n = forge_put(buf, forge_put_int(buf, n, m[0].rev), "|");
-  n = forge_put(buf, forge_put_int(buf, n, m[0].published), "|");
-  n = forge_put(buf, n, ifx m[0].listed then "1|" else "0|");
-  n = forge_put(buf, forge_put(buf, n, forge_mine_name(m)), "|");
-  return forge_put(buf, forge_put(buf, n, forge_mine_vis(m)), "\n");
+editor_mine_line :: (m: [] EditorMine, buf: [] u8, at: int) -> int {
+  n := editor_put(buf, editor_put(buf, editor_put(buf, at, "realm "), editor_mine_slug(m)), "|");
+  n = editor_put(buf, editor_put_int(buf, n, m[0].rev), "|");
+  n = editor_put(buf, editor_put_int(buf, n, m[0].published), "|");
+  n = editor_put(buf, n, ifx m[0].listed then "1|" else "0|");
+  n = editor_put(buf, editor_put(buf, n, editor_mine_name(m)), "|");
+  return editor_put(buf, editor_put(buf, n, editor_mine_vis(m)), "\n");
 }
 // The k-th "|" field of a line's rest ("" past the last).
-forge_line_field :: (rest: string, k: int) -> string {
+editor_line_field :: (rest: string, k: int) -> string {
   at := 0; seen := 0;
   for i: 0..<rest.count + 1 {
     if i == rest.count || rest[i] == '|' {
@@ -120,78 +120,78 @@ forge_line_field :: (rest: string, k: int) -> string {
 }
 // A "realm SLUG|REV|PUBLISHED|LISTED|NAME|VISIBILITY" line (no newline) read: slug_n 0 when it
 // isn't one. A line with no visibility (a server from before migration 0099) is a public realm's.
-forge_read_mine_line :: (line: string) -> ForgeMine {
-  none: ForgeMine;
+editor_read_mine_line :: (line: string) -> EditorMine {
+  none: EditorMine;
   if line.count < 7 || line[0..<6] != "realm " { return none; }
   rest := line[6..<line.count];
   bars := 0; for c: rest { if c == '|' { bars += 1; } }
   if bars < 4 || bars > 5 { return none; }
-  rev := forge_whole(forge_line_field(rest, 1), 0, FORGE_REV_MOST);
-  published := forge_whole(forge_line_field(rest, 2), 0, FORGE_REV_MOST);
-  listed := forge_line_field(rest, 3);
-  vis := forge_line_field(rest, 5);
+  rev := editor_whole(editor_line_field(rest, 1), 0, EDITOR_REV_MOST);
+  published := editor_whole(editor_line_field(rest, 2), 0, EDITOR_REV_MOST);
+  listed := editor_line_field(rest, 3);
+  vis := editor_line_field(rest, 5);
   if vis == "" { vis = "public"; }
-  if rev < 0 || published < 0 || (listed != "0" && listed != "1") || !forge_visibility_ok(vis) { return none; }
-  return forge_mine_of(forge_line_field(rest, 0), forge_line_field(rest, 4), rev, published, listed == "1", vis);
+  if rev < 0 || published < 0 || (listed != "0" && listed != "1") || !editor_visibility_ok(vis) { return none; }
+  return editor_mine_of(editor_line_field(rest, 0), editor_line_field(rest, 4), rev, published, listed == "1", vis);
 }
 
 // ---- POST .../visibility
 // {"visibility":"public"}, or from the revision read (.../edit-v1/visibility, rev >= 1)
 // {"rev":4,"visibility":"public"}: its length, or -1 when it isn't a visibility or buf is short.
-forge_visibility_body :: (rev: int, vis: string, buf: [] u8) -> int {
-  if !forge_visibility_ok(vis) { return -1; }
-  n := forge_put(buf, 0, "{");
-  if rev >= 1 { n = forge_put(buf, forge_put_int(buf, forge_put(buf, n, "\"rev\":"), rev), ","); }
-  return forge_put(buf, forge_put(buf, forge_put(buf, n, "\"visibility\":\""), vis), "\"}");
+editor_visibility_body :: (rev: int, vis: string, buf: [] u8) -> int {
+  if !editor_visibility_ok(vis) { return -1; }
+  n := editor_put(buf, 0, "{");
+  if rev >= 1 { n = editor_put(buf, editor_put_int(buf, editor_put(buf, n, "\"rev\":"), rev), ","); }
+  return editor_put(buf, editor_put(buf, editor_put(buf, n, "\"visibility\":\""), vis), "\"}");
 }
 // What a visibility change answered: page 1 written or removed, 0 not, -1 not said; rev the
 // realm's revision now when the change was one (.../edit-v1/visibility), else 0.
-ForgeVisibility :: struct { ok: bool; rev: int; slug: [FORGE_SLUG] u8; slug_n: int; vis: [FORGE_VIS] u8; vis_n: int; was: [FORGE_VIS] u8; was_n: int; page: int = -1; }
+EditorVisibility :: struct { ok: bool; rev: int; slug: [EDITOR_SLUG] u8; slug_n: int; vis: [EDITOR_VIS] u8; vis_n: int; was: [EDITOR_VIS] u8; was_n: int; page: int = -1; }
 // {"rev": 2, "was": "private", "slug": "s", "visibility": "public", "page": true}; rev < 1 and
 // page < 0 leave theirs out (page: the answer before realms.c adds what the bucket said).
-forge_visibility_reply :: (rev: int, slug: string, vis: string, was: string, page: int, buf: [] u8) -> int {
+editor_visibility_reply :: (rev: int, slug: string, vis: string, was: string, page: int, buf: [] u8) -> int {
   o: [1] Jo; jo_start(o[..], buf);
   jo_byte(o[..], '{');
-  if rev >= 1 { jo_put(o[..], "\"rev\": "); forge_jo_int(o[..], rev); jo_put(o[..], ", "); }
+  if rev >= 1 { jo_put(o[..], "\"rev\": "); editor_jo_int(o[..], rev); jo_put(o[..], ", "); }
   jo_put(o[..], "\"was\": "); jo_quoted(o[..], was); jo_put(o[..], ", \"slug\": "); jo_quoted(o[..], slug);
   jo_put(o[..], ", \"visibility\": "); jo_quoted(o[..], vis);
   if page >= 0 { jo_put(o[..], ifx page > 0 then ", \"page\": true" else ", \"page\": false"); }
   jo_byte(o[..], '}');
   return ifx o[0].bad then -1 else o[0].n;
 }
-forge_read_visibility :: (body: string) -> ForgeVisibility {
-  r: ForgeVisibility;
+editor_read_visibility :: (body: string) -> EditorVisibility {
+  r: EditorVisibility;
   nodes: [32] JvNode; j: [1] Jv;
   if !jv_parse(j[..], body, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return r; }
-  r.slug_n = forge_member(j[0], 0, "slug", r.slug[..]);
-  r.vis_n = forge_member(j[0], 0, "visibility", r.vis[..]);
-  r.was_n = forge_member(j[0], 0, "was", r.was[..]);
-  r.page = forge_flag(j[0], 0, "page");
+  r.slug_n = editor_member(j[0], 0, "slug", r.slug[..]);
+  r.vis_n = editor_member(j[0], 0, "visibility", r.vis[..]);
+  r.was_n = editor_member(j[0], 0, "was", r.was[..]);
+  r.page = editor_flag(j[0], 0, "page");
   if jv_get(j[0], 0, "rev") >= 0 {
-    r.rev = forge_whole(forge_num(j[0], jv_get(j[0], 0, "rev")), 1, FORGE_REV_MOST);
-    if r.rev < 1 { return ForgeVisibility.{}; }
+    r.rev = editor_whole(editor_num(j[0], jv_get(j[0], 0, "rev")), 1, EDITOR_REV_MOST);
+    if r.rev < 1 { return EditorVisibility.{}; }
   }
-  if r.slug_n < 0 || r.vis_n < 0 || r.was_n < 0 { return ForgeVisibility.{}; }
-  r.ok = forge_slug_ok(cast(string) r.slug[0..<r.slug_n]) && forge_visibility_ok(cast(string) r.vis[0..<r.vis_n]) && forge_visibility_ok(cast(string) r.was[0..<r.was_n]);
+  if r.slug_n < 0 || r.vis_n < 0 || r.was_n < 0 { return EditorVisibility.{}; }
+  r.ok = editor_slug_ok(cast(string) r.slug[0..<r.slug_n]) && editor_visibility_ok(cast(string) r.vis[0..<r.vis_n]) && editor_visibility_ok(cast(string) r.was[0..<r.was_n]);
   return r;
 }
 
 // ---- POST .../publish (a made realm)
 // {"rev":R,"listed":true}: a publish that also says whether the realm is listed (without it, the
-// body is forge_rev_body's and the realm stays as listed as it was).
-forge_publish_body :: (rev: int, listed: bool, buf: [] u8) -> int {
-  n := forge_put_int(buf, forge_put(buf, 0, "{\"rev\":"), rev);
-  return forge_put(buf, n, ifx listed then ",\"listed\":true}" else ",\"listed\":false}");
+// body is editor_rev_body's and the realm stays as listed as it was).
+editor_publish_body :: (rev: int, listed: bool, buf: [] u8) -> int {
+  n := editor_put_int(buf, editor_put(buf, 0, "{\"rev\":"), rev);
+  return editor_put(buf, n, ifx listed then ",\"listed\":true}" else ",\"listed\":false}");
 }
 // What a publish answered. engine: 1 its manifest's hash is in sha_engine, 0 null (a server with
 // no site bucket pins nothing), -1 not said (a fork's publish, or a server from before 0107).
 // vis: who sees it now, said when the publish named listed ("" otherwise).
-ForgePublished :: struct { ok: bool; rev: int; listed: bool; sha: [64] u8; engine: int = -1; sha_engine: [64] u8; vis: [FORGE_VIS] u8; vis_n: int; }
+EditorPublished :: struct { ok: bool; rev: int; listed: bool; sha: [64] u8; engine: int = -1; sha_engine: [64] u8; vis: [EDITOR_VIS] u8; vis_n: int; }
 // {"rev": 4, "engine": "HASH", "listed": true, "sha256": "HASH", "published": true, "visibility": "public"};
 // engine "" is null, and vis "" leaves visibility out.
-forge_publish_reply :: (rev: int, sha: string, listed: bool, engine: string, vis: string, buf: [] u8) -> int {
+editor_publish_reply :: (rev: int, sha: string, listed: bool, engine: string, vis: string, buf: [] u8) -> int {
   o: [1] Jo; jo_start(o[..], buf);
-  jo_put(o[..], "{\"rev\": "); forge_jo_int(o[..], rev);
+  jo_put(o[..], "{\"rev\": "); editor_jo_int(o[..], rev);
   jo_put(o[..], ", \"engine\": "); if engine == "" { jo_put(o[..], "null"); } else { jo_quoted(o[..], engine); }
   jo_put(o[..], ifx listed then ", \"listed\": true" else ", \"listed\": false");
   jo_put(o[..], ", \"sha256\": "); jo_quoted(o[..], sha); jo_put(o[..], ", \"published\": true");
@@ -199,43 +199,43 @@ forge_publish_reply :: (rev: int, sha: string, listed: bool, engine: string, vis
   jo_byte(o[..], '}');
   return ifx o[0].bad then -1 else o[0].n;
 }
-forge_read_published :: (body: string) -> ForgePublished {
-  r: ForgePublished;
+editor_read_published :: (body: string) -> EditorPublished {
+  r: EditorPublished;
   nodes: [32] JvNode; j: [1] Jv; sha: [80] u8; eng: [80] u8;
   if !jv_parse(j[..], body, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return r; }
-  r.rev = forge_whole(forge_num(j[0], jv_get(j[0], 0, "rev")), 1, FORGE_REV_MOST);
-  listed := forge_flag(j[0], 0, "listed");
-  sn := forge_member(j[0], 0, "sha256", sha[..]);
-  if r.rev < 1 || listed < 0 || forge_flag(j[0], 0, "published") != 1 || sn != 64 || !forge_sha_ok(cast(string) sha[0..<64]) { return ForgePublished.{}; }
+  r.rev = editor_whole(editor_num(j[0], jv_get(j[0], 0, "rev")), 1, EDITOR_REV_MOST);
+  listed := editor_flag(j[0], 0, "listed");
+  sn := editor_member(j[0], 0, "sha256", sha[..]);
+  if r.rev < 1 || listed < 0 || editor_flag(j[0], 0, "published") != 1 || sn != 64 || !editor_sha_ok(cast(string) sha[0..<64]) { return EditorPublished.{}; }
   for i: 0..<64 { r.sha[i] = sha[i]; }
   e := jv_get(j[0], 0, "engine");
   if e >= 0 {
     if jv_kind(j[0], e) == JV_NULL { r.engine = 0; }
     else {
       en := jv_str(j[0], e, eng[..]);
-      if en != 64 || !forge_sha_ok(cast(string) eng[0..<64]) { return ForgePublished.{}; }
+      if en != 64 || !editor_sha_ok(cast(string) eng[0..<64]) { return EditorPublished.{}; }
       for i: 0..<64 { r.sha_engine[i] = eng[i]; }
       r.engine = 1;
     }
   }
   if jv_get(j[0], 0, "visibility") >= 0 {
-    r.vis_n = forge_member(j[0], 0, "visibility", r.vis[..]);
-    if r.vis_n < 0 || !forge_visibility_ok(cast(string) r.vis[0..<r.vis_n]) { return ForgePublished.{}; }
+    r.vis_n = editor_member(j[0], 0, "visibility", r.vis[..]);
+    if r.vis_n < 0 || !editor_visibility_ok(cast(string) r.vis[0..<r.vis_n]) { return EditorPublished.{}; }
   }
   r.listed = listed == 1; r.ok = true;
   return r;
 }
 
 // ---- GET .../published
-ForgeRecord :: struct {
-  ok: bool; slug: [FORGE_SLUG] u8; slug_n: int; n: int; rev: int; ms: int; sha: [64] u8; sha_engine: [64] u8;
-  why: [FORGE_WHY] u8; why_n: int; engine: [FORGE_ENGINE] u8; engine_n: int;
+EditorRecord :: struct {
+  ok: bool; slug: [EDITOR_SLUG] u8; slug_n: int; n: int; rev: int; ms: int; sha: [64] u8; sha_engine: [64] u8;
+  why: [EDITOR_WHY] u8; why_n: int; engine: [EDITOR_ENGINE] u8; engine_n: int;
 }
 // {"n": 1, "ms": T, "rev": 4, "why": "publish", "slug": "s", "engine": "MANIFEST", "sha256": "HASH", "engine_sha256": "HASH"}
-forge_record_json :: (r: [] ForgeRecord, buf: [] u8) -> int {
+editor_record_json :: (r: [] EditorRecord, buf: [] u8) -> int {
   o: [1] Jo; jo_start(o[..], buf);
-  jo_put(o[..], "{\"n\": "); forge_jo_int(o[..], r[0].n); jo_put(o[..], ", \"ms\": "); forge_jo_int(o[..], r[0].ms);
-  jo_put(o[..], ", \"rev\": "); forge_jo_int(o[..], r[0].rev);
+  jo_put(o[..], "{\"n\": "); editor_jo_int(o[..], r[0].n); jo_put(o[..], ", \"ms\": "); editor_jo_int(o[..], r[0].ms);
+  jo_put(o[..], ", \"rev\": "); editor_jo_int(o[..], r[0].rev);
   jo_put(o[..], ", \"why\": "); jo_quoted(o[..], cast(string) r[0].why[0..<r[0].why_n]);
   jo_put(o[..], ", \"slug\": "); jo_quoted(o[..], cast(string) r[0].slug[0..<r[0].slug_n]);
   jo_put(o[..], ", \"engine\": "); jo_quoted(o[..], cast(string) r[0].engine[0..<r[0].engine_n]);
@@ -245,19 +245,19 @@ forge_record_json :: (r: [] ForgeRecord, buf: [] u8) -> int {
   return ifx o[0].bad then -1 else o[0].n;
 }
 // A publish record read into r: false (r not ok) when the body isn't one.
-forge_read_record :: (r: [] ForgeRecord, body: string) -> bool {
+editor_read_record :: (r: [] EditorRecord, body: string) -> bool {
   r[0].ok = false;
   nodes: [32] JvNode; j: [1] Jv; sha: [80] u8; eng: [80] u8;
   if !jv_parse(j[..], body, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return false; }
-  r[0].slug_n = forge_member(j[0], 0, "slug", r[0].slug[..]);
-  r[0].why_n = forge_member(j[0], 0, "why", r[0].why[..]);
-  r[0].engine_n = forge_member(j[0], 0, "engine", r[0].engine[..]);
-  r[0].n = forge_whole(forge_num(j[0], jv_get(j[0], 0, "n")), 1, FORGE_REV_MOST);
-  r[0].rev = forge_whole(forge_num(j[0], jv_get(j[0], 0, "rev")), 1, FORGE_REV_MOST);
-  r[0].ms = forge_whole(forge_num(j[0], jv_get(j[0], 0, "ms")), 0, FORGE_MS_MOST);
-  sn := forge_member(j[0], 0, "sha256", sha[..]); en := forge_member(j[0], 0, "engine_sha256", eng[..]);
+  r[0].slug_n = editor_member(j[0], 0, "slug", r[0].slug[..]);
+  r[0].why_n = editor_member(j[0], 0, "why", r[0].why[..]);
+  r[0].engine_n = editor_member(j[0], 0, "engine", r[0].engine[..]);
+  r[0].n = editor_whole(editor_num(j[0], jv_get(j[0], 0, "n")), 1, EDITOR_REV_MOST);
+  r[0].rev = editor_whole(editor_num(j[0], jv_get(j[0], 0, "rev")), 1, EDITOR_REV_MOST);
+  r[0].ms = editor_whole(editor_num(j[0], jv_get(j[0], 0, "ms")), 0, EDITOR_MS_MOST);
+  sn := editor_member(j[0], 0, "sha256", sha[..]); en := editor_member(j[0], 0, "engine_sha256", eng[..]);
   if r[0].slug_n < 0 || r[0].why_n < 0 || r[0].engine_n < 0 || r[0].n < 1 || r[0].rev < 1 || r[0].ms < 0 { return false; }
-  if sn != 64 || en != 64 || !forge_sha_ok(cast(string) sha[0..<64]) || !forge_sha_ok(cast(string) eng[0..<64]) || !forge_slug_ok(cast(string) r[0].slug[0..<r[0].slug_n]) { return false; }
+  if sn != 64 || en != 64 || !editor_sha_ok(cast(string) sha[0..<64]) || !editor_sha_ok(cast(string) eng[0..<64]) || !editor_slug_ok(cast(string) r[0].slug[0..<r[0].slug_n]) { return false; }
   for i: 0..<64 { r[0].sha[i] = sha[i]; r[0].sha_engine[i] = eng[i]; }
   r[0].ok = true;
   return true;
@@ -266,153 +266,153 @@ forge_read_record :: (r: [] ForgeRecord, body: string) -> bool {
 // ---- a refusal
 // {"error": "WORDS"}, as SQL answers it for these routes (jsonb's text). The refusals realms.c
 // answers itself are the API's ErrorReply, {"error":"WORDS"} (coax/web/api/api-wire.coax writes
-// that one); forge_read_error reads both.
-forge_error_json :: (error: string, buf: [] u8) -> int {
+// that one); editor_read_error reads both.
+editor_error_json :: (error: string, buf: [] u8) -> int {
   o: [1] Jo; jo_start(o[..], buf);
   jo_put(o[..], "{\"error\": "); jo_quoted(o[..], error); jo_byte(o[..], '}');
   return ifx o[0].bad then -1 else o[0].n;
 }
 // A refusal's words into buf ("" when the body isn't one or they don't fit).
-forge_read_error :: (body: string, buf: [] u8) -> string {
+editor_read_error :: (body: string, buf: [] u8) -> string {
   nodes: [32] JvNode; j: [1] Jv;
   if !jv_parse(j[..], body, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return ""; }
-  n := forge_member(j[0], 0, "error", buf);
+  n := editor_member(j[0], 0, "error", buf);
   return ifx n < 0 then "" else cast(string) buf[0..<n];
 }
 
-FORGE_T_A :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"; FORGE_T_B :: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+EDITOR_T_A :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"; EDITOR_T_B :: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 #test "mine: the reply and the lines are written and read back; a wrong kind refuses the whole list" {
-  rows: [3] ForgeMine; buf: [1024] u8;
-  rows[0] = forge_mine_of("walled-garden", "Walled \"Garden\"", 12, 0, true, "public");
-  rows[1] = forge_mine_of("night-garden", "Night Garden", 1, 1, false, "private");
-  n := forge_mine_json(rows[0..<2], buf[..]);
+  rows: [3] EditorMine; buf: [1024] u8;
+  rows[0] = editor_mine_of("walled-garden", "Walled \"Garden\"", 12, 0, true, "public");
+  rows[1] = editor_mine_of("night-garden", "Night Garden", 1, 1, false, "private");
+  n := editor_mine_json(rows[0..<2], buf[..]);
   want := "{\"realms\": [{\"rev\": 12, \"name\": \"Walled \\\"Garden\\\"\", \"slug\": \"walled-garden\", \"listed\": true, \"published\": 0, \"visibility\": \"public\"}, {\"rev\": 1, \"name\": \"Night Garden\", \"slug\": \"night-garden\", \"listed\": false, \"published\": 1, \"visibility\": \"private\"}]}";
   #assert n == want.count && cast(string) buf[0..<n] == want;
-  got: [3] ForgeMine;
-  #assert forge_read_mine(want, got[..]) == 2 && forge_mine_slug(got[0..<1]) == "walled-garden" && forge_mine_name(got[0..<1]) == "Walled \"Garden\"" && got[0].rev == 12 && got[0].published == 0 && got[0].listed && forge_mine_vis(got[0..<1]) == "public";
-  #assert forge_mine_slug(got[1..<2]) == "night-garden" && got[1].rev == 1 && got[1].published == 1 && !got[1].listed && forge_mine_vis(got[1..<2]) == "private";
-  #assert forge_mine_json(rows[0..<0], buf[..]) == 14 && cast(string) buf[0..<14] == "{\"realms\": []}" && forge_read_mine("{\"realms\": []}", got[..]) == 0;
-  #assert forge_mine_json(rows[0..<2], buf[0..<n - 1]) == -1 && forge_read_mine(want, got[0..<1]) == -1;
-  #assert forge_read_mine("[]", got[..]) == -1 && forge_read_mine("{\"realms\": {}}", got[..]) == -1 && forge_read_mine("{}", got[..]) == -1 && forge_read_mine("{\"realms\": [", got[..]) == -1;
+  got: [3] EditorMine;
+  #assert editor_read_mine(want, got[..]) == 2 && editor_mine_slug(got[0..<1]) == "walled-garden" && editor_mine_name(got[0..<1]) == "Walled \"Garden\"" && got[0].rev == 12 && got[0].published == 0 && got[0].listed && editor_mine_vis(got[0..<1]) == "public";
+  #assert editor_mine_slug(got[1..<2]) == "night-garden" && got[1].rev == 1 && got[1].published == 1 && !got[1].listed && editor_mine_vis(got[1..<2]) == "private";
+  #assert editor_mine_json(rows[0..<0], buf[..]) == 14 && cast(string) buf[0..<14] == "{\"realms\": []}" && editor_read_mine("{\"realms\": []}", got[..]) == 0;
+  #assert editor_mine_json(rows[0..<2], buf[0..<n - 1]) == -1 && editor_read_mine(want, got[0..<1]) == -1;
+  #assert editor_read_mine("[]", got[..]) == -1 && editor_read_mine("{\"realms\": {}}", got[..]) == -1 && editor_read_mine("{}", got[..]) == -1 && editor_read_mine("{\"realms\": [", got[..]) == -1;
   // each field is needed, and of its kind
-  #assert forge_read_mine("{\"realms\": [{\"rev\": \"1\", \"name\": \"N\", \"slug\": \"s\", \"listed\": true, \"published\": 0, \"visibility\": \"private\"}]}", got[..]) == -1;
-  #assert forge_read_mine("{\"realms\": [{\"rev\": 1, \"name\": 5, \"slug\": \"s\", \"listed\": true, \"published\": 0, \"visibility\": \"private\"}]}", got[..]) == -1;
-  #assert forge_read_mine("{\"realms\": [{\"rev\": 1, \"name\": \"N\", \"slug\": \"S!\", \"listed\": true, \"published\": 0, \"visibility\": \"private\"}]}", got[..]) == -1;
-  #assert forge_read_mine("{\"realms\": [{\"rev\": 1, \"name\": \"N\", \"slug\": \"s\", \"listed\": 1, \"published\": 0, \"visibility\": \"private\"}]}", got[..]) == -1;
-  #assert forge_read_mine("{\"realms\": [{\"rev\": 1, \"name\": \"N\", \"slug\": \"s\", \"listed\": true, \"published\": -1, \"visibility\": \"private\"}]}", got[..]) == -1;
-  #assert forge_read_mine("{\"realms\": [{\"rev\": 1, \"name\": \"N\", \"slug\": \"s\", \"listed\": true, \"published\": 0, \"visibility\": \"secret\"}]}", got[..]) == -1;
-  #assert forge_read_mine("{\"realms\": [{\"rev\": 1, \"name\": \"N\", \"slug\": \"s\", \"listed\": true, \"published\": 0}]}", got[..]) == -1;
-  #assert forge_read_mine("{\"realms\": [{\"rev\": 0, \"name\": \"\", \"slug\": \"s\", \"listed\": false, \"published\": 0, \"visibility\": \"unlisted\"}]}", got[..]) == 1 && got[0].rev == 0 && got[0].name_n == 0;
+  #assert editor_read_mine("{\"realms\": [{\"rev\": \"1\", \"name\": \"N\", \"slug\": \"s\", \"listed\": true, \"published\": 0, \"visibility\": \"private\"}]}", got[..]) == -1;
+  #assert editor_read_mine("{\"realms\": [{\"rev\": 1, \"name\": 5, \"slug\": \"s\", \"listed\": true, \"published\": 0, \"visibility\": \"private\"}]}", got[..]) == -1;
+  #assert editor_read_mine("{\"realms\": [{\"rev\": 1, \"name\": \"N\", \"slug\": \"S!\", \"listed\": true, \"published\": 0, \"visibility\": \"private\"}]}", got[..]) == -1;
+  #assert editor_read_mine("{\"realms\": [{\"rev\": 1, \"name\": \"N\", \"slug\": \"s\", \"listed\": 1, \"published\": 0, \"visibility\": \"private\"}]}", got[..]) == -1;
+  #assert editor_read_mine("{\"realms\": [{\"rev\": 1, \"name\": \"N\", \"slug\": \"s\", \"listed\": true, \"published\": -1, \"visibility\": \"private\"}]}", got[..]) == -1;
+  #assert editor_read_mine("{\"realms\": [{\"rev\": 1, \"name\": \"N\", \"slug\": \"s\", \"listed\": true, \"published\": 0, \"visibility\": \"secret\"}]}", got[..]) == -1;
+  #assert editor_read_mine("{\"realms\": [{\"rev\": 1, \"name\": \"N\", \"slug\": \"s\", \"listed\": true, \"published\": 0}]}", got[..]) == -1;
+  #assert editor_read_mine("{\"realms\": [{\"rev\": 0, \"name\": \"\", \"slug\": \"s\", \"listed\": false, \"published\": 0, \"visibility\": \"unlisted\"}]}", got[..]) == 1 && got[0].rev == 0 && got[0].name_n == 0;
   // the lines
-  rows[1] = forge_mine_of("night-garden", "Night Garden", 1, 1, false, "private");
-  k := forge_mine_line(rows[1..<2], buf[..], 0);
+  rows[1] = editor_mine_of("night-garden", "Night Garden", 1, 1, false, "private");
+  k := editor_mine_line(rows[1..<2], buf[..], 0);
   #assert cast(string) buf[0..<k] == "realm night-garden|1|1|0|Night Garden|private\n";
-  k = forge_mine_line(rows[0..<1], buf[..], k);
+  k = editor_mine_line(rows[0..<1], buf[..], k);
   #assert cast(string) buf[0..<k] == "realm night-garden|1|1|0|Night Garden|private\nrealm walled-garden|12|0|1|Walled \"Garden\"|public\n";
-  #assert forge_mine_line(rows[1..<2], buf[0..<20], 0) == -1;
-  m: [1] ForgeMine; m[0] = forge_read_mine_line("realm night-garden|1|1|0|Night Garden|private");
-  #assert forge_mine_slug(m[..]) == "night-garden" && forge_mine_name(m[..]) == "Night Garden" && m[0].rev == 1 && m[0].published == 1 && !m[0].listed && forge_mine_vis(m[..]) == "private";
-  m[0] = forge_read_mine_line("realm a|2|3|1|A|");
-  #assert forge_mine_slug(m[..]) == "a" && m[0].rev == 2 && m[0].published == 3 && m[0].listed && forge_mine_vis(m[..]) == "public";
-  m[0] = forge_read_mine_line("realm a|2|3|1|A");
-  #assert forge_mine_slug(m[..]) == "a" && forge_mine_vis(m[..]) == "public" && forge_mine_name(m[..]) == "A";
-  #assert forge_read_mine_line("realm a|2|3|1").slug_n == 0 && forge_read_mine_line("realm a|2|3|1|A|public|x").slug_n == 0 && forge_read_mine_line("note x").slug_n == 0 && forge_read_mine_line("realm ").slug_n == 0 && forge_read_mine_line("").slug_n == 0;
-  #assert forge_read_mine_line("realm a|x|3|1|A|public").slug_n == 0 && forge_read_mine_line("realm a|2|-3|1|A|public").slug_n == 0 && forge_read_mine_line("realm a|2|3|2|A|public").slug_n == 0 && forge_read_mine_line("realm a|2|3|1|A|open").slug_n == 0 && forge_read_mine_line("realm A|2|3|1|A|public").slug_n == 0;
-  #assert forge_read_mine_line("realms a|2|3|1|A|public").slug_n == 0 && forge_mine_of("a", "N", 1, 0, true, "a-word-too-long").slug_n == 0;
-  #assert forge_line_field("a|b||d", 0) == "a" && forge_line_field("a|b||d", 2) == "" && forge_line_field("a|b||d", 3) == "d" && forge_line_field("a|b||d", 4) == "";
+  #assert editor_mine_line(rows[1..<2], buf[0..<20], 0) == -1;
+  m: [1] EditorMine; m[0] = editor_read_mine_line("realm night-garden|1|1|0|Night Garden|private");
+  #assert editor_mine_slug(m[..]) == "night-garden" && editor_mine_name(m[..]) == "Night Garden" && m[0].rev == 1 && m[0].published == 1 && !m[0].listed && editor_mine_vis(m[..]) == "private";
+  m[0] = editor_read_mine_line("realm a|2|3|1|A|");
+  #assert editor_mine_slug(m[..]) == "a" && m[0].rev == 2 && m[0].published == 3 && m[0].listed && editor_mine_vis(m[..]) == "public";
+  m[0] = editor_read_mine_line("realm a|2|3|1|A");
+  #assert editor_mine_slug(m[..]) == "a" && editor_mine_vis(m[..]) == "public" && editor_mine_name(m[..]) == "A";
+  #assert editor_read_mine_line("realm a|2|3|1").slug_n == 0 && editor_read_mine_line("realm a|2|3|1|A|public|x").slug_n == 0 && editor_read_mine_line("note x").slug_n == 0 && editor_read_mine_line("realm ").slug_n == 0 && editor_read_mine_line("").slug_n == 0;
+  #assert editor_read_mine_line("realm a|x|3|1|A|public").slug_n == 0 && editor_read_mine_line("realm a|2|-3|1|A|public").slug_n == 0 && editor_read_mine_line("realm a|2|3|2|A|public").slug_n == 0 && editor_read_mine_line("realm a|2|3|1|A|open").slug_n == 0 && editor_read_mine_line("realm A|2|3|1|A|public").slug_n == 0;
+  #assert editor_read_mine_line("realms a|2|3|1|A|public").slug_n == 0 && editor_mine_of("a", "N", 1, 0, true, "a-word-too-long").slug_n == 0;
+  #assert editor_line_field("a|b||d", 0) == "a" && editor_line_field("a|b||d", 2) == "" && editor_line_field("a|b||d", 3) == "d" && editor_line_field("a|b||d", 4) == "";
 }
 
 #test "visibility: the request, the reply with and without the page, and what is refused" {
   buf: [256] u8;
-  n := forge_visibility_body(0, "public", buf[..]);
-  #assert cast(string) buf[0..<n] == "{\"visibility\":\"public\"}" && forge_visibility_body(0, "open", buf[..]) == -1 && forge_visibility_body(0, "public", buf[0..<10]) == -1;
-  n = forge_visibility_body(1, "unlisted", buf[..]);
-  #assert cast(string) buf[0..<n] == "{\"rev\":1,\"visibility\":\"unlisted\"}" && forge_visibility_body(12, "private", buf[0..<12]) == -1;
-  n = forge_visibility_body(-1, "private", buf[..]);
+  n := editor_visibility_body(0, "public", buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"visibility\":\"public\"}" && editor_visibility_body(0, "open", buf[..]) == -1 && editor_visibility_body(0, "public", buf[0..<10]) == -1;
+  n = editor_visibility_body(1, "unlisted", buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"rev\":1,\"visibility\":\"unlisted\"}" && editor_visibility_body(12, "private", buf[0..<12]) == -1;
+  n = editor_visibility_body(-1, "private", buf[..]);
   #assert cast(string) buf[0..<n] == "{\"visibility\":\"private\"}";
-  #assert forge_visibility_ok("private") && forge_visibility_ok("unlisted") && !forge_visibility_ok("") && !forge_visibility_ok("Public");
-  n = forge_visibility_reply(0, "moonlit-marsh", "public", "private", 1, buf[..]);
+  #assert editor_visibility_ok("private") && editor_visibility_ok("unlisted") && !editor_visibility_ok("") && !editor_visibility_ok("Public");
+  n = editor_visibility_reply(0, "moonlit-marsh", "public", "private", 1, buf[..]);
   #assert cast(string) buf[0..<n] == "{\"was\": \"private\", \"slug\": \"moonlit-marsh\", \"visibility\": \"public\", \"page\": true}";
-  r := forge_read_visibility(cast(string) buf[0..<n]);
+  r := editor_read_visibility(cast(string) buf[0..<n]);
   #assert r.ok && cast(string) r.slug[0..<r.slug_n] == "moonlit-marsh" && cast(string) r.vis[0..<r.vis_n] == "public" && cast(string) r.was[0..<r.was_n] == "private" && r.page == 1;
-  n = forge_visibility_reply(0, "moonlit-marsh", "private", "public", 0, buf[..]);
-  #assert cast(string) buf[0..<n] == "{\"was\": \"public\", \"slug\": \"moonlit-marsh\", \"visibility\": \"private\", \"page\": false}" && forge_read_visibility(cast(string) buf[0..<n]).page == 0;
-  n = forge_visibility_reply(0, "moonlit-marsh", "unlisted", "public", -1, buf[..]);
+  n = editor_visibility_reply(0, "moonlit-marsh", "private", "public", 0, buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"was\": \"public\", \"slug\": \"moonlit-marsh\", \"visibility\": \"private\", \"page\": false}" && editor_read_visibility(cast(string) buf[0..<n]).page == 0;
+  n = editor_visibility_reply(0, "moonlit-marsh", "unlisted", "public", -1, buf[..]);
   #assert cast(string) buf[0..<n] == "{\"was\": \"public\", \"slug\": \"moonlit-marsh\", \"visibility\": \"unlisted\"}";
-  r = forge_read_visibility(cast(string) buf[0..<n]);
-  #assert r.ok && r.page == -1 && forge_visibility_reply(0, "moonlit-marsh", "unlisted", "public", -1, buf[0..<n - 1]) == -1;
-  #assert !forge_read_visibility("{\"was\": \"public\", \"slug\": \"moonlit-marsh\"}").ok && !forge_read_visibility("{\"was\": \"open\", \"slug\": \"s\", \"visibility\": \"public\"}").ok;
-  #assert !forge_read_visibility("{\"was\": \"public\", \"slug\": \"S\", \"visibility\": \"public\"}").ok && !forge_read_visibility("{\"was\": \"public\", \"slug\": \"s\", \"visibility\": \"open\"}").ok;
-  #assert !forge_read_visibility("{\"slug\": \"s\", \"visibility\": \"public\"}").ok && !forge_read_visibility("{\"was\": \"public\", \"visibility\": \"public\"}").ok && !forge_read_visibility("[]").ok && !forge_read_visibility("{").ok;
-  #assert forge_read_visibility("{\"slug\": \"s\", \"visibility\": \"public\"}").page == -1;
-  n = forge_visibility_reply(2, "s", "public", "unlisted", 0, buf[..]);
+  r = editor_read_visibility(cast(string) buf[0..<n]);
+  #assert r.ok && r.page == -1 && editor_visibility_reply(0, "moonlit-marsh", "unlisted", "public", -1, buf[0..<n - 1]) == -1;
+  #assert !editor_read_visibility("{\"was\": \"public\", \"slug\": \"moonlit-marsh\"}").ok && !editor_read_visibility("{\"was\": \"open\", \"slug\": \"s\", \"visibility\": \"public\"}").ok;
+  #assert !editor_read_visibility("{\"was\": \"public\", \"slug\": \"S\", \"visibility\": \"public\"}").ok && !editor_read_visibility("{\"was\": \"public\", \"slug\": \"s\", \"visibility\": \"open\"}").ok;
+  #assert !editor_read_visibility("{\"slug\": \"s\", \"visibility\": \"public\"}").ok && !editor_read_visibility("{\"was\": \"public\", \"visibility\": \"public\"}").ok && !editor_read_visibility("[]").ok && !editor_read_visibility("{").ok;
+  #assert editor_read_visibility("{\"slug\": \"s\", \"visibility\": \"public\"}").page == -1;
+  n = editor_visibility_reply(2, "s", "public", "unlisted", 0, buf[..]);
   #assert cast(string) buf[0..<n] == "{\"rev\": 2, \"was\": \"unlisted\", \"slug\": \"s\", \"visibility\": \"public\", \"page\": false}";
-  r = forge_read_visibility(cast(string) buf[0..<n]);
-  #assert r.ok && r.rev == 2 && r.page == 0 && forge_read_visibility("{\"was\": \"public\", \"slug\": \"s\", \"visibility\": \"private\"}").rev == 0;
-  #assert !forge_read_visibility("{\"rev\": 0, \"was\": \"public\", \"slug\": \"s\", \"visibility\": \"private\"}").ok && !forge_read_visibility("{\"rev\": \"2\", \"was\": \"public\", \"slug\": \"s\", \"visibility\": \"private\"}").ok;
+  r = editor_read_visibility(cast(string) buf[0..<n]);
+  #assert r.ok && r.rev == 2 && r.page == 0 && editor_read_visibility("{\"was\": \"public\", \"slug\": \"s\", \"visibility\": \"private\"}").rev == 0;
+  #assert !editor_read_visibility("{\"rev\": 0, \"was\": \"public\", \"slug\": \"s\", \"visibility\": \"private\"}").ok && !editor_read_visibility("{\"rev\": \"2\", \"was\": \"public\", \"slug\": \"s\", \"visibility\": \"private\"}").ok;
 }
 
 #test "publish: the body with listed, the reply with a pinned engine, null and none" {
   buf: [512] u8;
-  A := FORGE_T_A; B := FORGE_T_B;
-  n := forge_publish_body(4, true, buf[..]);
+  A := EDITOR_T_A; B := EDITOR_T_B;
+  n := editor_publish_body(4, true, buf[..]);
   #assert cast(string) buf[0..<n] == "{\"rev\":4,\"listed\":true}";
-  n = forge_publish_body(12, false, buf[..]);
-  #assert cast(string) buf[0..<n] == "{\"rev\":12,\"listed\":false}" && forge_publish_body(12, false, buf[0..<12]) == -1;
-  n = forge_publish_reply(4, A, true, B, "", buf[..]);
+  n = editor_publish_body(12, false, buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"rev\":12,\"listed\":false}" && editor_publish_body(12, false, buf[0..<12]) == -1;
+  n = editor_publish_reply(4, A, true, B, "", buf[..]);
   want := "{\"rev\": 4, \"engine\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\", \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": true}";
-  #assert cast(string) buf[0..<n] == want && forge_publish_reply(4, A, true, B, "", buf[0..<n - 1]) == -1;
-  r := forge_read_published(want);
+  #assert cast(string) buf[0..<n] == want && editor_publish_reply(4, A, true, B, "", buf[0..<n - 1]) == -1;
+  r := editor_read_published(want);
   #assert r.ok && r.rev == 4 && r.listed && cast(string) r.sha[..] == A && r.engine == 1 && cast(string) r.sha_engine[..] == B;
-  n = forge_publish_reply(7, A, false, "", "", buf[..]);
+  n = editor_publish_reply(7, A, false, "", "", buf[..]);
   #assert cast(string) buf[0..<n] == "{\"rev\": 7, \"engine\": null, \"listed\": false, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": true}";
-  r = forge_read_published(cast(string) buf[0..<n]);
+  r = editor_read_published(cast(string) buf[0..<n]);
   #assert r.ok && r.rev == 7 && !r.listed && r.engine == 0;
-  r = forge_read_published("{\"rev\": 4, \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": true}");
+  r = editor_read_published("{\"rev\": 4, \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": true}");
   #assert r.ok && r.engine == -1 && r.listed;
-  #assert !forge_read_published("{\"rev\": 0, \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": true}").ok;
-  #assert !forge_read_published("{\"rev\": 4, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": true}").ok;
-  #assert !forge_read_published("{\"rev\": 4, \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": false}").ok;
-  #assert !forge_read_published("{\"rev\": 4, \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}").ok;
-  #assert !forge_read_published("{\"rev\": 4, \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA\", \"published\": true}").ok;
-  #assert !forge_read_published("{\"rev\": 4, \"listed\": true, \"sha256\": \"aaaa\", \"published\": true}").ok;
-  #assert !forge_read_published("{\"rev\": 4, \"engine\": \"abc\", \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": true}").ok;
-  #assert !forge_read_published("{\"rev\": 4, \"engine\": 5, \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": true}").ok;
-  #assert !forge_read_published("[]").ok && !forge_read_published("").ok;
-  n = forge_publish_reply(2, A, true, B, "public", buf[..]);
+  #assert !editor_read_published("{\"rev\": 0, \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": true}").ok;
+  #assert !editor_read_published("{\"rev\": 4, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": true}").ok;
+  #assert !editor_read_published("{\"rev\": 4, \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": false}").ok;
+  #assert !editor_read_published("{\"rev\": 4, \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}").ok;
+  #assert !editor_read_published("{\"rev\": 4, \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA\", \"published\": true}").ok;
+  #assert !editor_read_published("{\"rev\": 4, \"listed\": true, \"sha256\": \"aaaa\", \"published\": true}").ok;
+  #assert !editor_read_published("{\"rev\": 4, \"engine\": \"abc\", \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": true}").ok;
+  #assert !editor_read_published("{\"rev\": 4, \"engine\": 5, \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": true}").ok;
+  #assert !editor_read_published("[]").ok && !editor_read_published("").ok;
+  n = editor_publish_reply(2, A, true, B, "public", buf[..]);
   #assert cast(string) buf[0..<n] == "{\"rev\": 2, \"engine\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\", \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": true, \"visibility\": \"public\"}";
-  r = forge_read_published(cast(string) buf[0..<n]);
-  #assert r.ok && cast(string) r.vis[0..<r.vis_n] == "public" && forge_read_published(want).vis_n == 0;
-  #assert !forge_read_published("{\"rev\": 4, \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": true, \"visibility\": \"open\"}").ok;
-  #assert !forge_read_published("{\"rev\": 4, \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": true, \"visibility\": 1}").ok;
-  #assert forge_sha_ok(A) && forge_sha_ok(B) && !forge_sha_ok("") && !forge_sha_ok("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg") && !forge_sha_ok("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde/");
+  r = editor_read_published(cast(string) buf[0..<n]);
+  #assert r.ok && cast(string) r.vis[0..<r.vis_n] == "public" && editor_read_published(want).vis_n == 0;
+  #assert !editor_read_published("{\"rev\": 4, \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": true, \"visibility\": \"open\"}").ok;
+  #assert !editor_read_published("{\"rev\": 4, \"listed\": true, \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"published\": true, \"visibility\": 1}").ok;
+  #assert editor_sha_ok(A) && editor_sha_ok(B) && !editor_sha_ok("") && !editor_sha_ok("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg") && !editor_sha_ok("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde/");
 }
 
 #test "the publish record is written and read back; a missing field refuses it" {
-  A := FORGE_T_A; B := FORGE_T_B;
+  A := EDITOR_T_A; B := EDITOR_T_B;
   want := "{\"n\": 2, \"ms\": 1762190000123, \"rev\": 4, \"why\": \"publish\", \"slug\": \"moonlit-marsh\", \"engine\": \"aethyr-engine 1\\napp myrealm\\n\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"engine_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}";
-  r: [1] ForgeRecord; buf: [1024] u8;
-  #assert forge_read_record(r[..], want) && r[0].ok && r[0].n == 2 && r[0].ms == 1762190000123 && r[0].rev == 4 && cast(string) r[0].why[0..<r[0].why_n] == "publish";
+  r: [1] EditorRecord; buf: [1024] u8;
+  #assert editor_read_record(r[..], want) && r[0].ok && r[0].n == 2 && r[0].ms == 1762190000123 && r[0].rev == 4 && cast(string) r[0].why[0..<r[0].why_n] == "publish";
   #assert cast(string) r[0].slug[0..<r[0].slug_n] == "moonlit-marsh" && cast(string) r[0].engine[0..<r[0].engine_n] == "aethyr-engine 1\napp myrealm\n" && cast(string) r[0].sha[..] == A && cast(string) r[0].sha_engine[..] == B;
-  n := forge_record_json(r[..], buf[..]);
-  #assert cast(string) buf[0..<n] == want && forge_record_json(r[..], buf[0..<n - 1]) == -1;
-  #assert !forge_read_record(r[..], "{\"ms\": 1, \"rev\": 4, \"why\": \"publish\", \"slug\": \"s\", \"engine\": \"e\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"engine_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}") && !r[0].ok;
-  #assert !forge_read_record(r[..], "{\"n\": 1, \"rev\": 4, \"why\": \"publish\", \"slug\": \"s\", \"engine\": \"e\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"engine_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}");
-  #assert !forge_read_record(r[..], "{\"n\": 1, \"ms\": 1, \"rev\": 0, \"why\": \"publish\", \"slug\": \"s\", \"engine\": \"e\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"engine_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}");
-  #assert !forge_read_record(r[..], "{\"n\": 1, \"ms\": 1, \"rev\": 4, \"slug\": \"s\", \"engine\": \"e\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"engine_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}");
-  #assert !forge_read_record(r[..], "{\"n\": 1, \"ms\": 1, \"rev\": 4, \"why\": \"publish\", \"slug\": \"S\", \"engine\": \"e\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"engine_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}");
-  #assert !forge_read_record(r[..], "{\"n\": 1, \"ms\": 1, \"rev\": 4, \"why\": \"publish\", \"slug\": \"s\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"engine_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}");
-  #assert !forge_read_record(r[..], "{\"n\": 1, \"ms\": 1, \"rev\": 4, \"why\": \"publish\", \"slug\": \"s\", \"engine\": \"e\", \"sha256\": \"aaaa\", \"engine_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}");
-  #assert !forge_read_record(r[..], "{\"n\": 1, \"ms\": 1, \"rev\": 4, \"why\": \"publish\", \"slug\": \"s\", \"engine\": \"e\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"engine_sha256\": \"0123\"}");
-  #assert !forge_read_record(r[..], "{\"n\": 1, \"ms\": -1, \"rev\": 4, \"why\": \"publish\", \"slug\": \"s\", \"engine\": \"e\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"engine_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}");
-  #assert !forge_read_record(r[..], "[]") && !forge_read_record(r[..], "{\"error\": \"not pinned\"}");
+  n := editor_record_json(r[..], buf[..]);
+  #assert cast(string) buf[0..<n] == want && editor_record_json(r[..], buf[0..<n - 1]) == -1;
+  #assert !editor_read_record(r[..], "{\"ms\": 1, \"rev\": 4, \"why\": \"publish\", \"slug\": \"s\", \"engine\": \"e\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"engine_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}") && !r[0].ok;
+  #assert !editor_read_record(r[..], "{\"n\": 1, \"rev\": 4, \"why\": \"publish\", \"slug\": \"s\", \"engine\": \"e\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"engine_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}");
+  #assert !editor_read_record(r[..], "{\"n\": 1, \"ms\": 1, \"rev\": 0, \"why\": \"publish\", \"slug\": \"s\", \"engine\": \"e\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"engine_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}");
+  #assert !editor_read_record(r[..], "{\"n\": 1, \"ms\": 1, \"rev\": 4, \"slug\": \"s\", \"engine\": \"e\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"engine_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}");
+  #assert !editor_read_record(r[..], "{\"n\": 1, \"ms\": 1, \"rev\": 4, \"why\": \"publish\", \"slug\": \"S\", \"engine\": \"e\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"engine_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}");
+  #assert !editor_read_record(r[..], "{\"n\": 1, \"ms\": 1, \"rev\": 4, \"why\": \"publish\", \"slug\": \"s\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"engine_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}");
+  #assert !editor_read_record(r[..], "{\"n\": 1, \"ms\": 1, \"rev\": 4, \"why\": \"publish\", \"slug\": \"s\", \"engine\": \"e\", \"sha256\": \"aaaa\", \"engine_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}");
+  #assert !editor_read_record(r[..], "{\"n\": 1, \"ms\": 1, \"rev\": 4, \"why\": \"publish\", \"slug\": \"s\", \"engine\": \"e\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"engine_sha256\": \"0123\"}");
+  #assert !editor_read_record(r[..], "{\"n\": 1, \"ms\": -1, \"rev\": 4, \"why\": \"publish\", \"slug\": \"s\", \"engine\": \"e\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"engine_sha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}");
+  #assert !editor_read_record(r[..], "[]") && !editor_read_record(r[..], "{\"error\": \"not pinned\"}");
 }
 
 #test "a refusal in SQL's spelling is written; the API's own spelling reads too" {
-  buf: [64] u8; e: [FORGE_ERROR] u8;
-  n := forge_error_json("no such world", buf[..]);
-  #assert cast(string) buf[0..<n] == "{\"error\": \"no such world\"}" && forge_read_error(cast(string) buf[0..<n], e[..]) == "no such world";
-  #assert forge_read_error("{\"error\":\"not json\"}", e[..]) == "not json";
-  #assert forge_error_json("no such world", buf[0..<20]) == -1 && forge_read_error("{\"rev\": 4}", e[..]) == "" && forge_read_error("{\"error\": 4}", e[..]) == "" && forge_read_error("x", e[..]) == "" && forge_read_error("[]", e[..]) == "";
-  #assert forge_read_error("{\"error\": \"changed since\", \"rev\": 5}", e[..]) == "changed since" && forge_read_error("{\"error\": \"no such world\"}", e[0..<4]) == "";
+  buf: [64] u8; e: [EDITOR_ERROR] u8;
+  n := editor_error_json("no such world", buf[..]);
+  #assert cast(string) buf[0..<n] == "{\"error\": \"no such world\"}" && editor_read_error(cast(string) buf[0..<n], e[..]) == "no such world";
+  #assert editor_read_error("{\"error\":\"not json\"}", e[..]) == "not json";
+  #assert editor_error_json("no such world", buf[0..<20]) == -1 && editor_read_error("{\"rev\": 4}", e[..]) == "" && editor_read_error("{\"error\": 4}", e[..]) == "" && editor_read_error("x", e[..]) == "" && editor_read_error("[]", e[..]) == "";
+  #assert editor_read_error("{\"error\": \"changed since\", \"rev\": 5}", e[..]) == "changed since" && editor_read_error("{\"error\": \"no such world\"}", e[0..<4]) == "";
 }

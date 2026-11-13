@@ -39,20 +39,20 @@ lg_same :: (g: [] Lg, name: string, what: string, got: string, want: string) {
 }
 lg_join :: (out: [] u8, at: int, parts: [] string, sep: string) -> int {
   n := at;
-  for k: 0..<parts.count { if k > 0 { n = forge_put(out, n, sep); } n = forge_put(out, n, parts[k]); }
+  for k: 0..<parts.count { if k > 0 { n = editor_put(out, n, sep); } n = editor_put(out, n, parts[k]); }
   return n;
 }
 // A board's row after an ask's or a revision's first line, or the revision: rebuilt the same.
 lg_row_or_rev :: (g: [] Lg, name: string, line: string) {
   out: [512] u8;
-  l := forge_spec_line(line, 0);
+  l := editor_spec_line(line, 0);
   if l.kind == SPEC_ROW {
-    r := forge_spec_row(l);
-    n := forge_put(out[..], forge_put(out[..], forge_put(out[..], forge_put(out[..], 0, "row "), r.key), ifx r.on then " 1 " else " 0 "), r.label);
+    r := editor_spec_row(l);
+    n := editor_put(out[..], editor_put(out[..], editor_put(out[..], editor_put(out[..], 0, "row "), r.key), ifx r.on then " 1 " else " 0 "), r.label);
     lg_same(g, name, "a row comes back from its parts", ifx n < 0 then "" else cast(string) out[0..<n], line);
     return;
   }
-  if l.kind == SPEC_REV { _ = lg_need(g, name, "the revision is a number", forge_spec_num(l) >= 1); return; }
+  if l.kind == SPEC_REV { _ = lg_need(g, name, "the revision is a number", editor_spec_num(l) >= 1); return; }
   _ = lg_need(g, name, "a line after the first is a row of the board or the revision", false);
 }
 lg_answer :: (g: [] Lg, name: string, message: string, text: string) {
@@ -62,15 +62,15 @@ lg_answer :: (g: [] Lg, name: string, message: string, text: string) {
   if message == "ListedRow" {
     // the row alone, and as the page takes it from an answer
     into: [512] u8; ab: [600] u8;
-    an := forge_put(ab[..], forge_put(ab[..], forge_put(ab[..], 0, "200\ntotal 1\n"), text), "\n");
+    an := editor_put(ab[..], editor_put(ab[..], editor_put(ab[..], 0, "200\ntotal 1\n"), text), "\n");
     got := listed_read(cast(string) ab[0..<(ifx an < 0 then 0 else an)], into[..], 4);
     _ = lg_need(g, name, "the listed row is one the list page takes", listed_row_ok(text) && got.rows == 1 && got.more == 0 && got.n == text.count + 1);
     return;
   }
   if message == "MadeRow" {
-    f: [16] string; k := forge_list_split(text, f[..]);
+    f: [16] string; k := editor_list_split(text, f[..]);
     ok := k == 15 && f[1] == "made" && f[2] == "" && f[3].count > 0 && f[9] == "1200" && f[10] == "630" && f[14] == "" && (f[8] == "default" || f[8] == "made");
-    ok = ok && f[0].count > 8 && f[0][0..<8] == "/realms/" && forge_spec_digits(f[11]) >= 0 && listed_field(text, 3) == f[3] && listed_field(text, 14) == "" && listed_field(text, 6) == f[6];
+    ok = ok && f[0].count > 8 && f[0][0..<8] == "/realms/" && editor_spec_digits(f[11]) >= 0 && listed_field(text, 3) == f[3] && listed_field(text, 14) == "" && listed_field(text, 6) == f[6];
     _ = lg_need(g, name, "the made row has /og's fields", ok);
     n := lg_join(out[..], 0, f[0..<(ifx k > 15 then 15 else k)], "|");
     lg_same(g, name, "the row comes back from its fields", ifx n < 0 then "" else cast(string) out[0..<n], text);
@@ -79,38 +79,38 @@ lg_answer :: (g: [] Lg, name: string, message: string, text: string) {
   if !lg_need(g, name, "the answer ends with a newline", text.count > 0 && text[text.count - 1] == '\n') { return; }
   at := 0; first := true;
   while true {
-    l := forge_spec_line(text, at); at = l.next;
+    l := editor_spec_line(text, at); at = l.next;
     if l.kind == SPEC_END { break; }
     line := l.line;
     if message == "Asks" || (message == "AskAnswer" && first) {
-      a := forge_read_ask(line);
+      a := editor_read_ask(line);
       if !lg_need(g, name, "an ask's line reads", a.ok && a.id >= 0 && a.state != "") { first = false; continue; }
-      n := forge_put(out[..], forge_put(out[..], forge_put_int(out[..], forge_put(out[..], 0, "ask "), a.id), " "), a.state);
+      n := editor_put(out[..], editor_put(out[..], editor_put_int(out[..], editor_put(out[..], 0, "ask "), a.id), " "), a.state);
       if message == "Asks" {
         _ = lg_need(g, name, "a listed ask has its state, its kind and its words", (a.state == "applied" || a.state == "waiting" || a.state == "removing") && (a.kind == "ask" || a.kind == "remove") && a.words != "");
-        n = forge_put(out[..], forge_put(out[..], forge_put(out[..], forge_put(out[..], n, " "), a.kind), " "), a.words);
+        n = editor_put(out[..], editor_put(out[..], editor_put(out[..], editor_put(out[..], n, " "), a.kind), " "), a.words);
       } else { _ = lg_need(g, name, "an ask's answer says applied, waiting or gone", a.state == "applied" || a.state == "waiting" || a.state == "gone"); }
       lg_same(g, name, "the ask's line comes back from its parts", ifx n < 0 then "" else cast(string) out[0..<n], line);
     }
-    else if message == "ReviseAnswer" && first { _ = lg_need(g, name, "a revision's answer starts with its plan", forge_spec_word(line, 0) == "plan" && forge_spec_digits(forge_spec_word(line, 1)) >= 1 && forge_spec_word(line, 2) == ""); }
-    else if message == "AskAnswer" && forge_spec_word(line, 0) == "plan" { _ = lg_need(g, name, "an applied ask names its plan", forge_spec_digits(forge_spec_word(line, 1)) >= 1); }
+    else if message == "ReviseAnswer" && first { _ = lg_need(g, name, "a revision's answer starts with its plan", editor_spec_word(line, 0) == "plan" && editor_spec_digits(editor_spec_word(line, 1)) >= 1 && editor_spec_word(line, 2) == ""); }
+    else if message == "AskAnswer" && editor_spec_word(line, 0) == "plan" { _ = lg_need(g, name, "an applied ask names its plan", editor_spec_digits(editor_spec_word(line, 1)) >= 1); }
     else if message == "AskAnswer" || message == "ReviseAnswer" { lg_row_or_rev(g, name, line); }
     else if message == "Panes" {
-      p := forge_read_pane(line);
-      if p.kind == FORGE_PANE_LORE && p.fields >= 2 {
-        n := forge_put(out[..], forge_put(out[..], forge_put(out[..], forge_put(out[..], 0, "lore "), p.who), "|"), p.text);
+      p := editor_read_pane(line);
+      if p.kind == EDITOR_PANE_LORE && p.fields >= 2 {
+        n := editor_put(out[..], editor_put(out[..], editor_put(out[..], editor_put(out[..], 0, "lore "), p.who), "|"), p.text);
         lg_same(g, name, "a lore line comes back from its parts", ifx n < 0 then "" else cast(string) out[0..<n], line);
-      } else if p.kind == FORGE_PANE_QUEST && p.fields == 6 {
-        n := forge_put(out[..], forge_put(out[..], forge_put(out[..], 0, "quest "), p.who), "|");
+      } else if p.kind == EDITOR_PANE_QUEST && p.fields == 6 {
+        n := editor_put(out[..], editor_put(out[..], editor_put(out[..], 0, "quest "), p.who), "|");
         n = lg_join(out[..], n, p.parts[..], "|");
         lg_same(g, name, "a quest line comes back from its parts", ifx n < 0 then "" else cast(string) out[0..<n], line);
       } else { _ = lg_need(g, name, "a pane's line is lore or a quest with all its parts", false); }
     }
     else if message == "Proposals" {
-      c := forge_read_proposal(line);
-      if lg_need(g, name, "a proposal has its eight fields", c.ok && forge_spec_digits(c.id) >= 1 && c.thing != "" && forge_spec_digits(c.before) >= 0 && forge_spec_digits(c.after) >= 1) {
+      c := editor_read_proposal(line);
+      if lg_need(g, name, "a proposal has its eight fields", c.ok && editor_spec_digits(c.id) >= 1 && c.thing != "" && editor_spec_digits(c.before) >= 0 && editor_spec_digits(c.after) >= 1) {
         parts := [8] string.[c.id, c.who, c.thing, c.x, c.z, c.yaw, c.before, c.after];
-        n := lg_join(out[..], forge_put(out[..], 0, "P "), parts[..], "|");
+        n := lg_join(out[..], editor_put(out[..], 0, "P "), parts[..], "|");
         lg_same(g, name, "the proposal comes back from its fields", ifx n < 0 then "" else cast(string) out[0..<n], line);
       }
     }

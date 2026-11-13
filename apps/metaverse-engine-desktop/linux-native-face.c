@@ -3,11 +3,11 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-static coax_t_ForgeNative *at(uint32_t p){return (coax_t_ForgeNative *)(uintptr_t)p;}
-static coax_v_t_ForgeNative view(uint32_t p){return (coax_v_t_ForgeNative){at(p),1};}
-uint32_t coaxial_layout(void){return sizeof(coax_t_ForgeNative)*1000003u+0x46474e31u;}
-uint32_t coaxial_state_size(void){return sizeof(coax_t_ForgeNative);}
-void coaxial_state_init(uint32_t p){coax_default_t_ForgeNative(at(p));fgn_boot(view(p));}
+static coax_t_EditorNative *at(uint32_t p){return (coax_t_EditorNative *)(uintptr_t)p;}
+static coax_v_t_EditorNative view(uint32_t p){return (coax_v_t_EditorNative){at(p),1};}
+uint32_t coaxial_layout(void){return sizeof(coax_t_EditorNative)*1000003u+0x46474e31u;}
+uint32_t coaxial_state_size(void){return sizeof(coax_t_EditorNative);}
+void coaxial_state_init(uint32_t p){coax_default_t_EditorNative(at(p));fgn_boot(view(p));}
 uint32_t coaxial_max_vertices(void){return 144000;}
 uint32_t coaxial_vertex_floats(void){return 12;}
 uint32_t coaxial_uniform_floats(void){return 88;}

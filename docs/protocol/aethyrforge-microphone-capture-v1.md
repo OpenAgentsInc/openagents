@@ -1,7 +1,7 @@
 # Metaverse Engine microphone capture IPC v1
 
 The [schema](../../proto/coder/microphone-capture-v1.schema.json) defines the
-private page-to-native `forgeVoiceCapture` request/reply bridge. Only the current
+private page-to-native `editorVoiceCapture` request/reply bridge. Only the current
 loopback main frame may use it. `capture` identifies one browser hold generation.
 It is separate from the existing finalized-transcript ticket protocol.
 

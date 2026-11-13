@@ -349,11 +349,11 @@ engine_native_everglade_10 :: () #export_c #effects(all) {
   f[0].took = true; f[0].decided_thing_n = redit_copy(f[0].decided_thing[..], "barrel"); f[0].decided_x = 6; f[0].decided_z = -12;
   edit_layer(a[..]);
   #assert a[0].ev.edits.n == 1 && a[0].ev.edits.things[0].kind == 1 && a[0].ev.edits.things[0].x == 6 && a[0].ev.due > 0;
-  // in edit mode the Metaverse Engine's panels stand in for the layer's (everglade-forge.coax): its DONE closes edit mode, and the layer's pane with it
+  // in edit mode the Metaverse Engine's panels stand in for the layer's (everglade-editor.coax): its DONE closes edit mode, and the layer's pane with it
   n = everglade_edit_hud(a[..], out[..], u[..], 0, 840);
-  #assert forge_on(a[..]) && !f[0].shown[RB_EDIT];
+  #assert editor_on(a[..]) && !f[0].shown[RB_EDIT];
   a[0].plate_n = 0;
-  n = forge_hud(a[..], out[..], u[..], 0);
+  n = editor_hud(a[..], out[..], u[..], 0);
   d := a[0].ev.boxes[EB_DONE];
   #assert n > 0 && d.x1 > d.x0 && everglade_pointer(a[..], (d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2, 0, 0, 1);
   edit_layer(a[..]);

@@ -195,7 +195,7 @@ see different results.
 | The flock that follows you | `metaverse-engine/anim/flock.coax` | No |
 | Weather | `weather_facts`, `everglade.coax:3074`: seeded with `EG_WEATHER_SEED` and the page's `now` | Same only by construction, as the folk |
 | Time of day | `folk_clock`; the realm's `clock: cycle` | Same only by construction |
-| Admin edits (the OpenAgents Metaverse Engine, voice edits, placed things) | `everglade-forge.coax`, `everglade-edit.coax`, `metaverse/edit/edit.coax` | Published to `/api/playtest/world/<id>`. Other pages see them on reload; only an owner's page rereads the spec every second (`metaverse/edit/edit.coax:589`) |
+| Admin edits (the OpenAgents Metaverse Engine, voice edits, placed things) | `everglade-editor.coax`, `everglade-edit.coax`, `metaverse/edit/edit.coax` | Published to `/api/playtest/world/<id>`. Other pages see them on reload; only an owner's page rereads the spec every second (`metaverse/edit/edit.coax:589`) |
 | Dropped items | None exist in Everglade today | Not applicable |
 
 ## 3. Architecture

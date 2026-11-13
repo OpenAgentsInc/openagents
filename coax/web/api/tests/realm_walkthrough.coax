@@ -30,7 +30,7 @@ wk_sql :: (w: [] Wk, sql: string, out: [] u8) -> string {
 // Text joined into a buffer.
 Wb :: struct { b: [WK_OUT] u8; n: int; bad: bool; }
 wb_put :: (w: [] Wb, s: string) { if w[0].bad || w[0].n + s.count > WK_OUT { w[0].bad = true; return; } for i: 0..<s.count { w[0].b[w[0].n + i] = s[i]; } w[0].n += s.count; }
-wb_int :: (w: [] Wb, v: int) { t: [24] u8; n := forge_put_int(t[..], 0, v); wb_put(w, cast(string) t[0..<n]); }
+wb_int :: (w: [] Wb, v: int) { t: [24] u8; n := editor_put_int(t[..], 0, v); wb_put(w, cast(string) t[0..<n]); }
 wb_text :: (w: [] Wb) -> string { return cast(string) w[0].b[0..<w[0].n]; }
 wb_clear :: (w: [] Wb) { w[0].n = 0; w[0].bad = false; }
 
@@ -52,16 +52,16 @@ wk_member :: (text: string, path: string, out: [] u8) -> string {
 }
 wk_sha :: (text: string, out: [] u8) -> string { if !S_hex(S_hash(text), out) { return ""; } return cast(string) out[0..<64]; }
 // The model of a spec: its moves and shapes (and their history: none).
-wk_model :: (w: [] Wk, slug: string, key: string, d: [] ForgeDoc) -> bool {
+wk_model :: (w: [] Wk, slug: string, key: string, d: [] EditorDoc) -> bool {
   q: [1] Wb; wb_put(q[..], "SELECT verse.edit_spec('"); wb_put(q[..], slug); wb_put(q[..], "', '"); wb_put(q[..], key); wb_put(q[..], "', false)");
   out: [WK_OUT] u8; spec := wk_sql(w, wb_text(q[..]), out[..]);
   rev := 0; at := 0;
   for i: 0..<spec.count + 1 {
     if i < spec.count && spec[i] != '\n' { continue; }
     line := spec[at..<i]; at = i + 1;
-    if line.count > 4 && line[0..<4] == "rev " { rev = forge_whole(line[4..<line.count], 1, 999999999); }
+    if line.count > 4 && line[0..<4] == "rev " { rev = editor_whole(line[4..<line.count], 1, 999999999); }
   }
-  forge_reset(d, rev);
+  editor_reset(d, rev);
   at = 0;
   for i: 0..<spec.count + 1 {
     if i < spec.count && spec[i] != '\n' { continue; }
@@ -69,16 +69,16 @@ wk_model :: (w: [] Wk, slug: string, key: string, d: [] ForgeDoc) -> bool {
     if line.count > 6 && line[0..<6] == "moved " {
       p := 6; while p < line.count && line[p] != ' ' { p += 1; }
       q2 := p + 1; while q2 < line.count && line[q2] != ' ' { q2 += 1; }
-      if q2 >= line.count || !forge_read_move(d, line[6..<p], forge_cm_of(line[p + 1..<q2]), forge_cm_of(line[q2 + 1..<line.count])) { return false; }
+      if q2 >= line.count || !editor_read_move(d, line[6..<p], editor_cm_of(line[p + 1..<q2]), editor_cm_of(line[q2 + 1..<line.count])) { return false; }
     }
-    if line.count > 7 && line[0..<7] == "shaped " && !forge_read_shape_line(d, line) { return false; }
+    if line.count > 7 && line[0..<7] == "shaped " && !editor_read_shape_line(d, line) { return false; }
   }
   return rev >= 1;
 }
 // Moves and shapes only, as text (slots aside): what a spec and a document both say.
-wk_entities :: (d: [] ForgeDoc, out: [] u8) -> string {
-  c: [1] ForgeDoc; c[0] = d[0]; c[0].slot_n = 0; c[0].rev = 0;
-  n := forge_doc_text(c[..], out);
+wk_entities :: (d: [] EditorDoc, out: [] u8) -> string {
+  c: [1] EditorDoc; c[0] = d[0]; c[0].slot_n = 0; c[0].rev = 0;
+  n := editor_doc_text(c[..], out);
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 // A visitor's /doc: the document text exactly as served, its hash recomputed here.
@@ -106,14 +106,14 @@ wk_site :: (w: [] Wk, site: string, wasm_name: string) -> bool {
   ok = (fs_mkdir(fs_join(site, "build/realms/fixture", pb[..])) || true) && (fs_mkdir(fs_join(site, "build/realms/fixture/assets", pb[..])) || true) && ok;
   files := [5] string.["coaxial/host.9ca333f3d8b0.js", "build/realms/fixture/assets/fixture.df9c027378c8.pack", "build/voice.71d76f28966b.wasm", "build/myrealm.224131021ece.wgsl", ""];
   bodies := [5] string.["host script, comments stripped\n", "PACK asset pack", "voice engine", "@vertex fn main() {}\n", "the engine's wasm for "];
-  wb: [64] u8; wn := forge_put(wb[..], 0, "build/"); wn = forge_put(wb[..], wn, wasm_name);
+  wb: [64] u8; wn := editor_put(wb[..], 0, "build/"); wn = editor_put(wb[..], wn, wasm_name);
   files[4] = cast(string) wb[0..<wn];
   for i: 0..<4 { ok = fs_write(fs_join(site, files[i], pb[..]), bodies[i]) && ok; }
   body: [1] Wb; wb_put(body[..], bodies[4]); wb_put(body[..], wasm_name);   // each release's engine its own bytes
   ok = fs_write(fs_join(site, files[4], pb[..]), wb_text(body[..])) && ok;
   page: [1] Wb;
   // the fixture page, its engine wasm renamed to this release's
-  sw: [8192] u8; nm: [64] u8; nn := forge_put(nm[..], 0, wasm_name); nn = forge_put(nm[..], nn, "\" data-wgsl");
+  sw: [8192] u8; nm: [64] u8; nn := editor_put(nm[..], 0, wasm_name); nn = editor_put(nm[..], nn, "\" data-wgsl");
   wb_put(page[..], engine_swap(ENGINE_FIXTURE, "myrealm.0e7b9526d8a2.wasm\" data-wgsl", cast(string) nm[0..<nn], sw[..]));
   ok = fs_write(fs_join(site, "realms/built/index.html", pb[..]), wb_text(page[..])) && ok;
   a := [3] string.["coax/web/tool.sh", "engine-served", "write"];
@@ -143,8 +143,8 @@ wk_publish :: (w: [] Wk, slug: string, rev: int, page: string, out: [] u8) -> st
   wb_put(q[..], "}', 'walkthrough-player-key-0001', false, true, $wk$"); wb_put(q[..], page); wb_put(q[..], "$wk$)::text");
   return wk_sql(w, wb_text(q[..]), out);
 }
-wk_save :: (w: [] Wk, slug: string, key: string, d: [] ForgeDoc, out: [] u8) -> string {
-  body: [16384] u8; n := forge_save_body(d, body[..]);
+wk_save :: (w: [] Wk, slug: string, key: string, d: [] EditorDoc, out: [] u8) -> string {
+  body: [16384] u8; n := editor_save_body(d, body[..]);
   q: [1] Wb;
   wb_put(q[..], "SELECT verse.realm_save('"); wb_put(q[..], slug); wb_put(q[..], "', $wk$"); wb_put(q[..], cast(string) body[0..<n]);
   wb_put(q[..], "$wk$, '"); wb_put(q[..], key); wb_put(q[..], "', false)::text");
@@ -171,10 +171,10 @@ tool_main :: () -> int #export_c #effects(all) {
   wk_ok(w, manifest.count > 0 && engine_has(manifest, "\ndata-served "), "its engine is named by content, served hashes included");
 
   // 2. Edit through the model: move, turn, size, remove; one save.
-  d: [1] ForgeDoc;
+  d: [1] EditorDoc;
   wk_ok(w, wk_model(w, slug, owner, d[..]) && d[0].rev == 1, "the realm read into the edit model at revision 1");
-  edited := forge_move(d[..], "trees:1", 250, -125) && forge_rotate(d[..], "trees:1", 90) && forge_resize(d[..], "rocks:0", 150) && forge_remove(d[..], "props:2")
-         && forge_move(d[..], "trees:4", 10, 10) && forge_undo(d[..]);
+  edited := editor_move(d[..], "trees:1", 250, -125) && editor_rotate(d[..], "trees:1", 90) && editor_resize(d[..], "rocks:0", 150) && editor_remove(d[..], "props:2")
+         && editor_move(d[..], "trees:4", 10, 10) && editor_undo(d[..]);
   wk_ok(w, edited && d[0].done == 4, "four edits and an undo in the model");
   saved := wk_save(w, slug, owner, d[..], out[..]);
   wk_ok(w, wk_member(saved, "status", m[..]) == "200" && wk_member(saved, "rev", m2[..]) == "2", "saved as revision 2");
@@ -190,13 +190,13 @@ tool_main :: () -> int #export_c #effects(all) {
   rec := wk_sql(w, "SELECT verse.realm_published_of('walkthrough-forge')::text", out[..]);
   rengine: [ENGINE_TEXT] u8; re := wk_member(rec, "engine", rengine[..]);
   rsha: [80] u8; rs := wk_member(rec, "engine_sha256", rsha[..]); dsha: [80] u8; ds := wk_member(rec, "sha256", dsha[..]);
-  rrev: [16] u8; rr := forge_whole(wk_member(rec, "rev", rrev[..]), 1, 999999999);
+  rrev: [16] u8; rr := editor_whole(wk_member(rec, "rev", rrev[..]), 1, 999999999);
   wk_ok(w, re == manifest && engine_record_ok(rr, ds, re, rs) && rr == 2, "the record: revision 2, its manifest holds by the rule, its hash is the manifest's");
   wk_ok(w, wk_served_check(w, re, site), "every file the record names is served with the bytes it records (engine-served check)");
   doc: [WK_OUT] u8; vsha: [64] u8; vdoc := wk_visitor_doc(w, slug, doc[..], vsha[..]);
   wk_ok(w, vdoc.count > 0 && cast(string) vsha[..] == ds, "a visitor's document hashes, here, to the record's document hash");
-  r: [1] ForgeDoc; forge_reset(r[..], 1);
-  rd := forge_read_doc(r[..], vdoc);
+  r: [1] EditorDoc; editor_reset(r[..], 1);
+  rd := editor_read_doc(r[..], vdoc);
   rent: [8192] u8;
   wk_ok(w, rd.ok && r[0].rev == 2 && wk_entities(r[..], rent[..]) == ents, "reloaded from the published document: the same moves, turns, sizes and removals the edits made");
   pq: [1] Wb; wb_put(pq[..], "SELECT verse.builder_page('walkthrough-forge', 'https://openagents.com')");
@@ -217,7 +217,7 @@ tool_main :: () -> int #export_c #effects(all) {
         "after release 2 the record and the realm's page still name release 1's engine");
 
   // 6. Later edits by the owner stay unpublished; a visitor's fork starts from the published realm.
-  wk_ok(w, wk_model(w, slug, owner, d[..]) && forge_move(d[..], "trees:1", 0, 0), "the owner moves trees:1 again");
+  wk_ok(w, wk_model(w, slug, owner, d[..]) && editor_move(d[..], "trees:1", 0, 0), "the owner moves trees:1 again");
   later := wk_save(w, slug, owner, d[..], out[..]);
   wk_ok(w, wk_member(later, "rev", m[..]) == "3", "saved as revision 3, not published");
   doc2: [WK_OUT] u8; vsha2: [64] u8; vdoc2 := wk_visitor_doc(w, slug, doc2[..], vsha2[..]);
@@ -229,19 +229,19 @@ tool_main :: () -> int #export_c #effects(all) {
   fpq: [1] Wb; wb_put(fpq[..], "SELECT verse.realm_published_of('"); wb_put(fpq[..], fork_slug); wb_put(fpq[..], "')->>'engine_sha256'");
   fe := wk_sql(w, wb_text(fpq[..]), m[..]);
   wk_ok(w, fe == rs, "the fork starts on its parent's pinned engine");
-  f: [1] ForgeDoc;
+  f: [1] EditorDoc;
   wk_ok(w, wk_model(w, fork_slug, visitor, f[..]) && wk_entities(f[..], rent[..]) == ents, "the fork's document is the published revision's moves and shapes");
-  fork_edit := forge_restore(f[..], "props:2") && forge_rotate(f[..], "trees:1", -45);
+  fork_edit := editor_restore(f[..], "props:2") && editor_rotate(f[..], "trees:1", -45);
   fsaved := wk_save(w, fork_slug, visitor, f[..], out[..]);
   wk_ok(w, fork_edit && wk_member(fsaved, "status", m[..]) == "200", "the fork's owner restores props:2 and turns trees:1");
   doc3: [WK_OUT] u8; vsha3: [64] u8; vdoc3 := wk_visitor_doc(w, slug, doc3[..], vsha3[..]);
-  pm: [1] ForgeDoc;
-  wk_ok(w, vdoc3 == vdoc && wk_model(w, slug, owner, pm[..]) && forge_shape_of(pm[..], "props:2").gone && forge_shape_of(pm[..], "trees:1").yaw == 90,
+  pm: [1] EditorDoc;
+  wk_ok(w, vdoc3 == vdoc && wk_model(w, slug, owner, pm[..]) && editor_shape_of(pm[..], "props:2").gone && editor_shape_of(pm[..], "trees:1").yaw == 90,
         "the parent's published and current documents are untouched by the fork's edits");
 
   // 7. Refusals keep the last valid document.
-  stale: [1] ForgeDoc; stale[0] = f[0]; stale[0].rev = 1;
-  _ := forge_move(stale[..], "trees:9", 1, 1);
+  stale: [1] EditorDoc; stale[0] = f[0]; stale[0].rev = 1;
+  _ := editor_move(stale[..], "trees:9", 1, 1);
   st := wk_save(w, slug, owner, stale[..], out[..]);
   doc4: [WK_OUT] u8; vsha4: [64] u8;
   wk_ok(w, wk_member(st, "status", m[..]) == "409" && wk_visitor_doc(w, slug, doc4[..], vsha4[..]) == vdoc, "a save from a stale revision is refused (409); nothing changes");
@@ -250,7 +250,7 @@ tool_main :: () -> int #export_c #effects(all) {
   wk_ok(w, wk_member(bad, "status", m[..]) == "503" && rec3 == "2", "a publish whose engine can't be pinned is refused (503); revision 2 stays published");
   newer: [1] Wb; wb_put(newer[..], engine_swap(vdoc, "\"version\": 1", "\"version\": 2", doc4[..]));
   keep: [8192] u8; kept := wk_entities(r[..], keep[..]);
-  rn := forge_read_doc(r[..], wb_text(newer[..]));
+  rn := editor_read_doc(r[..], wb_text(newer[..]));
   wk_ok(w, !rn.ok && wk_entities(r[..], rent[..]) == kept, "a newer document version is refused by the reader; the last one read stays");
 
   if wk_sql(w, clean, out[..]) == "" { return 1; }

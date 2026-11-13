@@ -327,7 +327,7 @@ labs_realm_shot :: (a: [] Args, r: [] Rep, profile: string) -> int {
   // Without --as-me a shot is a visitor's: a private realm is 404 to one, so say how to show it instead.
   sb: [API_OUT] u8; sp: [128] u8;
   seen := api_call(a, profile, "GET", realm_path(slug, "", sp[..]), "", sb[..]);
-  if !as_me && api_ok(seen) && forge_spec_value(cast(string) sb[0..<seen.n], "visibility") == "private" {
+  if !as_me && api_ok(seen) && editor_spec_value(cast(string) sb[0..<seen.n], "visibility") == "private" {
     said: [300] u8;
     return fail(r, EXIT_USAGE, lb_private_shot(slug, said[..]));
   }
@@ -349,7 +349,7 @@ labs_realm_shot :: (a: [] Args, r: [] Rep, profile: string) -> int {
   // the picture names what it is of (#13437): the realm, the revision its spec stood at, the page,
   // the camera and the GPU. A shot here is always headless Chrome's
   rep_str(r, "shot_realm", slug);
-  if api_ok(seen) { sv := cli_count(forge_spec_value(cast(string) sb[0..<seen.n], "rev"), 1, 999999999); if sv >= 1 { rep_int(r, "shot_rev", sv); } }
+  if api_ok(seen) { sv := cli_count(editor_spec_value(cast(string) sb[0..<seen.n], "rev"), 1, 999999999); if sv >= 1 { rep_int(r, "shot_rev", sv); } }
   rep_str(r, "shot_page", cast(string) path[0..<n]); rep_str(r, "shot_camera", "the page's own"); rep_str(r, "shot_gpu", "headless");
   code := labs_shot_as(b[..], r, profile, player);
   if as_me { t := seat_tell(a, profile, g[0].id, "close"); }

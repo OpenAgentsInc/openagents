@@ -402,7 +402,7 @@ they do not expand the existing v1 document/undo contract.
 | `realm ask-delete SLUG ID` | `POST /<slug>/asks/<id>/delete` |
 | `realm ask-done SLUG ID --commit HASH` | `POST /<slug>/asks/<id>/done`: site admins, after the code is pushed ([metaverse/SKILL.md](../../metaverse/SKILL.md), "Asks waiting on code") |
 | `realm row-delete SLUG ROW` | `POST /<slug>/rows/<key>/delete` |
-| `realm move SLUG ENTITY X Z` | `POST /<slug>/save {rev, moved}`: the document's moves with this one applied by `forge_apply`. `ENTITY` is `feature:index`, such as `trees:3`; X and Z in metres, within 40 m of the middle |
+| `realm move SLUG ENTITY X Z` | `POST /<slug>/save {rev, moved}`: the document's moves with this one applied by `editor_apply`. `ENTITY` is `feature:index`, such as `trees:3`; X and Z in metres, within 40 m of the middle |
 | `realm place SLUG THING X Z [--yaw DEG]` | `POST /<slug>/place` |
 | `realm settings SLUG --tools build,talk,...` | `POST /<slug>/settings {tools}` |
 | `realm lore SLUG WHO "TEXT"` | `POST /<slug>/lore` (400 characters; `""` forgets it) |
@@ -637,7 +637,7 @@ Every verb is in the one command table, so each is also an MCP tool.
 3. `apps/openagents-cli` with `login --key-stdin`, `whoami`, and the read
    verbs (`realm list|show|doc|shot`).
 4. The edit verbs and `realm apply`; a `cli-journey` check like
-   `forge-journey` that runs make, move, save, a stale save (exit 5), undo,
+   `editor-journey` that runs make, move, save, a stale save (exit 5), undo,
    publish and fork against staging with a test account.
 5. Device login (routes and page; the key stays in the 0600 file).
 6. `openagents mcp` and `openagents skill`, then a run where Claude Code edits a

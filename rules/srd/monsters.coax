@@ -232,8 +232,8 @@ RS_USED_MONSTERS :: [15] RsUsedMonster.[
   RsUsedMonster.{world = "everglade-room", role = "watch veteran", id = "monster/warrior-veteran"},
   RsUsedMonster.{world = "everglade-room", role = "watch knight", id = "monster/knight"},
   RsUsedMonster.{world = "everglade-room", role = "watch scout", id = "monster/scout"},
-  RsUsedMonster.{world = "everglade-forge", role = "cultist", id = "monster/cultist"},
-  RsUsedMonster.{world = "everglade-forge", role = "guard", id = "monster/guard"}];
+  RsUsedMonster.{world = "everglade-editor", role = "cultist", id = "monster/cultist"},
+  RsUsedMonster.{world = "everglade-editor", role = "guard", id = "monster/guard"}];
 // Whether a manifest source ID names a block the engine builds: this file's, or npcs.coax's.
 rs_used_monster_built :: (id: string) -> bool {
   for m: 1..<MON_N { if rs_monster_block(m).id == id { return true; } }

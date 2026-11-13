@@ -285,7 +285,7 @@ ask_plan :: (s: [] Builder, t: [] Track, words: string, via: string) {
   if w.count == 0 || busy(s) || s[0].phase == PH_INVITE { return; }
   s[0].said_n = copy_into(s[0].said[..], w); s[0].said_typed = via == "typed";
   keys: [4] string; values: [4] string; setup_fields(s, keys[..], values[..]);
-  n := forge_plan_body(w, 300, true, s[0].plan, s[0].on[0..<s[0].feat_n], keys[..], values[..], s[0].req_body[..]);   // board.coax: {"prompt":..}
+  n := editor_plan_body(w, 300, true, s[0].plan, s[0].on[0..<s[0].feat_n], keys[..], values[..], s[0].req_body[..]);   // board.coax: {"prompt":..}
   if n <= 0 { set_note(s, "That's too long. Say it shorter."); return; }
   request(s, REQ_PLAN, PLAN_URL, n);
   s[0].phase = PH_PLANNING; s[0].note_n = 0;
@@ -297,7 +297,7 @@ pick_doc :: (s: [] Builder) {
   if busy(s) || s[0].doc_busy || s[0].held || s[0].action != 0 || s[0].phase == PH_MAKING || s[0].phase == PH_GOING || s[0].phase == PH_INVITE { return; }
   n := put(s[0].outbox[..], 0, DOC_URL);
   setup: [BODY] u8; keys: [4] string; values: [4] string; setup_fields(s, keys[..], values[..]);
-  m := forge_setup_body(keys[..], values[..], setup[..]);   // board.coax: the host adds the file's name and data
+  m := editor_setup_body(keys[..], values[..], setup[..]);   // board.coax: the host adds the file's name and data
   if m > 0 { n = put(s[0].outbox[..], n, "\n{\"setup\":"); n = put(s[0].outbox[..], n, cast(string) setup[0..<m]); n = put(s[0].outbox[..], n, "}"); }
   s[0].out_n = n; s[0].action = ACT_DOC; s[0].typing = false;
   set_note(s, "Pick your document: .md, .txt, .pdf or .docx.");
@@ -316,7 +316,7 @@ make_it :: (s: [] Builder, t: [] Track) {
   s[0].make_after = false;
   if s[0].plan <= 0 || busy(s) || s[0].phase != PH_BOARD { return; }
   keys: [4] string; values: [4] string; setup_fields(s, keys[..], values[..]);
-  n := forge_make_body(s[0].plan, s[0].on[0..<s[0].feat_n], keys[..], values[..], ifx s[0].desc_n > 0 then desc_text(s) else "", DESC, s[0].req_body[..]);   // board.coax: {"plan":..}
+  n := editor_make_body(s[0].plan, s[0].on[0..<s[0].feat_n], keys[..], values[..], ifx s[0].desc_n > 0 then desc_text(s) else "", DESC, s[0].req_body[..]);   // board.coax: {"plan":..}
   request(s, REQ_MAKE, MAKE_URL, n);
   s[0].phase = PH_MAKING; s[0].note_n = 0;
   if track_begin(t, "builder-make") { track_int(t, "n", s[0].feat_n); track_int(t, "on", on_count(s)); track_end(t); }
@@ -375,7 +375,7 @@ ask_pick :: (s: [] Builder, t: [] Track, words: string) {
   w := words[trim_from(words)..<trim_to(words)];
   if w.count == 0 || busy(s) || s[0].phase != PH_SETUP || s[0].q >= QUESTIONS { return; }
   s[0].said_n = copy_into(s[0].said[..], w);
-  n := forge_pick_body(Q_FIELD[s[0].q], w, 200, s[0].req_body[..]);   // board.coax: {"field":..,"words":..}
+  n := editor_pick_body(Q_FIELD[s[0].q], w, 200, s[0].req_body[..]);   // board.coax: {"field":..,"words":..}
   if n <= 0 { set_note(s, "That's too long. Say it shorter."); return; }
   request(s, REQ_PICK, PICK_URL, n);
   s[0].note_n = 0;
@@ -483,18 +483,18 @@ read_board :: (s: [] Builder, body: string) -> bool {
   // each line and a row's parts come from metaverse-engine/editor/board.coax, the board's one reader
   i := 0;
   while i < body.count {
-    l := forge_board_line(body, i); i = l.next;
+    l := editor_board_line(body, i); i = l.next;
     if l.kind == BOARD_END { break; }
-    if l.kind == BOARD_PLAN { plan = number_of(forge_board_text(l)); continue; }
-    if l.kind == BOARD_NAME { s[0].name_n = copy_into(s[0].name[..], forge_board_text(l)); continue; }
-    if l.kind == BOARD_STYLE { s[0].style_n = copy_into(s[0].style[..], forge_board_text(l)); continue; }
-    if l.kind == BOARD_GROUND { s[0].ground_n = copy_into(s[0].ground[..], forge_board_text(l)); continue; }
-    if l.kind == BOARD_TIME { s[0].tod_n = copy_into(s[0].tod[..], forge_board_text(l)); continue; }
-    if l.kind == BOARD_CAMERA { s[0].cam_n = copy_into(s[0].cam[..], forge_board_text(l)); continue; }
-    if l.kind == BOARD_PALETTE { s[0].palette_n = copy_into(s[0].palette[..], forge_board_text(l)); continue; }
-    if l.kind == BOARD_WANT && w < WANTS { s[0].want_n[w] = copy_into(s[0].want[w * WANT..<(w + 1) * WANT], forge_board_text(l)); w += 1; continue; }
+    if l.kind == BOARD_PLAN { plan = number_of(editor_board_text(l)); continue; }
+    if l.kind == BOARD_NAME { s[0].name_n = copy_into(s[0].name[..], editor_board_text(l)); continue; }
+    if l.kind == BOARD_STYLE { s[0].style_n = copy_into(s[0].style[..], editor_board_text(l)); continue; }
+    if l.kind == BOARD_GROUND { s[0].ground_n = copy_into(s[0].ground[..], editor_board_text(l)); continue; }
+    if l.kind == BOARD_TIME { s[0].tod_n = copy_into(s[0].tod[..], editor_board_text(l)); continue; }
+    if l.kind == BOARD_CAMERA { s[0].cam_n = copy_into(s[0].cam[..], editor_board_text(l)); continue; }
+    if l.kind == BOARD_PALETTE { s[0].palette_n = copy_into(s[0].palette[..], editor_board_text(l)); continue; }
+    if l.kind == BOARD_WANT && w < WANTS { s[0].want_n[w] = copy_into(s[0].want[w * WANT..<(w + 1) * WANT], editor_board_text(l)); w += 1; continue; }
     if l.kind == BOARD_ROW && n < FEATS {
-      row := forge_board_row(l);
+      row := editor_board_row(l);
       if !row.ok { continue; }
       s[0].kind_n[n] = copy_into(s[0].kind[n * KIND..<(n + 1) * KIND], row.feature);
       s[0].on[n] = row.mark == '1';
@@ -540,7 +540,7 @@ take_answer :: (s: [] Builder, t: [] Track, text: string) {
   if what == REQ_PICK {
     if status != 200 { say_why(s, status, body); s[0].phase = PH_SETUP; return; }
     value := ""; i := 0;
-    while i < body.count { l := forge_board_line(body, i); i = l.next; if l.kind == BOARD_END { break; } if l.kind == BOARD_VALUE { value = forge_board_text(l); } }   // board.coax
+    while i < body.count { l := editor_board_line(body, i); i = l.next; if l.kind == BOARD_END { break; } if l.kind == BOARD_VALUE { value = editor_board_text(l); } }   // board.coax
     q := s[0].q; got := -1;
     if q < QUESTIONS { for c: 0..<Q_COUNT[q] { if Q_WORDS[q * CHOICES + c] == value { got = c; } } }
     if got < 0 { set_note(s, "Tap one, or say it again."); return; }
@@ -568,10 +568,10 @@ take_answer :: (s: [] Builder, t: [] Track, text: string) {
   if what == REQ_MAKE {
     // made.proto's lines, "slug S", "path P", "page 1|0" (metaverse-engine/editor/made.coax): without a page
     // (a dev server, a private realm) the template opens it by its hash
-    m: [1] ForgeMade; m[0] = forge_read_made(body);
+    m: [1] EditorMade; m[0] = editor_read_made(body);
     if !m[0].ok { fail(s, "The world wasn't made. Try again."); return; }
-    if track_begin(t, "realm-made") { track_str(t, "slug", forge_made_slug(m[..])); track_bool(t, "page", m[0].page); track_end(t); }
-    n := forge_made_goes(m[..], s[0].outbox[..]);
+    if track_begin(t, "realm-made") { track_str(t, "slug", editor_made_slug(m[..])); track_bool(t, "page", m[0].page); track_end(t); }
+    n := editor_made_goes(m[..], s[0].outbox[..]);
     s[0].out_n = n; s[0].action = ACT_NAVIGATE; s[0].phase = PH_GOING;
   }
 }
@@ -804,7 +804,7 @@ scroll_by :: (s: [] Builder, dy: f32) {
   s[0].scroll = clamp(s[0].scroll + dy, 0, hi(s[0].content - room, 0));
 }
 builder_wheel :: (s: [] Builder, dy: f32) #export_c #effects(all) { begin(s); scroll_by(s, dy * s[0].dpr); }
-// What a check reads of the page (coax/web/forge-journey.coax, through host.js's guardProbe):
+// What a check reads of the page (coax/web/editor-journey.coax, through host.js's guardProbe):
 //   0 the phase (PH_*), 1 rows on the board, 2 the trees row (-1 none), 3 it is on, 4 a request
 //   in flight, 5 typing, 6 the plan, 7 MAKE IT is waiting on words; 100 + 4b..103 + 4b: button
 //   b's box in CSS pixels (-1 when it isn't shown).

@@ -1,11 +1,11 @@
 // Thin ABI transport. Coax owns setup parsing, labels, choices and readiness.
 #include "session.h"
 #include "face.h"
-static coax_t_ForgeSetup setup;
-static coax_t_ForgeChrome chrome;
+static coax_t_EditorSetup setup;
+static coax_t_EditorChrome chrome;
 static uint8_t input[65536];
-static coax_v_t_ForgeSetup view(void) { return (coax_v_t_ForgeSetup){&setup, 1}; }
-int64_t forge_world_backend_bytes(const uint8_t *bytes,int64_t count){return forge_world_backend((coax_string){(const char*)bytes,count});}
+static coax_v_t_EditorSetup view(void) { return (coax_v_t_EditorSetup){&setup, 1}; }
+int64_t editor_world_backend_bytes(const uint8_t *bytes,int64_t count){return editor_world_backend((coax_string){(const char*)bytes,count});}
 void fgs_reset(void) { fsu_reset(view()); }
 int64_t fgs_input_byte(int64_t i, int64_t v) {
   if (i < 0 || i >= (int64_t)sizeof input || v < 0 || v > 255) return 0;
@@ -26,7 +26,7 @@ int64_t fgs_status(int64_t kind) { return fsu_status(view(), kind); }
 int64_t fgs_text_byte(int64_t field, int64_t index) { return fsu_text_byte(view(), field, index); }
 int64_t fgs_settings_byte(int64_t index) { return fsu_settings_byte(view(), index); }
 
-static coax_v_t_ForgeChrome ui(void) {return (coax_v_t_ForgeChrome){&chrome,1};}
+static coax_v_t_EditorChrome ui(void) {return (coax_v_t_EditorChrome){&chrome,1};}
 void *fgu_state(void) {return &chrome;}
 void fgu_update(bool scene,bool checking,bool verifying,bool status,bool paused,const uint8_t *error,int64_t n) {
   fui_update(ui(),scene,checking,verifying,status,paused,(coax_string){(const char *)error,n});
@@ -58,12 +58,12 @@ void fgu_cell_ready(void *s,int32_t cell) {(void)s;fui_cell_ready(ui(),cell);}
 #ifdef __APPLE__
 #include <libproc.h>
 #include <mach/mach_time.h>
-uint64_t forge_process_cpu_ns(int32_t pid) {
+uint64_t editor_process_cpu_ns(int32_t pid) {
   struct rusage_info_v2 r={0};mach_timebase_info_data_t t;
   if(proc_pid_rusage(pid,RUSAGE_INFO_V2,(rusage_info_t *)&r)!=0 || mach_timebase_info(&t)!=0)return 0;
   return (uint64_t)(((__uint128_t)r.ri_user_time+r.ri_system_time)*t.numer/t.denom);
 }
-uint64_t forge_process_resident_bytes(int32_t pid) {
+uint64_t editor_process_resident_bytes(int32_t pid) {
   struct rusage_info_v2 r={0};return proc_pid_rusage(pid,RUSAGE_INFO_V2,(rusage_info_t *)&r)==0?r.ri_resident_size:0;
 }
 #endif

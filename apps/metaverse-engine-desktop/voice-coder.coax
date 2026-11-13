@@ -3,22 +3,22 @@
 #authority;
 #load "chat-policy.coax";
 #load "../../coax/lib/json/json.coax";
-ForgeVoiceCoder :: struct {ticket:int=0;armed:bool=false;text:[16384]u8;n:int;}
+EditorVoiceCoder :: struct {ticket:int=0;armed:bool=false;text:[16384]u8;n:int;}
 // aethyrforge.voice-coder.v1 (proto/coder/voice-input-v1.schema.json): the voice page posts it to the
-// app's forgeVoiceCoder handler through the two functions fv_page_script defines (Sources/app.m injects
+// app's editorVoiceCoder handler through the two functions fv_page_script defines (Sources/app.m injects
 // them, through chat-face.c fgv_page_script), and fv_message reads it. This file is its one codec (#13244).
 FV_SCHEMA :: "aethyrforge.voice-coder.v1";
 #test "the page's script writes the messages fv_message reads" {
-  #assert fv_page_script()=="globalThis.coaxialVoiceFinal = e => {\n  webkit.messageHandlers.forgeVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'final',ticket:e.ticket,text:e.text}));\n  return true;\n};\nglobalThis.coaxialVoiceStopped = ticket => webkit.messageHandlers.forgeVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'cancel',ticket}));\n";
+  #assert fv_page_script()=="globalThis.coaxialVoiceFinal = e => {\n  webkit.messageHandlers.editorVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'final',ticket:e.ticket,text:e.text}));\n  return true;\n};\nglobalThis.coaxialVoiceStopped = ticket => webkit.messageHandlers.editorVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'cancel',ticket}));\n";
 }
 
 #test "empty final packets consume their capture without dispatch" {
-  s:[1]ForgeVoiceCoder;t:=fv_arm(s[..]);
+  s:[1]EditorVoiceCoder;t:=fv_arm(s[..]);
   #assert fv_message(s[..],"{\"schema\":\"aethyrforge.voice-coder.v1\",\"kind\":\"final\",\"ticket\":1,\"text\":\"\"}",true,false)==0 && !s[0].armed;
 }
 
 #test "voice requires the current granted capture and a final nonblank bounded transcript" {
-  s:[1]ForgeVoiceCoder;
+  s:[1]EditorVoiceCoder;
   #assert fv_message(s[..],"{\"schema\":\"aethyrforge.voice-coder.v1\",\"kind\":\"final\",\"ticket\":1,\"text\":\"hello\"}",true,false)==0;
   #assert fv_arm(s[..])==1;
   #assert fv_take(s[..],1,false,true,false,"hello")==0 && s[0].armed;
@@ -34,7 +34,7 @@ FV_SCHEMA :: "aethyrforge.voice-coder.v1";
   #assert fv_take(s[..],4,true,true,true,"busy")==2 && !s[0].armed && s[0].n==0;
 }
 #test "cancel and malformed messages cannot revive or consume another capture" {
-  s:[1]ForgeVoiceCoder; t:=fv_arm(s[..]);
+  s:[1]EditorVoiceCoder; t:=fv_arm(s[..]);
   #assert fv_message(s[..],"invalid",true,false)==0 && s[0].armed;
   #assert fv_message(s[..],"{\"schema\":\"wrong\",\"kind\":\"final\",\"ticket\":1,\"text\":\"x\"}",true,false)==0 && s[0].armed;
   #assert fv_message(s[..],"{\"schema\":\"aethyrforge.voice-coder.v1\",\"kind\":\"partial\",\"ticket\":1,\"text\":\"x\"}",true,false)==0 && s[0].armed;
@@ -55,15 +55,15 @@ FV_SCHEMA :: "aethyrforge.voice-coder.v1";
   s[0].ticket=9007199254740990;#assert fv_arm(s[..])==9007199254740991;
   #assert fv_arm(s[..])==0 && !s[0].armed;
 }
-fv_arm :: (s:[]ForgeVoiceCoder)->int #export_c #effects(all) {
+fv_arm :: (s:[]EditorVoiceCoder)->int #export_c #effects(all) {
   s[0].armed=false;
   if s[0].ticket>=9007199254740991 {return 0;}
   s[0].ticket+=1;s[0].armed=true;return s[0].ticket;
 }
-fv_cancel :: (s:[]ForgeVoiceCoder,ticket:int) #export_c #effects(all) {
+fv_cancel :: (s:[]EditorVoiceCoder,ticket:int) #export_c #effects(all) {
   if ticket==0 || ticket==s[0].ticket {s[0].armed=false;}
 }
-fv_take :: (s:[]ForgeVoiceCoder,ticket:int,final:bool,available:bool,busy:bool,text:string)->int #effects(all) {
+fv_take :: (s:[]EditorVoiceCoder,ticket:int,final:bool,available:bool,busy:bool,text:string)->int #effects(all) {
   if !s[0].armed || ticket!=s[0].ticket || !final {return 0;}
   s[0].armed=false;s[0].n=0;
   if !available || !fc_can_send(false,text) {return 0;}
@@ -73,9 +73,9 @@ fv_take :: (s:[]ForgeVoiceCoder,ticket:int,final:bool,available:bool,busy:bool,t
 // The page's two functions: coaxialVoiceFinal(e) posts a final transcript ({ticket, text}) and
 // coaxialVoiceStopped(ticket) a cancel, each as one aethyrforge.voice-coder.v1 message.
 fv_page_script :: ()->string #export_c #effects(all) {
-  return "globalThis.coaxialVoiceFinal = e => {\n  webkit.messageHandlers.forgeVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'final',ticket:e.ticket,text:e.text}));\n  return true;\n};\nglobalThis.coaxialVoiceStopped = ticket => webkit.messageHandlers.forgeVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'cancel',ticket}));\n";
+  return "globalThis.coaxialVoiceFinal = e => {\n  webkit.messageHandlers.editorVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'final',ticket:e.ticket,text:e.text}));\n  return true;\n};\nglobalThis.coaxialVoiceStopped = ticket => webkit.messageHandlers.editorVoiceCoder.postMessage(JSON.stringify({schema:'aethyrforge.voice-coder.v1',kind:'cancel',ticket}));\n";
 }
-fv_message :: (s:[]ForgeVoiceCoder,line:string,available:bool,busy:bool)->int #export_c #effects(all) {
+fv_message :: (s:[]EditorVoiceCoder,line:string,available:bool,busy:bool)->int #export_c #effects(all) {
   nodes:[32]JvNode;d:[1]Jv;
   if !jv_parse(d[..],line,nodes[..]) {return 0;}
   v:=d[0];if jv_raw(v,jv_get(v,0,"schema"))!=FV_SCHEMA {return 0;}

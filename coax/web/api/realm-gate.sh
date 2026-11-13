@@ -6,11 +6,11 @@
 #   tests/realm_walkthrough.coax                       edit, publish, reload, fork, refusals
 #   tests/realm_cli_api.coax (PINNED=1)                the built CLI against this API; publishes pin
 #                                                      tests/engine-template.html (OA_ENGINE_TEMPLATE)
-#   coax/web/forge-access.coax (with --page)           keyboard, screen reader, lifecycle, guest and
+#   coax/web/editor-access.coax (with --page)           keyboard, screen reader, lifecycle, guest and
 #                                                      controller in muted headless Chrome; needs
 #                                                      apps/openagents-web/build/myrealm.wasm
 #   coax/web/api/realm-gate.sh [--page [--require-hardware]]
-# --require-hardware is handed to forge-access: the page must get a GPU's WebGPU adapter.
+# --require-hardware is handed to editor-access: the page must get a GPU's WebGPU adapter.
 # REALM_GATE_PAGE_ONLY=1 skips the database checks (the page alone, after they passed).
 # COAX names the compiler (default coax/bin/coax). Nothing is kept: the database, the API and the
 # site server stop when it ends.
@@ -66,6 +66,6 @@ if [[ "${1:-}" == --page ]]; then
   coax/web/serve.sh apps/openagents-web --static --listen 127.0.0.1:$site_port >"$work/site.log" 2>&1 & site_pid=$!
   for _ in $(seq 50); do curl -s "http://127.0.0.1:$site_port/worlds/built" >/dev/null && break; sleep 0.2; done
   curl -sf "http://127.0.0.1:$site_port/worlds/built" >/dev/null || { echo "realm-gate: the site server didn't answer:" >&2; cat "$work/site.log" >&2; exit 1; }
-  SITE="http://127.0.0.1:$site_port" API="http://127.0.0.1:$api_port" coax/web/tool.sh forge-access "${@:2}"
+  SITE="http://127.0.0.1:$site_port" API="http://127.0.0.1:$api_port" coax/web/tool.sh editor-access "${@:2}"
 fi
 echo "realm-gate: passed"

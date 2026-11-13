@@ -28,7 +28,7 @@ ssp_fixture :: (d: Jv, fx: int) -> bool {
   out: [1024] u8;
   n := fs_session_put(out[..], v[0], v[1], v[2], v[3], v[4]);
   if n <= 0 || cast(string) out[0..<n] != wire { print("fs_session_put gives %\n", ifx n > 0 then cast(string) out[0..<n] else ""); return false; }
-  s: [1] ForgeSceneSession;
+  s: [1] EditorSceneSession;
   ok := fs_session(wire, v[5], s[..]);
   if ok != (jv_kind(d, acc) == JV_TRUE) { return false; }
   if !ok { return true; }
@@ -55,7 +55,7 @@ ssp_check :: (d: Jv, path: string) -> bool {
   if jv_kind(d, bad) != JV_ARRAY || jv_len(d, bad) < 3 { return false; }
   for i: 0..<jv_len(d, bad) {
     b: [1024] u8; t := ssp_str(d, jv_at(d, bad, i), b[..]);
-    s: [1] ForgeSceneSession;
+    s: [1] EditorSceneSession;
     if fs_session(t, 0, s[..]) { print("malformed % taken: %\n", i, t); return false; }
   }
   return true;

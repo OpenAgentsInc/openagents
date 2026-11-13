@@ -70,21 +70,21 @@ The reader names the one kind and the newest version it knows:
 
 <!-- source: metaverse-engine/editor/doc.coax read -->
 ```jai
-FORGE_DOC_KIND :: "aethyr.realm";
-FORGE_DOC_NEWEST :: 1;   // the newest version this reader knows
-FORGE_DOC_BYTES :: 262144;
-FORGE_SLUG :: 64;        // a realm's slug: [a-z0-9][a-z0-9-]{0,63}, the server's rule
+EDITOR_DOC_KIND :: "aethyr.realm";
+EDITOR_DOC_NEWEST :: 1;   // the newest version this reader knows
+EDITOR_DOC_BYTES :: 262144;
+EDITOR_SLUG :: 64;        // a realm's slug: [a-z0-9][a-z0-9-]{0,63}, the server's rule
 // What a read found: its version, and for a fork the realm and revision it was copied from
 // (from_n 0 and from_rev 0 when it isn't one).
-ForgeRead :: struct { ok: bool; why: string; version: int; from: [FORGE_SLUG] u8; from_n: int; from_rev: int; }
+EditorRead :: struct { ok: bool; why: string; version: int; from: [EDITOR_SLUG] u8; from_n: int; from_rev: int; }
 ```
 
-`forge_read_doc` parses the text, checks the kind, the version and the
+`editor_read_doc` parses the text, checks the kind, the version and the
 revision, then reads each part into a fresh model. Only when every part is in
 bounds does it replace the caller's model; any refusal returns a reason and
 leaves the model as it was. A version 1 document without `shaped`, `lore` or
 `quests` is the same realm with none: that is how an older document moves
-forward. A version above `FORGE_DOC_NEWEST` is refused, never read in part.
+forward. A version above `EDITOR_DOC_NEWEST` is refused, never read in part.
 
 Positions are read as whole centimetres, never as floating point, so the same
 document gives the same model everywhere:
@@ -92,15 +92,15 @@ document gives the same model everywhere:
 <!-- source: metaverse-engine/editor/doc.coax metres -->
 ```jai
 // Metres with at most two decimals, as the server writes them, to whole centimetres; 4001 when not.
-forge_cm_of :: (raw: string) -> int {
+editor_cm_of :: (raw: string) -> int {
   neg := raw != "" && raw[0] == '-';
   s := ifx neg then raw[1..<raw.count] else raw;
   dot := 0; while dot < s.count && s[dot] != '.' { dot += 1; }
   if dot == 0 || dot > 2 || (dot < s.count && (s.count - dot - 1 < 1 || s.count - dot - 1 > 2)) { return 4001; }
   v := 0;
-  for i: 0..<dot { if !forge_digit(s[i]) { return 4001; } v = v * 10 + cast(int) (s[i] - '0'); }
+  for i: 0..<dot { if !editor_digit(s[i]) { return 4001; } v = v * 10 + cast(int) (s[i] - '0'); }
   frac := 0; places := 0;
-  for i: dot + 1..<s.count { if !forge_digit(s[i]) { return 4001; } frac = frac * 10 + cast(int) (s[i] - '0'); places += 1; }
+  for i: dot + 1..<s.count { if !editor_digit(s[i]) { return 4001; } frac = frac * 10 + cast(int) (s[i] - '0'); places += 1; }
   if places == 1 { frac *= 10; }
   cm := v * 100 + frac;
   return ifx neg then -cm else cm;
@@ -110,7 +110,7 @@ forge_cm_of :: (raw: string) -> int {
 ### Worked by hand
 
 Take Lamp Cove's three positions and one out of bounds. An entity may stand at
-most `FORGE_REACH`, 4000 cm, from the middle on each axis
+most `EDITOR_REACH`, 4000 cm, from the middle on each axis
 ([chapter 52](ch052-edit-a-realm-in-place.md)).
 
 | Raw | Whole metres | Fraction | Centimetres | In reach |
@@ -126,7 +126,7 @@ A third decimal (`1.255`), a quoted number or three whole-metre digits all give
 contents without its quotes, so `"1.25"` would read as `1.25`; every numeric
 field (the version, the revision, a fork's revision, a move's `x` and `z`, a
 shape's turn and size, a placed thing's `x`, `z` and turn) is read through
-`forge_num`, which gives nothing unless the value is a JSON number (#12720).
+`editor_num`, which gives nothing unless the value is a JSON number (#12720).
 
 ## The model as one text
 
@@ -138,31 +138,31 @@ document wrote them in doesn't matter:
 ```jai
 // The whole document as text, every override and slot in name order: two documents are the same
 // realm exactly when their texts are the same bytes (replays are compared this way).
-forge_doc_text :: (d: [] ForgeDoc, buf: [] u8) -> int {
-  n := forge_put(buf, 0, "rev "); n = forge_put_int(buf, n, d[0].rev); n = forge_put(buf, n, "\n");
+editor_doc_text :: (d: [] EditorDoc, buf: [] u8) -> int {
+  n := editor_put(buf, 0, "rev "); n = editor_put_int(buf, n, d[0].rev); n = editor_put(buf, n, "\n");
   last := "";
   for _: 0..<d[0].move_n {   // the next override after `last`, by name
     best := -1;
     for i: 0..<d[0].move_n {
-      k := forge_move_key(d, i);
-      if forge_after(k, last) && (best < 0 || forge_after(forge_move_key(d, best), k)) { best = i; }
+      k := editor_move_key(d, i);
+      if editor_after(k, last) && (best < 0 || editor_after(editor_move_key(d, best), k)) { best = i; }
     }
-    m := d[0].moves[best]; last = forge_move_key(d, best);
-    n = forge_put(buf, n, "entity "); n = forge_put(buf, n, last);
-    if m.at { n = forge_put(buf, n, " at "); n = forge_put_int(buf, n, m.x); n = forge_put(buf, n, " "); n = forge_put_int(buf, n, m.z); }
-    n = forge_put(buf, n, " yaw "); n = forge_put_int(buf, n, m.yaw); n = forge_put(buf, n, " scale "); n = forge_put_int(buf, n, m.scale);
-    n = forge_put(buf, n, ifx m.gone then " gone\n" else "\n");
+    m := d[0].moves[best]; last = editor_move_key(d, best);
+    n = editor_put(buf, n, "entity "); n = editor_put(buf, n, last);
+    if m.at { n = editor_put(buf, n, " at "); n = editor_put_int(buf, n, m.x); n = editor_put(buf, n, " "); n = editor_put_int(buf, n, m.z); }
+    n = editor_put(buf, n, " yaw "); n = editor_put_int(buf, n, m.yaw); n = editor_put(buf, n, " scale "); n = editor_put_int(buf, n, m.scale);
+    n = editor_put(buf, n, ifx m.gone then " gone\n" else "\n");
   }
   last = "";
   for _: 0..<d[0].slot_n {
     best := -1;
     for i: 0..<d[0].slot_n {
-      k := forge_slot_key(d, i);
-      if forge_after(k, last) && (best < 0 || forge_after(forge_slot_key(d, best), k)) { best = i; }
+      k := editor_slot_key(d, i);
+      if editor_after(k, last) && (best < 0 || editor_after(editor_slot_key(d, best), k)) { best = i; }
     }
-    last = forge_slot_key(d, best);
-    n = forge_put(buf, n, "slot "); n = forge_put(buf, n, last); n = forge_put(buf, n, " ");
-    n = forge_put(buf, n, forge_slot_text(d, last)); n = forge_put(buf, n, "\n");
+    last = editor_slot_key(d, best);
+    n = editor_put(buf, n, "slot "); n = editor_put(buf, n, last); n = editor_put(buf, n, " ");
+    n = editor_put(buf, n, editor_slot_text(d, last)); n = editor_put(buf, n, "\n");
   }
   return n;
 }
@@ -184,18 +184,18 @@ past the reach and a placed thing with no name. The program is
 // model and written back as the model's text. Then three documents the reader refuses whole:
 // each refusal names why, and the last document read stays exactly as it was.
 main :: () {
-  d: [1] ForgeDoc; forge_reset(d[..], 1);
-  r := forge_read_doc(d[..], FORGE_DOC_V1);
+  d: [1] EditorDoc; editor_reset(d[..], 1);
+  r := editor_read_doc(d[..], EDITOR_DOC_V1);
   print("read: % (version %)\n", r.ok, r.version);
-  last: [8192] u8; ln := forge_doc_text(d[..], last[..]);
+  last: [8192] u8; ln := editor_doc_text(d[..], last[..]);
   print("%", cast(string) last[0..<ln]);
   b: [4096] u8;
   froms := [3] string.["\"version\": 1", "\"x\": 1.25", "\"thing\": \"barrel\""];
   tos := [3] string.["\"version\": 2", "\"x\": 40.01", "\"thing\": \"\""];
   for i: 0..<3 {
-    c: [4096] u8; cn := forge_put(c[..], 0, forge_doc_with(froms[i], tos[i], b[..]));
-    no := forge_read_doc(d[..], cast(string) c[0..<cn]);
-    now: [8192] u8; nn := forge_doc_text(d[..], now[..]);
+    c: [4096] u8; cn := editor_put(c[..], 0, editor_doc_with(froms[i], tos[i], b[..]));
+    no := editor_read_doc(d[..], cast(string) c[0..<cn]);
+    now: [8192] u8; nn := editor_doc_text(d[..], now[..]);
     print("% -> refused: %; the last document stays: %\n", tos[i], no.why, cast(string) now[0..<nn] == cast(string) last[0..<ln]);
   }
 }

@@ -13,7 +13,7 @@
 //  11 FORK      FORK: the fork opens, records its parent and the revision; it is moved and saved
 //  12 ORIGINAL  the original's document is byte for byte what it was before the fork
 //
-//   coax/web/tool.sh forge-journey https://staging.openagents.com [--phone] [--shots PREFIX] [--board-only]
+//   coax/web/tool.sh editor-journey https://staging.openagents.com [--phone] [--shots PREFIX] [--board-only]
 //
 // Every step is a typed action (a tap on a button the page says is shown, typed text, a key held)
 // and is checked from the page's state (coaxial.guardProbe: myrealm.coax realm_probe, builder.coax
@@ -87,7 +87,7 @@ origin_of :: (url: string) -> string {
 
 #test "a journey's pieces" {
   #assert origin_of("https://staging.openagents.com/worlds/new") == "https://staging.openagents.com" && origin_of("nope") == "";
-  #assert slug_ok("aethyrforge-journey-test-1a2b") && !slug_ok("x'y") && !slug_ok("");
+  #assert slug_ok("aethyreditor-journey-test-1a2b") && !slug_ok("x'y") && !slug_ok("");
   #assert starts("Aethyrforge Journey Test 1a Fork", "Aethyrforge Journey Test") && ends("Aethyrforge Journey Test 1a Fork", " Fork");
   #assert step_name(Step.ORIGINAL) == "12 the original is unchanged" && cast(int) Step.ORIGINAL == STEPS - 1;
   b: [1] Buf; bput(b[..], "p("); bint(b[..], -120); bput(b[..], ")");
@@ -529,7 +529,7 @@ open_page :: (r: [] Run, c: [] Cdp, url: string) -> bool {
   if cdp_call(c, "Page.enable", "", CDP_CALL_MS) < 0 { return false; }
   if cdp_call(c, "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS) < 0 { return false; }
   jo_start(o[..], params[..]);
-  jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "verse-automation"); jo_key(o[..], "value"); jo_str(o[..], "aethyrforge-journey");
+  jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "verse-automation"); jo_key(o[..], "value"); jo_str(o[..], "aethyreditor-journey");
   jo_key(o[..], "url"); jo_str(o[..], cast(string) r[0].origin[0..<r[0].origin_n]); jo_end(o[..]);
   if cdp_call(c, "Network.setCookie", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
   jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
@@ -542,7 +542,7 @@ tool_main :: () -> int #export_c #effects(all) {
   base := args_at(a[..], 0);
   origin := origin_of(base);
   if !ok || origin.count == 0 || origin.count > 255 {
-    tool_errln("usage: coax/web/tool.sh forge-journey https://staging.openagents.com [--phone] [--shots PREFIX]"); return 2;
+    tool_errln("usage: coax/web/tool.sh editor-journey https://staging.openagents.com [--phone] [--shots PREFIX]"); return 2;
   }
   r: [1] Run;
   r[0].phone = args_has(a[..], "--phone");
@@ -551,17 +551,17 @@ tool_main :: () -> int #export_c #effects(all) {
   for ch: origin { r[0].origin[r[0].origin_n] = ch; r[0].origin_n += 1; }
   shots := args_value(a[..], "--shots", "");
   rnd: [3] u8;
-  if !cdp_draw(3, rnd[..]) { tool_errln("forge-journey: no entropy"); return 1; }
+  if !cdp_draw(3, rnd[..]) { tool_errln("editor-journey: no entropy"); return 1; }
   hex := "0123456789abcdef"; st: [1] Buf;
   for b: rnd { h: [2] u8; h[0] = hex[b / 16]; h[1] = hex[b % 16]; bput(st[..], cast(string) h[..]); }
   if r[0].phone { bput(st[..], "p"); }
   stamp := btext(st[..]);
   c: [1] Cdp;
-  if !cdp_launch(c[..], r[0].w, r[0].h, "coax-forge-journey-") { tool_err("forge-journey: "); tool_errln(cdp_error(c[..])); return 1; }
+  if !cdp_launch(c[..], r[0].w, r[0].h, "coax-editor-journey-") { tool_err("editor-journey: "); tool_errln(cdp_error(c[..])); return 1; }
   u: [1] Buf; bput(u[..], origin); bput(u[..], "/worlds/new");
-  print("forge-journey % at %x% (%), mark aethyrforge-journey\n", origin, r[0].w, r[0].h, ifx r[0].phone then "phone, touch" else "desktop");
+  print("editor-journey % at %x% (%), mark aethyreditor-journey\n", origin, r[0].w, r[0].h, ifx r[0].phone then "phone, touch" else "desktop");
   status := 0;
-  if !open_page(r[..], c[..], btext(u[..])) { tool_err("forge-journey: opening /worlds/new: "); tool_errln(cdp_error(c[..])); status = 1; }
+  if !open_page(r[..], c[..], btext(u[..])) { tool_err("editor-journey: opening /worlds/new: "); tool_errln(cdp_error(c[..])); status = 1; }
   // An invite-only site (docs/auth/2026-10-31-realm-invites-and-auth.md): /api/playtest/access tells this
   // visitor `make 0`, the builder shows its invite screen, and the journey, which has no invite, cannot
   // make a realm. That is the site's rule and no fault of the build: the journey says it was not walked

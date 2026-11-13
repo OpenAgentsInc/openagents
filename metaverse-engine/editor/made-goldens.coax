@@ -52,7 +52,7 @@ mg_same :: (g: [] Mg, name: string, what: string, got: string, want: string) {
 mg_keys :: (st: [] D_State, leaf: string, text: string) -> bool {
   nodes: [128] JvNode; j: [1] Jv;
   if !jv_parse(j[..], text, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return false; }
-  full: [128] u8; n := forge_put(full[..], 0, MG_PKG); n = forge_put(full[..], n, leaf);
+  full: [128] u8; n := editor_put(full[..], 0, MG_PKG); n = editor_put(full[..], n, leaf);
   m := -1;
   for i: 0..<st[0].nt { if st[0].types[i].full == cast(string) full[0..<n] { m = i; } }
   if m < 0 { return false; }
@@ -66,58 +66,58 @@ mg_keys :: (st: [] D_State, leaf: string, text: string) -> bool {
 }
 
 mg_reply :: (g: [] Mg, st: [] D_State, name: string, message: string, reply: string) {
-  buf: [2048] u8; m: [1] ForgeMade; e: [FORGE_ERROR] u8;
+  buf: [2048] u8; m: [1] EditorMade; e: [EDITOR_ERROR] u8;
   if message == "MadeReply" {
-    m[0] = forge_read_made_json(reply);
+    m[0] = editor_read_made_json(reply);
     if !mg_need(g, name, "the answer reads as a MadeReply", m[0].ok && m[0].page_said) { return; }
-    w := forge_made_json(m[..], buf[..]);
+    w := editor_made_json(m[..], buf[..]);
     mg_same(g, name, "written back", ifx w < 0 then "" else cast(string) buf[0..<w], reply);
     _ = mg_need(g, name, "its keys are MadeReply's", mg_keys(st, "MadeReply", reply));
     return;
   }
   if message == "MadeLines" {
-    m[0] = forge_read_made(reply);
-    _ = mg_need(g, name, "the lines read: a slug, its own path and whether its page was written", m[0].ok && m[0].path_n > 0 && m[0].page_said && forge_made_goes(m[..], buf[..]) > 0);
+    m[0] = editor_read_made(reply);
+    _ = mg_need(g, name, "the lines read: a slug, its own path and whether its page was written", m[0].ok && m[0].path_n > 0 && m[0].page_said && editor_made_goes(m[..], buf[..]) > 0);
     return;
   }
   if message == "ForkInfo" {
-    f: [1] ForgeForkInfo;
-    if !mg_need(g, name, "the lines read as fork info", forge_read_fork_info(f[..], reply)) { return; }
-    w := forge_fork_info_lines(f[..], buf[..]);
+    f: [1] EditorForkInfo;
+    if !mg_need(g, name, "the lines read as fork info", editor_read_fork_info(f[..], reply)) { return; }
+    w := editor_fork_info_lines(f[..], buf[..]);
     mg_same(g, name, "written back", ifx w < 0 then "" else cast(string) buf[0..<w], reply);
     return;
   }
   if message == "ForkPublishReply" {
-    r := forge_read_fork_published(reply);
+    r := editor_read_fork_published(reply);
     if !mg_need(g, name, "the answer reads as a ForkPublishReply", r.ok) { return; }
-    w := forge_fork_published_json(r.listed, r.published, cast(string) r.vis[0..<r.vis_n], cast(string) r.description[0..<r.description_n], buf[..]);
+    w := editor_fork_published_json(r.listed, r.published, cast(string) r.vis[0..<r.vis_n], cast(string) r.description[0..<r.description_n], buf[..]);
     mg_same(g, name, "written back", ifx w < 0 then "" else cast(string) buf[0..<w], reply);
     _ = mg_need(g, name, "its keys are ForkPublishReply's", mg_keys(st, "ForkPublishReply", reply));
     return;
   }
   if message == "RouteError" || message == "ErrorReply" {
-    _ = mg_need(g, name, "the answer reads as a refusal", forge_read_error(reply, e[..]) != "");
+    _ = mg_need(g, name, "the answer reads as a refusal", editor_read_error(reply, e[..]) != "");
     return;
   }
   if message == "ErrorWords" {
-    _ = mg_need(g, name, "the words are text, not a made realm and not JSON", reply != "" && reply[0] != '{' && !forge_read_made(reply).ok);
+    _ = mg_need(g, name, "the words are text, not a made realm and not JSON", reply != "" && reply[0] != '{' && !editor_read_made(reply).ok);
     return;
   }
   _ = mg_need(g, name, "the step names a message this check knows", false);
 }
 mg_request :: (g: [] Mg, st: [] D_State, name: string, body: string) {
-  nodes: [64] JvNode; j: [1] Jv; buf: [512] u8; nb: [FORGE_MADE_NAME] u8;
+  nodes: [64] JvNode; j: [1] Jv; buf: [512] u8; nb: [EDITOR_MADE_NAME] u8;
   if !mg_need(g, name, "the body is JSON", jv_parse(j[..], body, nodes[..]) && jv_kind(j[0], 0) == JV_OBJECT) { return; }
   _ = mg_need(g, name, "the body's keys are ForkRequest's", mg_keys(st, "ForkRequest", body));
   rules := jv_get(j[0], 0, "rules");
-  ids: [FORGE_MADE_RULES] string; ib: [FORGE_MADE_RULES * FORGE_MADE_RULE] u8; k := 0;
+  ids: [EDITOR_MADE_RULES] string; ib: [EDITOR_MADE_RULES * EDITOR_MADE_RULE] u8; k := 0;
   for i: 0..<jv_len(j[0], rules) {
-    if i >= FORGE_MADE_RULES { break; }
-    n := jv_str(j[0], jv_at(j[0], rules, i), ib[i * FORGE_MADE_RULE..<(i + 1) * FORGE_MADE_RULE]);
-    ids[i] = ifx n < 0 then "" else cast(string) ib[i * FORGE_MADE_RULE..<i * FORGE_MADE_RULE + n]; k += 1;
+    if i >= EDITOR_MADE_RULES { break; }
+    n := jv_str(j[0], jv_at(j[0], rules, i), ib[i * EDITOR_MADE_RULE..<(i + 1) * EDITOR_MADE_RULE]);
+    ids[i] = ifx n < 0 then "" else cast(string) ib[i * EDITOR_MADE_RULE..<i * EDITOR_MADE_RULE + n]; k += 1;
   }
   nn := jv_str(j[0], jv_get(j[0], 0, "name"), nb[..]);
-  w := forge_fork_body(rules >= 0, ids[0..<k], ifx nn < 0 then "" else cast(string) nb[0..<nn], buf[..]);
+  w := editor_fork_body(rules >= 0, ids[0..<k], ifx nn < 0 then "" else cast(string) nb[0..<nn], buf[..]);
   mg_same(g, name, "the body, written", ifx w < 0 then "" else cast(string) buf[0..<w], body);
 }
 
@@ -129,9 +129,9 @@ mg_run :: (text: string, wire: string, st: [] D_State) -> int {
   if jv_len(f[0], steps) < 8 { print("FAIL  the fixture has too few steps\n"); return 1; }
   for i: 0..<jv_len(f[0], steps) {
     s := jv_at(f[0], steps, i);
-    nb: [160] u8; name := forge_str(f[0], jv_get(f[0], s, "name"), nb[..]);
-    mb: [32] u8; message := forge_str(f[0], jv_get(f[0], s, "message"), mb[..]);
-    qb: [32] u8; request := forge_str(f[0], jv_get(f[0], s, "request"), qb[..]);
+    nb: [160] u8; name := editor_str(f[0], jv_get(f[0], s, "name"), nb[..]);
+    mb: [32] u8; message := editor_str(f[0], jv_get(f[0], s, "message"), mb[..]);
+    qb: [32] u8; request := editor_str(f[0], jv_get(f[0], s, "request"), qb[..]);
     rb: [4096] u8; rn := jv_str(f[0], jv_get(f[0], s, "reply"), rb[..]);
     bb: [1024] u8; bn := jv_str(f[0], jv_get(f[0], s, "body"), bb[..]);
     if !mg_need(g[..], name, "the step has a reply", rn >= 0) { continue; }
@@ -140,7 +140,7 @@ mg_run :: (text: string, wire: string, st: [] D_State) -> int {
     if request == "ForkPublishRequest" && bn >= 0 {
       body := cast(string) bb[0..<bn]; pb: [64] u8; pj: [1] Jv; pn: [16] JvNode;
       if mg_need(g[..], name, "the body is JSON with ForkPublishRequest's keys", jv_parse(pj[..], body, pn[..]) && mg_keys(st, "ForkPublishRequest", body)) {
-        w := forge_fork_publish_body(jv_kind(pj[0], jv_get(pj[0], 0, "published")) == JV_TRUE, pb[..]);
+        w := editor_fork_publish_body(jv_kind(pj[0], jv_get(pj[0], 0, "published")) == JV_TRUE, pb[..]);
         mg_same(g[..], name, "the body, written", ifx w < 0 then "" else cast(string) pb[0..<w], body);
       }
     }
@@ -152,10 +152,10 @@ mg_run :: (text: string, wire: string, st: [] D_State) -> int {
   for i: 0..<jv_len(w[0], goldens) {
     item := jv_at(w[0], goldens, i);
     kb: [32] u8; nb: [160] u8; lb: [512] u8;
-    if forge_str(w[0], jv_get(w[0], item, "writer"), kb[..]) != "lines" { continue; }
+    if editor_str(w[0], jv_get(w[0], item, "writer"), kb[..]) != "lines" { continue; }
     ln := jv_str(w[0], jv_get(w[0], item, "body"), lb[..]);
-    m: [1] ForgeMade; m[0] = forge_read_made(ifx ln < 0 then "" else cast(string) lb[0..<ln]);
-    _ = mg_need(g[..], forge_str(w[0], jv_get(w[0], item, "name"), nb[..]), "the route's lines read: a slug, its own path, its page", m[0].ok && m[0].path_n > 0 && m[0].page_said);
+    m: [1] EditorMade; m[0] = editor_read_made(ifx ln < 0 then "" else cast(string) lb[0..<ln]);
+    _ = mg_need(g[..], editor_str(w[0], jv_get(w[0], item, "name"), nb[..]), "the route's lines read: a slug, its own path, its page", m[0].ok && m[0].path_n > 0 && m[0].page_said);
     lines += 1;
   }
   _ = mg_need(g[..], "the route's fixture", "it holds lines of a made realm", lines >= 2);

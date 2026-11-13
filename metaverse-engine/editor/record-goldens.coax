@@ -35,7 +35,7 @@ rg_descriptor_load :: (g: [] RgDescriptor, raw: string) -> string {
   D_parse(g[0].state[..], raw, "RG");
   return g[0].state[0].error;
 }
-Rg :: struct { bad: int; pass: int; rows: [RG_ROWS] ForgeMine; rows_n: int; }
+Rg :: struct { bad: int; pass: int; rows: [RG_ROWS] EditorMine; rows_n: int; }
 rg_need :: (g: [] Rg, name: string, what: string, ok: bool) -> bool {
   if ok { g[0].pass += 1; return true; }
   g[0].bad += 1; print("FAIL  % (%)\n", name, what);
@@ -47,7 +47,7 @@ rg_same :: (g: [] Rg, name: string, what: string, got: string, want: string) {
 }
 // Whether every key of the object at `at` is a json_name of the message (its leaf name).
 rg_keys_of :: (st: [] D_State, leaf: string, j: Jv, at: int) -> bool {
-  full: [128] u8; n := forge_put(full[..], 0, RG_PKG); n = forge_put(full[..], n, leaf);
+  full: [128] u8; n := editor_put(full[..], 0, RG_PKG); n = editor_put(full[..], n, leaf);
   m := -1;
   for i: 0..<st[0].nt { if st[0].types[i].full == cast(string) full[0..<n] { m = i; } }
   if m < 0 || jv_kind(j, at) != JV_OBJECT { return false; }
@@ -68,8 +68,8 @@ rg_body_keys :: (st: [] D_State, leaf: string, text: string) -> bool {
   }
   return true;
 }
-rg_mine_same :: (a: [] ForgeMine, b: [] ForgeMine) -> bool {
-  return forge_mine_slug(a) == forge_mine_slug(b) && forge_mine_name(a) == forge_mine_name(b) && forge_mine_vis(a) == forge_mine_vis(b) &&
+rg_mine_same :: (a: [] EditorMine, b: [] EditorMine) -> bool {
+  return editor_mine_slug(a) == editor_mine_slug(b) && editor_mine_name(a) == editor_mine_name(b) && editor_mine_vis(a) == editor_mine_vis(b) &&
     a[0].rev == b[0].rev && a[0].published == b[0].published && a[0].listed == b[0].listed;
 }
 
@@ -77,10 +77,10 @@ rg_mine_same :: (a: [] ForgeMine, b: [] ForgeMine) -> bool {
 rg_reply :: (g: [] Rg, st: [] D_State, name: string, message: string, reply: string) {
   buf: [16384] u8;
   if message == "MineReply" {
-    n := forge_read_mine(reply, g[0].rows[..]);
+    n := editor_read_mine(reply, g[0].rows[..]);
     if !rg_need(g, name, "the reply reads as a MineReply", n >= 0) { g[0].rows_n = 0; return; }
     g[0].rows_n = n;
-    w := forge_mine_json(g[0].rows[0..<n], buf[..]);
+    w := editor_mine_json(g[0].rows[0..<n], buf[..]);
     rg_same(g, name, "written back", ifx w < 0 then "" else cast(string) buf[0..<w], reply);
     _ = rg_need(g, name, "its keys are MineReply's and MineRealm's", rg_body_keys(st, "MineReply", reply));
     return;
@@ -90,10 +90,10 @@ rg_reply :: (g: [] Rg, st: [] D_State, name: string, message: string, reply: str
     at := 0; k := 0; w := 0;
     for end: 0..<reply.count {
       if reply[end] != '\n' { continue; }
-      m: [1] ForgeMine; m[0] = forge_read_mine_line(reply[at..<end]); at = end + 1;
+      m: [1] EditorMine; m[0] = editor_read_mine_line(reply[at..<end]); at = end + 1;
       if !rg_need(g, name, "a line reads as a realm", m[0].slug_n > 0) { return; }
       _ = rg_need(g, name, "the line is the realm the JSON reply named", k < g[0].rows_n && rg_mine_same(m[..], g[0].rows[k..<k + 1]));
-      w = forge_mine_line(m[..], buf[..], w); k += 1;
+      w = editor_mine_line(m[..], buf[..], w); k += 1;
       if w < 0 { break; }
     }
     _ = rg_need(g, name, "every realm of the JSON reply has its line, and no text is left over", k == g[0].rows_n && at == reply.count);
@@ -101,48 +101,48 @@ rg_reply :: (g: [] Rg, st: [] D_State, name: string, message: string, reply: str
     return;
   }
   if message == "VisibilityReply" {
-    r := forge_read_visibility(reply);
+    r := editor_read_visibility(reply);
     if !rg_need(g, name, "the reply reads as a VisibilityReply", r.ok) { return; }
-    w := forge_visibility_reply(r.rev, cast(string) r.slug[0..<r.slug_n], cast(string) r.vis[0..<r.vis_n], cast(string) r.was[0..<r.was_n], r.page, buf[..]);
+    w := editor_visibility_reply(r.rev, cast(string) r.slug[0..<r.slug_n], cast(string) r.vis[0..<r.vis_n], cast(string) r.was[0..<r.was_n], r.page, buf[..]);
     rg_same(g, name, "written back", ifx w < 0 then "" else cast(string) buf[0..<w], reply);
     _ = rg_need(g, name, "its keys are VisibilityReply's", rg_body_keys(st, "VisibilityReply", reply));
     return;
   }
   if message == "PublishReply" {
-    r := forge_read_published(reply);
+    r := editor_read_published(reply);
     if !rg_need(g, name, "the reply reads as a PublishReply", r.ok && r.engine >= 0) { return; }
-    w := forge_publish_reply(r.rev, cast(string) r.sha[..], r.listed, ifx r.engine == 1 then cast(string) r.sha_engine[..] else "", cast(string) r.vis[0..<r.vis_n], buf[..]);
+    w := editor_publish_reply(r.rev, cast(string) r.sha[..], r.listed, ifx r.engine == 1 then cast(string) r.sha_engine[..] else "", cast(string) r.vis[0..<r.vis_n], buf[..]);
     rg_same(g, name, "written back", ifx w < 0 then "" else cast(string) buf[0..<w], reply);
     _ = rg_need(g, name, "its keys are PublishReply's", rg_body_keys(st, "PublishReply", reply));
     return;
   }
   if message == "PublishRecord" {
-    r: [1] ForgeRecord;
-    if !rg_need(g, name, "the reply reads as a PublishRecord", forge_read_record(r[..], reply)) { return; }
-    w := forge_record_json(r[..], buf[..]);
+    r: [1] EditorRecord;
+    if !rg_need(g, name, "the reply reads as a PublishRecord", editor_read_record(r[..], reply)) { return; }
+    w := editor_record_json(r[..], buf[..]);
     rg_same(g, name, "written back", ifx w < 0 then "" else cast(string) buf[0..<w], reply);
     _ = rg_need(g, name, "its keys are PublishRecord's", rg_body_keys(st, "PublishRecord", reply));
     return;
   }
   if message == "RouteError" {
-    e: [FORGE_ERROR] u8; words := forge_read_error(reply, e[..]);
+    e: [EDITOR_ERROR] u8; words := editor_read_error(reply, e[..]);
     if !rg_need(g, name, "the reply reads as a RouteError", words != "") { return; }
-    w := forge_error_json(words, buf[..]);
+    w := editor_error_json(words, buf[..]);
     rg_same(g, name, "written back", ifx w < 0 then "" else cast(string) buf[0..<w], reply);
     _ = rg_need(g, name, "its only key is RouteError's", rg_body_keys(st, "RouteError", reply));
     return;
   }
   if message == "ErrorReply" {
     // the API's own refusal (openagents.api.v1alpha1, coax/web/api/api-wire.coax writes it): read here
-    e: [FORGE_ERROR] u8; words := forge_read_error(reply, e[..]);
+    e: [EDITOR_ERROR] u8; words := editor_read_error(reply, e[..]);
     _ = rg_need(g, name, "the reply reads as a refusal", words != "" && reply.count == words.count + 12 && reply[0..<10] == "{\"error\":\"");
     return;
   }
   if message == "Conflict" {
-    r := forge_read_reply(reply);
+    r := editor_read_reply(reply);
     if !rg_need(g, name, "the reply reads as a Conflict", r.ok && r.error_n > 0) { return; }
-    rs: [1] ForgeReply; rs[0] = r;
-    w := forge_conflict(r.rev, forge_reply_error(rs[..]), buf[..]);
+    rs: [1] EditorReply; rs[0] = r;
+    w := editor_conflict(r.rev, editor_reply_error(rs[..]), buf[..]);
     rg_same(g, name, "written back", ifx w < 0 then "" else cast(string) buf[0..<w], reply);
     _ = rg_need(g, name, "its keys are Conflict's", rg_body_keys(st, "Conflict", reply));
     return;
@@ -154,17 +154,17 @@ rg_request :: (g: [] Rg, st: [] D_State, name: string, request: string, body: st
   nodes: [32] JvNode; j: [1] Jv; buf: [256] u8; vb: [64] u8;
   if !rg_need(g, name, "the body is JSON", jv_parse(j[..], body, nodes[..]) && jv_kind(j[0], 0) == JV_OBJECT) { return; }
   _ = rg_need(g, name, "the body's keys are its message's", rg_keys_of(st, request, j[0], 0));
-  rev := forge_whole(forge_num(j[0], jv_get(j[0], 0, "rev")), 1, FORGE_REV_MOST);
+  rev := editor_whole(editor_num(j[0], jv_get(j[0], 0, "rev")), 1, EDITOR_REV_MOST);
   if request == "VisibilityRequest" {
-    vn := forge_member(j[0], 0, "visibility", vb[..]);
-    w := forge_visibility_body(rev, ifx vn < 0 then "" else cast(string) vb[0..<vn], buf[..]);
+    vn := editor_member(j[0], 0, "visibility", vb[..]);
+    w := editor_visibility_body(rev, ifx vn < 0 then "" else cast(string) vb[0..<vn], buf[..]);
     if w < 0 { _ = rg_need(g, name, "a visibility the codec won't write is one the server refused", status == 400); return; }
     rg_same(g, name, "the body, written", cast(string) buf[0..<w], body);
     return;
   }
   if request == "PublishRequest" {
-    listed := forge_flag(j[0], 0, "listed");
-    w := ifx listed >= 0 then forge_publish_body(rev, listed == 1, buf[..]) else forge_rev_body(rev, buf[..]);
+    listed := editor_flag(j[0], 0, "listed");
+    w := ifx listed >= 0 then editor_publish_body(rev, listed == 1, buf[..]) else editor_rev_body(rev, buf[..]);
     rg_same(g, name, "the body, written", ifx w < 0 then "" else cast(string) buf[0..<w], body);
     return;
   }
@@ -179,9 +179,9 @@ rg_run :: (text: string, st: [] D_State) -> int {
   if jv_len(f[0], steps) < 20 { print("FAIL  the fixture has too few steps\n"); return 1; }
   for i: 0..<jv_len(f[0], steps) {
     s := jv_at(f[0], steps, i);
-    nb: [160] u8; name := forge_str(f[0], jv_get(f[0], s, "name"), nb[..]);
-    mb: [32] u8; message := forge_str(f[0], jv_get(f[0], s, "message"), mb[..]);
-    qb: [32] u8; request := forge_str(f[0], jv_get(f[0], s, "request"), qb[..]);
+    nb: [160] u8; name := editor_str(f[0], jv_get(f[0], s, "name"), nb[..]);
+    mb: [32] u8; message := editor_str(f[0], jv_get(f[0], s, "message"), mb[..]);
+    qb: [32] u8; request := editor_str(f[0], jv_get(f[0], s, "request"), qb[..]);
     rb: [16384] u8; rn := jv_str(f[0], jv_get(f[0], s, "reply"), rb[..]);
     bb: [4096] u8; bn := jv_str(f[0], jv_get(f[0], s, "body"), bb[..]);
     if !rg_need(g[..], name, "the step has a reply", rn >= 0) { continue; }

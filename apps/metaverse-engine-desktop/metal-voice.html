@@ -4,5 +4,5 @@
 <script type="module">
 // Firm reason: 1 (voice-only WebKit SDK bridge; no world, GPU or gameplay).
 import { startVoice } from "/coaxial/voice.js";
-globalThis.coaxial = { voice: startVoice({route:"everglade",wasmUrl:"/build/voice.wasm",send:(kind,text)=>webkit.messageHandlers.forgeMetalMessage.postMessage(JSON.stringify({kind,text}))}) };
+globalThis.coaxial = { voice: startVoice({route:"everglade",wasmUrl:"/build/voice.wasm",send:(kind,text)=>webkit.messageHandlers.editorMetalMessage.postMessage(JSON.stringify({kind,text}))}) };
 </script>

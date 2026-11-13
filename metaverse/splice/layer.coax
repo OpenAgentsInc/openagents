@@ -10,7 +10,7 @@
 // the whole wall's box, so the wall pushes as one box whichever part the index found.
 //
 // The edit layer is a scene of placed things in the engine's edit log (metaverse-engine/editor/edit.coax
-// ForgeScene): each edit is one typed step with its inverse, undo and redo walk the log, and the
+// EditorScene): each edit is one typed step with its inverse, undo and redo walk the log, and the
 // World's placed pieces are built from the scene's items in ID order each time the layer's
 // revision changes. A placed piece is scenery: it has no AI and no hit points. It names its row
 // of the `pieces` content table by content ID (content.coax).
@@ -58,10 +58,10 @@ SlWorld :: struct {
   crowded: int;    // questions that met more than SL_NEAR entities
 }
 SlLayer :: struct {
-  st: [1] ForgeSceneState;
-  items: [SL_ITEMS] ForgeItem;
-  ops: [SL_OPS] ForgeItemOp;
-  steps: [SL_STEPS] ForgeStep;
+  st: [1] EditorSceneState;
+  items: [SL_ITEMS] EditorItem;
+  ops: [SL_OPS] EditorItemOp;
+  steps: [SL_STEPS] EditorStep;
   rev: int;        // counts the layer's changes: an edit, an undo, a redo
   head: int;       // the world document's revision the layer stands at (world.coax): 0 with no document
   // pieces arriving: a piece an outside edit placed rises out of the ground (world.coax spw_page_events)
@@ -90,8 +90,8 @@ sl_grid :: (g: [] SpGame) -> SpatialGrid {
   return SpatialGrid.{head = g[0].ws[0].head[..], next = g[0].ws[0].next[..], prev = g[0].ws[0].prev[..], at = g[0].ws[0].at[..],
     cx = g[0].ws[0].cx[..], cz = g[0].ws[0].cz[..], x = g[0].ws[0].gx[..], z = g[0].ws[0].gz[..], cell = g[0].ws[0].cell[..], n = g[0].ws[0].gn[..]};
 }
-sl_scene :: (g: [] SpGame) -> ForgeScene {
-  return ForgeScene.{st = g[0].layer[0].st[..], items = g[0].layer[0].items[..], ops = g[0].layer[0].ops[..], steps = g[0].layer[0].steps[..]};
+sl_scene :: (g: [] SpGame) -> EditorScene {
+  return EditorScene.{st = g[0].layer[0].st[..], items = g[0].layer[0].items[..], ops = g[0].layer[0].ops[..], steps = g[0].layer[0].steps[..]};
 }
 
 // ---- the collider set
@@ -354,37 +354,37 @@ sl_done :: (g: [] SpGame, id: int) -> SlEdit { g[0].layer[0].rev += 1; sl_sync(g
 sl_no :: (why: int) -> SlEdit { return SlEdit.{v = SlVerdict.{why = why}}; }
 // Place piece `piece` (a content ID) at (x, z) centimetres, turned `deg` degrees: its item ID.
 sl_place :: (g: [] SpGame, piece: int, x_cm: int, z_cm: int, deg: int) -> SlEdit {
-  if deg != forge_turn(deg) { return sl_no(SL_TURN); }
+  if deg != editor_turn(deg) { return sl_no(SL_TURN); }
   if g[0].layer[0].st[0].n >= SL_ITEMS { return sl_no(SL_FULL); }
   x := sc_m(x_cm); z := sc_m(z_cm);
   v := sl_check(g, piece, x, z, sl_rad(deg), -1);
   if v.why != SL_OK { return SlEdit.{v = v}; }
-  id := forge_scene_place(sl_scene(g), piece, x, ground_y(g, x, z), z, sl_rad(deg), 1);
+  id := editor_scene_place(sl_scene(g), piece, x, ground_y(g, x, z), z, sl_rad(deg), 1);
   if id < 0 { return sl_no(SL_FULL); }
   return sl_done(g, id);
 }
-sl_item :: (g: [] SpGame, id: int) -> int { return forge_scene_find(sl_scene(g), id); }
+sl_item :: (g: [] SpGame, id: int) -> int { return editor_scene_find(sl_scene(g), id); }
 sl_move :: (g: [] SpGame, id: int, x_cm: int, z_cm: int) -> SlEdit {
   i := sl_item(g, id);
   if i < 0 { return sl_no(SL_NO_ITEM); }
   item := g[0].layer[0].items[i]; x := sc_m(x_cm); z := sc_m(z_cm);
   v := sl_check(g, item.mesh, x, z, item.yaw, id);
   if v.why != SL_OK { return SlEdit.{v = v}; }
-  if !forge_scene_move(sl_scene(g), id, x, ground_y(g, x, z), z) { return sl_no(SL_NOTHING); }
+  if !editor_scene_move(sl_scene(g), id, x, ground_y(g, x, z), z) { return sl_no(SL_NOTHING); }
   return sl_done(g, id);
 }
 sl_turn :: (g: [] SpGame, id: int, deg: int) -> SlEdit {
   i := sl_item(g, id);
   if i < 0 { return sl_no(SL_NO_ITEM); }
-  if deg != forge_turn(deg) { return sl_no(SL_TURN); }
+  if deg != editor_turn(deg) { return sl_no(SL_TURN); }
   item := g[0].layer[0].items[i];
   v := sl_check(g, item.mesh, item.x, item.z, sl_rad(deg), id);
   if v.why != SL_OK { return SlEdit.{v = v}; }
-  if !forge_scene_rotate(sl_scene(g), id, sl_rad(deg)) { return sl_no(SL_NOTHING); }
+  if !editor_scene_rotate(sl_scene(g), id, sl_rad(deg)) { return sl_no(SL_NOTHING); }
   return sl_done(g, id);
 }
 sl_remove :: (g: [] SpGame, id: int) -> SlEdit {
-  if !forge_scene_delete(sl_scene(g), id) { return sl_no(SL_NO_ITEM); }
+  if !editor_scene_delete(sl_scene(g), id) { return sl_no(SL_NO_ITEM); }
   return sl_done(g, id);
 }
 // Whether every placed piece still passes the check where it stands (each against the others).
@@ -399,24 +399,24 @@ sl_all_ok :: (g: [] SpGame) -> SlVerdict {
 // Undo and redo walk the layer's log. A step that would leave a piece where the check refuses it
 // (you stand there now) is taken back, and refused with that reason.
 sl_undo :: (g: [] SpGame) -> SlEdit {
-  if !forge_scene_undo(sl_scene(g)) { return sl_no(SL_NOTHING); }
+  if !editor_scene_undo(sl_scene(g)) { return sl_no(SL_NOTHING); }
   g[0].layer[0].rev += 1; sl_sync(g);
   v := sl_all_ok(g);
   if v.why == SL_OK { return SlEdit.{ok = true}; }
-  _ := forge_scene_redo(sl_scene(g)); g[0].layer[0].rev += 1; sl_sync(g);
+  _ := editor_scene_redo(sl_scene(g)); g[0].layer[0].rev += 1; sl_sync(g);
   return SlEdit.{v = v};
 }
 sl_redo :: (g: [] SpGame) -> SlEdit {
-  if !forge_scene_redo(sl_scene(g)) { return sl_no(SL_NOTHING); }
+  if !editor_scene_redo(sl_scene(g)) { return sl_no(SL_NOTHING); }
   g[0].layer[0].rev += 1; sl_sync(g);
   v := sl_all_ok(g);
   if v.why == SL_OK { return SlEdit.{ok = true}; }
-  _ := forge_scene_undo(sl_scene(g)); g[0].layer[0].rev += 1; sl_sync(g);
+  _ := editor_scene_undo(sl_scene(g)); g[0].layer[0].rev += 1; sl_sync(g);
   return SlEdit.{v = v};
 }
 // An empty layer with no history.
 sl_clear :: (g: [] SpGame) {
-  forge_scene_reset(sl_scene(g));
+  editor_scene_reset(sl_scene(g));
   g[0].layer[0].rev += 1; sl_sync(g);
 }
 

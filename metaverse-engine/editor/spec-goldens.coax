@@ -28,76 +28,76 @@ sg_need :: (g: [] Sg, name: string, what: string, ok: bool) -> bool {
   return false;
 }
 // A line written again from the fields the reader gives for it: its length in out, or -1.
-sg_rebuild :: (l: ForgeSpecLine, out: [] u8) -> int {
+sg_rebuild :: (l: EditorSpecLine, out: [] u8) -> int {
   keys := SPEC_KEYS; key := keys[l.kind];
-  n := forge_put(out, 0, key);
+  n := editor_put(out, 0, key);
   k := l.kind;
   if k == SPEC_REALM || k == SPEC_NAME || k == SPEC_STYLE || k == SPEC_GROUND || k == SPEC_TIME || k == SPEC_CAMERA || k == SPEC_PALETTE || k == SPEC_ROLE || k == SPEC_VISIBILITY || k == SPEC_THING || k == SPEC_ENGINE {
-    return forge_put(out, forge_put(out, n, " "), forge_spec_text(l));
+    return editor_put(out, editor_put(out, n, " "), editor_spec_text(l));
   }
-  if k == SPEC_WAITING || k == SPEC_REV || k == SPEC_PUBLISHED || k == SPEC_UNDO || k == SPEC_REDO { return forge_put_int(out, forge_put(out, n, " "), forge_spec_num(l)); }
-  if k == SPEC_OWNER || k == SPEC_SHAPES || k == SPEC_EDIT_FENCE { return forge_put(out, n, ifx forge_spec_on(l) then " 1" else " 0"); }
-  if k == SPEC_LISTED { return forge_put(out, n, ifx forge_spec_off(l) then " 0" else " 1"); }
-  if k == SPEC_TOOL { t := forge_spec_tool(l); return forge_put(out, forge_put(out, forge_put(out, n, " "), t.name), ifx t.on then " 1" else " 0"); }
+  if k == SPEC_WAITING || k == SPEC_REV || k == SPEC_PUBLISHED || k == SPEC_UNDO || k == SPEC_REDO { return editor_put_int(out, editor_put(out, n, " "), editor_spec_num(l)); }
+  if k == SPEC_OWNER || k == SPEC_SHAPES || k == SPEC_EDIT_FENCE { return editor_put(out, n, ifx editor_spec_on(l) then " 1" else " 0"); }
+  if k == SPEC_LISTED { return editor_put(out, n, ifx editor_spec_off(l) then " 0" else " 1"); }
+  if k == SPEC_TOOL { t := editor_spec_tool(l); return editor_put(out, editor_put(out, editor_put(out, n, " "), t.name), ifx t.on then " 1" else " 0"); }
   if k == SPEC_ROW {
-    r := forge_spec_row(l);
-    return forge_put(out, forge_put(out, forge_put(out, forge_put(out, n, " "), r.key), ifx r.on then " 1 " else " 0 "), r.label);
+    r := editor_spec_row(l);
+    return editor_put(out, editor_put(out, editor_put(out, editor_put(out, n, " "), r.key), ifx r.on then " 1 " else " 0 "), r.label);
   }
-  if k == SPEC_CHARACTER { p := forge_spec_person(l); return forge_put(out, forge_put(out, forge_put(out, forge_put(out, n, " "), p.name), "|"), p.role); }
+  if k == SPEC_CHARACTER { p := editor_spec_person(l); return editor_put(out, editor_put(out, editor_put(out, editor_put(out, n, " "), p.name), "|"), p.role); }
   if k == SPEC_FEATURE {
-    f := forge_spec_feature(l);
-    n = forge_put(out, forge_put(out, n, " "), f.name);
+    f := editor_spec_feature(l);
+    n = editor_put(out, editor_put(out, n, " "), f.name);
     last := "";
-    for w: 2..<6 { word := forge_spec_word(l.line, w); if word == "" { break; } n = forge_put(out, forge_put(out, n, " "), word); last = word; }
+    for w: 2..<6 { word := editor_spec_word(l.line, w); if word == "" { break; } n = editor_put(out, editor_put(out, n, " "), word); last = word; }
     // its count is its last word when that is a number, and its first two words are the reader's
-    if (f.count >= 0) != (forge_spec_digits(last) >= 0) || f.a != forge_spec_word(l.line, 2) || f.b != forge_spec_word(l.line, 3) { return -1; }
+    if (f.count >= 0) != (editor_spec_digits(last) >= 0) || f.a != editor_spec_word(l.line, 2) || f.b != editor_spec_word(l.line, 3) { return -1; }
     return n;
   }
   if k == SPEC_PLACED {
-    p := forge_spec_placed(l);
-    n = forge_put(out, forge_put(out, n, " "), p.thing); n = forge_put(out, forge_put(out, n, " "), p.x);
-    n = forge_put(out, forge_put(out, n, " "), p.z);
-    return forge_put(out, forge_put(out, n, " "), p.yaw);
+    p := editor_spec_placed(l);
+    n = editor_put(out, editor_put(out, n, " "), p.thing); n = editor_put(out, editor_put(out, n, " "), p.x);
+    n = editor_put(out, editor_put(out, n, " "), p.z);
+    return editor_put(out, editor_put(out, n, " "), p.yaw);
   }
   if k == SPEC_FROM {
-    f := forge_spec_from(l);
+    f := editor_spec_from(l);
     if !f.ok || f.rev < 0 { return -1; }
-    n = forge_put(out, forge_put(out, n, " "), f.slug);
-    return forge_put(out, forge_put(out, forge_put_int(out, forge_put(out, n, " "), f.rev), "|"), f.name);
+    n = editor_put(out, editor_put(out, n, " "), f.slug);
+    return editor_put(out, editor_put(out, editor_put_int(out, editor_put(out, n, " "), f.rev), "|"), f.name);
   }
   if k == SPEC_MOVED {
-    m := forge_spec_moved(l);
+    m := editor_spec_moved(l);
     if !m.ok { return -1; }
-    n = forge_put(out, forge_put(out, n, " "), m.entity); n = forge_put(out, forge_put(out, n, " "), m.x);
-    return forge_put(out, forge_put(out, n, " "), m.z);
+    n = editor_put(out, editor_put(out, n, " "), m.entity); n = editor_put(out, editor_put(out, n, " "), m.x);
+    return editor_put(out, editor_put(out, n, " "), m.z);
   }
-  if k == SPEC_SHAPED { return forge_put(out, 0, l.line); }   // read by forge_read_shape_line (sg_spec)
+  if k == SPEC_SHAPED { return editor_put(out, 0, l.line); }   // read by editor_read_shape_line (sg_spec)
   return -1;
 }
 // One spec: every line flush, of a kind the profile names, and rebuilt the same.
 sg_spec :: (g: [] Sg, name: string, text: string, named: [] bool) {
   _ = sg_need(g, name, "the spec starts with its realm line and ends with a newline", text.count > 6 && text[0..<6] == "realm " && text[text.count - 1] == '\n');
-  doc: [1] ForgeDoc; forge_reset(doc[..], 1);
+  doc: [1] EditorDoc; editor_reset(doc[..], 1);
   at := 0; out: [1024] u8;
   while true {
-    l := forge_spec_line(text, at); at = l.next;
+    l := editor_spec_line(text, at); at = l.next;
     if l.kind == SPEC_END { break; }
     if !sg_need(g, name, "a line is flush and of a kind the profile names", l.flush && l.kind >= SPEC_REALM && named[l.kind]) { if !g[0].quiet { print("  line: %\n", l.line); } continue; }
     n := sg_rebuild(l, out[..]);
     got := ifx n < 0 then "" else cast(string) out[0..<n];
     if got != l.line { g[0].bad += 1; if !g[0].quiet { print("FAIL  % (a line comes back from its fields)\n  got:  %\n  want: %\n", name, got, l.line); } } else { g[0].pass += 1; }
-    if l.kind == SPEC_SHAPED { _ = sg_need(g, name, "a shaped line loads into the edit model", forge_read_shape_line(doc[..], l.line)); }
+    if l.kind == SPEC_SHAPED { _ = sg_need(g, name, "a shaped line loads into the edit model", editor_read_shape_line(doc[..], l.line)); }
     if l.kind == SPEC_MOVED {
-      m := forge_spec_moved(l);
-      _ = sg_need(g, name, "a moved line's numbers are metres with two decimals", forge_cm_text_ok(m.x) && forge_cm_text_ok(m.z));
+      m := editor_spec_moved(l);
+      _ = sg_need(g, name, "a moved line's numbers are metres with two decimals", editor_cm_text_ok(m.x) && editor_cm_text_ok(m.z));
     }
   }
 }
 // "-5.50", "4.00": an optional minus, digits, a point and two digits.
-forge_cm_text_ok :: (t: string) -> bool {
+editor_cm_text_ok :: (t: string) -> bool {
   s := ifx t.count > 0 && t[0] == '-' then t[1..<t.count] else t;
   if s.count < 4 || s[s.count - 3] != '.' { return false; }
-  for i: 0..<s.count { if i != s.count - 3 && !forge_digit(s[i]) { return false; } }
+  for i: 0..<s.count { if i != s.count - 3 && !editor_digit(s[i]) { return false; } }
   return true;
 }
 
@@ -111,10 +111,10 @@ sg_run :: (text: string) -> int {
     kb: [32] u8; kn := jv_str(f[0], jv_get(f[0], e, "key"), kb[..]);
     key := ifx kn < 0 then "" else cast(string) kb[0..<kn];
     eb: [256] u8; en := jv_str(f[0], jv_get(f[0], e, "example"), eb[..]);
-    kind := forge_spec_kind(key);
+    kind := editor_spec_kind(key);
     if !sg_need(g[..], key, "the profile's line is a key the reader knows, named once", kind >= SPEC_REALM && !named[kind]) { continue; }
     named[kind] = true;
-    l := forge_spec_line(ifx en < 0 then "" else cast(string) eb[0..<en], 0);
+    l := editor_spec_line(ifx en < 0 then "" else cast(string) eb[0..<en], 0);
     ob: [256] u8; n := sg_rebuild(l, ob[..]);
     _ = sg_need(g[..], key, "its example reads as its kind and comes back from its fields", l.kind == kind && l.flush && n >= 0 && cast(string) ob[0..<n] == l.line);
   }

@@ -3,16 +3,16 @@
 // or GPU is used here.
 #load "linux-native.coax";
 #load "../../coax/lib/sys/tool.coax";
-fgnt_wait :: (s:[]ForgeNative)->bool {
+fgnt_wait :: (s:[]EditorNative)->bool {
   until:=proc_now_ms()+10000;
   while proc_now_ms()<until {fgn_tick(s);if s[0].turn<0 {return s[0].sn>0 && s[0].hud[0].replies>0;}proc_sleep(10);}fgn_stop(s);return false;
 }
-fgnt_turn :: (s:[]ForgeNative,text:string)->bool {
+fgnt_turn :: (s:[]EditorNative,text:string)->bool {
   used:=fgn_key(s,-2,true,0);used=fgn_key(s,-2,false,0);fgl_text(s[0].hud[..],text);
   used=fgn_key(s,-2,true,0);used=fgn_key(s,-2,false,0);fgn_tick(s);return fgnt_wait(s);
 }
 tool_main :: ()->int #export_c #effects(all) {
-  s:[1]ForgeNative;fgn_boot(s[..]);
+  s:[1]EditorNative;fgn_boot(s[..]);
   if cast(string)s[0].engine[0..<s[0].en]!="echo" || !proc_has_env("CODER_HOME") {tool_errln("Use METAVERSE_ENGINE_CODER_ENGINE=echo and an isolated CODER_HOME.");return 2;}
   out:[FGN_VERTICES*12]f32;u:[88]f32;
   n:=fgn_frame(s[..],out[..],u[..],1440,900,1,0.016);

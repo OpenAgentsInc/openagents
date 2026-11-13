@@ -90,7 +90,7 @@ A function belongs when all of these hold:
 | A board of every page | **In**, for web pages only (`labs board`) | A list of URLs taken at two sizes and two themes is `shot` in a loop. The iOS, Android and desktop tours needed Xcode, emulators and app code; they stay with the apps |
 | Agent suites scored offline | **In**, later (`labs suite`) | Agent Lab's replay scoring started no process and touched no network. A suite file plus saved replies is pure and repeatable |
 | Agent trials on a suite | **Later**, with limits the user sets | `coax/lib/agent/claude` and `codex` can run a turn, but each case spends the user's model credit. It ships after `suite score`, with a cost cap flag the user sets |
-| Realm builder evals and the Metaverse Engine journey | **Out** | `realm-layout-eval` and `forge-journey` are our release checks against staging. They stay in `coax/web/tool.sh` |
+| Realm builder evals and the Metaverse Engine journey | **Out** | `realm-layout-eval` and `editor-journey` are our release checks against staging. They stay in `coax/web/tool.sh` |
 | Design Lab's native app tours | **Out** | They need simulators and app source, so they are developer tooling inside `apps/` |
 | CAD Lab | **Out** | Its kernel was Rust (Truck) and is gone. It returns only with a Coax kernel |
 | Robot Lab | **Out** | MuJoCo, LeRobot and policy runs need GPUs and physical hosts |
