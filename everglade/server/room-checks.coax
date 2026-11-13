@@ -792,22 +792,22 @@ e2pt_slot :: (klass: int, level: int, kind: int, sp: int) -> int {
   ball := e2pt_slot(FB_CL_WIZARD, 5, FB_SPELL, SP_FIREBALL); bolt := e2pt_slot(FB_CL_WIZARD, 5, FB_SPELL, SP_FIRE_BOLT);
   sword := e2pt_slot(FB_CL_FIGHTER, 5, FB_ATTACK, -1); wind := e2pt_slot(FB_CL_FIGHTER, 5, FB_SECOND, -1);
   #assert ball >= 0 && bolt >= 0 && sword >= 0 && wind >= 0;
-  // the first pack's three wolves within 2 m of one point on the path; the Wizard 15 m north of it, the
-  // Fighter 3 m from it: inside the blast (20 feet: 6.1 m)
-  w := ms[0].mon[0]; cx := e2_road_x(w.z); cz := w.z;
-  for m: 0..<3 { ms[0].mon[m].x = cx + f32(m) - 1; ms[0].mon[m].z = cz; }
+  // the third pack's three wolves (monsters 5, 6 and 7) within 2 m of one point on the path; the Wizard 15 m
+  // north of it, the Fighter 3 m from it: inside the blast (20 feet: 6.1 m)
+  w := ms[0].mon[5]; cx := e2_road_x(w.z); cz := w.z;
+  for m: 5..<8 { ms[0].mon[m].x = cx + f32(m - 5) - 1; ms[0].mon[m].z = cz; }
   v[0].eg[k].seat[0].pose.x = e2_road_x(cz + 15); v[0].eg[k].seat[0].pose.z = cz + 15; egb_place(r, 0, v[0].eg[k].seat[0].pose.x, cz + 15);
   v[0].eg[k].seat[1].pose.x = cx; v[0].eg[k].seat[1].pose.z = cz + 3; egb_place(r, 1, cx, cz + 3);
   rc_test_tick(v[..], k, true);
-  for m: 0..<3 { ms[0].mon[m].x = cx + f32(m) - 1; ms[0].mon[m].z = cz; b[0].c[EGB_BEAST0 + ms[0].mon[m].q].x = egb_sq(ms[0].mon[m].x); b[0].c[EGB_BEAST0 + ms[0].mon[m].q].y = egb_z_cell(r, cz); }
+  for m: 5..<8 { ms[0].mon[m].x = cx + f32(m - 5) - 1; ms[0].mon[m].z = cz; b[0].c[EGB_BEAST0 + ms[0].mon[m].q].x = egb_sq(ms[0].mon[m].x); b[0].c[EGB_BEAST0 + ms[0].mon[m].q].y = egb_z_cell(r, cz); }
   b[0].dice[0].fixed = true;   // each d6 a 3: 24 Fire, 12 on a save: no Wolf's 11 Hit Points stand it
   slots := b[0].c[EGB_SEAT].slots[3]; mate := b[0].c[EGB_SEAT + 1].hp; me := b[0].c[EGB_SEAT].hp; #assert slots > 0;
   eg_test_drain(v[..], box[..]);
   e2pt_cast(v[..], 0, 1, ball, cx, cz);
   rc_test_tick(v[..], k, true);
   #assert v[0].eg[k].e2_casts == 1 && b[0].c[EGB_SEAT].slots[3] == slots - 1;
-  for m: 0..<3 { i := EGB_BEAST0 + ms[0].mon[m].q; #assert ms[0].mon[m].q < 0 || b[0].c[i].hp <= 0 || b[0].c[i].dead || ms[0].mon[m].state == E2M_DEAD; }
-  #assert ms[0].mon[0].state == E2M_DEAD && ms[0].mon[1].state == E2M_DEAD && ms[0].mon[2].state == E2M_DEAD;
+  for m: 5..<8 { i := EGB_BEAST0 + ms[0].mon[m].q; #assert ms[0].mon[m].q < 0 || b[0].c[i].hp <= 0 || b[0].c[i].dead || ms[0].mon[m].state == E2M_DEAD; }
+  #assert ms[0].mon[5].state == E2M_DEAD && ms[0].mon[6].state == E2M_DEAD && ms[0].mon[7].state == E2M_DEAD;
   // no player was in it: not the Fighter 3 m off, not the Wizard
   #assert b[0].c[EGB_SEAT + 1].hp == mate && b[0].c[EGB_SEAT].hp == me;
   // the Wizard's turn: its Action is spent, so a Fire Bolt at once is refused; when the turn's beat is over it is taken
