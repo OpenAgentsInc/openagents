@@ -3205,6 +3205,7 @@ function draw(now) {
     const engineStart = traceRow ? performance.now() : 0;
     n = engine.exports.coaxial_frame(trap ? -16 : arena.state, arena.vertices, arena.uniforms, w, h, dpr, dt, still ? 1 : 0);
     if (traceRow) {traceRow[1] = performance.now() - engineStart;for(let i=0;i<3;i++)traceRow[11+i]=engine.exports.coaxial_frame_parts?.(arena.state,i)||0;}
+    if (!editorAsked && editWanted) editorOpen();   // a page that says only later that its world is the viewer's (a realm's owner, #13496)
     editorStep(); paneStep(); scriptStep();
     if (gpu.gpuiOn) gpuiFrame(dpr);
   } catch (e) { trapped(e); return; }
@@ -3807,17 +3808,19 @@ function player() {
 // the word that the realm's code can be opened here (event 9, #13421). It decides nothing
 // but whether to open: on a deployed page, only for an admin (the viewer's lines), since the server lets
 // nobody else write a world; or for anyone, on a page that says its world is the visitor's own and kept
-// in this browser (coaxial_edit_own: WorldBuilder, #13422). It tells such a page the part of the window
+// in this browser (coaxial_edit_own: WorldBuilder, #13422), or whose maker or admin the viewer is (a made realm, which
+// says so once it has read its spec: #13496; the server still holds every write to its rules). It tells such a page the part of the window
 // the shell's panes leave free (message 525), so the page's own interface is not under them.
 const EDITOR = "editor-shell";
 // A press, a key or a paste on the shell is the shell's: the world under it hears nothing of it.
 const inEditor = (e) => !!e.target?.closest?.("[data-coaxial-dock]");   // the editor shell, or a page's own pane (below)
 let editorAsked = false, editorRev = -1, editorFor = null;
+const editWanted = new URLSearchParams(location.search).has("edit");
 function editorOpen() {
   if (editorAsked || !engine?.exports.coaxial_edit_model || !new URLSearchParams(location.search).has("edit")) return;
   // the dev server's page opens it for whoever asks; a deployed page only for an admin (who else writes a world: nobody),
   // unless the world is the visitor's own
-  if (!dev && !viewerAdmin && !engine.exports.coaxial_edit_own?.()) return;
+  if (!dev && !viewerAdmin && !(arena && engine.exports.coaxial_edit_own?.(arena.state))) return;
   editorAsked = true;
   const root = document.createElement("div"); // editor shell
   root.id = "coaxial-editor"; root.dataset.coaxialDock = "";
@@ -3885,7 +3888,9 @@ async function scriptPump() {
       if (!n) break;
       const url = new TextDecoder().decode(new Uint8Array(mem.buffer, x.scripts_out(), n));
       let status = 0, body = new Uint8Array(0);
-      try { const r = await fetch(url, { credentials: "same-origin" }); status = r.status; body = new Uint8Array(await r.arrayBuffer()); } catch { status = 0; }
+      // with the player key a made realm knows its visitors by (a realm hidden from them lists no scripts, #13496)
+      const who = player(), headers = who ? { "X-Verse-Player": who.key } : {};
+      try { const r = await fetch(url, { credentials: "same-origin", headers }); status = r.status; body = new Uint8Array(await r.arrayBuffer()); } catch { status = 0; }
       if (body.length > x.scripts_in_cap()) { status = 0; body = new Uint8Array(0); }
       new Uint8Array(mem.buffer, x.scripts_in(), body.length).set(body);
       x.scripts_got(state, status, body.length);

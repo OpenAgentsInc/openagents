@@ -271,6 +271,13 @@ function pick(el) {
   picker.onchange = () => offer(el, picker.files?.[0]);
   picker.click();
 }
+// A made realm knows its maker by their player key (X-Verse-Player, the key coax/web/host.js keeps in
+// localStorage verse.player): an ask of this site's API carries it, so a realm's own world answers its owner (#13496).
+function playerHeaders(extra) {
+  let key = "";
+  try { const p = JSON.parse(localStorage.getItem("verse.player") || "null"); if (p && typeof p.key === "string") key = p.key; } catch {}
+  return key ? { ...extra, "X-Verse-Player": key } : extra;
+}
 function fileSend(urlAt, urlLen, headAt, headLen) {
   const url = text.decode(new Uint8Array(memory.buffer, urlAt, urlLen));
   if (!url.startsWith("/") || url.startsWith("//")) return;
@@ -279,8 +286,8 @@ function fileSend(urlAt, urlLen, headAt, headLen) {
   (async () => {
     let status = 0, n = 0;
     try {
-      const r = await fetch(url, headLen ? { method: "POST", body: new Blob(file ? [head, file] : [head]), credentials: "same-origin", headers: { "Content-Type": "application/octet-stream" } }
-        : { credentials: "same-origin", cache: "no-store" });
+      const r = await fetch(url, headLen ? { method: "POST", body: new Blob(file ? [head, file] : [head]), credentials: "same-origin", headers: playerHeaders({ "Content-Type": "application/octet-stream" }) }
+        : { credentials: "same-origin", cache: "no-store", headers: playerHeaders({}) });
       const body = new Uint8Array(await r.arrayBuffer());
       status = r.status; n = Math.min(body.length, x.dom_inbox_cap());
       new Uint8Array(memory.buffer, x.dom_inbox(state), n).set(body.subarray(0, n));
@@ -305,7 +312,7 @@ function fileStep(urlAt, urlLen, headAt, headLen, step) {
         if (!here || (step === 1 && !file)) throw new Error("no file or no address");
         const parts = [head];
         if (step === 1) parts.push([...new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()))].map((b) => b.toString(16).padStart(2, "0")).join("") + "\n");
-        r = await fetch(url, { method: "POST", body: new Blob(parts), credentials: "same-origin", headers: { "Content-Type": "application/octet-stream" } });
+        r = await fetch(url, { method: "POST", body: new Blob(parts), credentials: "same-origin", headers: playerHeaders({ "Content-Type": "application/octet-stream" }) });
       }
       const body = new Uint8Array(await r.arrayBuffer());
       status = r.status; n = Math.min(body.length, x.dom_inbox_cap());

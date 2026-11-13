@@ -43,8 +43,8 @@
 // ways, so a page with no ?relay= still sits in the local room.
 //
 // A world's routes (/api/worlds/..., the browser editor's E4, #13413) are answered here on the dev
-// server, so a page, a second tab, the CLI and `coax drive` share one world before anything is
-// deployed: the request goes to the world's own tool (metaverse/splice-bots/tools/world-local.coax: the
+// server for Splice Bots, so a page, a second tab, the CLI and `coax drive` share one world before anything is
+// deployed (any other world, a realm's, goes to the API with --api, #13496): the request goes to the world's own tool (metaverse/splice-bots/tools/world-local.coax: the
 // API's rules and Splice's own check, with files under APP_DIR/build/.worlds for rows), and a saved
 // write is told to every tab. --static serves none of it.
 //
@@ -489,6 +489,15 @@ static void world_url(char *url, size_t cap) {
   snprintf(rest, sizeof rest, "%s", at + k);
   snprintf(url, cap, "/api/worlds/%.*s%s", (int)named.count, (const char *)named.data, rest);
 }
+// Whether the local tools answer this world: Splice Bots, and any world with a row under APP_DIR/build/.worlds.
+static bool world_held_here(const char *url) {
+  const char *at = url + 12; size_t k = strcspn(at, "/?");
+  if (k == 11 && !strncmp(at, "splice-bots", 11)) return true;
+  if (k == 0 || k > 64) return false;
+  char file[PATH_MAX + 96]; struct stat st;
+  snprintf(file, sizeof file, "%s/build/.worlds/%.*s.row", app_dir, (int)k, at);
+  return stat(file, &st) == 0;
+}
 // A world's route on the dev server: the world's own tool answers it ("STATUS\n" then the body),
 // and a write that was saved is told to every tab, which then asks for the world's new events.
 static void worlds_local(client *c, const char *method, const char *url) {
@@ -845,6 +854,9 @@ static void handle_request(client *c) {
   }
   if (!static_mode && !realm_request && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/worlds/", 12)) {
     world_url(url, sizeof url);   // a renamed world's old ID is its new one (world-alias-host.coax, #13486)
+    // The local tools keep Splice Bots and the worlds they hold files for; any other world (a realm's, #13496)
+    // is the API's, so its owner, its rules and its scripts are the API's own on this server too.
+    if (api_port && !world_held_here(url)) { proxy_api(c); return; }
     if (assets_route(url)) { assets_local(c, method, url); return; }
     if (files_route(url)) { files_local(c, method, url); return; }
     if (scripts_route(url)) { scripts_local(c, method, url); return; }

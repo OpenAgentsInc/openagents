@@ -75,16 +75,25 @@ manifest) and `HASH.coax` (the source, for a compiled one). The dev server runs
 `coax/web/script-job.sh` for a compile, keeps no day's counts, and treats
 everyone on the computer as an admin, since it listens on 127.0.0.1 only.
 
-Scripts are stored for a world whose content tables can name them. Today
-that is Splice Bots. A realm's world (kind `realm`, #13422) has no scripts table,
-and these routes answer 404 for it.
+Scripts are stored for a world whose content tables can name them: Splice
+Bots, and every realm's world (kind `realm`, #13496). A realm's `scripts`
+table sits between `rows` and `tools` in its content
+([world-edit-v1.md](world-edit-v1.md), "A realm's world"). For a world that
+is hidden from the caller these routes answer 404, as the world's own routes
+do.
+
+The dev server sends the routes of a world it does not hold itself
+(`build/.worlds/ID.row`) to its local API, so a made realm's scripts are
+stored, listed and compiled there, by the same code as on openagents.com.
 
 ## Who may store
 
 The world's owner or one of its admins, or a site admin; logged in, from this
-site (`wsp_may`). Splice Bots has no owner, so today that is the site's admins: the
-owner and admin half of the rule takes effect when a world with an owner runs
-scripts. The rule is wider than who may write the
+site (`wsp_may`). Splice Bots has no owner, so there that is the site's admins.
+A realm's maker owns its world, so a maker who is no admin stores, compiles
+and runs scripts in their own realm, and nobody else but its admins does. The
+caller is the one the realm routes know: `X-Verse-Player` with a login
+cookie, or the key of a signed request. The rule is wider than who may write the
 rest of a world's document (site admins, `wr_write`) for scripts only: the
 owner lifted "realm code is ours or a reviewed pull request" for realm
 scripts on 2026-11-13, and for nothing else.
@@ -139,6 +148,15 @@ the confirmation the publish is refused, 409, with a
 
 A page shows the change and asks; the publisher repeats the same batch to
 `POST /api/worlds/ID?confirm=HASH,HASH` with the hashes they accept.
+
+**A realm asks at the edit.** A realm's world has one lane: an edit reaches
+everyone at once and there is no publish. So the publish rule is applied to
+each fenced edit of its `scripts` table instead, comparing the rows after the
+edit with the rows before it. A new row, or a new hash that does more, is
+refused with the same 409 and `asks`, and nothing is saved. The maker repeats
+the edit with `?confirm=HASH`. A hash that does less, and stopping a script
+(taking its row away), need no yes. A stored step (undo, redo) is not asked
+about again.
 
 ## Reports and the switch
 

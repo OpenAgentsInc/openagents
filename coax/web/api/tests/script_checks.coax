@@ -214,6 +214,100 @@ sk_checks :: (t: [] Ap, k: [] Sk, other: string, compiles: bool) {
   st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts/compile", "?name=pacer"), "", "");
   ap_check(t, "scripts: an empty source is no request", st == 400 && sk_refusal(t, k) == SSC_BAD && k[0].r[0].limit == SS_SOURCE, ap_body(t));
 }
+// ---- a maker's own realm (#13496): a realm made by a key that is no site admin is a world of kind realm whose scripts
+// its maker stores, compiles and runs. A row is what people get at once, so a row that is new or does more is asked
+// about by hash, as a publish is; a realm hidden from someone lists them nothing.
+// The value after "KEY " on a line of the last body.
+sk_line :: (t: [] Ap, key: string, out: [] u8) -> string {
+  for i: 0..<ct_parts(ap_body(t), '\n') {
+    l := ct_part(ap_body(t), '\n', i);
+    if l.count > key.count && l[0..<key.count] == key && l[key.count] == ' ' { return cast(string) out[0..<ct_copy(out, l[key.count + 1..<l.count])]; }
+  }
+  return "";
+}
+// A batch POSTed by `key` to the world at `path`: its status; the state in k when it is one.
+sk_batch_as :: (t: [] Ap, k: [] Sk, key: string, path: string, rev: int, what: string, edits: string, query: string) -> int {
+  b: [1] Sb; sb(b[..], "{\"schema\":\"world.edit.v1\",\"rev\":"); sb_int(b[..], rev); sb(b[..], ",\"do\":\""); sb(b[..], what); sb(b[..], "\",\"edits\":["); sb(b[..], edits); sb(b[..], "]}");
+  p: [1] Sb; sb(p[..], path); sb(p[..], query);
+  st := sk_call(t, key, "POST", sb_text(p[..]), sb_text(b[..]), "");
+  k[0].st = we_state_read(ap_body(t), k[0].doc[..], k[0].did[..], k[0].scratch[..]);
+  return st;
+}
+sk_realm_checks :: (t: [] Ap, k: [] Sk, maker: string, visitor: string, compiles: bool) {
+  q: [400] u8; e: [1] Sb; w: [1] Sb; p: [1] Sb; sl: [80] u8;
+  ma := cast(string) k[0].a[0..<k[0].a_n]; mb := cast(string) k[0].b[0..<k[0].b_n]; mc := cast(string) k[0].c[0..<k[0].c_n];
+  ha := cast(string) k[0].ha[..]; hb := cast(string) k[0].hb[..]; hc := cast(string) k[0].hc[..];
+  ap_do(t, "DELETE FROM verse.script_off; DELETE FROM auth.limit_counts WHERE name LIKE 'script-%';");
+  st := sk_call(t, maker, "POST", "/api/playtest/realms?as=lines", "{\"board\":{\"name\":\"Scripted Glade\",\"features\":[]}}", "");
+  slug := sk_line(t, "slug", sl[..]);
+  sb(w[..], "/api/worlds/"); sb(w[..], slug);
+  world := sb_text(w[..]);
+  sb_clear(e[..]); sb(e[..], "SELECT kind FROM verse.world_docs WHERE id = '"); sb(e[..], slug); sb(e[..], "'");
+  ap_check(t, "realm scripts: a realm a maker makes, who is no site admin, is a world of kind realm", st == 200 && slug.count > 0 && ap_sql(t, sb_text(e[..]), q[..]) == "realm", ap_body(t));
+  // who sees its list, and who stores
+  st = sk_call(t, maker, "GET", sb_text_of2(p[..], world, "/scripts"), "", "");
+  h := ss_list_read(k[0].d[..], ap_body(t), k[0].nodes[..], k[0].world[..]);
+  ap_check(t, "realm scripts: its maker reads its list: its limits, and no script", st == 200 && h.ok && h.count == 0 && h.limits.scripts == SH_SCRIPTS && (h.limits.compiler == 1) == compiles && cast(string) k[0].world[0..<h.world_n] == slug, ap_body(t));
+  ap_check(t, "realm scripts: a private realm lists nobody else its scripts", ap_call(t, "GET", sb_text_of2(p[..], world, "/scripts"), "", t[0].no[0..<0]) == 404 && sk_call(t, visitor, "GET", sb_text_of2(p[..], world, "/scripts"), "", "") == 404, ap_body(t));
+  st = sk_call(t, visitor, "POST", sb_text_of2(p[..], world, "/scripts?name=pacer"), ma, "");
+  ap_check(t, "realm scripts: someone else may not store a script for it", st == 403 && sk_error(t, k) == "only the world's owner and admins store its scripts", ap_body(t));
+  st = sk_call(t, maker, "POST", sb_text_of2(p[..], world, "/scripts?name=pacer"), ma, "");
+  stored := st == 200 && sm_read(ap_body(t), k[0].mf[..]) && cast(string) k[0].mf[0].hash[..] == ha;
+  st = sk_call(t, maker, "POST", sb_text_of2(p[..], world, "/scripts?name=pacer"), mb, "");
+  stored = stored && st == 200;
+  st = sk_call(t, maker, "POST", sb_text_of2(p[..], world, "/scripts?name=pacer"), mc, "");
+  sb_clear(e[..]); sb(e[..], "SELECT count(*) FROM verse.world_scripts WHERE world = '"); sb(e[..], slug); sb(e[..], "'");
+  ap_check(t, "realm scripts: its maker stores scripts for it", stored && st == 200 && ap_sql(t, sb_text(e[..]), q[..]) == "3", ap_body(t));
+  // a row: what people get at once, so a new script is asked about first
+  st = sk_batch_as(t, k, visitor, world, 0, "apply", sk_row(e[..], 1, "pacer", ha), "");
+  ap_check(t, "realm scripts: someone else's row is refused", st == 403, ap_body(t));
+  st = sk_batch_as(t, k, maker, world, 0, "apply", sk_row(e[..], 1, "pacer", ha), "");
+  sb_clear(e[..]); sb(e[..], "SELECT dev_rev || ' ' || (coalesce(dev_tables, '') NOT LIKE '%|pacer|%') FROM verse.world_docs WHERE id = '"); sb(e[..], slug); sb(e[..], "'");
+  ap_check(t, "realm scripts: a row that runs a new script is asked about, 409 with what it may do, and nothing is saved", st == 409 && sk_refusal(t, k) == SSC_GROWS && k[0].r[0].asks_n == 1 && k[0].r[0].asks[0].fresh && cast(string) k[0].r[0].asks[0].hash[..] == ha && ap_sql(t, sb_text(e[..]), q[..]) == "0 true", ap_body(t));
+  st = sk_batch_as(t, k, maker, world, 0, "apply", sk_row(e[..], 1, "pacer", ha), sb_text_of2(p[..], "?confirm=", ha));
+  ok := st == 200 && k[0].st.ok && k[0].st.rev == 1;
+  st = sk_call(t, maker, "GET", sb_text_of2(p[..], world, "/content"), "", "");
+  sb_clear(e[..]); sb(e[..], "\n1|pacer|"); sb(e[..], ha); sb(e[..], "|kind 1\n");
+  ap_check(t, "realm scripts: with its hash confirmed the row is saved, one revision, and the world's tables hold it", ok && st == 200 && ap_has(ap_body(t), sb_text(e[..])) && ap_has(ap_body(t), "\ntable scripts id name:text hash:text for:text\n"), ap_body(t));
+  // a version that does more is asked about with only what it adds; one that does less is not
+  st = sk_batch_as(t, k, maker, world, 1, "apply", sk_row(e[..], 1, "pacer", hb), "");
+  asked := st == 409 && sk_refusal(t, k) == SSC_GROWS && k[0].r[0].asks_n == 1 && !k[0].r[0].asks[0].fresh && k[0].r[0].asks[0].grows.calls == 1 << SA_STRIKE;
+  st = sk_batch_as(t, k, maker, world, 1, "apply", sk_row(e[..], 1, "pacer", hb), sb_text_of2(p[..], "?confirm=", hb));
+  ap_check(t, "realm scripts: a swap to a version that does more is asked about, and goes on with its yes", asked && st == 200 && k[0].st.rev == 2, ap_body(t));
+  st = sk_batch_as(t, k, maker, world, 2, "apply", sk_row(e[..], 1, "pacer", hc), "");
+  ap_check(t, "realm scripts: a swap to a version that does less needs no yes", st == 200 && k[0].st.rev == 3, ap_body(t));
+  st = sk_batch_as(t, k, maker, world, 3, "undo", "", "");
+  ok = st == 200 && k[0].st.rev == 4;
+  st = sk_call(t, maker, "GET", sb_text_of2(p[..], world, "/content"), "", "");
+  sb_clear(e[..]); sb(e[..], "\n1|pacer|"); sb(e[..], hb); sb(e[..], "|kind 1\n");
+  ap_check(t, "realm scripts: an undo takes the row back to the one before, unasked: its maker said yes to it", ok && st == 200 && ap_has(ap_body(t), sb_text(e[..])), ap_body(t));
+  st = sk_batch_as(t, k, maker, world, 4, "apply", sk_row(e[..], 2, "guard", "0000000000000000000000000000000000000000000000000000000000000000"), "");
+  ap_check(t, "realm scripts: a row naming a module the world has not stored is refused in words", st == 422 && ap_has(sk_error(t, k), "has stored no module of that hash"), ap_body(t));
+  // the admin's switch-off holds for a realm's scripts too (c, which no row names now: a row that names a
+  // module keeps standing when it is switched off)
+  st = sk_call(t, t[0].admin_key, "POST", sb_text_of3(p[..], "/api/admin/scripts/", hc, "/off"), "it walks through walls", "");
+  off := st == 200;
+  st = sk_call(t, maker, "GET", sb_text_of2(p[..], world, "/scripts"), "", "");
+  h = ss_list_read(k[0].d[..], ap_body(t), k[0].nodes[..], k[0].world[..]);
+  off_seen := false;
+  for i: 0..<h.count { en := ss_list_entry(k[0].d[..], i, k[0].mf[..], k[0].why[..]); if en.off && cast(string) k[0].mf[0].hash[..] == hc { off_seen = true; } }
+  ap_check(t, "realm scripts: a script an admin switches off is listed off, so the page skips it", off && st == 200 && h.ok && off_seen, ap_body(t));
+  st = sk_batch_as(t, k, maker, world, 4, "apply", sk_row(e[..], 2, "pacer", hc), "");
+  ap_check(t, "realm scripts: and no new row names it", st == 422 && ap_has(sk_error(t, k), "switched off"), ap_body(t));
+  ap_do(t, "DELETE FROM verse.script_off");
+  // its maker compiles a source for it
+  if compiles {
+    src_n := fs_read("metaverse-engine/script/examples/pacer.coax", k[0].source[..]);
+    st = sk_call(t, maker, "POST", sb_text_of2(p[..], world, "/scripts/compile?name=pacer"), cast(string) k[0].source[0..<ifx src_n < 0 then 0 else src_n], "");
+    ap_check(t, "realm scripts: its maker compiles a source for it", src_n > 0 && st == 200 && sm_read(ap_body(t), k[0].mf[..]), ap_body(t));
+  }
+  // made public, anyone reads its list, and still only its maker stores
+  sb_clear(p[..]); sb(p[..], "/api/playtest/realms/"); sb(p[..], slug); sb(p[..], "/visibility");
+  st = sk_call(t, maker, "POST", sb_text(p[..]), "{\"visibility\":\"public\"}", "");
+  pub := st == 200;
+  st = sk_call(t, visitor, "GET", sb_text_of2(p[..], world, "/scripts"), "", "");
+  ap_check(t, "realm scripts: a public realm lists anyone its scripts", pub && st == 200, ap_body(t));
+}
 sb_text_of2 :: (s: [] Sb, a: string, b: string) -> string { sb_clear(s); sb(s, a); sb(s, b); return sb_text(s); }
 sb_text_of3 :: (s: [] Sb, a: string, b: string, c: string) -> string { sb_clear(s); sb(s, a); sb(s, b); sb(s, c); return sb_text(s); }
 sb_text_of4 :: (s: [] Sb, a: string, b: string, c: string, n: int, d: string) -> string { sb_clear(s); sb(s, a); sb(s, b); sb(s, c); sb_int(s, n); sb(s, d); return sb_text(s); }
@@ -223,6 +317,14 @@ tool_main :: () -> int #export_c #effects(all) {
   if !ap_open(t[..]) { return 2; }
   kb: [2048] u8; other := proc_getenv("OTHER_KEY", kb[..]); rb: [16] u8;
   if t[0].sign == "" || t[0].admin_key == "" || other == "" { tool_errln("script checks: SIGN, ADMIN_KEY and OTHER_KEY come from coax/web/api/test.sh"); return 2; }
-  sk_checks(t[..], k[..], other, proc_getenv("SCRIPT_JOB_READY", rb[..]) == "1");
+  compiles := proc_getenv("SCRIPT_JOB_READY", rb[..]) == "1";
+  sk_checks(t[..], k[..], other, compiles);
+  // a maker's own realm: the other key makes it; a third key, made here, is someone else
+  dir: [1024] u8; d := fs_temp("script-visitor", dir[..]); path: [1100] u8; vkey := fs_join(d, "visitor.key", path[..]);
+  args := [3] string.[t[0].sign, "--new", vkey]; out: [256] u8; err: [256] u8;
+  made := proc_run(args[..], 30000, out[..], err[..]);
+  if made.status != 0 { tool_errln("script checks: the visitor's key was not made"); return 2; }
+  sk_realm_checks(t[..], k[..], other, vkey, compiles);
+  gone := fs_remove(d);
   return ap_done(t[..], "script checks");
 }

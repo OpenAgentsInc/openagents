@@ -66,7 +66,9 @@ kit 160000
 # what it reads with are about 55,000 of them); about 5% room.
 # With the revisions (#13485: the dev lane's events read into steps, undo and redo told apart, and each step's changes in words,
 # world-changes.coax and shell-revs.coax): 309,748 bytes measured 2026-11-13 on a build host; about 3% room.
-editor-shell 320000
+# With Run it on a world with one lane (#13496: the row's batch sent by the shell, its question and the realm's starter): 320,065
+# bytes measured 2026-11-13 on a Mac; about 3% room.
+editor-shell 330000
 agents 120000
 # Crew, character creation (#13462): the body, the wardrobe and the document (metaverse-engine/kit/crew-*.coax) on the cel lofts and
 # Anime Lab's uniforms: 161,360 bytes measured 2026-11-13 on a Mac release build; about 10% room.
@@ -235,7 +237,8 @@ icecream 510000
 memorial 60000
 # The jump clips in everglade/scene/people-rig.coax (da98ab3915): 273,378 bytes measured; about 5% headroom.
 metahumanlab 290000
-myrealm 680000
+# A made realm follows its world and runs its scripts (metaverse/edit/realm-page.coax, the frame and result codecs, #13496): 696,860 bytes measured on macOS; about 5% room.
+myrealm 740000
 newland 1150000
 nip01 90000
 nip-guide 130000

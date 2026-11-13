@@ -376,3 +376,58 @@ ess_status :: (k: [] EssTest, text: string) {
   ess_press(k[..], "sreport.1"); ess_press(k[..], "scripts.report.leave");
   #assert !ess_has(k[..], "scripts.reason");
 }
+
+// A made realm's world (#13496): one lane, its characters the kind a script drives, no actors and no plans.
+ess_realm :: (k: [] EssTest, rev: int, row: bool) {
+  h := k[0].h[..]; s := h[0].s[..]; out := h[0].text[..]; none: [WE_COLS] bool;
+  n := em_begin(out, "fairy-forest", 0, rev, 0, 0, 0);
+  n = em_cols(out, n, none[..]);
+  n = em_at_once(out, n);
+  n = em_scripts(out, n, "scripts");
+  n = em_script_kind(out, n, 1, "Characters");
+  if row { n = em_script(out, n, 1, "my-raider", ESS_HASH, "kind 1"); }
+  for i: 0..<n { s[0].inbox[i] = out[i]; }
+  coaxial_editor_event(s, ES_MODEL, 0, n);
+}
+#test "on a world with one lane, Run it is the shell's to send: a script that would do more is asked about, and Run with these sends it again with the yes" {
+  k: [1] EssTest; h := k[0].h[..]; s := h[0].s[..];
+  ess_realm(k[..], 7, false);
+  coaxial_editor_fetched(s); coaxial_editor_event(s, ES_SENT, 404, 0);   // the assets' list: none
+  coaxial_editor_fetched(s); coaxial_editor_event(s, ES_SENT, 404, 0);   // the attachments' list: none
+  list := ess_list(k[..], "fairy-forest", true, false, false);
+  ess_sent(k[..], 200, list);
+  ess_press(k[..], "scripts"); ess_sent(k[..], 200, list); _ := ess_watch(k[..]);
+  // the starter is a character's, and the pane says nobody here walks a plan
+  #assert es_sc_name(s) == "my-greeter" && s[0].sc.src_n > 0 && cast(string) s[0].sc.src[0..<33] == "// A character's greeting, as a s";
+  #assert ess_text(k[..], "scripts.plan") == "Everyone here keeps their place. A script says where the ones it drives walk and the way they face." && ess_text(k[..], "scripts.none") == "No script runs here. Everyone keeps their place.";
+  #assert ess_text(k[..], "sfor.l") == "Characters";
+  ess_press(k[..], "scripts.build");
+  #assert ess_url(s) == "/api/worlds/fairy-forest/scripts/compile?name=my-greeter";
+  ess_sent(k[..], 200, ESS_MF); ess_sent(k[..], 200, ess_list(k[..], "fairy-forest", true, true, false));
+  // Run it: no batch for the page; the shell sends the row's batch to the world itself
+  ess_press(k[..], "scripts.run");
+  e: [1] WorldEdit; b: [2048] u8;
+  e[0] = es_sc_row_edit(s, 1, "1|my-raider|eccf9c327c67229178fd52833fcba669fc8d58c6e7964d334e20b037638772c6|kind 1");
+  batch := we_batch_write(7, WB_APPLY, e[..], 1, b[..]);
+  #assert s[0].nacts == 0 && s[0].sc.flight == ES_SC_RUN && coaxial_editor_fetching(s) == ES_HOW_SAY && ess_url(s) == "/api/worlds/fairy-forest" && ess_head(s) == batch;
+  // refused because the script is new: the question, in the pane, with Run with these
+  ess_sent(k[..], 409, ess_grows(k[..], false));
+  #assert s[0].sc.asks == 1 && s[0].sc.run_asks && ess_text(k[..], "scripts.grows.h") == "Running this lets a script do more" && ess_text(k[..], "scripts.confirm.l") == "Run with these";
+  #assert ess_text(k[..], "scripts.grow.0") == "my-raider is new to this world. It acts every tick. It may read the world around it.";
+  ess_press(k[..], "scripts.confirm");
+  #assert s[0].sc.flight == ES_SC_RUN && ess_head(s) == batch && ess_url(s) == "/api/worlds/fairy-forest?confirm=eccf9c327c67229178fd52833fcba669fc8d58c6e7964d334e20b037638772c6";
+  ess_sent(k[..], 200, "");
+  #assert s[0].sc.asks == 0 && !s[0].sc.run_asks && ess_text(k[..], "scripts.said.t") == "Running. Everyone in the world gets it now.";
+  // the world takes it; Stop goes through the page, as every other edit does
+  ess_realm(k[..], 8, true); es_test_frames(h, 1);
+  #assert ess_text(k[..], "script.1.m") == "Drives Characters";
+  ess_press(k[..], "sstop.1");
+  #assert ess_row_is(k[..], 8, 1, "") && s[0].nacts == 1;
+  coaxial_editor_act_done(s);
+  // any other refusal of a run is said in the pane, in the server's words
+  ess_press(k[..], "scripts.build"); ess_sent(k[..], 200, ESS_MF); ess_sent(k[..], 200, ess_list(k[..], "fairy-forest", true, true, false));
+  ess_realm(k[..], 9, false); es_test_frames(h, 1);
+  ess_press(k[..], "scripts.run");
+  ess_sent(k[..], 422, ess_no(k[..], SSC_WITHDRAWN, "an admin switched that script off", 0, 0));
+  #assert ess_text(k[..], "scripts.said.k") == "Not done" && ess_text(k[..], "scripts.said.t") == "an admin switched that script off" && s[0].sc.asks == 0;
+}

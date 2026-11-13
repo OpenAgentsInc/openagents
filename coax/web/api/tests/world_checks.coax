@@ -570,6 +570,6 @@ wc_realm_checks :: (t: [] Ap, w: [] Wc) {
   st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 2, "apply", WC_SPAWNS);
   ap_check(t, "realm world: a thing placed through the world is refused in words, at its edit", st == 422 && ap_has(wc_refusal(t, w, edit[..]), "switches") && edit[0] == 0 && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'the-grid'", q[..]) == "2", ap_body(t));
   st = wc_post_to(t, w, t[0].admin_key, WC_REALM, 2, "publish-now", "");
-  ap_check(t, "realm world: there is nothing to publish", st == 422 && wc_refusal(t, w, edit[..]) == "a realm's switches reach everyone at once: there is nothing to publish", ap_body(t));
+  ap_check(t, "realm world: there is nothing to publish", st == 422 && wc_refusal(t, w, edit[..]) == "a realm's switches and scripts reach everyone at once: there is nothing to publish", ap_body(t));
   ap_check(t, "realm world: a realm nobody made is no world", ap_call(t, "GET", "/api/worlds/no-such-realm-here?lane=dev", "", t[0].no[0..<0]) == 404 && ap_call(t, "GET", "/api/worlds/no-such-realm-here/content", "", t[0].no[0..<0]) == 404, ap_body(t));
 }

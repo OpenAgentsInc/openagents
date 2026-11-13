@@ -356,7 +356,7 @@ tenth, rounded up to 64 KiB.
 | The Garden (`garden.coax`) | 12,000 | 2,838 | 4,000 | 5 | 827,936 | 917,504 |
 | The realm builder (`builder.coax`) | 30,000 | 1,878 | 3,000 | 0 | 1,929,928 | 2,162,688 |
 | Ice Cream Man (`icecream.coax`) | 16,000 | 1,812 | 3,000 | 0 | 1,060,928 | 1,179,648 |
-| A made realm (`myrealm.coax`) | 30,000 | 846 | 2,000 | 0 | 2,210,528 | 2,490,368 |
+| A made realm (`myrealm.coax`) | 30,000 | 846 | 2,000 | 0 | 2,619,056 | 2,883,584 |
 | Hecate's Cemetery (`villa.coax`) | 48,000 | 306 | 1,000 | 6 | 3,414,992 | 3,801,088 |
 | The water lab (`waterlab.coax`) | 6 | 0 | 0 | 0 | 2,014,264 | 2,228,224 |
 

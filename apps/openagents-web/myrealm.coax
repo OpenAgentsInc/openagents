@@ -29,6 +29,14 @@
 //          are walls, and you jump onto rocks, crates and barrels (their tops, 1.1 m at most)
 // JUMP, FLY, MAP and BUILD are there only when the owner gives them. With TALK, E by a character (or a
 // tap on one) talks with it: type and press Enter; with VOICE too, HOLD TO TALK says it out loud.
+//
+// Its world and its scripts (GitHub #13496): the realm's world of kind "realm" (its board, its tools and its
+// script rows, as content tables) is followed by metaverse/edit/realm-page.coax. With `?edit`, the editor
+// shell opens for the realm's owner and admins (coaxial_edit_own) and gets the world as editor.model.v1;
+// its batches (inbox 520) go to the world. A script row drives the realm's characters ("kind 1", or "who N"
+// the Nth): each frame the page hands the script module the player and the characters (script.frame.v1)
+// and walks each character where its script said (script.result.v1). A character whose script said
+// nothing for a moment walks back to its place, so a stopped or switched-off script leaves the realm as it was.
 // myrealm.wgsl draws the sky, the ground, the water, the meshes and the strokes; myrealm-face.c binds it.
 //   coax/bin/coax test apps/openagents-web/myrealm.coax   (a check that lays out a realm several times has its own #steps)
 
@@ -53,7 +61,8 @@
 #load "../../metaverse-engine/core/input.coax";   // a controller's stick and buttons: the engine's one input path (realm_pad)
 #load "../../metaverse-engine/core/loop.coax";    // the walking's fixed steps: the Metaverse Engine's one clock (metaverse-engine/book ch001)
 #load "../../metaverse-engine/move/walk.coax" as pc;   // the shared walker's capsule push out of what stands (metaverse-engine/physics/collide.coax)
-#load "myrealm-room.coax";   // who else is here (/api/playtest/presence/made-<slug>), an agent's seat tagged AGENT
+#load "myrealm-room.coax";
+#load "../../metaverse/edit/realm-page.coax";   // its world: the board, the tools and the scripts as tables; the shell's model (#13496)   // who else is here (/api/playtest/presence/made-<slug>), an agent's seat tagged AGENT
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 30000;
@@ -278,6 +287,9 @@ MyRealm :: struct {
   solid_h: [SOLIDS] f32;   // how high its top is (2D: what you can jump onto); WALL for what you can't
   lantern_x: [LANTERNS] f32; lantern_z: [LANTERNS] f32;
   person_x: [PEOPLE] f32; person_z: [PEOPLE] f32;
+  // each character's place as laid out, and where its script last sent it (#13496): the point, how fast, and when it said so
+  person_hx: [PEOPLE] f32; person_hz: [PEOPLE] f32; person_yaw: [PEOPLE] f32; person_pace: [PEOPLE] f32; person_walked: [PEOPLE] f32;
+  person_tx: [PEOPLE] f32; person_tz: [PEOPLE] f32; person_speed: [PEOPLE] f32; person_said: [PEOPLE] f32; person_solid: [PEOPLE] int;
   water_x: f32; water_z: f32; water_r: f32;
   draws: [MESHES * 4] u32; draw_n: int;
   objects: [PIECES * INSTANCE_FLOATS] f32; object_n: int;
@@ -307,6 +319,8 @@ MyRealm :: struct {
   // the realm's room (myrealm-room.coax): who else is here, and the post in flight beside the realm's own
   room: [1] RoomState; room_req: int; room_at: f32; room_next: f32; room_asked: bool; room_off: bool;
   room_url: [URL] u8; room_url_n: int; room_body: [160] u8; room_body_n: int;
+  // the realm's world and its scripts (#13496): the follower, the frame out, the result in, the step's time and count
+  world: [1] RealmPage; sf: [1] ScriptFrame; sr: [1] ScriptRun; script_dt: f32; script_tick: int; script_calls: int;
 }
 
 realm_reset :: (s: [] MyRealm) {
@@ -622,7 +636,10 @@ realm_message :: (s: [] MyRealm, t: [] Track, kind: int, text: string) #export_c
   }
   if kind == MSG_VOICE && (s[0].voice_held || s[0].heard_due) { talk_heard(s, t, text); return; }
   if s[0].room_req >= 0 && kind == HTTP_ANSWER_KIND + s[0].room_req { room_answered(s, text); return; }
-  if kind >= HTTP_ANSWER_KIND && kind < HTTP_ANSWER_KIND + 8 && kind - HTTP_ANSWER_KIND == s[0].req_id { take_answer(s, t, text); }
+  if kind == RP_BATCH_KIND { _ := rp_batch(s[0].world[..], text); return; }
+  if kind >= HTTP_ANSWER_KIND && kind < HTTP_ANSWER_KIND + 8 && kind - HTTP_ANSWER_KIND == s[0].req_id { take_answer(s, t, text); return; }
+  // the realm's world (realm-page.coax): its state, its tables, its events, the shell's batch
+  if kind >= HTTP_ANSWER_KIND && kind < HTTP_ANSWER_KIND + 8 { _ := rp_answer(s[0].world[..], kind - HTTP_ANSWER_KIND, text); }
 }
 
 answer_of :: (text: string) -> string { e := line_end(text, 0); return ifx e + 1 <= text.count then text[e + 1..<text.count] else ""; }
@@ -1076,6 +1093,9 @@ lay_out :: (s: [] MyRealm) {
     // off to either side ahead of you, never in your way
     a := (ifx p % 2 == 0 then 0.75f32 else -0.75f32) * (1 + 0.45 * cast(f32) (p / 2));
     s[0].person_x[p] = 5 * sin(a); s[0].person_z[p] = 6 - 5 * cos(a);
+    s[0].person_hx[p] = s[0].person_x[p]; s[0].person_hz[p] = s[0].person_z[p];
+    s[0].person_yaw[p] = turn_of(-s[0].person_x[p], s[0].person_z[p] - 6); s[0].person_pace[p] = 0; s[0].person_said[p] = -99;
+    s[0].person_solid[p] = s[0].solid_n;
     solid(s, s[0].person_x[p], s[0].person_z[p], 0.4);
   }
   for i: 0..<s[0].lanterns {
@@ -1199,11 +1219,6 @@ lay_out :: (s: [] MyRealm) {
   }
   for i: 0..<s[0].placed_n { ent_begin(s, EK_PLACED, i, s[0].placed_x[i], s[0].placed_z[i]); thing_at(s, s[0].placed_thing[i], s[0].placed_x[i], s[0].placed_z[i], s[0].placed_yaw[i], 1, 0); ent_end(s); }
   s[0].cover_from = s[0].piece_n; ground_cover(s, r[..]); horizon_out(s, r[..]); glowing(s, 0); s[0].cover_to = s[0].piece_n;
-  // the characters, each a figure facing where you start
-  for p: 0..<s[0].people {
-    o := (p % 4) * 3;
-    pawn(s, s[0].person_x[p], 0, s[0].person_z[p], turn_of(-s[0].person_x[p], s[0].person_z[p] - 6), 1, PERSON_RGB[o], PERSON_RGB[o + 1], PERSON_RGB[o + 2], false, p + 1, 0, 0);
-  }
   ents_moved(s);   // after everything else is laid out where it was, so a move shifts nothing but what moved
   s[0].static_n = s[0].piece_n;
   roofs_out(s); owl_home(s);
@@ -1421,6 +1436,11 @@ actors :: (s: [] MyRealm) {
   moved := s[0].walked - s[0].you_walked; s[0].you_walked = s[0].walked;
   s[0].you_pace += ((ifx moved > 0.0005 then 1.0f32 else 0.0f32) - s[0].you_pace) * 0.2;
   if s[0].camera != CAM_FIRST { pawn(s, s[0].x, s[0].y, s[0].z, s[0].yaw, 1, YOU_RGB[0], YOU_RGB[1], YOU_RGB[2], true, 0, s[0].you_pace, s[0].walked / 1.3); }
+  // the characters, each a figure: where it stands (its place, or where its script walked it) and the way it faces
+  for p: 0..<s[0].people {
+    o := (p % 4) * 3;
+    pawn(s, s[0].person_x[p], 0, s[0].person_z[p], s[0].person_yaw[p], 1, PERSON_RGB[o], PERSON_RGB[o + 1], PERSON_RGB[o + 2], false, p + 1, s[0].person_pace[p], s[0].person_walked[p] / 1.3);
+  }
   crate := mesh_named(s, "Prop_Crate");
   // the herd roams its patches, now and then stopping to graze; the village goes about its day
   // the herd: each grazes, stands about or walks a small round of its own (its place keeps it
@@ -2150,6 +2170,96 @@ realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: 
 //   view), 1400 + e its kind (EK_*, -1 none); 1500 + 4c..1503 + 4c the BUILD pane's cell c.
 PROBE_NONE :: -99999;
 PROBE_GLADE :: 5998; PROBE_STYLE :: 6000;   // the light's readback (#13067)
+// ---- the realm's world and its scripts (#13496; metaverse/edit/realm-page.coax)
+
+PERSON_WALK :: 1.2;       // metres a second: a character walking back to its place
+PERSON_RUN :: 3.0;        // the fastest a script may walk one
+SCRIPT_HOLD :: 0.5;       // seconds a script's word holds; then the character walks back to its place
+SCRIPT_PLAYER :: 1; SCRIPT_PERSON :: 10;   // ids in a frame: you, and the Nth character SCRIPT_PERSON + N
+SCRIPT_KIND_PLAYER :: 0;
+
+// The editor shell's model of the realm's world (coax/web/host.js carries it to the shell on ?edit), and
+// whether the viewer authors the realm, so the shell opens for them (the server still decides every write).
+realm_edit_rev :: (s: [] MyRealm) -> int #export_c #effects(all) { return rp_rev(s[0].world[..]); }
+realm_edit_model :: (s: [] MyRealm) -> string #export_c #effects(all) { return rp_model(s[0].world[..]); }
+realm_edit_own :: (s: [] MyRealm) -> bool #export_c #effects(all) { return editor_owner(s); }
+// The world's one request at a time, with the player key the realm knows the viewer by.
+realm_world_wants :: (s: [] MyRealm) -> bool #export_c #effects(all) { return rp_wants(s[0].world[..]); }
+realm_world_url :: (s: [] MyRealm) -> string #export_c #effects(all) { return rp_url(s[0].world[..]); }
+realm_world_body :: (s: [] MyRealm) -> string #export_c #effects(all) { return rp_body(s[0].world[..]); }
+realm_world_flags :: (s: [] MyRealm) -> int #export_c #effects(all) { return rp_flags(s[0].world[..]) | TRACK_KEY; }
+realm_world_sent :: (s: [] MyRealm, id: int) #export_c #effects(all) { rp_sent(s[0].world[..], id); }
+realm_engine_started :: (s: [] MyRealm) #export_c #effects(all) { rp_engine_started(s[0].world[..]); }
+// The scripts the world's tables name, as the page's script loader reads them; "" when none would drive anyone.
+realm_script_wants :: (s: [] MyRealm) -> string #export_c #effects(all) {
+  if !s[0].laid || s[0].people == 0 { return ""; }
+  return rp_script_wants(s[0].world[..]);
+}
+// The frame for the step just taken (script.frame.v1) into out: its length, 0 when no script would run.
+realm_script_frame :: (s: [] MyRealm, out: [] u8) -> int #export_c #effects(all) {
+  if !s[0].laid || s[0].still || s[0].people == 0 || s[0].world[0].rows_n == 0 { return 0; }
+  f := s[0].sf[..];
+  s[0].script_tick += 1;
+  f[0] = ScriptFrame.{tick = s[0].script_tick, seed = seed_of(slug_text(s)), dt = s[0].script_dt, time = s[0].time, day = 0.5};
+  f[0].things[0] = ScriptThing.{id = SCRIPT_PLAYER, kind = cast(s32) SCRIPT_KIND_PLAYER, alive = true, x = s[0].x, y = s[0].y, z = s[0].z, facing = s[0].yaw, health = 1};
+  n := 1;
+  for p: 0..<s[0].people {
+    f[0].things[n] = ScriptThing.{id = cast(u64) (SCRIPT_PERSON + p + 1), kind = cast(s32) RP_KIND_CHARACTERS, script = cast(s32) rp_script(s[0].world[..], p + 1), alive = true,
+                                  x = s[0].person_x[p], z = s[0].person_z[p], facing = s[0].person_yaw[p], speed = PERSON_RUN, health = 1,
+                                  goal_x = s[0].person_hx[p], goal_z = s[0].person_hz[p], goal_speed = PERSON_WALK};
+    f[0].things[n].px[0] = s[0].person_hx[p]; f[0].things[n].pz[0] = s[0].person_hz[p];
+    n += 1;
+  }
+  f[0].n_things = n;
+  k := sf_write(f, out);
+  return ifx k > 0 then k else 0;
+}
+// A tick's result (script.result.v1): where each character's script sends it. False for bytes that are not one.
+realm_script_result :: (s: [] MyRealm, bytes: [] u8) -> bool #export_c #effects(all) {
+  if !sr_read(bytes, s[0].sr[..]) { return false; }
+  r := s[0].sr[..];
+  for k: 0..<r[0].n_commands {
+    c := r[0].commands[k];
+    if c.thing <= SCRIPT_PERSON || c.thing > cast(u64) (SCRIPT_PERSON + s[0].people) { continue; }
+    p := cast(int) c.thing - SCRIPT_PERSON - 1;
+    if c.op == SA_MOVE { s[0].person_tx[p] = c.a; s[0].person_tz[p] = c.b; s[0].person_speed[p] = clamp(c.c, 0, PERSON_RUN); s[0].person_said[p] = s[0].time; }
+    else if c.op == SA_STOP { s[0].person_tx[p] = s[0].person_x[p]; s[0].person_tz[p] = s[0].person_z[p]; s[0].person_speed[p] = 0; s[0].person_said[p] = s[0].time; }
+    else if c.op == SA_FACE { s[0].person_yaw[p] = c.a; }
+  }
+  s[0].script_calls += r[0].calls;
+  return true;
+}
+// The characters walk: where a script sent each one in the last moment, else back to its place. A
+// character keeps to the ground, out of the water and an arm's length from you; its solid goes with it.
+people_step :: (s: [] MyRealm, dt: f32) {
+  s[0].script_dt = dt;
+  for p: 0..<s[0].people {
+    said := s[0].time - s[0].person_said[p] <= SCRIPT_HOLD;
+    tx := ifx said then s[0].person_tx[p] else s[0].person_hx[p];
+    tz := ifx said then s[0].person_tz[p] else s[0].person_hz[p];
+    speed := ifx said then s[0].person_speed[p] else PERSON_WALK;
+    x := s[0].person_x[p]; z := s[0].person_z[p];
+    dx := tx - x; dz := tz - z; d := sqrt(dx * dx + dz * dz);
+    // the last two centimetres are taken at once, so a character stands exactly where it was sent
+    if d > 0 && d <= 0.02 && speed > 0 { s[0].person_x[p] = tx; s[0].person_z[p] = tz; x = tx; z = tz; d = 0; }
+    moving := d > 0.02 && speed > 0;
+    if moving {
+      k := lo(speed * dt, d) / d;
+      nx := ifx k >= 1 then tx else x + dx * k; nz := ifx k >= 1 then tz else z + dz * k;
+      ox := nx - s[0].x; oz := nz - s[0].z;
+      inside := sqrt(nx * nx + nz * nz) < GROUND_R - 1.5 && water_in(s, nx, nz) <= 0;
+      if inside && sqrt(ox * ox + oz * oz) >= 0.8 { s[0].person_x[p] = nx; s[0].person_z[p] = nz; s[0].person_walked[p] += lo(speed * dt, d); }
+      else { moving = false; }
+      if moving { s[0].person_yaw[p] = turn_of(dx, -dz); }
+    }
+    // home and with no word: facing where you start, as laid out
+    if !moving && !said && d == 0 { s[0].person_yaw[p] = turn_of(-s[0].person_hx[p], s[0].person_hz[p] - 6); }
+    s[0].person_pace[p] += ((ifx moving then 1.0f32 else 0.0f32) - s[0].person_pace[p]) * 0.2;
+    o := s[0].person_solid[p];
+    if o >= 0 && o < s[0].solid_n { s[0].solid_x[o] = s[0].person_x[p]; s[0].solid_z[o] = s[0].person_z[p]; }
+  }
+}
+
 realm_probe :: (s: [] MyRealm, f: int) -> int #export_c #effects(all) {
   if f == 0 { return ifx s[0].spec_ready then 1 else 0; }
   if f == 1 { return ifx s[0].owner then 1 else 0; }
@@ -2174,6 +2284,10 @@ realm_probe :: (s: [] MyRealm, f: int) -> int #export_c #effects(all) {
   if f == 18 { return s[0].camera; }
   if f == 19 { return cast(int) (s[0].pitch * 18000.0f32 / pc.PI + (ifx s[0].pitch < 0 then -0.5f32 else 0.5f32)); }
   if f >= 2400 && f < 2500 { return redit_probe(s[0].ed[..], f - 2400); }   // the edit layer (metaverse/edit/edit.coax)
+  // the realm's world and its scripts (#13496): its revision the page stands at, its script rows, the scripts' calls so far
+  if f == 2500 { return s[0].world[0].f[0].rev; }
+  if f == 2501 { return s[0].world[0].rows_n; }
+  if f == 2502 { return s[0].script_calls; }
   if f == 64 { return ifx s[0].laid then s[0].ent_n else 0; }
   // the light a browser check reads back (#13067): PROBE_GLADE is 1 when the last frame wrote the
   // glade's style block (a painterly realm that authors no light), PROBE_STYLE + i the block's word i in millionths
@@ -2668,8 +2782,11 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
   }
   next_request(s);
   if s[0].req_id >= 0 && s[0].time - s[0].req_at > WAIT { s[0].req_id = -1; s[0].req_what = REQ_NONE; if !s[0].spec_ready { s[0].spec_failed = true; } }
+  if s[0].spec_ready && s[0].slug_n > 0 { _ := rp_open(s[0].world[..], slug_text(s)); }
+  rp_step(s[0].world[..], dt);
   walk_x0 := s[0].x; walk_z0 := s[0].z;
   realm_step(s, dt);
+  if s[0].laid && !still { people_step(s, dt); }
   track_walk(t, cast(f64) sqrt((s[0].x - walk_x0) * (s[0].x - walk_x0) + (s[0].z - walk_z0) * (s[0].z - walk_z0)));   // walking milestones
   room_ease(s[0].room[..], dt);
   if s[0].laid { actors(s); room_actors(s); }
@@ -4048,10 +4165,57 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   #assert editor_dirty(s[0].fd[..]) && s[0].fd[0].rev == 4 && s[0].server_rev == 5;
 }
 
+// The realm's world and its scripts (#13496): the page follows the world, tells the shell, names the
+// script, hands the script module its characters and walks them where the script says.
+world_answer :: (s: [] MyRealm, t: [] Track, status: string, body: string) {
+  #assert realm_world_wants(s);
+  realm_world_sent(s, 5);
+  b: [8192] u8; m := put(b[..], 0, status); m = put(b[..], m, "\n"); m = put(b[..], m, body);
+  realm_message(s, t, HTTP_ANSWER_KIND + 5, cast(string) b[0..<m]);
+}
+#test "a made realm follows its world: a script row drives its character, and a stopped script lets it walk home" #steps 60000000 {
+  s: [1] MyRealm; t: [1] Track; o: [4096] u8; tb: [2048] u8;
+  opened(s[..], t[..], "moonlit-marsh", TALKS);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].people == 1 && realm_world_url(s[..]) == "/api/worlds/moonlit-marsh?lane=dev" && (realm_world_flags(s[..]) & TRACK_KEY) != 0;
+  #assert !realm_edit_own(s[..]);   // a visitor: the shell does not open for them
+  world_answer(s[..], t[..], "200", rp_test_state(3, o[..]));
+  n = frame_of(s[..], t[..], 2560, 1600);
+  row := "1|my-greeter|528d7a3c9a6d5c5fd9e0f0b0d6f2b1c3a4e5f60718293a4b5c6d7e8f90a1b2c3|kind 1\n";
+  world_answer(s[..], t[..], "200", rp_test_tables(row, tb[..]));
+  #assert s[0].world[0].rows_n == 1 && realm_probe(s[..], 2501) == 1 && realm_probe(s[..], 2500) == 3;
+  #assert realm_script_wants(s[..]) == "/api/worlds/moonlit-marsh/scripts\n0 528d7a3c9a6d5c5fd9e0f0b0d6f2b1c3a4e5f60718293a4b5c6d7e8f90a1b2c3\n";
+  m: [1] EdModel; sc: [EM_BYTES] u8;
+  #assert em_read(m[..], realm_edit_model(s[..]), sc[..]) && m[0].at_once && m[0].ns == 1 && m[0].nsk == 1;
+  // the frame: you, then the character, driven by script 0, its place its goal
+  fb: [SF_BYTES] u8; f: [1] ScriptFrame;
+  k := realm_script_frame(s[..], fb[..]);
+  #assert k > 0 && sf_read(fb[0..<k], f[..]) && f[0].n_things == 2 && f[0].things[1].id == SCRIPT_PERSON + 1 && f[0].things[1].script == 0;
+  hx := s[0].person_hx[0]; hz := s[0].person_hz[0];
+  #assert f[0].things[1].goal_x == hx && f[0].things[1].goal_z == hz;
+  // the script sends it two metres off: it walks there, no faster than it said
+  r: [1] ScriptRun; rb: [SR_BYTES] u8;
+  r[0].n_commands = 1; r[0].commands[0] = ScriptCommand.{op = SA_MOVE, thing = SCRIPT_PERSON + 1, a = hx + 2, b = hz, c = 1.0};
+  rn := sr_write(r[..], rb[..]);
+  #assert rn > 0 && realm_script_result(s[..], rb[0..<rn]) && !realm_script_result(s[..], rb[0..<4]);
+  for i: 0..<30 { #assert realm_script_result(s[..], rb[0..<rn]); realm_step(s[..], 0.016); people_step(s[..], 0.016); }
+  #assert s[0].person_x[0] > hx + 0.3 && s[0].person_x[0] < hx + 0.6 && s[0].person_pace[0] > 0.5;
+  #assert s[0].solid_x[s[0].person_solid[0]] == s[0].person_x[0];
+  // the script stops (no word): after a moment it walks back to its place and faces where you start again
+  for i: 0..<200 { realm_step(s[..], 0.016); people_step(s[..], 0.016); }
+  #assert s[0].person_x[0] == hx && s[0].person_z[0] == hz && s[0].person_yaw[0] == turn_of(-hx, hz - 6);
+  // the row is taken away: the page names no script, and hands the script module nothing
+  s[0].world[0].f[0].since = WF_POLL; rp_step(s[0].world[..], 0.016);
+  world_answer(s[..], t[..], "200", "EVENT");
+  rp_step(s[0].world[..], 0.016); world_answer(s[..], t[..], "200", rp_test_state(4, o[..]));
+  rp_step(s[0].world[..], 0.016); world_answer(s[..], t[..], "200", rp_test_tables("", tb[..]));
+  #assert realm_script_wants(s[..]) == "" && realm_script_frame(s[..], fb[..]) == 0 && realm_probe(s[..], 2500) == 4;
+}
+
 // ---------------------------------------------------------------------------------------------
 // The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of a made realm may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
-MYREALM_BUDGET :: FrameBudget.{steps = 8, vertices = 2000, draws = 0, bytes = 2490368};
+MYREALM_BUDGET :: FrameBudget.{steps = 8, vertices = 2000, draws = 0, bytes = 2883584};   // its world and its scripts added 170 KB (#13496)
 
 // An empty made realm: three frames at each budget screen, the last one 0.1 s long. Book
 // chapter 16 gives the peaks of 120 frames at each screen, measured natively.

@@ -94,12 +94,15 @@ wr_known :: (kind: string, signed_in: bool, player: bool) -> bool #export_c #eff
 // A realm's switches reach everyone at once: its world has one lane, dev, which a read of live is
 // answered with, and nothing to publish.
 wr_at_once :: (kind: string) -> bool #export_c #effects(all) { return kind == REALM_KIND; }
-wr_at_once_words :: () -> string #export_c #effects(all) { return "a realm's switches reach everyone at once: there is nothing to publish"; }
-// The realm's board and settings (verse.edit_spec) as content tables into out: their length, or -1.
-wr_realm_tables :: (spec: string, out: [] u8) -> int #export_c #effects(all) { return rw_tables(spec, out); }
-// A batch carried out on the realm's board: realm-world.coax rw_batch's status, numbers and bytes.
-wr_realm_batch :: (spec: string, body: string, fenced: bool, out_did: [] u8, out_inv: [] u8, out_acts: [] u8, out_why: [] u8, n: [] int) -> int #export_c #effects(all) {
-  return rw_batch(spec, body, fenced, out_did, out_inv, out_acts, out_why, n);
+wr_at_once_words :: () -> string #export_c #effects(all) { return "a realm's switches and scripts reach everyone at once: there is nothing to publish"; }
+// The realm's board and settings (verse.edit_spec) and its scripts document (the world's row; "" for
+// none) as content tables into out: their length, or -1.
+wr_realm_tables :: (spec: string, scripts: string, out: [] u8) -> int #export_c #effects(all) { return rw_tables(spec, scripts, out); }
+// The scripts document of a realm that runs none: what its row keeps until a script row is written.
+wr_realm_scripts_none :: () -> string #export_c #effects(all) { return RW_SCRIPTS_EMPTY; }
+// A batch carried out on the realm's board and scripts: realm-world.coax rw_batch's status, numbers and bytes.
+wr_realm_batch :: (spec: string, scripts: string, body: string, fenced: bool, out_did: [] u8, out_inv: [] u8, out_acts: [] u8, out_why: [] u8, out_scripts: [] u8, n: [] int) -> int #export_c #effects(all) {
+  return rw_batch(spec, scripts, body, fenced, out_did, out_inv, out_acts, out_why, out_scripts, n);
 }
 wr_realm_status :: (status: int) -> int #export_c #effects(all) { return rw_status(status); }
 wr_realm_words :: (status: int) -> string #export_c #effects(all) { return rw_words(status); }
@@ -396,9 +399,12 @@ wr_card :: (world: string, rev: int, things: int, name: string, out: [] u8) -> i
   #assert wr_known("realm", false, true) && wr_known("realm", true, false) && !wr_known("realm", false, false) && !wr_known("splice-bots", false, true) && wr_known("splice-bots", true, false);
   #assert wr_at_once("realm") && !wr_at_once("splice-bots") && !wr_at_once("") && wr_at_once_words().count > 0;
   out: [RW_TABLES] u8;
-  #assert wr_realm_tables(RW_SPEC_FIXTURE, out[..]) == rw_tables(RW_SPEC_FIXTURE, out[..]) && wr_realm_tables("row X 1 x\n", out[..]) == -1;
-  e: [1] WorldEdit; body: [WE_BATCH_BODY] u8; did: [WE_BATCH_BODY] u8; inv: [WE_BATCH_BODY] u8; acts: [RW_ACTS] u8; why: [240] u8; n: [6] int;
+  #assert wr_realm_tables(RW_SPEC_FIXTURE, "", out[..]) == rw_tables(RW_SPEC_FIXTURE, "", out[..]) && wr_realm_tables("row X 1 x\n", "", out[..]) == -1 && wr_realm_tables(RW_SPEC_FIXTURE, "x", out[..]) == -1;
+  e: [1] WorldEdit; body: [WE_BATCH_BODY] u8; did: [WE_BATCH_BODY] u8; inv: [WE_BATCH_BODY] u8; acts: [RW_ACTS] u8; why: [240] u8; sc: [RW_SCRIPTS] u8; n: [7] int;
   e[0] = rw_test_cell("tools", 2, "1");
-  #assert wr_realm_batch(RW_SPEC_FIXTURE, we_batch_write(3, WB_APPLY, e[..], 1, body[..]), true, did[..], inv[..], acts[..], why[..], n[..]) == RW_OK && cast(string) acts[0..<n[2]] == "tool build 1\n";
+  #assert wr_realm_batch(RW_SPEC_FIXTURE, "", we_batch_write(3, WB_APPLY, e[..], 1, body[..]), true, did[..], inv[..], acts[..], why[..], sc[..], n[..]) == RW_OK && cast(string) acts[0..<n[2]] == "tool build 1\n" && n[6] == 0;
+  e[0] = rw_test_script(1, "");
+  #assert wr_realm_batch(RW_SPEC_FIXTURE, "", we_batch_write(3, WB_APPLY, e[..], 1, body[..]), true, did[..], inv[..], acts[..], why[..], sc[..], n[..]) == RW_REFUSED;
   for st: 0..<5 { #assert wr_realm_status(st) == rw_status(st) && wr_realm_words(st) == rw_words(st); }
+  #assert wr_realm_scripts_none() == RW_SCRIPTS_EMPTY;
 }

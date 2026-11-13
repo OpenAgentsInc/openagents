@@ -118,22 +118,20 @@ static const char *who_of(const request *q) {
   const auth_principal *p = auth_principal_of(q);
   return !p ? "" : p->account[0] ? p->account : p->pubkey;
 }
-// Whether whoever asks may store or compile a script for this world: the verdict (0: yes).
-static int64_t may_store(const request *q, PGconn *db, const char *id, bool exists) {
+// Whether whoever asks may store or compile a script for this world: the verdict (0: yes). Their role is the one a
+// world is written by (worlds.c world_scripts_asker: the player key or the signed caller's, verse.edit_role's rule),
+// so a realm's maker stores scripts for their own realm (#13496).
+static int64_t may_store(const request *q, PGconn *db, const char *id) {
   const auth_principal *p = auth_principal_of(q);
-  bool known = p && (p->account[0] || p->pubkey[0]), admin = p && p->admin;
-  int64_t role = 0;
-  if (known && !admin && p->pubkey[0]) {
-    const char *v[2] = {id, p->pubkey};
-    PGresult *r = PQexecParams(db, "SELECT " API_REALM_ROLE_FACTS("$1", "$2") " FROM " API_REALM_ROLE_FROM("$1", "$2"), 2, NULL, v, NULL, NULL, 0);
-    if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
-      bool f[5];
-      for (int i = 0; i < 5; i++) f[i] = !strcmp(PQgetvalue(r, 0, i), "t");
-      role = wsp_edit_role(f[0], f[1], f[2], false, f[3], f[4]);
-    }
-    PQclear(r);
-  }
-  return wsp_may(auth_same_site(q), known, admin, role, exists);
+  bool known = p && (p->account[0] || p->pubkey[0]), admin = p && p->admin, shown = false;
+  char role[16] = "";
+  if (!world_scripts_asker(q, db, id, &shown, role)) return wsp_may(auth_same_site(q), known, admin, 0, false);
+  return wsp_may(auth_same_site(q), known, admin, wsp_role(cs(role)), shown);
+}
+// Whether the world runs scripts and is shown to whoever asks (a realm hidden from them is not).
+static bool shown_to(const request *q, PGconn *db, const char *id) {
+  bool shown = false; char role[16];
+  return world_scripts_asker(q, db, id, &shown, role) && shown;
 }
 static void refuse_may(int fd, int64_t verdict) {
   coax_string s = wsp_may_words(verdict);
@@ -183,7 +181,7 @@ bool scripts_publish_ok(const request *q, PGconn *db, const char *id, const char
 // ---- reading
 
 static void script_list(const request *q, PGconn *db, const char *id) {
-  if (!world_scripts_world(db, id, false, NULL)) { world_refuse(q->fd, 404, "no such world"); return; }
+  if (!shown_to(q, db, id)) { world_refuse(q->fd, 404, "no such world"); return; }
   const char *v[1] = {id};
   PGresult *r = PQexecParams(db, "SELECT s.manifest, o.hash IS NOT NULL, coalesce(o.why, ''), s.source IS NOT NULL FROM verse.world_scripts s LEFT JOIN verse.script_off o ON o.hash = s.hash "
                                  "WHERE s.world = $1 ORDER BY s.hash", 1, NULL, v, NULL, NULL, 0);
@@ -214,7 +212,7 @@ static void script_get(const request *q, PGconn *db, const char *id, const char 
   PQclear(r);
 }
 static void script_source(const request *q, PGconn *db, const char *id, const char *hash) {
-  int64_t verdict = may_store(q, db, id, world_scripts_world(db, id, false, NULL));
+  int64_t verdict = may_store(q, db, id);
   if (verdict != 0) { refuse_may(q->fd, verdict); return; }
   const char *v[2] = {id, hash};
   PGresult *r = PQexecParams(db, "SELECT source FROM verse.world_scripts WHERE world = $1 AND hash = $2 AND source IS NOT NULL", 2, NULL, v, NULL, NULL, 0);
@@ -295,7 +293,7 @@ static void store_checked(const request *q, PGconn *db, const char *id, const ch
 }
 // POST .../scripts?name=NAME: a module's bytes.
 static void script_put(const request *q, PGconn *db, const char *id) {
-  int64_t verdict = may_store(q, db, id, world_scripts_world(db, id, false, NULL));
+  int64_t verdict = may_store(q, db, id);
   if (verdict != 0) { refuse_may(q->fd, verdict); return; }
   char name[80] = "", fields[4096] = "";
   api_query(q, "name", name, sizeof name);
@@ -382,7 +380,7 @@ static int job_remote(const char *base, const char *name, const char *source, si
 }
 // POST .../scripts/compile?name=NAME: a script's source.
 static void script_compile(const request *q, PGconn *db, const char *id) {
-  int64_t verdict = may_store(q, db, id, world_scripts_world(db, id, false, NULL));
+  int64_t verdict = may_store(q, db, id);
   if (verdict != 0) { refuse_may(q->fd, verdict); return; }
   const char *job = getenv("OA_SCRIPT_JOB"), *service = getenv("OA_SCRIPT_JOB_URL");
   char name[80] = "";
@@ -421,7 +419,7 @@ static void script_compile(const request *q, PGconn *db, const char *id) {
 static void script_report(const request *q, PGconn *db, const char *id, const char *hash) {
   const auth_principal *p = auth_principal_of(q);
   bool known = p && (p->account[0] || p->pubkey[0]);
-  int64_t verdict = wsp_may_report(auth_same_site(q), known, world_scripts_world(db, id, false, NULL));
+  int64_t verdict = wsp_may_report(auth_same_site(q), known, shown_to(q, db, id));
   if (verdict != 0) { refuse_may(q->fd, verdict); return; }
   char why[200] = "";
   size_t n = q->body_len < sizeof why ? q->body_len : sizeof why - 1;

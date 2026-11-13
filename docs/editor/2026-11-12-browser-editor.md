@@ -582,7 +582,18 @@ are [realm-script-api.md](../protocol/realm-script-api.md), and the server's
 side is [world-scripts-v1.md](../protocol/world-scripts-v1.md).
 
 The **Scripts** button is in the strip only where the world's server answers
-its script list. Today that is Splice.
+its script list: Splice, for its admins, and every realm, for its maker and
+its admins (#13496).
+
+**In your own realm.** Open `/worlds/SLUG?edit` while logged in as the realm's
+maker. The pane starts with a script for your characters, `my-greeter`: one
+comes to meet you when you are near and goes home when you leave. A realm has
+one lane, so **Run it** reaches everyone in the realm at once. The first run
+of a script, or a new version that may do more, asks first: the pane says
+what it adds, and **Run with these** runs it with your yes. A script drives
+your characters only; with none placed, the pane says so. The realm's page
+runs the script itself (`apps/openagents-web/myrealm.coax`, with
+`metaverse/edit/realm-page.coax` following the world).
 
 1. **Start from plans.** The pane's first line says so and links to the
    Actors list. Use a script only for what a plan cannot say.
@@ -633,7 +644,9 @@ server the local API compiles only when the server is started with the job
 named: `OA_SCRIPT_JOB=$PWD/coax/web/script-job.sh coax/web/serve.sh ...`.
 
 - **Scripted run:** `docs/editor/acceptance/scripts-run.ops` (README,
-  "Scripts").
+  "Scripts"), and in a maker's own realm
+  `docs/editor/acceptance/realm-scripts-run.ts` (README, "Scripts in your
+  own realm"), as a maker with no admin role.
 
 ## Gaps, and the issues that close them
 

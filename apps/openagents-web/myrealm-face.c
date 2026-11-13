@@ -40,6 +40,11 @@ static void drain(uint32_t state) {
     static const char access_url[] = "/api/playtest/access";
     realm_access_sent(at(state), coaxial_http((uint32_t)(uintptr_t)access_url, sizeof access_url - 1, 0, 0, 12));
   }
+  // the realm's world (metaverse/edit/realm-page.coax, #13496): its one request, with the player key
+  if (realm_world_wants(at(state))) {
+    coax_string url = realm_world_url(at(state)), body = realm_world_body(at(state));
+    realm_world_sent(at(state), coaxial_http((uint32_t)(uintptr_t)url.data, (uint32_t)url.count, (uint32_t)(uintptr_t)body.data, (uint32_t)body.count, (int32_t)realm_world_flags(at(state))));
+  }
   edit_face_drain(ed(state));
   computer_face_drain(ed(state));
   track_drain(&track_state);
@@ -125,6 +130,24 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, int
   if (kind == 600) edit_face_message(ed(state), kind, bytes);
   if (kind == 600 || !taken) realm_message(at(state), tr(), kind, bytes);
   drain(state);
+}
+
+// The host calls this as each engine starts (coax/web/host.js loadEngine): the world's request out is asked again.
+EXPORT("coaxial_page") void coaxial_page(uint32_t state, int32_t page) { (void)page; realm_engine_started(at(state)); }
+// The editor shell's model of the realm's world, for its owner and admins on ?edit (coax/web/host.js editorOpen, #13496).
+EXPORT("coaxial_edit_rev") int32_t coaxial_edit_rev(uint32_t state) { return (int32_t)realm_edit_rev(at(state)); }
+EXPORT("coaxial_edit_model") uint32_t coaxial_edit_model(uint32_t state) { return (uint32_t)(uintptr_t)realm_edit_model(at(state)).data; }
+EXPORT("coaxial_edit_model_len") uint32_t coaxial_edit_model_len(uint32_t state) { return (uint32_t)realm_edit_model(at(state)).count; }
+EXPORT("coaxial_edit_own") uint32_t coaxial_edit_own(uint32_t state) { return realm_edit_own(at(state)) ? 1u : 0u; }
+// Realm scripts (#13496): the scripts the world names, the frame out and the result in (coax/web/host.js, "A realm's scripts").
+static uint8_t script_frame[36864];
+EXPORT("coaxial_script_wants") uint32_t coaxial_script_wants(uint32_t state) { return (uint32_t)(uintptr_t)realm_script_wants(at(state)).data; }
+EXPORT("coaxial_script_wants_len") uint32_t coaxial_script_wants_len(uint32_t state) { return (uint32_t)realm_script_wants(at(state)).count; }
+EXPORT("coaxial_script_frame") uint32_t coaxial_script_frame(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)script_frame; }
+EXPORT("coaxial_script_frame_len") uint32_t coaxial_script_frame_len(uint32_t state) { return (uint32_t)realm_script_frame(at(state), (coax_v_u8){script_frame, sizeof script_frame}); }
+EXPORT("coaxial_script_result") uint32_t coaxial_script_result(uint32_t state, uint32_t length) {
+  if (length > sizeof inbox) return 0;
+  return realm_script_result(at(state), (coax_v_u8){inbox, (int64_t)length}) ? 1u : 0u;
 }
 
 EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)realm_action(at(state)); }

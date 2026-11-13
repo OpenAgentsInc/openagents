@@ -165,13 +165,23 @@ site's admins write it; a player of the game is known by `X-Verse-Player`, as
 on the realm routes. A realm hidden from the caller is no world to them.
 
 - Its document is empty: it places nothing. `GET /api/worlds/ID/content` is
-  its board and its settings as two content tables, `rows` (`id key:text
-  on:int label:text`, in the board's order) and `tools` (`id name:text
+  its board and its settings as three content tables, `rows` (`id key:text
+  on:int label:text`, in the board's order), `scripts` (`id name:text
+  hash:text for:text`, the scripts it runs) and `tools` (`id name:text
   on:int`).
-- A batch is `cell` edits of `on`, `0` or `1`. The realm's own SQL
-  (`verse.edit_switch`, `verse.edit_settings`) carries each out, so its
-  refusals are the ones the realm's page meets. Anything else is refused in
-  words, at its edit (`metaverse/edit/realm-world.coax`).
+- A batch is `cell` edits of `on`, `0` or `1`, and of a script row whole
+  (the cell `*` of a row of `scripts`: `NAME|HASH|FOR`, or empty to take it
+  away).
+  The realm's own SQL (`verse.edit_switch`, `verse.edit_settings`) carries out
+  each switch, so its refusals are the ones the realm's page meets. The
+  script rows are kept with the world (`verse.world_docs.dev_tables`) under
+  the rules of [world-scripts-v1.md](world-scripts-v1.md): a row names a
+  module the world stores, and one that is new or does more needs the maker's
+  yes (`?confirm=HASH`). Anything else is refused in words, at its edit
+  (`metaverse/edit/realm-world.coax`).
+- The realm's page follows its world (`metaverse/edit/realm-page.coax`): it
+  reads the tables, takes each saved edit from the events, and runs the
+  scripts the rows name on its characters. Splice's page does the same.
 - Undo and redo take a batch back as switches. It has one lane: a read of
   live is answered with dev, and a publish is refused, since a switch reaches
   everyone at once.

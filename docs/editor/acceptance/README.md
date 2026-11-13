@@ -182,6 +182,33 @@ more revision, the same row), checks that the calls keep rising, and stops the
 script. It leaves `scripts-run.png` and `scripts-swap.png` in
 `apps/openagents-web/build/`.
 
+## Scripts in your own realm
+
+The same pane in a realm a maker owns, as a maker who is no admin (#13496).
+`coax drive` opens its pages as this computer's admin, so this run is a
+headless Chrome of its own (`realm-scripts-run.ts`): it logs a new Nostr key
+in through the page, so the account is new and holds no role.
+
+```sh
+OA_SCRIPT_JOB=$PWD/coax/web/script-job.sh \
+  coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9644 --fresh
+ORIGIN=http://127.0.0.1:9644 SIGN=WORK/sign bun docs/editor/acceptance/realm-scripts-run.ts
+```
+
+`WORK` is the local API's work directory: serve.sh names it in the line
+that gives the API's log. The run makes a realm with one character, opens it
+with the editor, and checks that the character keeps its place with no
+script. It builds the starter (`my-greeter`) and presses Run, which asks
+first because the script is new. It then presses Run with these and waits
+until the row reaches the page and the character walks to within 2.5 m of
+you. It leaves `realm-scripts-asked.png` and `realm-scripts-run.png` in
+`apps/openagents-web/build/`.
+
+A dev server has no page at `/worlds/SLUG`, since production writes that page
+to the site's bucket. A made realm opens at `/worlds/built#SLUG` there. The app
+shell's frame drops the `#SLUG`, so the run holds that address in a frame of
+its own, as the shell holds `/worlds/SLUG?edit` on openagents.com.
+
 ## What it checks
 
 | Step | What must hold |

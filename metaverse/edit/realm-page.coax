@@ -1,0 +1,240 @@
+// A made realm's page in its own world (GitHub #13496, after #13422 and #13478): the world of kind
+// "realm" under the realm's slug, as the page follows it, tells the editor shell, and names its scripts.
+//
+// The world has one lane, dev, and nothing to publish: its content tables are the realm's board (rows),
+// its scripts and the tools its visitors get (metaverse/edit/realm-world.coax, as the API answers
+// GET /api/worlds/SLUG/content). The page reads the lane's state, then its tables, and reads both again
+// after any event (metaverse-engine/editor/world-follow.coax): a realm's world is small, so the page keeps
+// no copy of its own that an event would have to change.
+//
+// What it makes of them:
+//   - the editor shell's model (editor.model.v1, metaverse-engine/editor/shell-model.coax): `atonce`, the
+//     scripts table with the kind a script drives here (kind 1: the realm's characters) and its rows, and the
+//     board and the tools as lists of switches;
+//   - the scripts the tables name, as the page's script loader reads them (metaverse-engine/script/loader.coax):
+//     the world's script list, then "SLOT HASH" a row;
+//   - which loaded script drives a character (srw_pick: a row for that one wins over a row for the kind).
+// A batch the shell sends (inbox 520) goes to the world as the page's one write at a time; the server
+// carries it out (coax/web/api/worlds.c realm_post) and its refusal comes back to the shell in words.
+// This file decides what to ask and what an answer is; the page's face sends it (rp_wants, rp_url, rp_body,
+// rp_flags, rp_sent, rp_answer). It reads nothing of the realm's own spec.
+//   coax/bin/coax test metaverse/edit/realm-page.coax
+#load "../../metaverse-engine/editor/world-follow.coax";
+#load "../../metaverse-engine/editor/shell-model.coax";
+#load "../../metaverse-engine/script/rows.coax";
+
+RP_KIND_CHARACTERS :: 1;   // "kind 1": the realm's characters; "who N": the Nth of them (1 and up)
+RP_CHARACTERS_NAME :: "Characters";
+RP_MODEL :: 12288;         // bytes of the shell's model (a board of 64 rows and 16 tools, and 8 scripts, fit)
+RP_PART :: 10240;          // bytes of its lines the tables give: the scripts and the lists
+RP_WANTS :: 640;
+RP_STATE :: 4096;          // bytes of the lane's state answer the page reads (a realm's document is empty)
+RP_DID :: 8192;            // and of the batch as taken it carries (a realm's batches are switches and script rows)
+RP_BATCH_KIND :: 520;      // the editor shell's: a world.edit.v1 batch
+
+RealmPage :: struct {
+  on: bool;
+  f: [1] WorldFollow;
+  tabled: bool;                               // the lane's tables were read: what the model says of them is in part
+  rows: [SH_SCRIPTS] ScriptRow; rows_n: int;  // the script rows they hold
+  part: [RP_PART] u8; part_n: int;
+  model: [RP_MODEL] u8; model_n: int; mrev: int;
+  wants: [RP_WANTS] u8; wants_n: int;
+  no: [EM_WORDS] u8; no_n: int;               // the last refusal, in words, for the shell
+  sdoc: [RP_STATE] u8; sdid: [RP_DID] u8; sscratch: [RP_STATE + RP_DID] u8;
+}
+
+rp_id :: (p: [] RealmPage) -> string { return wf_id(p[0].f[..]); }
+// Follow the realm's world: its slug is the world's ID. False for a slug that is no world's ID.
+rp_open :: (p: [] RealmPage, slug: string) -> bool {
+  if p[0].on && rp_id(p) == slug { return true; }
+  none: WorldPins;
+  if !wf_open(p[0].f[..], slug, WL_DEV, none) { return false; }
+  p[0].f[0].tables = true;
+  p[0].on = true; p[0].tabled = false; p[0].rows_n = 0; p[0].part_n = 0; p[0].no_n = 0; p[0].wants_n = 0;
+  rp_remodel(p);
+  return true;
+}
+rp_step :: (p: [] RealmPage, dt: f32) { if p[0].on { wf_step(p[0].f[..], dt); } }
+rp_wants :: (p: [] RealmPage) -> bool { return p[0].on && wf_wants(p[0].f[..]); }
+rp_url :: (p: [] RealmPage) -> string { return wf_url(p[0].f[..]); }
+rp_body :: (p: [] RealmPage) -> string { return wf_body(p[0].f[..]); }
+rp_flags :: (p: [] RealmPage) -> int { return wf_flags(p[0].f[..]); }
+rp_sent :: (p: [] RealmPage, host_id: int) { wf_sent(p[0].f[..], host_id); }
+rp_engine_started :: (p: [] RealmPage) { if p[0].on { wf_engine_started(p[0].f[..]); } }
+
+// The tables read: their script rows, and the model's lines they give (the page keeps no copy of them).
+// Tables that do not read name no script and no switch.
+rp_tables :: (p: [] RealmPage, text: string) {
+  d: [1] ContentDoc; bad: [2] int;
+  p[0].tabled = true; p[0].rows_n = 0; p[0].part_n = 0;
+  if !ct_read(d[..], text) { return; }
+  n := srw_scan(d[..], p[0].rows[..], bad[..]);
+  p[0].rows_n = ifx n < 0 then 0 else n;
+  k := rp_part_write(p, d[..], p[0].part[..]);
+  p[0].part_n = ifx k > p[0].part.count then 0 else k;
+}
+// An answer from the host (kind 512 + its id): whether it was the follower's.
+rp_answer :: (p: [] RealmPage, host_id: int, text: string) -> bool {
+  if !p[0].on { return false; }
+  f := p[0].f[..];
+  a := wf_answer(f, host_id, text);
+  if a.what == WFQ_NONE { return false; }
+  if a.what == WFQ_DOC {
+    v := we_state_read(a.body, p[0].sdoc[..], p[0].sdid[..], p[0].sscratch[..]);
+    if a.status == 200 && v.ok && v.lane == WL_DEV { wf_loaded(f, v); } else { wf_not_loaded(f, ifx a.status == 200 then 0 else a.status); }
+  } else if a.what == WFQ_TABLES {
+    if a.status == 200 { rp_tables(p, a.body); }
+    wf_tabled(f);
+  } else if a.what == WFQ_EVENTS {
+    // any event: the state and the tables again (the world is small; the page keeps no copy an event would change)
+    if a.status == 200 && wf_line(a.body, 0).count > 0 { wf_reopen(f); }
+    if a.status != 200 { wf_reopen(f); }
+  } else if a.what == WFQ_POST {
+    wf_posted(f, a);
+    p[0].no_n = 0;
+    if a.status != 200 {
+      words := wf_refused(f);
+      p[0].no_n = rp_line(p[0].no[..], ifx words.count > 0 then words else "The realm's server did not take that. Try again.");
+    }
+  }
+  rp_remodel(p);
+  return true;
+}
+// A batch from the editor shell: the page's one write. False when one is still on its way.
+rp_batch :: (p: [] RealmPage, text: string) -> bool {
+  if !p[0].on { return false; }
+  if !wf_post(p[0].f[..], text) { p[0].no_n = rp_line(p[0].no[..], "The last change is still on its way. Try again."); rp_remodel(p); return false; }
+  return true;
+}
+
+// ---- what the page tells the shell, and its script loader
+
+// Words as one printable line, at most out.count bytes, no space at either end: their length.
+rp_line :: (out: [] u8, words: string) -> int {
+  n := 0;
+  for b: words {
+    if n >= out.count { break; }
+    c := ifx b < 32 || b == 127 then cast(u8) ' ' else b;
+    if c == ' ' && (n == 0 || out[n - 1] == ' ') { continue; }
+    out[n] = c; n += 1;
+  }
+  while n > 0 && out[n - 1] == ' ' { n -= 1; }
+  return n;
+}
+// A list of switches from table `name` of the tables: its rows' IDs, their `on` cells, and their names.
+rp_list :: (d: [] ContentDoc, out: [] u8, at: int, name: string, label: string, title: string) -> int {
+  t := ct_table(d, name);
+  on := ct_col(d, t, "on"); lb := ct_col(d, t, label);
+  if t < 0 || on < 0 || lb < 0 || ct_rows(d, t) == 0 { return at; }
+  n := em_list(out, at, name, "on", title);
+  line: [EM_LABEL] u8;
+  for r: 0..<ct_rows(d, t) {
+    k := rp_line(line[..], ct_str(d, t, r, lb));
+    if k == 0 { k = rp_line(line[..], "(no name)"); }
+    n = em_switch(out, n, ct_get(d, t, r, 0), ct_get(d, t, r, on) != 0, cast(string) line[0..<k]);
+  }
+  return n;
+}
+// The model's lines the tables give: the scripts table, the kind a script drives here and its rows; the lists.
+rp_part_write :: (p: [] RealmPage, d: [] ContentDoc, out: [] u8) -> int {
+  n := 0;
+  if ct_table(d, "scripts") >= 0 {
+    n = em_scripts(out, n, "scripts");
+    n = em_script_kind(out, n, RP_KIND_CHARACTERS, RP_CHARACTERS_NAME);
+    for i: 0..<p[0].rows_n {
+      r := p[0].rows[i];
+      target: [EM_SFOR] u8; k := ct_put(target[..], 0, ifx r.by_kind then "kind " else "who "); k = ct_put_int(target[..], k, r.n);
+      n = em_script(out, n, r.slot + 1, cast(string) r.name[0..<r.name_n], cast(string) r.hash[..], cast(string) target[0..<k]);
+    }
+  }
+  n = rp_list(d, out, n, "rows", "label", "Features");
+  n = rp_list(d, out, n, "tools", "name", "Tools visitors get");
+  return n;
+}
+rp_model_write :: (p: [] RealmPage, out: [] u8) -> int {
+  f := p[0].f[0]; none: [WE_COLS] bool;
+  n := em_begin(out, rp_id(p), WL_DEV, ifx f.rev < 0 then 0 else f.rev, f.undo, f.redo, 0);
+  n = em_cols(out, n, none[..]);
+  n = em_at_once(out, n);
+  n = ct_put(out, n, cast(string) p[0].part[0..<p[0].part_n]);
+  if p[0].no_n > 0 { n = em_no(out, n, cast(string) p[0].no[0..<p[0].no_n]); }
+  return n;
+}
+// The model again, and the script loader's wants; the model's revision moves only when its bytes do.
+rp_remodel :: (p: [] RealmPage) {
+  next: [RP_MODEL] u8;
+  n := rp_model_write(p, next[..]);
+  if n <= next.count && (n != p[0].model_n || cast(string) next[0..<n] != cast(string) p[0].model[0..<p[0].model_n]) {
+    for i: 0..<n { p[0].model[i] = next[i]; }
+    p[0].model_n = n; p[0].mrev += 1;
+  }
+  w := 0;
+  if p[0].rows_n > 0 {
+    w = ct_put(p[0].wants[..], 0, "/api/worlds/"); w = ct_put(p[0].wants[..], w, rp_id(p)); w = ct_put(p[0].wants[..], w, "/scripts\n");
+    for i: 0..<p[0].rows_n { r := p[0].rows[i]; w = ct_put_int(p[0].wants[..], w, r.slot); w = ct_put(p[0].wants[..], w, " "); w = ct_put(p[0].wants[..], w, cast(string) r.hash[..]); w = ct_put(p[0].wants[..], w, "\n"); }
+  }
+  p[0].wants_n = ifx w > p[0].wants.count then 0 else w;
+}
+rp_model :: (p: [] RealmPage) -> string { return cast(string) p[0].model[0..<p[0].model_n]; }
+rp_rev :: (p: [] RealmPage) -> int { return p[0].mrev; }
+rp_script_wants :: (p: [] RealmPage) -> string { return cast(string) p[0].wants[0..<p[0].wants_n]; }
+// The loaded script that drives character `who` (1 and up), or -1: none does.
+rp_script :: (p: [] RealmPage, who: int) -> int { return srw_pick(p[0].rows[0..<p[0].rows_n], RP_KIND_CHARACTERS, who); }
+
+RP_TEST_HASH :: "528d7a3c9a6d5c5fd9e0f0b0d6f2b1c3a4e5f60718293a4b5c6d7e8f90a1b2c3";
+rp_test_tables :: (scripts: string, out: [] u8) -> string {
+  n := ct_put(out, 0, "aethyr.content.v1 realm 1\nreach 1\ntable rows id key:text on:int label:text\n1|glow|1|Glowing mushrooms\n2|bridge|0|A bridge over the stream\n");
+  n = ct_put(out, n, SRW_TABLE); n = ct_put(out, n, "\n"); n = ct_put(out, n, scripts);
+  n = ct_put(out, n, "table tools id name:text on:int\n1|build|1\n2|jump|0\n");
+  return cast(string) out[0..<n];
+}
+rp_test_state :: (rev: int, out: [] u8) -> string {
+  v := WorldState.{lane = WL_DEV, rev = rev, dev = rev, undo = 1};
+  return we_state_write(v, "fairy-forest", "", "", out);
+}
+#test "a realm's page follows its world: the state, then the tables, then the shell's model and the scripts it names" {
+  p: [1] RealmPage; o: [4096] u8; t: [2048] u8; b: [2048] u8;
+  #assert !rp_open(p[..], "Fairy Forest") && rp_open(p[..], "fairy-forest");
+  #assert rp_model(p[..]) == "editor.model.v1 fairy-forest dev 0 0 0 0\ncols\natonce\n" && rp_script_wants(p[..]) == "";
+  rp_step(p[..], 0.016); #assert rp_wants(p[..]) && rp_url(p[..]) == "/api/worlds/fairy-forest?lane=dev" && rp_flags(p[..]) == WF_HTTP_WANTED;
+  rp_sent(p[..], 2);
+  #assert !rp_answer(p[..], 3, "200\n{}");   // another request's answer
+  k := ct_put(b[..], 0, "200\n"); k = ct_put(b[..], k, rp_test_state(4, o[..]));
+  #assert rp_answer(p[..], 2, cast(string) b[0..<k]) && p[0].f[0].status == WFS_FOLLOWING && p[0].f[0].rev == 4;
+  rp_step(p[..], 0.016); #assert rp_url(p[..]) == "/api/worlds/fairy-forest/content?lane=dev"; rp_sent(p[..], 1);
+  row := "1|my-greeter|528d7a3c9a6d5c5fd9e0f0b0d6f2b1c3a4e5f60718293a4b5c6d7e8f90a1b2c3|kind 1\n";
+  k = ct_put(b[..], 0, "200\n"); k = ct_put(b[..], k, rp_test_tables(row, t[..]));
+  rev := rp_rev(p[..]);
+  #assert rp_answer(p[..], 1, cast(string) b[0..<k]) && p[0].rows_n == 1 && rp_rev(p[..]) == rev + 1;
+  #assert rp_model(p[..]) == "editor.model.v1 fairy-forest dev 4 1 0 0\ncols\natonce\nscripts scripts\nsk 1 Characters\ns 1 my-greeter 528d7a3c9a6d5c5fd9e0f0b0d6f2b1c3a4e5f60718293a4b5c6d7e8f90a1b2c3 kind 1\nlist rows on Features\nsw 1 1 Glowing mushrooms\nsw 2 0 A bridge over the stream\nlist tools on Tools visitors get\nsw 1 1 build\nsw 2 0 jump\n";
+  m: [1] EdModel; sc: [EM_BYTES] u8;
+  #assert em_read(m[..], rp_model(p[..]), sc[..]) && m[0].at_once && m[0].ns == 1 && m[0].nl == 2 && m[0].nw == 4;
+  #assert rp_script_wants(p[..]) == "/api/worlds/fairy-forest/scripts\n0 528d7a3c9a6d5c5fd9e0f0b0d6f2b1c3a4e5f60718293a4b5c6d7e8f90a1b2c3\n";
+  #assert rp_script(p[..], 1) == 0 && rp_script(p[..], 3) == 0;
+  // the same tables again: the model did not change, so neither does its revision
+  rev = rp_rev(p[..]); p[0].f[0].tabled = false;
+  rp_step(p[..], 0.016); rp_sent(p[..], 4); #assert rp_answer(p[..], 4, cast(string) b[0..<k]) && rp_rev(p[..]) == rev;
+  // an event: the state and the tables again
+  p[0].f[0].since = WF_POLL; rp_step(p[..], 0.016);
+  #assert rp_url(p[..]) == "/api/worlds/fairy-forest/events?lane=dev&after=4"; rp_sent(p[..], 5);
+  #assert rp_answer(p[..], 5, "200\nEVENT\n") && p[0].f[0].refetch;
+  rp_step(p[..], 0.016); #assert rp_url(p[..]) == "/api/worlds/fairy-forest?lane=dev";
+}
+#test "a realm's page sends the shell's batch, and a refusal comes back to the shell in words" {
+  p: [1] RealmPage; o: [4096] u8; b: [2048] u8;
+  #assert rp_open(p[..], "fairy-forest");
+  rp_step(p[..], 0.016); rp_sent(p[..], 0);
+  k := ct_put(b[..], 0, "200\n"); k = ct_put(b[..], k, rp_test_state(4, o[..]));
+  #assert rp_answer(p[..], 0, cast(string) b[0..<k]);
+  #assert rp_batch(p[..], "BATCH") && !rp_batch(p[..], "SECOND");
+  #assert rp_model(p[..]) == "editor.model.v1 fairy-forest dev 4 1 0 0\ncols\natonce\nno The last change is still on its way. Try again.\n";
+  rp_step(p[..], 0.016); #assert rp_url(p[..]) == "/api/worlds/fairy-forest" && rp_body(p[..]) == "BATCH"; rp_sent(p[..], 6);
+  k = ct_put(b[..], 0, "422\n"); k = ct_put(b[..], k, we_refusal_write("no such script row", 0, o[..]));
+  #assert rp_answer(p[..], 6, cast(string) b[0..<k]);
+  #assert rp_model(p[..]) == "editor.model.v1 fairy-forest dev 4 1 0 0\ncols\natonce\nno no such script row\n";
+  // words that are not one line are made one
+  #assert rp_line(o[0..<12], "  a\nb   c  d e f") == 11 && cast(string) o[0..<11] == "a b c d e f";
+  // tables with no scripts table name none, and a page with none loads no script module
+  #assert rp_script(p[..], 1) == -1 && rp_script_wants(p[..]) == "";
+}

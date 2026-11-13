@@ -19,7 +19,11 @@
 //     times a second while the pane is open: calls, failed calls, the costliest call against the
 //     call budget, and the last failure in words;
 //   - a publish the server refuses because a script would do more than the live one says what each
-//     script adds, and "Publish with these" sends the same publish with the confirmation.
+//     script adds, and "Publish with these" sends the same publish with the confirmation;
+//   - on a world with one lane (`atonce`: a made realm's, #13496), Run it is what people get at once, so the
+//     shell sends that row's batch itself, as it sends a publish: a script that would do more than the one
+//     it replaces is asked about the same way, and "Run with these" sends it again with the confirmation.
+//     The starter there is a character's, not a raider's.
 // Each ask goes by the host on the shell's one channel to the world's server (shell-assets.coax)
 // and comes back as one event.
 #load "../script/world.coax";   // the status's reader, the limits (frame.coax) and what a diagnostic means
@@ -30,6 +34,7 @@ ES_STATUS :: 13;       // the page's script status (world.script-status.v1) in t
 ES_WATCH :: 528;       // an action for the page's host, not the page: "scripts on" or "scripts off": whether the status is wanted
 ES_HOW_POST :: 6;      // how an ask goes (coaxial_editor_fetching): a POST of the source in the pane's field, alone
 ES_SC_NONE :: 0; ES_SC_LIST :: 1; ES_SC_BUILD :: 2; ES_SC_OPEN :: 3; ES_SC_REPORT :: 4; ES_SC_PUBLISH :: 5;
+ES_SC_RUN :: 6;        // a script row's batch on a world with one lane (atonce), sent by the shell itself
 ES_SC_SAID_NONE :: 0; ES_SC_SAID_DONE :: 1; ES_SC_SAID_NO :: 2; ES_SC_SAID_ERRORS :: 3;
 ES_OPEN_SFOR :: 14;
 ESC_SOURCE :: 65536;   // bytes of source the field holds (the server's own limit is in its list)
@@ -90,6 +95,32 @@ ESC_STARTER :: [ESC_STARTER_LINES] string.[
   "  sa_set_var(me, 0, 1.0);   // a struck raider fights",
   "}"];
 
+// The starter on a world with one lane (a made realm, #13496): a character comes to meet you.
+ESC_GREETER_LINES :: 22;
+ESC_GREETER :: [ESC_GREETER_LINES] string.[
+  "// A character's greeting, as a script. It comes to meet you when you are near, stands a step",
+  "// away while you stay, and walks back to its place when you go.",
+  "#script \"my-greeter\";",
+  "#load \"api.coax\";",
+  "",
+  "PLAYER :: 1;          // the player's id",
+  "NEAR :: 8.0f32;       // metres within which it comes to meet you",
+  "STAND :: 1.5f32;      // metres from you where it stops",
+  "",
+  "Mind :: struct #persisted { met: s32; }",
+  "",
+  "on_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) {",
+  "  d := sa_distance(me, PLAYER);",
+  "  if d <= STAND { sa_stop(me); return; }",
+  "  if d < NEAR {",
+  "    if mind[0].met == 0 { mind[0].met = 1; }",
+  "    sa_move(me, sa_x(PLAYER), sa_z(PLAYER), sa_speed(me));",
+  "    return;",
+  "  }",
+  "  mind[0].met = 0;",
+  "  sa_move(me, sa_goal_x(me), sa_goal_z(me), sa_goal_speed(me));   // its place",
+  "}"];
+
 // A script the world's server keeps, or the one just built: what its manifest says of it.
 EsStored :: struct {
   name: [EM_SNAME] u8; name_n: int; hash: [64] u8;
@@ -119,6 +150,8 @@ EsScripts :: struct {
   logged: bool;                             // the viewer is logged in
   report: int; reason_n: int;               // the row a report is being written for (0: none), and its reason
   asks: int; pub: int;                      // scripts a refused publish would let do more, and the publish it was
+  run_asks: bool;                           // the asks are a run's (atonce), not a publish's
+  run_id: int; run_row: [EM_SNAME + 96] u8; run_row_n: int;   // the row a run on such a world sends, kept for its yes
   opening: int;                             // the row whose source is on its way
   mf: EsStored;
   reason: [ESC_WHY] u8;
@@ -282,10 +315,11 @@ es_sc_go :: (s: [] EdShell, flight: int, tail: string, how: int, head: string) -
 }
 // The source the field starts with: a short script that works.
 es_sc_starter :: (s: [] EdShell) {
-  lines := ESC_STARTER; n := 0;
-  for line: lines { n = ct_put(s[0].sc.src[..], n, line); n = ct_put(s[0].sc.src[..], n, "\n"); }
+  n := 0;
+  if s[0].model[0].at_once { lines := ESC_GREETER; for line: lines { n = ct_put(s[0].sc.src[..], n, line); n = ct_put(s[0].sc.src[..], n, "\n"); } }
+  else { lines := ESC_STARTER; for line: lines { n = ct_put(s[0].sc.src[..], n, line); n = ct_put(s[0].sc.src[..], n, "\n"); } }
   s[0].sc.src_n = ifx n > ESC_SOURCE then 0 else n;
-  s[0].sc.name_n = em_copy(s[0].sc.name[..], "my-raider");
+  s[0].sc.name_n = em_copy(s[0].sc.name[..], ifx s[0].model[0].at_once then "my-greeter" else "my-raider");
   s[0].sc.started = true; s[0].sc.fill = true;
 }
 // Each event: the list is asked for once the world is known and again after a build or a row's
@@ -320,16 +354,33 @@ es_sc_build :: (s: [] EdShell) {
   es_sc_say(s, ES_SC_SAID_NONE, "");
 }
 // A row's cells as one cell edit of the scripts table: `text` is "ID|NAME|HASH|FOR", or none to take the row away.
-es_sc_row :: (s: [] EdShell, id: int, text: string) -> bool {
+es_sc_row_edit :: (s: [] EdShell, id: int, text: string) -> WorldEdit {
   m := s[0].model[..];
-  if m[0].stable_n == 0 { return false; }
   e := WorldEdit.{ok = true, op = WE_CELL, id = id};
   tb := m[0].stable;
   e.table_n = ct_copy(e.table[..], cast(string) tb[0..<m[0].stable_n]);
   e.name[0] = '*'; e.name_n = 1;
   e.text_n = ct_copy(e.text[..], text);
-  es_batch(s, WB_APPLY, e);
+  return e;
+}
+es_sc_row :: (s: [] EdShell, id: int, text: string) -> bool {
+  if s[0].model[0].stable_n == 0 { return false; }
+  es_batch(s, WB_APPLY, es_sc_row_edit(s, id, text));
   return s[0].said_n == 0;
+}
+// Run it on a world with one lane: the row's batch goes from the shell, as a publish does, so a script that
+// would do more than the one it replaces can be asked about. `confirm`: with the yes for the scripts the last
+// refusal named.
+es_sc_run_send :: (s: [] EdShell, confirm: bool) {
+  m := s[0].model[..]; edits: [1] WorldEdit; body: [2048] u8; tail: [SH_SCRIPTS * 65 + 16] u8; n := 0;
+  edits[0] = es_sc_row_edit(s, s[0].sc.run_id, cast(string) s[0].sc.run_row[0..<s[0].sc.run_row_n]);
+  text := we_batch_write(m[0].rev, WB_APPLY, edits[..], 1, body[..]);
+  if confirm {
+    n = ct_put(tail[..], 0, "?confirm=");
+    for k: 0..<s[0].sc.asks { h := s[0].sc.ask[k].hash; if k > 0 { n = ct_put(tail[..], n, ","); } n = ct_put(tail[..], n, cast(string) h[..]); }
+  }
+  if text.count == 0 || !es_sc_go(s, ES_SC_RUN, cast(string) tail[0..<n], ES_HOW_SAY, text) { es_sc_say(s, ES_SC_SAID_NO, ESC_BUSY); return; }
+  es_sc_say(s, ES_SC_SAID_NONE, "");
 }
 // Run it: the built script's row is written. A row for the same ones is changed (the page swaps the
 // module and the things keep their state); else the script takes the first free place.
@@ -355,6 +406,11 @@ es_sc_run :: (s: [] EdShell) {
   n := ct_put_int(row[..], 0, id); n = ct_put(row[..], n, "|"); n = ct_put(row[..], n, cast(string) mf.name[0..<mf.name_n]); n = ct_put(row[..], n, "|");
   n = ct_put(row[..], n, cast(string) mf.hash[..]); n = ct_put(row[..], n, "|"); n = ct_put(row[..], n, whom);
   es_sc_say(s, ES_SC_SAID_NONE, "");
+  if m[0].at_once {
+    s[0].sc.run_id = id; s[0].sc.run_row_n = ct_copy(s[0].sc.run_row[..], cast(string) row[0..<n]);
+    es_sc_run_send(s, false);
+    return;
+  }
   _ := es_sc_row(s, id, cast(string) row[0..<n]);
 }
 // Publish, for a world that runs scripts: the shell sends the batch itself, so that a refusal that
@@ -381,7 +437,9 @@ es_sc_asks :: (s: [] EdShell, r: [] SsRefusal) {
     a := r[0].asks[i]; o := s[0].sc.ask[i].words[..];
     s[0].sc.ask[i].hash = a.hash;
     n := ct_put(o, 0, cast(string) a.name[0..<a.name_n]);
-    n = ct_put(o, n, ifx a.fresh then " is new to the live world. " else " would do more than the live one. ");
+    // a world with one lane (a realm's) has no live world: it compares with what runs now
+    once := s[0].model[0].at_once;
+    n = ct_put(o, n, ifx a.fresh then (ifx once then " is new to this world. " else " is new to the live world. ") else (ifx once then " would do more than the one running now. " else " would do more than the live one. "));
     n = es_sc_may(o, n, a.grows.handlers, a.grows.powers);
     at := n;
     n = ct_put(o, n, " New calls: "); n = es_sc_calls(o, n, a.grows.calls, count[..]); n = ct_put(o, n, ".");
@@ -461,7 +519,18 @@ es_sc_sent :: (s: [] EdShell, status: int, length: int) {
     es_sc_refused(s, "That report did not go: the world's server did not answer.");
     return;
   }
+  if flight == ES_SC_RUN {
+    if status >= 200 && status < 300 { s[0].sc.asks = 0; s[0].sc.run_asks = false; es_sc_say(s, ES_SC_SAID_DONE, "Running. Everyone in the world gets it now."); return; }
+    if es_sc_refusal(s, body, no[..]) && no[0].code == SSC_GROWS {
+      es_sc_asks(s, no[..]);
+      if s[0].sc.asks > 0 { s[0].sc.run_asks = true; es_sc_say(s, ES_SC_SAID_NONE, ""); return; }
+    }
+    s[0].sc.asks = 0; s[0].sc.run_asks = false;
+    es_sc_refused(s, "That did not run: the world's server did not answer.");
+    return;
+  }
   // a publish
+  s[0].sc.run_asks = false;
   if status >= 200 && status < 300 {
     s[0].sc.asks = 0;
     es_sc_say(s, ES_SC_SAID_DONE, ifx s[0].sc.pub == WB_PUBLISH_NEXT then "Published. People see it the next time they come in." else "Published. People in the world see it now.");
@@ -501,8 +570,12 @@ es_sc_click :: (s: [] EdShell, id: string) -> bool {
   if id == "scripts.plans" { s[0].scripts = false; return true; }
   if id == "scripts.build" { es_sc_build(s); return true; }
   if id == "scripts.run" { es_sc_run(s); return true; }
-  if id == "scripts.confirm" { if s[0].sc.asks > 0 { _ := es_sc_publish(s, s[0].sc.pub, true); } return true; }
-  if id == "scripts.leave" { s[0].sc.asks = 0; return true; }
+  if id == "scripts.confirm" {
+    if s[0].sc.asks > 0 && s[0].sc.run_asks { es_sc_run_send(s, true); }
+    else if s[0].sc.asks > 0 { _ := es_sc_publish(s, s[0].sc.pub, true); }
+    return true;
+  }
+  if id == "scripts.leave" { s[0].sc.asks = 0; s[0].sc.run_asks = false; return true; }
   if id == "scripts.errors.copy" { for i: 0..<s[0].sc.words_n { s[0].clip[i] = s[0].sc.words[i]; } s[0].clip_n = s[0].sc.words_n; return true; }
   if id == "scripts.report.send" { es_sc_report(s); return true; }
   if id == "scripts.report.leave" { s[0].sc.report = 0; return true; }
@@ -589,17 +662,19 @@ es_build_scripts :: (s: [] EdShell) {
   }
   // a publish the server would not take without a yes
   if s[0].sc.asks > 0 {
-    g := k_card(t, u, "scripts.grows", "Publishing lets scripts do more");
-    gm := k_meta(t, "scripts.grows.m", "A new version of a live script may do less without a question. Doing more needs your yes.");
+    run := s[0].sc.run_asks;
+    g := k_card(t, u, "scripts.grows", ifx run then "Running this lets a script do more" else "Publishing lets scripts do more");
+    gm := k_meta(t, "scripts.grows.m", ifx run then "A new version of a running script may do less without a question. Doing more needs your yes." else "A new version of a live script may do less without a question. Doing more needs your yes.");
     for k: 0..<s[0].sc.asks { aw := s[0].sc.ask[k].words; r := k_meta(t, tr_join(buf[..], "scripts.grow.", k), cast(string) aw[0..<s[0].sc.ask[k].words_n]); }
     row := tr_open(t, "scripts.grows.acts", TG_DIV, "rowf");
-    yes := k_button(t, u, "scripts.confirm", "Publish with these", ifx s[0].sc.flight == ES_SC_NONE then BS_PRIMARY else BS_DISABLED);
+    yes := k_button(t, u, "scripts.confirm", ifx run then "Run with these" else "Publish with these", ifx s[0].sc.flight == ES_SC_NONE then BS_PRIMARY else BS_DISABLED);
     no := k_link(t, "scripts.leave", "Not now");
     tr_close(t);
     tr_close(t);
   }
   // plans first
-  first := k_meta(t, "scripts.plan", "A plan says where someone walks, how far they see and what they do on seeing you, by time of day. A script is for what a plan cannot say.");
+  plain := m[0].at_once && m[0].na == 0;   // a made realm's characters have no plans: they keep their places
+  first := k_meta(t, "scripts.plan", ifx plain then "Everyone here keeps their place. A script says where the ones it drives walk and the way they face." else "A plan says where someone walks, how far they see and what they do on seeing you, by time of day. A script is for what a plan cannot say.");
   if m[0].na > 0 { go := k_link(t, "scripts.plans", "Set plans in the Actors list"); }
   // the limits, before anything is built
   lim := k_card(t, u, "scripts.limits", "Limits");
@@ -622,7 +697,7 @@ es_build_scripts :: (s: [] EdShell) {
   tr_close(t);
   // this world's scripts, and what each spends
   mine := k_card(t, u, "scripts.mine", "This world's scripts");
-  if m[0].ns == 0 { none := k_meta(t, "scripts.none", "No script runs here. Everyone walks their plan."); }
+  if m[0].ns == 0 { none := k_meta(t, "scripts.none", ifx plain then "No script runs here. Everyone keeps their place." else "No script runs here. Everyone walks their plan."); }
   hn := RH_NAMES; means := SD_MEANS;
   for k: 0..<m[0].ns {
     id := m[0].s_id[k]; sn := m[0].s_name[k]; sf := m[0].s_for[k];
@@ -668,7 +743,7 @@ es_build_scripts :: (s: [] EdShell) {
   tr_close(t);
   // the script being written
   wr := k_card(t, u, "scripts.write", "Write a script");
-  nf := k_prop(t, u, "scripts.name", "Name", "my-raider");
+  nf := k_prop(t, u, "scripts.name", "Name", ifx m[0].at_once then "my-greeter" else "my-raider");
   tg := es_sc_target(s); open := s[0].open == ES_OPEN_SFOR;
   k_select_begin(t, u, "sfor", ifx tg.ok then es_sc_whom(m, tg, who[..]) else "Nobody", "Whom the script drives", open);
   if open {

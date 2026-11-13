@@ -34,8 +34,9 @@
 //                                                imported into dev's pack. The answer is the list with what it did, or 422 in words
 //
 // A realm with a board is a world of kind "realm" under its slug (#13422, migration 0185): its document is empty,
-// /content is its board and settings as content tables, and a batch is switches of their `on` cells, carried out by the
-// realm's own SQL (realm_post). It has one lane, dev, and nothing to publish.
+// /content is its board, its settings and its scripts as content tables, and a batch is switches of their `on` cells,
+// carried out by the realm's own SQL (realm_post), and script rows, kept in the world's row (dev_tables) and held to
+// scripts.c's rules (#13496). It has one lane, dev, and nothing to publish.
 //
 // This file moves facts in and answers out. The rules are Coax: who may write, the revision
 // fence, the undo log and the dev and live rule are world-policy.coax's (#authority); whether an
@@ -222,16 +223,43 @@ static char *tables_of(const char *kind, const char *stored) {
   out[n] = 0;
   return out;
 }
+// A realm's scripts document as its row keeps it (dev_tables; realm-world.coax): malloc'd, the empty one for none.
+static char *realm_scripts_of(const char *stored) {
+  coax_string none = wr_realm_scripts_none();
+  return stored && *stored ? strdup(stored) : strndup(none.data, (size_t)none.count);
+}
 bool world_scripts_world(PGconn *db, const char *id, bool lock, char *tables[3]) {
   world_row w;
   if (tables) tables[0] = tables[1] = tables[2] = NULL;
   if (!wr_world_ok(cs(id)) || !row_read(db, id, lock, &w)) return false;
-  // scripts run where a world's content tables have a scripts table: Splice's. A realm's world (#13422) names none.
-  bool ok = w.exists && !strcmp(w.kind, "splice-bots") && wr_loads(cs(id), cs(w.kind));
-  if (ok && tables) {
+  // scripts run where a world's content tables have a scripts table: Splice's, and a realm's (#13496), whose one
+  // lane is its dev: its row keeps the scripts table alone
+  bool realm = w.exists && wr_at_once(cs(w.kind));
+  bool ok = w.exists && (!strcmp(w.kind, "splice-bots") || realm) && wr_loads(cs(id), cs(w.kind));
+  if (ok && tables && realm) tables[0] = realm_scripts_of(w.dev_tables);
+  else if (ok && tables) {
     tables[0] = tables_of(w.kind, w.dev_tables);
     if (w.live_rev > 0) tables[1] = tables_of(w.kind, w.live_tables);
     if (w.prev_rev > 0) tables[2] = tables_of(w.kind, w.prev_tables);
+  }
+  row_free(&w);
+  return ok;
+}
+// Who asks about a world's scripts (scripts.c, #13496): whether it is a world that runs scripts and is shown to them
+// (a realm hidden from them is not), and their role in it in verse.edit_role's words ("" for none), the role worlds
+// are written by. False on a database error.
+bool world_scripts_asker(const request *q, PGconn *db, const char *id, bool *shown, char role[16]) {
+  *shown = false; role[0] = 0;
+  world_row w;
+  if (!wr_world_ok(cs(id))) return true;
+  if (!row_read(db, id, false, &w)) return false;
+  bool runs = w.exists && (!strcmp(w.kind, "splice-bots") || wr_at_once(cs(w.kind))) && wr_loads(cs(id), cs(w.kind)), ok = true;
+  if (runs) {
+    world_asker a; bool hidden = true; char *spec = NULL;
+    ok = who_asks(q, db, &a) && realm_facts(db, id, &a, &hidden, role, &spec);
+    // a realm's world is shown to whoever its realm is not hidden from; Splice's to everyone
+    *shown = ok && (!wr_at_once(cs(w.kind)) || (!hidden && spec));
+    free(spec);
   }
   row_free(&w);
   return ok;
@@ -419,14 +447,24 @@ static void realm_post(const request *q, PGconn *db, const char *id, world_row *
   int64_t step; size_t text_n; bool fenced;
   char *text = batch_text(q, db, id, what, w, &step, &text_n, &fenced);
   bool hidden = true; char role[16]; char *spec = NULL;
-  char *did = malloc(WORLD_BATCH + 1), *inv = malloc(WORLD_BATCH + 1), *acts = malloc(WORLD_BATCH + 1);
-  char why[240]; int64_t n[6] = {0, 0, 0, 0, 0, -1};
-  if (!text || !did || !inv || !acts || !realm_facts(db, id, a, &hidden, role, &spec)) { rollback(db); refuse(q->fd, 500, cs("not read"), -1); goto done; }
+  char *did = malloc(WORLD_BATCH + 1), *inv = malloc(WORLD_BATCH + 1), *acts = malloc(WORLD_BATCH + 1), *scripts = malloc(WORLD_TABLES + 1);
+  char *was = realm_scripts_of(w->dev_tables);
+  char why[240]; int64_t n[7] = {0, 0, 0, 0, 0, -1, 0};
+  if (!text || !did || !inv || !acts || !scripts || !was || !realm_facts(db, id, a, &hidden, role, &spec)) { rollback(db); refuse(q->fd, 500, cs("not read"), -1); goto done; }
   if (hidden || !spec) { rollback(db); refuse_verdict(q->fd, wr_read(false, 0, 0)); goto done; }
-  int64_t status = wr_realm_batch(cs(spec), csn(text, text_n), fenced, (coax_v_u8){(uint8_t *)did, WORLD_BATCH}, (coax_v_u8){(uint8_t *)inv, WORLD_BATCH},
-                                  (coax_v_u8){(uint8_t *)acts, WORLD_BATCH}, (coax_v_u8){(uint8_t *)why, sizeof why}, (coax_v_s64){n, 6});
+  int64_t status = wr_realm_batch(cs(spec), cs(was), csn(text, text_n), fenced, (coax_v_u8){(uint8_t *)did, WORLD_BATCH}, (coax_v_u8){(uint8_t *)inv, WORLD_BATCH},
+                                  (coax_v_u8){(uint8_t *)acts, WORLD_BATCH}, (coax_v_u8){(uint8_t *)why, sizeof why}, (coax_v_u8){(uint8_t *)scripts, WORLD_TABLES}, (coax_v_s64){n, 7});
   if (status != 0) { rollback(db); refuse(q->fd, (int)wr_realm_status(status), n[3] > 0 ? csn(why, (size_t)n[3]) : wr_realm_words(status), (int)n[5]); goto done; }
-  did[n[0]] = 0; inv[n[1]] = 0; acts[n[2]] = 0;
+  did[n[0]] = 0; inv[n[1]] = 0; acts[n[2]] = 0; scripts[n[6]] = 0;
+  if (n[6] > 0) {
+    // the batch changed the realm's script rows (#13496): a row it newly names must name a module the world stores that
+    // is not switched off, and since what the batch leaves is what people get at once, a row that is new or does more
+    // than the one it replaces needs its maker's yes by hash, as a publish does (script-policy.coax). An undo or a redo
+    // takes the realm back to rows its maker said yes to, and is not asked again.
+    char said[240];
+    if (!scripts_edit_ok(db, id, was, scripts, said, sizeof said)) { rollback(db); refuse(q->fd, 422, cs(said), -1); goto done; }
+    if (fenced && !scripts_publish_ok(q, db, id, scripts, was)) { rollback(db); goto done; }
+  }
   // each switch by the realm's own SQL, in order: "switch KEY 0|1" or "tool NAME 0|1"
   int edit = 0;
   for (char *line = acts; *line; edit++) {
@@ -456,11 +494,13 @@ static void realm_post(const request *q, PGconn *db, const char *id, world_row *
     goto done;
   }
   long long rev, done_at, steps;
-  if (!batch_save(db, id, w, what, step, "", did, (size_t)n[0], inv, n[4], &rev, &done_at, &steps)) { rollback(db); refuse(q->fd, 500, cs("not saved"), -1); goto done; }
+  const char *tv[2] = {id, scripts};
+  bool kept = n[6] <= 0 || run(db, "UPDATE verse.world_docs SET dev_tables = $2 WHERE id = $1", 2, tv);
+  if (!kept || !batch_save(db, id, w, what, step, "", did, (size_t)n[0], inv, n[4], &rev, &done_at, &steps)) { rollback(db); refuse(q->fd, 500, cs("not saved"), -1); goto done; }
   long long none[4] = {0, 0, 0, 0};
   answer_state(q, id, (int)wr_lane(cs("dev")), rev, none, w, rev, w->live_rev, done_at, steps, "", 0, did, (size_t)n[0]);
 done:
-  free(text); free(spec); free(did); free(inv); free(acts);
+  free(text); free(spec); free(did); free(inv); free(acts); free(scripts); free(was);
 }
 
 static void world_post(const request *q, PGconn *db, const char *id) {
@@ -555,7 +595,7 @@ static void world_content(const request *q, PGconn *db, const char *id) {
     // a realm's: its board and settings as they stand, both lanes (realm-world.coax), for whoever may see the realm
     world_asker a; bool hidden = true; char role[16]; char *spec = NULL;
     if (w.exists && wr_at_once(cs(w.kind)) && wr_loads(cs(id), cs(w.kind)) && who_asks(q, db, &a) && realm_facts(db, id, &a, &hidden, role, &spec) && !hidden && spec)
-      n = wr_realm_tables(cs(spec), (coax_v_u8){(uint8_t *)out, WORLD_DOC});
+      n = wr_realm_tables(cs(spec), cs(w.dev_tables ? w.dev_tables : ""), (coax_v_u8){(uint8_t *)out, WORLD_DOC});
     free(spec); row_free(&w);
   }
   if (n < 0) refuse_verdict(q->fd, wr_read(false, 0, 0));

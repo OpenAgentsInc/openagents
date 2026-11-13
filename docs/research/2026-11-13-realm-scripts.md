@@ -238,6 +238,7 @@ Kept current as stages land (#13467). The contract as built is
 | A fuzzer of the check, the interpreter, the host and the codecs | built | `metaverse-engine/tools/script-fuzz.coax` |
 | The interpreter against V8, on a compiled torture script | built | `metaverse-engine/tools/script-oracle.coax`, `metaverse-engine/tests/script-oracle.mjs`, `metaverse-engine/script/examples/torture.coax` |
 | The editor's Scripts pane: write, build, run, swap, publish with a yes, report; limits and live budgets on screen | built | `metaverse-engine/editor/shell-scripts.coax`, `docs/editor/2026-11-12-browser-editor.md` "Realm scripts", `docs/editor/acceptance/scripts-run.ops` |
+| Scripts in a maker's own realm: a `scripts` table in every realm's world, stored and run by its maker with no admin role, asked about at each edit since a realm has one lane; the realm's page runs them on its characters | built | `metaverse/edit/realm-world.coax`, `coax/web/api/worlds.c`, `metaverse/edit/realm-page.coax`, `apps/openagents-web/myrealm.coax`, `docs/editor/acceptance/realm-scripts-run.ts` (#13496) |
 
 Where the build differs from the proposal:
 
