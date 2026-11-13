@@ -32,11 +32,7 @@ not hold.
 2. Start from an empty world. Stop the server, delete the files named
    `splice.*` in `apps/openagents-web/build/.worlds/`, and start it again.
 
-3. Stop the shared headless browser if `shot` was used in this checkout
-   (`coax/web/tool.sh shot --stop`): a page it left open takes the run's taps
-   (#13458).
-
-4. Run the pass:
+3. Run the pass:
 
    ```sh
    coax/web/tool.sh drive web apps/openagents-web /worlds/splice \

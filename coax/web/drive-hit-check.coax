@@ -23,6 +23,44 @@ hc_hit :: (c: [] Cdp, x: int, y: int, buf: [] u8, out: [] u8) -> string {
   return dd_hit_answer(x, y, cast(string) page[0..<pn], "", out);
 }
 
+// A page that `shot --keep` left in the shared browser does not take the taps of the drive call
+// after it (#13458): a shot keeps one page, then a drive call's page (rs_fresh, as dv_session)
+// is tapped with drive's own mouse events, and its button's handler must run.
+HC_SHOT_PAGE :: "data:text/html,<!doctype html><body style=\"margin:0\"><button id=\"a\" style=\"position:absolute;left:100px;top:100px;width:120px;height:48px\" onclick=\"window.n=(window.n||0)+1\">A</button></body>";
+HC_TAP_PAGE :: "<!doctype html><html><body style=\"margin:0\"><button id=\"b\" style=\"position:absolute;left:100px;top:100px;width:120px;height:48px\" onclick=\"window.n=(window.n||0)+1\">B</button></body></html>";
+hc_mouse :: (c: [] Cdp, kind: string, x: int, y: int) -> bool {
+  p: [512] u8; j: [1] Jo; jo_start(j[..], p[..]);
+  jo_obj(j[..]); jo_key(j[..], "type"); jo_str(j[..], kind); jo_key(j[..], "x"); jo_int(j[..], x); jo_key(j[..], "y"); jo_int(j[..], y);
+  jo_key(j[..], "button"); jo_str(j[..], "left"); jo_key(j[..], "buttons"); jo_int(j[..], ifx kind == "mousePressed" then 1 else 0); jo_key(j[..], "clickCount"); jo_int(j[..], 1); jo_end(j[..]);
+  return cdp_call(c, "Input.dispatchMouseEvent", jo_text(j[..]), CDP_CALL_MS) >= 0;
+}
+hc_after_shot :: () -> bool {
+  c: [1] Cdp; r: [1] Rs; buf: [4096] u8;
+  if !rs_open(c[..], r[..]) { print("drive-hit-check: no shared browser in this checkout (SHOT_RESIDENT=0, or busy): the tap after a kept shot is not checked\n"); return true; }
+  // the shot, kept
+  wh: ArgsSize; wh.w = 800; wh.h = 600;
+  o: MediaShotOptions; o.wait = 500; o.script = "String(document.getElementById('a').offsetWidth)";
+  value: [256] u8; build: [256] u8; t: [1] RsTimes; png: [512] u8;
+  out := fs_join(cast(string) r[0].dir[0..<r[0].dir_n], "hit-check.png", png[..]);
+  s := rs_shot(c[..], r[..], HC_SHOT_PAGE, out, wh, o, true, false, value[..], build[..], t[..]);
+  if s.status != 0 { rs_drop(c[..], r[..]); return hc_fail("a kept shot of a page", cdp_error(c[..])); }
+  rs_release(c[..], r[..], true);
+  gone := fs_remove(out);
+  // the drive call's page
+  if !rs_open(c[..], r[..]) { return hc_fail("the shared browser takes the drive call after the shot", "it was busy or gone"); }
+  if !rs_fresh(c[..], r[..], wh.w, wh.h) || !media_size(c[..], wh) { rs_drop(c[..], r[..]); return hc_fail("a fresh page after the kept shot", cdp_error(c[..])); }
+  q: [4096] u8; k: [1] Jo; fb: [128] u8; frame := "";
+  tree := cdp_call(c[..], "Page.getFrameTree", "{}", CDP_CALL_MS);
+  if tree >= 0 { d := cdp_doc(c[..]); fn := jv_str(d, jv_path(d, tree, "frameTree.frame.id"), fb[..]); if fn > 0 { frame = cast(string) fb[0..<fn]; } }
+  jo_start(k[..], q[..]); jo_obj(k[..]); jo_key(k[..], "frameId"); jo_str(k[..], frame); jo_key(k[..], "html"); jo_str(k[..], HC_TAP_PAGE); jo_end(k[..]);
+  loaded := frame.count > 0 && cdp_call(c[..], "Page.setDocumentContent", jo_text(k[..]), CDP_CALL_MS) >= 0;
+  sent := loaded && hc_mouse(c[..], "mouseMoved", 160, 124) && hc_mouse(c[..], "mousePressed", 160, 124) && hc_mouse(c[..], "mouseReleased", 160, 124);
+  n := ifx sent then hc_eval(c[..], "String(window.n || 0)", buf[..]) else "";
+  rs_release(c[..], r[..], false);
+  if n != "1" { return hc_fail("a tap after a kept shot runs the button's handler once", ifx sent then n else "the tap could not be sent"); }
+  return true;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   c: [1] Cdp;
   if !cdp_launch(c[..], 800, 600, "coax-drive-hit-") { tool_err("drive-hit-check: "); tool_errln(cdp_error(c[..])); return 2; }
@@ -80,6 +118,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if !hc_has(t, "taps: 5 targets, 0 under 44 px, 0 covered, 1 overlaps") { ok = hc_fail("without the scrim nothing is covered or small", t); }
 
   cdp_close(c[..]);
-  print("drive-hit-check: % (headless Chrome, a fixture page: an overlay that steals a click, a small target, two that overlap)\n", ifx ok then "pass" else "FAILED");
+  ok = hc_after_shot() && ok;
+  print("drive-hit-check: % (headless Chrome, a fixture page: an overlay that steals a click, a small target, two that overlap; a tap after a kept shot)\n", ifx ok then "pass" else "FAILED");
   return ifx ok then 0 else 1;
 }

@@ -130,9 +130,10 @@ operations, one a line, at most 128
 With `--live`, the page also takes the dev server's live swaps, so a run can
 save a source and wait for the engine it builds.
 
-If taps stop reaching the page, a page that `shot` left in the checkout's
-shared browser is taking them (#13458). Run `coax/web/tool.sh shot --stop`
-and try again.
+A page that `shot` left in the checkout's shared browser does not take
+drive's taps: `coax/web/tool.sh drive-hit-check` taps a page after a kept
+shot (#13458). If taps still stop reaching a page, run
+`coax/web/tool.sh shot --stop`, try again, and open an issue with the steps.
 
 ## Look things up
 
