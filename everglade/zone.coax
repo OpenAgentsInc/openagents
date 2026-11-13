@@ -301,12 +301,13 @@ zone_catalog :: (s: [] EgZone, text: string) #export_c #effects(all) {
 }
 
 // The clips baked into the bake store, once (fivelab-face.c).
-// zone_bake_from takes the pack's rig entry (a VRG1 file, everglade/scene/rig-asset.coax; GitHub #13306): each
-// rig the bake reads comes from the file when it has the set, else from the generated procedure, the
-// same words. A face hands the file over when its host does (coaxial_pack_rig); zone_bake is the bake
+// zone_bake_from takes the pack's rig entry (a VRG1 file, everglade/scene/rig-asset.coax; GitHub #13306): the
+// people's and the two-handed clips' rigs come from the file when it has the set, else from the
+// generated procedure, the same words. The developer's preview clips come from the file alone: a pack
+// without the "preview" set shows no animation browser (previews_missing). A face hands the file over when its host does (coaxial_pack_rig); zone_bake is the bake
 // with no file.
 zone_bake :: (s: [] EgZone, d: [] figs.People, out: [] f32) #export_c #effects(all) { none: [1] u8; zone_bake_from(s, d, out, none[0..<0]); }
-zone_bake_from :: (s: [] EgZone, d: [] figs.People, out: [] f32, file: [] u8) #export_c #effects(all) { if !figs.e2rig_people(file, d) { figs.people_load(d); } figs.bd_bake(d, out); if s[0].creator[0].dev_animations { previews: [1] figs.Preview; figs.bd_bake_previews(out, previews[..], file); } figs.bd_bake_owned(out, file); figs.bd_bake_bow(d, out); figs.bd_keep_hands(s[0].bodies[..], d, out); }
+zone_bake_from :: (s: [] EgZone, d: [] figs.People, out: [] f32, file: [] u8) #export_c #effects(all) { if !figs.e2rig_people(file, d) { figs.people_load(d); } figs.bd_bake(d, out); if s[0].creator[0].dev_animations { previews: [1] figs.Preview; if !figs.bd_bake_previews(out, previews[..], file) { s[0].creator[0].previews_missing = true; s[0].creator[0].dev_animations = false; } } figs.bd_bake_owned(out, file); figs.bd_bake_bow(d, out); figs.bd_keep_hands(s[0].bodies[..], d, out); }
 // Existing optional layer-size hook: Character Create owns its quality choice.
 zone_layers_side :: (s:[] EgZone)->int #export_c #effects(all) {return cc.texture_side(s[0].creator[0]);}
 // Character Create's shadow tiles for the host (coaxial_shadow_*_v1; charactercreator.coax shadow_frame): none on the lab's own pages.
@@ -715,7 +716,7 @@ zone_enter :: (s: [] EgZone, t: string) #export_c #effects(all) {
   if !cr[0].experimental {cr[0].preview_collapsed=true;}
   if zt_coarse(t) { s[0].touch = true; }   // a touch screen: the thumb's ring and the buttons are up before the first finger
   zone_prefs(s, t);
-  cr[0].on=true;cr[0].experimental=true;cr[0].dev_animations=cc.dev_local(t);cr[0].build_review=cc.build_review_page(t);cr[0].yaw=0;cr[0].pitch=0.35;cr[0].dist=4;
+  cr[0].on=true;cr[0].experimental=true;cr[0].dev_animations=cc.dev_local(t) && !cr[0].previews_missing;cr[0].build_review=cc.build_review_page(t);cr[0].yaw=0;cr[0].pitch=0.35;cr[0].dist=4;
   cc.ensure(cr);
 }
 zone_action :: (s: [] EgZone) -> int #export_c #effects(all) {

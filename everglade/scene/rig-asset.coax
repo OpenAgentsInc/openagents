@@ -1,15 +1,15 @@
 // Everglade's rigs from the pack (GitHub #13306, AAA P6.4): the people's, the previews' and the
 // two-handed clips' rigs filled from a VRG1 file (metaverse-engine/anim/rig-pack.coax), the rig
-// entry of the zone's pack, in place of the generated procedures (people_load, preview_load,
-// twohand_load). A set fills its struct whole or not at all: every part must be the struct's size.
+// entry of the zone's pack, in place of the generated procedures (people_load, twohand_load). A set fills its struct whole or not at all: every part must be the struct's size.
 // The file's sets are "people", "preview" and "two-hand".
 //
-// The generated procedures stay while a page still bakes at its start, before a pack has arrived.
-// everglade/model/tools/rig-pack.coax writes the file from them and holds every float's bits of
-// what these calls fill to what they load, so a page that moves to the file plays the same poses.
+// The previews' rig is in the file alone (its shape is everglade/scene/preview-clips.coax). The
+// people's and the two-handed clips' generated procedures stay while checks and pages still load
+// them at their start, before a pack has arrived; everglade/model/tools/rig-pack.coax --check holds
+// the file's sets to them bit for bit, so a page that moves to the file plays the same poses.
 #load "../../metaverse-engine/anim/rig-pack.coax";
 #load "people-rig.coax";
-#load "preview-rig.coax";
+#load "preview-clips.coax";
 #load "two-hand-rig.coax";
 
 E2RIG_PEOPLE :: "people"; E2RIG_PREVIEW :: "preview"; E2RIG_TWOHAND :: "two-hand";

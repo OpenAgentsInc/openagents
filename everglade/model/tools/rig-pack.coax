@@ -7,15 +7,20 @@
 //   rig-pack --into SOURCE.vrg IN.pack OUT.pack [SET...]  IN with those sets as its last entry (one it
 //                                      already has is replaced); with no SET, every set of the source. A
 //                                      pack carries the sets its page bakes (Everglade II: people)
+//   rig-pack --set SOURCE.vrg SET.vrg OUT.vrg   SOURCE with SET.vrg's sets: one SOURCE has by that name is
+//                                      replaced where it is, a new one goes last. How the retargeter's
+//                                      output (metaverse/tools/clip_rig.py) becomes the source
 //   rig-pack --holds SOURCE.vrg PACK   PACK's rig entry is, byte for byte, what --into writes from SOURCE
 //                                      for the sets it names
 // Every write holds the version 2 file to its source first: each word is the source's bit for bit,
 // but the rotation components, each within RGP_STEP of the source's; and every joint of every clip,
 // posed from the version 2 keys, stands within RGP_POSE of where the source's keys put it.
-// While the generated rig procedures are still in the tree (people_load, preview_load, twohand_load):
-//   rig-pack --source OUT.vrg          the source file, from the procedures
-//   rig-pack --check SOURCE.vrg        SOURCE read back through everglade/scene/rig-asset.coax is what
-//                                      the procedures load, bit for bit
+//   rig-pack --check SOURCE.vrg        SOURCE fills the three rigs through everglade/scene/rig-asset.coax,
+//                                      and the previews' counts and seconds are preview-clips.coax's.
+//                                      While the people's and the two-handed clips' generated procedures
+//                                      are still in the tree (people_load, twohand_load), SOURCE's two
+//                                      sets are what they load, bit for bit. The previews' keys have no
+//                                      other copy: the file is their source.
 // The entry's licence is the catalog's source for the Quaternius characters and animation library.
 // apps/openagents-web/build.sh runs --into on Everglade II's pack before page-pack writes the .vpk3.
 // Run: coax/web/tool.sh everglade/model/tools/rig-pack.coax ...
@@ -29,7 +34,7 @@
 #load "../../../coax/lib/sys/args.coax";
 
 RGP_FILE :: 4194304;        // the rigs' file at most
-RGP_PACK :: 67108864;       // a pack at most (the paged reader's window)
+RGP_PACK :: 419430400;      // a pack at most, 400 MiB (Experimental's is 300 MB; a paged pack's 64 MiB window is held where it is sealed)
 RGP_CATALOG :: 16777216;
 RGP_SOURCE :: "Quaternius Universal Base Characters";   // the L line the rigs are licensed by starts with this
 
@@ -133,11 +138,47 @@ rgp_write_sets :: (src: [] u8, names: [] string, out: [] u8, version: int, w: []
   for k: 0..<count { if !rgp_set_holds(src, vrg_find(src, rgp_name(out, k)), out[0..<at], vrg_row(out, k), w, gaps) { return -1; } }
   return at;
 }
+// Set s of file f as row `row` of the version 1 file `out`, its words from `at`: the set's bytes, -1 refused.
+rgp_copy :: (f: [] u8, k: int, out: [] u8, row: int, at: int, w: [] RgpWork) -> int {
+  s := vrg_row(f, k); t := vrg_set(out, row, rgp_name(f, k), s.joints, s.clips, s.keys_t, s.keys_r, at);
+  if t.joints == 0 { return -1; }
+  for part: 0..<VRG_PARTS {
+    n := vrg_values(s, part);
+    if n > RGP_FLOATS || (vrg_whole(part) && n > RGP_INTS) { return -1; }
+    if vrg_whole(part) { if !vrg_ints(f, s, part, w[0].ints[0..<n]) || !vrg_put_ints(out, t, part, w[0].ints[0..<n]) { return -1; } }
+    else { if !vrg_floats(f, s, part, w[0].floats[0..<n]) || !vrg_put_floats(out, t, part, w[0].floats[0..<n]) { return -1; } }
+  }
+  return t.n;
+}
+// The source `src` with the sets of `add` (both version 1) into out, as version 1: a set src has by
+// that name is replaced where it is, a new one goes last. Its bytes, -1 refused.
+rgp_join :: (src: [] u8, add: [] u8, out: [] u8, w: [] RgpWork) -> int {
+  have := vrg_valid(src); more := vrg_valid(add); count := have;
+  if have == 0 || more == 0 || scan_u32(src, 4) != 1 || scan_u32(add, 4) != 1 { return -1; }
+  for k: 0..<more { if vrg_find(src, rgp_name(add, k)).joints == 0 { count += 1; } }
+  at := vrg_begin(out, count, 1); row := 0;
+  if at == 0 { return -1; }
+  for k: 0..<have {
+    from := src; q := k;
+    for e: 0..<more { if rgp_name(add, e) == rgp_name(src, k) { from = add; q = e; } }
+    n := rgp_copy(from, q, out, row, at, w);
+    if n < 0 { return -1; }
+    at += n; row += 1;
+  }
+  for k: 0..<more {
+    if vrg_find(src, rgp_name(add, k)).joints != 0 { continue; }
+    n := rgp_copy(add, k, out, row, at, w);
+    if n < 0 { return -1; }
+    at += n; row += 1;
+  }
+  vrg_end(out, at);
+  return ifx vrg_valid(out[0..<at]) == count then at else -1;
+}
 rgp_same_f :: (a: [] f32, b: [] f32) -> bool { if a.count != b.count { return false; } for k: 0..<a.count { if f32_bits(a[k]) != f32_bits(b[k]) { return false; } } return true; }
 rgp_same_i :: (a: [] int, b: [] int) -> bool { if a.count != b.count { return false; } for k: 0..<a.count { if a[k] != b[k] { return false; } } return true; }
 
-// ---- while the generated procedures are in the tree: the source file from them, and held to them
-RgpRigs :: struct { people: [1] People; preview: [1] Preview; twohand: [1] Twohand; }
+// ---- the source held to the code that reads it, and to the generated procedures still in the tree
+RgpRigs :: struct { people: [1] People; twohand: [1] Twohand; }
 RgpBack :: struct { people: [1] People; preview: [1] Preview; twohand: [1] Twohand; }
 rgp_put :: (out: [] u8, s: VrgSet, parent: [] int, rest_m: [] f32, rest_f: [] f32, bind_m: [] f32, bind_f: [] f32, duration: [] f32, distance: [] f32,
             track_t: [] int, track_r: [] int, keys_t_m: [] f32, keys_t_f: [] f32, keys_r: [] f32) -> bool {
@@ -146,35 +187,32 @@ rgp_put :: (out: [] u8, s: VrgSet, parent: [] int, rest_m: [] f32, rest_f: [] f3
       && vrg_put_floats(out, s, VRG_DISTANCE, distance) && vrg_put_ints(out, s, VRG_TRACK_T, track_t) && vrg_put_ints(out, s, VRG_TRACK_R, track_r)
       && vrg_put_floats(out, s, VRG_KEYS_T_0, keys_t_m) && vrg_put_floats(out, s, VRG_KEYS_T_1, keys_t_f) && vrg_put_floats(out, s, VRG_KEYS_R, keys_r);
 }
-// The three rigs as the procedures load them, as one version 1 file into out: its bytes, -1 refused.
-rgp_source :: (r: [] RgpRigs, out: [] u8) -> int {
-  people_load(r[0].people[..]); preview_load(r[0].preview[..]); twohand_load(r[0].twohand[..]);
-  at := vrg_begin(out, 3, 1);
+// The people's and the two-handed clips' rigs as the procedures load them, as one version 1 file
+// into out: its bytes, -1 refused.
+rgp_generated :: (r: [] RgpRigs, out: [] u8) -> int {
+  people_load(r[0].people[..]); twohand_load(r[0].twohand[..]);
+  at := vrg_begin(out, 2, 1);
   if at == 0 { return -1; }
   p := r[0].people[..]; a := vrg_set(out, 0, E2RIG_PEOPLE, PEOPLE_JOINTS, PEOPLE_CLIPS, p[0].keys_t_m.count / 4, p[0].keys_r.count / 5, at);
   if !rgp_put(out, a, p[0].parent[..], p[0].rest_m[..], p[0].rest_f[..], p[0].bind_m[..], p[0].bind_f[..], p[0].duration[..], p[0].distance[..], p[0].track_t[..], p[0].track_r[..], p[0].keys_t_m[..], p[0].keys_t_f[..], p[0].keys_r[..]) { return -1; }
   at += a.n;
-  v := r[0].preview[..]; b := vrg_set(out, 1, E2RIG_PREVIEW, PREVIEW_JOINTS, PREVIEW_CLIPS, v[0].keys_t_m.count / 4, v[0].keys_r.count / 5, at);
-  if !rgp_put(out, b, v[0].parent[..], v[0].rest_m[..], v[0].rest_f[..], v[0].bind_m[..], v[0].bind_f[..], v[0].duration[..], v[0].distance[..], v[0].track_t[..], v[0].track_r[..], v[0].keys_t_m[..], v[0].keys_t_f[..], v[0].keys_r[..]) { return -1; }
-  at += b.n;
-  t := r[0].twohand[..]; c := vrg_set(out, 2, E2RIG_TWOHAND, TWOHAND_JOINTS, TWOHAND_CLIPS, t[0].keys_t_m.count / 4, t[0].keys_r.count / 5, at);
+  t := r[0].twohand[..]; c := vrg_set(out, 1, E2RIG_TWOHAND, TWOHAND_JOINTS, TWOHAND_CLIPS, t[0].keys_t_m.count / 4, t[0].keys_r.count / 5, at);
   if !rgp_put(out, c, t[0].parent[..], t[0].rest_m[..], t[0].rest_f[..], t[0].bind_m[..], t[0].bind_f[..], t[0].duration[..], t[0].distance[..], t[0].track_t[..], t[0].track_r[..], t[0].keys_t_m[..], t[0].keys_t_f[..], t[0].keys_r[..]) { return -1; }
   at += c.n;
   vrg_end(out, at);
-  return ifx vrg_valid(out[0..<at]) == 3 then at else -1;
+  return ifx vrg_valid(out[0..<at]) == 2 then at else -1;
 }
-// Whether the file fills the three rigs with exactly what the procedures load.
+// Whether the file fills the three rigs, its people's and two-handed sets with exactly what the
+// procedures load, and its previews with the counts and seconds preview-clips.coax states.
 rgp_agrees :: (file: [] u8, r: [] RgpRigs, g: [] RgpBack) -> bool {
-  people_load(r[0].people[..]); preview_load(r[0].preview[..]); twohand_load(r[0].twohand[..]);
+  people_load(r[0].people[..]); twohand_load(r[0].twohand[..]);
   if !e2rig_people(file, g[0].people[..]) || !e2rig_preview(file, g[0].preview[..]) || !e2rig_twohand(file, g[0].twohand[..]) { return false; }
   p := r[0].people[..]; q := g[0].people[..];
   if !(rgp_same_i(p[0].parent[..], q[0].parent[..]) && rgp_same_f(p[0].rest_m[..], q[0].rest_m[..]) && rgp_same_f(p[0].rest_f[..], q[0].rest_f[..]) && rgp_same_f(p[0].bind_m[..], q[0].bind_m[..]) && rgp_same_f(p[0].bind_f[..], q[0].bind_f[..])
       && rgp_same_f(p[0].duration[..], q[0].duration[..]) && rgp_same_f(p[0].distance[..], q[0].distance[..]) && rgp_same_i(p[0].track_t[..], q[0].track_t[..]) && rgp_same_i(p[0].track_r[..], q[0].track_r[..])
       && rgp_same_f(p[0].keys_t_m[..], q[0].keys_t_m[..]) && rgp_same_f(p[0].keys_t_f[..], q[0].keys_t_f[..]) && rgp_same_f(p[0].keys_r[..], q[0].keys_r[..])) { return false; }
-  v := r[0].preview[..]; w := g[0].preview[..];
-  if !(rgp_same_i(v[0].parent[..], w[0].parent[..]) && rgp_same_f(v[0].rest_m[..], w[0].rest_m[..]) && rgp_same_f(v[0].rest_f[..], w[0].rest_f[..]) && rgp_same_f(v[0].bind_m[..], w[0].bind_m[..]) && rgp_same_f(v[0].bind_f[..], w[0].bind_f[..])
-      && rgp_same_f(v[0].duration[..], w[0].duration[..]) && rgp_same_f(v[0].distance[..], w[0].distance[..]) && rgp_same_i(v[0].track_t[..], w[0].track_t[..]) && rgp_same_i(v[0].track_r[..], w[0].track_r[..])
-      && rgp_same_f(v[0].keys_t_m[..], w[0].keys_t_m[..]) && rgp_same_f(v[0].keys_t_f[..], w[0].keys_t_f[..]) && rgp_same_f(v[0].keys_r[..], w[0].keys_r[..])) { return false; }
+  seconds := PREVIEW_DURATION;
+  if !rgp_same_f(seconds[..], g[0].preview[0].duration[..]) || PREVIEW_BAKED != PREVIEW_CLIPS { return false; }
   t := r[0].twohand[..]; u := g[0].twohand[..];
   return rgp_same_i(t[0].parent[..], u[0].parent[..]) && rgp_same_f(t[0].rest_m[..], u[0].rest_m[..]) && rgp_same_f(t[0].rest_f[..], u[0].rest_f[..]) && rgp_same_f(t[0].bind_m[..], u[0].bind_m[..]) && rgp_same_f(t[0].bind_f[..], u[0].bind_f[..])
       && rgp_same_f(t[0].duration[..], u[0].duration[..]) && rgp_same_f(t[0].distance[..], u[0].distance[..]) && rgp_same_i(t[0].track_t[..], u[0].track_t[..]) && rgp_same_i(t[0].track_r[..], u[0].track_r[..])
@@ -269,15 +307,36 @@ rgp_t_source :: (out: [] u8) -> int {
   kb[3] = 0.49998; #assert !rgp_same_keys(ka[..], kb[..], 0.0000154, gap[..]); kb[3] = 0.5; kb[5] = 2.000001; #assert !rgp_same_keys(ka[..], kb[..], 0.0000154, gap[..]) && !rgp_same_keys(ka[..], kb[0..<5], 1, gap[..]);
   #assert rgp_named(all[0..<0], "x") && rgp_named(one[..], "a") && !rgp_named(one[..], "b");
 }
-#test "the source file written from the rig procedures fills the three rigs with exactly what they load" #steps 400000000 {
+#test "a source takes a set file: a set it has by that name is replaced where it is, a new one goes last" #steps 400000000 {
+  src: [2048] u8; n := rgp_t_source(src[..]); w: [1] RgpWork; out: [4096] u8; again: [4096] u8; gaps: [2] f32;
+  // "b" alone, as a file of its own, with one word changed and under two names
+  one := [1] string.["b"]; nb := rgp_write_sets(src[0..<n], one[..], out[..], 1, w[..], gaps[..]); #assert nb == 80 + 180;
+  b: [260] u8; for k: 0..<260 { b[k] = out[k]; } at := vrg_at(vrg_row(b[..], 0), VRG_DURATION); scan_put(b[..], at, f32_bits(7.5)); #assert vrg_valid(b[..]) == 1;
+  m := rgp_join(src[0..<n], b[..], out[..], w[..]); #assert m == n && vrg_valid(out[0..<m]) == 2 && rgp_name(out[..], 0) == "a" && rgp_name(out[..], 1) == "b";
+  d: [1] f32; #assert vrg_floats(out[0..<m], vrg_find(out[0..<m], "b"), VRG_DURATION, d[..]) && d[0] == 7.5;
+  // "a" is the source's, byte for byte
+  sa := vrg_find(src[0..<n], "a"); oa := vrg_find(out[0..<m], "a"); #assert sa.n == oa.n && sa.at == oa.at && cast(string) src[sa.at..<sa.at + sa.n] == cast(string) out[oa.at..<oa.at + oa.n];
+  // a new name goes last; the first set replaced keeps its place
+  b[32] = 'c'; m2 := rgp_join(src[0..<n], b[..], again[..], w[..]); #assert m2 == n + 180 + 48 && vrg_valid(again[0..<m2]) == 3 && rgp_name(again[..], 2) == "c" && rgp_name(again[..], 0) == "a";
+  b[32] = 'a'; m3 := rgp_join(src[0..<n], b[..], again[..], w[..]); #assert m3 == 128 + 180 + 180 && rgp_name(again[..], 0) == "a" && vrg_find(again[0..<m3], "a").joints == 1 && rgp_name(again[..], 1) == "b";
+  // refused: a file that does not read, a version 2 file on either side, no room
+  #assert rgp_join(src[0..<n - 4], b[..], again[..], w[..]) == -1 && rgp_join(src[0..<n], b[0..<200], again[..], w[..]) == -1 && rgp_join(src[0..<n], b[..], again[0..<m3 - 1], w[..]) == -1;
+  v2 := rgp_write_sets(src[0..<n], one[..], out[..], 2, w[..], gaps[..]); #assert v2 > 0 && rgp_join(src[0..<n], out[0..<v2], again[..], w[..]) == -1 && rgp_join(out[0..<v2], b[..], again[..], w[..]) == -1;
+}
+#test "the people's and two-handed rigs written from their procedures read back as what the procedures load; version 2 of them reads within the step" #steps 400000000 {
   r: [1] RgpRigs; g: [1] RgpBack; file: [RGP_FILE] u8;
-  n := rgp_source(r[..], file[..]); #assert n == 1604428 && vrg_valid(file[0..<n]) == 3 && rgp_agrees(file[0..<n], r[..], g[..]);
-  #assert vrg_find(file[0..<n], E2RIG_PEOPLE).joints == 65 && vrg_find(file[0..<n], E2RIG_PREVIEW).clips == PREVIEW_CLIPS && vrg_find(file[0..<n], E2RIG_TWOHAND).clips == TWOHAND_CLIPS;
+  n := rgp_generated(r[..], file[..]); #assert n == 128 + 168716 + 79020 && vrg_valid(file[0..<n]) == 2;
+  #assert e2rig_people(file[0..<n], g[0].people[..]) && e2rig_twohand(file[0..<n], g[0].twohand[..]) && !e2rig_preview(file[0..<n], g[0].preview[..]) && !rgp_agrees(file[0..<n], r[..], g[..]);
+  #assert rgp_same_f(g[0].people[0].keys_r[..], r[0].people[0].keys_r[..]) && rgp_same_f(g[0].twohand[0].bind_f[..], r[0].twohand[0].bind_f[..]) && rgp_same_i(g[0].people[0].track_r[..], r[0].people[0].track_r[..]);
+  #assert vrg_find(file[0..<n], E2RIG_PEOPLE).joints == 65 && vrg_find(file[0..<n], E2RIG_TWOHAND).clips == TWOHAND_CLIPS;
   // a set under another name, or of another size, fills nothing
-  file[32] = 'q'; #assert !e2rig_people(file[0..<n], g[0].people[..]) && e2rig_preview(file[0..<n], g[0].preview[..]) && !rgp_agrees(file[0..<n], r[..], g[..]); file[32] = 'p';
+  file[32] = 'q'; #assert !e2rig_people(file[0..<n], g[0].people[..]) && e2rig_twohand(file[0..<n], g[0].twohand[..]); file[32] = 'p';
   #assert !e2rig_people(file[0..<n - 4], g[0].people[..]) && !e2rig_twohand(file[0..<0], g[0].twohand[..]);
-  // one rotation component a bit off is not the procedures'
-  at := vrg_at(vrg_find(file[0..<n], E2RIG_PEOPLE), VRG_KEYS_R) + 4; was := scan_u32(file[..], at); scan_put(file[..], at, was + 1); #assert !rgp_agrees(file[0..<n], r[..], g[..]); scan_put(file[..], at, was);
+  // version 2, as a pack carries it: the page's reader fills the same rig, each rotation component within the step, each time exact
+  w: [1] RgpWork; out: [RGP_FILE] u8; gaps: [2] f32; one := [1] string.[E2RIG_PEOPLE];
+  m := rgp_write_sets(file[0..<n], one[..], out[..], 2, w[..], gaps[..]); #assert m == 80 + 114556 && gaps[0] > 0 && gaps[0] <= RGP_STEP && gaps[1] > 0 && gaps[1] <= RGP_POSE;
+  #assert e2rig_people(out[0..<m], g[0].people[..]) && !e2rig_twohand(out[0..<m], g[0].twohand[..]) && rgp_same_f(g[0].people[0].keys_t_f[..], r[0].people[0].keys_t_f[..]) && rgp_same_f(g[0].people[0].rest_m[..], r[0].people[0].rest_m[..]);
+  gap: [1] f32; #assert !rgp_same_f(g[0].people[0].keys_r[..], r[0].people[0].keys_r[..]) && rgp_same_keys(r[0].people[0].keys_r[..], g[0].people[0].keys_r[..], RGP_STEP, gap[..]) && gap[0] == gaps[0];
 }
 #test "the pack's rig entry is found, or is not there" {
   cat := "bytes 0000000000\nL 0 Kit|CC0|u\nL 3 Quaternius Universal Base Characters, and more|CC0|u\nC a 1 2 3\n";
@@ -294,24 +353,19 @@ rgp_args :: (a: [] Args, first: int, names: [] string) -> int {
   for k: first..<args_count(a) { if n < names.count { names[n] = args_at(a, k); } n += 1; }
   return n;
 }
-RgpTool :: struct { w: [1] RgpWork; src: [RGP_FILE] u8; file: [RGP_FILE] u8; pack: [RGP_PACK] u8; out: [RGP_PACK] u8; body: [RGP_CATALOG] u8; again: [RGP_FILE] u8; }
+RgpTool :: struct { w: [1] RgpWork; src: [RGP_FILE] u8; file: [RGP_FILE] u8; body: [RGP_CATALOG] u8; again: [RGP_FILE] u8; }
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { return 2; }
   mode := ifx args_count(a[..]) >= 2 then args_at(a[..], 0) else "";
-  if mode == "--source" && args_count(a[..]) == 2 {
-    r: [1] RgpRigs; file: [RGP_FILE] u8; n := rgp_source(r[..], file[..]);
-    if n < 0 || !fs_write(args_at(a[..], 1), cast(string) file[0..<n]) { tool_errln("rig-pack: the rigs are refused, or the file can't be written"); return 1; }
-    print("rig-pack: % bytes, 3 sets, version 1\n", n); return 0;
-  }
   if mode == "--check" && args_count(a[..]) == 2 {
     r: [1] RgpRigs; g: [1] RgpBack; file: [RGP_FILE] u8; n := fs_read(args_at(a[..], 1), file[..]);
     if n <= 0 || vrg_valid(file[0..<n]) != 3 || scan_u32(file[..], 4) != 1 { tool_errln("rig-pack: not a version 1 VRG1 file of three sets"); return 1; }
-    if !rgp_agrees(file[0..<n], r[..], g[..]) { tool_errln("rig-pack: the file is not what the rig procedures load"); return 1; }
-    print("rig-pack: % bytes; people % bytes, preview % bytes, two-hand % bytes; every word is the procedures'\n", n, vrg_find(file[0..<n], E2RIG_PEOPLE).n, vrg_find(file[0..<n], E2RIG_PREVIEW).n, vrg_find(file[0..<n], E2RIG_TWOHAND).n); return 0;
+    if !rgp_agrees(file[0..<n], r[..], g[..]) { tool_errln("rig-pack: the file does not fill the three rigs, its people or two-handed set is not what the procedures load, or its previews are not preview-clips.coax's"); return 1; }
+    print("rig-pack: % bytes; people % bytes, preview % bytes, two-hand % bytes; the people's and the two-handed sets are the procedures' word for word, and the previews fill their rig\n", n, vrg_find(file[0..<n], E2RIG_PEOPLE).n, vrg_find(file[0..<n], E2RIG_PREVIEW).n, vrg_find(file[0..<n], E2RIG_TWOHAND).n); return 0;
   }
-  if mode != "--write" && mode != "--into" && mode != "--holds" { tool_errln("usage: rig-pack --write SOURCE.vrg OUT.vrg [SET...] | --into SOURCE.vrg IN.pack OUT.pack [SET...] | --holds SOURCE.vrg PACK | --source OUT.vrg | --check SOURCE.vrg"); return 2; }
-  t: [1] RgpTool; names: [VRG_SETS] string; gaps: [2] f32;
+  if mode != "--write" && mode != "--into" && mode != "--holds" && mode != "--set" { tool_errln("usage: rig-pack --write SOURCE.vrg OUT.vrg [SET...] | --into SOURCE.vrg IN.pack OUT.pack [SET...] | --set SOURCE.vrg SET.vrg OUT.vrg | --holds SOURCE.vrg PACK | --check SOURCE.vrg"); return 2; }
+  t: [1] RgpTool; pack: [RGP_PACK] u8; names: [VRG_SETS] string; gaps: [2] f32;
   sn := fs_read(args_at(a[..], 1), t[0].src[..]);
   if sn <= 0 || vrg_valid(t[0].src[0..<sn]) == 0 { tool_errln("rig-pack: the source is not a VRG1 file"); return 1; }
   src := t[0].src[0..<sn];
@@ -323,24 +377,31 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   if mode == "--into" && args_count(a[..]) >= 4 {
     nn := rgp_args(a[..], 4, names[..]);
-    size := fs_read(args_at(a[..], 2), t[0].pack[..]);
+    out: [RGP_PACK] u8;
+    size := fs_read(args_at(a[..], 2), pack[..]);
     if size < 32 { tool_errln("rig-pack: can't read the pack"); return 1; }
     n := ifx nn <= VRG_SETS then rgp_write_sets(src, names[0..<nn], t[0].file[..], 2, t[0].w[..], gaps[..]) else -1;
     if n < 0 { tool_errln("rig-pack: a set the source does not have, or one that does not hold to it"); return 1; }
-    at := rgp_into(t[0].pack[0..<size], t[0].file[0..<n], t[0].out[..], t[0].body[..]);
-    if at < 0 { tool_errln("rig-pack: the pack is refused, has no source for the rigs, or grows past 64 MiB"); return 1; }
-    if !fs_write(args_at(a[..], 3), cast(string) t[0].out[0..<at]) { return 1; }
+    at := rgp_into(pack[0..<size], t[0].file[0..<n], out[..], t[0].body[..]);
+    if at < 0 { tool_errln("rig-pack: the pack is refused, has no source for the rigs, or grows past 400 MiB"); return 1; }
+    if !fs_write(args_at(a[..], 3), cast(string) out[0..<at]) { return 1; }
     print("rig-pack: the rigs % bytes; the pack % bytes\n", n, at); return 0;
   }
+  if mode == "--set" && args_count(a[..]) == 4 {
+    an := fs_read(args_at(a[..], 2), t[0].file[..]);
+    n := ifx an > 0 then rgp_join(src, t[0].file[0..<an], t[0].again[..], t[0].w[..]) else -1;
+    if n < 0 || !fs_write(args_at(a[..], 3), cast(string) t[0].again[0..<n]) { tool_errln("rig-pack: the set file is not a version 1 VRG1 file, the sets do not fit, or the file can't be written"); return 1; }
+    print("rig-pack: % bytes, % sets\n", n, vrg_valid(t[0].again[0..<n])); return 0;
+  }
   if mode == "--holds" && args_count(a[..]) == 3 {
-    size := fs_read(args_at(a[..], 2), t[0].pack[..]);
-    e := ifx size >= 32 then rgp_entry(t[0].pack[0..<size]) else RgpEntry.{};
-    if e.n == 0 || vrg_valid(t[0].pack[e.at..<e.at + e.n]) == 0 { tool_errln("rig-pack: the pack has no rig entry that reads"); return 1; }
-    entry := t[0].pack[e.at..<e.at + e.n]; nn := vrg_valid(entry);
+    size := fs_read(args_at(a[..], 2), pack[..]);
+    e := ifx size >= 32 then rgp_entry(pack[0..<size]) else RgpEntry.{};
+    if e.n == 0 || vrg_valid(pack[e.at..<e.at + e.n]) == 0 { tool_errln("rig-pack: the pack has no rig entry that reads"); return 1; }
+    entry := pack[e.at..<e.at + e.n]; nn := vrg_valid(entry);
     for k: 0..<nn { names[k] = rgp_name(entry, k); }
     n := rgp_write_sets(src, names[0..<nn], t[0].again[..], 2, t[0].w[..], gaps[..]);
     if n != e.n || cast(string) t[0].again[0..<n] != cast(string) entry { tool_errln("rig-pack: the pack's rig entry is not the source's sets"); return 1; }
     print("rig-pack: the pack's rig entry (% bytes, % sets) is the source's\n", e.n, nn); return 0;
   }
-  tool_errln("usage: rig-pack --write SOURCE.vrg OUT.vrg [SET...] | --into SOURCE.vrg IN.pack OUT.pack [SET...] | --holds SOURCE.vrg PACK | --source OUT.vrg | --check SOURCE.vrg"); return 2;
+  tool_errln("usage: rig-pack --write SOURCE.vrg OUT.vrg [SET...] | --into SOURCE.vrg IN.pack OUT.pack [SET...] | --set SOURCE.vrg SET.vrg OUT.vrg | --holds SOURCE.vrg PACK | --check SOURCE.vrg"); return 2;
 }

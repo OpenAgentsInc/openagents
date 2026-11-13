@@ -1,5 +1,133 @@
-// Generated from the two pinned Universal Animation Library in-place GLBs.
+// The developer's preview clips: the Universal Animation Library's 86 clips on the people's two
+// skeletons, for the animation browser and the build crews. Their rig is not source: it is the
+// "preview" set of the rigs' file (everglade/model/rigs.vrg, a VRG1 file; GitHub #13306), which a
+// pack carries in its rig entry and everglade/scene/rig-asset.coax reads into a Preview. This file
+// holds what code names: the clips' numbers and names, their seconds, the frames each bakes to, and
+// the rig's shape. everglade/model/tools/rig-pack.coax --check holds the counts and the seconds to
+// the file.
+#load "../../metaverse-engine/anim/skin.coax";
+
+PREVIEW_JOINTS :: 65;
+PREVIEW_CLIPS :: 86;
+PREVIEW_CLIP_NAME :: [86] string.["ual1_a_tpose", "ual1_crouch_fwd_loop", "ual1_crouch_idle_loop", "ual1_dance_loop", "ual1_death01", "ual1_driving_loop", "ual1_fixing_kneeling", "ual1_hit_chest", "ual1_hit_head", "ual1_idle_loop", "ual1_idle_talking_loop", "ual1_idle_torch_loop", "ual1_interact", "ual1_jog_fwd_loop", "ual1_jump_land", "ual1_jump_loop", "ual1_jump_start", "ual1_pickup_table", "ual1_pistol_aim_down", "ual1_pistol_aim_neutral", "ual1_pistol_aim_up", "ual1_pistol_idle_loop", "ual1_pistol_reload", "ual1_pistol_shoot", "ual1_punch_cross", "ual1_punch_jab", "ual1_push_loop", "ual1_roll", "ual1_sitting_enter", "ual1_sitting_exit", "ual1_sitting_idle_loop", "ual1_sitting_talking_loop", "ual1_spell_simple_enter", "ual1_spell_simple_exit", "ual1_spell_simple_idle_loop", "ual1_spell_simple_shoot", "ual1_sprint_loop", "ual1_swim_fwd_loop", "ual1_swim_idle_loop", "ual1_sword_attack", "ual1_sword_idle", "ual1_walk_formal_loop", "ual1_walk_loop", "ual2_a_tpose", "ual2_chest_open", "ual2_climbup_1m", "ual2_consume", "ual2_farm_harvest", "ual2_farm_plantseed", "ual2_farm_watering", "ual2_hit_knockback", "ual2_idle_foldarms_loop", "ual2_idle_lantern_loop", "ual2_idle_no_loop", "ual2_idle_rail_call", "ual2_idle_rail_loop", "ual2_idle_shield_break", "ual2_idle_shield_loop", "ual2_idle_talkingphone_loop", "ual2_laytoidle", "ual2_melee_hook", "ual2_melee_hook_rec", "ual2_ninjajump_idle_loop", "ual2_ninjajump_land", "ual2_ninjajump_start", "ual2_overhandthrow", "ual2_shield_dash", "ual2_shield_oneshot", "ual2_slide_exit", "ual2_slide_loop", "ual2_slide_start", "ual2_sword_block", "ual2_sword_dash", "ual2_sword_heavy_combo", "ual2_sword_regular_a", "ual2_sword_regular_a_rec", "ual2_sword_regular_b", "ual2_sword_regular_b_rec", "ual2_sword_regular_c", "ual2_sword_regular_combo", "ual2_treechopping_loop", "ual2_walk_carry_loop", "ual2_yes", "ual2_zombie_idle_loop", "ual2_zombie_scratch", "ual2_zombie_walk_fwd_loop"];
+PREVIEW_UAL1_A_TPOSE :: 0;
+PREVIEW_UAL1_CROUCH_FWD_LOOP :: 1;
+PREVIEW_UAL1_CROUCH_IDLE_LOOP :: 2;
+PREVIEW_UAL1_DANCE_LOOP :: 3;
+PREVIEW_UAL1_DEATH01 :: 4;
+PREVIEW_UAL1_DRIVING_LOOP :: 5;
+PREVIEW_UAL1_FIXING_KNEELING :: 6;
+PREVIEW_UAL1_HIT_CHEST :: 7;
+PREVIEW_UAL1_HIT_HEAD :: 8;
+PREVIEW_UAL1_IDLE_LOOP :: 9;
+PREVIEW_UAL1_IDLE_TALKING_LOOP :: 10;
+PREVIEW_UAL1_IDLE_TORCH_LOOP :: 11;
+PREVIEW_UAL1_INTERACT :: 12;
+PREVIEW_UAL1_JOG_FWD_LOOP :: 13;
+PREVIEW_UAL1_JUMP_LAND :: 14;
+PREVIEW_UAL1_JUMP_LOOP :: 15;
+PREVIEW_UAL1_JUMP_START :: 16;
+PREVIEW_UAL1_PICKUP_TABLE :: 17;
+PREVIEW_UAL1_PISTOL_AIM_DOWN :: 18;
+PREVIEW_UAL1_PISTOL_AIM_NEUTRAL :: 19;
+PREVIEW_UAL1_PISTOL_AIM_UP :: 20;
+PREVIEW_UAL1_PISTOL_IDLE_LOOP :: 21;
+PREVIEW_UAL1_PISTOL_RELOAD :: 22;
+PREVIEW_UAL1_PISTOL_SHOOT :: 23;
+PREVIEW_UAL1_PUNCH_CROSS :: 24;
+PREVIEW_UAL1_PUNCH_JAB :: 25;
+PREVIEW_UAL1_PUSH_LOOP :: 26;
+PREVIEW_UAL1_ROLL :: 27;
+PREVIEW_UAL1_SITTING_ENTER :: 28;
+PREVIEW_UAL1_SITTING_EXIT :: 29;
+PREVIEW_UAL1_SITTING_IDLE_LOOP :: 30;
+PREVIEW_UAL1_SITTING_TALKING_LOOP :: 31;
+PREVIEW_UAL1_SPELL_SIMPLE_ENTER :: 32;
+PREVIEW_UAL1_SPELL_SIMPLE_EXIT :: 33;
+PREVIEW_UAL1_SPELL_SIMPLE_IDLE_LOOP :: 34;
+PREVIEW_UAL1_SPELL_SIMPLE_SHOOT :: 35;
+PREVIEW_UAL1_SPRINT_LOOP :: 36;
+PREVIEW_UAL1_SWIM_FWD_LOOP :: 37;
+PREVIEW_UAL1_SWIM_IDLE_LOOP :: 38;
+PREVIEW_UAL1_SWORD_ATTACK :: 39;
+PREVIEW_UAL1_SWORD_IDLE :: 40;
+PREVIEW_UAL1_WALK_FORMAL_LOOP :: 41;
+PREVIEW_UAL1_WALK_LOOP :: 42;
+PREVIEW_UAL2_A_TPOSE :: 43;
+PREVIEW_UAL2_CHEST_OPEN :: 44;
+PREVIEW_UAL2_CLIMBUP_1M :: 45;
+PREVIEW_UAL2_CONSUME :: 46;
+PREVIEW_UAL2_FARM_HARVEST :: 47;
+PREVIEW_UAL2_FARM_PLANTSEED :: 48;
+PREVIEW_UAL2_FARM_WATERING :: 49;
+PREVIEW_UAL2_HIT_KNOCKBACK :: 50;
+PREVIEW_UAL2_IDLE_FOLDARMS_LOOP :: 51;
+PREVIEW_UAL2_IDLE_LANTERN_LOOP :: 52;
+PREVIEW_UAL2_IDLE_NO_LOOP :: 53;
+PREVIEW_UAL2_IDLE_RAIL_CALL :: 54;
+PREVIEW_UAL2_IDLE_RAIL_LOOP :: 55;
+PREVIEW_UAL2_IDLE_SHIELD_BREAK :: 56;
+PREVIEW_UAL2_IDLE_SHIELD_LOOP :: 57;
+PREVIEW_UAL2_IDLE_TALKINGPHONE_LOOP :: 58;
+PREVIEW_UAL2_LAYTOIDLE :: 59;
+PREVIEW_UAL2_MELEE_HOOK :: 60;
+PREVIEW_UAL2_MELEE_HOOK_REC :: 61;
+PREVIEW_UAL2_NINJAJUMP_IDLE_LOOP :: 62;
+PREVIEW_UAL2_NINJAJUMP_LAND :: 63;
+PREVIEW_UAL2_NINJAJUMP_START :: 64;
+PREVIEW_UAL2_OVERHANDTHROW :: 65;
+PREVIEW_UAL2_SHIELD_DASH :: 66;
+PREVIEW_UAL2_SHIELD_ONESHOT :: 67;
+PREVIEW_UAL2_SLIDE_EXIT :: 68;
+PREVIEW_UAL2_SLIDE_LOOP :: 69;
+PREVIEW_UAL2_SLIDE_START :: 70;
+PREVIEW_UAL2_SWORD_BLOCK :: 71;
+PREVIEW_UAL2_SWORD_DASH :: 72;
+PREVIEW_UAL2_SWORD_HEAVY_COMBO :: 73;
+PREVIEW_UAL2_SWORD_REGULAR_A :: 74;
+PREVIEW_UAL2_SWORD_REGULAR_A_REC :: 75;
+PREVIEW_UAL2_SWORD_REGULAR_B :: 76;
+PREVIEW_UAL2_SWORD_REGULAR_B_REC :: 77;
+PREVIEW_UAL2_SWORD_REGULAR_C :: 78;
+PREVIEW_UAL2_SWORD_REGULAR_COMBO :: 79;
+PREVIEW_UAL2_TREECHOPPING_LOOP :: 80;
+PREVIEW_UAL2_WALK_CARRY_LOOP :: 81;
+PREVIEW_UAL2_YES :: 82;
+PREVIEW_UAL2_ZOMBIE_IDLE_LOOP :: 83;
+PREVIEW_UAL2_ZOMBIE_SCRATCH :: 84;
+PREVIEW_UAL2_ZOMBIE_WALK_FWD_LOOP :: 85;
+PREVIEW_DURATION :: [86] f32.[
+  2.5, 2.0, 2.9333334, 1.0, 2.4000001, 1.66666663, 5.19999981, 0.333333343,
+  0.433333337, 2.5, 2.9333334, 1.26666665, 2.0, 0.933333337, 1.26666665, 2.5,
+  1.33333337, 0.833333313, 0.166666672, 0.166666672, 0.166666672, 1.66666663, 1.66666663, 0.633333325,
+  1.0, 0.866666675, 2.66666675, 1.4666667, 1.29999995, 1.0333333, 1.66666663, 2.9333334,
+  0.533333361, 0.433333337, 2.0999999, 0.5, 0.666666687, 1.33333337, 3.33333325, 1.5333333,
+  1.66666663, 1.33333337, 1.33333337, 2.5, 1.36666667, 0.666666687, 1.33333337, 2.5,
+  2.76666665, 3.79999995, 0.833333313, 2.5, 2.5, 2.5, 2.5, 2.5,
+  1.06666672, 2.5, 2.9333334, 1.5333333, 0.466666669, 0.600000024, 2.0, 1.26666665,
+  0.966666639, 1.33333337, 1.10000002, 0.833333313, 0.5, 2.0, 0.833333313, 1.23333335,
+  1.56666672, 4.33333349, 0.433333337, 0.966666639, 0.533333361, 1.0333333, 2.0, 3.0,
+  0.966666639, 2.0, 2.5, 1.33333337, 1.79999995, 1.33333337
+];
+// The frames each clip bakes to, and where its first is in a body's baked frames.
 PREVIEW_BAKED :: 86;
 PREVIEW_FIRST :: [86] int.[502, 562, 610, 680, 704, 762, 802, 927, 935, 945, 1005, 1075, 1105, 1153, 1175, 1205, 1265, 1297, 1317, 1321, 1325, 1329, 1369, 1409, 1424, 1448, 1469, 1533, 1568, 1599, 1624, 1664, 1734, 1747, 1757, 1807, 1819, 1835, 1867, 1947, 1984, 2024, 2056, 2088, 2148, 2181, 2197, 2229, 2289, 2355, 2446, 2466, 2526, 2586, 2646, 2706, 2766, 2792, 2852, 2922, 2959, 2970, 2984, 3032, 3062, 3085, 3117, 3143, 3163, 3175, 3223, 3243, 3273, 3311, 3415, 3425, 3448, 3461, 3486, 3534, 3606, 3629, 3677, 3737, 3769, 3812];
 PREVIEW_FRAMES :: [86] int.[60, 48, 70, 24, 58, 40, 125, 8, 10, 60, 70, 30, 48, 22, 30, 60, 32, 20, 4, 4, 4, 40, 40, 15, 24, 21, 64, 35, 31, 25, 40, 70, 13, 10, 50, 12, 16, 32, 80, 37, 40, 32, 32, 60, 33, 16, 32, 60, 66, 91, 20, 60, 60, 60, 60, 60, 26, 60, 70, 37, 11, 14, 48, 30, 23, 32, 26, 20, 12, 48, 20, 30, 38, 104, 10, 23, 13, 25, 48, 72, 23, 48, 60, 32, 43, 32];
 PREVIEW_TOTAL :: 3844;
+// The rig in a page's state (a view needs an array it may write through), and its views.
+Preview :: struct {
+  parent: [65] int; rest_m: [455] f32; rest_f: [455] f32; bind_m: [780] f32; bind_f: [780] f32;
+  duration: [86] f32; distance: [86] f32; track_t: [11180] int; track_r: [11180] int;
+  keys_t_m: [6616] f32; keys_t_f: [6616] f32; keys_r: [300830] f32;
+}
+// Body 0 is the male skeleton, 1 the female; they share the clips' rotations.
+preview_rig :: (d: [] Preview, female: bool) -> SkinRig {
+  if female {
+    return SkinRig.{joints = PREVIEW_JOINTS, clips = PREVIEW_CLIPS, parent = d[0].parent[..], rest = d[0].rest_f[..], bind = d[0].bind_f[..],
+                    duration = d[0].duration[..], distance = d[0].distance[..], track_t = d[0].track_t[..],
+                    track_r = d[0].track_r[..], keys_t = d[0].keys_t_f[..], keys_r = d[0].keys_r[..]};
+  }
+  return SkinRig.{joints = PREVIEW_JOINTS, clips = PREVIEW_CLIPS, parent = d[0].parent[..], rest = d[0].rest_m[..], bind = d[0].bind_m[..],
+                  duration = d[0].duration[..], distance = d[0].distance[..], track_t = d[0].track_t[..],
+                  track_r = d[0].track_r[..], keys_t = d[0].keys_t_m[..], keys_r = d[0].keys_r[..]};
+}

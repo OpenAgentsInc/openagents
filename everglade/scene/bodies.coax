@@ -41,7 +41,6 @@ BD_RECORDS :: 54912;      // instances at most: 16384 skeletons of three parts, 
 BD_REC_FLOATS :: 24;      // everglade/scene/gpu/fivelab.coax FivelabObj: six vec4s
 BD_FPS :: 30.0;
 // The clips baked, as people-rig.coax numbers them, and their frames (each its seconds at 30 a second).
-#load "preview-rig.coax";
 #load "preview-clips.coax";
 #load "two-hand-rig.coax";   // the owned two-handed weapon clips (metaverse/tools/assets/two_hand_clips.py)
 #load "rig-asset.coax";      // the rigs from a pack's rig entry (VRG1, GitHub #13306)
@@ -293,12 +292,12 @@ bd_bake :: (d: [] People, out: [] f32) {
 // When it was a local of bd_bake, a development module (wasm.sh builds those in parts, so nothing
 // folds the unused branch away) overflowed Everglade II's 1 MB stack in bd_bake before its first
 // frame: "memory access out of bounds" at 95% (#13303).
-// The rig comes from `file` first: the pack's rig entry (VRG1, rig-asset.coax; GitHub #13306). A file
-// without the set (a page whose pack carries no rigs yet passes none) leaves the generated procedure
-// to load it, the same words.
-bd_bake_previews :: (out: [] f32, data: [] Preview, file: [] u8) {
-  if out.count < BD_BAKE_FLOATS || data.count < 1 { return; }
-  if !e2rig_preview(file, data) { preview_load(data); }
+// The rig is the "preview" set of `file`, the pack's rig entry (VRG1, rig-asset.coax; GitHub #13306):
+// the previews' keys are an asset, not source. A file without the set bakes nothing and says so
+// (false): the caller shows no preview clips.
+bd_bake_previews :: (out: [] f32, data: [] Preview, file: [] u8) -> bool {
+  if out.count < BD_BAKE_FLOATS || data.count < 1 { return false; }
+  if !e2rig_preview(file, data) { return false; }
   for body:0..<2 {rig:=preview_rig(data,body==1);sk:[1]Skin;
     for c:0..<PREVIEW_BAKED {n:=PREVIEW_FRAMES[c];for f:0..<n {
       t:=f32(f)*rig.duration[c]/f32(n);
@@ -306,6 +305,7 @@ bd_bake_previews :: (out: [] f32, data: [] Preview, file: [] u8) {
       at:=bd_row(body==1,BD_CLIPS+c,f)*4;skin_palette(rig,sk[..],out[at..<at+BD_ROWS*4]);
     }}
   }
+  return true;
 }
 // The owned two-handed weapon clips, into their rows (a world whose figures hold weapons bakes them too).
 bd_bake_owned :: (out: [] f32, file: [] u8) {

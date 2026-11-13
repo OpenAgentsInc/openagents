@@ -731,9 +731,11 @@ def posed(sk, clip, body, time):
 CHECK_JOINTS = ("pelvis", "Head", "hand_l", "hand_r", "foot_l", "foot_r")
 
 
-def rig_coax(manifest, rig, parts, prefix):
+def rig_tracks(rig):
+    """A rig's key tracks as the rig files hold them: (first, count) a clip and joint into the rotation
+    keys and into either body's translation keys (the pelvis's only), and the keys themselves."""
     skeletons, cl = rig
-    m, f = skeletons["male"], skeletons["female"]
+    m = skeletons["male"]
     pel = m.index("pelvis")
     tr, kr, tt = [], [], []
     keys_t = {"male": [], "female": []}
@@ -746,6 +748,42 @@ def rig_coax(manifest, rig, parts, prefix):
             if j == pel:
                 keys_t["male"] += [(t,) + tuple(v) for t, v in c["move"]["male"]]
                 keys_t["female"] += [(t,) + tuple(v) for t, v in c["move"]["female"]]
+    return tt, tr, keys_t, kr
+
+
+def rig_vrg(rig, name):
+    """The rig as one set of a VRG1 file, version 1 (metaverse-engine/anim/rig-pack.coax,
+    proto/aethyr/rig-pack-v1.json): every word 4 bytes, little endian, every key a float. A float is
+    the one its nine digits name, as the Coax rig files held it. The rigs' source file,
+    everglade/model/rigs.vrg, takes the set with everglade/model/tools/rig-pack.coax --set (#13306)."""
+    skeletons, cl = rig
+    m, f = skeletons["male"], skeletons["female"]
+    tt, tr, keys_t, kr = rig_tracks(rig)
+    J = len(m.names)
+    if not (1 <= J <= 256 and 1 <= len(cl) <= 256):
+        raise SystemExit("people: a VRG1 set has 1 to 256 joints and 1 to 256 clips")
+    if not (1 <= len(name) <= 15 and all(c in "abcdefghijklmnopqrstuvwxyz0123456789-" for c in name)):
+        raise SystemExit("people: a VRG1 set's name is 1 to 15 of a-z, 0-9 and '-'")
+    flat = lambda rows: [v for row in rows for v in row]
+    words = lambda values: struct.pack(f"<{len(values)}I", *values)
+    floats = lambda values: struct.pack(f"<{len(values)}f", *[float("%.9g" % v) for v in values])
+    body = b"".join([
+        words([p + 1 for p in m.parent]),
+        floats(flat(tuple(m.t[j]) + tuple(m.q[j]) for j in range(J))),
+        floats(flat(tuple(f.t[j]) + tuple(f.q[j]) for j in range(J))),
+        floats(bind_rows(m)), floats(bind_rows(f)),
+        floats([c["duration"] for c in cl]), floats([c["distance"] for c in cl]),
+        words(tt), words(tr),
+        floats(flat(keys_t["male"])), floats(flat(keys_t["female"])), floats(flat(kr))])
+    at = 32 + 48
+    row = name.encode().ljust(16, b"\0") + struct.pack("<8I", J, len(cl), len(keys_t["male"]), len(kr), at, len(body), 0, 0)
+    return b"VRG1" + struct.pack("<7I", 1, 1, at + len(body), 0, 0, 0, 0) + row + body
+
+
+def rig_coax(manifest, rig, parts, prefix):
+    skeletons, cl = rig
+    m, f = skeletons["male"], skeletons["female"]
+    tt, tr, keys_t, kr = rig_tracks(rig)
     long = {}   # the tables the load assigns as literals (LONG)
     def arr(name, kind, values, per_line, fmt):
         if len(values) > LONG:
