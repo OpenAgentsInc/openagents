@@ -1,0 +1,329 @@
+#authority;
+// Riding in a room (#13268, everglade/docs/mounts-spec.md): a zone's mounts as the room's state. The
+// room, not a page, decides who is on which mount and where it is. A page asks to mount or to get
+// down; the room judges the ask here (e2r_mount, e2r_dismount, e2r_land) and steps every mount once a
+// tick (e2r_step) with Aethyr's mount engine (aethyr/action/mount.coax: the same mount_step and
+// mount_step_wings a page predicts with) from its rider's input. A rider's body is where its mount
+// seats it (e2r_body): the room's walker does not step a seat that e2r_of names.
+//
+// It decides who may ride, so it is #authority and every procedure here has a check that runs it. It
+// holds no seat, socket or frame: the room's tick hands it a seat's number, where that seat stands,
+// whether its conditions let it act, and the boxes near the mount.
+//
+// Not here: the mount's row on the wire and the asks' frames (everglade/shared/everglade-wire.coax,
+// a wire change that lands through #13398's mechanism), and the page's prediction and drawing.
+//   coax/bin/coax test everglade/server/mounts.coax --library
+//   coax/bin/coax mutate everglade/server/mounts.coax --library --root-only   (175 of 175 killed, 2026-11-12)
+#module "everglade.server.mounts";
+#load "../../aethyr/action/mount.coax";
+#load "../shared/mount-kinds.coax";
+#load "tests/mounts-fixture.coax" #test;   // its checks' helpers, kept out of its mutants
+
+E2R_MOUNTS :: 4;   // mounts a zone holds
+// What the room says to an ask.
+E2R_OK :: 0;
+E2R_NONE :: 1;      // no such mount
+E2R_HELD :: 2;      // your conditions don't let you act or move
+E2R_RIDING :: 3;    // you are already on a mount (or on your way to or from one)
+E2R_TAKEN :: 4;     // someone else has it
+E2R_FAR :: 5;       // out of its reach
+E2R_ON_FOOT :: 6;   // you ride nothing
+E2R_BUSY :: 7;      // still mounting or already getting down
+E2R_ALOFT :: 8;     // nobody gets off in the air: land first
+E2R_NO_ROOM :: 9;   // no room to step down on either side
+E2R_GROUND :: 10;   // land: it is not in the air (or has no wings)
+
+E2Mounts :: struct {
+  n: int;
+  m: [E2R_MOUNTS] Mount;
+  kind: [E2R_MOUNTS] int;    // MK_HORSE or MK_DRAGON
+  land: [E2R_MOUNTS] bool;   // X pressed on a flier in the air: it comes down until Space flies on
+}
+// A mount of `kind` placed at (x, z) facing `face`, its feet on `ground`: its index, -1 when the zone
+// is full or the kind is none of Everglade's.
+e2r_add :: (r: [] E2Mounts, kind: int, x: f32, z: f32, face: f32, ground: f32) -> int #effects(all) {
+  if r[0].n >= E2R_MOUNTS || kind < 0 || kind >= MK_KINDS { return -1; }
+  k := r[0].n;
+  r[0].m[k] = ifx kind == MK_DRAGON then mount_place_wings(x, z, face, ground) else mount_place(x, z, face);
+  r[0].kind[k] = kind; r[0].land[k] = false; r[0].n = k + 1;
+  return k;
+}
+// The mount seat `seat` is on, mounting or getting down from; -1 none.
+e2r_of :: (r: E2Mounts, seat: int) -> int #effects(all) {
+  for k: 0..<r.n { if mount_carries(r.m[k], seat) { return k; } }
+  return -1;
+}
+// Seat `seat`, standing at (x, z), asks to mount k at `tick`. `free`: its conditions let it act and move.
+e2r_mount :: (r: [] E2Mounts, seat: int, k: int, x: f32, z: f32, free: bool, tick: int) -> int #effects(all) {
+  if k < 0 || k >= r[0].n { return E2R_NONE; }
+  if !free { return E2R_HELD; }
+  if e2r_of(r[0], seat) >= 0 { return E2R_RIDING; }
+  if r[0].m[k].state != MOUNT_FREE { return E2R_TAKEN; }
+  if !mount_begin_tick(r[0].m[k..<k + 1], mk_tune(r[0].kind[k]), seat, x, z, tick) { return E2R_FAR; }
+  return E2R_OK;
+}
+// Seat `seat` asks to get down at `tick`, among the `n` boxes near its mount.
+e2r_dismount :: (r: [] E2Mounts, seat: int, free: bool, tick: int, walls: [] f32, n: int) -> int #effects(all) {
+  k := e2r_of(r[0], seat);
+  if k < 0 { return E2R_ON_FOOT; }
+  if !free { return E2R_HELD; }
+  if r[0].m[k].state != MOUNT_RIDDEN { return E2R_BUSY; }
+  if mount_aloft(r[0].m[k]) { return E2R_ALOFT; }
+  if !mount_dismount_tick(r[0].m[k..<k + 1], mk_tune(r[0].kind[k]), tick, walls, n) { return E2R_NO_ROOM; }
+  return E2R_OK;
+}
+// Seat `seat` asks its flier to land (X in the air).
+e2r_land :: (r: [] E2Mounts, seat: int) -> int #effects(all) {
+  k := e2r_of(r[0], seat);
+  if k < 0 { return E2R_ON_FOOT; }
+  if r[0].m[k].state != MOUNT_RIDDEN { return E2R_BUSY; }
+  if !mount_aloft(r[0].m[k]) { return E2R_GROUND; }
+  r[0].land[k] = true;
+  return E2R_OK;
+}
+// What a tick did to mount k.
+E2RStep :: struct {
+  seated: bool;    // this tick ended a mount: its rider is in the saddle
+  off: bool;       // this tick ended a dismount: `rider` stands at (x, z) on foot again
+  rider: int = -1; x: f32; z: f32;
+}
+// Mount k's tick at `tick`, `hz` ticks a second: its transition ends on its tick, then it steps
+// 1 / hz s among the `n` boxes near it. `kx`, `ky` and `b` are its rider's input this tick (the walk
+// keys, -100 to 100, and WB_*: `run` Shift, `jump` Space); a mount nobody sits in takes none.
+// `ground`: the floor under it (a flier lands on it).
+e2r_step :: (r: [] E2Mounts, k: int, kx: int, ky: int, run: bool, jump: bool, ground: f32, tick: int, hz: int, walls: [] f32, n: int) -> E2RStep #effects(all) {
+  o: E2RStep;
+  if k < 0 || k >= r[0].n || hz < 1 { return o; }
+  one := r[0].m[k..<k + 1]; kind := r[0].kind[k]; t := mk_tune(kind);
+  was := one[0].state; rider := one[0].rider; fx := one[0].from_x; fz := one[0].from_z;
+  if mount_settle_tick(one, t, tick, hz) {
+    if was == MOUNT_MOUNTING { o.seated = true; o.rider = rider; }
+    else { o.off = true; o.rider = rider; o.x = fx; o.z = fz; }
+  }
+  in: MountIn;
+  if one[0].state == MOUNT_RIDDEN {
+    aloft := mount_aloft(one[0]);
+    r[0].land[k] = mk_land_holds(r[0].land[k], jump, aloft);
+    steer := MountIn.{forward = f32(ky) / 100, turn = f32(kx) / 100, gallop = run};   // the engine holds each to -1..1
+    in = mk_keys(kind, steer, jump, run, aloft, r[0].land[k]);
+  }
+  dt := 1.0 / f32(hz);
+  if kind == MK_DRAGON { mount_step_wings(one, t, mk_dragon_wings(), in, ground, dt, walls, n); }
+  else { mount_step(one, t, in, dt, walls, n); }
+  return o;
+}
+// Where mount k carries its rider's body at `tick`: beside it as the mount begins, in the saddle's
+// place over its middle once seated, and back out to where they step down. `on` false: it carries nobody.
+E2RBody :: struct { on: bool; x: f32; z: f32; yaw: f32; seated: f32; }
+e2r_body :: (r: E2Mounts, k: int, tick: int, hz: int) -> E2RBody #effects(all) {
+  if k < 0 || k >= r.n || r.m[k].state == MOUNT_FREE { return E2RBody.{}; }
+  m := r.m[k]; u := mount_seated_tick(m, mk_tune(r.kind[k]), tick, 0, hz);
+  if u >= 1 { return E2RBody.{on = true, x = m.x, z = m.z, yaw = m.face, seated = 1}; }   // in the saddle: the mount's own place, to the bit
+  return E2RBody.{on = true, x = m.from_x + (m.x - m.from_x) * u, z = m.from_z + (m.z - m.from_z) * u, yaw = m.face, seated = u};
+}
+// Seat `seat` leaves the room (or falls: its conditions end the ride): its mount is free where it
+// stands, at once. A flier left in the air comes down by itself (mount_step_wings steps it riderless).
+// True when it was on one.
+e2r_leave :: (r: [] E2Mounts, seat: int, tick: int) -> bool #effects(all) {
+  k := e2r_of(r[0], seat);
+  if k < 0 { return false; }
+  r[0].m[k].state = MOUNT_FREE; r[0].m[k].rider = -1; r[0].m[k].since_tick = tick; r[0].land[k] = false;
+  return true;
+}
+
+// ---- checks
+
+#test "room mounts: a zone holds four, a horse or a dragon each, placed where the room says" {
+  r: [1] E2Mounts;
+  #assert e2r_add(r[..], -1, 0, 0, 0, 0) == -1 && e2r_add(r[..], MK_KINDS, 0, 0, 0, 0) == -1 && r[0].n == 0;
+  #assert e2r_add(r[..], MK_HORSE, 3, 4, 1.5, 9) == 0 && r[0].n == 1 && r[0].kind[0] == MK_HORSE;
+  h := r[0].m[0]; #assert h.on && h.x == 3 && h.z == 4 && h.face == 1.5 && !h.flies && h.state == MOUNT_FREE && h.rider == -1;
+  r[0].land[1] = true;
+  #assert e2r_add(r[..], MK_DRAGON, 40, -6, 0.5, 2) == 1 && r[0].n == 2 && r[0].kind[1] == MK_DRAGON && !r[0].land[1];
+  d := r[0].m[1]; #assert d.on && d.flies && d.x == 40 && d.z == -6 && d.face == 0.5 && d.wing.y == 2 && !mount_aloft(d);
+  #assert e2r_add(r[..], MK_HORSE, 0, 0, 0, 0) == 2 && e2r_add(r[..], MK_HORSE, 0, 0, 0, 0) == 3 && r[0].n == 4 && E2R_MOUNTS == 4;
+  #assert e2r_add(r[..], MK_HORSE, 7, 7, 0, 0) == -1 && r[0].n == 4 && r[0].m[3].x == 0;
+}
+#test "room mounts: whose mount: mounting, riding and getting down all count, and only for that seat" {
+  r: [1] E2Mounts; e2r_test_zone(r[..]); none: [6] f32;
+  #assert e2r_of(r[0], 5) == -1 && e2r_of(r[0], -1) == -1;
+  #assert e2r_mount(r[..], 5, 1, 41, 0, true, 0) == E2R_OK && e2r_of(r[0], 5) == 1 && e2r_of(r[0], 4) == -1 && e2r_of(r[0], -1) == -1;
+  o := e2r_step(r[..], 1, 0, 0, false, false, 2, 27, 30, none[..], 0);
+  #assert mount_ridden(r[0].m[1]) && e2r_of(r[0], 5) == 1;
+  #assert e2r_dismount(r[..], 5, true, 30, none[..], 0) == E2R_OK && e2r_of(r[0], 5) == 1;
+  #assert e2r_mount(r[..], 2, 0, 1, 0, true, 0) == E2R_OK && e2r_of(r[0], 2) == 0 && e2r_of(r[0], 5) == 1;
+}
+#test "room mounts: who may mount: a real mount, a seat free to act, on nothing else, a free mount, within its reach" {
+  r: [1] E2Mounts; e2r_test_zone(r[..]);
+  #assert E2R_OK == 0 && E2R_NONE == 1 && E2R_HELD == 2 && E2R_RIDING == 3 && E2R_TAKEN == 4 && E2R_FAR == 5;
+  #assert e2r_mount(r[..], 1, -1, 1, 0, true, 9) == E2R_NONE && e2r_mount(r[..], 1, 2, 1, 0, true, 9) == E2R_NONE && e2r_mount(r[..], 1, 2, 1, 0, false, 9) == E2R_NONE;
+  #assert e2r_mount(r[..], 1, 0, 1, 0, false, 9) == E2R_HELD && r[0].m[0].state == MOUNT_FREE && r[0].m[0].rider == -1;
+  // the horse's reach is 2.5 m from its body's line, the dragon's 4 m: each kind's own
+  #assert e2r_mount(r[..], 1, 0, 2.6, 0, true, 9) == E2R_FAR && r[0].m[0].state == MOUNT_FREE;
+  #assert e2r_mount(r[..], 1, 1, 43.5, 0, true, 9) == E2R_OK && r[0].m[1].state == MOUNT_MOUNTING && r[0].m[1].rider == 1 && r[0].m[1].since_tick == 9 && r[0].m[1].from_x == 43.5;
+  // on one already (even on the way up): no other, and not this one again; held comes first
+  #assert e2r_mount(r[..], 1, 0, 1, 0, true, 10) == E2R_RIDING && e2r_mount(r[..], 1, 1, 41, 0, true, 10) == E2R_RIDING && e2r_mount(r[..], 1, 0, 1, 0, false, 10) == E2R_HELD;
+  #assert r[0].m[0].state == MOUNT_FREE && r[0].m[1].since_tick == 9;
+  // someone else's: taken while they mount, ride and get down
+  none: [6] f32;
+  #assert e2r_mount(r[..], 2, 1, 41, 0, true, 11) == E2R_TAKEN && r[0].m[1].rider == 1;
+  o := e2r_step(r[..], 1, 0, 0, false, false, 2, 36, 30, none[..], 0); #assert mount_ridden(r[0].m[1]) && e2r_mount(r[..], 2, 1, 41, 0, true, 37) == E2R_TAKEN;
+  #assert e2r_dismount(r[..], 1, true, 40, none[..], 0) == E2R_OK && e2r_mount(r[..], 2, 1, 41, 0, true, 41) == E2R_TAKEN && r[0].m[1].rider == 1;
+  #assert e2r_mount(r[..], 2, 0, 2.4, 0, true, 50) == E2R_OK && r[0].m[0].rider == 2 && r[0].m[0].since_tick == 50;
+}
+#test "room mounts: getting down: only from the saddle, on the ground, free to act, where there is room on a side" {
+  r: [1] E2Mounts; e2r_test_zone(r[..]); none: [6] f32;
+  #assert E2R_ON_FOOT == 6 && E2R_BUSY == 7 && E2R_ALOFT == 8 && E2R_NO_ROOM == 9;
+  #assert e2r_dismount(r[..], 1, true, 5, none[..], 0) == E2R_ON_FOOT && e2r_dismount(r[..], 1, false, 5, none[..], 0) == E2R_ON_FOOT;
+  #assert e2r_mount(r[..], 1, 0, 1, 0, true, 0) == E2R_OK;
+  #assert e2r_dismount(r[..], 1, false, 5, none[..], 0) == E2R_HELD && e2r_dismount(r[..], 1, true, 5, none[..], 0) == E2R_BUSY && r[0].m[0].state == MOUNT_MOUNTING;
+  o := e2r_step(r[..], 0, 0, 0, false, false, 2, 18, 30, none[..], 0); #assert mount_ridden(r[0].m[0]);
+  #assert e2r_dismount(r[..], 1, false, 20, none[..], 0) == E2R_HELD && mount_ridden(r[0].m[0]);
+  // walls 0.5 m out on both sides leave a horse (it steps 1 m out) no room; a dragon steps 3.4 m out, past them
+  box := [12] f32.[0.5, 0, -50, 1.6, 3, 50, -1.6, 0, -50, -0.5, 3, 50];
+  #assert e2r_dismount(r[..], 1, true, 20, box[..], 2) == E2R_NO_ROOM && mount_ridden(r[0].m[0]) && r[0].m[0].since_tick == 18;
+  #assert e2r_dismount(r[..], 1, true, 20, box[..], 0) == E2R_OK && r[0].m[0].state == MOUNT_DISMOUNTING && r[0].m[0].since_tick == 20 && r[0].m[0].from_x == 1;
+  #assert e2r_dismount(r[..], 1, true, 21, none[..], 0) == E2R_BUSY && r[0].m[0].since_tick == 20;
+  e2r_test_sit(r[..], 2, 1, 27); #assert mount_ridden(r[0].m[1]);
+  far := [12] f32.[40.5, 0, -50, 41.6, 9, 50, 38.4, 0, -50, 39.5, 9, 50];
+  #assert e2r_dismount(r[..], 2, true, 30, far[..], 2) == E2R_OK && r[0].m[1].from_x == 43.4;
+  // in the air: land first
+  e2r_test_zone(r[..]); e2r_test_sit(r[..], 2, 1, 27);
+  e2r_test_run(r[..], 1, 0, 100, false, true, 28, 60); #assert mount_aloft(r[0].m[1]);
+  #assert e2r_dismount(r[..], 2, true, 90, none[..], 0) == E2R_ALOFT && mount_ridden(r[0].m[1]) && e2r_dismount(r[..], 2, false, 90, none[..], 0) == E2R_HELD;
+}
+#test "room mounts: X lands a flier in the air until Space flies on; a horse and a dragon on the ground have nothing to land" {
+  r: [1] E2Mounts; e2r_test_zone(r[..]); none: [6] f32;
+  #assert E2R_GROUND == 10 && e2r_land(r[..], 2) == E2R_ON_FOOT;
+  #assert e2r_mount(r[..], 2, 1, 41, 0, true, 0) == E2R_OK && e2r_land(r[..], 2) == E2R_BUSY && !r[0].land[1];
+  o := e2r_step(r[..], 1, 0, 0, false, false, 2, 27, 30, none[..], 0);
+  #assert e2r_land(r[..], 2) == E2R_GROUND && !r[0].land[1];
+  e2r_test_sit(r[..], 1, 0, 18); #assert e2r_land(r[..], 1) == E2R_GROUND && !r[0].land[0];
+  e2r_test_run(r[..], 1, 0, 100, false, true, 28, 90); #assert mount_aloft(r[0].m[1]) && r[0].m[1].wing.y > 6;
+  #assert e2r_land(r[..], 2) == E2R_OK && r[0].land[1] && !r[0].land[0];
+  // it comes down by itself with the keys let go, and is on the ground with nothing left to land
+  e2r_test_run(r[..], 1, 0, 0, false, false, 118, 1); #assert r[0].land[1];
+  e2r_test_run(r[..], 1, 0, 0, false, false, 119, 900); #assert !mount_aloft(r[0].m[1]) && r[0].m[1].wing.y == 2 && !r[0].land[1];
+  // Space flies on: the landing is called off on that tick
+  e2r_test_run(r[..], 1, 0, 100, false, true, 1100, 90); #assert mount_aloft(r[0].m[1]) && e2r_land(r[..], 2) == E2R_OK && r[0].land[1];
+  e2r_test_run(r[..], 1, 0, 100, false, true, 1190, 1); #assert !r[0].land[1] && mount_aloft(r[0].m[1]);
+}
+#test "room mounts: a tick ends a mount or a dismount on its tick and says who; nothing steps for a mount that isn't there" {
+  r: [1] E2Mounts; e2r_test_zone(r[..]); none: [6] f32;
+  #assert e2r_mount(r[..], 3, 0, 1, 0.5, true, 100) == E2R_OK;
+  o := e2r_step(r[..], 0, 0, 100, true, true, 2, 117, 30, none[..], 0);
+  #assert !o.seated && !o.off && o.rider == -1 && r[0].m[0].state == MOUNT_MOUNTING && r[0].m[0].z == 0 && r[0].m[0].hop == 0;   // not yet up: its keys move nothing
+  o = e2r_step(r[..], 0, 0, 0, false, false, 2, 118, 30, none[..], 0);
+  #assert o.seated && !o.off && o.rider == 3 && mount_ridden(r[0].m[0]) && r[0].m[0].since_tick == 118;
+  o = e2r_step(r[..], 0, 0, 0, false, false, 2, 119, 30, none[..], 0); #assert !o.seated && !o.off && o.rider == -1;
+  #assert e2r_dismount(r[..], 3, true, 200, none[..], 0) == E2R_OK;
+  o = e2r_step(r[..], 0, 0, 100, false, false, 2, 214, 30, none[..], 0); #assert !o.off && !o.seated && r[0].m[0].z == 0;
+  o = e2r_step(r[..], 0, 0, 0, false, false, 2, 215, 30, none[..], 0);
+  #assert o.off && !o.seated && o.rider == 3 && o.x == 1 && o.z == 0 && r[0].m[0].state == MOUNT_FREE && r[0].m[0].rider == -1 && e2r_of(r[0], 3) == -1;
+  // the dragon's own times: 0.9 s up
+  #assert e2r_mount(r[..], 3, 1, 41, 0, true, 300) == E2R_OK;
+  o = e2r_step(r[..], 1, 0, 0, false, false, 2, 326, 30, none[..], 0); #assert !o.seated;
+  o = e2r_step(r[..], 1, 0, 0, false, false, 2, 327, 30, none[..], 0); #assert o.seated && o.rider == 3;
+  // no such mount, or no clock: nothing happens
+  was := r[0];
+  o = e2r_step(r[..], -1, 0, 100, false, false, 2, 400, 30, none[..], 0); #assert !o.seated && !o.off && o.rider == -1;
+  o = e2r_step(r[..], 2, 0, 100, false, false, 2, 400, 30, none[..], 0); #assert r[0].m[2].phase == 0 && !o.seated && !o.off;
+  o = e2r_step(r[..], 1, 0, 100, false, false, 2, 400, 0, none[..], 0); #assert r[0].m[1].z == was.m[1].z && r[0].m[1].phase == was.m[1].phase && r[0].m[1].speed == was.m[1].speed;
+  // a full zone: one past its last is still no mount
+  full: [1] E2Mounts; for i: 0..<4 { k := e2r_add(full[..], MK_HORSE, f32(i) * 9, 0, 0, 0); }
+  o = e2r_step(full[..], 4, 0, 100, false, false, 2, 400, 30, none[..], 0); #assert !o.seated && !e2r_body(full[0], 4, 0, 30).on && !e2r_body(full[0], -1, 0, 30).on;
+  #assert e2r_mount(full[..], 1, 4, 0, 0, true, 0) == E2R_NONE;
+  // the zone's last mount is a mount like the first: asked for, stepped and left by its own index
+  full[0].m[3].z = 5;
+  #assert e2r_mount(full[..], 2, 3, 28, 5, true, 0) == E2R_OK && e2r_of(full[0], 2) == 3;
+  o = e2r_step(full[..], 3, 0, 0, false, false, 0, 18, 30, none[..], 0); #assert o.seated && o.rider == 2 && mount_ridden(full[0].m[3]);
+  // on it, a seat may take no other, the first in the zone included
+  #assert e2r_mount(full[..], 2, 0, 1, 0, true, 19) == E2R_RIDING && full[0].m[0].state == MOUNT_FREE;
+  #assert e2r_mount(full[..], 9, 0, 1, 0, true, 19) == E2R_OK && e2r_mount(full[..], 9, 1, 10, 0, true, 19) == E2R_RIDING && full[0].m[1].state == MOUNT_FREE && e2r_leave(full[..], 9, 19);
+  #assert e2r_dismount(full[..], 2, true, 20, none[..], 0) == E2R_OK && full[0].m[3].state == MOUNT_DISMOUNTING;
+  o = e2r_step(full[..], 3, 0, 0, false, false, 0, 35, 30, none[..], 0); #assert o.off && o.rider == 2 && o.x == 28 && o.z == 5;
+  // one tick a second is a clock too: a mount ends on the next tick
+  #assert e2r_mount(full[..], 1, 0, 1, 0, true, 0) == E2R_OK;
+  o = e2r_step(full[..], 0, 0, 0, false, false, 0, 1, 1, none[..], 0); #assert o.seated;
+}
+#test "room mounts: a ridden mount steps the engine's step a tick from its rider's keys; an empty saddle takes none" {
+  r: [1] E2Mounts; e2r_test_zone(r[..]); none: [6] f32; t := mk_tune(MK_HORSE);
+  // free: keys do nothing
+  e2r_test_run(r[..], 0, 100, 100, true, true, 0, 30); #assert r[0].m[0].z == 0 && r[0].m[0].face == 0 && r[0].m[0].hop == 0;
+  e2r_test_sit(r[..], 1, 0, 18);
+  // forward at a walk, a thirtieth of a second a tick: the engine's own numbers
+  ref: [1] Mount; ref[0] = r[0].m[0];
+  e2r_test_run(r[..], 0, 0, 100, false, false, 19, 45);
+  for i: 0..<45 { mount_step(ref[..], t, MountIn.{forward = 1}, 1.0 / 30.0, none[..], 0); }
+  #assert r[0].m[0].z == ref[0].z && r[0].m[0].speed == 4 && r[0].m[0].z > 3.5 && r[0].m[0].phase == ref[0].phase;
+  // half the stick is half the pace; past the stick's end is its end
+  z0 := r[0].m[0].z; e2r_test_run(r[..], 0, 0, 50, false, false, 64, 60); #assert r[0].m[0].speed == 2;
+  e2r_test_run(r[..], 0, 0, 900, false, false, 124, 60); #assert r[0].m[0].speed == 4;
+  e2r_test_run(r[..], 0, 0, -100, false, false, 184, 90); #assert r[0].m[0].speed == -1.5;
+  // Shift gallops
+  e2r_test_run(r[..], 0, 0, 100, true, false, 274, 120); #assert r[0].m[0].speed == 14;
+  // the walk keys' right turns it right (its heading falls), the left the other way, by the stick
+  e2r_test_run(r[..], 0, 0, 0, false, false, 394, 90); #assert r[0].m[0].speed == 0;
+  f0 := r[0].m[0].face; e2r_test_run(r[..], 0, 100, 0, false, false, 484, 10); f1 := r[0].m[0].face; #assert f1 < f0 - 0.4;
+  e2r_test_run(r[..], 0, -50, 0, false, false, 494, 10); #assert r[0].m[0].face > f1 + 0.2 && r[0].m[0].face < f1 + 0.3;
+  // Space jumps a horse: it leaves the ground and does not fly
+  e2r_test_run(r[..], 0, 0, 0, false, true, 504, 3); #assert r[0].m[0].hop > 0.3 && !mount_aloft(r[0].m[0]);
+  // a wall ahead stops it: the room's boxes are the step's
+  r2: [1] E2Mounts; e2r_test_zone(r2[..]); e2r_test_sit(r2[..], 1, 0, 18);
+  wall := [6] f32.[-5, 0, 3, 5, 3, 4];
+  for i: 0..<90 { o := e2r_step(r2[..], 0, 0, 100, false, false, 0, 19 + i, 30, wall[..], 1); }
+  #assert r2[0].m[0].z < 2.1 && r2[0].m[0].z > 1.5 && r2[0].m[0].blocked;
+  for i: 0..<90 { o := e2r_step(r2[..], 0, 0, 100, false, false, 0, 109 + i, 30, wall[..], 0); }
+  #assert r2[0].m[0].z > 9;
+}
+#test "room mounts: a dragon flies on the engine's wings: Space takes off and climbs, Shift dives, and it lands on the room's ground" {
+  r: [1] E2Mounts; e2r_test_zone(r[..]); none: [6] f32;
+  e2r_test_sit(r[..], 2, 1, 27);
+  ref: [1] Mount; ref[0] = r[0].m[1]; t := mk_tune(MK_DRAGON);
+  e2r_test_run(r[..], 1, 0, 100, true, false, 28, 60);
+  for i: 0..<60 { mount_step_wings(ref[..], t, mk_dragon_wings(), MountIn.{forward = 1}, 2, 1.0 / 30.0, none[..], 0); }
+  #assert !mount_aloft(r[0].m[1]) && r[0].m[1].z == ref[0].z && r[0].m[1].z > 5 && r[0].m[1].wing.y == 2;   // on the ground Shift is no gallop and no dive: its walk
+  e2r_test_run(r[..], 1, 0, 100, false, true, 88, 120); #assert mount_aloft(r[0].m[1]);
+  high := r[0].m[1].wing.y; #assert high > 8;
+  // level, then Shift: the dive loses height faster than the glide
+  a: [1] E2Mounts; a[0] = r[0]; b: [1] E2Mounts; b[0] = r[0];
+  e2r_test_run(a[..], 1, 0, 100, false, false, 208, 30); e2r_test_run(b[..], 1, 0, 100, true, false, 208, 30);
+  #assert b[0].m[1].wing.y < a[0].m[1].wing.y - 1 && mount_aloft(b[0].m[1]);
+  // a turn steers it round
+  c: [1] E2Mounts; c[0] = r[0]; e2r_test_run(c[..], 1, 100, 100, false, false, 208, 30); #assert c[0].m[1].face < r[0].m[1].face - 0.2;
+  // the rider gone, it comes down to the ground it is over
+  #assert e2r_leave(r[..], 2, 208);
+  for i: 0..<1500 { o := e2r_step(r[..], 1, 0, 100, false, true, 5, 209 + i, 30, none[..], 0); }
+  #assert !mount_aloft(r[0].m[1]) && r[0].m[1].wing.y == 5 && r[0].m[1].state == MOUNT_FREE;
+}
+#test "room mounts: the rider's body goes from where they stood into the saddle and back out to where they step down" {
+  r: [1] E2Mounts; e2r_test_zone(r[..]); none: [6] f32;
+  #assert !e2r_body(r[0], 0, 0, 30).on && !e2r_body(r[0], 2, 0, 30).on && e2r_body(r[0], 0, 0, 30).seated == 0;
+  r[0].m[0].face = 0.25;
+  #assert e2r_mount(r[..], 1, 0, 2, 1, true, 100) == E2R_OK;
+  b := e2r_body(r[0], 0, 100, 30); #assert b.on && b.x == 2 && b.z == 1 && b.yaw == 0.25 && b.seated == 0;
+  b = e2r_body(r[0], 0, 109, 30); #assert b.on && b.x == 1 && b.z == 0.5 && b.seated == 0.5;
+  o := e2r_step(r[..], 0, 0, 0, false, false, 2, 118, 30, none[..], 0);
+  b = e2r_body(r[0], 0, 118, 30); #assert b.on && b.x == 0 && b.z == 0 && b.seated == 1 && b.yaw == 0.25;
+  e2r_test_run(r[..], 0, 0, 100, false, false, 119, 30);
+  b = e2r_body(r[0], 0, 149, 30); #assert b.x == r[0].m[0].x && b.z == r[0].m[0].z && b.z > 2 && b.yaw == r[0].m[0].face;
+  #assert e2r_dismount(r[..], 1, true, 150, none[..], 0) == E2R_OK;
+  b = e2r_body(r[0], 0, 150, 30); #assert b.seated == 1 && b.x == r[0].m[0].x;
+  b = e2r_body(r[0], 0, 165, 30); #assert b.on && b.seated == 0 && b.x == r[0].m[0].from_x && b.z == r[0].m[0].from_z;
+  // each kind's own time: half a second into a dragon's mount is not yet the saddle; a horse's is past it
+  #assert e2r_mount(r[..], 2, 1, 42, 0, true, 200) == E2R_OK;
+  b = e2r_body(r[0], 1, 218, 30); #assert b.on && b.seated > 0.5 && b.seated < 1 && b.x > 40 && b.x < 41;
+}
+#test "room mounts: a seat that leaves frees its mount where it stands, and only its own" {
+  r: [1] E2Mounts; e2r_test_zone(r[..]); none: [6] f32;
+  #assert !e2r_leave(r[..], 1, 5) && r[0].m[0].since_tick == 0 && r[0].m[1].since_tick == 0;
+  e2r_test_sit(r[..], 1, 0, 18); e2r_test_sit(r[..], 2, 1, 27);
+  e2r_test_run(r[..], 0, 0, 100, false, false, 19, 30); z := r[0].m[0].z; r[0].land[0] = true; r[0].land[1] = true;
+  #assert e2r_leave(r[..], 1, 77) && r[0].m[0].state == MOUNT_FREE && r[0].m[0].rider == -1 && r[0].m[0].since_tick == 77 && !r[0].land[0] && r[0].m[0].z == z;
+  #assert mount_ridden(r[0].m[1]) && r[0].m[1].rider == 2 && r[0].land[1] && r[0].m[1].since_tick == 27 && e2r_of(r[0], 1) == -1 && !e2r_leave(r[..], 1, 78);
+  // free again: the next seat may take it, and it stands until then
+  e2r_test_run(r[..], 0, 0, 100, false, false, 78, 5); #assert r[0].m[0].z == z && r[0].m[0].speed == 0;
+  #assert e2r_mount(r[..], 3, 0, r[0].m[0].x + 1, z, true, 90) == E2R_OK;
+  // leaving on the way up frees it too
+  #assert e2r_leave(r[..], 3, 91) && r[0].m[0].state == MOUNT_FREE && e2r_of(r[0], 3) == -1;
+}

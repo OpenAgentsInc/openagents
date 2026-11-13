@@ -1,0 +1,19 @@
+// The helpers of everglade/server/mounts.coax's checks (#13268), loaded there with #test so they are
+// no part of its mutants.
+
+// A zone with a horse at the origin facing +Z and a dragon at (40, 0) on ground 2, and no boxes.
+e2r_test_zone :: (r: [] E2Mounts) #effects(all) {
+  r[0] = E2Mounts.{};
+  h := e2r_add(r, MK_HORSE, 0, 0, 0, 0); d := e2r_add(r, MK_DRAGON, 40, 0, 0, 2);
+}
+// Steps mount k `ticks` ticks from `from` with the keys, at 30 a second, on ground 2, no boxes.
+e2r_test_run :: (r: [] E2Mounts, k: int, kx: int, ky: int, run: bool, jump: bool, from: int, ticks: int) #effects(all) {
+  none: [6] f32;
+  for i: 0..<ticks { o := e2r_step(r, k, kx, ky, run, jump, 2, from + i, 30, none[..], 0); }
+}
+// Seat `seat` in mount k's saddle: mounted from beside it at tick 0, seated by `at`.
+e2r_test_sit :: (r: [] E2Mounts, seat: int, k: int, at: int) #effects(all) {
+  none: [6] f32;
+  ok := e2r_mount(r, seat, k, r[0].m[k].x + 1, r[0].m[k].z, true, 0);
+  o := e2r_step(r, k, 0, 0, false, false, 2, at, 30, none[..], 0);
+}

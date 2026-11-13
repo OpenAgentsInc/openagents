@@ -1,0 +1,58 @@
+// Everglade's kinds of mount, as the room and every page know them (everglade/docs/mounts-spec.md,
+// #13268): the SRD's Riding Horse and Adult Red Dragon as Aethyr mounts (aethyr/action/mount.coax), the
+// dragon's wings, and a rider's keys as a mount's steering. The room steps a ridden mount with these
+// (everglade/server/mounts.coax) and a page predicts its own with the same, so they are written once.
+// What a page draws and says (frames, saddles, prompts, deeds) is everglade/mounts.coax's.
+//   coax/bin/coax test everglade/shared/mount-kinds.coax --library
+#module "everglade.shared.mount_kinds";
+#load "../../aethyr/action/mount.coax";
+
+MK_HORSE :: 0; MK_DRAGON :: 1; MK_KINDS :: 2;
+// SRD 5.2.1 p. 360, Riding Horse: Large Beast, Speed 60 feet, twice a walker's 30. On foot you run
+// 7.5 m/s; the horse walks 4 m/s and gallops 14 (the spec's "Speeds in action combat").
+MK_RIDING_HORSE :: MountTune.{walk = 4.0, gallop = 14.0};
+// SRD 5.2.1, Adult Red Dragon: Huge, Speed 40 ft, Fly 80 ft. The model is 14 m from snout to tail; its
+// body's capsule, the reach to mount from its flank, and the step off clear of a folded wing. Nothing
+// on the ground trips it (aethyr/action/mount.coax mount_counts): it steps over what is under 1.5 m
+// and walks through anything no taller than 2 m and no wider than its own radius; a house, a wall
+// or a tree still stops it.
+MK_RED_DRAGON :: MountTune.{walk = 10.0, gallop = 10.0, back = 2.0, accel = 8.0, turn_walk = 1.6, turn_gallop = 1.6, turn_still = 1.2,
+  radius = 1.6, half_length = 4.5, low = 1.5, high = 5.0, brush_high = 2.0, brush_wide = 1.6, reach = 4.0, side = 3.4, rider_radius = 0.3,
+  mount_s = 0.9, dismount_s = 0.8, stride_walk = 6.0, idle_s = 4.0, gallop_from = 100.0};
+MK_DRAGON_PACE :: 7.5;          // m/s, the walker's run for a 30-ft Speed
+// A kind's handling, and the dragon's wings.
+mk_tune :: (kind: int) -> MountTune { return ifx kind == MK_DRAGON then MK_RED_DRAGON else MK_RIDING_HORSE; }
+mk_dragon_wings :: () -> WingProfile { return wing_profile_srd(40, 80, f32(MK_DRAGON_PACE)); }
+// A rider's keys on a mount of `kind`, from the steering `i` (forward, turn, and the gallop asked
+// for): on the horse Shift gallops and Space jumps; on the dragon Space takes off, beats and (held)
+// climbs, Shift dives in the air and never gallops, and `land` (X, pressed in the air) brings it down.
+mk_keys :: (kind: int, i: MountIn, space: bool, shift: bool, aloft: bool, land: bool) -> MountIn {
+  o := MountIn.{forward = i.forward, turn = i.turn, jump = space};
+  if kind == MK_DRAGON { o.climb = space; o.dive = shift && aloft; o.land = land && aloft; }
+  else { o.gallop = i.gallop; }
+  return o;
+}
+// Whether X's "land" still stands after a step with these keys: until Space flies on, or it is down.
+mk_land_holds :: (land: bool, space: bool, aloft: bool) -> bool { return land && !space && aloft; }
+
+#test "mount kinds: the horse's and the dragon's handling, and a kind past them is a horse" {
+  h := mk_tune(MK_HORSE); d := mk_tune(MK_DRAGON);
+  #assert h.walk == 4 && h.gallop == 14 && h.reach == 2.5 && h.mount_s == 0.6 && h.dismount_s == 0.5;
+  #assert d.walk == 10 && d.gallop == 10 && d.reach == 4 && d.side == 3.4 && d.half_length == 4.5 && d.mount_s == 0.9 && d.dismount_s == 0.8;
+  #assert mk_tune(7).gallop == 14 && mk_tune(-1).gallop == 14 && MK_KINDS == 2 && MK_HORSE == 0 && MK_DRAGON == 1;
+  w := mk_dragon_wings(); s := wing_profile_srd(40, 80, 7.5);
+  #assert w.fly == s.fly && w.walk == s.walk && w.fly > w.walk && MK_DRAGON_PACE == 7.5;
+}
+#test "mount kinds: Shift gallops a horse and dives a dragon in the air; X lands until Space flies on" {
+  i := MountIn.{forward = 0.5, turn = -1, gallop = true};
+  h := mk_keys(MK_HORSE, i, true, true, false, true);
+  #assert h.forward == 0.5 && h.turn == -1 && h.gallop && h.jump && !h.climb && !h.dive && !h.land;
+  h = mk_keys(MK_HORSE, MountIn.{forward = 1}, false, false, true, true); #assert !h.gallop && !h.jump && !h.dive && !h.land && h.forward == 1;
+  d := mk_keys(MK_DRAGON, i, true, true, true, true);
+  #assert d.forward == 0.5 && d.turn == -1 && !d.gallop && d.jump && d.climb && d.dive && d.land;
+  d = mk_keys(MK_DRAGON, i, false, true, false, true); #assert !d.jump && !d.climb && !d.dive && !d.land;   // on the ground: no dive, nothing to land from
+  d = mk_keys(MK_DRAGON, i, false, false, true, false); #assert !d.dive && !d.land;
+  d = mk_keys(MK_DRAGON, i, false, false, true, true); #assert !d.dive && d.land;
+  d = mk_keys(MK_DRAGON, i, false, true, true, false); #assert d.dive && !d.land;
+  #assert mk_land_holds(true, false, true) && !mk_land_holds(true, true, true) && !mk_land_holds(true, false, false) && !mk_land_holds(false, false, true);
+}

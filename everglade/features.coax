@@ -46,7 +46,7 @@ EF_FEATURES :: [11] EfFeature.[
     marks = "_dash dash_ =dash _DASH DASH_ CDASH =Dash",
     files = "dash"},
   EfFeature.{name = "mounts", title = "mounts", required = false, issue = 0,
-    owners = "aethyr/action/mount.coax aethyr/action/ride-pose.coax everglade/mounts.coax everglade/zone-mounts.coax",
+    owners = "aethyr/action/mount.coax aethyr/action/ride-pose.coax everglade/mounts.coax everglade/zone-mounts.coax everglade/shared/mount-kinds.coax everglade/server/mounts.coax",
     marks = "=Mount =mount Mounted mounted_ mount_up dismount =ride_pose rider_ Steed steed_ Horse horse_",
     files = "mount"},
   EfFeature.{name = "name-plates", title = "name plates", required = true, issue = 13088,

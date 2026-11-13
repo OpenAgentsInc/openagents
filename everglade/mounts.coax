@@ -19,6 +19,7 @@
 //   coax/bin/coax test everglade/mounts.coax --library
 #module "everglade.mounts";
 #load "../aethyr/action/mount.coax";
+#load "shared/mount-kinds.coax";   // the kinds' handling and a rider's keys, the room's too (#13268)
 #load "../aethyr/action/deed.coax";
 #load "../aethyr/fx/puff.coax";
 #load "dragon-clips.coax";
@@ -26,9 +27,8 @@
 EG_MOUNTS :: 4;            // horses a zone places at most
 EG_HORSE_FRAMES :: 36;
 EG_HORSE_CLIP :: 12;       // frames a clip
-// SRD 5.2.1 p. 360, Riding Horse: Large Beast, Speed 60 feet, twice a walker's 30. On foot you run
-// 7.5 m/s; the horse walks 4 m/s and gallops 14 (the spec's "Speeds in action combat").
-EG_RIDING_HORSE :: MountTune.{walk = 4.0, gallop = 14.0};
+// The SRD's Riding Horse (shared/mount-kinds.coax).
+EG_RIDING_HORSE :: MK_RIDING_HORSE;
 // The saddle: the horse rig's Torso2 bone (horse_bake.py saddle.txt) in the packed model's space, a
 // frame each in glade/horse order. Your pelvis sits EG_HORSE_SEAT_UP above it: the back's top is
 // 0.33 m over the bone, and you sit on it, not in it.
@@ -90,19 +90,13 @@ EG_REFUSED_S :: 2.0;       // seconds "No room to step down" shows
 
 EG_PRESS_NONE :: 0; EG_PRESS_MOUNTED :: 1; EG_PRESS_DISMOUNTED :: 2; EG_PRESS_NO_ROOM :: 3; EG_PRESS_REFUSED :: 4; EG_PRESS_LAND_FIRST :: 5;
 // The kinds of mount.
-EG_HORSE :: 0; EG_DRAGON :: 1;
+EG_HORSE :: MK_HORSE; EG_DRAGON :: MK_DRAGON;
 // The seat a rider's legs take on each kind (everglade/scene/bodies.coax BD_SEAT_*: the same order).
 EG_SEAT_OF :: [2] int.[0, 1];
-// SRD 5.2.1, Adult Red Dragon: Huge, Speed 40 ft, Fly 80 ft. The model is 14 m from snout to tail; its
-// body's capsule, the reach to mount from its flank, and the step off clear of a folded wing. Nothing
-// on the ground trips it (aethyr/action/mount.coax mount_counts): it steps over what is under 1.5 m
-// and walks through anything no taller than 2 m and no wider than its own radius; a house, a wall
-// or a tree still stops it.
-EG_RED_DRAGON :: MountTune.{walk = 10.0, gallop = 10.0, back = 2.0, accel = 8.0, turn_walk = 1.6, turn_gallop = 1.6, turn_still = 1.2,
-  radius = 1.6, half_length = 4.5, low = 1.5, high = 5.0, brush_high = 2.0, brush_wide = 1.6, reach = 4.0, side = 3.4, rider_radius = 0.3,
-  mount_s = 0.9, dismount_s = 0.8, stride_walk = 6.0, idle_s = 4.0, gallop_from = 100.0};
+// The SRD's Adult Red Dragon (shared/mount-kinds.coax).
+EG_RED_DRAGON :: MK_RED_DRAGON;
 EG_DRAGON_FRAMES :: DR_TOTAL;    // its baked frames in the pack
-EG_DRAGON_PACE :: 7.5;          // m/s, the walker's run for a 30-ft Speed
+EG_DRAGON_PACE :: MK_DRAGON_PACE;
 EG_DRAGON_SCALE :: 1.0;         // the model drawn at its own size
 EG_DRAGON_CAM_BACK :: 15.0;     // metres the camera pulls back round the dragon, and up
 EG_DRAGON_CAM_UP :: 4.0;
@@ -133,8 +127,8 @@ EgMounts :: struct {
   land: bool;                // X pressed on the dragon in the air: it comes down to land (eg_ride_land)
 }
 // A kind's handling, and the dragon's wings.
-eg_tune :: (m: EgMounts, k: int) -> MountTune { return ifx m.kind[k] == EG_DRAGON then EG_RED_DRAGON else EG_RIDING_HORSE; }
-eg_dragon_wings :: () -> WingProfile { return wing_profile_srd(40, 80, f32(EG_DRAGON_PACE)); }
+eg_tune :: (m: EgMounts, k: int) -> MountTune { return mk_tune(m.kind[k]); }
+eg_dragon_wings :: () -> WingProfile { return mk_dragon_wings(); }
 // Seconds since the last call (the first, none), at most a tenth: a zone that steps its horses where it
 // has no frame time of its own.
 eg_mounts_dt :: (m: [] EgMounts, now: f32) -> f32 {
@@ -239,11 +233,8 @@ EgRideKeys :: struct { forward: f32; turn: f32; shift: bool; space: bool; stick_
 eg_ride_input :: (m: [] EgMounts, k: EgRideKeys) -> MountIn {
   dragon := eg_on_dragon(m[0]); aloft := eg_aloft(m[0]);
   i := eg_mount_input(k.forward, k.turn, k.shift && !dragon, k.stick_on, k.stick_x, k.stick_y);
-  if dragon {
-    if k.space || !aloft { m[0].land = false; }
-    i.jump = k.space; i.climb = k.space; i.dive = k.shift && aloft; i.land = m[0].land && aloft;
-  } else { i.jump = k.space; }   // the horse jumps (aethyr/action/mount.coax mount_step)
-  return i;
+  if dragon { m[0].land = mk_land_holds(m[0].land, k.space, aloft); }
+  return mk_keys(ifx dragon then EG_DRAGON else EG_HORSE, i, k.space, k.shift, aloft, m[0].land);   // the horse jumps (aethyr/action/mount.coax mount_step)
 }
 // The mount you ride is in the air on a jump (aethyr/action/mount.coax mount_jumping).
 eg_jumping :: (m: EgMounts) -> bool { return m.riding >= 0 && mount_jumping(m.mounts[m.riding]); }
