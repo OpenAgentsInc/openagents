@@ -6,25 +6,28 @@
 # everglade/legacy/v1/ is v1 Everglade's town (plan, people, watch, river...), in no context. The edit codec
 # (everglade/world/edits.coax) and the guide's route (everglade/npc/guide-route.coax) still read it; it is
 # deleted with v1 after P2 (#13269). No new load into it.
+# A context may also own single files inside another's folder (the longest prefix wins): the decisions are in
+# docs/architecture/contexts.md, "Decisions on the seeded cross-context loads" (#13311).
 
 combat-rules folders: rules/srd/ may load: engine toolchain
-characters folders: everglade/model/ coax/web/api/character-policy.coax may load: combat-rules items engine protocol toolchain
-world folders: everglade/world/ everglade/server/ everglade/server/legacy/ everglade/client/ may load: engine realm-authoring room-session toolchain
+characters folders: everglade/model/ coax/web/api/character-policy.coax metaverse-engine/session/control.coax may load: combat-rules items engine protocol toolchain
+world folders: everglade/world/ everglade/server/ everglade/server/legacy/ everglade/client/ may load: combat-rules characters engine realm-authoring room-session toolchain
 creatures folders: everglade/model/ everglade/server/ may load: combat-rules world engine toolchain
-items folders: everglade/model/ metaverse-engine/session/ledger.coax coax/web/api/item-policy.coax may load: characters protocol toolchain
+items folders: everglade/model/ metaverse-engine/session/ledger.coax coax/web/api/item-policy.coax may load: characters engine protocol toolchain
 quests folders: everglade/model/ may load: characters world items combat-rules toolchain
-room-session folders: metaverse-engine/session/ metaverse-engine/net/ coax/web/room/ coax/web/api/moderation-policy.coax may load: engine protocol combat-rules characters world creatures items identity toolchain
-realm-authoring folders: metaverse-engine/editor/ apps/aethyrforge-desktop/ apps/openagents-web/worldbuilder coax/web/api/worldbuilder.c coax/web/api/realms.c may load: engine protocol toolchain
+room-session folders: metaverse-engine/session/ metaverse-engine/net/ coax/web/room/ coax/web/api/moderation-policy.coax coax/web/api/ticket-sign.coax coax/web/api/checkpoint-policy.coax coax/web/api/checkpoint-resume-policy.coax coax/web/api/progress-policy.coax coax/web/compat/character-checkpoint.coax may load: engine protocol combat-rules characters world creatures items identity toolchain
+realm-authoring folders: metaverse-engine/editor/ apps/aethyrforge-desktop/ apps/openagents-web/worldbuilder coax/web/api/worldbuilder.c coax/web/api/realms.c may load: engine protocol chat coder toolchain
 identity folders: coax/web/api/auth may load: nostr toolchain
 payments folders: pay/ coax/lib/bitcoin/ coax/lib/lightning/ coax/lib/lnaddr/ coax/lib/nostr/nipkeys nostr/examples/agent-treasury.coax nostr/examples/checks/agent-treasury.coax nostr/tools/treasury.coax may load: nostr identity toolchain
 coder folders: coder/ coax/lib/agent/ coax/lib/microcoder/ coax/lib/gateway/ coax/lib/rlm/ coax/lib/repo/ coax/web/repo/ coax/web/agent/ may load: psionic nostr protocol toolchain
 chat folders: components/zeron/ apps/openagents-web/chat.coax coax/web/api/chat.c may load: coder identity protocol toolchain
-projects folders: coax/web/api/private.c coax/web/api/drops.c may load: identity payments toolchain
+projects folders: coax/web/api/private.c coax/web/api/drops.c coax/web/project/ may load: identity payments nostr psionic toolchain
 nostr folders: nostr/ coax/lib/nostr/ may load: toolchain
 psionic folders: psionic/ coax/lib/systemone/ coax/web/api/inference.c may load: nostr protocol toolchain
-engine folders: metaverse-engine/ may load: toolchain
+engine folders: metaverse-engine/ metaverse-engine/session/lifecycle.coax coax/web/map-points.coax may load: toolchain
 splice folders: verse/splice/ may load: engine realm-authoring toolchain
 realm-tools folders: verse/tools/ may load: engine realm-authoring nostr toolchain
 protocol folders: proto/ may load:
-toolchain folders: coax/ may load:
+toolchain folders: coax/ coax/lib/bitcoin/base58.coax coax/lib/bitcoin/hash160.coax coax/lib/bitcoin/hash.coax may load:
 ops folders: coax/web/api/analytics.c coax/web/api/email.c coax/web/api/jobs.c coax/web/api/access.c may load: identity toolchain
+anime-lab folders: coax/web/api/anime- may load: engine toolchain

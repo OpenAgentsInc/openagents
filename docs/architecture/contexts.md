@@ -21,17 +21,17 @@ today and the folder it owns as the layout settles (#13270, DDD.6).
 | --- | --- | --- | --- | --- | --- |
 | **Combat rules (SRD)** | `rules/srd/` (moved out of `metaverse-engine/rules/srd/`, #13270) | `rules/srd/` (27,889 lines of `.coax`) | Core | Engine core (`metaverse-engine/` value types and math), `coax/lib/` | Everglade's pitch is "the SRD's rules decide the outcome" (`everglade/README.md`). Shared across Everglade II, Experimental and 5E Lab; language tied to SRD 5.2.1 ([compliance ledger](../dnd/srd-compliance-ledger.md)). |
 | **Characters and progression** | `everglade/model/` | The aggregate and its rules: `everglade/model/character.coax` (profile `everglade-character-v1`, #13290); its live fields still scattered: room seat state, `metaverse-engine/session/character-checkpoint.coax`, `coax/web/room/room-checkpoint.coax`, `coax/web/room/room-events.coax`, SQL `verse.character_*` | Core | Combat rules, Items (by ID only), Engine, Protocol (`proto/`) | Workstream P4 ("a character worth keeping", #13290). Rooted at `CharacterId` with one `#authority` owner of level-from-XP and slot limits. |
-| **World and zones** | `everglade/world/` (plus `everglade/server/`, `everglade/client/`) | `everglade/world/` (the land, planting, ground and light, moved from `verse/everglade2/` in #13268), `metaverse-engine/world/` | Core | Engine, Realm authoring (`metaverse-engine/editor/`), Room session, `components/` | The place the player is in (#13280). |
+| **World and zones** | `everglade/world/` (plus `everglade/server/`, `everglade/client/`) | `everglade/world/` (the land, planting, ground and light, moved from `verse/everglade2/` in #13268), `metaverse-engine/world/` | Core | Engine, Realm authoring (`metaverse-engine/editor/`), Room session, Combat rules and Characters (the page in `everglade/client/` shows them), `components/` | The place the player is in (#13280). |
 | **Creatures and encounters** | `everglade/model/` and `everglade/server/` | `everglade/server/creatures.coax`, `everglade/server/guard.coax`, `coax/web/room/room-events.coax`, `metaverse-engine/actors/` | Core | Combat rules, World and zones, Engine | Creature templates and encounter logic (#13293). |
-| **Items and economy** | `everglade/model/` and `metaverse-engine/session/ledger.coax` | `metaverse-engine/session/ledger.coax`, SQL `verse.items`, `verse.item_*` | Core | Characters (by `CharacterId` only), Protocol (`proto/`), `coax/lib/` | Built in Coax and SQL. A room writes loot, rewards and what is worn through it (`coax/web/room/room-items.coax`, `everglade/model/item-op.coax`; #13291, DDD.7). Items are never money. |
+| **Items and economy** | `everglade/model/` and `metaverse-engine/session/ledger.coax` | `metaverse-engine/session/ledger.coax`, SQL `verse.items`, `verse.item_*` | Core | Characters (by `CharacterId` only), Engine (the typed IDs), Protocol (`proto/`), `coax/lib/` | Built in Coax and SQL. A room writes loot, rewards and what is worn through it (`coax/web/room/room-items.coax`, `everglade/model/item-op.coax`; #13291, DDD.7). Items are never money. |
 | **Quests** | `everglade/model/` | `everglade/model/content.coax` (what a quest asks next), the record's `quests` (`everglade/model/character.coax`), `coax/web/room/room-items.coax` | Core | Characters, World and zones, Items, Combat rules | Quest stages live in the character record and change by a claim with a ledger operation (#13292). |
 | **Room session and replication** | `metaverse-engine/session/`, `metaverse-engine/net/`, `coax/web/room/` | `coax/web/room/`, `metaverse-engine/net/`, `metaverse-engine/session/` (control, travel, party, region, compat) | Supporting | Engine, Protocol (`proto/`); Everglade rooms additionally depend on Combat rules, Characters, World, Creatures, Items, Identity (seat ticket ACL) | Authoritative simulation hosting, seat admission, checkpoints and travel sagas. |
-| **Realm authoring** | `metaverse-engine/editor/` (adapters in `apps/aethyrforge-desktop/`, `apps/openagents-web/worldbuilder*.coax`, `coax/web/api/worldbuilder.c`, `coax/web/api/realms.c`) | Same, plus SQL `verse.realm_*`, `worldbuilder.*` | Supporting | Engine, Protocol (`proto/`), `components/` | WorldBuilder edits through `metaverse-engine/editor/edit.coax` (#13226); `metaverse-engine/editor/doc.coax` owns the realm document format (#13249). |
+| **Realm authoring** | `metaverse-engine/editor/` (adapters in `apps/aethyrforge-desktop/`, `apps/openagents-web/worldbuilder*.coax`, `coax/web/api/worldbuilder.c`, `coax/web/api/realms.c`) | Same, plus SQL `verse.realm_*`, `worldbuilder.*` | Supporting | Engine, Protocol (`proto/`), Chat and Coder (the desktop app embeds the chat), `components/` | WorldBuilder edits through `metaverse-engine/editor/edit.coax` (#13226); `metaverse-engine/editor/doc.coax` owns the realm document format (#13249). |
 | **Identity and auth** | `coax/web/api/auth*` (`auth*.c`, `auth-*-policy.coax`) | `coax/web/api/auth*.c`, `coax/web/api/auth-*-policy.coax`, SQL `auth.*` and legacy `signin.*`, `docs/auth/` | Generic (built in-house) | `coax/lib/` (crypto, web), Nostr (NIP-42/key auth) | Accounts, authenticators and sessions (`0142_auth_accounts.sql`), built in-house with no phone or third-party identity provider. |
 | **Payments and wallet** | `pay/` (DDD.9, #13320) | `pay/` (the money rules, below), adapters `coax/web/api/wallet.c`, `lnaddr*.c`, `makers.c` and the iOS wallet, SQL `pay.*`, `makers.*`, `auth.wallet_*`, `auth.credit_spends`, the NIP-KEYS treasury files (`coax/lib/nostr/nipkeys*.coax`, `nostr/tools/treasury.coax` and chapter 104's example: they sign and spend Bitcoin, #13369), libraries `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/` | Supporting | `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/`, Nostr, Identity | Bitcoin-only rails ([`docs/lightning/`](../lightning/README.md)); money policy files are `#authority`. |
 | **Coder and agents** | `coder/`, `coax/lib/agent/`, `coax/lib/microcoder/`, `coax/lib/gateway/`, `coax/lib/repo/` and `coax/web/repo/` (indexed repos, #13326), `coax/web/agent/` (the hosted runner) | Same, plus `apps/everglade-desktop/` (Golemancy view) | Core | `coax/lib/gateway/`, Psionic (via ACL), Nostr, Protocol (`proto/`), `coax/lib/` | Coding agent harness, session logs (`openagents.session.v1`), Router and Workers (`coder/book/`). |
 | **Chat** | `components/zeron/`, `apps/openagents-web/chat.coax`, `coax/web/api/chat.c` | Same, plus SQL `chat.*` | Supporting | Coder, Identity, Protocol (`proto/`), `components/` | Web and desktop chat surfaces over agent and user threads. |
-| **Projects** | `coax/web/api/` (`private.c`, `drops.c`) | `coax/web/api/private.c`, `coax/web/api/drops.c`, SQL `projects.*`, `drops.*` | Supporting | Identity, Payments, `coax/lib/` | Private project pages and drops. |
+| **Projects** | `coax/web/api/` (`private.c`, `drops.c`), `coax/web/project/` (the landing page) | `coax/web/api/private.c`, `coax/web/api/drops.c`, `coax/web/project/`, SQL `projects.*`, `drops.*` | Supporting | Identity, Payments, Nostr and Psionic (the landing page reads their published events), `coax/lib/` | Private project pages and drops. |
 | **Nostr** | `nostr/`, `coax/lib/nostr/` | `coax/lib/nostr/`, `nostr/` | Generic | `coax/lib/` (crypto, net, TLS) | External protocol implementation and OpenAgents NIPs (`nostr/nips/`). |
 | **Psionic and inference** | `psionic/`, `coax/lib/systemone/`, `coax/web/api/inference.c` | Same, plus SQL `inference.*`, `mesh.*` | Core (separate product) | `coax/lib/`, Nostr (Pylon announcements), Protocol (`proto/`) | Tensors, decision models, `/v1/systemone`, Pylon and Mesh serving (`psionic/`). |
 | **Engine (the OpenAgents Metaverse Engine)** | `metaverse-engine/` | `metaverse-engine/` | Supporting kernel | `coax/lib/` only (strictly downward; zero loads into `verse/`, `everglade/`, `apps/` or `coax/web/` once #13270 burns down `metaverse-engine/layer-allowlist.txt`) | Frame loop, ECS world, rendering, physics and deterministic replay shared by every realm. |
@@ -39,6 +39,7 @@ today and the folder it owns as the layout settles (#13270, DDD.6).
 | **Realm import tools** | `verse/tools/` | `verse/tools/` (the Valley, Kokiri, Slay and Ocarina importers and packers, moved out of `metaverse-engine/tools/`, #13270) | Supporting | Engine, Realm authoring (`metaverse-engine/editor/pack.coax`), `coax/lib/` | Offline tools that turn a realm's source assets into its packs. They own the `valley.*` and `kokiri.*` record families (`proto/registry.json`, owner `realm-tools`). Never shipped or loaded by a page. |
 | **Protocol (published language)** | `proto/` | `proto/` (`proto/registry.json`, `.proto` schemas, wire profiles) | Supporting (published language) | None (schemas and catalogue; codecs live in their owning contexts, DDD.5) | Canonical protobuf schemas and wire shape registry ([`proto/README.md`](../../proto/README.md)), gated by `coax/web/tool.sh wire-check`. |
 | **Coax toolchain** | `coax/` | `coax/` (`coax/bin/`, `coax/lib/`, `coax/web/`) | Supporting | Host C11 toolchain | Compiler, standard libraries, mutation tester, compat checker and Coaxial web runtime. |
+| **Anime Lab's API rules** | `coax/web/api/anime-*` | Same | Supporting (a realm on the engine) | Engine, `coax/lib/` | The words-to-catalogue rules of Anime Lab (`verse/anime/`). A context so its API rules are not judged as toolchain code. |
 | **Analytics, email, jobs, access** | `coax/web/api/` (`analytics.c`, `email.c`, `jobs.c`, `access.c`) | Same, plus SQL `analytics.*`, `email.*`, `jobs.*`, `access.*` | Generic | `coax/lib/`, Identity (where route access applies) | Operational plumbing routes and background queues. |
 
 Three contexts are the product's core for the game and agent lines today:
@@ -158,6 +159,9 @@ AAA layout (#13257) lands:
      consumers leave the build (#13269), and keep the Everglade book's current
      statement without moving the root folder.
 2. **Is Golemancy its own bounded context or a view (ACL) over Coder?**
+   - *Decided (#13311, 2026-11-12):* a view over Coder, as the audit
+     recommends. It gets a context of its own only if golems gain durable
+     game-world state that is not a Coder transcript.
    - *Audit recommendation:* a view and **anticorruption layer** over Coder in
      `apps/everglade-desktop/golems.coax`, translating `openagents.session.v1`
      transcripts and agent tasks into golem words without introducing a second
@@ -165,6 +169,9 @@ AAA layout (#13257) lands:
    - *Alternative:* promote Golemancy to a separate game context if golems
      acquire durable game-world state independent of Coder transcripts.
 3. **What does "zone" mean?**
+   - *Decided (#13311, 2026-11-12):* the audit's recommendation below, which
+     the [glossary](../books/glossary.md) already follows. New code and docs
+     use **zone** only for a named area of one realm's world.
    - Today "zone" is used four ways in the codebase and audits: (a) a named
      area of a realm's world (`docs/books/glossary.md`), (b) a separately
      compiled Wasm page (`EfZone` in `everglade/features.coax`), (c) a server
@@ -174,6 +181,51 @@ AAA layout (#13257) lands:
      realm's world loaded as cells; call (b) a **page**, (c) a **room** (or
      **shard** for the process hosting rooms), and qualify (d) as **cloud
      zone** / **GCP zone**.
+
+## Decisions on the seeded cross-context loads
+
+DDD.6 (#13317) seeded `metaverse-engine/layer-allowlist.txt` with every load
+that crossed a context line `contexts.txt` did not allow. 26 of them load
+Nostr's JSON, hex and base64 helpers (they go when those helpers move to
+`coax/lib/json/` and `coax/lib/text/`). The other 30 were questions about the
+policy itself. Each one is decided here (#13311, 2026-11-12). A decision that
+changes the policy is in `contexts.txt`, and its allowlist lines are gone. A
+decision that the load is wrong keeps its line until the code moves.
+
+**The policy changes: 19 loads allowed, their lines removed**
+
+| Load | Decision | Why |
+| --- | --- | --- |
+| `everglade/client/` loads the SRD's conditions (2 lines) | World may load Combat rules | Everglade's page sits in World's folders. It shows the rules' conditions and predicts with the rules the room runs: the shared-kernel edge in the map above. |
+| `everglade/client/bag.coax` loads `everglade/model/content.coax` | World may load Characters (the context `everglade/model/` resolves to) | The page words your quests and items from the content tables. It shows the record; the room and the ledger decide it. |
+| `metaverse-engine/session/ledger.coax` loads `core/ids.coax` | Items may load Engine | The typed IDs are engine value types. Every context that names a character or an item uses them. |
+| The ledger loads `session/control.coax` | Characters owns `metaverse-engine/session/control.coax` | The file decides who may act for a character. Items may load Characters by ID, which is this: the ledger is fenced by the character's owner generation. |
+| `host/lifecycle.coax` loads `session/lifecycle.coax` | Engine owns `metaverse-engine/session/lifecycle.coax` | It is the client's lifecycle profile, the same on every host. Hosts are engine code; it carries no room state. |
+| `coax/web/api/ticket-sign.coax` loads the seat ticket, seat class, room writes and the crash report (4 lines) | Room session owns `ticket-sign.coax` | The API signs the tickets and reads the reports rooms define. The file is the API's adapter for Room session, as `character-policy.coax` is for Characters. |
+| `checkpoint-policy.coax`, `checkpoint-resume-policy.coax` and `coax/web/compat/character-checkpoint.coax` load the session's checkpoint files (3 lines) | Room session owns them, and `progress-policy.coax`, which loads both | The checkpoint and the resume ticket are Room session's shapes; these files are their API side and their compatibility pin. |
+| `coax/web/map-points.coax` loads `world/points.coax` | Engine owns `coax/web/map-points.coax` | It is the tool side of the engine's named points and says so in its first line. |
+| `anime-director-policy.coax` loads `anim/direction-select.coax` | A new context, `anime-lab`, owns `coax/web/api/anime-*` and may load Engine | Anime Lab is a realm on the engine. Its API rules are not toolchain code, and no other context fits them. |
+| `coax/lib/crypto/bip32.coax` loads `coax/lib/bitcoin/base58.coax` and `hash160.coax` (2 lines) | Toolchain owns `base58.coax`, `hash160.coax` and `hash.coax` | They are encodings and hashes with no money rule in them. BIP-32 derives Nostr keys (NIP-06) as well as wallet keys, so it stays a library. |
+| `apps/aethyrforge-desktop/chat-run.coax` loads the agent engine; `chrome.coax` loads `components/zeron/gpui.coax` (2 lines) | Realm authoring may load Chat and Coder | The editor's desktop app embeds the chat and runs the agent in it. It draws with the chat set until the component layers replace it (#13153). |
+| `coax/web/project/landing-nostr.coax` loads Psionic's Pylon beacon (and 5 Nostr files) | Projects owns `coax/web/project/` and may load Nostr and Psionic | The project landing page reads Nostr events and Pylon announcements to show them. It reads them as published; it decides nothing about either. |
+
+**The load is wrong: 11 lines stay until the code moves**
+
+| Load | Decision | What removes the line |
+| --- | --- | --- |
+| `metaverse-engine/fx/battle.coax` and `fx/spell-light.coax` load `rules/srd/battle.coax` (2 lines) | Engine must not load Combat rules | The two effects take plain values (who, what, where), or move to `everglade/client/`. |
+| `host/pack-stream.coax`, `host/page-stream.coax` and `world/resource-cost.coax` load `editor/pack.coax`, `page-pack.coax` and `vertices.coax` (3 lines) | Engine must not load Realm authoring. The pack formats stay Realm authoring's (`asset-pack-v2`, `aethyr-paged-pack-vpk3`) | The read half every host needs finishes moving to `host/pack-table.coax`, where the table read already is (#13304). |
+| `audio/host-convolution.coax` loads `psionic/lib/spectral.coax`; `core/decision-trace.coax` loads `psionic/lib/game/decision.coax` (2 lines) | Engine must not load Psionic | The Fourier transform moves to `coax/lib/`. The decision record becomes a registered shape the engine reads. |
+| `coax/lib/systemone/answers.coax` and `transport.coax` load `coax/lib/agent/claude/fields.coax` and `transport.coax` (2 lines) | Psionic must not load Coder (Coder loads Psionic) | The JSON field reader and the process transport move to `coax/lib/json/` and `coax/lib/sys/`, with the Nostr JSON helpers they sit on. |
+| `coax/lib/media/media.coax` loads `metaverse-engine/ui/font.coax` | Toolchain loads no product context | The stroke font becomes a library file, or the deck tool draws with `components/`. |
+| `apps/aethyrforge-desktop/scene-policy.coax` loads `everglade/world/edits.coax` | Realm authoring must not load World (World loads it) | Everglade's edit codec goes with v1 (#13269); the editor reads edits through `metaverse-engine/editor/edit.coax`. |
+
+`coax/web/tool.sh layer-check` counts 31 context lines after these decisions
+(56 before): these 11 and the 20 that load a Nostr helper.
+
+These ownerships are for the load rule. Where a registry row's codec may sit
+(`wire-check`, [proto/README.md](../../proto/README.md) "Owning contexts") is
+unchanged: no row's codec is in a file whose owner changed here.
 
 ## Tracking notes
 
