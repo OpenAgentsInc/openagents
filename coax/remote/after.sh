@@ -373,7 +373,7 @@ EOF
     if [[ -n "${2:-}" ]]; then awk -F'\t' -v n="$2" '$4 == n' "$history"; else cat "$history"; fi
     exit 0 ;;
 esac
-watch=0 revert="${OA_AFTER_REVERT:-1}"
+watch=0 revert="${OA_AFTER_REVERT:-0}"
 while (($#)); do
   case "$1" in
     --once) shift ;;
