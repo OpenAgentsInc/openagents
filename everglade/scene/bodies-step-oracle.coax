@@ -1,0 +1,31 @@
+// The clip selection bd_step had before Everglade's bodies moved onto the engine's blend graph
+// (GitHub #13306): thresholds written out in code. Kept for the checks only, which hold the graph's
+// answer to it, bit for bit (everglade/scene/bodies.coax, "the graph picks what the thresholds picked").
+bd_step_before :: (a: [] BdAnim, now: f32, dt: f32) {
+  moving := a[0].speed > f32(BD_WALK_FROM);
+  want := BD_IDLE; t0 := now;
+  if a[0].state > 0 { want = BD_DIE; t0 = a[0].fell_at; }
+  else if a[0].act >= 0 && now < a[0].act_until { want = a[0].act; t0 = a[0].act_t0; }
+  else if a[0].speed > f32(BD_RUN_FROM) { want = BD_RUN; }
+  else if moving { want = BD_WALK; }
+  if want != a[0].clip || (bd_once(want) && t0 != a[0].t0) {
+    a[0].prev = a[0].clip; a[0].pt0 = a[0].t0; a[0].pphase = a[0].phase;
+    a[0].fade_at = ifx a[0].clip < 0 then -100.0f32 else now;
+    a[0].clip = want; a[0].t0 = ifx bd_gait(want) || want == BD_IDLE then now else t0;
+    a[0].phase = 0;
+  }
+  if bd_gait(a[0].clip) && dt > 0 { a[0].phase += a[0].speed * dt / ifx a[0].clip == BD_RUN then 3.4f32 else 1.3f32; }
+}
+bd_layer_before :: (a0: BdAnim, clip: int, t0: f32, phase: f32, w: f32, now: f32) -> BdAnim {
+  a := a0;
+  a.prev = a0.clip; a.pt0 = a0.t0; a.pphase = a0.phase;
+  a.clip = clip; a.t0 = t0; a.phase = phase;
+  m := ifx bd_moving(a0.clip) then 1.0f32 else 0.0f32;
+  if a0.prev >= 0 {
+    fade := clamp01((now - a0.fade_at) / f32(BD_FADE)); fade = fade * fade * (3 - 2 * fade);
+    m = m * fade + (ifx bd_moving(a0.prev) then 1.0f32 else 0.0f32) * (1 - fade);
+  }
+  a.lay = true; a.lay_up = 1 - w; a.lay_low = 1 - w * (1 - m);
+  a.fade_at = now - f32(BD_FADE) * w;
+  return a;
+}

@@ -1,0 +1,238 @@
+// The blend graph's pose (GitHub #13306): what graph.coax decided, sampled from a rig's clips into
+// one character's joints, with the graph's IK nodes solved after. This is the path of a character
+// that is posed: a bake's frames, a close-up, a keyed pose. A body drawn from baked frames does not
+// come here; its record names the frames the same AnimGraphPlay names.
+//
+// The rig and its sampler are metaverse-engine/anim/skin.coax's (SkinRig, the shape a VRG1 rig file
+// fills; skin_sample), and the pose is kept where the keyed poses already keep theirs (a Skin's
+// `now`), so the bow's draw and a rider's seat go on top unchanged and skin_palette writes the
+// matrices. The order is the graph's: the clip, a blended space's second clip, the cross-fade from
+// the clip before or a layer's mask, then the IK nodes: feet first, then aims and reaches.
+//   coax/bin/coax test metaverse-engine/character/graph-pose.coax --library
+
+#load "graph.coax";
+#load "../anim/skin.coax";
+#load "../anim/two-bone.coax";
+
+// Seconds into a clip a AnimGraphPlay shows at `now`: a gait by its phase, a once-clip held at its end,
+// a loop round and round.
+anim_graph_pose_time :: (g: AnimGraph, rig: SkinRig, clip: int, t0: f32, phase: f32, now: f32) -> f32 {
+  d := rig.duration[clip];
+  if g.clips[clip].kind == ANIM_GRAPH_GAIT { return (phase - floor(phase)) * d; }
+  t := now - t0;
+  if !finite(t) || t < 0 { t = 0; }
+  if g.clips[clip].kind == ANIM_GRAPH_ONCE { return lo(t, d * 0.9999); }
+  return t;
+}
+// Every joint `t` seconds into clip `clip`.
+anim_graph_pose_clip :: (rig: SkinRig, s: [] Skin, clip: int, t: f32) {
+  for j: 0..<rig.joints { s[0].now[j] = skin_sample(rig, clip, j, t); }
+}
+// The pose a AnimGraphPlay shows at `now`, into s. `mask` is the layer's mask when p is laid. Returns
+// false, and leaves s, for a clip the rig or the graph does not have.
+anim_graph_pose :: (g: AnimGraph, rig: SkinRig, p: AnimGraphPlay, mask: int, now: f32, s: [] Skin) -> bool {
+  if rig.joints > SKIN_JOINTS_MAX || p.clip < 0 || p.clip >= rig.clips || p.clip >= g.clips.count { return false; }
+  if p.mate >= rig.clips || p.mate >= g.clips.count || p.prev >= rig.clips || p.prev >= g.clips.count { return false; }
+  t := anim_graph_pose_time(g, rig, p.clip, p.t0, p.phase, now);
+  fade := anim_graph_fade(p, now);
+  for j: 0..<rig.joints {
+    l := skin_sample(rig, p.clip, j, t);
+    // a blended space's two clips share one phase, so the feet stay in step
+    if p.mate >= 0 { l = pose_blend(l, skin_sample(rig, p.mate, j, anim_graph_pose_time(g, rig, p.mate, p.t0, p.phase, now)), p.mate_share); }
+    if p.prev >= 0 && (p.lay || fade < 1) {
+      before := skin_sample(rig, p.prev, j, anim_graph_pose_time(g, rig, p.prev, p.pt0, p.pphase, now));
+      l = ifx p.lay then pose_blend(l, before, anim_graph_layer_share(g, p, mask, j)) else pose_blend(before, l, fade);
+    }
+    s[0].now[j] = l;
+  }
+  return true;
+}
+
+// Every joint's rotation and place in the character's space, chained from the pose now.
+AnimGraphChain :: struct { q: [SKIN_JOINTS_MAX] Quat; t: [SKIN_JOINTS_MAX] Point; }
+anim_graph_chain :: (rig: SkinRig, s: [] Skin, c: [] AnimGraphChain, first: int) {
+  for j: (ifx first > 0 then first else 0)..<rig.joints { pose_chain(c[0].q[..], c[0].t[..], rig.parent[j], j, s[0].now[j]); }
+}
+anim_graph_conj :: (q: Quat) -> Quat { return Quat.{x = -q.x, y = -q.y, z = -q.z, w = q.w}; }
+// Turn joint j so its rotation in the character's space becomes `world`, `weight` of the way, and chain on.
+anim_graph_turn :: (rig: SkinRig, s: [] Skin, c: [] AnimGraphChain, j: int, world: Quat, weight: f32) {
+  p := rig.parent[j];
+  local := ifx p >= 0 && p < j then quat_mul(anim_graph_conj(c[0].q[p]), world) else world;
+  s[0].now[j].q = slerp(s[0].now[j].q, quat_unit(local), weight);
+  anim_graph_chain(rig, s, c, j);
+}
+// Two bones bent so the end reaches `target` (the character's space). How far the end is from it
+// after, or -1 for a chain that cannot be solved.
+anim_graph_reach :: (rig: SkinRig, s: [] Skin, c: [] AnimGraphChain, k: AnimGraphIk, target: Point, weight: f32) -> f32 {
+  if k.root < 0 || k.mid <= k.root || k.end <= k.mid || k.end >= rig.joints { return -1; }
+  a := c[0].t[k.root]; b := c[0].t[k.mid];
+  bend := two_bone_mid(a, b, c[0].t[k.end], target);
+  if !bend.ok { return -1; }
+  anim_graph_turn(rig, s, c, k.root, quat_mul(two_bone_from_to(sub(b, a), sub(bend.mid, a)), c[0].q[k.root]), weight);
+  anim_graph_turn(rig, s, c, k.mid, quat_mul(two_bone_from_to(sub(c[0].t[k.end], c[0].t[k.mid]), sub(target, c[0].t[k.mid])), c[0].q[k.mid]), weight);
+  return length(sub(c[0].t[k.end], target));
+}
+// Joint j's rotation in the character's space in the rig's rest pose.
+anim_graph_rest :: (rig: SkinRig, j: int) -> Quat {
+  q: [SKIN_JOINTS_MAX] Quat; t: [SKIN_JOINTS_MAX] Point;
+  for k: 0..<j + 1 { pose_chain(q[..], t[..], rig.parent[k], k, skin_rest(rig, k)); }
+  return q[j];
+}
+// Joint k.end turned toward `target`, at most k.limit radians: its front is the character's +z as
+// its rest pose has it.
+anim_graph_aim :: (rig: SkinRig, s: [] Skin, c: [] AnimGraphChain, k: AnimGraphIk, target: Point, weight: f32) {
+  j := k.end;
+  if j < 0 || j >= rig.joints || !(weight > 0) { return; }
+  toward := sub(target, c[0].t[j]);
+  if length(toward) < 0.000001 { return; }
+  forward := quat_rotate(quat_mul(c[0].q[j], anim_graph_conj(anim_graph_rest(rig, j))), v3(0, 0, 1));
+  delta := two_bone_from_to(forward, toward);
+  angle := 2 * atan2(sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z), delta.w);
+  share := ifx angle > k.limit then weight * k.limit / angle else weight;
+  anim_graph_turn(rig, s, c, j, quat_mul(delta, c[0].q[j]), share);
+}
+// Where a foot goes on ground that is `rise` metres higher under it than under the character's
+// feet: up or down by the rise, so a foot the clip plants stays planted on a slope.
+anim_graph_foot_target :: (foot: Point, rise: f32) -> Point { return v3(foot.x, foot.y + rise, foot.z); }
+
+// The graph's IK nodes on the pose in s, in the table's order by kind: feet, then aims and
+// reaches. Node n's weight is its parameter's (1 with none); targets[n] is, for a foot, x the
+// ground's rise under it (m, from a height query at the foot), and for an aim or a reach the point
+// in the character's space. Returns the farthest a foot or a hand is left from its target (m).
+anim_graph_ik :: (g: AnimGraph, rig: SkinRig, s: [] Skin, params: [] f32, targets: [] Point) -> f32 {
+  worst := 0.0f32;
+  if rig.joints > SKIN_JOINTS_MAX || targets.count < g.iks.count || params.count < g.params { return worst; }
+  c: [1] AnimGraphChain;
+  anim_graph_chain(rig, s, c[..], 0);
+  for pass: 0..<2 {
+    for n: 0..<g.iks.count {
+      k := g.iks[n];
+      if (k.kind == ANIM_GRAPH_IK_FOOT) != (pass == 0) { continue; }
+      w := ifx k.weight_param >= 0 then clamp01(params[k.weight_param]) else 1.0f32;
+      if !(w > 0) || k.end >= rig.joints { continue; }
+      if k.kind == ANIM_GRAPH_IK_AIM { anim_graph_aim(rig, s, c[..], k, targets[n], w); continue; }
+      target := ifx k.kind == ANIM_GRAPH_IK_FOOT then anim_graph_foot_target(c[0].t[k.end], targets[n].x) else targets[n];
+      e := anim_graph_reach(rig, s, c[..], k, target, w);
+      if e > worst && w >= 1 { worst = e; }
+    }
+  }
+  return worst;
+}
+
+// ---- checks: a hip, a leg of two bones, and a head; three clips
+// Joints: 0 hips at 1 m, 1 thigh, 2 knee (0.45 m down, a little forward), 3 foot (0.45 m further), 4 head (0.6 m up the hips).
+// Clips: 0 stands (2 s, a loop); 1 nods the head a quarter turn about x over 1 s (a gait, 2 m a loop);
+// 2 turns the head a quarter turn about y over 1 s (once).
+AGP_PARENT :: [5] int.[-1, 0, 1, 2, 0];
+AGP_REST :: [35] f32.[0, 1, 0, 0, 0, 0, 1,   0, 0, 0, 0, 0, 0, 1,   0, -0.45, 0.02, 0, 0, 0, 1,   0, -0.45, -0.02, 0, 0, 0, 1,   0, 0.6, 0, 0, 0, 0, 1];
+AGP_DURATION :: [3] f32.[2, 1, 1];
+AGP_DISTANCE :: [3] f32.[0, 2, 0];
+AGP_TRACK_R :: [30] int.[0, 0, 0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0, 0, 2,   0, 0, 0, 0, 0, 0, 0, 0, 2, 2];
+AGP_KEYS_R :: [20] f32.[0, 0, 0, 0, 1,   1, 0.70710678, 0, 0, 0.70710678,   0, 0, 0, 0, 1,   1, 0, 0.70710678, 0, 0.70710678];
+AnimGraphPoseTest :: struct {
+  parent: [5] int; rest: [35] f32; bind: [60] f32; duration: [3] f32; distance: [3] f32;
+  track_t: [30] int; track_r: [30] int; keys_t: [4] f32; keys_r: [20] f32;
+  clips: [3] AnimGraphClip; states: [1] AnimGraphState; layers: [1] AnimGraphLayer; masks: [5] f32; iks: [3] AnimGraphIk;
+}
+anim_graph_pose_rig :: (d: [] AnimGraphPoseTest) -> SkinRig {
+  d[0].parent = AGP_PARENT; d[0].rest = AGP_REST; d[0].duration = AGP_DURATION; d[0].distance = AGP_DISTANCE;
+  d[0].track_r = AGP_TRACK_R; d[0].keys_r = AGP_KEYS_R;
+  for j: 0..<5 { d[0].bind[j * 12] = 1; d[0].bind[j * 12 + 5] = 1; d[0].bind[j * 12 + 10] = 1; }
+  return SkinRig.{joints = 5, clips = 3, parent = d[0].parent[..], rest = d[0].rest[..], bind = d[0].bind[..],
+                  duration = d[0].duration[..], distance = d[0].distance[..], track_t = d[0].track_t[..],
+                  track_r = d[0].track_r[..], keys_t = d[0].keys_t[..], keys_r = d[0].keys_r[..]};
+}
+anim_graph_pose_graph :: (d: [] AnimGraphPoseTest) -> AnimGraph {
+  d[0].clips = [3] AnimGraphClip.[AnimGraphClip.{kind = ANIM_GRAPH_LOOP}, AnimGraphClip.{kind = ANIM_GRAPH_GAIT, stride = 2, moves = true}, AnimGraphClip.{kind = ANIM_GRAPH_ONCE}];
+  d[0].states = [1] AnimGraphState.[AnimGraphState.{clip = 0}];
+  d[0].layers = [1] AnimGraphLayer.[AnimGraphLayer.{mask = 0, still = 1, moving = 0}];
+  d[0].masks = [5] f32.[0, 0, 0, 0, 1];
+  d[0].iks = [3] AnimGraphIk.[AnimGraphIk.{kind = ANIM_GRAPH_IK_AIM, end = 4, limit = 0.5, weight_param = 1}, AnimGraphIk.{kind = ANIM_GRAPH_IK_FOOT, root = 1, mid = 2, end = 3}, AnimGraphIk.{kind = ANIM_GRAPH_IK_REACH, root = 1, mid = 2, end = 3, weight_param = 0}];
+  return AnimGraph.{params = 2, speed_param = 0, joints = 5, clips = d[0].clips[..], states = d[0].states[..], layers = d[0].layers[..], masks = d[0].masks[..], iks = d[0].iks[..]};
+}
+#test "the test graph and rig are ones the engine may run" {
+  d: [1] AnimGraphPoseTest; g := anim_graph_pose_graph(d[..]); #assert anim_graph_check(g) == ANIM_GRAPH_OK;
+}
+#test "seconds into a clip: a gait by its phase, a once-clip held at its end, a loop on the clock" {
+  d: [1] AnimGraphPoseTest; rig := anim_graph_pose_rig(d[..]); g := anim_graph_pose_graph(d[..]);
+  #assert anim_graph_pose_time(g, rig, 1, 5, 2.25, 9) == 0.25 && anim_graph_pose_time(g, rig, 1, 5, 0.75, 0) == 0.75;
+  #assert anim_graph_pose_time(g, rig, 2, 5, 0, 5.5) == 0.5 && near(anim_graph_pose_time(g, rig, 2, 5, 0, 9), 0.9999, 0.000001) && anim_graph_pose_time(g, rig, 2, 5, 0, 4) == 0;
+  #assert anim_graph_pose_time(g, rig, 0, 5, 0, 8.5) == 3.5 && anim_graph_pose_time(g, rig, 0, 5, 0, 1) == 0;
+  nan := 0.0f32; nan = nan / nan; #assert anim_graph_pose_time(g, rig, 0, nan, 0, 1) == 0;
+}
+#test "a pose is the clip's; a cross-fade is between the clip before and it; a blended space mixes two clips" {
+  d: [1] AnimGraphPoseTest; rig := anim_graph_pose_rig(d[..]); g := anim_graph_pose_graph(d[..]);
+  s: [1] Skin;
+  p: AnimGraphPlay; p.clip = 1; p.phase = 0.5;
+  #assert anim_graph_pose(g, rig, p, 0, 3, s[..]);
+  half := slerp(Quat.{}, Quat.{x = 0.70710678, w = 0.70710678}, 0.5);
+  #assert near(s[0].now[4].q.x, half.x, 0.00001) && s[0].now[2].t.y == -0.45f32 && s[0].now[0].t.y == 1;
+  // the same through the one-clip helper
+  o: [1] Skin; anim_graph_pose_clip(rig, o[..], 1, 0.5); #assert o[0].now[4].q.x == s[0].now[4].q.x && o[0].now[3].t.z == -0.02f32;
+  // half way through a cross-fade from standing: half the nod
+  p.prev = 0; p.changed = 3; p.fade = 0.2;
+  #assert anim_graph_pose(g, rig, p, 0, 3.1, s[..]);
+  #assert near(s[0].now[4].q.x, slerp(Quat.{}, half, 0.5).x, 0.0001);
+  #assert anim_graph_pose(g, rig, p, 0, 3, s[..]) && near(s[0].now[4].q.x, 0, 0.00001);    // as it starts: all the clip before
+  #assert anim_graph_pose(g, rig, p, 0, 3.2, s[..]) && s[0].now[4].q.x == o[0].now[4].q.x; // over: all the clip
+  // a blended space: a quarter of the stand's mate
+  b: AnimGraphPlay; b.clip = 0; b.mate = 1; b.mate_share = 0.25; b.phase = 0.5;
+  #assert anim_graph_pose(g, rig, b, 0, 3, s[..]) && near(s[0].now[4].q.x, slerp(Quat.{}, half, 0.25).x, 0.0001);
+}
+#test "a layer takes the masked joints' share of the clip before, joint by joint" {
+  d: [1] AnimGraphPoseTest; rig := anim_graph_pose_rig(d[..]); g := anim_graph_pose_graph(d[..]);
+  s: [1] Skin;
+  // the head's turn laid over the nod: the head (masked) keeps lay_up of the nod, the rest lay_low
+  p: AnimGraphPlay; p.clip = 2; p.t0 = 0; p.prev = 1; p.pphase = 0.9999; p.lay = true; p.lay_up = 0; p.lay_low = 1;
+  #assert anim_graph_pose(g, rig, p, 0, 5, s[..]);
+  #assert near(s[0].now[4].q.y, 0.70710678, 0.001) && near(s[0].now[4].q.x, 0, 0.001);
+  p.lay_up = 1; #assert anim_graph_pose(g, rig, p, 0, 5, s[..]) && near(s[0].now[4].q.x, 0.70710678, 0.001) && near(s[0].now[4].q.y, 0, 0.001);
+}
+#test "a clip the rig or the graph does not have poses nothing" {
+  d: [1] AnimGraphPoseTest; rig := anim_graph_pose_rig(d[..]); g := anim_graph_pose_graph(d[..]);
+  s: [1] Skin; s[0].now[4].t.y = 7;
+  p: AnimGraphPlay; #assert !anim_graph_pose(g, rig, p, 0, 0, s[..]);
+  p.clip = 3; #assert !anim_graph_pose(g, rig, p, 0, 0, s[..]);
+  p.clip = 0; p.mate = 3; #assert !anim_graph_pose(g, rig, p, 0, 0, s[..]);
+  p.mate = -1; p.prev = 3; #assert !anim_graph_pose(g, rig, p, 0, 0, s[..]) && s[0].now[4].t.y == 7;
+  p.prev = 2; #assert anim_graph_pose(g, rig, p, 0, 0, s[..]) && s[0].now[4].t.y == 0.6f32;
+  rig.joints = SKIN_JOINTS_MAX + 1; #assert !anim_graph_pose(g, rig, p, 0, 0, s[..]);
+}
+#test "a foot node puts the foot on ground that rises under it, both bones their own length; an aim turns the head, at most its limit" {
+  d: [1] AnimGraphPoseTest; rig := anim_graph_pose_rig(d[..]); g := anim_graph_pose_graph(d[..]);
+  s: [1] Skin; anim_graph_pose_clip(rig, s[..], 0, 0);
+  c: [1] AnimGraphChain; anim_graph_chain(rig, s[..], c[..], 0);
+  foot := c[0].t[3]; #assert near(foot.y, 0.1, 0.00001);
+  // the ground is 0.2 m higher under the foot; the head looks square to its left, weight 1; the reach is off
+  params := [2] f32.[0, 1];
+  targets := [3] Point.[v3(10, 1.6, 0), v3(0.2, 0, 0), v3(0, 0, 0)];
+  worst := anim_graph_ik(g, rig, s[..], params[..], targets[..]);
+  anim_graph_chain(rig, s[..], c[..], 0);
+  #assert worst < 0.001 && near(c[0].t[3].y, 0.3, 0.001) && near(c[0].t[3].x, foot.x, 0.001) && near(c[0].t[3].z, foot.z, 0.001);
+  #assert near(length(sub(c[0].t[2], c[0].t[1])), length(v3(0, -0.45, 0.02)), 0.0001) && near(length(sub(c[0].t[3], c[0].t[2])), length(v3(0, -0.45, -0.02)), 0.0001);
+  front := quat_rotate(c[0].q[4], v3(0, 0, 1)); #assert near(atan2(front.x, front.z), 0.5, 0.01);
+  // the aim off (its parameter 0), the reach on: the foot goes to the point, out of reach it comes as near as the leg is long
+  anim_graph_pose_clip(rig, s[..], 0, 0);
+  params = [2] f32.[1, 0]; targets = [3] Point.[v3(10, 1.6, 0), v3(0, 0, 0), v3(0.3, 0.4, 0.1)];
+  worst = anim_graph_ik(g, rig, s[..], params[..], targets[..]); anim_graph_chain(rig, s[..], c[..], 0);
+  #assert worst < 0.001 && length(sub(c[0].t[3], v3(0.3, 0.4, 0.1))) < 0.001;
+  front = quat_rotate(c[0].q[4], v3(0, 0, 1)); #assert near(front.z, 1, 0.0001);
+  targets[2] = v3(0, -3, 0); worst = anim_graph_ik(g, rig, s[..], params[..], targets[..]); #assert worst > 2.9;
+  // too few targets or parameters: nothing is solved
+  anim_graph_pose_clip(rig, s[..], 0, 0); before := s[0].now[0].q;
+  #assert anim_graph_ik(g, rig, s[..], params[..], targets[0..<2]) == 0 && anim_graph_ik(g, rig, s[..], params[0..<1], targets[..]) == 0 && s[0].now[0].q.x == before.x;
+}
+#test "a part-weight reach goes part of the way and counts no error; an aim within its limit turns all the way" {
+  d: [1] AnimGraphPoseTest; rig := anim_graph_pose_rig(d[..]); g := anim_graph_pose_graph(d[..]);
+  s: [1] Skin; anim_graph_pose_clip(rig, s[..], 0, 0);
+  c: [1] AnimGraphChain; anim_graph_chain(rig, s[..], c[..], 0); foot := c[0].t[3];
+  params := [2] f32.[0.5, 1]; targets := [3] Point.[v3(1, 1.6, 10), v3(0, 0, 0), v3(0, 0.4, 0.3)];
+  worst := anim_graph_ik(g, rig, s[..], params[..], targets[..]); anim_graph_chain(rig, s[..], c[..], 0);
+  moved := length(sub(c[0].t[3], foot)); whole := length(sub(v3(0, 0.4, 0.3), foot));
+  #assert worst == 0 && moved > 0.05 && moved < whole - 0.05;
+  front := quat_rotate(c[0].q[4], v3(0, 0, 1)); #assert near(atan2(front.x, front.z), atan2(1, 10), 0.001);
+  // the rest rotation of a joint under a turned parent is the chain's
+  d[0].rest[3] = 0.70710678; d[0].rest[6] = 0.70710678;
+  r := anim_graph_rest(rig, 4); #assert near(r.x, 0.70710678, 0.00001) && near(r.w, 0.70710678, 0.00001);
+  t := anim_graph_foot_target(v3(1, 2, 3), 0.5); #assert t.x == 1 && t.y == 2.5 && t.z == 3;
+}

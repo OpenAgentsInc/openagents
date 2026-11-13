@@ -45,6 +45,10 @@ BD_FPS :: 30.0;
 #load "preview-clips.coax";
 #load "two-hand-rig.coax";   // the owned two-handed weapon clips (metaverse/tools/assets/two_hand_clips.py)
 #load "rig-asset.coax";      // the rigs from a pack's rig entry (VRG1, GitHub #13306)
+#load "../../metaverse-engine/character/graph-pose.coax";   // a posed body: the bake's frames and keyed poses
+#load "body-graph.coax";     // which clip a body plays: Everglade's table for the engine's blend graph (GitHub #13306)
+#load "bodies-step-oracle.coax" #test;
+#load "../../metaverse-engine/core/rand.coax" #test;
 #load "../../metaverse-engine/action/bow-pose.coax";   // the archer's keyed draw (docs/metaverse/bow-combat.md), baked as clip BD_BOW
 #load "../../metaverse-engine/action/ride-pose.coax";  // a rider's legs astride (everglade/docs/mounts-spec.md), baked as clip BD_RIDE
 BD_CLIPS :: 10;
@@ -206,6 +210,7 @@ BdAnim :: struct {
   marks: f32; outlined: f32;
   y: f32; own: bool;   // the hero you play: its feet's height (a jump) and its own facing (bd_own)
   lay: bool; lay_up: f32; lay_low: f32;   // an action layered over the gait (bd_layer): clip on the upper body, prev the gait
+  node: int = -1;   // its state in Everglade's blend graph (body-graph.coax)
 }
 
 BdCam :: struct { ex: f32; ey: f32; ez: f32; fx: f32; fy: f32; fz: f32; rx: f32; ry: f32; rz: f32; ux: f32; uy: f32; uz: f32; focal: f32; cx: f32; cy: f32; w: f32; h: f32; }
@@ -274,7 +279,7 @@ bd_bake_clip :: (d: [] People, body: int, c: int, out: [] f32) {
   d_s := rig.duration[clip];
   for f: 0..<n {
     t := f32(f) * d_s / f32(n);
-    for j: 0..<PEOPLE_JOINTS { sk[0].now[j] = skin_sample(rig, clip, j, t); }
+    anim_graph_pose_clip(rig, sk[..], clip, t);   // the graph's pose path (metaverse-engine/character/graph-pose.coax)
     at := bd_row(body == 1, c, f) * 4;
     skin_palette(rig, sk[..], out[at..<at + BD_ROWS * 4]);
   }
@@ -297,7 +302,7 @@ bd_bake_previews :: (out: [] f32, data: [] Preview, file: [] u8) {
   for body:0..<2 {rig:=preview_rig(data,body==1);sk:[1]Skin;
     for c:0..<PREVIEW_BAKED {n:=PREVIEW_FRAMES[c];for f:0..<n {
       t:=f32(f)*rig.duration[c]/f32(n);
-      for j:0..<PEOPLE_JOINTS {sk[0].now[j]=skin_sample(rig,c,j,t);}
+      anim_graph_pose_clip(rig,sk[..],c,t);
       at:=bd_row(body==1,BD_CLIPS+c,f)*4;skin_palette(rig,sk[..],out[at..<at+BD_ROWS*4]);
     }}
   }
@@ -309,7 +314,7 @@ bd_bake_owned :: (out: [] f32, file: [] u8) {
   for body:0..<2 {rig:=twohand_rig(own[..],body==1);sk:[1]Skin;
     for c:0..<TWOHAND_CLIPS {n:=BD_OWN_FRAMES[c];for f:0..<n {
       t:=f32(f)*rig.duration[c]/f32(n);
-      for j:0..<PEOPLE_JOINTS {sk[0].now[j]=skin_sample(rig,c,j,t);}
+      anim_graph_pose_clip(rig,sk[..],c,t);
       at:=bd_row(body==1,BD_OWN+c,f)*4;skin_palette(rig,sk[..],out[at..<at+BD_ROWS*4]);
     }}
   }
@@ -322,7 +327,7 @@ BD_BOW_JOINTS :: BowJoints.{spine = [2] int.[3, 4], head = 6, arm_l = [4] int.[7
 bd_bow_pose :: (d: [] People, body: int, f: int, out: [] f32) {
   rig := people_rig(d, body == 1);
   sk: [1] Skin; sk[0] = Skin.{};
-  for j: 0..<PEOPLE_JOINTS { sk[0].now[j] = skin_sample(rig, PEOPLE_IDLE, j, 0); }
+  anim_graph_pose_clip(rig, sk[..], PEOPLE_IDLE, 0);
   _ := bow_pose(rig, sk[..], BD_BOW_JOINTS, f);
   skin_palette(rig, sk[..], out);
 }
@@ -350,7 +355,7 @@ BD_RIDE_FITS :: [2] RideFit.[
 bd_ride_posed :: (d: [] People, body: int, seat: int, out: [] f32) -> RidePosed {
   rig := people_rig(d, body == 1);
   sk: [1] Skin; sk[0] = Skin.{};
-  for j: 0..<PEOPLE_JOINTS { sk[0].now[j] = skin_sample(rig, PEOPLE_IDLE, j, 0); }
+  anim_graph_pose_clip(rig, sk[..], PEOPLE_IDLE, 0);
   p := ride_pose(rig, sk[..], BD_RIDE_JOINTS, BD_RIDE_FITS[clamp_int(seat, 0, BD_SEATS - 1)]);
   skin_palette(rig, sk[..], out);
   return p;
@@ -460,18 +465,22 @@ bd_step :: (a: [] BdAnim, now: f32, dt: f32) {
     turn := clamp(left, -f32(BD_TURN) * dt, f32(BD_TURN) * dt);
     a[0].yaw = bd_wrap(a[0].yaw + turn);
   }
-  want := BD_IDLE; t0 := now;
-  if a[0].state > 0 { want = BD_DIE; t0 = a[0].fell_at; }
-  else if a[0].act >= 0 && now < a[0].act_until { want = a[0].act; t0 = a[0].act_t0; }
-  else if a[0].speed > f32(BD_RUN_FROM) { want = BD_RUN; }
-  else if moving { want = BD_WALK; }
-  if want != a[0].clip || (bd_once(want) && t0 != a[0].t0) {
-    a[0].prev = a[0].clip; a[0].pt0 = a[0].t0; a[0].pphase = a[0].phase;
-    a[0].fade_at = ifx a[0].clip < 0 then -100.0f32 else now;
-    a[0].clip = want; a[0].t0 = ifx bd_gait(want) || want == BD_IDLE then now else t0;
-    a[0].phase = 0;
-  }
-  if bd_gait(a[0].clip) && dt > 0 { a[0].phase += a[0].speed * dt / ifx a[0].clip == BD_RUN then 3.4f32 else 1.3f32; }
+  // which clip: Everglade's blend graph (body-graph.coax), stepped by the engine (GitHub #13306)
+  params := [EG_BODY_PARAMS] f32.[a[0].speed, ifx a[0].state > 0 then 1.0f32 else 0.0f32,
+                                  ifx a[0].act >= 0 && now < a[0].act_until then 1.0f32 else 0.0f32,
+                                  f32(a[0].act), a[0].act_t0, a[0].fell_at, 0, 0];
+  a[0] = bd_played(a[0], anim_graph_step(eg_body_graph(), bd_play(a[0]), params[..], now, dt));
+}
+// A figure's playback as the graph keeps it, and the graph's answer put back.
+bd_play :: (a: BdAnim) -> AnimGraphPlay {
+  return AnimGraphPlay.{state = a.node, clip = a.clip, t0 = a.t0, phase = a.phase, prev = a.prev, pt0 = a.pt0, pphase = a.pphase,
+                    changed = a.fade_at, fade = f32(BD_FADE), lay = a.lay, lay_up = a.lay_up, lay_low = a.lay_low};
+}
+bd_played :: (a0: BdAnim, p: AnimGraphPlay) -> BdAnim {
+  a := a0;
+  a.node = p.state; a.clip = p.clip; a.t0 = p.t0; a.phase = p.phase; a.prev = p.prev; a.pt0 = p.pt0; a.pphase = p.pphase;
+  a.fade_at = p.changed; a.lay = p.lay; a.lay_up = p.lay_up; a.lay_low = p.lay_low;
+  return a;
 }
 // How far a body is gone: 1 whole, 0 cleared (the dead, once they have lain BD_LIE seconds).
 bd_whole :: (a: BdAnim, now: f32) -> f32 {
@@ -579,12 +588,7 @@ bd_blow :: (b: [] Bodies, female: bool, c: int) -> f32 {
 // the same. The people rig's 65 joints (people-rig.coax PEOPLE_PARENT): 0 the root, 1 the pelvis,
 // 2 to 4 the spine, 5 the neck, 6 the head, 7 to 54 the arms and hands, 55 to 64 the legs.
 BD_LAYER_FADE :: 0.15;    // seconds a layered action eases in and out
-BD_UPPER_SPINE :: [3] f32.[0.4, 0.75, 1.0];   // spine_01 to spine_03: the boundary, partly, so the torso never snaps
-bd_upper :: (j: int) -> f32 {
-  if j <= 1 || j >= 55 { return 0; }
-  if j <= 4 { return BD_UPPER_SPINE[j - 2]; }
-  return 1;
-}
+bd_upper :: (j: int) -> f32 { return anim_graph_mask(eg_body_graph(), EG_BODY_UPPER, j); }
 bd_layer_code :: (up: f32, low: f32) -> f32 {
   return 2 + floor(clamp01(up) * 255 + 0.5) + 256 * floor(clamp01(low) * 255 + 0.5);
 }
@@ -600,12 +604,7 @@ bd_moving :: (c: int) -> bool {
   return c == BD_WALK || c == BD_RUN || c == BD_OWN + TWOHAND_AXE_RUN_LOOP || c == BD_OWN + TWOHAND_SWORD_RUN_LOOP;
 }
 // How much of a gait is on the move at `now`, through its own blend from the clip before.
-bd_move_share :: (a: BdAnim, now: f32) -> f32 {
-  m := ifx bd_moving(a.clip) then 1.0f32 else 0.0f32;
-  if a.prev < 0 { return m; }
-  fade := clamp01((now - a.fade_at) / f32(BD_FADE)); fade = fade * fade * (3 - 2 * fade);
-  return m * fade + (ifx bd_moving(a.prev) then 1.0f32 else 0.0f32) * (1 - fade);
-}
+bd_move_share :: (a: BdAnim, now: f32) -> f32 { return anim_graph_move_share(eg_body_graph(), bd_play(a), now); }
 // An action's weight t seconds into a clip of d seconds: in and out over BD_LAYER_FADE, smoothly.
 bd_layer_weight :: (t: f32, d: f32) -> f32 {
   i := clamp01(t / f32(BD_LAYER_FADE)); o := clamp01((d - t) / f32(BD_LAYER_FADE));
@@ -614,12 +613,7 @@ bd_layer_weight :: (t: f32, d: f32) -> f32 {
 // Action clip `clip` (from t0 at phase) at weight w over the gait a0: the whole body standing, the
 // upper body only on the move. Root, facing and the gait's own clock stay a0's.
 bd_layer :: (a0: BdAnim, clip: int, t0: f32, phase: f32, w: f32, now: f32) -> BdAnim {
-  a := a0;
-  a.prev = a0.clip; a.pt0 = a0.t0; a.pphase = a0.phase;
-  a.clip = clip; a.t0 = t0; a.phase = phase;
-  a.lay = true; a.lay_up = 1 - w; a.lay_low = 1 - w * (1 - bd_move_share(a0, now));
-  a.fade_at = now - f32(BD_FADE) * w;
-  return a;
+  return bd_played(a0, anim_graph_layer(eg_body_graph(), bd_play(a0), EG_BODY_UPPER, clip, t0, phase, w, now));
 }
 // ---- the bow arm (#13073): carrying a bow, standing, walking, running and in a jump's air, the bow arm
 // hangs nearly straight, a little out from the body and ahead, the archer's carry, so the bow clears the
@@ -1081,4 +1075,58 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
 #test "astride, each body's pelvis sits where a realm seats it, its feet well below (mounts)" #steps 400000000 {
   d: [1] People; people_load(d[..]); out: [BD_ROWS * 4] f32;
   for body: 0..<2 { for seat: 0..<BD_SEATS { p := bd_ride_pose(d[..], body, seat, out[..]); #assert abs(p.y - BD_RIDE_HIP[body]) < 0.012 && abs(p.x) < 0.02 && abs(p.z) < 0.1; } }
+}
+
+// ---- the blend graph (GitHub #13306)
+#test "Everglade's graph table is the bodies' clips: their kinds, their strides, which move, and the layer's mask" {
+  g := eg_body_graph();
+  #assert EG_BODY_CLIPS == BD_RIDE + 1 && EG_BODY_JOINTS == PEOPLE_JOINTS && EG_BODY_FADE == BD_FADE && EG_BODY_WALK_FROM == BD_WALK_FROM && EG_BODY_RUN_FROM == BD_RUN_FROM;
+  #assert g.states[EG_BODY_FALLEN].clip == BD_DIE && g.points[0].clip == BD_IDLE && g.points[1].clip == BD_WALK && g.points[2].clip == BD_RUN;
+  for c: 0..<EG_BODY_CLIPS {
+    k := g.clips[c].kind;
+    #assert (k == ANIM_GRAPH_GAIT) == bd_gait(c) && (k == ANIM_GRAPH_ONCE) == bd_once(c) && g.clips[c].moves == bd_moving(c);
+  }
+  #assert g.clips[BD_WALK].stride == 1.3f32 && g.clips[BD_RUN].stride == 3.4f32;
+  for j: 0..<PEOPLE_JOINTS { want := ifx j <= 1 || j >= 55 then 0.0f32 else ifx j == 2 then 0.4f32 else ifx j == 3 then 0.75f32 else 1.0f32; #assert bd_upper(j) == want; }
+  #assert bd_upper(-1) == 0 && bd_upper(65) == 0;
+}
+#test "the graph picks what the thresholds picked: 20 lives of 600 steps, every field the same bits" #steps 2000000000 {
+  for life: 0..<20 {
+    a: [1] BdAnim; o: [1] BdAnim; a[0].on = true; o[0].on = true;
+    now := 0.0f32; n := 0;
+    for step: 0..<600 {
+      n += 1; dt := 0.004 + 0.03 * rand_unit(life, 1, n); now += dt;
+      r := rand_unit(life, 2, n); e := rand_unit(life, 3, n);
+      // how fast: mostly held, sometimes another gait, sometimes right on a threshold
+      if r < 0.06 { a[0].speed = 6 * e; } else if r < 0.08 { a[0].speed = f32(BD_WALK_FROM); } else if r < 0.1 { a[0].speed = f32(BD_RUN_FROM); } else if r < 0.12 { a[0].speed = 0; }
+      // an action cued, or cued again; a fall; getting up
+      if r > 0.97 { a[0].act = ifx e < 0.4 then BD_SLASH else ifx e < 0.7 then BD_SPELL else BD_KNOCK; a[0].act_t0 = now; a[0].act_until = now + ifx a[0].act == BD_SPELL then f32(BD_SPELL_FOR) else bd_seconds(a[0].act); }
+      else if r > 0.955 && life % 2 == 1 { if a[0].state == 0 { a[0].fell_at = now; } a[0].state = ifx e < 0.5 then 1 else 2; }
+      else if r > 0.94 { a[0].state = 0; }
+      o[0].speed = a[0].speed; o[0].act = a[0].act; o[0].act_t0 = a[0].act_t0; o[0].act_until = a[0].act_until; o[0].state = a[0].state; o[0].fell_at = a[0].fell_at;
+      // the step's clip choice only: bd_step's speed and facing come before it and are the same code
+      params := [EG_BODY_PARAMS] f32.[a[0].speed, ifx a[0].state > 0 then 1.0f32 else 0.0f32, ifx a[0].act >= 0 && now < a[0].act_until then 1.0f32 else 0.0f32, f32(a[0].act), a[0].act_t0, a[0].fell_at, 0, 0];
+      a[0] = bd_played(a[0], anim_graph_step(eg_body_graph(), bd_play(a[0]), params[..], now, dt));
+      bd_step_before(o[..], now, dt);
+      #assert a[0].clip == o[0].clip && a[0].prev == o[0].prev && f32_bits(a[0].t0) == f32_bits(o[0].t0) && f32_bits(a[0].phase) == f32_bits(o[0].phase);
+      #assert f32_bits(a[0].pt0) == f32_bits(o[0].pt0) && f32_bits(a[0].pphase) == f32_bits(o[0].pphase) && f32_bits(a[0].fade_at) == f32_bits(o[0].fade_at);
+      // an action laid over it at this moment is the same too
+      w := rand_unit(life, 4, n);
+      la := bd_layer(a[0], BD_SPELL, now - 0.2, e, w, now); lo_ := bd_layer_before(o[0], BD_SPELL, now - 0.2, e, w, now);
+      #assert la.clip == lo_.clip && la.prev == lo_.prev && la.lay && f32_bits(la.lay_up) == f32_bits(lo_.lay_up) && f32_bits(la.lay_low) == f32_bits(lo_.lay_low) && f32_bits(la.fade_at) == f32_bits(lo_.fade_at);
+      #assert f32_bits(la.t0) == f32_bits(lo_.t0) && f32_bits(la.phase) == f32_bits(lo_.phase) && f32_bits(la.pt0) == f32_bits(lo_.pt0) && f32_bits(la.pphase) == f32_bits(lo_.pphase);
+    }
+    #assert a[0].clip >= 0;
+  }
+}
+#test "bd_step drives the graph: a body that speeds up walks then runs, and one cued strikes" {
+  a: [1] BdAnim; a[0].on = true;
+  now := 0.0f32;
+  for k: 0..<30 { now += 0.02; a[0].x += 0.02 * 1.5; bd_step(a[..], now, 0.02); }
+  #assert a[0].clip == BD_WALK && a[0].node == EG_BODY_GROUND && a[0].phase > 0;
+  for k: 0..<60 { now += 0.02; a[0].x += 0.02 * 5; bd_step(a[..], now, 0.02); }
+  #assert a[0].clip == BD_RUN && a[0].prev == BD_WALK;
+  a[0].act = BD_SLASH; a[0].act_t0 = now; a[0].act_until = now + 1;
+  now += 0.02; bd_step(a[..], now, 0.02); #assert a[0].clip == BD_SLASH && a[0].node == EG_BODY_ACTION && a[0].prev == BD_RUN;
+  a[0].state = 1; a[0].fell_at = now; now += 0.02; bd_step(a[..], now, 0.02); #assert a[0].clip == BD_DIE && a[0].node == EG_BODY_FALLEN;
 }

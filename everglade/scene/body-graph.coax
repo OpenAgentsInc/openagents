@@ -1,0 +1,121 @@
+// Everglade's blend graph (GitHub #13306): what every body in the game plays, as a table for the
+// engine's graph (metaverse-engine/character/graph.coax). You, the 149 others, the guard and the people
+// of the zones all step through it (everglade/scene/bodies.coax bd_step); nothing here is one zone's.
+//
+// The clips are the baked ones, as bodies.coax numbers them (BD_IDLE to BD_RIDE). The machine:
+//   - on the ground (state 0): a space over the speed: standing up to 0.35 m/s, the walk up to
+//     2.2 m/s, the run past it. It is stepped, not blended: a body's record names two baked frames,
+//     and the second is the cross-fade's, so a walk does not shade into a run;
+//   - acting (state 1): the clip the game cued (a blow, a cast, being hit), from when it was cued;
+//   - down (state 2): the fall, from when it fell.
+// Down beats acting, acting beats the ground. Every change blends over 0.18 s.
+// The layer is an action over the gait: the whole body standing, the upper body on the move. Its
+// mask is the people rig's 65 joints: 0 the root, the pelvis and the legs (55 to 64), 1 the arms,
+// neck and head, the spine partly so the torso never snaps. The shader keeps the same mask
+// (everglade/scene/gpu/fivelab.coax fivelab_upper).
+// The IK rows are what a posed body solves (metaverse-engine/character/graph-pose.coax): each foot on
+// the ground and the head toward what it looks at. A body drawn from baked frames has no pose of
+// its own to solve, so they apply where a body is posed: the bake's keyed poses and a close-up.
+//   coax/bin/coax test everglade/scene/body-graph.coax --library
+
+#load "../../metaverse-engine/character/graph.coax";
+
+// The parameters a body's step gives.
+EG_BODY_SPEED :: 0;     // m/s over the ground
+EG_BODY_DOWN :: 1;      // above 0: at 0 Hit Points or dead
+EG_BODY_ACTING :: 2;    // above 0: a cued action is still playing
+EG_BODY_ACT :: 3;       // its clip
+EG_BODY_ACT_T0 :: 4;    // when it was cued
+EG_BODY_FELL :: 5;      // when the body fell
+EG_BODY_FOOT :: 6;      // a posed body's feet on the ground, 0 to 1
+EG_BODY_LOOK :: 7;      // and its head toward what it looks at, 0 to 1
+EG_BODY_PARAMS :: 8;
+
+EG_BODY_GROUND :: 0; EG_BODY_ACTION :: 1; EG_BODY_FALLEN :: 2;
+EG_BODY_FADE :: 0.18;         // seconds a change of clip blends (bodies.coax BD_FADE)
+EG_BODY_WALK_FROM :: 0.35;    // m/s: slower stands
+EG_BODY_RUN_FROM :: 2.2;      // and faster runs
+EG_BODY_JOINTS :: 65;
+EG_BODY_UPPER :: 0;           // the layer and its mask: an action over the gait
+EG_BODY_CLIPS :: 104;
+
+EG_BODY_CLIP :: [104] AnimGraphClip.[
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},   // 0 idle
+  AnimGraphClip.{kind = ANIM_GRAPH_GAIT, stride = 1.3, moves = true},   // 1 walk
+  AnimGraphClip.{kind = ANIM_GRAPH_GAIT, stride = 3.4, moves = true},   // 2 run
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE, stride = 0, moves = false},   // 3 slash
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},   // 4 spell
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE, stride = 0, moves = false},   // 5 knock
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE, stride = 0, moves = false},   // 6 die
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE, stride = 0, moves = false},   // 7 jump start
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},   // 8 jump loop
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE, stride = 0, moves = false},   // 9 jump land
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},   // from 10: the 86 previews, on their own phase
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = true},   // 96 on: the two-handed clips (axe idle, run, cleave; sword idle, run, cleave)
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = true}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false},
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}, AnimGraphClip.{kind = ANIM_GRAPH_LOOP, stride = 0, moves = false}   // 102, 103: the bow's draw, the rider's seat
+];
+EG_BODY_POINT :: [3] AnimGraphPoint.[AnimGraphPoint.{from = 0, clip = 0}, AnimGraphPoint.{from = EG_BODY_WALK_FROM, clip = 1}, AnimGraphPoint.{from = EG_BODY_RUN_FROM, clip = 2}];
+EG_BODY_SPACE :: [1] AnimGraphSpace.[AnimGraphSpace.{param = EG_BODY_SPEED, first = 0, count = 3}];
+EG_BODY_STATE :: [3] AnimGraphState.[
+  AnimGraphState.{space = 0, fade = EG_BODY_FADE},
+  AnimGraphState.{clip_param = EG_BODY_ACT, start_param = EG_BODY_ACT_T0, fade = EG_BODY_FADE},
+  AnimGraphState.{clip = 6, start_param = EG_BODY_FELL, fade = EG_BODY_FADE}];
+EG_BODY_TRANSITION :: [3] AnimGraphTransition.[
+  AnimGraphTransition.{to = EG_BODY_FALLEN, when = [2] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = EG_BODY_DOWN, value = 0}, AnimGraphCond.{}], fade = EG_BODY_FADE},
+  AnimGraphTransition.{to = EG_BODY_ACTION, when = [2] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = EG_BODY_ACTING, value = 0}, AnimGraphCond.{}], fade = EG_BODY_FADE},
+  AnimGraphTransition.{to = EG_BODY_GROUND, fade = EG_BODY_FADE}];
+EG_BODY_LAYER :: [1] AnimGraphLayer.[AnimGraphLayer.{mask = 0, still = 1, moving = 0}];
+EG_BODY_MASK :: [65] f32.[
+  0, 0, 0.4, 0.75, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+];
+// thigh, calf, foot of each leg (people-rig.coax: 55 to 57 and 60 to 62); the head (6)
+EG_BODY_IK :: [3] AnimGraphIk.[
+  AnimGraphIk.{kind = ANIM_GRAPH_IK_FOOT, root = 55, mid = 56, end = 57, weight_param = EG_BODY_FOOT},
+  AnimGraphIk.{kind = ANIM_GRAPH_IK_FOOT, root = 60, mid = 61, end = 62, weight_param = EG_BODY_FOOT},
+  AnimGraphIk.{kind = ANIM_GRAPH_IK_AIM, end = 6, weight_param = EG_BODY_LOOK, limit = 0.7853982}];
+
+eg_body_graph :: () -> AnimGraph {
+  return AnimGraph.{params = EG_BODY_PARAMS, speed_param = EG_BODY_SPEED, joints = EG_BODY_JOINTS,
+                clips = EG_BODY_CLIP[..], states = EG_BODY_STATE[..], transitions = EG_BODY_TRANSITION[..],
+                spaces = EG_BODY_SPACE[..], points = EG_BODY_POINT[..], layers = EG_BODY_LAYER[..],
+                masks = EG_BODY_MASK[..], iks = EG_BODY_IK[..]};
+}
+
+#test "Everglade's graph is one the engine may run" {
+  #assert anim_graph_check(eg_body_graph()) == ANIM_GRAPH_OK;
+}
+#test "standing, walking and running by the speed; a fall beats an action, an action beats the ground" {
+  g := eg_body_graph(); p: AnimGraphPlay;
+  v := [8] f32.[0.3, 0, 0, 0, 0, 0, 0, 0];
+  p = anim_graph_step(g, p, v[..], 1, 0.02); #assert p.clip == 0 && p.state == EG_BODY_GROUND;
+  v[0] = 0.36; p = anim_graph_step(g, p, v[..], 1.02, 0.02); #assert p.clip == 1 && p.prev == 0 && p.fade == 0.18f32;
+  v[0] = 2.2; p = anim_graph_step(g, p, v[..], 1.04, 0.02); #assert p.clip == 1;
+  v[0] = 2.21; p = anim_graph_step(g, p, v[..], 1.06, 0.02); #assert p.clip == 2 && near(p.phase, 2.21 * 0.02 / 3.4, 0.000001);
+  v[2] = 1; v[3] = 3; v[4] = 1.07; p = anim_graph_step(g, p, v[..], 1.08, 0.02); #assert p.clip == 3 && p.state == EG_BODY_ACTION && p.t0 == 1.07f32;
+  v[1] = 1; v[5] = 1.09; p = anim_graph_step(g, p, v[..], 1.1, 0.02); #assert p.clip == 6 && p.state == EG_BODY_FALLEN && p.t0 == 1.09f32;
+}
