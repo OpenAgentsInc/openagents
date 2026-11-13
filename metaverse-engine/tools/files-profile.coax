@@ -1,0 +1,129 @@
+// Checks proto/world/files-v1.json against metaverse-engine/editor/file-wire.coax, the one codec of
+// attachments on a project and its worlds (GitHub #13468): the pinned list reads as what the profile
+// says of it and writes back the same bytes; each rejected list does not read; each request head
+// reads as its fields and its writer writes the same bytes; each rejected head does not read; a
+// part's answer and an upload's read and write back; the limits, kinds and extensions are the
+// module's; the profile names itself, its version and this check.
+// Usage: coax/web/tool.sh metaverse-engine/tools/files-profile.coax proto/world/files-v1.json
+#import "Basic";
+#load "../editor/file-wire.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+
+FWP_CHECK :: "coax/web/tool.sh metaverse-engine/tools/files-profile.coax proto/world/files-v1.json";
+FwpWork :: struct { l: [1] FwList; a: [1] FwAsk; wire: [FW_BYTES] u8; out: [FW_BYTES] u8; s: [FW_BYTES] u8; b: [2200] u8; c: [400] u8; nodes: [4096] JvNode; text: [65536] u8; }
+fwp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+fwp_lim :: (d: Jv, name: string) -> int { return jv_int(d, jv_get(d, jv_get(d, 0, "limits"), name), -1); }
+fwp_list :: (d: Jv, w: [] FwpWork) -> bool {
+  l := w[0].l[..]; one := jv_get(d, 0, "list");
+  wire := fwp_str(d, jv_get(d, one, "wire"), w[0].wire[..]);
+  if wire.count == 0 || !fw_read(l, wire, w[0].s[..]) || fw_write(l, w[0].out[..]) != wire { return false; }
+  if fwp_str(d, jv_get(d, one, "world"), w[0].b[..]) != fw_world_of(l) || fwp_str(d, jv_get(d, one, "project"), w[0].b[..]) != fw_project_of(l) { return false; }
+  if jv_int(d, jv_get(d, one, "count"), -1) != l[0].count || jv_int(d, jv_get(d, one, "bytes"), -1) != l[0].bytes { return false; }
+  files := jv_get(d, one, "files"); seen := 0;
+  if jv_len(d, files) != l[0].n || l[0].n < 3 { return false; }
+  for i: 0..<l[0].n {
+    f := jv_at(d, files, i); g := l[0].f[i];
+    if fwp_str(d, jv_get(d, f, "id"), w[0].b[..]) != fw_id_of(l, i) || fwp_str(d, jv_get(d, f, "scope"), w[0].b[..]) != FW_SCOPES[g.scope] || fwp_str(d, jv_get(d, f, "kind"), w[0].b[..]) != FW_KINDS[g.kind] { return false; }
+    if jv_int(d, jv_get(d, f, "bytes"), -1) != g.bytes || jv_int(d, jv_get(d, f, "at"), -1) != g.at || fwp_str(d, jv_get(d, f, "hash"), w[0].b[..]) != fw_hash_of(l, i) { return false; }
+    if fwp_str(d, jv_get(d, f, "by"), w[0].b[..]) != cast(string) l[0].f[i].by[0..<g.by_n] || fwp_str(d, jv_get(d, f, "name"), w[0].b[..]) != fw_name_of(l, i) { return false; }
+    if fwp_str(d, jv_get(d, f, "note"), w[0].b[..]) != fw_note_of(l, i) || fwp_str(d, jv_get(d, f, "tags"), w[0].b[..]) != fw_tags_of(l, i) || fwp_str(d, jv_get(d, f, "url"), w[0].b[..]) != fw_url_of(l, i) { return false; }
+    seen |= 1 << g.kind;
+  }
+  did := jv_get(d, one, "did");
+  if seen != 14 || l[0].did < 1 || fwp_str(d, jv_get(d, did, "word"), w[0].b[..]) != FW_DID[l[0].did] || fwp_str(d, jv_get(d, did, "id"), w[0].b[..]) != cast(string) l[0].did_id[..] { return false; }
+  empty := fwp_str(d, jv_get(d, jv_get(d, 0, "empty"), "wire"), w[0].wire[..]);
+  if empty.count == 0 || !fw_read(l, empty, w[0].s[..]) || l[0].n != 0 || l[0].did != 0 || fw_write(l, w[0].out[..]) != empty { return false; }
+  no := jv_get(d, 0, "rejected");
+  if jv_kind(d, no) != JV_ARRAY || jv_len(d, no) < 10 { return false; }
+  for i: 0..<jv_len(d, no) {
+    n := jv_str(d, jv_at(d, no, i), w[0].wire[..]);
+    if n < 0 || fw_read(l, cast(string) w[0].wire[0..<n], w[0].s[..]) { return false; }
+  }
+  return true;
+}
+// A head written again from what it read, by its own writer.
+fwp_rewrite :: (a: [] FwAsk, out: [] u8) -> string {
+  name := cast(string) a[0].name[0..<a[0].name_n]; note := cast(string) a[0].note[0..<a[0].note_n]; tags := cast(string) a[0].tags[0..<a[0].tags_n];
+  hash := ifx a[0].hashed then cast(string) a[0].hash[..] else "";
+  if a[0].what == FW_Q_ATTACH { return fw_attach_head(out, a[0].scope, a[0].bytes, a[0].from, name, note, tags, hash); }
+  if a[0].what == FW_Q_UPLOAD { return fw_upload_head(out, a[0].scope, a[0].bytes, name, note, tags, hash); }
+  if a[0].what == FW_Q_LINK { return fw_link_head(out, a[0].scope, cast(string) a[0].url[0..<a[0].url_n], name, note, tags); }
+  if a[0].what == FW_Q_EDIT { return fw_edit_head(out, cast(string) a[0].id[..], a[0].scope, name, note, tags); }
+  return fw_detach_head(out, cast(string) a[0].id[..]);
+}
+fwp_heads :: (d: Jv, w: [] FwpWork) -> bool {
+  a := w[0].a[..]; heads := jv_get(d, 0, "heads"); no := jv_get(d, 0, "rejected_heads"); seen := 0;
+  whats := [6] string.["", "attach", "upload", "link", "edit", "detach"];
+  if jv_len(d, heads) < 5 || jv_len(d, no) < 8 { return false; }
+  for i: 0..<jv_len(d, heads) {
+    h := jv_at(d, heads, i);
+    wire := fwp_str(d, jv_get(d, h, "wire"), w[0].wire[..]);
+    if wire.count == 0 || !fw_ask_read(a, wire) || a[0].at != wire.count || fwp_str(d, jv_get(d, h, "what"), w[0].b[..]) != whats[a[0].what] { return false; }
+    if a[0].what != FW_Q_DETACH && fwp_str(d, jv_get(d, h, "scope"), w[0].b[..]) != FW_SCOPES[a[0].scope] { return false; }
+    if jv_int(d, jv_get(d, h, "bytes"), -1) != a[0].bytes || jv_int(d, jv_get(d, h, "from"), -1) != a[0].from { return false; }
+    if fwp_str(d, jv_get(d, h, "name"), w[0].b[..]) != cast(string) a[0].name[0..<a[0].name_n] || fwp_str(d, jv_get(d, h, "note"), w[0].b[..]) != cast(string) a[0].note[0..<a[0].note_n] || fwp_str(d, jv_get(d, h, "tags"), w[0].b[..]) != cast(string) a[0].tags[0..<a[0].tags_n] { return false; }
+    if fwp_str(d, jv_get(d, h, "hash"), w[0].b[..]) != (ifx a[0].hashed then cast(string) a[0].hash[..] else "") || fwp_str(d, jv_get(d, h, "url"), w[0].b[..]) != cast(string) a[0].url[0..<a[0].url_n] { return false; }
+    if (a[0].what == FW_Q_EDIT || a[0].what == FW_Q_DETACH) && fwp_str(d, jv_get(d, h, "id"), w[0].b[..]) != cast(string) a[0].id[..] { return false; }
+    if fwp_rewrite(a, w[0].out[..]) != wire { return false; }
+    seen |= 1 << a[0].what;
+  }
+  if seen != 62 { return false; }
+  for i: 0..<jv_len(d, no) {
+    n := jv_str(d, jv_at(d, no, i), w[0].wire[..]);
+    if n < 0 || fw_ask_read(a, cast(string) w[0].wire[0..<n]) { return false; }
+  }
+  return true;
+}
+fwp_answers :: (d: Jv, w: [] FwpWork) -> bool {
+  part := jv_get(d, 0, "part");
+  wire := fwp_str(d, jv_get(d, part, "wire"), w[0].wire[..]);
+  p := fw_part_read(wire);
+  if !p.ok || fwp_str(d, jv_get(d, part, "hash"), w[0].b[..]) != cast(string) p.hash[..] || jv_int(d, jv_get(d, part, "got"), -1) != p.got || fw_part_answer(w[0].out[..], cast(string) p.hash[..], p.got) != wire { return false; }
+  ups := jv_get(d, 0, "uploaded");
+  if jv_len(d, ups) < 2 { return false; }
+  for i: 0..<jv_len(d, ups) {
+    one := jv_at(d, ups, i);
+    wire = fwp_str(d, jv_get(d, one, "wire"), w[0].wire[..]);
+    u := fw_uploaded_read(wire);
+    if !u.ok || fwp_str(d, jv_get(d, one, "how"), w[0].b[..]) != (ifx u.how == FW_PUT then "put" else "kept") || fwp_str(d, jv_get(d, one, "hash"), w[0].b[..]) != cast(string) u.hash[..] { return false; }
+    if jv_int(d, jv_get(d, one, "bytes"), -1) != u.bytes || fwp_str(d, jv_get(d, one, "url"), w[0].b[..]) != cast(string) u.url[0..<u.url_n] { return false; }
+    if fw_upload_answer(w[0].out[..], u.how == FW_PUT, cast(string) u.hash[..], u.bytes, cast(string) u.url[0..<u.url_n]) != wire { return false; }
+  }
+  no := jv_get(d, 0, "rejected_answers");
+  if jv_len(d, no) < 5 { return false; }
+  for i: 0..<jv_len(d, no) {
+    n := jv_str(d, jv_at(d, no, i), w[0].wire[..]);
+    if n < 0 { return false; }
+    t := cast(string) w[0].wire[0..<n];
+    if fw_part_read(t).ok || fw_uploaded_read(t).ok { return false; }
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: files-profile PROFILE.json"); return 2; }
+  w := [1] FwpWork.[FwpWork.{}]; d: [1] Jv; nb: [256] u8;
+  n := fs_read(args_at(a[..], 0), w[0].text[..]);
+  if n <= 0 || !jv_parse(d[..], cast(string) w[0].text[0..<n], w[0].nodes[..]) { tool_errln("files-profile: the profile does not read"); return 1; }
+  ok := fwp_str(d[0], jv_get(d[0], 0, "profile"), nb[..]) == "world-files-v1" && jv_int(d[0], jv_get(d[0], 0, "version"), -1) == 1;
+  ok = ok && fwp_str(d[0], jv_get(d[0], 0, "check"), nb[..]) == FWP_CHECK && fwp_str(d[0], jv_get(d[0], 0, "schema"), nb[..]) == FW_SCHEMA;
+  ok = ok && fwp_lim(d[0], "file") == FW_FILE_MAX && fwp_lim(d[0], "files") == FW_FILES_MAX && fwp_lim(d[0], "total") == FW_TOTAL_MAX && fwp_lim(d[0], "bytes") == FW_BYTES && fwp_lim(d[0], "head") == FW_HEAD;
+  ok = ok && fwp_lim(d[0], "name_bytes") == FW_NAME && fwp_lim(d[0], "note_bytes") == FW_NOTE && fwp_lim(d[0], "tags_bytes") == FW_TAGS && fwp_lim(d[0], "tag_bytes") == FW_TAG && fwp_lim(d[0], "tags") == FW_TAGS_N && fwp_lim(d[0], "url_bytes") == FW_URL;
+  kinds := jv_get(d[0], 0, "kinds"); exts := jv_get(d[0], 0, "extensions");
+  ok = ok && jv_len(d[0], kinds) == 3 && jv_len(d[0], exts) == FW_EXTS;
+  for k: 0..<3 { ok = ok && fwp_str(d[0], jv_at(d[0], kinds, k), nb[..]) == FW_KINDS[k + 1]; }
+  for k: 0..<FW_EXTS { ok = ok && fwp_str(d[0], jv_at(d[0], exts, k), nb[..]) == FW_EXT[k]; }
+  if !ok { tool_errln("files-profile: the profile's name, check, limits, kinds or extensions are not the module's"); return 1; }
+  if !fwp_list(d[0], w[..]) { tool_errln("files-profile: a list is not what the profile says, or a rejected one reads"); return 1; }
+  if !fwp_heads(d[0], w[..]) { tool_errln("files-profile: a request's head is not what the profile says, or a rejected one reads"); return 1; }
+  if !fwp_answers(d[0], w[..]) { tool_errln("files-profile: a part's or an upload's answer is not what the profile says, or a rejected one reads"); return 1; }
+  print("files-profile: ok (the list, the empty list, % rejected; % heads, % rejected; % answers rejected)\n", jv_len(d[0], jv_get(d[0], 0, "rejected")), jv_len(d[0], jv_get(d[0], 0, "heads")), jv_len(d[0], jv_get(d[0], 0, "rejected_heads")), jv_len(d[0], jv_get(d[0], 0, "rejected_answers")));
+  return 0;
+}

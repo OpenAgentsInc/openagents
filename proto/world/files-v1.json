@@ -1,0 +1,237 @@
+{
+ "profile": "world-files-v1",
+ "version": 1,
+ "title": "Attachments on a project and its worlds v1 (world.files.v1 and the world.file.* requests)",
+ "check": "coax/web/tool.sh metaverse-engine/tools/files-profile.coax proto/world/files-v1.json",
+ "spec": "docs/protocol/world-files-v1.md",
+ "schema": "world.files.v1",
+ "url": "/api/worlds/ID/files",
+ "about": "The reference files a maker attaches to a project or to one of its worlds (GitHub #13468): concept art, design documents and links. The list the editor's Files pane, the realm commands and the agent read; the requests that attach, link, change and detach; a part's answer and an upload's. The dev server's store and the API write the list; the editor and the realm commands write the requests. An attachment never reaches a player or a pack.",
+ "limits": {
+  "file": 26214400,
+  "files": 200,
+  "total": 1073741824,
+  "bytes": 180000,
+  "head": 1024,
+  "name_bytes": 100,
+  "note_bytes": 200,
+  "tags_bytes": 120,
+  "tag_bytes": 24,
+  "tags": 8,
+  "url_bytes": 300
+ },
+ "lines": [
+  "world.files.v1 WORLD|- PROJECT|- COUNT BYTES FILE FILES TOTAL",
+  "f ID world|project image|document|link BYTES HASH|- AT BY NAME",
+  "u URL",
+  "n NOTE",
+  "t TAGS",
+  "did attached|linked|changed|detached ID"
+ ],
+ "kinds": [
+  "image",
+  "document",
+  "link"
+ ],
+ "extensions": [
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "gif",
+  "md",
+  "markdown",
+  "txt",
+  "pdf"
+ ],
+ "list": {
+  "wire": "world.files.v1 splice verse 3 2048 26214400 200 1073741824\nf 00112233445566aa world image 2000 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1763000000000 local RaiderGarage.png\nn The raiders' garage at night\nt garage,raiders\nf 00112233445566cc project link 0 - 1763000000002 local The design doc\nu https://docs.google.com/document/d/abc\nt design\nf 00112233445566bb project document 48 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1763000000001 local Garage notes.md\ndid attached 00112233445566aa\n",
+  "world": "splice",
+  "project": "verse",
+  "count": 3,
+  "bytes": 2048,
+  "files": [
+   {
+    "id": "00112233445566aa",
+    "scope": "world",
+    "kind": "image",
+    "bytes": 2000,
+    "hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+    "at": 1763000000000,
+    "by": "local",
+    "name": "RaiderGarage.png",
+    "note": "The raiders' garage at night",
+    "tags": "garage,raiders",
+    "url": ""
+   },
+   {
+    "id": "00112233445566cc",
+    "scope": "project",
+    "kind": "link",
+    "bytes": 0,
+    "hash": "",
+    "at": 1763000000002,
+    "by": "local",
+    "name": "The design doc",
+    "note": "",
+    "tags": "design",
+    "url": "https://docs.google.com/document/d/abc"
+   },
+   {
+    "id": "00112233445566bb",
+    "scope": "project",
+    "kind": "document",
+    "bytes": 48,
+    "hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+    "at": 1763000000001,
+    "by": "local",
+    "name": "Garage notes.md",
+    "note": "",
+    "tags": "",
+    "url": ""
+   }
+  ],
+  "did": {
+   "word": "attached",
+   "id": "00112233445566aa"
+  }
+ },
+ "empty": {
+  "wire": "world.files.v1 - verse 0 0 26214400 200 1073741824\n"
+ },
+ "rejected": [
+  "",
+  "world.files.v2 splice - 0 0 26214400 200 1073741824\n",
+  "world.files.v1 - - 0 0 26214400 200 1073741824\n",
+  "world.files.v1 splice - 0 0 1 200 1073741824\n",
+  "world.files.v1 splice - 1 1 26214400 200 1073741824\nf 00112233445566bb project document 48 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1 local a.md\n",
+  "world.files.v1 splice verse 1 1 26214400 200 1073741824\nf 00112233445566bb world image 48 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1 local a.md\n",
+  "world.files.v1 splice verse 1 1 26214400 200 1073741824\nf 00112233445566bb world document 48 - 1 local a.md\n",
+  "world.files.v1 splice verse 1 1 26214400 200 1073741824\nf 00112233445566bb world link 0 - 1 local x\n",
+  "world.files.v1 splice verse 1 1 26214400 200 1073741824\nf 00112233445566bb world document 48 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1 local a.md\nt b\nn a\n",
+  "world.files.v1 splice verse 1 1 26214400 200 1073741824\nf 00112233445566bb world document 48 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1 local a.md\nt Big Tag\n",
+  "world.files.v1 splice verse 1 1 26214400 200 1073741824\nn hello\n",
+  "world.files.v1 splice verse 1 1 26214400 200 1073741824\nf 00112233445566bb world document 26214401 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1 local a.md\n",
+  "world.files.v1 splice verse 1 1 26214400 200 1073741824\nf 00112233445566bb world image 48 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1 local run.exe\n"
+ ],
+ "heads": [
+  {
+   "what": "attach",
+   "wire": "world.file.attach.v1 world 5 0 RaiderGarage.png\nn The garage\nt garage,raiders\n-\n",
+   "scope": "world",
+   "bytes": 5,
+   "from": 0,
+   "name": "RaiderGarage.png",
+   "note": "The garage",
+   "tags": "garage,raiders",
+   "hash": "",
+   "id": "",
+   "url": ""
+  },
+  {
+   "what": "attach",
+   "wire": "world.file.attach.v1 project 9 4 a b.md\n9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08\n",
+   "scope": "project",
+   "bytes": 9,
+   "from": 4,
+   "name": "a b.md",
+   "note": "",
+   "tags": "",
+   "hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+   "id": "",
+   "url": ""
+  },
+  {
+   "what": "upload",
+   "wire": "world.file.upload.v1 world 9 City.png\nt city\n9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08\n",
+   "scope": "world",
+   "bytes": 9,
+   "from": 0,
+   "name": "City.png",
+   "note": "",
+   "tags": "city",
+   "hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+   "id": "",
+   "url": ""
+  },
+  {
+   "what": "link",
+   "wire": "world.file.link.v1 project https://docs.google.com/x\nname The design doc\nt design\n",
+   "scope": "project",
+   "bytes": 0,
+   "from": 0,
+   "name": "The design doc",
+   "note": "",
+   "tags": "design",
+   "hash": "",
+   "id": "",
+   "url": "https://docs.google.com/x"
+  },
+  {
+   "what": "edit",
+   "wire": "world.file.edit.v1 00112233445566aa project\nname Garage.png\nn New note\n",
+   "scope": "project",
+   "bytes": 0,
+   "from": 0,
+   "name": "Garage.png",
+   "note": "New note",
+   "tags": "",
+   "hash": "",
+   "id": "00112233445566aa",
+   "url": ""
+  },
+  {
+   "what": "detach",
+   "wire": "world.file.detach.v1 00112233445566aa\n",
+   "scope": "world",
+   "bytes": 0,
+   "from": 0,
+   "name": "",
+   "note": "",
+   "tags": "",
+   "hash": "",
+   "id": "00112233445566aa",
+   "url": ""
+  }
+ ],
+ "rejected_heads": [
+  "",
+  "world.file.detach.v1 xyz\n",
+  "world.file.edit.v1 00112233445566aa world\nt a\nn b\n",
+  "world.file.attach.v1 elsewhere 1 0 a.md\n-\nx",
+  "world.file.link.v1 world https://example.com/x\nname a\nextra\n",
+  "world.file.attach.v1 project 9 4 a.md\n-\n",
+  "world.file.attach.v1 world 9 0 a/b.md\n-\n",
+  "world.file.upload.v1 world 9 City.png\nt city\n",
+  "world.file.link.v1 project javascript:alert(1)//x\nname x\n"
+ ],
+ "part": {
+  "wire": "world.file.part.v1 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 524288\n",
+  "hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+  "got": 524288
+ },
+ "uploaded": [
+  {
+   "wire": "world.file.upload.v1 put 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 12 https://storage.example/session/1\n",
+   "how": "put",
+   "hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+   "bytes": 12,
+   "url": "https://storage.example/session/1"
+  },
+  {
+   "wire": "world.file.upload.v1 kept 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 12 -\n",
+   "how": "kept",
+   "hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+   "bytes": 12,
+   "url": ""
+  }
+ ],
+ "rejected_answers": [
+  "",
+  "world.file.upload.v1 put x 1 -\n",
+  "world.file.upload.v1 kept 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 12 https://x.example/a\n",
+  "world.file.upload.v1 put 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 0 https://x.example/a\n",
+  "world.file.part.v1 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08\n",
+  "world.file.part.v1 abc 1\n"
+ ]
+}
