@@ -25,13 +25,17 @@
 		658B4C2F5F7EABC4715EB1E4 /* Native.plist in Resources */ = {isa = PBXBuildFile; fileRef = DA6976CE4AA8C31947C48C5D /* Native.plist */; };
 		6E5DC168044EA02417ED816B /* StarterApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C3236A8315C98ABF86224CB /* StarterApp.swift */; };
 		6EBCAD7693B6953906E65EA1 /* AppAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0AAC9508FA4369A9715A69 /* AppAuth.swift */; };
+		7AF8A667DDA6EC805E8356D3 /* OpenagentsAppUnit.c in Sources */ = {isa = PBXBuildFile; fileRef = A06EC60CB2CB2474370174C3 /* OpenagentsAppUnit.c */; };
 		8E4F97485AF1AF831DCB39E9 /* bip39-english.txt in Resources */ = {isa = PBXBuildFile; fileRef = 131BDA8ADB97609206195533 /* bip39-english.txt */; };
 		9B9E8E3B6C3F29DF2B6A3CCB /* WalletKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE5C04823E6E6E322FD7E33C /* WalletKeychain.swift */; };
 		9EDFF85EEFA09C5E405F0C99 /* Starter in Resources */ = {isa = PBXBuildFile; fileRef = 312A9EE9333FE46FFAED3D6F /* Starter */; };
+		A05D687346C45546701CEFF7 /* SharedAppUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84FCC7F13CC90E6C87B4D65D /* SharedAppUITests.swift */; };
+		A547AE3F03D7EADA997DE696 /* SharedAppViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BD4840ED2FA15B3276B9A93 /* SharedAppViewController.swift */; };
 		A82532704621FA268D0CA249 /* secp256k1.c in Sources */ = {isa = PBXBuildFile; fileRef = 29CE2F09F9A0B3457456014E /* secp256k1.c */; settings = {COMPILER_FLAGS = "-DENABLE_MODULE_EXTRAKEYS=1 -DENABLE_MODULE_SCHNORRSIG=1 -DECMULT_WINDOW_SIZE=8"; }; };
 		AAFF31B0E8810A7429EE6DA8 /* BreezKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9B32CD7EF30EADCBFE18124 /* BreezKey.swift */; };
 		B90F7595EC11FE241CB77910 /* NativeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C83152B91DFEEF873AAD56 /* NativeHost.swift */; };
 		C0B0BC79860337C450B78A5D /* PhoneSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9399FC48E429A1D3E4E5FAB5 /* PhoneSignIn.swift */; };
+		C77117B7CBCFC4CC0576E57C /* phone-drive.c in Sources */ = {isa = PBXBuildFile; fileRef = D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function"; }; };
 		D038A28C391888C7188F57E5 /* WalletBalance.c in Sources */ = {isa = PBXBuildFile; fileRef = BE3E54671A8869C147608A21 /* WalletBalance.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 		D3B1BBC9420E21741699D348 /* DeviceKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */; };
 		DACD4EFCA7D115FAA1A3D126 /* NativePackageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */; };
@@ -73,15 +77,19 @@
 		7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePackageTests.swift; sourceTree = "<group>"; };
 		776F82566A59AA4CF6654437 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8229C5D27BC40A99010E48D9 /* OpenAgents.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenAgents.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		84FCC7F13CC90E6C87B4D65D /* SharedAppUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedAppUITests.swift; sourceTree = "<group>"; };
 		88DAD8B0C2CFFD99B8FB4D20 /* StarterUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarterUITests.swift; sourceTree = "<group>"; };
 		910026A6E3B72DD866AF23FD /* OpenAgentsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OpenAgentsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9399FC48E429A1D3E4E5FAB5 /* PhoneSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSignIn.swift; sourceTree = "<group>"; };
+		9BD4840ED2FA15B3276B9A93 /* SharedAppViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedAppViewController.swift; sourceTree = "<group>"; };
 		9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
+		A06EC60CB2CB2474370174C3 /* OpenagentsAppUnit.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = OpenagentsAppUnit.c; sourceTree = "<group>"; };
 		ABE3F6DB32D91F73A83323E9 /* AppAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAnalytics.swift; sourceTree = "<group>"; };
 		BCFF9E80B2B385BCA6700E60 /* precomputed_ecmult_gen.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = precomputed_ecmult_gen.c; sourceTree = "<group>"; };
 		BE3E54671A8869C147608A21 /* WalletBalance.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = WalletBalance.c; sourceTree = "<group>"; };
 		BE5C04823E6E6E322FD7E33C /* WalletKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletKeychain.swift; sourceTree = "<group>"; };
 		BF0AAC9508FA4369A9715A69 /* AppAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAuth.swift; sourceTree = "<group>"; };
+		D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "phone-drive.c"; sourceTree = "<group>"; };
 		DA6976CE4AA8C31947C48C5D /* Native.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Native.plist; sourceTree = "<group>"; };
 		DCD62FA8D277D57B999CBF47 /* NativePolicy.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativePolicy.c; sourceTree = "<group>"; };
 		E9B32CD7EF30EADCBFE18124 /* BreezKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreezKey.swift; sourceTree = "<group>"; };
@@ -127,6 +135,7 @@
 			children = (
 				BF0AAC9508FA4369A9715A69 /* AppAuth.swift */,
 				9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */,
+				D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */,
 			);
 			name = apple;
 			path = ../shared/host/apple;
@@ -193,6 +202,16 @@
 			path = OpenAgents/Resources;
 			sourceTree = "<group>";
 		};
+		A9D443F63BB17301BE398B98 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				A06EC60CB2CB2474370174C3 /* OpenagentsAppUnit.c */,
+				9BD4840ED2FA15B3276B9A93 /* SharedAppViewController.swift */,
+			);
+			name = Shared;
+			path = OpenAgents/Shared;
+			sourceTree = "<group>";
+		};
 		ABD48D4B1B28A57624675E53 /* native */ = {
 			isa = PBXGroup;
 			children = (
@@ -207,6 +226,7 @@
 			isa = PBXGroup;
 			children = (
 				0ED6598EDE69B5D065A7D102 /* BalanceUITests.swift */,
+				84FCC7F13CC90E6C87B4D65D /* SharedAppUITests.swift */,
 				88DAD8B0C2CFFD99B8FB4D20 /* StarterUITests.swift */,
 			);
 			path = StarterUITests;
@@ -232,6 +252,7 @@
 				EBA77022E6429671290CDE34 /* OpenAgents */,
 				882357AF20ADF9EB870C07F6 /* Platform */,
 				A897E627F1493C3BC04958D1 /* Resources */,
+				A9D443F63BB17301BE398B98 /* Shared */,
 				45BCF8879F8A49E40240BBF7 /* SignIn */,
 				8A366ADC38979696589B7858 /* src */,
 				71A2ECE12A4F32216053EEC0 /* StarterTests */,
@@ -378,12 +399,15 @@
 				3EEE9F6858832B4BED499CC2 /* NativeWire.c in Sources */,
 				370177B40FC83B533F660A4C /* NostrKey.swift in Sources */,
 				1F3972F80AD727788C1649CC /* NostrSign.c in Sources */,
+				7AF8A667DDA6EC805E8356D3 /* OpenagentsAppUnit.c in Sources */,
 				C0B0BC79860337C450B78A5D /* PhoneSignIn.swift in Sources */,
 				F63C92AB22EF7A80B98AB547 /* PhoneSignin.c in Sources */,
+				A547AE3F03D7EADA997DE696 /* SharedAppViewController.swift in Sources */,
 				2CC0D955E1B50A311219BE38 /* SparkHost.swift in Sources */,
 				6E5DC168044EA02417ED816B /* StarterApp.swift in Sources */,
 				D038A28C391888C7188F57E5 /* WalletBalance.c in Sources */,
 				9B9E8E3B6C3F29DF2B6A3CCB /* WalletKeychain.swift in Sources */,
+				C77117B7CBCFC4CC0576E57C /* phone-drive.c in Sources */,
 				5FCD0C43CB70DA62BB5DE214 /* precomputed_ecmult.c in Sources */,
 				6367A5818F65ABDE05883A8E /* precomputed_ecmult_gen.c in Sources */,
 				A82532704621FA268D0CA249 /* secp256k1.c in Sources */,
@@ -395,6 +419,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				47402381B8C043A601D16232 /* BalanceUITests.swift in Sources */,
+				A05D687346C45546701CEFF7 /* SharedAppUITests.swift in Sources */,
 				647B0F6C417120E15A1A68A3 /* StarterUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

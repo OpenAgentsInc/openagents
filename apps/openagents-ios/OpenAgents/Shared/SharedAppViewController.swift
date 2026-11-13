@@ -211,7 +211,7 @@ private func sharedAppAnswer(_ op: UnsafePointer<CChar>?, _ out: UnsafeMutablePo
     guard let op, let out, cap > 0 else { return -1 }
     let text = MainActor.assumeIsolated { SharedAppViewController.shown?.answer(String(cString: op)) } ?? "the app is not shown yet"
     let bytes = Array(text.utf8.prefix(Int(cap) - 1))
-    out.withMemoryRebound(to: UInt8.self, capacity: max(1, bytes.count)) { o in for (i, b) in bytes.enumerated() { o[i] = b } }
+    for (i, b) in bytes.enumerated() { out[i] = CChar(bitPattern: b) }
     return Int32(bytes.count)
 }
 /// One frame of `clock +MS`, on the main thread.
