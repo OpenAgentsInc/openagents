@@ -158,9 +158,11 @@ small model or sign and verify a Nostr event), see
     again (briefly by default, the full walk with `--thorough`),
     with automatic rollback.
 - **The iOS app** ([`apps/openagents-ios/`](apps/openagents-ios/README.md))
-  is a minimal native home: the animated graph and HUD, running in Coax.
-  Start opens the Grid, the bare Metaverse realm, to walk around in. It
-  ships to the owner's TestFlight group as `com.openagents.app`.
+  is the [Coax Native starter](coax/native/README.md): Coax/Wasm and shared
+  components in a UIKit/WebKit shell, with optional signed Updates. Build
+  1068 replaces the earlier world/wallet interface and is in the Owner
+  TestFlight group as `com.openagents.app`. Native account and chat services
+  are installed so their Coax screens can arrive over the air.
 
 - **Pylons** sell spare compute on gaming computers for Bitcoin. A Pylon
   runs GPT-OSS for small tool use and the Elephant and Mammoth decision

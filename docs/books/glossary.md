@@ -64,9 +64,9 @@ that already touches the file (#13267 to #13269, #13280).
 | Coax | The language every book is written in. | Coax |
 | `coax0` | The bootstrap compiler. It emits C11, which also builds to WebAssembly, and shader functions for Metal and WGSL. | Coax 27 |
 | Coaxial | Deprecated public name for Coax Native Web. Existing technical ABI and protocol spellings retain their identity. | [coax/web.md](../../coax/web.md) |
-| Coax Native | The proposed shared Coax application framework for apps and websites: app state and actions, components, platform hosts/services, delivery and one agent interface. | [coax/native.md](../../coax/native.md) |
+| Coax Native | The shared Coax application framework design for apps and websites: app state and actions, components, platform hosts/services, delivery and one agent interface. The first iOS WebKit/Wasm starter runs; the native-control renderer remains proposed. | [coax/native.md](../../coax/native.md), [starter](../../coax/native/README.md) |
 | Coax Native Web | Coax Native's browser target: DOM text surfaces, GPU worlds and browser services, formerly Coaxial. | [coax/web.md](../../coax/web.md) |
-| Coax Native Updates | The proposed signed delivery of compatible Coax app code and content to an installed runtime, with staged activation and recovery. | [coax/native-updates.md](../../coax/native-updates.md) |
+| Coax Native Updates | Signed delivery of compatible Coax app code and content to an installed runtime, with staged activation and recovery. Package v1 runs in the first iOS starter; broader rollout and renderer profiles remain proposed. | [coax/native-updates.md](../../coax/native-updates.md) |
 | Metaverse Engine | The engine: the frame loop, the world, rendering, physics, rooms and the realm format. Named on 2026-10-31. | Metaverse Engine |
 | Metaverse Engine | The realm builder and world-creation tools on the Metaverse Engine. | Metaverse Engine Parts VI and X |
 | The Metaverse | The world that the Metaverse Engine runs: a set of realms on the open web. The `metaverse/` directory holds engine and realm code from before the engine had its own name. | Metaverse Engine Part VII |

@@ -19,6 +19,7 @@ undo was hand-rolled and had no redo, while the OpenAgents Metaverse Engine's ed
 
 | You need | Use | Where |
 | --- | --- | --- |
+| A mobile app foundation with shared Coax components, native account services and optional signed OTA code | The Coax Native starter, currently the iOS WebKit/Wasm profile | `coax/native/README.md`, `coax/native/starter/`, `apps/shared/native/`, `apps/openagents-ios/`; package codec and policy in `coax/native/updates-*.coax` |
 | A text box: typing, selection, caret, undo, paste, IME | The edit buffer | `components/core/edit.coax` |
 | Cmd/Ctrl+A, C, X, V and word deletion in a box on the website | The site's text keys | `apps/openagents-web/textkeys.coax` |
 | Buttons, toggles, sliders, tabs, lists, panels, bars | The control kit, drawn in a skin | `components/kit/controls.coax`, `components/skin/` |
