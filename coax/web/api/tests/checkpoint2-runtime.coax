@@ -66,20 +66,20 @@ c2_room :: (t:[]Ap,bin:string,dir:string,proxy_port:int,port:[]int)->int {
   until:=proc_now_ms()+5000;w:[1]HttpWork;out:[2048]u8;url:[1]Sb;sb(url[..],"http://127.0.0.1:");sb_int(url[..],port[0]);sb(url[..],"/health");none:[1]string;
   while h>=0&&proc_now_ms()<until{r:=http_do(w[..],"GET",sb_text(url[..]),none[0..<0],"",100,0,out[..]);if r.error==HTTP_OK&&r.code==200{return h;}ignored_11:=proc_line(h,20,out[..]);}return h;
 }
-c2_url :: (port:int,ticket:string,out:[]Sb)->string {sb_clear(out);sb(out,"ws://localhost:");sb_int(out,port);sb(out,"/api/room/relay/everglade/checkpoint-test?t=");sb(out,ticket);return sb_text(out);}
+c2_url :: (port:int,ticket:string,out:[]Sb)->string {sb_clear(out);sb(out,"ws://localhost:");sb_int(out,port);sb(out,"/api/room/relay/everglade/pair-e2-chkpt-1?t=");sb(out,ticket);return sb_text(out);}
 c2_ready :: (v:[]C2Client)->bool {until:=proc_now_ms()+10000;while !v[0].closed&&v[0].frames==0&&proc_now_ms()<until{c2_pump(v,50,false);}return v[0].frames>0&&v[0].own.id>=0;}
 c2_near :: (a:f32,b:f32)->bool {d:=a-b;return d>=-0.03&&d<=0.03;}
 c2_place_matches :: (v:[]C2Client,c:CharacterCapture)->bool {return c.ok&&c2_near(v[0].own.x,f32(c.n[13])/1000)&&c2_near(v[0].own.z,f32(c.n[15])/1000);}
 c2_metric::(s:string,key:string)->int{at:=0;while at<s.count{end:=at;while end<s.count&&s[end]!='\n'{end+=1;}line:=s[at..<end];if line.count>key.count&&line[0..<key.count]==key&&line[key.count]=='='{return ap_whole(line[key.count+1..<line.count]);}at=end+1;}return -1;}
 c2_column::(line:string,which:int)->string{at:=0;field:=0;while at<=line.count{end:=at;while end<line.count&&line[end]!='|'{end+=1;}if field==which{return line[at..<end];}field+=1;at=end+1;}return "";}
 c2_observed_capture::(text:string,c:CharacterCapture)->bool{at:=0;while at<text.count{end:=at;while end<text.count&&text[end]!='\n'{end+=1;}line:=text[at..<end];at=end+1;
-  if c2_column(line,0)=="saved"&&c2_column(line,1)=="checkpoint-test"&&c2_column(line,3)=="2"{
+  if c2_column(line,0)=="saved"&&c2_column(line,1)=="pair-e2-chkpt-1"&&c2_column(line,3)=="2"{
     return ap_whole(c2_column(line,4))==c.n[1]&&ap_whole(c2_column(line,5))==c.n[2]&&ap_whole(c2_column(line,6))==c.n[3]
       &&ap_whole(c2_column(line,7))>=30000&&ap_whole(c2_column(line,8))>=30000&&ap_whole(c2_column(line,9))>0&&c2_column(line,11)=="1"&&c2_column(line,12)=="1";
   }}return false;}
 #test "checkpoint telemetry oracle keeps owner process and accepted revision distinct from pending" {
   c:=cc_fixture();c.n[1]=7;c.n[2]=101;c.n[3]=12;
-  s:="checkpoint failures=4\ncheckpoint pending=1\nsaved|checkpoint-test|0|2|7|101|12|35000|34000|1762190000001|14|1|1\n";
+  s:="checkpoint failures=4\ncheckpoint pending=1\nsaved|pair-e2-chkpt-1|0|2|7|101|12|35000|34000|1762190000001|14|1|1\n";
   #assert c2_metric(s,"checkpoint failures")==4&&c2_metric(s,"checkpoint failure")== -1&&c2_observed_capture(s,c);
   c.n[3]=14;#assert !c2_observed_capture(s,c);
 }
@@ -136,7 +136,7 @@ c2_runtime :: (t:[]Ap,bin:string) {
   while proxy>=0&&proxy_port<=0&&proc_now_ms()<deadline{proxy_port=ap_whole(ap_trim(c2_read(dir,"port",pb[..])));proc_sleep(20);}
   ap_check(t,"crash2: fault proxy starts on its own port",proxy_port>0,"");
   p:[1]Player;ignored_25:=ap_player(t,p[..]);pid:=pl_id(p[..]);tb:[4096]u8;ignored_26:=c2_ticket(t,pl_key(p[..]),tb[..]);
-  c:=cc_fixture();c.pid_n=pid.count;for i:0..<pid.count{c.pid[i]=pid[i];}room:="checkpoint-test";c.room_n=room.count;for i:0..<room.count{c.room[i]=room[i];}
+  c:=cc_fixture();c.pid_n=pid.count;for i:0..<pid.count{c.pid[i]=pid[i];}room:="pair-e2-chkpt-1";c.room_n=room.count;for i:0..<room.count{c.room[i]=room[i];}
   pins:=wire_pins_own();c.n[1]=1;c.n[2]=1001;c.n[3]=1;c.n[4]=cxproc_wall_us()/1000;c.n[5]=c.n[4];c.n[6]=pins.engine;c.n[7]=pins.rules;c.n[8]=pins.content;c.n[9]=7;c.n[11]=100;c.n[12]=0;c.dead=false;c.state[0]=0;c.state[5]=0;
   c.n[13]=0;c.n[14]=2000;c.n[15]=-84000;ignored_27:=c2_post(t,c);
   ignored_28:=c2_file(dir,"mode","before");port:[1]int;server:=c2_room(t,bin,dir,proxy_port,port[..]);client:[1]C2Client;url:[1]Sb;
@@ -206,7 +206,7 @@ c2_capacity :: (t:[]Ap,bin:string) {
   port:[1]int;server:=c2_room(t,bin,dir,proxy_port,port[..]);c:[1]RelayConn;joined:=0;refused:=false;tx:[1]Sb;url:[1]Sb;mac:[64]u8;ticket:[4096]u8;
   for batch:0..<16{
     for seat:0..<16{
-      id:=batch*16+seat;sb_clear(tx[..]);sb(tx[..],"v2.p-cap2-");sb_int(tx[..],id);sb(tx[..],".0.-.checkpoint-test.");sb_int(tx[..],cxproc_wall_us()/1000+600000);sb(tx[..],".-g1");
+      id:=batch*16+seat;sb_clear(tx[..]);sb(tx[..],"v2.p-cap2-");sb_int(tx[..],id);sb(tx[..],".0.-.pair-e2-chkpt-1.");sb_int(tx[..],cxproc_wall_us()/1000+600000);sb(tx[..],".-g1");
       sig:=ap_room_mac(t,sb_text(tx[..]),mac[..]);sb(tx[..],".");sb(tx[..],sig);tk:=resume_ticket_wrap(t[0].room_key,sb_text(tx[..]),"-",ticket[..]);
       if relay_conn_open(c[..],c2_url(port[0],tk,url[..])){
         pin:[64]u8;sent:=relay_conn_send(c[..],cast(string)pin[0..<wire_put_pins(pin[..],0,wire_pins_own())]);hello:=relay_conn_send(c[..],"H 4 ranger.0.0.0 druid 0 Capacity");
@@ -218,7 +218,7 @@ c2_capacity :: (t:[]Ap,bin:string) {
     // Native rm_eg_begin reaps held seats even while checkpoint-gated.
     proc_sleep(16000);print("capacity2 batch=% joined=%\n",batch+1,joined);
   }
-  sb_clear(tx[..]);sb(tx[..],"v2.p-cap2-256.0.-.checkpoint-test.");sb_int(tx[..],cxproc_wall_us()/1000+600000);sb(tx[..],".-g1");sig:=ap_room_mac(t,sb_text(tx[..]),mac[..]);sb(tx[..],".");sb(tx[..],sig);tk:=resume_ticket_wrap(t[0].room_key,sb_text(tx[..]),"-",ticket[..]);
+  sb_clear(tx[..]);sb(tx[..],"v2.p-cap2-256.0.-.pair-e2-chkpt-1.");sb_int(tx[..],cxproc_wall_us()/1000+600000);sb(tx[..],".-g1");sig:=ap_room_mac(t,sb_text(tx[..]),mac[..]);sb(tx[..],".");sb(tx[..],sig);tk:=resume_ticket_wrap(t[0].room_key,sb_text(tx[..]),"-",ticket[..]);
   admitted:=relay_conn_open(c[..],c2_url(port[0],tk,url[..]));refused=!admitted;
   if admitted{rc_shut(c[..]);}
   w:[1]HttpWork;body:[2048]u8;health:[1]Sb;sb(health[..],"http://127.0.0.1:");sb_int(health[..],port[0]);sb(health[..],"/health");r:=http_do(w[..],"GET",sb_text(health[..]),none[0..<0],"",2000,0,body[..]);text:=cast(string)body[0..<r.n];

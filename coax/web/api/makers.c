@@ -78,7 +78,7 @@ static void answer(const request *q, PGconn *db, const char *sql, int n, const c
   PGresult *r = PQexecParams(db, sql, n, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     api_log("makers: %s", PQerrorMessage(db));
-    api_json(q->fd, 500, "{\"error\":\"not kept\"}");
+    api_error(q->fd, 500, "not kept");
   } else api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
   PQclear(r);
 }
@@ -87,11 +87,11 @@ static void answer(const request *q, PGconn *db, const char *sql, int n, const c
 static bool who_asks(const request *q, PGconn *db, char who[65], bool post) {
   bool signed_req = false, payload = false, unseen = false;
   if (!site_identity(q, db, who, &signed_req, &payload, &unseen)) {
-    api_json(q->fd, 401, "{\"error\":\"log in first\"}");
+    api_error(q->fd, 401, "log in first");
     return false;
   }
   if (signed_req && post && (!payload || !unseen)) {   // a signed write binds its body, once
-    api_json(q->fd, 401, "{\"error\":\"log in first\"}");
+    api_error(q->fd, 401, "log in first");
     return false;
   }
   return true;
@@ -100,15 +100,15 @@ static bool who_asks(const request *q, PGconn *db, char who[65], bool post) {
 static void make_code(const request *q, PGconn *db, const char *realm) {
   char who[65];
   int s = admin_who(q, db, who);
-  if (s) { api_json(q->fd, s, s == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}"); return; }
+  if (s) { api_error(q->fd, s, s == 403 ? "admins only" : "log in as an admin"); return; }
   unsigned char raw[16]; char code[33];
   int fd = open("/dev/urandom", O_RDONLY);
-  if (fd < 0 || read(fd, raw, sizeof raw) != (ssize_t)sizeof raw) { if (fd >= 0) close(fd); api_json(q->fd, 503, "{\"error\":\"no randomness\"}"); return; }
+  if (fd < 0 || read(fd, raw, sizeof raw) != (ssize_t)sizeof raw) { if (fd >= 0) close(fd); api_error(q->fd, 503, "no randomness"); return; }
   close(fd);
   for (int i = 0; i < 16; i++) snprintf(code + 2 * i, 3, "%02x", raw[i]);
   const char *v[3] = {realm, code, who};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x::text FROM makers.make_code($1, $2, $3) x", 3, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("makers: code: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not kept\"}"); }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("makers: code: %s", PQerrorMessage(db)); api_error(q->fd, 500, "not kept"); }
   else if (atoi(PQgetvalue(r, 0, 0)) != 200) api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
   else {
     char out[512];
@@ -230,9 +230,9 @@ typedef void (*answer_fn)(int fd, PGconn *db, const char *slug, const char *a, c
 static void in_child(int fd, const char *slug, const char *a, const char *b, answer_fn answer_with) {
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
-  if (pid != 0) { if (pid < 0 && fd >= 0) api_json(fd, 503, "{\"error\":\"busy\"}"); return; }
+  if (pid != 0) { if (pid < 0 && fd >= 0) api_error(fd, 503, "busy"); return; }
   PGconn *db = api_db_new();
-  if (!db) { if (fd >= 0) api_json(fd, 503, "{\"error\":\"no database\"}"); _exit(0); }
+  if (!db) { if (fd >= 0) api_error(fd, 503, "no database"); _exit(0); }
   if (answer_with) answer_with(fd, db, slug, a, b);
   if (fd >= 0) close(fd);
   run_payouts(db);
@@ -241,7 +241,7 @@ static void in_child(int fd, const char *slug, const char *a, const char *b, ans
 }
 static void sql_answer(int fd, PGconn *db, const char *sql, int n, const char *const *v) {
   PGresult *r = PQexecParams(db, sql, n, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("makers: %s", PQerrorMessage(db)); api_json(fd, 500, "{\"error\":\"not kept\"}"); }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("makers: %s", PQerrorMessage(db)); api_error(fd, 500, "not kept"); }
   else api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
   PQclear(r);
 }
@@ -249,8 +249,8 @@ static void sql_answer(int fd, PGconn *db, const char *sql, int n, const char *c
 static void mp_refuse(int fd, int64_t code) {
   coax_string w = mp_text(code);
   char json[400];
-  snprintf(json, sizeof json, "{\"error\":\"%.*s\"}", (int)w.count, w.data);
-  api_json(fd, (int)mp_status(code), json);
+  snprintf(json, sizeof json, "%.*s", (int)w.count, w.data);
+  api_error(fd, (int)mp_status(code), json);
 }
 // The maker's own invoice for sats, from their address addr, checked and kept: a tip for realm slug
 // (listing NULL) or player key's purchase of listing. reports: the player's wallet reports the
@@ -281,7 +281,7 @@ static void direct_new(int fd, PGconn *db, const char *slug, const char *listing
   int kept = PQresultStatus(k) == PGRES_TUPLES_OK && PQntuples(k) == 1 ? atoi(PQgetvalue(k, 0, 0)) : 500;
   if (kept == 500) api_log("makers: keep: %s", PQerrorMessage(db));
   PQclear(k);
-  if (kept == 500) { api_json(fd, 500, "{\"error\":\"not kept\"}"); return; }
+  if (kept == 500) { api_error(fd, 500, "not kept"); return; }
   if (kept != 200) { mp_refuse(fd, kept == 502 ? MP_BAD : mp_issue(kind, kept != 404, false, true, true)); return; }
   const char *av[3] = {q.payment_hash, q.pr, exp};
   sql_answer(fd, db, "SELECT 200, (jsonb_build_object('invoice', $2::text, 'payment_hash', $1::text, 'expires', $3::bigint) || makers.direct_shown($1))::text", 3, av);
@@ -309,7 +309,7 @@ static void direct_check(int fd, PGconn *db, const char *slug, const char *hash,
     int st = PQresultStatus(k) == PGRES_TUPLES_OK && PQntuples(k) == 1 ? atoi(PQgetvalue(k, 0, 0)) : 500;
     if (st == 500) api_log("makers: confirm: %s", PQerrorMessage(db));
     PQclear(k);
-    if (st != 200) { api_json(fd, st == 500 ? 500 : 409, "{\"error\":\"not counted; ask again\"}"); return; }
+    if (st != 200) { api_error(fd, st == 500 ? 500 : 409, "not counted; ask again"); return; }
     api_log("makers: a payment to %s's maker confirmed by %s", slug, cv[1]);
   }
   int status = (int)mp_state_status(state);
@@ -326,7 +326,7 @@ static void tip_new(int fd, PGconn *db, const char *slug, const char *body, cons
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text, x->>'sats', x->>'lightning', "
                                  "(SELECT count(*) FROM makers.tips WHERE created > now() - interval '1 minute') "
                                  "FROM makers.tip_terms($1, $2, $3::bigint, $4::bigint) x", 4, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("makers: tip: %s", PQerrorMessage(db)); api_json(fd, 500, "{\"error\":\"not kept\"}"); PQclear(r); return; }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("makers: tip: %s", PQerrorMessage(db)); api_error(fd, 500, "not kept"); PQclear(r); return; }
   int status = atoi(PQgetvalue(r, 0, 0));
   if (status != 200) { api_json(fd, status, PQgetvalue(r, 0, 1)); PQclear(r); return; }
   char sats[24], addr[200];
@@ -340,12 +340,12 @@ static void tip_new(int fd, PGconn *db, const char *slug, const char *body, cons
 static void tip_check(int fd, PGconn *db, const char *slug, const char *hash, const char *pre) {
   const char *dv[2] = {hash, slug};
   PGresult *d = PQexecParams(db, "SELECT x::text, (x->>'found')::boolean AND NOT (x->>'direct')::boolean FROM makers.direct_facts($1, $2, NULL, NULL) x", 2, NULL, dv, NULL, NULL, 0);
-  if (PQresultStatus(d) != PGRES_TUPLES_OK || PQntuples(d) != 1) { api_json(fd, 500, "{\"error\":\"not kept\"}"); PQclear(d); return; }
+  if (PQresultStatus(d) != PGRES_TUPLES_OK || PQntuples(d) != 1) { api_error(fd, 500, "not kept"); PQclear(d); return; }
   if (strcmp(PQgetvalue(d, 0, 1), "t")) { direct_check(fd, db, slug, hash, pre, PQgetvalue(d, 0, 0)); PQclear(d); return; }
   PQclear(d);
   const char *v[2] = {slug, hash};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x->>'state', x->>'invoice', (x - 'status' - 'invoice')::text FROM makers.tip_state($1, $2) x", 2, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_json(fd, 500, "{\"error\":\"not kept\"}"); PQclear(r); return; }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_error(fd, 500, "not kept"); PQclear(r); return; }
   if (atoi(PQgetvalue(r, 0, 0)) != 200 || strcmp(PQgetvalue(r, 0, 1), "open")) { api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 3)); PQclear(r); return; }
   char body[2400], *w = NULL;
   snprintf(body, sizeof body, "{\"invoice\":\"%s\"}", PQgetvalue(r, 0, 2));
@@ -385,21 +385,21 @@ bool makers_route(const request *q) {
   const char *slash = strchr(realm, '/');
   size_t n = slash ? (size_t)(slash - realm) : strlen(realm);
   const char *what = slash ? slash + 1 : "";
-  if (!slug_ok(realm, n)) { api_json(q->fd, 404, "{\"error\":\"no such world\"}"); return true; }
+  if (!slug_ok(realm, n)) { api_error(q->fd, 404, "no such world"); return true; }
   char slug[65]; memcpy(slug, realm, n); slug[n] = 0;
   bool post = !strcmp(q->method, "POST");
   char from[256];
   if (post && api_header(q, "Origin", from, sizeof from) && strcmp(from, origin())) {
-    api_json(q->fd, 403, "{\"error\":\"cross-site\"}");
+    api_error(q->fd, 403, "cross-site");
     return true;
   }
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { api_error(q->fd, 503, "no database"); return true; }
   if (admin) {
     if (!strcmp(slug, "payouts")) {   // the payouts as lines, and run the due ones
       char who[65];
       int st = admin_who(q, db, who);
-      if (st) { api_json(q->fd, st, st == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}"); return true; }
+      if (st) { api_error(q->fd, st, st == 403 ? "admins only" : "log in as an admin"); return true; }
       if (post && !strcmp(what, "run")) {   // every payout not sent is due now
         PGresult *u = PQexec(db, "UPDATE makers.payouts SET next_try = now() WHERE state <> 'sent' AND (lease IS NULL OR lease < now())");
         PQclear(u);
@@ -411,17 +411,17 @@ bool makers_route(const request *q) {
       PQclear(r);
       return true;
     }
-    if (!post) { api_json(q->fd, 405, "{\"error\":\"POST\"}"); return true; }
+    if (!post) { api_error(q->fd, 405, "POST"); return true; }
     if (!strcmp(what, "code")) { make_code(q, db, slug); return true; }
     if (!strcmp(what, "gift")) {
       char who[65];
       int st = admin_who(q, db, who);
-      if (st) { api_json(q->fd, st, st == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}"); return true; }
+      if (st) { api_error(q->fd, st, st == 403 ? "admins only" : "log in as an admin"); return true; }
       char *body = body_of(q);
       const char *v[3] = {slug, body ? body : "{}", env_or("OA_MAKER_GIFT_MAX_SATS", "20000")};
       PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM makers.gift($1, ($2::jsonb->>'sats')::bigint, $3::bigint) x", 3, NULL, v, NULL, NULL, 0);
       free(body);
-      if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("makers: gift: %s", PQerrorMessage(db)); api_json(q->fd, 400, "{\"error\":\"sats must be a whole number\"}"); }
+      if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("makers: gift: %s", PQerrorMessage(db)); api_error(q->fd, 400, "sats must be a whole number"); }
       else {
         int status = atoi(PQgetvalue(r, 0, 0));
         api_json(q->fd, status, PQgetvalue(r, 0, 1));
@@ -430,18 +430,18 @@ bool makers_route(const request *q) {
       PQclear(r);
       return true;
     }
-    api_json(q->fd, 404, "{\"error\":\"no such route\"}");
+    api_error(q->fd, 404, "no such route");
     return true;
   }
   if (post && !strcmp(what, "tip")) {
-    if (q->body_len > 512) { api_json(q->fd, 413, "{\"error\":\"too big\"}"); return true; }
+    if (q->body_len > 512) { api_error(q->fd, 413, "too big"); return true; }
     char body[520]; memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
     in_child(q->fd, slug, q->body_len ? body : "{}", team_asks(q, db) ? "true" : "false", tip_new);
     return true;
   }
   if (post && !strncmp(what, "tip/", 4)) {
-    if (!hex64(what + 4)) { api_json(q->fd, 404, "{\"error\":\"no such tip\"}"); return true; }
-    if (q->body_len > 512) { api_json(q->fd, 413, "{\"error\":\"too big\"}"); return true; }
+    if (!hex64(what + 4)) { api_error(q->fd, 404, "no such tip"); return true; }
+    if (q->body_len > 512) { api_error(q->fd, 413, "too big"); return true; }
     read_wallet(q, db);
     in_child(q->fd, slug, what + 4, asked_pre, tip_check);
     return true;
@@ -453,11 +453,11 @@ bool makers_route(const request *q) {
     answer(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM makers.of($1, $2) x", 2, v);
     return true;
   }
-  if (!post || (*what && strcmp(what, "claim"))) { api_json(q->fd, post ? 404 : 405, post ? "{\"error\":\"no such route\"}" : "{\"error\":\"POST\"}"); return true; }
+  if (!post || (*what && strcmp(what, "claim"))) { api_error(q->fd, post ? 404 : 405, post ? "no such route" : "POST"); return true; }
   char who[65];
   if (!who_asks(q, db, who, true)) return true;
   char *body = body_of(q);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+  if (!body) { api_error(q->fd, 503, "memory"); return true; }
   const char *v[3] = {slug, who, body};
   if (*what) {
     answer(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM makers.claim($1, $2, $3) x", 3, v);
@@ -494,7 +494,7 @@ static void buy_new(int fd, PGconn *db, const char *id, const char *key, const c
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status' - 'lightning')::text, x->>'sats', x->>'lightning', "
                                  "(SELECT count(*) FROM makers.tips WHERE created > now() - interval '1 minute') "
                                  "FROM makers.buy_terms($1::bigint, makers.player_of($2)) x", 2, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("upgrades: buy: %s", PQerrorMessage(db)); api_json(fd, 500, "{\"error\":\"not kept\"}"); PQclear(r); return; }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("upgrades: buy: %s", PQerrorMessage(db)); api_error(fd, 500, "not kept"); PQclear(r); return; }
   int status = atoi(PQgetvalue(r, 0, 0));
   if (status != 200) { api_json(fd, status, PQgetvalue(r, 0, 1)); PQclear(r); return; }
   char sats[24], addr[200];
@@ -508,13 +508,13 @@ static void buy_new(int fd, PGconn *db, const char *id, const char *key, const c
 static void buy_check(int fd, PGconn *db, const char *id, const char *hash, const char *key) {
   const char *dv[3] = {hash, id, key};
   PGresult *d = PQexecParams(db, "SELECT x::text, (x->>'found')::boolean AND NOT (x->>'direct')::boolean FROM makers.direct_facts($1, NULL, $2::bigint, makers.player_of($3)) x", 3, NULL, dv, NULL, NULL, 0);
-  if (PQresultStatus(d) != PGRES_TUPLES_OK || PQntuples(d) != 1) { api_json(fd, 500, "{\"error\":\"not kept\"}"); PQclear(d); return; }
+  if (PQresultStatus(d) != PGRES_TUPLES_OK || PQntuples(d) != 1) { api_error(fd, 500, "not kept"); PQclear(d); return; }
   if (strcmp(PQgetvalue(d, 0, 1), "t")) { direct_check(fd, db, id, hash, asked_pre, PQgetvalue(d, 0, 0)); PQclear(d); return; }
   PQclear(d);
   const char *v[3] = {id, hash, key};
   const char *q = "SELECT (x->>'status')::int, x->>'state', x->>'invoice', (x - 'status' - 'invoice')::text FROM makers.buy_state($1::bigint, $2, makers.player_of($3)) x";
   PGresult *r = PQexecParams(db, q, 3, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_json(fd, 500, "{\"error\":\"not kept\"}"); PQclear(r); return; }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_error(fd, 500, "not kept"); PQclear(r); return; }
   if (atoi(PQgetvalue(r, 0, 0)) != 200 || strcmp(PQgetvalue(r, 0, 1), "open")) { api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 3)); PQclear(r); return; }
   char body[2400], *w = NULL;
   snprintf(body, sizeof body, "{\"invoice\":\"%s\"}", PQgetvalue(r, 0, 2));
@@ -543,16 +543,16 @@ bool upgrades_route(const request *q) {
   if (!admin && strncmp(q->path, UP_PREFIX, sizeof UP_PREFIX - 1)) return false;
   bool post = !strcmp(q->method, "POST");
   char from[256];
-  if (post && api_header(q, "Origin", from, sizeof from) && strcmp(from, origin())) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
+  if (post && api_header(q, "Origin", from, sizeof from) && strcmp(from, origin())) { api_error(q->fd, 403, "cross-site"); return true; }
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { api_error(q->fd, 503, "no database"); return true; }
   char who[65] = "";
   if (admin) {
     int st = admin_who(q, db, who);
-    if (st) { api_json(q->fd, st, st == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}"); return true; }
+    if (st) { api_error(q->fd, st, st == 403 ? "admins only" : "log in as an admin"); return true; }
     const char *rest = q->path + sizeof UP_ADMIN - 1;
     if (!*rest || !strcmp(rest, "/")) {
-      if (post) { api_json(q->fd, 405, "{\"error\":\"GET\"}"); return true; }
+      if (post) { api_error(q->fd, 405, "GET"); return true; }
       PGresult *r = PQexec(db, "SELECT makers.listing_lines()");
       const char *t = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 ? PQgetvalue(r, 0, 0) : "";
       api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, t, strlen(t));
@@ -561,7 +561,7 @@ bool upgrades_route(const request *q) {
     }
     const char *id = rest + 1, *slash = strchr(id, '/');
     if (!post || !slash || !digits_ok(id, (size_t)(slash - id)) || (strcmp(slash, "/approve") && strcmp(slash, "/reject"))) {
-      api_json(q->fd, post ? 404 : 405, post ? "{\"error\":\"no such route\"}" : "{\"error\":\"POST\"}"); return true;
+      api_error(q->fd, post ? 404 : 405, post ? "no such route" : "POST"); return true;
     }
     char ids[16]; snprintf(ids, sizeof ids, "%.*s", (int)(slash - id), id);
     const char *v[3] = {ids, who, !strcmp(slash, "/approve") ? "approved" : "rejected"};
@@ -579,10 +579,10 @@ bool upgrades_route(const request *q) {
       answer(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM makers.upgrades(makers.player_of($1), $2::boolean) x", 2, v);
       return true;
     }
-    if (q->body_len > 1024) { api_json(q->fd, 413, "{\"error\":\"too big\"}"); return true; }
+    if (q->body_len > 1024) { api_error(q->fd, 413, "too big"); return true; }
     if (!who_asks(q, db, who, true)) return true;
     char *body = body_of(q);
-    if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+    if (!body) { api_error(q->fd, 503, "memory"); return true; }
     const char *v[4] = {who, body, env_or("OA_UPGRADE_MIN_SATS", "10"), env_or("OA_UPGRADE_MAX_SATS", "100000")};
     answer(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM makers.listing_new($1, $2, $3::bigint, $4::bigint) x", 4, v);
     free(body);
@@ -590,8 +590,8 @@ bool upgrades_route(const request *q) {
     return true;
   }
   const char *slash = strchr(rest, '/');
-  if (!slash || !digits_ok(rest, (size_t)(slash - rest))) { api_json(q->fd, 404, "{\"error\":\"no such listing\"}"); return true; }
-  if (!post) { api_json(q->fd, 405, "{\"error\":\"POST\"}"); return true; }
+  if (!slash || !digits_ok(rest, (size_t)(slash - rest))) { api_error(q->fd, 404, "no such listing"); return true; }
+  if (!post) { api_error(q->fd, 405, "POST"); return true; }
   char id[16]; snprintf(id, sizeof id, "%.*s", (int)(slash - rest), rest);
   const char *what = slash + 1;
   if (!strcmp(what, "wear")) {
@@ -600,8 +600,8 @@ bool upgrades_route(const request *q) {
     return true;
   }
   if (!strncmp(what, "buy/", 4)) {
-    if (!hex64(what + 4)) { api_json(q->fd, 404, "{\"error\":\"no such purchase\"}"); return true; }
-    if (q->body_len > 512) { api_json(q->fd, 413, "{\"error\":\"too big\"}"); return true; }
+    if (!hex64(what + 4)) { api_error(q->fd, 404, "no such purchase"); return true; }
+    if (q->body_len > 512) { api_error(q->fd, 413, "too big"); return true; }
     read_wallet(q, db);
     char hash[65]; snprintf(hash, sizeof hash, "%s", what + 4);
     char keyc[160]; snprintf(keyc, sizeof keyc, "%s", key);
@@ -609,10 +609,10 @@ bool upgrades_route(const request *q) {
     in_child(q->fd, id, hash, keyc, buy_check);
     return true;
   }
-  if (strcmp(what, "buy")) { api_json(q->fd, 404, "{\"error\":\"no such route\"}"); return true; }
-  if (q->body_len > 512) { api_json(q->fd, 413, "{\"error\":\"too big\"}"); return true; }
+  if (strcmp(what, "buy")) { api_error(q->fd, 404, "no such route"); return true; }
+  if (q->body_len > 512) { api_error(q->fd, 413, "too big"); return true; }
   char *body = body_of(q);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+  if (!body) { api_error(q->fd, 503, "memory"); return true; }
   char pay[16];
   jget(db, body, "pay", pay, sizeof pay);
   free(body);

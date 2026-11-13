@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package openagents.api.v1alpha1;
+
+// What coax/web/api/makers.c answers, route by route (Protocol, GitHub #13250; profile
+// api-routes; docs/protocol/api-routes-v1alpha1.md). Each message names the members
+// of one answer as they ship: json_name is the key on the wire, a `bytes` member is
+// JSON carried as it came, and a member may be absent or null. The messages were
+// read off a run of the API suite and are held to every later run:
+// proto/verse/api-routes-v1alpha1.json holds real answers and their routes, and
+// coax/web/api/routes-goldens.coax holds each answer's keys to its message here.
+// A refusal with only its words is ErrorReply (error.proto). Most bodies are built
+// in SQL; what the C builds goes through a Coax unit.
+
+// GET /api/playtest/makers/* 200
+message MakersMakersOne {
+  optional string realm = 1 [json_name = "realm"];
+  optional string state = 2 [json_name = "state"];
+  optional string name = 3 [json_name = "name"];
+  optional string pubkey = 4 [json_name = "pubkey"];
+  optional bool mine = 5 [json_name = "mine"];
+  optional string lightning = 6 [json_name = "lightning"];
+}
+
+// POST /api/admin/makers/*/code 200
+message MakersMakersOneCodePost {
+  optional string realm = 1 [json_name = "realm"];
+  optional string code = 2 [json_name = "code"];
+  optional string link = 3 [json_name = "link"];
+}
+
+// POST /api/admin/makers/*/gift 200
+message MakersMakersOneGiftPost {
+  optional string tip = 1 [json_name = "tip"];
+  optional int64 sats = 2 [json_name = "sats"];
+}
+
+// POST /api/admin/makers/*/run 200
+message MakersMakersOneRunPost {
+  optional bool running = 1 [json_name = "running"];
+}
+
+// POST /api/playtest/makers/* 200; POST /api/playtest/makers/*/claim 200
+message MakersMakersOnePost {
+  optional string name = 1 [json_name = "name"];
+  optional string realm = 2 [json_name = "realm"];
+  optional string lightning = 3 [json_name = "lightning"];
+}
+
+// POST /api/playtest/makers/*/tip 200
+message MakersMakersOneTipPost {
+  optional string to_ = 1 [json_name = "to"];
+  optional int64 sats = 2 [json_name = "sats"];
+  optional string bonus = 3 [json_name = "bonus"];
+  optional string confirm = 4 [json_name = "confirm"];
+  optional int64 expires = 5 [json_name = "expires"];
+  optional string invoice = 6 [json_name = "invoice"];
+  optional string payment_hash = 7 [json_name = "payment_hash"];
+}
+
+// POST /api/playtest/makers/*/tip/* 200
+message MakersMakersOneTipOnePost {
+  optional string to_ = 1 [json_name = "to"];
+  optional int64 sats = 2 [json_name = "sats"];
+  optional string bonus = 3 [json_name = "bonus"];
+  optional string state = 4 [json_name = "state"];
+  optional string confirm = 5 [json_name = "confirm"];
+  optional string payout = 6 [json_name = "payout"];
+}
+
+// GET /api/playtest/upgrades/* 200
+message UpgradesUpgradesOne {
+  repeated UpgradesUpgradesOneTop top = 1 [json_name = "top"];
+  optional bool admin = 2 [json_name = "admin"];
+  repeated UpgradesUpgradesOneTop pending = 3 [json_name = "pending"];
+  optional UpgradesUpgradesOneTop wearing = 4 [json_name = "wearing"];   // or null
+}
+
+message UpgradesUpgradesOneTop {
+  optional string by = 1 [json_name = "by"];
+  optional int64 id = 2 [json_name = "id"];
+  optional string look = 3 [json_name = "look"];
+  optional string name = 4 [json_name = "name"];
+  optional int64 sats = 5 [json_name = "sats"];
+  optional bool owned = 6 [json_name = "owned"];
+  optional string state = 7 [json_name = "state"];
+}
+
+// POST /api/admin/upgrades/*/approve 200; POST /api/admin/upgrades/*/reject 200; POST /api/playtest/upgrades/* 200
+message UpgradesUpgradesOnePost {
+  optional int64 id = 1 [json_name = "id"];
+  optional string state = 2 [json_name = "state"];
+}
+
+// POST /api/playtest/upgrades/*/buy 200
+message UpgradesUpgradesOneBuyPost {
+  optional int64 id = 1 [json_name = "id"];
+  optional string to_ = 2 [json_name = "to"];
+  optional string look = 3 [json_name = "look"];
+  optional int64 sats = 4 [json_name = "sats"];
+  optional string bonus = 5 [json_name = "bonus"];
+  optional string confirm = 6 [json_name = "confirm"];
+  optional int64 expires = 7 [json_name = "expires"];
+  optional string invoice = 8 [json_name = "invoice"];
+  optional string payment_hash = 9 [json_name = "payment_hash"];
+}
+
+// POST /api/playtest/upgrades/*/buy/* 200
+message UpgradesUpgradesOneBuyOnePost {
+  optional int64 id = 1 [json_name = "id"];
+  optional string to_ = 2 [json_name = "to"];
+  optional string look = 3 [json_name = "look"];
+  optional int64 sats = 4 [json_name = "sats"];
+  optional string bonus = 5 [json_name = "bonus"];
+  optional string state = 6 [json_name = "state"];
+  optional string confirm = 7 [json_name = "confirm"];
+}
+
+// POST /api/playtest/upgrades/*/wear 200
+message UpgradesUpgradesOneWearPost {
+  optional string look = 1 [json_name = "look"];
+  optional int64 id = 2 [json_name = "id"];
+}

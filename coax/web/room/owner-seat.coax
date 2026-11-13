@@ -1,24 +1,52 @@
 // One seat held through a room's pause and resume, for the owner check (#12834,
 // coax/web/api/tests/room_checks.coax `owner`). It opens URL (a ticket in its t=), sits, and stands
 // sending an input each 1/30 s. Every 2 s it says its hello again, as a druid and then as a warlock in
-// turn: each change of class changes its Hit Points, so the room has a new vitals line for it to post.
+// turn. An Everglade II room keeps the class of a seat's first hello (#13259), so the later hellos
+// change nothing there: the seat's vitals line stays as it was first noted.
 // It stops when the room closes its socket or SECONDS pass, and prints one JSON line: the seat, the D
 // frames heard, whether the room said "r 0 elsewhere" or "r 0 restarting" (a drain, #12797), and whether the socket closed. With TO, 3 s in
 // it asks to travel there (T, #12850) and stops as soon as the room sends it on (g TO: "go").
-//   coax/web/tool.sh coax/web/room/owner-seat.coax ws://localhost:PORT/api/room/relay/everglade/CODE?t=TICKET SECONDS [TO]
+// With --heal FILE the seat plays an Everglade II Druid (srd-druid) and, once FILE exists, casts the
+// Druid's level 1 heal (bot-bars.coax) on itself until the room takes one cast. A seat that sat hurt
+// (its ticket's HP) then has more Hit Points, so the room has a new vitals line for it to post. The
+// JSON line also has the casts the room took ("heals") and the seat's Hit Points as last heard
+// ("hp", "hp_max"; -1 when no row of its own came).
+//   coax/web/tool.sh coax/web/room/owner-seat.coax ws://localhost:PORT/api/room/relay/everglade/CODE?t=TICKET SECONDS [TO] [--heal FILE]
 #run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
+#load "../../lib/sys/fs.coax";
+#load "script-player.coax";   // the roles of a bar's entries (SP_HEAL)
+#load "bot-bars.coax";        // each Everglade II class's bar, as the protocol bots read it
+
+OS_DRUID :: 3;                // srd-druid in RS_CL_KIND and in bot-bars.coax
+OS_CAST_MS :: 500;            // between its heals, until the room takes one
+// The wire's bar slot of the level 1 Druid's first heal, or -1 when its bar has none.
+os_heal_slot :: () -> int {
+  for r: 0..<BB_ROWS {
+    o := r * BB_COLS;
+    if BB[o] == OS_DRUID && BB[o + 1] == 1 && (BB[o + 3] & SP_HEAL) != 0 { return BB[o + 2]; }
+  }
+  return -1;
+}
+#test "the level 1 Druid's bar has a heal" { #assert os_heal_slot() >= 128 + OS_DRUID * 24 && os_heal_slot() < 128 + (OS_DRUID + 1) * 24; }
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("owner-seat URL [SECONDS]"); return 2; }
   url := args_at(a[..], 0);
-  secs := ifx args_count(a[..]) > 1 then rs_num(args_at(a[..], 1)) else 60;
-  to := ifx args_count(a[..]) > 2 then args_at(a[..], 2) else "";
+  // the words before the first option are URL, SECONDS and TO
+  words := 0; while words < args_count(a[..]) && !rs_starts(args_at(a[..], words), "--") { words += 1; }
+  secs := ifx words > 1 then rs_num(args_at(a[..], 1)) else 60;
+  to := ifx words > 2 then args_at(a[..], 2) else "";
+  heal_file := args_value(a[..], "--heal", "");
+  heal_slot := ifx heal_file.count > 0 then os_heal_slot() else -1;
+  heals := 0; heal_seq := -1; heal_at := 0; hp := -1; hp_max := -1;
+  mirror: [1] WireMirror;
   asked := false; go := false;
   c: [1] RelayConn;
   if !relay_conn_open(c[..], url) { tool_err("owner-seat: can't open "); tool_errln(url); print("{\"open\":false}\n"); return 1; }
   hellos := [2] string.["H 6 ranger.1.0.0 druid 0 Owner", "H 6 ranger.1.0.0 warlock 0 Owner"];
+  if heal_slot >= 0 { hellos[0] = "H 6 ranger.1.0.0 srd-druid 0 Owner"; hellos[1] = hellos[0]; }
   sent := relay_conn_send(c[..], hellos[0]);
   seat := -1; d := 0; elsewhere := false; restarting := false; closed := false; said := 1;
   seq := 0; m: [96] u8;
@@ -33,13 +61,38 @@ tool_main :: () -> int #export_c #effects(all) {
       _ = relay_conn_send(c[..], cast(string) tm[0..<tk]); asked = true;
     }
     if rs_now() - hello_at >= 2000 { hello_at = rs_now(); _ = relay_conn_send(c[..], hellos[said % 2]); said += 1; }
+    // the heal, on itself (where its own row says it stands), until the room takes one
+    if heal_slot >= 0 && heals == 0 && seat >= 0 && hp > 0 && rs_now() - heal_at >= OS_CAST_MS && fs_exists(heal_file) {
+      me := wire_mirror_of(mirror[..], seat);
+      if me.id >= 0 {
+        seq += 1; heal_seq = seq; heal_at = rs_now();
+        cm: [128] u8;
+        cn := wire_put_cast(cm[..], 0, WireCast.{seq = seq, slot = heal_slot, ax = me.x, ay = me.y + 1, az = me.z});
+        _ = relay_conn_send(c[..], cast(string) cm[0..<cn]);
+      }
+    }
     n += 1;
     while !closed && rs_now() - t0 < n * 1000 / 30 {
       r := relay_conn_poll(c[..], 0);
       while r == RC_TEXT {
         t := cast(string) c[0].text[0..<c[0].text_n];
         if rs_starts(t, "y ") { seat = rs_num(rs_field(t, 1)); }
-        if rs_starts(t, "D ") { d += 1; }
+        if rs_starts(t, "D ") {
+          d += 1;
+          if heal_slot >= 0 {
+            rd: [1] WireRd; rd[0] = wire_rd(t, 1); head := wire_read_d(t, rd[..]);
+            _ = wire_mirror_frame(mirror[..], t);
+            if seat >= 0 { me := wire_mirror_of(mirror[..], seat); if me.id >= 0 { hp = me.hp; hp_max = me.max; } }
+            if rd[0].ok {
+              for q: 0..<wire_entries(t, rd[0].at) {
+                e := wire_entry(t, rd[0].at, q);
+                if !wire_is(e, "e cast") { continue; }
+                rc: [1] WireRd; rc[0] = wire_rd(e, 6); ce := wire_read_cast_e(e, rc[..]);
+                if rc[0].ok && ce.ss == seat && ce.slot == heal_slot && heal_seq >= 0 { heals += 1; }
+              }
+            }
+          }
+        }
         if t == "r 0 elsewhere" { elsewhere = true; }
         if t == "r 0 restarting" { restarting = true; }
         if to.count > 0 && rs_starts(t, "g ") && t[2..<t.count] == to { go = true; closed = true; }
@@ -50,7 +103,7 @@ tool_main :: () -> int #export_c #effects(all) {
     }
   }
   if !closed || go { _ := relay_conn_close(c[..], 1000); }
-  out: [256] u8; o: [1] Jo;
+  out: [512] u8; o: [1] Jo;
   jo_start(o[..], out[..]);
   jo_obj(o[..]);
   jo_key(o[..], "open"); jo_bool(o[..], sent);
@@ -61,6 +114,11 @@ tool_main :: () -> int #export_c #effects(all) {
   jo_key(o[..], "restarting"); jo_bool(o[..], restarting);
   jo_key(o[..], "closed"); jo_bool(o[..], closed);
   jo_key(o[..], "go"); jo_bool(o[..], go);
+  if heal_slot >= 0 {
+    jo_key(o[..], "heals"); jo_int(o[..], heals);
+    jo_key(o[..], "hp"); jo_int(o[..], hp);
+    jo_key(o[..], "hp_max"); jo_int(o[..], hp_max);
+  }
   jo_end(o[..]);
   print("%\n", jo_text(o[..]));
   return 0;

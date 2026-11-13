@@ -9,8 +9,8 @@ c2_signed_post :: (t:[]Ap,path:string,body:string)->int {
   headers:=[2]string.["Content-Type: application/json",sb_text(h[..])];return ap_call(t,"POST",path,body,headers[..]);
 }
 c2_post :: (t:[]Ap,c:CharacterCapture)->int {b:[CC_BODY]u8;return c2_signed_post(t,"/api/playtest/room-checkpoint-v2",cc_write(c,b[..]));}
-c2_ticket :: (t:[]Ap,key:string,out:[]u8)->string {return c2_ticket_at(t,key,"/api/playtest/room-ticket/checkpoint-test?checkpoint=2",out);}
-c2_ticket_rest :: (t:[]Ap,key:string,out:[]u8)->string {return c2_ticket_at(t,key,"/api/playtest/room-ticket/checkpoint-test?checkpoint=2&rest=1",out);}
+c2_ticket :: (t:[]Ap,key:string,out:[]u8)->string {return c2_ticket_at(t,key,"/api/playtest/room-ticket/pair-e2-chkpt-1?checkpoint=2",out);}
+c2_ticket_rest :: (t:[]Ap,key:string,out:[]u8)->string {return c2_ticket_at(t,key,"/api/playtest/room-ticket/pair-e2-chkpt-1?checkpoint=2&rest=1",out);}
 c2_ticket_at :: (t:[]Ap,key:string,path:string,out:[]u8)->string {
   h:[1]Sb;sb(h[..],"X-Verse-Player: ");sb(h[..],key);headers:=[2]string.["Content-Type: application/json",sb_text(h[..])];
   st:=ap_call(t,"POST",path,"{}",headers[..]);
@@ -35,7 +35,7 @@ tool_main :: ()->int #export_c #effects(all) {
   ap_check(t[..],"resume2: first join is an authenticated v4 envelope with no capture",initial.ok&&!initial.capture.ok,"");
   partial:=c2_signed_post(t[..],"/api/playtest/room-checkpoint-v2","{}");
   ap_check(t[..],"matrix2: an incomplete authenticated checkpoint is refused before durable acceptance",partial==400,ap_body(t[..]));
-  pid:=pl_id(p[..]);c:=cc_fixture();c.pid_n=pid.count;for i:0..<pid.count{c.pid[i]=pid[i];}c.room_n=15;room:="checkpoint-test";for i:0..<room.count{c.room[i]=room[i];}
+  pid:=pl_id(p[..]);c:=cc_fixture();c.pid_n=pid.count;for i:0..<pid.count{c.pid[i]=pid[i];}c.room_n=15;room:="pair-e2-chkpt-1";for i:0..<room.count{c.room[i]=room[i];}
   c.n[1]=1;c.n[2]=1001;c.n[3]=1;c.n[4]=cxproc_wall_us()/1000;c.n[5]=c.n[4];c.n[11]=100;c.state[7]=0;
   old:[1]Sb;sb(old[..],"t ");sb_int(old[..],c.n[4]);sb(old[..],"\n");sb(old[..],pid);sb(old[..]," 9 20 9999\n");
   legacy:=c2_signed_post(t[..],"/api/playtest/room-vitals",sb_text(old[..]));

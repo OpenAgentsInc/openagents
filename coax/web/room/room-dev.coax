@@ -136,6 +136,14 @@ dv_answer :: (v: [] RmServer, status: string, body: string) -> int {
   n := dv_put(v[0].dev.out[..], 0, status); n = dv_put(v[0].dev.out[..], n, "\n"); n = dv_put(v[0].dev.out[..], n, body);
   return ifx n > DEV_OUT then 0 else n;
 }
+// The stand-in's bodies are player-answers.coax's (metaverse-engine/session/; Protocol E11, #13250): a body the
+// codec wrote into b (n its length; -1: it refused, answered as a 500 with no body), a refusal, and ok.
+dv_wrote :: (v: [] RmServer, status: string, b: [] u8, n: int) -> int {
+  if n < 0 { return dv_answer(v, "500", ""); }
+  return dv_answer(v, status, cast(string) b[0..<n]);
+}
+dv_refuse :: (v: [] RmServer, status: string, words: string) -> int { b: [160] u8; return dv_wrote(v, status, b[..], pan_error(b[..], words)); }
+dv_ok :: (v: [] RmServer) -> int { b: [16] u8; return dv_wrote(v, "200", b[..], pan_ok(b[..])); }
 dv_path :: (req: string, method: string, path: string) -> bool {
   return req.count > method.count + 1 + path.count && req[0..<method.count] == method && req[method.count] == ' ' &&
          req[method.count + 1..<method.count + 1 + path.count] == path;
@@ -152,17 +160,16 @@ rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c #effects(all) {
     key := cast(string) kb[0..<k];
     pb: [TICKET_PID] u8; pn := dv_pid(key, pb[..]);
     b: [256] u8;
-    n := dv_put(b[..], 0, "{\"key\":\""); n = dv_put(b[..], n, key); n = dv_put(b[..], n, "\",\"id\":\""); n = dv_put(b[..], n, cast(string) pb[0..<pn]);
-    n = dv_put(b[..], n, "\",\"account\":false}");
-    return dv_answer(v, "200", cast(string) b[0..<n]);
+    n := pan_player(b[..], key, cast(string) pb[0..<pn]);
+    return dv_wrote(v, "200", b[..], n);
   }
   if dv_path(req, "POST", "/api/playtest/room-ticket/") {
     at := 5 + "/api/playtest/room-ticket/".count;
     e := at;
     while e < req.count && req[e] != ' ' && req[e] != '?' { e += 1; }
     room := req[at..<e];
-    if room.count == 0 || room.count > 24 { return dv_answer(v, "404", "{\"error\":\"unknown\"}"); }
-    for c: room { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return dv_answer(v, "404", "{\"error\":\"unknown\"}"); } }
+    if room.count == 0 || room.count > 24 { return dv_refuse(v, "404", "unknown"); }
+    for c: room { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return dv_refuse(v, "404", "unknown"); } }
     // a ticket for the realm itself (?realm=, everglade-party.coax): the API's directory places it in a
     // room; the stand-in has one, the realm's first (its rooms list's "join"), so the ticket is for that
     // room, whose socket the page opens (a ticket for "everglade2" was refused at "everglade2-1")
@@ -172,7 +179,7 @@ rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c #effects(all) {
       room = cast(string) rb[0..<rn];
     }
     key := dv_header(req, "x-verse-player");
-    if key.count == 0 { return dv_answer(v, "401", "{\"error\":\"a player key\"}"); }
+    if key.count == 0 { return dv_refuse(v, "401", "a player key"); }
     pb: [TICKET_PID] u8; pn := dv_pid(key, pb[..]);
     pid := cast(string) pb[0..<pn];
     nb: [32] u8; nn := dv_name_of(v, pid, nb[..]);
@@ -194,31 +201,27 @@ rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c #effects(all) {
     three := dv_has(tk_query_line(req), "rest=1");
     resume := dv_has(tk_query_line(req), "checkpoint=2") && eg_e2_code(room);
     ci := ifx resume then dv_ck_owner_next(v, pid) else -1;
-    if resume && ci < 0 { return dv_answer(v, "503", "{\"error\":\"character recovery unavailable\"}"); }
+    if resume && ci < 0 { return dv_refuse(v, "503", "character recovery unavailable"); }
     owner := ifx ci >= 0 then v[0].dev.ck[ci].owner else 0;
     if ci >= 0 && v[0].dev.ck[ci].saved { xp = rs_max(xp, v[0].dev.ck[ci].c.n[11]); }
     tn := tk_sign_owner(DEV_KEY, pid, false, name, room, 0, expires, hp, ifx xp > 0 then xp else -1, wanted, owner, tb[..]);
-    if tn == 0 { return dv_answer(v, "500", "{\"error\":\"no ticket\"}"); }
+    if tn == 0 { return dv_refuse(v, "500", "no ticket"); }
     rb4: [RT_TEXT] u8; saved: [CC_BODY] u8; ticket := cast(string) tb[0..<tn];
     if ci >= 0 { ticket = resume_ticket_wrap(DEV_KEY, ticket, ifx v[0].dev.ck[ci].saved then cc_stored_as(v[0].dev.ck[ci].c, v[0].dev.ck[ci].rest, ifx three then 3 else 2, saved[..]) else "-", rb4[..]); }
-    if ticket.count == 0 { return dv_answer(v, "500", "{\"error\":\"no ticket\"}"); }
+    if ticket.count == 0 { return dv_refuse(v, "500", "no ticket"); }
     b: [RT_TEXT + 512] u8;
-    n := dv_put(b[..], 0, "{\"ticket\":\""); n = dv_put(b[..], n, ticket);
-    n = dv_put(b[..], n, "\",\"id\":\""); n = dv_put(b[..], n, pid);
-    n = dv_put(b[..], n, "\",\"account\":false,\"name\":\""); n = dv_put(b[..], n, name);
-    n = dv_put(b[..], n, "\",\"room\":\""); n = dv_put(b[..], n, room);
-    n = dv_put(b[..], n, "\",\"expires\":"); n = rv_int(b[..], n, expires); n = dv_put(b[..], n, "}");
-    return dv_answer(v, "200", cast(string) b[0..<n]);
+    n := pan_ticket(b[..], ticket, pid, name, room, expires);
+    return dv_wrote(v, "200", b[..], n);
   }
   if dv_path(req, "POST", "/api/playtest/player/name") { return dv_set_name(v, req); }
-  if dv_path(req, "POST", "/api/playtest/room-state") { return dv_answer(v, "200", "{\"ok\":true}"); }
+  if dv_path(req, "POST", "/api/playtest/room-state") { return dv_ok(v); }
   // who is viewing: the realm's admin, or nobody logged in (a 200 with nothing, as the API's)
   if dv_path(req, "GET", "/api/auth/viewer") { return dv_answer(v, "200", ifx v[0].dev.admin then "A|1\n" else ""); }
-  if dv_path(req, "POST", "/api/playtest/world/everglade") && !v[0].dev.admin { return dv_answer(v, "403", "{\"error\":\"an admin's\"}"); }
+  if dv_path(req, "POST", "/api/playtest/world/everglade") && !v[0].dev.admin { return dv_refuse(v, "403", "an admin's"); }
   if dv_path(req, "POST", "/api/playtest/world/everglade") { return -1; }   // the host writes the world document (room-host.c dev_publish)
   if dv_path(req, "GET", "/api/playtest/rooms/") || dv_path(req, "GET", "/api/playtest/world/") { return -1; }
   if dv_path(req, "GET", "/api/playtest/realms/everglade") || dv_path(req, "POST", "/api/playtest/realms/everglade") { return dv_realm(v, req); }
-  if dv_path(req, "GET", "/api/") || dv_path(req, "POST", "/api/") { return dv_answer(v, "404", "{\"error\":\"not in the local API\"}"); }
+  if dv_path(req, "GET", "/api/") || dv_path(req, "POST", "/api/") { return dv_refuse(v, "404", "not in the local API"); }
   return -1;
 }
 
@@ -226,17 +229,17 @@ rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c #effects(all) {
 // the name trimmed, "" back to the made one, a shape the filter refuses 400, else {name, account}.
 dv_set_name :: (v: [] RmServer, req: string) -> int {
   key := dv_header(req, "x-verse-player");
-  if key.count == 0 { return dv_answer(v, "403", "{\"error\":\"unknown player key\"}"); }
+  if key.count == 0 { return dv_refuse(v, "403", "unknown player key"); }
   pb: [TICKET_PID] u8; pn := dv_pid(key, pb[..]); pid := cast(string) pb[0..<pn];
   body := req; for i: 0..<req.count - 3 { if req[i] == '\r' && req[i + 1] == '\n' && req[i + 2] == '\r' && req[i + 3] == '\n' { body = req[i + 4..<req.count]; break; } }
-  if net_field_dev(body, "name").count == 0 && !dv_has(body, "\"name\"") { return dv_answer(v, "400", "{\"error\":\"not json\"}"); }
+  if net_field_dev(body, "name").count == 0 && !dv_has(body, "\"name\"") { return dv_refuse(v, "400", "not json"); }
   want := net_field_dev(body, "name");
   a := 0; z := want.count; while a < z && want[a] == ' ' { a += 1; } while z > a && want[z - 1] == ' ' { z -= 1; } want = want[a..<z];
   i := dv_named_at(v, pid);
   if want.count == 0 {
     if i >= 0 { last := v[0].dev.named_count - 1; v[0].dev.named_pid[i] = v[0].dev.named_pid[last]; v[0].dev.named_pid_n[i] = v[0].dev.named_pid_n[last]; v[0].dev.named[i] = v[0].dev.named[last]; v[0].dev.named_n[i] = v[0].dev.named_n[last]; v[0].dev.named_count = last; }
   } else {
-    if pn_why(want) != PN_OK { return dv_answer(v, "400", "{\"error\":\"pick another name: 3 to 20 letters, digits, spaces, hyphens\"}"); }
+    if pn_why(want) != PN_OK { return dv_refuse(v, "400", "pick another name: 3 to 20 letters, digits, spaces, hyphens"); }
     if i < 0 {
       // full: the oldest name goes (a local room's pages come and go)
       if v[0].dev.named_count >= DEV_NAMED {
@@ -250,8 +253,8 @@ dv_set_name :: (v: [] RmServer, req: string) -> int {
   }
   nb: [32] u8; nn := dv_name_of(v, pid, nb[..]);
   b: [96] u8;
-  n := dv_put(b[..], 0, "{\"name\":\""); n = dv_put(b[..], n, cast(string) nb[0..<nn]); n = dv_put(b[..], n, "\",\"account\":false}");
-  return dv_answer(v, "200", cast(string) b[0..<n]);
+  n := pan_name(b[..], cast(string) nb[0..<nn]);
+  return dv_wrote(v, "200", b[..], n);
 }
 dv_has :: (t: string, part: string) -> bool { if part.count > t.count { return false; } for i: 0..<t.count - part.count + 1 { if t[i..<i + part.count] == part { return true; } } return false; }
 // The request line's query ("" none).
@@ -298,7 +301,7 @@ rm_dev_checkpoint :: (v: [] RmServer) -> bool #export_c #effects(all) {
   request := v[0].ck.request;
   body := cast(string) v[0].ck.out[0..<n];
   c := cc_read(body, true); rest := cc_rest(body, true);
-  if !c.ok || !checkpoint2_input(body, v[0].wall_ms) { rm_checkpoint_answer(v, request, 400, "{\"error\":\"bad checkpoint\"}"); return true; }
+  if !c.ok || !checkpoint2_input(body, v[0].wall_ms) { eb: [48] u8; en := pan_error(eb[..], "bad checkpoint"); rm_checkpoint_answer(v, request, 400, cast(string) eb[0..<(ifx en < 0 then 0 else en)]); return true; }
   i := dv_ck_find(v, cast(string) c.pid[0..<c.pid_n]);
   known := i >= 0 && v[0].dev.ck[i].owner > 0;
   e := ifx i >= 0 then v[0].dev.ck[i] else DevCheckpoint.{};
@@ -481,24 +484,24 @@ dv_realm :: (v: [] RmServer, req: string) -> int {
   }
   if req[0] == 'G' && (tail == "/proposals" || tail == "/asks" || tail == "/panes") { return dv_answer(v, "200", ""); }
   if req[0] == 'P' && (tail == "/switch" || tail == "/settings") {
-    if !admin { return dv_answer(v, "403", "{\"error\":\"only its owner and admins\"}"); }
+    if !admin { return dv_refuse(v, "403", "only its owner and admins"); }
     body := dv_body(req);
     if tail == "/switch" {
       key := dv_json_text(body, "row"); on := dv_json_flag(body, "on");
-      if key.count == 0 || on < 0 { return dv_answer(v, "404", "{\"error\":\"a row and on\"}"); }
+      if key.count == 0 || on < 0 { return dv_refuse(v, "404", "a row and on"); }
       for r: 0..<DEV_ROWS.count {
         if DEV_ROWS[r] != key { continue; }
         v[0].dev.row_off[r] = on == 0;
         b: [96] u8;
-        n := dv_put(b[..], 0, "{\"row\":\""); n = dv_put(b[..], n, key); n = dv_put(b[..], n, ifx on == 1 then "\",\"on\":true}" else "\",\"on\":false}");
-        return dv_answer(v, "200", cast(string) b[0..<n]);
+        n := pan_row(b[..], key, on == 1);
+        return dv_wrote(v, "200", b[..], n);
       }
-      return dv_answer(v, "404", "{\"error\":\"no such row\"}");
+      return dv_refuse(v, "404", "no such row");
     }
     for t: 0..<DEV_TOOLS.count { f := dv_json_flag(body, DEV_TOOLS[t]); if f >= 0 { v[0].dev.tool_off[t] = f == 0; } }
-    return dv_answer(v, "200", "{\"ok\":true}");
+    return dv_ok(v);
   }
-  return dv_answer(v, "404", "{\"error\":\"not in the local API\"}");
+  return dv_refuse(v, "404", "not in the local API");
 }
 // A request's body: after its blank line.
 dv_body :: (req: string) -> string {

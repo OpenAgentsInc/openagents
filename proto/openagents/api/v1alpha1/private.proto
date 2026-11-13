@@ -1,0 +1,299 @@
+syntax = "proto3";
+
+package openagents.api.v1alpha1;
+
+// What coax/web/api/private.c answers, route by route (Protocol, GitHub #13250; profile
+// api-routes; docs/protocol/api-routes-v1alpha1.md). Each message names the members
+// of one answer as they ship: json_name is the key on the wire, a `bytes` member is
+// JSON carried as it came, and a member may be absent or null. The messages were
+// read off a run of the API suite and are held to every later run:
+// proto/verse/api-routes-v1alpha1.json holds real answers and their routes, and
+// coax/web/api/routes-goldens.coax holds each answer's keys to its message here.
+// A refusal with only its words is ErrorReply (error.proto). Most bodies are built
+// in SQL; what the C builds goes through a Coax unit.
+
+// GET /api/private/*/inbox 200
+message PrivateOneInbox {
+  optional string at = 1 [json_name = "at"];
+  optional int64 id = 2 [json_name = "id"];
+  optional string from = 3 [json_name = "from"];
+  optional string text = 4 [json_name = "text"];
+}
+
+// GET /api/private/*/state 200
+message PrivateOneState {
+  optional PrivateOneStateDoc doc = 1 [json_name = "doc"];
+  optional PrivateOneStateYou you = 2 [json_name = "you"];
+  optional string slug = 3 [json_name = "slug"];
+  optional bool agent = 4 [json_name = "agent"];
+  optional string today = 5 [json_name = "today"];
+  repeated PrivateOneStateAgents agents = 6 [json_name = "agents"];
+  optional int64 version = 7 [json_name = "version"];
+  repeated PrivateOneStateActivity activity = 8 [json_name = "activity"];
+  repeated PrivateOneStateMessages messages = 9 [json_name = "messages"];
+  repeated PrivateOneStateAnalytics analytics = 10 [json_name = "analytics"];
+  optional string updated_at = 11 [json_name = "updated_at"];
+  optional string updated_by = 12 [json_name = "updated_by"];
+}
+
+message PrivateOneStateDoc {
+  optional string v = 1 [json_name = "v"];
+  repeated PrivateOneStateDocDays days = 2 [json_name = "days"];
+  optional string slug = 3 [json_name = "slug"];
+  repeated PrivateOneStateDocGoals goals = 4 [json_name = "goals"];
+  repeated PrivateOneStateDocLinks links = 5 [json_name = "links"];
+  repeated string rules = 6 [json_name = "rules"];
+  optional string title = 7 [json_name = "title"];
+  repeated PrivateOneStateDocMembers members = 8 [json_name = "members"];
+  optional string summary = 9 [json_name = "summary"];
+  repeated PrivateOneStateDocChecklists checklists = 10 [json_name = "checklists"];
+  repeated PrivateOneStateDocBacklog backlog = 11 [json_name = "backlog"];
+  repeated PrivateOneStateDocSprints sprints = 12 [json_name = "sprints"];
+  optional int64 wip_limit = 13 [json_name = "wip_limit"];
+  repeated PrivateOneStateDocPriorityChanges priority_changes = 14 [json_name = "priority_changes"];
+}
+
+message PrivateOneStateDocDays {
+  optional string date = 1 [json_name = "date"];
+  repeated PrivateOneStateDocDaysMilestones milestones = 2 [json_name = "milestones"];
+}
+
+message PrivateOneStateDocDaysMilestones {
+  optional string id = 1 [json_name = "id"];
+  optional string text = 2 [json_name = "text"];
+  optional string owner = 3 [json_name = "owner"];
+  optional string status = 4 [json_name = "status"];
+  optional string note = 5 [json_name = "note"];
+}
+
+message PrivateOneStateDocGoals {
+  optional string id = 1 [json_name = "id"];
+  optional string text = 2 [json_name = "text"];
+  optional string source = 3 [json_name = "source"];
+  optional string status = 4 [json_name = "status"];
+  repeated string agreed_by = 5 [json_name = "agreed_by"];
+  optional string replaces = 6 [json_name = "replaces"];
+}
+
+message PrivateOneStateDocLinks {
+  optional string url = 1 [json_name = "url"];
+  optional string label = 2 [json_name = "label"];
+}
+
+message PrivateOneStateDocMembers {
+  optional string name = 1 [json_name = "name"];
+  optional string pubkey = 2 [json_name = "pubkey"];
+}
+
+message PrivateOneStateDocChecklists {
+  optional string id = 1 [json_name = "id"];
+  repeated PrivateOneStateDocChecklistsItems items = 2 [json_name = "items"];
+  optional string title = 3 [json_name = "title"];
+  optional string source = 4 [json_name = "source"];
+}
+
+message PrivateOneStateDocChecklistsItems {
+  optional string id = 1 [json_name = "id"];
+  optional string text = 2 [json_name = "text"];
+  optional string status = 3 [json_name = "status"];
+  optional string evidence = 4 [json_name = "evidence"];
+}
+
+message PrivateOneStateYou {
+  optional string name = 1 [json_name = "name"];
+  optional string role = 2 [json_name = "role"];
+}
+
+message PrivateOneStateAnalytics {
+  optional int64 week = 1 [json_name = "week"];
+  optional string label = 2 [json_name = "label"];
+  optional int64 today = 3 [json_name = "today"];
+}
+
+message PrivateOneStateAgents {
+  optional string name = 1 [json_name = "name"];
+  optional string role = 2 [json_name = "role"];
+  optional string pubkey = 3 [json_name = "pubkey"];
+}
+
+message PrivateOneStateMessages {
+  optional string at = 1 [json_name = "at"];
+  optional int64 id = 2 [json_name = "id"];
+  optional string from = 3 [json_name = "from"];
+  optional string text = 4 [json_name = "text"];
+  optional int64 reply_to = 5 [json_name = "reply_to"];   // or null
+}
+
+message PrivateOneStateActivity {
+  optional string at = 1 [json_name = "at"];
+  optional string by = 2 [json_name = "by"];
+  optional int64 id = 3 [json_name = "id"];
+  optional string kind = 4 [json_name = "kind"];
+  optional string text = 5 [json_name = "text"];
+}
+
+message PrivateOneStateDocBacklog {
+  optional string id = 1 [json_name = "id"];
+  optional string text = 2 [json_name = "text"];
+  optional string status = 3 [json_name = "status"];
+  optional string evidence = 4 [json_name = "evidence"];
+  optional bool stretch = 5 [json_name = "stretch"];
+  optional string carried_from = 6 [json_name = "carried_from"];
+  optional string proposed_by = 7 [json_name = "proposed_by"];
+}
+
+message PrivateOneStateDocSprints {
+  optional string id = 1 [json_name = "id"];
+  optional string end = 2 [json_name = "end"];
+  optional string goal = 3 [json_name = "goal"];
+  optional string retro = 4 [json_name = "retro"];
+  optional string start = 5 [json_name = "start"];
+  optional string review = 6 [json_name = "review"];
+  optional string status = 7 [json_name = "status"];
+  repeated string agreed_by = 8 [json_name = "agreed_by"];
+}
+
+message PrivateOneStateDocPriorityChanges {
+  optional string at = 1 [json_name = "at"];
+  optional string why = 2 [json_name = "why"];
+  optional string what = 3 [json_name = "what"];
+  repeated string agreed_by = 4 [json_name = "agreed_by"];
+  optional string proposed_by = 5 [json_name = "proposed_by"];
+}
+
+// GET /api/private/*/talk 200
+message PrivateOneTalk {
+  optional int64 cap = 1 [json_name = "cap"];
+  optional double spent = 2 [json_name = "spent"];
+  repeated PrivateOneTalkTurns turns = 3 [json_name = "turns"];
+}
+
+message PrivateOneTalkTurns {
+  optional string at = 1 [json_name = "at"];
+  optional string by = 2 [json_name = "by"];
+  optional int64 id = 3 [json_name = "id"];
+  optional string kind = 4 [json_name = "kind"];
+  optional string text = 5 [json_name = "text"];
+  optional string error = 6 [json_name = "error"];
+  repeated string files = 7 [json_name = "files"];
+  optional string answer = 8 [json_name = "answer"];
+  optional string commit = 9 [json_name = "commit"];   // or null
+  repeated PrivateOneTalkTurnsEvents events = 10 [json_name = "events"];
+  optional string status = 11 [json_name = "status"];
+  optional int64 undo_of = 12 [json_name = "undo_of"];   // or null
+  optional double cost_usd = 13 [json_name = "cost_usd"];
+  optional int64 undone_by = 14 [json_name = "undone_by"];   // or null
+  optional int64 version_after = 15 [json_name = "version_after"];   // or null
+  optional int64 version_before = 16 [json_name = "version_before"];   // or null
+}
+
+message PrivateOneTalkTurnsEvents {
+  optional int64 id = 1 [json_name = "id"];
+  optional PrivateOneTalkTurnsEventsData data = 2 [json_name = "data"];
+  optional string type = 3 [json_name = "type"];
+}
+
+message PrivateOneTalkTurnsEventsData {
+  optional string by = 1 [json_name = "by"];
+  optional string op = 2 [json_name = "op"];
+  optional string line = 3 [json_name = "line"];
+  optional string name = 4 [json_name = "name"];
+  optional string detail = 5 [json_name = "detail"];
+  optional string sha = 6 [json_name = "sha"];
+  repeated string files = 7 [json_name = "files"];
+  optional string message_ = 8 [json_name = "message"];
+  optional string status = 9 [json_name = "status"];
+  optional int64 undo = 10 [json_name = "undo"];
+  optional string error = 11 [json_name = "error"];
+}
+
+// POST /api/private/*/agent 200
+message PrivateOneAgentPost {
+  optional bool ok = 1 [json_name = "ok"];
+}
+
+// POST /api/private/*/claim 200
+message PrivateOneClaimPost {
+  optional bool ok = 1 [json_name = "ok"];
+  optional string name = 2 [json_name = "name"];
+}
+
+// POST /api/private/*/end 200
+message PrivateOneEndPost {
+  optional bool ok = 1 [json_name = "ok"];
+  optional bool more = 2 [json_name = "more"];
+}
+
+// POST /api/private/*/event 200
+message PrivateOneEventPost {
+  optional bool stop = 1 [json_name = "stop"];
+}
+
+// POST /api/private/*/goal_propose 200; POST /api/private/*/milestone_edit 200
+message PrivateOneGoalProposePost {
+  optional string id = 1 [json_name = "id"];
+  optional int64 version = 2 [json_name = "version"];
+}
+
+// POST /api/private/*/invite 200
+message PrivateOneInvitePost {
+  optional string token = 1 [json_name = "token"];
+  optional string expires = 2 [json_name = "expires"];
+}
+
+// POST /api/private/*/next 200
+message PrivateOneNextPost {
+  optional int64 cap = 1 [json_name = "cap"];
+  optional PrivateOneNextPostTurn turn = 2 [json_name = "turn"];   // or null
+  optional double spent = 3 [json_name = "spent"];
+  repeated PrivateOneNextPostHistory history = 4 [json_name = "history"];
+  optional int64 version = 5 [json_name = "version"];
+  optional bool busy = 6 [json_name = "busy"];
+  optional int64 refused = 7 [json_name = "refused"];
+}
+
+message PrivateOneNextPostTurn {
+  optional string by = 1 [json_name = "by"];
+  optional int64 id = 2 [json_name = "id"];
+  optional string kind = 3 [json_name = "kind"];
+  optional string text = 4 [json_name = "text"];
+  optional string revert = 5 [json_name = "revert"];   // or null
+  optional int64 undo_of = 6 [json_name = "undo_of"];   // or null
+}
+
+message PrivateOneNextPostHistory {
+  optional string by = 1 [json_name = "by"];
+  optional int64 id = 2 [json_name = "id"];
+  optional string text = 3 [json_name = "text"];
+  optional string answer = 4 [json_name = "answer"];
+  optional bool undone = 5 [json_name = "undone"];
+}
+
+// POST /api/private/*/message 200; POST /api/private/*/note 200
+message PrivateOneNotePost {
+  optional int64 id = 1 [json_name = "id"];
+}
+
+// POST /api/private/*/patch 200; POST /api/private/*/push 200; POST /api/private/*/status 200
+message PrivateOnePushPost {
+  optional int64 version = 1 [json_name = "version"];
+}
+
+// POST /api/private/*/milestone_edit 409; POST /api/private/*/push 409
+message PrivateOnePushPostRefusal {
+  optional string error = 1 [json_name = "error"];
+  optional int64 version = 2 [json_name = "version"];
+}
+
+// POST /projects/** 200
+message PrivatePost {
+  optional bool ok = 1 [json_name = "ok"];
+  optional int64 id = 2 [json_name = "id"];
+  optional int64 turn = 3 [json_name = "turn"];
+  optional bool agreed = 4 [json_name = "agreed"];
+  optional int64 version = 5 [json_name = "version"];
+  optional string kind = 6 [json_name = "kind"];
+  optional string label = 7 [json_name = "label"];
+  optional string last4 = 8 [json_name = "last4"];
+  optional bool removed = 9 [json_name = "removed"];
+}

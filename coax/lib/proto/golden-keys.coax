@@ -5,7 +5,7 @@
 //   g: [1] PkDescriptor; why := pk_load(g[..], descriptor_bytes);          "" when it parsed
 //   why = pk_text_keys(g[0].state[..], ".pkg.v1.Message", json, true);     "" when the keys hold
 PkDescriptor :: struct {
-  types: [256] D_Type; enums: [64] D_Type; fields: [2048] D_Field; values: [1024] D_Value; groups: [4096] string;
+  types: [512] D_Type; enums: [64] D_Type; fields: [2048] D_Field; values: [1024] D_Value; groups: [4096] string;
   files: [64] string; deps: [256] string; arena: [4194304] u8; output: [1] u8; symbols: [8192] string;
   state: [1] D_State;
 }

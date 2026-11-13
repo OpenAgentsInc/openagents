@@ -230,7 +230,7 @@ static void x402_reply(int fd, int status, const char *name, const char *value, 
                    "X-Content-Type-Options: nosniff\r\nAccess-Control-Expose-Headers: PAYMENT-REQUIRED, PAYMENT-RESPONSE\r\n",
                    status, status == 200 ? "OK" : status == 402 ? "Payment Required" : status == 409 ? "Conflict" : status == 400 ? "Bad Request" : "Error", strlen(json));
   extra = malloc((size_t)k + hn + 32);
-  if (!extra) { free(head); api_json(fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!extra) { free(head); api_error(fd, 503, "memory"); return; }
   memcpy(extra, start, (size_t)k);
   if (head) memcpy(extra + k, head, hn);
   memcpy(extra + k + hn, "Connection: close\r\n\r\n", 22);
@@ -244,7 +244,7 @@ static long long env_ll(const char *name, long long fallback) { const char *v = 
 // In the child: a top-up, issued or settled, on a connection of its own.
 static void credit_answer(int fd, const char *body, const char *sig) {
   PGconn *db = api_db_new();
-  if (!db) { api_json(fd, 503, "{\"error\":\"no database\"}"); return; }
+  if (!db) { api_error(fd, 503, "no database"); return; }
   char url[600], mn[24], mx[24];
   snprintf(url, sizeof url, "%s/api/v1/inference/credit", env_or("OA_API_ORIGIN", "https://openagents.com"));
   snprintf(mn, sizeof mn, "%lld", env_ll("OA_CREDIT_MIN_MSAT", 10000));
@@ -256,17 +256,16 @@ static void credit_answer(int fd, const char *body, const char *sig) {
     r = PQexecParams(db, "SELECT (x->>'status')::int, coalesce(x->>'error', ''), x->>'pubkey', x->>'msat', x->>'digest', "
                          "jsonb_build_object('sats', x->'sats', 'memo', x->'memo', 'expiry', 600)::text "
                          "FROM (SELECT inference.topup_terms($1, $2, $3::bigint, $4::bigint) x) s", 4, NULL, v, NULL, NULL, 0);
-    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("inference: credit: %s", PQerrorMessage(db)); api_json(fd, 500, "{\"error\":\"not asked\"}"); goto done; }
+    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("inference: credit: %s", PQerrorMessage(db)); api_error(fd, 500, "not asked"); goto done; }
     if (atoi(PQgetvalue(r, 0, 0)) != 200) {
-      char out[300]; snprintf(out, sizeof out, "{\"error\":\"%s\"}", PQgetvalue(r, 0, 1));
-      api_json(fd, 400, out); goto done;
+      api_error(fd, 400, PQgetvalue(r, 0, 1)); goto done;
     }
-    if (spark_call("/invoice", PQgetvalue(r, 0, 5), 30, &w) != 200 || !w) { api_json(fd, 502, "{\"error\":\"our wallet did not make an invoice; try again soon\"}"); goto done; }
+    if (spark_call("/invoice", PQgetvalue(r, 0, 5), 30, &w) != 200 || !w) { api_error(fd, 502, "our wallet did not make an invoice; try again soon"); goto done; }
     const char *v2[5] = {PQgetvalue(r, 0, 2), PQgetvalue(r, 0, 3), PQgetvalue(r, 0, 4), url, w};
     PGresult *i = PQexecParams(db, "SELECT (x->>'status')::int, coalesce(x->>'header', ''), coalesce(x->'body', jsonb_build_object('error', x->'error'))::text "
                                    "FROM (SELECT inference.topup_issue($1, $2::bigint, $3, $4, w->>'invoice', w->>'payment_hash', w->>'pay_to', (w->>'expiry')::bigint) x "
                                    "FROM (SELECT $5::jsonb w) s) t", 5, NULL, v2, NULL, NULL, 0);
-    if (PQresultStatus(i) != PGRES_TUPLES_OK || PQntuples(i) != 1) { api_log("inference: credit issue: %s", PQerrorMessage(db)); api_json(fd, 502, "{\"error\":\"our wallet's invoice did not fit\"}"); }
+    if (PQresultStatus(i) != PGRES_TUPLES_OK || PQntuples(i) != 1) { api_log("inference: credit issue: %s", PQerrorMessage(db)); api_error(fd, 502, "our wallet's invoice did not fit"); }
     else x402_reply(fd, atoi(PQgetvalue(i, 0, 0)), "PAYMENT-REQUIRED", PQgetvalue(i, 0, 1), PQgetvalue(i, 0, 2));
     PQclear(i);
     goto done;
@@ -275,14 +274,15 @@ static void credit_answer(int fd, const char *body, const char *sig) {
   r = PQexecParams(db, "SELECT (x->>'status')::int, coalesce(x->>'error', ''), x->>'payment_hash', coalesce(x->>'preimage', ''), coalesce(x->>'header', ''), "
                        "jsonb_build_object('invoice', x->'invoice')::text "
                        "FROM (SELECT inference.topup_proof($1, $2, $3, $4::bigint, $5::bigint) x) s", 5, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("inference: credit proof: %s", PQerrorMessage(db)); api_json(fd, 500, "{\"error\":\"not checked\"}"); goto done; }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("inference: credit proof: %s", PQerrorMessage(db)); api_error(fd, 500, "not checked"); goto done; }
   int status = atoi(PQgetvalue(r, 0, 0));
   if (status != 200) {
-    char out[300]; snprintf(out, sizeof out, "{\"error\":\"%s\"}", PQgetvalue(r, 0, 1));
+    char out[300]; api_error_text(out, sizeof out, PQgetvalue(r, 0, 1));
     x402_reply(fd, status, "PAYMENT-REQUIRED", PQgetvalue(r, 0, 4), out); goto done;
   }
   if (spark_call("/paid", PQgetvalue(r, 0, 5), 30, &w) != 200 || !w) {
-    x402_reply(fd, 402, "PAYMENT-REQUIRED", PQgetvalue(r, 0, 4), "{\"error\":\"payment_pending: our wallet did not answer; try again\"}"); goto done;
+    char out[96]; api_error_text(out, sizeof out, "payment_pending: our wallet did not answer; try again");
+    x402_reply(fd, 402, "PAYMENT-REQUIRED", PQgetvalue(r, 0, 4), out); goto done;
   }
   const char *v3[3] = {PQgetvalue(r, 0, 2), w, PQgetvalue(r, 0, 3)};
   PGresult *t = PQexecParams(db, "SELECT (x->>'status')::int, coalesce(x->>'header', ''), "
@@ -290,7 +290,7 @@ static void credit_answer(int fd, const char *body, const char *sig) {
                                  "ELSE jsonb_build_object('error', x->'error') END::text "
                                  "FROM (SELECT inference.topup_settle($1, w->>'state', CASE WHEN w->>'amount_msat' ~ '^[0-9]{1,18}$' THEN (w->>'amount_msat')::bigint END, "
                                  "w->>'preimage', $3) x FROM (SELECT $2::jsonb w) s) q", 3, NULL, v3, NULL, NULL, 0);
-  if (PQresultStatus(t) != PGRES_TUPLES_OK || PQntuples(t) != 1) { api_log("inference: credit settle: %s", PQerrorMessage(db)); api_json(fd, 500, "{\"error\":\"not settled\"}"); }
+  if (PQresultStatus(t) != PGRES_TUPLES_OK || PQntuples(t) != 1) { api_log("inference: credit settle: %s", PQerrorMessage(db)); api_error(fd, 500, "not settled"); }
   else {
     int st = atoi(PQgetvalue(t, 0, 0));
     if (st == 200) x402_reply(fd, 200, "PAYMENT-RESPONSE", PQgetvalue(t, 0, 1), PQgetvalue(t, 0, 2));
@@ -306,33 +306,33 @@ done:
 // GET, signed NIP-98: the signer's credit, {"credit_msat": N}.
 static void credit_balance(const request *q) {
   char auth[4096];
-  if (!api_header(q, "Authorization", auth, sizeof auth) || strncmp(auth, "Nostr ", 6)) { api_json(q->fd, 401, "{\"error\":\"sign the request (NIP-98)\"}"); return; }
+  if (!api_header(q, "Authorization", auth, sizeof auth) || strncmp(auth, "Nostr ", 6)) { api_error(q->fd, 401, "sign the request (NIP-98)"); return; }
   char url[4200]; snprintf(url, sizeof url, "%s%s", env_or("OA_API_ORIGIN", "https://openagents.com"), q->target);
   nostr_event ev; char err[160];
   if (!nip98_check(auth, q->method, url, q->body, q->body_len, (long long)time(NULL), &ev, err, sizeof err)) {
-    char out[240]; snprintf(out, sizeof out, "{\"error\":\"%s\"}", err); api_json(q->fd, 401, out); return;
+    api_error(q->fd, 401, err); return;
   }
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return; }
+  if (!db) { api_error(q->fd, 503, "no database"); return; }
   const char *v[1] = {ev.pubkey};
   PGresult *r = PQexecParams(db, "SELECT coalesce((SELECT msat FROM inference.credit WHERE pubkey = $1), 0)", 1, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); api_json(q->fd, 500, "{\"error\":\"not read\"}"); return; }
-  char out[80]; snprintf(out, sizeof out, "{\"credit_msat\":%s}", PQgetvalue(r, 0, 0));
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); api_error(q->fd, 500, "not read"); return; }
+  char out[80]; api_num_text(out, sizeof out, "credit_msat", atoll(PQgetvalue(r, 0, 0)));
   PQclear(r);
   api_json(q->fd, 200, out);
 }
 
 static bool credit_route(const request *q) {
   if (!strcmp(q->method, "GET")) { credit_balance(q); return true; }
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST {pubkey, msat}\"}"); return true; }
-  if (q->body_len > 2048) { api_json(q->fd, 413, "{\"error\":\"too big\"}"); return true; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST {pubkey, msat}"); return true; }
+  if (q->body_len > 2048) { api_error(q->fd, 413, "too big"); return true; }
   char body[2049]; memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
   char sig[8192];
   bool proof = api_header(q, "PAYMENT-SIGNATURE", sig, sizeof sig) != NULL;
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
   if (pid == 0) { credit_answer(q->fd, body, proof ? sig : NULL); _exit(0); }
-  if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
+  if (pid < 0) api_error(q->fd, 503, "busy");
   return true;
 }
 
@@ -435,8 +435,7 @@ static const char *local_words(char via, long status) {
          "Run gcloud auth login (or openagents login), then send it again.";
 }
 static void local_refuse(int fd, int status, const char *words) {
-  char out[600]; snprintf(out, sizeof out, "{\"error\":\"%s\"}", words);
-  api_json(fd, status, out);
+  api_error(fd, status, words);
 }
 #endif
 
@@ -480,7 +479,7 @@ static void answer(int fd, const char *who, const char *model, const char *reque
   if (!r.started && via) local_refuse(fd, status == 401 || status == 403 || status == 0 ? 502 : (int)status, local_words(via, status));
   r.started = true;
 #endif
-  if (!r.started) api_json(fd, 502, "{\"error\":\"the model was not reached\"}");
+  if (!r.started) api_error(fd, 502, "the model was not reached");
   char http[16], in[16], out[16], taken[16];
   snprintf(http, sizeof http, "%ld", status);
   snprintf(in, sizeof in, "%d", last_int(r.all.p, "\"prompt_tokens\""));
@@ -499,16 +498,15 @@ static void answer(int fd, const char *who, const char *model, const char *reque
 bool inference_route(const request *q) {
   if (!strcmp(q->path, "/api/v1/inference/credit")) return credit_route(q);
   if (strcmp(q->path, "/api/v1/inference")) return false;
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a Chat Completions request\"}"); return true; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST a Chat Completions request"); return true; }
   char auth[4096];
   if (!api_header(q, "Authorization", auth, sizeof auth) || strncmp(auth, "Nostr ", 6)) {
-    api_json(q->fd, 401, "{\"error\":\"sign the request (NIP-98)\"}"); return true;
+    api_error(q->fd, 401, "sign the request (NIP-98)"); return true;
   }
   char url[4200]; snprintf(url, sizeof url, "%s%s", env_or("OA_API_ORIGIN", "https://openagents.com"), q->target);
   nostr_event ev; char err[160];
   if (!nip98_check(auth, q->method, url, q->body, q->body_len, (long long)time(NULL), &ev, err, sizeof err)) {
-    char out[240]; snprintf(out, sizeof out, "{\"error\":\"%s\"}", err);
-    api_json(q->fd, 401, out); return true;
+    api_error(q->fd, 401, err); return true;
   }
   return inference_ask(q, ev.pubkey, admin_is(ev.pubkey) || listed(ev.pubkey));
 }
@@ -518,14 +516,14 @@ bool inference_route(const request *q) {
 // this for an admin its cookie named, so the page asks without a Nostr signature.
 bool inference_ask(const request *q, const char *pubkey, bool free_key) {
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { api_error(q->fd, 503, "no database"); return true; }
   if (!free_key) {
     // The wallet's daily limit holds for credit too (wallet.c, pay/wallet-policy.coax's wp_credit; #13330).
     if (wallet_credit_refused(q, db, pubkey)) return true;
     rate_refresh(db);
   }
   char *body = malloc(q->body_len + 1);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+  if (!body) { api_error(q->fd, 503, "memory"); return true; }
   memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
   char origin[600]; snprintf(origin, sizeof origin, "%s/api/v1/inference/credit", env_or("OA_API_ORIGIN", "https://openagents.com"));
   const char *v[6] = {pubkey, body, env_or("OA_INFERENCE_DAILY_REQUESTS", "500"), env_or("OA_INFERENCE_DAILY_USD_MICROS", "2000000"),
@@ -536,7 +534,7 @@ bool inference_ask(const request *q, const char *pubkey, bool free_key) {
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     api_log("inference: %s", PQerrorMessage(db));
     PQclear(r); free(body);
-    api_json(q->fd, 500, "{\"error\":\"not asked\"}");
+    api_error(q->fd, 500, "not asked");
     return true;
   }
   int status = atoi(PQgetvalue(r, 0, 0));
@@ -547,7 +545,7 @@ bool inference_ask(const request *q, const char *pubkey, bool free_key) {
     return true;
   }
   if (status != 200) {
-    char out[200]; snprintf(out, sizeof out, "{\"error\":\"%s\"}", PQgetvalue(r, 0, 1));
+    char out[200]; api_error_text(out, sizeof out, PQgetvalue(r, 0, 1));
     PQclear(r); free(body);
     api_json(q->fd, status, out);
     return true;
@@ -561,7 +559,7 @@ bool inference_ask(const request *q, const char *pubkey, bool free_key) {
     answer(q->fd, pubkey, model, request, body, stream, free_key);
     _exit(0);
   }
-  if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
+  if (pid < 0) api_error(q->fd, 503, "busy");
   free(request); free(model); free(body);
   return true;   // the parent closes its copy of the connection
 }

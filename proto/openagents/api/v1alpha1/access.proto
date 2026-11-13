@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package openagents.api.v1alpha1;
+
+// What coax/web/api/access.c answers, route by route (Protocol, GitHub #13250; profile
+// api-routes; docs/protocol/api-routes-v1alpha1.md). Each message names the members
+// of one answer as they ship: json_name is the key on the wire, a `bytes` member is
+// JSON carried as it came, and a member may be absent or null. The messages were
+// read off a run of the API suite and are held to every later run:
+// proto/verse/api-routes-v1alpha1.json holds real answers and their routes, and
+// coax/web/api/routes-goldens.coax holds each answer's keys to its message here.
+// A refusal with only its words is ErrorReply (error.proto). Most bodies are built
+// in SQL; what the C builds goes through a Coax unit.
+
+// GET /api/playtest/access 200
+message AccessAccessLines {
+  optional string invites = 1 [json_name = "invites"];
+  optional string make = 2 [json_name = "make"];
+  optional string in = 3 [json_name = "in"];
+  optional string creator = 4 [json_name = "creator"];
+  optional string asked = 5 [json_name = "asked"];
+}
+
+// POST /api/admin/access/creators 200; POST /api/admin/access/creators/*/remove 200
+message AccessAccessCreatorsPost {
+  optional string who = 1 [json_name = "who"];
+  optional bool creator = 2 [json_name = "creator"];
+}
+
+// POST /api/admin/access/flag 200
+message AccessAccessFlagPost {
+  optional bool on = 1 [json_name = "on"];
+  optional string name = 2 [json_name = "name"];
+}
+
+// POST /api/admin/access/grandfather 200
+message AccessAccessGrandfatherPost {
+  optional int64 approved = 1 [json_name = "approved"];
+}
+
+// POST /api/admin/access/invites 200
+message AccessAccessInvitesPost {
+  optional int64 id = 1 [json_name = "id"];
+  optional string code = 2 [json_name = "code"];
+  optional int64 days = 3 [json_name = "days"];
+  optional string link = 4 [json_name = "link"];
+  optional int64 uses = 5 [json_name = "uses"];
+}
+
+// POST /api/admin/access/invites/*/revoke 200; POST /api/admin/access/requests/*/approve 200; POST /api/admin/access/requests/*/decline 200
+message AccessAccessInvitesOneRevokePost {
+  optional int64 id = 1 [json_name = "id"];
+  optional string state = 2 [json_name = "state"];
+}
+
+// POST /api/playtest/access/redeem 200
+message AccessAccessRedeemPost {
+  optional bool creator = 1 [json_name = "creator"];
+}
+
+// POST /api/playtest/access/redeem 200
+message AccessAccessRedeemPostLines {
+  optional string creator = 1 [json_name = "creator"];
+}
+
+// POST /api/playtest/access/request 200
+message AccessAccessRequestPost {
+  optional string state = 1 [json_name = "state"];
+}
+
+// POST /api/playtest/access/request 200
+message AccessAccessRequestPostLines {
+  optional string asked = 1 [json_name = "asked"];
+  optional string creator = 2 [json_name = "creator"];
+}

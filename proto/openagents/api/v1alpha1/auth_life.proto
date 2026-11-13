@@ -1,0 +1,108 @@
+syntax = "proto3";
+
+package openagents.api.v1alpha1;
+
+// What coax/web/api/auth-life.c answers, route by route (Protocol, GitHub #13250; profile
+// api-routes; docs/protocol/api-routes-v1alpha1.md). Each message names the members
+// of one answer as they ship: json_name is the key on the wire, a `bytes` member is
+// JSON carried as it came, and a member may be absent or null. The messages were
+// read off a run of the API suite and are held to every later run:
+// proto/verse/api-routes-v1alpha1.json holds real answers and their routes, and
+// coax/web/api/routes-goldens.coax holds each answer's keys to its message here.
+// A refusal with only its words is ErrorReply (error.proto). Most bodies are built
+// in SQL; what the C builds goes through a Coax unit.
+
+// GET /api/auth/export 200; POST /api/auth/delete/cancel 200; POST /api/auth/unfreeze 200
+message AuthLifeExport {
+  optional string state = 1 [json_name = "state"];
+}
+
+// GET /api/auth/export 401; POST /api/auth/delete 401; POST /api/auth/merge/start 401; POST /api/auth/unfreeze 401
+message AuthLifeExportRefusal {
+  optional string error = 1 [json_name = "error"];
+  optional string step_up = 2 [json_name = "step_up"];
+  repeated string methods = 3 [json_name = "methods"];
+  optional bool limited = 4 [json_name = "limited"];
+  optional string level = 5 [json_name = "level"];
+  optional AuthLifeExportRefusalRecovery recovery = 6 [json_name = "recovery"];
+}
+
+message AuthLifeExportRefusalRecovery {
+  optional string state = 1 [json_name = "state"];
+  optional int64 asked_ms = 2 [json_name = "asked_ms"];
+  optional int64 ready_ms = 3 [json_name = "ready_ms"];
+  optional int64 cancelled_ms = 4 [json_name = "cancelled_ms"];
+  optional int64 done_ms = 5 [json_name = "done_ms"];
+  optional int64 now_ms = 6 [json_name = "now_ms"];
+  optional int64 wait_hours = 7 [json_name = "wait_hours"];
+}
+
+// GET /api/auth/life 200
+message AuthLifeLife {
+  optional string account = 1 [json_name = "account"];
+  optional string kind = 2 [json_name = "kind"];
+  optional string frozen = 3 [json_name = "frozen"];
+  optional int64 frozen_ms = 4 [json_name = "frozen_ms"];
+  optional int64 delete_asked_ms = 5 [json_name = "delete_asked_ms"];
+  optional int64 purge_ms = 6 [json_name = "purge_ms"];
+  optional int64 now_ms = 7 [json_name = "now_ms"];
+  optional int64 strong = 8 [json_name = "strong"];
+  optional int64 emails = 9 [json_name = "emails"];
+  optional int64 keys = 10 [json_name = "keys"];
+  optional int64 agents = 11 [json_name = "agents"];
+  optional int64 agents_paused = 12 [json_name = "agents_paused"];
+  optional int64 credit_msat = 13 [json_name = "credit_msat"];
+  optional int64 worlds = 14 [json_name = "worlds"];
+  optional int64 saves = 15 [json_name = "saves"];
+  optional int64 merged_from = 16 [json_name = "merged_from"];
+  optional string purge_at = 17 [json_name = "purge_at"];
+  optional string level = 18 [json_name = "level"];
+  optional bool limited = 19 [json_name = "limited"];
+  optional bool fresh = 20 [json_name = "fresh"];
+  optional bool proved = 21 [json_name = "proved"];
+  optional int64 purge_days = 22 [json_name = "purge_days"];
+  optional int64 backup_days = 23 [json_name = "backup_days"];
+  optional int64 backups_gone_days = 24 [json_name = "backups_gone_days"];
+}
+
+// POST /api/auth/delete 200
+message AuthLifeDeletePost {
+  optional string state = 1 [json_name = "state"];
+  optional int64 purge_ms = 2 [json_name = "purge_ms"];
+  optional string purge_at = 3 [json_name = "purge_at"];
+}
+
+// POST /api/auth/merge/confirm 200
+message AuthLifeMergeConfirmPost {
+  optional string state = 1 [json_name = "state"];
+  optional string merged = 2 [json_name = "merged"];
+  optional AuthLifeMergeConfirmPostResult result = 3 [json_name = "result"];
+}
+
+message AuthLifeMergeConfirmPostResult {
+  optional AuthLifeMergeConfirmPostResultKept kept = 1 [json_name = "kept"];
+  optional bytes moved = 2 [json_name = "moved"];   // JSON carried as it came
+}
+
+message AuthLifeMergeConfirmPostResultKept {
+}
+
+// POST /api/auth/merge/prove 200
+message AuthLifeMergeProvePost {
+  optional string state = 1 [json_name = "state"];
+  optional string other = 2 [json_name = "other"];
+  optional int64 emails = 3 [json_name = "emails"];
+  optional int64 keys = 4 [json_name = "keys"];
+  optional int64 agents = 5 [json_name = "agents"];
+  optional int64 worlds = 6 [json_name = "worlds"];
+  optional int64 saves = 7 [json_name = "saves"];
+  optional int64 credit_msat = 8 [json_name = "credit_msat"];
+  optional bool frozen = 9 [json_name = "frozen"];
+  optional bool deleting = 10 [json_name = "deleting"];
+}
+
+// POST /api/auth/merge/start 200
+message AuthLifeMergeStartPost {
+  optional string state = 1 [json_name = "state"];
+  optional int64 expires_in = 2 [json_name = "expires_in"];
+}

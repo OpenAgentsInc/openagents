@@ -67,7 +67,7 @@ CP_COMPILER :: [CP_CONSUMERS] string.[
   "coax c nip98.coax (C11) then cc into the API server",
   "coax/web/wasm.sh: coax c then clang --target=wasm32",
   "coax/web/wasm.sh: coax c then clang --target=wasm32",
-  "gcc -O2 runner.c and runner-sign.coax's C (coax c) with libsecp256k1, libcrypto, libcurl",
+  "gcc -O2 runner.c and runner-sign.coax's C (coax c) with libcrypto, libcurl",
   "bun bundle of TypeScript with nostr-effect; COAXIAL_UNLOCK_SIGNER=coax adds unlock-nostr.coax by coax/web/wasm.sh",
   "xcodebuild arm64: Swift with vendored libsecp256k1",
   "coax/web/tool.sh: coax c (C11) then cc, OpenSSL 3 TLS (tls-env.sh)"];
@@ -80,7 +80,7 @@ CP_STATE :: [CP_CONSUMERS * CP_AXES] u8.[
   0, 1, 0, 2,    // api-nip98: verifies only; HTTPS ends at the load balancer
   0, 1, 0, 2,    // homepage: verifies in Wasm; the browser's WebSocket
   0, 1, 0, 2,    // project-page: each live EVENT frame verified in Coax before it is stored (project-verify.coax), in the browser too
-  3, 0, 4, 2,    // hosted-runner: libsecp256k1 by default (OA_RUNNER_SIGNER=coax signs in Coax, not the production default); the key is an env var; libcurl over OpenSSL TLS (recorded)
+  1, 0, 4, 2,    // hosted-runner: Coax signs (runner-sign.coax over event_sign.coax, its only signer since Protocol C14, #13250); the key is an env var; libcurl over OpenSSL TLS (recorded)
   3, 3, 4, 2,    // unlock-opener: nostr-effect by default (COAXIAL_UNLOCK_SIGNER=coax signs, verifies and does NIP-44 in unlock-nostr.coax, not the default); a pasted key kept as hex in IndexedDB; the browser's WebSocket (recorded)
   3, 0, 2, 2,    // ios-app: libsecp256k1 signs; Keychain; URLSession
   1, 1, 4, 1];   // coder-host: Coax; the host key is a mode 600 file
@@ -90,7 +90,7 @@ CP_SOURCE :: [CP_CONSUMERS * CP_AXES] string.[
   "", "coax/web/api/nostr.c", "", "coax/web/api/lb.sh",
   "", "coax/web/project/landing-nostr.coax", "", "coax/web/host.js",
   "", "apps/openagents-web/project-live.coax", "", "coax/web/host.js",
-  "coax/web/agent/runner.c", "", "coax/web/agent/runner.c", "coax/web/agent/runner.c",
+  "coax/web/agent/runner-sign.coax", "", "coax/web/agent/runner.c", "coax/web/agent/runner.c",
   "coax/web/unlock/lib.ts", "coax/web/unlock/lib.ts", "coax/web/unlock/page.ts", "coax/web/unlock/lib.ts",
   "apps/openagents-ios/OpenAgents/SignIn/NostrKey.swift", "", "apps/openagents-ios/OpenAgents/SignIn/NostrKey.swift", "apps/openagents-ios/OpenAgents/SignIn/PhoneSignIn.swift",
   "coder/tui/host.coax", "apps/openagents-cli/relay.coax", "coder/tui/host.coax", "coax/lib/net/relay_conn.coax"];
@@ -100,7 +100,7 @@ CP_SYMBOL :: [CP_CONSUMERS * CP_AXES] string.[
   "", "nip98_check_coax", "", "load balancer",
   "", "nostr_fast_verify_vartime", "", "new WebSocket(",
   "", "project_frame_verified", "", "new WebSocket(",
-  "secp256k1_schnorrsig_sign32", "", "OA_RUNNER_KEY", "curl_easy_init",
+  "nostr_event_sign_step", "", "OA_RUNNER_KEY", "curl_easy_init",
   "finalizeEvent", "verifyEvent", "coaxial-unlock", "fetchEvent",
   "oa_nostr_sign", "", "kSecClassGenericPassword", "URLSession",
   "nostr_event_sign_step", "rl_read(", "hs_write_private", "relay_conn_open"];
@@ -202,7 +202,7 @@ cp_complete :: (c: int, found: u32) -> bool #export_c #effects(all) { return cp_
 }
 
 #test "each axis: its state, and a file and symbol exactly when it is used" {
-  states := [36] int.[1, 1, 4, 1, 1, 1, 5, 1, 0, 1, 0, 2, 0, 1, 0, 2, 0, 1, 0, 2, 3, 0, 4, 2, 3, 3, 4, 2, 3, 0, 2, 2, 1, 1, 4, 1];
+  states := [36] int.[1, 1, 4, 1, 1, 1, 5, 1, 0, 1, 0, 2, 0, 1, 0, 2, 0, 1, 0, 2, 1, 0, 4, 2, 3, 3, 4, 2, 3, 0, 2, 2, 1, 1, 4, 1];
   for c: 0..<9 {
     for a: 0..<4 {
       st := cp_state(c, a);

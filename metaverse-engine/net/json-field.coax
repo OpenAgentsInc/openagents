@@ -1,0 +1,24 @@
+// A member of a JSON answer, for a page that holds no parser (moved here from
+// everglade/client/net-core.coax, unchanged, so the codecs of the answers a page reads can use it:
+// rooms-list.coax; Protocol, #13250): the value after the first "NAME": in t, a string's contents as
+// they are written (no unescape) or a number, true, false or null as text; "" when there is none.
+// It reads the members our own writers make: flat objects, names that appear once before any
+// nested value of the same name.
+net_json_field :: (t: string, name: string) -> string {
+  for i: 0..<t.count {
+    if t[i] != '"' || i + name.count + 3 > t.count || t[i + 1..<i + 1 + name.count] != name || t[i + 1 + name.count] != '"' || t[i + 2 + name.count] != ':' { continue; }
+    a := i + 3 + name.count;
+    q := a < t.count && t[a] == '"';
+    if q { a += 1; }
+    e := a;
+    while e < t.count && (ifx q then t[e] != '"' else (t[e] != ',' && t[e] != '}')) { e += 1; }
+    return t[a..<e];
+  }
+  return "";
+}
+
+#test "a member's value: a string's contents, a number, none" {
+  t := "{\"realm\":\"town\",\"seats\":16,\"join\":\"town-2\",\"rooms\":[{\"code\":\"town-1\",\"players\":16}]}";
+  #assert net_json_field(t, "realm") == "town" && net_json_field(t, "seats") == "16" && net_json_field(t, "join") == "town-2" && net_json_field(t, "with") == "";
+  #assert net_json_field(t, "code") == "town-1" && net_json_field(t, "players") == "16" && net_json_field("", "x") == "" && net_json_field("{\"x\":", "x") == "";
+}

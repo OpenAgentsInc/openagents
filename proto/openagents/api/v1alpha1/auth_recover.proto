@@ -1,0 +1,172 @@
+syntax = "proto3";
+
+package openagents.api.v1alpha1;
+
+// What coax/web/api/auth-recover.c answers, route by route (Protocol, GitHub #13250; profile
+// api-routes; docs/protocol/api-routes-v1alpha1.md). Each message names the members
+// of one answer as they ship: json_name is the key on the wire, a `bytes` member is
+// JSON carried as it came, and a member may be absent or null. The messages were
+// read off a run of the API suite and are held to every later run:
+// proto/verse/api-routes-v1alpha1.json holds real answers and their routes, and
+// coax/web/api/routes-goldens.coax holds each answer's keys to its message here.
+// A refusal with only its words is ErrorReply (error.proto). Most bodies are built
+// in SQL; what the C builds goes through a Coax unit.
+
+// GET /api/auth/notices 200
+message AuthRecoverNotices {
+  repeated AuthRecoverNoticesNotices notices = 1 [json_name = "notices"];
+}
+
+message AuthRecoverNoticesNotices {
+  optional AuthRecoverNoticesNoticesSent sent = 1 [json_name = "sent"];
+  optional string what = 2 [json_name = "what"];
+  optional int64 at_ms = 3 [json_name = "at_ms"];
+  optional string words = 4 [json_name = "words"];
+}
+
+message AuthRecoverNoticesNoticesSent {
+  optional int64 push = 1 [json_name = "push"];
+  optional int64 email = 2 [json_name = "email"];
+  optional int64 nostr = 3 [json_name = "nostr"];
+  optional int64 failed = 4 [json_name = "failed"];
+}
+
+// GET /api/auth/recovery 200
+message AuthRecoverRecovery {
+  optional string state = 1 [json_name = "state"];
+  optional int64 asked_ms = 2 [json_name = "asked_ms"];
+  optional int64 ready_ms = 3 [json_name = "ready_ms"];
+  optional int64 cancelled_ms = 4 [json_name = "cancelled_ms"];
+  optional int64 done_ms = 5 [json_name = "done_ms"];
+  optional int64 now_ms = 6 [json_name = "now_ms"];
+  optional int64 wait_hours = 7 [json_name = "wait_hours"];
+  optional string cancelled_via = 8 [json_name = "cancelled_via"];
+}
+
+// GET /api/auth/ways 200
+message AuthRecoverWays {
+  optional string account = 1 [json_name = "account"];
+  optional string level = 2 [json_name = "level"];
+  optional string via = 3 [json_name = "via"];
+  optional int64 l2_age_ms = 4 [json_name = "l2_age_ms"];
+  optional bool limited = 5 [json_name = "limited"];
+  repeated AuthRecoverWaysEmails emails = 6 [json_name = "emails"];
+  repeated AuthRecoverWaysKeys keys = 7 [json_name = "keys"];
+  repeated AuthRecoverWaysPasskeys passkeys = 8 [json_name = "passkeys"];
+  repeated string methods = 9 [json_name = "methods"];
+  optional AuthRecoverWaysRecovery recovery = 10 [json_name = "recovery"];
+  optional AuthRecoverWaysCounts counts = 11 [json_name = "counts"];
+}
+
+message AuthRecoverWaysEmails {
+  optional int64 id = 1 [json_name = "id"];
+  optional string email = 2 [json_name = "email"];
+  optional int64 added_ms = 3 [json_name = "added_ms"];
+}
+
+message AuthRecoverWaysKeys {
+  optional int64 id = 1 [json_name = "id"];
+  optional string pubkey = 2 [json_name = "pubkey"];
+  optional string label = 3 [json_name = "label"];
+  optional int64 added_ms = 4 [json_name = "added_ms"];
+}
+
+message AuthRecoverWaysRecovery {
+  optional string state = 1 [json_name = "state"];
+  optional int64 asked_ms = 2 [json_name = "asked_ms"];
+  optional int64 ready_ms = 3 [json_name = "ready_ms"];
+  optional int64 cancelled_ms = 4 [json_name = "cancelled_ms"];
+  optional int64 done_ms = 5 [json_name = "done_ms"];
+  optional int64 now_ms = 6 [json_name = "now_ms"];
+  optional int64 wait_hours = 7 [json_name = "wait_hours"];
+}
+
+message AuthRecoverWaysCounts {
+  optional int64 passkeys = 1 [json_name = "passkeys"];
+  optional bool recovery_code = 2 [json_name = "recovery_code"];
+  optional int64 ways = 3 [json_name = "ways"];
+  optional int64 strong = 4 [json_name = "strong"];
+}
+
+message AuthRecoverWaysPasskeys {
+  optional int64 id = 1 [json_name = "id"];
+  optional string name = 2 [json_name = "name"];
+  optional int64 added_ms = 3 [json_name = "added_ms"];
+  optional int64 used_ms = 4 [json_name = "used_ms"];
+  optional bool synced = 5 [json_name = "synced"];
+  optional bool clone = 6 [json_name = "clone"];
+  optional bool prf = 7 [json_name = "prf"];
+  optional string transports = 8 [json_name = "transports"];
+}
+
+// POST /api/auth/link/nostr 200
+message AuthRecoverLinkNostrPost {
+  optional string state = 1 [json_name = "state"];
+  optional int64 id = 2 [json_name = "id"];
+  optional string pubkey = 3 [json_name = "pubkey"];
+}
+
+// POST /api/auth/proof/challenge 200
+message AuthRecoverProofChallengePost {
+  optional string challenge = 1 [json_name = "challenge"];
+  optional string url = 2 [json_name = "url"];
+  optional string method = 3 [json_name = "method"];
+  optional int64 expires_in = 4 [json_name = "expires_in"];
+}
+
+// POST /api/auth/recovery-code 200
+message AuthRecoverRecoveryCodePost {
+  optional string recovery_code = 1 [json_name = "recovery_code"];
+  optional int64 words = 2 [json_name = "words"];
+}
+
+// POST /api/auth/recovery-code/login 200
+message AuthRecoverRecoveryCodeLoginPost {
+  optional string state = 1 [json_name = "state"];
+  optional string account = 2 [json_name = "account"];
+  optional bool new = 3 [json_name = "new"];
+  optional bytes player = 4 [json_name = "player"];   // JSON carried as it came
+  optional string recovery_code = 5 [json_name = "recovery_code"];
+}
+
+// POST /api/auth/recovery/cancel 200
+message AuthRecoverRecoveryCancelPost {
+  optional string state = 1 [json_name = "state"];
+}
+
+// POST /api/auth/recovery/finish 200
+message AuthRecoverRecoveryFinishPost {
+  optional string state = 1 [json_name = "state"];
+  optional string level = 2 [json_name = "level"];
+  optional string pubkey = 3 [json_name = "pubkey"];
+}
+
+// POST /api/auth/recovery/start 200
+message AuthRecoverRecoveryStartPost {
+  optional string state = 1 [json_name = "state"];
+  optional int64 asked_ms = 2 [json_name = "asked_ms"];
+  optional int64 ready_ms = 3 [json_name = "ready_ms"];
+  optional int64 wait_hours = 4 [json_name = "wait_hours"];
+}
+
+// POST /api/auth/recovery-code/login 429; POST /api/auth/recovery/start 429
+message AuthRecoverRecoveryStartPostRefusal {
+  optional string error = 1 [json_name = "error"];
+  optional string limit = 2 [json_name = "limit"];
+  optional int64 max_ = 3 [json_name = "max"];
+  optional string per = 4 [json_name = "per"];
+  optional int64 until_ms = 5 [json_name = "until_ms"];
+}
+
+// POST /api/auth/step-up 200
+message AuthRecoverStepUpPost {
+  optional string state = 1 [json_name = "state"];
+  optional string level = 2 [json_name = "level"];
+  optional string recovery_code = 3 [json_name = "recovery_code"];
+}
+
+// POST /api/auth/unlink 200
+message AuthRecoverUnlinkPost {
+  optional string state = 1 [json_name = "state"];
+  optional int64 ended = 2 [json_name = "ended"];
+}

@@ -423,9 +423,8 @@ static void answer(const request *q, int status, const char *headers, const char
   else api_respond(q->fd, status, "application/json", headers, json, strlen(json));
 }
 static void refuse(const request *q, int status, const char *words) {
-  char e[400], json[600], lines[500];
-  json_esc(words, e, sizeof e);
-  snprintf(json, sizeof json, "{\"error\":\"%s\"}", e);
+  char json[600], lines[500];
+  api_error_text(json, sizeof json, words);
   snprintf(lines, sizeof lines, "error %s\n", words);
   answer(q, status, NULL, json, lines);
 }
@@ -801,7 +800,7 @@ bool auth_gate(const request *q) {
   const auth_rule *rule = rule_for(q->method, q->path);
   if (!rule) {
     api_log("auth: no rule for %s %s", q->method, q->path);
-    api_json(q->fd, 404, "{\"error\":\"not found\"}");
+    api_error(q->fd, 404, "not found");
     return true;
   }
   // A request with an Authorization header is resolved on every route, public ones too, so an
@@ -1524,17 +1523,17 @@ static void limits(const request *q) {
 // at L2, answered with its cookie and Location. false when it answered a refusal itself.
 bool auth_login_key_redirect(const request *q, PGconn *db, const char *pk, const char *location) {
   char acct[40], kid[24]; bool made = false;
-  if (!key_account(db, pk, "admin", acct, kid, &made)) { api_json(q->fd, 500, "{\"error\":\"no session\"}"); return false; }
+  if (!key_account(db, pk, "admin", acct, kid, &made)) { api_error(q->fd, 500, "no session"); return false; }
   PGresult *r;
   char tok[160], dig[65], name[96];
   device_name(q, name, sizeof name);
-  if (!new_token("oas_", tok, sizeof tok, dig)) { api_json(q->fd, 503, "{\"error\":\"no randomness\"}"); return false; }
+  if (!new_token("oas_", tok, sizeof tok, dig)) { api_error(q->fd, 503, "no randomness"); return false; }
   const char *s[8] = {dig, acct, "nostr", kid, "L2", "web", name, NULL};
   r = PQexecParams(db, "SELECT auth.session_new($1, $2, $3, $4::bigint, $5, $6, $7, $8)", 8, NULL, s, NULL, NULL, 0);
   bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0);
   char sid[32] = ""; if (ok) snprintf(sid, sizeof sid, "%s", PQgetvalue(r, 0, 0));
   PQclear(r);
-  if (!ok) { api_json(q->fd, 410, "{\"error\":\"this account was deleted\"}"); return false; }
+  if (!ok) { api_error(q->fd, 410, "this account was deleted"); return false; }
   audit(db, acct, sid, "admin.login", "ok", "{}");
   set_cookie[0] = 0;
   char headers[900];
@@ -1666,10 +1665,15 @@ static bool local_admin(const request *q, PGconn *db, auth_principal *p) {
 bool auth_api_route(const request *q) {
   if (strncmp(q->path, "/api/auth/", 10)) return false;
   const char *op = q->path + 10;
+  api_route_at("auth_recover_route");
   if (auth_recover_route(q, api_db(), op)) return true;
+  api_route_at("auth_life_route");
   if (auth_life_route(q, api_db(), op)) return true;
+  api_route_at("passkeys_route");
   if (passkeys_route(q, api_db(), op)) return true;
+  api_route_at("auth_device_route");
   if (auth_device_route(q, api_db(), op)) return true;
+  api_route_at("auth_api_route");
   bool get = !strcmp(q->method, "GET");
   static const char *const posts[] = {"email/start", "email/verify", "email/link", "nostr/challenge", "nostr", "phone/start", "phone/approve",
                                       "phone/poll", "refresh", "logout", "logout-everywhere", "freeze", NULL};

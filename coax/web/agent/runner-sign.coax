@@ -1,14 +1,13 @@
-// The hosted runner's signer in Coax (#12630): runner.c's NIP-98 events,
-// signed by event_sign.coax (BIP-340 over schnorr_sign.coax) instead of
-// libsecp256k1 when OA_RUNNER_SIGNER=coax. The default stays libsecp256k1
-// until the owner approves the migration (NEEDS_OWNER.md); unsetting the
-// variable is the rollback. The identity rule is runner.c's: the same
-// OA_RUNNER_KEY, and the runner refuses to start when the two signers derive
-// different public keys. deploy.sh compiles this to C beside runner.c:
+// The hosted runner's signer (#12630; Protocol C14, #13250): runner.c's NIP-98
+// header. The event is built and signed by coax/lib/nostr (event_sign.coax:
+// the id, BIP-340; base64.coax); the tags are the three the runner has always
+// sent, escaped as it escaped them (no nonce tag, see runner_coax_tags). It is the runner's only signer: runner.c holds no event
+// text and links no libsecp256k1 call.
+// deploy.sh compiles this to C beside runner.c:
 //   coax c coax/web/agent/runner-sign.coax --library --header runner-sign.h --run-steps 250000000
 //   coax test coax/web/agent/runner-sign.coax
 #run_steps 250000000;
-#load "../../lib/nostr/event_sign.coax";
+#load "../../lib/nostr/nip98_sign.coax";
 #load "../../lib/crypto/bip32.coax";
 #load "../repo/grant-mac.coax";   // oa-repo's grants (#13326): /chat's turns read the indexed repo with one
 
@@ -21,17 +20,72 @@ runner_coax_pubkey :: (secret: [] u8, out: [] u8) -> bool #export_c #effects(all
   return true;
 }
 
-// One event signed with secret: kind, created_at, tags (a JSON array) and an
-// empty content, into out as NIP-01 JSON. Its length, or -1.
-runner_coax_sign :: (secret: [] u8, aux: [] u8, created_at: int, kind: int, tags: [] u8, out: [] u8) -> int #export_c #effects(all) {
-  if secret.count != 32 || aux.count != 32 { return -1; }
-  work: [1] NostrSignWork; scratch: [16384] u8;
-  r := EVENT_MORE; steps := 0;
-  while r == EVENT_MORE && steps < 4096 {
-    r = nostr_event_sign_step(secret, aux, created_at, kind, cast(string) tags, "", work[..], scratch[..], out, false);
-    steps += 1;
+// A JSON string as runner.c's putq wrote it: a quote and a backslash behind a backslash, a newline
+// as \n, any other byte under 0x20 as \u00XX, every other byte as it is. The end, or -1.
+runner_coax_putq :: (out: [] u8, at: int, s: string) -> int #effects(all) {
+  hex := "0123456789abcdef";
+  t := n98s_put(out, at, "\"");
+  for c: s {
+    if t == -1 { return -1; }
+    if c == '"' { t = n98s_put(out, t, "\\\""); }
+    else if c == '\\' { t = n98s_put(out, t, "\\\\"); }
+    else if c == 10 { t = n98s_put(out, t, "\\n"); }
+    else if c < 32 {
+      e: [6] u8; e[0] = '\\'; e[1] = 'u'; e[2] = '0'; e[3] = '0'; e[4] = hex[cast(int) (c >> 4)]; e[5] = hex[cast(int) (c & 15)];
+      t = n98s_put(out, t, cast(string) e[..]);
+    }
+    else { one: [1] u8; one[0] = c; t = n98s_put(out, t, cast(string) one[..]); }
   }
-  return ifx r > 0 then r else -1;
+  return n98s_put(out, t, "\"");
+}
+// The tags of the runner's NIP-98 event, as runner.c always wrote them: ["u", URL], ["method",
+// METHOD] and, when the body is bound, ["payload", SHA-256 of the body as hex]. No nonce tag: the
+// library's own header (n98s_header) adds one, and adding it here would change the bytes the
+// runner sends (Protocol, #13250: no step changes bytes on the wire). The tags' length, or -1.
+runner_coax_tags :: (url: string, method: string, payload_hex: string, out: [] u8) -> int #effects(all) {
+  bound := payload_hex.count > 0;
+  if bound && !n98s_hex_ok(payload_hex, 64) { return -1; }
+  t := n98s_put(out, 0, "[[\"u\",");
+  t = runner_coax_putq(out, t, url);
+  t = n98s_put(out, t, "],[\"method\",");
+  t = runner_coax_putq(out, t, method);
+  t = n98s_put(out, t, "]");
+  if bound {
+    t = n98s_put(out, t, ",[\"payload\",\"");
+    t = n98s_put(out, t, payload_hex);
+    t = n98s_put(out, t, "\"]");
+  }
+  return n98s_put(out, t, "]");
+}
+
+// The Authorization header's value for one request, "Nostr <base64 of the signed kind 27235 event>",
+// into out: its length, or -1. bind: the body's SHA-256 goes in a payload tag (every request with
+// a body). aux is BIP-340's 32 random bytes. The event is built and signed by
+// coax/lib/nostr/event_sign.coax and encoded by its base64, as the library's own header is.
+runner_coax_auth :: (secret: [] u8, aux: [] u8, now_s: int, url: string, method: string, body: [] u8, bind: bool, out: [] u8) -> int #export_c #effects(all) {
+  if secret.count != 32 || aux.count != 32 { return -1; }
+  hx: [64] u8; hn := 0;
+  digits := "0123456789abcdef";
+  if bind {
+    h: [32] u8;
+    if sha256_hash_checked(body, h[..], false) != SHA_OK { return -1; }
+    for i: 0..<32 { hx[2 * i] = digits[cast(int) (h[i] >> 4)]; hx[2 * i + 1] = digits[cast(int) (h[i] & 15)]; }
+    hn = 64;
+  }
+  tags: [N98S_TAGS] u8;
+  tn := runner_coax_tags(url, method, cast(string) hx[0..<hn], tags[..]);
+  if tn == -1 { return -1; }
+  work: [1] NostrSignWork; scratch: [8192] u8; ev: [N98S_EVENT] u8;
+  r := EVENT_MORE;   // each stage moves on or refuses, so this ends
+  while r == EVENT_MORE {
+    r = nostr_event_sign_step(secret, aux, now_s, N98S_KIND, cast(string) tags[0..<tn], "", work[..], scratch[..], ev[..], false);
+  }
+  if r == EVENT_REFUSED { return -1; }
+  p := n98s_put(out, 0, "Nostr ");
+  if p == -1 { return -1; }
+  e := base64_encode_checked(cast(string) ev[0..<r], out[p..<out.count], false);
+  if e.error != NC_OK { return -1; }
+  return p + e.written;
 }
 
 // A read grant on repo for one /chat turn (docs/repos/2026-11-11-indexed-repos.md, "Who may do what"):
@@ -49,31 +103,47 @@ runner_coax_repo_grant :: (key_hex: string, repo: string, expires: int, session:
   #assert rg_check(key, cast(string) out[0..<n], "openagents", RG_WANT_FETCH, 1794449000) == RG_NOT_ALLOWED;
   #assert runner_coax_repo_grant("", "openagents", 1794450000, "chat-7", out[..]) == 0;
 }
-#test "a test key's NIP-98 event signs and verifies, and its public key is the signer's" #steps 4000000000 {
+#test "a test key's NIP-98 header is the library's, verifies, and is the signer's key" #steps 4000000000 {
   key: [32] u8; for i: 0..<32 { key[i] = cast(u8) (i + 1); }
-  aux: [32] u8;
-  pub: [32] u8;
+  aux: [32] u8; pub: [32] u8;
   #assert runner_coax_pubkey(key[..], pub[..]);
-  tags := "[[\"u\",\"https://example.invalid/api/private/x/state?n=1\"],[\"method\",\"GET\"]]";
-  tb: [256] u8; for i: 0..<tags.count { tb[i] = tags[i]; }
-  out: [4096] u8;
-  n := runner_coax_sign(key[..], aux[..], 1790000000, 27235, tb[0..<tags.count], out[..]);
-  #assert n > 0;
+  url := "https://example.invalid/api/private/x/state?n=1";
+  out: [N98S_HEADER] u8; nb: [1] u8; none := nb[0..<0];
+  n := runner_coax_auth(key[..], aux[..], 1790000000, url, "GET", none, false, out[..]);
+  #assert n > 6 && cast(string) out[0..<6] == "Nostr ";
+  ev: [N98S_EVENT] u8;
+  d := base64_decode_checked(cast(string) out[6..<n], ev[..], false);
+  en := d.written;
+  #assert d.error == 0 && en > 0;
   scratch: [4096] u8;
-  e := nostr_event_verify_vartime(cast(string) out[0..<n], scratch[..], false);
-  #assert e.error == NE_OK && e.kind == 27235 && e.created_at == 1790000000;
-  #assert e.verified;
+  e := nostr_event_verify_vartime(cast(string) ev[0..<en], scratch[..], false);
+  #assert e.error == NE_OK && e.kind == 27235 && e.created_at == 1790000000 && e.verified;
   for i: 0..<32 { #assert e.public_key[i] == pub[i]; }
+  // the tags are the runner's own, byte for byte: u, method, and no nonce
+  #assert n98s_has(cast(string) ev[0..<en], ",\"kind\":27235,\"tags\":[[\"u\",\"https://example.invalid/api/private/x/state?n=1\"],[\"method\",\"GET\"]],\"content\":\"\",");
+  body := "{\"nonce\":\"1-2\"}"; bb: [32] u8; for i: 0..<body.count { bb[i] = body[i]; }
+  m := runner_coax_auth(key[..], aux[..], 1790000000, url, "POST", bb[0..<body.count], true, out[..]);
+  #assert m > n;   // the payload tag
+  d = base64_decode_checked(cast(string) out[6..<m], ev[..], false);
+  #assert d.error == 0 && n98s_has(cast(string) ev[0..<d.written], "\"tags\":[[\"u\",\"https://example.invalid/api/private/x/state?n=1\"],[\"method\",\"POST\"],[\"payload\",\"e7a82a2b3a4b03d2298954136d1ddd356fc87ce7c74ff55bc0b42f66b47ac4dc\"]],");
 }
-#test "bad keys, aux and tags are refused" #steps 4000000000 {
-  key: [32] u8; aux: [32] u8; out: [512] u8; pub: [32] u8;
+#test "the tags as runner.c wrote them: u and method, payload when bound, never a nonce" {
+  t: [N98S_TAGS] u8;
+  n := runner_coax_tags("https://openagents.com/x", "GET", "", t[..]);
+  #assert n > 0 && cast(string) t[0..<n] == "[[\"u\",\"https://openagents.com/x\"],[\"method\",\"GET\"]]";
+  n = runner_coax_tags("http://h/", "POST", "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a", t[..]);
+  #assert n > 0 && cast(string) t[0..<n] == "[[\"u\",\"http://h/\"],[\"method\",\"POST\"],[\"payload\",\"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"]]";
+  n = runner_coax_tags("http://h/a\"b\\c\nd\te", "GET", "", t[..]);
+  #assert n > 0 && cast(string) t[0..<n] == "[[\"u\",\"http://h/a\\\"b\\\\c\\nd\\u0009e\"],[\"method\",\"GET\"]]";
+  #assert runner_coax_tags("http://h/", "GET", "abc", t[..]) == -1;
+  #assert runner_coax_tags("http://h/", "GET", "", t[0..<10]) == -1;
+}
+#test "bad keys, aux and too small a buffer are refused" #steps 4000000000 {
+  key: [32] u8; aux: [32] u8; out: [N98S_HEADER] u8; pub: [32] u8; nb: [1] u8; none := nb[0..<0];
   #assert !runner_coax_pubkey(key[..], pub[..]);          // zero is not a key
   #assert !runner_coax_pubkey(key[0..<31], pub[..]) && !runner_coax_pubkey(key[..], pub[0..<31]);
   key[31] = 1;
-  t := "[]"; tb: [2] u8; tb[0] = t[0]; tb[1] = t[1];
-  #assert runner_coax_sign(key[0..<31], aux[..], 1, 27235, tb[..], out[..]) == -1;
-  #assert runner_coax_sign(key[..], aux[0..<31], 1, 27235, tb[..], out[..]) == -1;
-  bad := "[[1]]"; bb: [5] u8; for i: 0..<5 { bb[i] = bad[i]; }
-  #assert runner_coax_sign(key[..], aux[..], 1, 27235, bb[..], out[..]) == -1;
-  #assert runner_coax_sign(key[..], aux[..], 1, 27235, tb[..], out[0..<10]) == -1;
+  #assert runner_coax_auth(key[0..<31], aux[..], 1, "https://a/", "GET", none, false, out[..]) == -1;
+  #assert runner_coax_auth(key[..], aux[0..<31], 1, "https://a/", "GET", none, false, out[..]) == -1;
+  #assert runner_coax_auth(key[..], aux[..], 1, "https://a/", "GET", none, false, out[0..<10]) == -1;
 }

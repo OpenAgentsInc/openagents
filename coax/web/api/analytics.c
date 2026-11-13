@@ -109,7 +109,7 @@ void analytics_team_init(PGconn *db) {
 }
 
 static void ingest(const request *q) {
-  if (q->body_len == 0 || q->body_len > 256 * 1024) { api_json(q->fd, 400, "{\"error\":\"no batch\"}"); return; }
+  if (q->body_len == 0 || q->body_len > 256 * 1024) { api_error(q->fd, 400, "no batch"); return; }
   char ip[128], ua[512], host[256], automation[64], cookies[2048], auth[4096], tmp[256];
   char region[64], subdivision[64], city[128], latlong[64], rtt[32], tls[64], device[64], player[160];
   api_header(q, "X-Forwarded-For", ip, sizeof ip);
@@ -142,8 +142,8 @@ static void ingest(const request *q) {
     snprintf(url, sizeof url, "%s%s", origin && *origin ? origin : "https://openagents.com", q->target);
     nostr_event ev; char err[160];
     if (!nip98_check(auth, q->method, url, q->body, q->body_len, (long long)time(NULL), &ev, err, sizeof err)) {
-      char out[256]; snprintf(out, sizeof out, "{\"error\":\"nip98: %s\"}", err);
-      api_json(q->fd, 401, out); return;
+      char out[256]; snprintf(out, sizeof out, "nip98: %s", err);
+      api_error(q->fd, 401, out); return;
     }
     memcpy(npub, ev.pubkey, sizeof npub);
   }
@@ -170,9 +170,9 @@ static void ingest(const request *q) {
   if (n + 2 < sizeof ctx) { ctx[n++] = '}'; ctx[n] = 0; }
 
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return; }
+  if (!db) { api_error(q->fd, 503, "no database"); return; }
   char *body = malloc(q->body_len + 1);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!body) { api_error(q->fd, 503, "memory"); return; }
   memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
   const char *params[2] = {body, ctx};
   // A robot's User-Agent (analytics.bot_agent, migrations/0089_analytics_bots.sql) marks the batch
@@ -194,14 +194,14 @@ static void ingest(const request *q) {
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("ingest: %s", PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+    api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not kept");
     return;
   }
   int kept = atoi(PQgetvalue(r, 0, 0));
   PQclear(r);
-  if (kept < 0) { api_json(q->fd, 400, "{\"error\":\"not a batch\"}"); return; }
-  char out[64]; snprintf(out, sizeof out, "{\"kept\":%d}", kept);
-  api_respond(q->fd, 200, "application/json", mark ? TEAM_COOKIE : NULL, out, strlen(out));
+  if (kept < 0) { api_error(q->fd, 400, "not a batch"); return; }
+  char out[64]; size_t on = api_num_text(out, sizeof out, "kept", kept);
+  api_respond(q->fd, 200, "application/json", mark ? TEAM_COOKIE : NULL, out, on);
 }
 
 // GET /api/analytics/realms: how much each realm is played, for /worlds (worlds-web.coax), a line a
@@ -227,12 +227,12 @@ static void realm_visits(const request *q) {
   double now = api_now_ms();
   if (now - cached_at > 60000) {
     PGconn *db = api_db();
-    if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return; }
+    if (!db) { api_error(q->fd, 503, "no database"); return; }
     PGresult *r = PQexec(db, REALM_VISITS);
     if (PQresultStatus(r) != PGRES_TUPLES_OK) {
       api_log("realm visits: %s", PQerrorMessage(db));
       PQclear(r);
-      api_json(q->fd, 500, "{\"error\":\"not now\"}");
+      api_error(q->fd, 500, "not now");
       return;
     }
     size_t n = 0;
@@ -279,17 +279,17 @@ static void team_mark(const request *q) {
 
 bool analytics_route(const request *q) {
   if (!strcmp(q->path, "/api/analytics/team")) {
-    if (strcmp(q->method, "GET")) api_json(q->fd, 405, "{\"error\":\"GET\"}");
+    if (strcmp(q->method, "GET")) api_error(q->fd, 405, "GET");
     else team_mark(q);
     return true;
   }
   if (!strcmp(q->path, "/api/analytics/realms")) {
-    if (strcmp(q->method, "GET")) api_json(q->fd, 405, "{\"error\":\"GET\"}");
+    if (strcmp(q->method, "GET")) api_error(q->fd, 405, "GET");
     else realm_visits(q);
     return true;
   }
   if (strcmp(q->path, "/api/analytics/events")) return false;
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a batch\"}"); return true; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST a batch"); return true; }
   ingest(q);
   return true;
 }

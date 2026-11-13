@@ -101,7 +101,7 @@ rg_check :: (text: string, api: [] D_State, doc: [] D_State, w: [] RgWork) -> in
 tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   loaded := args_load(args[..]);
-  pb: [65536] u8; g: [1] PkDescriptor; h: [1] PkDescriptor;
+  pb: [262144] u8; g: [1] PkDescriptor; h: [1] PkDescriptor;
   pn := fs_read(RG_API, pb[..]);
   if pn <= 0 { tool_errln("realm-wire-goldens: cannot read the API descriptor"); return 2; }
   err := pk_load(g[..], cast(string) pb[0..<pn]);

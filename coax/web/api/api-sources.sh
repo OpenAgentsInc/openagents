@@ -19,7 +19,7 @@ API_C="api.c analytics.c admin.c player.c rooms.c npc.c room.c private.c drops.c
   wallet.c wallet-vault-unit.c ticket-sign-unit.c service.c worlds.c splice-world-unit.c scripts.c script-job-run.c script-store-unit.c"
 API_COAX="npc-personas anime-director-policy seat-policy progress-policy item-policy moderation-policy
   character-policy worldbuilder-policy auth-policy auth-recover-policy auth-life-policy
-  auth-device-policy passkey-policy pay/wallet-policy:wallet-policy service-policy service-wire realm-wire auth-push seat-wire jobs-wire email-wire packs-wire world-policy"
+  auth-device-policy passkey-policy pay/wallet-policy:wallet-policy service-policy service-wire realm-wire auth-push seat-wire jobs-wire email-wire packs-wire world-policy error-wire mesh-wire"
 API_COAX_WRAPPED="mesh-gemini auth-seal pay/lnaddr-policy:lnaddr-policy agent-wire agent-attest auth-recover-crypto
   auth-device-crypto passkey-verify pay/wallet-vault-store:wallet-vault ticket-sign
   metaverse/splice-bots/world-api:splice-world script-store"

@@ -41,7 +41,7 @@ pg_body :: (st: [] D_State, kind: string, body: string, w: [] PgWork) -> string 
 tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   loaded := args_load(args[..]);
-  pb: [65536] u8;
+  pb: [262144] u8;
   pn := fs_read(PG_DESCRIPTOR, pb[..]);
   if pn <= 0 { tool_errln("packs-wire-goldens: cannot read the descriptor"); return 2; }
   g: [1] PkDescriptor;

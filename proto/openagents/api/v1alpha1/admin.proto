@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package openagents.api.v1alpha1;
+
+// What coax/web/api/admin.c answers, route by route (Protocol, GitHub #13250; profile
+// api-routes; docs/protocol/api-routes-v1alpha1.md). Each message names the members
+// of one answer as they ship: json_name is the key on the wire, a `bytes` member is
+// JSON carried as it came, and a member may be absent or null. The messages were
+// read off a run of the API suite and are held to every later run:
+// proto/verse/api-routes-v1alpha1.json holds real answers and their routes, and
+// coax/web/api/routes-goldens.coax holds each answer's keys to its message here.
+// A refusal with only its words is ErrorReply (error.proto). Most bodies are built
+// in SQL; what the C builds goes through a Coax unit.
+
+// POST /api/admin/reports/chat/*/hide 200; POST /api/admin/reports/chat/*/restore 200; POST /api/admin/reports/file/*/hide 200; POST /api/admin/reports/file/*/restore 200; POST /api/admin/reports/memorial/*/hide 200; POST /api/admin/reports/memorial/*/restore 200
+message AdminReportsChatOneHidePost {
+  optional string decided = 1 [json_name = "decided"];
+}

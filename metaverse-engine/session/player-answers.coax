@@ -1,0 +1,73 @@
+// The API's answers to a player's own routes, as a room server's local stand-in writes them
+// (coax/web/room/room-dev.coax, a --dev room; Protocol E11, GitHub #13250). The one writer of the
+// stand-in's bodies; the API builds the same members in SQL and C (coax/web/api/player.c), and the
+// page reads either with its member reader (metaverse-engine/net/json-field.coax). Schema: the
+// player route's messages in proto/openagents/api/v1alpha1/player.proto and rooms.proto, to which
+// coax/web/api/routes-goldens.coax holds both writers' bytes
+// (proto/verse/api-routes-v1alpha1.json: the rows whose "fn" is rm_dev_api are a --dev room's).
+//   pan_error    {"error":"WORDS"}                                  a refusal
+//   pan_player   {"key":"KEY","id":"ID","account":false}            POST /api/playtest/player
+//   pan_ticket   {"ticket":"T","id":"ID","account":false,"name":"N","room":"CODE","expires":MS}
+//                                                                   POST /api/playtest/room-ticket/CODE
+//   pan_name     {"name":"NAME","account":false}                    POST /api/playtest/player/name
+//   pan_row      {"row":"ROW","on":true}                            POST /api/playtest/realms/SLUG/switch
+//   pan_ok       {"ok":true}                                        room-state, settings
+// A writer returns the body's length, or -1: no room in out, or a word that holds a quote, a
+// backslash or a control byte (the stand-in's words are keys, codes, tickets and checked names).
+//   coax/bin/coax test metaverse-engine/session/player-answers.coax
+
+pan_put :: (out: [] u8, at: int, t: string) -> int {
+  if at < 0 || at + t.count > out.count { return -1; }
+  for i: 0..<t.count { out[at + i] = t[i]; }
+  return at + t.count;
+}
+// A word inside a JSON string, as it is.
+pan_word :: (out: [] u8, at: int, t: string) -> int {
+  for c: t { if c == '"' || c == '\\' || c < 32 { return -1; } }
+  return pan_put(out, at, t);
+}
+pan_num :: (out: [] u8, at: int, v: int) -> int {
+  if v < 0 { return -1; }
+  digits: [20] u8; c := 0; x := v;
+  while true { digits[c] = cast(u8) (48 + x % 10); c += 1; x /= 10; if x == 0 || c >= 20 { break; } }
+  if at < 0 || at + c > out.count { return -1; }
+  for i: 0..<c { out[at + i] = digits[c - 1 - i]; }
+  return at + c;
+}
+pan_error :: (out: [] u8, words: string) -> int {
+  return pan_put(out, pan_word(out, pan_put(out, 0, "{\"error\":\""), words), "\"}");
+}
+pan_player :: (out: [] u8, key: string, id: string) -> int {
+  k := pan_word(out, pan_put(out, 0, "{\"key\":\""), key);
+  k = pan_word(out, pan_put(out, k, "\",\"id\":\""), id);
+  return pan_put(out, k, "\",\"account\":false}");
+}
+pan_ticket :: (out: [] u8, ticket: string, id: string, name: string, room: string, expires: int) -> int {
+  k := pan_word(out, pan_put(out, 0, "{\"ticket\":\""), ticket);
+  k = pan_word(out, pan_put(out, k, "\",\"id\":\""), id);
+  k = pan_word(out, pan_put(out, k, "\",\"account\":false,\"name\":\""), name);
+  k = pan_word(out, pan_put(out, k, "\",\"room\":\""), room);
+  k = pan_num(out, pan_put(out, k, "\",\"expires\":"), expires);
+  return pan_put(out, k, "}");
+}
+pan_name :: (out: [] u8, name: string) -> int {
+  return pan_put(out, pan_word(out, pan_put(out, 0, "{\"name\":\""), name), "\",\"account\":false}");
+}
+pan_row :: (out: [] u8, row: string, on: bool) -> int {
+  return pan_put(out, pan_word(out, pan_put(out, 0, "{\"row\":\""), row), ifx on then "\",\"on\":true}" else "\",\"on\":false}");
+}
+pan_ok :: (out: [] u8) -> int { return pan_put(out, 0, "{\"ok\":true}"); }
+
+#test "each answer's bytes; a word JSON would escape and too small a buffer are refused" {
+  b: [512] u8;
+  n := pan_error(b[..], "a player key"); #assert cast(string) b[0..<n] == "{\"error\":\"a player key\"}";
+  n = pan_player(b[..], "dev-1794555871230-1", "p-cf3f4cfaef6de2e2"); #assert cast(string) b[0..<n] == "{\"key\":\"dev-1794555871230-1\",\"id\":\"p-cf3f4cfaef6de2e2\",\"account\":false}";
+  n = pan_ticket(b[..], "v2.x", "p-cf3f4cfaef6de2e2", "Crowd Alpha", "everglade2-1", 1794556471263);
+  #assert cast(string) b[0..<n] == "{\"ticket\":\"v2.x\",\"id\":\"p-cf3f4cfaef6de2e2\",\"account\":false,\"name\":\"Crowd Alpha\",\"room\":\"everglade2-1\",\"expires\":1794556471263}";
+  n = pan_name(b[..], "Crowd Alpha"); #assert cast(string) b[0..<n] == "{\"name\":\"Crowd Alpha\",\"account\":false}";
+  n = pan_row(b[..], "daycycle", false); #assert cast(string) b[0..<n] == "{\"row\":\"daycycle\",\"on\":false}";
+  n = pan_row(b[..], "daycycle", true); #assert cast(string) b[0..<n] == "{\"row\":\"daycycle\",\"on\":true}";
+  n = pan_ok(b[..]); #assert cast(string) b[0..<n] == "{\"ok\":true}";
+  #assert pan_error(b[..], "a \"b\"") == -1 && pan_name(b[..], "a\\b") == -1 && pan_player(b[..], "k", "a\nb") == -1 && pan_ticket(b[..], "t", "i", "n", "r", -1) == -1;
+  #assert pan_ok(b[0..<10]) == -1 && pan_error(b[0..<12], "x") == -1 && pan_name(b[0..<20], "Crowd Alpha") == -1;
+}

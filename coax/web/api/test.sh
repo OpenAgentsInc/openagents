@@ -236,6 +236,10 @@ export OA_ADMIN_PUBKEYS="$("$SIGN" --new "$ADMIN_KEY")"
 # set one, so tests/room_checks.coax runs its keyed checks (admission, invites, stats, vitals) too.
 export ROOM_KEY="${ROOM_KEY:-local-development-room-ticket-key-not-a-secret}"
 export OA_ROOM_TICKET_KEY="${OA_ROOM_TICKET_KEY:-$ROOM_KEY}"
+# Every answer names its route function (X-OA-Route; api.c), so routes-goldens.coax can hold each
+# route file's bodies to that file's messages. The checks only: production never sets it.
+export OA_API_ROUTE_HEADER=1
+export API_CAPTURE="${API_CAPTURE:-$work/capture}"; mkdir -p "$API_CAPTURE"
 # Shards' own write keys (#13260, room-write.coax): a throwaway master, room-write.coax's RW_TEST_MASTER.
 export OA_ROOM_WRITE_MASTER="${OA_ROOM_WRITE_MASTER:-0303030303030303030303030303030303030303030303030303030303030303}"
 # Our team (test_team.py): a web player, an old playtest player and an email's hash (team@example.com).
@@ -495,7 +499,8 @@ fi
 if [[ -x "$cli_coax" ]]; then
   # The rooms' checks and the private packs' checks (tests/room_checks.coax, tests/verse_packs.coax).
   # The rooms' signed routes run with the key above; with ROOM_BIN (coax/web/room/build.sh) as well,
-  # the vitals fault check and the owner and travel checks. API_TESTS_ONLY runs them when it names them (room_checks.coax).
+  # the vitals fault check and the owner and travel checks. API_TESTS_ONLY runs them when it names them (room_checks.coax);
+  # API_ROOM_SLICES="parties deploy" runs only those of its slices.
   # API_BIN: the region check starts a second API on a promoted replica of this database.
   coax_failed=0
   # tests/script_cli_checks.coax drives the built CLI (#13467): built here when that check runs.
@@ -507,9 +512,12 @@ if [[ -x "$cli_coax" ]]; then
       (cd "$repo_root" && COAX="$cli_coax" apps/openagents-cli/build.sh --cli > "$work/cli-build.log" 2>&1) || { cat "$work/cli-build.log"; coax_failed=1; continue; }
     fi
     (cd "$repo_root" && API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pgbin/psql" COAX="$cli_coax" API_BIN="$work/api" RESEND_PORT="$RESEND_PORT" CLI="$realm_cli" \
-      coax/web/tool.sh "coax/web/api/tests/$f.coax") || coax_failed=1
+      coax/web/tool.sh "coax/web/api/tests/$f.coax" $([[ $f == room_checks ]] && echo "${API_ROOM_SLICES:-}")) || coax_failed=1
     lap "tests/$f.coax"
   done
+  # Every answer of this run, held to its route file's messages (routes-goldens.coax; Protocol, #13250).
+  (cd "$repo_root" && COAX="$cli_coax" coax/web/tool.sh coax/web/api/routes-goldens.coax --read-all "$API_CAPTURE") || coax_failed=1
+  lap "routes-goldens.coax"
   [[ $coax_failed == 0 ]] || { cat "$work/api.log"; exit 1; }
   # A bounded character-recovery slice, including optional real native faults.
   # An unfiltered invocation still runs every check below.

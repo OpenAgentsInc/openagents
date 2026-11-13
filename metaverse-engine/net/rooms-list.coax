@@ -1,0 +1,72 @@
+// A realm's rooms on the wire: the one codec for GET /api/playtest/rooms/SLUG's answer (Protocol E8,
+// GitHub #13250). Schema: proto/openagents/api/v1alpha1/rooms.proto (RoomsList, RoomsListRoom).
+//   {"realm":"SLUG","game":"everglade","seats":16,"join":"SLUG-K","rooms":[{"code":"SLUG-1","players":3},...]}
+// and, asked with ?with=PID, "with":"SLUG-N" after "join" (the instance that player sits in) or
+// "with_full":"SLUG-N" (it is full, so "join" names another).
+// Writers: a room server (coax/web/room/room-relay.coax rm_rooms) through rooms_list_open, _room and
+// _close; the API, in SQL (verse.room_list), whose members come in another order and which adds
+// "rooms" entries' "shard". Reader: the page (apps/openagents-web/everglade-join.coax) through
+// rooms_list_join and rooms_list_with_full, which read either writer's bytes.
+// Goldens: proto/verse/api-routes-v1alpha1.json, checked by coax/web/api/routes-goldens.coax.
+//   coax/bin/coax test metaverse-engine/net/rooms-list.coax
+#load "json-field.coax";
+
+rooms_list_put :: (out: [] u8, at: int, t: string) -> int {
+  if at < 0 || at + t.count > out.count { return -1; }
+  for i: 0..<t.count { out[at + i] = t[i]; }
+  return at + t.count;
+}
+rooms_list_num :: (out: [] u8, at: int, v: int) -> int {
+  if v < 0 { return -1; }
+  digits: [20] u8; c := 0; x := v;
+  while true { digits[c] = cast(u8) (48 + x % 10); c += 1; x /= 10; if x == 0 || c >= 20 { break; } }
+  if at < 0 || at + c > out.count { return -1; }
+  for i: 0..<c { out[at + i] = digits[c - 1 - i]; }
+  return at + c;
+}
+// SLUG-N
+rooms_list_code :: (out: [] u8, at: int, slug: string, n: int) -> int {
+  return rooms_list_num(out, rooms_list_put(out, rooms_list_put(out, at, slug), "-"), n);
+}
+// A slug the room names: lower-case letters, digits and "-", nothing JSON escapes.
+rooms_list_slug_ok :: (slug: string) -> bool {
+  if slug.count == 0 { return false; }
+  for c: slug { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+// The answer up to its rooms: join is the instance to join, with (0: not asked, or not seated) the
+// instance the asked-for player sits in. The new end, or -1 (a bad slug, or no room in out).
+rooms_list_open :: (out: [] u8, slug: string, seats: int, join: int, with: int) -> int {
+  if !rooms_list_slug_ok(slug) { return -1; }
+  k := rooms_list_put(out, 0, "{\"realm\":\""); k = rooms_list_put(out, k, slug);
+  k = rooms_list_put(out, k, "\",\"game\":\"everglade\",\"seats\":"); k = rooms_list_num(out, k, seats);
+  k = rooms_list_put(out, k, ",\"join\":\""); k = rooms_list_code(out, k, slug, join);
+  if with > 0 { k = rooms_list_put(out, k, "\",\"with\":\""); k = rooms_list_code(out, k, slug, with); }
+  return rooms_list_put(out, k, "\",\"rooms\":[");
+}
+// One room, the i-th (0: the first).
+rooms_list_room :: (out: [] u8, at: int, i: int, slug: string, n: int, players: int) -> int {
+  k := ifx i > 0 then rooms_list_put(out, at, ",") else at;
+  k = rooms_list_put(out, k, "{\"code\":\""); k = rooms_list_code(out, k, slug, n);
+  k = rooms_list_put(out, k, "\",\"players\":"); k = rooms_list_num(out, k, players);
+  return rooms_list_put(out, k, "}");
+}
+rooms_list_close :: (out: [] u8, at: int) -> int { return rooms_list_put(out, at, "]}"); }
+
+// The instance to join, as either writer names it; "" when the answer has none.
+rooms_list_join :: (answer: string) -> string { return net_json_field(answer, "join"); }
+// Whether the player asked for sits in a full instance (the API's "with_full").
+rooms_list_with_full :: (answer: string) -> bool { return net_json_field(answer, "with_full").count > 0; }
+
+#test "the room's bytes, with and without ?with; the reader takes the room's and the API's" {
+  b: [256] u8;
+  k := rooms_list_open(b[..], "town", 16, 2, 0); k = rooms_list_room(b[..], k, 0, "town", 1, 16); k = rooms_list_room(b[..], k, 1, "town", 2, 3); k = rooms_list_close(b[..], k);
+  #assert cast(string) b[0..<k] == "{\"realm\":\"town\",\"game\":\"everglade\",\"seats\":16,\"join\":\"town-2\",\"rooms\":[{\"code\":\"town-1\",\"players\":16},{\"code\":\"town-2\",\"players\":3}]}";
+  #assert rooms_list_join(cast(string) b[0..<k]) == "town-2" && !rooms_list_with_full(cast(string) b[0..<k]);
+  k = rooms_list_close(b[..], rooms_list_open(b[..], "town", 16, 3, 3));
+  #assert cast(string) b[0..<k] == "{\"realm\":\"town\",\"game\":\"everglade\",\"seats\":16,\"join\":\"town-3\",\"with\":\"town-3\",\"rooms\":[]}";
+  api := "{\"realm\":\"town\",\"game\":\"everglade\",\"seats\":16,\"rooms\":[{\"code\":\"town-1\",\"players\":16,\"shard\":1}],\"join\":\"town-2\",\"with_full\":\"town-1\"}";
+  #assert rooms_list_join(api) == "town-2" && rooms_list_with_full(api) && rooms_list_join("{}") == "";
+  #assert rooms_list_open(b[..], "Town", 16, 1, 0) == -1 && rooms_list_open(b[..], "", 16, 1, 0) == -1 && rooms_list_open(b[0..<20], "town", 16, 1, 0) == -1;
+  #assert rooms_list_room(b[0..<10], 0, 0, "town", 1, 1) == -1 && rooms_list_close(b[..], -1) == -1 && rooms_list_room(b[..], 0, 0, "town", 1, -1) == -1;
+}

@@ -1,0 +1,111 @@
+syntax = "proto3";
+
+package openagents.api.v1alpha1;
+
+// What coax/web/api/passkeys.c answers, route by route (Protocol, GitHub #13250; profile
+// api-routes; docs/protocol/api-routes-v1alpha1.md). Each message names the members
+// of one answer as they ship: json_name is the key on the wire, a `bytes` member is
+// JSON carried as it came, and a member may be absent or null. The messages were
+// read off a run of the API suite and are held to every later run:
+// proto/verse/api-routes-v1alpha1.json holds real answers and their routes, and
+// coax/web/api/routes-goldens.coax holds each answer's keys to its message here.
+// A refusal with only its words is ErrorReply (error.proto). Most bodies are built
+// in SQL; what the C builds goes through a Coax unit.
+
+// GET /api/auth/passkeys 200
+message PasskeysPasskeys {
+  repeated PasskeysPasskeysPasskeys passkeys = 1 [json_name = "passkeys"];
+  optional bool offer = 2 [json_name = "offer"];
+}
+
+message PasskeysPasskeysPasskeys {
+  optional int64 id = 1 [json_name = "id"];
+  optional string name = 2 [json_name = "name"];
+  optional int64 added_ms = 3 [json_name = "added_ms"];
+  optional int64 used_ms = 4 [json_name = "used_ms"];
+  optional bool synced = 5 [json_name = "synced"];
+  optional bool clone = 6 [json_name = "clone"];
+  optional bool prf = 7 [json_name = "prf"];
+  optional string transports = 8 [json_name = "transports"];
+}
+
+// POST /api/auth/passkey/login 200
+message PasskeysPasskeyLoginPost {
+  optional string state = 1 [json_name = "state"];
+  optional string account = 2 [json_name = "account"];
+  optional bool new = 3 [json_name = "new"];
+  optional bytes player = 4 [json_name = "player"];   // JSON carried as it came
+  optional string access_token = 5 [json_name = "access_token"];
+  optional string refresh_token = 6 [json_name = "refresh_token"];
+  optional int64 expires_in = 7 [json_name = "expires_in"];
+  optional bool device_bound = 8 [json_name = "device_bound"];
+}
+
+// POST /api/auth/passkey/login/options 200
+message PasskeysPasskeyLoginOptionsPost {
+  optional string challenge = 1 [json_name = "challenge"];
+  optional string rp_id = 2 [json_name = "rp_id"];
+  optional int64 timeout = 3 [json_name = "timeout"];
+  optional string purpose = 4 [json_name = "purpose"];
+  optional PasskeysPasskeyLoginOptionsPostPublicKey public_key = 5 [json_name = "publicKey"];
+}
+
+message PasskeysPasskeyLoginOptionsPostPublicKey {
+  optional string challenge = 1 [json_name = "challenge"];
+  optional string rp_id = 2 [json_name = "rpId"];
+  optional int64 timeout = 3 [json_name = "timeout"];
+  optional string user_verification = 4 [json_name = "userVerification"];
+  optional bytes allow_credentials = 5 [json_name = "allowCredentials"];   // JSON carried as it came
+}
+
+// POST /api/auth/passkey/register 200
+message PasskeysPasskeyRegisterPost {
+  optional string state = 1 [json_name = "state"];
+  optional int64 id = 2 [json_name = "id"];
+  optional string name = 3 [json_name = "name"];
+  optional bool synced = 4 [json_name = "synced"];
+}
+
+// POST /api/auth/passkey/register/options 200
+message PasskeysPasskeyRegisterOptionsPost {
+  optional string challenge = 1 [json_name = "challenge"];
+  optional string rp_id = 2 [json_name = "rp_id"];
+  optional int64 timeout = 3 [json_name = "timeout"];
+  optional string purpose = 4 [json_name = "purpose"];
+  optional string user_id = 5 [json_name = "user_id"];
+  optional string user_name = 6 [json_name = "user_name"];
+  optional bytes public_key = 7 [json_name = "publicKey"];   // JSON carried as it came
+}
+
+// POST /api/auth/passkey/step-up 200
+message PasskeysPasskeyStepUpPost {
+  optional string state = 1 [json_name = "state"];
+  optional string level = 2 [json_name = "level"];
+}
+
+// POST /api/auth/passkey/step-up/options 200
+message PasskeysPasskeyStepUpOptionsPost {
+  optional string challenge = 1 [json_name = "challenge"];
+  optional string rp_id = 2 [json_name = "rp_id"];
+  optional int64 timeout = 3 [json_name = "timeout"];
+  optional string purpose = 4 [json_name = "purpose"];
+  optional PasskeysPasskeyStepUpOptionsPostPublicKey public_key = 5 [json_name = "publicKey"];
+}
+
+message PasskeysPasskeyStepUpOptionsPostPublicKey {
+  optional string challenge = 1 [json_name = "challenge"];
+  optional string rp_id = 2 [json_name = "rpId"];
+  optional int64 timeout = 3 [json_name = "timeout"];
+  optional string user_verification = 4 [json_name = "userVerification"];
+  repeated PasskeysPasskeyStepUpOptionsPostPublicKeyAllowCredentials allow_credentials = 5 [json_name = "allowCredentials"];
+}
+
+message PasskeysPasskeyStepUpOptionsPostPublicKeyAllowCredentials {
+  optional string type = 1 [json_name = "type"];
+  optional string id = 2 [json_name = "id"];
+}
+
+// POST /api/auth/passkeys/*/rename 200; POST /api/auth/passkeys/offered 200
+message PasskeysPasskeysOfferedPost {
+  optional string state = 1 [json_name = "state"];
+}

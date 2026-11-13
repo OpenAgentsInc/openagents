@@ -118,7 +118,7 @@ og_list :: (d: Jv, list: int, st: [] D_State, w: [] OgWork, need_all: bool, quie
 tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   loaded := args_load(args[..]);
-  pb: [65536] u8;
+  pb: [262144] u8;
   pn := fs_read(OG_DESCRIPTOR, pb[..]);
   if pn <= 0 { tool_errln("ops-wire-goldens: cannot read the descriptor"); return 2; }
   g: [1] PkDescriptor;

@@ -1,0 +1,171 @@
+syntax = "proto3";
+
+package openagents.api.v1alpha1;
+
+// What coax/web/api/lnaddr.c answers, route by route (Protocol, GitHub #13250; profile
+// api-routes; docs/protocol/api-routes-v1alpha1.md). Each message names the members
+// of one answer as they ship: json_name is the key on the wire, a `bytes` member is
+// JSON carried as it came, and a member may be absent or null. The messages were
+// read off a run of the API suite and are held to every later run:
+// proto/verse/api-routes-v1alpha1.json holds real answers and their routes, and
+// coax/web/api/routes-goldens.coax holds each answer's keys to its message here.
+// A refusal with only its words is ErrorReply (error.proto). Most bodies are built
+// in SQL; what the C builds goes through a Coax unit.
+
+// GET /.well-known/lnurlp/* 200; GET /.well-known/lnurlp/* 404; GET /.well-known/lnurlp/* 429; GET /lnurlp/*/invoice 200; GET /lnurlp/*/invoice 400; GET /lnurlp/*/invoice 404 and 1 more
+message LnaddrOne {
+  optional string status = 1 [json_name = "status"];
+  optional string reason = 2 [json_name = "reason"];
+}
+
+// GET /.well-known/nostr.json 200
+message Lnaddr {
+  optional bytes names = 1 [json_name = "names"];   // JSON carried as it came
+  optional bytes relays = 2 [json_name = "relays"];   // JSON carried as it came
+}
+
+// GET /api/lightning/address 200
+message LnaddrAddress {
+  optional bytes limits = 1 [json_name = "limits"];   // JSON carried as it came
+  optional bool spark_receiving = 2 [json_name = "spark_receiving"];
+  optional string address = 3 [json_name = "address"];   // or null
+  optional string name = 4 [json_name = "name"];
+  optional string mode = 5 [json_name = "mode"];
+  optional string state = 6 [json_name = "state"];
+  optional string forward_to = 7 [json_name = "forward_to"];
+  optional string spark_pubkey = 8 [json_name = "spark_pubkey"];
+  optional int64 revision = 9 [json_name = "revision"];
+  optional int64 max_msat = 10 [json_name = "max_msat"];
+  optional bool comments_on = 11 [json_name = "comments_on"];
+  optional string nip05 = 12 [json_name = "nip05"];
+  optional LnaddrAddressWaiting waiting = 13 [json_name = "waiting"];
+  repeated LnaddrAddressNotices notices = 14 [json_name = "notices"];
+  optional string suggest = 15 [json_name = "suggest"];
+}
+
+message LnaddrAddressWaiting {
+  optional string mode = 1 [json_name = "mode"];
+  optional string target = 2 [json_name = "target"];
+  optional int64 ready_at = 3 [json_name = "ready_at"];
+}
+
+message LnaddrAddressNotices {
+  optional int64 at = 1 [json_name = "at"];
+  optional string kind = 2 [json_name = "kind"];
+  optional LnaddrAddressNoticesDetail detail = 3 [json_name = "detail"];
+}
+
+message LnaddrAddressNoticesDetail {
+  optional string name = 1 [json_name = "name"];
+  optional string mode = 2 [json_name = "mode"];
+}
+
+// GET /api/lightning/address 200
+message LnaddrAddressLines {
+  optional string min_msat = 1 [json_name = "min_msat"];
+  optional string limit_max_msat = 2 [json_name = "limit_max_msat"];
+  optional string comment_chars = 3 [json_name = "comment_chars"];
+  optional string change_wait_hours = 4 [json_name = "change_wait_hours"];
+  optional string spark_receiving = 5 [json_name = "spark_receiving"];
+  optional string now_s = 6 [json_name = "now_s"];
+  optional string person = 7 [json_name = "person"];
+  optional string suggest = 8 [json_name = "suggest"];
+}
+
+// GET /api/lightning/address/available 200
+message LnaddrAddressAvailable {
+  optional string name = 1 [json_name = "name"];
+  optional bool available = 2 [json_name = "available"];
+  optional int64 code = 3 [json_name = "code"];
+  optional string reason = 4 [json_name = "reason"];
+}
+
+// GET /api/lightning/address/available 200
+message LnaddrAddressAvailableLines {
+  optional string name = 1 [json_name = "name"];
+  optional string available = 2 [json_name = "available"];
+  optional string code = 3 [json_name = "code"];
+  optional string reason = 4 [json_name = "reason"];
+}
+
+// GET /api/lightning/address/profile 200
+message LnaddrAddressProfile {
+  optional string pubkey = 1 [json_name = "pubkey"];
+  optional bool found = 2 [json_name = "found"];
+  optional int64 created_at = 3 [json_name = "created_at"];
+  optional string address = 4 [json_name = "address"];
+  optional bool nip05 = 5 [json_name = "nip05"];
+  optional int64 relays = 6 [json_name = "relays"];
+  optional string content = 7 [json_name = "content"];
+}
+
+// GET /api/lightning/address/proof 200
+message LnaddrAddressProof {
+  optional string name = 1 [json_name = "name"];
+  optional string op = 2 [json_name = "op"];
+  optional string nonce = 3 [json_name = "nonce"];
+  optional int64 expires = 4 [json_name = "expires"];
+  optional int64 revision = 5 [json_name = "revision"];
+  optional string message_ = 6 [json_name = "message"];
+}
+
+// POST /api/lightning/address 200; POST /api/lightning/address/cancel 200; POST /api/lightning/address/change 200
+message LnaddrAddressPost {
+  optional bytes limits = 1 [json_name = "limits"];   // JSON carried as it came
+  optional bool spark_receiving = 2 [json_name = "spark_receiving"];
+  optional string address = 3 [json_name = "address"];
+  optional string name = 4 [json_name = "name"];
+  optional string mode = 5 [json_name = "mode"];
+  optional string state = 6 [json_name = "state"];
+  optional string forward_to = 7 [json_name = "forward_to"];
+  optional string spark_pubkey = 8 [json_name = "spark_pubkey"];
+  optional int64 revision = 9 [json_name = "revision"];
+  optional int64 max_msat = 10 [json_name = "max_msat"];
+  optional bool comments_on = 11 [json_name = "comments_on"];
+  optional string nip05 = 12 [json_name = "nip05"];
+  repeated LnaddrAddressNotices notices = 13 [json_name = "notices"];
+}
+
+// GET /api/lightning/address/available 429; GET /api/lightning/address/profile 403; POST /api/lightning/address 400; POST /api/lightning/address 409; POST /api/lightning/address/cancel 409; POST /api/lightning/address/change 400 and 2 more
+message LnaddrAddressPostRefusal {
+  optional string error = 1 [json_name = "error"];
+  optional int64 code = 2 [json_name = "code"];
+}
+
+// POST /api/lightning/address/off 200; POST /api/lightning/address/on 200
+message LnaddrAddressOnPost {
+  optional bytes limits = 1 [json_name = "limits"];   // JSON carried as it came
+  optional bool spark_receiving = 2 [json_name = "spark_receiving"];
+  optional string address = 3 [json_name = "address"];
+  optional string name = 4 [json_name = "name"];
+  optional string mode = 5 [json_name = "mode"];
+  optional string state = 6 [json_name = "state"];
+  optional string forward_to = 7 [json_name = "forward_to"];
+  optional string spark_pubkey = 8 [json_name = "spark_pubkey"];
+  optional int64 revision = 9 [json_name = "revision"];
+  optional int64 max_msat = 10 [json_name = "max_msat"];
+  optional bool comments_on = 11 [json_name = "comments_on"];
+  optional string nip05 = 12 [json_name = "nip05"];
+  repeated LnaddrAddressOnPostNotices notices = 13 [json_name = "notices"];
+}
+
+message LnaddrAddressOnPostNotices {
+  optional int64 at = 1 [json_name = "at"];
+  optional string kind = 2 [json_name = "kind"];
+  optional LnaddrAddressOnPostNoticesDetail detail = 3 [json_name = "detail"];
+}
+
+message LnaddrAddressOnPostNoticesDetail {
+  optional string name = 1 [json_name = "name"];
+  optional string mode = 2 [json_name = "mode"];
+  optional bool nip05 = 3 [json_name = "nip05"];
+  optional string pubkey = 4 [json_name = "pubkey"];
+  optional int64 relays = 5 [json_name = "relays"];
+}
+
+// POST /api/lightning/address/profile 200
+message LnaddrAddressProfilePost {
+  optional int64 published = 1 [json_name = "published"];
+  optional int64 relays = 2 [json_name = "relays"];
+  optional bool nip05 = 3 [json_name = "nip05"];
+}

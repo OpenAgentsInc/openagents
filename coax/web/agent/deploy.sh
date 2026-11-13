@@ -37,7 +37,7 @@ mkdir -p "$stage/src"
 "$repo/coax/bin/coax" c "$here/chat.coax" > "$stage/src/chat.c"
 "$repo/coax/bin/coax" c "$here/chat-micro.coax" > "$stage/src/chat-micro.c"   # /chat's Gemini turns: Microcoder over oa-repo
 "$repo/coax/bin/coax" c "$here/devbox.coax" > "$stage/src/devbox.c"           # /chat's devbox turns: our Claude engine on a boat dev box (#13474)
-# the runner's Coax signer (OA_RUNNER_SIGNER=coax; libsecp256k1 stays the default): its C and header
+# the runner's signer (runner-sign.coax, its only one since Protocol C14, #13250): its C and header
 "$repo/coax/bin/coax" c "$here/runner-sign.coax" --library --run-steps 250000000 --header "$stage/src/runner-sign.h" > "$stage/src/runner-sign.c"
 # the runner's lines and bodies (runner-wire.coax, openagents.agent.managed.v1alpha1): its C and header
 "$repo/coax/bin/coax" c "$here/runner-wire.coax" --library --header "$stage/src/runner-wire.h" > "$stage/src/runner-wire.c"

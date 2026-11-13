@@ -1,0 +1,282 @@
+// The route files' goldens (Protocol, GitHub #13250): proto/verse/api-routes-v1alpha1.json lists,
+// for each route file it covers, every answer that file gives (its route function, the method, the
+// path with * for a name, the status, the kind of body and the message that names its members,
+// proto/openagents/api/v1alpha1/ in profile api-routes) and holds real answers of each, byte for
+// byte, from a run of the API suite. For each body this check
+//   - json: holds its keys to the json_names of its message in proto/descriptors/api-routes.pb,
+//     nested messages and lists too (SQL builds most of these bodies; the message is what holds
+//     them). A refusal (ErrorReply, and the forms with one more member) is also read and written
+//     again through error-wire.coax, the one writer the C calls, for the same bytes;
+//   - lines: holds each line's first word to a json_name of its message;
+//   - jsonl: requires each line to be a JSON object (an export, the session log, whose lines have
+//     their own codecs);
+//   - text, empty: requires what the row says (words that are no JSON; no body);
+//   - other: a page, an image or a stream the route also serves. Nothing is held and no golden is kept.
+// With --read-all DIR it does the same for every answer of a run (DIR/py.jsonl and DIR/coax.jsonl,
+// written by the suite under API_CAPTURE with the API's X-OA-Route header on): an answer from a
+// covered route function that no row names fails, so a new answer needs its message first (but
+// the refusal with only its words, which every route may give under any status from 400 up).
+// coax/web/api/test.sh runs it on every run.
+//
+//   coax/web/tool.sh coax/web/api/routes-goldens.coax [proto/verse/api-routes-v1alpha1.json]
+//   coax/web/tool.sh coax/web/api/routes-goldens.coax --read-all DIR
+#import "Basic";
+#load "error-wire.coax";
+#load "../../lib/proto/importer.coax";
+#load "../../lib/proto/golden-keys.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/fs.coax";
+
+RG_FIXTURE :: "proto/verse/api-routes-v1alpha1.json";
+RG_DESCRIPTOR :: "proto/descriptors/api-routes.pb";
+RG_ERROR :: ".openagents.api.v1alpha1.ErrorReply";
+RG_ROUTES :: 2048;
+RG_BODY :: 131072;
+RG_LINE :: 1048576;
+RG_JSON :: 0; RG_LINES :: 1; RG_TEXT :: 2; RG_EMPTY :: 3; RG_JSONL :: 4; RG_OTHER :: 5;
+
+RgRoute :: struct { fn: string; method: string; path: string; message: string; status: int; kind: int; list: bool; seen: int; }
+RgWork :: struct {
+  routes: [RG_ROUTES] RgRoute; n: int;
+  nodes: [262144] JvNode; body_nodes: [65536] JvNode; line_nodes: [64] JvNode;
+  body: [RG_BODY] u8; text: [RG_BODY] u8; back: [RG_BODY] u8; small: [2048] u8; line: [RG_LINE] u8;
+}
+
+rg_kind :: (word: string) -> int {
+  if word == "json" { return RG_JSON; } if word == "lines" { return RG_LINES; } if word == "text" { return RG_TEXT; } if word == "empty" { return RG_EMPTY; } if word == "jsonl" { return RG_JSONL; } if word == "other" { return RG_OTHER; }
+  return -1;
+}
+// Whether path (its query cut) is the row's: segment by segment, * for any one, ** for the rest.
+rg_path :: (pattern: string, path_in: string) -> bool {
+  path := path_in;
+  // a call written with its origin (http://HOST:PORT/...) is its path's
+  if path.count > 8 && (path[0..<7] == "http://" || path[0..<8] == "https://") {
+    s := ifx path[4] == 's' then 8 else 7;
+    while s < path.count && path[s] != '/' { s += 1; }
+    path = path[s..<path.count];
+  }
+  for i: 0..<path.count { if path[i] == '?' { path = path[0..<i]; break; } }
+  a := 0; b := 0;
+  while true {
+    ae := a; while ae < pattern.count && pattern[ae] != '/' { ae += 1; }
+    be := b; while be < path.count && path[be] != '/' { be += 1; }
+    seg := pattern[a..<ae];
+    if seg.count == 2 && seg[0] == '*' && seg[1] == '*' { return true; }   // two stars: the rest of the path
+    if seg != "*" && seg != path[b..<be] { return false; }
+    if seg == "*" && be == b { return false; }
+    if ae >= pattern.count || be >= path.count { return ae >= pattern.count && be >= path.count; }
+    a = ae + 1; b = be + 1;
+  }
+  return false;
+}
+// A refusal with only its words: read, and written again through the one writer for the same bytes.
+rg_error :: (w: [] RgWork, body: string) -> string {
+  j: [1] Jv;
+  if !jv_parse(j[..], body, w[0].body_nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT || jv_len(j[0], 0) != 1 { return "a refusal that is not one member"; }
+  tn := jv_str(j[0], jv_get(j[0], 0, "error"), w[0].text[..]);
+  if tn < 0 { return "a refusal with no words"; }
+  words := cast(string) w[0].text[0..<tn];
+  n := erw_error_write(words, w[0].back[..]);
+  if n >= 0 && cast(string) w[0].back[0..<n] == body { return ""; }
+  n = erw_error_spaced_write(words, w[0].back[..]);
+  if n >= 0 && cast(string) w[0].back[0..<n] == body { return ""; }
+  return "written again through error-wire.coax it is not the same bytes";
+}
+// A refusal with one more member, a number or a word: the same through the writer's other forms.
+// "" when it is not that shape (its keys were held already).
+rg_error_more :: (w: [] RgWork, body: string) -> string {
+  j: [1] Jv;
+  if !jv_parse(j[..], body, w[0].body_nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT || jv_len(j[0], 0) != 2 { return ""; }
+  d := j[0]; first := jv_at(d, 0, 0); second := jv_at(d, 0, 1);
+  if jv_key(d, first) != "error" || jv_kind(d, first) != JV_STRING { return ""; }
+  tn := jv_str(d, first, w[0].text[..]);
+  if tn < 0 { return ""; }
+  words := cast(string) w[0].text[0..<tn]; n := -1;
+  if jv_kind(d, second) == JV_NUMBER { n = erw_error_num_write(words, jv_key(d, second), jv_int(d, second, 0), w[0].back[..]); }
+  else if jv_kind(d, second) == JV_STRING {
+    vn := jv_str(d, second, w[0].small[..]);
+    if vn < 0 { return ""; }
+    n = erw_error_word_write(words, jv_key(d, second), cast(string) w[0].small[0..<vn], w[0].back[..]);
+  } else { return ""; }
+  if n >= 0 && cast(string) w[0].back[0..<n] == body { return ""; }
+  // SQL's spelling of the same members (jsonb's ": " and ", ") is held by its keys alone
+  for i: 0..<body.count - 2 { if body[i] == '"' && body[i + 1] == ':' && body[i + 2] == ' ' { return ""; } }
+  return "a refusal with one more member, written again through error-wire.coax, is not the same bytes";
+}
+// Whether word is a json_name of the message.
+rg_named :: (st: [] D_State, full: string, word: string) -> bool {
+  m := pk_type(st, full);
+  if m < 0 { return false; }
+  t := st[0].types[m];
+  for f: t.first..<t.first + t.count { if st[0].fields[f].json == word { return true; } }
+  return false;
+}
+// A body's faults against its row: "" when it holds.
+rg_body :: (st: [] D_State, w: [] RgWork, r: RgRoute, body: string) -> string {
+  if r.kind == RG_OTHER { return ""; }
+  if r.kind == RG_EMPTY { return ifx body.count == 0 then "" else "a body where the row says none"; }
+  if r.kind == RG_TEXT { return ifx body.count > 0 && body[0] != '{' && body[0] != '[' then "" else "not plain words"; }
+  if r.kind == RG_JSONL {
+    at := 0; j: [1] Jv;
+    for i: 0..<body.count + 1 {
+      if i < body.count && body[i] != '\n' { continue; }
+      line := body[at..<i]; at = i + 1;
+      if line.count == 0 { continue; }
+      if !jv_parse(j[..], line, w[0].body_nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return "a line that is no JSON object"; }
+    }
+    return ifx body.count > 0 then "" else "no lines";
+  }
+  if r.kind == RG_LINES {
+    at := 0;
+    if body.count == 0 { return ""; }
+    for i: 0..<body.count + 1 {
+      if i < body.count && body[i] != '\n' { continue; }
+      line := body[at..<i]; at = i + 1;
+      if line.count == 0 { continue; }
+      e := 0; while e < line.count && line[e] != ' ' && line[e] != '\t' { e += 1; }
+      if !rg_named(st, r.message, line[0..<e]) { return "a line's first word is no json_name of the message"; }
+    }
+    return "";
+  }
+  why := pk_text_keys(st, r.message, body, r.message == RG_ERROR, r.list, w[0].body_nodes[..]);
+  if why != "" { return why; }
+  if r.message == RG_ERROR { return rg_error(w, body); }
+  return rg_error_more(w, body);
+}
+// The fixture's rows into w. How many are malformed.
+rg_load :: (st: [] D_State, w: [] RgWork, d: Jv) -> int {
+  list := jv_get(d, 0, "routes"); bad := 0;
+  k := ifx jv_kind(d, list) == JV_ARRAY then d.nodes[list].first else -1;
+  w[0].n = 0;
+  while k != -1 {
+    if w[0].n >= RG_ROUTES { print("FAIL  too many rows\n"); return bad + 1; }
+    r := RgRoute.{fn = jv_raw(d, jv_get(d, k, "fn")), method = jv_raw(d, jv_get(d, k, "method")), path = jv_raw(d, jv_get(d, k, "path")),
+                  message = jv_raw(d, jv_get(d, k, "message")), status = jv_int(d, jv_get(d, k, "status"), 0), kind = rg_kind(jv_raw(d, jv_get(d, k, "kind"))),
+                  list = jv_bool(d, jv_get(d, k, "list"))};
+    needs := r.kind == RG_JSON || r.kind == RG_LINES;
+    if r.fn == "" || r.method == "" || r.path == "" || r.status < 100 || r.kind < 0 || (needs && pk_type(st, r.message) < 0) {
+      print("FAIL  row % (% % % %): a member is missing, or the descriptor has no message %\n", w[0].n, r.fn, r.method, r.path, r.status, r.message); bad += 1;
+    }
+    w[0].routes[w[0].n] = r; w[0].n += 1;
+    k = d.nodes[k].next;
+  }
+  return bad;
+}
+// The next row for an answer at or after `from` (a route may answer in more than one kind), or -1; -2
+// when the route function is none of the fixture's.
+rg_find :: (w: [] RgWork, from: int, fn: string, method: string, path: string, status: int) -> int {
+  known := false;
+  for i: 0..<w[0].n {
+    if i < from { if w[0].routes[i].fn == fn { known = true; } continue; }
+    r := w[0].routes[i];
+    if r.fn != fn { continue; }
+    known = true;
+    if r.method == method && r.status == status && rg_path(r.path, path) { return i; }
+  }
+  return ifx known then -1 else -2;
+}
+// Every answer of DIR/FILE (one JSON object a line). Adds to counts [checked, failed].
+rg_read_file :: (st: [] D_State, w: [] RgWork, path: string, counts: [] int) {
+  size := fs_size(path);
+  if size <= 0 { return; }
+  off := 0; fn: [64] u8; method: [16] u8; rpath: [4096] u8; skipping := false;
+  while off < size {
+    n := fs_read_at(path, off, w[0].line[..]);
+    if n <= 0 { break; }
+    e := 0; while e < n && w[0].line[e] != '\n' { e += 1; }
+    if e >= n && off + n < size { off += n; skipping = true; continue; }   // an answer past RG_LINE bytes (a pack, a page): passed over
+    if skipping { skipping = false; off += e + 1; continue; }
+    line := cast(string) w[0].line[0..<e];
+    off += e + 1;
+    if line.count == 0 { continue; }
+    j: [1] Jv;
+    if !jv_parse(j[..], line, w[0].line_nodes[..]) { continue; }
+    d := j[0];
+    fnn := jv_str(d, jv_get(d, 0, "route"), fn[..]); mn := jv_str(d, jv_get(d, 0, "method"), method[..]); pn := jv_str(d, jv_get(d, 0, "path"), rpath[..]);
+    if fnn <= 0 || mn <= 0 || pn <= 0 { continue; }
+    status := jv_int(d, jv_get(d, 0, "status"), 0);
+    at := rg_find(w, 0, cast(string) fn[0..<fnn], cast(string) method[0..<mn], cast(string) rpath[0..<pn], status);
+    if at == -2 { continue; }
+    counts[0] += 1;
+    if at == -1 && status >= 400 {
+      // the refusal with only its words is every route's: it needs no row of its own
+      en := jv_str(d, jv_get(d, 0, "answer"), w[0].body[..]);
+      if en > 0 && rg_body(st, w, RgRoute.{message = RG_ERROR, kind = RG_JSON}, cast(string) w[0].body[0..<en]) == "" { continue; }
+    }
+    if at == -1 { print("FAIL  % % % (%): no row of % names this answer; add its message and its row\n", cast(string) method[0..<mn], cast(string) rpath[0..<pn], status, cast(string) fn[0..<fnn], RG_FIXTURE); counts[1] += 1; continue; }
+    bn := jv_str(d, jv_get(d, 0, "answer"), w[0].body[..]);
+    if bn < 0 { continue; }
+    why := rg_body(st, w, w[0].routes[at], cast(string) w[0].body[0..<bn]);
+    while why != "" {
+      // another row of the same route, in another kind (JSON or lines, by what was asked for)
+      next := rg_find(w, at + 1, cast(string) fn[0..<fnn], cast(string) method[0..<mn], cast(string) rpath[0..<pn], status);
+      if next < 0 { break; }
+      at = next;
+      why = rg_body(st, w, w[0].routes[at], cast(string) w[0].body[0..<bn]);
+    }
+    w[0].routes[at].seen += 1;
+    if why != "" {
+      counts[1] += 1;
+      show := ifx bn > 600 then 600 else bn;
+      print("FAIL  % % % (%): %\n  %\n", cast(string) method[0..<mn], cast(string) rpath[0..<pn], status, w[0].routes[at].message, why, cast(string) w[0].body[0..<show]);
+    }
+  }
+}
+
+#test "a path is its row's: * is one name, ** the rest, the query is cut" {
+  #assert rg_path("/api/playtest/access", "/api/playtest/access") && rg_path("/api/playtest/access", "/api/playtest/access?x=1") && !rg_path("/api/playtest/access", "/api/playtest/access/x");
+  #assert rg_path("/api/chat/*", "/api/chat/town") && !rg_path("/api/chat/*", "/api/chat/") && !rg_path("/api/chat/*", "/api/chat/a/b") && rg_path("/api/drops/**", "/api/drops/a/b/c");
+  #assert rg_path("/api/a", "http://127.0.0.1:7024/api/a?n=1") && rg_path("/**", "/x/y") && rg_path("/api/a/*/b", "/api/a/x/b?q") && !rg_path("/api/a/*/b", "/api/a/x/c") && !rg_path("/api/a/*/b", "/api/a/x");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  pb: [262144] u8;
+  pn := fs_read(RG_DESCRIPTOR, pb[..]);
+  if pn <= 0 { tool_errln("routes-goldens: cannot read the descriptor"); return 2; }
+  g: [1] PkDescriptor;
+  err := pk_load(g[..], cast(string) pb[0..<pn]);
+  if err != "" { print("FAIL  descriptor: %\n", err); return 1; }
+  st := g[0].state[..];
+  w: [1] RgWork;
+  buf: [4194304] u8; j: [1] Jv;
+  n := fs_read(RG_FIXTURE, buf[..]);
+  if loaded && !args_has(args[..], "--read-all") && args_count(args[..]) >= 1 { n = fs_read(args_at(args[..], 0), buf[..]); }
+  if n <= 0 { tool_errln("routes-goldens: cannot read the fixture"); return 2; }
+  if !jv_parse(j[..], cast(string) buf[0..<n], w[0].nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("FAIL  cannot parse the fixture\n"); return 1; }
+  d := j[0];
+  bad := rg_load(st, w[..], d);
+  // the checks bite: a key no message has, a spaced or two-member refusal against ErrorReply's row, a body where none is said
+  probe := RgRoute.{message = RG_ERROR, kind = RG_JSON};
+  if rg_body(st, w[..], probe, "{\"eror\":\"x\"}") == "" || rg_body(st, w[..], probe, "{\"error\":\"x\",\"y\":1}") == "" || rg_body(st, w[..], probe, "{\"error\":\"no database\"}") != "" ||
+     rg_body(st, w[..], probe, "{\"error\": \"not found\"}") != "" || rg_body(st, w[..], RgRoute.{kind = RG_EMPTY}, "x") == "" || rg_body(st, w[..], RgRoute.{kind = RG_TEXT}, "{}") == "" {
+    print("FAIL  the check takes a body it should refuse, or refuses one it should take\n"); return 1;
+  }
+  if loaded && args_has(args[..], "--read-all") {
+    dir := args_at(args[..], args_find(args[..], "--read-all") + 1);
+    counts: [2] int; p1: [4200] u8; p2: [4200] u8;
+    rg_read_file(st, w[..], fs_join(dir, "py.jsonl", p1[..]), counts[..]);
+    rg_read_file(st, w[..], fs_join(dir, "coax.jsonl", p2[..]), counts[..]);
+    print("%: % answers of the covered route files, % failed\n", ifx counts[1] == 0 && bad == 0 then "ok    the routes' answers are their messages'" else "FAIL  the routes' answers", counts[0], counts[1]);
+    return ifx counts[1] == 0 && bad == 0 then 0 else 1;
+  }
+  list := jv_get(d, 0, "goldens");
+  if jv_kind(d, list) != JV_ARRAY || jv_len(d, list) == 0 { print("FAIL  no goldens\n"); return 1; }
+  k := d.nodes[list].first; i := 0;
+  while k != -1 {
+    at := jv_int(d, jv_get(d, k, "route"), -1);
+    bn := jv_str(d, jv_get(d, k, "body"), w[0].body[..]);
+    if at < 0 || at >= w[0].n || bn < 0 { print("FAIL  golden %: no row or no body\n", i); bad += 1; }
+    else {
+      w[0].routes[at].seen += 1;
+      why := rg_body(st, w[..], w[0].routes[at], cast(string) w[0].body[0..<bn]);
+      if why != "" { show := ifx bn > 400 then 400 else bn; print("FAIL  golden % (% % % %): %\n  %\n", i, w[0].routes[at].method, w[0].routes[at].path, w[0].routes[at].status, w[0].routes[at].message, why, cast(string) w[0].body[0..<show]); bad += 1; }
+    }
+    k = d.nodes[k].next; i += 1;
+  }
+  for r: 0..<w[0].n { if w[0].routes[r].seen == 0 && w[0].routes[r].kind != RG_OTHER { print("FAIL  row % (% % %) has no golden\n", r, w[0].routes[r].method, w[0].routes[r].path, w[0].routes[r].status); bad += 1; } }
+  print("%: % rows, % goldens\n", ifx bad == 0 then "route goldens hold" else "route goldens fail", w[0].n, i);
+  return ifx bad == 0 then 0 else 1;
+}

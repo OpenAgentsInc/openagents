@@ -1,0 +1,214 @@
+syntax = "proto3";
+
+package openagents.api.v1alpha1;
+
+// What coax/web/api/auth.c answers, route by route (Protocol, GitHub #13250; profile
+// api-routes; docs/protocol/api-routes-v1alpha1.md). Each message names the members
+// of one answer as they ship: json_name is the key on the wire, a `bytes` member is
+// JSON carried as it came, and a member may be absent or null. The messages were
+// read off a run of the API suite and are held to every later run:
+// proto/verse/api-routes-v1alpha1.json holds real answers and their routes, and
+// coax/web/api/routes-goldens.coax holds each answer's keys to its message here.
+// A refusal with only its words is ErrorReply (error.proto). Most bodies are built
+// in SQL; what the C builds goes through a Coax unit.
+
+// GET /api/auth/account 200
+message AuthAccount {
+  optional bool logged_in = 1 [json_name = "logged_in"];
+  optional string account = 2 [json_name = "account"];
+  optional string kind = 3 [json_name = "kind"];
+  optional string level = 4 [json_name = "level"];
+  optional string via = 5 [json_name = "via"];
+  optional string session = 6 [json_name = "session"];
+  optional bool admin = 7 [json_name = "admin"];
+  repeated string emails = 8 [json_name = "emails"];
+  repeated AuthAccountKeys keys = 9 [json_name = "keys"];
+}
+
+message AuthAccountKeys {
+  optional int64 id = 1 [json_name = "id"];
+  optional string label = 2 [json_name = "label"];
+  optional string pubkey = 3 [json_name = "pubkey"];
+}
+
+// GET /api/auth/limits 200
+message AuthLimits {
+  repeated AuthLimitsLimits limits = 1 [json_name = "limits"];
+}
+
+message AuthLimitsLimits {
+  optional string name = 1 [json_name = "name"];
+  optional string what = 2 [json_name = "what"];
+  optional int64 max_ = 3 [json_name = "max"];
+  optional string per = 4 [json_name = "per"];
+  optional int64 window_ms = 5 [json_name = "window_ms"];
+}
+
+// GET /api/auth/me 401
+message AuthMeLines {
+  optional string not = 1 [json_name = "not"];
+}
+
+// GET /api/auth/sessions 200
+message AuthSessions {
+  repeated AuthSessionsSessions sessions = 1 [json_name = "sessions"];
+}
+
+message AuthSessionsSessions {
+  optional string id = 1 [json_name = "id"];
+  optional string via = 2 [json_name = "via"];
+  optional string name = 3 [json_name = "name"];
+  optional bool this = 4 [json_name = "this"];
+  optional string level = 5 [json_name = "level"];
+  optional string client = 6 [json_name = "client"];
+  optional int64 device = 7 [json_name = "device"];   // or null
+  optional bytes country = 8 [json_name = "country"];   // JSON carried as it came
+  optional int64 created_ms = 9 [json_name = "created_ms"];
+  optional int64 last_seen_ms = 10 [json_name = "last_seen_ms"];
+}
+
+// POST /api/auth/email/link 200
+message AuthEmailLinkPost {
+  optional string state = 1 [json_name = "state"];
+  optional string account = 2 [json_name = "account"];
+  optional bool new = 3 [json_name = "new"];
+  optional bytes player = 4 [json_name = "player"];   // JSON carried as it came
+}
+
+// POST /api/auth/email/link 409
+message AuthEmailLinkPostRefusal {
+  optional string state = 1 [json_name = "state"];
+  optional string code = 2 [json_name = "code"];
+  optional string error = 3 [json_name = "error"];
+}
+
+// POST /api/auth/email/start 200
+message AuthEmailStartPost {
+  optional string state = 1 [json_name = "state"];
+  optional int64 expires_in = 2 [json_name = "expires_in"];
+  optional int64 tries = 3 [json_name = "tries"];
+  optional string pending = 4 [json_name = "pending"];
+}
+
+// POST /api/auth/email/start 429
+message AuthEmailStartPostRefusal {
+  optional string error = 1 [json_name = "error"];
+  optional string limit = 2 [json_name = "limit"];
+  optional int64 max_ = 3 [json_name = "max"];
+  optional string per = 4 [json_name = "per"];
+  optional int64 until_ms = 5 [json_name = "until_ms"];
+}
+
+// POST /api/auth/email/verify 200
+message AuthEmailVerifyPost {
+  optional string state = 1 [json_name = "state"];
+  optional string account = 2 [json_name = "account"];
+  optional bool new = 3 [json_name = "new"];
+  optional bytes player = 4 [json_name = "player"];   // JSON carried as it came
+  optional string access_token = 5 [json_name = "access_token"];
+  optional string refresh_token = 6 [json_name = "refresh_token"];
+  optional int64 expires_in = 7 [json_name = "expires_in"];
+  optional bool device_bound = 8 [json_name = "device_bound"];
+  optional string other = 9 [json_name = "other"];
+  optional int64 emails = 10 [json_name = "emails"];
+  optional int64 keys = 11 [json_name = "keys"];
+  optional int64 agents = 12 [json_name = "agents"];
+  optional int64 worlds = 13 [json_name = "worlds"];
+  optional int64 saves = 14 [json_name = "saves"];
+  optional int64 credit_msat = 15 [json_name = "credit_msat"];
+  optional bool frozen = 16 [json_name = "frozen"];
+  optional bool deleting = 17 [json_name = "deleting"];
+}
+
+// POST /api/auth/email/verify 400
+message AuthEmailVerifyPostRefusal {
+  optional string error = 1 [json_name = "error"];
+  optional string device_proof = 2 [json_name = "device_proof"];
+}
+
+// POST /api/auth/freeze 200; POST /api/auth/logout 200
+message AuthFreezePost {
+  optional string state = 1 [json_name = "state"];
+}
+
+// POST /api/auth/logout-everywhere 200
+message AuthLogoutEverywherePost {
+  optional string state = 1 [json_name = "state"];
+  optional int64 ended = 2 [json_name = "ended"];
+}
+
+// POST /api/auth/nostr 200
+message AuthNostrPost {
+  optional string state = 1 [json_name = "state"];
+  optional string account = 2 [json_name = "account"];
+  optional bool new = 3 [json_name = "new"];
+  optional bytes player = 4 [json_name = "player"];   // JSON carried as it came
+  optional string access_token = 5 [json_name = "access_token"];
+  optional string refresh_token = 6 [json_name = "refresh_token"];
+  optional int64 expires_in = 7 [json_name = "expires_in"];
+  optional bool device_bound = 8 [json_name = "device_bound"];
+}
+
+// POST /api/auth/nostr/challenge 200
+message AuthNostrChallengePost {
+  optional string challenge = 1 [json_name = "challenge"];
+  optional string url = 2 [json_name = "url"];
+  optional string method = 3 [json_name = "method"];
+  optional string body = 4 [json_name = "body"];
+  optional int64 expires_in = 5 [json_name = "expires_in"];
+}
+
+// POST /api/auth/refresh 200
+message AuthRefreshPost {
+  optional string access_token = 1 [json_name = "access_token"];
+  optional string refresh_token = 2 [json_name = "refresh_token"];
+  optional int64 expires_in = 3 [json_name = "expires_in"];
+}
+
+// POST /api/auth/refresh 400; POST /api/auth/refresh 401; POST /api/auth/refresh 409
+message AuthRefreshPostRefusal {
+  optional string error = 1 [json_name = "error"];
+  optional string device_proof = 2 [json_name = "device_proof"];
+  optional int64 now_ms = 3 [json_name = "now_ms"];
+}
+
+// POST /api/auth/devices/push 401
+message AuthGateDevicesPushPostRefusal {
+  optional string error = 1 [json_name = "error"];
+  optional string step_up = 2 [json_name = "step_up"];
+  repeated string methods = 3 [json_name = "methods"];
+  optional bool limited = 4 [json_name = "limited"];
+  optional string level = 5 [json_name = "level"];
+  optional AuthGateDevicesPushPostRefusalRecovery recovery = 6 [json_name = "recovery"];
+}
+
+message AuthGateDevicesPushPostRefusalRecovery {
+  optional string state = 1 [json_name = "state"];
+  optional int64 asked_ms = 2 [json_name = "asked_ms"];
+  optional int64 ready_ms = 3 [json_name = "ready_ms"];
+  optional int64 cancelled_ms = 4 [json_name = "cancelled_ms"];
+  optional int64 done_ms = 5 [json_name = "done_ms"];
+  optional int64 now_ms = 6 [json_name = "now_ms"];
+  optional int64 wait_hours = 7 [json_name = "wait_hours"];
+  optional string cancelled_via = 8 [json_name = "cancelled_via"];
+}
+
+// POST /api/admin/access/flag 401; POST /api/auth/link/nostr 401; POST /api/auth/logout-everywhere 401; POST /api/auth/passkey/register/options 401; POST /api/auth/recovery-code 401; POST /api/auth/unlink 401 and 6 more
+message AuthGateLimitPostRefusal {
+  optional string error = 1 [json_name = "error"];
+  optional string step_up = 2 [json_name = "step_up"];
+  repeated string methods = 3 [json_name = "methods"];
+  optional bool limited = 4 [json_name = "limited"];
+  optional string level = 5 [json_name = "level"];
+  optional AuthGateLimitPostRefusalRecovery recovery = 6 [json_name = "recovery"];
+}
+
+message AuthGateLimitPostRefusalRecovery {
+  optional string state = 1 [json_name = "state"];
+  optional int64 asked_ms = 2 [json_name = "asked_ms"];
+  optional int64 ready_ms = 3 [json_name = "ready_ms"];
+  optional int64 cancelled_ms = 4 [json_name = "cancelled_ms"];
+  optional int64 done_ms = 5 [json_name = "done_ms"];
+  optional int64 now_ms = 6 [json_name = "now_ms"];
+  optional int64 wait_hours = 7 [json_name = "wait_hours"];
+}

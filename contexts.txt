@@ -27,6 +27,7 @@ psionic folders: psionic/ coax/lib/systemone/ coax/web/api/inference.c coax/web/
 engine folders: metaverse-engine/ metaverse-engine/session/lifecycle.coax coax/web/map-points.coax may load: toolchain
 splice folders: metaverse/splice-bots/ may load: engine realm-authoring toolchain
 realm-seat folders: coax/lib/media/realm_seat.coax may load: realm-authoring toolchain
+realms folders: metaverse/haunt metaverse/home.coax metaverse/icecream/ metaverse/gpu/ may load: engine protocol toolchain
 realm-tools folders: metaverse/tools/ may load: engine realm-authoring nostr toolchain
 protocol folders: proto/ may load:
 toolchain folders: coax/ coax/lib/bitcoin/base58.coax coax/lib/bitcoin/hash160.coax coax/lib/bitcoin/hash.coax may load:

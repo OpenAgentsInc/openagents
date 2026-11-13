@@ -8,6 +8,7 @@
 #include "api.h"
 #include "mesh-policy.generated.h"
 #include "mesh-gemini.generated.h"
+#include "mesh-wire.generated.h"
 #include <curl/curl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -19,13 +20,12 @@
 #define MESH_MAX 262144
 static coax_string view(const char *s) { return (coax_string){s, (int64_t)strlen(s)}; }
 static const char *origin(void) { const char *s = getenv("OA_API_ORIGIN"); return s && *s ? s : "https://openagents.com"; }
+// A refusal is System One's error body, written by coax/lib/systemone/refusal.coax through
+// mesh-wire.coax (Protocol, #13250): the status names its code there.
 static void refuse(int fd, int status) {
-  const char *text = status == 401 ? "authentication_required" : status == 403 ? "cross_site" :
-    status == 405 ? "method_not_allowed" : status == 413 ? "limit_exceeded" : status == 415 ? "application_json_required" :
-    status == 429 ? "demo_limit_exceeded" : status == 422 ? "unsupported_input" : status == 400 ? "invalid_request_or_model" :
-    status == 504 ? "mesh_timeout" : "mesh_unavailable";
-  char out[180]; snprintf(out, sizeof out, "{\"error\":{\"code\":\"%s\"}}", text);
-  api_respond(fd, status, "application/json", status == 429 ? MESH_HEADERS "Retry-After: 60\r\n" : MESH_HEADERS, out, strlen(out));
+  char out[180]; int64_t n = mgw_refusal_write((int64_t)status, (coax_v_u8){(uint8_t *)out, sizeof out});
+  if (n < 0) n = 0;
+  api_respond(fd, status, "application/json", status == 429 ? MESH_HEADERS "Retry-After: 60\r\n" : MESH_HEADERS, out, (size_t)n);
 }
 static bool command(PGconn *db, const char *sql) {
   PGresult *r = PQexec(db, sql); bool ok = PQresultStatus(r) == PGRES_COMMAND_OK; PQclear(r); return ok;

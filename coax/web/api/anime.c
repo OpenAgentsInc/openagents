@@ -20,7 +20,7 @@ static const char *configured(const char *key, const char *fallback) {
   const char *value = getenv(key); return value && *value ? value : fallback;
 }
 static void reply(int fd, int status, const unsigned char *body, int64_t n) {
-  if (n < 0 || n > ANIME_BYTES) { api_json(fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (n < 0 || n > ANIME_BYTES) { api_error(fd, 503, "memory"); return; }
   api_respond(fd, status, "application/json", ANIME_HEADERS, (const char *)body, (size_t)n);
 }
 static void refuse(int fd, int status) {

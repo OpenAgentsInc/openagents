@@ -248,7 +248,7 @@ tg_read :: (text: string, st: [] D_State, w: [] TgWork) -> int {
 tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   loaded := args_load(args[..]);
-  pb: [65536] u8;
+  pb: [262144] u8;
   pn := fs_read(TG_DESCRIPTOR, pb[..]);
   if pn <= 0 { tool_errln("seat-wire-goldens: cannot read the descriptor"); return 2; }
   g: [1] PkDescriptor;

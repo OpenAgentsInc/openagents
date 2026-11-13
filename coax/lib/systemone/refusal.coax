@@ -1,0 +1,46 @@
+// A System One refusal on the wire, {"error":{"code":"CODE"}}: what our own doors answer when they
+// refuse (the API's /api/v1/systemone, coax/web/api/mesh.c, through mesh-wire.coax). answers.coax
+// reads it (so_error_code). The codes are the public mesh's (docs/protocol/systemone-public-mesh.md);
+// so_refusal_code names the one an HTTP status carries.
+// Goldens: proto/psionic/systemone-json-v1.json, checked by json-profile.coax.
+//   coax/bin/coax test coax/lib/systemone/refusal.coax --library
+
+so_refusal_code :: (status: int) -> string #effects(all) {
+  if status == 401 { return "authentication_required"; }
+  if status == 403 { return "cross_site"; }
+  if status == 405 { return "method_not_allowed"; }
+  if status == 413 { return "limit_exceeded"; }
+  if status == 415 { return "application_json_required"; }
+  if status == 429 { return "demo_limit_exceeded"; }
+  if status == 422 { return "unsupported_input"; }
+  if status == 400 { return "invalid_request_or_model"; }
+  if status == 504 { return "mesh_timeout"; }
+  return "mesh_unavailable";
+}
+// A code is lower-case letters, digits and "_": nothing JSON escapes.
+so_refusal_code_ok :: (code: string) -> bool #effects(all) {
+  if code.count < 1 || code.count > 64 { return false; }
+  for c: code { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') { return false; } }
+  return true;
+}
+// {"error":{"code":"CODE"}} into out: its length, or -1 (a bad code, or no room).
+so_refusal_write :: (code: string, out: [] u8) -> int #effects(all) {
+  head := "{\"error\":{\"code\":\""; tail := "\"}}";
+  if !so_refusal_code_ok(code) || out.count < head.count + code.count + tail.count { return -1; }
+  n := 0;
+  for c: head { out[n] = c; n += 1; }
+  for c: code { out[n] = c; n += 1; }
+  for c: tail { out[n] = c; n += 1; }
+  return n;
+}
+
+#test "a refusal's bytes, each status's code, a bad code and too small a buffer" {
+  b: [96] u8;
+  n := so_refusal_write(so_refusal_code(429), b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":{\"code\":\"demo_limit_exceeded\"}}";
+  #assert so_refusal_code(401) == "authentication_required" && so_refusal_code(403) == "cross_site" && so_refusal_code(405) == "method_not_allowed";
+  #assert so_refusal_code(413) == "limit_exceeded" && so_refusal_code(415) == "application_json_required" && so_refusal_code(422) == "unsupported_input";
+  #assert so_refusal_code(400) == "invalid_request_or_model" && so_refusal_code(504) == "mesh_timeout" && so_refusal_code(502) == "mesh_unavailable" && so_refusal_code(503) == "mesh_unavailable";
+  #assert so_refusal_write("a\"b", b[..]) == -1 && so_refusal_write("", b[..]) == -1 && so_refusal_write("Busy", b[..]) == -1;
+  #assert so_refusal_write("busy", b[0..<24]) == -1 && so_refusal_write("busy", b[0..<25]) == 25;
+}

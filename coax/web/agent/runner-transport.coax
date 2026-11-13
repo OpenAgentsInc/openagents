@@ -6,9 +6,9 @@
 // body, and its signer must be the test key's public key. `next` hands out one turn, then none.
 // The engine is the runner checks' stand-in (coax/web/agent/test-engine.py), so no model runs.
 //
-//   coax/web/tool.sh coax/web/agent/runner-transport.coax --runner OA_AGENT --work DIR [--port PORT] [--signer coax|libsecp256k1] [--engine PATH]
-//       the run: one wake, one turn; a line per request, then a summary. --signer coax sets
-//       OA_RUNNER_SIGNER=coax; libsecp256k1 leaves it unset (the default and the rollback).
+//   coax/web/tool.sh coax/web/agent/runner-transport.coax --runner OA_AGENT --work DIR [--port PORT] [--engine PATH]
+//       the run: one wake, one turn; a line per request, then a summary. The runner signs with
+//       Coax, its only signer (Protocol C14, #13250).
 //       --engine: the stand-in engine's command, when python3 isn't on the engine's fixed PATH
 //       (/usr/local/bin:/usr/bin:/bin, as on NixOS): a script that runs test-engine.py.
 //   coax/web/tool.sh coax/web/agent/runner-transport.coax --capture FILE --origin https://127.0.0.1:PORT
@@ -261,10 +261,9 @@ rt_run :: (runner: string, engine: string, work: string, port: int, coax_signer:
      && proc_env(h, rt_text(e4[..])) && proc_env(h, "OA_AGENT_REPOS=")
      && proc_env(h, "ANTHROPIC_API_KEY=test-anthropic-not-a-key") && proc_env(h, "OA_AGENT_MODEL=stand-in")
      && proc_unset(h, "OA_CHAT_SEAL_KEY") && proc_unset(h, "OA_RUNNER_SIGNER");
-  if coax_signer { ok = ok && proc_env(h, "OA_RUNNER_SIGNER=coax"); }
   if !ok || proc_start(h) != 0 { tool_errln("runner-transport: the runner didn't start"); r := proc_release(h); return 1; }
   pid := proc_pid(h);
-  print("runner-transport: oa-agent (pid %) signing with %, its oa-api %\n", pid, ifx coax_signer then "Coax (OA_RUNNER_SIGNER=coax)" else "libsecp256k1 (OA_RUNNER_SIGNER unset)", o);
+  print("runner-transport: oa-agent (pid %) signing with %, its oa-api %\n", pid, "Coax (runner-sign.coax, its only signer)", o);
   // the runner's own port answers once it has loaded its key
   hw: [1] HttpWork; ans: [4096] u8;
   base: [1] RtBuf; rt_put(base[..], "http://127.0.0.1:"); rt_int(base[..], port + 1);
@@ -353,8 +352,8 @@ tool_main :: () -> int #export_c #effects(all) {
   work := args_value(a[..], "--work", "");
   port := args_whole(args_value(a[..], "--port", "48720"));
   signer := args_value(a[..], "--signer", "coax");
-  if !loaded || runner.count == 0 || work.count == 0 || port <= 0 || port > 65534 || (signer != "coax" && signer != "libsecp256k1") {
-    tool_errln("usage: coax/web/tool.sh coax/web/agent/runner-transport.coax --runner OA_AGENT --work DIR [--port PORT] [--signer coax|libsecp256k1]");
+  if !loaded || runner.count == 0 || work.count == 0 || port <= 0 || port > 65534 || signer != "coax" {
+    tool_errln("usage: coax/web/tool.sh coax/web/agent/runner-transport.coax --runner OA_AGENT --work DIR [--port PORT]");
     tool_errln("       coax/web/tool.sh coax/web/agent/runner-transport.coax --capture FILE --origin https://127.0.0.1:PORT");
     return 2;
   }

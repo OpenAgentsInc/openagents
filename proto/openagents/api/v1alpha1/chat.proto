@@ -1,0 +1,135 @@
+syntax = "proto3";
+
+package openagents.api.v1alpha1;
+
+// What coax/web/api/chat.c answers, route by route (Protocol, GitHub #13250; profile
+// api-routes; docs/protocol/api-routes-v1alpha1.md). Each message names the members
+// of one answer as they ship: json_name is the key on the wire, a `bytes` member is
+// JSON carried as it came, and a member may be absent or null. The messages were
+// read off a run of the API suite and are held to every later run:
+// proto/verse/api-routes-v1alpha1.json holds real answers and their routes, and
+// coax/web/api/routes-goldens.coax holds each answer's keys to its message here.
+// A refusal with only its words is ErrorReply (error.proto). Most bodies are built
+// in SQL; what the C builds goes through a Coax unit.
+
+// GET /api/chat/account 200
+message ChatAccount {
+  optional bytes claude = 1 [json_name = "claude"];   // JSON carried as it came
+}
+
+// GET /api/chat/record 200
+message ChatRecord {
+  optional string kind = 1 [json_name = "kind"];
+  optional string schema = 2 [json_name = "schema"];
+  optional string id = 3 [json_name = "id"];
+  optional string engine = 4 [json_name = "engine"];
+  optional string cwd = 5 [json_name = "cwd"];
+  optional int64 started_us = 6 [json_name = "started_us"];
+  optional string model = 7 [json_name = "model"];
+}
+
+// GET /api/chat/turn 200
+message ChatTurn {
+  optional string error = 1 [json_name = "error"];
+  optional string model = 2 [json_name = "model"];
+  repeated ChatTurnTools tools = 3 [json_name = "tools"];
+  optional string answer = 4 [json_name = "answer"];
+  optional string status = 5 [json_name = "status"];
+  optional string working = 6 [json_name = "working"];
+  optional string cost_usd = 7 [json_name = "cost_usd"];
+  optional string credential = 8 [json_name = "credential"];
+}
+
+message ChatTurnTools {
+  optional string name = 1 [json_name = "name"];
+  optional string detail = 2 [json_name = "detail"];
+}
+
+// POST /api/chat/key 200
+message ChatKeyPost {
+  optional string kind = 1 [json_name = "kind"];
+  optional string label = 2 [json_name = "label"];
+  optional string last4 = 3 [json_name = "last4"];
+}
+
+// POST /api/chat/key_remove 200
+message ChatKeyRemovePost {
+  optional bool removed = 1 [json_name = "removed"];
+}
+
+// POST /api/chat/model 200
+message ChatModelPost {
+  optional int64 c = 1 [json_name = "c"];
+  optional string model = 2 [json_name = "model"];
+}
+
+// POST /api/chat/new 200
+message ChatNewPost {
+  optional int64 c = 1 [json_name = "c"];
+}
+
+// POST /api/chat/runner/end 200
+message ChatRunnerEndPost {
+  optional int64 turn = 1 [json_name = "turn"];
+  optional string status = 2 [json_name = "status"];
+}
+
+// POST /api/chat/runner/event 200
+message ChatRunnerEventPost {
+  optional bool stop = 1 [json_name = "stop"];
+}
+
+// POST /api/chat/runner/next 200
+message ChatRunnerNextPost {
+  optional int64 cap = 1 [json_name = "cap"];
+  optional ChatRunnerNextPostTurn turn = 2 [json_name = "turn"];
+  optional double spent = 3 [json_name = "spent"];
+  repeated ChatRunnerNextPostHistory history = 4 [json_name = "history"];
+  optional ChatRunnerNextPostCredential credential = 5 [json_name = "credential"];
+}
+
+message ChatRunnerNextPostTurn {
+  optional string by = 1 [json_name = "by"];
+  optional int64 id = 2 [json_name = "id"];
+  optional int64 conv = 3 [json_name = "conv"];
+  optional string text = 4 [json_name = "text"];
+  optional string model = 5 [json_name = "model"];
+  optional string session = 6 [json_name = "session"];
+}
+
+message ChatRunnerNextPostHistory {
+  optional string by = 1 [json_name = "by"];
+  optional int64 id = 2 [json_name = "id"];
+  optional string text = 3 [json_name = "text"];
+  optional string answer = 4 [json_name = "answer"];
+}
+
+message ChatRunnerNextPostCredential {
+  optional string kind = 1 [json_name = "kind"];
+  optional string owner = 2 [json_name = "owner"];
+  optional string sealed = 3 [json_name = "sealed"];
+}
+
+// POST /api/chat/send 200
+message ChatSendPost {
+  optional int64 c = 1 [json_name = "c"];
+  optional int64 turn = 2 [json_name = "turn"];
+  optional string model = 3 [json_name = "model"];
+}
+
+// POST /api/chat/send 429
+message ChatSendPostRefusal {
+  optional bool cap = 1 [json_name = "cap"];
+  optional string error = 2 [json_name = "error"];
+}
+
+// POST /api/chat/stop 200
+message ChatStopPost {
+  optional int64 turn = 1 [json_name = "turn"];
+}
+
+// POST /api/chat/tab 200
+message ChatTabPost {
+  optional int64 c = 1 [json_name = "c"];
+  optional int64 tab = 2 [json_name = "tab"];   // or null
+}

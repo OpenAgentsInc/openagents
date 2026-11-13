@@ -106,18 +106,19 @@ ap_call :: (t: [] Ap, method: string, path: string, body: string, headers: [] st
   got := http_do(t[0].w[..], method, sb_text(url[..]), headers, body, 30000, 0, t[0].out[..]);
   t[0].n = got.n; t[0].code = ifx got.error == HTTP_OK then got.code else -1;
   if got.error != HTTP_OK { t[0].n = 0; t[0].w[0].head_n = 0; }
-  if got.error == HTTP_OK { ap_capture("coax.jsonl", method, path, body, got.code, cast(string) t[0].out[0..<got.n]); }
+  if got.error == HTTP_OK { ap_capture("coax.jsonl", method, path, body, got.code, ap_header(t, "Content-Type"), ap_header(t, "X-OA-Route"), cast(string) t[0].out[0..<got.n]); }
   return t[0].code;
 }
 // API_CAPTURE=DIR: a call's request and answer appended to DIR/FILE, one JSON object a line, for
 // the wire fixtures under proto/ (Protocol, #13250). Bodies past 60,000 bytes are left out.
-ap_capture :: (file: string, method: string, path: string, body: string, status: int, answer: string) {
+ap_capture :: (file: string, method: string, path: string, body: string, status: int, kind: string, route: string, answer: string) {
   db: [1024] u8; dir := proc_getenv("API_CAPTURE", db[..]);
   if dir.count == 0 || body.count + answer.count > 60000 { return; }
   pb: [1100] u8; line: [262144] u8; o: [1] Jo;
   jo_start(o[..], line[..]); jo_obj(o[..]);
   jo_key(o[..], "method"); jo_str(o[..], method); jo_key(o[..], "path"); jo_str(o[..], path);
   jo_key(o[..], "body"); jo_str(o[..], body); jo_key(o[..], "status"); jo_int(o[..], status);
+  jo_key(o[..], "type"); jo_str(o[..], kind); jo_key(o[..], "route"); jo_str(o[..], route);
   jo_key(o[..], "answer"); jo_str(o[..], answer); jo_end(o[..]); jo_put(o[..], "\n");
   if !o[0].bad { ok := fs_append(fs_join(dir, file, pb[..]), jo_text(o[..])); }
 }

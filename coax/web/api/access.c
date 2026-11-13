@@ -111,7 +111,7 @@ int access_signed(const request *q, PGconn *db, char pk[65]) {
   coax_string why = cp_refusal_text(who);
   char out[160];
   if (as_lines(q)) api_respond(q->fd, 401, "text/plain; charset=utf-8", NULL, why.data, (size_t)why.count);
-  else { snprintf(out, sizeof out, "{\"error\":\"%.*s\"}", (int)why.count, why.data); api_json(q->fd, 401, out); }
+  else { snprintf(out, sizeof out, "%.*s", (int)why.count, why.data); api_error(q->fd, 401, out); }
   return -1;
 }
 // The player key the signer's account acts with (auth.caller_key, migrations/0098): derived in SQL, never kept or shown.
@@ -133,7 +133,7 @@ static void answer(const request *q, PGconn *db, const char *sql, int n, const c
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("access: %s: %s", what, PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+    api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not kept");
     return;
   }
   int status = atoi(PQgetvalue(r, 0, 0));
@@ -166,9 +166,9 @@ bool access_refused(const request *q, PGconn *db, const char *key, const char *s
   int status = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 ? atoi(PQgetvalue(r, 0, 0)) : 500;
   PQclear(r);
   if (status == 200) return false;
-  if (status != 403) { api_json(q->fd, 500, "{\"error\":\"not read\"}"); return true; }
+  if (status != 403) { api_error(q->fd, 500, "not read"); return true; }
   if (as_lines(q)) api_respond(q->fd, 403, "text/plain; charset=utf-8", NULL, "invite only", 11);
-  else api_json(q->fd, 403, "{\"error\":\"invite only\",\"need\":\"invite\"}");
+  else api_error_word(q->fd, 403, "invite only", "need", "invite");
   return true;
 }
 
@@ -178,7 +178,7 @@ static bool playtest(const request *q, PGconn *db, const char *rest) {
   char key[160], pk[65], who[65];
   player_key(q, key);
   if (!*rest) {
-    if (post) { api_json(q->fd, 405, "{\"error\":\"GET it\"}"); return true; }
+    if (post) { api_error(q->fd, 405, "GET it"); return true; }
     if (!flag(db, "realm_invites")) {   // off: today's answer, and nothing else is asked
       static const char off[] = "invites 0\nmake 1\nin 0\ncreator 0\nasked none\n";
       api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, off, sizeof off - 1);
@@ -189,25 +189,25 @@ static bool playtest(const request *q, PGconn *db, const char *rest) {
     const char *v[3] = {key, pk, admin};
     PGresult *r = PQexecParams(db, "SELECT access.state($1, nullif($2, ''), $3::boolean)", 3, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
-    else { api_log("access: state: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
+    else { api_log("access: state: %s", PQerrorMessage(db)); api_error(q->fd, 500, "not read"); }
     PQclear(r);
     return true;
   }
   bool redeem = !strcmp(rest, "redeem"), ask = !strcmp(rest, "request");
-  if (!redeem && !ask) { api_json(q->fd, 404, "{\"error\":\"not found\"}"); return true; }
+  if (!redeem && !ask) { api_error(q->fd, 404, "not found"); return true; }
   if (!flag(db, "realm_invites")) return false;   // off: whatever answered this path before answers it
-  if (!post) { api_json(q->fd, 405, "{\"error\":\"POST it\"}"); return true; }
-  if (!same_site(q)) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
+  if (!post) { api_error(q->fd, 405, "POST it"); return true; }
+  if (!same_site(q)) { api_error(q->fd, 403, "cross-site"); return true; }
   char ip[128]; visitor(q, ip);
   if (!allowed(redeem ? "redeem" : "ask", ip, redeem ? 10 : 5)) {
     if (as_lines(q)) api_respond(q->fd, 429, "text/plain; charset=utf-8", "Retry-After: 60\r\n", "slow down", 9);
-    else api_respond(q->fd, 429, "application/json", "Retry-After: 60\r\n", "{\"error\":\"slow down\"}", 21);
+    else api_error_with(q->fd, 429, "Retry-After: 60\r\n", "slow down");
     return true;
   }
-  if (q->body_len > 4096) { api_json(q->fd, 413, "{\"error\":\"too large\"}"); return true; }
+  if (q->body_len > 4096) { api_error(q->fd, 413, "too large"); return true; }
   logged_in(q, db, pk);
   char *body = body_of(q);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+  if (!body) { api_error(q->fd, 503, "memory"); return true; }
   char cap[16]; snprintf(cap, sizeof cap, "%d", atoi(env_or("OA_ACCESS_WAITING", "2000")));
   const char *v[3] = {body, pk, cap};
   if (redeem) answer(q, db, RESULT "access.redeem($1::jsonb, nullif($2, '')) x", 2, v, "redeem");
@@ -258,13 +258,13 @@ static bool digits(const char *s, size_t n) {
 static bool admin(const request *q, PGconn *db, const char *rest) {
   char who[65];
   int s = admin_who(q, db, who);
-  if (s) { api_json(q->fd, s == 403 ? 403 : 401, s == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}"); return true; }
+  if (s) { api_error(q->fd, s == 403 ? 403 : 401, s == 403 ? "admins only" : "log in as an admin"); return true; }
   bool post = !strcmp(q->method, "POST");
   if (!*rest) {
-    if (post) { api_json(q->fd, 405, "{\"error\":\"GET it\"}"); return true; }
+    if (post) { api_error(q->fd, 405, "GET it"); return true; }
     PGresult *r = PQexec(db, "SELECT access.admin_lines()");
     if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
-    else { api_log("access: admin lines: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
+    else { api_log("access: admin lines: %s", PQerrorMessage(db)); api_error(q->fd, 500, "not read"); }
     PQclear(r);
     return true;
   }
@@ -275,7 +275,7 @@ static bool admin(const request *q, PGconn *db, const char *rest) {
     api_query(q, "visibility", vis, sizeof vis);
     const char *v[1] = {vis};
     PGresult *r = PQexecParams(db, "SELECT x->>'lines', (x->'body')::text FROM verse.realm_admin_rows(nullif($1, '')) x", 1, NULL, v, NULL, NULL, 0);
-    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("access: realms: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
+    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("access: realms: %s", PQerrorMessage(db)); api_error(q->fd, 500, "not read"); }
     else if (as_lines(q)) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
     else api_json(q->fd, 200, PQgetvalue(r, 0, 1));
     PQclear(r);
@@ -285,15 +285,15 @@ static bool admin(const request *q, PGconn *db, const char *rest) {
     const char *v[1] = {roots};
     PGresult *r = PQexecParams(db, "SELECT access.admin_list($1::text[])", 1, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
-    else { api_log("access: admins: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
+    else { api_log("access: admins: %s", PQerrorMessage(db)); api_error(q->fd, 500, "not read"); }
     PQclear(r);
     return true;
   }
-  if (!post) { api_json(q->fd, 405, "{\"error\":\"POST it\"}"); return true; }
-  if (!same_site(q)) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
-  if (q->body_len > 4096) { api_json(q->fd, 413, "{\"error\":\"too large\"}"); return true; }
+  if (!post) { api_error(q->fd, 405, "POST it"); return true; }
+  if (!same_site(q)) { api_error(q->fd, 403, "cross-site"); return true; }
+  if (q->body_len > 4096) { api_error(q->fd, 413, "too large"); return true; }
   char *body = body_of(q);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+  if (!body) { api_error(q->fd, 503, "memory"); return true; }
   const char *v[3] = {body, who, origin()};
   const char *rv[3] = {body, who, roots};   // a change to the admins: only a root may (0100)
   if (!strcmp(rest, "flag")) { answer(q, db, RESULT "access.set_flag($1::jsonb, $2) x", 2, v, "flag"); realms_twin(db); }
@@ -319,7 +319,7 @@ static bool admin(const request *q, PGconn *db, const char *rest) {
       const char *x[3] = {id, who, roots};
       answer(q, db, RESULT "access.admin_remove($1, $2, $3::text[]) x", 3, x, "admin remove");
     }
-    else api_json(q->fd, 404, "{\"error\":\"not found\"}");
+    else api_error(q->fd, 404, "not found");
   }
   api_log("access admin %.24s by %.8s", rest, who);
   free(body);
@@ -335,6 +335,6 @@ bool access_route(const request *q) {
   else return false;
   if (*rest == '/') rest++;
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { api_error(q->fd, 503, "no database"); return true; }
   return which == 0 ? playtest(q, db, rest) : admin(q, db, rest);
 }
