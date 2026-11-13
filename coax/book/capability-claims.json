@@ -39,7 +39,7 @@
     {
       "id": "coax.targets.current",
       "document": "coax/book/ch28-road-ahead.md",
-      "scope": "Existing applications and named native-lp64 layout facts; no general alternate-target runtime, ABI, numerical or debugging qualification.",
+      "scope": "Existing applications and named native-lp64 layout facts; no general alternate-target runtime, ABI, numerical or debugging qualification. Reviewed for #13516: target.browser is renamed \"Coax Native Web browser path\" and its meaning names the browser's DOM for text surfaces; no compute, layout or target qualification changes.",
       "text_sha256": "b32066c09bc0d346741862cd2b11b31ed4caa51069f575428b0387e998c51404",
       "features": [
         {
@@ -56,7 +56,7 @@
         },
         {
           "id": "target.browser",
-          "sha256": "6186151ae5eecd2fa77b05fcd769ca16db8598592d2a2304f4474d43fe480ed4"
+          "sha256": "915fe398482db1d6f30e03d9f4105bc3c9412e55acb58b43bf3f82aca61836b2"
         },
         {
           "id": "target.linux",
@@ -286,7 +286,7 @@
     {
       "id": "psionic.language.current",
       "document": "psionic/book/PLAN.md",
-      "scope": "Current shared compiler and bounded Psionic consumers, including nominal/formal scalar units and initial concrete native-C affine point/vector types; full transforms, compiler clocks, other targets and full robot migrations remain separate. Reviewed after #12867: Metal graphics emission is a graphics path and does not qualify Psionic Metal or WebGPU compute beyond the bounded kernels named. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82's WGSL compute entries serve the engine's GPU cull only and qualify no Psionic browser compute; cdf2eedd13 adds checks only.",
+      "scope": "Current shared compiler and bounded Psionic consumers, including nominal/formal scalar units and initial concrete native-C affine point/vector types; full transforms, compiler clocks, other targets and full robot migrations remain separate. Reviewed after #12867: Metal graphics emission is a graphics path and does not qualify Psionic Metal or WebGPU compute beyond the bounded kernels named. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82's WGSL compute entries serve the engine's GPU cull only and qualify no Psionic browser compute; cdf2eedd13 adds checks only. Reviewed for #13516: target.browser is renamed \"Coax Native Web browser path\" and its meaning names the browser's DOM for text surfaces; no compute, layout or target qualification changes.",
       "text_sha256": "7f0dc4b94142d897dfcc449a061683ab4d7f60b5b7af9949835fee2462284f84",
       "features": [
         {
@@ -315,7 +315,7 @@
         },
         {
           "id": "target.browser",
-          "sha256": "6186151ae5eecd2fa77b05fcd769ca16db8598592d2a2304f4474d43fe480ed4"
+          "sha256": "915fe398482db1d6f30e03d9f4105bc3c9412e55acb58b43bf3f82aca61836b2"
         },
         {
           "id": "ownership.full",
@@ -442,12 +442,12 @@
     {
       "id": "coax.wgsl.current",
       "document": "coax/book/ch17-gpu.md",
-      "scope": "Bounded direct WGSL graphics emission and the named Everglade source consumer; planned shader syntax, general layouts and Psionic browser compute remain separate. Reviewed after #12867: `coax metal --vertex/--fragment` adds a separate Metal graphics writer over the same checked tree; the WGSL path and its refusals are unchanged. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82 adds bounded `coax wgsl --computes` entries with `atomic` storage bindings for the engine's GPU cluster cull (metaverse-engine/render/geometry/cull.coax); Psionic browser compute remains separate. cdf2eedd13 adds checks only; 4c7669373d and c50fcbbf15 change Everglade's bindings for one zone and sun-shadow atlas tiles.",
+      "scope": "Bounded direct WGSL graphics emission and the named Everglade source consumer; planned shader syntax, general layouts and Psionic browser compute remain separate. Reviewed after #12867: `coax metal --vertex/--fragment` adds a separate Metal graphics writer over the same checked tree; the WGSL path and its refusals are unchanged. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82 adds bounded `coax wgsl --computes` entries with `atomic` storage bindings for the engine's GPU cluster cull (metaverse-engine/render/geometry/cull.coax); Psionic browser compute remains separate. cdf2eedd13 adds checks only; 4c7669373d and c50fcbbf15 change Everglade's bindings for one zone and sun-shadow atlas tiles. Reviewed for #13516: target.browser is renamed \"Coax Native Web browser path\" and its meaning names the browser's DOM for text surfaces; no compute, layout or target qualification changes.",
       "text_sha256": "4a593a91eb143f061fb948f11119f1e6f62a1e1629db334786aeb190920e94eb",
       "features": [
         {
           "id": "target.browser",
-          "sha256": "6186151ae5eecd2fa77b05fcd769ca16db8598592d2a2304f4474d43fe480ed4"
+          "sha256": "915fe398482db1d6f30e03d9f4105bc3c9412e55acb58b43bf3f82aca61836b2"
         }
       ],
       "evidence": [
