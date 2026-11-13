@@ -111,6 +111,24 @@ k_slider :: (t: [] Tree, id: string, name: string, value: string, low: int, high
   return f;
 }
 
+// Meter: a named amount against its limit (a budget spent, a store filled): its name, a line filled as
+// far as `share` of the limit is used (0 to 1; more shows as full), and the amount in words, which name
+// the limit too, so the line is never the only place the limit is read. A meter is read, not pressed.
+// Answers the line's node (its id is `id`); the words' id is `id` with ".v".
+k_meter :: (t: [] Tree, id: string, name: string, value: string, share: f32) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8;
+  p := tr_open(t, tr_cat(ida[..], id, ".meter"), TG_DIV, "meter");
+  n := tr_leaf(t, tr_cat(idb[..], id, ".n"), TG_SPAN, "meta", name);
+  line := tr_open(t, id, TG_SPAN, "meter-l");
+  tr_attr(t, line, AT_HIDDEN, "true");   // the words beside it say the same to a reader
+  fill := tr_leaf(t, tr_cat(idc[..], id, ".f"), TG_SPAN, "meter-f", "");
+  k_var(t, fill, share);
+  tr_close(t);
+  v := tr_leaf(t, tr_cat(idd[..], id, ".v"), TG_SPAN, "fact", value);
+  tr_close(t);
+  return line;
+}
+
 DkTest :: struct { t: [1] Tree; u: [1] Ui; }
 
 #test "a dock holds a strip and side panes, each a framed section whose body is its own node" {
@@ -154,6 +172,14 @@ DkTest :: struct { t: [1] Tree; u: [1] Ui; }
   #assert ln == tr_find(t, "height") && t[0].nodes[ln].tag == TG_INPUT && tr_attr_of(t, ln, AT_TYPE) == "range" && tr_attr_of(t, ln, AT_LABEL) == "Height";
   #assert tr_attr_of(t, ln, AT_MIN) == "145" && tr_attr_of(t, ln, AT_MAX) == "225" && tr_attr_of(t, ln, AT_STEP) == "1";
   #assert tr_class(t, tr_find(t, "height.slide")) == "slide" && tr_text_of(t, tr_find(t, "height.n")) == "Height" && tr_text_of(t, tr_find(t, "height.v")) == "175 cm" && t[0].depth == 0;
+  // a meter: its name, a line filled to its share of the limit, and the amount with the limit in words
+  tr_begin(t);
+  mt := k_meter(t, "spent", "Costliest call", "5,000 of 20,000", 0.25);
+  #assert mt == tr_find(t, "spent") && tr_class(t, mt) == "meter-l" && tr_class(t, tr_find(t, "spent.meter")) == "meter" && tr_text_of(t, tr_find(t, "spent.n")) == "Costliest call";
+  #assert tr_attr_of(t, tr_find(t, "spent.f"), AT_VARS) == "--p:0.250" && tr_text_of(t, tr_find(t, "spent.v")) == "5,000 of 20,000" && tr_attr_of(t, mt, AT_HIDDEN) == "true" && t[0].depth == 0;
+  tr_begin(t);
+  mo := k_meter(t, "over", "Costliest call", "20,000 of 20,000", 1.4);
+  #assert tr_attr_of(t, tr_find(t, "over.f"), AT_VARS) == "--p:1";
   tr_begin(t);
   d = k_dock(t, "dock", false);
   w := k_pane(t, u, "code", DK_WIDE, "Code");

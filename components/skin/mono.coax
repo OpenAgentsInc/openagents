@@ -382,6 +382,9 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, ".prop{display:grid;grid-template-columns:76px minmax(0,1fr);gap:10px;align-items:center}.prop .field{padding:6px 10px;max-width:none}.fact{overflow-wrap:anywhere}");
   // a stepper: its name, less, what it is now, more
   n = mc(out, n, ".step{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px}.step .ib{flex:none}.step .fact{min-width:52px;text-align:center}.step .ib[disabled]{opacity:.35;pointer-events:none}");
+  // a meter: its name, a hairline filled as far as the amount is of its limit, the amount in words
+  n = mc(out, n, ".meter{display:grid;grid-template-columns:76px minmax(0,1fr) auto;gap:10px;align-items:center}.meter .fact{text-align:right;white-space:nowrap}");
+  n = mc(out, n, ".meter-l{display:block;height:5px;background:var(--line-dim)}.meter-f{display:block;height:100%;background:var(--ink);transform-origin:0 50%;transform:scaleX(var(--p,0))}");
   // a slider: its name, a hairline with a block to drag, what it is now
   n = mc(out, n, ".slide{display:grid;grid-template-columns:76px minmax(0,1fr) 58px;gap:10px;align-items:center}.slide .fact{text-align:right;white-space:nowrap}");
   n = mc(out, n, ".slide input{appearance:none;-webkit-appearance:none;width:100%;height:28px;margin:0;padding:0;background:none;cursor:pointer;outline:none}");

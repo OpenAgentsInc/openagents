@@ -192,6 +192,8 @@ wg_build :: (s: [] WebPage) {
   sr := k_stepper(t, "dock.radius", "Radius", radii[s[0].radius], s[0].radius > 0, s[0].radius < 4);
   // a slider: a whole number dragged along a line (its place is the browser's own; the words beside it say the usual)
   sh := k_slider(t, "dock.height", "Height", "145 to 225 cm", 145, 225, 1);
+  // a meter: an amount against its limit, the limit in the words too
+  mt := k_meter(t, "dock.spent", "Budget", "5,000 of 20,000", 0.25);
   tr_close(t);
   k_pane_end(t);
   dfoot := k_pane(t, u, "dock.foot", DK_BOTTOM, "Agent");
