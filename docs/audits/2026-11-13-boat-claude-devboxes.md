@@ -26,7 +26,60 @@ created nothing, installed nothing and spent nothing.
   a small Coax SDK in `coax/lib/boat/`, a `coder --on boat:ID` route, and a
   devbox conversation kind in the API so the phone can reach a box.
 - **The owner has one step:** create a GitHub token for the boxes, scoped to
-  this repository. It is in `NEEDS_OWNER.md`.
+  this repository. It is in `NEEDS_OWNER.md`. (Done: the token exists and
+  stage 0 used it.)
+
+## Stage 0 results (2026-11-13)
+
+Stage 0 ran the same day. The runbook, with every measured time, is
+[docs/cloud/boat-devbox.md](../cloud/boat-devbox.md). Where the facts differ
+from the reading pass below, this section wins.
+
+- **It works.** A Claude Code session on Haiku 5.5 ran in `tmux` on a `large`
+  box, made a docs-only commit in a worktree and pushed it to a branch with
+  the box's own GitHub token. The session stayed up through a detach and a
+  reconnect over `boat ssh -t`. After a stop of more than 10 minutes,
+  `claude -c` continued the same conversation.
+- **The October token still works.** `claude -p` answered in 4 seconds with
+  `CLAUDE_CODE_OAUTH_TOKEN` from the environment.
+- **Secrets go through a named environment, not `--env`.** A saved snapshot
+  copies the per-sandbox `--env` values of its source to every box made from
+  it, so `--env` would bake the tokens into the template. The box instead
+  uses the environment `oa-devbox` (secrets only: no GitHub connection, no
+  boat key, no agent logins), which a box made from a template gets only
+  when it names it. No file on the box holds either token.
+- **The October problems are gone.** A detached command worked 6 seconds
+  after create. A resume after more than 10 minutes was ready in 12 seconds.
+- **The network is slow.** Downloads from outside boat's provider ran at 0.2
+  to 1 MB/s, so a fresh blob-less clone took 10 min 39 s. The template holds
+  a clone for this reason.
+- **The compiler doesn't always need a bootstrap.** `coax/build.sh` installs
+  the published Linux build that matches the tree in under a minute. Only a
+  tree newer than the last published build bootstraps.
+- **Headless Chrome doesn't draw our WebGPU pages.** Chrome 151 gets a
+  SwiftShader adapter, but the home page loses its GPU device in a loop
+  (ANGLE) or never reports a scene (Vulkan), and the shot is black.
+- **`~/.cache` doesn't survive a stop**, so the Coax caches and the compiler
+  copy the pre-push hook looks for go with it. Boat also replaces a
+  `~/.cache` that is a link. The template keeps the `coax-*` caches in
+  `~/.cache-kept` and links each one back at login (`~/.oa-devbox.sh`).
+- **Times.** A box from the template is ready in 8 seconds and has a worktree
+  with its compiler 49 seconds after `boat new`. A bootstrap of the compiler
+  (`COAX_MUTATION=0`) took 309 seconds on 8 vCPU, not 15 to 21 minutes. The
+  whole stage used 0.96 `large`-hours, about $0.07.
+- **Stage 1 should start with** the calls stage 0 used by hand, in this
+  order: `GET /limits`; create with `from`, `type` and `environment` (never
+  `env` for a secret); get and wait for `ready`; a detached command plus its
+  attach stream; stop and resume; save a saved snapshot; delete. The
+  environment calls (create, set a variable from a body, never an argument)
+  belong in the first cut too, since that is how a box gets its tokens. Two
+  facts to model: a `stop` returns while the box is still `stopping`, and a
+  resume in that moment gets the same machine back; and a synchronous command
+  that passes its timeout is killed, so anything longer than a few minutes
+  goes detached.
+- **The 16 old saved snapshots are deleted** (the owner said yes on
+  2026-11-13). The audit's split was off: there were five `oaenv-build-*`
+  and two `oa-coder-runtime-*`, not six and one.
 
 ## What boat is (read 2026-11-13)
 
@@ -97,7 +150,7 @@ otherwise.
 | Sizes we can create | `small`, `default`, `large`. Not `xlarge` ("needs the $100/month plan or higher") |
 | Wallet | -$1.38. Boat's docs say a negative balance is what you owe after a grace period |
 | Running sandboxes | None. The last 50 are all stopped, the newest from 2026-10-10 |
-| Saved snapshots | 16, against 10 included (see Risks) |
+| Saved snapshots | 16, against 10 included (see Risks). Deleted in stage 0; the dev box template is now the only one |
 | Agent credentials in boat | None connected. The default environment `base` is "safe for third parties", so it passes nothing of ours to a sandbox |
 | Command timeout (docs) | 30 s by default, 600 s at most. A detached command has no limit |
 | API rate (docs) | 10,000 requests a minute per IP |
@@ -113,13 +166,13 @@ Yes. Each point below says what does it.
 | Need | How it works on boat | Checked? |
 |---|---|---|
 | `claude` installed | Pre-installed and kept current by boat | Docs |
-| Logged in, no browser | `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`, passed to that one sandbox (`noEnv: true` plus `env`). Our /chat runner already takes this variable. A token file exists at `~/work/.secrets/claude-code-oauth-token` (dated 2026-10-09). The other way is boat's dashboard sign-in, which keeps the token on boat's side and refreshes it | Docs; the token's validity wasn't checked |
-| `gh` and pushes | `GH_TOKEN` set to a fine-grained token for `OpenAgentsInc/openagents` only. Boat's own "Connect GitHub" passes the owner's whole GitHub access, which is broader than a box needs | Docs; no such token exists yet |
-| Survives a stop | `~/.claude` lives in `/home/user`, so `claude --resume` continues after a resume. The `tmux` process itself ends after the 10-minute window | Docs |
+| Logged in, no browser | `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`, passed to that one sandbox (`noEnv: true` plus `env`). Our /chat runner already takes this variable. A token file exists at `~/work/.secrets/claude-code-oauth-token` (dated 2026-10-09). The other way is boat's dashboard sign-in, which keeps the token on boat's side and refreshes it | Stage 0: the 2026-10-09 token works. The box gets it from the environment `oa-devbox`, not from `env` (see Stage 0 results) |
+| `gh` and pushes | `GH_TOKEN` set to a fine-grained token for `OpenAgentsInc/openagents` only. Boat's own "Connect GitHub" passes the owner's whole GitHub access, which is broader than a box needs | Stage 0: `gh auth setup-git` makes `gh` the credential helper; a push to a branch worked |
+| Survives a stop | `~/.claude` lives in `/home/user`, so `claude --resume` continues after a resume. The `tmux` process itself ends after the 10-minute window | Stage 0: `tmux` was gone after a stop of 11 minutes; `claude -c` continued the conversation |
 | How long it runs | A detached command has no time limit. The box runs until its auto-stop, which we set (up to 30 days) and extend. Turn auto-stop off only with our own cap in place (stage 2) | Docs |
-| Repo and toolchain | Clone over HTTPS with the token. Nix and Bun install the way `coax/remote/host-startup.sh` does it on a build host (about 4 minutes there). The Coax compiler bootstraps in 15 to 21 minutes the first time, because the box can't read the build hosts' compiler bucket without GCP credentials. After that, save the box as a saved snapshot, and every later box starts from it in seconds | Estimated from `docs/metaverse/remote-builds.md`; not run on boat |
-| First setup | About 30 minutes once: clone, Nix, Bun, compiler, first `coax test`. Then seconds per box | Estimate |
-| Headless Chrome | Chrome 151 runs headless. With no GPU, WebGPU can only be software (SwiftShader). A shot can show that a page draws, but it doesn't count for goldens, frame times or acceptance, which the repo measures on a real GPU. Our `shot` flags (`--use-angle=metal`) are Mac flags, so a Linux box needs its own | Not checked |
+| Repo and toolchain | Clone over HTTPS with the token. Nix and Bun install the way `coax/remote/host-startup.sh` does it on a build host (about 4 minutes there). The Coax compiler bootstraps in 15 to 21 minutes the first time, because the box can't read the build hosts' compiler bucket without GCP credentials. After that, save the box as a saved snapshot, and every later box starts from it in seconds | Stage 0: the clone took 10 min 39 s on a slow link; `coax/build.sh` installed the published Linux build in 49 s, so no bootstrap was needed for that tree |
+| First setup | About 30 minutes once: clone, Nix, Bun, compiler, first `coax test`. Then seconds per box | Stage 0: about 15 minutes to a built compiler, most of it the clone |
+| Headless Chrome | Chrome 151 runs headless. With no GPU, WebGPU can only be software (SwiftShader). A shot can show that a page draws, but it doesn't count for goldens, frame times or acceptance, which the repo measures on a real GPU. Our `shot` flags (`--use-angle=metal`) are Mac flags, so a Linux box needs its own | Stage 0: a SwiftShader adapter exists, but our home page never draws its scene; the shot is black |
 
 ### What may go on a box
 
@@ -353,8 +406,8 @@ size and a GPU. The sensible split:
   - six `oaenv-build-*`
   - seven `gym-*`
 
-  They are useless to the new tree. Deleting them is the owner's call, by
-  name.
+  They are useless to the new tree. The owner said yes, and stage 0
+  deleted all 16 by name on 2026-11-13.
 - **When boat is down.** It returned 502s on 2026-10-10, which is why
   `oa-boat` was built. Work on a box is pushed often, so an outage loses only
   unpushed work. Sessions move to `coderos-4080` with the same Coder route
@@ -373,7 +426,7 @@ size and a GPU. The sensible split:
 
 | Stage | What | Size |
 |---|---|---|
-| 0 | One box by hand: `large`, `noEnv` with the Claude and GitHub tokens, Nix, Bun, the clone, the compiler, saved as `oa-devbox-YYYYMMDD`. Claude in `tmux`. Record the setup and build times, whether detached commands work right after `ready`, and whether software WebGPU draws a page | Today, once the GitHub token exists |
+| 0 | One box by hand: `large`, `noEnv` with the Claude and GitHub tokens, Nix, Bun, the clone, the compiler, saved as `oa-devbox-YYYYMMDD`. Claude in `tmux`. Record the setup and build times, whether detached commands work right after `ready`, and whether software WebGPU draws a page | Done 2026-11-13: [runbook](../cloud/boat-devbox.md) |
 | 1 | The SDK core, `coax/lib/boat/`, checked against replay fixtures | 2 to 3 days |
 | 2 | `policy.coax` (`#authority`) and `coax/web/tool.sh boat` with `up`, `ls`, `ssh`, `stop`, `resume` and `cost` | 1 day |
 | 3 | `coder --on boat:ID`, with the locally served /chat listing and driving box sessions | 1 day |
@@ -387,14 +440,13 @@ can't push.
 
 ## What this audit couldn't check
 
-- Whether `~/work/.secrets/claude-code-oauth-token` is still valid. It
-  wasn't used.
-- Anything that needs a running sandbox: real setup and build times on 8
-  vCPU, the detached-command and restore problems of early October,
-  software WebGPU in headless Chrome, and the pre-push hooks on a box.
+- Stage 0 has since checked the Claude token, setup and build times, the
+  October problems, software WebGPU and the pre-push hook on a box. See
+  [Stage 0 results](#stage-0-results-2026-11-13).
 - Whether boat preempts or moves running sandboxes. The docs describe none.
 - Whether Coder's `/local/sessions` lists `--on ssh:` sessions to the chat
   page.
 - Boat's billing invoices. The wallet figure is from `GET /limits`.
 - The second page of the sandbox list. The first 50 sandboxes are all
-  stopped, and older ones go back before 2026-10-02.
+  stopped, and older ones go back before 2026-10-02. (Before stage 0 there were 92 in all;
+  every one was stopped, and the newest was from 2026-10-10.)
