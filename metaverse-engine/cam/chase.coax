@@ -85,6 +85,20 @@ cam_chase_orbit :: (m: CamMode, orbit: Orbit, in: CamChaseIn, dt: f32) -> Orbit 
   return o;
 }
 
+// A seat's camera (a mount's saddle): the orbit `back` metres further out than the player asked, where
+// the last frame had it `had` further. The player's own zoom is kept: only the difference is added, to
+// what is asked and to what is shown now, so the camera moves with the seat's own ease. Looking out of
+// your eyes nothing is added. Coming back in never passes the closest zoom. `had` is what to pass next.
+CamSeat :: struct { orbit: Orbit; had: f32; }
+cam_chase_seat :: (o: Orbit, back: f32, had: f32) -> CamSeat {
+  d := back - had;
+  if !finite(d) || d == 0 { return CamSeat.{orbit = o, had = had}; }
+  if o.want < f32(FREE_NEAR) && had == 0 { return CamSeat.{orbit = o, had = 0}; }
+  next := o;
+  next.want = hi(o.want + d, f32(FREE_NEAR)); next.zoom = hi(o.zoom + d, f32(FREE_NEAR));
+  return CamSeat.{orbit = next, had = back};
+}
+
 // Three spheres up a trunk at (x, z), radius r, from half a metre under the pivot: added to spheres
 // (four numbers each) while it holds fewer than CAM_TRUNKS trunks and the trunk is within reach of the
 // pivot. Returns the trunks held.
@@ -150,4 +164,20 @@ cam_chase_floor :: (o: Orbit, clear: f32, dt: f32) -> Orbit {
   q := metaverse_orbit_start(v3(0, 0, 0), 0); q.pitch = -0.5;
   f := cam_chase_floor(q, 0.3, 1.0f32 / 30); r := metaverse_orbit_ray(f);
   #assert r.from.y + r.dir.y * f.shown >= 0.299;
+}
+#test "a seat's camera adds its metres to the zoom the player asked for and takes them back; first person stays" {
+  o: Orbit; o.want = 4; o.zoom = 4;
+  half := cam_chase_seat(o, 0.75, 0); #assert half.orbit.want == 4.75 && half.orbit.zoom == 4.75 && half.had == 0.75;
+  full := cam_chase_seat(half.orbit, 1.5, half.had); #assert full.orbit.want == 5.5 && full.had == 1.5;
+  same := cam_chase_seat(full.orbit, 1.5, full.had); #assert same.orbit.want == 5.5 && same.had == 1.5;
+  // the player zooms in 2 m in the saddle: getting down gives back only the seat's metres
+  z := metaverse_orbit_zoom(full.orbit, -2); #assert z.want == 3.5;
+  down := cam_chase_seat(z, 0, full.had); #assert down.orbit.want == 2.0 && down.had == 0;
+  // a dragon's 15 m, then zoomed all the way in: getting down stops at the closest zoom
+  far := cam_chase_seat(o, 15, 0); #assert far.orbit.want == 19;
+  near := far.orbit; near.want = 2; near.zoom = 2;
+  back := cam_chase_seat(near, 0, far.had); #assert back.orbit.want == f32(FREE_NEAR) && back.orbit.zoom == f32(FREE_NEAR);
+  // looking out of your eyes: nothing is added
+  eyes: Orbit; eyes.want = 0; eyes.zoom = 0;
+  e := cam_chase_seat(eyes, 1.5, 0); #assert e.orbit.want == 0 && e.had == 0;
 }

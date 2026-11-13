@@ -109,6 +109,16 @@ e2_ride_feet :: (s: [] E2) -> E2RvFeet #export_c #effects(all) {
   if !e2n_open(n) { return E2RvFeet.{}; }
   return e2rv_feet(s, n[0].seat, e2rp_tick(n[0].ride[..], n[0].pred[0].seq));
 }
+// The riding camera (everglade/mounts.coax EG_RIDE_CAM_*): how far back and up the follow camera goes
+// this frame, eased with your seat. Round a dragon it goes far more than round a horse.
+E2RvCam :: struct { back: f32; up: f32; }
+e2rv_cam :: (s: [] E2) -> E2RvCam {
+  f := e2_ride_feet(s);
+  if !f.on { return E2RvCam.{}; }
+  dragon := f.seat == figs.BD_SEAT_DRAGON;
+  return E2RvCam.{back = (ifx dragon then f32(egm.EG_DRAGON_CAM_BACK) else f32(egm.EG_RIDE_CAM_BACK)) * f.seated,
+                  up = (ifx dragon then f32(egm.EG_DRAGON_CAM_UP) else f32(egm.EG_RIDE_CAM_UP)) * f.seated};
+}
 // Another player as drawn: in the saddle of the mount that carries them.
 e2rv_remote :: (s: [] E2, r: E2Remote) -> E2Remote {
   f := e2rv_feet(s, r.seat, s[0].net[0].tick);
@@ -172,6 +182,10 @@ e2rv_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
   d := e2rv_draw(s[..], E2Drawn.{}, 0.016);
   #assert d.rec == 1 && d.n == 1 && d.sn == 1 && s[0].rv[0].drawn == 1 && s[0].records[15] == 18 && s[0].records[0] == n[0].ride[0].m[0].m[0].x;
   f := e2_ride_feet(s[..]); #assert f.on && f.y > 0.4 && abs(f.x - n[0].ride[0].m[0].m[0].x) < 1.5 && abs(f.z - n[0].ride[0].m[0].m[0].z) < 1.5;
+  // the riding camera: in the saddle it is the horse's 1.5 m back and 0.5 m up, and the follow step asks the orbit for them
+  rc := e2rv_cam(s[..]); #assert rc.back == f32(egm.EG_RIDE_CAM_BACK) && rc.up == f32(egm.EG_RIDE_CAM_UP);
+  want := s[0].orbit.want; e2_chase_step(s[..], 0.016); #assert s[0].orbit.want == want + f32(egm.EG_RIDE_CAM_BACK) && s[0].ride_back == f32(egm.EG_RIDE_CAM_BACK);
+  e2_chase_step(s[..], 0.016); #assert s[0].orbit.want == want + f32(egm.EG_RIDE_CAM_BACK);
   // another seat rides nothing: drawn where its row has it
   r := e2rv_remote(s[..], E2Remote.{ok = true, seat = 5, x = 1, y = 0, z = 2}); #assert r.x == 1 && r.y == 0;
   // E again: the ask to get down, and the page begins it

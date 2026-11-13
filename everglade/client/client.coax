@@ -117,6 +117,7 @@ E2 :: struct {
   rig_packed: bool;                      // the bake's rig came from the pack's rig entry (probe 179)
   bake: [figs.BD_BAKE_FLOATS] f32;
   orbit: figs.Orbit; look_yaw: f32; look_pitch: f32;
+  ride_back: f32;                                     // metres the riding camera has added to the orbit (figs.cam_chase_seat)
   ml: [1] mlook.Mouselook;   // mouselook (metaverse-engine/cam/mouselook.coax): in the world, not Character Create's studio
   held: int; shift: bool; dragging: bool; drag_x: f32; drag_y: f32;
   you_x: f32; you_y: f32; you_z: f32; you_face: f32 = 3.14159265; jump: f32; placed: bool; start_z: f32; autowalk: bool; stage: int; stage_t0: f32 = -1; stage_fire: int = -1; stage_aim: [3] f32; stage_aim_at: f32 = -1;
@@ -881,6 +882,9 @@ e2_chase_step :: (s: [] E2, dt: f32) {
   // the camera eases round behind the walk (and Character Create's run)
   if s[0].autowalk || e2c_running(s) { in.behind = true; in.behind_heading = e2_auto_heading(s[0].you_x, s[0].you_z); }
   s[0].look_yaw = 0; s[0].look_pitch = 0;
+  // riding, the camera pulls back and up to see the mount (everglade/client/ride-view.coax e2rv_cam)
+  rc := e2rv_cam(s); in.feet.y += rc.up;
+  seat := figs.cam_chase_seat(s[0].orbit, rc.back, s[0].ride_back); s[0].orbit = seat.orbit; s[0].ride_back = seat.had;
   o := figs.cam_chase_orbit(s[0].view, s[0].orbit, in, dt);
   // the land round the pivot: only the cells the ring lacks
   cells: [7000] int; g := s[0].ground[..];
