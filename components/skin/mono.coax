@@ -348,7 +348,7 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   // the foot: a pane across the bottom, as tall as the skin says; put away, it takes no room. What fills its slot
   // (the chat's conversation) is as tall as the pane, with its own list of sessions left out; a page that hides its
   // own main (a canvas page's words for readers) does not hide this one
-  n = mc(out, n, ".dock:has(.pane-bm){grid-template-rows:auto minmax(0,1fr) auto}.pane-bm{grid-column:1/-1;grid-row:3}.dock-over>.pane-bm{height:min(42vh,420px)}.pane[aria-hidden=true]{display:none}");
+  n = mc(out, n, ".dock:has(.pane-bm){grid-template-rows:auto minmax(0,1fr) auto}.pane-bm{grid-column:1/-1;grid-row:3}.dock-over>.pane-bm{height:min(30vh,280px)}.pane[aria-hidden=true]{display:none}");
   n = mc(out, n, ".slot{flex:1;min-height:0;display:flex;flex-direction:column}.slot .chat{position:static;clip-path:none;white-space:normal;height:100%;max-width:none;width:100%;margin:0;padding:0}.slot .side{display:none}.slot .chat:has(.side){margin-left:0}");
   // a row with a control beside it
   n = mc(out, n, ".row-x{display:flex;align-items:center;gap:2px}.row-x>.row{flex:1;min-width:0;width:auto}");
