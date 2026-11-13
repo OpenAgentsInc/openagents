@@ -636,11 +636,13 @@ build against libsecp256k1.
 a seeded signature with one of nine changes: none, one bit of the hash,
 `r`, `s` or the key, another key prefix, `n - s`, or `r` or `s` set to 0,
 `n`, `n - 1`, `p` or all ones. On 2026-11-13 Coax and libsecp256k1 decide
-400,000 such cases the same way for each scheme in the release build, and
-100,000 in the checked build.
+5,000,000 such cases the same way for each scheme in the release build
+(libsecp256k1 accepts 634,397 of the ECDSA cases and 1,660,306 of the
+BIP-340 cases), and 100,000 in the checked build. The release run takes
+about four and a half minutes.
 
 ```shell
-coax/tests/bitcoin/secp_bench.sh --release 0 agree 400000
+coax/tests/bitcoin/secp_bench.sh --release 0 agree 5000000
 coax/tests/bitcoin/secp_bench.sh --checked 0 agree 100000
 ```
 
@@ -706,6 +708,10 @@ coax/tests/bitcoin/secp_bench.sh --release --wasm
   constant-time paths.
 - Other callers of `ecmult_vartime`, such as public-key recovery (chapter
   22) and key derivation (chapter 32). They keep chapter 16's path.
+
+[Issue #13454](https://github.com/OpenAgentsInc/openagents/issues/13454)
+lists what remains between the fast path and libsecp256k1, with the
+measured or estimated size of each part.
 
 ## Summary
 
