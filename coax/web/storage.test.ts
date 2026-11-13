@@ -1,7 +1,7 @@
 // The shipped host, a real C/Wasm inbox, and real IndexedDB. Fault injections
 // below exercise browser refusal paths; they are not storage durability claims.
 import { afterAll, beforeAll, expect, test } from 'bun:test'
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { launch as launchChrome } from "./chrome"
@@ -88,7 +88,7 @@ beforeAll(async () => {
       globalThis.makeByteStorage=makeByteStorage;
       globalThis.reloadEngine=bytes=>loadEngine(bytes,++wanted);
     `, { headers: { 'Content-Type': 'text/javascript' } })
-    if (['/entropy.js', '/entropy-import.js', '/drop.js', '/uploads.js', '/docs.js', '/voice.js', '/gpui.js', '/loader.js', '/http-requests.js'].includes(path)) return new Response(readFileSync(join(root, 'coax/web', path.slice(1))), { headers: { 'Content-Type': 'text/javascript' } })
+    if (/^\/[\w.-]+\.js$/.test(path) && existsSync(join(root, 'coax/web', path.slice(1)))) return new Response(readFileSync(join(root, 'coax/web', path.slice(1))), { headers: { 'Content-Type': 'text/javascript' } })
     if (path === '/probe.wasm') return new Response(readFileSync(join(temp, 'probe.wasm')), { headers: { 'Content-Type': 'application/wasm' } })
     if (path === '/probe.wgsl') return new Response(shader)
     if (path === '/api/auth/viewer') return new Response('')

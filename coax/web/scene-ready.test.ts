@@ -1,7 +1,7 @@
 // Real host + Wasm + WebGPU: the engine-ready signal must not be mistaken for
 // a submitted and completed scene. Assets are delayed by this local server.
 import { afterAll, beforeAll, expect, test } from 'bun:test'
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { launch as launchChrome } from "./chrome"
@@ -65,7 +65,7 @@ beforeAll(async () => {
       globalThis.reloadTestShader=()=>loadShaders();
       globalThis.holdParticleBuild=()=>{const original=particlePipeline; particlePipeline=post=>new Promise((resolve,reject)=>{globalThis.releaseParticleBuild=()=>original(post).then(resolve,reject)})};
     `, { headers: { 'Content-Type': 'text/javascript' } })
-    if (['/entropy.js','/entropy-import.js','/drop.js','/uploads.js','/docs.js','/voice.js','/gpui.js','/loader.js','/http-requests.js'].includes(path)) return new Response(readFileSync(join(root, 'coax/web', path.slice(1))), { headers: { 'Content-Type': 'text/javascript' } })
+    if (/^\/[\w.-]+\.js$/.test(path) && existsSync(join(root, 'coax/web', path.slice(1)))) return new Response(readFileSync(join(root, 'coax/web', path.slice(1))), { headers: { 'Content-Type': 'text/javascript' } })
     if (/^\/scene-[0-3]\.wasm$/.test(path)) return new Response(readFileSync(join(temp, path.slice(1))), { headers: { 'Content-Type': 'application/wasm' } })
     if (path === '/scene.wgsl') return holdShaders ? new Promise<Response>(resolve => { shaderWaiters.push(resolve) }) : new Response(shader)
     if (path === '/indices') { gotIndex = true; return new Promise<Response>(resolve => { pendingIndex = resolve }) }
@@ -153,12 +153,14 @@ test('overlapping shader loads must all settle before a fresh scene can be ready
   await until(async () => !!await evaluate('coaxial.sceneReady'), 'initial scene not completed')
   holdShaders = true
   await evaluate('void (globalThis.oldShader = reloadTestShader()); void (globalThis.newShader = reloadTestShader())')
-  await until(async () => shaderWaiters.length === 2, 'both shader reloads not requested')
+  // host.js runs shader loads one after another (renderReload), so the second is requested when the first settles
+  await until(async () => shaderWaiters.length === 1, 'first shader reload not requested')
   expect(await evaluate('coaxial.sceneReady')).toBe(false)
-  shaderWaiters[1](new Response(shader)); expect(await evaluate('newShader')).toBe(true)
+  shaderWaiters[0](new Response(shader)); expect(await evaluate('oldShader')).toBe(true)
+  await until(async () => shaderWaiters.length === 2, 'second shader reload not requested')
   await Bun.sleep(300); expect(await evaluate('coaxial.sceneReady')).toBe(false)
-  shaderWaiters[0](new Response(shader)); holdShaders = false; shaderWaiters = []
-  expect(await evaluate('oldShader')).toBe(true)
+  shaderWaiters[1](new Response(shader)); holdShaders = false; shaderWaiters = []
+  expect(await evaluate('newShader')).toBe(true)
   await until(async () => !!await evaluate('coaxial.sceneReady'), 'settled scene not completed')
 }, 90000)
 

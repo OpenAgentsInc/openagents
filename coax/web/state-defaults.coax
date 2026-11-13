@@ -15,7 +15,7 @@
 //   coax/web/tool.sh state-defaults NAME...    (only those engines; skips the Orbit League and Grid expectations)
 #load "wasm-chrome.coax";
 
-SD_ENGINES :: 64; SD_LIBS :: 16; SD_UNITS :: SD_LIBS + 1;
+SD_ENGINES :: 128; SD_LIBS :: 16; SD_UNITS :: SD_LIBS + 1;
 SD_TYPES :: 64; SD_GLOBALS :: 64; SD_STATE :: 32;
 SD_TEXT :: 4194304;
 SD_TYPE_MAX :: 41943040;       // the largest default compared (Everglade's DemoWorld is 2.5 MB, chat's WcHost 5.4 MB, 5E Lab's Lab 36 MB)
@@ -694,6 +694,8 @@ tool_main :: () -> int #export_c #effects(all) {
   build: [1048576] u8;
   bn := fs_read("apps/openagents-web/build.sh", build[..]);
   w[0].ne = sd_engines(cast(string) build[0..<bn], root, ar[..], w[0].es[..]);
+  // Two more follow build.sh's own (#13426: 73 engines met a table of 64 and the next write trapped).
+  if w[0].ne + 2 > SD_ENGINES { tool_errln("state-defaults: build.sh names more engines than SD_ENGINES - 2; raise SD_ENGINES"); return 1; }
   web := ar2(ar[..], root, "/apps/openagents-web");
   // The Grid's module (newland) also links the homepage reader's face, whose globals have defaults too.
   nl := w[0].ne;

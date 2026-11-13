@@ -142,6 +142,7 @@ refuses a push when:
    pushes with `OA_PREPUSH_HUMAN=1`.
 4. **A check fails:** `tools-check`, `everglade-parity`, `wire-check` and
    `layer-check` (the last two with `--base` set to the push's merge base),
+   `bun test coax/web/state-keep.test.ts` (what a code reload keeps, #13426),
    and `coax test` of the suites the push changed (`check.sh only`, on the
   pushed commit itself), on a build host when
    `remote.sh status` shows one with a free slot. A check that fails on

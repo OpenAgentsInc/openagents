@@ -527,6 +527,8 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
   lc := [4] string.["coax/web/tool.sh", "layer-check", "--base", base];
   sl := [5] string.["coax/web/tool.sh", "suites", "--since", base, "--list"];
   rs := [2] string.["coax/remote/remote.sh", "status"];
+  // what a code reload keeps (coax/web/state-keep.js, #13411): 13 tests, a tenth of a second (#13426)
+  sk := [3] string.["bun", "test", "coax/web/state-keep.test.ts"];
   tests := true;
   hb: [64] u8;
   if proc_getenv("OA_PREPUSH_TESTS", hb[..]) == "0" { tests = false; print("prepush: OA_PREPUSH_TESTS=0: no coax test\n"); }
@@ -537,6 +539,7 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
   ok = pp_start(jobs[1..<2], "everglade-parity", ep[..], none) && ok;
   if (run & PP_RUN_WIRE) != 0 { ok = pp_start(jobs[2..<3], "wire-check", wc[..], none) && ok; }
   ok = pp_start(jobs[3..<4], "layer-check", lc[..], none) && ok;
+  ok = pp_start(jobs[7..<8], "state-keep", sk[..], none) && ok;
   tests = (run & PP_RUN_SUITES) != 0;
   if tests {
     ok = pp_start(jobs[4..<5], "suites --list", sl[..], none) && ok;

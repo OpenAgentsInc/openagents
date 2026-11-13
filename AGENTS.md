@@ -266,7 +266,7 @@ tests for what you touched, not everything.
   10 to 20 seconds, never more than two minutes). It refuses a commit that
   undoes another agent's work of the last 24 hours (a tree written from a
   stale snapshot), a commit with no `Agent:` line, and a failing
-  `tools-check`, `everglade-parity`, `wire-check`, `layer-check` or touched
+  `tools-check`, `everglade-parity`, `wire-check`, `layer-check`, state-keep test or touched
   suite. The hooks are tracked in `coax/remote/hooks/`; a clone turns them on
   once with `git config core.hooksPath coax/remote/hooks` (this Mac's clone
   has it, so every worktree gets it). When a refusal is right, fix the
