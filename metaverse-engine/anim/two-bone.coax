@@ -1,0 +1,107 @@
+// Two-bone reach (GitHub #13306): the one place the engine works out where a knee or an elbow goes.
+// A chain is three joints, root to mid to end (hip, knee, foot; shoulder, elbow, hand). Given where
+// they are and where the end should be, these say where the mid joint goes; the caller turns the
+// root so the mid is there, then the mid so the end points at the target, in whatever store its
+// pose is in. Three callers share it: the character runtime's fixes (metaverse-engine/character/fix.coax),
+// the Animation Lab's solvers (fixup.coax), and the archer's draw (metaverse-engine/action/bow-pose.coax); the
+// blend graph's IK nodes (metaverse-engine/character/graph-pose.coax) are the fourth.
+//
+// The arithmetic is each caller's own, moved here in the same order, so every pose is bit for bit
+// what it was: two_bone_mid is the fixes' (the bend stays on the side it is on), two_bone_pole is
+// the bow's (the bend goes toward a pole the caller names).
+//   coax/bin/coax test metaverse-engine/anim/two-bone.coax --library
+
+#load "../core/points.coax";
+#load "pose.coax";
+
+// The shortest rotation taking direction `from` to direction `to`. Either one without length is no
+// turn; opposite directions turn half way round about an axis square to them.
+two_bone_from_to :: (from: Point, to: Point) -> Quat {
+  if length(from) < 0.000001 || length(to) < 0.000001 { return Quat.{}; }
+  a := unit_or(from, v3(0, 1, 0)); b := unit_or(to, v3(0, 1, 0)); d := dot(a, b);
+  if d < -0.999999 {
+    axis := unit_or(cross(a, ifx abs(a.x) < 0.8 then v3(1, 0, 0) else v3(0, 1, 0)), v3(0, 0, 1));
+    return Quat.{x = axis.x, y = axis.y, z = axis.z, w = 0};
+  }
+  c := cross(a, b); q := Quat.{x = c.x, y = c.y, z = c.z, w = 1 + d};
+  return quat_scaled(q, 1 / sqrt(quat_dot(q, q)));
+}
+
+// Where the mid joint goes so the end can reach `target`: root at a, mid at b, end at e now. The
+// reach is held inside what the two bones can span, and the bend stays on the side it is on (a
+// straight chain bends toward an axis square to the reach). `ok` is false for a bone without length.
+TwoBone :: struct { ok: bool; mid: Point; }
+two_bone_mid :: (a: Point, b: Point, e: Point, target: Point) -> TwoBone {
+  upper := length(sub(b, a)); lower := length(sub(e, b));
+  if upper < 0.000001 || lower < 0.000001 { return TwoBone.{}; }
+  toward := sub(target, a); direction := unit_or(toward, v3(0, 1, 0));
+  distance := lo(hi(length(toward), abs(upper - lower) + 0.000001), upper + lower - 0.000001);
+  pole := sub(sub(b, a), times(direction, dot(sub(b, a), direction)));
+  if length(pole) < 0.000001 { pole = cross(direction, ifx abs(direction.x) < 0.8 then v3(1, 0, 0) else v3(0, 1, 0)); }
+  pole = unit_or(pole, v3(0, 0, 1));
+  along := (upper * upper - lower * lower + distance * distance) / (2 * distance);
+  height := sqrt(hi(0, upper * upper - along * along));
+  return TwoBone.{ok = true, mid = add(a, add(times(direction, along), times(pole, height)))};
+}
+
+// The same reach with the bend toward `pole` (a direction, from the root): a root at `root`, bones
+// `upper` and `lower` long. `mid` is where the mid joint goes and `end` where the end comes to,
+// which is the target when it is within 0.999 of the two bones and nearer than that otherwise.
+TwoBonePole :: struct { mid: Point; end: Point; }
+two_bone_pole :: (root: Point, upper: f32, lower: f32, target: Point, pole: Point) -> TwoBonePole {
+  dv := sub(target, root); d := clamp(length(dv), 0.05, (upper + lower) * 0.999); dir := unit_or(dv, v3(0, 0, 1));
+  ca := clamp((upper * upper + d * d - lower * lower) / (2 * upper * d), -1, 1); sa := sqrt(1 - ca * ca);
+  pp := unit_or(sub(pole, times(dir, dot(pole, dir))), v3(0, -1, 0));
+  return TwoBonePole.{mid = add(root, add(times(dir, upper * ca), times(pp, upper * sa))), end = add(root, times(dir, d))};
+}
+
+// ---- checks
+tb_near :: (a: Point, b: Point, e: f32) -> bool { return length(sub(a, b)) < e; }
+#test "the shortest turn: none for no direction, a quarter turn, and half way round for opposite ones" {
+  n := two_bone_from_to(v3(0, 0, 0), v3(1, 0, 0)); #assert n.w == 1 && n.x == 0;
+  m := two_bone_from_to(v3(1, 0, 0), v3(0, 0, 0)); #assert m.w == 1 && m.y == 0;
+  q := two_bone_from_to(v3(2, 0, 0), v3(0, 3, 0));
+  #assert tb_near(quat_rotate(q, v3(1, 0, 0)), v3(0, 1, 0), 0.00001) && near(quat_dot(q, q), 1, 0.00001);
+  h := two_bone_from_to(v3(1, 0, 0), v3(-1, 0, 0));
+  #assert h.w == 0 && tb_near(quat_rotate(h, v3(1, 0, 0)), v3(-1, 0, 0), 0.00001);
+  // along x the half turn's axis is square to x; along y it is too
+  #assert abs(h.x) < 0.00001;
+  u := two_bone_from_to(v3(0, 1, 0), v3(0, -1, 0)); #assert u.w == 0 && abs(u.y) < 0.00001 && tb_near(quat_rotate(u, v3(0, 1, 0)), v3(0, -1, 0), 0.00001);
+  // just short of opposite still takes the arc
+  s := two_bone_from_to(v3(1, 0, 0), v3(-1, 0.01, 0)); #assert s.w > 0;
+}
+#test "a knee goes where both bones keep their length and the foot reaches its target" {
+  // a leg hanging 0.9 m, bent a little forward; the foot is to come up 0.2 m
+  a := v3(0, 1, 0); b := v3(0, 0.55, 0.05); e := v3(0, 0.1, 0);
+  upper := length(sub(b, a)); lower := length(sub(e, b));
+  r := two_bone_mid(a, b, e, v3(0, 0.3, 0));
+  #assert r.ok && near(length(sub(r.mid, a)), upper, 0.00001) && near(length(sub(v3(0, 0.3, 0), r.mid)), lower, 0.0001);
+  #assert r.mid.z > 0.05;   // bent further the way it was bent
+  // out of reach: the chain straightens toward the target, 0.000001 short of straight
+  far := two_bone_mid(a, b, e, v3(0, -5, 0));
+  #assert far.ok && near(far.mid.y, 1 - upper, 0.002) && abs(far.mid.z) < 0.002;
+  // too near (inside the bones' difference): held at the difference
+  c := v3(0, 0.8, 0); near_ := two_bone_mid(a, v3(0, 0.3, 0), c, v3(0, 0.99, 0));
+  #assert near_.ok && near(length(sub(near_.mid, a)), 0.7, 0.00001);
+  // a bone without length has no answer
+  #assert !two_bone_mid(a, a, e, e).ok && !two_bone_mid(a, b, b, e).ok;
+}
+#test "a straight chain bends toward an axis square to its reach" {
+  r := two_bone_mid(v3(0, 1, 0), v3(0, 0.5, 0), v3(0, 0, 0), v3(0, 0.4, 0));
+  #assert r.ok && near(length(sub(r.mid, v3(0, 1, 0))), 0.5, 0.00001) && near(length(sub(r.mid, v3(0, 0.4, 0))), 0.5, 0.0001);
+  #assert abs(r.mid.x) > 0.3 || abs(r.mid.z) > 0.3;
+  // reaching along x, the axis is not x
+  s := two_bone_mid(v3(0, 0, 0), v3(0.5, 0, 0), v3(1, 0, 0), v3(0.6, 0, 0));
+  #assert s.ok && abs(s.mid.y) + abs(s.mid.z) > 0.3 && near(s.mid.x, 0.3, 0.0001);
+}
+#test "a reach with a pole puts the elbow on the pole's side and stops just short of straight" {
+  r := two_bone_pole(v3(0, 0, 0), 0.3, 0.25, v3(0, 0, 0.4), v3(0, -1, 0));
+  #assert near(length(r.mid), 0.3, 0.00001) && near(length(sub(r.end, r.mid)), 0.25, 0.0001) && r.mid.y < -0.05;
+  #assert tb_near(r.end, v3(0, 0, 0.4), 0.00001);
+  up := two_bone_pole(v3(0, 0, 0), 0.3, 0.25, v3(0, 0, 0.4), v3(0, 1, 0)); #assert up.mid.y > 0.05;
+  far := two_bone_pole(v3(1, 2, 3), 0.3, 0.25, v3(1, 2, 9), v3(0, -1, 0));
+  #assert near(far.end.z, 3 + 0.55 * 0.999, 0.00001) && far.end.x == 1;
+  // a target on the root reaches 5 cm along +z; a pole along the reach falls back to down
+  at := two_bone_pole(v3(0, 0, 0), 0.3, 0.3, v3(0, 0, 0), v3(0, 0, 1));
+  #assert near(at.end.z, 0.05, 0.000001) && at.mid.y < 0;
+}

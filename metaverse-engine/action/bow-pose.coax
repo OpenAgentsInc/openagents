@@ -13,6 +13,7 @@
 // - 1), then the release's two.
 //   coax/bin/coax test metaverse-engine/action/bow-pose.coax --library
 #load "../anim/skin.coax";
+#load "../anim/two-bone.coax";
 
 BOW_POSE_DRAWS :: 11;
 BOW_POSE_FRAMES :: 13;
@@ -57,15 +58,10 @@ bp_point :: (r: SkinRig, s: [] Skin, j: int, child: int, target: Point) {
 // Two-bone IK: upper a, lower b, end c reach target, the elbow toward pole. Where c ends up.
 bp_reach :: (r: SkinRig, s: [] Skin, a: int, b: int, c: int, target: Point, pole: Point) -> Point {
   sh := bp_global(r, s, a).t;
-  la := length(s[0].now[b].t); lb := length(s[0].now[c].t);
-  dv := sub(target, sh); d := clamp(length(dv), 0.05, (la + lb) * 0.999); dir := unit_or(dv, v3(0, 0, 1));
-  ca := clamp((la * la + d * d - lb * lb) / (2 * la * d), -1, 1); sa := sqrt(1 - ca * ca);
-  pp := unit_or(sub(pole, times(dir, dot(pole, dir))), v3(0, -1, 0));
-  e := add(sh, add(times(dir, la * ca), times(pp, la * sa)));
-  bp_point(r, s, a, b, e);
-  end := add(sh, times(dir, d));
-  bp_point(r, s, b, c, end);
-  return end;
+  k := two_bone_pole(sh, length(s[0].now[b].t), length(s[0].now[c].t), target, pole);   // metaverse-engine/anim/two-bone.coax
+  bp_point(r, s, a, b, k.mid);
+  bp_point(r, s, b, c, k.end);
+  return k.end;
 }
 // A rotation from its matrix's columns (unit, right-handed).
 bp_quat :: (x: Point, y: Point, z: Point) -> Quat {

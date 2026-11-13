@@ -7,6 +7,7 @@
 // where the ground is (its height under her feet and its rise along x and z).
 //   coax/bin/coax test metaverse-engine/character/fix.coax
 #load "idle.coax";
+#load "../anim/two-bone.coax";   // where a knee or an elbow goes: the one two-bone reach
 
 CHARACTER_FIX_TOUCH :: 0.02f32;     // m over its lowest: the foot is on the ground
 CHARACTER_FIX_LET_GO :: 0.08f32;    // m from its lock: a foot the clip carries on past lets go (its hold out of the legs' reach)
@@ -47,12 +48,8 @@ character_to_model :: (c:[]Character,w:Point)->Point {ch:=math_cos(c[0].heading)
 character_ground_at :: (c:[]Character,g:CharacterGround,x:f32,z:f32)->f32 {return g.y+g.rise_x*(x-c[0].at.x)+g.rise_z*(z-c[0].at.z);}
 
 character_fix_conj :: (q:Quat)->Quat {return Quat.{x= -q.x,y= -q.y,z= -q.z,w=q.w};}
-// The shortest rotation taking direction `from` to direction `to`.
-character_from_to :: (from:Point,to:Point)->Quat {
- if length(from)<0.000001 || length(to)<0.000001 {return Quat.{};}a:=unit_or(from,v3(0,1,0));b:=unit_or(to,v3(0,1,0));d:=dot(a,b);
- if d< -0.999999 {axis:=unit_or(cross(a,ifx abs(a.x)<0.8 then v3(1,0,0) else v3(0,1,0)),v3(0,0,1));return Quat.{x=axis.x,y=axis.y,z=axis.z,w=0};}
- x:=cross(a,b);q:=Quat.{x=x.x,y=x.y,z=x.z,w=1+d};return quat_scaled(q,1/sqrt(quat_dot(q,q)));
-}
+// The shortest rotation taking direction `from` to direction `to` (metaverse-engine/anim/two-bone.coax).
+character_from_to :: (from:Point,to:Point)->Quat {return two_bone_from_to(from,to);}
 // Joints from `first` on, chained again from their locals.
 character_rechain :: (c:[]Character,first:int) {for k:hi_i(first,0)..<c[0].joints {pose_chain(c[0].gq[..],c[0].gt[..],c[0].parent[k],k,c[0].pose[k]);}}
 hi_i :: (a:int,b:int)->int {return ifx a>b then a else b;}
@@ -64,10 +61,7 @@ character_turn_to :: (c:[]Character,j:int,world:Quat,weight:f32) {
 // the knee or elbow on the side it bends to. Returns how far the end is from its target after (m).
 character_two_bone :: (c:[]Character,root:int,mid:int,end:int,target:Point,weight:f32)->f32 {
  if root<0 || mid<=root || end<=mid || end>=c[0].joints {return -1;}
- a:=c[0].gt[root];b:=c[0].gt[mid];e:=c[0].gt[end];upper:=length(sub(b,a));lower:=length(sub(e,b));if upper<0.000001 || lower<0.000001 {return -1;}
- toward:=sub(target,a);direction:=unit_or(toward,v3(0,1,0));distance:=lo(hi(length(toward),abs(upper-lower)+0.000001),upper+lower-0.000001);
- pole:=sub(sub(b,a),times(direction,dot(sub(b,a),direction)));if length(pole)<0.000001 {pole=cross(direction,ifx abs(direction.x)<0.8 then v3(1,0,0) else v3(0,1,0));}pole=unit_or(pole,v3(0,0,1));
- along:=(upper*upper-lower*lower+distance*distance)/(2*distance);height:=sqrt(hi(0,upper*upper-along*along));knee:=add(a,add(times(direction,along),times(pole,height)));
+ a:=c[0].gt[root];b:=c[0].gt[mid];bend:=two_bone_mid(a,b,c[0].gt[end],target);if !bend.ok {return -1;}knee:=bend.mid;
  character_turn_to(c,root,quat_mul(character_from_to(sub(b,a),sub(knee,a)),c[0].gq[root]),weight);
  character_turn_to(c,mid,quat_mul(character_from_to(sub(c[0].gt[end],c[0].gt[mid]),sub(target,c[0].gt[mid])),c[0].gq[mid]),weight);
  return length(sub(c[0].gt[end],target));

@@ -1,21 +1,16 @@
 // Pure post-layer solvers. Targets are authored in character space; each call
 // starts from the current layered pose, never from a previous solved frame.
 #load "layers.coax";
+#load "two-bone.coax";
 #load "fixup-checks.coax" #test;
 FixupReport :: struct {feet:int;looks:int;hands:int;unreachable:int;unsupported:int;weighted_residuals:int;max_error:f32;pelvis_shift:f32;}
-fix_from_to :: (from:Point,to:Point)->Quat {
- if length(from)<0.000001 || length(to)<0.000001 {return Quat.{};}a:=unit_or(from,v3(0,1,0));b:=unit_or(to,v3(0,1,0));d:=dot(a,b);
- if d< -0.999999 {axis:=unit_or(cross(a,ifx abs(a.x)<0.8 then v3(1,0,0) else v3(0,1,0)),v3(0,0,1));return Quat.{x=axis.x,y=axis.y,z=axis.z,w=0};}
- c:=cross(a,b);q:=Quat.{x=c.x,y=c.y,z=c.z,w=1+d};return quat_scaled(q,1/sqrt(quat_dot(q,q)));
-}
+fix_from_to :: (from:Point,to:Point)->Quat {return two_bone_from_to(from,to);}
 fix_rotate :: (r:[]AnimRig,s:[]AnimSample,joint:int,world:Quat,weight:f32) {
  parent:=r[0].parents[joint];local:=ifx parent>=0 then quat_mul(rt_inverse(s[0].rotation[parent]),world) else world;s[0].local[joint].q=slerp(s[0].local[joint].q,quat_unit(local),weight);layer_chain(r,s);
 }
 fix_two_bone :: (r:[]AnimRig,s:[]AnimSample,root:int,mid:int,end:int,target:Point,weight:f32)->f32 {
  if root<0 || mid<=root || end<=mid || end>=r[0].joints {return -1;}
- a:=s[0].position[root];b:=s[0].position[mid];c:=s[0].position[end];upper:=length(sub(b,a));lower:=length(sub(c,b));if upper<0.000001 || lower<0.000001 {return -1;}
- toward:=sub(target,a);direction:=unit_or(toward,v3(0,1,0));distance:=lo(hi(length(toward),abs(upper-lower)+0.000001),upper+lower-0.000001);pole:=sub(sub(b,a),times(direction,dot(sub(b,a),direction)));
- if length(pole)<0.000001 {pole=cross(direction,ifx abs(direction.x)<0.8 then v3(1,0,0) else v3(0,1,0));}pole=unit_or(pole,v3(0,0,1));along:=(upper*upper-lower*lower+distance*distance)/(2*distance);height:=sqrt(hi(0,upper*upper-along*along));knee:=add(a,add(times(direction,along),times(pole,height)));
+ a:=s[0].position[root];b:=s[0].position[mid];bend:=two_bone_mid(a,b,s[0].position[end],target);if !bend.ok {return -1;}knee:=bend.mid;
  desired:=quat_mul(fix_from_to(sub(b,a),sub(knee,a)),s[0].rotation[root]);fix_rotate(r,s,root,desired,weight);
  desired=quat_mul(fix_from_to(sub(s[0].position[end],s[0].position[mid]),sub(target,s[0].position[mid])),s[0].rotation[mid]);fix_rotate(r,s,mid,desired,weight);return length(sub(s[0].position[end],target));
 }
