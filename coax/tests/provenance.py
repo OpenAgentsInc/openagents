@@ -98,6 +98,9 @@ elif 'worktree' in a and 'add' in a: shutil.copytree(os.environ['TARGET_TREE'],a
 """);git.chmod(0o755)
   # release.sh's orphan-browser cleanup must observe only this isolated fixture.
   ps=fake/'ps';ps.write_text('#!/bin/sh\nexit 0\n');ps.chmod(0o755)
+  # release.sh asks bun's chrome.ts for a headless Chrome before anything else (#13492); the
+  # fixture answers with a path, so the run reaches the compiler check on any host.
+  bun=fake/'bun';bun.write_text('#!/bin/sh\necho /fixture/chrome\n');bun.chmod(0o755)
   # The release lock (release-lib.sh) is granted, so release.sh reaches its
   # compiler check; every other bucket command fails.
   cloud=fake/'gcloud';cloud.write_text("""#!/bin/sh
