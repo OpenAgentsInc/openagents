@@ -228,7 +228,10 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, ".row[data-state=busy]{position:relative;padding-right:32px}.row[data-state=busy] .meta{color:var(--ink)}");
   n = mc(out, n, ".row>.ic{position:absolute;right:10px;top:50%;width:14px;height:14px;margin-top:-7px;color:var(--ink);animation:turn 2.4s linear infinite}");
   n = mc(out, n, "@keyframes turn{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.row>.ic{animation:none}}");
-  n = mc(out, n, ".chat:has(.side){margin-left:max(300px,calc(50% - 246px));margin-right:auto}");
+  // beside the side the chat takes all the room to the window's right edge, so the transcript's scroll bar is at
+  // that edge; what it holds stays a centred column as wide as before
+  n = mc(out, n, ".chat:has(.side){margin-left:300px;max-width:none;padding-left:0;padding-right:0}");
+  n = mc(out, n, ".chat:has(.side)>:not(.side):not(.log),.chat:has(.side) .log>*{box-sizing:border-box;width:calc(100% - 32px);max-width:760px;margin-left:auto;margin-right:auto}");
   n = mc(out, n, ".tools{display:flex;flex-direction:column;gap:2px;margin:10px 0}.tools .work{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}");
   n = mc(out, n, "@media (max-width:760px){.side,.ib[data-state=side]{display:none}.chat:has(.side){margin-left:auto}}");
   n = mc(out, n, "@media (max-width:600px){.page{padding:20px 16px 64px;gap:36px}.list,.menu{width:100%}.msg-user{max-width:88%}}");
@@ -369,7 +372,7 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   // (the chat's conversation) is as tall as the pane, with its own list of sessions left out; a page that hides its
   // own main (a canvas page's words for readers) does not hide this one
   n = mc(out, n, ".dock:has(.pane-bm){grid-template-rows:auto minmax(0,1fr) auto}.pane-bm{grid-column:1/-1;grid-row:3}.dock-over>.pane-bm{height:min(26vh,240px)}.pane[aria-hidden=true]{display:none}");
-  n = mc(out, n, ".slot{flex:1;min-height:0;display:flex;flex-direction:column}.slot .chat{position:static;clip-path:none;white-space:normal;height:100%;max-width:none;width:100%;margin:0;padding:0}.slot .side,.slot .ib[data-state=side]{display:none}.slot .chat:has(.side){margin-left:0}");
+  n = mc(out, n, ".slot{flex:1;min-height:0;display:flex;flex-direction:column}.slot .chat{position:static;clip-path:none;white-space:normal;height:100%;max-width:none;width:100%;margin:0;padding:0}.slot .side,.slot .ib[data-state=side]{display:none}.slot .chat:has(.side){margin-left:0}.slot .chat:has(.side)>:not(.side):not(.log),.slot .chat:has(.side) .log>*{width:auto;max-width:none;margin-left:0;margin-right:0}");
   // a row with a control beside it
   n = mc(out, n, ".row-x{display:flex;align-items:center;gap:2px}.row-x>.row{flex:1;min-width:0;width:auto}");
   // a prop: its name, then its field
