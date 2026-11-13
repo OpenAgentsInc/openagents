@@ -46,6 +46,7 @@ fixture's `args`) in the web build:
 | `-AethyrGray` | Starts in graybox |
 | `-AethyrShot=FILE` `-AethyrShotAfter=N` | Saves a screenshot after N frames and quits |
 | `-AethyrNoInput` | Ignores keys and the mouse |
+| `-AethyrWorld=URL` | The page's address: the world follows its saved edit layer from that site, and its placed pieces are drawn |
 | `-AethyrExit` | Quits when a script ends |
 
 Step 3 makes the project when it is named `AethyrHost.uproject` and does not
@@ -78,6 +79,9 @@ compares every other content file before and after.
   frame), `M_AeCel` and `M_AeSky` (the look), `M_AeInk` (silhouette lines,
   a post-process pass), and `M_AeVertexColour` (plain, for the reference
   shots).
+- At run time, the world's instanced draws (`aethyr_instanced`: a mesh written once in its own
+  space, and rows that place it) are procedural mesh components, one an instance, moved to their
+  rows each frame. A component's mesh is written again only when its store changes.
 - `L_<Game>`: the meshes, one `AethyrCollisionBox` per collision box, one
   `AethyrMarker` per placement, the `AethyrGame` host actor, the ink
   volume, and `AethyrGameMode` as the level's game mode.

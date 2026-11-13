@@ -782,6 +782,21 @@ sp_check_frame :: (b: [] SpFrameCheck) -> int #effects(all) {
   #assert sp_has("abc", "bc") && sp_has("abc", "") && !sp_has("ab", "abc") && !sp_has("abc", "bd");
 }
 
+#test "a host that draws you itself hides the smuggler, and your character is not drawn" #steps 4000000000 #traversal 4000000000 {
+  b: [1] SpFrameCheck; s := b[0].s[..];
+  _ := sp_check_frame(b[..]);
+  g_stage(s[0].game[..], 5);
+  _ = sp_check_frame(b[..]); _ = sp_check_frame(b[..]);
+  #assert s[0].game[0].mode == M_PLAY && s[0].game[0].fr[0].row;
+  n := splice_draw_count(s);
+  splice_thing_hide(s, TK_SMUGGLER, true);
+  _ = sp_check_frame(b[..]);
+  #assert !s[0].game[0].fr[0].row && splice_draw_count(s) == n - 1;
+  splice_thing_hide(s, TK_SMUGGLER, false);
+  _ = sp_check_frame(b[..]);
+  #assert s[0].game[0].fr[0].row && splice_draw_count(s) == n;
+}
+
 #test "the page takes the world's import pack whole or keeps the copy from before" #steps 8000000000 #traversal 4000000000 {
   k: [1] SitPack; pack := sit_pack(k[..]);
   b: [1] SpFrameCheck; s := b[0].s[..];

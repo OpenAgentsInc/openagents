@@ -7,6 +7,9 @@ size 1280 800
 frames 2 20
 beat title
 expect 0 0
+# NEW RUN, then USE THIS CHARACTER on the creation screen
+key -2
+expect 0 7
 key -2
 expect 0 1
 expect 1 0

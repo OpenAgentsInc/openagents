@@ -1,5 +1,5 @@
 // Splice's C face for a native host (metaverse-engine/export/unreal/aethyr_host.h): the same decisions as
-// splice-face.c makes for the browser, which is none. It keeps the two stores and asks
+// splice-face.c makes for the browser, which is none. It keeps the four stores and asks
 // animelab-style.coax for the anime block each frame. Pointers are pointers here.
 #include "splice.h"
 #include "Animelab-style.h"
@@ -10,12 +10,15 @@
 #define LIVE_WORDS (150000u * 6u)
 static uint32_t world[WORLD_WORDS];
 static uint32_t live[LIVE_WORDS];
-// The edit layer's stores (layer-draw.coax). The bridge draws stores 0 and 1 only: an Unreal host
-// loads no edit layer yet, so no placed piece is drawn there.
-#define PIECE_WORDS (40000u * 6u)
-#define PLACE_WORDS (64u * 8u)
+// The edit layer's stores, as splice-face.c keeps them (layer-draw.coax): store 2 every kind of
+// placed piece's mesh, written once, then your walk poses; store 3 a row for each placed piece and
+// one for you. aethyr_instanced hands a host the draws of them.
+#define PIECE_WORDS ((80000u + 10u * 30000u) * 6u)    /* layer-draw.coax SD_PIECE_WORDS */
+#define PLACE_WORDS (65u * 8u)                        /* layer-draw.coax SD_PLACE_WORDS */
 static uint32_t pieces[PIECE_WORDS];
 static uint32_t places[PLACE_WORDS];
+// The world's import pack: a native host reads none yet, so a kind whose mesh is in the pack draws nothing.
+static uint8_t imports[1];
 static float style[128];            /* STYLE_FLOATS */
 static uint32_t frames;
 
@@ -35,19 +38,45 @@ uint32_t aethyr_frame(void *state, float *vertices, float *uniforms, float width
   animelab_style_block(splice_variant(at(state)), animelab_phone(width, dpr), splice_clock(at(state)), (coax_v_f32){style, 128});
   int64_t n = splice_frame(at(state), out, u, width, height, dpr, dt, still != 0,
                            (coax_v_u32){world, WORLD_WORDS}, (coax_v_u32){live, LIVE_WORDS},
-                           (coax_v_u32){pieces, PIECE_WORDS}, (coax_v_u32){places, PLACE_WORDS}, (coax_v_f32){style, 128});
+                           (coax_v_u32){pieces, PIECE_WORDS}, (coax_v_u32){places, PLACE_WORDS}, (coax_v_f32){style, 128}, (coax_v_u8){imports, 0});
   frames += 1;
   return n < 0 ? 0u : (uint32_t)n;
 }
 
-uint32_t aethyr_stores(void) { return 2; }
-const uint32_t *aethyr_store(void *state, int k) { (void)state; return k == 0 ? world : live; }
+uint32_t aethyr_stores(void) { return 4; }
+const uint32_t *aethyr_store(void *state, int k) { (void)state; return k == 0 ? world : k == 1 ? live : k == 2 ? pieces : places; }
 uint32_t aethyr_store_bytes(void *state, int k) {
-  int64_t n = k == 0 ? splice_world_n(at(state)) : splice_live_n(at(state));
+  if (k == 3) { int64_t rows = splice_place_n(at(state)); return rows <= 0 ? 0u : (uint32_t)(rows * 8 * 4); }
+  int64_t n = k == 0 ? splice_world_n(at(state)) : k == 1 ? splice_live_n(at(state)) : splice_piece_n(at(state));
   return n <= 0 ? 0u : (uint32_t)(n * 6 * 4);
 }
-uint32_t aethyr_store_version(void *state, int k) { return k == 0 ? (uint32_t)splice_world_version(at(state)) : frames; }
-uint32_t aethyr_draw_count(void *state) { int64_t n = splice_draw_count(at(state)); return n > 2 ? 2u : (uint32_t)n; }   // stores 0 and 1: see above
+uint32_t aethyr_store_version(void *state, int k) {
+  return k == 0 ? (uint32_t)splice_world_version(at(state)) : k == 1 ? frames : k == 2 ? (uint32_t)splice_piece_version(at(state)) : (uint32_t)splice_place_version(at(state));
+}
+uint32_t aethyr_draw_count(void *state) { int64_t n = splice_draw_count(at(state)); return n < 0 ? 0u : (uint32_t)n; }
+// The page's draws from the third on are instanced (splice-bots.coax splice_frame): a kind's mesh in
+// the piece store, its instances the place store's rows from the base instance less 2 (gpu/splice-bots.coax sp_row).
+int aethyr_instanced(void *state, uint32_t *out, int cap) {
+  const uint32_t *d = ((coax_t_Splice *)state)->draws.e;
+  int n = 0;
+  for (int64_t k = 2; k < splice_draw_count(at(state)) && (n + 1) * 6 <= cap; k++) {
+    const uint32_t *r = d + k * 4;
+    uint32_t base = r[2] & 0x7fffffffu;
+    if (base < 2 || r[1] == 0 || r[3] == 0) continue;
+    out[n * 6] = 2; out[n * 6 + 1] = r[0]; out[n * 6 + 2] = r[1];
+    out[n * 6 + 3] = 3; out[n * 6 + 4] = base - 2; out[n * 6 + 5] = r[3];
+    n++;
+  }
+  return n;
+}
+// The world `splice-bots` (world.coax): the page's one request at a time, as splice-face.c hands it to the browser.
+int aethyr_request(void *state, const char **url, size_t *url_length, const char **body, size_t *body_length) {
+  if (!splice_req_wants(at(state))) return 0;
+  coax_string u = splice_req_url(at(state)), b = splice_req_body(at(state));
+  *url = u.data; *url_length = (size_t)u.count; *body = b.data; *body_length = (size_t)b.count;
+  return (int)splice_req_flags(at(state));
+}
+void aethyr_request_sent(void *state, int id) { splice_req_sent(at(state), id); }
 
 int aethyr_key(void *state, int key, int down) { return splice_key(at(state), key, down != 0) ? 1 : 0; }
 int aethyr_pointer(void *state, float x, float y, int phase) { return splice_pointer(at(state), x, y, phase) ? 1 : 0; }

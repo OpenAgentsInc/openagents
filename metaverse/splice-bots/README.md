@@ -245,16 +245,29 @@ coax/web/serve.sh apps/openagents-web
 Only an address on this computer (`127.0.0.1` or `localhost`) loads it. On any other address the
 page ignores `?layer=fixture`.
 
+### In the Unreal host
+
+The Unreal host draws the placed pieces and you as the page does: `aethyr_instanced`
+(`metaverse-engine/export/unreal/aethyr_host.h`) hands it each kind's mesh in the piece store and the
+place store's rows, and it puts the mesh at each row. Run it with `-AethyrWorld=` and the page's
+address and it follows that world's saved edit layer as the page does, through the world's
+requests (`aethyr_request`):
+
+```sh
+~/UnrealEngine-5.9/src/Engine/Binaries/Mac/UnrealEditor ~/UnrealProjects/SpliceExport/AethyrHost.uproject \
+  /Game/Aethyr/Splice/Generated/L_Splice -game -AethyrWorld=http://127.0.0.1:8800/worlds/splice-bots
+```
+
+A host that draws you itself hides the smuggler (`aethyr_thing_hide`), and the page then does not
+draw your character.
+
 ### Not built yet
 
 The saved world, its API, the command line and the editor with the conversation in its foot are
 built: see [the browser editor](../../docs/editor/2026-11-12-browser-editor.md).
 
-- The Unreal host draws no placed pieces. It loads no edit layer, and its bridge draws stores 0
-  and 1 only (`splice-ue-face.c`).
-- The Unreal host draws no player either: you are drawn from the piece store (front.coax
-  `fr_player`), which its bridge does not draw. It lists the smuggler (`splice_things`) for a
-  host that draws its own.
+- The Unreal host does not read the world's import pack, so a kind whose mesh is an import draws
+  nothing there. It draws every other placed piece and you (below).
 - The walk is a rigid swing of the legs and arms at the hips and shoulders: no knee or elbow
   bend, no skinning, and the feet stay flat. The smuggler's own animation does not drive the
   crew figure's joints.

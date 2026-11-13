@@ -65,7 +65,8 @@ tool_main :: () -> int #export_c #effects(all) {
   if fs_kind(wanted) != FS_FILE {
     if name != "AethyrHost.uproject" { return ui_fail("that project does not exist (only AethyrHost.uproject is made for you)"); }
     made := fs_mkdir(fs_dir(wanted));
-    copy := [4] string.["/bin/cp", "-R", "metaverse-engine/export/unreal/project", fs_dir(wanted)];
+    // the folder's contents into the folder just made (cp -R of the folder itself would copy it inside)
+    copy := [4] string.["/bin/cp", "-R", "metaverse-engine/export/unreal/project/.", fs_dir(wanted)];
     if ui_run(copy[..], none, 60000) != 0 { return ui_fail("could not copy the host project"); }
   }
   project := fs_realpath(wanted, b6[..]); dir := fs_dir(project);

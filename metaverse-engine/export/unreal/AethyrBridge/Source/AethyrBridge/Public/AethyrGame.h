@@ -95,6 +95,21 @@ private:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<class UStaticMeshComponent>> ThingPool;
 
+	// The instanced draws (aethyr_instanced): a component for each instance of a mesh, kept by the
+	// mesh (its store, first vertex and vertices) and moved to its row each frame. A component's
+	// section is written again only when the mesh's store changed since it was written.
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UProceduralMeshComponent>> PiecePool;
+	TArray<uint32> PieceBuilt;              // the store version each component's section was written from
+	TMap<uint64, TArray<int32>> PieceByMesh;
+	int32 PiecesShown = 0;
+
+	// -AethyrWorld=URL: the page this host stands for; the world's requests go to its site
+	FString WorldOrigin;
+	int32 RequestsOut = 0;                  // the ids 0 to 7 with an answer still to come, a bit each
+	int32 RequestsSent = 0;
+	int32 RequestsAnswered = 0;
+
 	// -AethyrPlay: the exported script, stepped on this actor's own world
 	TArray<FString> PlayLines;
 	int32 PlayLine = 0;
@@ -106,6 +121,9 @@ private:
 	bool bExitAfterPlay = false;
 
 	void UpdateLive();
+	void UpdatePieces();
+	void UpdateRequests();
+	void Section(UProceduralMeshComponent* Mesh, const uint32* Words, int32 Count) const;
 	void UpdateCamera();
 	void UpdateLook();
 

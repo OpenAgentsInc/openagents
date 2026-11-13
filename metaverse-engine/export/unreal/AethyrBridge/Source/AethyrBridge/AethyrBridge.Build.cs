@@ -10,7 +10,7 @@ public class AethyrBridge : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.NoPCHs;
 		bUseUnity = false;
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "ProceduralMeshComponent", "Slate", "SlateCore", "RenderCore" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "ProceduralMeshComponent", "HTTP", "Slate", "SlateCore", "RenderCore" });
 		if (Target.bBuildEditor)
 		{
 			PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "RenderCore", "RHI" });

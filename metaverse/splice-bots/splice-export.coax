@@ -102,6 +102,20 @@ sx_bake :: (b: SxBake, live: [] u32, baked: [] u32, at: int) -> int #effects(all
   return 0;
 }
 
+// You, as the game draws you at a moment of the run: your character's first walk pose, which
+// front.coax fr_player writes into the piece store already in its own space (the origin, facing +z).
+sx_bake_you :: (b: SxBake, pieces: [] u32, baked: [] u32, at: int) -> int #effects(all) {
+  g: [1] SpGame; g_stage(g[..], b.stage);
+  d: [1] SpLayerDraw; places: [SD_PLACE_WORDS] u32; draws: [4] u32;
+  _ := fr_player(g[..], d[..], pieces, places[..], draws[..], 0);
+  f := g[0].fr[..];
+  if f[0].posed_n < 1 { return 0; }
+  n := f[0].pose_count[0]; first := f[0].pose_first[0];
+  if n < 3 || (at + n) * VERTEX_WORDS > baked.count { return 0; }
+  for w: 0..<n * VERTEX_WORDS { baked[at * VERTEX_WORDS + w] = pieces[first * VERTEX_WORDS + w]; }
+  return n;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) != 1 { print("usage: splice-export NEW_DIR   (run from the repository root)\n"); return 2; }
@@ -210,11 +224,11 @@ tool_main :: () -> int #export_c #effects(all) {
   // ---- the moving things: one mesh for each kind and variant, and the names a host knows them by
   things_n := 0;
   {
-    live: [150000 * VERTEX_WORDS] u32; baked: [150000 * VERTEX_WORDS] u32;
+    live: [150000 * VERTEX_WORDS] u32; baked: [150000 * VERTEX_WORDS] u32; pieces: [SD_PIECE_WORDS] u32;
     bakes := sx_bakes(); parts: [SX_BAKE] GlbPart; at := 0;
     for b: bakes {
       if b.name == "" { continue; }
-      n := sx_bake(b, live[..], baked[..], at);
+      n := ifx b.kind == TK_SMUGGLER then sx_bake_you(b, pieces[..], baked[..], at) else sx_bake(b, live[..], baked[..], at);
       if n < 3 { print("splice-export: the game did not draw % where the exporter looked\n", b.name); return 1; }
       parts[things_n] = GlbPart.{name = b.name, first = at, count = n}; things_n += 1; at += n;
     }

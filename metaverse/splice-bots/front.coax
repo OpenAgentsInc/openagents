@@ -328,6 +328,7 @@ fr_player :: (g: [] SpGame, d: [] SpLayerDraw, pieces: [] u32, places: [] u32, d
   crew := g[0].mode == M_CREW;
   walking := g[0].mode == M_PLAY || g[0].mode == M_BANNER;
   if !crew && !walking { return at; }
+  if walking && g[0].hide[TK_SMUGGLER] { return at; }   // a host draws you itself (splice_thing_hide)
   if g[0].hit_cool > 0 && fract(g[0].t * 8) < 0.5 && !crew { return at; }
   need := ifx crew then 1 else FR_POSES;
   if f[0].posed_doc != f[0].doc_gen || f[0].posed_mesh != d[0].mesh_gen || f[0].posed_gray != g[0].gray { f[0].posed_n = 0; f[0].pose_n = 0; f[0].posed_over = false; }

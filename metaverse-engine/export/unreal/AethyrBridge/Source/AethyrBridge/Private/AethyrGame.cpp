@@ -19,6 +19,9 @@
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
 #include "GlobalRenderResources.h"
+#include "HttpModule.h"
+#include "Interfaces/IHttpRequest.h"
+#include "Interfaces/IHttpResponse.h"
 #include "InputCoreTypes.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMaterialLibrary.h"
@@ -140,6 +143,18 @@ void AAethyrGame::BeginPlay()
 	Vertices.SetNumZeroed((int32)aethyr_max_vertices() * VertexFloats);
 	Uniforms.SetNumZeroed((int32)aethyr_uniform_floats());
 	if (FParse::Param(Args, TEXT("AethyrGray"))) { const char* Gray = "?gray"; aethyr_message(State, 600, Gray, 5); }
+	// -AethyrWorld=URL: the page's address (the browser host's kind 600), so the world follows its saved
+	// edit layer from that site as the page does: e.g. http://127.0.0.1:8800/worlds/splice-bots
+	FString WorldUrl;
+	if (FParse::Value(Args, TEXT("AethyrWorld="), WorldUrl, false) && WorldUrl.Contains(TEXT("://")))
+	{
+		const int32 Host = WorldUrl.Find(TEXT("://")) + 3;
+		int32 Path = WorldUrl.Find(TEXT("/"), ESearchCase::CaseSensitive, ESearchDir::FromStart, Host);
+		WorldOrigin = Path < 0 ? WorldUrl : WorldUrl.Left(Path);
+		const FTCHARToUTF8 Body(*WorldUrl);
+		aethyr_message(State, 600, Body.Get(), Body.Length());
+		UE_LOG(LogAethyr, Display, TEXT("AETHYR_WORLD follows %s"), *WorldUrl);
+	}
 	int32 Stage = -1;
 	if (FParse::Value(Args, TEXT("AethyrStage="), Stage) && Stage >= 0)
 	{
@@ -228,14 +243,9 @@ void AAethyrGame::SendKeys(APlayerController* Player)
 #endif
 }
 
-void AAethyrGame::UpdateLive()
+// A run of cel-mesh vertices (six words each) as a procedural mesh's one section.
+void AAethyrGame::Section(UProceduralMeshComponent* Mesh, const uint32* W, int32 Count) const
 {
-#if AETHYR_HAS_RULES
-	const uint32 Version = aethyr_store_version(State, 1);
-	if (Version == LiveVersion) { return; }
-	LiveVersion = Version;
-	const int32 Count = (int32)(aethyr_store_bytes(State, 1) / 24);
-	const uint32* W = aethyr_store(State, 1);
 	TArray<FVector> Positions; TArray<int32> Triangles; TArray<FVector> Normals; TArray<FVector2D> Uv0; TArray<FVector2D> Uv1; TArray<FLinearColor> Colours;
 	Positions.SetNumUninitialized(Count); Triangles.SetNumUninitialized(Count); Normals.SetNumUninitialized(Count);
 	Uv0.SetNumUninitialized(Count); Uv1.SetNumUninitialized(Count); Colours.SetNumUninitialized(Count);
@@ -253,8 +263,110 @@ void AAethyrGame::UpdateLive()
 	}
 	// the other hand: a triangle's last two corners swap
 	for (int32 T = 0; T + 2 < Count; T += 3) { Triangles[T] = T; Triangles[T + 1] = T + 2; Triangles[T + 2] = T + 1; }
-	Live->CreateMeshSection_LinearColor(0, Positions, Triangles, Normals, Uv0, Uv1, TArray<FVector2D>(), TArray<FVector2D>(), Colours, TArray<FProcMeshTangent>(), false, false);
-	if (LiveMaterial) { Live->SetMaterial(0, LiveMaterial); }
+	Mesh->CreateMeshSection_LinearColor(0, Positions, Triangles, Normals, Uv0, Uv1, TArray<FVector2D>(), TArray<FVector2D>(), Colours, TArray<FProcMeshTangent>(), false, false);
+	if (LiveMaterial) { Mesh->SetMaterial(0, LiveMaterial); }
+}
+
+void AAethyrGame::UpdateLive()
+{
+#if AETHYR_HAS_RULES
+	const uint32 Version = aethyr_store_version(State, 1);
+	if (Version == LiveVersion) { return; }
+	LiveVersion = Version;
+	Section(Live, aethyr_store(State, 1), (int32)(aethyr_store_bytes(State, 1) / 24));
+#endif
+}
+
+// The instanced draws: each mesh written once in its own space, drawn at each of its rows (turned
+// about the world's up, then moved). The browser draws them as GPU instances (a page's scene_vs);
+// here each instance is a component holding the mesh, moved to its row.
+void AAethyrGame::UpdatePieces()
+{
+#if AETHYR_HAS_RULES
+	uint32 Draws[96 * 6];
+	const int32 Count = aethyr_instanced(State, Draws, 96 * 6);
+	TMap<uint64, int32> Used;
+	PiecesShown = 0;
+	for (int32 D = 0; D < Count; D++)
+	{
+		const uint32* R = Draws + D * 6;
+		const int32 MeshStore = (int32)R[0], RowStore = (int32)R[3];
+		const uint32 First = R[1], Verts = R[2], Row0 = R[4], Rows = R[5];
+		if (Verts < 3 || First >= (1u << 20) || Verts >= (1u << 20)) { continue; }
+		if ((uint64)(First + Verts) * 24 > aethyr_store_bytes(State, MeshStore) || (uint64)(Row0 + Rows) * 32 > aethyr_store_bytes(State, RowStore)) { continue; }
+		const uint32* Mesh = aethyr_store(State, MeshStore);
+		const uint32* RowWords = aethyr_store(State, RowStore);
+		const uint32 Version = aethyr_store_version(State, MeshStore);
+		const uint64 Key = ((uint64)MeshStore << 40) | ((uint64)First << 20) | Verts;
+		TArray<int32>& Pool = PieceByMesh.FindOrAdd(Key);
+		int32& Next = Used.FindOrAdd(Key);
+		for (uint32 Row = Row0; Row < Row0 + Rows; Row++)
+		{
+			if (Next >= Pool.Num())
+			{
+				UProceduralMeshComponent* Made = NewObject<UProceduralMeshComponent>(this);
+				Made->SetupAttachment(RootComponent);
+				Made->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+				Made->bUseAsyncCooking = false;
+				Made->SetMobility(EComponentMobility::Movable);
+				Made->RegisterComponent();
+				Pool.Add(PiecePool.Add(Made));
+				PieceBuilt.Add(0);
+			}
+			const int32 At = Pool[Next++];
+			UProceduralMeshComponent* C = PiecePool[At];
+			if (PieceBuilt[At] != Version || C->GetNumSections() == 0) { Section(C, Mesh + First * 6, (int32)Verts); PieceBuilt[At] = Version; }
+			float F[8]; FMemory::Memcpy(F, RowWords + Row * 8, 32);
+			// the row's +z goes to (sin, cos): a turn of -atan2(sin, cos) about Unreal's up (as a thing's yaw)
+			C->SetWorldLocationAndRotation(ToUnreal(F[0], F[1], F[2]), FRotator(0.0f, -FMath::RadiansToDegrees(FMath::Atan2(F[5], F[4])), 0.0f));
+			C->SetVisibility(true);
+			PiecesShown++;
+		}
+	}
+	for (TPair<uint64, TArray<int32>>& Pair : PieceByMesh)
+	{
+		const int32* Shown = Used.Find(Pair.Key);
+		for (int32 I = Shown ? *Shown : 0; I < Pair.Value.Num(); I++) { PiecePool[Pair.Value[I]]->SetVisibility(false); }
+	}
+#endif
+}
+
+// The world's one request at a time, sent to the site the page stands for (-AethyrWorld), its
+// answer handed back as the browser host hands it: message 512 + id, "STATUS\n" then the body.
+void AAethyrGame::UpdateRequests()
+{
+#if AETHYR_HAS_RULES
+	const char* Url = nullptr; const char* Body = nullptr; size_t UrlLength = 0, BodyLength = 0;
+	const int Flags = aethyr_request(State, &Url, &UrlLength, &Body, &BodyLength);
+	if (Flags == 0) { return; }
+	int32 Id = -1;
+	for (int32 K = 0; K < 8; K++) { if (!(RequestsOut & (1 << K))) { Id = K; break; } }
+	if (WorldOrigin.IsEmpty() || Id < 0) { aethyr_request_sent(State, -1); return; }
+	const auto Path = StringCast<TCHAR>(reinterpret_cast<const UTF8CHAR*>(Url), (int32)UrlLength);
+	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
+	Request->SetURL(WorldOrigin + FString(Path.Length(), Path.Get()));
+	Request->SetVerb((Flags & 1) ? TEXT("POST") : TEXT("GET"));
+	if (Flags & 1) { Request->SetContent(TArray<uint8>(reinterpret_cast<const uint8*>(Body), (int32)BodyLength)); Request->SetHeader(TEXT("Content-Type"), TEXT("application/json")); }
+	const bool bWanted = (Flags & 4) != 0;
+	TWeakObjectPtr<AAethyrGame> Self(this);
+	Request->OnProcessRequestComplete().BindLambda([Self, Id, bWanted](FHttpRequestPtr, FHttpResponsePtr Response, bool bOk)
+	{
+		AAethyrGame* Game = Self.Get();
+		if (!Game || !Game->State) { return; }
+		Game->RequestsOut &= ~(1 << Id);
+		if (!bWanted) { return; }
+		const int32 Status = (bOk && Response.IsValid()) ? Response->GetResponseCode() : 0;
+		TArray<uint8> Text;
+		const FTCHARToUTF8 Head(*FString::Printf(TEXT("%d\n"), Status));
+		Text.Append(reinterpret_cast<const uint8*>(Head.Get()), Head.Length());
+		if (Status != 0) { Text.Append(Response->GetContent()); }
+		aethyr_message(Game->State, 512 + Id, reinterpret_cast<const char*>(Text.GetData()), (size_t)Text.Num());
+		Game->RequestsAnswered++;
+	});
+	if (!Request->ProcessRequest()) { aethyr_request_sent(State, -1); return; }
+	if (bWanted) { RequestsOut |= 1 << Id; }
+	aethyr_request_sent(State, Id);
+	RequestsSent++;
 #endif
 }
 
@@ -314,8 +426,10 @@ void AAethyrGame::Tick(float DeltaSeconds)
 		OverlayCount = (int32)aethyr_frame(State, Vertices.GetData(), Uniforms.GetData(), Size.X, Size.Y, 1, FMath::Min(DeltaSeconds, 0.05f), 0);
 		PlayEvents();
 	}
+	UpdateRequests();
 	UpdateThings();
 	UpdateLive();
+	UpdatePieces();
 	UpdateCamera();
 	UpdateLook();
 	HostSeconds += FPlatformTime::Seconds() - Before;
@@ -323,9 +437,9 @@ void AAethyrGame::Tick(float DeltaSeconds)
 	FrameCount++;
 	if (FrameSeconds >= 1.0)
 	{
-		UE_LOG(LogAethyr, Display, TEXT("AETHYR_STATE mode %d zone %d phase %d hearts %d gray %d live %d overlay %d frame_ms %.2f host_ms %.2f"),
+		UE_LOG(LogAethyr, Display, TEXT("AETHYR_STATE mode %d zone %d phase %d hearts %d gray %d live %d overlay %d pieces %d requests %d/%d frame_ms %.2f host_ms %.2f"),
 			aethyr_fact(State, 0), aethyr_fact(State, 1), aethyr_fact(State, 2), aethyr_fact(State, 3), aethyr_fact(State, 10),
-			(int32)(aethyr_store_bytes(State, 1) / 24), OverlayCount, FrameSeconds / FrameCount * 1000.0, HostSeconds / FrameCount * 1000.0);
+			(int32)(aethyr_store_bytes(State, 1) / 24), OverlayCount, PiecesShown, RequestsAnswered, RequestsSent, FrameSeconds / FrameCount * 1000.0, HostSeconds / FrameCount * 1000.0);
 		FrameSeconds = 0; HostSeconds = 0; FrameCount = 0;
 	}
 	if (ShotAfter >= 0 && --ShotAfter < 0)

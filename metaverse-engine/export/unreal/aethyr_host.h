@@ -19,12 +19,26 @@ uint32_t aethyr_uniform_floats(void);
 /* One frame. Writes the overlay stream and the uniform block; returns the overlay's vertices. */
 uint32_t aethyr_frame(void *state, float *vertices, float *uniforms, float width, float height, float dpr, float dt, int still);
 
-/* The scene's stores: vertices in order, six 32-bit words each (metaverse-engine/render/cel-mesh.coax). */
+/* The scene's stores: vertices in order, six 32-bit words each (metaverse-engine/render/cel-mesh.coax),
+ * or a store of rows (below). Store 0 is the world, written once; store 1 what moves, every frame. */
 uint32_t aethyr_stores(void);
 const uint32_t *aethyr_store(void *state, int k);
 uint32_t aethyr_store_bytes(void *state, int k);
 uint32_t aethyr_store_version(void *state, int k); /* changes when the store's bytes do */
-uint32_t aethyr_draw_count(void *state);
+uint32_t aethyr_draw_count(void *state);          /* the page's draws: the two stores and every instanced draw */
+/* The instanced draws (a world's placed pieces, and anything else drawn as a mesh written once in its
+ * own space): six words a draw into out (cap words), returns how many draws. A draw is the mesh's
+ * store, its first vertex and its vertices, then the rows' store, the first row and the rows. A
+ * row is eight floats: x, y, z, 0, cos turn, sin turn, 0, 0. The mesh is turned about y (its +z goes
+ * to (sin turn, 0, cos turn)), then moved to x, y, z, once for each row. */
+int aethyr_instanced(void *state, uint32_t *out, int cap);
+/* The world's one request at a time (the browser host's coaxial_http): 0 when it has none, else its
+ * flags (1 POST, 4 the answer is wanted), and the URL (a path on the world's site) and body through
+ * the pointers. The host says what id it gave it with aethyr_request_sent (below 0: it could not take
+ * it now), and the answer comes as message 512 + id, "STATUS\n" then the body (status 0: no answer).
+ * Ids are 0 to 7. */
+int aethyr_request(void *state, const char **url, size_t *url_length, const char **body, size_t *body_length);
+void aethyr_request_sent(void *state, int id);
 
 int aethyr_key(void *state, int key, int down);
 int aethyr_pointer(void *state, float x, float y, int phase);
