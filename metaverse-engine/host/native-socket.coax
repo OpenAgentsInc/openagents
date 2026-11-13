@@ -18,8 +18,10 @@ hns_uri :: (uri:string)->bool #export_c #effects(all) {return relay_uri_dial(uri
 hns_utf8 :: (bytes:string)->bool #export_c #effects(all) {return ws_utf8(bytes);}
 hns_send :: (context:int,c:[]RelayConn)->bool {
   total:=hni_size(context);at:=0;payload:[65536]u8;frame:[65550]u8;mask:[4]u8;
+  // The first byte chooses text or binary (#13278); -1 for an empty message.
+  first:=ifx total>0 then hni_byte(context,0) else -1;
   while true {
-    f:=hso_fragment(total,at,payload.count);if !f.ok {return false;}
+    f:=hso_fragment(total,at,payload.count,first);if !f.ok {return false;}
     for i:0..<f.bytes {payload[i]=u8(hni_byte(context,at+i));}
     hni_lock();drawn:=rc_draw(4,mask[..]);
     n:=ifx drawn then ws_frame_write(f.op,f.fin,cast(string)payload[0..<f.bytes],mask[..],frame[..]) else -1;

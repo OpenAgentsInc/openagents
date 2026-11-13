@@ -102,17 +102,57 @@ and `wt_text` turns it back, byte for byte. A frame the table has no row for, or
 written as its row says, goes as kind 0: its words, or its bytes. So nothing is lost either
 way, and a reader's own checks (a field count, a range) see the same text.
 
-The room, the pages and the bots use that at their sockets today: what a binary page says is
-read as its text by the readers that were there, and what the room writes it is turned to
-binary as it goes into the room's out buffer. The room counts a frame it sent as kind 0
-(`wire_any` in its vitals), and its checks hold that at 0.
+## What is written as bits, and what goes through text
+
+For a page that reads binary:
+
+- **The state frame is written as bits.** `wire_seat_frame_look` writes a seat's rows as runs
+  and its `x`s as entries, and the `D`'s header is the table's (`everglade/server/send.coax`).
+  No text is made on the way.
+- **An input is read from bits.** `I` and `J1` go from the frame's bits into the seat's queue
+  (`everglade/server/input.coax` `eg_heard_in`).
+- **Every other frame goes through its text once.** The room's other writers (who a seat is,
+  events, refusals, the world header) still write text, and each is turned to its bytes as it
+  goes into the seat's frame or the out buffer. What a page says other than an input is read
+  as its text by the readers that were there. These are a few frames a second a seat.
+- The page and the bots turn every frame at their socket (`everglade/client/net.coax`,
+  `coax/web/room/bots.coax`), so their readers are the text ones.
+
+The room counts a frame it sent as kind 0 (`wire_any`) and a binary frame it could not read
+(`wire_bad`); its checks hold both at 0.
+
+What is left for after the pages and rooms have shipped: the text form goes. The writers and
+readers then take the table's rows directly, and `wt_bin` and `wt_text` stay only as the
+checks' way to write a frame by hand.
+
+## How the room dispatches what it hears
+
+A frame's kind is its opcode (binary) or the table's row whose head it has (text). The room
+takes a frame only when its kind is one a page writes (`WT[kind].who == WT_PAGE`), and hands
+it to its reader by that kind (`eg_heard_as`). The previous wire's `M` and `U` frames have no
+row; `wire-prev.coax` reads them.
 
 ## The room's out buffer
 
 A frame is written once, for one connection, into the room's out buffer
 (`coax/web/room/room-relay.coax` `ob_put`) with its WebSocket header before it. The host
 (`room-host.c` `relay_flush`) takes each record and puts its bytes on that connection's
-socket as they are. It builds no frame and looks at no other connection.
+socket as they are. It builds no frame and looks at no other connection. Before, a frame was
+copied into a queue entry with a flag for each of 512 connections, copied out again, built
+into a WebSocket frame and copied to the socket's buffer, and the host asked the room about
+every connection for every frame.
+
+## Transports and hosts
+
+| Path | Binary |
+| --- | --- |
+| Browser, WebSocket (`coax/web/host.js`, `socket-queue-host.js`) | yes |
+| Browser, the local room in a worker (`room-worker.js`) | yes |
+| Browser, WebTransport (`room-wt.js`) | The wrapper carries it, but the page keeps text on this link: its input datagrams are text records (`metaverse-engine/net/transport.coax`), and the room reads them as text (`room-wt.coax`). |
+| Apple page host (`metaverse-engine/host/apple/PageHost.m`) | yes (not compiled on the machine that wrote it) |
+| The native page host's socket (`metaverse-engine/host/native-socket.coax`) | yes: a message whose first byte is 0x80 to 0xBF goes out as a binary message (`socket-outbound.coax`), and a binary message heard is handed to the page as it came, with no UTF-8 check (`socket-stream.coax`) |
+| The fleet's bots (`coax/web/room/bots.coax`) | yes; `OA_BOTS_WIRE=text` or `packed` for the text forms |
+| The protocol checks that sit a seat by hand (`coax/web/room/*-check.coax`, `drift-bots.coax`, `load.coax`) | no: they send no flag and speak text |
 
 ## Sizes
 

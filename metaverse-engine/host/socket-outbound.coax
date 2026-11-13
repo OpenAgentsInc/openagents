@@ -1,18 +1,32 @@
 #authority;
+// `first` is the message's first byte, or -1 when it is empty. 0x80..0xBF, a
+// UTF-8 continuation byte no valid text starts with, marks a binary message
+// (#13278): its first fragment is opcode 2. Every other message is text.
 HostSocketFragment :: struct {ok:bool;bytes:int;op:int;fin:bool;}
 #test "socket outbound fragments cover a whole text once, including empty and boundary messages" {
-  f:=hso_fragment(0,0,65536);#assert f.ok && f.bytes==0 && f.op==1 && f.fin;
-  f=hso_fragment(1,0,65536);#assert f.ok && f.bytes==1 && f.op==1 && f.fin;
-  f=hso_fragment(65536,0,65536);#assert f.ok && f.bytes==65536 && f.fin;
-  f=hso_fragment(65537,0,65536);#assert f.ok && f.bytes==65536 && !f.fin;
-  f=hso_fragment(65537,65536,65536);#assert f.ok && f.bytes==1 && f.op==0 && f.fin;
-  f=hso_fragment(9,2,3);#assert f.ok && f.bytes==3 && f.op==0 && !f.fin;
-  #assert !hso_fragment(-1,0,1).ok && !hso_fragment(1,-1,1).ok && !hso_fragment(1,2,1).ok;
-  #assert !hso_fragment(1,1,1).ok && !hso_fragment(0,0,0).ok && !hso_fragment(1,0,-1).ok;
-  f=hso_fragment(9223372036854775807,9223372036854775806,1);#assert f.ok && f.bytes==1 && f.fin;
+  f:=hso_fragment(0,0,65536,-1);#assert f.ok && f.bytes==0 && f.op==1 && f.fin;
+  f=hso_fragment(1,0,65536,'a');#assert f.ok && f.bytes==1 && f.op==1 && f.fin;
+  f=hso_fragment(65536,0,65536,'a');#assert f.ok && f.bytes==65536 && f.fin;
+  f=hso_fragment(65537,0,65536,'a');#assert f.ok && f.bytes==65536 && !f.fin;
+  f=hso_fragment(65537,65536,65536,'a');#assert f.ok && f.bytes==1 && f.op==0 && f.fin;
+  f=hso_fragment(9,2,3,'a');#assert f.ok && f.bytes==3 && f.op==0 && !f.fin;
+  #assert !hso_fragment(-1,0,1,'a').ok && !hso_fragment(1,-1,1,'a').ok && !hso_fragment(1,2,1,'a').ok;
+  #assert !hso_fragment(1,1,1,'a').ok && !hso_fragment(0,0,0,-1).ok && !hso_fragment(1,0,-1,'a').ok;
+  f=hso_fragment(9223372036854775807,9223372036854775806,1,'a');#assert f.ok && f.bytes==1 && f.fin;
 }
-hso_fragment :: (total:int,at:int,capacity:int)->HostSocketFragment #export_c #effects(all) {
+#test "socket outbound opcode follows the first byte: 0x80..0xBF binary, all else text" {
+  for first,i:[10]int.[0x80,0xbf,0x9a,0x7f,0xc0,0xc2,0,'{',0xff,-1] {
+    want:=ifx i<3 then 2 else 1;
+    f:=hso_fragment(9,0,65536,first);#assert f.ok && f.bytes==9 && f.op==want && f.fin;
+    f=hso_fragment(9,0,4,first);#assert f.ok && f.bytes==4 && f.op==want && !f.fin;
+    f=hso_fragment(9,4,4,first);#assert f.ok && f.bytes==4 && f.op==0 && !f.fin;
+    f=hso_fragment(9,1,4,first);#assert f.ok && f.bytes==4 && f.op==0 && !f.fin;
+    f=hso_fragment(9,8,4,first);#assert f.ok && f.bytes==1 && f.op==0 && f.fin;
+    #assert !hso_fragment(9,9,4,first).ok && !hso_fragment(9,0,0,first).ok;
+  }
+}
+hso_fragment :: (total:int,at:int,capacity:int,first:int)->HostSocketFragment #export_c #effects(all) {
   if total<0 || at<0 || at>total || capacity<1 || (at==total && total>0) {return HostSocketFragment.{};}
   fin:=total-at<=capacity;n:=ifx fin then total-at else capacity;
-  return HostSocketFragment.{ok=true,bytes=n,op=ifx at==0 then 1 else 0,fin=fin};
+  return HostSocketFragment.{ok=true,bytes=n,op=ifx at>0 then 0 else ifx first>=0x80 && first<=0xbf then 2 else 1,fin=fin};
 }
