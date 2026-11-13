@@ -1,0 +1,64 @@
+// Telling the world (GitHub #13287, split from battle.coax): a line of text built a piece at a time, and
+// the event that carries it into the battle's log with who, whom, how much and when.
+//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-tell.coax
+#authority;
+
+RsLine :: struct { buf: [RS_EV_TEXT] u8; n: int; }
+rs_line :: () -> RsLine #effects(all) { l: RsLine; return l; }
+rs_add_text :: (l: [] RsLine, t: string) #effects(all) { l[0].n = rs_put(l[0].buf[..], l[0].n, t); }
+rs_add_int :: (l: [] RsLine, v: int) #effects(all) { l[0].n = rs_put_int(l[0].buf[..], l[0].n, v); }
+rs_add_name :: (l: [] RsLine, b: [] RsBattle, i: int) #effects(all) { rs_add_text(l, cast(string) b[0].c[i].name[0..<b[0].c[i].name_n]); }
+rs_tell :: (b: [] RsBattle, kind: int, spell: int, by: int, to: int, amount: int, damage: int, l: [] RsLine) #effects(all) {
+  rs_tell_ft(b, kind, spell, by, to, amount, damage, RS_FT_NONE, l);
+}
+// The same, telling of a class feature (RS_FT_*).
+rs_tell_ft :: (b: [] RsBattle, kind: int, spell: int, by: int, to: int, amount: int, damage: int, feat: int, l: [] RsLine) #effects(all) {
+  e: RsEvent;
+  e.kind = kind; e.spell = spell; e.by = by; e.to = to; e.amount = amount; e.damage = damage; e.at = b[0].clock; e.feat = feat;
+  if to >= 0 { e.x = b[0].c[to].x; e.y = b[0].c[to].y; }
+  for k: 0..<l[0].n { e.text[k] = l[0].buf[k]; }
+  e.text_n = l[0].n;
+  i := rs_emit(b[0].book[..], e);
+}
+RS_ORDINAL :: [10] string.["", "1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th"];
+
+#test "tell: a line is built a piece at a time: text, a number, a creature's name" {
+  l: [1] RsLine; l[0] = rs_line();
+  #assert l[0].n == 0;
+  rs_add_text(l[..], "Fire"); #assert l[0].n == 4 && cast(string) l[0].buf[0..<4] == "Fire";
+  rs_add_text(l[..], " "); rs_add_int(l[..], 17); rs_add_text(l[..], "/"); rs_add_int(l[..], -3); rs_add_int(l[..], 0);
+  #assert cast(string) l[0].buf[0..<l[0].n] == "Fire 17/-30" && l[0].n == 11;
+  b: [1] RsBattle; b[0].w = 8; b[0].h = 8;
+  i := rs_add(b[..], rs_fighter("Garr", 0, 1), 1, 1); j := rs_add(b[..], rs_wizard("Mordra", 1, 1), 2, 2);
+  rs_add_text(l[..], " "); rs_add_name(l[..], b[..], j); rs_add_text(l[..], "+"); rs_add_name(l[..], b[..], i);
+  #assert cast(string) l[0].buf[0..<l[0].n] == "Fire 17/-30 Mordra+Garr";
+  // a name is its own length, not its room
+  b[0].c[i].name_n = 2; m: [1] RsLine; rs_add_name(m[..], b[..], i); #assert cast(string) m[0].buf[0..<m[0].n] == "Ga" && m[0].n == 2;
+  // a full line takes no more
+  f: [1] RsLine; for q: 0..<RS_EV_TEXT + 5 { rs_add_text(f[..], "x"); } #assert f[0].n == RS_EV_TEXT;
+}
+#test "tell: an event carries its kind, spell, who and whom, amount and damage, the clock, the target's square and its line" {
+  b: [1] RsBattle; b[0].w = 8; b[0].h = 8;
+  i := rs_add(b[..], rs_fighter("Garr", 0, 1), 3, 4); j := rs_add(b[..], rs_wizard("Mordra", 1, 1), 6, 2);
+  b[0].clock = 7500000;
+  l: [1] RsLine; rs_add_text(l[..], "burns");
+  rs_tell(b[..], RS_EV_DAMAGE, SP_FIRE_BOLT, i, j, 9, RS_FIRE, l[..]);
+  #assert b[0].book[0].count == 1 && b[0].book[0].seq == 1;
+  e := rs_recent_at(b[0].book[..], 0);
+  #assert e.kind == RS_EV_DAMAGE && e.spell == SP_FIRE_BOLT && e.by == i && e.to == j && e.amount == 9 && e.damage == RS_FIRE && e.at == 7500000;
+  #assert e.feat == RS_FT_NONE && RS_FT_NONE == 0 && e.x == 6 && e.y == 2 && e.text_n == 5 && cast(string) e.text[0..<e.text_n] == "burns";
+  // the first creature is a target too: its square is the event's
+  rs_tell(b[..], RS_EV_HEAL, -1, j, i, 4, 0, l[..]);
+  h := rs_recent_at(b[0].book[..], 0);
+  #assert h.kind == RS_EV_HEAL && h.spell == -1 && h.by == j && h.to == 0 && i == 0 && h.x == 3 && h.y == 4 && h.amount == 4 && h.damage == 0;
+  // no target: no square
+  n: [1] RsLine;
+  rs_tell(b[..], RS_EV_CAST, SP_FIREBALL, i, -1, 3, 0, n[..]);
+  c := rs_recent_at(b[0].book[..], 0);
+  #assert c.to == -1 && c.x == 0 && c.y == 0 && c.text_n == 0 && b[0].book[0].count == 3;
+  // a class feature's event names it
+  rs_tell_ft(b[..], RS_EV_FEAT, -1, i, i, 0, 0, RS_FT_SECOND_WIND, l[..]);
+  w := rs_recent_at(b[0].book[..], 0);
+  #assert w.kind == RS_EV_FEAT && w.feat == RS_FT_SECOND_WIND && w.by == i && w.to == i && w.x == 3 && cast(string) w.text[0..<w.text_n] == "burns" && b[0].book[0].count == 4;
+  #assert RS_ORDINAL[0] == "" && RS_ORDINAL[1] == "1st" && RS_ORDINAL[2] == "2nd" && RS_ORDINAL[3] == "3rd" && RS_ORDINAL[4] == "4th" && RS_ORDINAL[9] == "9th";
+}

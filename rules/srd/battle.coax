@@ -169,26 +169,7 @@ RsBattle :: struct {
 }
 #load "battle-grid.coax";   // the grid: room, distance, squares, zones and areas (#13287)
 
-// ---- telling the world
-
-RsLine :: struct { buf: [RS_EV_TEXT] u8; n: int; }
-rs_line :: () -> RsLine { l: RsLine; return l; }
-rs_add_text :: (l: [] RsLine, t: string) { l[0].n = rs_put(l[0].buf[..], l[0].n, t); }
-rs_add_int :: (l: [] RsLine, v: int) { l[0].n = rs_put_int(l[0].buf[..], l[0].n, v); }
-rs_add_name :: (l: [] RsLine, b: [] RsBattle, i: int) { rs_add_text(l, cast(string) b[0].c[i].name[0..<b[0].c[i].name_n]); }
-rs_tell :: (b: [] RsBattle, kind: int, spell: int, by: int, to: int, amount: int, damage: int, l: [] RsLine) {
-  rs_tell_ft(b, kind, spell, by, to, amount, damage, RS_FT_NONE, l);
-}
-// The same, telling of a class feature (RS_FT_*).
-rs_tell_ft :: (b: [] RsBattle, kind: int, spell: int, by: int, to: int, amount: int, damage: int, feat: int, l: [] RsLine) {
-  e: RsEvent;
-  e.kind = kind; e.spell = spell; e.by = by; e.to = to; e.amount = amount; e.damage = damage; e.at = b[0].clock; e.feat = feat;
-  if to >= 0 { e.x = b[0].c[to].x; e.y = b[0].c[to].y; }
-  for k: 0..<l[0].n { e.text[k] = l[0].buf[k]; }
-  e.text_n = l[0].n;
-  i := rs_emit(b[0].book[..], e);
-}
-RS_ORDINAL :: [10] string.["", "1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th"];
+#load "battle-tell.coax";   // telling the world: lines and events (#13287)
 
 // ---- creatures in the battle
 
