@@ -108,6 +108,19 @@ cell_distance :: (w: [] CellWorld, i: int, x: f64, z: f64) -> f64 #effects(all) 
   dx := cell_gap(x, f64(w[0].manifest[i].cx) * CELL_SIZE); dz := cell_gap(z, f64(w[0].manifest[i].cz) * CELL_SIZE);
   return sqrt(dx * dx + dz * dz);
 }
+// The nearer of two distances, without a comparison.
+cell_nearer :: (a: f64, b: f64) -> f64 #effects(all) { return (a + b - abs(a - b)) / 2; }
+// Metres from cell i's nearest point to the nearest of the observers in `at` (x, z each; a last
+// number without its pair is no one). CELL_NOWHERE with no observer: past every ring.
+CELL_NOWHERE :: 1000000000000000000.0;
+cell_distance_from :: (w: [] CellWorld, i: int, at: [] f64) -> f64 #effects(all) {
+  best := CELL_NOWHERE;
+  for k: 0..<at.count / 2 {
+    d := cell_distance(w, i, at[k * 2], at[k * 2 + 1]);
+    best = ifx k == 0 then d else cell_nearer(best, d);
+  }
+  return best;
+}
 cell_find :: (w: [] CellWorld, cx: int, cz: int) -> int #effects(all) {
   for i: 0..<w[0].n { if w[0].manifest[i].cx == cx && w[0].manifest[i].cz == cz { return i; } }
   return -1;
@@ -169,12 +182,18 @@ cell_step :: (w: [] CellWorld, x: f64, z: f64) -> CellStep #effects(all) {
   return cell_step_rings(w, x, z, CellRings.{});
 }
 cell_step_rings :: (w: [] CellWorld, x: f64, z: f64, p: CellRings) -> CellStep #effects(all) {
+  at := [2] f64.[x, z];
+  return cell_step_from(w, at[..], p);
+}
+// The same step for a room of many players: `at` holds each one's (x, z), and a cell's distance is
+// to the nearest of them (cell_distance_from). With no one there, every cell falls to absent.
+cell_step_from :: (w: [] CellWorld, at: [] f64, p: CellRings) -> CellStep #effects(all) {
   out: CellStep;
   // levels first, so a budget freed this step is free for the asks below
   for i: 0..<w[0].n {
     c := w[0].cells[i].level;
     if c == CELL_ABSENT { continue; }   // asked below
-    t := cell_target_rings(c, cell_distance(w, i, x, z), p);
+    t := cell_target_rings(c, cell_distance_from(w, i, at), p);
     if c == CELL_LOADING { t = ifx t == CELL_ABSENT then CELL_ABSENT else CELL_LOADING; }
     out.woke += cell_crossed(c, t); out.slept += cell_crossed(t, c);
     w[0].cells[i].level = t;
@@ -185,7 +204,7 @@ cell_step_rings :: (w: [] CellWorld, x: f64, z: f64, p: CellRings) -> CellStep #
     best := -1; bd := 0.0; wanted := 0;
     for i: 0..<w[0].n {
       if w[0].cells[i].level != CELL_ABSENT { continue; }
-      d := cell_distance(w, i, x, z);
+      d := cell_distance_from(w, i, at);
       if cell_target_rings(CELL_ABSENT, d, p) == CELL_ABSENT { continue; }
       wanted += 1;
       if best < 0 || d < bd { best = i; bd = d; }
@@ -446,6 +465,38 @@ cell_digest :: (w: [] CellWorld) -> int #effects(all) {
   }
 }
 
+#test "cells: a room of many players keeps the cells near any of them, and none with no one there" {
+  w: [1] CellWorld; cw_grid(w[..], 0, 15, 0, 0);
+  p := CellRings.{draw = 32, simulate = 64, load = 96, hysteresis = 8, resident = 48, loads = 4};
+  // the distance is the nearest observer's, whichever comes first; a lone last number is no one
+  two := [5] f64.[32, 32, 932, 32, 480];
+  #assert cell_distance_from(w[..], 0, two[..]) == 0 && cell_distance_from(w[..], 14, two[..]) == 0 && cell_distance_from(w[..], 7, two[..]) == 416;
+  #assert cell_distance_from(w[..], 3, two[..]) == 160 && cell_distance_from(w[..], 11, two[..]) == 164;
+  swapped := [4] f64.[932, 32, 32, 32];
+  for i: 0..<16 { #assert cell_distance_from(w[..], i, swapped[..]) == cell_distance_from(w[..], i, two[0..<4]); }
+  #assert cell_distance_from(w[..], 0, two[0..<1]) == CELL_NOWHERE && cell_distance_from(w[..], 0, two[0..<0]) == CELL_NOWHERE;
+  #assert cell_distance_from(w[..], 3, two[0..<2]) == 160 && cell_distance_from(w[..], 3, two[0..<3]) == 160;
+  #assert cell_nearer(3, 5) == 3 && cell_nearer(5, 3) == 3 && cell_nearer(-2, -2) == -2;
+  // one observer is the player's own step, bit for bit
+  solo: [1] CellWorld; cw_grid(solo[..], 0, 15, 0, 0);
+  for x: [3] f64.[32, 500, 932] {
+    one := [2] f64.[x, 32];
+    a := cell_step_from(w[..], one[..], p); b := cell_step_rings(solo[..], x, 32, p);
+    #assert a.asked_n == b.asked_n && a.woke == b.woke && a.slept == b.slept && cell_digest(w[..]) == cell_digest(solo[..]);
+    cw_load_all(w[..], a); cw_load_all(solo[..], b);
+  }
+  // two players far apart: the cells round each load and simulate, the ones between stay absent
+  for round: 0..<4 { step := cell_step_from(w[..], two[0..<4], p); cw_load_all(w[..], step); }
+  #assert cell_simulates(w[..], 0) && cell_simulates(w[..], 1) && cell_simulates(w[..], 14) && cell_simulates(w[..], 13);
+  #assert w[0].cells[2].level == CELL_RESIDENT_LEVEL && w[0].cells[7].level == CELL_ABSENT && w[0].cells[12].level == CELL_ABSENT && cell_simulates(w[..], 15);
+  #assert cell_resident_count(w[..]) == 6;
+  // one leaves: its cells sleep and go; the other's stay
+  left := cell_step_from(w[..], two[0..<2], p);
+  #assert left.slept == 3 && left.woke == 0 && cell_simulates(w[..], 0) && w[0].cells[14].level == CELL_ABSENT && w[0].cells[14].request == 0;
+  // no one: everything goes, and nothing is asked
+  none := cell_step_from(w[..], two[0..<0], p);
+  #assert none.slept == 2 && none.asked_n == 0 && cell_resident_count(w[..]) == 0 && w[0].counts[CELL_REFUSED] == 0;
+}
 #test "cells: keys, manifest and neighbours" {
   #assert cell_key(0) == 0 && cell_key(63.9) == 0 && cell_key(64) == 1 && cell_key(-0.1) == -1 && cell_key(-64) == -1 && cell_key(-64.1) == -2;
   w: [1] CellWorld; cw_grid(w[..], -2, 2, -2, 2);
