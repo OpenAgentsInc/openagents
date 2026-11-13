@@ -226,6 +226,7 @@ WE_TALK :: 1; WE_DOOR :: 2; WE_BOAT :: 3; WE_BOARD :: 4; WE_END :: 5;
 WE_FAM_SUMMON :: 9; WE_FAM_RITE :: 10; WE_FAM_ORDER :: 11; WE_FAM_STEP :: 12; WE_FAM_CURE :: 13; WE_FAM_SENSES :: 14; WE_KIT :: 15;
 // Riding (#13268; everglade/server/mount-wire.coax): mount the mount ID, get down (ID 0), bring a flier down (ID 0)
 WE_MOUNT :: 20; WE_DISMOUNT :: 21; WE_LAND :: 22;
+WE_RANGE_RESET :: 23;   // the Archery Range: clear your tally (everglade/server/range-wire.coax, #13507)
 WE_SAY :: 6; WE_WEAR :: 7; WE_BARE :: 8;   // Everglade II (#13291, #13292): talk to dialogue ID (the content tables'), wear item ID, empty equipment slot ID
 
 WireIn :: struct #persisted { seq: int; kx: int; ky: int; px: int; py: int; theta: f32; b: int; heard: int; }   // theta goes in WIRE_FINE units (0.1 mrad)

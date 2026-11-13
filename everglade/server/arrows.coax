@@ -20,7 +20,9 @@
 
 E2A_LEAD :: 64;             // ticks before the first arrow's tick the arrows' clock starts, so a rewound launch is after 0
 // One arrow's room: its id (0 none), its archer's seat and the Attack's slot on the wire.
-E2ArrowTag :: struct { id: int; seat: int = -1; slot: int; }
+// On the Archery Range (#13507): where it left, how its archer shot it (range/score.coax RG_FOOT, RG_HORSE,
+// RG_DRAGON) and whether its archer stood on the range's ground, so a miss there is counted too.
+E2ArrowTag :: struct { id: int; seat: int = -1; slot: int; from: [3] f32; mode: int; range: bool; }
 E2Arrows :: struct {
   ar: [1] arch.Archer;                    // its arrows: each one's owner is its archer's seat
   tag: [bow.ARROWS] E2ArrowTag;
@@ -28,6 +30,7 @@ E2Arrows :: struct {
   epoch: int;                             // the tick the arrows' clock counts from (set when the first of a flight is loosed; below 0 in a young room)
   next: int;                              // the last id given
   loosed: int; hits: int; misses: int; stuck: int; gone: int; rewound_ms: int;   // what the checks read
+  marks: int;                             // arrows stuck in the Archery Range's faces (#13507)
   cast_back: int; casts_back: int;        // ticks back the last cast was judged, and casts judged back at all (#13289)
   near: [1] E2ArNear;                     // the trunks and rocks round where an arrow last asked (#13166)
 }
@@ -112,6 +115,7 @@ e2_arrow_loose :: (v: [] RmServer, k: int, seat_id: SeatId, slot: int, seq: int)
   if !l.ok || l.seq != seq { return false; }
   st[0].loose = NetLoose.{};
   if e2a_flying(a) == 0 { a[0].epoch = t - E2A_LEAD; for i: 0..<bow.ARROWS { a[0].ar[0].arrows[0].a[i] = bow.Arrow.{}; a[0].tag[i] = E2ArrowTag.{}; } }
+  if a[0].ar[0].targets[0].n == 0 { e2ar_range_targets(a[0].ar[..]); }   // the Archery Range's faces (#13507)
   me := st[0].pose;
   // from a saddle (riding.coax): the hand is the saddle's height higher and may be the mount's length from its middle
   ride := e2rd_lift(v, k, seat);
@@ -124,7 +128,7 @@ e2_arrow_loose :: (v: [] RmServer, k: int, seat_id: SeatId, slot: int, seq: int)
   age := ifx l.view_ms > 0 then back.age_ms else 0;
   now := e2a_clock(a, t);
   i := bow.arrow_loose(a[0].ar[0].arrows[..], seat, from, bow.arrow_launch(from, l.to, strength), now - f32(age) / 1000, -1, strength);
-  a[0].next += 1; a[0].tag[i] = E2ArrowTag.{id = a[0].next, seat = seat, slot = slot};
+  a[0].next += 1; a[0].tag[i] = E2ArrowTag.{id = a[0].next, seat = seat, slot = slot, from = from, mode = e2a_range_mode(v, k, seat), range = e2_range_ground(me.x, me.z, 2)};
   a[0].loosed += 1; a[0].rewound_ms = age;
   out: [200] u8;
   n := net_shot_write(NetShot.{tick = t, id = a[0].next, seat = seat, seq = seq, from = from, vel = a[0].ar[0].arrows[0].a[i].vel, strength = strength, age_ms = age}, out[..]);
@@ -143,6 +147,15 @@ e2a_fly :: (v: [] RmServer, k: int, tick: int) {
     i := f[0].i; tag := a[0].tag[i];
     l := arch.archery_land(ar, f[0], bodies[0..<nb], tag.seat);
     if l.kind == arch.LAND_NONE { continue; }
+    // in one of the Archery Range's faces (#13507): stuck there, the face named, its points the archer's
+    if l.kind == arch.LAND_MARK {
+      a[0].marks += 1;
+      e2a_empty(v, k, tag);
+      e2a_range_told(v, k, tag, l.mark, rg_points(l.off, ar[0].targets[0].face[l.mark].radius), l.at);
+      e2a_say_end(v, k, tag.id, NET_SHOT_STUCK, l.at, ar[0].arrows[0].a[i].dir, l.mark);
+      ar[0].arrows[0].a[i] = bow.Arrow.{}; a[0].tag[i] = E2ArrowTag.{};
+      continue;
+    }
     if l.kind == arch.LAND_BODY {
       c := bodies[0]; for q: 0..<nb { if bodies[q].id == l.body { c = bodies[q]; } }
       if e2a_strike(v, k, tag, l.body) {
@@ -156,6 +169,7 @@ e2a_fly :: (v: [] RmServer, k: int, tick: int) {
     // stuck in the ground: the Attack met no one
     a[0].stuck += 1;
     e2a_empty(v, k, tag);
+    if tag.range { e2a_range_told(v, k, tag, -1, 0, ar[0].arrows[0].a[i].at); }   // a miss on the range
     e2a_say_end(v, k, tag.id, NET_SHOT_STUCK, ar[0].arrows[0].a[i].at, ar[0].arrows[0].a[i].dir, -1);
     ar[0].arrows[0].a[i] = bow.Arrow.{}; a[0].tag[i] = E2ArrowTag.{};
   }
@@ -165,6 +179,7 @@ e2a_fly :: (v: [] RmServer, k: int, tick: int) {
     if w.state != bow.ARROW_FLYING || now - w.t0 <= f32(bow.ARROW_LONG) { continue; }
     a[0].gone += 1;
     e2a_empty(v, k, a[0].tag[i]);
+    if a[0].tag[i].range { e2a_range_told(v, k, a[0].tag[i], -1, 0, bow.arrow_pos(w, now - w.t0)); }
     e2a_say_end(v, k, a[0].tag[i].id, NET_SHOT_GONE, bow.arrow_pos(w, now - w.t0), bow.arrow_dir(w, now - w.t0), -1);
     ar[0].arrows[0].a[i] = bow.Arrow.{}; a[0].tag[i] = E2ArrowTag.{};
   }
@@ -203,6 +218,37 @@ e2a_empty :: (v: [] RmServer, k: int, tag: E2ArrowTag) {
   _ := e2a_attack(r, s, tag.slot, egb_sq(me.x), egb_z_cell(r, me.z), -1);
   e2_kit_tell(v, k, SeatId.{value = s}, false);
 }
+// ---- the Archery Range (#13507): its faces are the arrows' targets (e2ar_range_targets), and each
+// arrow of a seat's on the range is scored into that seat's tally and told to it alone (range-wire.coax)
+// How seat s shoots now: on foot, from horseback or from dragonback.
+e2a_range_mode :: (v: [] RmServer, k: int, s: int) -> int {
+  if !e2rd_lift(v, k, s).on { return RG_FOOT; }
+  r := e2rd_room(v, k); m := e2r_of(r[0], s);
+  return ifx m >= 0 && r[0].kind[m] == MK_DRAGON then RG_DRAGON else RG_HORSE;
+}
+// Arrow `tag` landed at `at`, in face `face` for `points` (-1 and 0: a miss): into its archer's tally, and told it.
+e2a_range_told :: (v: [] RmServer, k: int, tag: E2ArrowTag, face: int, points: int, at: [3] f32) {
+  s := tag.seat;
+  if s < 0 || s >= eg_cap(v, k) || !v[0].eg[k].seat[s].live || tag.id <= 0 { return; }
+  dx := at[0] - tag.from[0]; dz := at[2] - tag.from[2]; d := sqrt(dx * dx + dz * dz) * 100 + 0.5;
+  cm := ifx !(d >= 0) then 0 else ifx d > f32(EGR_FAR_CM) then EGR_FAR_CM else cast(int) d;
+  e := EgrArrow.{ok = true, id = tag.id, mode = tag.mode, cm = cm, points = ifx face >= 0 then points else 0, face = ifx face >= 0 && points > 0 then face else -1};
+  st := v[0].eg[k].seat[s..<s + 1];
+  egr_take(st[0].range[..], e, f32(v[0].eg[k].tick) / f32(EG_HZ));
+  b: [64] u8; n := egr_put(b[..], e);
+  eg_event_only(v, k, cast(string) b[0..<n], s);
+}
+// Seat s asks to clear its tally (E kind 23): cleared, and told so.
+e2a_range_reset :: (v: [] RmServer, k: int, seat_id: SeatId, u: WireUse) { s := seat_id.value;
+  if !egr_reset_read(u) { eg_refuse(v, k, seat_id, u.seq, "no"); return; }
+  st := v[0].eg[k].seat[s..<s + 1];
+  if u.seq <= st[0].range_last { return; }
+  st[0].range_last = u.seq;
+  e := EgrArrow.{ok = true}; egr_take(st[0].range[..], e, 0);
+  b: [64] u8; n := egr_put(b[..], e);
+  eg_event_only(v, k, cast(string) b[0..<n], s);
+}
+
 // The tick (after the monsters have moved): this tick's bodies are written down, then every arrow flies to it.
 e2_arrows_tick :: (v: [] RmServer, k: int) {
   e2a_remember(v, k);
@@ -268,6 +314,42 @@ e2at_shoot :: (v: [] RmServer, k: int, seq: int, to: [3] f32, view_tick: int) {
   // a launch whose request is refused (the cooldown) looses nothing, and is not kept for a later one
   e2at_shoot(v[..], k, 1000003, to, v[0].eg[k].tick);
   #assert a[0].loosed == 1 && eg_test_has(e2rt_heard(v[..], 0, out[..]), "r 1000003");
+}
+#test "e2 arrows: on the Archery Range the room scores every arrow: one in a face is stuck there by name, a miss counts, and the tally clears on asking (#13507)" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2at_room(v[..], "pair-e2-range"); #assert k >= 0;
+  a := v[0].eg[k].arrows[..]; out: [262144] u8; st := v[0].eg[k].seat[0..<1];
+  at := rg_arrive(); e2mt_at(v[..], k, at[0], at[1]);
+  for q: 0..<10 { e2mt_tick(v[..], k); }
+  _ := e2rt_heard(v[..], 0, out[..]);
+  // at the 10 m gold, from the line
+  f0 := rg_target(0, e2_height(rg_piece_at(0)[0], rg_piece_at(0)[1]));
+  e2at_shoot(v[..], k, 1000001, [3] f32.[f0.x, f0.y + 0.15, f0.z], v[0].eg[k].tick);
+  #assert a[0].loosed == 1 && a[0].tag[0].range && a[0].tag[0].mode == RG_FOOT;
+  ended: NetShotEnd; told := false; ticks := 0;
+  while !ended.ok && ticks < EG_HZ * 3 {
+    e2mt_tick(v[..], k); ticks += 1;
+    heard := e2rt_heard(v[..], 0, out[..]); i := 0;
+    while i < heard.count { e := i; while e < heard.count && heard[e] != '|' && heard[e] != '\n' { e += 1; } if heard[i] == 'd' { ended = net_shot_end_read(heard[i..<e]); } i = e + 1; }
+    told = eg_test_has(heard, "e range 1 0 ");   // told with the tick that ended it: arrow 1, on foot
+  }
+  sc := st[0].range[0]; p := sc.last_points;
+  #assert ended.ok && ended.kind == NET_SHOT_STUCK && ended.body == 0 && abs(ended.at[2] - f0.z) < 0.3 && a[0].marks == 1 && a[0].hits == 0;
+  #assert rg_sum(sc, RG_FOOT, -1).shots == 1;
+  #assert p >= 5;
+  #assert abs(sc.last_distance - sqrt((f0.x - at[0]) * (f0.x - at[0]) + (f0.z - at[1]) * (f0.z - at[1]))) < 1.5;   // from the hand to where it struck
+  #assert rg_sum(sc, -1, -1).points == p;
+  #assert told;
+  // into the turf short of the butts: a miss, counted
+  for q: 0..<XP_BEAT + 2 { e2mt_tick(v[..], k); }
+  _ = e2rt_heard(v[..], 0, out[..]);
+  e2at_shoot(v[..], k, 1000002, [3] f32.[at[0] + 3, e2_height(at[0] + 3, at[1] - 6), at[1] - 6], v[0].eg[k].tick);
+  for q: 0..<EG_HZ * 2 { e2mt_tick(v[..], k); }
+  t := rg_sum(st[0].range[0], -1, -1); #assert a[0].loosed == 2 && t.shots == 2 && t.hits == 1 && st[0].range[0].last_points == 0;
+  // cleared on asking, and told so; the same ask again is heard once
+  b: [32] u8; n := wire_put_use(b[..], 0, egr_reset_ask(5));
+  rm_heard(v[..], 0, cast(string) b[0..<n]); e2mt_tick(v[..], k);
+  #assert eg_test_has(e2rt_heard(v[..], 0, out[..]), "e range 0 0 0 0 -1") && rg_sum(st[0].range[0], -1, -1).shots == 0 && st[0].range_last == 5;
+  rm_heard(v[..], 0, cast(string) b[0..<n]); e2mt_tick(v[..], k); #assert !eg_test_has(e2rt_heard(v[..], 0, out[..]), "e range");
 }
 #test "e2 arrows: the room flies a loose from the moment its page was drawing, inside the bound, and it meets a monster where it stood then" #steps 4000000000 #traversal 1073741824 {
   v: [1] RmServer; k := e2at_room(v[..], "pair-e2-rewind"); #assert k >= 0;

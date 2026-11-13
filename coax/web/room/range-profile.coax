@@ -1,0 +1,79 @@
+// The Archery Range's profile check (#13507): proto/verse/everglade2-range-v1.json names the ask to
+// clear a tally (an E kind) and the room's word on each arrow (e range). This program holds the one
+// codec (everglade/server/range-wire.coax, which the room and the page both load) to that file: the
+// kind, the ways of shooting and the bounds are the codec's; each ask's text reads as its values and
+// writes back as the text; each answer the same; what is malformed is refused whole. The file's texts
+// are written by hand, not by this codec.
+// Prints "PROFILE: profile holds" (exit 0), or what differs and "profile fails" (exit 1).
+//   coax/web/tool.sh coax/web/room/range-profile.coax proto/verse/everglade2-range-v1.json
+#import "Basic";
+#load "../../../everglade/server/range-wire.coax";
+#load "../../lib/json/json.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+
+RGP_FILE :: 8192;
+RGP_NONE :: -999999999;
+
+rgp_str :: (d: Jv, at: int, out: [] u8) -> string { n := jv_str(d, at, out); return ifx n >= 0 then cast(string) out[0..<n] else ""; }
+rgp_int :: (d: Jv, o: int, key: string) -> int { return jv_int(d, jv_get(d, o, key), RGP_NONE); }
+rgp_check :: (d: Jv, file: string) -> bool {
+  tb: [2][320] u8; out: [128] u8;
+  if rgp_str(d, jv_get(d, 0, "identity"), tb[0][..]) != "everglade2-range-v1" { print("identity\n"); return false; }
+  cb: [200] u8; cn := wire_put(cb[..], wire_put(cb[..], 0, "coax/web/tool.sh coax/web/room/range-profile.coax "), file);
+  if rgp_str(d, jv_get(d, 0, "check"), tb[0][..]) != cast(string) cb[0..<cn] { print("check: not this program\n"); return false; }
+  if rgp_str(d, jv_get(d, 0, "base_session"), tb[0][..]) != "everglade-session-v7" || WIRE_VERSION != 7 { print("base_session\n"); return false; }
+  uses := jv_get(d, 0, "uses");
+  if jv_kind(d, uses) != JV_OBJECT || jv_len(d, uses) != 1 || rgp_int(d, uses, "reset") != WE_RANGE_RESET { print("uses\n"); return false; }
+  modes := jv_get(d, 0, "modes");
+  if jv_kind(d, modes) != JV_OBJECT || jv_len(d, modes) != RG_MODES || rgp_int(d, modes, "foot") != RG_FOOT || rgp_int(d, modes, "horse") != RG_HORSE || rgp_int(d, modes, "dragon") != RG_DRAGON { print("modes\n"); return false; }
+  if rgp_int(d, 0, "faces") != RG_TARGETS || rgp_int(d, 0, "rings") != RG_RINGS || rgp_int(d, 0, "far_cm") != EGR_FAR_CM { print("faces, rings or far_cm\n"); return false; }
+  if rgp_str(d, jv_get(d, 0, "request"), tb[0][..]) != "E SEQ KIND ID" || rgp_str(d, jv_get(d, 0, "answer"), tb[1][..]) != "e range ID MODE CM POINTS FACE" { print("request or answer\n"); return false; }
+  reqs := jv_get(d, 0, "requests");
+  if jv_kind(d, reqs) != JV_ARRAY || jv_len(d, reqs) < 1 { print("requests\n"); return false; }
+  for i: 0..<jv_len(d, reqs) {
+    r := jv_at(d, reqs, i);
+    text := rgp_str(d, jv_get(d, r, "text"), tb[0][..]);
+    rd := [1] WireRd.[wire_rd(text, 1)];
+    u := wire_read_use(text, rd[..]);
+    if rgp_str(d, jv_get(d, r, "use"), tb[1][..]) != "reset" || !wire_is(text, "E") || !rd[0].ok || wire_fields(text) != 4 || !egr_reset_read(u) || u.seq != rgp_int(d, r, "seq") { print("request %: %\n", i, text); return false; }
+    n := wire_put_use(out[..], 0, egr_reset_ask(u.seq));
+    if cast(string) out[0..<n] != text { print("request %: written %\n", i, cast(string) out[0..<n]); return false; }
+  }
+  answers := jv_get(d, 0, "answers");
+  if jv_kind(d, answers) != JV_ARRAY || jv_len(d, answers) < 3 { print("answers\n"); return false; }
+  for i: 0..<jv_len(d, answers) {
+    r := jv_at(d, answers, i);
+    text := rgp_str(d, jv_get(d, r, "text"), tb[0][..]);
+    want := EgrArrow.{ok = true, id = rgp_int(d, r, "id"), mode = rgp_int(d, r, "mode"), cm = rgp_int(d, r, "cm"), points = rgp_int(d, r, "points"), face = rgp_int(d, r, "face")};
+    n := egr_put(out[..], want); g := egr_read(text);
+    if cast(string) out[0..<n] != text || !g.ok || g.id != want.id || g.mode != want.mode || g.cm != want.cm || g.points != want.points || g.face != want.face || !egr_kept(text) || wire_outcome(text) { print("answer %: %\n", i, text); return false; }
+  }
+  bad := jv_get(d, 0, "malformed_requests");
+  if jv_kind(d, bad) != JV_ARRAY || jv_len(d, bad) < 3 { print("malformed_requests\n"); return false; }
+  for i: 0..<jv_len(d, bad) {
+    t := rgp_str(d, jv_at(d, bad, i), tb[0][..]);
+    rd := [1] WireRd.[wire_rd(t, 1)];
+    u := wire_read_use(t, rd[..]);
+    if !rd[0].ok || egr_reset_read(u) { print("malformed_requests %: %\n", i, t); return false; }
+  }
+  worse := jv_get(d, 0, "malformed_answers");
+  if jv_kind(d, worse) != JV_ARRAY || jv_len(d, worse) < 6 { print("malformed_answers\n"); return false; }
+  for i: 0..<jv_len(d, worse) {
+    t := rgp_str(d, jv_at(d, worse, i), tb[0][..]);
+    if egr_read(t).ok { print("malformed_answers %: %\n", i, t); return false; }
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: range-profile PROFILE.json"); return 2; }
+  path := args_at(a[..], 0);
+  text: [RGP_FILE] u8; n := fs_read(path, text[..]);
+  nodes: [1024] JvNode; d: [1] Jv;
+  if n <= 0 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("range-profile: cannot parse JSON"); return 2; }
+  if !rgp_check(d[0], path) { print("%: profile fails\n", path); return 1; }
+  print("%: profile holds\n", path);
+  return 0;
+}

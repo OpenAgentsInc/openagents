@@ -1,0 +1,71 @@
+// The Archery Range's words (#13507). The range stands on Everglade's land (everglade/range/layout.coax)
+// and its arrows are Everglade's (everglade/server/arrows.coax): the room flies every arrow, and one
+// that sticks in a face is ended as any stuck arrow is (d ... KIND 1), its BODY the face it struck
+// (metaverse-engine/net/projectile.coax; -1 the ground or a wall). What is the range's own is its
+// tally: the room keeps each seat's (everglade/range/score.coax RgScore) and tells the archer alone
+// what each of its arrows on the range scored, and the page keeps its copy by the same rule
+// (rg_record). The one codec both sides load: the room writes the answers and reads the ask
+// (everglade/server/arrows.coax), the page reads the answers and writes the ask
+// (everglade/client/range.coax). Profile proto/verse/everglade2-range-v1.json, doc
+// docs/protocol/everglade-range-v1.md; its check runs these functions:
+//   coax/web/tool.sh coax/web/room/range-profile.coax proto/verse/everglade2-range-v1.json
+// Whole numbers a space apart (everglade-wire.coax wire_int).
+//   E SEQ 23 0                          clear your tally (WE_RANGE_RESET)
+//   e range ID MODE CM POINTS FACE      your arrow ID landed: shot MODE (0 on foot, 1 from horseback,
+//                                       2 from dragonback) from CM centimetres, for POINTS (0 a miss,
+//                                       1 to 10 the ring), in FACE (-1 none). ID 0: your tally was
+//                                       cleared (the other numbers 0, FACE -1)
+// A page from before the range has no reader for e range and drops it (everglade/client/net.coax
+// e2n_entry); it never says kind 23.
+//   coax/bin/coax test everglade/server/range-wire.coax --library
+#load "../shared/everglade-wire.coax";
+#load "../range/score.coax";
+
+EGR_RANGE_E :: "e range";
+EGR_FAR_CM :: 100000;   // no shot counted from farther than 1 km
+
+EgrArrow :: struct { ok: bool; id: int; mode: int; cm: int; points: int; face: int = -1; }
+
+egr_reset_ask :: (seq: int) -> WireUse { return WireUse.{seq = seq, kind = WE_RANGE_RESET, id = 0}; }
+egr_reset_read :: (u: WireUse) -> bool { return u.seq > 0 && u.kind == WE_RANGE_RESET && u.id == 0; }
+// Whether an e entry is the range's answer: told to its archer alone.
+egr_kept :: (t: string) -> bool { return wire_is(t, EGR_RANGE_E); }
+egr_put :: (out: [] u8, a: EgrArrow) -> int {
+  return wire_int(out, wire_int(out, wire_int(out, wire_int(out, wire_int(out, wire_put(out, 0, EGR_RANGE_E), a.id), a.mode), a.cm), a.points), a.face);
+}
+egr_read :: (t: string) -> EgrArrow {
+  if !wire_is(t, EGR_RANGE_E) { return EgrArrow.{}; }
+  rd := [1] WireRd.[wire_rd(t, EGR_RANGE_E.count)];
+  a: EgrArrow;
+  a.id = wire_num(t, rd[..]); a.mode = wire_num(t, rd[..]); a.cm = wire_num(t, rd[..]); a.points = wire_num(t, rd[..]); a.face = wire_num(t, rd[..]);
+  a.ok = rd[0].ok && !wire_more(t, rd[..]) && a.id >= 0 && a.mode >= 0 && a.mode < RG_MODES && a.cm >= 0 && a.cm <= EGR_FAR_CM &&
+    a.points >= 0 && a.points <= RG_RINGS && a.face >= -1 && a.face < RG_TARGETS && (a.points == 0 || a.face >= 0) &&
+    (a.id > 0 || (a.mode == 0 && a.cm == 0 && a.points == 0 && a.face == -1));
+  return a;
+}
+// An answer taken into a tally, the room's or the page's: the same rule on both sides.
+egr_take :: (s: [] RgScore, a: EgrArrow, now: f32) {
+  if !a.ok { return; }
+  if a.id == 0 { s[0] = RgScore.{}; return; }
+  rg_record(s, a.mode, f32(a.cm) / 100, a.points, now);
+}
+
+#test "range wire: an arrow's score and a cleared tally write and read back, and a bad one is refused whole" {
+  b: [64] u8;
+  n := egr_put(b[..], EgrArrow.{id = 12, mode = RG_HORSE, cm = 3050, points = 9, face = 2}); #assert cast(string) b[0..<n] == "e range 12 1 3050 9 2";
+  a := egr_read("e range 12 1 3050 9 2"); #assert a.ok && a.id == 12 && a.mode == RG_HORSE && a.cm == 3050 && a.points == 9 && a.face == 2;
+  a = egr_read("e range 13 0 1200 0 -1"); #assert a.ok && a.points == 0 && a.face == -1;
+  n = egr_put(b[..], EgrArrow.{}); #assert cast(string) b[0..<n] == "e range 0 0 0 0 -1" && egr_read("e range 0 0 0 0 -1").ok;
+  for bad: [12] string.["e range", "e range 12 1 3050 9", "e range 12 1 3050 9 2 0", "e range -1 0 0 0 -1", "e range 12 3 100 1 0", "e range 12 0 -1 1 0",
+                        "e range 12 0 100001 1 0", "e range 12 0 100 11 0", "e range 12 0 100 1 7", "e range 12 0 100 5 -1", "e range 0 0 100 0 -1", "e range 12 0 100 0 -2"] { #assert !egr_read(bad).ok; }
+  #assert egr_kept("e range 12 0 100 0 -1") && !egr_kept("e ride 3 0 1") && !egr_kept("e ranged 1") && !wire_outcome("e range 12 0 100 0 -1");
+}
+#test "range wire: the reset ask is kind 23 alone, and a tally takes each answer as the room's does" {
+  b: [32] u8; n := wire_put_use(b[..], 0, egr_reset_ask(7)); #assert cast(string) b[0..<n] == "E 7 23 0";
+  #assert egr_reset_read(egr_reset_ask(7)) && !egr_reset_read(WireUse.{seq = 0, kind = WE_RANGE_RESET}) && !egr_reset_read(WireUse.{seq = 1, kind = WE_RANGE_RESET, id = 1}) && !egr_reset_read(WireUse.{seq = 1, kind = WE_LAND});
+  s: [1] RgScore;
+  egr_take(s[..], egr_read("e range 1 0 1000 10 0"), 1); egr_take(s[..], egr_read("e range 2 0 1000 0 -1"), 2); egr_take(s[..], egr_read("e range 3 2 6500 7 5"), 3);
+  all := rg_sum(s[0], -1, -1); #assert all.shots == 3 && all.hits == 2 && all.points == 17 && all.golds == 1 && rg_sum(s[0], RG_DRAGON, -1).shots == 1 && s[0].run == 1 && s[0].best_run == 1;
+  egr_take(s[..], egr_read("e range 9 0 1000 99 0"), 4); #assert rg_sum(s[0], -1, -1).shots == 3;   // refused: nothing taken
+  egr_take(s[..], egr_read("e range 0 0 0 0 -1"), 5); #assert rg_sum(s[0], -1, -1).shots == 0 && s[0].last_points == -1;
+}

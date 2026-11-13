@@ -8,6 +8,7 @@
 #load "move.coax";
 #load "../longbow.coax";
 #load "../../metaverse-engine/action/bow.coax" as bow;
+#load "../range/score.coax";   // the Archery Range's faces and points (#13507)
 
 E2AR_MONSTERS :: 12;        // the room's monsters (everglade/server/creatures.coax E2M_N): bodies 0 to 11
 E2AR_GUARD :: 12;           // the path's guard's body
@@ -110,6 +111,14 @@ e2ar_test_shoot :: (from: [3] f32, to: [3] f32) -> E2ArTestEnd {
   }
   return r;
 }
+// The Archery Range's seven faces where they stand on Everglade's land (#13507): an archer's targets,
+// the page's (its reticle and its own arrows) and the room's (the arrows it scores) alike.
+e2ar_range_targets :: (a: [] arch.Archer) {
+  g: [RG_TARGETS] f32;
+  for i: 0..<RG_TARGETS { at := rg_piece_at(i); g[i] = e2_height(at[0], at[1]); }
+  rg_targets(a[0].targets[..], g[..]);
+}
+
 #test "e2 archery: a trunk and a rock stop an arrow where the walker meets them, and the ground past them is reached without them" {
   land := e2ar_test_land(); near: [1] E2ArNear;
   // the glade's first kept tree and first rock, as the walker has them
@@ -155,4 +164,22 @@ e2ar_test_shoot :: (from: [3] f32, to: [3] f32) -> E2ArTestEnd {
   #assert w.id == 3 && g.id == 9 && w.c1[1] < g.c1[1] && w.r < g.r && e2ar_guard(0, -20).id == E2AR_GUARD;
   near: [1] E2ArNear;
   #assert e2ar_solid(e2ar_test_land(), near[..], 0, e2_height(0, -30) - 0.1, -30) && !e2ar_solid(e2ar_test_land(), near[..], 0, e2_height(0, -30) + 0.1, -30);
+}
+#test "e2 archery: an arrow loosed from the Archery Range's line at a face sticks in it and scores, before the butt behind it" {
+  a: [1] arch.Archer; e2ar_range_targets(a[..]); #assert a[0].targets[0].n == RG_TARGETS;
+  at := rg_arrive(); x := at[0]; z := at[1];
+  f0 := a[0].targets[0].face[0];
+  from := eg_bow_hand(x, e2_height(x, z), z, 3.14159265);
+  to := [3] f32.[f0.x, f0.y + 0.15, f0.z];
+  _ := arch.archer_loose(a[..], 0, from, to, 1, -1, 0);
+  f: [1] arch.ArrowFlight; t := 0.0f32; got := arch.ArcheryLanding.{}; near: [1] E2ArNear;
+  while t < 3 && got.kind == arch.LAND_NONE {
+    t += 1.0 / 30; f[0] = arch.ArrowFlight.{};
+    while e2ar_fly(a[0].arrows[..], f[..], t, e2ar_test_land(), near[..]) {
+      none: [1] arch.ArcheryBody;
+      l := arch.archery_land(a[..], f[0], none[0..<0], 0);
+      if l.kind != arch.LAND_NONE && got.kind == arch.LAND_NONE { got = l; }
+    }
+  }
+  #assert got.kind == arch.LAND_MARK && got.mark == 0 && rg_points(got.off, f0.radius) > 0 && abs(got.at[2] - f0.z) < 0.3;
 }

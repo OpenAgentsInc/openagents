@@ -54,6 +54,7 @@
 #load "../../../metaverse-engine/net/projectile.coax";   // projectiles over a room: the launch, the flight, the end, the bodies' past
 #load "../../../everglade/server/riding.coax";   // riding: the zone's mounts, their step, asks and rows (#13268)
 #load "../../../everglade/server/arrows.coax";   // Everglade II's arrows: the room flies each one
+#load "../../../everglade/server/range-wire.coax";   // the Archery Range's tally: what each arrow on it scored, told to its archer (#13507)
 
 #load "../../../everglade/server/rest.coax";   // Everglade II rests, room-authoritative on the shared rules (#13046)
 #load "room-control.coax";

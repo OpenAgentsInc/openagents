@@ -148,6 +148,7 @@ EgSeat :: struct {
   aid: E2Aid;
   familiar:E2Familiar;
   ride_last: int;   // the newest riding ask heard (everglade/server/riding.coax)
+  range: [1] RgScore; range_last: int;   // its Archery Range tally and the newest ask to clear it (everglade/server/arrows.coax, #13507)
   stock: [RS_MATERIAL_STOCK] RsMaterialStock;   // the reagents its casts left (everglade/shared/reagent-stock.coax)
   // Everglade II rest (everglade/server/rest.coax): the inputs the room last stepped, what that step showed of
   // the body (seen: an actual step since it was placed; settled: grounded, still, keys released) and

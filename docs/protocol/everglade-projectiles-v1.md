@@ -11,7 +11,7 @@ velocities in mm/s, strength in thousandths.
 | --- | --- |
 | `F` | `SEQ FX FY FZ TX TY TZ ST VIEW`, page to room: where it left, where it was aimed, how strongly it was drawn, and the room moment the page drew the others at (ms of the room's ticks, its low nine digits) |
 | `a` | `TICK ID SEAT SEQ FX FY FZ VX VY VZ ST AGE`, room to pages: projectile ID left SEAT's hand AGE ms before TICK at this velocity. SEQ is that seat's request, so its page matches its own guess |
-| `d` | `TICK ID KIND X Y Z DX DY DZ BODY`, room to pages: it ended. KIND 1 stuck at (X, Y, Z) pointing (DX, DY, DZ) in thousandths, 2 in body BODY, 3 gone. BODY is -1 when none |
+| `d` | `TICK ID KIND X Y Z DX DY DZ BODY`, room to pages: it ended. KIND 1 stuck at (X, Y, Z) pointing (DX, DY, DZ) in thousandths, 2 in body BODY, 3 gone. BODY is -1 when none. A KIND 1 arrow stuck in one of a realm's standing targets names it in BODY (Everglade's Archery Range: its face, 0 to 6, [`everglade-range-v1.md`](everglade-range-v1.md)); a page that does not use it draws the arrow stuck where it is |
 
 The room flies a launch from VIEW against the bodies as they stood then,
 within the past it keeps (`metaverse-engine/net/rewind.coax`: 24 ticks), so what the
