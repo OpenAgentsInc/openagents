@@ -1,0 +1,466 @@
+// /worlds, drawn by the browser beside the site's side (docs/app-shell.md): every world you can play,
+// as a list of the kit's entries on the mono skin, the place Worlds lit in the side. The page before
+// this one drew a grid of towers on the GPU (realmlist.coax, removed).
+//
+// What it shows:
+// - Worlds you may edit (GET /api/worlds: a site admin, or a realm's owner and admins; nobody logged
+//   out), each with Play and Edit (its editor, /worlds/ID?edit). The answer holds 24 at most; when
+//   it is full the page says so.
+// - Every listed world: the built-in ones (REALMS_ROWS, realms/list.coax, written by
+//   coax/web/realms.ts from realms.json), then the public ones people made (GET
+//   /api/playtest/realms/listed, read by metaverse-engine/editor/listed.coax), as many as fit in
+//   WW_ROWS; the page says how many more there are. Each has its picture when the site has one,
+//   its line, when it opened and its numbers, Play, and Edit for someone who may edit it.
+// - The sort: Popular (its visitors), Recent (when it opened), Played (minutes in it) or A to Z.
+//   The numbers come from GET /api/analytics/realms ("slug|visitors|visits|minutes" a line,
+//   counted without our team or automation); until they come they show as "-".
+// - Make a world (/worlds/new), hidden only when realm making is invite only and this visitor
+//   isn't an approved creator (GET /api/playtest/access, access.coax).
+// A world itself (/worlds/NAME) stays a page the GPU draws, outside the shell.
+//
+// Requests go one at a time through the host's dom_stream (coax/web/dom-host.js); any failure
+// leaves that part as it was (no worlds to edit, the built-in list, no numbers, Make shown).
+//   coax/bin/coax test apps/openagents-web/worlds-web.coax
+
+#load "../../components/kit/listing.coax";
+#load "../../components/backend/dom.coax";
+#load "site-side.coax";                              // ss_worlds_read: the worlds someone may edit
+#load "realms/list.coax";                            // REALMS_ROWS and REALMS_UNLISTED
+#load "access.coax";                                 // who may make a world
+#load "../../metaverse-engine/editor/listed.coax";   // the public made worlds' answer: one reader
+
+WW_INBOX :: 16384;
+WW_RESP :: 32768;      // an answer's most: past it the rest is not read
+WW_CSS :: 40960;
+WW_TABLE :: 16384;     // the listed worlds' rows
+WW_ROWS :: 96;         // the most worlds on the page (built-in and made)
+WW_MINE :: 24;         // GET /api/worlds lists 24 at most (coax/web/api/worlds.c)
+WW_COLS :: 6;          // slug | title | line | opened | style | picture
+WC_SLUG :: 0; WC_TITLE :: 1; WC_LINE :: 2; WC_ADDED :: 3; WC_STYLE :: 4; WC_PICTURE :: 5;
+WW_CLICK :: 1; WW_PIECE :: 4; WW_END :: 5;
+WS_POPULAR :: 0; WS_RECENT :: 1; WS_PLAYED :: 2; WS_AZ :: 3; WW_SORTS :: 4;
+WW_SORT_NAMES :: [4] string.["Popular", "Recent", "Played", "A to Z"];
+// the asks, in the order they go
+WF_NONE :: 0; WF_MINE :: 1; WF_LISTED :: 2; WF_ACCESS :: 3; WF_STATS :: 4; WF_DONE :: 5;
+WW_DOORS :: [5] string.["", "/api/worlds", "/api/playtest/realms/listed", "/api/playtest/access", "/api/analytics/realms"];
+
+WorldsWeb :: struct {
+  ready: bool; dirty: bool; animating: bool; time: f32;
+  sort: int;
+  table: [WW_TABLE] u8; table_n: int;             // the built-in rows, then the made ones that fit
+  cells: [WW_ROWS * WW_COLS * 2] int; count: int; built: int;   // each row's fields; how many are built in
+  more: int;                                      // public made worlds left out
+  stats: [WW_ROWS * 3] int; counted: bool;        // visitors, visits, minutes per row, once the numbers came
+  mine: [WW_MINE] SsWorld; mine_n: int;           // the worlds this visitor may edit
+  access: [1] Access;
+  flight: int; ask: bool; status: int;            // the ask out now, and that the face is to send it
+  door: [96] u8; door_n: int;
+  resp: [WW_RESP] u8; resp_n: int;
+  inbox: [WW_INBOX] u8;
+  sets: [MF_COUNT] AfSettings;
+  css: [WW_CSS] u8;
+  ui: [1] Ui;
+  tree: [1] Tree;
+  dom: [1] Dom;
+}
+
+ww_put :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for c: text { if n < out.count { out[n] = c; n += 1; } }
+  return n;
+}
+ww_same :: (a: string, b: string) -> bool { return a.count == b.count && a == b; }
+ww_number :: (text: string) -> int {
+  n := 0;
+  for c: text { if c >= '0' && c <= '9' && n < 100000000 { n = n * 10 + cast(int) (c - '0'); } }
+  return n;
+}
+
+// ---------------------------------------------------------------- the rows
+
+// The rows' fields, indexed once so a build reads them without scanning the text.
+ww_index :: (s: [] WorldsWeb) {
+  r := 0; col := 0; at := 0;
+  for i: 0..<s[0].table_n {
+    if r >= WW_ROWS { break; }
+    c := s[0].table[i];
+    if c != '|' && c != '\n' { continue; }
+    if col < WW_COLS { s[0].cells[(r * WW_COLS + col) * 2] = at; s[0].cells[(r * WW_COLS + col) * 2 + 1] = i; }
+    col += 1; at = i + 1;
+    if c == '\n' {
+      for k: col..<WW_COLS { s[0].cells[(r * WW_COLS + k) * 2] = i; s[0].cells[(r * WW_COLS + k) * 2 + 1] = i; }
+      r += 1; col = 0;
+    }
+  }
+  s[0].count = r;
+}
+// The built-in rows alone.
+ww_table :: (s: [] WorldsWeb) {
+  n := ww_put(s[0].table[..], 0, REALMS_ROWS);
+  if n > 0 && s[0].table[n - 1] != '\n' { s[0].table[n] = '\n'; n += 1; }
+  s[0].table_n = n;
+  ww_index(s);
+  s[0].built = s[0].count;
+}
+ww_cell :: (s: [] WorldsWeb, r: int, col: int) -> string {
+  if r < 0 || r >= s[0].count || col < 0 || col >= WW_COLS { return ""; }
+  return cast(string) s[0].table[s[0].cells[(r * WW_COLS + col) * 2]..<s[0].cells[(r * WW_COLS + col) * 2 + 1]];
+}
+// The listed answer ("200\n" and its body): the built-in rows, then the made ones that fit after them.
+ww_take_listed :: (s: [] WorldsWeb, answer: string) {
+  ww_table(s);
+  got := listed_read(answer, s[0].table[s[0].table_n..<WW_TABLE], WW_ROWS - s[0].built);
+  s[0].table_n += got.n;
+  s[0].more = ifx got.more > 0 then got.more else 0;
+  ww_index(s);
+}
+// The numbers ("slug|visitors|visits|minutes" a line), each to its row.
+ww_take_stats :: (s: [] WorldsWeb, body: string) {
+  for k: 0..<WW_ROWS * 3 { s[0].stats[k] = 0; }
+  at := 0;
+  while at < body.count {
+    e := at;
+    while e < body.count && body[e] != '\n' { e += 1; }
+    line := cast(string) body[at..<e];
+    at = e + 1;
+    f: [4] string; nf := 0; from := 0;
+    for i: 0..<line.count + 1 {
+      if i == line.count || line[i] == '|' { if nf < 4 { f[nf] = cast(string) line[from..<i]; nf += 1; } from = i + 1; }
+    }
+    if nf != 4 { continue; }
+    for r: 0..<s[0].count {
+      if ww_same(ww_cell(s, r, WC_SLUG), f[0]) { s[0].stats[r * 3] = ww_number(f[1]); s[0].stats[r * 3 + 1] = ww_number(f[2]); s[0].stats[r * 3 + 2] = ww_number(f[3]); }
+    }
+  }
+  s[0].counted = true;
+}
+
+ww_fold :: (c: u8) -> int { if c >= 'a' && c <= 'z' { return cast(int) c - 32; } return cast(int) c; }
+// a before b: -1, the same 0, after 1 (bytes, letters folded to capitals)
+ww_compare :: (a: string, b: string) -> int {
+  i := 0;
+  while i < a.count && i < b.count {
+    x := ww_fold(a[i]); y := ww_fold(b[i]);
+    if x != y { return ifx x < y then -1 else 1; }
+    i += 1;
+  }
+  if a.count == b.count { return 0; }
+  return ifx a.count < b.count then -1 else 1;
+}
+ww_stat :: (s: [] WorldsWeb, r: int, k: int) -> int { return s[0].stats[r * 3 + k]; }
+// Whether row a goes before row b in this sort; a tie keeps the table's order.
+ww_before :: (s: [] WorldsWeb, sort: int, a: int, b: int) -> bool {
+  c := 0;
+  if sort == WS_POPULAR {
+    c = ww_stat(s, b, 0) - ww_stat(s, a, 0);
+    if c == 0 { c = ww_stat(s, b, 1) - ww_stat(s, a, 1); }
+  } else if sort == WS_PLAYED { c = ww_stat(s, b, 2) - ww_stat(s, a, 2); }
+  else if sort == WS_RECENT { c = ww_compare(ww_cell(s, b, WC_ADDED), ww_cell(s, a, WC_ADDED)); }
+  else { c = ww_compare(ww_cell(s, a, WC_TITLE), ww_cell(s, b, WC_TITLE)); }
+  if c != 0 { return c < 0; }
+  return a < b;
+}
+// The rows in the sort's order; how many.
+ww_sorted :: (s: [] WorldsWeb, sort: int, out: [] int) -> int {
+  n := ifx s[0].count < out.count then s[0].count else out.count;
+  for i: 0..<n {
+    j := i;
+    while j > 0 && ww_before(s, sort, i, out[j - 1]) { out[j] = out[j - 1]; j -= 1; }
+    out[j] = i;
+  }
+  return n;
+}
+// Whether this visitor may edit the world with this slug.
+ww_may_edit :: (s: [] WorldsWeb, slug: string) -> bool {
+  for k: 0..<s[0].mine_n { if ww_same(cast(string) s[0].mine[k].id[0..<s[0].mine[k].id_n], slug) { return true; } }
+  return false;
+}
+// A world's row among these rows (unlisted ones too): its picture and its line, for one you may edit. -1: none.
+WwFound :: struct { title: string; line: string; picture: string; }
+ww_find :: (s: [] WorldsWeb, slug: string) -> WwFound {
+  for r: 0..<s[0].count { if ww_same(ww_cell(s, r, WC_SLUG), slug) { return WwFound.{title = ww_cell(s, r, WC_TITLE), line = ww_cell(s, r, WC_LINE), picture = ww_cell(s, r, WC_PICTURE)}; } }
+  return ww_find_in(REALMS_UNLISTED, slug);
+}
+ww_find_in :: (rows: string, slug: string) -> WwFound {
+  at := 0;
+  while at < rows.count {
+    e := at;
+    while e < rows.count && rows[e] != '\n' { e += 1; }
+    line := cast(string) rows[at..<e];
+    at = e + 1;
+    f: [WW_COLS] string; nf := 0; from := 0;
+    for i: 0..<line.count + 1 {
+      if i == line.count || line[i] == '|' { if nf < WW_COLS { f[nf] = cast(string) line[from..<i]; nf += 1; } from = i + 1; }
+    }
+    if nf == WW_COLS && ww_same(f[WC_SLUG], slug) { return WwFound.{title = f[WC_TITLE], line = f[WC_LINE], picture = f[WC_PICTURE]}; }
+  }
+  return WwFound.{title = "", line = "", picture = ""};
+}
+
+// ---------------------------------------------------------------- what the numbers say
+
+WW_MONTHS :: [12] string.["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+ww_int :: (out: [] u8, at: int, v: int) -> int {
+  if v < 0 { return ww_put(out, at, "0"); }
+  digits: [20] u8; k := 0; x := v;
+  while true { digits[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  n := at;
+  for i: 0..<k {
+    if i > 0 && (k - i) % 3 == 0 { n = ww_put(out, n, ","); }
+    if n < out.count { out[n] = digits[k - 1 - i]; n += 1; }
+  }
+  return n;
+}
+// A row's facts: when it opened, then (once they came) its visitors and the time played.
+ww_facts :: (s: [] WorldsWeb, r: int, out: [] u8) -> int {
+  n := 0;
+  added := ww_cell(s, r, WC_ADDED);
+  months := WW_MONTHS;
+  if added.count >= 10 {
+    m := ww_number(cast(string) added[5..<7]);
+    if m >= 1 && m <= 12 {
+      n = ww_put(out, n, "Opened "); n = ww_put(out, n, months[m - 1]); n = ww_put(out, n, " ");
+      n = ww_int(out, n, ww_number(cast(string) added[8..<10])); n = ww_put(out, n, ", "); n = ww_put(out, n, cast(string) added[0..<4]);
+    }
+  }
+  if !s[0].counted { return n; }
+  if n > 0 { n = ww_put(out, n, " · "); }
+  v := ww_stat(s, r, 0);
+  n = ww_int(out, n, v); n = ww_put(out, n, ifx v == 1 then " visitor · " else " visitors · ");
+  mins := ww_stat(s, r, 2);
+  if mins < 60 { n = ww_int(out, n, mins); n = ww_put(out, n, " min played"); }
+  else { n = ww_int(out, n, (mins + 30) / 60); n = ww_put(out, n, " h played"); }
+  return n;
+}
+
+// ---------------------------------------------------------------- the page
+
+// One world: its picture, its name opening it, its line and facts, then Play and (for someone who may) Edit.
+ww_entry :: (s: [] WorldsWeb, id: string, slug: string, title: string, line: string, facts: string, picture: string) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  play: [96] u8; pn := ww_put(play[..], 0, "/worlds/"); pn = ww_put(play[..], pn, slug);
+  idb: [UI_ID] u8; idc: [UI_ID] u8;
+  e := k_entry(t, u, id, title, cast(string) play[0..<pn], line, facts, picture, title);
+  p := k_go_button(t, u, tr_cat(idb[..], id, ".play"), "Play", cast(string) play[0..<pn], true);
+  if ww_may_edit(s, slug) {
+    edit: [96] u8; en := ss_world_href(slug, edit[..]);
+    q := k_go_button(t, u, tr_cat(idc[..], id, ".edit"), "Edit", cast(string) edit[0..<en], false);
+  }
+  k_entry_end(t);
+}
+
+ww_build :: (s: [] WorldsWeb) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  buf: [UI_ID] u8; facts: [160] u8;
+  tr_begin(t);
+  pg := k_page(t, "pg", "Worlds");
+  head := tr_open(t, "head", TG_DIV, "pg-h");
+  col := tr_open(t, "head.c", TG_DIV, "col");
+  hd := k_header(t, u, "title", "Worlds");
+  tr_close(t);
+  lede := tr_leaf(t, "lede", TG_P, "lede", "Worlds on the OpenAgents Metaverse you play in the browser.");
+  tr_close(t);
+  acts := tr_open(t, "head.a", TG_DIV, "rowf");
+  if !access_hides_make(s[0].access[..]) { mk := k_go_button(t, u, "make", "Make a world", "/worlds/new", false); }
+  tr_close(t);
+  tr_close(t);
+
+  if s[0].mine_n > 0 {
+    em := k_entries(t, "mine", "Worlds you may edit", s[0].mine_n);
+    for k: 0..<s[0].mine_n {
+      slug := cast(string) s[0].mine[k].id[0..<s[0].mine[k].id_n];
+      f := ww_find(s, slug);
+      ww_entry(s, tr_join(buf[..], "mine.", k), slug, cast(string) s[0].mine[k].name[0..<s[0].mine[k].name_n], f.line, "", f.picture);
+    }
+    k_entries_end(t);
+    if s[0].mine_n >= WW_MINE { m := k_meta(t, "mine.cap", "The first 24 worlds you may edit are shown."); }
+  }
+
+  order: [WW_ROWS] int;
+  n := ww_sorted(s, s[0].sort, order[..]);
+  sorts := k_choices(t, "sort", "Sort the worlds by");
+  names := WW_SORT_NAMES;
+  for k: 0..<WW_SORTS { c := k_choice(t, tr_join(buf[..], "sort.", k), names[k], k == s[0].sort); }
+  tr_close(t);
+  es := k_entries(t, "all", "All worlds", n);
+  for k: 0..<n {
+    r := order[k];
+    fn := ww_facts(s, r, facts[..]);
+    ww_entry(s, tr_join(buf[..], "w.", r), ww_cell(s, r, WC_SLUG), ww_cell(s, r, WC_TITLE), ww_cell(s, r, WC_LINE), cast(string) facts[0..<fn], ww_cell(s, r, WC_PICTURE));
+  }
+  k_entries_end(t);
+  if s[0].more > 0 {
+    more: [96] u8; mn := ww_int(more[..], 0, s[0].more);
+    mn = ww_put(more[..], mn, ifx s[0].more == 1 then " more world people made is not shown." else " more worlds people made are not shown.");
+    m := k_meta(t, "all.more", cast(string) more[0..<mn]);
+  }
+  tr_close(t);
+}
+
+// The next ask, after the last one's answer.
+ww_next :: (s: [] WorldsWeb) {
+  s[0].flight += 1;
+  if s[0].flight >= WF_DONE { s[0].flight = WF_DONE; return; }
+  doors := WW_DOORS;
+  s[0].door_n = ww_put(s[0].door[..], 0, doors[s[0].flight]);
+  s[0].ask = true; s[0].resp_n = 0; s[0].status = 0;
+}
+// An answer, whole: what it was for takes it, and the next ask goes.
+ww_end :: (s: [] WorldsWeb, status: int) {
+  body := cast(string) s[0].resp[0..<s[0].resp_n];
+  f := s[0].flight;
+  if status == 200 {
+    if f == WF_MINE { s[0].mine_n = ss_worlds_read(body, s[0].mine[..]); }
+    else if f == WF_LISTED {
+      answer: [WW_RESP + 4] u8; an := ww_put(answer[..], 0, "200\n"); an = ww_put(answer[..], an, body);
+      ww_take_listed(s, cast(string) answer[0..<an]);
+    }
+    else if f == WF_ACCESS { access_read(s[0].access[..], body); }
+    else if f == WF_STATS { ww_take_stats(s, body); }
+  }
+  s[0].dirty = true;
+  ww_next(s);
+}
+
+// ---------------------------------------------------------------- the face's calls
+
+coaxial_worldsweb_frame :: (s: [] WorldsWeb, dt: f32, reduced: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  if !s[0].ready {
+    n := mono_frames(s[0].sets[..]);
+    ww_table(s);
+    s[0].ready = true; s[0].dirty = true;
+    ww_next(s);
+  }
+  step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].time += step;
+  if !s[0].dirty && !s[0].animating { return 0; }
+  d := s[0].dom[..];
+  if !d[0].styled {
+    n := mono_css(s[0].css[..]); n = mono_dock_css(s[0].css[..], n); n = mono_page_css(s[0].css[..], n);
+    dm_style(d, cast(string) s[0].css[0..<n]);
+  }
+  ui_begin(s[0].ui[..], s[0].time, reduced);
+  ww_build(s);
+  ui_end(s[0].ui[..]);
+  s[0].animating = s[0].ui[0].busy;
+  s[0].dirty = false;
+  bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
+  if d[0].overflow { dm_reset(d); s[0].dirty = true; return -1; }
+  return bytes;
+}
+coaxial_worldsweb_busy :: (s: [] WorldsWeb) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating); }
+coaxial_worldsweb_event :: (s: [] WorldsWeb, kind: int, slot: int, length: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  n := ifx length < 0 then 0 else ifx length > WW_INBOX then WW_INBOX else length;
+  if kind == WW_PIECE {
+    s[0].status = slot;
+    for i: 0..<n { if s[0].resp_n < WW_RESP { s[0].resp[s[0].resp_n] = s[0].inbox[i]; s[0].resp_n += 1; } }
+    return;
+  }
+  if kind == WW_END { ww_end(s, slot); return; }
+  if kind != WW_CLICK { return; }
+  id := dm_slot_id(s[0].dom[..], slot);
+  if id.count == 6 && cast(string) id[0..<5] == "sort." && id[5] >= '0' && cast(int) (id[5] - '0') < WW_SORTS { s[0].sort = cast(int) (id[5] - '0'); s[0].dirty = true; }
+}
+coaxial_worldsweb_size :: (s: [] WorldsWeb, slot: int, w: f32, h: f32) #export_c #effects(all) {
+  if s.count > 0 && dm_size(s[0].dom[..], slot, w, h) { s[0].dirty = true; }
+}
+coaxial_worldsweb_inbox_cap :: () -> int #export_c #effects(all) { return WW_INBOX; }
+// The ask for the host: a GET of door (the face sends it), then that it went.
+coaxial_worldsweb_asking :: (s: [] WorldsWeb) -> bool #export_c #effects(all) { return s.count > 0 && s[0].ask; }
+coaxial_worldsweb_asked :: (s: [] WorldsWeb) #export_c #effects(all) { if s.count > 0 { s[0].ask = false; } }
+
+// ---------------------------------------------------------------- checks
+
+WwTest :: struct { s: [1] WorldsWeb; }
+ww_test_answer :: (s: [] WorldsWeb, status: int, body: string) {
+  #assert s[0].ask;
+  coaxial_worldsweb_asked(s);
+  for i: 0..<body.count { s[0].inbox[i] = body[i]; }
+  if body.count > 0 { coaxial_worldsweb_event(s, WW_PIECE, status, body.count); }
+  coaxial_worldsweb_event(s, WW_END, status, 0);
+  n := coaxial_worldsweb_frame(s, 0.016, true);
+}
+ww_test_door :: (s: [] WorldsWeb) -> string { return cast(string) s[0].door[0..<s[0].door_n]; }
+ww_test_press :: (s: [] WorldsWeb, id: string) { coaxial_worldsweb_event(s, WW_CLICK, dm_find(s[0].dom[..], id), 0); n := coaxial_worldsweb_frame(s, 0.016, true); }
+ww_test_names :: (s: [] WorldsWeb, out: [] u8) -> string {
+  t := s[0].tree[..]; n := 0;
+  for k: 0..<t[0].n {
+    id := tr_id(t, k);
+    if id.count > 4 && cast(string) id[0..<2] == "w." && cast(string) id[id.count - 2..<id.count] == ".t" { n = ww_put(out, n, tr_text_of(t, k)); n = ww_put(out, n, ";"); }
+  }
+  return cast(string) out[0..<n];
+}
+
+#test "logged out: every listed world with its picture, line and Play, no Edit, and Make a world; the asks go one at a time" {
+  ts: [1] WwTest; s := ts[0].s[..];
+  n := coaxial_worldsweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert n > 0 && coaxial_worldsweb_asking(s) && ww_test_door(s) == "/api/worlds";
+  #assert tr_find(t, "pg") >= 0 && tr_text_of(t, tr_find(t, "title.t")) == "Worlds" && tr_attr_of(t, tr_find(t, "make"), AT_HREF) == "/worlds/new";
+  ww_test_answer(s, 200, "");   // nobody logged in: none to edit
+  #assert tr_find(t, "mine") < 0 && ww_test_door(s) == "/api/playtest/realms/listed";
+  #assert s[0].built > 3 && s[0].count == s[0].built && ww_cell(s, 0, WC_SLUG) == "haunted-house";
+  hh := tr_find(t, "w.0.t");
+  #assert tr_text_of(t, hh) == "Haunted House" && tr_attr_of(t, hh, AT_HREF) == "/worlds/haunted-house" && tr_text_of(t, tr_find(t, "w.0.l")) == "Nine haunts to find and doors to open";
+  #assert tr_attr_of(t, tr_find(t, "w.0.pic"), AT_SRC) == "/metaverse/og-verse.jpg" && tr_attr_of(t, tr_find(t, "w.0.play"), AT_HREF) == "/worlds/haunted-house" && tr_find(t, "w.0.edit") < 0;
+  #assert tr_text_of(t, tr_find(t, "w.0.f")) == "Opened Oct 28, 2026";
+  ww_test_answer(s, 404, "");   // an older API: the built-in list alone
+  #assert s[0].count == s[0].built && ww_test_door(s) == "/api/playtest/access";
+  ww_test_answer(s, 503, "");
+  #assert tr_find(t, "make") >= 0 && ww_test_door(s) == "/api/analytics/realms";
+  ww_test_answer(s, 0, "");
+  #assert !coaxial_worldsweb_asking(s) && s[0].flight == WF_DONE && !s[0].counted && tr_text_of(t, tr_find(t, "w.0.f")) == "Opened Oct 28, 2026";
+}
+#test "someone who may edit sees their worlds first with Play and Edit, and Edit on those among all worlds" {
+  ts: [1] WwTest; s := ts[0].s[..];
+  n := coaxial_worldsweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  ww_test_answer(s, 200, "world splice Splice\nworld everglade Everglade\nworld my-harbour The Harbour\n");
+  #assert s[0].mine_n == 3 && tr_text_of(t, tr_find(t, "mine.h.n")) == "3";
+  #assert tr_text_of(t, tr_find(t, "mine.0.t")) == "Splice" && tr_attr_of(t, tr_find(t, "mine.0.play"), AT_HREF) == "/worlds/splice" && tr_attr_of(t, tr_find(t, "mine.0.edit"), AT_HREF) == "/worlds/splice?edit";
+  #assert tr_attr_of(t, tr_find(t, "mine.1.pic"), AT_SRC) == "/worlds/everglade/og.jpg" && tr_text_of(t, tr_find(t, "mine.1.l")) == "A forest city with quests out to the deep wood";
+  #assert tr_find(t, "mine.2.pic") < 0 && tr_find(t, "mine.2.l") < 0 && tr_attr_of(t, tr_find(t, "mine.2.edit"), AT_HREF) == "/worlds/my-harbour?edit";
+  // among all worlds: Edit only on the one they may edit
+  #assert tr_find(t, "w.2.edit") >= 0 && tr_find(t, "w.0.edit") < 0 && tr_find(t, "mine.cap") < 0;
+  // the public made ones join after the built-in ones; one that doesn't read is left out
+  ww_test_answer(s, 200, "total 3\nmy-harbour|The Harbour|A quiet port|2026-11-12T09:00|lowpoly\nbad row\nfarm|Farm|A meadow|2026-11-01T10:00|flat\n");
+  #assert s[0].count == s[0].built + 2 && s[0].more == 1 && tr_text_of(t, tr_find(t, "all.more")) == "1 more world people made is not shown.";
+  h := s[0].built;
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8;
+  mine := tr_cat(idb[..], tr_join(ida[..], "w.", h), ".edit");
+  #assert ww_cell(s, h, WC_SLUG) == "my-harbour" && tr_attr_of(t, tr_find(t, mine), AT_HREF) == "/worlds/my-harbour?edit";
+  #assert tr_find(t, tr_cat(idb[..], tr_join(idc[..], "w.", h + 1), ".edit")) < 0 && tr_find(t, tr_cat(idb[..], tr_join(idc[..], "w.", h), ".pic")) < 0;
+  ww_test_answer(s, 200, "make 0\ninvites 1\n");
+  #assert tr_find(t, "make") < 0;
+}
+#test "the sorts: popular by visitors, played by minutes, recent by when it opened, A to Z by name; the numbers show once they come" {
+  ts: [1] WwTest; s := ts[0].s[..];
+  n := coaxial_worldsweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  ww_test_answer(s, 200, ""); ww_test_answer(s, 200, "total 0\n"); ww_test_answer(s, 200, "make 1\n");
+  ww_test_answer(s, 200, "dead-gears|40|90|30\nthe-grid|70|80|5\neverglade|10|20|600\nnot-a-world|99|99|99\nbroken\n");
+  #assert s[0].counted && tr_text_of(t, tr_find(t, "w.1.f")) == "Opened Oct 29, 2026 · 70 visitors · 5 min played";
+  #assert tr_text_of(t, tr_find(t, "w.2.f")) == "Opened Oct 28, 2026 · 10 visitors · 10 h played";
+  out: [2048] u8;
+  #assert cast(string) ww_test_names(s, out[..])[0..<26] == "The Grid;Dead Gears;Evergl";   // Popular
+  #assert tr_attr_of(t, tr_find(t, "sort.0"), AT_PRESSED) == "true";
+  ww_test_press(s, "sort.2");
+  #assert s[0].sort == WS_PLAYED && cast(string) ww_test_names(s, out[..])[0..<20] == "Everglade;Dead Gears" && tr_attr_of(t, tr_find(t, "sort.2"), AT_PRESSED) == "true";
+  ww_test_press(s, "sort.3");
+  names := ww_test_names(s, out[..]);
+  #assert cast(string) names[0..<10] == "Belt 2200;";
+  ww_test_press(s, "sort.1");
+  #assert ww_cell(s, 0, WC_ADDED) == "2026-10-28T15:00" && cast(string) ww_test_names(s, out[..])[0..<18] == "Hecate's Cemetery;";
+}
+#test "a full answer of worlds to edit says only the first are shown; the unlisted ones carry their pictures" {
+  ts: [1] WwTest; s := ts[0].s[..];
+  n := coaxial_worldsweb_frame(s, 0.016, true);
+  body: [4096] u8; bn := 0;
+  for k: 0..<30 { bn = ww_put(body[..], bn, "world w"); bn = ww_int(body[..], bn, k); bn = ww_put(body[..], bn, " W\n"); }
+  ww_test_answer(s, 200, cast(string) body[0..<bn]);
+  #assert s[0].mine_n == WW_MINE && tr_text_of(s[0].tree[..], tr_find(s[0].tree[..], "mine.cap")) == "The first 24 worlds you may edit are shown.";
+  f := ww_find(s, "fairy-forest");
+  #assert f.picture == "/worlds/fairy-forest/card.jpg" && ww_find(s, "nowhere").picture.count == 0;
+}

@@ -1,6 +1,6 @@
 // /worlds' public made realms on the wire (compliance plan step E11, GitHub #13250):
 // GET /api/playtest/realms/listed (coax/web/api/migrations/0101_realm_list.sql), asked once by the
-// list page's face (apps/openagents-web/realmlist.coax). Its answer comes as "STATUS\n" then the
+// list page (apps/openagents-web/worlds-web.coax). Its answer comes as "STATUS\n" then the
 // body (coax/web/host.js):
 //   total N
 //   SLUG|TITLE|LINE|YYYY-MM-DDTHH:MM|STYLE     one a line, newest first

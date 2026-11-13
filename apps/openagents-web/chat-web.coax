@@ -221,6 +221,7 @@ ChatWeb :: struct {
   copied: int; copied_at: f32;       // the answer last copied (its number + 1, 0 for none) and when
   page: int;                         // what the shell shows beside its side: SS_CHATS (the chat), SS_HOME (nothing) or SW_PAGE (Settings)
   set: [1] SettingsWeb;              // Settings: the section shown, its search, and what it has read
+  here: int;                         // the side alone on a place's page (SS_SIDE): the place it lights (ss_side_place), else -2
   side_closed: bool;                 // the side is put away (kept in this browser)
   me: [SS_WHO] u8; me_n: int; me_asked: bool;   // who is logged in, as the side's foot names them
   worlds: [SS_WORLDS_MAX] SsWorld; worlds_n: int; worlds_asked: bool;   // the worlds they may edit, under Worlds
@@ -346,7 +347,7 @@ cw_side :: (s: [] ChatWeb) {
   pl := k_side_places(t, "side");
   names := SS_NAMES; hrefs := SS_HREFS; icons := [3] int.[IC_CHATS, IC_FOLDER, IC_GLOBE]; ids := [3] string.["place.chats", "place.projects", "place.worlds"];
   for k: 0..<SS_PLACES {
-    p := k_place(t, u, ids[k], icons[k], names[k], hrefs[k], k == SS_CHATS && s[0].page == SS_CHATS);
+    p := k_place(t, u, ids[k], icons[k], names[k], hrefs[k], (k == SS_CHATS && s[0].page == SS_CHATS) || (s[0].page == SS_SIDE && k == s[0].here));
     if k != SS_WORLDS { continue; }
     for w: 0..<s[0].worlds_n {   // each world they may edit, opening its editor
       wid := cast(string) s[0].worlds[w].id[0..<s[0].worlds[w].id_n];
@@ -1350,6 +1351,7 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     sec := sw_section_of(path);
     if sec >= 0 { s[0].page = SW_PAGE; s[0].set[0].section = sec; s[0].set[0].menu = 0; }
     else { s[0].page = ss_page_of(path); }
+    s[0].here = ss_side_place(path);
     s[0].dirty = true; return;
   }
   if kind == CW_WORLD {
@@ -2306,6 +2308,24 @@ cw_test_go :: (s: [] ChatWeb) -> string { return cast(string) s[0].go[0..<s[0].g
   #assert s[0].page == SS_SIDE && tr_class(t, 0) == "home" && tr_find(t, "side") >= 0 && tr_find(t, "composer") < 0;
   cw_test_press(s, "side.new");
   #assert s[0].page == SS_SIDE && cw_test_go(s) == "/chat" && !coaxial_chatweb_go_push(s);
+}
+
+#test "the side alone on a place's own page lights that place; the editor's side lights none" {
+  ts: [1] CwTest; s := ts[0].s[..];
+  cw_test_open(s, "{\"claude\":null}");
+  t := s[0].tree[..];
+  cw_test_path(s, "/side/projects");
+  #assert s[0].page == SS_SIDE && tr_find(t, "side") >= 0 && tr_find(t, "composer") < 0;
+  #assert tr_attr_of(t, tr_find(t, "place.projects"), AT_CURRENT) == "true" && !tr_has(t, tr_find(t, "place.chats"), AT_CURRENT) && !tr_has(t, tr_find(t, "place.worlds"), AT_CURRENT);
+  cw_test_path(s, "/side/worlds");
+  #assert tr_attr_of(t, tr_find(t, "place.worlds"), AT_CURRENT) == "true" && !tr_has(t, tr_find(t, "place.projects"), AT_CURRENT);
+  // its links are pages of their own: Projects is let go, and Chats goes to the chat's page
+  cw_test_press(s, "place.projects");
+  #assert coaxial_chatweb_go_len(s) == 0;
+  cw_test_press(s, "place.chats");
+  #assert cw_test_go(s) == "/chat" && !coaxial_chatweb_go_push(s);
+  cw_test_path(s, "/side");
+  #assert !tr_has(t, tr_find(t, "place.worlds"), AT_CURRENT) && !tr_has(t, tr_find(t, "place.chats"), AT_CURRENT);
 }
 
 #test "the side can be put away and brought back, and this browser keeps that; Log out logs out and goes home" {

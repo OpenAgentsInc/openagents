@@ -2,10 +2,10 @@
 // clock refusal (docs/metaverse/art-styles.md, The style field) is a refusal.
 //   bun test coax/web/realms.test.ts
 import { expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { domainPages, hasMaker, listCoax, listMarkdown, listPage, listed, page, renderProfile, renderAttributes, worlds, zoneFact, ANIME_VARIANTS, STYLE_BLOCK, STYLE_MODULE, styled } from "./realms"
+import { domainPages, hasMaker, listCoax, listMarkdown, listPage, listed, page, picture, unlisted, renderProfile, renderAttributes, worlds, zoneFact, ANIME_VARIANTS, STYLE_BLOCK, STYLE_MODULE, styled } from "./realms"
 
 const SITE = join(import.meta.dir, "../../apps/openagents-web")
 const table = () => JSON.parse(readFileSync(join(SITE, "realms.json"), "utf8"))
@@ -228,7 +228,7 @@ test("unlisted realms keep direct routes and noindex, outside the public catalog
 })
 test("refuses an unknown ruleset", () => expect(check((r) => (r.ruleset = "pathfinder"))).toThrow(/ruleset is one of/))
 
-// /worlds (realmlist.coax): every listed realm, with when it opened and its one line.
+// /worlds (worlds-web.coax): every listed realm, with when it opened and its one line.
 test("a listed realm needs when it opened and its one line; an unlisted one doesn't", () => {
   expect(check((r) => delete r.added)).toThrow(/needs added/)
   expect(check((r) => (r.added = "Oct 28"))).toThrow(/needs added/)
@@ -248,7 +248,21 @@ test("/worlds lists the listed realms: its rows, its text and its links", () => 
     expect(listMarkdown(list)).toContain(`(https://openagents.com/worlds/${r.slug})`)
     expect(listPage(list)).toContain(`<a href="/worlds/${r.slug}">`)
   }
-  expect(listPage(list)).toContain('data-app="realmlist" data-lines="44:/api/analytics/realms"')
+  // a page of the kit beside the site's side, lit on Worlds (worlds-web.coax, docs/app-shell.md)
+  expect(listPage(list)).toContain('<script type="module" src="/coaxial/dom-host.js" data-app="worlds-web" data-root="page-root"></script>')
+  expect(listPage(list)).toContain('src="/coaxial/dom-host.js?app=chat-web&amp;root=side-root&amp;path=/side/worlds"')
+  expect(listPage(list)).not.toContain("/coaxial/host.js")
+  // each row's picture is its card when the site has the file, and never the default card
+  for (const r of shown) {
+    const pic = picture(r)
+    expect(pic === "" || existsSync(join(SITE, pic.replace(/^\/worlds(?=\/)/, "/realms")))).toBe(true)
+    expect(pic).not.toBe("/og/default.jpg")
+  }
+  expect(shown.some((r) => picture(r) !== "")).toBe(true)
+  // the realms it doesn't list come after, the same columns, so someone who may edit one finds it
+  const hidden = JSON.parse(listCoax(list).match(/REALMS_UNLISTED :: (".*");/)![1]).trim().split("\n")
+  expect(hidden.map((l: string) => l.split("|")[0])).toEqual(unlisted(list).map((r) => r.slug))
+  expect(hidden.every((l: string) => l.split("|").length === 6) && rows.every((l: string) => l.split("|").length === 6)).toBe(true)
 })
 test("only a realm with a tip page asks who made it (data-maker): the rest log no 404", () => {
   const by = Object.fromEntries(worlds().filter((w) => w.realm).map((w) => [w.realm!.slug, w.realm!]))

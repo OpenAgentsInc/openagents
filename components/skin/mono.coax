@@ -466,6 +466,34 @@ mono_work_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, "@media (pointer:coarse){.wk-h{min-height:44px}}");
   return n;
 }
+// A page of things beside the site's side (components/kit/listing.coax: k_page, k_entries, k_entry, k_go_button,
+// k_choice), after mono_css's and mono_dock_css's from `at`: /projects and /worlds. The page takes the room right of
+// the side (none when the side is put away or the window is narrow) and holds a centred column; the side's own
+// page (the shell's, opened beside it) takes no room in the flow. Bytes written in all.
+mono_page_css :: (out: [] u8, at: int) -> int {
+  n := at;
+  n = mc(out, n, ".pg{min-height:100dvh;padding:28px 32px 96px;display:flex;flex-direction:column;gap:28px}.pg>*{width:100%;max-width:880px;margin-left:auto;margin-right:auto}");
+  n = mc(out, n, "body:has(.side) .pg{margin-left:300px}body:has(.ib[data-state=side]) .pg{padding-top:56px}body:has(.pg) .home{min-height:0}");
+  // the head: the page's name, a line under it, and its actions to the right
+  n = mc(out, n, ".pg-h{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 20px}.pg-h>.col{flex:1;min-width:240px;gap:10px}.pg-h .rowf{gap:8px}");
+  // a list of entries under its heading, a line between each
+  n = mc(out, n, ".ents{display:flex;flex-direction:column;gap:10px}.ents-h{display:flex;gap:10px;align-items:baseline}.ents-n{color:var(--ink-faint);letter-spacing:.08em}");
+  n = mc(out, n, ".ents-l{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border-top:1px solid var(--line-dim)}");
+  n = mc(out, n, ".ent{display:flex;align-items:center;gap:16px;padding:12px 10px;border-bottom:1px solid var(--line-dim);transition:background .15s}.ent:hover{background:var(--surface)}");
+  n = mc(out, n, ".ent>.img{flex:none;width:112px;height:63px;max-height:none;object-fit:cover;border-color:var(--line-dim);background:var(--surface)}");
+  n = mc(out, n, ".ent-b{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}.ent-t{margin:0;color:var(--ink);font:500 15px/1.4 var(--sans);text-decoration:none;overflow-wrap:anywhere}");
+  n = mc(out, n, "a.ent-t:hover,a.ent-t:focus-visible{color:var(--line-bright);outline:none}.ent-l{margin:0;color:var(--ink-muted);font-size:13px;line-height:1.5;overflow-wrap:anywhere}");
+  n = mc(out, n, ".ent-f{text-transform:none;letter-spacing:.02em}.ent-a{flex:none;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end}");
+  // a link that looks like a button
+  n = mc(out, n, "a.btn{text-decoration:none;display:inline-flex;align-items:center}");
+  // a choice of a few: the one in force is bright on the raised surface
+  n = mc(out, n, ".chips{display:flex;flex-wrap:wrap;gap:2px}.chip{appearance:none;border:0;background:none;color:var(--ink-muted);font:500 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;height:28px;padding:0 10px;cursor:pointer;transition:color .15s,background .15s}");
+  n = mc(out, n, ".chip:hover,.chip:focus-visible{color:var(--line-bright);outline:none}.chip[aria-pressed=true]{color:var(--line-bright);background:var(--raised)}");
+  n = mc(out, n, "@media (max-width:760px){body:has(.side) .pg{margin-left:0}.pg{padding:20px 16px 64px}}@media (max-width:600px){.ent{flex-wrap:wrap}.ent-a{width:100%;justify-content:flex-start}}");
+  n = mc(out, n, "@media (pointer:coarse){.chip{height:44px;min-width:44px}a.btn{justify-content:center}}");
+  return n;
+}
+
 #test "the work log's rules follow the page's, fit, and have no hue" {
   css: [32768] u8; n := mono_css(css[..]);
   m := mono_work_css(css[..], n);
@@ -522,4 +550,15 @@ mono_work_css :: (out: [] u8, at: int) -> int {
   found := false;
   for k: 0..<sheet.count - 40 { if cast(string) sheet[k..<k + 40] == ".st-nav .row[aria-current=true]{color:#f" { found = true; } }
   #assert found;
+}
+#test "a page's rules follow the others', fit and have no hue" {
+  css: [49152] u8;
+  n := mono_css(css[..]); n = mono_dock_css(css[..], n);
+  m := mono_page_css(css[..], n);
+  #assert m > n + 1500 && m < n + 4096;
+  for i: n..<m { #assert css[i] != '#'; }   // only the skin's tokens: no colour of its own
+  page := cast(string) css[n..<m];
+  has := false; k := 0;
+  while k + 16 <= page.count { if cast(string) page[k..<k + 16] == "body:has(.side) " { has = true; } k += 1; }
+  #assert has;
 }

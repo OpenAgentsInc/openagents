@@ -204,7 +204,7 @@ static void ingest(const request *q) {
   api_respond(q->fd, 200, "application/json", mark ? TEAM_COOKIE : NULL, out, strlen(out));
 }
 
-// GET /api/analytics/realms: how much each realm is played, for /realms (realmlist.coax), a line a
+// GET /api/analytics/realms: how much each realm is played, for /worlds (worlds-web.coax), a line a
 // realm: "slug|visitors|visits|minutes". A visit is a page-view of /worlds/<slug> (or its old /realms/<slug>,
 // /realm/<slug>); visitors are its distinct devices (pid); minutes run from each visit to the
 // session's next page-view or its last event, at most three hours a visit. The filter is

@@ -12,7 +12,7 @@ realms; add user authentication, probably WorkOS with Nostr.
 Code: `coax/web/api/access.c`, `coax/web/api/migrations/0090_realm_invites.sql` and `0091_access_times.sql`,
 the gate in `realms.c`; checks in `coax/web/api/test_access.py`. Pages:
 `builder.coax` (the invite screen), `private.coax` (`/invite`), the admin
-access view, and the MAKE A REALM links in `realmlist.coax`, `verse.coax`,
+access view, and the make-a-world links in `worlds-web.coax`, `verse.coax`,
 `realm.coax`, `myrealm.coax`.
 
 ## 1. What exists today

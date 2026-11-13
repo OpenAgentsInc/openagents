@@ -1,0 +1,123 @@
+// Listing: the frames set's pieces for a page of things that stands beside the site's side
+// (docs/app-shell.md): the page itself, a list of entries under a heading, an entry (a thing's name
+// as a link, a line about it, facts under it, a small picture when it has one, and its actions), a
+// link that looks like a button, and a choice of a few (a sort, a filter). /projects and /worlds are
+// built from them. Each builds nodes in the tree and nothing else; every look is the skin's
+// (components/skin/mono.coax, mono_page_css).
+//   coax/bin/coax test components/kit/listing.coax
+
+#load "dock.coax";
+
+// Page: the column beside the side, as wide as the room right of it, its content in a centred column.
+// `label` names it for a screen reader. Close it with tr_close.
+k_page :: (t: [] Tree, id: string, label: string) -> int {
+  i := tr_open(t, id, TG_MAIN, "pg");
+  tr_attr(t, i, AT_LABEL, label);
+  return i;
+}
+// Entries: a list of entries under a heading that says how many there are. Close it with k_entries_end.
+k_entries :: (t: [] Tree, id: string, title: string, count: int) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; num: [24] u8;
+  i := tr_open(t, id, TG_SECTION, "ents");
+  tr_attr(t, i, AT_LABEL, title);
+  h := tr_open(t, tr_cat(ida[..], id, ".h"), TG_H2, "sec-h ents-h");
+  a := tr_leaf(t, tr_cat(idb[..], id, ".h.t"), TG_SPAN, "", title);
+  if count >= 0 { b := tr_leaf(t, tr_cat(idc[..], id, ".h.n"), TG_SPAN, "ents-n", tr_join(num[..], "", count)); }
+  tr_close(t);
+  l := tr_open(t, tr_cat(ida[..], id, ".l"), TG_UL, "ents-l");
+  return i;
+}
+k_entries_end :: (t: [] Tree) { tr_close(t); tr_close(t); }
+// Entry: one thing in a list: its picture when it has one (a path on this site, k_image's rule), its
+// name, a link to `href` when it has a page (else plain text), a line about it and a line of facts.
+// Its actions follow (k_go_button, k_button, k_go); close it with k_entry_end.
+k_entry :: (t: [] Tree, u: [] Ui, id: string, title: string, href: string, line: string, facts: string, src: string, alt: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8; ide: [UI_ID] u8;
+  i := tr_open(t, id, TG_LI, "ent");
+  if src.count > 0 { p := k_image(t, tr_cat(ida[..], id, ".pic"), src, alt, false); }
+  b := tr_open(t, tr_cat(idb[..], id, ".b"), TG_DIV, "ent-b");
+  if href.count > 0 { n := tr_leaf(t, tr_cat(idc[..], id, ".t"), TG_A, "ent-t", title); tr_attr(t, n, AT_HREF, href); }
+  else { n := tr_leaf(t, tr_cat(idc[..], id, ".t"), TG_H3, "ent-t", title); }
+  if line.count > 0 { l := tr_leaf(t, tr_cat(idd[..], id, ".l"), TG_P, "ent-l", line); }
+  if facts.count > 0 { f := tr_leaf(t, tr_cat(ide[..], id, ".f"), TG_P, "meta ent-f", facts); }
+  tr_close(t);
+  a := tr_open(t, tr_cat(ida[..], id, ".a"), TG_DIV, "ent-a");
+  return i;
+}
+k_entry_end :: (t: [] Tree) { tr_close(t); tr_close(t); }
+// Go button: a link to another page that looks like a button (PLAY, EDIT, NEW PROJECT). Primary is the inverse.
+k_go_button :: (t: [] Tree, u: [] Ui, id: string, label: string, href: string, primary: bool) -> int {
+  ida: [UI_ID] u8;
+  i := k_frame(t, u, id, TG_A, "btn", MF_BUTTON);
+  tr_attr(t, i, AT_HREF, href);
+  if primary { tr_attr(t, i, AT_STATE, "primary"); }
+  l := tr_leaf(t, tr_cat(ida[..], id, ".l"), TG_SPAN, "btn-l", label);
+  tr_close(t);
+  return i;
+}
+// Choices: a few buttons of which one is in force (a sort, a filter), named by `label`. Close it with tr_close.
+k_choices :: (t: [] Tree, id: string, label: string) -> int {
+  i := tr_open(t, id, TG_DIV, "chips");
+  tr_attr(t, i, AT_ROLE, "group"); tr_attr(t, i, AT_LABEL, label);
+  return i;
+}
+// Choice: one of them; the one in force is pressed.
+k_choice :: (t: [] Tree, id: string, label: string, on: bool) -> int {
+  i := tr_leaf(t, id, TG_BUTTON, "chip", label);
+  tr_attr(t, i, AT_PRESSED, ifx on then "true" else "false");
+  return i;
+}
+
+// ---------------------------------------------------------------- checks
+
+LsTest :: struct { t: [1] Tree; u: [1] Ui; }
+
+#test "a page holds lists of entries; an entry is its picture, its name as a link, its line and facts, then its actions" {
+  h: [1] LsTest; t := h[0].t[..]; u := h[0].u[..];
+  ui_begin(u, 0, true); tr_begin(t);
+  pg := k_page(t, "pg", "Worlds");
+  es := k_entries(t, "mine", "Your worlds", 2);
+  e := k_entry(t, u, "w.0", "Splice", "/worlds/splice", "Mars at dusk", "4 visitors", "/og/realms/splice.jpg", "Splice");
+  p := k_go_button(t, u, "w.0.play", "Play", "/worlds/splice", true);
+  q := k_go_button(t, u, "w.0.edit", "Edit", "/worlds/splice?edit", false);
+  k_entry_end(t);
+  f := k_entry(t, u, "w.1", "Bare", "", "", "", "", "");
+  k_entry_end(t);
+  k_entries_end(t);
+  tr_close(t);
+  ui_end(u);
+  #assert t[0].lost == 0 && t[0].depth == 0;
+  #assert t[0].nodes[pg].tag == TG_MAIN && tr_class(t, pg) == "pg" && tr_attr_of(t, pg, AT_LABEL) == "Worlds";
+  #assert t[0].nodes[es].tag == TG_SECTION && tr_class(t, es) == "ents" && tr_text_of(t, tr_find(t, "mine.h.t")) == "Your worlds" && tr_text_of(t, tr_find(t, "mine.h.n")) == "2";
+  l := tr_find(t, "mine.l");
+  #assert t[0].nodes[l].tag == TG_UL && t[0].nodes[e].parent == l && t[0].nodes[e].tag == TG_LI && tr_class(t, e) == "ent";
+  pic := tr_find(t, "w.0.pic");
+  #assert t[0].nodes[pic].tag == TG_IMG && tr_attr_of(t, pic, AT_SRC) == "/og/realms/splice.jpg" && tr_class(t, pic) == "img" && t[0].nodes[pic].parent == e;
+  name := tr_find(t, "w.0.t");
+  #assert t[0].nodes[name].tag == TG_A && tr_attr_of(t, name, AT_HREF) == "/worlds/splice" && tr_text_of(t, name) == "Splice";
+  #assert tr_text_of(t, tr_find(t, "w.0.l")) == "Mars at dusk" && tr_text_of(t, tr_find(t, "w.0.f")) == "4 visitors";
+  acts := tr_find(t, "w.0.a");
+  #assert t[0].nodes[p].parent == acts && t[0].nodes[q].parent == acts && t[0].nodes[p].tag == TG_A && tr_class(t, p) == "btn" && tr_attr_of(t, p, AT_STATE) == "primary";
+  #assert tr_attr_of(t, q, AT_HREF) == "/worlds/splice?edit" && !tr_has(t, q, AT_STATE) && tr_text_of(t, tr_find(t, "w.0.edit.l")) == "Edit" && t[0].nodes[p].frame == mono_kind(MF_BUTTON) + 1;
+  // with no page, no picture, no line and no facts: the name alone, as text
+  #assert t[0].nodes[tr_find(t, "w.1.t")].tag == TG_H3 && tr_find(t, "w.1.pic") < 0 && tr_find(t, "w.1.l") < 0 && tr_find(t, "w.1.f") < 0 && t[0].nodes[f].parent == l;
+}
+#test "an entry's picture is never from another site; a list may leave out its count" {
+  h: [1] LsTest; t := h[0].t[..]; u := h[0].u[..];
+  ui_begin(u, 0, true); tr_begin(t);
+  es := k_entries(t, "all", "Worlds", -1);
+  e := k_entry(t, u, "w.0", "Far", "/worlds/far", "", "", "https://evil.example/x.jpg", "x");
+  k_entry_end(t);
+  k_entries_end(t);
+  #assert tr_find(t, "w.0.pic") < 0 && tr_find(t, "all.h.n") < 0 && t[0].depth == 0;
+}
+#test "choices: one in force is pressed, the others not" {
+  h: [1] LsTest; t := h[0].t[..];
+  tr_begin(t);
+  g := k_choices(t, "sort", "Sort by");
+  a := k_choice(t, "sort.0", "Popular", true);
+  b := k_choice(t, "sort.1", "A to Z", false);
+  tr_close(t);
+  #assert tr_class(t, g) == "chips" && tr_attr_of(t, g, AT_ROLE) == "group" && tr_attr_of(t, g, AT_LABEL) == "Sort by";
+  #assert t[0].nodes[a].tag == TG_BUTTON && tr_class(t, a) == "chip" && tr_attr_of(t, a, AT_PRESSED) == "true" && tr_attr_of(t, b, AT_PRESSED) == "false" && t[0].depth == 0;
+}

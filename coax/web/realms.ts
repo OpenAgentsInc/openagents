@@ -3,7 +3,7 @@
 //
 //   apps/openagents-web/realms.coax           the galaxy's worlds (verse.coax loads it)
 //   apps/openagents-web/realms/<slug>/index.html  each realm's page: its module, assets and save slot
-//   apps/openagents-web/realms/list.coax      /worlds' rows (realmlist.coax): every listed realm
+//   apps/openagents-web/realms/list.coax      /worlds' rows (worlds-web.coax): every open realm, listed or not
 //   apps/openagents-web/realms/index.md       /worlds as text
 //   apps/openagents-web/realms/index.html     /worlds: the page, its links for agents and readers without a GPU
 //
@@ -218,17 +218,30 @@ export function coax(list: World[]): string {
   ].join("\n")
 }
 
-// /worlds (realmlist.coax): the listed realms, in the table's order.
+// /worlds (worlds-web.coax): the listed realms, in the table's order.
 export function listed(list: World[]): Realm[] {
   return list.filter((w) => w.kind === "open" && w.listed !== false && w.realm).map((w) => w.realm!)
 }
+// The open realms /worlds doesn't list: someone who may edit one still finds it there, with its name, line and picture.
+export function unlisted(list: World[]): Realm[] {
+  return list.filter((w) => w.kind === "open" && w.listed === false && w.realm).map((w) => w.realm!)
+}
+// A realm's picture in a list: its link preview's card (a hand-made one, else the one og-render.ts renders) when the
+// site has that file, as a path here; none for the site's default card, which shows nothing of the realm.
+export function picture(r: Realm, site = SITE): string {
+  const card = r.card ?? renderedCard(`realms/${r.slug}`)
+  if (card === DEFAULT_IMAGE || !/^\/[a-z0-9/_.-]+\.(jpg|png|webp)$/.test(card)) return ""
+  return existsSync(join(site, card.replace(/^\/worlds(?=\/)/, "/realms"))) ? card : ""
+}
+const listRow = (r: Realm) => `${r.slug}|${r.title}|${r.line ?? ""}|${r.added ?? ""}|${r.style}|${picture(r)}\n`
 export function listCoax(list: World[]): string {
-  const rows = listed(list).map((r) => `${r.slug}|${r.title}|${r.line}|${r.added}|${r.style}\n`).join("")
   return [
     "// Written by coax/web/realms.ts from realms.json: change the table, not this file.",
-    "// /worlds' rows (realmlist.coax), the listed realms in the table's order:",
-    "// slug | title | its one line | when it opened (Chicago, YYYY-MM-DDTHH:MM) | art style",
-    `REALMS_ROWS :: ${JSON.stringify(rows)};`,
+    "// /worlds' rows (worlds-web.coax), the listed realms in the table's order:",
+    "// slug | title | its one line | when it opened (Chicago, YYYY-MM-DDTHH:MM) | art style | its picture (a path here, or none)",
+    `REALMS_ROWS :: ${JSON.stringify(listed(list).map(listRow).join(""))};`,
+    "// The open realms it doesn't list, the same columns: shown only to someone who may edit one.",
+    `REALMS_UNLISTED :: ${JSON.stringify(unlisted(list).map(listRow).join(""))};`,
     "",
   ].join("\n")
 }
@@ -247,6 +260,8 @@ export function listMarkdown(list: World[]): string {
     "",
   ].join("\n")
 }
+// /worlds: a page of the kit beside the site's side (worlds-web.coax, docs/app-shell.md). Until its module draws,
+// and for agents, search engines and readers without it, the page is its name and the worlds' links.
 export function listPage(list: World[]): string {
   const links = listed(list).map((r) => `<li><a href="/worlds/${r.slug}">${esc(r.title)}</a></li>`).join("\n")
   return `<!doctype html>
@@ -265,30 +280,22 @@ export function listPage(list: World[]): string {
 <meta name="theme-color" content="#000000">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="alternate" type="text/markdown" href="/worlds/index.md">
-<script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
 <style>
-html,body{margin:0;height:100%;background:#000;color:#ededed}
-body{overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;line-height:1.5}
-canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
-canvas[data-cursor=pointer]{cursor:pointer}
-canvas[data-cursor=crosshair]{cursor:crosshair}
-canvas[data-cursor=none]{cursor:none}
-main{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}
-html:not(.gpu) body{overflow:auto}
-a{color:#ededed}
-.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
+html,body{margin:0;background:#000;color:#f2f2f2}
+body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.6}
 </style>
 </head>
 <body>
-<canvas id="coaxial" aria-hidden="true"></canvas>
-<main>
+<div id="page-root"><main>
 <h1>Worlds</h1>
 <ul>
 ${links}
 </ul>
 <p><a href="/worlds/index.md">Worlds as text</a></p>
-</main>
-<script type="module" src="/coaxial/host.js" data-app="realmlist" data-lines="44:/api/analytics/realms"></script>
+</main></div>
+<div id="side-root"></div>
+<script type="module" src="/coaxial/dom-host.js" data-app="worlds-web" data-root="page-root"></script>
+<script type="module" src="/coaxial/dom-host.js?app=chat-web&amp;root=side-root&amp;path=/side/worlds"></script>
 </body>
 </html>
 `

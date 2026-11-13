@@ -25,13 +25,22 @@ ss_place_of :: (path: string) -> int {
 ss_in_shell :: (path: string) -> bool { p := ss_place_of(path); return p == SS_HOME || p == SS_CHATS; }
 // What the shell draws at an address: the home page (the side alone), the chat beside the side, or, on a page
 // it is only part of, the chat alone (the world editor's foot) or the side alone (the editor's left, which the
-// editor opens at "/side"; from there every place is another page).
+// editor opens at "/side"; from there every place is another page). A page of a place that holds the side
+// beside its own content names its place after "/side" ("/side/projects" on /projects), so the side shows it as
+// the place you are in (ss_side_place).
 SS_FOOT :: -3; SS_SIDE :: -4;
 ss_page_of :: (path: string) -> int {
-  if path == "/side" { return SS_SIDE; }
+  if path == "/side" || (path.count > 6 && cast(string) path[0..<6] == "/side/") { return SS_SIDE; }
   p := ss_place_of(path);
   if p == SS_HOME || p == SS_CHATS { return p; }
   return SS_FOOT;
+}
+
+// The place the side alone stands in: "/side/projects" is on Projects; "/side" alone, or anything else, on none (-2).
+ss_side_place :: (path: string) -> int {
+  if path.count <= 6 || cast(string) path[0..<6] != "/side/" { return -2; }
+  p := ss_place_of(cast(string) path[5..<path.count]);
+  return ifx p >= 0 then p else -2;
 }
 
 ss_put :: (out: [] u8, at: int, text: string) -> int {
@@ -130,6 +139,11 @@ ss_world_href :: (id: string, out: [] u8) -> int { n := ss_put(out, 0, "/worlds/
   #assert ss_place_of("/chatter") == -2 && ss_place_of("/chat-gpu") == -2 && ss_place_of("/settings") == -2;
   #assert ss_in_shell("/") && ss_in_shell("/chat") && !ss_in_shell("/projects") && !ss_in_shell("/worlds") && !ss_in_shell("/login");
   #assert ss_page_of("/") == SS_HOME && ss_page_of("/chat/x") == SS_CHATS && ss_page_of("/worlds/splice") == SS_FOOT && ss_page_of("/projects") == SS_FOOT && ss_page_of("/side") == SS_SIDE;
+}
+#test "the side alone on a place's page lights that place, and nothing on any other" {
+  #assert ss_page_of("/side/projects") == SS_SIDE && ss_page_of("/side/worlds") == SS_SIDE && ss_page_of("/sidebar") == SS_FOOT && ss_page_of("/side/") == SS_FOOT;
+  #assert ss_side_place("/side/projects") == SS_PROJECTS && ss_side_place("/side/worlds") == SS_WORLDS && ss_side_place("/side/projects/coax") == SS_PROJECTS;
+  #assert ss_side_place("/side") == -2 && ss_side_place("/side/") == -2 && ss_side_place("/side/settings") == -2 && ss_side_place("/projects") == -2 && ss_side_place("/side/chat") == SS_CHATS;
 }
 #test "the name at the foot is the first email, else a short npub of the key, and nothing for nobody" {
   out: [SS_WHO] u8;

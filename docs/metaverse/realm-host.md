@@ -16,8 +16,9 @@ writes `apps/openagents-web/realms.coax` (the galaxy's table, loaded by
 `verse.coax`) and `realms/<slug>/index.html` (the realm's page) from it; the
 build runs it first, and `bun coax/web/realms.ts --check` fails when the
 written files are behind the table or the table breaks a rule below (`bun test coax/web/realms.test.ts`). Don't edit the written files.
-It also writes `/realms` from the realms the galaxy lists: `realms/list.coax` (the rows
-`realmlist.coax` draws as a list and a grid of towers), `realms/index.html` and
+It also writes `/worlds` from the realms the galaxy lists: `realms/list.coax` (the rows
+`worlds-web.coax` lists beside the site's side, with each one's picture, and the unlisted
+rows it shows only to someone who may edit one), `realms/index.html` and
 `realms/index.md`. Its numbers (visitors, visits, minutes played) come live from
 `GET /api/analytics/realms` (`coax/web/api/analytics.c`), which leaves out our team and
 automation the way `/admin/analytics` does.

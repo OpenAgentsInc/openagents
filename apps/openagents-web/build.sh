@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/worldbuilder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/components.wasm, build/agents.wasm, build/realmlist.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm, build/login.wasm, build/security.wasm, build/life.wasm, build/devices.wasm, build/lightning.wasm, build/wallet.wasm and build/nip01.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/worldbuilder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/components.wasm, build/agents.wasm, build/worlds-web.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm, build/login.wasm, build/security.wasm, build/life.wasm, build/devices.wasm, build/lightning.wasm, build/wallet.wasm and build/nip01.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 # A failing step names itself (#13117): the line and the command, last in the
@@ -474,9 +474,10 @@ state_lab=$!
 # Engine-owned compiled actor adoption (#12992).
 COAXIAL_RUN_STEPS=250000000 timed actor-lab "$here/../../coax/web/wasm.sh" "$here/../../metaverse-engine/actors/lab.coax" "$here/actor-lab-face.c" "$here/build/actor-lab.wasm" &
 actor_lab=$!
-# /worlds: every listed realm as a list and a grid of towers (realms/list.coax, written by realms.ts).
-timed realmlist "$here/../../coax/web/wasm.sh" "$here/realmlist.coax" "$here/realmlist-face.c" "$here/build/realmlist.wasm" &
-realmlist=$!
+# /worlds: every world you can play, as kit entries beside the site's side (worlds-web.coax, drawn by the
+# browser through coax/web/dom-host.js; its rows in realms/list.coax, written by realms.ts).
+timed worlds-web "$here/../../coax/web/wasm.sh" "$here/worlds-web.coax" "$here/worlds-web-face.c" "$here/build/worlds-web.wasm" &
+worlds_web=$!
 # /memorial/<slug>: a pet's memorial from Hecate's Cemetery, its page (oa-api serves the HTML, villa.c memorial_page).
 timed memorial "$here/../../coax/web/wasm.sh" "$here/memorial.coax" "$here/memorial-face.c" "$here/build/memorial.wasm" &
 memorial=$!
@@ -522,7 +523,7 @@ wait "$isolation"
 wait "$vpk3"
 wait "$render"
 wait "$tables"
-wait "$realmlist"
+wait "$worlds_web"
 wait "$memorial"
 wait "$chat"
 wait "$components_page"
