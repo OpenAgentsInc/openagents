@@ -2305,3 +2305,54 @@ wire_test_tabled :: (t: string) -> bool {
   #assert wire_test_tabled(cast(string) d[0..<m]);
   bin: [512] u8; bn := wt_bin(cast(string) d[0..<m], bin[..]); #assert bn > 0 && bn * 4 < m * 3;   // under three quarters of the text
 }
+// Seat st's frame at h's tick as a binary D into mirror m, read back through the table's text; the frame's bytes.
+wire_test_send_bin :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, budget: int, full: bool, kinds: [] int) -> int {
+  buf: [65536] u8; text: [131072] u8;
+  st[0].bin = true;
+  n := wt_d_put(buf[..], 0, h[0].now, 0, ifx full then 1 else 0, 0);
+  m0 := n;
+  n += wire_seat_frame(st, h, me, 0, 0, 120, budget, buf[n..<buf.count]);
+  // every entry is whole, and is a run of rows or an x
+  at := m0;
+  while at < n {
+    e := wt_ent(cast(string) buf[0..<n], at);
+    if !e.ok { return -1; }
+    k := wt_kind(cast(string) buf[e.a..<e.b]);
+    if k != WT_ROWS && k != WT_X { return -1; }
+    if k == WT_ROWS && e.b - e.a > WIRE_RUN + 1 { return -1; }
+    if kinds.count > 1 { kinds[ifx k == WT_ROWS then 0 else 1] += 1; }
+    at = e.b;
+  }
+  tn := wt_text(cast(string) buf[0..<n], text[..]);
+  if tn < 0 { return -1; }
+  d := wire_mirror_frame(m, cast(string) text[0..<tn]);
+  return ifx d.tick == h[0].now then n - m0 else -1;
+}
+#test "binary wire: a seat's frame as runs of rows and x entries reads back as its rows, in runs cut at WIRE_RUN" #steps 400000000 {
+  h: [1] WireHist; st: [1] WireSeat; m: [1] WireMirror; kinds: [2] int;
+  // 120 players near the seat's own: a snapshot of them is several runs
+  wire_hist_begin(h[..], 1);
+  for q: 0..<120 { wire_test_put(h[..], q, WireS.{id = q, kind = WK_PLAYER, x = f32(q % 12) * 2.5, y = 1, z = f32(q / 12) * 2.5, yaw = 0.25 * f32(q % 7), hp = 20 + q, max = 150, owner = q}); }
+  b := wire_test_send_bin(st[..], h[..], m[..], 0, 1000000, true, kinds[..]);
+  #assert b > 0 && kinds[0] >= 2 && kinds[1] == 0 && st[0].rows == 120 && m[0].bad == 0;
+  for q: 0..<120 { e := wire_mirror_of(m[..], q); #assert e.id == q && e.hp == 20 + q && e.max == 150 && e.owner == q && abs(e.x - f32(q % 12) * 2.5) < 0.006 && abs(e.z - f32(q / 12) * 2.5) < 0.006; }
+  // the page heard it: the next tick's rows are deltas against it, a fraction of the bytes
+  wire_seat_ack(st[..], h[..], 1);
+  wire_hist_begin(h[..], 2);
+  for q: 0..<120 { wire_test_put(h[..], q, WireS.{id = q, kind = WK_PLAYER, x = f32(q % 12) * 2.5 + 0.1, y = 1, z = f32(q / 12) * 2.5, yaw = 0.25 * f32(q % 7), hp = 20 + q, max = 150, owner = q}); }
+  b2 := wire_test_send_bin(st[..], h[..], m[..], 0, 1000000, false, kinds[..]);
+  #assert b2 > 0 && b2 * 3 < b && m[0].bad == 0 && abs(wire_mirror_of(m[..], 77).x - (f32(77 % 12) * 2.5 + 0.1)) < 0.006;
+  // ten of them go: each is an x entry, and the page drops it
+  wire_seat_ack(st[..], h[..], 2);
+  wire_hist_begin(h[..], 3);
+  for q: 0..<110 { wire_test_put(h[..], q, WireS.{id = q, kind = WK_PLAYER, x = f32(q % 12) * 2.5 + 0.1, y = 1, z = f32(q / 12) * 2.5, yaw = 0.25 * f32(q % 7), hp = 20 + q, max = 150, owner = q}); }
+  kinds[0] = 0; kinds[1] = 0;
+  b3 := wire_test_send_bin(st[..], h[..], m[..], 0, 1000000, false, kinds[..]);
+  #assert b3 > 0 && kinds[1] == 10 && wire_mirror_of(m[..], 115).id == -1 && wire_mirror_of(m[..], 109).id == 109;
+  // the same three ticks to a text page that reads packed rows cost more bytes
+  ht: [1] WireHist; tt: [1] WireSeat; mt: [1] WireMirror; tt[0].packed = true;
+  wire_hist_begin(ht[..], 1);
+  for q: 0..<120 { wire_test_put(ht[..], q, WireS.{id = q, kind = WK_PLAYER, x = f32(q % 12) * 2.5, y = 1, z = f32(q / 12) * 2.5, yaw = 0.25 * f32(q % 7), hp = 20 + q, max = 150, owner = q}); }
+  t1 := wire_test_send(tt[..], ht[..], mt[..], 0, 1000000, false, true);
+  #assert t1 > b && b * 100 < t1 * 85;   // at least 15% under the packed text
+}
