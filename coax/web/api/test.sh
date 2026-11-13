@@ -26,7 +26,9 @@
 # libpq, libsecp256k1, OpenSSL, curl and zlib, and PGDG's postgresql-16
 # (coax/remote/host-startup.sh installs them). Each run makes its own
 # Postgres cluster in a temporary directory, listening only on a socket
-# there, and removes it at exit; it never uses a shared server.
+# there, and removes it at exit; it never uses a shared server. It also removes
+# it when stopped (Ctrl-C, kill, a closed terminal), and a run that was killed
+# outright (kill -9) has its directory and Postgres removed by the next run.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 serve=0; serve_origin=""
@@ -97,7 +99,25 @@ PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_rollout_test.py"
 PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_snapshot_test.py"
 lap "the policy, NIP-98 and deploy checks"
 fi
-work="$(mktemp -d)"; trap 'kill ${api_pid:-} ${notice_relay_pid:-} ${runner_pid:-} ${ports_pid:-} ${token_pid:-} 2>/dev/null || true; "$pgbin/pg_ctl" -D "$work/db" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
+# The run's directory: oa-api-test.* in the temp folder, with its owner's pid in owner.pid. A run that was
+# killed outright (kill -9) can't clean up, so each run first removes the directories of runs that are gone,
+# stopping their Postgres first.
+tmp_root="${TMPDIR:-/tmp}"; tmp_root="${tmp_root%/}"
+for old in "$tmp_root"/oa-api-test.*; do
+  [[ -d "$old" && -f "$old/owner.pid" ]] || continue
+  old_pid="$(cat "$old/owner.pid" 2>/dev/null || true)"
+  [[ "$old_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$old_pid" 2>/dev/null || continue
+  "$pgbin/pg_ctl" -D "$old/db" -m immediate stop >/dev/null 2>&1 || true
+  rm -rf -- "${old:?}"
+done
+work="$(mktemp -d "$tmp_root/oa-api-test.XXXXXXXX")"; printf '%s\n' "$$" > "$work/owner.pid"
+cleanup() {
+  kill ${api_pid:-} ${notice_relay_pid:-} ${runner_pid:-} ${ports_pid:-} ${token_pid:-} 2>/dev/null || true
+  "$pgbin/pg_ctl" -D "$work/db" -m immediate stop >/dev/null 2>&1 || true
+  rm -rf -- "${work:?}"
+}
+# A stop (Ctrl-C, kill, a closed terminal) exits, and the exit cleans up.
+trap cleanup EXIT; trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP
 # The binary's C files and Coax units are api-sources.sh's, the one list every local build reads (#13380).
 source "$here/api-sources.sh"
 api_sources "$here" "$work" "$cli_coax"
@@ -344,10 +364,17 @@ if [[ $serve == 1 ]]; then
     # An indexed repo for the agent to read (docs/repos/2026-11-11-indexed-repos.md, #13326): a bare mirror of
     # this repository that borrows the checkout's objects, so it is made at once and takes no disk. With it a
     # turn makes no checkout. OA_SERVE_NO_MIRROR=1 leaves it out, and the agent reads a checkout as before.
+    # The mirror is made by hand, not with git clone --shared: git ignores --shared when the checkout is
+    # shallow and copies every object instead, 8 GB a run.
     mirror=""
     if [[ -z "${OA_SERVE_NO_MIRROR:-}" ]]; then
       mirror="$work/mirrors/openagents.git"; mkdir -p "$work/mirrors"
-      git clone --quiet --bare --shared "$(dirname "$common")" "$mirror"
+      git init --quiet --bare "$mirror"
+      printf '%s\n' "$common/objects" > "$mirror/objects/info/alternates"
+      [[ ! -f "$common/shallow" ]] || cp "$common/shallow" "$mirror/shallow"
+      git --git-dir="$mirror" remote add origin "$(dirname "$common")"
+      git --git-dir="$mirror" fetch --quiet origin '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
+      git --git-dir="$mirror" symbolic-ref HEAD refs/heads/main
     fi
     env -i HOME="$HOME" PATH="$(dirname "$claude_bin"):/opt/homebrew/bin:/usr/bin:/bin" \
       OA_API_ORIGIN="$api_origin" OA_RUNNER_KEY="$(cat "$RUN_KEY_FILE")" OA_CHAT_SEAL_KEY="$(openssl rand -hex 32)" \
