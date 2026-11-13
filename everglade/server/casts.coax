@@ -61,7 +61,13 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   e2_cast_release(v, k, hold[..]);
   if !done { eg_refuse(v,k,seat_id,wc.seq,cr_word(CR_NO)); return; }
   if gfoe >= 0 { e2_guard_struck(v, k, seat, foe_hp); }
-  else if foe >= 0 { e2_monster_struck(v, k, seat, foe, foe_hp); }
+  else if foe >= 0 {
+    e2_monster_struck(v, k, seat, foe, foe_hp);
+    // a Reckless Attack is a taunt (#13427): attack rolls against the reckless one have Advantage until their
+    // next turn (SRD 5.2.1, Barbarian), an opening the creature takes whoever else it was fighting
+    // (creatures.coax e2_monster_taunted: to the top of its threat list)
+    if e.ab.kind == FB_RECKLESS { e2_monster_taunted(v, k, seat, foe); }
+  }
   else if area { e2_area_struck(v, k, seat, before[..]); }
   // a heal is a threat to whatever fights the healed: half the Hit Points it gave (#13293; creatures.coax e2_monster_healed)
   if helps { for o: 0..<eg_cap(v, k) { if r[0].b[0].c[EGB_SEAT + o].hp > was[o] { e2_monster_healed(v, k, seat, o, r[0].b[0].c[EGB_SEAT + o].hp - was[o]); } } }

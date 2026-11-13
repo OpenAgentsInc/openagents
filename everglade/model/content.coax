@@ -166,6 +166,33 @@ eq_advances :: (d: [] ContentDoc, quest: int, stage: int, kind: int, target: int
   return kind >= EQ_TAKE && kind <= EQ_TALK && n.kind == kind && n.target == target;
 }
 
+// ---- chains: one talk hands a quest in and offers the next
+// The stage at which quest asks for a talk to dialogue (1 + the step units before that step), or 0
+// when no step of it does.
+eq_talk_at :: (d: [] ContentDoc, quest: int, dialogue: int) -> int #effects(all) {
+  if dialogue == 0 { return 0; }
+  at := 1;
+  for r: 0..<ct_rows(d, EC_STEP) {
+    if ct_get(d, EC_STEP, r, EC_STEP_QUEST) != quest { continue; }
+    if ct_get(d, EC_STEP, r, EC_STEP_TALK) == dialogue { return at; }
+    at += ct_get(d, EC_STEP, r, EC_STEP_COUNT);
+  }
+  return 0;
+}
+// Whether dialogue's offer of quest is open to a character whose stage in each quest is stages (by
+// the quest table's rows). A dialogue that a step of another quest asks for is a link of a chain: it
+// offers its own quest only once that other quest has come to that step, so the talk that hands the
+// one in takes the next, and never before. A dialogue no other quest asks for is always open.
+eq_offer_open :: (d: [] ContentDoc, quest: int, dialogue: int, stages: [] int) -> bool #effects(all) {
+  for q: 0..<ct_rows(d, EC_QUEST) {
+    other := ct_get(d, EC_QUEST, q, 0);
+    if other == quest { continue; }
+    at := eq_talk_at(d, other, dialogue);
+    if at > 0 && (q >= stages.count || stages[q] < at) { return false; }
+  }
+  return true;
+}
+
 // ---- checks
 
 #test "everglade content: the shipped tables are Everglade's, and only these tables and columns are" {
@@ -278,4 +305,19 @@ eq_advances :: (d: [] ContentDoc, quest: int, stage: int, kind: int, target: int
   #assert ct_read(d[..], five) && ec_ok(d[..]);
   n := eq_next(d[..], 3, 0); #assert n.kind == EQ_TAKE && n.target == 10 && n.row == 4;
   n = eq_next(d[..], 3, 1); #assert n.kind == EQ_TALK && n.target == 10 && n.row == 6 && eq_advances(d[..], 3, 1, EQ_TALK, 10) && !eq_advances(d[..], 3, 1, EQ_TALK, 1);
+}
+
+#test "everglade content: a dialogue that hands one quest in offers the next only once the first has come to that talk" {
+  d: [1] ContentDoc; o: [CT_BODY] u8; p: [CT_BODY] u8;
+  // the fixture's two quests: quest 1's last step is a talk to dialogue 1
+  #assert ct_read(d[..], EC_FIXTURE) && ec_ok(d[..]);
+  q1 := eq_talk_at(d[..], 1, 1); #assert q1 == ec_total(d[..], 1) && eq_talk_at(d[..], 1, 0) == 0 && eq_talk_at(d[..], 1, 99) == 0 && eq_talk_at(d[..], 99, 1) == 0;
+  // unchained: each dialogue is asked for by its own quest only, so both offers are open at any stage
+  none: [2] int; #assert eq_offer_open(d[..], 1, 1, none[..]) && eq_offer_open(d[..], 2, 2, none[..]);
+  // dialogue 1 as quest 2's offer too: open only at quest 1's talk stage and after, whatever quest 2's own stage
+  st: [2] int;
+  for s1: 0..<q1 + 3 { st[0] = s1; st[1] = 0; #assert eq_offer_open(d[..], 2, 1, st[..]) == (s1 >= q1); st[1] = 9; #assert eq_offer_open(d[..], 2, 1, st[..]) == (s1 >= q1); }
+  // its own quest's talk never closes its own offer; stages that do not reach a quest's row close it
+  st[0] = 0; #assert eq_offer_open(d[..], 1, 1, st[..]) && !eq_offer_open(d[..], 2, 1, st[0..<0]);
+  st[0] = q1; #assert eq_offer_open(d[..], 2, 1, st[0..<1]);
 }

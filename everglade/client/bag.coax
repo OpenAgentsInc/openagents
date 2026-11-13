@@ -96,9 +96,18 @@ e2i_wants :: (s: [] E2, dialogue: int) -> bool {
   d := s[0].bag[0].doc[..]; o := s[0].net[0].own[..];
   for q: 0..<ct_rows(d, EC_QUEST) {
     quest := ct_get(d, EC_QUEST, q, 0); nx := eq_next(d, quest, e2o_stage(o, quest));
-    if (nx.kind == EQ_TAKE || nx.kind == EQ_TALK) && nx.target == dialogue { return true; }
+    if nx.kind == EQ_TALK && nx.target == dialogue { return true; }
+    if nx.kind == EQ_TAKE && nx.target == dialogue && e2i_offer_open(s, quest, dialogue) { return true; }
   }
   return false;
+}
+// Whether dialogue's offer of quest is open to you, by the room's own rule (content.coax eq_offer_open):
+// a dialogue that hands another quest in offers the next only once you have come to that talk.
+e2i_offer_open :: (s: [] E2, quest: int, dialogue: int) -> bool {
+  d := s[0].bag[0].doc[..]; o := s[0].net[0].own[..];
+  st: [CT_ROWS] int; n := ct_rows(d, EC_QUEST); if n > CT_ROWS { n = CT_ROWS; }
+  for q: 0..<n { st[q] = e2o_stage(o, ct_get(d, EC_QUEST, q, 0)); }
+  return eq_offer_open(d, quest, dialogue, st[0..<n]);
 }
 // The dialogue to offer where you stand (0 none): the first, by ID, that a quest of yours wants and
 // whose speaker's place you are in, within E2I_NEAR m of its middle.
@@ -366,16 +375,16 @@ e2i_test_say :: (s: [] E2, what: int, a: int, b: int, c: int) {
   // an entry aimed at another seat is not yours
   t: [48] u8; n := wire_put_own(t[..], 0, WO_COIN, WireOwn.{ss = s[0].net[0].seat + 1, a = 99}); e2n_entry(s[0].net[..], cast(string) t[0..<n], WireD.{});
   #assert !s[0].net[0].own[0].heard;
-  e2i_test_say(s[..], WO_COIN, 12, 0, 0); e2i_test_say(s[..], WO_QUEST, 1, 3, 0); e2i_test_say(s[..], WO_ITEM, 4101, 1, 0); e2i_test_say(s[..], WO_ITEM, 4102, 1, 0); e2i_test_say(s[..], WO_ITEM, 4107, 3, 0);
+  e2i_test_say(s[..], WO_COIN, 12, 0, 0); e2i_test_say(s[..], WO_QUEST, 4, 3, 0); e2i_test_say(s[..], WO_ITEM, 4101, 1, 0); e2i_test_say(s[..], WO_ITEM, 4102, 1, 0); e2i_test_say(s[..], WO_ITEM, 4107, 3, 0);
   e2i_step(s[..]);
   #assert e2i_on(s[..]) && s[0].net[0].own[0].coin == 12 && e2i_overlay(s[..], out[..], 0) > 0;
   lines: [EG_BAG_LINES] EgBagLine; tb: [E2I_TEXT] u8;
-  #assert e2i_track(s[..], lines[..], tb[..]) == 1 && lines[0].a == "Thin the pack" && lines[0].b == "Slay Wolf  2 / 4";
+  #assert e2i_track(s[..], lines[..], tb[..]) == 1 && lines[0].a == "The thicket pair" && lines[0].b == "Slay Wolf  1 / 2";
   c := e2i_lines(s[..], lines[..], tb[..]);
   // WEARING (nothing), CARRYING (two pelts on one line, the cloak with WEAR), then QUESTS in the second column
   #assert c[0] == 5 && c[1] == 7 && lines[0].a == "WEARING" && lines[1].kind == EG_BAG_NOTE && lines[2].a == "CARRYING";
   #assert lines[3].a == "Wolf pelt" && lines[3].b == "x2" && lines[3].act == EG_BAG_NO_ACT && lines[4].a == "Warden's cloak" && lines[4].b == "" && lines[4].act == 4107;
-  #assert lines[5].a == "QUESTS" && lines[6].a == "Thin the pack" && lines[6].b == "Slay Wolf  2 / 4";
+  #assert lines[5].a == "QUESTS" && lines[6].a == "The thicket pair" && lines[6].b == "Slay Wolf  1 / 2";
   // B opens it; WEAR asks the room and changes nothing here; the room's word does
   #assert e2i_key(s[..], 'b') && s[0].bag[0].open && !mlook.ml_wants(s[0].ml[0]);
   g := eg_bag_layout(1280, 720, 1, lines[..], c[0], c[1]); w := g.btn[4];
@@ -416,8 +425,10 @@ e2i_test_say :: (s: [] E2, what: int, a: int, b: int, c: int) {
   sy := e2i_said(s[..]);
   #assert s[0].bag[0].say == 1 && sy.name == "Warden" && sy.title == "Thin the pack" && sy.line.count > 20 && s[0].bag[0].near == 0 && !mlook.ml_wants(s[0].ml[0]);
   #assert e2i_overlay(s[..], out[..], 0) > 0 && !e2i_key(s[..], 'b') && e2i_key(s[..], 'e') && s[0].bag[0].say == 0 && mlook.ml_wants(s[0].ml[0]);
-  // taken: the first quest's talk is no longer wanted, the second's is
-  e2i_step(s[..]); #assert s[0].bag[0].near == 2 && e2i_wants(s[..], 2) && !e2i_wants(s[..], 1);
+  // taken: no talk is wanted until its Wolf is slain (the next quest's offer is its hand-in, closed until then)
+  e2i_step(s[..]); #assert s[0].bag[0].near == 0 && !e2i_wants(s[..], 1) && !e2i_wants(s[..], 2) && !e2i_wants(s[..], 3) && !e2i_offer_open(s[..], 3, 3) && e2i_offer_open(s[..], 1, 1);
+  // slain: the hand-in is wanted, and the one talk offers the next quest
+  e2i_test_say(s[..], WO_QUEST, 1, 2, 0); e2i_step(s[..]); #assert s[0].bag[0].near == 3 && e2i_wants(s[..], 3) && e2i_offer_open(s[..], 3, 3) && !e2i_wants(s[..], 2);
   // Pansopher's prompt, where he stands, comes before it
   s[0].you_x = s[0].npc[0].x + 1; s[0].you_z = s[0].npc[0].z; e2p_step(s[..], 0.016); e2b_step(s[..]); e2i_step(s[..]);
   #assert s[0].npc[0].near && s[0].bag[0].near == 0;

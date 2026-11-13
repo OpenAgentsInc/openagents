@@ -6,9 +6,9 @@
 //
 // Every number is kept in tenths (TTK 12.3 s is 123), so a row read back is the row written.
 
-ES_ENCOUNTERS :: 4;
-ES_WOLVES :: 0; ES_GUARD :: 1; ES_WOLF :: 2; ES_PAIR :: 3;   // the third pack (three Wolves), the guard, the first pack (one Wolf), the second (two)
-ES_ENC_NAME :: [4] string.["wolves", "guard", "one wolf", "two wolves"];
+ES_ENCOUNTERS :: 5;
+ES_WOLVES :: 0; ES_GUARD :: 1; ES_WOLF :: 2; ES_PAIR :: 3; ES_CAMP :: 4;   // the third pack (three Wolves), the guard, the first pack (one Wolf), the second (two), the goblin camp (its two Warriors)
+ES_ENC_NAME :: [5] string.["wolves", "guard", "one wolf", "two wolves", "goblin camp"];
 ES_CLASS_NAME :: [12] string.["Barbarian", "Bard", "Cleric", "Druid", "Fighter", "Monk", "Paladin", "Ranger", "Rogue", "Sorcerer", "Warlock", "Wizard"];
 ES_LEVELS :: 6;
 ES_ROWS :: ES_ENCOUNTERS * 12 * ES_LEVELS;

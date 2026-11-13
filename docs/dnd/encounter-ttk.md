@@ -2,7 +2,7 @@
 
 Written by `coax/web/tool.sh coax/web/room/encounter-sim.coax --write docs/dnd/encounter-ttk.md` (#13288): every
 class at levels 1 to 6, alone, against the third wolf pack (three Wolves), the path's guard (a level 10 Fighter),
-the first pack (one Wolf) and the second (two Wolves),
+the first pack (one Wolf), the second (two Wolves) and the goblin camp (its two Goblin Warriors, fought at their fire; the two archers, each on its own, stay on their perches),
 in the real room's rules, 32 fights (seeds 1 to 32) a row. Wins: fights where every foe fell first. TTK: the mean seconds from
 the player's first harmful press to the last foe's fall, over the wins. Damage/s, healed and taken: per fight.
 Downs: fights where the player fell. HP and resources (spell slots, limited uses, Focus) left: at the fight's end.
@@ -299,3 +299,75 @@ wins by more than 25%; run this again with --write in the same commit when the c
 | two wolves | Wizard | 4 | 32/32 | 3.4 | 6.5 | 0.0 | 1.7 | 0 | 92 | 23 |
 | two wolves | Wizard | 5 | 32/32 | 0.1 | 21.2 | 0.0 | 0.3 | 0 | 99 | 65 |
 | two wolves | Wizard | 6 | 32/32 | 0.0 | 22.0 | 0.0 | 0.0 | 0 | 100 | 70 |
+| goblin camp | Barbarian | 1 | 30/32 | 4.8 | 3.8 | 0.0 | 5.5 | 2 | 60 | 50 |
+| goblin camp | Barbarian | 2 | 31/32 | 4.9 | 3.9 | 0.0 | 5.8 | 1 | 74 | 50 |
+| goblin camp | Barbarian | 3 | 32/32 | 5.4 | 3.7 | 0.0 | 6.8 | 0 | 79 | 66 |
+| goblin camp | Barbarian | 4 | 32/32 | 4.7 | 4.3 | 0.0 | 6.2 | 0 | 84 | 66 |
+| goblin camp | Barbarian | 5 | 32/32 | 1.6 | 12.1 | 0.0 | 1.6 | 0 | 97 | 66 |
+| goblin camp | Barbarian | 6 | 32/32 | 1.1 | 15.1 | 0.0 | 1.7 | 0 | 97 | 75 |
+| goblin camp | Bard | 1 | 11/32 | 6.1 | 3.1 | 2.3 | 9.7 | 21 | 18 | 64 |
+| goblin camp | Bard | 2 | 15/32 | 3.8 | 3.3 | 1.8 | 12.0 | 17 | 32 | 53 |
+| goblin camp | Bard | 3 | 32/32 | 4.3 | 4.7 | 2.9 | 8.3 | 0 | 74 | 46 |
+| goblin camp | Bard | 4 | 32/32 | 3.6 | 5.6 | 1.1 | 6.2 | 0 | 80 | 59 |
+| goblin camp | Bard | 5 | 32/32 | 4.9 | 4.1 | 1.0 | 5.2 | 0 | 87 | 60 |
+| goblin camp | Bard | 6 | 32/32 | 1.2 | 17.2 | 0.0 | 1.2 | 0 | 97 | 84 |
+| goblin camp | Cleric | 1 | 11/32 | 7.7 | 2.4 | 2.2 | 9.5 | 21 | 19 | 8 |
+| goblin camp | Cleric | 2 | 11/32 | 4.9 | 1.9 | 2.0 | 13.8 | 21 | 21 | 42 |
+| goblin camp | Cleric | 3 | 21/32 | 9.1 | 1.5 | 14.2 | 25.2 | 11 | 47 | 28 |
+| goblin camp | Cleric | 4 | 30/32 | 8.7 | 2.0 | 7.8 | 16.1 | 2 | 69 | 40 |
+| goblin camp | Cleric | 5 | 32/32 | 0.8 | 13.9 | 0.5 | 2.8 | 0 | 93 | 82 |
+| goblin camp | Cleric | 6 | 32/32 | 0.4 | 19.3 | 0.0 | 1.8 | 0 | 95 | 85 |
+| goblin camp | Druid | 1 | 15/32 | 6.6 | 2.7 | 2.0 | 7.8 | 17 | 35 | 6 |
+| goblin camp | Druid | 2 | 26/32 | 4.6 | 3.9 | 2.2 | 10.1 | 6 | 47 | 30 |
+| goblin camp | Druid | 3 | 32/32 | 3.5 | 5.8 | 2.2 | 7.1 | 0 | 76 | 55 |
+| goblin camp | Druid | 4 | 32/32 | 4.0 | 5.0 | 2.0 | 8.1 | 0 | 77 | 55 |
+| goblin camp | Druid | 5 | 32/32 | 3.0 | 6.7 | 0.5 | 5.7 | 0 | 84 | 69 |
+| goblin camp | Druid | 6 | 32/32 | 2.4 | 8.2 | 0.0 | 4.8 | 0 | 88 | 79 |
+| goblin camp | Fighter | 1 | 22/32 | 3.3 | 5.1 | 0.0 | 7.2 | 10 | 40 | 100 |
+| goblin camp | Fighter | 2 | 31/32 | 2.8 | 7.2 | 0.0 | 5.2 | 1 | 74 | 71 |
+| goblin camp | Fighter | 3 | 32/32 | 2.4 | 8.3 | 0.0 | 4.2 | 0 | 85 | 75 |
+| goblin camp | Fighter | 4 | 32/32 | 2.2 | 9.2 | 0.0 | 2.4 | 0 | 93 | 79 |
+| goblin camp | Fighter | 5 | 32/32 | 0.9 | 17.6 | 0.0 | 1.8 | 0 | 96 | 96 |
+| goblin camp | Fighter | 6 | 32/32 | 0.6 | 19.3 | 0.0 | 2.3 | 0 | 96 | 100 |
+| goblin camp | Monk | 1 | 7/32 | 5.8 | 2.8 | 0.0 | 7.9 | 25 | 12 | 100 |
+| goblin camp | Monk | 2 | 17/32 | 8.0 | 2.3 | 0.0 | 11.9 | 15 | 20 | 33 |
+| goblin camp | Monk | 3 | 32/32 | 8.2 | 2.4 | 0.0 | 2.7 | 0 | 87 | 27 |
+| goblin camp | Monk | 4 | 32/32 | 6.5 | 3.1 | 0.0 | 1.0 | 0 | 96 | 25 |
+| goblin camp | Monk | 5 | 32/32 | 2.0 | 9.7 | 0.0 | 0.0 | 0 | 100 | 63 |
+| goblin camp | Monk | 6 | 32/32 | 1.7 | 10.8 | 0.0 | 0.3 | 0 | 99 | 76 |
+| goblin camp | Paladin | 1 | 22/32 | 2.9 | 4.9 | 2.5 | 7.8 | 10 | 51 | 46 |
+| goblin camp | Paladin | 2 | 30/32 | 3.8 | 4.7 | 1.9 | 6.5 | 2 | 74 | 73 |
+| goblin camp | Paladin | 3 | 32/32 | 4.1 | 4.9 | 2.0 | 7.1 | 0 | 80 | 73 |
+| goblin camp | Paladin | 4 | 32/32 | 3.7 | 5.3 | 0.0 | 5.5 | 0 | 83 | 87 |
+| goblin camp | Paladin | 5 | 32/32 | 2.6 | 7.4 | 0.0 | 4.5 | 0 | 88 | 93 |
+| goblin camp | Paladin | 6 | 32/32 | 1.9 | 9.6 | 0.0 | 4.7 | 0 | 89 | 94 |
+| goblin camp | Ranger | 1 | 6/32 | 5.6 | 1.8 | 0.0 | 10.0 | 26 | 9 | 66 |
+| goblin camp | Ranger | 2 | 12/32 | 6.8 | 2.2 | 0.0 | 14.7 | 20 | 18 | 61 |
+| goblin camp | Ranger | 3 | 25/32 | 6.4 | 2.7 | 0.0 | 14.3 | 7 | 43 | 61 |
+| goblin camp | Ranger | 4 | 31/32 | 5.5 | 3.6 | 0.0 | 8.7 | 1 | 73 | 68 |
+| goblin camp | Ranger | 5 | 32/32 | 2.8 | 7.3 | 0.0 | 4.3 | 0 | 89 | 86 |
+| goblin camp | Ranger | 6 | 32/32 | 3.0 | 6.7 | 0.0 | 6.6 | 0 | 85 | 83 |
+| goblin camp | Rogue | 1 | 8/32 | 5.6 | 3.0 | 0.0 | 9.1 | 24 | 9 | 100 |
+| goblin camp | Rogue | 2 | 18/32 | 5.3 | 3.2 | 0.0 | 12.2 | 14 | 28 | 100 |
+| goblin camp | Rogue | 3 | 22/32 | 6.2 | 2.7 | 0.0 | 17.1 | 10 | 29 | 100 |
+| goblin camp | Rogue | 4 | 30/32 | 6.1 | 3.2 | 0.0 | 13.6 | 2 | 56 | 100 |
+| goblin camp | Rogue | 5 | 31/32 | 5.4 | 3.5 | 0.0 | 7.8 | 1 | 79 | 100 |
+| goblin camp | Rogue | 6 | 32/32 | 5.7 | 3.5 | 0.0 | 7.6 | 0 | 83 | 100 |
+| goblin camp | Sorcerer | 1 | 1/32 | 2.5 | 3.1 | 0.0 | 6.9 | 31 | 1 | 41 |
+| goblin camp | Sorcerer | 2 | 24/32 | 3.4 | 4.9 | 0.0 | 4.8 | 8 | 60 | 28 |
+| goblin camp | Sorcerer | 3 | 31/32 | 1.5 | 11.2 | 0.0 | 1.9 | 1 | 91 | 50 |
+| goblin camp | Sorcerer | 4 | 32/32 | 1.2 | 16.7 | 0.0 | 2.1 | 0 | 92 | 64 |
+| goblin camp | Sorcerer | 5 | 32/32 | 0.0 | 20.0 | 0.0 | 0.0 | 0 | 100 | 87 |
+| goblin camp | Sorcerer | 6 | 32/32 | 0.0 | 20.0 | 0.0 | 0.0 | 0 | 100 | 88 |
+| goblin camp | Warlock | 1 | 5/32 | 9.2 | 1.5 | 0.0 | 8.0 | 27 | 11 | 0 |
+| goblin camp | Warlock | 2 | 12/32 | 3.8 | 2.2 | 0.0 | 10.8 | 20 | 28 | 54 |
+| goblin camp | Warlock | 3 | 26/32 | 7.7 | 2.4 | 0.0 | 9.8 | 6 | 53 | 33 |
+| goblin camp | Warlock | 4 | 29/32 | 6.5 | 2.8 | 0.0 | 9.3 | 3 | 65 | 33 |
+| goblin camp | Warlock | 5 | 32/32 | 0.0 | 20.0 | 0.0 | 0.0 | 0 | 100 | 66 |
+| goblin camp | Warlock | 6 | 32/32 | 0.1 | 19.9 | 0.0 | 0.2 | 0 | 100 | 84 |
+| goblin camp | Wizard | 1 | 3/32 | 9.5 | 1.1 | 0.0 | 6.6 | 29 | 6 | 0 |
+| goblin camp | Wizard | 2 | 4/32 | 10.5 | 1.1 | 0.0 | 10.7 | 28 | 11 | 0 |
+| goblin camp | Wizard | 3 | 24/32 | 7.6 | 2.4 | 0.0 | 6.2 | 8 | 63 | 0 |
+| goblin camp | Wizard | 4 | 31/32 | 5.5 | 3.6 | 0.0 | 3.9 | 1 | 82 | 13 |
+| goblin camp | Wizard | 5 | 32/32 | 0.1 | 19.3 | 0.0 | 0.1 | 0 | 100 | 59 |
+| goblin camp | Wizard | 6 | 32/32 | 0.0 | 20.0 | 0.0 | 0.6 | 0 | 98 | 65 |

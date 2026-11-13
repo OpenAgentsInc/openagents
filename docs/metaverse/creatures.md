@@ -62,8 +62,9 @@ seat with the most threat that it can still reach.
 - Healing a seat that is on a monster's list adds half the Hit Points healed to
   the healer.
 - Being noticed, or being a packmate's quarry, adds 1.
-- A taunt (`e2_monster_taunted`) puts the taunter on top. No ability calls it
-  yet.
+- A taunt (`e2_monster_taunted`) puts the taunter on top. A Barbarian's
+  Reckless Attack is a taunt on the creature it is pressed at
+  (`everglade/server/casts.coax`).
 - Another seat takes a monster off its quarry only with 110 percent of the
   quarry's threat.
 - A monster that goes home clears its list.

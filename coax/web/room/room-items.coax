@@ -335,6 +335,14 @@ ri_pump :: (v: [] RmServer, c: int) {
     }
   }
 }
+// Whether dialogue's offer of quest is open to character c (content.coax eq_offer_open): a dialogue
+// that hands another quest in offers the next only once that quest has come to the talk. The stages
+// are the ones its waiting operations will leave it at, so the one talk does both.
+ri_offer_open :: (v: [] RmServer, c: int, d: [] ContentDoc, quest: int, dialogue: int) -> bool {
+  st: [CT_ROWS] int; n := rs_min(ct_rows(d, EC_QUEST), CT_ROWS);
+  for q: 0..<n { st[q] = ri_soon(v, c, ct_get(d, EC_QUEST, q, 0)); }
+  return eq_offer_open(d, quest, dialogue, st[0..<n]);
+}
 // Something happened to character c that a quest may ask for (a kill of creature `target`, a point
 // reached, a talk; EQ_TAKE and EQ_TALK together for one dialogue): each quest it advances moves one stage.
 ri_happened :: (v: [] RmServer, c: int, kind: int, target: int) {
@@ -342,7 +350,7 @@ ri_happened :: (v: [] RmServer, c: int, kind: int, target: int) {
   d := ri_doc(v, c);
   for q: 0..<ct_rows(d, EC_QUEST) {
     quest := ct_get(d, EC_QUEST, q, 0); soon := ri_soon(v, c, quest);
-    if eq_advances(d, quest, soon, kind, target) || (kind == EQ_TALK && eq_advances(d, quest, soon, EQ_TAKE, target)) {
+    if eq_advances(d, quest, soon, kind, target) || (kind == EQ_TALK && eq_advances(d, quest, soon, EQ_TAKE, target) && ri_offer_open(v, c, d, quest, target)) {
       _ := ri_push(v, c, RI_QUEST, LOP_CLAIM, 0, 0, CharClaim.{quest = quest, from = soon, to = soon + 1});
     }
   }

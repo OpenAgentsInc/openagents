@@ -21,7 +21,7 @@
 // --check FILE compares it with FILE's rows and fails on any moved more than ES_SHARE percent
 // (the after-landing check runs that against docs/dnd/encounter-ttk.md: coax/remote/check.sh room).
 //   coax/web/tool.sh coax/web/room/encounter-sim.coax [--seeds N] [--write FILE] [--check FILE]
-//                                                      [--class NAME] [--level L] [--encounter NAME]   (wolves, guard, "one wolf", "two wolves")
+//                                                      [--class NAME] [--level L] [--encounter NAME]   (wolves, guard, "one wolf", "two wolves", "goblin camp")
 // --bars FILE writes the bots' table (bot-bars.coax: each class's bar as the scripted player sees
 // it, script-player.coax) and --check-bars FILE fails when FILE is stale (#13296).
 #import "Basic";
@@ -36,12 +36,13 @@
 
 ES_CAP_S :: 120;        // s a fight lasts at most
 ES_RETRY :: 3;          // ticks before a player that pressed nothing the room took tries again
-ES_PACK_N :: 3;         // the most Wolves in a pack
+ES_PACK_N :: 3;         // the most foes in a pack
 // An encounter's pack (the content tables' troops, creatures.coax E2Zoo): its first monster, and how many it holds. The third
 // pack is monsters 5, 6 and 7; the first is monster 0; the second monsters 3 and 4.
-es_pack :: (enc: int) -> int { return ifx enc == ES_WOLF then 0 else (ifx enc == ES_PAIR then 3 else 5); }
-es_pack_n :: (enc: int) -> int { return ifx enc == ES_WOLF then 1 else (ifx enc == ES_PAIR then 2 else 3); }
+es_pack :: (enc: int) -> int { return ifx enc == ES_WOLF then 0 else (ifx enc == ES_PAIR then 3 else (ifx enc == ES_CAMP then 8 else 5)); }
+es_pack_n :: (enc: int) -> int { return ifx enc == ES_WOLF then 1 else (ifx enc == ES_PAIR then 2 else (ifx enc == ES_CAMP then 2 else 3)); }
 ES_CLOCK0 :: 1762190000000;
+ES_CAMP_ASIDE :: 0.5;    // m west of the middle of the camp fire the player stands: outside what either archer notices
 
 // One fight's numbers, in whole Hit Points and ticks.
 EsFight :: struct { win: bool; down: bool; ticks: int; first: int = -1; end: int; dealt: int; healed: int; taken: int; hp: int; hp_max: int; res: int; res_max: int; }
@@ -183,6 +184,9 @@ es_fight :: (v: [] RmServer, enc: int, c: int, level: int, seed: int, trace: boo
   } else {
     w := v[0].eg[k].monsters[0].mon[es_pack(enc) + (ifx es_pack_n(enc) > 1 then 1 else 0)];
     pz = w.hz; px = e2_road_x(pz);
+    // the camp's two Warriors are fought at their fire, between them and half a metre to its far side from the
+    // archers' perches: each archer is its own group and notices at 9 m, so neither joins
+    if enc == ES_CAMP { o := v[0].eg[k].monsters[0].mon[es_pack(enc)]; px = (o.hx + w.hx) * 0.5 - f32(ES_CAMP_ASIDE); pz = (o.hz + w.hz) * 0.5; }
   }
   es_place(v, k, px, pz);
   // the bar at this level, each entry's catalogue index
@@ -274,7 +278,7 @@ es_row :: (v: [] RmServer, enc: int, c: int, level: int, n: int, trace: bool) ->
 }
 
 ES_TEXT :: 262144;
-ES_TITLE :: "# Encounter time to kill\n\nWritten by `coax/web/tool.sh coax/web/room/encounter-sim.coax --write docs/dnd/encounter-ttk.md` (#13288): every\nclass at levels 1 to 6, alone, against the third wolf pack (three Wolves), the path's guard (a level 10 Fighter),\nthe first pack (one Wolf) and the second (two Wolves),\nin the real room's rules, 32 fights (seeds 1 to 32) a row. Wins: fights where every foe fell first. TTK: the mean seconds from\nthe player's first harmful press to the last foe's fall, over the wins. Damage/s, healed and taken: per fight.\nDowns: fights where the player fell. HP and resources (spell slots, limited uses, Focus) left: at the fight's end.\nA fight lasts at most 120 s. The after-landing check fails a change that moves a row's TTK, damage a second or\nwins by more than 25%; run this again with --write in the same commit when the change is meant.\n\n";
+ES_TITLE :: "# Encounter time to kill\n\nWritten by `coax/web/tool.sh coax/web/room/encounter-sim.coax --write docs/dnd/encounter-ttk.md` (#13288): every\nclass at levels 1 to 6, alone, against the third wolf pack (three Wolves), the path's guard (a level 10 Fighter),\nthe first pack (one Wolf), the second (two Wolves) and the goblin camp (its two Goblin Warriors, fought at their fire; the two archers, each on its own, stay on their perches),\nin the real room's rules, 32 fights (seeds 1 to 32) a row. Wins: fights where every foe fell first. TTK: the mean seconds from\nthe player's first harmful press to the last foe's fall, over the wins. Damage/s, healed and taken: per fight.\nDowns: fights where the player fell. HP and resources (spell slots, limited uses, Focus) left: at the fight's end.\nA fight lasts at most 120 s. The after-landing check fails a change that moves a row's TTK, damage a second or\nwins by more than 25%; run this again with --write in the same commit when the change is meant.\n\n";
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;

@@ -47,7 +47,7 @@ presses what its bar allows.
 | The lone Wolf | 1 | Every class wins most fights. The lowest are the Wizard (22 of 32), then the Bard, Druid and Rogue (24). |
 | The pair | 3 | Every class wins at least 25 of 32. The Rogue is lowest (25), then the Wizard (28). |
 | The three | 4 | Ten classes win at least 24 of 32. The Ranger wins 21 and the Rogue 18. |
-| The camp's two Warriors | 4 | See the "goblin camp" rows. |
+| The camp's two Warriors | 4 | Every class wins at least 29 of 32. At level 3 the Cleric would win 21, the Rogue 22 and the Wizard 24. |
 
 Who struggles, and why:
 

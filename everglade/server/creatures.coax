@@ -174,7 +174,7 @@ e2mo_tpl :: (v: [] RmServer, mo: E2Mon) -> E2Tpl { return v[0].zoo[0].tpl[ifx mo
 e2mo_retired :: (v: [] RmServer, m: int) -> bool { return !e2mo_row(v, m).live; }
 // Monster m's home (x, z and the way it faces), by its troop.
 e2mo_home :: (v: [] RmServer, m: int) -> [3] f32 { r := e2mo_row(v, m); return [3] f32.[r.x, r.z, r.yaw]; }
-#test "e2 monsters: the room's creatures are the content tables' rows: packs of one, two and three Wolves, the camp's four, the guard (#13293)" {
+#test "e2 monsters: the room's creatures are the content tables' rows: packs of one, two and three Wolves, the camp's two Warriors and its two archers each on their own, the guard (#13293)" {
   v: [1] RmServer; rm_init(v[..]); z := v[0].zoo[..];
   #assert z[0].tpl_n == 5 && z[0].guard.live && z[0].tpl[z[0].guard.tpl].style == E2S_PATROL && z[0].guard.z == -18 && z[0].guard.respawn == 20;
   wolf := z[0].tpl[e2zoo_tpl(z, 1)]; goblin := z[0].tpl[e2zoo_tpl(z, 2)]; archer := z[0].tpl[e2zoo_tpl(z, 3)];
@@ -182,14 +182,14 @@ e2mo_home :: (v: [] RmServer, m: int) -> [3] f32 { r := e2mo_row(v, m); return [
   #assert goblin.block == MON_GOBLIN_WARRIOR && goblin.style == E2S_MELEE && goblin.kind == E2M_GOBLIN && goblin.notice == 18 && goblin.leash == 30 && goblin.run == 5.5;
   #assert archer.block == MON_GOBLIN_WARRIOR && archer.style == E2S_ARCHER && archer.kind == E2M_GOBLIN && z[0].tpl[e2zoo_tpl(z, 5)].style == E2S_STANDS && e2zoo_tpl(z, 99) < 0;
   // each monster's number is a spawn of the content registry, and its stat block one of its templates
-  size: [8] int; live := 0;
+  size: [16] int; live := 0;
   for m: 0..<E2M_N {
     r := e2mo_row(v[..], m); if !r.live { #assert e2mo_retired(v[..], m); continue; }
     live += 1; size[r.group] += 1; t := z[0].tpl[r.tpl];
     #assert content_key(CT_SPAWN, m).count > 0 && content_template(RS_MON_ID[t.block - 1]).value == t.block && r.respawn == 180;
     #assert (t.style == E2S_ARCHER) == (m >= 10) && t.kind == (ifx m < 8 then E2M_WOLF else E2M_GOBLIN);
   }
-  #assert live == 10 && size[1] == 1 && size[2] == 2 && size[3] == 3 && size[4] == 4 && e2mo_retired(v[..], 1) && e2mo_retired(v[..], 2) && !e2mo_retired(v[..], 0) && e2mo_retired(v[..], -1) && e2mo_retired(v[..], E2M_N);
+  #assert live == 10 && size[1] == 1 && size[2] == 2 && size[3] == 3 && size[4] == 2 && size[7] == 1 && size[8] == 1 && e2mo_retired(v[..], 1) && e2mo_retired(v[..], 2) && !e2mo_retired(v[..], 0) && e2mo_retired(v[..], -1) && e2mo_retired(v[..], E2M_N);
   h := e2mo_home(v[..], 0); #assert abs(h[0] - 8.46) < 0.001 && abs(h[1] + 177.4) < 0.001 && abs(h[2] + 1.5707963) < 0.0001;
   n := 0; for i: 0..<CONTENT_N { if CONTENT[i].kind == CT_SPAWN { n += 1; } } #assert n == E2M_N;
   // tables with no template and troop leave the room's creatures as they were; the room's own are read again
@@ -890,7 +890,7 @@ e2mt_fight_bytes :: (v: [] RmServer, ticks: int) -> int {
   v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-camp"); #assert k >= 0;
   ms := v[0].eg[k].monsters[..]; b := v[0].eg[k].rules[0].b[..];
   b[0].c[EGB_SEAT].hp = 500; b[0].c[EGB_SEAT].hp_max = 500; b[0].c[EGB_SEAT].ac = 1;
-  a := ms[0].mon[10]; px := a.x + 12; pz := a.z + 3;
+  a := ms[0].mon[10]; px := a.x + 8; pz := a.z + 2;   // within the 9 m an archer on its perch notices at (the template table)
   out: [262144] u8; _ := e2rt_heard(v[..], 0, out[..]);
   loosed := false; flying := false; hit := false;
   for q: 0..<EG_HZ * 6 {
@@ -1018,4 +1018,33 @@ e2mt_seat_at :: (v: [] RmServer, k: int, s: int, x: f32, z: f32) { v[0].eg[k].se
   #assert g[0].swing_tick != before;
   // far from any player struck, he lets it be: no monster is his foe of its own
   #assert e2_monster_assailant(v[..], k, px + 60, pz, f32(E2G_DEFEND)) == -1;
+}
+#test "e2 monsters: a Reckless Attack is a taunt: the Wolf it is pressed at turns from the one it was fighting to the reckless one (#13427)" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-reckless HTTP/1.1\r\n\r\n") == 0 && rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-e2-reckless HTTP/1.1\r\n\r\n") == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-barbarian-2 0 -"); rm_heard(v[..], 1, "H 6 ranger.0.0.0 srd-cleric 0 -"); eg_test_tick(v[..], k);
+  ms := v[0].eg[k].monsters[..]; b := v[0].eg[k].rules[0].b[..];
+  for s: 0..<2 { b[0].c[EGB_SEAT + s].hp = 5000; b[0].c[EGB_SEAT + s].hp_max = 5000; b[0].c[EGB_SEAT + s].ac = 30; }
+  for q: 0..<3 { e2mt_tick(v[..], k); }
+  // the lone Wolf fights the cleric, who has hurt it for 400; the barbarian stands beside it and is nothing to it yet
+  w := ms[0].mon[0]; i := EGB_BEAST0 + w.q;
+  b[0].c[i].hp_max = 5000; b[0].c[i].hp = 4600;
+  e2mt_seat_at(v[..], k, 0, w.x + 1.2, w.z); e2mt_seat_at(v[..], k, 1, w.x - 1.2, w.z); e2_monster_struck(v[..], k, 1, i, 5000);
+  #assert e2th_of(ms[0].mon[0], 1) == 400 && e2th_top(v[..], k, ms[0].mon[0]) == 1 && e2th_of(ms[0].mon[0], 0) == 0;
+  // Reckless Attack, pressed at the Wolf: taken by the room, and the Wolf's list has the barbarian on top by enough to pull it
+  cat: [XC_SLOTS] FbAb; nc := xk_catalog(FB_CL_BARBARIAN, cat[..]); slot := -1; for j: 0..<nc { if cat[j].kind == FB_RECKLESS { slot = j; } }
+  #assert slot >= 0 && v[0].eg[k].rules[0].klass[0] == EGB_CL0 + FB_CL_BARBARIAN && b[0].c[EGB_SEAT].level == 2;
+  took := false;
+  for q: 0..<40 {
+    if took { break; }
+    at := ms[0].mon[0];
+    e2mt_seat_at(v[..], k, 0, at.x + 1.2, at.z); e2mt_seat_at(v[..], k, 1, at.x - 1.2, at.z);
+    eg_e2_cast(v[..], k, SeatId.{value = 0}, WireCast.{seq = q + 1, slot = xk_slot(FB_CL_BARBARIAN, slot), ax = at.x, az = at.z});
+    took = v[0].eg[k].seat[0].last_cast == v[0].eg[k].tick;
+    e2mt_tick(v[..], k);
+  }
+  #assert took && e2th_top(v[..], k, ms[0].mon[0]) == 0 && e2th_of(ms[0].mon[0], 0) * 100 >= e2th_of(ms[0].mon[0], 1) * E2M_PULL;
+  // an Attack is no taunt: the cleric's own blow at it leaves the barbarian on top only by what the list says
+  held := e2th_of(ms[0].mon[0], 1); e2_monster_struck(v[..], k, 1, i, b[0].c[i].hp + 1); #assert e2th_of(ms[0].mon[0], 1) == held + 1;
 }
