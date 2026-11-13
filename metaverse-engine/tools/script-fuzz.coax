@@ -6,7 +6,9 @@
 // that loads runs several ticks of sh_tick over frames with random things, events of every handler kind,
 // timers and trigger reaches, then direct handler calls (sh_call) and direct interpreter calls (wi_call
 // on every function, imports answered with random bits). The frame and result codecs (sf_read, sr_read)
-// read damaged bytes, and the manifest reader (sm_read) reads damaged text.
+// read damaged bytes, and the manifest reader (sm_read) reads damaged text. Some rounds go through the
+// byte face a page and a room hold (world.coax: sw_load with damaged state fields, sw_tick on damaged
+// frame bytes, sw_status) and read a world's script rows from damaged cells (rows.coax).
 //
 // The modules come from three places:
 //   - a generator: every handler, the face, globals, a table, data, and bodies of random instructions
@@ -37,7 +39,8 @@
 //   coax/web/tool.sh metaverse-engine/tools/script-fuzz.coax --seed N --rounds N [--corpus DIR] [--trace]
 // Exit 0 when every round held, 1 when an invariant failed (the round's seed is printed), 2 for usage.
 #import "Basic";
-#load "../script/manifest.coax";
+#load "../script/world.coax";
+#load "../script/rows.coax";
 #load "../script/wasm-make.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
@@ -121,7 +124,7 @@ FzStats :: struct {
   rounds: int; passed: int; loaded: int; ticked: int; ticks: int;
   calls: int; kept: int; failed: [SD_CODES] int; statuses: [WI_STATUSES] int; refused: [WM_REFUSALS] int;
   direct: int; direct_status: [WI_STATUSES] int; shadow: int; frames_read: int; results_read: int; manifests: int; manifests_read: int;
-  swaps: int; commands: int;
+  swaps: int; commands: int; worlds: int; world_ticks: int; rows_read: int;
 }
 FzWork :: struct {
   s: [2] ScriptSlot;                 // 0 runs, 1 is the scratch slot sh_load checks in
@@ -134,6 +137,8 @@ FzWork :: struct {
   shadow: [WI_MEM] u8; shadow_globals: [WM_GLOBALS] u64; shadow_timers: [SH_TIMERS] f32;
   frame_bytes: [SF_BYTES + 256] u8; result_bytes: [SR_BYTES + 256] u8;
   text: [SM_TEXT + 64] u8; text2: [SM_TEXT + 64] u8;
+  world: [1] ScriptWorld;            // the byte face a page and a room hold (world.coax)
+  status: [SW_STATUS] u8;
   bad: bool; why: string;
   stats: FzStats;
 }
@@ -527,7 +532,7 @@ fz_slot_ok :: (w: [] FzWork, s: [] ScriptSlot, tick: bool) {
   if s[0].loaded && !s[0].off && s[0].strikes >= SH_STRIKES { fz_fail(w, "a script with three strikes is still on"); }
   for i: 0..<WM_SLOTS * SH_TIMERS { t := s[0].timers[i]; if t != t || t < 0.0 { fz_fail(w, "a timer is NaN or negative"); } }
 }
-fz_run_ok :: (w: [] FzWork, run: [] ScriptRun, f: [] ScriptFrame, scripts: int) {
+fz_run_ok :: (w: [] FzWork, run: [] ScriptRun, f: [] ScriptFrame, slots: [] ScriptSlot) {
   if run[0].fuel < 0 || run[0].fuel > SH_TICK_FUEL { fz_fail(w, "the tick's budget is out of range"); }
   if run[0].n_commands < 0 || run[0].n_commands > SH_COMMANDS || run[0].n_diags < 0 || run[0].n_diags > SH_DIAGS || run[0].more_diags < 0 { fz_fail(w, "a count is out of its limit"); return; }
   if run[0].failed < 0 || run[0].failed > run[0].calls { fz_fail(w, "more calls failed than ran"); }
@@ -538,7 +543,7 @@ fz_run_ok :: (w: [] FzWork, run: [] ScriptRun, f: [] ScriptFrame, scripts: int) 
     found := false;
     for t: 0..<f[0].n_things {
       th := f[0].things[t];
-      if th.id == k.thing && th.alive && th.script >= 0 && cast(int) th.script < scripts && w[0].s[cast(int) th.script].loaded { found = true; }
+      if th.id == k.thing && th.alive && th.script >= 0 && cast(int) th.script < slots.count && slots[cast(int) th.script].loaded { found = true; }
     }
     if !found { fz_fail(w, "a command names a thing no script drives"); return; }
   }
@@ -574,7 +579,7 @@ fz_one_tick :: (r: [] FzRng, w: [] FzWork, tick: int, scripts: int) {
   sh_tick(w[0].s[0..<scripts], w[0].run[..], w[0].f[..]);
   w[0].stats.ticks += 1;
   if was_off && scripts == 1 && w[0].run[0].calls != 0 { fz_fail(w, "a script that is off ran"); }
-  fz_run_ok(w, w[0].run[..], w[0].f[..], scripts);
+  fz_run_ok(w, w[0].run[..], w[0].f[..], w[0].s[0..<scripts]);
   for si: 0..<scripts { fz_slot_ok(w, w[0].s[si..<si + 1], true); }
   fz_count(w, w[0].run[..]);
   if fz_chance(r, 10) {
@@ -678,6 +683,52 @@ fz_manifest :: (r: [] FzRng, w: [] FzWork) {
   if sm_read(cast(string) w[0].text2[0..<n], got[..]) { w[0].stats.manifests_read += 1; }
 }
 
+// The byte face: a load with damaged state fields, ticks from damaged frame bytes, the status, and a
+// world's script rows from damaged cells.
+fz_world :: (r: [] FzRng, w: [] FzWork) {
+  sw := w[0].world[..];
+  for at: 0..<SH_SCRIPTS { sw_unload(sw, at); }
+  at := fz_below(r, SH_SCRIPTS + 2) - 1;
+  names := [4] string.["fuzz", "a-1", "", "Bad"];
+  fields := [5] string.["", "[]", "[{\"name\":\"count\",\"type\":\"u64\",\"at\":0,\"size\":8}]", "[{\"name\":\"x\",\"type\":\"f32\",\"at\":250,\"size\":8}]", "[{\"name\":"];
+  text := fields[fz_below(r, fields.count)];
+  for i: 0..<text.count { w[0].text2[i] = text[i]; }
+  n := text.count;
+  if n > 0 && fz_chance(r, 30) { w[0].text2[fz_below(r, n)] = cast(u8) fz_below(r, 256); }
+  code := sw_load(sw, at, names[fz_below(r, names.count)], w[0].b[0..<w[0].n], cast(string) w[0].text2[0..<n]);
+  if code != 0 && code != -1 && code != SD_REFUSED && code != SD_FACE { fz_fail(w, "sw_load answered a code that is not one of its own"); return; }
+  if code == -1 && at >= 0 && at < SH_SCRIPTS && sw[0].slots[at].loaded { fz_fail(w, "a load sw_load refused left a script in its place"); return; }
+  w[0].stats.worlds += 1;
+  for t: 0..<1 + fz_below(r, 4) {
+    fz_frame(r, w[0].f[..], fz_tick(r), SH_SCRIPTS);
+    fb := sf_write(w[0].f[..], w[0].frame_bytes[..]);
+    if fb < 0 { fb = 0; }
+    if fz_chance(r, 30) && fb > 0 { w[0].frame_bytes[fz_below(r, fb)] = cast(u8) fz_below(r, 256); }
+    if fz_chance(r, 10) { fb = fz_below(r, fb + 1); }
+    out := ifx fz_chance(r, 5) then fz_below(r, 64) else SR_BYTES;
+    got := sw_tick(sw, w[0].frame_bytes[0..<fb], w[0].result_bytes[0..<out]);
+    if got > 0 {
+      w[0].stats.world_ticks += 1;
+      if !sr_read(w[0].result_bytes[0..<got], w[0].run2[..]) { fz_fail(w, "sw_tick's result does not read"); return; }
+      fz_run_ok(w, sw[0].run[..], sw[0].frame[..], sw[0].slots[0..<SH_SCRIPTS]);
+    }
+    status := sw_status(sw, w[0].status[..]);
+    if status == "" { fz_fail(w, "the world's status does not write"); return; }
+  }
+  rows: [1] ScriptRow;
+  cells := [6] string.["fuzz", "kind 3", "who 12", "who 0", "kind 256", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"];
+  for i: 0..<4 {
+    a := cells[fz_below(r, cells.count)]; b := cells[fz_below(r, cells.count)]; c := cells[fz_below(r, cells.count)];
+    for j: 0..<c.count { w[0].text2[j] = c[j]; }
+    cn := c.count;
+    if cn > 0 && fz_chance(r, 50) { w[0].text2[fz_below(r, cn)] = cast(u8) fz_below(r, 256); }
+    if fz_chance(r, 20) { cn = fz_below(r, cn + 1); }
+    why := srw_read(fz_below(r, SH_SCRIPTS + 3) - 1, a, b, cast(string) w[0].text2[0..<cn], rows[..]);
+    if why == SRW_OK { w[0].stats.rows_read += 1; if rows[0].slot < 0 || rows[0].slot >= SH_SCRIPTS { fz_fail(w, "a script row's place is out of range"); return; } }
+    picked := srw_pick(rows[..], fz_below(r, 300) - 20, fz_below(r, 120) - 10);
+  }
+}
+
 // ---- a round ----
 fz_round :: (w: [] FzWork, seed: int) {
   rng: [1] FzRng; rng[0].s = cast,trunc(u64) seed; r := rng[..];
@@ -729,6 +780,7 @@ fz_round :: (w: [] FzWork, seed: int) {
       if w[0].s[0].n != old_n || sum != old_sum || !fz_mem_same(w, w[0].s[0].vm[..]) { fz_fail(w, "a refused module changed the running script"); return; }
       fz_one_tick(r, w, 1000 + fz_below(r, 100), 1);
     }
+    if fz_chance(r, 5) { fz_world(r, w); }
     return;
   }
   w[0].stats.passed += 1; w[0].stats.loaded += 1;
@@ -747,6 +799,7 @@ fz_round :: (w: [] FzWork, seed: int) {
   if fz_chance(r, 30) { for times: 0..<1 + fz_below(r, 3) { fz_direct_call(r, w, tick); if w[0].bad { return; } } }
   if fz_chance(r, 25) { fz_direct_vm(r, w); }
   if fz_chance(r, 15) { fz_manifest(r, w); }
+  if fz_chance(r, 5) { fz_world(r, w); }
 }
 
 // ---- the corpus ----
@@ -815,6 +868,7 @@ tool_main :: () -> int #export_c #effects(all) {
   print("script-fuzz: seed %, % rounds held: % passed the check, % ran ticks (% ticks), % swaps\n", seed, st.rounds, st.passed, st.ticked, st.ticks, st.swaps);
   print("  handler calls: % (% kept), % commands; direct interpreter runs: %; shadowed calls: %\n", st.calls, st.kept, st.commands, st.direct, st.shadow);
   print("  frames read from damaged bytes: %, results: %; manifests: % (% damaged ones read)\n", st.frames_read, st.results_read, st.manifests, st.manifests_read);
+  print("  byte-face worlds: % (% ticks that read); script rows read: %\n", st.worlds, st.world_ticks, st.rows_read);
   fz_print_counts("refused", WM_REFUSAL_NAMES[..], st.refused[..]);
   fz_print_counts("failed calls", SD_NAMES[..], st.failed[..]);
   fz_print_counts("trap statuses", WI_STATUS_NAMES[..], st.statuses[..]);
