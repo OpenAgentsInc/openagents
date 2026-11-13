@@ -339,6 +339,8 @@ program (#13257) has already built most of what this needs. The section
 - Splice's `landmarks` are its named anchors (`A_NAMED`), and its
   `kept_clear` zones are places the planner never spreads into.
 
+> **2026-11-12:** slices 0b-7 are now part of the browser editor spec, [`docs/editor/2026-11-12-browser-editor.md`](../editor/2026-11-12-browser-editor.md). Slice 0b is E5 (#13414), slices 1-2 are E3 (#13412), slice 3 is E6 (#13415), slice 4 is E4 (#13413), and slices 5-6 are E9 (#13418).
+
 ### Slice 1: a world has an id and a document
 
 - **API:**
