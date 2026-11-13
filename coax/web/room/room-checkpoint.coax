@@ -238,9 +238,9 @@ rm_checkpoint_due :: (v:[]RmServer)->int #export_c #effects(all) {
 ck_failed :: (v:[]RmServer) {v[0].ck.waiting=false;v[0].ck.fly=false;v[0].ck.tries+=1;v[0].ck.failures+=1;v[0].ck.retry_at=v[0].mono_ms+cf_wait(v[0].ck.tries,(v[0].vit.gen+v[0].ck.request)%2147483647);}
 rm_checkpoint_answer :: (v:[]RmServer,request:int,status:int,body:string) #export_c #effects(all) {
   if !v[0].ck.waiting||request!=v[0].ck.request{v[0].ck.late+=1;return;}
-  nodes:[32]JvNode;d:[1]Jv;valid:=status==200&&jv_parse(d[..],body,nodes[..]);f:=v[0].ck.fly_capture;
-  word:[24]u8;wn:=ifx valid then jv_str(d[0],jv_get(d[0],0,"status"),word[..]) else -1;name:=ifx wn>=0 then cast(string)word[0..<wn] else "";
-  version:=jv_int(d[0],jv_get(d[0],0,"v"),0);owner:=jv_int(d[0],jv_get(d[0],0,"owner"),0);process:=jv_int(d[0],jv_get(d[0],0,"process"),0);rev:=jv_int(d[0],jv_get(d[0],0,"rev"),0);accepted:=jv_int(d[0],jv_get(d[0],0,"accepted_at"),0);
+  // the receipt is room-report.coax's (Protocol E7, #13250)
+  got:[1]RoomCheckpointReceipt;valid:=status==200&&room_report_checkpoint_receipt_read(body,got[..]);f:=v[0].ck.fly_capture;
+  name:=room_report_checkpoint_status(got[..]);version:=got[0].v;owner:=got[0].owner;process:=got[0].process;rev:=got[0].rev;accepted:=got[0].accepted_at;
   if !valid||!cf_ack(version,name,OwnerGeneration.{value=owner},process,rev,accepted,OwnerGeneration.{value=f.n[1]},f.n[2],f.n[3]){
     if valid&&cf_fenced(version,name,OwnerGeneration.{value=owner},process,rev,OwnerGeneration.{value=f.n[1]},f.n[2],f.n[3]){v[0].ck.fenced+=1;pid:=f.pid;_:=rl_owner_drop(v,cast(string)pid[0..<f.pid_n],owner+1,-1);i:=v[0].ck.fly_i;if v[0].ck.slot[i].owner==owner{v[0].ck.slot[i].live=false;}v[0].ck.fly=false;v[0].ck.waiting=false;return;}
     if !v[0].ck.two_only&&f.n[0]==3&&(status==400||status>=500){v[0].ck.two_only=true;v[0].ck.two_falls+=1;}

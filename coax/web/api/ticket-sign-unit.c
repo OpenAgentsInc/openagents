@@ -2,9 +2,9 @@
 // writer: v5, #13260, and v2 to v4, #13248) as one unit of the API. It loads Coax libraries that nip98.generated.c,
 // progress-policy.generated.c and others load too (bytes, SHA-256, secp256k1, the resume payload),
 // and those export their procedures: the same names twice in one binary. Here every export of this
-// unit but its own (seat_ticket_*, room_write_*, crash_*, soak_record_*) gets a name of its own. A library export added later fails the
+// unit but its own (seat_ticket_*, room_write_*, crash_*, soak_record_*, room_report_*) gets a name of its own. A library export added later fails the
 // link loudly; regenerate this list:
-//   nm -g --defined-only ticket-sign.o | awk '{print $3}' | sed 's/^_//' | grep -v '^seat_ticket_\|^room_write_\|^crash_\|^soak_record_'
+//   nm -g --defined-only ticket-sign.o | awk '{print $3}' | sed 's/^_//' | grep -v '^seat_ticket_\|^room_write_\|^crash_\|^soak_record_\|^room_report_'
 #define cb_ct_equal stk_x_cb_ct_equal
 #define cb_ct_select32 stk_x_cb_ct_select32
 #define cb_ct_select64 stk_x_cb_ct_select64
@@ -227,4 +227,20 @@ size_t capacity_record_field_c(const char *body, size_t n, const char *key, char
   coax_string v = soak_record_field((coax_string){body, (int64_t)n}, stk_text(key), (coax_v_u8){(uint8_t *)out, (int64_t)cap - 1});
   out[v.count > 0 ? v.count : 0] = 0;
   return v.count > 0 ? (size_t)v.count : 0;
+}
+// The room reports' codec (metaverse-engine/session/room-report.coax, Protocol E7 and E8, #13250), for player.c.
+int room_report_receipt_c(long long gen, long long batch, const char *codes, char *out, size_t cap);
+int room_report_checkpoint_receipt_c(int v, const char *status, size_t status_n, long long owner, long long process, long long rev, long long accepted_at, char *out, size_t cap);
+// A vitals post's receipt, "receipt GEN BATCH CODES\n", into out: its length, -1 when it does not fit.
+int room_report_receipt_c(long long gen, long long batch, const char *codes, char *out, size_t cap) {
+  int64_t n = room_report_receipt((coax_v_u8){(uint8_t *)out, (int64_t)cap}, gen, batch, stk_text(codes));
+  return n < 0 ? -1 : (int)n;
+}
+// A checkpoint's receipt into out (NUL-terminated): its length, -1 when it does not fit.
+int room_report_checkpoint_receipt_c(int v, const char *status, size_t status_n, long long owner, long long process, long long rev, long long accepted_at, char *out, size_t cap) {
+  if (cap < 2) return -1;
+  int64_t n = room_report_checkpoint_receipt((coax_v_u8){(uint8_t *)out, (int64_t)cap - 1}, v, (coax_string){status, (int64_t)status_n}, owner, process, rev, accepted_at);
+  if (n < 0) return -1;
+  out[n] = 0;
+  return (int)n;
 }

@@ -1,0 +1,222 @@
+// Hold the room reports' profile (proto/verse/room-reports-v1.json, Protocol E7 and E8, #13250) to
+// the one codec the room and the API use: metaverse-engine/session/room-report.coax. Each entry
+// names its values and its exact text. The codec's writer gives that text from the values, and,
+// where the codec has a reader (the receipts and the control answer), the reader gives the values
+// back from the text. A vitals post and a directory post are read by the API in C, so only their
+// writer is held here. Every "refused" text is refused by its reader.
+//   coax/web/tool.sh coax/web/room/report-profile.coax proto/verse/room-reports-v1.json
+#import "Basic";
+#load "../../../metaverse-engine/session/room-report.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/fs.coax";
+
+RPP_FILE :: 262144;
+RPP_TEXT :: 16384;
+RPP_PATH :: "proto/verse/room-reports-v1.json";
+RPP_CHECK :: "coax/web/tool.sh coax/web/room/report-profile.coax proto/verse/room-reports-v1.json";
+RPP_CODEC :: "metaverse-engine/session/room-report.coax";
+RPP_NONE :: -999999999;
+
+rpp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+rpp_int :: (d: Jv, row: int, key: string) -> int { return jv_int(d, jv_get(d, row, key), RPP_NONE); }
+// A member that may be left out: its number, or `none`.
+rpp_opt :: (d: Jv, row: int, key: string, none: int) -> int { at := jv_get(d, row, key); return ifx at < 0 then none else jv_int(d, at, RPP_NONE); }
+
+// A vitals post: {"t","shard","gen","batch","lines":[{"pid","hp","max","xp","wanted","rev","at","owner"?,"class"?}],"text"}
+rpp_vitals :: (d: Jv, row: int, text: string) -> bool {
+  out: [RPP_TEXT] u8; pb: [64] u8; cb: [64] u8;
+  n := room_report_vitals_head(out[..], rpp_int(d, row, "t"), rpp_int(d, row, "shard"), rpp_int(d, row, "gen"), rpp_int(d, row, "batch"));
+  lines := jv_get(d, row, "lines");
+  if jv_kind(d, lines) != JV_ARRAY || jv_len(d, lines) < 1 { return false; }
+  for i: 0..<jv_len(d, lines) {
+    l := jv_at(d, lines, i);
+    pid := rpp_str(d, jv_get(d, l, "pid"), pb[..]); klass := rpp_str(d, jv_get(d, l, "class"), cb[..]);
+    if pid == "" || rpp_int(d, l, "hp") == RPP_NONE || rpp_int(d, l, "max") == RPP_NONE || rpp_int(d, l, "xp") == RPP_NONE || rpp_int(d, l, "wanted") == RPP_NONE || rpp_int(d, l, "rev") == RPP_NONE || rpp_int(d, l, "at") == RPP_NONE { return false; }
+    n = room_report_vitals_line(out[..], n, pid, rpp_int(d, l, "hp"), rpp_int(d, l, "max"), rpp_int(d, l, "xp"), rpp_int(d, l, "wanted"), rpp_int(d, l, "rev"), rpp_int(d, l, "at"), rpp_opt(d, l, "owner", 0), klass);
+  }
+  return n > 0 && cast(string) out[0..<n] == text;
+}
+// A receipt: {"gen","batch","codes","text"}
+rpp_receipt :: (d: Jv, row: int, text: string) -> bool {
+  out: [512] u8; cb: [256] u8;
+  codes := rpp_str(d, jv_get(d, row, "codes"), cb[..]);
+  n := room_report_receipt(out[..], rpp_int(d, row, "gen"), rpp_int(d, row, "batch"), codes);
+  g := room_report_receipt_read(text);
+  return n > 0 && cast(string) out[0..<n] == text && g.kind == ROOM_RECEIPT && g.gen == rpp_int(d, row, "gen") && g.batch == rpp_int(d, row, "batch") && text[g.codes_at..<g.codes_at + g.codes_n] == codes;
+}
+// A directory post: {"t","shard","free","gen"?,"draining"?,"endpoint"?,"rooms":[{"code","players","pids":[...]}],"health":{"players","tick_us"}?,"text"}
+rpp_directory :: (d: Jv, row: int, text: string) -> bool {
+  out: [RPP_TEXT] u8; sb: [256] u8;
+  n := room_report_put(out[..], room_report_stamp(out[..], 0, rpp_int(d, row, "t")), "\n");
+  n = room_report_dir_shard(out[..], n, rpp_int(d, row, "shard"), rpp_int(d, row, "free"));
+  if jv_get(d, row, "gen") >= 0 { n = room_report_dir_gen(out[..], n, rpp_int(d, row, "gen"), jv_bool(d, jv_get(d, row, "draining"))); }
+  if jv_get(d, row, "endpoint") >= 0 { n = room_report_dir_endpoint(out[..], n, rpp_str(d, jv_get(d, row, "endpoint"), sb[..])); }
+  rooms := jv_get(d, row, "rooms");
+  if jv_kind(d, rooms) != JV_ARRAY { return false; }
+  for i: 0..<jv_len(d, rooms) {
+    r := jv_at(d, rooms, i);
+    n = room_report_dir_room(out[..], n, rpp_str(d, jv_get(d, r, "code"), sb[..]), rpp_int(d, r, "players"));
+    pids := jv_get(d, r, "pids");
+    if jv_kind(d, pids) != JV_ARRAY { return false; }
+    for j: 0..<jv_len(d, pids) { n = room_report_dir_pid(out[..], n, rpp_str(d, jv_at(d, pids, j), sb[..])); }
+    n = room_report_dir_end(out[..], n);
+  }
+  h := jv_get(d, row, "health");
+  if h >= 0 { n = room_report_dir_health(out[..], n, rpp_int(d, h, "players"), rpp_int(d, h, "tick_us")); }
+  return n > 0 && cast(string) out[0..<n] == text;
+}
+// A drain's signed text: {"shard","at","wait","text"}
+rpp_drain :: (d: Jv, row: int, text: string) -> bool {
+  out: [128] u8;
+  n := room_report_drain(out[..], rpp_int(d, row, "shard"), rpp_int(d, row, "at"), rpp_int(d, row, "wait"));
+  return n > 0 && cast(string) out[0..<n] == text;
+}
+// A control ask's signed text: {"t","text"}
+rpp_ask :: (d: Jv, row: int, text: string) -> bool {
+  out: [64] u8;
+  n := room_report_stamp(out[..], 0, rpp_int(d, row, "t"));
+  return n > 0 && cast(string) out[0..<n] == text;
+}
+// A control answer: {"lines":[{"kind","word"?,"a"?,"b"?,"c"?}],"text"}. A line of kind "other" is one
+// this codec does not read (the event and levels lines): its "raw" is the line.
+rpp_control :: (d: Jv, row: int, text: string) -> bool {
+  out: [RPP_TEXT] u8; kb: [16] u8; wb: [256] u8;
+  lines := jv_get(d, row, "lines");
+  if jv_kind(d, lines) != JV_ARRAY { return false; }
+  n := 0; at := 0;
+  for i: 0..<jv_len(d, lines) {
+    l := jv_at(d, lines, i);
+    kind := rpp_str(d, jv_get(d, l, "kind"), kb[..]);
+    word := rpp_str(d, jv_get(d, l, ifx kind == "other" then "raw" else "word"), wb[..]);
+    a := rpp_opt(d, l, "a", -1); b := rpp_opt(d, l, "b", -1); c := rpp_opt(d, l, "c", -1);
+    want := ROOM_CONTROL_OTHER;
+    if kind == "pvp" { n = room_report_control_pvp(out[..], n, a == 1); want = ROOM_CONTROL_PVP; }
+    else if kind == "edit" { n = room_report_control_edit(out[..], n, a); want = ROOM_CONTROL_EDIT; }
+    else if kind == "kick" { n = room_report_control_kick(out[..], n, word); want = ROOM_CONTROL_KICK; }
+    else if kind == "flag" { n = room_report_control_flag(out[..], n, word, a); want = ROOM_CONTROL_FLAG; }
+    else if kind == "hold" { n = room_report_control_hold(out[..], n, word, a, b); want = ROOM_CONTROL_HOLD; }
+    else if kind == "place" { n = room_report_control_place(out[..], n, word, a, b, c); want = ROOM_CONTROL_PLACE; }
+    else if kind == "dice" { n = room_report_control_dice(out[..], n, a == 1); want = ROOM_CONTROL_DICE; }
+    else if kind == "other" { n = room_report_put(out[..], room_report_put(out[..], n, word), "\n"); }
+    else { return false; }
+    // the same line of the text, read back
+    e := at;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    if e >= text.count { return false; }
+    line := text[at..<e]; at = e + 1;
+    g := room_report_control_read(line);
+    if g.kind != want { return false; }
+    if want == ROOM_CONTROL_OTHER { continue; }
+    if g.a != a || g.b != b || g.c != c { return false; }
+    if want != ROOM_CONTROL_PVP && want != ROOM_CONTROL_EDIT && want != ROOM_CONTROL_DICE && line[g.word_at..<g.word_at + g.word_n] != word { return false; }
+  }
+  return n >= 0 && at == text.count && cast(string) out[0..<n] == text;
+}
+// A checkpoint's receipt: {"v","status","owner","process","rev","accepted_at","text"}
+rpp_checkpoint :: (d: Jv, row: int, text: string) -> bool {
+  out: [512] u8; sb: [64] u8; g: [1] RoomCheckpointReceipt;
+  status := rpp_str(d, jv_get(d, row, "status"), sb[..]);
+  n := room_report_checkpoint_receipt(out[..], rpp_int(d, row, "v"), status, rpp_int(d, row, "owner"), rpp_int(d, row, "process"), rpp_int(d, row, "rev"), rpp_int(d, row, "accepted_at"));
+  return n > 0 && cast(string) out[0..<n] == text && room_report_checkpoint_receipt_read(text, g[..]) && g[0].v == rpp_int(d, row, "v") && room_report_checkpoint_status(g[..]) == status
+    && g[0].owner == rpp_int(d, row, "owner") && g[0].process == rpp_int(d, row, "process") && g[0].rev == rpp_int(d, row, "rev") && g[0].accepted_at == rpp_int(d, row, "accepted_at");
+}
+
+RPP_GROUPS :: [7] string.["vitals", "receipts", "directory", "drain", "control_asks", "control", "checkpoint_receipts"];
+rpp_entry :: (group: int, d: Jv, row: int, text: string) -> bool {
+  if group == 0 { return rpp_vitals(d, row, text); }
+  if group == 1 { return rpp_receipt(d, row, text); }
+  if group == 2 { return rpp_directory(d, row, text); }
+  if group == 3 { return rpp_drain(d, row, text); }
+  if group == 4 { return rpp_ask(d, row, text); }
+  if group == 5 { return rpp_control(d, row, text); }
+  return rpp_checkpoint(d, row, text);
+}
+
+rpp_check :: (d: Jv, path: string) -> bool {
+  tb: [256] u8; text: [RPP_TEXT] u8;
+  if jv_kind(d, 0) != JV_OBJECT { return false; }
+  if rpp_str(d, jv_get(d, 0, "identity"), tb[..]) != "room-reports-v1" { print("identity\n"); return false; }
+  file := RPP_PATH;
+  if path.count < file.count || path[path.count - file.count..<path.count] != file { print("identity: not the file's name\n"); return false; }
+  if rpp_str(d, jv_get(d, 0, "check"), tb[..]) != RPP_CHECK { print("check: not this program\n"); return false; }
+  if rpp_str(d, jv_get(d, 0, "codec"), tb[..]) != RPP_CODEC { print("codec: not the reports'\n"); return false; }
+  total := 0;
+  for gi: 0..<RPP_GROUPS.count {
+    list := jv_get(d, 0, RPP_GROUPS[gi]);
+    if jv_kind(d, list) != JV_ARRAY || jv_len(d, list) < 1 { print("%: no entries\n", RPP_GROUPS[gi]); return false; }
+    for i: 0..<jv_len(d, list) {
+      row := jv_at(d, list, i);
+      tn := jv_str(d, jv_get(d, row, "text"), text[..]);
+      if tn < 0 || !rpp_entry(gi, d, row, cast(string) text[0..<tn]) { print("% %: the codec does not give this entry's text, or does not read it back\n", RPP_GROUPS[gi], i); return false; }
+      total += 1;
+    }
+    print("ok    % (%)\n", RPP_GROUPS[gi], jv_len(d, list));
+  }
+  // what each reader refuses
+  bad := jv_get(d, 0, "refused");
+  rl := jv_get(d, bad, "receipts"); cl := jv_get(d, bad, "checkpoint_receipts"); ol := jv_get(d, bad, "control");
+  if jv_kind(d, rl) != JV_ARRAY || jv_len(d, rl) < 3 || jv_kind(d, cl) != JV_ARRAY || jv_len(d, cl) < 3 || jv_kind(d, ol) != JV_ARRAY || jv_len(d, ol) < 3 { print("refused: three texts a reader at least\n"); return false; }
+  for i: 0..<jv_len(d, rl) {
+    tn := jv_str(d, jv_at(d, rl, i), text[..]);
+    if tn < 0 || room_report_receipt_read(cast(string) text[0..<tn]).kind == ROOM_RECEIPT { print("refused receipts %: taken\n", i); return false; }
+  }
+  g: [1] RoomCheckpointReceipt;
+  for i: 0..<jv_len(d, cl) {
+    tn := jv_str(d, jv_at(d, cl, i), text[..]);
+    if tn < 0 || room_report_checkpoint_receipt_read(cast(string) text[0..<tn], g[..]) { print("refused checkpoint_receipts %: taken\n", i); return false; }
+  }
+  for i: 0..<jv_len(d, ol) {
+    tn := jv_str(d, jv_at(d, ol, i), text[..]);
+    if tn < 0 || room_report_control_read(cast(string) text[0..<tn]).kind != ROOM_CONTROL_OTHER { print("refused control %: taken\n", i); return false; }
+  }
+  // an older API's answer to a vitals post
+  kl := jv_get(d, 0, "receipts_kept");
+  if jv_kind(d, kl) != JV_ARRAY || jv_len(d, kl) < 1 { print("receipts_kept\n"); return false; }
+  for i: 0..<jv_len(d, kl) {
+    tn := jv_str(d, jv_at(d, kl, i), text[..]);
+    if tn < 0 || room_report_receipt_read(cast(string) text[0..<tn]).kind != ROOM_RECEIPT_KEPT { print("receipts_kept %\n", i); return false; }
+  }
+  print("% entries hold\n", total);
+  return true;
+}
+
+// --receipt: one body from stdin's place, a file: a vitals receipt or a checkpoint receipt a running
+// API answered, read through the codec and written back to the same bytes (the API suite's check).
+rpp_body :: (kind: string, body: string) -> bool {
+  out: [512] u8;
+  if kind == "--vitals-receipt" {
+    g := room_report_receipt_read(body);
+    if g.kind != ROOM_RECEIPT { return false; }
+    n := room_report_receipt(out[..], g.gen, g.batch, body[g.codes_at..<g.codes_at + g.codes_n]);
+    return n > 0 && cast(string) out[0..<n] == body;
+  }
+  if kind == "--checkpoint-receipt" {
+    g: [1] RoomCheckpointReceipt;
+    if !room_report_checkpoint_receipt_read(body, g[..]) { return false; }
+    n := room_report_checkpoint_receipt(out[..], g[0].v, room_report_checkpoint_status(g[..]), g[0].owner, g[0].process, g[0].rev, g[0].accepted_at);
+    return n > 0 && cast(string) out[0..<n] == body;
+  }
+  return false;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || (args_count(a[..]) != 1 && args_count(a[..]) != 2) { tool_errln("usage: report-profile PROFILE.json | report-profile --vitals-receipt|--checkpoint-receipt FILE"); return 2; }
+  text: [RPP_FILE] u8;
+  if args_count(a[..]) == 2 {
+    n := fs_read(args_at(a[..], 1), text[..]);
+    if n <= 0 || !rpp_body(args_at(a[..], 0), cast(string) text[0..<n]) { print("%: not the codec's bytes\n", args_at(a[..], 1)); return 1; }
+    return 0;
+  }
+  path := args_at(a[..], 0);
+  n := fs_read(path, text[..]);
+  nodes: [8192] JvNode; d: [1] Jv;
+  if n <= 0 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("report-profile: cannot parse JSON"); return 2; }
+  if !rpp_check(d[0], path) { print("%: profile fails\n", path); return 1; }
+  print("%: profile holds\n", path);
+  return 0;
+}

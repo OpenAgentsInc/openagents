@@ -1,0 +1,606 @@
+{
+ "identity": "room-reports-v1",
+ "check": "coax/web/tool.sh coax/web/room/report-profile.coax proto/verse/room-reports-v1.json",
+ "codec": "metaverse-engine/session/room-report.coax",
+ "doc": "docs/protocol/room-reports-v1.md",
+ "scope": "What a room shard and the API say to each other outside the session wire: the vitals post and its receipt, the directory post, a drain's signed text, the control ask and its answer, and the checkpoint's receipt",
+ "captured": "2026-11-13, at 09a2fe891c, before the codec: the API suite on a build host with a real room server (coax/web/api/test.sh with ROOM_BIN and API_CAPTURE). `from` says where each entry's bytes came from.",
+ "formats": {
+  "vitals": "t MS\\no SHARD GEN BATCH\\nPID HP MAX XP WANTED REV AT [OWNER] [c=CLASS]\\n...",
+  "receipt": "receipt GEN BATCH CODES\\n",
+  "directory": "t MS\\ns SHARD FREE\\n[g GEN [d]\\n][e URL\\n]r CODE PLAYERS PID...\\n[h PLAYERS TICK_P95_US\\n]",
+  "drain": "drain SHARD AT WAIT",
+  "control_ask": "t MS",
+  "control": "pvp 0|1, edit STAMP, kick PID, flag NAME VALUE, hold CODE SEAT STAMP, place CODE SEAT BOAT STAMP, dice fixed|random; a line a line",
+  "checkpoint_receipt": "{\"v\":V,\"status\":\"WORD\",\"owner\":N,\"process\":N,\"rev\":N,\"accepted_at\":MS}"
+ },
+ "codes": {
+  "a": "applied",
+  "d": "already applied",
+  "s": "stale",
+  "u": "no such player",
+  "x": "a line the API could not read",
+  "f": "fenced"
+ },
+ "vitals": [
+  {
+   "from": "a room server's post, through the checks' proxy",
+   "t": 1794552522401,
+   "shard": 1,
+   "gen": 1794552384531,
+   "batch": 7,
+   "lines": [
+    {
+     "pid": "p-raidcheck-1794552383-0",
+     "hp": 57,
+     "max": 57,
+     "xp": 0,
+     "wanted": 0,
+     "rev": 1,
+     "at": 1794552478286
+    },
+    {
+     "pid": "p-raidcheck-1794552383-1",
+     "hp": 57,
+     "max": 57,
+     "xp": 0,
+     "wanted": 0,
+     "rev": 2,
+     "at": 1794552478286
+    },
+    {
+     "pid": "p-raidcheck-1794552383-2",
+     "hp": 57,
+     "max": 57,
+     "xp": 0,
+     "wanted": 0,
+     "rev": 3,
+     "at": 1794552478286
+    },
+    {
+     "pid": "p-raidcheck-1794552383-3",
+     "hp": 57,
+     "max": 57,
+     "xp": 0,
+     "wanted": 0,
+     "rev": 4,
+     "at": 1794552478286
+    }
+   ],
+   "text": "t 1794552522401\no 1 1794552384531 7\np-raidcheck-1794552383-0 57 57 0 0 1 1794552478286\np-raidcheck-1794552383-1 57 57 0 0 2 1794552478286\np-raidcheck-1794552383-2 57 57 0 0 3 1794552478286\np-raidcheck-1794552383-3 57 57 0 0 4 1794552478286\n"
+  },
+  {
+   "from": "a room server's post, through the checks' proxy",
+   "t": 1794552551401,
+   "shard": 1,
+   "gen": 1794552384531,
+   "batch": 8,
+   "lines": [
+    {
+     "pid": "p-raidcheck-1794552383-0",
+     "hp": 57,
+     "max": 57,
+     "xp": 0,
+     "wanted": 0,
+     "rev": 1,
+     "at": 1794552478286
+    },
+    {
+     "pid": "p-raidcheck-1794552383-1",
+     "hp": 57,
+     "max": 57,
+     "xp": 0,
+     "wanted": 0,
+     "rev": 2,
+     "at": 1794552478286
+    },
+    {
+     "pid": "p-raidcheck-1794552383-2",
+     "hp": 57,
+     "max": 57,
+     "xp": 0,
+     "wanted": 0,
+     "rev": 3,
+     "at": 1794552478286
+    },
+    {
+     "pid": "p-raidcheck-1794552383-3",
+     "hp": 57,
+     "max": 57,
+     "xp": 0,
+     "wanted": 0,
+     "rev": 4,
+     "at": 1794552478286
+    }
+   ],
+   "text": "t 1794552551401\no 1 1794552384531 8\np-raidcheck-1794552383-0 57 57 0 0 1 1794552478286\np-raidcheck-1794552383-1 57 57 0 0 2 1794552478286\np-raidcheck-1794552383-2 57 57 0 0 3 1794552478286\np-raidcheck-1794552383-3 57 57 0 0 4 1794552478286\n"
+  },
+  {
+   "from": "a room server's post, through the checks' proxy",
+   "t": 1794552573401,
+   "shard": 1,
+   "gen": 1794552384531,
+   "batch": 9,
+   "lines": [
+    {
+     "pid": "p-raidcheck-1794552383-0",
+     "hp": 57,
+     "max": 57,
+     "xp": 0,
+     "wanted": 0,
+     "rev": 1,
+     "at": 1794552478286
+    },
+    {
+     "pid": "p-raidcheck-1794552383-1",
+     "hp": 57,
+     "max": 57,
+     "xp": 0,
+     "wanted": 0,
+     "rev": 2,
+     "at": 1794552478286
+    },
+    {
+     "pid": "p-raidcheck-1794552383-2",
+     "hp": 57,
+     "max": 57,
+     "xp": 0,
+     "wanted": 0,
+     "rev": 3,
+     "at": 1794552478286
+    },
+    {
+     "pid": "p-raidcheck-1794552383-3",
+     "hp": 57,
+     "max": 57,
+     "xp": 0,
+     "wanted": 0,
+     "rev": 4,
+     "at": 1794552478286
+    }
+   ],
+   "text": "t 1794552573401\no 1 1794552384531 9\np-raidcheck-1794552383-0 57 57 0 0 1 1794552478286\np-raidcheck-1794552383-1 57 57 0 0 2 1794552478286\np-raidcheck-1794552383-2 57 57 0 0 3 1794552478286\np-raidcheck-1794552383-3 57 57 0 0 4 1794552478286\n"
+  }
+ ],
+ "receipts": [
+  {
+   "from": "the API's answer to a room server's post",
+   "gen": 1794552384531,
+   "batch": 7,
+   "codes": "aaaa",
+   "text": "receipt 1794552384531 7 aaaa\n"
+  },
+  {
+   "from": "the API's answer to a room server's post",
+   "gen": 1794552384531,
+   "batch": 8,
+   "codes": "dddd",
+   "text": "receipt 1794552384531 8 dddd\n"
+  },
+  {
+   "from": "the API's answer to a room server's post",
+   "gen": 1794552384531,
+   "batch": 9,
+   "codes": "dddd",
+   "text": "receipt 1794552384531 9 dddd\n"
+  },
+  {
+   "from": "the API's answer to a post of the API suite",
+   "gen": 1794552322524,
+   "batch": 1,
+   "codes": "a",
+   "text": "receipt 1794552322524 1 a\n"
+  },
+  {
+   "from": "the API's answer to a post of the API suite",
+   "gen": 1794552322524,
+   "batch": 2,
+   "codes": "d",
+   "text": "receipt 1794552322524 2 d\n"
+  },
+  {
+   "from": "the API's answer to a post of the API suite",
+   "gen": 1794552322524,
+   "batch": 3,
+   "codes": "a",
+   "text": "receipt 1794552322524 3 a\n"
+  },
+  {
+   "from": "the API's answer to a post of the API suite",
+   "gen": 1794552322524,
+   "batch": 4,
+   "codes": "s",
+   "text": "receipt 1794552322524 4 s\n"
+  },
+  {
+   "from": "the API's answer to a post of the API suite",
+   "gen": 1794552322524,
+   "batch": 5,
+   "codes": "uxa",
+   "text": "receipt 1794552322524 5 uxa\n"
+  },
+  {
+   "from": "the API's answer to a post of the API suite",
+   "gen": 1794552322524,
+   "batch": 8,
+   "codes": "fa",
+   "text": "receipt 1794552322524 8 fa\n"
+  },
+  {
+   "from": "the API's answer to a post of the API suite",
+   "gen": 1794552322524,
+   "batch": 9,
+   "codes": "ax",
+   "text": "receipt 1794552322524 9 ax\n"
+  },
+  {
+   "from": "the API's answer to a post of the API suite",
+   "gen": 1794552757782,
+   "batch": 20,
+   "codes": "f",
+   "text": "receipt 1794552757782 20 f\n"
+  }
+ ],
+ "receipts_kept": [
+  "{\"kept\":1}",
+  "{\"kept\":40}"
+ ],
+ "directory": [
+  {
+   "from": "the room's writer in its suite, before the codec",
+   "t": 1000000,
+   "shard": 2,
+   "free": 4,
+   "gen": 777,
+   "draining": false,
+   "endpoint": "wss://room.openagents.com/api/room/s2/",
+   "health": {
+    "players": 0,
+    "tick_us": 640
+   },
+   "rooms": [],
+   "text": "t 1000000\ns 2 4\ng 777\ne wss://room.openagents.com/api/room/s2/\nh 0 640\n"
+  },
+  {
+   "from": "the room's writer in its suite, before the codec",
+   "t": 990000,
+   "shard": 2,
+   "free": 4,
+   "endpoint": "wss://room.openagents.com/api/room/s2/",
+   "health": {
+    "players": 0,
+    "tick_us": 640
+   },
+   "rooms": [],
+   "text": "t 990000\ns 2 4\ne wss://room.openagents.com/api/room/s2/\nh 0 640\n"
+  },
+  {
+   "from": "the room's writer in its suite, before the codec",
+   "t": 990000,
+   "shard": 2,
+   "free": 4,
+   "gen": 777,
+   "draining": false,
+   "endpoint": "wss://room.openagents.com/api/room/s2/",
+   "health": {
+    "players": 0,
+    "tick_us": 640
+   },
+   "rooms": [],
+   "text": "t 990000\ns 2 4\ng 777\ne wss://room.openagents.com/api/room/s2/\nh 0 640\n"
+  },
+  {
+   "from": "the room's writer in its suite, before the codec",
+   "t": 990000,
+   "shard": 3,
+   "free": 4,
+   "rooms": [],
+   "text": "t 990000\ns 3 4\n"
+  },
+  {
+   "from": "the room's writer in its suite, before the codec",
+   "t": 990000,
+   "shard": 3,
+   "free": 4,
+   "gen": 777,
+   "draining": true,
+   "rooms": [],
+   "text": "t 990000\ns 3 4\ng 777 d\n"
+  },
+  {
+   "from": "the room's writer in its suite, before the codec",
+   "t": 990000,
+   "shard": 3,
+   "free": 4,
+   "gen": 777,
+   "draining": false,
+   "rooms": [],
+   "text": "t 990000\ns 3 4\ng 777\n"
+  },
+  {
+   "from": "the room's writer in its suite, before the codec",
+   "t": 990500,
+   "shard": 3,
+   "free": 3,
+   "rooms": [
+    {
+     "code": "everglade2-2",
+     "players": 2,
+     "pids": [
+      "p-00000000000000a1",
+      "p-00000000000000a2"
+     ]
+    }
+   ],
+   "text": "t 990500\ns 3 3\nr everglade2-2 2 p-00000000000000a1 p-00000000000000a2\n"
+  },
+  {
+   "from": "the room's writer in its suite, before the codec",
+   "t": 995000,
+   "shard": 2,
+   "free": 4,
+   "gen": 777,
+   "draining": true,
+   "endpoint": "wss://room.openagents.com/api/room/s2/",
+   "health": {
+    "players": 0,
+    "tick_us": 640
+   },
+   "rooms": [],
+   "text": "t 995000\ns 2 4\ng 777 d\ne wss://room.openagents.com/api/room/s2/\nh 0 640\n"
+  },
+  {
+   "from": "the room's writer in its suite, before the codec",
+   "t": 995500,
+   "shard": 3,
+   "free": 3,
+   "rooms": [
+    {
+     "code": "everglade2-2",
+     "players": 1,
+     "pids": [
+      "p-00000000000000a2"
+     ]
+    }
+   ],
+   "text": "t 995500\ns 3 3\nr everglade2-2 1 p-00000000000000a2\n"
+  },
+  {
+   "from": "the room's writer in its suite, before the codec",
+   "t": 995500,
+   "shard": 3,
+   "free": 4,
+   "rooms": [],
+   "text": "t 995500\ns 3 4\n"
+  }
+ ],
+ "drain": [
+  {
+   "from": "the test vector of coax/web/room/room-write.coax",
+   "shard": 2,
+   "at": 1762190000000,
+   "wait": 300,
+   "text": "drain 2 1762190000000 300"
+  }
+ ],
+ "control_asks": [
+  {
+   "from": "the room's writer in its suite",
+   "t": 990000,
+   "text": "t 990000"
+  },
+  {
+   "t": 1762190000000,
+   "text": "t 1762190000000"
+  }
+ ],
+ "control": [
+  {
+   "from": "the API's answer in the API suite",
+   "lines": [
+    {
+     "kind": "pvp",
+     "a": 0
+    },
+    {
+     "kind": "edit",
+     "a": 1794551549959
+    },
+    {
+     "kind": "other",
+     "raw": "event 1 15 2 4 6 1 3 3 31 1 0 1 300 15 1 1"
+    },
+    {
+     "kind": "other",
+     "raw": "levels 1 2"
+    }
+   ],
+   "text": "pvp 0\nedit 1794551549959\nevent 1 15 2 4 6 1 3 3 31 1 0 1 300 15 1 1\nlevels 1 2\n"
+  },
+  {
+   "from": "the API's answer in the API suite",
+   "lines": [
+    {
+     "kind": "pvp",
+     "a": 0
+    },
+    {
+     "kind": "edit",
+     "a": 1794551549959
+    },
+    {
+     "kind": "other",
+     "raw": "event 1 15 2 4 6 1 3 3 31 1 0 1 300 15 1 1"
+    },
+    {
+     "kind": "other",
+     "raw": "levels 1 2"
+    },
+    {
+     "kind": "kick",
+     "word": "p-0c621ebfd8cc4ea4"
+    }
+   ],
+   "text": "pvp 0\nedit 1794551549959\nevent 1 15 2 4 6 1 3 3 31 1 0 1 300 15 1 1\nlevels 1 2\nkick p-0c621ebfd8cc4ea4\n"
+  }
+ ],
+ "checkpoint_receipts": [
+  {
+   "from": "the API's answer in the API suite",
+   "v": 1,
+   "status": "applied",
+   "owner": 2,
+   "process": 1000,
+   "rev": 1,
+   "accepted_at": 1794552381984,
+   "text": "{\"v\":1,\"status\":\"applied\",\"owner\":2,\"process\":1000,\"rev\":1,\"accepted_at\":1794552381984}"
+  },
+  {
+   "from": "the API's answer in the API suite",
+   "v": 1,
+   "status": "fenced",
+   "owner": 2,
+   "process": 1000,
+   "rev": 3,
+   "accepted_at": 0,
+   "text": "{\"v\":1,\"status\":\"fenced\",\"owner\":2,\"process\":1000,\"rev\":3,\"accepted_at\":0}"
+  },
+  {
+   "from": "the API's answer in the API suite",
+   "v": 1,
+   "status": "duplicate",
+   "owner": 1,
+   "process": 1000,
+   "rev": 1,
+   "accepted_at": 1794552816954,
+   "text": "{\"v\":1,\"status\":\"duplicate\",\"owner\":1,\"process\":1000,\"rev\":1,\"accepted_at\":1794552816954}"
+  },
+  {
+   "from": "the API's answer in the API suite",
+   "v": 1,
+   "status": "conflict",
+   "owner": 1,
+   "process": 1000,
+   "rev": 1,
+   "accepted_at": 0,
+   "text": "{\"v\":1,\"status\":\"conflict\",\"owner\":1,\"process\":1000,\"rev\":1,\"accepted_at\":0}"
+  },
+  {
+   "from": "the API's answer in the API suite",
+   "v": 1,
+   "status": "process",
+   "owner": 1,
+   "process": 1001,
+   "rev": 2,
+   "accepted_at": 0,
+   "text": "{\"v\":1,\"status\":\"process\",\"owner\":1,\"process\":1001,\"rev\":2,\"accepted_at\":0}"
+  },
+  {
+   "from": "the API's answer in the API suite",
+   "v": 1,
+   "status": "regression",
+   "owner": 1,
+   "process": 1000,
+   "rev": 2,
+   "accepted_at": 0,
+   "text": "{\"v\":1,\"status\":\"regression\",\"owner\":1,\"process\":1000,\"rev\":2,\"accepted_at\":0}"
+  },
+  {
+   "from": "the API's answer in the API suite",
+   "v": 1,
+   "status": "stale",
+   "owner": 1,
+   "process": 1000,
+   "rev": 1,
+   "accepted_at": 0,
+   "text": "{\"v\":1,\"status\":\"stale\",\"owner\":1,\"process\":1000,\"rev\":1,\"accepted_at\":0}"
+  },
+  {
+   "from": "the API's answer in the API suite",
+   "v": 2,
+   "status": "applied",
+   "owner": 1,
+   "process": 1001,
+   "rev": 1,
+   "accepted_at": 1794552862835,
+   "text": "{\"v\":2,\"status\":\"applied\",\"owner\":1,\"process\":1001,\"rev\":1,\"accepted_at\":1794552862835}"
+  },
+  {
+   "from": "the API's answer in the API suite",
+   "v": 2,
+   "status": "duplicate",
+   "owner": 1,
+   "process": 1001,
+   "rev": 1,
+   "accepted_at": 1794552862835,
+   "text": "{\"v\":2,\"status\":\"duplicate\",\"owner\":1,\"process\":1001,\"rev\":1,\"accepted_at\":1794552862835}"
+  },
+  {
+   "from": "the API's answer in the API suite",
+   "v": 2,
+   "status": "conflict",
+   "owner": 1,
+   "process": 1001,
+   "rev": 1,
+   "accepted_at": 0,
+   "text": "{\"v\":2,\"status\":\"conflict\",\"owner\":1,\"process\":1001,\"rev\":1,\"accepted_at\":0}"
+  },
+  {
+   "from": "the API's answer in the API suite",
+   "v": 2,
+   "status": "fenced",
+   "owner": 1,
+   "process": 1001,
+   "rev": 2,
+   "accepted_at": 0,
+   "text": "{\"v\":2,\"status\":\"fenced\",\"owner\":1,\"process\":1001,\"rev\":2,\"accepted_at\":0}"
+  },
+  {
+   "from": "the API's answer in the API suite",
+   "v": 2,
+   "status": "regression",
+   "owner": 2,
+   "process": 1002,
+   "rev": 1,
+   "accepted_at": 0,
+   "text": "{\"v\":2,\"status\":\"regression\",\"owner\":2,\"process\":1002,\"rev\":1,\"accepted_at\":0}"
+  },
+  {
+   "from": "the API's answer in the API suite",
+   "v": 2,
+   "status": "stale",
+   "owner": 2,
+   "process": 1002,
+   "rev": 2,
+   "accepted_at": 0,
+   "text": "{\"v\":2,\"status\":\"stale\",\"owner\":2,\"process\":1002,\"rev\":2,\"accepted_at\":0}"
+  }
+ ],
+ "refused": {
+  "receipts": [
+   "",
+   "receipt 7",
+   "{\"error\":\"down\"}",
+   "Receipt 7 1 a\n",
+   "receipt"
+  ],
+  "checkpoint_receipts": [
+   "",
+   "receipt 1 2 a\n",
+   "{\"v\":2,\"status\":",
+   "not json"
+  ],
+  "control": [
+   "",
+   "pvp",
+   "pvp ",
+   "edit",
+   "hold pair-1 0",
+   "place pair-1 1 2",
+   "dice",
+   "dice loaded",
+   "event 1 60 3 4 2 1 1 5 2 1 2 1 50 20 0 0",
+   "levels 1 5"
+  ]
+ }
+}

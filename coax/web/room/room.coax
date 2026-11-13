@@ -38,6 +38,7 @@
 #load "room-casts.coax";   // casts under latency: their phases and a tick's order (#12790)
 #load "../../../everglade/shared/cast-limits.coax";
 #load "room-sky.coax";
+#load "../../../metaverse-engine/session/room-report.coax";   // the reports a shard and the API exchange: the one codec (Protocol E8, #13250)
 #load "room-ticket.coax";
 #load "room-write.coax";   // this shard's own write key (#13260)
 #load "room-crash.coax";   // the crash report this shard posts after a crash (#13298)

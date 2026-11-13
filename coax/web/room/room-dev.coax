@@ -308,11 +308,9 @@ rm_dev_checkpoint :: (v: [] RmServer) -> bool #export_c #effects(all) {
                                  OwnerGeneration.{value = ifx e.saved then e.c.n[1] else 0}, ifx e.saved then e.c.n[2] else 0, ifx e.saved then e.c.n[3] else 0, ifx e.saved then e.c.n[11] else 0, same);
   if code == 0 { c.n[5] = c.n[4]; v[0].dev.ck[i].c = c; v[0].dev.ck[i].rest = rest; v[0].dev.ck[i].saved = true; v[0].dev.ck[i].accepted = v[0].wall_ms; v[0].dev.ck[i].touched = rs_max(v[0].dev.ck[i].touched, v[0].wall_ms); v[0].dev.ck_dirty = true; }
   r := ifx i >= 0 then v[0].dev.ck[i] else DevCheckpoint.{};
-  o: [1] Jo; out: [256] u8; jo_start(o[..], out[..]); jo_obj(o[..]);
-  jo_key(o[..], "v"); jo_int(o[..], 2); jo_key(o[..], "status"); jo_str(o[..], room_checkpoint_status(code));
-  jo_key(o[..], "owner"); jo_int(o[..], ifx r.saved then r.c.n[1] else r.owner); jo_key(o[..], "process"); jo_int(o[..], ifx r.saved then r.c.n[2] else 0);
-  jo_key(o[..], "rev"); jo_int(o[..], ifx r.saved then r.c.n[3] else 0); jo_key(o[..], "accepted_at"); jo_int(o[..], r.accepted); jo_end(o[..]);
-  rm_checkpoint_answer(v, request, 200, jo_text(o[..]));
+  out: [256] u8;   // the receipt as the API writes it (room-report.coax)
+  on := room_report_checkpoint_receipt(out[..], 2, room_checkpoint_status(code), ifx r.saved then r.c.n[1] else r.owner, ifx r.saved then r.c.n[2] else 0, ifx r.saved then r.c.n[3] else 0, r.accepted);
+  rm_checkpoint_answer(v, request, 200, cast(string) out[0..<rs_max(on, 0)]);
   return true;
 }
 // The store as text for the host's file, one line a player: "c PID OWNER ACCEPTED CAPTURE" (CAPTURE "-"

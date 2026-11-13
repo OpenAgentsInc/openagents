@@ -12,13 +12,26 @@ def check(name, ok, detail=""):
     failed += 0 if ok else 1
 
 
+# API_CAPTURE=DIR: every call's request and answer is appended to DIR/py.jsonl, one JSON object a
+# line (the bytes as latin-1 text), for the wire fixtures under proto/ (Protocol, #13250).
+CAPTURE = os.environ.get("API_CAPTURE", "")
+
+
+def captured(method, path, body, status, answer, headers):
+    if CAPTURE:
+        with open(os.path.join(CAPTURE, "py.jsonl"), "a") as f:
+            f.write(json.dumps({"method": method, "path": path, "body": (body or b"").decode("latin-1"), "status": status,
+                                "type": headers.get("Content-Type", ""), "answer": answer.decode("latin-1")}) + "\n")
+    return status, answer, headers
+
+
 def call(method, path, body=None, headers=None):
     req = urllib.request.Request(API + path, method=method, data=body, headers=headers or {})
     try:
         with urllib.request.urlopen(req) as r:
-            return r.status, r.read(), dict(r.headers)
+            return captured(method, path, body, r.status, r.read(), dict(r.headers))
     except urllib.error.HTTPError as e:
-        return e.code, e.read(), dict(e.headers)
+        return captured(method, path, body, e.code, e.read(), dict(e.headers))
 
 
 def sql(q):

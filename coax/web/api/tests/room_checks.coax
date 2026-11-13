@@ -1594,6 +1594,7 @@ fp_main :: (dir: string, api: string) -> int {
         got := http_do(w[..], "POST", sb_text(url[..]), hs[..], cast(string) req[end..<tot[0]], 30000, 0, answer[..]);
         code := ifx got.error == HTTP_OK then got.code else 502;
         n := ifx got.error == HTTP_OK then got.n else 0;
+        if got.error == HTTP_OK { ap_capture("room.jsonl", "POST", "/api/playtest/room-vitals", cast(string) req[end..<tot[0]], code, cast(string) answer[0..<n]); }   // a real room's post and the API's answer
         if fs_exists(lose_path) { held += 1; c := cxsock_close(h); }
         else if mode == 2 {   // the API kept it; the answer comes after the room has given up on it
           held += 1;

@@ -79,32 +79,18 @@ rc_kicked :: (v: [] RmServer, pid: string) -> bool {
 rm_control_due :: (v: [] RmServer) -> bool #export_c #effects(all) {
   if !rm_writes(v) || v[0].wall_ms - v[0].ctl.asked < CONTROL_EVERY_MS { return false; }
   v[0].ctl.asked = v[0].wall_ms;
-  n := tk_add(v[0].ctl.ask[..], 0, "t "); n = rv_int(v[0].ctl.ask[..], n, v[0].wall_ms);
+  n := room_report_stamp(v[0].ctl.ask[..], 0, v[0].wall_ms);   // the ask's text and the answer's lines are room-report.coax's
+  if n < 0 { return false; }
   v[0].ctl.ask_n = n;
   return rm_write_mac(v, "control", cast(string) v[0].ctl.ask[0..<n], v[0].ctl.mac[..]);
 }
-rc_word :: (line: string, at: int) -> string {
-  i := at;
-  while i < line.count && line[i] != ' ' { i += 1; }
-  return line[at..<i];
-}
-rc_num :: (t: string) -> int {
-  if t.count == 0 || t.count > 15 { return -1; }
-  n := 0;
-  for c: t { if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) (c - '0'); }
-  return n;
-}
+// A line's word and a number of up to 15 digits, for the event and levels lines (everglade/server/progress.coax).
+rc_word :: (line: string, at: int) -> string { return room_report_word(line, at); }
+rc_num :: (t: string) -> int { return room_report_num(t, 15); }
 // The API's answer: applied. Kicked players' sockets are marked (rm_relay_kicked) for the host to close.
 // "hold CODE SEAT STAMP" (see the top): seat SEAT of everglade room CODE held by the watch's Hold
 // Person on the host's next tick.
-rc_hold :: (v: [] RmServer, line: string) {
-  code := rc_word(line, 5);
-  at := 5 + code.count + 1;
-  if at >= line.count { return; }
-  sw := rc_word(line, at); seat := rc_num(sw);
-  at += sw.count + 1;
-  if at >= line.count { return; }
-  stamp := rc_num(rc_word(line, at));
+rc_hold :: (v: [] RmServer, code: string, seat: int, stamp: int) {
   if code.count == 0 || seat < 0 || stamp <= 0 || stamp == v[0].ctl.hold_stamp { return; }
   r := -1;
   for q: 0..<RELAYS {
@@ -119,18 +105,8 @@ rc_hold :: (v: [] RmServer, line: string) {
 // "place CODE SEAT BOAT STAMP" (see the top): seat SEAT of everglade room CODE beside rowboat BOAT on
 // the host's next tick (room-world.c world_place_boat). A local room's only; lines with newer STAMPs
 // than the last that room laid are each laid once.
-rc_place :: (v: [] RmServer, line: string) {
+rc_place :: (v: [] RmServer, code: string, seat: int, boat: int, stamp: int) {
   if !(v[0].dev.on || v[0].ctl.local) { return; }
-  code := rc_word(line, 6);
-  at := 6 + code.count + 1;
-  if at >= line.count { return; }
-  sw := rc_word(line, at); seat := rc_num(sw);
-  at += sw.count + 1;
-  if at >= line.count { return; }
-  bw := rc_word(line, at); boat := rc_num(bw);
-  at += bw.count + 1;
-  if at >= line.count { return; }
-  stamp := rc_num(rc_word(line, at));
   if code.count == 0 || seat < 0 || boat < 0 || boat >= EG_BOATS || stamp <= 0 { return; }
   k := rc_room(v, code);
   if k < 0 || stamp <= v[0].eg[k].place_stamp || !rm_eg_seat_live(v, k, SeatId.{value = seat}) { return; }   // not yet: a later answer's line lays it
@@ -154,25 +130,23 @@ rm_control :: (v: [] RmServer, text: string) #export_c #effects(all) {
     line := text[at..<e];
     at = e + 1;
     ev_control_line(v, line);   // world events and levels (room-events.coax)
-    if line.count > 4 && line[0..<4] == "pvp " { pvp = line[4..<line.count] == "1"; }
-    if line.count > 5 && line[0..<5] == "edit " { edit = rc_num(line[5..<line.count]); }
-    if line.count > 5 && line[0..<5] == "hold " { rc_hold(v, line); }
-    if line.count > 6 && line[0..<6] == "place " { rc_place(v, line); }
-    if line.count > 5 && line[0..<5] == "flag " && flags < CONTROL_FLAGS {
-      name := rc_word(line, 5);
-      value := ifx 5 + name.count + 1 < line.count then rc_num(line[5 + name.count + 1..<line.count]) else -1;
-      if name.count > 0 && name.count <= CONTROL_FLAG_NAME && value >= 0 {
-        for i: 0..<name.count { v[0].ctl.flag_name[flags * CONTROL_FLAG_NAME + i] = name[i]; }
-        v[0].ctl.flag_name_n[flags] = name.count; v[0].ctl.flag_value[flags] = value; flags += 1;
+    got := room_report_control_read(line);   // room-report.coax reads every line of ours
+    word := line[got.word_at..<got.word_at + got.word_n];
+    if got.kind == ROOM_CONTROL_PVP { pvp = got.a == 1; }
+    if got.kind == ROOM_CONTROL_EDIT { edit = got.a; }
+    if got.kind == ROOM_CONTROL_HOLD { rc_hold(v, word, got.a, got.b); }
+    if got.kind == ROOM_CONTROL_PLACE { rc_place(v, word, got.a, got.b, got.c); }
+    if got.kind == ROOM_CONTROL_FLAG && flags < CONTROL_FLAGS {
+      if word.count > 0 && word.count <= CONTROL_FLAG_NAME && got.a >= 0 {
+        for i: 0..<word.count { v[0].ctl.flag_name[flags * CONTROL_FLAG_NAME + i] = word[i]; }
+        v[0].ctl.flag_name_n[flags] = word.count; v[0].ctl.flag_value[flags] = got.a; flags += 1;
       }
     }
-    if line == "dice fixed" { v[0].ctl.dice_fixed = true; }
-    if line == "dice random" { v[0].ctl.dice_fixed = false; }
-    if line.count > 5 && line[0..<5] == "kick " && kicks < CONTROL_KICKS {
-      pid := rc_word(line, 5);
-      if pid.count > 0 && pid.count <= TICKET_PID {
-        for i: 0..<pid.count { v[0].ctl.kick[kicks * TICKET_PID + i] = pid[i]; }
-        v[0].ctl.kick_n[kicks] = pid.count; kicks += 1;
+    if got.kind == ROOM_CONTROL_DICE { v[0].ctl.dice_fixed = got.a == 1; }
+    if got.kind == ROOM_CONTROL_KICK && kicks < CONTROL_KICKS {
+      if word.count > 0 && word.count <= TICKET_PID {
+        for i: 0..<word.count { v[0].ctl.kick[kicks * TICKET_PID + i] = word[i]; }
+        v[0].ctl.kick_n[kicks] = word.count; kicks += 1;
       }
     }
   }

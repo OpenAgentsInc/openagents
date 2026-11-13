@@ -1,0 +1,295 @@
+// What a room shard and the API say to each other outside the session wire (Protocol E7 and E8,
+// GitHub #13250): the one codec. The profile is proto/verse/room-reports-v1.json, checked by
+// coax/web/room/report-profile.coax; docs/protocol/room-reports-v1.md says what each line means.
+//
+//   vitals      POST /api/playtest/room-vitals      "t MS\no SHARD GEN BATCH\nPID HP MAX XP WANTED REV AT [OWNER] [c=CLASS]\n..."
+//               its receipt                         "receipt GEN BATCH CODES\n" (a d s u x f, one a line)
+//   directory   POST /api/playtest/room-directory   "t MS\ns SHARD FREE\n[g GEN [d]\n][e URL\n]r CODE PLAYERS PID...\n[h PLAYERS TICK_US\n]"
+//   drain       the text a drain's MAC covers        "drain SHARD AT WAIT"
+//   control     GET /api/playtest/room-control       the ask's signed text "t MS"; the answer's lines
+//               pvp, edit, kick, hold, place, flag, dice (the event and levels lines are
+//               coax/web/room/room-events.coax's)
+//   checkpoint  POST /api/playtest/room-checkpoint   the capture is character-checkpoint.coax's; its
+//               receipt is {"v":2,"status":"applied","owner":1,"process":2,"rev":3,"accepted_at":4}
+//
+// Writers: the room (coax/web/room/room-vitals.coax, room-directory.coax, room-control.coax), the
+// room's local stand-in for the API (room-vitals.coax rm_vitals_local, room-dev.coax) and the API
+// (coax/web/api/player.c through ticket-sign.coax: the two receipts). Readers: the room. The API
+// still reads the vitals and directory posts in C (player.c room_vitals, rooms.c shard_lines), and
+// SQL builds the control answer; their allowlist lines say so.
+//
+// A writer takes the buffer and where to go on, and returns the new end, or -1 when it did not fit
+// (and -1 again from every later call, so a caller checks once).
+//   coax/bin/coax test metaverse-engine/session/room-report.coax --library
+#load "../../coax/lib/json/json.coax";
+
+room_report_put :: (b: [] u8, n: int, s: string) -> int #effects(all) {
+  if n < 0 || n + s.count > b.count { return -1; }
+  for i: 0..<s.count { b[n + i] = s[i]; }
+  return n + s.count;
+}
+// A whole number in decimal; a negative one is written 0.
+room_report_int :: (b: [] u8, n: int, x: int) -> int #effects(all) {
+  if n < 0 { return -1; }
+  d: [20] u8; dn := 0; e := ifx x < 0 then 0 else x;
+  while e > 0 || dn == 0 { d[dn] = cast(u8) ('0' + e % 10); dn += 1; e = e / 10; }
+  if n + dn > b.count { return -1; }
+  for j: 0..<dn { b[n + j] = d[dn - 1 - j]; }
+  return n + dn;
+}
+// 1 to `most` decimal digits as a number, or -1.
+room_report_num :: (t: string, most: int) -> int #effects(all) {
+  if t.count == 0 || t.count > most { return -1; }
+  x := 0;
+  for c: t { if c < '0' || c > '9' { return -1; } x = x * 10 + cast(int) (c - '0'); }
+  return x;
+}
+// The word that starts at `at`: up to the next space or the line's end.
+room_report_word :: (line: string, at: int) -> string #effects(all) {
+  i := at;
+  while i < line.count && line[i] != ' ' { i += 1; }
+  return line[at..<i];
+}
+
+// "t MS": the first line of a vitals or directory post (the caller adds its line end), and the whole
+// text a control ask's MAC covers.
+room_report_stamp :: (b: [] u8, n: int, ms: int) -> int #effects(all) {
+  return room_report_int(b, room_report_put(b, n, "t "), ms);
+}
+
+// ---- vitals ------------------------------------------------------------------------------------------
+
+// "t MS\no SHARD GEN BATCH\n"
+room_report_vitals_head :: (b: [] u8, ms: int, shard: int, gen: int, batch: int) -> int #effects(all) {
+  n := room_report_stamp(b, 0, ms);
+  n = room_report_put(b, n, "\no "); n = room_report_int(b, n, shard);
+  n = room_report_put(b, n, " "); n = room_report_int(b, n, gen);
+  n = room_report_put(b, n, " "); n = room_report_int(b, n, batch);
+  return room_report_put(b, n, "\n");
+}
+// "PID HP MAX XP WANTED REV AT[ OWNER][ c=CLASS]\n": OWNER when it is above 0, the class when it has one.
+room_report_vitals_line :: (b: [] u8, at: int, pid: string, hp: int, max: int, xp: int, wanted: int, rev: int, rev_at: int, owner: int, klass: string) -> int #effects(all) {
+  n := room_report_put(b, at, pid);
+  n = room_report_put(b, n, " "); n = room_report_int(b, n, hp);
+  n = room_report_put(b, n, " "); n = room_report_int(b, n, max);
+  n = room_report_put(b, n, " "); n = room_report_int(b, n, xp);
+  n = room_report_put(b, n, " "); n = room_report_int(b, n, wanted);
+  n = room_report_put(b, n, " "); n = room_report_int(b, n, rev);
+  n = room_report_put(b, n, " "); n = room_report_int(b, n, rev_at);
+  if owner > 0 { n = room_report_put(b, n, " "); n = room_report_int(b, n, owner); }
+  if klass.count > 0 { n = room_report_put(b, n, " c="); n = room_report_put(b, n, klass); }
+  return room_report_put(b, n, "\n");
+}
+// "receipt GEN BATCH CODES\n", the API's 200 to a vitals post: one code a line, in the post's order.
+room_report_receipt :: (b: [] u8, gen: int, batch: int, codes: string) -> int #export_c #effects(all) {
+  n := room_report_put(b, 0, "receipt "); n = room_report_int(b, n, gen);
+  n = room_report_put(b, n, " "); n = room_report_int(b, n, batch);
+  n = room_report_put(b, n, " "); n = room_report_put(b, n, codes);
+  return room_report_put(b, n, "\n");
+}
+// A 2xx body to a vitals post. kind: ROOM_RECEIPT (gen, batch and the codes' place in the body),
+// ROOM_RECEIPT_KEPT (an API from before receipts: {"kept":N}, every line kept) or ROOM_RECEIPT_NONE.
+ROOM_RECEIPT_NONE :: 0;
+ROOM_RECEIPT :: 1;
+ROOM_RECEIPT_KEPT :: 2;
+RoomReceipt :: struct { kind: int; gen: int; batch: int; codes_at: int; codes_n: int; }
+room_report_receipt_read :: (body: string) -> RoomReceipt #effects(all) {
+  r := RoomReceipt.{kind = ROOM_RECEIPT_NONE, gen = -1, batch = -1};
+  if body.count > 8 && body[0..<8] == "{\"kept\":" { r.kind = ROOM_RECEIPT_KEPT; return r; }
+  if !(body.count > 8 && body[0..<8] == "receipt ") { return r; }
+  fa: [4] int; fe: [4] int; fn := 0; at := 8; j := 8;
+  while j <= body.count && fn < 4 {
+    if j == body.count || body[j] == ' ' || body[j] == '\n' { fa[fn] = at; fe[fn] = j; fn += 1; at = j + 1; if j < body.count && body[j] == '\n' { break; } }
+    j += 1;
+  }
+  if fn < 2 { return r; }
+  r.kind = ROOM_RECEIPT;
+  r.gen = room_report_num(body[fa[0]..<fe[0]], 18); r.batch = room_report_num(body[fa[1]..<fe[1]], 18);
+  if fn >= 3 { r.codes_at = fa[2]; r.codes_n = fe[2] - fa[2]; }
+  return r;
+}
+
+// ---- directory ---------------------------------------------------------------------------------------
+
+// "s SHARD FREE\n"
+room_report_dir_shard :: (b: [] u8, at: int, shard: int, free: int) -> int #effects(all) {
+  n := room_report_put(b, at, "s "); n = room_report_int(b, n, shard); n = room_report_put(b, n, " "); n = room_report_int(b, n, free);
+  return room_report_put(b, n, "\n");
+}
+// "g GEN\n", or "g GEN d\n" while the shard drains or is out of rotation
+room_report_dir_gen :: (b: [] u8, at: int, gen: int, draining: bool) -> int #effects(all) {
+  n := room_report_put(b, at, "g "); n = room_report_int(b, n, gen);
+  return room_report_put(b, n, ifx draining then " d\n" else "\n");
+}
+// "e URL\n"
+room_report_dir_endpoint :: (b: [] u8, at: int, url: string) -> int #effects(all) {
+  return room_report_put(b, room_report_put(b, room_report_put(b, at, "e "), url), "\n");
+}
+// "r CODE PLAYERS", then room_report_dir_pid for each ticketed or held player, then room_report_dir_end
+room_report_dir_room :: (b: [] u8, at: int, code: string, players: int) -> int #effects(all) {
+  n := room_report_put(b, at, "r "); n = room_report_put(b, n, code); n = room_report_put(b, n, " ");
+  return room_report_int(b, n, players);
+}
+room_report_dir_pid :: (b: [] u8, at: int, pid: string) -> int #effects(all) { return room_report_put(b, room_report_put(b, at, " "), pid); }
+room_report_dir_end :: (b: [] u8, at: int) -> int #effects(all) { return room_report_put(b, at, "\n"); }
+// "h PLAYERS TICK_P95_US\n"
+room_report_dir_health :: (b: [] u8, at: int, players: int, tick_us: int) -> int #effects(all) {
+  n := room_report_put(b, at, "h "); n = room_report_int(b, n, players); n = room_report_put(b, n, " "); n = room_report_int(b, n, tick_us);
+  return room_report_put(b, n, "\n");
+}
+// "drain SHARD AT WAIT": what the MAC of POST /api/room/sK/drain covers
+room_report_drain :: (b: [] u8, shard: int, at_ms: int, wait: int) -> int #effects(all) {
+  n := room_report_put(b, 0, "drain "); n = room_report_int(b, n, shard); n = room_report_put(b, n, " "); n = room_report_int(b, n, at_ms);
+  return room_report_int(b, room_report_put(b, n, " "), wait);
+}
+
+// ---- control -----------------------------------------------------------------------------------------
+
+ROOM_CONTROL_OTHER :: 0;   // not one of these lines, or one with a field missing
+ROOM_CONTROL_PVP :: 1;     // "pvp 0|1"                    a: 1 on
+ROOM_CONTROL_EDIT :: 2;    // "edit STAMP"                 a: the stamp, -1 when it is no number
+ROOM_CONTROL_KICK :: 3;    // "kick PID"                   the word: the player
+ROOM_CONTROL_HOLD :: 4;    // "hold CODE SEAT STAMP"       the word: the room; a: the seat, b: the stamp
+ROOM_CONTROL_PLACE :: 5;   // "place CODE SEAT BOAT STAMP" the word: the room; a: the seat, b: the boat, c: the stamp
+ROOM_CONTROL_FLAG :: 6;    // "flag NAME VALUE"            the word: the name; a: the value, -1 none or no number
+ROOM_CONTROL_DICE :: 7;    // "dice fixed" or "dice random" a: 1 fixed
+RoomControlLine :: struct { kind: int; word_at: int; word_n: int; a: int; b: int; c: int; }
+// One line of the API's control answer. A number that is no number, or longer than 15 digits, is -1.
+room_report_control_read :: (line: string) -> RoomControlLine #effects(all) {
+  r := RoomControlLine.{kind = ROOM_CONTROL_OTHER, a = -1, b = -1, c = -1};
+  if line == "dice fixed" { r.kind = ROOM_CONTROL_DICE; r.a = 1; return r; }
+  if line == "dice random" { r.kind = ROOM_CONTROL_DICE; r.a = 0; return r; }
+  if line.count > 4 && line[0..<4] == "pvp " { r.kind = ROOM_CONTROL_PVP; r.a = ifx line[4..<line.count] == "1" then 1 else 0; return r; }
+  if line.count > 5 && line[0..<5] == "edit " { r.kind = ROOM_CONTROL_EDIT; r.a = room_report_num(line[5..<line.count], 15); return r; }
+  if line.count > 5 && line[0..<5] == "kick " { w := room_report_word(line, 5); r.kind = ROOM_CONTROL_KICK; r.word_at = 5; r.word_n = w.count; return r; }
+  if line.count > 5 && line[0..<5] == "flag " {
+    w := room_report_word(line, 5);
+    r.kind = ROOM_CONTROL_FLAG; r.word_at = 5; r.word_n = w.count;
+    if 5 + w.count + 1 < line.count { r.a = room_report_num(line[5 + w.count + 1..<line.count], 15); }
+    return r;
+  }
+  hold := line.count > 5 && line[0..<5] == "hold ";
+  place := line.count > 6 && line[0..<6] == "place ";
+  if hold || place {
+    start := ifx hold then 5 else 6;
+    w := room_report_word(line, start);
+    at := start + w.count + 1;
+    if at >= line.count { return r; }
+    f := room_report_word(line, at); a := room_report_num(f, 15);
+    at += f.count + 1;
+    if at >= line.count { return r; }
+    f = room_report_word(line, at); b := room_report_num(f, 15);
+    if hold { r.kind = ROOM_CONTROL_HOLD; r.word_at = start; r.word_n = w.count; r.a = a; r.b = b; return r; }
+    at += f.count + 1;
+    if at >= line.count { return r; }
+    r.kind = ROOM_CONTROL_PLACE; r.word_at = start; r.word_n = w.count; r.a = a; r.b = b; r.c = room_report_num(room_report_word(line, at), 15);
+    return r;
+  }
+  return r;
+}
+// The answer's lines, as the API writes them (each ends its line).
+room_report_control_pvp :: (b: [] u8, at: int, on: bool) -> int #effects(all) { return room_report_put(b, at, ifx on then "pvp 1\n" else "pvp 0\n"); }
+room_report_control_edit :: (b: [] u8, at: int, stamp: int) -> int #effects(all) { return room_report_put(b, room_report_int(b, room_report_put(b, at, "edit "), stamp), "\n"); }
+room_report_control_kick :: (b: [] u8, at: int, pid: string) -> int #effects(all) { return room_report_put(b, room_report_put(b, room_report_put(b, at, "kick "), pid), "\n"); }
+room_report_control_flag :: (b: [] u8, at: int, name: string, value: int) -> int #effects(all) {
+  n := room_report_put(b, at, "flag "); n = room_report_put(b, n, name); n = room_report_put(b, n, " ");
+  return room_report_put(b, room_report_int(b, n, value), "\n");
+}
+room_report_control_hold :: (b: [] u8, at: int, code: string, seat: int, stamp: int) -> int #effects(all) {
+  n := room_report_put(b, at, "hold "); n = room_report_put(b, n, code); n = room_report_put(b, n, " "); n = room_report_int(b, n, seat);
+  return room_report_put(b, room_report_int(b, room_report_put(b, n, " "), stamp), "\n");
+}
+room_report_control_place :: (b: [] u8, at: int, code: string, seat: int, boat: int, stamp: int) -> int #effects(all) {
+  n := room_report_put(b, at, "place "); n = room_report_put(b, n, code); n = room_report_put(b, n, " "); n = room_report_int(b, n, seat);
+  n = room_report_put(b, n, " "); n = room_report_int(b, n, boat);
+  return room_report_put(b, room_report_int(b, room_report_put(b, n, " "), stamp), "\n");
+}
+room_report_control_dice :: (b: [] u8, at: int, fixed: bool) -> int #effects(all) { return room_report_put(b, at, ifx fixed then "dice fixed\n" else "dice random\n"); }
+
+// ---- the checkpoint's receipt ------------------------------------------------------------------------
+
+ROOM_CHECKPOINT_STATUS :: 24;
+RoomCheckpointReceipt :: struct { ok: bool; v: int; owner: int; process: int; rev: int; accepted_at: int; status: [ROOM_CHECKPOINT_STATUS] u8; status_n: int; }
+room_report_checkpoint_status :: (r: [] RoomCheckpointReceipt) -> string #effects(all) { return cast(string) r[0].status[0..<r[0].status_n]; }
+// {"v":2,"status":"applied","owner":1,"process":2,"rev":3,"accepted_at":4}
+room_report_checkpoint_receipt :: (b: [] u8, v: int, status: string, owner: int, process: int, rev: int, accepted_at: int) -> int #export_c #effects(all) {
+  o: [1] Jo; jo_start(o[..], b); jo_obj(o[..]);
+  jo_key(o[..], "v"); jo_int(o[..], v); jo_key(o[..], "status"); jo_str(o[..], status);
+  jo_key(o[..], "owner"); jo_int(o[..], owner); jo_key(o[..], "process"); jo_int(o[..], process);
+  jo_key(o[..], "rev"); jo_int(o[..], rev); jo_key(o[..], "accepted_at"); jo_int(o[..], accepted_at); jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// A body that is JSON: ok, with each member it has (a missing number is 0; a status that is missing,
+// no string or longer than ROOM_CHECKPOINT_STATUS bytes is "").
+room_report_checkpoint_receipt_read :: (body: string, r: [] RoomCheckpointReceipt) -> bool #effects(all) {
+  r[0] = RoomCheckpointReceipt.{};
+  nodes: [32] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], body, nodes[..]) { return false; }
+  wn := jv_str(d[0], jv_get(d[0], 0, "status"), r[0].status[..]);
+  r[0].status_n = ifx wn >= 0 then wn else 0;
+  r[0].v = jv_int(d[0], jv_get(d[0], 0, "v"), 0); r[0].owner = jv_int(d[0], jv_get(d[0], 0, "owner"), 0);
+  r[0].process = jv_int(d[0], jv_get(d[0], 0, "process"), 0); r[0].rev = jv_int(d[0], jv_get(d[0], 0, "rev"), 0);
+  r[0].accepted_at = jv_int(d[0], jv_get(d[0], 0, "accepted_at"), 0);
+  r[0].ok = true;
+  return true;
+}
+
+#test "a vitals post, its receipt and what an older API answered" {
+  b: [256] u8;
+  n := room_report_vitals_head(b[..], 600000, 1, 777, 1);
+  n = room_report_vitals_line(b[..], n, "p-a", 17, 30, 0, 0, 1, 600000, 0, "");
+  n = room_report_vitals_line(b[..], n, "p-b", 9, 22, 120, 2, 4, 600500, 3, "wizard");
+  #assert cast(string) b[0..<n] == "t 600000\no 1 777 1\np-a 17 30 0 0 1 600000\np-b 9 22 120 2 4 600500 3 c=wizard\n";
+  #assert room_report_vitals_line(b[0..<20], 0, "p-a", 17, 30, 0, 0, 1, 600000, 0, "") == -1 && room_report_vitals_line(b[..], -1, "p", 1, 1, 0, 0, 1, 1, 0, "") == -1;
+  n = room_report_receipt(b[..], 777, 1, "af");
+  body := cast(string) b[0..<n];
+  #assert body == "receipt 777 1 af\n";
+  r := room_report_receipt_read(body);
+  #assert r.kind == ROOM_RECEIPT && r.gen == 777 && r.batch == 1 && body[r.codes_at..<r.codes_at + r.codes_n] == "af";
+  r = room_report_receipt_read("receipt 777 2 ");
+  #assert r.kind == ROOM_RECEIPT && r.batch == 2 && r.codes_n == 0;
+  r = room_report_receipt_read("receipt 777 x a");
+  #assert r.kind == ROOM_RECEIPT && r.batch == -1;
+  #assert room_report_receipt_read("{\"kept\":1}").kind == ROOM_RECEIPT_KEPT && room_report_receipt_read("{\"error\":\"down\"}").kind == ROOM_RECEIPT_NONE && room_report_receipt_read("receipt 7").kind == ROOM_RECEIPT_NONE && room_report_receipt_read("").kind == ROOM_RECEIPT_NONE;
+}
+#test "a directory post's lines and a drain's text" {
+  b: [256] u8;
+  n := room_report_put(b[..], room_report_stamp(b[..], 0, 990000), "\n");
+  n = room_report_dir_shard(b[..], n, 3, 4); n = room_report_dir_gen(b[..], n, 777, true); n = room_report_dir_endpoint(b[..], n, "wss://room.openagents.com/api/room/s3/");
+  n = room_report_dir_room(b[..], n, "everglade2-1", 2); n = room_report_dir_pid(b[..], n, "p-a"); n = room_report_dir_pid(b[..], n, "p-b"); n = room_report_dir_end(b[..], n);
+  n = room_report_dir_health(b[..], n, 2, 1800);
+  #assert cast(string) b[0..<n] == "t 990000\ns 3 4\ng 777 d\ne wss://room.openagents.com/api/room/s3/\nr everglade2-1 2 p-a p-b\nh 2 1800\n";
+  n = room_report_dir_gen(b[..], 0, 777, false);
+  #assert cast(string) b[0..<n] == "g 777\n" && room_report_dir_health(b[..], 0, 0, -1) == 6 && cast(string) b[0..<6] == "h 0 0\n";
+  n = room_report_drain(b[..], 3, 990000, 600);
+  #assert cast(string) b[0..<n] == "drain 3 990000 600" && room_report_drain(b[0..<10], 3, 990000, 600) == -1;
+}
+#test "the control answer's lines, written and read" {
+  b: [256] u8;
+  n := room_report_control_pvp(b[..], 0, true); n = room_report_control_edit(b[..], n, 1762190001000); n = room_report_control_kick(b[..], n, "p-a");
+  n = room_report_control_flag(b[..], n, "closed-s2", 1); n = room_report_control_hold(b[..], n, "pair-1", 0, 7); n = room_report_control_place(b[..], n, "pair-1", 1, 2, 9);
+  n = room_report_control_dice(b[..], n, true);
+  #assert cast(string) b[0..<n] == "pvp 1\nedit 1762190001000\nkick p-a\nflag closed-s2 1\nhold pair-1 0 7\nplace pair-1 1 2 9\ndice fixed\n";
+  r := room_report_control_read("pvp 1"); #assert r.kind == ROOM_CONTROL_PVP && r.a == 1 && room_report_control_read("pvp 0").a == 0 && room_report_control_read("pvp yes").a == 0 && room_report_control_read("pvp ").kind == ROOM_CONTROL_OTHER;
+  r = room_report_control_read("edit 1762190001000"); #assert r.kind == ROOM_CONTROL_EDIT && r.a == 1762190001000 && room_report_control_read("edit x").a == -1 && room_report_control_read("edit 1234567890123456").a == -1;
+  line := "kick p-a"; r = room_report_control_read(line); #assert r.kind == ROOM_CONTROL_KICK && line[r.word_at..<r.word_at + r.word_n] == "p-a";
+  line = "flag closed-s2 1"; r = room_report_control_read(line); #assert r.kind == ROOM_CONTROL_FLAG && line[r.word_at..<r.word_at + r.word_n] == "closed-s2" && r.a == 1;
+  r = room_report_control_read("flag closed"); #assert r.kind == ROOM_CONTROL_FLAG && r.a == -1 && room_report_control_read("flag closed x").a == -1;
+  line = "hold pair-1 0 7"; r = room_report_control_read(line); #assert r.kind == ROOM_CONTROL_HOLD && line[r.word_at..<r.word_at + r.word_n] == "pair-1" && r.a == 0 && r.b == 7;
+  #assert room_report_control_read("hold pair-1 0").kind == ROOM_CONTROL_OTHER && room_report_control_read("hold pair-1").kind == ROOM_CONTROL_OTHER;
+  line = "place pair-1 1 2 9"; r = room_report_control_read(line); #assert r.kind == ROOM_CONTROL_PLACE && line[r.word_at..<r.word_at + r.word_n] == "pair-1" && r.a == 1 && r.b == 2 && r.c == 9;
+  #assert room_report_control_read("place pair-1 1 2").kind == ROOM_CONTROL_OTHER;
+  #assert room_report_control_read("dice fixed").a == 1 && room_report_control_read("dice random").a == 0 && room_report_control_read("dice").kind == ROOM_CONTROL_OTHER;
+  #assert room_report_control_read("event 1 2 3").kind == ROOM_CONTROL_OTHER && room_report_control_read("").kind == ROOM_CONTROL_OTHER;
+}
+#test "a checkpoint's receipt reads back to the same bytes" {
+  b: [256] u8; back: [256] u8; r: [1] RoomCheckpointReceipt;
+  n := room_report_checkpoint_receipt(b[..], 2, "applied", 3, 1762190000000, 5, 1762190001000);
+  body := cast(string) b[0..<n];
+  #assert body == "{\"v\":2,\"status\":\"applied\",\"owner\":3,\"process\":1762190000000,\"rev\":5,\"accepted_at\":1762190001000}";
+  #assert room_report_checkpoint_receipt_read(body, r[..]) && r[0].v == 2 && room_report_checkpoint_status(r[..]) == "applied" && r[0].owner == 3 && r[0].process == 1762190000000 && r[0].rev == 5 && r[0].accepted_at == 1762190001000;
+  m := room_report_checkpoint_receipt(back[..], r[0].v, room_report_checkpoint_status(r[..]), r[0].owner, r[0].process, r[0].rev, r[0].accepted_at);
+  #assert cast(string) back[0..<m] == body && room_report_checkpoint_receipt(back[0..<20], 2, "applied", 3, 4, 5, 6) == -1;
+  #assert room_report_checkpoint_receipt_read("{\"kept\":1}", r[..]) && r[0].v == 0 && room_report_checkpoint_status(r[..]) == "";
+  #assert !room_report_checkpoint_receipt_read("receipt 1 2 a", r[..]) && !r[0].ok;
+}

@@ -758,6 +758,10 @@ static void room_state(const request *q, PGconn *db, const char *key, const char
 // A database failure is a 500 with no receipt: the room sends the post again, and the lines already
 // applied answer d. AT is when the room changed the values; it orders HP and WANTED, and is taken
 // within the outbox's 15 minutes before the post's time.
+// The room reports' codec (metaverse-engine/session/room-report.coax, through ticket-sign-unit.c): the receipts
+// this file answers a room's vitals post and checkpoint post with (Protocol E7 and E8, #13250).
+int room_report_receipt_c(long long gen, long long batch, const char *codes, char *out, size_t cap);
+int room_report_checkpoint_receipt_c(int v, const char *status, size_t status_n, long long owner, long long process, long long rev, long long accepted_at, char *out, size_t cap);
 static void room_vitals_receipt(const request *q, PGconn *db, const char *o, int shard, long long gen, long long batch, long long at) {
   char codes[128]; size_t cn = 0;
   if (shard < 1 || shard > 99 || gen <= 0) { api_json(q->fd, 400, "{\"error\":\"bad owner\"}"); return; }
@@ -802,7 +806,8 @@ static void room_vitals_receipt(const request *q, PGconn *db, const char *o, int
   }
   codes[cn] = 0;
   char out[192];
-  int n = snprintf(out, sizeof out, "receipt %lld %lld %s\n", gen, batch, codes);
+  int n = room_report_receipt_c(gen, batch, codes, out, sizeof out);   /* the receipt is room-report.coax's (Protocol E8, #13250) */
+  if (n < 0) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
   api_respond(q->fd, 200, "text/plain", NULL, out, (size_t)n);
 }
 // oa-room's part (#12715): "t MS\nPID HP MAX XP\n..." (XP since #12739; a line without it keeps the XP) signed with the seat-ticket key (X-Room-Mac: the
@@ -1128,7 +1133,8 @@ static void room_checkpoint(const request *q, PGconn *db, int version) {
   if (!progress_run(db, "COMMIT")) goto failed;
   coax_string status = room_checkpoint_status(code);
   char out[256];
-  snprintf(out,sizeof out,"{\"v\":%d,\"status\":\"%.*s\",\"owner\":%lld,\"process\":%lld,\"rev\":%lld,\"accepted_at\":%lld}", version,(int)status.count,status.data,(long long)owner,(long long)process,(long long)rev,(long long)((code==0||code==1)?accepted:0));
+  /* the receipt is room-report.coax's (Protocol E7, #13250) */
+  if (room_report_checkpoint_receipt_c(version,status.data,(size_t)status.count,(long long)owner,(long long)process,(long long)rev,(long long)((code==0||code==1)?accepted:0),out,sizeof out)<0) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
   api_json(q->fd, 200, out); return;
 failed:
   if (r) PQclear(r);

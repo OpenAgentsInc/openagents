@@ -78,14 +78,17 @@ The rows of `proto/registry.json` whose codec or files are this realm's (under `
 | `everglade-familiar-state-v1` | profile | world | `proto/verse/everglade-familiar-state-v1.json` |
 | `everglade-healers-kit-v1` | profile | world | `proto/verse/everglade-healers-kit-v1.json` |
 | `everglade2-familiar-v2` | profile | world | `proto/verse/everglade2-familiar-v2.json` |
+| `everglade2-riding-v1` | profile | world | `proto/verse/everglade2-riding-v1.json` |
 | `room-relay-v2` | profile | room-session | `proto/verse/room-relay-v2.json` |
 | `everglade2-combat-v2` | profile | creatures | `proto/verse/everglade2-combat-v2.json` |
 | `everglade-wire-prev-v6` | profile | world | `proto/verse/everglade-wire-prev-v6.json` |
 | `aethyr-projectile-v1` | profile | room-session | `proto/verse/everglade2-combat-v2.json` |
 | `aethyr-transport-v1` | profile | room-session | `proto/verse/aethyr-transport-v1.json` |
 | `everglade-latency-v1` | profile | room-session | `proto/verse/everglade-latency-v1.json` |
+| `orbit-session-v2` | profile | room-session | `proto/verse/orbit-session-v2.json` |
 | `seat-ticket-v5` | profile | room-session | `proto/verse/seat-ticket-v5.json` |
 | `seat-ticket-hmac-v1` | profile | room-session | `proto/verse/seat-ticket-hmac-v1.json` |
+| `room-reports-v1` | profile | room-session | `proto/verse/room-reports-v1.json` |
 | `character-checkpoint-v2` | profile | room-session | `proto/verse/character-checkpoint-v2.schema.json` |
 | `everglade-character-v1` | profile | characters | `proto/verse/everglade-character-v1.schema.json` |
 | `aethyr.content.v1` | profile | engine | `proto/aethyr/content-v1.json` |
@@ -103,6 +106,7 @@ The rows of `proto/registry.json` whose codec or files are this realm's (under `
 | `asset-pack-v2` | profile | realm-authoring | `proto/verse/asset-pack-v2.json` |
 | `rig-pack-v1` | profile | engine | `proto/aethyr/rig-pack-v1.json` |
 | `everglade-edits-v1` | profile | world | `proto/verse/everglade-edits-v1.json` |
+| `openagents.voice.v1alpha1` | proto | room-session | `proto/openagents/voice/v1alpha1/voice.proto#Frame` |
 
 ## Limits
 
@@ -189,4 +193,4 @@ table ability id name:text
 128|Rage
 ```
 
-reference sha256: fe5ee652a9a46068221dd72613eab96d176e6435ca2dda05a6da100f653dd5bd
+reference sha256: 0ec917a98951000cd1b0d95588d949cd25ff283be7eab78fca8c0dbb81ff376e

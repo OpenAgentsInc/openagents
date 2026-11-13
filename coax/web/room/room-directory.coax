@@ -107,29 +107,29 @@ dir_int :: (b: [] u8, n: int, x: int) -> int {
 dir_lines :: (v: [] RmServer, b: [] u8, rooms: [] int) -> int {
   free := 0;
   for k: 0..<(ifx eg_zoned(v) then 1 else EG_ROOMS) { if !v[0].eg[k].live { free += 1; } }   // a zone's process has the one room (seats.coax eg_zone_use)
-  n := dir_put(b, 0, "s "); n = dir_int(b, n, v[0].shard); n = dir_put(b, n, " "); n = dir_int(b, n, free); n = dir_put(b, n, "\n");
+  n := room_report_dir_shard(b, 0, v[0].shard, free);   // every line is room-report.coax's
   if v[0].dir_gen && v[0].vit.gen > 0 {
-    n = dir_put(b, n, "g "); n = dir_int(b, n, v[0].vit.gen); n = dir_put(b, n, ifx v[0].drain || rc_closed(v) then " d\n" else "\n");   // d: draining, or out of rotation by the API's flag (room-control.coax rc_closed, #13299)
+    n = room_report_dir_gen(b, n, v[0].vit.gen, v[0].drain || rc_closed(v));   // d: draining, or out of rotation by the API's flag (room-control.coax rc_closed, #13299)
   }
-  if v[0].dir.ep_n > 0 { n = dir_put(b, n, "e "); n = dir_put(b, n, cast(string) v[0].dir.ep[0..<v[0].dir.ep_n]); n = dir_put(b, n, "\n"); }
+  if v[0].dir.ep_n > 0 { n = room_report_dir_endpoint(b, n, cast(string) v[0].dir.ep[0..<v[0].dir.ep_n]); }
   rooms[0] = 0;
   for k: 0..<EG_ROOMS {
     r := v[0].eg[k].relay;
     if !v[0].eg[k].live || r < 0 || r >= RELAYS || !v[0].relays[r].live { continue; }
     m := v[0].relays[r];
-    n = dir_put(b, n, "r "); n = dir_put(b, n, cast(string) m.code[0..<m.code_n]); n = dir_put(b, n, " "); n = dir_int(b, n, rl_people(v, r));
+    n = room_report_dir_room(b, n, cast(string) m.code[0..<m.code_n], rl_people(v, r));
     for i: 0..<CONNS {
       c := v[0].conns[i];
       if !c.live || c.relay != r || !c.ticket.ok { continue; }
-      n = dir_put(b, n, " "); n = dir_put(b, n, cast(string) c.ticket.pid[0..<c.ticket.pid_n]);
+      n = room_report_dir_pid(b, n, cast(string) c.ticket.pid[0..<c.ticket.pid_n]);
     }
     // and those whose seats are held for them (#12792): still in the room
     for s: 0..<eg_cap(v, k) {
       if !eg_held(v, k, SeatId.{value = s}) || !v[0].eg[k].tk[s].ok { continue; }
       tk := v[0].eg[k].tk[s..<s + 1];
-      n = dir_put(b, n, " "); n = dir_put(b, n, cast(string) tk[0].pid[0..<tk[0].pid_n]);
+      n = room_report_dir_pid(b, n, cast(string) tk[0].pid[0..<tk[0].pid_n]);
     }
-    n = dir_put(b, n, "\n");
+    n = room_report_dir_end(b, n);
     rooms[0] += 1;
   }
   return n;
@@ -149,11 +149,12 @@ rm_directory_due :: (v: [] RmServer) -> int #export_c #effects(all) {
   closing := rooms[0] == 0 && v[0].dir.rooms;
   if same && !periodic && !closing { return 0; }
   o := v[0].dir.out[..];
-  k := dir_put(o, 0, "t "); k = dir_int(o, k, v[0].wall_ms); k = dir_put(o, k, "\n");
+  k := room_report_put(o, room_report_stamp(o, 0, v[0].wall_ms), "\n");
+  if k < 0 || k + n > o.count { v[0].dir.out_n = 0; return 0; }
   for i: 0..<n { o[k + i] = lines[i]; }
   k += n;
   // a VM shard's health, last: the directory keeps it beside the endpoint (#13179)
-  if v[0].dir.ep_n > 0 { k = dir_put(o, k, "h "); k = dir_int(o, k, rm_players(v)); k = dir_put(o, k, " "); k = dir_int(o, k, v[0].dir.tick_us); k = dir_put(o, k, "\n"); }
+  if v[0].dir.ep_n > 0 { k = room_report_dir_health(o, k, rm_players(v), v[0].dir.tick_us); }
   if k < 0 { v[0].dir.out_n = 0; return 0; }
   if !rm_write_dir_mac(v, "directory", o[0..<k], v[0].dir.mac[..]) { return 0; }
   for i: 0..<n { v[0].dir.last[i] = lines[i]; }
@@ -186,8 +187,7 @@ rm_drain_ask :: (v: [] RmServer, at: int, wait: int, mac: string) -> bool #expor
   if !rm_writes(v) || mac.count != 64 || wait < 0 || wait > 3600 { return false; }
   if at < v[0].wall_ms - 60000 || at > v[0].wall_ms + 60000 { return false; }
   b: [96] u8;
-  n := dir_put(b[..], 0, "drain "); n = dir_int(b[..], n, v[0].shard); n = dir_put(b[..], n, " "); n = dir_int(b[..], n, at);
-  n = dir_put(b[..], n, " "); n = dir_int(b[..], n, wait);
+  n := room_report_drain(b[..], v[0].shard, at, wait);
   if n < 0 { return false; }
   // under this shard's write key when it has one (purpose drain, room-write.coax), else the shared key
   want: [64] u8;
