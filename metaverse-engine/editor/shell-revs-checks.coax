@@ -96,5 +96,5 @@ esr_events :: (out: [] u8) -> string {
   coaxial_editor_event(ks, ES_MODEL, 0, n);
   for j: 0..<3 { if coaxial_editor_fetching(ks) > 0 { coaxial_editor_fetched(ks); coaxial_editor_event(ks, ES_SENT, 404, 0); } }
   _ := coaxial_editor_frame(ks, 0.016, true);
-  #assert ks[0].rv.flight == ES_RV_NONE && !ks[0].rv.have && tr_text_of(ks[0].tree[..], tr_find(ks[0].tree[..], "bar.rev")) == "my-world · revision 4";
+  #assert ks[0].rv.flight == ES_RV_NONE && !ks[0].rv.have && tr_text_of(ks[0].tree[..], tr_find(ks[0].tree[..], "bar.rev")) == "my world · revision 4";
 }

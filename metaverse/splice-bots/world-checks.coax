@@ -6,7 +6,7 @@ spt_why :: (t: [] SpwTest, b: SpwBatch) -> string { return cast(string) t[0].why
 // Two places the fixture layer uses: a palm by the scanner gate, a small crate by the rover's door.
 SPT_TWO :: "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100},{\"op\":\"spawn\",\"id\":0,\"kind\":117,\"x\":280,\"y\":0,\"z\":150,\"yaw\":0,\"scale\":100}]}";
 
-#test "Splice's world: the empty document opens, a batch places pieces, and the document it saves opens to the same bytes" #steps 4000000000 #traversal 2000000000 {
+#test "Splice Bots' world: the empty document opens, a batch places pieces, and the document it saves opens to the same bytes" #steps 4000000000 #traversal 2000000000 {
   t := [1] SpwTest.[SpwTest.{}]; g := t[0].g[..];
   empty := spw_empty(g, t[0].x[0].k[..], t[0].doc[..]);
   #assert empty.count > 0 && spw_open(g, t[0].x[0].k[..], empty) == SPW_OK && g[0].layer[0].head == 0 && g[0].layer[0].st[0].n == 0;
@@ -32,7 +32,22 @@ SPT_TWO :: "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[
   #assert p[0].layer[0].st[0].n == 2 && editor_same_item(p[0].layer[0].items[0], g[0].layer[0].items[0]) && editor_same_item(p[0].layer[0].items[1], g[0].layer[0].items[1]);
   #assert !spw_edit(p[..], e[0], false).ok && spw_pins(p[..]).content == p[0].c[0].rev && spw_pins(p[..]).engine == SPW_ENGINE && spw_pins(p[..]).rules == SPW_RULES && spw_pins(p[..]).wire == SPW_WIRE;
 }
-#test "Splice's world: a stale batch, a refused edit and what is no batch change nothing, and a refusal names the zone" #steps 4000000000 #traversal 2000000000 {
+#test "Splice Bots' world: a document saved under the world's old ID opens, and is saved again under its new one (#13486)" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SpwTest.[SpwTest.{}]; g := t[0].g[..];
+  empty := spw_empty(g, t[0].x[0].k[..], t[0].doc[..]);
+  head := "world.doc.v1 splice-bots\n";
+  #assert empty.count > head.count && cast(string) empty[0..<head.count] == head;
+  b := spw_batch(g, t[0].x[..], empty, SPT_TWO, true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  #assert b.status == SPB_OK && b.doc > head.count;
+  doc := cast(string) t[0].next[0..<b.doc];
+  old: [SPW_DOC] u8; other: [SPW_DOC] u8;
+  n := ct_put(old[..], 0, "world.doc.v1 splice\n"); n = ct_put(old[..], n, doc[head.count..<doc.count]);
+  m := ct_put(other[..], 0, "world.doc.v1 everglade\n"); m = ct_put(other[..], m, doc[head.count..<doc.count]);
+  #assert spw_open(g, t[0].x[0].k[..], cast(string) old[0..<n]) == SPW_OK && g[0].layer[0].st[0].n == 2 && spw_save(g, t[0].x[0].k[..], t[0].third[..]) == doc;
+  #assert spw_pieces(g, t[0].x[0].k[..], cast(string) other[0..<m]) == SPW_NOT_DOC;
+  #assert spw_named("splice-bots") && spw_named("splice") && !spw_named("everglade") && !spw_named("") && !spw_named("Splice");
+}
+#test "Splice Bots' world: a stale batch, a refused edit and what is no batch change nothing, and a refusal names the zone" #steps 4000000000 #traversal 2000000000 {
   t := [1] SpwTest.[SpwTest.{}]; g := t[0].g[..];
   empty := spw_empty(g, t[0].x[0].k[..], t[0].doc[..]);
   b := spw_batch(g, t[0].x[..], empty, sc_edit_swap(SPT_TWO, "\"rev\":0", "\"rev\":1", t[0].back[..]), true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
@@ -45,7 +60,7 @@ SPT_TWO :: "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[
   b = spw_batch(g, t[0].x[..], empty, sc_edit_swap(SPT_TWO, "\"kind\":113", "\"kind\":999", t[0].back[..]), true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
   #assert b.status == SPB_REFUSED && b.at == 0 && spt_why(t[..], b) == "no piece has that content ID";
   b = spw_batch(g, t[0].x[..], empty, sc_edit_swap(SPT_TWO, "\"scale\":100", "\"scale\":150", t[0].back[..]), true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
-  #assert b.status == SPB_REFUSED && spt_why(t[..], b) == "Splice's pieces keep their size";
+  #assert b.status == SPB_REFUSED && spt_why(t[..], b) == "Splice Bots' pieces keep their size";
   // what Splice does not take, each in words
   no := [5] string.["{\"op\":\"scale\",\"id\":1,\"scale\":150}", "{\"op\":\"terrain\",\"brush\":\"raise\",\"x\":300,\"z\":-200,\"r\":450,\"v\":80,\"mat\":3}", "{\"op\":\"cell\",\"table\":\"landmarks\",\"row\":16,\"col\":\"name\",\"v\":\"x\"}", "{\"op\":\"set\",\"id\":1,\"col\":\"hp\",\"v\":3}", "{\"op\":\"spawn\",\"id\":9,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100}"];
   codes := [5] int.[SPE_SIZE, SPE_LAND, SPE_TABLES, SPE_COLUMN, SPE_ID];
@@ -56,13 +71,13 @@ SPT_TWO :: "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[
   #assert spw_batch(g, t[0].x[..], empty, "{}", true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]).status == SPB_BATCH;
   #assert spw_batch(g, t[0].x[..], empty, WE_UNDO_FIXTURE, false, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]).status == SPB_BATCH;
   b = spw_batch(g, t[0].x[..], "world.doc.v1 splice\n", SPT_TWO, true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
-  #assert b.status == SPB_DOC && spt_why(t[..], b) == "that is not Splice's world document";
+  #assert b.status == SPB_DOC && spt_why(t[..], b) == "that is not Splice Bots' world document";
   b = spw_batch(g, t[0].x[..], empty, "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"original\",\"edits\":[]}", true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
   #assert b.status == SPB_NOTHING && spt_why(t[..], b) == "nothing to change";
   small: [64] u8;
   #assert spw_batch(g, t[0].x[..], empty, SPT_TWO, true, small[..], t[0].did[..], t[0].inv[..], t[0].why[..]).status == SPB_ROOM && spw_batch(g, t[0].x[..], empty, SPT_TWO, true, t[0].next[..], small[..], t[0].inv[..], t[0].why[..]).status == SPB_ROOM;
 }
-#test "Splice's world: a batch's inverse takes it back, a move and a turn are edits, and ORIGINAL removes every piece and comes back whole" #steps 4000000000 #traversal 2000000000 {
+#test "Splice Bots' world: a batch's inverse takes it back, a move and a turn are edits, and ORIGINAL removes every piece and comes back whole" #steps 4000000000 #traversal 2000000000 {
   t := [1] SpwTest.[SpwTest.{}]; g := t[0].g[..];
   empty := spw_empty(g, t[0].x[0].k[..], t[0].doc[..]);
   b := spw_batch(g, t[0].x[..], empty, SPT_TWO, true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
@@ -89,7 +104,7 @@ SPT_TWO :: "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[
   n := spw_batch(g, t[0].x[..], cast(string) t[0].doc[0..<r.doc], "{\"schema\":\"world.edit.v1\",\"rev\":14,\"do\":\"apply\",\"edits\":[{\"op\":\"despawn\",\"id\":2},{\"op\":\"spawn\",\"id\":0,\"kind\":117,\"x\":280,\"y\":0,\"z\":150,\"yaw\":0,\"scale\":100}]}", true, t[0].third[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
   #assert n.status == SPB_OK && cast(string) t[0].inv[0..<n.inv] == "{\"schema\":\"world.edit.v1\",\"rev\":16,\"do\":\"apply\",\"edits\":[{\"op\":\"despawn\",\"id\":3},{\"op\":\"spawn\",\"id\":2,\"kind\":117,\"x\":280,\"y\":0,\"z\":150,\"yaw\":0,\"scale\":100}]}";
 }
-#test "Splice's world: a document this build would not write is refused, and a batch that stops the walk is not saved" #steps 4000000000 #traversal 2000000000 {
+#test "Splice Bots' world: a document this build would not write is refused, and a batch that stops the walk is not saved" #steps 4000000000 #traversal 2000000000 {
   t := [1] SpwTest.[SpwTest.{}]; g := t[0].g[..];
   empty := spw_empty(g, t[0].x[0].k[..], t[0].doc[..]);
   // a World that was edited in place (its slots' generations moved on) is a true document of a
@@ -319,7 +334,7 @@ spt_cell :: (out: [] u8, rev: int, table: string, row: int, col: string, value: 
   return we_batch_write(rev, WB_APPLY, e[..], 1, out);
 }
 
-#test "Splice's world: a cell of the content tables is an edit: it is saved with the tables, its inverse takes it back, and what the column, the rules or a placed piece refuses changes nothing" #steps 4000000000 #traversal 2000000000 {
+#test "Splice Bots' world: a cell of the content tables is an edit: it is saved with the tables, its inverse takes it back, and what the column, the rules or a placed piece refuses changes nothing" #steps 4000000000 #traversal 2000000000 {
   t := [1] SpwTest.[SpwTest.{}]; g := t[0].g[..]; x := t[0].x[..]; k := [1] SptCell.[SptCell.{}]; body: [WE_BATCH_BODY] u8;
   empty := spw_empty(g, x[0].k[..], t[0].doc[..]);
   b := spw_batch(g, x, empty, SPT_TWO, true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
@@ -362,7 +377,7 @@ spt_cell :: (out: [] u8, rev: int, table: string, row: int, col: string, value: 
   #assert hx < 1;
 }
 
-#test "Splice's world: a foe's plan and the editor's clock are cells: taken, saved and taken back; a route out of the mine, in a wall or of the wrong shape is refused in words (#13466)" #steps 4000000000 #traversal 2000000000 {
+#test "Splice Bots' world: a foe's plan and the editor's clock are cells: taken, saved and taken back; a route out of the mine, in a wall or of the wrong shape is refused in words (#13466)" #steps 4000000000 #traversal 2000000000 {
   t := [1] SpwTest.[SpwTest.{}]; g := t[0].g[..]; x := t[0].x[..]; k := [1] SptCell.[SptCell.{}]; body: [WE_BATCH_BODY] u8;
   empty := spw_empty(g, x[0].k[..], t[0].doc[..]);
   // Imperial 1 at dusk guards the tunnel mouth; the editor shows dusk
@@ -439,7 +454,7 @@ spt_cell :: (out: [] u8, rev: int, table: string, row: int, col: string, value: 
   #assert spt_round(x[..], 1.1, spt_events(x[..], bad, 5)) == WFQ_EVENTS && f[0].rev == 4 && f[0].reopened == 1;
 }
 
-#test "Splice's world: a script row is a cell edit, told to the shell with the kinds a script may drive; a row with no text takes it away, and a row that does not read is refused in words (#13467)" #steps 4000000000 #traversal 2000000000 {
+#test "Splice Bots' world: a script row is a cell edit, told to the shell with the kinds a script may drive; a row with no text takes it away, and a row that does not read is refused in words (#13467)" #steps 4000000000 #traversal 2000000000 {
   t := [1] SpwTest.[SpwTest.{}]; g := t[0].g[..]; x := t[0].x[..]; k := [1] SptCell.[SptCell.{}]; body: [WE_BATCH_BODY] u8; p := [1] SpwPage.[SpwPage.{}];
   empty := spw_empty(g, x[0].k[..], t[0].doc[..]);
   q := [1] SptShell.[SptShell.{}]; m := q[0].m[..];

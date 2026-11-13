@@ -334,7 +334,7 @@ help and the MCP tool's description print it. A two-step row (`publish`,
 Every command that is not a read takes `--dry-run` and `--key K`
 ([the result shape](../../docs/protocol/realm-result-v1.md)).
 
-A world with an ID (Splice is the first) is edited by the `world` rows:
+A world with an ID (Splice Bots is the first) is edited by the `world` rows:
 `realm world ID`, `world-place`, `world-move`, `world-turn`, `world-set`,
 `world-remove`, `world-undo`, `world-redo`, `world-original`, `world-apply`,
 `world-publish`, `world-why` and `world-open`

@@ -31,7 +31,7 @@ read. `realm_authority_line` gives a row as `REALM|CONTENT|SIMULATION|DURABILITY
 
 | Realm | Content: who may change authored state | Simulation: what decides running state | Durability: what holds durable state |
 | --- | --- | --- | --- |
-| `splice` | `owner-admins`: the realm's owner and the site's admins | `page`: the player's own page; nothing is checked by a server | `none`: a run is over when the page closes |
+| `splice-bots` | `owner-admins`: the realm's owner and the site's admins | `page`: the player's own page; nothing is checked by a server | `none`: a run is over when the page closes |
 | `everglade` | `admins`: the site's admins | `room`: the server's room decides combat, movement, loot and travel; a page predicts and is corrected | `ledger`: the character record and the item ledger |
 
 Every other realm is one made at run time, or a hand-built one with a board

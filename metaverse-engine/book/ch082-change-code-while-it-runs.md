@@ -66,7 +66,7 @@ that struct's layout for `coax drive`: `coax layout` lists every struct with
 its fields' offsets, sizes and types, and every enum with its members.
 [`coax/web/wasm.sh`](../../coax/web/wasm.sh) writes it to
 `build/.drive/APP.layout`. This text is the field table. Here is part of
-Splice's:
+Splice Bots':
 
 ```text
 Splice  size 98448  align 8
@@ -124,10 +124,10 @@ same fields. A narrowing change, such as `int` to `s32`, is never converted,
 because some values would not fit.
 
 A new field's default comes from the face. `coaxial_state_init` must call
-the compiler's `coax_default_T` for the state. Splice's face didn't, so a
+the compiler's `coax_default_T` for the state. Splice Bots' face didn't, so a
 new field with a declared default would have started at zero; it does now.
 
-### Measured on Splice
+### Measured on Splice Bots
 
 The page ran on the dev server in headless Chrome, at a moment of the game
 with Heat 20, two robot pieces, one battery cell and the player away from
@@ -181,7 +181,7 @@ under load, which is the dev loop's cost, not the swap's.
   frame over 20 edits.
 - The page's own stores outside the state, such as a face's static
   buffers, are the new module's. A realm rebuilds them from the state, as
-  Splice rebuilds its world store.
+  Splice Bots rebuilds its world store.
 
 ## Acceptance checks and oracles
 
@@ -189,7 +189,7 @@ Done:
 
 - A layout change keeps every field both layouts name, and reports the new
   and dropped ones (`bun test coax/web/state-keep.test.ts`, 13 tests, and
-  the Splice run above).
+  the Splice Bots run above).
 - A broken edit leaves the old module running, and the dev note shows the
   compiler's error.
 - The production host (`serve --static`) has no live channel, and a release

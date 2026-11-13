@@ -1,5 +1,5 @@
 // A world's realm scripts on this computer (GitHub #13485): what `coax serve` answers for
-// /api/worlds/splice/scripts... on the dev server, so `openagents realm world-script-compile`,
+// /api/worlds/splice-bots/scripts... on the dev server, so `openagents realm world-script-compile`,
 // `world-script-put`, `world-scripts` and the page's own fetches work before anything is deployed.
 // It is the API's route (coax/web/api/scripts.c) with the same Coax: the module check, the manifest
 // and every byte answered are script-store.coax's (metaverse-engine/script). Only where the modules
@@ -24,6 +24,7 @@
 #load "../../../coax/web/api/script-store.coax";
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
+#load "../../../metaverse-engine/tools/world-was.coax";   // the world's files under its old ID move to its ID (#13486)
 
 SlLocal :: struct {
   w: [1] SsWork;
@@ -101,13 +102,14 @@ tool_main :: () -> int #export_c #effects(all) {
   if dir.count == 0 || url.count <= root.count || url[0..<root.count] != root { return sl_say(404, "{\"error\":\"not found\"}"); }
   rest := url[root.count..<url.count];
   path := ct_part(rest, '?', 0); query := ifx ct_parts(rest, '?') > 1 then rest[path.count + 1..<rest.count] else "";
-  id := ct_part(path, '/', 0);
+  id := world_alias(ct_part(path, '/', 0));   // a renamed world's old ID is its new one (#13486)
   if id != SPW_ID || ct_parts(path, '/') < 2 || ct_part(path, '/', 1) != "scripts" { return sl_say(404, "{\"error\":\"no such world\"}"); }
   // DIR/ID.scripts
   k := ct_put(t[0].dir[..], 0, dir); k = ct_put(t[0].dir[..], k, "/"); k = ct_put(t[0].dir[..], k, id); k = ct_put(t[0].dir[..], k, ".scripts");
   if k > t[0].dir.count { return sl_say(500, "{\"error\":\"not read\"}"); }
   t[0].dir_n = k;
   _ := fs_mkdir(dir);
+  ww := [1] WwWork.[WwWork.{}]; _ = world_dir_move(ww[..], dir, id);   // the files the world kept under its old ID
   part := ifx ct_parts(path, '/') > 2 then ct_part(path, '/', 2) else "";
   more := ifx ct_parts(path, '/') > 3 then ct_part(path, '/', 3) else "";
   if method == "GET" {

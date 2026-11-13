@@ -65,13 +65,13 @@ The glue carries text and decides nothing:
   It hands the text to the module as message 720 and posts the module's
   answer back to that origin alone.
 - A realm's module reads with `rf_read` and writes with `rf_ready`,
-  `rf_answer` or `rf_refused`. Splice is the first (`splice_framed`).
+  `rf_answer` or `rf_refused`. Splice Bots is the first (`splice_framed`).
 
 ## Check it
 
 ```sh
 coax/web/serve.sh --help >/dev/null            # builds coax/web/build/serve
-coax/web/tool.sh realm-frame-check             # headless Chrome: the site frames Splice from the realm origin
+coax/web/tool.sh realm-frame-check             # headless Chrome: the site frames Splice Bots from the realm origin
 coax/web/tool.sh metaverse-engine/tools/realm-frame-profile.coax proto/verse/realm-frame-v1.json
 ```
 
@@ -81,7 +81,7 @@ origins and two sites to the browser, told apart by the request's `Host`.
 
 ## What works in the frame, and what doesn't yet
 
-Measured in headless Chrome on Splice: WebGPU, a secure context, cross-origin
+Measured in headless Chrome on Splice Bots: WebGPU, a secure context, cross-origin
 isolation and the module's fetches all work with no origin.
 
 - **Storage.** There is none. A realm that keeps a save needs the site to
@@ -113,7 +113,7 @@ coordinator's.
    beside the COOP and COEP headers the bucket's answers already carry.
 4. **The pages.** A realm that may be framed lists the site in its script
    tag: `data-frame-origins="https://openagents.com"`.
-5. **Smoke** (`smoke.sh`): the realm origin answers `/worlds/splice` with the
+5. **Smoke** (`smoke.sh`): the realm origin answers `/worlds/splice-bots` with the
    sandbox header and `/api/...` with 404; then `realm-frame-check` against
    staging.
 

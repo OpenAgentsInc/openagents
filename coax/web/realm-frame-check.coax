@@ -91,13 +91,13 @@ tool_main :: () -> int #export_c #effects(all) {
   failed += rc_check(up, "the dev server answers");
 
   // ---- the realm origin over HTTP
-  page := rc_get(port, realm_host, "/worlds/splice", b);
+  page := rc_get(port, realm_host, "/worlds/splice-bots", b);
   failed += rc_check(ws_starts(page, "HTTP/1.1 200 ") && rc_has(page, "\r\nContent-Security-Policy: sandbox allow-scripts allow-pointer-lock allow-orientation-lock\r\n") && !rc_has(page, "allow-same-origin"), "the realm origin's page is sandboxed by its own answer, with no origin");
   failed += rc_check(rc_has(page, "\r\nCross-Origin-Resource-Policy: cross-origin\r\n") && rc_has(page, "\r\nAccess-Control-Allow-Origin: *\r\n") && rc_has(page, "\r\nCross-Origin-Embedder-Policy: require-corp\r\n"), "it may be framed by the site's isolated page and loads its own files without credentials");
   failed += rc_check(ws_starts(rc_get(port, realm_host, "/coaxial/host.js", b), "HTTP/1.1 200 ") && ws_starts(rc_get(port, realm_host, "/build/splice-bots.wasm", b), "HTTP/1.1 200 "), "the realm origin serves what a page loads");
   no := [6] string.["/", "/chat", "/login", "/api/playtest/realms/listed", "/coaxial/live", "/llms.txt"];
   for u: no { failed += rc_check(ws_starts(rc_get(port, realm_host, u, b), "HTTP/1.1 404 "), u); }
-  mine := rc_get(port, site_host, "/worlds/splice", b);
+  mine := rc_get(port, site_host, "/worlds/splice-bots", b);
   failed += rc_check(ws_starts(mine, "HTTP/1.1 200 ") && !rc_has(mine, "Content-Security-Policy") && !rc_has(mine, "Access-Control-Allow-Origin"), "the site's own answers are as they were");
   failed += rc_check(ws_starts(rc_get(port, site_host, "/chat", b), "HTTP/1.1 200 "), "the site still serves its pages");
 
@@ -113,10 +113,10 @@ tool_main :: () -> int #export_c #effects(all) {
     failed += rc_check(loaded, "a page of the site's opens");
     failed += rc_check(rc_eval(c[..], "String(crossOriginIsolated)", b) == "true", "the site's page is cross-origin isolated");
     // realm-frame.js refuses the site's own origin
-    same: [1024] u8; m := ws_put(same[..], 0, "import('/coaxial/realm-frame.js').then((f) => { try { f.openRealmFrame(document.body, location.origin, '/worlds/splice', () => {}); return 'made'; } catch (e) { return 'refused'; } })");
+    same: [1024] u8; m := ws_put(same[..], 0, "import('/coaxial/realm-frame.js').then((f) => { try { f.openRealmFrame(document.body, location.origin, '/worlds/splice-bots', () => {}); return 'made'; } catch (e) { return 'refused'; } })");
     failed += rc_check(rc_eval(c[..], cast(string) same[0..<m], b) == "refused", "realm-frame.js refuses a frame on the site's own origin");
     open: [1024] u8; o := ws_put(open[..], 0, "import('/coaxial/realm-frame.js').then((f) => { globalThis.__rfHeard = []; globalThis.__rf = f.openRealmFrame(document.body, 'http://");
-    o = ws_put(open[..], o, realm_host); o = ws_put(open[..], o, "', '/worlds/splice', (t) => globalThis.__rfHeard.push(t)); return 'open'; })");
+    o = ws_put(open[..], o, realm_host); o = ws_put(open[..], o, "', '/worlds/splice-bots', (t) => globalThis.__rfHeard.push(t)); return 'open'; })");
     failed += rc_check(rc_eval(c[..], cast(string) open[0..<o], b) == "open", "the site's page frames Splice from the realm origin");
     // hello until the realm's engine is up and answers
     hello: [64] u8; ready := ""; rb: [256] u8; tries := 0;

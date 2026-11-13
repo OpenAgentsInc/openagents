@@ -99,7 +99,7 @@ driver reads the page's elements, by their ids, and takes `tree`, `hit`,
 | `taps` | Audits every tap target: `small` (under 44 px either way), `covered` (a tap at its middle lands on something else) and `overlap`. It works on a realm's HUD and on pages the browser draws (the chat, the editor's shell) |
 | `tap ID` | Taps the centre of the node with that id |
 | `type ID TEXT` | Types text into a field |
-| `why ID` | Says why a thing isn't seen, reached or working: the first failed link of state, spawned, view, drawn, asset, collider and system, with the field, the expected and actual values, and whether a retry can help. `why caps` lists the limits the engine applied. The codes are in `proto/verse/engine-diagnostics-v1.json`. Splice answers it first (`you`, `piece-N`, `foe-N`, `rubble`, `boss-wall`) |
+| `why ID` | Says why a thing isn't seen, reached or working: the first failed link of state, spawned, view, drawn, asset, collider and system, with the field, the expected and actual values, and whether a retry can help. `why caps` lists the limits the engine applied. The codes are in `proto/verse/engine-diagnostics-v1.json`. Splice Bots answers it first (`you`, `piece-N`, `foe-N`, `rubble`, `boss-wall`) |
 | `state PATH` | Reads a value from the engine's state, such as `you_x` or `player.zone` |
 | `layout ID` | Prints a node's rectangle and its children's |
 | `logs` | Prints the page's console and the engine's log lines |

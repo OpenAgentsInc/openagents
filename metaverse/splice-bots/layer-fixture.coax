@@ -1,7 +1,7 @@
 // Splice's fixture layer (GitHub #13404): a piece beside every kept-clear zone that has open
 // ground beside it, as the typed edits that place them. The checks play the whole run and walk the
 // whole way with it in (walk-checks.coax), and a developer's page loads it to see placed pieces in
-// the world: http://127.0.0.1:8800/worlds/splice?layer=fixture (splice-bots.coax; the dev server only).
+// the world: http://127.0.0.1:8800/worlds/splice-bots?layer=fixture (splice-bots.coax; the dev server only).
 //
 // One row a piece: the kept-clear zone it stands beside (its content ID), the piece (its content
 // ID), where it stands in centimetres, and its turn in degrees. The boss chamber has no row: rock

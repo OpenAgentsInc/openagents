@@ -66,6 +66,7 @@ moved = ["/project/coax", "/project/coax/index.md", "/project/verse/index.md",  
          "/projects/verse", "/projects/verse/", "/projects/verse/index.md", "/projects/verse/index.md?from=old",   # 301 to /projects/metaverse* (#13405)
          "/verse", "/verse/", "/verse?realms=all&from=old", "/verse/index.md", "/verse/og-verse.jpg",             # 301 to /metaverse*
          "/forge", "/forge/my-realm?from=old",                                                                    # 301 to /worlds/new (#13405)
+         "/worlds/splice", "/worlds/splice?edit", "/worlds/splice/index.md",                                     # 301 to /worlds/splice-bots* (#13486)
          "/realm/haunted-house", "/realm/everglade?from=playtest", "/realm/haunted-house/index.md", "/realm/everglade/og.jpg", "/realm/hecates-cemetery/card.jpg",
          "/realms", "/realms/", "/realms/everglade", "/realms/everglade?from=playtest", "/realms/haunted-house/index.md", "/realms/built"]
 extra = [("/llms.txt", {200}), ("/index.md", {200}), ("/v1/projects", {401, 403}), ("/docs", {200, 301, 302, 308})] if coder else [("/" + uuid.uuid4().hex, {404})]
@@ -122,11 +123,12 @@ for path, (s, h, body) in zip(pages, s_pages):
         slug = path.rsplit("/", 1)[1]; slug = slug_at.get(slug, slug)
         check(re.search(rb'data-text="[0-9a-f]{64} ' + slug.encode() + rb'"', body) is not None, f"{path} names its project")
 # The old /project/*, /realm/* and /realms/* addresses move for good to /projects/* and /worlds/*, and /verse* and
-# /projects/verse* to /metaverse* and /projects/metaverse*, path and query kept; /forge* moves to /worlds/new. One move each: /project/verse/... goes
+# /projects/verse* to /metaverse* and /projects/metaverse*, path and query kept; /forge* moves to /worlds/new and /worlds/splice* to /worlds/splice-bots*. One move each: /project/verse/... goes
 # to /projects/verse/..., which moves again.
 for path, (s, h, _) in zip(moved, s_moved):
     if path.startswith("/project/"): want = "/projects/" + path[len("/project/"):]
     elif path.startswith("/forge"): want = "/worlds/new" + ("?" + path.split("?", 1)[1] if "?" in path else "")
+    elif re.match(r"^/worlds/splice(?=[/?]|$)", path): want = "/worlds/splice-bots" + path[len("/worlds/splice"):]
     else: want = re.sub(r"^/projects/verse(?=[/?]|$)", "/projects/metaverse", re.sub(r"^/verse(?=[/?]|$)", "/metaverse", re.sub(r"^/realms?(?=/|$)", "/worlds", path)))
     where = h.get("location", "")
     check(s == 301 and where in (want, f"https://{host}{want}"), f"{path} moves to {want} ({s} {where})")

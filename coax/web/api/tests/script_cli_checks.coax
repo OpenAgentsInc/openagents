@@ -74,47 +74,47 @@ sc_checks :: (t: [] Ap, c: [] Sc, compiles: bool) {
   wasm := sc_file(c, "pacer.wasm", cast(string) mod[0..<mn], pb[..]);
   fields := sc_file(c, "pacer.json", sc_manifest(mt[..]), fb[..]);
   bad := sc_file(c, "cut.wasm", cast(string) mod[0..<mn - 3], bb[..]);
-  ap_do(t, "DELETE FROM verse.script_reports; DELETE FROM verse.script_off; DELETE FROM verse.world_scripts WHERE world = 'splice'; DELETE FROM verse.world_outbox WHERE world = 'splice'; DELETE FROM verse.world_steps WHERE world = 'splice'; DELETE FROM verse.world_docs WHERE id = 'splice'; INSERT INTO verse.world_docs (id, kind) VALUES ('splice', 'splice'); DELETE FROM auth.limit_counts WHERE name LIKE 'script-%';");
+  ap_do(t, "DELETE FROM verse.script_reports; DELETE FROM verse.script_off; DELETE FROM verse.world_scripts WHERE world = 'splice-bots'; DELETE FROM verse.world_outbox WHERE world = 'splice-bots'; DELETE FROM verse.world_steps WHERE world = 'splice-bots'; DELETE FROM verse.world_docs WHERE id = 'splice-bots'; INSERT INTO verse.world_docs (id, kind) VALUES ('splice-bots', 'splice-bots'); DELETE FROM auth.limit_counts WHERE name LIKE 'script-%';");
   // ---- the list
-  list := [3] string.["realm", "world-scripts", "splice"];
+  list := [3] string.["realm", "world-scripts", "splice-bots"];
   st := sc_cli(t, c, list[..]);
   ap_check(t, "cli scripts: world-scripts reads a world with none: no script, and the limits", made && wasm != "" && fields != "" && bad != "" && st == 0 && sc_ok(c) && sc_get(c, "count") == "0" && ap_has(sc_get(c, "limits"), "\"scripts\":8"), sc_text(c));
   // ---- storing a built module with its state fields
-  put := [7] string.["realm", "world-script-put", "splice", wasm, "--name", "pacer", "--fields"];
-  putf := [8] string.["realm", "world-script-put", "splice", wasm, "--name", "pacer", "--fields", fields];
+  put := [7] string.["realm", "world-script-put", "splice-bots", wasm, "--name", "pacer", "--fields"];
+  putf := [8] string.["realm", "world-script-put", "splice-bots", wasm, "--name", "pacer", "--fields", fields];
   st = sc_cli(t, c, putf[..]);
-  ap_check(t, "cli scripts: world-script-put stores the module with the manifest's state fields, and says the run command", st == 0 && sc_ok(c) && sc_get(c, "hash") == ha && sc_get(c, "calls") == "sa_x, sa_move" && ap_has(sc_get(c, "next"), "world-script-run splice --script") && ap_sql(t, "SELECT count(*) || ' ' || max(hash) || ' ' || bool_or(manifest::text LIKE '%turn_at%')::text FROM verse.world_scripts WHERE world = 'splice'", q[..]) == sb_text_of3(e[..], "1 ", ha, " true"), sc_text(c));
+  ap_check(t, "cli scripts: world-script-put stores the module with the manifest's state fields, and says the run command", st == 0 && sc_ok(c) && sc_get(c, "hash") == ha && sc_get(c, "calls") == "sa_x, sa_move" && ap_has(sc_get(c, "next"), "world-script-run splice --script") && ap_sql(t, "SELECT count(*) || ' ' || max(hash) || ' ' || bool_or(manifest::text LIKE '%turn_at%')::text FROM verse.world_scripts WHERE world = 'splice-bots'", q[..]) == sb_text_of3(e[..], "1 ", ha, " true"), sc_text(c));
   st = sc_cli(t, c, list[..]);
   ap_check(t, "cli scripts: world-scripts lists it, on and with no source", st == 0 && sc_get(c, "count") == "1" && ap_has(sc_get(c, "scripts"), ha) && ap_has(sc_get(c, "scripts"), "\"off\":false,\"why\":\"\",\"source\":false"), sc_text(c));
-  cut := [6] string.["realm", "world-script-put", "splice", bad, "--name", "pacer"];
+  cut := [6] string.["realm", "world-script-put", "splice-bots", bad, "--name", "pacer"];
   st = sc_cli(t, c, cut[..]);
   ap_check(t, "cli scripts: a module the check refuses fails with the refusal's words, code and byte, and nothing more is stored", st > 0 && !sc_ok(c) && sc_get(c, "status") == "422" && sc_get(c, "code") == "engine.diagnostic.script-refused-module.v1" && ap_has(sc_get(c, "error"), " at byte ") && ap_sql(t, "SELECT count(*) FROM verse.world_scripts", q[..]) == "1", sc_text(c));
   st = sc_cli(t, c, put[0..<6]);
   ap_check(t, "cli scripts: storing the same bytes again answers the same manifest", st == 0 && sc_get(c, "hash") == ha, sc_text(c));
   // ---- running it: a row of the world's scripts table, through the world's edit route
-  run := [10] string.["realm", "world-script-run", "splice", "--script", ha, "--name", "pacer", "--for", "kind 1", "--dry-run"];
+  run := [10] string.["realm", "world-script-run", "splice-bots", "--script", ha, "--name", "pacer", "--for", "kind 1", "--dry-run"];
   st = sc_cli(t, c, run[..]);
-  ap_check(t, "cli scripts: world-script-run --dry-run saves nothing", st == 0 && sc_ok(c) && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "0", sc_text(c));
+  ap_check(t, "cli scripts: world-script-run --dry-run saves nothing", st == 0 && sc_ok(c) && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "0", sc_text(c));
   st = sc_cli(t, c, run[0..<9]);
-  ap_check(t, "cli scripts: world-script-run sets the world's first free scripts row, one revision", st == 0 && sc_ok(c) && sc_get(c, "rev") == "1" && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "1", sc_text(c));
+  ap_check(t, "cli scripts: world-script-run sets the world's first free scripts row, one revision", st == 0 && sc_ok(c) && sc_get(c, "rev") == "1" && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "1", sc_text(c));
   st = sc_cli(t, c, run[0..<9]);
-  ap_check(t, "cli scripts: running it again changes nothing and sends nothing", st == 0 && sc_ok(c) && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "1", sc_text(c));
+  ap_check(t, "cli scripts: running it again changes nothing and sends nothing", st == 0 && sc_ok(c) && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "1", sc_text(c));
   // ---- publishing: asked about the new script, then confirmed
-  pub := [6] string.["realm", "world-publish", "splice", "now", "--yes", "--confirm"];
+  pub := [6] string.["realm", "world-publish", "splice-bots", "now", "--yes", "--confirm"];
   st = sc_cli(t, c, pub[0..<5]);
   confirm := sc_get(c, "confirm");
-  ap_check(t, "cli scripts: a publish that adds a script fails, says what it adds and the command that confirms it", st > 0 && !sc_ok(c) && ap_has(sc_get(c, "asks"), "\"name\":\"pacer\"") && ap_has(confirm, sb_text_of3(e[..], "world-publish splice now --confirm ", ha, " --yes")) && ap_sql(t, "SELECT live_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "0", sc_text(c));
-  pubc := [7] string.["realm", "world-publish", "splice", "now", "--yes", "--confirm", ha];
+  ap_check(t, "cli scripts: a publish that adds a script fails, says what it adds and the command that confirms it", st > 0 && !sc_ok(c) && ap_has(sc_get(c, "asks"), "\"name\":\"pacer\"") && ap_has(confirm, sb_text_of3(e[..], "world-publish splice now --confirm ", ha, " --yes")) && ap_sql(t, "SELECT live_rev FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "0", sc_text(c));
+  pubc := [7] string.["realm", "world-publish", "splice-bots", "now", "--yes", "--confirm", ha];
   st = sc_cli(t, c, pubc[..]);
-  ap_check(t, "cli scripts: world-publish --confirm HASH publishes it", st == 0 && sc_ok(c) && ap_sql(t, "SELECT live_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "1", sc_text(c));
+  ap_check(t, "cli scripts: world-publish --confirm HASH publishes it", st == 0 && sc_ok(c) && ap_sql(t, "SELECT live_rev FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "1", sc_text(c));
   // ---- reporting
-  rep := [7] string.["realm", "world-script-report", "splice", ha, "--why", "it strikes players at the gate", "--yes"];
+  rep := [7] string.["realm", "world-script-report", "splice-bots", ha, "--why", "it strikes players at the gate", "--yes"];
   st = sc_cli(t, c, rep[0..<6]);
   asked := st > 0 && ap_sql(t, "SELECT count(*) FROM verse.script_reports", q[..]) == "0";
   st = sc_cli(t, c, rep[..]);
   ap_check(t, "cli scripts: world-script-report asks for --yes, then reports the script with the reason", asked && st == 0 && sc_ok(c) && sc_get(c, "reported") == ha && ap_sql(t, "SELECT count(*) || ' ' || max(status) || ' ' || max(why) FROM verse.script_reports", q[..]) == "1 open it strikes players at the gate", sc_text(c));
   // ---- compiling a source
-  comp := [6] string.["realm", "world-script-compile", "splice", "metaverse-engine/script/examples/pacer.coax", "--name", "pacer"];
+  comp := [6] string.["realm", "world-script-compile", "splice-bots", "metaverse-engine/script/examples/pacer.coax", "--name", "pacer"];
   st = sc_cli(t, c, comp[..]);
   if !compiles {
     ap_check(t, "cli scripts: world-script-compile on a server with no compile job fails with the code no-compiler (this machine has no Wasm toolchain)", st > 0 && sc_get(c, "code") == "engine.diagnostic.script-no-compiler.v1", sc_text(c));

@@ -1,0 +1,39 @@
+// A world's old ID, read as its new one (GitHub #13486; docs/naming/2026-11-13-splice-bots-rename.md).
+// When a world is renamed, saved links, stored documents and events, the CLI, MCP tools and pages
+// cached before the rename still name it by its old ID. Every reader of a world ID asks here first:
+// the API (coax/web/api/worlds.c through world-policy.coax wr_world_id), the dev server
+// (coax/web/serve.c through world-alias-host.coax site_world; its page addresses move in
+// coax/web/site-routes.coax and coax/web/api/lb.sh) and its world tools (metaverse-engine/tools/world-was.coax).
+// A world's own code accepts a document or an event that names its old ID (metaverse/splice-bots/world.coax).
+//
+//   splice   Splice Bots, renamed from Splice on 2026-11-13. Retires as the naming document says.
+//
+// Each old ID stays reserved: no realm may take it (coax/web/api/migrations/0188_splice_bots_world.sql,
+// verse.realm_world_id_ok).
+//   coax/bin/coax test metaverse-engine/editor/world-alias.coax --library
+
+#module "metaverse.engine.world_alias";
+
+WORLD_ALIASES :: 1;
+WORLD_WAS :: [WORLD_ALIASES] string.["splice"];
+WORLD_IS :: [WORLD_ALIASES] string.["splice-bots"];
+
+// The world an ID names: its new ID when it is an old one, else the ID itself.
+world_alias :: (id: string) -> string #effects(reads, traps) {
+  for k: 0..<WORLD_ALIASES { if WORLD_WAS[k] == id { return WORLD_IS[k]; } }
+  return id;
+}
+// The old ID a world had ("" for none): what its own code still reads in a stored document or event.
+world_was :: (id: string) -> string #effects(reads, traps) {
+  for k: 0..<WORLD_ALIASES { if WORLD_IS[k] == id { return WORLD_WAS[k]; } }
+  return "";
+}
+
+#test "an old world ID names its new world; every other ID names itself" {
+  #assert world_alias("splice") == "splice-bots" && world_alias("splice-bots") == "splice-bots";
+  #assert world_alias("everglade") == "everglade" && world_alias("my-realm") == "my-realm" && world_alias("") == "";
+  #assert world_alias("Splice") == "Splice" && world_alias("splice-") == "splice-" && world_alias("splic") == "splic" && world_alias("splice-bots-2") == "splice-bots-2";
+}
+#test "a renamed world knows the ID it had; another world had none" {
+  #assert world_was("splice-bots") == "splice" && world_was("splice") == "" && world_was("everglade") == "" && world_was("") == "";
+}

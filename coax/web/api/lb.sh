@@ -267,11 +267,17 @@ for pm in m["pathMatchers"]:
 # under it move for good to /worlds/everglade (the query kept; a #place stays in the browser). They
 # go ahead of /worlds/*, which would serve the old page's objects; /worlds/everglade-5e-fork and
 # other made realms whose slugs start the same are not matched.
+# Splice Bots was Splice until 2026-11-13 (#13486, docs/naming/2026-11-13-splice-bots-rename.md):
+# /worlds/splice and everything under it move for good to /worlds/splice-bots the same way, query
+# kept (?edit opens the editor), ahead of /worlds/*; /worlds/splice-bots and /worlds/splicer are not
+# matched. The dev server answers the same (coax/web/site-routes.coax); smoke.sh checks both hosts.
+MOVED_WORLDS = (("/worlds/everglade-5e", "/worlds/everglade"), ("/worlds/splice", "/worlds/splice-bots"))
 for pm in m["pathMatchers"]:
     if pm["name"] not in ("production", "staging"): continue
     rules = pm.setdefault("routeRules", [])
-    moves = (([{"fullPathMatch": "/worlds/everglade-5e"}], {"pathRedirect": "/worlds/everglade"}),
-             ([{"prefixMatch": "/worlds/everglade-5e/"}], {"prefixRedirect": "/worlds/everglade/"}))
+    moves = tuple(move for was, now in MOVED_WORLDS
+                  for move in (([{"fullPathMatch": was}], {"pathRedirect": now}),
+                               ([{"prefixMatch": was + "/"}], {"prefixRedirect": now + "/"})))
     for want, to in moves:
         go = {**to, "redirectResponseCode": "MOVED_PERMANENTLY_DEFAULT"}
         rule = next((r for r in rules if r.get("matchRules") == want), None)
@@ -281,7 +287,7 @@ for pm in m["pathMatchers"]:
         changed = True
         print(f"url map: {pm['name']} {next(iter(want[0].values()))} to {next(iter(to.values()))}")
     worlds = [r for r in rules if any((x.get("fullPathMatch") or x.get("prefixMatch") or "") in ("/worlds", "/worlds/") for x in r.get("matchRules", []))]
-    mine = [r for r in rules if any((x.get("fullPathMatch") or x.get("prefixMatch") or "").startswith("/worlds/everglade-5e") for x in r.get("matchRules", []))]
+    mine = [r for r in rules if any((x.get("fullPathMatch") or x.get("prefixMatch") or "") in (w for was, _ in MOVED_WORLDS for w in (was, was + "/")) for x in r.get("matchRules", []))]
     first = min((r["priority"] for r in worlds), default=None)
     if first is not None and any(r["priority"] == 0 or r["priority"] >= first for r in mine):
         rest = sorted((r for r in rules if r not in mine), key=lambda r: r["priority"])
@@ -291,7 +297,7 @@ for pm in m["pathMatchers"]:
         for i, r in enumerate(order): r["priority"] = base + i
         rules[:] = order
         changed = True
-        print(f"url map: {pm['name']} /worlds/everglade-5e ahead of /worlds/*")
+        print(f"url map: {pm['name']} the moved worlds ahead of /worlds/*")
 # The Metaverse's addresses (docs/naming/2026-11-12-metaverse-rename.md, #13405), on both hosts.
 # coax/web/site-routes.coax holds the same rules for the dev server: change both together.
 #   /projects/metaverse, /projects/metaverse/*   the site's projects/verse/ (the project's slug, its name

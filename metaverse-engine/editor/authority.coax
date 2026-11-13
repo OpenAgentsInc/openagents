@@ -65,16 +65,16 @@ state_op_may_write :: (op: int, kind: int) -> bool #effects() {
 //   durability  what holds durable state: "none" or "ledger" (the character record and the item ledger)
 RealmAuthority :: struct { realm: string; content: string; simulation: string; durability: string; }
 
-REALM_AUTHORITY_REALMS :: [2] string.["splice", "everglade"];
+REALM_AUTHORITY_REALMS :: [2] string.["splice-bots", "everglade"];
 
 realm_authority :: (realm: string) -> RealmAuthority #effects(reads) {
-  if realm == "splice" { return RealmAuthority.{realm = "splice", content = "owner-admins", simulation = "page", durability = "none"}; }
+  if realm == "splice-bots" { return RealmAuthority.{realm = "splice-bots", content = "owner-admins", simulation = "page", durability = "none"}; }
   if realm == "everglade" { return RealmAuthority.{realm = "everglade", content = "admins", simulation = "room", durability = "ledger"}; }
   none: RealmAuthority;
   return none;
 }
 // A world's row by the kind of world it is (the `kind` of its row in verse.world_docs). A realm with a
-// row above is served only as its own kind: Splice as "splice", Everglade as "everglade". Every
+// row above is served only as its own kind: Splice Bots as "splice-bots", Everglade as "everglade". Every
 // other realm is one made at run time or a hand-built one with a board (verse.made_realms,
 // verse.realm_rights; coax/web/api/migrations/0185_realm_worlds.sql, #13422): it is a world of kind
 // "realm", whose content its owner, its admins and the site's admins change, whose simulation is the
@@ -138,24 +138,24 @@ realm_authority_line :: (realm: string, out: [] u8) -> string #effects(reads, wr
   names := [11] string.["edit", "undo", "redo", "content-rollback", "world-save", "world-load", "publish", "code-reload", "sim-step", "ledger", "character"];
   for op: 0..<OP_COUNT { #assert state_op_name(op) == names[op]; }
 }
-#test "Splice and Everglade declare who decides; another realm has declared nothing" {
-  s := realm_authority("splice"); e := realm_authority("everglade");
-  #assert s.realm == "splice" && s.content == "owner-admins" && s.simulation == "page" && s.durability == "none";
+#test "Splice Bots and Everglade declare who decides; another realm, and Splice Bots' old ID, have declared nothing" {
+  s := realm_authority("splice-bots"); e := realm_authority("everglade");
+  #assert s.realm == "splice-bots" && s.content == "owner-admins" && s.simulation == "page" && s.durability == "none";
   #assert e.realm == "everglade" && e.content == "admins" && e.simulation == "room" && e.durability == "ledger";
-  #assert realm_authority("").realm == "" && realm_authority("Splice").realm == "" && realm_authority("my-realm").durability == "";
+  #assert realm_authority("").realm == "" && realm_authority("Splice").realm == "" && realm_authority("splice").realm == "" && realm_authority("my-realm").durability == "";
   out: [64] u8; small: [16] u8; exact: [30] u8;
-  #assert realm_authority_line("splice", out[..]) == "splice|owner-admins|page|none\n";
+  #assert realm_authority_line("splice-bots", out[..]) == "splice-bots|owner-admins|page|none\n";
   #assert realm_authority_line("everglade", out[..]) == "everglade|admins|room|ledger\n";
   #assert realm_authority_line("everglade", exact[0..<29]) == "everglade|admins|room|ledger\n" && realm_authority_line("everglade", exact[0..<28]) == "";
-  #assert realm_authority_line("splice", small[..]) == "" && realm_authority_line("nowhere", out[..]) == "";
+  #assert realm_authority_line("splice-bots", small[..]) == "" && realm_authority_line("nowhere", out[..]) == "";
   for r: REALM_AUTHORITY_REALMS { #assert realm_authority(r).realm == r; }
 }
 #test "durable state is written only by its own operations, and only where a realm declares a store" {
   #assert realm_op_may_write("everglade", OP_LEDGER, STATE_DURABLE) && realm_op_may_write("everglade", OP_CHARACTER, STATE_DURABLE);
-  #assert !realm_op_may_write("splice", OP_LEDGER, STATE_DURABLE) && !realm_op_may_write("splice", OP_CHARACTER, STATE_DURABLE);
-  for op: OP_EDIT..<OP_LEDGER { #assert !realm_op_may_write("everglade", op, STATE_DURABLE) && !realm_op_may_write("splice", op, STATE_DURABLE); }
-  #assert realm_op_may_write("splice", OP_UNDO, STATE_AUTHORED) && realm_op_may_write("splice", OP_WORLD_LOAD, STATE_RUNNING) && realm_op_may_write("everglade", OP_SIM_STEP, STATE_RUNNING);
-  #assert !realm_op_may_write("splice", OP_WORLD_SAVE, STATE_RUNNING) && !realm_op_may_write("everglade", OP_LEDGER, STATE_AUTHORED);
+  #assert !realm_op_may_write("splice-bots", OP_LEDGER, STATE_DURABLE) && !realm_op_may_write("splice-bots", OP_CHARACTER, STATE_DURABLE);
+  for op: OP_EDIT..<OP_LEDGER { #assert !realm_op_may_write("everglade", op, STATE_DURABLE) && !realm_op_may_write("splice-bots", op, STATE_DURABLE); }
+  #assert realm_op_may_write("splice-bots", OP_UNDO, STATE_AUTHORED) && realm_op_may_write("splice-bots", OP_WORLD_LOAD, STATE_RUNNING) && realm_op_may_write("everglade", OP_SIM_STEP, STATE_RUNNING);
+  #assert !realm_op_may_write("splice-bots", OP_WORLD_SAVE, STATE_RUNNING) && !realm_op_may_write("everglade", OP_LEDGER, STATE_AUTHORED);
   // no row: nothing is written through this table
   #assert !realm_op_may_write("my-realm", OP_EDIT, STATE_AUTHORED) && !realm_op_may_write("", OP_LEDGER, STATE_DURABLE);
 }
@@ -164,13 +164,13 @@ realm_authority_line :: (realm: string, out: [] u8) -> string #effects(reads, wr
   #assert r.realm == "my-realm" && r.content == "owner-admins" && r.simulation == "page" && r.durability == "none";
   #assert realm_authority_of("1999-house", "realm").realm == "1999-house" && realm_authority_of("a", "realm").realm == "a" && realm_authority_of("", "realm").realm == "";
   // a realm with a row of its own is only its own kind, never a realm world, and a world of another kind has no row
-  #assert realm_authority_of("splice", "splice").content == "owner-admins" && realm_authority_of("splice", "realm").realm == "";
-  #assert realm_authority_of("everglade", "everglade").content == "admins" && realm_authority_of("everglade", "realm").realm == "" && realm_authority_of("everglade", "splice").realm == "";
-  #assert realm_authority_of("my-realm", "splice").realm == "" && realm_authority_of("my-realm", "").realm == "" && realm_authority_of("my-realm", "Realm").realm == "";
+  #assert realm_authority_of("splice-bots", "splice-bots").content == "owner-admins" && realm_authority_of("splice-bots", "realm").realm == "";
+  #assert realm_authority_of("everglade", "everglade").content == "admins" && realm_authority_of("everglade", "realm").realm == "" && realm_authority_of("everglade", "splice-bots").realm == "";
+  #assert realm_authority_of("my-realm", "splice-bots").realm == "" && realm_authority_of("my-realm", "").realm == "" && realm_authority_of("my-realm", "Realm").realm == "";
   for op: OP_EDIT..<OP_LEDGER { #assert !realm_kind_op_may_write("my-realm", "realm", op, STATE_DURABLE); }
   #assert !realm_kind_op_may_write("my-realm", "realm", OP_LEDGER, STATE_DURABLE) && !realm_kind_op_may_write("my-realm", "realm", OP_CHARACTER, STATE_DURABLE);
   #assert realm_kind_op_may_write("my-realm", "realm", OP_EDIT, STATE_AUTHORED) && realm_kind_op_may_write("my-realm", "realm", OP_UNDO, STATE_RUNNING);
-  #assert !realm_kind_op_may_write("my-realm", "splice", OP_EDIT, STATE_AUTHORED) && !realm_kind_op_may_write("splice", "realm", OP_EDIT, STATE_AUTHORED);
+  #assert !realm_kind_op_may_write("my-realm", "splice-bots", OP_EDIT, STATE_AUTHORED) && !realm_kind_op_may_write("splice-bots", "realm", OP_EDIT, STATE_AUTHORED);
   #assert realm_kind_op_may_write("everglade", "everglade", OP_LEDGER, STATE_DURABLE) == realm_op_may_write("everglade", OP_LEDGER, STATE_DURABLE);
 }
 #test "who authors: a site admin anywhere there is a row; a realm's owner and its admins where the content is owner-admins" {
@@ -178,10 +178,10 @@ realm_authority_line :: (realm: string, out: [] u8) -> string #effects(reads, wr
   for k: 0..<5 {
     mine := k < 2;
     #assert realm_may_author("my-realm", "realm", false, roles[k]) == mine && realm_may_author("my-realm", "realm", true, roles[k]);
-    #assert realm_may_author("splice", "splice", false, roles[k]) == mine && realm_may_author("splice", "splice", true, roles[k]);
+    #assert realm_may_author("splice-bots", "splice-bots", false, roles[k]) == mine && realm_may_author("splice-bots", "splice-bots", true, roles[k]);
     // Everglade: the site's admins only
     #assert !realm_may_author("everglade", "everglade", false, roles[k]) && realm_may_author("everglade", "everglade", true, roles[k]);
     // no row: nobody, not even a site admin
-    #assert !realm_may_author("my-realm", "splice", true, roles[k]) && !realm_may_author("", "realm", true, roles[k]) && !realm_may_author("everglade", "realm", true, roles[k]);
+    #assert !realm_may_author("my-realm", "splice-bots", true, roles[k]) && !realm_may_author("", "realm", true, roles[k]) && !realm_may_author("everglade", "realm", true, roles[k]);
   }
 }

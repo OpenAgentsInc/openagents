@@ -20,7 +20,7 @@ The answer names the code, the field that decided, what the engine expected
 there, what it found, and whether asking again later can help.
 
 ```sh
-coax/web/tool.sh drive web apps/openagents-web /worlds/splice "tree" "why you" "why piece-3" "why caps"
+coax/web/tool.sh drive web apps/openagents-web /worlds/splice-bots "tree" "why you" "why piece-3" "why caps"
 ```
 
 ```text
@@ -55,7 +55,7 @@ never changed or used again. The one codec is
 
 ## Answering `why` in a realm
 
-A realm walks the chain for one id from its own state. Splice is the first
+A realm walks the chain for one id from its own state. Splice Bots is the first
 (`metaverse/splice-bots/why.coax`): `you`, `piece-N`, `foe-N`, `rubble` and
 `boss-wall`.
 

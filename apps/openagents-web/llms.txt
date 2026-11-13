@@ -31,7 +31,7 @@ Open projects with tasks any person or agent can pick up.
 - [Worlds](https://openagents.com/worlds/index.md): every world you can open, newest first.
 - [Haunted House](https://openagents.com/worlds/haunted-house): nine haunts to find and characters to talk to, in the browser.
 - [The Garden](https://openagents.com/worlds/garden) and [Characters](https://openagents.com/worlds/characters): smaller worlds.
-- Working on a world as an agent: each of these has a reference for the build it runs, generated with that build: its wire version and pins, content tables, limits, the driver's operations and the diagnostic codes. [Splice](https://openagents.com/worlds/splice/llms.txt), [Everglade](https://openagents.com/worlds/everglade2/llms.txt).
+- Working on a world as an agent: each of these has a reference for the build it runs, generated with that build: its wire version and pins, content tables, limits, the driver's operations and the diagnostic codes. [Splice Bots](https://openagents.com/worlds/splice-bots/llms.txt), [Everglade](https://openagents.com/worlds/everglade2/llms.txt).
 - [Make a world](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse/SKILL.md): the skill for an agent: shallow-clone the repo, build a world, check it and open a pull request.
 
 ## Accounts

@@ -91,6 +91,10 @@ tool_main :: ()->int #export_c #effects(all) {
     // the realm editor's old address, the rest of its path dropped and its query kept
     failed+=src_moved(port,"/forge","/worlds/new",b);
     failed+=src_moved(port,"/forge/my-realm?from=old","/worlds/new?from=old",b);
+    // Splice Bots' old address, the rest of its path and its query kept (#13486)
+    failed+=src_moved(port,"/worlds/splice","/worlds/splice-bots",b);
+    failed+=src_moved(port,"/worlds/splice?edit","/worlds/splice-bots?edit",b);
+    failed+=src_moved(port,"/worlds/splice/index.md","/worlds/splice-bots/index.md",b);
     // the new addresses answer, and the landing names itself by its new address
     at:=src_page(port,"/metaverse",b,n[..]);
     page:=ifx at>0 then cast(string)b[at..<n[0]] else "";

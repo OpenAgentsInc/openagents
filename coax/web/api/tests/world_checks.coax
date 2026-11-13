@@ -1,5 +1,5 @@
 // A world's document through the API's routes (GitHub #13412, the browser editor's E3): Splice,
-// the first world with an ID, read and edited at /api/worlds/splice against test.sh's throwaway
+// the first world with an ID, read and edited at /api/worlds/splice-bots against test.sh's throwaway
 // Postgres and API. Who may write (an admin, signed), the revision fence (409), a refusal in words
 // naming the zone (422), the undo log, ORIGINAL, one outbox event a saved edit, and the dev and
 // live revisions with the now and next-session rule and the revision kept for one release.
@@ -19,7 +19,7 @@
 #load "../../../../metaverse-engine/editor/pack-import-checks.coax";   // pit_box, pit_wav
 #load "../../../../metaverse-engine/editor/asset-wire.coax";
 
-WC_PATH :: "/api/worlds/splice";
+WC_PATH :: "/api/worlds/splice-bots";
 // A palm by the scanner gate and a small crate by the rover's door, as metaverse/splice-bots/world-checks.coax places them.
 WC_SPAWNS :: "{\"op\":\"spawn\",\"id\":0,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100},{\"op\":\"spawn\",\"id\":0,\"kind\":117,\"x\":280,\"y\":0,\"z\":150,\"yaw\":0,\"scale\":100}";
 WC_IN_GATE :: "{\"op\":\"spawn\",\"id\":0,\"kind\":113,\"x\":17500,\"y\":0,\"z\":-6700,\"yaw\":0,\"scale\":100}";
@@ -56,7 +56,7 @@ wc_refusal :: (t: [] Ap, w: [] Wc, edit: [] int) -> string {
   return ifx r.ok then cast(string) w[0].words[0..<r.words_n] else "";
 }
 wc_reset :: (t: [] Ap) {
-  ap_do(t, "DELETE FROM verse.world_outbox WHERE world = 'splice'; DELETE FROM verse.world_steps WHERE world = 'splice'; DELETE FROM verse.world_docs WHERE id = 'splice'; INSERT INTO verse.world_docs (id, kind) VALUES ('splice', 'splice');");
+  ap_do(t, "DELETE FROM verse.world_outbox WHERE world = 'splice-bots'; DELETE FROM verse.world_steps WHERE world = 'splice-bots'; DELETE FROM verse.world_docs WHERE id = 'splice-bots'; INSERT INTO verse.world_docs (id, kind) VALUES ('splice-bots', 'splice-bots');");
 }
 // The lines of an events answer: how many, and each read by the codec. `first`: the revision the first carries.
 wc_events :: (t: [] Ap, query: string, first: int, kind: int) -> int {
@@ -68,7 +68,7 @@ wc_events :: (t: [] Ap, query: string, first: int, kind: int) -> int {
     while end < body.count && body[end] != '\n' { end += 1; }
     line := body[at..<end]; at = end + 1;
     if we_event_kind(line) != kind { return -2; }
-    if kind == 1 { v := we_event_read(line); if !v.ok || v.rev != first + n || !we_event_world_is(v, "splice") { return -3; } }
+    if kind == 1 { v := we_event_read(line); if !v.ok || v.rev != first + n || !we_event_world_is(v, "splice-bots") { return -3; } }
     if kind == 2 { v := we_published_read(line); if !v.ok || v.rev != first + n { return -3; } }
     n += 1;
   }
@@ -81,7 +81,7 @@ wc_checks :: (t: [] Ap, w: [] Wc, other: string) {
   // ---- reading
   ap_check(t, "world: a world nobody made is not found", wc_get(t, w, "?lane=dev") == 200 && ap_call(t, "GET", "/api/worlds/nope?lane=dev", "", t[0].no[0..<0]) == 404 && ap_call(t, "GET", "/api/worlds/Splice", "", t[0].no[0..<0]) == 404, ap_body(t));
   st := wc_get(t, w, "?lane=dev");
-  ap_check(t, "world: Splice's dev revision reads before its first edit: revision 0 and its document", st == 200 && w[0].st.ok && w[0].st.rev == 0 && w[0].st.dev == 0 && w[0].st.live == 0 && w[0].st.undo == 0 && w[0].st.redo == 0 && w[0].st.build[0] == 1 && w[0].st.build[3] == 1 && ap_starts(wc_doc(w), "world.doc.v1 splice\ncontent "), ap_body(t));
+  ap_check(t, "world: Splice's dev revision reads before its first edit: revision 0 and its document", st == 200 && w[0].st.ok && w[0].st.rev == 0 && w[0].st.dev == 0 && w[0].st.live == 0 && w[0].st.undo == 0 && w[0].st.redo == 0 && w[0].st.build[0] == 1 && w[0].st.build[3] == 1 && ap_starts(wc_doc(w), "world.doc.v1 splice-bots\ncontent "), ap_body(t));
   w[0].content = ap_whole(ct_part(ct_part(wc_doc(w), '\n', 1), ' ', 1));
   ap_check(t, "world: an answer names the build that reads it: its content pin is the document's", w[0].st.build[2] == w[0].content && w[0].content >= 1, "");
   st = wc_get(t, w, "");
@@ -96,14 +96,14 @@ wc_checks :: (t: [] Ap, w: [] Wc, other: string) {
   st = ap_call(t, "POST", WC_PATH, wc_batch(b[..], 0, "apply", WC_SPAWNS), ho[..]);
   ap_check(t, "world: a write from another site's page is refused", st == 403 && wc_refusal(t, w, edit[..]) == "cross-site", ap_body(t));
   st = wc_post(t, w, t[0].admin_key, 0, "save", "");
-  ap_check(t, "world: what is no batch is refused, and nothing was written so far", st == 400 && ap_sql(t, "SELECT dev_rev || ' ' || steps || ' ' || (SELECT count(*) FROM verse.world_outbox WHERE world = 'splice') FROM verse.world_docs WHERE id = 'splice'", q[..]) == "0 0 0", ap_body(t));
+  ap_check(t, "world: what is no batch is refused, and nothing was written so far", st == 400 && ap_sql(t, "SELECT dev_rev || ' ' || steps || ' ' || (SELECT count(*) FROM verse.world_outbox WHERE world = 'splice-bots') FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "0 0 0", ap_body(t));
   // ---- an admin's edits
   st = wc_post(t, w, t[0].admin_key, 0, "apply", WC_SPAWNS);
   ap_check(t, "world: an admin's batch is saved: the revision moves one an edit and the answer numbers the spawns", st == 200 && w[0].st.ok && w[0].st.rev == 2 && w[0].st.dev == 2 && w[0].st.undo == 1 && w[0].st.redo == 0 && ap_has(wc_did(w), "{\"op\":\"spawn\",\"id\":1,\"kind\":113,") && ap_has(wc_did(w), "{\"op\":\"spawn\",\"id\":2,\"kind\":117,"), ap_body(t));
   st = wc_post(t, w, t[0].admin_key, 0, "apply", WC_SPAWNS);
   ap_check(t, "world: a batch made from a stale revision is refused, 409", st == 409 && wc_refusal(t, w, edit[..]) == "the world changed since you read it: read it again", ap_body(t));
   st = wc_post(t, w, t[0].admin_key, 2, "apply", WC_IN_GATE);
-  ap_check(t, "world: an edit Splice's own check refuses is refused in words that name the zone, and nothing is saved", st == 422 && wc_refusal(t, w, edit[..]) == "in the kept-clear zone 'Scanner gate'" && edit[0] == 0 && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "2", ap_body(t));
+  ap_check(t, "world: an edit Splice's own check refuses is refused in words that name the zone, and nothing is saved", st == 422 && wc_refusal(t, w, edit[..]) == "in the kept-clear zone 'Scanner gate'" && edit[0] == 0 && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "2", ap_body(t));
   st = wc_get(t, w, "?lane=dev");
   ap_check(t, "world: the saved document reads back at its head", st == 200 && w[0].st.rev == 2 && ap_has(wc_doc(w), "\nhead 2 3\n"), "");
   ap_check(t, "world: a saved edit is one event, in order, read by the codec", wc_events(t, "?lane=dev&after=0", 1, 1) == 2 && wc_events(t, "?lane=dev&after=1", 2, 1) == 1 && wc_events(t, "?lane=dev&after=2", 3, 1) == 0 && wc_events(t, "?lane=x", 1, 1) == -1, ap_body(t));
@@ -116,16 +116,19 @@ wc_checks :: (t: [] Ap, w: [] Wc, other: string) {
   p2: [1] Sb; sb(p2[..], WC_PATH); sb(p2[..], "?dry=1");
   st = ap_call(t, "POST", sb_text(p2[..]), body2, h2[..]);
   w[0].st = we_state_read(ap_body(t), w[0].doc[..], w[0].did[..], w[0].scratch[..]);
-  ap_check(t, "world: a dry run carries the batch out in a copy, answers it as it would be taken, and saves nothing", st == 200 && w[0].st.ok && w[0].st.rev == 2 && ap_has(wc_did(w), "{\"op\":\"despawn\",\"id\":1}") && ap_sql(t, "SELECT dev_rev || ' ' || steps FROM verse.world_docs WHERE id = 'splice'", q[..]) == "2 1", ap_body(t));
+  ap_check(t, "world: a dry run carries the batch out in a copy, answers it as it would be taken, and saves nothing", st == 200 && w[0].st.ok && w[0].st.rev == 2 && ap_has(wc_did(w), "{\"op\":\"despawn\",\"id\":1}") && ap_sql(t, "SELECT dev_rev || ' ' || steps FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "2 1", ap_body(t));
+  st = ap_call(t, "GET", "/api/worlds/splice-bots/card", "", t[0].no[0..<0]);
+  ap_check(t, "world: the card names the world, the dev revision and how many things it holds; a world with no card, and a write to one, are refused", st == 200 && ap_starts(ap_body(t), "world.card.v1 splice-bots ") && ap_has(ap_body(t), "\nname Splice Bots\n") && ap_call(t, "GET", "/api/worlds/nowhere/card", "", t[0].no[0..<0]) == 404 && ap_call(t, "POST", "/api/worlds/splice-bots/card", "{}", t[0].no[0..<0]) == 404, "");
+  // Splice Bots' old ID names it: a saved link, the CLI or an MCP tool that says splice reads the same world (#13486)
   st = ap_call(t, "GET", "/api/worlds/splice/card", "", t[0].no[0..<0]);
-  ap_check(t, "world: the card names the world, the dev revision and how many things it holds; a world with no card, and a write to one, are refused", st == 200 && ap_starts(ap_body(t), "world.card.v1 splice ") && ap_has(ap_body(t), "\nname Splice\n") && ap_call(t, "GET", "/api/worlds/nowhere/card", "", t[0].no[0..<0]) == 404 && ap_call(t, "POST", "/api/worlds/splice/card", "{}", t[0].no[0..<0]) == 404, "");
+  ap_check(t, "world: the world's old ID reads the world under its new one", st == 200 && ap_starts(ap_body(t), "world.card.v1 splice-bots ") && ap_call(t, "GET", "/api/worlds/splice?lane=dev", "", t[0].no[0..<0]) == 200 && ap_sql(t, "SELECT count(*) FROM verse.world_docs WHERE id = 'splice'", q[..]) == "0", ap_body(t));
   lu: [1] Sb; sb(lu[..], t[0].api); sb(lu[..], "/api/worlds");
   lsig: [4096] u8; ls := ap_nostr(t, t[0].admin_key, "GET", sb_text(lu[..]), "", false, lsig[..]);
   la: [1] Sb; sb(la[..], "Authorization: Nostr "); sb(la[..], ls);
   lh := [1] string.[sb_text(la[..])];
   st = ap_call(t, "GET", "/api/worlds", "", lh[..]);
-  admin_list := ap_starts(ap_body(t), "world splice Splice\n");
-  ap_check(t, "world: an admin's worlds start with Splice; someone logged out has none", st == 200 && admin_list && ap_call(t, "GET", "/api/worlds", "", t[0].no[0..<0]) == 200 && ap_body(t) == "" && ap_call(t, "POST", "/api/worlds", "{}", t[0].no[0..<0]) == 404, ap_body(t));
+  admin_list := ap_starts(ap_body(t), "world splice-bots Splice Bots\n");
+  ap_check(t, "world: an admin's worlds start with Splice Bots; someone logged out has none", st == 200 && admin_list && ap_call(t, "GET", "/api/worlds", "", t[0].no[0..<0]) == 200 && ap_body(t) == "" && ap_call(t, "POST", "/api/worlds", "{}", t[0].no[0..<0]) == 404, ap_body(t));
   pq: [1] Sb; sb(pq[..], "INSERT INTO projects.docs VALUES ('side-list', 1, '{\"title\": \"Side List\", \"members\": [{\"name\": \"Admin\", \"pubkey\": \""); sb(pq[..], ap_env(t, "OA_ADMIN_PUBKEYS")); sb(pq[..], "\"}]}'::jsonb, 1, 'test') ON CONFLICT (slug) DO NOTHING");
   ap_do(t, sb_text(pq[..]));
   pu: [1] Sb; sb(pu[..], t[0].api); sb(pu[..], "/api/projects");
@@ -135,7 +138,7 @@ wc_checks :: (t: [] Ap, w: [] Wc, other: string) {
   st = ap_call(t, "GET", "/api/projects", "", ph[..]);
   member_list := ap_has(ap_body(t), "project side-list Side List\n");
   ap_check(t, "projects: a member's projects name the ones they are in; someone logged out has none", st == 200 && member_list && ap_call(t, "GET", "/api/projects", "", t[0].no[0..<0]) == 200 && ap_body(t) == "" && ap_call(t, "POST", "/api/projects", "{}", t[0].no[0..<0]) == 404, ap_body(t));
-  st = ap_call(t, "GET", "/api/worlds/splice/content", "", t[0].no[0..<0]);
+  st = ap_call(t, "GET", "/api/worlds/splice-bots/content", "", t[0].no[0..<0]);
   ap_check(t, "world: the content tables are read to aim an edit: pieces, landmarks and kept-clear zones", st == 200 && ap_starts(ap_body(t), "aethyr.content.v1 splice ") && ap_has(ap_body(t), "\ntable pieces ") && ap_has(ap_body(t), "\ntable landmarks ") && ap_has(ap_body(t), "\ntable kept_clear ") && ap_call(t, "GET", "/api/worlds/nope/content", "", t[0].no[0..<0]) == 404, "");
   // ---- the undo log
   st = wc_post(t, w, t[0].admin_key, 2, "undo", "");
@@ -151,9 +154,9 @@ wc_checks :: (t: [] Ap, w: [] Wc, other: string) {
   st = wc_post(t, w, t[0].admin_key, 8, "undo", "");
   moved := st == 200 && w[0].st.rev == 10 && w[0].st.redo == 1;
   st = wc_post(t, w, t[0].admin_key, 10, "apply", "{\"op\":\"despawn\",\"id\":1}");
-  ap_check(t, "world: a new edit after an undo cuts the steps ahead of it", moved && st == 200 && w[0].st.rev == 11 && w[0].st.undo == 2 && w[0].st.redo == 0 && ap_sql(t, "SELECT count(*) || ' ' || max(n) FROM verse.world_steps WHERE world = 'splice'", q[..]) == "2 1", ap_body(t));
-  ap_check(t, "world: the outbox holds one event a revision", ap_sql(t, "SELECT count(*) || ' ' || max(rev) || ' ' || count(DISTINCT seq) FROM verse.world_outbox WHERE world = 'splice' AND lane = 'dev'", q[..]) == "11 11 11" && wc_events(t, "?lane=dev&after=0", 1, 1) == 11, "");
-  ap_check(t, "world: a batch's events share one at, and each of its six batches has its own (a reader's steps, #13485)", ap_sql(t, "SELECT count(DISTINCT at_ms) || ' ' || (SELECT count(DISTINCT at_ms) FROM verse.world_outbox WHERE world = 'splice' AND lane = 'dev' AND rev IN (7, 8)) FROM verse.world_outbox WHERE world = 'splice' AND lane = 'dev'", q[..]) == "6 1", "");
+  ap_check(t, "world: a new edit after an undo cuts the steps ahead of it", moved && st == 200 && w[0].st.rev == 11 && w[0].st.undo == 2 && w[0].st.redo == 0 && ap_sql(t, "SELECT count(*) || ' ' || max(n) FROM verse.world_steps WHERE world = 'splice-bots'", q[..]) == "2 1", ap_body(t));
+  ap_check(t, "world: the outbox holds one event a revision", ap_sql(t, "SELECT count(*) || ' ' || max(rev) || ' ' || count(DISTINCT seq) FROM verse.world_outbox WHERE world = 'splice-bots' AND lane = 'dev'", q[..]) == "11 11 11" && wc_events(t, "?lane=dev&after=0", 1, 1) == 11, "");
+  ap_check(t, "world: a batch's events share one at, and each of its six batches has its own (a reader's steps, #13485)", ap_sql(t, "SELECT count(DISTINCT at_ms) || ' ' || (SELECT count(DISTINCT at_ms) FROM verse.world_outbox WHERE world = 'splice-bots' AND lane = 'dev' AND rev IN (7, 8)) FROM verse.world_outbox WHERE world = 'splice-bots' AND lane = 'dev'", q[..]) == "6 1", "");
   // ---- dev and live
   st = wc_post(t, w, t[0].admin_key, 10, "publish-now", "");
   ap_check(t, "world: a publish names the dev revision it read", st == 409, ap_body(t));
@@ -172,11 +175,11 @@ wc_checks :: (t: [] Ap, w: [] Wc, other: string) {
   ap_check(t, "world: a publish is one event of the live lane, with the build's pins", wc_events(t, "?lane=live&after=0", 1, 2) == 1 && ap_has(ap_body(t), "\"from\":11,\"when\":\"now\",\"engine\":1,\"rules\":1,"), ap_body(t));
   // live as a newer build would have published it (its wire raised): this build's update can't start now
   st = wc_post(t, w, t[0].admin_key, 11, "apply", "{\"op\":\"rotate\",\"id\":2,\"yaw\":90}");
-  ap_do(t, "UPDATE verse.world_docs SET live_wire = 2 WHERE id = 'splice'");
+  ap_do(t, "UPDATE verse.world_docs SET live_wire = 2 WHERE id = 'splice-bots'");
   st = wc_post(t, w, t[0].admin_key, 12, "publish-now", "");
   not_now := st == 422 && ap_has(wc_refusal(t, w, edit[..]), "it starts with the next session");
   st = wc_post(t, w, t[0].admin_key, 12, "publish-next", "");
-  ap_check(t, "world: an update that changes a pin is refused for now and taken for the next session; the revision before it is kept", not_now && st == 200 && w[0].st.rev == 2 && w[0].st.when == WU_NEXT && ap_sql(t, "SELECT prev_rev || ' ' || prev_wire || ' ' || live_wire || ' ' || live_when || ' ' || live_from FROM verse.world_docs WHERE id = 'splice'", q[..]) == "1 2 1 1 12", ap_body(t));
+  ap_check(t, "world: an update that changes a pin is refused for now and taken for the next session; the revision before it is kept", not_now && st == 200 && w[0].st.rev == 2 && w[0].st.when == WU_NEXT && ap_sql(t, "SELECT prev_rev || ' ' || prev_wire || ' ' || live_wire || ' ' || live_when || ' ' || live_from FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "1 2 1 1 12", ap_body(t));
   sb_clear(p[..]); sb(p[..], "?lane=live&engine=1&rules=1&wire=2&content="); sb_int(p[..], w[0].content);
   st = wc_get(t, w, sb_text(p[..]));
   ap_check(t, "world: a session still on the pins before joins the revision kept for it", st == 200 && w[0].st.rev == 1 && ap_has(wc_doc(w), "\nhead 11 "), ap_body(t));
@@ -184,29 +187,29 @@ wc_checks :: (t: [] Ap, w: [] Wc, other: string) {
   st = wc_post(t, w, t[0].admin_key, 12, "original", "");
   bare := st == 200 && w[0].st.rev == 13 && ap_has(wc_did(w), "{\"op\":\"despawn\",\"id\":");
   st = wc_post(t, w, t[0].admin_key, 13, "publish-now", "");
-  ap_check(t, "world: ORIGINAL removes every placed piece, and a publish on the same pins is taken now and leaves the kept revision", bare && st == 200 && w[0].st.rev == 3 && w[0].st.when == WU_NOW && ap_sql(t, "SELECT prev_rev || ' ' || prev_wire FROM verse.world_docs WHERE id = 'splice'", q[..]) == "1 2", ap_body(t));
+  ap_check(t, "world: ORIGINAL removes every placed piece, and a publish on the same pins is taken now and leaves the kept revision", bare && st == 200 && w[0].st.rev == 3 && w[0].st.when == WU_NOW && ap_sql(t, "SELECT prev_rev || ' ' || prev_wire FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "1 2", ap_body(t));
   st = wc_post(t, w, t[0].admin_key, 13, "original", "");
   ap_check(t, "world: ORIGINAL with nothing placed changes nothing", st == 422 && wc_refusal(t, w, edit[..]) == "nothing to change", ap_body(t));
   // ---- the content tables, edited (#13419): a cell is an edit of the same log, and the tables are saved with the document
   st = wc_post(t, w, t[0].admin_key, 13, "apply", "{\"op\":\"cell\",\"table\":\"pieces\",\"row\":117,\"col\":\"name\",\"v\":\"Tiny crate\"}");
   celled := st == 200 && w[0].st.rev == 14 && w[0].st.undo >= 1 && ap_has(wc_did(w), "\"op\":\"cell\"");
-  st = ap_call(t, "GET", "/api/worlds/splice/content?lane=dev", "", t[0].no[0..<0]);
+  st = ap_call(t, "GET", "/api/worlds/splice-bots/content?lane=dev", "", t[0].no[0..<0]);
   dev_new := st == 200 && ap_has(ap_body(t), "\n117|Tiny crate|") && ap_starts(ap_body(t), "aethyr.content.v1 splice ");
-  st = ap_call(t, "GET", "/api/worlds/splice/content", "", t[0].no[0..<0]);
-  ap_check(t, "world: a cell of the content tables is an edit: dev's tables hold it, live's do not until a publish, and it is one event", celled && dev_new && st == 200 && ap_has(ap_body(t), "\n117|Small crate|") && wc_events(t, "?lane=dev&after=13", 14, 1) == 1 && ap_has(ap_body(t), "\"op\":\"cell\"") && ap_sql(t, "SELECT (dev_tables <> '')::int || ' ' || (live_tables = '')::int FROM verse.world_docs WHERE id = 'splice'", q[..]) == "1 1", ap_body(t));
+  st = ap_call(t, "GET", "/api/worlds/splice-bots/content", "", t[0].no[0..<0]);
+  ap_check(t, "world: a cell of the content tables is an edit: dev's tables hold it, live's do not until a publish, and it is one event", celled && dev_new && st == 200 && ap_has(ap_body(t), "\n117|Small crate|") && wc_events(t, "?lane=dev&after=13", 14, 1) == 1 && ap_has(ap_body(t), "\"op\":\"cell\"") && ap_sql(t, "SELECT (dev_tables <> '')::int || ' ' || (live_tables = '')::int FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "1 1", ap_body(t));
   st = wc_post(t, w, t[0].admin_key, 14, "apply", "{\"op\":\"cell\",\"table\":\"pieces\",\"row\":117,\"col\":\"colour\",\"v\":\"red\"}");
   no_col := st == 422 && wc_refusal(t, w, edit[..]) == "no such table, row or column, or a value that column does not take";
   st = wc_post(t, w, t[0].admin_key, 14, "apply", "{\"op\":\"cell\",\"table\":\"pieces\",\"row\":117,\"col\":\"scale\",\"v\":\"5\"}");
-  ap_check(t, "world: a cell its column or the tables' rules refuse is refused in words and changes nothing", no_col && st == 422 && wc_refusal(t, w, edit[..]) == "the tables' rules do not hold with that value" && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "14", ap_body(t));
+  ap_check(t, "world: a cell its column or the tables' rules refuse is refused in words and changes nothing", no_col && st == 422 && wc_refusal(t, w, edit[..]) == "the tables' rules do not hold with that value" && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "14", ap_body(t));
   st = wc_post(t, w, t[0].admin_key, 14, "undo", "");
   undone := st == 200 && w[0].st.rev == 15;
-  st = ap_call(t, "GET", "/api/worlds/splice/content?lane=dev", "", t[0].no[0..<0]);
+  st = ap_call(t, "GET", "/api/worlds/splice-bots/content?lane=dev", "", t[0].no[0..<0]);
   back := st == 200 && ap_has(ap_body(t), "\n117|Small crate|");
   st = wc_post(t, w, t[0].admin_key, 15, "redo", "");
   again := st == 200 && w[0].st.rev == 16;
   st = wc_post(t, w, t[0].admin_key, 16, "publish-now", "");
   shown := st == 200;
-  st = ap_call(t, "GET", "/api/worlds/splice/content", "", t[0].no[0..<0]);
+  st = ap_call(t, "GET", "/api/worlds/splice-bots/content", "", t[0].no[0..<0]);
   ap_check(t, "world: an undo takes a cell back, a redo brings it again, and a publish makes the tables live", undone && back && again && shown && st == 200 && ap_has(ap_body(t), "\n117|Tiny crate|"), ap_body(t));
   wc_reset(t);
 }
@@ -313,7 +316,7 @@ wb_main :: (port: int, dir: string) -> int {
   return 0;
 }
 
-WA_PATH :: "/api/worlds/splice/assets";
+WA_PATH :: "/api/worlds/splice-bots/assets";
 Wa :: struct {
   glb: [4000] u8; other: [4000] u8; wav: [200] u8; big: [400044] u8; ask: [400] u8; pack: [HTTP_BODY_MAX] u8;
   l: [1] WasList; up: WasUploaded; url: [WAS_URL] u8; hash: [64] u8; dir: [1100] u8; dir_n: int;
@@ -359,7 +362,7 @@ wa_import :: (t: [] Ap, a: [] Wa, licence: int, name: string, data: [] u8) -> in
 }
 // Whether the bucket holds the object of the file last asked for.
 wa_stored :: (a: [] Wa) -> bool {
-  n: [1] Sb; sb(n[..], "o.test%2Fworlds%2Fsplice%2Ffiles%2F"); sb(n[..], cast(string) a[0].hash[..]);
+  n: [1] Sb; sb(n[..], "o.test%2Fworlds%2Fsplice-bots%2Ffiles%2F"); sb(n[..], cast(string) a[0].hash[..]);
   pb: [1400] u8;
   return fs_exists(fs_join(cast(string) a[0].dir[0..<a[0].dir_n], sb_text(n[..]), pb[..]));
 }
@@ -376,12 +379,12 @@ wa_checks :: (t: [] Ap, w: [] Wc, a: [] Wa, other: string) {
   // ---- reading: anyone reads the list and the pack; the list for writing is an admin's
   st := wa_call(t, "", "GET", WA_PATH, "");
   ap_check(t, "assets: a world that has imported nothing lists its limits and licences, and has no pack", st == 200 && was_read(l, ap_body(t)) && !l[0].packed && l[0].n == 0 && l[0].file == 524288 && l[0].budget == 1048576 && l[0].licences == 3
-           && ap_call(t, "GET", "/api/worlds/splice/assets/pack", "", t[0].no[0..<0]) == 404 && wa_words(t, w) == "this world has imported nothing" && ap_call(t, "GET", "/api/worlds/nope/assets", "", t[0].no[0..<0]) == 404, ap_body(t));
-  st = wa_call(t, "", "GET", "/api/worlds/splice/assets?lane=dev&write=1", "");
+           && ap_call(t, "GET", "/api/worlds/splice-bots/assets/pack", "", t[0].no[0..<0]) == 404 && wa_words(t, w) == "this world has imported nothing" && ap_call(t, "GET", "/api/worlds/nope/assets", "", t[0].no[0..<0]) == 404, ap_body(t));
+  st = wa_call(t, "", "GET", "/api/worlds/splice-bots/assets?lane=dev&write=1", "");
   none := st == 401 && wa_words(t, w) == "log in";
-  st = wa_call(t, other, "GET", "/api/worlds/splice/assets?lane=dev&write=1", "");
+  st = wa_call(t, other, "GET", "/api/worlds/splice-bots/assets?lane=dev&write=1", "");
   no := st == 403 && wa_words(t, w) == "only its owner or an admin changes this world";
-  st = wa_call(t, t[0].admin_key, "GET", "/api/worlds/splice/assets?lane=dev&write=1", "");
+  st = wa_call(t, t[0].admin_key, "GET", "/api/worlds/splice-bots/assets?lane=dev&write=1", "");
   ap_check(t, "assets: the list for someone who would import is answered to an admin only", none && no && st == 200 && was_read(l, ap_body(t)) && l[0].n == 0, ap_body(t));
   // ---- who may open an upload
   st = wa_open(t, a, "", 0, "rock.glb", box);
@@ -408,10 +411,10 @@ wa_checks :: (t: [] Ap, w: [] Wc, a: [] Wa, other: string) {
   ap_check(t, "assets: a row of the pieces table that draws a pack mesh is refused while the world's pack has no such mesh", st == 422 && wc_refusal(t, w, edit[..]) == "the world's pack has no mesh of that name: import it first", ap_body(t));
   // ---- the upload: opened for exactly the file's bytes and type, at the object its content names
   st = wa_open(t, a, t[0].admin_key, 0, "rock.glb", box);
-  want: [1] Sb; sb(want[..], "test%2Fworlds%2Fsplice%2Ffiles%2F"); sb(want[..], cast(string) a[0].hash[..]); sb(want[..], " model/gltf-binary "); sb_int(want[..], box.count); sb(want[..], " "); sb(want[..], t[0].api); sb(want[..], " 0\n");
+  want: [1] Sb; sb(want[..], "test%2Fworlds%2Fsplice-bots%2Ffiles%2F"); sb(want[..], cast(string) a[0].hash[..]); sb(want[..], " model/gltf-binary "); sb_int(want[..], box.count); sb(want[..], " "); sb(want[..], t[0].api); sb(want[..], " 0\n");
   ap_check(t, "assets: an admin's ask opens an upload for exactly the file's bytes and content type, at the object its SHA-256 names, for this site's page", st == 200 && a[0].up.ok && a[0].up.how == WU_PUT && a[0].up.bytes == box.count && a[0].up.hash == cast(string) a[0].hash[..] && wa_opened(a, lg[..]) == sb_text(want[..]), wa_opened(a, lg[..]));
   st = wa_done(t, a, t[0].admin_key, 0, "rock.glb", box);
-  ap_check(t, "assets: done before the file is sent is refused, and nothing is imported", st == 422 && wa_words(t, w) == "That file did not arrive. Import it again." && ap_sql(t, "SELECT dev_pack || '|' || (SELECT count(*) FROM verse.world_packs) FROM verse.world_docs WHERE id = 'splice'", q[..]) == "|0", ap_body(t));
+  ap_check(t, "assets: done before the file is sent is refused, and nothing is imported", st == 422 && wa_words(t, w) == "That file did not arrive. Import it again." && ap_sql(t, "SELECT dev_pack || '|' || (SELECT count(*) FROM verse.world_packs) FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "|0", ap_body(t));
   // wrong bytes of the right size, then bytes of another size: refused, and the object is deleted
   wrong := pit_box(3, 1, 0.5, 1, 0.125, a[0].other[..]);
   sent := wrong.count == box.count && wa_put(t, a, wrong) && wa_stored(a);
@@ -421,35 +424,35 @@ wa_checks :: (t: [] Ap, w: [] Wc, a: [] Wa, other: string) {
   sent = sent && st == 200 && wa_put(t, a, box[0..<box.count - 4]) && wa_stored(a);
   st = wa_done(t, a, t[0].admin_key, 0, "rock.glb", box);
   ap_check(t, "assets: bytes that are not the ones the name was made from, and a file that did not arrive whole, are refused and deleted from the bucket", sent && renamed && st == 422 && wa_words(t, w) == "That file did not arrive whole, so it is not kept. Import it again." && !wa_stored(a)
-           && ap_sql(t, "SELECT dev_pack || '|' || (SELECT count(*) FROM verse.world_files) FROM verse.world_docs WHERE id = 'splice'", q[..]) == "|0", ap_body(t));
+           && ap_sql(t, "SELECT dev_pack || '|' || (SELECT count(*) FROM verse.world_files) FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "|0", ap_body(t));
   // ---- the right bytes: imported, and the pack's hash changes
   st = wa_import(t, a, 0, "rock.glb", box);
   hb: [64] u8; first: [64] u8;
   for k: 0..<64 { first[k] = l[0].hash[k]; }
-  sqlq: [1] Sb; sb(sqlq[..], "SELECT dev_pack || '|' || live_pack || '|' || (SELECT count(*) FROM verse.world_packs WHERE world = 'splice') || '|' || (SELECT name || ' ' || kind || ' ' || licence || ' ' || bytes || ' ' || hash FROM verse.world_files WHERE world = 'splice') FROM verse.world_docs WHERE id = 'splice'");
+  sqlq: [1] Sb; sb(sqlq[..], "SELECT dev_pack || '|' || live_pack || '|' || (SELECT count(*) FROM verse.world_packs WHERE world = 'splice-bots') || '|' || (SELECT name || ' ' || kind || ' ' || licence || ' ' || bytes || ' ' || hash FROM verse.world_files WHERE world = 'splice-bots') FROM verse.world_docs WHERE id = 'splice-bots'");
   row: [1] Sb; sb(row[..], cast(string) first[..]); sb(row[..], "||1|rock.glb 1 0 "); sb_int(row[..], box.count); sb(row[..], " "); sb(row[..], cast(string) a[0].hash[..]);
   ap_check(t, "assets: the right bytes are imported: the list names the mesh and the pack's hash, the pack is kept by that hash for dev, and the file has its row", st == 200 && l[0].packed && l[0].n == 1 && l[0].did && !l[0].did_replaced && l[0].a[0].kind == PIP_MESH && was_asset_name(l, 0) == "rock" && l[0].a[0].hx == 500 && l[0].a[0].top == 2000
            && ap_sql(t, sb_text(sqlq[..]), q[..]) == sb_text(row[..]) && wa_stored(a), ap_body(t));
-  st = ap_call(t, "GET", "/api/worlds/splice/assets/pack?lane=dev", "", t[0].no[0..<0]);
+  st = ap_call(t, "GET", "/api/worlds/splice-bots/assets/pack?lane=dev", "", t[0].no[0..<0]);
   pn := 0; for c: ap_body(t) { a[0].pack[pn] = c; pn += 1; }
   dev_pack := st == 200 && pn == l[0].bytes && asset_hex(asset_id(cast(string) a[0].pack[0..<pn]), hb[..]) && cast(string) hb[..] == cast(string) first[..];
-  p2: [1] Sb; sb(p2[..], "/api/worlds/splice/assets/pack?live="); sb(p2[..], cast(string) first[..]);
+  p2: [1] Sb; sb(p2[..], "/api/worlds/splice-bots/assets/pack?live="); sb(p2[..], cast(string) first[..]);
   st = ap_call(t, "GET", sb_text(p2[..]), "", t[0].no[0..<0]);
   by_hash := st == 200 && t[0].n == pn && asset_hex(asset_id(ap_body(t)), hb[..]) && cast(string) hb[..] == cast(string) first[..];
-  sb_clear(p2[..]); sb(p2[..], "/api/worlds/splice/assets/pack?live="); sb(p2[..], WAS_TEST_HASH);
+  sb_clear(p2[..]); sb(p2[..], "/api/worlds/splice-bots/assets/pack?live="); sb(p2[..], WAS_TEST_HASH);
   no_hash := ap_call(t, "GET", sb_text(p2[..]), "", t[0].no[0..<0]) == 404;
-  st = wa_call(t, "", "GET", "/api/worlds/splice/assets?lane=dev", "");
+  st = wa_call(t, "", "GET", "/api/worlds/splice-bots/assets?lane=dev", "");
   dev_list := st == 200 && was_read(l, ap_body(t)) && l[0].n == 1 && !l[0].did && cast(string) l[0].hash[..] == cast(string) first[..];
   st = wa_call(t, "", "GET", WA_PATH, "");
   ap_check(t, "assets: dev's pack is its bytes by lane and by hash; live has none until a publish", dev_pack && by_hash && no_hash && dev_list && st == 200 && was_read(l, ap_body(t)) && !l[0].packed
-           && ap_call(t, "GET", "/api/worlds/splice/assets/pack", "", t[0].no[0..<0]) == 404, ap_body(t));
+           && ap_call(t, "GET", "/api/worlds/splice-bots/assets/pack", "", t[0].no[0..<0]) == 404, ap_body(t));
   // the same file again: the bucket has it, nothing is sent, and the import replaces the mesh
   before := wa_opened(a, lg[..]).count;
   st = wa_open(t, a, t[0].admin_key, 1, "rock.glb", box);
   kept := st == 200 && a[0].up.ok && a[0].up.how == WU_KEPT && wa_opened(a, lg[..]).count == before;
   st = wa_done(t, a, t[0].admin_key, 1, "rock.glb", box);
   ap_check(t, "assets: a file the bucket already has is not sent again, and importing it again replaces the asset", kept && st == 200 && l[0].did && l[0].did_replaced && l[0].n == 1 && l[0].a[0].licence == 1
-           && ap_sql(t, "SELECT count(*) || ' ' || max(licence) FROM verse.world_files WHERE world = 'splice'", q[..]) == "1 1" && ap_sql(t, "SELECT count(*) FROM verse.world_packs WHERE world = 'splice'", q[..]) == "1", ap_body(t));
+           && ap_sql(t, "SELECT count(*) || ' ' || max(licence) FROM verse.world_files WHERE world = 'splice-bots'", q[..]) == "1 1" && ap_sql(t, "SELECT count(*) FROM verse.world_packs WHERE world = 'splice-bots'", q[..]) == "1", ap_body(t));
   // ---- a row that draws a pack mesh is held to the pack the world has
   st = wc_post(t, w, t[0].admin_key, 0, "apply", wa_cell(b[..], "201|Rock|pack/stone|1000|1|50|25|200"));
   stone := st == 422 && wc_refusal(t, w, edit[..]) == "the world's pack has no mesh of that name: import it first";
@@ -464,26 +467,26 @@ wa_checks :: (t: [] Ap, w: [] Wc, a: [] Wa, other: string) {
   ap_check(t, "assets: a mesh of the same bounds replaces one the world has pieces of", st == 200 && l[0].did && l[0].did_replaced && l[0].a[0].licence == 0, ap_body(t));
   // a mesh as wide as the yard may not replace the rock while one stands by the gate
   wide := pit_box(3, 1, 25, 1, 25, a[0].other[..]);
-  wasb: [80] u8; was := ap_sql(t, "SELECT dev_pack FROM verse.world_docs WHERE id = 'splice'", wasb[..]);
+  wasb: [80] u8; was := ap_sql(t, "SELECT dev_pack FROM verse.world_docs WHERE id = 'splice-bots'", wasb[..]);
   st = wa_import(t, a, 0, "rock.glb", wide);
   ap_check(t, "assets: a mesh that does not fit where its kind stands is refused in words, the pack stays, and its file leaves the bucket", st == 422 && ap_has(wa_words(t, w), "rock.glb does not fit where its kind already stands: ") && !wa_stored(a)
-           && was.count == 64 && ap_sql(t, "SELECT dev_pack FROM verse.world_docs WHERE id = 'splice'", q[..]) == was, ap_body(t));
+           && was.count == 64 && ap_sql(t, "SELECT dev_pack FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == was, ap_body(t));
   // ---- the budget: two long sounds fit, the third would not
   long := a[0].big[..];
   for c, k: "RIFFsizeWAVE" { long[k] = c; }
   ok2 := true;
   for k: 0..<2 { long[20] = cast,trunc(u8) ('1' + k); nm: [1] Sb; sb(nm[..], "long-"); sb_int(nm[..], k + 1); sb(nm[..], ".wav"); ok2 = ok2 && wa_import(t, a, 2, sb_text(nm[..]), long) == 200 && l[0].n == 2 + k; }
-  held := ap_sql(t, "SELECT dev_pack FROM verse.world_docs WHERE id = 'splice'", q[..]) == cast(string) l[0].hash[..] && l[0].packed;
+  held := ap_sql(t, "SELECT dev_pack FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == cast(string) l[0].hash[..] && l[0].packed;
   long[20] = '3';
   st = wa_import(t, a, 2, "long-3.wav", long);
-  kb: [1] Sb; sb(kb[..], "SELECT dev_pack || ' ' || (SELECT count(*) FROM verse.world_packs WHERE world = 'splice') || ' ' || (SELECT count(*) FROM verse.world_files WHERE world = 'splice') FROM verse.world_docs WHERE id = 'splice'");
+  kb: [1] Sb; sb(kb[..], "SELECT dev_pack || ' ' || (SELECT count(*) FROM verse.world_packs WHERE world = 'splice-bots') || ' ' || (SELECT count(*) FROM verse.world_files WHERE world = 'splice-bots') FROM verse.world_docs WHERE id = 'splice-bots'");
   ap_check(t, "assets: a file that would take the pack over its budget is refused in words; the pack and its rows stay, and the file leaves the bucket", ok2 && held && st == 422 && ap_starts(wa_words(t, w), "long-3.wav would make the pack ") && ap_ends(wa_words(t, w), " KB. Its budget is 1024 KB.") && !wa_stored(a)
            && ap_ends(ap_sql(t, sb_text(kb[..]), q[..]), " 1 3"), ap_body(t));
   // ---- a publish carries dev's pack to live with the document
-  devp: [80] u8; dev := ap_sql(t, "SELECT dev_pack FROM verse.world_docs WHERE id = 'splice'", devp[..]);
+  devp: [80] u8; dev := ap_sql(t, "SELECT dev_pack FROM verse.world_docs WHERE id = 'splice-bots'", devp[..]);
   st = wc_post(t, w, t[0].admin_key, 2, "publish-now", "");
-  pub := st == 200 && ap_sql(t, "SELECT live_pack FROM verse.world_docs WHERE id = 'splice'", q[..]) == dev && dev.count == 64;
-  st = ap_call(t, "GET", "/api/worlds/splice/assets/pack", "", t[0].no[0..<0]);
+  pub := st == 200 && ap_sql(t, "SELECT live_pack FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == dev && dev.count == 64;
+  st = ap_call(t, "GET", "/api/worlds/splice-bots/assets/pack", "", t[0].no[0..<0]);
   live_pack := st == 200 && asset_hex(asset_id(ap_body(t)), hb[..]) && cast(string) hb[..] == dev;
   st = wa_call(t, "", "GET", WA_PATH, "");
   ap_check(t, "assets: a publish carries the dev pack to live with the document: live's list and pack are dev's", pub && live_pack && st == 200 && was_read(l, ap_body(t)) && l[0].n == 3 && cast(string) l[0].hash[..] == dev, ap_body(t));
@@ -491,7 +494,7 @@ wa_checks :: (t: [] Ap, w: [] Wc, a: [] Wa, other: string) {
   wav := pit_wav(a[0].wav[..]);
   st = wa_import(t, a, 0, "door.wav", wav);
   after := st == 200 && l[0].n == 4 && cast(string) l[0].hash[..] != dev;
-  ap_check(t, "assets: an import after a publish changes dev's pack and leaves live's; each lane's pack is kept, and no other", after && ap_sql(t, "SELECT live_pack || ' ' || (SELECT count(*) FROM verse.world_packs WHERE world = 'splice') || ' ' || (dev_pack <> live_pack) FROM verse.world_docs WHERE id = 'splice'", q[..]) == sb_text_of(dev, " 2 true", b[..]), ap_body(t));
+  ap_check(t, "assets: an import after a publish changes dev's pack and leaves live's; each lane's pack is kept, and no other", after && ap_sql(t, "SELECT live_pack || ' ' || (SELECT count(*) FROM verse.world_packs WHERE world = 'splice-bots') || ' ' || (dev_pack <> live_pack) FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == sb_text_of(dev, " 2 true", b[..]), ap_body(t));
   wc_reset(t);
   ap_check(t, "assets: a world's packs and files go with its row", ap_sql(t, "SELECT (SELECT count(*) FROM verse.world_packs) + (SELECT count(*) FROM verse.world_files)", q[..]) == "0", "");
 }

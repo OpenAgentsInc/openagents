@@ -73,7 +73,7 @@ resident compiler:
 
 A part of a module is checked as the module loads it, never alone: alone, it would not know
 the names its module gives it. The server starts this check once when the list is asked for, so
-the compiler has seen the module before the first save. Measured on Splice: the answer to a save
+the compiler has seen the module before the first save. Measured on Splice Bots: the answer to a save
 of a 104 KB file came back in 110 ms with errors and 684 ms without.
 
 The file is written whether or not the check passes. The dev server's watch then builds the

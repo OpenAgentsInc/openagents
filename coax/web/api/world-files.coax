@@ -124,7 +124,7 @@ wf_upload_answer :: (put: bool, hash: string, bytes: int, url: string, out: [] u
   #assert wf_may(false, true, true, true, true) == WR_CROSS && wf_may(true, false, true, true, true) == WR_LOG_IN;
   #assert wf_may(true, true, false, false, true) == WF_NOT_MEMBER && wf_may(true, true, false, true, false) == WF_NOT_MEMBER;
   #assert wf_status(WF_NOT_MEMBER) == 403 && wf_status(WR_LOG_IN) == 401 && wf_status(WR_CROSS) == 403 && wf_words(WF_NOT_MEMBER).count > 20;
-  #assert wf_project("splice") == "verse" && wf_project("nowhere") == "";
+  #assert wf_project("splice-bots") == "verse" && wf_project("splice") == "" && wf_project("nowhere") == "";
 }
 #test "what a turn is told of each attachment it opened: read, a link, or too large to read whole" {
   h: [1] FlWork; w := h[..]; o: [300] u8;

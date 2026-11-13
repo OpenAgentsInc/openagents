@@ -1,0 +1,12 @@
+// The dev server's reading of a world's old ID (coax/web/serve.c world_url, #13486): its part of
+// coax/web/serve-parts.sh. The table is world-alias.coax's; the API reads it through
+// coax/web/api/world-policy.coax wr_world_id.
+//   coax/bin/coax test metaverse-engine/editor/world-alias-host.coax --library
+#load "world-alias.coax";
+
+// The world an API route's ID names.
+site_world :: (id: string) -> string #export_c #effects(all) { return world_alias(id); }
+
+#test "an API route's old world ID is its new one" {
+  #assert site_world("splice") == "splice-bots" && site_world("splice-bots") == "splice-bots" && site_world("everglade") == "everglade";
+}

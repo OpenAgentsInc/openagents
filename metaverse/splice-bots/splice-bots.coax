@@ -1,4 +1,4 @@
-// Splice, openagents.com/worlds/splice (unlisted): robots and machines on Mars and stranger worlds,
+// Splice, openagents.com/worlds/splice-bots (unlisted): robots and machines on Mars and stranger worlds,
 // drawn in the anime style (docs/metaverse/art-styles.md, Anime: cel bands, coloured ink, a vivid sky).
 //
 // Everything that draws is the Metaverse Engine's: the cel mesh writers (metaverse-engine/render/cel-mesh.coax), the
@@ -626,7 +626,7 @@ splice_pointer :: (s: [] Splice, x: f32, y: f32, phase: int) -> bool #export_c #
 }
 
 // ---- realm scripts (#13467; scripts.coax; coax/web/host.js "A realm's scripts")
-SPLICE_SCRIPTS_URL :: "/api/worlds/splice/scripts";
+SPLICE_SCRIPTS_URL :: "/api/worlds/splice-bots/scripts";
 // The scripts the world's tables name, as the page's script loader reads them
 // (metaverse-engine/script/loader.coax): the list's address, then "AT HASH" a row. "" when it names none.
 splice_script_wants :: (s: [] Splice) -> string #export_c #effects(all) {
@@ -699,7 +699,7 @@ splice_place_words :: () -> int #export_c #effects(all) { return SD_PLACE_WORDS;
 }
 #test "two digit scenes parse, and an unknown scene is the first" {
   s := [1] Splice.[Splice.{}];
-  splice_message(s[..], 600, "https://x/worlds/splice?scene=16");
+  splice_message(s[..], 600, "https://x/worlds/splice-bots?scene=16");
   #assert s[0].scene == 16;
   splice_message(s[..], 600, "?scene=7&x=1");
   #assert s[0].scene == 7;
@@ -744,7 +744,7 @@ splice_place_words :: () -> int #export_c #effects(all) { return SD_PLACE_WORDS;
   #assert(s[0].game[0].gray);
   #assert(splice_key(s[..], 'G', true));
   #assert(!s[0].game[0].gray);
-  splice_message(s[..], 600, "https://x/worlds/splice?gray");
+  splice_message(s[..], 600, "https://x/worlds/splice-bots?gray");
   #assert(s[0].game[0].gray);
 }
 
@@ -757,13 +757,13 @@ sp_check_frame :: (b: [] SpFrameCheck) -> int #effects(all) {
 #test "only the dev server's page loads the fixture layer, and placed pieces are draws of instances: the world's store is not written again" #steps 2000000000 #traversal 2000000000 {
   b: [1] SpFrameCheck; s := b[0].s[..];
   // the site's own address asks in vain
-  splice_message(s, 600, "https://openagents.com/worlds/splice?layer=fixture");
+  splice_message(s, 600, "https://openagents.com/worlds/splice-bots?layer=fixture");
   #assert !s[0].dev && s[0].fixture == 0;
   _ := sp_check_frame(b[..]);
   #assert splice_draw_count(s) == 2 && s[0].game[0].layer[0].st[0].n == 0 && splice_place_n(s) == 0 && splice_piece_n(s) > 20000 && splice_piece_version(s) == 1 && !s[0].ld[0].over;
   world := splice_world_version(s); #assert world == 1;
   // the dev server's does
-  splice_message(s, 600, "http://127.0.0.1:8800/worlds/splice?layer=fixture");
+  splice_message(s, 600, "http://127.0.0.1:8800/worlds/splice-bots?layer=fixture");
   #assert s[0].dev && s[0].fixture == 1;
   _ = sp_check_frame(b[..]);
   #assert s[0].fixture == 2 && s[0].game[0].layer[0].st[0].n == SL_FIXTURE_N && splice_place_n(s) == SL_FIXTURE_N && splice_place_version(s) == 2;
@@ -778,7 +778,7 @@ sp_check_frame :: (b: [] SpFrameCheck) -> int #effects(all) {
   #assert sl_remove(s[0].game[..], 3).ok;
   _ = sp_check_frame(b[..]);
   #assert splice_world_version(s) == world && splice_piece_version(s) == 1 && splice_place_version(s) == 3 && splice_place_n(s) == SL_FIXTURE_N - 1;
-  splice_message(s, 600, "http://localhost:8800/worlds/splice?x=1&layer=fixture"); #assert s[0].fixture == 2;
+  splice_message(s, 600, "http://localhost:8800/worlds/splice-bots?x=1&layer=fixture"); #assert s[0].fixture == 2;
   #assert sp_has("abc", "bc") && sp_has("abc", "") && !sp_has("ab", "abc") && !sp_has("abc", "bd");
 }
 

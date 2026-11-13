@@ -82,7 +82,7 @@ and these routes answer 404 for it.
 ## Who may store
 
 The world's owner or one of its admins, or a site admin; logged in, from this
-site (`wsp_may`). Splice has no owner, so today that is the site's admins: the
+site (`wsp_may`). Splice Bots has no owner, so today that is the site's admins: the
 owner and admin half of the rule takes effect when a world with an owner runs
 scripts. The rule is wider than who may write the
 rest of a world's document (site admins, `wr_write`) for scripts only: the

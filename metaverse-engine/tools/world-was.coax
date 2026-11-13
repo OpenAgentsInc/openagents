@@ -1,0 +1,90 @@
+// A renamed world's files on this computer move to its new ID (GitHub #13486; world-alias.coax). The
+// dev server keeps a world's rows as files under DIR named by its ID (world-local.coax, asset-store.coax,
+// files-local.coax): DIR/ID.row, the lanes' documents, events and tables, the undo log's steps, the
+// import pack and the attachments' list. The first route a world's tool answers after the rename
+// moves every DIR/OLD.* file to DIR/ID.*, once, and rewrites the old ID where a file names it: a
+// document's first line (world.doc.v1), an attachments list's first line (world.files.v1) and each
+// event's "world" field. The documents and events a world's own code reads would open with the old ID
+// too; the attachments list would not. Once any DIR/ID.* file is there, nothing moves again.
+//   coax/bin/coax test metaverse-engine/tools/world-was.coax --library
+#load "../editor/world-alias.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+WW_TEXT :: 1048576;   // the bytes of a file rewritten in place; a longer one moves as it is
+WW_PATH :: 1024;
+WwWork :: struct { l: [1] FsList; text: [WW_TEXT] u8; out: [WW_TEXT + 4096] u8; from: [WW_PATH] u8; to: [WW_PATH] u8; name: [WW_PATH] u8; }
+
+ww_starts :: (s: string, head: string) -> bool { return s.count >= head.count && cast(string) s[0..<head.count] == head; }
+// Whether name is one of the world's files: ID, a dot, and more ("splice-bots.row" is not "splice"'s).
+ww_of :: (name: string, id: string) -> bool { return name.count > id.count + 1 && ww_starts(name, id) && name[id.count] == '.'; }
+ww_put :: (out: [] u8, n: int, s: string) -> int {
+  if n < 0 || n + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[n + i] = s[i]; }
+  return n + s.count;
+}
+// text with the old ID rewritten where it names the world: the first line's ID after a
+// world.doc.v1 or world.files.v1 schema, and every "world":"OLD" of an event. -1 when out is too small.
+ww_rewrite :: (text: string, was: string, id: string, out: [] u8) -> int {
+  n := 0; i := 0;
+  for head: [2] string.["world.doc.v1 ", "world.files.v1 "] {
+    if ww_starts(text, head) && text.count > head.count + was.count && cast(string) text[head.count..<head.count + was.count] == was && (text[head.count + was.count] == '\n' || text[head.count + was.count] == ' ') {
+      n = ww_put(out, n, head); n = ww_put(out, n, id); i = head.count + was.count;
+    }
+  }
+  key: [64] u8; k := ww_put(key[..], 0, "\"world\":\""); k = ww_put(key[..], k, was); k = ww_put(key[..], k, "\"");
+  if k < 0 { return -1; }
+  field := cast(string) key[0..<k];
+  while i < text.count {
+    if text.count - i >= field.count && cast(string) text[i..<i + field.count] == field {
+      n = ww_put(out, n, "\"world\":\""); n = ww_put(out, n, id); n = ww_put(out, n, "\""); i += field.count; continue;
+    }
+    if n < 0 || n >= out.count { return -1; }
+    out[n] = text[i]; n += 1; i += 1;
+  }
+  return n;
+}
+// Move DIR/OLD.* to DIR/ID.* when the world ID had an old one and nothing is kept under ID yet.
+// True when there was nothing to move or every file moved.
+world_dir_move :: (w: [] WwWork, dir: string, id: string) -> bool #effects(all) {
+  was := world_was(id);
+  if was.count == 0 || dir.count == 0 { return true; }
+  n := fs_list(dir, w[0].l[..]);
+  if n <= 0 { return true; }
+  for i: 0..<n { if ww_of(fs_entry(w[0].l[..], i), id) { return true; } }
+  ok := true;
+  for i: 0..<n {
+    e := fs_entry(w[0].l[..], i);
+    if !ww_of(e, was) { continue; }
+    k := ww_put(w[0].name[..], 0, id); k = ww_put(w[0].name[..], k, e[was.count..<e.count]);
+    from := fs_join(dir, e, w[0].from[..]); to := ifx k < 0 then "" else fs_join(dir, cast(string) w[0].name[0..<k], w[0].to[..]);
+    if from.count == 0 || to.count == 0 { ok = false; continue; }
+    size := fs_size(from);
+    if size > 0 && size <= WW_TEXT && !ww_starts(e[was.count..<e.count], ".pack.") {
+      r := fs_read(from, w[0].text[..]);
+      m := ifx r == size then ww_rewrite(cast(string) w[0].text[0..<r], was, id, w[0].out[..]) else -1;
+      if m >= 0 && cast(string) w[0].out[0..<m] != cast(string) w[0].text[0..<r] && !fs_write(from, cast(string) w[0].out[0..<m]) { ok = false; continue; }
+    }
+    if !fs_rename(from, to) { ok = false; }
+  }
+  return ok;
+}
+
+#test "a world's files are the ID, a dot and more" {
+  #assert ww_of("splice.row", "splice") && ww_of("splice.step.3.did", "splice") && !ww_of("splice-bots.row", "splice") && !ww_of("splice.", "splice") && !ww_of("splice", "splice") && ww_of("splice-bots.row", "splice-bots");
+}
+#test "a document's, a list's and an event's old world ID is rewritten; nothing else is" {
+  o: [512] u8;
+  doc := "world.doc.v1 splice\ncontent 2\nhead 3 4\n";
+  n := ww_rewrite(doc, "splice", "splice-bots", o[..]);
+  #assert cast(string) o[0..<n] == "world.doc.v1 splice-bots\ncontent 2\nhead 3 4\n";
+  list := "world.files.v1 splice verse 0 0 26214400 200 1073741824\nf 00112233445566aa world image 2000 x 1 local splice.png\n";
+  n = ww_rewrite(list, "splice", "splice-bots", o[..]);
+  #assert cast(string) o[0..<n] == "world.files.v1 splice-bots verse 0 0 26214400 200 1073741824\nf 00112233445566aa world image 2000 x 1 local splice.png\n";
+  ev := "{\"id\":\"realm-authoring.world.edited.v1\",\"seq\":1,\"world\":\"splice\",\"rev\":1}\n{\"id\":\"x\",\"world\":\"splice\",\"rev\":2}\n";
+  n = ww_rewrite(ev, "splice", "splice-bots", o[..]);
+  #assert cast(string) o[0..<n] == "{\"id\":\"realm-authoring.world.edited.v1\",\"seq\":1,\"world\":\"splice-bots\",\"rev\":1}\n{\"id\":\"x\",\"world\":\"splice-bots\",\"rev\":2}\n";
+  same := "world.doc.v1 splicer\n\"world\":\"splicer\" 3 4\n";
+  n = ww_rewrite(same, "splice", "splice-bots", o[..]);
+  #assert cast(string) o[0..<n] == same && ww_rewrite(doc, "splice", "splice-bots", o[0..<10]) == -1;
+}
+// The move itself is checked by the dev server's run on a folder of old files (world-local.coax's tool, #13486).

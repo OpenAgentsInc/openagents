@@ -295,8 +295,8 @@ rc_file_at :: (page: string, lines: string, at: int) -> RcFile #effects(all) {
   #assert cast(string) two[0..<m] == "realm.code.v1 refused 0 That file is not one of this realm's.\n";
   r := rc_answer_read(cast(string) two[0..<m]);
   #assert r.ok && r.what == RC_REFUSED && r.name == "That file is not one of this realm's.";
-  #assert realm_code_head(RC_SAVED, "metaverse/splice-bots/walk.coax", 0, two[..]) == 49 && realm_code_head(RC_SAVED, "metaverse/splice-bots/walk.coax", 0, two[0..<10]) == 0 && realm_code_head(9, "x", 0, two[..]) == 0;
-  #assert realm_code_file_line("metaverse/splice-bots/walk.coax", 12, two[..]) == 32 && realm_code_file_line("metaverse/splice-bots/walk.coax", 12, two[0..<4]) == 0;
+  #assert realm_code_head(RC_SAVED, "metaverse/splice-bots/walk.coax", 0, two[..]) == 54 && realm_code_head(RC_SAVED, "metaverse/splice-bots/walk.coax", 0, two[0..<10]) == 0 && realm_code_head(9, "x", 0, two[..]) == 0;
+  #assert realm_code_file_line("metaverse/splice-bots/walk.coax", 12, two[..]) == 37 && realm_code_file_line("metaverse/splice-bots/walk.coax", 12, two[0..<4]) == 0;
   bad := [13] string.["", "realm.code.v1 files splice-bots 1\n", "realm.code.v1 files splice-bots 1\nf metaverse/orbit/orbit.coax 1\n", "realm.code.v1 files splice-bots 0\nf metaverse/splice-bots/walk.coax 1\n",
     "realm.code.v1 files splice-bots 1\nf metaverse/splice-bots/walk.coax 1", "realm.code.v1 file metaverse/splice-bots/walk.coax 3\nab", "realm.code.v1 saved metaverse/splice-bots/walk.coax 1\n",
     "realm.code.v1 saved metaverse/splice-bots/walk.coax 0\nx", "realm.code.v1 errors metaverse/splice-bots/walk.coax 0\n", "realm.code.v1 refused 0 \n", "realm.code.v1 refused 1 words\n",

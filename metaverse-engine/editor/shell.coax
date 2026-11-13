@@ -474,6 +474,7 @@ es_build :: (s: [] EdShell) {
   if s[0].nfiles > 0 { cb := k_button(t, u, "code", ifx s[0].code then "Hide code" else "Code", BS_PLAIN); }
   w := m[0].world;
   n := ct_put(line[..], 0, cast(string) w[0..<m[0].world_n]);
+  for k: 0..<n { if line[k] == '-' { line[k] = ' '; } }   // the world's ID read as words: splice-bots is "splice bots" (#13486)
   n = ct_put(line[..], n, " · revision "); n = ct_put_int(line[..], n, m[0].rev);
   es_rv_build_bar(s, cast(string) line[0..<n]);   // a button that opens the Revisions list, and what the newest step changed (shell-revs.coax)
   k_pane_end(t);
@@ -1645,7 +1646,7 @@ es_test_ask :: (h: [] EsTest) -> string {
   #assert tr_text_of(t, tr_find(t, "code.errors.pre")) == "metaverse/splice-bots/walk.coax:1:6: error[E0101]" && tr_find(t, "code.state") < 0;
   // Copy puts the compiler's words by for the clipboard
   es_test_press(h[..], "code.errors.copy");
-  #assert coaxial_editor_clip_len(s) == 44 && cast(string) s[0].clip[0..<44] == "metaverse/splice-bots/walk.coax:1:6: error[E0101]";
+  #assert coaxial_editor_clip_len(s) == 49 && cast(string) s[0].clip[0..<49] == "metaverse/splice-bots/walk.coax:1:6: error[E0101]";
   coaxial_editor_clip_done(s);
   #assert coaxial_editor_clip_len(s) == 0;
   // the words stay while the file is mended, and go with the next save

@@ -269,7 +269,7 @@ tool_main :: () -> int #export_c #effects(all) {
 
   font: [524288] u8; fonts := [2] string.["IBMPlexMono-Medium.ttf", "Michroma-Regular.ttf"];
   for f: fonts {
-    n := fs_read(fs_join("apps/openagents-web/realms/splice/assets/fonts", f, path[..]), font[..]);
+    n := fs_read(fs_join("apps/openagents-web/realms/splice-bots/assets/fonts", f, path[..]), font[..]);
     out_path: [4096] u8;
     if n < 1 || !fs_write(fs_join(fs_join(dir, "fonts", path[..]), f, out_path[..]), cast(string) font[0..<n]) { print("splice-export: could not copy the font % (run from the repository root)\n", f); return 1; }
   }

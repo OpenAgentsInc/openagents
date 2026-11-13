@@ -1,12 +1,12 @@
 # The editor's acceptance run
 
 The run for E14 (GitHub #13423): one scripted pass through the browser editor
-on Splice. It repeats, and it stops with a failure at the first step that does
+on Splice Bots. It repeats, and it stops with a failure at the first step that does
 not hold.
 
 ## Run it
 
-1. Start the dev server on your own computer. It must watch Splice's
+1. Start the dev server on your own computer. It must watch Splice Bots'
    sources and rebuild them:
 
    ```sh
@@ -18,12 +18,12 @@ not hold.
    Google token that refreshes itself (the service account's gcloud config
    when the machine has it, else your gcloud login, else openagents.com on
    your `openagents` login; `docs/chat.md` has the details). So the agent in
-   the editor's foot (`/worlds/splice?edit=agent`) answers with a real model.
+   the editor's foot (`/worlds/splice-bots?edit=agent`) answers with a real model.
    `--api PORT` uses an API you started yourself instead.
 
    Started like this it builds the whole site first. In a worktree whose
    pages are already built (`coax/remote/pages.sh`), skip that with
-   `--build true` after building Splice and the site's shaders once in
+   `--build true` after building Splice Bots and the site's shaders once in
    development mode, which is what tells the server which sources to watch:
 
    ```sh
@@ -50,7 +50,7 @@ not hold.
 3. Run the pass:
 
    ```sh
-   coax/web/tool.sh drive web apps/openagents-web /worlds/splice \
+   coax/web/tool.sh drive web apps/openagents-web /worlds/splice-bots \
      --query "edit&stage=5" --size 1280x800 --live http://127.0.0.1:9538 \
      --ops docs/editor/acceptance/editor-run.ops
    ```
@@ -66,7 +66,7 @@ canvas's corner and says where that corner is. The game starts with Enter and
 holds the pointer to look round; `type - key Escape` lets go of it, as the
 browser's own Escape does, so the panes take presses again.
 
-The code steps save two of Splice's sources (`metaverse/splice-bots/splice-game.coax`
+The code steps save two of Splice Bots' sources (`metaverse/splice-bots/splice-game.coax`
 and `gpu/splice-bots.coax`) and then save them back as they were. If the run stops
 between the two saves, `git diff metaverse/splice-bots` shows the one changed
 number; put it back with `git checkout -- metaverse/splice-bots`.
@@ -99,7 +99,7 @@ A third pass sets the foes' plans (#13466). Start from an empty world, as for
 the first pass, then:
 
 ```sh
-coax/web/tool.sh drive web apps/openagents-web /worlds/splice \
+coax/web/tool.sh drive web apps/openagents-web /worlds/splice-bots \
   --query "edit&stage=5" --size 1280x800 --live http://127.0.0.1:9538 \
   --ops docs/editor/acceptance/foes-run.ops
 ```
@@ -116,14 +116,14 @@ reach its world's first revision from the dev server. Start it after the
 server's log says `engine rebuilt` when a source changed: while the server
 rebuilds, the page gets no world and every edit verb fails.
 
-## Splice's front door
+## Splice Bots' front door
 
 A pass through the title, the creation screen and the start of play
 (#13482), as a player opens the page. Use a fresh browser profile (the
 driver's own), so no character or run is kept:
 
 ```sh
-coax/web/tool.sh drive web apps/openagents-web /worlds/splice \
+coax/web/tool.sh drive web apps/openagents-web /worlds/splice-bots \
   --size 1280x720 --live http://127.0.0.1:9538 \
   --real-time --ops docs/editor/acceptance/splice-front-run.ops
 ```
@@ -143,7 +143,7 @@ A fourth pass sends the same request through the editor's agent pane
 (#13466, #13465), with Claude Code chosen in the agent menu on Haiku 5.5:
 
 ```sh
-coax/web/tool.sh drive web apps/openagents-web /worlds/splice \
+coax/web/tool.sh drive web apps/openagents-web /worlds/splice-bots \
   --query "edit=agent" --size 1600x900 --live http://127.0.0.1:9538 \
   --real-time --ops docs/editor/acceptance/foes-pane-run.ops
 ```
@@ -173,7 +173,7 @@ shows.
 | Remove | The piece is gone, one revision. |
 | Undo, then Redo | The piece comes back, then goes again. |
 | Change a line of game code | In the Code pane, one constant of `splice-game.coax` is changed and saved. The engine swaps, and again when it is put back. The run waits up to 30 s for each, since a rebuild takes 10 s or more on a busy machine; the step says how long it took, and the bar on an idle machine is 2 s. |
-| Change a shader | The same in `gpu/splice-bots.coax`, the Coax that writes Splice's WGSL. The shaders swap, twice. |
+| Change a shader | The same in `gpu/splice-bots.coax`, the Coax that writes Splice Bots' WGSL. The shaders swap, twice. |
 | The world after four swaps | The same revision and the same pieces: the run kept its state. The agent's turns that follow show at once (#13457). |
 | Place through the agent | In the conversation in the editor's foot, a turn places two crates: one batch, a revision for each. |
 | Move and remove through the agent | One turn, one batch. |
@@ -201,7 +201,7 @@ agent's clock.
   `agent-talk.json` in place of the model's. Everything after the answer is
   the real path: the chat reads it under the world tools' schema, the shell
   makes the plan one batch, the page sends it and the world's rules answer.
-  To try a real turn, open `/worlds/splice?edit=agent` on the same server and
+  To try a real turn, open `/worlds/splice-bots?edit=agent` on the same server and
   send a message.
 - **An agent on your own computer.** The run does not start Claude Code or
   Codex: Coder's answers (`/local/sessions`, `/local/claude` and

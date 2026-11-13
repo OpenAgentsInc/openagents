@@ -8,7 +8,7 @@ The Unreal side of the exporter. The design is
 Run from the repository root.
 
 ```sh
-# 1. Export Splice. The folder must not exist. Same source, same bytes.
+# 1. Export Splice Bots. The folder must not exist. Same source, same bytes.
 coax/web/tool.sh metaverse/splice-bots/splice-export.coax /tmp/splice.aexport
 
 # 2. Read the bundle back with Aethyr's own glTF reader.

@@ -15740,7 +15740,7 @@ CREATE FUNCTION verse.realm_visibility_may(s text, k text, site_admin boolean) R
 CREATE FUNCTION verse.realm_world_id_ok(s text) RETURNS boolean
     LANGUAGE sql IMMUTABLE
     AS $_$
-  SELECT s ~ '^[a-z0-9][a-z0-9-]{0,47}$' AND s NOT IN ('splice', 'everglade') $_$;
+  SELECT s ~ '^[a-z0-9][a-z0-9-]{0,47}$' AND s NOT IN ('splice', 'splice-bots', 'everglade') $_$;
 
 
 --

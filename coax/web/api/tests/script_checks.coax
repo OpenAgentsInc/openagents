@@ -13,7 +13,7 @@
 #load "../../../../metaverse-engine/script/store.coax";
 #load "../../../../metaverse-engine/script/wasm-make.coax";
 
-SK_PATH :: "/api/worlds/splice";
+SK_PATH :: "/api/worlds/splice-bots";
 Sk :: struct {
   doc: [200000] u8; did: [WE_BATCH_BODY] u8; scratch: [400000] u8; st: WorldState;
   a: [2048] u8; a_n: int; b: [2048] u8; b_n: int; c: [2048] u8; c_n: int;      // three modules
@@ -62,7 +62,7 @@ sk_row :: (out: [] Sb, id: int, name: string, hash: string) -> string {
 }
 sk_hash :: (bytes: [] u8, out: [] u8) -> bool { return S_hex(S_hash(cast(string) bytes), out); }
 sk_reset :: (t: [] Ap) {
-  ap_do(t, "DELETE FROM verse.script_reports; DELETE FROM verse.script_off; DELETE FROM verse.world_outbox WHERE world = 'splice'; DELETE FROM verse.world_steps WHERE world = 'splice'; DELETE FROM verse.world_docs WHERE id = 'splice'; INSERT INTO verse.world_docs (id, kind) VALUES ('splice', 'splice'); DELETE FROM auth.limit_counts WHERE name LIKE 'script-%';");
+  ap_do(t, "DELETE FROM verse.script_reports; DELETE FROM verse.script_off; DELETE FROM verse.world_outbox WHERE world = 'splice-bots'; DELETE FROM verse.world_steps WHERE world = 'splice-bots'; DELETE FROM verse.world_docs WHERE id = 'splice-bots'; INSERT INTO verse.world_docs (id, kind) VALUES ('splice-bots', 'splice-bots'); DELETE FROM auth.limit_counts WHERE name LIKE 'script-%';");
 }
 
 sk_checks :: (t: [] Ap, k: [] Sk, other: string, compiles: bool) {
@@ -76,7 +76,7 @@ sk_checks :: (t: [] Ap, k: [] Sk, other: string, compiles: bool) {
   // ---- reading a world with none
   st := ap_call(t, "GET", sk_path(p[..], "/scripts", ""), "", t[0].no[0..<0]);
   h := ss_list_read(k[0].d[..], ap_body(t), k[0].nodes[..], k[0].world[..]);
-  ap_check(t, "scripts: a world's list reads before it stores any: the limits, and no script", made && st == 200 && h.ok && h.count == 0 && h.limits.stored == SS_STORED && h.limits.scripts == SH_SCRIPTS && h.limits.uploads_a_day == SS_UPLOADS_DAY && (h.limits.compiler == 1) == compiles && cast(string) k[0].world[0..<h.world_n] == "splice", ap_body(t));
+  ap_check(t, "scripts: a world's list reads before it stores any: the limits, and no script", made && st == 200 && h.ok && h.count == 0 && h.limits.stored == SS_STORED && h.limits.scripts == SH_SCRIPTS && h.limits.uploads_a_day == SS_UPLOADS_DAY && (h.limits.compiler == 1) == compiles && cast(string) k[0].world[0..<h.world_n] == "splice-bots", ap_body(t));
   ap_check(t, "scripts: a world nobody made has none, and a path that is no route is not found", ap_call(t, "GET", "/api/worlds/nope/scripts", "", t[0].no[0..<0]) == 404 && ap_call(t, "GET", sk_path(p[..], "/scripts/x", ""), "", t[0].no[0..<0]) == 404 && ap_call(t, "GET", sk_path(p[..], "/scriptsx", ""), "", t[0].no[0..<0]) == 404, ap_body(t));
   // ---- who may store
   st = sk_call(t, "", "POST", sk_path(p[..], "/scripts", "?name=pacer"), ma, "");
@@ -89,7 +89,7 @@ sk_checks :: (t: [] Ap, k: [] Sk, other: string, compiles: bool) {
   st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts", "?name=pacer"), ma, "X-Script-Fields: [{\"name\":\"turn_at\",\"type\":\"f32\",\"at\":4,\"size\":4}]");
   ok := sm_read(ap_body(t), k[0].mf[..]);
   ap_check(t, "scripts: an admin's module that passes the check is stored, and the answer is the manifest written from its bytes", st == 200 && ok && cast(string) k[0].mf[0].hash[..] == ha && k[0].mf[0].bytes == k[0].a_n && k[0].mf[0].calls == (1 << SA_X) | (1 << SA_MOVE) && k[0].mf[0].layout.n == 1 && cast(string) k[0].mf[0].name[0..<k[0].mf[0].name_n] == "pacer", ap_body(t));
-  ap_check(t, "scripts: the row holds the bytes under their hash, the manifest and who stored it", ap_sql(t, "SELECT count(*) || ' ' || max(hash) || ' ' || max(octet_length(bytes)) || ' ' || (max(encode(sha256(bytes), 'hex')) = max(hash)) || ' ' || (max(length(author)) > 0) || ' ' || (max(source) IS NULL) FROM verse.world_scripts WHERE world = 'splice'", q[..]) == sb_text_of4(e[..], "1 ", ha, " ", k[0].a_n, " true true true"), "");
+  ap_check(t, "scripts: the row holds the bytes under their hash, the manifest and who stored it", ap_sql(t, "SELECT count(*) || ' ' || max(hash) || ' ' || max(octet_length(bytes)) || ' ' || (max(encode(sha256(bytes), 'hex')) = max(hash)) || ' ' || (max(length(author)) > 0) || ' ' || (max(source) IS NULL) FROM verse.world_scripts WHERE world = 'splice-bots'", q[..]) == sb_text_of4(e[..], "1 ", ha, " ", k[0].a_n, " true true true"), "");
   st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts", "?name=other-name"), ma, "");
   ap_check(t, "scripts: the same bytes again are kept as they were stored: one row, the first manifest", st == 200 && sm_read(ap_body(t), k[0].mf[..]) && cast(string) k[0].mf[0].name[0..<k[0].mf[0].name_n] == "pacer" && ap_sql(t, "SELECT count(*) FROM verse.world_scripts", q[..]) == "1", ap_body(t));
   st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts", "?name=pacer"), ma[0..<ma.count - 3], "");
@@ -111,12 +111,12 @@ sk_checks :: (t: [] Ap, k: [] Sk, other: string, compiles: bool) {
   ap_check(t, "scripts: the list holds the stored script's manifest, on and with no source", st == 200 && h.ok && h.count == 1 && en.ok && !en.off && !en.source && cast(string) k[0].mf[0].hash[..] == ha, ap_body(t));
   // ---- an edit names only what the world stores
   st = sk_batch(t, k, 0, "apply", sk_row(e[..], 1, "pacer", hb), "");
-  ap_check(t, "scripts: an edit that names a module the world has not stored is refused in words, and nothing is saved", st == 422 && sk_error(t, k) == "script 1: this world has stored no module of that hash: store the module first" && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "0", ap_body(t));
+  ap_check(t, "scripts: an edit that names a module the world has not stored is refused in words, and nothing is saved", st == 422 && sk_error(t, k) == "script 1: this world has stored no module of that hash: store the module first" && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "0", ap_body(t));
   st = sk_batch(t, k, 0, "apply", sk_row(e[..], 1, "pacer", ha), "");
   ap_check(t, "scripts: an edit that names a stored module is saved", st == 200 && k[0].st.ok && k[0].st.rev == 1, ap_body(t));
   // ---- a publish asks about what is new or grows
   st = sk_batch(t, k, 1, "publish-now", "", "");
-  ap_check(t, "scripts: a publish that adds a script is refused, 409, listing the script and what it may do", st == 409 && sk_refusal(t, k) == SSC_GROWS && k[0].r[0].asks_n == 1 && k[0].r[0].asks[0].fresh && cast(string) k[0].r[0].asks[0].hash[..] == ha && k[0].r[0].asks[0].grows.calls == (1 << SA_X) | (1 << SA_MOVE) && k[0].r[0].asks[0].grows.powers == 3 && ap_sql(t, "SELECT live_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "0", ap_body(t));
+  ap_check(t, "scripts: a publish that adds a script is refused, 409, listing the script and what it may do", st == 409 && sk_refusal(t, k) == SSC_GROWS && k[0].r[0].asks_n == 1 && k[0].r[0].asks[0].fresh && cast(string) k[0].r[0].asks[0].hash[..] == ha && k[0].r[0].asks[0].grows.calls == (1 << SA_X) | (1 << SA_MOVE) && k[0].r[0].asks[0].grows.powers == 3 && ap_sql(t, "SELECT live_rev FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "0", ap_body(t));
   st = sk_batch(t, k, 1, "publish-now", "", sb_text_of2(p[..], "?confirm=", hb));
   ap_check(t, "scripts: confirming another hash confirms nothing", st == 409 && sk_refusal(t, k) == SSC_GROWS, ap_body(t));
   st = sk_batch(t, k, 1, "publish-now", "", sb_text_of2(p[..], "?confirm=", ha));
@@ -169,7 +169,7 @@ sk_checks :: (t: [] Ap, k: [] Sk, other: string, compiles: bool) {
   ap_check(t, "scripts: no new edit names a module that is switched off", st == 422 && sk_error(t, k) == "script 2: that script is switched off, so no edit names it", ap_body(t));
   st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts", "?name=pacer"), mb, "");
   ap_check(t, "scripts: and it is not stored again", st == 410 && sk_refusal(t, k) == SSC_WITHDRAWN, ap_body(t));
-  ap_check(t, "scripts: the world's published revision stays as it was", ap_sql(t, "SELECT live_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "3", "");
+  ap_check(t, "scripts: the world's published revision stays as it was", ap_sql(t, "SELECT live_rev FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "3", "");
   st = sk_call(t, t[0].admin_key, "POST", sb_text_of3(p[..], "/api/admin/scripts/", hb, "/on"), "", "");
   on := st == 200 && ss_done_read(ap_body(t), hash[..]) == 2;
   st = ap_call(t, "GET", sk_path(p[..], "/scripts/", hb), "", t[0].no[0..<0]);
@@ -181,7 +181,7 @@ sk_checks :: (t: [] Ap, k: [] Sk, other: string, compiles: bool) {
   // ---- the world's room: 64 modules; one that no revision names is collected a day after it was stored
   rd := [2] int.[SA_X, SA_STOP]; md: [2048] u8;
   dn := wb_module(md[..], rd[..], nothing[..], 0, echo[..]);
-  ap_do(t, "INSERT INTO verse.world_scripts (world, hash, bytes, manifest, author, at_ms) SELECT 'splice', lpad(to_hex(g), 64, 'f'), '\\x0061736d01000000', '{\"schema\":\"realm.script.v1\"}', 'acct_fill', (extract(epoch from now()) * 1000)::bigint FROM generate_series(1, 61) g");
+  ap_do(t, "INSERT INTO verse.world_scripts (world, hash, bytes, manifest, author, at_ms) SELECT 'splice-bots', lpad(to_hex(g), 64, 'f'), '\\x0061736d01000000', '{\"schema\":\"realm.script.v1\"}', 'acct_fill', (extract(epoch from now()) * 1000)::bigint FROM generate_series(1, 61) g");
   st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts", "?name=guard"), cast(string) md[0..<dn], "");
   ap_check(t, "scripts: a world that stores 64 modules takes no more, and the refusal says the limit", dn > 0 && st == 422 && sk_refusal(t, k) == SSC_FULL && k[0].r[0].limit == SS_STORED && ap_sql(t, "SELECT count(*) FROM verse.world_scripts", q[..]) == "64", ap_body(t));
   ap_do(t, "UPDATE verse.world_scripts SET at_ms = at_ms - 2 * 86400000::bigint WHERE author = 'acct_fill'");

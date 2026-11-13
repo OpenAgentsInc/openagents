@@ -1,4 +1,4 @@
-# Splice
+# Splice Bots
 
 Splice Bots, an unlisted game at `/worlds/splice`: a short game about a robot smuggler. Scavenge
 banned robot parts, splice them in the rover's hidden edit bay, and restore a scene the Emperor
@@ -6,7 +6,7 @@ erased. It is a prototype of the Splice Bots vertical slice.
 
 ## The run
 
-The run follows the Splice game design document, Tier 1 and Tier 2.
+The run follows the Splice Bots game design document, Tier 1 and Tier 2.
 
 1. **Title.** Click to play.
 2. **Dome village, dawn.** Walk out through the scanner gate: "HEAT: COOL. PASS."
@@ -79,7 +79,7 @@ The code is in `metaverse/splice-bots/`, and `metaverse/splice-bots/README.md` d
 - `metaverse/splice-bots/splice-game.coax`: the game: tuning, world, rules, interface, and tests
   that play the whole run.
 - `metaverse/splice-bots/splice-bots.coax`: the page's frame, and the still scenes below.
-- `metaverse/splice-bots/gpu/splice-bots.coax`: Anime Lab's shaders plus Splice's own overlay pass
+- `metaverse/splice-bots/gpu/splice-bots.coax`: Anime Lab's shaders plus Splice Bots' own overlay pass
   (ink on paper needs source-over blending) and the placed pieces' instances.
 - `metaverse/splice-bots/content/splice.content`: the content tables: the pieces that can be placed, the
   landmarks, and the zones the run keeps clear.
@@ -93,7 +93,7 @@ The fonts are in `realms/splice/assets/fonts/` with their Open Font Licences.
 
 ## Edit layer
 
-Things can be placed in Splice as data, without changing its code. A placed piece is a row of a
+Things can be placed in Splice Bots as data, without changing its code. A placed piece is a row of a
 content table, a collider, and a typed edit that can be undone. An edit is refused when it would
 stand in a zone the run needs, and a walk of the whole run is the second check. Nothing is placed
 on this page yet: a saved world and the tools that edit it are the next steps. The developer

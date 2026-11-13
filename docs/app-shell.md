@@ -15,7 +15,7 @@ down the left of the site:
     `/projects/SLUG`. Its + opens `/projects#new`, where a new project is
     dropped.
   - **Worlds** holds the worlds they may edit, Splice Bots first, each opening its
-    editor (`/worlds/splice?edit`). Its + opens `/worlds/new`.
+    editor (`/worlds/splice-bots?edit`). Its + opens `/worlds/new`.
 - At the foot, who is logged in, a link to Settings, and Log out.
 
 It is 300 px wide. Below 760 px it is hidden, as the chat's sidebar was. Each

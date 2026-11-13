@@ -159,7 +159,7 @@ yc_look :: (g: [] SpGame, x: f32, z: f32) { g[0].px = x; g[0].pz = z + 2; g[0].y
   g[0].fhp[3] = 0; g[0].rubble_gone = true;
   drv_frame(v[..], 1280, 720, 1, false); sy_list(g[..], v[..]);
   #assert drv_find(v[..], "foe-3") < 0 && drv_find(v[..], "rubble") < 0 && drv_find(v[..], "foe-4") > 0;
-  #assert yc_has(sy_drive(g[..], d[..], pg, v[..], "walk-to foe-4", 0), "Splice takes no world operations from a driver yet (walk-to)") && v[0].status != DRV_GOING;
+  #assert yc_has(sy_drive(g[..], d[..], pg, v[..], "walk-to foe-4", 0), "Splice Bots takes no world operations from a driver yet (walk-to)") && v[0].status != DRV_GOING;
   #assert sy_drive(g[..], d[..], pg, v[..], "why you", 0) == drv_said(v[..]) && yc_has(drv_said(v[..]), "why you: ");
   #assert sy_drive(g[..], d[..], pg, v[..], "why caps", 0) == "caps: none\n";
   v[0].lost = 5; g[0].ws[0].refused = 1;

@@ -4,7 +4,7 @@
 // what these answers say; the database decides nothing, and worlds.c builds no byte of its own.
 //
 //   who may write         from this site or signed, whoever the realm's row lets author it (wr_may):
-//                         a site admin, and for Splice and a realm its owner and its admins (wr_write);
+//                         a site admin, and for Splice Bots and a realm its owner and its admins (wr_write);
 //                         anyone reads
 //   the fence             a batch names the dev revision it was made from; any other is 409
 //   the undo log          an undo takes the newest standing step's inverse, a redo the next step's
@@ -25,6 +25,7 @@
 #load "../../../metaverse-engine/editor/world-live.coax";
 #load "../../../metaverse-engine/editor/world-edit.coax";
 #load "../../../metaverse-engine/editor/authority.coax";
+#load "../../../metaverse-engine/editor/world-alias.coax";   // a renamed world's old ID (#13486)
 #load "../../lib/agent/world/turn.coax";   // a world's card (world.card.v1)
 #load "world-files.coax";   // attachments on a world and its project (#13468)
 #load "../../../metaverse/edit/realm-world.coax";   // a realm's world: its board and settings as tables, a switch as a cell (#13422)
@@ -236,6 +237,9 @@ wr_join :: (sent: bool, engine: int, rules: int, content: int, wire: int, has_li
 // ---- the bytes (world-edit.coax)
 
 wr_world_ok :: (id: string) -> bool #export_c #effects(all) { return we_world_ok(id); }
+// The world an ID names: a renamed world's old ID is its new one (world-alias.coax). The routes read
+// every ID through it first, so a saved link, the CLI or a cached page that names the old ID still works.
+wr_world_id :: (id: string) -> string #export_c #effects(all) { return world_alias(id); }
 // A batch's head into out: the revision it names, what it does, how many edits. False when the body is none.
 wr_batch :: (body: string, out: [] int) -> bool #export_c #effects(all) {
   e: [WE_BATCH] WorldEdit;
@@ -309,7 +313,7 @@ wr_card :: (world: string, rev: int, things: int, name: string, out: [] u8) -> i
   for same: 0..<2 { for known: 0..<2 { for admin: 0..<2 { for exists: 0..<2 {
     #assert wr_asset_write(same == 1, known == 1, admin == 1, exists == 1) == wr_write(same == 1, known == 1, admin == 1, exists == 1, true, WB_APPLY, 4, 4, 2, 5);
   } } } }
-  #assert wr_asset_what() == WB_APPLY && wr_op(wr_asset_what()) == OP_EDIT && wr_authored("splice", "splice", wr_asset_what()) && !wr_authored("nowhere", "splice", wr_asset_what());
+  #assert wr_asset_what() == WB_APPLY && wr_op(wr_asset_what()) == OP_EDIT && wr_authored("splice-bots", "splice-bots", wr_asset_what()) && !wr_authored("nowhere", "splice-bots", wr_asset_what());
 }
 #test "world routes: what storage holds is the file only when its size and its hash are the ones asked; a wrong object is deleted" {
   #assert wr_asset_stored(2032, 2032, true) == WA_OK && wr_asset_stored(1, 1, true) == WA_OK;
@@ -323,9 +327,9 @@ wr_card :: (world: string, rev: int, things: int, name: string, out: [] u8) -> i
   #assert wr_pack_kept("a", "a", "b", "c") && wr_pack_kept("b", "a", "b", "c") && wr_pack_kept("c", "a", "b", "c") && !wr_pack_kept("d", "a", "b", "c") && !wr_pack_kept("", "", "", "") && !wr_pack_kept("", "a", "", "");
 }
 #test "world routes: a world is its realm's row of the authority table, and a write is authoring, never durable" {
-  for what: 0..<6 { #assert wr_authored("splice", "splice", what) && wr_authored("everglade", "everglade", what) && wr_authored("nowhere", "realm", what) && !wr_authored("nowhere", "splice", what) && !wr_authored("splice", "realm", what) && !wr_authored("", "realm", what); }
+  for what: 0..<6 { #assert wr_authored("splice-bots", "splice-bots", what) && wr_authored("everglade", "everglade", what) && wr_authored("nowhere", "realm", what) && !wr_authored("nowhere", "splice-bots", what) && !wr_authored("splice-bots", "realm", what) && !wr_authored("splice", "splice", what) && !wr_authored("", "realm", what); }
   #assert wr_op(WB_APPLY) == OP_EDIT && wr_op(WB_ORIGINAL) == OP_EDIT && wr_op(WB_UNDO) == OP_UNDO && wr_op(WB_REDO) == OP_REDO && wr_op(WB_PUBLISH_NOW) == OP_PUBLISH && wr_op(WB_PUBLISH_NEXT) == OP_PUBLISH;
-  #assert wr_loads("splice", "splice") && wr_loads("my-realm", "realm") && !wr_loads("nowhere", "splice") && !wr_loads("everglade", "realm") && !wr_loads("", "realm");
+  #assert wr_loads("splice-bots", "splice-bots") && wr_loads("my-realm", "realm") && !wr_loads("nowhere", "splice-bots") && !wr_loads("splice", "splice") && !wr_loads("everglade", "realm") && !wr_loads("", "realm");
   for what: 0..<6 { #assert !state_op_may_write(wr_op(what), STATE_DURABLE) && wr_op(what) != OP_LEDGER && wr_op(what) != OP_CHARACTER; }
 }
 #test "world routes: anyone reads dev; live is what is published, for a page whose build reads it" {
@@ -384,12 +388,13 @@ wr_card :: (world: string, rev: int, things: int, name: string, out: [] u8) -> i
   #assert n > 0 && cast(string) o[0..<n] == WE_REFUSAL_FIXTURE && wr_refusal("x", -1, o[0..<3]) == -1;
   #assert wr_event_id(false) == WE_EVENT && wr_event_id(true) == WE_PUBLISHED && we_event_kind(WE_EVENT_FIXTURE) == 1;
   #assert wr_world_ok("splice") && !wr_world_ok("Splice") && !wr_world_ok("");
+  #assert wr_world_id("splice") == "splice-bots" && wr_world_id("splice-bots") == "splice-bots" && wr_world_id("my-realm") == "my-realm" && wr_world_id("") == "";
 }
 #test "world routes: who authors a realm's world, who is known there, and its one lane" {
   #assert wr_may("my-realm", "realm", false, "owner") && wr_may("my-realm", "realm", false, "admin") && !wr_may("my-realm", "realm", false, "visitor") && !wr_may("my-realm", "realm", false, "");
-  #assert wr_may("my-realm", "realm", true, "") && wr_may("my-realm", "splice", true, "owner") && !wr_may("my-realm", "splice", false, "owner") && wr_may("splice", "splice", true, "") && !wr_may("everglade", "everglade", false, "owner");
-  #assert wr_known("realm", false, true) && wr_known("realm", true, false) && !wr_known("realm", false, false) && !wr_known("splice", false, true) && wr_known("splice", true, false);
-  #assert wr_at_once("realm") && !wr_at_once("splice") && !wr_at_once("") && wr_at_once_words().count > 0;
+  #assert wr_may("my-realm", "realm", true, "") && wr_may("my-realm", "splice-bots", true, "owner") && !wr_may("my-realm", "splice-bots", false, "owner") && wr_may("splice-bots", "splice-bots", true, "") && !wr_may("everglade", "everglade", false, "owner");
+  #assert wr_known("realm", false, true) && wr_known("realm", true, false) && !wr_known("realm", false, false) && !wr_known("splice-bots", false, true) && wr_known("splice-bots", true, false);
+  #assert wr_at_once("realm") && !wr_at_once("splice-bots") && !wr_at_once("") && wr_at_once_words().count > 0;
   out: [RW_TABLES] u8;
   #assert wr_realm_tables(RW_SPEC_FIXTURE, out[..]) == rw_tables(RW_SPEC_FIXTURE, out[..]) && wr_realm_tables("row X 1 x\n", out[..]) == -1;
   e: [1] WorldEdit; body: [WE_BATCH_BODY] u8; did: [WE_BATCH_BODY] u8; inv: [WE_BATCH_BODY] u8; acts: [RW_ACTS] u8; why: [240] u8; n: [6] int;

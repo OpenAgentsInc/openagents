@@ -112,7 +112,7 @@ sql("INSERT INTO projects.docs VALUES ('verse', 1, '{\"members\": []}'::jsonb, 1
 sql(f"UPDATE projects.docs SET doc = jsonb_set(doc, '{{members}}', coalesce(doc->'members', '[]'::jsonb) || '[{{\"pubkey\": \"{member_pk}\", \"name\": \"Member\"}}]'::jsonb) WHERE slug = 'verse'")
 packs_before = sql("SELECT count(*) || ':' || coalesce(string_agg(hash, ',' ORDER BY hash), '') FROM verse.world_packs")
 docs_before = sql("SELECT coalesce(string_agg(id || dev_rev || dev_pack || live_pack, ',' ORDER BY id), '') FROM verse.world_docs")
-L = "/api/worlds/splice/files"
+L = "/api/worlds/splice-bots/files"
 
 # Who may see them: the project's members and the site's admins, nobody else.
 check("files: nobody logged in is told to log in", wf_call("GET", L)[0] == 401)
@@ -121,9 +121,11 @@ check("files: and so is the project's page list", wf_call("GET", "/api/projects/
       and wf_call("GET", "/api/projects/verse/files")[0] == 401)
 status, body, headers = wf_call("GET", L, keyfile=member)
 check("files: a member reads the world's list, with the limits", status == 200
-      and body.decode().split("\n")[0].startswith("world.files.v1 splice verse 0 0 26214400 200 1073741824")
+      and body.decode().split("\n")[0].startswith("world.files.v1 splice-bots verse 0 0 26214400 200 1073741824")
       and "no-store" in headers.get("Cache-Control", ""), (status, body))
 check("files: an admin reads it too", wf_call("GET", L, keyfile=admin)[0] == 200)
+status, body, _ = wf_call("GET", "/api/worlds/splice/files", keyfile=member)   # the world's old ID (#13486)
+check("files: the world's old ID reads the same list", status == 200 and body.decode().startswith("world.files.v1 splice-bots verse "), (status, body[:80]))
 check("files: a page of another site may not", wf_call("GET", L, keyfile=member, origin="https://evil.example")[0] == 403)
 
 # A file by direct upload: named by its SHA-256, sent, read back, scanned.
@@ -250,7 +252,7 @@ if "infer_seen" in globals():   # test_inference.py's fake model, when it ran
 check("files: attaching changed no pack and no world document",
       sql("SELECT count(*) || ':' || coalesce(string_agg(hash, ',' ORDER BY hash), '') FROM verse.world_packs") == packs_before
       and sql("SELECT coalesce(string_agg(id || dev_rev || dev_pack || live_pack, ',' ORDER BY id), '') FROM verse.world_docs") == docs_before)
-status, body, _ = wf_call("GET", "/api/worlds/splice/assets/pack")
+status, body, _ = wf_call("GET", "/api/worlds/splice-bots/assets/pack")
 check("files: a player's pack has no attachment in it", h.encode() not in body and png[8:64] not in body)
 check("files: nothing about a file is in the service's log", os.path.exists(os.environ.get("API_LOG", "/nonexistent")) is False
       or "Raider garage" not in open(os.environ["API_LOG"], errors="replace").read())

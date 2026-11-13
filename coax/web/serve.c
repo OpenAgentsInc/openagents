@@ -91,6 +91,7 @@
 #include "http-range.h"
 #include "sha256-kernel.h"
 #include "site-routes.h"
+#include "world-alias.h"
 #include "code-wire.h"
 #include "realm-origin.h"
 
@@ -476,6 +477,18 @@ static void proxy_local(client *c, const char *url) {
   close(fd);
   drop(c);
 }
+// /api/worlds/OLD... is /api/worlds/NEW...: a renamed world's old ID names it (site_world,
+// world-alias-host.coax, #13486), as the API reads it (coax/web/api/worlds.c).
+static void world_url(char *url, size_t cap) {
+  const char *at = url + 12; size_t k = strcspn(at, "/?");
+  char id[64], rest[1100];
+  if (k == 0 || k >= sizeof id) return;
+  memcpy(id, at, k); id[k] = 0;
+  coax_string named = site_world((coax_string){id, (int64_t)k});
+  if (named.count == (int64_t)k && !memcmp(named.data, id, k)) return;
+  snprintf(rest, sizeof rest, "%s", at + k);
+  snprintf(url, cap, "/api/worlds/%.*s%s", (int)named.count, (const char *)named.data, rest);
+}
 // A world's route on the dev server: the world's own tool answers it ("STATUS\n" then the body),
 // and a write that was saved is told to every tab, which then asks for the world's new events.
 static void worlds_local(client *c, const char *method, const char *url) {
@@ -830,10 +843,13 @@ static void handle_request(client *c) {
       respond(c->fd, 404, "Not Found", "text/plain", "not on the realm origin\n", 24); drop(c); return;
     }
   }
-  if (!static_mode && !realm_request && sscanf(c->buf, "%7s %1023s", method, url) == 2 && assets_route(url)) { assets_local(c, method, url); return; }
-  if (!static_mode && !realm_request && sscanf(c->buf, "%7s %1023s", method, url) == 2 && files_route(url)) { files_local(c, method, url); return; }
-  if (!static_mode && !realm_request && sscanf(c->buf, "%7s %1023s", method, url) == 2 && scripts_route(url)) { scripts_local(c, method, url); return; }
-  if (!static_mode && !realm_request && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/worlds/", 12)) { worlds_local(c, method, url); return; }
+  if (!static_mode && !realm_request && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/worlds/", 12)) {
+    world_url(url, sizeof url);   // a renamed world's old ID is its new one (world-alias-host.coax, #13486)
+    if (assets_route(url)) { assets_local(c, method, url); return; }
+    if (files_route(url)) { files_local(c, method, url); return; }
+    if (scripts_route(url)) { scripts_local(c, method, url); return; }
+    worlds_local(c, method, url); return;
+  }
   if (!static_mode && !realm_request && !strcmp(method, "POST") && !strcmp(url, "/coaxial/code")) { code_local(c); return; }
   if (api_port && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/", 5)) { proxy_api(c); return; }
   // No API behind this server (--api not given, or --static): the chat and the editor's agent say what to run (#13463).

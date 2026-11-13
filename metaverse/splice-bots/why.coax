@@ -208,7 +208,7 @@ sy_drive :: (g: [] SpGame, d: [] SpLayerDraw, pg: SyPage, v: [] Drive, text: str
     return drv_say(v, a.count);
   }
   if op == "walk-to" || op == "face" || op == "use" || op == "mount" {
-    return drv_say3(v, "Splice takes no world operations from a driver yet (", op, "); it answers tree, layout, target ID, status, why ID and why caps");
+    return drv_say3(v, "Splice Bots takes no world operations from a driver yet (", op, "); it answers tree, layout, target ID, status, why ID and why caps");
   }
   return drv_command(v, text, now);
 }

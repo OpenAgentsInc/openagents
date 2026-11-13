@@ -2,7 +2,7 @@
 
 Issue: [#13438](https://github.com/OpenAgentsInc/openagents/issues/13438).
 Source: [docs/research/summer-what-to-adapt.md](../research/summer-what-to-adapt.md), S5.
-Code: `metaverse/splice-bots/replay.coax` (Splice, the first suite),
+Code: `metaverse/splice-bots/replay.coax` (Splice Bots, the first suite),
 `metaverse/splice-bots/replay-checks.coax`, `metaverse/splice-bots/tools/replay.coax`.
 
 A recorded run of operations is replayed into a fresh World. Four outcomes are
@@ -50,7 +50,7 @@ replay broken on purpose, and must fail it, alone:
 
 ```sh
 coax/bin/coax test metaverse/splice-bots/splice-game.coax --only "outcome replay"   # the recorded run and its broken variants
-coax/web/tool.sh metaverse/splice-bots/tools/replay.coax apps/openagents-web/build/.worlds/splice   # a run coax serve kept
+coax/web/tool.sh metaverse/splice-bots/tools/replay.coax apps/openagents-web/build/.worlds/splice-bots   # a run coax serve kept
 ```
 
 The second command replays the steps the dev server kept for the world (each

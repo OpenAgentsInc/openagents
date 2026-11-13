@@ -4,7 +4,7 @@ Issue: [#13412](https://github.com/OpenAgentsInc/openagents/issues/13412), the
 browser editor's E3 ([spec](../editor/2026-11-12-browser-editor.md)).
 Code: `metaverse-engine/editor/world-edit.coax` (the one codec),
 `coax/web/api/worlds.c` with `coax/web/api/world-policy.coax` (the routes and
-their rules, `#authority`), `metaverse/splice-bots/world.coax` (Splice, the first
+their rules, `#authority`), `metaverse/splice-bots/world.coax` (Splice Bots, the first
 world).
 Profile: `proto/world/edit-v1.json`, checked by
 `coax/web/tool.sh metaverse-engine/tools/world-edit-profile.coax proto/world/edit-v1.json`.
@@ -30,7 +30,7 @@ A reader refuses any bytes but the ones the writer writes: the keys in this
 order, no spaces, every number in range.
 
 A world takes the ops its own code allows and refuses the rest in words.
-Splice takes `spawn`, `despawn`, `move`, `rotate`, a `set` of `x`, `z` or
+Splice Bots takes `spawn`, `despawn`, `move`, `rotate`, a `set` of `x`, `z` or
 `yaw`, and a `cell` of its content tables. It refuses a size and the land, and
 says why. WorldBuilder takes every op of a thing and the land, and refuses a
 `cell` ([WorldBuilder's world](#worldbuilders-world)).
@@ -154,7 +154,7 @@ that was refused, when one was.
 A world's ID is a lowercase letter or a digit, then lowercase letters, digits
 and `-`, 48 bytes at most: a realm's slug is one.
 
-Splice (`splice`) is written by admins only. Anyone reads it.
+Splice Bots (`splice-bots`, once `splice`) is written by admins only. Anyone reads it.
 
 ## A realm's world
 
@@ -178,7 +178,7 @@ on the realm routes. A realm hidden from the caller is no world to them.
 
 ## The server checks with the page's code
 
-The API links the world's own Coax and runs it on every batch: Splice's check
+The API links the world's own Coax and runs it on every batch: Splice Bots' check
 (`sl_check`), then the walk of the whole run against the layer as it would be
 saved (`sw_replay`). The page runs the same files. So the server and the page
 cannot disagree about where a piece may stand.
@@ -223,7 +223,7 @@ the dev lane's newest 200 events again each time the revision moves.
 ## A page follows the world
 
 Code: `metaverse-engine/editor/world-follow.coax` (what to ask, and what an
-answer is), `metaverse/splice-bots/world.coax` `spw_page_*` (Splice carries a
+answer is), `metaverse/splice-bots/world.coax` `spw_page_*` (Splice Bots carries a
 document and each event out).
 
 1. The page opens a lane: dev with `?edit`, else live. It reads the lane's
@@ -245,7 +245,7 @@ document and each event out).
 `coax serve` answers `/api/worlds/...` itself, so a page, a second tab, the
 CLI and `coax drive` share one world before anything is deployed. The request
 goes to `metaverse/splice-bots/tools/world-local.coax`: the API's rules
-(`world-policy.coax`) and Splice's own check, with files under
+(`world-policy.coax`) and Splice Bots' own check, with files under
 `apps/openagents-web/build/.worlds/` for rows. Everyone on this computer is
 the admin. A saved write is told to every tab over the live channel
 (`{"kind":"world","id":"splice"}`, inbox kind 614), and each tab asks for the
@@ -295,7 +295,7 @@ stands at, with nothing sent.
 `--shot OUT.png` adds a frame of the page at the edit's revision.
 `--dry-run` carries the batch out in a copy and saves nothing.
 
-Not built: `new`. A world gets its ID from a migration today (Splice).
+Not built: `new`. A world gets its ID from a migration today (Splice Bots).
 WorldBuilder's worlds are kept in the browser and have no ID on the server
 (E13, #13422), so these commands do not reach them.
 
@@ -303,7 +303,7 @@ WorldBuilder's worlds are kept in the browser and have no ID on the server
 
 ```sh
 coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9538 --build true
-coax/web/tool.sh drive web apps/openagents-web /worlds/splice --query edit --live http://127.0.0.1:9538 \
+coax/web/tool.sh drive web apps/openagents-web /worlds/splice-bots --query edit --live http://127.0.0.1:9538 \
   "world" "place 113 17720 -7060" "where" "why piece-0" "screenshot out.png"
 ```
 

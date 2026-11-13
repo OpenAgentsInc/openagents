@@ -1,5 +1,5 @@
 // A world's routes on this computer, with files for rows (GitHub #13413, the browser editor's E4):
-// what `coax serve` answers for /api/worlds/splice... on the dev server, so a page, a second tab,
+// what `coax serve` answers for /api/worlds/splice-bots... on the dev server, so a page, a second tab,
 // the CLI and `coax drive` reach one world before anything is deployed. It is the API's route
 // (coax/web/api/worlds.c) with the same Coax: the routes' rules are world-policy.coax's, an edit is
 // carried out by Splice's own code (world.coax spw_batch), and every byte is world-edit.coax's.
@@ -24,6 +24,7 @@
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
 #load "asset-store.coax";   // the world's import pack, which a row that draws a pack mesh is held to (#13420)
+#load "../../../metaverse-engine/tools/world-was.coax";   // the world's files under its old ID move to its ID (#13486)
 cxproc_wall_us :: () -> int #foreign #effects(all);
 
 WL_ROW :: 15;   // dev_rev done steps live_rev live_from live_when live pins (4) prev_rev prev pins (4)
@@ -188,9 +189,12 @@ tool_main :: () -> int #export_c #effects(all) {
   if t[0].dir_n == 0 || url.count <= root.count || url[0..<root.count] != root { return wl_refuse(t[..], 404, "not found", -1); }
   rest := url[root.count..<url.count];
   path := ct_part(rest, '?', 0); query := ifx ct_parts(rest, '?') > 1 then rest[path.count + 1..<rest.count] else "";
-  id := ct_part(path, '/', 0); tail := ifx ct_parts(path, '/') > 1 then path[id.count..<path.count] else "";
+  named := ct_part(path, '/', 0); tail := ifx ct_parts(path, '/') > 1 then path[named.count..<path.count] else "";
+  id := world_alias(named);   // a renamed world's old ID is its new one (#13486)
   if id != SPW_ID || (tail != "" && tail != "/events" && tail != "/content" && tail != "/card") || (method != "GET" && method != "POST") || (tail != "" && method != "GET") { return wl_refuse(t[..], 404, wr_words(WR_NO_WORLD), -1); }
   t[0].id_n = ct_copy(t[0].id[..], id);
+  made := fs_mkdir(dir);
+  ww := [1] WwWork.[WwWork.{}]; moved := world_dir_move(ww[..], dir, id);   // the files the world kept under its old ID
   if tail == "/content" {
     // the lane's own tables once a cell was edited (dev: as they are edited; else as published), else the build's
     lane := wl_query(query, "lane");

@@ -343,7 +343,7 @@ valleyworld=$!
 # anime style's block from its own library (animelab-style.coax). (animelab.wgsl loads metaverse/style.coax in gpu/animelab.coax.)
 old timed animelab "$here/../../coax/web/wasm.sh" "$here/animelab.coax" "$here/animelab-face.c" "$here/build/animelab.wasm" "$here/animelab-style.coax" &
 animelab=$!
-# /worlds/splice (unlisted): Mars at dusk on Anime Lab's shading (metaverse/splice-bots/splice-bots.coax, metaverse/splice-bots/splice-face.c, metaverse/splice-bots/gpu/splice-bots.coax).
+# /worlds/splice-bots (unlisted): Mars at dusk on Anime Lab's shading (metaverse/splice-bots/splice-bots.coax, metaverse/splice-bots/splice-face.c, metaverse/splice-bots/gpu/splice-bots.coax).
 timed splice-bots "$here/../../coax/web/wasm.sh" "$here/../../metaverse/splice-bots/splice-bots.coax" "$here/../../metaverse/splice-bots/splice-face.c" "$here/build/splice-bots.wasm" "$here/animelab-style.coax" &
 splice=$!
 # /worlds/crew (unlisted): character creation, six bodies and one fitted wardrobe on Anime Lab's shading (crew.coax, crew-face.c, gpu/crew.coax; #13462).

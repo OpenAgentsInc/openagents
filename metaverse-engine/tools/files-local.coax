@@ -23,6 +23,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/sys/fs.coax";
+#load "world-was.coax";   // the world's files under its old ID move to its ID (#13486)
 
 FL_BODY :: FW_FILE_MAX + FW_HEAD + 16;
 FlLocal :: struct {
@@ -123,9 +124,11 @@ tool_main :: () -> int #export_c #effects(all) {
   root := "/api/worlds/";
   if url.count <= root.count || url[0..<root.count] != root { return fl_local_refuse(x, 404, "not found"); }
   rest := url[root.count..<url.count];
-  id := fw_part(rest, '/', 0); tail := rest[id.count..<rest.count];
+  named := fw_part(rest, '/', 0); tail := rest[named.count..<rest.count];
+  id := world_alias(named);   // a renamed world's old ID is its new one (#13486)
   fid := ifx tail.count == 6 + FW_ID + 1 && tail[0..<7] == "/files/" then tail[7..<tail.count] else "";
   if !fw_world_ok(id) || (tail != "/files" && !fw_id_ok(fid)) { return fl_local_refuse(x, 404, "not found"); }
+  ww := [1] WwWork.[WwWork.{}]; moved := world_dir_move(ww[..], dir, id);   // the files the world kept under its old ID
   if !fl_local_load(x, dir, id, fw_project_for(id)) { return fl_local_refuse(x, 500, "not read"); }
   w := x[0].w[..];
   if method == "GET" && fid.count > 0 {

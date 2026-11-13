@@ -42,9 +42,9 @@ every host.
   piece never takes it.
 - **The systems list is code.** A load keeps the list it finds.
 
-## Splice
+## Splice Bots
 
-Splice's document is the game's World: the designed world's colliders and
+Splice Bots' document is the game's World: the designed world's colliders and
 every placed piece, with five own columns (the shape's middle and half sizes,
 and the shape). The server only stores the document a fresh game builds from
 the layer's pieces (`spw_build`). It refuses a document that this build would

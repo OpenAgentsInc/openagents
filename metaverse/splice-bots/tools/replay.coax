@@ -1,10 +1,10 @@
 // Outcome replay of a recorded run of the world `splice` (GitHub #13438;
 // docs/metaverse/outcome-replay.md): the steps `coax serve` kept for the world
-// (APP/build/.worlds/splice.step.N.did, each a world.edit.v1 batch as it was taken) are replayed
+// (APP/build/.worlds/splice-bots.step.N.did, each a world.edit.v1 batch as it was taken) are replayed
 // into a fresh World, and the four outcomes are checked apart: the live World, the saved
 // document, errors, and probes. Then each check is run against its broken variant, which must
 // fail it: a check that can't fail proves nothing.
-//   coax/web/tool.sh metaverse/splice-bots/tools/replay.coax APP/build/.worlds/splice [--steps N]
+//   coax/web/tool.sh metaverse/splice-bots/tools/replay.coax APP/build/.worlds/splice-bots [--steps N]
 // It prints a line a check and exits 0 when the run holds and every broken variant fails its check.
 // tool.sh: run-steps 250000000
 #import "Basic";
@@ -17,7 +17,7 @@ RpRun :: struct { text: [RP_STEPS * 4096] u8; at: [RP_STEPS] int; n: [RP_STEPS] 
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: replay APP/build/.worlds/splice [--steps N]"); return 2; }
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: replay APP/build/.worlds/splice-bots [--steps N]"); return 2; }
   base := args_at(a[..], 0);
   limit := ifx args_has(a[..], "--steps") then args_whole(args_value(a[..], "--steps", "")) else RP_STEPS;
   r := [1] RpRun.[RpRun.{}]; used := 0; path: [1200] u8;

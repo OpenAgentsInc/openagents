@@ -1560,7 +1560,7 @@ Each realm declares who decides each kind (`realm_authority`, same file;
 
 | Realm | Content | Simulation | Durability |
 | --- | --- | --- | --- |
-| Splice | The owner and admins | The page | Nothing durable |
+| Splice Bots | The owner and admins | The page | Nothing durable |
 | Everglade | Admins | The room | The ledger |
 
 Every other realm (a made realm, or a hand-built one with a board) is a
@@ -8014,7 +8014,7 @@ Worlds with an ID (#13412; `docs/protocol/world-edit-v1.md`, `world-doc-v1.md`,
   revision it was made from. Any other revision is refused whole, 409
   (`coax/web/api/world-policy.coax` `wr_write`, `#authority`).
 - The server carries a batch out with the world's own Coax, the code its page
-  runs (Splice: `metaverse/splice-bots/world.coax` `spw_batch`). One refused edit
+  runs (Splice Bots: `metaverse/splice-bots/world.coax` `spw_batch`). One refused edit
   refuses the batch, in words. The client is never trusted for placement.
 - The stored document is the one a fresh game builds from its own pieces. A
   document this build would not write is refused (`spw_open`).
@@ -8025,7 +8025,7 @@ Worlds with an ID (#13412; `docs/protocol/world-edit-v1.md`, `world-doc-v1.md`,
   server checks it as a content document is checked
   (`metaverse-engine/editor/content-edit.coax`), with the realm's own rules
   and its check of every placed thing, and saves the tables in the
-  transaction that saves the document (Splice: `spw_cell`). The tables keep
+  transaction that saves the document (Splice Bots: `spw_cell`). The tables keep
   the revision their build shipped with: a cell edit never changes a pin.
 - An agent's turn changes a world only through that same write (#13418;
   `docs/protocol/world-turn-v1.md`). A hosted turn in the editor answers a
@@ -8040,7 +8040,7 @@ Worlds with an ID (#13412; `docs/protocol/world-edit-v1.md`, `world-doc-v1.md`,
   session, and live keeps the revision before it for one release
   (`metaverse-engine/editor/world-live.coax`, `#authority`).
 
-Checks: `coax/bin/coax test metaverse/splice-bots/splice-game.coax --only "Splice's world"`,
+Checks: `coax/bin/coax test metaverse/splice-bots/splice-game.coax --only "Splice Bots' world"`,
 `coax/web/api/tests/world_checks.coax`, `coax mutate` on the two
 `#authority` files, and for an agent's turn the checks of `turn.coax`,
 `metaverse-engine/editor/shell.coax` ("a hosted turn's plan") and
@@ -8137,7 +8137,7 @@ dropped glTF binary, PNG or sound file into an entry of a world's asset pack.
   its budget are each refused in words that name the file. The editor shows
   the limits and the pack's size against its budget before it sends anything
   (`world.assets.v1`), and refuses a file over the file limit without sending
-  it. A realm sets its own limits (Splice: `sp_import_limits`).
+  it. A realm sets its own limits (Splice Bots: `sp_import_limits`).
 - **One pack writer.** The importer writes through `pack_write`
   (`metaverse-engine/editor/pack.coax`) and reads the result back with
   `pack_read` before it answers. A pack that does not read back is not kept.
@@ -8210,7 +8210,7 @@ never reach the realm origin. This holds before code from the browser (E12,
 #13421) opens to anyone but the owner.
 
 Checks: `coax/web/tool.sh realm-frame-check` (headless Chrome: the site
-frames Splice from the realm origin; `ready splice 1 1`, a typed ask
+frames Splice Bots from the realm origin; `ready splice-bots 1 1`, a typed ask
 answered, another text refused, the frame unreadable from the site);
 `realm-frame.coax` (242 mutants, 0 survivors) and `realm-origin.coax` (88
 mutants, 0 survivors); `realm-frame-profile.coax`.
@@ -8300,7 +8300,7 @@ rounds; longer runs take `--seed N --rounds N --corpus DIR`);
   The room's tick declares `#effects(reads, writes, traps)`: the compiler
   refuses a clock, I/O or a native call anywhere under it.
 
-Checks: `coax/web/tool.sh coax/web/room/room-scripts-check.coax` (Splice's
+Checks: `coax/web/tool.sh coax/web/room/room-scripts-check.coax` (Splice Bots'
 foes on their scripts for 900 ticks through the room's unit natively and
 through the page's module under Node: the results are the same bytes, so
 the same commands, diagnostics, calls and budget left, every tick);
@@ -8345,7 +8345,7 @@ durable context).
 ## A world never waits on a script: a thing whose script said nothing walks its plan
 
 A script adds a reaction to a thing's plan; it does not replace the plan
-(#13467, #13466). In Splice (`metaverse/splice-bots/scripts.coax`,
+(#13467, #13466). In Splice Bots (`metaverse/splice-bots/scripts.coax`,
 `splice-game.coax` `g_foes_step`) a foe a script row drives does what its
 script said for the step being taken. A foe whose script said nothing for
 that step walks and reacts by its plan, as a foe with no script does. That
@@ -8356,7 +8356,7 @@ was undone, and a staggered foe.
 - **Plan data first.** A script reads its thing's plan as a goal
   (`sa_goal_x`, `sa_goal_z`, `sa_goal_speed`, `sa_notice`, `sa_plan_on`), so
   a route, a speed and a time of day stay data that the editor edits.
-- **Splice's own rules still hold.** A scripted foe's walls stop it, its run
+- **Splice Bots' own rules still hold.** A scripted foe's walls stop it, its run
   speed caps it, and a strike lands only when the foe is hostile and within
   reach and the hit's cool-down allows.
 - **The scripts are the plan's reaction.** `metaverse/splice-bots/scripts/`
@@ -8415,7 +8415,7 @@ API stores a module's bytes under that hash, a world at a time
   refused.
 - **Who may store.** The world's owner or one of its admins, or a site
   admin, logged in, from this site (`wsp_may`). Today's one world kind,
-  `splice`, has no owner, so today that is the site's admins. Who may write
+  `splice-bots`, has no owner, so today that is the site's admins. Who may write
   the rest of a world's document is unchanged.
 - **Stated limits.** 64 stored modules a world, 200 uploads and 100 compiles
   an author a day, 20 reports an account a day. Each is in

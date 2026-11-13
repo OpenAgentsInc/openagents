@@ -101,7 +101,7 @@ FwAsk :: struct {
 // Which project a world belongs to, by its kind: its attachments' second scope, and whose members
 // may read them. "" for a world with no project.
 FW_WORLD_PROJECTS :: 1;
-FW_WORLD_KIND :: [FW_WORLD_PROJECTS] string.["splice"];
+FW_WORLD_KIND :: [FW_WORLD_PROJECTS] string.["splice-bots"];
 FW_WORLD_PROJECT :: [FW_WORLD_PROJECTS] string.["verse"];
 fw_project_for :: (world: string) -> string {
   for k: 0..<FW_WORLD_PROJECTS { if FW_WORLD_KIND[k] == world { return FW_WORLD_PROJECT[k]; } }

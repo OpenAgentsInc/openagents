@@ -2,7 +2,7 @@
 // browsers open one world on the dev server (`coax serve`), and an edit made in one tab, then one
 // made from outside any page (as the CLI makes it: a POST to the dev server), must show in the
 // other tab inside a second, while that tab's run goes on as it was.
-//   coax/web/tool.sh world-tabs ORIGIN [--path /worlds/splice] [--world splice] [--stage 5] [--limit-ms 1000]
+//   coax/web/tool.sh world-tabs ORIGIN [--path /worlds/splice-bots] [--world splice-bots] [--stage 5] [--limit-ms 1000]
 // ORIGIN is the dev server's (http://127.0.0.1:PORT). The page must export coaxial_field_probe
 // with the world's facts (metaverse/splice-bots/splice-bots.coax splice_world_fact): 0 the revision it
 // stands at, 1 outside edits carried out, 2 placed things, 3 things arriving, and from 100 the
@@ -132,9 +132,9 @@ tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   origin := args_at(a[..], 0);
-  path := args_value(a[..], "--path", "/worlds/splice"); world := args_value(a[..], "--world", "splice");
+  path := args_value(a[..], "--path", "/worlds/splice-bots"); world := args_value(a[..], "--world", "splice-bots");
   stage := args_whole(args_value(a[..], "--stage", "5")); limit := args_whole(args_value(a[..], "--limit-ms", "1000"));
-  if !ok || origin.count < 8 || origin[0] == '-' || stage < 0 || limit < 1 { tool_errln("usage: coax/web/tool.sh world-tabs ORIGIN [--path /worlds/splice] [--world splice] [--stage 5] [--limit-ms 1000]"); return 2; }
+  if !ok || origin.count < 8 || origin[0] == '-' || stage < 0 || limit < 1 { tool_errln("usage: coax/web/tool.sh world-tabs ORIGIN [--path /worlds/splice-bots] [--world splice-bots] [--stage 5] [--limit-ms 1000]"); return 2; }
   ca: [1] Cdp; cb: [1] Cdp;
   if !cdp_launch(ca[..], 1280, 720, "coax-world-tabs-a-") { tool_err("world-tabs: "); tool_errln(cdp_error(ca[..])); return 1; }
   if !cdp_launch(cb[..], 1280, 720, "coax-world-tabs-b-") { tool_err("world-tabs: "); tool_errln(cdp_error(cb[..])); cdp_close(ca[..]); return 1; }

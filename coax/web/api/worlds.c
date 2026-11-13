@@ -136,19 +136,19 @@ static char *pack_read(PGconn *db, const char *id, const char *hash, size_t *n) 
 
 // ---- the world's own Coax, by kind. Splice is the first world; a realm (made, or hand-built with a board) is the
 // second (#13422: metaverse/edit/realm-world.coax, in world-policy's unit). A kind this build has no code for is not served.
-static bool kind_known(const char *kind) { return !strcmp(kind, "splice") || !strcmp(kind, "realm"); }
+static bool kind_known(const char *kind) { return !strcmp(kind, "splice-bots") || !strcmp(kind, "realm"); }
 // A realm's world has no build pins: its switches are the realm's rows, which every build reads.
 static bool kind_pins(const char *kind, long long pins[4]) {
   int64_t p[4] = {0};
   if (!strcmp(kind, "realm")) { for (int k = 0; k < 4; k++) pins[k] = 0; return true; }
-  if (strcmp(kind, "splice") || !splice_world_pins((coax_v_s64){p, 4})) return false;
+  if (strcmp(kind, "splice-bots") || !splice_world_pins((coax_v_s64){p, 4})) return false;
   for (int k = 0; k < 4; k++) pins[k] = p[k];
   return true;
 }
 // The document a world is before its first edit, into out (malloc'd by the caller, WORLD_DOC): its length, or -1.
 static int64_t kind_empty(const char *kind, char *out) {
   if (!strcmp(kind, "realm")) return 0;   // a realm's world places nothing: its state is its tables (/content)
-  if (strcmp(kind, "splice")) return -1;
+  if (strcmp(kind, "splice-bots")) return -1;
   return splice_world_empty((coax_v_u8){(uint8_t *)out, WORLD_DOC});
 }
 // The lane's document as stored, or the empty one: malloc'd, its length in *n; NULL when it can't be made.
@@ -211,7 +211,7 @@ static bool world_shown(PGconn *db, const request *q, const char *id, const worl
 }
 // A lane's content tables as text: the world's own, or the ones the build shipped with. malloc'd; NULL when they can't be made.
 static char *tables_of(const char *kind, const char *stored) {
-  char *out = strcmp(kind, "splice") ? NULL : malloc(WORLD_DOC + 1);
+  char *out = strcmp(kind, "splice-bots") ? NULL : malloc(WORLD_DOC + 1);
   int64_t n = out ? splice_world_tables(cs(stored ? stored : ""), (coax_v_u8){(uint8_t *)out, WORLD_DOC}) : -1;
   if (n < 0) { free(out); return NULL; }
   out[n] = 0;
@@ -222,7 +222,7 @@ bool world_scripts_world(PGconn *db, const char *id, bool lock, char *tables[3])
   if (tables) tables[0] = tables[1] = tables[2] = NULL;
   if (!wr_world_ok(cs(id)) || !row_read(db, id, lock, &w)) return false;
   // scripts run where a world's content tables have a scripts table: Splice's. A realm's world (#13422) names none.
-  bool ok = w.exists && !strcmp(w.kind, "splice") && wr_loads(cs(id), cs(w.kind));
+  bool ok = w.exists && !strcmp(w.kind, "splice-bots") && wr_loads(cs(id), cs(w.kind));
   if (ok && tables) {
     tables[0] = tables_of(w.kind, w.dev_tables);
     if (w.live_rev > 0) tables[1] = tables_of(w.kind, w.live_tables);
@@ -316,7 +316,7 @@ static void world_publish(const request *q, PGconn *db, const char *id, world_ro
   int64_t when = wr_when(what);
   int64_t v = wr_publish(when, base, w->dev_rev, w->live_from, pins[0], pins[1], pins[2], pins[3], has_live, w->live_pins[0], w->live_pins[1], w->live_pins[2], w->live_pins[3]);
   if (v != 0) { rollback(db); refuse(q->fd, (int)wr_publish_status(v), wr_publish_words(v), -1); return; }
-  if (!strcmp(w->kind, "splice")) {
+  if (!strcmp(w->kind, "splice-bots")) {
     // the scripts dev's rows name: one that is new, or does more than live's, needs the publisher's confirmation (#13467)
     char *dev_t = tables_of(w->kind, w->dev_tables), *live_t = has_live ? tables_of(w->kind, w->live_tables) : NULL;
     bool ok = dev_t && (!has_live || live_t);
@@ -503,7 +503,7 @@ static void world_post(const request *q, PGconn *db, const char *id) {
     goto done;
   }
   out_doc[n[0]] = 0; did[n[1]] = 0; inv[n[2]] = 0; out_tables[n[6]] = 0;
-  if (n[6] > 0 && !strcmp(w.kind, "splice")) {
+  if (n[6] > 0 && !strcmp(w.kind, "splice-bots")) {
     // the batch changed the content tables: a script row it newly names must name a module the world stores that is
     // not switched off (script-policy.coax, #13467)
     char *was = tables_of(w.kind, w.dev_tables), said[240];
@@ -542,7 +542,7 @@ static void world_content(const request *q, PGconn *db, const char *id) {
   bool dev = api_query(q, "lane", lane, sizeof lane) && wr_is_dev(wr_lane(cs(lane)));
   world_row w;
   int64_t n = -1;
-  if (out && !strcmp(id, "splice") && wr_loads(cs(id), cs("splice")) && row_read(db, id, false, &w)) {
+  if (out && !strcmp(id, "splice-bots") && wr_loads(cs(id), cs("splice-bots")) && row_read(db, id, false, &w)) {
     const char *own = w.exists ? (dev ? w.dev_tables : w.live_tables) : "";
     n = splice_world_tables(cs(own ? own : ""), (coax_v_u8){(uint8_t *)out, WORLD_DOC});
     row_free(&w);
@@ -564,9 +564,9 @@ static void world_card(const request *q, PGconn *db, const char *id) {
   char out[400];
   world_row w;
   int64_t n = -1;
-  if (!strcmp(id, "splice") && wr_loads(cs(id), cs("splice")) && row_read(db, id, false, &w)) {
+  if (!strcmp(id, "splice-bots") && wr_loads(cs(id), cs("splice-bots")) && row_read(db, id, false, &w)) {
     size_t dn = 0;
-    char *doc = doc_of("splice", w.exists ? w.dev_doc : "", &dn);
+    char *doc = doc_of("splice-bots", w.exists ? w.dev_doc : "", &dn);
     int64_t things = doc ? splice_world_things(csn(doc, dn), cs(w.exists && w.dev_tables ? w.dev_tables : "")) : -1;
     if (things >= 0) n = wr_card(cs(id), w.exists ? w.dev_rev : 0, things, splice_world_name(), (coax_v_u8){(uint8_t *)out, sizeof out});
     free(doc); row_free(&w);
@@ -584,7 +584,7 @@ static int64_t asset_may(const request *q, const world_row *w, const char *id) {
   const auth_principal *p = auth_principal_of(q);
   bool known = p && (p->account[0] || p->pubkey[0]), admin = p && p->admin;
   // the importer is Splice's: a world of another kind imports nothing
-  return wr_asset_write(auth_same_site(q), known, admin, w->exists && !strcmp(w->kind, "splice") && wr_loads(cs(id), cs(w->kind)) && wr_authored(cs(id), cs(w->kind), wr_asset_what()));
+  return wr_asset_write(auth_same_site(q), known, admin, w->exists && !strcmp(w->kind, "splice-bots") && wr_loads(cs(id), cs(w->kind)) && wr_authored(cs(id), cs(w->kind), wr_asset_what()));
 }
 // The lane a read of the assets names: dev's pack, or live's.
 static const char *asset_lane(const request *q, const world_row *w) {
@@ -595,7 +595,7 @@ static void asset_list(const request *q, PGconn *db, const char *id) {
   world_row w;
   if (!row_read(db, id, false, &w)) { refuse(q->fd, 500, cs("not read"), -1); return; }
   char write[4] = "";
-  int64_t verdict = api_query(q, "write", write, sizeof write) && write[0] == '1' ? asset_may(q, &w, id) : wr_read(w.exists && !strcmp(w.kind, "splice") && wr_loads(cs(id), cs(w.kind)), wr_lane(cs("dev")), 0);
+  int64_t verdict = api_query(q, "write", write, sizeof write) && write[0] == '1' ? asset_may(q, &w, id) : wr_read(w.exists && !strcmp(w.kind, "splice-bots") && wr_loads(cs(id), cs(w.kind)), wr_lane(cs("dev")), 0);
   if (verdict != 0) { refuse_verdict(q->fd, verdict); row_free(&w); return; }
   size_t pack_n = 0;
   char *pack = pack_read(db, id, asset_lane(q, &w), &pack_n);
@@ -608,7 +608,7 @@ static void asset_list(const request *q, PGconn *db, const char *id) {
 static void asset_pack(const request *q, PGconn *db, const char *id) {
   world_row w;
   if (!row_read(db, id, false, &w)) { refuse(q->fd, 500, cs("not read"), -1); return; }
-  if (wr_read(w.exists && !strcmp(w.kind, "splice") && wr_loads(cs(id), cs(w.kind)), wr_lane(cs("dev")), 0) != 0) { refuse_verdict(q->fd, wr_read(false, 0, 0)); row_free(&w); return; }
+  if (wr_read(w.exists && !strcmp(w.kind, "splice-bots") && wr_loads(cs(id), cs(w.kind)), wr_lane(cs("dev")), 0) != 0) { refuse_verdict(q->fd, wr_read(false, 0, 0)); row_free(&w); return; }
   // by hash: the bytes a tab was told of; else the lane's as it now is
   char live[80] = "";
   bool by_hash = api_query(q, "live", live, sizeof live) && strlen(live) == 64 && strspn(live, "0123456789abcdef") == 64;
@@ -1007,6 +1007,7 @@ int world_files_turn(const request *q, PGconn *db, char **out, char *words, size
   char *b = strdup(PQgetvalue(r, 0, 2));
   PQclear(r);
   if (!fits || !wf_world_ok(cs(world)) || !b) { free(b); snprintf(words, cap, "attachments is {world, ids: at most %d}", TURN_OPENS); return 400; }
+  { char was[sizeof world]; snprintf(was, sizeof was, "%s", world); coax_string named = wr_world_id(cs(was)); snprintf(world, sizeof world, "%.*s", (int)named.count, named.data); }   // an old world ID (world-alias.coax)
   coax_string ps = wf_project(cs(world));
   char project[56]; snprintf(project, sizeof project, "%.*s", (int)ps.count, ps.data);
   int64_t verdict = files_may(q, db, project);
@@ -1074,14 +1075,14 @@ static void world_list(const request *q, PGconn *db) {
     PGresult *r = PQexecParams(db,
       "SELECT d.id, d.kind, coalesce(m.name, ''), " API_REALM_ROLE_FACTS("d.id", "$1") " FROM verse.world_docs d "
       "LEFT JOIN verse.made_realms m ON m.slug = d.id CROSS JOIN LATERAL " API_REALM_ROLE_FROM("d.id", "$1") " "
-      "WHERE NOT verse.realm_hidden(d.id, $1, $2::boolean) ORDER BY d.id <> 'splice', d.id LIMIT 64", 2, NULL, v, NULL, NULL, 0);
+      "WHERE NOT verse.realm_hidden(d.id, $1, $2::boolean) ORDER BY d.id <> 'splice-bots', d.id LIMIT 64", 2, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("worlds: %s", PQerrorMessage(db)); PQclear(r); refuse(q->fd, 500, cs("not read"), -1); return; }
     for (int k = 0; k < PQntuples(r) && k < 24; k++) {
       const char *id = PQgetvalue(r, k, 0), *kind = PQgetvalue(r, k, 1);
       if (!kind_known(kind) || !wr_loads(cs(id), cs(kind)) || !wr_may(cs(id), cs(kind), a.admin, role_of(r, k, 3, a.admin))) continue;
       char name[64];
       coax_string sn = splice_world_name();
-      if (!strcmp(kind, "splice")) snprintf(name, sizeof name, "%.*s", (int)sn.count, sn.data);
+      if (!strcmp(kind, "splice-bots")) snprintf(name, sizeof name, "%.*s", (int)sn.count, sn.data);
       else snprintf(name, sizeof name, "%s", PQgetvalue(r, k, 2)[0] ? PQgetvalue(r, k, 2) : id);
       for (char *c = name; *c; c++) if ((unsigned char)*c < 32) *c = ' ';
       int w = snprintf(out + n, sizeof out - n, "world %s %s\n", id, name);
@@ -1142,6 +1143,11 @@ bool worlds_route(const request *q) {
   char id[40] = ""; const char *rest = q->path + rl; size_t k = 0;
   while (rest[k] && rest[k] != '/' && k < sizeof id - 1) { id[k] = rest[k]; k++; }
   id[k] = 0;
+  // a renamed world's old ID is its new one, so a saved link, the CLI, an MCP tool or a cached page
+  // that names it still works (world-alias.coax, #13486): /api/worlds/splice... is Splice Bots'
+  char was[sizeof id]; snprintf(was, sizeof was, "%s", id);
+  coax_string named = wr_world_id(cs(was));
+  snprintf(id, sizeof id, "%.*s", (int)named.count, named.data);
   const char *tail = rest + k;
   bool content = !strcmp(tail, "/content"), card = !strcmp(tail, "/card");
   bool assets = !strcmp(tail, "/assets"), pack = !strcmp(tail, "/assets/pack"), done = !strcmp(tail, "/assets/done");

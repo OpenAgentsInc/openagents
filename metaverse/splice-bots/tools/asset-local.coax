@@ -1,14 +1,14 @@
 // A world's imported assets on this computer (GitHub #13420, the browser editor's E11): what
-// `coax serve` answers for /api/worlds/splice/assets... on the dev server, so the editor imports
+// `coax serve` answers for /api/worlds/splice-bots/assets... on the dev server, so the editor imports
 // a dropped file before anything is deployed. The file is packed by the editor's importer
 // (metaverse-engine/editor/pack-import.coax) under Splice's limits (pieces.coax sp_import_limits),
 // and the pack and the dropped file are kept by content hash (asset-store.coax). Everyone on
 // this computer is the admin: the dev server listens on 127.0.0.1 only.
 //
 //   coax/web/tool.sh metaverse/splice-bots/tools/asset-local.coax DIR METHOD URL [BODY_FILE]
-//   GET  /api/worlds/splice/assets          the world's assets and the limits (world.assets.v1)
-//   GET  /api/worlds/splice/assets/pack     the import pack's bytes (404: it has imported nothing)
-//   POST /api/worlds/splice/assets          an import (world.asset.import.v1: a line, then the
+//   GET  /api/worlds/splice-bots/assets          the world's assets and the limits (world.assets.v1)
+//   GET  /api/worlds/splice-bots/assets/pack     the import pack's bytes (404: it has imported nothing)
+//   POST /api/worlds/splice-bots/assets          an import (world.asset.import.v1: a line, then the
 //                                           file's bytes): the list again, with what it did
 // It prints the status, a newline, and the answer's bytes, and exits 0 when it answered. A
 // refused import is 422 with the words ({"error":WORDS}), and nothing is kept. A mesh that
@@ -20,6 +20,7 @@
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/args.coax";
 #load "asset-store.coax";
+#load "../../../metaverse-engine/tools/world-was.coax";   // the world's files under its old ID move to its ID (#13486)
 
 AL_BODY :: SP_IMPORT_FILE * 2 + 512;   // a body is read past the file limit, so an oversize file is refused in words
 AlWork :: struct {
@@ -39,9 +40,11 @@ tool_main :: () -> int #export_c #effects(all) {
   if dir.count == 0 || url.count <= root.count || url[0..<root.count] != root { return al_refuse(w[..], 404, "not found"); }
   rest := url[root.count..<url.count];
   path := ct_part(rest, '?', 0);
-  id := ct_part(path, '/', 0); tail := path[id.count..<path.count];
+  named := ct_part(path, '/', 0); tail := path[named.count..<path.count];
+  id := world_alias(named);   // a renamed world's old ID is its new one (#13486)
   if id != SPW_ID || (tail != "/assets" && tail != "/assets/pack") || (method != "GET" && method != "POST") || (method == "POST" && tail != "/assets") { return al_refuse(w[..], 404, "no such world"); }
   ok := fs_mkdir(dir);
+  ww := [1] WwWork.[WwWork.{}]; moved := world_dir_move(ww[..], dir, id);   // the files the world kept under its old ID
   old := as_pack(dir, id, w[0].old[..]);
   if method == "GET" && tail == "/assets/pack" {
     if old.count == 0 { return al_refuse(w[..], 404, "this world has imported nothing"); }

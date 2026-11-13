@@ -1,8 +1,8 @@
-# Splice
+# Splice Bots
 
-An unlisted OpenAgents Metaverse Engine game at `/worlds/splice`: a robot smuggler scavenges
+An unlisted OpenAgents Metaverse Engine game at `/worlds/splice-bots`: a robot smuggler scavenges
 banned parts, splices them into a Digger in the rover's edit bay, and restores a scene the
-Emperor erased. The public page is `apps/openagents-web/realms/splice/index.md`. This file is
+Emperor erased. The public page is `apps/openagents-web/realms/splice-bots/index.md`. This file is
 for people and agents who change the code.
 
 ## Files
@@ -18,7 +18,7 @@ for people and agents who change the code.
 | `content/splice.content`, `content.coax` | The content tables and their reader |
 | `pieces.coax` | Which engine kit piece a row draws, and its measured footprint |
 | `layer.coax` | The colliders (a World of entities) and the edit layer |
-| `world.coax`, `world-api.coax` | Splice as the world `splice`: its document, its edits as the wire carries them, and what the API calls |
+| `world.coax`, `world-api.coax` | Splice Bots as the world `splice-bots` (once `splice`): its document, its edits as the wire carries them, and what the API calls |
 | `layer-draw.coax` | The layer's draw: a mesh for each kind, a row for each placed piece |
 | `walk.coax` | The walk replay: the second check of a layer |
 | `why.coax`, `why-checks.coax` | The answers to `coax drive ... "why ID"` and what `tree` lists: the diagnostic chain walked from the game's state (#13429) |
@@ -36,7 +36,7 @@ coax/remote/remote.sh run -- coax/remote/check.sh module splice   # the module b
 
 ## State and authority
 
-Splice's row in `metaverse-engine/editor/authority.coax` (#13431,
+Splice Bots' row in `metaverse-engine/editor/authority.coax` (#13431,
 [what the kinds are](../../docs/architecture/state-and-authority.md)):
 
 | Kind | Who decides |
@@ -63,7 +63,7 @@ picks).
 | Character | Body, outfit, height, skin, hair and face on the crew document, shown on a turntable. USE THIS CHARACTER keeps it in the crew page's record (`/worlds/crew` reads the same one) and starts a run |
 | Credits | The `credits` table's lines |
 
-There is no SETTINGS row: Splice has no sound and nothing a setting would change yet.
+There is no SETTINGS row: Splice Bots has no sound and nothing a setting would change yet.
 
 You play as your character. `metaverse-engine/kit/crew-player.coax` writes ten poses of a walk
 cycle from the crew document (the legs and arms swing at the hips and shoulders) into the piece
@@ -78,7 +78,7 @@ it go.
 
 ## Edit layer
 
-You can place things in Splice without changing its code. A placed piece is data: a row of a
+You can place things in Splice Bots without changing its code. A placed piece is data: a row of a
 content table, an entity in the engine's World, and a typed edit you can undo.
 
 ### Content tables
@@ -92,13 +92,13 @@ coax/web/tool.sh metaverse-engine/tools/content-edit.coax metaverse/splice-bots/
 coax/web/tool.sh metaverse/splice-bots/tools/content-check.coax metaverse/splice-bots/content/splice.content --carry
 ```
 
-The second command checks the tables against Splice's rules and writes `content/shipped.coax`,
+The second command checks the tables against Splice Bots' rules and writes `content/shipped.coax`,
 the copy the page is built with. Run it after every edit.
 
 | Table | What a row is |
 | --- | --- |
 | `pieces` | A placeable piece: a stable content ID, a name, the engine kit piece it draws, its size, its look, its footprint and its height |
-| `looks` | Three colours of Splice's palette. A table of its own, because a content table has eight columns at most |
+| `looks` | Three colours of Splice Bots' palette. A table of its own, because a content table has eight columns at most |
 | `landmarks` | A named place in centimetres, with a radius. The game reads its places from here, not from constants |
 | `kept_clear` | A zone the run needs: a box, grown by a radius. Nothing may be placed in one |
 | `areas` | Where a piece may stand at all: the dome village, the gate corridor, the rail stop and the mine |
@@ -109,7 +109,7 @@ the copy the page is built with. Run it after every edit.
 | `starts` | Where a player starts at a time of day. The row with the lowest ID is where a new run starts, at its time of day; a respawn at a time of day with a row goes to that row ([the module](../../metaverse-engine/world/flow.coax)) |
 | `beats` | Where the day moves on: standing in an area while it is `from` makes it `to`, never earlier |
 
-Splice now has 16 tables, the most a content document holds. A new kind of row goes in an
+Splice Bots now has 16 tables, the most a content document holds. A new kind of row goes in an
 existing table or needs the format's limit raised first.
 
 Edits and saves name a piece by its content ID. Names are for people and agents to read.
@@ -132,7 +132,7 @@ no model call at run time ([the module](../../metaverse-engine/ai/npc-plan.coax)
 | `speed`, `notice` | Centimetres a second, and how near you come before it notices (0: never) |
 | `on` | What it does on noticing you: `chase`, `call` (the others near it chase too), `flee` or `ignore` |
 
-The shipped rows are the movement Splice had in code, so play is unchanged. The table `clock` holds
+The shipped rows are the movement Splice Bots had in code, so play is unchanged. The table `clock` holds
 the editor's time of day (`story` in play). A route stays in the mine or in an area added after it
 (ID 5 and up, such as a desert), and a point inside a wall
 is refused with the nearest place a foe can stand. `world.coax` checks both on every cell edit.
@@ -185,12 +185,12 @@ Each edit is checked before it is taken. An edit is refused when the piece:
 A placed piece is scenery. It blocks you, the party's people and the camera, and it has no AI and
 no hit points.
 
-### The world `splice`
+### The world `splice-bots`
 
-Splice is the first world with an ID ([edits](../../docs/protocol/world-edit-v1.md),
+Splice Bots is the first world with an ID ([edits](../../docs/protocol/world-edit-v1.md),
 [the document](../../docs/protocol/world-doc-v1.md), [dev and live](../../docs/protocol/world-live-v1.md)).
 `world.coax` turns a wire edit into the calls above and answers its inverse. The API
-(`/api/worlds/splice`) runs the same file on every batch, then the walk replay, and saves the
+(`/api/worlds/splice-bots`) runs the same file on every batch, then the walk replay, and saves the
 document a fresh game builds from the pieces. Only an admin writes it.
 
 | Call | What it does |
@@ -200,7 +200,7 @@ document a fresh game builds from the pieces. Only an admin writes it.
 | `spw_open(g, k, text)`, `spw_save(g, k, out)` | A document read into a game and written from one |
 | `spw_page_open`, `spw_page_answer` | A page follows the world: the document once, then each saved edit in order. The run is not touched |
 
-Open `/worlds/splice?edit` on the dev server to join the dev lane. An edit from another tab or
+Open `/worlds/splice-bots?edit` on the dev server to join the dev lane. An edit from another tab or
 from outside shows in under a second, and a placed piece rises out of the ground.
 `coax/web/tool.sh world-tabs http://127.0.0.1:PORT` checks it with two headless tabs.
 
@@ -211,7 +211,7 @@ from outside shows in under a second, and a placed piece rises out of the ground
   the World's spatial index for what stands near, and the engine's walking rules push the walker
   out. No list is scanned.
 - **Order.** The World's placed pieces are built from the layer's items in ID order each time the
-  layer's revision changes. `sl_digest` is the World's digest plus Splice's shape columns, so two
+  layer's revision changes. `sl_digest` is the World's digest plus Splice Bots' shape columns, so two
   games given the same edits compare equal a step at a time.
 - **Draw.** Each kind's mesh is written once and stays on the GPU. A placed piece is one row of a
   small store: where it stands and its turn. A kind's placed pieces are one instanced draw. An
@@ -239,7 +239,7 @@ ground beside it):
 
 ```sh
 coax/web/serve.sh apps/openagents-web
-# then open http://127.0.0.1:8800/worlds/splice?layer=fixture
+# then open http://127.0.0.1:8800/worlds/splice-bots?layer=fixture
 ```
 
 Only an address on this computer (`127.0.0.1` or `localhost`) loads it. On any other address the

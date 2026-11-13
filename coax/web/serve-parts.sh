@@ -23,6 +23,7 @@ parts=(
   "site-routes coax/web/site-routes.coax"          # the site's routes
   "realm-origin coax/web/realm-origin.coax"        # the realm origin's rules (--realm-host, #13432)
   "code-wire metaverse-engine/editor/code-wire.coax" # the dev server's code route's codec (#13421)
+  "world-alias metaverse-engine/editor/world-alias-host.coax" # a renamed world's old ID in /api/worlds/... (#13486)
   "sha256-kernel coax/lib/crypto/sha256-kernel.coax" # a changed pack or texture is told by its SHA-256 (#13410)
 )
 
