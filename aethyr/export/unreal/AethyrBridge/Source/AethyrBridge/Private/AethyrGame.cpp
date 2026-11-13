@@ -1,4 +1,5 @@
 #include "AethyrGame.h"
+#include "AethyrManifest.h"
 
 #include "Camera/CameraComponent.h"
 #include "CanvasItem.h"
@@ -19,7 +20,11 @@
 #include "GameFramework/PlayerController.h"
 #include "GlobalRenderResources.h"
 #include "InputCoreTypes.h"
+#include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMaterialLibrary.h"
+#include "Sound/SoundBase.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/DataTable.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Materials/MaterialParameterCollection.h"
 #include "Misc/CommandLine.h"
@@ -144,6 +149,18 @@ void AAethyrGame::BeginPlay()
 		const FTCHARToUTF8 Body(*Text);
 		aethyr_message(State, 610, Body.Get(), Body.Length());
 	}
+	// -AethyrPlay: the exported run, played on this world so its things, sounds and screen are the game's own
+	if (FParse::Param(Args, TEXT("AethyrPlay")))
+	{
+#if AETHYR_HAS_SCRIPT
+		FString(UTF8_TO_TCHAR(AETHYR_RUN_SCRIPT)).ParseIntoArrayLines(PlayLines, false);
+		bPlaying = true;
+		FParse::Value(Args, TEXT("AethyrPlaySpeed="), PlaySpeed);
+		PlaySpeed = FMath::Clamp(PlaySpeed, 1, 64);
+		bExitAfterPlay = FParse::Param(Args, TEXT("AethyrExit"));
+#endif
+	}
+	SetUpThings();
 	if (FParse::Value(Args, TEXT("AethyrShot="), ShotPath)) { ShotAfter = 20; FParse::Value(Args, TEXT("AethyrShotAfter="), ShotAfter); bExitAfterShot = true; }
 #endif
 	if (APlayerController* Player = GetWorld()->GetFirstPlayerController())
@@ -282,7 +299,22 @@ void AAethyrGame::Tick(float DeltaSeconds)
 	if (GEngine && GEngine->GameViewport) { GEngine->GameViewport->GetViewportSize(Size); }
 	if (Size.X < 1 || Size.Y < 1) { Size = FVector2D(1280, 800); }
 	const double Before = FPlatformTime::Seconds();
-	OverlayCount = (int32)aethyr_frame(State, Vertices.GetData(), Uniforms.GetData(), Size.X, Size.Y, 1, FMath::Min(DeltaSeconds, 0.05f), 0);
+	if (bPlaying)
+	{
+		// the script's own frame length, several frames a tick when asked: the run is the same each time
+		for (int32 K = 0; K < PlaySpeed && bPlaying; K++)
+		{
+			if (!StepPlay()) { break; }
+			OverlayCount = (int32)aethyr_frame(State, Vertices.GetData(), Uniforms.GetData(), Size.X, Size.Y, 1, PlayDt, 0);
+			PlayEvents();
+		}
+	}
+	else
+	{
+		OverlayCount = (int32)aethyr_frame(State, Vertices.GetData(), Uniforms.GetData(), Size.X, Size.Y, 1, FMath::Min(DeltaSeconds, 0.05f), 0);
+		PlayEvents();
+	}
+	UpdateThings();
 	UpdateLive();
 	UpdateCamera();
 	UpdateLook();
@@ -414,4 +446,142 @@ AAethyrGameMode::AAethyrGameMode()
 {
 	DefaultPawnClass = nullptr;
 	HUDClass = AAethyrHUD::StaticClass();
+}
+
+// ---- things a host draws itself, and sounds
+
+UObject* AAethyrGame::OverrideFor(const FString& Row) const
+{
+	if (!Overrides) { return nullptr; }
+	const FAethyrOverrideRow* Found = Overrides->FindRow<FAethyrOverrideRow>(FName(*Row), TEXT("Aethyr"), false);
+	return Found ? Found->Asset.LoadSynchronous() : nullptr;
+}
+
+void AAethyrGame::SetUpThings()
+{
+#if AETHYR_HAS_RULES
+	if (!Manifest || !State) { return; }
+	// -AethyrNativeThings: every kind with an exported model is drawn with it, as a check of the path
+	const bool bAll = FParse::Param(FCommandLine::Get(), TEXT("AethyrNativeThings"));
+	for (int32 Kind = 0; Kind < Manifest->ThingKinds.Num(); Kind++)
+	{
+		const FString Name = Manifest->ThingKinds[Kind].ToString();
+		UStaticMesh* Whole = Cast<UStaticMesh>(OverrideFor(TEXT("thing.") + Name));
+		bool bNative = false;
+		for (int32 Variant = 0; Variant < 16; Variant++)
+		{
+			const FString Key = FString::Printf(TEXT("%s_v%d"), *Name, Variant);
+			UStaticMesh* Mesh = Cast<UStaticMesh>(OverrideFor(TEXT("thing.") + Key));
+			if (!Mesh) { Mesh = Whole; }
+			if (!Mesh && bAll) { if (const TObjectPtr<UStaticMesh>* Baked = Manifest->ThingMeshes.Find(FName(*Key))) { Mesh = *Baked; } }
+			if (Mesh) { NativeMeshes.Add(Kind * 16 + Variant, Mesh); bNative = true; }
+		}
+		if (bNative)
+		{
+			NativeKinds.Add(Kind);
+			aethyr_thing_hide(State, Kind, 1);
+			UE_LOG(LogAethyr, Display, TEXT("AETHYR_THINGS kind %s is drawn by Unreal%s"), *Name, Whole ? *FString::Printf(TEXT(" with %s"), *Whole->GetName()) : TEXT(""));
+		}
+	}
+#endif
+}
+
+void AAethyrGame::UpdateThings()
+{
+#if AETHYR_HAS_RULES
+	if (NativeKinds.Num() == 0) { return; }
+	float Things[48 * 8];
+	const int32 Count = aethyr_things(State, Things, 48 * 8);
+	int32 Used = 0;
+	for (int32 I = 0; I < Count; I++)
+	{
+		const float* T = Things + I * 8;
+		const int32 Kind = (int32)T[0], Variant = FMath::Clamp((int32)T[1], 0, 15);
+		if (!NativeKinds.Contains(Kind)) { continue; }
+		TObjectPtr<UStaticMesh>* Mesh = NativeMeshes.Find(Kind * 16 + Variant);
+		if (!Mesh) { Mesh = NativeMeshes.Find(Kind * 16); }
+		if (!Mesh) { continue; }
+		if (Used >= ThingPool.Num())
+		{
+			UStaticMeshComponent* Made = NewObject<UStaticMeshComponent>(this);
+			Made->SetupAttachment(RootComponent);
+			Made->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Made->SetMobility(EComponentMobility::Movable);
+			Made->RegisterComponent();
+			ThingPool.Add(Made);
+		}
+		UStaticMeshComponent* C = ThingPool[Used++];
+		if (C->GetStaticMesh() != *Mesh) { C->SetStaticMesh(*Mesh); }
+		// a thing faces +z in its own space; turned by its yaw about the world's up
+		C->SetWorldLocationAndRotation(ToUnreal(T[2], T[3], T[4]), FRotator(0.0f, -FMath::RadiansToDegrees(T[5]), 0.0f));
+		C->SetVisibility(true);
+	}
+	for (int32 I = Used; I < ThingPool.Num(); I++) { ThingPool[I]->SetVisibility(false); }
+#endif
+}
+
+void AAethyrGame::PlayEvents()
+{
+#if AETHYR_HAS_RULES
+	float Events[16];
+	const int32 Count = aethyr_events(State, Events, 16);
+	for (int32 I = 0; I < Count; I++)
+	{
+		const int32 Id = (int32)Events[I];
+		const FName* Name = Manifest ? Manifest->Events.Find(Id) : nullptr;
+		if (!Name) { continue; }
+		UE_LOG(LogAethyr, Display, TEXT("AETHYR_EVENT %s"), *Name->ToString());
+		if (USoundBase* Sound = Cast<USoundBase>(OverrideFor(TEXT("event.") + Name->ToString())))
+		{
+			UGameplayStatics::PlaySound2D(this, Sound);
+			UE_LOG(LogAethyr, Display, TEXT("AETHYR_SOUND %s %s"), *Name->ToString(), *Sound->GetName());
+		}
+	}
+#endif
+}
+
+// One step of the exported script on this actor's world. True when a frame should run now.
+bool AAethyrGame::StepPlay()
+{
+#if AETHYR_HAS_RULES
+	while (bPlaying)
+	{
+		if (PlayFrames > 0) { PlayFrames--; return true; }
+		if (PlayLine >= PlayLines.Num())
+		{
+			bPlaying = false;
+			UE_LOG(LogAethyr, Display, TEXT("AETHYR_PLAY %s"), bPlayFailed ? TEXT("FAILED") : TEXT("done"));
+			if (bExitAfterPlay) { UKismetSystemLibrary::QuitGame(this, nullptr, EQuitPreference::Quit, false); }
+			return false;
+		}
+		const FString Line = PlayLines[PlayLine++].TrimStartAndEnd();
+		TArray<FString> W;
+		Line.ParseIntoArrayWS(W);
+		if (W.Num() == 0 || W[0].StartsWith(TEXT("#")) || W[0] == TEXT("size")) { continue; }
+		if (W[0] == TEXT("key") && W.Num() >= 2)
+		{
+			const bool bNumber = W[1].Len() > 1 && (W[1][0] == TEXT('-') || FChar::IsDigit(W[1][0]));
+			aethyr_key(State, bNumber ? FCString::Atoi(*W[1]) : (int32)W[1][0], !(W.Num() > 2 && W[2] == TEXT("up")));
+		}
+		else if (W[0] == TEXT("click") && W.Num() == 3) { aethyr_pointer(State, FCString::Atof(*W[1]), FCString::Atof(*W[2]), 0); aethyr_pointer(State, FCString::Atof(*W[1]), FCString::Atof(*W[2]), 2); }
+		else if (W[0] == TEXT("msg") && W.Num() >= 2)
+		{
+			FString Body;
+			for (int32 K = 2; K < W.Num(); K++) { Body += (K > 2 ? TEXT(" ") : TEXT("")) + W[K]; }
+			const FTCHARToUTF8 Utf8(*Body);
+			aethyr_message(State, FCString::Atoi(*W[1]), Utf8.Get(), Utf8.Length());
+		}
+		else if (W[0] == TEXT("frames") && W.Num() == 3) { PlayFrames = FCString::Atoi(*W[1]); PlayDt = FCString::Atof(*W[2]) / 1000.0f; }
+		else if (W[0] == TEXT("expect") && W.Num() == 3)
+		{
+			const int32 Got = aethyr_fact(State, FCString::Atoi(*W[1]));
+			if (Got != FCString::Atoi(*W[2])) { bPlayFailed = true; UE_LOG(LogAethyr, Display, TEXT("AETHYR_PLAY FAIL line %d: fact %s is %d, expected %s"), PlayLine, *W[1], Got, *W[2]); PlayLine = PlayLines.Num(); }
+		}
+		else if (W[0] == TEXT("beat") && W.Num() >= 2)
+		{
+			UE_LOG(LogAethyr, Display, TEXT("AETHYR_PLAY beat %s mode %d zone %d phase %d hearts %d"), *W[1], aethyr_fact(State, 0), aethyr_fact(State, 1), aethyr_fact(State, 2), aethyr_fact(State, 3));
+		}
+	}
+#endif
+	return false;
 }

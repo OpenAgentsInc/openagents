@@ -46,6 +46,14 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Aethyr")
 	TObjectPtr<UMaterialParameterCollection> Look;
 
+	// The bundle's manifest: the kinds of thing, their meshes, the events' names.
+	UPROPERTY(EditAnywhere, Category = "Aethyr")
+	TObjectPtr<class UAethyrManifest> Manifest;
+
+	// What people replaced: a model for a kind of thing, a sound for an event.
+	UPROPERTY(EditAnywhere, Category = "Aethyr")
+	TObjectPtr<class UDataTable> Overrides;
+
 	UPROPERTY(EditAnywhere, Category = "Aethyr")
 	TObjectPtr<UFontFace> TextFace;
 
@@ -74,6 +82,29 @@ public:
 
 private:
 	void SendKeys(class APlayerController* Player);
+	void SetUpThings();
+	void UpdateThings();
+	void PlayEvents();
+	bool StepPlay();
+	UObject* OverrideFor(const FString& Row) const;
+
+	// one model for each (kind, variant) a host draws; empty for kinds the world draws
+	TMap<int32, TObjectPtr<class UStaticMesh>> NativeMeshes;
+	TSet<int32> NativeKinds;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<class UStaticMeshComponent>> ThingPool;
+
+	// -AethyrPlay: the exported script, stepped on this actor's own world
+	TArray<FString> PlayLines;
+	int32 PlayLine = 0;
+	int32 PlayFrames = 0;
+	float PlayDt = 0.02f;
+	int32 PlaySpeed = 1;
+	bool bPlaying = false;
+	bool bPlayFailed = false;
+	bool bExitAfterPlay = false;
+
 	void UpdateLive();
 	void UpdateCamera();
 	void UpdateLook();

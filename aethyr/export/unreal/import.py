@@ -305,6 +305,8 @@ GEN = "/Game/Aethyr/%s/Generated" % game
 content_dir = unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_content_dir())
 generated_rel = os.path.join("Aethyr", game, "Generated")
 before = content_outside(content_dir, generated_rel)
+OVERRIDES = "/Game/%s/Overrides" % game
+OVERRIDES_TABLE = OVERRIDES + "/DT_AethyrOverrides"
 
 glb_path = os.path.join(BUNDLE, manifest["world"]["file"])
 glb_bytes, glb_meshes = read_glb(glb_path)
@@ -315,6 +317,24 @@ tools = unreal.AssetToolsHelpers.get_asset_tools()
 levels = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
 actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
 checks = unreal.AethyrEditorChecks
+
+# ---- what a person moved in the last import's level (reported, then rebuilt: layout is Aethyr's)
+moved = []
+old_level = "%s/L_%s" % (GEN, game)
+if assets.does_asset_exist(old_level) and levels.load_level(old_level):
+    expected = {}
+    for i, b in enumerate(manifest["collision"]["boxes"]):
+        height = max(b["height"], BOX_MIN_HEIGHT)
+        expected["box_%02d" % i] = to_unreal(((b["x0"] + b["x1"]) * 0.5, height * 0.5, (b["z0"] + b["z1"]) * 0.5))
+    for p in manifest["placements"]:
+        expected[p["name"]] = to_unreal(p["at"])
+    for g in manifest["world"]["groups"]:
+        expected[g["name"]] = unreal.Vector(0, 0, 0)
+    for a in actors.get_all_level_actors():
+        want_at = expected.get(a.get_actor_label())
+        if want_at is not None and (a.get_actor_location() - want_at).length() > 0.5:
+            moved.append(a.get_actor_label())
+report["moved_by_hand"] = sorted(moved)
 
 # ---- rebuild Generated/ from nothing
 levels.load_level("/Engine/Maps/Entry")
@@ -337,7 +357,7 @@ meshes = {}
 for data in registry.get_assets_by_path(GEN, recursive=True):
     asset = data.get_asset()
     if isinstance(asset, unreal.StaticMesh):
-        meshes[asset.get_name()] = asset
+        meshes[asset.get_name()] = asset   # the world's only: the things' are imported after
 groups = manifest["world"]["groups"]
 check(len(meshes) == len(groups), "imported %d meshes, the manifest lists %d" % (len(meshes), len(groups)))
 
@@ -349,6 +369,34 @@ for mesh in meshes.values():
     if nanite.enabled:
         nanite.enabled = False
         mesh_tools.set_nanite_settings(mesh, nanite, True)
+
+# ---- the moving things' models: one mesh for each kind and variant
+thing_meshes = {}
+things = manifest.get("things")
+if things:
+    thing_task = unreal.AssetImportTask()
+    thing_task.filename = os.path.join(BUNDLE, things["file"])
+    thing_task.destination_path = GEN
+    thing_task.automated = True
+    thing_task.replace_existing = True
+    thing_task.save = False
+    tools.import_asset_tasks([thing_task])
+    wanted = {m["name"]: m for m in things["meshes"]}
+    for data in registry.get_assets_by_path(GEN, recursive=True):
+        asset = data.get_asset()
+        if isinstance(asset, unreal.StaticMesh) and asset.get_name() in wanted:
+            nanite = asset.get_editor_property("nanite_settings")
+            if nanite.enabled:
+                nanite.enabled = False
+                mesh_tools.set_nanite_settings(asset, nanite, True)
+            thing_meshes[asset.get_name()] = asset
+    checks.finish_compiling()
+    for name, m in wanted.items():
+        mesh = thing_meshes.get(name)
+        if not check(mesh is not None, "thing mesh %s is missing" % name):
+            continue
+        read = checks.read_mesh(mesh)
+        check(read is not None and len(read[2]) == m["triangles"] * 3, "thing mesh %s has %s triangles, the manifest says %d" % (name, "no" if read is None else len(read[2]) // 3, m["triangles"]))
 
 # ---- every vertex and triangle against world.glb
 checks.finish_compiling()
@@ -496,6 +544,43 @@ for p in placements:
     a.set_editor_property("kind", p["kind"])
     a.set_editor_property("marker_name", p["name"])
 
+# ---- what people replaced (/Game/<Game>/Overrides/DT_AethyrOverrides): read, never written,
+# apart from making the empty table the first time
+overrides = {}
+created_overrides = False
+table = assets.load_asset(OVERRIDES_TABLE) if assets.does_asset_exist(OVERRIDES_TABLE) else None
+if table is None:
+    table_factory = unreal.DataTableFactory()
+    table_factory.set_editor_property("struct", unreal.AethyrOverrideRow.static_struct())
+    table = tools.create_asset("DT_AethyrOverrides", OVERRIDES, unreal.DataTable, table_factory)
+    assets.save_asset(OVERRIDES_TABLE)
+    created_overrides = True
+else:
+    names = unreal.DataTableFunctionLibrary.get_data_table_row_names(table)
+    values = unreal.DataTableFunctionLibrary.get_data_table_column_as_string(table, "Asset")
+    for row, value in zip(names, values):
+        overrides[str(row)] = str(value)
+applied = []
+for a in actors.get_all_level_actors():
+    target = overrides.get("world." + a.get_actor_label())
+    if target and isinstance(a, unreal.StaticMeshActor):
+        replacement = assets.load_asset(target.split(".")[0])
+        if check(isinstance(replacement, unreal.StaticMesh), "override world.%s is not a static mesh: %s" % (a.get_actor_label(), target)):
+            a.static_mesh_component.set_static_mesh(replacement)
+            applied.append("world." + a.get_actor_label())
+for key, current in (("material.cel", "cel"), ("material.sky", "sky")):
+    target = overrides.get(key)
+    if target:
+        replacement = assets.load_asset(target.split(".")[0])
+        if check(isinstance(replacement, unreal.MaterialInterface), "override %s is not a material: %s" % (key, target)):
+            if current == "cel":
+                cel_material = replacement
+            else:
+                sky_material = replacement
+            applied.append(key)
+applied += sorted(k for k in overrides if k.startswith("thing.") or k.startswith("event."))   # the bridge applies these as the game runs
+report["overrides"] = {"table": OVERRIDES_TABLE, "created": created_overrides, "rows": sorted(overrides), "applied": sorted(applied)}
+
 # the host: the actor that runs the world's rules, and the game mode that gives it the screen
 host = actors.spawn_actor_from_class(unreal.AethyrGame, unreal.Vector(0, 0, 0))
 host.set_actor_label("AethyrGame")
@@ -513,6 +598,7 @@ if len(font_names) == 2:
     check(text_face is not None and title_face is not None, "the font faces %s were not found among %s" % (font_names, sorted(faces)))
     host.set_editor_property("text_face", text_face)
     host.set_editor_property("title_face", title_face)
+host.set_editor_property("overrides", table)
 level_world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
 level_world.get_world_settings().set_editor_property("default_game_mode", unreal.AethyrGameMode)
 
@@ -526,6 +612,11 @@ if check(keep is not None, "could not make the manifest asset"):
     keep.set_editor_property("meshes", len(groups))
     keep.set_editor_property("triangles", manifest["world"]["triangles"])
     keep.set_editor_property("tuning", {k: float(v) for k, v in manifest["tuning"].items()})
+    if things:
+        keep.set_editor_property("thing_kinds", things["kinds"])
+        keep.set_editor_property("thing_meshes", {name[len("thing_"):]: mesh for name, mesh in thing_meshes.items()})
+    keep.set_editor_property("events", {int(v): k for k, v in manifest.get("events", {}).items()})
+    host.set_editor_property("manifest", keep)
 # ---- what is there now, against the manifest
 world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
 rows = []
@@ -603,13 +694,17 @@ actors.destroy_actor(camera)
 host.sky.set_visibility(True)
 
 # the shots are taken with the plain vertex colour; the world wears the cel look from here
-for mesh in meshes.values():
+for mesh in list(meshes.values()) + list(thing_meshes.values()):
     mesh.set_material(0, cel_material)
+host.set_editor_property("live_material", cel_material)
+host.sky.set_material(0, sky_material)
 assets.save_directory(GEN, only_if_is_dirty=False, recursive=True)
 check(levels.save_current_level(), "could not save the level")
 
 after = content_outside(content_dir, generated_rel)
 changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+if created_overrides:
+    changed = [k for k in changed if "DT_AethyrOverrides" not in k]
 check(len(changed) == 0, "files outside Generated/ changed: " + ", ".join(changed[:8]))
 report["outside_generated_changed"] = changed
 

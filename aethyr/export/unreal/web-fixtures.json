@@ -1,0 +1,27 @@
+{
+  "about": "Browser runs of an Aethyr export's Unreal web build, for the engine's web harness (Engine/Platforms/Wasm/Build/Tools/web/webrun.py run --stage <WasmOut> --fixtures <this file> --fixture NAME --out <dir> [--query tier=forward|deferred]). The game prints AETHYR_ lines to the console; read them in <dir>/console.log.",
+  "fixtures": {
+    "aethyr-script": {
+      "about": "The bundle's scripted run on its own state (aethyr_script.c): the lines must equal the bundle's rules/run.expected.",
+      "args": "-log {harness} -AethyrScript",
+      "stop_after_ready": 40, "stop_after": 0, "timeout": 400
+    },
+    "aethyr-play": {
+      "about": "The bundle's scripted run played on screen by the game itself, 16 frames a tick: AETHYR_PLAY done, with events and things on the way.",
+      "args": "-log {harness} -AethyrPlay -AethyrPlaySpeed=16",
+      "stop_after_ready": 60, "stop_after": 0, "timeout": 400
+    },
+    "aethyr-mine": {
+      "about": "Stands at the mine (stage 5) for 20 s: AETHYR_STATE lines carry frame and host milliseconds; a page shot at the end.",
+      "args": "-log {harness} -AethyrStage=5 -AethyrNoInput",
+      "stop_after_ready": 20, "stop_after": 0, "timeout": 400,
+      "page": ["--input-anchor", "READY", "--input", "15:shot=mine"]
+    },
+    "aethyr-keys": {
+      "about": "Real keys from the title: Enter starts the run, W held walks out through the scanner gate; AETHYR_STATE must reach zone 1 (the rail).",
+      "args": "-log {harness}",
+      "stop_after_ready": 30, "stop_after": 0, "timeout": 400,
+      "page": ["--input-anchor", "READY", "--input", "3:shot=title;4:key=Enter;6:down=w;22:up=w;23:shot=rail"]
+    }
+  }
+}
