@@ -292,7 +292,7 @@
           "font:/build/zeron/GeistMono.ttf",
           "icons:/build/zeron/icons.json",
           "licence:/build/zeron/Geist-OFL.txt",
-          "pack:/realms/character-creator/assets/fantasy.pack.gz"
+          "pack:/realms/character-creator/assets/fantasy.rigs.pack.gz"
         ]
       }
     },

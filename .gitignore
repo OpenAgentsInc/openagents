@@ -82,6 +82,8 @@ metaverse-engine/lab/.cache/
 /apps/openagents-web/realms/everglade-experimental/assets/glade.pack
 # Range-addressable packs: apps/openagents-web/build.sh writes each from its tracked .pack (#13001).
 /apps/openagents-web/realms/**/*.vpk3
+# A pack with its rig entry: apps/openagents-web/build.sh writes it from the tracked pack and everglade/model/rigs.vrg (#13306).
+/apps/openagents-web/realms/**/*.rigs.pack.gz
 
 # libsodium for the Ed25519 differential test (ed25519_libsodium.py); never committed or shipped.
 coax/tests/auth/.cache/

@@ -206,6 +206,15 @@ vpk3s() {
     "$here/../../coax/web/tool.sh" "$here/../../metaverse-engine/tools/page-pack.coax" "$celled" "$vpk3" > /dev/null
     rm -f "$rigged" "$celled" "$celled.sealed"
   done
+  # WorldBuilder's people (its second pack, the character pack) take the rigs its zone bakes as their
+  # rig entry: the people's and the two-handed clips' (#13306). The pack with them is written beside
+  # the tracked one and is what realms.json names; it is rewritten only when its inputs changed.
+  local people="$here/realms/character-creator/assets/fantasy" rigs="$here/../../everglade/model/rigs.vrg"
+  if [[ ! -f "$people.rigs.pack.gz" || "$people.pack" -nt "$people.rigs.pack.gz" || "$rigs" -nt "$people.rigs.pack.gz" || "$here/../../everglade/model/tools/rig-pack.coax" -nt "$people.rigs.pack.gz" ]]; then
+    "$here/../../coax/web/tool.sh" "$here/../../everglade/model/tools/rig-pack.coax" --into "$rigs" "$people.pack" "$here/build/fantasy-rigs.pack" people two-hand > /dev/null
+    gzip -9 -n -c "$here/build/fantasy-rigs.pack" > "$people.rigs.pack.gz.new"
+    mv "$people.rigs.pack.gz.new" "$people.rigs.pack.gz"; rm -f "$here/build/fantasy-rigs.pack"
+  fi
   # Block builds (GitHub #13305): Everglade's layers as GPU blocks with their mip chains, NAME.TAG.vpk3
   # beside the pack, one a format its blocks: asset lists; host.js loads the one this device's GPU takes.
   local builds=()
