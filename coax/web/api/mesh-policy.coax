@@ -2,11 +2,23 @@
 // atomic database counts and bytes from a deployment-owned native fleet route.
 // No caller can select an upstream, provider or checkpoint. This is a free,
 // bounded demo profile; it does not grant paid inference credit or attestation.
+// A route is a fleet door (url, checkpoint identity, provider) or Google's
+// Gemini Decision 1 ({"backend":"gemini"}, mesh-gemini.coax translates). The
+// model "auto" takes the deployment's door order (OA_DECISION_ORDER): the
+// first configured door answers, and a door that fails (502, 503, 504) hands
+// the request to the next (docs/research/2026-11-13-gemini-decision-1.md).
 #load "../../lib/nostr/json.coax";
 #authority;
 
 MgField :: struct {ok:bool;kind:int;value:string;}
-MgRoute :: struct {status:int;url:string;identity:string;provider:string;}
+MgRoute :: struct {status:int;url:string;identity:string;provider:string;backend:int;model:string;next:int;}
+MG_FLEET :: 0;                // a fleet door: the body goes to url as it is
+MG_GEMINI :: 1;               // Google's Decisions API: mesh-gemini.coax maps the body and the answer
+MG_GEMINI_URL :: "https://generativelanguage.googleapis.com/v1beta/decisions";
+MG_GEMINI_IDENTITY :: "gemini-decision-1";
+MG_GEMINI_PROVIDER :: "google";
+MG_AUTO :: "auto";            // the model that takes the door order
+MG_ORDER_MAX :: 8;            // doors in an order
 MG_BODY_MAX :: 16384;
 MG_ROUTES :: "{\"elephant-1\":{\"url\":\"http://127.0.0.1:8801/v1/systemone\",\"identity\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"provider\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}";
 MG_BODY :: "{\"model\":\"elephant-1\",\"state\":\"water\",\"questions\":{\"wet\":{\"type\":\"choice\",\"criteria\":{\"yes\":null,\"no\":null}}}}";
@@ -131,12 +143,143 @@ mg_hex :: (text:string)->bool #effects(all) {
 mg_route :: (body:string,routes:string)->MgRoute #export_c #effects(all) {
     model:=mg_field(body,"model");
     if model.kind!=JSON_STRING || model.value.count<1 || model.value.count>128 {return MgRoute.{status=400};}
-    row:=mg_field(routes,model.value);if !row.ok {return MgRoute.{status=400};}
+    return mg_row(model.value,routes);
+}
+// The route a deployment configured under name: 400 when there is none, 503 when it is malformed.
+mg_row :: (name:string,routes:string)->MgRoute #effects(all) {
+    row:=mg_field(routes,name);if !row.ok {return MgRoute.{status=400};}
     if row.kind!=JSON_OBJECT {return MgRoute.{status=503};}
+    backend:=mg_field(row.value,"backend");
+    if backend.ok {
+        if backend.kind!=JSON_STRING || backend.value!="gemini" {return MgRoute.{status=503};}
+        url:=mg_field(row.value,"url");
+        if url.ok && (url.kind!=JSON_STRING || !mg_gemini_url(url.value)) {return MgRoute.{status=503};}
+        return MgRoute.{status=200,url=ifx url.ok then url.value else MG_GEMINI_URL,identity=MG_GEMINI_IDENTITY,provider=MG_GEMINI_PROVIDER,backend=MG_GEMINI,model=name};
+    }
     url:=mg_field(row.value,"url");identity:=mg_field(row.value,"identity");provider:=mg_field(row.value,"provider");
     if provider.kind!=JSON_STRING {return MgRoute.{status=503};}
-    if !mg_identity(model.value,identity.value,provider.value) || !mg_url(url.value) {return MgRoute.{status=503};}
-    return MgRoute.{status=200,url=url.value,identity=identity.value,provider=provider.value};
+    if !mg_identity(name,identity.value,provider.value) || !mg_url(url.value) {return MgRoute.{status=503};}
+    return MgRoute.{status=200,url=url.value,identity=identity.value,provider=provider.value,backend=MG_FLEET,model=name};
+}
+
+#test "a Gemini route binds Google's endpoint, model and provider; the deployment may point it at a stand-in" {
+    g:=mg_route("{\"model\":\"gemini-decision-1\"}","{\"gemini-decision-1\":{\"backend\":\"gemini\"}}");
+    #assert g.status==200 && g.backend==MG_GEMINI && g.url==MG_GEMINI_URL && g.identity=="gemini-decision-1" && g.provider=="google" && g.model=="gemini-decision-1";
+    s:=mg_row("gemini-decision-1","{\"gemini-decision-1\":{\"backend\":\"gemini\",\"url\":\"http://127.0.0.1:9/v1beta/decisions\"}}");
+    #assert s.status==200 && s.url=="http://127.0.0.1:9/v1beta/decisions";
+    #assert mg_row("g","{\"g\":{\"backend\":\"gemini\",\"url\":\"http://x/v1/systemone\"}}").status==503;
+    #assert mg_row("g","{\"g\":{\"backend\":\"gemini\",\"url\":3}}").status==503;
+    #assert mg_row("g","{\"g\":{\"backend\":\"jev\"}}").status==503;
+    #assert mg_row("g","{\"g\":{\"backend\":1}}").status==503;
+    #assert mg_row("x","{\"g\":{\"backend\":\"gemini\"}}").status==400;
+    f:=mg_route(MG_BODY,MG_ROUTES);#assert f.backend==MG_FLEET && f.model=="elephant-1";
+    #assert mg_gemini_url("https://generativelanguage.googleapis.com/v1beta/decisions") && mg_gemini_url("http://x/v1beta/decisions");
+    #assert !mg_gemini_url("ftp://x/v1beta/decisions") && !mg_gemini_url("https://x/v1beta/decision") && !mg_gemini_url("http://x/v1beta/decisions?k=1");
+    #assert !mg_gemini_url("https:///v1beta/decisions") && !mg_gemini_url("http:///v1beta/decisions");
+    #assert mg_gemini_url("https://x/v1beta/decisions") && mg_gemini_url("http://x/v1beta/decisions");
+    for c:[6]u8.[33,36,64,93,126,'a'] {u:[32]u8;w:=json_raw(u[..],0,"http://x");u[w]=c;w=json_raw(u[..],w+1,"/v1beta/decisions");#assert mg_gemini_url(cast(string)u[0..<w]);}
+    for c:[8]u8.[0,32,127,200,'\\','"','?','#'] {u:[32]u8;w:=json_raw(u[..],0,"http://x");u[w]=c;w=json_raw(u[..],w+1,"/v1beta/decisions");#assert !mg_gemini_url(cast(string)u[0..<w]);}
+    long:[1030]u8;for i:0..<1030 {long[i]='a';}head:="https://";for i:0..<head.count {long[i]=head[i];}
+    tail:="/v1beta/decisions";for n:[2]int.[1024,1025] {for i:0..<tail.count {long[n-tail.count+i]=tail[i];}#assert mg_gemini_url(cast(string)long[0..<n])==(n<=1024);}
+}
+// Google's endpoint or a deployment's stand-in for it: HTTP(S), ending in /v1beta/decisions.
+mg_gemini_url :: (url:string)->bool #effects(all) {
+    if url.count>1024 {return false;}
+    http:=mg_starts(url,"http://");https:=mg_starts(url,"https://");
+    if !http && !https {return false;}
+    start:=ifx http then 7 else 8;
+    if url.count<=start+17 || !mg_ends(url,"/v1beta/decisions") {return false;}
+    for c:url {if c<=32 || c>=127 || c=='\\' || c=='"' || c=='?' || c=='#' {return false;}}
+    return true;
+}
+
+#test "auto takes the deployment's order: the first configured door, then the next after a failure" {
+    routes:="{\"gemini-decision-1\":{\"backend\":\"gemini\"},\"elephant-1\":{\"url\":\"http://127.0.0.1:8801/v1/systemone\",\"identity\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"provider\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}";
+    a:=mg_order(routes,"gemini-decision-1,elephant-1",0);
+    #assert a.status==200 && a.backend==MG_GEMINI && a.next==1;
+    b:=mg_order(routes,"gemini-decision-1,elephant-1",a.next);
+    #assert b.status==200 && b.backend==MG_FLEET && b.model=="elephant-1" && b.next==2;
+    #assert mg_order(routes,"gemini-decision-1,elephant-1",b.next).status==503;
+    c:=mg_order(routes,"clef,gemini-decision-1",0);
+    #assert c.status==200 && c.model=="gemini-decision-1" && c.next==2;
+    #assert mg_order(routes,"elephant-1",0).model=="elephant-1";
+    #assert mg_order(routes,"",0).status==503 && mg_order(routes,"clef",0).status==503;
+    #assert mg_order("{\"x\":{}}","x,gemini-decision-1",0).status==503;
+    #assert mg_order(routes,"gemini-decision-1,,elephant-1",0).status==503;
+    #assert mg_order(routes,"gemini-decision-1, elephant-1",0).status==503;
+    #assert mg_order(routes,"gemini-decision-1,auto",0).status==503;
+    #assert mg_order(routes,"gemini-decision-1,elephant-1,",0).status==503;
+    #assert mg_order(routes,"gemini-decision-1",-1).status==503;
+    nine:="a,b,c,d,e,f,g,h,gemini-decision-1";
+    #assert mg_order(routes,nine,0).status==503 && mg_order(routes,"a,b,c,d,e,f,g,gemini-decision-1",0).status==200;
+    n129:[160]u8;for i:0..<129 {n129[i]='n';}
+    #assert mg_order(routes,cast(string)n129[0..<129],0).status==503;
+    g:=",gemini-decision-1";for i:0..<g.count {n129[129+i]=g[i];}
+    #assert mg_order(routes,cast(string)n129[0..<129+g.count],0).status==503;
+    for i:0..<g.count {n129[128+i]=g[i];}
+    #assert mg_order(routes,cast(string)n129[0..<128+g.count],0).status==200;
+    #assert mg_order(routes,"!~,gemini-decision-1",0).status==200 && mg_order(routes,",gemini-decision-1,gemini-decision-1",0).status==503;
+    del:[24]u8;w:=json_raw(del[..],0,"x");del[w]=127;w=json_raw(del[..],w+1,",gemini-decision-1");
+    #assert mg_order(routes,cast(string)del[0..<w],0).status==503;
+    #assert mg_auto("{\"model\":\"auto\"}") && !mg_auto(MG_BODY) && !mg_auto("{}") && !mg_auto("{\"model\":1}");
+    #assert mg_retry(502) && mg_retry(503) && mg_retry(504);
+    #assert !mg_retry(200) && !mg_retry(400) && !mg_retry(422) && !mg_retry(429) && !mg_retry(501) && !mg_retry(505);
+}
+// Whether body asks for the door order.
+mg_auto :: (body:string)->bool #export_c #effects(all) {
+    model:=mg_field(body,"model");
+    return model.kind==JSON_STRING && model.value==MG_AUTO;
+}
+// The first configured door in order at or after position at (a comma list of route names, at most
+// MG_ORDER_MAX), with next its following position; 503 when none is left or the order is malformed.
+mg_order :: (routes:string,order:string,at:int)->MgRoute #export_c #effects(all) {
+    if at<0 {return MgRoute.{status=503};}
+    names:[MG_ORDER_MAX]string;n:=0;from:=0;
+    for i:0..<order.count+1 {
+        if i==order.count || order[i]==',' {
+            name:=order[from..<i];
+            if n==MG_ORDER_MAX || name.count<1 || name.count>128 || name==MG_AUTO {return MgRoute.{status=503};}
+            for c:name {if c<=32 || c>=127 {return MgRoute.{status=503};}}
+            names[n]=name;n+=1;from=i+1;
+        }
+    }
+    for k:at..<n {
+        r:=mg_row(names[k],routes);
+        if r.status==200 {r.next=k+1;return r;}
+    }
+    return MgRoute.{status=503};
+}
+// Whether a door's failure hands the request to the next door in the order.
+mg_retry :: (status:int)->bool #export_c #effects(all) {return status==502 || status==503 || status==504;}
+
+#test "the chosen door's model replaces auto, and nothing else in the body changes" {
+    out:[256]u8;
+    n:=mg_rename("{\"state\":\"x\",\"model\":\"auto\",\"q\":1}","elephant-1",out[..]);
+    #assert cast(string)out[0..<n]=="{\"state\":\"x\",\"model\":\"elephant-1\",\"q\":1}";
+    n=mg_rename("{\"model\" : \"auto\"}","g\"1",out[..]);
+    #assert cast(string)out[0..<n]=="{\"model\" : \"g\\\"1\"}";
+    n=mg_rename("{\"a\":{\"model\":1},\"b\":[2],\"model\":\"auto\"}","m",out[..]);
+    #assert cast(string)out[0..<n]=="{\"a\":{\"model\":1},\"b\":[2],\"model\":\"m\"}";
+    n=mg_rename("{\"x\":\"model\",\"y\":1,\"model\":\"auto\"}","m",out[..]);
+    #assert cast(string)out[0..<n]=="{\"x\":\"model\",\"y\":1,\"model\":\"m\"}";
+    #assert mg_rename("{\"state\":\"x\"}","m",out[..])==-1;
+    #assert mg_rename("{\"model\":3}","m",out[..])==-1;
+    #assert mg_rename("{\"model\":\"a\",\"model\":\"b\"}","m",out[..])==-1;
+    #assert mg_rename("[\"model\"]","m",out[..])==-1;
+    #assert mg_rename("{\"x\":{\"model\":\"auto\"}}","m",out[..])==-1;
+    tiny:[12]u8;#assert mg_rename("{\"model\":\"auto\"}","elephant-1",tiny[..])==-1;
+    fits:[22]u8;#assert mg_rename("{\"model\":\"auto\"}","elephant-1",fits[..])==22;
+    #assert mg_rename("{\"model\":\"auto\"}","elephant-1",fits[0..<21])==-1;
+}
+// body with its top-level model's value replaced by model, into out: the length, or -1.
+mg_rename :: (body:string,model:string,out:[]u8)->int #export_c #effects(all) {
+    if mg_field(body,"model").kind!=JSON_STRING {return -1;}
+    // mg_field held body as an object with one top-level model: walk its keys to it.
+    j:[1]Json;json_start(j[..],body);_=json_next(j[..]);_=json_next(j[..]);
+    while !json_is(json_text(j[..]),"model") {_=json_next(j[..]);_=json_skip(j[..]);_=json_next(j[..]);}
+    _=json_next(j[..]);from:=j[0].from;to:=j[0].to;
+    n:=json_raw(out,0,body[0..<from-1]);n=json_write_string(out,n,model);
+    return json_raw(out,n,body[to+1..<body.count]);
 }
 
 #test "the public response cannot substitute a model, checkpoint or provider" {

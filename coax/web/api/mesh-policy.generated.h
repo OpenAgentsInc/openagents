@@ -21,24 +21,40 @@ typedef struct { const char *data; int64_t count; } coax_string;
 
 typedef struct coax_t_MgRoute coax_t_MgRoute;
 #ifdef COAX_coax_t_MgRoute_DEFINED
-#ifndef COAX_SCHEMA_coax_t_MgRoute_31343a636f61782d632d747970652d7631363a73747275637431343a636f61785f745f4d67526f757465323a3536313a38313a34363a737461747573373a696e7436345f74313a30333a75726c31313a636f61785f737472696e67313a38383a6964656e7469747931313a636f61785f737472696e67323a3234383a70726f766964657231313a636f61785f737472696e67323a3430
+#ifndef COAX_SCHEMA_coax_t_MgRoute_31343a636f61782d632d747970652d7631363a73747275637431343a636f61785f745f4d67526f757465323a3838313a38313a37363a737461747573373a696e7436345f74313a30333a75726c31313a636f61785f737472696e67313a38383a6964656e7469747931313a636f61785f737472696e67323a3234383a70726f766964657231313a636f61785f737472696e67323a3430373a6261636b656e64373a696e7436345f74323a3536353a6d6f64656c31313a636f61785f737472696e67323a3634343a6e657874373a696e7436345f74323a3830
 #error "incompatible Coax C type coax_t_MgRoute"
 #endif
 #else
 #define COAX_coax_t_MgRoute_DEFINED
-#define COAX_SCHEMA_coax_t_MgRoute_31343a636f61782d632d747970652d7631363a73747275637431343a636f61785f745f4d67526f757465323a3536313a38313a34363a737461747573373a696e7436345f74313a30333a75726c31313a636f61785f737472696e67313a38383a6964656e7469747931313a636f61785f737472696e67323a3234383a70726f766964657231313a636f61785f737472696e67323a3430
-struct coax_t_MgRoute { int64_t status; coax_string url; coax_string identity; coax_string provider; };
+#define COAX_SCHEMA_coax_t_MgRoute_31343a636f61782d632d747970652d7631363a73747275637431343a636f61785f745f4d67526f757465323a3838313a38313a37363a737461747573373a696e7436345f74313a30333a75726c31313a636f61785f737472696e67313a38383a6964656e7469747931313a636f61785f737472696e67323a3234383a70726f766964657231313a636f61785f737472696e67323a3430373a6261636b656e64373a696e7436345f74323a3536353a6d6f64656c31313a636f61785f737472696e67323a3634343a6e657874373a696e7436345f74323a3830
+struct coax_t_MgRoute { int64_t status; coax_string url; coax_string identity; coax_string provider; int64_t backend; coax_string model; int64_t next; };
 #endif
-COAX_LAYOUT(sizeof(coax_t_MgRoute) == 56 && COAX_ALIGNOF(coax_t_MgRoute) == 8, "layout of MgRoute");
+#ifdef COAX_coax_v_u8_DEFINED
+#ifndef COAX_SCHEMA_coax_v_u8_31343a636f61782d632d747970652d7631343a76696577393a636f61785f765f7538323a3136313a38373a75696e74385f74
+#error "incompatible Coax C type coax_v_u8"
+#endif
+#else
+#define COAX_coax_v_u8_DEFINED
+#define COAX_SCHEMA_coax_v_u8_31343a636f61782d632d747970652d7631343a76696577393a636f61785f765f7538323a3136313a38373a75696e74385f74
+typedef struct { uint8_t *data; int64_t count; } coax_v_u8;
+#endif
+COAX_LAYOUT(sizeof(coax_t_MgRoute) == 88 && COAX_ALIGNOF(coax_t_MgRoute) == 8, "layout of MgRoute");
 COAX_LAYOUT(offsetof(coax_t_MgRoute, status) == 0, "offset of MgRoute.status");
 COAX_LAYOUT(offsetof(coax_t_MgRoute, url) == 8, "offset of MgRoute.url");
 COAX_LAYOUT(offsetof(coax_t_MgRoute, identity) == 24, "offset of MgRoute.identity");
 COAX_LAYOUT(offsetof(coax_t_MgRoute, provider) == 40, "offset of MgRoute.provider");
+COAX_LAYOUT(offsetof(coax_t_MgRoute, backend) == 56, "offset of MgRoute.backend");
+COAX_LAYOUT(offsetof(coax_t_MgRoute, model) == 64, "offset of MgRoute.model");
+COAX_LAYOUT(offsetof(coax_t_MgRoute, next) == 80, "offset of MgRoute.next");
 
 int64_t mg_http(coax_string method, coax_string content_type, int64_t bytes);
 int64_t mg_auth(_Bool authenticated, _Bool signed_request, _Bool payload_bound, _Bool first_use, _Bool has_origin, _Bool same_origin);
 int64_t mg_budget(int64_t minute, int64_t day, int64_t global_day, int64_t active, int64_t global_active);
 coax_t_MgRoute mg_route(coax_string body, coax_string routes);
+_Bool mg_auto(coax_string body);
+coax_t_MgRoute mg_order(coax_string routes, coax_string order, int64_t at);
+_Bool mg_retry(int64_t status);
+int64_t mg_rename(coax_string body, coax_string model, coax_v_u8 out);
 _Bool mg_response(coax_string body, coax_string response, coax_t_MgRoute route);
 
 #ifdef __cplusplus

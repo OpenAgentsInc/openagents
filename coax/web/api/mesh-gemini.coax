@@ -1,0 +1,74 @@
+// /api/v1/systemone's Gemini door (GitHub #13469): mesh.c sends a System One
+// body here when its route is {"backend":"gemini"} (mesh-policy.coax), posts
+// the result to Google's Decisions API, and sends Google's answer back here
+// to become our System One response. The mapping is the client's
+// (coax/lib/systemone/google.coax), so the server and a Coax caller agree
+// byte for byte. docs/research/2026-11-13-gemini-decision-1.md.
+#load "../../lib/systemone/google.coax";
+
+MggAnswer :: struct { status: int; count: int; }   // our HTTP status and the bytes written to out
+
+MGG_WORK :: 262144;   // the request's mapped form; the public body is at most 16 KiB
+
+// Google's request for body (a System One request), into out: its length, or -1 when Gemini
+// Decision 1 can't take it.
+mgg_request :: (body: string, out: [] u8) -> int #export_c #effects(all) {
+  b: [1] GdBody; ab: [32768] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  r := gd_from_systemone(b[..], body, out, ar[..]);
+  return ifx r.count > 0 then r.count else -1;
+}
+
+// What Google's reply (status and bytes) to body becomes: 200 and our System One response in
+// out; 400 (a rule of the request) or 422 (a safety block) with our error body in out; 503 for a
+// door that can't answer now (no such model, the key, a rate limit); 502 for Google's failure or an
+// answer that does not hold (the next door in an order is tried on 502, 503 and 504).
+mgg_response :: (body: string, status: int, google: string, out: [] u8) -> MggAnswer #export_c #effects(all) {
+  b: [1] GdBody; ab: [32768] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  work: [MGG_WORK] u8;
+  if gd_from_systemone(b[..], body, work[..], ar[..]).count == 0 { return MggAnswer.{status = 400}; }
+  if status == 200 {
+    mb: [256] u8; mar: [1] ClArena; mar[0].buf = mb[..];
+    model := cl_str(mar[..], body, "model");
+    mapped := gd_to_systemone(b[..], ifx model.count > 0 then model else GD_MODEL, google, out);
+    return ifx mapped.count > 0 then MggAnswer.{status = 200, count = mapped.count} else MggAnswer.{status = 502};
+  }
+  eb: [4096] u8; ear: [1] ClArena; ear[0].buf = eb[..];
+  e := gd_error(ear[..], status, google);
+  ours := mgg_status(e.kind);
+  if ours != 400 && ours != 422 { return MggAnswer.{status = ours}; }
+  text := gd_systemone_error(e, out);
+  return MggAnswer.{status = ours, count = text.count};
+}
+
+mgg_status :: (k: GdErrorKind) -> int {
+  return ifx k == GdErrorKind.invalid_request then 400 else ifx k == GdErrorKind.safety then 422
+    else ifx k == GdErrorKind.not_found || k == GdErrorKind.key || k == GdErrorKind.rate then 503 else 502;
+}
+
+#test "the ticket maps to Google's bytes, and Google's answer to ours" {
+  out: [4096] u8;
+  n := mgg_request(SO_TEST_BODY, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == GD_FX_TICKET_REQUEST;
+  a := mgg_response(SO_TEST_BODY, 200, GD_FX_TICKET_ANSWER, out[..]);
+  head := "{\"model\":\"decision-models/baseten-elephant-9b-latest\""; skip := "{\"model\":\"gemini-decision-1\"".count;
+  #assert a.status == 200 && cast(string) out[0..<head.count] == head;
+  #assert cast(string) out[head.count..<a.count] == GD_FX_TICKET_SYSTEMONE[skip..<GD_FX_TICKET_SYSTEMONE.count];
+}
+
+#test "refusals: what Google's errors become on our route" {
+  out: [4096] u8;
+  #assert mgg_request("{\"state\":\"x\",\"questions\":{\"c\":{\"type\":\"choice\",\"instructions\":\"?\",\"criteria\":{\"only\":null}}}}", out[..]) == -1;
+  #assert mgg_response("{}", 200, GD_FX_TICKET_ANSWER, out[..]).status == 400;
+  #assert mgg_response(SO_TEST_BODY, 200, "{\"answers\":{}}", out[..]).status == 502;
+  s := mgg_response(SO_TEST_BODY, 400, GD_FX_SAFETY, out[..]);
+  #assert s.status == 422 && cast(string) out[0..<s.count] == "{\"error\":{\"code\":\"safety\",\"message\":\"Request blocked due to safety violations (harmful content). Please modify your input and retry.\"}}";
+  i := mgg_response(SO_TEST_BODY, 400, GD_FX_ONE_OPTION, out[..]);
+  #assert i.status == 400 && cl_raw(cast(string) out[0..<i.count], "error.code") == "\"invalid_request\"";
+  #assert mgg_response(SO_TEST_BODY, 400, GD_FX_BAD_KEY, out[..]).status == 503 && mgg_response(SO_TEST_BODY, 400, GD_FX_BAD_KEY, out[..]).count == 0;
+  #assert mgg_response(SO_TEST_BODY, 404, GD_FX_NO_MODEL, out[..]).status == 503;
+  #assert mgg_response(SO_TEST_BODY, 429, GD_FX_QUOTA, out[..]).status == 503;
+  #assert mgg_response(SO_TEST_BODY, 500, GD_FX_SERVER, out[..]).status == 502;
+  #assert mgg_response(SO_TEST_BODY, 0, "", out[..]).status == 502;
+  tiny: [8] u8;
+  #assert mgg_response(SO_TEST_BODY, 200, GD_FX_TICKET_ANSWER, tiny[..]).status == 502;
+}

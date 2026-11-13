@@ -2,8 +2,12 @@
 // private.c's existing NIP-98 verifier/site session. Native Coax psionic-fleet
 // performs relay discovery, authenticated encrypted transport, failover and
 // decision validation; this host only moves bounded bytes and database rows.
+// A Gemini route goes to Google's Decisions API with OA_GEMINI_DECISIONS_KEY;
+// mesh-gemini.coax maps the body and the answer. The model "auto" walks the
+// door order in OA_DECISION_ORDER (mesh-policy.coax decides each step).
 #include "api.h"
 #include "mesh-policy.generated.h"
+#include "mesh-gemini.generated.h"
 #include <curl/curl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -95,33 +99,80 @@ static bool iam_token(const char *url, char out[4096]) {
   if (ok) memcpy(out, b.data, b.count + 1);
   free(b.data); curl_slist_free_all(headers); curl_easy_cleanup(h); return ok;
 }
-static void answer(const request *q, coax_t_MgRoute route, const char *id) {
+// One POST of n bytes to url with an optional extra header; the reply goes into b.
+static CURLcode post(const char *url, const char *body, size_t n, const char *header, bytes *b, long *http) {
+  CURL *h = curl_easy_init(); if (!h) return CURLE_FAILED_INIT;
+  struct curl_slist *headers = curl_slist_append(NULL, "Content-Type: application/json");
+  if (header && *header) headers = curl_slist_append(headers, header);
+  curl_easy_setopt(h, CURLOPT_URL, url); curl_easy_setopt(h, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(h, CURLOPT_POSTFIELDS, body); curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE, (long)n);
+  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, receive); curl_easy_setopt(h, CURLOPT_WRITEDATA, b);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, 30000L); curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, 3000L);
+  curl_easy_setopt(h, CURLOPT_PROTOCOLS_STR, "http,https"); curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 0L);
+  curl_easy_setopt(h, CURLOPT_PROXY, "");
+  CURLcode rc = curl_easy_perform(h); curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, http);
+  curl_slist_free_all(headers); curl_easy_cleanup(h); return rc;
+}
+// A fleet door: the body as it is, the answer checked against the route's identity.
+static int fleet(coax_t_MgRoute route, const char *body, size_t n, bytes *b) {
   char url[1025], token[4096], auth[4120];
   snprintf(url, sizeof url, "%.*s", (int)route.url.count, route.url.data);
-  bytes b = {0}; long http = 0; CURLcode rc = CURLE_FAILED_INIT;
-  CURL *h = curl_easy_init(); struct curl_slist *headers = NULL;
-  if (h && iam_token(url, token)) {
-    headers = curl_slist_append(NULL, "Content-Type: application/json");
-    if (token[0]) { snprintf(auth, sizeof auth, "Authorization: Bearer %s", token); headers = curl_slist_append(headers, auth); }
-    curl_easy_setopt(h, CURLOPT_URL, url); curl_easy_setopt(h, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(h, CURLOPT_POSTFIELDS, q->body); curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE, (long)q->body_len);
-    curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, receive); curl_easy_setopt(h, CURLOPT_WRITEDATA, &b);
-    curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, 30000L); curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, 3000L);
-    curl_easy_setopt(h, CURLOPT_PROTOCOLS_STR, "http,https"); curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 0L);
-    curl_easy_setopt(h, CURLOPT_PROXY, ""); rc = curl_easy_perform(h); curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &http);
+  long http = 0; CURLcode rc = CURLE_FAILED_INIT;
+  if (iam_token(url, token)) {
+    auth[0] = 0; if (token[0]) snprintf(auth, sizeof auth, "Authorization: Bearer %s", token);
+    rc = post(url, body, n, auth, b, &http);
   }
   memset(token, 0, sizeof token); memset(auth, 0, sizeof auth);
-  int status = rc == CURLE_OPERATION_TIMEDOUT ? 504 : 502;
-  if (rc == CURLE_OK) {
-    if (http == 200 && mg_response((coax_string){q->body, (int64_t)q->body_len}, (coax_string){b.data, (int64_t)b.count}, route)) status = 200;
-    else if (http == 400 || http == 413 || http == 422 || http == 429 || http == 503) status = (int)http;
+  if (rc != CURLE_OK) return rc == CURLE_OPERATION_TIMEDOUT ? 504 : 502;
+  if (http == 200 && mg_response((coax_string){body, (int64_t)n}, (coax_string){b->data, (int64_t)b->count}, route)) return 200;
+  return http == 400 || http == 413 || http == 422 || http == 429 || http == 503 ? (int)http : 502;
+}
+// Google's Decisions API: the body mapped to Google's shape, the answer mapped back into out.
+// A body Gemini Decision 1 can't take is 422; a refusal with our error body leaves it in out.
+static int gemini(coax_t_MgRoute route, const char *body, size_t n, bytes *out) {
+  const char *key = getenv("OA_GEMINI_DECISIONS_KEY");
+  if (!key || !*key || strlen(key) > 256) return 503;
+  char url[1025]; snprintf(url, sizeof url, "%.*s", (int)route.url.count, route.url.data);
+  char *g = malloc(MESH_MAX); if (!g) return 503;
+  int64_t m = mgg_request((coax_string){body, (int64_t)n}, (coax_v_u8){(uint8_t *)g, MESH_MAX});
+  if (m < 0) { free(g); return 422; }
+  char header[300]; snprintf(header, sizeof header, "x-goog-api-key: %s", key);
+  bytes b = {0}; long http = 0;
+  CURLcode rc = post(url, g, (size_t)m, header, &b, &http);
+  memset(header, 0, sizeof header); free(g);
+  if (rc == CURLE_OPERATION_TIMEDOUT) { free(b.data); return 504; }
+  char *o = malloc(MESH_MAX + 1); if (!o) { free(b.data); return 503; }
+  coax_t_MggAnswer a = mgg_response((coax_string){body, (int64_t)n}, rc == CURLE_OK ? (int64_t)http : 0,
+    (coax_string){b.data ? b.data : "", (int64_t)b.count}, (coax_v_u8){(uint8_t *)o, MESH_MAX});
+  free(b.data);
+  if (a.count > 0) { o[a.count] = 0; out->data = o; out->count = (size_t)a.count; } else free(o);
+  return (int)a.status;
+}
+static void answer(const request *q, coax_t_MgRoute route, const char *id, const char *routes, const char *order, bool automatic) {
+  bytes b = {0}; int status = 503;
+  char *renamed = automatic ? malloc(MESH_MAX + 256) : NULL;
+  while (true) {
+    const char *body = q->body; size_t n = q->body_len;
+    if (automatic) {
+      int64_t m = renamed ? mg_rename((coax_string){q->body, (int64_t)q->body_len}, route.model, (coax_v_u8){(uint8_t *)renamed, MESH_MAX + 256}) : -1;
+      if (m < 0) { status = 503; break; }
+      body = renamed; n = (size_t)m;
+    }
+    free(b.data); b = (bytes){0};
+    status = route.backend == 1 ? gemini(route, body, n, &b) : fleet(route, body, n, &b);
+    if (!automatic || !mg_retry(status)) break;
+    coax_t_MgRoute next = mg_order(view(routes), view(order), route.next);
+    if (next.status != 200) break;
+    route = next;
   }
+  free(renamed);
   PGconn *db = api_db_new();
   if (db && PQstatus(db) == CONNECTION_OK) finish(db, id, status);
   if (db) PQfinish(db);
-  if (status == 200) api_respond(q->fd, 200, "application/json", MESH_HEADERS, b.data, b.count);
+  // A fleet door's refusal body never reaches the caller; the Gemini door's is ours (mesh-gemini.coax).
+  if (status == 200 || (route.backend == 1 && (status == 400 || status == 422) && b.count > 0)) api_respond(q->fd, status, "application/json", MESH_HEADERS, b.data, b.count);
   else refuse(q->fd, status);
-  free(b.data); curl_slist_free_all(headers); if (h) curl_easy_cleanup(h);
+  free(b.data);
 }
 
 bool mesh_route(const request *q) {
@@ -135,15 +186,17 @@ bool mesh_route(const request *q) {
   bool has_origin = api_header(q, "Origin", from, sizeof from) != NULL;
   status = (int)mg_auth(authenticated, signed_request, payload, unseen, has_origin, !strcmp(from, origin()));
   if (status != 200) { refuse(q->fd, status); return true; }
-  const char *routes = getenv("OA_MESH_ROUTES");
+  const char *routes = getenv("OA_MESH_ROUTES"), *order = getenv("OA_DECISION_ORDER");
   if (!routes || !*routes) { refuse(q->fd, 503); return true; }
-  coax_t_MgRoute route = mg_route((coax_string){q->body, (int64_t)q->body_len}, view(routes));
+  if (!order) order = "";
+  bool automatic = mg_auto((coax_string){q->body, (int64_t)q->body_len});
+  coax_t_MgRoute route = automatic ? mg_order(view(routes), view(order), 0) : mg_route((coax_string){q->body, (int64_t)q->body_len}, view(routes));
   if (route.status != 200) { refuse(q->fd, (int)route.status); return true; }
   char id[32]; status = reserve(db, who, route.identity, id);
   if (status != 200) { refuse(q->fd, status); return true; }
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
-  if (pid == 0) { answer(q, route, id); _exit(0); }
+  if (pid == 0) { answer(q, route, id, routes, order, automatic); _exit(0); }
   if (pid < 0) { finish(db, id, 503); refuse(q->fd, 503); }
   return true;
 }

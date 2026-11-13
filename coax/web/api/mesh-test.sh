@@ -16,14 +16,15 @@ api_sources "$here" "$work" "${COAX:-$here/../../bin/coax}"
 "$cc" "${flags[@]}" -I"$work" -o "$work/api" "${API_SOURCES[@]}" -L"$pg/lib" -lpq -L"$secp/lib" -lsecp256k1 -L"$ssl/lib" -lssl -lcrypto -lcurl -lz -lm
 "$cc" "${flags[@]}" -o "$work/sign" "$here/sign.c" -L"$secp/lib" -lsecp256k1 -L"$ssl/lib" -lcrypto
 "$pg/bin/initdb" -D "$work/db" -U postgres -A trust >/dev/null
-port=$((56000 + RANDOM % 1000)); api_port=$((57000 + RANDOM % 1000)); export MESH_PORT=$((58000 + RANDOM % 1000))
+port=$((56000 + RANDOM % 1000)); api_port=$((57000 + RANDOM % 1000)); export MESH_PORT=$((58000 + RANDOM % 1000)) GEMINI_PORT=$((59000 + RANDOM % 1000))
 "$pg/bin/pg_ctl" -D "$work/db" -o "-p $port -k $work -c listen_addresses=''" -l "$work/db.log" -w start >/dev/null
 "$pg/bin/psql" -h "$work" -p "$port" -U postgres -q -c "CREATE DATABASE mesh_test"
 export OA_API_DATABASE="host=$work port=$port user=postgres dbname=mesh_test"
 export SIGN="$work/sign" MESH_KEY="$work/key"
 "$SIGN" --new "$MESH_KEY" >/dev/null
 hash=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-export OA_MESH_ROUTES="{\"elephant-1\":{\"url\":\"http://127.0.0.1:$MESH_PORT/v1/systemone\",\"identity\":\"elephant-1@sha256:$hash\",\"provider\":\"$hash\"}}"
+export OA_MESH_ROUTES="{\"elephant-1\":{\"url\":\"http://127.0.0.1:$MESH_PORT/v1/systemone\",\"identity\":\"elephant-1@sha256:$hash\",\"provider\":\"$hash\"},\"gemini-decision-1\":{\"backend\":\"gemini\",\"url\":\"http://127.0.0.1:$GEMINI_PORT/v1beta/decisions\"}}"
+export OA_DECISION_ORDER="gemini-decision-1,elephant-1" OA_GEMINI_DECISIONS_KEY="meshtest$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 export API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql"
 OA_API_ORIGIN="$API" "$work/api" --listen "127.0.0.1:$api_port" --migrations "$here/migrations" 2>"$work/api.log" & pid=$!
 for _ in $(seq 100); do curl -fsS "$API/api/playtest/health" >/dev/null 2>&1 && break; sleep 0.1; done

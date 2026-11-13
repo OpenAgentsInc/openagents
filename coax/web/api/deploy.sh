@@ -80,7 +80,7 @@ cp "$here"/*.c "$here"/*.h "$stage/src/"; cp -R "$here/migrations" "$here/Docker
 # deploy; release.sh already gates the compiler before it ships.
 (cd "$work/source" && coax/build.sh) > "$work/coax-build.log" 2>&1 || { tail -30 "$work/coax-build.log"; exit 1; }
 mkdir -p "$stage/gen"
-for m in nip98 mesh-policy caller-policy anime-director-policy seat-policy progress-policy item-policy moderation-policy character-policy worldbuilder-policy npc-personas auth-policy auth-seal agent-wire agent-attest auth-recover-policy auth-recover-crypto auth-life-policy passkey-policy passkey-verify auth-device-policy auth-device-crypto auth-push ticket-sign service-policy service-wire realm-wire seat-wire jobs-wire email-wire packs-wire world-policy; do
+for m in nip98 mesh-policy mesh-gemini caller-policy anime-director-policy seat-policy progress-policy item-policy moderation-policy character-policy worldbuilder-policy npc-personas auth-policy auth-seal agent-wire agent-attest auth-recover-policy auth-recover-crypto auth-life-policy passkey-policy passkey-verify auth-device-policy auth-device-crypto auth-push ticket-sign service-policy service-wire realm-wire seat-wire jobs-wire email-wire packs-wire world-policy; do
   "$work/source/coax/bin/coax" c "$here/$m.coax" --run-steps 250000000 --library --header "$stage/gen/$m.generated.h" > "$stage/gen/$m.generated.c"
 done
 # The money rules are the Payments context's (pay/, #13320): SOURCE:GENERATED.

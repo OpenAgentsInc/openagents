@@ -75,6 +75,36 @@ class Fleet(http.server.BaseHTTPRequestHandler):
 
 fleet = http.server.ThreadingHTTPServer(("127.0.0.1", int(os.environ["MESH_PORT"])), Fleet)
 threading.Thread(target=fleet.serve_forever, daemon=True).start()
+
+# A stand-in for Google's Decisions API (the Gemini door, mesh-gemini.coax).
+google_seen = []
+gmode = {"value": "ok"}
+GOOGLE_ANSWER = {"answers": {"wet": {"choice": "yes", "confidence": 0.97, "probabilities": {"no": 0.03, "yes": 0.97}, "type": "choice"}},
+                 "usage": {"total_tokens": 61, "total_input_tokens": 61, "input_tokens_by_modality": [{"modality": "text", "tokens": 61}], "total_output_tokens": 0}}
+GOOGLE_REFUSALS = {"safety": (400, {"error": {"code": "safety", "message": "Request blocked due to safety violations."}}),
+                   "badkey": (400, {"error": {"code": 400, "message": "API key not valid.", "status": "INVALID_ARGUMENT", "details": [{"reason": "API_KEY_INVALID"}]}}),
+                   "500": (500, {"error": {"code": 500, "message": "internal", "status": "INTERNAL"}}),
+                   "garbage": (200, {"answers": {}})}
+
+
+class Google(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        data = self.rfile.read(int(self.headers["Content-Length"]))
+        google_seen.append((self.path, data, dict(self.headers)))
+        status, value = GOOGLE_REFUSALS.get(gmode["value"], (200, GOOGLE_ANSWER))
+        raw = json.dumps(value).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def log_message(self, *args):
+        pass
+
+
+google = http.server.ThreadingHTTPServer(("127.0.0.1", int(os.environ["GEMINI_PORT"])), Google)
+threading.Thread(target=google.serve_forever, daemon=True).start()
 key = os.environ["MESH_KEY"]
 pubkey = subprocess.run([os.environ["SIGN"], "--key", key, "--pubkey"], check=True, capture_output=True, text=True).stdout.strip()
 
@@ -187,5 +217,57 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
     release.set()
     check("first task completes normally", first.result()[0] == 200)
 check("completed calls release leases and retain status", sql("SELECT count(*) FROM mesh.calls WHERE finished AND status=200") == "1")
+reset()
+GEMINI_BODY = {"state": "Water is wet.", "questions": {"wet": {"type": "choice", "instructions": "Is water wet?", "criteria": {"yes": None, "no": None}}}}
+GEMINI_SENT = (b'{"model":"gemini-decision-1","input":[{"type":"text","text":"Water is wet."}],"questions":{"wet":{"type":"choice",'
+               b'"instructions":"Is water wet?","criteria":{"yes":"","no":""}}}}')
+
+
+def gemini_body(model="gemini-decision-1", **overrides):
+    value = dict(GEMINI_BODY, model=model, nonce=secrets.token_hex(8))
+    value.update(overrides)
+    return json.dumps(value).encode()
+
+
+status, response, _ = signed(gemini_body())
+answer = json.loads(response) if status == 200 else {}
+check("a Gemini route answers in our contract", status == 200 and answer["model"] == "gemini-decision-1" and answer["answers"]["wet"]["choice"] == "yes"
+      and answer["service"] == {"door": "gemini", "identity": "gemini-decision-1", "provider": "google"} and answer["usage"] == {"input_tokens": 61, "output_tokens": 0})
+path, sent, sent_headers = google_seen[-1]
+check("Google receives the mapped request byte for byte", path == "/v1beta/decisions" and sent == GEMINI_SENT)
+check("Google receives the deployment's key and nothing of the caller's", sent_headers.get("x-goog-api-key") == os.environ["OA_GEMINI_DECISIONS_KEY"]
+      and "Authorization" not in sent_headers and "Cookie" not in sent_headers)
+reset()
+one = json.loads(gemini_body()); one["questions"]["wet"]["criteria"] = {"yes": None}
+before = len(google_seen)
+check("a request Gemini Decision 1 can't take is refused before Google", signed(json.dumps(one).encode())[0] == 422 and len(google_seen) == before)
+reset()
+gmode["value"] = "safety"
+status, response, _ = signed(gemini_body())
+check("a safety block is a 422 that names it", status == 422 and json.loads(response)["error"]["code"] == "safety")
+reset()
+gmode["value"] = "badkey"
+check("a refused key is the door being unavailable", signed(gemini_body())[0] == 503)
+reset()
+for value in ["500", "garbage"]:
+    gmode["value"] = value
+    check("Google's " + value + " is a 502", signed(gemini_body())[0] == 502)
+    reset()
+gmode["value"] = "ok"
+status, response, _ = signed(gemini_body(model="auto"))
+check("auto takes the first door in the order", status == 200 and json.loads(response)["model"] == "gemini-decision-1")
+reset()
+gmode["value"] = "500"
+fleet_before = len(seen)
+status, response, _ = signed(gemini_body(model="auto"))
+check("auto hands a failed door's request to the next, renamed", status == 200 and json.loads(response)["service"]["identity"] == IDENTITY
+      and len(seen) == fleet_before + 1 and json.loads(seen[-1][1])["model"] == MODEL)
+check("the renamed body keeps every other byte", json.loads(seen[-1][1])["questions"] == GEMINI_BODY["questions"])
+reset()
+mode["value"] = "503"
+check("auto refuses when every door fails", signed(gemini_body(model="auto"))[0] == 503)
+reset()
+gmode["value"] = "ok"
 fleet.shutdown()
+google.shutdown()
 print(f"mesh: {checks} scoped HTTP/database/upstream checks passed")
