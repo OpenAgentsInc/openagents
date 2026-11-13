@@ -2054,8 +2054,10 @@ g_play_run :: (g: [] SpGame) -> int {
   if !(g[0].boss_down && g[0].phase == PH_NIGHT && g[0].hearts > 0 && !sb_fighting(g)) { return 34; }
   co := sb_core_at(g); g[0].px = co.x; g[0].pz = co.z + 0.5;
   if !(g_key(g, 'e', true) && g[0].have[H_CORE]) { return 35; }
-  // back at Sniper: the core spliced in the edit bay
-  g[0].px = g[0].at.rover_x - 3; g[0].pz = g[0].at.rover_z;
+  // night: back to Sniper on foot by the shortcut through the rave, where the Imperial robots patrol (#13505)
+  wk := [1] SwWalker.[SwWalker.{}];
+  if !sp_night_walk(g, wk[..], false) { return 42; }
+  if !(g[0].zone == Z_MINE && near_rover(g, T_SAVE_RANGE) && g[0].have[H_CORE]) { return 43; }
   if !(g_key(g, -15, true)) { return 36; } if !(g_key(g, 'x', true)) { return 37; }
   if !(g[0].mode == M_MEMORY) { return 38; }
   for i: 0..<800 { g_step(g, 0.02); }
@@ -2063,6 +2065,67 @@ g_play_run :: (g: [] SpGame) -> int {
   if !(g_key(g, 'r', true)) { return 40; }
   if !(g[0].mode == M_PLAY && g[0].zone == Z_VILLAGE && !g[0].rubble_gone && g[0].hearts == T_HEARTS) { return 41; }
   return 0;
+}
+// The night return (#13505): after the boss, back to Sniper on foot, the long way round the field's
+// edge under the rim, past the bays, or the shortcut across the field through the rave, where the
+// Imperial robots patrol. Each is a list of places, walked with the walk replay's walker (walk.coax).
+SP_RAVE_WAY :: 5;
+sp_rave_way :: (g: [] SpGame, i: int) -> Point {
+  c := g[0].c[..];
+  ids := [SP_RAVE_WAY] int.[73, 16, 63, 62, 61];   // the hallway's mouth, the dance floor, the field by A1, the tunnel, Sniper's door
+  m := sc_mark(c, ids[i]); return v3(m.x, 0, m.z);
+}
+SP_LONG_WAY :: 10;
+sp_long_way :: (g: [] SpGame, i: int) -> Point {
+  c := g[0].c[..];
+  if i == 0 { m := sc_mark(c, 73); return v3(m.x, 0, m.z); }
+  if i >= SP_LONG_WAY - 3 { ids := [3] int.[63, 62, 61]; m := sc_mark(c, ids[i - (SP_LONG_WAY - 3)]); return v3(m.x, 0, m.z); }
+  // round the east side of the field, a few metres in from the bays: from the hallway's side (south) to the entry's (north)
+  return ga_pt(g, PI - cast(f32) i * PI / cast(f32) (SP_LONG_WAY - 3), g[0].at.gar_r - 6, 0);
+}
+sp_way_at :: (g: [] SpGame, long: bool, i: int) -> Point { return ifx long then sp_long_way(g, i) else sp_rave_way(g, i); }
+sp_way_n :: (long: bool) -> int { return ifx long then SP_LONG_WAY else SP_RAVE_WAY; }
+// Walks from the core to Sniper's door one way; false when a place on it can't be reached.
+sp_night_walk :: (g: [] SpGame, k: [] SwWalker, long: bool) -> bool {
+  for i: 0..<sp_way_n(long) { p := sp_way_at(g, long, i); if !sw_walk(g, k, p.x, p.z, 1.2) { return false; } }
+  return true;
+}
+// The nearest any leg of a way comes to a segment from (ax, az) to (bx, bz).
+sp_seg_gap :: (px: f32, pz: f32, ax: f32, az: f32, bx: f32, bz: f32) -> f32 {
+  dx := bx - ax; dz := bz - az; l := dx * dx + dz * dz;
+  t := ifx l > 0.0001 then lo(1, hi(0, ((px - ax) * dx + (pz - az) * dz) / l)) else 0.0f32;
+  return dist2(px, pz, ax + dx * t, az + dz * t);
+}
+sp_way_gap :: (g: [] SpGame, long: bool, i: int) -> f32 {
+  pl := sc_plan(g[0].c[..], i, PH_NIGHT); best := 1e9f32;
+  for w: 0..<sp_way_n(long) - 1 {
+    a := sp_way_at(g, long, w); b := sp_way_at(g, long, w + 1);
+    n := cast(int) (dist2(a.x, a.z, b.x, b.z) / 0.5) + 1;
+    for s: 0..<n + 1 {
+      f := cast(f32) s / cast(f32) n; x := a.x + (b.x - a.x) * f; z := a.z + (b.z - a.z) * f;
+      for q: 0..<pl.n { e := ifx q + 1 < pl.n then q + 1 else q; best = lo(best, sp_seg_gap(x, z, mp_m(pl.x[q]), mp_m(pl.z[q]), mp_m(pl.x[e]), mp_m(pl.z[e]))); }
+    }
+  }
+  return best;
+}
+#test "the night return: both ways back to Sniper walk through; the rave's way crosses the Imperial robots' night patrols, the long way stays out of their sensing" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}]; k := [1] SwWalker.[SwWalker.{}];
+  // after the boss: night, the core and the DRILL+ with her (Heat 50, two banned pieces)
+  for long: [2] bool.[false, true] {
+    g_stage(g[..], 10); g[0].boss_down = true; g[0].phase = PH_NIGHT; g[0].have[H_CORE] = true; g[0].heat = 50;
+    co := sb_core_at(g[..]); g[0].px = co.x; g[0].pz = co.z + 0.5; g_step(g[..], 0.02);
+    #assert sp_night_walk(g[..], k[..], long) && near_rover(g[..], T_SAVE_RANGE);
+  }
+  // every patrol point is ground a foe stands on, and the sensing at Heat 50: 8.5 m walking, half sneaking
+  far := d_noticed(g[..], T_NOTICE); #assert abs(far - 8.5) < 0.01;
+  crossed := 0;
+  for i: F_RAIDERS..<FOES {
+    pl := sc_plan(g[0].c[..], i, PH_NIGHT);
+    for q: 0..<pl.n { s := sl_push(g[..], mp_m(pl.x[q]), mp_m(pl.z[q]), 0.45, true); #assert abs(s.x - mp_m(pl.x[q])) < 0.01 && abs(s.z - mp_m(pl.z[q])) < 0.01; }
+    #assert sp_way_gap(g[..], true, i) > far + 20;     // the long way: well out of sensing
+    if sp_way_gap(g[..], false, i) < 0.5 { crossed += 1; }   // the rave: its patrol walks across the way
+  }
+  #assert crossed >= 2;
 }
 // The garage at dusk is quiet (#13505): the raiders are out scavenging and the Imperial robots recharging
 // at the solar farm, so no plan puts anyone in the ring or its bays; at night they are back, the

@@ -184,11 +184,11 @@ table plans id who:int when:text do:text route:text speed:int notice:int on:text
 80|8|dawn|patrol|-2240 -20080, -2740 -20080|180|500|chase
 81|8|day|patrol|-2240 -20080, -2740 -20080|180|500|chase
 82|8|dusk|stand|14000 1500|0|0|ignore
-83|8|night|patrol|-2240 -20080, -2740 -20080|180|500|chase
+83|8|night|patrol|1500 -18200, -1500 -18200|180|500|chase
 90|9|dawn|patrol|-3640 -19080, -3640 -20080|180|500|chase
 91|9|day|patrol|-3640 -19080, -3640 -20080|180|500|chase
 92|9|dusk|stand|14500 1500|0|0|ignore
-93|9|night|patrol|-3640 -19080, -3640 -20080|180|500|chase
+93|9|night|patrol|1500 -20800, -1500 -20800|180|500|chase
 table portals id name:text from:text to:text yaw:int r:int
 table scripts id name:text hash:text for:text
 table starts id when:text at:text yaw:int

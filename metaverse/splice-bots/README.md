@@ -149,6 +149,11 @@ to tow him, and Sniper's charger charges him back up. A foe Digger fights strike
   health left; stun all three with F (each stays down 12 s) and it powers down, drops its banned core,
   and night falls. You lose if your health or the mech's runs out: back at the checkpoint, the boss
   whole again and the mech repaired at the hallway.
+- **The night return.** After the boss, night falls and she goes back to Sniper on foot: the long way
+  round the field's edge under the rim, past the bays, or the shortcut across the field through the
+  rave, where Imperial 3 and 4 patrol across her way at night. They sense her by Heat (two banned
+  pieces: 8.5 m, half that sneaking), so sneaking is optional but helps. A check walks both ways with
+  the walk replay's walker, and the run takes the shortcut.
 - **The ending.** SPLICE CORE in Sniper's edit bay plays the 15-second memory hologram with its
   three captions, then SCENE RESTORED, then the mission's teaser with RESTART.
 
