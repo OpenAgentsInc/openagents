@@ -20,7 +20,7 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
 | `components/` | The component system ([spec](components/spec.md), GitHub #13153): one set of UI components in Coax for every app, in layers. `core/` (state and rules: the one Markdown parser, text, colour, syntax roles), `layout/` (measuring in pixels or terminal cells, the one line wrapper), `paint/` (the display list), `skin/` (tokens and frames: `zeron`, `everglade`, `verse`, `terminal`), `backend/` (`gpu.coax` and the one shader, `terminal.coax`), `kit/` (the components), `gallery/`, and `zeron/` (the chat set still moving onto the layers). Never write a second Markdown parser, line wrapper or edit buffer outside it; check with `coax/web/tool.sh components-check` |
 | `psionic/` | Psionic, the machine-learning library in Coax: `lib/`, the runnable `book/`, `examples/`, `platform/`, `tests/`, `fixtures/`, and its design notes in `docs/` (model surveys in `docs/targets/`, hosting and mesh notes in `docs/serving/`) |
 | `apps/openagents-ios/` | The iOS app: a UIKit and Metal shell around the Coax home. Bundle `com.openagents.app` |
-| `apps/openagents-web/` | openagents.com on Coaxial ([coax/web.md](coax/web.md)): the splash in Coax, drawn with WebGPU. `coax/web/` holds the browser host, the Coax-to-Wasm build, the `coax serve` dev server, and the HTTP API ([coax/web/api/COAX.md](coax/web/api/COAX.md): new API rules go in `#authority` `*-policy.coax`, SQL-rules routes move when next changed) |
+| `apps/openagents-web/` | openagents.com on Coax Native Web, formerly Coaxial ([coax/web.md](coax/web.md); the app framework is [Coax Native](coax/native.md)): the splash in Coax, drawn with WebGPU. `coax/web/` holds the browser host, the Coax-to-Wasm build, the `coax serve` dev server, and the HTTP API ([coax/web/api/COAX.md](coax/web/api/COAX.md): new API rules go in `#authority` `*-policy.coax`, SQL-rules routes move when next changed) |
 | `apps/openagents-cli/` | The `openagents` command line in Coax ([plan](docs/cli/2026-11-01-openagents-cli-v1.md)): `nostr` (your NIP-06 identity in a 0600 key file, never the Keychain unless `OPENAGENTS_KEYCHAIN=1`; signing and NIP-98) and `pylon` (start, stop, status and logs around `scripts/join-pylon.sh`). Build with `apps/openagents-cli/build.sh` |
 | `components/` | The one component system for every app and realm ([spec](components/spec.md), GitHub #13153). Today it holds `zeron/`, the chat components (GPUI's drawing model, the composer, Markdown, the transcript, tool chips, pickers) that openagents.com/chat, the Mac app and Metaverse Engine draw with; the spec's layers and skins are not built yet |
 | `os/` | Metaverse OS ([spec](docs/os/2026-11-02-verse-os.md)), which CoderOS becomes: the machine's programs in Coax (the compositor, desk, camera and hands, recording, CPU limits, the update agent, and the Metaverse OS session: `verse-session.coax` with `verse-boot`, `verse-agents`, `verse-panel`, `verse-hands` and the `#authority` `verse-pylon-policy`), and `os/nix/`, the NixOS modules, the realms package and the image (owner-approved 2026-11-02: the one place Nix lives here) |
@@ -117,7 +117,7 @@ Character Create's frozen save keys. Do not add new app-private source copies.
 
 ## Build and test
 
-Before you build a Coaxial page or a realm, read
+Before you build a Coax Native Web page or a realm, read
 [coax/start-here.md](coax/start-here.md): the workflow, the drive commands
 and the five costliest pitfalls. `coax vocab NAME` prints what a library
 name, keyword, error code or foreign spelling is.

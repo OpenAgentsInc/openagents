@@ -549,7 +549,7 @@ mutants of `bundle.coax`, the `#authority` file, and all 963 of
 ## Sources
 
 - [Chapter plan](PLAN.md), Part VI and the Coax feature map.
-- [Coaxial](../../coax/web.md): the browser host, the Coax-to-Wasm build and
+- [Coax Native Web](../../coax/web.md), formerly Coaxial: the browser host, the Coax-to-Wasm build and
   `coax serve`.
 - WebAssembly Core Specification 2.0: floating-point instructions are IEEE
   754 operations with round-to-nearest, including `f64.sqrt`.

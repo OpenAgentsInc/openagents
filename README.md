@@ -116,7 +116,8 @@ small model or sign and verify a Nostr event), see
 - **Coder** ([`coder/`](coder/)) is our coding agent; its
   [book](coder/book/README.md) builds the harness in Coax.
 - **openagents.com** ([`apps/openagents-web/`](apps/openagents-web/README.md))
-  runs on **Coaxial**, the Coax web framework ([design](coax/web.md),
+  runs on **Coax Native Web** (formerly Coaxial), the browser target of
+  [Coax Native](coax/native.md) ([design](coax/web.md),
   tools in [`coax/web/`](coax/web/)). Coax compiles to WebAssembly, a small
   generic host draws with WebGPU, and every visible thing on a page is Coax.
   - The homepage shows our projects as a live network, with the XP

@@ -1,6 +1,6 @@
 # Start here
 
-This is the one page you read before you build a Coaxial page or a realm in
+This is the one page you read before you build a Coax Native Web page (formerly Coaxial) or a realm in
 Coax. Everything else is lookup: `coax vocab NAME` for a name, `coax explain
 CODE` for a diagnostic, [LIBRARIES.md](LIBRARIES.md) for shared code, and the
 [book](book/README.md) and [spec](spec.md) when you need the whole story.

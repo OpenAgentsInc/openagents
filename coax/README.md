@@ -8,7 +8,7 @@ Building a Coax Native Web page or a realm? Read [start-here.md](start-here.md) 
 
 | Path | What |
 | --- | --- |
-| [`start-here.md`](start-here.md) | The one page to read before building a Coaxial page or realm: workflow, drive commands, costliest pitfalls |
+| [`start-here.md`](start-here.md) | The one page to read before building a Coax Native Web page or realm: workflow, drive commands, costliest pitfalls |
 | [`spec.md`](spec.md) | The language specification and implementation plan |
 | [`ROADMAP.md`](ROADMAP.md) | What to build next, dependencies, real consumers and completion gates for the full language |
 | [`STATUS.md`](STATUS.md), [`RELEASE.md`](RELEASE.md) | Generated current status and the single-source release/drift workflow |
@@ -16,7 +16,7 @@ Building a Coax Native Web page or a realm? Read [start-here.md](start-here.md) 
 | [`web.md`](web.md) | Coax Native Web, the browser target (formerly Coaxial), with historical decisions and open work |
 | [`native.md`](native.md) | Proposal: Coax Native, the shared app model, native hosts, platform services and agent interface |
 | [`native-updates.md`](native-updates.md) | Proposal: signed OTA code/content delivery, execution profiles, runtime compatibility, rollouts and recovery |
-| [`font.md`](font.md) | Proposal: Filament, the stroke font Coaxial pages draw text with |
+| [`font.md`](font.md) | Proposal: Filament, the stroke font Coax Native Web pages draw text with |
 | [`grammar.ebnf`](grammar.ebnf) | The bootstrap grammar for what coax0 accepts |
 | [`script-profile.md`](script-profile.md) | The realm-script profile: what `#script "name";` makes the compiler enforce, and `coax script` |
 | [`QUANTITIES.md`](QUANTITIES.md) | Initial compiler-owned scalar quantities, native layout evidence and remaining R12 work |

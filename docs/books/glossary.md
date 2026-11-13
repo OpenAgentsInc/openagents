@@ -72,7 +72,8 @@ that already touches the file (#13267 to #13269, #13280).
 | The Metaverse | The world that the Metaverse Engine runs: a set of realms on the open web. The `metaverse/` directory holds engine and realm code from before the engine had its own name. | Metaverse Engine Part VII |
 | Psionic | The machine-learning library: tensors, model execution, serving and training. | Psionic |
 | Coder | The coding agent. It speaks as "I". | Coder |
-| OpenAgents | The general agent and the company. It speaks as "we". | Coder plan |
+| OpenAgents | The general agent, its web and mobile apps, and the company. It speaks as "we". | [The OpenAgents Book](../../openagents/book/README.md) |
+| Execution owner | The one place that runs an agent task at a time: the device, a paired computer or a hosted service. Other clients present the task and never repeat its tool calls, model requests or payments. | [coax/native.md](../../coax/native.md#layers-and-execution-ownership) |
 
 ## Worlds
 

@@ -59,7 +59,7 @@ realm without one.
 
 ## 2. The module
 
-A realm's module is a Coaxial app (the full list of exports is in the header
+A realm's module is a Coax Native Web app (the full list of exports is in the header
 of `coax/web/host.js`). It is its own wasm, so one realm's size or a
 broken build never touches another's. The smallest realm module is the
 fixture (`fixture.coax`, `fixture-face.c`, 55 KB); the Haunted House

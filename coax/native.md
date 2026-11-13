@@ -50,6 +50,32 @@ services. Adding a native control backend is a proposed extension, not a
 claim that the existing GPU component kit already runs as UIKit controls.
 Realm rendering stays GPU-first.
 
+## Layers and execution ownership
+
+Four owners divide the work. Each layer uses the one below it and never
+reaches up.
+
+| Layer | Owns | Does not own |
+| --- | --- | --- |
+| Coax | The language, the compiler, the standard libraries and the targets (C11, Wasm, shaders) | App composition, product rules |
+| Coax Native | App composition: state, actions, routes, the assembly of `components/`, the platform-service boundary, hosts, `coax drive`, packaging and delivery | Product behavior, agent execution, worlds |
+| OpenAgents | Product and agent behavior: accounts, conversations, the general agent and its members, the payment rules in `pay/`, and the apps in `apps/` | A second framework or component toolkit |
+| Metaverse Engine | Worlds, simulation, room sessions, GPU render plans and authored audio | App navigation and forms |
+
+The application runtime is separate from agent execution. Coax Native runs
+the app: it draws state, takes input and admits effects. It does not run
+agent tasks on its own. Every agent task has exactly one execution owner at
+a time: the device, a paired computer or a hosted service. The task record
+names its owner, and a change of owner is an explicit, recorded handoff.
+
+Every other connected client presents that task. It reads the task record,
+sends input, approvals and cancellation to the owner, and draws the result.
+It does not repeat tool calls, model requests or payments. After a reconnect,
+a client resumes from the record; it never executes the task again. Shared
+application code, shared account and conversation data, and server-side
+agent execution are three different things, and a design names which one it
+means.
+
 ## Current foundation
 
 The following is the starting inventory on 2026-11-13. Existing modules are

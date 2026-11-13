@@ -1,4 +1,4 @@
-# Filament: a stroke font for Coaxial
+# Filament: a stroke font for Coax Native Web
 
 Proposal, 2026-10-28. Status: stages 1, 2, 6 and the HUD's symbols are built (`metaverse-engine/ui/font.coax`); lowercase draws as capitals until stage 3. Stage 6 covers Latin-1 Supplement and Latin Extended-A (U+00C0 to U+017F): a base letter plus one of 20 marks, or a glyph of its own for ß, Æ, Þ, Œ, Ĳ and Ŋ. Common emoji (about 70) draw as 8 × 8 pixel pictures in colour, and any other character draws as a tofu box, never `?` (#12786).
 
@@ -67,7 +67,7 @@ Built in this order. Each stage is usable on its own.
 | 6 | Latin-1 accents, built from a base letter plus a mark | ~60 | names and other languages |
 
 That makes about 107 glyphs before accents. Anything else falls back to the
-HTML text layer that every Coaxial page already keeps for search engines and
+HTML text layer that every Coax Native Web page already keeps for search engines and
 screen readers.
 
 ## Data format

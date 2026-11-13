@@ -55,7 +55,7 @@ the calls after it reuse it.
 2. **Opens a page.** Each call's page is a new tab in a new browser context:
    no cookies, storage or HTTP cache from an earlier call. This is what a new
    browser profile gave before. A `--keep` call first checks the kept page.
-3. **Loads the URL and waits until it is ready,** as before: a Coaxial page
+3. **Loads the URL and waits until it is ready,** as before: a Coax Native Web page
    has drawn its first scene and its loading card is gone.
 4. **Waits until the page is settled** (below), at most `WAIT_MS`.
 5. **Runs `--eval`,** waits for three frames and for the picture to stand
@@ -188,7 +188,7 @@ on average: the page itself varies there from run to run.
   rest for Chrome to read it back and encode it. A clip that costs its own
   length needs a frame in 33 ms. That needs the page to hand over its frames
   itself in clip mode (`coax/web/host.js`), not a screenshot of each.
-- **Pages with no scene.** A Coaxial page that draws no indexed scene (the
+- **Pages with no scene.** A Coax Native Web page that draws no indexed scene (the
   home page, `/worlds/watchtower`) is taken as ready only after 10 s
   (`MEDIA_IDLE_MS` in `coax/lib/media/media.coax`). That wait is unchanged.
 - **`drive`.** It uses the resident browser, which saves the browser start

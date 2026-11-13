@@ -1,6 +1,6 @@
-# Coaxial services: email, print and schedules
+# Coax Native Web services: email, print and schedules
 
-Coaxial pages run in the browser. Some work has to happen on the server
+Coax Native Web pages (formerly Coaxial) run in the browser. Some work has to happen on the server
 anyway: sending email, running jobs on a schedule, and producing a page you
 can print. These services live in the API service (`coax/web/api`, C on Cloud
 Run) and share their layout code with the pages, because Coax compiles to C

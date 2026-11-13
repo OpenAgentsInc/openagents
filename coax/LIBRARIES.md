@@ -17,7 +17,7 @@ and [network notes](lib/net/README.md) describe the larger systems.
 | --- | --- | --- |
 | [`coax.sequence`](lib/sequence.coax): `swap`, `reverse` | Small generic procedures over caller-owned mutable views; used by the Metaverse's pass formatting and Psionic's HTTP buffer rotation | Generated C; no platform shim |
 | [`coax.bounded`](lib/bounded.coax): `Bounded`, `bounded_push`, `bounded_pop`, `bounded_get`, `bounded_set`, `bounded_clear`, `bounded_view`, `bounded_full` | Fixed-capacity storage with explicit refusal, in caller-owned storage; used by Psionic's model registry and the Metaverse's fairy-forest blooms | Generated C; no platform shim |
-| [`verse.hud`](../metaverse/hud.coax): the listed module exports | Shared CPU HUD geometry, used by native and Coaxial consumers | Generated C and the host's ordinary C/math libraries; no HUD-specific shim |
+| [`verse.hud`](../metaverse/hud.coax): the listed module exports | Shared CPU HUD geometry, used by native and Coax Native Web consumers | Generated C and the host's ordinary C/math libraries; no HUD-specific shim |
 | [URI syntax](lib/net/uri.coax) and [WebSocket framing](lib/net/ws.coax): `uri_parse`, `ws_frame_write`, `ws_frame_read` | Pure bounded protocol pieces; transport and authentication are separate consumers | Generated C; WebSocket's loaded SHA-1 source is included; no socket/TLS shim for these functions |
 | [Tool JSON](lib/json/json.coax): selected `jv_*` reads and `jo_*` writes | Caller-owned node tree and output buffer, used by Coax tools | Generated C; no platform shim |
 | [Descriptor-generated protobuf](proto.md): selected message `new`, `set_*`, `get_*`, `encode`, `decode` | Versioned schema representation; demonstrated by the existing HUD invocation capstone | Generated self-contained C; checked-in descriptor is a build input; no protobuf runtime or `protoc` required |
@@ -90,7 +90,7 @@ checking.
 ## HUD geometry
 
 **Maturity and targets:** production-bounded exported CPU geometry, with existing
-iOS and Coaxial consumers. The recipe qualifies selected native C API results;
+iOS and Coax Native Web consumers. The recipe qualifies selected native C API results;
 it does not add a new renderer, GPU target or physical-device gate.
 **Verification:** `coax/bin/coax test metaverse/hud.coax --library`; the chapter 26
 `ch26_verse` unit checks the actual public API and refusal cases.
@@ -109,7 +109,7 @@ below 100; it admits counts 1–12 and indices `0..<count`. It does not claim
 general NaN/infinity admission. The caller supplies sensible finite geometry
 and owns conversion to platform pixels and GPU lifetimes.
 
-The actual iOS bridge and Coaxial HUD consumer exercise this source. The
+The actual iOS bridge and Coax Native Web HUD consumer exercise this source. The
 chapter 26 example checks exact geometry and refusal through the public API;
 it does not establish rendering or input behavior on a new platform.
 

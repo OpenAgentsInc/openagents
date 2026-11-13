@@ -14,7 +14,7 @@ chapter is about the work between them.
 
 > Note: `coax0` itself runs on the build Mac (macOS on Apple silicon), and
 > its test suites run there. The iOS app compiles Coax's C output with the
-> iOS SDK and ships it. Coaxial now has a narrow Wasm/WebGPU splash path in
+> iOS SDK and ships it. Coax Native Web (formerly Coaxial) now has a narrow Wasm/WebGPU splash path in
 > `coax/web/` and `apps/openagents-web/`, using upstream LLVM and a native
 > browser host. It is an initial consumer, not the complete engine target
 > described by spec §17.2 and §20, stage 7.
@@ -248,7 +248,7 @@ a WASI sysroot and get an object, but a browser isn't a WASI host either:
 there's no standard error for `coax_trap` to write to, and `print` has to
 become a call into JavaScript. A browser target needs its own small
 runtime, with traps, printing and memory provided as explicit host
-imports. Coaxial's new `coax/web/wasm.sh` supplies upstream LLVM, a WASI
+imports. Coax Native Web's `coax/web/wasm.sh` supplies upstream LLVM, a WASI
 sysroot and application-specific C faces; `host.js` supplies memory and
 WebGPU for the current site and Metaverse consumers. That application path
 does not make this bare invocation work or establish general target-aware
@@ -305,7 +305,7 @@ line mapping and LLDB names are verified on Mac and iOS Simulator; physical
 device debugging and broader ABI cases still need their own evidence. The generated C asks for a hosted C
 library, `abort`, the overflow builtins and an honored `FP_CONTRACT`
 pragma, and its layout assertions encode a 64-bit Apple layout, which is
-exactly why they fire on 32-bit x86. Coaxial's narrow Wasm/WebGPU splash is
+exactly why they fire on 32-bit x86. Coax Native Web's narrow Wasm/WebGPU splash is
 an initial browser consumer; the full engine runtime, layout and debugging
 proof remains a separate vertical slice.
 

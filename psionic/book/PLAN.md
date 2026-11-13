@@ -682,7 +682,7 @@ builds the infrastructure in Coax: admission, scheduling, routing, scaling,
 rollout and metering decide in Coax, with `#authority` files and
 zero-survivor mutation where they decide work, money or policy. The host
 does network, process and device effects only, as the
-[Coaxial dev server](../../coax/web.md) already does for the website. It
+[Coax Native Web dev server](../../coax/web.md) already does for the website. It
 grows Part III's first deployment: chapter 172 generalizes the timing of
 18, chapter 173 the server of 20, and chapters 175–181 add what one resident
 model serving one decision at a time leaves out.

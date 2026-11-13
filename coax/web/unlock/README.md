@@ -1,6 +1,6 @@
 # Hidden presentations
 
-A phrase typed on a Coaxial page opens a presentation that only a chosen key
+A phrase typed on a Coax Native Web page opens a presentation that only a chosen key
 can read. Neither the phrase nor the presentation is in this repository or
 readable in the page.
 
@@ -21,7 +21,7 @@ readable in the page.
 - **In the page** (`gate.ts`, then `page.ts`): the page's Coax code draws
   everything you see (`apps/openagents-web/ui.coax`): the access terminal,
   the key prompt and the slides. These scripts only answer it through the
-  Coaxial host (`coaxial` events in, `coaxial.send` out). A code sent from
+  Coax Native Web host (`coaxial` events in, `coaxial.send` out). A code sent from
   the terminal is checked against the entries; a phrase that matches
   decrypts its pointer and loads the opener, which finds the recipient key on
   this device: a NIP-07 signer holding it, or a key pasted into the prompt
