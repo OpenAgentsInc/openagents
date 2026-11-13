@@ -292,7 +292,8 @@ room() {
   # the zone's cells (#13280, #13281): the committed manifest is what the land builds now, every spawn and named point
   # can be walked to, and a creature walks the named points' routes on the navigation cells
   step zone-cells coax/web/tool.sh everglade/model/tools/zone-cells.coax --check everglade/world/zone-cells.coax everglade/content/everglade.content || status=1
-  step room-fuzz coax/web/room/fuzz/fuzz.sh slice "${OA_FUZZ_SLICE:-60}" || status=1   # the wire and framing fuzzers, a minute each (#13283)
+  # The fuzzers' slice is off by default (owner, 2026-11-12: no fuzzing for now, #13283 closed); OA_FUZZ_SLICE=60 turns it on.
+  if [[ -n "${OA_FUZZ_SLICE:-}" ]]; then step room-fuzz coax/web/room/fuzz/fuzz.sh slice "$OA_FUZZ_SLICE" || status=1; fi
   [[ -z "${1:-}" ]] || e2_gate "$1" || status=1
 }
 # Everglade II against production (#13266, docs/verse/green-main-pipeline.md "Everglade II against

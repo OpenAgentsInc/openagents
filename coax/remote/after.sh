@@ -94,7 +94,7 @@
 # OA_AFTER_RETRIES (2), OA_AFTER_UNFINISHED (3), OA_AFTER_STALE (5400),
 # OA_AFTER_STALE_COMMITS (40),
 # OA_AFTER_FLAKY_TRIES (3), OA_AFTER_PAGES (0: no pages), OA_AFTER_PAGES_GAP
-# (3600), OA_AFTER_FUZZ (0: no nightly fuzz), OA_AFTER_FUZZ_GAP (86400),
+# (3600), OA_AFTER_FUZZ (1: a nightly fuzz; off by default), OA_AFTER_FUZZ_GAP (86400),
 # OA_AFTER_FUZZ_HOURS (4), OA_AFTER_SOAK (0: no nightly soak), OA_AFTER_SOAK_GAP (86400),
 # OA_AFTER_SOAK_SECONDS (7200), OA_AFTER_SOAK_PLAYERS (32: staging's one shard), OA_AFTER_CHECK (a command run as CMD COMMIT OUTDIR CHECK-ARGS... in
 # place of the remote check, for scratch runs), and
@@ -550,7 +550,7 @@ pages_of() {   # head: its pages into the shared store, once, in the background 
 # crash, hang, leak or broken property files an issue with the log; the inputs it found come back in
 # RESULTS/HEAD/fuzz (each crash under coax/web/room/build/fuzz/artifacts there).
 fuzz_of() {   # head
-  [[ "${OA_AFTER_FUZZ:-1}" != 0 && -z "${OA_AFTER_CHECK:-}" ]] || return 0
+  [[ "${OA_AFTER_FUZZ:-0}" != 0 && -z "${OA_AFTER_CHECK:-}" ]] || return 0
   due last-fuzz "$fuzz_gap" || return 0
   date +%s > "$results/last-fuzz"
   local head="$1" dir="$results/$1/fuzz"

@@ -581,7 +581,7 @@ Issue [#13102](https://github.com/OpenAgentsInc/openagents/issues/13102).
 | The allowlist counts (#13266) | `coax/remote/counts.sh` (`show [REV]`, `check BASE [REV]`) |
 | The comparing gates' own check (#13266) | `coax/remote/test-after.sh` |
 | The revert | `coax/remote/integrate.sh --revert`, which `after.sh --watch` runs each minute |
-| The room's fuzzers (#13283): a minute each in the room check, and a nightly long run | `coax/web/room/fuzz/fuzz.sh` (`slice`, `long`, `replay`); `after.sh` runs `check.sh fuzz` on a green head once a day (`OA_AFTER_FUZZ_HOURS`, 4) and files an issue when it stops on an input |
+| The room's fuzzers (#13283, closed as not planned on 2026-11-12): off by default; `OA_FUZZ_SLICE=60` adds a minute each to the room check and `OA_AFTER_FUZZ=1` turns the nightly long run on | `coax/web/room/fuzz/fuzz.sh` (`slice`, `long`, `replay`); `after.sh` runs `check.sh fuzz` on a green head once a day (`OA_AFTER_FUZZ_HOURS`, 4) and files an issue when it stops on an input |
 | The nightly soak (#13296): a shard's fleet of protocol bots on staging for two hours, a dated capacity record | `coax/web/room/soak.coax`, `coax/web/room/bots.coax`; `after.sh` runs `check.sh soak` on a green head once a day (`OA_AFTER_SOAK_SECONDS`, 7200; `OA_AFTER_SOAK_PLAYERS`, 32; `OA_AFTER_SOAK=0` turns it off), keeps the record in `releases/after/soak/DAY.txt`, posts it to the APIs and files an issue when the run fails ([the soak](../deployment/soak.md)) |
 | Releases from `main-green` | `coax/web/release.sh` |
 | The pre-push check (#13265) | `coax/remote/hooks/pre-push`, `coax/web/prepush.coax` |
