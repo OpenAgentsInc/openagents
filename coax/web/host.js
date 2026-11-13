@@ -20,8 +20,9 @@
 //                             metaverse-engine/render/passes.coax's operations as records of 8 words
 //                             (render/frame-plan.coax) written to `out`; the words written, 0 refused. `features`
 //                             is this host's word (FPH_*). draw() walks the records and decides no order, and a
-//                             refused plan clears the frame; only a page
-//                             without it is drawn in the built-in order. ?plan=check and ?plan=off on a
+//                             refused plan clears the frame. A page without it
+//                             is planned by the engine's one plan module (coax/web/frame-plan-host.js) from
+//                             the counts its exports give, and a refused frame of it is drawn in the built-in order. ?plan=check and ?plan=off on a
 //                             development server; coaxial.framePlan() says what was walked
 //   coaxial_bloom_passes_v1(state) optional: how many of the five bloom passes to draw this frame (the rest
 //                             are left as they were; the app's post pass reads only those drawn)
@@ -274,6 +275,7 @@ import { fetchPackInWorker, fetchPagedDemand, fetchPagedImage, fetchWholePack } 
 import { characterPass } from "./character-host.js";
 import { instanceCull } from "./instance-cull.js";
 import { makeHostLifecycle } from "./host-lifecycle.js";
+import { openFramePlan } from "./frame-plan-host.js";
 import { openHostServices, openPcmMemory } from "./services-host.js";
 import { openCoaxAudio, renderCoaxAudio, renderClipAudio } from "./audio-host.js";
 import { openClipTimeline } from "./audio-timeline.js";
@@ -378,6 +380,7 @@ let engineBytes = null;   // the running engine's wasm: a rescue save names it (
 let engineInstalling = false;
 // The frame plan's words (coaxial_frame_plan_v1): the version record and at most 256 operations of 8 words.
 const PLAN_WORDS = 257 * 8, PLAN_BYTES = PLAN_WORDS * 4;
+let planHost = null;   // frame-plan-host.js: the plan of a page whose engine exports none
 let arena = null;    // { state, vertices, uniforms, floats, uniformFloats, maxVertices }
 let gpu = null;      // { device, context, format, bindGroup, uniformBuffer, vertexBuffer, bg, fx }
 let wanted = 0;      // the newest requested engine; an older finished build never replaces it
@@ -557,6 +560,9 @@ async function loadEngine(bytes, generation) {
   x._initialize?.();
   hostTransport=makeHostTransport(x,memory);
   hostLifecycle=makeHostLifecycle(x);
+  // a page with no plan of its own is drawn by the engine's (frame-plan-host.js, #13451)
+  // (a reactor that won't load leaves the page in the built-in order)
+  if(!x.coaxial_frame_plan_v1){planHost??=await openFramePlan().catch((e)=>{console.warn(`coaxial: ${e.message}`);return null;});if(generation!==wanted)return false;}
   if(hostTransport){const services=await openHostServices();if(generation!==wanted)return false;hostServices=services;
     if(firstPacks.size){packHost??=await openPackHost();if(generation!==wanted)return false;}
     if(clipping&&globalThis.coaxialClipAudio){const timeline=await openClipTimeline();if(generation!==wanted){await timeline.retire();return false;}clipTimeline=timeline;}}
@@ -3556,18 +3562,37 @@ function draw(now) {
   pass.end();
   return timed;
   };
-  // Ask the page's engine for its plan: this host's word (frame-plan.coax FPH_*) in, the operations out.
+  // Ask for the frame's plan: this host's word (frame-plan.coax FPH_*) in, the operations out. A page's
+  // engine writes its own (coaxial_frame_plan_v1); for a page with none the host hands the counts it
+  // reads from the page's exports to the engine's one plan module (frame-plan-host.js, frame-plan.coax FPA).
   let planned = 0;
-  if (x.coaxial_frame_plan_v1 && planMode !== "off") {
+  if (planMode !== "off") {
     const has = (on, bit) => (on ? 1 << bit : 0);
     const copies = !!(post && gpu.waterCopyGroup && gpu.waterTransmit);
     const bits = has(gpu.scene, 0) | has(gpu.scene && gpu.shadow, 1) | has(gpu.scene && gpu.caster, 2) | has(gpu.scene && gpu.grass, 3) | has(!gpu.scene && gpu.surface, 4)
-      | has(gpu.scene && gpu.waterTransmit, 5) | has(copies, 6) | has(post, 7) | has(gpu.scene && gpu.particles, 10) | has(copies && gpu.particles && gpu.particleDepth, 11)
-      | has(gpu.scene && gpu.particles && gpu.particlesOver, 12) | has(x.coaxial_media, 13) | has(gpu.shadow && gpu.shadowTiles, 14) | has(culled, 15) | has(hero, 16)
-      | has(gpu.scene && gpu.sort && gpu.particles, 17) | has(gpu.scene && gpu.sceneGroup, 18) | has(gpu.scene && gpu.particles, 19);
-    const wrote = x.coaxial_frame_plan_v1(arena.state, bits >>> 0, arena.plan, PLAN_WORDS);
-    const words = new Uint32Array(memory.buffer, arena.plan, PLAN_WORDS);
-    if (wrote >= 8 && words[0] === FP.magic && words[1] === FP.version && words[2] === 8 && (words[3] + 1) * 8 === wrote) planned = words[3];
+      | has(gpu.scene && gpu.waterTransmit, 5) | has(copies, 6) | has(post, 7) | has(gpu.particles, 10) | has(copies && gpu.particles && gpu.particleDepth, 11)
+      | has(gpu.particles && gpu.particlesOver, 12) | has(x.coaxial_media, 13) | has(gpu.shadow && gpu.shadowTiles, 14) | has(culled, 15) | has(hero, 16)
+      | has(gpu.scene && gpu.sort && gpu.particles, 17) | has(gpu.scene && gpu.sceneGroup, 18) | has(gpu.particles, 19);
+    let words = null, wrote = 0;
+    if (x.coaxial_frame_plan_v1) {
+      wrote = x.coaxial_frame_plan_v1(arena.state, bits >>> 0, arena.plan, PLAN_WORDS);
+      words = new Uint32Array(memory.buffer, arena.plan, PLAN_WORDS);
+    } else if (planHost) {
+      const st = arena.state, ask = new Uint32Array(planHost.askWords);
+      ask[0] = bits >>> 0; ask[1] = w; ask[2] = h; ask[3] = arena.floats; ask[4] = n; ask[5] = draws; ask[6] = wet; ask[7] = blades;
+      ask[8] = gpu.particles ? x.coaxial_particle_instances(st) : 0; ask[9] = gpu.surface ? x.coaxial_surface_vertices(st) : 0; ask[10] = cast[0]; ask[11] = cast[1];
+      ask[12] = separateShadow ? shadowDraws + 1 : 0; ask[13] = culled ? Math.max(1, culled.runs | 0) : 0;
+      ask[14] = (gpu.shadowTiles && x.coaxial_shadow_v1?.(st, 5) === 1 ? 1 : 0) | (x.coaxial_draw_blend_v1 ? 0 : 2) | 4;
+      ask[15] = post ? Math.max(0, Math.min(gpu.blooms.length, x.coaxial_bloom_passes_v1 ? x.coaxial_bloom_passes_v1(st) : gpu.blooms.length)) : 0;
+      if (gpu.shadow && gpu.shadowTiles) {
+        const count = Math.max(0, x.coaxial_shadow_v1(st, 6));
+        ask[16] = tile + 1; ask[17] = count; ask[18] = x.coaxial_shadow_v1(st, 7);
+        for (let k = 0; k < count && k < 8; k++) for (let j = 0; j < 4; j++) ask[19 + k * 4 + j] = x.coaxial_shadow_v1(st, 16 + 4 * k + j);
+        if (tile >= 0) for (let j = 0; j < 4; j++) ask[51 + j] = x.coaxial_shadow_v1(st, 1 + j);   // what the tile's draws are cut to
+      }
+      words = planHost.ask(ask); wrote = words ? words.length : 0;
+    }
+    if (words && wrote >= 8 && words[0] === FP.magic && words[1] === FP.version && words[2] === 8 && (words[3] + 1) * 8 === wrote) planned = words[3];
     else planStats.refused++;
     if (planned) {
       if (planMode === "check") {
@@ -3580,10 +3605,11 @@ function draw(now) {
       planStats.frames++; planStats.ops = planned;
     }
   }
-  // A page with a plan is never drawn in the built-in order (#13303): when its engine refuses this
-  // frame's plan the frame is cleared and nothing is drawn (coaxial.framePlan().refused counts them).
-  // The built-in order is for a page whose engine has no plan yet, and for ?plan=off.
-  if (!planned && x.coaxial_frame_plan_v1 && planMode !== "off") timedPass(encoder, passTimer, { colorAttachments: [screen()] }).end();
+  // A page with a plan of its own is never drawn in the built-in order unless ?plan=off asks (#13303):
+  // when its plan is refused the frame is cleared and nothing is drawn (coaxial.framePlan().refused
+  // counts them). A page the host plans for falls back to the built-in order on a refused frame until
+  // every such page is proved (coax/web/plan-check.ts, #13451).
+  if (!planned && planMode !== "off" && x.coaxial_frame_plan_v1) timedPass(encoder, passTimer, { colorAttachments: [screen()] }).end();
   else if (!planned) timed = builtin(encoder, passTimer, true);
   if (timed) {
     encoder.resolveQuerySet(gpu.timer.set, 0, 4, gpu.timer.resolve, 0);

@@ -25,7 +25,7 @@ test("the walk's numbers are the header's, every member of every group", () => {
 })
 test("the host's word names its bits as the header does", () => {
   // host.js builds the word with has(fact, bit): each bit it sets is one the header names
-  const bits = [...host.slice(host.indexOf("const bits = has("), host.indexOf("const wrote = x.coaxial_frame_plan_v1")).matchAll(/, (\d+)\)/g)].map((m) => Number(m[1]))
+  const bits = [...host.slice(host.indexOf("const bits = has("), host.indexOf("let words = null, wrote = 0;")).matchAll(/, (\d+)\)/g)].map((m) => Number(m[1]))
   const known = new Set([...defines].filter(([k]) => k.startsWith("HOST_")).map(([, v]) => Math.log2(v)))
   expect(bits.length).toBeGreaterThan(12)
   for (const b of bits) expect(known.has(b)).toBe(true)

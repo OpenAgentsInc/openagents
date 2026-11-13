@@ -475,6 +475,10 @@ and the HUD between the media layers are all `passes.coax`'s order.
 - The browser: `coax/web/host.js` walks the records (`walk` in `draw`). `?plan=check` on a
   development server records the built-in order and the walk on the same frame and counts the
   frames whose GPU calls differ (`coaxial.framePlan()`); `?plan=off` draws the built-in order.
+  A page whose engine exports no plan is planned by `build/frame-plan.wasm` (`frame_plan_host`,
+  loaded by `coax/web/frame-plan-host.js`) from the counts `host.js` reads from its exports; a
+  frame it refuses is drawn in the built-in order. `bun coax/web/plan-check.ts` opens every page
+  of `realms.json` with the check on and fails on a page whose frames differ.
 - C hosts: [`core/frame-plan-walk.h`](core/frame-plan-walk.h) checks the whole plan, then calls the
   host back once an operation (`begin`, `end`, `draw`, `copy`, `rect`, `compute`, `media`). A
   malformed or newer plan gives -1 and no call. The numbers are [`frame-plan.h`](frame-plan.h)'s,
