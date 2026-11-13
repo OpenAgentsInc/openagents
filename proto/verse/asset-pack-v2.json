@@ -11,6 +11,127 @@
   "stream_max_bytes": 67108864,
   "registry_max_assets": 64,
   "registry_oversize_behavior": "atomic refusal; no partial admission",
+  "cell_lines": {
+    "about": "A pack paged by world cell (aethyr/host/pack-cells.coax, #13304 for #13280) says in its catalog which bytes of its image each cell's content is, a line a cell. A host turns a cell's key into these ranges and fetches the pages that cover them (aethyr/host/page-stream.coax hpg_cover). A pack with no such line is unchanged.",
+    "codec": "aethyr/host/pack-cells.coax",
+    "line": "Z CX CZ DIGEST AT N [AT N ...]",
+    "fields": "single spaces; numbers written plainly (no leading zero, no plus sign); CX and CZ may have a minus sign; DIGEST is the cell's content digest in the world's manifest, 1 to 4294967295; each AT N is a byte range of the image, ascending, not touching or overlapping, inside the image",
+    "key": "(cx + 32768) * 65536 + (cz + 32768)",
+    "coordinate_min": -32768,
+    "coordinate_max": 32767,
+    "max_ranges": 8,
+    "duplicates": "a cell listed twice, or whose line does not read, is not found",
+    "fixtures": [
+      {
+        "cx": -1,
+        "cz": -8,
+        "key": 2147450872,
+        "digest": 35929590,
+        "image_bytes": 70001,
+        "ranges": [
+          [
+            4096,
+            100
+          ],
+          [
+            8192,
+            61807
+          ],
+          [
+            70000,
+            1
+          ]
+        ],
+        "line": "Z -1 -8 35929590 4096 100 8192 61807 70000 1"
+      },
+      {
+        "cx": 0,
+        "cz": 32767,
+        "key": 2147549183,
+        "digest": 4294967295,
+        "image_bytes": 1,
+        "ranges": [
+          [
+            0,
+            1
+          ]
+        ],
+        "line": "Z 0 32767 4294967295 0 1"
+      },
+      {
+        "cx": -32768,
+        "cz": 10,
+        "key": 32778,
+        "digest": 1,
+        "image_bytes": 1,
+        "ranges": [
+          [
+            0,
+            1
+          ]
+        ],
+        "line": "Z -32768 10 1 0 1"
+      },
+      {
+        "cx": 3,
+        "cz": 4,
+        "key": 2147713028,
+        "digest": 9,
+        "image_bytes": 25,
+        "ranges": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            1
+          ],
+          [
+            4,
+            1
+          ],
+          [
+            6,
+            1
+          ],
+          [
+            8,
+            1
+          ],
+          [
+            10,
+            1
+          ],
+          [
+            12,
+            1
+          ],
+          [
+            14,
+            1
+          ]
+        ],
+        "line": "Z 3 4 9 0 1 2 1 4 1 6 1 8 1 10 1 12 1 14 1"
+      }
+    ],
+    "refused": [
+      "Y 0 0 9 10 10",
+      "Z 0 0 9 10",
+      "Z 0 0 9 10 10 20",
+      "Z 32768 0 9 10 10",
+      "Z 0 -32769 9 10 10",
+      "Z 0 0 0 10 10",
+      "Z 0 0 4294967296 10 10",
+      "Z 0 0 9 10 0",
+      "Z 0 0 9 10 10 20 2",
+      "Z 0 0 9 10 10 5 2",
+      "Z 00 0 9 10 10",
+      "Z -0 0 9 10 10",
+      "Z 0 0 9  10 10",
+      "Z 0 0 9 0 1 2 1 4 1 6 1 8 1 10 1 12 1 14 1 16 1"
+    ]
+  },
   "fixtures": [
     {
       "name": "minimal_vpk2",

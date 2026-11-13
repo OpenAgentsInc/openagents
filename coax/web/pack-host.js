@@ -111,7 +111,13 @@ export async function openPackHost(){
   // the result is published; pages that are not roots follow, and result.complete waits for them.
   // With image:true the image is published once its roots are held, without the VPK1 reader: for
   // a caller that reads the image itself (host.js's whole-pack path, geometry pages).
-  function loadPaged(pack,{owner,current=()=>true,progress,observe,image=false}={}){
+  // With demand:true the pages that are not roots are not fetched at the start: result.more(ranges)
+  // fetches and admits the pages that cover a list of [at, bytes] ranges of the image and resolves
+  // when Coax holds them (hpg_cover), result.cell(key) gives a world cell's {digest, ranges} from
+  // the pack's catalog (aethyr/host/pack-cells.coax, null when the catalog has no good line for
+  // it), and result.rest() fetches everything left. result.complete is then rest()'s promise once
+  // it is called, and null before. This is how a page streams a zone by cell (#13304, #13280).
+  function loadPaged(pack,{owner,current=()=>true,progress,observe,image=false,demand=false}={}){
    const op=operation(owner,current,progress,undefined,false,observe);let trailing=null;
    op.finished=(async()=>{try{
     const url=pack.url,signal=op.controller.signal,init=pack.quiet?{cache:'no-store'}:{},sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -168,9 +174,30 @@ export async function openPackHost(){
     if(!x.pack_paged_finish()||(!image&&!x.pack_admit(0)))throw Error('Coax refused complete pack identity, layout or catalog');
     const memory=op.context.memory,source=new Uint8Array(memory.buffer,address,imageBytes);
     const entries=[];if(!image)for(let i=0;i<x.pack_entry_count();i++){const fields=[0,1,2,3,4,5].map(f=>Number(x.pack_entry(i,f)));entries.push(Object.freeze({kind:fields[0],licence:fields[1],name:new TextDecoder().decode(new Uint8Array(memory.buffer,fields[4],fields[5])),bytes:source.subarray(fields[2],fields[2]+fields[3]),at:fields[2]}));}
-    const rest=runs(false);trailing=rest.length?workers(rest):null;const complete=(trailing||Promise.resolve()).then(()=>{op.check();});complete.catch(()=>{});
-    op.published=true;const result=Object.freeze({entries:Object.freeze(entries),source,bytes:imageBytes,stored:fileBytes,pages,owner,complete,
-     ready:entry=>!!op.context&&!!op.context.x.pack_paged_ready(entry.at,entry.bytes.length),close:()=>op.abort(),
+    // Pages on demand: one fetch a page at a time however many ranges ask for it (inflight), a run
+    // being consecutive pages up to 2 MiB stored, as at the start.
+    // The reactor is kept (op.loading) while a fetch is in flight, as it is for the trailing pages.
+    const inflight=new Map();let fetching=0;
+    const fetchPages=async list=>{
+     const todo=list.filter(k=>!held[k]),grouped=[];let run=null;
+     for(const k of todo){if(inflight.has(k)){run=null;continue;}if(run&&k===run.at(-1)+1&&info[k].at+info[k].stored-info[run[0]].at<=2097152)run.push(k);else grouped.push(run=[k]);}
+     for(const group of grouped){const job=fetchRun(group).finally(()=>{for(const k of group)inflight.delete(k);});job.catch(()=>{});for(const k of group)inflight.set(k,job);}
+     fetching++;op.loading=true;
+     try{await Promise.all([...new Set(todo.map(k=>inflight.get(k)).filter(Boolean))]);op.check();}
+     finally{if(--fetching===0&&!trailing){op.loading=false;op.dispose();}}
+    };
+    const more=async ranges=>{
+     op.check();const wanted=new Set();
+     for(const [at,bytes] of ranges){const n=x.pack_paged_cover(BigInt(at),BigInt(bytes));if(n<0)throw Error('pack range outside the image');for(let i=0;i<n;i++)wanted.add(x.pack_paged_cover_page(i));}
+     await fetchPages([...wanted].sort((a,b)=>a-b));
+     for(const [at,bytes] of ranges)if(!x.pack_paged_ready(BigInt(at),BigInt(bytes)))throw Error('Coax does not hold a fetched pack range');
+    };
+    const cell=key=>{op.check();if(!x.pack_paged_cell(BigInt(key)))return null;const n=Number(x.pack_paged_cell_info(1,0)),ranges=[];
+     for(let i=0;i<n;i++)ranges.push([Number(x.pack_paged_cell_info(2,i)),Number(x.pack_paged_cell_info(3,i))]);return Object.freeze({digest:Number(x.pack_paged_cell_info(0,0)),ranges:Object.freeze(ranges)});};
+    let resting=null;const everything=()=>resting||(resting=fetchPages(info.map((_,k)=>k)));
+    const rest=demand?[]:runs(false);trailing=rest.length?workers(rest):null;const complete=demand?null:(trailing||Promise.resolve()).then(()=>{op.check();});complete?.catch(()=>{});
+    op.published=true;const result=Object.freeze({entries:Object.freeze(entries),source,bytes:imageBytes,stored:fileBytes,pages,owner,get complete(){return demand?resting:complete;},more,cell,rest:everything,
+     ready:entry=>!!op.context&&!!op.context.x.pack_paged_ready(BigInt(entry.at),BigInt(entry.bytes.length)),close:()=>op.abort(),
      async use(fn){op.check();op.borrowers++;try{const answer=await fn(result);op.check();return answer;}finally{op.borrowers--;op.dispose();}}});return result;
    }catch(error){op.retired=true;op.controller.abort();throw error;}finally{
     if(trailing){op.loading=true;trailing.catch(()=>{}).finally(()=>{op.loading=false;op.dispose();});}else{op.loading=false;op.dispose();}

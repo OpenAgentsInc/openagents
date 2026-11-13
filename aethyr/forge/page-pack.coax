@@ -116,6 +116,20 @@ ppk_ready :: (l: PpkLoad, at: int, n: int) -> bool #effects(all) {
   }
   return true;
 }
+// The pages that hold image[at..<at + n] and have not arrived, lowest first, into out; their count
+// (0 when the range is held, or empty). -1 when the range is not inside the image, or out is too
+// small for them. What a host fetches for a range a cell's line names (aethyr/host/pack-cells.coax).
+ppk_cover :: (l: PpkLoad, at: int, n: int, out: [] int) -> int #effects(all) {
+  if !l.m.ok || at < 0 || n < 0 || at + n > l.m.image_bytes { return -1; }
+  c := 0;
+  for k: 0..<l.m.pages {
+    g := l.m.page[k];
+    if g.image_at >= at + n || at >= g.image_at + g.decoded || l.arrived[k] { continue; }
+    if c == out.count { return -1; }
+    out[c] = k; c += 1;
+  }
+  return c;
+}
 // The next page to fetch: roots first, then in order. -1: none left. `busy` marks pages in flight.
 ppk_next :: (l: PpkLoad, busy: [] bool) -> int #effects(all) {
   for pass: 0..<2 {
@@ -227,6 +241,33 @@ ppk_test_image :: (out: [] u8) -> string #effects(all) {
   busy[n - 1] = true; #assert ppk_next(o[0], busy[..]) == -1;
   last := m[0].page[n - 1];
   #assert ppk_ready(o[0], 0, last.image_at) && !ppk_ready(o[0], last.image_at, 1) && !ppk_ready(o[0], 0, 513);
+}
+#test "a range's cover is the pages it touches that have not arrived, in order" #steps 400000000 {
+  b: [512] u8; image := ppk_test_image(b[..]);
+  starts: [16] int; roots: [16] bool; entries: [16] int; n := ppk_plan(image, 64, 0, starts[..], roots[..], entries[..]);
+  w: [1] DeflateWork; file: [4096] u8; scratch: [2048] u8;
+  size := ppk_write(image, starts[0..<n], roots[0..<n], entries[0..<n], file[..], scratch[..], w[..]);
+  m: [1] PpkManifest; #assert ppk_manifest(cast(string) file[0..<size], m[..]) && n > 5;
+  l: [1] PpkLoad; out: [16] int;
+  #assert ppk_cover(l[0], 0, 1, out[..]) == -1;   // nothing is open
+  #assert ppk_open(l[..], m[0]);
+  #assert ppk_cover(l[0], 0, 512, out[..]) == n;
+  for k: 0..<n { #assert out[k] == k; }
+  p2 := m[0].page[2]; p3 := m[0].page[3]; p4 := m[0].page[4];
+  // one byte, a page's first and last, and a range ending where the next page starts
+  #assert ppk_cover(l[0], p3.image_at, 1, out[..]) == 1 && out[0] == 3;
+  #assert ppk_cover(l[0], p3.image_at + p3.decoded - 1, 1, out[..]) == 1 && out[0] == 3;
+  #assert ppk_cover(l[0], p3.image_at, p3.decoded, out[..]) == 1 && out[0] == 3;
+  #assert ppk_cover(l[0], p2.image_at + p2.decoded - 1, p3.decoded + 2, out[..]) == 3 && out[0] == 2 && out[1] == 3 && out[2] == 4;
+  #assert ppk_cover(l[0], p3.image_at, 0, out[..]) == 0 && ppk_cover(l[0], 512, 0, out[..]) == 0;
+  // outside the image, and more pages than out holds
+  #assert ppk_cover(l[0], -1, 2, out[..]) == -1 && ppk_cover(l[0], 0, -1, out[..]) == -1 && ppk_cover(l[0], 0, 513, out[..]) == -1 && ppk_cover(l[0], 511, 1, out[..]) == 1 && out[0] == n - 1;
+  #assert ppk_cover(l[0], p2.image_at, p2.decoded + p3.decoded, out[0..<1]) == -1 && ppk_cover(l[0], p2.image_at, p2.decoded + p3.decoded, out[0..<2]) == 2;
+  // a page that arrived is left out
+  #assert ppk_admit(l[..], 3, image[p3.image_at..<p3.image_at + p3.decoded]);
+  #assert ppk_cover(l[0], p3.image_at, p3.decoded, out[..]) == 0;
+  #assert ppk_cover(l[0], p2.image_at, p2.decoded + p3.decoded + p4.decoded, out[..]) == 2 && out[0] == 2 && out[1] == 4;
+  #assert ppk_cover(l[0], p2.image_at, p2.decoded + p3.decoded + p4.decoded, out[0..<2]) == 2;
 }
 #test "pages are refused for the wrong bytes, the wrong size, twice, or out of range" #steps 400000000 {
   b: [512] u8; image := ppk_test_image(b[..]);

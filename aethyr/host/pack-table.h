@@ -27,4 +27,15 @@ static inline size_t aethyr_pack_at(const AethyrPack *pack, int k) { return (siz
 static inline size_t aethyr_pack_bytes(const AethyrPack *pack, int k) { return (size_t)pack->entries.e[k].n; }
 // An entry's name, not NUL-terminated: its bytes and their count (at most 32).
 static inline const char *aethyr_pack_name(const AethyrPack *pack, int k, size_t *count) { *count = (size_t)pack->entries.e[k].name.count; return pack->entries.e[k].name.data; }
+// A world cell's content in the whole pack at bytes[0..<n] (aethyr/host/pack-cells.coax, #13304): its
+// digest and how many byte ranges of the pack it is, or 0 ranges when the catalog has no one good
+// line for the cell. key is aethyr_pack_cell_key(cx, cz). Range k is at[k], bytes[k].
+typedef coax_t_PackCell AethyrPackCell;
+static inline int aethyr_pack_cell_ranges(AethyrPackCell *cell, const void *bytes, size_t n, int64_t key) {
+  *cell = aethyr_pack_cell((coax_string){(const char *)bytes, (int64_t)n}, key);
+  return cell->ok ? (int)cell->ranges : 0;
+}
+static inline uint32_t aethyr_pack_cell_digest(const AethyrPackCell *cell) { return (uint32_t)cell->digest; }
+static inline size_t aethyr_pack_cell_at(const AethyrPackCell *cell, int k) { return (size_t)cell->at.e[k]; }
+static inline size_t aethyr_pack_cell_bytes(const AethyrPackCell *cell, int k) { return (size_t)cell->n.e[k]; }
 #endif

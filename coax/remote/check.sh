@@ -29,6 +29,7 @@
 #   coax/remote/check.sh module NAME      one module of the web build (a bisect)
 #   coax/remote/check.sh reports          tools-check, test-remote.sh, test-after.sh, test-vm-deploy.sh, everglade-parity, wire-check, layer-check,
 #                                         the native apps' realms (verse/native/app-realms.coax, #13389),
+#                                         packs paged by cell (aethyr/host/check-pack-cells.coax, #13304),
 #                                         the API's migration numbers, hashes and schema.sql, the pre-push replay, the committed
 #                                         shaders, realm pages and changelog page against
 #                                         their sources, and every realm's link-preview card
@@ -261,6 +262,7 @@ reports() {
   generated
   pack_reader_c
   app_realms
+  pack_cells
   cards
 }
 # The API's migrations (#13301, coax/web/api/migrations/README.md): a new one takes a number above
@@ -287,6 +289,10 @@ pack_reader_c() {
 # The Mac and iPhone apps' realms and passes still resolve, emit and compile (#13389): a client's
 # Coax moved (#13268) and both apps stopped building with no check saying so. Their Swift and
 # Objective-C need a Mac (apps/shared/host/apple/check.sh); this is the part any host can do.
+# A pack paged by world cell (#13304, for #13280): the browser's pack module fetches a cell's pages
+# on demand exactly as the one reader says (aethyr/host/check-pack-cells.coax; it builds the pack
+# reactor and runs coax/web/pack-host.js in bun over a fixture it writes).
+pack_cells() { step pack-cells coax/web/tool.sh aethyr/host/check-pack-cells.coax "$PWD" coax/web/build/pack-cells || status=1; }
 app_realms() { step app-realms coax/web/tool.sh verse/native/app-realms.coax "$PWD" coax/web/build/app-realms || status=1; }
 # Every realm in realms.json has its link-preview card (#13144): a release refuses a realm without
 # one, so it shows at landing, not at release.

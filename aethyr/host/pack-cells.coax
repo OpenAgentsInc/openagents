@@ -1,0 +1,229 @@
+// A pack's content by world cell (GitHub #13304, for #13280): which bytes of the pack's image a
+// cell's content is, so a host fetches a cell's pages when the cell controller
+// (aethyr/world/cells.coax) asks for the cell, and not the whole pack at the start.
+//
+// A pack that is paged by cell says so in its catalog, a line a cell:
+//   Z CX CZ DIGEST AT N [AT N ...]
+// CX and CZ are the cell's integer coordinates (64 m cells, -32768 to 32767, a minus sign for a
+// negative one), DIGEST is the cell's content digest as the world's manifest holds it (1 to
+// 4294967295), and each AT N is a byte range of the image, in ascending order, not touching or
+// overlapping, at most PACK_CELL_RANGES of them. Numbers are written plainly: no leading zero, no
+// plus sign, "-0" is not a number. A line that is not exactly this is not a cell's line.
+//
+// The reader and the writer are both here, so no host and no tool reads or writes the line itself:
+//   pack_cell_line   writes a cell's line (the pack tool calls it)
+//   pack_cell_find   the cell with a key, from a catalog's text, its ranges checked against the image
+//   pack_cell_key    a cell's key, the page's (everglade/client/cells.coax e2cl_key)
+// A cell that is listed twice, or whose line is damaged, is not found: the host then has nothing to
+// fetch for it and answers the controller with a failed load, which asks again. The catalog's other
+// lines are not read here, and a pack with no Z line is unchanged.
+//
+// Names here start with `pack_cell` or `pkc_`: every declaration is visible to every module a
+// realm loads.
+//   coax/bin/coax test aethyr/host/pack-cells.coax --library
+//   coax/bin/coax mutate aethyr/host/pack-cells.coax --root-only
+//   coax/web/tool.sh aethyr/tools/pack-profile.coax proto/verse/asset-pack-v2.json   (the profile's cell lines)
+#module "aethyr.host.pack_cells";
+#authority;
+
+PACK_CELL_RANGES :: 8;        // byte ranges a cell's line holds at most
+PACK_CELL_SPAN :: 32768;      // a coordinate is -PACK_CELL_SPAN to PACK_CELL_SPAN - 1
+PACK_CELL_NONE :: 65536;      // what a field that is no coordinate reads as: outside every cell
+PACK_CELL_LINE :: 256;        // a buffer the writer takes: the longest line is 203 bytes with its newline
+PackCell :: struct { ok: bool; cx: int; cz: int; digest: int; ranges: int; at: [PACK_CELL_RANGES] int; n: [PACK_CELL_RANGES] int; }
+
+// A cell's key: (cx + 32768) * 65536 + (cz + 32768). -1 for a coordinate outside the span.
+pack_cell_key :: (cx: int, cz: int) -> int #effects(all) {
+  if cx < -PACK_CELL_SPAN || cx >= PACK_CELL_SPAN || cz < -PACK_CELL_SPAN || cz >= PACK_CELL_SPAN { return -1; }
+  return (cx + PACK_CELL_SPAN) * 65536 + (cz + PACK_CELL_SPAN);
+}
+// A whole number written plainly, at most 10 digits (no sign, no leading zero), or -1.
+pkc_number :: (s: string) -> int #effects(all) {
+  if s.count == 0 || s.count > 10 || (s[0] == '0' && s.count > 1) { return -1; }
+  pkc_n := 0;
+  for pkc_c: s {
+    if pkc_c < '0' || pkc_c > '9' { return -1; }
+    pkc_n = pkc_n * 10 + cast(int) (pkc_c - '0');
+  }
+  return pkc_n;
+}
+// A coordinate: a plain number, or a minus sign and a plain number above 0. PACK_CELL_NONE when it
+// isn't one.
+pkc_coord :: (s: string) -> int #effects(all) {
+  pkc_v := pkc_number(s);
+  if pkc_v >= 0 { return ifx pkc_v >= PACK_CELL_SPAN then PACK_CELL_NONE else pkc_v; }
+  if s.count == 0 || s[0] != '-' { return PACK_CELL_NONE; }
+  pkc_v = pkc_number(s[1..<s.count]);
+  return ifx pkc_v < 1 || pkc_v > PACK_CELL_SPAN then PACK_CELL_NONE else -pkc_v;
+}
+// The i-th field of a line, fields split by single spaces; "" past the last.
+pkc_field :: (line: string, i: int) -> string #effects(all) {
+  pkc_at := 0; pkc_f := 0;
+  for pkc_k: 0..<line.count + 1 {
+    if pkc_k == line.count || line[pkc_k] == ' ' {
+      if pkc_f == i { return line[pkc_at..<pkc_k]; }
+      pkc_f += 1; pkc_at = pkc_k + 1;
+    }
+  }
+  return "";
+}
+pkc_fields :: (line: string) -> int #effects(all) {
+  pkc_f := 1;
+  for pkc_c: line { if pkc_c == ' ' { pkc_f += 1; } }
+  return pkc_f;
+}
+// One line (without its newline) as a cell's, its ranges inside an image of image_bytes. Not ok
+// when it is not exactly a cell's line.
+pack_cell_read :: (line: string, image_bytes: int) -> PackCell #effects(all) {
+  pkc_c: PackCell;
+  pkc_f := pkc_fields(line); pkc_ranges := (pkc_f - 4) / 2;
+  if pkc_f < 6 || (pkc_f & 1) != 0 || pkc_ranges > PACK_CELL_RANGES || pkc_field(line, 0) != "Z" { return pkc_c; }
+  pkc_c.cx = pkc_coord(pkc_field(line, 1)); pkc_c.cz = pkc_coord(pkc_field(line, 2)); pkc_c.digest = pkc_number(pkc_field(line, 3));
+  if pack_cell_key(pkc_c.cx, pkc_c.cz) < 0 || pkc_c.digest < 1 || pkc_c.digest > 4294967295 { return PackCell.{}; }
+  pkc_end := -1;
+  for pkc_k: 0..<pkc_ranges {
+    pkc_at := pkc_number(pkc_field(line, 4 + 2 * pkc_k)); pkc_n := pkc_number(pkc_field(line, 5 + 2 * pkc_k));
+    if pkc_at <= pkc_end || pkc_n < 1 || pkc_at + pkc_n > image_bytes { return PackCell.{}; }
+    pkc_c.at[pkc_k] = pkc_at; pkc_c.n[pkc_k] = pkc_n; pkc_end = pkc_at + pkc_n; pkc_c.ranges = pkc_k + 1;
+  }
+  pkc_c.ok = true;
+  return pkc_c;
+}
+// The cell with `key` in a catalog's text, for an image of image_bytes. Not ok when no line names
+// the cell, when two do, or when its line doesn't read.
+pack_cell_find :: (catalog: string, key: int, image_bytes: int) -> PackCell #effects(all) {
+  pkc_found: PackCell; pkc_at := 0;
+  for pkc_k: 0..<catalog.count + 1 {
+    if pkc_k < catalog.count && catalog[pkc_k] != '\n' { continue; }
+    pkc_line := catalog[pkc_at..<pkc_k]; pkc_at = pkc_k + 1;
+    if pkc_field(pkc_line, 0) != "Z" { continue; }
+    // a Z line that doesn't read may be this cell's: its coordinates are still compared
+    if pack_cell_key(pkc_coord(pkc_field(pkc_line, 1)), pkc_coord(pkc_field(pkc_line, 2))) != key { continue; }
+    pkc_c := pack_cell_read(pkc_line, image_bytes);
+    if !pkc_c.ok || pkc_found.ok { return PackCell.{}; }
+    pkc_found = pkc_c;
+  }
+  return pkc_found;
+}
+pkc_put :: (out: [] u8, at: int, v: int) -> int #effects(all) {
+  pkc_d: [10] u8; pkc_k := 0; pkc_v := v;
+  while pkc_k == 0 || pkc_v > 0 { pkc_d[pkc_k] = cast,trunc(u8) ('0' + pkc_v % 10); pkc_v /= 10; pkc_k += 1; }
+  for pkc_i: 0..<pkc_k { out[at + pkc_i] = pkc_d[pkc_k - 1 - pkc_i]; }
+  return at + pkc_k;
+}
+pkc_put_coord :: (out: [] u8, at: int, v: int) -> int #effects(all) {
+  if v < 0 { out[at] = '-'; return pkc_put(out, at + 1, -v); }
+  return pkc_put(out, at, v);
+}
+// Writes a cell's line with its newline into out; the bytes written, or -1 when the cell, its
+// digest or its ranges are not what a line may hold, or out is smaller than PACK_CELL_LINE.
+pack_cell_line :: (cx: int, cz: int, digest: int, at: [] int, n: [] int, image_bytes: int, out: [] u8) -> int #effects(all) {
+  if out.count < PACK_CELL_LINE || pack_cell_key(cx, cz) < 0 || digest < 1 || digest > 4294967295 || at.count < 1 || at.count > PACK_CELL_RANGES || n.count != at.count { return -1; }
+  pkc_end := -1;
+  for pkc_k: 0..<at.count {
+    if at[pkc_k] <= pkc_end || n[pkc_k] < 1 || at[pkc_k] + n[pkc_k] > image_bytes || at[pkc_k] + n[pkc_k] > 4294967295 { return -1; }
+    pkc_end = at[pkc_k] + n[pkc_k];
+  }
+  out[0] = 'Z'; out[1] = ' ';
+  pkc_w := pkc_put_coord(out, 2, cx); out[pkc_w] = ' ';
+  pkc_w = pkc_put_coord(out, pkc_w + 1, cz); out[pkc_w] = ' ';
+  pkc_w = pkc_put(out, pkc_w + 1, digest);
+  for pkc_k: 0..<at.count {
+    out[pkc_w] = ' '; pkc_w = pkc_put(out, pkc_w + 1, at[pkc_k]);
+    out[pkc_w] = ' '; pkc_w = pkc_put(out, pkc_w + 1, n[pkc_k]);
+  }
+  out[pkc_w] = '\n';
+  return pkc_w + 1;
+}
+
+// ---- checks
+
+#test "a key is the page's: both coordinates offset by 32768, refused outside the span" {
+  #assert pack_cell_key(0, 0) == 32768 * 65536 + 32768 && pack_cell_key(-1, -8) == 32767 * 65536 + 32760 && pack_cell_key(1, -3) == 32769 * 65536 + 32765;
+  #assert pack_cell_key(-32768, -32768) == 0 && pack_cell_key(32767, 32767) == 4294967295;
+  #assert pack_cell_key(-32769, 0) == -1 && pack_cell_key(32768, 0) == -1 && pack_cell_key(0, -32769) == -1 && pack_cell_key(0, 32768) == -1;
+}
+#test "numbers and coordinates are written plainly or are not numbers" {
+  #assert pkc_number("0") == 0 && pkc_number("7") == 7 && pkc_number("4294967295") == 4294967295 && pkc_number("9999999999") == 9999999999;
+  #assert pkc_number("") == -1 && pkc_number("01") == -1 && pkc_number("00") == -1 && pkc_number("12345678901") == -1 && pkc_number("1a") == -1 && pkc_number("/") == -1 && pkc_number(":") == -1 && pkc_number("-1") == -1 && pkc_number("+1") == -1;
+  #assert pkc_coord("0") == 0 && pkc_coord("32767") == 32767 && pkc_coord("-1") == -1 && pkc_coord("-32768") == -32768;
+  #assert pkc_coord("32768") == PACK_CELL_NONE && pkc_coord("-32769") == PACK_CELL_NONE && pkc_coord("-0") == PACK_CELL_NONE && pkc_coord("-") == PACK_CELL_NONE && pkc_coord("") == PACK_CELL_NONE && pkc_coord("--1") == PACK_CELL_NONE && pkc_coord("x") == PACK_CELL_NONE && pkc_coord("-01") == PACK_CELL_NONE;
+  #assert pkc_field("Z 1 22", 0) == "Z" && pkc_field("Z 1 22", 1) == "1" && pkc_field("Z 1 22", 2) == "22" && pkc_field("Z 1 22", 3) == "" && pkc_field("a  b", 1) == "" && pkc_field("a  b", 2) == "b" && pkc_field(" a", 0) == "" && pkc_field(" a", 1) == "a";
+  #assert pkc_fields("") == 1 && pkc_fields("Z") == 1 && pkc_fields("Z 1 22") == 3 && pkc_fields("a  b") == 3;
+}
+#test "a cell's line is written and read back: its coordinates, digest and every range" {
+  b: [PACK_CELL_LINE] u8;
+  at := [3] int.[4096, 8192, 70000]; n := [3] int.[100, 61807, 1];
+  w := pack_cell_line(-1, -8, 35929590, at[..], n[..], 70001, b[..]);
+  #assert w == 45 && cast(string) b[0..<w] == "Z -1 -8 35929590 4096 100 8192 61807 70000 1\n";
+  c := pack_cell_read(cast(string) b[0..<w - 1], 70001);
+  #assert c.ok && c.cx == -1 && c.cz == -8 && c.digest == 35929590 && c.ranges == 3;
+  for k: 0..<3 { #assert c.at[k] == at[k] && c.n[k] == n[k]; }
+  for k: 3..<PACK_CELL_RANGES { #assert c.at[k] == 0 && c.n[k] == 0; }
+  one := [1] int.[0]; one_n := [1] int.[1];
+  w = pack_cell_line(0, 32767, 4294967295, one[..], one_n[..], 1, b[..]);
+  #assert cast(string) b[0..<w] == "Z 0 32767 4294967295 0 1\n" && pack_cell_read(cast(string) b[0..<w - 1], 1).ok;
+  w = pack_cell_line(-32768, 10, 1, one[..], one_n[..], 1, b[..]);
+  #assert cast(string) b[0..<w] == "Z -32768 10 1 0 1\n";
+  c = pack_cell_read("Z -32768 10 1 0 1", 1); #assert c.ok && c.cx == -32768 && c.cz == 10 && c.digest == 1 && c.ranges == 1 && c.at[0] == 0 && c.n[0] == 1;
+  full_at: [PACK_CELL_RANGES] int; full_n: [PACK_CELL_RANGES] int;
+  for k: 0..<PACK_CELL_RANGES { full_at[k] = 1000000000 + 2 * k; full_n[k] = 1; }
+  w = pack_cell_line(-32768, -32768, 4294967295, full_at[..], full_n[..], 4294967295, b[..]);
+  #assert w == 131;
+  c = pack_cell_read(cast(string) b[0..<w - 1], 4294967295); #assert c.ok && c.ranges == PACK_CELL_RANGES && c.at[7] == 1000000014 && c.n[7] == 1;
+}
+#test "the writer refuses what a line may not hold" {
+  b: [PACK_CELL_LINE] u8; small: [PACK_CELL_LINE - 1] u8;
+  at := [2] int.[10, 20]; n := [2] int.[9, 5];
+  #assert pack_cell_line(0, 0, 9, at[..], n[..], 25, b[..]) == 18 && cast(string) b[0..<18] == "Z 0 0 9 10 9 20 5\n";
+  #assert pack_cell_line(0, 0, 9, at[..], n[..], 25, small[..]) == -1;
+  #assert pack_cell_line(0, 0, 9, at[..], n[..], 24, b[..]) == -1;
+  #assert pack_cell_line(32768, 0, 9, at[..], n[..], 25, b[..]) == -1 && pack_cell_line(0, -32769, 9, at[..], n[..], 25, b[..]) == -1;
+  #assert pack_cell_line(0, 0, 0, at[..], n[..], 25, b[..]) == -1 && pack_cell_line(0, 0, 4294967296, at[..], n[..], 25, b[..]) == -1 && pack_cell_line(0, 0, 4294967295, at[..], n[..], 25, b[..]) > 0;
+  #assert pack_cell_line(0, 0, 9, at[0..<0], n[0..<0], 25, b[..]) == -1 && pack_cell_line(0, 0, 9, at[..], n[0..<1], 25, b[..]) == -1;
+  nine_at: [PACK_CELL_RANGES + 1] int; nine_n: [PACK_CELL_RANGES + 1] int;
+  for k: 0..<PACK_CELL_RANGES + 1 { nine_at[k] = 2 * k; nine_n[k] = 1; }
+  #assert pack_cell_line(0, 0, 9, nine_at[..], nine_n[..], 100, b[..]) == -1 && pack_cell_line(0, 0, 9, nine_at[0..<PACK_CELL_RANGES], nine_n[0..<PACK_CELL_RANGES], 100, b[..]) > 0;
+  touch := [2] int.[10, 20]; touch_n := [2] int.[11, 5];
+  #assert pack_cell_line(0, 0, 9, touch[..], touch_n[..], 25, b[..]) == -1;
+  back := [2] int.[20, 10]; back_n := [2] int.[5, 5];
+  #assert pack_cell_line(0, 0, 9, back[..], back_n[..], 25, b[..]) == -1;
+  meet_n := [2] int.[10, 5];
+  #assert pack_cell_line(0, 0, 9, at[..], meet_n[..], 25, b[..]) == -1;
+  empty_n := [2] int.[10, 0];
+  #assert pack_cell_line(0, 0, 9, at[..], empty_n[..], 25, b[..]) == -1;
+  far := [1] int.[4294967295]; far_n := [1] int.[1];
+  #assert pack_cell_line(0, 0, 9, far[..], far_n[..], 4294967296, b[..]) == -1;
+  near := [1] int.[4294967294];
+  #assert pack_cell_line(0, 0, 9, near[..], far_n[..], 4294967296, b[..]) == 21;
+}
+#test "the reader refuses every line that is not exactly a cell's" {
+  #assert pack_cell_read("Z 0 0 9 10 9 20 5", 25).ok && !pack_cell_read("Z 0 0 9 10 9 20 5", 24).ok;
+  #assert !pack_cell_read("Y 0 0 9 10 10", 25).ok && !pack_cell_read("ZZ 0 0 9 10 10", 25).ok && !pack_cell_read("Z 0 0 9 10", 25).ok && !pack_cell_read("Z 0 0 9", 25).ok && !pack_cell_read("Z 0 0 9 10 10 20", 25).ok;
+  #assert !pack_cell_read("Z 0 0 9 10 10 ", 25).ok && !pack_cell_read("Z 0 0 9  10 10", 25).ok && !pack_cell_read(" Z 0 0 9 10 10", 25).ok;
+  #assert !pack_cell_read("Z 32768 0 9 10 10", 25).ok && !pack_cell_read("Z 0 x 9 10 10", 25).ok && !pack_cell_read("Z 0 0 0 10 10", 25).ok && !pack_cell_read("Z 0 0 4294967296 10 10", 25).ok && !pack_cell_read("Z 0 0 -9 10 10", 25).ok;
+  #assert pack_cell_read("Z 0 0 4294967295 10 10", 25).ok && pack_cell_read("Z 0 0 1 0 25", 25).ok && !pack_cell_read("Z 0 0 1 0 26", 25).ok && !pack_cell_read("Z 0 0 1 0 0", 25).ok && !pack_cell_read("Z 0 0 1 -1 2", 25).ok;
+  #assert !pack_cell_read("Z 0 0 9 10 10 19 2", 25).ok && pack_cell_read("Z 0 0 9 10 10 21 2", 25).ok && !pack_cell_read("Z 0 0 9 10 10 20 2", 25).ok && !pack_cell_read("Z 0 0 9 10 10 5 2", 25).ok;
+  // a refusal after a good range keeps nothing
+  c := pack_cell_read("Z 3 4 9 10 10 5 2", 25); #assert !c.ok && c.cx == 0 && c.cz == 0 && c.digest == 0 && c.ranges == 0 && c.at[0] == 0 && c.n[0] == 0;
+  c = pack_cell_read("Z 3 4 0 10 10", 25); #assert !c.ok && c.cx == 0 && c.cz == 0 && c.digest == 0;
+  c = pack_cell_read("Y 3 4 9 10 10", 25); #assert !c.ok && c.cx == 0 && c.cz == 0 && c.digest == 0;
+  // nine ranges are one too many, eight are the most
+  eight := "Z 0 0 9 0 1 2 1 4 1 6 1 8 1 10 1 12 1 14 1";
+  #assert pack_cell_read(eight, 25).ok && pack_cell_read(eight, 25).ranges == 8 && !pack_cell_read("Z 0 0 9 0 1 2 1 4 1 6 1 8 1 10 1 12 1 14 1 16 1", 25).ok;
+}
+#test "a catalog's cell is found by key among its other lines, once, or not at all" {
+  catalog := "budget 600\nbytes 512\nL 0 Kit|CC0|u\nZ -1 -8 35929590 100 50\nG ground 1 2 3\nZ 0 -8 4023926691 150 50 300 12\nZebra 1\nZ 1 -3 7 400 1";
+  a := pack_cell_find(catalog, pack_cell_key(-1, -8), 512); #assert a.ok && a.digest == 35929590 && a.ranges == 1 && a.at[0] == 100 && a.n[0] == 50;
+  b := pack_cell_find(catalog, pack_cell_key(0, -8), 512); #assert b.ok && b.cx == 0 && b.cz == -8 && b.digest == 4023926691 && b.ranges == 2 && b.at[1] == 300 && b.n[1] == 12;
+  last := pack_cell_find(catalog, pack_cell_key(1, -3), 512); #assert last.ok && last.digest == 7 && last.at[0] == 400;
+  #assert !pack_cell_find(catalog, pack_cell_key(1, -3), 400).ok;
+  #assert !pack_cell_find(catalog, pack_cell_key(2, 2), 512).ok && !pack_cell_find(catalog, -1, 512).ok && !pack_cell_find("", pack_cell_key(0, 0), 512).ok;
+  twice := "Z 0 0 9 10 10\nZ 1 1 9 30 2\nZ 0 0 9 40 10\n";
+  none := pack_cell_find(twice, pack_cell_key(0, 0), 512); #assert !none.ok && none.digest == 0 && none.ranges == 0 && none.at[0] == 0 && pack_cell_find(twice, pack_cell_key(1, 1), 512).ok;
+  // a damaged line that names the cell hides a good one for it; one that names another cell does not
+  damaged := "Z 0 0 9 10 10\nZ 0 0 9 40\nZ 1 1 0 3 3\n";
+  #assert !pack_cell_find(damaged, pack_cell_key(0, 0), 512).ok && !pack_cell_find(damaged, pack_cell_key(1, 1), 512).ok;
+  #assert pack_cell_find("Z 0 0 9 10 10\nZ 1 1 0 3 3\n", pack_cell_key(0, 0), 512).ok && pack_cell_find("Z 1 1 0 3 3\nZ 0 0 9 10 10", pack_cell_key(0, 0), 512).ok;
+  #assert !pack_cell_find("Z\nZ0 0 9 10 10\nX 0 0 9 10 10\n", pack_cell_key(0, 0), 512).ok && pack_cell_find("\nZ 0 0 9 10 10", pack_cell_key(0, 0), 512).ok && !pack_cell_find("Z", -1, 512).ok;
+}

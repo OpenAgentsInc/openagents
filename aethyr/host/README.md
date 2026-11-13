@@ -393,6 +393,41 @@ the repository root:
 coax/bin/coax c aethyr/host/pack-table-face.coax --library > verse/native/pack-table-gen.h
 ```
 
+### Packs paged by world cell
+
+A pack may say which bytes of its image each world cell's content is, so a
+host fetches a cell's pages when the cell controller
+(`aethyr/world/cells.coax`) asks for that cell, and not the whole pack at the
+start (GitHub #13304, for #13280). The catalog has a line a cell:
+
+```text
+Z CX CZ DIGEST AT N [AT N ...]
+```
+
+[`pack-cells.coax`](pack-cells.coax) is the one reader and the one writer of
+that line: `pack_cell_line` writes it (the pack tool calls it),
+`pack_cell_find` reads a cell by key, and `pack_cell_key` is the page's key,
+`(cx + 32768) * 65536 + (cz + 32768)`. The asset-pack profile
+(`proto/verse/asset-pack-v2.json`, `cell_lines`) states the line and holds
+fixtures to this module. A host does three things, and decides nothing:
+
+1. Asks for the cell: `aethyr_pack_cell(image, key)` on the reader's C face
+   (`aethyr_pack_cell_ranges` in `pack-table.h`), or `result.cell(key)` on
+   what `loadPaged(pack, {demand: true})` returns in `coax/web/pack-host.js`.
+   It gets the cell's digest and up to eight byte ranges, each inside the
+   image. A cell the catalog lists twice, or whose line is damaged, is not
+   found; the host then answers the controller with a failed load.
+2. Fetches what the ranges need: `hpg_cover(l, at, n, out)` in
+   [`page-stream.coax`](page-stream.coax) names the pages not yet held that
+   cover a range. The host fetches those pages and calls `hpg_admit` for
+   each (`result.more(ranges)` in the browser). No page is fetched twice.
+3. Answers the controller with the digest from step 1 once `hpg_ready` says
+   every range is held.
+
+`coax/web/tool.sh aethyr/host/check-pack-cells.coax ROOT OUT` runs the three
+steps end to end through the browser's module on a pack it writes, and is the
+`pack-cells` step of `coax/remote/check.sh reports`.
+
 The v1 browser consumes `pack-stream.coax` and `private-pack.coax` through
 the separate pack reactor. Each observed stream admits at most 64 MiB;
 actual retained allocation pages share a 256 MiB/64-ticket owner. The twelve

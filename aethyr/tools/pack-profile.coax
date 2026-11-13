@@ -1,9 +1,11 @@
-// Hold proto/verse/asset-pack-v2.json to aethyr/forge/pack.coax and aethyr/host/pack-stream.coax:
+// Hold proto/verse/asset-pack-v2.json to aethyr/forge/pack.coax, aethyr/host/pack-stream.coax and
+// aethyr/host/pack-cells.coax (the catalog's cell lines, written and read back, #13304):
 // header/entry bounds, VPK2 layout written byte for byte and read back whole, wide 61..128 entry
 // tables refused by VPK1 and admitted by VPK2, and atomic registry refusal with no partial state.
 //   coax/web/tool.sh aethyr/tools/pack-profile.coax proto/verse/asset-pack-v2.json
 #import "Basic";
 #load "../host/pack-stream.coax";
+#load "../host/pack-cells.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
@@ -113,6 +115,37 @@ pp_check_bounds :: () -> bool {
   if pack_admit(reg[..], cast(string) b[0..<un64], r[..]) != ASSET_FULL || reg[0].held != 1 || reg[0].used != 4 { return false; }
   return true;
 }
+// The catalog's cell lines (aethyr/host/pack-cells.coax, #13304): each fixture's cell is written as
+// its line byte for byte and read back whole; each refused line is no cell's.
+pp_check_cells :: (d: Jv) -> bool {
+  cells := jv_get(d, 0, "cell_lines");
+  if jv_int(d, jv_get(d, cells, "max_ranges"), -1) != PACK_CELL_RANGES || jv_int(d, jv_get(d, cells, "coordinate_min"), 0) != -PACK_CELL_SPAN || jv_int(d, jv_get(d, cells, "coordinate_max"), 0) != PACK_CELL_SPAN - 1 { return false; }
+  fxs := jv_get(d, cells, "fixtures");
+  if jv_len(d, fxs) < 3 { return false; }
+  lb: [PACK_CELL_LINE] u8; wb: [PACK_CELL_LINE] u8;
+  for i: 0..<jv_len(d, fxs) {
+    fx := jv_at(d, fxs, i);
+    cx := jv_int(d, jv_get(d, fx, "cx"), 99999); cz := jv_int(d, jv_get(d, fx, "cz"), 99999);
+    digest := jv_int(d, jv_get(d, fx, "digest"), -1); image := jv_int(d, jv_get(d, fx, "image_bytes"), -1);
+    ranges := jv_get(d, fx, "ranges"); rn := jv_len(d, ranges);
+    if rn < 1 || rn > PACK_CELL_RANGES { return false; }
+    at: [PACK_CELL_RANGES] int; n: [PACK_CELL_RANGES] int;
+    for k: 0..<rn { pair := jv_at(d, ranges, k); at[k] = jv_int(d, jv_at(d, pair, 0), -1); n[k] = jv_int(d, jv_at(d, pair, 1), -1); }
+    line := pp_str(d, jv_get(d, fx, "line"), lb[..]);
+    w := pack_cell_line(cx, cz, digest, at[0..<rn], n[0..<rn], image, wb[..]);
+    if w != line.count + 1 || cast(string) wb[0..<w - 1] != line || wb[w - 1] != '\n' { return false; }
+    c := pack_cell_read(line, image);
+    if !c.ok || c.cx != cx || c.cz != cz || c.digest != digest || c.ranges != rn { return false; }
+    for k: 0..<rn { if c.at[k] != at[k] || c.n[k] != n[k] { return false; } }
+    if jv_int(d, jv_get(d, fx, "key"), -1) != pack_cell_key(cx, cz) || !pack_cell_find(line, pack_cell_key(cx, cz), image).ok { return false; }
+  }
+  refused := jv_get(d, cells, "refused");
+  if jv_len(d, refused) < 6 { return false; }
+  for i: 0..<jv_len(d, refused) {
+    if pack_cell_read(pp_str(d, jv_at(d, refused, i), lb[..]), 4294967295).ok { return false; }
+  }
+  return true;
+}
 pp_check :: (d: Jv) -> bool {
   tb: [2][256] u8;
   if pp_str(d, jv_get(d, 0, "identity"), tb[0][..]) != "asset-pack-v2" { return false; }
@@ -139,7 +172,7 @@ pp_check :: (d: Jv) -> bool {
     r: [1] PackRead;
     if bn < 0 || pack_read(cast(string) raw[0..<bn], r[..]) { return false; }
   }
-  return pp_check_bounds();
+  return pp_check_cells(d) && pp_check_bounds();
 }
 #test "Asset pack v2 profile tool checks bounds and rejects malformed profiles" {
   #assert pp_check_bounds();

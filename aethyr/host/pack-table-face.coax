@@ -9,6 +9,7 @@
 //   coax/bin/coax test aethyr/host/pack-table-face.coax --library
 #module "aethyr.host.pack_table_face";
 #load "pack-table.coax";
+#load "pack-cells.coax";
 
 // A pack's stated size from its first 12 bytes, or -1.
 aethyr_pack_stated :: (prefix: string) -> int #export_c #effects(all) { return pack_stated(prefix); }
@@ -16,6 +17,36 @@ aethyr_pack_stated :: (prefix: string) -> int #export_c #effects(all) { return p
 aethyr_pack_table :: (head: string, total: int, r: [] PackTable) -> bool #export_c #effects(all) { return pack_table(head, total, r); }
 // The bytes of a pack's start the largest table a host reads takes: a buffer for `head`.
 aethyr_pack_head_max :: () -> int #export_c #effects(all) { return pack_table_need(PACK_HEADER, PACK_TABLE_MAX); }
+
+// The cell with `key` (pack-cells.coax pack_cell_key) in the catalog of the whole pack `image`: its
+// digest and the byte ranges of the image its content is. Not ok when the image isn't a pack, has
+// no catalog, or its catalog has no one good line for the cell.
+aethyr_pack_cell :: (image: string, key: int) -> PackCell #export_c #effects(all) {
+  t: [1] PackTable;
+  if !pack_table(image, image.count, t[..]) { return PackCell.{}; }
+  k := pack_table_nth(t[..], PACK_CATALOG, 0);
+  if k < 0 { return PackCell.{}; }
+  return pack_cell_find(image[t[0].entries[k].at..<t[0].entries[k].at + t[0].entries[k].n], key, image.count);
+}
+// A cell's key from its coordinates, or -1.
+aethyr_pack_cell_key :: (cx: int, cz: int) -> int #export_c #effects(all) { return pack_cell_key(cx, cz); }
+
+#test "a cell is found in a whole pack's catalog by its key, and not in what isn't a pack" {
+  b: [600] u8; p := pack_table_test(b[..]);
+  t: [1] PackTable; #assert pack_table(p, p.count, t[..]);
+  k := pack_table_nth(t[..], PACK_CATALOG, 0); #assert k == 0;
+  // the test pack's catalog entry, rewritten in place as two cell lines and padding
+  lines := "Z 0 -8 77 480 6\nZ -1 2 5 488 12 508 3\n";
+  #assert lines.count <= t[0].entries[k].n;
+  for j: 0..<t[0].entries[k].n { b[t[0].entries[k].at + j] = ifx j < lines.count then lines[j] else cast(u8) '\n'; }
+  a := aethyr_pack_cell(p, aethyr_pack_cell_key(0, -8)); #assert a.ok && a.digest == 77 && a.ranges == 1 && a.at[0] == 480 && a.n[0] == 6;
+  c := aethyr_pack_cell(p, aethyr_pack_cell_key(-1, 2)); #assert c.ok && c.digest == 5 && c.ranges == 2 && c.at[1] == 508 && c.n[1] == 3;
+  #assert !aethyr_pack_cell(p, aethyr_pack_cell_key(3, 3)).ok && !aethyr_pack_cell(p[0..<511], aethyr_pack_cell_key(0, -8)).ok && !aethyr_pack_cell("", 0).ok;
+  #assert aethyr_pack_cell_key(0, 0) == 2147516416 && aethyr_pack_cell_key(40000, 0) == -1;
+  // a range past the pack's end is no cell
+  far := "Z 0 -8 77 480 33\n"; for j: 0..<far.count { b[t[0].entries[k].at + j] = far[j]; }
+  #assert !aethyr_pack_cell(p, aethyr_pack_cell_key(0, -8)).ok;
+}
 
 #test "the face is the reader: the same table, the same refusal" {
   b: [600] u8; p := pack_table_test(b[..]);

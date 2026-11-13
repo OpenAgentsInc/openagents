@@ -30,6 +30,8 @@ HOST_PAGED_HEAD :: PPK_HEADER + PPK_PAGES * PPK_RECORD;
   #assert !hpg_stream(l[0], cast(string) arena[0..<500]).done;
   sound := hpg_page(l[0], n - 1, 2);
   #assert hpg_ready(l[0], 0, sound) && !hpg_ready(l[0], sound, 3);
+  cover: [4] int;
+  #assert hpg_cover(l[0], 0, sound, cover[..]) == 0 && hpg_cover(l[0], sound - 1, 3, cover[..]) == 1 && cover[0] == n - 1 && hpg_cover(l[0], 0, 513, cover[..]) == -1;
   out: [1] PackRead; plan := HostPrivatePack.{};
   #assert hpk_stream_pack(cast(string) arena[..], s, plan, false, out[..]) && out[0].count == 5;
   bad := arena; bad[0] = 0; #assert !hpg_stream(l[0], cast(string) bad[..]).done;
@@ -55,6 +57,9 @@ hpg_admit :: (l: [] PpkLoad, k: int, image: string) -> bool #export_c #effects(a
   return ppk_admit(l, k, image[g.image_at..<g.image_at + g.decoded]);
 }
 hpg_ready :: (l: PpkLoad, at: int, n: int) -> bool #export_c #effects(all) { return ppk_ready(l, at, n); }
+// The pages not yet held that cover image bytes [at, at + n), lowest first, into out; their count,
+// or -1 (ppk_cover). A host fetches and admits exactly these for a range a cell's line names.
+hpg_cover :: (l: PpkLoad, at: int, n: int, out: [] int) -> int #export_c #effects(all) { return ppk_cover(l, at, n, out); }
 // The image as a finished complete stream, for hpk_stream_pack, once every root is held.
 hpg_stream :: (l: PpkLoad, image: string) -> HostPackStream #export_c #effects(all) {
   if !ppk_roots_ready(l) || image.count != l.m.image_bytes { return HostPackStream.{}; }
