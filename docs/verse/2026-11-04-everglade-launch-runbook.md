@@ -364,9 +364,10 @@ Supported pairs and rollback limits:
   (`everglade/content/everglade.content`, #13381). After you edit the tables,
   release the room and the page from the same commit: a page with the old
   tables is refused by a room with the new ones and reloads.
-- To let pages cached from the last release keep playing over a wire change,
-  keep `WIRE_MIN` at the old version, and only while the room still writes
-  what that page reads.
+- A room always seats the wire version before its own, and writes that page
+  what it reads, for one release
+  ([the previous wire](../protocol/everglade-previous-wire.md), #13398). A
+  change that raises `WIRE_VERSION` rewrites those writers in the same commit.
 - Don't roll a room back past a change to `RV_SCHEMA`: every player whose
   ticket carries the newer format is refused until you roll forward.
 

@@ -104,10 +104,12 @@ WIRE_VERSION :: 6;   // 6: Everglade II's monsters and guard are rows, their blo
 WIRE_REFUSE_VERSION :: "version";   // r 0 version: the room speaks another WIRE_VERSION than the hello's (the page reloads)
 WIRE_REFUSE_ELSEWHERE :: "elsewhere";   // r 0 elsewhere: a newer seat ticket has your character, in another tab or room (#12834); the page stops rejoining
 WIRE_REFUSE_RESTARTING :: "restarting";   // r 0 restarting: the room drains before a release (#12797); the page joins again at once, on another shard
-// The oldest wire the room still speaks: a page cached from the release before still joins while its
-// hello's version is in WIRE_MIN..WIRE_VERSION. Keep WIRE_MIN below WIRE_VERSION only while the room
-// still writes what that older page reads.
-WIRE_MIN :: 6;
+// The oldest wire the room still speaks: always the version before this one (#13398). A release moves
+// its rooms before its page, and a page a player has open is the release before's, so a room seats a
+// hello on WIRE_MIN and writes that page what it reads: everglade/server/wire-prev.coax holds those
+// writers, for exactly one release (the room's checks fail when it is not written for this version).
+// A page speaks WIRE_VERSION alone.
+WIRE_MIN :: WIRE_VERSION - 1;
 // The build a page and a room are, beside the wire (#12839, aethyr/session/compat.coax): one encounter
 // never mixes two engines, two rule sets or two worlds. Raise WIRE_ENGINE when the shared movement or
 // world step changes what a page predicts, WIRE_RULES when the room's rules (everglade5e-room-rules.coax,

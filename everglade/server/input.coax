@@ -10,6 +10,7 @@ eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := se
   c := text[0];
   // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
   if (c == 'I' || c == 'J' || c == 'C' || c == 'F' || c == 'E' || c == 'L' || c == 'Z' || c == 'U' || c == 'M' || c == 'R' || c == 'T' || c == 'V') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
+  if wprev_heard(v, k, seat, text) { return; }   // a frame only the previous wire has (wire-prev.coax, #13398)
   if c == 'X' { e2_admin_heard(v, k, seat_id, text); return; }   // admin mode: a local room's only (everglade/server/admin.coax)
   if c=='M' { e2_familiar_ask(v,k,seat_id,text); return; }
   if c == 'U' { e2_aid_ask(v,k,seat_id,text); return; }
@@ -150,6 +151,8 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
     _ := st_refuse(v, st_compat(why));
     return;
   }
+  // the wire its page speaks: this room's, or the one before it, which is written what it reads (wire-prev.coax, #13398)
+  if st[0].wire != h.version { st[0].wire = h.version; st[0].prev = WprevSeat.{}; }
   tk := eg_ticket(v, k, seat_id);
   if tk.schema == 2 {
     if st[0].checkpoint_hello { return; }

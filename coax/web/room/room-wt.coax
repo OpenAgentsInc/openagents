@@ -12,8 +12,13 @@
 EG_DG_HEAD :: 48;                                   // a D datagram's header at most ("D TICK ACK F 0 "), with room to spare
 EG_DG_ROWS :: NET_DATAGRAM_MAX - EG_DG_HEAD;        // its entries' bytes at most
 // Everglade's frames by their first word; any other is the session's.
-RM_WT_ROUTES :: [8] NetRoute.[
+RM_WT_ROUTES :: [12] NetRoute.[
   NetRoute.{word = "D", channel = NET_DATAGRAM},     // state (F 4: the combat stream's, rm_wt_channel)
+  // the previous wire's frames, for a seat that says WIRE_MIN (everglade/server/wire-prev.coax, #13398): gone with them
+  NetRoute.{word = "g2", channel = NET_DATAGRAM},    // the path guard's state, whole each time
+  NetRoute.{word = "h2", channel = NET_DATAGRAM},    // the monsters in view, whole each time
+  NetRoute.{word = "g3", channel = NET_COMBAT},      // the guard's blows
+  NetRoute.{word = "h3", channel = NET_COMBAT},      // the monsters' blows, arrows and falls
   NetRoute.{word = "m2", channel = NET_DATAGRAM},    // your familiar, whole each time
   NetRoute.{word = "a", channel = NET_COMBAT},       // an arrow loosed
   NetRoute.{word = "d", channel = NET_COMBAT},       // and where it ended

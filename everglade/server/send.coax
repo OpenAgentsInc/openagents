@@ -207,6 +207,7 @@ eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   pick: [WIRE_SLOTS] f32;
   fields:[WIRE_SLOTS]int;
   eg_im_pick_fields(v,k,s_id,me.x,me.z,pick[..],fields[..]);
+  wprev_pick(v, k, s, pick[..]);   // a seat on the previous wire: the rows its page has no reader for are withheld (wire-prev.coax, #13398)
   // its link this tick (#13178): what waits on its socket, and how far its HEARD trails
   waiting := ifx c >= 0 && c < CONNS then v[0].conns[c].waiting else 0;
   lag := ifx st[0].said_ms > 0 && v[0].mono_ms - st[0].said_ms < WIRE_AWAY_MS && st[0].said_heard > 0 then now - st[0].said_heard else -1;
@@ -272,6 +273,8 @@ eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
     if !v[0].eg[k].ev_all[q] && !aimed && !eg_near(me, v[0].eg[k].ev_x[q], v[0].eg[k].ev_z[q]) { continue; }   // (aimed at s: wherever it is)
     if eg_im_event_withheld(v, k, s_id, SeatId.{value = q}, unseen) { continue; }   // of a player it blocks or can't see (room-blocks.coax, #12789)
     a := v[0].eg[k].ev_at[q]; m := v[0].eg[k].ev_len[q] + 1;
+    // a seat on the previous wire hears what that wire said as a frame of its own that way (wire-prev.coax, #13398)
+    if wprev_entry(v, k, s, cast(string) v[0].eg[k].ev[a..<a + v[0].eg[k].ev_len[q]]) { v[0].st.out_b += m; continue; }
     if v[0].eg[k].ev_out[q] || aimed { ob += m; }
     else if behind || cue + m > EG_CUE_BUDGET { v[0].st.cue_drop += 1; continue; }
     else { cue += m; }

@@ -6,7 +6,7 @@ entity replication path (#13276). Its machine-readable contract is
 [Version 5](everglade-session-v5.md) added the room's forest state. All
 existing message fields and units keep their meanings.
 
-Rooms and pages use version 6, with oldest version 6 and build pins 1.1.1.
+Rooms and pages use version 6, with build pins 1.1.1. A room also seats the version before it, 5, for one release, and writes that seat what a wire 5 page reads ([the previous wire](everglade-previous-wire.md), #13398).
 A version 5 page receives `r 0 version` and reloads. A version 6 page never
 ships ahead of its rooms: see
 [the release set](../deployment/release-set.md).

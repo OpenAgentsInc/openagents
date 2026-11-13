@@ -122,6 +122,9 @@ EgSeat :: struct {
   // Everglade II (#13057): where its page says it stands as it sits again (A), and when the seat sat
   // (mono ms): its first place waits for its hello, EG_E2_HELLO_MS at most
   claim: bool; claim_x: f32; claim_z: f32; claim_yaw: f32; hello: bool; joined_ms: int;
+  // the wire version its hello said (0: none yet), and what the previous wire's writers keep for a seat
+  // that said WIRE_MIN (everglade/server/wire-prev.coax, #13398)
+  wire: int; prev: WprevSeat;
   look: [EG_LOOK] u8; look_n: int; klass: [EG_NAME] u8; klass_n: int; flags: int; name: [EG_NAME] u8; name_n: int;
   // its class and level are set (its first hello, eg_hello_class): a hello after that changes neither
   // (#13259); class_report: the class came from the hello, its ticket naming none, so the room reports it

@@ -1293,7 +1293,9 @@ boundaries; actual native HTTP outage in `background-check.coax`.
 
 A room admits a hello only when the page's engine, rules and world numbers
 (its `P` frame; a page from before `P` is build 1 1 1) equal the room's, its
-wire is in `WIRE_MIN..WIRE_VERSION`, and the saved data its ticket brings
+wire is in `WIRE_MIN..WIRE_VERSION` (`WIRE_MIN` is always the version before
+`WIRE_VERSION`, and the room writes a seat on it what that page reads:
+`everglade/server/wire-prev.coax`, #13398), and the saved data its ticket brings
 back is a format the room reads (`Ticket.schema` up to `RV_SCHEMA`). Any
 other hello gets `r 0 version`, its socket is closed, and the refusal is
 counted by its reason. One encounter never mixes two rule sets or worlds, and a room

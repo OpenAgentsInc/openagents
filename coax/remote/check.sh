@@ -357,6 +357,7 @@ e2_gate() {   # prod
     e2_one head coax/web/room/bin/room "$root" "$r"
     e2_one prod "$pt/room" "$pt/tree" "$r"
   done
+  e2_prev "$pt" "$key" || true
   cp "$w/e2.tsv" "$out/e2.tsv"
   sed 's/^/  /' "$w/e2.tsv" >> "$log"
   awk -F'\t' -v tick="${OA_E2_TICK_US:-300}" -v ack="${OA_E2_ACK_MS:-25}" -v pct="${OA_E2_BYTES_PCT:-25}" -v prod="${prod:0:10}" '
@@ -377,8 +378,42 @@ e2_gate() {   # prod
       printf "e2 bytes: this commit %d B/s, production %d B/s (margin %d%%)\n", hb, pb, pct > "/dev/stderr"
       if (hb >= 0 && pb > 0 && hb * 100 > pb * (100 + pct)) print "e2 bytes"
     }' "$w/e2.tsv" > "$w/worse" 2>> "$log"
+  [[ ! -s "$w/prev.worse" ]] || cat "$w/prev.worse" >> "$w/worse"
   echo "== e2-pair: $( [[ -s "$w/worse" ]] && echo "WORSE than production: $(paste -sd, "$w/worse")" || echo "not worse than production"), $(( $(date +%s) - t0 )) s" >> "$log"
   [[ ! -s "$w/worse" ]] || { cat "$w/worse" >> "$out/failed"; return 1; }
+}
+# The previous wire (#13398, everglade/server/wire-prev.coax): production's own protocol bots, run from
+# production's tree and so speaking production's wire with production's readers, play this commit's
+# room for OA_E2_PREV_SECONDS (150), and production's room the same way beside it. A release moves its
+# rooms before its page, so this commit's room must serve production's client: "e2 prev-wire" when the
+# room refuses a bot for its version, seats fewer bots than production's room did, or takes no cast,
+# tells no monster's blow or fells no monster where production's room did (the bots aim at the monsters
+# they are told of: none told, none fought). A wire raised without the version before it kept fails here.
+e2_prev() {   # pt key
+  local pt="$1" key="$2" secs="${OA_E2_PREV_SECONDS:-150}" players="${OA_E2_PREV_PLAYERS:-4}" side bin port pid n
+  : > "$w/prev.worse"
+  [[ -f "$pt/tree/coax/web/room/bots.coax" ]] || { echo "e2 prev-wire: production's tree has no protocol bots; not judged" >> "$log"; return 0; }
+  for side in head prod; do
+    bin="coax/web/room/bin/room"; [[ "$side" == head ]] || bin="$pt/room"
+    for n in 1 2 3 4 5 6 7 8; do port=$(( 20000 + RANDOM % 20000 )); curl -s -m 1 -o /dev/null "http://127.0.0.1:$port/" 2> /dev/null || break; done
+    OA_ROOM_TICKET_KEY="$key" "$bin" --port "$port" --dev "$( [[ "$side" == head ]] && echo "$root" || echo "$pt/tree" )/coax/web/room/dev" > "$w/prev-$side.room.log" 2>&1 & pid=$!
+    for n in $(seq 1 100); do curl -fs "http://127.0.0.1:$port/health" > /dev/null 2>&1 && break; read -r -t 0.1 < /dev/zero || true; done
+    (cd "$pt/tree" && OA_ROOM_TICKET_KEY="$key" coax/web/tool.sh coax/web/room/bots.coax run "ws://localhost:$port" "$players" "$secs" --direct --realm pair-e2-prev --reconnect 0 --travel 0) > "$w/prev-$side.bots" 2>&1
+    curl -fs "http://127.0.0.1:$port/vitals" > "$w/prev-$side.vitals" 2>&1 || curl -fs "http://127.0.0.1:$port/health" > "$w/prev-$side.vitals" 2>&1
+    kill "$pid" 2> /dev/null; wait "$pid" 2> /dev/null
+  done
+  e2_num() { grep '^bots {' "$w/prev-$1.bots" | tail -1 | grep -o "\"$2\":-\{0,1\}[0-9]*" | head -1 | cut -d: -f2; }
+  e2_blows() { grep '^F ' "$w/prev-$1.bots" | grep -o '"blows":[0-9]*' | cut -d: -f2 | awk '{ n += $1 } END { print n + 0 }'; }
+  local hs hv ht hk ps pk ptk hb pb
+  hb="$(e2_blows head)"; pb="$(e2_blows prod)"
+  hs="$(e2_num head seated)"; hv="$(e2_num head version_refused)"; ht="$(e2_num head taken)"; hk="$(e2_num head kills)"
+  ps="$(e2_num prod seated)"; ptk="$(e2_num prod taken)"; pk="$(e2_num prod kills)"
+  echo "e2 prev-wire: production's bots on this commit's room: seated ${hs:-none} refused-for-version ${hv:-none} casts-taken ${ht:-none} monsters' blows heard $hb kills ${hk:-none}; on production's room: seated ${ps:-none} casts-taken ${ptk:-none} monsters' blows heard $pb kills ${pk:-none}" >> "$log"
+  [[ -n "$ps" && "$ps" -gt 0 ]] || { echo "e2 prev-wire: production's bots did not sit on production's own room on this host; not judged" >> "$log"; return 0; }
+  if [[ -z "$hs" || "${hv:-0}" -gt 0 || "$hs" -lt "$ps" ]] || [[ "${ptk:-0}" -gt 0 && "${ht:-0}" -eq 0 ]] || [[ "${pk:-0}" -gt 0 && "${hk:-0}" -eq 0 ]] || [[ "$pb" -gt 0 && "$hb" -eq 0 ]]; then
+    echo "e2 prev-wire" > "$w/prev.worse"
+    echo "e2 prev-wire: this commit's room does not serve production's client (its wire or what it reads). See everglade/server/wire-prev.coax" >> "$log"
+  fi
 }
 # The allowlist counts (coax/remote/counts.sh, #13266): none that a commit since BASE raised. Each
 # raised count is a line "count NAME" in failed.

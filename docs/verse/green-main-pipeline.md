@@ -464,8 +464,16 @@ minutes into `releases/after/production`. `OA_AFTER_PRODUCTION` names another;
 `OA_E2_SECONDS` (10), `OA_E2_PLAYERS` (2), `OA_E2_TICK_US`, `OA_E2_ACK_MS` and
 `OA_E2_BYTES_PCT`.
 
+The same gate plays production's own protocol bots, run from production's
+tree, against this commit's room for `OA_E2_PREV_SECONDS` (150), and against
+production's room beside it (#13398). A release moves its rooms before its
+page, so a head's room must serve production's client: `e2 prev-wire` fails
+when the room refuses a bot for its version, seats fewer bots than
+production's room did, or takes no cast, tells no monster's blow or fells no
+monster where production's room did ([the previous wire](../protocol/everglade-previous-wire.md)).
+
 A failing measure is a line `e2 NAME` (`e2 holds`, `e2 tick-p95`, `e2
-ack-p95`, `e2 bytes`). It is run again on the head first, as every failure is,
+ack-p95`, `e2 bytes`, `e2 prev-wire`). It is run again on the head first, as every failure is,
 so a noisy round alone is flaky, not red. Then `main-green` itself is checked:
 if it is also worse than production, no commit of this run caused it, and the
 failure is written to `releases/after/e2-reports.tsv` and the log, not the red

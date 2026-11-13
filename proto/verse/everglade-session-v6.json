@@ -1,7 +1,7 @@
 {
   "profile": "openagents.everglade.session",
   "version": 6,
-  "min": 6,
+  "min": 5,
   "pins": {"engine": 1, "rules": 1, "content": 1},
   "source": "everglade/shared/everglade-wire.coax",
   "check": "coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v6.json",
