@@ -1,0 +1,307 @@
+// The finish rule of an agent's working memory (GitHub #13444 part 4, #13445
+// step 4): may this run stop and call its task finished? The model saying so
+// is not enough. A run may finish only when
+//   - every requirement row is done, and at least one of its evidence rows
+//     still holds on the tree as it is now; and
+//   - every check the task names has run, and its latest run passed on the
+//     tree as it is now.
+// "The tree as it is now" is the run store's tree digest (store.coax
+// wm_tree): the current content hash of every file the run has seen change.
+// A run records the digest it ran on; an edit after it changes the digest,
+// so a pass on an older tree proves nothing about this one.
+//
+// This file decides and holds no store: store.coax copies its rows into the
+// facts below without judging them (wm_may_finish), so every judgement is
+// here, under #authority and `coax mutate`.
+//
+// An evidence row holds when
+//   run:     it exited 0, did not time out, and ran on the current tree;
+//   finding: it is verified (a compiler or command result, not the model's
+//            word) and none of its sources has changed since;
+//   change:  the file still has the content the change wrote.
+// With no requirement rows and no named checks there is nothing to prove and
+// the answer is yes (a plain question finishes in one step); a caller that
+// wants proof for every task adds the rows before it asks.
+#authority;
+
+WF_OPEN :: 0; WF_DONE :: 1; WF_FAILED :: 2;                // a requirement's status
+WF_RUN :: 1; WF_FINDING :: 2; WF_CHANGE :: 3;              // an evidence row's kind
+
+// Why a run may not finish; row is the requirement's or the check's index.
+WF_REQ_OPEN :: 1;          // the requirement is still open
+WF_REQ_FAILED :: 2;        // the requirement is marked failed
+WF_REQ_UNPROVEN :: 3;      // marked done, and no evidence row holds on this tree
+WF_CHECK_NEVER :: 4;       // the check has no run
+WF_CHECK_FAILING :: 5;     // its latest run failed or timed out
+WF_CHECK_STALE :: 6;       // its latest run passed, on a tree that has changed since
+WF_BAD_ROWS :: 7;          // the facts do not fit together (a range outside its array, an unknown status)
+
+// One evidence row, as the store has it. A run fills exit, timed_out and
+// tree; a finding fills verified and stale; a change fills kept (the file
+// still has the hash the change wrote).
+WfEvidence :: struct { kind: int; exit: int; timed_out: bool; tree: [32] u8; verified: bool; stale: bool; kept: bool; }
+// A requirement and its evidence rows, ev[first ..< first + count].
+WfReq :: struct { status: int; first: int; count: int; }
+// A check the task names and its runs in the order they ran, ev[first ..< first + count].
+WfCheck :: struct { first: int; count: int; }
+WfReason :: struct { why: int; row: int; }
+// ok: the run may finish. count: every reason found, also those that did not fit reasons.
+WfVerdict :: struct { ok: bool; count: int; }
+
+wf_tree_test :: (b: u8) -> [32] u8 #effects(all) { t: [32] u8; for i: 0..<32 { t[i] = b; } return t; }
+wf_run_test :: (exit: int, timed_out: bool, tree: u8) -> WfEvidence #effects(all) {
+  return WfEvidence.{kind = WF_RUN, exit = exit, timed_out = timed_out, tree = wf_tree_test(tree)};
+}
+
+#test "a run passes only with exit 0, no timeout, and the tree unchanged to the last byte" {
+  now := wf_tree_test(7);
+  #assert now[0] == 7 && now[31] == 7;
+  #assert wf_run_passed(wf_run_test(0, false, 7));
+  #assert !wf_run_passed(wf_run_test(1, false, 7)) && !wf_run_passed(wf_run_test(-1, false, 7)) && !wf_run_passed(wf_run_test(0, true, 7));
+  #assert wf_holds(wf_run_test(0, false, 7), now);
+  #assert !wf_holds(wf_run_test(0, false, 8), now) && !wf_holds(wf_run_test(1, false, 7), now) && !wf_holds(wf_run_test(0, true, 7), now);
+  for i: 0..<32 {
+    other := now; other[i] ^= 1;
+    #assert !wf_same_tree(now, other) && !wf_same_tree(other, now);
+    #assert !wf_holds(WfEvidence.{kind = WF_RUN, tree = other}, now);
+  }
+  #assert wf_same_tree(now, now);
+}
+
+#test "a finding holds when verified and current; a change when its text is still there; nothing else holds" {
+  now := wf_tree_test(1);
+  #assert wf_holds(WfEvidence.{kind = WF_FINDING, verified = true}, now);
+  #assert !wf_holds(WfEvidence.{kind = WF_FINDING}, now);
+  #assert !wf_holds(WfEvidence.{kind = WF_FINDING, verified = true, stale = true}, now);
+  #assert !wf_holds(WfEvidence.{kind = WF_FINDING, stale = true, kept = true}, now);
+  #assert wf_holds(WfEvidence.{kind = WF_CHANGE, kept = true}, now);
+  #assert !wf_holds(WfEvidence.{kind = WF_CHANGE}, now);
+  #assert !wf_holds(WfEvidence.{kind = WF_CHANGE, verified = true}, now);
+  // A kind this file does not know never counts, whatever its fields say.
+  #assert !wf_holds(WfEvidence.{kind = 0, verified = true, kept = true, tree = now}, now);
+  #assert !wf_holds(WfEvidence.{kind = 4, verified = true, kept = true, tree = now}, now);
+  // A finding or change with a run's passing fields is still judged as what it is.
+  #assert !wf_holds(WfEvidence.{kind = WF_FINDING, tree = now, kept = true}, now);
+  #assert !wf_holds(WfEvidence.{kind = WF_CHANGE, tree = now, verified = true}, now);
+}
+
+#test "nothing to prove: no rows and no checks may finish" {
+  reqs: [1] WfReq; checks: [1] WfCheck; ev: [1] WfEvidence; why: [4] WfReason;
+  v := wf_may_finish(reqs[0..<0], checks[0..<0], ev[0..<0], wf_tree_test(0), why[..]);
+  #assert v.ok && v.count == 0;
+}
+
+#test "the truth table of one requirement: status by evidence" {
+  now := wf_tree_test(3);
+  ev: [4] WfEvidence; checks: [1] WfCheck; why: [4] WfReason; reqs: [1] WfReq;
+  ev[0] = wf_run_test(0, false, 3);           // holds
+  ev[1] = wf_run_test(0, false, 2);           // an older tree
+  ev[2] = WfEvidence.{kind = WF_FINDING};     // a guess
+  ev[3] = wf_run_test(2, false, 3);           // failed
+  // open and failed never finish, whatever the evidence
+  reqs[0] = WfReq.{status = WF_OPEN, first = 0, count = 1};
+  v := wf_may_finish(reqs[..], checks[0..<0], ev[..], now, why[..]);
+  #assert !v.ok && v.count == 1 && why[0].why == WF_REQ_OPEN && why[0].row == 0;
+  reqs[0].status = WF_FAILED;
+  v = wf_may_finish(reqs[..], checks[0..<0], ev[..], now, why[..]);
+  #assert !v.ok && v.count == 1 && why[0].why == WF_REQ_FAILED;
+  // done with evidence that holds
+  reqs[0].status = WF_DONE;
+  v = wf_may_finish(reqs[..], checks[0..<0], ev[..], now, why[..]);
+  #assert v.ok && v.count == 0;
+  // done with no evidence at all
+  reqs[0].count = 0;
+  v = wf_may_finish(reqs[..], checks[0..<0], ev[..], now, why[..]);
+  #assert !v.ok && v.count == 1 && why[0].why == WF_REQ_UNPROVEN && why[0].row == 0;
+  // done with only evidence that does not hold: each of rows 1, 2, 3 alone, and all three
+  for i: 1..<4 {
+    reqs[0] = WfReq.{status = WF_DONE, first = i, count = 1};
+    v = wf_may_finish(reqs[..], checks[0..<0], ev[..], now, why[..]);
+    #assert !v.ok && why[0].why == WF_REQ_UNPROVEN;
+  }
+  reqs[0] = WfReq.{status = WF_DONE, first = 1, count = 3};
+  #assert !wf_may_finish(reqs[..], checks[0..<0], ev[..], now, why[..]).ok;
+  // one that holds among those that do not is enough, first or last in the range
+  reqs[0] = WfReq.{status = WF_DONE, first = 0, count = 4};
+  #assert wf_may_finish(reqs[..], checks[0..<0], ev[..], now, why[..]).ok;
+  ev[0] = wf_run_test(1, false, 3); ev[3] = wf_run_test(0, false, 3);
+  #assert wf_may_finish(reqs[..], checks[0..<0], ev[..], now, why[..]).ok;
+  reqs[0].count = 3;
+  #assert !wf_may_finish(reqs[..], checks[0..<0], ev[..], now, why[..]).ok;
+  // the same rows on another tree prove nothing
+  reqs[0].count = 4;
+  #assert !wf_may_finish(reqs[..], checks[0..<0], ev[..], wf_tree_test(4), why[..]).ok;
+}
+
+#test "the truth table of one check: never ran, failing, stale, passing; the latest run decides" {
+  now := wf_tree_test(9);
+  ev: [3] WfEvidence; reqs: [1] WfReq; why: [4] WfReason; checks: [1] WfCheck;
+  checks[0] = WfCheck.{first = 0, count = 0};
+  v := wf_may_finish(reqs[0..<0], checks[..], ev[..], now, why[..]);
+  #assert !v.ok && v.count == 1 && why[0].why == WF_CHECK_NEVER && why[0].row == 0;
+  ev[0] = wf_run_test(0, false, 9);
+  checks[0].count = 1;
+  v = wf_may_finish(reqs[0..<0], checks[..], ev[..], now, why[..]);
+  #assert v.ok && v.count == 0;
+  ev[0] = wf_run_test(1, false, 9);
+  v = wf_may_finish(reqs[0..<0], checks[..], ev[..], now, why[..]);
+  #assert !v.ok && why[0].why == WF_CHECK_FAILING;
+  ev[0] = wf_run_test(0, true, 9);
+  v = wf_may_finish(reqs[0..<0], checks[..], ev[..], now, why[..]);
+  #assert !v.ok && why[0].why == WF_CHECK_FAILING;
+  ev[0] = wf_run_test(0, false, 8);
+  v = wf_may_finish(reqs[0..<0], checks[..], ev[..], now, why[..]);
+  #assert !v.ok && v.count == 1 && why[0].why == WF_CHECK_STALE;
+  // a failing run on an older tree is failing, not stale: the check has not passed
+  ev[0] = wf_run_test(1, false, 8);
+  v = wf_may_finish(reqs[0..<0], checks[..], ev[..], now, why[..]);
+  #assert !v.ok && why[0].why == WF_CHECK_FAILING;
+  // the latest run decides: pass then fail is failing; fail then pass passes; pass, then a pass on an older tree last, is stale
+  ev[0] = wf_run_test(0, false, 9); ev[1] = wf_run_test(1, false, 9);
+  checks[0].count = 2;
+  v = wf_may_finish(reqs[0..<0], checks[..], ev[..], now, why[..]);
+  #assert !v.ok && why[0].why == WF_CHECK_FAILING;
+  ev[0] = wf_run_test(1, false, 9); ev[1] = wf_run_test(0, false, 9);
+  #assert wf_may_finish(reqs[0..<0], checks[..], ev[..], now, why[..]).ok;
+  ev[0] = wf_run_test(0, false, 9); ev[1] = wf_run_test(0, false, 8);
+  v = wf_may_finish(reqs[0..<0], checks[..], ev[..], now, why[..]);
+  #assert !v.ok && why[0].why == WF_CHECK_STALE;
+  // the range's own last row, not the array's
+  ev[2] = wf_run_test(0, false, 9);
+  #assert !wf_may_finish(reqs[0..<0], checks[..], ev[..], now, why[..]).ok;
+  checks[0] = WfCheck.{first = 1, count = 2};
+  #assert wf_may_finish(reqs[0..<0], checks[..], ev[..], now, why[..]).ok;
+  // a row that is not a run cannot pass a check
+  ev[2] = WfEvidence.{kind = WF_FINDING, verified = true, tree = now};
+  v = wf_may_finish(reqs[0..<0], checks[..], ev[..], now, why[..]);
+  #assert !v.ok && why[0].why == WF_CHECK_FAILING;
+}
+
+#test "every row is judged: all reasons are counted, in order, requirements before checks" {
+  now := wf_tree_test(5);
+  ev: [2] WfEvidence; reqs: [3] WfReq; checks: [2] WfCheck; why: [8] WfReason;
+  ev[0] = wf_run_test(0, false, 5); ev[1] = wf_run_test(1, false, 5);
+  reqs[0] = WfReq.{status = WF_DONE, first = 0, count = 1};
+  reqs[1] = WfReq.{status = WF_OPEN};
+  reqs[2] = WfReq.{status = WF_DONE, first = 1, count = 1};
+  checks[0] = WfCheck.{first = 0, count = 1};
+  checks[1] = WfCheck.{first = 1, count = 1};
+  v := wf_may_finish(reqs[..], checks[..], ev[..], now, why[..]);
+  #assert !v.ok && v.count == 3;
+  #assert why[0].why == WF_REQ_OPEN && why[0].row == 1;
+  #assert why[1].why == WF_REQ_UNPROVEN && why[1].row == 2;
+  #assert why[2].why == WF_CHECK_FAILING && why[2].row == 1;
+  // reasons that do not fit are still counted, and nothing is written past the end
+  small: [2] WfReason; small[1] = WfReason.{why = 99, row = 99};
+  v = wf_may_finish(reqs[..], checks[..], ev[..], now, small[0..<1]);
+  #assert !v.ok && v.count == 3 && small[0].why == WF_REQ_OPEN && small[1].why == 99 && small[1].row == 99;
+  v = wf_may_finish(reqs[..], checks[..], ev[..], now, small[0..<0]);
+  #assert !v.ok && v.count == 3;
+  // one bad row among good ones refuses; fixing it allows
+  reqs[1] = reqs[0]; reqs[2] = reqs[0]; checks[1] = checks[0];
+  #assert wf_may_finish(reqs[..], checks[..], ev[..], now, why[..]).ok;
+  checks[0] = WfCheck.{first = 1, count = 1};
+  v = wf_may_finish(reqs[..], checks[..], ev[..], now, why[..]);
+  #assert !v.ok && v.count == 1 && why[0].row == 0 && why[0].why == WF_CHECK_FAILING;
+}
+
+#test "rows that do not fit together refuse" {
+  now := wf_tree_test(5);
+  ev: [2] WfEvidence; reqs: [1] WfReq; checks: [1] WfCheck; why: [4] WfReason;
+  ev[0] = wf_run_test(0, false, 5); ev[1] = wf_run_test(0, false, 5);
+  for bad: [6] WfReq.[WfReq.{status = WF_DONE, first = -1, count = 1}, WfReq.{status = WF_DONE, first = 0, count = -1}, WfReq.{status = WF_DONE, first = 2, count = 1},
+                      WfReq.{status = WF_DONE, first = 1, count = 2}, WfReq.{status = 3, first = 0, count = 1}, WfReq.{status = -1, first = 0, count = 1}] {
+    reqs[0] = bad;
+    v := wf_may_finish(reqs[..], checks[0..<0], ev[..], now, why[..]);
+    #assert !v.ok && v.count == 1 && why[0].why == WF_BAD_ROWS && why[0].row == 0;
+  }
+  #assert wf_may_finish(reqs[0..<0], checks[0..<0], ev[..], now, why[..]).ok;
+  reqs[0] = WfReq.{status = WF_DONE, first = 0, count = 2};
+  #assert wf_may_finish(reqs[..], checks[0..<0], ev[..], now, why[..]).ok;
+  reqs[0] = WfReq.{status = WF_DONE, first = 2, count = 0};      // an empty range at the end is a range
+  #assert wf_may_finish(reqs[..], checks[0..<0], ev[..], now, why[..]).count == 1;
+  for bad: [4] WfCheck.[WfCheck.{first = -1, count = 1}, WfCheck.{first = 0, count = -1}, WfCheck.{first = 2, count = 1}, WfCheck.{first = 1, count = 2}] {
+    checks[0] = bad;
+    v := wf_may_finish(reqs[0..<0], checks[..], ev[..], now, why[..]);
+    #assert !v.ok && v.count == 1 && why[0].why == WF_BAD_ROWS && why[0].row == 0;
+  }
+  checks[0] = WfCheck.{first = 0, count = 2};
+  #assert wf_may_finish(reqs[0..<0], checks[..], ev[..], now, why[..]).ok;
+  checks[0] = WfCheck.{first = 2, count = 0};
+  v := wf_may_finish(reqs[0..<0], checks[..], ev[..], now, why[..]);
+  #assert !v.ok && why[0].why == WF_CHECK_NEVER;
+}
+
+#forall "the verdict agrees with a model: yes exactly when the one requirement and the one check both stand" status: 0..<3, exit: 0..<2, timed: bool, same: bool, proof: 0..<4 {
+  now := wf_tree_test(1);
+  ev: [2] WfEvidence; reqs: [1] WfReq; checks: [1] WfCheck; why: [4] WfReason;
+  ev[0] = wf_run_test(exit, timed, ifx same then 1 else 2);
+  // proof 0: none; 1: a guess; 2: a verified current finding; 3: a kept change
+  ev[1] = WfEvidence.{kind = ifx proof == 3 then WF_CHANGE else WF_FINDING, verified = proof == 2, kept = proof == 3};
+  reqs[0] = WfReq.{status = status, first = 1, count = ifx proof == 0 then 0 else 1};
+  checks[0] = WfCheck.{first = 0, count = 1};
+  v := wf_may_finish(reqs[..], checks[..], ev[..], now, why[..]);
+  req_ok := status == WF_DONE && proof >= 2;
+  check_ok := exit == 0 && !timed && same;
+  #assert v.ok == (req_ok && check_ok);
+  expect := 0;
+  if !req_ok { expect += 1; }
+  if !check_ok { expect += 1; }
+  #assert v.count == expect;
+}
+
+wf_same_tree :: (a: [32] u8, b: [32] u8) -> bool #effects(all) {
+  for i: 0..<32 { if a[i] != b[i] { return false; } }
+  return true;
+}
+
+// The run exited 0 inside its time. Says nothing about which tree it ran on.
+wf_run_passed :: (e: WfEvidence) -> bool #effects(all) { return e.kind == WF_RUN && e.exit == 0 && !e.timed_out; }
+
+// Does this evidence row still support a claim about the tree as it is now?
+wf_holds :: (e: WfEvidence, now: [32] u8) -> bool #effects(all) {
+  if e.kind == WF_RUN { return wf_run_passed(e) && wf_same_tree(e.tree, now); }
+  if e.kind == WF_FINDING { return e.verified && !e.stale; }
+  if e.kind == WF_CHANGE { return e.kept; }
+  return false;
+}
+
+wf_range_ok :: (first: int, count: int, total: int) -> bool #effects(all) {
+  return first >= 0 && count >= 0 && first <= total && count <= total - first;
+}
+
+// 0 when the requirement stands, else why not.
+wf_req_why :: (r: WfReq, ev: [] WfEvidence, now: [32] u8) -> int #effects(all) {
+  if !wf_range_ok(r.first, r.count, ev.count) { return WF_BAD_ROWS; }
+  if r.status == WF_OPEN { return WF_REQ_OPEN; }
+  if r.status == WF_FAILED { return WF_REQ_FAILED; }
+  if r.status != WF_DONE { return WF_BAD_ROWS; }
+  for i: r.first..<r.first + r.count { if wf_holds(ev[i], now) { return 0; } }
+  return WF_REQ_UNPROVEN;
+}
+
+// 0 when the check's latest run passed on this tree, else why not.
+wf_check_why :: (c: WfCheck, ev: [] WfEvidence, now: [32] u8) -> int #effects(all) {
+  if !wf_range_ok(c.first, c.count, ev.count) { return WF_BAD_ROWS; }
+  if c.count == 0 { return WF_CHECK_NEVER; }
+  last := ev[c.first + c.count - 1];
+  if !wf_run_passed(last) { return WF_CHECK_FAILING; }
+  if !wf_same_tree(last.tree, now) { return WF_CHECK_STALE; }
+  return 0;
+}
+
+wf_note :: (reasons: [] WfReason, v: WfVerdict, why: int, row: int) -> WfVerdict #effects(all) {
+  if why == 0 { return v; }
+  if v.count < reasons.count { reasons[v.count] = WfReason.{why = why, row = row}; }
+  return WfVerdict.{ok = false, count = v.count + 1};
+}
+
+// May the run finish? Every requirement and every check is judged, and each
+// one that does not stand is a reason: the first reasons.count of them are
+// written, all are counted.
+wf_may_finish :: (reqs: [] WfReq, checks: [] WfCheck, ev: [] WfEvidence, now: [32] u8, reasons: [] WfReason) -> WfVerdict #effects(all) {
+  v := WfVerdict.{ok = true};
+  for i: 0..<reqs.count { v = wf_note(reasons, v, wf_req_why(reqs[i], ev, now), i); }
+  for i: 0..<checks.count { v = wf_note(reasons, v, wf_check_why(checks[i], ev, now), i); }
+  return v;
+}
