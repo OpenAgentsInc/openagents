@@ -471,8 +471,7 @@ k_place :: (t: [] Tree, u: [] Ui, id: string, icon: int, title: string, href: st
 }
 // Side: the app's frame down the left of every page for someone logged in (docs/app-shell.md), top to bottom:
 // a head (the product's mark and name, a link home, and the page's actions as icon buttons), the places
-// (k_place rows), the page's own list (it alone scrolls; k_side_mark heads each section of it, k_search
-// above it narrows it), and a foot with who is logged in (k_who). The page builds them in that order:
+// (k_place rows), the page's own list (it alone scrolls; k_side_mark heads each section of it), and a foot with who is logged in (k_who). The page builds them in that order:
 //   k_side(t, "side", "Places");
 //   k_side_head(t, "side.h", "OpenAgents", "/"); k_icon_button(...); tr_close(t);
 //   k_side_places(t, "side"); k_place(...); ...
@@ -521,18 +520,6 @@ k_side_mark :: (t: [] Tree, id: string, label: string, count: int) -> int {
   b := tr_leaf(t, tr_cat(idb[..], id, ".n"), TG_SPAN, "side-c", tr_join(num[..], "", count));
   tr_close(t);
   return i;
-}
-// Search: a one-line field with a magnifier that narrows a list as it is typed. Answers the field's node.
-k_search :: (t: [] Tree, id: string, placeholder: string, label: string) -> int {
-  ida: [UI_ID] u8; idb: [UI_ID] u8;
-  w := tr_open(t, tr_cat(ida[..], id, ".w"), TG_DIV, "side-s");
-  g := k_icon(t, tr_cat(idb[..], id, ".ic"), IC_SEARCH);
-  f := tr_open(t, id, TG_INPUT, "");
-  tr_attr(t, f, AT_TYPE, "search"); tr_attr(t, f, AT_COMPLETE, "off");
-  tr_attr(t, f, AT_PLACEHOLDER, placeholder); tr_attr(t, f, AT_LABEL, label);
-  tr_close(t);
-  tr_close(t);
-  return f;
 }
 // Who: the person logged in, at the foot. Their name or address is a link to their settings (`href`), and a
 // Log out button sits beside it when `out` is true (the page does the logging out). With no name, the foot is
@@ -791,7 +778,6 @@ DkDropTest :: struct { t: [1] Tree; u: [1] Ui; }
   a := k_place(t, u, "place.a", IC_CHATS, "Chats", "/chat", true);
   b := k_place(t, u, "place.b", IC_FOLDER, "Projects", "/projects", false);
   l := k_side_list(t, "side");
-  q := k_search(t, "side.q", "Search", "Search the chats");
   m := k_side_mark(t, "side.run", "Running", 2);
   r := k_row(t, u, "row.1", "A chat", "", false);
   k_side_end(t);
@@ -805,7 +791,6 @@ DkDropTest :: struct { t: [1] Tree; u: [1] Ui; }
   #assert tr_attr_of(t, home, AT_HREF) == "/" && tr_text_of(t, tr_find(t, "side.h.name")) == "OpenAgents" && tr_attr_of(t, tr_find(t, "side.h.mark.use"), AT_HREF) == MONO_MARK;
   #assert tr_class(t, p) == "side-p" && t[0].nodes[p].parent == s && t[0].nodes[a].parent == p && t[0].nodes[b].parent == p;
   #assert tr_class(t, l) == "side-l" && t[0].nodes[l].parent == s && t[0].nodes[r].parent == l && t[0].nodes[m].parent == l;
-  #assert t[0].nodes[q].tag == TG_INPUT && tr_attr_of(t, q, AT_TYPE) == "search" && tr_attr_of(t, q, AT_LABEL) == "Search the chats";
   #assert tr_text_of(t, tr_find(t, "side.run.t")) == "Running" && tr_text_of(t, tr_find(t, "side.run.n")) == "2";
   #assert tr_class(t, w) == "side-f" && t[0].nodes[w].parent == s;
   #assert tr_attr_of(t, a, AT_CURRENT) == "true" && !tr_has(t, b, AT_CURRENT) && tr_attr_of(t, b, AT_HREF) == "/projects";

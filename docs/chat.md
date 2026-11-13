@@ -105,7 +105,7 @@ its head, then Chats, Projects and Worlds, then the page's own list, and at its
 foot who is logged in, a link to Settings and Log out. When the page is served
 with `--local PORT` and `coder mcp --http PORT` runs on the same machine, that
 list holds Coder's sessions and this folder's Claude Code conversations, under
-the heads Running, Claude Code and Recent, with a search over their titles. Its Agent menu adds Claude Code,
+the heads Running, Claude Code and Recent. Its Agent menu adds Claude Code,
 Codex, Antigravity and Microcoder, which run through Coder on that machine.
 
 The one command above starts Coder's local side for you

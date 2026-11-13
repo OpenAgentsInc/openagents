@@ -211,7 +211,6 @@ ChatWeb :: struct {
   side_closed: bool;                 // the side is put away (kept in this browser)
   me: [SS_WHO] u8; me_n: int; me_asked: bool;   // who is logged in, as the side's foot names them
   out_due: bool;                     // Log out was pressed: it goes when no other request is out
-  query: [SS_QUERY] u8; query_n: int;   // the side's search
   go: [96] u8; go_n: int; go_push: bool;   // an address for the host: pushed (the shell stays) or gone to
   marking: bool;                     // Copy shows its check: build again when it gives way
   doc: [1] MdDoc;
@@ -333,7 +332,6 @@ cw_side :: (s: [] ChatWeb) {
   for k: 0..<SS_PLACES { p := k_place(t, u, ids[k], icons[k], names[k], hrefs[k], k == SS_CHATS && s[0].page == SS_CHATS); }
   list := k_side_list(t, "side");
   if s[0].local == 1 && !s[0].local_off && s[0].ns + s[0].nc > 0 {
-    q := k_search(t, "side.q", "Search", "Search the chats");
     // the sections, top to bottom, each with what the search keeps of it
     marks := [3] string.["side.run", "side.claude", "side.recent"]; labels := SS_SECTION_NAMES;
     for sec: 0..<SS_SECTIONS {
@@ -353,13 +351,10 @@ cw_side :: (s: [] ChatWeb) {
 // Whether the side lists a conversation in a section: Coder's session k, or Claude Code's conversation k (`claude`).
 // Recent holds only the few that ended last, and not Coder's own test agent unless it is the one shown.
 cw_side_keeps :: (s: [] ChatWeb, k: int, claude: bool, sec: int) -> bool {
-  query := cast(string) s[0].query[0..<s[0].query_n];
   if claude {
-    title := cast(string) s[0].ctitle[k][0..<s[0].ctitle_n[k]];
-    return ss_section(s[0].copen[k] > 0, true) == sec && ss_match(ifx title.count > 0 then title else "(untitled)", query);
+    return ss_section(s[0].copen[k] > 0, true) == sec;
   }
-  title := cast(string) s[0].stask[k][0..<s[0].stask_n[k]];
-  if ss_section(s[0].srun[k], false) != sec || !ss_match(ifx title.count > 0 then title else "(no message)", query) { return false; }
+  if ss_section(s[0].srun[k], false) != sec { return false; }
   if sec != SS_RECENT { return true; }
   shown := cast(string) s[0].sid[k][0..<s[0].sid_n[k]] == cw_sel(s);
   if cast(string) s[0].seng[k][0..<s[0].seng_n[k]] == "echo" && !shown { return false; }   // Coder's own test agent
@@ -368,8 +363,7 @@ cw_side_keeps :: (s: [] ChatWeb, k: int, claude: bool, sec: int) -> bool {
     if s[0].srun[j] { continue; }
     sj := cast(string) s[0].sid[j][0..<s[0].sid_n[j]] == cw_sel(s);
     if cast(string) s[0].seng[j][0..<s[0].seng_n[j]] == "echo" && !sj { continue; }
-    tj := cast(string) s[0].stask[j][0..<s[0].stask_n[j]];
-    if ss_match(ifx tj.count > 0 then tj else "(no message)", query) { before += 1; }
+    before += 1;
   }
   return before < CW_RECENT;
 }
@@ -1298,11 +1292,6 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     for i: 0..<n { s[0].draft[i] = s[0].inbox[i]; }
     s[0].draft_n = n;
   }
-  else if kind == CW_INPUT && id == "side.q" {
-    n := ifx length < 0 then 0 else ifx length > SS_QUERY then SS_QUERY else length;
-    for i: 0..<n { s[0].query[i] = s[0].inbox[i]; }
-    s[0].query_n = n;
-  }
   else if kind == CW_INPUT && id == "claude.key" {
     n := ifx length < 0 then 0 else ifx length > CW_KEY then CW_KEY else length;
     for i: 0..<n { s[0].key[i] = s[0].inbox[i]; s[0].inbox[i] = 0; }   // the key doesn't stay in the inbox
@@ -1752,7 +1741,7 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   #assert coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/sessions" && coaxial_chatweb_ask(s) == 0;
   cw_test_answer(s, 404, "not found");
   for i: 0..<40 { b := coaxial_chatweb_frame(s, 0.1, true); }
-  #assert s[0].local == -1 && !coaxial_chatweb_asking(s) && tr_find(s[0].tree[..], "side") >= 0 && tr_find(s[0].tree[..], "side.q") < 0 && tr_find(s[0].tree[..], "side.run") < 0;   // the side, with no sessions in it
+  #assert s[0].local == -1 && !coaxial_chatweb_asking(s) && tr_find(s[0].tree[..], "side") >= 0 && tr_find(s[0].tree[..], "side.run") < 0;   // the side, with no sessions in it
   cw_test_press(s, "model"); b := coaxial_chatweb_frame(s, 0.016, true);
   #assert tr_find(s[0].tree[..], "model.0") >= 0 && tr_find(s[0].tree[..], "model.6") < 0 && tr_find(s[0].tree[..], "model.7") < 0 && tr_find(s[0].tree[..], "agent") < 0;
 
@@ -1817,7 +1806,7 @@ CW_T_AGENTS :: "{\"agents\":[{\"engine\":\"claude\",\"ready\":true,\"why\":\"\"}
   #assert s[0].local_off && coaxial_chatweb_keep_len(s) == 9 && cast(string) s[0].keep[0..<9] == "local=off" && cw_agent(s) == 0;
   coaxial_chatweb_keep_done(s);
   for i: 0..<80 { b = coaxial_chatweb_frame(s, 0.1, true); #assert !coaxial_chatweb_asking(s) || cw_test_door(s)[0..<7] != "/local/"; }
-  #assert tr_text_of(t, tr_find(t, "machine.switch.l")) == "Turn on" && tr_find(t, "agent") < 0 && tr_find(t, "side.q") < 0 && tr_find(t, "s.0") < 0;
+  #assert tr_text_of(t, tr_find(t, "machine.switch.l")) == "Turn on" && tr_find(t, "agent") < 0 && tr_find(t, "side.run") < 0 && tr_find(t, "s.0") < 0;
   cw_test_press(s, "machine.switch");
   #assert !s[0].local_off && cast(string) s[0].keep[0..<s[0].keep_n] == "local=on";
   // a browser that kept "off" starts with the agents off, and never asks Coder
@@ -2248,13 +2237,3 @@ cw_test_go :: (s: [] ChatWeb) -> string { return cast(string) s[0].go[0..<s[0].g
   #assert cw_test_go(s) == "/" && !coaxial_chatweb_go_push(s) && s[0].me_n == 0;
 }
 
-#test "the side's search keeps the sessions whose titles hold its words, under the same section heads" {
-  ts: [1] CwTest; s := ts[0].s[..];
-  cw_test_local(s, CW_T_SESSIONS);
-  t := s[0].tree[..];
-  #assert tr_find(t, "side.q") >= 0 && tr_find(t, "c.0") >= 0 && tr_find(t, "c.1") >= 0;
-  q := "everglade"; for i: 0..<q.count { s[0].inbox[i] = q[i]; }
-  coaxial_chatweb_event(s, CW_INPUT, dm_find(s[0].dom[..], "side.q"), q.count);
-  n := coaxial_chatweb_frame(s, 0.016, true);
-  #assert tr_find(t, "c.1") >= 0 && tr_find(t, "c.0") < 0 && tr_text_of(t, tr_find(t, "side.claude.n")) == "1";
-}

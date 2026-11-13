@@ -1,7 +1,6 @@
 // The site's side: the rules behind the left side every page shows someone logged in (docs/app-shell.md).
-// Plain functions, no drawing: which place a page is, who is logged in as the account's lines say, what a
-// search keeps, and which section a row of a list falls in. The side is drawn with the kit's pieces
-// (components/kit/frames.coax: k_side, k_side_head, k_side_places, k_side_list, k_side_mark, k_search,
+// Plain functions, no drawing: which place a page is, who is logged in as the account's lines say, and which section a row of a list falls in. The side is drawn with the kit's pieces
+// (components/kit/frames.coax: k_side, k_side_head, k_side_places, k_side_list, k_side_mark,
 // k_who, k_side_open) by the page that holds it; today that is the app shell (chat-web.coax).
 //   coax/bin/coax test apps/openagents-web/site-side.coax
 #load "../../coax/lib/nostr/nip19-core.coax";
@@ -11,7 +10,6 @@ SS_HOME :: -1; SS_CHATS :: 0; SS_PROJECTS :: 1; SS_WORLDS :: 2; SS_PLACES :: 3;
 SS_NAMES :: [3] string.["Chats", "Projects", "Worlds"];
 SS_HREFS :: [3] string.["/chat", "/projects", "/worlds"];
 SS_WHO :: 96;          // bytes of a name at the foot
-SS_QUERY :: 64;        // bytes of a search
 
 // The place an address is: the home page, or one of the places (anything under it). -2 for none.
 ss_place_of :: (path: string) -> int {
@@ -69,29 +67,6 @@ ss_who_read :: (body: string, out: [] u8) -> int {
   return ss_put(out, 0, "Your account");
 }
 
-ss_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
-// Whether a row's title is kept by a search: every word of the search is in it, in any case. An empty
-// search keeps everything.
-ss_match :: (title: string, query: string) -> bool {
-  at := 0;
-  while at < query.count {
-    while at < query.count && query[at] == ' ' { at += 1; }
-    e := at;
-    while e < query.count && query[e] != ' ' { e += 1; }
-    if e > at {
-      w := e - at; found := false; i := 0;
-      while !found && i + w <= title.count {
-        same := true;
-        for k: 0..<w { if ss_lower(title[i + k]) != ss_lower(query[at + k]) { same = false; break; } }
-        found = same; i += 1;
-      }
-      if !found { return false; }
-    }
-    at = e;
-  }
-  return true;
-}
-
 // The sections of a list of conversations, top to bottom: those at work now, then Claude Code's here, then
 // the ones that ended most recently. A conversation is in exactly one.
 SS_RUNNING :: 0; SS_CLAUDE :: 1; SS_RECENT :: 2; SS_SECTIONS :: 3;
@@ -120,11 +95,6 @@ ss_section :: (busy: bool, claude: bool) -> int {
   n = ss_who_read("logged_in 1\naccount acct_1\nkind words\n", out[..]);
   #assert cast(string) out[0..<n] == "Your account";
   #assert ss_who_read("logged_in 0\n", out[..]) == 0 && ss_who_read("", out[..]) == 0;
-}
-#test "a search keeps a title holding every one of its words, in any case" {
-  #assert ss_match("Port the frames to SVG", "") && ss_match("Port the frames to SVG", "  ");
-  #assert ss_match("Port the frames to SVG", "svg") && ss_match("Port the frames to SVG", "FRAMES port");
-  #assert !ss_match("Port the frames to SVG", "png") && !ss_match("Port the frames to SVG", "frames png") && !ss_match("", "a");
 }
 #test "a conversation at work is Running whoever's it is; else Claude Code's, else Recent" {
   #assert ss_section(true, false) == SS_RUNNING && ss_section(true, true) == SS_RUNNING;
