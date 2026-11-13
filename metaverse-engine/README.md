@@ -52,6 +52,17 @@ takes none: load a module's checks with `#test`, and move code that product
 code calls out of the checks file into a module. Then delete the line and run
 `coax/web/tool.sh layer-check`.
 
+Rooms and pages build separately, so room rules never ship to players
+(#13440). `layer-check`'s `page-room` gate keeps that true and has no
+allowlist. It follows the loads of every page: each module
+`apps/openagents-web/build.sh` hands to `wasm.sh`, Everglade's client and
+the Mac app's scene. None may reach a file under `coax/web/room/` or
+`everglade/server/`. The one exception is a wire codec that both ends speak,
+a file named `X-wire.coax`. Check loads are not followed, because a page
+doesn't link them. Code both sides need goes in `everglade/shared/`,
+`rules/` or the engine. The offline room (`build/everglade-room.wasm`) is the
+room itself built for the browser, not a page, and is not judged.
+
 `coax/web/tool.sh layer-check --consumers` lists the engine modules that no
 product loads, directly or through another module (#13272), each with the
 line of [`consumers.txt`](consumers.txt) that says why it is kept: an open

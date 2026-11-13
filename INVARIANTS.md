@@ -1506,6 +1506,17 @@ holds game items only, never money. Checks: `metaverse-engine/session/ledger.coa
 `coax/web/api/tests/room_checks.coax` items and item ops, and
 `coax/web/room/room-items.coax` (1,000 fault-injected plays).
 
+## Room rules never ship in a page
+
+The rooms decide the game and the page draws it. They build separately: a
+page's load closure has no file under `coax/web/room/` or `everglade/server/`
+except a wire codec both ends speak (`X-wire.coax`). The proof is
+`coax/web/tool.sh layer-check`'s `page-room` gate, which runs before every
+push, covers every module `apps/openagents-web/build.sh` builds with
+`wasm.sh` plus the native clients, and has no allowlist (#13440). A page
+that needs a room's rule moves the rule to `everglade/shared/`, `rules/` or
+the engine; it never loads the room.
+
 ## Authoring never writes durable state
 
 A realm has three kinds of state. **Authored** state is what a maker wrote:

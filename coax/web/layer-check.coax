@@ -23,6 +23,12 @@
 // apps/openagents-web/everglade-*.coax or apps/openagents-web/everglade5e*.coax. v1's room builds
 // frozen from everglade/server/legacy/v1.sh's pin; Everglade II's room is everglade/server/ and the
 // shared code both sides load is everglade/shared/.
+// And one for the pages, with no allowlist (#13440; docs/research/summer-what-to-adapt.md, S6): rooms and
+// pages build separately, so room rules never ship to players. The load closure of every page (each module
+// apps/openagents-web/build.sh hands to wasm.sh, and LC_PAGE_ROOTS: the clients the apps build) has no
+// room-only file: none under coax/web/room/ or everglade/server/, except a wire codec both ends speak
+// (a file named X-wire.coax). Check loads (`#load "FILE" #test;`) are not followed: a page does not link them.
+// What both sides need lives in everglade/shared/, rules/ or the engine.
 // And one more with no allowlist (#13431; INVARIANTS.md "Authoring never writes durable state"): the
 // contexts that author or run a world (LC_AUTHORING: the edit log and its undo, content tables and their
 // rollback, the World and its save and load) reach neither durable context (LC_DURABLE: the character
@@ -204,6 +210,122 @@ lc_room_v1 :: (loads: string, root: string, run: LcRun) -> int {
       if lc_v1(to) {
         bad += 1;
         if !run.quiet { print("room-v1 % -> %   (the room loads an Everglade v1 file; everglade/shared/ holds what both sides need)\n", from, to); }
+      }
+    }
+  }
+  return bad;
+}
+
+// ---- the pages' closure (#13440)
+
+LC_PAGE_BUILD :: "apps/openagents-web/build.sh";
+LC_PAGE_DIR :: "apps/openagents-web";
+// Clients built outside build.sh: Everglade's client by name (every host builds it) and the Mac app's scene.
+LC_PAGE_ROOTS :: [2] string.["everglade/client/client.coax", "apps/everglade-desktop/desktop.coax"];
+LC_PAGE_FILES :: 8192;    // files in the pages' closure tracked
+LC_PAGE_GROUPS :: 16384;  // files with a #load line tracked
+// Whether path is room-only: the room's host, transport and relay (coax/web/room/) or the game's
+// authoritative half (everglade/server/). A wire codec there (X-wire.coax) is what both ends speak.
+lc_room_only :: (path: string) -> bool {
+  if !lc_starts(path, "coax/web/room/") && !lc_starts(path, "everglade/server/") { return false; }
+  w := "-wire.coax";
+  return !(path.count > w.count && cast(string) path[path.count - w.count..<path.count] == w);
+}
+// The Coax modules build.sh hands to wasm.sh, one path a line into out: the quoted "$here/X.coax" words of
+// each wasm.sh command, through its continuation lines. -1 when a command's first word is not such a module
+// (a page this check can't read fails it), else the bytes written.
+lc_page_roots :: (script: string, out: [] u8) -> int {
+  key := "wasm.sh\" \"";
+  here := "$here/";
+  n := 0; i := 0;
+  while i + key.count <= script.count {
+    if cast(string) script[i..<i + key.count] != key { i += 1; continue; }
+    i += key.count - 1;   // at the first word's opening quote
+    first := true;
+    while i < script.count {
+      c := script[i];
+      if c == '\n' && (i == 0 || script[i - 1] != '\\') { break; }
+      if c != '"' { i += 1; continue; }
+      e := i + 1;
+      while e < script.count && script[e] != '"' && script[e] != '\n' { e += 1; }
+      word := cast(string) script[i + 1..<e];
+      i = e + 1;
+      ext := ".coax";
+      is_coax := word.count > ext.count && cast(string) word[word.count - ext.count..<word.count] == ext;
+      if first && !(is_coax && lc_starts(word, here)) { return -1; }
+      first = false;
+      if !is_coax || !lc_starts(word, here) { continue; }
+      pb: [1024] u8;
+      path := lc_resolve(LC_PAGE_DIR, cast(string) word[here.count..<word.count], pb[..]);
+      if path.count == 0 || n + path.count + 1 > out.count { return -1; }
+      for ch: path { out[n] = ch; n += 1; }
+      out[n] = '\n'; n += 1;
+    }
+  }
+  return n;
+}
+// The room-only files in the load closure of roots (one path a line), as `loads` has it: each named once,
+// with the load that reached it and a page it is in. How many.
+lc_page_room :: (loads: string, roots: string, run: LcRun) -> int {
+  // the rows of one loading file are together in git grep's output: where each file's rows begin
+  g_at: [LC_PAGE_GROUPS] int; g_len: [LC_PAGE_GROUPS] int; g_end: [LC_PAGE_GROUPS] int; gn := 0;
+  i := 0;
+  while i < loads.count {
+    j := i;
+    while j < loads.count && loads[j] != '\n' { j += 1; }
+    c := i;
+    while c < j && loads[c] != ':' { c += 1; }
+    if gn > 0 && c - i == g_len[gn - 1] && cast(string) loads[i..<c] == cast(string) loads[g_at[gn - 1]..<g_at[gn - 1] + g_len[gn - 1]] {
+      g_end[gn - 1] = j;
+    } else {
+      if gn >= LC_PAGE_GROUPS { if !run.quiet { print("layer-check: more than % files have a #load line; raise LC_PAGE_GROUPS\n", LC_PAGE_GROUPS); } return 1; }
+      g_at[gn] = i; g_len[gn] = c - i; g_end[gn] = j; gn += 1;
+    }
+    i = j + 1;
+  }
+  pool: [1048576] u8; pn := 0;
+  at: [LC_PAGE_FILES] int; sz: [LC_PAGE_FILES] int; root: [LC_PAGE_FILES] int; n := 0;
+  i = 0;
+  while i < roots.count {
+    j := i;
+    while j < roots.count && roots[j] != '\n' { j += 1; }
+    r := cast(string) roots[i..<j]; i = j + 1;
+    if r.count == 0 { continue; }
+    seen := false;
+    for k: 0..<n { if cast(string) pool[at[k]..<at[k] + sz[k]] == r { seen = true; break; } }
+    if seen || n >= LC_PAGE_FILES || pn + r.count > pool.count { continue; }
+    at[n] = pn; sz[n] = r.count; root[n] = n; n += 1;
+    for ch: r { pool[pn] = ch; pn += 1; }
+  }
+  bad := 0;
+  q := 0;
+  while q < n {
+    from := cast(string) pool[at[q]..<at[q] + sz[q]]; from_root := root[q]; q += 1;
+    dir := lc_dir(from);
+    for g: 0..<gn {
+      if g_len[g] != from.count || cast(string) loads[g_at[g]..<g_at[g] + g_len[g]] != from { continue; }
+      i = g_at[g];
+      while i < g_end[g] {
+        j := i;
+        while j < g_end[g] && loads[j] != '\n' { j += 1; }
+        l := lc_parse(cast(string) loads[i..<j]); i = j + 1;
+        if !l.ok || l.checks { continue; }
+        to_b: [1024] u8;
+        to := lc_resolve(dir, l.rel, to_b[..]);
+        if to.count == 0 { continue; }
+        seen := false;
+        for k: 0..<n { if cast(string) pool[at[k]..<at[k] + sz[k]] == to { seen = true; break; } }
+        if seen { continue; }
+        if n >= LC_PAGE_FILES || pn + to.count > pool.count {
+          if !run.quiet { print("layer-check: the pages' closure is past % files; raise LC_PAGE_FILES\n", LC_PAGE_FILES); }
+          return bad + 1;
+        }
+        at[n] = pn; sz[n] = to.count; root[n] = from_root; n += 1;
+        for ch: to { pool[pn] = ch; pn += 1; }
+        if lc_room_only(to) {
+          bad += 1;
+          if !run.quiet { print("page-room % -> %   (in the page %: a room-only file must not ship to players; what both sides need lives in everglade/shared/, rules/ or the engine, and a codec both ends speak is named X-wire.coax, #13440)\n", from, to, cast(string) pool[at[from_root]..<at[from_root] + sz[from_root]]); }
+        }
       }
     }
   }
@@ -890,6 +1012,22 @@ tool_main :: () -> int #export_c #effects(all) {
   bad += lc_judge_models_fs(models, body[..], run, found[..], model_checked[..]);
   room_v1 := lc_room_v1(loads, LC_ROOM, run);
   bad += room_v1;
+  // no room-only file in a page (#13440)
+  page_room := 0; page_roots_n := 0;
+  {
+    pg_script: [1048576] u8; pg_roots: [65536] u8;
+    pg_sn := fs_read(LC_PAGE_BUILD, pg_script[..]);
+    if pg_sn < 0 { print("layer-check: no % here; run from the repository root\n", LC_PAGE_BUILD); return 2; }
+    pg_rn := lc_page_roots(cast(string) pg_script[0..<pg_sn], pg_roots[..]);
+    if pg_rn <= 0 {
+      print("FAIL page-room: % names no page this check can read (each wasm.sh command's first word is \"$here/PAGE.coax\", #13440)\n", LC_PAGE_BUILD);
+      page_room += 1; pg_rn = 0;
+    }
+    for pg_r: LC_PAGE_ROOTS { for pg_ch: pg_r { pg_roots[pg_rn] = pg_ch; pg_rn += 1; } pg_roots[pg_rn] = '\n'; pg_rn += 1; }
+    for pg_k: 0..<pg_rn { if pg_roots[pg_k] == '\n' { page_roots_n += 1; } }
+    page_room += lc_page_room(loads, cast(string) pg_roots[0..<pg_rn], run);
+  }
+  bad += page_room;
   // authoring never writes durable state (#13431)
   durable_checked: [1] int; durable := lc_durable_contexts(ctxs, run) + lc_durable_allow(allow, ctxs, run);
   {
@@ -937,7 +1075,7 @@ tool_main :: () -> int #export_c #effects(all) {
 
   print("layer-check: durable % (none allowed): % authoring contexts reach neither % nor %, and % of their non-Coax sources name no durable table\n", durable, LC_AUTHORING.count, LC_DURABLE[0], LC_DURABLE[1], durable_checked[0]);
   total := found[1] + found[2] + found[3] + found[4];
-  print("layer-check: aethyr-up %, everglade-up %, tests %, context %, model-effects % (of % in %), total % loads across the layers (each needs a line in %), room-v1 % (none allowed), no-consumer modules: % with no line (none allowed), % adopted, % the book's, % built by name, % a pipeline's (%), % failed\n", found[1], found[2], found[3], found[4], found[LC_MODEL_EFFECTS], model_checked[0], LC_MODELS, total, LC_ALLOW, room_v1, cons_counts[0], cons_counts[1], cons_counts[2], cons_counts[3], cons_counts[4], LC_CONSUMERS, bad);
+  print("layer-check: aethyr-up %, everglade-up %, tests %, context %, model-effects % (of % in %), total % loads across the layers (each needs a line in %), room-v1 % (none allowed), page-room % in % page modules (none allowed), no-consumer modules: % with no line (none allowed), % adopted, % the book's, % built by name, % a pipeline's (%), % failed\n", found[1], found[2], found[3], found[4], found[LC_MODEL_EFFECTS], model_checked[0], LC_MODELS, total, LC_ALLOW, room_v1, page_room, page_roots_n, cons_counts[0], cons_counts[1], cons_counts[2], cons_counts[3], cons_counts[4], LC_CONSUMERS, bad);
   return ifx bad == 0 then 0 else 1;
 }
 
@@ -1043,6 +1181,22 @@ LC_T_ALLOW :: "# seed\naethyr-up metaverse-engine/net/latency.coax -> everglade/
   for c: more { joined[n] = c; n += 1; }
   #assert lc_room_v1(cast(string) joined[0..<n], LC_ROOM, LC_T_QUIET) == 2;   // each named once, however reached
   #assert lc_v1("apps/openagents-web/everglade5e.coax") && lc_v1("apps/openagents-web/everglade-wire.coax") && !lc_v1("everglade/shared/move.coax") && !lc_v1("everglade/shared/everglade-wire.coax");
+}
+#test "the pages' closure: a room-only file a page reaches through another fails; a wire codec, a check load and the room's own loads do not (#13440)" {
+  script := "old timed a \"$here/../../coax/web/wasm.sh\" \"$here/a.coax\" \"$here/a-face.c\" \"$here/build/a.wasm\" \\\n  \"$here/../../everglade/client/step.coax\" \"$a/core/sticks.coax\" &\ntimed b \"$here/../../coax/web/wasm.sh\" \"$here/../../everglade/client/client.coax\" \"$here/b-face.c\"\ntimed room \"$here/../../coax/web/tool.sh\" \"$here/../../coax/web/room/worker.coax\"\n";
+  rb: [1024] u8;
+  rn := lc_page_roots(script, rb[..]);
+  #assert rn > 0 && cast(string) rb[0..<rn] == "apps/openagents-web/a.coax\neverglade/client/step.coax\neverglade/client/client.coax\n";
+  #assert lc_page_roots("timed c \"$here/../../coax/web/wasm.sh\" \"$out/c.wasm\"\n", rb[..]) == -1;   // a page it can't read
+  roots := cast(string) rb[0..<rn];
+  loads := "apps/openagents-web/a.coax:1:#load \"../../everglade/shared/move.coax\";\ncoax/web/room/room.coax:1:#load \"room-a.coax\";\neverglade/client/client.coax:2:#load \"net.coax\";\neverglade/client/net.coax:1:#load \"../server/creature-wire.coax\";\neverglade/client/net.coax:2:#load \"../server/room-checks.coax\" #test;\neverglade/server/creature-wire.coax:1:#load \"../shared/move.coax\";\n";
+  #assert lc_page_room(loads, roots, LC_T_QUIET) == 0;
+  more := "everglade/shared/move.coax:1:#load \"../server/casts.coax\";\neverglade/shared/move.coax:2:#load \"../../coax/web/room/room-interest.coax\";\neverglade/server/casts.coax:1:#load \"tick.coax\";\n";
+  joined: [4096] u8; n := 0;
+  for c: loads { joined[n] = c; n += 1; }
+  for c: more { joined[n] = c; n += 1; }
+  #assert lc_page_room(cast(string) joined[0..<n], roots, LC_T_QUIET) == 3;   // casts, the interest module, and tick through casts: each once, though two pages reach them
+  #assert lc_room_only("everglade/server/casts.coax") && lc_room_only("coax/web/room/room.coax") && !lc_room_only("everglade/server/creature-wire.coax") && !lc_room_only("everglade/shared/move.coax") && !lc_room_only("everglade/server-wire.coax");
 }
 #test "the allowlist stays true and only shrinks" {
   used: [8] bool;
