@@ -18,6 +18,7 @@
 // tool.sh: stack-gib 1
 #import "Basic";
 #load "../editor/file-store.coax";
+#load "../core/assets.coax";   // a file's SHA-256
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/args.coax";

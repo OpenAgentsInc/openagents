@@ -21427,6 +21427,26 @@ CREATE TABLE verse.accounts (
 
 
 --
+-- Name: attachment_lists; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.attachment_lists (
+    key text NOT NULL,
+    project text NOT NULL,
+    list text NOT NULL,
+    count integer NOT NULL,
+    bytes bigint NOT NULL,
+    at_ms bigint NOT NULL,
+    CONSTRAINT attachment_lists_at_ms_check CHECK ((at_ms > 0)),
+    CONSTRAINT attachment_lists_bytes_check CHECK (((bytes >= 0) AND (bytes <= 1073741824))),
+    CONSTRAINT attachment_lists_count_check CHECK (((count >= 0) AND (count <= 200))),
+    CONSTRAINT attachment_lists_key_check CHECK ((key ~ '^(world|project):[a-z][a-z0-9-]{0,47}$'::text)),
+    CONSTRAINT attachment_lists_list_check CHECK ((("left"(list, 15) = 'world.files.v1 '::text) AND (length(list) <= 180000))),
+    CONSTRAINT attachment_lists_project_check CHECK ((project ~ '^([a-z][a-z0-9-]{0,47})?$'::text))
+);
+
+
+--
 -- Name: awards; Type: TABLE; Schema: verse; Owner: -
 --
 
@@ -24318,6 +24338,14 @@ ALTER TABLE ONLY verse.accounts
 
 
 --
+-- Name: attachment_lists attachment_lists_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.attachment_lists
+    ADD CONSTRAINT attachment_lists_pkey PRIMARY KEY (key);
+
+
+--
 -- Name: awards awards_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
 --
 
@@ -25551,6 +25579,13 @@ CREATE INDEX messages_slug ON projects.messages USING btree (slug, at_ms);
 --
 
 CREATE INDEX turns_slug ON projects.turns USING btree (slug, id);
+
+
+--
+-- Name: attachment_lists_project; Type: INDEX; Schema: verse; Owner: -
+--
+
+CREATE INDEX attachment_lists_project ON verse.attachment_lists USING btree (project) WHERE (project <> ''::text);
 
 
 --

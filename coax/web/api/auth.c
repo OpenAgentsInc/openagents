@@ -220,6 +220,7 @@ static const auth_rule RULES[] = {
   R("*",    "/api/drops", true, AP_PUBLIC, "who dropped them, checked there"),
   R("*",    "/api/worldbuilder/", true, AP_PUBLIC, "/create-world's chat: anyone, capped per address there (worldbuilder.c)"),
   R("*",    "/api/worlds/", true, AP_PUBLIC, "a world's document: anyone reads; an admin writes, checked there (worlds.c, world-policy.coax)"),
+  R("GET",  "/api/projects/", true, AP_PUBLIC, "a project's attachments: its members and admins, checked there (worlds.c, world-files.coax)"),
 };
 #undef R
 

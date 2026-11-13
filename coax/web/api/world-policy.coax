@@ -24,6 +24,7 @@
 #load "../../../metaverse-engine/editor/world-edit.coax";
 #load "../../../metaverse-engine/editor/authority.coax";
 #load "../../lib/agent/world/turn.coax";   // a world's card (world.card.v1)
+#load "world-files.coax";   // attachments on a world and its project (#13468)
 
 WR_OK :: 0;
 WR_CROSS :: 1;       // a write from another site's page

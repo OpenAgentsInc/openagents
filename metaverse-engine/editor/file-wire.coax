@@ -40,7 +40,6 @@
 // A part of a file is answered "world.file.part.v1 SHA256 GOT" until the last part, which is
 // answered with the list. An upload's ask is answered "world.file.upload.v1 put|kept SHA256 BYTES URL".
 //   coax/bin/coax test metaverse-engine/editor/file-wire.coax
-#load "../core/assets.coax";
 
 FW_SCHEMA :: "world.files.v1";
 FW_ATTACH :: "world.file.attach.v1";
@@ -643,12 +642,18 @@ fw_words :: (verdict: int, name: string, bytes: int, held: int, out: [] u8) -> s
   if verdict == FW_NO_PROJECT { n = fw_put(out, 0, "This world has no project, so nothing can be attached to one."); }
   return ifx n <= 0 then "" else cast(string) out[0..<n];
 }
-// An attachment's ID: 16 hex digits of the SHA-256 of what makes it, so the same file attached
-// twice at two times is two attachments.
+// An attachment's ID: 16 hex digits made from what makes it (its world, project, time, hash and
+// name), so the same file attached twice at two times is two attachments. Two 32-bit FNV-1a sums,
+// one over the bytes forward and one backward: an ID names an attachment and guards nothing.
 fw_id_make :: (seed: string, out: [] u8) -> bool {
-  h: [64] u8;
-  if out.count < FW_ID || !asset_hex(asset_id(seed), h[..]) { return false; }
-  for k: 0..<FW_ID { out[k] = h[k]; }
+  if out.count < FW_ID { return false; }
+  a := 2166136261; b := 2166136261 ^ 1540483477;
+  for i: 0..<seed.count {
+    a = ((a ^ cast(int) seed[i]) * 16777619) & 4294967295;
+    b = ((b ^ cast(int) seed[seed.count - 1 - i]) * 16777619) & 4294967295;
+  }
+  hexd := "0123456789abcdef";
+  for k: 0..<8 { out[k] = hexd[(a >> (28 - 4 * k)) & 15]; out[8 + k] = hexd[(b >> (28 - 4 * k)) & 15]; }
   return true;
 }
 // Whether a rename keeps the file what it was: a file's extension never changes (a link's title may be anything).

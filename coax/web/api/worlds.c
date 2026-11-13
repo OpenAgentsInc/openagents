@@ -541,6 +541,218 @@ static void asset_done(const request *q, PGconn *db, const char *id) {
   _exit(0);
 }
 
+// ---- attachments on a world and its project (#13468; docs/protocol/world-files-v1.md). Each scope's list is a row
+// (migrations/0184_world_attachments.sql); the rules and every byte of a list are Coax (world-files.coax, and the
+// shared store code the dev server runs, metaverse-engine/editor/file-store.coax). A file goes by direct upload to the
+// private bucket at PREFIX/attachments/SHA256 (drops.c), is read back and scanned, and leaves when no list names it.
+// Nothing about a file is logged.
+#define FILES_ASK 2048
+typedef struct { coax_t_FlWork *w; char world[40], project[56]; } files_ctx;
+static coax_v_t_FlWork fw_of(files_ctx *x) { return (coax_v_t_FlWork){x->w, 1}; }
+static void files_refuse_said(int fd, files_ctx *x) { coax_string s = wf_said(fw_of(x)); refuse(fd, (int)x->w->status, s, -1); }
+static void files_object(const char *hash, char *out, size_t cap) {
+  const char *prefix = getenv("OA_DROPS_PREFIX");
+  snprintf(out, cap, "%s/attachments/%.64s", prefix && *prefix ? prefix : "dev", hash);
+}
+// A scope's stored list, malloc'd ("" for none), or NULL when it can't be read.
+static char *files_list(PGconn *db, const char *key) {
+  const char *v[1] = {key};
+  PGresult *r = PQexecParams(db, "SELECT list FROM verse.attachment_lists WHERE key = $1", 1, NULL, v, NULL, NULL, 0);
+  char *out = NULL;
+  if (PQresultStatus(r) == PGRES_TUPLES_OK) out = strdup(PQntuples(r) == 1 ? PQgetvalue(r, 0, 0) : "");
+  else api_log("worlds: attachments not read: %s", PQerrorMessage(db));
+  PQclear(r);
+  return out;
+}
+// Whoever asks may see and change this project's attachments: the verdict (0: yes).
+static int64_t files_may(const request *q, PGconn *db, const char *project) {
+  const auth_principal *p = auth_principal_of(q);
+  bool known = p && (p->account[0] || p->pubkey[0]), admin = p && p->admin, member = false;
+  if (project[0] && p && p->pubkey[0] && !admin) {
+    const char *v[2] = {project, p->pubkey};
+    PGresult *r = PQexecParams(db, "SELECT projects.role($1, $2) = 'member'", 2, NULL, v, NULL, NULL, 0);
+    member = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !strcmp(PQgetvalue(r, 0, 0), "t");
+    PQclear(r);
+  }
+  return wf_may(auth_same_site(q), known, admin, member, project[0] != 0);
+}
+static const char *files_by(const request *q) { const auth_principal *p = auth_principal_of(q); return p && p->pubkey[0] ? p->pubkey : "account"; }
+// The world's list and its project's read into x (world "" for a project's own). lock: in a transaction, the
+// project's lists are held until it ends, so two writes never count the same room twice.
+static bool files_load(PGconn *db, files_ctx *x, const char *world, const char *project, bool lock) {
+  snprintf(x->world, sizeof x->world, "%s", world); snprintf(x->project, sizeof x->project, "%s", project);
+  if (!(x->w = calloc(1, sizeof *x->w))) return false;
+  char wkey[64], pkey[72];
+  snprintf(wkey, sizeof wkey, "world:%s", world); snprintf(pkey, sizeof pkey, "project:%s", project);
+  if (lock) {
+    const char *v[1] = {project[0] ? pkey : wkey};
+    if (!run(db, "SELECT pg_advisory_xact_lock(hashtext('attachments ' || $1))", 1, v)) return false;
+  }
+  char *wl = world[0] ? files_list(db, wkey) : strdup(""), *pl = project[0] ? files_list(db, pkey) : strdup("");
+  long long other = 0, other_bytes = 0;
+  bool ok = wl && pl;
+  if (ok && project[0]) {
+    const char *v[3] = {project, wkey, pkey};
+    PGresult *r = PQexecParams(db, "SELECT coalesce(sum(count), 0), coalesce(sum(bytes), 0) FROM verse.attachment_lists WHERE project = $1 AND key <> $2 AND key <> $3", 3, NULL, v, NULL, NULL, 0);
+    ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
+    if (ok) { other = atoll(PQgetvalue(r, 0, 0)); other_bytes = atoll(PQgetvalue(r, 0, 1)); }
+    PQclear(r);
+  }
+  ok = ok && wf_load(fw_of(x), cs(world), cs(project), cs(wl), cs(pl), other, other_bytes);
+  free(wl); free(pl);
+  return ok;
+}
+// Both scopes' lists as they now are, saved.
+static bool files_save(PGconn *db, files_ctx *x) {
+  static char out[180001];
+  char key[72], count[16], bytes[24], at[24];
+  snprintf(at, sizeof at, "%lld", (long long)api_now_ms());
+  for (int scope = 0; scope < 2; scope++) {
+    int64_t n = wf_stored(fw_of(x), scope, (coax_v_u8){(uint8_t *)out, sizeof out - 1});
+    if (n < 0) continue;
+    out[n] = 0;
+    if (scope == 0) snprintf(key, sizeof key, "world:%s", x->world); else snprintf(key, sizeof key, "project:%s", x->project);
+    snprintf(count, sizeof count, "%lld", (long long)wf_held(csn(out, (size_t)n), false)); snprintf(bytes, sizeof bytes, "%lld", (long long)wf_held(csn(out, (size_t)n), true));
+    const char *v[6] = {key, x->project, out, count, bytes, at};
+    if (!run(db, "INSERT INTO verse.attachment_lists (key, project, list, count, bytes, at_ms) VALUES ($1, $2, $3, $4::int, $5::bigint, $6::bigint) "
+                 "ON CONFLICT (key) DO UPDATE SET project = EXCLUDED.project, list = EXCLUDED.list, count = EXCLUDED.count, bytes = EXCLUDED.bytes, at_ms = EXCLUDED.at_ms", 6, v)) return false;
+  }
+  return true;
+}
+// Whether any list of the project (or the world's own, for a world with none) still names the file of this hash.
+static bool files_named(PGconn *db, files_ctx *x, const char *hash) {
+  char wkey[64]; snprintf(wkey, sizeof wkey, "world:%s", x->world);
+  const char *v[2] = {x->project, wkey};
+  PGresult *r = PQexecParams(db, "SELECT list FROM verse.attachment_lists WHERE (project = $1 AND project <> '') OR key = $2", 2, NULL, v, NULL, NULL, 0);
+  bool named = PQresultStatus(r) != PGRES_TUPLES_OK;   // unsure: it stays
+  for (int i = 0; !named && i < PQntuples(r); i++) named = wf_names(cs(PQgetvalue(r, i, 0)), cs(hash));
+  PQclear(r);
+  return named;
+}
+static void files_answer(int fd, files_ctx *x) {
+  coax_string s = wf_answer(fw_of(x));
+  if (!s.count) refuse(fd, 500, cs("not written"), -1);
+  else api_respond(fd, 200, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", s.data, (size_t)s.count);
+}
+// GET .../files and GET /api/projects/SLUG/files: the list.
+static void files_get(const request *q, PGconn *db, const char *world, const char *project) {
+  int64_t verdict = files_may(q, db, project);
+  if (verdict != 0) { refuse(q->fd, (int)wf_status(verdict), wf_words(verdict), -1); return; }
+  files_ctx x = {0};
+  if (!files_load(db, &x, world, project, false)) refuse(q->fd, 500, cs("not read"), -1);
+  else files_answer(q->fd, &x);
+  free(x.w);
+}
+// GET .../files/FID: its bytes (?at=N: a part of them), as the type its extension names, never stored by a browser.
+static void files_raw(const request *q, PGconn *db, const char *world, const char *project, const char *fid) {
+  int64_t verdict = files_may(q, db, project);
+  if (verdict != 0) { refuse(q->fd, (int)wf_status(verdict), wf_words(verdict), -1); return; }
+  files_ctx x = {0};
+  if (!files_load(db, &x, world, project, false)) { refuse(q->fd, 500, cs("not read"), -1); free(x.w); return; }
+  int64_t i = wf_file(fw_of(&x), cs(fid));
+  if (i < 0) { refuse(q->fd, 404, cs("That attachment has no file here."), -1); free(x.w); return; }
+  char object[200], hash[65], type[64], at_s[24] = "";
+  coax_string h = wf_file_hash(fw_of(&x), i), t = wf_file_type(fw_of(&x), i);
+  snprintf(hash, sizeof hash, "%.*s", (int)h.count, h.data); snprintf(type, sizeof type, "%.*s", (int)t.count, t.data);
+  long long bytes = wf_file_bytes(fw_of(&x), i), at = 0, part = (long long)wf_read_part();
+  free(x.w);
+  if (api_query(q, "at", at_s, sizeof at_s)) { char *end; at = strtoll(at_s, &end, 10); if (*end || at < 0 || at > bytes) { refuse(q->fd, 400, cs("?at= is a byte of the file"), -1); return; } }
+  files_object(hash, object, sizeof object);
+  if (!asset_child()) return;
+  size_t n = 0;
+  unsigned char *data = drops_fetch(object, (size_t)bytes, &n);
+  if (!data || (long long)n != bytes) refuse(q->fd, 404, cs("That attachment's file is not here."), -1);
+  else {
+    size_t from = at_s[0] ? (size_t)at : 0, to = at_s[0] && bytes - at > part ? (size_t)(at + part) : n;
+    api_respond(q->fd, 200, type, "Cache-Control: private, no-store\r\nContent-Disposition: inline\r\n", data + from, to - from);
+  }
+  free(data);
+  _exit(0);
+}
+// POST .../files: an upload asked for, or a link, an edit or a detach. POST .../files/done: the upload is done.
+static void files_post(const request *q, PGconn *db, const char *world, const char *project, bool done) {
+  int64_t verdict = files_may(q, db, project);
+  if (verdict != 0) { refuse(q->fd, (int)wf_status(verdict), wf_words(verdict), -1); return; }
+  coax_t_FwAsk ask; memset(&ask, 0, sizeof ask);
+  char body[FILES_ASK + 1]; size_t bn = q->body_len > FILES_ASK ? 0 : q->body_len;
+  memcpy(body, q->body, bn); body[bn] = 0;
+  int64_t what = q->body_len > 0 && q->body_len <= FILES_ASK ? wf_ask((coax_v_t_FwAsk){&ask, 1}, csn(body, bn)) : (q->body_len > FILES_ASK ? 1 : 0);
+  if (what == 1) { refuse(q->fd, 415, wf_whole_words(), -1); return; }
+  if (what == 0 || (done && what != 2)) { refuse(q->fd, 400, cs("send a world.file.* request"), -1); return; }
+  files_ctx x = {0};
+  coax_v_t_FwAsk a = {&ask, 1};
+  if (what == 2) {
+    if (!files_load(db, &x, world, project, false)) { refuse(q->fd, 500, cs("not read"), -1); free(x.w); return; }
+    if (wf_admit(fw_of(&x), a) != 200) { files_refuse_said(q->fd, &x); free(x.w); return; }
+    free(x.w); x.w = NULL;
+    char object[200], hash[65], type[64], bytes[24], from[256];
+    coax_string h = wf_ask_hash(a), t = wf_ask_type(a);
+    snprintf(hash, sizeof hash, "%.*s", (int)h.count, h.data); snprintf(type, sizeof type, "%.*s", (int)t.count, t.data);
+    snprintf(bytes, sizeof bytes, "%lld", (long long)wf_ask_bytes(a));
+    files_object(hash, object, sizeof object);
+    if (!api_header(q, "Origin", from, sizeof from) || strcmp(from, auth_origin())) snprintf(from, sizeof from, "%s", auth_origin());
+    if (!asset_child()) return;
+    long long stored = -1; char *head = NULL;
+    drops_inspect(object, &stored, &head);
+    free(head);
+    if (!done) {
+      char session[2048] = "", out[2400];
+      bool kept = stored == wf_ask_bytes(a);
+      if (!kept && stored >= 0) drops_delete_object(object);
+      if (!kept && !drops_open_upload(object, type, bytes, from, session, sizeof session)) { refuse(q->fd, 503, cs("We could not open the upload. Try again."), -1); _exit(0); }
+      int64_t n = wf_upload_answer(!kept, cs(hash), wf_ask_bytes(a), cs(session), (coax_v_u8){(uint8_t *)out, sizeof out});
+      if (n < 0) refuse(q->fd, 500, cs("not written"), -1);
+      else api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, out, (size_t)n);
+      _exit(0);
+    }
+    size_t n = 0;
+    unsigned char *data = stored == wf_ask_bytes(a) ? drops_fetch(object, (size_t)stored, &n) : NULL;
+    if (!data || (long long)n != wf_ask_bytes(a) || !splice_world_asset_named(csn((const char *)data, n), cs(hash))) {
+      if (stored >= 0) drops_delete_object(object);
+      refuse(q->fd, 422, cs(stored < 0 ? "The file did not arrive. Send it again." : "The stored file is not the one asked for. Send it again."), -1);
+      free(data); _exit(0);
+    }
+    PGconn *c = api_db_new();
+    if (!c) { refuse(q->fd, 503, cs("no database"), -1); _exit(0); }
+    PQclear(PQexec(c, "BEGIN"));
+    bool ok = files_load(c, &x, world, project, true);
+    int64_t status = ok ? wf_attach(fw_of(&x), a, csn((const char *)data, n < 16 ? n : 16), (int64_t)api_now_ms(), cs(files_by(q))) : 500;
+    if (status != 200) {
+      rollback(c);
+      if (!files_named(c, &x, hash)) drops_delete_object(object);
+      if (ok) files_refuse_said(q->fd, &x); else refuse(q->fd, 500, cs("not read"), -1);
+      _exit(0);
+    }
+    if (!files_save(c, &x) || !run(c, "COMMIT", 0, NULL)) { rollback(c); refuse(q->fd, 500, cs("not saved"), -1); _exit(0); }
+    files_answer(q->fd, &x);
+    _exit(0);
+  }
+  PQclear(PQexec(db, "BEGIN"));
+  if (!files_load(db, &x, world, project, true)) { rollback(db); refuse(q->fd, 500, cs("not read"), -1); free(x.w); return; }
+  if (wf_apply(fw_of(&x), a, (int64_t)api_now_ms(), cs(files_by(q))) != 200) { rollback(db); files_refuse_said(q->fd, &x); free(x.w); return; }
+  if (!files_save(db, &x) || !run(db, "COMMIT", 0, NULL)) { rollback(db); refuse(q->fd, 500, cs("not saved"), -1); free(x.w); return; }
+  coax_string freed = wf_freed(fw_of(&x));
+  char hash[65] = "";
+  if (freed.count == 64) snprintf(hash, sizeof hash, "%.64s", freed.data);
+  if (hash[0] && !files_named(db, &x, hash)) {
+    char object[200]; files_object(hash, object, sizeof object);
+    drops_delete_object(object);
+  }
+  files_answer(q->fd, &x);
+  free(x.w);
+}
+// /api/projects/SLUG/files: a project's own attachments, for its page.
+bool world_files_project_route(const request *q) {
+  static const char root[] = "/api/projects/";
+  char slug[56] = ""; int end = 0;
+  if (strncmp(q->path, root, sizeof root - 1)) return false;
+  if (sscanf(q->path, "/api/projects/%55[a-z0-9-]/files%n", slug, &end) != 1 || q->path[end] || strcmp(q->method, "GET") || !wf_project_ok(cs(slug))) { refuse(q->fd, 404, cs("not found"), -1); return true; }
+  PGconn *db = api_db();
+  if (!db) { refuse(q->fd, 503, cs("no database"), -1); return true; }
+  files_get(q, db, "", slug);
+  return true;
+}
+
 bool worlds_route(const request *q) {
   static const char root[] = "/api/worlds/";
   size_t rl = sizeof root - 1;
@@ -552,6 +764,21 @@ bool worlds_route(const request *q) {
   const char *tail = rest + k;
   bool content = !strcmp(tail, "/content"), card = !strcmp(tail, "/card");
   bool assets = !strcmp(tail, "/assets"), pack = !strcmp(tail, "/assets/pack"), done = !strcmp(tail, "/assets/done");
+  // attachments (#13468): .../files, .../files/done, .../files/FID
+  bool files = !strcmp(tail, "/files"), files_done = !strcmp(tail, "/files/done");
+  char fid[20] = "";
+  if (!strncmp(tail, "/files/", 7) && strlen(tail + 7) == 16) snprintf(fid, sizeof fid, "%s", tail + 7);
+  if (files || files_done || fid[0]) {
+    coax_string pj = wf_project(cs(id));
+    char project[56]; snprintf(project, sizeof project, "%.*s", (int)pj.count, pj.data);
+    if (!wf_world_ok(cs(id)) || (fid[0] && (!get || !wf_id_ok(cs(fid)))) || (files_done && !post) || (!get && !post)) { refuse(q->fd, 404, cs("not found"), -1); return true; }
+    PGconn *fdb = api_db();
+    if (!fdb) { refuse(q->fd, 503, cs("no database"), -1); return true; }
+    if (fid[0]) files_raw(q, fdb, id, project, fid);
+    else if (get) files_get(q, fdb, id, project);
+    else files_post(q, fdb, id, project, files_done);
+    return true;
+  }
   if ((!get && !post) || !wr_world_ok(cs(id)) || (*tail && strcmp(tail, "/events") && !content && !card && !assets && !pack && !done) || (*tail && !get && !assets && !done) || (done && !post)) { refuse(q->fd, 404, cs("not found"), -1); return true; }
   PGconn *db = api_db();
   if (!db) { refuse(q->fd, 503, cs("no database"), -1); return true; }

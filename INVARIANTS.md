@@ -8195,3 +8195,30 @@ frames Splice from the realm origin; `ready splice 1 1`, a typed ask
 answered, another text refused, the frame unreadable from the site);
 `realm-frame.coax` (242 mutants, 0 survivors) and `realm-origin.coax` (88
 mutants, 0 survivors); `realm-frame-profile.coax`.
+
+## Attachments are private and never reach a player or a pack
+
+A world's attachments and its project's (#13468;
+[docs/protocol/world-files-v1.md](docs/protocol/world-files-v1.md)) are
+reference files for the people who make the world: concept art, design
+documents, notes and links. Only the project's members and the site's admins
+list them, read their bytes or change them; a world with no project, its
+admins only (`coax/web/api/world-files.coax` `wf_may`, `#authority` through
+`world-policy.coax`; `worlds.c` asks before every route under
+`/api/worlds/ID/files` and `/api/projects/SLUG/files`). Their bytes live only
+in the private drops bucket (`PREFIX/attachments/SHA256`) or, on a dev
+server, under the app's build folder; they are served `no-store` and
+`nosniff` as the type their extension names. No attachment is in a world's
+pack, its document or a page a player loads: the import pack and its routes
+never read the attachment lists, and attaching never changes a pack, a
+document or a revision. Nothing about a file is logged. A file is admitted by
+name, size and the scan of its first bytes (a program is refused whatever it
+is called), and its stored object is deleted when no list names it.
+
+Checks: `coax/web/api/test_world_files.py` (nobody 401; a stranger, a page
+of another site and a stranger's project list 403; a member and an admin
+read; the bytes refused to anyone else; a program called an image refused and
+deleted; attaching leaves `verse.world_packs` and `verse.world_docs` as they
+were and the player's pack holds no attachment byte; the service log names no
+file); `world-files.coax` and `metaverse-engine/editor/file-store.coax`
+tests (the rule, the limits, the scan, a freed file).
