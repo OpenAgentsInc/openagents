@@ -93,7 +93,7 @@ EF_ZONES :: [4] EfZone.[
 // "feature path symbol" ("-" for a file whose name marks it). Each is a warning that names its
 // feature's issue; the check passes. Take a row off when its copy is gone (the check says so).
 // Never add a row for new code: wire the shared module instead.
-EF_KNOWN :: [117] string.[
+EF_KNOWN :: [114] string.[
   "area-targeting apps/openagents-web/everglade-abilities.coax ab_aimed",
   "conditions apps/openagents-web/everglade-abilities.coax ab_rules_cond",
   "area-targeting apps/openagents-web/everglade-abilities.coax ab_aim_ring",
@@ -200,9 +200,6 @@ EF_KNOWN :: [117] string.[
   "conditions apps/openagents-web/everglade-watch.coax everglade_room_cond_left",
   "conditions apps/openagents-web/everglade-watch.coax everglade_room_cond",
   "area-targeting apps/openagents-web/everglade-wild.coax wd_aim_ring",
-  "conditions everglade/shared/everglade-wire.coax WC_SLOWED",
-  "conditions everglade/shared/everglade-wire.coax WC_BOUND",
-  "conditions everglade/shared/everglade-wire.coax WC_HALTED",
   "camera apps/openagents-web/everglade.coax LOOK_DRAG",
   "camera apps/openagents-web/everglade.coax CAM_TRUNK_CLEAR",
   "camera apps/openagents-web/everglade.coax camera_frame",
