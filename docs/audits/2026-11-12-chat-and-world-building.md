@@ -245,7 +245,7 @@ is one optional source of edits, not the only one.
 | `f0a0759359` | The content tables, and the game reading every landmark from them |
 | `53505717f7` | The colliders as World entities, the edit layer as typed edits, and the check |
 | `3efca3f506` | The walk replay, the fixture layer and the mutant check |
-| `@@DRAW@@` | The retained draw (a mesh for each kind, an instance for each placed piece), the dev server's fixture load, and the docs |
+| `789fc5b913` | The retained draw (a mesh for each kind, an instance for each placed piece), the dev server's fixture load, and the docs |
 
 What was built differently from the text below, and why:
 
