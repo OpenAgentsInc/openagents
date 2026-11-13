@@ -64,7 +64,7 @@ class Adoption(unittest.TestCase):
 
     def test_absolute_traversal_missing_and_duplicate_paths_refuse(self):
         for names in [[str(self.root / "metaverse-engine/move/player.coax")], ["../outside.coax"],
-                      ["metaverse-engine/move/player.coax"], ["missing.coax"],
+                      ["metaverse/../metaverse-engine/move/player.coax"], ["missing.coax"],
                       ["metaverse-engine/move/player.coax", "metaverse-engine/move/player.coax"]]:
             self.assertTrue(structure.adoption_problems(names, self.root), names)
 
