@@ -3,6 +3,7 @@
 #load "../../../lib/net/relay_conn.coax";
 #load "../../../lib/sys/args.coax";
 #load "../../../../everglade/shared/everglade-wire.coax";
+#load "../../../../everglade/shared/pins-own.coax";   // this build's pins, from the one place a room reads them
 cxproc_wall_us :: ()->int #foreign #effects(all);
 c2_word :: (text:string,which:int)->string {
   at:=0;field:=0;while at<=text.count{end:=at;while end<text.count&&text[end]!=' '{end+=1;}if field==which{return text[at..<end];}field+=1;at=end+1;}return "";
@@ -24,7 +25,7 @@ c2_reap :: (h:int,sig:int)->int {
 }
 c2_connect :: (v:[]C2Client,url:string)->bool {
   v[0]=C2Client.{};v[0].opened_ms=proc_now_ms();if !relay_conn_open(v[0].conn[..],url){v[0].closed=true;return false;}
-  b:[64]u8;ignored_6:=relay_conn_send(v[0].conn[..],cast(string)b[0..<wire_put_pins(b[..],0,WirePins.{})]);
+  b:[64]u8;ignored_6:=relay_conn_send(v[0].conn[..],cast(string)b[0..<wire_put_pins(b[..],0,wire_pins_own())]);
   return relay_conn_send(v[0].conn[..],"H 4 ranger.0.0.0 druid 0 Checkpoint");
 }
 c2_input :: (seq:int,move:bool,heard:int,b:[]u8)->string {
@@ -136,7 +137,7 @@ c2_runtime :: (t:[]Ap,bin:string) {
   ap_check(t,"crash2: fault proxy starts on its own port",proxy_port>0,"");
   p:[1]Player;ignored_25:=ap_player(t,p[..]);pid:=pl_id(p[..]);tb:[4096]u8;ignored_26:=c2_ticket(t,pl_key(p[..]),tb[..]);
   c:=cc_fixture();c.pid_n=pid.count;for i:0..<pid.count{c.pid[i]=pid[i];}room:="checkpoint-test";c.room_n=room.count;for i:0..<room.count{c.room[i]=room[i];}
-  pins:=WirePins.{};c.n[1]=1;c.n[2]=1001;c.n[3]=1;c.n[4]=cxproc_wall_us()/1000;c.n[5]=c.n[4];c.n[6]=pins.engine;c.n[7]=pins.rules;c.n[8]=pins.content;c.n[9]=7;c.n[11]=100;c.n[12]=0;c.dead=false;c.state[0]=0;c.state[5]=0;
+  pins:=wire_pins_own();c.n[1]=1;c.n[2]=1001;c.n[3]=1;c.n[4]=cxproc_wall_us()/1000;c.n[5]=c.n[4];c.n[6]=pins.engine;c.n[7]=pins.rules;c.n[8]=pins.content;c.n[9]=7;c.n[11]=100;c.n[12]=0;c.dead=false;c.state[0]=0;c.state[5]=0;
   c.n[13]=0;c.n[14]=2000;c.n[15]=-84000;ignored_27:=c2_post(t,c);
   ignored_28:=c2_file(dir,"mode","before");port:[1]int;server:=c2_room(t,bin,dir,proxy_port,port[..]);client:[1]C2Client;url:[1]Sb;
   opened:=c2_connect(client[..],c2_url(port[0],c2_ticket(t,pl_key(p[..]),tb[..]),url[..]));c2_pump(client[..],1500,true);before:=c2_saved(t,pid);
@@ -208,7 +209,7 @@ c2_capacity :: (t:[]Ap,bin:string) {
       id:=batch*16+seat;sb_clear(tx[..]);sb(tx[..],"v2.p-cap2-");sb_int(tx[..],id);sb(tx[..],".0.-.checkpoint-test.");sb_int(tx[..],cxproc_wall_us()/1000+600000);sb(tx[..],".-g1");
       sig:=ap_room_mac(t,sb_text(tx[..]),mac[..]);sb(tx[..],".");sb(tx[..],sig);tk:=resume_ticket_wrap(t[0].room_key,sb_text(tx[..]),"-",ticket[..]);
       if relay_conn_open(c[..],c2_url(port[0],tk,url[..])){
-        pin:[64]u8;sent:=relay_conn_send(c[..],cast(string)pin[0..<wire_put_pins(pin[..],0,WirePins.{})]);hello:=relay_conn_send(c[..],"H 4 ranger.0.0.0 druid 0 Capacity");
+        pin:[64]u8;sent:=relay_conn_send(c[..],cast(string)pin[0..<wire_put_pins(pin[..],0,wire_pins_own())]);hello:=relay_conn_send(c[..],"H 4 ranger.0.0.0 druid 0 Capacity");
         until:=proc_now_ms()+200;got_y:=false;
         while proc_now_ms()<until{code:=relay_conn_poll(c[..],5);if code==RC_TEXT{msg:=cast(string)c[0].text[0..<c[0].text_n];if ap_starts(msg,"y "){got_y=true;}}}
         if got_y&&sent&&hello{joined+=1;}rc_shut(c[..]);

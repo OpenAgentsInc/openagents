@@ -31,6 +31,7 @@
 // "Load K", so a usage count can leave them out.
 #run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
+#load "../../../everglade/shared/pins-own.coax";   // this build's pins, from the one place a room reads them (the carried content tables)
 #load "script-player.coax";   // SP_HARM: what a bar's entry is for
 #load "bot-bars.coax";        // each class's bar as the scripted player sees it (the cast a bot makes)
 // The everglade2 mode's classes and casts (#13058): fivebar.coax FB_CL_KIND and class-kit.coax xk_slot
@@ -375,6 +376,8 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz:
   msg0: [96] u8; hello_failed := 0;
   for i: 0..<players {
     p[i].next_i = t0 + (i * 7) % 33; p[i].next_c = t0 + 500 + (i * 211) % 5000; p[i].next_t = t0 + (i * 31) % (1000 / hz);
+    // its pins before its hello, as a page says them: a seat that says none is the first build's, which a room past revision 1 refuses
+    pin: [64] u8; if c[i].h >= 0 && !relay_conn_send(c[i..<i + 1], cast(string) pin[0..<wire_put_pins(pin[..], 0, wire_pins_own())]) { hello_failed += 1; }
     k := rs_put(msg0[..], 0, "H 6 ranger.0.0.0 "); k = rs_put(msg0[..], k, ifx e2 then RS_CL_KIND[i % RS_CL_N] else "druid"); k = rs_put(msg0[..], k, " 64 Load "); k = rs_int(msg0[..], k, i);
     if c[i].h >= 0 && !relay_conn_send(c[i..<i + 1], cast(string) msg0[0..<k]) { hello_failed += 1; }
   }

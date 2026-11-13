@@ -51,7 +51,7 @@
 #load "bot-bars.coax";
 #load "../../../everglade/model/content.coax";      // the content tables' rules: where a quest's reward is
 #load "../../../everglade/content/shipped.coax";    // the tables the bots are built with
-#load "../../../everglade/shared/pins-prev.coax";   // the revision in a tables document's first line: the bots' content pin
+#load "../../../everglade/shared/pins-own.coax";   // this build's pins: the revision in the carried tables' first line is the bots' content pin
 #load "capacity-client.coax";   // input-to-ACK timing and its quantiles
 #load "room-post.coax";         // a load check's signed fault (#13300)
 
@@ -363,7 +363,7 @@ bt_ask :: (o: BtOpts, b: [] Bot, s: [] BtStats, now: int) {
 bt_hello :: (c: [] RelayConn, b: [] Bot, room: int, i: int) -> bool {
   m: [160] u8;
   // the pins of the tables the bots are built with, as a page says its own: the room plays a bot by this checkout's tables
-  ok := relay_conn_send(c, cast(string) m[0..<wire_put_pins(m[..], 0, wire_pins_at(pprev_doc_rev(EC_SHIPPED)))]);
+  ok := relay_conn_send(c, cast(string) m[0..<wire_put_pins(m[..], 0, wire_pins_own())]);
   if b[0].placed { ok = relay_conn_send(c, cast(string) m[0..<wire_put_at(m[..], 0, WireAt.{x = b[0].x, y = b[0].y, z = b[0].z})]) && ok; }
   nm: [32] u8; k := rs_int(nm[..], rs_put(nm[..], rs_int(nm[..], rs_put(nm[..], 0, "Bot "), room), "-"), i);
   n := wire_put_hello(m[..], 0, WireHello.{look = "ranger.0.0.0", kind = RS_CL_KIND[i % RS_CL_N], flags = 0, name = cast(string) nm[0..<k]});

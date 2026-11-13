@@ -19,6 +19,7 @@
 // without: one 5 s checkpoint interval of running (4.25 m/s), with slack.
 #run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
+#load "../../../everglade/shared/pins-own.coax";   // this build's pins, from the one place a room reads them (the carried content tables)
 #load "../../lib/net/http.coax";
 
 FO_MAX :: 8;
@@ -90,7 +91,7 @@ fo_sit :: (b: [] FoBot, api: string) -> bool {
 }
 fo_said :: (b: [] FoBot) {
   m: [128] u8;
-  ok := relay_conn_send(b[0].conn[..], cast(string) m[0..<wire_put_pins(m[..], 0, WirePins.{})]);
+  ok := relay_conn_send(b[0].conn[..], cast(string) m[0..<wire_put_pins(m[..], 0, wire_pins_own())]);
   if b[0].claim { ok = relay_conn_send(b[0].conn[..], cast(string) m[0..<wire_put_at(m[..], 0, WireAt.{x = b[0].kx, z = b[0].kz, yaw = b[0].own.yaw})]) && ok; }
   ok = relay_conn_send(b[0].conn[..], "H 6 ranger.0.0.0 srd-druid 0 -") && ok;
 }

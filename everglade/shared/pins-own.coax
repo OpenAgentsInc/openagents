@@ -1,0 +1,16 @@
+// This build's pins, as everything that sits in a room says them in P before its hello: the page,
+// the bots and every check tool (#13408). One place: the engine and rules constants
+// (everglade-wire.coax) and the revision in the first line of the content tables the build carries
+// (everglade/content/shipped.coax), which are the tables a room reads at start (rm_content_rev).
+// A tool that writes WirePins.{} says revision 0's pin and is refused the day the tables are raised.
+//   coax/bin/coax test everglade/shared/pins-own.coax --library
+#load "pins-prev.coax";
+#load "../content/shipped.coax";
+
+wire_pins_own :: () -> WirePins { return wire_pins_at(pprev_doc_rev(EC_SHIPPED)); }
+
+#test "own pins: the content pin is the carried tables' revision, never the bare constant once the tables are past revision 1" {
+  p := wire_pins_own(); rev := pprev_doc_rev(EC_SHIPPED);
+  #assert rev >= 1 && p.engine == WIRE_ENGINE && p.rules == WIRE_RULES && p.content == wire_content_pin(rev);
+  #assert rev == 1 || p.content != WirePins.{}.content;
+}

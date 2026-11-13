@@ -9,6 +9,7 @@
 // tool.sh: tls
 #run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
+#load "../../../everglade/shared/pins-own.coax";   // this build's pins, from the one place a room reads them (the carried content tables)
 #load "../../lib/sys/fs.coax";
 #load "../../lib/net/http.coax";
 #load "../../../everglade/legacy/v1/points.coax";   // the South Gate the casts aim at, by name (#13078)
@@ -97,7 +98,7 @@ bc_open_on::(p:[]BcPage,port:int,path:string,room:string,pid:string)->bool{
 bc_open_as::(p:[]BcPage,port:int,path:string,room:string,pid:string,wl:bool)->bool{
   ticket:[256]u8;n:=tk_sign_admin_on("local-development-room-ticket-key-not-a-secret",pid,"Overload",room,0,cxproc_wall_us()/1000+180000,ticket[..]);
   url:[1]BcText;bc_s(url[..],"ws://localhost:");bc_i(url[..],port);bc_s(url[..],path);bc_s(url[..],room);bc_s(url[..],"?t=");bc_s(url[..],cast(string)ticket[0..<n]);
-  if n<=0||!relay_conn_open(p[0].c[..],bc_text(url[..])){return false;}b:[64]u8;ignored_16:=relay_conn_send(p[0].c[..],cast(string)b[0..<wire_put_pins(b[..],0,WirePins.{})]);
+  if n<=0||!relay_conn_open(p[0].c[..],bc_text(url[..])){return false;}b:[64]u8;ignored_16:=relay_conn_send(p[0].c[..],cast(string)b[0..<wire_put_pins(b[..],0,wire_pins_own())]);
   return relay_conn_send(p[0].c[..],ifx wl then "H 6 ranger.0.0.0 warlock 64 Overload" else "H 6 ranger.0.0.0 druid 64 Overload");
 }
 bc_observe::(p:[]BcPage,text:string){
