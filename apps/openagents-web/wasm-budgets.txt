@@ -306,4 +306,7 @@ painted 200000
 # walking rules of metaverse-engine/physics/collide.coax) and its edit layer on the engine's edit log (metaverse-engine/editor/edit.coax, #13404):
 # 239,218 bytes measured on a Linux build host; with the walk replay on the steering service (metaverse-engine/ai/steer.coax), the fixture
 # layer and the retained draw of placed pieces: 254,250 bytes; about 5% room.
-splice 268000
+# ... and it follows the world `splice` (#13412, #13413): the world document's reader (metaverse-engine/editor/world-doc.coax), the edit
+# codec with its JSON (world-edit.coax), the page's follower (world-follow.coax) and Splice's own carrying out of an edit (world.coax):
+# 335,873 bytes measured 2026-11-13 on a Linux build host; about 5% room.
+splice 355000
