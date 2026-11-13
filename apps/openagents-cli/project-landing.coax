@@ -244,13 +244,15 @@ LdGit :: struct {
   recorded: [LD_COMMITS] int;     // the project whose task recorded it (done --commit), -1 none
 }
 // Which project a changed file belongs to, by the folders each owns (most specific first); -1 for none.
-// Commits are never matched by their message.
+// Commits are never matched by their message. git log names each file at its path in that commit,
+// so the folders' paths before #13405 moved verse/ to metaverse/ count too.
 ld_owner :: (file: string) -> int {
-  if starts(file, "metaverse/planetary-villa/") || starts(file, "apps/openagents-web/villa") { return 5; }
+  if starts(file, "metaverse/planetary-villa/") || starts(file, "verse/planetary-villa/") || starts(file, "apps/openagents-web/villa") { return 5; }
   if starts(file, "coax/web/goldens/hecate") || starts(file, "coax/web/goldens/villa") { return 5; }
   // the realms' goldens and docs are the worlds', though they sit in coax/web and docs/
   worlds := [5] string.["everglade", "fairy-forest", "icecream", "deadgears", "haunt"];
-  for w: worlds { wb: [64] u8; k := copy("metaverse/", wb[..]); k += copy(w, wb[k..<64]); k += copy("/", wb[k..<64]); if starts(file, cast(string) wb[0..<k]) { return 4; } }
+  roots := [2] string.["metaverse/", "verse/"];
+  for root: roots { for w: worlds { wb: [64] u8; k := copy(root, wb[..]); k += copy(w, wb[k..<64]); k += copy("/", wb[k..<64]); if starts(file, cast(string) wb[0..<k]) { return 4; } } }
   pages := [20] string.["realm", "realms/", "everglade", "fairy", "icecream", "deadgears", "garden", "thegrid", "waterlab", "characters",
     "fixture", "droprealm", "myrealm", "builder", "verse", "room", "world", "place", "save", "socket"];
   web := "apps/openagents-web/";
@@ -259,8 +261,8 @@ ld_owner :: (file: string) -> int {
     for p: pages { if starts(rest, p) { return 4; } }
     if starts(rest, "textkeys") { return 4; }
   }
-  if starts(file, "coax/web/goldens/") || starts(file, "docs/metaverse/") { return 4; }
-  if starts(file, "coax/") || starts(file, "metaverse/") { return 0; }   // the language and the Metaverse Engine
+  if starts(file, "coax/web/goldens/") || starts(file, "docs/metaverse/") || starts(file, "docs/verse/") { return 4; }
+  if starts(file, "coax/") || starts(file, "metaverse/") || starts(file, "verse/") { return 0; }   // the language and the Metaverse Engine
   if starts(file, "psionic/") || starts(file, "crates/psionic/") || starts(file, "docs/psionic/") { return 1; }
   if starts(file, "apps/openagents-desktop/") { return 2; }
   if starts(file, "docs/coder/") { return 3; }
