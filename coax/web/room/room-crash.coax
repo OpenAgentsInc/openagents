@@ -5,7 +5,8 @@
 // every report through this file (ticket-sign-unit.c).
 //
 // A report is lines of printable ASCII, each "KEY VALUE", in this order:
-//   crash 1
+//   crash 1                  a room's report; "crash 2" a page's (v2, #13379,
+//                            proto/verse/crash-report-v2.json: its frames carry their code offsets)
 //   t MS                     when it crashed, Unix ms
 //   source room|page
 //   shard N                  room: the shard, 1 to 99
@@ -16,8 +17,10 @@
 //   at HEX                   room: the address the signal names
 //   trap TEXT                a Coax trap's own line, "PATH:LINE: WHAT"
 //   msg TEXT                 page: the browser's message
-//   f NAME [WHERE]           a frame, innermost first: the function, then FILE:LINE (room) or nothing
-//                            (page); "f ? +0xOFFSET" for an address with no name, "f ? -" outside the binary
+//   f NAME [WHERE]           a frame, innermost first: the function, then FILE:LINE (room), nothing (a v1
+//                            page) or "+0xOFFSET", the frame's byte offset in the module's file (a v2 page:
+//                            what a DWARF sidecar or wasm-objdump resolves to a line after the fact);
+//                            "f ? +0xOFFSET" for an address with no name, "f ? -" outside the binary
 //   tick MS US PLAYERS       room: the last ticks before it, oldest first
 //   sig KIND|NAME|NAME|NAME  the bucket's signature: the kind and the three innermost Coax functions
 //
@@ -208,12 +211,23 @@ cr_tick :: (s: string) -> bool #effects(all) {
 }
 
 // A page's report from its `crash` event (host.js trapped): the module, its file, the browser's message,
-// the Coax trap's line and the frames' names a newline apart, innermost first. "" when it does not fit
-// or names no page.
+// the Coax trap's line and the frames a newline apart, innermost first. A frame is its function's name,
+// then (v2) " +0x" and its code offset in lowercase hex when the browser's stack gave one. "" when it
+// does not fit or names no page. The API builds v2 (crash_page_report); v1 is kept as it was published.
 crash_page_report :: (t: int, page: string, release: string, msg: string, trap: string, frames: string, out: [] u8) -> string #export_c #effects(all) {
-  if t < 0 || page == "" { return ""; }
+  return crash_page_report_v(2, t, page, release, msg, trap, frames, out);
+}
+// Where a frame's " +0xHEX" starts in its line (1 to 16 lowercase hex digits at the line's end), or -1.
+cr_frame_off :: (l: string) -> int #effects(all) {
+  cut := -1;
+  for i: 0..<l.count { if l[i] == ' ' { cut = i; } }
+  if cut < 1 || l.count - cut < 5 || l[cut + 1] != '+' || l[cut + 2] != '0' || l[cut + 3] != 'x' || !cr_hex(l[cut + 4..<l.count], 16) { return -1; }
+  return cut;
+}
+crash_page_report_v :: (version: int, t: int, page: string, release: string, msg: string, trap: string, frames: string, out: [] u8) -> string #effects(all) {
+  if t < 0 || page == "" || version < 1 || version > 2 { return ""; }
   sg: [1] CrSig;
-  n := rw_put(out, 0, "crash 1\nt "); n = rw_int(out, n, t); n = rw_put(out, n, "\nsource page\n");
+  n := rw_put(out, 0, ifx version == 2 then "crash 2\nt " else "crash 1\nt "); n = rw_int(out, n, t); n = rw_put(out, n, "\nsource page\n");
   n = cr_kv(out, n, "page", page);
   if release != "" { n = cr_kv(out, n, "release", release); }
   n = rw_put(out, n, "kind trap\n");
@@ -224,10 +238,13 @@ crash_page_report :: (t: int, page: string, release: string, msg: string, trap: 
     l := cr_line(frames, at[..]);
     if l == "" { continue; }
     count += 1;
+    off := ifx version == 2 then cr_frame_off(l) else -1;
+    name := ifx off > 0 then l[0..<off] else l;
     n = rw_put(out, n, "f ");
     name_at := n;
-    n = cr_text(out, n, l, CR_NAME, true);
+    n = cr_text(out, n, name, CR_NAME, true);
     if n > name_at { cr_note(sg[..], out, name_at, n - name_at); }
+    if off > 0 { n = rw_put(out, n, l[off..<l.count]); }
     n = rw_put(out, n, "\n");
   }
   n = cr_sig(out, n, "trap", sg[..], ifx trap != "" then trap else msg);
@@ -235,16 +252,20 @@ crash_page_report :: (t: int, page: string, release: string, msg: string, trap: 
   return cast(string) out[0..<n];
 }
 
-// Whether body is a v1 report: a room's shard (1 to 99), 0 for a page's, -1 when it is not one.
+// Whether body is a report: a room's shard (1 to 99), 0 for a page's, -1 when it is not one. A room's is
+// v1; a page's is v1 or v2, and a v2 frame is one word, or a word and its "+0xOFFSET".
 crash_report_check :: (body: string) -> int #export_c #effects(all) {
   if body.count < 16 || body.count > CR_BODY || body[body.count - 1] != '\n' { return -1; }
   at: [1] int;
-  if cr_line(body, at[..]) != "crash 1" { return -1; }
+  head := cr_line(body, at[..]);
+  v2 := head == "crash 2";
+  if head != "crash 1" && !v2 { return -1; }
   l := cr_line(body, at[..]);
   if !cr_is(l, "t") || cr_num(cr_val(l, "t")) < 0 { return -1; }
   l = cr_line(body, at[..]);
   room := l == "source room";
   if !room && l != "source page" { return -1; }
+  if room && v2 { return -1; }
   shard := 0; seen := 0; frames := 0; ticks := 0; done := false;
   while at[0] < body.count {
     l = cr_line(body, at[..]);
@@ -258,7 +279,7 @@ crash_report_check :: (body: string) -> int #export_c #effects(all) {
     else if cr_is(l, "at") { bit = 32; if !cr_hex(cr_val(l, "at"), 16) { return -1; } }
     else if cr_is(l, "trap") { bit = 64; }
     else if cr_is(l, "msg") { bit = 128; }
-    else if cr_is(l, "f") { frames += 1; if frames > CR_FRAMES { return -1; } }
+    else if cr_is(l, "f") { frames += 1; if frames > CR_FRAMES || (v2 && !cr_frame_v2(cr_val(l, "f"))) { return -1; } }
     else if cr_is(l, "tick") { ticks += 1; if !room || ticks > CR_TICKS || !cr_tick(cr_val(l, "tick")) { return -1; } }
     else if cr_is(l, "sig") { bit = 256; done = true; }
     else { return -1; }
@@ -268,6 +289,17 @@ crash_report_check :: (body: string) -> int #export_c #effects(all) {
   if !done || (seen & 16) == 0 { return -1; }
   if room { return ifx (seen & 9) == 9 then shard else -1; }
   return ifx (seen & 2) != 0 then 0 else -1;
+}
+// A report's version by its first line: 1, 2, or -1 (crash_report_check says whether it is a report).
+crash_report_version :: (body: string) -> int #export_c #effects(all) {
+  at: [1] int; head := cr_line(body, at[..]);
+  return ifx head == "crash 1" then 1 else ifx head == "crash 2" then 2 else -1;
+}
+// A v2 page frame's value: NAME, or NAME and " +0xOFFSET".
+cr_frame_v2 :: (v: string) -> bool #effects(all) {
+  spaces := 0;
+  for i: 0..<v.count { if v[i] == ' ' { spaces += 1; } }
+  return spaces == 0 || (spaces == 1 && cr_frame_off(v) > 0);
 }
 // The value of a report's first KEY line into out, or "" (no such line, or out too small).
 crash_report_field :: (body: string, key: string, out: [] u8) -> string #export_c #effects(all) {
@@ -289,6 +321,7 @@ CR_T_DUMP :: "dump 1\nt 1762990000000\nsignal 6\naddr 0\nbuild 5f0c2a9e7b1d4c3a8
 CR_T_NAMES :: "0x000000000004a2f1\ncoax_trap\n/tmp/stage/src/room.c:24\n0x000000000004b310\ncoax_index\n././room.c:372\nrm_crash_test\n./coax/web/room/room-stats.coax:168 (discriminator 2)\n0x000000000001c0de\nmain\n??:0\n";
 CR_T_ROOM :: "crash 1\nt 1762990000000\nsource room\nshard 1\nrelease 1afd85d5a2-20261112180000\nbuild 5f0c2a9e7b1d4c3a8e6f00112233445566778899\nkind SIGABRT\nat 0\ntrap coax/web/room/room.coax:412: index out of bounds\nf ? -\nf ? -\nf coax_trap room.c:24\nf coax_index room.c:372\nf rm_crash_test coax/web/room/room-stats.coax:168\nf main +0x1c0de\ntick 1762989999900 420 2\ntick 1762989999933 512 2\nsig SIGABRT|rm_crash_test|main\n";
 CR_T_PAGE :: "crash 1\nt 1762990000000\nsource page\npage everglade2\nrelease everglade2.9c2aa0c8e19b.wasm\nkind trap\ntrap apps/openagents-web/everglade2.coax:88: index out of bounds\nmsg unreachable\nf abort\nf coax_trap\nf page_crash_test\nf frame\nsig trap|page_crash_test|frame\n";
+CR_T_PAGE2 :: "crash 2\nt 1762990000000\nsource page\npage everglade2\nrelease everglade2.9c2aa0c8e19b.wasm\nkind trap\ntrap apps/openagents-web/everglade2.coax:88: index out of bounds\nmsg unreachable\nf abort +0x1f3a2\nf coax_trap +0x1f40c\nf page_crash_test +0x2b7e1\nf frame\nsig trap|page_crash_test|frame\n";
 
 #test "crash report: a room's dump and addr2line's names make its report, and the API takes it as that shard's" {
   o: [CR_BODY] u8; f: [64] u8;
@@ -335,21 +368,46 @@ CR_T_PAGE :: "crash 1\nt 1762990000000\nsource page\npage everglade2\nrelease ev
 }
 #test "crash report: a page's event makes its report; names are one word and bytes are printable" {
   o: [CR_BODY] u8;
-  r := crash_page_report(1762990000000, "everglade2", "everglade2.9c2aa0c8e19b.wasm", "unreachable", "apps/openagents-web/everglade2.coax:88: index out of bounds", "abort\ncoax_trap\npage_crash_test\nframe\n", o[..]);
+  r := crash_page_report_v(1, 1762990000000, "everglade2", "everglade2.9c2aa0c8e19b.wasm", "unreachable", "apps/openagents-web/everglade2.coax:88: index out of bounds", "abort\ncoax_trap\npage_crash_test\nframe\n", o[..]);
   #assert r == CR_T_PAGE && crash_report_check(r) == 0;
-  r = crash_page_report(7, "p", "", "", "", "a b|c\n\n__x\nd\te\n", o[..]);
+  r = crash_page_report_v(1, 7, "p", "", "", "", "a b|c\n\n__x\nd\te\n", o[..]);
   #assert r == "crash 1\nt 7\nsource page\npage p\nkind trap\nf a?b?c\nf __x\nf d?e\nsig trap|a?b?c|d?e\n" && crash_report_check(r) == 0;
-  r = crash_page_report(7, "p", "", "memory access out of bounds", "", "", o[..]);
+  r = crash_page_report_v(1, 7, "p", "", "memory access out of bounds", "", "", o[..]);
   #assert r == "crash 1\nt 7\nsource page\npage p\nkind trap\nmsg memory access out of bounds\nsig trap|memory?access?out?of?bounds\n";
   #assert crash_page_report(7, "", "", "m", "", "", o[..]) == "" && crash_page_report(-1, "p", "", "m", "", "", o[..]) == "";
   #assert crash_page_report(7, "p", "", "m", "", "", o[0..<30]) == "";
-  #assert crash_page_report(7, "p", "", "", "", "", o[..]) == "crash 1\nt 7\nsource page\npage p\nkind trap\nsig trap|?\n";
+  #assert crash_page_report_v(1, 7, "p", "", "", "", "", o[..]) == "crash 1\nt 7\nsource page\npage p\nkind trap\nsig trap|?\n";
+  #assert crash_page_report_v(0, 7, "p", "", "", "", "", o[..]) == "" && crash_page_report_v(3, 7, "p", "", "", "", "", o[..]) == "";
+}
+#test "crash report v2: a page's frames carry their code offsets, and the signature is the names alone (#13379)" {
+  o: [CR_BODY] u8; f: [64] u8;
+  r := crash_page_report(1762990000000, "everglade2", "everglade2.9c2aa0c8e19b.wasm", "unreachable", "apps/openagents-web/everglade2.coax:88: index out of bounds",
+                         "abort +0x1f3a2\ncoax_trap +0x1f40c\npage_crash_test +0x2b7e1\nframe\n", o[..]);
+  #assert r == CR_T_PAGE2 && crash_report_check(r) == 0;
+  // the bucket is v1's: the same kind and names
+  #assert crash_report_field(r, "sig", f[..]) == "trap|page_crash_test|frame" && crash_report_field(CR_T_PAGE, "sig", f[..]) == "trap|page_crash_test|frame";
+  // what is no offset stays in the name, one word: uppercase hex, no digits, 17 digits, a space inside the name
+  r = crash_page_report(7, "p", "", "", "", "a +0x1F\nb +0x\nc +0x12345678901234567\nd e +0x10\n#12 +0xa\n", o[..]);
+  #assert r == "crash 2\nt 7\nsource page\npage p\nkind trap\nf a?+0x1F\nf b?+0x\nf c?+0x12345678901234567\nf d?e +0x10\nf #12 +0xa\nsig trap|a?+0x1F|b?+0x|c?+0x12345678901234567\n";
+  #assert crash_report_check(r) == 0;
+  #assert cr_frame_off("f +0x1") == 1 && cr_frame_off("+0x1") == -1 && cr_frame_off(" +0x1") == -1 && cr_frame_off("f +0x") == -1 && cr_frame_off("f 0x1") == -1 && cr_frame_off("f +1x1") == -1 && cr_frame_off("f +0y1") == -1;
+  #assert cr_frame_off("f +0x1234567890abcdef") == 1 && cr_frame_off("f +0x1234567890abcdef0") == -1 && cr_frame_off("f +0x1 ") == -1;
+  // the check: a v2 frame is a word, or a word and its offset; a room's report is never v2
+  #assert crash_report_check("crash 2\nt 1\nsource page\npage p\nkind trap\nf a\nf b +0x1f\nsig trap|a|b\n") == 0;
+  #assert crash_report_check("crash 2\nt 1\nsource page\npage p\nkind trap\nf a x.coax:1\nsig trap|a\n") == -1;
+  #assert crash_report_check("crash 2\nt 1\nsource page\npage p\nkind trap\nf a +0x1 +0x2\nsig trap|a\n") == -1;
+  #assert crash_report_check("crash 2\nt 1\nsource page\npage p\nkind trap\nf a +0xG\nsig trap|a\n") == -1;
+  #assert crash_report_check("crash 1\nt 1\nsource page\npage p\nkind trap\nf a x.coax:1\nsig trap|a\n") == 0;      // v1 said nothing of a page's frame
+  #assert crash_report_check("crash 2\nt 1\nsource room\nshard 1\nbuild 0\nkind SIGSEGV\nsig SIGSEGV|?\n") == -1;
+  #assert crash_report_check("crash 3\nt 1\nsource page\npage p\nkind trap\nsig trap|?\n") == -1;
+  #assert crash_report_version(CR_T_PAGE2) == 2 && crash_report_version(CR_T_PAGE) == 1 && crash_report_version(CR_T_ROOM) == 1 && crash_report_version("crash 3\n") == -1 && crash_report_version("") == -1;
+  #assert cr_frame_v2("a") && cr_frame_v2("a +0x1") && !cr_frame_v2("a b") && !cr_frame_v2("a b +0x1");
 }
 #test "crash report: the check refuses what is not a v1 report" {
   #assert crash_report_check(CR_T_ROOM) == 1 && crash_report_check(CR_T_PAGE) == 0;
   bad := [14] string.[
     "",
-    "crash 2\nt 1\nsource page\npage p\nkind trap\nsig trap|?\n",
+    "crash 3\nt 1\nsource page\npage p\nkind trap\nsig trap|?\n",
     "crash 1\nt x\nsource page\npage p\nkind trap\nsig trap|?\n",
     "crash 1\nt 1\nsource api\npage p\nkind trap\nsig trap|?\n",
     "crash 1\nt 1\nsource page\npage p\nkind trap\nsig trap|?",                       // no last newline

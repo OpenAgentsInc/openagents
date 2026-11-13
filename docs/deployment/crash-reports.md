@@ -76,11 +76,35 @@ frames to the log.
    `build/NAME.HASH.wasm.syms`.
 3. After a trap, and only then, `host.js` fetches the names and sends the
    `crash` analytics event with the module's file (`rel`), the Coax trap's
-   line (`trap`) and the eight innermost frames' names (`f0` to `f7`).
+   line (`trap`) and the eight innermost frames (`f0` to `f7`). A frame is
+   its function's name, then ` +0x` and its code offset when the browser's
+   stack gave one.
 4. The service watch folds each such event into a report every minute.
 
-A page gives function names, and the trap's line gives the file and line of
-the trap. Frames above it have no line numbers.
+A page's report is crash report v2 (`proto/verse/crash-report-v2.json`,
+#13379). Its first line is `crash 2`, and each frame carries its code offset:
+
+```
+f page_crash_test +0x2b7e1
+```
+
+- The offset is the frame's byte offset in the module's file
+  (`NAME.HASH.wasm`), as Chrome, Firefox and Safari print it after
+  `wasm-function[N]`.
+- The signature, and so the bucket, is the names alone. A v1 bucket keeps
+  its v2 reports.
+- The API reads v1 and v2. Rooms still write v1: their frames already carry a
+  file and line.
+
+The trap's own line gives the file and line of the trap. For a frame above
+it, resolve the offset against the module (`wasm-objdump -d NAME.HASH.wasm`
+shows the instruction at that offset, in the function the frame names). A
+line number needs the module's DWARF, which no release keeps yet: the
+sidecar is not measured yet (#13379); the report already carries
+what it resolves.
+
+Native app crash logs (MetricKit, `ApplicationExitInfo`) are not built
+(#13379 part 1).
 
 ## Alerts
 
@@ -144,7 +168,7 @@ coax/web/room/vm-deploy.sh resolve BUILD 182a16
 # rm_crash_test
 # ./coax/web/room/room-stats.coax:168
 
-# A page frame "#123" from a report whose release line is everglade2.HASH.wasm
+# A page frame "#123 +0x2b7e1" from a report whose release line is everglade2.HASH.wasm
 coax/web/symbols.sh page everglade2.HASH.wasm 123
 ```
 

@@ -3405,8 +3405,9 @@ function frameStart() {
 // function names, so the stack names functions by index (wasm-function[123]); NAME.wasm.syms beside
 // the module (wasm.sh) has one "INDEX NAME" line a function. Only after a trap are the names fetched.
 // The `crash` event then carries the module's file (rel), the Coax trap's own line (trap: the last
-// line the engine wrote to stderr, when it wrote it just before) and the 8 innermost frames' names
-// (f0 to f7), which the API folds into a crash report (coax/web/api/service.c).
+// line the engine wrote to stderr, when it wrote it just before) and the 8 innermost frames (f0 to f7:
+// each its function's name, then " +0x" and its byte offset in the module's file when the stack gave
+// one), which the API folds into a crash report v2 (coax/web/api/service.c, #13379).
 let lastStderr = null;
 async function crashProps(e) {
   const frames = [];
@@ -3414,7 +3415,8 @@ async function crashProps(e) {
     const m = /wasm-function\[(\d+)\]/.exec(line);
     if (!m) continue;
     const named = /^\s*at (?:[\w$-]+\.)?([\w$]+) \(/.exec(line) || /^([\w$]+)@/.exec(line);   // a module that kept its names (development)
-    frames.push({ index: +m[1], name: named ? named[1] : "" });
+    const off = /wasm-function\[\d+\]:0x([0-9a-fA-F]{1,16})/.exec(line);   // the frame's byte offset in the module's file (crash report v2, #13379)
+    frames.push({ index: +m[1], name: named ? named[1] : "", off: off ? off[1].toLowerCase() : "" });
     if (frames.length >= 8) break;
   }
   const p = { rel: wasmUrl.split("/").pop().slice(0, 80) };
@@ -3431,7 +3433,8 @@ async function crashProps(e) {
       for (const l of (await r.text()).split("\n")) { const k = l.indexOf(" "); if (k > 0) names.set(+l.slice(0, k), l.slice(k + 1)); }
     }
   } catch {}
-  frames.forEach((f, i) => { p["f" + i] = (names?.get(f.index) || f.name || "#" + f.index).slice(0, 80); });
+  // "NAME" or "NAME +0xOFFSET": one word, then the offset (room-crash.coax crash_page_report)
+  frames.forEach((f, i) => { p["f" + i] = (names?.get(f.index) || f.name || "#" + f.index).replace(/\s/g, "?").slice(0, 60) + (f.off ? " +0x" + f.off : ""); });
   return p;
 }
 function trapped(e) {

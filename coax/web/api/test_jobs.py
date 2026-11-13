@@ -188,7 +188,7 @@ check("service-watch: a room's crash bucket opens its alert, with the signature,
 # a page's trap: host.js sends the trap's line and the frames it resolved from the module's symbols
 ev = lambda sid, extra: {"sid": sid, "events": [{"ev": "crash", "page": "everglade2", "ct": 1, "p": dict({
     "msg": "THE WORLD STOPPED: unreachable", "rel": "everglade2.9c2aa0c8e19b.wasm", "trap": "apps/openagents-web/everglade2.coax:88: index out of bounds",
-    "f0": "abort", "f1": "coax_trap", "f2": "page_crash_test", "f3": "frame"}, **extra)}]}
+    "f0": "abort +0x1f3a2", "f1": "coax_trap +0x1f40c", "f2": "page_crash_test +0x2b7e1", "f3": "frame"}, **extra)}]}
 call("POST", "/api/analytics/events", json.dumps(dict(ev("ccrashauto0001", {}), auto="webdriver")).encode(), {"Content-Type": "text/plain"})
 call("POST", "/api/analytics/events", json.dumps({"sid": "ccrashplain001", "events": [{"ev": "crash", "page": "everglade2", "ct": 1, "p": {"msg": "RENDERER STOPPED: lost", "trap": None}}]}).encode(), {"Content-Type": "text/plain"})
 s, b = job("/api/jobs/service-watch", "good.token")
@@ -206,7 +206,8 @@ s, b, _ = call("GET", "/api/playtest/crashes")
 got = {k["bucket"]: k for k in json.loads(b).get("buckets", [])} if s == 200 else {}
 check("crashes: the buckets, each with its newest report, for anyone",
       got.get(room_bucket, {}).get("newest") == room_crash and got[room_bucket]["shard"] == 97 and got[room_bucket]["build"] == "5f0c2a9e"
-      and got.get(page_bucket, {}).get("reports") == 2 and "f page_crash_test\n" in got[page_bucket]["newest"], b)
+      and got.get(page_bucket, {}).get("reports") == 2 and "f page_crash_test +0x2b7e1\nf frame\n" in got[page_bucket]["newest"]
+      and got[page_bucket]["newest"].startswith("crash 2\n"), b)   # v2: each frame with its code offset (#13379)
 sql("UPDATE verse.crash_buckets SET last_ms = last_ms - 3600000, live_ms = live_ms - 3600000")
 s, b = job("/api/jobs/service-watch", "good.token")
 resolved = sorted(a["key"] for a in b.get("result", {}).get("sync", {}).get("resolved", [])) if s == 200 else []

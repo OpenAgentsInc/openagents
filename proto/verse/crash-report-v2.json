@@ -1,0 +1,130 @@
+{
+  "profile": "openagents.crash-report",
+  "version": 2,
+  "spec": "docs/deployment/crash-reports.md",
+  "codec": "coax/web/room/room-crash.coax",
+  "check": "coax/web/tool.sh coax/web/room/crash-profile.coax proto/verse/crash-report-v2.json",
+  "note": "Crash report v2 (#13379) is a page's report whose frames carry their code offsets. It is v1's lines with two changes: the first line is `crash 2`, and a frame is `f NAME` or `f NAME +0xOFFSET`, OFFSET being the frame's byte offset in the module's file in lowercase hex (what the browser's stack prints after wasm-function[N]). The offset is what resolves to a Coax line after the fact, from the module's DWARF or wasm-objdump. The signature and so the bucket are v1's: the kind and the three innermost Coax functions' names, never an offset. A room's report stays v1 (proto/verse/crash-report-v1.json): its frames already carry FILE:LINE. The API builds a page's report as v2 and reads v1 and v2.",
+  "lines": [
+    {
+      "key": "crash",
+      "value": "2",
+      "when": "always, first"
+    },
+    {
+      "key": "t",
+      "value": "when it crashed, Unix ms",
+      "when": "always, second"
+    },
+    {
+      "key": "source",
+      "value": "page",
+      "when": "always, third"
+    },
+    {
+      "key": "page",
+      "value": "the module",
+      "when": "always"
+    },
+    {
+      "key": "release",
+      "value": "the page's module file",
+      "when": "when it has one"
+    },
+    {
+      "key": "kind",
+      "value": "trap",
+      "when": "always"
+    },
+    {
+      "key": "trap",
+      "value": "a Coax trap's own line, PATH:LINE: WHAT",
+      "when": "a Coax trap"
+    },
+    {
+      "key": "msg",
+      "value": "the browser's message",
+      "when": "when it has one"
+    },
+    {
+      "key": "f",
+      "value": "NAME, or NAME +0xOFFSET (the byte offset in the module file, 1 to 16 lowercase hex digits); innermost first, at most 24",
+      "when": "each frame"
+    },
+    {
+      "key": "sig",
+      "value": "KIND|NAME|NAME|NAME: the kind and the three innermost Coax functions; KIND|TEXT when no frame has one",
+      "when": "always, last"
+    }
+  ],
+  "rooms": [],
+  "pages": [
+    {
+      "why": "a Coax trap in a page: its frames named from the module's symbols, each with its code offset; the last frame's offset was not given",
+      "t": 1762990000000,
+      "page": "everglade2",
+      "release": "everglade2.9c2aa0c8e19b.wasm",
+      "msg": "unreachable",
+      "trap": "apps/openagents-web/everglade2.coax:88: index out of bounds",
+      "frames": "abort +0x1f3a2\ncoax_trap +0x1f40c\npage_crash_test +0x2b7e1\nframe\n",
+      "report": "crash 2\nt 1762990000000\nsource page\npage everglade2\nrelease everglade2.9c2aa0c8e19b.wasm\nkind trap\ntrap apps/openagents-web/everglade2.coax:88: index out of bounds\nmsg unreachable\nf abort +0x1f3a2\nf coax_trap +0x1f40c\nf page_crash_test +0x2b7e1\nf frame\nsig trap|page_crash_test|frame\n",
+      "sig": "trap|page_crash_test|frame"
+    },
+    {
+      "why": "a frame with no name keeps its index and its offset; what is no offset stays in the name",
+      "t": 7,
+      "page": "p",
+      "release": "",
+      "msg": "",
+      "trap": "",
+      "frames": "#12 +0xa\na +0x1F\n",
+      "report": "crash 2\nt 7\nsource page\npage p\nkind trap\nf #12 +0xa\nf a?+0x1F\nsig trap|#12|a?+0x1F\n",
+      "sig": "trap|#12|a?+0x1F"
+    },
+    {
+      "why": "no frames and no trap line: the message is the signature",
+      "t": 7,
+      "page": "p",
+      "release": "",
+      "msg": "memory access out of bounds",
+      "trap": "",
+      "frames": "",
+      "report": "crash 2\nt 7\nsource page\npage p\nkind trap\nmsg memory access out of bounds\nsig trap|memory?access?out?of?bounds\n",
+      "sig": "trap|memory?access?out?of?bounds"
+    }
+  ],
+  "refused": [
+    {
+      "why": "another version",
+      "body": "crash 3\nt 1\nsource page\npage p\nkind trap\nsig trap|?\n"
+    },
+    {
+      "why": "a room's report is never v2",
+      "body": "crash 2\nt 1\nsource room\nshard 1\nbuild 0\nkind SIGSEGV\nsig SIGSEGV|?\n"
+    },
+    {
+      "why": "a frame with a place that is no offset",
+      "body": "crash 2\nt 1\nsource page\npage p\nkind trap\nf a x.coax:1\nsig trap|a\n"
+    },
+    {
+      "why": "a frame with two offsets",
+      "body": "crash 2\nt 1\nsource page\npage p\nkind trap\nf a +0x1 +0x2\nsig trap|a\n"
+    },
+    {
+      "why": "an offset in uppercase hex",
+      "body": "crash 2\nt 1\nsource page\npage p\nkind trap\nf a +0x1F\nsig trap|a\n"
+    },
+    {
+      "why": "an offset of 17 digits",
+      "body": "crash 2\nt 1\nsource page\npage p\nkind trap\nf a +0x12345678901234567\nsig trap|a\n"
+    },
+    {
+      "why": "no signature",
+      "body": "crash 2\nt 1\nsource page\npage p\nkind trap\nf a +0x1\n"
+    },
+    {
+      "why": "no page",
+      "body": "crash 2\nt 1\nsource page\nkind trap\nsig trap|?\n"
+    }
+  ]
+}
