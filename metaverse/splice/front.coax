@@ -371,12 +371,22 @@ FR_EDGE :: () -> KitTint { return t3(0.353, 0.325, 0.290); }
 // The frame every screen shares: the panel and its edge, the kicker in orange, the title, the rule under it.
 fr_head :: (g: [] SpGame, out: [] f32, u: [] f32, n: int, f: ScrFrame, kicker: string, title: string, em: f32) -> int {
   k := f.k; m := n;
-  ui_panel(g, u, f.panel.x0 - 2, f.panel.y0 - 2, f.panel.x1, f.panel.y1 + 2, FR_PANEL(), 0.88);
+  ui_panel(g, u, f.panel.x0 - 2, f.panel.y0 - 2, f.panel.x1, f.panel.y1 + 2, FR_PANEL(), 0.95);
   m = ui_seg(out, m, f.panel.x1, 0, f.panel.x1, f.h, 0.5 * k, FR_RULE(), 1);
-  m = ui_put(out, m, F_MONO, kicker, f.left, f.top + 9 * k, 8.4 * k, FR_ORANGE(), 1);
+  m = fr_tracked(out, m, kicker, f.left, f.top + 9 * k, 8.4 * k, 3 * k, FR_ORANGE());
   base := f.top + 22 * k + em * k * 0.86;
   m = ui_put(out, m, F_TITLE, title, f.left, base, em * TITLE_CAP * k, FR_CREAM(), 1);
   m = ui_seg(out, m, f.left + 1.5 * k, base + 11 * k, f.left + 62.5 * k, base + 11 * k, 1.5 * k, FR_ORANGE(), 1);
+  return m;
+}
+// Mono type spaced apart by track pixels a letter (the boards' kickers).
+fr_tracked :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, track: f32, c: KitTint) -> int {
+  m := n; at := x; i := 0;
+  while i < t.count {
+    d := decode(t, i); one := t[i..<i + d.len]; i += d.len;
+    m = ui_put(out, m, F_MONO, one, at, base, cap, c, 1);
+    at += ui_w(F_MONO, one, cap) + track;
+  }
   return m;
 }
 // A row: the focused one filled in cream with dark type, the others outlined.
@@ -392,6 +402,9 @@ fr_hints :: (g: [] SpGame, out: [] f32, u: [] f32, n: int, f: ScrFrame, keys: []
   k := f.k; m := n; cap := 8.4 * k; pad := 6 * k;
   cw: [SCR_HINTS] f32; ww: [SCR_HINTS] f32; c := lo_int(keys.count, SCR_HINTS);
   for i: 0..<c { cw[i] = ui_w(F_MONO, keys[i], cap) + 12 * k; ww[i] = ui_w(F_MONO, words[i], cap); }
+  // a dark band under the hints, so they read over a bright world as they do on the boards
+  x0 := scr_hint_x(f, cw[..], ww[..], c, 0, pad, 20 * k);
+  ui_panel(g, u, x0 - 12 * k, f.hint_y1 - 29 * k, f.hint_x1 + 12 * k, f.hint_y1 + 10 * k, FR_PANEL(), 0.72);
   for i: 0..<c {
     x := scr_hint_x(f, cw[..], ww[..], c, i, pad, 20 * k);
     y1 := f.hint_y1; y0 := y1 - 19 * k;
@@ -439,7 +452,7 @@ fr_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
     return fr_hints(g, out, u, n, f, keys[..], words[..]);
   }
   // the title: REEL 01 is Splice's one reel; the menu is the table's rows
-  n = fr_head(g, out, u, n, f, "REEL 01 // DIRECTOR'S CUT", "SPLICE", 56);
+  n = fr_head(g, out, u, n, f, "REEL 024 // DIRECTOR'S CUT", "SPLICE", 56);
   m := fs[0].menu[..];
   for i: 0..<m[0].n {
     if !m[0].shown[i] { continue; }

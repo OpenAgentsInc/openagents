@@ -164,7 +164,7 @@ fc_cell :: (table: string, row: int, col: string, value: string) -> WorldEdit {
   #assert sc_menu_label(g[0].c[..], 2) == "THE CREDITS" && g[0].c[0].menu[2] == FR_CREDITS;
   #assert !spw_cell(g[..], ct[..], fc_cell("menu", 3, "key", "settings")).ok && g[0].c[0].menu[2] == FR_CREDITS;
   // the camera's path past the rover is a cell too: the first point's seconds
-  #assert spw_cell(g[..], ct[..], fc_cell("dolly", 1, "secs", "4")).ok && g[0].c[0].dolly[6] == 4 && fr_dolly(g[0].c[..], 0)[2] == 10;
+  #assert spw_cell(g[..], ct[..], fc_cell("dolly", 1, "secs", "4")).ok && g[0].c[0].dolly[6] == 4 && fr_dolly(g[0].c[..], 0)[2] == 15;
 }
 
 #test "you are drawn as your character: one pose on the creation screen, the walk filled in two a frame, and a store too small stops cleanly" #steps 4000000000 #traversal 2000000000 {
