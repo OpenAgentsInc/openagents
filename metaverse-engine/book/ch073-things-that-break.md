@@ -28,7 +28,7 @@ they have to agree on identity, timing, authority and lifetime.
 
 1. **Pieces and damage.** A realm registers each placed kit piece with its
    rest rows and mesh bounds, and gives it an armor class and hit points
-   from its ruleset ([`metaverse/rules/srd5.coax`](../../metaverse/rules/srd5.coax)).
+   from its ruleset ([`everglade/legacy/v1/srd5.coax`](../../everglade/legacy/v1/srd5.coax)).
    Up to 4,000 pieces (`DEMO_PIECES`) and 96 meshes.
 2. **Fracture.** A piece at 0 hit points breaks into 2 to 24 chunks
    (`DEMO_CUTS`): Voronoi cells round seeds scattered from the dice,

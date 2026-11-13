@@ -1446,7 +1446,7 @@ everglade_room_hold :: (s: [] Everglade, p: int) #export_c #effects(all) {
   s[0].wt[0].yous[p].held_t = f32(HOLD_FOR); s[0].wt[0].yous[p].held_saves = HOLD_SAVES;
 }
 // The world's dice, its spells' (the saves its copies of the seats' abilities roll) and its watch's:
-// fixed (each die on half its faces, metaverse/rules/srd5.coax SrdDice.fixed) while the room's are, a
+// fixed (each die on half its faces, everglade/legacy/v1/srd5.coax SrdDice.fixed) while the room's are, a
 // local room told "dice fixed" (oa-room room-control.coax), or not.
 everglade_room_dice :: (s: [] Everglade, fixed: bool) #export_c #effects(all) {
   s[0].sp.dice[0].fixed = fixed; s[0].wt[0].dice[0].fixed = fixed;

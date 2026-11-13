@@ -101,7 +101,7 @@ CR_NEAR :: 2.5;           // m: an aim this close needs no line of sight (a pres
 // ---- time
 CR_WAIT :: 15;            // ticks (0.5 s, the room's EG_BANK) a cast waits for the inputs sent before it
 CR_SHOW :: 0.9;           // s a refused cast's bar shows its reason icon
-// Everglade's own four's cast bars (metaverse/rules/srd5.coax srd_spell bar: Meteor Swarm, Thunderbolt,
+// Everglade's own four's cast bars (everglade/legacy/v1/srd5.coax srd_spell bar: Meteor Swarm, Thunderbolt,
 // Mega Thunderbolt, Water Orb). Every other cast has none: it is released as it starts.
 CR_BAR :: [4] f32.[2.5, 1.2, 0.5, 0.6];
 // Repair (R; everglade-repair.coax): a broken structure within reach stands again whole after its bar,

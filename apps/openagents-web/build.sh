@@ -379,7 +379,7 @@ icecream=$!
 # /worlds/dead-gears: the ship survival game (metaverse/deadgears/rules.coax, loaded by the page).
 timed deadgears "$here/../../coax/web/wasm.sh" "$here/deadgears.coax" "$here/deadgears-face.c" "$here/build/deadgears.wasm" &
 deadgears=$!
-# /worlds/hold-the-stair: the popping tower defense on the SRD 5e rules (metaverse/rules/srd5-combat.coax).
+# /worlds/hold-the-stair: the popping tower defense on the SRD 5e rules (rules/srd/rolls.coax).
 timed stair "$here/../../coax/web/wasm.sh" "$here/stair.coax" "$here/stair-face.c" "$here/build/stair.wasm" &
 stair=$!
 # /worlds/painted-village: the hand-painted look (metaverse-engine/render/stylized.coax) on generated assets (metaverse-engine/arch/village.coax, flora.coax).

@@ -42,7 +42,7 @@
 #load "plan.coax";
 #load "routines.coax";
 #load "../../scene/people-rig.coax";
-#load "../../../metaverse/rules/srd5-combat.coax";
+#load "srd5-combat.coax";
 #load "../../../metaverse-engine/physics/stand.coax";
 #load "../../shared/everglade-handles.coax";
 
@@ -118,7 +118,7 @@ Tumble :: struct {
 }
 Spear :: struct { live: bool; ax: f32; ay: f32; az: f32; bx: f32; by: f32; bz: f32; t: f32; flight: f32; hit: bool; damage: int; foe: int; }
 
-// ---- the heat: WANTED levels 1 to 5 (SRD 5.2.1 stat blocks, metaverse/rules/srd5-combat.coax). Each
+// ---- the heat: WANTED levels 1 to 5 (SRD 5.2.1 stat blocks, everglade/legacy/v1/srd5-combat.coax). Each
 // level has its roster of responders (LADDER), who come in from the two gates nearest you on top of
 // the town's own watch (#12794):
 //   1  2 Guards: the nearby watch engages

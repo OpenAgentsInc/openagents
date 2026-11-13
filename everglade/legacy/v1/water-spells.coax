@@ -1,6 +1,6 @@
 // Spells and water (phase W8 of verse/everglade/previous/water.md, "Spells
 // and water"): the rules a realm's spells follow where they meet water, as
-// pure functions over metaverse/rules/srd5.coax's dice, spells and damage. The
+// pure functions over everglade/legacy/v1/srd5.coax's dice, spells and damage. The
 // realm finds the contact point and who stands in which water; these say
 // what happens. Everglade casts its bar on them (everglade-spells.coax).
 //
@@ -17,9 +17,9 @@
 //   crown splash and steam for Meteor Swarm, a steam puff and ring for a
 //   bolt, a burst of spray for the Water Orb): water_spell_splash.
 //
-//   coax/bin/coax test --library metaverse/water-spells.coax
+//   coax/bin/coax test --library everglade/legacy/v1/water-spells.coax
 
-#load "rules/srd5.coax";
+#load "srd5.coax";
 
 WATER_CONDUCT :: 6.0;     // m: the 20 ft a bolt reaches through water
 // Where a creature is (everglade/legacy/v1/river.coax's media): out of the water, wading, swimming,

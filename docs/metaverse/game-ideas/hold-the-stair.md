@@ -88,8 +88,8 @@ other defenders, a life cleric heals the tower).
 
 | Need | What we have | Where |
 |---|---|---|
-| SRD 5e dice, spells, saves and objects | The ruleset Everglade opts into | `metaverse/rules/srd5.coax` |
-| Creatures, armor class, hit points, attacks | Stat blocks and attack rolls | `metaverse/rules/srd5-combat.coax` |
+| SRD 5e dice, saves and damage types | The rules engine's dice | `rules/srd/rolls.coax` |
+| Creatures, armor class, hit points, attacks | Stat blocks and attack rolls | `rules/srd/rolls.coax` (`RsStatLine`, `rs_line_attack`) |
 | Spells with real effects | 48 spell slots: Fire Storm, Wall of Fire, Moonbeam, Magic Missile and the rest | `apps/openagents-web/everglade-spells.coax` |
 | Homing projectiles | WANTED 5's Magic Missile at a levitating player | Everglade |
 | Walls that break into rubble | Wall of Stone with AC and hit points; rubble damage | `metaverse/demolish.coax`, Everglade |

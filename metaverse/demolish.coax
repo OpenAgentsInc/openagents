@@ -4,7 +4,7 @@
 // everglade/demolition/` and `crates/cad-world/src/site.rs`). A realm
 // registers each placed kit piece (its instance's rest rows and its mesh's
 // local bounds), gives it an object's armor class and hit points from its
-// ruleset (metaverse/rules/srd5.coax), and hands it damage; this file does the
+// ruleset (everglade/legacy/v1/srd5.coax), and hands it damage; this file does the
 // rest:
 //
 // - Fracture: a piece at 0 hit points breaks into 2 to DEMO_CUTS chunks cut

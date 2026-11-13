@@ -15,6 +15,7 @@
 // Class loadouts also need the spell records; use the composed check entry:
 //   coax/bin/coax test --library rules/srd/spells.coax
 
+#load "rolls.coax";   // the dice and the damage types, apart so a page with no battle can roll them (#13269)
 #load "npcs.coax";   // the townsfolk's and the cultists' stat blocks, and a siege's two armies
 #load "monsters.coax";   // the other stat blocks Everglade fields (#13034)
 #load "spell-access.coax";
@@ -41,67 +42,6 @@ RS_NO_END :: 1000000000000000;   // a deadline the clock never reaches (over 31 
 RS_FOOT :: 0.3048;      // metres in a foot
 RS_SQUARE :: 5;         // feet in a grid square
 
-// ---- dice: SplitMix64, every face equally likely (rejection sampling)
-
-// fixed: every die lands on half its faces (a d20 on 10, at least 1), for a check that plays one
-// session in two places and compares them (oa-room room-control.coax "dice fixed", #12887): rolled
-// in any order the two sessions' rolls agree. No player's game sets it.
-RsDice :: struct { state: u64; rolled: int; fixed: bool; }
-RS_LOW32 :: 0xFFFFFFFF;
-rs_wmul :: (a: u64, b: u64) -> u64 {
-  al := a & RS_LOW32; ah := a >> 32; bl := b & RS_LOW32; bh := b >> 32;
-  low := al * bl;
-  high := (((ah * bl) & RS_LOW32) + ((al * bh) & RS_LOW32) + (low >> 32)) & RS_LOW32;
-  return (high << 32) | (low & RS_LOW32);
-}
-rs_wadd :: (a: u64, b: u64) -> u64 {
-  low := (a & RS_LOW32) + (b & RS_LOW32);
-  high := ((a >> 32) + (b >> 32) + (low >> 32)) & RS_LOW32;
-  return (high << 32) | (low & RS_LOW32);
-}
-rs_next :: (d: [] RsDice) -> u64 {
-  d[0].state = rs_wadd(d[0].state, 0x9E3779B97F4A7C15);
-  z := d[0].state;
-  z = rs_wmul(z ^ (z >> 30), 0xBF58476D1CE4E5B9);
-  z = rs_wmul(z ^ (z >> 27), 0x94D049BB133111EB);
-  return z ^ (z >> 31);
-}
-rs_roll :: (d: [] RsDice, sides: int) -> int {
-  n := ifx sides < 1 then 1 else sides;
-  d[0].rolled += 1;
-  if d[0].fixed { return ifx n / 2 < 1 then 1 else n / 2; }
-  span: u64 = 4294967296;
-  zone := span - span % cast(u64) n;
-  while true {
-    v := rs_next(d) >> 32;
-    if v < zone { return cast(int) (v % cast(u64) n) + 1; }
-  }
-  return 1;
-}
-rs_sum :: (d: [] RsDice, count: int, sides: int) -> int {
-  t := 0;
-  for i: 0..<count { t += rs_roll(d, sides); }
-  return t;
-}
-rs_unit :: (d: [] RsDice) -> f32 { if d[0].fixed { return 0.5; } top: f32 = 16777216.0; return f32(rs_next(d) >> 40) / top; }
-
-// A d20 with Advantage (> 0), Disadvantage (< 0) or neither: two dice, the higher or the lower.
-// Any of each cancel to neither (the SRD's rule), so a caller adds +1 per source and -1 per source
-// and passes the sign.
-RsD20 :: struct { roll: int; other: int; edge: int; }
-rs_d20 :: (d: [] RsDice, edge: int) -> RsD20 {
-  a := rs_roll(d, 20);
-  if edge == 0 { return RsD20.{roll = a, other = 0, edge = 0}; }
-  b := rs_roll(d, 20);
-  if edge > 0 { return RsD20.{roll = ifx a > b then a else b, other = ifx a > b then b else a, edge = 1}; }
-  return RsD20.{roll = ifx a < b then a else b, other = ifx a < b then b else a, edge = -1};
-}
-rs_edge :: (advantages: int, disadvantages: int) -> int {
-  if advantages > 0 && disadvantages == 0 { return 1; }
-  if disadvantages > 0 && advantages == 0 { return -1; }
-  return 0;
-}
-
 // ---- abilities
 
 RS_STR :: 0; RS_DEX :: 1; RS_CON :: 2; RS_INT :: 3; RS_WIS :: 4; RS_CHA :: 5;
@@ -116,13 +56,6 @@ rs_min :: (a: int, b: int) -> int { return ifx a < b then a else b; }
 rs_minf :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
 rs_maxf :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
 
-// ---- damage types
-
-RS_DMG_NONE :: 0; RS_ACID :: 1; RS_BLUDGEONING :: 2; RS_COLD :: 3; RS_FIRE :: 4; RS_FORCE :: 5;
-RS_LIGHTNING :: 6; RS_NECROTIC :: 7; RS_PIERCING :: 8; RS_POISON :: 9; RS_PSYCHIC :: 10;
-RS_RADIANT :: 11; RS_SLASHING :: 12; RS_THUNDER :: 13;
-RS_DAMAGE :: [14] string.["", "Acid", "Bludgeoning", "Cold", "Fire", "Force", "Lightning", "Necrotic",
-                          "Piercing", "Poison", "Psychic", "Radiant", "Slashing", "Thunder"];
 
 // ---- conditions, a bit each
 

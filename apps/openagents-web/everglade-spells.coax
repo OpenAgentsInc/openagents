@@ -4,7 +4,7 @@
 // hotbar.rs` DEV_ORDER and `demolition/meteor.rs`), on today's realm.
 //
 // The realm plays by the SRD 5e ruleset (realms.json "ruleset": "srd5", the
-// page facts' ruleset= line; metaverse/rules/srd5.coax). Without it there is no
+// page facts' ruleset= line; everglade/legacy/v1/srd5.coax). Without it there is no
 // bar and nothing breaks. With it, the old engine's tray of game-icons.net
 // art along the bottom (on a phone, above the thumbs' sticks), each slot's
 // key at its top right and its card over it (sp_bar):
@@ -34,7 +34,7 @@
 // once with R. The people and the cats aren't hurt; things an admin placed
 // don't break.
 //
-// On water (W8, metaverse/water-spells.coax): a spell aimed over the river or a
+// On water (W8, everglade/legacy/v1/water-spells.coax): a spell aimed over the river or a
 // pond strikes its surface, not the bed. There a meteor raises a crown
 // splash, rings and steam, and leaves no scorch; a bolt flashes into steam
 // and runs through the water: if you wade, swim or dive in the same water
@@ -44,10 +44,10 @@
 // the water falls in: wood floats and drifts on the current, stone sinks
 // (metaverse/demolish.coax demo_step_wet).
 
-#load "../../metaverse/rules/srd5.coax";
+#load "../../everglade/legacy/v1/srd5.coax";
 #load "../../metaverse/demolish.coax";
 #load "../../metaverse-engine/action/deed.coax";   // ask, act, present: a cast plays only once the room takes it (docs/metaverse/action-pipeline.md, #13072)
-#load "../../metaverse/water-spells.coax";
+#load "../../everglade/legacy/v1/water-spells.coax";
 #load "everglade-hotbar.coax";
 #load "everglade-arrange.coax";
 #load "everglade-abilities.coax";

@@ -38,7 +38,7 @@ EG_COL_KEY :: "1234567890-=";
 
 // Each slot in the bar's order: its name, SVG, tint, key, card title, sentence and details.
 // The four spells' sentences and details are the old dev bar's (hotbar.rs SLOTS), with this
-// realm's cast bars (metaverse/rules/srd5.coax) and reach. Tints are icons.rs's.
+// realm's cast bars (everglade/legacy/v1/srd5.coax) and reach. Tints are icons.rs's.
 eg_slots :: (s: [] HbSlot) -> int {
   s[0] = HbSlot.{name = "meteor-swarm", svg = "lorc/meteor-impact.svg", tint = [3] f64.[1.0, 0.42, 0.18], key = "1", title = "Meteor Swarm",
     body = "Calls down six blazing meteors on a circle of ground you choose, blasting apart the town's buildings they reach; R restores the town.",

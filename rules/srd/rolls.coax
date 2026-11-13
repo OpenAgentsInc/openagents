@@ -1,0 +1,172 @@
+// The SRD 5.2.1 rules' dice and damage types (docs/dnd/README.md), apart from the battle so a
+// page with no battle can roll them: the engine (engine.coax) loads this, and so do a world's
+// own hostiles (metaverse/experimental-hostiles.coax) and Hold the Stair
+// (apps/openagents-web/stair.coax). Also here: a stat block's one line (its Armor Class, Hit
+// Points, Dexterity save and one attack) rolled with no battle around it, which is all those
+// two need. Deterministic: the same seed and the same calls roll the same.
+//   coax/bin/coax test --library rules/srd/rolls.coax
+#module "rules.srd.rolls";
+
+// ---- dice: SplitMix64, every face equally likely (rejection sampling)
+
+// fixed: every die lands on half its faces (a d20 on 10, at least 1), for a check that plays one
+// session in two places and compares them (oa-room room-control.coax "dice fixed", #12887): rolled
+// in any order the two sessions' rolls agree. No player's game sets it.
+RsDice :: struct { state: u64; rolled: int; fixed: bool; }
+RS_LOW32 :: 0xFFFFFFFF;
+rs_wmul :: (a: u64, b: u64) -> u64 {
+  al := a & RS_LOW32; ah := a >> 32; bl := b & RS_LOW32; bh := b >> 32;
+  low := al * bl;
+  high := (((ah * bl) & RS_LOW32) + ((al * bh) & RS_LOW32) + (low >> 32)) & RS_LOW32;
+  return (high << 32) | (low & RS_LOW32);
+}
+rs_wadd :: (a: u64, b: u64) -> u64 {
+  low := (a & RS_LOW32) + (b & RS_LOW32);
+  high := ((a >> 32) + (b >> 32) + (low >> 32)) & RS_LOW32;
+  return (high << 32) | (low & RS_LOW32);
+}
+rs_next :: (d: [] RsDice) -> u64 {
+  d[0].state = rs_wadd(d[0].state, 0x9E3779B97F4A7C15);
+  z := d[0].state;
+  z = rs_wmul(z ^ (z >> 30), 0xBF58476D1CE4E5B9);
+  z = rs_wmul(z ^ (z >> 27), 0x94D049BB133111EB);
+  return z ^ (z >> 31);
+}
+rs_roll :: (d: [] RsDice, sides: int) -> int {
+  n := ifx sides < 1 then 1 else sides;
+  d[0].rolled += 1;
+  if d[0].fixed { return ifx n / 2 < 1 then 1 else n / 2; }
+  span: u64 = 4294967296;
+  zone := span - span % cast(u64) n;
+  while true {
+    v := rs_next(d) >> 32;
+    if v < zone { return cast(int) (v % cast(u64) n) + 1; }
+  }
+  return 1;
+}
+rs_sum :: (d: [] RsDice, count: int, sides: int) -> int {
+  t := 0;
+  for i: 0..<count { t += rs_roll(d, sides); }
+  return t;
+}
+rs_unit :: (d: [] RsDice) -> f32 { if d[0].fixed { return 0.5; } top: f32 = 16777216.0; return f32(rs_next(d) >> 40) / top; }
+
+// A d20 with Advantage (> 0), Disadvantage (< 0) or neither: two dice, the higher or the lower.
+// Any of each cancel to neither (the SRD's rule), so a caller adds +1 per source and -1 per source
+// and passes the sign.
+RsD20 :: struct { roll: int; other: int; edge: int; }
+rs_d20 :: (d: [] RsDice, edge: int) -> RsD20 {
+  a := rs_roll(d, 20);
+  if edge == 0 { return RsD20.{roll = a, other = 0, edge = 0}; }
+  b := rs_roll(d, 20);
+  if edge > 0 { return RsD20.{roll = ifx a > b then a else b, other = ifx a > b then b else a, edge = 1}; }
+  return RsD20.{roll = ifx a < b then a else b, other = ifx a < b then b else a, edge = -1};
+}
+rs_edge :: (advantages: int, disadvantages: int) -> int {
+  if advantages > 0 && disadvantages == 0 { return 1; }
+  if disadvantages > 0 && advantages == 0 { return -1; }
+  return 0;
+}
+
+// ---- damage types
+
+RS_DMG_NONE :: 0; RS_ACID :: 1; RS_BLUDGEONING :: 2; RS_COLD :: 3; RS_FIRE :: 4; RS_FORCE :: 5;
+RS_LIGHTNING :: 6; RS_NECROTIC :: 7; RS_PIERCING :: 8; RS_POISON :: 9; RS_PSYCHIC :: 10;
+RS_RADIANT :: 11; RS_SLASHING :: 12; RS_THUNDER :: 13;
+RS_DAMAGE :: [14] string.["", "Acid", "Bludgeoning", "Cold", "Fire", "Force", "Lightning", "Necrotic",
+                          "Piercing", "Poison", "Psychic", "Radiant", "Slashing", "Thunder"];
+
+// ---- a stat block's one line, rolled with no battle (#13269)
+
+// A creature as a page with no battle fields it: Armor Class, Hit Points, its Dexterity save
+// modifier and one attack (its bonus to hit, its damage dice x d sides + bonus, and the type).
+RsStatLine :: struct {
+  name: string;
+  ac: int; hp: int;
+  dex: int;
+  attack: int;
+  dice: int; sides: int; bonus: int; kind: int;
+}
+// The dice from a seed.
+rs_dice :: (seed: u64) -> RsDice { return RsDice.{state = seed}; }
+// An attack roll by `c` against Armor Class ac, and its damage on a hit: a natural 20 always hits
+// and is a Critical Hit (its damage dice rolled twice), a natural 1 always misses, and a hit does
+// at least 1.
+RsLineAttack :: struct { roll: int; total: int; hit: bool; crit: bool; damage: int; }
+rs_line_attack :: (d: [] RsDice, c: RsStatLine, ac: int) -> RsLineAttack {
+  a: RsLineAttack;
+  a.roll = rs_d20(d, 0).roll;
+  a.total = a.roll + c.attack;
+  a.crit = a.roll == 20;
+  a.hit = a.roll != 1 && (a.crit || a.total >= ac);
+  if a.hit {
+    n := ifx a.crit then c.dice * 2 else c.dice;
+    rolled := rs_sum(d, n, c.sides) + c.bonus;
+    a.damage = ifx rolled > 1 then rolled else 1;
+  }
+  return a;
+}
+// A saving throw: d20 + modifier against dc. A natural 20 is not an automatic success for a save
+// in the SRD; the total decides.
+RsLineSave :: struct { roll: int; total: int; dc: int; success: bool; }
+rs_line_save :: (d: [] RsDice, modifier: int, dc: int) -> RsLineSave {
+  r := rs_d20(d, 0).roll;
+  return RsLineSave.{roll = r, total = r + modifier, dc = dc, success = r + modifier >= dc};
+}
+
+// ---- checks
+
+#test "rolls: the dice are seeded, in range and use every face" {
+  a: [1] RsDice; b: [1] RsDice;
+  a[0] = rs_dice(42); b[0] = rs_dice(42);
+  seen: [6] int;
+  for i: 0..<600 {
+    x := rs_roll(a[..], 6);
+    #assert x >= 1 && x <= 6 && x == rs_roll(b[..], 6);
+    seen[x - 1] += 1;
+  }
+  for f: 0..<6 { #assert seen[f] > 60; }
+  #assert a[0].rolled == 600;
+  c: [1] RsDice; c[0] = rs_dice(43);
+  alike := 0;
+  for i: 0..<50 { if rs_roll(c[..], 20) == rs_roll(a[..], 20) { alike += 1; } }
+  #assert alike < 15;
+}
+#test "rolls: fixed dice land on half their faces whatever was rolled before, and a save of 10 against DC 15 fails (#12887)" {
+  a: [1] RsDice; b: [1] RsDice;
+  a[0] = rs_dice(42); b[0] = rs_dice(7);
+  for i: 0..<5 { _ := rs_roll(b[..], 20); }
+  a[0].fixed = true; b[0].fixed = true;
+  #assert rs_roll(a[..], 20) == 10 && rs_roll(b[..], 20) == 10 && rs_roll(a[..], 8) == 4 && rs_roll(a[..], 1) == 1;
+  #assert rs_sum(a[..], 4, 8) == 16 && rs_unit(b[..]) == 0.5 && !rs_line_save(a[..], 0, 15).success;
+}
+#test "rolls: a stat line's attack is d20 + its bonus against AC, its dice on a hit and twice its dice on a natural 20" {
+  guard := RsStatLine.{name = "Guard", ac = 16, hp = 11, dex = 1, attack = 3, dice = 1, sides = 6, bonus = 1, kind = RS_SLASHING};
+  d: [1] RsDice; d[0] = rs_dice(9);
+  hits := 0; crits := 0; misses := 0;
+  for i: 0..<2000 {
+    a := rs_line_attack(d[..], guard, 15);
+    #assert a.roll >= 1 && a.roll <= 20 && a.total == a.roll + 3;
+    #assert a.hit == (a.roll != 1 && (a.roll == 20 || a.roll + 3 >= 15));
+    if a.hit && !a.crit { hits += 1; #assert a.damage >= 2 && a.damage <= 7; }
+    if a.crit { crits += 1; #assert a.damage >= 3 && a.damage <= 13; }
+    if !a.hit { misses += 1; #assert a.damage == 0; }
+  }
+  // 12 or better on the d20 hits AC 15: 9 faces in 20 (45%), one of them a crit
+  #assert hits + crits > 800 && hits + crits < 1000 && crits > 60 && crits < 150 && misses == 2000 - hits - crits;
+  // a natural 1 misses whatever the bonus, and a hit does at least 1
+  sure := RsStatLine.{name = "Sure", attack = 40, dice = 1, sides = 4, bonus = -9, kind = RS_PIERCING};
+  ones := 0;
+  for i: 0..<400 {
+    a := rs_line_attack(d[..], sure, 10);
+    if a.roll == 1 { ones += 1; #assert !a.hit && a.damage == 0; } else { #assert a.hit && a.damage == 1; }
+  }
+  #assert ones > 5;
+}
+#test "rolls: a save is d20 plus its modifier against the DC" {
+  d: [1] RsDice; d[0] = rs_dice(5);
+  for i: 0..<100 {
+    s := rs_line_save(d[..], 2, 17);
+    #assert s.roll >= 1 && s.roll <= 20 && s.total == s.roll + 2 && s.dc == 17 && s.success == (s.total >= 17);
+  }
+}

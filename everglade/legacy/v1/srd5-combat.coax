@@ -1,5 +1,5 @@
 // SRD 5e creatures and their attacks (System Reference Document 5.2.1, CC BY
-// 4.0), beside metaverse/rules/srd5.coax's dice, spells and objects: a stat
+// 4.0), beside everglade/legacy/v1/srd5.coax's dice, spells and objects: a stat
 // block's armor class, hit points, Dexterity save, and one melee attack (its
 // bonus to hit and its damage dice), and the attack roll itself. As the
 // combat model (`0b401561a0^:docs/metaverse/combat-model.md`) translates them:
@@ -7,7 +7,7 @@
 // decides a hit, a natural 20 always hits and crits (its damage dice rolled
 // twice), a natural 1 always misses; a creature in a spell's area makes the
 // spell's save and takes half on a success, as the SRD has it.
-//   coax/bin/coax test --library metaverse/rules/srd5-combat.coax
+//   coax/bin/coax test --library everglade/legacy/v1/srd5-combat.coax
 
 #load "srd5.coax";
 

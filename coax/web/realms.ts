@@ -61,7 +61,7 @@ export type Style = (typeof STYLES)[number]
 // variant: an anime realm's or zone's look (metaverse/style-preset.coax ANIME_*); none is pastoral. Only anime has variants.
 export const ANIME_VARIANTS = ["pastoral", "action", "dusk", "neon"] as const
 export type AnimeVariant = (typeof ANIME_VARIANTS)[number]
-// ruleset: the rules a realm plays by (metaverse/rules/srd5.coax), read by its page as ruleset=; none casts nothing.
+// ruleset: the rules a realm plays by (everglade/legacy/v1/srd5.coax), read by its page as ruleset=; none casts nothing.
 export const RULESETS = ["srd5"]
 export type Zone = { id: string; style?: Style; variant?: AnimeVariant }
 // share: the line a link preview shows (at most 200 characters; else the description, shortened).
@@ -150,7 +150,7 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
       if (!drawn.includes(ps) && !(declared === undefined && PACK_STYLE_PENDING.has(r.slug)))
         throw new Error(`realms.json: ${r.slug} is drawn ${drawn.join(" and ")} but its pack ${pack} is ${ps} (metaverse/packs/${pack}.json "style")`)
     }
-    // its ruleset (metaverse/rules/<ruleset>.coax): a realm without one casts nothing
+    // its ruleset (v1: everglade/legacy/v1/srd5.coax): a realm without one casts nothing
     if (r.share !== undefined && !(typeof r.share === "string" && r.share.length >= 20 && r.share.length <= 200)) throw new Error(`realms.json: ${r.slug}: share is a line of 20 to 200 characters`)
     if (r.ruleset !== undefined && !RULESETS.includes(r.ruleset)) throw new Error(`realms.json: ${r.slug}: ruleset is one of ${RULESETS.join(", ")}, not ${JSON.stringify(r.ruleset)}`)
     if (w.kind === "open" && w.listed !== false && (typeof r.added !== "string" || !ADDED.test(r.added)))

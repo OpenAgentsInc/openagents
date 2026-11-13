@@ -617,7 +617,7 @@ eg-launch ([realms-port.md](realms-port.md)).
 
 Everglade plays by the SRD 5e ruleset: realms.json gives it
 `"ruleset": "srd5"`, the page carries it (`data-ruleset`, the page facts'
-`ruleset=` line) and `metaverse/rules/srd5.coax` holds the rules a realm with
+`ruleset=` line) and `everglade/legacy/v1/srd5.coax` holds the rules a realm with
 that ruleset uses: the dice (a seeded SplitMix64), the saving throw and the
 spell save DC, damage types, the spells' damage, and an object's armor class
 and hit points by material and size (SRD 5.2.1, Breaking Objects: cloth 11,
@@ -724,7 +724,7 @@ beat, in hand when they hunt you); the kits have no plate armour.
   guard who sees it (34 m, line of sight past the town's walls) or hears it
   (Meteor Swarm and the Mega Thunderbolt 85 m, Thunderbolt 60 m) turns on
   you; WANTED shows under your HP.
-- **Combat** (metaverse/rules/srd5-combat.coax, SRD 5.2.1): a guard is AC 16,
+- **Combat** (everglade/legacy/v1/srd5-combat.coax, SRD 5.2.1): a guard is AC 16,
   11 HP, +3 to hit for 1d6 + 1; a commoner AC 10, 4 HP; you a 5th-level
   Ranger, AC 15, 44 HP. A swing is d20 + 3 against your AC; a natural 20
   crits, a natural 1 misses. A spell's blast does its SRD damage to anyone

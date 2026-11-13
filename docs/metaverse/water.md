@@ -361,8 +361,8 @@ coax/bin/coax test --library metaverse/demolish.coax --steps 2000000000
 
 ## W8: spells and water (done)
 
-[`metaverse/water-spells.coax`](../../metaverse/water-spells.coax) holds the rules,
-as pure functions over `metaverse/rules/srd5.coax`; Everglade's bar casts on
+[`everglade/legacy/v1/water-spells.coax`](../../everglade/legacy/v1/water-spells.coax) holds the rules,
+as pure functions over `everglade/legacy/v1/srd5.coax`; Everglade's bar casts on
 them (`everglade-spells.coax`):
 
 - **A spell aimed over water strikes its surface**, not the bed; its ring
@@ -383,7 +383,7 @@ them (`everglade-spells.coax`):
   thrown back.
 
 ```sh
-coax/bin/coax test --library metaverse/water-spells.coax
+coax/bin/coax test --library everglade/legacy/v1/water-spells.coax
 ```
 
 ## W4: the spectral sea (done)

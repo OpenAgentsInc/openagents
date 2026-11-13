@@ -22,7 +22,7 @@
 //
 // Units are metres (5 ft is 1.5 m) and seconds. Everything is prefixed srd_
 // so a realm can load it beside its own helpers.
-//   coax/bin/coax test --library metaverse/rules/srd5.coax
+//   coax/bin/coax test --library everglade/legacy/v1/srd5.coax
 
 SRD_RULESET :: "srd5";   // realms.json "ruleset"
 

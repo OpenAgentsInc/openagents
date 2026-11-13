@@ -151,7 +151,7 @@ test pin an answer.
 
 Its parts:
 
-- **Dice:** today's `metaverse/rules/srd5.coax` SplitMix64 stream, rejection
+- **Dice:** `rules/srd/rolls.coax`: the SplitMix64 stream the first ruleset had, rejection
   sampled, moved and kept.
 - **Checks, saves, attacks:** ability modifiers, proficiency, Advantage and
   Disadvantage, critical hits, cover.
@@ -296,7 +296,7 @@ source coverage. The ledger is the current gap inventory.
 | `rules/srd/engine.coax`, `battle.coax`, `npcs.coax` | Shared deterministic combat, selected class/subclass features and stat blocks, real-time turn clocks | Complete rules and progression; qualify each mechanical clause |
 | `rules/srd/spells.coax`, `more.coax`, `house.coax` | 78 assigned SRD-marked spell/effect records including helpers, plus four house records; several effects are approximate or empty | Import canonical source content and complete typed programs; count parent spells separately from helpers |
 | `rules/srd/import.coax`, `catalog.coax`, `data/` | Pinned-source pipeline: 339 spell descriptions and 875 entries from eight independently parsed class tables, with nine preserved source differences | Expand to the other catalogs; interpret/qualify mechanics and migrate executable consumers |
-| `metaverse/rules/srd5*.coax` | Older dice, object and combat implementation still used by consumers including Hold the Stair | Migrate consumers and remove duplicated rule ownership |
+| `everglade/legacy/v1/srd5*.coax` | Older dice, object and combat implementation. Only v1 Everglade loads it; Hold the Stair and Experimental's hostiles roll `rules/srd/rolls.coax` (#13269) | Deleted with v1 |
 | Everglade (`everglade5e-rules.coax`, room rules and `fivebar.coax`), 5E Lab | Shared engine consumers with world adapters, hotbars and effects | Centralize declared profiles; retain presentation and world physics |
 | Hold the Stair (`stair.coax`, `stair-tables.coax`) | Own class tables and older combat dependency | Use canonical class/spell data and shared execution |
 | Realm page metadata | `ruleset` and `data-ruleset` selection | Add validated profiles and per-world coverage |
