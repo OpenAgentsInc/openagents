@@ -1,10 +1,11 @@
 # 6. One case on the web and the iPhone
 
 > **Status: partly implemented.** The login case and the cancellation case
-> run with byte-equal traces in headless Chrome and in the iPhone simulator
+> run with byte-equal traces in headless Chrome and in the iPhone simulator,
+> and the independent check passes there
 > ([#13516](https://github.com/OpenAgentsInc/openagents/issues/13516)). The
-> independent check does not pass yet: the iPhone's XCTest sign-in UI tests
-> fail in an unsigned simulator build. See "What remains".
+> driver's stale-build refusal on the iPhone and the device runs remain. See
+> "What remains".
 
 ## Premise
 
@@ -89,8 +90,11 @@ It builds on what exists today:
   the iPhone trace are byte-equal after the host's name line.
 - **Refusal:** the cancellation case; the late answer changes nothing, on
   both hosts.
-- **Independent check:** the iPhone app's existing XCTest sign-in tests
-  still pass, until the portable cases cover their behavior.
+- **Independent check:** an XCUITest,
+  [`SharedAppUITests`](../../apps/openagents-ios/StarterUITests/SharedAppUITests.swift),
+  logs in by hand through the accessibility tree, with no `coax drive`. It
+  sees the shell and `y...@example.com`, as `login.trace` says. A wrong code
+  leaves it on the login screen with `That code isn't right.`
 
 Recorded on 2026-11-13, with the runner of chapter 11
 ([`apps/shared/cases.coax`](../../apps/shared/cases.coax)):
@@ -111,18 +115,20 @@ refuses an operation it lacks, and it refuses a driver tap on a shown
 control that no real press delivered. The case is over the shared app of
 chapter 11
 ([`apps/shared/openagents-app.coax`](../../apps/shared/openagents-app.coax)),
-because chapters 2 to 5 have no separate module yet.
+because chapters 2 to 5 have no separate module yet. The app is the Coax
+Native starter (build 1068 and later). `-OASharedApp YES` or `-OADrive
+SOCKET` opens the shared app in place of the starter's page.
+
+The independent check ran in the same simulator, and passed:
+
+```shell
+xcodebuild -project apps/openagents-ios/OpenAgents.xcodeproj -scheme OpenAgents \
+  -destination id=DEVICE CODE_SIGNING_ALLOWED=NO \
+  -only-testing:OpenAgentsUITests/SharedAppUITests test
+```
 
 ## What remains
 
-- **The independent check.** The unit tests `AppAuthTests` (20 tests) pass
-  in the simulator. In the UI tests `SignInUITests`, `testSchnorrVectors`
-  passes and the other four fail. In the unsigned simulator build the app
-  says "The phone's key isn't available right now", so the fake server gets
-  no request. Those failures are in the phone-key path, which these cases
-  don't use. They have to pass, or be replaced by portable cases, before
-  this chapter is implemented
-  ([#13518](https://github.com/OpenAgentsInc/openagents/issues/13518)).
 - **Stale builds.** The iPhone driver doesn't check yet that the app was
   built from the source under test. The web driver does.
 - **Devices.** `ios-device` is not run
