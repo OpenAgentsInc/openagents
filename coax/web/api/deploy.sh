@@ -148,6 +148,14 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
   # Secret Manager avoids separator/escaping drift and survives future deploys.
   local mesh="oa-mesh-routes-$6"
   if gcloud secrets describe "$mesh" --project "$project" >/dev/null 2>&1; then secrets+=",OA_MESH_ROUTES=$mesh:latest"; fi
+  # Decisions (mesh.c, docs/research/2026-11-13-gemini-decision-1.md): Gemini Decision 1 answers first (owner,
+  # 2026-11-13: "the new primary for everything"), Elephant behind it. A request that names a model still
+  # goes only to that model. The key is Google's (Secret Manager oa-gemini-decisions-key); without it the
+  # order is not set and the routes answer as before.
+  if gcloud secrets describe oa-gemini-decisions-key --project "$project" >/dev/null 2>&1; then
+    secrets+=",OA_GEMINI_DECISIONS_KEY=oa-gemini-decisions-key:latest"
+    env+="~OA_DECISION_ORDER=gemini-decision-1,elephant-1"
+  fi
   # Scheduled jobs (jobs.c, schedules.sh): Cloud Scheduler's caller.
   env+="~OA_JOBS_CALLER=oa-api-jobs@$project.iam.gserviceaccount.com"
   # Character checkpoints (player.c ticket_resume, docs/protocol/character-checkpoint-v2.md): v4 seat
