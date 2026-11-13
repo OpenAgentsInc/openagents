@@ -578,13 +578,13 @@ class Visibility(unittest.TestCase):
         self.assertIn("3 checks, 3 passed", self.ok("test", hud))
         m = json.loads(self.ok("deps", hud, "--modules"))
         (mod,) = m["modules"]
-        self.assertEqual(mod["id"], "verse.hud")
+        self.assertEqual(mod["id"], "metaverse.hud")
         self.assertEqual(mod["exports"], HUD_EXPORTS)
-        self.assertEqual(sorted(Path(x["path"]).name for x in mod["members"]), ["frame.coax", "hud.coax", "types.coax"])
+        self.assertEqual(sorted(Path(x["path"]).name for x in mod["members"]), ["hud-frame.coax", "hud-types.coax", "hud.coax"])
         # A page in that graph cannot reach the private HUD_* constants.
         page = self.base / "page.coax"
         page.write_text('#load "%s" as hud;\nx :: () -> f32 #effects(all) { return hud.HUD_ARM; }\nmain :: () {}\n' % hud)
-        self.assertEqual(self.error(page, "E0389")["message"], "'HUD_ARM' is private to module 'verse.hud'")
+        self.assertEqual(self.error(page, "E0389")["message"], "'HUD_ARM' is private to module 'metaverse.hud'")
         cc = shutil.which("cc") or shutil.which("clang")
         if not cc:
             self.skipTest("no native C compiler for the HUD host")

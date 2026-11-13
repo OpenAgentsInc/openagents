@@ -241,7 +241,7 @@ class NativeChecks(unittest.TestCase):
     def test_the_record_names_unselected_checks(self):
         out = self.dir / "rec.json"
         sel = self.dir / "sel.json"
-        sel.write_text(json.dumps({"files": ["metaverse/look.coax"], "roots": ["verse"]}))
+        sel.write_text(json.dumps({"files": ["metaverse/look.coax"], "roots": ["metaverse"]}))
         code = nc.main(["--selection", str(sel), "--out", str(out), "--keep", str(self.dir / "keep")])
         rec = json.loads(out.read_text())
         self.assertEqual(code, 0)

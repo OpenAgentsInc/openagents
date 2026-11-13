@@ -50,7 +50,7 @@ The imported module names identify the API; physical source ownership and
 // Psionic's HTTP response rotation. No GPU execution or ownership is implied.
 #import "Basic";
 #load "../../lib/sequence.coax" as sequence;
-#load "../../../verse/hud.coax" as hud;
+#load "../../../metaverse/hud.coax" as hud;
 
 #test "reversing trace digits keeps the caller's delimiters" {
   trace := [6] u8.['[', '8', '4', '0', '2', ']'];
