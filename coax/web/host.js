@@ -16,6 +16,12 @@
 //                             -> vertex count
 //   coaxial_page(state, page) optional: which page to draw (data-page, e.g. a 404)
 //   coaxial_golden(on)        optional: golden mode, its animated effects held at one moment
+//   coaxial_frame_plan_v1(state, features, out, cap)  optional: the frame's order, from the engine (GitHub #13303):
+//                             metaverse-engine/render/passes.coax's operations as records of 8 words
+//                             (render/frame-plan.coax) written to `out`; the words written, 0 refused. `features`
+//                             is this host's word (FPH_*). draw() walks the records and decides no order; a page
+//                             without it is drawn in the built-in order. ?plan=check and ?plan=off on a
+//                             development server; coaxial.framePlan() says what was walked
 //   coaxial_bloom_passes_v1(state) optional: how many of the five bloom passes to draw this frame (the rest
 //                             are left as they were; the app's post pass reads only those drawn)
 //   coaxial_pixel_budget()    optional: the most pixels a frame draws (a page that traces every pixel);
