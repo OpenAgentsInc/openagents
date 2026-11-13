@@ -1,0 +1,153 @@
+syntax = "proto3";
+
+package openagents.api.v1alpha1;
+
+// What coax/web/api/room.c answers, route by route (Protocol, GitHub #13250; profile
+// api-routes; docs/protocol/api-routes-v1alpha1.md). Each message names the members
+// of one answer as they ship: json_name is the key on the wire, a `bytes` member is
+// JSON carried as it came, and a member may be absent or null. The messages were
+// read off a run of the API suite and are held to every later run:
+// proto/verse/api-routes-v1alpha1.json holds real answers and their routes, and
+// coax/web/api/routes-goldens.coax holds each answer's keys to its message here.
+// A refusal with only its words is ErrorReply (error.proto). Most bodies are built
+// in SQL; what the C builds goes through a Coax unit.
+
+// GET /api/chat/* 200; GET /api/playtest/chat/* 200
+message RoomOne {
+  optional int64 last = 1 [json_name = "last"];
+  repeated RoomOneMessages messages = 2 [json_name = "messages"];
+}
+
+message RoomOneMessages {
+  optional int64 n = 1 [json_name = "n"];
+  optional double at = 2 [json_name = "at"];
+  optional string from = 3 [json_name = "from"];
+  optional bool mine = 4 [json_name = "mine"];
+  optional string name = 5 [json_name = "name"];
+  optional string text = 6 [json_name = "text"];
+}
+
+// GET /api/playtest/inbox 200
+message RoomInbox {
+  repeated RoomInboxMet met = 1 [json_name = "met"];
+  optional RoomInboxYou you = 2 [json_name = "you"];
+  optional bool admin = 3 [json_name = "admin"];
+  optional int64 unread = 4 [json_name = "unread"];
+  repeated string blocked = 5 [json_name = "blocked"];
+  repeated RoomInboxMessages messages = 6 [json_name = "messages"];
+}
+
+message RoomInboxMet {
+  optional string id = 1 [json_name = "id"];
+  optional string name = 2 [json_name = "name"];
+  optional bool blocked = 3 [json_name = "blocked"];
+}
+
+message RoomInboxYou {
+  optional string id = 1 [json_name = "id"];
+  optional string name = 2 [json_name = "name"];
+}
+
+message RoomInboxMessages {
+  optional int64 at = 1 [json_name = "at"];
+  optional int64 id = 2 [json_name = "id"];
+  optional string to_ = 3 [json_name = "to"];
+  optional string from = 4 [json_name = "from"];
+  optional bool mine = 5 [json_name = "mine"];
+  optional string name = 6 [json_name = "name"];
+  optional bool read = 7 [json_name = "read"];
+  optional string text = 8 [json_name = "text"];
+  optional string to_name = 9 [json_name = "to_name"];
+}
+
+// GET /api/playtest/presence/* 200
+message RoomPresenceOne {
+  optional int64 count = 1 [json_name = "count"];
+  repeated RoomPresenceOneOthers others = 2 [json_name = "others"];
+}
+
+message RoomPresenceOneOthers {
+  optional int64 x = 1 [json_name = "x"];
+  optional int64 y = 2 [json_name = "y"];
+  optional int64 z = 3 [json_name = "z"];
+  optional string id = 4 [json_name = "id"];
+  optional double yaw = 5 [json_name = "yaw"];
+  optional string name = 6 [json_name = "name"];
+  optional bool agent = 7 [json_name = "agent"];
+}
+
+// POST /api/playtest/block 200
+message RoomBlockPost {
+  repeated string blocked = 1 [json_name = "blocked"];
+}
+
+// POST /api/playtest/chat/* 200
+message RoomChatOnePost {
+  optional int64 n = 1 [json_name = "n"];
+}
+
+// POST /api/playtest/chat/*/remove 200
+message RoomChatOneRemovePost {
+  optional int64 removed = 1 [json_name = "removed"];
+}
+
+// POST /api/playtest/inbox 200
+message RoomInboxPost {
+  optional int64 id = 1 [json_name = "id"];
+}
+
+// POST /api/playtest/chat/* 403; POST /api/playtest/inbox 403
+message RoomInboxPostRefusal {
+  optional string error = 1 [json_name = "error"];
+  optional int64 until = 2 [json_name = "until"];
+}
+
+// POST /api/playtest/inbox/read 200
+message RoomInboxReadPost {
+  optional int64 unread = 1 [json_name = "unread"];
+}
+
+// POST /api/playtest/presence/* 200
+message RoomPresenceOnePost {
+  optional RoomPresenceOnePostYou you = 1 [json_name = "you"];
+  optional int64 last = 2 [json_name = "last"];
+  repeated RoomPresenceOnePostOthers others = 3 [json_name = "others"];
+  repeated int64 removed = 4 [json_name = "removed"];
+  repeated RoomOneMessages messages = 5 [json_name = "messages"];
+  optional bool gone = 6 [json_name = "gone"];
+}
+
+message RoomPresenceOnePostYou {
+  optional string id = 1 [json_name = "id"];
+  optional string name = 2 [json_name = "name"];
+  optional bool agent = 3 [json_name = "agent"];
+}
+
+message RoomPresenceOnePostOthers {
+  optional double x = 1 [json_name = "x"];
+  optional double y = 2 [json_name = "y"];
+  optional int64 z = 3 [json_name = "z"];
+  optional string id = 4 [json_name = "id"];
+  optional double yaw = 5 [json_name = "yaw"];
+  optional string name = 6 [json_name = "name"];
+  optional bool agent = 7 [json_name = "agent"];
+  optional string look = 8 [json_name = "look"];
+}
+
+// POST /api/presence/* 200
+message RoomOnePost {
+  optional RoomInboxYou you = 1 [json_name = "you"];
+  optional int64 last = 2 [json_name = "last"];
+  repeated RoomOnePostOthers others = 3 [json_name = "others"];
+  optional bytes removed = 4 [json_name = "removed"];   // JSON carried as it came
+  optional bytes messages = 5 [json_name = "messages"];   // JSON carried as it came
+}
+
+message RoomOnePostOthers {
+  optional int64 x = 1 [json_name = "x"];
+  optional int64 y = 2 [json_name = "y"];
+  optional int64 z = 3 [json_name = "z"];
+  optional string id = 4 [json_name = "id"];
+  optional int64 yaw = 5 [json_name = "yaw"];
+  optional string name = 6 [json_name = "name"];
+}

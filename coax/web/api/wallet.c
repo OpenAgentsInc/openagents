@@ -498,7 +498,7 @@ bool wallet_credit_refused(const request *q, PGconn *db, const char *pubkey) {
   if (PQresultStatus(r) != PGRES_TUPLES_OK) {   // the limit can't be read: the call doesn't go
     api_log("wallet: credit limit: %s", PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, 500, "{\"error\":\"That didn't work. Try again.\"}");
+    api_error(q->fd, 500, "That didn't work. Try again.");
     return true;
   }
   bool held = PQntuples(r) == 1;

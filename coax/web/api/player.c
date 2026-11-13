@@ -139,11 +139,11 @@ static bool site_session(const request *q, PGconn *db) {
 // /api/playtest/survey, the whole form; verse.feedback keeps them
 // (migrations/0006_verse_feedback.sql) with the session they came from.
 static void feedback(const request *q, PGconn *db, const char *parts) {
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST feedback\"}"); return; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST feedback"); return; }
   char autom[64];
   automation(q, autom, sizeof autom);
   char *body = malloc(q->body_len + 3);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!body) { api_error(q->fd, 503, "memory"); return; }
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
   const char *v[3] = {parts, body, autom};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text FROM verse.feedback($1::text[], $2::jsonb, $3) x",
@@ -154,7 +154,7 @@ static void feedback(const request *q, PGconn *db, const char *parts) {
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("feedback: %s", PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+    api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not kept");
     return;
   }
   api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
@@ -171,7 +171,7 @@ static bool progress_run(PGconn *db, const char *sql) {
   return ok;
 }
 static void progress_save(const request *q, PGconn *db, const char *parts, const char *body, const char *who) {
-  if (!progress_run(db, "BEGIN")) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  if (!progress_run(db, "BEGIN")) { api_error(q->fd, 500, "not kept"); return; }
   const char *fv[3] = {parts, body, who};
   PGresult *f = PQexecParams(db, "SELECT (f->>'status')::int, coalesce(f->'body', 'null')::text, f->>'acct', f->>'slot', "
                                  "coalesce(f->>'rev', '0'), coalesce(f->>'marked', 'false'), coalesce(f->>'sent_rev', '-1') "
@@ -181,7 +181,7 @@ static void progress_save(const request *q, PGconn *db, const char *parts, const
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("progress: %s", PQerrorMessage(db));
     PQclear(f); progress_run(db, "ROLLBACK");
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+    api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not kept");
     return;
   }
   int status = atoi(PQgetvalue(f, 0, 0));
@@ -214,7 +214,7 @@ static void progress_save(const request *q, PGconn *db, const char *parts, const
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || !progress_run(db, "COMMIT")) {
     if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("progress: %s", PQerrorMessage(db));
     PQclear(r); progress_run(db, "ROLLBACK");
-    api_json(q->fd, 500, "{\"error\":\"not kept\"}");
+    api_error(q->fd, 500, "not kept");
     return;
   }
   api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
@@ -397,13 +397,13 @@ fail:
   progress_run(db, "ROLLBACK"); rec[0] = 0; return -1;
 }
 static void room_ticket(const request *q, PGconn *db, const char *key, bool site, const char *room, const char *body) {
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a ticket\"}"); return; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST a ticket"); return; }
   const char *secret = getenv("OA_ROOM_TICKET_KEY");
   /* v5 (#13260, metaverse-engine/session/seat-ticket.coax; docs/deployment/room-keys.md): set, the API signs with this
      private key (64 hex) and rooms check with its public key only. Unset, v2/v3/v4 under OA_ROOM_TICKET_KEY. */
   const char *signing = getenv("OA_ROOM_TICKET_SIGNING_KEY");
   unsigned char v5_key[32]; bool v5 = signing && signing[0];
-  if (v5 ? !stk_secret_c(signing, v5_key) : (!secret || strlen(secret) < 32)) { api_json(q->fd, 503, "{\"error\":\"no ticket key\"}"); return; }
+  if (v5 ? !stk_secret_c(signing, v5_key) : (!secret || strlen(secret) < 32)) { api_error(q->fd, 503, "no ticket key"); return; }
   {
     char ip[128]; room_visitor(q, ip);
     long long wait = room_admit(db, "room-key", key && key[0] ? key : "-", ROOM_ASKS_KEY);
@@ -413,18 +413,18 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
       room_count(db, "rate");
       char hdr[48], out[96];
       snprintf(hdr, sizeof hdr, "Retry-After: %lld\r\n", (wait + 999) / 1000);
-      int on = snprintf(out, sizeof out, "{\"error\":\"slow down\",\"retry_ms\":%lld}", wait);
+      int on = (int)api_error_num_text(out, sizeof out, "slow down", "retry_ms", wait);
       api_respond(q->fd, 429, "application/json", hdr, out, (size_t)on);
       return;
     }
   }
   size_t rn = strlen(room);
-  if (!rn || rn > 24) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return; }
+  if (!rn || rn > 24) { api_error(q->fd, 404, "unknown"); return; }
   for (size_t i = 0; i < rn; i++) {
     char ch = room[i];
-    if (!((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-')) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return; }
+    if (!((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-')) { api_error(q->fd, 404, "unknown"); return; }
   }
-  if (!key || !key[0]) { api_json(q->fd, 401, "{\"error\":\"a player key\"}"); return; }
+  if (!key || !key[0]) { api_error(q->fd, 401, "a player key"); return; }
   const char *v[1] = {key};
   // the saved state (verse.room_vitals, #12715): HP for 10 minutes, WANTED for 5 (only a room's: 0124,
   // #12794), the look and class always
@@ -446,10 +446,10 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("room-ticket: %s", PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"no ticket\"}");
+    api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "no ticket");
     return;
   }
-  if (PQntuples(r) != 1) { PQclear(r); api_json(q->fd, 403, "{\"error\":\"unknown player key\"}"); return; }
+  if (PQntuples(r) != 1) { PQclear(r); api_error(q->fd, 403, "unknown player key"); return; }
   char pid[64], name[32];
   snprintf(pid, sizeof pid, "%s", PQgetvalue(r, 0, 0));
   bool account = PQgetvalue(r, 0, 1)[0] == 't';
@@ -463,12 +463,11 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
     if (stop) {
       bool team = PQgetvalue(r, 0, 13)[0] == 't';
       coax_string w = mod_kind_word(stop);
-      char word[16], out[96];
+      char word[16];
       snprintf(word, sizeof word, "%.*s", (int)w.count, w.data);
       PQclear(r);
       if (!team) room_count(db, word);
-      snprintf(out, sizeof out, "{\"error\":\"%s\",\"until\":%lld}", word, stop == MOD_KIND_BAN ? ban_until : kick_until);
-      api_json(q->fd, 403, out);
+      api_error_num(q->fd, 403, word, "until", stop == MOD_KIND_BAN ? ban_until : kick_until);
       return;
     }
   }
@@ -501,7 +500,7 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
     }
   }
   PQclear(r);
-  for (char *c = pid; *c; c++) if (!((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '-')) { api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
+  for (char *c = pid; *c; c++) if (!((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '-')) { api_error(q->fd, 500, "no ticket"); return; }
   // ?realm=REALM (#12717): the directory (rooms.c) gives the instance and the shard that holds it,
   // and the ticket names that shard (v3), which seats it and no other. Without it, a v2 ticket for the
   // room asked, which shard 1 seats (a page from before the directory).
@@ -565,7 +564,7 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   char saved[2049]="-"; long long checkpoint_owner=0;
   int seat_shard = shard > 0 ? shard : 1;   /* the shard this ticket seats (a v2 ticket: shard 1); room_owners notes it (0156) */
   int resume=ticket_resume(q,db,pid,seat_shard,saved,&xp,&checkpoint_owner);
-  if (resume<0) {api_json(q->fd,503,"{\"error\":\"character recovery unavailable\"}");return;}
+  if (resume<0) {api_error(q->fd,503,"character recovery unavailable");return;}
   if (resume==1) {
     coax_string cls=checkpoint2_class((coax_string){saved,(int64_t)strlen(saved)});
     if(cls.count)snprintf(klass,sizeof klass,"%.*s",(int)cls.count,cls.data);
@@ -600,7 +599,7 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   {
     char rec[4097];
     int kept_rec = ticket_character(db, pid, kept_class, xp, start, rec, sizeof rec);
-    if (kept_rec < 0) { api_json(q->fd, 503, "{\"error\":\"character recovery unavailable\"}"); return; }
+    if (kept_rec < 0) { api_error(q->fd, 503, "character recovery unavailable"); return; }
     if (kept_rec == 1) {
       coax_string rc = (coax_string){rec, (int64_t)strlen(rec)};
       char cw[24]; coax_string w = character_class_word(rc, (coax_v_u8){(uint8_t *)cw, (int64_t)sizeof cw - 1});
@@ -621,11 +620,11 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
     if (!stk_class_ext_c(kept_class, xp, start, ext, sizeof ext)) snprintf(ext, sizeof ext, "-");
     unclassed = strncmp(ext, "c=", 2) != 0;   /* no class kept for this character yet: the page opens Character Create before its hello (#13268) */
     if (!stk_write_c(v5_key, pid, acct, name, room, seat_shard, expires, hp, xp, wanted, owner_gen, ext, resume == 1 ? 2 : 1, saved, ticket, sizeof ticket)) {
-      api_json(q->fd, resume == 1 ? 503 : 500, resume == 1 ? "{\"error\":\"character recovery unavailable\"}" : "{\"error\":\"no ticket\"}"); return;
+      api_error(q->fd, resume == 1 ? 503 : 500, resume == 1 ? "character recovery unavailable" : "no ticket"); return;
     }
   } else if (!stk_hmac_write_c(secret, pid, acct, name, room, shard, expires, hp, xp, wanted, owner_gen, resume == 1 ? 1 : 0, saved, ticket, sizeof ticket)) {
     /* v2 (shard 0: no directory) or v3, wrapped in the v4 envelope with the character's capture when it resumes one */
-    api_json(q->fd, resume == 1 ? 503 : 500, resume == 1 ? "{\"error\":\"character recovery unavailable\"}" : "{\"error\":\"no ticket\"}"); return;
+    api_error(q->fd, resume == 1 ? 503 : 500, resume == 1 ? "character recovery unavailable" : "no ticket"); return;
   }
   /* the answer's tail: every part is added whole or the answer is refused, never cut short (#13300) */
   char out[8192], en[48], st[2048] = "";
@@ -660,25 +659,25 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   if (blocked[0]) ST_ADD(",\"blocked\":\"%s\"", blocked);
 #undef ST_ADD
   int on = snprintf(out, sizeof out, "{\"ticket\":\"%s\",\"id\":\"%s\",\"account\":%s,\"admin\":%s,\"name\":\"%s\",\"expires\":%lld%s}", ticket, pid, account ? "true" : "false", acct == 2 ? "true" : "false", en, expires, st);
-  if (!st_whole || on < 0 || on >= (int)sizeof out) { api_log("room-ticket: the answer did not fit (%d)", on); api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
+  if (!st_whole || on < 0 || on >= (int)sizeof out) { api_log("room-ticket: the answer did not fit (%d)", on); api_error(q->fd, 500, "no ticket"); return; }
   api_json(q->fd, 200, out);
 }
 
 // INVITE (#12795): one seat in the player's room held for their friends ROOMS_INVITE_MS (two minutes,
 // migrations/0125_room_invites.sql). {"room":R,"until":MS}; 403 not in it, 409 full.
 static void room_invite(const request *q, PGconn *db, const char *key, const char *room) {
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST an invite\"}"); return; }
-  if (!key || !key[0]) { api_json(q->fd, 401, "{\"error\":\"a player key\"}"); return; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST an invite"); return; }
+  if (!key || !key[0]) { api_error(q->fd, 401, "a player key"); return; }
   const char *v[1] = {key};
   PGresult *r = PQexecParams(db, "SELECT id FROM verse.players WHERE key_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex')", 1, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); api_json(q->fd, 403, "{\"error\":\"unknown player key\"}"); return; }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); api_error(q->fd, 403, "unknown player key"); return; }
   char pid[64]; snprintf(pid, sizeof pid, "%s", PQgetvalue(r, 0, 0));
   PQclear(r);
   long long until = 0;
   int got = rooms_invite(db, room, pid, &until);
-  if (got == 1) { api_json(q->fd, 403, "{\"error\":\"not in it\"}"); return; }
-  if (got == 2) { api_json(q->fd, 409, "{\"error\":\"full\"}"); return; }
-  if (got < 0) { api_json(q->fd, 500, "{\"error\":\"no invite\"}"); return; }
+  if (got == 1) { api_error(q->fd, 403, "not in it"); return; }
+  if (got == 2) { api_error(q->fd, 409, "full"); return; }
+  if (got < 0) { api_error(q->fd, 500, "no invite"); return; }
   char out[96]; snprintf(out, sizeof out, "{\"room\":\"%s\",\"until\":%lld}", room, until);
   api_json(q->fd, 200, out);
 }
@@ -686,12 +685,12 @@ static void room_invite(const request *q, PGconn *db, const char *key, const cha
 // Durable parties (#12852, migrations/0129_parties.sql): invite, join, leave, hide, and the roster,
 // health only. sub is "" (GET the roster) or invite, join, leave, hide (POST).
 static void party(const request *q, PGconn *db, const char *key, const char *sub, const char *body) {
-  if (!key || !key[0]) { api_json(q->fd, 401, "{\"error\":\"a player key\"}"); return; }
+  if (!key || !key[0]) { api_error(q->fd, 401, "a player key"); return; }
   bool get = !strcmp(q->method, "GET");
-  if (sub[0] ? get : !get) { api_json(q->fd, 405, sub[0] ? "{\"error\":\"POST it\"}" : "{\"error\":\"GET the party\"}"); return; }
+  if (sub[0] ? get : !get) { api_error(q->fd, 405, sub[0] ? "POST it" : "GET the party"); return; }
   const char *v[1] = {key};
   PGresult *r = PQexecParams(db, "SELECT id FROM verse.players WHERE key_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex')", 1, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); api_json(q->fd, 403, "{\"error\":\"unknown player key\"}"); return; }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); api_error(q->fd, 403, "unknown player key"); return; }
   char pid[64]; snprintf(pid, sizeof pid, "%s", PQgetvalue(r, 0, 0));
   PQclear(r);
   const char *pv[2] = {pid, body};
@@ -704,13 +703,13 @@ static void party(const request *q, PGconn *db, const char *key, const char *sub
     !strcmp(sub, "leave") ? "SELECT 200, '{\"party\":null}' FROM verse.party_leave($1)" :
     !strcmp(sub, "hide") ? "SELECT CASE WHEN h THEN 200 ELSE 404 END, CASE WHEN h THEN verse.party_view($1) ELSE '{\"error\":\"no party\"}' END "
                            "FROM verse.party_hide($1, coalesce(($2::jsonb->>'on')::boolean, true)) h" : NULL;
-  if (!sql) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return; }
+  if (!sql) { api_error(q->fd, 404, "unknown"); return; }
   r = PQexecParams(db, sql, strstr(sql, "$2") ? 2 : 1, NULL, pv, NULL, NULL, 0);   /* (an unused $2 has no type) */
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("party: %s", PQerrorMessage(db));
-    PQclear(r); api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"no party\"}"); return;
+    PQclear(r); api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "no party"); return;
   }
   api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
   PQclear(r);
@@ -721,8 +720,8 @@ static void party(const request *q, PGconn *db, const char *key, const char *sub
 // room reports it signed (room_vitals). A body that names "wanted" keeps the rest and says
 // "refused":"wanted"; one with only "wanted" is a 403.
 static void room_state(const request *q, PGconn *db, const char *key, const char *body) {
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST the state\"}"); return; }
-  if (!key || !key[0]) { api_json(q->fd, 401, "{\"error\":\"a player key\"}"); return; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST the state"); return; }
+  if (!key || !key[0]) { api_error(q->fd, 401, "a player key"); return; }
   const char *v[2] = {key, body};
   PGresult *r = PQexecParams(db,
     "WITH b AS (SELECT $2::jsonb AS j), p AS (SELECT coalesce(account, id) AS who FROM verse.players "
@@ -741,14 +740,14 @@ static void room_state(const request *q, PGconn *db, const char *key, const char
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("room-state: %s", PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+    api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not kept");
     return;
   }
   bool known = PQgetvalue(r, 0, 0)[0] == 't', wanted = PQgetvalue(r, 0, 2)[0] == 't';
   int kept = atoi(PQgetvalue(r, 0, 1));
   PQclear(r);
-  if (!known) { api_json(q->fd, 403, "{\"error\":\"unknown player key\"}"); return; }
-  if (!kept && wanted) { api_json(q->fd, 403, "{\"error\":\"WANTED is the room server's\",\"refused\":\"wanted\"}"); return; }
+  if (!known) { api_error(q->fd, 403, "unknown player key"); return; }
+  if (!kept && wanted) { api_error_word(q->fd, 403, "WANTED is the room server's", "refused", "wanted"); return; }
   api_json(q->fd, 200, wanted ? "{\"kept\":true,\"refused\":\"wanted\"}" : "{\"kept\":true}");
 }
 // A vitals post with operation IDs (#12793; room-vitals.coax rm_vitals_due, migrations/0124): each line
@@ -764,7 +763,7 @@ int room_report_receipt_c(long long gen, long long batch, const char *codes, cha
 int room_report_checkpoint_receipt_c(int v, const char *status, size_t status_n, long long owner, long long process, long long rev, long long accepted_at, char *out, size_t cap);
 static void room_vitals_receipt(const request *q, PGconn *db, const char *o, int shard, long long gen, long long batch, long long at) {
   char codes[128]; size_t cn = 0;
-  if (shard < 1 || shard > 99 || gen <= 0) { api_json(q->fd, 400, "{\"error\":\"bad owner\"}"); return; }
+  if (shard < 1 || shard > 99 || gen <= 0) { api_error(q->fd, 400, "bad owner"); return; }
   char *line = strchr(o + 1, '\n');
   while (line && *++line && cn + 1 < sizeof codes) {
     char *next = strchr(line, '\n');
@@ -786,7 +785,7 @@ static void room_vitals_receipt(const request *q, PGconn *db, const char *o, int
       if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
         api_log("room-vitals: %s", PQerrorMessage(db));
         PQclear(r);
-        api_json(q->fd, 500, "{\"error\":\"not kept\"}");
+        api_error(q->fd, 500, "not kept");
         return;
       }
       code = PQgetvalue(r, 0, 0)[0];
@@ -807,7 +806,7 @@ static void room_vitals_receipt(const request *q, PGconn *db, const char *o, int
   codes[cn] = 0;
   char out[192];
   int n = room_report_receipt_c(gen, batch, codes, out, sizeof out);   /* the receipt is room-report.coax's (Protocol E8, #13250) */
-  if (n < 0) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  if (n < 0) { api_error(q->fd, 500, "not kept"); return; }
   api_respond(q->fd, 200, "text/plain", NULL, out, (size_t)n);
 }
 // oa-room's part (#12715): "t MS\nPID HP MAX XP\n..." (XP since #12739; a line without it keeps the XP) signed with the seat-ticket key (X-Room-Mac: the
@@ -825,7 +824,7 @@ static void room_vitals_receipt(const request *q, PGconn *db, const char *o, int
 static bool room_write_owner(const request *q, PGconn *db, int signer, const char *gen) {
   if (signer <= 0) return false;
   char *b = malloc(q->body_len + 1);
-  if (!b) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+  if (!b) { api_error(q->fd, 503, "memory"); return true; }
   memcpy(b, q->body, q->body_len); b[q->body_len] = 0;
   char sh[12]; snprintf(sh, sizeof sh, "%d", signer);
   const char *v[3] = {b, gen, sh};
@@ -833,7 +832,7 @@ static bool room_write_owner(const request *q, PGconn *db, int signer, const cha
   free(b);
   bool ok = PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1 || PQgetvalue(r, 0, 0)[0] != 'f';   /* not JSON: the write's own check answers */
   PQclear(r);
-  if (!ok) api_json(q->fd, 403, "{\"error\":\"another shard's player\"}");
+  if (!ok) api_error(q->fd, 403, "another shard's player");
   return !ok;
 }
 // The item ledger's route (#13318, docs/decisions/0006-item-ledger-rules-in-coax.md): SQL keeps the
@@ -879,16 +878,16 @@ static bool item_view(PGconn *db, const char *who, char *rec, size_t rec_cap, ch
 static void item_answer(const request *q, PGconn *db, const char *who, int64_t status, const char *item, bool replay) {
   char rec[4097], kinds[512], out[8193];
   long long ver = 0;
-  if (!item_view(db, who, rec, sizeof rec, kinds, sizeof kinds, &ver)) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  if (!item_view(db, who, rec, sizeof rec, kinds, sizeof kinds, &ver)) { api_error(q->fd, 500, "not kept"); return; }
   coax_string a = io_answer(status, item ? atoll(item) : 0, replay, ver, (coax_string){kinds, (int64_t)strlen(kinds)}, (coax_string){rec, (int64_t)strlen(rec)},
                             (coax_v_u8){(uint8_t *)out, (int64_t)sizeof out - 1});
-  if (a.count <= 0) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  if (a.count <= 0) { api_error(q->fd, 500, "not kept"); return; }
   out[a.count] = 0;
   api_json(q->fd, 200, out);
 }
 static void room_items(const request *q, PGconn *db) {
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a mutation\"}"); return; }
-  if (q->body_len == 0 || q->body_len > 4096) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST a mutation"); return; }
+  if (q->body_len == 0 || q->body_len > 4096) { api_error(q->fd, 401, "unsigned"); return; }
   int signer = room_write_signed(q, "items", q->body, q->body_len);   /* this shard's write key, or the shared key (#13260) */
   if (signer < 0) return;
   if (room_write_owner(q, db, signer, "gen")) return;   /* the shard that holds the player's seat (0156) */
@@ -905,7 +904,7 @@ static void room_items(const request *q, PGconn *db) {
     const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("room-items: %s", PQerrorMessage(db));
-    PQclear(r); api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}"); return;
+    PQclear(r); api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not kept"); return;
   }
   char *id = item_dup(r, 0, 0), *opw = item_dup(r, 0, 1), *who = item_dup(r, 0, 2), *gen = item_dup(r, 0, 3), *ver = item_dup(r, 0, 4);
   char *item = item_dup(r, 0, 5), *to = item_dup(r, 0, 6), *kind = item_dup(r, 0, 7), *sent = item_dup(r, 0, 8);
@@ -1047,7 +1046,7 @@ failed:
   if (r) PQclear(r);
   api_log("room-items: %s", PQerrorMessage(db));
   progress_run(db, "ROLLBACK");
-  api_json(q->fd, 500, "{\"error\":\"not kept\"}");
+  api_error(q->fd, 500, "not kept");
 done:
   free(id); free(opw); free(who); free(gen); free(ver); free(item); free(to); free(kind); free(sent);
   free(owner); free(escrow); free(made); free(result);
@@ -1056,15 +1055,15 @@ done:
 // Coax policy's transaction effects. A receipt follows a WAL-flushed commit.
 // This receiver is additive: no room producer or ticket restore uses it yet.
 static void room_checkpoint(const request *q, PGconn *db, int version) {
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a checkpoint\"}"); return; }
-  if (q->body_len == 0 || q->body_len > 4096) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST a checkpoint"); return; }
+  if (q->body_len == 0 || q->body_len > 4096) { api_error(q->fd, 401, "unsigned"); return; }
   int signer = room_write_signed(q, "checkpoint", q->body, q->body_len);   /* this shard's write key, or the shared key (#13260) */
   if (signer < 0) return;
   if (room_write_owner(q, db, signer, "owner")) return;   /* the shard that holds the player's seat (0156) */
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
   int64_t now = (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
   if (!(version == 2 ? checkpoint2_input((coax_string){(const char *)q->body, q->body_len}, now) : room_checkpoint_input((coax_string){(const char *)q->body, q->body_len}, now))) {
-    api_json(q->fd, 400, "{\"error\":\"bad checkpoint\"}"); return;
+    api_error(q->fd, 400, "bad checkpoint"); return;
   }
   char body[4097]; memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
   const char *v[2] = {body, NULL};
@@ -1134,32 +1133,32 @@ static void room_checkpoint(const request *q, PGconn *db, int version) {
   coax_string status = room_checkpoint_status(code);
   char out[256];
   /* the receipt is room-report.coax's (Protocol E7, #13250) */
-  if (room_report_checkpoint_receipt_c(version,status.data,(size_t)status.count,(long long)owner,(long long)process,(long long)rev,(long long)((code==0||code==1)?accepted:0),out,sizeof out)<0) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  if (room_report_checkpoint_receipt_c(version,status.data,(size_t)status.count,(long long)owner,(long long)process,(long long)rev,(long long)((code==0||code==1)?accepted:0),out,sizeof out)<0) { api_error(q->fd, 500, "not kept"); return; }
   api_json(q->fd, 200, out); return;
 failed:
   if (r) PQclear(r);
   api_log("room-checkpoint: %s", PQerrorMessage(db));
   progress_run(db, "ROLLBACK");
-  api_json(q->fd, 500, "{\"error\":\"not kept\"}");
+  api_error(q->fd, 500, "not kept");
 }
 static void room_vitals(const request *q, PGconn *db) {
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST vitals\"}"); return; }
-  if (q->body_len == 0 || q->body_len > 8192) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST vitals"); return; }
+  if (q->body_len == 0 || q->body_len > 8192) { api_error(q->fd, 401, "unsigned"); return; }
   int signer = room_write_signed(q, "vitals", q->body, q->body_len);   /* this shard's write key, or the shared key (#13260) */
   if (signer < 0) return;
   char *b = malloc(q->body_len + 1);
-  if (!b) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!b) { api_error(q->fd, 503, "memory"); return; }
   memcpy(b, q->body, q->body_len); b[q->body_len] = 0;
   long long at = 0;
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
   long long now = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-  if (sscanf(b, "t %lld", &at) != 1 || at < now - 120000 || at > now + 120000) { free(b); api_json(q->fd, 400, "{\"error\":\"stale\"}"); return; }
+  if (sscanf(b, "t %lld", &at) != 1 || at < now - 120000 || at > now + 120000) { free(b); api_error(q->fd, 400, "stale"); return; }
   /* "o SHARD GEN BATCH" (#12793): every line has an operation ID, and the answer is a receipt */
   char *o = strchr(b, '\n');
   int oshard = 0; long long ogen = 0, obatch = 0;
   bool owned = o && sscanf(o + 1, "o %d %lld %lld", &oshard, &ogen, &obatch) == 3;
   /* a shard's own key posts its own vitals only, with their operation IDs (#13260) */
-  if (signer > 0 && (!owned || oshard != signer)) { free(b); api_json(q->fd, 403, "{\"error\":\"another shard's vitals\"}"); return; }
+  if (signer > 0 && (!owned || oshard != signer)) { free(b); api_error(q->fd, 403, "another shard's vitals"); return; }
   if (owned) {
     room_vitals_receipt(q, db, o, oshard, ogen, obatch, at);
     free(b);
@@ -1198,14 +1197,14 @@ static void room_vitals(const request *q, PGconn *db) {
 // every page then) and who is kicked. Signed like room-vitals: X-Room-Mac over "t MS" (X-Room-At).
 static void room_control(const request *q, PGconn *db) {
   char at[32];
-  if (!api_header(q, "X-Room-At", at, sizeof at)) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
+  if (!api_header(q, "X-Room-At", at, sizeof at)) { api_error(q->fd, 401, "unsigned"); return; }
   char text[48]; int tn = snprintf(text, sizeof text, "t %s", at);
-  if (tn <= 0 || tn >= (int)sizeof text) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
+  if (tn <= 0 || tn >= (int)sizeof text) { api_error(q->fd, 401, "unsigned"); return; }
   /* this shard's write key, or the shared key (#13260); the control answer is the realm's, not a shard's */
   if (room_write_signed(q, "control", text, (size_t)tn) < 0) return;
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
   long long now = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000, when = atoll(at);
-  if (when < now - 120000 || when > now + 120000) { api_json(q->fd, 401, "{\"error\":\"bad mac\"}"); return; }
+  if (when < now - 120000 || when > now + 120000) { api_error(q->fd, 401, "bad mac"); return; }
   PGresult *r = PQexecParams(db,
     "SELECT 'pvp ' || CASE WHEN coalesce((SELECT (switched->>'pvp')::boolean FROM verse.realm_edit WHERE slug = 'everglade'), false) THEN '1' ELSE '0' END || chr(10) || "
     "'edit ' || greatest(coalesce((SELECT ms FROM verse.realm_edit WHERE slug = 'everglade'), 0), "
@@ -1217,20 +1216,20 @@ static void room_control(const request *q, PGconn *db) {
     "  d->>'reward', d->>'minutes', e.start_n, e.stop_n) || chr(10) || 'levels ' || (d->>'levels')::boolean::int || ' ' || (d->>'level_cap') || chr(10) "
     "  FROM verse.room_events e, LATERAL (SELECT verse.room_event_dials(e.dials) AS d) x WHERE e.slug = 'everglade'), '')",
     0, NULL, NULL, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("room-control: %s", PQerrorMessage(db)); PQclear(r); api_json(q->fd, 500, "{\"error\":\"no control\"}"); return; }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("room-control: %s", PQerrorMessage(db)); PQclear(r); api_error(q->fd, 500, "no control"); return; }
   const char *t = PQgetvalue(r, 0, 0);
   /* the banned go too (#13302): the 64 newest bans' players, each a kick line while moderation-policy.coax
      says the ban holds. A room drops their sockets; the ticket refuses them from then on. */
   size_t kn = strlen(t), cap = kn + 64 * 48 + 16 * 64 + 1;   /* and the flags' lines (#13299) */
   char *out = malloc(cap);
-  if (!out) { PQclear(r); api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!out) { PQclear(r); api_error(q->fd, 503, "memory"); return; }
   memcpy(out, t, kn); out[kn] = 0;
   PQclear(r);
   r = PQexecParams(db,
     "SELECT p.id, s.until_ms, verse.now_ms() FROM (SELECT who, until_ms FROM verse.mod_sanctions WHERE kind = 'ban' ORDER BY at_ms DESC LIMIT 64) s "
     "JOIN LATERAL (SELECT id FROM verse.players WHERE id = s.who UNION SELECT id FROM verse.players WHERE account = s.who) p ON true LIMIT 64",
     0, NULL, NULL, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("room-control: %s", PQerrorMessage(db)); PQclear(r); free(out); api_json(q->fd, 500, "{\"error\":\"no control\"}"); return; }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("room-control: %s", PQerrorMessage(db)); PQclear(r); free(out); api_error(q->fd, 500, "no control"); return; }
   for (int i = 0; i < PQntuples(r); i++) {
     const char *pid = PQgetvalue(r, i, 0);
     if (strlen(pid) > 40 || !mod_in_force(true, atoll(PQgetvalue(r, i, 1)), atoll(PQgetvalue(r, i, 2)))) continue;
@@ -1308,29 +1307,29 @@ static bool room_mod_apply(PGconn *db, coax_string rec, const char *by, const ch
 static bool room_mod_asked(const request *q, PGconn *db, const char *key, bool site, const char *rec, int64_t n, mod_done *done) {
   const char *v[2] = {key ? key : "", site ? "t" : "f"};
   PGresult *r = PQexecParams(db, "SELECT verse.edit_may('everglade', $1, $2::boolean), coalesce(verse.player_of($1), 'site')", 2, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("room-mod: %s", PQerrorMessage(db)); PQclear(r); api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return false; }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("room-mod: %s", PQerrorMessage(db)); PQclear(r); api_error(q->fd, 500, "not kept"); return false; }
   bool may = PQgetvalue(r, 0, 0)[0] == 't';
   char by[64]; snprintf(by, sizeof by, "%s", PQgetvalue(r, 0, 1));
   PQclear(r);
-  if (!may) { api_json(q->fd, 403, "{\"error\":\"Everglade's admins only\"}"); return false; }
-  if (n < 0) { api_json(q->fd, 400, "{\"error\":\"not a record\"}"); return false; }
-  if (!room_mod_apply(db, (coax_string){rec, n}, by, "api", NULL, 0, 0, 0, done)) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return false; }
-  if (!strcmp(done->outcome, "no_player")) { api_json(q->fd, 404, "{\"error\":\"no such player\"}"); return false; }
-  if (!strcmp(done->outcome, "self")) { api_json(q->fd, 403, "{\"error\":\"not on yourself\"}"); return false; }
-  if (strcmp(done->outcome, "ok")) { api_json(q->fd, 400, "{\"error\":\"not a record\"}"); return false; }
+  if (!may) { api_error(q->fd, 403, "Everglade's admins only"); return false; }
+  if (n < 0) { api_error(q->fd, 400, "not a record"); return false; }
+  if (!room_mod_apply(db, (coax_string){rec, n}, by, "api", NULL, 0, 0, 0, done)) { api_error(q->fd, 500, "not kept"); return false; }
+  if (!strcmp(done->outcome, "no_player")) { api_error(q->fd, 404, "no such player"); return false; }
+  if (!strcmp(done->outcome, "self")) { api_error(q->fd, 403, "not on yourself"); return false; }
+  if (strcmp(done->outcome, "ok")) { api_error(q->fd, 400, "not a record"); return false; }
   return true;
 }
 // An Everglade admin's kick (#12714): {"player": "p-...", "on": false to let them back}. 24 hours, every
 // room. The same action as "kick PID 0 REASON" to /room-mod, logged alike.
 static void room_kick(const request *q, PGconn *db, const char *key, bool site, const char *body) {
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a kick\"}"); return; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST a kick"); return; }
   const char *v[1] = {body};
   PGresult *r = PQexecParams(db, "SELECT coalesce(j->>'player', ''), j->'on' = 'false'::jsonb FROM (SELECT $1::jsonb AS j) s", 1, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("room-kick: %s", PQerrorMessage(db));
-    PQclear(r); api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"no kick\"}"); return;
+    PQclear(r); api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "no kick"); return;
   }
   char pid[64]; snprintf(pid, sizeof pid, "%s", PQgetvalue(r, 0, 0));
   bool back = !PQgetisnull(r, 0, 1) && PQgetvalue(r, 0, 1)[0] == 't';
@@ -1344,7 +1343,7 @@ static void room_kick(const request *q, PGconn *db, const char *key, bool site, 
     r = PQexecParams(db, "SELECT verse.edit_may('everglade', $1, $2::boolean)", 2, NULL, av, NULL, NULL, 0);
     bool may = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && PQgetvalue(r, 0, 0)[0] == 't';
     PQclear(r);
-    api_json(q->fd, may ? 404 : 403, may ? "{\"error\":\"no such player\"}" : "{\"error\":\"Everglade's admins only\"}");
+    api_error(q->fd, may ? 404 : 403, may ? "no such player" : "Everglade's admins only");
     return;
   }
   if (!room_mod_asked(q, db, key, site, rec, n, &done)) return;
@@ -1366,13 +1365,13 @@ static void room_mod(const request *q, PGconn *db, const char *key, bool site, c
       "SELECT verse.edit_may('everglade', $1, $2::boolean), '{\"log\":' || coalesce((SELECT json_agg(row_to_json(x) ORDER BY x.n) FROM "
       "(SELECT n, at_ms, by_who, verb, whom, minutes, until_ms, reason, source, room, shard, gen, seq, outcome, team FROM verse.mod_log "
       " WHERE ($3::text = '' OR whom = $3::text) ORDER BY n DESC LIMIT 200) x), '[]')::text || '}'", 3, NULL, v, NULL, NULL, 0);
-    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("room-mod: %s", PQerrorMessage(db)); PQclear(r); api_json(q->fd, 500, "{\"error\":\"not read\"}"); return; }
-    if (PQgetvalue(r, 0, 0)[0] != 't') { PQclear(r); api_json(q->fd, 403, "{\"error\":\"Everglade's admins only\"}"); return; }
+    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("room-mod: %s", PQerrorMessage(db)); PQclear(r); api_error(q->fd, 500, "not read"); return; }
+    if (PQgetvalue(r, 0, 0)[0] != 't') { PQclear(r); api_error(q->fd, 403, "Everglade's admins only"); return; }
     api_json(q->fd, 200, PQgetvalue(r, 0, 1));
     PQclear(r);
     return;
   }
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a record\"}"); return; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST a record"); return; }
   int64_t n = (int64_t)strlen(body);
   while (n > 0 && (body[n - 1] == '\n' || body[n - 1] == '\r')) n--;
   int64_t f[6];
@@ -1391,17 +1390,17 @@ static void room_mod(const request *q, PGconn *db, const char *key, bool site, c
 // Each line is logged once by (SHARD, GEN, SEQ) and applied with its log row. The answer, text/plain:
 // "receipt GEN BATCH". A database failure is a 500 with no receipt: the room sends the post again.
 static void room_mod_log(const request *q, PGconn *db) {
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a report\"}"); return; }
-  if (q->body_len == 0 || q->body_len > 8192) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST a report"); return; }
+  if (q->body_len == 0 || q->body_len > 8192) { api_error(q->fd, 401, "unsigned"); return; }
   int signer = room_write_signed(q, "moderation", q->body, q->body_len);
   if (signer < 0) return;
   int64_t h[5];
   coax_string body = {q->body, (int64_t)q->body_len};
-  if (!mod_head(body, (coax_v_s64){h, 5})) { api_json(q->fd, 400, "{\"error\":\"not a report\"}"); return; }
+  if (!mod_head(body, (coax_v_s64){h, 5})) { api_error(q->fd, 400, "not a report"); return; }
   struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
   long long now = (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-  if (h[0] < now - 120000 || h[0] > now + 120000) { api_json(q->fd, 400, "{\"error\":\"stale\"}"); return; }
-  if (signer > 0 && h[1] != signer) { api_json(q->fd, 403, "{\"error\":\"another shard's report\"}"); return; }
+  if (h[0] < now - 120000 || h[0] > now + 120000) { api_error(q->fd, 400, "stale"); return; }
+  if (signer > 0 && h[1] != signer) { api_error(q->fd, 403, "another shard's report"); return; }
   for (int64_t at = h[4]; at < body.count; ) {
     int64_t e = at;
     while (e < body.count && body.data[e] != '\n') e++;
@@ -1414,12 +1413,12 @@ static void room_mod_log(const request *q, PGconn *db) {
     snprintf(room, sizeof room, "%.*s", (int)f[4], line.data + f[3]);
     mod_done done;
     if (!room_mod_apply(db, (coax_string){line.data + f[5], line.count - f[5]}, by, "room", room, (int)h[1], (long long)h[2], (long long)f[0], &done)) {
-      api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return;
+      api_error(q->fd, 500, "not kept"); return;
     }
   }
   char out[64];
   int64_t n = mod_receipt((coax_v_u8){(uint8_t *)out, sizeof out}, h[2], h[3]);
-  if (n < 0) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  if (n < 0) { api_error(q->fd, 500, "not kept"); return; }
   api_respond(q->fd, 200, "text/plain", NULL, out, (size_t)n);
 }
 
@@ -1447,11 +1446,11 @@ static void room_event(const request *q, PGconn *db, const char *key, bool site,
     const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("room-event: %s", PQerrorMessage(db));
-    PQclear(r); api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"no event\"}"); return;
+    PQclear(r); api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "no event"); return;
   }
-  if (PQntuples(r) != 1) { PQclear(r); api_json(q->fd, 404, "{\"error\":\"no event\"}"); return; }
+  if (PQntuples(r) != 1) { PQclear(r); api_error(q->fd, 404, "no event"); return; }
   bool may = PQgetvalue(r, 0, 0)[0] == 't';
-  if (post && !may) { PQclear(r); api_json(q->fd, 403, "{\"error\":\"Everglade's admins only\"}"); return; }
+  if (post && !may) { PQclear(r); api_error(q->fd, 403, "Everglade's admins only"); return; }
   api_json(q->fd, 200, PQgetvalue(r, 0, 1));
   PQclear(r);
 }
@@ -1460,9 +1459,9 @@ bool player_route(const request *q) {
   const char *rest = legacy(q->path);
   if (!rest && (strncmp(q->path, PREFIX, strlen(PREFIX)) || !strcmp(q->path, "/api/playtest/health"))) return false;
   if (!rest) rest = q->path + strlen(PREFIX);
-  if (strcmp(q->method, "GET") && strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"GET or POST\"}"); return true; }
+  if (strcmp(q->method, "GET") && strcmp(q->method, "POST")) { api_error(q->fd, 405, "GET or POST"); return true; }
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { api_error(q->fd, 503, "no database"); return true; }
 
   // The path after the prefix, as a Postgres text[] literal: segments are
   // [A-Za-z0-9_-] only (anything else is not a route).
@@ -1472,12 +1471,12 @@ bool player_route(const request *q) {
     char ch = *p;
     if (ch == '/') { if (p[1] == 0) break; if (pn + 2 >= sizeof parts) break; parts[pn++] = ','; continue; }
     bool ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_' || ch == '-';
-    if (!ok || pn + 2 >= sizeof parts) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
+    if (!ok || pn + 2 >= sizeof parts) { api_error(q->fd, 404, "unknown"); return true; }
     if (p == rest || p[-1] == '/') segs++;
     parts[pn++] = ch;
   }
   parts[pn++] = '}'; parts[pn] = 0;
-  if (!segs || segs > 4) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
+  if (!segs || segs > 4) { api_error(q->fd, 404, "unknown"); return true; }
   if (!strncmp(rest, "survey", 6) && (rest[6] == 0 || rest[6] == '/')) { feedback(q, db, parts); return true; }
   // oa-room's HP report (#12715): signed with the seat-ticket key, not a player's
   if (!strcmp(rest, "room-vitals")) { room_vitals(q, db); return true; }
@@ -1487,7 +1486,9 @@ bool player_route(const request *q) {
   if (!strcmp(rest, "room-control")) { room_control(q, db); return true; }
   if (!strcmp(rest, "room-mod-log")) { room_mod_log(q, db); return true; }   // a room's moderator actions (#13302)
   // the Everglade instance directory (rooms.c, #12717): a shard's report, and the instances' list
+  api_route_at("rooms_route");
   if (rooms_route(q, db, rest)) return true;
+  api_route_at("player_route");
 
   char key[160], autom[64], auth[4096], npub[65] = "";
   bool site = false;
@@ -1499,10 +1500,10 @@ bool player_route(const request *q) {
     snprintf(url, sizeof url, "%s%s", origin && *origin ? origin : "https://openagents.com", q->target);
     nostr_event ev; char err[160];
     if (!nip98_check(auth, q->method, url, q->body, q->body_len, (long long)time(NULL), &ev, err, sizeof err)) {
-      char out[256]; snprintf(out, sizeof out, "{\"error\":\"nip98: %s\"}", err);
-      api_json(q->fd, 401, out); return true;
+      char out[256]; snprintf(out, sizeof out, "nip98: %s", err);
+      api_error(q->fd, 401, out); return true;
     }
-    if (!first_use(db, &ev)) { api_json(q->fd, 401, "{\"error\":\"nip98: that signature was used already\"}"); return true; }
+    if (!first_use(db, &ev)) { api_error(q->fd, 401, "nip98: that signature was used already"); return true; }
     memcpy(npub, ev.pubkey, sizeof npub);
     site = admin_is(npub);
   } else if (site_session(q, db)) site = true;
@@ -1519,7 +1520,7 @@ bool player_route(const request *q) {
   }
 
   char *body = malloc(q->body_len + 3);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+  if (!body) { api_error(q->fd, 503, "memory"); return true; }
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; }
   else strcpy(body, "{}");
   if (!strncmp(rest, "room-ticket/", 12) && segs == 2) { room_ticket(q, db, key, site, rest + 12, body); free(body); return true; }
@@ -1527,7 +1528,7 @@ bool player_route(const request *q) {
   if (!strcmp(rest, "room-state")) { room_state(q, db, key, body); free(body); return true; }
   if (!strcmp(rest, "party") || !strncmp(rest, "party/", 6)) { party(q, db, key, rest[5] == '/' ? rest + 6 : "", body); free(body); return true; }
   if (!strcmp(rest, "player/name")) {   // a guest's own name, through the same filter (migrations/0116)
-    if (strcmp(q->method, "POST")) { free(body); api_json(q->fd, 405, "{\"error\":\"POST a name\"}"); return true; }
+    if (strcmp(q->method, "POST")) { free(body); api_error(q->fd, 405, "POST a name"); return true; }
     const char *nv[2] = {key, body};
     PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text FROM verse.player_set_name($1, $2::jsonb) x", 2, NULL, nv, NULL, NULL, 0);
     free(body);
@@ -1535,7 +1536,7 @@ bool player_route(const request *q) {
       const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
       bool theirs = state && !strncmp(state, "22", 2);
       if (!theirs) api_log("player/name: %s", PQerrorMessage(db));
-      PQclear(r); api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"no name\"}"); return true;
+      PQclear(r); api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "no name"); return true;
     }
     api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
     PQclear(r);
@@ -1559,7 +1560,7 @@ bool player_route(const request *q) {
       b64 = PQgetvalue(dec, 0, 1);
     } else if (PQresultStatus(dec) != PGRES_TUPLES_OK) {
       PQclear(dec); free(body);
-      api_json(q->fd, 400, "{\"error\":\"bytes must be base64 and at a time\"}");
+      api_error(q->fd, 400, "bytes must be base64 and at a time");
       return true;
     }
   }
@@ -1588,7 +1589,7 @@ bool player_route(const request *q) {
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("playtest: %s", PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+    api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not kept");
     return true;
   }
   int status = atoi(PQgetvalue(r, 0, 0));

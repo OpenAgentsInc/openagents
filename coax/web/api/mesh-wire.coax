@@ -1,0 +1,17 @@
+// /api/v1/systemone's refusal for mesh.c (Protocol, GitHub #13250): the System One error body,
+// {"error":{"code":"CODE"}}, written by coax/lib/systemone/refusal.coax, the one writer; the code is
+// the one the status carries there. mesh.c calls mgw_refusal_write through mesh-wire.generated.c
+// (api-sources.sh, deploy.sh, the Dockerfile) and builds no body of its own; a 200 is the fleet's
+// bytes, passed as they came once mesh-policy.coax has held them to the request.
+//   coax/bin/coax test coax/web/api/mesh-wire.coax --library
+#load "../../lib/systemone/refusal.coax";
+
+mgw_refusal_write :: (status: int, out: [] u8) -> int #export_c #effects(all) {
+  return so_refusal_write(so_refusal_code(status), out);
+}
+
+#test "the door's refusal is the System One writer's" {
+  b: [96] u8;
+  n := mgw_refusal_write(413, b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":{\"code\":\"limit_exceeded\"}}" && mgw_refusal_write(413, b[0..<8]) == -1;
+}

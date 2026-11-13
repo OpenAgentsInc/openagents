@@ -1,0 +1,134 @@
+// The System One JSON contract's profile check (Protocol, GitHub #13250):
+// proto/psionic/systemone-json-v1.json holds requests as they are sent, answers as doors gave them,
+// and what our own door answers when it refuses. For each
+//   - request: its members are read and the body is written again through request.coax, the one
+//     writer, for the same bytes;
+//   - answer: the request it answers is built through the writer and answers.coax's so_check takes
+//     the answer as that request's;
+//   - refusal: refusal.coax writes the status's code for the same bytes, and answers.coax reads
+//     the code back;
+//   - refused request: the writer refuses it.
+//   coax/web/tool.sh coax/lib/systemone/json-profile.coax [proto/psionic/systemone-json-v1.json]
+#import "Basic";
+#load "answers.coax";
+#load "refusal.coax";
+#load "../json/json.coax";
+#load "../sys/tool.coax";
+#load "../sys/args.coax";
+#load "../sys/fs.coax";
+
+SP_FIXTURE :: "proto/psionic/systemone-json-v1.json";
+SP_BODY :: 65536;
+SpWork :: struct { nodes: [65536] JvNode; rnodes: [8192] JvNode; text: [SP_BODY] u8; at: int; body: [SP_BODY] u8; req: [SP_BODY] u8; back: [SP_BODY] u8; keys: [SO_MAX_OPTIONS] string; labels: [SO_MAX_OPTIONS] string; }
+
+// A JSON string's contents, unescaped, kept in w's text; "" when it does not fit.
+sp_keep :: (w: [] SpWork, d: Jv, at: int) -> string {
+  n := jv_str(d, at, w[0].text[w[0].at..<SP_BODY]);
+  if n < 0 { return ""; }
+  s := cast(string) w[0].text[w[0].at..<w[0].at + n]; w[0].at += n;
+  return s;
+}
+sp_copy :: (w: [] SpWork, s: string) -> string {
+  if w[0].at + s.count > SP_BODY { return ""; }
+  for i: 0..<s.count { w[0].text[w[0].at + i] = s[i]; }
+  r := cast(string) w[0].text[w[0].at..<w[0].at + s.count]; w[0].at += s.count;
+  return r;
+}
+// The request `text`, written again through request.coax into out: the body, or "" (b says why).
+sp_rebuild :: (w: [] SpWork, text: string, b: [] SoBody, out: [] u8) -> string {
+  j: [1] Jv;
+  if !jv_parse(j[..], text, w[0].rnodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { so_begin(b, out, "", ""); return ""; }
+  d := j[0]; w[0].at = 0;
+  tier := jv_get(d, 0, "service_tier");
+  so_begin(b, out, sp_keep(w, d, jv_get(d, 0, "model")), ifx tier >= 0 then sp_keep(w, d, tier) else "");
+  st := jv_get(d, 0, "state");
+  if jv_kind(d, st) == JV_STRING { so_state_text(b, sp_keep(w, d, st)); } else { so_state_json(b, jv_raw(d, st)); }
+  qs := jv_get(d, 0, "questions");
+  for i: 0..<jv_len(d, qs) {
+    q := jv_at(d, qs, i);
+    name := sp_copy(w, jv_key(d, q));
+    kind := sp_keep(w, d, jv_get(d, q, "type"));
+    ins := sp_keep(w, d, jv_get(d, q, "instructions"));
+    cr := jv_get(d, q, "criteria");
+    if kind == "noul" { so_noul(b, name, ins); }
+    else {
+      n := jv_len(d, cr);
+      if n > SO_MAX_OPTIONS { so_fail(b, "too many options"); return ""; }
+      for k: 0..<n {
+        c := jv_at(d, cr, k);
+        if kind == "choice" { w[0].keys[k] = sp_copy(w, jv_key(d, c)); w[0].labels[k] = ifx jv_kind(d, c) == JV_STRING then sp_keep(w, d, c) else ""; }
+        else { w[0].labels[k] = sp_keep(w, d, c); }
+      }
+      if kind == "choice" { so_choice(b, name, ins, w[0].keys[0..<n], w[0].labels[0..<n]); }
+      else if kind == "score" { so_score(b, name, ins, w[0].labels[0..<n]); }
+      else { so_fail(b, "a question of no known type"); }
+    }
+  }
+  return so_body(b);
+}
+sp_text :: (w: [] SpWork, d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  path := ifx loaded && args_count(args[..]) >= 1 then args_at(args[..], 0) else SP_FIXTURE;
+  buf: [262144] u8; j: [1] Jv; w: [1] SpWork;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { tool_errln("systemone json-profile: cannot read the fixture"); return 2; }
+  if !jv_parse(j[..], cast(string) buf[0..<n], w[0].nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("FAIL  cannot parse the fixture\n"); return 1; }
+  d := j[0]; bad := 0; b: [1] SoBody; name: [256] u8;
+  // requests: read, and written again through the one writer
+  list := jv_get(d, 0, "requests");
+  if jv_len(d, list) < 3 { print("FAIL  too few requests\n"); bad += 1; }
+  for i: 0..<jv_len(d, list) {
+    row := jv_at(d, list, i);
+    body := sp_text(w[..], d, jv_get(d, row, "body"), w[0].body[..]);
+    got := sp_rebuild(w[..], body, b[..], w[0].back[..]);
+    if body == "" || got != body { print("FAIL  request %: written again through request.coax it is not the same bytes (%)\n  %\n  %\n", sp_text(w[..], d, jv_get(d, row, "name"), name[..]), b[0].problem, body, got); bad += 1; }
+    else { print("ok    request % (% questions)\n", sp_text(w[..], d, jv_get(d, row, "name"), name[..]), b[0].questions); }
+  }
+  // answers: each is its request's
+  list = jv_get(d, 0, "answers");
+  if jv_len(d, list) < 2 { print("FAIL  too few answers\n"); bad += 1; }
+  for i: 0..<jv_len(d, list) {
+    row := jv_at(d, list, i);
+    req := sp_text(w[..], d, jv_get(d, row, "request"), w[0].req[..]);
+    body := sp_text(w[..], d, jv_get(d, row, "body"), w[0].body[..]);
+    got := sp_rebuild(w[..], req, b[..], w[0].back[..]);
+    why := ifx got != req || req == "" then "its request is not the writer's bytes" else so_check(b[..], body);
+    // and the reader bites: the same answer with its first probability moved is not the request's
+    if why != "" { print("FAIL  answer %: %\n", sp_text(w[..], d, jv_get(d, row, "name"), name[..]), why); bad += 1; }
+    else if so_check(b[..], "{\"model\":\"x\",\"answers\":{}}") == "" { print("FAIL  an answer with no answers was taken\n"); bad += 1; }
+    else { print("ok    answer %\n", sp_text(w[..], d, jv_get(d, row, "name"), name[..])); }
+  }
+  // refusals: the status's code, the writer's bytes, read back
+  list = jv_get(d, 0, "refusals");
+  if jv_len(d, list) < 10 { print("FAIL  too few refusals\n"); bad += 1; }
+  for i: 0..<jv_len(d, list) {
+    row := jv_at(d, list, i);
+    status := jv_int(d, jv_get(d, row, "status"), 0);
+    code: [96] u8; cn := jv_str(d, jv_get(d, row, "code"), code[..]);
+    body := sp_text(w[..], d, jv_get(d, row, "body"), w[0].body[..]);
+    m := so_refusal_write(so_refusal_code(status), w[0].back[..]);
+    ab: [256] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+    if cn < 1 || m < 0 || cast(string) w[0].back[0..<m] != body || so_refusal_code(status) != cast(string) code[0..<cn] || so_error_code(ar[..], body) != cast(string) code[0..<cn] {
+      print("FAIL  refusal %: the writer's bytes or the reader's code differ\n  %\n", status, body); bad += 1;
+    } else { print("ok    refusal % %\n", status, cast(string) code[0..<cn]); }
+  }
+  // refused requests: the writer makes no body
+  list = jv_get(d, 0, "refused_requests");
+  for i: 0..<jv_len(d, list) {
+    row := jv_at(d, list, i);
+    mb: [256] u8; stb: [4096] u8; qb: [4096] u8; rq: [8192] u8; rn := 0;
+    parts := [7] string.["{\"model\":\"", sp_text(w[..], d, jv_get(d, row, "model"), mb[..]), "\",\"state\":", sp_text(w[..], d, jv_get(d, row, "state"), stb[..]),
+                         ",\"questions\":", sp_text(w[..], d, jv_get(d, row, "questions"), qb[..]), "}"];
+    for part: parts { for c: part { rq[rn] = c; rn += 1; } }
+    got := sp_rebuild(w[..], cast(string) rq[0..<rn], b[..], w[0].back[..]);
+    if got != "" { print("FAIL  a refused request was written: %\n", got); bad += 1; } else { print("ok    refused: %\n", b[0].problem); }
+  }
+  print("%\n", ifx bad == 0 then "systemone json profile holds" else "systemone json profile fails");
+  return ifx bad == 0 then 0 else 1;
+}

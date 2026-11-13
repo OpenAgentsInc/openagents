@@ -907,7 +907,7 @@ rp_until :: (t: [] Ap, q: string, want: string, room: int, flog: [] FcLog, ms: i
 }
 rp_stop :: (h: int, sig: int) { if h < 0 { return; } k := proc_kill(h, sig); w := proc_wait(h, 15000); if w == PROC_RUNNING { k = proc_kill(h, PROC_SIGKILL); w = proc_wait(h, 2000); } r := proc_release(h); }
 // A party with a real room (#12852; ROOM_BIN only). Alice, Bob and Dave are a party; Alice sits in
-// ptyroom-1 on a room process whose vitals and directory reports go to this API:
+// everglade2-pty-1 on a room process whose vitals and directory reports go to this API:
 //   - Bob's roster has Alice's HP from that room's report, and Dave's ticket for the realm goes to her room;
 //   - the room crashes (SIGKILL): the party is unchanged; a member's seat held there keeps the room in
 //     the directory, so tickets still go to it; with none held, they go elsewhere;
@@ -929,11 +929,11 @@ rc_parties_room :: (t: [] Ap, room_bin_in: string) {
   room := ifx ok then rp_room(t, sb_text(binb[..]), work_a, pa[..], la[..]) else -1;
   gq: [1] Sb; sb(gq[..], "select verse.room_owner_next('"); sb(gq[..], pl_id(alice)); sb(gq[..], "')");
   u: [1] Sb; secs: [16] u8; none: [1] string;
-  sa := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url(t, u[..], pa[0], pl_id(alice), "ptyroom-1", rc_num(ap_sql(t, sb_text(gq[..]), out[..]))), ap_num(25, secs[..])];
+  sa := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url(t, u[..], pa[0], pl_id(alice), "everglade2-pty-1", rc_num(ap_sql(t, sb_text(gq[..]), out[..]))), ap_num(25, secs[..])];
   seat := ifx room >= 0 then fc_start(sa[..], none[0..<0], "") else -1;
-  // the room reports her HP and the directory has her in ptyroom-1
+  // the room reports her HP and the directory has her in everglade2-pty-1
   vq: [1] Sb; sb(vq[..], "select count(*) from verse.room_vitals where who = '"); sb(vq[..], pl_id(alice)); sb(vq[..], "' and hp is not null");
-  dq: [1] Sb; sb(dq[..], "select count(*) from verse.room_instances where code = 'ptyroom-1' and '"); sb(dq[..], pl_id(alice)); sb(dq[..], "' = any (pids)");
+  dq: [1] Sb; sb(dq[..], "select count(*) from verse.room_instances where code = 'everglade2-pty-1' and '"); sb(dq[..], pl_id(alice)); sb(dq[..], "' = any (pids)");
   seen := seat >= 0 && rp_until(t, sb_text(vq[..]), "1", room, la[..], 30000) && rp_until(t, sb_text(dq[..]), "1", room, la[..], 20000);
   hq: [1] Sb; sb(hq[..], "select hp from verse.room_vitals where who = '"); sb(hq[..], pl_id(alice)); sb(hq[..], "'");
   st := rp_party(t, pl_key(bob), "", "");
@@ -941,13 +941,13 @@ rc_parties_room :: (t: [] Ap, room_bin_in: string) {
   v1 := ap_member_int(b, "version", 0);
   hp := rp_hp(b, pl_id(alice), hb[..]);
   ap_check(t, "parties (room): a real room's report is Alice's HP in Bob's roster", seen && st == 200 && hp != "" && hp != "null" && hp == ap_sql(t, sb_text(hq[..]), out[..]), b);
-  st = ri_ticket_in(t, pl_key(dave), "ptyroom", "ptyroom");
-  ap_check(t, "parties (room): from the room's own directory report, Dave's ticket for the realm goes to Alice's room", st == 200 && rc_is(ap_body(t), "room", "ptyroom-1"), ap_body(t));
+  st = ri_ticket_in(t, pl_key(dave), "everglade2-pty", "everglade2-pty");
+  ap_check(t, "parties (room): from the room's own directory report, Dave's ticket for the realm goes to Alice's room", st == 200 && rc_is(ap_body(t), "room", "everglade2-pty-1"), ap_body(t));
   // JOIN (#12911): Dave's ticket that names Alice seats him in her real room, beside her
-  st = ri_ticket_party(t, pl_key(dave), "ptyroom", pl_id(alice));
+  st = ri_ticket_party(t, pl_key(dave), "everglade2-pty", pl_id(alice));
   jtkb: [1024] u8; jtk := ap_member(ap_body(t), "ticket", jtkb[..]);
-  jnamed := st == 200 && rc_is(ap_body(t), "room", "ptyroom-1") && jtk.count > 0;
-  jdu: [1] Sb; sb(jdu[..], "ws://localhost:"); sb_int(jdu[..], pa[0]); sb(jdu[..], "/api/room/relay/everglade/ptyroom-1?t="); sb(jdu[..], jtk);
+  jnamed := st == 200 && rc_is(ap_body(t), "room", "everglade2-pty-1") && jtk.count > 0;
+  jdu: [1] Sb; sb(jdu[..], "ws://localhost:"); sb_int(jdu[..], pa[0]); sb(jdu[..], "/api/room/relay/everglade/everglade2-pty-1?t="); sb(jdu[..], jtk);
   jds: [16] u8;
   jsd := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", sb_text(jdu[..]), ap_num(4, jds[..])];
   jsj: [4096] u8;
@@ -961,19 +961,19 @@ rc_parties_room :: (t: [] Ap, room_bin_in: string) {
   // past the directory's wait for a report (15 s; its first report's 25 s), Dave's ticket holds his seat
   // there and keeps the room in the directory, so the party still goes to it (its shard starts it
   // again on the next join); with no seat held, a member's ticket goes elsewhere
-  ap_do(t, "update verse.room_instances set at = at - 30000, made_at = made_at - 30000 where code = 'ptyroom-1'");
-  st = ri_ticket_in(t, pl_key(bob), "ptyroom", "ptyroom");
-  ap_check(t, "parties (room): crashed with a seat held, Bob's ticket for the realm still goes to the party's room", st == 200 && rc_is(ap_body(t), "room", "ptyroom-1"), ap_body(t));
-  ap_do(t, "delete from verse.room_holds where code = 'ptyroom-1'");
-  ap_do(t, "update verse.room_instances set at = at - 30000, made_at = made_at - 30000, pids = '{}' where code = 'ptyroom-1'");
-  pq: [1] Sb; sb(pq[..], "select coalesce(code, 'none') from verse.party_room('ptyroom', '"); sb(pq[..], pl_id(alice)); sb(pq[..], "', 16)");
+  ap_do(t, "update verse.room_instances set at = at - 30000, made_at = made_at - 30000 where code = 'everglade2-pty-1'");
+  st = ri_ticket_in(t, pl_key(bob), "everglade2-pty", "everglade2-pty");
+  ap_check(t, "parties (room): crashed with a seat held, Bob's ticket for the realm still goes to the party's room", st == 200 && rc_is(ap_body(t), "room", "everglade2-pty-1"), ap_body(t));
+  ap_do(t, "delete from verse.room_holds where code = 'everglade2-pty-1'");
+  ap_do(t, "update verse.room_instances set at = at - 30000, made_at = made_at - 30000, pids = '{}' where code = 'everglade2-pty-1'");
+  pq: [1] Sb; sb(pq[..], "select coalesce(code, 'none') from verse.party_room('everglade2-pty', '"); sb(pq[..], pl_id(alice)); sb(pq[..], "', 16)");
   ap_check(t, "parties (room): crashed with no seat held, the party has no room to place anyone in", ap_sql(t, sb_text(pq[..]), out[..]) == "none", "");
   // a new room process, and Alice again
   wb: [4096] u8; work_b := fs_temp("room-party-b", wb[..]);
   lb: [1] FcLog; pb: [1] int;
   room_b := rp_room(t, sb_text(binb[..]), work_b, pb[..], lb[..]);
   hz: [1] Sb; sb(hz[..], "update verse.room_vitals set hp_at = 0 where who = '"); sb(hz[..], pl_id(alice)); sb(hz[..], "'"); ap_do(t, sb_text(hz[..]));
-  sa[2] = ro_url(t, u[..], pb[0], pl_id(alice), "ptyroom-1", rc_num(ap_sql(t, sb_text(gq[..]), out[..])));
+  sa[2] = ro_url(t, u[..], pb[0], pl_id(alice), "everglade2-pty-1", rc_num(ap_sql(t, sb_text(gq[..]), out[..])));
   sa[3] = ap_num(40, secs[..]);
   seat_b := ifx room_b >= 0 then fc_start(sa[..], none[0..<0], "") else -1;
   dlive: [1] Sb; sb(dlive[..], sb_text(dq[..])); sb(dlive[..], " and at > (extract(epoch from clock_timestamp()) * 1000)::bigint - 10000");
@@ -982,14 +982,14 @@ rc_parties_room :: (t: [] Ap, room_bin_in: string) {
   st = rp_party(t, pl_key(bob), "", "");
   hp = rp_hp(ap_body(t), pl_id(alice), hb[..]);
   ap_check(t, "parties (room): restarted, the new room's report is Alice's HP in Bob's roster again", back && st == 200 && hp != "" && hp != "null", ap_body(t));
-  st = ri_ticket_in(t, pl_key(dave), "ptyroom", "ptyroom");
-  ap_check(t, "parties (room): restarted, Dave's ticket goes to Alice's room again", st == 200 && rc_is(ap_body(t), "room", "ptyroom-1"), ap_body(t));
+  st = ri_ticket_in(t, pl_key(dave), "everglade2-pty", "everglade2-pty");
+  ap_check(t, "parties (room): restarted, Dave's ticket goes to Alice's room again", st == 200 && rc_is(ap_body(t), "room", "everglade2-pty-1"), ap_body(t));
   // the party service fails: its functions are gone from the database
   ap_do(t, "alter function verse.party_room(text, text, int) rename to party_room_down");
   ap_do(t, "alter function verse.party_view(text) rename to party_view_down");
   st = rp_party(t, pl_key(bob), "", "");
   ap_check(t, "parties (room): the party service down: the roster is refused, not made up", st >= 500, ap_body(t));
-  st = ri_ticket_in(t, pl_key(dave), "ptyroom", "ptyroom");
+  st = ri_ticket_in(t, pl_key(dave), "everglade2-pty", "everglade2-pty");
   tb: [1024] u8; ticket := ap_member(ap_body(t), "ticket", tb[..]);
   placed := ap_member(ap_body(t), "room", rb[..]);
   ap_check(t, "parties (room): the party service down: a ticket for the realm is still made", st == 200 && ticket.count > 0 && placed.count > 0 && ap_kind(ap_body(t), "party_full") == 0, ap_body(t));
@@ -1594,7 +1594,7 @@ fp_main :: (dir: string, api: string) -> int {
         got := http_do(w[..], "POST", sb_text(url[..]), hs[..], cast(string) req[end..<tot[0]], 30000, 0, answer[..]);
         code := ifx got.error == HTTP_OK then got.code else 502;
         n := ifx got.error == HTTP_OK then got.n else 0;
-        if got.error == HTTP_OK { ap_capture("room.jsonl", "POST", "/api/playtest/room-vitals", cast(string) req[end..<tot[0]], code, cast(string) answer[0..<n]); }   // a real room's post and the API's answer
+        if got.error == HTTP_OK { ap_capture("room.jsonl", "POST", "/api/playtest/room-vitals", cast(string) req[end..<tot[0]], code, "", "", cast(string) answer[0..<n]); }   // a real room's post and the API's answer
         if fs_exists(lose_path) { held += 1; c := cxsock_close(h); }
         else if mode == 2 {   // the API kept it; the answer comes after the room has given up on it
           held += 1;
@@ -1888,7 +1888,7 @@ rc_owner :: (t: [] Ap, room_bin_in: string) {
   sb(q[..], "select verse.room_owner_next('"); sb(q[..], pid); sb(q[..], "')");
   g1 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
   u: [1] Sb; secs: [16] u8;
-  sa := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url(t, u[..], port, pid, "pair-owner", g1), ap_num(150, secs[..])];
+  sa := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url(t, u[..], port, pid, "pair-e2-owner", g1), ap_num(150, secs[..])];
   none: [1] string;
   seat := ifx room >= 0 then fc_start(sa[..], none[0..<0], "") else -1;
   // the room saves P as g1: a row for P
@@ -1922,11 +1922,11 @@ rc_owner :: (t: [] Ap, room_bin_in: string) {
   ap_check(t, "owner: resumed, the room's line for P is refused, P's seat ends and its page is told elsewhere", resumed && rc_truthy(js, "elsewhere") && rc_truthy(js, "closed") && ap_member_int(js, "seat", -1) >= 0, js);
   ap_check(t, "owner: the new owner's HP stays", ap_sql(t, sb_text(vq[..]), hv[..]) == "3", "");
   // the old page again, with its g1 ticket: refused; a page with a newer ticket (g3) sits
-  sa[2] = ro_url(t, u[..], port, pid, "pair-owner", g1); sa[3] = ap_num(3, secs[..]);
+  sa[2] = ro_url(t, u[..], port, pid, "pair-e2-owner", g1); sa[3] = ap_num(3, secs[..]);
   old := ro_seat_json(fc_start(sa[..], none[0..<0], ""), 30000, sj[..]);
   ap_check(t, "owner: a page with the older ticket is refused", !rc_truthy(old, "open") || ap_member_int(old, "seat", -1) < 0, old);
   g3 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
-  sa[2] = ro_url(t, u[..], port, pid, "pair-owner", g3);
+  sa[2] = ro_url(t, u[..], port, pid, "pair-e2-owner", g3);
   fresh := ro_seat_json(fc_start(sa[..], none[0..<0], ""), 30000, sj[..]);
   ap_check(t, "owner: a page with a newer ticket sits", ap_member_int(fresh, "seat", -1) >= 0 && !rc_truthy(fresh, "elsewhere"), fresh);
   if room >= 0 {
@@ -1954,11 +1954,11 @@ ro_room :: (t: [] Ap, bin: string, work: string, port: [] int, flog: [] FcLog) -
   while h >= 0 && proc_now_ms() - t0 < 2000 { fc_drain(h, flog); proc_sleep(50); }
   return h;
 }
-// Travel between two room processes (#12850): P sits in pair-a on room A and asks for pair-b (on room B,
+// Travel between two room processes (#12850): P sits in pair-e2-a on room A and asks for pair-e2-b (on room B,
 // another process). A posts P's state and sends the page on only once the API has it; then A is
-// killed at once (a crash right after the route). P's ticket for pair-b (the next owner generation, the
+// killed at once (a crash right after the route). P's ticket for pair-e2-b (the next owner generation, the
 // HP the API holds) sits on B, and B's own save of P is applied as the new owner, the HP unchanged.
-// Then B is killed too (the destination's crash after the arrival) and a new process serves pair-b: P's
+// Then B is killed too (the destination's crash after the arrival) and a new process serves pair-e2-b: P's
 // next ticket sits there, and that process's save is applied as the next owner with the same HP and XP.
 rc_travel :: (t: [] Ap, room_bin_in: string) {
   out: [4096] u8; q: [1] Sb; none: [1] string;
@@ -1976,7 +1976,7 @@ rc_travel :: (t: [] Ap, room_bin_in: string) {
   sb(q[..], "select verse.room_owner_next('"); sb(q[..], pid); sb(q[..], "')");
   g1 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
   u: [1] Sb; secs: [16] u8;
-  sa := [5] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url(t, u[..], pa[0], pid, "pair-a", g1), ap_num(40, secs[..]), "pair-b"];
+  sa := [5] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url(t, u[..], pa[0], pid, "pair-e2-a", g1), ap_num(40, secs[..]), "pair-e2-b"];
   sj: [4096] u8;
   js := ifx room_a >= 0 && room_b >= 0 then ro_seat_json(fc_start(sa[..], none[0..<0], ""), 60000, sj[..]) else "";
   // the crash, right after the route
@@ -1988,25 +1988,25 @@ rc_travel :: (t: [] Ap, room_bin_in: string) {
   ap_check(t, "travel: room A sends P on only after the API has P's state", rc_truthy(js, "go") && ap_member_int(js, "seat", -1) >= 0 && kept.count > 1, js);
   // the destination: a ticket as the API signs it, the next owner and the saved HP
   g2 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
-  sa[2] = ro_url_hp(t, u[..], pb[0], pid, "pair-b", kept, g2); sa[3] = ap_num(15, secs[..]); sa[4] = "";
+  sa[2] = ro_url_hp(t, u[..], pb[0], pid, "pair-e2-b", kept, g2); sa[3] = ap_num(15, secs[..]); sa[4] = "";
   sb_seat := ro_seat_json(fc_start(sa[0..<4], none[0..<0], ""), 40000, sj[..]);
-  ap_check(t, "travel: P sits in pair-b on room B with A gone", ap_member_int(sb_seat, "seat", -1) >= 0 && !rc_truthy(sb_seat, "elsewhere"), sb_seat);
+  ap_check(t, "travel: P sits in pair-e2-b on room B with A gone", ap_member_int(sb_seat, "seat", -1) >= 0 && !rc_truthy(sb_seat, "elsewhere"), sb_seat);
   // B saves P as g2; the state P left A with is what B saved
   ops: [1] Sb; sb(ops[..], "select count(*) from verse.room_vital_ops where pid = '"); sb(ops[..], pid); sb(ops[..], "'");
   deadline := proc_now_ms() + 20000; n_ops := 0;
   while proc_now_ms() < deadline { fc_drain(room_b, lb[..]); n_ops = rc_num(ap_sql(t, sb_text(ops[..]), out[..])); if n_ops >= 2 { break; } proc_sleep(500); }
   ap_check(t, "travel: room B's save of P is applied, as the new owner, with the HP and XP P left A with", n_ops >= 2 && ap_sql(t, sb_text(vq[..]), hv[..]) == kept, ap_sql(t, sb_text(vq[..]), hv[..]));
-  // the destination crashes after the arrival, and a new room process takes pair-b: P's next ticket
+  // the destination crashes after the arrival, and a new room process takes pair-e2-b: P's next ticket
   // (the next owner, the HP the API holds) sits there, and its save is applied with that HP
   if room_b >= 0 { k := proc_kill(room_b, PROC_SIGKILL); w := proc_wait(room_b, 5000); r = proc_release(room_b); }
   wc: [4096] u8; work_c := fs_temp("room-travel-c", wc[..]);
   lc: [1] FcLog; pc: [1] int;
   room_c := ro_room(t, sb_text(binb[..]), work_c, pc[..], lc[..]);
   g3 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
-  sa[2] = ro_url_hp(t, u[..], pc[0], pid, "pair-b", kept, g3);
+  sa[2] = ro_url_hp(t, u[..], pc[0], pid, "pair-e2-b", kept, g3);
   ops_before := rc_num(ap_sql(t, sb_text(ops[..]), out[..]));
   sc_seat := ifx room_c >= 0 then ro_seat_json(fc_start(sa[0..<4], none[0..<0], ""), 40000, sj[..]) else "";
-  ap_check(t, "travel: after the destination crashes, P sits in pair-b on its replacement", ap_member_int(sc_seat, "seat", -1) >= 0 && !rc_truthy(sc_seat, "elsewhere"), sc_seat);
+  ap_check(t, "travel: after the destination crashes, P sits in pair-e2-b on its replacement", ap_member_int(sc_seat, "seat", -1) >= 0 && !rc_truthy(sc_seat, "elsewhere"), sc_seat);
   deadline = proc_now_ms() + 20000; n_ops = 0;
   while room_c >= 0 && proc_now_ms() < deadline { fc_drain(room_c, lc[..]); n_ops = rc_num(ap_sql(t, sb_text(ops[..]), out[..])); if n_ops > ops_before { break; } proc_sleep(500); }
   ap_check(t, "travel: the replacement's save of P is applied as the next owner, the HP and XP unchanged", g3 == g2 + 1 && n_ops > ops_before && ap_sql(t, sb_text(vq[..]), hv[..]) == kept, ap_sql(t, sb_text(vq[..]), hv[..]));
@@ -2020,10 +2020,10 @@ rc_travel :: (t: [] Ap, room_bin_in: string) {
 }
 
 // Crashes around travel's prepare and commit, in real processes (#12850; room-travel.coax):
-//   - before prepare: P sits in pair-a on room A, which saves P and is SIGKILLed before any T. P's next
+//   - before prepare: P sits in pair-e2-a on room A, which saves P and is SIGKILLed before any T. P's next
 //     ticket (the next owner, the HP the API holds) sits on room B, whose save is applied with that HP;
 //   - between the save and the route: room C's vitals posts reach the API through a proxy that loses
-//     every answer. P asks for pair-b: the API keeps P's captured state, but no receipt comes back, so
+//     every answer. P asks for pair-e2-b: the API keeps P's captured state, but no receipt comes back, so
 //     C never sends P on. C is SIGKILLed; P's next ticket sits on room B with the HP the API kept.
 // One outcome either way: P plays in one room, with the last state the API accepted.
 rc_travel_crash :: (t: [] Ap, room_bin_in: string) {
@@ -2046,7 +2046,7 @@ rc_travel_crash :: (t: [] Ap, room_bin_in: string) {
   // before prepare: A saves P, and dies with no T asked
   g1 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
   u: [1] Sb; secs: [16] u8;
-  sa := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url(t, u[..], pa[0], pid, "pair-a", g1), ap_num(30, secs[..])];
+  sa := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url(t, u[..], pa[0], pid, "pair-e2-a", g1), ap_num(30, secs[..])];
   seat := ifx room_a >= 0 && room_b >= 0 then fc_start(sa[..], none[0..<0], "") else -1;
   deadline := proc_now_ms() + 30000; saved := "";
   while seat >= 0 && saved == "" && proc_now_ms() < deadline { fc_drain(room_a, la[..]); saved = ap_sql(t, sb_text(vq[..]), hv[..]); if saved == "" { proc_sleep(300); } }
@@ -2056,11 +2056,11 @@ rc_travel_crash :: (t: [] Ap, room_bin_in: string) {
   hp_kept := kept; i := 0; while i < kept.count && kept[i] != 'x' { i += 1; } hp_kept = kept[0..<i];
   g2 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
   ops_before := rc_num(ap_sql(t, sb_text(ops[..]), out[..]));
-  sa[2] = ro_url_hp(t, u[..], pb[0], pid, "pair-b", hp_kept, g2); sa[3] = ap_num(6, secs[..]);
+  sa[2] = ro_url_hp(t, u[..], pb[0], pid, "pair-e2-b", hp_kept, g2); sa[3] = ap_num(6, secs[..]);
   b1 := ro_seat_json(fc_start(sa[..], none[0..<0], ""), 40000, sj[..]);
   n_ops := 0; deadline = proc_now_ms() + 20000;
   while proc_now_ms() < deadline { fc_drain(room_b, lb[..]); n_ops = rc_num(ap_sql(t, sb_text(ops[..]), out[..])); if n_ops > ops_before { break; } proc_sleep(500); }
-  ap_check(t, "travel crash: room A dies before any travel; P sits in pair-b with the HP A saved, and B's save of it is applied", kept.count > 1 && !rc_truthy(js, "go") && ap_member_int(b1, "seat", -1) >= 0 && n_ops > ops_before && ap_sql(t, sb_text(vq[..]), hv[..]) == kept, b1);
+  ap_check(t, "travel crash: room A dies before any travel; P sits in pair-e2-b with the HP A saved, and B's save of it is applied", kept.count > 1 && !rc_truthy(js, "go") && ap_member_int(b1, "seat", -1) >= 0 && n_ops > ops_before && ap_sql(t, sb_text(vq[..]), hv[..]) == kept, b1);
   // between the save and the route: room C's answers are lost
   pa2 := [5] string.["coax/web/tool.sh", "coax/web/api/tests/room_checks.coax", "proxy", work_c, t[0].api];
   lp: [4200] u8; lost := fs_write(fs_join(work_c, "lose", lp[..]), "1\n");
@@ -2084,7 +2084,7 @@ rc_travel_crash :: (t: [] Ap, room_bin_in: string) {
   while room_c >= 0 && proc_now_ms() - t0 < 2000 { fc_drain(room_c, lc[..]); proc_sleep(50); }
   g3 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
   ops_before = rc_num(ap_sql(t, sb_text(ops[..]), out[..]));
-  st := [5] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url(t, u[..], pc, pid, "pair-c", g3), ap_num(12, secs[..]), "pair-d"];
+  st := [5] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url(t, u[..], pc, pid, "pair-e2-c", g3), ap_num(12, secs[..]), "pair-e2-d"];
   seat = ifx room_c >= 0 then fc_start(st[..], none[0..<0], "") else -1;
   // the API keeps what C posts after the T (3 s in), with no answer back; then C dies
   deadline = proc_now_ms() + 30000; n_ops = ops_before;
@@ -2103,14 +2103,14 @@ rc_travel_crash :: (t: [] Ap, room_bin_in: string) {
   ops_before = rc_num(ap_sql(t, sb_text(ops[..]), out[..]));
   // (the same HP as B noted before is no new revision: B's line for P goes again as a seated owner's,
   // each 30 s, and the API takes it as a repeat, not refused as an older owner's)
-  sa[2] = ro_url_hp(t, u[..], pb[0], pid, "pair-b", hp_kept, g4); sa[3] = ap_num(36, secs[..]);
+  sa[2] = ro_url_hp(t, u[..], pb[0], pid, "pair-e2-b", hp_kept, g4); sa[3] = ap_num(36, secs[..]);
   seat = fc_start(sa[..], none[0..<0], "");
   deadline = proc_now_ms() + 40000;
   while seat >= 0 && proc_now_ms() < deadline { fc_drain(room_b, lb[..]); n_ops = rc_num(ap_sql(t, sb_text(ops[..]), out[..])); if n_ops > ops_before { break; } proc_sleep(500); }
   b2 := ro_seat_json(seat, 45000, sj[..]);
   why: [1] Sb; sb(why[..], b2); sb(why[..], " g3 "); sb_int(why[..], g3); sb(why[..], " g4 "); sb_int(why[..], g4); sb(why[..], " saves "); sb_int(why[..], ops_before); sb(why[..], " to "); sb_int(why[..], n_ops);
   sb(why[..], " kept "); sb(why[..], kept); sb(why[..], " now "); sb(why[..], ap_sql(t, sb_text(vq[..]), hv[..]));
-  ap_check(t, "travel crash: C gone, P sits in pair-b with the HP the API kept, and B's line for P is taken as the next owner's", ap_member_int(b2, "seat", -1) >= 0 && g4 == g3 + 1 && n_ops > ops_before && ap_sql(t, sb_text(vq[..]), hv[..]) == kept, sb_text(why[..]));
+  ap_check(t, "travel crash: C gone, P sits in pair-e2-b with the HP the API kept, and B's line for P is taken as the next owner's", ap_member_int(b2, "seat", -1) >= 0 && g4 == g3 + 1 && n_ops > ops_before && ap_sql(t, sb_text(vq[..]), hv[..]) == kept, sb_text(why[..]));
   sp: [4200] u8; stopped := fs_write(fs_join(work_c, "stop", sp[..]), "1\n");
   if proxy >= 0 { x := proc_wait(proxy, 5000); if x == PROC_RUNNING { k := proc_kill(proxy, PROC_SIGTERM); x = proc_wait(proxy, 2000); } r = proc_release(proxy); }
   rp_stop(room_b, PROC_SIGTERM);
@@ -2303,7 +2303,7 @@ rc_region :: (t: [] Ap, api_bin: string, room_bin: string) {
   t[0].db = rg_keep(t, sb_text(bdb[..]));
   ap_check(t, "region: B's API starts on B with the same migrations as A (a compatible build)", healthy && b_mig == a_mig && b_mig != "", b_mig);
   // Alice's ticket from B: the HP B holds (A's window lost) and an owner generation past epoch 2's floor
-  st = ri_ticket_in(t, pl_key(p[..]), "region-1", "region");
+  st = ri_ticket_in(t, pl_key(p[..]), "everglade2-region-1", "everglade2-region");
   ticket_ms := proc_now_ms() - t0;
   tkb: [1024] u8; tk := ap_member(ap_body(t), "ticket", tkb[..]);
   gb := rg_ticket_gen(tk);
@@ -2323,9 +2323,9 @@ rc_region :: (t: [] Ap, api_bin: string, room_bin: string) {
     pa: [1] int;
     room_at := rc_wall_ms();
     room = rp_room(t, room_bin, rwork, pa[..], rl[..]);
-    st = ri_ticket_in(t, pl_key(p[..]), "region-1", "region");
+    st = ri_ticket_in(t, pl_key(p[..]), "everglade2-region-1", "everglade2-region");
     tk = ap_member(ap_body(t), "ticket", tkb[..]);
-    du: [1] Sb; sb(du[..], "ws://localhost:"); sb_int(du[..], pa[0]); sb(du[..], "/api/room/relay/everglade/region-1?t="); sb(du[..], tk);
+    du: [1] Sb; sb(du[..], "ws://localhost:"); sb_int(du[..], pa[0]); sb(du[..], "/api/room/relay/everglade/everglade2-region-1?t="); sb(du[..], tk);
     secs: [16] u8;
     sd := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", sb_text(du[..]), ap_num(4, secs[..])];
     sj: [4096] u8;
@@ -2454,7 +2454,7 @@ rc_deploy :: (t: [] Ap, room_bin_in: string) {
   for b: 0..<BOTS {
     q: [1] Sb; sb(q[..], "select verse.room_owner_next('"); sb(q[..], cast(string) pids[b][0..<pid_n[b]]); sb(q[..], "')");
     g := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
-    sa := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url_hp(t, u[..], pa[0], cast(string) pids[b][0..<pid_n[b]], "pair-deploy", "7", g), ap_num(60, secs[..])];
+    sa := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url_hp(t, u[..], pa[0], cast(string) pids[b][0..<pid_n[b]], "pair-e2-deploy", "7", g), ap_num(60, secs[..])];
     bots[b] = ifx room_a >= 0 then fc_start(sa[..], none[0..<0], "") else -1;
   }
   t0 := proc_now_ms(); while proc_now_ms() - t0 < 6000 { fc_drain(room_a, la[..]); proc_sleep(100); }
@@ -2518,14 +2518,14 @@ rc_deploy :: (t: [] Ap, room_bin_in: string) {
   for b: 0..<BOTS {
     q: [1] Sb; sb(q[..], "select verse.room_owner_next('"); sb(q[..], cast(string) pids[b][0..<pid_n[b]]); sb(q[..], "')");
     g := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
-    sa := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url_hp(t, u[..], pb[0], cast(string) pids[b][0..<pid_n[b]], "pair-deploy", cast(string) kept[b][0..<kept_n[b]], g), ap_num(12, secs[..])];
+    sa := [4] string.["coax/web/tool.sh", "coax/web/room/owner-seat.coax", ro_url_hp(t, u[..], pb[0], cast(string) pids[b][0..<pid_n[b]], "pair-e2-deploy", cast(string) kept[b][0..<kept_n[b]], g), ap_num(12, secs[..])];
     bots[b] = ifx room_b >= 0 then fc_start(sa[..], none[0..<0], "") else -1;
   }
   for b: 0..<BOTS {
     js := ro_seat_json(bots[b], 40000, sj[..]);
     if ap_member_int(js, "seat", -1) >= 0 && !rc_truthy(js, "restarting") && !rc_truthy(js, "elsewhere") { back += 1; }
   }
-  ap_check(t, "deploy: every bot sits again in pair-deploy on the new process", back == BOTS, "");
+  ap_check(t, "deploy: every bot sits again in pair-e2-deploy on the new process", back == BOTS, "");
   same := 0; deadline := proc_now_ms() + 20000;
   while room_b >= 0 && same < BOTS && proc_now_ms() < deadline {
     fc_drain(room_b, lb[..]);

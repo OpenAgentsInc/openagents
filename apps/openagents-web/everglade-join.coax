@@ -158,11 +158,11 @@ net_rooms :: (s: [] Everglade, answer: string) #export_c #effects(all) {
   if asking { net_dest_swap(n); }
   j[0].list_asked = false; j[0].list_due = false;
   realm := cast(string) j[0].realm[0..<j[0].realm_n];
-  join := ifx answer.count > 4 && answer[0..<4] == "200\n" then net_json_field(answer, "join") else "";
+  join := ifx answer.count > 4 && answer[0..<4] == "200\n" then rooms_list_join(answer) else "";
   ok := net_code_ok(join) && join.count > realm.count + 1 && join[0..<realm.count] == realm && join[realm.count] == '-';
   low: [NET_CODE] u8;
   jn_code(n, ifx ok then join else jn_lowest(j, low[..]));
-  if ok && j[0].with_n > 0 && net_json_field(answer, "with_full").count > 0 { jn_full(s, n, "", join); j[0].with_n = 0; }
+  if ok && j[0].with_n > 0 && rooms_list_with_full(answer) { jn_full(s, n, "", join); j[0].with_n = 0; }
   n[0].ticket_n = 0;   // a ticket is for one room
   jn_url(n);
   if asking { net_dest_swap(n); }

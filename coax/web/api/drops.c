@@ -275,7 +275,7 @@ static answer ask(PGconn *db, const char *sql, int n, const char *const *v) {
 }
 static void reply(int fd, answer a) {
   if (a.body) api_json(fd, a.status, a.body);
-  else api_json(fd, a.status, a.status == 400 ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+  else api_error(fd, a.status, a.status == 400 ? "not json" : "not kept");
   free(a.body); free(a.all);
 }
 #define Q(fn) "SELECT (x->>'status')::int, (x->'body')::text, x::text FROM " fn " x"
@@ -296,7 +296,7 @@ static bool str_of(const char *json, const char *key, char *out, size_t cap) {
 static void signin(const request *q, PGconn *db, const char *pk) {
   unsigned char raw[32]; char tok[65];
   int fd = open("/dev/urandom", O_RDONLY);
-  if (fd < 0 || read(fd, raw, 32) != 32) { if (fd >= 0) close(fd); api_json(q->fd, 503, "{\"error\":\"no randomness\"}"); return; }
+  if (fd < 0 || read(fd, raw, 32) != 32) { if (fd >= 0) close(fd); api_error(q->fd, 503, "no randomness"); return; }
   close(fd);
   for (int i = 0; i < 32; i++) snprintf(tok + 2 * i, 3, "%02x", raw[i]);
   char days[8]; snprintf(days, sizeof days, "%d", SESSION_DAYS);
@@ -306,11 +306,11 @@ static void signin(const request *q, PGconn *db, const char *pk) {
                              3, NULL, v, NULL, NULL, 0);
   bool ok = PQresultStatus(r) == PGRES_COMMAND_OK;
   PQclear(r);
-  if (!ok) { api_json(q->fd, 503, "{\"error\":\"no session\"}"); return; }
+  if (!ok) { api_error(q->fd, 503, "no session"); return; }
   char headers[300], body[160];
   snprintf(headers, sizeof headers, "Set-Cookie: " COOKIE "=%s; Path=" PREFIX "; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n", tok, SESSION_DAYS * 86400);
-  snprintf(body, sizeof body, "{\"pubkey\":\"%s\"}", pk);
-  api_respond(q->fd, 200, "application/json", headers, body, strlen(body));
+  size_t bn = api_word_text(body, sizeof body, "pubkey", pk);
+  api_respond(q->fd, 200, "application/json", headers, body, bn);
 }
 
 static void signout(const request *q, PGconn *db) {
@@ -320,7 +320,8 @@ static void signout(const request *q, PGconn *db) {
     PQclear(PQexecParams(db, "DELETE FROM drops.sessions WHERE token_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex')", 1, NULL, v, NULL, NULL, 0));
   }
   const char *h = "Set-Cookie: " COOKIE "=; Path=" PREFIX "; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n";
-  api_respond(q->fd, 200, "application/json", h, "{}", 2);
+  char none[8]; size_t nn = api_word_text(none, sizeof none, "", "");
+  api_respond(q->fd, 200, "application/json", h, none, nn);
 }
 
 // The bucket's part takes a second or more and this service answers one
@@ -334,7 +335,7 @@ static bool in_child(void) {
 
 static void add_file(const request *q, PGconn *db, const char *pk, bool admin, const char *drop) {
   char *body = malloc(q->body_len + 3);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!body) { api_error(q->fd, 503, "memory"); return; }
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
   const char *v[5] = {pk, admin ? "true" : "false", drop, body, env_or("OA_DROPS_PREFIX", "dev")};
   answer a = ask(db, Q("drops.admit($1, $2::bool, $3, $4::jsonb, $5)"), 5, v);
@@ -350,7 +351,7 @@ static void add_file(const request *q, PGconn *db, const char *pk, bool admin, c
   char session[2048];
   bool opened = open_upload(object, type, bytes, from, session, sizeof session);
   PGconn *c = api_db_new();
-  if (!c) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); _exit(0); }
+  if (!c) { api_error(q->fd, 503, "no database"); _exit(0); }
   const char *w[2] = {file, opened ? session : ""};
   reply(q->fd, ask(c, Q("drops.started($1, nullif($2, ''))"), 2, w));
   PQfinish(c);
@@ -368,7 +369,7 @@ static void file_done(const request *q, PGconn *db, const char *pk, const char *
   inspect(object, &size, md5, sizeof md5, &head);
   snprintf(sz, sizeof sz, "%lld", size);
   PGconn *c = api_db_new();
-  if (!c) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); free(head); _exit(0); }
+  if (!c) { api_error(q->fd, 503, "no database"); free(head); _exit(0); }
   const char *w[4] = {file, sz, md5, head ? head : ""};
   answer s = ask(c, Q("drops.scan($1, $2::bigint, nullif($3, ''), decode($4, 'hex'))"), 4, w);
   if (s.all && strstr(s.all, "\"delete\": true")) delete_object(object);
@@ -404,7 +405,7 @@ static void draft_child(int fd, const char *drop, const char *request) {
   snprintf(http, sizeof http, "%ld", status);
   snprintf(took, sizeof took, "%d", (int)(api_now_ms() - t0));
   PGconn *c = api_db_new();
-  if (!c) { api_json(fd, 503, "{\"error\":\"no database\"}"); free(b.p); return; }
+  if (!c) { api_error(fd, 503, "no database"); free(b.p); return; }
   const char *v[5] = {drop, http, b.p ? b.p : "", model, took};
   reply(fd, ask(c, Q("drops.draft_done($1, $2::int, $3, $4, $5::int)"), 5, v));
   PQfinish(c); free(b.p);
@@ -417,14 +418,14 @@ static void grow_draft(int fd, const char *pk, const char *drop, const target *t
 static void draft(const request *q, PGconn *db, const char *pk, const char *drop) {
   target t;
   if (grow_target(db, pk, drop, &t)) {   // a drop on a project: read with the project's work, in a child
-    if (!publisher_on()) { api_json(q->fd, 503, "{\"error\":\"this service can't read a project's work\"}"); return; }
+    if (!publisher_on()) { api_error(q->fd, 503, "this service can't read a project's work"); return; }
     if (in_child()) { grow_draft(q->fd, pk, drop, &t); _exit(0); }
     return;
   }
   const char *v[3] = {pk, drop, env_or("OA_DROPS_BUCKET", "openagentsgemini-project-drops")};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text, coalesce((x->'request')::text, '') FROM drops.draft_start($1, $2, $3) x",
                              3, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("drops: draft sql"); PQclear(r); api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("drops: draft sql"); PQclear(r); api_error(q->fd, 500, "not kept"); return; }
   int status = atoi(PQgetvalue(r, 0, 0));
   if (status != 200) { api_json(q->fd, status, PQgetvalue(r, 0, 1)); PQclear(r); return; }
   char *request = strdup(PQgetvalue(r, 0, 2));
@@ -436,7 +437,7 @@ static void draft(const request *q, PGconn *db, const char *pk, const char *drop
 // A call that takes the request's JSON body as $3.
 static void body_call(const request *q, PGconn *db, const char *pk, const char *drop, const char *sql) {
   char *body = malloc(q->body_len + 3);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!body) { api_error(q->fd, 503, "memory"); return; }
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
   reply(q->fd, ask(db, sql, 3, (const char *[]){pk, drop, body}));
   free(body);
@@ -1007,14 +1008,14 @@ static void grow_draft(int fd, const char *pk, const char *drop, const target *t
   relay *r = grow_relay(t, sk, &evs);
   memset(sk, 0, 32);
   relay_close(r);
-  if (!r) { api_json(fd, 502, "{\"error\":\"the project's work can't be read now\"}"); return; }
+  if (!r) { api_error(fd, 502, "the project's work can't be read now"); return; }
   PGconn *c = api_db_new();
-  if (!c) { free(evs); api_json(fd, 503, "{\"error\":\"no database\"}"); return; }
+  if (!c) { free(evs); api_error(fd, 503, "no database"); return; }
   const char *v[4] = {pk, drop, env_or("OA_DROPS_BUCKET", "openagentsgemini-project-drops"), evs};
   PGresult *q = PQexecParams(c, "SELECT (x->>'status')::int, (x->'body')::text, coalesce((x->'request')::text, '') FROM drops.grow_start($1, $2, $3, $4::jsonb) x",
                              4, NULL, v, NULL, NULL, 0);
   free(evs);
-  if (PQresultStatus(q) != PGRES_TUPLES_OK || PQntuples(q) != 1) { PQclear(q); PQfinish(c); api_json(fd, 500, "{\"error\":\"not kept\"}"); return; }
+  if (PQresultStatus(q) != PGRES_TUPLES_OK || PQntuples(q) != 1) { PQclear(q); PQfinish(c); api_error(fd, 500, "not kept"); return; }
   int status = atoi(PQgetvalue(q, 0, 0));
   if (status != 200) { api_json(fd, status, PQgetvalue(q, 0, 1)); PQclear(q); PQfinish(c); return; }
   char *request = strdup(PQgetvalue(q, 0, 2));
@@ -1069,7 +1070,7 @@ static const char *grow_steps(PGconn *c, const char *pk, const char *drop, const
 // {slug, name, key, members}. Only the sealed key is kept; the key's digits are zeroed before the body goes on.
 static void adopt(const request *q, PGconn *db, const char *signer) {
   char *body = malloc(q->body_len + 1), hexkey[80] = "", slug[80] = "", sealed[200], pub[65];
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!body) { api_error(q->fd, 503, "memory"); return; }
   memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
   unsigned char sk[32];
   bool ok = str_of(body, "key", hexkey, sizeof hexkey) && strlen(hexkey) == 64 && str_of(body, "slug", slug, sizeof slug);
@@ -1079,7 +1080,7 @@ static void adopt(const request *q, PGconn *db, const char *signer) {
   memset(hexkey, 0, sizeof hexkey);
   ok = ok && nostr_pubkey(sk, pub) && !strcmp(pub, signer) && seal(getenv("OA_PROJECT_KEK"), slug, sk, 32, sealed, sizeof sealed);
   memset(sk, 0, 32);
-  if (!ok) { free(body); api_json(q->fd, 403, "{\"error\":\"sign with the project's own key, and send that key\"}"); return; }
+  if (!ok) { free(body); api_error(q->fd, 403, "sign with the project's own key, and send that key"); return; }
   reply(q->fd, ask(db, Q("drops.adopt($1, $2::jsonb, $3)"), 3, (const char *[]){signer, body, sealed}));
   free(body);
 }
@@ -1093,7 +1094,7 @@ static void publish(const request *q, PGconn *db, const char *pk, const char *dr
     free(ap.body); free(ap.all);
     if (!in_child()) return;
     PGconn *c = api_db_new();
-    if (!c) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); _exit(0); }
+    if (!c) { api_error(q->fd, 503, "no database"); _exit(0); }
     const char *why = grow_steps(c, pk, drop, &t);
     if (why) api_log("drops: accept stopped at %s", why);
     reply(q->fd, ask(c, Q("drops.grow_answer($1, $2, $3)"), 3, (const char *[]){pk, drop, why}));
@@ -1110,7 +1111,7 @@ static void publish(const request *q, PGconn *db, const char *pk, const char *dr
   if (done) { reply(q->fd, ask(db, Q("drops.publish_answer($1, $2, $3, null)"), 3, (const char *[]){pk, drop, slug})); return; }
   if (!in_child()) return;
   PGconn *c = api_db_new();
-  if (!c) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); _exit(0); }
+  if (!c) { api_error(q->fd, 503, "no database"); _exit(0); }
   const char *why = publish_steps(c, slug, has_key);
   if (why) api_log("drops: publish stopped at %s", why);
   reply(q->fd, ask(c, Q("drops.publish_answer($1, $2, $3, $4)"), 4, (const char *[]){pk, drop, slug, why}));
@@ -1129,36 +1130,36 @@ bool drops_route(const request *q) {
   const char *rest = q->path + strlen(PREFIX);
   if (*rest == '/') rest++;
   bool post = !strcmp(q->method, "POST");
-  if (!post && strcmp(q->method, "GET")) { api_json(q->fd, 405, "{\"error\":\"GET or POST\"}"); return true; }
+  if (!post && strcmp(q->method, "GET")) { api_error(q->fd, 405, "GET or POST"); return true; }
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { api_error(q->fd, 503, "no database"); return true; }
   char pk[65]; bool signed_req;
   bool in = who(q, db, pk, &signed_req);
   if (post) {   // CSRF: a write comes from this site's pages, or is signed
     char from[256];
     bool has_origin = api_header(q, "Origin", from, sizeof from) != NULL;
-    if ((has_origin && strcmp(from, origin())) || (!has_origin && !signed_req)) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
+    if ((has_origin && strcmp(from, origin())) || (!has_origin && !signed_req)) { api_error(q->fd, 403, "cross-site"); return true; }
   }
   if (!strcmp(rest, "signout") && post) { signout(q, db); return true; }
-  if (!in) { api_json(q->fd, 401, "{\"error\":\"log in to drop files\"}"); return true; }
+  if (!in) { api_error(q->fd, 401, "log in to drop files"); return true; }
   bool admin = admin_is(pk);
   if (!strcmp(rest, "signin")) {
-    if (!post || !signed_req) { api_json(q->fd, 401, "{\"error\":\"sign the sign-in\"}"); return true; }
+    if (!post || !signed_req) { api_error(q->fd, 401, "sign the sign-in"); return true; }
     PGresult *r = PQexecParams(db, "SELECT drops.may($1, $2::bool)", 2, NULL, (const char *[]){pk, admin ? "true" : "false"}, NULL, NULL, 0);
     bool may = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && PQgetvalue(r, 0, 0)[0] == 't';
     PQclear(r);
-    if (!may) { api_json(q->fd, 403, "{\"error\":\"this key may not drop files yet\"}"); return true; }
+    if (!may) { api_error(q->fd, 403, "this key may not drop files yet"); return true; }
     signin(q, db, pk);
     return true;
   }
   if (!strcmp(rest, "adopt") && post) {
-    if (!signed_req || !publisher_on()) { api_json(q->fd, signed_req ? 503 : 401, "{\"error\":\"sign with the project's own key\"}"); return true; }
+    if (!signed_req || !publisher_on()) { api_error(q->fd, signed_req ? 503 : 401, "sign with the project's own key"); return true; }
     adopt(q, db, pk);
     return true;
   }
   if (!strncmp(rest, "home/", 5) && !post) {   // home/SLUG/PUBKEY: may this viewer drop on that project?
     char slug[81] = "", ppk[65] = "";
-    if (sscanf(rest + 5, "%80[a-z0-9-]/%64[0-9a-f]", slug, ppk) != 2 || strlen(ppk) != 64) { api_json(q->fd, 404, "{\"error\":\"not found\"}"); return true; }
+    if (sscanf(rest + 5, "%80[a-z0-9-]/%64[0-9a-f]", slug, ppk) != 2 || strlen(ppk) != 64) { api_error(q->fd, 404, "not found"); return true; }
     reply(q->fd, ask(db, Q("drops.home_for($1, $2::bool, $3, $4)"), 4, (const char *[]){pk, admin ? "true" : "false", slug, ppk}));
     return true;
   }
@@ -1166,13 +1167,13 @@ bool drops_route(const request *q) {
   if (!*rest) {
     if (post) {
       char *body = malloc(q->body_len + 3);
-      if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+      if (!body) { api_error(q->fd, 503, "memory"); return true; }
       if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
       PGresult *ok = PQexecParams(db, "SELECT jsonb_typeof($1::jsonb) = 'object'", 1, NULL, (const char *[]){body}, NULL, NULL, 0);
       bool obj = PQresultStatus(ok) == PGRES_TUPLES_OK && PQgetvalue(ok, 0, 0)[0] == 't';
       PQclear(ok);
       if (obj) reply(q->fd, ask(db, Q("drops.new_drop($1, $2::bool, $3::jsonb)"), 3, (const char *[]){pk, admin ? "true" : "false", body}));
-      else api_json(q->fd, 400, "{\"error\":\"a JSON object\"}");
+      else api_error(q->fd, 400, "a JSON object");
       free(body);
     }
     else reply(q->fd, ask(db, Q("drops.list($1)"), 1, (const char *[]){pk}));
@@ -1182,9 +1183,9 @@ bool drops_route(const request *q) {
   const char *slash = strchr(rest, '/');
   size_t dn = slash ? (size_t)(slash - rest) : strlen(rest);
   if (dn < sizeof drop) { memcpy(drop, rest, dn); drop[dn] = 0; }
-  if (!id_ok(drop, 'd')) { api_json(q->fd, 404, "{\"error\":\"not found\"}"); return true; }
+  if (!id_ok(drop, 'd')) { api_error(q->fd, 404, "not found"); return true; }
   if (!slash) {
-    if (post) { api_json(q->fd, 405, "{\"error\":\"GET a drop\"}"); return true; }
+    if (post) { api_error(q->fd, 405, "GET a drop"); return true; }
     reply(q->fd, ask(db, Q("drops.get($1, $2)"), 2, (const char *[]){pk, drop}));
     return true;
   }
@@ -1201,7 +1202,7 @@ bool drops_route(const request *q) {
     file_done(q, db, pk, drop, file);
     return true;
   }
-  api_json(q->fd, 404, "{\"error\":\"not found\"}");
+  api_error(q->fd, 404, "not found");
   return true;
 }
 

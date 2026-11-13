@@ -1,0 +1,131 @@
+{
+ "profile": "systemone-json-v1",
+ "about": "The System One JSON contract (psionic/book/ch020-serve-systemone.md): the request {model, service_tier, state, questions}, the answer {model, answers, usage, ...} and a door's refusal {error:{code}}. One writer of the request (coax/lib/systemone/request.coax), one reader of the answer (answers.coax), one writer of our doors' refusal (refusal.coax). The bytes are the contract's documented example, request files Psionic's guard checks send (psionic/fixtures/guard-guide-requests-v1, their SHA256SUMS beside them), an answer psionic-serve printed, and what /api/v1/systemone answers for each status it refuses with. Checked by coax/lib/systemone/json-profile.coax.",
+ "request": {
+  "members": [
+   "model",
+   "service_tier",
+   "state",
+   "questions"
+  ],
+  "question": {
+   "choice": [
+    "type",
+    "instructions",
+    "criteria{KEY:LABEL|null}"
+   ],
+   "noul": [
+    "type",
+    "instructions"
+   ],
+   "score": [
+    "type",
+    "instructions",
+    "criteria[LEVEL]"
+   ]
+  }
+ },
+ "requests": [
+  {
+   "name": "the contract's support-ticket example (Baseten's documentation)",
+   "body": "{\"model\":\"decision-models/baseten-elephant-9b-latest\",\"service_tier\":\"default\",\"state\":\"I was charged twice for my subscription. Please refund the duplicate charge.\",\"questions\":{\"route\":{\"type\":\"choice\",\"instructions\":\"Which team should handle this request?\",\"criteria\":{\"billing\":\"Billing, payments, and refunds\",\"technical_support\":\"Technical troubleshooting\"}},\"refund\":{\"type\":\"noul\",\"instructions\":\"Is the customer asking for a refund?\"},\"urgency\":{\"type\":\"score\",\"instructions\":\"How urgent is the request?\",\"criteria\":[\"Routine request\",\"Needs attention today\",\"Immediate emergency\"]}}}"
+  },
+  {
+   "name": "psionic/fixtures/guard-guide-requests-v1/case0.json",
+   "body": "{\"model\":\"elephant-1\",\"state\":{\"policy\":\"everglade-directions-v1\",\"help\":\"requested_directions\",\"current_goal\":\"find_work\",\"canonical_route_available\":true,\"at_destination\":false,\"guide_tip_visible\":false},\"questions\":{\"guide\":{\"type\":\"choice\",\"instructions\":\"Choose the matching requested directions tip. Quiet when no current available unmet goal matches. Use world facts; never invent a destination.\",\"criteria\":{\"quiet\":\"No relevant requested orientation remains.\",\"quest_board\":\"Commons board: find_work or return_to_board.\",\"east_gate\":\"East Gate to Deep Wood/waystone: waystone.\",\"north_trail\":\"North Trail to old ruins: ruins.\",\"west_gate\":\"West Gate to river crossing: river.\"}}}}"
+  },
+  {
+   "name": "psionic/fixtures/guard-guide-requests-v1/case1.json",
+   "body": "{\"model\":\"elephant-1\",\"state\":{\"policy\":\"everglade-directions-v1\",\"help\":\"requested_directions\",\"current_goal\":\"waystone\",\"canonical_route_available\":true,\"at_destination\":false,\"guide_tip_visible\":false},\"questions\":{\"guide\":{\"type\":\"choice\",\"instructions\":\"Choose the matching requested directions tip. Quiet when no current available unmet goal matches. Use world facts; never invent a destination.\",\"criteria\":{\"quiet\":\"No relevant requested orientation remains.\",\"quest_board\":\"Commons board: find_work or return_to_board.\",\"east_gate\":\"East Gate to Deep Wood/waystone: waystone.\",\"north_trail\":\"North Trail to old ruins: ruins.\",\"west_gate\":\"West Gate to river crossing: river.\"}}}}"
+  },
+  {
+   "name": "psionic/fixtures/guard-guide-requests-v1/case2.json",
+   "body": "{\"model\":\"elephant-1\",\"state\":{\"policy\":\"everglade-directions-v1\",\"help\":\"requested_directions\",\"current_goal\":\"ruins\",\"canonical_route_available\":true,\"at_destination\":false,\"guide_tip_visible\":false},\"questions\":{\"guide\":{\"type\":\"choice\",\"instructions\":\"Choose the matching requested directions tip. Quiet when no current available unmet goal matches. Use world facts; never invent a destination.\",\"criteria\":{\"quiet\":\"No relevant requested orientation remains.\",\"quest_board\":\"Commons board: find_work or return_to_board.\",\"east_gate\":\"East Gate to Deep Wood/waystone: waystone.\",\"north_trail\":\"North Trail to old ruins: ruins.\",\"west_gate\":\"West Gate to river crossing: river.\"}}}}"
+  },
+  {
+   "name": "psionic/fixtures/guard-guide-requests-v1/case3.json",
+   "body": "{\"model\":\"elephant-1\",\"state\":{\"policy\":\"everglade-directions-v1\",\"help\":\"requested_directions\",\"current_goal\":\"river\",\"canonical_route_available\":true,\"at_destination\":false,\"guide_tip_visible\":false},\"questions\":{\"guide\":{\"type\":\"choice\",\"instructions\":\"Choose the matching requested directions tip. Quiet when no current available unmet goal matches. Use world facts; never invent a destination.\",\"criteria\":{\"quiet\":\"No relevant requested orientation remains.\",\"quest_board\":\"Commons board: find_work or return_to_board.\",\"east_gate\":\"East Gate to Deep Wood/waystone: waystone.\",\"north_trail\":\"North Trail to old ruins: ruins.\",\"west_gate\":\"West Gate to river crossing: river.\"}}}}"
+  },
+  {
+   "name": "psionic/fixtures/guard-guide-requests-v1/case4.json",
+   "body": "{\"model\":\"elephant-1\",\"state\":{\"policy\":\"everglade-directions-v1\",\"help\":\"requested_directions\",\"current_goal\":\"return_to_board\",\"canonical_route_available\":true,\"at_destination\":false,\"guide_tip_visible\":false},\"questions\":{\"guide\":{\"type\":\"choice\",\"instructions\":\"Choose the matching requested directions tip. Quiet when no current available unmet goal matches. Use world facts; never invent a destination.\",\"criteria\":{\"quiet\":\"No relevant requested orientation remains.\",\"quest_board\":\"Commons board: find_work or return_to_board.\",\"east_gate\":\"East Gate to Deep Wood/waystone: waystone.\",\"north_trail\":\"North Trail to old ruins: ruins.\",\"west_gate\":\"West Gate to river crossing: river.\"}}}}"
+  }
+ ],
+ "answers": [
+  {
+   "name": "Baseten's documented answer to the support-ticket example",
+   "request": "{\"model\":\"decision-models/baseten-elephant-9b-latest\",\"service_tier\":\"default\",\"state\":\"I was charged twice for my subscription. Please refund the duplicate charge.\",\"questions\":{\"route\":{\"type\":\"choice\",\"instructions\":\"Which team should handle this request?\",\"criteria\":{\"billing\":\"Billing, payments, and refunds\",\"technical_support\":\"Technical troubleshooting\"}},\"refund\":{\"type\":\"noul\",\"instructions\":\"Is the customer asking for a refund?\"},\"urgency\":{\"type\":\"score\",\"instructions\":\"How urgent is the request?\",\"criteria\":[\"Routine request\",\"Needs attention today\",\"Immediate emergency\"]}}}",
+   "body": "{\"model\":\"decision-models/baseten-elephant-9b-latest\",\"answers\":{\"route\":{\"type\":\"choice\",\"choice\":\"billing\",\"confidence\":0.9984472837920018,\"probabilities\":{\"billing\":0.9992236418960009,\"technical_support\":0.0007763581039990197}},\"refund\":{\"type\":\"noul\",\"noul\":0.9900829878334823},\"urgency\":{\"type\":\"score\",\"score\":0.5125449725145267,\"confidence\":0.23118254122820991,\"legend\":{\"0\":\"Routine request\",\"1\":\"Needs attention today\",\"2\":\"Immediate emergency\"},\"probabilities\":{\"0\":0.5087426775022438,\"1\":0.4699696724809857,\"2\":0.021287650016770514}}},\"usage\":{\"input_tokens\":231,\"output_tokens\":3}}"
+  },
+  {
+   "name": "psionic-serve's answer in psionic/fixtures/serve-decision.out, to a request with its two questions",
+   "request": "{\"model\":\"psionic-toy\",\"state\":\"cold\",\"questions\":{\"hot\":{\"type\":\"noul\",\"instructions\":\"Is it hot?\"},\"drink\":{\"type\":\"choice\",\"instructions\":\"Which drink?\",\"criteria\":{\"tea\":null,\"soup\":null}}}}",
+   "body": "{\"model\":\"psionic-toy\",\"answers\":{\"hot\":{\"type\":\"noul\",\"noul\":0.437308645},\"drink\":{\"type\":\"choice\",\"choice\":\"soup\",\"confidence\":0.562514618,\"probabilities\":{\"tea\":0.437485382,\"soup\":0.562514618}}},\"usage\":null,\"service\":{\"door\":\"psionic\",\"version\":\"psionic-serve-v1\",\"identity\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\"},\"latency_ms\":0}"
+  }
+ ],
+ "refusals": [
+  {
+   "status": 401,
+   "code": "authentication_required",
+   "body": "{\"error\":{\"code\":\"authentication_required\"}}"
+  },
+  {
+   "status": 403,
+   "code": "cross_site",
+   "body": "{\"error\":{\"code\":\"cross_site\"}}"
+  },
+  {
+   "status": 405,
+   "code": "method_not_allowed",
+   "body": "{\"error\":{\"code\":\"method_not_allowed\"}}"
+  },
+  {
+   "status": 413,
+   "code": "limit_exceeded",
+   "body": "{\"error\":{\"code\":\"limit_exceeded\"}}"
+  },
+  {
+   "status": 415,
+   "code": "application_json_required",
+   "body": "{\"error\":{\"code\":\"application_json_required\"}}"
+  },
+  {
+   "status": 429,
+   "code": "demo_limit_exceeded",
+   "body": "{\"error\":{\"code\":\"demo_limit_exceeded\"}}"
+  },
+  {
+   "status": 422,
+   "code": "unsupported_input",
+   "body": "{\"error\":{\"code\":\"unsupported_input\"}}"
+  },
+  {
+   "status": 400,
+   "code": "invalid_request_or_model",
+   "body": "{\"error\":{\"code\":\"invalid_request_or_model\"}}"
+  },
+  {
+   "status": 504,
+   "code": "mesh_timeout",
+   "body": "{\"error\":{\"code\":\"mesh_timeout\"}}"
+  },
+  {
+   "status": 502,
+   "code": "mesh_unavailable",
+   "body": "{\"error\":{\"code\":\"mesh_unavailable\"}}"
+  },
+  {
+   "status": 503,
+   "code": "mesh_unavailable",
+   "body": "{\"error\":{\"code\":\"mesh_unavailable\"}}"
+  }
+ ],
+ "refused_requests": [
+  {
+   "name": "no questions",
+   "model": "elephant-1",
+   "state": "\"x\"",
+   "questions": "{}"
+  }
+ ]
+}

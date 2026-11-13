@@ -135,13 +135,14 @@ static void la_refuse(const request *q, int status, int64_t code) {
     reply_lines(q, status, out);
     return;
   }
-  snprintf(out, sizeof out, "{\"error\":\"%.*s\",\"code\":%lld}", (int)w.count, w.data, (long long)code);
+  char words[200]; snprintf(words, sizeof words, "%.*s", (int)w.count, w.data);
+  api_error_num_text(out, sizeof out, words, "code", (long long)code);
   reply(q, status, out);
 }
 static void say(const request *q, int status, const char *words) {
   char json[400];
   if (as_lines(q)) { snprintf(json, sizeof json, "error %s\n", words); reply_lines(q, status, json); return; }
-  snprintf(json, sizeof json, "{\"error\":\"%s\"}", words);
+  api_error_text(json, sizeof json, words);
   reply(q, status, json);
 }
 

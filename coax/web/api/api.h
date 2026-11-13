@@ -21,6 +21,22 @@ double api_now_ms(void);
 void api_log(const char *fmt, ...);
 void api_respond(int fd, int status, const char *type, const char *extra_headers, const void *body, size_t n);
 void api_json(int fd, int status, const char *json);
+void api_route_at(const char *name);   // a route function called by another names itself (the checks' X-OA-Route header, api.c)
+// A refusal, {"error":"WORDS"}: the one writer is error-wire.coax (api-wire.coax's ErrorReply; Protocol,
+// #13250). No route file spells the body itself. api_error_with adds headers; api_error_text writes
+// the body to out (NUL-ended) for a reply sent another way and returns its length. Words that do
+// not fit are cut. The num and word forms add one member the route's own message names.
+void api_error(int fd, int status, const char *words);
+void api_error_with(int fd, int status, const char *extra_headers, const char *words);
+size_t api_error_text(char *out, size_t cap, const char *words);
+size_t api_error_spaced_text(char *out, size_t cap, const char *words);   // {"error": "WORDS"}, as Postgres writes it
+void api_error_num(int fd, int status, const char *words, const char *key, long long num);
+void api_error_word(int fd, int status, const char *words, const char *key, const char *word);
+size_t api_error_num_text(char *out, size_t cap, const char *words, const char *key, long long num);   // 0: it did not fit
+// Two small answers the same unit writes: {"KEY":N} and {"KEY":"WORD","KEY2":"WORD2"}. 0: it did not fit.
+size_t api_num_text(char *out, size_t cap, const char *key, long long num);
+size_t api_word_text(char *out, size_t cap, const char *key, const char *word);   // {"KEY":"WORD"}; key "" writes {}
+size_t api_words2_text(char *out, size_t cap, const char *key, const char *word, const char *key2, const char *word2);
 PGconn *api_db(void);
 PGconn *api_db_new(void);   // a connection of its own (a child process's)
 // auth.c: one hit on a per-minute limit, counted in Postgres so every worker and instance shares it (#13300).

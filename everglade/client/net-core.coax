@@ -13,6 +13,7 @@
 //   coax/bin/coax test --library everglade/client/net-core.coax
 #load "../shared/everglade-wire.coax";
 #load "../shared/everglade-move-types.coax";
+#load "../../metaverse-engine/net/json-field.coax";   // net_json_field: the page's reader of an API answer's member
 #load "../../metaverse-engine/net/interp.coax";
 #load "../../metaverse-engine/net/predict.coax";
 
@@ -134,18 +135,6 @@ net_code_ok :: (t: string) -> bool {
   return true;
 }
 net_number :: (t: string) -> int { r: [1] WireRd; v := wire_num(t, r[..]); return ifx r[0].ok then v else -1; }
-net_json_field :: (t: string, name: string) -> string {
-  for i: 0..<t.count {
-    if t[i] != '"' || i + name.count + 3 > t.count || t[i + 1..<i + 1 + name.count] != name || t[i + 1 + name.count] != '"' || t[i + 2 + name.count] != ':' { continue; }
-    a := i + 3 + name.count;
-    q := a < t.count && t[a] == '"';
-    if q { a += 1; }
-    e := a;
-    while e < t.count && (ifx q then t[e] != '"' else (t[e] != ',' && t[e] != '}')) { e += 1; }
-    return t[a..<e];
-  }
-  return "";
-}
 // This page's build, "ENGINE.RULES.CONTENT" (WirePins), at `at` in out: the end.
 net_put_build :: (out: [] u8, at: int) -> int { return net_put_build_at(out, at, 0); }
 // ... with its content tables at revision `rev` (wire_pins_at; 0: a page that carries none).

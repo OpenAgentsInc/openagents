@@ -1,0 +1,559 @@
+syntax = "proto3";
+
+package openagents.api.v1alpha1;
+
+// What coax/web/api/player.c answers, route by route (Protocol, GitHub #13250; profile
+// api-routes; docs/protocol/api-routes-v1alpha1.md). Each message names the members
+// of one answer as they ship: json_name is the key on the wire, a `bytes` member is
+// JSON carried as it came, and a member may be absent or null. The messages were
+// read off a run of the API suite and are held to every later run:
+// proto/verse/api-routes-v1alpha1.json holds real answers and their routes, and
+// coax/web/api/routes-goldens.coax holds each answer's keys to its message here.
+// A refusal with only its words is ErrorReply (error.proto). Most bodies are built
+// in SQL; what the C builds goes through a Coax unit.
+
+// GET /api/log/* 200
+message PlayerOne {
+  optional double at = 1 [json_name = "at"];
+  optional PlayerOneBy by = 2 [json_name = "by"];
+  optional string id = 3 [json_name = "id"];
+  optional string who = 4 [json_name = "who"];
+  optional string unit = 5 [json_name = "unit"];
+  optional PlayerOneDelta delta = 6 [json_name = "delta"];
+  optional bool guest = 7 [json_name = "guest"];
+  optional string state = 8 [json_name = "state"];
+  optional int64 amount = 9 [json_name = "amount"];
+  optional string summary = 10 [json_name = "summary"];
+  optional double decided_at = 11 [json_name = "decidedAt"];
+  optional string decided_by = 12 [json_name = "decidedBy"];
+  optional int64 version = 13 [json_name = "version"];
+}
+
+message PlayerOneBy {
+  optional string player = 1 [json_name = "player"];
+  optional bytes account = 2 [json_name = "account"];   // JSON carried as it came
+}
+
+message PlayerOneDelta {
+  repeated PlayerOneDeltaAdded added = 1 [json_name = "added"];
+}
+
+message PlayerOneDeltaAdded {
+  optional PlayerOneDeltaAddedItem item = 1 [json_name = "item"];
+  optional string list = 2 [json_name = "list"];
+}
+
+message PlayerOneDeltaAddedItem {
+  optional string id = 1 [json_name = "id"];
+  optional string name = 2 [json_name = "name"];
+}
+
+// GET /api/planets 200; GET /api/playtest/planets 200
+message Player {
+  optional int64 n = 1 [json_name = "n"];
+  repeated PlayerPlanets planets = 2 [json_name = "planets"];
+}
+
+// GET /api/playtest/planets/* 200; POST /api/playtest/planets 200
+message PlayerPlanets {
+  optional int64 n = 1 [json_name = "n"];
+  optional double at = 2 [json_name = "at"];
+  optional string id = 3 [json_name = "id"];
+  optional string art = 4 [json_name = "art"];
+  optional string cam = 5 [json_name = "cam"];
+  optional string kind = 6 [json_name = "kind"];
+  optional double made = 7 [json_name = "made"];
+  optional string name = 8 [json_name = "name"];
+  optional string cycle = 9 [json_name = "cycle"];
+  optional string owner = 10 [json_name = "owner"];
+}
+
+// GET /api/planets/mine 200
+message PlayerMine {
+  optional bytes saved = 1 [json_name = "saved"];   // JSON carried as it came
+  optional PlayerPlanets planet = 2 [json_name = "planet"];
+  optional bool invited = 3 [json_name = "invited"];
+}
+
+// GET /api/playtest/course/* 200
+message PlayerCourseOne {
+  optional string by = 1 [json_name = "by"];
+  optional string id = 2 [json_name = "id"];
+  optional bytes best = 3 [json_name = "best"];   // JSON carried as it came
+  optional bool mine = 4 [json_name = "mine"];
+  optional bytes hoops = 5 [json_name = "hoops"];   // JSON carried as it came
+  optional string realm = 6 [json_name = "realm"];
+  optional bytes times = 7 [json_name = "times"];   // JSON carried as it came
+}
+
+// GET /api/playtest/log/* 200
+message PlayerLogOne {
+  optional double at = 1 [json_name = "at"];
+  optional PlayerLogOneBy by = 2 [json_name = "by"];
+  optional string who = 3 [json_name = "who"];
+  optional string unit = 4 [json_name = "unit"];
+  optional string state = 5 [json_name = "state"];
+  optional int64 amount = 6 [json_name = "amount"];
+  optional string summary = 7 [json_name = "summary"];
+  optional int64 version = 8 [json_name = "version"];
+  optional string id = 9 [json_name = "id"];
+  optional PlayerOneDelta delta = 10 [json_name = "delta"];
+  optional bool guest = 11 [json_name = "guest"];
+  optional double decided_at = 12 [json_name = "decidedAt"];
+  optional string decided_by = 13 [json_name = "decidedBy"];
+}
+
+message PlayerLogOneBy {
+  optional string player = 1 [json_name = "player"];   // or null
+  optional string account = 2 [json_name = "account"];   // or null
+}
+
+// GET /api/playtest/party 200
+message PlayerParty {
+  optional int64 party = 1 [json_name = "party"];   // or null
+  optional int64 version = 2 [json_name = "version"];
+  optional int64 until = 3 [json_name = "until"];
+  repeated PlayerPartyMembers members = 4 [json_name = "members"];
+}
+
+message PlayerPartyMembers {
+  optional string id = 1 [json_name = "id"];
+  optional string name = 2 [json_name = "name"];
+  optional int64 hp = 3 [json_name = "hp"];   // or null
+  optional int64 hp_max = 4 [json_name = "hp_max"];   // or null
+  optional bool you = 5 [json_name = "you"];
+}
+
+// GET /api/playtest/planets/mine 200
+message PlayerPlanetsMine {
+  optional PlayerPlanetsMineSaved saved = 1 [json_name = "saved"];   // or null
+  optional PlayerPlanets planet = 2 [json_name = "planet"];   // or null
+  optional bool invited = 3 [json_name = "invited"];
+}
+
+message PlayerPlanetsMineSaved {
+  optional double at = 1 [json_name = "at"];
+  optional PlayerPlanetsMineSavedDoc doc = 2 [json_name = "doc"];
+}
+
+message PlayerPlanetsMineSavedDoc {
+  optional string id = 1 [json_name = "id"];
+  optional string kind = 2 [json_name = "kind"];
+}
+
+// GET /api/playtest/player 200
+message PlayerPlayer {
+  optional string id = 1 [json_name = "id"];
+  repeated string worlds = 2 [json_name = "worlds"];
+  optional string account = 3 [json_name = "account"];   // or null
+}
+
+// GET /api/playtest/progress/*/* 200
+message PlayerProgressOneOne {
+  optional int64 rev = 1 [json_name = "rev"];
+  optional PlayerProgressOneOneCurrent current = 2 [json_name = "current"];   // or null
+  optional PlayerProgressOneOnePrevious previous = 3 [json_name = "previous"];   // or null
+}
+
+message PlayerProgressOneOneCurrent {
+  optional double at = 1 [json_name = "at"];
+  optional string bytes = 2 [json_name = "bytes"];
+}
+
+message PlayerProgressOneOnePrevious {
+  optional int64 at = 1 [json_name = "at"];
+  optional string bytes = 2 [json_name = "bytes"];
+}
+
+// GET /api/playtest/room-control 200
+message PlayerRoomControlLines {
+  optional string pvp = 1 [json_name = "pvp"];
+  optional string edit = 2 [json_name = "edit"];
+  optional string event = 3 [json_name = "event"];
+  optional string levels = 4 [json_name = "levels"];
+  optional string kick = 5 [json_name = "kick"];
+}
+
+// GET /api/playtest/room-event 200
+message PlayerRoomEvent {
+  optional PlayerRoomEventDials dials = 1 [json_name = "dials"];
+  optional int64 start_n = 2 [json_name = "start_n"];
+  optional int64 stop_n = 3 [json_name = "stop_n"];
+  optional bytes started_ms = 4 [json_name = "started_ms"];   // JSON carried as it came
+  optional bool admin = 5 [json_name = "admin"];
+}
+
+message PlayerRoomEventDials {
+  optional bool on = 1 [json_name = "on"];
+  optional int64 size = 2 [json_name = "size"];
+  optional int64 every = 3 [json_name = "every"];
+  optional int64 gates = 4 [json_name = "gates"];
+  optional int64 waves = 5 [json_name = "waves"];
+  optional bool leader = 6 [json_name = "leader"];
+  optional bool levels = 7 [json_name = "levels"];
+  optional int64 reward = 8 [json_name = "reward"];
+  optional int64 minutes = 9 [json_name = "minutes"];
+  optional int64 cultists = 10 [json_name = "cultists"];
+  optional int64 fanatics = 11 [json_name = "fanatics"];
+  optional int64 warlocks = 12 [json_name = "warlocks"];
+  optional int64 level_cap = 13 [json_name = "level_cap"];
+  optional int64 aggression = 14 [json_name = "aggression"];
+  optional bool town_damage = 15 [json_name = "town_damage"];
+  optional int64 warlock_level = 16 [json_name = "warlock_level"];
+}
+
+// GET /api/playtest/room-mod 200
+message PlayerRoomMod {
+  repeated PlayerRoomModLog log = 1 [json_name = "log"];
+}
+
+message PlayerRoomModLog {
+  optional int64 n = 1 [json_name = "n"];
+  optional int64 at_ms = 2 [json_name = "at_ms"];
+  optional string by_who = 3 [json_name = "by_who"];
+  optional string verb = 4 [json_name = "verb"];
+  optional string whom = 5 [json_name = "whom"];
+  optional int64 minutes = 6 [json_name = "minutes"];
+  optional int64 until_ms = 7 [json_name = "until_ms"];
+  optional string reason = 8 [json_name = "reason"];
+  optional string source = 9 [json_name = "source"];
+  optional bytes room = 10 [json_name = "room"];   // JSON carried as it came
+  optional bytes shard = 11 [json_name = "shard"];   // JSON carried as it came
+  optional bytes gen = 12 [json_name = "gen"];   // JSON carried as it came
+  optional bytes seq = 13 [json_name = "seq"];   // JSON carried as it came
+  optional string outcome = 14 [json_name = "outcome"];
+  optional bool team = 15 [json_name = "team"];
+}
+
+// GET /api/playtest/world/* 200
+message PlayerWorldOne {
+  optional PlayerWorldOneDoc doc = 1 [json_name = "doc"];   // or null
+  optional int64 version = 2 [json_name = "version"];
+  optional double published_at = 3 [json_name = "publishedAt"];
+  optional string published_by = 4 [json_name = "publishedBy"];
+}
+
+message PlayerWorldOneDoc {
+  optional string kind = 1 [json_name = "kind"];
+  optional string name = 2 [json_name = "name"];
+  repeated PlayerWorldOneDocObjects objects = 3 [json_name = "objects"];
+  optional string bytes = 4 [json_name = "bytes"];
+  optional string edits = 5 [json_name = "edits"];
+  optional int64 everglade = 6 [json_name = "everglade"];
+}
+
+message PlayerWorldOneDocObjects {
+  optional double x = 1 [json_name = "x"];
+  optional string id = 2 [json_name = "id"];
+}
+
+// GET /api/playtest/world/*/owner 200
+message PlayerWorldOneOwner {
+  optional bool you = 1 [json_name = "you"];
+  optional string name = 2 [json_name = "name"];
+  optional bool open = 3 [json_name = "open"];
+  optional bool site = 4 [json_name = "site"];
+  optional bool claimed = 5 [json_name = "claimed"];
+}
+
+// GET /api/playtest/world/*/settings 200; POST /api/playtest/world/*/settings 200
+message PlayerWorldOneSettings {
+  optional PlayerWorldOneSettingsSettings settings = 1 [json_name = "settings"];
+  optional double at = 2 [json_name = "at"];
+  optional string by = 3 [json_name = "by"];
+}
+
+message PlayerWorldOneSettingsSettings {
+  optional PlayerWorldOneSettingsSettingsView view = 1 [json_name = "view"];
+}
+
+message PlayerWorldOneSettingsSettingsView {
+  optional string view = 1 [json_name = "view"];
+  optional bool allow_toggle = 2 [json_name = "allowToggle"];
+}
+
+// POST /api/award 200; POST /api/playtest/award 200
+message PlayerPost {
+  optional string planet = 1 [json_name = "planet"];
+}
+
+// POST /api/change/* 200; POST /api/playtest/change/* 200
+message PlayerOnePost {
+  optional string id = 1 [json_name = "id"];
+  optional string state = 2 [json_name = "state"];
+}
+
+// POST /api/playtest/change/*/*/accept 200
+message PlayerChangeOneOneAcceptPost {
+  optional string state = 1 [json_name = "state"];
+  optional int64 version = 2 [json_name = "version"];
+}
+
+// POST /api/playtest/change/*/*/decline 200
+message PlayerChangeOneOneDeclinePost {
+  optional string state = 1 [json_name = "state"];
+}
+
+// POST /api/playtest/course/* 200; POST /api/playtest/course/*/time 200
+message PlayerCourseOnePost {
+  optional string by = 1 [json_name = "by"];
+  optional string id = 2 [json_name = "id"];
+  optional int64 best = 3 [json_name = "best"];   // or null
+  optional bool mine = 4 [json_name = "mine"];
+  optional bytes hoops = 5 [json_name = "hoops"];   // JSON carried as it came
+  optional string realm = 6 [json_name = "realm"];
+  repeated PlayerCourseOnePostTimes times = 7 [json_name = "times"];
+}
+
+message PlayerCourseOnePostTimes {
+  optional int64 ms = 1 [json_name = "ms"];
+  optional bool mine = 2 [json_name = "mine"];
+  optional string name = 3 [json_name = "name"];
+}
+
+// POST /api/playtest/join 200
+message PlayerJoinPost {
+  optional bool joined = 1 [json_name = "joined"];
+  optional PlayerJoinPostPlayer player = 2 [json_name = "player"];
+}
+
+message PlayerJoinPostPlayer {
+  optional string id = 1 [json_name = "id"];
+  optional string key = 2 [json_name = "key"];
+  optional string account = 3 [json_name = "account"];
+}
+
+// POST /api/playtest/party/hide 200
+message PlayerPartyHidePost {
+  optional int64 party = 1 [json_name = "party"];
+  optional int64 version = 2 [json_name = "version"];
+  optional int64 until = 3 [json_name = "until"];
+  repeated PlayerPartyHidePostMembers members = 4 [json_name = "members"];
+}
+
+message PlayerPartyHidePostMembers {
+  optional string id = 1 [json_name = "id"];
+  optional string name = 2 [json_name = "name"];
+  optional bytes hp = 3 [json_name = "hp"];   // JSON carried as it came
+  optional bytes hp_max = 4 [json_name = "hp_max"];   // JSON carried as it came
+  optional bool you = 5 [json_name = "you"];
+}
+
+// POST /api/playtest/party/invite 200
+message PlayerPartyInvitePost {
+  optional int64 party = 1 [json_name = "party"];
+  optional string code = 2 [json_name = "code"];
+  optional int64 until = 3 [json_name = "until"];
+}
+
+// POST /api/playtest/party/join 200
+message PlayerPartyJoinPost {
+  optional int64 party = 1 [json_name = "party"];
+  optional int64 version = 2 [json_name = "version"];
+}
+
+// POST /api/playtest/party/leave 200
+message PlayerPartyLeavePost {
+  optional bytes party = 1 [json_name = "party"];   // JSON carried as it came
+}
+
+// POST /api/playtest/planets/mine 200
+message PlayerPlanetsMinePost {
+  optional double at = 1 [json_name = "at"];   // or null
+  optional string id = 2 [json_name = "id"];
+  optional bool invited = 3 [json_name = "invited"];
+}
+
+// POST /api/playtest/player 200
+message PlayerPlayerPost {
+  optional string id = 1 [json_name = "id"];
+  optional string key = 2 [json_name = "key"];
+  optional bytes account = 3 [json_name = "account"];   // JSON carried as it came
+}
+
+// POST /api/playtest/progress/*/* 200
+message PlayerProgressOneOnePost {
+  optional int64 rev = 1 [json_name = "rev"];
+  optional PlayerProgressOneOnePrevious current = 2 [json_name = "current"];
+  optional PlayerProgressOneOnePrevious previous = 3 [json_name = "previous"];   // or null
+}
+
+// POST /api/playtest/progress/*/* 409
+message PlayerProgressOneOnePostRefusal {
+  optional int64 rev = 1 [json_name = "rev"];
+  optional string error = 2 [json_name = "error"];
+  optional PlayerProgressOneOnePrevious current = 3 [json_name = "current"];   // or null
+  optional PlayerProgressOneOnePrevious previous = 4 [json_name = "previous"];   // or null
+}
+
+// POST /api/playtest/progress/*/*/erase 200
+message PlayerProgressOneOneErasePost {
+  optional bool erased = 1 [json_name = "erased"];
+}
+
+// POST /api/playtest/room-checkpoint 200; POST /api/playtest/room-checkpoint-v2 200
+message PlayerRoomCheckpointPost {
+  optional int64 v = 1 [json_name = "v"];
+  optional string status = 2 [json_name = "status"];
+  optional int64 owner = 3 [json_name = "owner"];
+  optional int64 process = 4 [json_name = "process"];
+  optional int64 rev = 5 [json_name = "rev"];
+  optional int64 accepted_at = 6 [json_name = "accepted_at"];
+}
+
+// POST /api/playtest/room-event 200
+message PlayerRoomEventPost {
+  optional PlayerRoomEventDials dials = 1 [json_name = "dials"];
+  optional int64 start_n = 2 [json_name = "start_n"];
+  optional int64 stop_n = 3 [json_name = "stop_n"];
+  optional int64 started_ms = 4 [json_name = "started_ms"];   // or null
+  optional bool admin = 5 [json_name = "admin"];
+}
+
+// POST /api/playtest/room-invite/* 200
+message PlayerRoomInviteOnePost {
+  optional string room = 1 [json_name = "room"];
+  optional int64 until = 2 [json_name = "until"];
+}
+
+// POST /api/playtest/room-items 200
+message PlayerRoomItemsPost {
+  optional string status = 1 [json_name = "status"];
+  optional int64 item = 2 [json_name = "item"];   // or null
+  optional bool replay = 3 [json_name = "replay"];
+  optional int64 ver = 4 [json_name = "ver"];
+  repeated int64 kinds = 5 [json_name = "kinds"];
+  optional PlayerRoomItemsPostRec rec = 6 [json_name = "rec"];   // or null
+}
+
+message PlayerRoomItemsPostRec {
+  optional int64 v = 1 [json_name = "v"];
+  optional string who = 2 [json_name = "who"];
+  optional string class = 3 [json_name = "class"];
+  optional int64 xp = 4 [json_name = "xp"];
+  optional int64 floor = 5 [json_name = "floor"];
+  optional bytes known = 6 [json_name = "known"];   // JSON carried as it came
+  repeated int64 bag = 7 [json_name = "bag"];
+  optional int64 inv = 8 [json_name = "inv"];
+  repeated int64 worn = 9 [json_name = "worn"];
+  optional int64 coin = 10 [json_name = "coin"];
+  optional bytes quests = 11 [json_name = "quests"];   // JSON carried as it came
+}
+
+// POST /api/playtest/room-kick 200
+message PlayerRoomKickPost {
+  optional bool kicked = 1 [json_name = "kicked"];
+  optional int64 hours = 2 [json_name = "hours"];
+}
+
+// POST /api/playtest/room-mod 200
+message PlayerRoomModPost {
+  optional bool ok = 1 [json_name = "ok"];
+  optional string verb = 2 [json_name = "verb"];
+  optional string player = 3 [json_name = "player"];
+  optional int64 until = 4 [json_name = "until"];
+}
+
+// POST /api/playtest/room-mod-log 200; POST /api/playtest/room-vitals 200
+message PlayerRoomModLogPostLines {
+  optional string receipt = 1 [json_name = "receipt"];
+}
+
+// POST /api/playtest/room-state 200
+message PlayerRoomStatePost {
+  optional bool kept = 1 [json_name = "kept"];
+  optional string refused = 2 [json_name = "refused"];
+  optional bool ok = 3 [json_name = "ok"];
+}
+
+// POST /api/playtest/room-state 403
+message PlayerRoomStatePostRefusal {
+  optional string error = 1 [json_name = "error"];
+  optional string refused = 2 [json_name = "refused"];
+}
+
+// POST /api/playtest/room-ticket/* 200
+message PlayerRoomTicketOnePost {
+  optional string ticket = 1 [json_name = "ticket"];
+  optional string id = 2 [json_name = "id"];
+  optional bool account = 3 [json_name = "account"];
+  optional bool admin = 4 [json_name = "admin"];
+  optional string name = 5 [json_name = "name"];
+  optional int64 expires = 6 [json_name = "expires"];
+  optional string room = 7 [json_name = "room"];
+  optional int64 shard = 8 [json_name = "shard"];
+  optional int64 hp = 9 [json_name = "hp"];
+  optional int64 xp = 10 [json_name = "xp"];
+  optional bool full = 11 [json_name = "full"];
+  optional string asked = 12 [json_name = "asked"];
+  optional string by = 13 [json_name = "by"];
+  optional bool party_away = 14 [json_name = "party_away"];
+  optional string party_full = 15 [json_name = "party_full"];
+  optional int64 wanted = 16 [json_name = "wanted"];
+  optional string look = 17 [json_name = "look"];
+  optional string class = 18 [json_name = "class"];
+}
+
+// POST /api/playtest/room-ticket/* 403; POST /api/playtest/room-ticket/* 429; POST /api/playtest/room-ticket/* 503
+message PlayerRoomTicketOnePostRefusal {
+  optional string error = 1 [json_name = "error"];
+  optional int64 until = 2 [json_name = "until"];
+  optional int64 retry_ms = 3 [json_name = "retry_ms"];
+  optional int64 waiting = 4 [json_name = "waiting"];
+  optional int64 last_wait_ms = 5 [json_name = "last_wait_ms"];
+}
+
+// POST /api/playtest/room-vitals 200
+message PlayerRoomVitalsPost {
+  optional int64 kept = 1 [json_name = "kept"];
+}
+
+// POST /api/playtest/signin 200
+message PlayerSigninPost {
+  optional string npub = 1 [json_name = "npub"];
+  optional PlayerSigninPostMoved moved = 2 [json_name = "moved"];
+  optional PlayerJoinPostPlayer player = 3 [json_name = "player"];
+  optional bool signed_in = 4 [json_name = "signedIn"];
+}
+
+message PlayerSigninPostMoved {
+  optional int64 saves = 1 [json_name = "saves"];
+  optional int64 worlds = 2 [json_name = "worlds"];
+  optional int64 sessions = 3 [json_name = "sessions"];
+}
+
+// POST /api/playtest/survey 200
+message PlayerSurveyPost {
+}
+
+// POST /api/playtest/survey/answer 200
+message PlayerSurveyAnswerPost {
+  optional bool saved = 1 [json_name = "saved"];
+}
+
+// POST /api/playtest/world/* 200
+message PlayerWorldOnePost {
+  optional int64 version = 1 [json_name = "version"];
+}
+
+// POST /api/playtest/world/* 403
+message PlayerWorldOnePostRefusal {
+  optional string error = 1 [json_name = "error"];
+  optional bool offer = 2 [json_name = "offer"];
+}
+
+// POST /api/playtest/world/*/open 200
+message PlayerWorldOneOpenPost {
+  optional bool open = 1 [json_name = "open"];
+}
+
+// POST /api/playtest/world/*/reset 200
+message PlayerWorldOneResetPost {
+  optional int64 was = 1 [json_name = "was"];
+  optional bool reset = 2 [json_name = "reset"];
+}
+
+// POST /api/playtest/worlds 200
+message PlayerWorldsPost {
+  optional string id = 1 [json_name = "id"];
+}

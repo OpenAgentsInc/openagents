@@ -122,25 +122,25 @@ int stk_room_write_c(const char *masters, const char *signer, const char *purpos
    set: the answer is 0 (no shard bound). Refused, it is answered and the answer is -1. */
 int room_write_signed(const request *q, const char *purpose, const char *body, size_t n) {
   char given[80], signer[24];
-  if (!api_header(q, "X-Room-Mac", given, sizeof given) || strlen(given) != 64) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return -1; }
+  if (!api_header(q, "X-Room-Mac", given, sizeof given) || strlen(given) != 64) { api_error(q->fd, 401, "unsigned"); return -1; }
   const char *masters = getenv("OA_ROOM_WRITE_MASTER");
   if (api_header(q, "X-Room-Signer", signer, sizeof signer)) {
-    if (!masters || !*masters) { api_json(q->fd, 503, "{\"error\":\"no write key\"}"); return -1; }
+    if (!masters || !*masters) { api_error(q->fd, 503, "no write key"); return -1; }
     int shard = stk_room_write_c(masters, signer, purpose, body, n, given);
-    if (shard < 1) { api_json(q->fd, 401, "{\"error\":\"bad mac\"}"); return -1; }
+    if (shard < 1) { api_error(q->fd, 401, "bad mac"); return -1; }
     return shard;
   }
   const char *secret = getenv("OA_ROOM_TICKET_KEY");
   if (!secret || strlen(secret) < 32) {
-    if (masters && *masters) api_json(q->fd, 401, "{\"error\":\"a shard's signature\"}");
-    else api_json(q->fd, 503, "{\"error\":\"no ticket key\"}");
+    if (masters && *masters) api_error(q->fd, 401, "a shard's signature");
+    else api_error(q->fd, 503, "no ticket key");
     return -1;
   }
   unsigned char mac[EVP_MAX_MD_SIZE]; unsigned int ml = 0;
-  if (!HMAC(EVP_sha256(), secret, (int)strlen(secret), (const unsigned char *)body, n, mac, &ml) || ml != 32) { api_json(q->fd, 500, "{\"error\":\"no mac\"}"); return -1; }
+  if (!HMAC(EVP_sha256(), secret, (int)strlen(secret), (const unsigned char *)body, n, mac, &ml) || ml != 32) { api_error(q->fd, 500, "no mac"); return -1; }
   char want[65]; for (unsigned i = 0; i < 32; i++) snprintf(want + 2 * i, 3, "%02x", mac[i]);
   unsigned diff = 0; for (int i = 0; i < 64; i++) diff |= (unsigned)(want[i] ^ given[i]);
-  if (diff) { api_json(q->fd, 401, "{\"error\":\"bad mac\"}"); return -1; }
+  if (diff) { api_error(q->fd, 401, "bad mac"); return -1; }
   return 0;
 }
 /* Whether every line of b that starts with key names shard (key's number right after it), and one does. */
@@ -154,8 +154,8 @@ static bool lines_name_shard(const char *b, const char *key, int shard) {
 }
 // A shard's signed POST of purpose: the signer's shard (room_write_signed), or -1 answered.
 static int signed_post(const request *q, const char *purpose) {
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a report\"}"); return -1; }
-  if (q->body_len == 0 || q->body_len > 32768) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return -1; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST a report"); return -1; }
+  if (q->body_len == 0 || q->body_len > 32768) { api_error(q->fd, 401, "unsigned"); return -1; }
   return room_write_signed(q, purpose, q->body, q->body_len);
 }
 // The endpoint and health lines a VM shard adds (#13179, migrations/0140_room_shard_endpoints.sql),
@@ -196,10 +196,10 @@ static void report(const request *q, PGconn *db) {
   int signer = signed_post(q, "directory");
   if (signer < 0) return;
   char *b = malloc(q->body_len + 1);
-  if (!b) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!b) { api_error(q->fd, 503, "memory"); return; }
   memcpy(b, q->body, q->body_len); b[q->body_len] = 0;
   /* a shard's own key reports for that shard only (#13260) */
-  if (signer > 0 && (strlen(b) != q->body_len || !lines_name_shard(b, "s ", signer))) { free(b); api_json(q->fd, 403, "{\"error\":\"another shard's report\"}"); return; }
+  if (signer > 0 && (strlen(b) != q->body_len || !lines_name_shard(b, "s ", signer))) { free(b); api_error(q->fd, 403, "another shard's report"); return; }
   char ep[200]; int players, tick_us;
   int shard = shard_lines(b, ep, sizeof ep, &players, &tick_us);
   const char *v[1] = {b};
@@ -209,8 +209,8 @@ static void report(const request *q, PGconn *db) {
   if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) named = atoi(PQgetvalue(r, 0, 0));
   else api_log("room-directory: %s", PQerrorMessage(db));
   PQclear(r);
-  if (named == -2) { api_json(q->fd, 409, "{\"error\":\"a newer process has this shard\"}"); return; }   /* fenced (#12797) */
-  if (named < 0) { api_json(q->fd, 400, "{\"error\":\"not a report\"}"); return; }
+  if (named == -2) { api_error(q->fd, 409, "a newer process has this shard"); return; }   /* fenced (#12797) */
+  if (named < 0) { api_error(q->fd, 400, "not a report"); return; }
   if (shard >= 1 && shard <= 99) {   /* its endpoint and health, or none (#13179) */
     char ks[8], ps[16], ts[16]; snprintf(ks, sizeof ks, "%d", shard); snprintf(ps, sizeof ps, "%d", players); snprintf(ts, sizeof ts, "%d", tick_us);
     const char *sv[4] = {ks, ep[0] ? ep : NULL, players >= 0 ? ps : NULL, tick_us >= 0 ? ts : NULL};
@@ -238,32 +238,32 @@ bool rooms_endpoint(PGconn *db, int shard, char *out, size_t cap) {
 // GET /api/playtest/room-shards: the directory's shards, live, draining or down, with their endpoints
 // and health (#13179).
 static void shard_list(const request *q, PGconn *db) {
-  if (strcmp(q->method, "GET")) { api_json(q->fd, 405, "{\"error\":\"GET the shards\"}"); return; }
+  if (strcmp(q->method, "GET")) { api_error(q->fd, 405, "GET the shards"); return; }
   PGresult *r = PQexec(db, "SELECT verse.room_shard_list()");
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     api_log("room-shards: %s", PQerrorMessage(db)); PQclear(r);
-    api_json(q->fd, 500, "{\"error\":\"no shards\"}"); return;
+    api_error(q->fd, 500, "no shards"); return;
   }
   api_json(q->fd, 200, PQgetvalue(r, 0, 0));
   PQclear(r);
 }
 
 static void list(const request *q, PGconn *db, const char *realm) {
-  if (strcmp(q->method, "GET")) { api_json(q->fd, 405, "{\"error\":\"GET the rooms\"}"); return; }
+  if (strcmp(q->method, "GET")) { api_error(q->fd, 405, "GET the rooms"); return; }
   char lower[32]; size_t n = strlen(realm);
-  if (n == 0 || n >= sizeof lower) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return; }
+  if (n == 0 || n >= sizeof lower) { api_error(q->fd, 404, "unknown"); return; }
   for (size_t i = 0; i <= n; i++) lower[i] = (char)(realm[i] >= 'A' && realm[i] <= 'Z' ? realm[i] + 32 : realm[i]);
-  if (!code_ok(lower, 20)) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return; }
+  if (!code_ok(lower, 20)) { api_error(q->fd, 404, "unknown"); return; }
   char with[48] = "";
   bool asked = api_query(q, "with", with, sizeof with) && with[0];
-  if (asked && !code_ok(with, 40)) { api_json(q->fd, 400, "{\"error\":\"with: a player id\"}"); return; }
+  if (asked && !code_ok(with, 40)) { api_error(q->fd, 400, "with: a player id"); return; }
   char seats[8]; snprintf(seats, sizeof seats, "%d", ROOM_SEATS);
   const char *v[3] = {lower, seats, asked ? with : NULL};
   PGresult *r = PQexecParams(db, "SELECT verse.room_list($1, $2::int, $3)", 3, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     api_log("rooms: %s", PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, 500, "{\"error\":\"no rooms\"}");
+    api_error(q->fd, 500, "no rooms");
     return;
   }
   api_json(q->fd, 200, PQgetvalue(r, 0, 0));
@@ -275,16 +275,16 @@ static void stats(const request *q, PGconn *db) {
   int signer = signed_post(q, "stats");
   if (signer < 0) return;
   char *b = malloc(q->body_len + 1);
-  if (!b) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!b) { api_error(q->fd, 503, "memory"); return; }
   memcpy(b, q->body, q->body_len); b[q->body_len] = 0;
-  if (signer > 0 && (strlen(b) != q->body_len || !lines_name_shard(b, "shard=", signer))) { free(b); api_json(q->fd, 403, "{\"error\":\"another shard's report\"}"); return; }
+  if (signer > 0 && (strlen(b) != q->body_len || !lines_name_shard(b, "shard=", signer))) { free(b); api_error(q->fd, 403, "another shard's report"); return; }
   const char *v[1] = {b};
   PGresult *r = PQexecParams(db, "SELECT verse.room_stats_add($1)", 1, NULL, v, NULL, NULL, 0);
   free(b);
   bool kept = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("room-stats: %s", PQerrorMessage(db));
   PQclear(r);
-  if (!kept) { api_json(q->fd, 400, "{\"error\":\"not a report\"}"); return; }
+  if (!kept) { api_error(q->fd, 400, "not a report"); return; }
   api_json(q->fd, 200, "{\"kept\":true}");
 }
 
@@ -295,10 +295,10 @@ static void crash(const request *q, PGconn *db) {
   int signer = signed_post(q, "crash");
   if (signer < 0) return;
   int shard = crash_report_check_c(q->body, q->body_len);
-  if (shard < 1) { api_json(q->fd, 400, "{\"error\":\"not a room's crash report\"}"); return; }
-  if (signer > 0 && shard != signer) { api_json(q->fd, 403, "{\"error\":\"another shard's report\"}"); return; }
+  if (shard < 1) { api_error(q->fd, 400, "not a room's crash report"); return; }
+  if (signer > 0 && shard != signer) { api_error(q->fd, 403, "another shard's report"); return; }
   char bucket[33], out[96];
-  if (!crash_keep(db, q->body, q->body_len, false, bucket)) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  if (!crash_keep(db, q->body, q->body_len, false, bucket)) { api_error(q->fd, 500, "not kept"); return; }
   snprintf(out, sizeof out, "{\"kept\":true,\"bucket\":\"%s\"}", bucket);
   api_json(q->fd, 200, out);
 }
@@ -312,15 +312,15 @@ static void crash(const request *q, PGconn *db) {
 #define APP_CRASH_A_MINUTE 6
 size_t crash_app_report_c(const char *dump, size_t n, char *out, size_t cap);
 static void app_crash(const request *q, PGconn *db) {
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a crash dump\"}"); return; }
-  if (q->body_len == 0 || q->body_len > APP_CRASH_MAX) { api_json(q->fd, 413, "{\"error\":\"a crash dump is 16 KB at most\"}"); return; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST a crash dump"); return; }
+  if (q->body_len == 0 || q->body_len > APP_CRASH_MAX) { api_error(q->fd, 413, "a crash dump is 16 KB at most"); return; }
   char ip[128]; auth_visitor(q, ip);
-  if (!api_limit(db, "app-crash", ip, APP_CRASH_A_MINUTE, NULL)) { api_respond(q->fd, 429, "application/json", "Retry-After: 60\r\n", "{\"error\":\"slow down\"}", 21); return; }
+  if (!api_limit(db, "app-crash", ip, APP_CRASH_A_MINUTE, NULL)) { api_error_with(q->fd, 429, "Retry-After: 60\r\n", "slow down"); return; }
   static char body[8193];
   size_t n = crash_app_report_c(q->body, q->body_len, body, sizeof body);
-  if (!n) { api_json(q->fd, 400, "{\"error\":\"not an app's crash dump\"}"); return; }
+  if (!n) { api_error(q->fd, 400, "not an app's crash dump"); return; }
   char bucket[33], out[96];
-  if (!crash_keep(db, body, n, false, bucket)) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  if (!crash_keep(db, body, n, false, bucket)) { api_error(q->fd, 500, "not kept"); return; }
   snprintf(out, sizeof out, "{\"kept\":true,\"bucket\":\"%s\"}", bucket);
   api_json(q->fd, 200, out);
 }
@@ -328,18 +328,18 @@ static void app_crash(const request *q, PGconn *db) {
 // GET /api/playtest/crashes: the crash buckets heard in 30 days and each one's newest report, for anyone
 // (verse.crash_list builds the list; the reports are the codec's text as kept).
 static void crashes(const request *q, PGconn *db) {
-  if (strcmp(q->method, "GET") && strcmp(q->method, "HEAD")) { api_json(q->fd, 405, "{\"error\":\"GET the crashes\"}"); return; }
+  if (strcmp(q->method, "GET") && strcmp(q->method, "HEAD")) { api_error(q->fd, 405, "GET the crashes"); return; }
   char ns[24]; snprintf(ns, sizeof ns, "%lld", (long long)api_now_ms());
   const char *v[1] = {ns};
   PGresult *r = PQexecParams(db, "SELECT verse.crash_list($1::bigint)", 1, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("crashes: %s", PQerrorMessage(db)); PQclear(r); api_json(q->fd, 500, "{\"error\":\"no crashes\"}"); return; }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("crashes: %s", PQerrorMessage(db)); PQclear(r); api_error(q->fd, 500, "no crashes"); return; }
   const char *o = getenv("OA_API_ORIGIN");
   size_t n = strlen(PQgetvalue(r, 0, 0)) + 96;
   char *out = malloc(n);
   if (out) {
     snprintf(out, n, "{\"env\":\"%s\",\"now_ms\":%s,\"buckets\":%s}", o && strstr(o, "staging") ? "staging" : "production", ns, PQgetvalue(r, 0, 0));
     api_json(q->fd, 200, out); free(out);
-  } else api_json(q->fd, 503, "{\"error\":\"memory\"}");
+  } else api_error(q->fd, 503, "memory");
   PQclear(r);
 }
 
@@ -350,7 +350,7 @@ bool capacity_record_check_c(const char *body, size_t n);
 size_t capacity_record_field_c(const char *body, size_t n, const char *key, char *out, size_t cap);
 static void capacity_put(const request *q, PGconn *db) {
   if (signed_post(q, "capacity") < 0) return;
-  if (!capacity_record_check_c(q->body, q->body_len)) { api_json(q->fd, 400, "{\"error\":\"not a capacity record\"}"); return; }
+  if (!capacity_record_check_c(q->body, q->body_len)) { api_error(q->fd, 400, "not a capacity record"); return; }
   char day[16], env[16], t[24], seated[24], verdict[160];
   capacity_record_field_c(q->body, q->body_len, "day", day, sizeof day);
   capacity_record_field_c(q->body, q->body_len, "env", env, sizeof env);
@@ -358,7 +358,7 @@ static void capacity_put(const request *q, PGconn *db) {
   capacity_record_field_c(q->body, q->body_len, "seated", seated, sizeof seated);
   capacity_record_field_c(q->body, q->body_len, "verdict", verdict, sizeof verdict);
   char *b = malloc(q->body_len + 1);
-  if (!b) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!b) { api_error(q->fd, 503, "memory"); return; }
   memcpy(b, q->body, q->body_len); b[q->body_len] = 0;
   const char *v[6] = {day, env, t, seated, !strcmp(verdict, "holds") ? "t" : "f", b};
   PGresult *r = PQexecParams(db, "SELECT verse.capacity_put($1::date, $2, $3::bigint, $4::int, $5::boolean, $6)", 6, NULL, v, NULL, NULL, 0);
@@ -367,20 +367,20 @@ static void capacity_put(const request *q, PGconn *db) {
   bool kept = ran && !strcmp(PQgetvalue(r, 0, 0), "t");
   if (!ran) api_log("capacity-record: %s", PQerrorMessage(db));
   PQclear(r);
-  if (!ran) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  if (!ran) { api_error(q->fd, 500, "not kept"); return; }
   api_json(q->fd, 200, kept ? "{\"kept\":true}" : "{\"kept\":false}");   // false: a later run of that day is already kept
 }
 // GET /api/playtest/capacity[?day=YYYY-MM-DD]: the newest capacity record (or that day's) as it was
 // kept, the codec's text, for anyone (the status page reads its lines). 404 when there is none.
 static void capacity_get(const request *q, PGconn *db) {
-  if (strcmp(q->method, "GET") && strcmp(q->method, "HEAD")) { api_json(q->fd, 405, "{\"error\":\"GET the capacity\"}"); return; }
+  if (strcmp(q->method, "GET") && strcmp(q->method, "HEAD")) { api_error(q->fd, 405, "GET the capacity"); return; }
   char day[16]; api_query(q, "day", day, sizeof day);
   bool one = strlen(day) == 10;
   for (const char *c = day; one && *c; c++) one = (*c >= '0' && *c <= '9') || *c == '-';
   const char *v[1] = {one ? day : NULL};
   PGresult *r = PQexecParams(db, "SELECT verse.capacity_record($1::date)", 1, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("capacity: %s", PQerrorMessage(db)); PQclear(r); api_json(q->fd, 500, "{\"error\":\"no capacity\"}"); return; }
-  if (PQgetisnull(r, 0, 0)) api_json(q->fd, 404, "{\"error\":\"no capacity record\"}");
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("capacity: %s", PQerrorMessage(db)); PQclear(r); api_error(q->fd, 500, "no capacity"); return; }
+  if (PQgetisnull(r, 0, 0)) api_error(q->fd, 404, "no capacity record");
   else api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
   PQclear(r);
 }
@@ -421,20 +421,20 @@ bool flags_maintenance(PGconn *db, char *why, size_t cap, long long *until_ms) {
 bool flags_route(const request *q) {
   if (strcmp(q->path, "/api/admin/flags")) return false;
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"database unavailable\"}"); return true; }
+  if (!db) { api_error(q->fd, 503, "database unavailable"); return true; }
   char who[65];
   int s = admin_who(q, db, who);
-  if (s) { api_json(q->fd, s, s == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}"); return true; }
+  if (s) { api_error(q->fd, s, s == 403 ? "admins only" : "log in as an admin"); return true; }
   if (!strcmp(q->method, "POST")) {
     char line[400];
-    if (q->body_len == 0 || q->body_len >= sizeof line) { api_json(q->fd, 400, "{\"error\":\"one line: NAME VALUE [UNTIL_MS [WHY]], or clear NAME\"}"); return true; }
+    if (q->body_len == 0 || q->body_len >= sizeof line) { api_error(q->fd, 400, "one line: NAME VALUE [UNTIL_MS [WHY]], or clear NAME"); return true; }
     memcpy(line, q->body, q->body_len); line[q->body_len] = 0;
     size_t ln = strcspn(line, "\r\n"); line[ln] = 0;
     char name[40] = "", rest[400] = "";
-    if (sscanf(line, "%39s %399[^\n]", name, rest) < 2) { api_json(q->fd, 400, "{\"error\":\"one line: NAME VALUE [UNTIL_MS [WHY]], or clear NAME\"}"); return true; }
+    if (sscanf(line, "%39s %399[^\n]", name, rest) < 2) { api_error(q->fd, 400, "one line: NAME VALUE [UNTIL_MS [WHY]], or clear NAME"); return true; }
     PGresult *r;
     if (!strcmp(name, "clear")) {
-      if (!sv_flag_name_ok(flag_cs(rest))) { api_json(q->fd, 400, "{\"error\":\"not a flag's name\"}"); return true; }
+      if (!sv_flag_name_ok(flag_cs(rest))) { api_error(q->fd, 400, "not a flag's name"); return true; }
       const char *v[1] = {rest};
       r = PQexecParams(db, "SELECT verse.flag_clear($1)", 1, NULL, v, NULL, NULL, 0);
     } else {
@@ -443,7 +443,7 @@ bool flags_route(const request *q) {
       if (got == 2 && used > 0) why = rest + used;
       if (got == 1) until = 0;
       if (got < 1 || !sv_flag_name_ok(flag_cs(name)) || !sv_flag_value_ok(value) || until < 0 || !sv_flag_why_ok(flag_cs(why))) {
-        api_json(q->fd, 400, "{\"error\":\"a flag is a-z0-9- (32), a whole number, an end in ms (0 none) and plain words (160)\"}"); return true;
+        api_error(q->fd, 400, "a flag is a-z0-9- (32), a whole number, an end in ms (0 none) and plain words (160)"); return true;
       }
       char vs[24], us[24]; snprintf(vs, sizeof vs, "%lld", value); snprintf(us, sizeof us, "%lld", until);
       const char *v[5] = {name, vs, us, why, who};
@@ -453,8 +453,8 @@ bool flags_route(const request *q) {
     bool ok = PQresultStatus(r) == PGRES_TUPLES_OK;
     if (!ok) api_log("flags: %s", PQerrorMessage(db));
     PQclear(r);
-    if (!ok) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return true; }
-  } else if (strcmp(q->method, "GET")) { api_json(q->fd, 405, "{\"error\":\"GET or POST the flags\"}"); return true; }
+    if (!ok) { api_error(q->fd, 500, "not kept"); return true; }
+  } else if (strcmp(q->method, "GET")) { api_error(q->fd, 405, "GET or POST the flags"); return true; }
   static char out[8192];
   size_t n = flags_lines(db, out, sizeof out, 0, true);
   api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, out, n);

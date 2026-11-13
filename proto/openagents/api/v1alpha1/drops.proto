@@ -1,0 +1,249 @@
+syntax = "proto3";
+
+package openagents.api.v1alpha1;
+
+// What coax/web/api/drops.c answers, route by route (Protocol, GitHub #13250; profile
+// api-routes; docs/protocol/api-routes-v1alpha1.md). Each message names the members
+// of one answer as they ship: json_name is the key on the wire, a `bytes` member is
+// JSON carried as it came, and a member may be absent or null. The messages were
+// read off a run of the API suite and are held to every later run:
+// proto/verse/api-routes-v1alpha1.json holds real answers and their routes, and
+// coax/web/api/routes-goldens.coax holds each answer's keys to its message here.
+// A refusal with only its words is ErrorReply (error.proto). Most bodies are built
+// in SQL; what the C builds goes through a Coax unit.
+
+// GET /api/drops 200
+message Drops {
+  repeated DropsDrops drops = 1 [json_name = "drops"];
+}
+
+message DropsDrops {
+  optional string id = 1 [json_name = "id"];
+  optional int64 bytes = 2 [json_name = "bytes"];
+  optional int64 files = 3 [json_name = "files"];
+  optional string status = 4 [json_name = "status"];
+  optional int64 created = 5 [json_name = "created"];
+  optional string project = 6 [json_name = "project"];   // or null
+}
+
+// GET /api/drops/* 200
+message DropsOne {
+  optional string id = 1 [json_name = "id"];
+  repeated DropsOneFiles files = 2 [json_name = "files"];
+  optional string status = 3 [json_name = "status"];
+}
+
+message DropsOneFiles {
+  optional string id = 1 [json_name = "id"];
+  optional string kind = 2 [json_name = "kind"];
+  optional string name = 3 [json_name = "name"];
+  optional string note = 4 [json_name = "note"];
+  optional int64 bytes = 5 [json_name = "bytes"];
+  optional string status = 6 [json_name = "status"];
+}
+
+// GET /api/drops/*/draft 200; POST /api/drops/*/draft 502
+message DropsOneDraft {
+  optional string status = 1 [json_name = "status"];
+  optional string note = 2 [json_name = "note"];
+  optional DropsOneDraftDraft draft = 3 [json_name = "draft"];
+  optional int64 edits = 4 [json_name = "edits"];
+  optional string model = 5 [json_name = "model"];
+  optional int64 took_ms = 6 [json_name = "took_ms"];
+  optional bool approved = 7 [json_name = "approved"];
+}
+
+message DropsOneDraftDraft {
+  optional DropsOneDraftDraftCard card = 1 [json_name = "card"];
+  optional bytes assets = 2 [json_name = "assets"];   // JSON carried as it came
+  optional DropsOneDraftDraftDesign design = 3 [json_name = "design"];
+  optional DropsOneDraftDraftRoadmap roadmap = 4 [json_name = "roadmap"];
+  optional bytes to_make = 5 [json_name = "to_make"];   // JSON carried as it came
+  repeated string mechanics = 6 [json_name = "mechanics"];
+  repeated DropsOneDraftDraftEngineNeeds engine_needs = 7 [json_name = "engine_needs"];
+}
+
+message DropsOneDraftDraftCard {
+  optional string line = 1 [json_name = "line"];
+  optional string name = 2 [json_name = "name"];
+  optional string slug = 3 [json_name = "slug"];
+  optional string cover = 4 [json_name = "cover"];
+  optional string owner = 5 [json_name = "owner"];
+  optional string art_direction = 6 [json_name = "art_direction"];
+}
+
+message DropsOneDraftDraftDesign {
+  optional string markdown = 1 [json_name = "markdown"];
+  repeated string open_questions = 2 [json_name = "open_questions"];
+}
+
+message DropsOneDraftDraftRoadmap {
+  optional DropsOneDraftDraftRoadmapInitiative initiative = 1 [json_name = "initiative"];
+  repeated DropsOneDraftDraftRoadmapMilestones milestones = 2 [json_name = "milestones"];
+}
+
+message DropsOneDraftDraftRoadmapInitiative {
+  optional string body = 1 [json_name = "body"];
+  optional string slug = 2 [json_name = "slug"];
+  optional string title = 3 [json_name = "title"];
+}
+
+message DropsOneDraftDraftRoadmapMilestones {
+  optional string body = 1 [json_name = "body"];
+  optional string slug = 2 [json_name = "slug"];
+  repeated DropsOneDraftDraftRoadmapMilestonesTasks tasks = 3 [json_name = "tasks"];
+  optional string title = 4 [json_name = "title"];
+}
+
+message DropsOneDraftDraftRoadmapMilestonesTasks {
+  optional string body = 1 [json_name = "body"];
+  optional string size = 2 [json_name = "size"];
+  optional string slug = 3 [json_name = "slug"];
+  optional bytes needs = 4 [json_name = "needs"];   // JSON carried as it came
+  optional string title = 5 [json_name = "title"];
+  repeated string mechanics = 6 [json_name = "mechanics"];
+  repeated string acceptance = 7 [json_name = "acceptance"];
+}
+
+message DropsOneDraftDraftEngineNeeds {
+  optional string why = 1 [json_name = "why"];
+  optional string slug = 2 [json_name = "slug"];
+  optional string title = 3 [json_name = "title"];
+  optional bool reuses = 4 [json_name = "reuses"];
+}
+
+// GET /api/drops/home/*/* 200
+message DropsHomeOneOne {
+  optional string name = 1 [json_name = "name"];
+  optional string slug = 2 [json_name = "slug"];
+  optional bool member = 3 [json_name = "member"];
+}
+
+// GET /api/drops/me 200
+message DropsMe {
+  optional bool may = 1 [json_name = "may"];
+  optional int64 used = 2 [json_name = "used"];
+  optional DropsMeLimits limits = 3 [json_name = "limits"];
+  optional string pubkey = 4 [json_name = "pubkey"];
+}
+
+message DropsMeLimits {
+  optional int64 drop = 1 [json_name = "drop"];
+  optional int64 file = 2 [json_name = "file"];
+  optional int64 files = 3 [json_name = "files"];
+  optional int64 owner = 4 [json_name = "owner"];
+}
+
+// POST /api/drops 200
+message DropsPost {
+  optional string id = 1 [json_name = "id"];
+  optional string name = 2 [json_name = "name"];
+  optional string project = 3 [json_name = "project"];
+}
+
+// POST /api/drops/*/discard 200
+message DropsOneDiscardPost {
+  optional string drop = 1 [json_name = "drop"];
+}
+
+// POST /api/drops/*/draft 200; POST /api/drops/*/draft/edit 200
+message DropsOneDraftPost {
+  optional string note = 1 [json_name = "note"];
+  optional DropsOneDraftPostDraft draft = 2 [json_name = "draft"];
+  optional int64 edits = 3 [json_name = "edits"];
+  optional string model = 4 [json_name = "model"];
+  optional string status = 5 [json_name = "status"];
+  optional int64 took_ms = 6 [json_name = "took_ms"];
+  optional bool approved = 7 [json_name = "approved"];
+}
+
+message DropsOneDraftPostDraft {
+  optional DropsOneDraftDraftCard card = 1 [json_name = "card"];
+  repeated DropsOneDraftPostDraftAssets assets = 2 [json_name = "assets"];
+  optional DropsOneDraftDraftDesign design = 3 [json_name = "design"];
+  optional DropsOneDraftPostDraftRoadmap roadmap = 4 [json_name = "roadmap"];
+  optional bytes to_make = 5 [json_name = "to_make"];   // JSON carried as it came
+  repeated string mechanics = 6 [json_name = "mechanics"];
+  repeated DropsOneDraftDraftEngineNeeds engine_needs = 7 [json_name = "engine_needs"];
+  optional DropsOneDraftPostDraftGrow grow = 8 [json_name = "grow"];
+}
+
+message DropsOneDraftPostDraftRoadmap {
+  optional DropsOneDraftDraftRoadmapInitiative initiative = 1 [json_name = "initiative"];
+  repeated DropsOneDraftPostDraftRoadmapMilestones milestones = 2 [json_name = "milestones"];
+}
+
+message DropsOneDraftPostDraftRoadmapMilestones {
+  optional string body = 1 [json_name = "body"];
+  optional string slug = 2 [json_name = "slug"];
+  repeated DropsOneDraftPostDraftRoadmapMilestonesTasks tasks = 3 [json_name = "tasks"];
+  optional string title = 4 [json_name = "title"];
+  optional bool existing = 5 [json_name = "existing"];
+}
+
+message DropsOneDraftPostDraftRoadmapMilestonesTasks {
+  optional string body = 1 [json_name = "body"];
+  optional string size = 2 [json_name = "size"];
+  optional string slug = 3 [json_name = "slug"];
+  repeated string needs = 4 [json_name = "needs"];
+  optional string title = 5 [json_name = "title"];
+  repeated string mechanics = 6 [json_name = "mechanics"];
+  repeated string acceptance = 7 [json_name = "acceptance"];
+}
+
+message DropsOneDraftPostDraftAssets {
+  optional string use = 1 [json_name = "use"];
+  optional string file = 2 [json_name = "file"];
+  optional string kind = 3 [json_name = "kind"];
+  optional string licence = 4 [json_name = "licence"];
+}
+
+message DropsOneDraftPostDraftGrow {
+  optional string pubkey = 1 [json_name = "pubkey"];
+  optional string project = 2 [json_name = "project"];
+}
+
+// POST /api/drops/*/files 200
+message DropsOneFilesPost {
+  optional DropsOneFiles file = 1 [json_name = "file"];
+  optional string upload = 2 [json_name = "upload"];
+}
+
+// POST /api/drops/*/files/*/done 200
+message DropsOneFilesOneDonePost {
+  optional DropsOneFiles file = 1 [json_name = "file"];
+}
+
+// POST /api/drops/*/publish 200
+message DropsOnePublishPost {
+  optional string note = 1 [json_name = "note"];
+  optional DropsOneDraftPostDraft draft = 2 [json_name = "draft"];
+  optional int64 edits = 3 [json_name = "edits"];
+  optional string model = 4 [json_name = "model"];
+  optional string status = 5 [json_name = "status"];
+  optional int64 took_ms = 6 [json_name = "took_ms"];
+  optional bool approved = 7 [json_name = "approved"];
+  optional DropsOnePublishPostPublished published = 8 [json_name = "published"];
+}
+
+message DropsOnePublishPostPublished {
+  optional string page = 1 [json_name = "page"];
+  optional string slug = 2 [json_name = "slug"];
+  optional int64 added = 3 [json_name = "added"];
+}
+
+// POST /api/drops/adopt 200
+message DropsAdoptPost {
+  optional string slug = 1 [json_name = "slug"];
+  optional string pubkey = 2 [json_name = "pubkey"];
+  optional int64 members = 3 [json_name = "members"];
+}
+
+// POST /api/drops/signin 200
+message DropsSigninPost {
+  optional string pubkey = 1 [json_name = "pubkey"];
+}
+
+// POST /api/drops/signout 200
+message DropsSignoutPost {
+}

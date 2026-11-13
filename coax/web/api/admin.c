@@ -125,7 +125,7 @@ static int who_is(const request *q, PGconn *db, char who[65]) {
 int admin_who(const request *q, PGconn *db, char who[65]) { return who_is(q, db, who); }
 
 static void refuse(int fd, int status) {
-  api_json(fd, status, status == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}");
+  api_error(fd, status, status == 403 ? "admins only" : "log in as an admin");
 }
 
 static void login(const request *q, PGconn *db) {
@@ -496,8 +496,8 @@ static void reports(const request *q, PGconn *db) {
   out_buf o = {0};
   if (!strcmp(view, "session")) {
     for (const char *c = sid; *c; c++)
-      if (!isalnum((unsigned char)*c) && *c != '_' && *c != ':' && *c != '-') { api_json(q->fd, 400, "{\"error\":\"bad session\"}"); return; }
-    if (!sid[0]) { api_json(q->fd, 400, "{\"error\":\"which session?\"}"); return; }
+      if (!isalnum((unsigned char)*c) && *c != '_' && *c != ':' && *c != '-') { api_error(q->fd, 400, "bad session"); return; }
+    if (!sid[0]) { api_error(q->fd, 400, "which session?"); return; }
     one_session(&o, db, sid);
   } else if (!strcmp(view, "sessions")) sessions(&o, db, f);
   else if (!strcmp(view, "everglade")) everglade(&o, db, f);
@@ -514,33 +514,33 @@ static void reports(const request *q, PGconn *db) {
 static void review(const request *q, PGconn *db, const char *who) {
   const char *rest = q->path + 18;
   if (!*rest || !strcmp(rest, "/")) {
-    if (strcmp(q->method, "GET")) { api_json(q->fd, 405, "{\"error\":\"GET\"}"); return; }
+    if (strcmp(q->method, "GET")) { api_error(q->fd, 405, "GET"); return; }
     const char *v[1] = {who};
     PGresult *r = PQexecParams(db, "SELECT villa.reports_rows($1)", 1, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0)) {
       const char *t = PQgetvalue(r, 0, 0);
       api_respond(q->fd, 200, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", t, strlen(t));
-    } else { api_log("review: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not now\"}"); }
+    } else { api_log("review: %s", PQerrorMessage(db)); api_error(q->fd, 500, "not now"); }
     PQclear(r);
     return;
   }
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST\"}"); return; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST"); return; }
   char from[256];   // a decision comes from this site's page
-  if (api_header(q, "Origin", from, sizeof from) && strcmp(from, origin())) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return; }
+  if (api_header(q, "Origin", from, sizeof from) && strcmp(from, origin())) { api_error(q->fd, 403, "cross-site"); return; }
   // "/<kind>/<ref>/<act>" as a text[] of [A-Za-z0-9] segments, behind "reports"
   char parts[200] = "{reports"; size_t n = strlen(parts); int segs = 0;
   for (const char *p = rest; *p; p++) {
     if (*p == '/') { if (!p[1]) break; if (n + 2 >= sizeof parts) break; parts[n++] = ','; segs++; continue; }
-    if (!isalnum((unsigned char)*p) || n + 2 >= sizeof parts) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return; }
+    if (!isalnum((unsigned char)*p) || n + 2 >= sizeof parts) { api_error(q->fd, 404, "unknown"); return; }
     parts[n++] = *p;
   }
   parts[n++] = '}'; parts[n] = 0;
-  if (segs != 3) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return; }
+  if (segs != 3) { api_error(q->fd, 404, "unknown"); return; }
   const char *v[2] = {parts, who};
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text FROM villa.reports_api('POST', $1::text[], '{}', NULL, $2) x",
                              2, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
-  else { api_log("review: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not kept\"}"); }
+  else { api_log("review: %s", PQerrorMessage(db)); api_error(q->fd, 500, "not kept"); }
   PQclear(r);
 }
 
@@ -554,7 +554,7 @@ static void review(const request *q, PGconn *db, const char *who) {
   "g AS (SELECT name, min(ord) AS ord, (array_agg(v ORDER BY at DESC))[1] AS now, string_agg(v, ',' ORDER BY at) AS series FROM m GROUP BY name) " \
   "SELECT name, now, series FROM g WHERE name ~ $2 ORDER BY ord"
 static void rooms(const request *q, PGconn *db) {
-  if (strcmp(q->method, "GET")) { api_json(q->fd, 405, "{\"error\":\"GET\"}"); return; }
+  if (strcmp(q->method, "GET")) { api_error(q->fd, 405, "GET"); return; }
   out_buf o = {0};
   // admission (#12796, migrations/0126_room_admission.sql): refusals by reason since the start, and who waits
   section(&o, db, "ADMISSION", "", "REASON|COUNT",
@@ -643,10 +643,10 @@ static bool team_host(const char *h) {
 }
 static void team_link(const request *q, PGconn *db, const char *who) {
   char host[96];
-  if (!api_query(q, "host", host, sizeof host) || !team_host(host)) { api_json(q->fd, 400, "{\"error\":\"which host?\"}"); return; }
+  if (!api_query(q, "host", host, sizeof host) || !team_host(host)) { api_error(q->fd, 400, "which host?"); return; }
   unsigned char raw[24]; char token[49];
   int fd = open("/dev/urandom", O_RDONLY);
-  if (fd < 0 || read(fd, raw, sizeof raw) != (ssize_t)sizeof raw) { if (fd >= 0) close(fd); api_json(q->fd, 503, "{\"error\":\"no randomness\"}"); return; }
+  if (fd < 0 || read(fd, raw, sizeof raw) != (ssize_t)sizeof raw) { if (fd >= 0) close(fd); api_error(q->fd, 503, "no randomness"); return; }
   close(fd);
   for (size_t i = 0; i < sizeof raw; i++) snprintf(token + 2 * i, 3, "%02x", raw[i]);
   char until[32]; snprintf(until, sizeof until, "%lld", (long long)api_now_ms() + 600000LL);
@@ -656,7 +656,7 @@ static void team_link(const request *q, PGconn *db, const char *who) {
   bool ok = PQresultStatus(r) == PGRES_COMMAND_OK;
   if (!ok) api_log("team link: %s", PQerrorMessage(db));
   PQclear(r);
-  if (!ok) { api_json(q->fd, 503, "{\"error\":\"not now\"}"); return; }
+  if (!ok) { api_error(q->fd, 503, "not now"); return; }
   char headers[400];
   snprintf(headers, sizeof headers, "Location: https://%s/api/analytics/team?t=%s\r\nCache-Control: no-store\r\n", host, token);
   api_respond(q->fd, 303, "text/plain", headers, "", 0);
@@ -665,13 +665,13 @@ static void team_link(const request *q, PGconn *db, const char *who) {
 bool admin_route(const request *q) {
   if (strncmp(q->path, "/api/admin/", 11)) return false;
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { api_error(q->fd, 503, "no database"); return true; }
   if (!strcmp(q->path, "/api/admin/login")) { login(q, db); return true; }
   if (!strcmp(q->path, "/api/admin/logout")) { logout(q, db); return true; }
   bool queue = !strncmp(q->path, "/api/admin/reports", 18) && (q->path[18] == 0 || q->path[18] == '/');
   bool room_view = !strcmp(q->path, "/api/admin/rooms");
   bool link = !strcmp(q->path, "/api/admin/team-link");
-  if (strcmp(q->path, "/api/admin/analytics") && !queue && !room_view && !link) { api_json(q->fd, 404, "{\"error\":\"not found\"}"); return true; }
+  if (strcmp(q->path, "/api/admin/analytics") && !queue && !room_view && !link) { api_error(q->fd, 404, "not found"); return true; }
   char who[65];
   int status = who_is(q, db, who);
   if (status) { refuse(q->fd, status); return true; }

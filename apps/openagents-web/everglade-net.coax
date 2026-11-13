@@ -43,6 +43,7 @@
 #load "../../everglade/client/net-core.coax";   // the states' ring, the jitter buffer, the clock: Everglade II's page keeps them too (#13054)
 #load "../../metaverse-engine/net/relay-wire.coax";   // the relay's own frames: y and the clock's ping and pong (#13245)
 #load "../../metaverse-engine/session/lifecycle.coax";   // focus, hiding and the socket, as every host does them (#12856)
+#load "../../metaverse-engine/net/rooms-list.coax";   // the rooms list's one codec: the page reads "join" and "with_full" through it (Protocol E8, #13250)
 #load "everglade-join.coax";   // which instance, who you are in it, INVITE (#12716)
 #load "everglade-moderate.coax";   // BLOCK, REPORT and KICK from a nameplate (#12714)
 #load "../../metaverse-engine/session/party.coax";   // a party's rules, as the API and the room keep them (#12845)

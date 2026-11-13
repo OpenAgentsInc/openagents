@@ -51,6 +51,8 @@
 static const char *origin(void) { const char *o = getenv("OA_API_ORIGIN"); return o && *o ? o : "https://openagents.com"; }
 static const char *cap_usd(void) { const char *c = getenv("OA_CHAT_DAILY_USD"); return c && *c ? c : "10"; }
 static void reply(int fd, int status, const char *json) { api_respond(fd, status, "application/json", CHAT_HEADERS, json, strlen(json)); }
+// A refusal: the API's ErrorReply through error-wire.coax (api_error_with), with this file's headers.
+static void refuse(int fd, int status, const char *words) { api_error_with(fd, status, CHAT_HEADERS, words); }
 
 // ---- how fast: a fixed window a minute per key (an address or a pubkey), counted in Postgres
 // (api_limit) so the limit is one for every worker and instance (#13300)
@@ -160,7 +162,8 @@ static char *call(PGconn *db, const char *op, const char *body, const char *pubk
     api_log("chat %s: sql %s", op, state ? state : "?");   // never the message: it can quote what was asked
     *status = state && !strncmp(state, "22", 2) ? 400 : 500;
     PQclear(r);
-    return strdup(*status == 400 ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+    char e[40]; api_error_text(e, sizeof e, *status == 400 ? "not json" : "not kept");
+    return strdup(e);
   }
   *status = atoi(PQgetvalue(r, 0, 0));
   char *out = strdup(PQgetvalue(r, 0, 1));
@@ -209,19 +212,6 @@ static void jfield(const char *json, const char *key, char *out, size_t cap) {
   while (*p && *p != '"' && n + 1 < cap) { if (*p == '\\' && p[1]) p++; out[n++] = *p++; }
   out[n] = 0;
 }
-// A JSON string, escaped, into out.
-static void jquote(const char *s, char *out, size_t cap) {
-  size_t n = 0;
-  if (cap < 3) return;
-  out[n++] = '"';
-  for (; *s && n + 8 < cap; s++) {
-    unsigned char c = (unsigned char)*s;
-    if (c == '"' || c == '\\') { out[n++] = '\\'; out[n++] = (char)c; }
-    else if (c < 0x20) n += (size_t)snprintf(out + n, cap - n, "\\u%04x", c);
-    else out[n++] = (char)c;
-  }
-  out[n++] = '"'; out[n] = 0;
-}
 
 // Runs in a child: the runner checks and seals it; the sealed bytes are kept. Answers the page.
 static void save_key(const request *q, const char *pubkey, char *cred, const char *kind) {
@@ -238,16 +228,14 @@ static void save_key(const request *q, const char *pubkey, char *cred, const cha
   jfield(out.p, "last4", last4, sizeof last4);
   free(out.p);
   if (!good) {
-    char msg[600], qd[700];
+    char msg[600];
     snprintf(msg, sizeof msg, "That key didn't work: %s", st == 200 && reason[0] ? reason : st ? "the checker could not be reached" : "the checker is not running");
-    jquote(msg, qd, sizeof qd);
-    char json[800]; snprintf(json, sizeof json, "{\"error\":%s}", qd);
     api_log("chat key: refused (%ld)", st);
-    reply(q->fd, 400, json);
+    refuse(q->fd, 400, msg);
     return;
   }
   PGconn *db = api_db_new();
-  if (!db) { reply(q->fd, 503, "{\"error\":\"no database\"}"); return; }
+  if (!db) { refuse(q->fd, 503, "no database"); return; }
   char set[4400];
   snprintf(set, sizeof set, "{\"kind\":\"%s\",\"last4\":\"%s\",\"sealed\":\"%s\"}", kind, last4, sealed);
   int status = 0;
@@ -263,11 +251,11 @@ static void save_key(const request *q, const char *pubkey, char *cred, const cha
 // and the project page (private.c, once it knows the member) both use it.
 void chat_key(const request *q, const char *pubkey, bool member) {
   char cred[512];
-  if (!credential_of(q->body, q->body_len, cred, sizeof cred)) { reply(q->fd, 400, "{\"error\":\"That key didn't work: paste the whole key\"}"); return; }
+  if (!credential_of(q->body, q->body_len, cred, sizeof cred)) { refuse(q->fd, 400, "That key didn't work: paste the whole key"); return; }
   const char *kind = credential_kind(cred);
   if (!kind) {
     memset(cred, 0, sizeof cred);
-    reply(q->fd, 400, "{\"error\":\"That key didn't work: an Anthropic key starts sk-ant-, a Claude subscription token sk-ant-oat\"}");
+    refuse(q->fd, 400, "That key didn't work: an Anthropic key starts sk-ant-, a Claude subscription token sk-ant-oat");
     return;
   }
   // A check can take a while (a model turn): a child answers, and the service goes on.
@@ -275,15 +263,15 @@ void chat_key(const request *q, const char *pubkey, bool member) {
   pid_t pid = fork();
   if (pid == 0) { keys_for_member = member; save_key(q, pubkey, cred, kind); _exit(0); }
   memset(cred, 0, sizeof cred);
-  if (pid < 0) reply(q->fd, 503, "{\"error\":\"busy\"}");
+  if (pid < 0) refuse(q->fd, 503, "busy");
 }
 
 // A read for the rebuilt page: one row, one JSON text, for this admin (and a second value, when the query takes one).
 static void chat_json(const request *q, PGconn *db, const char *sql, const char *pubkey, const char *second) {
   const char *v[2] = {pubkey, second};
   PGresult *r = PQexecParams(db, sql, second ? 2 : 1, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("chat: %s", PQerrorMessage(db)); PQclear(r); reply(q->fd, 500, "{\"error\":\"not read\"}"); return; }
-  if (PQntuples(r) != 1) { PQclear(r); reply(q->fd, 404, "{\"error\":\"no such turn\"}"); return; }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("chat: %s", PQerrorMessage(db)); PQclear(r); refuse(q->fd, 500, "not read"); return; }
+  if (PQntuples(r) != 1) { PQclear(r); refuse(q->fd, 404, "no such turn"); return; }
   reply(q->fd, 200, PQgetvalue(r, 0, 0));
   PQclear(r);
 }
@@ -300,28 +288,28 @@ bool chat_route(const request *q) {
   // Anything else under /api/chat/ is the Verse demo's room chat (room.c, /api/chat/<room>).
   if (!known) return false;
   bool post = !strcmp(q->method, "POST");
-  if (!post && strcmp(q->method, "GET")) { reply(q->fd, 405, "{\"error\":\"GET or POST\"}"); return true; }
+  if (!post && strcmp(q->method, "GET")) { refuse(q->fd, 405, "GET or POST"); return true; }
   bool get_op = !strcmp(op, "state") || !strcmp(op, "record") || !strcmp(op, "account") || !strcmp(op, "turn");
-  if (get_op == post) { reply(q->fd, 405, post ? "{\"error\":\"GET this\"}" : "{\"error\":\"POST this\"}"); return true; }
+  if (get_op == post) { refuse(q->fd, 405, post ? "GET this" : "POST this"); return true; }
   // a Microcoder step's request carries its state, up to 256 KB (coax/lib/microcoder/loop.coax MC_REQUEST_MAX)
-  if (q->body_len > (runner && !strcmp(op, "complete") ? 384 * 1024 : 64 * 1024)) { reply(q->fd, 413, "{\"error\":\"too large\"}"); return true; }
+  if (q->body_len > (runner && !strcmp(op, "complete") ? 384 * 1024 : 64 * 1024)) { refuse(q->fd, 413, "too large"); return true; }
   PGconn *db = api_db();
-  if (!db) { reply(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { refuse(q->fd, 503, "no database"); return true; }
 
   char pubkey[65] = "";
   if (runner) {
     int s = runner_who(q, db);
-    if (s) { reply(q->fd, s, s == 403 ? "{\"error\":\"the runner only\"}" : "{\"error\":\"sign the request\"}"); return true; }
+    if (s) { refuse(q->fd, s, s == 403 ? "the runner only" : "sign the request"); return true; }
   } else {
     int s = chat_who(q, db, pubkey);
-    if (s) { reply(q->fd, s, s == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}"); return true; }
+    if (s) { refuse(q->fd, s, s == 403 ? "admins only" : "log in as an admin"); return true; }
     if (post) {
       // CSRF: a cookie's write comes from this site's pages (Origin); a signed one may come from anywhere.
       char auth[16], from[256];
       bool signed_req = api_header(q, "Authorization", auth, sizeof auth) && !strncmp(auth, "Nostr ", 6);
       bool has_origin = api_header(q, "Origin", from, sizeof from) != NULL;
-      if ((has_origin && strcmp(from, origin())) || (!has_origin && !signed_req)) { reply(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
-      if (!allowed(!strcmp(op, "key") ? "chat-key" : "chat", pubkey, !strcmp(op, "key") ? 6 : 60)) { api_respond(q->fd, 429, "application/json", CHAT_HEADERS "Retry-After: 60\r\n", "{\"error\":\"slow down\"}", 21); return true; }
+      if ((has_origin && strcmp(from, origin())) || (!has_origin && !signed_req)) { refuse(q->fd, 403, "cross-site"); return true; }
+      if (!allowed(!strcmp(op, "key") ? "chat-key" : "chat", pubkey, !strcmp(op, "key") ? 6 : 60)) { api_error_with(q->fd, 429, CHAT_HEADERS "Retry-After: 60\r\n", "slow down"); return true; }
     }
   }
 
@@ -332,13 +320,13 @@ bool chat_route(const request *q) {
     char t[24]; api_query(q, "t", t, sizeof t);
     bool digits = t[0] != 0;
     for (const char *p = t; *p; p++) if (!isdigit((unsigned char)*p)) digits = false;
-    if (!digits || strlen(t) > 18) { reply(q->fd, 400, "{\"error\":\"t is a turn's number\"}"); return true; }
+    if (!digits || strlen(t) > 18) { refuse(q->fd, 400, "t is a turn's number"); return true; }
     const char *v[1] = {t};
     PGresult *r = PQexecParams(db, "SELECT owner FROM chat.turns WHERE id = $1::bigint AND status = 'running'", 1, NULL, v, NULL, NULL, 0);
-    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); reply(q->fd, 409, "{\"error\":\"that turn is not running\"}"); return true; }
+    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); refuse(q->fd, 409, "that turn is not running"); return true; }
     char owner[65]; snprintf(owner, sizeof owner, "%s", PQgetvalue(r, 0, 0));
     PQclear(r);
-    if (!admin_is(owner)) { reply(q->fd, 403, "{\"error\":\"admins only\"}"); return true; }
+    if (!admin_is(owner)) { refuse(q->fd, 403, "admins only"); return true; }
     return inference_ask(q, owner, true);
   }
   if (!strcmp(op, "key")) { chat_key(q, pubkey, false); return true; }
@@ -351,7 +339,7 @@ bool chat_route(const request *q) {
     char t[24]; api_query(q, "t", t, sizeof t);
     bool digits = t[0] != 0;
     for (const char *p = t; *p; p++) if (!isdigit((unsigned char)*p)) digits = false;
-    if (!digits || strlen(t) > 18) { reply(q->fd, 400, "{\"error\":\"t is a turn's number\"}"); return true; }
+    if (!digits || strlen(t) > 18) { refuse(q->fd, 400, "t is a turn's number"); return true; }
     chat_json(q, db, "SELECT jsonb_build_object('status', t.status, 'answer', t.answer, 'error', t.error, 'working', t.working, 'model', t.model, "
                      "'credential', t.credential, 'cost_usd', t.cost_usd::text, 'tools', coalesce((SELECT jsonb_agg(jsonb_build_object("
                      "'name', e.data->>'name', 'detail', coalesce(e.data->>'detail', '')) ORDER BY e.id) FROM chat.events e "
@@ -362,7 +350,7 @@ bool chat_route(const request *q) {
   char *body;
   if (post) {
     body = malloc(q->body_len + 3);
-    if (!body) { reply(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+    if (!body) { refuse(q->fd, 503, "memory"); return true; }
     if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
   } else {
     char c[24]; api_query(q, "c", c, sizeof c);

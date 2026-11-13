@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package openagents.api.v1alpha1;
+
+// What coax/web/api/rooms.c answers, route by route (Protocol, GitHub #13250; profile
+// api-routes; docs/protocol/api-routes-v1alpha1.md). Each message names the members
+// of one answer as they ship: json_name is the key on the wire, a `bytes` member is
+// JSON carried as it came, and a member may be absent or null. The messages were
+// read off a run of the API suite and are held to every later run:
+// proto/verse/api-routes-v1alpha1.json holds real answers and their routes, and
+// coax/web/api/routes-goldens.coax holds each answer's keys to its message here.
+// A refusal with only its words is ErrorReply (error.proto). Most bodies are built
+// in SQL; what the C builds goes through a Coax unit.
+
+// GET /api/playtest/capacity 200
+message RoomsCapacityLines {
+  optional string capacity = 1 [json_name = "capacity"];
+  optional string day = 2 [json_name = "day"];
+  optional string t = 3 [json_name = "t"];
+  optional string env = 4 [json_name = "env"];
+  optional string commit = 5 [json_name = "commit"];
+  optional string seconds = 6 [json_name = "seconds"];
+  optional string players = 7 [json_name = "players"];
+  optional string seated = 8 [json_name = "seated"];
+  optional string tick_p50_us = 9 [json_name = "tick_p50_us"];
+  optional string tick_p95_us = 10 [json_name = "tick_p95_us"];
+  optional string tick_p99_us = 11 [json_name = "tick_p99_us"];
+  optional string slow_windows = 12 [json_name = "slow_windows"];
+  optional string refused_ds = 13 [json_name = "refused_ds"];
+  optional string checkpoint_ms = 14 [json_name = "checkpoint_ms"];
+  optional string ticket_p95_ms = 15 [json_name = "ticket_p95_ms"];
+  optional string api_p95_ms = 16 [json_name = "api_p95_ms"];
+  optional string ack_p95_ms = 17 [json_name = "ack_p95_ms"];
+  optional string memory_early_kb = 18 [json_name = "memory_early_kb"];
+  optional string memory_late_kb = 19 [json_name = "memory_late_kb"];
+  optional string bytes_per_player_s = 20 [json_name = "bytes_per_player_s"];
+  optional string rejoined = 21 [json_name = "rejoined"];
+  optional string kills = 22 [json_name = "kills"];
+  optional string verdict = 23 [json_name = "verdict"];
+}
+
+// GET /api/playtest/crashes 200
+message RoomsCrashes {
+  optional string env = 1 [json_name = "env"];
+  optional int64 now_ms = 2 [json_name = "now_ms"];
+  repeated RoomsCrashesBuckets buckets = 3 [json_name = "buckets"];
+}
+
+message RoomsCrashesBuckets {
+  optional string sig = 1 [json_name = "sig"];
+  optional string build = 2 [json_name = "build"];
+  optional int64 shard = 3 [json_name = "shard"];   // or null
+  optional string bucket = 4 [json_name = "bucket"];
+  optional string newest = 5 [json_name = "newest"];
+  optional string source = 6 [json_name = "source"];
+  optional int64 last_ms = 7 [json_name = "last_ms"];
+  optional string release = 8 [json_name = "release"];
+  optional int64 reports = 9 [json_name = "reports"];
+  optional int64 first_ms = 10 [json_name = "first_ms"];
+}
+
+// GET /api/playtest/rooms/* 200
+message RoomsList {
+  optional string realm = 1 [json_name = "realm"];
+  optional string game = 2 [json_name = "game"];
+  optional int64 seats = 3 [json_name = "seats"];
+  optional string join = 4 [json_name = "join"];
+  repeated RoomsListRooms rooms = 5 [json_name = "rooms"];
+  optional string with = 6 [json_name = "with"];
+  optional string with_full = 7 [json_name = "with_full"];
+}
+
+message RoomsListRooms {
+  optional string code = 1 [json_name = "code"];
+  optional int64 players = 2 [json_name = "players"];
+  optional int64 shard = 3 [json_name = "shard"];
+}
+
+// POST /api/playtest/app-crash 200; POST /api/playtest/room-crash 200
+message RoomsAppCrashPost {
+  optional bool kept = 1 [json_name = "kept"];
+  optional string bucket = 2 [json_name = "bucket"];
+}
+
+// POST /api/playtest/room-directory 200
+message RoomsRoomDirectoryPost {
+  optional int64 rooms = 1 [json_name = "rooms"];
+}
+
+// POST /api/playtest/capacity-record 200; POST /api/playtest/room-stats 200
+message RoomsRoomStatsPost {
+  optional bool kept = 1 [json_name = "kept"];
+}

@@ -170,6 +170,10 @@ export OA_ADMIN_PUBKEYS="$("$SIGN" --new "$ADMIN_KEY")"
 # set one, so tests/room_checks.coax runs its keyed checks (admission, invites, stats, vitals) too.
 export ROOM_KEY="${ROOM_KEY:-local-development-room-ticket-key-not-a-secret}"
 export OA_ROOM_TICKET_KEY="${OA_ROOM_TICKET_KEY:-$ROOM_KEY}"
+# Every answer names its route function (X-OA-Route; api.c), so routes-goldens.coax can hold each
+# route file's bodies to that file's messages. The checks only: production never sets it.
+export OA_API_ROUTE_HEADER=1
+export API_CAPTURE="${API_CAPTURE:-$work/capture}"; mkdir -p "$API_CAPTURE"
 # Shards' own write keys (#13260, room-write.coax): a throwaway master, room-write.coax's RW_TEST_MASTER.
 export OA_ROOM_WRITE_MASTER="${OA_ROOM_WRITE_MASTER:-0303030303030303030303030303030303030303030303030303030303030303}"
 # Our team (test_team.py): a web player, an old playtest player and an email's hash (team@example.com).
@@ -318,6 +322,9 @@ if [[ -x "$cli_coax" ]]; then
       coax/web/tool.sh "coax/web/api/tests/$f.coax") || coax_failed=1
     lap "tests/$f.coax"
   done
+  # Every answer of this run, held to its route file's messages (routes-goldens.coax; Protocol, #13250).
+  (cd "$repo_root" && COAX="$cli_coax" coax/web/tool.sh coax/web/api/routes-goldens.coax --read-all "$API_CAPTURE") || coax_failed=1
+  lap "routes-goldens.coax"
   [[ $coax_failed == 0 ]] || { cat "$work/api.log"; exit 1; }
   # A bounded character-recovery slice, including optional real native faults.
   # An unfiltered invocation still runs every check below.

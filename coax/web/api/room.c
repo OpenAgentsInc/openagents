@@ -47,7 +47,7 @@ static bool speak_refused(const request *q, PGconn *db, const char *key) {
     "SELECT (SELECT s.until_ms FROM verse.mod_sanctions s WHERE s.who = coalesce(p.account, p.id) AND s.kind = 'ban'), "
     "(SELECT s.until_ms FROM verse.mod_sanctions s WHERE s.who = coalesce(p.account, p.id) AND s.kind = 'mute'), verse.now_ms() "
     "FROM verse.players p WHERE p.id = verse.player_of($1)", 1, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("speak: %s", PQerrorMessage(db)); PQclear(r); api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return true; }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("speak: %s", PQerrorMessage(db)); PQclear(r); api_error(q->fd, 500, "not kept"); return true; }
   if (PQntuples(r) != 1) { PQclear(r); return false; }   /* no such player: the route's own answer */
   bool ban = !PQgetisnull(r, 0, 0), mute = !PQgetisnull(r, 0, 1);
   long long ban_until = ban ? atoll(PQgetvalue(r, 0, 0)) : 0, mute_until = mute ? atoll(PQgetvalue(r, 0, 1)) : 0;
@@ -56,8 +56,8 @@ static bool speak_refused(const request *q, PGconn *db, const char *key) {
   if (!stop) return false;
   coax_string w = mod_kind_word(stop);
   char out[96];
-  snprintf(out, sizeof out, "{\"error\":\"%.*s\",\"until\":%lld}", (int)w.count, w.data, stop == 2 ? mute_until : ban_until);   /* 2: MOD_KIND_MUTE */
-  api_json(q->fd, 403, out);
+  snprintf(out, sizeof out, "%.*s", (int)w.count, w.data);
+  api_error_num(q->fd, 403, out, "until", stop == 2 ? mute_until : ban_until);   /* 2: MOD_KIND_MUTE */
   return true;
 }
 
@@ -68,7 +68,7 @@ static void answer(const request *q, PGconn *db, PGresult *r, const char *what) 
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("%s: %s", what, PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+    api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not kept");
     return;
   }
   api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
@@ -84,20 +84,20 @@ static bool social_route(const request *q) {
   size_t cl = strlen(chat), pl = strlen(q->path), rl = strlen("/remove");
   bool removing = !what && !strncmp(q->path, chat, cl) && pl > cl + rl && !strcmp(q->path + pl - rl, "/remove");
   if (!what && !removing) return false;
-  if (strcmp(q->method, "GET") && strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"GET or POST\"}"); return true; }
+  if (strcmp(q->method, "GET") && strcmp(q->method, "POST")) { api_error(q->fd, 405, "GET or POST"); return true; }
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { api_error(q->fd, 503, "no database"); return true; }
   char who[65];
   bool admin = admin_who(q, db, who) == 0;
   char *body = body_of(q);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+  if (!body) { api_error(q->fd, 503, "memory"); return true; }
   PGresult *r;
   if (removing) {
-    if (strcmp(q->method, "POST")) { free(body); api_json(q->fd, 405, "{\"error\":\"POST\"}"); return true; }
-    if (!admin) { free(body); api_json(q->fd, 403, "{\"error\":\"admins only\"}"); return true; }
+    if (strcmp(q->method, "POST")) { free(body); api_error(q->fd, 405, "POST"); return true; }
+    if (!admin) { free(body); api_error(q->fd, 403, "admins only"); return true; }
     char room[80];
     size_t n = pl - cl - rl;
-    if (n >= sizeof room) { free(body); api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
+    if (n >= sizeof room) { free(body); api_error(q->fd, 404, "unknown"); return true; }
     memcpy(room, q->path + cl, n); room[n] = 0;
     const char *v[3] = {room, body, who};
     r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text FROM verse.room_remove($1, $2::jsonb, $3) x", 3, NULL, v, NULL, NULL, 0);
@@ -118,10 +118,10 @@ bool room_route(const request *q) {
   const char *kind = "presence", *room = after_prefix(q->path, kind);
   if (!room) { kind = "chat"; room = after_prefix(q->path, kind); }
   if (!room) return false;
-  if (strcmp(q->method, "GET") && strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"GET or POST\"}"); return true; }
-  if (strlen(room) > 64 || strchr(room, '/')) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
+  if (strcmp(q->method, "GET") && strcmp(q->method, "POST")) { api_error(q->fd, 405, "GET or POST"); return true; }
+  if (strlen(room) > 64 || strchr(room, '/')) { api_error(q->fd, 404, "unknown"); return true; }
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { api_error(q->fd, 503, "no database"); return true; }
   char key[160], given[24], after[24] = "-1";
   api_header(q, "X-Verse-Player", key, sizeof key);
   if (api_query(q, "after", given, sizeof given)) {
@@ -130,7 +130,7 @@ bool room_route(const request *q) {
     snprintf(after, sizeof after, "%s", digits ? given : "0");
   }
   char *body = malloc(q->body_len + 3);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+  if (!body) { api_error(q->fd, 503, "memory"); return true; }
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
   // a line from automation (its mark, a headless or robot User-Agent) is shown only to who said it
   char mark[64] = "", cookies[2048], ua[512] = "";
@@ -147,7 +147,7 @@ bool room_route(const request *q) {
   if (!strcmp(kind, "presence") && !strcmp(q->method, "POST")) {
     sig = access_signed(q, db, signer);
     if (sig < 0) { free(body); return true; }
-    if (sig > 0 && !access_caller_key(db, signer, key)) { free(body); api_json(q->fd, 500, "{\"error\":\"not read\"}"); return true; }
+    if (sig > 0 && !access_caller_key(db, signer, key)) { free(body); api_error(q->fd, 500, "not read"); return true; }
   }
   // A made realm's room is as private as the realm (0099, 0108): its owner and site admins only.
   bool admin = false;
@@ -165,7 +165,7 @@ bool room_route(const request *q) {
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("room: %s", PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+    api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not kept");
     return true;
   }
   api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));

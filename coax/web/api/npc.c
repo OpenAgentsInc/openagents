@@ -149,7 +149,7 @@ static void answer(int fd, const char *asked, const char *request) {
   PGresult *r = db ? PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.npc_answer($1::jsonb, $2::int, $3, $4, $5::int) x",
                                   5, NULL, v, NULL, NULL, 0) : NULL;
   if (r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
-  else { api_log("npc: %s", db ? PQerrorMessage(db) : "no database"); api_json(fd, 503, "{\"error\":\"not kept\"}"); }
+  else { api_log("npc: %s", db ? PQerrorMessage(db) : "no database"); api_error(fd, 503, "not kept"); }
   if (status != 200) api_log("npc: model answered %ld", status);
   if (r) PQclear(r);
   if (db) PQfinish(db);
@@ -193,18 +193,18 @@ static void npc_refuse(int fd, int status, const char *json, const char *retry_s
 
 bool npc_route(const request *q) {
   if (strcmp(q->path, "/api/playtest/npc/ask")) return false;
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a question\"}"); return true; }
-  if (q->body_len > NPC_BODY_MAX) { api_json(q->fd, 413, "{\"error\":\"too large\"}"); return true; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST a question"); return true; }
+  if (q->body_len > NPC_BODY_MAX) { api_error(q->fd, 413, "too large"); return true; }
   char key[160] = "";
   api_header(q, "X-Verse-Player", key, sizeof key);
   if (!key[0]) {   // before any database work: no key, no question (SQL checks it is one we gave out)
-    api_json(q->fd, 401, "{\"error\":\"Talking to characters needs a player key (X-Verse-Player). Reload the page to get one.\"}");
+    api_error(q->fd, 401, "Talking to characters needs a player key (X-Verse-Player). Reload the page to get one.");
     return true;
   }
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { api_error(q->fd, 503, "no database"); return true; }
   char *body = malloc(q->body_len + 3);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+  if (!body) { api_error(q->fd, 503, "memory"); return true; }
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
   // The character it names: a built-in world's from npc-personas.coax (a made realm's is SQL's).
   const char *bv[1] = {body};
@@ -216,7 +216,7 @@ bool npc_route(const request *q) {
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("npc: %s", PQerrorMessage(db));
     PQclear(w); free(body);
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not asked\"}");
+    api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not asked");
     return true;
   }
   static uint8_t persona[16384];
@@ -244,7 +244,7 @@ bool npc_route(const request *q) {
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("npc: %s", PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not asked\"}");
+    api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not asked");
     return true;
   }
   int status = atoi(PQgetvalue(r, 0, 0));
@@ -264,7 +264,7 @@ bool npc_route(const request *q) {
   if (pid < 0) {              // no child: its running row goes now (verse.npc_answer would let it go)
     const char *fv[1] = {asked};
     PQclear(PQexecParams(db, "DELETE FROM verse.npc_running WHERE id = ($1::jsonb->>'run')::bigint", 1, NULL, fv, NULL, NULL, 0));
-    api_json(q->fd, 503, "{\"error\":\"busy\"}");
+    api_error(q->fd, 503, "busy");
   }
   free(request); free(asked);
   return true;   // the parent closes its copy of the connection
@@ -293,7 +293,7 @@ static void piece_answer(int fd, const char *asked, const char *request) {
   PGresult *r = db ? PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.piece_answer($1::jsonb, $2::int, $3, $4, $5::int) x",
                                   5, NULL, v, NULL, NULL, 0) : NULL;
   if (r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
-  else { api_log("piece: %s", db ? PQerrorMessage(db) : "no database"); api_json(fd, 503, "{\"error\":\"not kept\"}"); }
+  else { api_log("piece: %s", db ? PQerrorMessage(db) : "no database"); api_error(fd, 503, "not kept"); }
   if (status != 200) api_log("piece: model answered %ld", status);
   if (r) PQclear(r);
   if (db) PQfinish(db);
@@ -302,11 +302,11 @@ static void piece_answer(int fd, const char *asked, const char *request) {
 
 bool piece_route(const request *q) {
   if (strcmp(q->path, "/api/playtest/sandbox/piece")) return false;
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a sentence\"}"); return true; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST a sentence"); return true; }
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { api_error(q->fd, 503, "no database"); return true; }
   char *body = malloc(q->body_len + 3);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+  if (!body) { api_error(q->fd, 503, "memory"); return true; }
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
   const char *cap = getenv("OA_PIECE_DAILY_CAP");
   char key[160] = "";
@@ -320,12 +320,12 @@ bool piece_route(const request *q) {
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("piece: %s", PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not asked\"}");
+    api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not asked");
     return true;
   }
   int status = atoi(PQgetvalue(r, 0, 0));
   if (status != 200) {
-    char out[160]; snprintf(out, sizeof out, "{\"error\":\"%s\"}", PQgetvalue(r, 0, 1));
+    char out[160]; api_error_text(out, sizeof out, PQgetvalue(r, 0, 1));
     PQclear(r);
     api_json(q->fd, status, out);
     return true;
@@ -335,7 +335,7 @@ bool piece_route(const request *q) {
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
   if (pid == 0) { piece_answer(q->fd, asked, request); _exit(0); }
-  if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
+  if (pid < 0) api_error(q->fd, 503, "busy");
   free(request); free(asked);
   return true;
 }
@@ -376,7 +376,7 @@ static void voice_edit_answer(int fd, const char *asked, const char *request, bo
                                          : "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.voice_edit_answer($1::jsonb, $2::int, $3, $4, $5::int) x",
                                   5, NULL, v, NULL, NULL, 0) : NULL;
   if (r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
-  else { api_log("voice edit: %s", db ? PQerrorMessage(db) : "no database"); api_json(fd, 503, "{\"error\":\"not kept\"}"); }
+  else { api_log("voice edit: %s", db ? PQerrorMessage(db) : "no database"); api_error(fd, 503, "not kept"); }
   if (status != 200) api_log("voice edit: model answered %ld", status);
   if (r) PQclear(r);
   if (db) PQfinish(db);
@@ -390,15 +390,15 @@ bool voice_edit_route(const request *q) {
   if (!slash || (strcmp(slash, "/edit") && strcmp(slash, "/look"))) return false;
   bool look = !strcmp(slash, "/look");
   char name[49]; size_t n = (size_t)(slash - realm);   // a hand-built realm's slug, or a fork's (digits too)
-  if (!n || n >= sizeof name) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
-  for (size_t i = 0; i < n; i++) if (!((realm[i] >= 'a' && realm[i] <= 'z') || (realm[i] >= '0' && realm[i] <= '9') || realm[i] == '-')) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
+  if (!n || n >= sizeof name) { api_error(q->fd, 404, "unknown"); return true; }
+  for (size_t i = 0; i < n; i++) if (!((realm[i] >= 'a' && realm[i] <= 'z') || (realm[i] >= '0' && realm[i] <= '9') || realm[i] == '-')) { api_error(q->fd, 404, "unknown"); return true; }
   memcpy(name, realm, n); name[n] = 0;
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a sentence\"}"); return true; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST a sentence"); return true; }
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { api_error(q->fd, 503, "no database"); return true; }
   char from[256], who[65];
   const char *o = getenv("OA_API_ORIGIN");
-  if (api_header(q, "Origin", from, sizeof from) && strcmp(from, o && *o ? o : "https://openagents.com")) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
+  if (api_header(q, "Origin", from, sizeof from) && strcmp(from, o && *o ? o : "https://openagents.com")) { api_error(q->fd, 403, "cross-site"); return true; }
   int denied = admin_who(q, db, who);
   // Else the realm's owner or one of its admins (verse.realm_rights, docs/metaverse/realm-edit.md), by
   // the X-Verse-Player key; their edits are paced and counted under the key's hash, never the key.
@@ -411,10 +411,10 @@ bool voice_edit_route(const request *q) {
     else if (denied == 401) denied = 403;   // a player who may not edit this realm
     PQclear(m);
   }
-  if (denied) { api_json(q->fd, denied, denied == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}"); return true; }
+  if (denied) { api_error(q->fd, denied, denied == 403 ? "admins only" : "log in as an admin"); return true; }
   // a fork speaks with its base's catalogue and switches its own rows (migrations/0106_voice_every_realm.sql)
   char *body = malloc(q->body_len + 3);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+  if (!body) { api_error(q->fd, 503, "memory"); return true; }
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
   const char *cap = getenv("OA_EDIT_DAILY_CAP");
   const char *v[4] = {name, body, who, cap && *cap ? cap : "2000"};
@@ -428,12 +428,12 @@ bool voice_edit_route(const request *q) {
     bool theirs = state && !strncmp(state, "22", 2);
     if (!theirs) api_log("voice edit: %s", PQerrorMessage(db));
     PQclear(r);
-    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not asked\"}");
+    api_error(q->fd, theirs ? 400 : 500, theirs ? "not json" : "not asked");
     return true;
   }
   int status = atoi(PQgetvalue(r, 0, 0));
   if (status != 200) {
-    char out[160]; snprintf(out, sizeof out, "{\"error\":\"%s\"}", PQgetvalue(r, 0, 1));
+    char out[160]; api_error_text(out, sizeof out, PQgetvalue(r, 0, 1));
     PQclear(r);
     api_json(q->fd, status, out);
     return true;
@@ -443,7 +443,7 @@ bool voice_edit_route(const request *q) {
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
   if (pid == 0) { voice_edit_answer(q->fd, asked, request, look); _exit(0); }
-  if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
+  if (pid < 0) api_error(q->fd, 503, "busy");
   free(request); free(asked);
   return true;
 }

@@ -93,7 +93,7 @@ static int body_bytes(const request *q, unsigned char *out, size_t cap) {
 static void send_bytes(const request *q, int status, const unsigned char *b, size_t n) {
   if (!b64(q)) { api_respond(q->fd, status, "application/x-protobuf", "Cache-Control: no-store\r\n", b, n); return; }
   char *t = malloc(4 * ((n + 2) / 3) + 1);
-  if (!t) { api_json(q->fd, 500, "{\"error\":\"memory\"}"); return; }
+  if (!t) { api_error(q->fd, 500, "memory"); return; }
   int k = EVP_EncodeBlock((unsigned char *)t, b, (int)n);
   api_respond(q->fd, status, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", t, (size_t)k);
   free(t);

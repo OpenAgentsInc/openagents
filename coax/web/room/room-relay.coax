@@ -1,5 +1,6 @@
 #load "../../../metaverse-engine/core/ids.coax";
 #load "../../../metaverse-engine/net/relay-wire.coax";   // the relay's own frames, the one codec the pages read them with (#13245)
+#load "../../../metaverse-engine/net/rooms-list.coax";   // the rooms list (rm_rooms), the one codec the page reads it with (Protocol E8, #13250)
 // The room server's relay (room-relay): rooms for any game, keyed by the game and a room code,
 // that carry each player's text frames to the others unread. The games on their own paths
 // (room-games.coax) are untouched; a relay room's WebSocket opens at
@@ -483,18 +484,12 @@ rm_rooms :: (v: [] RmServer, request: string) -> int #export_c #effects(all) {
   // ?with=PID (spec 8.1, #12716): the instance that player sits in now, when it has a free seat
   with := rl_with(v, slug, rl_query(request, "with"));
   if with > 0 { join = with; }
+  // the bytes are rooms-list.coax's (metaverse-engine/net/, Protocol E8)
   o := v[0].jout[..];
-  k := put(o, 0, "{\"realm\":\""); k = put(o, k, slug); k = put(o, k, "\",\"game\":\"everglade\",\"seats\":"); k = put_int(o, k, eg_room_seats(v));
-  k = put(o, k, ",\"join\":\""); k = put(o, k, slug); k = put(o, k, "-"); k = put_int(o, k, join);
-  if with > 0 { k = put(o, k, "\",\"with\":\""); k = put(o, k, slug); k = put(o, k, "-"); k = put_int(o, k, with); }
-  k = put(o, k, "\",\"rooms\":[");
-  for i: 0..<m {
-    if i > 0 { k = put(o, k, ","); }
-    k = put(o, k, "{\"code\":\""); k = put(o, k, slug); k = put(o, k, "-"); k = put_int(o, k, ns[i]);
-    k = put(o, k, "\",\"players\":"); k = put_int(o, k, ps[i]); k = put(o, k, "}");
-  }
-  k = put(o, k, "]}");
-  return k;
+  k := rooms_list_open(o, slug, eg_room_seats(v), join, ifx with > 0 then with else 0);
+  for i: 0..<m { k = rooms_list_room(o, k, i, slug, ns[i], ps[i]); }
+  k = rooms_list_close(o, k);
+  return ifx k < 0 then 0 else k;
 }
 
 // What the queue holds, for the checks: every waiting frame for conn, joined by '|'.

@@ -1,0 +1,70 @@
+// The local API stand-in's profile check (Protocol E11, GitHub #13250):
+// proto/verse/api-routes-v1alpha1.json holds what a --dev room's stand-in (room-dev.coax) answered
+// (the rows whose "fn" is rm_dev_api), byte for byte. Each answer's members are read and it is
+// written again through metaverse-engine/session/player-answers.coax, the stand-in's one writer,
+// for the same bytes. The members' names are held to the API's own messages by
+// coax/web/api/routes-goldens.coax.
+//   coax/web/tool.sh coax/web/room/dev-api-profile.coax [proto/verse/api-routes-v1alpha1.json]
+#import "Basic";
+#load "../../../metaverse-engine/session/player-answers.coax";
+#load "../../lib/json/json.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/fs.coax";
+
+DAP_FIXTURE :: "proto/verse/api-routes-v1alpha1.json";
+DapWork :: struct { nodes: [262144] JvNode; body_nodes: [256] JvNode; body: [8192] u8; back: [8192] u8; a: [4096] u8; b: [256] u8; c: [256] u8; e: [256] u8; }
+
+dap_str :: (d: Jv, at: int, key: string, out: [] u8) -> string {
+  n := jv_str(d, jv_get(d, at, key), out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+// An answer written again through the codec: "" when it is the same bytes.
+dap_body :: (w: [] DapWork, body: string) -> string {
+  j: [1] Jv;
+  if !jv_parse(j[..], body, w[0].body_nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return "not a JSON object"; }
+  d := j[0]; n := -1; o := w[0].back[..];
+  first := jv_key(d, jv_at(d, 0, 0));
+  if first == "error" { n = pan_error(o, dap_str(d, 0, "error", w[0].a[..])); }
+  else if first == "key" { n = pan_player(o, dap_str(d, 0, "key", w[0].a[..]), dap_str(d, 0, "id", w[0].b[..])); }
+  else if first == "ticket" { n = pan_ticket(o, dap_str(d, 0, "ticket", w[0].a[..]), dap_str(d, 0, "id", w[0].b[..]), dap_str(d, 0, "name", w[0].c[..]), dap_str(d, 0, "room", w[0].e[..]), jv_int(d, jv_get(d, 0, "expires"), -1)); }
+  else if first == "name" { n = pan_name(o, dap_str(d, 0, "name", w[0].a[..])); }
+  else if first == "row" { n = pan_row(o, dap_str(d, 0, "row", w[0].a[..]), jv_bool(d, jv_get(d, 0, "on"))); }
+  else if first == "ok" { n = pan_ok(o); }
+  else { return "an answer the stand-in's codec does not write"; }
+  if n < 0 || cast(string) o[0..<n] != body { return "written again through player-answers.coax it is not the same bytes"; }
+  return "";
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  path := ifx loaded && args_count(args[..]) >= 1 then args_at(args[..], 0) else DAP_FIXTURE;
+  buf: [4194304] u8; j: [1] Jv; w: [1] DapWork;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { tool_errln("dev-api-profile: cannot read the fixture"); return 2; }
+  if !jv_parse(j[..], cast(string) buf[0..<n], w[0].nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("FAIL  cannot parse the fixture\n"); return 1; }
+  d := j[0]; routes := jv_get(d, 0, "routes"); goldens := jv_get(d, 0, "goldens");
+  // the check bites: members turned round, or a member the codec does not write
+  if dap_body(w[..], "{\"account\":false,\"name\":\"Ash\"}") == "" || dap_body(w[..], "{\"name\":\"Ash\",\"account\":true}") == "" || dap_body(w[..], "{\"name\":\"Ash\",\"account\":false}") != "" || dap_body(w[..], "{\"ok\":true}") != "" {
+    print("FAIL  the check takes a body it should refuse, or refuses one it should take\n"); return 1;
+  }
+  bad := 0; seen := 0; kinds: [6] bool;
+  k := ifx jv_kind(d, goldens) == JV_ARRAY then d.nodes[goldens].first else -1;
+  while k != -1 {
+    row := jv_at(d, routes, jv_int(d, jv_get(d, k, "route"), -1));
+    if row >= 0 && jv_raw(d, jv_get(d, row, "fn")) == "rm_dev_api" {
+      bn := jv_str(d, jv_get(d, k, "body"), w[0].body[..]);
+      body := cast(string) w[0].body[0..<(ifx bn < 0 then 0 else bn)];
+      why := dap_body(w[..], body);
+      if why != "" { print("FAIL  %: %\n  %\n", jv_raw(d, jv_get(d, row, "path")), why, body); bad += 1; } else { print("ok    % % %\n", jv_raw(d, jv_get(d, row, "method")), jv_raw(d, jv_get(d, row, "path")), jv_int(d, jv_get(d, row, "status"), 0)); }
+      seen += 1;
+      heads := [6] string.["{\"error\"", "{\"key\"", "{\"ticket\"", "{\"name\"", "{\"row\"", "{\"ok\""];
+      for h: 0..<6 { if body.count >= heads[h].count && body[0..<heads[h].count] == heads[h] { kinds[h] = true; } }
+    }
+    k = d.nodes[k].next;
+  }
+  for h: 0..<6 { if !kinds[h] { print("FAIL  one of the stand-in's six answers has no golden (%)\n", h); bad += 1; } }
+  print("%: % answers\n", ifx bad == 0 then "dev API profile holds" else "dev API profile fails", seen);
+  return ifx bad == 0 then 0 else 1;
+}

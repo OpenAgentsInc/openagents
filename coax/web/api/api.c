@@ -49,6 +49,7 @@
 //   realm invites                  /api/playtest/access, /api/admin/access (access.c, flag off)
 //   private human packs            /api/metaverse/packs/<name>, /api/metaverse/packs/fetch/<sid>, per-session keys; /api/verse/packs/ kept (verse_packs.c)
 #include "api.h"
+#include "error-wire.generated.h"
 
 #include <arpa/inet.h>
 #include <dirent.h>
@@ -108,13 +109,22 @@ static const char *reason(int status) {
   }
 }
 
+// OA_API_ROUTE_HEADER=1 (the checks only; never set in production): every answer names the route
+// function that wrote it in an X-OA-Route header, so the suite can hold each route file's bodies to
+// that file's messages (routes-goldens.coax --read-all; Protocol, #13250).
+static const char *route_at;
+static int route_header = -1;
+#define ROUTE(fn) do { route_at = #fn; if (fn(&q)) return; } while (0)
+void api_route_at(const char *name) { route_at = name; }
 void api_respond(int fd, int status, const char *type, const char *extra_headers, const void *body, size_t n) {
-  char head[4096];
+  char head[4096], named[96] = "";
+  if (route_header < 0) { const char *v = getenv("OA_API_ROUTE_HEADER"); route_header = v && !strcmp(v, "1"); }
+  if (route_header && route_at) snprintf(named, sizeof named, "X-OA-Route: %s\r\n", route_at);
   // auth.c's rotated or cleared session cookie rides on whatever this request answers.
   int h = snprintf(head, sizeof head,
                    "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nCache-Control: no-store, private\r\n"
-                   "X-Content-Type-Options: nosniff\r\n%s%sConnection: close\r\n\r\n",
-                   status, reason(status), type, n, extra_headers ? extra_headers : "", auth_extra_headers());
+                   "X-Content-Type-Options: nosniff\r\n%s%s%sConnection: close\r\n\r\n",
+                   status, reason(status), type, n, extra_headers ? extra_headers : "", auth_extra_headers(), named);
   if (h < 0 || h >= (int)sizeof head) { api_log("response head too long (%d)", h); return; }
   send_all(fd, head, (size_t)h);
   if (n) send_all(fd, body, n);
@@ -122,6 +132,57 @@ void api_respond(int fd, int status, const char *type, const char *extra_headers
 
 void api_json(int fd, int status, const char *json) {
   api_respond(fd, status, "application/json", NULL, json, strlen(json));
+}
+// The refusal body, written by error-wire.coax. Words too long for out are cut to what fits.
+static coax_string err_cs(const char *s, size_t n) { return (coax_string){s, (int64_t)n}; }
+static size_t err_fit(char *out, size_t cap, const char *words, int spaced) {
+  if (cap == 0) return 0;
+  size_t wn = strlen(words);
+  for (;;) {
+    coax_v_u8 o = {(uint8_t *)out, (int64_t)cap - 1};
+    int64_t n = spaced ? erw_error_spaced_write(err_cs(words, wn), o) : erw_error_write(err_cs(words, wn), o);
+    if (n >= 0) { out[n] = 0; return (size_t)n; }
+    if (wn == 0) { out[0] = 0; return 0; }
+    wn = wn > 64 ? wn - 64 : 0;
+  }
+}
+size_t api_error_text(char *out, size_t cap, const char *words) { return err_fit(out, cap, words, 0); }
+size_t api_error_spaced_text(char *out, size_t cap, const char *words) { return err_fit(out, cap, words, 1); }
+void api_error_with(int fd, int status, const char *extra_headers, const char *words) {
+  char out[2048]; size_t n = api_error_text(out, sizeof out, words);
+  api_respond(fd, status, "application/json", extra_headers, out, n);
+}
+void api_error(int fd, int status, const char *words) { api_error_with(fd, status, NULL, words); }
+size_t api_error_num_text(char *out, size_t cap, const char *words, const char *key, long long num) {
+  if (cap == 0) return 0;
+  int64_t n = erw_error_num_write(err_cs(words, strlen(words)), err_cs(key, strlen(key)), (int64_t)num, (coax_v_u8){(uint8_t *)out, (int64_t)cap - 1});
+  out[n < 0 ? 0 : n] = 0; return n < 0 ? 0 : (size_t)n;
+}
+void api_error_num(int fd, int status, const char *words, const char *key, long long num) {
+  char out[2048]; size_t n = api_error_num_text(out, sizeof out, words, key, num);
+  if (!n) { api_error(fd, status, words); return; }
+  api_respond(fd, status, "application/json", NULL, out, n);
+}
+size_t api_num_text(char *out, size_t cap, const char *key, long long num) {
+  if (cap == 0) return 0;
+  int64_t n = erw_num_write(err_cs(key, strlen(key)), (int64_t)num, (coax_v_u8){(uint8_t *)out, (int64_t)cap - 1});
+  out[n < 0 ? 0 : n] = 0; return n < 0 ? 0 : (size_t)n;
+}
+size_t api_word_text(char *out, size_t cap, const char *key, const char *word) {
+  if (cap == 0) return 0;
+  int64_t n = erw_word_write(err_cs(key, strlen(key)), err_cs(word, strlen(word)), (coax_v_u8){(uint8_t *)out, (int64_t)cap - 1});
+  out[n < 0 ? 0 : n] = 0; return n < 0 ? 0 : (size_t)n;
+}
+size_t api_words2_text(char *out, size_t cap, const char *key, const char *word, const char *key2, const char *word2) {
+  if (cap == 0) return 0;
+  int64_t n = erw_words2_write(err_cs(key, strlen(key)), err_cs(word, strlen(word)), err_cs(key2, strlen(key2)), err_cs(word2, strlen(word2)), (coax_v_u8){(uint8_t *)out, (int64_t)cap - 1});
+  out[n < 0 ? 0 : n] = 0; return n < 0 ? 0 : (size_t)n;
+}
+void api_error_word(int fd, int status, const char *words, const char *key, const char *word) {
+  char out[2048];
+  int64_t n = erw_error_word_write(err_cs(words, strlen(words)), err_cs(key, strlen(key)), err_cs(word, strlen(word)), (coax_v_u8){(uint8_t *)out, sizeof out - 1});
+  if (n < 0) { api_error(fd, status, words); return; }
+  api_respond(fd, status, "application/json", NULL, out, (size_t)n);
 }
 
 // ---- the database: one connection, made again when it drops
@@ -302,16 +363,16 @@ static void old_link(const request *q) {
 // workers keep answering (#13300).
 static void fault_slow(const request *q) {
   const char *on = getenv("OA_API_FAULTS");
-  if (!on || strcmp(on, "1")) { api_json(q->fd, 404, "{\"error\":\"not found\"}"); return; }
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a fault\"}"); return; }
-  if (q->body_len == 0 || q->body_len > 64) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
+  if (!on || strcmp(on, "1")) { api_error(q->fd, 404, "not found"); return; }
+  if (strcmp(q->method, "POST")) { api_error(q->fd, 405, "POST a fault"); return; }
+  if (q->body_len == 0 || q->body_len > 64) { api_error(q->fd, 401, "unsigned"); return; }
   char body[80]; memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
   if (room_write_signed(q, "fault", body, q->body_len) < 0) return;
   long n = 0; long long at = 0;
   double now = api_now_ms();
-  if (sscanf(body, "fault %ld %lld", &n, &at) != 2 || n < 1 || n > 5000 || at < now - 120000 || at > now + 120000) { api_json(q->fd, 400, "{\"error\":\"fault MS AT: ms 1 to 5000, at now\"}"); return; }
+  if (sscanf(body, "fault %ld %lld", &n, &at) != 2 || n < 1 || n > 5000 || at < now - 120000 || at > now + 120000) { api_error(q->fd, 400, "fault MS AT: ms 1 to 5000, at now"); return; }
   PGconn *c = api_db();
-  if (!c) { api_json(q->fd, 503, "{\"error\":\"database unavailable\"}"); return; }
+  if (!c) { api_error(q->fd, 503, "database unavailable"); return; }
   char sql[64], out[64]; snprintf(sql, sizeof sql, "SELECT pg_sleep(%ld / 1000.0)", n);
   PGresult *r = PQexec(c, sql); PQclear(r);
   snprintf(out, sizeof out, "{\"slept_ms\":%.0f,\"pid\":%d}", api_now_ms() - now, (int)getpid());
@@ -325,48 +386,50 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   q.body = head_end + 4;
   q.body_len = body_len;
   *head_end = 0;   // the head is a string now; headers are read before the body
-  if (sscanf(cl->buf, "%7s %2047s", q.method, q.target) != 2) { api_json(cl->fd, 400, "{\"error\":\"bad request\"}"); return; }
+  if (sscanf(cl->buf, "%7s %2047s", q.method, q.target) != 2) { api_error(cl->fd, 400, "bad request"); return; }
   *head_end = '\r';
   snprintf(q.path, sizeof q.path, "%s", q.target);
   char *mark = strchr(q.path, '?');
   if (mark) { *mark = 0; q.query = q.target + (mark - q.path) + 1; }
   else q.query = "";
   auth_reset();
-  if (auth_gate(&q)) return;   // the route's rule (auth.c); a route with no rule is 404
+  route_at = "auth_gate";
+  if (auth_gate(&q)) return;
+  route_at = "api";   // the route's rule (auth.c); a route with no rule is 404
   if (!strcmp(q.path, "/api/playtest/health")) { health(cl->fd); return; }
   if (!strcmp(q.path, "/api/playtest/fault/slow")) { fault_slow(&q); return; }
-  if (auth_api_route(&q)) return;
-  if (agents_route(&q)) return;   // agents, grants and `openagents login` (agents.c)
-  if (lnaddr_route(&q)) return;
-  if (wallet_route(&q)) return;   // the wallet's encrypted backup and daily limit (wallet.c)
+  ROUTE(auth_api_route);
+  ROUTE(agents_route);   // agents, grants and `openagents login` (agents.c)
+  ROUTE(lnaddr_route);
+  ROUTE(wallet_route);   // the wallet's encrypted backup and daily limit (wallet.c)
   if (!strcmp(q.path, "/api/playtest/old-link") && !strcmp(q.method, "GET")) { old_link(&q); return; }
-  if (analytics_route(&q)) return;
-  if (access_route(&q)) return;   // before the admin routes and /api/auth (access.c)
-  if (upgrades_route(&q)) return;   // listed upgrades (makers.c), before the admin routes too
-  if (jobs_route(&q)) return;
-  if (flags_route(&q)) return;   // before the admin routes: /api/admin/flags is its (rooms.c, #13299)
-  if (email_route(&q)) return;   // before the admin routes: /api/admin/email is its
-  if (makers_route(&q)) return;   // before the admin routes: /api/admin/makers/... is its
-  if (npc_route(&q)) return;
-  if (anime_route(&q)) return;
-  if (worldbuilder_route(&q)) return;
-  if (worlds_route(&q)) return;
-  if (inference_route(&q)) return;
-  if (mesh_route(&q)) return;
-  if (piece_route(&q)) return;
-  if (voice_edit_route(&q)) return;
-  if (chat_route(&q)) return;   // before the rooms: /api/chat/state etc. are /chat's, any other /api/chat/<room> a room's
-  if (room_route(&q)) return;
-  if (seats_route(&q)) return;
-  if (metaverse_packs_route(&q)) return;
-  if (service_route(&q)) return;   // the service levels and alerts (service.c, #13297)
-  if (realms_route(&q)) return;   // before the players': /api/playtest/realms...
-  if (player_route(&q)) return;
-  if (private_route(&q)) return;
-  if (drops_route(&q)) return;
-  if (villa_route(&q)) return;
-  if (admin_route(&q)) return;
-  api_json(cl->fd, 404, "{\"error\":\"not found\"}");
+  ROUTE(analytics_route);
+  ROUTE(access_route);   // before the admin routes and /api/auth (access.c)
+  ROUTE(upgrades_route);   // listed upgrades (makers.c), before the admin routes too
+  ROUTE(jobs_route);
+  ROUTE(flags_route);   // before the admin routes: /api/admin/flags is its (rooms.c, #13299)
+  ROUTE(email_route);   // before the admin routes: /api/admin/email is its
+  ROUTE(makers_route);   // before the admin routes: /api/admin/makers/... is its
+  ROUTE(npc_route);
+  ROUTE(anime_route);
+  ROUTE(worldbuilder_route);
+  ROUTE(worlds_route);
+  ROUTE(inference_route);
+  ROUTE(mesh_route);
+  ROUTE(piece_route);
+  ROUTE(voice_edit_route);
+  ROUTE(chat_route);   // before the rooms: /api/chat/state etc. are /chat's, any other /api/chat/<room> a room's
+  ROUTE(room_route);
+  ROUTE(seats_route);
+  ROUTE(metaverse_packs_route);
+  ROUTE(service_route);   // the service levels and alerts (service.c, #13297)
+  ROUTE(realms_route);   // before the players': /api/playtest/realms...
+  ROUTE(player_route);
+  ROUTE(private_route);
+  ROUTE(drops_route);
+  ROUTE(villa_route);
+  ROUTE(admin_route);
+  api_error(cl->fd, 404, "not found");
 }
 
 // One connection: read until the head and its Content-Length of body are in, answer, close. A
@@ -385,12 +448,12 @@ static void serve_one(client *c) {
     if (k <= 0) break;
     c->n += (size_t)k; c->buf[c->n] = 0;
     char *end = strstr(c->buf, "\r\n\r\n");
-    if (!end) { if (c->n >= REQ_MAX - 1) { api_json(c->fd, 413, "{\"error\":\"too large\"}"); break; } continue; }
+    if (!end) { if (c->n >= REQ_MAX - 1) { api_error(c->fd, 413, "too large"); break; } continue; }
     size_t want = 0;
     for (char *line = strstr(c->buf, "\r\n"); line && line < end; line = strstr(line + 2, "\r\n"))
       if (!strncasecmp(line + 2, "Content-Length:", 15)) want = strtoul(line + 17, NULL, 10);
     size_t have = c->n - (size_t)(end + 4 - c->buf);
-    if (want > REQ_MAX - 8192) { api_json(c->fd, 413, "{\"error\":\"too large\"}"); break; }
+    if (want > REQ_MAX - 8192) { api_error(c->fd, 413, "too large"); break; }
     if (have < want) continue;
     handle(c, end, want);
     break;

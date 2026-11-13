@@ -34,7 +34,6 @@
 
 #define COOKIE "oa_project"
 #define SESSION_DAYS 30
-#define NO "{\"error\": \"not found\"}"   // as Postgres writes projects.no(): every refusal is the same bytes
 // Every private answer: never kept by a cache, never framed, no referrer.
 #define PRIVATE_HEADERS "Referrer-Policy: no-referrer\r\nX-Frame-Options: DENY\r\nVary: Cookie, Authorization\r\n"
 
@@ -101,7 +100,8 @@ bool site_identity(const request *q, PGconn *db, char who[65], bool *signed_req,
   return true;
 }
 
-static void no(const request *q) { api_respond(q->fd, 404, "application/json", PRIVATE_HEADERS, NO, strlen(NO)); }
+// {"error": "not found"}, as Postgres writes projects.no(): every refusal is the same bytes (error-wire.coax).
+static void no(const request *q) { char b[40]; size_t n = api_error_spaced_text(b, sizeof b, "not found"); api_respond(q->fd, 404, "application/json", PRIVATE_HEADERS, b, n); }
 
 // The page. Both shells name nothing: the slug is already in the address.
 // The engine's files are named by their content in the site's bucket, so the
@@ -198,7 +198,7 @@ static long agent_wake(const char *slug) {
   char tok[4096], auth[4200], body[128];
   if (!wake_token(url, tok, sizeof tok)) { api_log("agent wake: no token"); return 0; }
   snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
-  snprintf(body, sizeof body, "{\"slug\":\"%s\"}", slug);
+  api_word_text(body, sizeof body, "slug", slug);
   CURL *h = curl_easy_init();
   if (!h) return 0;
   wbuf b = {0};
@@ -258,15 +258,15 @@ bool private_route(const request *q) {
     // CSRF: a write comes from this site's pages (Origin), or is signed.
     bool has_origin = api_header(q, "Origin", from, sizeof from) != NULL;
     if ((has_origin && strcmp(from, origin())) || (!has_origin && !signed_req)) {
-      api_respond(q->fd, 403, "application/json", PRIVATE_HEADERS, "{\"error\":\"cross-site\"}", 22); return true;
+      api_error_with(q->fd, 403, PRIVATE_HEADERS, "cross-site"); return true;
     }
     if (!allowed("ip", ip, 60) || ((!strcmp(op, "redeem") || !strcmp(op, "claim")) && !allowed("redeem", ip, 10))) {
-      api_respond(q->fd, 429, "application/json", PRIVATE_HEADERS "Retry-After: 60\r\n", "{\"error\":\"slow down\"}", 21); return true;
+      api_error_with(q->fd, 429, PRIVATE_HEADERS "Retry-After: 60\r\n", "slow down"); return true;
     }
   }
-  if (q->body_len > 256 * 1024) { api_respond(q->fd, 413, "application/json", PRIVATE_HEADERS, "{\"error\":\"too large\"}", 21); return true; }
+  if (q->body_len > 256 * 1024) { api_error_with(q->fd, 413, PRIVATE_HEADERS, "too large"); return true; }
   PGconn *db = api_db();
-  if (!db) { api_respond(q->fd, 503, "application/json", PRIVATE_HEADERS, "{\"error\":\"no database\"}", 23); return true; }
+  if (!db) { api_error_with(q->fd, 503, PRIVATE_HEADERS, "no database"); return true; }
 
   // Who: a signature, checked once, else the cookie (pages only).
   char pubkey[65] = "";
@@ -288,7 +288,7 @@ bool private_route(const request *q) {
     if (sp && sp->session[0] && sp->pubkey[0]) snprintf(site, sizeof site, "%s", sp->pubkey);
   }
   if (post && pubkey[0] && !allowed("key", pubkey, runner_key(pubkey) ? 600 : 30)) {
-    api_respond(q->fd, 429, "application/json", PRIVATE_HEADERS "Retry-After: 60\r\n", "{\"error\":\"slow down\"}", 21); return true;
+    api_error_with(q->fd, 429, PRIVATE_HEADERS "Retry-After: 60\r\n", "slow down"); return true;
   }
 
   char who[800];
@@ -296,7 +296,7 @@ bool private_route(const request *q) {
            pubkey, token, site, origin(), pubkey[0] && admin_is(pubkey) ? "true" : "false", page_api ? "lines" : "json",
            agent_on(slug) ? "true" : "false", agent_cap());
   char *body = malloc(q->body_len + 3);
-  if (!body) { api_respond(q->fd, 503, "application/json", PRIVATE_HEADERS, "{\"error\":\"memory\"}", 18); return true; }
+  if (!body) { api_error_with(q->fd, 503, PRIVATE_HEADERS, "memory"); return true; }
   if (post && q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
   const char *what = page ? "shell" : op;
   // GETs read; everything else is a POST.
@@ -305,7 +305,7 @@ bool private_route(const request *q) {
   // KEY (docs/chat.md): the member's own Anthropic key or Claude token, checked and sealed as /chat's are.
   if (!strcmp(what, "key")) {
     free(body);
-    if (!allowed("keyset", ip, 6)) { api_respond(q->fd, 429, "application/json", PRIVATE_HEADERS "Retry-After: 60\r\n", "{\"error\":\"slow down\"}", 21); return true; }
+    if (!allowed("keyset", ip, 6)) { api_error_with(q->fd, 429, PRIVATE_HEADERS "Retry-After: 60\r\n", "slow down"); return true; }
     const char *kv[4] = {"key_owner", slug, "{}", who};
     PGresult *kr = PQexecParams(db, "SELECT (x->>'status')::int, coalesce(x->'body'->>'pubkey', '') FROM projects.api($1, $2, $3::jsonb, $4::jsonb) x", 4, NULL, kv, NULL, NULL, 0);
     char owner[65] = "";
@@ -329,8 +329,8 @@ bool private_route(const request *q) {
     bool theirs = state && !strncmp(state, "22", 2);
     api_log("private %s: sql %s", what, state ? state : "?");   // never the message: it can quote the document
     PQclear(r);
-    if (theirs) api_respond(q->fd, 400, "application/json", PRIVATE_HEADERS, "{\"error\":\"not json\"}", 20);
-    else api_respond(q->fd, 500, "application/json", PRIVATE_HEADERS, "{\"error\":\"not kept\"}", 20);
+    if (theirs) api_error_with(q->fd, 400, PRIVATE_HEADERS, "not json");
+    else api_error_with(q->fd, 500, PRIVATE_HEADERS, "not kept");
     return true;
   }
   int status = atoi(PQgetvalue(r, 0, 0));

@@ -78,7 +78,7 @@ static answer ask(PGconn *db, const char *sql, int n, const char *const *v) {
 }
 static void reply(int fd, answer a) {
   if (a.body) api_json(fd, a.status, a.body);
-  else api_json(fd, a.status, a.status == 400 ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+  else api_error(fd, a.status, a.status == 400 ? "not json" : "not kept");
   free(a.body); free(a.all);
 }
 #define Q(fn) "SELECT (x->>'status')::int, (x->'body')::text, x::text FROM " fn " x"
@@ -119,9 +119,9 @@ static void open_file(const request *q, PGconn *db, answer a) {
   bool opened = drops_open_upload(object, type, bytes, from, session, sizeof session);
   char out[2400];
   if (opened) {
-    snprintf(out, sizeof out, "{\"file\":\"%s\",\"upload\":\"%s\"}", file, session);
-    api_json(q->fd, 200, out);
-  } else api_json(q->fd, 503, "{\"error\":\"we could not open the upload: try again\"}");
+    if (api_words2_text(out, sizeof out, "file", file, "upload", session)) api_json(q->fd, 200, out);
+    else api_error(q->fd, 503, "we could not open the upload: try again");
+  } else api_error(q->fd, 503, "we could not open the upload: try again");
   _exit(0);
 }
 
@@ -134,7 +134,7 @@ static void scan_file(const request *q, PGconn *db, answer a) {
   drops_inspect(object, &size, &head);
   snprintf(sz, sizeof sz, "%lld", size);
   PGconn *c = api_db_new();
-  if (!c) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); free(head); _exit(0); }
+  if (!c) { api_error(q->fd, 503, "no database"); free(head); _exit(0); }
   const char *w[3] = {file, sz, head ? head : ""};
   answer s = ask(c, Q("villa.scanned($1, $2::bigint, decode($3, 'hex'))"), 3, w);
   if (s.all) deletes(c, s.all);
@@ -152,7 +152,7 @@ static void agent(const request *q, PGconn *db, answer a) {
   PGresult *r = PQexecParams(db, "SELECT ($1::jsonb->'request')::text", 1, NULL, v, NULL, NULL, 0);
   char *request = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 ? strdup(PQgetvalue(r, 0, 0)) : NULL;
   PQclear(r); free(a.body); free(a.all);
-  if (!request) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  if (!request) { api_error(q->fd, 500, "not kept"); return; }
   if (!in_child()) { free(request); return; }
   const char *model = env_or("OA_VILLA_MODEL", "gemini-3.8-flash");
   char url[512], tok[4096], auth[4200], http[16], took[16];
@@ -178,7 +178,7 @@ static void agent(const request *q, PGconn *db, answer a) {
   snprintf(http, sizeof http, "%ld", status);
   snprintf(took, sizeof took, "%d", (int)(api_now_ms() - t0));
   PGconn *c = api_db_new();
-  if (!c) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); _exit(0); }
+  if (!c) { api_error(q->fd, 503, "no database"); _exit(0); }
   const char *w[4] = {pet, http, b.p ? b.p : "", took};
   reply(q->fd, !strcmp(done, "emote") ? ask(c, Q("villa.emote_done($1, $2::int, $3, $4::int)"), 4, w)
                                       : ask(c, Q("villa.agent_done($1, $2::int, $3, $4::int)"), 4, w));
@@ -240,7 +240,7 @@ static void stream_file(const request *q, PGconn *db, answer a) {
   } else if (total > STREAM_WHOLE) snprintf(range, sizeof range, "Range: bytes=0-%lld", STREAM_PART - 1);
   if (!in_child()) return;
   char tok[4096], name[1024], url[2048], auth[4200];
-  if (!drops_token(tok, sizeof tok)) { api_json(q->fd, 503, "{\"error\":\"not now\"}"); _exit(0); }
+  if (!drops_token(tok, sizeof tok)) { api_error(q->fd, 503, "not now"); _exit(0); }
   size_t n = 0;
   for (const char *c = object; *c && n + 4 < sizeof name; c++) {
     unsigned char ch = (unsigned char)*c;
@@ -263,7 +263,7 @@ static void stream_file(const request *q, PGconn *db, answer a) {
   curl_easy_setopt(h, CURLOPT_WRITEDATA, &r);
   curl_easy_setopt(h, CURLOPT_TIMEOUT, 120L);
   curl_easy_perform(h);
-  if (!r.sent) { api_log("villa: the bucket answered %ld for a shown file", r.status); api_json(q->fd, 502, "{\"error\":\"not now\"}"); }
+  if (!r.sent) { api_log("villa: the bucket answered %ld for a shown file", r.status); api_error(q->fd, 502, "not now"); }
   curl_slist_free_all(hd); curl_easy_cleanup(h);
   _exit(0);
 }
@@ -280,7 +280,7 @@ static void html(char *out, size_t cap, const char *s) {
 
 // The old share link (/api/villa/m/<slug>): on to the memorial's own page.
 static void share(const request *q, const char *slug) {
-  for (const char *c = slug; *c; c++) if (!isalnum((unsigned char)*c)) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return; }
+  for (const char *c = slug; *c; c++) if (!isalnum((unsigned char)*c)) { api_error(q->fd, 404, "unknown"); return; }
   char to[200], head[300];
   snprintf(to, sizeof to, "/memorial/%.40s", slug);
   snprintf(head, sizeof head, "Location: %s\r\nCache-Control: public, max-age=3600\r\n", to);
@@ -362,32 +362,32 @@ static void memorial_page(const request *q, PGconn *db, const char *slug) {
   page_add(&b, found ? "s.dataset.page = \"0\"; s.dataset.text = m;\n" : "s.dataset.page = \"1\";\n");
   page_add(&b, "document.body.append(s);\n</script>\n</body>\n</html>\n");
   free(a.body); free(a.all);
-  if (!b.p) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!b.p) { api_error(q->fd, 503, "memory"); return; }
   api_respond(q->fd, found ? 200 : 404, "text/html; charset=utf-8", found ? "Cache-Control: public, max-age=60\r\n" : "Cache-Control: no-store\r\n", b.p, b.n);
   free(b.p);
 }
 
 bool villa_route(const request *q) {
   if (!strncmp(q->path, "/memorial/", 10) || !strcmp(q->path, "/memorial")) {
-    if (strcmp(q->method, "GET") && strcmp(q->method, "HEAD")) { api_json(q->fd, 405, "{\"error\":\"GET\"}"); return true; }
+    if (strcmp(q->method, "GET") && strcmp(q->method, "HEAD")) { api_error(q->fd, 405, "GET"); return true; }
     const char *slug = q->path[9] ? q->path + 10 : "";
     char want[40]; snprintf(want, sizeof want, "%.32s", slug);
     size_t wl = strlen(want); if (wl && want[wl - 1] == '/') want[wl - 1] = 0;   // /memorial/<slug>/ too
     PGconn *db = api_db();
-    if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+    if (!db) { api_error(q->fd, 503, "no database"); return true; }
     memorial_page(q, db, want);
     return true;
   }
   if (strncmp(q->path, PREFIX, strlen(PREFIX))) return false;
   const char *rest = q->path + strlen(PREFIX);
   bool post = !strcmp(q->method, "POST");
-  if (!post && strcmp(q->method, "GET")) { api_json(q->fd, 405, "{\"error\":\"GET or POST\"}"); return true; }
+  if (!post && strcmp(q->method, "GET")) { api_error(q->fd, 405, "GET or POST"); return true; }
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { api_error(q->fd, 503, "no database"); return true; }
   if (!strncmp(rest, "m/", 2) && !post) { share(q, rest + 2); return true; }
   if (post) {   // CSRF: a write comes from this site's pages
     char from[256];
-    if (api_header(q, "Origin", from, sizeof from) && strcmp(from, origin())) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
+    if (api_header(q, "Origin", from, sizeof from) && strcmp(from, origin())) { api_error(q->fd, 403, "cross-site"); return true; }
   }
   // The path as a Postgres text[] literal: segments of [A-Za-z0-9_-] only.
   char parts[300]; size_t pn = 0; int segs = 0;
@@ -396,16 +396,16 @@ bool villa_route(const request *q) {
     char ch = *p;
     if (ch == '/') { if (p[1] == 0) break; parts[pn++] = ','; continue; }
     bool ok = isalnum((unsigned char)ch) || ch == '_' || ch == '-';
-    if (!ok || pn + 3 >= sizeof parts) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
+    if (!ok || pn + 3 >= sizeof parts) { api_error(q->fd, 404, "unknown"); return true; }
     if (p == rest || p[-1] == '/') segs++;
     parts[pn++] = ch;
   }
   parts[pn++] = '}'; parts[pn] = 0;
-  if (!segs || segs > 5) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
+  if (!segs || segs > 5) { api_error(q->fd, 404, "unknown"); return true; }
   char key[160];
   api_header(q, "X-Verse-Player", key, sizeof key);
   char *body = malloc(q->body_len + 3);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+  if (!body) { api_error(q->fd, 503, "memory"); return true; }
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
   const char *v[6] = {q->method, parts, body, key, env_or("OA_DROPS_PREFIX", "dev"), env_or("OA_DROPS_BUCKET", "openagentsgemini-project-drops")};
   bool vases = !strncmp(rest, "vases", 5) && (rest[5] == 0 || rest[5] == '/');

@@ -1,0 +1,82 @@
+// The rooms list's profile check (Protocol E8, GitHub #13250): proto/verse/api-routes-v1alpha1.json
+// holds answers to GET /api/playtest/rooms/SLUG from both writers, a room server (rows whose "fn" is
+// rm_rooms: a --dev room's bytes) and the API (rows of rooms_route: SQL's bytes). For each
+//   - room answer: its members are read and it is written again through
+//     metaverse-engine/net/rooms-list.coax, the one codec, for the same bytes;
+//   - answer of either writer: the codec's reader gives the "join" the answer names.
+// The members' names are held to the RoomsList message by coax/web/api/routes-goldens.coax.
+//   coax/web/tool.sh coax/web/room/rooms-list-profile.coax [proto/verse/api-routes-v1alpha1.json]
+#import "Basic";
+#load "../../../metaverse-engine/net/rooms-list.coax";
+#load "../../lib/json/json.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/fs.coax";
+
+RLP_FIXTURE :: "proto/verse/api-routes-v1alpha1.json";
+RLP_PATH :: "/api/playtest/rooms/*";
+RlpWork :: struct { nodes: [262144] JvNode; body_nodes: [4096] JvNode; body: [65536] u8; back: [65536] u8; slug: [128] u8; code: [128] u8; }
+
+// SLUG-N's N, or 0.
+rlp_instance :: (code: string, slug: string) -> int {
+  if code.count <= slug.count + 1 || code[0..<slug.count] != slug || code[slug.count] != '-' { return 0; }
+  n := 0;
+  for c: code[slug.count + 1..<code.count] { if c < '0' || c > '9' { return 0; } n = n * 10 + cast(int) (c - '0'); }
+  return n;
+}
+// A room's answer written again through the codec: "" when it is the same bytes.
+rlp_room :: (w: [] RlpWork, body: string) -> string {
+  j: [1] Jv;
+  if !jv_parse(j[..], body, w[0].body_nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return "not a JSON object"; }
+  d := j[0];
+  sn := jv_str(d, jv_get(d, 0, "realm"), w[0].slug[..]);
+  if sn <= 0 { return "no realm"; }
+  slug := cast(string) w[0].slug[0..<sn];
+  cn := jv_str(d, jv_get(d, 0, "join"), w[0].code[..]);
+  join := ifx cn > 0 then rlp_instance(cast(string) w[0].code[0..<cn], slug) else 0;
+  with := 0;
+  if jv_get(d, 0, "with") >= 0 { cn = jv_str(d, jv_get(d, 0, "with"), w[0].code[..]); with = ifx cn > 0 then rlp_instance(cast(string) w[0].code[0..<cn], slug) else 0; }
+  k := rooms_list_open(w[0].back[..], slug, jv_int(d, jv_get(d, 0, "seats"), -1), join, with);
+  rooms := jv_get(d, 0, "rooms");
+  for i: 0..<jv_len(d, rooms) {
+    r := jv_at(d, rooms, i);
+    cn = jv_str(d, jv_get(d, r, "code"), w[0].code[..]);
+    k = rooms_list_room(w[0].back[..], k, i, slug, ifx cn > 0 then rlp_instance(cast(string) w[0].code[0..<cn], slug) else 0, jv_int(d, jv_get(d, r, "players"), -1));
+  }
+  k = rooms_list_close(w[0].back[..], k);
+  if k < 0 || cast(string) w[0].back[0..<k] != body { return "written again through rooms-list.coax it is not the same bytes"; }
+  return "";
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  path := ifx loaded && args_count(args[..]) >= 1 then args_at(args[..], 0) else RLP_FIXTURE;
+  buf: [4194304] u8; j: [1] Jv; w: [1] RlpWork;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { tool_errln("rooms-list-profile: cannot read the fixture"); return 2; }
+  if !jv_parse(j[..], cast(string) buf[0..<n], w[0].nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("FAIL  cannot parse the fixture\n"); return 1; }
+  d := j[0]; routes := jv_get(d, 0, "routes"); goldens := jv_get(d, 0, "goldens");
+  bad := 0; room_n := 0; api_n := 0;
+  // the check bites: a list with its members turned round is not the room's bytes
+  if rlp_room(w[..], "{\"game\":\"everglade\",\"realm\":\"town\",\"seats\":16,\"join\":\"town-1\",\"rooms\":[]}") == "" ||
+     rlp_room(w[..], "{\"realm\":\"town\",\"game\":\"everglade\",\"seats\":16,\"join\":\"town-1\",\"rooms\":[]}") != "" { print("FAIL  the check takes a body it should refuse, or refuses one it should take\n"); return 1; }
+  k := ifx jv_kind(d, goldens) == JV_ARRAY then d.nodes[goldens].first else -1;
+  while k != -1 {
+    row := jv_at(d, routes, jv_int(d, jv_get(d, k, "route"), -1));
+    fn := jv_raw(d, jv_get(d, row, "fn"));
+    if row >= 0 && jv_raw(d, jv_get(d, row, "path")) == RLP_PATH && jv_int(d, jv_get(d, row, "status"), 0) == 200 && (fn == "rm_rooms" || fn == "rooms_route") {
+      bn := jv_str(d, jv_get(d, k, "body"), w[0].body[..]);
+      body := cast(string) w[0].body[0..<(ifx bn < 0 then 0 else bn)];
+      why := ifx fn == "rm_rooms" then rlp_room(w[..], body) else "";
+      if why == "" && rooms_list_join(body) == "" { why = "the reader finds no join"; }
+      if why != "" { print("FAIL  a % answer: %\n  %\n", fn, why, body); bad += 1; }
+      else { print("ok    % join % %\n", fn, rooms_list_join(body), ifx rooms_list_with_full(body) then "(with_full)" else ""); }
+      if fn == "rm_rooms" { room_n += 1; } else { api_n += 1; }
+    }
+    k = d.nodes[k].next;
+  }
+  if room_n == 0 || api_n == 0 { print("FAIL  the fixture needs an answer from each writer (the room's %, the API's %)\n", room_n, api_n); bad += 1; }
+  print("%\n", ifx bad == 0 then "rooms list profile holds" else "rooms list profile fails");
+  return ifx bad == 0 then 0 else 1;
+}

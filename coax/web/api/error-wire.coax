@@ -1,0 +1,81 @@
+// The API's refusal on the wire for every route file's C (Protocol, GitHub #13250):
+// proto/openagents/api/v1alpha1/error.proto's ErrorReply, {"error":"WORDS"}, through api-wire.coax.
+// api.c's api_error, api_error_with and api_error_text call the #export_c writers below through
+// error-wire.generated.c (api-sources.sh, deploy.sh, the Dockerfile); no route file spells the body
+// itself. The words are escaped as JSON. The routes' own words hold no quote, backslash or control
+// byte, so the bytes are the ones the C wrote before this file; words from a caller or the database
+// that do hold one are now escaped where the C wrote them raw.
+//   erw_error_write          {"error":"WORDS"}
+//   erw_error_spaced_write   {"error": "WORDS"}, as Postgres writes a jsonb refusal (projects.no())
+//   erw_error_num_write      {"error":"WORDS","KEY":N}, a refusal with one number (a wait, an until)
+//   erw_error_word_write     {"error":"WORDS","KEY":"WORD"}, a refusal with one word (what is needed)
+//   erw_num_write            {"KEY":N}, a count or an amount alone (analytics' kept, inference's credit_msat)
+//   erw_word_write           {"KEY":"WORD"}, one word (the drops sign-in's pubkey, a wake's slug); KEY "" is {} (a sign-out)
+//   erw_words2_write         {"KEY":"WORD","KEY2":"WORD2"}, two words (the villa's upload session)
+// KEY is a member's name in the route's own message (proto/openagents/api/v1alpha1/); a KEY that is
+// not lower-case letters, digits and "_" is refused. A writer returns the body's length, or -1 when
+// it does not fit.
+// Goldens: proto/verse/api-routes-v1alpha1.json, checked by routes-goldens.coax.
+//   coax/bin/coax test coax/web/api/error-wire.coax --library
+#load "api-wire.coax";
+
+erw_key_ok :: (key: string) -> bool #effects(all) {
+  if key.count < 1 || key.count > 32 { return false; }
+  for c: key { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') { return false; } }
+  return true;
+}
+erw_error_write :: (text: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); aw_error(o[..], text); return aw_len(o[..]);
+}
+erw_error_spaced_write :: (text: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); jo_put(o[..], "{\"error\": "); jo_quoted(o[..], text); jo_put(o[..], "}"); return aw_len(o[..]);
+}
+erw_error_num_write :: (text: string, key: string, num: int, out: [] u8) -> int #export_c #effects(all) {
+  if !erw_key_ok(key) { return -1; }
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"error\":"); jo_quoted(o[..], text); jo_put(o[..], ",\""); jo_put(o[..], key); jo_put(o[..], "\":"); jo_int(o[..], num); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+erw_error_word_write :: (text: string, key: string, word: string, out: [] u8) -> int #export_c #effects(all) {
+  if !erw_key_ok(key) { return -1; }
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"error\":"); jo_quoted(o[..], text); jo_put(o[..], ",\""); jo_put(o[..], key); jo_put(o[..], "\":"); jo_quoted(o[..], word); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+erw_num_write :: (key: string, num: int, out: [] u8) -> int #export_c #effects(all) {
+  if !erw_key_ok(key) { return -1; }
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\""); jo_put(o[..], key); jo_put(o[..], "\":"); jo_int(o[..], num); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+erw_word_write :: (key: string, word: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  if key == "" { jo_put(o[..], "{}"); return aw_len(o[..]); }
+  if !erw_key_ok(key) { return -1; }
+  jo_put(o[..], "{\""); jo_put(o[..], key); jo_put(o[..], "\":"); jo_quoted(o[..], word); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+erw_words2_write :: (key: string, word: string, key2: string, word2: string, out: [] u8) -> int #export_c #effects(all) {
+  if !erw_key_ok(key) || !erw_key_ok(key2) { return -1; }
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\""); jo_put(o[..], key); jo_put(o[..], "\":"); jo_quoted(o[..], word);
+  jo_put(o[..], ",\""); jo_put(o[..], key2); jo_put(o[..], "\":"); jo_quoted(o[..], word2); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+
+#test "the refusal's four spellings; a bad key and too small a buffer are -1" {
+  b: [128] u8;
+  n := erw_error_write("no database", b[..]); #assert cast(string) b[0..<n] == "{\"error\":\"no database\"}";
+  n = erw_error_write("a \"b\"", b[..]); #assert cast(string) b[0..<n] == "{\"error\":\"a \\\"b\\\"\"}";
+  n = erw_error_spaced_write("not found", b[..]); #assert cast(string) b[0..<n] == "{\"error\": \"not found\"}";
+  n = erw_error_num_write("slow down", "retry_ms", 1500, b[..]); #assert cast(string) b[0..<n] == "{\"error\":\"slow down\",\"retry_ms\":1500}";
+  n = erw_error_num_write("muted", "until", -1, b[..]); #assert cast(string) b[0..<n] == "{\"error\":\"muted\",\"until\":-1}";
+  n = erw_error_word_write("invite only", "need", "invite", b[..]); #assert cast(string) b[0..<n] == "{\"error\":\"invite only\",\"need\":\"invite\"}";
+  #assert erw_error_num_write("x", "Until", 1, b[..]) == -1 && erw_error_word_write("x", "", "y", b[..]) == -1 && erw_error_word_write("x", "a\"b", "y", b[..]) == -1;
+  n = erw_num_write("kept", 3, b[..]); #assert cast(string) b[0..<n] == "{\"kept\":3}";
+  n = erw_words2_write("file", "a.png", "upload", "https://x/y?z=1", b[..]); #assert cast(string) b[0..<n] == "{\"file\":\"a.png\",\"upload\":\"https://x/y?z=1\"}";
+  n = erw_word_write("pubkey", "ab12", b[..]); #assert cast(string) b[0..<n] == "{\"pubkey\":\"ab12\"}";
+  n = erw_word_write("", "", b[..]); #assert cast(string) b[0..<n] == "{}" && erw_word_write("Slug", "x", b[..]) == -1 && erw_word_write("slug", "x", b[0..<11]) == -1;
+  #assert erw_num_write("Kept", 3, b[..]) == -1 && erw_words2_write("file", "a", "", "b", b[..]) == -1 && erw_num_write("kept", 3, b[0..<9]) == -1;
+  #assert erw_error_write("no database", b[0..<22]) == -1 && erw_error_spaced_write("x", b[0..<5]) == -1;
+}

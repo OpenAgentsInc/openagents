@@ -21,7 +21,7 @@ def captured(method, path, body, status, answer, headers):
     if CAPTURE:
         with open(os.path.join(CAPTURE, "py.jsonl"), "a") as f:
             f.write(json.dumps({"method": method, "path": path, "body": (body or b"").decode("latin-1"), "status": status,
-                                "type": headers.get("Content-Type", ""), "answer": answer.decode("latin-1")}) + "\n")
+                                "type": headers.get("Content-Type", ""), "route": headers.get("X-OA-Route", ""), "answer": answer.decode("latin-1")}) + "\n")
     return status, answer, headers
 
 
