@@ -8,7 +8,12 @@
 // A shared router.json (~/.openagents/coder/router.json) selects local
 // Elephant or an explicit Pylon System One door. Without that configuration
 // the legacy Baseten Mammoth path remains. The desktop clients create a
-// local, keyless config and never fall back to Baseten.
+// local, keyless config and never fall back to Baseten. A "door" of
+// "gemini-decision-1" in router.json, or CODER_ROUTE_DOOR=gemini-decision-1,
+// sends the same three questions to Google's Gemini Decision 1 instead
+// (gemini.coax, #13469); the task then leaves this machine, so the consent
+// ledger decides first. docs/research/2026-11-13-gemini-decision-1.md has the
+// comparison with mammoth-1.
 //
 // Two steps, because the owner keeps its own consent ledger: agr_begin reads
 // the config, the eligible engines and the question; when agr_needs_grant
@@ -23,6 +28,7 @@
 // Moved from coder/tui/route.coax without a change in behaviour.
 
 #load "../../systemone/systemone.coax";
+#load "../../systemone/gemini.coax";
 #load "../../sys/fs.coax";
 #load "../session/stream.coax";
 #load "route-policy.coax";
@@ -51,6 +57,8 @@ AGR_EFFORTS :: [3] string.["low", "medium", "high"];
 AGR_EFFORT_LABELS :: [3] string.["Low: answer directly, little thinking", "Medium: some thought", "High: careful reasoning for hard problems"];
 AGR_SURE :: 0.5;            // below this the person's default engine runs, and the owner says so
 AGR_BASETEN_ENV :: "/work/.secrets/baseten.env";
+AGR_GEMINI_ENV :: "/work/.secrets/openagents-gemini-provider.env";
+AGR_DOOR_ENV :: "CODER_ROUTE_DOOR";
 
 AgRoute :: struct {
   ok: bool;
@@ -70,7 +78,7 @@ AgRoute :: struct {
 AgrAsk :: struct {
   state: [32768] u8; nstate: int;
   cfg: [4096] u8; arbuf: [4096] u8; ub: [2048] u8;
-  url: string; remote: bool; elephant: bool;
+  url: string; remote: bool; elephant: bool; gemini: bool;
   key: [512] u8;                 // a Baseten key read from the env file, for curl's environment only; wiped after the ask
   client: SoClient;
 }
@@ -166,22 +174,43 @@ agr_env_value :: (text: string, name: string) -> string {
   return "";
 }
 
-// A System One client with its key: from BASETEN_API_KEY, or from
-// ~/work/.secrets/baseten.env into kb, for curl's environment only. "" when
-// it is ready, else why not. Wipe kb after the call.
-agr_keyed :: (c: [] SoClient, kb: [] u8) -> string {
-  c[0] = SoClient.{};
+// The key named env, from this process's environment, or from file (under
+// HOME) into kb, for curl's environment only: "" when c is ready, else
+// missing. Wipe kb after the call.
+agr_key :: (c: [] SoClient, kb: [] u8, env: string, file: string, missing: string) -> string {
   ev: [16] u8;
-  if cl_getenv(SO_BASETEN_KEY_ENV, ev[..]).count > 0 { return ""; }
+  if cl_getenv(env, ev[..]).count > 0 { return ""; }
   hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
-  pb: [1200] u8; pn := agr_cat(pb[..], agr_cat(pb[..], 0, home), AGR_BASETEN_ENV);
+  pb: [1200] u8; pn := agr_cat(pb[..], agr_cat(pb[..], 0, home), file);
   fb: [8192] u8; nf := fs_read(cast(string) pb[0..<pn], fb[..]);
-  v := agr_env_value(cast(string) fb[0..<ifx nf > 0 then nf else 0], SO_BASETEN_KEY_ENV);
+  v := agr_env_value(cast(string) fb[0..<ifx nf > 0 then nf else 0], env);
   kn := ifx v.count <= kb.count then agr_cat(kb, 0, v) else 0;
   for i: 0..<fb.count { fb[i] = 0; }
-  if kn == 0 { return "no System One key: set BASETEN_API_KEY or add it to ~/work/.secrets/baseten.env"; }
+  if kn == 0 { return missing; }
   c[0].key_value = cast(string) kb[0..<kn];
   return "";
+}
+
+// A System One client with its key: from BASETEN_API_KEY, or from
+// ~/work/.secrets/baseten.env.
+agr_keyed :: (c: [] SoClient, kb: [] u8) -> string {
+  c[0] = SoClient.{};
+  return agr_key(c, kb, SO_BASETEN_KEY_ENV, AGR_BASETEN_ENV, "no System One key: set BASETEN_API_KEY or add it to ~/work/.secrets/baseten.env");
+}
+
+// Gemini Decision 1's client with its key: from GEMINI_API_KEY, or from
+// ~/work/.secrets/openagents-gemini-provider.env.
+agr_gemini_keyed :: (c: [] SoClient, kb: [] u8) -> string {
+  c[0] = so_gemini("");
+  return agr_key(c, kb, GD_KEY_ENV, AGR_GEMINI_ENV, "no Gemini key: set GEMINI_API_KEY or add it to ~/work/.secrets/openagents-gemini-provider.env");
+}
+
+// The door router.json or CODER_ROUTE_DOOR (which wins) names: 0 none (the
+// URL or the legacy default), 1 Gemini Decision 1, -1 a door this router
+// does not know.
+agr_door :: (env_door: string, config_door: string) -> int {
+  door := ifx env_door.count > 0 then env_door else config_door;
+  return ifx door.count == 0 then 0 else ifx door == GD_MODEL then 1 else -1;
 }
 
 agr_fail :: (r: [] AgRoute, why: string) { r[0].ok = false; r[0].nwhy = agr_cat(r[0].why[..], 0, why); }
@@ -207,9 +236,13 @@ agr_begin :: (task: string, local: bool, r: [] AgRoute, q: [] AgrAsk) -> bool {
   if config.count>0 && cl_raw(config,"schema")!="\"coder.router.v1\"" {agr_fail(r,"router.json needs schema coder.router.v1");return false;}
   if config.count>0 && cl_raw(config,"remote")!="true" && cl_raw(config,"remote")!="false" {agr_fail(r,"router.json remote must be a boolean");return false;}
   config_ar:[1]ClArena; config_ar[0]=ClArena.{buf=q[0].arbuf[..]};
+  db:[64]u8; door:=agr_door(cl_getenv(AGR_DOOR_ENV,db[..]),cl_str(config_ar[..],config,"door"));
+  if door<0 {agr_fail(r,"the route door must be gemini-decision-1");return false;}
+  gemini:=door==1;
   url:=cl_getenv(SO_PSIONIC_URL_ENV,q[0].ub[..]);
   if url.count==0 {url=cl_str(config_ar[..],config,"url");}
-  if exists && url.count==0 {agr_fail(r,"router.json needs a System One URL");return false;}
+  if gemini {url="";}
+  if exists && url.count==0 && !gemini {agr_fail(r,"router.json needs a System One URL");return false;}
   remote:=cl_raw(config,"remote")=="true";
   rb:[16]u8; if cl_getenv("CODER_ROUTE_REMOTE",rb[..])=="1" {remote=true;}
   elephant:=url.count>0;
@@ -233,9 +266,10 @@ agr_begin :: (task: string, local: bool, r: [] AgRoute, q: [] AgrAsk) -> bool {
   why:="";
   if elephant {cb[0]=SoClient.{url=url,key_env="",timeout_s=8};
     keycheck:[1]u8; if cl_getenv(SO_PSIONIC_KEY_ENV,keycheck[..]).count>0 {cb[0].key_env=SO_PSIONIC_KEY_ENV;cb[0].scheme="Bearer";}
+  } else if gemini {why=agr_gemini_keyed(cb[..],q[0].key[..]);r[0].nsource=agr_cat(r[0].source[..],0,GD_MODEL);r[0].nmodel=agr_cat(r[0].model[..],0,GD_MODEL);
   } else {why=agr_keyed(cb[..],q[0].key[..]);}
   if why.count > 0 { agr_fail(r, why); return false; }
-  q[0].client = cb[0]; q[0].url = url; q[0].remote = remote; q[0].elephant = elephant;
+  q[0].client = cb[0]; q[0].url = url; q[0].remote = remote; q[0].elephant = elephant; q[0].gemini = gemini;
   return true;
 }
 
@@ -253,7 +287,8 @@ agr_ask :: (q: [] AgrAsk, r: [] AgRoute) {
   buf: [16384] u8; b: [1] SoBody;
   if elephant {agr_elephant_body(b[..],buf[..],state,r[0].eligible);} else {agr_body(b[..], buf[..], state);}
   out: [65536] u8; err: [4096] u8;
-  res := so_decide(c, b[..], out[..], err[..]);
+  scratch: [65536] u8;
+  res := ifx q[0].gemini then so_decide_gemini(c, b[..], out[..], err[..], scratch[..]) else so_decide(c, b[..], out[..], err[..]);
   agr_wipe(q);
   if res.problem.count > 0 { agr_fail(r, ifx res.stderr.count > 0 then res.stderr else res.problem); return; }
   mab: [4096] u8; mar: [1] ClArena; mar[0] = ClArena.{buf = mab[..]};
@@ -338,6 +373,11 @@ agr_json :: (r: [] AgRoute, ran: string, out: [] u8) -> string {
   r[0].ok = true; r[0].nengine = agr_cat(r[0].engine[..], 0, "codex"); r[0].probability = 0.05; r[0].difficulty = 1;
   r[0].neffort = agr_cat(r[0].effort[..], 0, "low"); r[0].nsource = agr_cat(r[0].source[..], 0, "local-elephant");
   #assert agr_json(r[..], "codex", b[..]) == "{\"kind\":\"route\",\"ok\":true,\"schema\":\"coder.route.v2\",\"source\":\"local-elephant\",\"model\":\"\",\"engine\":\"codex\",\"probability\":0.050,\"difficulty\":1,\"effort\":\"low\",\"eligible_mask\":4,\"blocked_mask\":0,\"allowed_mask\":15,\"ran\":\"codex\"}";
+}
+
+#test "the route door: CODER_ROUTE_DOOR over router.json, Gemini Decision 1 or none" {
+  #assert agr_door("", "") == 0 && agr_door("", "gemini-decision-1") == 1 && agr_door("gemini-decision-1", "") == 1;
+  #assert agr_door("gemini-decision-1", "jev") == 1 && agr_door("jev", "gemini-decision-1") == -1 && agr_door("", "mammoth-1") == -1;
 }
 
 #test "env files: export prefixes and quotes" {

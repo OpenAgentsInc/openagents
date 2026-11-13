@@ -1,0 +1,95 @@
+// Coder's engine route on two doors (#13469): each labelled message in
+// route-labels.tsv goes to mammoth-1 (Baseten, the legacy default) and to
+// Gemini Decision 1 (Google) with the same state and the same three
+// questions (route.coax: agr_body). Prints each row, then each door's
+// accuracy against the labels, how often the doors agree, and their latency.
+//
+//   coax/bin/coax c coder/tui/route-door-eval.coax > /tmp/rde.c && clang -std=c11 -O1 -Icoax/platform -o /tmp/rde /tmp/rde.c coax/platform/process-native.c coax/platform/store-file-native.c -lm
+//   /tmp/rde                                   the held-out half
+//   ROUTE_EVAL_SPLIT=train /tmp/rde            the tuning half (or all)
+//
+// Keys: BASETEN_API_KEY and GEMINI_API_KEY, or their ~/work/.secrets files
+// (agr_keyed, agr_gemini_keyed), into curl's environment only. Live: two
+// calls per message, about 520 Gemini input tokens each ($0.00005).
+
+#import "Basic";
+#load "../../coax/lib/agent/engine/route.coax";
+
+RdeDoor :: struct { right: int; answered: int; ms: [64] int; n: int; tokens: int; }
+
+RdeAnswer :: struct { ok: bool; engine: [16] u8; nengine: int; p: f64; level: int; effort: [16] u8; neffort: int; ms: int; tokens: int; why: string; }
+
+rde_ask :: (c: SoClient, gemini: bool, state: string, eb: [] u8) -> RdeAnswer {
+  a: RdeAnswer;
+  buf: [16384] u8; b: [1] SoBody; out: [65536] u8; err: [4096] u8; scratch: [65536] u8;
+  agr_body(b[..], buf[..], state);
+  t0 := cxproc_now_ms();
+  r := ifx gemini then so_decide_gemini(c, b[..], out[..], err[..], scratch[..]) else so_decide(c, b[..], out[..], err[..]);
+  a.ms = cxproc_now_ms() - t0;
+  if r.problem.count > 0 { n := agr_cat(eb, 0, r.problem); a.why = cast(string) eb[0..<n]; return a; }
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  e := so_choice_of(ar[..], r.body, "engine");
+  if !e.ok { a.why = "no engine"; return a; }
+  a.ok = true; a.nengine = agr_cat(a.engine[..], 0, e.choice); a.p = e.probability;
+  d := so_score_of(r.body, "difficulty"); a.level = ifx d.ok then d.level else -1;
+  f := so_choice_of(ar[..], r.body, "effort"); a.neffort = agr_cat(a.effort[..], 0, ifx f.ok then f.choice else "");
+  a.tokens = r.usage.input_tokens;
+  return a;
+}
+
+// The state agr_begin sends for message on a machine with Claude Code and
+// Codex installed and claude, codex and micro eligible.
+rde_state :: (message: string, out: [] u8) -> string {
+  state := agr_state(message, true, true, false, out);
+  n := json_raw(out, state.count - 1, ",\"task_truncated\":false,\"eligible_engines\":[\"claude\",\"codex\",\"micro\"]}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+rde_median :: (d: [] RdeDoor) -> int {
+  m: [64] int; for i: 0..<d[0].n { m[i] = d[0].ms[i]; }
+  for i: 0..<d[0].n { for k: i+1..<d[0].n { if m[k] < m[i] { t := m[i]; m[i] = m[k]; m[k] = t; } } }
+  return ifx d[0].n == 0 then 0 else m[d[0].n / 2];
+}
+
+rde_mean :: (d: [] RdeDoor) -> int {
+  s := 0; for i: 0..<d[0].n { s += d[0].ms[i]; }
+  return ifx d[0].n == 0 then 0 else s / d[0].n;
+}
+
+main :: () {
+  sb: [16] u8; split := cl_getenv("ROUTE_EVAL_SPLIT", sb[..]); if split.count == 0 { split = "held"; }
+  text: [16384] u8; tn := fs_read("coder/tui/route-labels.tsv", text[..]);
+  if tn <= 0 { print("route-door-eval: run from the repo root\n"); return; }
+  mc: [1] SoClient; mk: [512] u8; gc: [1] SoClient; gk: [512] u8;
+  why := agr_keyed(mc[..], mk[..]); if why.count > 0 { print("mammoth-1: %\n", why); return; }
+  why = agr_gemini_keyed(gc[..], gk[..]); if why.count > 0 { print("gemini-decision-1: %\n", why); return; }
+  m: [1] RdeDoor; g: [1] RdeDoor; agree := 0; rows := 0;
+  at := 0; first := true;
+  while at < tn {
+    e := at; while e < tn && text[e] != 10 { e += 1; }
+    line := cast(string) text[at..<e]; at = e + 1;
+    if first { first = false; continue; }
+    t1 := 0; while t1 < line.count && line[t1] != 9 { t1 += 1; }
+    t2 := t1 + 1; while t2 < line.count && line[t2] != 9 { t2 += 1; }
+    if t2 >= line.count { continue; }
+    row_split := cast(string) line[0..<t1]; label := cast(string) line[t1+1..<t2]; message := cast(string) line[t2+1..<line.count];
+    if split != "all" && row_split != split { continue; }
+    st: [4096] u8; state := rde_state(message, st[..]);
+    meb: [512] u8; geb: [512] u8;
+    a := rde_ask(mc[0], false, state, meb[..]);
+    b := rde_ask(gc[0], true, state, geb[..]);
+    rows += 1;
+    ma := cast(string) a.engine[0..<a.nengine]; ga := cast(string) b.engine[0..<b.nengine];
+    if a.ok { m[0].answered += 1; m[0].ms[m[0].n] = a.ms; m[0].n += 1; if ma == label { m[0].right += 1; } }
+    if b.ok { g[0].answered += 1; g[0].ms[g[0].n] = b.ms; g[0].n += 1; g[0].tokens += b.tokens; if ga == label { g[0].right += 1; } }
+    if a.ok && b.ok && ma == ga { agree += 1; }
+    print("% | mammoth % p=% level % effort % %ms % | gemini % p=% level % effort % %ms % tokens % | %\n", label,
+      ifx a.ok then ma else "-", a.p, a.level, cast(string) a.effort[0..<a.neffort], a.ms, a.why,
+      ifx b.ok then ga else "-", b.p, b.level, cast(string) b.effort[0..<b.neffort], b.ms, b.why, b.tokens, message);
+  }
+  for i: 0..<mk.count { mk[i] = 0; } for i: 0..<gk.count { gk[i] = 0; }
+  print("split %: % messages\n", split, rows);
+  print("mammoth-1: %/% right, % answered, median %ms, mean %ms\n", m[0].right, rows, m[0].answered, rde_median(m[..]), rde_mean(m[..]));
+  print("gemini-decision-1: %/% right, % answered, median %ms, mean %ms, % input tokens\n", g[0].right, rows, g[0].answered, rde_median(g[..]), rde_mean(g[..]), g[0].tokens);
+  print("the doors agree on %/%\n", agree, rows);
+}

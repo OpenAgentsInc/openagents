@@ -11,6 +11,16 @@ loopback, answering as `SO_PSIONIC_ELEPHANT` at `SO_PSIONIC_URL`
 (`SoClient.{url = SO_PSIONIC_URL, key_env = ""}`; a `key_env` of `""` sends no
 Authorization header). The Mac app's Lab uses it.
 
+Google's **Gemini Decision 1** (`gemini-decision-1`) is a door too.
+`google.coax` writes and reads Google's Decisions API bodies and maps them to
+and from ours, and `gemini.coax` sends them: `gd_decide` for Google's shape
+with text, image, audio, video and PDF input, or `so_decide_gemini` for a
+System One body. The key goes in `x-goog-api-key` from `GEMINI_API_KEY`.
+[`docs/research/2026-11-13-gemini-decision-1.md`](../../../docs/research/2026-11-13-gemini-decision-1.md)
+covers the mapping and what it loses, the price, the rate limits, and what
+you can't send. `gemini-smoke.sh` runs it against a stand-in, and
+`gemini-smoke.sh --live` runs it against Google.
+
 ```jai
 #load "coax/lib/systemone/systemone.coax";   // link coax/platform/process-native.c
 

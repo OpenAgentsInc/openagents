@@ -18,7 +18,7 @@
 //   b: [1] GdBody;
 //   gd_begin(b[..], buf[..], GD_MODEL);
 //   gd_text(b[..], "The blue mug I ordered on Monday arrived cracked.");
-//   gd_image(b[..], "image/png", png_bytes, "low");
+//   gd_media(b[..], "image/png", png_bytes, "low");
 //   gd_noul(b[..], "damaged", "Did the item arrive damaged?", "", "");
 //   gd_choice(b[..], "queue", "Which support queue should handle this?", keys[..], labels[..]);
 //   gd_score(b[..], "urgency", "How urgent is it?", levels[..]);
