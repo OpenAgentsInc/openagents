@@ -46,6 +46,7 @@
 //   coax/bin/coax test apps/openagents-web/chat-web.coax
 
 #load "../../components/kit/frames.coax";
+#load "chat-tools.coax";                     // tool calls: what each is called, how it stands, a run drawn (#13481)
 #load "site-side.coax";                      // the side's rules: places, who is logged in, search, sections
 #load "settings-web.coax";                   // Settings in the shell: its sections, its search, Account, Limits, About
 #load "chat-settings.coax";                  // and the sections that are this module's state: Agents and models, Appearance
@@ -58,7 +59,7 @@
 CW_INBOX :: 16384;     // a field's text, or a piece of the answer's stream, from the host
 CW_DRAFT :: 16384;     // a message's most, in bytes: what is typed past it is not taken
 CW_ANSWER :: 49152;    // an answer's most, in bytes
-CW_CSS :: 24576;
+CW_CSS :: 32768;
 CW_MESSAGES :: 128;    // messages kept
 CW_POOL :: 524288;     // bytes of their text kept
 CW_SHOWN :: 98304;     // bytes of text the page shows at once (the tree holds 131072)
@@ -68,12 +69,12 @@ CW_EVENT :: 32768;     // one event of the stream
 CW_ERROR :: 320;
 CW_RESP :: 262144;     // an answer that isn't a stream (a turn, the account, a piece of a session's log)
 CW_SESS :: 50;         // Coder sessions listed beside the chat
-CW_TOOL_LINE :: 160;   // a tool call's line, at most
-CW_TOOL_MOST :: 4000;  // one run of tool calls, at most
+CW_TOOL_LINE :: 160;   // a step's own words, at most
+CW_TOOL_MOST :: 65536; // one run of tool calls, at most (a record each: chat-tools.coax)
 CW_KEY :: 400;         // a pasted key's most
-CW_TOOLS :: 2048;      // the running turn's tools, as lines
+CW_TOOLS :: 32768;     // the running turn's tools, as records (chat-tools.coax)
 CW_META :: 64;         // the line under an answer
-CW_YOU :: 0; CW_AGENT :: 1; CW_TOOL :: 2; CW_CARD :: 3;   // a message is the person's, an answer, a run of tool calls (a line each), or a world's card (world.card.v1)
+CW_YOU :: 0; CW_AGENT :: 1; CW_TOOL :: 2; CW_CARD :: 3;   // a message is the person's, an answer, a run of tool calls (a record each, chat-tools.coax), or a world's card (world.card.v1)
 CW_CHAT :: 0;
 // The models, Gemini's first: a Claude one is offered only while a Claude account is connected.
 // The models: Google's, Claude's on the connected account (the hosted agent), and the agents on this
@@ -117,6 +118,8 @@ CF_WORLDS :: 20;        // the worlds the person may edit, under Worlds in the s
 CF_LIMITS :: 21;        // Settings, Limits: every login limit (/api/auth/limits?as=lines)
 CF_ABOUT :: 22;         // Settings, About: the release this page is from (/build/about.txt)
 CW_PLAN_ASK :: 24576;   // bytes of the conversation sent with a turn in the editor (the world goes with it)
+// A world step's realm tool (turn.coax WT_TOOL; a size is a set), for its icon and how a run of them is named.
+CW_STEP_TOOLS :: [7] string.["realm_world_place", "realm_world_move", "realm_world_turn", "realm_world_set", "realm_world_remove", "realm_world_undo", "realm_world_redo"];
 CW_CL :: 8;            // Claude Code conversations listed beside the chat
 CW_CL_EVERY :: 5.0;    // seconds between reads of them
 CW_LOCAL_WAIT :: 12.0; // seconds a request to Coder on this machine may go unanswered before it is given up, so one that hangs can't stop the page
@@ -167,7 +170,9 @@ ChatWeb :: struct {
   stopping: bool;                    // Stop was pressed on a Claude turn: it ends when the runner says so
   stop_sent: bool;                   // and the runner has been asked
   working: [CW_ERROR] u8; working_n: int;   // what the running turn says it is doing
-  tools: [CW_TOOLS] u8; tools_n: int; ntools: int;   // its tools so far, a line each
+  tools: [CW_TOOLS] u8; tools_n: int; ntools: int;   // its tools so far, a record each
+  opens: [CQ_OPENS] int; opens_n: int;   // the tool calls, groups and runs opened (chat-tools.coax cq_toggle)
+  wbuf: [CW_TOOL_MOST] u8;           // a run of tool calls as an answer changes it
   meta: [CW_MESSAGES] [CW_META] u8; meta_n: [CW_MESSAGES] int;   // the line under each answer: who wrote it
   local: int;                        // Coder on this machine: 0 not asked yet, 1 it answers, -1 it doesn't
   local_off: bool;                   // the agents on this machine are turned off in this browser (kept by the host)
@@ -461,16 +466,8 @@ cw_transcript :: (s: [] ChatWeb) {
       continue;
     }
     if s[0].who[k] == CW_TOOL {
-      // a run of tool calls, a line each
-      box := tr_open(t, id, TG_DIV, "tools");
-      at := 0; line := 0; ide: [UI_ID] u8; idf: [UI_ID] u8;
-      while at < text.count {
-        e := at;
-        while e < text.count && text[e] != '\n' { e += 1; }
-        tl := tr_leaf(t, tr_join(idf[..], tr_cat(ide[..], id, ".t."), line), TG_P, "work", cast(string) text[at..<e]);
-        at = e + 1; line += 1;
-      }
-      tr_close(t);
+      // a run of tool calls: its groups while the session is at it, one line once it is over
+      cq_draw(t, u, id, text, s[0].lrun && k + 1 == s[0].count, s[0].opens[0..<s[0].opens_n], cw_ms(s));
       continue;
     }
     // an answer: what has come of it, as Markdown
@@ -481,13 +478,7 @@ cw_transcript :: (s: [] ChatWeb) {
     if coming && text.count == 0 {
       // a Claude turn at work: what it says it is doing, and the tools it has used
       if s[0].working_n > 0 { w := tr_leaf(t, tr_cat(ida[..], id, ".work"), TG_P, "work", cast(string) s[0].working[0..<s[0].working_n]); }
-      at := 0; line := 0;
-      while at < s[0].tools_n {
-        e := at;
-        while e < s[0].tools_n && s[0].tools[e] != '\n' { e += 1; }
-        tl := tr_leaf(t, tr_join(idc[..], tr_cat(idb[..], id, ".tool."), line), TG_P, "work", cast(string) s[0].tools[at..<e]);
-        at = e + 1; line += 1;
-      }
+      cq_draw(t, u, tr_cat(idb[..], id, ".calls"), cast(string) s[0].tools[0..<s[0].tools_n], true, s[0].opens[0..<s[0].opens_n], cw_ms(s));
     } else {
       body := k_agent_text(t, u, tr_cat(ida[..], id, ".md"), s[0].doc[..], text);
     }
@@ -503,9 +494,11 @@ cw_transcript :: (s: [] ChatWeb) {
     tr_close(t);
   }
   if s[0].lrun {
-    gb: [CW_GOAL + 32] u8;
-    w := tr_leaf(t, "l.work", TG_P, "work", ifx s[0].goal_n > 0 then tr_cat(gb[..], "Working toward the goal: ", cast(string) s[0].goal[0..<s[0].goal_n]) else "Working");
-    tr_attr(t, w, AT_ROLE, "status");
+    // what the session is doing: the call it is running, else its goal
+    gb: [CW_GOAL + 32] u8; nb: [CQ_LABEL + CQ_ARG] u8;
+    k := s[0].count - 1;
+    now := ifx k >= 0 && s[0].who[k] == CW_TOOL then cq_now(cw_text(s, k), nb[..]) else "";
+    w := k_work_now(t, "l.work", ifx now.count > 0 then now else ifx s[0].goal_n > 0 then tr_cat(gb[..], "Working toward the goal: ", cast(string) s[0].goal[0..<s[0].goal_n]) else "Working");
   }
   if s[0].error_n > 0 {
     n := k_notice(t, u, "failed", "Error", cast(string) s[0].error[0..<s[0].error_n]);
@@ -610,19 +603,53 @@ cw_copy_of :: (id: string) -> int {
   for i: 2..<id.count - 5 { c := id[i]; if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) (c - '0'); }
   return n;
 }
-// A run of tool calls: one more line onto the last message when it is such a run with room, else a new one.
+// The page's clock in ms, for how long a tool call runs (1 at the start: 0 is "not known").
+cw_ms :: (s: [] ChatWeb) -> int { return cast(int) (s[0].time * 1000.0) + 1; }
+// A tool call: onto the last message when it is a run of calls that ends the pool and has room, else a new run.
+cw_call :: (s: [] ChatWeb, c: CqCall) {
+  rec: [CQ_RECORD] u8;
+  n := cq_write(rec[..], 0, c);
+  if n <= 0 { return; }
+  k := s[0].count - 1;
+  if k >= 0 && s[0].who[k] == CW_TOOL && s[0].at[k] + s[0].len[k] == s[0].pool_n && s[0].len[k] + n <= CW_TOOL_MOST && s[0].pool_n + n <= CW_POOL {
+    calls: [CQ_MOST] CqCall;
+    if cq_calls(cw_text(s, k), calls[..]) < CQ_MOST {
+      for i: 0..<n { s[0].pool[s[0].pool_n] = rec[i]; s[0].pool_n += 1; }
+      s[0].len[k] += n;
+      return;
+    }
+  }
+  cw_add(s, cast(string) rec[0..<n], CW_TOOL, 0);
+}
+// A text's first line.
+cw_line :: (text: string) -> string { e := 0; while e < text.count && text[e] != '\n' { e += 1; } return cast(string) text[0..<e]; }
+// A step that is its own words (a Gemini turn's world step, an attachment opened, an edit), done.
 cw_tool :: (s: [] ChatWeb, label: string) {
   e := 0; while e < label.count && e < CW_TOOL_LINE && label[e] != '\n' { e += 1; }
-  line := cast(string) label[0..<e];
-  if line.count == 0 { return; }
+  if e > 0 { cw_call(s, CqCall.{state = KW_DONE, label = cast(string) label[0..<e]}); }
+}
+// The last run of tool calls rewritten (cq_answer, cq_close), when it ends the pool.
+cw_run_set :: (s: [] ChatWeb, n: int) {
   k := s[0].count - 1;
-  if k >= 0 && s[0].who[k] == CW_TOOL && s[0].at[k] + s[0].len[k] == s[0].pool_n && s[0].len[k] + line.count + 1 <= CW_TOOL_MOST && s[0].pool_n + line.count + 1 <= CW_POOL {
-    s[0].pool[s[0].pool_n] = '\n'; s[0].pool_n += 1;
-    for c: line { s[0].pool[s[0].pool_n] = c; s[0].pool_n += 1; }
-    s[0].len[k] += line.count + 1;
-    return;
-  }
-  cw_add(s, line, CW_TOOL, 0);
+  if n < 0 || k < 0 || s[0].who[k] != CW_TOOL || s[0].at[k] + s[0].len[k] != s[0].pool_n || s[0].at[k] + n > CW_POOL { return; }
+  for i: 0..<n { s[0].pool[s[0].at[k] + i] = s[0].wbuf[i]; }
+  s[0].len[k] = n; s[0].pool_n = s[0].at[k] + n;
+}
+// A tool call's answer, onto its call in the last run.
+cw_answer :: (s: [] ChatWeb, id: string, output: string, failed: bool, open: bool) {
+  k := s[0].count - 1;
+  if k < 0 || s[0].who[k] != CW_TOOL { return; }
+  cw_run_set(s, cq_answer(cw_text(s, k), s[0].wbuf[..], id, output, failed, open, cw_ms(s)));
+}
+// A tool call's Copy ("m.7.c.3.copy", "m.7.calls.c.3.copy" while a hosted turn works): all it got back.
+cw_copy_call :: (s: [] ChatWeb, id: string) {
+  e := 2; while e < id.count && id[e] >= '0' && id[e] <= '9' { e += 1; }
+  k := cw_number(cast(string) id[0..<e], "m.") - (s[0].total - s[0].count);
+  if k < 0 || k >= s[0].count { return; }
+  run := cast(string) id[0..<e]; text := cw_text(s, k); rb: [UI_ID] u8;
+  if s[0].who[k] != CW_TOOL { run = tr_cat(rb[..], run, ".calls"); text = cast(string) s[0].tools[0..<s[0].tools_n]; }
+  calls: [CQ_MOST] CqCall; n := cq_calls(text, calls[..]); i := cq_call_of(id, run);
+  if i >= 0 && i < n { s[0].clip_n = cw_put(s[0].clip[..], 0, calls[i].output); }
 }
 // The number after a part: "s.12" after "s." is 12, else -1.
 cw_number :: (id: string, part: string) -> int {
@@ -635,7 +662,7 @@ cw_number :: (id: string, part: string) -> int {
 cw_clear :: (s: [] ChatWeb) {
   s[0].count = 0; s[0].pool_n = 0; s[0].total = 0; s[0].error_n = 0;
   s[0].live = false; s[0].lrun = false; s[0].echo = false; s[0].stop_due = false; s[0].turn = 0; s[0].conv = 0;
-  s[0].goal_n = 0;
+  s[0].goal_n = 0; s[0].opens_n = 0;
 }
 // Shows session id from where its log ends (tail) or starts.
 cw_show :: (s: [] ChatWeb, id: string, tail: bool) {
@@ -735,13 +762,22 @@ cw_log_read :: (s: [] ChatWeb, body: string) {
       s[0].lrun = true;
     } else if kind == "session" { s[0].lrun = true; }
     else if kind == "tool" {
-      cw_tool(s, cl_str(ar[..], line, "label"));
+      // a call by its own name, kind, argument and input; a line with only words is a step of those words
+      name := cl_str(ar[..], line, "name"); tk := cl_str(ar[..], line, "tool");
+      arg := cl_str(ar[..], line, "arg"); if arg.count == 0 { arg = cl_str(ar[..], line, "detail"); }
+      input := cl_raw(line, "input"); if input.count > 0 && input[0] == '"' { input = cl_str(ar[..], line, "input"); }
+      cw_call(s, CqCall.{state = KW_RUN, t0 = cw_ms(s), kind = tk, name = name, id = cl_str(ar[..], line, "id"), arg = arg,
+        label = ifx name.count == 0 && tk.count == 0 then cw_line(cl_str(ar[..], line, "label")) else "", input = input});
       // a realm world tool names its world (the tool's own argument): its card follows the run, on a page with no editor round it
       if s[0].wwire_n == 0 && cw_world_tool(cl_str(ar[..], line, "name")) {
         slug := cl_str(ar[..], line, "input.slug");
         if slug.count == 0 { slug = cl_str(ar[..], cl_str(ar[..], line, "input"), "slug"); }
         if wt_world_ok(slug) { s[0].card_due_n = cw_put(s[0].card_due[..], 0, slug); }
       }
+    }
+    else if kind == "result" {
+      out := cl_str(ar[..], line, "output"); if out.count == 0 { out = cl_str(ar[..], line, "text"); }
+      cw_answer(s, cl_str(ar[..], line, "id"), out, cl_raw(line, "error") == "true", cl_raw(line, "open") == "true");
     }
     else if kind == "diff" {
       edit: [CW_TOOL_LINE] u8;
@@ -753,6 +789,8 @@ cw_log_read :: (s: [] ChatWeb, body: string) {
       if text.count > 0 { cw_add(s, text, CW_AGENT, 0); }
     } else if kind == "end" {
       s[0].lrun = false; s[0].stop_due = false;
+      k := s[0].count - 1;
+      if k >= 0 && s[0].who[k] == CW_TOOL { cw_run_set(s, cq_close(cw_text(s, k), s[0].wbuf[..])); }
       ending := cl_str(ar[..], line, "ending");
       if ending == "failed" || ending == "expired" {
         why := cl_str(ar[..], line, "text");
@@ -985,13 +1023,21 @@ cw_turn_read :: (s: [] ChatWeb, body: string) {
     name := cl_str(ar[..], body, tr_cat(path[..], tr_join(part[..], "tools.", s[0].ntools), ".name"));
     if name.count == 0 { break; }
     detail := cl_str(ar[..], body, tr_cat(path[..], tr_join(part[..], "tools.", s[0].ntools), ".detail"));
-    n := cw_put(s[0].tools[..], s[0].tools_n, name);
-    if detail.count > 0 { n = cw_put(s[0].tools[..], n, "  "); n = cw_put(s[0].tools[..], n, detail); }
-    s[0].tools_n = cw_put(s[0].tools[..], n, "\n");
-    s[0].ntools += 1;
+    n := cq_write(s[0].tools[..], s[0].tools_n, CqCall.{state = KW_DONE, name = name, arg = detail});
+    if n < 0 { break; }
+    s[0].tools_n = n; s[0].ntools += 1;
   }
-  if status == "queued" || status == "running" { return; }
+  // the newest is the one it is at, while it works
+  if status == "queued" || status == "running" { if s[0].ntools > 0 { last := cq_at(cast(string) s[0].tools[0..<s[0].tools_n], s[0].ntools - 1); if last >= 0 { s[0].tools[last] = cast(u8) ('0' + KW_RUN); } } return; }
   k := s[0].count - 1;
+  if s[0].ntools > 0 && k >= 0 && s[0].who[k] == CW_AGENT {
+    // its tools go above the answer, as a run of tool calls
+    meta := s[0].meta[k]; meta_n := s[0].meta_n[k];
+    s[0].count = k; s[0].total -= 1; s[0].pool_n = s[0].at[k];
+    cw_add(s, cast(string) s[0].tools[0..<s[0].tools_n], CW_TOOL, 0);
+    cw_add(s, "", CW_AGENT, CW_ANSWER);
+    k = s[0].count - 1; s[0].meta[k] = meta; s[0].meta_n[k] = meta_n;
+  }
   if s[0].ntools > 0 {
     num: [24] u8;
     n := cw_put(s[0].meta[k][..], s[0].meta_n[k], " · ");
@@ -1048,8 +1094,11 @@ cw_plan_read :: (s: [] ChatWeb, body: string) {
     // the steps go above the answer, as a run of tool calls
     k := s[0].count - 1; meta := s[0].meta[k]; meta_n := s[0].meta_n[k];
     s[0].count = k; s[0].total -= 1; s[0].pool_n = s[0].at[k];
-    line: [WP_LINE] u8;
-    for i: 0..<plan[0].n { cw_tool(s, wp_line(plan[0].steps[i], s[0].world[..], line[..])); }
+    line: [WP_LINE] u8; names := CW_STEP_TOOLS;
+    for i: 0..<plan[0].n {
+      step := plan[0].steps[i];
+      cw_call(s, CqCall.{state = KW_DONE, name = names[ifx step.tool >= 0 && step.tool < WT_TOOLS then step.tool else 0], label = wp_line(step, s[0].world[..], line[..])});
+    }
     cw_add(s, "", CW_AGENT, CW_ANSWER);
     k = s[0].count - 1; s[0].meta[k] = meta; s[0].meta_n[k] = meta_n;
   }
@@ -1263,7 +1312,7 @@ coaxial_chatweb_frame :: (s: [] ChatWeb, dt: f32, reduced: bool) -> int #export_
   if !s[0].dirty && !s[0].animating { return 0; }
   d := s[0].dom[..];
   if !d[0].styled {
-    n := mono_set_css(s[0].css[..], mono_css(s[0].css[..]));
+    n := mono_work_css(s[0].css[..], mono_set_css(s[0].css[..], mono_css(s[0].css[..])));
     dm_style(d, cast(string) s[0].css[0..<n]);
   }
   ui_begin(s[0].ui[..], s[0].time, reduced);
@@ -1390,6 +1439,8 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
   }
   else if kind == CW_CLICK && id == "claude.save" { cw_connect(s); }
   else if kind == CW_CLICK && id == "claude.remove" { if cw_go(s, CF_UNKEY, "/api/chat/key_remove", "{}") { s[0].note_n = 0; } }
+  else if kind == CW_CLICK && cq_press(id) == 1 { s[0].opens_n = cq_toggle(s[0].opens[..], s[0].opens_n, id); }
+  else if kind == CW_CLICK && cq_press(id) == 2 { cw_copy_call(s, id); }
   else if kind == CW_CLICK && cw_copy_of(id) < 0 && id.count > 5 && cast(string) id[id.count - 5..<id.count] == ".copy" {
     // a code block's Copy: the code beside it, as the page shows it
     pre: [UI_ID] u8;
@@ -1636,6 +1687,13 @@ cw_test_enter :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_SUBMI
   #assert cw_test_door(s) == "/api/chat/send" && cw_test_body(s) == "{\"text\":\"where is rg_mint defined?\",\"model\":\"google/gemini-3.8-flash\"}";
 }
 
+// A run's calls by what each is called, a line each (in the page's scratch for a run).
+cw_test_labels :: (s: [] ChatWeb, k: int) -> string {
+  calls: [CQ_MOST] CqCall; n := cq_calls(cw_text(s, k), calls[..]); m := 0;
+  for i: 0..<n { lb: [CQ_LABEL + CQ_ARG] u8; if i > 0 { m = kw_put(s[0].wbuf[..], m, "\n"); } m = kw_put(s[0].wbuf[..], m, cq_label(calls[i], lb[..])); }
+  return cast(string) s[0].wbuf[0..<m];
+}
+
 #test "a Claude message is a turn of the hosted agent: sent, read each second with its tools, then answered" {
   h: [1] CwTest; s := h[0].s[..];
   cw_test_open(s, "{\"claude\":{\"kind\":\"oauth\",\"last4\":\"wxyz\",\"expired\":false}}");
@@ -1653,7 +1711,9 @@ cw_test_enter :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_SUBMI
   n = coaxial_chatweb_frame(s, 0.016, true);
   t := s[0].tree[..];
   #assert s[0].live && s[0].ntools == 2 && tr_text_of(t, tr_find(t, "m.1.work")) == "reading chat.coax";
-  #assert tr_text_of(t, tr_find(t, "m.1.tool.0")) == "Read  apps/openagents-web/chat.coax" && tr_text_of(t, tr_find(t, "m.1.tool.1")) == "Grep  wc_ask";
+  // its tools as calls: what each does and on what, the newest the one it is at
+  #assert tr_text_of(t, tr_find(t, "m.1.calls.c.0.l")) == "Read a file" && tr_text_of(t, tr_find(t, "m.1.calls.c.0.a")) == "apps/openagents-web/chat.coax";
+  #assert tr_text_of(t, tr_find(t, "m.1.calls.c.1.l")) == "Search the code" && tr_find(t, "m.1.calls.c.1.g") > 0 && tr_find(t, "m.1.calls.c.0.g") < 0;
   // Stop asks the runner once, and the turn ends when it says so
   cw_test_press(s, "composer.send");
   n = coaxial_chatweb_frame(s, 0.016, true);
@@ -1666,8 +1726,9 @@ cw_test_enter :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_SUBMI
   #assert cw_test_door(s) == "/api/chat/turn?t=31" && coaxial_chatweb_asking(s);
   cw_test_answer(s, 200, "{\"status\":\"done\",\"answer\":\"It draws **/chat-gpu**.\",\"error\":\"\",\"working\":\"\",\"tools\":[{\"name\":\"Read\",\"detail\":\"a\"}]}");
   n = coaxial_chatweb_frame(s, 0.016, true);
-  #assert !s[0].live && !s[0].stopping && s[0].turn == 0 && cw_text(s, 1) == "It draws **/chat-gpu**.";
-  #assert tr_text_of(t, tr_find(t, "m.1.meta")) == "Claude Opus 5.5 · 1 tool" && tr_find(t, "m.1.copy") > 0;
+  // its tools go above the answer as a run, closed to one line
+  #assert !s[0].live && !s[0].stopping && s[0].turn == 0 && s[0].who[1] == CW_TOOL && cw_test_labels(s, 1) == "Read a file" && cw_text(s, 2) == "It draws **/chat-gpu**.";
+  #assert tr_text_of(t, tr_find(t, "m.2.meta")) == "Claude Opus 5.5 · 1 tool" && tr_find(t, "m.2.copy") > 0 && tr_text_of(t, tr_find(t, "m.1.w.l")) == "Read a file";
   // the next one goes to the same conversation; a turn that fails says why
   cw_test_type(s, "composer", "and?");
   cw_test_enter(s, "composer");
@@ -1762,6 +1823,60 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
 
 CW_T_AGENTS :: "{\"agents\":[{\"engine\":\"claude\",\"ready\":true,\"why\":\"\"},{\"engine\":\"codex\",\"ready\":false,\"why\":\"Codex isn't installed here.\"},{\"engine\":\"antigravity\",\"ready\":false,\"why\":\"\"},{\"engine\":\"micro\",\"ready\":true,\"why\":\"\"}]}";
 
+// A Claude Code turn that sets twelve foe plans through our realm tools (#13481), as Coder's log has it: the
+// first piece ends with the last plan still running, the second answers it, replies and ends.
+
+#test "twelve foe plans in a row are one group named from the command table; a refusal says why; the finished turn is one line" {
+  plans := "{\"kind\":\"session\",\"id\":\"x\",\"engine\":\"claude\"}\n{\"kind\":\"user\",\"text\":\"give the foes in splice their plans\"}\n{\"kind\":\"tool\",\"label\":\"ToolSearch\",\"tool\":\"tool\",\"name\":\"ToolSearch\",\"id\":\"t0\",\"input\":{\"query\":\"select:mcp__openagents__realm_world_plan\"}}\n{\"kind\":\"result\",\"text\":\"Found 1 tool\",\"error\":false,\"id\":\"t0\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world\",\"id\":\"t1\",\"input\":{\"slug\":\"splice\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"slug\\\":\\\"splice\\\",\\\"things\\\":14}\",\"error\":false,\"id\":\"t1\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_foes\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_foes\",\"id\":\"t2\",\"input\":{\"slug\":\"splice\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"foes\\\":[1,2,3]}\",\"error\":false,\"id\":\"t2\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t3\",\"input\":{\"slug\":\"splice\",\"foe\":1,\"daytime\":\"dawn\",\"act\":\"patrol\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t3\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t4\",\"input\":{\"slug\":\"splice\",\"foe\":1,\"daytime\":\"day\",\"act\":\"guard\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t4\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t5\",\"input\":{\"slug\":\"splice\",\"foe\":1,\"daytime\":\"dusk\",\"act\":\"rest\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t5\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t6\",\"input\":{\"slug\":\"splice\",\"foe\":1,\"daytime\":\"night\",\"act\":\"hunt\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t6\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t7\",\"input\":{\"slug\":\"splice\",\"foe\":2,\"daytime\":\"dawn\",\"act\":\"patrol\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t7\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t8\",\"input\":{\"slug\":\"splice\",\"foe\":2,\"daytime\":\"day\",\"act\":\"guard\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t8\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t9\",\"input\":{\"slug\":\"splice\",\"foe\":2,\"daytime\":\"dusk\",\"act\":\"rest\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":false,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"refused\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\",\\\"code\\\":\\\"realm-authoring.diagnostic.edit-refused.v1\\\",\\\"retry\\\":false,\\\"words\\\":\\\"foe 2 has no route for the dusk patrol\\\",\\\"edit\\\":1}}\",\"error\":true,\"id\":\"t9\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t10\",\"input\":{\"slug\":\"splice\",\"foe\":2,\"daytime\":\"night\",\"act\":\"hunt\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t10\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t11\",\"input\":{\"slug\":\"splice\",\"foe\":3,\"daytime\":\"dawn\",\"act\":\"patrol\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t11\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t12\",\"input\":{\"slug\":\"splice\",\"foe\":3,\"daytime\":\"day\",\"act\":\"guard\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t12\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t13\",\"input\":{\"slug\":\"splice\",\"foe\":3,\"daytime\":\"dusk\",\"act\":\"rest\"}}\n{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t13\"}\n{\"kind\":\"tool\",\"label\":\"mcp__openagents__realm_world_plan\",\"tool\":\"mcp\",\"name\":\"mcp__openagents__realm_world_plan\",\"id\":\"t14\",\"input\":{\"slug\":\"splice\",\"foe\":3,\"daytime\":\"night\",\"act\":\"hunt\"}}\n";
+  plans_end := "{\"kind\":\"result\",\"text\":\"{\\\"ok\\\":true,\\\"result\\\":{\\\"schema\\\":\\\"realm.result.v1\\\",\\\"state\\\":\\\"done\\\",\\\"verb\\\":\\\"world-plan\\\",\\\"realm\\\":\\\"splice\\\",\\\"effect\\\":\\\"write\\\",\\\"rev\\\":5,\\\"build\\\":[1,1,2,1],\\\"page\\\":\\\"/worlds/splice\\\",\\\"key\\\":\\\"k-1\\\"}}\",\"error\":false,\"id\":\"t14\"}\n{\"kind\":\"reply\",\"text\":\"Every foe in splice has a plan for each part of the day. Foe 2's dusk patrol was refused: it has no route yet.\"}\n{\"kind\":\"end\",\"ending\":\"finished\",\"ms\":5,\"steps\":15}\n";
+  ts: [1] CwTest; s := ts[0].s[..]; piece: [12288] u8; num: [24] u8;
+  cw_test_local(s, CW_T_SESSIONS);
+  s[0].model = 7;
+  cw_test_type(s, "composer", "give the foes in splice their plans");
+  cw_test_enter(s, "composer");
+  cw_test_answer(s, 200, "20261113-050000-001\n");
+  b := coaxial_chatweb_frame(s, 0.016, true);
+  for i: 0..<40 {
+    if coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/log?id=20261113-050000-001&after=0" { break; }
+    if coaxial_chatweb_asking(s) { cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/sessions" then CW_T_SESSIONS else ""); }
+    b = coaxial_chatweb_frame(s, 0.1, true);
+  }
+  n := kw_put(piece[..], 0, "{\"next\":9000,\"size\":9000}\n"); n = kw_put(piece[..], n, plans);
+  cw_test_answer(s, 200, cast(string) piece[0..<n]);
+  calls: [CQ_MOST] CqCall;
+  #assert s[0].count == 2 && s[0].who[1] == CW_TOOL && cq_calls(cw_text(s, 1), calls[..]) == 15 && calls[9].state == KW_REFUSED && calls[14].state == KW_RUN && s[0].lrun;
+  b = coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  // live: the three reads, then the plans as one group with their count and the newest plan's words, and the line
+  // under the transcript names the plan it is at
+  #assert tr_text_of(t, tr_find(t, "m.1.c.0.l")) == "Look up tools" && tr_text_of(t, tr_find(t, "m.1.c.1.l")) == "Read the world splice" && tr_text_of(t, tr_find(t, "m.1.c.1.a")) == "splice";
+  #assert tr_text_of(t, tr_find(t, "m.1.g.3.l")) == "Set foe plans" && tr_text_of(t, tr_find(t, "m.1.g.3.n")) == "12" && tr_text_of(t, tr_find(t, "m.1.g.3.a")) == "Set foe 3's night plan: hunt";
+  #assert tr_text_of(t, tr_find(t, "l.work.l")) == "Set foe 3's night plan: hunt" && tr_find(t, "m.1.c.9") < 0;
+  cw_test_press(s, "m.1.g.3");
+  b = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_text_of(t, tr_find(t, "m.1.c.9.l")) == "Set foe 2's dusk plan: rest" && tr_attr_of(t, tr_find(t, "m.1.c.9.row"), AT_STATE) == "refused";
+  #assert tr_text_of(t, tr_find(t, "m.1.c.9.why")) == "foe 2 has no route for the dusk patrol. Trying again won't help." && tr_find(t, "m.1.c.14.g") > 0;
+  // a row opens onto what it sent and what came back; Copy takes all of what came back
+  cw_test_press(s, "m.1.c.9");
+  b = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_text_of(t, tr_find(t, "m.1.c.9.in")) == calls[9].input && tr_find(t, "m.1.c.9.out") > 0;
+  cw_test_press(s, "m.1.c.9.copy");
+  #assert cast(string) s[0].clip[0..<s[0].clip_n] == calls[9].output;
+  // the rest: the last plan's answer, the reply and the end; the run is one line above the answer
+  for i: 0..<40 {
+    b = coaxial_chatweb_frame(s, 0.1, true);
+    if coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/log?id=20261113-050000-001&after=9000" { break; }
+    if coaxial_chatweb_asking(s) { cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/sessions" then CW_T_SESSIONS else ""); }
+  }
+  n = kw_put(piece[..], 0, "{\"next\":9900,\"size\":9900}\n"); n = kw_put(piece[..], n, plans_end);
+  cw_test_answer(s, 200, cast(string) piece[0..<n]);
+  #assert s[0].count == 3 && s[0].who[2] == CW_AGENT && !s[0].lrun && cq_calls(cw_text(s, 1), calls[..]) == 15 && calls[14].state == KW_DONE;
+  cw_test_press(s, "m.1.c.9");   // closed again, so the run's line is all that shows once it closes
+  b = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_find(t, "l.work") < 0 && tr_text_of(t, tr_find(t, "m.1.w.l")) == "Set foe plans ×12, Look up tools, and 2 more tools" && tr_text_of(t, tr_find(t, "m.1.w.n")) == tr_join(num[..], "", 15);
+  #assert tr_attr_of(t, tr_find(t, "m.1.w.grp"), AT_STATE) == "refused" && tr_find(t, "m.1.g.3") < 0 && tr_find(t, "m.2.md") > 0;
+}
+
 #test "a message to an agent on this machine starts a Coder session, and its log fills the transcript" {
   ts: [1] CwTest; s := ts[0].s[..];
   cw_test_local(s, CW_T_SESSIONS);
@@ -1783,10 +1898,12 @@ CW_T_AGENTS :: "{\"agents\":[{\"engine\":\"claude\",\"ready\":true,\"why\":\"\"}
   #assert coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/log?id=20261112-050000-001&after=0";
   cw_test_answer(s, 200, "{\"next\":300,\"size\":300}\n{\"kind\":\"session\",\"id\":\"x\",\"engine\":\"claude\"}\n{\"kind\":\"user\",\"text\":\"fix it\"}\n{\"kind\":\"tool\",\"label\":\"Bash(ls)\"}\n{\"kind\":\"result\",\"text\":\"a\"}\n{\"kind\":\"tool\",\"label\":\"Read(a.md)\\nmore\"}\n{\"kind\":\"diff\",\"path\":\"a.md\",\"adds\":1,\"dels\":0}\n");
   // the person's message is not shown twice, and the tool calls are one run
-  #assert s[0].count == 2 && s[0].who[1] == CW_TOOL && cw_text(s, 1) == "Bash(ls)\nRead(a.md)\nEdit a.md" && s[0].lrun && s[0].log_next == 300 && !s[0].echo;
+  #assert s[0].count == 2 && s[0].who[1] == CW_TOOL && cw_test_labels(s, 1) == "Bash(ls)\nRead(a.md)\nEdit a.md" && s[0].lrun && s[0].log_next == 300 && !s[0].echo;
   b = coaxial_chatweb_frame(s, 0.016, true);
   t := s[0].tree[..];
-  #assert tr_find(t, "l.work") >= 0 && tr_text_of(t, tr_find(t, "m.1.t.1")) == "Read(a.md)" && tr_text_of(t, tr_find(t, "composer.send.l")) == "Stop";
+  // a call with no answer yet is running, and the line under the transcript names it
+  #assert tr_text_of(t, tr_find(t, "l.work.l")) == "Read(a.md)" && tr_text_of(t, tr_find(t, "m.1.c.1.l")) == "Read(a.md)" && tr_find(t, "m.1.c.1.g") > 0 && tr_find(t, "m.1.c.0.g") < 0;
+  #assert tr_text_of(t, tr_find(t, "composer.send.l")) == "Stop";
   // read again a second later, from where the last piece ended
   for i: 0..<14 {
     b = coaxial_chatweb_frame(s, 0.1, true);
@@ -1839,7 +1956,7 @@ CW_T_AGENTS :: "{\"agents\":[{\"engine\":\"claude\",\"ready\":true,\"why\":\"\"}
   cw_test_answer(s, 200, "20261112-060000-001\n");
   b := coaxial_chatweb_frame(s, 0.016, true);
   t := s[0].tree[..];
-  #assert tr_text_of(t, tr_find(t, "l.work")) == "Working toward the goal: all tests pass";
+  #assert tr_text_of(t, tr_find(t, "l.work.l")) == "Working toward the goal: all tests pass";
   // a session opened from its log: the goal is what its messages last set
   tv: [1] CwTest; v := tv[0].s[..];
   cw_test_local(v, CW_T_SESSIONS);
@@ -2045,14 +2162,18 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
   cw_test_type(s, "composer", "put a crate here and take the rover away");
   cw_test_enter(s, "composer");
   cw_test_planned(s, "{\"route\":\"edit\",\"say\":\"We put a crate there and took the rover away.\",\"steps\":[{\"tool\":\"place\",\"kind\":1001,\"id\":0,\"x\":420,\"z\":-75,\"yaw\":0,\"percent\":0},{\"tool\":\"remove\",\"kind\":0,\"id\":2,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}");
-  #assert !s[0].live && s[0].count == 5 && s[0].who[3] == CW_TOOL && cw_text(s, 3) == "Place Cargo crate at 420, -75\nRemove Parked rover 2";
+  #assert !s[0].live && s[0].count == 5 && s[0].who[3] == CW_TOOL && cw_test_labels(s, 3) == "Place Cargo crate at 420, -75\nRemove Parked rover 2";
   #assert s[0].who[4] == CW_AGENT && cw_text(s, 4) == "We put a crate there and took the rover away." && cast(string) s[0].meta[4][0..<s[0].meta_n[4]] == "Gemini 3.8 Flash";
   #assert coaxial_chatweb_act_kind(s) == CW_PLANNED && cast(string) s[0].planned[0..<coaxial_chatweb_act_len(s)] == "world.plan.v1 splice 7\nplace 1001 420 -75 0\nremove 2\n";
   coaxial_chatweb_act_done(s);
   #assert coaxial_chatweb_act_kind(s) == 0;
   n := coaxial_chatweb_frame(s, 0.016, true);
   t := s[0].tree[..];
-  #assert tr_text_of(t, tr_find(t, "m.3.t.1")) == "Remove Parked rover 2";
+  // the steps are a run of world tools, closed to one line that opens onto them
+  #assert tr_text_of(t, tr_find(t, "m.3.w.l")) == "Place Cargo crate at 420, -75, Remove Parked rover 2" && tr_find(t, "m.3.c.1") < 0;
+  cw_test_press(s, "m.3.w");
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_text_of(t, tr_find(t, "m.3.c.1.l")) == "Remove Parked rover 2" && tr_attr_of(t, tr_find(t, "m.3.c.1.row"), AT_STATE) == "done";
   // a plan that names a thing the world does not have is said, and nothing goes to the editor
   cw_test_type(s, "composer", "remove the tower");
   cw_test_enter(s, "composer");
@@ -2068,7 +2189,7 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
   #assert cw_test_has(cw_test_body(s), "a 00112233445566aa image 4032348 RaiderGarage.png") && !cw_test_has(cw_test_body(s), "\"attachments\"");
   cw_test_planned(s, "{\"route\":\"open\",\"say\":\"\",\"open\":[\"00112233445566aa\"],\"steps\":[]}");
   body := cw_test_body(s);
-  #assert s[0].flight == CF_PLAN && s[0].live && s[0].nopened == 1 && s[0].who[1] == CW_TOOL && cw_text(s, 1) == "Open RaiderGarage.png";
+  #assert s[0].flight == CF_PLAN && s[0].live && s[0].nopened == 1 && s[0].who[1] == CW_TOOL && cw_test_labels(s, 1) == "Open RaiderGarage.png";
   #assert cw_test_has(body, ",\"attachments\":{\"world\":\"splice\",\"ids\":[\"00112233445566aa\"]}}") && cw_test_has(body, "You opened these attachments, and they come with the last message: RaiderGarage.png.");
   cw_test_planned(s, "{\"route\":\"talk\",\"say\":\"A low hangar of rusted panels.\",\"open\":[],\"steps\":[]}");
   #assert !s[0].live && s[0].count == 3 && cw_text(s, 2) == "A low hangar of rusted panels.";

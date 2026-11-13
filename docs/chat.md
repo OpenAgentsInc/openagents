@@ -139,6 +139,59 @@ finds the condition met. While the session runs, the page shows the goal.
 `/goal` alone asks for it, and `/goal clear` removes it. Only Claude Code
 runs goals; the page refuses `/goal` for the other agents.
 
+## Tool calls
+
+An agent's tool calls show as a work log (GitHub #13481). The same log shows
+the calls of all three sources, on `/chat` and in the editor's foot, for a
+conversation you reload and one that is running:
+
+- **A local agent through Coder.** From the session log's `tool` and
+  `result` lines (`coax/lib/agent/session/log.coax`): the tool's name, kind,
+  ID, argument and input, then what came back and whether it failed. The page
+  times a call from when it sees the call to when it sees the answer.
+- **The hosted agent.** From `GET /api/chat/turn`'s `tools` (name and
+  detail). The API keeps no results, so each call shows as done.
+- **A Gemini turn in the editor.** Each world step is a call with its own
+  words ("Place Cargo crate at 420, -75").
+
+Each call is a row: an icon for its kind, what it does in words, the argument
+that matters (the world, the path, the command), how it stands, and how long
+it took. Press it to see what it sent and what came back. A long answer is cut
+at 12 lines with **Show all**, and **Copy** takes all of it. Calls of one tool
+in a row are a group with a count ("Set foe plans · 12") that opens onto its
+rows. While the session runs, its groups show and the line under the
+transcript names the running call. When the run is over, it is one line above
+the answer ("Set foe plans ×12, Look up tools, and 2 more tools") that opens
+onto its groups.
+
+What a call is called is a lookup, never a match on its text:
+
+- Our realm tools (`realm_*`, with or without an `mcp__SERVER__` prefix) use
+  the command table's words: each `REALM_COMMANDS` row in
+  `apps/openagents-cli/commands.coax` has a `label` for one call, with
+  `{PROP}` filled from the call's input and a `[part]` dropped when its value
+  is missing, and a `many` for a run of them. The page reads a generated copy,
+  `apps/openagents-web/realm-tools.coax`. After you change the table, run
+  `coax/web/tool.sh apps/openagents-cli/tool-labels.coax --write`; a check in
+  `commands.coax` fails while the copy is stale.
+- An engine's own tools use the session log's kind, or their exact name
+  (`Bash`, `Read`, `Grep`, `ToolSearch`, the hosted agent's `tree`, `search`
+  and the rest).
+- Any other tool shows its server and name without `mcp__` and underscores
+  ("Github: create issue"), and the first short text it sent.
+
+A realm tool's answer is read as `realm.result.v1`
+([protocol/realm-result-v1.md](protocol/realm-result-v1.md)), so the row says
+how the call stands in words: a dry run with how far it went, a refusal with
+its words and whether trying again can help, a wait for approval, or an
+unknown outcome. Any other call that fails shows the first line of its error.
+
+| Piece | Where |
+| --- | --- |
+| Rows, groups and the running line | `components/kit/work.coax`, styles `mono_work_css` in `components/skin/mono.coax`, on `/components` |
+| Calls as records, their words, a run drawn | `apps/openagents-web/chat-tools.coax` |
+| The tool words | `apps/openagents-cli/commands.coax`, copied by `tool-labels.coax` |
+
 ## Theme
 
 Theme, beside Key, lists every skin from `/components` (`components/skin/all.coax`):
