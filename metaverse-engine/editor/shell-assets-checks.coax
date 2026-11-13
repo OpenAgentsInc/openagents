@@ -1,6 +1,7 @@
 // The checks of the editor shell's Assets pane (shell-assets.coax; GitHub #13420). shell.coax loads
 // this file with `#load ... #test;`. The host is played here: the world's server's answers come as
-// ES_SENT, a dropped file as ES_FILE.
+// ES_SENT, a dropped file as ES_FILE. A page the dev server serves is told its module (esa_dev)
+// and sends a file in one step; any other page names the file, sends it to storage and says so.
 
 ESA_HASH :: "29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa";
 ESA_EMPTY :: "world.assets.v1 splice - 0 1048576 524288 4000 1024\nl 0 CC0 1.0 Universal\nl 1 CC BY 4.0\nl 2 CC BY-SA 4.0\n";
@@ -29,6 +30,14 @@ esa_open :: (h: [] EsTest, list: string) {
   coaxial_editor_fetched(s);
   esa_sent(h, 200, list);
 }
+// The page is the dev server's: it is told its module, as the host tells it.
+esa_dev :: (h: [] EsTest) {
+  s := h[0].s[..];
+  for c, i: "splice" { s[0].inbox[i] = c; }
+  coaxial_editor_event(s, ES_CODE_HERE, 0, 6);
+  coaxial_editor_asked(s);
+}
+ESA_LIST_URL :: "/api/worlds/splice/assets?lane=dev&write=1";
 esa_url :: (s: [] EdShell) -> string { return cast(string) s[0].as_url[0..<s[0].as_url_n]; }
 esa_head :: (s: [] EdShell) -> string { return cast(string) s[0].as_head[0..<s[0].as_head_n]; }
 esa_said :: (h: [] EsTest) -> string { t := h[0].s[0].tree[..]; i := tr_find(t, "assets.said.t"); return ifx i < 0 then "" else tr_text_of(t, i); }
@@ -38,7 +47,7 @@ esa_said :: (h: [] EsTest) -> string { t := h[0].s[0].tree[..]; i := tr_find(t, 
   es_test_frames(h[..], 1);
   #assert coaxial_editor_fetching(s) == 0;
   es_test_model(h[..], 0, 7, 3, "");
-  #assert coaxial_editor_fetching(s) == 1 && esa_url(s) == "/api/worlds/splice/assets" && s[0].as_head_n == 0;
+  #assert coaxial_editor_fetching(s) == 1 && esa_url(s) == ESA_LIST_URL && s[0].as_head_n == 0;   // asked as someone who would import
   coaxial_editor_fetched(s); #assert coaxial_editor_fetching(s) == 0;
   es_test_frames(h[..], 1);
   #assert tr_find(t, "assets") < 0 && tr_find(t, "assets.pane") < 0;
@@ -96,6 +105,7 @@ esa_said :: (h: [] EsTest) -> string { t := h[0].s[0].tree[..]; i := tr_find(t, 
 
 #test "a dropped file waits with its size; Import sends it with the licence chosen, and the answer is said with the pack before and after" {
   h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  esa_dev(h[..]);
   esa_open(h[..], ESA_EMPTY);
   esa_file(h[..], "assets.drop", "2032 rock.glb");
   #assert s[0].as_file && tr_text_of(t, tr_find(t, "assets.next.h")) == "rock.glb" && tr_text_of(t, tr_find(t, "assets.next.size.v")) == "2 KB" && tr_find(t, "assets.import") > 0 && coaxial_editor_fetching(s) == 0;
@@ -133,7 +143,9 @@ esa_said :: (h: [] EsTest) -> string { t := h[0].s[0].tree[..]; i := tr_find(t, 
 
 #test "a file the rules never take is refused in words before it is sent; the server's refusal is said in its words" {
   h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  esa_dev(h[..]);
   esa_open(h[..], ESA_ROCK);
+  #assert coaxial_editor_act_kind(s) == 0;   // the dev server tells every tab of a pack itself
   es_test_press(h[..], "licence"); es_test_press(h[..], "licence.0");
   esa_file(h[..], "assets.drop", "1815448 huge.glb");
   #assert esa_said(h[..]) == "huge.glb is 1773 KB. A file can be 512 KB at most." && !s[0].as_file && tr_find(t, "assets.next") < 0 && coaxial_editor_fetching(s) == 0;
@@ -156,4 +168,84 @@ esa_said :: (h: [] EsTest) -> string { t := h[0].s[0].tree[..]; i := tr_find(t, 
   es_test_code(h[..]); es_test_frames(h[..], 1);
   es_test_press(h[..], "code"); #assert tr_find(t, "code.pane") > 0 && tr_find(t, "assets.pane") < 0;
   es_test_press(h[..], "assets"); #assert tr_find(t, "assets.pane") > 0 && tr_find(t, "code.pane") < 0;
+}
+
+ESA_PUT :: "world.asset.upload.v1 put 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef 2032 https://storage.example/upload/o?upload_id=AbC-1\n";
+ESA_KEPT :: "world.asset.upload.v1 kept 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef 2032 -\n";
+ESA_ASK :: "world.asset.upload.v1 1 2032 rock.glb\n";
+ESA_DONE :: "world.asset.upload.v1 1 2032 rock.glb\n0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n";
+// A deployed page's shell with a file waiting and its licence chosen, Import pressed.
+esa_asked :: (h: [] EsTest) {
+  s := h[0].s[..];
+  esa_open(h, ESA_EMPTY);
+  esa_file(h, "assets.drop", "2032 rock.glb");
+  es_test_press(h, "licence"); es_test_press(h, "licence.1");
+  es_test_press(h, "assets.import");
+}
+#test "on a deployed page a file goes in three steps: it is named by its content, sent straight to storage, and said to be done" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  esa_asked(h[..]);
+  // named: the head, and the host adds the file's SHA-256; the file stays with the host
+  #assert coaxial_editor_fetching(s) == ES_HOW_NAME && esa_url(s) == "/api/worlds/splice/assets" && esa_head(s) == ESA_ASK;
+  coaxial_editor_fetched(s); es_test_frames(h[..], 1);
+  #assert tr_text_of(t, tr_find(t, "assets.drop.t")) == "Sending rock.glb" && tr_has(t, tr_find(t, "assets.drop"), AT_DISABLED) && tr_find(t, "assets.next") < 0;
+  // the server says where it goes: the file alone, to that address
+  esa_sent(h[..], 200, ESA_PUT);
+  #assert coaxial_editor_fetching(s) == ES_HOW_PUT && esa_url(s) == "https://storage.example/upload/o?upload_id=AbC-1" && s[0].as_head_n == 0 && tr_text_of(t, tr_find(t, "assets.drop.t")) == "Sending rock.glb";
+  coaxial_editor_fetched(s);
+  esa_file(h[..], "assets.drop", "166 skin.png");
+  #assert esa_said(h[..]) == "The last file is still on its way. Drop this one again when it is in." && coaxial_editor_fetching(s) == 0;
+  // storage took it: the same two lines again, to the address that imports
+  esa_sent(h[..], 200, "");
+  #assert coaxial_editor_fetching(s) == ES_HOW_SAY && esa_url(s) == "/api/worlds/splice/assets/done" && esa_head(s) == ESA_DONE;
+  coaxial_editor_fetched(s);
+  esa_sent(h[..], 200, ESA_ROCK);
+  #assert tr_text_of(t, tr_find(t, "assets.said.k")) == "Imported" && esa_said(h[..]) == "rock is in the pack: 2 KB as a file, 2 KB packed. The pack was 0 KB and is now 3 KB of 1024 KB." && !s[0].as_file && tr_has(t, tr_find(t, "assets.drop"), AT_DROP);
+  // the page's host is told the pack's hash first, then the page that a mesh is a kind
+  a := s[0].acts[0];
+  #assert coaxial_editor_act_kind(s) == ES_PACKED && cast(string) a[0..<coaxial_editor_act_len(s)] == "/api/worlds/splice/assets/pack 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa";
+  coaxial_editor_act_done(s); a = s[0].acts[0];
+  #assert coaxial_editor_act_kind(s) == ES_IMPORTED && cast(string) a[0..<coaxial_editor_act_len(s)] == "mesh rock 500 250 2000";
+  coaxial_editor_act_done(s);
+  // the same pack listed again tells the host nothing new
+  es_test_press(h[..], "assets"); es_test_press(h[..], "assets"); coaxial_editor_fetched(s);
+  esa_sent(h[..], 200, ESA_ROCK);
+  #assert coaxial_editor_act_kind(s) == 0;
+}
+#test "on a deployed page a file storage already has is not sent again, and each step's refusal is said in words" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  esa_asked(h[..]); coaxial_editor_fetched(s);
+  esa_sent(h[..], 200, ESA_KEPT);
+  #assert coaxial_editor_fetching(s) == ES_HOW_SAY && esa_url(s) == "/api/worlds/splice/assets/done" && esa_head(s) == ESA_DONE;
+  coaxial_editor_fetched(s);
+  esa_sent(h[..], 422, "{\"error\":\"rock.glb would make the pack 1180 KB. Its budget is 1024 KB.\"}");
+  #assert esa_said(h[..]) == "rock.glb would make the pack 1180 KB. Its budget is 1024 KB." && tr_text_of(t, tr_find(t, "assets.said.k")) == "Not imported" && !s[0].as_file && coaxial_editor_fetching(s) == 0 && coaxial_editor_act_kind(s) == 0;
+  // the ask refused: someone who may not import, in the server's words; nothing is sent to storage
+  esa_file(h[..], "assets.drop", "2032 rock.glb"); es_test_press(h[..], "assets.import");
+  #assert coaxial_editor_fetching(s) == ES_HOW_NAME; coaxial_editor_fetched(s);
+  esa_sent(h[..], 403, "{\"error\":\"only an admin changes this world\"}");
+  #assert esa_said(h[..]) == "only an admin changes this world" && coaxial_editor_fetching(s) == 0 && !s[0].as_file;
+  // an answer that is not one, or that names another size, sends nothing
+  for bad: [3] string.["", "world.asset.upload.v1 put x 2032 https://storage.example/u\n", "world.asset.upload.v1 put 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef 2033 https://storage.example/u\n"] {
+    esa_file(h[..], "assets.drop", "2032 rock.glb"); es_test_press(h[..], "assets.import"); coaxial_editor_fetched(s);
+    esa_sent(h[..], 200, bad);
+    #assert esa_said(h[..]) == "That did not import: the world's server did not answer." && coaxial_editor_fetching(s) == 0 && !s[0].as_file;
+  }
+  // storage did not take the file
+  for status: [3] int.[0, 403, 500] {
+    esa_file(h[..], "assets.drop", "2032 rock.glb"); es_test_press(h[..], "assets.import"); coaxial_editor_fetched(s);
+    esa_sent(h[..], 200, ESA_PUT); #assert coaxial_editor_fetching(s) == ES_HOW_PUT; coaxial_editor_fetched(s);
+    esa_sent(h[..], status, "");
+    #assert esa_said(h[..]) == "That did not import: the file did not reach storage. Drop it again." && coaxial_editor_fetching(s) == 0 && !s[0].as_file && tr_has(t, tr_find(t, "assets.drop"), AT_DROP);
+  }
+  // a file the rules never take is refused before it is named
+  esa_file(h[..], "assets.drop", "1815448 huge.glb");
+  #assert esa_said(h[..]) == "huge.glb is 1773 KB. A file can be 512 KB at most." && coaxial_editor_fetching(s) == 0;
+}
+#test "a deployed page's host is told the hash of the world's pack once, when the list first names it" {
+  h: [1] EsTest; s := h[0].s[..];
+  esa_open(h[..], ESA_ROCK);
+  a := s[0].acts[0];
+  #assert coaxial_editor_act_kind(s) == ES_PACKED && cast(string) a[0..<coaxial_editor_act_len(s)] == "/api/worlds/splice/assets/pack 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa";
+  coaxial_editor_act_done(s); #assert coaxial_editor_act_kind(s) == 0;
 }

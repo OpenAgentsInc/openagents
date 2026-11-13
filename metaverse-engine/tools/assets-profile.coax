@@ -1,8 +1,10 @@
 // Checks proto/world/assets-v1.json against metaverse-engine/editor/asset-wire.coax, the one codec
-// of a world's imported assets and of an import's body (GitHub #13420): the pinned list reads as
-// what the profile says of it and writes back the same bytes; each rejected body does not; an
-// import's head reads as its licence and file name and is written back; the limits, the kinds
-// and the address are the module's; the profile names itself, its version and this check.
+// of a world's imported assets, of an import's body and of a file named before it is sent
+// (GitHub #13420): the pinned list reads as what the profile says of it and writes back the same
+// bytes; each rejected body does not; an import's head reads as its licence and file name and is
+// written back; an upload's ask and its answer read as what the profile says and are written
+// back, and each rejected one does not read; the limits, the kinds and the address are the
+// module's; the profile names itself, its version and this check.
 // Usage: coax/web/tool.sh metaverse-engine/tools/assets-profile.coax proto/world/assets-v1.json
 #import "Basic";
 #load "../editor/asset-wire.coax";
@@ -66,6 +68,33 @@ wap_import :: (d: Jv, w: [] WapWork) -> bool {
   }
   return true;
 }
+wap_upload :: (d: Jv, w: [] WapWork) -> bool {
+  up := jv_get(d, 0, "upload"); asks := jv_get(d, up, "asks"); answers := jv_get(d, up, "answers"); hb: [80] u8; ub: [WAS_URL + 8] u8; hows := WAS_HOW;
+  if wap_str(d, jv_get(d, up, "schema"), w[0].b[..]) != WAS_UPLOAD || jv_len(d, asks) < 3 || jv_len(d, answers) < 2 || jv_len(d, jv_get(d, up, "rejected_asks")) < 8 || jv_len(d, jv_get(d, up, "rejected_answers")) < 8 { return false; }
+  for i: 0..<jv_len(d, asks) {
+    one := jv_at(d, asks, i);
+    wire := wap_str(d, jv_get(d, one, "wire"), w[0].wire[..]);
+    r := was_upload_read(wire);
+    if wire.count == 0 || !r.ok || r.licence != jv_int(d, jv_get(d, one, "licence"), -9) || r.bytes != jv_int(d, jv_get(d, one, "bytes"), -1) || r.name != wap_str(d, jv_get(d, one, "name"), w[0].a[..]) || r.hash != wap_str(d, jv_get(d, one, "hash"), hb[..]) { return false; }
+    if was_content_type(r.name) != wap_str(d, jv_get(d, one, "type"), w[0].b[..]) || was_upload_ask(w[0].out[..], r.licence, r.bytes, r.hash, r.name) != wire { return false; }
+  }
+  for i: 0..<jv_len(d, answers) {
+    one := jv_at(d, answers, i);
+    wire := wap_str(d, jv_get(d, one, "wire"), w[0].wire[..]);
+    r := was_uploaded_read(wire);
+    if wire.count == 0 || !r.ok || hows[r.how] != wap_str(d, jv_get(d, one, "how"), w[0].b[..]) || r.bytes != jv_int(d, jv_get(d, one, "bytes"), -1) || r.hash != wap_str(d, jv_get(d, one, "hash"), hb[..]) || r.url != wap_str(d, jv_get(d, one, "url"), ub[..]) { return false; }
+    if was_upload_answer(w[0].out[..], r.how, r.hash, r.bytes, r.url) != wire { return false; }
+  }
+  for i: 0..<jv_len(d, jv_get(d, up, "rejected_asks")) {
+    n := jv_str(d, jv_at(d, jv_get(d, up, "rejected_asks"), i), w[0].wire[..]);
+    if n < 0 || was_upload_read(cast(string) w[0].wire[0..<n]).ok { return false; }
+  }
+  for i: 0..<jv_len(d, jv_get(d, up, "rejected_answers")) {
+    n := jv_str(d, jv_at(d, jv_get(d, up, "rejected_answers"), i), w[0].wire[..]);
+    if n < 0 || was_uploaded_read(cast(string) w[0].wire[0..<n]).ok { return false; }
+  }
+  return true;
+}
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
@@ -77,11 +106,12 @@ tool_main :: () -> int #export_c #effects(all) {
   ok := wap_str(d[0], jv_get(d[0], 0, "profile"), nb[..]) == "world-assets-v1" && jv_int(d[0], jv_get(d[0], 0, "version"), -1) == 1;
   ok = ok && wap_str(d[0], jv_get(d[0], 0, "check"), nb[..]) == WAP_CHECK && wap_str(d[0], jv_get(d[0], 0, "schema"), nb[..]) == WAS_SCHEMA;
   ok = ok && wap_lim(d[0], "bytes") == WAS_BYTES && wap_lim(d[0], "assets") == WAS_ASSETS && wap_lim(d[0], "licences") == WAS_LICENCES && wap_lim(d[0], "licence_bytes") == WAS_LICENCE;
-  ok = ok && wap_lim(d[0], "world_bytes") == WAS_WORLD && wap_lim(d[0], "name_bytes") == PIP_NAME && wap_lim(d[0], "file_name_bytes") == WAS_FILE_NAME && jv_len(d[0], pk) == 3;
+  ok = ok && wap_lim(d[0], "world_bytes") == WAS_WORLD && wap_lim(d[0], "name_bytes") == PIP_NAME && wap_lim(d[0], "file_name_bytes") == WAS_FILE_NAME && wap_lim(d[0], "url_bytes") == WAS_URL && jv_len(d[0], pk) == 3;
   for k: 0..<3 { ok = ok && wap_str(d[0], jv_at(d[0], pk, k), nb[..]) == kinds[k + 1]; }
   if !ok { tool_errln("assets-profile: the profile's name, check, limits or kinds are not the module's"); return 1; }
   if !wap_list(d[0], w[..]) { tool_errln("assets-profile: a list is not what the profile says, or a rejected one reads"); return 1; }
   if !wap_import(d[0], w[..]) { tool_errln("assets-profile: an import's head is not what the profile says, or a rejected one reads"); return 1; }
+  if !wap_upload(d[0], w[..]) { tool_errln("assets-profile: an upload's ask or answer is not what the profile says, or a rejected one reads"); return 1; }
   print("assets-profile: ok (the list, the empty list, % rejected; % heads, % rejected)\n", jv_len(d[0], jv_get(d[0], 0, "rejected")), jv_len(d[0], jv_get(d[0], jv_get(d[0], 0, "import"), "heads")), jv_len(d[0], jv_get(d[0], jv_get(d[0], 0, "import"), "rejected")));
   return 0;
 }

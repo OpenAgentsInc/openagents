@@ -6,6 +6,7 @@
 // serves (event 9) the shell asks that server for the realm's code (#13421): the ask goes by the
 // host's dom_stream, and the answer comes back as events 4 and 5. The world's assets (#13420) are asked of
 // the world's server by the host's dom_file_send, which also sends a dropped file (event 10); its answer is event 11.
+// On a deployed page a file goes straight to storage in steps the shell asks for one at a time (dom_file_step).
 #include "editor-shell.h"
 #include <stddef.h>
 
@@ -14,6 +15,7 @@
 
 IMPORT("dom_stream") void dom_stream(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len);
 IMPORT("dom_file_send") void dom_file_send(uint32_t url, uint32_t url_len, uint32_t head, uint32_t head_len);
+IMPORT("dom_file_step") void dom_file_step(uint32_t url, uint32_t url_len, uint32_t head, uint32_t head_len, uint32_t step);
 
 static coax_v_t_EdShell at(uint32_t state) { return (coax_v_t_EdShell){(coax_t_EdShell *)(uintptr_t)state, 1}; }
 static coax_t_EdShell *raw(uint32_t state) { return (coax_t_EdShell *)(uintptr_t)state; }
@@ -29,7 +31,9 @@ static void asks(uint32_t state) {
   // and of the world's server (#13420): its assets (a GET), or a dropped file for it (the head, then the file's bytes)
   int64_t f = coaxial_editor_fetching(at(state));
   if (f > 0) {
-    dom_file_send((uint32_t)(uintptr_t)s->as_url.e, (uint32_t)s->as_url_n, (uint32_t)(uintptr_t)s->as_head.e, f == 2 ? (uint32_t)s->as_head_n : 0u);
+    // 1 a GET, 2 the head then the file; then a direct upload's steps: 3 the file named, 4 the file sent, 5 said to be done
+    if (f <= 2) dom_file_send((uint32_t)(uintptr_t)s->as_url.e, (uint32_t)s->as_url_n, (uint32_t)(uintptr_t)s->as_head.e, f == 2 ? (uint32_t)s->as_head_n : 0u);
+    else dom_file_step((uint32_t)(uintptr_t)s->as_url.e, (uint32_t)s->as_url_n, (uint32_t)(uintptr_t)s->as_head.e, (uint32_t)s->as_head_n, (uint32_t)f - 2u);
     coaxial_editor_fetched(at(state));
   }
 }

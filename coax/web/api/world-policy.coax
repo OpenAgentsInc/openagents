@@ -10,6 +10,10 @@
 //   dev and live          a publish copies dev to live for sessions now or next, and a session
 //                         joins the revision its build reads: metaverse-engine/editor/world-live.coax's
 //                         rule, named here for C with plain numbers
+//   an import             who may import a file is who may write (wr_asset_write); a file is named
+//                         by its content before it is sent, and what storage then holds is the
+//                         file only when its size and its SHA-256 are the ones asked
+//                         (wr_asset_stored); a wrong object is deleted (#13420)
 //   the bytes             metaverse-engine/editor/world-edit.coax's: a batch's head and edits, an
 //                         event, a state, a refusal; a card's are coax/lib/agent/world/turn.coax's
 // Whether an edit may stand is the world's own Coax (Splice: metaverse/splice/world-api.coax).
@@ -92,6 +96,48 @@ wr_words :: (verdict: int) -> string #export_c #effects(all) {
   if verdict == WR_RELOAD { return "this page is older than the world: reload it"; }
   if verdict == WR_LANE { return "a lane is dev or live"; }
   return "";
+}
+
+// ---- an import into the world's pack (GitHub #13420; docs/protocol/world-assets-v1.md)
+
+// Who may open an upload for a world's import, and say it is done: who may write the world (an
+// admin, from this site or signed), checked in the same order.
+wr_asset_write :: (same_site: bool, known: bool, admin: bool, exists: bool) -> int #export_c #effects(all) {
+  if !same_site { return WR_CROSS; }
+  if !known { return WR_LOG_IN; }
+  if !admin { return WR_NOT_ADMIN; }
+  if !exists { return WR_NO_WORLD; }
+  return WR_OK;
+}
+// An import is an edit: what it is to the realm's row of the authority table (wr_authored).
+wr_asset_what :: () -> int #export_c #effects(all) { return WB_APPLY; }
+WA_OK :: 0;
+WA_ABSENT :: 1;      // storage holds nothing under the name
+WA_SIZE :: 2;        // it holds an object of another size than was asked
+WA_NAME :: 3;        // its bytes are not the ones its name was made from
+// What storage holds under a file's name, against what was asked. asked: the bytes the ask named;
+// stored: the object's bytes (-1: none); named: its SHA-256 is its name's (asked only of an
+// object of the right size).
+wr_asset_stored :: (asked: int, stored: int, named: bool) -> int #export_c #effects(all) {
+  if stored < 0 { return WA_ABSENT; }
+  if asked < 1 || stored != asked { return WA_SIZE; }
+  if !named { return WA_NAME; }
+  return WA_OK;
+}
+// Whether storage already holds the file an ask names, so nothing is sent again: an object of
+// exactly the asked size (its bytes are checked when the upload is said to be done).
+wr_asset_kept :: (asked: int, stored: int) -> bool #export_c #effects(all) { return asked >= 1 && stored == asked; }
+// Whether the object goes: one that is not the file asked for is deleted, never imported.
+wr_asset_deletes :: (verdict: int) -> bool #export_c #effects(all) { return verdict == WA_SIZE || verdict == WA_NAME; }
+wr_asset_words :: (verdict: int) -> string #export_c #effects(all) {
+  if verdict == WA_ABSENT { return "That file did not arrive. Import it again."; }
+  if verdict == WA_SIZE { return "That file did not arrive whole, so it is not kept. Import it again."; }
+  if verdict == WA_NAME { return "That file is not the one that was named, so it is not kept. Import it again."; }
+  return "";
+}
+// A pack is kept while a lane names it: dev's, live's, or the one before the last pin change.
+wr_pack_kept :: (hash: string, dev: string, live: string, prev: string) -> bool #export_c #effects(all) {
+  return hash.count != 0 && (hash == dev || hash == live || hash == prev);
 }
 
 // ---- the undo log: steps 0..<steps, of which the first `done` stand
@@ -218,6 +264,26 @@ wr_card :: (world: string, rev: int, things: int, name: string, out: [] u8) -> i
   #assert wr_write(true, true, true, true, true, WB_UNDO, 7, 7, 0, 3) == WR_NO_UNDO && wr_write(true, true, true, true, true, WB_UNDO, 7, 7, 1, 3) == WR_OK && wr_write(true, true, true, true, true, WB_UNDO, 7, 7, -1, 3) == WR_NO_UNDO;
   #assert wr_write(true, true, true, true, true, WB_REDO, 7, 7, 3, 3) == WR_NO_REDO && wr_write(true, true, true, true, true, WB_REDO, 7, 7, 2, 3) == WR_OK && wr_write(true, true, true, true, true, WB_REDO, 7, 7, 4, 3) == WR_NO_REDO;
   #assert wr_write(true, true, true, true, true, WB_APPLY, 7, 7, 0, 0) == WR_OK && wr_write(true, true, true, true, true, WB_ORIGINAL, 7, 7, 3, 3) == WR_OK;
+}
+#test "world routes: an import is a write: only an admin, from this site, into a world there is" {
+  #assert wr_asset_write(true, true, true, true) == WR_OK;
+  #assert wr_asset_write(false, true, true, true) == WR_CROSS && wr_asset_write(true, false, true, true) == WR_LOG_IN && wr_asset_write(true, true, false, true) == WR_NOT_ADMIN && wr_asset_write(true, true, true, false) == WR_NO_WORLD;
+  #assert wr_asset_write(false, false, false, false) == WR_CROSS && wr_asset_write(true, false, false, false) == WR_LOG_IN && wr_asset_write(true, true, false, false) == WR_NOT_ADMIN;
+  for same: 0..<2 { for known: 0..<2 { for admin: 0..<2 { for exists: 0..<2 {
+    #assert wr_asset_write(same == 1, known == 1, admin == 1, exists == 1) == wr_write(same == 1, known == 1, admin == 1, exists == 1, true, WB_APPLY, 4, 4, 2, 5);
+  } } } }
+  #assert wr_asset_what() == WB_APPLY && wr_op(wr_asset_what()) == OP_EDIT && wr_authored("splice", wr_asset_what()) && !wr_authored("nowhere", wr_asset_what());
+}
+#test "world routes: what storage holds is the file only when its size and its hash are the ones asked; a wrong object is deleted" {
+  #assert wr_asset_stored(2032, 2032, true) == WA_OK && wr_asset_stored(1, 1, true) == WA_OK;
+  #assert wr_asset_stored(2032, -1, true) == WA_ABSENT && wr_asset_stored(2032, -1, false) == WA_ABSENT && wr_asset_stored(0, -1, true) == WA_ABSENT;
+  #assert wr_asset_stored(2032, 2031, true) == WA_SIZE && wr_asset_stored(2032, 2033, true) == WA_SIZE && wr_asset_stored(2032, 0, true) == WA_SIZE && wr_asset_stored(0, 0, true) == WA_SIZE && wr_asset_stored(-1, 0, true) == WA_SIZE;
+  #assert wr_asset_stored(2032, 2032, false) == WA_NAME && wr_asset_stored(2032, 2031, false) == WA_SIZE;
+  #assert wr_asset_kept(2032, 2032) && wr_asset_kept(1, 1) && !wr_asset_kept(2032, 2031) && !wr_asset_kept(2032, -1) && !wr_asset_kept(0, 0) && !wr_asset_kept(-1, -1);
+  #assert !wr_asset_deletes(WA_OK) && !wr_asset_deletes(WA_ABSENT) && wr_asset_deletes(WA_SIZE) && wr_asset_deletes(WA_NAME) && !wr_asset_deletes(4) && !wr_asset_deletes(-1);
+  for v: 0..<4 { #assert (wr_asset_words(v).count > 0) == (v != WA_OK); for o: 0..<v { #assert wr_asset_words(o) != wr_asset_words(v); } }
+  #assert wr_asset_words(4) == "" && wr_asset_words(-1) == "";
+  #assert wr_pack_kept("a", "a", "b", "c") && wr_pack_kept("b", "a", "b", "c") && wr_pack_kept("c", "a", "b", "c") && !wr_pack_kept("d", "a", "b", "c") && !wr_pack_kept("", "", "", "") && !wr_pack_kept("", "a", "", "");
 }
 #test "world routes: a world is its realm's row of the authority table, and a write is authoring, never durable" {
   for what: 0..<6 { #assert wr_authored("splice", what) && wr_authored("everglade", what) && !wr_authored("nowhere", what) && !wr_authored("", what); }

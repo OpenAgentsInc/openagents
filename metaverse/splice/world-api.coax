@@ -56,7 +56,7 @@ splice_world_batch_packed :: (doc: string, tables: string, pack: string, body: s
 // Whether a mesh of the world's import pack may take new bounds (its reach in millimetres) where
 // the world stands: the row of the pieces table that draws it is written again for those bounds
 // (world.coax spw_mesh_row) and carried out on the document with the new pack, in a copy; nothing is
-// saved. True when no row draws the mesh, or the row stands. False with why in words when a placed
+// saved. True when no row draws the mesh, the bounds are the ones its row has, or the row stands. False with why in words when a placed
 // piece would no longer fit. An import asks this before it replaces a mesh, so a pack never holds
 // a mesh larger than the colliders the world has for it.
 splice_world_mesh_fits :: (doc: string, tables: string, pack: string, mesh: string, hx: int, hz: int, top: int, out_why: [] u8, why_n: [] int) -> bool #export_c #effects(all) {
@@ -65,6 +65,8 @@ splice_world_mesh_fits :: (doc: string, tables: string, pack: string, mesh: stri
   mine := ifx tables.count > 0 then tables else SC_SHIPPED;
   row := spw_mesh_row(mine, mesh, hx, hz, top, rb[..]);
   if row.count == 0 { return true; }
+  // the same bounds as the row has: nothing about where its pieces stand changes
+  for k: 0..<ct_parts(mine, '\n') { if ct_part(mine, '\n', k) == row { return true; } }
   id := ct_num(ct_part(row, '|', 0)).v;
   c: [1] SpContent;
   if !sc_load(c[..], mine) || sc_piece(c[..], id) < 0 { return true; }   // a new kind: nothing stands as it yet
@@ -149,4 +151,6 @@ splice_world_words :: (status: int) -> string #export_c #effects(all) {
   #assert splice_world_status(SPB_OK) == 200 && splice_world_status(SPB_BATCH) == 400 && splice_world_status(SPB_STALE) == 409 && splice_world_status(SPB_REFUSED) == 422 && splice_world_status(SPB_WALK) == 422 && splice_world_status(SPB_NOTHING) == 422 && splice_world_status(SPB_DOC) == 500 && splice_world_status(SPB_ROOM) == 500;
   #assert splice_world_words(SPB_STALE).count > 20 && splice_world_words(SPB_BATCH).count > 20 && splice_world_words(SPB_NOTHING) == "nothing to change" && splice_world_words(SPB_DOC) == "not saved";
 }
+#load "world-assets.coax";   // a world's imports for its server: the list, a file named before it is sent, an import (#13420)
 #load "imports-api-checks.coax" #test;   // a row that draws a pack mesh, held to the world's import pack (#13420)
+#load "world-assets-checks.coax" #test;   // the list, a file named before it is sent, an import (#13420)

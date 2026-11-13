@@ -22697,6 +22697,9 @@ CREATE TABLE verse.world_docs (
     dev_tables text DEFAULT ''::text NOT NULL,
     live_tables text DEFAULT ''::text NOT NULL,
     prev_tables text DEFAULT ''::text NOT NULL,
+    dev_pack text DEFAULT ''::text NOT NULL,
+    live_pack text DEFAULT ''::text NOT NULL,
+    prev_pack text DEFAULT ''::text NOT NULL,
     CONSTRAINT world_docs_check CHECK ((steps >= done)),
     CONSTRAINT world_docs_dev_rev_check CHECK ((dev_rev >= 0)),
     CONSTRAINT world_docs_done_check CHECK ((done >= 0)),
@@ -22704,6 +22707,27 @@ CREATE TABLE verse.world_docs (
     CONSTRAINT world_docs_live_rev_check CHECK ((live_rev >= 0)),
     CONSTRAINT world_docs_live_when_check CHECK ((live_when = ANY (ARRAY[0, 1]))),
     CONSTRAINT world_docs_prev_rev_check CHECK ((prev_rev >= 0))
+);
+
+
+--
+-- Name: world_files; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.world_files (
+    world text NOT NULL,
+    hash text NOT NULL,
+    name text NOT NULL,
+    kind integer NOT NULL,
+    licence integer NOT NULL,
+    bytes bigint NOT NULL,
+    at_ms bigint NOT NULL,
+    CONSTRAINT world_files_at_ms_check CHECK ((at_ms > 0)),
+    CONSTRAINT world_files_bytes_check CHECK ((bytes >= 1)),
+    CONSTRAINT world_files_hash_check CHECK ((hash ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT world_files_kind_check CHECK (((kind >= 1) AND (kind <= 3))),
+    CONSTRAINT world_files_licence_check CHECK ((licence >= 0)),
+    CONSTRAINT world_files_name_check CHECK (((length(name) >= 1) AND (length(name) <= 120)))
 );
 
 
@@ -22724,6 +22748,21 @@ CREATE SEQUENCE verse.world_outbox_seq_seq
 --
 
 ALTER SEQUENCE verse.world_outbox_seq_seq OWNED BY verse.world_outbox.seq;
+
+
+--
+-- Name: world_packs; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.world_packs (
+    world text NOT NULL,
+    hash text NOT NULL,
+    bytes bytea NOT NULL,
+    at_ms bigint NOT NULL,
+    CONSTRAINT world_packs_at_ms_check CHECK ((at_ms > 0)),
+    CONSTRAINT world_packs_bytes_check CHECK (((octet_length(bytes) >= 1) AND (octet_length(bytes) <= 1048576))),
+    CONSTRAINT world_packs_hash_check CHECK ((hash ~ '^[0-9a-f]{64}$'::text))
+);
 
 
 --
@@ -24911,6 +24950,14 @@ ALTER TABLE ONLY verse.world_docs
 
 
 --
+-- Name: world_files world_files_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.world_files
+    ADD CONSTRAINT world_files_pkey PRIMARY KEY (world, hash);
+
+
+--
 -- Name: world_outbox world_outbox_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
 --
 
@@ -24924,6 +24971,14 @@ ALTER TABLE ONLY verse.world_outbox
 
 ALTER TABLE ONLY verse.world_outbox
     ADD CONSTRAINT world_outbox_world_lane_rev_key UNIQUE (world, lane, rev);
+
+
+--
+-- Name: world_packs world_packs_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.world_packs
+    ADD CONSTRAINT world_packs_pkey PRIMARY KEY (world, hash);
 
 
 --
@@ -26625,11 +26680,27 @@ ALTER TABLE ONLY verse.seats
 
 
 --
+-- Name: world_files world_files_world_fkey; Type: FK CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.world_files
+    ADD CONSTRAINT world_files_world_fkey FOREIGN KEY (world) REFERENCES verse.world_docs(id) ON DELETE CASCADE;
+
+
+--
 -- Name: world_outbox world_outbox_world_fkey; Type: FK CONSTRAINT; Schema: verse; Owner: -
 --
 
 ALTER TABLE ONLY verse.world_outbox
     ADD CONSTRAINT world_outbox_world_fkey FOREIGN KEY (world) REFERENCES verse.world_docs(id) ON DELETE CASCADE;
+
+
+--
+-- Name: world_packs world_packs_world_fkey; Type: FK CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.world_packs
+    ADD CONSTRAINT world_packs_world_fkey FOREIGN KEY (world) REFERENCES verse.world_docs(id) ON DELETE CASCADE;
 
 
 --

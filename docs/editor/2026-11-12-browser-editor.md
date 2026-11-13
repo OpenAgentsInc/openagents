@@ -209,10 +209,11 @@ not a flat folder scan.
 - **Assets:** an asset browser over the realm's pack and the shared kits.
   Drop a glTF, PNG or audio file to add it: it is packed with a declared
   licence (`metaverse-engine/editor/pack.coax`) and appears in the browser.
-- **As built (E11, #13420):** on the dev server, a file dropped on the editor
-  becomes an entry of the world's import pack, and an imported mesh is a kind
-  to place. The API has no import route yet, so a deployed editor has no
-  Assets button ([the shape](../protocol/world-assets-v1.md)).
+- **As built (E11, #13420):** a file dropped on the editor becomes an entry
+  of the world's import pack, and an imported mesh is a kind to place. The
+  dev server takes the file in one request. The API takes it by a direct
+  upload to storage ("The production path" below;
+  [the shapes](../protocol/world-assets-v1.md)).
 
   ![The Assets pane beside a placed imported mesh](shots/2026-11-13-e11-asset-import.png)
 
@@ -259,27 +260,80 @@ not a flat folder scan.
     reload. A replacement was drawn 203 ms after Import. A 1,773 KB file, a
     third 391 KB sound (a 1,180 KB pack) and a wider mesh where a piece
     stood were each refused in words.
-  - **Not built:** the import route on the API, with the signed direct upload
-    to storage. See "The production path" below.
 
-  **The production path (not built).** It needs no new cloud resource. The
-  API already opens a resumable upload for an exact size and content type in
-  the private bucket `openagentsgemini-project-drops`, which has a CORS rule
-  for this site and a scan of each file's size and first bytes
-  (`coax/web/api/drops.c`, `open_upload`; glTF binaries, PNG and the three
-  sound formats are kinds it takes). What is missing is code and a
-  migration:
-  1. `POST /api/worlds/ID/assets` on the API: who may write is
-     `world-policy.coax`'s rule; the file is checked with `pi_early`; the
-     answer is an upload session for the object
-     `PREFIX/worlds/ID/files/SHA256`.
-  2. A `done` call: the API reads the object, checks its SHA-256, runs
-     `pi_import` on the world's pack and keeps the new pack by hash.
-  3. A table for a world's pack (its hash and bytes, at most 1 MB) and its
-     files, and `worlds.c` passing the pack to
-     `splice_world_batch_packed`.
-  4. `GET .../assets` and `.../assets/pack`, and the shell's upload in two
-     steps instead of one.
+  **The production path (as built).** It uses no new cloud resource: the
+  private bucket `openagentsgemini-project-drops`, the API's own identity and
+  the upload opener in `coax/web/api/drops.c` that the project drops use.
+  The importer, its limits and its words are the dev server's: both call
+  `metaverse/splice/world-assets.coax`.
+
+  1. **The file is named before it is sent.** The page sends
+     `POST /api/worlds/ID/assets` with the licence, the file's size and name,
+     and its SHA-256 (`world.asset.upload.v1`). Who may ask is who may write
+     the world (`world-policy.coax`, `wr_asset_write`: an admin, from this
+     site or signed). The file is checked by name, size and licence with the
+     importer's own check (`pi_early`), so a refusal comes in the same words
+     and nothing is stored. The API then opens an upload for exactly that many
+     bytes and that content type at the object
+     `PREFIX/worlds/ID/files/SHA256` and answers its address. If the bucket
+     has the file already, it answers `kept` and nothing is sent again.
+  2. **The bytes go straight to storage.** The page's host `PUT`s the file to
+     the address. The API never carries the file's bytes in a request.
+  3. **Done.** The page sends the same ask to `POST .../assets/done`. The API
+     reads the object back and checks its size and its SHA-256 against its
+     name (`wr_asset_stored`). An object that is not the file named is
+     deleted and refused. Then it runs the importer on dev's pack and keeps
+     the new pack by its hash. A refused import (over budget, a mesh that
+     does not fit where its kind stands) leaves the pack as it was, says why,
+     and deletes the file from the bucket unless an earlier import kept it.
+  4. **Storage** (`migrations/0183_world_assets.sql`). `verse.world_packs`
+     holds a pack's bytes by hash, 1 MB at most. A world's row names a pack
+     for each lane, as it holds a document for each: an import changes
+     dev's, a publish makes live's the same as dev's, and the one before the
+     last pin change stays for one release. A pack no lane names is deleted.
+     `verse.world_files` has a row for each imported file: its hash, name,
+     kind, licence and size. An edit is now checked against the pack dev
+     really has (`splice_world_batch_packed`), so a `pieces` row for a pack
+     mesh is saved only when that mesh is in it.
+  5. **Reading.** `GET .../assets` answers the list (`world.assets.v1`):
+     live's, or dev's with `?lane=dev`. `GET .../assets/pack` answers the
+     lane's pack, and `?live=SHA256` answers the world's pack of that hash.
+     No answer is cached: the API marks every answer `no-store`, so a page
+     reads its pack (1 MB at most) from the API each time it loads.
+  6. **The shell.** On a deployed page the upload is the three steps above
+     (`shell-assets.coax`; the host's `dom_file_step` hashes the file with
+     the browser's own SHA-256). The pane shows the limits and the budget
+     first, as on the dev server, and says "Sending" through all three steps.
+     The shell asks for the list as someone who would import
+     (`?lane=dev&write=1`), which the API answers to an admin only, so nobody
+     else gets an Assets button. A deployed page has no dev server to tell
+     its tabs of a new pack, so the shell tells the page's host the pack's
+     hash and the host fetches the pack by that hash and swaps it in.
+
+  **Proved** in two halves. The API's half runs on a build host
+  (`coax/web/api/tests/world_checks.coax`, 19 checks named "assets: ...",
+  with a fake bucket that keeps each object as a file): who may open an
+  upload, the refusals before any upload, the object checked against its
+  name and deleted when it is wrong, the import, the pack by lane, a
+  `pieces` row held to the pack, the budget, and a publish. The page's half
+  ran in headless Chrome on a page that is not the dev server's
+  (`http://e11b.localhost:PORT/worlds/splice?edit`), with the API's three
+  answers played in the page and the import itself done by the dev server:
+  a 2 KB glTF binary was named by the SHA-256 the browser computed, `PUT`
+  with no credentials, and imported; the host fetched the pack by its hash
+  (1 swap, 1 mesh, 0 refused) and the world went from revision 0 to 1 with
+  the mesh as a kind. The same file again was not sent (0 `PUT`s) and
+  replaced the mesh. A 1,773 KB file was refused before any request, and a
+  third 391 KB sound was refused in the server's words.
+  **Not proved:** the three steps against real storage and the deployed
+  API together. The dev server answers a world's routes itself, so no local
+  page reaches the API's routes.
+
+  **Not built.** Another tab on a deployed page learns of a new pack when it
+  opens its Assets pane or reloads, not at once. A visitor who is on the
+  page through a publish that adds a pack mesh draws that mesh after a
+  reload. Skins, morphs and animations in a glTF file are not read, and
+  nothing in Splice uses a texture or a sound yet.
 - **Code:** a realm's Coax source opens in a code panel (`k_code`, plus an edit
   field from `components/core/edit.coax`). Saving sends it to the paired Coder,
   which compiles it with the resident compiler; the live channel swaps it in.

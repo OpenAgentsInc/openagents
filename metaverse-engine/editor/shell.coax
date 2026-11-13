@@ -111,7 +111,10 @@ EdShell :: struct {
   as_file: bool; as_file_bytes: int; as_file_name_n: int;   // the file that waits to be sent
   as_note: int; as_words_n: int;         // what the pane says of the last file (ES_AS_SAID_*), and its words
   as_url_n: int; as_head_n: int;         // where the ask goes, and an import's first bytes (0: a GET)
-  as_url: [96] u8; as_head: [200] u8;
+  as_how: int;                           // how the ask goes (ES_HOW_*)
+  as_told: bool;                         // the page was told the hash of the world's pack (as_pack)
+  as_url: [WAS_URL] u8; as_head: [320] u8;
+  as_hash: [64] u8; as_pack: [64] u8;    // the waiting file's SHA-256 as the server answered it, and the pack's hash the page was last told
   as_file_name: [WAS_FILE_NAME] u8;
   as_words: [EM_WORDS] u8;
   as_list: [1] WasList; as_next: [1] WasList;
@@ -776,7 +779,7 @@ es_model :: (s: [] EdShell, length: int) {
   // bytes that are not a model close the lists: the shell shows nothing it was not told
   if !em_read(s[0].model[..], cast(string) s[0].inbox[0..<n], s[0].scratch[..]) { s[0].have = false; return; }
   s[0].have = true; s[0].turn_due = true;
-  if !s[0].as_asked && es_as_go(s, ES_AS_LIST) { s[0].as_asked = true; }   // the world's assets, once it is known which world this is
+  if !s[0].as_asked && es_as_go(s, ES_AS_LIST, "") { s[0].as_asked = true; }   // the world's assets, once it is known which world this is
   // a gathered thing that is no longer in the world leaves the group
   kept := 0;
   for k: 0..<s[0].ngroup { if em_entity_at(s[0].model[..], s[0].group[k]) >= 0 { s[0].group[kept] = s[0].group[k]; kept += 1; } }
@@ -913,9 +916,11 @@ coaxial_editor_act_done :: (s: [] EdShell) #export_c #effects(all) {
 // The ask that waits to go to the dev server: its bytes (at code_req; 0: none), to the address at code_door; asked takes it away.
 coaxial_editor_asking :: (s: [] EdShell) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].code_ask then s[0].code_req_n else 0; }
 coaxial_editor_asked :: (s: [] EdShell) #export_c #effects(all) { if s.count > 0 { s[0].code_ask = false; } }
-// The ask that waits to go to the world's server (shell-assets.coax): 0 none, 1 a GET of the address at as_url,
-// 2 a POST there of the bytes at as_head followed by the waiting file's; fetched takes it away.
-coaxial_editor_fetching :: (s: [] EdShell) -> int #export_c #effects(all) { return ifx s.count < 1 || !s[0].as_ask then 0 else ifx s[0].as_head_n > 0 then 2 else 1; }
+// The ask that waits to go to the world's server (shell-assets.coax; ES_HOW_*): 0 none, 1 a GET of the address at
+// as_url, 2 a POST there of the bytes at as_head followed by the waiting file's, 3 a POST of as_head followed by the
+// file's SHA-256 and a line end (the file stays), 4 a PUT of the file alone to as_url, 5 a POST of as_head alone;
+// fetched takes it away.
+coaxial_editor_fetching :: (s: [] EdShell) -> int #export_c #effects(all) { return ifx s.count < 1 || !s[0].as_ask then 0 else s[0].as_how; }
 coaxial_editor_fetched :: (s: [] EdShell) #export_c #effects(all) { if s.count > 0 { s[0].as_ask = false; } }
 // What a Copy press put by for the clipboard: its bytes (at clip; 0: none); done takes it away.
 coaxial_editor_clip_len :: (s: [] EdShell) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].clip_n else 0; }

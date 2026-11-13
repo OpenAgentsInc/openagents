@@ -4,10 +4,19 @@
 // like the rest of the shell, and this file names no colour, face or size.
 //
 // The shell packs nothing and keeps no pack. It asks the world's server for the list
-// (world.assets.v1, asset-wire.coax) and sends a dropped file to it (world.asset.import.v1); the
-// answer is the list again, or a refusal in words. Both go by the host's dom_file_send and come
-// back as one event (coax/web/dom-host.js, "Files"). Where the server has no such route (a
-// deployed page today), no list comes and the shell has no Assets button.
+// (world.assets.v1, asset-wire.coax) and sends a dropped file to it; the answer is the list
+// again, or a refusal in words. Each ask goes by the host and comes back as one event
+// (coax/web/dom-host.js, "Files"). The list is asked for as someone who would import, so a
+// server that lets only some people write answers it to them alone: with no list, the shell has
+// no Assets button.
+//
+// A file goes in one of two ways. On the dev server (the page was told its module, shell.coax
+// ES_CODE_HERE) it is one POST: a line, then the file's bytes (world.asset.import.v1). On a
+// deployed page it is three steps, because the API takes a file by direct upload: the file is
+// named by its SHA-256 and the server answers where it goes (world.asset.upload.v1), the host
+// PUTs the bytes there, and the shell says it is done. The pane shows "Sending" through all of
+// it. A deployed page is also told the hash of the world's pack (ES_PACKED), which its host
+// fetches by that hash and swaps in; on the dev server the live channel tells every tab.
 //
 // A file is checked before it is sent with the importer's own rules and words
 // (pack-import-read.coax pi_early): a file that is not one the editor takes, an empty one, one
@@ -21,7 +30,11 @@
 ES_FILE :: 10;         // a file was dropped or picked: "BYTES NAME" in the inbox
 ES_SENT :: 11;         // the world's server answered: its status in `slot`, its body in the inbox
 ES_IMPORTED :: 525;    // an action for the page: "mesh NAME HX HZ TOP" (millimetres): a mesh is in the world's pack
-ES_AS_NONE :: 0; ES_AS_LIST :: 1; ES_AS_SEND :: 2;
+ES_PACKED :: 526;      // an action for the page's host, not the page: "URL HASH": the world's pack is the one of this SHA-256
+ES_AS_NONE :: 0; ES_AS_LIST :: 1; ES_AS_SEND :: 2; ES_AS_NAME :: 3; ES_AS_PUT :: 4; ES_AS_DONE :: 5;
+// How an ask goes (coaxial_editor_fetching): a GET; a POST of the head then the file; a POST of the head then the
+// file's hash; a PUT of the file to an address the server answered; a POST of the head alone.
+ES_HOW_GET :: 1; ES_HOW_SEND :: 2; ES_HOW_NAME :: 3; ES_HOW_PUT :: 4; ES_HOW_SAY :: 5;
 ES_AS_SAID_NONE :: 0; ES_AS_SAID_DONE :: 1; ES_AS_SAID_NO :: 2;
 ES_AS_ACCEPT :: ".glb,.png,.wav,.ogg,.mp3";
 ES_AS_KIND :: [4] string.["", "Mesh", "Texture", "Sound"];
@@ -35,19 +48,29 @@ es_as_limits :: (s: [] EdShell) -> PipLimits {
   return PipLimits.{file = l[0].file, budget = l[0].budget, triangles = l[0].triangles, side = l[0].side};
 }
 es_as_file_name :: (s: [] EdShell) -> string { return cast(string) s[0].as_file_name[0..<s[0].as_file_name_n]; }
-// One ask of the world's server at a time: its list, or the waiting file. False while another is out.
-es_as_go :: (s: [] EdShell, flight: int) -> bool {
+// The world's address at its server, then `tail`, into as_url. False when it does not fit.
+es_as_at :: (s: [] EdShell, tail: string) -> bool {
+  m := s[0].model[..]; w := m[0].world;
+  n := ct_put(s[0].as_url[..], 0, "/api/worlds/"); n = ct_put(s[0].as_url[..], n, cast(string) w[0..<m[0].world_n]); n = ct_put(s[0].as_url[..], n, tail);
+  if n > s[0].as_url.count { return false; }
+  s[0].as_url_n = n;
+  return true;
+}
+// Whether the page is the dev server's (it was told its module): a file then goes in one step.
+es_as_dev :: (s: [] EdShell) -> bool { return s[0].code_page_n > 0; }
+// One ask of the world's server at a time: its list, the waiting file, or a step of a direct
+// upload (`url`: where a PUT goes). False while another is out.
+es_as_go :: (s: [] EdShell, flight: int, url: string) -> bool {
   m := s[0].model[..];
   if s[0].as_flight != ES_AS_NONE || !s[0].have || m[0].world_n == 0 { return false; }
-  w := m[0].world;
-  n := ct_put(s[0].as_url[..], 0, "/api/worlds/"); n = ct_put(s[0].as_url[..], n, cast(string) w[0..<m[0].world_n]); n = ct_put(s[0].as_url[..], n, "/assets");
-  if n > s[0].as_url.count { return false; }
-  s[0].as_url_n = n; s[0].as_head_n = 0;
-  if flight == ES_AS_SEND {
-    head := was_import_head(s[0].as_head[..], s[0].as_licence, es_as_file_name(s));
-    if head.count == 0 { return false; }
-    s[0].as_head_n = head.count;
-  }
+  s[0].as_head_n = 0; head := ""; ok := false;
+  if flight == ES_AS_LIST { s[0].as_how = ES_HOW_GET; ok = es_as_at(s, "/assets?lane=dev&write=1"); }
+  if flight == ES_AS_SEND { s[0].as_how = ES_HOW_SEND; head = was_import_head(s[0].as_head[..], s[0].as_licence, es_as_file_name(s)); ok = head.count > 0 && es_as_at(s, "/assets"); }
+  if flight == ES_AS_NAME { s[0].as_how = ES_HOW_NAME; head = was_upload_head(s[0].as_head[..], s[0].as_licence, s[0].as_file_bytes, es_as_file_name(s)); ok = head.count > 0 && es_as_at(s, "/assets"); }
+  if flight == ES_AS_DONE { s[0].as_how = ES_HOW_SAY; head = was_upload_ask(s[0].as_head[..], s[0].as_licence, s[0].as_file_bytes, cast(string) s[0].as_hash[..], es_as_file_name(s)); ok = head.count > 0 && es_as_at(s, "/assets/done"); }
+  if flight == ES_AS_PUT { s[0].as_how = ES_HOW_PUT; s[0].as_url_n = ct_put(s[0].as_url[..], 0, url); ok = was_url(url); }
+  if !ok { return false; }
+  s[0].as_head_n = head.count;
   s[0].as_flight = flight; s[0].as_ask = true;
   return true;
 }
@@ -58,7 +81,7 @@ es_as_file :: (s: [] EdShell, length: int) {
   line := cast(string) s[0].inbox[0..<n];
   bytes := was_num(was_field(line, 0)); name := was_rest(line, 1);
   s[0].assets = true; s[0].code = false;
-  if s[0].as_flight == ES_AS_SEND { es_as_say(s, ES_AS_SAID_NO, "The last file is still on its way. Drop this one again when it is in."); return; }
+  if s[0].as_flight >= ES_AS_SEND { es_as_say(s, ES_AS_SAID_NO, "The last file is still on its way. Drop this one again when it is in."); return; }
   nb: [WAS_FILE_NAME] u8; clean := was_file_name(name, nb[..]);
   s[0].as_file_name_n = em_copy(s[0].as_file_name[..], clean);
   s[0].as_file_bytes = ifx bytes < 0 then 0 else bytes;
@@ -74,10 +97,20 @@ es_as_send :: (s: [] EdShell) {
   words: [PI_WHY] u8;
   early := pi_early(es_as_file_name(s), s[0].as_file_bytes, s[0].as_licence, es_as_limits(s), words[..]);
   if early.verdict != PIP_OK { es_as_say(s, ES_AS_SAID_NO, cast(string) words[0..<early.n]); return; }
-  if !es_as_go(s, ES_AS_SEND) { es_as_say(s, ES_AS_SAID_NO, "The last file is still on its way. Try again."); return; }
+  if !es_as_go(s, ifx es_as_dev(s) then ES_AS_SEND else ES_AS_NAME, "") { es_as_say(s, ES_AS_SAID_NO, "The last file is still on its way. Try again."); return; }
   es_as_say(s, ES_AS_SAID_NONE, "");
 }
-// The server's answer: the list, or after a file what the import did or why it did nothing.
+// A deployed page's host is told the hash of the world's pack when it is not the one it was last told, so it
+// fetches the pack by that hash and swaps it in. The dev server tells every tab itself.
+es_as_packed :: (s: [] EdShell) {
+  l := s[0].as_list[..];
+  if es_as_dev(s) || !l[0].packed || (s[0].as_told && cast(string) s[0].as_pack[..] == cast(string) l[0].hash[..]) { return; }
+  m := s[0].model[..]; w := m[0].world; act: [160] u8;
+  n := ct_put(act[..], 0, "/api/worlds/"); n = ct_put(act[..], n, cast(string) w[0..<m[0].world_n]); n = ct_put(act[..], n, "/assets/pack "); n = ct_put(act[..], n, cast(string) l[0].hash[..]);
+  if n > act.count || !es_act(s, ES_PACKED, cast(string) act[0..<n]) { return; }   // the page is busy: told with the next list
+  s[0].as_pack = l[0].hash; s[0].as_told = true;
+}
+// The server's answer: the list, where a file goes, or after a file what the import did or why it did nothing.
 es_as_sent :: (s: [] EdShell, status: int, length: int) {
   flight := s[0].as_flight;
   if flight == ES_AS_NONE { return; }
@@ -88,8 +121,22 @@ es_as_sent :: (s: [] EdShell, status: int, length: int) {
   next := s[0].as_next[..];
   listed := status == 200 && was_read(next, body) && was_world_of(next) == cast(string) w[0..<m[0].world_n];
   if flight == ES_AS_LIST {
-    // any answer but this world's list: there are no assets here (a server that has no such route)
-    if listed { s[0].as_list[0] = next[0]; s[0].as_have = true; }
+    // any answer but this world's list: there are no assets here (a server that has no such route, or someone who may not import)
+    if listed { s[0].as_list[0] = next[0]; s[0].as_have = true; es_as_packed(s); }
+    return;
+  }
+  if flight == ES_AS_NAME {
+    // where the file goes, or that storage has it: then the bytes, then the word that it is done
+    r := was_uploaded_read(body);
+    if status == 200 && r.ok && r.bytes == s[0].as_file_bytes {
+      for c, k: r.hash { s[0].as_hash[k] = c; }
+      if es_as_go(s, ifx r.how == WU_PUT then ES_AS_PUT else ES_AS_DONE, r.url) { return; }
+    }
+  }
+  if flight == ES_AS_PUT {
+    if status >= 200 && status < 300 && es_as_go(s, ES_AS_DONE, "") { return; }
+    s[0].as_file = false;
+    es_as_say(s, ES_AS_SAID_NO, "That did not import: the file did not reach storage. Drop it again.");
     return;
   }
   s[0].as_file = false;
@@ -109,6 +156,7 @@ es_as_sent :: (s: [] EdShell, status: int, length: int) {
   k = ct_put_int(o[..], k, pi_kb(l[0].a[at].file)); k = ct_put(o[..], k, " KB as a file, "); k = ct_put_int(o[..], k, pi_kb(l[0].a[at].bytes)); k = ct_put(o[..], k, " KB packed. The pack was ");
   k = ct_put_int(o[..], k, pi_kb(before)); k = ct_put(o[..], k, " KB and is now "); k = ct_put_int(o[..], k, pi_kb(l[0].bytes)); k = ct_put(o[..], k, " KB of "); k = ct_put_int(o[..], k, pi_kb(l[0].budget)); k = ct_put(o[..], k, " KB.");
   es_as_say(s, ES_AS_SAID_DONE, ifx k > o.count then "Imported." else cast(string) o[0..<k]);
+  es_as_packed(s);
   // a mesh is a kind to place: the page writes its row
   if l[0].did_kind == PIP_MESH {
     a := l[0].a[at]; act: [96] u8;
@@ -122,7 +170,7 @@ es_as_click :: (s: [] EdShell, id: string) -> bool {
   if !s[0].as_have { return false; }
   if id == "assets" {
     s[0].assets = !s[0].assets;
-    if s[0].assets { s[0].code = false; _ := es_as_go(s, ES_AS_LIST); }   // the list as it is now: another tab may have imported
+    if s[0].assets { s[0].code = false; _ := es_as_go(s, ES_AS_LIST, ""); }   // the list as it is now: another tab may have imported
     return true;
   }
   if id == "assets.import" { es_as_send(s); return true; }
@@ -160,7 +208,7 @@ es_build_assets :: (s: [] EdShell) {
   k_select_begin(t, u, "licence", ifx s[0].as_licence >= 0 then was_licence_of(l, s[0].as_licence) else "Choose a licence", "The licence the next file is imported under", open);
   if open { for k: 0..<l[0].licences { r := k_row(t, u, tr_join(buf[..], "licence.", k), was_licence_of(l, k), "", k == s[0].as_licence); } }
   k_select_end(t, open);
-  sending := s[0].as_flight == ES_AS_SEND;
+  sending := s[0].as_flight >= ES_AS_SEND;
   if s[0].as_file && !sending {
     next := k_card(t, u, "assets.next", es_as_file_name(s));
     size := k_fact(t, "assets.next.size", "Size", es_as_kb(line[..], s[0].as_file_bytes, 0));

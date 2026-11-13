@@ -18,13 +18,25 @@
 //   GET  /api/worlds/<id>/content[?lane=dev]     the world's content tables (aethyr.content.v1): its own once a cell
 //                                                was edited (dev: as they are edited; else as published), else the build's: what a
 //                                                caller reads to aim an edit
+//   GET  /api/worlds/<id>/assets[?lane=dev]      the world's imported assets and the limits (world.assets.v1): live's, or
+//        &write=1                                dev's as they are edited. write=1: answered only to someone who may import
+//   GET  /api/worlds/<id>/assets/pack[?lane=dev] the lane's import pack, a VPK1 file (404: it has imported nothing)
+//        ?live=SHA256                            the world's pack of that hash, whatever lane names it: what a tab asks for
+//                                                after it is told of a new pack
+//   POST /api/worlds/<id>/assets                 a file named before it is sent (world.asset.upload.v1): checked by name, size
+//                                                and licence, then an upload is opened in the private bucket for exactly that
+//                                                many bytes at PREFIX/worlds/<id>/files/SHA256 (drops.c), and its address is
+//                                                answered; `kept` when the bucket has the file already
+//   POST /api/worlds/<id>/assets/done            the same ask again, once the file is sent: the object is read back, its size and
+//                                                SHA-256 are checked against its name (a wrong object is deleted), and it is
+//                                                imported into dev's pack. The answer is the list with what it did, or 422 in words
 //
 // This file moves facts in and answers out. The rules are Coax: who may write, the revision
 // fence, the undo log and the dev and live rule are world-policy.coax's (#authority); whether an
 // edit may stand is the world's own code, the code its page runs (Splice:
 // metaverse/splice/world-api.coax, linked as splice-world). Every byte this file answers is
 // written by metaverse-engine/editor/world-edit.coax through world-policy.coax. SQL
-// (migrations/0181_worlds.sql) stores the rows, holds the row lock for a write and keeps the
+// (migrations/0181_worlds.sql, 0183_world_assets.sql) stores the rows, holds the row lock for a write and keeps the
 // outbox; it decides nothing. A saved edit is one outbox row, written in the transaction that
 // changes the document (the domain event realm-authoring.world.edited.v1). A world is served only
 // for a realm with a row in the authority table (metaverse-engine/editor/authority.coax, #13431):
@@ -33,14 +45,17 @@
 #include "world-policy.generated.h"
 #include "splice-world.generated.h"
 
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define WORLD_DOC 131072     // a document's bytes at most (metaverse/splice/world.coax SPW_DOC)
 #define WORLD_BATCH 65536    // a batch's (world-edit.coax WE_BATCH_BODY)
 #define WORLD_TABLES 16384   // the content tables' bytes at most (metaverse/splice/world.coax SPW_TABLES)
 #define WORLD_EDIT 1400      // an edit's (WE_LINE)
 #define WORLD_EVENTS 200     // events one read answers
+#define WORLD_ASK 400        // an import's ask (asset-wire.coax: two lines)
 
 static coax_string cs(const char *s) { return (coax_string){s, (int64_t)strlen(s)}; }
 static coax_string csn(const char *s, size_t n) { return (coax_string){s, (int64_t)n}; }
@@ -62,6 +77,7 @@ typedef struct {
   long long live_pins[4], prev_pins[4];
   char *dev_doc, *live_doc, *prev_doc;   // malloc'd; "" for none
   char *dev_tables, *live_tables, *prev_tables;   // the lane's content tables; "" for the ones the build shipped with
+  char dev_pack[65], live_pack[65], prev_pack[65];   // the lane's import pack, by its SHA-256; "" for none (0183)
 } world_row;
 
 static void row_free(world_row *w) { free(w->dev_doc); free(w->live_doc); free(w->prev_doc); free(w->dev_tables); free(w->live_tables); free(w->prev_tables); }
@@ -69,8 +85,8 @@ static bool row_read(PGconn *db, const char *id, bool lock, world_row *w) {
   memset(w, 0, sizeof *w);
   const char *v[1] = {id};
   PGresult *r = PQexecParams(db, lock
-    ? "SELECT kind, dev_rev, dev_doc, done, steps, live_rev, live_from, live_doc, live_when, live_engine, live_rules, live_content, live_wire, prev_rev, prev_doc, prev_engine, prev_rules, prev_content, prev_wire, dev_tables, live_tables, prev_tables FROM verse.world_docs WHERE id = $1 FOR UPDATE"
-    : "SELECT kind, dev_rev, dev_doc, done, steps, live_rev, live_from, live_doc, live_when, live_engine, live_rules, live_content, live_wire, prev_rev, prev_doc, prev_engine, prev_rules, prev_content, prev_wire, dev_tables, live_tables, prev_tables FROM verse.world_docs WHERE id = $1",
+    ? "SELECT kind, dev_rev, dev_doc, done, steps, live_rev, live_from, live_doc, live_when, live_engine, live_rules, live_content, live_wire, prev_rev, prev_doc, prev_engine, prev_rules, prev_content, prev_wire, dev_tables, live_tables, prev_tables, dev_pack, live_pack, prev_pack FROM verse.world_docs WHERE id = $1 FOR UPDATE"
+    : "SELECT kind, dev_rev, dev_doc, done, steps, live_rev, live_from, live_doc, live_when, live_engine, live_rules, live_content, live_wire, prev_rev, prev_doc, prev_engine, prev_rules, prev_content, prev_wire, dev_tables, live_tables, prev_tables, dev_pack, live_pack, prev_pack FROM verse.world_docs WHERE id = $1",
     1, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("worlds: %s", PQerrorMessage(db)); PQclear(r); return false; }
   if (PQntuples(r) == 1) {
@@ -83,6 +99,7 @@ static bool row_read(PGconn *db, const char *id, bool lock, world_row *w) {
     for (int k = 0; k < 4; k++) { w->live_pins[k] = atoll(PQgetvalue(r, 0, 9 + k)); w->prev_pins[k] = atoll(PQgetvalue(r, 0, 15 + k)); }
     w->prev_rev = atoll(PQgetvalue(r, 0, 13)); w->prev_doc = strdup(PQgetvalue(r, 0, 14));
     w->dev_tables = strdup(PQgetvalue(r, 0, 19)); w->live_tables = strdup(PQgetvalue(r, 0, 20)); w->prev_tables = strdup(PQgetvalue(r, 0, 21));
+    snprintf(w->dev_pack, sizeof w->dev_pack, "%s", PQgetvalue(r, 0, 22)); snprintf(w->live_pack, sizeof w->live_pack, "%s", PQgetvalue(r, 0, 23)); snprintf(w->prev_pack, sizeof w->prev_pack, "%s", PQgetvalue(r, 0, 24));
   }
   PQclear(r);
   return true;
@@ -95,6 +112,20 @@ static bool run(PGconn *db, const char *sql, int n, const char *const *v) {
   return ok;
 }
 static void rollback(PGconn *db) { PQclear(PQexec(db, "ROLLBACK")); }
+// A world's import pack of this hash: malloc'd, its length in *n. "" names no pack: an empty one, *n 0. NULL when it can't be read.
+static char *pack_read(PGconn *db, const char *id, const char *hash, size_t *n) {
+  *n = 0;
+  if (!*hash) return calloc(1, 1);
+  const char *v[2] = {id, hash};
+  PGresult *r = PQexecParams(db, "SELECT bytes FROM verse.world_packs WHERE world = $1 AND hash = $2", 2, NULL, v, NULL, NULL, 1);
+  char *out = NULL;
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && (out = malloc((size_t)PQgetlength(r, 0, 0) + 1))) {
+    *n = (size_t)PQgetlength(r, 0, 0);
+    memcpy(out, PQgetvalue(r, 0, 0), *n); out[*n] = 0;
+  } else api_log("worlds: %s: its pack is not read: %s", id, PQerrorMessage(db));
+  PQclear(r);
+  return out;
+}
 
 // ---- the world's own Coax, by kind. Splice is the first world; a kind this build has no code for is not served.
 static bool kind_known(const char *kind) { return !strcmp(kind, "splice"); }
@@ -211,9 +242,10 @@ static void world_publish(const request *q, PGconn *db, const char *id, world_ro
   snprintf(rev_s, sizeof rev_s, "%lld", live); snprintf(from_s, sizeof from_s, "%lld", w->dev_rev); snprintf(when_s, sizeof when_s, "%d", (int)when);
   for (int k = 0; k < 4; k++) snprintf(p[k], sizeof p[k], "%lld", pins[k]);
   const char *sv[10] = {id, rev_s, from_s, doc, when_s, p[0], p[1], p[2], p[3], w->dev_tables ? w->dev_tables : ""};
-  // the revision before a pin change stays for one release (world-live.coax); a publish on the same pins leaves it
-  bool ok = (!keeps || run(db, "UPDATE verse.world_docs SET prev_rev = live_rev, prev_doc = live_doc, prev_engine = live_engine, prev_rules = live_rules, prev_content = live_content, prev_wire = live_wire, prev_tables = live_tables WHERE id = $1", 1, sv))
-    && run(db, "UPDATE verse.world_docs SET live_rev = $2::bigint, live_from = $3::bigint, live_doc = $4, live_when = $5::int, live_engine = $6::int, live_rules = $7::int, live_content = $8::int, live_wire = $9::int, live_tables = $10 WHERE id = $1", 10, sv)
+  // the revision before a pin change stays for one release (world-live.coax); a publish on the same pins leaves it.
+  // The lane's import pack goes with its document: live's is dev's from here on (0183)
+  bool ok = (!keeps || run(db, "UPDATE verse.world_docs SET prev_rev = live_rev, prev_doc = live_doc, prev_engine = live_engine, prev_rules = live_rules, prev_content = live_content, prev_wire = live_wire, prev_tables = live_tables, prev_pack = live_pack WHERE id = $1", 1, sv))
+    && run(db, "UPDATE verse.world_docs SET live_rev = $2::bigint, live_from = $3::bigint, live_doc = $4, live_when = $5::int, live_engine = $6::int, live_rules = $7::int, live_content = $8::int, live_wire = $9::int, live_tables = $10, live_pack = dev_pack WHERE id = $1", 10, sv)
     && outbox(db, seq, wr_event_id(true), id, "live", live, event, now)
     && run(db, "COMMIT", 0, NULL);
   if (!ok) { free(doc); rollback(db); refuse(q->fd, 500, cs("not saved"), -1); return; }
@@ -249,9 +281,12 @@ static void world_post(const request *q, PGconn *db, const char *id) {
   size_t doc_n = 0;
   char *doc = doc_of(w.kind, w.dev_doc, &doc_n);
   char *out_doc = malloc(WORLD_DOC + 1), *did = malloc(WORLD_BATCH + 1), *inv = malloc(WORLD_BATCH + 1), *out_tables = malloc(WORLD_TABLES + 1);
+  // the world's import pack: a row of the pieces table that draws a pack mesh is held to the pack the world really has (#13420)
+  size_t pack_n = 0;
+  char *pack = pack_read(db, id, w.dev_pack, &pack_n);
   char why[240]; int64_t n[7] = {0, 0, 0, 0, 0, -1, 0};
-  if (!text || !doc || !out_doc || !did || !inv || !out_tables) { rollback(db); refuse(q->fd, 500, cs("not read"), -1); goto done; }
-  int64_t status = splice_world_batch(csn(doc, doc_n), cs(w.dev_tables ? w.dev_tables : ""), csn(text, text_n), fenced, (coax_v_u8){(uint8_t *)out_doc, WORLD_DOC},
+  if (!text || !doc || !out_doc || !did || !inv || !out_tables || !pack) { rollback(db); refuse(q->fd, 500, cs("not read"), -1); goto done; }
+  int64_t status = splice_world_batch_packed(csn(doc, doc_n), cs(w.dev_tables ? w.dev_tables : ""), csn(pack, pack_n), csn(text, text_n), fenced, (coax_v_u8){(uint8_t *)out_doc, WORLD_DOC},
                                       (coax_v_u8){(uint8_t *)out_tables, WORLD_TABLES}, (coax_v_u8){(uint8_t *)did, WORLD_BATCH},
                                       (coax_v_u8){(uint8_t *)inv, WORLD_BATCH}, (coax_v_u8){(uint8_t *)why, sizeof why}, (coax_v_s64){n, 7});
   if (status != 0) {
@@ -303,7 +338,7 @@ static void world_post(const request *q, PGconn *db, const char *id) {
     answer_state(q, id, (int)wr_lane(cs("dev")), rev, here, &w, rev, w.live_rev, done, steps, "", 0, did, (size_t)n[1]);
   }
 done:
-  free(text); free(doc); free(out_doc); free(did); free(inv); free(out_tables); row_free(&w);
+  free(text); free(doc); free(out_doc); free(did); free(inv); free(out_tables); free(pack); row_free(&w);
 }
 
 // The content tables a lane's revision is read with: the world's own once a cell was edited, else
@@ -341,6 +376,171 @@ static void world_card(const request *q, PGconn *db, const char *id) {
   else api_respond(q->fd, 200, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", out, (size_t)n);
 }
 
+// ---- a world's imported assets (#13420; docs/protocol/world-assets-v1.md). The importer, its limits and every byte
+// answered are Coax (metaverse/splice/world-assets.coax, the code the dev server runs); who may import and what makes a
+// stored object the file that was named are world-policy.coax's. The bucket's part is drops.c's.
+
+// Whoever asks may import into this world: the verdict (0: yes), by the rule a write is held to.
+static int64_t asset_may(const request *q, const world_row *w, const char *id) {
+  const auth_principal *p = auth_principal_of(q);
+  bool known = p && (p->account[0] || p->pubkey[0]), admin = p && p->admin;
+  return wr_asset_write(auth_same_site(q), known, admin, w->exists && kind_known(w->kind) && wr_loads(cs(id)) && wr_authored(cs(id), wr_asset_what()));
+}
+// The lane a read of the assets names: dev's pack, or live's.
+static const char *asset_lane(const request *q, const world_row *w) {
+  char lane[8] = "";
+  return api_query(q, "lane", lane, sizeof lane) && wr_is_dev(wr_lane(cs(lane))) ? w->dev_pack : w->live_pack;
+}
+static void asset_list(const request *q, PGconn *db, const char *id) {
+  world_row w;
+  if (!row_read(db, id, false, &w)) { refuse(q->fd, 500, cs("not read"), -1); return; }
+  char write[4] = "";
+  int64_t verdict = api_query(q, "write", write, sizeof write) && write[0] == '1' ? asset_may(q, &w, id) : wr_read(w.exists && kind_known(w.kind) && wr_loads(cs(id)), wr_lane(cs("dev")), 0);
+  if (verdict != 0) { refuse_verdict(q->fd, verdict); row_free(&w); return; }
+  size_t pack_n = 0;
+  char *pack = pack_read(db, id, asset_lane(q, &w), &pack_n);
+  coax_t_SpAssetWork *k = calloc(1, sizeof *k);
+  int64_t n = pack && k ? splice_world_assets((coax_v_t_SpAssetWork){k, 1}, cs(id), csn(pack, pack_n)) : -1;
+  if (n < 0) refuse(q->fd, 500, cs("not read"), -1);
+  else api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, k->answer.e, (size_t)n);
+  free(k); free(pack); row_free(&w);
+}
+static void asset_pack(const request *q, PGconn *db, const char *id) {
+  world_row w;
+  if (!row_read(db, id, false, &w)) { refuse(q->fd, 500, cs("not read"), -1); return; }
+  if (wr_read(w.exists && kind_known(w.kind) && wr_loads(cs(id)), wr_lane(cs("dev")), 0) != 0) { refuse_verdict(q->fd, wr_read(false, 0, 0)); row_free(&w); return; }
+  // by hash: the bytes a tab was told of; else the lane's as it now is
+  char live[80] = "";
+  bool by_hash = api_query(q, "live", live, sizeof live) && strlen(live) == 64 && strspn(live, "0123456789abcdef") == 64;
+  const char *hash = by_hash ? live : asset_lane(q, &w);
+  size_t n = 0;
+  char *pack = *hash ? pack_read(db, id, hash, &n) : NULL;
+  if (!pack || !n) refuse(q->fd, 404, cs("this world has imported nothing"), -1);
+  else api_respond(q->fd, 200, "application/octet-stream", NULL, pack, n);
+  free(pack); row_free(&w);
+}
+// The bucket's part takes a second or more and this service answers one request at a time: a child does it, with a
+// connection of its own, and answers (as drops.c does).
+static bool asset_child(void) {
+  signal(SIGCHLD, SIG_IGN);
+  return fork() == 0;
+}
+// An import's ask, read and checked before anything is stored: who asks, the world, and the file by its name, size and
+// licence. False when it answered a refusal. The file's bytes, hash and content type come back, and the object's name.
+typedef struct { long long bytes; char hash[65], type[48], object[400]; char body[WORLD_ASK + 1]; size_t body_n; } asset_ask;
+static bool asset_asked(const request *q, PGconn *db, const char *id, asset_ask *a) {
+  world_row w;
+  if (!row_read(db, id, false, &w)) { refuse(q->fd, 500, cs("not read"), -1); return false; }
+  int64_t verdict = asset_may(q, &w, id);
+  row_free(&w);
+  if (verdict != 0) { refuse_verdict(q->fd, verdict); return false; }
+  coax_t_SpAssetWork *k = calloc(1, sizeof *k);
+  if (!k) { refuse(q->fd, 500, cs("not read"), -1); return false; }
+  int64_t n[4] = {0, 0, 0, 0};
+  memset(a, 0, sizeof *a);
+  a->body_n = q->body_len > WORLD_ASK ? 0 : q->body_len;   // a body longer than an ask is none
+  memcpy(a->body, q->body, a->body_n);
+  int64_t status = splice_world_asset_ask((coax_v_t_SpAssetWork){k, 1}, csn(a->body, a->body_n), (coax_v_u8){(uint8_t *)a->hash, 64}, (coax_v_u8){(uint8_t *)a->type, sizeof a->type - 1}, (coax_v_s64){n, 4});
+  if (status != 200) { refuse(q->fd, (int)status, csn((const char *)k->words.e, (size_t)k->words_n), -1); free(k); return false; }
+  free(k);
+  a->bytes = n[0];
+  const char *prefix = getenv("OA_DROPS_PREFIX");
+  snprintf(a->object, sizeof a->object, "%s/worlds/%s/files/%s", prefix && *prefix ? prefix : "dev", id, a->hash);
+  return true;
+}
+// POST .../assets: the upload is opened for exactly the file's bytes and content type, or the bucket has the file.
+static void asset_open(const request *q, PGconn *db, const char *id) {
+  asset_ask a;
+  if (!asset_asked(q, db, id, &a)) return;
+  char from[256], bytes[24];
+  if (!api_header(q, "Origin", from, sizeof from) || strcmp(from, auth_origin())) snprintf(from, sizeof from, "%s", auth_origin());
+  snprintf(bytes, sizeof bytes, "%lld", a.bytes);
+  if (!asset_child()) return;   // the parent goes on; the child answers
+  long long stored = -1; char *head = NULL, session[2048] = "", out[2400];
+  drops_inspect(a.object, &stored, &head);
+  free(head);
+  bool kept = wr_asset_kept(a.bytes, stored);
+  if (!kept && stored >= 0) drops_delete_object(a.object);   // an object of another size under this name is not this file
+  if (!kept && !drops_open_upload(a.object, a.type, bytes, from, session, sizeof session)) { refuse(q->fd, 503, cs("We could not open the upload. Try again."), -1); _exit(0); }
+  int64_t n = splice_world_asset_answer(!kept, cs(a.hash), a.bytes, cs(session), (coax_v_u8){(uint8_t *)out, sizeof out});
+  if (n < 0) refuse(q->fd, 500, cs("not written"), -1);
+  else api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, out, (size_t)n);
+  _exit(0);
+}
+// Whether any import of this world kept the file of this hash (its object then stays whatever a later import says).
+static bool file_kept(PGconn *c, const char *id, const char *hash) {
+  const char *v[2] = {id, hash};
+  PGresult *r = PQexecParams(c, "SELECT 1 FROM verse.world_files WHERE world = $1 AND hash = $2", 2, NULL, v, NULL, NULL, 0);
+  bool kept = PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) > 0;   // unsure: it stays
+  PQclear(r);
+  return kept;
+}
+// The new pack and the file's row saved, dev's lane pointed at the pack, and the packs no lane names any more deleted.
+static bool asset_save(PGconn *c, const char *id, const world_row *w, const asset_ask *a, const coax_t_SpAssetWork *k) {
+  char at[24], kind[8], lic[8], bytes[24], hash[65], name[130];
+  snprintf(at, sizeof at, "%lld", (long long)api_now_ms()); snprintf(kind, sizeof kind, "%d", (int)k->kind); snprintf(lic, sizeof lic, "%lld", (long long)k->licence);
+  snprintf(bytes, sizeof bytes, "%lld", a->bytes); snprintf(hash, sizeof hash, "%.64s", (const char *)k->pack_hash.e); snprintf(name, sizeof name, "%.*s", (int)k->file_n, (const char *)k->file.e);
+  const char *pv[4] = {id, hash, (const char *)k->out.e, at};
+  int pl[4] = {0, 0, (int)k->pack_n, 0}, pf[4] = {0, 0, 1, 0};
+  PGresult *r = PQexecParams(c, "INSERT INTO verse.world_packs (world, hash, bytes, at_ms) VALUES ($1, $2, $3, $4::bigint) ON CONFLICT (world, hash) DO NOTHING", 4, NULL, pv, pl, pf, 0);
+  bool ok = PQresultStatus(r) == PGRES_COMMAND_OK;
+  if (!ok) api_log("worlds: %s", PQerrorMessage(c));
+  PQclear(r);
+  const char *fv[7] = {id, a->hash, name, kind, lic, bytes, at};
+  ok = ok && run(c, "UPDATE verse.world_docs SET dev_pack = $2 WHERE id = $1", 2, pv)
+    && run(c, "INSERT INTO verse.world_files (world, hash, name, kind, licence, bytes, at_ms) VALUES ($1, $2, $3, $4::int, $5::int, $6::bigint, $7::bigint) "
+              "ON CONFLICT (world, hash) DO UPDATE SET name = EXCLUDED.name, kind = EXCLUDED.kind, licence = EXCLUDED.licence, at_ms = EXCLUDED.at_ms", 7, fv);
+  if (!ok) return false;
+  const char *v[1] = {id};
+  r = PQexecParams(c, "SELECT hash FROM verse.world_packs WHERE world = $1", 1, NULL, v, NULL, NULL, 0);
+  ok = PQresultStatus(r) == PGRES_TUPLES_OK;
+  for (int i = 0; ok && i < PQntuples(r); i++) {
+    const char *dv[2] = {id, PQgetvalue(r, i, 0)};
+    if (!wr_pack_kept(cs(dv[1]), cs(hash), cs(w->live_pack), cs(w->prev_pack))) ok = run(c, "DELETE FROM verse.world_packs WHERE world = $1 AND hash = $2", 2, dv);
+  }
+  PQclear(r);
+  return ok;
+}
+// POST .../assets/done: the object is read back and checked against its name, then imported into dev's pack.
+static void asset_done(const request *q, PGconn *db, const char *id) {
+  asset_ask a;
+  if (!asset_asked(q, db, id, &a)) return;
+  if (!asset_child()) return;
+  long long stored = -1; char *head = NULL; size_t n = 0;
+  drops_inspect(a.object, &stored, &head);
+  free(head);
+  unsigned char *data = stored == a.bytes ? drops_fetch(a.object, (size_t)a.bytes, &n) : NULL;
+  bool named = data && (long long)n == a.bytes && splice_world_asset_named(csn((const char *)data, n), cs(a.hash));
+  int64_t verdict = wr_asset_stored(a.bytes, data || stored != a.bytes ? stored : -1, named);
+  if (verdict != 0) {
+    if (wr_asset_deletes(verdict)) drops_delete_object(a.object);
+    refuse(q->fd, 422, wr_asset_words(verdict), -1);
+    free(data); _exit(0);
+  }
+  PGconn *c = api_db_new();
+  coax_t_SpAssetWork *k = calloc(1, sizeof *k);
+  world_row w; memset(&w, 0, sizeof w);
+  if (!c || !k) { refuse(q->fd, 503, cs("no database"), -1); _exit(0); }
+  PQclear(PQexec(c, "BEGIN"));
+  size_t old_n = 0, doc_n = 0;
+  char *old = row_read(c, id, true, &w) && w.exists ? pack_read(c, id, w.dev_pack, &old_n) : NULL;
+  char *doc = old ? doc_of(w.kind, w.dev_doc, &doc_n) : NULL;
+  if (!old || !doc) { rollback(c); refuse(q->fd, 500, cs("not read"), -1); _exit(0); }
+  int64_t status = splice_world_asset_import((coax_v_t_SpAssetWork){k, 1}, cs(id), csn(old, old_n), csn(doc, doc_n), cs(w.dev_tables ? w.dev_tables : ""), csn(a.body, a.body_n), (coax_v_u8){data, (int64_t)n});
+  if (status != 200) {
+    // refused: the pack stays as it was, and a file no import kept leaves the bucket
+    bool kept = file_kept(c, id, a.hash);
+    rollback(c);
+    if (!kept) drops_delete_object(a.object);
+    refuse(q->fd, (int)status, csn((const char *)k->words.e, (size_t)k->words_n), -1);
+    _exit(0);
+  }
+  bool ok = asset_save(c, id, &w, &a, k) && run(c, "COMMIT", 0, NULL);
+  if (!ok) { rollback(c); refuse(q->fd, 500, cs("not saved"), -1); _exit(0); }
+  api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, k->answer.e, (size_t)k->answer_n);
+  _exit(0);
+}
+
 bool worlds_route(const request *q) {
   static const char root[] = "/api/worlds/";
   size_t rl = sizeof root - 1;
@@ -351,10 +551,15 @@ bool worlds_route(const request *q) {
   id[k] = 0;
   const char *tail = rest + k;
   bool content = !strcmp(tail, "/content"), card = !strcmp(tail, "/card");
-  if ((!get && !post) || !wr_world_ok(cs(id)) || (*tail && strcmp(tail, "/events") && !content && !card) || (*tail && !get)) { refuse(q->fd, 404, cs("not found"), -1); return true; }
+  bool assets = !strcmp(tail, "/assets"), pack = !strcmp(tail, "/assets/pack"), done = !strcmp(tail, "/assets/done");
+  if ((!get && !post) || !wr_world_ok(cs(id)) || (*tail && strcmp(tail, "/events") && !content && !card && !assets && !pack && !done) || (*tail && !get && !assets && !done) || (done && !post)) { refuse(q->fd, 404, cs("not found"), -1); return true; }
   PGconn *db = api_db();
   if (!db) { refuse(q->fd, 503, cs("no database"), -1); return true; }
-  if (content) world_content(q, db, id);
+  if (assets && get) asset_list(q, db, id);
+  else if (assets) asset_open(q, db, id);
+  else if (pack) asset_pack(q, db, id);
+  else if (done) asset_done(q, db, id);
+  else if (content) world_content(q, db, id);
   else if (card) world_card(q, db, id);
   else if (*tail) world_events(q, db, id);
   else if (get) world_get(q, db, id);

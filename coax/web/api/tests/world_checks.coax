@@ -4,10 +4,20 @@
 // naming the zone (422), the undo log, ORIGINAL, one outbox event a saved edit, and the dev and
 // live revisions with the now and next-session rule and the revision kept for one release.
 // Every body is read through the codec the API writes it with (metaverse-engine/editor/world-edit.coax).
-//   API=... PGURL=... PSQL=... SIGN=... ADMIN_KEY=... OTHER_KEY=... coax/web/tool.sh coax/web/api/tests/world_checks.coax
+// And a world's imported assets (#13420): a file named before it is sent, the upload opened in the
+// bucket for an admin only, the object read back and checked against its name, the import, the
+// pack by lane, and a row that draws a pack mesh held to the pack. The bucket is a fake on
+// GCS_PORT, this program in its `bucket` mode, which keeps each object as a file.
+//   API=... PGURL=... PSQL=... SIGN=... ADMIN_KEY=... OTHER_KEY=... GCS_PORT=... coax/web/tool.sh coax/web/api/tests/world_checks.coax
+//   coax/web/tool.sh coax/web/api/tests/world_checks.coax bucket PORT DIR   (the fake bucket)
+// tool.sh: stack-gib 1
 #load "api_harness.coax";
+#load "../../../lib/sys/args.coax";
 #load "../../../../metaverse-engine/editor/world-edit.coax";
 #load "../../../../metaverse-engine/editor/world-live.coax";
+#load "../../../../metaverse-engine/editor/pack-import.coax";          // the files the checks import are made here, and their names
+#load "../../../../metaverse-engine/editor/pack-import-checks.coax";   // pit_box, pit_wav
+#load "../../../../metaverse-engine/editor/asset-wire.coax";
 
 WC_PATH :: "/api/worlds/splice";
 // A palm by the scanner gate and a small crate by the rover's door, as metaverse/splice/world-checks.coax places them.
@@ -183,11 +193,319 @@ wc_checks :: (t: [] Ap, w: [] Wc, other: string) {
   wc_reset(t);
 }
 
+// ---- a world's imported assets (#13420)
+
+// The fake bucket, as drops.c asks it: an upload opened (its object's name, type, size and origin
+// logged to DIR/opened, a line each), the file PUT to the session it answered, an object's size,
+// its bytes, and its deletion. An object is the file DIR/o.NAME, NAME as the request spells it
+// (percent-encoded). Every call but the browser's PUT carries the service's token. It stops when
+// DIR/stop exists.
+WB_REQ :: 1200000;
+WbWork :: struct { req: [WB_REQ] u8; obj: [WB_REQ] u8; }
+wb_header :: (head: string, name: string) -> string {
+  at := 0;
+  for i: 0..<head.count {
+    if head[i] != '\n' { continue; }
+    line := head[at..<i]; at = i + 1;
+    if line.count > 0 && line[line.count - 1] == '\r' { line = line[0..<line.count - 1]; }
+    if line.count > name.count && line[name.count] == ':' && http_same(line[0..<name.count], name) { return http_trim(line[name.count + 1..<line.count]); }
+  }
+  return "";
+}
+// The value of name= in a query, or "".
+wb_query :: (query: string, name: string) -> string {
+  at := 0;
+  for i: 0..<query.count + 1 {
+    if i < query.count && query[i] != '&' { continue; }
+    part := query[at..<i]; at = i + 1;
+    if part.count > name.count && part[name.count] == '=' && part[0..<name.count] == name { return part[name.count + 1..<part.count]; }
+  }
+  return "";
+}
+wb_file :: (dir: string, name: string, out: [] u8) -> string {
+  n: [1] Sb; sb(n[..], "o."); sb(n[..], name);
+  ok := name.count > 0 && name.count < 200;
+  for c: name { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '%' || c == '-' || c == '_' || c == '.') { ok = false; } }
+  return ifx ok then fs_join(dir, sb_text(n[..]), out) else "";
+}
+wb_main :: (port: int, dir: string) -> int {
+  k := [1] WbWork.[WbWork.{}]; req := k[0].req[..];
+  listener := cxsock_listen(port);
+  if listener < 0 { tool_errln("world_checks bucket: can't listen"); return 1; }
+  pb: [1100] u8; ready := fs_write(fs_join(dir, "ready", pb[..]), "1");
+  ob: [1100] u8; opened := fs_join(dir, "opened", ob[..]);
+  sp: [1100] u8; stop := fs_join(dir, "stop", sp[..]);
+  while !fs_exists(stop) {
+    h := cxsock_accept(listener, 50);
+    if h < 0 { continue; }
+    used := 0; end := -1; want := 0; deadline := proc_now_ms() + 20000;
+    while (end < 0 || used < end + want) && proc_now_ms() < deadline {
+      n := cxsock_read(h, 100);
+      if n == -2 { continue; }
+      if n < 0 || used + n > req.count { break; }
+      for i: 0..<n { req[used + i] = cast,trunc(u8) cxsock_byte(h, i); }
+      scan := ifx used >= 3 then used - 3 else 0;
+      used += n;
+      if end < 0 && used >= 4 {
+        for i: scan..<used - 3 { if end < 0 && req[i] == '\r' && req[i + 1] == '\n' && req[i + 2] == '\r' && req[i + 3] == '\n' { end = i + 4; } }
+        if end >= 0 { v := ap_whole(wb_header(cast(string) req[0..<end], "Content-Length")); want = ifx v < 0 then 0 else v; }
+      }
+    }
+    if end < 0 || used < end + want { c := cxsock_close(h); continue; }
+    head := cast(string) req[0..<end]; body := cast(string) req[end..<end + want];
+    sp1 := 0; while sp1 < head.count && head[sp1] != ' ' { sp1 += 1; }
+    sp2 := sp1 + 1; while sp2 < head.count && head[sp2] != ' ' && head[sp2] != '\r' { sp2 += 1; }
+    method := head[0..<sp1]; target := ifx sp1 < head.count then head[sp1 + 1..<sp2] else "";
+    q := 0; while q < target.count && target[q] != '?' { q += 1; }
+    path := target[0..<q]; query := ifx q < target.count then target[q + 1..<target.count] else "";
+    ours := wb_header(head, "Authorization") == "Bearer test-gcs";
+    status := 404; extra: [1] Sb; out := ""; fb: [1400] u8;
+    up := "/upload/storage/v1/b/drops-test/o"; ob_ := "/storage/v1/b/drops-test/o/"; se := "/session/";
+    if method == "POST" && path == up && ours && wb_query(query, "uploadType") == "resumable" && wb_file(dir, wb_query(query, "name"), fb[..]).count > 0 {
+      line: [1] Sb; sb(line[..], wb_query(query, "name")); sb(line[..], " "); sb(line[..], wb_header(head, "X-Upload-Content-Type")); sb(line[..], " "); sb(line[..], wb_header(head, "X-Upload-Content-Length"));
+      sb(line[..], " "); sb(line[..], wb_header(head, "Origin")); sb(line[..], " "); sb(line[..], wb_query(query, "ifGenerationMatch")); sb(line[..], "\n");
+      logged := fs_append(opened, sb_text(line[..]));
+      sb(extra[..], "Location: http://127.0.0.1:"); sb_int(extra[..], port); sb(extra[..], se); sb(extra[..], wb_query(query, "name")); sb(extra[..], "\r\n");
+      status = 200;
+    } else if method == "PUT" && path.count > se.count && path[0..<se.count] == se {
+      file := wb_file(dir, path[se.count..<path.count], fb[..]);
+      if file.count > 0 && fs_write(file, body) { status = 200; out = "{}"; }
+    } else if ours && path.count > ob_.count && path[0..<ob_.count] == ob_ {
+      file := wb_file(dir, path[ob_.count..<path.count], fb[..]);
+      size := ifx file.count > 0 && fs_exists(file) then fs_size(file) else -1;
+      if method == "DELETE" { gone := size >= 0 && fs_remove(file); status = 204; }
+      else if method == "GET" && size >= 0 && wb_query(query, "alt") == "media" {
+        got := fs_read(file, k[0].obj[..]);
+        ranged := wb_header(head, "Range").count > 0;
+        if got >= 0 { status = ifx ranged then 206 else 200; out = cast(string) k[0].obj[0..<ifx ranged && got > 4096 then 4096 else got]; }
+      } else if method == "GET" && size >= 0 {
+        j: [1] Sb; sb(j[..], "{\"size\": \""); sb_int(j[..], size); sb(j[..], "\", \"md5Hash\": \"bWQ1\"}");
+        got := 0; for c: sb_text(j[..]) { k[0].obj[got] = c; got += 1; }
+        status = 200; out = cast(string) k[0].obj[0..<got];
+      }
+    }
+    s: [1] Sb; sb(s[..], "HTTP/1.1 "); sb_int(s[..], status); sb(s[..], " X\r\nConnection: close\r\n"); sb(s[..], sb_text(extra[..])); sb(s[..], "Content-Length: "); sb_int(s[..], out.count); sb(s[..], "\r\n\r\n");
+    good := true;
+    for c: sb_text(s[..]) { if good && cxsock_write(h, cast(int) c) != 0 { good = false; } }
+    for c: out { if good && cxsock_write(h, cast(int) c) != 0 { good = false; } }
+    if good { f := cxsock_flush(h, 10000); }
+    c := cxsock_close(h);
+  }
+  c := cxsock_close(listener);
+  return 0;
+}
+
+WA_PATH :: "/api/worlds/splice/assets";
+Wa :: struct {
+  glb: [4000] u8; other: [4000] u8; wav: [200] u8; big: [400044] u8; ask: [400] u8; pack: [HTTP_BODY_MAX] u8;
+  l: [1] WasList; up: WasUploaded; url: [WAS_URL] u8; hash: [64] u8; dir: [1100] u8; dir_n: int;
+}
+// A request an admin (or someone else) signed, or one nobody did (key ""): its status.
+wa_call :: (t: [] Ap, key: string, method: string, path: string, body: string) -> int {
+  if key == "" { h := [1] string.["Content-Type: text/plain"]; return ap_call(t, method, path, body, ifx body.count > 0 then h[..] else h[0..<0]); }
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], path);
+  sig: [4096] u8; s := ap_nostr(t, key, method, sb_text(url[..]), body, body.count > 0, sig[..]);
+  auth: [1] Sb; sb(auth[..], "Authorization: Nostr "); sb(auth[..], s);
+  h := [2] string.[sb_text(auth[..]), "Content-Type: text/plain"];
+  return ap_call(t, method, path, body, h[0..<ifx body.count > 0 then 2 else 1]);
+}
+wa_words :: (t: [] Ap, w: [] Wc) -> string { edit: [1] int; return wc_refusal(t, w, edit[..]); }
+// The ask for a file: its two lines, with the file's own hash (kept in a[0].hash).
+wa_ask :: (a: [] Wa, licence: int, name: string, data: [] u8) -> string {
+  if !asset_hex(asset_id(cast(string) data), a[0].hash[..]) { return ""; }
+  return was_upload_ask(a[0].ask[..], licence, data.count, cast(string) a[0].hash[..], name);
+}
+// An admin names a file: the status, and the answer read into a[0].up (its address kept in a[0].url).
+wa_open :: (t: [] Ap, a: [] Wa, key: string, licence: int, name: string, data: [] u8) -> int {
+  st := wa_call(t, key, "POST", WA_PATH, wa_ask(a, licence, name, data));
+  a[0].up = was_uploaded_read(ap_body(t));
+  if a[0].up.ok { n := 0; for c: a[0].up.url { a[0].url[n] = c; n += 1; } a[0].up.url = cast(string) a[0].url[0..<n]; }
+  return st;
+}
+// The browser's part: the bytes sent straight to the address the API answered.
+wa_put :: (t: [] Ap, a: [] Wa, data: [] u8) -> bool { return a[0].up.ok && a[0].up.how == WU_PUT && ap_call(t, "PUT", a[0].up.url, cast(string) data, t[0].no[0..<0]) == 200; }
+// The upload is said to be done: the status, and the list it answers read into a[0].l.
+wa_done :: (t: [] Ap, a: [] Wa, key: string, licence: int, name: string, data: [] u8) -> int {
+  p: [1] Sb; sb(p[..], WA_PATH); sb(p[..], "/done");
+  st := wa_call(t, key, "POST", sb_text(p[..]), wa_ask(a, licence, name, data));
+  listed := st == 200 && was_read(a[0].l[..], ap_body(t));
+  if !listed { a[0].l[0] = WasList.{}; }
+  return st;
+}
+// A file named, sent and imported, as the editor does it: the status of the last step that answered.
+wa_import :: (t: [] Ap, a: [] Wa, licence: int, name: string, data: [] u8) -> int {
+  st := wa_open(t, a, t[0].admin_key, licence, name, data);
+  if st != 200 || !a[0].up.ok { return st; }
+  if a[0].up.how == WU_PUT && !wa_put(t, a, data) { return -2; }
+  return wa_done(t, a, t[0].admin_key, licence, name, data);
+}
+// Whether the bucket holds the object of the file last asked for.
+wa_stored :: (a: [] Wa) -> bool {
+  n: [1] Sb; sb(n[..], "o.test%2Fworlds%2Fsplice%2Ffiles%2F"); sb(n[..], cast(string) a[0].hash[..]);
+  pb: [1400] u8;
+  return fs_exists(fs_join(cast(string) a[0].dir[0..<a[0].dir_n], sb_text(n[..]), pb[..]));
+}
+wa_opened :: (a: [] Wa, out: [] u8) -> string {
+  pb: [1400] u8; n := fs_read(fs_join(cast(string) a[0].dir[0..<a[0].dir_n], "opened", pb[..]), out);
+  return cast(string) out[0..<ifx n < 0 then 0 else n];
+}
+wa_cell :: (b: [] Sb, row: string) -> string { sb_clear(b); sb(b, "{\"op\":\"cell\",\"table\":\"pieces\",\"row\":201,\"col\":\"*\",\"v\":\""); sb(b, row); sb(b, "\"}"); return sb_text(b); }
+
+wa_checks :: (t: [] Ap, w: [] Wc, a: [] Wa, other: string) {
+  q: [400] u8; lg: [8192] u8; b: [1] Sb; edit: [1] int; l := a[0].l[..];
+  wc_reset(t);
+  box := pit_box(3, 1, 0.5, 1, 0.25, a[0].glb[..]);
+  // ---- reading: anyone reads the list and the pack; the list for writing is an admin's
+  st := wa_call(t, "", "GET", WA_PATH, "");
+  ap_check(t, "assets: a world that has imported nothing lists its limits and licences, and has no pack", st == 200 && was_read(l, ap_body(t)) && !l[0].packed && l[0].n == 0 && l[0].file == 524288 && l[0].budget == 1048576 && l[0].licences == 3
+           && ap_call(t, "GET", "/api/worlds/splice/assets/pack", "", t[0].no[0..<0]) == 404 && wa_words(t, w) == "this world has imported nothing" && ap_call(t, "GET", "/api/worlds/nope/assets", "", t[0].no[0..<0]) == 404, ap_body(t));
+  st = wa_call(t, "", "GET", "/api/worlds/splice/assets?lane=dev&write=1", "");
+  none := st == 401 && wa_words(t, w) == "log in as an admin";
+  st = wa_call(t, other, "GET", "/api/worlds/splice/assets?lane=dev&write=1", "");
+  no := st == 403 && wa_words(t, w) == "only an admin changes this world";
+  st = wa_call(t, t[0].admin_key, "GET", "/api/worlds/splice/assets?lane=dev&write=1", "");
+  ap_check(t, "assets: the list for someone who would import is answered to an admin only", none && no && st == 200 && was_read(l, ap_body(t)) && l[0].n == 0, ap_body(t));
+  // ---- who may open an upload
+  st = wa_open(t, a, "", 0, "rock.glb", box);
+  none = st == 401 && wa_words(t, w) == "log in as an admin";
+  st = wa_open(t, a, other, 0, "rock.glb", box);
+  no = st == 403 && wa_words(t, w) == "only an admin changes this world";
+  ho := [2] string.["Content-Type: text/plain", "Origin: https://evil.example"];
+  st = ap_call(t, "POST", WA_PATH, wa_ask(a, 0, "rock.glb", box), ho[..]);
+  cross := st == 403 && wa_words(t, w) == "cross-site";
+  p: [1] Sb; sb(p[..], WA_PATH); sb(p[..], "/done");
+  st = ap_call(t, "POST", sb_text(p[..]), wa_ask(a, 0, "rock.glb", box), ho[0..<1]);
+  ap_check(t, "assets: an upload is opened, and said to be done, by an admin only: nobody unsigned, nobody else, no other site's page; the bucket is not asked", none && no && cross && st == 401 && wa_opened(a, lg[..]) == "" && !wa_stored(a), ap_body(t));
+  // ---- a file is checked by its name, size and licence before anything is stored
+  st = wa_open(t, a, t[0].admin_key, -1, "rock.glb", box);
+  unlicensed := st == 422 && wa_words(t, w) == "rock.glb has no licence. Choose one, then import it.";
+  st = wa_call(t, t[0].admin_key, "POST", WA_PATH, was_upload_ask(a[0].ask[..], 0, 524289, WAS_TEST_HASH, "huge.glb"));
+  huge := st == 422 && wa_words(t, w) == "huge.glb is 513 KB. A file can be 512 KB at most.";
+  st = wa_call(t, t[0].admin_key, "POST", WA_PATH, was_upload_ask(a[0].ask[..], 0, 40, WAS_TEST_HASH, "notes.txt"));
+  kind := st == 422 && wa_words(t, w) == "notes.txt is not a file the editor takes. Drop a .glb, .png, .wav, .ogg or .mp3 file.";
+  st = wa_call(t, t[0].admin_key, "POST", WA_PATH, "world.asset.import.v1 0 rock.glb\nglTF");
+  ap_check(t, "assets: a file with no licence, one over the file limit and one the editor does not take are refused in words before any upload; what is no ask is refused", unlicensed && huge && kind && st == 400 && wa_opened(a, lg[..]) == "", ap_body(t));
+  // a row that draws a pack mesh, before the pack has the mesh
+  st = wc_post(t, w, t[0].admin_key, 0, "apply", wa_cell(b[..], "201|Rock|pack/rock|1000|1|50|25|200"));
+  ap_check(t, "assets: a row of the pieces table that draws a pack mesh is refused while the world's pack has no such mesh", st == 422 && wc_refusal(t, w, edit[..]) == "the world's pack has no mesh of that name: import it first", ap_body(t));
+  // ---- the upload: opened for exactly the file's bytes and type, at the object its content names
+  st = wa_open(t, a, t[0].admin_key, 0, "rock.glb", box);
+  want: [1] Sb; sb(want[..], "test%2Fworlds%2Fsplice%2Ffiles%2F"); sb(want[..], cast(string) a[0].hash[..]); sb(want[..], " model/gltf-binary "); sb_int(want[..], box.count); sb(want[..], " "); sb(want[..], t[0].api); sb(want[..], " 0\n");
+  ap_check(t, "assets: an admin's ask opens an upload for exactly the file's bytes and content type, at the object its SHA-256 names, for this site's page", st == 200 && a[0].up.ok && a[0].up.how == WU_PUT && a[0].up.bytes == box.count && a[0].up.hash == cast(string) a[0].hash[..] && wa_opened(a, lg[..]) == sb_text(want[..]), wa_opened(a, lg[..]));
+  st = wa_done(t, a, t[0].admin_key, 0, "rock.glb", box);
+  ap_check(t, "assets: done before the file is sent is refused, and nothing is imported", st == 422 && wa_words(t, w) == "That file did not arrive. Import it again." && ap_sql(t, "SELECT dev_pack || '|' || (SELECT count(*) FROM verse.world_packs) FROM verse.world_docs WHERE id = 'splice'", q[..]) == "|0", ap_body(t));
+  // wrong bytes of the right size, then bytes of another size: refused, and the object is deleted
+  wrong := pit_box(3, 1, 0.5, 1, 0.125, a[0].other[..]);
+  sent := wrong.count == box.count && wa_put(t, a, wrong) && wa_stored(a);
+  st = wa_done(t, a, t[0].admin_key, 0, "rock.glb", box);
+  renamed := st == 422 && wa_words(t, w) == "That file is not the one that was named, so it is not kept. Import it again." && !wa_stored(a);
+  st = wa_open(t, a, t[0].admin_key, 0, "rock.glb", box);
+  sent = sent && st == 200 && wa_put(t, a, box[0..<box.count - 4]) && wa_stored(a);
+  st = wa_done(t, a, t[0].admin_key, 0, "rock.glb", box);
+  ap_check(t, "assets: bytes that are not the ones the name was made from, and a file that did not arrive whole, are refused and deleted from the bucket", sent && renamed && st == 422 && wa_words(t, w) == "That file did not arrive whole, so it is not kept. Import it again." && !wa_stored(a)
+           && ap_sql(t, "SELECT dev_pack || '|' || (SELECT count(*) FROM verse.world_files) FROM verse.world_docs WHERE id = 'splice'", q[..]) == "|0", ap_body(t));
+  // ---- the right bytes: imported, and the pack's hash changes
+  st = wa_import(t, a, 0, "rock.glb", box);
+  hb: [64] u8; first: [64] u8;
+  for k: 0..<64 { first[k] = l[0].hash[k]; }
+  sqlq: [1] Sb; sb(sqlq[..], "SELECT dev_pack || '|' || live_pack || '|' || (SELECT count(*) FROM verse.world_packs WHERE world = 'splice') || '|' || (SELECT name || ' ' || kind || ' ' || licence || ' ' || bytes || ' ' || hash FROM verse.world_files WHERE world = 'splice') FROM verse.world_docs WHERE id = 'splice'");
+  row: [1] Sb; sb(row[..], cast(string) first[..]); sb(row[..], "||1|rock.glb 1 0 "); sb_int(row[..], box.count); sb(row[..], " "); sb(row[..], cast(string) a[0].hash[..]);
+  ap_check(t, "assets: the right bytes are imported: the list names the mesh and the pack's hash, the pack is kept by that hash for dev, and the file has its row", st == 200 && l[0].packed && l[0].n == 1 && l[0].did && !l[0].did_replaced && l[0].a[0].kind == PIP_MESH && was_asset_name(l, 0) == "rock" && l[0].a[0].hx == 500 && l[0].a[0].top == 2000
+           && ap_sql(t, sb_text(sqlq[..]), q[..]) == sb_text(row[..]) && wa_stored(a), ap_body(t));
+  st = ap_call(t, "GET", "/api/worlds/splice/assets/pack?lane=dev", "", t[0].no[0..<0]);
+  pn := 0; for c: ap_body(t) { a[0].pack[pn] = c; pn += 1; }
+  dev_pack := st == 200 && pn == l[0].bytes && asset_hex(asset_id(cast(string) a[0].pack[0..<pn]), hb[..]) && cast(string) hb[..] == cast(string) first[..];
+  p2: [1] Sb; sb(p2[..], "/api/worlds/splice/assets/pack?live="); sb(p2[..], cast(string) first[..]);
+  st = ap_call(t, "GET", sb_text(p2[..]), "", t[0].no[0..<0]);
+  by_hash := st == 200 && t[0].n == pn && asset_hex(asset_id(ap_body(t)), hb[..]) && cast(string) hb[..] == cast(string) first[..];
+  sb_clear(p2[..]); sb(p2[..], "/api/worlds/splice/assets/pack?live="); sb(p2[..], WAS_TEST_HASH);
+  no_hash := ap_call(t, "GET", sb_text(p2[..]), "", t[0].no[0..<0]) == 404;
+  st = wa_call(t, "", "GET", "/api/worlds/splice/assets?lane=dev", "");
+  dev_list := st == 200 && was_read(l, ap_body(t)) && l[0].n == 1 && !l[0].did && cast(string) l[0].hash[..] == cast(string) first[..];
+  st = wa_call(t, "", "GET", WA_PATH, "");
+  ap_check(t, "assets: dev's pack is its bytes by lane and by hash; live has none until a publish", dev_pack && by_hash && no_hash && dev_list && st == 200 && was_read(l, ap_body(t)) && !l[0].packed
+           && ap_call(t, "GET", "/api/worlds/splice/assets/pack", "", t[0].no[0..<0]) == 404, ap_body(t));
+  // the same file again: the bucket has it, nothing is sent, and the import replaces the mesh
+  before := wa_opened(a, lg[..]).count;
+  st = wa_open(t, a, t[0].admin_key, 1, "rock.glb", box);
+  kept := st == 200 && a[0].up.ok && a[0].up.how == WU_KEPT && wa_opened(a, lg[..]).count == before;
+  st = wa_done(t, a, t[0].admin_key, 1, "rock.glb", box);
+  ap_check(t, "assets: a file the bucket already has is not sent again, and importing it again replaces the asset", kept && st == 200 && l[0].did && l[0].did_replaced && l[0].n == 1 && l[0].a[0].licence == 1
+           && ap_sql(t, "SELECT count(*) || ' ' || max(licence) FROM verse.world_files WHERE world = 'splice'", q[..]) == "1 1" && ap_sql(t, "SELECT count(*) FROM verse.world_packs WHERE world = 'splice'", q[..]) == "1", ap_body(t));
+  // ---- a row that draws a pack mesh is held to the pack the world has
+  st = wc_post(t, w, t[0].admin_key, 0, "apply", wa_cell(b[..], "201|Rock|pack/stone|1000|1|50|25|200"));
+  stone := st == 422 && wc_refusal(t, w, edit[..]) == "the world's pack has no mesh of that name: import it first";
+  st = wc_post(t, w, t[0].admin_key, 0, "apply", wa_cell(b[..], "201|Rock|pack/rock|1000|1|60|25|200"));
+  foot := st == 422 && wc_refusal(t, w, edit[..]) == "a pack mesh's footprint is its bounds: hx, hz and top are not this mesh's at that size";
+  st = wc_post(t, w, t[0].admin_key, 0, "apply", wa_cell(b[..], "201|Rock|pack/rock|1000|1|50|25|200"));
+  rowed := st == 200 && w[0].st.rev == 1;
+  st = wc_post(t, w, t[0].admin_key, 1, "apply", "{\"op\":\"spawn\",\"id\":0,\"kind\":201,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100}");
+  ap_check(t, "assets: a pieces row for a pack mesh is saved only when the pack has the mesh and the footprint is its bounds, and the kind is then placed like any piece", stone && foot && rowed && st == 200 && w[0].st.rev == 2, ap_body(t));
+  // the same file again while a rock stands by the gate: its bounds are the row's, so it replaces the mesh
+  st = wa_import(t, a, 0, "rock.glb", box);
+  ap_check(t, "assets: a mesh of the same bounds replaces one the world has pieces of", st == 200 && l[0].did && l[0].did_replaced && l[0].a[0].licence == 0, ap_body(t));
+  // a mesh as wide as the yard may not replace the rock while one stands by the gate
+  wide := pit_box(3, 1, 25, 1, 25, a[0].other[..]);
+  wasb: [80] u8; was := ap_sql(t, "SELECT dev_pack FROM verse.world_docs WHERE id = 'splice'", wasb[..]);
+  st = wa_import(t, a, 0, "rock.glb", wide);
+  ap_check(t, "assets: a mesh that does not fit where its kind stands is refused in words, the pack stays, and its file leaves the bucket", st == 422 && ap_has(wa_words(t, w), "rock.glb does not fit where its kind already stands: ") && !wa_stored(a)
+           && was.count == 64 && ap_sql(t, "SELECT dev_pack FROM verse.world_docs WHERE id = 'splice'", q[..]) == was, ap_body(t));
+  // ---- the budget: two long sounds fit, the third would not
+  long := a[0].big[..];
+  for c, k: "RIFFsizeWAVE" { long[k] = c; }
+  ok2 := true;
+  for k: 0..<2 { long[20] = cast,trunc(u8) ('1' + k); nm: [1] Sb; sb(nm[..], "long-"); sb_int(nm[..], k + 1); sb(nm[..], ".wav"); ok2 = ok2 && wa_import(t, a, 2, sb_text(nm[..]), long) == 200 && l[0].n == 2 + k; }
+  held := ap_sql(t, "SELECT dev_pack FROM verse.world_docs WHERE id = 'splice'", q[..]) == cast(string) l[0].hash[..] && l[0].packed;
+  long[20] = '3';
+  st = wa_import(t, a, 2, "long-3.wav", long);
+  kb: [1] Sb; sb(kb[..], "SELECT dev_pack || ' ' || (SELECT count(*) FROM verse.world_packs WHERE world = 'splice') || ' ' || (SELECT count(*) FROM verse.world_files WHERE world = 'splice') FROM verse.world_docs WHERE id = 'splice'");
+  ap_check(t, "assets: a file that would take the pack over its budget is refused in words; the pack and its rows stay, and the file leaves the bucket", ok2 && held && st == 422 && ap_starts(wa_words(t, w), "long-3.wav would make the pack ") && ap_ends(wa_words(t, w), " KB. Its budget is 1024 KB.") && !wa_stored(a)
+           && ap_ends(ap_sql(t, sb_text(kb[..]), q[..]), " 1 3"), ap_body(t));
+  // ---- a publish carries dev's pack to live with the document
+  devp: [80] u8; dev := ap_sql(t, "SELECT dev_pack FROM verse.world_docs WHERE id = 'splice'", devp[..]);
+  st = wc_post(t, w, t[0].admin_key, 2, "publish-now", "");
+  pub := st == 200 && ap_sql(t, "SELECT live_pack FROM verse.world_docs WHERE id = 'splice'", q[..]) == dev && dev.count == 64;
+  st = ap_call(t, "GET", "/api/worlds/splice/assets/pack", "", t[0].no[0..<0]);
+  live_pack := st == 200 && asset_hex(asset_id(ap_body(t)), hb[..]) && cast(string) hb[..] == dev;
+  st = wa_call(t, "", "GET", WA_PATH, "");
+  ap_check(t, "assets: a publish carries the dev pack to live with the document: live's list and pack are dev's", pub && live_pack && st == 200 && was_read(l, ap_body(t)) && l[0].n == 3 && cast(string) l[0].hash[..] == dev, ap_body(t));
+  // an import after the publish changes dev's pack only; live's stays and both are kept
+  wav := pit_wav(a[0].wav[..]);
+  st = wa_import(t, a, 0, "door.wav", wav);
+  after := st == 200 && l[0].n == 4 && cast(string) l[0].hash[..] != dev;
+  ap_check(t, "assets: an import after a publish changes dev's pack and leaves live's; each lane's pack is kept, and no other", after && ap_sql(t, "SELECT live_pack || ' ' || (SELECT count(*) FROM verse.world_packs WHERE world = 'splice') || ' ' || (dev_pack <> live_pack) FROM verse.world_docs WHERE id = 'splice'", q[..]) == sb_text_of(dev, " 2 true", b[..]), ap_body(t));
+  wc_reset(t);
+  ap_check(t, "assets: a world's packs and files go with its row", ap_sql(t, "SELECT (SELECT count(*) FROM verse.world_packs) + (SELECT count(*) FROM verse.world_files)", q[..]) == "0", "");
+}
+sb_text_of :: (a: string, b: string, s: [] Sb) -> string { sb_clear(s); sb(s, a); sb(s, b); return sb_text(s); }
+
 tool_main :: () -> int #export_c #effects(all) {
+  ar: [1] Args;
+  if !args_load(ar[..]) { return 2; }
+  if args_count(ar[..]) >= 1 && args_at(ar[..], 0) == "bucket" {
+    if args_count(ar[..]) != 3 { tool_errln("world_checks bucket PORT DIR"); return 2; }
+    return wb_main(ap_whole(args_at(ar[..], 1)), args_at(ar[..], 2));
+  }
   t: [1] Ap; w := [1] Wc.[Wc.{}];
   if !ap_open(t[..]) { return 2; }
   kb: [2048] u8; other := proc_getenv("OTHER_KEY", kb[..]);
   if t[0].sign == "" || t[0].admin_key == "" || other == "" { tool_errln("world checks: SIGN, ADMIN_KEY and OTHER_KEY come from coax/web/api/test.sh"); return 2; }
   wc_checks(t[..], w[..], other);
+  // the assets' checks, with the fake bucket beside them
+  gp: [32] u8; port := proc_getenv("GCS_PORT", gp[..]);
+  a := [1] Wa.[Wa.{}];
+  work := fs_temp("world-bucket", a[0].dir[..]); a[0].dir_n = work.count;
+  ba := [5] string.["coax/web/tool.sh", "coax/web/api/tests/world_checks.coax", "bucket", port, work];
+  h := proc_new(); ok := h >= 0 && port != "";
+  for x: ba { ok = ok && proc_arg(h, x); }
+  started := ok && proc_start(h) == 0;
+  rb: [1400] u8; ready := fs_join(work, "ready", rb[..]);
+  deadline := proc_now_ms() + 300000;
+  while started && !fs_exists(ready) && proc_now_ms() < deadline && proc_wait(h, 0) == PROC_RUNNING { proc_sleep(50); }
+  if !started || !fs_exists(ready) { ap_check(t[..], "assets: the fake bucket listens (GCS_PORT comes from test.sh)", false, port); return ap_done(t[..], "world checks"); }
+  wa_checks(t[..], w[..], a[..], other);
+  sb_: [1400] u8; stopped := fs_write(fs_join(work, "stop", sb_[..]), "1");
+  wt := proc_wait(h, 5000); rl := proc_release(h);
+  gone := fs_remove(work);
   return ap_done(t[..], "world checks");
 }

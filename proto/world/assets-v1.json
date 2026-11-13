@@ -1,12 +1,12 @@
 {
  "profile": "world-assets-v1",
  "version": 1,
- "title": "A world's imported assets, and an import's body v1 (world.assets.v1, world.asset.import.v1)",
+ "title": "A world's imported assets, an import's body and a file named before it is sent v1 (world.assets.v1, world.asset.import.v1, world.asset.upload.v1)",
  "check": "coax/web/tool.sh metaverse-engine/tools/assets-profile.coax proto/world/assets-v1.json",
  "spec": "docs/protocol/world-assets-v1.md",
  "schema": "world.assets.v1",
  "url": "/api/worlds/ID/assets",
- "about": "What the editor's asset browser lists and what an import answers (GitHub #13420): the world, its import pack's SHA-256 and size, the limits shown before a file is sent, the licences an import may declare, and each asset of the pack with the file it came from. And world.asset.import.v1: an import's body, a line that names the licence and the file, then the file's bytes. The route that packs an import writes the list and reads the body; the editor's shell reads the list and writes the body's line.",
+ "about": "What the editor's asset browser lists and what an import answers (GitHub #13420): the world, its import pack's SHA-256 and size, the limits shown before a file is sent, the licences an import may declare, and each asset of the pack with the file it came from. And world.asset.import.v1: an import's body, a line that names the licence and the file, then the file's bytes. The route that packs an import writes the list and reads the body; the editor's shell reads the list and writes the body's line. And world.asset.upload.v1: where the server takes a file by direct upload (the API), the ask that names a file by its SHA-256 before it is sent, said again when it is sent, and the answer that says where the bytes go or that storage has them.",
  "limits": {
   "bytes": 8192,
   "assets": 48,
@@ -14,7 +14,8 @@
   "licence_bytes": 40,
   "world_bytes": 32,
   "name_bytes": 24,
-  "file_name_bytes": 120
+  "file_name_bytes": 120,
+  "url_bytes": 1900
  },
  "lines": [
   "world.assets.v1 WORLD HASH|- BYTES BUDGET FILE TRIANGLES SIDE",
@@ -133,6 +134,78 @@
    "world.asset.import.v1 0\n",
    "world.asset.import.v1 0  a.png\n",
    "world.asset.import.v1 01 a.png\n"
+  ]
+ },
+ "upload": {
+  "schema": "world.asset.upload.v1",
+  "lines": [
+   "world.asset.upload.v1 LICENCE|- BYTES NAME, a line end, then SHA256 and a line end (the ask, and the word that it is done)",
+   "world.asset.upload.v1 put|kept SHA256 BYTES URL|- (the answer)"
+  ],
+  "asks": [
+   {
+    "wire": "world.asset.upload.v1 1 2032 My Rock (1).glb\n29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa\n",
+    "licence": 1,
+    "bytes": 2032,
+    "name": "My Rock (1).glb",
+    "hash": "29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa",
+    "type": "model/gltf-binary"
+   },
+   {
+    "wire": "world.asset.upload.v1 - 166 a.png\n29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa\n",
+    "licence": -1,
+    "bytes": 166,
+    "name": "a.png",
+    "hash": "29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa",
+    "type": "image/png"
+   },
+   {
+    "wire": "world.asset.upload.v1 0 4044 door.mp3\n29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa\n",
+    "licence": 0,
+    "bytes": 4044,
+    "name": "door.mp3",
+    "hash": "29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa",
+    "type": "audio/mpeg"
+   }
+  ],
+  "answers": [
+   {
+    "wire": "world.asset.upload.v1 put 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 2032 https://storage.googleapis.com/upload/storage/v1/b/bucket/o?uploadType=resumable&name=production%2Fworlds%2Fsplice%2Ffiles%2F29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa&upload_id=AbC-1_2\n",
+    "how": "put",
+    "hash": "29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa",
+    "bytes": 2032,
+    "url": "https://storage.googleapis.com/upload/storage/v1/b/bucket/o?uploadType=resumable&name=production%2Fworlds%2Fsplice%2Ffiles%2F29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa&upload_id=AbC-1_2"
+   },
+   {
+    "wire": "world.asset.upload.v1 kept 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 2032 -\n",
+    "how": "kept",
+    "hash": "29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa",
+    "bytes": 2032,
+    "url": ""
+   }
+  ],
+  "rejected_asks": [
+   "",
+   "world.asset.upload.v1 1 2032 a.glb\n",
+   "world.asset.upload.v1 1 2032 a.glb\n29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa",
+   "world.asset.upload.v1 1 2032 a.glb\n29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa\nx",
+   "world.asset.upload.v2 1 2032 a.glb\n29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa\n",
+   "world.asset.upload.v1 x 2032 a.glb\n29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa\n",
+   "world.asset.upload.v1 1 -1 a.glb\n29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa\n",
+   "world.asset.upload.v1 1 2032\n29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa\n",
+   "world.asset.upload.v1 1 2032 a.glb\n29189AFC700416F2A380B025AFE852F7785B2C16E927999B81730308F70812AA\n",
+   "world.asset.upload.v1 1 2032  a.glb\n29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa\n"
+  ],
+  "rejected_answers": [
+   "",
+   "world.asset.upload.v1 put 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 2032 https://a.example/u",
+   "world.asset.upload.v1 sent 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 2032 https://a.example/u\n",
+   "world.asset.upload.v1 put 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 0 https://a.example/u\n",
+   "world.asset.upload.v1 put 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 2032 /api/upload\n",
+   "world.asset.upload.v1 put 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 2032 -\n",
+   "world.asset.upload.v1 kept 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 2032 https://a.example/u\n",
+   "world.asset.upload.v1 put abc 2032 https://a.example/u\n",
+   "world.asset.upload.v1 put 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 2032 https://a.example/u extra\n"
   ]
  }
 }

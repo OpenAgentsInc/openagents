@@ -66,6 +66,7 @@ bool drops_token(char *out, size_t cap);   // the bucket's part, shared with vil
 bool drops_open_upload(const char *object, const char *type, const char *bytes, const char *from, char *out, size_t cap);
 void drops_inspect(const char *object, long long *size, char **head_hex);
 void drops_delete_object(const char *object);
+unsigned char *drops_fetch(const char *object, size_t cap, size_t *n);   // an object's bytes, malloc'd; NULL: none, or over cap
 bool villa_route(const request *q);       // villa.c
 bool metaverse_packs_route(const request *q); // verse_packs.c: private human packs, a key a session
 bool realms_route(const request *q);      // realms.c: build your own realm
@@ -76,7 +77,7 @@ void makers_print_limits(FILE *out);      // api --limits: the tips and upgrades
 bool mesh_route(const request *q);         // mesh.c: authenticated native SystemOne mesh
 bool anime_route(const request *q);        // anime.c: typed Anime Lab directions
 bool worldbuilder_route(const request *q); // worldbuilder.c: /create-world's chat, the day's $50 cap and anti-flood
-bool worlds_route(const request *q);       // worlds.c: a world's document by ID, its edits and its dev and live revisions (world-policy.coax)
+bool worlds_route(const request *q);       // worlds.c: a world's document by ID, its edits, its dev and live revisions and its imported assets (world-policy.coax)
 bool site_identity(const request *q, PGconn *db, char who[65], bool *signed_req, bool *payload, bool *unseen);
 bool inference_route(const request *q);   // inference.c: POST /api/v1/inference, our models for the Mac app
 bool inference_ask(const request *q, const char *pubkey, bool free_key);   // inference.c: the same ask for a caller another route named (chat.c)

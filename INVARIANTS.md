@@ -8135,10 +8135,26 @@ dropped glTF binary, PNG or sound file into an entry of a world's asset pack.
 - **An import is authoring.** It writes the world's pack and the files kept
   beside it, which are authored state. It reaches neither the character record
   nor the item ledger (`coax/web/tool.sh layer-check`, the `durable` gate).
-- **Who may import.** Whoever may write the world. Today that is the dev
-  server only, where everyone on this computer is the admin; an import a
-  browser sends must come from that server's own page (`Sec-Fetch-Site`). The
-  API has no import route yet.
+- **Who may import.** Whoever may write the world. On the dev server
+  everyone on this computer is the admin, and an import a browser sends must
+  come from that server's own page (`Sec-Fetch-Site`). On the API it is an
+  admin, from this site's page or signed (`coax/web/api/world-policy.coax`,
+  `wr_asset_write`), checked before an upload is opened and again before the
+  file is imported.
+- **On the API a file is its content hash.** The page names a file by its
+  SHA-256 before it sends it, and the API opens an upload in its private
+  bucket for exactly the file's size and content type at
+  `PREFIX/worlds/ID/files/SHA256`. Before it imports, the API reads the
+  object back and checks its size and its SHA-256 against the name
+  (`wr_asset_stored`). An object that is not the file named is deleted and
+  never imported. The file's bytes never pass through an API request.
+- **One importer for both servers.** The dev server's tool and the API call
+  `metaverse/splice/world-assets.coax`, so the list, the limits and every
+  refusal are the same bytes.
+- **A lane's pack goes with its document.** An import changes dev's pack. A
+  publish makes live's pack dev's, in the statement that makes live's
+  document dev's. A pack is kept while a lane names it (`wr_pack_kept`) and
+  deleted when none does. An edit is checked against the pack dev has.
 
 Checks: `coax/bin/coax test metaverse-engine/editor/pack-import-policy.coax`
 and `coax/bin/coax mutate metaverse-engine/editor/pack-import-policy.coax
@@ -8146,6 +8162,11 @@ and `coax/bin/coax mutate metaverse-engine/editor/pack-import-policy.coax
 `coax/bin/coax test metaverse-engine/editor/pack-import.coax` ("import: no
 licence, an oversize file, a pack over its budget ..." and the three beside
 it); `coax/bin/coax test metaverse/splice/world-api.coax --only "pack mesh"`;
+`coax/bin/coax test metaverse/splice/world-api.coax --only "a world's server"`;
+`coax/bin/coax mutate coax/web/api/world-policy.coax --library --root-only`
+(301 mutants, none survive); the API's checks named "assets: ..." in
+`coax/web/api/tests/world_checks.coax` (a build host:
+`coax/remote/remote.sh run -- env API_TESTS_ONLY=world_checks.coax coax/web/api/test.sh`);
 `coax/bin/coax test metaverse/splice/splice.coax --only "import pack"`;
 `coax/bin/coax test metaverse-engine/editor/shell.coax` ("a file the rules
 never take is refused in words before it is sent ...");

@@ -1,0 +1,142 @@
+// Splice's imports for a world's server (GitHub #13420, the browser editor's E11): the list of a
+// world's assets, a file named before it is sent, and an import carried out. One body of code
+// for both servers: the dev server's tool (tools/asset-local.coax, files under a folder) and the
+// API (coax/web/api/worlds.c, rows and a bucket) call these, so they answer the same bytes and
+// refuse in the same words. world-api.coax loads this file; nothing here reads a file, a
+// database or a clock.
+//
+// The importer is the editor's (metaverse-engine/editor/pack-import.coax) under Splice's limits
+// (pieces.coax sp_import_limits); every byte answered is asset-wire.coax's. A mesh that replaces
+// one the world has pieces of must fit where they stand (world-api.coax splice_world_mesh_fits):
+// its kind's row is tried with the new bounds first, and a refusal leaves the pack as it was.
+//   coax/bin/coax test metaverse/splice/world-api.coax --only "a world's server"
+#load "../../metaverse-engine/editor/pack-import.coax";
+#load "../../metaverse-engine/editor/asset-wire.coax";
+
+SWA_NODES :: 32768;    // nodes a glTF's JSON is read with
+SWA_WORDS :: 600;      // bytes a refusal's words take at most
+// The room one import works in, and what it answers. A caller makes one, zeroed, and reads the
+// answers from it: the new pack (out, pack_n) and its SHA-256 (pack_hash), the list (answer,
+// answer_n) or a refusal's words (words, words_n), what the import made (kind, name), and the
+// file it came from as its row is kept (file, licence).
+SpAssetWork :: struct {
+  out: [SP_IMPORT_PACK] u8; vertices: [SP_IMPORT_PACK] u8; indices: [SP_IMPORT_PACK] u8; catalog: [16384] u8; nodes: [SWA_NODES] JvNode; hash: [64] u8;
+  doc: [SPW_DOC] u8;
+  answer: [WAS_URL + 200 + WAS_BYTES] u8; words: [SWA_WORDS] u8;
+  pack_n: int; answer_n: int; words_n: int;
+  kind: int; name: [PIP_NAME] u8; name_n: int;
+  pack_hash: [64] u8; file: [WAS_FILE_NAME] u8; file_n: int; licence: int;
+}
+swa_say :: (w: [] SpAssetWork, status: int, words: string) -> int {
+  n := pi_put(w[0].words[..], 0, words);
+  w[0].words_n = ifx n > w[0].words.count then 0 else n;
+  return status;
+}
+swa_words :: (w: [] SpAssetWork) -> string { return cast(string) w[0].words[0..<w[0].words_n]; }
+swa_answer :: (w: [] SpAssetWork) -> string { return cast(string) w[0].answer[0..<w[0].answer_n]; }
+// The world's assets as a list into the answer: the pack's own account, each asset with the file
+// it came from, and what an import did. "" for a pack the importer did not make.
+swa_list :: (w: [] SpAssetWork, id: string, pack: string, did: [] PiDid) -> string {
+  lim := sp_import_limits(); o := w[0].answer[..];
+  p: [1] PiPack; r: [1] PackRead; why: [1] string; hb: [64] u8;
+  w[0].answer_n = 0;
+  if !pi_open(pack, p[..], r[..], why[..]) { return ""; }
+  hash := ifx pack.count > 0 && asset_hex(asset_id(pack), hb[..]) then cast(string) hb[..] else "";
+  n := was_begin(o, id, hash, pack.count, lim);
+  for k: 0..<PIP_LICENCES { n = was_add_licence(o, n, k, PIP_LICENCE[k]); }
+  for kind: PIP_MESH..<PIP_SOUND + 1 {
+    count := ifx kind == PIP_MESH then p[0].mesh_n else ifx kind == PIP_TEXTURE then p[0].texture_n else p[0].sound_n;
+    for k: 0..<count {
+      name := ifx kind == PIP_MESH then p[0].meshes[k].name else ifx kind == PIP_TEXTURE then p[0].textures[k].name else p[0].sounds[k].name;
+      source := ifx kind == PIP_MESH then p[0].meshes[k].source else ifx kind == PIP_TEXTURE then p[0].textures[k].source else p[0].sounds[k].source;
+      from := pi_origin(p[..], kind, name);
+      if from < 0 { return ""; }
+      m := p[0].meshes[ifx kind == PIP_MESH then k else 0];
+      n = was_add(o, n, kind, name, source, p[0].origins[from].bytes, pi_bytes(p[..], kind, k), p[0].origins[from].hash,
+                 ifx kind == PIP_MESH then pi_reach(m, 0) else 0, ifx kind == PIP_MESH then pi_reach(m, 2) else 0, ifx kind == PIP_MESH then pi_reach(m, 1) else 0);
+    }
+  }
+  if did.count > 0 && did[0].ok { n = was_add_did(o, n, did[0].kind, cast(string) did[0].name[0..<did[0].name_n], did[0].replaced); }
+  if n > o.count { return ""; }
+  w[0].answer_n = n;
+  return cast(string) o[0..<n];
+}
+// A file as it is named before it is sent: 200, or 422 with the importer's own words. Nothing of
+// the file is read: its name, its size and the licence chosen are checked (pack-import-read.coax
+// pi_early), so a file the rules never take is not uploaded.
+swa_early :: (w: [] SpAssetWork, name: string, bytes: int, licence: int) -> int {
+  early := pi_early(name, bytes, licence, sp_import_limits(), w[0].words[..]);
+  w[0].words_n = early.n;
+  return ifx early.verdict == PIP_OK then 200 else 422;
+}
+// An import carried out on the world's pack (`old`; "": its first) with the world as it stands
+// (its document, "" before its first edit, and its content tables): 200 with the new pack in out
+// and the list in the answer, or 422 with why in words, and nothing a caller may keep.
+swa_import :: (w: [] SpAssetWork, id: string, old: string, doc: string, tables: string, name: string, licence: int, data: [] u8) -> int {
+  w[0].pack_n = 0; w[0].answer_n = 0; w[0].words_n = 0; w[0].kind = 0; w[0].name_n = 0;
+  did: [1] PiDid;
+  room := PiRoom.{vertices = w[0].vertices[..], indices = w[0].indices[..], catalog = w[0].catalog[..], nodes = w[0].nodes[..], hash = w[0].hash[..]};
+  made := pi_import(old, id, PiFile.{name = name, data = data, licence = licence}, sp_import_limits(), room, w[0].out[..], did[..]);
+  if made < 0 { return swa_say(w, 422, pi_why(did[..])); }
+  pack := cast(string) w[0].out[0..<made];
+  if did[0].kind == PIP_MESH && did[0].replaced {
+    why: [240] u8; wn: [1] int; m := [1] PiMesh.[PiMesh.{lo = did[0].lo, hi = did[0].hi}];
+    stands := doc;
+    if stands.count == 0 { dn := splice_world_empty(w[0].doc[..]); stands = cast(string) w[0].doc[0..<ifx dn < 0 then 0 else dn]; }
+    if !splice_world_mesh_fits(stands, tables, pack, cast(string) did[0].name[0..<did[0].name_n], pi_reach(m[0], 0), pi_reach(m[0], 2), pi_reach(m[0], 1), why[..], wn[..]) {
+      o := w[0].words[..]; k := pi_put_name(o, 0, name); k = pi_put(o, k, " does not fit where its kind already stands: "); k = pi_put(o, k, cast(string) why[0..<wn[0]]); k = pi_put(o, k, ". Move or remove that piece, then import it again.");
+      if k > o.count { return swa_say(w, 422, "That mesh does not fit where its kind already stands."); }
+      w[0].words_n = k;
+      return 422;
+    }
+  }
+  nb: [WAS_FILE_NAME] u8; file := was_file_name(name, nb[..]);
+  if swa_list(w, id, pack, did[..]).count == 0 || !asset_hex(asset_id(pack), w[0].pack_hash[..]) { return swa_say(w, 500, "not read"); }
+  w[0].pack_n = made; w[0].kind = did[0].kind; w[0].name = did[0].name; w[0].name_n = did[0].name_n;
+  w[0].file_n = pi_put(w[0].file[..], 0, file); w[0].licence = licence;
+  return 200;
+}
+
+// ---- for the API (coax/web/api/worlds.c): the same, by plain calls
+
+// The list of a world's assets into the work's answer: its bytes, or -1.
+splice_world_assets :: (w: [] SpAssetWork, id: string, pack: string) -> int #export_c #effects(all) {
+  none: [1] PiDid;
+  if w.count < 1 { return -1; }
+  list := swa_list(w, id, pack, none[..]);
+  return ifx list.count == 0 then -1 else list.count;
+}
+// An ask (world.asset.upload.v1) read and checked before anything is stored: 200 with the file's
+// bytes in n[0], its licence in n[1], and its content hash and content type in out_hash (64
+// bytes) and out_type (their lengths in n[2] and n[3]); 400 for a body that is no ask; 422 with
+// the importer's words in the work's words for a file the rules never take.
+splice_world_asset_ask :: (w: [] SpAssetWork, body: string, out_hash: [] u8, out_type: [] u8, n: [] int) -> int #export_c #effects(all) {
+  if w.count < 1 || n.count < 4 || out_hash.count < 64 { return 500; }
+  for k: 0..<4 { n[k] = 0; }
+  a := was_upload_read(body);
+  if !a.ok { return swa_say(w, 400, "send a world.asset.upload.v1 ask: a line that names the licence, the file's bytes and its name, then a line with its SHA-256"); }
+  status := swa_early(w, a.name, a.bytes, a.licence);
+  if status != 200 { return status; }
+  type := was_content_type(a.name);
+  if type.count > out_type.count { return 500; }
+  n[0] = a.bytes; n[1] = a.licence; n[2] = pi_put(out_hash, 0, a.hash); n[3] = pi_put(out_type, 0, type);
+  return 200;
+}
+// The answer to an ask into out: its bytes, or -1. put: the address the file is sent to.
+splice_world_asset_answer :: (put: bool, hash: string, bytes: int, url: string, out: [] u8) -> int #export_c #effects(all) {
+  made := was_upload_answer(out, ifx put then WU_PUT else WU_KEPT, hash, bytes, ifx put then url else "");
+  return ifx made.count == 0 then -1 else made.count;
+}
+// Whether bytes are the ones a name was made from: their SHA-256 is `hash`.
+splice_world_asset_named :: (data: string, hash: string) -> bool #export_c #effects(all) {
+  hb: [64] u8;
+  return hash.count == 64 && asset_hex(asset_id(data), hb[..]) && cast(string) hb[..] == hash;
+}
+// An import carried out for the ask `body` with the file's bytes: swa_import's status, with the
+// answers in the work. 400 for a body that is no ask.
+splice_world_asset_import :: (w: [] SpAssetWork, id: string, old: string, doc: string, tables: string, body: string, data: [] u8) -> int #export_c #effects(all) {
+  if w.count < 1 { return 500; }
+  a := was_upload_read(body);
+  if !a.ok { return swa_say(w, 400, "send a world.asset.upload.v1 ask"); }
+  return swa_import(w, id, old, doc, tables, a.name, a.licence, data);
+}

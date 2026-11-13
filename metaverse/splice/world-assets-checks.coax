@@ -1,0 +1,89 @@
+// The checks of a world's imports as its server carries them out (world-assets.coax; GitHub
+// #13420). world-api.coax loads this file with `#load ... #test;`. The files are made here in
+// code (pack-import-checks.coax pit_box, pit_wav), and every answer is read by its codec.
+
+SwaTest :: struct { w: [1] SpAssetWork; glb: [4000] u8; wav: [200] u8; ask: [400] u8; old: [SP_IMPORT_PACK] u8; t: [1] SpwTest; tb: [SPW_TABLES] u8; own: [SPW_TABLES] u8; body: [WE_BATCH_BODY] u8; }
+// The ask for a file: its two lines, with the file's own hash.
+swt_ask :: (k: [] SwaTest, licence: int, name: string, data: [] u8) -> string {
+  hb: [64] u8;
+  if !asset_hex(asset_id(cast(string) data), hb[..]) { return ""; }
+  return was_upload_ask(k[0].ask[..], licence, data.count, cast(string) hb[..], name);
+}
+
+#test "a world's server: a file is named and checked before it is sent, in the importer's words" #steps 2000000000 #traversal 1000000000 {
+  k := [1] SwaTest.[SwaTest.{}]; w := k[0].w[..]; n: [4] int; hash: [64] u8; type: [48] u8;
+  box := pit_box(3, 1, 0.5, 1, 0.25, k[0].glb[..]);
+  ask := swt_ask(k[..], 0, "rock.glb", box);
+  #assert splice_world_asset_ask(w, ask, hash[..], type[..], n[..]) == 200 && n[0] == box.count && n[1] == 0 && n[2] == 64 && cast(string) type[0..<n[3]] == "model/gltf-binary";
+  #assert splice_world_asset_named(cast(string) box, cast(string) hash[..]) && !splice_world_asset_named(cast(string) box[0..<box.count - 1], cast(string) hash[..]) && !splice_world_asset_named(cast(string) box, "abc");
+  // what is no ask, a file with no licence, a file over the limit, a file the editor does not take
+  #assert splice_world_asset_ask(w, "world.asset.import.v1 0 rock.glb\n", hash[..], type[..], n[..]) == 400 && swa_words(w).count > 20 && n[0] == 0;
+  #assert splice_world_asset_ask(w, swt_ask(k[..], -1, "rock.glb", box), hash[..], type[..], n[..]) == 422 && swa_words(w) == "rock.glb has no licence. Choose one, then import it.";
+  #assert splice_world_asset_ask(w, was_upload_ask(k[0].ask[..], 0, SP_IMPORT_FILE + 1, WAS_TEST_HASH, "huge.glb"), hash[..], type[..], n[..]) == 422 && swa_words(w) == "huge.glb is 513 KB. A file can be 512 KB at most.";
+  #assert splice_world_asset_ask(w, was_upload_ask(k[0].ask[..], 0, SP_IMPORT_FILE, WAS_TEST_HASH, "edge.png"), hash[..], type[..], n[..]) == 200 && n[0] == SP_IMPORT_FILE && cast(string) type[0..<n[3]] == "image/png";
+  #assert splice_world_asset_ask(w, was_upload_ask(k[0].ask[..], 0, 40, WAS_TEST_HASH, "notes.txt"), hash[..], type[..], n[..]) == 422 && swa_words(w) == "notes.txt is not a file the editor takes. Drop a .glb, .png, .wav, .ogg or .mp3 file.";
+  #assert splice_world_asset_ask(w, was_upload_ask(k[0].ask[..], 0, 0, WAS_TEST_HASH, "none.png"), hash[..], type[..], n[..]) == 422 && swa_words(w) == "none.png is empty.";
+  ask = swt_ask(k[..], 0, "rock.glb", box);
+  #assert splice_world_asset_ask(w, ask, hash[0..<63], type[..], n[..]) == 500 && splice_world_asset_ask(w, ask, hash[..], type[0..<4], n[..]) == 500 && splice_world_asset_ask(w, ask, hash[..], type[..], n[0..<3]) == 500;
+  // the answer to an ask is the codec's
+  o: [400] u8;
+  an := splice_world_asset_answer(true, cast(string) hash[..], box.count, "https://storage.example/u?upload_id=1", o[..]);
+  r := was_uploaded_read(cast(string) o[0..<ifx an < 0 then 0 else an]);
+  #assert an > 0 && r.ok && r.how == WU_PUT && r.bytes == box.count && r.url == "https://storage.example/u?upload_id=1";
+  an = splice_world_asset_answer(false, cast(string) hash[..], box.count, "https://ignored.example/", o[..]);
+  #assert an > 0 && was_uploaded_read(cast(string) o[0..<an]).how == WU_KEPT && splice_world_asset_answer(true, cast(string) hash[..], box.count, "", o[..]) == -1;
+}
+
+#test "a world's server: an import makes the pack and answers the list; a refusal leaves nothing to keep" #steps 8000000000 #traversal 4000000000 {
+  k := [1] SwaTest.[SwaTest.{}]; w := k[0].w[..]; l: [1] WasList;
+  box := pit_box(3, 1, 0.5, 1, 0.25, k[0].glb[..]);
+  #assert splice_world_assets(w, "splice", "") > 0 && was_read(l[..], swa_answer(w)) && !l[0].packed && l[0].n == 0 && l[0].file == SP_IMPORT_FILE && l[0].budget == SP_IMPORT_PACK && l[0].licences == PIP_LICENCES;
+  #assert splice_world_assets(w, "splice", "VPK1") == -1 && splice_world_assets(w, "Splice", "") == -1;
+  st := splice_world_asset_import(w, "splice", "", "", "", swt_ask(k[..], 1, "My rock.glb", box), box);
+  #assert st == 200 && w[0].pack_n > 0 && w[0].kind == PIP_MESH && cast(string) w[0].name[0..<w[0].name_n] == "My_rock" && cast(string) w[0].file[0..<w[0].file_n] == "My rock.glb" && w[0].licence == 1;
+  pack := cast(string) w[0].out[0..<w[0].pack_n]; hb: [64] u8;
+  #assert was_read(l[..], swa_answer(w)) && l[0].packed && l[0].bytes == pack.count && l[0].n == 1 && l[0].did && !l[0].did_replaced && l[0].a[0].licence == 1 && l[0].a[0].file == box.count && l[0].a[0].hx == 500 && l[0].a[0].hz == 250 && l[0].a[0].top == 2000;
+  #assert asset_hex(asset_id(pack), hb[..]) && cast(string) hb[..] == cast(string) l[0].hash[..] && cast(string) hb[..] == cast(string) w[0].pack_hash[..];
+  // the pack is one the game reads, and the list of it alone is the import's without the `did`
+  g: [1] SpImports; #assert sp_imports_read(g[..], pack) && g[0].n == 1;
+  for c, i: pack { k[0].old[i] = c; }
+  old := cast(string) k[0].old[0..<pack.count];
+  #assert splice_world_assets(w, "splice", old) > 0 && was_read(l[..], swa_answer(w)) && l[0].n == 1 && !l[0].did;
+  // a sound beside it; a file that is not what its name says, and what is no ask, change nothing
+  wav := pit_wav(k[0].wav[..]);
+  st = splice_world_asset_import(w, "splice", old, "", "", swt_ask(k[..], 0, "door.wav", wav), wav);
+  #assert st == 200 && w[0].kind == PIP_SOUND && was_read(l[..], swa_answer(w)) && l[0].n == 2 && l[0].bytes == w[0].pack_n && w[0].pack_n > old.count;
+  st = splice_world_asset_import(w, "splice", old, "", "", swt_ask(k[..], 0, "door.glb", wav), wav);
+  #assert st == 422 && swa_words(w) == "door.glb is not a glTF binary file." && w[0].pack_n == 0 && w[0].answer_n == 0;
+  #assert splice_world_asset_import(w, "splice", old, "", "", "not an ask", wav) == 400 && w[0].pack_n == 0;
+  #assert splice_world_asset_import(w, "splice", "VPK1", "", "", swt_ask(k[..], 0, "door.wav", wav), wav) == 422 && swa_words(w) == "The world's pack is one the importer cannot add to.";
+}
+
+#test "a world's server: a mesh that replaces one the world has pieces of must fit where they stand" #steps 16000000000 #traversal 8000000000 {
+  k := [1] SwaTest.[SwaTest.{}]; w := k[0].w[..]; t := k[0].t[..]; n: [7] int; l: [1] WasList;
+  box := pit_box(3, 1, 0.5, 1, 0.25, k[0].glb[..]);
+  #assert splice_world_asset_import(w, "splice", "", "", "", swt_ask(k[..], 0, "rock.glb", box), box) == 200;
+  for i: 0..<w[0].pack_n { k[0].old[i] = w[0].out[i]; }
+  old := cast(string) k[0].old[0..<w[0].pack_n];
+  // its kind, and a rock placed by the scanner gate
+  e := splice_world_empty(t[0].doc[..]); empty := cast(string) t[0].doc[0..<e];
+  #assert splice_world_batch_packed(empty, "", old, spt_cell(k[0].body[..], 0, "pieces", 201, "*", SIT_ROW), true, t[0].next[..], k[0].tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]) == SPB_OK;
+  mine := cast(string) k[0].tb[0..<n[6]]; one := cast(string) t[0].next[0..<n[0]];
+  place := "{\"schema\":\"world.edit.v1\",\"rev\":1,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":201,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100}]}";
+  #assert splice_world_batch_packed(one, mine, old, place, true, t[0].third[..], k[0].own[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]) == SPB_OK;
+  two := cast(string) t[0].third[0..<n[0]];
+  // a shape as wide as the yard is refused in words, and nothing is answered to keep
+  wide := pit_box(3, 1, 25, 1, 25, k[0].glb[..]);
+  why: [240] u8; wn: [1] int;
+  #assert splice_world_mesh_fits(two, mine, old, "rock", 500, 250, 2000, why[..], wn[..]) && wn[0] == 0 && !splice_world_mesh_fits(two, mine, old, "rock", 25000, 25000, 2000, why[..], wn[..]);
+  st := splice_world_asset_import(w, "splice", old, two, mine, swt_ask(k[..], 0, "rock.glb", wide), wide);
+  #assert st == 422 && w[0].pack_n == 0 && pit_has(swa_words(w), "rock.glb does not fit where its kind already stands: ") && pit_has(swa_words(w), ". Move or remove that piece, then import it again.");
+  // the same file again, where a piece of it stands: its bounds are the row's, so it is taken
+  same := pit_box(3, 1, 0.5, 1, 0.25, k[0].glb[..]);
+  #assert splice_world_asset_import(w, "splice", old, two, mine, swt_ask(k[..], 1, "rock.glb", same), same) == 200 && was_read(l[..], swa_answer(w)) && l[0].did_replaced && l[0].a[0].licence == 1 && l[0].a[0].hx == 500;
+  // the same shape where no piece of it stands, and a thinner one where one does, are taken
+  wide = pit_box(3, 1, 25, 1, 25, k[0].glb[..]);
+  #assert splice_world_asset_import(w, "splice", old, one, mine, swt_ask(k[..], 0, "rock.glb", wide), wide) == 200 && was_read(l[..], swa_answer(w)) && l[0].did_replaced;
+  thin := pit_box(3, 1.5, 0.3, 1.5, 0.15, k[0].glb[..]);
+  #assert splice_world_asset_import(w, "splice", old, two, mine, swt_ask(k[..], 0, "rock.glb", thin), thin) == 200 && was_read(l[..], swa_answer(w)) && l[0].did_replaced && l[0].a[0].top == 3000;
+}

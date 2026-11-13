@@ -20,6 +20,16 @@
 //   world.asset.import.v1 LICENCE NAME
 //       the licence chosen for the file, by its number (- when none was chosen: the import is
 //       refused in words), and the file's name as it was dropped (1 to 120 printable bytes)
+//
+// Where a world's server takes a file by direct upload (the API), the file is named by its content
+// first (world.asset.upload.v1). The ask is two lines, and the same two lines say the upload is done:
+//   world.asset.upload.v1 LICENCE BYTES NAME
+//       the licence chosen (- none), the file's bytes and its name as it was dropped
+//   SHA256                            the file's SHA-256, 64 hex digits
+// The answer is one line:
+//   world.asset.upload.v1 put|kept SHA256 BYTES URL
+//       put: send exactly BYTES bytes to URL, then say it is done. kept: storage has the file
+//       already (URL is -), so only say it is done
 //   coax/bin/coax test metaverse-engine/editor/asset-wire.coax
 #load "pack-import-policy.coax";
 
@@ -140,6 +150,69 @@ was_import_read :: (body: string) -> WasImport {
   if was_field(line, 0) != WAS_IMPORT || name.count < 1 || name.count > WAS_FILE_NAME || name[0] == ' ' || name[name.count - 1] == ' ' || (lic != "-" && was_num(lic) < 0) { return WasImport.{}; }
   for c: name { if c < ' ' || c > '~' { return WasImport.{}; } }
   return WasImport.{ok = true, licence = ifx lic == "-" then -1 else was_num(lic), name = name, at = end + 1};
+}
+
+// ---- a file named by its content before it is sent (world.asset.upload.v1)
+
+WAS_UPLOAD :: "world.asset.upload.v1";
+WAS_URL :: 1900;        // bytes an upload's address is at most
+WU_PUT :: 1; WU_KEPT :: 2;
+WAS_HOW :: [3] string.["", "put", "kept"];
+// The first line of an ask into out ("": it does not fit). The file's SHA-256 and a line end follow it.
+was_upload_head :: (out: [] u8, licence: int, bytes: int, name: string) -> string {
+  nb: [WAS_FILE_NAME] u8; clean := was_file_name(name, nb[..]);
+  n := was_put(out, 0, WAS_UPLOAD); n = was_put(out, n, " ");
+  if licence < 0 { n = was_put(out, n, "-"); } else { n = was_put_int(out, n, licence); }
+  n = was_put(out, n, " "); n = was_put_int(out, n, bytes); n = was_put(out, n, " "); n = was_put(out, n, clean); n = was_put(out, n, "\n");
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+// An ask whole: its first line, then the hash's.
+was_upload_ask :: (out: [] u8, licence: int, bytes: int, hash: string, name: string) -> string {
+  head := was_upload_head(out, licence, bytes, name);
+  if head.count == 0 || !was_hex(hash) { return ""; }
+  n := was_put(out, head.count, hash); n = was_put(out, n, "\n");
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+WasUpload :: struct { ok: bool; licence: int = -1; bytes: int; name: string; hash: string; }
+was_upload_read :: (body: string) -> WasUpload {
+  end := -1;
+  for k: 0..<body.count { if k > WAS_UPLOAD.count + 32 + WAS_FILE_NAME { break; } if body[k] == '\n' { end = k; break; } }
+  if end < 0 || body.count != end + 66 || body[body.count - 1] != '\n' { return WasUpload.{}; }
+  line := body[0..<end]; name := was_rest(line, 3); lic := was_field(line, 1); bytes := was_num(was_field(line, 2)); hash := body[end + 1..<end + 65];
+  if was_field(line, 0) != WAS_UPLOAD || name.count < 1 || name.count > WAS_FILE_NAME || name[0] == ' ' || name[name.count - 1] == ' ' || (lic != "-" && was_num(lic) < 0) || bytes < 0 || !was_hex(hash) { return WasUpload.{}; }
+  for c: name { if c < ' ' || c > '~' { return WasUpload.{}; } }
+  return WasUpload.{ok = true, licence = ifx lic == "-" then -1 else was_num(lic), bytes = bytes, name = name, hash = hash};
+}
+// An address a file is sent to: http or https, printable, no space, 1900 bytes at most.
+was_url :: (s: string) -> bool {
+  if s.count > WAS_URL || !((s.count > 8 && s[0..<8] == "https://") || (s.count > 7 && s[0..<7] == "http://")) { return false; }
+  for c: s { if c <= ' ' || c > '~' { return false; } }
+  return true;
+}
+// The answer to an ask into out ("": the facts are not an answer's, or it does not fit).
+was_upload_answer :: (out: [] u8, how: int, hash: string, bytes: int, url: string) -> string {
+  if (how != WU_PUT && how != WU_KEPT) || !was_hex(hash) || bytes < 1 || (how == WU_PUT) != was_url(url) || (how == WU_KEPT && url.count != 0) { return ""; }
+  n := was_put(out, 0, WAS_UPLOAD); n = was_put(out, n, " "); n = was_put(out, n, WAS_HOW[how]); n = was_put(out, n, " "); n = was_put(out, n, hash);
+  n = was_put(out, n, " "); n = was_put_int(out, n, bytes); n = was_put(out, n, " "); n = was_put(out, n, ifx how == WU_PUT then url else "-"); n = was_put(out, n, "\n");
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+WasUploaded :: struct { ok: bool; how: int; hash: string; bytes: int; url: string; }
+was_uploaded_read :: (text: string) -> WasUploaded {
+  if text.count < 2 || text.count > WAS_URL + 200 || text[text.count - 1] != '\n' { return WasUploaded.{}; }
+  line := text[0..<text.count - 1];
+  for c: line { if c == '\n' { return WasUploaded.{}; } }
+  word := was_field(line, 1); how := ifx word == "put" then WU_PUT else ifx word == "kept" then WU_KEPT else 0;
+  hash := was_field(line, 2); bytes := was_num(was_field(line, 3)); url := was_field(line, 4);
+  if was_field(line, 0) != WAS_UPLOAD || was_fields(line) != 5 || how == 0 || !was_hex(hash) || bytes < 1 || (how == WU_PUT && !was_url(url)) || (how == WU_KEPT && url != "-") { return WasUploaded.{}; }
+  return WasUploaded.{ok = true, how = how, hash = hash, bytes = bytes, url = ifx how == WU_PUT then url else ""};
+}
+// The content type a file is stored under, by what its name says it is ("": not a file the editor takes).
+was_content_type :: (name: string) -> string {
+  kind := pip_kind(name);
+  if kind == PIP_MESH { return "model/gltf-binary"; }
+  if kind == PIP_TEXTURE { return "image/png"; }
+  if kind != PIP_SOUND { return ""; }
+  return ifx pip_ends(name, ".wav") then "audio/wav" else ifx pip_ends(name, ".ogg") then "audio/ogg" else "audio/mpeg";
 }
 
 // ---- the writer: a list is begun, then its licences, its assets and at most one `did`
@@ -292,4 +365,45 @@ was_test_swap :: (text: string, from: string, to: string, out: [] u8) -> string 
   long: [300] u8; n := was_put(long[..], 0, "world.asset.import.v1 0 "); for k: 0..<121 { long[n] = 'a'; n += 1; } long[n] = '\n'; n += 1;
   #assert !was_import_read(cast(string) long[0..<n]).ok;
   nb: [WAS_FILE_NAME] u8; #assert was_file_name(cast(string) long[24..<n], nb[..]).count == WAS_FILE_NAME && was_file_name("  ", nb[..]) == "file";
+}
+#test "world.asset.upload.v1: an ask names the file by its content, and the answer says where it goes or that it is kept" {
+  o: [WAS_URL + 200] u8; h := WAS_TEST_HASH;
+  #assert was_upload_head(o[..], 1, 2032, "My Rock (1).glb") == "world.asset.upload.v1 1 2032 My Rock (1).glb\n" && was_upload_head(o[..], -1, 0, "") == "world.asset.upload.v1 - 0 file\n" && was_upload_head(o[0..<30], 0, 1, "a.png") == "";
+  ask := was_upload_ask(o[..], 2, 2032, h, "My Rock (1).glb");
+  ab: [400] u8; n := 0; for c: ask { ab[n] = c; n += 1; }
+  #assert n == 45 + 65 && ask[0..<45] == "world.asset.upload.v1 2 2032 My Rock (1).glb\n" && ask[45..<109] == h && was_upload_ask(o[..], 2, 2032, "abc", "a.glb") == "" && was_upload_ask(o[0..<60], 2, 2032, h, "a.glb") == "";
+  r := was_upload_read(cast(string) ab[0..<n]);
+  #assert r.ok && r.licence == 2 && r.bytes == 2032 && r.name == "My Rock (1).glb" && r.hash == h;
+  none := was_upload_read(was_upload_ask(o[..], -1, 7, h, "a.png"));
+  #assert none.ok && none.licence == -1 && none.bytes == 7 && none.name == "a.png";
+  // what is no ask: a line missing, a hash that is not one, bytes after it, a name with a space at an end, another shape
+  bad: [400] u8;
+  for cut: [4] int.[0, 44, 45, n - 1] { #assert !was_upload_read(cast(string) ab[0..<cut]).ok; }
+  for k: 0..<n { bad[k] = ab[k]; } bad[n] = 'x'; #assert !was_upload_read(cast(string) bad[0..<n + 1]).ok;
+  bad[50] = 'G'; #assert !was_upload_read(cast(string) bad[0..<n]).ok; bad[50] = ab[50];
+  bad[20] = '3'; #assert !was_upload_read(cast(string) bad[0..<n]).ok; bad[20] = ab[20];
+  bad[22] = 'x'; #assert !was_upload_read(cast(string) bad[0..<n]).ok; bad[22] = ab[22];
+  bad[24] = '-'; #assert !was_upload_read(cast(string) bad[0..<n]).ok; bad[24] = ab[24];
+  bad[43] = ' '; #assert !was_upload_read(cast(string) bad[0..<n]).ok; bad[43] = ab[43];
+  #assert was_upload_read(cast(string) bad[0..<n]).ok && !was_upload_read("world.asset.import.v1 0 a.png\n").ok;
+  // the answer
+  u := "https://storage.example/upload/o?upload_id=AbC-1_2";
+  put := was_upload_answer(o[..], WU_PUT, h, 2032, u);
+  pb: [400] u8; pn := 0; for c: put { pb[pn] = c; pn += 1; }
+  g := was_uploaded_read(cast(string) pb[0..<pn]);
+  #assert pn == 22 + 4 + 65 + 5 + u.count + 1 && g.ok && g.how == WU_PUT && g.hash == h && g.bytes == 2032 && g.url == u;
+  kept := was_upload_answer(o[..], WU_KEPT, h, 2032, "");
+  #assert kept.count == 22 + 5 + 65 + 5 + 2 && kept[kept.count - 2..<kept.count] == "-\n";
+  kb: [200] u8; kn := 0; for c: kept { kb[kn] = c; kn += 1; }
+  k := was_uploaded_read(cast(string) kb[0..<kn]);
+  #assert k.ok && k.how == WU_KEPT && k.url == "" && k.bytes == 2032;
+  #assert was_upload_answer(o[..], 0, h, 1, u) == "" && was_upload_answer(o[..], 3, h, 1, u) == "" && was_upload_answer(o[..], WU_PUT, "x", 1, u) == "" && was_upload_answer(o[..], WU_PUT, h, 0, u) == "" && was_upload_answer(o[..], WU_PUT, h, 1, "") == "";
+  #assert was_upload_answer(o[..], WU_PUT, h, 1, "/local") == "" && was_upload_answer(o[..], WU_KEPT, h, 1, u) == "" && was_upload_answer(o[0..<90], WU_PUT, h, 1, u) == "";
+  for cut: [3] int.[0, 1, pn - 1] { #assert !was_uploaded_read(cast(string) pb[0..<cut]).ok; }
+  pb[22] = 'g'; #assert !was_uploaded_read(cast(string) pb[0..<pn]).ok; pb[22] = 'p';
+  pb[pn - 5] = ' '; #assert !was_uploaded_read(cast(string) pb[0..<pn]).ok; pb[pn - 5] = put[pn - 5];
+  pb[pn - 5] = '\n'; #assert !was_uploaded_read(cast(string) pb[0..<pn]).ok; pb[pn - 5] = put[pn - 5];
+  kb[kn - 2] = 'x'; #assert !was_uploaded_read(cast(string) kb[0..<kn]).ok;
+  #assert was_url("http://127.0.0.1:9/x") && was_url("https://a.b/c") && !was_url("https://") && !was_url("http://") && !was_url("ftp://a.b/c") && !was_url("https://a b") && !was_url("");
+  #assert was_content_type("a.glb") == "model/gltf-binary" && was_content_type("A.PNG") == "image/png" && was_content_type("a.wav") == "audio/wav" && was_content_type("a.ogg") == "audio/ogg" && was_content_type("a.mp3") == "audio/mpeg" && was_content_type("a.txt") == "";
 }

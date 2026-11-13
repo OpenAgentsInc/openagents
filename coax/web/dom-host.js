@@ -224,6 +224,13 @@ function streamOpen(urlAt, urlLen, bodyAt, bodyLen) {
 // pressed). The answer comes back whole as event 11, its status in `slot` (0: no answer), cut to the inbox's size. While
 // the page has a drop target, a file dropped anywhere on the window goes to it when it is the only one, so a miss
 // never opens the file in place of the page.
+// Where the server takes a file by direct upload, the module asks for it in steps, one at a time, each answered as
+// event 11 (dom_file_step):
+//   1  the file is named by its content: a POST of the module's first bytes, then the file's SHA-256 in hex and a
+//      line end. The file stays here.
+//   2  the file alone is PUT to the address the server answered, which may be another origin's (an upload it opened
+//      in storage): no credentials go with it, and no content type of the page's choosing. The file stays here.
+//   3  a POST of the module's bytes alone, and the file is let go.
 let offered = null, picker = null, over = null;
 function dropOn(e) {
   if (!e.dataTransfer || ![...e.dataTransfer.types].includes("Files")) return undefined;
@@ -258,12 +265,38 @@ function fileSend(urlAt, urlLen, headAt, headLen) {
     ask(); own.after?.();
   })();
 }
+function fileStep(urlAt, urlLen, headAt, headLen, step) {
+  const url = text.decode(new Uint8Array(memory.buffer, urlAt, urlLen));
+  const head = new Uint8Array(memory.buffer, headAt, headLen).slice(), file = offered;
+  const here = url.startsWith("/") && !url.startsWith("//");
+  if (step === 3) offered = null;
+  (async () => {
+    let status = 0, n = 0;
+    try {
+      let r;
+      if (step === 2) {
+        if (!file || !/^https?:\/\//.test(url)) throw new Error("no file or no address");
+        r = await fetch(url, { method: "PUT", body: file.slice(0, file.size, ""), credentials: "omit" });
+      } else {
+        if (!here || (step === 1 && !file)) throw new Error("no file or no address");
+        const parts = [head];
+        if (step === 1) parts.push([...new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()))].map((b) => b.toString(16).padStart(2, "0")).join("") + "\n");
+        r = await fetch(url, { method: "POST", body: new Blob(parts), credentials: "same-origin", headers: { "Content-Type": "application/octet-stream" } });
+      }
+      const body = new Uint8Array(await r.arrayBuffer());
+      status = r.status; n = Math.min(body.length, x.dom_inbox_cap());
+      new Uint8Array(memory.buffer, x.dom_inbox(state), n).set(body.subarray(0, n));
+    } catch { status = 0; n = 0; }
+    x.dom_event(state, 11, status, n);
+    ask(); own.after?.();
+  })();
+}
 
 async function start() {
   const response = await fetch(`/build/${app}.wasm`, { cache: location.hostname === "127.0.0.1" || location.hostname === "localhost" ? "no-store" : "default" });
   const module = await WebAssembly.compile(await response.arrayBuffer());
   memory = new WebAssembly.Memory({ initial: 256, maximum: 1024 });
-  const imports = { env: { memory, dom_stream: streamOpen, dom_stream_stop: streamStop, dom_file_send: fileSend } };
+  const imports = { env: { memory, dom_stream: streamOpen, dom_stream_stop: streamStop, dom_file_send: fileSend, dom_file_step: fileStep } };
   for (const imp of WebAssembly.Module.imports(module)) {
     if (imp.kind !== "function") continue;
     (imports[imp.module] ||= {})[imp.name] ||= imp.name === "fd_write"

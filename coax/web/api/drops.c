@@ -1254,3 +1254,12 @@ bool drops_open_upload(const char *object, const char *type, const char *bytes, 
 }
 void drops_inspect(const char *object, long long *size, char **head_hex) { char md5[64]; inspect(object, size, md5, sizeof md5, head_hex); }
 void drops_delete_object(const char *object) { delete_object(object); }
+// A kept object's bytes from the private bucket (worlds.c: a file an import named), malloc'd, its
+// length in *n; NULL when it is not there or holds more than cap bytes.
+unsigned char *drops_fetch(const char *object, size_t cap, size_t *n) {
+  char tok[4096]; bytes b = {0};
+  *n = 0;
+  if (!token(tok, sizeof tok) || !fetch_object(tok, object, &b) || !b.p || b.n > cap) { free(b.p); return NULL; }
+  *n = b.n;
+  return b.p;
+}

@@ -3904,6 +3904,14 @@ function editorRoom() {
   send(525, room);
 }
 addEventListener("resize", () => editorRoom());
+// The shell's word that the world's import pack is the one of this SHA-256 (526, "URL HASH"; #13420). A deployed page
+// has no dev server to tell its tabs, so the pack this page loaded from that address is fetched again by the hash and
+// swapped in (liveAsset: the copy from before stays if the new one is refused).
+function editorPack(line) {
+  const [url, hash] = line.split(" ");
+  if (!url?.startsWith("/api/worlds/") || !/^[0-9a-f]{64}$/.test(hash || "")) return;
+  liveAsset(url, hash).then((did) => { if (did) swapped("asset"); }).catch((e) => { say(e.message, true); });
+}
 function editorActs() {
   const shell = globalThis.coaxialDoms?.[EDITOR];
   if (!shell) return;
@@ -3912,6 +3920,7 @@ function editorActs() {
     const body = new Uint8Array(shell.memory().buffer, sx.dom_act(st), sx.dom_act_len(st)).slice();
     sx.dom_act_done(st);
     if (kind === 524) { agentWorld = body; agentTell(); }   // for the conversation in the foot, not the page
+    else if (kind === 526) editorPack(new TextDecoder().decode(body));   // for this host: the world's pack by its hash
     else send(kind, body);
   }
 }
