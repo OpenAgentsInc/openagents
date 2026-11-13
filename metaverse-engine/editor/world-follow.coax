@@ -23,6 +23,7 @@ WF_POLL_LIVE :: 5.0f32;   // and on the live lane, where a publish is the only e
 WF_IDLE :: 30.0f32;       // seconds between looks at a world with nothing published
 WF_RETRY :: 2.0f32;       // seconds before a request that got no answer is asked again
 WF_URL :: 200;
+WF_LATE :: 4;          // requests given up on whose answers the page still takes (the host has 8 at most)
 WF_HTTP_POST :: 1; WF_HTTP_WANTED :: 4;   // coaxial_http's flags (coax/web/http-requests.js)
 WFQ_NONE :: 0; WFQ_DOC :: 1; WFQ_EVENTS :: 2; WFQ_POST :: 3;
 WFQ_TABLES :: 4;     // the lane's content tables (GET .../content), for a realm that reads the world's own (#13419)
@@ -39,6 +40,7 @@ WorldFollow :: struct {
   pins: WorldPins;
   id: [WE_WORLD] u8; id_n: int;
   want: int; flying: int; host_id: int = -1;
+  late: [WF_LATE] int; late_id: [WF_LATE] int; late_n: int;   // requests given up on (what each asked, the host's id): their answers are still taken
   url: [WF_URL] u8; url_n: int;
   body: [WE_BATCH_BODY] u8; body_n: int;       // a batch waiting to be sent, or in flight
   since: f32; wait: f32;
@@ -88,7 +90,14 @@ wf_step :: (f: [] WorldFollow, dt: f32) {
   if f[0].flying != WFQ_NONE {
     f[0].wait += dt;
     if f[0].wait < WF_RETRY * 5 { return; }
-    f[0].flying = WFQ_NONE; f[0].host_id = -1;   // the answer never came: ask again
+    // the answer hasn't come: ask again, and still take this one's if it comes first (a slow server, or a
+    // page's clock that runs ahead of the network's: coax drive's agent clock, #13475)
+    if f[0].late_n == WF_LATE {   // the oldest goes
+      for k: 1..<WF_LATE { f[0].late[k - 1] = f[0].late[k]; f[0].late_id[k - 1] = f[0].late_id[k]; }
+      f[0].late_n -= 1;
+    }
+    f[0].late[f[0].late_n] = f[0].flying; f[0].late_id[f[0].late_n] = f[0].host_id; f[0].late_n += 1;
+    f[0].flying = WFQ_NONE; f[0].host_id = -1;
   }
   if f[0].want != WFQ_NONE { return; }
   if f[0].body_n > 0 && f[0].lane == WL_DEV { wf_put_url(f, "", -1, false); f[0].want = WFQ_POST; return; }
@@ -121,6 +130,7 @@ wf_sent :: (f: [] WorldFollow, host_id: int) {
 // host dropped every request the old engine had out, so the one out now gets no answer. It is
 // asked again at once, not after WF_RETRY * 5 seconds; an events request is asked as nudged.
 wf_engine_started :: (f: [] WorldFollow) {
+  f[0].late_n = 0;
   if f[0].flying == WFQ_NONE { return; }
   if f[0].flying == WFQ_EVENTS { f[0].nudged = true; }
   f[0].flying = WFQ_NONE; f[0].host_id = -1; f[0].wait = 0;
@@ -129,9 +139,24 @@ wf_engine_started :: (f: [] WorldFollow) {
 // and its body. The request is no longer out.
 WfAnswer :: struct { what: int; status: int; body: string; }
 wf_answer :: (f: [] WorldFollow, host_id: int, text: string) -> WfAnswer {
-  if f[0].flying == WFQ_NONE || host_id != f[0].host_id { return WfAnswer.{}; }
-  a := WfAnswer.{what = f[0].flying};
-  f[0].flying = WFQ_NONE; f[0].host_id = -1;
+  a := WfAnswer.{};
+  late := -1;
+  for k: 0..<f[0].late_n { if f[0].late_id[k] == host_id { late = k; } }
+  if f[0].flying != WFQ_NONE && host_id == f[0].host_id {
+    a.what = f[0].flying;
+  } else if late >= 0 && (f[0].flying == WFQ_NONE || f[0].flying == f[0].late[late]) {
+    // a request given up on answered after all: it answers what its asking again asks, whose own answer is
+    // then not taken; a POST asked again is the same batch
+    a.what = f[0].late[late];
+    if f[0].want == a.what { f[0].want = WFQ_NONE; }   // asked again but not sent yet: not wanted now
+  } else {
+    if late >= 0 {   // answered, and not taken: the host may give its id to another request now
+      for k: late + 1..<f[0].late_n { f[0].late[k - 1] = f[0].late[k]; f[0].late_id[k - 1] = f[0].late_id[k]; }
+      f[0].late_n -= 1;
+    }
+    return a;
+  }
+  f[0].flying = WFQ_NONE; f[0].host_id = -1; f[0].late_n = 0;
   at := 0;
   while at < text.count && text[at] >= '0' && text[at] <= '9' && at < 4 { a.status = a.status * 10 + cast(int) (text[at] - '0'); at += 1; }
   if at >= text.count || text[at] != '\n' { a.status = 0; return a; }
@@ -198,6 +223,45 @@ wf_line :: (body: string, k: int) -> string { return ct_part(body, '\n', k); }
   // an answer with no status line is no answer
   wf_sent(f[..], 2); a = wf_answer(f[..], 2, "garbage"); #assert a.what == WFQ_EVENTS && a.status == 0 && a.body == "";
 }
+#test "world follow: a request given up on is asked again, and its answer is still taken when it comes first (#13475)" {
+  f := [1] WorldFollow.[WorldFollow.{}]; pins := WorldPins.{engine = 1, rules = 1, content = 2, wire = 1};
+  #assert wf_open(f[..], "splice", WL_DEV, pins);
+  wf_step(f[..], 0.016); wf_sent(f[..], 3);
+  // ten seconds with no answer: the document is asked for again
+  wf_step(f[..], WF_RETRY * 5); wf_step(f[..], 0.016);
+  #assert wf_wants(f[..]) && wf_url(f[..]) == "/api/worlds/splice?lane=dev";
+  wf_sent(f[..], 5); #assert f[0].flying == WFQ_DOC && f[0].sent == 2;
+  // the first asking answers: taken as the document; the second's answer, after it, is not
+  a := wf_answer(f[..], 3, "200\nDOC");
+  #assert a.what == WFQ_DOC && a.status == 200 && a.body == "DOC" && f[0].flying == WFQ_NONE && f[0].late_n == 0;
+  #assert wf_answer(f[..], 5, "200\nDOC").what == WFQ_NONE;
+  // the second asking answers first: the first's answer, after it, is not taken
+  #assert wf_open(f[..], "splice", WL_DEV, pins);
+  wf_step(f[..], 0.016); wf_sent(f[..], 1);
+  wf_step(f[..], WF_RETRY * 5); wf_step(f[..], 0.016); wf_sent(f[..], 2);
+  #assert wf_answer(f[..], 2, "200\nDOC").what == WFQ_DOC && wf_answer(f[..], 1, "200\nDOC").what == WFQ_NONE;
+  // the page went on to ask for something else (a batch goes first): a late answer to what it no longer asks is not taken
+  #assert wf_open(f[..], "splice", WL_DEV, pins);
+  f[0].refetch = false; f[0].status = WFS_FOLLOWING; f[0].since = WF_POLL;
+  wf_step(f[..], 0.016); #assert f[0].want == WFQ_EVENTS; wf_sent(f[..], 1);
+  #assert wf_post(f[..], "BATCH");
+  wf_step(f[..], WF_RETRY * 5);
+  #assert f[0].late_n == 1 && f[0].late[0] == WFQ_EVENTS && f[0].late_id[0] == 1 && f[0].want == WFQ_POST;
+  wf_sent(f[..], 4);
+  #assert wf_answer(f[..], 1, "200\n").what == WFQ_NONE && f[0].flying == WFQ_POST && f[0].late_n == 0;
+  #assert wf_answer(f[..], 4, "200\n").what == WFQ_POST;
+  // a new engine dropped every request: no late answer is waited for
+  #assert wf_open(f[..], "splice", WL_DEV, pins);
+  wf_step(f[..], 0.016); wf_sent(f[..], 6);
+  wf_step(f[..], WF_RETRY * 5); #assert f[0].late_n == 1 && f[0].late_id[0] == 6;
+  wf_engine_started(f[..]); #assert f[0].late_n == 0;
+  // a server slower than two givings up: the first asking's answer is still taken, and the last four are kept
+  #assert wf_open(f[..], "splice", WL_DEV, pins);
+  for k: 0..<6 { wf_step(f[..], 0.016); #assert wf_wants(f[..]); wf_sent(f[..], k); wf_step(f[..], WF_RETRY * 5); }
+  #assert f[0].late_n == WF_LATE && f[0].late_id[0] == 2 && f[0].late_id[3] == 5;
+  #assert wf_answer(f[..], 1, "200\nDOC").what == WFQ_NONE && wf_answer(f[..], 2, "200\nDOC").what == WFQ_DOC;
+  #assert f[0].late_n == 0 && !wf_wants(f[..]);
+}
 #test "world follow: out of order sends the page back to the document; a request that never answers is asked again" {
   f := [1] WorldFollow.[WorldFollow.{}]; pins := WorldPins.{engine = 1, rules = 1, content = 2, wire = 1};
   #assert wf_open(f[..], "splice", WL_LIVE, pins);
@@ -217,7 +281,9 @@ wf_line :: (body: string, k: int) -> string { return ct_part(body, '\n', k); }
   wf_sent(f[..], 5);
   for i: 0..<9 { wf_step(f[..], 1); #assert !wf_wants(f[..]); }
   wf_step(f[..], 1.5); #assert wf_wants(f[..]) && f[0].flying == WFQ_NONE;
-  #assert wf_answer(f[..], 5, "200\n{}").what == WFQ_NONE;   // the old answer, should it come, is nobody's
+  // the old answer, should it come before the second asking goes out, is the document's (#13475)
+  #assert wf_answer(f[..], 5, "200\n{}").what == WFQ_DOC && !wf_wants(f[..]);
+  wf_reopen(f[..]); wf_step(f[..], 0.016); #assert wf_wants(f[..]) && f[0].want == WFQ_DOC;
   // a new engine on this state: the request the old one had out is asked again in the next frame
   wf_sent(f[..], 7); wf_step(f[..], 0.016); #assert !wf_wants(f[..]) && f[0].flying == WFQ_DOC;
   wf_engine_started(f[..]); #assert f[0].flying == WFQ_NONE && f[0].host_id == -1;
