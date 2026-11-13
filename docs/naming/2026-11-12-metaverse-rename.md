@@ -40,6 +40,12 @@ Done and on main:
 | `docs/verse/` → `docs/metaverse/` | d8a45b1ddb |
 | SQL-served page text (migration 0178) | 173977e2b1 |
 | `/metaverse` routes, redirects and the pack API alias | e0244d4055 |
+| `/forge` and `/forge/*` → `/worlds/new` | 4a656659f4 |
+| Code symbols (`aethyr_` → `engine_`, `verse_` → `metaverse_`, `aethyrforge_` → `editor_`, and the CamelCase and upper-case forms) | ed22cd4c22 |
+| Module names (`aethyr.X` → `metaverse.engine.X`, `verse.X` → `metaverse.X`) | 68aefb0121 |
+| `assets/verse/` → `assets/metaverse/`, `components/skin/verse.coax` → `metaverse.coax` | 7a1e9b818f |
+| The pack API's settings read `OA_METAVERSE_PACKS*` first | 0cf642efdb |
+| A project realm's path tag says `metaverse/SLUG/` (migration 0180) | 91732e47b6 |
 
 `verse/everglade/` and `verse/everglade2/` moved into `everglade/` under
 #13269 and #13268 before the `verse/` move, so this rename did not move them.
@@ -49,34 +55,16 @@ and keeps its spelling.
 
 Not done yet:
 
-- **Code symbols and module names** (the "Code symbols" section). A scripted
-  trial (1,090 identifiers, about 9,800 uses in about 500 files, the 28
-  committed shaders written again) passed the report checks, the web build
-  against every budget and suite parts 1 to 6 of 8 on build hosts. It is
-  not landed, for two reasons found in the trial:
-  - **Environment variables.** `VERSE_PACK_DIR`, `VERSE_GCS_PORT`,
-    `AETHYRFORGE_SCENE_TOOL` and other upper-case names are read from the
-    environment that deploy tooling and installed machines set. They are
-    deployment identifiers and belong in the compatibility table: each
-    needs the new name read first and the old one as a fallback, not a
-    blind rename.
-  - **Names generated from a project's slug.** `VERSE_WORK_ITEMS` and its
-    siblings are written by `openagents project bake` from the slug
-    `verse`, so `project-checks` and `project-frames` fail when only their
-    uses are renamed. They change when the project's slug does.
-  The names the compiler emits (`coax_p_…`, `coax_t_…`, `coax_v_t_…`,
-  `coax_default_t_…`) must be renamed with their sources; hand-written C
-  faces and `realms.ts` name them.
-- **Page source file names**: `apps/openagents-web/verse.coax`,
-  `verse-face.c`, `verse.wgsl`, `gpu/verse.*`, `carriers/verse.coax`,
-  `assets/verse/`, `os/verse-*.coax`, `components/skin/verse.coax`,
-  `psionic/.../motion-verse*`. Each is a module or skin name that pages,
-  budgets and saved settings key on, so they change with the symbols.
-- **`~/.openagents/` folders, the app bundle name and the NixOS units.**
-  See the compatibility table.
-- **The project's source path in the database.** `schema.sql` builds a
-  project's path as `'verse/' || slug`. The folders are now under
-  `metaverse/`; a migration changes the stored prefix.
+- **The landing page's module name.** The page at `/metaverse` is still the
+  module `verse`: `apps/openagents-web/verse.coax`, `verse-face.c`,
+  `verse.wgsl`, `gpu/verse.*`, `carriers/verse.coax`, `build/verse.wasm` and
+  `data-app="verse"`. The module name is the page's name in analytics rows,
+  budgets, goldens and the served file names, so it is in the compatibility
+  table and changes with an analytics mapping.
+- **Metaverse OS program names**: `os/verse-*.coax` and the units and
+  packages `os/nix/` builds from them. They change with the next OS image.
+- **Environment variables other than the pack API's.** See the table.
+- **`~/.openagents/` folders and the app bundle name.** See the table.
 - **Deploys.** Nothing in this rename is deployed. The order is in Routes.
 
 ## What each name means
@@ -182,12 +170,21 @@ scripted commit per prefix:
 | Old | New | Examples |
 | --- | --- | --- |
 | `aethyr_`, `AETHYR_`, `Aethyr` + capital | `engine_`, `ENGINE_`, `Engine` + capital | `aethyr_voice_step`, `AETHYR_RENDER_TYPED`, `AethyrHost` |
-| `#module "aethyr.…"` | `#module "engine.…"` | `aethyr.render.passes` |
+| `#module "aethyr.…"` | `#module "metaverse.engine.…"` | `aethyr.render.passes` → `metaverse.engine.render.passes` |
+| `#module "verse.…"` | `#module "metaverse.…"` | `verse.hud` → `metaverse.hud` |
 | `verse_`, `VERSE_`, `Verse` + capital | `metaverse_`, `METAVERSE_`, `Metaverse` + capital | `verse_style_luma`, `VERSE_PACK_DIR`, `VerseState` |
-| `aethyrforge_`, `AETHYRFORGE_`, `forge_` in `aethyr/forge/`, `#module "aethyr.forge.…"` | `editor_`, `EDITOR_`, `#module "engine.editor.…"` | `AETHYRFORGE_SCENE_TOOL`, `forge_save_body` |
+| `aethyrforge_`, `AETHYRFORGE_`, `forge_` in `aethyr/forge/`, `#module "aethyr.forge.…"` | `editor_`, `EDITOR_`, `#module "metaverse.engine.editor.…"` | `AETHYRFORGE_SCENE_TOOL`, `forge_save_body` |
 
 `engine` is already the context's name in `contexts.txt`, so `engine_` is
 the engine's symbol prefix. It is a prefix, not a product name.
+
+The rename is whole identifiers by script, with the names the compiler emits
+from them (`coax_p_…`, `coax_t_…`, `coax_v_t_…`, `coax_default_t_…`). It
+keeps: identifiers that SQL migrations or `proto/` name; every name the
+Unreal bridge under `metaverse-engine/export/` calls; upper-case names that
+are quoted or that a script, service or data file spells out (environment
+variables); and the names `openagents project bake` writes from the slug
+`verse`.
 
 Unreal exporter types (`AethyrProbe`, `AethyrBridge`, `AethyrGameMode` and
 the rest under `aethyr/export/` and `docs/unreal/`) are Unreal class and
@@ -217,6 +214,13 @@ condition that retires it.
 | `/api/playtest/…` | API | Not a Verse name; unchanged | |
 | `/forge` | Published links | A stable public link | Never removed: it stays as a permanent redirect to the realm creation page. No UI text says "Forge" |
 | `/realms/<slug>` | Published links | Already the right name; unchanged | |
+| `OA_VERSE_PACKS`, `OA_VERSE_PACKS_SECRET`, `OA_VERSE_PACKS_GCS`, `OA_VERSE_PACKS_BUCKET`, `OA_VERSE_PACK_PER_HOUR`, `OA_VERSE_PACK_DAILY_GB` | The API's environment | A deployment may set one | The API reads `OA_METAVERSE_PACKS*` first and the old name after (0cf642efdb). Production sets none of them today. The old names go one release after the API deploy that has the new ones, once no service's environment names one |
+| `VERSE_PACK_DIR`, `VERSE_GCS_PORT`, `VERSE_PACK_CAPTURE` | The API suite | Scripts outside the repository may set them | `test.sh` sets `METAVERSE_…`; the checks read the new name first. Remove the fallback with the row above |
+| `AETHYRFORGE_ENGINE`, `AETHYRFORGE_WORKSPACE`, `AETHYRFORGE_SCENE_TOOL`, `AETHYRFORGE_SCENE_SESSION`, `AETHYRFORGE_LAB_SOURCE`, `AETHYRFORGE_LAB_SELECTION_FILE` | The desktop app, set by its users and launchers | Installed machines set them | The desktop app's next release reads `METAVERSE_ENGINE_…` first; the old names go two releases later, with `~/.openagents/aethyrforge/` |
+| `VERSE_RUN`, `VERSE_AUTOMATION`, `VERSE_HANDS_LOG`, `VERSE_KMS_*`, `VERSE_NATIVE_*`, `VERSE_WAYLAND_DISPLAY`, `VERSE_GPU_*`, `VERSE_DISPLAY_*`, `VERSE_WINDOW_BUILD_ONLY`, `VERSE_ANALYTICS_VIEWERS`, `VERSE_DATA` | Metaverse OS units, the native and KMS hosts, their build scripts | The NixOS modules and running machines set them | The next OS image sets `METAVERSE_…` and the programs read the new name first; the old names go one image later |
+| `AETHYR_SCRIPT`, `AETHYR_GAME`, `AETHYR_BUNDLE`, `AETHYR_DEMO`, `AETHYR_REPORT`, `AETHYR_SHOTS`, `AETHYR_PAGE_LOG`, `AETHYR_PAGE_TIMES`, `AETHYR_MESH_CULL`, `AETHYR_AXES_*`, `AETHYR_GEOMETRY_IDENTITY_LOG`, `AETHYR_REFERENCE_OUT`, `AETHYR_FRESH_*`, `AETHYR_BUILD_*` | Engine tools, the Unreal exporter and their check harnesses | Set by people's shells and by the harnesses | Each changes to `ENGINE_…` with a fallback when its tool is next changed; the harness-only ones (`AETHYR_FRESH_*`, `AETHYR_BUILD_*`) can change in one commit with their harness |
+| `VERSE_WORK_ITEMS` and the other `VERSE_WORK_*` names | `apps/openagents-web/projects/baked.coax`, written by `openagents project bake` from the slug `verse` | Generated from the project's slug | The project is republished under the slug `metaverse` |
+| The page module `verse` (`verse.coax`, `build/verse.wasm`, `data-app="verse"`), the skin key `verse` | Analytics rows, budgets, goldens, served file names, saved skin settings | Stored and published identities | An analytics mapping from `verse` to `metaverse` lands with the module rename; the skin key with a settings version |
 | `~/.openagents/aethyrforge/`, `~/.openagents/bin/aethyrforge-scene`, `~/.openagents/verse/` | Installed machines | Users' workspaces, setup state and private builds | The desktop app reads `~/.openagents/metaverse-engine/` first and moves an old folder there on first start; the old path is dropped two releases later. `aethyrforge-scene` stays as a link to `metaverse-scene` for the same two releases |
 | `Aethyrforge.app`, bundle IDs `com.openagents.aethyrforge`, `com.openagents.aethyrforge.experimental`, `com.openagents.aethyr`, `com.openagents.verse` | Installed apps, macOS permissions (microphone), signing | A new bundle ID is a new app to macOS and loses granted permissions | The app's display name changes to "OpenAgents Metaverse Engine" now. The bundle ID changes only with a signed release that moves the user's data and permissions |
 | `openagents-aethyrforge.service`, `verse.service`, the `services.verse*` NixOS options | Deployed NixOS machines | Unit names that running machines and deploy tooling address | The next OS image build renames the units and keeps the old names as aliases for one image |
