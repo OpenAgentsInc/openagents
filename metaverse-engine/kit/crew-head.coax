@@ -249,7 +249,7 @@ ch_hair_write :: (buf: [] u32, p: [] Pen, f: Frame, m: CrewForm, l: CrewLook, ob
     for i: 0..<n {
       a := cast(f32) i * 0.7 + 0.2;
       d := fd(h, cos(a) * 0.8, 0.55 + 0.25 * sin(a * 2.3), sin(a) * 0.5 - 0.3);
-      limb(buf, p, add(at, times(d, r * 0.5)), add(at, times(d, r * 1.38)), r * 0.34, r * 0.04, h.x, 5);
+      limb(buf, p, add(at, times(d, r * 0.5)), add(at, times(d, r * 1.22)), r * 0.36, r * 0.05, h.x, 5);
     }
   }
   if style == CH_TIED {

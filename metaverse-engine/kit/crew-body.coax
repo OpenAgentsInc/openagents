@@ -78,14 +78,16 @@ cb_preset_of :: (b: CrewBody) -> int {
 
 // ---- the form
 
-// The joints, by figure.coax's numbers for a person (P_HIPS ...). Side 0 is the figure's right (-x), 1 its left.
+// The joints, by figure.coax's numbers and names for a person (P_HIPS ..., PERSON_NAMES), so a created
+// character can take the engine's gaits and emotes; metaverse-engine/tools/crew-rig-names.coax holds the
+// two tables together. Side 0 is the figure's right (-x), 1 its left.
 CJ_HIPS :: 0; CJ_SPINE :: 1; CJ_CHEST :: 2; CJ_NECK :: 3; CJ_HEAD :: 4; CJ_CROWN :: 5;
 CJ_L_SHOULDER :: 6; CJ_L_ELBOW :: 7; CJ_L_HAND :: 8; CJ_R_SHOULDER :: 9; CJ_R_ELBOW :: 10; CJ_R_HAND :: 11;
 CJ_L_HIP :: 12; CJ_L_KNEE :: 13; CJ_L_FOOT :: 14; CJ_L_TOE :: 15; CJ_R_HIP :: 16; CJ_R_KNEE :: 17; CJ_R_FOOT :: 18; CJ_R_TOE :: 19;
 CB_JOINTS :: 20;
 CB_JOINT_NAMES :: [CB_JOINTS] string.["hips", "spine", "chest", "neck", "head", "crown",
-                                      "left shoulder", "left elbow", "left hand", "right shoulder", "right elbow", "right hand",
-                                      "left hip", "left knee", "left foot", "left toe", "right hip", "right knee", "right foot", "right toe"];
+                                      "left_shoulder", "left_elbow", "left_hand", "right_shoulder", "right_elbow", "right_hand",
+                                      "left_hip", "left_knee", "left_foot", "left_toe", "right_hip", "right_knee", "right_foot", "right_toe"];
 // The torso's rings, from the crotch up.
 CT_CROTCH :: 0; CT_SEAT :: 1; CT_HIPS :: 2; CT_BELLY :: 3; CT_WAIST :: 4; CT_RIBS :: 5; CT_CHEST :: 6; CT_UPPER :: 7; CT_SHOULDER :: 8; CT_TRAP :: 9; CT_NECK :: 10;
 CT_RINGS :: 11;

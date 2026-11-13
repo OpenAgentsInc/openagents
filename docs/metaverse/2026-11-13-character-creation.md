@@ -1,7 +1,8 @@
 # Character creation: many body shapes, one wardrobe
 
-Status: spec, 2026-11-13. It covers the player character for Splice and any
-other realm drawn with the cel kit. Everglade's Character Studio
+Status: the first deliverable is built (2026-11-13, GitHub #13462) and
+this page describes it as built. See it at `/worlds/crew`. It covers the
+player character for Splice and any other realm drawn with the cel kit. Everglade's Character Studio
 (`character-creator.md`) is a separate thing: it dresses the Quaternius
 humans for Everglade II and doesn't change.
 
@@ -58,24 +59,39 @@ descriptions here and the owner's local copies.
 ### A body is a small record
 
 A body is a set of numbers, each clamped to a stated range. Presets are
-named values of the record; sliders edit it.
+named values of the record; sliders edit it. The record is sixteen whole
+numbers (`metaverse-engine/kit/crew-body.coax`): the height in centimetres,
+a belly and a stoop from 0 to 100, and every other number a percentage of
+the usual build at that height. The ranges are in
+[the document's page](../protocol/crew-character-v1.md).
 
 - Height.
-- Shoulder width, chest depth, waist, belly, hips.
-- Arm thickness, leg thickness, arm length, leg length.
-- Neck length and thickness, head size.
+- Shoulder width, chest, waist, belly, hips.
+- Arm girth, leg girth, arm length, leg length.
+- Neck length and girth, head size.
 - Hand size, foot size.
-- Posture: upright to stooped.
+- Stoop: upright to stooped.
 
 The six bodies in the table above are the first presets. A check asserts
-that every preset and every corner of the slider ranges produces a body
-whose parts still join: no gap at a shoulder, hip, knee or neck, and feet on
-the ground.
+that every preset and every corner of the slider ranges (all 65,536)
+produces a body whose parts still join: no gap at a shoulder, hip, knee or
+neck, and feet on the ground (`cb_joined`). Two numbers are held to the body
+they are on so that this is true everywhere: a neck is never wider than the
+head on it, and shoulders are never narrower than the chest between them.
+
+The record makes a form: the joints, and a loft for the torso and for each
+arm and leg. A loft is a smooth skin over a row of rings
+(`metaverse-engine/render/cel-loft.coax`); the cel kit had tubes, boxes and
+ellipsoids, and a torso or a trouser leg needs more than a tube.
 
 The body places a fixed set of named joints (the same names as the engine's
 figure rig in `metaverse-engine/anim/figure.coax`), so a created character
 can take the engine's gaits and emotes. Bodies differ in bone lengths, never
-in bone count or names.
+in bone count or names. The body and the rig can't be loaded into one unit
+today (each has its own short names for the same arithmetic), so
+`coax/web/tool.sh metaverse-engine/tools/crew-rig-names.coax` holds the two
+tables of joints together. Nothing drives the joints yet: a created
+character stands in one pose.
 
 ### A garment is fitted, not modelled
 
@@ -84,21 +100,29 @@ measurements and draws itself round them with a stated ease (fitted, loose,
 baggy). No garment has a mesh of its own, so there is nothing to refit when
 a body changes, and a new body shape needs no new clothes.
 
-- **Slots:** head, face, top, outer, hands, belt, legs, feet, and up to
-  three carried things (pack, satchel, tool).
+- **Slots:** head, face, top, outer, hands, belt, legs, feet, and three
+  carried things (pack, satchel, tool).
 - **First wardrobe:** the pieces of the six outfits above, each in its
-  slot. Six presets name the full outfits; a player can mix pieces.
+  slot (`metaverse-engine/kit/crew-wardrobe.coax`). Six presets name the
+  full outfits; a player can mix pieces. The jacket tied round the waist is
+  a belt, since that is where it is worn. The clear bubble helmet is a seat
+  ring, two hoops and ear pieces: the cel pass draws nothing see-through.
 - **The look lives in one place:** the cloth tones, the stitch line, the
   buckle metal and the boot tread are one palette and one set of helper
   shapes. A stitch line is geometry or a shader line the cel renderer
   already supports, never a texture a body shape would stretch.
-- **Rules between slots** are data: a helmet hides the hair and hood, an
-  outer coat hides a tied jacket, overalls replace the belt.
+- **Rules between slots** are data (`CW_RULES`): a helmet hides the hair's
+  bun and a jacket's hood, a hood presses the hair flat, an outer coat hides
+  a tied jacket, overalls replace the belt. A hidden piece stays in the
+  document; the creation screen says it is hidden.
 
-A check dresses every body preset in every outfit and asserts that no
-garment is thinner than the body under it at any measured ring (so skin
-never pokes through), and that the vertex count stays inside a stated
-budget.
+Every fitted piece is the body's own rings with an ease added, so it has
+the body's ring stations and its sides. A check dresses every body preset
+in every outfit, and the two bodies furthest apart in every single piece,
+and asserts that no garment is thinner than the body under it at any ring
+(`cw_covers`: the torso, each limb, and the whole body's hull for a skirt,
+a coat or a hood), and that a dressed character stays inside 30,000
+vertices.
 
 ### Head, face, hair and skin
 
@@ -107,8 +131,11 @@ Enough for a player to look like their own person, in the sheet's manner:
 - Skin: a row of tones.
 - Face: a few shapes for jaw, eyes, brows and nose; optional scar, beard or
   moustache.
-- Hair: six to eight styles to start (messy bun, crop, mohawk with braid,
-  long tied, curls, shaved), in any hair colour.
+- Hair: eight styles (messy bun, crop, mohawk with braid, long tied,
+  curls, shaved, topknot, long loose), in a row of eight colours.
+
+They are `metaverse-engine/kit/crew-head.coax`. A face is flat marks on the
+head, as Anime Lab's faces are.
 
 ### The process a player sees
 
@@ -123,31 +150,80 @@ steps down the side. A player can jump between steps; nothing is lost.
 
 RANDOM makes a whole valid character. Every control is a `components/kit`
 control on the mono skin, the same as `/chat`. The steps sit in a pane
-beside the scene, as the editor's panes do, and never over the character.
+beside the scene, as the editor's panes do, and never over the character:
+the canvas is the part of the window the panes leave free.
+
+The pane is a module of its own (`apps/openagents-web/crew-pane.coax`),
+drawn by the browser beside the page's canvas. Two shared pieces were
+missing and were added where the next page finds them: a slider in the kit
+(`k_slider`, `components/kit/dock.coax`, in the mono skin) and a page's own
+pane in the host (`coax/web/host.js`: a page names its pane's module, tells
+it what it holds, and takes its actions as messages).
 
 ### The character is a document
 
-A character is one small, versioned document: the body record, the face and
-hair choices, and one garment per slot. The page saves it, an agent can
-write it through the page's link, and the game loads it. A document with a
-value out of range is refused with a reason, never clamped silently.
+A character is one small, versioned document, `crew.character.v1`: a name,
+the body record, the face and hair choices, and one garment per slot, as
+five lines of text ([its page](../protocol/crew-character-v1.md); the one
+codec is `metaverse-engine/kit/crew-doc.coax`). USE THIS CHARACTER keeps it
+in the browser's storage and the page opens with it next time. An agent
+writes one through the page's address (`?doc=`) or a message, and a game
+loads it with the same codec. A document with a value out of range, an
+unknown key, a key twice or a part missing is refused with a reason, never
+clamped silently; the page shows the reason and keeps the character it had.
 
 ## First deliverable
 
-A standalone scene, built like the review scenes for Splice's cast of five:
+A standalone scene at `/worlds/crew` (unlisted), built like the review
+scenes for Splice's cast of five: Anime Lab's shading, with a studio's plain
+grey paper for a sky and a floor that shows only the figures' shadows
+(`apps/openagents-web/gpu/crew.coax`).
 
-- Six example characters in a row on a plain ground with a height scale,
-  one per body preset, each in a different outfit from the wardrobe.
-- A second view that shows one outfit on all six bodies, to prove the
-  fitting.
-- A turntable on a chosen character, and the body sliders and outfit rows
-  working on it.
-- Pictures of each view committed under `docs/metaverse/shots/`, taken
-  headless, and compared by eye against the two sheets.
+| Address | What it shows |
+| --- | --- |
+| `/worlds/crew` | The creation screen: a turntable on your character and the five steps |
+| `/worlds/crew?view=row` | Six example characters beside a height scale and a 1.8 m figure, one per body preset, each in a different outfit |
+| `/worlds/crew?view=fit&outfit=deckhand` | One outfit on all six bodies, to prove the fitting |
+| `/worlds/crew?view=outfits&body=fighter` | The six outfits on one body, as the outfit sheet lays them out |
+
+`&pane=0` shows the scene alone, `&turn=DEGREES` holds the turntable, and
+on the turntable `&body=` and `&outfit=` dress the character in a preset.
+
+Pictures of each view, taken headless and compared by eye against the two
+sheets:
+
+- [the row](shots/crew-row.png)
+- [the deckhand on all six bodies](shots/crew-fit-deckhand.png) and
+  [the shroud on all six](shots/crew-fit-shroud.png)
+- [the six outfits on the fighter](shots/crew-outfits-fighter.png) and
+  [on the elder](shots/crew-outfits-elder.png)
+- [the turntable at four angles](shots/crew-turntable.png)
+- [four characters close up](shots/crew-close.png)
+- [the creation screen, the Body step](shots/crew-create-body.png) and
+  [the Outfit step](shots/crew-create-outfit.png)
 
 The modules live in the Metaverse Engine (`metaverse-engine/`), not in
-Splice, so any realm can use them. The page is its own realm page; it adds
-nothing to Splice's module, which is near its size budget.
+Splice, so any realm can use them. The page is its own realm page with its
+own modules (`crew`, budget 180,000 bytes; `crew-pane`, 132,000); it adds
+nothing to Splice's module.
+
+How close the pictures are to the sheets, weakest first:
+
+- **Faces and hair** are simple marks and shapes. They tell six people
+  apart; they don't have the sheets' drawing.
+- **The runner's jacket** reads as a cropped jacket with full sleeves and a
+  ribbed hem, but boxy, and its hood lies out of sight on the back.
+- **The clear helmet** is hoops, not glass.
+- **The deckhand's top** has mesh cap sleeves and long cuffs; the sheet's
+  mesh yoke over the chest is left out.
+- **Cloth doesn't fold.** Baggy trousers balloon and gather at the boot,
+  but nothing creases at a knee or an elbow.
+- **Flight suit, vac suit, shroud, fitter, the boots and the gloves** read
+  at a glance: collar and open throat, chest and cargo pockets, belts and
+  buckles, piping, knee pads, the long open coat, the bib and its straps,
+  laces, treads and stitch lines.
+- **The six bodies** are clearly six builds at the sheet's heights. They
+  all stand in one pose; the sheet's people each have their own.
 
 ## Not in this pass
 
@@ -157,6 +233,8 @@ nothing to Splice's module, which is near its size budget.
 - Quaternius or Blender assets. The cel kit's shapes are the source, so
   bodies stay parametric. If a later pass wants sculpted heads or hands, it
   imports them through the pack importer.
+- Poses and animation. The joints are placed and named; nothing moves them
+  yet.
 
 ## Open questions
 

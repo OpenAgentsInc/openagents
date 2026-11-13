@@ -1,0 +1,53 @@
+// Holds a crew member's joints to the engine's figure rig (GitHub #13462;
+// docs/metaverse/2026-11-13-character-creation.md, "A body is a small record"): the body
+// (metaverse-engine/kit/crew-body.coax) places the same joints, by the same numbers and names, as
+// the person of metaverse-engine/anim/figure.coax, so a created character can take the engine's
+// gaits and emotes. The two modules can't be loaded into one unit (each has its own short names
+// for the same arithmetic), so this tool loads the rig and reads the body's source: CB_JOINT_NAMES
+// lists exactly PERSON_NAMES, in order, and each CJ_ number is its P_ number.
+// Usage: coax/web/tool.sh metaverse-engine/tools/crew-rig-names.coax   (from the repository root)
+#import "Basic";
+#load "../anim/figure.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+CRN_BODY :: "metaverse-engine/kit/crew-body.coax";
+crn_find :: (text: string, word: string, from: int) -> int {
+  for i: from..<text.count - word.count + 1 { if cast(string) text[i..<i + word.count] == word { return i; } }
+  return -1;
+}
+// Whether the body's source lists the rig's names in order and numbers its joints as the rig does.
+crn_holds :: (source: string) -> bool {
+  at := crn_find(source, "CB_JOINT_NAMES :: [CB_JOINTS] string.[", 0);
+  if at < 0 { return false; }
+  end := crn_find(source, "];", at);
+  names := PERSON_NAMES; quoted: [40] u8; count := 0;
+  for i: 0..<PERSON_JOINTS {
+    n := 0; quoted[n] = '"'; n += 1;
+    for c: names[i] { quoted[n] = c; n += 1; }
+    quoted[n] = '"'; n += 1;
+    next := crn_find(source, cast(string) quoted[0..<n], at);
+    if next < 0 || next > end { return false; }
+    at = next + n; count += 1;
+  }
+  // nothing after the last name but the list's end: no joint the rig lacks
+  for i: at..<end { if source[i] == '"' { return false; } }
+  numbers := [6] string.["CJ_HIPS :: 0;", "CJ_CROWN :: 5;", "CJ_L_SHOULDER :: 6;", "CJ_R_HAND :: 11;", "CJ_L_HIP :: 12;", "CJ_R_TOE :: 19;"];
+  for i: 0..<6 { if crn_find(source, numbers[i], 0) < 0 { return false; } }
+  return count == 20 && P_HIPS == 0 && P_CROWN == 5 && P_L_SHOULDER == 6 && P_R_HAND == 11 && P_L_HIP == 12 && P_R_TOE == 19 && crn_find(source, "CB_JOINTS :: 20;", 0) >= 0;
+}
+#test "the names in order hold, and a renamed, missing or extra joint does not" {
+  good := "CJ_HIPS :: 0; CJ_CROWN :: 5; CJ_L_SHOULDER :: 6; CJ_R_HAND :: 11; CJ_L_HIP :: 12; CJ_R_TOE :: 19;\nCB_JOINTS :: 20;\nCB_JOINT_NAMES :: [CB_JOINTS] string.[\"hips\", \"spine\", \"chest\", \"neck\", \"head\", \"crown\", \"left_shoulder\", \"left_elbow\", \"left_hand\", \"right_shoulder\", \"right_elbow\", \"right_hand\", \"left_hip\", \"left_knee\", \"left_foot\", \"left_toe\", \"right_hip\", \"right_knee\", \"right_foot\", \"right_toe\"];";
+  #assert crn_holds(good);
+  bad := "CJ_HIPS :: 0; CJ_CROWN :: 5; CJ_L_SHOULDER :: 6; CJ_R_HAND :: 11; CJ_L_HIP :: 12; CJ_R_TOE :: 19;\nCB_JOINTS :: 20;\nCB_JOINT_NAMES :: [CB_JOINTS] string.[\"hips\", \"spine\", \"chest\", \"neck\", \"head\", \"crown\", \"left_shoulder\", \"left_elbow\", \"left_hand\", \"right_shoulder\", \"right_elbow\", \"right_hand\", \"left_hip\", \"left_knee\", \"left_foot\", \"left_toe\", \"right_hip\", \"right_knee\", \"right_foot\", \"tail\"];";
+  #assert !crn_holds(bad) && !crn_holds("") && !crn_holds("CB_JOINT_NAMES :: [CB_JOINTS] string.[\"hips\"];");
+}
+CrnMain :: struct { raw: [131072] u8; }
+tool_main :: () -> int #export_c #effects(all) {
+  h: [1] CrnMain;
+  n := fs_read(CRN_BODY, h[0].raw[..]);
+  if n <= 0 { tool_err("crew-rig-names: cannot read "); tool_errln(CRN_BODY); return 2; }
+  if !crn_holds(cast(string) h[0].raw[0..<n]) { print("crew-rig-names: the body's joints are not the figure rig's person\n"); return 1; }
+  print("crew-rig-names: the body places the figure rig's 20 joints by its numbers and names\n");
+  return 0;
+}
