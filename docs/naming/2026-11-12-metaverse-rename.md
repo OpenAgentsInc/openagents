@@ -49,9 +49,24 @@ and keeps its spelling.
 
 Not done yet:
 
-- **Code symbols and module names** (the "Code symbols" section). The
-  rename script exists and a trial passes the local checks; it lands only
-  after the whole pipeline passes on a build host.
+- **Code symbols and module names** (the "Code symbols" section). A scripted
+  trial (1,090 identifiers, about 9,800 uses in about 500 files, the 28
+  committed shaders written again) passed the report checks, the web build
+  against every budget and suite parts 1 to 6 of 8 on build hosts. It is
+  not landed, for two reasons found in the trial:
+  - **Environment variables.** `VERSE_PACK_DIR`, `VERSE_GCS_PORT`,
+    `AETHYRFORGE_SCENE_TOOL` and other upper-case names are read from the
+    environment that deploy tooling and installed machines set. They are
+    deployment identifiers and belong in the compatibility table: each
+    needs the new name read first and the old one as a fallback, not a
+    blind rename.
+  - **Names generated from a project's slug.** `VERSE_WORK_ITEMS` and its
+    siblings are written by `openagents project bake` from the slug
+    `verse`, so `project-checks` and `project-frames` fail when only their
+    uses are renamed. They change when the project's slug does.
+  The names the compiler emits (`coax_p_…`, `coax_t_…`, `coax_v_t_…`,
+  `coax_default_t_…`) must be renamed with their sources; hand-written C
+  faces and `realms.ts` name them.
 - **Page source file names**: `apps/openagents-web/verse.coax`,
   `verse-face.c`, `verse.wgsl`, `gpu/verse.*`, `carriers/verse.coax`,
   `assets/verse/`, `os/verse-*.coax`, `components/skin/verse.coax`,
