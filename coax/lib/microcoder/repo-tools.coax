@@ -339,7 +339,7 @@ mrt_parse :: (command: string, w: [] MrtWords) -> MrtCmd {
   if name == "find" {
     if n == 2 {
       g := mrt_word(w, 1);
-      return mrt_ask(RpRequest.{op = RP_FIND, path = ifx mrt_path(g).count == 0 then "**" else mrt_path(g)});
+      return mrt_ask(RpRequest.{op = RP_FIND, path = ifx mrt_path(g).count == 0 then "**" else mrt_path(g)});   // not Markdown: a glob, every path
     }
     // find DIR -name GLOB [-type f]: the glob under DIR (find lists files, so -type f changes nothing)
     if (n == 4 || n == 6) && mrt_word(w, 2) == "-name" && (n == 4 || (mrt_word(w, 4) == "-type" && mrt_word(w, 5) == "f")) {

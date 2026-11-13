@@ -293,7 +293,7 @@ rs_tok :: (r: [] Rs, kind: int, s: string, i: int, line: int) -> bool {
 rs_is_alpha :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
 rs_is_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
 
-RS_OPS2 :: [10] string.["==", "!=", "<=", ">=", "//", "+=", "-=", "*=", "**", "/="];
+RS_OPS2 :: [10] string.["==", "!=", "<=", ">=", "//", "+=", "-=", "*=", "**", "/="];   // not Markdown: Python's power operator
 RS_OPS1 :: "+-*/%<>=()[]{},:.";
 
 // The end of the string literal opening at i (its quote q, tripled or not): the index past its
@@ -640,7 +640,7 @@ rs_parse_postfix :: (r: [] Rs) -> int {
       c := rs_node(r, N_CALL, line); if c < 0 { return -1; }
       r[0].nodes[c].a = n; last := -1;
       while !rs_is_op(r, ")") {
-        if rs_is_op(r, "*") || rs_is_op(r, "**") { rs_fail(r, "*args and **kwargs are not supported", "", ""); return -1; }
+        if rs_is_op(r, "*") || rs_is_op(r, "**") { rs_fail(r, "*args and **kwargs are not supported", "", ""); return -1; }   // not Markdown: Python's power operator
         arg := -1;
         t := rs_peek(r);
         nt := r[0].toks[ifx r[0].tp + 1 < r[0].nt then r[0].tp + 1 else r[0].tp];
@@ -705,7 +705,7 @@ rs_parse_term :: (r: [] Rs) -> int {
   a := rs_parse_unary(r);
   while a >= 0 {
     line := rs_peek(r).line; op := 0;
-    if rs_is_op(r, "**") { rs_fail(r, "** is not supported: multiply in a loop", "", ""); return -1; }
+    if rs_is_op(r, "**") { rs_fail(r, "** is not supported: multiply in a loop", "", ""); return -1; }   // not Markdown: Python's power operator
     if rs_eat_op(r, "*") { op = B_MUL; } else if rs_eat_op(r, "//") || rs_eat_op(r, "/") { op = B_DIV; } else if rs_eat_op(r, "%") { op = B_MOD; } else { break; }
     b := rs_parse_unary(r); if b < 0 { return -1; }
     a = rs_bin(r, op, a, b, line);

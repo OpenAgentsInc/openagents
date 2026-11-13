@@ -603,11 +603,13 @@ k_file :: (t: [] Tree, id: string, name: string, about: string) -> int {
 }
 // Whether a picture's or a document's address is a path on this site: "/" and no second slash after it,
 // no "..", nothing that would make the browser go elsewhere or run something.
+KH_LONGEST :: 600;   // bytes of an address on this site read; a longer one is not taken
+KH_DEL :: 127;       // ASCII's delete, a control character
 k_here :: (src: string) -> bool {
-  if src.count < 2 || src.count > 600 || src[0] != '/' || src[1] == '/' || src[1] == '\\' { return false; }
+  if src.count < 2 || src.count > KH_LONGEST || src[0] != '/' || src[1] == '/' || src[1] == '\\' { return false; }
   for i: 0..<src.count {
     c := src[i];
-    if c <= ' ' || c == 127 || c == '"' || c == '<' || c == '>' || c == '\\' { return false; }
+    if c <= ' ' || c == KH_DEL || c == '"' || c == '<' || c == '>' || c == '\\' { return false; }
     if c == '.' && i + 1 < src.count && src[i + 1] == '.' { return false; }
   }
   return true;

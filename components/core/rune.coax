@@ -1,5 +1,5 @@
 // A code point and how many bytes of UTF-8 it took: one declaration for the
-// readers that decode text (components/core/text.coax, the web's font.coax),
+// readers that decode text (text.coax here, metaverse-engine/ui/font.coax),
 // so a program may load both.
 #module "coax.text.rune";   // its own module: a page may load it under two of its own (WorldBuilder beside an Everglade zone)
 

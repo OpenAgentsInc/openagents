@@ -59,12 +59,14 @@ kw_lines :: (text: string) -> int {
   return ifx text.count > 0 && text[text.count - 1] != '\n' then n + 1 else n;
 }
 // A call's time in words: "" under a second (or not known), "4s", "1m 20s".
+KW_MS :: 1000;    // milliseconds a second
+KW_MINUTE :: 60;  // seconds a minute
 kw_seconds :: (ms: int, out: [] u8) -> string {
-  if ms < 1000 { return ""; }
-  s := ms / 1000; n := 0; num: [24] u8;
-  if s >= 60 {
-    n = kw_put(out, 0, tr_join(num[..], "", s / 60)); n = kw_put(out, n, "m ");
-    s = s % 60;
+  if ms < KW_MS { return ""; }
+  s := ms / KW_MS; n := 0; num: [24] u8;
+  if s >= KW_MINUTE {
+    n = kw_put(out, 0, tr_join(num[..], "", s / KW_MINUTE)); n = kw_put(out, n, "m ");
+    s = s % KW_MINUTE;
   }
   n = kw_put(out, n, tr_join(num[..], "", s)); n = kw_put(out, n, "s");
   return ifx n < 0 then "" else cast(string) out[0..<n];

@@ -93,7 +93,7 @@ k_loading :: (t: [] Tree, u: [] Ui, id: string, name: string, step: string, shar
   tr_attr(t, line, AT_HIDDEN, "true");   // the words under it say how far, when that is known
   if share < 0 { tr_attr(t, line, AT_STATE, "wait"); }
   fill := tr_leaf(t, tr_cat(idd[..], id, ".f"), TG_SPAN, "meter-f", "");
-  k_var(t, fill, ifx share < 0 then 0.3 else share);
+  k_var(t, fill, share);   // not known (below 0) draws nothing here: the skin runs the line (.ld-l[data-state=wait])
   tr_close(t);
   w := tr_leaf(t, tr_cat(ide[..], id, ".s"), TG_SPAN, "meta ld-s", ifx step.count > 0 then step else "Loading");
   tr_close(t);

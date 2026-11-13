@@ -17,7 +17,8 @@
 //    A listed file that no longer does it fails too, so the list stays true.
 //    These are signatures, not proofs: a fence or bold mark compared as a
 //    string, a procedure named for wrapping that takes text and a width, a
-//    procedure that moves a caret a word.
+//    procedure that moves a caret a word. A line marked `// not Markdown`
+//    (a path glob, Python's power operator) doesn't count as reading it.
 // 4. One shader. components/backend/gpu-shader.coax lowers to WGSL's
 //    siblings, SPIR-V and Metal, with the compiler in this checkout.
 #import "Basic";
@@ -192,6 +193,7 @@ cc_names_a_size :: (code: string) -> bool {
 }
 
 CC_NOT_A_SIZE :: "// not a size";
+CC_NOT_MARKDOWN :: "// not Markdown";   // a line whose "**" or "~~" is something else: a glob, an operator
 // Whether a line opens a checks' fixture: a procedure named for tests
 // (t_test_setup :: (...) {, test_catalog :: (...) {), whose body ends at the
 // next "}" in column 0.
@@ -214,8 +216,9 @@ cc_defines :: (line: string) -> string {
 cc_line_does :: (line: string) -> int {
   code := cc_code(line);
   does := 0;
-  // a fence or a bold or strike mark compared as a string: reading Markdown
-  if cc_has(code, "\"```\"") || cc_has(code, "\"~~~\"") || cc_has(code, "\"**\"") || cc_has(code, "\"~~\"") { does = does | CC_MARKDOWN; }
+  // a fence or a bold or strike mark compared as a string: reading Markdown (but a line that says
+  // it isn't, such as Python's power operator or a path glob: CC_NOT_MARKDOWN)
+  if (cc_has(code, "\"```\"") || cc_has(code, "\"~~~\"") || cc_has(code, "\"**\"") || cc_has(code, "\"~~\"")) && !cc_has(line, CC_NOT_MARKDOWN) { does = does | CC_MARKDOWN; }
   name := cc_defines(code);
   if name.count > 0 {
     // named for wrapping, takes text, and takes the room it has (a key or a message that is "wrapped" takes none)
@@ -373,6 +376,7 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert cc_line_does("    if cast(string) line[0..<3] == \"```\" { fenced = !fenced; }") == CC_MARKDOWN;
   #assert cc_line_does("    if at(raw, i, \"**\") { i += 2; continue; }") == CC_MARKDOWN;
   #assert cc_line_does("// \"**\" at byte i: rich text's bold switch") == 0;
+  #assert cc_line_does("    if rs_is_op(r, \"**\") { return -1; }   // not Markdown: Python's power") == 0;
   #assert cc_line_does("wrap :: (text: string, from: int, width: f32, next: [] int) -> int {") == CC_WRAP;
   #assert cc_line_does("nip59_wrap_checked :: (author: [] u8, tags: string, content: string, out: [] u8) -> int {") == 0;
   #assert cc_line_does("orbit_wrap :: (a: f32) -> f32 { return a; }") == 0 && cc_line_does("  n := wrap(text, 0, w, next[..]);") == 0;

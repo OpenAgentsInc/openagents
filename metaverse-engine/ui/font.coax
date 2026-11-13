@@ -200,7 +200,7 @@ EMOJI_PIXELS :: [820] u8.[
 ];
 
 // A code point and how many bytes of UTF-8 it took.
-#load "../../coax/lib/text/rune.coax";   // Rune
+#load "../../components/core/rune.coax";   // Rune
 
 FONT_BAD :: 0xFFFD;    // what a malformed byte reads as
 FONT_TOFU :: 0x25A1;   // the box a character with no glyph draws as

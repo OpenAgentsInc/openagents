@@ -20,9 +20,9 @@
 #load "model.coax";
 #load "../json/json.coax";
 #load "script.coax";
+#load "../../../components/core/markdown.coax";   // md_fence_char: what a fence line is
 
 RLM_MSGS :: 256;                 // messages of the root and every child at once
-RLM_FENCE :: "```";
 RLM_SYSTEM :: "You are a Recursive Language Model (RLM): a language model answering a question about a context that is too long to read at once. The context is not in this conversation. It is stored as the variable `context` in a REPL that you program, turn by turn, until you give the final answer.\n\nWrite code in ```repl blocks; each turn, every block runs in order and you see what it printed (cut to the first {SHOWN} characters a block). Variables persist across turns. The REPL runs a subset of Python:\n- values: None, bool, int (no floats: / and // both floor), str, list, dict; f-strings; list comprehensions; a if c else b\n- statements: assignment (also a, b = ... and x[i] = ...), += -= *=, if/elif/else, for (one or two names), while, break, continue; import lines do nothing\n- builtins: print len str repr int bool abs list dict range enumerate zip sum min max sorted (key= only as d.get; reverse=True)\n- str methods: lower upper strip lstrip rstrip split splitlines join find rfind index count startswith endswith replace isdigit; list: append extend pop index count sort; dict: get keys values items\n- re.search(pattern, s) and grep(pattern, text[, limit]) (the lines that match), with a small regex subset: literals . \\d \\w \\s [a-z] [^...] * + ? ^ $ (no groups, no |, no {n,m})\n- not supported: def, lambda, class, try, with, return, ** and slices with a step. Write steps inline.\n\nAvailable in the REPL:\n- `context`: a str holding the whole context (read-only){FILES}\n- `chunk(text, size)`: text cut into pieces of at most size characters, at line ends where possible\n- `llm_query(prompt)`: one call to a sub-LM, which sees only that prompt (no REPL, no context). It handles about {SUBCHARS} characters a prompt. Returns its answer as a str.\n- `llm_query_batched(prompts)`: the same for a list of prompts, run concurrently; answers in the same order. Prefer it to a loop of llm_query.\n- `rlm_query(prompt)` / `rlm_query_batched(prompts)`: a recursive RLM sub-call, which gets the prompt as its own `context` and REPL; it falls back to llm_query when recursion is off ({DEPTH}).\n- `FINAL(answer)`: ends the run with answer. `FINAL_VAR(name)` ends it with that variable's value. You can also answer outside code with a line FINAL(your answer), in a turn with no code block.\n- `SHOW_VARS()`: the names of your variables.\n\nStrategy: look at the context first (its length, a few slices, how it is structured). Then plan how the question decomposes into sub-LM calls over pieces of the context, and run that plan: chunk the context, ask each sub-LM a focused question over its chunk with terse, structured answers you can parse, and combine the answers in code. Use code (find, grep, split, counting) wherever it decides the answer exactly; use sub-LMs where reading or meaning is needed. Keep prompts to sub-LMs well under their capacity, and pack each with as much context as it can usefully read. Print short summaries, not whole chunks: what you print fills your own small window. Do not answer before you have looked at the context, and check your answer against the evidence you printed before you give it.";
 
 RLM_CHILD_QUESTION :: "Your task, with the data it needs, is in `context`. Read it there and do what it asks; give the result with FINAL.";
@@ -238,23 +238,30 @@ rlm_snap_drop :: (st: [] RlmState, s: RlmSnap) { if s.ok { st[0].top_v = s.at_v;
 
 // ---------------------------------------------------------------- reading the model's answer
 
-// The code of the k-th ```repl (or ```python) block in text, or "" with found false.
+// The code of the k-th ```repl (or ```python) block in text, or "" with found false. A fence is a
+// line components/core/markdown.coax reads as one (md_fence_char: three backticks or tildes); it
+// closes at the next fence line of the same character.
 RlmBlock :: struct { found: bool; code: string; }
 rlm_block :: (text: string, k: int) -> RlmBlock {
-  at := 0; seen := 0;
-  while true {
-    f := rs_find_sub(text, RLM_FENCE, at);
-    if f < 0 { return RlmBlock.{}; }
-    e := f + 3; while e < text.count && text[e] != 10 { e += 1; }
-    tag := cast(string) text[f + 3..<e];
-    while tag.count > 0 && (tag[tag.count - 1] == ' ' || tag[tag.count - 1] == 13) { tag = cast(string) tag[0..<tag.count - 1]; }
-    close := ifx e < text.count then rs_find_sub(text, RLM_FENCE, e + 1) else -1;
-    if close < 0 { return RlmBlock.{}; }
-    if tag == "repl" || tag == "python" || tag == "py" {
-      if seen == k { return RlmBlock.{found = true, code = cast(string) text[e + 1..<close]}; }
-      seen += 1;
+  at := 0; seen := 0; open: u8 = 0; tag := ""; from := 0;
+  while at < text.count {
+    e := md_line_end(text, at);
+    line := md_trim_left(cast(string) text[at..<e]);
+    c := md_fence_char(line);
+    if open == 0 && c != 0 {
+      i := 0; while i < line.count && line[i] == c { i += 1; }
+      tag = cast(string) line[i..<line.count];
+      while tag.count > 0 && (tag[0] == ' ' || tag[0] == 9) { tag = cast(string) tag[1..<tag.count]; }
+      while tag.count > 0 && (tag[tag.count - 1] == ' ' || tag[tag.count - 1] == 13) { tag = cast(string) tag[0..<tag.count - 1]; }
+      open = c; from = ifx e < text.count then e + 1 else e;
+    } else if open != 0 && c == open {
+      if tag == "repl" || tag == "python" || tag == "py" {
+        if seen == k { return RlmBlock.{found = true, code = cast(string) text[from..<at]}; }
+        seen += 1;
+      }
+      open = 0;
     }
-    at = close + 3;
+    at = e + 1;
   }
   return RlmBlock.{};
 }
@@ -956,6 +963,7 @@ rlm_test_block :: (r: [] Rs, st: [] RlmState, src: string) {
   t := "Plan.\n```text\nnot code\n```\n```repl\na = 1\n```\nthen\n```python\nb = 2\n```";
   #assert rlm_block(t, 0).found && rlm_block(t, 0).code == "a = 1\n" && rlm_block(t, 1).code == "b = 2\n" && !rlm_block(t, 2).found;
   #assert !rlm_block("```repl\nno close", 0).found;
+  #assert rlm_block("  ```repl \nx = 1\n  ```\n", 0).code == "x = 1\n" && rlm_block("~~~py\ny = 2\n~~~", 0).code == "y = 2\n" && !rlm_block("```repl\nz\n~~~", 0).found;
   #assert rlm_final("Done.\nFINAL(The answer is (b).)").inner == "The answer is (b)." && rlm_final("  FINAL_VAR(x)").kind == 2;
   #assert rlm_final("I will call FINAL(x) later").kind == 0 && rlm_final("**FINAL(\"q\")**").inner == "q";
 }
