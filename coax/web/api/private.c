@@ -107,8 +107,15 @@ static void no(const request *q) { api_respond(q->fd, 404, "application/json", P
 // The engine's files are named by their content in the site's bucket, so the
 // shell takes them from the generic page there (/projects/private/), whose
 // script it copies with this page's data-page (0 a member, 1 locked) and data-text (the slug).
+// A member's page also lists the project's attachments at its right (project-files-web.coax, through
+// dom-host.js, which reads GET /api/projects/SLUG/files; GitHub #13468).
 static void shell(const request *q, const char *slug, bool member) {
-  char html[4096];
+  char files[512] = "";
+  if (member)
+    snprintf(files, sizeof files,
+      "<aside id=\"files\" aria-label=\"Attachments\"></aside>\n"
+      "<script type=\"module\" src=\"/coaxial/dom-host.js?app=project-files-web&amp;root=files&amp;path=/projects/%s\"></script>\n", slug);
+  char html[4608];
   int n = snprintf(html, sizeof html,
     "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n"
     "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n"
@@ -120,8 +127,9 @@ static void shell(const request *q, const char *slug, bool member) {
     "canvas{position:fixed;inset:0;width:100%%;height:100%%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}\n"
     "canvas[data-cursor=pointer]{cursor:pointer}\nmain{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}\n"
     "html:not(.gpu) body{overflow:auto}\na{color:#ff8c1f}\n"
-    ".gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%%);white-space:nowrap;padding:0}\n</style>\n</head>\n<body>\n"
-    "<canvas id=\"coaxial\" aria-hidden=\"true\"></canvas>\n<main>\n<h1>%s</h1>\n<p><a href=\"/projects\">Projects</a></p>\n</main>\n"
+    ".gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%%);white-space:nowrap;padding:0}\n"
+    "#files{position:fixed;top:0;right:0;bottom:0;z-index:2;width:min(420px,100%%);overflow-y:auto}#files:empty{display:none}\n</style>\n</head>\n<body>\n"
+    "<canvas id=\"coaxial\" aria-hidden=\"true\"></canvas>\n<main>\n<h1>%s</h1>\n<p><a href=\"/projects\">Projects</a></p>\n</main>\n%s"
     "<script type=\"module\">\n"
     "const t = await (await fetch(\"/projects/private/\", { cache: \"no-store\" })).text();\n"
     "const from = new DOMParser().parseFromString(t, \"text/html\").querySelector(\"script[data-app]\");\n"
@@ -129,7 +137,7 @@ static void shell(const request *q, const char *slug, bool member) {
     "for (const a of from.attributes) s.setAttribute(a.name, a.value);\n"
     "s.dataset.page = \"%d\"; s.dataset.text = \"%s\";\n"
     "document.body.append(s);\n</script>\n</body>\n</html>\n",
-    member ? "Project" : "Private project", member ? "Project" : "Private project — ask a member for a login link",
+    member ? "Project" : "Private project", member ? "Project" : "Private project — ask a member for a login link", files,
     member ? 0 : 1, slug);
   api_respond(q->fd, member ? 200 : 404, "text/html; charset=utf-8", PRIVATE_HEADERS, html, (size_t)n);
 }

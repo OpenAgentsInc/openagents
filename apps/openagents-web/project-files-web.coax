@@ -1,0 +1,207 @@
+// A project's attachments on its member page (/projects/SLUG, coax/web/api/private.c; GitHub #13468): the
+// reference files its members attached to the project and its worlds, as the kit's entries on the mono
+// skin, beside the project's own page. The page opens it with dom-host.js?app=project-files-web&path=/projects/SLUG,
+// so the host tells it the address once (event 13), and it asks GET /api/projects/SLUG/files
+// (world.files.v1, read by metaverse-engine/editor/file-wire.coax) through the host's dom_stream.
+//
+// What it shows: the project's own attachments (its worlds' stay in each world's editor), each with its
+// name (a link's opens its address), its note, and its kind, size and tags; what the project holds, with
+// its worlds', against its limits (200 files, 1 GB, 25 MB a file); and, with none, where to attach them. A refused or failed answer shows nothing: the page is only a member's.
+//   coax/bin/coax test apps/openagents-web/project-files-web.coax
+
+#load "../../components/kit/listing.coax";
+#load "../../components/backend/dom.coax";
+#load "../../metaverse-engine/editor/file-wire.coax";
+
+PF_INBOX :: 16384;
+PF_CSS :: 40960;
+PF_CLICK :: 1; PF_PIECE :: 4; PF_END :: 5; PF_PATH :: 13;
+
+ProjectFilesWeb :: struct {
+  ready: bool; dirty: bool; animating: bool; time: f32;
+  slug: [FW_PROJECT] u8; slug_n: int;
+  ask: bool; asked: bool; done: bool; status: int;   // the one ask: to send, sent, answered
+  door: [96] u8; door_n: int;
+  resp: [FW_BYTES] u8; resp_n: int;
+  list: [1] FwList; read: bool;                      // the answer, once it reads
+  scratch: [FW_BYTES] u8;
+  inbox: [PF_INBOX] u8;
+  sets: [MF_COUNT] AfSettings;
+  css: [PF_CSS] u8;
+  ui: [1] Ui;
+  tree: [1] Tree;
+  dom: [1] Dom;
+}
+
+pf_put :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for c: text { if n < out.count { out[n] = c; n += 1; } }
+  return n;
+}
+pf_int :: (out: [] u8, at: int, v: int) -> int {
+  digits: [20] u8; k := 0; x := ifx v < 0 then 0 else v;
+  while true { digits[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  n := at;
+  for i: 0..<k { if n < out.count { out[n] = digits[k - 1 - i]; n += 1; } }
+  return n;
+}
+// Bytes as people read them: 512 bytes, 34 KB, 2.5 MB, 1 GB.
+pf_size :: (out: [] u8, at: int, bytes: int) -> int {
+  if bytes < 1024 { n := pf_int(out, at, bytes); return pf_put(out, n, " bytes"); }
+  units := [3] string.[" KB", " MB", " GB"]; scale := [3] int.[1024, 1048576, 1073741824];
+  u := 0;
+  while u < 2 && bytes >= scale[u + 1] { u += 1; }
+  tenths := (bytes * 10 + scale[u] / 2) / scale[u];
+  n := pf_int(out, at, tenths / 10);
+  if tenths < 100 && tenths % 10 != 0 { n = pf_put(out, n, "."); n = pf_int(out, n, tenths % 10); }
+  return pf_put(out, n, units[u]);
+}
+// The slug of "/projects/SLUG" (a project's slug form, fw_project_ok), else "".
+pf_slug_of :: (path: string) -> string {
+  root := "/projects/";
+  if path.count <= root.count || cast(string) path[0..<root.count] != root { return ""; }
+  slug := cast(string) path[root.count..<path.count];
+  return ifx fw_project_ok(slug) then slug else "";
+}
+
+// ---------------------------------------------------------------- the page
+
+// An attachment's facts: its kind, its size (not a link's) and its tags.
+pf_facts :: (s: [] ProjectFilesWeb, i: int, out: [] u8) -> int {
+  f := s[0].list[0].f[i];
+  kinds := [4] string.["File", "Image", "Document", "Link"];
+  n := pf_put(out, 0, kinds[ifx f.kind >= 0 && f.kind < 4 then f.kind else 0]);
+  if f.kind != FW_LINK_KIND { n = pf_put(out, n, " · "); n = pf_size(out, n, f.bytes); }
+  tags := fw_tags_of(s[0].list[..], i);
+  if tags.count > 0 { n = pf_put(out, n, " · "); n = pf_put(out, n, tags); }
+  return n;
+}
+
+pf_build :: (s: [] ProjectFilesWeb) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  buf: [UI_ID] u8; facts: [320] u8; held: [160] u8;
+  tr_begin(t);
+  if !s[0].read { return; }   // nothing until the list reads: a refusal or a failure shows nothing
+  l := s[0].list[..];
+  pg := k_page(t, "pg", "Attachments");
+  es := k_entries(t, "files", "Attachments", l[0].n);
+  for i: 0..<l[0].n {
+    fn := pf_facts(s, i, facts[..]);
+    href := ifx l[0].f[i].kind == FW_LINK_KIND then fw_url_of(l, i) else "";
+    e := k_entry(t, u, tr_join(buf[..], "f.", i), fw_name_of(l, i), href, fw_note_of(l, i), cast(string) facts[0..<fn], "", "");
+    k_entry_end(t);
+  }
+  k_entries_end(t);
+  if l[0].n == 0 { m := k_meta(t, "files.none", "None yet. Attach files in a world's editor, in Files."); }
+  hn := pf_int(held[..], 0, l[0].count); hn = pf_put(held[..], hn, " of "); hn = pf_int(held[..], hn, l[0].files); hn = pf_put(held[..], hn, " files, ");
+  hn = pf_size(held[..], hn, l[0].bytes); hn = pf_put(held[..], hn, " of "); hn = pf_size(held[..], hn, l[0].total);
+  hn = pf_put(held[..], hn, ", up to "); hn = pf_size(held[..], hn, l[0].file); hn = pf_put(held[..], hn, " a file");
+  h := k_meta(t, "files.held", cast(string) held[0..<hn]);
+  tr_close(t);
+}
+
+// ---------------------------------------------------------------- the face's calls
+
+coaxial_projectfilesweb_frame :: (s: [] ProjectFilesWeb, dt: f32, reduced: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  if !s[0].ready { n := mono_frames(s[0].sets[..]); s[0].ready = true; s[0].dirty = true; }
+  step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].time += step;
+  if !s[0].dirty && !s[0].animating { return 0; }
+  d := s[0].dom[..];
+  if !d[0].styled {
+    n := mono_css(s[0].css[..]); n = mono_dock_css(s[0].css[..], n); n = mono_page_css(s[0].css[..], n);
+    dm_style(d, cast(string) s[0].css[0..<n]);
+  }
+  ui_begin(s[0].ui[..], s[0].time, reduced);
+  pf_build(s);
+  ui_end(s[0].ui[..]);
+  s[0].animating = s[0].ui[0].busy;
+  s[0].dirty = false;
+  bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
+  if d[0].overflow { dm_reset(d); s[0].dirty = true; return -1; }
+  return bytes;
+}
+coaxial_projectfilesweb_busy :: (s: [] ProjectFilesWeb) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating); }
+coaxial_projectfilesweb_event :: (s: [] ProjectFilesWeb, kind: int, slot: int, length: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  n := ifx length < 0 then 0 else ifx length > PF_INBOX then PF_INBOX else length;
+  if kind == PF_PATH {
+    // the address, once: the project whose list to ask for
+    slug := pf_slug_of(cast(string) s[0].inbox[0..<n]);
+    if slug.count == 0 || s[0].asked { return; }
+    s[0].slug_n = pf_put(s[0].slug[..], 0, slug);
+    dn := pf_put(s[0].door[..], 0, "/api/projects/"); dn = pf_put(s[0].door[..], dn, slug); s[0].door_n = pf_put(s[0].door[..], dn, "/files");
+    s[0].ask = true; s[0].asked = true; s[0].resp_n = 0;
+    return;
+  }
+  if kind == PF_PIECE {
+    s[0].status = slot;
+    for i: 0..<n { if s[0].resp_n < FW_BYTES { s[0].resp[s[0].resp_n] = s[0].inbox[i]; s[0].resp_n += 1; } }
+    return;
+  }
+  if kind == PF_END {
+    s[0].done = true; s[0].status = slot;
+    s[0].read = slot == 200 && fw_read(s[0].list[..], cast(string) s[0].resp[0..<s[0].resp_n], s[0].scratch[..]);
+    s[0].dirty = true;
+  }
+}
+coaxial_projectfilesweb_size :: (s: [] ProjectFilesWeb, slot: int, w: f32, h: f32) #export_c #effects(all) {
+  if s.count > 0 && dm_size(s[0].dom[..], slot, w, h) { s[0].dirty = true; }
+}
+coaxial_projectfilesweb_inbox_cap :: () -> int #export_c #effects(all) { return PF_INBOX; }
+// The ask for the host: a GET of door (the face sends it), then that it went.
+coaxial_projectfilesweb_asking :: (s: [] ProjectFilesWeb) -> bool #export_c #effects(all) { return s.count > 0 && s[0].ask; }
+coaxial_projectfilesweb_asked :: (s: [] ProjectFilesWeb) #export_c #effects(all) { if s.count > 0 { s[0].ask = false; } }
+
+// ---------------------------------------------------------------- checks
+
+PfTest :: struct { s: [1] ProjectFilesWeb; }
+pf_test_send :: (s: [] ProjectFilesWeb, kind: int, slot: int, text: string) {
+  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
+  coaxial_projectfilesweb_event(s, kind, slot, text.count);
+}
+pf_test_answer :: (s: [] ProjectFilesWeb, status: int, body: string) {
+  #assert s[0].ask;
+  coaxial_projectfilesweb_asked(s);
+  if body.count > 0 { pf_test_send(s, PF_PIECE, status, body); }
+  coaxial_projectfilesweb_event(s, PF_END, status, 0);
+  n := coaxial_projectfilesweb_frame(s, 0.016, true);
+}
+PF_T_LIST :: "world.files.v1 - coax 2 1572864 26214400 200 1073741824\nf 00000000000000a1 project image 1572864 aaaa000000000000000000000000000000000000000000000000000000000000 1794600000000 local Gate concept.png\nn The north gate at dusk\nt concept,gate\nf 00000000000000b2 project link 0 - 1794500000000 local Style guide\nu https://example.com/style\n";
+
+#test "a member sees every attachment with its note, kind, size and tags, and what the project holds against its limits" {
+  ts: [1] PfTest; s := ts[0].s[..];
+  n := coaxial_projectfilesweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert !coaxial_projectfilesweb_asking(s) && tr_find(t, "pg") < 0;
+  pf_test_send(s, PF_PATH, 0, "/projects/coax");
+  #assert coaxial_projectfilesweb_asking(s) && cast(string) s[0].door[0..<s[0].door_n] == "/api/projects/coax/files";
+  pf_test_answer(s, 200, PF_T_LIST);
+  #assert s[0].read && tr_text_of(t, tr_find(t, "files.h.n")) == "2";
+  #assert tr_text_of(t, tr_find(t, "f.0.t")) == "Gate concept.png" && t[0].nodes[tr_find(t, "f.0.t")].tag == TG_H3 && tr_text_of(t, tr_find(t, "f.0.l")) == "The north gate at dusk";
+  #assert tr_text_of(t, tr_find(t, "f.0.f")) == "Image · 1.5 MB · concept,gate";
+  #assert tr_attr_of(t, tr_find(t, "f.1.t"), AT_HREF) == "https://example.com/style" && tr_text_of(t, tr_find(t, "f.1.f")) == "Link" && tr_find(t, "f.1.l") < 0;
+  #assert tr_text_of(t, tr_find(t, "files.held")) == "2 of 200 files, 1.5 MB of 1 GB, up to 25 MB a file" && tr_find(t, "files.none") < 0;
+  // the address is told once: a second does not ask again
+  pf_test_send(s, PF_PATH, 0, "/projects/other");
+  #assert !coaxial_projectfilesweb_asking(s);
+}
+#test "with none it says where to attach them; a refusal, a failure or an address that is no project's shows nothing" {
+  ts: [1] PfTest; s := ts[0].s[..];
+  n := coaxial_projectfilesweb_frame(s, 0.016, true);
+  pf_test_send(s, PF_PATH, 0, "/projects/coax");
+  pf_test_answer(s, 200, "world.files.v1 - coax 0 0 26214400 200 1073741824\n");
+  t := s[0].tree[..];
+  #assert tr_text_of(t, tr_find(t, "files.none")) == "None yet. Attach files in a world's editor, in Files." && tr_text_of(t, tr_find(t, "files.h.n")) == "0";
+  ts2: [1] PfTest; o := ts2[0].s[..];
+  n = coaxial_projectfilesweb_frame(o, 0.016, true);
+  pf_test_send(o, PF_PATH, 0, "/projects/coax");
+  pf_test_answer(o, 403, "{\"error\":\"members only\"}");
+  #assert !o[0].read && tr_find(o[0].tree[..], "pg") < 0;
+  ts3: [1] PfTest; b := ts3[0].s[..];
+  pf_test_send(b, PF_PATH, 0, "/worlds/splice");
+  #assert !coaxial_projectfilesweb_asking(b) && pf_slug_of("/projects/Bad Slug") == "" && pf_slug_of("/projects/") == "";
+  sz: [32] u8;
+  #assert cast(string) sz[0..<pf_size(sz[..], 0, 512)] == "512 bytes" && cast(string) sz[0..<pf_size(sz[..], 0, 35000)] == "34 KB" && cast(string) sz[0..<pf_size(sz[..], 0, 26214400)] == "25 MB";
+}

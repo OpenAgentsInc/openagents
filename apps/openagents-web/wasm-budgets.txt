@@ -363,3 +363,6 @@ splice 570000
 # /worlds on the frames set drawn by the browser (worlds-web.coax, beside the side): 91,057 bytes measured
 # 2026-11-13 on a Mac, about 9% room. It replaces realmlist (70,076 bytes and its 16,279-byte shader).
 worlds-web 100000
+# A member's project page lists its attachments (project-files-web.coax, GitHub #13468): 85,393 bytes measured
+# 2026-11-13 on Linux, about 10% room.
+project-files-web 94000

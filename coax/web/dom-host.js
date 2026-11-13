@@ -27,7 +27,9 @@
 // the link, so the shell stays; when it doesn't, the link is followed as usual.
 // A page that holds a shell as one of its parts names the address the shell draws in the import's address
 // (&path=/side, the world editor's left): the shell is told that address once and is not the page's, so every
-// address it goes to is another page. &as=NAME names the copy in coaxialDoms when a page holds two of one module.
+// address it goes to is another page. Any other module opened with &path= is told it once too, as event 13 (a
+// project's attachments, project-files-web, learn the project from /projects/SLUG).
+// &as=NAME names the copy in coaxialDoms when a page holds two of one module.
 const named = new URL(import.meta.url).searchParams;
 const script = named.has("app") ? null : document.querySelector("script[data-app]");
 const app = named.get("app") || script.dataset.app;
@@ -342,7 +344,7 @@ async function start() {
     send(12, 0, kept);
   }
   const going = WebAssembly.Module.imports(module).some((i) => i.name === "dom_go"), shell = going && !fixed;
-  if (going && fixed) send(13, 0, fixed);
+  if (fixed) send(13, 0, fixed);
   if (shell) { send(13, 0, location.pathname); addEventListener("popstate", () => send(13, 0, location.pathname)); }
   root.addEventListener("click", (e) => {
     const drop = e.target.closest?.('button[data-drop]:not([data-drop=""])');

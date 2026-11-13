@@ -170,6 +170,8 @@ check("invites last 24 hours", sql("select bool_and(expires_ms - created_ms = 86
 
 s, b, _ = page("GET", f"/projects/{SLUG}", cookie=session)
 check("a member's page is the member shell, its title generic", s == 200 and b"<title>Project" in b and b"Test Project" not in b)
+check("a member's page lists the project's attachments; the locked shell does not",
+      f"dom-host.js?app=project-files-web&amp;root=files&amp;path=/projects/{SLUG}".encode() in b and b"project-files-web" not in b_locked and b"project-files-web" not in b_none)
 s, b, _ = page("GET", f"/projects/{SLUG}/api/state", cookie=session)
 text = b.decode()
 check("the page's state comes as lines", s == 200 and text.startswith("Y|Bea|member\n") and "\nG|g1|agreed|Ada, Bea|Ship the thing" in text, text[:200])

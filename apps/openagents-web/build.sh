@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/worldbuilder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/components.wasm, build/agents.wasm, build/worlds-web.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm, build/login.wasm, build/security.wasm, build/life.wasm, build/devices.wasm, build/lightning.wasm, build/wallet.wasm and build/nip01.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/worldbuilder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/components.wasm, build/agents.wasm, build/worlds-web.wasm, build/project-files-web.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm, build/login.wasm, build/security.wasm, build/life.wasm, build/devices.wasm, build/lightning.wasm, build/wallet.wasm and build/nip01.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 # A failing step names itself (#13117): the line and the command, last in the
@@ -478,6 +478,10 @@ actor_lab=$!
 # browser through coax/web/dom-host.js; its rows in realms/list.coax, written by realms.ts).
 timed worlds-web "$here/../../coax/web/wasm.sh" "$here/worlds-web.coax" "$here/worlds-web-face.c" "$here/build/worlds-web.wasm" &
 worlds_web=$!
+# /projects/SLUG for a member: the project's attachments as kit entries (project-files-web.coax, opened by
+# private.c's page through coax/web/dom-host.js with &path=; GitHub #13468).
+timed project-files-web "$here/../../coax/web/wasm.sh" "$here/project-files-web.coax" "$here/project-files-web-face.c" "$here/build/project-files-web.wasm" &
+project_files_web=$!
 # /memorial/<slug>: a pet's memorial from Hecate's Cemetery, its page (oa-api serves the HTML, villa.c memorial_page).
 timed memorial "$here/../../coax/web/wasm.sh" "$here/memorial.coax" "$here/memorial-face.c" "$here/build/memorial.wasm" &
 memorial=$!
@@ -524,6 +528,7 @@ wait "$vpk3"
 wait "$render"
 wait "$tables"
 wait "$worlds_web"
+wait "$project_files_web"
 wait "$memorial"
 wait "$chat"
 wait "$components_page"

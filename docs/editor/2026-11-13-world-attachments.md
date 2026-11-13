@@ -1,6 +1,6 @@
 # Attachments: reference files on a project and its worlds
 
-Status: built, 2026-11-13, except the `/projects/SLUG` list. Issue #13468.
+Status: built, 2026-11-13. Issue #13468.
 "As built" at the end says where the build differs from this spec.
 
 ## What we want
@@ -54,7 +54,10 @@ A **Files** pane, opened from the bar beside Assets, built from the kit:
 - Rename, edit the note and tags, move between world and project, remove.
   Remove asks once more, and removes the stored file.
 
-`/projects/SLUG` lists the project's attachments too, for members.
+`/projects/SLUG` lists the project's own attachments too, for members: at the
+page's right, each with its note, kind, size and tags, and what the project
+holds against its limits
+(`apps/openagents-web/project-files-web.coax`).
 
 ## For agents
 
@@ -124,9 +127,10 @@ opens the right file and answers from it.
 - **PDFs.** A PDF goes to Gemini as the file itself. Gemini reads a PDF's text
   and its page images, so there is no separate text-first step.
   `realm file-read` saves a PDF for a local agent to open.
-- **Not built yet.** `/projects/SLUG` does not list the project's attachments.
-  `GET /api/projects/SLUG/files` answers the list for members, and
-  `openagents realm files` shows it.
+- **The project page.** `GET /api/projects/SLUG/files` answers the list for
+  members; `/projects/SLUG` shows it and `openagents realm files` prints it.
+  The list reads with the site's login (a session or NIP-98), so a member
+  who opened the page only with a project login link sees no list there.
 
 ## How it was checked
 
