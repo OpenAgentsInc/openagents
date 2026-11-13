@@ -1,0 +1,140 @@
+// Writes cel vertices (aethyr/render/cel-mesh.coax: six words a vertex) as glTF 2.0 binary, for
+// the Unreal exporter (docs/unreal/2026-11-12-aethyr-to-unreal-exporter-spec.md). One buffer;
+// each part is a run of vertices and becomes one named mesh and node, its triangles in order
+// with no index. Positions stay in Aethyr's metres and axes: the reader's side maps them.
+// First version (the axis fixture, GitHub #13399): colours are written as the sRGB bytes the
+// pen held, and numbers print to six decimals. The world exporter (#13400) makes both exact.
+//   coax/bin/coax test --library aethyr/export/glb-write.coax
+#load "../render/cel-mesh.coax";
+#load "../../coax/lib/json/json.coax";
+
+GlbPart :: struct { name: string; first: int; count: int; }
+
+GLB_VERTEX_BYTES :: 28;   // position 12, normal 12, colour 4
+
+glb_u32 :: (out: [] u8, at: int, w: u32) {
+  out[at] = cast,trunc(u8) (w & 255); out[at + 1] = cast,trunc(u8) ((w >> 8) & 255);
+  out[at + 2] = cast,trunc(u8) ((w >> 16) & 255); out[at + 3] = cast,trunc(u8) ((w >> 24) & 255);
+}
+// A number to six decimals, trailing zeros kept: exact for the halves and wholes a fixture uses.
+glb_num :: (o: [] Jo, v: f32) #effects(all) {
+  text: [48] u8; n := 0;
+  a := v; if a < 0 { a = -a; text[n] = '-'; n += 1; }
+  whole := cast(int) floor(a); frac := cast(int) floor((a - cast(f32) whole) * 1000000 + 0.5);
+  if frac >= 1000000 { whole += 1; frac -= 1000000; }
+  digits: [24] u8; d := 0;
+  if whole == 0 { digits[0] = '0'; d = 1; }
+  while whole > 0 { digits[d] = cast,trunc(u8) (48 + whole % 10); d += 1; whole /= 10; }
+  for k: 0..<d { text[n] = digits[d - 1 - k]; n += 1; }
+  text[n] = '.'; n += 1;
+  scale := 100000;
+  for k: 0..<6 { text[n] = cast,trunc(u8) (48 + (frac / scale) % 10); n += 1; scale /= 10; }
+  jo_raw(o, cast(string) text[0..<n]);
+}
+glb_f :: (w: u32) -> f32 { return f32_from_bits(w); }
+
+// The glTF binary of `parts` over the cel words in `buf`, into `out`. Returns its size, or -1
+// when it does not fit or a part is not whole triangles inside the buffer.
+glb_from_cel :: (buf: [] u32, parts: [] GlbPart, out: [] u8) -> int #effects(all) {
+  vertices := 0;
+  for p: parts {
+    if p.count < 3 || p.count % 3 != 0 || p.first < 0 || (p.first + p.count) * VERTEX_WORDS > buf.count { return -1; }
+    vertices += p.count;
+  }
+  json: [65536] u8; o: [1] Jo; jo_start(o[..], json[..]);
+  bin_bytes := vertices * GLB_VERTEX_BYTES;
+  jo_obj(o[..]);
+  jo_key(o[..], "asset"); jo_obj(o[..]); jo_key(o[..], "version"); jo_str(o[..], "2.0"); jo_key(o[..], "generator"); jo_str(o[..], "aethyr/export/glb-write.coax"); jo_end(o[..]);
+  jo_key(o[..], "scene"); jo_int(o[..], 0);
+  jo_key(o[..], "scenes"); jo_arr(o[..]); jo_obj(o[..]); jo_key(o[..], "nodes"); jo_arr(o[..]); for p, k: parts { jo_int(o[..], k); } jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "nodes"); jo_arr(o[..]);
+  for p, k: parts { jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], p.name); jo_key(o[..], "mesh"); jo_int(o[..], k); jo_end(o[..]); }
+  jo_end(o[..]);
+  jo_key(o[..], "materials"); jo_arr(o[..]); jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "cel"); jo_key(o[..], "extensions"); jo_obj(o[..]); jo_key(o[..], "KHR_materials_unlit"); jo_obj(o[..]); jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "extensionsUsed"); jo_arr(o[..]); jo_str(o[..], "KHR_materials_unlit"); jo_end(o[..]);
+  jo_key(o[..], "meshes"); jo_arr(o[..]);
+  for p, k: parts {
+    jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], p.name);
+    jo_key(o[..], "primitives"); jo_arr(o[..]); jo_obj(o[..]);
+    jo_key(o[..], "attributes"); jo_obj(o[..]);
+    jo_key(o[..], "POSITION"); jo_int(o[..], k * 3); jo_key(o[..], "NORMAL"); jo_int(o[..], k * 3 + 1); jo_key(o[..], "COLOR_0"); jo_int(o[..], k * 3 + 2);
+    jo_end(o[..]);
+    jo_key(o[..], "material"); jo_int(o[..], 0); jo_key(o[..], "mode"); jo_int(o[..], 4);
+    jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "accessors"); jo_arr(o[..]);
+  first := 0;
+  for p: parts {
+    lo3 := [3] f32.[0, 0, 0]; hi3 := [3] f32.[0, 0, 0];
+    for v: 0..<p.count { for c: 0..<3 {
+      x := glb_f(buf[(p.first + v) * VERTEX_WORDS + c]);
+      if v == 0 || x < lo3[c] { lo3[c] = x; }
+      if v == 0 || x > hi3[c] { hi3[c] = x; }
+    } }
+    for a: 0..<3 {
+      jo_obj(o[..]); jo_key(o[..], "bufferView"); jo_int(o[..], a); jo_key(o[..], "byteOffset"); jo_int(o[..], first * GLB_VERTEX_BYTES);
+      jo_key(o[..], "componentType"); jo_int(o[..], ifx a == 2 then 5121 else 5126); jo_key(o[..], "count"); jo_int(o[..], p.count);
+      jo_key(o[..], "type"); jo_str(o[..], ifx a == 2 then "VEC4" else "VEC3");
+      if a == 2 { jo_key(o[..], "normalized"); jo_bool(o[..], true); }
+      if a == 0 {
+        jo_key(o[..], "min"); jo_arr(o[..]); for c: 0..<3 { glb_num(o[..], lo3[c]); } jo_end(o[..]);
+        jo_key(o[..], "max"); jo_arr(o[..]); for c: 0..<3 { glb_num(o[..], hi3[c]); } jo_end(o[..]);
+      }
+      jo_end(o[..]);
+    }
+    first += p.count;
+  }
+  jo_end(o[..]);
+  // One interleaved view an attribute: the same bytes and stride, each starting at its own offset.
+  jo_key(o[..], "bufferViews"); jo_arr(o[..]);
+  for a: 0..<3 {
+    off := ifx a == 0 then 0 else ifx a == 1 then 12 else 24;
+    jo_obj(o[..]); jo_key(o[..], "buffer"); jo_int(o[..], 0); jo_key(o[..], "byteOffset"); jo_int(o[..], off);
+    jo_key(o[..], "byteLength"); jo_int(o[..], bin_bytes - off); jo_key(o[..], "byteStride"); jo_int(o[..], GLB_VERTEX_BYTES); jo_key(o[..], "target"); jo_int(o[..], 34962);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "buffers"); jo_arr(o[..]); jo_obj(o[..]); jo_key(o[..], "byteLength"); jo_int(o[..], bin_bytes); jo_end(o[..]); jo_end(o[..]);
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  json_n := o[0].n; json_pad := (4 - json_n % 4) % 4;
+  total := 12 + 8 + json_n + json_pad + 8 + bin_bytes;
+  if total > out.count { return -1; }
+  glb_u32(out, 0, 0x46546C67); glb_u32(out, 4, 2); glb_u32(out, 8, cast,trunc(u32) total);
+  glb_u32(out, 12, cast,trunc(u32) (json_n + json_pad)); glb_u32(out, 16, 0x4E4F534A);
+  at := 20;
+  for k: 0..<json_n { out[at + k] = json[k]; }
+  for k: 0..<json_pad { out[at + json_n + k] = ' '; }
+  at += json_n + json_pad;
+  glb_u32(out, at, cast,trunc(u32) bin_bytes); glb_u32(out, at + 4, 0x004E4942); at += 8;
+  for p: parts { for v: 0..<p.count {
+    i := (p.first + v) * VERTEX_WORDS;
+    glb_u32(out, at, buf[i]); glb_u32(out, at + 4, buf[i + 1]); glb_u32(out, at + 8, buf[i + 2]);
+    packed := buf[i + 3];
+    nx := cast(f32) (packed & 255) / 255 * 2 - 1; ny := cast(f32) ((packed >> 8) & 255) / 255 * 2 - 1; nz := cast(f32) ((packed >> 16) & 255) / 255 * 2 - 1;
+    n := unit_or(v3(nx, ny, nz), v3(0, 1, 0));
+    glb_u32(out, at + 12, f32_bits(n.x)); glb_u32(out, at + 16, f32_bits(n.y)); glb_u32(out, at + 20, f32_bits(n.z));
+    glb_u32(out, at + 24, (buf[i + 4] & 0x00FFFFFF) | 0xFF000000);
+    at += GLB_VERTEX_BYTES;
+  } }
+  return total;
+}
+
+#test "a cube is a whole glTF binary: header, JSON chunk, 36 vertices of 28 bytes" {
+  buf: [36 * VERTEX_WORDS] u32; p: [1] Pen; pen_set(p[..], 1, MAT_FLAT, 1, 0, 0);
+  box(buf[..], p[..], frame_at(v3(10, 0.5, 0), 0), 0.5, 0.5, 0.5);
+  #assert p[0].n == 36;
+  parts := [1] GlbPart.[GlbPart.{name = "cube", first = 0, count = 36}];
+  out: [8192] u8; n := glb_from_cel(buf[..], parts[..], out[..]);
+  #assert n > 0 && n % 4 == 0;
+  #assert out[0] == 'g' && out[1] == 'l' && out[2] == 'T' && out[3] == 'F';
+  json_n := cast(int) out[12] + cast(int) out[13] * 256;
+  #assert n == 12 + 8 + json_n + 8 + 36 * GLB_VERTEX_BYTES;
+  #assert out[20] == '{';
+}
+#test "a part that is not whole triangles is refused" {
+  buf: [36 * VERTEX_WORDS] u32; out: [4096] u8;
+  parts := [1] GlbPart.[GlbPart.{name = "bad", first = 0, count = 35}];
+  #assert glb_from_cel(buf[..], parts[..], out[..]) == -1;
+}

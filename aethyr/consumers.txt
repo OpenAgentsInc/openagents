@@ -53,3 +53,4 @@ book aethyr/space/ aethyr/book/ch039-ephemerides-time-scales-and-frames.md
 book aethyr/audio/score.coax aethyr/book/ch067-scores-mixing-and-a-soundtrack.md
 book aethyr/audio/epic.coax aethyr/book/ch067-scores-mixing-and-a-soundtrack.md
 book aethyr/audio/voice.coax aethyr/book/ch069-voices-in-a-realm.md
+pipeline aethyr/export/ aethyr/tools/unreal-axes-fixture.coax  # the Unreal exporter writes worlds as glTF (#13399; the world exporter is #13400)

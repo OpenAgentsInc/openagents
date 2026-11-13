@@ -93,10 +93,12 @@ Versioned (`"aexport": 1`). All positions are in Aethyr coordinates: metres,
 y up. It contains:
 
 - `game`: id, name, source commit, bundle hash.
-- `axes`: the mapping to Unreal units and axes, stated as a matrix. The
-  Unreal session used 1 m = 100 units, Unreal X = −z, Unreal Y = x, Unreal
-  Z = y. The exporter proves the mapping with a test (section 8) before it
-  is written here.
+- `axes`: the mapping to Unreal units and axes, stated as a matrix. Measured
+  in step 0 with Unreal's default glTF import: Unreal X = x, Unreal Y = z,
+  Unreal Z = y, and 1 m = 100 units. Aethyr is right-handed with y up, which
+  is glTF's own convention, so the file carries Aethyr's numbers unchanged
+  and Unreal's importer does the flip. The Unreal session's hand mapping
+  (X = −z, Y = x) is a different, also valid, choice and is not used.
 - `collision`: the boxes from `g_layout`, the deck and its ramps.
 - `placements`: every named spot with its kind and position.
 - `tuning`: every `T_*` constant by name.
@@ -134,9 +136,10 @@ draws the same triangles without one.
   runs `coax c SOURCE --library --header` and compiles the result with
   clang for `wasm32-wasip1`. The exporter emits the same C for the game
   module and its loads.
-- `aethyr_host.h` declares the host interface with real pointers. The web
-  face passes pointers as 32-bit integers, which is wrong for a 64-bit
-  target, so the bundle carries its own face, `splice-ue-face.c`.
+- `aethyr_host.h` (`aethyr/export/unreal/aethyr_host.h`) declares the host
+  interface with real pointers. The web face passes pointers as 32-bit
+  integers, which is wrong for a 64-bit target, so the bundle carries its
+  own face, `apps/openagents-web/splice-ue-face.c`.
 - Unreal's build tool compiles these files inside the bridge plugin for each
   platform. There is no prebuilt library to keep in step.
 
@@ -285,6 +288,39 @@ Issues: step 0 is #13399, step 1 is #13400, step 2 is #13401, step 3 is
 If the Wasm compile fails, stop and fix the compiler's C output before any
 other work.
 
+**Step 0 result, 2026-11-12: both risks are cleared.** The probe is in
+`aethyr/export/unreal/probe/` with the commands to rerun it.
+
+The probe runs a fixed 34-frame script (leave the title, walk forward) and
+hashes every chunk a host reads at frames 0, 1 and 33: the overlay stream,
+the uniform block, the world store and the live store.
+
+| Build of Splice's C | Pointer size | Result |
+|---|---|---|
+| Web build today (`wasm32-wasip1`, run in Node) | 4 bytes | Reference |
+| Native Mac, clang, arm64 | 8 bytes | Every chunk byte-identical |
+| 64-bit Wasm, Unreal's Emscripten 6.0.10 with `-sMEMORY64=1`, run in Node | 8 bytes | Byte-identical |
+| Inside an Unreal 5.9 editor module on Mac, run headless | 8 bytes | Same hashes |
+| Inside a packaged Unreal 5.9 Wasm build (`wasm64-unknown-emscripten`), in headless Chrome | 8 bytes | Same hashes |
+
+Facts from the run:
+
+- The Coax C needed no change. The only new code is a face with real
+  pointers (`apps/openagents-web/splice-ue-face.c`) behind
+  `aethyr/export/unreal/aethyr_host.h`.
+- Unreal's build settings turn `-Wunreachable-code-aggressive` into an
+  error, and the generated C trips it. The module that compiles the rules
+  turns that one warning off.
+- Splice's static world is 68,394 vertices (1.64 MB). The live store is 372
+  vertices on the title screen. The game state is 1,984 bytes.
+- The Unreal Wasm package of the bare probe project took 442 seconds to
+  build and is 289 MB on disk as a Development build.
+- Axes: three marker cubes at Aethyr (10, 0, 0), (0, 5, 0) and (0, 0, 20)
+  import at Unreal (1000, 0, 0), (0, 0, 500) and (0, 2000, 0). Their faces
+  wind the same way as Unreal's own cube.
+- Not confirmed: vertex colour after import. Unreal's Python mesh API reads
+  positions and UVs only, so step 1 checks colour in a render.
+
 **Step 1. Static world.**
 
 - The bundle is byte-identical on two runs.
@@ -323,7 +359,7 @@ other work.
 
 | # | Item | Answer today |
 |---|---|---|
-| R1 | Coax C on 64-bit Wasm inside Unreal's toolchain | Unknown. Step 0 decides. |
+| R1 | Coax C on 64-bit Wasm inside Unreal's toolchain | Cleared in step 0: same bytes as the web build, in a packaged Unreal Wasm build. |
 | R2 | Updating a dynamic mesh every frame on the web tier | Unknown cost. Measured in step 2. Step 3 removes most of it. |
 | R3 | Look parity with a hand-written material | The Unreal session's first two shaders missed. Step 2's frame comparison is the guard. |
 | R4 | Overlay text drawn with Unreal fonts will not match glyph for glyph | Acceptable if the frame comparison passes. Otherwise the plugin draws from the same atlas layout. |

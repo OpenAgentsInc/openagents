@@ -1,0 +1,13 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "",
+	"Category": "",
+	"Description": "Probe for docs/unreal/2026-11-12-aethyr-to-unreal-exporter-spec.md, step 0: an Aethyr world's C compiled inside an Unreal module.",
+	"Modules": [
+		{
+			"Name": "AethyrProbe",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}
