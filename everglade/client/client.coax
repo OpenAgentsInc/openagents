@@ -24,6 +24,7 @@
 #load "cast.coax";   // the bar here, and everyone's casts through the room (#13058)
 #load "guard.coax";  // the path's guard, as the room walks him
 #load "creatures.coax";   // the wolves and the goblins, as the room moves them
+#load "ride-view.coax";   // riding: E and X, the mounts drawn, a rider in the saddle (#13268)
 #load "wild.coax";   // the glade's cat (everglade/creatures/cat.coax), and ?stage=cat
 #load "npc.coax";    // Pansopher, the Golemancy trainer, and his talk (everglade/world/pansopher.coax)
 #load "bench.coax";  // the Golemancer's Workbench beside him and its window (everglade/world/golem-bench.coax)
@@ -154,6 +155,7 @@ E2 :: struct {
   bows: [1] E2Bow;                               // the arrows in the air and stuck (everglade/client/arrows.coax)
   adm: [1] E2Admin;                              // admin mode (everglade/client/admin.coax): set and read in dev builds only
   monsters: [1] E2MonLooks;                      // the wolves and goblins as drawn (everglade/client/creatures.coax)
+  rv: [1] E2RideView;                            // the zone's mounts as drawn, and the pack's frames for them (everglade/client/ride-view.coax)
   wild: [1] E2Wild;                              // the glade's cat (everglade/client/wild.coax)
   speakers: [1] E2Speakers;                      // the content tables' speakers: the Warden (everglade/client/speakers.coax)
   npc: [1] E2Npc;                                // Pansopher and his talk (everglade/client/npc.coax)
@@ -182,7 +184,7 @@ e2_catalog :: (s: [] E2, whole: string, rec: [] u8, rest: [] u8) #export_c #effe
   s[0].ground_code = ifx n > 0 then e2g_record_read(s[0].eg[..], rec[0..<n]) else -1;
   e2_take_planting(s, whole); s[0].catalog_in = true;
   text := e2_catalog_rest(whole, rest);
-  figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text); e2w_catalog(s, text); e2b_catalog(s, text);
+  figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text); e2w_catalog(s, text); e2b_catalog(s, text); e2rv_catalog(s, text);
   s[0].mats_n = cmat.cm_table(text, s[0].mat_table[..], s[0].mats[..]); s[0].mats_v += 1;
   for b: 0..<E2_BUCKETS { s[0].kit_first[b] = 0; s[0].kit_count[b] = 0; }
   at := 0; any := false;
@@ -599,6 +601,7 @@ e2_key :: (s: [] E2, key: int, mods: int) -> bool #export_c #effects(all) {
   if e2i_key(s, key) { return true; }   // the bag: B opens and shuts it; E asks for a quest's talk; Esc, E or 1 ends a line read
   if e2b_key(s, key) { return true; }   // the workbench's window: E opens it near the bench; 1 to 4 pick a kind, Esc shuts it
   if e2p_key(s, key) { return true; }   // Pansopher's talk: E opens it near him; 1 to 9 answer, Esc ends it
+  if e2rv_key(s, key) { return true; }   // riding: E mounts the mount in reach or gets you down, X brings a flier down (ride-view.coax)
   if e2c_key(s, key) { return true; }
   if mlook.ml_key(s[0].ml[..], key) { return true; }
   if e2k_key(s, key) { return true; }
@@ -1681,6 +1684,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   d = e2_remotes_draw(s, d, bdt);   // the others in the room (everglade/client/net.coax)
   d = e2gd_draw(s, d, bdt);          // the path's guard (everglade/client/guard.coax)
   d = e2mn_draw(s, d, bdt);          // the wolves and the goblins (everglade/client/creatures.coax)
+  d = e2rv_draw(s, d, bdt);          // the zone's mounts (everglade/client/ride-view.coax)
   rec = d.rec; n = d.n; sn = d.sn;
   n = e2_pieces(s, s[0].draws[..], n, false);
   n = e2_field(s, s[0].draws[..], n);
@@ -2089,6 +2093,7 @@ e2_remotes_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
   for k: 0..<most {
     r := e2n_remote(s[0].net[..], k);
     if !r.ok { break; }
+    r = e2rv_remote(s, r);   // in the saddle of the mount that carries them (ride-view.coax)
     en := s[0].net[0].ents[r.slot]; slot := r.slot; seen[slot] = true;
     // a new player in this slot: from nothing (one still thinning out here is cut: a pop if it showed)
     if s[0].rseat[slot] != r.seat + 1 {

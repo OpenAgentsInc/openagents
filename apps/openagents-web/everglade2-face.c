@@ -100,19 +100,28 @@ static int64_t cull_n;
 static int64_t hud_n;   /* the HUD's vertices this frame, for the frame plan */
 /* One step of the controller: the world round you, Everglade II's pace, its two halves over the trunks
    and the rocks' hulls, then kept where you may stand. The room's world2_step (coax/web/room/room-world.c) is the same. */
-static coax_t_Body step_frame(cx_face_addr state, coax_t_Body p, coax_t_EgMoveIn input, float step, float frame) {
+/* ride: the mount that carries you this step seats you (everglade/client/ride.coax: your mount is stepped by
+   the same input, as the room's world2_step takes its `ride`); NULL or off, you walk. */
+static coax_t_Body step_ride(cx_face_addr state, coax_t_Body p, coax_t_EgMoveIn input, float step, float frame, const coax_t_E2RBody *ride) {
   float fx = p.pos.x, fz = p.pos.z;
   coax_t_EgMoveWorld mw = e2_move_world(at(state), p.pos.x, p.pos.z);
   mw.pace = e2_pace(input.run);
+  bool aboard = ride && ride->on;
+  if (aboard) { mw.aboard = true; mw.seat_x = ride->x; mw.seat_z = ride->z; mw.seat_yaw = ride->yaw; }
   p = eg_step_begin(p, input, mw, step);
   coax_v_f32 near = e2_move_bodies(at(state)), hulls = e2_move_hulls(at(state));
   p = eg_step_advance_among(p, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){0, 0}, (coax_v_f32){0, 0}, (coax_v_f32){hulls.data, mw.hulls}, frame);
+  if (aboard) return p;   /* a mount keeps itself to the land (everglade/shared/mount-land.coax) */
   coax_t_Point kept = e2_keep_from(at(state), p.pos.x, p.pos.z, fx, fz);
   if (kept.x != p.pos.x || kept.z != p.pos.z) p = metaverse_body_constrain(p, kept.x, kept.z);
   return p;
 }
-static coax_t_Body step_once(cx_face_addr state, coax_t_Body p, coax_t_EgMoveIn input, float dt) {
-  return step_frame(state, p, input, dt, dt);   /* the room steps 1/30 s, not the clock's count (room-world.c world2_step) */
+static coax_t_Body step_frame(cx_face_addr state, coax_t_Body p, coax_t_EgMoveIn input, float step, float frame) { return step_ride(state, p, input, step, frame, NULL); }
+/* One input's step in a room: input `seq` steps your mount when one carries you (rerun: a re-run of an
+   input the room has not stepped), then your body, 1/30 s as the room steps it (room-world.c world2_step). */
+static coax_t_Body step_once(cx_face_addr state, coax_t_Body p, coax_t_EgMoveIn input, float dt, int64_t seq, bool rerun) {
+  coax_t_E2RBody ride = e2_ride_step(at(state), input, seq, p.pos.x, p.pos.z, rerun);
+  return step_ride(state, p, input, dt, dt, &ride);
 }
 /* The room's commands (everglade/client/net.coax's pipe) to the host, in order: open, send, close, and the
    seat ticket's ask (op 4: the path, a newline, the body). */
@@ -204,23 +213,25 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
       coax_t_Vec3 was = eg_step_feet(player);
       coax_t_NetFix f = e2_net_fix(at(state));
       player = eg_step_set(player, f.x, f.y, f.z, f.yaw, f.vx, f.vy, f.vz, f.ground, f.carry, f.jump);
+      e2_ride_fix(at(state));   /* your mount is the room's row again before the re-run steps it */
       int64_t again = e2_net_replay_n(at(state));
-      for (int64_t k = 0; k < again; k++) player = step_once(state, player, e2_net_replay_input(at(state), k), STEP);
+      for (int64_t k = 0; k < again; k++) player = step_once(state, player, e2_net_replay_input(at(state), k), STEP, e2_net_replay_seq(at(state), k), true);
       coax_t_Vec3 now_at = eg_step_feet(player);
       e2_net_fixed(at(state), now_at.x - was.x, now_at.y - was.y, now_at.z - was.z);
     }
     step_acc += frame > 0.25f ? 0.25f : frame;
     while (step_acc >= STEP) {
       coax_t_EgMoveIn one = input; one.jump = step_jump_held != 0; step_jump_held = 0;
-      e2_net_input(at(state), one);
-      player = step_once(state, player, one, STEP);
+      int64_t seq = e2_net_input(at(state), one);
+      player = step_once(state, player, one, STEP, seq, false);
       step_acc -= STEP;
     }
     /* the next step as it will run on this frame's input, not yet sent: drawn toward by the time gone
        of it, so a key shows on the next frame and not up to a step later (#13167). Only drawn: the
        sent steps and the room's re-runs are the only ones that move you. */
     coax_t_EgMoveIn next = input; next.jump = step_jump_held != 0;
-    step_next = step_once(state, player, next, STEP);
+    coax_t_E2RBody ride_next = e2_ride_peek(at(state), next, player.pos.x, player.pos.z);   /* a copy's step: your mount is not moved */
+    step_next = step_ride(state, player, next, STEP, STEP, &ride_next);
   } else {
     /* the run holds its feet while the room seats you (E2N_HOLD_MS at most); alone, the frame's own step */
     if (joined_ms < 0 && e2_at(state)->net.e[0].joined) joined_ms = mono;
@@ -236,7 +247,13 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
     feet = eg_step_drawn(eg_step_feet(player), step_next, step_acc * 30);
     feet.x += off.x; feet.y += off.y; feet.z += off.z;
   }
-  e2_you(at(state), feet.x, feet.y, feet.z, metaverse_body_face(player));
+  float face = metaverse_body_face(player);
+  if (e2_net_live(at(state))) {
+    /* carried by a mount: drawn from where you stood to its saddle and back (everglade/client/ride-view.coax) */
+    coax_t_E2RvFeet saddle = e2_ride_feet(at(state));
+    if (saddle.on) { feet.x = saddle.x; feet.y = saddle.y; feet.z = saddle.z; face = saddle.face; }
+  }
+  e2_you(at(state), feet.x, feet.y, feet.z, face);
   sticks = metaverse_sticks_used(sticks);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_e2_max_vertices() * coaxial_e2_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_e2_uniform_floats()};

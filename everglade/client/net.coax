@@ -21,11 +21,12 @@
 #load "../../metaverse-engine/net/stats.coax";   // the netcode readout's counts (?net, #13157)
 #load "../../metaverse-engine/net/transport.coax";   // WebSocket or WebTransport under one interface (#13176)
 #load "../server/creature-wire.coax";   // what the guard and the monsters did (e guard, e mon), the room's codec (#13246, #13276)
+#load "ride.coax";   // riding: the page's mounts, yours predicted, and its asks (#13268)
 #load "../server/familiar-wire.coax";   // a familiar's requests and answers and the Healer's Kit's, the room's codec (#13276, #13245)
 #load "../../metaverse-engine/net/relay-wire.coax";   // the relay's own frames: y and the clock's ping and pong (#13245)
 
 E2N_OFF :: 0; E2N_OPENING :: 1; E2N_OPEN :: 2; E2N_DOWN :: 3;
-E2N_ENTS :: 48;                 // the room's players (a room seats 16), monsters, guard and familiars this page holds: every entity it draws (#13276, #13277)
+E2N_ENTS :: 48 + WIRE_MOUNTS;   // the room's players (a room seats 16), monsters, guard, familiars and mounts this page holds: every entity it draws (#13276, #13277, #13268)
 E2N_REALM :: "everglade2";
 E2N_GAME :: "everglade";        // the room server's game path (/api/room/relay/everglade/CODE)
 E2N_PIPE_TICKET :: 4;           // the pipe's ask for a seat ticket: the API path, a newline, the body (as Everglade's, everglade5e-face.c)
@@ -94,6 +95,8 @@ E2Net :: struct {
   mir: [1] WireMirror;
   pred: [1] NetPredict;   // your inputs, the newest the room stepped and the re-run due (metaverse-engine/net/predict.coax)
   fix: NetFix;            // the room's word on you: your row's fields after input pred.acked
+  fix_tick: int;          // the room's tick that word was written at (a mount's transitions count from it: ride.coax)
+  ride: [1] E2Ride;       // the zone's mounts: yours predicted, the others' their rows (ride.coax, #13268)
   off: [1] NetCorrect;    // where you are drawn less where the re-runs put you, eased out (metaverse-engine/net/interp.coax)
   hello_due: bool;
   change_due: bool;             // your class or look changed while seated: the room is told (V), for it holds a ticket's later hellos
@@ -531,6 +534,7 @@ e2n_down :: (n: [] E2Net) {
   n[0].retry = n[0].mono + wait * 3 / 4 + wait * j / 2000;
   e2n_clear_familiars(n);
   for e: 0..<E2N_ENTS { n[0].ents[e].live = false; }
+  e2rp_rejoin(n[0].ride[..]);
   wire_mirror_forget(n[0].mir[..]);
   n[0].pred[0].due = false; n[0].off[0] = NetCorrect.{}; n[0].ticks = 0;
 }
@@ -723,6 +727,7 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
   if c == 'e' && wire_is(t, EGC_MON_E) { e2n_mon_hit(n, t); return; }
   if c == 'e' && wire_is(t, EGC_GUARD_E) { e2n_guard_hit(n, t); return; }
   if c == 'e' && egf_kept(t) { e2n_familiar_answer(n, t); return; }
+  if c == 'e' && egm_kept(t) { _ := e2rp_answer(n[0].ride[..], t); return; }   // the room's answer to a riding ask
   if c == 'e' && wire_is(t, "e cast") {
     r[0] = wire_rd(t, 6);
     ce := wire_read_cast_e(t, r[..]);
@@ -757,13 +762,18 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
 // state into the engine's ring (metaverse-engine/net/interp.coax). A new LIFE or a WARP starts its ring again,
 // so nothing is drawn between the last life and this one.
 e2n_row :: (n: [] E2Net, w: WireS, d: WireD) {
-  creature := w.kind == WK_MONSTER || w.kind == WK_GUARD || w.kind == WK_FAMILIAR;
+  creature := w.kind == WK_MONSTER || w.kind == WK_GUARD || w.kind == WK_FAMILIAR || w.kind == WK_MOUNT;
   if w.id < 0 || (w.kind != WK_PLAYER && !creature) { return; }
   // a familiar's row is its owner's seat's, of a form the rules have, alive, with senses the wire names
   if w.kind == WK_FAMILIAR && (w.owner < WIRE_TGT_SEAT || w.owner >= WIRE_TGT_SEAT + E2N_FAMILIARS || w.id != WIRE_ID_MADE + WIRE_FAM_EID + w.owner - WIRE_TGT_SEAT ||
                                w.p1 < 0 || w.p1 >= RS_FAMILIAR_FORMS.count || w.hp <= 0 || w.max < w.hp || w.g < E2_SENSE_OWNER || w.g > E2_SENSE_SIGHT_HEARING) { return; }
   if w.kind == WK_MONSTER && (w.id != WIRE_ID_MADE + WIRE_MON_EID + w.p1 || w.p1 < 0 || w.p1 >= E2N_MONS) { return; }
   if w.kind == WK_GUARD && w.id != WIRE_ID_MADE + WIRE_GUARD_EID { return; }
+  // a mount's row is one of the zone's, of a kind the page knows: kept for your prediction too (ride.coax)
+  if w.kind == WK_MOUNT {
+    if egm_row_index(w.id) < 0 || w.p1 < 0 || w.p1 >= MK_KINDS || w.g < MOUNT_FREE || w.g > MOUNT_DISMOUNTING { return; }
+    e2rp_row(n[0].ride[..], w, n[0].seat);
+  }
   k := e2n_ent(n, w.id, true);
   if k < 0 { return; }
   en := n[0].ents[k..<k + 1];
@@ -786,6 +796,7 @@ e2n_row :: (n: [] E2Net, w: WireS, d: WireD) {
   if w.id == n[0].seat && net_predict_heard(n[0].pred[..], d.ack) {
     held: [NET_MOVE_WORDS] int;
     jumped := net_predict_held(n[0].pred[..], d.ack, held[..]) == NET_MOVE_WORDS && net_move_of(held[..]).jump;
+    n[0].fix_tick = d.tick;
     n[0].fix = NetFix.{ok = true, ack = d.ack, x = w.x, y = w.y, z = w.z, yaw = w.yaw, vx = w.vx, vy = w.vy, vz = w.vz,
                        ground = (w.g & WG_GROUND) != 0, carry = w.carry, jump = jumped};
   }

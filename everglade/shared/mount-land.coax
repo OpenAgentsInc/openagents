@@ -77,6 +77,8 @@ e2ml_boxes :: (still: [] E2Still, items: [] f32, kinds: [] u8, first: [] int, pl
   }
   return n;
 }
+// A rider's walk keys and stick as its mount's steering, -100 to 100: a phone's stick steers as the keys do.
+e2ml_axis :: (key: int, pad: int) -> int { v := key + pad; return ifx v > 100 then 100 else ifx v < -100 then -100 else v; }
 // How far round mount k its boxes are gathered.
 e2ml_reach :: (r: E2Mounts, k: int) -> f32 { return mount_reach(mk_tune(r.kind[k])) + f32(E2ML_MORE); }
 
@@ -175,4 +177,5 @@ e2ml_lay :: (r: [] E2Mounts) #effects(all) {
   #assert code == E2R_OK || code == E2R_NO_ROOM;
   #assert e2ml_dismount(r[..], 9, true, 3000, g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true) == E2R_ON_FOOT;
   #assert e2ml_step(r[..], 7, 0, 0, false, false, 1, 30, g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true).rider == -1;
+  #assert e2ml_axis(60, 0) == 60 && e2ml_axis(0, -30) == -30 && e2ml_axis(80, 80) == 100 && e2ml_axis(-80, -80) == -100;
 }

@@ -1,0 +1,210 @@
+// Riding on the page (#13268): the page's copy of its zone's mounts. Yours is predicted: each input
+// you send steps it with the room's own step (everglade/shared/mount-land.coax e2ml_step) at the tick
+// the room will step that input, and your body is where it seats you. The room's word arrives as the
+// mount's row with your own row (the acknowledgement): the page lays the row over its mount and
+// re-runs the inputs the room hasn't stepped, as it does for a walker (metaverse-engine/net/predict.coax).
+// What you ask (mount, get down, land) is predicted the moment you press, kept in a ledger with the
+// input it was pressed after, and re-applied in a re-run until the room answers (e ride). A refusal
+// puts the mount back as the room has it. The others' mounts are their rows, drawn a jitter buffer
+// behind through the page's entity list (net.coax e2n_row, NetEnt).
+//   coax/bin/coax test everglade/client/ride.coax --library
+#load "../shared/mount-land.coax";
+#load "../shared/mount-wire.coax";
+
+E2RP_ASKS :: 4;        // asks pressed and not yet answered
+E2RP_ASK_KEEP :: 300;  // inputs (10 s) an ask waits for its answer before the page lets it go
+E2rpAsk :: struct { live: bool; seq: int; kind: int; mount: int = -1; at: int; }
+E2Ride :: struct {
+  m: [1] E2Mounts;                                       // every mount: yours as predicted, the others' as last heard
+  heard: [WIRE_MOUNTS] WireS; heard_on: [WIRE_MOUNTS] bool;   // each one's newest row
+  base: int;                                             // the room's tick less the number of the input it stepped then
+  based: bool;
+  asks: [E2RP_ASKS] E2rpAsk; asked: int;                 // the ledger; asks made, for their numbers
+  refused: int; refused_n: int;                          // the last refusal's code (mounts.coax E2R_*), and how many
+  steps: int; fixes: int;                                // your mount's predicted steps and the re-runs laid over it (the checks read them)
+}
+// The land the page's mounts step on: the page's planting (client.coax's items, kinds and first).
+E2rpLand :: struct { items: [] f32; kinds: [] u8; first: [] int; planted: bool; }
+
+e2rp_mine :: (r: [] E2Ride, seat: int) -> int { return ifx seat >= 0 then e2r_of(r[0].m[0], seat) else -1; }
+// The room's tick at which it steps your input `seq`.
+e2rp_tick :: (r: [] E2Ride, seq: int) -> int { return r[0].base + seq; }
+// A mount's row heard: kept; one that is not yours is the row at once.
+e2rp_row :: (r: [] E2Ride, w: WireS, seat: int) {
+  k := egm_row_index(w.id);
+  if k < 0 || w.kind != WK_MOUNT { return; }
+  r[0].heard[k] = w; r[0].heard_on[k] = true;
+  yours := seat >= 0 && (w.owner == WIRE_TGT_SEAT + seat || (k < r[0].m[0].n && mount_carries(r[0].m[0].m[k], seat)));
+  if !yours { took := egm_row_take(r[0].m[..], w, true); }
+}
+// The mount nearest (x, z) you could mount now, -1 none.
+e2rp_nearest :: (r: [] E2Ride, x: f32, z: f32) -> int {
+  best := -1; bd: f32 = 1.0e9;
+  for k: 0..<r[0].m[0].n {
+    h := r[0].m[0].m[k]; t := mk_tune(r[0].m[0].kind[k]);
+    if !mount_near(h, t, x, z) { continue; }
+    d := mount_distance(h, t, x, z);
+    if d < bd { bd = d; best = k; }
+  }
+  return best;
+}
+// An ask done to the page's mounts as the room will do it: the room's own code (E2R_*).
+e2rp_apply :: (r: [] E2Ride, seat: int, a: E2rpAsk, x: f32, z: f32, land: E2rpLand) -> int {
+  none: [] E2Still; tick := e2rp_tick(r, a.at + 1);
+  if a.kind == WE_MOUNT { return e2r_mount(r[0].m[..], seat, a.mount, x, z, true, tick); }
+  if a.kind == WE_LAND { return e2r_land(r[0].m[..], seat); }
+  return e2ml_dismount(r[0].m[..], seat, true, tick, none, land.items, land.kinds, land.first, land.planted);
+}
+// You press: mount the nearest (kind WE_MOUNT), get down or land. Done here at once when the page's
+// mounts allow it, and kept for the room's answer; `after` is the number of the last input you sent,
+// (x, z) where you stand. The use to send (seq 0: nothing to ask, the page's own mounts say no).
+e2rp_press :: (r: [] E2Ride, seat: int, kind: int, after: int, x: f32, z: f32, land: E2rpLand) -> WireUse {
+  if seat < 0 || kind < WE_MOUNT || kind > WE_LAND { return WireUse.{}; }
+  free := -1; for i: 0..<E2RP_ASKS { if !r[0].asks[i].live && free < 0 { free = i; } }
+  if free < 0 { return WireUse.{}; }
+  a := E2rpAsk.{live = true, kind = kind, at = after, mount = ifx kind == WE_MOUNT then e2rp_nearest(r, x, z) else e2rp_mine(r, seat)};
+  if a.mount < 0 || e2rp_apply(r, seat, a, x, z, land) != E2R_OK { return WireUse.{}; }
+  r[0].asked += 1;
+  a.seq = after + 6000000 + r[0].asked;   // apart from the inputs', the casts', the rests', the aids' and the record's numbers
+  r[0].asks[free] = a;
+  return egm_use_of(EgmAsk.{seq = a.seq, kind = kind, mount = a.mount});
+}
+// The room's answer (e ride): its ask leaves the ledger; refused, the mount is the room's row again.
+e2rp_answer :: (r: [] E2Ride, t: string) -> bool {
+  a := egm_answer_read(t);
+  if !a.ok { return false; }
+  for i: 0..<E2RP_ASKS {
+    if !r[0].asks[i].live || r[0].asks[i].seq != a.seq { continue; }
+    k := r[0].asks[i].mount;
+    r[0].asks[i] = E2rpAsk.{};
+    if a.code != E2R_OK {
+      r[0].refused = a.code; r[0].refused_n += 1;
+      if k >= 0 && k < WIRE_MOUNTS && r[0].heard_on[k] { took := egm_row_take(r[0].m[..], r[0].heard[k], true); }
+    }
+  }
+  return true;
+}
+// The room's word on you arrived (your row after input `ack`, at the room's tick `tick`, you at
+// (x, z)): every mount that is or was yours is its row again, and the asks pressed up to `ack` that
+// the room has not answered are done again. The re-run of the inputs after `ack` follows (e2rp_step).
+e2rp_fix :: (r: [] E2Ride, seat: int, ack: int, tick: int, x: f32, z: f32, land: E2rpLand) {
+  if seat < 0 { return; }
+  r[0].base = tick - ack; r[0].based = true; r[0].fixes += 1;
+  for k: 0..<WIRE_MOUNTS {
+    if !r[0].heard_on[k] { continue; }
+    mine := k < r[0].m[0].n && mount_carries(r[0].m[0].m[k], seat);
+    if mine || r[0].heard[k].owner == WIRE_TGT_SEAT + seat { took := egm_row_take(r[0].m[..], r[0].heard[k], true); }
+  }
+  for i: 0..<E2RP_ASKS {
+    if !r[0].asks[i].live { continue; }
+    if ack - r[0].asks[i].at > E2RP_ASK_KEEP { r[0].asks[i] = E2rpAsk.{}; continue; }
+    if r[0].asks[i].at <= ack { code := e2rp_apply(r, seat, r[0].asks[i], x, z, land); }
+  }
+}
+// The walk keys and the stick as a mount's steering, -100 to 100 each: the room's reading of an input
+// (everglade/server/riding.coax) is the keys', so the page sends the stick's push as the keys' too.
+e2rp_axis :: (key: f32, pad: f32) -> int {
+  return e2ml_axis(wire_axis(key), wire_axis(pad));
+}
+// Your input `seq` steps the mount you are on, among the land's boxes: where it seats your body after
+// (on false: you are on foot). An ask pressed just before this input is done first, as a re-run needs.
+// (x, z): where you stand before the step.
+e2rp_step :: (r: [] E2Ride, seat: int, seq: int, kx: int, ky: int, run: bool, jump: bool, x: f32, z: f32, land: E2rpLand, rerun: bool) -> E2RBody {
+  if seat < 0 { return E2RBody.{}; }
+  if rerun { for i: 0..<E2RP_ASKS { if r[0].asks[i].live && r[0].asks[i].at == seq - 1 { code := e2rp_apply(r, seat, r[0].asks[i], x, z, land); } } }
+  k := e2rp_mine(r, seat);
+  if k < 0 { return E2RBody.{}; }
+  none: [] E2Still; tick := e2rp_tick(r, seq);
+  o := e2ml_step(r[0].m[..], k, kx, ky, run, jump, tick, WIRE_HZ, none, land.items, land.kinds, land.first, land.planted);
+  r[0].steps += 1;
+  if o.off { return E2RBody.{on = true, x = o.x, z = o.z, yaw = r[0].m[0].m[k].face}; }
+  return e2r_body(r[0].m[0], k, tick, WIRE_HZ);
+}
+// The step your next input will make, on a copy: where it would seat you, for the frame's drawing
+// between steps. Nothing of the page's mounts changes.
+e2rp_peek :: (r: [] E2Ride, seat: int, seq: int, kx: int, ky: int, run: bool, jump: bool, x: f32, z: f32, land: E2rpLand) -> E2RBody {
+  c: [1] E2Ride; c[0].m[0] = r[0].m[0]; c[0].base = r[0].base;
+  return e2rp_step(c[..], seat, seq, kx, ky, run, jump, x, z, land, false);
+}
+// The seat's socket closed or it sat again: nothing asked is owed, and the mounts are their rows.
+e2rp_rejoin :: (r: [] E2Ride) {
+  for i: 0..<E2RP_ASKS { r[0].asks[i] = E2rpAsk.{}; }
+  for k: 0..<WIRE_MOUNTS { if r[0].heard_on[k] { took := egm_row_take(r[0].m[..], r[0].heard[k], true); } }
+}
+
+// ---- checks
+// A room's mounts for the checks: the land's two, stepped as riding.coax steps them, with no planting.
+e2rp_test_land :: () -> E2rpLand { none_f: [] f32; none_k: [] u8; none_i: [] int; return E2rpLand.{items = none_f, kinds = none_k, first = none_i, planted = false}; }
+#test "riding on the page: a press mounts at once, the page's steps and the room's put the horse in the same place, and the row changes nothing" #steps 4000000000 {
+  land := e2rp_test_land(); none: [] E2Still;
+  room: [1] E2Mounts; e2ml_lay(room[..]);
+  p: [1] E2Ride; seat := 3;
+  // the page hears both rows at tick 100 and its own row after input 40: tick 100 stepped input 40
+  for k: 0..<2 { e2rp_row(p[..], egm_row(room[0], k), seat); }
+  #assert p[0].m[0].n == 2 && p[0].m[0].kind[1] == MK_DRAGON && e2rp_mine(p[..], seat) == -1;
+  e2rp_fix(p[..], seat, 40, 100, 10.2, 9, land); #assert p[0].base == 60 && e2rp_tick(p[..], 41) == 101;
+  // too far to mount anything: nothing asked
+  #assert e2rp_press(p[..], seat, WE_MOUNT, 40, 40, 40, land).seq == 0 && e2rp_press(p[..], seat, WE_DISMOUNT, 40, 10.2, 9, land).seq == 0;
+  // beside the horse: mounted here at once, and the ask names it
+  u := e2rp_press(p[..], seat, WE_MOUNT, 40, 10.2, 9, land);
+  #assert u.seq > 6000000 && u.kind == WE_MOUNT && u.id == 0 && e2rp_mine(p[..], seat) == 0 && p[0].m[0].m[0].state == MOUNT_MOUNTING && p[0].m[0].m[0].since_tick == 101;
+  // the room hears it at its tick 101 and steps each input at the tick the page said
+  #assert e2r_mount(room[..], seat, 0, 10.2, 9, true, 101) == E2R_OK;
+  bx: f32 = 10.2; bz: f32 = 9;
+  for s: 41..<101 {
+    b := e2rp_step(p[..], seat, s, 20, 100, true, false, bx, bz, land, false); #assert b.on; bx = b.x; bz = b.z;
+    o := e2ml_step(room[..], 0, 20, 100, true, false, 60 + s, WIRE_HZ, none, land.items, land.kinds, land.first, false);
+  }
+  #assert p[0].m[0].m[0].x == room[0].m[0].x && p[0].m[0].m[0].z == room[0].m[0].z && p[0].m[0].m[0].speed == room[0].m[0].speed && p[0].m[0].m[0].state == MOUNT_RIDDEN && room[0].m[0].speed > 8;
+  #assert bx == room[0].m[0].x && bz == room[0].m[0].z && p[0].steps == 60;
+  // the room's row for tick 130 (input 70) arrives late: laid over, and the 30 inputs after it re-run to the same place, to the wire's centimetre
+  late: [1] E2Mounts; e2ml_lay(late[..]); #assert e2r_mount(late[..], seat, 0, 10.2, 9, true, 101) == E2R_OK;
+  for s: 41..<71 { o := e2ml_step(late[..], 0, 20, 100, true, false, 60 + s, WIRE_HZ, none, land.items, land.kinds, land.first, false); }
+  f: [WIRE_SF] s32; row := egm_row(late[0], 0); wire_s_pack(row, f[..]); wire_kind_keep(row.kind, f[..]);
+  e2rp_row(p[..], wire_s_unpack(row.id, f[..]), seat);
+  #assert p[0].m[0].m[0].x == room[0].m[0].x;   // yours: the row waits for the re-run
+  e2rp_fix(p[..], seat, 70, 130, bx, bz, land);
+  for s: 71..<101 { b := e2rp_step(p[..], seat, s, 20, 100, true, false, bx, bz, land, true); bx = b.x; bz = b.z; }
+  #assert abs(p[0].m[0].m[0].x - room[0].m[0].x) < 0.05 && abs(p[0].m[0].m[0].z - room[0].m[0].z) < 0.05 && abs(p[0].m[0].m[0].speed - room[0].m[0].speed) < 0.05;
+  // the answer: the ask leaves the ledger
+  out: [48] u8; n := egm_answer_put(out[..], EgmAnswer.{seq = u.seq, code = E2R_OK, mount = 0});
+  #assert p[0].asks[0].live && e2rp_answer(p[..], cast(string) out[0..<n]) && !p[0].asks[0].live && p[0].refused_n == 0 && !e2rp_answer(p[..], "e fam 3 0 8");
+  // a peek steps nothing
+  x0 := p[0].m[0].m[0].x; pk := e2rp_peek(p[..], seat, 101, 0, 100, true, false, bx, bz, land);
+  #assert pk.on && p[0].m[0].m[0].x == x0 && (pk.x != x0 || pk.z != p[0].m[0].m[0].z) && p[0].steps == 90;
+  // the stick steers as the keys do, held to a full push
+  #assert e2rp_axis(0.5, 0) == 50 && e2rp_axis(0, -0.25) == -25 && e2rp_axis(1, 1) == 100 && e2rp_axis(-1, -1) == -100;
+}
+#test "riding on the page: an ask not yet in the room's row survives a re-run, and a refusal puts the mount back as the room has it" #steps 4000000000 {
+  land := e2rp_test_land();
+  room: [1] E2Mounts; e2ml_lay(room[..]);
+  p: [1] E2Ride; seat := 0; other := 5;
+  for k: 0..<2 { e2rp_row(p[..], egm_row(room[0], k), seat); }
+  e2rp_fix(p[..], seat, 10, 200, 10.2, 9, land);
+  // pressed after input 12; inputs 13 and 14 predicted aboard
+  u := e2rp_press(p[..], seat, WE_MOUNT, 12, 10.2, 9, land); #assert u.seq > 0;
+  b := e2rp_step(p[..], seat, 13, 0, 0, false, false, 10.2, 9, land, false); #assert b.on;
+  b = e2rp_step(p[..], seat, 14, 0, 0, false, false, b.x, b.z, land, false); #assert b.on && b.seated > 0 && b.seated < 1;
+  // the room's row after input 11 (it has not heard the ask): free. The re-run from 12 mounts again before 13
+  e2rp_row(p[..], egm_row(room[0], 0), seat); e2rp_fix(p[..], seat, 11, 201, 10.2, 9, land);
+  #assert p[0].m[0].m[0].state == MOUNT_FREE;
+  b = e2rp_step(p[..], seat, 12, 0, 0, false, false, 10.2, 9, land, true); #assert !b.on;
+  b = e2rp_step(p[..], seat, 13, 0, 0, false, false, 10.2, 9, land, true); #assert b.on && p[0].m[0].m[0].state == MOUNT_MOUNTING && p[0].m[0].m[0].since_tick == 203;
+  // the row after input 13, still without it (the ask is in flight): done again at the fix itself
+  e2rp_row(p[..], egm_row(room[0], 0), seat); e2rp_fix(p[..], seat, 13, 203, 10.2, 9, land);
+  #assert p[0].m[0].m[0].state == MOUNT_MOUNTING && e2rp_mine(p[..], seat) == 0;
+  // someone else took the horse first: the room refuses, and the page's horse is the room's
+  #assert e2r_mount(room[..], other, 0, 10.2, 9, true, 202) == E2R_OK;
+  e2rp_row(p[..], egm_row(room[0], 0), seat);   // (yours on the page still: the row waits)
+  #assert p[0].m[0].m[0].rider == seat;
+  out: [48] u8; n := egm_answer_put(out[..], EgmAnswer.{seq = u.seq, code = E2R_TAKEN, mount = 0});
+  #assert e2rp_answer(p[..], cast(string) out[0..<n]) && p[0].refused == E2R_TAKEN && p[0].refused_n == 1;
+  #assert p[0].m[0].m[0].rider == other && e2rp_mine(p[..], seat) == -1 && !p[0].asks[0].live;
+  #assert !e2rp_step(p[..], seat, 14, 0, 100, false, false, 10.2, 9, land, false).on;
+  // a row that is not yours is taken at once; an ask the room never answers is let go
+  room[0].m[1].x = -20; e2rp_row(p[..], egm_row(room[0], 1), seat); #assert p[0].m[0].m[1].x == -20;
+  p[0].asks[1] = E2rpAsk.{live = true, seq = 9, kind = WE_LAND, at = 14};
+  e2rp_fix(p[..], seat, 14 + E2RP_ASK_KEEP + 1, 600, 10.2, 9, land); #assert !p[0].asks[1].live;
+  // sat again: nothing owed
+  p[0].asks[2] = E2rpAsk.{live = true, seq = 10, kind = WE_LAND, at = 400}; e2rp_rejoin(p[..]); #assert !p[0].asks[2].live;
+}

@@ -1,0 +1,172 @@
+// Riding as the networked client shows it (#13268): E mounts the mount in reach and gets you down, X
+// brings a flier down; your mount is the page's prediction (ride.coax) and the others' are their rows
+// a jitter buffer behind (net.coax's entities). The horse and the dragon are drawn from the pack's
+// frames with Everglade's own mount records (everglade/mounts.coax eg_horse_record, eg_dragon_record),
+// and a rider's body is carried from where they stood to the saddle and back (eg_saddle).
+// A kind whose frames the pack does not hold is not drawn and cannot be mounted from this page.
+//   coax/bin/coax test --library everglade/client/client.coax --only riding
+#load "../mounts.coax" as egm;
+
+E2RV_HIP :: 0.91;   // m a standing body's pelvis is over its feet (everglade/zone-mounts.coax xh_hip's)
+E2RideView :: struct {
+  eg: [1] egm.EgMounts;                   // the mounts as drawn this frame, and the pack's frames
+  phase: [WIRE_MOUNTS] f32; lx: [WIRE_MOUNTS] f32; lz: [WIRE_MOUNTS] f32;   // another's gait, by the ground it covered
+  drawn: int; presses: int;               // what the checks read
+}
+E2RvFeet :: struct { on: bool; x: f32; y: f32; z: f32; face: f32; }
+
+e2rv_land :: (s: [] E2) -> E2rpLand { return E2rpLand.{items = s[0].items[..], kinds = s[0].kinds[..], first = s[0].first[..], planted = s[0].plant_done}; }
+e2rv_catalog :: (s: [] E2, text: string) { egm.eg_mounts_catalog(s[0].rv[0].eg[..], text); }
+// Whether this page can draw a kind of mount: the pack holds its frames.
+e2rv_ready :: (s: [] E2, kind: int) -> bool { return ifx kind == MK_DRAGON then egm.eg_dragon_ready(s[0].rv[0].eg[0]) else egm.eg_mounts_ready(s[0].rv[0].eg[0]); }
+
+// ---- the face's calls (everglade2-face.c): the re-run's start, each input's step, the next step's peek
+e2_ride_fix :: (s: [] E2) #export_c #effects(all) {
+  n := s[0].net[..];
+  e2rp_fix(n[0].ride[..], n[0].seat, n[0].fix.ack, n[0].fix_tick, n[0].fix.x, n[0].fix.z, e2rv_land(s));
+}
+e2_net_replay_seq :: (s: [] E2, k: int) -> int #export_c #effects(all) { return net_predict_nth(s[0].net[0].pred[..], k); }
+// Input `seq` (as sent) steps the mount you are on: where it seats you, on false on foot. (x, z): you before it.
+e2_ride_step :: (s: [] E2, m: EgMoveIn, seq: int, x: f32, z: f32, rerun: bool) -> E2RBody #export_c #effects(all) {
+  n := s[0].net[..];
+  return e2rp_step(n[0].ride[..], n[0].seat, seq, e2rp_axis(m.key_x, m.pad_x), e2rp_axis(m.key_y, m.pad_y), m.run, m.jump, x, z, e2rv_land(s), rerun);
+}
+e2_ride_peek :: (s: [] E2, m: EgMoveIn, x: f32, z: f32) -> E2RBody #export_c #effects(all) {
+  n := s[0].net[..];
+  return e2rp_peek(n[0].ride[..], n[0].seat, n[0].pred[0].seq + 1, e2rp_axis(m.key_x, m.pad_x), e2rp_axis(m.key_y, m.pad_y), m.run, m.jump, x, z, e2rv_land(s));
+}
+
+// ---- the keys
+e2rv_key :: (s: [] E2, key: int) -> bool {
+  n := s[0].net[..];
+  if !e2n_open(n) { return false; }
+  e := key == 'e' || key == 'E'; x := key == 'x' || key == 'X';
+  if !e && !x { return false; }
+  r := n[0].ride[..]; mine := e2rp_mine(r, n[0].seat); kind := -1;
+  if e {
+    if mine >= 0 { kind = WE_DISMOUNT; }
+    else {
+      k := e2rp_nearest(r, s[0].you_x, s[0].you_z);
+      if k < 0 || !e2rv_ready(s, r[0].m[0].kind[k]) { return false; }
+      kind = WE_MOUNT;
+    }
+  } else {
+    if mine < 0 || !mount_aloft(r[0].m[0].m[mine]) { return false; }
+    kind = WE_LAND;
+  }
+  u := e2rp_press(r, n[0].seat, kind, n[0].pred[0].seq, s[0].you_x, s[0].you_z, e2rv_land(s));
+  if u.seq > 0 { e2n_send(n, wire_put_use(n[0].out[..], 0, u)); s[0].rv[0].presses += 1; }
+  return true;
+}
+
+// ---- the mounts as drawn
+// This frame's view of every mount: yours as predicted, another's where its row's ring puts it now,
+// its gait by the ground it covered. A flier's feet are over the land under it.
+e2rv_sync :: (s: [] E2, bdt: f32) {
+  n := s[0].net[..]; r := n[0].ride[..]; v := s[0].rv[..]; me := n[0].seat;
+  v[0].eg[0].n = r[0].m[0].n;
+  for k: 0..<r[0].m[0].n {
+    h := r[0].m[0].m[k]; kind := r[0].m[0].kind[k]; t := mk_tune(kind);
+    if !(me >= 0 && mount_carries(h, me)) {
+      e := e2n_ent(n, WIRE_ID_MADE + WIRE_MOUNT_EID + k, false);
+      if e >= 0 && n[0].ents[e].ring_n > 0 {
+        p := n[0].ents[e].shown;
+        h.x = p.x; h.z = p.z; h.face = p.yaw; h.speed = p.vx * sin(p.yaw) + p.vz * cos(p.yaw);
+        if h.flies { h.wing.x = p.x; h.wing.z = p.z; h.wing.y = p.y; h.wing.yaw = p.yaw; h.wing.vy = p.vy; } else { h.hop = p.y; }
+      }
+      moved := sqrt((h.x - v[0].lx[k]) * (h.x - v[0].lx[k]) + (h.z - v[0].lz[k]) * (h.z - v[0].lz[k]));
+      if moved > 20 { moved = 0; }
+      step := ifx h.clip == MOUNT_IDLE then bdt / t.idle_s else moved / (ifx h.clip == MOUNT_GALLOP then t.stride_gallop else t.stride_walk);
+      ph := v[0].phase[k] + step; ph = ph - floor(ph);
+      v[0].phase[k] = ph; h.phase = ph;
+    } else { v[0].phase[k] = h.phase; }
+    v[0].lx[k] = h.x; v[0].lz[k] = h.z;
+    if h.flies { h.wing.y += e2g_y(s[0].eg[..], h.x, h.z); }
+    v[0].eg[0].mounts[k] = h; v[0].eg[0].kind[k] = kind;
+    if h.clip != v[0].eg[0].clip_was[k] { v[0].eg[0].clip_was[k] = h.clip; v[0].eg[0].clip_at[k] = s[0].clock; }
+  }
+  v[0].eg[0].riding = e2rp_mine(r, me);
+}
+// Where seat `seat`'s body is while a mount carries it: from where it stood to the saddle and back.
+// `tick`: the room's tick the frame shows that seat at. y is its feet's height over the land there.
+e2rv_feet :: (s: [] E2, seat: int, tick: int) -> E2RvFeet {
+  if seat < 0 { return E2RvFeet.{}; }
+  v := s[0].rv[..];
+  for k: 0..<v[0].eg[0].n {
+    h := v[0].eg[0].mounts[k];
+    if !mount_carries(h, seat) || !e2rv_ready(s, v[0].eg[0].kind[k]) { continue; }
+    u := mount_seated_tick(h, mk_tune(v[0].eg[0].kind[k]), tick, 0, WIRE_HZ);
+    saddle := egm.eg_saddle(v[0].eg[0], k, e2g_y(s[0].eg[..], h.x, h.z), s[0].clock);
+    sx := h.from_x; sz := h.from_z; sy := e2g_y(s[0].eg[..], sx, sz) + f32(E2RV_HIP);
+    x := sx + (saddle[0] - sx) * u; y := sy + (saddle[1] - sy) * u; z := sz + (saddle[2] - sz) * u;
+    return E2RvFeet.{on = true, x = x, z = z, y = y - f32(E2RV_HIP) - e2g_y(s[0].eg[..], x, z), face = h.face};
+  }
+  return E2RvFeet.{};
+}
+// Yours, for the face: where the frame draws you while you ride.
+e2_ride_feet :: (s: [] E2) -> E2RvFeet #export_c #effects(all) {
+  n := s[0].net[..];
+  if !e2n_open(n) { return E2RvFeet.{}; }
+  return e2rv_feet(s, n[0].seat, e2rp_tick(n[0].ride[..], n[0].pred[0].seq));
+}
+// Another player as drawn: in the saddle of the mount that carries them.
+e2rv_remote :: (s: [] E2, r: E2Remote) -> E2Remote {
+  f := e2rv_feet(s, r.seat, s[0].net[0].tick);
+  if !f.on { return r; }
+  o := r; o.x = f.x; o.z = f.z; o.y = f.y; o.yaw = f.face; o.air = false; o.speed = 0;
+  return o;
+}
+// Each mount's record and draw.
+e2rv_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
+  d := at; v := s[0].rv[..]; out := s[0].records[..];
+  e2rv_sync(s, bdt);
+  for k: 0..<v[0].eg[0].n {
+    h := v[0].eg[0].mounts[k]; kind := v[0].eg[0].kind[k];
+    if !h.on || !e2rv_ready(s, kind) || d.rec >= E2_RECORDS || d.n >= E2_DRAWS - 1 { continue; }
+    dx := h.x - s[0].eye[0]; dz := h.z - s[0].eye[2];
+    if dx * dx + dz * dz > 160 * 160 { continue; }
+    g := ifx kind == MK_DRAGON then egm.eg_dragon_record(v[0].eg[0], k, s[0].clock, out, d.rec) else egm.eg_horse_record(v[0].eg[0], k, e2g_y(s[0].eg[..], h.x, h.z), out, d.rec);
+    if g.count <= 0 { continue; }
+    d.n = e2_draw(s[0].draws[..], d.n, g.first, g.count, d.rec, 1); d.sn = e2_draw(s[0].shadow[..], d.sn, g.first, g.count, d.rec, 1);
+    d.rec += 1; v[0].drawn += 1;
+  }
+  return d;
+}
+
+#test "riding on the client: E mounts the horse in reach when the pack holds its frames, your steps carry you to the saddle, the horse is drawn, and E gets you down" #steps 6000000000 {
+  s: [1] E2; n := s[0].net[..]; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].seat = 2;
+  room: [1] E2Mounts; e2ml_lay(room[..]);
+  for k: 0..<2 { e2n_test_row(n, 100, egm_row(room[0], k)); }
+  #assert n[0].ride[0].m[0].n == 2 && e2n_ent(n, WIRE_ID_MADE + WIRE_MOUNT_EID, false) >= 0 && e2n_ent(n, WIRE_ID_MADE + WIRE_MOUNT_EID + 1, false) >= 0;
+  s[0].you_x = 10.2; s[0].you_z = 9;
+  // no frames in the pack: E is not riding's, and nothing is drawn
+  #assert !e2rv_key(s[..], 'e') && n[0].pipe[0].n == 0 && e2rv_draw(s[..], E2Drawn.{}, 0.016).rec == 0;
+  // the pack's catalog names the horse's 36 frames
+  cat: [4096] u8; c := 0;
+  for f: 0..<egm.EG_HORSE_FRAMES {
+    c = wire_put(cat[..], c, "C glade/horse");
+    if f >= 10 { cat[c] = cast(u8) (48 + f / 10); c += 1; } cat[c] = cast(u8) (48 + f % 10); c += 1;
+    c = wire_int(cat[..], c, 300 + f * 60); c = wire_put(cat[..], c, " 60 247 100 0 0\n");
+  }
+  e2rv_catalog(s[..], cast(string) cat[0..<c]); #assert e2rv_ready(s[..], MK_HORSE) && !e2rv_ready(s[..], MK_DRAGON);
+  // far from it E is not riding's; beside it E mounts: the ask goes out and the page's horse is yours at once
+  s[0].you_x = 40; #assert !e2rv_key(s[..], 'e'); s[0].you_x = 10.2;
+  #assert !e2rv_key(s[..], 'x') && e2rv_key(s[..], 'E') && n[0].pipe[0].n == 1 && s[0].rv[0].presses == 1;
+  sent := e2n_test_sent(n); #assert sent.count > 9 && sent[0..<2] == "E " && sent[sent.count - 5..<sent.count] == " 20 0";
+  #assert e2rp_mine(n[0].ride[..], 2) == 0 && n[0].ride[0].m[0].m[0].state == MOUNT_MOUNTING;
+  // each input steps it; after 0.6 s you are in the saddle, well over the ground, and it gallops off under you
+  bx: f32 = 10.2; bz: f32 = 9; b: E2RBody;
+  for q: 0..<60 { seq := e2n_input(n, EgMoveIn.{key_y = 1, run = true}); b = e2_ride_step(s[..], EgMoveIn.{key_y = 1, run = true}, seq, bx, bz, false); #assert b.on; bx = b.x; bz = b.z; }
+  #assert n[0].ride[0].m[0].m[0].state == MOUNT_RIDDEN && n[0].ride[0].m[0].m[0].speed > 6 && b.seated == 1;
+  pk := e2_ride_peek(s[..], EgMoveIn.{key_y = 1, run = true}, bx, bz); #assert pk.on && n[0].ride[0].steps == 60;
+  d := e2rv_draw(s[..], E2Drawn.{}, 0.016);
+  #assert d.rec == 1 && d.n == 1 && d.sn == 1 && s[0].rv[0].drawn == 1 && s[0].records[15] == 18 && s[0].records[0] == n[0].ride[0].m[0].m[0].x;
+  f := e2_ride_feet(s[..]); #assert f.on && f.y > 0.4 && abs(f.x - n[0].ride[0].m[0].m[0].x) < 1.5 && abs(f.z - n[0].ride[0].m[0].m[0].z) < 1.5;
+  // another seat rides nothing: drawn where its row has it
+  r := e2rv_remote(s[..], E2Remote.{ok = true, seat = 5, x = 1, y = 0, z = 2}); #assert r.x == 1 && r.y == 0;
+  // E again: the ask to get down, and the page begins it
+  n[0].ride[0].m[0].m[0].speed = 0;
+  pipe_drained(n[0].pipe[..]);   // the face drained the socket's commands
+  #assert e2rv_key(s[..], 'e') && n[0].pipe[0].n == 1 && n[0].ride[0].m[0].m[0].state == MOUNT_DISMOUNTING;
+  sent = e2n_test_sent(n); #assert sent[sent.count - 5..<sent.count] == " 21 0";
+}

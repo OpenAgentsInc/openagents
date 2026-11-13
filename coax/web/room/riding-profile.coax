@@ -6,6 +6,7 @@
 // what is malformed is refused whole. The file's texts are written by hand, not by this codec.
 // Prints "PROFILE: profile holds" (exit 0), or what differs and "profile fails" (exit 1).
 //   coax/web/tool.sh coax/web/room/riding-profile.coax proto/verse/everglade2-riding-v1.json
+#run_steps 250000000;   // secp256k1's tables, which the room loads (metaverse-engine/session/seat-ticket.coax)
 #import "Basic";
 #load "room.coax";
 #load "../../lib/json/json.coax";
@@ -22,7 +23,7 @@ rp_str :: (d: Jv, at: int, out: [] u8) -> string {
 rp_int :: (d: Jv, o: int, key: string) -> int { return jv_int(d, jv_get(d, o, key), RP_NONE); }
 // An object of exactly these names and values, in this order.
 rp_enum :: (d: Jv, key: string, names: [] string, values: [] int) -> bool {
-  o := jv_get(d, 0, key); tb: [64] u8;
+  o := jv_get(d, 0, key);
   if jv_kind(d, o) != JV_OBJECT || jv_len(d, o) != names.count { return false; }
   for i: 0..<names.count {
     if rp_int(d, o, names[i]) != values[i] { return false; }
@@ -45,11 +46,15 @@ rp_check :: (d: Jv, file: string) -> bool {
   for i: 0..<6 { if rp_str(d, jv_at(d, fields, i), tb[0][..]) != names[i] { print("row.fields %\n", i); return false; } mask |= 1 << bits[i]; }
   if (mask | WIRE_POSE) != wire_kind_fields(WK_MOUNT) || (mask & WIRE_POSE) != 0 { print("row.fields: not the codec's table\n"); return false; }
   // the E kinds, the states, the kinds of mount and the codes
-  if !rp_enum(d, "uses", [3] string.["mount", "dismount", "land"][..], [3] int.[WE_MOUNT, WE_DISMOUNT, WE_LAND][..]) { print("uses\n"); return false; }
-  if !rp_enum(d, "states", [4] string.["free", "mounting", "ridden", "dismounting"][..], [4] int.[MOUNT_FREE, MOUNT_MOUNTING, MOUNT_RIDDEN, MOUNT_DISMOUNTING][..]) { print("states\n"); return false; }
-  if !rp_enum(d, "mount_kinds", [2] string.["horse", "dragon"][..], [2] int.[MK_HORSE, MK_DRAGON][..]) || MK_KINDS != 2 { print("mount_kinds\n"); return false; }
-  if !rp_enum(d, "codes", [11] string.["ok", "none", "held", "riding", "taken", "far", "on_foot", "busy", "aloft", "no_room", "ground"][..],
-      [11] int.[E2R_OK, E2R_NONE, E2R_HELD, E2R_RIDING, E2R_TAKEN, E2R_FAR, E2R_ON_FOOT, E2R_BUSY, E2R_ALOFT, E2R_NO_ROOM, E2R_GROUND][..]) || EGM_CODES != 11 { print("codes\n"); return false; }
+  use_n := [3] string.["mount", "dismount", "land"]; use_v := [3] int.[WE_MOUNT, WE_DISMOUNT, WE_LAND];
+  if !rp_enum(d, "uses", use_n[..], use_v[..]) { print("uses\n"); return false; }
+  st_n := [4] string.["free", "mounting", "ridden", "dismounting"]; st_v := [4] int.[MOUNT_FREE, MOUNT_MOUNTING, MOUNT_RIDDEN, MOUNT_DISMOUNTING];
+  if !rp_enum(d, "states", st_n[..], st_v[..]) { print("states\n"); return false; }
+  mk_n := [2] string.["horse", "dragon"]; mk_v := [2] int.[MK_HORSE, MK_DRAGON];
+  if !rp_enum(d, "mount_kinds", mk_n[..], mk_v[..]) || MK_KINDS != 2 { print("mount_kinds\n"); return false; }
+  co_n := [11] string.["ok", "none", "held", "riding", "taken", "far", "on_foot", "busy", "aloft", "no_room", "ground"];
+  co_v := [11] int.[E2R_OK, E2R_NONE, E2R_HELD, E2R_RIDING, E2R_TAKEN, E2R_FAR, E2R_ON_FOOT, E2R_BUSY, E2R_ALOFT, E2R_NO_ROOM, E2R_GROUND];
+  if !rp_enum(d, "codes", co_n[..], co_v[..]) || EGM_CODES != 11 { print("codes\n"); return false; }
   if rp_str(d, jv_get(d, 0, "request"), tb[0][..]) != "E SEQ KIND ID" || rp_str(d, jv_get(d, 0, "answer"), tb[1][..]) != "e ride SEQ CODE MOUNT" { print("request or answer\n"); return false; }
   // each ask: the text reads as its values and writes back as the text
   reqs := jv_get(d, 0, "requests"); seen: [3] bool;
