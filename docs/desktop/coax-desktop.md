@@ -620,6 +620,33 @@ Apple gives a token only to a build signed with the push entitlement; a
 development build is signed ad hoc and gets none (#13388).
 `OPENAGENTS_PUSH=0` turns the request off.
 
+### A build signed for push
+
+`build.sh` signs ad hoc by default. It signs for push when it is given a
+signing identity and a provisioning profile (#13388):
+
+```sh
+OA_MAC_SIGN_IDENTITY="Apple Development: NAME (TEAMID)" \
+OA_MAC_PROFILE="$HOME/Downloads/OpenAgents_Mac_Push.provisionprofile" \
+  apps/openagents-desktop/build.sh --open
+```
+
+- The profile is for the bundle id `com.openagents.desktop` with Push
+  Notifications turned on. A Mac Development profile also names this Mac
+  (its Provisioning UDID); a Developer ID profile names no device.
+- The build copies the profile into the bundle and signs with the profile's
+  own entitlements and the hardened runtime. It stops if the profile has no
+  push entitlement.
+- A development profile's token works only on Apple's sandbox. The build
+  then compiles the app to name the `apns_sandbox` service; a Developer ID
+  profile's build names `apns`.
+- `codesign` reads the identity's key from the Keychain, which can show a
+  prompt. Agents never set these two variables: a person runs this build.
+
+To see it work: log in, allow notices when macOS asks, and start a recovery
+for the account from another device. The notice arrives as a banner, and a
+click opens OpenAgents ▸ Security… with Cancel Recovery.
+
 ## Milestones
 
 Each milestone ends with a check that someone else can run.

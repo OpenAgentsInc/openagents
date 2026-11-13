@@ -267,7 +267,8 @@ final class AppAuth: @unchecked Sendable {
     static let didLogIn = Notification.Name("OAAppAuthDidLogIn")
     /// Which of Apple's push services this build's token is for: a development build's token is
     /// only good on Apple's sandbox (coax/web/api/auth-device-policy.coax, dk_push_service).
-    #if DEBUG
+    /// The Mac build sets OA_PUSH_SANDBOX when it is signed with a development profile (#13388).
+    #if DEBUG || OA_PUSH_SANDBOX
     static let pushService = "apns_sandbox"
     #else
     static let pushService = "apns"
