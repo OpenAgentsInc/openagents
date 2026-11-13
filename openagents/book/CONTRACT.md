@@ -100,6 +100,10 @@ the run is recorded.
   owner: engines, sessions and the journal are in `coax/lib/agent/`, money
   rules are in `pay/`, the wallet is the iPhone app's Spark wallet, the API
   is `coax/web/api/`, and clients are the apps in `apps/`.
+- That a partly implemented or implemented chapter has a "The chapter's
+  check" section naming its source, trace, refusal and independent check.
+  Chapters 1 to 11 and the chapters added in the reorder already plan one;
+  the others add theirs when they are next edited.
 
 `--coax COMPILER` also compiles and runs every example and compares its
 output with the committed trace.

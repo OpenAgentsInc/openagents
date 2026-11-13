@@ -344,6 +344,11 @@ def provenance(name, book):
         line = re.search(r"\*\*Promises covered\*\*[^:]*\):\s*(.+)", text)
         assert line and re.findall(r"P\d+", line.group(1)) == row["promises"], f"chapter {n}: promises differ from {PROVENANCE[name]}"
         covered |= set(row["promises"])
+        if c["status"] in ("implemented", "partly implemented"):
+            # A running chapter shows its four-part check (CONTRACT.md, "The chapter's check").
+            check = text.split("### The chapter's check", 1)[1].split("\n#", 1)[0] if "### The chapter's check" in text else ""
+            for part in ("**Source:**", "**Trace:**", "**Refusal:**", "**Independent check:**"):
+                assert part in check, f"chapter {n}: a {c['status']} chapter's check lacks {part}"
         planned = re.search(r"^Planned paths: (.+?)(?:\n\n|\Z)", text, re.M | re.S)
         assert planned, f"chapter {n}: no 'Planned paths:' line"
         # "none" (or "none new") names owners that exist; anything else lists new paths.
