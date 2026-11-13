@@ -460,7 +460,7 @@ final class HomeViewController: UIViewController {
         var castFrame: CastFrame?
         if let cast, let bytes = castBytes {
             let now = timestamp - (gridStart ?? timestamp), b = castView(bytes), c = cast.cast
-            anim = verse_cast_update(b, c, anim, verse_player_act(player), player.vel.y > 0, now)
+            anim = verse_cast_update(b, c, anim, verse_player_act(player), player.body.vel.y > 0, now)
             var matrix = [Float](repeating: 0, count: 16)
             let viewed = matrix.withUnsafeMutableBufferPointer { verse_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, width, height, coax_v_f32(data: $0.baseAddress, count: 16)) }
             let anim = anim, robots = palette, joints = Int(c.joints)

@@ -81,6 +81,25 @@ That builds `build/ios/Everglade.app` for the simulator, installs it and
 opens it. If no simulator device exists it makes an iPhone 17 Pro named
 "Everglade iPhone". It needs Xcode with an iOS simulator runtime.
 
+## Check that the apps still build
+
+The apps name realms and GPU passes by path, so moving a client's Coax can
+stop them building. Two checks catch that:
+
+```sh
+coax/web/tool.sh verse/native/app-realms.coax "$PWD" coax/web/build/app-realms
+apps/shared/host/apple/check.sh ~/.openagents/apple-check
+```
+
+The first runs on any build host and is a step of the pipeline's reports
+check (`app-realms`). It reads the realms and passes from this app's and the
+Mac app's build scripts, emits each realm as C, compiles it, and emits each
+pass for Metal. The second needs a Mac. It makes development builds of this
+app, the Mac app, OpenAgents for the Mac and OpenAgents for iPhone, and runs
+the unit tests that need no device. To run the iPhone unit tests too, name a
+simulator: `OA_IOS_DESTINATION='platform=iOS Simulator,name=NAME'`. Delete
+the folder you gave it afterwards: it holds Xcode's DerivedData.
+
 ## Send it to TestFlight
 
 ```sh

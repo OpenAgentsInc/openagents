@@ -1,0 +1,163 @@
+// The native apps' realms still build (GitHub #13389). A client's Coax moved (#13268) and the Mac and
+// iPhone apps stopped building for a week without a check saying so: their builds name realms and
+// GPU passes by path. This tool does, on any build host, the part of those builds that needs no
+// Apple SDK, read from the apps' own build scripts so it follows them:
+//   - every realm they build (their `build_realm NAME` lines) is resolved and emitted as C by
+//     verse/native/build.sh, and each unit and face is compiled (-fsyntax-only) as the apps compile it;
+//   - every pass they emit (their `emit_page` and `emit_pair` lines) is found by
+//     `verse/native/build.sh --gpu` with its .bindings beside it, and emitted for Metal by the compiler.
+// The Swift and Objective-C hosts need a Mac: apps/shared/host/apple/check.sh builds the apps there.
+//   coax/web/tool.sh verse/native/app-realms.coax ROOT OUT [--list]
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+
+APR_SCRIPTS :: [2] string.["apps/everglade-desktop/build.sh", "apps/everglade-mobile/build.sh"];
+APR_MAX :: 32;
+APR_WORDS :: 12;
+
+AprText :: struct { bytes: [262144] u8; used: int; }
+apr_keep :: (t: [] AprText, a: string, b: string, c: string) -> string {
+  start := t[0].used;
+  for ch: a { t[0].bytes[t[0].used] = ch; t[0].used += 1; }
+  for ch: b { t[0].bytes[t[0].used] = ch; t[0].used += 1; }
+  for ch: c { t[0].bytes[t[0].used] = ch; t[0].used += 1; }
+  return cast(string) t[0].bytes[start..<t[0].used];
+}
+// A realm, a page (REALM SOURCE PREFIX FX FXPREFIX) or a pair (ROLE SOURCE VERTEX FRAGMENT, with
+// the script's $2 to $5 still in them).
+AprRow :: struct { w: [5] string; }
+AprPlan :: struct { realms: [APR_MAX] string; realm_n: int; pages: [APR_MAX] AprRow; page_n: int; pairs: [APR_MAX] AprRow; pair_n: int; }
+
+apr_same :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+// A line's words, split at spaces, without their double quotes.
+apr_words :: (line: string, t: [] AprText, out: [] string) -> int {
+  n := 0; i := 0;
+  while i < line.count && n < out.count {
+    while i < line.count && (line[i] == ' ' || line[i] == '\t') { i += 1; }
+    from := i;
+    while i < line.count && line[i] != ' ' && line[i] != '\t' { i += 1; }
+    if i == from { break; }
+    start := t[0].used;
+    for k: from..<i { if line[k] != '"' { t[0].bytes[t[0].used] = line[k]; t[0].used += 1; } }
+    out[n] = cast(string) t[0].bytes[start..<t[0].used]; n += 1;
+  }
+  return n;
+}
+// What a script's lines add to the plan. A realm, page or pair another script already named is kept once.
+apr_scan :: (text: string, t: [] AprText, p: [] AprPlan) {
+  at := 0;
+  while at < text.count {
+    end := at; while end < text.count && text[end] != '\n' { end += 1; }
+    w: [APR_WORDS] string; n := apr_words(text[at..<end], t, w[..]); at = end + 1;
+    if n == 2 && apr_same(w[0], "build_realm") {
+      seen := false; for k: 0..<p[0].realm_n { if apr_same(p[0].realms[k], w[1]) { seen = true; } }
+      if !seen && p[0].realm_n < APR_MAX { p[0].realms[p[0].realm_n] = w[1]; p[0].realm_n += 1; }
+    }
+    if n == 6 && apr_same(w[0], "emit_page") {
+      seen := false;
+      for k: 0..<p[0].page_n { same := true; for j: 0..<5 { if !apr_same(p[0].pages[k].w[j], w[j + 1]) { same = false; } } if same { seen = true; } }
+      if !seen && p[0].page_n < APR_MAX { for j: 0..<5 { p[0].pages[p[0].page_n].w[j] = w[j + 1]; } p[0].page_n += 1; }
+    }
+    // emit_pair "$1" ROLE "$2" "$3_bg_vs" "$3_bg_fs" & ...
+    if n >= 6 && apr_same(w[0], "emit_pair") && apr_same(w[1], "$1") {
+      seen := false;
+      for k: 0..<p[0].pair_n { same := true; for j: 0..<4 { if !apr_same(p[0].pairs[k].w[j], w[j + 2]) { same = false; } } if same { seen = true; } }
+      if !seen && p[0].pair_n < APR_MAX { for j: 0..<4 { p[0].pairs[p[0].pair_n].w[j] = w[j + 2]; } p[0].pair_n += 1; }
+    }
+  }
+}
+// A pair's word with the page's arguments put in: "$3_bg_vs" for page (.., .., charactercreator, ..) is charactercreator_bg_vs.
+apr_fill :: (word: string, page: AprRow, t: [] AprText) -> string {
+  if word.count >= 2 && word[0] == '$' && word[1] >= '1' && word[1] <= '5' {
+    return apr_keep(t, page.w[cast(int) (word[1] - '1')], word[2..<word.count], "");
+  }
+  return word;
+}
+
+#test "a script's realms, pages and pairs are read once each, and a pair's words take the page's arguments" {
+  t: [1] AprText; p: [1] AprPlan;
+  script := "build_realm() {   # NAME\n  emit_pair \"$1\" bg \"$2\" \"$3_bg_vs\" \"$3_bg_fs\" & pids+=($!)\n  emit_pair \"$1\" particle \"$4\" \"$5_particle_vs\" \"$5_particle_fs\" & pids+=($!)\nbuild_realm everglade2\nemit_page everglade2 everglade2 everglade2 everglade2-fx e2fx\nbuild_realm fivelab\n";
+  apr_scan(script, t[..], p[..]); apr_scan(script, t[..], p[..]);
+  #assert p[0].realm_n == 2 && apr_same(p[0].realms[0], "everglade2") && apr_same(p[0].realms[1], "fivelab");
+  #assert p[0].page_n == 1 && apr_same(p[0].pages[0].w[3], "everglade2-fx") && apr_same(p[0].pages[0].w[4], "e2fx");
+  #assert p[0].pair_n == 2 && apr_same(p[0].pairs[0].w[0], "bg") && apr_same(p[0].pairs[1].w[1], "$4");
+  #assert apr_same(apr_fill(p[0].pairs[0].w[2], p[0].pages[0], t[..]), "everglade2_bg_vs");
+  #assert apr_same(apr_fill(p[0].pairs[1].w[1], p[0].pages[0], t[..]), "everglade2-fx");
+  #assert apr_same(apr_fill(p[0].pairs[1].w[3], p[0].pages[0], t[..]), "e2fx_particle_fs");
+  #assert apr_same(apr_fill("bg", p[0].pages[0], t[..]), "bg");
+}
+
+// Runs argv; its first line of output, or "" with what it said on a failure.
+apr_run :: (argv: [] string, what: string, out: [] u8) -> int {
+  err: [65536] u8; r := proc_run(argv, 900000, out, err[..]);
+  if r.started != 0 || r.status != 0 || r.timed_out {
+    tool_err("app-realms: "); tool_err(what); tool_errln(" failed");
+    tool_errln(cast(string) err[0..<r.err_n]); tool_errln(cast(string) out[0..<r.out_n]);
+    return -1;
+  }
+  return r.out_n;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) < 2 { tool_errln("usage: app-realms ROOT OUT [--list]"); return 2; }
+  root := args_at(args[..], 0); dir := args_at(args[..], 1);
+  t: [1] AprText; p: [1] AprPlan; file: [65536] u8; pb: [4096] u8;
+  for s: APR_SCRIPTS {
+    n := fs_read(fs_join(root, s, pb[..]), file[..]);
+    if n <= 0 { tool_err("app-realms: cannot read "); tool_errln(s); return 1; }
+    apr_scan(cast(string) file[0..<n], t[..], p[..]);
+  }
+  if p[0].realm_n == 0 || p[0].page_n == 0 || p[0].pair_n == 0 { tool_errln("app-realms: the app build scripts name no realm, page or pair: has their shape changed?"); return 1; }
+  if args_has(args[..], "--list") {
+    for k: 0..<p[0].realm_n { print("realm %\n", p[0].realms[k]); }
+    for k: 0..<p[0].page_n { for j: 0..<p[0].pair_n { g := p[0].pairs[j]; print("pair % % % % %\n", p[0].pages[k].w[0], g.w[0], apr_fill(g.w[1], p[0].pages[k], t[..]), apr_fill(g.w[2], p[0].pages[k], t[..]), apr_fill(g.w[3], p[0].pages[k], t[..])); } }
+    return 0;
+  }
+  envc: [4096] u8; envcc: [4096] u8;
+  coax := proc_getenv("COAX", envc[..]); if coax == "" { coax = apr_keep(t[..], root, "/coax/bin/coax", ""); }
+  cc := proc_getenv("COAX_CC", envcc[..]); if cc == "" { cc = "cc"; }
+  build := apr_keep(t[..], root, "/verse/native/build.sh", "");
+  out: [1048576] u8; failed := 0;
+  mk := [3] string.["mkdir", "-p", dir]; if apr_run(mk[..], "mkdir", out[..]) < 0 { return 1; }
+  for k: 0..<p[0].realm_n {
+    name := p[0].realms[k]; where := apr_keep(t[..], dir, "/", name);
+    emit := [6] string.["env", "COAXIAL_REALM_EMIT_ONLY=1", "bash", build, name, where];
+    if apr_run(emit[..], apr_keep(t[..], "realm ", name, " (verse/native/build.sh)"), out[..]) < 0 { failed += 1; continue; }
+    n := fs_read(apr_keep(t[..], where, "/sources", ""), file[..]);
+    if n <= 0 { tool_err("app-realms: no sources for "); tool_errln(name); failed += 1; continue; }
+    w: [APR_WORDS] string; units := 0; at := 0;
+    while at < n && file[at] != '\n' { at += 1; }
+    units = apr_words(cast(string) file[0..<at], t[..], w[..]);
+    for u: 0..<units {
+      src := apr_keep(t[..], where, "/", w[u]);
+      compile := [8] string.[cc, "-std=gnu11", "-fsyntax-only", "-DCOAXIAL_NATIVE_ADDRESS", "-w", "-I", where, src];
+      if apr_run(compile[..], apr_keep(t[..], name, ": ", w[u]), out[..]) < 0 { failed += 1; }
+    }
+    print("realm % ok (% units)\n", name, units);
+  }
+  for k: 0..<p[0].page_n {
+    page := p[0].pages[k];
+    for j: 0..<p[0].pair_n {
+      g := p[0].pairs[j]; source := apr_fill(g.w[1], page, t[..]);
+      find := [4] string.["bash", build, "--gpu", source];
+      n := apr_run(find[..], apr_keep(t[..], "pass ", source, ""), out[..]);
+      if n < 0 { failed += 1; continue; }
+      path := apr_keep(t[..], cast(string) out[0..<n], "", "");
+      if path.count < 6 || !fs_exists(apr_keep(t[..], path[0..<path.count - 5], ".bindings", "")) { tool_err("app-realms: no .bindings beside "); tool_errln(path); failed += 1; continue; }
+      metal := apr_keep(t[..], dir, "/", apr_keep(t[..], page.w[0], "-", apr_keep(t[..], g.w[0], ".metal", "")));
+      emit := [9] string.[coax, "metal", path, "--vertex", apr_fill(g.w[2], page, t[..]), "--fragment", apr_fill(g.w[3], page, t[..]), "-o", metal];
+      if apr_run(emit[..], apr_keep(t[..], page.w[0], " ", g.w[0]), out[..]) < 0 { failed += 1; }
+    }
+    print("page % ok (% pairs)\n", page.w[0], p[0].pair_n);
+  }
+  if failed > 0 { print("app-realms: % failed\n", failed); return 1; }
+  print("app-realms: % realms and % pages build for the native apps\n", p[0].realm_n, p[0].page_n);
+  return 0;
+}

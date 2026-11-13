@@ -28,6 +28,7 @@
 #                                         (wasm.sh alone, as build.sh runs each)
 #   coax/remote/check.sh module NAME      one module of the web build (a bisect)
 #   coax/remote/check.sh reports          tools-check, test-remote.sh, test-after.sh, test-vm-deploy.sh, everglade-parity, wire-check, layer-check,
+#                                         the native apps' realms (verse/native/app-realms.coax, #13389),
 #                                         the API's migration numbers, hashes and schema.sql, the pre-push replay, the committed
 #                                         shaders, realm pages and changelog page against
 #                                         their sources, and every realm's link-preview card
@@ -259,6 +260,7 @@ reports() {
   visuals
   generated
   pack_reader_c
+  app_realms
   cards
 }
 # The API's migrations (#13301, coax/web/api/migrations/README.md): a new one takes a number above
@@ -282,6 +284,10 @@ generated() {
 pack_reader_c() {
   step pack-reader-c bash -c 'coax/bin/coax c aethyr/host/pack-table-face.coax --library | cmp -s - verse/native/pack-table-gen.h || { echo "verse/native/pack-table-gen.h is not what the compiler writes for aethyr/host/pack-table-face.coax. From the repository root: coax/bin/coax c aethyr/host/pack-table-face.coax --library > verse/native/pack-table-gen.h, then commit it."; exit 1; }' || status=1
 }
+# The Mac and iPhone apps' realms and passes still resolve, emit and compile (#13389): a client's
+# Coax moved (#13268) and both apps stopped building with no check saying so. Their Swift and
+# Objective-C need a Mac (apps/shared/host/apple/check.sh); this is the part any host can do.
+app_realms() { step app-realms coax/web/tool.sh verse/native/app-realms.coax "$PWD" coax/web/build/app-realms || status=1; }
 # Every realm in realms.json has its link-preview card (#13144): a release refuses a realm without
 # one, so it shows at landing, not at release.
 cards() { step realm-cards bun coax/web/og.ts --cards apps/openagents-web || status=1; }

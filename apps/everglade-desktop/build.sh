@@ -46,11 +46,7 @@ build_realm() {   # NAME: build/realm/NAME/libNAME.dylib, and a copy in the app'
   mkdir -p "$realm" "$pages"
   if [[ "$(cat "$realm/key" 2>/dev/null)" != "$key" || ! -f "$realm/lib$name.dylib" ]]; then
     rm -f "$realm/key"
-    # fivelab's and the range's checks run natively, as coax/web/wasm.sh runs them (native_check_units):
-    # interpreted, fivelab's film-stage check runs past the compiler's traversal budget and nothing is emitted.
-    local native_checks=()
-    case "$name" in fivelab|archery-range|bitcoin-lab-walk) native_checks=(COAX_NATIVE_CHECKS=1) ;; esac
-    env ${native_checks[@]+"${native_checks[@]}"} COAX="$coax" "$repo/verse/native/build.sh" "$name" "$realm" >/dev/null
+    COAX="$coax" "$repo/verse/native/build.sh" "$name" "$realm" >/dev/null
     local realm_sources realm_objects=() realm_pids=() s pid
     read -r -a realm_sources < "$realm/sources"
     for s in "${realm_sources[@]}"; do
@@ -67,7 +63,7 @@ build_realm() {   # NAME: build/realm/NAME/libNAME.dylib, and a copy in the app'
 # the scene has millions of vertices a frame, and its vertex stage takes about 45% longer in the
 # safe mode on this Mac (19.4 ms against 13.5 ms a frame at 990 by 660).
 emit_pair() {   # REALM ROLE SOURCE VERTEX FRAGMENT
-  "$coax" metal "$repo/apps/openagents-web/gpu/$3.coax" --vertex "$4" --fragment "$5" -o "$work/c/$1-$2.metal" 2> "$app/Contents/Resources/$1/$2.bind"
+  "$coax" metal "$("$repo/verse/native/build.sh" --gpu "$3")" --vertex "$4" --fragment "$5" -o "$work/c/$1-$2.metal" 2> "$app/Contents/Resources/$1/$2.bind"
   xcrun -sdk macosx metal -w -fmetal-math-mode=relaxed -fmetal-math-fp32-functions=precise "$work/c/$1-$2.metal" -o "$app/Contents/Resources/$1/$2.metallib"
 }
 # A realm's eight pairs: the page's six from SOURCE (its entries begin PREFIX_), the particles' two
@@ -84,7 +80,8 @@ emit_page() {   # REALM SOURCE PREFIX FX FXPREFIX
   emit_pair "$1" particle "$4" "$5_particle_vs" "$5_particle_fs" & pids+=($!)
   emit_pair "$1" particle_over "$4" "$5_particle_over_vs" "$5_particle_over_fs" & pids+=($!)
   for pid in "${pids[@]}"; do wait "$pid"; done
-  cp "$repo/apps/openagents-web/gpu/$2.bindings" "$app/Contents/Resources/$1/page.bindings"
+  local passes; passes="$("$repo/verse/native/build.sh" --gpu "$2")"
+  cp "${passes%.coax}.bindings" "$app/Contents/Resources/$1/page.bindings"
   cp "$work/c/page-host.metallib" "$app/Contents/Resources/$1/page-host.metallib"
 }
 xcrun -sdk macosx metal -w "$repo/aethyr/host/apple/PageHost.metal" -o "$work/c/page-host.metallib"

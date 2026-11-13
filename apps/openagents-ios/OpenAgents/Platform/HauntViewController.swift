@@ -39,7 +39,7 @@ final class HauntViewController: UIViewController, UIDocumentPickerDelegate {
             guard let renderer else { return }
             assets = try HauntAssets(device: renderer.device, queue: renderer.commandQueue)
             var byte: UInt8 = 0; handle = mr_create(&byte, 1, 1)
-            player.phi = .pi / 2
+            player.cam.phi = .pi / 2
             setUpHUD()
             let pinch = UIPinchGestureRecognizer(target: self, action: #selector(zoom(_:))); pinch.cancelsTouchesInView = true; view.addGestureRecognizer(pinch)
             NotificationCenter.default.addObserver(self, selector: #selector(suspend), name: UIApplication.willResignActiveNotification, object: nil)
@@ -96,20 +96,20 @@ final class HauntViewController: UIViewController, UIDocumentPickerDelegate {
         guard let assets, size.width > 0, size.height > 0 else { return }
         let now = link.timestamp; if epoch == nil { epoch = now }; let time = now - (epoch ?? now)
         let dt = Float(min(max(now - (lastTick ?? now), 0), 0.1)); lastTick = now
-        let was = player.pos
+        let was = player.body.pos
         player = verse_player_input(player, 0, 0, sticks.pad_x, sticks.pad_y, sticks.run, sticks.jump, sticks.dyaw, sticks.dpitch)
         sticks = verse_sticks_used(sticks)
         player = assets.wallBytes.withUnsafeMutableBufferPointer { wall in
             verse_player_advance_among(player, dt, coax_v_f32(data: nil, count: 0), coax_v_f32(data: wall.baseAddress, count: Int64(assets.wallCount*6)))
         }
-        let constrained = verse_haunt_constrain(assets.state, hauntPoint(was), hauntPoint(player.pos))
+        let constrained = verse_haunt_constrain(assets.state, hauntPoint(was), hauntPoint(player.body.pos))
         player = verse_player_constrain(player, constrained.x, constrained.z)
         let eye = verse_player_view_eye(player, assets.state.camera), at = verse_player_view_at(player, assets.state.camera)
         let feet = verse_player_feet(player)
         lastEye = hauntPoint(eye); lastAt = hauntPoint(at)
         let distance = hypot(feet.x-was.x, feet.z-was.z)
         assets.state.facing = verse_player_face(player)
-        assets.state = verse_haunt_advance(assets.state, time, hauntPoint(feet), lastEye, player.theta, distance, player.on_ground)
+        assets.state = verse_haunt_advance(assets.state, time, hauntPoint(feet), lastEye, player.cam.theta, distance, player.body.on_ground)
         assets.playSounds()
         var matrix = [Float](repeating: 0, count: 16)
         _ = matrix.withUnsafeMutableBufferPointer { verse_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, Float(size.width), Float(size.height), coax_v_f32(data: $0.baseAddress, count: 16)) }
@@ -158,7 +158,7 @@ final class HauntViewController: UIViewController, UIDocumentPickerDelegate {
         let door = verse_haunt_door(a.state)
         if door >= 0 { a.remember(); a.state = verse_haunt_edit(a.state,door,9,0); a.rebuildWalls(); a.save() }
     }
-    private func cycleView() { guard let a = assets else { return }; a.state = verse_haunt_view(a.state); player.phi = a.state.camera == 0 ? .pi/2 : 1.107; UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+    private func cycleView() { guard let a = assets else { return }; a.state = verse_haunt_view(a.state); player.cam.phi = a.state.camera == 0 ? .pi/2 : 1.107; UIImpactFeedbackGenerator(style: .light).impactOccurred() }
     private func leave() { suspend(); closed?() }
     private func showFailure(_ message: String) {
         let alert = UIAlertController(title: "Haunted House", message: message, preferredStyle: .alert)
