@@ -106,3 +106,44 @@ that changes the document:
 A reader at revision N takes the event whose `rev` is N+1 and no other
 (`we_take`). A publish is `realm-authoring.world.published.v1` on the live
 lane.
+
+## A page follows the world
+
+Code: `metaverse-engine/editor/world-follow.coax` (what to ask, and what an
+answer is), `metaverse/splice/world.coax` `spw_page_*` (Splice carries a
+document and each event out).
+
+1. The page opens a lane: dev with `?edit`, else live. It reads the lane's
+   document once. The run goes on as it was: where you stand, what you carry
+   and the stage are not touched.
+2. It asks for the lane's events and carries each out in order through its own
+   edit log, so UNDO works on an outside edit as on its own. A placed piece
+   rises out of the ground.
+3. An event out of order, or one the layer can't take, sends the page back to
+   the document.
+
+| Lane | How often the page asks |
+| --- | --- |
+| dev | Once a second, and at once when the dev server says the world was written |
+| live | Every 5 seconds. Every 30 while nothing is published |
+
+## On the dev server
+
+`coax serve` answers `/api/worlds/...` itself, so a page, a second tab, the
+CLI and `coax drive` share one world before anything is deployed. The request
+goes to `metaverse/splice/tools/world-local.coax`: the API's rules
+(`world-policy.coax`) and Splice's own check, with files under
+`apps/openagents-web/build/.worlds/` for rows. Everyone on this computer is
+the admin. A saved write is told to every tab over the live channel
+(`{"kind":"world","id":"splice"}`, inbox kind 614), and each tab asks for the
+new events in its next frame.
+
+Check it with two headless tabs:
+
+```sh
+coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9538
+coax/web/tool.sh world-tabs http://127.0.0.1:9538
+```
+
+It places a piece from one tab and from outside any page, undoes one, and
+requires the other tab to show each inside a second with its run as it was.

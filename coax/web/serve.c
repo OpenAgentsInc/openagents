@@ -9,6 +9,7 @@
 //   .wgsl        "wgsl": the tab recompiles its shaders
 //   .html .js .md .svg   "page": the tab reloads
 //   a pack or texture a tab loaded   "asset" with its URL and SHA-256
+//   an edit saved to a world    "world" with its ID: the tabs showing it ask for its new events
 // A failed build sends "error" with the compiler's output; the tab keeps
 // running the last good engine.
 //
@@ -40,6 +41,12 @@
 // sends /api/ to the API: a local room's stand-in for the API (coax/web/room/local.coax), so a page
 // asks the same paths it asks in production. A WebSocket there (the room's socket) is carried both
 // ways, so a page with no ?relay= still sits in the local room.
+//
+// A world's routes (/api/worlds/..., the browser editor's E4, #13413) are answered here on the dev
+// server, so a page, a second tab, the CLI and `coax drive` share one world before anything is
+// deployed: the request goes to the world's own tool (metaverse/splice/tools/world-local.coax: the
+// API's rules and Splice's own check, with files under APP_DIR/build/.worlds for rows), and a saved
+// write is told to every tab. --static serves none of it.
 //
 // --static is production: no building, no watching, no live channel; files
 // are served as they are, cacheable for five minutes (--cache SECONDS; 0
@@ -454,6 +461,63 @@ static void proxy_local(client *c, const char *url) {
   close(fd);
   drop(c);
 }
+// A world's route on the dev server: the world's own tool answers it ("STATUS\n" then the body),
+// and a write that was saved is told to every tab, which then asks for the world's new events.
+static void worlds_local(client *c, const char *method, const char *url) {
+  char dir[PATH_MAX + 32], body_file[PATH_MAX + 64], cmd[PATH_MAX * 3 + 2200];
+  snprintf(dir, sizeof dir, "%s/build/.worlds", app_dir);
+  for (const char *p = url; *p; p++)   // the URL goes into a shell command: only what a route's URL holds
+    if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || strchr("/?&=-_.", *p))) { respond(c->fd, 404, "Not Found", "application/json", "{\"error\":\"not found\"}", 21); drop(c); return; }
+  bool post = !strcmp(method, "POST");
+  // A lane's events are the lines of its file, one a revision (world-local.coax): a tab asks for
+  // them every second, so they are answered here, with no tool run: the lines after revision N.
+  char id[40] = "", lane[8] = "live"; long after = 0;
+  if (!post && sscanf(url, "/api/worlds/%39[a-z0-9-]/events?%*s", id) == 1 && strstr(url, "/events?")) {
+    const char *q = strchr(url, '?') + 1, *l = strstr(q, "lane="), *a = strstr(q, "after=");
+    if (l && !strncmp(l + 5, "dev", 3)) snprintf(lane, sizeof lane, "dev");
+    if (a) after = strtol(a + 6, NULL, 10);
+    char file[PATH_MAX + 96];
+    snprintf(file, sizeof file, "%s/%s.%s.events", dir, id, lane);
+    FILE *f = fopen(file, "rb");
+    size_t cap = 1 << 20, n = 0; char *out = malloc(cap); long line = 0; int ch;
+    while (f && out && (ch = fgetc(f)) != EOF) { if (line >= after && n < cap) out[n++] = (char)ch; if (ch == '\n') line++; }
+    if (f) fclose(f);
+    respond(c->fd, 200, "OK", "text/plain; charset=utf-8", out ? out : "", out ? n : 0);
+    free(out); drop(c); return;
+  }
+  body_file[0] = 0;
+  if (post) {
+    const char *end = strstr(c->buf, "\r\n\r\n");
+    size_t head = end ? (size_t)(end - c->buf) + 4 : c->n;
+    mkdir(dir, 0755);
+    snprintf(body_file, sizeof body_file, "%s/.request-%d", dir, (int)getpid());
+    FILE *f = fopen(body_file, "wb");
+    if (!f || fwrite(c->buf + head, 1, c->n - head, f) != c->n - head) { if (f) fclose(f); respond(c->fd, 500, "Error", "application/json", "{\"error\":\"not saved\"}", 21); drop(c); return; }
+    fclose(f);
+  }
+  snprintf(cmd, sizeof cmd, "'%s/tool.sh' '%s/../../metaverse/splice/tools/world-local.coax' '%s' %s '%s' %s%s%s 2>/dev/null", host_dir, host_dir, dir, post ? "POST" : "GET", url,
+           post ? "'" : "", body_file, post ? "'" : "");
+  FILE *run = popen(cmd, "r");
+  size_t cap = 1 << 20, n = 0; char *out = malloc(cap); size_t k;
+  while (run && out && n < cap && (k = fread(out + n, 1, cap - n, run)) > 0) n += k;
+  int ended = run ? pclose(run) : -1;
+  if (post) unlink(body_file);
+  char *nl = out ? memchr(out, '\n', n) : NULL;
+  int status = nl ? atoi(out) : 0;
+  if (ended != 0 || status < 100) respond(c->fd, 502, "Bad Gateway", "application/json", "{\"error\":\"the world's tool did not answer\"}", 42);
+  else {
+    size_t at = (size_t)(nl - out) + 1;
+    respond(c->fd, status, status == 200 ? "OK" : "Refused", out[at] == '{' ? "application/json" : "text/plain; charset=utf-8", out + at, n - at);
+    if (post && status == 200) {
+      char msg[96]; size_t i = 0;
+      for (const char *p = url + 12; *p && *p != '/' && *p != '?' && i < sizeof id - 1; p++) id[i++] = *p;
+      snprintf(msg, sizeof msg, "{\"kind\":\"world\",\"id\":\"%s\"}", id);
+      broadcast(msg);
+    }
+  }
+  free(out);
+  drop(c);
+}
 // Whether the request's body (Content-Length) is all in.
 static bool body_in(const client *c) {
   const char *end = strstr(c->buf, "\r\n\r\n");
@@ -491,6 +555,7 @@ static void handle_request(client *c) {
       respond(c->fd, 404, "Not Found", "text/plain", "not on the realm origin\n", 24); drop(c); return;
     }
   }
+  if (!static_mode && !realm_request && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/worlds/", 12)) { worlds_local(c, method, url); return; }
   if (api_port && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/", 5)) { proxy_api(c); return; }
   if (local_port && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/local/", 7)) { proxy_local(c, url); return; }
   if (sscanf(c->buf, "%7s %1023s", method, url) != 2 || strcmp(method, "GET")) {
@@ -527,7 +592,7 @@ static void on_readable(client *c) {
   ssize_t k = recv(c->fd, c->buf + c->n, sizeof c->buf - 1 - c->n, 0);
   if (k <= 0) { drop(c); return; }
   c->n += (size_t)k; c->buf[c->n] = 0;
-  if (strstr(c->buf, "\r\n\r\n") && ((!api_port && !local_port) || body_in(c))) handle_request(c);
+  if (strstr(c->buf, "\r\n\r\n") && body_in(c)) handle_request(c);   // a request with no body is in at its blank line
   else if (c->n >= sizeof c->buf - 1) drop(c);
 }
 
@@ -1034,12 +1099,24 @@ static char *units_script(void) {
   snprintf(s + at, n - at, "exit $s\n");
   return s;
 }
+// One pass over the watched files asks each for its time. With a whole site's build watched that
+// is thousands of files, and a pass run in one go held every request behind it for most of a
+// second. So a pass is taken a few milliseconds at a time, between requests, and acts on what
+// changed when it has seen every file (#13413: an edit must reach a tab inside a second).
+#define SCAN_SLICE_MS 6.0
 static void check_changes(void) {
-  bool whole = false, page = false, some = false;
+  static bool whole, page, some;
+  static int scan_at;
   static double last_new;
-  check_assets();
-  if (now_ms() - last_new >= 1000) { last_new = now_ms(); scan_new(); }
-  for (int i = 0; i < file_count; i++) {
+  if (scan_at == 0) {
+    whole = page = some = false;
+    check_assets();
+    if (now_ms() - last_new >= 1000) { last_new = now_ms(); scan_new(); }
+  }
+  double began = now_ms();
+  int i = scan_at;
+  for (; i < file_count; i++) {
+    if (i > scan_at && now_ms() - began >= SCAN_SLICE_MS) { scan_at = i; return; }   // asked each file: one answer can take milliseconds on a busy disk
     struct timespec t = mtime_of(files[i].path);
     if (same_time(t, files[i].mtime)) continue;
     files[i].mtime = t;
@@ -1063,6 +1140,7 @@ static void check_changes(void) {
     else if (ends_with(p, ".wgsl")) note_wgsl(p);
     else page = true;
   }
+  scan_at = 0;
   if (whole || some) {
     // A watched source no list names: the whole build, as before lists (a unit it builds is
     // told in the whole build's one "wasm").

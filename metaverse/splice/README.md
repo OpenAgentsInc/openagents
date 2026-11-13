@@ -117,6 +117,11 @@ document a fresh game builds from the pieces. Only an admin writes it.
 | `spw_edit(g, e, sure)` | One wire edit on the layer. `sure`: the server saved it already, so a page takes it where it stands |
 | `spw_batch(...)` | A batch on a document: the new document, the batch as taken and its inverse, or the refusal |
 | `spw_open(g, k, text)`, `spw_save(g, k, out)` | A document read into a game and written from one |
+| `spw_page_open`, `spw_page_answer` | A page follows the world: the document once, then each saved edit in order. The run is not touched |
+
+Open `/worlds/splice?edit` on the dev server to join the dev lane. An edit from another tab or
+from outside shows in under a second, and a placed piece rises out of the ground.
+`coax/web/tool.sh world-tabs http://127.0.0.1:PORT` checks it with two headless tabs.
 
 ### How it is built
 

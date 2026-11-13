@@ -110,3 +110,96 @@ SPT_TWO :: "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[
   b := spw_batch(g, t[0].x[..], empty, "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":116,\"x\":17500,\"y\":0,\"z\":-6700,\"yaw\":0,\"scale\":100}]}", true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
   #assert b.status == SPB_WALK && b.doc == 0 && spt_why(t[..], b).count > 20;
 }
+
+// ---- a page that follows the world (#13413)
+
+SptPage :: struct { g: [1] SpGame; p: [1] SpwPage; t: [1] SpwTest; state: [SPW_DOC * 2] u8; ev: [WE_EVENT_BODY * 4] u8; }
+// A lane's answer as the route writes it: "200\n" and the state with a document.
+spt_state :: (x: [] SptPage, lane: int, rev: int, doc: string) -> string {
+  v := WorldState.{lane = lane, rev = rev, dev = rev, live = ifx lane == WL_LIVE then rev else 0};
+  n := ct_put(x[0].state[..], 0, "200\n");
+  made := we_state_write(v, SPW_ID, doc, "", x[0].state[n..<x[0].state.count]);
+  return cast(string) x[0].state[0..<n + made.count];
+}
+// Events' lines for a batch's edits from revision `from`, after "200\n".
+spt_events :: (x: [] SptPage, batch: string, from: int) -> string {
+  e: [WE_BATCH] WorldEdit; b := we_batch_read(batch, e[..]); o: [WE_EVENT_BODY] u8;
+  n := ct_put(x[0].ev[..], 0, "200\n");
+  for i: 0..<b.n { n = ct_put(x[0].ev[..], n, we_event_write(900 + i, SPW_ID, from + i, e[i], 1762190000000, o[..])); n = ct_put(x[0].ev[..], n, "\n"); }
+  return cast(string) x[0].ev[0..<n];
+}
+// The follower asks, the "host" takes it under id 1, and the answer is `text`: what it answered.
+spt_round :: (x: [] SptPage, dt: f32, text: string) -> int {
+  f := x[0].p[0].f[..];
+  wf_step(f, dt);
+  if !wf_wants(f) { return -1; }
+  wf_sent(f, 1);
+  return spw_page_answer(x[0].g[..], x[0].p[..], 1, text);
+}
+#test "a page follows the world: it reads the document mid-run and keeps the run, takes outside edits in order through the edit log, and a placed piece rises in" #steps 4000000000 #traversal 2000000000 {
+  x := [1] SptPage.[SptPage.{}]; g := x[0].g[..]; t := x[0].t[..]; f := x[0].p[0].f[..];
+  empty := spw_empty(t[0].g[..], t[0].x[0].k[..], t[0].doc[..]);
+  b := spw_batch(t[0].g[..], t[0].x[..], empty, SPT_TWO, true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  two := cast(string) t[0].next[0..<b.doc];
+  // the page is in the mine, mid-run, carrying the arm
+  g_reset(g); g_stage(g, 5); g[0].have[H_ARM] = true; g[0].heat = 37; px := g[0].px; pz := g[0].pz; stage_mode := g[0].mode;
+  #assert spw_page_open(g, x[0].p[..], WL_DEV) && f[0].status == WFS_OPENING;
+  #assert spt_round(x[..], 0.016, spt_state(x[..], WL_DEV, 2, two)) == WFQ_DOC;
+  #assert f[0].status == WFS_FOLLOWING && f[0].rev == 2 && g[0].layer[0].head == 2 && g[0].layer[0].st[0].n == 2 && x[0].p[0].loads == 1;
+  #assert g[0].px == px && g[0].pz == pz && g[0].have[H_ARM] && g[0].heat == 37 && g[0].mode == stage_mode && g[0].zone == Z_MINE;
+  count := world_count(sl_world(g));
+  // an outside batch (a second tab, the CLI): a move of piece 2 and a new crab-bot, as events 3 and 4
+  out := "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"move\",\"id\":2,\"x\":300,\"y\":0,\"z\":120},{\"op\":\"spawn\",\"id\":3,\"kind\":103,\"x\":2330,\"y\":0,\"z\":-4900,\"yaw\":-60,\"scale\":100}]}";
+  #assert spt_round(x[..], 1.1, spt_events(x[..], out, 3)) == WFQ_EVENTS;
+  #assert f[0].rev == 4 && f[0].taken == 2 && g[0].layer[0].head == 4 && g[0].layer[0].st[0].n == 3 && we_cm(g[0].layer[0].items[1].x) == 300 && g[0].layer[0].items[2].mesh == 103;
+  #assert world_count(sl_world(g)) == count + 1 && g[0].px == px && g[0].have[H_ARM] && g[0].zone == Z_MINE;
+  // the new piece rises: drawn below where it stands, less each frame, then where it stands; the moved one does not
+  top := g[0].c[0].pieces[sc_piece(g[0].c[..], 103)].top;
+  #assert g[0].layer[0].rise_n == 1 && sl_sunk(g, 2, top) > top && sl_sunk(g, 1, top) == 0;
+  shown := g[0].layer[0].shown; sl_rise_step(g, 0.35);
+  #assert sl_sunk(g, 2, top) > 0 && sl_sunk(g, 2, top) < top * 0.5 && g[0].layer[0].shown == shown + 1;
+  sl_rise_step(g, 0.4); #assert g[0].layer[0].rise_n == 0 && sl_sunk(g, 2, top) == 0;
+  sl_rise_step(g, 0.4); #assert g[0].layer[0].shown == shown + 2;
+  // UNDO works on an outside edit: it is a step of the layer's own log
+  #assert sl_undo(g).ok && g[0].layer[0].st[0].n == 2 && sl_redo(g).ok && g[0].layer[0].st[0].n == 3;
+  // events the page has already taken are passed over; one out of order sends it back to the document
+  #assert spt_round(x[..], 1.1, spt_events(x[..], out, 3)) == WFQ_EVENTS && f[0].rev == 4 && f[0].reopened == 0;
+  #assert spt_round(x[..], 1.1, spt_events(x[..], "{\"schema\":\"world.edit.v1\",\"rev\":5,\"do\":\"apply\",\"edits\":[{\"op\":\"despawn\",\"id\":1}]}", 6)) == WFQ_EVENTS;
+  #assert f[0].rev == 4 && f[0].reopened == 1 && g[0].layer[0].st[0].n == 3;
+  // the document again: the page stands at its revision, the run still as it was
+  #assert spt_round(x[..], 0.016, spt_state(x[..], WL_DEV, 2, two)) == WFQ_DOC && f[0].rev == 2 && g[0].layer[0].st[0].n == 2 && g[0].px == px && x[0].p[0].loads == 2;
+  // an event the layer can't take (no such piece) does the same; what is no answer is asked again
+  #assert spt_round(x[..], 1.1, spt_events(x[..], "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"despawn\",\"id\":9}]}", 3)) == WFQ_EVENTS && f[0].reopened == 2 && f[0].rev == 2;
+  #assert spt_round(x[..], 0.016, "200\n{}") == WFQ_DOC && f[0].rev == 2 && x[0].p[0].loads == 2;
+  // the nudge: the page asks in the next frame
+  #assert spt_round(x[..], WF_RETRY + 0.1, spt_state(x[..], WL_DEV, 2, two)) == WFQ_DOC;
+  wf_nudge(f, SPW_ID);
+  #assert spt_round(x[..], 0.016, spt_events(x[..], out, 3)) == WFQ_EVENTS && f[0].rev == 4;
+}
+#test "a page that plays follows live: a publish for now is read at once on its own pins, one for the next session is not" #steps 4000000000 #traversal 2000000000 {
+  x := [1] SptPage.[SptPage.{}]; g := x[0].g[..]; t := x[0].t[..]; f := x[0].p[0].f[..]; o: [WE_PUBLISHED_BODY] u8; ev: [WE_PUBLISHED_BODY + 8] u8;
+  empty := spw_empty(t[0].g[..], t[0].x[0].k[..], t[0].doc[..]);
+  b := spw_batch(t[0].g[..], t[0].x[..], empty, SPT_TWO, true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  two := cast(string) t[0].next[0..<b.doc];
+  g_reset(g);
+  #assert spw_page_open(g, x[0].p[..], WL_LIVE);
+  #assert spt_round(x[..], 0.016, "404\n{\"error\":\"nothing is published yet\"}") == WFQ_DOC && f[0].status == WFS_NOTHING && g[0].layer[0].st[0].n == 0;
+  #assert spt_round(x[..], WF_IDLE + 1, "") == -1;   // the turn that decides to look again
+  #assert spt_round(x[..], 0.016, spt_state(x[..], WL_LIVE, 1, empty)) == WFQ_DOC && f[0].status == WFS_FOLLOWING && f[0].rev == 1;
+  mine := spw_pins(g);
+  v := WorldPublished.{seq = 5, rev = 2, from = 2, when = WU_NEXT, engine = mine.engine, rules = mine.rules, content = mine.content, wire = mine.wire, at = 1762190000000};
+  // for the next session: the page keeps what it joined
+  n := ct_put(ev[..], 0, "200\n"); n = ct_put(ev[..], n, we_published_write(v, SPW_ID, o[..])); n = ct_put(ev[..], n, "\n");
+  #assert spt_round(x[..], WF_POLL_LIVE + 0.1, cast(string) ev[0..<n]) == WFQ_EVENTS && f[0].rev == 2 && f[0].reopened == 0 && g[0].layer[0].st[0].n == 0;
+  // for now, on this build's pins: the page reads the new document
+  v.rev = 3; v.when = WU_NOW;
+  n = ct_put(ev[..], 0, "200\n"); n = ct_put(ev[..], n, we_published_write(v, SPW_ID, o[..])); n = ct_put(ev[..], n, "\n");
+  #assert spt_round(x[..], WF_POLL_LIVE + 0.1, cast(string) ev[0..<n]) == WFQ_EVENTS && f[0].rev == 3 && f[0].reopened == 1;
+  #assert spt_round(x[..], 0.016, spt_state(x[..], WL_LIVE, 3, two)) == WFQ_DOC && g[0].layer[0].st[0].n == 2 && f[0].rev == 3;
+  // for now, but for another build: not this session's
+  v.rev = 4; v.wire = mine.wire + 1;
+  n = ct_put(ev[..], 0, "200\n"); n = ct_put(ev[..], n, we_published_write(v, SPW_ID, o[..])); n = ct_put(ev[..], n, "\n");
+  #assert spt_round(x[..], WF_POLL_LIVE + 0.1, cast(string) ev[0..<n]) == WFQ_EVENTS && f[0].rev == 4 && f[0].reopened == 1 && g[0].layer[0].st[0].n == 2;
+  // a page told to reload stops asking
+  #assert spw_page_open(g, x[0].p[..], WL_LIVE) && spt_round(x[..], 0.016, "409\n{\"error\":\"reload\"}") == WFQ_DOC && f[0].status == WFS_RELOAD && spt_round(x[..], 60, "") == -1;
+}

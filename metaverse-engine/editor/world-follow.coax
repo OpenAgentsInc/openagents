@@ -1,0 +1,244 @@
+// A page's place in a world with an ID (GitHub #13413, the browser editor's E4;
+// docs/editor/2026-11-12-browser-editor.md "One live channel"): which lane it joined, the revision
+// it stands at, and the one request at a time it has out. The page reads the lane's document once,
+// then takes the lane's events in order, so an edit made in another tab, by an agent or from the
+// CLI reaches it through the same edit log its own edits use.
+//
+// It asks for events once a second (the API's event stream, as a page follows a made realm). On
+// the dev server `coax serve` also says when a world was written (the live channel's "world"
+// message, inbox kind 614), and the page asks at once, so an outside edit shows in well under a
+// second.
+//
+// This file decides what to ask and what an answer is; it sends nothing. The page's face hands the
+// request to the host (coaxial_http: wf_wants, wf_url, wf_body, wf_flags, then wf_sent with the
+// host's id) and the answer back (wf_answer). The realm carries a document and each event out on
+// its own World and says so (wf_loaded, wf_took); anything out of order sends the page back to the
+// document (wf_reopen).
+//   coax/bin/coax test metaverse-engine/editor/world-follow.coax --library
+#load "world-edit.coax";
+#load "world-live.coax";
+
+WF_POLL :: 1.0f32;        // seconds between asks for events on the dev lane, where people edit
+WF_POLL_LIVE :: 5.0f32;   // and on the live lane, where a publish is the only event
+WF_IDLE :: 30.0f32;       // seconds between looks at a world with nothing published
+WF_RETRY :: 2.0f32;       // seconds before a request that got no answer is asked again
+WF_URL :: 200;
+WF_HTTP_POST :: 1; WF_HTTP_WANTED :: 4;   // coaxial_http's flags (coax/web/http-requests.js)
+WFQ_NONE :: 0; WFQ_DOC :: 1; WFQ_EVENTS :: 2; WFQ_POST :: 3;
+WFS_OFF :: 0;        // no world is open
+WFS_OPENING :: 1;    // the document is being read
+WFS_FOLLOWING :: 2;  // the page stands at `rev` and takes events
+WFS_NOTHING :: 3;    // nothing is published yet: the page shows the designed world
+WFS_RELOAD :: 4;     // this build reads neither live revision: the page must be loaded again
+
+WorldFollow :: struct {
+  status: int; lane: int;
+  rev: int = -1;              // the lane's revision the page stands at
+  dev: int; live: int; undo: int; redo: int;   // what the last answer said of the world
+  pins: WorldPins;
+  id: [WE_WORLD] u8; id_n: int;
+  want: int; flying: int; host_id: int = -1;
+  url: [WF_URL] u8; url_n: int;
+  body: [WE_BATCH_BODY] u8; body_n: int;       // a batch waiting to be sent, or in flight
+  since: f32; wait: f32;
+  hold: f32;                  // seconds the document is not asked for again, after an answer that was none
+  nudged: bool; refetch: bool;
+  refused: [240] u8; refused_n: int; refused_edit: int = -1; refused_status: int;   // the last write's refusal, in words
+  taken: int; reopened: int; sent: int;        // counters: events carried out, returns to the document, requests sent
+}
+wf_id :: (f: [] WorldFollow) -> string { return cast(string) f[0].id[0..<f[0].id_n]; }
+// Open world `id` on a lane, for a build with these pins. False for what is no world or lane.
+wf_open :: (f: [] WorldFollow, id: string, lane: int, pins: WorldPins) -> bool {
+  if !we_world_ok(id) || (lane != WL_DEV && lane != WL_LIVE) { return false; }
+  f[0] = WorldFollow.{status = WFS_OPENING, lane = lane, pins = pins, refetch = true};
+  f[0].id_n = ct_copy(f[0].id[..], id);
+  return true;
+}
+// Back to the document: an event was out of order, or could not be carried out.
+wf_reopen :: (f: [] WorldFollow) { if f[0].status != WFS_OFF { f[0].refetch = true; f[0].reopened += 1; } }
+// The dev server says world `id` was written.
+wf_nudge :: (f: [] WorldFollow, id: string) { if f[0].status != WFS_OFF && id == wf_id(f) { f[0].nudged = true; } }
+// A batch to send (the page's own edits, an undo, a publish): false when one is still waiting or it is too long.
+wf_post :: (f: [] WorldFollow, body: string) -> bool {
+  if f[0].status == WFS_OFF || f[0].body_n > 0 || body.count == 0 || body.count > f[0].body.count { return false; }
+  for i: 0..<body.count { f[0].body[i] = body[i]; }
+  f[0].body_n = body.count;
+  f[0].refused_n = 0; f[0].refused_edit = -1; f[0].refused_status = 0;
+  return true;
+}
+wf_put_url :: (f: [] WorldFollow, tail: string, after: int, pins: bool) {
+  n := ct_put(f[0].url[..], 0, "/api/worlds/"); n = ct_put(f[0].url[..], n, wf_id(f)); n = ct_put(f[0].url[..], n, tail);
+  if tail.count > 0 { n = ct_put(f[0].url[..], n, ifx f[0].lane == WL_DEV then "lane=dev" else "lane=live"); }
+  if after >= 0 { n = ct_put(f[0].url[..], n, "&after="); n = ct_put_int(f[0].url[..], n, after); }
+  if pins {
+    p := f[0].pins;
+    n = ct_put(f[0].url[..], n, "&engine="); n = ct_put_int(f[0].url[..], n, p.engine); n = ct_put(f[0].url[..], n, "&rules="); n = ct_put_int(f[0].url[..], n, p.rules);
+    n = ct_put(f[0].url[..], n, "&content="); n = ct_put_int(f[0].url[..], n, p.content); n = ct_put(f[0].url[..], n, "&wire="); n = ct_put_int(f[0].url[..], n, p.wire);
+  }
+  f[0].url_n = ifx n > f[0].url.count then 0 else n;
+}
+// A frame's turn: decides the next request, when none is out. A waiting batch goes first, then
+// the document when the page must (re)read it, then the events when they are due or were nudged.
+wf_step :: (f: [] WorldFollow, dt: f32) {
+  if f[0].status == WFS_OFF || f[0].status == WFS_RELOAD { return; }
+  f[0].since += dt;
+  if f[0].flying != WFQ_NONE {
+    f[0].wait += dt;
+    if f[0].wait < WF_RETRY * 5 { return; }
+    f[0].flying = WFQ_NONE; f[0].host_id = -1;   // the answer never came: ask again
+  }
+  if f[0].want != WFQ_NONE { return; }
+  if f[0].body_n > 0 && f[0].lane == WL_DEV { wf_put_url(f, "", -1, false); f[0].want = WFQ_POST; return; }
+  if f[0].refetch {
+    if f[0].since >= f[0].hold { wf_put_url(f, "?", -1, f[0].lane == WL_LIVE); f[0].want = WFQ_DOC; f[0].since = 0; f[0].hold = 0; }
+    return;
+  }
+  every := ifx f[0].status == WFS_NOTHING then WF_IDLE else (ifx f[0].lane == WL_DEV then WF_POLL else WF_POLL_LIVE);
+  due := f[0].nudged || f[0].since >= every;
+  if (f[0].status == WFS_FOLLOWING || f[0].status == WFS_NOTHING) && due {
+    f[0].nudged = false; f[0].since = 0;
+    if f[0].status == WFS_NOTHING { f[0].refetch = true; return; }
+    wf_put_url(f, "/events?", f[0].rev, false); f[0].want = WFQ_EVENTS;
+  }
+}
+// What the face sends now, if anything.
+wf_wants :: (f: [] WorldFollow) -> bool { return f[0].want != WFQ_NONE && f[0].url_n > 0; }
+wf_url :: (f: [] WorldFollow) -> string { return cast(string) f[0].url[0..<f[0].url_n]; }
+wf_body :: (f: [] WorldFollow) -> string { return ifx f[0].want == WFQ_POST then cast(string) f[0].body[0..<f[0].body_n] else ""; }
+wf_flags :: (f: [] WorldFollow) -> int { return ifx f[0].want == WFQ_POST then WF_HTTP_POST | WF_HTTP_WANTED else WF_HTTP_WANTED; }
+// The face sent it: the host's id for the answer (below 0: the host could not take it now).
+wf_sent :: (f: [] WorldFollow, host_id: int) {
+  if f[0].want == WFQ_NONE { return; }
+  if host_id >= 0 { f[0].flying = f[0].want; f[0].host_id = host_id; f[0].wait = 0; f[0].sent += 1; }
+  f[0].want = WFQ_NONE;
+}
+// An answer from the host: what it answers (WFQ_NONE when it is not this follower's), its status
+// and its body. The request is no longer out.
+WfAnswer :: struct { what: int; status: int; body: string; }
+wf_answer :: (f: [] WorldFollow, host_id: int, text: string) -> WfAnswer {
+  if f[0].flying == WFQ_NONE || host_id != f[0].host_id { return WfAnswer.{}; }
+  a := WfAnswer.{what = f[0].flying};
+  f[0].flying = WFQ_NONE; f[0].host_id = -1;
+  at := 0;
+  while at < text.count && text[at] >= '0' && text[at] <= '9' && at < 4 { a.status = a.status * 10 + cast(int) (text[at] - '0'); at += 1; }
+  if at >= text.count || text[at] != '\n' { a.status = 0; return a; }
+  a.body = text[at + 1..<text.count];
+  return a;
+}
+// The page read the lane's document and stands at its revision. v: the state that carried it.
+wf_loaded :: (f: [] WorldFollow, v: WorldState) {
+  f[0].status = WFS_FOLLOWING; f[0].refetch = false; f[0].nudged = false; f[0].since = 0;
+  f[0].rev = v.rev; f[0].dev = v.dev; f[0].live = v.live; f[0].undo = v.undo; f[0].redo = v.redo;
+}
+// The document could not be read: `status` is the route's. 404 on live: nothing is published
+// yet. 409: this build reads neither live revision. Anything else is asked again.
+wf_not_loaded :: (f: [] WorldFollow, status: int) {
+  f[0].since = 0; f[0].hold = ifx status == 404 || status == 409 then 0 else WF_RETRY;
+  if status == 404 { f[0].status = WFS_NOTHING; f[0].refetch = false; f[0].rev = -1; }
+  if status == 409 { f[0].status = WFS_RELOAD; f[0].refetch = false; }
+}
+// The page carried the lane's next event out and stands one revision on.
+wf_took :: (f: [] WorldFollow) { f[0].rev += 1; f[0].taken += 1; if f[0].lane == WL_DEV { f[0].dev = f[0].rev; } }
+// A write was answered. 200: the batch as taken follows as events, asked for at once. Anything
+// else: the words of the refusal are kept for the page to show.
+wf_posted :: (f: [] WorldFollow, a: WfAnswer) {
+  f[0].body_n = 0;
+  if a.status == 200 { f[0].nudged = true; return; }
+  r := we_refusal_read(a.body, f[0].refused[..]);
+  f[0].refused_status = a.status; f[0].refused_n = ifx r.ok then r.words_n else 0; f[0].refused_edit = r.edit;
+  if a.status == 409 { f[0].nudged = true; }   // stale: the events the page has not taken explain it
+}
+wf_refused :: (f: [] WorldFollow) -> string { return cast(string) f[0].refused[0..<f[0].refused_n]; }
+// The k-th line of an events answer ("" past the last).
+wf_line :: (body: string, k: int) -> string { return ct_part(body, '\n', k); }
+
+#test "world follow: a page reads the document, then asks for events on its clock, and at once when nudged" {
+  f := [1] WorldFollow.[WorldFollow.{}]; pins := WorldPins.{engine = 1, rules = 1, content = 2, wire = 1};
+  wf_step(f[..], 1); #assert !wf_wants(f[..]) && f[0].status == WFS_OFF;
+  #assert !wf_open(f[..], "Splice", WL_DEV, pins) && !wf_open(f[..], "splice", 2, pins) && wf_open(f[..], "splice", WL_DEV, pins);
+  wf_step(f[..], 0.016);
+  #assert wf_wants(f[..]) && wf_url(f[..]) == "/api/worlds/splice?lane=dev" && wf_flags(f[..]) == WF_HTTP_WANTED && wf_body(f[..]) == "";
+  wf_sent(f[..], 3); #assert !wf_wants(f[..]) && f[0].flying == WFQ_DOC && f[0].sent == 1;
+  wf_step(f[..], 0.5); #assert !wf_wants(f[..]);   // one request at a time
+  #assert wf_answer(f[..], 4, "200\n{}").what == WFQ_NONE && f[0].flying == WFQ_DOC;   // another request's answer
+  a := wf_answer(f[..], 3, "200\n{\"x\":1}");
+  #assert a.what == WFQ_DOC && a.status == 200 && a.body == "{\"x\":1}" && f[0].flying == WFQ_NONE;
+  wf_loaded(f[..], WorldState.{rev = 7, dev = 7, live = 2, undo = 3, redo = 1});
+  #assert f[0].status == WFS_FOLLOWING && f[0].rev == 7 && f[0].undo == 3 && f[0].redo == 1;
+  wf_step(f[..], 0.5); #assert !wf_wants(f[..]);
+  wf_step(f[..], 0.6);
+  #assert wf_wants(f[..]) && wf_url(f[..]) == "/api/worlds/splice/events?lane=dev&after=7";
+  wf_sent(f[..], 0);
+  a = wf_answer(f[..], 0, "200\nLINE1\nLINE2\n");
+  #assert a.what == WFQ_EVENTS && wf_line(a.body, 0) == "LINE1" && wf_line(a.body, 1) == "LINE2" && wf_line(a.body, 2) == "";
+  wf_took(f[..]); wf_took(f[..]); #assert f[0].rev == 9 && f[0].dev == 9 && f[0].taken == 2;
+  // nudged: the next frame asks, well inside the second
+  wf_step(f[..], 0.016); #assert !wf_wants(f[..]);
+  wf_nudge(f[..], "other"); wf_step(f[..], 0.016); #assert !wf_wants(f[..]);
+  wf_nudge(f[..], "splice"); wf_step(f[..], 0.016);
+  #assert wf_wants(f[..]) && wf_url(f[..]) == "/api/worlds/splice/events?lane=dev&after=9";
+  // the host could not take it: asked again at the next turn of the clock
+  wf_sent(f[..], -1); #assert f[0].flying == WFQ_NONE && f[0].sent == 2;
+  wf_step(f[..], 1.1); #assert wf_wants(f[..]);
+  // an answer with no status line is no answer
+  wf_sent(f[..], 2); a = wf_answer(f[..], 2, "garbage"); #assert a.what == WFQ_EVENTS && a.status == 0 && a.body == "";
+}
+#test "world follow: out of order sends the page back to the document; a request that never answers is asked again" {
+  f := [1] WorldFollow.[WorldFollow.{}]; pins := WorldPins.{engine = 1, rules = 1, content = 2, wire = 1};
+  #assert wf_open(f[..], "splice", WL_LIVE, pins);
+  wf_step(f[..], 0.016);
+  #assert wf_url(f[..]) == "/api/worlds/splice?lane=live&engine=1&rules=1&content=2&wire=1";
+  wf_sent(f[..], 1); a := wf_answer(f[..], 1, "404\n{\"error\":\"nothing is published yet\"}");
+  wf_not_loaded(f[..], a.status); #assert f[0].status == WFS_NOTHING && f[0].rev == -1;
+  // nothing published: the page looks again every half minute, not every second
+  wf_step(f[..], 20); #assert !wf_wants(f[..]);
+  wf_step(f[..], 10.1); wf_step(f[..], 0.016); #assert wf_wants(f[..]) && f[0].want == WFQ_DOC;
+  wf_sent(f[..], 1); a = wf_answer(f[..], 1, "200\n{}"); wf_loaded(f[..], WorldState.{rev = 2, live = 2});
+  #assert f[0].status == WFS_FOLLOWING && f[0].rev == 2;
+  wf_took(f[..]); #assert f[0].rev == 3 && f[0].dev == 0;   // a live page's dev number is the answer's, not its own
+  wf_reopen(f[..]); wf_step(f[..], 0.016);
+  #assert wf_wants(f[..]) && f[0].want == WFQ_DOC && f[0].reopened == 1;
+  // no answer for ten seconds: the request is given up and asked again
+  wf_sent(f[..], 5);
+  for i: 0..<9 { wf_step(f[..], 1); #assert !wf_wants(f[..]); }
+  wf_step(f[..], 1.5); #assert wf_wants(f[..]) && f[0].flying == WFQ_NONE;
+  #assert wf_answer(f[..], 5, "200\n{}").what == WFQ_NONE;   // the old answer, should it come, is nobody's
+  // 409: the build reads neither revision; the page stops asking
+  wf_sent(f[..], 6); a = wf_answer(f[..], 6, "409\n{}"); wf_not_loaded(f[..], a.status);
+  #assert f[0].status == WFS_RELOAD;
+  wf_step(f[..], 5); #assert !wf_wants(f[..]);
+  // any other failure is asked again
+  #assert wf_open(f[..], "splice", WL_DEV, pins);
+  wf_step(f[..], 0.016); wf_sent(f[..], 1); a = wf_answer(f[..], 1, "0\n"); wf_not_loaded(f[..], a.status);
+  #assert f[0].status == WFS_OPENING;
+  wf_step(f[..], 0.016); #assert !wf_wants(f[..]);
+  wf_step(f[..], WF_RETRY); #assert wf_wants(f[..]);
+}
+#test "world follow: a write goes first, one at a time; a refusal's words are kept; nothing is written on the live lane" {
+  f := [1] WorldFollow.[WorldFollow.{}]; pins := WorldPins.{engine = 1, rules = 1, content = 2, wire = 1};
+  #assert !wf_post(f[..], WE_UNDO_FIXTURE) && wf_open(f[..], "splice", WL_DEV, pins);
+  wf_step(f[..], 0.016); wf_sent(f[..], 0); a := wf_answer(f[..], 0, "200\n{}"); wf_loaded(f[..], WorldState.{rev = 7, dev = 7});
+  #assert wf_post(f[..], WE_UNDO_FIXTURE) && !wf_post(f[..], WE_UNDO_FIXTURE) && !wf_post(f[..], "");
+  wf_step(f[..], 0.016);
+  #assert wf_wants(f[..]) && f[0].want == WFQ_POST && wf_url(f[..]) == "/api/worlds/splice" && wf_body(f[..]) == WE_UNDO_FIXTURE && wf_flags(f[..]) == 5;
+  wf_sent(f[..], 2); a = wf_answer(f[..], 2, "422\n{\"error\":\"nothing to undo\"}");
+  #assert a.what == WFQ_POST;
+  wf_posted(f[..], a);
+  #assert f[0].body_n == 0 && wf_refused(f[..]) == "nothing to undo" && f[0].refused_status == 422 && f[0].refused_edit == -1 && !f[0].nudged;
+  #assert wf_post(f[..], WE_UNDO_FIXTURE) && wf_refused(f[..]) == "";
+  wf_step(f[..], 0.016); wf_sent(f[..], 2); a = wf_answer(f[..], 2, "200\n{}"); wf_posted(f[..], a);
+  #assert f[0].nudged && wf_refused(f[..]) == "";
+  wf_step(f[..], 0.016); #assert f[0].want == WFQ_EVENTS;   // the batch as taken comes back as events, asked for at once
+  wf_sent(f[..], 1); a = wf_answer(f[..], 1, "200\n");
+  #assert wf_post(f[..], WE_UNDO_FIXTURE);
+  wf_step(f[..], 0.016); wf_sent(f[..], 2); a = wf_answer(f[..], 2, "422\n{\"error\":\"in the kept-clear zone 'Scanner gate'\",\"edit\":1}"); wf_posted(f[..], a);
+  #assert wf_refused(f[..]) == "in the kept-clear zone 'Scanner gate'" && f[0].refused_edit == 1;
+  #assert wf_post(f[..], WE_UNDO_FIXTURE);
+  wf_step(f[..], 0.016); wf_sent(f[..], 2); a = wf_answer(f[..], 2, "409\n{\"error\":\"stale\"}"); wf_posted(f[..], a);
+  #assert f[0].nudged && f[0].refused_status == 409;
+  // a live page never writes
+  #assert wf_open(f[..], "splice", WL_LIVE, pins);
+  wf_step(f[..], 0.016); wf_sent(f[..], 0); a = wf_answer(f[..], 0, "200\n{}"); wf_loaded(f[..], WorldState.{rev = 1, live = 1});
+  #assert wf_post(f[..], WE_UNDO_FIXTURE);
+  wf_step(f[..], 0.016); #assert f[0].want != WFQ_POST;
+}

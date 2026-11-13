@@ -19,6 +19,7 @@
 //   coax/bin/coax test metaverse/splice/splice-game.coax
 #load "../../metaverse-engine/editor/world-doc.coax";
 #load "../../metaverse-engine/editor/world-live.coax";
+#load "../../metaverse-engine/editor/world-follow.coax";
 
 SPW_ID :: "splice";
 SPW_ENGINE :: 1;     // the document's reader: raised when world.doc.v1's reading here changes
@@ -261,4 +262,63 @@ spw_empty :: (g: [] SpGame, k: [] SpwScratch, out: [] u8) -> string {
   forge_scene_reset(sl_scene(g)); g[0].layer[0].head = 0; g[0].layer[0].rev += 1;
   spw_build(g);
   return spw_save(g, k, out);
+}
+
+// ---- a page that follows the world (GitHub #13413, the browser editor's E4)
+
+SPW_INBOX :: 131072;   // bytes one answer may be: the page's inbox (splice-face.c)
+// What a page keeps to follow the world: its place (world-follow.coax) and room to read an answer.
+SpwPage :: struct { f: [1] WorldFollow; k: [1] SpwScratch; doc: [SPW_DOC] u8; did: [64] u8; scratch: [SPW_INBOX] u8; loads: int; }
+// The page opens the world on a lane: dev for someone who edits, live for someone who plays.
+spw_page_open :: (g: [] SpGame, p: [] SpwPage, lane: int) -> bool { return wf_open(p[0].f[..], SPW_ID, lane, spw_pins(g)); }
+// The lane's document, answered: its pieces become the layer's, and the run goes on as it was
+// (where you stand, what you carry, the stage). True when the page now stands at its revision.
+spw_page_doc :: (g: [] SpGame, p: [] SpwPage, a: WfAnswer) -> bool {
+  f := p[0].f[..];
+  if a.status != 200 { wf_not_loaded(f, a.status); return false; }
+  v := we_state_read(a.body, p[0].doc[..], p[0].did[..], p[0].scratch[..]);
+  if !v.ok || v.doc_n == 0 || spw_pieces(g, p[0].k[..], cast(string) p[0].doc[0..<v.doc_n]) != SPW_OK { wf_not_loaded(f, 0); return false; }
+  g[0].layer[0].rise_n = 0;
+  sl_sync(g);
+  wf_loaded(f, v); p[0].loads += 1;
+  return true;
+}
+// The lane's events, answered: each is carried out in order through the layer's edit log, so UNDO
+// works on it as on the page's own. A piece an event places rises in. An event out of order, or
+// one the layer can't take, sends the page back to the document. How many were carried out.
+spw_page_events :: (g: [] SpGame, p: [] SpwPage, a: WfAnswer) -> int {
+  f := p[0].f[..]; took := 0;
+  if a.status != 200 { return 0; }
+  for k: 0..<ct_parts(a.body, '\n') {
+    line := wf_line(a.body, k);
+    if line.count == 0 { continue; }
+    kind := we_event_kind(line);
+    if kind == 1 && f[0].lane == WL_DEV {
+      v := we_event_read(line);
+      if v.ok && v.rev <= f[0].rev { continue; }   // one the page has taken already
+      if !we_take(f[0].rev, v) || !we_event_world_is(v, SPW_ID) { wf_reopen(f); break; }
+      r := spw_edit(g, v.edit, true);
+      if !r.ok { wf_reopen(f); break; }
+      if v.edit.op == WE_SPAWN { sl_rise(g, r.id - 1); }
+      wf_took(f); g[0].layer[0].head = f[0].rev; took += 1;
+    } else if kind == 2 && f[0].lane == WL_LIVE {
+      v := we_published_read(line);
+      if v.ok && v.rev <= f[0].rev { continue; }
+      if !v.ok || v.rev != f[0].rev + 1 { wf_reopen(f); break; }
+      // a publish reaches this session now only when it said so and this build reads it (world-live.coax);
+      // otherwise the page keeps what it joined until its next session
+      wf_took(f);
+      if wl_follow(v.when, f[0].pins, WorldPins.{engine = v.engine, rules = v.rules, content = v.content, wire = v.wire}) { wf_reopen(f); break; }
+    } else { wf_reopen(f); break; }
+  }
+  return took;
+}
+// An answer from the host for request `host_id`: the document, events or a write's answer, each
+// carried out. What it answered (WFQ_NONE: not the world's).
+spw_page_answer :: (g: [] SpGame, p: [] SpwPage, host_id: int, text: string) -> int {
+  a := wf_answer(p[0].f[..], host_id, text);
+  if a.what == WFQ_DOC { ok := spw_page_doc(g, p, a); }
+  if a.what == WFQ_EVENTS { n := spw_page_events(g, p, a); }
+  if a.what == WFQ_POST { wf_posted(p[0].f[..], a); }
+  return a.what;
 }

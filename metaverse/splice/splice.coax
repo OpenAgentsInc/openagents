@@ -35,6 +35,9 @@ Splice :: struct {
   game: [1] SpGame;           // the vertical slice (splice-game.coax)
   // What `why ID` reads of the page (why.coax, #13429), and its last answer, which the host reads back
   aspect: f32 = 1.7778; held: bool; live_over: bool;
+  follow: int;                // the world `splice`: 1 the page's facts came and it will be opened, 2 it is open (world.coax)
+  edit: bool;                 // ?edit: the page joins the dev lane, where edits land; without it, live
+  page: [1] SpwPage;          // the page's place in the world, and room to read its answers
   drive: [1] Drive;           // the agent driver's lists and its last answer (metaverse-engine/agent/drive.coax)
   // In the site's sandboxed frame (metaverse-engine/host/realm-frame.coax, #13432): what the frame is
   // (the host says before each message), and the last answer to the page that holds it.
@@ -358,10 +361,33 @@ splice_fact :: (s: [] Splice, k: int) -> int #export_c #effects(all) {
   if k >= 11 && k < 11 + HAVES { return ifx g[0].have[k - 11] then 1 else 0; }
   return -1;
 }
+// The world's one request at a time, for the face to hand to the host (coaxial_http), and the
+// host's id for its answer (world-follow.coax).
+splice_req_wants :: (s: [] Splice) -> bool #export_c #effects(all) { return s.count > 0 && s[0].follow == 2 && wf_wants(s[0].page[0].f[..]); }
+splice_req_url :: (s: [] Splice) -> string #export_c #effects(all) { return wf_url(s[0].page[0].f[..]); }
+splice_req_body :: (s: [] Splice) -> string #export_c #effects(all) { return wf_body(s[0].page[0].f[..]); }
+splice_req_flags :: (s: [] Splice) -> int #export_c #effects(all) { return wf_flags(s[0].page[0].f[..]); }
+splice_req_sent :: (s: [] Splice, id: int) #export_c #effects(all) { wf_sent(s[0].page[0].f[..], id); }
+// A fact of the page's place in the world, for a host's checks (coaxial.fieldProbe): 0 the revision
+// it stands at (-1: no document yet), 1 outside edits carried out, 2 placed pieces, 3 pieces rising
+// in, 4 the follower's status (world-follow.coax WFS_*), 5 documents read, 6 requests sent; from 100,
+// a fact of the run (splice_fact k - 100).
+splice_world_fact :: (s: [] Splice, k: int) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  if k >= 100 { return splice_fact(s, k - 100); }
+  f := s[0].page[0].f[..]; l := s[0].game[0].layer[..];
+  if k == 0 { return ifx s[0].follow == 2 then f[0].rev else -1; }
+  if k == 1 { return f[0].taken; } if k == 2 { return l[0].st[0].n; } if k == 3 { return l[0].rise_n; }
+  if k == 4 { return f[0].status; } if k == 5 { return s[0].page[0].loads; } if k == 6 { return f[0].sent; }
+  return -1;
+}
 splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all) {
   if kind == 700 && s.count > 0 { s[0].frame_answer = false; splice_drive(s, body); return; }
   if kind == 721 && s.count > 0 { s[0].frame_isolated = sp_whole(body, 0) == 1; s[0].frame_opaque = sp_whole(body, 1) == 1; return; }
   if kind == 720 && s.count > 0 { splice_framed(s, body); return; }
+  // the world's answers (512 + the host's id: "STATUS\n" then the body), and the dev server's word that it was written
+  if kind >= 512 && kind < 520 && s.count > 0 && s[0].follow == 2 { _ := spw_page_answer(s[0].game[..], s[0].page[..], kind - 512, body); return; }
+  if kind == 614 && s.count > 0 && s[0].follow == 2 { wf_nudge(s[0].page[0].f[..], body); return; }
   if kind == 610 && s.count > 0 && body.count > 0 {   // a moment of the game to stand in: "0" to "10"
     n := 0;
     for i: 0..<body.count { d := cast(int) body[i] - 48; if d >= 0 && d <= 9 { n = n * 10 + d; } }
@@ -382,6 +408,9 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
   // the dev server's page (coax serve: this computer's address) may ask for the fixture layer,
   // ?layer=fixture, to see placed pieces in the world; no other address loads it
   s[0].dev = sp_has(body, "://127.0.0.1") || sp_has(body, "://localhost");
+  // the page follows the world `splice` (world.coax): its dev lane for someone who edits (?edit), else live
+  s[0].edit = sp_has(body, "?edit") || sp_has(body, "&edit");
+  if s[0].follow == 0 { s[0].follow = 1; }
   if s[0].dev && s[0].fixture == 0 && (sp_has(body, "?layer=fixture") || sp_has(body, "&layer=fixture")) { s[0].fixture = 1; }
   gray := "gray";   // ?gray opens in graybox
   for i: 0..<body.count { if i + gray.count <= body.count && i > 0 && (body[i - 1] == '?' || body[i - 1] == '&') && cast(string) body[i..<i + gray.count] == gray { s[0].game[0].gray = true; } }
@@ -441,6 +470,10 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   view := sp_camera(s[0].scene); key := sp_look(s[0].scene).key; flash := 0.0f32;
   s[0].live_n = 0;
   if !s[0].gallery {
+    // the world: opened once the page's facts came, then its one request at a time and any piece rising in
+    if s[0].follow == 1 { s[0].follow = ifx spw_page_open(g, s[0].page[..], ifx s[0].edit then WL_DEV else WL_LIVE) then 2 else 3; }
+    if s[0].follow == 2 { wf_step(s[0].page[0].f[..], step); }
+    sl_rise_step(g, step);
     g_step(g, step);
     view = g_camera(g); key = g_key_light(g); flash = g[0].flash;
     pen := [1] Pen.[Pen.{graybox = g[0].gray}];

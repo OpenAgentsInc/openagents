@@ -35,6 +35,18 @@ EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (u
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_splice_uniform_floats(); }
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 
+// The world `splice` (world.coax): the page's one request at a time goes to the host, and its
+// answer comes back through the inbox (512 + the host's id).
+__attribute__((import_module("env"), import_name("coaxial_http"))) int32_t coaxial_http(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len, int32_t flags);
+static void world_request(uint32_t state) {
+  if (!splice_req_wants(at(state))) return;
+  coax_string url = splice_req_url(at(state)), body = splice_req_body(at(state));
+  splice_req_sent(at(state), coaxial_http((uint32_t)(uintptr_t)url.data, (uint32_t)url.count, (uint32_t)(uintptr_t)body.data, (uint32_t)body.count, (int32_t)splice_req_flags(at(state))));
+}
+
+// A fact of the page for a headless check (coaxial.fieldProbe): its place in the world, and from 100 the run's.
+EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(uint32_t state, int32_t field) { return (int32_t)splice_world_fact(at(state), field); }
+
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float width, float height, float dpr, float dt, uint32_t still) {
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_splice_max_vertices() * coaxial_splice_vertex_floats()};
@@ -46,6 +58,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
                            (coax_v_u32){world, WORLD_WORDS}, (coax_v_u32){live, LIVE_WORDS},
                            (coax_v_u32){pieces, PIECE_WORDS}, (coax_v_u32){places, PLACE_WORDS}, (coax_v_f32){style, 128});
   frames += 1;
+  world_request(state);
   return n < 0 ? 0u : (uint32_t)n;
 }
 
@@ -87,7 +100,7 @@ EXPORT("coaxial_pointer_lock") void coaxial_pointer_lock(uint32_t state, int32_t
 // The interface is ink on paper: the overlay blends source over (gpu/splice.coax fx_fs).
 EXPORT("coaxial_fx_alpha_v1") uint32_t coaxial_fx_alpha_v1(void) { return 1; }
 
-static uint8_t inbox[1024];   /* the page's facts (kind 600), read for ?scene=; a driver's command (kind 700); a message from the page that holds this realm's frame (kind 720) */
+static uint8_t inbox[131072];   /* the page's facts (kind 600), a driver's command (kind 700), a message from the page that holds this realm's frame (kind 720), and the world's answers: a document fits (world.coax SPW_INBOX) */
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
 // A driver's command (coax drive, kind 700) is answered in the state; the host reads the answer here.
@@ -96,4 +109,5 @@ EXPORT("coaxial_drive_out_len") uint32_t coaxial_drive_out_len(uint32_t state) {
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) length = sizeof inbox;
   splice_message(at(state), kind, (coax_string){(const char *)inbox, (int64_t)length});
+  world_request(state);
 }

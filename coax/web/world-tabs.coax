@@ -1,0 +1,146 @@
+// The two-tab check of a world's live edits (GitHub #13413, the browser editor's E4): two headless
+// browsers open one world on the dev server (`coax serve`), and an edit made in one tab, then one
+// made from outside any page (as the CLI makes it: a POST to the dev server), must show in the
+// other tab inside a second, while that tab's run goes on as it was.
+//   coax/web/tool.sh world-tabs ORIGIN [--path /worlds/splice] [--world splice] [--stage 5] [--limit-ms 1000]
+// ORIGIN is the dev server's (http://127.0.0.1:PORT). The page must export coaxial_field_probe
+// with the world's facts (metaverse/splice/splice.coax splice_world_fact): 0 the revision it
+// stands at, 1 outside edits carried out, 2 placed things, 3 things arriving, and from 100 the
+// run's own facts. What it checks, a line each, then holds or fails:
+//   1. both tabs open the world's dev lane (?edit) and stand at its revision;
+//   2. tab B is put mid-run (message 610, --stage), and its run facts are noted;
+//   3. tab A sends a batch (a place); A and B both stand one revision on, B within the limit of
+//      the answer, with one more placed thing, and a thing arriving (it animates in);
+//   4. an outside write (this tool's own POST): both tabs take it within the limit;
+//   5. an undo from outside takes the last edit back in both tabs within the limit;
+//   6. B's run facts are what they were (mode, zone, phase, hearts), and B read the document once;
+//   7. the world is left as it was found: ORIGINAL when the check placed the only things.
+// Nothing opens on screen and no sound plays.
+// tool.sh: tls
+#import "Basic";
+#load "../lib/net/cdp.coax";
+#load "../lib/net/http.coax";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+cxproc_wall_us :: () -> int #foreign #effects(all);
+
+WT_CALL :: 15000;
+Wt :: struct { url: [512] u8; js: [4096] u8; w: [1] HttpWork; out: [HTTP_BODY_MAX] u8; fails: int; }
+wt_put :: (b: [] u8, n: int, s: string) -> int { if n < 0 || n + s.count > b.count { return -1; } for i: 0..<s.count { b[n + i] = s[i]; } return n + s.count; }
+wt_put_int :: (b: [] u8, at: int, v: int) -> int {
+  d: [24] u8; k := 0; x := ifx v < 0 then -v else v; n := at;
+  if v < 0 { n = wt_put(b, n, "-"); }
+  while true { d[k] = cast,trunc(u8) (48 + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  while k > 0 && n >= 0 { k -= 1; one := [1] u8.[d[k]]; n = wt_put(b, n, cast(string) one[..]); }
+  return n;
+}
+wt_check :: (t: [] Wt, ok: bool, what: string) -> bool { print("% %\n", ifx ok then "ok  " else "FAIL", what); if !ok { t[0].fails += 1; } return ok; }
+wt_int :: (c: [] Cdp, js: string) -> int {
+  v := cdp_evaluate(c, js);
+  return ifx v >= 0 then jv_int(cdp_doc(c), v, -1000) else -1000;
+}
+wt_fact :: (t: [] Wt, c: [] Cdp, k: int) -> int {
+  n := wt_put(t[0].js[..], 0, "coaxial.fieldProbe("); n = wt_put_int(t[0].js[..], n, k); n = wt_put(t[0].js[..], n, ")");
+  return wt_int(c, cast(string) t[0].js[0..<n]);
+}
+wt_open :: (c: [] Cdp, url: string) -> bool {
+  params: [1024] u8; o: [1] Jo;
+  if cdp_call(c, "Page.enable", "", WT_CALL) < 0 { return false; }
+  if cdp_call(c, "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", WT_CALL) < 0 { return false; }   // both pages draw frames, as two visible tabs do
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
+  return !o[0].bad && cdp_call(c, "Page.navigate", jo_text(o[..]), WT_CALL) >= 0;
+}
+// Waits until fact k of the tab is `want` (or, with `least`, at least it): the ms it took, or -1 past the limit.
+wt_until :: (t: [] Wt, c: [] Cdp, k: int, want: int, least: bool, limit_ms: int) -> int {
+  from := cxproc_wall_us();
+  while true {
+    v := wt_fact(t, c, k);
+    ms := (cxproc_wall_us() - from) / 1000;
+    if v == want || (least && v >= want) { return ms; }
+    if ms > limit_ms { return -1; }
+    proc_sleep(15);
+  }
+  return -1;
+}
+// A batch POSTed from outside any page, as the CLI sends it: the status.
+wt_post :: (t: [] Wt, origin: string, world: string, rev: int, what: string, edits: string) -> int {
+  n := wt_put(t[0].url[..], 0, origin); n = wt_put(t[0].url[..], n, "/api/worlds/"); n = wt_put(t[0].url[..], n, world);
+  b := wt_put(t[0].js[..], 0, "{\"schema\":\"world.edit.v1\",\"rev\":"); b = wt_put_int(t[0].js[..], b, rev); b = wt_put(t[0].js[..], b, ",\"do\":\""); b = wt_put(t[0].js[..], b, what);
+  b = wt_put(t[0].js[..], b, "\",\"edits\":["); b = wt_put(t[0].js[..], b, edits); b = wt_put(t[0].js[..], b, "]}");
+  if n < 0 || b < 0 { return -1; }
+  h := [1] string.["Content-Type: application/json"];
+  got := http_do(t[0].w[..], "POST", cast(string) t[0].url[0..<n], h[..], cast(string) t[0].js[0..<b], 10000, 0, t[0].out[..]);
+  return ifx got.error == HTTP_OK then got.code else -1;
+}
+
+wt_run :: (t: [] Wt, ca: [] Cdp, cb: [] Cdp, origin: string, path: string, world: string, stage: int, limit: int) {
+  n := wt_put(t[0].url[..], 0, origin); n = wt_put(t[0].url[..], n, path); n = wt_put(t[0].url[..], n, "?edit");
+  url: [512] u8; for i: 0..<n { url[i] = t[0].url[i]; }
+  if !wt_open(ca, cast(string) url[0..<n]) || !wt_open(cb, cast(string) url[0..<n]) { ok := wt_check(t, false, "both tabs open the page"); return; }
+  // the two load side by side: each is asked in turn until both stand at a revision
+  a0 := -1; b0 := -1; from := cxproc_wall_us();
+  while (a0 < 0 || b0 < 0) && (cxproc_wall_us() - from) / 1000 < 90000 {
+    if a0 < 0 && wt_fact(t, ca, 0) >= 0 { a0 = (cxproc_wall_us() - from) / 1000; }
+    if b0 < 0 && wt_fact(t, cb, 0) >= 0 { b0 = (cxproc_wall_us() - from) / 1000; }
+    proc_sleep(50);
+  }
+  if a0 < 0 || b0 < 0 {
+    print("     tab A: page %, follower status %, requests %; tab B: page %, status %, requests %\n", wt_int(ca, "typeof coaxial === 'undefined' ? -5 : (coaxial.ready ? 1 : 0)"), wt_fact(t, ca, 4), wt_fact(t, ca, 6),
+          wt_int(cb, "typeof coaxial === 'undefined' ? -5 : (coaxial.ready ? 1 : 0)"), wt_fact(t, cb, 4), wt_fact(t, cb, 6));
+  }
+  rev := wt_fact(t, ca, 0);
+  print("     tab A stood at revision % after % ms, tab B at % after % ms\n", rev, a0, wt_fact(t, cb, 0), b0);
+  if !wt_check(t, a0 >= 0 && b0 >= 0 && rev >= 0 && wt_fact(t, cb, 0) == rev, "1. both tabs open the world's dev lane and stand at its revision") { return; }
+  placed := wt_fact(t, cb, 2);
+  // B mid-run
+  sn := wt_put(t[0].js[..], 0, "coaxial.send(610, '"); sn = wt_put_int(t[0].js[..], sn, stage); sn = wt_put(t[0].js[..], sn, "'), 1");
+  sent := wt_int(cb, cast(string) t[0].js[0..<sn]);
+  proc_sleep(300);
+  mode := wt_fact(t, cb, 100); zone := wt_fact(t, cb, 101); phase := wt_fact(t, cb, 102); hearts := wt_fact(t, cb, 103);
+  ok := wt_check(t, sent == 1 && mode >= 0 && zone >= 0, "2. tab B is put mid-run");
+  // A places a palm by the scanner gate, as a page's own edit goes: a POST from the page
+  spawn := "{\\\"op\\\":\\\"spawn\\\",\\\"id\\\":0,\\\"kind\\\":113,\\\"x\\\":17720,\\\"y\\\":0,\\\"z\\\":-7060,\\\"yaw\\\":0,\\\"scale\\\":100}";
+  jn := wt_put(t[0].js[..], 0, "fetch('/api/worlds/"); jn = wt_put(t[0].js[..], jn, world);
+  jn = wt_put(t[0].js[..], jn, "', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: \"{\\\"schema\\\":\\\"world.edit.v1\\\",\\\"rev\\\":"); jn = wt_put_int(t[0].js[..], jn, rev);
+  jn = wt_put(t[0].js[..], jn, ",\\\"do\\\":\\\"apply\\\",\\\"edits\\\":["); jn = wt_put(t[0].js[..], jn, spawn); jn = wt_put(t[0].js[..], jn, "]}\"}).then(r => r.status)");
+  status := wt_int(ca, cast(string) t[0].js[0..<jn]);
+  bm := wt_until(t, cb, 0, rev + 1, true, limit); rising := wt_fact(t, cb, 3); am := wt_until(t, ca, 0, rev + 1, true, limit);
+  print("     tab A's edit: answered %, tab B stood at it % ms after the answer, tab A % ms\n", status, bm, am);
+  ok = wt_check(t, status == 200 && bm >= 0 && am >= 0 && wt_fact(t, cb, 2) == placed + 1 && wt_fact(t, ca, 2) == placed + 1, "3. an edit made in tab A shows in tab B inside the limit");
+  ok = wt_check(t, rising >= 1, "3b. the placed thing arrives: it animates in");
+  // from outside: a small crate by the rover's door
+  from = cxproc_wall_us();
+  st := wt_post(t, origin, world, rev + 1, "apply", "{\"op\":\"spawn\",\"id\":0,\"kind\":117,\"x\":280,\"y\":0,\"z\":150,\"yaw\":0,\"scale\":100}");
+  posted := (cxproc_wall_us() - from) / 1000;
+  am = wt_until(t, ca, 0, rev + 2, true, limit); bm = wt_until(t, cb, 0, rev + 2, true, limit);
+  print("     an outside edit: answered % in % ms, tab A stood at it % ms after, tab B % ms\n", st, posted, am, bm);
+  ok = wt_check(t, st == 200 && am >= 0 && bm >= 0 && wt_fact(t, ca, 2) == placed + 2 && wt_fact(t, cb, 2) == placed + 2, "4. an edit from outside any page shows in both tabs inside the limit");
+  st = wt_post(t, origin, world, rev + 2, "undo", "");
+  am = wt_until(t, ca, 0, rev + 3, true, limit); bm = wt_until(t, cb, 0, rev + 3, true, limit);
+  ok = wt_check(t, st == 200 && am >= 0 && bm >= 0 && wt_fact(t, ca, 2) == placed + 1 && wt_fact(t, cb, 2) == placed + 1, "5. an undo from outside takes the edit back in both tabs");
+  ok = wt_check(t, wt_fact(t, cb, 100) == mode && wt_fact(t, cb, 101) == zone && wt_fact(t, cb, 102) == phase && wt_fact(t, cb, 103) == hearts && wt_fact(t, cb, 5) == 1 && wt_fact(t, cb, 1) == 3,
+                "6. tab B's run is as it was, and it took the three edits as events, not as a new document");
+  if placed == 0 {
+    st = wt_post(t, origin, world, rev + 3, "original", "");
+    am = wt_until(t, ca, 2, 0, false, limit);
+    ok = wt_check(t, st == 200 && am >= 0, "7. the world is left as it was found");
+  }
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  origin := args_at(a[..], 0);
+  path := args_value(a[..], "--path", "/worlds/splice"); world := args_value(a[..], "--world", "splice");
+  stage := args_whole(args_value(a[..], "--stage", "5")); limit := args_whole(args_value(a[..], "--limit-ms", "1000"));
+  if !ok || origin.count < 8 || origin[0] == '-' || stage < 0 || limit < 1 { tool_errln("usage: coax/web/tool.sh world-tabs ORIGIN [--path /worlds/splice] [--world splice] [--stage 5] [--limit-ms 1000]"); return 2; }
+  ca: [1] Cdp; cb: [1] Cdp;
+  if !cdp_launch(ca[..], 1280, 720, "coax-world-tabs-a-") { tool_err("world-tabs: "); tool_errln(cdp_error(ca[..])); return 1; }
+  if !cdp_launch(cb[..], 1280, 720, "coax-world-tabs-b-") { tool_err("world-tabs: "); tool_errln(cdp_error(cb[..])); cdp_close(ca[..]); return 1; }
+  t := [1] Wt.[Wt.{}];
+  wt_run(t[..], ca[..], cb[..], origin, path, world, stage, limit);
+  cdp_close(ca[..]); cdp_close(cb[..]);
+  print("%\n", ifx t[0].fails == 0 then "holds" else "fails");
+  return ifx t[0].fails == 0 then 0 else 1;
+}

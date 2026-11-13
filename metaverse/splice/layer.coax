@@ -32,6 +32,8 @@ SL_NEAR :: 64;            // entities one question looks at
 SL_TOP :: 2.0f32;         // m: how tall a collider stands to a walker
 SL_MID :: 0.9f32;         // m: a walker's middle, where a rounded collider's axis lies
 SL_SLACK :: 1.5f32;        // m: a question looks this much further still, for what a push out of one wall brings near
+SL_RISE :: 8;             // pieces that can be arriving at once; one more takes the oldest's place
+SL_RISE_TIME :: 0.7f32;   // s: how long a piece takes to rise
 SL_TALL :: 1.0f32;        // m: taller than this blocks the camera and the party's people too
 
 // What an entity is (the World's kind column). A placed piece's kind is its content ID.
@@ -62,6 +64,9 @@ SlLayer :: struct {
   steps: [SL_STEPS] ForgeStep;
   rev: int;        // counts the layer's changes: an edit, an undo, a redo
   head: int;       // the world document's revision the layer stands at (world.coax): 0 with no document
+  // pieces arriving: a piece an outside edit placed rises out of the ground (world.coax spw_page_events)
+  rise_id: [SL_RISE] int; rise_t: [SL_RISE] f32; rise_n: int;
+  shown: int;      // counts changes to how the pieces are drawn that are not edits: a rise's step
   built: int;      // the revision the World's placed pieces were built from
 }
 
@@ -413,4 +418,35 @@ sl_redo :: (g: [] SpGame) -> SlEdit {
 sl_clear :: (g: [] SpGame) {
   forge_scene_reset(sl_scene(g));
   g[0].layer[0].rev += 1; sl_sync(g);
+}
+
+// ---- arriving: a placed piece rises out of the ground where it will stand
+
+// Piece `id` starts to arrive.
+sl_rise :: (g: [] SpGame, id: int) {
+  l := g[0].layer[..];
+  if l[0].rise_n == SL_RISE { for k: 0..<SL_RISE - 1 { l[0].rise_id[k] = l[0].rise_id[k + 1]; l[0].rise_t[k] = l[0].rise_t[k + 1]; } l[0].rise_n -= 1; }
+  l[0].rise_id[l[0].rise_n] = id; l[0].rise_t[l[0].rise_n] = 0; l[0].rise_n += 1; l[0].shown += 1;
+}
+// A frame's step of every arrival; one that is done is forgotten.
+sl_rise_step :: (g: [] SpGame, dt: f32) {
+  l := g[0].layer[..];
+  if l[0].rise_n == 0 { return; }
+  n := 0;
+  for k: 0..<l[0].rise_n {
+    t := l[0].rise_t[k] + dt;
+    if t >= SL_RISE_TIME { continue; }
+    l[0].rise_id[n] = l[0].rise_id[k]; l[0].rise_t[n] = t; n += 1;
+  }
+  l[0].rise_n = n; l[0].shown += 1;
+}
+// How far below where it stands piece `id` is drawn now, for a piece `top` metres tall: its whole
+// height and a little when it starts, easing to nothing; 0 for a piece that is not arriving.
+sl_sunk :: (g: [] SpGame, id: int, top: f32) -> f32 {
+  for k: 0..<g[0].layer[0].rise_n {
+    if g[0].layer[0].rise_id[k] != id { continue; }
+    left := 1 - g[0].layer[0].rise_t[k] / SL_RISE_TIME;
+    return (top + 0.3) * left * left;
+  }
+  return 0;
 }

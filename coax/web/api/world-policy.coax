@@ -18,6 +18,7 @@
 #authority;
 #load "../../../metaverse-engine/editor/world-live.coax";
 #load "../../../metaverse-engine/editor/world-edit.coax";
+#load "../../../metaverse-engine/editor/authority.coax";
 
 WR_OK :: 0;
 WR_CROSS :: 1;       // a write from another site's page
@@ -45,6 +46,20 @@ wr_write :: (same_site: bool, known: bool, admin: bool, exists: bool, batch_ok: 
   if what == WB_REDO && done >= steps { return WR_NO_REDO; }
   return WR_OK;
 }
+// The realm's row of the authority table (metaverse-engine/editor/authority.coax, #13431): a world
+// is served only for a realm that has declared who decides its state, and a write here is an
+// authoring operation, which writes authored state and never a durable store.
+wr_op :: (what: int) -> int #effects(all) {
+  if what == WB_UNDO { return OP_UNDO; }
+  if what == WB_REDO { return OP_REDO; }
+  if what == WB_PUBLISH_NOW || what == WB_PUBLISH_NEXT { return OP_PUBLISH; }
+  return OP_EDIT;
+}
+// Whether world `id`'s realm lets this write change what is authored. No write here is one of
+// the two operations that reach a durable store (the ledger's and the character record's).
+wr_authored :: (id: string, what: int) -> bool #export_c #effects(all) { return realm_op_may_write(id, wr_op(what), STATE_AUTHORED); }
+// Whether world `id`'s realm has a row: only then is its document read out.
+wr_loads :: (id: string) -> bool #export_c #effects(all) { return id.count != 0 && realm_authority(id).realm == id; }
 // A read of lane `lane`. join: wl_join's answer for the page's pins (WJ_LIVE when it sent none).
 wr_read :: (exists: bool, lane: int, join: int) -> int #export_c #effects(all) {
   if !exists { return WR_NO_WORLD; }
@@ -189,6 +204,12 @@ wr_refusal :: (words: string, edit: int, out: [] u8) -> int #export_c #effects(a
   #assert wr_write(true, true, true, true, true, WB_UNDO, 7, 7, 0, 3) == WR_NO_UNDO && wr_write(true, true, true, true, true, WB_UNDO, 7, 7, 1, 3) == WR_OK && wr_write(true, true, true, true, true, WB_UNDO, 7, 7, -1, 3) == WR_NO_UNDO;
   #assert wr_write(true, true, true, true, true, WB_REDO, 7, 7, 3, 3) == WR_NO_REDO && wr_write(true, true, true, true, true, WB_REDO, 7, 7, 2, 3) == WR_OK && wr_write(true, true, true, true, true, WB_REDO, 7, 7, 4, 3) == WR_NO_REDO;
   #assert wr_write(true, true, true, true, true, WB_APPLY, 7, 7, 0, 0) == WR_OK && wr_write(true, true, true, true, true, WB_ORIGINAL, 7, 7, 3, 3) == WR_OK;
+}
+#test "world routes: a world is its realm's row of the authority table, and a write is authoring, never durable" {
+  for what: 0..<6 { #assert wr_authored("splice", what) && wr_authored("everglade", what) && !wr_authored("nowhere", what) && !wr_authored("", what); }
+  #assert wr_op(WB_APPLY) == OP_EDIT && wr_op(WB_ORIGINAL) == OP_EDIT && wr_op(WB_UNDO) == OP_UNDO && wr_op(WB_REDO) == OP_REDO && wr_op(WB_PUBLISH_NOW) == OP_PUBLISH && wr_op(WB_PUBLISH_NEXT) == OP_PUBLISH;
+  #assert wr_loads("splice") && !wr_loads("nowhere") && !wr_loads("");
+  for what: 0..<6 { #assert !state_op_may_write(wr_op(what), STATE_DURABLE) && wr_op(what) != OP_LEDGER && wr_op(what) != OP_CHARACTER; }
 }
 #test "world routes: anyone reads dev; live is what is published, for a page whose build reads it" {
   #assert wr_read(true, WL_DEV, WJ_NONE) == WR_OK && wr_read(false, WL_DEV, WJ_LIVE) == WR_NO_WORLD && wr_read(false, WL_LIVE, WJ_LIVE) == WR_NO_WORLD;

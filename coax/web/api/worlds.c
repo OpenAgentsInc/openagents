@@ -18,7 +18,9 @@
 // written by metaverse-engine/editor/world-edit.coax through world-policy.coax. SQL
 // (migrations/0181_worlds.sql) stores the rows, holds the row lock for a write and keeps the
 // outbox; it decides nothing. A saved edit is one outbox row, written in the transaction that
-// changes the document (the domain event realm-authoring.world.edited.v1).
+// changes the document (the domain event realm-authoring.world.edited.v1). A world is served only
+// for a realm with a row in the authority table (metaverse-engine/editor/authority.coax, #13431):
+// a write here is authoring, and nothing in this file reaches the character record or the ledger.
 #include "api.h"
 #include "world-policy.generated.h"
 #include "splice-world.generated.h"
@@ -129,7 +131,7 @@ static void world_get(const request *q, PGconn *db, const char *id) {
   int64_t lane = wr_lane(cs(lane_s));
   int64_t join = wr_join(sent, mine[0], mine[1], mine[2], mine[3], w.exists && w.live_rev > 0, w.live_pins[0], w.live_pins[1], w.live_pins[2], w.live_pins[3],
                          w.exists && w.prev_rev > 0, w.prev_pins[0], w.prev_pins[1], w.prev_pins[2], w.prev_pins[3]);
-  int64_t verdict = wr_read(w.exists && kind_known(w.kind), lane, join);
+  int64_t verdict = wr_read(w.exists && kind_known(w.kind) && wr_loads(cs(id)), lane, join);
   if (verdict != 0) { refuse_verdict(q->fd, verdict); row_free(&w); return; }
   bool dev = wr_is_dev(lane), previous = !dev && wr_previous(join);
   size_t n = 0;
@@ -218,7 +220,7 @@ static void world_post(const request *q, PGconn *db, const char *id) {
   world_row w;
   if (!row_read(db, id, true, &w)) { rollback(db); refuse(q->fd, 500, cs("not read"), -1); return; }
   int64_t what = head[1];
-  int64_t verdict = wr_write(auth_same_site(q), known, admin, w.exists && kind_known(w.kind), batch_ok, what, head[0], w.dev_rev, w.done, w.steps);
+  int64_t verdict = wr_write(auth_same_site(q), known, admin, w.exists && kind_known(w.kind) && wr_authored(cs(id), what), batch_ok, what, head[0], w.dev_rev, w.done, w.steps);
   if (verdict != 0) { rollback(db); refuse_verdict(q->fd, verdict); row_free(&w); return; }
   if (wr_publishes(what)) { world_publish(q, db, id, &w, what, head[0]); row_free(&w); return; }
 

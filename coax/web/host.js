@@ -117,6 +117,8 @@
 //   601 hidden, 602 shown again, 603 the page is being left (the app's beacon goes in that turn),
 //   604 an error the page raised: message, file and line, a line each,
 //   612 the network: "1" back online (a socket from before is likely dead), "0" offline (#12856)
+//   614 the dev server saved an edit to a world: its ID (coax serve's live channel; never in production, where
+//       a page asks the API for a world's events on its own clock) (#13413)
 //   700 a driver's command (coax drive, metaverse-engine/agent/drive.coax): the realm answers through
 //       coaxial_drive_out(state) and coaxial_drive_out_len(state), read by coaxial.drive.send
 //   613 the GPU, once the adapter opens: gpu_vendor, gpu_arch, gpu_fallback (also in every later 600), and
@@ -4513,6 +4515,8 @@ function live() {
     const t0 = performance.now();
     if (m.kind === "page") { location.reload(); return; }
     if (m.kind === "error") { say(m.text, true); return; }
+    // An edit was saved to a world on this dev server (#13413): the app, if it shows that world, asks for its new events.
+    if (m.kind === "world" && typeof m.id === "string" && /^[a-z][a-z0-9-]{0,31}$/.test(m.id)) { if (engine) send(614, m.id); return; }
     // A message naming another page's module or shaders is not this tab's.
     if (m.kind === "wgsl" && gpu && (mine(m.path, wgslUrl) || assets.some((a) => a.url === m.path))) { if (await loadShaders()) { say(`shaders swapped in ${Math.round(performance.now() - t0)} ms`); swapped("wgsl"); } return; }
     if (m.kind === "asset" && typeof m.url === "string" && /^[0-9a-f]{64}$/.test(m.hash)) {

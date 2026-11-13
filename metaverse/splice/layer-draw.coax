@@ -17,6 +17,7 @@ SpLayerDraw :: struct {
   row0: [SC_PIECE_MAX] int; rows: [SC_PIECE_MAX] int;     // each kind's rows in the place store
   place_n: int;           // rows in the place store
   place_rev: int = -1;    // the layer revision the rows were written from
+  place_shown: int = -1;  // and the count of arrival steps (layer.coax sl_rise): a rising piece's row is written each frame
   place_gen: int;         // counts the place store's writes
 }
 
@@ -38,7 +39,7 @@ sd_meshes :: (d: [] SpLayerDraw, g: [] SpGame, pieces: [] u32) {
 // The layer's placed pieces into the place store, a kind's rows together, by item ID within a
 // kind. It writes only when the layer's revision is not the one the rows were written from.
 sd_places :: (d: [] SpLayerDraw, g: [] SpGame, places: [] u32) {
-  if d[0].place_rev == g[0].layer[0].rev { return; }
+  if d[0].place_rev == g[0].layer[0].rev && d[0].place_shown == g[0].layer[0].shown { return; }
   c := g[0].c[..]; n := 0;
   for r: 0..<c[0].piece_n {
     d[0].row0[r] = n;
@@ -46,13 +47,13 @@ sd_places :: (d: [] SpLayerDraw, g: [] SpGame, places: [] u32) {
       item := g[0].layer[0].items[i];
       if item.mesh != c[0].pieces[r].id || (n + 1) * SD_ROW > places.count { continue; }
       o := n * SD_ROW;
-      places[o] = f32_bits(item.x); places[o + 1] = f32_bits(item.y); places[o + 2] = f32_bits(item.z); places[o + 3] = 0;
+      places[o] = f32_bits(item.x); places[o + 1] = f32_bits(item.y - sl_sunk(g, item.id, c[0].pieces[r].top)); places[o + 2] = f32_bits(item.z); places[o + 3] = 0;
       places[o + 4] = f32_bits(cos(item.yaw)); places[o + 5] = f32_bits(sin(item.yaw)); places[o + 6] = 0; places[o + 7] = 0;
       n += 1;
     }
     d[0].rows[r] = n - d[0].row0[r];
   }
-  d[0].place_n = n; d[0].place_rev = g[0].layer[0].rev; d[0].place_gen += 1;
+  d[0].place_n = n; d[0].place_rev = g[0].layer[0].rev; d[0].place_shown = g[0].layer[0].shown; d[0].place_gen += 1;
 }
 // The layer's draws into `draws` from record `at` (four words a record: first vertex, vertices,
 // the store's flag and the first instance, instances): one for each kind that has a placed piece.
