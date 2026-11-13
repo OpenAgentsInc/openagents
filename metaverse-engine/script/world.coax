@@ -94,4 +94,46 @@ sw_status :: (w: [] ScriptWorld, out: [] u8) -> string {
   return jo_text(o[..]);
 }
 
+// What a reader of the status takes from it (the editor's Scripts pane): each loaded script's place, name
+// and hash, whether it is off, the things it drives, its calls and failed calls, its costliest call, and
+// its last diagnostic as a code (SD_*), a handler (RH_*, -1 for none) and a source line.
+ScriptStatusRow :: struct {
+  at: int; name: [SM_NAME] u8; name_n: int; hash: [64] u8;
+  off: bool; things: int; calls: int; failures: int; peak: int;
+  last: int; handler: int; line: int;
+}
+ScriptStatus :: struct { ok: bool; ticks: int; call_fuel: int; tick_fuel: int; n: int; rows: [SH_SCRIPTS] ScriptStatusRow; }
+SW_STATUS_NODES :: 160;   // a status's JSON nodes: 6 at the head and 15 a script
+// Reads a status sw_status wrote. False, and st not ok, for any other text.
+sw_status_read :: (text: string, st: [] ScriptStatus) -> bool {
+  st[0] = ScriptStatus.{};
+  nodes: [SW_STATUS_NODES] JvNode; d: [1] Jv; word: [80] u8;
+  if text.count > SW_STATUS || !jv_parse(d[..], text, nodes[..]) { return false; }
+  v := d[0];
+  n := jv_str(v, jv_get(v, 0, "schema"), word[..]);
+  if n < 0 || cast(string) word[0..<n] != SW_STATUS_SCHEMA { return false; }
+  scripts := jv_get(v, 0, "scripts");
+  if jv_kind(v, scripts) != JV_ARRAY || jv_len(v, scripts) > SH_SCRIPTS { return false; }
+  st[0].ticks = jv_int(v, jv_get(v, 0, "ticks"), 0); st[0].call_fuel = jv_int(v, jv_get(v, 0, "call_fuel"), 0); st[0].tick_fuel = jv_int(v, jv_get(v, 0, "tick_fuel"), 0);
+  if st[0].call_fuel < 1 { return false; }
+  for i: 0..<jv_len(v, scripts) {
+    row := jv_at(v, scripts, i); r: ScriptStatusRow;
+    r.at = jv_int(v, jv_get(v, row, "at"), -1);
+    r.name_n = jv_str(v, jv_get(v, row, "name"), r.name[..]);
+    if r.at < 0 || r.at >= SH_SCRIPTS || r.name_n < 1 || jv_str(v, jv_get(v, row, "hash"), r.hash[..]) != 64 { return false; }
+    r.off = jv_bool(v, jv_get(v, row, "off"));
+    r.things = jv_int(v, jv_get(v, row, "things"), 0); r.calls = jv_int(v, jv_get(v, row, "calls"), 0);
+    r.failures = jv_int(v, jv_get(v, row, "failures"), 0); r.peak = jv_int(v, jv_get(v, row, "peak"), 0);
+    r.line = jv_int(v, jv_get(v, row, "line"), 0); r.handler = -1;
+    n = jv_str(v, jv_get(v, row, "last"), word[..]);
+    for id, code: SD_IDS { if n > 0 && id == cast(string) word[0..<n] { r.last = code; } }
+    n = jv_str(v, jv_get(v, row, "handler"), word[..]);
+    for name, h: RH_NAMES { if n > 0 && name == cast(string) word[0..<n] { r.handler = h; } }
+    st[0].rows[i] = r;
+  }
+  st[0].n = jv_len(v, scripts);
+  st[0].ok = true;
+  return true;
+}
+
 #load "world-checks.coax" #test;

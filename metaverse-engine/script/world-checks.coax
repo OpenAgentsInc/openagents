@@ -21,6 +21,13 @@ SwkWork :: struct { w: [1] ScriptWorld; b: [2048] u8; f: [1] ScriptFrame; frame:
   #assert jv_len(d[0], jv_get(d[0], 0, "scripts")) == 1 && jv_int(d[0], jv_get(d[0], s, "at"), -1) == 2 && jv_int(d[0], jv_get(d[0], s, "calls"), -1) == 1 && jv_int(d[0], jv_get(d[0], s, "things"), -1) == 1;
   wn := jv_str(d[0], jv_get(d[0], s, "name"), word[..]);
   #assert cast(string) word[0..<wn] == "mover" && jv_str(d[0], jv_get(d[0], s, "hash"), word[..]) == 64 && jv_int(d[0], jv_get(d[0], s, "peak"), 0) > 0;
+  // The status reads back: the place, the name, the calls and the costliest call; nothing failed.
+  st: [1] ScriptStatus;
+  #assert sw_status_read(text, st[..]) && st[0].n == 1 && st[0].call_fuel == SH_CALL_FUEL && st[0].rows[0].at == 2 && cast(string) st[0].rows[0].name[0..<st[0].rows[0].name_n] == "mover";
+  #assert st[0].rows[0].calls == 1 && st[0].rows[0].failures == 0 && st[0].rows[0].things == 1 && st[0].rows[0].peak > 0 && st[0].rows[0].last == SD_NONE && st[0].rows[0].handler == -1 && !st[0].rows[0].off;
+  #assert !sw_status_read("", st[..]) && !sw_status_read("{\"schema\":\"world.scripts.v1\",\"scripts\":[]}", st[..]) && !st[0].ok;
+  failed := "{\"schema\":\"world.script-status.v1\",\"ticks\":9,\"call_fuel\":20000,\"tick_fuel\":400000,\"tick_left\":1,\"scripts\":[{\"at\":0,\"name\":\"a\",\"hash\":\"528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5\",\"off\":true,\"things\":5,\"calls\":40,\"failures\":3,\"spent\":900,\"peak\":20000,\"last\":\"engine.diagnostic.script-over-budget.v1\",\"handler\":\"on_tick\",\"line\":14,\"status\":\"\"}]}";
+  #assert sw_status_read(failed, st[..]) && st[0].rows[0].off && st[0].rows[0].last == SD_OVER_BUDGET && st[0].rows[0].handler == RH_TICK && st[0].rows[0].line == 14 && st[0].rows[0].failures == 3;
   // Bytes that are not a frame run nothing.
   #assert sw_tick(k[0].w[..], k[0].frame[0..<fn - 1], k[0].out[..]) == -1 && k[0].w[0].ticks == 1;
   // A refused module leaves the running one; a bad place, name or fields are refused before anything is checked.
