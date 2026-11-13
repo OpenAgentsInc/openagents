@@ -1,0 +1,241 @@
+// No false wall normals on seams (GitHub #13434; docs/research/spawn-what-to-adapt.md, N6).
+//
+// The bug this guards against: a character crossing the edge between two triangles of level
+// ground is told it met a wall there, because the edge of the triangle beside it answered with a
+// sideways normal. The character stops, slides or is pushed, on ground that is flat. A seam is an
+// edge inside the ground: a heightfield cell's diagonal, the line between two cells, a corner four
+// cells share, and the line where two floor tiles (boxes) meet.
+//
+// What is checked, on level ground, on level ground high up and on even slopes one can stand on:
+//   - walking: the walker (../move/walk.coax) crosses every kind of seam at many headings, along a
+//     seam and over corners. It is never sliding, never off the ground, never refused, never slowed
+//     and never turned;
+//   - riding: a mount (../action/mount.coax) crosses the seams of a tiled floor and its lips. It
+//     is never blocked, never slowed and never turned;
+//   - the ground query the walker and the saddle read (query_ground): at every seam its slope is the
+//     ground's own and never steep, with the broadphase (Colliders.near, #13279) and without, to the bit;
+//   - a sphere sunk into the ground (ground_overlap, what a contact-built controller reads): its
+//     normal is the ground's at every seam, never a neighbour's edge's;
+//   - a sphere moving clear above the seams meets nothing, and one coming down on a seam or a
+//     corner meets the ground's own normal, with the broadphase and without.
+//
+// One thing a controller must not do: read the normal of a sweep that starts already touching.
+// The queries answer that at t = 0 facing back along the motion (every shape is solid:
+// ../physics/query.coax), which on level ground is a wall's normal. The walker never asks a sweep
+// where it stands: it asks query_ground and collide_move. A controller built on sweeps starts them
+// clear of the ground, as the cases here do.
+//   coax/bin/coax test metaverse-engine/tests/seam-normals.coax --library
+#load "../move/walk.coax";
+#load "../action/mount.coax";
+#load "../physics/ground.coax" as terrain;
+#load "../physics/ground-contact.coax" as height_contacts;
+
+SN_N :: 16;                      // cells a side, a metre each, from -8 to 8: a run of a second stays on it
+SN_TILES :: 16;                  // a 4 by 4 floor of 2 m tiles
+SnField :: struct { h: [(SN_N + 1) * (SN_N + 1)] f32; f: [1] QueryHeightfield; }
+// A plane y = y0 + gx x + gz z as a heightfield.
+sn_plane :: (s: [] SnField, y0: f32, gx: f32, gz: f32) -> World {
+  for j: 0..<SN_N + 1 { for i: 0..<SN_N + 1 { s[0].h[j * (SN_N + 1) + i] = y0 + gx * f32(i - SN_N / 2) + gz * f32(j - SN_N / 2); } }
+  s[0].f[0] = QueryHeightfield.{ground = terrain.Ground.{n = SN_N, cell = 1, west = -f32(SN_N / 2), south = -f32(SN_N / 2), rim = 0}, heights = s[0].h[..]};
+  w: World; w.heightfields = s[0].f[..];
+  return w;
+}
+sn_near :: (a: f32, b: f32, by: f32) -> bool { d := a - b; return d <= by && d >= -by; }
+// A walk of `steps` fixed steps from (x, z) with the view turned `yaw`, W held (run: Shift too).
+// Whether it was a walk on plain ground the whole way: never sliding, off the ground or refused;
+// once up to speed never slower and never turned; and its feet on the plane.
+sn_walks :: (w: World, x: f32, z: f32, y0: f32, gx: f32, gz: f32, yaw: f32, run: bool, steps: int) -> bool {
+  b := body_place_in(w, x, y0 + gx * x + gz * z, z, yaw);
+  if !b.on_ground { return false; }
+  top: f32 = 0; dir_x: f32 = 0; dir_z: f32 = 0;
+  for k: 0..<steps {
+    b = body_input(b, 0, 1, 0, 0, run, false, yaw);
+    b = body_history_step(w, b);
+    if b.sliding || !b.on_ground || b.collision_status != CollideStatus.ok || b.query_status != QueryStatus.ok { return false; }
+    speed := sqrt(b.vel.x * b.vel.x + b.vel.z * b.vel.z);
+    if k == 24 { top = speed; dir_x = b.vel.x / speed; dir_z = b.vel.z / speed; if !(speed > 3) { return false; } }
+    if k > 24 {
+      // the same speed and the same way, step after step
+      if !sn_near(speed, top, 0.0005) || !sn_near(b.vel.x / speed, dir_x, 0.0005) || !sn_near(b.vel.z / speed, dir_z, 0.0005) { return false; }
+    }
+    // its feet ease onto a slope a little behind it (its speed along the slope over the easing's rate,
+    // under the ride height); on level ground they are on it
+    if !sn_near(b.pos.y, y0 + gx * b.pos.x + gz * b.pos.z, ifx gx == 0 && gz == 0 then 0.0001f32 else 0.3f32) { return false; }
+    if b.vel.y != 0 { return false; }
+  }
+  // it went somewhere: over at least two cells
+  return sn_near(b.pos.x, x, 100) && (b.pos.x - x) * (b.pos.x - x) + (b.pos.z - z) * (b.pos.z - z) > 4;
+}
+// The walks: 16 headings from 9 starts (a cell's middle, on a cell line, on a corner, on a diagonal).
+sn_walk_plane :: (y0: f32, gx: f32, gz: f32, run: bool) -> int {
+  s: [1] SnField; w := sn_plane(s[..], y0, gx, gz);
+  starts := [18] f32.[0.5, 0.5,   0, 0.5,   0.5, 0,   0, 0,   0.25, 0.25,   0.7, 0.3,   -1, -1,   0.999, 0.001,   -0.5, 1];
+  bad := 0;
+  for h: 0..<16 {
+    yaw := f32(h) * f32(TAU) / 16;
+    for q: 0..<9 { if !sn_walks(w, starts[q * 2], starts[q * 2 + 1], y0, gx, gz, yaw, run, 56) { bad += 1; } }
+  }
+  return bad;
+}
+#test "walking: level ground's cell lines, diagonals and corners are never a wall, at a walk and a run" #steps 2000000000 {
+  #assert sn_walk_plane(0, 0, 0, false) == 0;
+  #assert sn_walk_plane(0, 0, 0, true) == 0;
+  #assert sn_walk_plane(3.25, 0, 0, false) == 0;
+  #assert sn_walk_plane(-117.5, 0, 0, true) == 0;
+}
+#test "walking: an even slope's seams are the slope, never a steeper one" #steps 2000000000 {
+  // slopes one can stand on: across the cells, along them and both; up and down
+  #assert sn_walk_plane(0, 0.2, 0, false) == 0;
+  #assert sn_walk_plane(0, 0, -0.3, false) == 0;
+  #assert sn_walk_plane(1.5, 0.15, -0.1, true) == 0;
+  #assert sn_walk_plane(0, -0.5, 0.5, false) == 0;
+}
+#test "walking: the check itself fails on a wall and on a slope too steep to stand on" #steps 2000000000 {
+  s: [1] SnField; w := sn_plane(s[..], 0, 0, 0);
+  // the same walk into a wall across its way is not a walk on plain ground
+  wall := [6] f32.[1.5, 0, -8, 1.7, 3, 8];
+  w.walls = wall[..];
+  #assert !sn_walks(w, 0.5, 0.5, 0, 0, 0, -f32(PI) / 2, false, 56) || !sn_walks(w, 0.5, 0.5, 0, 0, 0, f32(PI) / 2, false, 56);
+  // and one cell raised into a spike is a slope that slides you
+  t: [1] SnField; v := sn_plane(t[..], 0, 0, 0);
+  t[0].h[(SN_N / 2) * (SN_N + 1) + SN_N / 2 + 2] = 4;
+  #assert sn_walk_plane(0, 0, 0, false) == 0;
+  bad := 0;
+  for h: 0..<16 { if !sn_walks(v, 0.5, 0.5, 0, 0, 0, f32(h) * f32(TAU) / 16, false, 56) { bad += 1; } }
+  #assert bad > 0;
+}
+
+// ---- a tiled floor: boxes side by side, their tops level
+SnTiles :: struct { boxes: [SN_TILES * QUERY_BOX] f32; }
+// 2 m tiles from -4 to 4, tops at `top`, every other one `lip` higher (a floor laid a little uneven).
+sn_tiles :: (s: [] SnTiles, top: f32, lip: f32) {
+  for j: 0..<4 { for i: 0..<4 {
+    o := (j * 4 + i) * QUERY_BOX;
+    s[0].boxes[o] = f32(i) * 2 - 4; s[0].boxes[o + 1] = -1; s[0].boxes[o + 2] = f32(j) * 2 - 4;
+    s[0].boxes[o + 3] = f32(i) * 2 - 2; s[0].boxes[o + 4] = top + (ifx (i + j) % 2 == 1 then lip else 0.0f32); s[0].boxes[o + 5] = f32(j) * 2 - 2;
+  } }
+}
+#test "riding: the seams and lips of a tiled floor never stop, slow or turn a mount" #steps 2000000000 {
+  s: [1] SnTiles; t: MountTune;
+  lips := [4] f32.[0, 0.02, 0.3, 0.55];   // level, a lip, a kerb, and just under a horse's step
+  for l: 0..<4 {
+    sn_tiles(s[..], 0, lips[l]);
+    for h: 0..<16 {
+      face := f32(h) * f32(TAU) / 16;
+      m := [1] Mount.[mount_place(-0.3 * sin(face), -0.3 * cos(face), face)];
+      m[0].state = MOUNT_RIDDEN; m[0].rider = 0;
+      x0 := m[0].x; z0 := m[0].z; went: f32 = 0;
+      for k: 0..<60 {
+        before := m[0].speed;
+        mount_step(m[..], t, MountIn.{forward = 1, gallop = true}, 0.015625, s[0].boxes[..], SN_TILES);
+        #assert !m[0].blocked && m[0].face == face && m[0].speed >= before && m[0].hop == 0;
+        went += m[0].speed * 0.015625;
+      }
+      // it covered exactly the ground its speed says, straight along its heading
+      dx := m[0].x - x0; dz := m[0].z - z0;
+      #assert went > 2 && sn_near(dx, sin(face) * went, 0.0005) && sn_near(dz, cos(face) * went, 0.0005);
+    }
+  }
+  // the check fails on something a horse does meet: a tile a metre high across its way
+  sn_tiles(s[..], 0, 1.0);
+  m := [1] Mount.[mount_place(-3, -3, 0)];
+  m[0].state = MOUNT_RIDDEN; m[0].rider = 0; stopped := false;
+  for k: 0..<200 { mount_step(m[..], t, MountIn.{forward = 1, gallop = true}, 0.015625, s[0].boxes[..], SN_TILES); stopped = stopped || m[0].blocked; }
+  #assert stopped;
+}
+
+// ---- the ground query, with the broadphase and without
+SnIndex :: struct {
+  head: [64] int; next: [SN_TILES] int; prev: [SN_TILES] int; at: [SN_TILES] int; cx: [SN_TILES] int; cz: [SN_TILES] int;
+  x: [SN_TILES] f32; z: [SN_TILES] f32; cell: [1] f32; gn: [SPATIAL_COUNTERS] int;
+  wide: [SN_TILES] int; found: [SN_TILES] int; pb: [SN_TILES * QUERY_BOX] f32; pc: [QUERY_CAPSULE] f32;
+  bid: [SN_TILES] int; cid: [1] int; reach: [1] f32; n: [QUERY_NEAR_COUNTERS] int;
+  near: [1] QueryNear;
+}
+sn_index :: (s: [] SnIndex, c: Colliders, cell: f32) -> bool {
+  g := SpatialGrid.{head = s[0].head[..], next = s[0].next[..], prev = s[0].prev[..], at = s[0].at[..], cx = s[0].cx[..], cz = s[0].cz[..],
+    x = s[0].x[..], z = s[0].z[..], cell = s[0].cell[..], n = s[0].gn[..]};
+  s[0].near[0] = QueryNear.{grid = g, wide = s[0].wide[..], found = s[0].found[..], boxes = s[0].pb[..], capsules = s[0].pc[..],
+    box_id = s[0].bid[..], capsule_id = s[0].cid[..], reach = s[0].reach[..], n = s[0].n[..]};
+  return query_near_build(s[0].near[..], c, cell);
+}
+// The points of one seam study: a lattice 1/8 m apart over the middle of the field, which lands on
+// cell lines, corners, diagonals and tile lines, and beside each by an eighth.
+SN_LATTICE :: 33;
+sn_at :: (k: int) -> f32 { return f32(k - 16) * 0.125; }
+#test "the ground under a seam is the ground: its slope the plane's, never steep, the same with the broadphase" #steps 2000000000 {
+  planes := [12] f32.[0, 0, 0,   3.25, 0, 0,   0, 0.2, -0.3,   1.5, -0.5, 0.5];
+  for p: 0..<4 {
+    y0 := planes[p * 3]; gx := planes[p * 3 + 1]; gz := planes[p * 3 + 2];
+    s: [1] SnField; w := sn_plane(s[..], y0, gx, gz);
+    c := Colliders.{heightfields = w.heightfields};
+    for j: 0..<SN_LATTICE { for i: 0..<SN_LATTICE {
+      x := sn_at(i); z := sn_at(j);
+      g := query_ground_checked(c, x, z, y0 + gx * x + gz * z + 0.55, 0.3);
+      #assert g.status == QueryStatus.ok && g.shape == QueryShape.heightfield && !g.steep;
+      #assert sn_near(g.gx, gx, 0.00001) && sn_near(g.gz, gz, 0.00001) && sn_near(g.y, y0 + gx * x + gz * z, 0.00002);
+    } }
+  }
+  // a tiled floor on level ground: over every tile line and corner the top is the floor, level
+  t: [1] SnTiles; sn_tiles(t[..], 0.5, 0);
+  plain := Colliders.{ground = 0, boxes = t[0].boxes[..]};
+  for cell: 0..<3 {
+    k: [1] SnIndex;
+    #assert sn_index(k[..], plain, ifx cell == 0 then 1.0f32 else ifx cell == 1 then 3.0f32 else 16.0f32);
+    fast := plain; fast.near = k[0].near[..];
+    for j: 0..<SN_LATTICE { for i: 0..<SN_LATTICE {
+      x := sn_at(i) * 0.9; z := sn_at(j) * 0.9;
+      a := query_stand_checked(plain, x, z, 0.5, 0.3); b := query_stand_checked(fast, x, z, 0.5, 0.3);
+      #assert a.status == QueryStatus.ok && a.y == 0.5 && a.gx == 0 && a.gz == 0 && !a.steep && a.shape == QueryShape.box;
+      #assert f32_bits(a.y) == f32_bits(b.y) && f32_bits(a.gx) == f32_bits(b.gx) && f32_bits(a.gz) == f32_bits(b.gz) && a.steep == b.steep && a.shape == b.shape && a.index == b.index && a.status == b.status;
+    } }
+    #assert k[0].n[QUERY_NEAR_PICKS] > 0;   // the index answered, not the scan behind it
+  }
+}
+#test "a sphere sunk into the ground at a seam touches the ground's own normal, never an edge's" #steps 2000000000 {
+  planes := [12] f32.[0, 0, 0,   3.25, 0, 0,   0, 0.2, -0.3,   1.5, -0.5, 0.5];
+  depths := [3] f32.[0.01, 0.1, 0.25];   // how far under the surface the sphere's lowest point is
+  for p: 0..<4 {
+    y0 := planes[p * 3]; gx := planes[p * 3 + 1]; gz := planes[p * 3 + 2];
+    s: [1] SnField; w := sn_plane(s[..], y0, gx, gz);
+    size := sqrt(gx * gx + 1 + gz * gz);
+    for d: 0..<3 { for j: 0..<SN_LATTICE { for i: 0..<SN_LATTICE {
+      x := sn_at(i) * 0.75 + 0.01; z := sn_at(j) * 0.75 - 0.02;   // beside the seams by a centimetre or two, and on them
+      if (i + j) % 3 == 0 { x = sn_at(i) * 0.75; z = sn_at(j) * 0.75; }
+      // the sphere's middle, 0.3 - depth off the plane along its normal
+      off := 0.3 - depths[d];
+      at := world_point(x - gx / size * off, y0 + gx * x + gz * z + off / size, z - gz / size * off);
+      q := height_contacts.ground_overlap(s[0].f[0].ground, s[0].h[..], at, 0.3, 64);
+      #assert q.hit && q.t == 0;
+      #assert sn_near(q.normal.x, -gx / size, 0.0001) && sn_near(q.normal.y, 1 / size, 0.0001) && sn_near(q.normal.z, -gz / size, 0.0001);
+    } } }
+  }
+}
+#test "a sphere moving clear above the seams meets nothing; coming down on a seam it meets the ground's normal" #steps 2000000000 {
+  s: [1] SnField; w := sn_plane(s[..], 0, 0, 0);
+  t: [1] SnTiles; sn_tiles(t[..], 0.5, 0);
+  field := Colliders.{heightfields = w.heightfields};
+  floor_plain := Colliders.{ground = 0, boxes = t[0].boxes[..]};
+  k: [1] SnIndex;
+  #assert sn_index(k[..], floor_plain, 3);
+  floor_fast := floor_plain; floor_fast.near = k[0].near[..];
+  r: f32 = 0.3;
+  for h: 0..<16 {
+    a := f32(h) * f32(TAU) / 16; dx := sin(a) * 3; dz := cos(a) * 3;
+    starts := [8] f32.[0.5, 0.5,   0, 0.5,   0, 0,   0.25, 0.25];
+    for q: 0..<4 {
+      x := starts[q * 2] - dx * 0.5; z := starts[q * 2 + 1] - dz * 0.5;
+      // level, a centimetre clear of the ground and of the floor: nothing
+      #assert !query_sweep(field, world_point(x, r + 0.01, z), r, world_point(dx, 0, dz)).hit;
+      #assert !query_sweep(floor_plain, world_point(x, 0.5 + r + 0.01, z), r, world_point(dx, 0, dz)).hit && !query_sweep(floor_fast, world_point(x, 0.5 + r + 0.01, z), r, world_point(dx, 0, dz)).hit;
+      // coming down across the seams onto the ground: it lands on the plane, the normal straight up
+      g := query_sweep(field, world_point(x, r + 0.2, z), r, world_point(dx, -0.4, dz));
+      #assert g.status == QueryStatus.ok && g.hit && sn_near(g.t, 0.5, 0.0001) && sn_near(g.normal.x, 0, 0.000001) && g.normal.y == 1 && sn_near(g.normal.z, 0, 0.000001) && sn_near(g.point.y, r, 0.0001);
+      f := query_sweep(floor_plain, world_point(x, 0.5 + r + 0.2, z), r, world_point(dx, -0.4, dz));
+      n := query_sweep(floor_fast, world_point(x, 0.5 + r + 0.2, z), r, world_point(dx, -0.4, dz));
+      // (over a tile line the tiles' rounded edges are met as the tops are; their normal is up to rounding)
+      #assert f.hit && sn_near(f.t, 0.5, 0.0001) && sn_near(f.normal.x, 0, 0.0001) && f.normal.y > 0.9999 && sn_near(f.normal.z, 0, 0.0001) && f.shape == QueryShape.box;
+      #assert n.hit == f.hit && f32_bits(n.t) == f32_bits(f.t) && f32_bits(n.normal.x) == f32_bits(f.normal.x) && f32_bits(n.normal.y) == f32_bits(f.normal.y) && f32_bits(n.normal.z) == f32_bits(f.normal.z) && n.index == f.index;
+    }
+  }
+}

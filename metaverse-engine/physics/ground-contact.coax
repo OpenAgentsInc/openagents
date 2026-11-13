@@ -213,6 +213,43 @@ GCTriangle :: struct { a: GCVec; b: GCVec; c: GCVec; }
   #assert gc_r.x == 0 && gc_r.z == 0 && gc_r.triangle == 0 && gc_r.feature == 13;
 }
 
+#test "ground contact a sphere sunk into level ground touches the face under it, never a neighbour's edge" {
+  // two cells side by side, level: the seam x = 1 and both diagonals are edges inside the ground
+  gc_g := Ground.{n = 2, rows = 1, cell = 1, west = 0, south = 0}; gc_h: [6] f32;
+  // just past the seam, a centimetre deep: cell 0 is asked first and its edge is 0.02 away sideways,
+  // but the face of cell 1 is under the sphere and nearer
+  gc_a := ground_overlap(gc_g, gc_h[..], world_point(1.02, 0.29, 0.4), 0.3, 16);
+  #assert gc_a.status == GroundRayStatus.ok && gc_a.hit && gc_a.normal.x == 0 && gc_a.normal.y == 1 && gc_a.normal.z == 0;
+  #assert gc_a.x == 1 && gc_a.z == 0 && gc_a.feature == 0;
+  // before the seam the face of cell 0 is the contact, as it was
+  gc_b := ground_overlap(gc_g, gc_h[..], world_point(0.98, 0.29, 0.4), 0.3, 16);
+  #assert gc_b.hit && gc_b.normal.y == 1 && gc_b.x == 0 && gc_b.feature == 0;
+  // exactly on the seam both faces are as near: the first asked keeps it, and its normal is the face's
+  gc_c := ground_overlap(gc_g, gc_h[..], world_point(1, 0.29, 0.4), 0.3, 16);
+  #assert gc_c.hit && gc_c.normal.x == 0 && gc_c.normal.y == 1 && gc_c.x == 0 && gc_c.triangle == 0;
+  // across a cell's own diagonal (z = x): triangle 0 is asked first; past the diagonal triangle 1's face is nearer
+  gc_d := ground_overlap(gc_g, gc_h[..], world_point(0.4, 0.29, 0.45), 0.3, 16);
+  #assert gc_d.hit && gc_d.normal.x == 0 && gc_d.normal.y == 1 && gc_d.normal.z == 0 && gc_d.triangle == 1 && gc_d.feature == 0;
+  // a ridge is a real edge: beside it and above its level the edge is the nearest feature and its normal leans
+  gc_ridge := [6] f32.[0, 1, 0, 0, 1, 0];
+  gc_e := ground_overlap(gc_g, gc_ridge[..], world_point(1, 1.2, 0.5), 0.3, 16);
+  #assert gc_e.hit && gc_e.normal.y > 0.99 && gc_e.feature != 0;
+  // a nearer touch replaces a farther one whatever the order: the sphere beside the ridge on its far side
+  gc_f := ground_overlap(gc_g, gc_ridge[..], world_point(1.3, 0.85, 0.5), 0.3, 16);
+  #assert gc_f.hit && gc_f.x == 1 && gc_f.normal.x > 0.5 && gc_f.normal.y > 0.5;
+}
+#test "ground contact a moving sphere's first hit is the earliest, however near the others start" {
+  // cell 0 falls from 3 m to the level cell 1. The sphere starts low over cell 1 and moves at the slope:
+  // it reaches the slope (asked first, far at the start) before it comes down on cell 1 (near at the start)
+  gc_g := Ground.{n = 2, rows = 1, cell = 1, west = 0, south = 0};
+  gc_h := [6] f32.[3, 0, 0, 3, 0, 0];
+  gc_q := ground_sweep(gc_g, gc_h[..], world_point(1.8, 0.5, 0.5), 0.25, world_point(-1, -0.3, 0), 16);
+  #assert gc_q.status == GroundRayStatus.ok && gc_q.hit && gc_q.t > 0.6 && gc_q.t < 0.7 && gc_q.x == 0 && gc_q.normal.x > 0.9;
+  // and the other way round: asked later, reached sooner
+  gc_m := [6] f32.[0, 0, 3, 0, 0, 3];
+  gc_r := ground_sweep(gc_g, gc_m[..], world_point(0.2, 0.5, 0.5), 0.25, world_point(1, -0.3, 0), 16);
+  #assert gc_r.hit && gc_r.t > 0.6 && gc_r.t < 0.7 && gc_r.x == 1 && gc_r.normal.x < -0.9;
+}
 #test "ground contact a face normal is geometric while an initial parallel touch faces back" {
   gc_g := Ground.{n = 1, cell = 1, west = 0, south = 0}; gc_h: [4] f32;
   gc_q := ground_sweep(gc_g, gc_h[..], world_point(0.2, 2, 0.2), 0.25, world_point(1, -3, 1), 16);
@@ -415,6 +452,8 @@ ground_contact :: (g: Ground, heights: [] f32, p: WorldPoint, r: f32, by: WorldP
   }
   gc_result := GroundContact.{status = GroundRayStatus.ok, cells = gc_box.cells};
   gc_tested := 0;
+  // The squared distance of the touch gc_result holds, while it is one (a contact at the start); -1 before.
+  gc_touch_gap := -1.0;
   for zi: gc_box.z0..<gc_box.z1 + 1 { for xi: gc_box.x0..<gc_box.x1 + 1 {
     original_x := xi; original_z := zi;
     if xi == -1 { original_x = 0; } else if xi == g.n { original_x = g.n - 1; }
@@ -426,9 +465,10 @@ ground_contact :: (g: Ground, heights: [] f32, p: WorldPoint, r: f32, by: WorldP
       tri := gc_triangle(g, tile, gc_box, xi, zi, ti);
       gc_near := gc_closest_triangle(tri.a, tri.b, tri.c, start);
       delta := gc_sub(start, gc_near.point); gap := gc_dot(delta, delta);
-      gc_candidate: GCFeature;
+      gc_candidate: GCFeature; gc_touching := false;
       if gap < f64(r) * f64(r) || (moving && gap == f64(r) * f64(r)) {
         gc_candidate = GCFeature.{hit = true, normal = gc_unit(delta), feature = gc_near.feature};
+        gc_touching = true;
       } else if moving {
         gc_candidate = gc_face_sweep(tri, start, motion, f64(r));
         ends := [3] GCVec.[tri.a, tri.b, tri.c];
@@ -438,7 +478,12 @@ ground_contact :: (g: Ground, heights: [] f32, p: WorldPoint, r: f32, by: WorldP
           gc_candidate = gc_keep(gc_candidate, gc_edge);
         }
       }
-      if gc_candidate.hit && (!gc_result.hit || gc_candidate.t < gc_result.t) {
+      // Of two triangles touched at the start, the nearer feature is the contact (#13434). On level
+      // ground the face under the sphere is always nearer than its neighbour's edge, so an edge
+      // inside the ground never lends its sideways normal. As near, the first asked keeps it.
+      gc_take := gc_candidate.hit && (!gc_result.hit || gc_candidate.t < gc_result.t || (gc_touching && gap < gc_touch_gap));
+      if gc_take {
+        if gc_touching { gc_touch_gap = gap; }
         normal := gc_candidate.normal;
         if gc_candidate.t == 0 && moving { normal = gc_scale(gc_unit(motion), -1); }
         gc_centre_pos := gc_add(start, gc_scale(motion, gc_candidate.t));

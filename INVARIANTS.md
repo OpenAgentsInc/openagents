@@ -7999,3 +7999,29 @@ Worlds with an ID (#13412; `docs/protocol/world-edit-v1.md`, `world-doc-v1.md`,
 Checks: `coax/bin/coax test metaverse/splice/splice-game.coax --only "Splice's world"`,
 `coax/web/api/tests/world_checks.coax`, and `coax mutate` on the two
 `#authority` files.
+
+## A seam inside level ground is never a wall
+
+A seam is an edge inside the ground: a heightfield cell's diagonal, the line
+between two cells, a corner four cells share, the line where two floor tiles
+meet. Crossing one on level ground, or on an even slope one can stand on,
+never stops, slows, turns or slides a walker or a mount, and the ground query
+they read (`query_ground`) answers the ground's own slope there, with the
+broadphase (`Colliders.near`, #13279) and without, to the bit (#13434).
+
+A sphere that touches the ground at its start touches the nearest feature
+(`ground_contact` in `metaverse-engine/physics/ground-contact.coax`): on
+level ground that is the face under it, never the edge of the triangle
+beside it, so an overlap's normal is the ground's.
+
+One rule for whoever builds a controller on sweeps: a sweep that starts
+already touching answers at `t = 0` facing back along the motion (every shape
+is solid), which on level ground is a wall's normal. Don't read it as the
+ground. Start a sweep clear of the ground, or ask `query_ground` where the
+character stands, as the walker does.
+
+Checks: `metaverse-engine/tests/seam-normals.coax` (walks at 16 headings from
+9 starts on four level and four sloped planes, rides over a tiled floor and
+its lips, the ground query on a 1/8 m lattice both ways, sunk and moving
+spheres; it fails on a wall and on a spike), and `ground-contact.coax`'s own
+(367 mutants, 0 survivors).
