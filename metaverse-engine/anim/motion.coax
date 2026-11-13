@@ -22,7 +22,7 @@
 // never bent to fit: the writer gets the reason and tries again.
 //   coax/bin/coax test metaverse-engine/anim/motion.coax --library
 
-#load "figure.coax";
+#load "figure.coax" as mfig;   // the figure's names; PI, hi, lo and clamp are qualified, for a page may declare its own (#13368)
 
 MAX_KEYS :: 32;
 MAX_ENTRIES :: 256;
@@ -110,7 +110,7 @@ motion_refuse :: (m: [] Motion, line: int, a: string, b: string, c: string) -> b
   m[0].error_n = n;
   return false;
 }
-motion_degrees :: (r: f32) -> int { return cast(int) floor(r * 180 / PI + 0.5); }
+motion_degrees :: (r: f32) -> int { return cast(int) floor(r * 180 / mfig.PI + 0.5); }
 // "-5..155" for a limit range in radians.
 motion_range :: (buf: [] u8, r: Fv) -> string {
   n := motion_put_int(buf, 0, motion_degrees(r.x)); n = motion_put(buf, n, ".."); n = motion_put_int(buf, n, motion_degrees(r.y));
@@ -179,7 +179,7 @@ verse_motion_read :: (m: [] Motion, text: string) -> bool #export_c #effects(all
       if joint == LIFT {
         if abs(t.x) > 1.5 || abs(t.z) > 1.5 || t.y < -1 || t.y > 1.5 { return motion_refuse(m, line, "lift is at most 1.5 m across and along, from -1 to 1.5 m up", "", ""); }
       } else {
-        t = fv(x.v * PI / 180, y.v * PI / 180, z.v * PI / 180);
+        t = fv(x.v * mfig.PI / 180, y.v * mfig.PI / 180, z.v * mfig.PI / 180);
         l := metaverse_figure_limit(m[0].rig, joint);
         buf: [32] u8;
         if !within(t.x, l.pitch) { return motion_refuse(m, line, word, " pitch is outside ", motion_range(buf[..], l.pitch)); }
@@ -231,7 +231,7 @@ motion_channel :: (m: [] Motion, joint: int, t: f32) -> Fv {
     if next < 0 { return motion_turn_at(m, a, joint); }
   }
   if a == b && tb <= ta { return motion_turn_at(m, a, joint); }
-  w := smooth01((t - ta) / hi(tb - ta, 0.0001));
+  w := smooth01((t - ta) / mfig.hi(tb - ta, 0.0001));
   return fv_mix(motion_turn_at(m, a, joint), motion_turn_at(m, b, joint), w);
 }
 motion_turn_at :: (m: [] Motion, k: int, joint: int) -> Fv {
@@ -245,9 +245,9 @@ Play :: struct { motion: int = -1; start: f32; stop: f32 = -1; }
 
 // How far into the motion a play is at now (seconds; a loop wraps).
 metaverse_motion_time :: (m: [] Motion, p: Play, now: f32) -> f32 #export_c #effects(all) {
-  t := hi(0, now - p.start);
+  t := mfig.hi(0, now - p.start);
   if m[0].mode == MODE_LOOP { return t - m[0].seconds * floor(t / m[0].seconds); }
-  return lo(t, m[0].seconds);
+  return mfig.lo(t, m[0].seconds);
 }
 // How much of the motion shows now: 0 to 1, fading in from its start and
 // out at its end (once) or from when it was asked to stop.
@@ -255,11 +255,11 @@ metaverse_motion_weight :: (m: [] Motion, p: Play, now: f32) -> f32 #export_c #e
   if !m[0].ok || p.motion < 0 { return 0; }
   t := now - p.start;
   if t < 0 { return 0; }
-  fade := hi(m[0].fade, 0.0001);
+  fade := mfig.hi(m[0].fade, 0.0001);
   w := smooth01(t / fade);
-  if m[0].mode == MODE_ONCE { w = lo(w, smooth01((m[0].seconds - t) / fade)); }
-  if p.stop >= 0 { w = lo(w, smooth01(1 - (now - p.stop) / fade)); }
-  return clamp(w, 0, 1);
+  if m[0].mode == MODE_ONCE { w = mfig.lo(w, smooth01((m[0].seconds - t) / fade)); }
+  if p.stop >= 0 { w = mfig.lo(w, smooth01(1 - (now - p.stop) / fade)); }
+  return mfig.clamp(w, 0, 1);
 }
 // Whether a play has finished: a once past its end, or anything stopped and faded out.
 metaverse_motion_done :: (m: [] Motion, p: Play, now: f32) -> bool #export_c #effects(all) {
@@ -273,7 +273,7 @@ metaverse_motion_done :: (m: [] Motion, p: Play, now: f32) -> bool #export_c #ef
 metaverse_motion_apply :: (m: [] Motion, base: Pose, t: f32, w: f32) -> Pose #export_c #effects(all) {
   r := base;
   if !m[0].ok || w <= 0 { return r; }
-  k := clamp(w, 0, 1);
+  k := mfig.clamp(w, 0, 1);
   for j: 0..<MAX_JOINTS {
     if !m[0].uses[j] { continue; }
     r.turn[j] = metaverse_figure_turn_hold(m[0].rig, j, fv_mix(base.turn[j], motion_channel(m, j, t), k));
@@ -356,9 +356,9 @@ ANIMAL_MOTION_LABELS :: [6] string.["SIT", "LIE", "DIG", "FETCH", "BOW", "WAG"];
   #assert verse_motion_read(m, "motion nod; rig person; seconds 2; at 0; head 0 0 0; at 1; neck 10 0 0; at 2; head 40 0 0");
   base: Pose; base.turn[P_L_KNEE] = fv(0.5, 0, 0);
   p := metaverse_motion_apply(m, base, 1, 1);
-  #assert abs(p.turn[P_HEAD].x - 20 * PI / 180) < 0.001 && p.turn[P_L_KNEE].x == 0.5;
-  #assert abs(metaverse_motion_apply(m, base, 2, 1).turn[P_HEAD].x - 40 * PI / 180) < 0.001;
-  #assert abs(metaverse_motion_apply(m, base, 1.5, 0.5).turn[P_NECK].x - 5 * PI / 180) < 0.001;
+  #assert abs(p.turn[P_HEAD].x - 20 * mfig.PI / 180) < 0.001 && p.turn[P_L_KNEE].x == 0.5;
+  #assert abs(metaverse_motion_apply(m, base, 2, 1).turn[P_HEAD].x - 40 * mfig.PI / 180) < 0.001;
+  #assert abs(metaverse_motion_apply(m, base, 1.5, 0.5).turn[P_NECK].x - 5 * mfig.PI / 180) < 0.001;
   #assert metaverse_motion_apply(m, base, 1, 0).turn[P_HEAD].x == 0;
 }
 #test "a loop wraps from its last key round to its first" {

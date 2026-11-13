@@ -2023,7 +2023,18 @@ literal, `hud.g(...)` and `hud.K` (and `hud.E.member`) bind only in the
 alias's module (E0385 otherwise; E0384 for an unknown alias; a qualified
 name never falls back to a builtin). An unqualified name binds in its own
 module first, then to a declaration exactly one other scope makes; two such
-scopes are ambiguous (E0386) at the use. A local shadows an alias. Binding
+scopes are ambiguous (E0386) at the use. Since 0.52.0 (#13368), one
+more use is ambiguous (E0386): an unqualified use in a unit of the unowned
+program, of a name that (a) a module offers unqualified (it has no `#export`
+list, or exports the name), (b) the using unit itself loads, with no alias, the unit that claims that
+module or the unit of it that declares the name, and (c) another unit of the
+unowned program declares.
+Without the rule the use binds the unowned declaration, so a later `#load`
+of an unowned file would change in silence what a name taken from a loaded
+module means. It asks nothing of a use whose own unit declares the name, of
+a unit that does not load the module itself (a module reached only through
+another unit's loads, or loaded `as` an alias), or of a module's own uses:
+unowned files and modules may each keep their own `v3` or `PI`. A local shadows an alias. Binding
 happens in the checked Coax graph (`CK_lookup`, `CK_bind_check` in
 `lib/compiler/checker/names.coax`), so the evaluator, native C and the Metal scalar
 backend share the same declaration bindings; aliases never change nominal

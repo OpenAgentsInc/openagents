@@ -288,7 +288,14 @@ main :: () {
 `l.V`, `l.g()` and `l.K` see only `demo.left`. A plain `V` would be
 ambiguous here (E0386, at the use), because two modules declare it and this
 file declares none; a name only one module declares still resolves without
-an alias, so existing `#load` programs keep working. An alias names the
+an alias, so existing `#load` programs keep working. A file with no
+`#module` binds its own files' names first. So when it loads a module's file
+with no alias and uses a name that module offers, and another file with no
+`#module` declares that name too, the plain use is E0386: a later `#load`
+never changes in silence what a name from a module you loaded means. Rename
+one, load the module `as` an alias and qualify the name, or give the module
+an `#export` list that leaves the name out. A name the file declares itself
+is its own, and a file that does not load the module is never asked. An alias names the
 loaded file's `#module` (E0610 if it has none), so renaming `l` to `left`
 changes no declaration ID, and `l.V` and `r.V` stay different types even
 with the same fields (`'a' is demo.left.V but is initialized with

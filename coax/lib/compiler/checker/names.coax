@@ -358,6 +358,9 @@ CK_qualifier :: (c:CK_Context,use:int)->int #effects(all) {
   u:=c.nodes[use];if u.kind!=CK_Tag.expr_ident || u.name2.count!=0 || CK_local(c,u.name)>=0 {return -1;}return CK_alias(c,u.scope,u.name);
 }
 CK_sealed :: (c:CK_Context,scope:int)->bool #effects(all) {for e:c.exports {if e.scope==scope {return true;}}return false;}
+// Whether the unowned unit itself loads, with no alias, the module's declaration in unit decl: the
+// unit that claims the module scope, or the unit that declares it (#13368).
+CK_loads :: (c:CK_Context,unit:int,scope:int,decl:int)->bool #effects(all) {for l:c.loads {if l.unit==unit && l.scope==scope && (l.whole || l.target==decl) {return true;}}return false;}
 CK_exported :: (c:CK_Context,scope:int,name:string)->bool #effects(all) {for e:c.exports {if e.scope==scope && e.name==name {return true;}}return false;}
 // A use outside a sealed module reaches only the names it exports.
 CK_visible :: (c:CK_Context,use:int,scope:int)->bool #effects(all) {
@@ -388,6 +391,26 @@ CK_bind_check :: (c:CK_Context,use:int,kinds:[] CK_Tag,what:string)->bool #effec
     while id!=CK_NONE {n:=c.nodes[id];if n.kind==k && n.name==u.name {if first<0 {first=n.scope;}else if second<0 && n.scope!=first {second=n.scope;}}id=CK_after(c,id);}
     parts:=[7] string.["'",u.name,"' is declared by both '",CK_module_name(c,first),"' and '",CK_module_name(c,second),"'"];
     CK_error(c,u.loc,"E0386",CK_text(c,parts[..]),CK_join2(c,"qualify it with a module alias: alias.",u.name));return false;
+  }}
+  // #13368. The unowned program binds its own names first. A unit of it that itself loads a module's
+  // unit with no alias takes that unit's names unqualified (every name of the module when the unit
+  // is the one that claims it); when another unowned unit declares one of them too, the use would
+  // bind that declaration in silence (a later #load changing what a name means). That use is
+  // ambiguous. A name the using unit declares itself is its own, and a unit that does not load the
+  // module is not asked: unowned files and modules may each keep their own v3.
+  if u.scope==0 {for k:kinds {
+    own:=false;other:=0;id:=c.state[0].clashes;
+    while id!=CK_NONE {n:=c.nodes[id];
+      if n.kind==k && n.name==u.name {
+        if n.scope==0 {if n.source_unit!=u.source_unit {own=true;}}
+        else if other==0 && CK_loads(c,u.source_unit,n.scope,n.source_unit) && (!CK_sealed(c,n.scope) || CK_exported(c,n.scope,u.name)) {other=n.scope;}
+      }
+      id=n.clash;
+    }
+    if own && other!=0 {
+      parts:=[5] string.["'",u.name,"' is declared by both 'the unowned program' and '",CK_module_name(c,other),"'"];
+      CK_error(c,u.loc,"E0386",CK_text(c,parts[..]),"rename one of them, load the module as an alias and qualify it, or keep the module's own behind an #export list");return false;
+    }
   }}
   if c.exports.count==0 {return true;}
   for k:kinds {d:=CK_lookup(c,k,use);if d!=CK_NONE {return CK_visible(c,use,c.nodes[d].scope);}}
@@ -634,6 +657,50 @@ CK_bind_check :: (c:CK_Context,use:int,kinds:[] CK_Tag,what:string)->bool #effec
  if variant==7 {#assert errors[0].code=="E0385" && errors[0].message=="module 'a' has no type 'E'";}
  if variant==9 {#assert errors[0].code=="E0388" && errors[0].message=="'b.c' reaches through another module's alias; aliases are not reexported" && errors[0].fix=="load that module here with its own alias";}
  if variant==10 {#assert errors[0].code=="E0386" && errors[0].message=="'V' is declared by both 'c' and 'b'" && errors[0].fix=="qualify it with a module alias: alias.V";}
+}
+// #13368. Three declarations and one use: nodes 2 to 4 are (kind, name, scope), the use is K from a scope,
+// written in unit 1. Unowned declarations are in unit 2 (in 11: unit 1, the use's own); node 2's module
+// declaration is in unit 3 and node 3's in unit 4. The loads are what unit lu loads of scope ls (the
+// unit that claims it; in 13 and 14 only unit lt of it), and in 7 and 9 unit 1's load of scope 2 as well.
+#forall "an unowned unit's use of a name from a module it loads, that another unowned unit declares, is ambiguous" variant:0..<15, indexed:bool {
+ nodes:[16]CK_Node;index:[48]int;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
+ modules:=[3] string.["","a","b"];
+ export_names:=[15] string.["other","other","other","K","other","other","other","other","other","other","other","other","other","other","other"];
+ sealed:=[15] int.[0,0,1,1,0,0,0,0,0,1,0,0,0,0,0];
+ exports:=[1] CK_Export.[CK_Export.{scope=1,name=export_names[variant]}];
+ lu:=[15] int.[1,1,1,1,1,1,1,1,1,1,2,1,1,1,1];ls:=[15] int.[1,1,1,1,1,1,1,1,1,1,1,1,2,1,1];lc:=[15] int.[1,1,1,1,1,1,1,2,1,2,1,1,1,1,1];
+ lt:=[15] int.[0,0,0,0,0,0,0,0,0,0,0,0,0,4,3];
+ loads:=[2] CK_Load.[CK_Load.{unit=lu[variant],scope=ls[variant],target=lt[variant],whole=variant<13},CK_Load.{unit=1,scope=2,whole=true}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],modules=modules[..],exports=exports[0..<sealed[variant]],names=index[..],loads=loads[0..<lc[variant]]};
+ k2:=[15] CK_Tag.[CK_Tag.constant,CK_Tag.constant,CK_Tag.constant,CK_Tag.constant,CK_Tag.proc,CK_Tag.constant,CK_Tag.constant,CK_Tag.constant,CK_Tag.struct_,CK_Tag.constant,CK_Tag.constant,CK_Tag.constant,CK_Tag.constant,CK_Tag.constant,CK_Tag.constant];
+ n2:=[15] string.["K","K","K","K","K","J","K","K","K","K","K","K","K","K","K"];s2:=[15] int.[0,0,0,0,0,0,0,1,1,2,0,0,0,0,0];
+ k3:=[15] CK_Tag.[CK_Tag.constant,CK_Tag.constant,CK_Tag.constant,CK_Tag.constant,CK_Tag.constant,CK_Tag.constant,CK_Tag.constant,CK_Tag.constant,CK_Tag.enum_,CK_Tag.constant,CK_Tag.constant,CK_Tag.constant,CK_Tag.constant,CK_Tag.constant,CK_Tag.constant];
+ n3:=[15] string.["K","K","K","K","K","J","K","K","K","K","K","K","K","K","K"];s3:=[15] int.[1,1,1,1,1,1,1,2,2,1,1,1,1,1,1];
+ n4:=[15] string.["Z","Z","Z","Z","Z","K","Z","K","Z","K","Z","Z","Z","Z","Z"];
+ from:=[15] int.[0,1,0,0,0,0,0,0,0,0,0,0,0,0,0];
+ unowned_unit:=ifx variant==11 then 1 else 2;
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};
+ nodes[2]=CK_Node.{kind=k2[variant],name=n2[variant],scope=s2[variant],source_unit=ifx s2[variant]==0 then unowned_unit else 3,next=3};
+ nodes[3]=CK_Node.{kind=k3[variant],name=n3[variant],scope=s3[variant],source_unit=4,next=4};
+ nodes[4]=CK_Node.{kind=CK_Tag.constant,name=n4[variant],scope=0,source_unit=2,next=5};nodes[5]=CK_Node.{kind=CK_Tag.constant,name="other",scope=1,source_unit=3};
+ nodes[9]=CK_Node.{kind=CK_Tag.expr_ident,name="K",scope=from[variant],source_unit=1,loc=CK_Loc.{line=7,column=3,offset=40}};
+ if indexed {#assert CK_index_names(c,15);}CK_collisions(c,false);#assert state[0].error_count==0;
+ all:=[4] CK_Tag.[CK_Tag.constant,CK_Tag.proc,CK_Tag.struct_,CK_Tag.enum_];
+ // 6: only a procedure is wanted, and K is a constant in both scopes.
+ ok:=CK_bind_check(c,9,all[ifx variant==6 then 1 else 0..<ifx variant==6 then 2 else 4],"declaration");
+ // 0 unsealed and loaded here; 1 the module's own use; 2 sealed and private; 3 sealed and exported; 4 a procedure
+ // and a constant; 5 another name collides, K does not; 7 two loaded modules, the later one named; 8 a struct
+ // and an enum of two modules, none unowned; 9 a sealed module's private K is skipped for the open module's;
+ // 10 another unit loads the module, not the use's; 11 the use's own unit declares K; 12 the use's unit
+ // loads another module, not K's; 13 the use's unit loads the module's unit that declares K, not the one
+ // that claims the module; 14 it loads another unit of the module, not K's.
+ good:=[15] bool.[false,true,true,false,true,true,true,false,true,false,true,true,true,false,true];
+ #assert ok==good[variant] && state[0].error_count==ifx ok then 0 else 1;
+ whose:=[15] string.["a","","","a","","","","b","","b","","","","a",""];
+ if !ok {e:=errors[0];#assert e.code=="E0386" && e.loc.line==7 && e.loc.column==3 && e.loc.offset==40;
+   #assert e.message==CK_join3(c,"'K' is declared by both 'the unowned program' and '",whose[variant],"'") && e.fix=="rename one of them, load the module as an alias and qualify it, or keep the module's own behind an #export list";}
+ #assert CK_loads(c,lu[variant],ls[variant],lt[variant]) && !CK_loads(c,3,ls[variant],lt[variant]) && !CK_loads(c,lu[variant],0,lt[variant]);
+ #assert CK_loads(c,lu[variant],ls[variant],9)==(variant<13);
 }
 #forall "qualified uses bind where they are written" variant:0..<19 {
  nodes:[48]CK_Node;types:[24]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{type_count=21,used=40}];
