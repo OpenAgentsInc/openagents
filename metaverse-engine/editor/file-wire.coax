@@ -1,0 +1,783 @@
+// Attachments on the wire (world.files.v1; GitHub #13468, docs/editor/2026-11-13-world-attachments.md):
+// the reference files a maker attaches to a project or to one of its worlds (concept art, design
+// documents, notes, links). One codec and one set of rules: the dev server's store
+// (metaverse-engine/tools/files-local.coax), the API (coax/web/api/worlds.c through
+// world-policy.coax), the editor's Files pane (shell-files.coax) and the realm commands
+// (apps/openagents-cli/realm-world.coax) all read and write these bytes and ask these rules.
+// docs/protocol/world-files-v1.md is its spec.
+//
+// An attachment is never a game asset: no pack, no player and no page reads it. Its bytes are
+// answered only to the project's members and the site's admins (INVARIANTS.md).
+//
+// The list, a line each, every line ended by a newline:
+//   world.files.v1 WORLD PROJECT COUNT BYTES FILE FILES TOTAL
+//       the world (- for a project's own list), its project's slug (- for a world with none), what
+//       the project holds now with all its worlds (COUNT files, BYTES bytes), and the limits: a
+//       file's bytes, a project's files and a project's bytes
+//   f ID SCOPE KIND BYTES HASH AT BY NAME
+//       an attachment: its ID (16 hex digits), world or project, image, document or link, its bytes
+//       and SHA-256 (0 and - for a link), when it was attached (ms since 1970), who attached it
+//       (a key's hex, or local), and its name
+//   u URL       a link's address; only after a link's f, and always there
+//   n NOTE      its note, one line; left out for none
+//   t TAGS      its tags, joined by commas; left out for none
+//   did WORD ID after a write: attached, linked, changed or detached, and the attachment
+// This world's own come first, then the project's, each newest first.
+//
+// What a POST to /api/worlds/ID/files carries (each head ends where the bytes begin):
+//   world.file.attach.v1 SCOPE BYTES AT NAME     a file, or the part of it from byte AT
+//   n NOTE / t TAGS                              (optional)
+//   SHA256 or -                                  the whole file's SHA-256 (- : the server makes it; only
+//                                                for the whole file in one body)
+//   ...the bytes
+//   world.file.upload.v1 SCOPE BYTES NAME        on the API: a file named before it is sent by direct
+//   n NOTE / t TAGS / SHA256                     upload, the same lines again to .../files/done once it is
+//   world.file.link.v1 SCOPE URL                 a link, with its title
+//   name TITLE / n NOTE / t TAGS
+//   world.file.edit.v1 ID SCOPE                  a new name, note, tags and scope, all of them
+//   name NAME / n NOTE / t TAGS
+//   world.file.detach.v1 ID                      the attachment and its stored file removed
+// A part of a file is answered "world.file.part.v1 SHA256 GOT" until the last part, which is
+// answered with the list. An upload's ask is answered "world.file.upload.v1 put|kept SHA256 BYTES URL".
+//   coax/bin/coax test metaverse-engine/editor/file-wire.coax
+#load "../core/assets.coax";
+
+FW_SCHEMA :: "world.files.v1";
+FW_ATTACH :: "world.file.attach.v1";
+FW_UPLOAD :: "world.file.upload.v1";
+FW_LINK :: "world.file.link.v1";
+FW_EDIT :: "world.file.edit.v1";
+FW_DETACH :: "world.file.detach.v1";
+FW_PART :: "world.file.part.v1";
+// The limits, shown in the pane before anything is sent.
+FW_FILE_MAX :: 26214400;       // 25 MB a file
+FW_FILES_MAX :: 200;           // files a project holds, with all its worlds
+FW_TOTAL_MAX :: 1073741824;    // 1 GB a project, with all its worlds
+FW_FILES :: 200;               // attachments a list holds
+FW_ID :: 16; FW_NAME :: 100; FW_NOTE :: 200; FW_TAGS :: 120; FW_TAG :: 24; FW_TAGS_N :: 8; FW_URL :: 300; FW_BY :: 64;
+FW_WORLD :: 32; FW_PROJECT :: 48;
+FW_BYTES :: 180000;            // a list is at most this long
+FW_HEAD :: 1024;               // a request's head is at most this long
+FW_WORDS :: 240;               // a refusal's words
+FW_SCOPE_WORLD :: 0; FW_SCOPE_PROJECT :: 1;
+FW_SCOPES :: [2] string.["world", "project"];
+FW_IMAGE :: 1; FW_DOCUMENT :: 2; FW_LINK_KIND :: 3;
+FW_KINDS :: [4] string.["", "image", "document", "link"];
+FW_DID :: [5] string.["", "attached", "linked", "changed", "detached"];
+FW_DID_ATTACHED :: 1; FW_DID_LINKED :: 2; FW_DID_CHANGED :: 3; FW_DID_DETACHED :: 4;
+// The files we take, by extension: their kind and the content type they are served as.
+FW_EXTS :: 9;
+FW_EXT :: [FW_EXTS] string.["png", "jpg", "jpeg", "webp", "gif", "md", "markdown", "txt", "pdf"];
+FW_EXT_KIND :: [FW_EXTS] int.[1, 1, 1, 1, 1, 2, 2, 2, 2];
+FW_EXT_TYPE :: [FW_EXTS] string.["image/png", "image/jpeg", "image/jpeg", "image/webp", "image/gif", "text/markdown; charset=utf-8", "text/markdown; charset=utf-8", "text/plain; charset=utf-8", "application/pdf"];
+FW_TAKES :: ".png,.jpg,.jpeg,.webp,.gif,.md,.markdown,.txt,.pdf";
+
+FwFile :: struct {
+  id: [FW_ID] u8; scope: int; kind: int; bytes: int; hash: [64] u8; hashed: bool; at: int;
+  by: [FW_BY] u8; by_n: int;
+  name: [FW_NAME] u8; name_n: int;
+  url: [FW_URL] u8; url_n: int;
+  note: [FW_NOTE] u8; note_n: int;
+  tags: [FW_TAGS] u8; tags_n: int;
+}
+FwList :: struct {
+  ok: bool;
+  world: [FW_WORLD] u8; world_n: int;          // 0: a project's own list
+  project: [FW_PROJECT] u8; project_n: int;    // 0: the world has no project
+  count: int; bytes: int;                      // what the project holds now, with all its worlds
+  file: int; files: int; total: int;           // the limits
+  n: int; f: [FW_FILES] FwFile;
+  did: int; did_id: [FW_ID] u8;                // after a write (FW_DID_*)
+}
+// A request's head, read: what it is and its fields. `at` is where the bytes (or the end) begin.
+FW_Q_NONE :: 0; FW_Q_ATTACH :: 1; FW_Q_UPLOAD :: 2; FW_Q_LINK :: 3; FW_Q_EDIT :: 4; FW_Q_DETACH :: 5;
+FwAsk :: struct {
+  ok: bool; what: int; at: int;
+  id: [FW_ID] u8; scope: int; bytes: int; from: int; hashed: bool; hash: [64] u8;
+  name: [FW_NAME] u8; name_n: int; url: [FW_URL] u8; url_n: int;
+  note: [FW_NOTE] u8; note_n: int; tags: [FW_TAGS] u8; tags_n: int;
+}
+
+// ---- writing
+
+fw_put :: (out: [] u8, n: int, s: string) -> int {
+  if n < 0 || n + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[n + i] = s[i]; }
+  return n + s.count;
+}
+fw_put_int :: (out: [] u8, n: int, v: int) -> int {
+  if n < 0 { return -1; }
+  d: [20] u8; m := 0; x := ifx v < 0 then 0 else v;
+  while true { d[m] = cast,trunc(u8) ('0' + x % 10); m += 1; x = x / 10; if x == 0 { break; } }
+  if n + m > out.count { return -1; }
+  for k: 0..<m { out[n + k] = d[m - 1 - k]; }
+  return n + m;
+}
+fw_copy :: (dst: [] u8, s: string) -> int {
+  if s.count > dst.count { return 0; }
+  for i: 0..<s.count { dst[i] = s[i]; }
+  return s.count;
+}
+
+// ---- words on a line
+
+fw_field :: (line: string, i: int) -> string {
+  at := 0; f := 0;
+  for k: 0..<line.count + 1 {
+    if k == line.count || line[k] == ' ' { if f == i { return line[at..<k]; } f += 1; at = k + 1; }
+  }
+  return "";
+}
+fw_rest :: (line: string, i: int) -> string {
+  f := 0;
+  for k: 0..<line.count { if line[k] == ' ' { f += 1; if f == i { return line[k + 1..<line.count]; } } }
+  return "";
+}
+fw_fields :: (line: string) -> int { n := 1; for c: line { if c == ' ' { n += 1; } } return n; }
+// A whole number written plainly (no sign, no leading zero, 15 digits at most), or -1.
+fw_num :: (s: string) -> int {
+  if s.count == 0 || s.count > 15 || (s[0] == '0' && s.count > 1) { return -1; }
+  n := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) (c - '0'); }
+  return n;
+}
+fw_hex :: (s: string, count: int) -> bool {
+  if s.count != count { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+fw_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+
+// ---- what each field may be
+
+// A world's ID: a lowercase letter, then lowercase letters, digits and -.
+fw_world_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > FW_WORLD || s[0] < 'a' || s[0] > 'z' { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+// A project's slug: lowercase letters, digits and -, starting with a letter.
+fw_project_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > FW_PROJECT || s[0] < 'a' || s[0] > 'z' { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+fw_id_ok :: (s: string) -> bool { return fw_hex(s, FW_ID); }
+fw_by_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > FW_BY { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+// One line of text: printable bytes (UTF-8's above 127 too), no space at either end, at most `most`.
+fw_line_ok :: (s: string, most: int) -> bool {
+  if s.count < 1 || s.count > most || s[0] == ' ' || s[s.count - 1] == ' ' { return false; }
+  for c: s { if c < 32 || c == 127 { return false; } }
+  return true;
+}
+// A name: a line of 1 to 100 bytes with no slash.
+fw_name_ok :: (s: string) -> bool {
+  if !fw_line_ok(s, FW_NAME) { return false; }
+  for c: s { if c == '/' || c == '\\' { return false; } }
+  return true;
+}
+// The extension of a name, lowercase, into out ("" for none).
+fw_ext :: (name: string, out: [] u8) -> string {
+  dot := -1;
+  for k: 0..<name.count { if name[k] == '.' { dot = k; } }
+  if dot < 1 || name.count - dot - 1 < 1 || name.count - dot - 1 > out.count { return ""; }
+  for k: dot + 1..<name.count { out[k - dot - 1] = fw_lower(name[k]); }
+  return cast(string) out[0..<name.count - dot - 1];
+}
+// The place of a name's extension in FW_EXT, or -1: not a file we attach.
+fw_ext_at :: (name: string) -> int {
+  b: [12] u8; e := fw_ext(name, b[..]);
+  for k: 0..<FW_EXTS { if FW_EXT[k] == e { return k; } }
+  return -1;
+}
+// A file's kind by its name (image or document), 0 for none we take.
+fw_kind_of :: (name: string) -> int { k := fw_ext_at(name); return ifx k < 0 then 0 else FW_EXT_KIND[k]; }
+// The content type a file is stored and served as: ours, by its extension; never a browser's.
+fw_type :: (name: string) -> string { k := fw_ext_at(name); return ifx k < 0 then "application/octet-stream" else FW_EXT_TYPE[k]; }
+fw_is_markdown :: (name: string) -> bool { k := fw_ext_at(name); return k == 5 || k == 6; }
+fw_is_text :: (name: string) -> bool { k := fw_ext_at(name); return k >= 5 && k <= 7; }
+fw_is_pdf :: (name: string) -> bool { return fw_ext_at(name) == 8; }
+fw_url_ok :: (s: string) -> bool {
+  if s.count < 10 || s.count > FW_URL { return false; }
+  if !(s[0..<8] == "https://" || s[0..<7] == "http://") { return false; }
+  for c: s { if c <= 32 || c >= 127 || c == '"' || c == '<' || c == '>' || c == '\\' { return false; } }
+  return true;
+}
+fw_tag_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > FW_TAG { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+// Tags as the wire has them: 1 to 8 tags joined by commas, no tag twice.
+fw_tags_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > FW_TAGS { return false; }
+  n := 1; for c: s { if c == ',' { n += 1; } }
+  if n > FW_TAGS_N { return false; }
+  for i: 0..<n {
+    t := fw_part(s, ',', i);
+    if !fw_tag_ok(t) { return false; }
+    for j: 0..<i { if fw_part(s, ',', j) == t { return false; } }
+  }
+  return true;
+}
+fw_part :: (s: string, sep: u8, k: int) -> string {
+  a := 0; n := 0;
+  for i: 0..<s.count + 1 {
+    if i < s.count && s[i] != sep { continue; }
+    if n == k { return s[a..<i]; }
+    n += 1; a = i + 1;
+  }
+  return "";
+}
+fw_parts :: (s: string, sep: u8) -> int { n := 1; for c: s { if c == sep { n += 1; } } return n; }
+// Tags as a person types them ("Garage, raiders night") made the wire's: lowercase, a space
+// within a tag a dash, commas between, the empty and the repeated left out, at most 8. "" for none.
+fw_tags_clean :: (typed: string, out: [] u8) -> string {
+  n := 0; tags := 0; start := 0;
+  b: [FW_TAG] u8;
+  i := 0;
+  while i <= typed.count {
+    if i == typed.count || typed[i] == ',' {
+      // one tag: trimmed, spaces to dashes, only letters, digits and dashes kept
+      m := 0; dash := false;
+      for k: start..<i {
+        c := fw_lower(typed[k]);
+        if c == ' ' || c == '-' || c == '_' { dash = m > 0; continue; }
+        if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) { continue; }
+        if dash && m < FW_TAG { b[m] = '-'; m += 1; }
+        dash = false;
+        if m < FW_TAG { b[m] = c; m += 1; }
+      }
+      tag := cast(string) b[0..<m];
+      seen := false;
+      if n > 0 { for j: 0..<fw_parts(cast(string) out[0..<n], ',') { if fw_part(cast(string) out[0..<n], ',', j) == tag { seen = true; } } }
+      if m > 0 && !seen && tags < FW_TAGS_N && n + m + 1 <= FW_TAGS && n + m + 1 <= out.count {
+        if n > 0 { out[n] = ','; n += 1; }
+        for k: 0..<m { out[n + k] = b[k]; }
+        n += m; tags += 1;
+      }
+      start = i + 1;
+    }
+    i += 1;
+  }
+  return cast(string) out[0..<n];
+}
+// A note as typed made a line: line ends and tabs become spaces, the ends trimmed, cut to the note's
+// length at a whole character.
+fw_note_clean :: (typed: string, out: [] u8) -> string {
+  n := 0;
+  for c: typed { if n < out.count && n < FW_NOTE { out[n] = ifx c < 32 || c == 127 then ' ' else c; n += 1; } }
+  // a character cut in two at the end is left out
+  while n > 0 && out[n - 1] >= 128 && out[n - 1] < 192 { n -= 1; }
+  if n > 0 && out[n - 1] >= 192 { n -= 1; }
+  if n < typed.count { k := n; while k > 0 && out[k - 1] >= 128 && out[k - 1] < 192 { k -= 1; } if k > 0 && out[k - 1] >= 192 { n = k - 1; } }
+  a := 0; while a < n && out[a] == ' ' { a += 1; }
+  while n > a && out[n - 1] == ' ' { n -= 1; }
+  for k: a..<n { out[k - a] = out[k]; }
+  return cast(string) out[0..<n - a];
+}
+
+// ---- the list's writer
+
+fw_head :: (out: [] u8, world: string, project: string, count: int, bytes: int) -> int {
+  n := fw_put(out, 0, FW_SCHEMA); n = fw_put(out, n, " "); n = fw_put(out, n, ifx world.count > 0 then world else "-");
+  n = fw_put(out, n, " "); n = fw_put(out, n, ifx project.count > 0 then project else "-");
+  for v: [5] int.[count, bytes, FW_FILE_MAX, FW_FILES_MAX, FW_TOTAL_MAX] { n = fw_put(out, n, " "); n = fw_put_int(out, n, v); }
+  return fw_put(out, n, "\n");
+}
+// One attachment's lines at n.
+fw_file_lines :: (out: [] u8, at: int, given: FwFile) -> int {
+  f := given;
+  n := fw_put(out, at, "f "); n = fw_put(out, n, cast(string) f.id[..]);
+  n = fw_put(out, n, " "); n = fw_put(out, n, FW_SCOPES[f.scope]);
+  n = fw_put(out, n, " "); n = fw_put(out, n, FW_KINDS[f.kind]);
+  n = fw_put(out, n, " "); n = fw_put_int(out, n, f.bytes);
+  n = fw_put(out, n, " "); n = fw_put(out, n, ifx f.hashed then cast(string) f.hash[..] else "-");
+  n = fw_put(out, n, " "); n = fw_put_int(out, n, f.at);
+  n = fw_put(out, n, " "); n = fw_put(out, n, cast(string) f.by[0..<f.by_n]);
+  n = fw_put(out, n, " "); n = fw_put(out, n, cast(string) f.name[0..<f.name_n]); n = fw_put(out, n, "\n");
+  if f.url_n > 0 { n = fw_put(out, n, "u "); n = fw_put(out, n, cast(string) f.url[0..<f.url_n]); n = fw_put(out, n, "\n"); }
+  if f.note_n > 0 { n = fw_put(out, n, "n "); n = fw_put(out, n, cast(string) f.note[0..<f.note_n]); n = fw_put(out, n, "\n"); }
+  if f.tags_n > 0 { n = fw_put(out, n, "t "); n = fw_put(out, n, cast(string) f.tags[0..<f.tags_n]); n = fw_put(out, n, "\n"); }
+  return n;
+}
+fw_did_line :: (out: [] u8, at: int, did: int, id: string) -> int {
+  if did < 1 || did > 4 || !fw_id_ok(id) { return -1; }
+  n := fw_put(out, at, "did "); n = fw_put(out, n, FW_DID[did]); n = fw_put(out, n, " "); n = fw_put(out, n, id);
+  return fw_put(out, n, "\n");
+}
+// Whether an attachment is one the wire carries.
+fw_file_ok :: (given: FwFile) -> bool {
+  f := given;
+  if !fw_id_ok(cast(string) f.id[..]) || f.scope < 0 || f.scope > 1 || f.kind < 1 || f.kind > 3 || f.at < 0 || !fw_by_ok(cast(string) f.by[0..<f.by_n]) { return false; }
+  name := cast(string) f.name[0..<f.name_n];
+  if f.kind == FW_LINK_KIND {
+    if f.bytes != 0 || f.hashed || !fw_line_ok(name, FW_NAME) || !fw_url_ok(cast(string) f.url[0..<f.url_n]) { return false; }
+  } else {
+    if f.bytes < 1 || f.bytes > FW_FILE_MAX || !f.hashed || !fw_hex(cast(string) f.hash[..], 64) || !fw_name_ok(name) || fw_kind_of(name) != f.kind || f.url_n != 0 { return false; }
+  }
+  if f.note_n > 0 && !fw_line_ok(cast(string) f.note[0..<f.note_n], FW_NOTE) { return false; }
+  if f.tags_n > 0 && !fw_tags_ok(cast(string) f.tags[0..<f.tags_n]) { return false; }
+  return true;
+}
+// The whole list as its bytes, or "" when it is not one.
+fw_write :: (l: [] FwList, out: [] u8) -> string {
+  w := cast(string) l[0].world[0..<l[0].world_n]; p := cast(string) l[0].project[0..<l[0].project_n];
+  if (w.count > 0 && !fw_world_ok(w)) || (p.count > 0 && !fw_project_ok(p)) || (w.count == 0 && p.count == 0) || l[0].n < 0 || l[0].n > FW_FILES { return ""; }
+  n := fw_head(out, w, p, l[0].count, l[0].bytes);
+  for i: 0..<l[0].n {
+    if !fw_file_ok(l[0].f[i]) || (l[0].f[i].scope == FW_SCOPE_WORLD && w.count == 0) || (l[0].f[i].scope == FW_SCOPE_PROJECT && p.count == 0) { return ""; }
+    n = fw_file_lines(out, n, l[0].f[i]);
+  }
+  if l[0].did > 0 { n = fw_did_line(out, n, l[0].did, cast(string) l[0].did_id[..]); }
+  return ifx n < 0 || n > FW_BYTES then "" else cast(string) out[0..<n];
+}
+
+// ---- the list's reader
+
+// Reads a list. False for any bytes fw_write would not write (scratch: room for them).
+fw_read :: (l: [] FwList, text: string, scratch: [] u8) -> bool {
+  l[0].ok = false; l[0].n = 0; l[0].did = 0; l[0].world_n = 0; l[0].project_n = 0;
+  if text.count < FW_SCHEMA.count || text.count > FW_BYTES { return false; }
+  head := fw_part(text, '\n', 0);
+  if fw_field(head, 0) != FW_SCHEMA || fw_fields(head) != 8 { return false; }
+  w := fw_field(head, 1); p := fw_field(head, 2);
+  l[0].world_n = ifx w == "-" then 0 else fw_copy(l[0].world[..], w);
+  l[0].project_n = ifx p == "-" then 0 else fw_copy(l[0].project[..], p);
+  l[0].count = fw_num(fw_field(head, 3)); l[0].bytes = fw_num(fw_field(head, 4));
+  l[0].file = fw_num(fw_field(head, 5)); l[0].files = fw_num(fw_field(head, 6)); l[0].total = fw_num(fw_field(head, 7));
+  if l[0].count < 0 || l[0].bytes < 0 || l[0].file != FW_FILE_MAX || l[0].files != FW_FILES_MAX || l[0].total != FW_TOTAL_MAX { return false; }
+  lines := fw_parts(text, '\n');
+  for i: 1..<lines {
+    line := fw_part(text, '\n', i);
+    if line.count == 0 { if i + 1 == lines { break; } return false; }
+    word := fw_field(line, 0);
+    if l[0].did > 0 { return false; }   // nothing follows `did`
+    if word == "f" {
+      if l[0].n >= FW_FILES || fw_fields(line) < 9 { return false; }
+      f := FwFile.{};
+      id := fw_field(line, 1);
+      if id.count != FW_ID { return false; }
+      for c, k: id { f.id[k] = c; }
+      f.scope = ifx fw_field(line, 2) == "project" then FW_SCOPE_PROJECT else ifx fw_field(line, 2) == "world" then FW_SCOPE_WORLD else -1;
+      kw := fw_field(line, 3);
+      f.kind = 0; for k: 1..<4 { if FW_KINDS[k] == kw { f.kind = k; } }
+      f.bytes = fw_num(fw_field(line, 4));
+      hash := fw_field(line, 5);
+      f.hashed = hash != "-";
+      if f.hashed { if hash.count != 64 { return false; } for c, k: hash { f.hash[k] = c; } }
+      f.at = fw_num(fw_field(line, 6));
+      f.by_n = fw_copy(f.by[..], fw_field(line, 7));
+      f.name_n = fw_copy(f.name[..], fw_rest(line, 8));
+      l[0].f[l[0].n] = f;
+      l[0].n += 1;
+    } else if word == "u" || word == "n" || word == "t" {
+      if l[0].n == 0 { return false; }
+      f := l[0].f[l[0].n - 1];
+      rest := fw_rest(line, 1);
+      // in order, each once, and u only for a link
+      if word == "u" { if f.url_n > 0 || f.note_n > 0 || f.tags_n > 0 || f.kind != FW_LINK_KIND { return false; } f.url_n = fw_copy(f.url[..], rest); }
+      if word == "n" { if f.note_n > 0 || f.tags_n > 0 { return false; } f.note_n = fw_copy(f.note[..], rest); }
+      if word == "t" { if f.tags_n > 0 { return false; } f.tags_n = fw_copy(f.tags[..], rest); }
+      l[0].f[l[0].n - 1] = f;
+    } else if word == "did" {
+      d := fw_field(line, 1); id := fw_field(line, 2);
+      for k: 1..<5 { if FW_DID[k] == d { l[0].did = k; } }
+      if l[0].did == 0 || id.count != FW_ID { return false; }
+      for c, k: id { l[0].did_id[k] = c; }
+    } else { return false; }
+  }
+  l[0].ok = fw_write(l, scratch) == text;
+  return l[0].ok;
+}
+
+fw_world_of :: (l: [] FwList) -> string { return cast(string) l[0].world[0..<l[0].world_n]; }
+fw_project_of :: (l: [] FwList) -> string { return cast(string) l[0].project[0..<l[0].project_n]; }
+// The fields of the list's i-th attachment, as views into the list.
+fw_id_of :: (l: [] FwList, i: int) -> string { return cast(string) l[0].f[i].id[..]; }
+fw_name_of :: (l: [] FwList, i: int) -> string { return cast(string) l[0].f[i].name[0..<l[0].f[i].name_n]; }
+fw_note_of :: (l: [] FwList, i: int) -> string { return cast(string) l[0].f[i].note[0..<l[0].f[i].note_n]; }
+fw_tags_of :: (l: [] FwList, i: int) -> string { return cast(string) l[0].f[i].tags[0..<l[0].f[i].tags_n]; }
+fw_url_of :: (l: [] FwList, i: int) -> string { return cast(string) l[0].f[i].url[0..<l[0].f[i].url_n]; }
+fw_hash_of :: (l: [] FwList, i: int) -> string { return ifx l[0].f[i].hashed then cast(string) l[0].f[i].hash[..] else ""; }
+// The attachment of this ID, by its place in the list, or -1.
+fw_find :: (l: [] FwList, id: string) -> int {
+  for i: 0..<l[0].n { if cast(string) l[0].f[i].id[..] == id { return i; } }
+  return -1;
+}
+
+// ---- a request's head
+
+// The head line's fields and the optional lines after it, then (attach and upload) the hash line.
+// The head of an attach ends at the hash line's newline; its bytes follow.
+fw_ask_read :: (a: [] FwAsk, body: string) -> bool {
+  a[0] = FwAsk.{};
+  limit := ifx body.count < FW_HEAD then body.count else FW_HEAD;
+  first := -1;
+  for k: 0..<limit { if body[k] == '\n' { first = k; break; } }
+  if first < 0 { return false; }
+  head := body[0..<first];
+  word := fw_field(head, 0);
+  if word == FW_ATTACH { a[0].what = FW_Q_ATTACH; } else if word == FW_UPLOAD { a[0].what = FW_Q_UPLOAD; } else if word == FW_LINK { a[0].what = FW_Q_LINK; }
+  else if word == FW_EDIT { a[0].what = FW_Q_EDIT; } else if word == FW_DETACH { a[0].what = FW_Q_DETACH; } else { return false; }
+  scope := "";
+  if a[0].what == FW_Q_ATTACH {
+    if fw_fields(head) < 5 { return false; }
+    scope = fw_field(head, 1); a[0].bytes = fw_num(fw_field(head, 2)); a[0].from = fw_num(fw_field(head, 3)); a[0].name_n = fw_copy(a[0].name[..], fw_rest(head, 4));
+  } else if a[0].what == FW_Q_UPLOAD {
+    if fw_fields(head) < 4 { return false; }
+    scope = fw_field(head, 1); a[0].bytes = fw_num(fw_field(head, 2)); a[0].name_n = fw_copy(a[0].name[..], fw_rest(head, 3));
+  } else if a[0].what == FW_Q_LINK {
+    if fw_fields(head) != 3 { return false; }
+    scope = fw_field(head, 1); a[0].url_n = fw_copy(a[0].url[..], fw_field(head, 2));
+    if !fw_url_ok(cast(string) a[0].url[0..<a[0].url_n]) { return false; }
+  } else if a[0].what == FW_Q_EDIT {
+    if fw_fields(head) != 3 || !fw_id_ok(fw_field(head, 1)) { return false; }
+    for c, k: fw_field(head, 1) { a[0].id[k] = c; }
+    scope = fw_field(head, 2);
+  } else {
+    if fw_fields(head) != 2 || !fw_id_ok(fw_field(head, 1)) || first + 1 != body.count { return false; }
+    for c, k: fw_field(head, 1) { a[0].id[k] = c; }
+    a[0].at = body.count; a[0].ok = true;
+    return true;
+  }
+  a[0].scope = ifx scope == "project" then FW_SCOPE_PROJECT else ifx scope == "world" then FW_SCOPE_WORLD else -1;
+  if a[0].scope < 0 { return false; }
+  // the lines after the head: name (link, edit), n, t, each once and in that order; then the hash (attach, upload)
+  at := first + 1; stage := 0; hashed := false;
+  while at < limit {
+    end := -1;
+    for k: at..<limit { if body[k] == '\n' { end = k; break; } }
+    if end < 0 { return false; }
+    line := body[at..<end];
+    w := fw_field(line, 0);
+    if w == "name" && stage < 1 && (a[0].what == FW_Q_LINK || a[0].what == FW_Q_EDIT) { a[0].name_n = fw_copy(a[0].name[..], fw_rest(line, 1)); stage = 1; }
+    else if w == "n" && stage < 2 { a[0].note_n = fw_copy(a[0].note[..], fw_rest(line, 1)); stage = 2; if a[0].note_n == 0 { return false; } }
+    else if w == "t" && stage < 3 { a[0].tags_n = fw_copy(a[0].tags[..], fw_rest(line, 1)); stage = 3; if a[0].tags_n == 0 { return false; } }
+    else if (a[0].what == FW_Q_ATTACH || a[0].what == FW_Q_UPLOAD) && (fw_hex(line, 64) || (line == "-" && a[0].what == FW_Q_ATTACH)) {
+      a[0].hashed = line != "-";
+      if a[0].hashed { for c, k: line { a[0].hash[k] = c; } }
+      at = end + 1; hashed = true;
+      break;
+    } else { return false; }
+    at = end + 1;
+  }
+  if (a[0].what == FW_Q_ATTACH || a[0].what == FW_Q_UPLOAD) != hashed { return false; }
+  if (a[0].what == FW_Q_LINK || a[0].what == FW_Q_EDIT) && at != body.count { return false; }
+  a[0].at = at;
+  name := cast(string) a[0].name[0..<a[0].name_n];
+  if a[0].note_n > 0 && !fw_line_ok(cast(string) a[0].note[0..<a[0].note_n], FW_NOTE) { return false; }
+  if a[0].tags_n > 0 && !fw_tags_ok(cast(string) a[0].tags[0..<a[0].tags_n]) { return false; }
+  if a[0].what == FW_Q_ATTACH || a[0].what == FW_Q_UPLOAD {
+    if !fw_name_ok(name) || a[0].bytes < 0 { return false; }
+    if a[0].what == FW_Q_ATTACH && (a[0].from < 0 || a[0].from > a[0].bytes || (!a[0].hashed && a[0].from != 0)) { return false; }
+  } else if !fw_line_ok(name, FW_NAME) { return false; }
+  a[0].ok = true;
+  return true;
+}
+// The heads' writers: "" when the fields are none.
+fw_tail :: (out: [] u8, at: int, name: string, note: string, tags: string) -> int {
+  n := at;
+  if name.count > 0 { n = fw_put(out, n, "name "); n = fw_put(out, n, name); n = fw_put(out, n, "\n"); }
+  if note.count > 0 { n = fw_put(out, n, "n "); n = fw_put(out, n, note); n = fw_put(out, n, "\n"); }
+  if tags.count > 0 { n = fw_put(out, n, "t "); n = fw_put(out, n, tags); n = fw_put(out, n, "\n"); }
+  return n;
+}
+fw_attach_head :: (out: [] u8, scope: int, bytes: int, from: int, name: string, note: string, tags: string, hash: string) -> string {
+  if scope < 0 || scope > 1 { return ""; }
+  n := fw_put(out, 0, FW_ATTACH); n = fw_put(out, n, " "); n = fw_put(out, n, FW_SCOPES[scope]);
+  n = fw_put(out, n, " "); n = fw_put_int(out, n, bytes); n = fw_put(out, n, " "); n = fw_put_int(out, n, from);
+  n = fw_put(out, n, " "); n = fw_put(out, n, name); n = fw_put(out, n, "\n");
+  n = fw_tail(out, n, "", note, tags);
+  n = fw_put(out, n, ifx hash.count == 64 then hash else "-"); n = fw_put(out, n, "\n");
+  return ifx n < 0 || n > FW_HEAD then "" else cast(string) out[0..<n];
+}
+// An upload's ask, without the hash line (the host adds it, as it reads the file) when hash is "".
+fw_upload_head :: (out: [] u8, scope: int, bytes: int, name: string, note: string, tags: string, hash: string) -> string {
+  if scope < 0 || scope > 1 { return ""; }
+  n := fw_put(out, 0, FW_UPLOAD); n = fw_put(out, n, " "); n = fw_put(out, n, FW_SCOPES[scope]);
+  n = fw_put(out, n, " "); n = fw_put_int(out, n, bytes); n = fw_put(out, n, " "); n = fw_put(out, n, name); n = fw_put(out, n, "\n");
+  n = fw_tail(out, n, "", note, tags);
+  if hash.count == 64 { n = fw_put(out, n, hash); n = fw_put(out, n, "\n"); }
+  return ifx n < 0 || n > FW_HEAD then "" else cast(string) out[0..<n];
+}
+fw_link_head :: (out: [] u8, scope: int, url: string, title: string, note: string, tags: string) -> string {
+  if scope < 0 || scope > 1 { return ""; }
+  n := fw_put(out, 0, FW_LINK); n = fw_put(out, n, " "); n = fw_put(out, n, FW_SCOPES[scope]); n = fw_put(out, n, " "); n = fw_put(out, n, url); n = fw_put(out, n, "\n");
+  n = fw_tail(out, n, title, note, tags);
+  return ifx n < 0 || n > FW_HEAD then "" else cast(string) out[0..<n];
+}
+fw_edit_head :: (out: [] u8, id: string, scope: int, name: string, note: string, tags: string) -> string {
+  if scope < 0 || scope > 1 { return ""; }
+  n := fw_put(out, 0, FW_EDIT); n = fw_put(out, n, " "); n = fw_put(out, n, id); n = fw_put(out, n, " "); n = fw_put(out, n, FW_SCOPES[scope]); n = fw_put(out, n, "\n");
+  n = fw_tail(out, n, name, note, tags);
+  return ifx n < 0 || n > FW_HEAD then "" else cast(string) out[0..<n];
+}
+fw_detach_head :: (out: [] u8, id: string) -> string {
+  n := fw_put(out, 0, FW_DETACH); n = fw_put(out, n, " "); n = fw_put(out, n, id); n = fw_put(out, n, "\n");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+// A part's answer, and an upload's.
+fw_part_answer :: (out: [] u8, hash: string, got: int) -> string {
+  n := fw_put(out, 0, FW_PART); n = fw_put(out, n, " "); n = fw_put(out, n, hash); n = fw_put(out, n, " "); n = fw_put_int(out, n, got); n = fw_put(out, n, "\n");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+FwPart :: struct { ok: bool; hash: [64] u8; got: int; }
+fw_part_read :: (text: string) -> FwPart {
+  r: FwPart;
+  line := fw_part(text, '\n', 0);
+  if fw_field(line, 0) != FW_PART || fw_fields(line) != 3 || !fw_hex(fw_field(line, 1), 64) || text.count != line.count + 1 { return r; }
+  for c, k: fw_field(line, 1) { r.hash[k] = c; }
+  r.got = fw_num(fw_field(line, 2));
+  r.ok = r.got >= 0;
+  return r;
+}
+FW_PUT :: 1; FW_KEPT :: 2;
+fw_upload_answer :: (out: [] u8, put: bool, hash: string, bytes: int, url: string) -> string {
+  n := fw_put(out, 0, FW_UPLOAD); n = fw_put(out, n, ifx put then " put " else " kept "); n = fw_put(out, n, hash);
+  n = fw_put(out, n, " "); n = fw_put_int(out, n, bytes); n = fw_put(out, n, " "); n = fw_put(out, n, ifx put then url else "-"); n = fw_put(out, n, "\n");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+FwUploaded :: struct { ok: bool; how: int; hash: [64] u8; bytes: int; url: [2048] u8; url_n: int; }
+fw_uploaded_read :: (text: string) -> FwUploaded {
+  r: FwUploaded;
+  line := fw_part(text, '\n', 0);
+  if fw_field(line, 0) != FW_UPLOAD || fw_fields(line) != 5 || text.count != line.count + 1 || !fw_hex(fw_field(line, 2), 64) { return r; }
+  how := fw_field(line, 1); url := fw_field(line, 4);
+  r.how = ifx how == "put" then FW_PUT else ifx how == "kept" then FW_KEPT else 0;
+  for c, k: fw_field(line, 2) { r.hash[k] = c; }
+  r.bytes = fw_num(fw_field(line, 3));
+  if r.how == FW_PUT { if url.count < 8 || url.count > 2048 || !(url[0..<7] == "http://" || url[0..<8] == "https://") { return r; } r.url_n = fw_copy(r.url[..], url); }
+  else if url != "-" { return r; }
+  r.ok = r.how > 0 && r.bytes >= 1;
+  return r;
+}
+
+// ---- the rules
+
+// What refuses a file before it is stored: by its name and size, against what the project holds.
+FW_OK :: 0; FW_NO_KIND :: 1; FW_EMPTY :: 2; FW_TOO_BIG :: 3; FW_FULL :: 4; FW_OVER :: 5; FW_NOT_WHAT :: 6; FW_PROGRAM :: 7; FW_NO_PROJECT :: 8;
+fw_admit :: (name: string, bytes: int, count: int, held: int) -> int {
+  if fw_kind_of(name) == 0 { return FW_NO_KIND; }
+  if bytes < 1 { return FW_EMPTY; }
+  if bytes > FW_FILE_MAX { return FW_TOO_BIG; }
+  if count >= FW_FILES_MAX { return FW_FULL; }
+  if held + bytes > FW_TOTAL_MAX { return FW_OVER; }
+  return FW_OK;
+}
+// A link counts as a file of the project's 200, and holds no bytes.
+fw_admit_link :: (count: int) -> int { return ifx count >= FW_FILES_MAX then FW_FULL else FW_OK; }
+// Megabytes, rounded up: what the pane and the words say.
+fw_mb :: (bytes: int) -> int { return (bytes + 1048575) / 1048576; }
+// The scan: a file's first bytes against what its name says. A program is refused whatever it is
+// called (drops.sniff's rule, migrations/0016_project_drops.sql, which the API also asks).
+fw_sniff :: (name: string, head: string) -> int {
+  if head.count == 0 { return FW_EMPTY; }
+  if fw_program(head) { return FW_PROGRAM; }
+  k := fw_ext_at(name);
+  ok := false;
+  if k == 0 { ok = fw_bytes(head, 0, 0x89, 'P', 'N', 'G') && fw_bytes(head, 4, 13, 10, 26, 10); }
+  if k == 1 || k == 2 { ok = head.count >= 3 && head[0] == 0xff && head[1] == 0xd8 && head[2] == 0xff; }
+  if k == 3 { ok = fw_at(head, 0, "RIFF") && fw_at(head, 8, "WEBP"); }
+  if k == 4 { ok = fw_at(head, 0, "GIF87a") || fw_at(head, 0, "GIF89a"); }
+  if k >= 5 && k <= 7 { ok = fw_texty(head); }
+  if k == 8 { ok = fw_at(head, 0, "%PDF-"); }
+  return ifx k < 0 then FW_NO_KIND else ifx ok then FW_OK else FW_NOT_WHAT;
+}
+// Four bytes at `at`.
+fw_bytes :: (b: string, at: int, x0: int, x1: int, x2: int, x3: int) -> bool {
+  return b.count >= at + 4 && cast(int) b[at] == x0 && cast(int) b[at + 1] == x1 && cast(int) b[at + 2] == x2 && cast(int) b[at + 3] == x3;
+}
+// A program's first bytes: Windows (MZ), ELF, a script (#!), Mach-O (both orders, both sizes, fat) and WebAssembly.
+fw_program :: (b: string) -> bool {
+  if fw_at(b, 0, "MZ") || fw_at(b, 0, "#!") || fw_bytes(b, 0, 0x7f, 'E', 'L', 'F') || fw_bytes(b, 0, 0, 'a', 's', 'm') { return true; }
+  if fw_bytes(b, 0, 0xfe, 0xed, 0xfa, 0xce) || fw_bytes(b, 0, 0xfe, 0xed, 0xfa, 0xcf) || fw_bytes(b, 0, 0xce, 0xfa, 0xed, 0xfe) { return true; }
+  return fw_bytes(b, 0, 0xcf, 0xfa, 0xed, 0xfe) || fw_bytes(b, 0, 0xca, 0xfe, 0xba, 0xbe);
+}
+fw_at :: (b: string, at: int, p: string) -> bool { return b.count >= at + p.count && b[at..<at + p.count] == p; }
+// Text: no NUL and good UTF-8 (a character cut at the end of the head is no fault).
+fw_texty :: (b: string) -> bool {
+  i := 0;
+  while i < b.count {
+    c := b[i];
+    if c == 0 { return false; }
+    if c < 128 { i += 1; continue; }
+    want := ifx c >= 0xf0 && c <= 0xf4 then 3 else ifx c >= 0xe0 then 2 else ifx c >= 0xc2 && c < 0xe0 then 1 else -1;
+    if want < 0 { return false; }
+    for k: 1..<want + 1 { if i + k >= b.count { return true; } if b[i + k] < 0x80 || b[i + k] > 0xbf { return false; } }
+    i += want + 1;
+  }
+  return true;
+}
+// What a kind is, as the words name it.
+fw_what :: (name: string) -> string {
+  k := fw_ext_at(name);
+  names := [FW_EXTS] string.["a PNG", "a JPEG", "a JPEG", "a WebP image", "a GIF", "Markdown", "Markdown", "text", "a PDF"];
+  return ifx k < 0 then "a file we attach" else names[k];
+}
+// A refusal in words that name the file and the limit.
+fw_words :: (verdict: int, name: string, bytes: int, held: int, out: [] u8) -> string {
+  n := 0;
+  if verdict == FW_NO_KIND { n = fw_put(out, 0, name); n = fw_put(out, n, " is not a file we attach. Attach a PNG, JPEG, WebP or GIF image, or a Markdown, text or PDF document, or add a link."); }
+  if verdict == FW_EMPTY { n = fw_put(out, 0, name); n = fw_put(out, n, " is empty."); }
+  if verdict == FW_TOO_BIG { n = fw_put(out, 0, name); n = fw_put(out, n, " is "); n = fw_put_int(out, n, fw_mb(bytes)); n = fw_put(out, n, " MB. A file can be "); n = fw_put_int(out, n, fw_mb(FW_FILE_MAX)); n = fw_put(out, n, " MB at most."); }
+  if verdict == FW_FULL { n = fw_put(out, 0, "The project has "); n = fw_put_int(out, n, FW_FILES_MAX); n = fw_put(out, n, " attachments, the most it holds. Remove one first."); }
+  if verdict == FW_OVER { n = fw_put(out, 0, name); n = fw_put(out, n, " would take the project's attachments to "); n = fw_put_int(out, n, fw_mb(held + bytes)); n = fw_put(out, n, " MB. A project holds "); n = fw_put_int(out, n, fw_mb(FW_TOTAL_MAX)); n = fw_put(out, n, " MB at most."); }
+  if verdict == FW_NOT_WHAT { n = fw_put(out, 0, name); n = fw_put(out, n, " is not what its name says: it is not "); n = fw_put(out, n, fw_what(name)); n = fw_put(out, n, "."); }
+  if verdict == FW_PROGRAM { n = fw_put(out, 0, name); n = fw_put(out, n, " is a program. We never attach programs."); }
+  if verdict == FW_NO_PROJECT { n = fw_put(out, 0, "This world has no project, so nothing can be attached to one."); }
+  return ifx n <= 0 then "" else cast(string) out[0..<n];
+}
+// An attachment's ID: 16 hex digits of the SHA-256 of what makes it, so the same file attached
+// twice at two times is two attachments.
+fw_id_make :: (seed: string, out: [] u8) -> bool {
+  h: [64] u8;
+  if out.count < FW_ID || !asset_hex(asset_id(seed), h[..]) { return false; }
+  for k: 0..<FW_ID { out[k] = h[k]; }
+  return true;
+}
+// Whether a rename keeps the file what it was: a file's extension never changes (a link's title may be anything).
+fw_rename_ok :: (kind: int, old: string, name: string) -> bool {
+  if kind == FW_LINK_KIND { return fw_line_ok(name, FW_NAME); }
+  a: [12] u8; b: [12] u8;
+  return fw_name_ok(name) && fw_ext(old, a[..]) == fw_ext(name, b[..]);
+}
+// The list's order: this world's first, then the project's, each newest first.
+fw_sort :: (l: [] FwList) {
+  for i: 1..<l[0].n {
+    j := i;
+    while j > 0 && fw_before(l[0].f[j], l[0].f[j - 1]) { t := l[0].f[j]; l[0].f[j] = l[0].f[j - 1]; l[0].f[j - 1] = t; j -= 1; }
+  }
+}
+fw_before :: (x: FwFile, y: FwFile) -> bool {
+  a := x; b := y;
+  if a.scope != b.scope { return a.scope < b.scope; }
+  if a.at != b.at { return a.at > b.at; }
+  for k: 0..<FW_ID { if a.id[k] != b.id[k] { return a.id[k] < b.id[k]; } }
+  return false;
+}
+// Whether a file matches what is searched for: its name, note or tags hold the words, any case.
+fw_matches :: (l: [] FwList, i: int, query: string) -> bool {
+  if query.count == 0 { return true; }
+  return fw_holds(fw_name_of(l, i), query) || fw_holds(fw_note_of(l, i), query) || fw_holds(fw_tags_of(l, i), query);
+}
+fw_holds :: (s: string, q: string) -> bool {
+  if q.count > s.count { return false; }
+  for i: 0..<s.count - q.count + 1 {
+    same := true;
+    for k: 0..<q.count { if fw_lower(s[i + k]) != fw_lower(q[k]) { same = false; break; } }
+    if same { return true; }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- checks
+
+FwTest :: struct { l: [1] FwList; m: [1] FwList; a: [1] FwAsk; out: [FW_BYTES] u8; s: [FW_BYTES] u8; }
+FW_T_HASH :: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+FW_T_LIST :: "world.files.v1 splice verse 3 2048 26214400 200 1073741824\nf 00112233445566aa world image 2000 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1763000000000 local RaiderGarage.png\nn The raiders' garage at night\nt garage,raiders\nf 00112233445566bb project document 48 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1763000000001 local Garage notes.md\nf 00112233445566cc project link 0 - 1763000000002 local The design doc\nu https://docs.google.com/document/d/abc\nt design\n";
+
+#test "a list reads as it was written, and nothing else reads" {
+  h: [1] FwTest; l := h[0].l[..];
+  #assert fw_read(l, FW_T_LIST, h[0].s[..]) && fw_world_of(l) == "splice" && fw_project_of(l) == "verse" && l[0].count == 3 && l[0].bytes == 2048 && l[0].n == 3;
+  #assert l[0].f[0].kind == FW_IMAGE && l[0].f[0].scope == FW_SCOPE_WORLD && fw_name_of(l, 0) == "RaiderGarage.png" && fw_note_of(l, 0) == "The raiders' garage at night" && fw_tags_of(l, 0) == "garage,raiders";
+  #assert l[0].f[2].kind == FW_LINK_KIND && !l[0].f[2].hashed && fw_url_of(l, 2) == "https://docs.google.com/document/d/abc" && fw_find(l, "00112233445566bb") == 1 && fw_find(l, "0011223344556600") == -1;
+  #assert fw_write(l, h[0].out[..]) == FW_T_LIST;
+  #assert fw_read(l, "world.files.v1 splice - 0 0 26214400 200 1073741824\n", h[0].s[..]) && l[0].n == 0 && l[0].project_n == 0;
+  #assert fw_read(l, "world.files.v1 - verse 0 0 26214400 200 1073741824\n", h[0].s[..]) && l[0].world_n == 0;
+  bad := [11] string.["", "world.files.v2 splice - 0 0 26214400 200 1073741824\n", "world.files.v1 - - 0 0 26214400 200 1073741824\n",
+    "world.files.v1 splice - 0 0 1 200 1073741824\n",
+    "world.files.v1 splice - 1 1 26214400 200 1073741824\nf 00112233445566bb project document 48 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1 local a.md\n",
+    "world.files.v1 splice verse 1 1 26214400 200 1073741824\nf 00112233445566bb world image 48 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1 local a.md\n",
+    "world.files.v1 splice verse 1 1 26214400 200 1073741824\nf 00112233445566bb world document 48 - 1 local a.md\n",
+    "world.files.v1 splice verse 1 1 26214400 200 1073741824\nf 00112233445566bb world link 0 - 1 local x\n",
+    "world.files.v1 splice verse 1 1 26214400 200 1073741824\nf 00112233445566bb world document 48 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1 local a.md\nt b\nn a\n",
+    "world.files.v1 splice verse 1 1 26214400 200 1073741824\nf 00112233445566bb world document 48 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1 local a.md\nt Big Tag\n",
+    "world.files.v1 splice verse 1 1 26214400 200 1073741824\nn hello\n"];
+  for b: bad { #assert !fw_read(l, b, h[0].s[..]); }
+}
+#test "a write's answer ends with what it did, and nothing follows it" {
+  h: [1] FwTest; l := h[0].l[..];
+  t := "world.files.v1 splice - 0 0 26214400 200 1073741824\ndid detached 00112233445566aa\n";
+  #assert fw_read(l, t, h[0].s[..]) && l[0].did == FW_DID_DETACHED && cast(string) l[0].did_id[..] == "00112233445566aa";
+  #assert !fw_read(l, "world.files.v1 splice - 0 0 26214400 200 1073741824\ndid gone 00112233445566aa\n", h[0].s[..]);
+  #assert !fw_read(l, "world.files.v1 splice - 0 0 26214400 200 1073741824\ndid detached 00112233445566aa\ndid detached 00112233445566aa\n", h[0].s[..]);
+}
+#test "a request's head reads as its writer writes it" {
+  h: [1] FwTest; a := h[0].a[..]; b: [FW_HEAD] u8;
+  head := fw_attach_head(b[..], FW_SCOPE_WORLD, 5, 0, "RaiderGarage.png", "The garage", "garage,raiders", "");
+  #assert head == "world.file.attach.v1 world 5 0 RaiderGarage.png\nn The garage\nt garage,raiders\n-\n";
+  body: [200] u8; n := fw_put(body[..], 0, head); n = fw_put(body[..], n, "hello");
+  #assert fw_ask_read(a, cast(string) body[0..<n]) && a[0].what == FW_Q_ATTACH && a[0].scope == FW_SCOPE_WORLD && a[0].bytes == 5 && a[0].from == 0 && !a[0].hashed && a[0].at == head.count && cast(string) a[0].note[0..<a[0].note_n] == "The garage";
+  head = fw_attach_head(b[..], FW_SCOPE_PROJECT, 9, 4, "a b.md", "", "", FW_T_HASH);
+  #assert fw_ask_read(a, head) && a[0].hashed && a[0].from == 4 && cast(string) a[0].name[0..<a[0].name_n] == "a b.md" && a[0].scope == FW_SCOPE_PROJECT;
+  #assert !fw_ask_read(a, fw_attach_head(b[..], FW_SCOPE_PROJECT, 9, 4, "a.md", "", "", ""));   // a part needs the hash
+  #assert !fw_ask_read(a, fw_attach_head(b[..], FW_SCOPE_PROJECT, 9, 4, "a/b.md", "", "", FW_T_HASH));
+  head = fw_upload_head(b[..], FW_SCOPE_WORLD, 9, "City.png", "", "city", FW_T_HASH);
+  #assert fw_ask_read(a, head) && a[0].what == FW_Q_UPLOAD && a[0].at == head.count;
+  #assert !fw_ask_read(a, fw_upload_head(b[..], FW_SCOPE_WORLD, 9, "City.png", "", "city", ""));
+  head = fw_link_head(b[..], FW_SCOPE_PROJECT, "https://docs.google.com/x", "The design doc", "", "design");
+  #assert fw_ask_read(a, head) && a[0].what == FW_Q_LINK && cast(string) a[0].name[0..<a[0].name_n] == "The design doc";
+  #assert !fw_ask_read(a, fw_link_head(b[..], FW_SCOPE_PROJECT, "javascript:alert(1)//x", "x", "", ""));
+  head = fw_edit_head(b[..], "00112233445566aa", FW_SCOPE_PROJECT, "Garage.png", "New note", "");
+  #assert fw_ask_read(a, head) && a[0].what == FW_Q_EDIT && cast(string) a[0].id[..] == "00112233445566aa";
+  #assert fw_ask_read(a, fw_detach_head(b[..], "00112233445566aa")) && a[0].what == FW_Q_DETACH;
+  bad := [5] string.["", "world.file.detach.v1 xyz\n", "world.file.edit.v1 00112233445566aa world\nt a\nn b\n", "world.file.attach.v1 elsewhere 1 0 a.md\n-\nx", "world.file.link.v1 world https://example.com/x\nname a\nextra\n"];
+  for x: bad { #assert !fw_ask_read(a, x); }
+}
+#test "a file is admitted by its kind and size against the project's limits, with words that name the limit" {
+  w: [FW_WORDS] u8;
+  #assert fw_admit("City.PNG", 1000, 0, 0) == FW_OK && fw_kind_of("City.PNG") == FW_IMAGE && fw_kind_of("notes.md") == FW_DOCUMENT && fw_type("a.JPG") == "image/jpeg";
+  #assert fw_admit("run.exe", 10, 0, 0) == FW_NO_KIND && fw_admit("logo.svg", 10, 0, 0) == FW_NO_KIND && fw_admit("x.png", 0, 0, 0) == FW_EMPTY;
+  #assert fw_admit("x.png", FW_FILE_MAX, 0, 0) == FW_OK && fw_admit("x.png", FW_FILE_MAX + 1, 0, 0) == FW_TOO_BIG;
+  #assert fw_admit("x.png", 10, 199, 0) == FW_OK && fw_admit("x.png", 10, 200, 0) == FW_FULL && fw_admit("x.png", 10, 0, FW_TOTAL_MAX - 9) == FW_OVER;
+  #assert fw_words(FW_TOO_BIG, "Huge.png", 31457280, 0, w[..]) == "Huge.png is 30 MB. A file can be 25 MB at most.";
+  #assert fw_words(FW_FULL, "x.png", 1, 0, w[..]) == "The project has 200 attachments, the most it holds. Remove one first.";
+  #assert fw_words(FW_OVER, "x.png", 2097152, FW_TOTAL_MAX - 1048576, w[..]) == "x.png would take the project's attachments to 1025 MB. A project holds 1024 MB at most.";
+  #assert fw_admit_link(199) == FW_OK && fw_admit_link(200) == FW_FULL;
+}
+// A test head from its bytes.
+fw_t_head :: (b: [] u8, x: [] int) -> string { for v, k: x { b[k] = cast,trunc(u8) v; } return cast(string) b[0..<x.count]; }
+#test "the scan: first bytes are what the name says, and a program is never taken" {
+  w: [FW_WORDS] u8; b: [16] u8;
+  png := [10] int.[0x89, 80, 78, 71, 13, 10, 26, 10, 0, 0]; jpg := [4] int.[0xff, 0xd8, 0xff, 0xe0];
+  cafe := [5] int.[67, 97, 102, 0xc3, 0xa9]; nul := [3] int.[97, 0, 98]; cut := [1] int.[0xc3]; bad := [2] int.[0xff, 0xfe];
+  mz := [4] int.[77, 90, 0x90, 0]; elf := [4] int.[0x7f, 69, 76, 70]; macho := [4] int.[0xcf, 0xfa, 0xed, 0xfe];
+  #assert fw_sniff("a.png", fw_t_head(b[..], png[..])) == FW_OK && fw_sniff("a.png", "GIF89a") == FW_NOT_WHAT && fw_sniff("a.jpeg", fw_t_head(b[..], jpg[..])) == FW_OK;
+  #assert fw_sniff("a.webp", "RIFF....WEBPVP8 ") == FW_OK && fw_sniff("a.gif", "GIF87a") == FW_OK && fw_sniff("a.pdf", "%PDF-1.7") == FW_OK;
+  #assert fw_sniff("a.md", fw_t_head(b[..], cafe[..])) == FW_OK && fw_sniff("a.txt", fw_t_head(b[..], nul[..])) == FW_NOT_WHAT && fw_sniff("a.md", fw_t_head(b[..], cut[..])) == FW_OK && fw_sniff("a.md", fw_t_head(b[..], bad[..])) == FW_NOT_WHAT;
+  #assert fw_sniff("a.png", fw_t_head(b[..], mz[..])) == FW_PROGRAM && fw_sniff("a.md", "#!/bin/sh\n") == FW_PROGRAM && fw_sniff("a.txt", fw_t_head(b[..], elf[..])) == FW_PROGRAM && fw_sniff("a.pdf", fw_t_head(b[..], macho[..])) == FW_PROGRAM && fw_sniff("a.png", "") == FW_EMPTY;
+  #assert fw_words(FW_NOT_WHAT, "a.png", 1, 0, w[..]) == "a.png is not what its name says: it is not a PNG.";
+}
+#test "names, tags, notes and links are held to their shapes" {
+  o: [FW_TAGS] u8; nb: [FW_NOTE + 8] u8;
+  #assert fw_name_ok("Raider garage inside.png") && !fw_name_ok(" a.png") && !fw_name_ok("a/b.png") && !fw_name_ok("a\nb.png") && !fw_name_ok("");
+  #assert fw_tags_clean("Garage, raiders night,,garage", o[..]) == "garage,raiders-night" && fw_tags_clean("", o[..]) == "" && fw_tags_clean("a,b,c,d,e,f,g,h,i", o[..]) == "a,b,c,d,e,f,g,h";
+  #assert fw_tags_ok("garage,raiders-night") && !fw_tags_ok("garage,garage") && !fw_tags_ok("Garage") && !fw_tags_ok("a,,b");
+  #assert fw_note_clean("  The garage\nat night  ", nb[..]) == "The garage at night";
+  #assert fw_url_ok("https://docs.google.com/d/x") && !fw_url_ok("ftp://example.com/x") && !fw_url_ok("https://a b.com/x") && !fw_url_ok("javascript:alert(1)");
+  #assert fw_rename_ok(FW_IMAGE, "a.png", "Garage.PNG") && !fw_rename_ok(FW_IMAGE, "a.png", "a.md") && fw_rename_ok(FW_LINK_KIND, "Doc", "Design doc");
+  #assert fw_holds("RaiderGarage.png", "garage") && !fw_holds("City.png", "garage");
+}
+#test "the list is this world's first, then the project's, newest first" {
+  h: [1] FwTest; l := h[0].l[..];
+  #assert fw_read(l, FW_T_LIST, h[0].s[..]);
+  t := l[0].f[0]; l[0].f[0] = l[0].f[2]; l[0].f[2] = t;
+  fw_sort(l);
+  #assert fw_write(l, h[0].out[..]) == "world.files.v1 splice verse 3 2048 26214400 200 1073741824\nf 00112233445566aa world image 2000 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1763000000000 local RaiderGarage.png\nn The raiders' garage at night\nt garage,raiders\nf 00112233445566cc project link 0 - 1763000000002 local The design doc\nu https://docs.google.com/document/d/abc\nt design\nf 00112233445566bb project document 48 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1763000000001 local Garage notes.md\n";
+}
+#test "a part's answer and an upload's read as they are written" {
+  b: [2200] u8;
+  p := fw_part_read(fw_part_answer(b[..], FW_T_HASH, 524288));
+  #assert p.ok && p.got == 524288 && cast(string) p.hash[..] == FW_T_HASH;
+  u := fw_uploaded_read(fw_upload_answer(b[..], true, FW_T_HASH, 12, "https://storage.example/session/1"));
+  #assert u.ok && u.how == FW_PUT && u.bytes == 12 && cast(string) u.url[0..<u.url_n] == "https://storage.example/session/1";
+  u = fw_uploaded_read(fw_upload_answer(b[..], false, FW_T_HASH, 12, ""));
+  #assert u.ok && u.how == FW_KEPT && !fw_uploaded_read("world.file.upload.v1 put x 1 -\n").ok;
+  id: [FW_ID] u8;
+  #assert fw_id_make("a", id[..]) && fw_id_ok(cast(string) id[..]);
+}
