@@ -40,6 +40,15 @@
   #assert wg_has(ms_text(WG_SAMPLE_DEPTH,"fs pos\npos\n",out[..]),"[[depth(any)]]");
 }
 
+#test "a typed uniform block (#13451) is a buffer of its struct, read at u[0], laid out as C and WGSL lay it out" {
+  out:[65536]u8;t:=ms_text(WG_SAMPLE_UB,WG_NAMES_UB,out[..]);
+  #assert wg_has(t,"struct coax_t7 {\n  float4 x;\n  float y;\n  float z;\n  float w;\n  float f4;\n};\nstatic_assert(sizeof(coax_t7) == 32");
+  #assert wg_has(t,"device const coax_t7* r_u [[buffer(0)]];") && wg_has(t,"return coax_p_v4(cx, cx.r_u[0].y, ") && wg_has(t,"return (cx.r_u[0].x.y * cx.r_u[0].z);");
+  tree:[8192]u32;n:=wg_parse(WG_SAMPLE_UB,tree[..]);work:[MS_WORDS]u32;k:=MS_reflection(tree[0..<n],WG_NAMES_UB,out[..],work[..]);
+  #assert k>0 && wg_has(cast(string)out[0..<k],"resource buffer 0 0 32 3 u\n");
+  // a vec4 after one f32: C puts it at 4, Metal at 16
+  #assert ms_try("2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 2 0 6 4 20 9 7 3 6 3 4 4 8 3 4 4 8 25 1 1 4 22 2 4 27 41 42 40 2 16 5 0 0 0 16 2 0 16 2 0 16 2 1065353216 6 2 6 8 2 6 8 13 1 1 4 27 41 42 40 1 16 5 0 0 1 6 4 2 2 2 2 4 2 2 2 2 14 1 1 4 31 6 4 18 0 18 1 18 2 18 3 2 0 0 0 1 2 1 1 3 2","ub_vs id instance u\nub_fs pos u\nv4 x y z w\nid\ninstance\nu 0 0 uniform\npos\n",out[..])==-9;
+}
 // Work after the shared tree/variant indexes: count, three class counts, and
 // (name id, type, resource class 9/10/11, slot, stage mask), at most 192 resources.
 MS_META :: WG_W_WORDS+8; MS_RESOURCES :: 192; MS_WORDS :: MS_META+MS_RESOURCES*5;
