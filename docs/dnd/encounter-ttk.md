@@ -11,12 +11,12 @@ wins by more than 25%; run this again with --write in the same commit when the c
 
 | Encounter | Class | Level | Wins | TTK s | Damage/s | Healed | Taken | Downs | HP left % | Resources left % |
 |---|---|---|---|---|---|---|---|---|---|---|
-| wolves | Barbarian | 1 | 18/32 | 5.0 | 5.2 | 0.0 | 10.7 | 14 | 24 | 100 |
-| wolves | Barbarian | 2 | 21/32 | 6.4 | 4.3 | 0.0 | 13.6 | 11 | 41 | 100 |
-| wolves | Barbarian | 3 | 27/32 | 7.8 | 3.7 | 0.0 | 17.9 | 5 | 44 | 100 |
-| wolves | Barbarian | 4 | 32/32 | 6.9 | 4.8 | 0.0 | 12.7 | 0 | 68 | 100 |
-| wolves | Barbarian | 5 | 32/32 | 2.1 | 14.9 | 0.0 | 3.7 | 0 | 93 | 100 |
-| wolves | Barbarian | 6 | 32/32 | 1.8 | 16.3 | 0.0 | 2.1 | 0 | 96 | 100 |
+| wolves | Barbarian | 1 | 18/32 | 5.0 | 5.2 | 0.0 | 10.7 | 14 | 24 | 50 |
+| wolves | Barbarian | 2 | 21/32 | 6.4 | 4.3 | 0.0 | 13.6 | 11 | 41 | 50 |
+| wolves | Barbarian | 3 | 27/32 | 7.8 | 3.7 | 0.0 | 17.9 | 5 | 44 | 66 |
+| wolves | Barbarian | 4 | 32/32 | 6.9 | 4.8 | 0.0 | 12.7 | 0 | 68 | 66 |
+| wolves | Barbarian | 5 | 32/32 | 2.1 | 14.9 | 0.0 | 3.7 | 0 | 93 | 66 |
+| wolves | Barbarian | 6 | 32/32 | 1.8 | 16.3 | 0.0 | 2.1 | 0 | 96 | 75 |
 | wolves | Bard | 1 | 7/32 | 2.6 | 11.3 | 0.9 | 8.2 | 25 | 19 | 74 |
 | wolves | Bard | 2 | 16/32 | 3.6 | 7.3 | 5.4 | 14.5 | 16 | 39 | 66 |
 | wolves | Bard | 3 | 19/32 | 6.3 | 4.7 | 10.9 | 22.7 | 13 | 44 | 43 |
@@ -30,11 +30,11 @@ wins by more than 25%; run this again with --write in the same commit when the c
 | wolves | Cleric | 5 | 30/32 | 6.6 | 4.8 | 17.4 | 28.9 | 2 | 65 | 47 |
 | wolves | Cleric | 6 | 31/32 | 3.7 | 8.3 | 7.3 | 19.8 | 1 | 68 | 66 |
 | wolves | Druid | 1 | 4/32 | 3.7 | 8.0 | 0.0 | 8.1 | 28 | 10 | 0 |
-| wolves | Druid | 2 | 0/32 | - | 3.4 | 0.0 | 15.0 | 32 | 0 | 80 |
-| wolves | Druid | 3 | 0/32 | - | 4.4 | 0.0 | 21.0 | 32 | 0 | 75 |
-| wolves | Druid | 4 | 12/32 | 5.6 | 5.1 | 0.0 | 23.3 | 20 | 14 | 77 |
-| wolves | Druid | 5 | 17/32 | 7.2 | 4.3 | 0.0 | 27.0 | 15 | 18 | 81 |
-| wolves | Druid | 6 | 27/32 | 5.1 | 6.0 | 0.0 | 18.0 | 5 | 53 | 78 |
+| wolves | Druid | 2 | 11/32 | 4.1 | 7.7 | 0.5 | 11.7 | 21 | 25 | 43 |
+| wolves | Druid | 3 | 24/32 | 5.9 | 5.3 | 11.9 | 20.6 | 8 | 58 | 39 |
+| wolves | Druid | 4 | 29/32 | 5.5 | 5.9 | 13.8 | 22.8 | 3 | 66 | 46 |
+| wolves | Druid | 5 | 31/32 | 4.0 | 8.1 | 4.2 | 13.3 | 1 | 72 | 63 |
+| wolves | Druid | 6 | 32/32 | 4.2 | 7.9 | 2.6 | 14.4 | 0 | 69 | 71 |
 | wolves | Fighter | 1 | 5/32 | 5.1 | 5.7 | 0.0 | 11.3 | 27 | 5 | 100 |
 | wolves | Fighter | 2 | 8/32 | 4.6 | 5.4 | 0.0 | 17.6 | 24 | 12 | 66 |
 | wolves | Fighter | 3 | 11/32 | 6.1 | 4.6 | 0.0 | 25.5 | 21 | 9 | 66 |
@@ -83,12 +83,12 @@ wins by more than 25%; run this again with --write in the same commit when the c
 | wolves | Wizard | 4 | 24/32 | 6.5 | 4.6 | 0.0 | 11.0 | 8 | 50 | 6 |
 | wolves | Wizard | 5 | 32/32 | 0.2 | 31.3 | 0.0 | 0.0 | 0 | 100 | 64 |
 | wolves | Wizard | 6 | 32/32 | 0.3 | 29.8 | 0.0 | 0.0 | 0 | 100 | 68 |
-| guard | Barbarian | 1 | 0/32 | - | 2.8 | 0.0 | 14.0 | 32 | 0 | 100 |
-| guard | Barbarian | 2 | 0/32 | - | 3.6 | 0.0 | 23.0 | 32 | 0 | 100 |
-| guard | Barbarian | 3 | 0/32 | - | 2.4 | 0.0 | 32.0 | 32 | 0 | 100 |
-| guard | Barbarian | 4 | 0/32 | - | 2.4 | 0.0 | 41.0 | 32 | 0 | 100 |
-| guard | Barbarian | 5 | 0/32 | - | 7.4 | 0.0 | 50.0 | 32 | 0 | 100 |
-| guard | Barbarian | 6 | 0/32 | - | 5.5 | 0.0 | 59.0 | 32 | 0 | 100 |
+| guard | Barbarian | 1 | 0/32 | - | 2.8 | 0.0 | 14.0 | 32 | 0 | 50 |
+| guard | Barbarian | 2 | 0/32 | - | 3.6 | 0.0 | 23.0 | 32 | 0 | 50 |
+| guard | Barbarian | 3 | 0/32 | - | 2.4 | 0.0 | 32.0 | 32 | 0 | 66 |
+| guard | Barbarian | 4 | 0/32 | - | 2.4 | 0.0 | 41.0 | 32 | 0 | 66 |
+| guard | Barbarian | 5 | 0/32 | - | 7.4 | 0.0 | 50.0 | 32 | 0 | 66 |
+| guard | Barbarian | 6 | 0/32 | - | 5.5 | 0.0 | 59.0 | 32 | 0 | 75 |
 | guard | Bard | 1 | 0/32 | - | 4.8 | 0.0 | 9.0 | 32 | 0 | 80 |
 | guard | Bard | 2 | 0/32 | - | 5.9 | 0.2 | 15.2 | 32 | 0 | 82 |
 | guard | Bard | 3 | 0/32 | - | 4.0 | 5.9 | 26.9 | 32 | 0 | 64 |
@@ -102,11 +102,11 @@ wins by more than 25%; run this again with --write in the same commit when the c
 | guard | Cleric | 5 | 0/32 | - | 5.7 | 33.8 | 66.8 | 32 | 0 | 48 |
 | guard | Cleric | 6 | 1/32 | 7.6 | 4.4 | 77.3 | 115.3 | 31 | 3 | 26 |
 | guard | Druid | 1 | 0/32 | - | 5.8 | 0.0 | 9.0 | 32 | 0 | 50 |
-| guard | Druid | 2 | 0/32 | - | 2.3 | 0.0 | 15.0 | 32 | 0 | 80 |
-| guard | Druid | 3 | 0/32 | - | 3.1 | 0.0 | 21.0 | 32 | 0 | 75 |
-| guard | Druid | 4 | 0/32 | - | 3.5 | 0.0 | 27.0 | 32 | 0 | 77 |
-| guard | Druid | 5 | 0/32 | - | 4.0 | 0.0 | 33.0 | 32 | 0 | 81 |
-| guard | Druid | 6 | 0/32 | - | 4.3 | 5.6 | 44.6 | 32 | 0 | 79 |
+| guard | Druid | 2 | 0/32 | - | 5.1 | 0.3 | 15.3 | 32 | 0 | 78 |
+| guard | Druid | 3 | 0/32 | - | 3.7 | 3.9 | 24.9 | 32 | 0 | 80 |
+| guard | Druid | 4 | 0/32 | - | 3.2 | 9.0 | 36.0 | 32 | 0 | 76 |
+| guard | Druid | 5 | 0/32 | - | 5.1 | 17.4 | 50.4 | 32 | 0 | 71 |
+| guard | Druid | 6 | 0/32 | - | 4.8 | 33.8 | 72.8 | 32 | 0 | 63 |
 | guard | Fighter | 1 | 0/32 | - | 4.8 | 0.0 | 12.0 | 32 | 0 | 100 |
 | guard | Fighter | 2 | 0/32 | - | 6.1 | 0.0 | 20.0 | 32 | 0 | 93 |
 | guard | Fighter | 3 | 0/32 | - | 5.2 | 0.0 | 28.0 | 32 | 0 | 87 |
@@ -155,12 +155,12 @@ wins by more than 25%; run this again with --write in the same commit when the c
 | guard | Wizard | 4 | 0/32 | - | 3.0 | 0.0 | 22.0 | 32 | 0 | 14 |
 | guard | Wizard | 5 | 0/32 | - | 10.7 | 0.0 | 27.0 | 32 | 0 | 19 |
 | guard | Wizard | 6 | 0/32 | - | 12.5 | 0.0 | 32.0 | 32 | 0 | 21 |
-| one wolf | Barbarian | 1 | 32/32 | 0.6 | 8.4 | 0.0 | 0.1 | 0 | 99 | 100 |
-| one wolf | Barbarian | 2 | 32/32 | 1.2 | 6.5 | 0.0 | 1.2 | 0 | 95 | 100 |
-| one wolf | Barbarian | 3 | 32/32 | 1.3 | 5.9 | 0.0 | 1.1 | 0 | 96 | 100 |
-| one wolf | Barbarian | 4 | 32/32 | 0.9 | 7.2 | 0.0 | 0.5 | 0 | 99 | 100 |
-| one wolf | Barbarian | 5 | 32/32 | 0.2 | 11.0 | 0.0 | 0.0 | 0 | 100 | 100 |
-| one wolf | Barbarian | 6 | 32/32 | 0.2 | 11.0 | 0.0 | 0.0 | 0 | 100 | 100 |
+| one wolf | Barbarian | 1 | 32/32 | 0.6 | 8.4 | 0.0 | 0.1 | 0 | 99 | 50 |
+| one wolf | Barbarian | 2 | 32/32 | 1.2 | 6.5 | 0.0 | 1.2 | 0 | 95 | 50 |
+| one wolf | Barbarian | 3 | 32/32 | 1.3 | 5.9 | 0.0 | 1.1 | 0 | 96 | 66 |
+| one wolf | Barbarian | 4 | 32/32 | 0.9 | 7.2 | 0.0 | 0.5 | 0 | 99 | 66 |
+| one wolf | Barbarian | 5 | 32/32 | 0.2 | 11.0 | 0.0 | 0.0 | 0 | 100 | 66 |
+| one wolf | Barbarian | 6 | 32/32 | 0.2 | 11.0 | 0.0 | 0.0 | 0 | 100 | 75 |
 | one wolf | Bard | 1 | 24/32 | 2.5 | 3.2 | 1.8 | 5.4 | 8 | 59 | 66 |
 | one wolf | Bard | 2 | 32/32 | 2.9 | 3.8 | 2.4 | 4.6 | 0 | 85 | 66 |
 | one wolf | Bard | 3 | 32/32 | 2.4 | 4.5 | 0.9 | 2.9 | 0 | 90 | 76 |
@@ -174,11 +174,11 @@ wins by more than 25%; run this again with --write in the same commit when the c
 | one wolf | Cleric | 5 | 32/32 | 0.6 | 9.2 | 0.0 | 1.3 | 0 | 96 | 78 |
 | one wolf | Cleric | 6 | 32/32 | 0.8 | 8.7 | 0.0 | 2.0 | 0 | 95 | 81 |
 | one wolf | Druid | 1 | 24/32 | 3.4 | 3.0 | 0.0 | 3.1 | 8 | 66 | 0 |
-| one wolf | Druid | 2 | 28/32 | 2.4 | 3.6 | 0.0 | 4.2 | 4 | 72 | 80 |
-| one wolf | Druid | 3 | 32/32 | 3.0 | 3.6 | 0.0 | 2.9 | 0 | 86 | 75 |
-| one wolf | Druid | 4 | 32/32 | 2.0 | 5.6 | 0.0 | 1.4 | 0 | 95 | 77 |
-| one wolf | Druid | 5 | 32/32 | 2.0 | 5.3 | 0.0 | 0.4 | 0 | 99 | 81 |
-| one wolf | Druid | 6 | 32/32 | 2.7 | 4.1 | 0.0 | 2.0 | 0 | 95 | 78 |
+| one wolf | Druid | 2 | 31/32 | 3.2 | 3.2 | 0.3 | 3.2 | 1 | 81 | 37 |
+| one wolf | Druid | 3 | 32/32 | 2.8 | 3.9 | 0.3 | 2.1 | 0 | 91 | 60 |
+| one wolf | Druid | 4 | 32/32 | 2.3 | 4.9 | 0.4 | 2.5 | 0 | 92 | 68 |
+| one wolf | Druid | 5 | 32/32 | 0.7 | 9.0 | 0.0 | 0.2 | 0 | 100 | 85 |
+| one wolf | Druid | 6 | 32/32 | 0.4 | 10.7 | 0.0 | 0.0 | 0 | 100 | 89 |
 | one wolf | Fighter | 1 | 32/32 | 1.2 | 7.3 | 0.0 | 2.2 | 0 | 82 | 100 |
 | one wolf | Fighter | 2 | 32/32 | 1.4 | 6.7 | 0.0 | 3.0 | 0 | 85 | 66 |
 | one wolf | Fighter | 3 | 32/32 | 1.2 | 7.9 | 0.0 | 2.3 | 0 | 92 | 66 |
@@ -227,12 +227,12 @@ wins by more than 25%; run this again with --write in the same commit when the c
 | one wolf | Wizard | 4 | 32/32 | 0.8 | 8.1 | 0.0 | 0.0 | 0 | 100 | 47 |
 | one wolf | Wizard | 5 | 32/32 | 0.0 | 11.0 | 0.0 | 0.0 | 0 | 100 | 66 |
 | one wolf | Wizard | 6 | 32/32 | 0.0 | 11.0 | 0.0 | 0.0 | 0 | 100 | 70 |
-| two wolves | Barbarian | 1 | 28/32 | 4.2 | 4.7 | 0.0 | 5.9 | 4 | 57 | 100 |
-| two wolves | Barbarian | 2 | 30/32 | 3.4 | 5.5 | 0.0 | 5.1 | 2 | 77 | 100 |
-| two wolves | Barbarian | 3 | 32/32 | 3.9 | 5.4 | 0.0 | 4.9 | 0 | 85 | 100 |
-| two wolves | Barbarian | 4 | 32/32 | 4.1 | 5.4 | 0.0 | 5.8 | 0 | 86 | 100 |
-| two wolves | Barbarian | 5 | 32/32 | 0.7 | 20.7 | 0.0 | 0.0 | 0 | 100 | 100 |
-| two wolves | Barbarian | 6 | 32/32 | 0.8 | 18.3 | 0.0 | 0.5 | 0 | 99 | 100 |
+| two wolves | Barbarian | 1 | 28/32 | 4.2 | 4.7 | 0.0 | 5.9 | 4 | 57 | 50 |
+| two wolves | Barbarian | 2 | 30/32 | 3.4 | 5.5 | 0.0 | 5.1 | 2 | 77 | 50 |
+| two wolves | Barbarian | 3 | 32/32 | 3.9 | 5.4 | 0.0 | 4.9 | 0 | 85 | 66 |
+| two wolves | Barbarian | 4 | 32/32 | 4.1 | 5.4 | 0.0 | 5.8 | 0 | 86 | 66 |
+| two wolves | Barbarian | 5 | 32/32 | 0.7 | 20.7 | 0.0 | 0.0 | 0 | 100 | 66 |
+| two wolves | Barbarian | 6 | 32/32 | 0.8 | 18.3 | 0.0 | 0.5 | 0 | 99 | 75 |
 | two wolves | Bard | 1 | 2/32 | 9.3 | 3.0 | 2.2 | 11.0 | 30 | 2 | 69 |
 | two wolves | Bard | 2 | 11/32 | 6.2 | 3.0 | 6.5 | 18.7 | 21 | 19 | 60 |
 | two wolves | Bard | 3 | 31/32 | 5.5 | 4.0 | 5.8 | 10.5 | 1 | 77 | 43 |
@@ -246,11 +246,11 @@ wins by more than 25%; run this again with --write in the same commit when the c
 | two wolves | Cleric | 5 | 32/32 | 2.5 | 8.2 | 3.8 | 9.6 | 0 | 82 | 69 |
 | two wolves | Cleric | 6 | 32/32 | 2.6 | 8.0 | 2.3 | 8.3 | 0 | 85 | 71 |
 | two wolves | Druid | 1 | 2/32 | 7.1 | 2.8 | 0.0 | 8.9 | 30 | 1 | 0 |
-| two wolves | Druid | 2 | 13/32 | 6.5 | 3.1 | 0.0 | 12.5 | 19 | 17 | 80 |
-| two wolves | Druid | 3 | 13/32 | 6.3 | 2.9 | 0.0 | 17.8 | 19 | 15 | 75 |
-| two wolves | Druid | 4 | 22/32 | 4.8 | 3.8 | 0.0 | 16.2 | 10 | 40 | 77 |
-| two wolves | Druid | 5 | 24/32 | 5.6 | 3.4 | 0.0 | 19.4 | 8 | 41 | 81 |
-| two wolves | Druid | 6 | 31/32 | 4.5 | 4.7 | 0.0 | 10.1 | 1 | 74 | 78 |
+| two wolves | Druid | 2 | 12/32 | 5.6 | 2.6 | 3.1 | 15.2 | 20 | 19 | 25 |
+| two wolves | Druid | 3 | 30/32 | 6.2 | 3.5 | 10.7 | 16.3 | 2 | 73 | 32 |
+| two wolves | Druid | 4 | 32/32 | 5.8 | 3.8 | 6.6 | 12.1 | 0 | 79 | 42 |
+| two wolves | Druid | 5 | 32/32 | 3.6 | 6.1 | 2.4 | 9.7 | 0 | 77 | 66 |
+| two wolves | Druid | 6 | 32/32 | 3.4 | 6.5 | 1.9 | 9.0 | 0 | 81 | 74 |
 | two wolves | Fighter | 1 | 16/32 | 3.3 | 6.2 | 0.0 | 8.3 | 16 | 31 | 100 |
 | two wolves | Fighter | 2 | 30/32 | 3.3 | 6.3 | 0.0 | 7.5 | 2 | 63 | 66 |
 | two wolves | Fighter | 3 | 30/32 | 4.6 | 4.6 | 0.0 | 13.3 | 2 | 52 | 66 |
