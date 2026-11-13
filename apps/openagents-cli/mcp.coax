@@ -1,5 +1,5 @@
 // openagents mcp: the realm commands as MCP tools, over stdio (#12636).
-//   openagents mcp [--read-only] [--domains realm] [--profile NAME] [--origin URL]
+//   openagents mcp [--read-only] [--all] [--domains realm] [--profile NAME] [--origin URL]
 //   claude mcp add openagents -- openagents mcp
 // Requests and answers are JSON-RPC 2.0, one JSON object a line. Each tool is
 // one row of REALM_COMMANDS (commands.coax): its name is realm_VERB, its
@@ -8,6 +8,10 @@
 // so a tool does exactly what the command does, with the same checks, key and
 // exit codes. realm_shot, and realm_look with a shot, also answer with the PNG as an image.
 // skill.coax writes the same table as a Claude skill.
+// The table is past 60 rows (#13439), so tools/list offers the rows of MCP_LOADED and two more:
+// realm_find picks rows by their typed fields (area, effect, a property, or one name) and answers
+// with their definitions, and realm_call calls any row by its name. --all lists every row as before.
+// realm_find matches fields exactly and never matches words in a row's help.
 // Not here: Anime Lab tools (#12634), resources, prompts and paging.
 
 cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
@@ -19,14 +23,14 @@ MCP_PNG :: 4194304;
 MCP_CHILD :: 262144;
 MCP_PROTOCOL :: "2025-06-18";
 
-McpCfg :: struct { read_only: bool; profile: string; origin: string; exe: string; }
+McpCfg :: struct { read_only: bool; all: bool; profile: string; origin: string; exe: string; }
 
 // ---- the tools, from the command table -------------------------------------------
 
 mcp_offered :: (c: CliCommand, read_only: bool) -> bool {
   if !read_only { return true; }
   // a seat changes nothing on the server, except a character's chat and a visitor's build proposal
-  if c.route == "world" { return c.effect == "read"; }   // a world's rows say what they do (#13435)
+  if c.route == "world" || c.route == "files" { return c.effect == "read"; }   // a world's rows and its files' say what they do (#13435)
   return c.method == "GET" || c.verb == "shot" || (c.route == "seat" && c.verb != "say" && c.verb != "use");
 }
 // A tool's name and its properties' names are the command table's (commands.coax mcp_tool_name, mcp_arg_name, mcp_kind_index, mcp_flag_name).
@@ -88,10 +92,8 @@ mcp_tool :: (o: [] Jo, c: CliCommand) {
   jo_obj(o);
   jo_key(o, "name"); jo_str(o, mcp_tool_name(c.verb, nm[..]));
   // the row's help, then its effect and approval (commands.coax rc_effect_note, #13435)
-  db: [1024] u8; eb: [64] u8;
-  dn := copy(c.help, db[..]); note := rc_effect_note(c, eb[..]);
-  for ch: note { if dn < db.count { db[dn] = ch; dn += 1; } }
-  jo_key(o, "description"); jo_str(o, cast(string) db[0..<dn]);
+  db: [1024] u8;
+  jo_key(o, "description"); jo_str(o, mcp_description(c, db[..]));
   jo_key(o, "inputSchema"); jo_obj(o);
   jo_key(o, "type"); jo_str(o, "object");
   jo_key(o, "properties"); jo_obj(o);
@@ -123,6 +125,119 @@ mcp_find_tool :: (name: string) -> int {
   nm: [64] u8;
   for i: 0..<REALM_COMMANDS.count { if mcp_tool_name(REALM_COMMANDS[i].verb, nm[..]) == name { return i; } }
   return -1;
+}
+
+// ---- find, then call (#13439) ------------------------------------------------------
+
+// The rows tools/list offers without a find: what a session reads, makes and edits most.
+MCP_LOADED :: [16] string.["list","show","new","doc","shot","move","place","world","world-place","world-move","world-remove","world-undo","play","look","go","say"];
+MCP_AREAS :: [4] string.["realm","seat","world","files"];
+MCP_EFFECTS :: [6] string.["read","write","spend","publish","destructive","player-facing"];
+MCP_FIND_FULL :: 8;   // a find of more rows than this answers with names and descriptions only
+
+mcp_loaded :: (c: CliCommand) -> bool {
+  for v: MCP_LOADED { if v == c.verb { return true; } }
+  return false;
+}
+// A row's area, from its route: a seat's rows, a world's (a world with an ID), its files, and the realm's own.
+mcp_area :: (c: CliCommand) -> string {
+  if c.route == "seat" || c.route == "world" || c.route == "files" { return c.route; }
+  return "realm";
+}
+mcp_description :: (c: CliCommand, out: [] u8) -> string {
+  eb: [64] u8;
+  dn := copy(c.help, out); note := rc_effect_note(c, eb[..]);
+  for ch: note { if dn < out.count { out[dn] = ch; dn += 1; } }
+  return cast(string) out[0..<dn];
+}
+mcp_enum :: (o: [] Jo, name: string, words: [] const string, description: string) {
+  jo_key(o, name); jo_obj(o); jo_key(o, "type"); jo_str(o, "string");
+  jo_key(o, "enum"); jo_arr(o); for w: words { jo_str(o, w); } jo_end(o);
+  jo_key(o, "description"); jo_str(o, description); jo_end(o);
+}
+mcp_find_tool_def :: (o: [] Jo) {
+  jo_obj(o);
+  jo_key(o, "name"); jo_str(o, "realm_find");
+  jo_key(o, "description"); jo_str(o, "find the realm tools that are not listed here: every given field must match exactly (area realm: a realm's board, asks, proposals, lore and quests; seat: visiting one; world: a world with an ID, its actors and scripts; files: attachments). The answer has each tool's name, description and input schema (names and descriptions only when more than 8 match: narrow it, or name one). Call a found tool with realm_call [read]");
+  jo_key(o, "inputSchema"); jo_obj(o); jo_key(o, "type"); jo_str(o, "object");
+  jo_key(o, "properties"); jo_obj(o);
+  mcp_enum(o, "area", MCP_AREAS[..], "the part of the product the tool works on");
+  mcp_enum(o, "effect", MCP_EFFECTS[..], "what a call does");
+  jo_key(o, "takes"); jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "maxLength"); jo_int(o, 32);
+  jo_key(o, "description"); jo_str(o, "a property the tool's input has, by its exact name (rev, entity, foe, script, ...)"); jo_end(o);
+  jo_key(o, "name"); jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "maxLength"); jo_int(o, 64);
+  jo_key(o, "description"); jo_str(o, "one tool by its exact name, for its input schema"); jo_end(o);
+  jo_end(o);
+  jo_key(o, "additionalProperties"); jo_bool(o, false);
+  jo_end(o);
+  jo_key(o, "annotations"); jo_obj(o); jo_key(o, "readOnlyHint"); jo_bool(o, true); jo_end(o);
+  jo_end(o);
+}
+mcp_call_tool_def :: (o: [] Jo) {
+  jo_obj(o);
+  jo_key(o, "name"); jo_str(o, "realm_call");
+  jo_key(o, "description"); jo_str(o, "call a realm tool by the name realm_find gave, with the arguments its input schema asks for; it does what that tool says it does, with the same checks");
+  jo_key(o, "inputSchema"); jo_obj(o); jo_key(o, "type"); jo_str(o, "object");
+  jo_key(o, "properties"); jo_obj(o);
+  jo_key(o, "name"); jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "maxLength"); jo_int(o, 64); jo_end(o);
+  jo_key(o, "arguments"); jo_obj(o); jo_key(o, "type"); jo_str(o, "object"); jo_end(o);
+  jo_end(o);
+  jo_key(o, "required"); jo_arr(o); jo_str(o, "name"); jo_end(o);
+  jo_key(o, "additionalProperties"); jo_bool(o, false);
+  jo_end(o);
+  jo_end(o);
+}
+// A selector's string field: "" when it is not given; ok turns false when it is given and is not a string that fits.
+mcp_selector :: (d: Jv, args: int, name: string, out: [] u8, ok: [] bool) -> string {
+  at := ifx args >= 0 then jv_get(d, args, name) else -1;
+  if at < 0 { return ""; }
+  if jv_kind(d, at) != JV_STRING { ok[0] = false; return ""; }
+  n := jv_str(d, at, out);
+  if n <= 0 { ok[0] = false; return ""; }
+  return cast(string) out[0..<n];
+}
+mcp_one_of :: (w: string, words: [] const string) -> bool { for x: words { if x == w { return true; } } return false; }
+// realm_find's answer as the text of one JSON object, or "" with err set. Every given field is compared whole
+// with the row's own field: no row is chosen by words in its help.
+mcp_find :: (d: Jv, args: int, cfg: McpCfg, out: [] u8, err: [] string) -> string {
+  err[0] = "";
+  if args >= 0 && jv_kind(d, args) != JV_OBJECT { err[0] = "arguments must be an object"; return ""; }
+  m := ifx args >= 0 then d.nodes[args].first else -1;
+  while m >= 0 {
+    k := jv_key(d, m);
+    if k != "area" && k != "effect" && k != "takes" && k != "name" { err[0] = "unknown argument"; return ""; }
+    m = d.nodes[m].next;
+  }
+  ab: [16] u8; eb: [16] u8; tb: [32] u8; nb: [64] u8; ok: [1] bool; ok[0] = true;
+  area := mcp_selector(d, args, "area", ab[..], ok[..]);
+  effect := mcp_selector(d, args, "effect", eb[..], ok[..]);
+  takes := mcp_selector(d, args, "takes", tb[..], ok[..]);
+  name := mcp_selector(d, args, "name", nb[..], ok[..]);
+  if !ok[0] { err[0] = "an argument has the wrong type"; return ""; }
+  if area != "" && !mcp_one_of(area, MCP_AREAS[..]) { err[0] = "area is one of realm, seat, world, files"; return ""; }
+  if effect != "" && !mcp_one_of(effect, MCP_EFFECTS[..]) { err[0] = "effect is one of read, write, spend, publish, destructive, player-facing"; return ""; }
+  hit: [128] bool; count := 0; tn: [64] u8;
+  for c, i: REALM_COMMANDS {
+    hit[i] = mcp_offered(c, cfg.read_only)
+      && (area == "" || mcp_area(c) == area) && (effect == "" || c.effect == effect)
+      && (takes == "" || rc_has_prop(c, takes)) && (name == "" || mcp_tool_name(c.verb, tn[..]) == name);
+    if hit[i] { count += 1; }
+  }
+  o: [1] Jo; jo_start(o[..], out);
+  full := count <= MCP_FIND_FULL;
+  jo_obj(o[..]); jo_key(o[..], "count"); jo_int(o[..], count);
+  if !full { jo_key(o[..], "narrow"); jo_str(o[..], "more than 8 tools match: add area, effect or takes, or pass name for one tool's input schema"); }
+  jo_key(o[..], "tools"); jo_arr(o[..]);
+  db: [1024] u8;
+  for c, i: REALM_COMMANDS {
+    if !hit[i] { continue; }
+    if full { mcp_tool(o[..], c); continue; }
+    jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], mcp_tool_name(c.verb, tn[..]));
+    jo_key(o[..], "area"); jo_str(o[..], mcp_area(c));
+    jo_key(o[..], "description"); jo_str(o[..], mcp_description(c, db[..])); jo_end(o[..]);
+  }
+  jo_end(o[..]); jo_end(o[..]);
+  return jo_text(o[..]);
 }
 
 // ---- a call becomes the command's argv ---------------------------------------------
@@ -228,6 +343,67 @@ mcp_text_result :: (o: [] Jo, d: Jv, id: int, text: string, is_error: bool) {
   jo_end(o);
 }
 
+// Runs one row with the arguments object at args (-1: none) and writes the call's answer.
+// run is false in checks: the answer is then the argv it would run.
+mcp_call :: (o: [] Jo, d: Jv, id: int, cfg: McpCfg, c: CliCommand, args: int, run: bool) -> string {
+  v: [1] McpArgv;
+  // shot with no file: a new temporary folder, removed with what the shot wrote there
+  temp: [512] u8; tn := 0; shot_dir := ""; shot_out := "";
+  if c.verb == "shot" && (ifx args >= 0 then jv_get(d, args, "out") else -1) < 0 {
+    if run {
+      shot_dir = fs_temp("openagents-mcp-shot", temp[..]);
+      if shot_dir == "" { mcp_text_result(o, d, id, "could not make a temporary folder for the shot", true); return jo_text(o); }
+      tn = shot_dir.count;
+    } else { tn = copy("/tmp", temp[..]); }
+    tn += copy("/shot.png", temp[tn..<temp.count]);
+    shot_out = cast(string) temp[0..<tn];
+  }
+  mcp_argv(v[..], cfg, c, d, args, shot_out);
+  if v[0].err != "" { mcp_text_result(o, d, id, v[0].err, true); return jo_text(o); }
+  if !run {
+    j: [4096] u8; jn := 0;
+    for k: 0..<v[0].n { if k > 0 { jn += copy(" ", j[jn..<j.count]); } jn += copy(v[0].words[k], j[jn..<j.count]); }
+    mcp_text_result(o, d, id, cast(string) j[0..<jn], false); return jo_text(o);
+  }
+  child: [MCP_CHILD] u8; err: [4096] u8;
+  pr := proc_run(v[0].words[0..<v[0].n], 180000, child[..], err[..]);
+  text := cast(string) child[0..<pr.out_n];
+  if text == "" { text = cast(string) err[0..<pr.err_n]; }
+  if pr.started != 0 { text = "could not run openagents"; }
+  if pr.timed_out { text = "the command took longer than 3 minutes"; }
+  failed := pr.started != 0 || pr.timed_out || pr.status != 0;
+  // shot: answer with the picture too
+  file := "";
+  if c.verb == "look" && !failed {
+    fb: [1024] u8; at := (ifx args >= 0 then jv_get(d, args, "shot") else -1);
+    fl := ifx at >= 0 then jv_str(d, at, fb[..]) else -1;
+    if fl > 0 { file = cast(string) fb[0..<fl]; }
+  }
+  if c.verb == "shot" && !failed {
+    fb: [1024] u8; at := (ifx args >= 0 then jv_get(d, args, "out") else -1);
+    fl := ifx at >= 0 then jv_str(d, at, fb[..]) else -1;
+    file = ifx fl > 0 then cast(string) fb[0..<fl] else shot_out;
+  }
+  png: [MCP_PNG] u8; pn := -1;
+  if file != "" { pn = fs_read(file, png[..]); }
+  mcp_result_start(o, d, id);
+  jo_obj(o); jo_key(o, "content"); jo_arr(o);
+  jo_obj(o); jo_key(o, "type"); jo_str(o, "text"); jo_key(o, "text"); jo_str(o, text); jo_end(o);
+  if pn > 0 {
+    b64: [MCP_PNG / 3 * 4 + 8] u8;
+    e := base64_encode_checked(cast(string) png[0..<pn], b64[..], false);
+    if e.error == NC_OK {
+      jo_obj(o); jo_key(o, "type"); jo_str(o, "image");
+      jo_key(o, "data"); jo_str(o, cast(string) b64[0..<e.written]);
+      jo_key(o, "mimeType"); jo_str(o, "image/png"); jo_end(o);
+    }
+  }
+  jo_end(o); jo_key(o, "isError"); jo_bool(o, failed); jo_end(o);
+  jo_end(o);
+  if shot_dir != "" { gone := fs_remove(cast(string) temp[0..<shot_dir.count]); }
+  return jo_text(o);
+}
+
 // Answers one request line into out; "" when it needs no answer (a notification).
 // run is false in checks: tools/call then answers with the argv it would run.
 mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
@@ -250,7 +426,7 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
     jo_key(o[..], "protocolVersion"); jo_str(o[..], ifx pn > 0 then cast(string) pv[0..<pn] else MCP_PROTOCOL);
     jo_key(o[..], "capabilities"); jo_obj(o[..]); jo_key(o[..], "tools"); jo_obj(o[..]); jo_end(o[..]); jo_end(o[..]);
     jo_key(o[..], "serverInfo"); jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "openagents"); jo_key(o[..], "version"); jo_str(o[..], CLI_VERSION); jo_end(o[..]);
-    jo_key(o[..], "instructions"); jo_str(o[..], "Make and edit realms on openagents.com. A new realm is private; realm_visibility makes it unlisted or public. Edits take rev (the revision you read) and fail with a conflict when the realm changed since. realm_play sits you in a realm as a visitor; realm_look, realm_go, realm_say, realm_use and realm_bye act there and answer with what you see.");
+    jo_key(o[..], "instructions"); jo_str(o[..], "Make and edit realms on openagents.com. The tools listed are the common ones: realm_find names the rest by area, effect or a property, and realm_call calls one. A new realm is private; realm_visibility makes it unlisted or public. Edits take rev (the revision you read) and fail with a conflict when the realm changed since. realm_play sits you in a realm as a visitor; realm_look, realm_go, realm_say, realm_use and realm_bye act there and answer with what you see.");
     jo_end(o[..]); jo_end(o[..]);
     return jo_text(o[..]);
   }
@@ -258,71 +434,40 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
   if method == "tools/list" {
     mcp_result_start(o[..], d, id);
     jo_obj(o[..]); jo_key(o[..], "tools"); jo_arr(o[..]);
-    for c: REALM_COMMANDS { if mcp_offered(c, cfg.read_only) { mcp_tool(o[..], c); } }
+    for c: REALM_COMMANDS { if mcp_offered(c, cfg.read_only) && (cfg.all || mcp_loaded(c)) { mcp_tool(o[..], c); } }
+    if !cfg.all { mcp_find_tool_def(o[..]); mcp_call_tool_def(o[..]); }
     jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
     return jo_text(o[..]);
   }
   if method == "tools/call" {
     nb: [64] u8; nn := jv_str(d, jv_path(d, 0, "params.name"), nb[..]);
-    ci := ifx nn > 0 then mcp_find_tool(cast(string) nb[0..<nn]) else -1;
-    if ci < 0 || !mcp_offered(REALM_COMMANDS[ci], cfg.read_only) { mcp_error(o[..], d, id, -32602, "unknown tool"); return jo_text(o[..]); }
-    c := REALM_COMMANDS[ci];
-    v: [1] McpArgv;
-    // shot with no file: a new temporary folder, removed with what the shot wrote there
-    temp: [512] u8; tn := 0; shot_dir := ""; shot_out := "";
-    if c.verb == "shot" && jv_path(d, 0, "params.arguments.out") < 0 {
-      if run {
-        shot_dir = fs_temp("openagents-mcp-shot", temp[..]);
-        if shot_dir == "" { mcp_text_result(o[..], d, id, "could not make a temporary folder for the shot", true); return jo_text(o[..]); }
-        tn = shot_dir.count;
-      } else { tn = copy("/tmp", temp[..]); }
-      tn += copy("/shot.png", temp[tn..<temp.count]);
-      shot_out = cast(string) temp[0..<tn];
+    name := ifx nn > 0 then cast(string) nb[0..<nn] else "";
+    args := jv_path(d, 0, "params.arguments");
+    if name == "realm_find" {
+      fo: [MCP_CHILD] u8; fe: [1] string;
+      text := mcp_find(d, args, cfg, fo[..], fe[..]);
+      mcp_text_result(o[..], d, id, ifx fe[0] != "" then fe[0] else text, fe[0] != "");
+      return jo_text(o[..]);
     }
-    mcp_argv(v[..], cfg, c, d, jv_path(d, 0, "params.arguments"), shot_out);
-    if v[0].err != "" { mcp_text_result(o[..], d, id, v[0].err, true); return jo_text(o[..]); }
-    if !run {
-      j: [4096] u8; jn := 0;
-      for k: 0..<v[0].n { if k > 0 { jn += copy(" ", j[jn..<j.count]); } jn += copy(v[0].words[k], j[jn..<j.count]); }
-      mcp_text_result(o[..], d, id, cast(string) j[0..<jn], false); return jo_text(o[..]);
-    }
-    child: [MCP_CHILD] u8; err: [4096] u8;
-    pr := proc_run(v[0].words[0..<v[0].n], 180000, child[..], err[..]);
-    text := cast(string) child[0..<pr.out_n];
-    if text == "" { text = cast(string) err[0..<pr.err_n]; }
-    if pr.started != 0 { text = "could not run openagents"; }
-    if pr.timed_out { text = "the command took longer than 3 minutes"; }
-    failed := pr.started != 0 || pr.timed_out || pr.status != 0;
-    // shot: answer with the picture too
-    file := "";
-    if c.verb == "look" && !failed {
-      fb: [1024] u8; at := jv_path(d, 0, "params.arguments.shot");
-      fl := ifx at >= 0 then jv_str(d, at, fb[..]) else -1;
-      if fl > 0 { file = cast(string) fb[0..<fl]; }
-    }
-    if c.verb == "shot" && !failed {
-      fb: [1024] u8; at := jv_path(d, 0, "params.arguments.out");
-      fl := ifx at >= 0 then jv_str(d, at, fb[..]) else -1;
-      file = ifx fl > 0 then cast(string) fb[0..<fl] else shot_out;
-    }
-    png: [MCP_PNG] u8; pn := -1;
-    if file != "" { pn = fs_read(file, png[..]); }
-    mcp_result_start(o[..], d, id);
-    jo_obj(o[..]); jo_key(o[..], "content"); jo_arr(o[..]);
-    jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "text"); jo_key(o[..], "text"); jo_str(o[..], text); jo_end(o[..]);
-    if pn > 0 {
-      b64: [MCP_PNG / 3 * 4 + 8] u8;
-      e := base64_encode_checked(cast(string) png[0..<pn], b64[..], false);
-      if e.error == NC_OK {
-        jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "image");
-        jo_key(o[..], "data"); jo_str(o[..], cast(string) b64[0..<e.written]);
-        jo_key(o[..], "mimeType"); jo_str(o[..], "image/png"); jo_end(o[..]);
+    if name == "realm_call" {
+      // the named row, with the arguments object inside this call's
+      if args < 0 || jv_kind(d, args) != JV_OBJECT { mcp_text_result(o[..], d, id, "arguments must be an object", true); return jo_text(o[..]); }
+      m := d.nodes[args].first;
+      while m >= 0 {
+        k := jv_key(d, m);
+        if k != "name" && k != "arguments" { mcp_text_result(o[..], d, id, "unknown argument", true); return jo_text(o[..]); }
+        m = d.nodes[m].next;
       }
+      nn = jv_str(d, jv_get(d, args, "name"), nb[..]);
+      name = ifx nn > 0 then cast(string) nb[0..<nn] else "";
+      args = jv_get(d, args, "arguments");
+      ci := mcp_find_tool(name);
+      if ci < 0 || !mcp_offered(REALM_COMMANDS[ci], cfg.read_only) { mcp_text_result(o[..], d, id, "unknown tool: realm_find lists them", true); return jo_text(o[..]); }
+      return mcp_call(o[..], d, id, cfg, REALM_COMMANDS[ci], args, run);
     }
-    jo_end(o[..]); jo_key(o[..], "isError"); jo_bool(o[..], failed); jo_end(o[..]);
-    jo_end(o[..]);
-    if shot_dir != "" { gone := fs_remove(cast(string) temp[0..<shot_dir.count]); }
-    return jo_text(o[..]);
+    ci := mcp_find_tool(name);
+    if ci < 0 || !mcp_offered(REALM_COMMANDS[ci], cfg.read_only) { mcp_error(o[..], d, id, -32602, "unknown tool"); return jo_text(o[..]); }
+    return mcp_call(o[..], d, id, cfg, REALM_COMMANDS[ci], args, run);
   }
   mcp_error(o[..], d, id, -32601, "method not found");
   return jo_text(o[..]);
@@ -339,7 +484,7 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
   #assert acct_has(mcp_handle("not json", cfg, out[..], false), "-32700");
 }
 #test "mcp: one tool a row, with required arguments and bounds; read-only offers GET rows and shot" {
-  out: [262144] u8; cfg := McpCfg.{exe="openagents"};
+  out: [262144] u8; cfg := McpCfg.{exe="openagents", all=true};
   s := mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", cfg, out[..], false);
   #assert acct_has(s, "\"name\":\"realm_ask_delete\"") && acct_has(s, "\"name\":\"realm_apply\"");
   // the rows that edit a world with an ID are tools like the rest (#13415): places in whole centimetres, and
@@ -395,13 +540,86 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
   #assert acct_has(s, "realm world-script-run splice --script 528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5 --name pacer --for kind 1 --place 2 --json");
 }
 
+#test "mcp: the list is the loaded rows, realm_find and realm_call; --all is every row" {
+  out: [262144] u8; cfg := McpCfg.{exe="openagents"};
+  for v: MCP_LOADED { #assert rc_find(v) >= 0; }
+  for v, i: MCP_LOADED { for j: i + 1..<MCP_LOADED.count { #assert v != MCP_LOADED[j]; } }
+  s := mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", cfg, out[..], false);
+  short := s.count;
+  #assert acct_has(s, "\"name\":\"realm_find\"") && acct_has(s, "\"name\":\"realm_call\"") && acct_has(s, "\"name\":\"realm_world_place\"") && acct_has(s, "\"name\":\"realm_list\"");
+  #assert !acct_has(s, "\"name\":\"realm_world_script_run\"") && !acct_has(s, "\"name\":\"realm_quest\"") && !acct_has(s, "\"name\":\"realm_detach\"");
+  #assert acct_has(s, "\"area\":{\"type\":\"string\",\"enum\":[\"realm\",\"seat\",\"world\",\"files\"]") && acct_has(s, "\"required\":[\"name\"]");
+  cfg.all = true;
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", cfg, out[..], false);
+  #assert !acct_has(s, "\"name\":\"realm_find\"") && !acct_has(s, "\"name\":\"realm_call\"") && acct_has(s, "\"name\":\"realm_quest\"");
+  // the short list is under half the whole one
+  #assert short * 2 < s.count;
+  // every row has one area, and every area and effect has a row
+  for a: MCP_AREAS { n := 0; for c: REALM_COMMANDS { if mcp_area(c) == a { n += 1; } } #assert n > 0; }
+  for c: REALM_COMMANDS { #assert mcp_one_of(mcp_area(c), MCP_AREAS[..]) && mcp_one_of(c.effect, MCP_EFFECTS[..]); }
+  for e: MCP_EFFECTS { n := 0; for c: REALM_COMMANDS { if c.effect == e { n += 1; } } #assert n > 0; }
+}
+#test "mcp: realm_find picks rows by their fields, whole, and never by words in the help" {
+  out: [262144] u8; cfg := McpCfg.{exe="openagents"};
+  // a few rows: their whole definitions
+  s := mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_find\",\"arguments\":{\"area\":\"files\"}}}", cfg, out[..], false);
+  #assert acct_has(s, "\\\"count\\\":5") && acct_has(s, "\\\"name\\\":\\\"realm_attach\\\"") && acct_has(s, "\\\"inputSchema\\\"") && !acct_has(s, "realm_world_place") && !acct_has(s, "narrow") && acct_has(s, "\"isError\":false");
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_find\",\"arguments\":{\"area\":\"files\",\"effect\":\"destructive\"}}}", cfg, out[..], false);
+  #assert acct_has(s, "\\\"count\\\":1") && acct_has(s, "\\\"name\\\":\\\"realm_detach\\\"") && !acct_has(s, "realm_attach");
+  // many rows: names and descriptions, and how to narrow
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_find\",\"arguments\":{\"area\":\"world\"}}}", cfg, out[..], false);
+  #assert acct_has(s, "\\\"count\\\":22") && acct_has(s, "narrow") && acct_has(s, "\\\"name\\\":\\\"realm_world_script_run\\\"") && !acct_has(s, "inputSchema");
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_find\"}}", cfg, out[..], false);
+  #assert acct_has(s, "\\\"count\\\":64") && !acct_has(s, "inputSchema");
+  // one row by its name, and rows by a property
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_find\",\"arguments\":{\"name\":\"realm_world_plan\"}}}", cfg, out[..], false);
+  #assert acct_has(s, "\\\"count\\\":1") && acct_has(s, "\\\"daytime\\\":{") && acct_has(s, "\\\"required\\\":[\\\"slug\\\",\\\"foe\\\",\\\"daytime\\\",\\\"act\\\"]");
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_find\",\"arguments\":{\"takes\":\"foe\"}}}", cfg, out[..], false);
+  #assert acct_has(s, "\\\"count\\\":2") && acct_has(s, "realm_world_plan") && acct_has(s, "realm_world_route") && !acct_has(s, "realm_world_foes");
+  // a word of a row's help is not a selector: "script" names no property and no tool
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_find\",\"arguments\":{\"name\":\"attachments\"}}}", cfg, out[..], false);
+  #assert acct_has(s, "\\\"count\\\":0");
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_find\",\"arguments\":{\"takes\":\"attachments\"}}}", cfg, out[..], false);
+  #assert acct_has(s, "\\\"count\\\":0");
+  // what a selector may not be
+  for bad: [5] string.["{\"area\":\"lab\"}", "{\"effect\":\"reads\"}", "{\"query\":\"files\"}", "{\"area\":7}", "[]"] {
+    line: [512] u8; n := copy("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_find\",\"arguments\":", line[..]);
+    n += copy(bad, line[n..<line.count]); n += copy("}}", line[n..<line.count]);
+    #assert acct_has(mcp_handle(cast(string) line[0..<n], cfg, out[..], false), "\"isError\":true");
+  }
+  // read-only: a find never names a row that is not offered
+  cfg.read_only = true;
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_find\",\"arguments\":{\"area\":\"files\"}}}", cfg, out[..], false);
+  #assert acct_has(s, "\\\"count\\\":2") && acct_has(s, "realm_file_read") && !acct_has(s, "realm_detach");
+}
+#test "mcp: realm_call runs a found row as its own tool does" {
+  out: [65536] u8; cfg := McpCfg.{exe="openagents"};
+  s := mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_call\",\"arguments\":{\"name\":\"realm_quest\",\"arguments\":{\"slug\":\"g\",\"who\":\"Bram\",\"ask\":\"find the well\"}}}}", cfg, out[..], false);
+  #assert acct_has(s, "openagents realm quest g Bram --ask find the well --json") && acct_has(s, "\"isError\":false");
+  // a row that is not loaded still answers to its own name
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_quest\",\"arguments\":{\"slug\":\"g\",\"who\":\"Bram\",\"ask\":\"find the well\"}}}", cfg, out[..], false);
+  #assert acct_has(s, "openagents realm quest g Bram --ask find the well --json");
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_call\",\"arguments\":{\"name\":\"realm_shot\",\"arguments\":{\"slug\":\"g\"}}}}", cfg, out[..], false);
+  #assert acct_has(s, "realm shot g /tmp/shot.png --json");
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_call\",\"arguments\":{\"name\":\"realm_list\"}}}", cfg, out[..], false);
+  #assert acct_has(s, "openagents realm list --json");
+  for bad: [5] string.["{\"name\":\"realm_nope\"}", "{\"name\":\"realm_call\"}", "{\"arguments\":{}}", "{\"name\":\"realm_show\",\"arguments\":{}}", "{\"name\":\"realm_show\",\"arguments\":{\"slug\":\"g\"},\"more\":1}"] {
+    line: [512] u8; n := copy("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_call\",\"arguments\":", line[..]);
+    n += copy(bad, line[n..<line.count]); n += copy("}}", line[n..<line.count]);
+    #assert acct_has(mcp_handle(cast(string) line[0..<n], cfg, out[..], false), "\"isError\":true");
+  }
+  cfg.read_only = true;
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_call\",\"arguments\":{\"name\":\"realm_quest\",\"arguments\":{\"slug\":\"g\",\"who\":\"Bram\"}}}}", cfg, out[..], false);
+  #assert acct_has(s, "unknown tool") && acct_has(s, "\"isError\":true");
+}
+
 // The server: one request a line on stdin, one answer a line on stdout, until stdin ends.
 mcp_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
   domains := args_value(a, "--domains", "realm");
   if domains != "realm" { return fail(r, EXIT_USAGE, "mcp --domains realm (labs tools come with #12634)"); }
   exe: [4096] u8; en := cxcli_exe_path(exe[..]);
   if en <= 0 { return fail(r, EXIT_FAIL, "could not find this program's own path"); }
-  cfg := McpCfg.{read_only = args_has(a, "--read-only"), exe = cast(string) exe[0..<en], origin = args_value(a, "--origin", "")};
+  cfg := McpCfg.{read_only = args_has(a, "--read-only"), all = args_has(a, "--all"), exe = cast(string) exe[0..<en], origin = args_value(a, "--origin", "")};
   if args_has(a, "--profile") || profile != "default" { cfg.profile = profile; }
   line: [MCP_LINE] u8; out: [MCP_OUT] u8; wb: [MCP_OUT + 1] u8;
   n := 0; quiet := 0; long := false;
@@ -428,7 +646,7 @@ mcp_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
 
 mcp_usage :: () {
   print("%\n", "Agents:");
-  print("%\n", "  mcp [--read-only] [--domains realm] [--origin URL]  the realm commands as MCP tools on stdio");
+  print("%\n", "  mcp [--read-only] [--all] [--domains realm] [--origin URL]  the realm commands as MCP tools on stdio: the common ones, realm_find and realm_call (--all: every one)");
   print("%\n", "  skill realm [--install]                             the realm commands as a Claude skill (.claude/skills)");
   print("%\n", "");
 }

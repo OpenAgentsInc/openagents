@@ -22,7 +22,7 @@ skill_text :: (out: [] u8) -> string {
     rep_put(r[..], "`");
     rep_put(r[..], ": "); rep_put(r[..], c.help); rep_put(r[..], "\n");
   }
-  rep_put(r[..], "\nThe same commands are MCP tools: `claude mcp add openagents -- openagents mcp` (add `--read-only` to offer only the commands that change nothing).\n");
+  rep_put(r[..], "\nThe same commands are MCP tools: `claude mcp add openagents -- openagents mcp` (add `--read-only` to offer only the commands that change nothing). It lists the common ones; `realm_find` names the rest by area, effect or a property, and `realm_call` calls one (`--all` lists every one).\n");
   n := copy(cast(string) r[0].buf[0..<r[0].n], out);
   return cast(string) out[0..<n];
 }

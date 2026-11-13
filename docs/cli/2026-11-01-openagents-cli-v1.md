@@ -484,6 +484,22 @@ Three ways, all on the same binary and the same login:
    `--domains realm` limits the tools offered; `--read-only` offers only
    reads.
 
+   The command table is past 60 rows, so the server lists only the common
+   tools (`MCP_LOADED` in `mcp.coax`) plus two more (#13439):
+
+   - `realm_find` names the other tools. Its input is a typed selector over
+     the rows' fields: `area` (`realm`, `seat`, `world`, `files`), `effect`
+     (`read`, `write`, `spend`, `publish`, `destructive`, `player-facing`),
+     `takes` (a property the tool's input has) and `name` (one tool). Every
+     given field must match exactly. It never matches words in a tool's
+     help; the model reads the descriptions and chooses. Up to 8 matches
+     come back with their input schemas, more as names and descriptions.
+   - `realm_call` calls a tool by name with its arguments. It runs the same
+     command with the same checks.
+
+   `--all` lists every row as before. A tool that is not listed still
+   answers to its own name.
+
    A call runs the same binary as a child (`openagents realm VERB ... --json`,
    with the server's `--profile` and `--origin`), so a tool makes the same
    checks, uses the same key and fails with the same exit codes as the

@@ -133,8 +133,25 @@ cq_realm :: (name: string) -> int {
   for r, i: REALM_TOOLS { if r.name == tail { return i; } }
   return -1;
 }
+// A call of realm_call (apps/openagents-cli/mcp.coax, #13439) is a call of the realm tool it names, with the
+// arguments inside it: the chat words it as that tool. Any other call is itself.
+cq_inner :: (c: CqCall) -> CqCall {
+  if cq_tail(c.name) != "realm_call" { return c; }
+  nodes: [96] JvNode; d: [1] Jv;
+  if c.input.count == 0 || !jv_parse(d[..], c.input, nodes[..]) { return c; }
+  at := jv_get(d[0], 0, "name");
+  if jv_kind(d[0], at) != JV_STRING { return c; }
+  raw := jv_raw(d[0], at);
+  for ch: raw { if ch == '\\' { return c; } }
+  if raw.count == 0 { return c; }
+  r := c; r.name = raw;
+  args := jv_get(d[0], 0, "arguments");
+  r.input = ifx jv_kind(d[0], args) == JV_OBJECT then jv_raw(d[0], args) else "";
+  return r;
+}
 // The call's kind in CQ_KINDS: its own, else its exact name's, else -1.
 cq_kind :: (c: CqCall) -> int {
+  if cq_tail(c.name) == "realm_find" { return cq_index(CQ_KINDS[..], "find-tools"); }
   k := cq_index(CQ_KINDS[..], c.kind);
   if k >= 0 && c.kind != "mcp" && c.kind != "tool" { return k; }
   j := cq_index(CQ_NAMES[..], c.name);
@@ -190,8 +207,10 @@ cq_clean :: (name: string, out: [] u8) -> string {
   return cast(string) out[0..<n];
 }
 // What one call did, in words.
-cq_label :: (c: CqCall, out: [] u8) -> string {
-  if c.label.count > 0 { return c.label; }
+cq_label :: (call: CqCall, out: [] u8) -> string {
+  if call.label.count > 0 { return call.label; }
+  c := cq_inner(call);
+  if cq_tail(c.name) == "realm_find" { return CQ_KIND_LABEL[cq_kind(c)]; }
   r := cq_realm(c.name);
   if r >= 0 { return cq_fill(REALM_TOOLS[r].label, c.input, out); }
   k := cq_kind(c);
@@ -204,7 +223,9 @@ cq_label :: (c: CqCall, out: [] u8) -> string {
   return cast(string) out[0..<n + t.count];
 }
 // What a run of calls of this tool did, in words.
-cq_many :: (c: CqCall, out: [] u8) -> string {
+cq_many :: (call: CqCall, out: [] u8) -> string {
+  c := cq_inner(call);
+  if cq_tail(c.name) == "realm_find" { return CQ_KIND_MANY[cq_kind(c)]; }
   r := cq_realm(c.name);
   if r >= 0 { return REALM_TOOLS[r].many; }
   if c.label.count > 0 { return cq_label(c, out); }
@@ -212,7 +233,8 @@ cq_many :: (c: CqCall, out: [] u8) -> string {
   if k >= 0 && (c.kind != "mcp" && c.kind != "tool" || cq_index(CQ_NAMES[..], c.name) >= 0) { return CQ_KIND_MANY[k]; }
   return cq_label(c, out);
 }
-cq_icon :: (c: CqCall) -> int {
+cq_icon :: (call: CqCall) -> int {
+  c := cq_inner(call);
   r := cq_realm(c.name);
   if r >= 0 { e := cq_index(CQ_EFFECTS[..], REALM_TOOLS[r].effect); return ifx e >= 0 then CQ_EFFECT_ICON[e] else IC_TOOLS; }
   k := cq_kind(c);
@@ -220,7 +242,8 @@ cq_icon :: (c: CqCall) -> int {
 }
 // The argument that matters: the realm or world a realm tool worked on; an engine tool's own (the command, the
 // path, the pattern); else the first short text the call sent.
-cq_arg :: (c: CqCall, out: [] u8) -> string {
+cq_arg :: (call: CqCall, out: [] u8) -> string {
+  c := cq_inner(call);
   if cq_realm(c.name) >= 0 { return cq_prop(c.input, "slug", out); }
   if c.arg.count > 0 { return c.arg; }
   nodes: [96] JvNode; d: [1] Jv;
@@ -483,6 +506,17 @@ cq_test_wrap :: (r: string, out: [] u8) -> string { n := kw_put(out, 0, "{\"ok\"
   #assert cq_prop("{\"a\":null}", "a", b[..]) == "" && cq_prop("not json", "a", b[..]) == "" && cq_prop("{\"a\":\"x\"}", "a", b[0..<0]) == "";
   pub := CqCall.{name = "mcp__openagents__realm_world_publish", input = "{\"slug\":\"splice\",\"when\":\"now\"}"};
   #assert cq_label(pub, b[..]) == "Publish splice now" && cq_icon(pub) == IC_GLOBE && cq_icon(CqCall.{name = "realm_detach"}) == IC_TRASH;
+}
+#test "a realm tool called through realm_call reads as the tool itself, and realm_find as a lookup (#13439)" {
+  b: [256] u8;
+  c := CqCall.{kind = "mcp", name = "mcp__openagents__realm_call", input = "{\"name\":\"realm_world_publish\",\"arguments\":{\"slug\":\"splice\",\"when\":\"now\"}}"};
+  #assert cq_label(c, b[..]) == "Publish splice now" && cq_icon(c) == IC_GLOBE && cq_arg(c, b[..]) == "splice" && cq_many(c, b[..]) == cq_many(CqCall.{name = "realm_world_publish"}, b[..]);
+  // a name that is no row, or an input that can't be read, stays a call of realm_call
+  u := CqCall.{kind = "mcp", name = "mcp__openagents__realm_call", input = "{\"name\":\"realm_nope\",\"arguments\":{}}"};
+  #assert cq_realm(cq_inner(u).name) < 0 && cq_inner(CqCall.{name = "realm_call", input = "not json"}).name == "realm_call" && cq_inner(CqCall.{name = "realm_call", input = "{\"name\":7}"}).name == "realm_call";
+  #assert cq_inner(CqCall.{name = "realm_call", input = "{\"name\":\"realm_list\"}"}).input == "" && cq_label(CqCall.{name = "realm_call", input = "{\"name\":\"realm_list\"}"}, b[..]) == cq_label(CqCall.{name = "realm_list"}, b[..]);
+  f := CqCall.{kind = "mcp", name = "mcp__openagents__realm_find", input = "{\"area\":\"files\"}"};
+  #assert cq_label(f, b[..]) == "Look up tools" && cq_many(f, b[..]) == "Look up tools" && cq_icon(f) == IC_SEARCH;
 }
 #test "an engine's tools by their kind or exact name; one we don't know by its cleaned name and first short argument" {
   b: [256] u8;
