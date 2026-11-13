@@ -11,11 +11,9 @@ slk_setup :: (k: [] SlkWork, hash: [] u8, off: bool) -> SlkMade {
   mf := sm_of(s[..], "mover", ScriptLayout.{});
   line := sm_write(mf, k[0].text[..]);
   for c, i: mf.hash { hash[i] = c; }
-  ln := 0; head := "{\"schema\":\"world.scripts.v1\",\"world\":\"splice\",\"limits\":{},\"scripts\":[{\"manifest\":";
-  for c: head { k[0].list[ln] = c; ln += 1; }
-  for c: line { k[0].list[ln] = c; ln += 1; }
-  tail := ifx off then ",\"off\":true,\"why\":\"reported\",\"source\":false}]}" else ",\"off\":false,\"why\":\"\",\"source\":false}]}";
-  for c: tail { k[0].list[ln] = c; ln += 1; }
+  ln := ss_list_begin(k[0].list[..], "splice", ss_limits(true));
+  ln = ss_list_add(k[0].list[..], ln, line, off, ifx off then "reported" else "", false, true);
+  ln = ss_list_end(k[0].list[..], ln);
   // The wants: the list's address and place 3.
   wn := 0; addr := "/api/worlds/splice/scripts\n3 ";
   for c: addr { k[0].want[wn] = c; wn += 1; }
@@ -61,8 +59,7 @@ slk_setup :: (k: [] SlkWork, hash: [] u8, off: bool) -> SlkMade {
   k[0].l[0] = ScriptLoader.{};
   ok = sl_want(k[0].l[..], k[0].w[..], cast(string) k[0].want[0..<wn]);
   url = sl_need(k[0].l[..], k[0].url[..]);
-  empty := "{\"schema\":\"world.scripts.v1\",\"world\":\"splice\",\"limits\":{},\"scripts\":[]}"; eb: [128] u8; en := 0;
-  for c: empty { eb[en] = c; en += 1; }
+  eb: [1024] u8; en := ss_list_end(eb[..], ss_list_begin(eb[..], "splice", ss_limits(true)));
   sl_got(k[0].l[..], k[0].w[..], 200, eb[0..<en]);
   #assert k[0].l[0].want[3].why == SL_NOT_LISTED && sl_need(k[0].l[..], k[0].url[..]) == "";
   // A list that is not one, and a failed fetch.

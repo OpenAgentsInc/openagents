@@ -7,17 +7,16 @@
 // The realm's wants, as text (the realm writes it, sl_want reads it):
 //   ADDRESS            where the world's scripts are listed; a module is at ADDRESS/HASH
 //   AT HASH            one line for each script row: its place (0 to SH_SCRIPTS - 1) and its module's hash
-// The list (the API's script list, whose codec is the script store's) names each stored module's manifest and whether it is switched off. A
+// The list (world.scripts.v1, read with the script store's codec, store.coax) names each stored module's manifest and whether it is switched off. A
 // script that is not listed, is switched off, does not arrive or does not pass the module check is not
 // loaded, and the realm's things walk their plans (INVARIANTS.md, "A world never waits on a script").
 //   coax/bin/coax test metaverse-engine/script/loader.coax --library
 
 #load "world.coax";
+#load "store.coax";   // the list's one codec (world.scripts.v1)
 
 SL_URL :: 160;            // an address's bytes
 SL_LIST :: 131072;        // a list's bytes
-SL_NODES :: 4096;         // its JSON nodes
-SL_FIELDS :: 2048;        // a manifest's state fields, as JSON
 SL_IDLE :: 0; SL_LISTING :: 1; SL_MODULE :: 2;
 // Why a wanted script is not running (0: it is, or it is still on its way).
 SL_OK :: 0; SL_NOT_LISTED :: 1; SL_OFF :: 2; SL_NO_BYTES :: 3; SL_REFUSED :: 4; SL_BAD_LIST :: 5;
@@ -28,7 +27,7 @@ ScriptWant :: struct {
   off: bool; why: int;         // why: SL_* once it cannot run
   done: bool;                  // loaded, or given up on, for this hash
   name: [SM_NAME] u8; name_n: int;
-  fields: [SL_FIELDS] u8; fields_n: int;
+  layout: ScriptLayout;        // its state fields: what a swap keeps
 }
 ScriptLoader :: struct {
   url: [SL_URL] u8; url_n: int;
@@ -36,7 +35,7 @@ ScriptLoader :: struct {
   listed: bool;                // the list was read for the wants as they are
   asking: int; at: int;        // what the last sl_need asked for, and for which place
   fetches: int;
-  nodes: [SL_NODES] JvNode;
+  nodes: [SS_LIST_NODES] JvNode;
 }
 
 sl_hex :: (c: u8) -> bool { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }
@@ -94,27 +93,24 @@ sl_got :: (l: [] ScriptLoader, w: [] ScriptWorld, status: int, body: [] u8) {
   asked := l[0].asking; l[0].asking = SL_IDLE;
   if asked == SL_LISTING {
     l[0].listed = true;
-    d: [1] Jv; word: [80] u8;
-    read := status == 200 && body.count <= SL_LIST && jv_parse(d[..], cast(string) body, l[0].nodes[..]);
-    scripts := ifx read then jv_get(d[0], 0, "scripts") else -1;
+    d: [1] Jv; world: [64] u8; mf: [1] ScriptManifest; why: [SS_WHY] u8;
+    head := SsHead.{};
+    if status == 200 && body.count <= SL_LIST { head = ss_list_read(d[..], cast(string) body, l[0].nodes[..], world[..]); }
+    read := head.ok && d[0].ok;
     for place: 0..<SH_SCRIPTS {
       if !l[0].want[place].wanted || l[0].want[place].done { continue; }
-      if !read || jv_kind(d[0], scripts) != JV_ARRAY { l[0].want[place].done = true; l[0].want[place].why = SL_BAD_LIST; continue; }
-      found := -1;
-      for i: 0..<jv_len(d[0], scripts) {
-        m := jv_get(d[0], jv_at(d[0], scripts, i), "manifest");
-        n := jv_str(d[0], jv_get(d[0], m, "hash"), word[..]);
-        if n == 64 && cast(string) word[0..<64] == cast(string) l[0].want[place].hash[..] { found = i; break; }
+      if !read { l[0].want[place].done = true; l[0].want[place].why = SL_BAD_LIST; continue; }
+      found := false; off := false;
+      for i: 0..<head.count {
+        e := ss_list_entry(d[..], i, mf[..], why[..]);
+        if !e.ok || cast(string) mf[0].hash[..] != cast(string) l[0].want[place].hash[..] { continue; }
+        found = true; off = e.off;
+        l[0].want[place].name = mf[0].name; l[0].want[place].name_n = mf[0].name_n; l[0].want[place].layout = mf[0].layout;
+        break;
       }
-      if found < 0 { l[0].want[place].done = true; l[0].want[place].why = SL_NOT_LISTED; continue; }
-      row := jv_at(d[0], scripts, found); m := jv_get(d[0], row, "manifest");
-      name_n := jv_str(d[0], jv_get(d[0], m, "name"), l[0].want[place].name[..]);
-      fields := jv_raw(d[0], jv_path(d[0], m, "state.fields"));
-      if name_n < 1 || fields.count > SL_FIELDS { l[0].want[place].done = true; l[0].want[place].why = SL_BAD_LIST; continue; }
-      l[0].want[place].name_n = name_n;
-      for c, i: fields { l[0].want[place].fields[i] = c; } l[0].want[place].fields_n = fields.count;
+      if !found { l[0].want[place].done = true; l[0].want[place].why = SL_NOT_LISTED; continue; }
       l[0].want[place].known = true;
-      if jv_bool(d[0], jv_get(d[0], row, "off")) { l[0].want[place].off = true; l[0].want[place].done = true; l[0].want[place].why = SL_OFF; sw_unload(w, place); }
+      if off { l[0].want[place].off = true; l[0].want[place].done = true; l[0].want[place].why = SL_OFF; sw_unload(w, place); }
     }
     return;
   }
@@ -126,7 +122,7 @@ sl_got :: (l: [] ScriptLoader, w: [] ScriptWorld, status: int, body: [] u8) {
   // The bytes must be the ones the row names: the hash is the name.
   hex: [64] u8;
   if !S_hex(S_hash(cast(string) body), hex[..]) || cast(string) hex[..] != cast(string) l[0].want[place].hash[..] { l[0].want[place].why = SL_NO_BYTES; return; }
-  code := sw_load(w, place, cast(string) l[0].want[place].name[0..<l[0].want[place].name_n], body, cast(string) l[0].want[place].fields[0..<l[0].want[place].fields_n]);
+  code := sw_load_laid(w, place, cast(string) l[0].want[place].name[0..<l[0].want[place].name_n], body, l[0].want[place].layout);
   l[0].want[place].why = ifx code == 0 then SL_OK else SL_REFUSED;
 }
 

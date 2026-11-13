@@ -33,7 +33,12 @@ sw_load :: (w: [] ScriptWorld, at: int, name: string, bytes: [] u8, fields: stri
     nodes: [512] JvNode; d: [1] Jv;
     if !jv_parse(d[..], fields, nodes[..]) || !sm_fields(d[0], 0, layout[..]) { return -1; }
   }
-  code := sh_load(w[0].slots[at..<at + 1], w[0].slots[SH_SCRIPTS..<SH_SCRIPTS + 1], bytes, layout[0]);
+  return sw_load_laid(w, at, name, bytes, layout[0]);
+}
+// The same with the state fields already read (a manifest's layout).
+sw_load_laid :: (w: [] ScriptWorld, at: int, name: string, bytes: [] u8, layout: ScriptLayout) -> int {
+  if at < 0 || at >= SH_SCRIPTS || !sm_name_ok(name) { return -1; }
+  code := sh_load(w[0].slots[at..<at + 1], w[0].slots[SH_SCRIPTS..<SH_SCRIPTS + 1], bytes, layout);
   if code != 0 { return code; }
   for c, i: name { w[0].names[at][i] = c; } w[0].name_n[at] = name.count;
   hex: [64] u8;
