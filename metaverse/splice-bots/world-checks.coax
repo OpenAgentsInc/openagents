@@ -120,9 +120,9 @@ SPT_TWO :: "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[
   g[0].c[0].rev += 1;
   #assert spw_pieces(g, t[0].x[0].k[..], empty) == SPW_CONTENT;
   g[0].c[0].rev -= 1;
-  // with the scanner gate's kept-clear zone out of the tables the check lets a wall into the gate, and the walk refuses the batch
-  sc_drop_kept(g[0].c[..], 1);
-  b := spw_batch(g, t[0].x[..], empty, "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":116,\"x\":17500,\"y\":0,\"z\":-6700,\"yaw\":0,\"scale\":100}]}", true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  // with the tunnel's kept-clear zone out of the tables the check lets a crate into the tunnel, and the walk refuses the batch
+  sc_drop_kept(g[0].c[..], 13);
+  b := spw_batch(g, t[0].x[..], empty, "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":116,\"x\":0,\"y\":0,\"z\":-3700,\"yaw\":0,\"scale\":100}]}", true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
   #assert b.status == SPB_WALK && b.doc == 0 && spt_why(t[..], b).count > 20;
 }
 

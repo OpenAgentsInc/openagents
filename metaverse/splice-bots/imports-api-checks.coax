@@ -4,7 +4,7 @@
 #test "a row of the pieces table that draws a pack mesh is held to the pack: the mesh is there and the footprint is its bounds" #steps 8000000000 #traversal 4000000000 {
   k: [1] SitPack; pack := sit_pack(k[..]);
   t := [1] SpwTest.[SpwTest.{}]; n: [7] int; tb: [SPW_TABLES] u8; own: [SPW_TABLES] u8; body: [WE_BATCH_BODY] u8;
-  e := splice_world_empty(t[0].doc[..]); empty := cast(string) t[0].doc[0..<e];
+  e := splice_world_bare(t[0].doc[..]); empty := cast(string) t[0].doc[0..<e];
   // no pack, or a pack without the mesh: refused in words
   s := splice_world_batch(empty, "", spt_cell(body[..], 0, "pieces", 201, "*", SIT_ROW), true, t[0].next[..], tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
   #assert s == SPB_REFUSED && cast(string) t[0].why[0..<n[3]] == "the world's pack has no mesh of that name: import it first" && n[0] == 0 && n[6] == 0;
@@ -37,7 +37,7 @@
   thin_k: [1] SitPack; thin := sit_pack_of(thin_k[..], 0.3, 1.5, 0.15);   // stands where the first did
   wide_k: [1] SitPack; wide := sit_pack_of(wide_k[..], 25, 1, 25);        // as wide as the yard
   t := [1] SpwTest.[SpwTest.{}]; n: [7] int; tb: [SPW_TABLES] u8; own: [SPW_TABLES] u8; body: [WE_BATCH_BODY] u8; why: [240] u8; wn: [1] int;
-  e := splice_world_empty(t[0].doc[..]); empty := cast(string) t[0].doc[0..<e];
+  e := splice_world_bare(t[0].doc[..]); empty := cast(string) t[0].doc[0..<e];
   #assert thin.count > 0 && wide.count > 0;
   // no row draws the mesh yet: any bounds fit
   #assert splice_world_mesh_fits(empty, "", wide, "rock", 25000, 25000, 2000, why[..], wn[..]) && wn[0] == 0;

@@ -6,8 +6,14 @@
 //   coax/bin/coax test metaverse/splice-bots/world-api.coax --only "the API's"
 #load "splice-game.coax";
 
-// The document of Splice with nothing placed into out: its length, or -1.
+// The document a new Splice world is into out (world.coax spw_fresh: the shipped pieces): its length, or -1.
 splice_world_empty :: (out: [] u8) -> int #export_c #effects(all) {
+  g := [1] SpGame.[SpGame.{}]; k: [1] SpwScratch;
+  made := spw_fresh(g[..], k[..], out);
+  return ifx made.count == 0 then -1 else made.count;
+}
+// The document of Splice with nothing placed into out: its length, or -1. What the checks build their batches on.
+splice_world_bare :: (out: [] u8) -> int {
   g := [1] SpGame.[SpGame.{}]; k: [1] SpwScratch;
   made := spw_empty(g[..], k[..], out);
   return ifx made.count == 0 then -1 else made.count;
@@ -130,6 +136,9 @@ splice_world_words :: (status: int) -> string #export_c #effects(all) {
   #assert cn > 0 && ct_read(cd[..], cast(string) t[0].third[0..<cn]) && ct_table(cd[..], "pieces") >= 0 && ct_table(cd[..], "landmarks") >= 0 && ct_table(cd[..], "kept_clear") >= 0 && splice_world_content(t[0].third[0..<64]) == -1;
   e := splice_world_empty(t[0].doc[..]);
   #assert e > 0 && splice_world_empty(t[0].doc[0..<64]) == -1 && splice_world_pins(pins[..]) && pins[0] == SPW_ENGINE && pins[1] == SPW_RULES && pins[2] >= 1 && pins[3] == SPW_WIRE && !splice_world_pins(pins[0..<3]);
+  // a new world holds the shipped pieces: the solar farm, Sniper's rover train and its room (#13505)
+  #assert splice_world_things(cast(string) t[0].doc[0..<e], "") == SPW_SHIPPED_N;
+  e = splice_world_bare(t[0].doc[..]);
   empty := cast(string) t[0].doc[0..<e];
   s := splice_world_batch(empty, "", SPT_TWO, true, t[0].next[..], tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
   #assert s == SPB_OK && n[0] > 0 && n[1] > 0 && n[2] > 0 && n[3] == 0 && n[4] == 2 && n[5] == -1 && n[6] == 0;

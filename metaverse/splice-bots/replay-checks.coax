@@ -75,7 +75,7 @@ SPR_PROBES :: [9 * SPR_PROBE] int.[
   far := [1] string.["{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":3,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100}]}"];
   #assert !spr_replay(t[..], far[..], none[0..<0], SB_NONE).ok[OC_ERRORS];
 }
-#test "outcome replay: a run that sets foes' plans holds them in the live World and in the saved tables, and each broken variant tells which (#13466)" #steps 4000000000 #traversal 2000000000 {
+#test "outcome replay: a run that sets foes' plans holds them in the live World and in the saved tables, and each broken variant tells which (#13466)" #steps 8000000000 #traversal 4000000000 {
   t := [1] SprWork.[SprWork.{}];
   // raider 1 sleeps at dawn, a crate is put by the rover, raider 2 stands at dawn: cells and a thing in one run
   run := [3] string.[

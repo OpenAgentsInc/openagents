@@ -1,7 +1,7 @@
 // The checks of Splice's walk replay, its fixture layer and its kept-clear zones (walk.coax,
 // layer-fixture.coax; GitHub #13404). splice-game.coax loads this file with `#load ... #test;`.
 
-#test "with nothing placed the walk goes the run's whole way, village to banned bot" #steps 4000000000 #traversal 2000000000 {
+#test "with nothing placed the walk goes the run's whole way, solar farm to banned bot" #steps 4000000000 #traversal 2000000000 {
   g := [1] SpGame.[SpGame.{}]; k: [1] SwWalker; o: [120] u8;
   v := sw_replay(g[..], k[..]);
   #assert v.why == SW_OK && sw_why(g[..], v, o[..]) == "ok";
@@ -62,12 +62,18 @@ wc_zone_row :: (g: [] SpGame, id: int) -> int {
   }
   #assert beside == 0 && open > 0;   // open: the scan does reach ground a piece may stand on (past the berm)
 }
-#test "the whole run plays with the fixture layer in, a piece beside every kept-clear zone" #steps 1200000000 {
+#test "the whole run plays with the shipped pieces and the fixture layer in, a piece beside every kept-clear zone" #steps 1200000000 {
   g := [1] SpGame.[SpGame.{}];
   wc_blank(g[..]);
-  #assert sl_fixture(g[..]) == SL_FIXTURE_N;
+  #assert spw_shipped(g[..]) == SPW_SHIPPED_N && sl_fixture(g[..]) == SL_FIXTURE_N;
   #assert g_play_run(g[..]) == 0;
-  #assert g[0].layer[0].st[0].n == SL_FIXTURE_N && world_count(sl_world(g[..])) > 90 + SL_FIXTURE_N;
+  #assert g[0].layer[0].st[0].n == SPW_SHIPPED_N + SL_FIXTURE_N && world_count(sl_world(g[..])) > 90 + SPW_SHIPPED_N + SL_FIXTURE_N;
+}
+#test "the walk goes the run's whole way among the shipped pieces: the farm's panels, chargers and Sniper's rover train" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}]; k: [1] SwWalker;
+  wc_blank(g[..]);
+  #assert spw_shipped(g[..]) == SPW_SHIPPED_N;
+  #assert sw_replay(g[..], k[..]).why == SW_OK;
 }
 #test "the walk goes the run's whole way with the fixture layer in" #steps 4000000000 #traversal 2000000000 {
   g := [1] SpGame.[SpGame.{}]; k: [1] SwWalker;
@@ -80,45 +86,47 @@ wc_zone_row :: (g: [] SpGame, id: int) -> int {
   g := [1] SpGame.[SpGame.{}]; k: [1] SwWalker;
   wc_blank(g[..]);
   #assert sl_place(g[..], 102, -260, -600, 0).ok && sl_place(g[..], 102, 260, -600, 0).ok;
-  #assert sw_replay_legs(g[..], k[..], 8, 18).why == SW_OK;
+  #assert sw_replay_legs(g[..], k[..], 0, 11).why == SW_OK;
 }
 
 // The mutant check. A blocker for each kept-clear zone: [zone, piece, x, z, turn, the leg the walk
-// starts at, the leg it must stop at, and why]. With the tables whole the check refuses it and names the zone. With that one zone
+// starts at, the leg it must stop at, and why]. The old opening's zones (the village start, the
+// scanner gate, the rail track) are on no leg now that a run starts at the solar farm: -1, and only
+// the check's refusal is tried. With the tables whole the check refuses it and names the zone. With that one zone
 // taken out of the tables the check lets it in, and then the walk replay refuses the layer.
 WC_BLOCKERS :: 31;
 WC_BLOCK :: [WC_BLOCKERS * 8] int.[
-  1, 117, 17500, -7800, 0, 0, 1, SW_START,
-  2, 116, 17500, -6700, 0, 0, 2, SW_WAY,
-  3, 117, 16703, 10500, 0, 0, 3, SW_LANE,
-  4, 117, 18700, 9500, 0, 4, 6, SW_WAY,
-  5, 117, 0, 900, 0, 8, 13, SW_START,
-  6, 117, 280, 350, 0, 8, 14, SW_WAY,
-  7, 117, 260, 650, 0, 8, 15, SW_WAY,
-  8, 117, -600, -1400, 0, 8, 9, SW_START,
-  9, 117, 600, -1300, 0, 8, 10, SW_WAY,
-  10, 117, 500, -2000, 0, 8, 11, SW_WAY,
-  11, 117, 0, -1700, 0, 8, 12, SW_WAY,
-  12, 117, 0, -600, 0, 8, 16, SW_LANE,
-  13, 117, 0, -2600, 0, 8, 16, SW_LANE,
-  14, 104, 0, -3760, 0, 8, 18, SW_WAY,
-  15, 116, -3391, -6846, 0, 8, 20, SW_WAY,
-  16, 117, -3831, -5204, 0, 8, 21, SW_WAY,
-  17, 116, -9263, -10237, 0, 8, 22, SW_WAY,
-  18, 117, -10465, -9035, 0, 8, 23, SW_WAY,
-  19, 116, -12654, -16109, 0, 8, 24, SW_WAY,
-  20, 117, -14392, -15644, 0, 8, 25, SW_WAY,
-  21, 117, 3631, -5354, 0, 8, 29, SW_WAY,
-  22, 116, 13950, -20250, 90, 8, 30, SW_WAY,
-  23, 117, 14300, -19500, 0, 8, 31, SW_WAY,
-  24, 116, 13950, -18750, 90, 8, 36, SW_WAY,
-  25, 116, 11345, -12950, 0, 8, 32, SW_WAY,
-  26, 117, 12817, -12100, 0, 8, 33, SW_WAY,
-  27, 117, 0, -34600, 0, 8, 38, SW_LANE,
-  28, 117, 180, -35100, 0, 8, 39, SW_GATE,
-  29, 117, 0, -40150, 0, 8, 42, SW_WAY,
-  30, 104, 0, -37000, 0, 8, 42, SW_WAY,   // a walker fills the hallway (#13505)
-  31, 114, 14006, -23253, 0, 8, 37, SW_WAY];   // and stands on the drill mech's place
+  1, 117, 17500, -7800, 0, -1, -1, SW_START,
+  2, 116, 17500, -6700, 0, -1, -1, SW_WAY,
+  3, 117, 16703, 10500, 0, -1, -1, SW_LANE,
+  4, 117, 3600, 36000, 0, 0, 3, SW_WAY,
+  5, 117, 0, 900, 0, 0, 6, SW_START,
+  6, 117, 280, 350, 0, 0, 7, SW_WAY,
+  7, 117, 260, 650, 0, 0, 8, SW_WAY,
+  8, 117, -1200, 34200, 0, 0, 1, SW_START,
+  9, 117, -200, 33600, 0, 0, 2, SW_WAY,
+  10, 117, 600, 33300, 0, 0, 4, SW_WAY,
+  11, 117, 4600, 35800, 0, 0, 5, SW_WAY,
+  12, 117, 0, -600, 0, 0, 9, SW_LANE,
+  13, 117, 0, -2600, 0, 0, 9, SW_LANE,
+  14, 104, 0, -3760, 0, 0, 11, SW_WAY,
+  15, 116, -3391, -6846, 0, 0, 13, SW_WAY,
+  16, 117, -3831, -5204, 0, 0, 14, SW_WAY,
+  17, 116, -9263, -10237, 0, 0, 15, SW_WAY,
+  18, 117, -10465, -9035, 0, 0, 16, SW_WAY,
+  19, 116, -12654, -16109, 0, 0, 17, SW_WAY,
+  20, 117, -14392, -15644, 0, 0, 18, SW_WAY,
+  21, 117, 3631, -5354, 0, 0, 22, SW_WAY,
+  22, 116, 13950, -20250, 90, 0, 23, SW_WAY,
+  23, 117, 14300, -19500, 0, 0, 24, SW_WAY,
+  24, 116, 13950, -18750, 90, 0, 29, SW_WAY,
+  25, 116, 11345, -12950, 0, 0, 25, SW_WAY,
+  26, 117, 12817, -12100, 0, 0, 26, SW_WAY,
+  27, 117, 0, -34600, 0, 0, 31, SW_LANE,
+  28, 117, 180, -35100, 0, 0, 32, SW_GATE,
+  29, 117, 0, -40150, 0, 0, 35, SW_WAY,
+  30, 104, 0, -37000, 0, 0, 35, SW_WAY,   // a walker fills the hallway (#13505)
+  31, 114, 14006, -23253, 0, 0, 30, SW_WAY];   // and stands on the drill mech's place
 // The mutant check, zones `from` up to `to` (rows of WC_BLOCK): split in six checks, each in its budget.
 wc_mutants :: (from: int, to: int) {
   g := [1] SpGame.[SpGame.{}]; k: [1] SwWalker;
@@ -133,13 +141,13 @@ wc_mutants :: (from: int, to: int) {
     v := sl_place(g[..], WC_BLOCK[o + 1], WC_BLOCK[o + 2], WC_BLOCK[o + 3], WC_BLOCK[o + 4]).v;
     #assert v.why == SL_KEPT && v.which == row;
     // the zone gone: the check lets it in, and the walk can't be made
+    if WC_BLOCK[o + 5] < 0 { g[0].c[0].ok = false; g_reset(g[..]); continue; }
     sc_drop_kept(g[0].c[..], row);
     #assert sl_place(g[..], WC_BLOCK[o + 1], WC_BLOCK[o + 2], WC_BLOCK[o + 3], WC_BLOCK[o + 4]).ok;
     w := sw_replay_legs(g[..], k[..], WC_BLOCK[o + 5], SW_LEGS);
     #assert w.why == WC_BLOCK[o + 7] && w.leg == WC_BLOCK[o + 6];
     // and with the piece taken away again, the same legs are walked
     #assert sl_undo(g[..]).ok && sw_replay_legs(g[..], k[..], WC_BLOCK[o + 5], WC_BLOCK[o + 6] + 1).why == SW_OK;
-    if i == 2 { o1: [120] u8; #assert sw_why(g[..], w, o1[..]) == "something stands on the rail line"; }
     if i == 14 { o2: [120] u8; #assert sw_why(g[..], w, o2[..]) == "the run can't be walked: the way to 'HA bay' is blocked"; }
     if i == 27 { o3: [120] u8; #assert sw_why(g[..], w, o3[..]) == "something stands in 'Boss wall', which the Digger opens"; }
     // the tables are read again for the next zone

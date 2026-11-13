@@ -1,6 +1,6 @@
 // Splice's walk replay (GitHub #13404; docs/audits/2026-11-12-chat-and-world-building.md, slice 0):
 // the second check of an edit layer, made when it is saved. A walker goes the run's whole way on
-// foot, from the dome village to the banned bot, against the proposed layer: every place the run
+// foot, from the solar farm to the banned bot, against the proposed layer: every place the run
 // needs is stood in (the garage's bays, the empty section where the drill mech stands), every door is gone through, and the machines' own ways (the rover's rail, the
 // Digger's lane to the rubble and the boss wall) are clear. A layer the walk stops in is refused,
 // with the place it could not reach.
@@ -35,12 +35,10 @@ SWL_RAIL :: 3;     // the rover rides the rail's whole length
 SWL_LANE :: 4;     // the Digger drives its lane: a = 0 to the rubble, 1 to the boss wall
 SWL_GATE :: 5;     // nothing stands in it, and it opens: a = 0 the rubble, 1 the boss wall
 SWL_WEAK :: 6;     // walk to the banned bot's weak point a, to within b centimetres
-SW_LEGS :: 47;
+SW_LEGS :: 40;
 SW_ROUTE :: [SW_LEGS * 3] int.[
-  SWL_STAGE, 1, 0,   SWL_START, 15, 0,  SWL_WALK, 13, 50,  SWL_RAIL, 0, 0,
-  SWL_STAGE, 4, 0,   SWL_START, 18, 0,  SWL_WALK, 23, 80,  SWL_WALK, 18, 80,
-  // the first splice's parts (at the solar farm where a world has one, #13505), then Sniper drives you to the mine's start
-  SWL_STAGE, 5, 0,   SWL_START, 21, 0,  SWL_WALK, 22, 80,  SWL_WALK, 24, 80,  SWL_WALK, 25, 80,  SWL_START, 4, 0,   SWL_WALK, 61, 80,  SWL_WALK, 2, 80,
+  // the first splice's parts at the solar farm (#13505), then Sniper drives you to the mine's start
+  SWL_STAGE, 5, 0,   SWL_START, 21, 0,  SWL_WALK, 22, 80,  SWL_WALK, 23, 80,  SWL_WALK, 24, 80,  SWL_WALK, 25, 80,  SWL_START, 4, 0,   SWL_WALK, 61, 80,  SWL_WALK, 2, 80,
   SWL_LANE, 0, 0,    SWL_GATE, 0, 0,
   SWL_WALK, 62, 80,  SWL_WALK, 63, 80,  SWL_WALK, 64, 60,  SWL_WALK, 27, 80,  SWL_WALK, 65, 60,  SWL_WALK, 28, 80,  SWL_WALK, 66, 60,  SWL_WALK, 26, 80,
   SWL_WALK, 66, 60,  SWL_WALK, 65, 60,  SWL_WALK, 64, 60,  SWL_WALK, 67, 80,  SWL_WALK, 68, 80,  SWL_WALK, 69, 80,  SWL_WALK, 71, 60,  SWL_WALK, 29, 80,

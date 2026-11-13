@@ -309,11 +309,24 @@ sc_upgrade :: (text: string, out: [] u8) -> string {
   n := ct_put(out, 0, text[0..<first + 1]);
   for name: names {
     blk := sc_shipped_table(text, name);
-    if blk.count == 0 { blk = sc_shipped_table(SC_SHIPPED, name); }
+    if blk.count == 0 { blk = sc_upgrade_block(name); }
     n = ct_put(out, n, blk);
     if blk.count > 0 && blk[blk.count - 1] != '\n' { n = ct_put(out, n, "\n"); }
   }
   return ifx n > out.count then text else cast(string) out[0..<n];
+}
+// The table put into tables saved before it was. The world's own flow (its portals, starts and beats)
+// comes in empty: a world saved then plays the run it had, from the dome village, and its plans are the
+// ones that run was built with (SC_PLANS_BEFORE). The shipped ones name the solar farm (#13505), which
+// tables that old do not have. Every other table comes in as shipped.
+SC_PLANS_BEFORE :: "table plans id who:int when:text do:text route:text speed:int notice:int on:text\n10|1|dawn|dance|-440 -19180|180|0|chase\n11|1|day|dance|-440 -19180|180|0|chase\n12|1|dusk|dance|-440 -19180|180|0|chase\n13|1|night|dance|-440 -19180|180|0|chase\n20|2|dawn|dance|60 -19580|180|0|chase\n21|2|day|dance|60 -19580|180|0|chase\n22|2|dusk|dance|60 -19580|180|0|chase\n23|2|night|dance|60 -19580|180|0|chase\n30|3|dawn|dance|560 -19080|180|0|chase\n31|3|day|dance|560 -19080|180|0|chase\n32|3|dusk|dance|560 -19080|180|0|chase\n33|3|night|dance|560 -19080|180|0|chase\n40|4|dawn|dance|-140 -18880|180|0|chase\n41|4|day|dance|-140 -18880|180|0|chase\n42|4|dusk|dance|-140 -18880|180|0|chase\n43|4|night|dance|-140 -18880|180|0|chase\n50|5|dawn|dance|-2040 -18780|180|0|chase\n51|5|day|dance|-2040 -18780|180|0|chase\n52|5|dusk|dance|-2040 -18780|180|0|chase\n53|5|night|dance|-2040 -18780|180|0|chase\n60|6|dawn|patrol|1010 -18880, 1010 -20080|180|500|chase\n61|6|day|patrol|1010 -18880, 1010 -20080|180|500|chase\n62|6|dusk|patrol|1010 -18880, 1010 -20080|180|500|chase\n63|6|night|patrol|1010 -18880, 1010 -20080|180|500|chase\n70|7|dawn|patrol|-2240 -18980, -1740 -18980|180|500|chase\n71|7|day|patrol|-2240 -18980, -1740 -18980|180|500|chase\n72|7|dusk|patrol|-2240 -18980, -1740 -18980|180|500|chase\n73|7|night|patrol|-2240 -18980, -1740 -18980|180|500|chase\n80|8|dawn|patrol|-2240 -20080, -2740 -20080|180|500|chase\n81|8|day|patrol|-2240 -20080, -2740 -20080|180|500|chase\n82|8|dusk|patrol|-2240 -20080, -2740 -20080|180|500|chase\n83|8|night|patrol|-2240 -20080, -2740 -20080|180|500|chase\n90|9|dawn|patrol|-3640 -19080, -3640 -20080|180|500|chase\n91|9|day|patrol|-3640 -19080, -3640 -20080|180|500|chase\n92|9|dusk|patrol|-3640 -19080, -3640 -20080|180|500|chase\n93|9|night|patrol|-3640 -19080, -3640 -20080|180|500|chase\n";
+sc_upgrade_block :: (name: string) -> string {
+  if name == "plans" { return SC_PLANS_BEFORE; }
+  if name == "portals" || name == "starts" || name == "beats" {
+    blk := sc_shipped_table(SC_SHIPPED, name); e := sc_at(blk, "\n");
+    return ifx e < 0 then blk else blk[0..<e + 1];
+  }
+  return sc_shipped_table(SC_SHIPPED, name);
 }
 // Tables saved before the front screens' were (the credits, dolly and menu tables, #13482): each one
 // missing is put in where it sorts, from the shipped tables. Tables that have them all, or are not
@@ -495,7 +508,7 @@ sc_drop_kept :: (c: [] SpContent, row: int) {
 #test "Splice's shipped tables read: areas, kept-clear zones, landmarks and pieces, each by its ID" {
   c: [1] SpContent;
   #assert sc_load(c[..], SC_SHIPPED) && c[0].ok && c[0].rev >= 1;
-  #assert c[0].area_n == 4 && c[0].kept_n >= 20 && c[0].mark_n >= 40 && c[0].piece_n >= 15 && c[0].piece_n <= 30;
+  #assert c[0].area_n == 7 && c[0].kept_n >= 20 && c[0].mark_n >= 40 && c[0].piece_n >= 15 && c[0].piece_n <= 30;
   rover := sc_mark(c[..], 1);
   #assert rover.id == 1 && sc_mark_name(c[..], sc_mark_row(c[..], 1)) == "Rover" && sc_mark_row(c[..], 19) == -1 && sc_kept_name(c[..], 0) == "Village start" && sc_area_name(c[..], 3) == "Mine" && rover.x == 6 && rover.z == 5 && rover.r == 4.5;
   #assert sc_mark(c[..], 0).id == 0 && sc_mark(c[..], 9999).id == 0 && sc_mark(c[..], 19).id == 0;
@@ -584,11 +597,11 @@ sc_plan :: (c: [] SpContent, i: int, when: int) -> NplPlan {
   // an area added after the mine is ground the foes walk too: a box, or a circle
   far := sc_swap("63|6|night|patrol|1010 -18880, 1010 -20080|", "63|6|night|patrol|1010 -18880, 1500 4000|", o[..]);
   #assert !sc_load(c[..], far);
-  w2: [CT_BODY] u8; desert := sc_swap2(far, "4|Mine|0|-20500|16000|22500|0\n", "4|Mine|0|-20500|16000|22500|0\n5|Desert|0|5000|3000|3000|0\n", w2[..]);
+  w2: [CT_BODY] u8; desert := sc_swap2(far, "7|Garage yard|0|300|1500|800|0\n", "7|Garage yard|0|300|1500|800|0\n8|Sand|0|5000|3000|3000|0\n", w2[..]);
   #assert sc_load(c[..], desert) && sc_plan(c[..], 5, 3).z[1] == 4000;
-  w3: [CT_BODY] u8; round := sc_swap2(far, "4|Mine|0|-20500|16000|22500|0\n", "4|Mine|0|-20500|16000|22500|0\n5|Solar farm|1500|4000|0|0|500\n", w3[..]);
+  w3: [CT_BODY] u8; round := sc_swap2(far, "7|Garage yard|0|300|1500|800|0\n", "7|Garage yard|0|300|1500|800|0\n8|Round|1500|4000|0|0|500\n", w3[..]);
   #assert sc_load(c[..], round);
-  w4: [CT_BODY] u8; edge := sc_swap2(far, "4|Mine|0|-20500|16000|22500|0\n", "4|Mine|0|-20500|16000|22500|0\n5|Solar farm|1500|4500|0|0|499\n", w4[..]);
+  w4: [CT_BODY] u8; edge := sc_swap2(far, "7|Garage yard|0|300|1500|800|0\n", "7|Garage yard|0|300|1500|800|0\n8|Round|1500|4500|0|0|499\n", w4[..]);
   #assert !sc_load(c[..], edge);
   bad = sc_swap("63|6|night|patrol|", "63|6|night|fly|", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "plan 63: DO is stand, dance, sleep, guard, patrol, wander or follow";
@@ -605,7 +618,9 @@ sc_plan :: (c: [] SpContent, i: int, when: int) -> NplPlan {
   old = sc_cut(old, sc_shipped_table(SC_SHIPPED, "plans"), o[..]);
   n = ct_put(t[..], 0, old); old = cast(string) t[0..<n];
   old = sc_cut(old, sc_shipped_table(SC_SHIPPED, "actors"), o[..]);
-  #assert old.count < SC_SHIPPED.count && sc_upgrade(old, up[..]) == SC_SHIPPED && sc_load(c[..], old) && c[0].plans[0].ok && c[0].clock == -1;
+  // the plans they get are the ones that run was built with, not the farm's (#13505)
+  was: [CT_BODY] u8; before_plans := sc_swap(sc_shipped_table(SC_SHIPPED, "plans"), SC_PLANS_BEFORE, was[..]);
+  #assert old.count < SC_SHIPPED.count && sc_upgrade(old, up[..]) == before_plans && sc_load(c[..], old) && c[0].plans[0].ok && c[0].plans[0].act == NPD_DANCE && c[0].clock == -1;
   nm := c[0].actor[5];
   #assert cast(string) nm[0..<c[0].actor_n[5]] == "Imperial 1";
   // tables saved after the plans came and before the actors did: only the actors are put in
@@ -624,7 +639,7 @@ sc_plan :: (c: [] SpContent, i: int, when: int) -> NplPlan {
   #assert before.count < SC_SHIPPED.count && sc_upgrade(before, up[..]) == SC_SHIPPED && sc_load(c[..], before) && c[0].script_n == 0;
   n = ct_put(t[..], 0, before); before = cast(string) t[0..<n];
   before = sc_cut(before, sc_shipped_table(SC_SHIPPED, "plans"), o[..]);
-  #assert sc_upgrade(before, up[..]) == SC_SHIPPED;
+  #assert sc_upgrade(before, up[..]) == before_plans;
 }
 #test "the board's row: on as shipped (Q calls it, #13505), on with two speeds, and a row that does not hold is refused in words; tables saved before it get it" #steps 60000000 {
   c: [1] SpContent; o: [CT_BODY] u8; w: [300] u8; up: [CT_BODY] u8;
@@ -695,28 +710,59 @@ sc_cm :: (m: f32) -> int { return cast(int) floor(m * 100 + 0.5); }
 }
 
 #test "portals, starts and beats read from their tables; a row that does not read, or names what the tables lack, is refused in words" {
-  c: [1] SpContent; o: [CT_BODY] u8; w: [300] u8;
-  #assert sc_load(c[..], SC_SHIPPED) && c[0].portal_n == 0 && c[0].start_n == 0 && c[0].beat_n == 0;
+  c: [1] SpContent; o: [CT_BODY] u8; w: [300] u8; b: [CT_BODY] u8;
+  // shipped: the run starts at the solar farm by day, the rover's door and desk take you through, the yard turns the day to dusk (#13505)
+  #assert sc_load(c[..], SC_SHIPPED) && c[0].portal_n == 3 && c[0].start_n == 1 && c[0].beat_n == 1 && c[0].starts[0].when == 1 && sc_area_at_cm(c[..], c[0].starts[0].x, c[0].starts[0].z) == 5;
+  #assert c[0].portals[0].kind == 123 && c[0].portals[2].kind == 125 && c[0].portals[2].ride && c[0].beats[0].area == 7;
+  bare := sc_bare_flow(b[..]);
+  #assert sc_load(c[..], bare) && c[0].portal_n == 0 && c[0].start_n == 0 && c[0].beat_n == 0;
   ph := "table portals id name:text from:text to:text yaw:int r:int\n";
-  good := sc_swap(ph, "table portals id name:text from:text to:text yaw:int r:int\n1|Enter the rover|kind 101|-9000 25000|180|600\n2|Leave the rover|at -9000 24600|1200 3000|0|100\n", o[..]);
+  good := sc_swap2(bare, ph, "table portals id name:text from:text to:text yaw:int r:int\n1|Enter the rover|kind 101|-9000 25000|180|600\n2|Leave the rover|at -9000 24600|1200 3000|0|100\n", o[..]);
   #assert sc_load(c[..], good) && c[0].portal_n == 2 && c[0].portals[0].kind == 101 && c[0].portals[1].x == -9000 && prt_name(c[0].portals[..], 0) == "Enter the rover";
-  bad := sc_swap(ph, "table portals id name:text from:text to:text yaw:int r:int\n1|Enter|kind 999|0 0|0|600\n", o[..]);
+  bad := sc_swap2(bare, ph, "table portals id name:text from:text to:text yaw:int r:int\n1|Enter|kind 999|0 0|0|600\n", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "portal 1: FROM names a kind the pieces table has";
-  bad = sc_swap(ph, "table portals id name:text from:text to:text yaw:int r:int\n1|Enter|kind 101|0 0|0|5000\n", o[..]);
+  bad = sc_swap2(bare, ph, "table portals id name:text from:text to:text yaw:int r:int\n1|Enter|kind 101|0 0|0|5000\n", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "portal 1: R is how near FROM counts: 50 to 1000 centimetres";
   sh := "table starts id when:text at:text yaw:int\n";
-  good = sc_swap(sh, "table starts id when:text at:text yaw:int\n1|day|1500 3500|180\n", o[..]);
+  good = sc_swap2(bare, sh, "table starts id when:text at:text yaw:int\n1|day|1500 3500|180\n", o[..]);
   #assert sc_load(c[..], good) && c[0].start_n == 1 && c[0].starts[0].when == 1 && c[0].starts[0].x == 1500 && flw_first(c[0].starts[..], c[0].start_n) == 0;
-  bad = sc_swap(sh, "table starts id when:text at:text yaw:int\n1|noon|1500 3500|180\n", o[..]);
+  bad = sc_swap2(bare, sh, "table starts id when:text at:text yaw:int\n1|noon|1500 3500|180\n", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "start 1: a time of day is dawn, day, dusk or night";
   bh := "table beats id area:int from:text to:text\n";
-  good = sc_swap(bh, "table beats id area:int from:text to:text\n1|4|day|dusk\n", o[..]);
+  good = sc_swap2(bare, bh, "table beats id area:int from:text to:text\n1|4|day|dusk\n", o[..]);
   #assert sc_load(c[..], good) && c[0].beat_n == 1 && c[0].beats[0].area == 4 && c[0].beats[0].to == 2;
-  bad = sc_swap(bh, "table beats id area:int from:text to:text\n1|9|day|dusk\n", o[..]);
+  bad = sc_swap2(bare, bh, "table beats id area:int from:text to:text\n1|9|day|dusk\n", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "beat 1: AREA is the ID of one of the world's areas";
-  bad = sc_swap(bh, "table beats id area:int from:text to:text\n1|4|night|dusk\n", o[..]);
+  bad = sc_swap2(bare, bh, "table beats id area:int from:text to:text\n1|4|night|dusk\n", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "beat 1: a beat moves the day on: TO comes after FROM (dawn, day, dusk, night)";
 }
+// SC_SHIPPED with its portals, starts and beats tables kept to their headers, into out.
+sc_bare_flow :: (out: [] u8) -> string {
+  a: [CT_BODY] u8; b: [CT_BODY] u8; s := SC_SHIPPED;
+  for name: [3] string.["portals", "starts", "beats"] {
+    blk := sc_shipped_table(s, name); e := sc_at(blk, "\n");
+    s = sc_swap2(s, blk, blk[0..<e + 1], a[..]);
+    n := ct_put(b[..], 0, s); s = cast(string) b[0..<n];
+  }
+  n := ct_put(out, 0, s); return cast(string) out[0..<n];
+}
+// Whether area row a of the tables holds (x, z): its circle, or its box.
+sc_area_holds :: (c: [] SpContent, a: int, x: f32, z: f32) -> bool {
+  m := c[0].areas[a];
+  return ifx m.r > 0 then (x - m.x) * (x - m.x) + (z - m.z) * (z - m.z) <= m.r * m.r else abs(x - m.x) <= m.hx && abs(z - m.z) <= m.hz;
+}
+// The ID of the smallest area that holds (x, z) in metres, or 0.
+sc_area_in :: (c: [] SpContent, x: f32, z: f32) -> int {
+  id := 0; best: f32 = -1;
+  for a: 0..<c[0].area_n {
+    if !sc_area_holds(c, a, x, z) { continue; }
+    m := c[0].areas[a]; size := ifx m.r > 0 then m.r * m.r * 4 else m.hx * m.hz * 4;
+    if best < 0 || size < best { best = size; id = m.id; }
+  }
+  return id;
+}
+// The same for a point in centimetres, as the tables' rows hold it.
+sc_area_at_cm :: (c: [] SpContent, x: int, z: int) -> int { return sc_area_in(c, cast(f32) x / 100, cast(f32) z / 100); }
 #test "tables saved before the portals, starts and beats read with them put in, empty, where they sort" {
   c: [1] SpContent; o: [CT_BODY] u8; up: [CT_BODY] u8; t: [CT_BODY] u8;
   old := sc_cut(SC_SHIPPED, sc_shipped_table(SC_SHIPPED, "portals"), o[..]);
@@ -724,7 +770,9 @@ sc_cm :: (m: f32) -> int { return cast(int) floor(m * 100 + 0.5); }
   old = sc_cut(old, sc_shipped_table(SC_SHIPPED, "starts"), o[..]);
   n = ct_put(t[..], 0, old); old = cast(string) t[0..<n];
   old = sc_cut(old, sc_shipped_table(SC_SHIPPED, "beats"), o[..]);
-  #assert old.count < SC_SHIPPED.count && sc_upgrade(old, up[..]) == SC_SHIPPED && sc_load(c[..], old) && c[0].portal_n == 0;
+  // put in with no rows: a world saved then keeps the run it had (#13505)
+  b: [CT_BODY] u8; bare := sc_bare_flow(b[..]);
+  #assert old.count < SC_SHIPPED.count && sc_upgrade(old, up[..]) == bare && sc_load(c[..], old) && c[0].portal_n == 0 && c[0].start_n == 0;
   // a table Splice does not have: the text is left as it was, and does not load
   odd := sc_swap("table templates id name:text parts:text\n", "table templates id name:text parts:text\ntable zebras id name:text\n", o[..]);
   n = ct_put(t[..], 0, odd); odd = cast(string) t[0..<n];

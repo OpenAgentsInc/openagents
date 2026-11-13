@@ -9,6 +9,8 @@
 
 M_DRIVE :: 9;                     // splice-game.coax's modes, then front.coax's 7 and 8
 MSG_NO_DRILL :: 40;               // the drive asked for before the DRILL card is found
+MSG_MAP :: 41;                    // Sniper puts the deep-garage map up at the desk
+MSG_OUTFIT :: 42;                 // she changed her outfit in the rover's room
 DV_SPEED :: 24.0f32;              // m/s: the rover's pace on the way
 DV_SHORT :: 5.0f32; DV_LONG :: 14.0f32;   // s: the shortest and the longest a drive takes
 
@@ -19,8 +21,12 @@ SpDrive :: struct {
   bx: f32; bz: f32;               // where it parks
   out_x: f32; out_z: f32; out_deg: int;   // where you step out, and the way you face
   vx: f32; vz: f32; vyaw: f32; boarded: bool;   // the rover you last went into: where it stood
+  vid: int;                                       // and its piece's item ID in the layer (hidden while it drives)
+  shown: bool;                                    // Sniper has put the deep-garage map up at the desk this run
 }
 
+// The ID of the smallest area that holds (x, z), or 0: the farm's desert, the rover's room, the garage yard.
+sc_area_at :: (g: [] SpGame, x: f32, z: f32) -> int { return sc_area_in(g[0].c[..], x, z); }
 // Inside the rover's room: in the area that holds the TO of a door portal from a vehicle's kind.
 sp_in_room :: (g: [] SpGame) -> bool {
   c := g[0].c[..];
@@ -28,15 +34,12 @@ sp_in_room :: (g: [] SpGame) -> bool {
     p := c[0].portals[k];
     if !p.ok || p.kind == 0 || p.ride { continue; }
     tx := sc_m(p.to_x); tz := sc_m(p.to_z);
-    for a: 0..<c[0].area_n {
-      m := c[0].areas[a];
-      holds := ifx m.r > 0 then dist2(tx, tz, m.x, m.z) <= m.r else abs(tx - m.x) <= m.hx && abs(tz - m.z) <= m.hz;
-      if !holds { continue; }
-      if ifx m.r > 0 then dist2(g[0].px, g[0].pz, m.x, m.z) <= m.r else abs(g[0].px - m.x) <= m.hx && abs(g[0].pz - m.z) <= m.hz { return true; }
-    }
+    for a: 0..<c[0].area_n { if sc_area_holds(c, a, tx, tz) && sc_area_holds(c, a, g[0].px, g[0].pz) { return true; } }
   }
   return false;
 }
+// The item ID of the placed piece hidden now (-1: none): the rover you boarded, while it drives you.
+dv_hidden :: (g: [] SpGame) -> int { d := g[0].dv[0]; return ifx g[0].mode == M_DRIVE && d.boarded then d.vid else -1; }
 
 // Going through portal w: a door remembers the vehicle it is in (the nearest placed thing of its kind);
 // a drive starts. False when the drive is refused (no DRILL card yet): you stay where you are.
@@ -50,7 +53,7 @@ dv_through :: (g: [] SpGame, w: int) -> bool {
         e := g[0].layer[0].items[i];
         if e.mesh != p.kind { continue; }
         r := dist2(g[0].px, g[0].pz, e.x, e.z);
-        if best < 0 || r < best { best = r; d[0].vx = e.x; d[0].vz = e.z; d[0].vyaw = e.yaw; d[0].boarded = true; }
+        if best < 0 || r < best { best = r; d[0].vx = e.x; d[0].vz = e.z; d[0].vyaw = e.yaw; d[0].vid = e.id; d[0].boarded = true; }
       }
     }
     g_go(g, sc_m(p.to_x), sc_m(p.to_z), p.yaw); g[0].flash = 0.3;
@@ -107,7 +110,20 @@ dv_arrive :: (g: [] SpGame) {
   d[0].t = d[0].span; d[0].boarded = false;
   g[0].mode = M_PLAY;
   g_go(g, d[0].out_x, d[0].out_z, d[0].out_deg); g[0].flash = 0.3;
+  // Sniper parks by the garage's least-used opening: stepping out near it, she faces it, not open ground
+  w := dv_way_in(g);
+  if dist2(g[0].px, g[0].pz, w.x, w.z) < DV_FACE_NEAR { g[0].yaw = atan2(w.x - g[0].px, w.z - g[0].pz); g_bot_home(g); }
   g_beats(g);   // where you step out: the garage yard's beat makes it dusk
+}
+DV_FACE_NEAR :: 90.0f32;   // m: stepping out this near the way in, she faces it
+// The garage's least-used opening: the mouth of the old entrance bay's tunnel through the back wall (A1).
+dv_way_in :: (g: [] SpGame) -> Point { return ga_pt(g, ga_angle(GA_ENTRY), ga_back(g) + GA_BACK * 2, 0); }
+// Whether she faces the way in, within a tenth of a turn.
+dv_facing_in :: (g: [] SpGame) -> bool {
+  w := dv_way_in(g);
+  a := atan2(w.x - g[0].px, w.z - g[0].pz) - g[0].yaw;
+  while a > PI { a -= TAU; } while a < -PI { a += TAU; }
+  return abs(a) < TAU * 0.05;
 }
 // The camera outside: behind and beside the rover, high enough to see the road.
 dv_camera :: (g: [] SpGame) -> CamNow {
@@ -118,6 +134,37 @@ dv_camera :: (g: [] SpGame) -> CamNow {
 dv_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   s := dv_s(g); c := dv_at(g, s);
   g_draw_rover(buf, p, v3(c.x, 0.2, c.z), dv_yaw(g, s));
+}
+
+// At the desk (where the world's drive portal is): the first time she comes to it, Sniper puts the
+// deep-garage map up on the screens (director.coax d_map; M opens and closes it as anywhere).
+dv_desk :: (g: [] SpGame) {
+  if g[0].mode != M_PLAY || g[0].dv[0].shown { return; }
+  w := g_portal(g);
+  if w < 0 || !g[0].c[0].portals[w].ride { return; }
+  g[0].dv[0].shown = true; g[0].dr[0].map = true; g[0].dr[0].bag = false; g_say(g, MSG_MAP);
+}
+// O in the rover's room: the next of the wardrobe's outfits on her character (metaverse-engine/kit/
+// crew-wardrobe.coax, through the creation screen's own step, crew-player.coax cp_step). The character
+// this browser keeps is written again, so the outfit stays on.
+dv_outfit :: (g: [] SpGame) -> bool {
+  if g[0].mode != M_PLAY || !sp_in_room(g) { return false; }
+  f := g[0].fr[..];
+  f[0].doc[0] = cp_step(f[0].doc[0], CP_OUTFIT, 1); f[0].doc_gen += 1;
+  f[0].crew_n = hi_int(cd_write(f[0].doc[0], f[0].crew_text[..]), 0); if f[0].crew_n > 0 { f[0].crew_put = 1; }
+  g_say(g, MSG_OUTFIT);
+  return true;
+}
+// The room's own keys, under the prompt: the wardrobe and the map, with the outfit she has on.
+dv_room_hint :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
+  if g[0].mode != M_PLAY || !sp_in_room(g) || g[0].dr[0].bag || g[0].dr[0].map { return at; }
+  k := q.k; buf: [48] u8;
+  t := cp_value(g[0].fr[0].doc[0], CP_OUTFIT, buf[..]);
+  line: [96] u8; n := ct_put(line[..], 0, "O  Change outfit (now: "); n = ct_put(line[..], n, t); n = ct_put(line[..], n, ")   M  Deep-garage map");
+  if n > line.count { return at; }
+  s := cast(string) line[0..<n]; y := q.h - 18 * k - 92 * k; w := ui_w(F_MONO, s, 9 * k) + 36 * k;
+  ui_panel(g, u, q.w * 0.5 - w * 0.5, y - 20 * k, q.w * 0.5 + w * 0.5, y + 10 * k, INK(), 0.86);
+  return ui_mid(out, at, s, q.w * 0.5, y, 9 * k, PAPER());
 }
 
 // Moments for stills and checks (g_stage): 25, a drive two fifths of the way (the world's first ride
@@ -152,16 +199,16 @@ dv_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
 #test "a drive: no DRILL card, no drive; then the rover goes from where you boarded it to its parking, the camera outside, and you step out where the row says (#13505)" #steps 200000000 {
   g := [1] SpGame.[SpGame.{}]; k: [1] FlowTest;
   g_stage(g[..], 0);
-  t := sc_swap("table portals id name:text from:text to:text yaw:int r:int\n", "table portals id name:text from:text to:text yaw:int r:int\n1|Enter the rover|kind 116|-10000 26000|0|400\n2|Drive to the garage|at -10000 26300|ride 0 1000|180|200\n", k[0].o[0][..]);
-  t = sc_swap2(t, "4|Mine|0|-20500|16000|22500|0\n", "4|Mine|0|-20500|16000|22500|0\n5|Desert|0|40000|6000|4000|0\n6|Inside the rover|-10000|26000|520|400|0\n7|Garage yard|0|300|1500|800|0\n", k[0].o[1][..]);
+  bare := sc_bare_flow(k[0].o[4][..]);   // the shipped tables' areas, without their own rows
+  t := sc_swap2(bare, "table portals id name:text from:text to:text yaw:int r:int\n", "table portals id name:text from:text to:text yaw:int r:int\n1|Enter the rover|kind 116|-10000 26000|0|400\n2|Drive to the garage|at -10000 26300|ride 0 1000|180|200\n", k[0].o[0][..]);
   t = sc_swap2(t, "table beats id area:int from:text to:text\n", "table beats id area:int from:text to:text\n1|7|day|dusk\n", k[0].o[2][..]);
-  t = sc_swap2(t, "table starts id when:text at:text yaw:int\n", "table starts id when:text at:text yaw:int\n1|day|1000 40000|90\n", k[0].o[3][..]);
+  t = sc_swap2(t, "table starts id when:text at:text yaw:int\n", "table starts id when:text at:text yaw:int\n1|day|1000 36000|90\n", k[0].o[3][..]);
   #assert sc_load(g[0].c[..], t) && g_places(g[..]);
   g_reset(g[..]); g_begin(g[..]);
-  #assert g[0].mode == M_PLAY && g[0].phase == PH_DAY && g[0].pz == 400;
+  #assert g[0].mode == M_PLAY && g[0].phase == PH_DAY && g[0].pz == 360;
   // a crate stands for the rover at the farm; E beside it takes you into the room
-  #assert sl_place(g[..], 116, 1500, 40000, 90).ok;
-  g[0].px = 15; g[0].pz = 397; #assert !sp_in_room(g[..]);
+  #assert sl_place(g[..], 116, 1500, 36000, 90).ok;
+  g[0].px = 15; g[0].pz = 357; #assert !sp_in_room(g[..]);
   #assert g_key(g[..], 'e', true) && g[0].px == -100 && g[0].pz == 260 && sp_in_room(g[..]) && g[0].dv[0].boarded;
   // at the desk: no DRILL card, no drive
   g[0].px = -100; g[0].pz = 263;
@@ -169,7 +216,7 @@ dv_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   g[0].have[H_DRILL] = true;
   #assert g_key(g[..], 'e', true) && g[0].mode == M_DRIVE && !sp_in_room(g[..]);
   start := dv_at(g[..], 0); end := dv_at(g[..], 1);
-  #assert dist2(start.x, start.z, 15, 400) < 0.01 && dist2(end.x, end.z, g[0].at.rover_x, g[0].at.rover_z) < 0.01;
+  #assert dist2(start.x, start.z, 15, 360) < 0.01 && dist2(end.x, end.z, g[0].at.rover_x, g[0].at.rover_z) < 0.01;
   #assert g[0].dv[0].span >= DV_SHORT && g[0].dv[0].span <= DV_LONG;
   cam := dv_camera(g[..]); #assert cam.eye.y > 4;   // outside, above the road
   for i: 0..<2000 { g_step(g[..], 0.02); if g[0].mode != M_DRIVE { break; } }

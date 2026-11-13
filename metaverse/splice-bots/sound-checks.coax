@@ -17,34 +17,35 @@ sck_has :: (t: string, part: string) -> bool {
   return false;
 }
 
-SCK_RUN :: 36;
+SCK_RUN :: 35;
+// In the mine at this time of day: on foot (sck_on) or in the edit bay (sck_in).
+sck_on :: (name: string, phase: int) -> SndAt { return sck_at(name, M_PLAY, Z_MINE, phase); }
+sck_in :: (name: string, phase: int) -> SndAt { return sck_at(name, M_BAY, Z_MINE, phase); }
 #test "the scripted run sounds each sound at its moment, in order" #steps 800000000 {
   g := [1] SpGame.[SpGame.{}];
   #assert g_play_run(g[..]) == 0;
   want := [SCK_RUN] SndAt.[
-    // out of the village aboard the rover, the desert's music, the sensor's ping stops it, the Battery
-    sck_at("rover-door", M_RIDE, Z_RAIL, PH_DAY), sck_at("desert-music", M_RIDE, Z_RAIL, PH_DAY),
-    sck_at("sensor-ping", M_PLAY, Z_RAIL, PH_DAY), sck_at("rover-door", M_PLAY, Z_RAIL, PH_DAY), sck_at("pickup", M_PLAY, Z_RAIL, PH_DAY),
-    // back aboard: the raider mech gives chase, blows in the battle, the mech down
-    sck_at("rover-door", M_RIDE, Z_RAIL, PH_DAY), sck_at("raider-mech", M_RIDE, Z_RAIL, PH_DAY), sck_at("hit", M_RIDE, Z_RAIL, PH_DAY), sck_at("success", M_RIDE, Z_RAIL, PH_DAY),
-    // out at the mine: four pickups, then the edit bay: its whir, its loop, five slots
-    sck_at("rover-door", M_PLAY, Z_MINE, PH_DAY), sck_at("pickup", M_PLAY, Z_MINE, PH_DAY), sck_at("pickup", M_PLAY, Z_MINE, PH_DAY), sck_at("pickup", M_PLAY, Z_MINE, PH_DAY), sck_at("pickup", M_PLAY, Z_MINE, PH_DAY),
-    sck_at("film-whir", M_BAY, Z_MINE, PH_DAY), sck_at("rover-lofi", M_BAY, Z_MINE, PH_DAY),
-    sck_at("slot-click", M_BAY, Z_MINE, PH_DAY), sck_at("slot-click", M_BAY, Z_MINE, PH_DAY), sck_at("slot-click", M_BAY, Z_MINE, PH_DAY), sck_at("slot-click", M_BAY, Z_MINE, PH_DAY), sck_at("slot-click", M_BAY, Z_MINE, PH_DAY),
-    // Digger's DRILL card on the rubble, which opens at dusk; the cell and the special part
-    sck_at("rover-door", M_PLAY, Z_MINE, PH_DAY), sck_at("drill", M_PLAY, Z_MINE, PH_DAY), sck_at("success", M_PLAY, Z_MINE, PH_DUSK),
-    sck_at("pickup", M_PLAY, Z_MINE, PH_DUSK), sck_at("pickup", M_PLAY, Z_MINE, PH_DUSK),
+    // the solar farm by day: Digger's pickups, then the edit bay in Sniper's room: its whir, its loop, five slots
+    sck_on("pickup", PH_DAY), sck_on("pickup", PH_DAY), sck_on("pickup", PH_DAY), sck_on("pickup", PH_DAY),
+    sck_in("film-whir", PH_DAY), sck_in("rover-lofi", PH_DAY),
+    sck_in("slot-click", PH_DAY), sck_in("slot-click", PH_DAY), sck_in("slot-click", PH_DAY), sck_in("slot-click", PH_DAY), sck_in("slot-click", PH_DAY),
+    // the drive to the garage, with the desert's music; she steps out at dusk
+    sck_at("desert-music", M_DRIVE, Z_MINE, PH_DAY), sck_on("rover-door", PH_DUSK),
+    // the bay at Sniper parked by the garage, then Digger's DRILL card on the rock wall; the cell and the special part
+    sck_in("film-whir", PH_DUSK), sck_in("rover-lofi", PH_DUSK), sck_on("rover-door", PH_DUSK), sck_on("drill", PH_DUSK), sck_on("success", PH_DUSK),
+    sck_on("pickup", PH_DUSK), sck_on("pickup", PH_DUSK),
     // the bay again; Digger's core into the drill mech, its drill, the hallway down
-    sck_at("film-whir", M_BAY, Z_MINE, PH_DUSK), sck_at("slot-click", M_PLAY, Z_MINE, PH_DUSK), sck_at("drill", M_PLAY, Z_MINE, PH_DUSK), sck_at("success", M_PLAY, Z_MINE, PH_DUSK),
+    sck_in("film-whir", PH_DUSK), sck_in("rover-lofi", PH_DUSK), sck_in("slot-click", PH_DUSK), sck_in("slot-click", PH_DUSK),
+    sck_on("rover-door", PH_DUSK), sck_on("slot-click", PH_DUSK), sck_on("drill", PH_DUSK), sck_on("success", PH_DUSK),
     // the boss wakes, takes blows and falls at night; the core
-    sck_at("boss-wake", M_PLAY, Z_MINE, PH_DUSK), sck_at("hit", M_PLAY, Z_MINE, PH_DUSK), sck_at("boss-fall", M_PLAY, Z_MINE, PH_NIGHT), sck_at("success", M_PLAY, Z_MINE, PH_NIGHT),
+    sck_on("boss-wake", PH_DUSK), sck_on("hit", PH_DUSK), sck_on("boss-fall", PH_NIGHT), sck_on("success", PH_NIGHT),
     // the core spliced: the memory glitches in, and the scene is restored
-    sck_at("film-whir", M_BAY, Z_MINE, PH_NIGHT), sck_at("glitch", M_MEMORY, Z_MINE, PH_NIGHT)];
+    sck_in("film-whir", PH_NIGHT), sck_in("rover-lofi", PH_NIGHT), sck_at("glitch", M_MEMORY, Z_MINE, PH_NIGHT)];
   s := g[0].snd[0]; at := 0;
   for e: want { k := sck_find(s, at, e); #assert k >= 0; at = k + 1; }
   #assert sck_find(s, at, sck_at("success", M_RESTORED, Z_MINE, PH_NIGHT)) >= 0;
-  // the music starts once on the rail, and each sound reached a native host as its event
-  #assert sck_heard(g[..], "desert-music") == 1 && sck_heard(g[..], "rover-lofi") == 3;
+  // the music starts once, on the drive, and each sound reached a native host as its event
+  #assert sck_heard(g[..], "desert-music") == 1 && sck_heard(g[..], "rover-lofi") == 4;
 }
 
 #test "the board hums casual and whines fast, and stops when she steps off" #steps 60000000 {

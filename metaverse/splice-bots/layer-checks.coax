@@ -136,12 +136,12 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
   // a kept-clear zone, by name: the scanner gate's corridor, a pickup's reach, the Digger's lane
   v := sl_place(g[..], 117, 17500, -6700, 0).v;
   #assert v.why == SL_KEPT && sl_why(g[..], v, o[..]) == "in the kept-clear zone 'Scanner gate'";
-  v = sl_place(g[..], 117, -600, -1250, 0).v;
+  v = sl_place(g[..], 117, -1200, 34200, 0).v;
   #assert v.why == SL_KEPT && sl_why(g[..], v, o[..]) == "in the kept-clear zone 'Drill arm'";
   v = sl_place(g[..], 113, 0, 300, 0).v;
   #assert v.why == SL_KEPT && sl_why(g[..], v, o[..]) == "in the kept-clear zone 'Mine mouth lane'";
   // a footprint that only reaches into a zone is refused too; a step further out it stands
-  #assert sl_place(g[..], 117, -600 + 220 + 55, -1400, 0).v.why == SL_KEPT && sl_place(g[..], 117, -600 + 220 + 65, -1400, 0).ok;
+  #assert sl_place(g[..], 117, -1200 - 220 - 55, 34200, 0).v.why == SL_KEPT && sl_place(g[..], 117, -1200 - 220 - 65, 34200, 0).ok;
   // on the player
   g[0].px = 20; g[0].pz = 10;
   v = sl_place(g[..], 117, 2050, 1000, 0).v;
@@ -189,7 +189,7 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
 // A designer adds kinds through the tables: the piece store's share for kinds holds the shipped
 // kinds and one more kind of every kit at size 1 (#13485), so a scene of new kinds draws them all
 // and the player's walk poses still fit after them.
-#test "the piece store holds every shipped kind and one of each kit beside them" {
+#test "the piece store holds every shipped kind and one of each kit beside them" #steps 60000000 {
   c: [1] SpContent; w: [1] SpMeshScratch;
   #assert sc_load(c[..], SC_SHIPPED);
   n := 0;

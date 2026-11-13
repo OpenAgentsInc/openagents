@@ -16,7 +16,9 @@
 //               slot drops what is in it at her feet; Digger leaves it until she walks away from it.
 //   Heat        never cools below T_HEAT_PIECE for each banned piece with her; the more Heat, the
 //               farther robots sense her, and sneaking halves it.
-//   Map         M: the deep-garage map.
+//   Map         M: the deep-garage map: the garage's ring of lettered sections, the way in, the hallway
+//               and how deep it goes. Sniper puts it up at the rover's desk (drive.coax dv_desk).
+//   Outfit      O in the rover's room: the next outfit of the wardrobe (drive.coax dv_outfit).
 //   Pause       Esc, or the pointer let go while she plays: the game stops and lists the controls.
 //   Moves       1 to 4 in play are a bot's battle moves: d_take_move hands the battle each press.
 //
@@ -137,7 +139,7 @@ d_drop :: (g: [] SpGame, i: int) -> bool {
   if g[0].zone != Z_MINE { d_say(g, DS_HERE); return false; }
   k := 0;
   for p: 0..<PICKS {
-    if !g[0].taken[p] || d_kind_of(p) != kind || pick_zone(p) != Z_MINE { continue; }
+    if !g[0].taken[p] || d_kind_of(p) != kind || pick_zone(g, p) != Z_MINE { continue; }
     a := cast(f32) k * 2.1;
     g[0].at.pick_x[p] = g[0].px + sin(g[0].yaw + a) * 0.9; g[0].at.pick_z[p] = g[0].pz + cos(g[0].yaw + a) * 0.9;
     g[0].taken[p] = false; g[0].dr[0].left[p] = true; k += 1;
@@ -162,7 +164,7 @@ d_sensor_here :: (g: [] SpGame) -> bool { m := d_sensor_at(g); return m.id == LM
 d_sense :: (g: [] SpGame) -> int {
   d := g[0].dr[..]; best := -1; bd := d_range(g);
   for i: 0..<PICKS {
-    if g[0].taken[i] || pick_zone(i) != g[0].zone { continue; }
+    if g[0].taken[i] || pick_zone(g, i) != g[0].zone { continue; }
     if d[0].left[i] { if dist2(g[0].px, g[0].pz, pick_x(g, i), pick_z(g, i)) > d_range(g) + 1 { d[0].left[i] = false; } continue; }
     e := dist2(g[0].bot_x, g[0].bot_z, pick_x(g, i), pick_z(g, i));
     if e >= bd { continue; }
@@ -262,7 +264,7 @@ d_pointed :: (g: [] SpGame) -> DPoint {
   out := DPoint.{kind = DP_NONE, i = -1};
   if !r.ok { return out; }
   best := [1] f32.[2];
-  for i: 0..<PICKS { if !g[0].taken[i] && pick_zone(i) == g[0].zone && d_aim(r, pick_x(g, i), 0.75, pick_z(g, i), 0.9, best[..]) { out = DPoint.{kind = DP_PICK, i = i}; } }
+  for i: 0..<PICKS { if !g[0].taken[i] && pick_zone(g, i) == g[0].zone && d_aim(r, pick_x(g, i), 0.75, pick_z(g, i), 0.9, best[..]) { out = DPoint.{kind = DP_PICK, i = i}; } }
   if d_sensor_here(g) { m := d_sensor_at(g); if d_aim(r, m.x, 0.75, m.z, 0.9, best[..]) { out = DPoint.{kind = DP_SENSOR, i = PICKS}; } }
   if g[0].zone == Z_MINE {
     for i: 0..<FOES { if g_foe_in(g, i) && d_aim(r, g[0].fx[i], 1.0, g[0].fz[i], 1.0, best[..]) { out = DPoint.{kind = DP_FOE, i = i}; } }
@@ -554,6 +556,9 @@ d_map :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
   // the bounds: every wall but the map's edge
   lx := 1e9f32; hx := -1e9f32; lz := 1e9f32; hz := -1e9f32;
   for i: 0..<g[0].wall_n { o := i * 5; if g[0].walls[o + 4] <= 0 && (g[0].walls[o + 1] - g[0].walls[o] > 30 || g[0].walls[o + 3] - g[0].walls[o + 2] > 30) { continue; } lx = lo(lx, g[0].walls[o]); hx = hi(hx, g[0].walls[o + 1]); lz = lo(lz, g[0].walls[o + 2]); hz = hi(hz, g[0].walls[o + 3]); }
+  // and the garage's ring (garage.coax), whose walls are its own colliders
+  gx := g[0].at.gar_x; gz := g[0].at.gar_z; rb := ga_back(g); rf := g[0].at.gar_r;
+  lx = lo(lx, gx - rb); hx = hi(hx, gx + rb); lz = lo(lz, gz - rb); hz = hi(hz, gz + rb);
   if hx <= lx || hz <= lz { return n; }
   // between the HUD panels: clear of the top bars and the bottom cards and objective
   bh := q.h - 400 * k; bw := hi(q.w * 0.3, lo(q.w * 0.6, q.w - 960 * k)); sc := lo(bh / (hz - lz), bw / (hx - lx)); mw := (hx - lx) * sc; mh := (hz - lz) * sc;
@@ -568,6 +573,26 @@ d_map :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
     c := y0 + (hz - g[0].walls[o + 3]) * sc; e := y0 + (hz - g[0].walls[o + 2]) * sc;
     n = ui_box(out, n, a, c, b, e, 1.5 * k, ink);
   }
+  // the ring: the field's edge, the bays' back wall, a line at each pier, and each section's letters;
+  // the way in (A1) in orange, the empty section where the drill mech stands in blue
+  h := ga_span() * 0.5; nm: [2] u8;
+  for k2: 0..<GA_SECTIONS {
+    a := ga_angle(k2);
+    for j: 0..<3 {
+      s0 := a - h + ga_span() * cast(f32) j / 3; s1 := s0 + ga_span() / 3;
+      for r: [2] f32.[rf, rb] {
+        if r == rb && ga_gap(k2) > 0 && j == 1 { continue; }   // the tunnel and the hallway open the back wall
+        n = ui_seg(out, n, x0 + (gx + sin(s0) * r - lx) * sc, y0 + (hz - gz - cos(s0) * r) * sc, x0 + (gx + sin(s1) * r - lx) * sc, y0 + (hz - gz - cos(s1) * r) * sc, 1.2 * k, ink, 1);
+      }
+    }
+    b := a + h;
+    n = ui_seg(out, n, x0 + (gx + sin(b) * rf - lx) * sc, y0 + (hz - gz - cos(b) * rf) * sc, x0 + (gx + sin(b) * rb - lx) * sc, y0 + (hz - gz - cos(b) * rb) * sc, 1 * k, ink, 1);
+    c := ga_pt(g, a, (rf + rb) * 0.5, 0);
+    col := ifx k2 == GA_ENTRY then HEAT() else ifx k2 == GA_EMPTY then GLOW_INK() else ink;
+    n = ui_mid(out, n, ga_name(k2, nm[..]), x0 + (c.x - lx) * sc, y0 + (hz - c.z) * sc + 3 * k, 6.5 * k, col);
+  }
+  in_at := ga_pt(g, ga_angle(GA_ENTRY), rb + 12, 0);
+  n = ui_mid(out, n, "WAY IN", x0 + (in_at.x - lx) * sc, y0 + (hz - in_at.z) * sc + 3 * k, 7 * k, HEAT());
   px := x0 + (g[0].px - lx) * sc; pz := y0 + (hz - g[0].pz) * sc;
   rx := x0 + (g[0].at.rover_x - lx) * sc; rz := y0 + (hz - g[0].at.rover_z) * sc;
   n = ui_box(out, n, rx - 6 * k, rz - 9 * k, rx + 6 * k, rz + 9 * k, 3 * k, ink); n = ui_text(out, n, "SNIPER", rx + 10 * k, rz + 4 * k, 7 * k, ink);
@@ -576,20 +601,22 @@ d_map :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
   bz := y0 + (hz - g[0].at.boss_z) * sc; bx := x0 + (g[0].at.boss_x - lx) * sc;
   n = ui_mid(out, n, "DEEPER", bx, bz + 4 * k, 8 * k, GLOW_INK());
   if g[0].bot { n = ui_seg(out, n, x0 + (g[0].bot_x - lx) * sc, y0 + (hz - g[0].bot_z) * sc, x0 + (g[0].bot_x - lx) * sc, y0 + (hz - g[0].bot_z) * sc, 4 * k, GLOW_INK(), 1); }
-  n = ui_seg(out, n, px, pz, px, pz, 6 * k, HEAT(), 1);
-  n = ui_seg(out, n, px, pz, px - sin(g[0].yaw) * 14 * k, pz - cos(g[0].yaw) * 14 * k, 1.5 * k, HEAT(), 1);
+  if g[0].px >= lx && g[0].px <= hx && g[0].pz >= lz && g[0].pz <= hz {   // she is on the map (not still at the farm)
+    n = ui_seg(out, n, px, pz, px, pz, 6 * k, HEAT(), 1);
+    n = ui_seg(out, n, px, pz, px + sin(g[0].yaw) * 14 * k, pz - cos(g[0].yaw) * 14 * k, 1.5 * k, HEAT(), 1);
+  }
   n = ui_mid(out, n, "You (orange) · Digger (blue) · M closes", q.w * 0.5, y0 + mh + 32 * k, 8 * k, ink);
   return n;
 }
 // The controls, as the sheet maps them: shown on the pause screen.
-D_KEYS :: 16;
+D_KEYS :: 17;
 d_controls :: () -> [D_KEYS * 2] string {
   return [D_KEYS * 2] string.[
     "W A S D", "Walk", "Mouse", "Look", "Space", "Jump", "Hold Shift", "Sneak: slower, harder to sense",
     "Q", "Hoverboard on, then casual or fast", "Q Q, hold Q", "Hoverboard super fast; hold Q to step off",
     "E", "Interact, enter the rover, swap a core, tow Digger", "Tab", "Edit bay, inside Sniper", "I", "Inventory",
     "Left click", "Point Digger: dig, pick up, attack", "F", "Stun a robot within 2 m", "1 2 3 4", "Battle moves",
-    "Hold R", "Bot wheel: dig, pick up, attack, follow", "M", "Map", "Esc", "Pause", "G", "Graybox"];
+    "Hold R", "Bot wheel: dig, pick up, attack, follow", "M", "Map", "O", "Change outfit, inside Sniper", "Esc", "Pause", "G", "Graybox"];
 }
 d_pause_screen :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
   n := at; k := q.k; ink := INK(); paper := PAPER();

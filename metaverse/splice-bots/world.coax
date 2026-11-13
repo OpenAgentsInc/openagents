@@ -438,10 +438,68 @@ spw_batch :: (g: [] SpGame, x: [] SpwWork, doc: string, body: string, fenced: bo
   b.doc = made.count; b.did = did.count; b.inv = inv.count; b.edits = n;
   return b;
 }
-// The document of Splice with nothing placed, at head 0: what the world is before its first edit.
+// The pieces a world holds before its first edit (#13505): the solar farm where a run starts (its
+// panels, chargers and mesas, Sniper's rover train, a raider mech out in the desert and two at the
+// garage's mouth) and the rover's room (its windows, the loft bunk, the desk, the workbench arm and
+// the sofa). One row a piece: its kind (content ID), where it stands in centimetres, its turn in degrees.
+SPW_SHIPPED_N :: 33;
+SPW_SHIPPED :: [SPW_SHIPPED_N * 4] int.[
+  120, 1800, 33600, 0,
+  120, 1800, 34100, 0,
+  120, 1800, 34600, 0,
+  120, 1800, 35100, 0,
+  120, 3300, 33600, 0,
+  120, 3300, 34100, 0,
+  120, 3300, 34600, 0,
+  120, 3300, 35100, 0,
+  121, 2000, 36000, 180,
+  121, 2400, 36000, 180,
+  121, 2800, 36000, 180,
+  121, 3200, 36000, 180,
+  123, 300, 34800, 0,
+  122, -5000, 39000, 20,
+  122, 4800, 39200, -30,
+  122, -5200, 33500, 60,
+  122, 1500, 39300, 10,
+  108, -3500, 38300, 150,
+  108, -1100, 600, 90,
+  108, 1100, 600, -90,
+  127, -10310, 26330, 0,
+  127, -10000, 26330, 0,
+  127, -9690, 26330, 0,
+  127, -10310, 25670, 0,
+  127, -9690, 25670, 0,
+  127, -10430, 25845, 90,
+  127, -9570, 25845, 90,
+  127, -10430, 26155, 90,
+  127, -9570, 26155, 90,
+  124, -10250, 25850, 0,
+  125, -9730, 25860, 180,
+  126, -9760, 26160, -90,
+  128, -10250, 26170, 90];
+// The shipped pieces placed into the layer, each through the layer's check: how many stand, or minus
+// the row the check refused, less one.
+spw_shipped :: (g: [] SpGame) -> int {
+  for i: 0..<SPW_SHIPPED_N {
+    o := i * 4;
+    if !sl_place(g, SPW_SHIPPED[o], SPW_SHIPPED[o + 1], SPW_SHIPPED[o + 2], SPW_SHIPPED[o + 3]).ok { return -i - 1; }
+  }
+  return SPW_SHIPPED_N;
+}
+// The document of Splice with nothing placed, at head 0.
 spw_empty :: (g: [] SpGame, k: [] SpwScratch, out: [] u8) -> string {
   g_reset(g);
   editor_scene_reset(sl_scene(g)); g[0].layer[0].head = 0; g[0].layer[0].rev += 1;
+  spw_build(g);
+  return spw_save(g, k, out);
+}
+// What a world is before its first edit, at head 0: the shipped pieces (spw_shipped) and nothing else,
+// so a new world starts a run at the solar farm with no step to apply ("": one would not stand).
+spw_fresh :: (g: [] SpGame, k: [] SpwScratch, out: [] u8) -> string {
+  g_reset(g);
+  editor_scene_reset(sl_scene(g)); g[0].layer[0].rev += 1;
+  if spw_shipped(g) != SPW_SHIPPED_N { return ""; }
+  g[0].layer[0].head = 0;
   spw_build(g);
   return spw_save(g, k, out);
 }

@@ -35,10 +35,10 @@ fc_answer :: (out: [] u8, status: int, text: string) -> string {
   #assert scr_focused(g[0].fr[0].rows[..]) == CP_HEIGHT;
   h := g[0].fr[0].doc[0].body.v[CB_HEIGHT];
   #assert g_key(g[..], -5, true) && g[0].fr[0].doc[0].body.v[CB_HEIGHT] == h + CP_HEIGHT_STEP;
-  // down to USE THIS CHARACTER: play starts in the village at dawn, the character is kept and the old run let go
+  // down to USE THIS CHARACTER: play starts at the solar farm by day (#13505), the character is kept and the old run let go
   for i: 0..<4 { _ = g_key(g[..], -7, true); }
   #assert scr_focused(g[0].fr[0].rows[..]) == FR_USE;
-  #assert g_key(g[..], -2, true) && g[0].mode == M_PLAY && g[0].zone == Z_VILLAGE && g[0].phase == PH_DAWN;
+  #assert g_key(g[..], -2, true) && g[0].mode == M_PLAY && g[0].zone == Z_MINE && g[0].phase == PH_DAY && sc_area_at(g[..], g[0].px, g[0].pz) == 5;
   #assert g[0].fr[0].crew_put == 1 && g[0].fr[0].crew_n > 0 && g[0].fr[0].run_put == 1 && g[0].fr[0].run_n == 0;
   r := [1] CdRead.[cd_read(cast(string) g[0].fr[0].crew_text[0..<g[0].fr[0].crew_n])];
   #assert r[0].ok && r[0].doc.body.v[CB_HEIGHT] == h + CP_HEIGHT_STEP;

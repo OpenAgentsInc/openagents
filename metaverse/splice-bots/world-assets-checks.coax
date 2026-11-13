@@ -66,7 +66,7 @@ swt_ask :: (k: [] SwaTest, licence: int, name: string, data: [] u8) -> string {
   for i: 0..<w[0].pack_n { k[0].old[i] = w[0].out[i]; }
   old := cast(string) k[0].old[0..<w[0].pack_n];
   // its kind, and a rock placed by the scanner gate
-  e := splice_world_empty(t[0].doc[..]); empty := cast(string) t[0].doc[0..<e];
+  e := splice_world_bare(t[0].doc[..]); empty := cast(string) t[0].doc[0..<e];
   #assert splice_world_batch_packed(empty, "", old, spt_cell(k[0].body[..], 0, "pieces", 201, "*", SIT_ROW), true, t[0].next[..], k[0].tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]) == SPB_OK;
   mine := cast(string) k[0].tb[0..<n[6]]; one := cast(string) t[0].next[0..<n[0]];
   place := "{\"schema\":\"world.edit.v1\",\"rev\":1,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":201,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100}]}";

@@ -7,7 +7,7 @@
 SD_ROW :: 8;            // words a placed piece: x, y, z, 0, cos turn, sin turn, 0, 0 (f32 bits)
 SD_BASE :: 2;           // a placed piece's instance number is SD_BASE + its row: 0 and 1 are the world's and the live store's
 SD_PIECE_WORDS :: (SD_KIND_VERTS + FR_POSES * CW_BUDGET) * VERTEX_WORDS;   // the piece store: every kind's mesh, then the player's walk poses (front.coax)
-SD_KIND_VERTS :: 80000;   // the kinds' meshes' share of it: the shipped kinds take about 24,000 vertices, one of each kit at size 1 about 20,000 more (#13485)
+SD_KIND_VERTS :: 100000;   // the kinds' meshes' share of it: the shipped kinds (the solar farm's and Sniper's room's with them, #13505) and one of each kit at size 1 take about 82,000 vertices (#13485)
 SD_PLACE_WORDS :: (SL_ITEMS + 1) * SD_ROW;   // the place store: a row a placed piece, and the player's
 
 SpLayerDraw :: struct {
@@ -20,6 +20,7 @@ SpLayerDraw :: struct {
   place_n: int;           // rows in the place store
   place_rev: int = -1;    // the layer revision the rows were written from
   place_shown: int = -1;  // and the count of arrival steps (layer.coax sl_rise): a rising piece's row is written each frame
+  place_hid: int = -1;    // and the piece hidden then (drive.coax dv_hidden: the rover that drives you)
   place_gen: int;         // counts the place store's writes
 }
 
@@ -44,7 +45,8 @@ sd_meshes :: (d: [] SpLayerDraw, g: [] SpGame, pieces: [] u32, pack: string) {
 // The layer's placed pieces into the place store, a kind's rows together, by item ID within a
 // kind. It writes only when the layer's revision is not the one the rows were written from.
 sd_places :: (d: [] SpLayerDraw, g: [] SpGame, places: [] u32) {
-  if d[0].place_rev == g[0].layer[0].rev && d[0].place_shown == g[0].layer[0].shown { return; }
+  hid := dv_hidden(g);
+  if d[0].place_rev == g[0].layer[0].rev && d[0].place_shown == g[0].layer[0].shown && d[0].place_hid == hid { return; }
   c := g[0].c[..]; n := 0;
   for r: 0..<c[0].piece_n {
     d[0].row0[r] = n;
@@ -52,13 +54,14 @@ sd_places :: (d: [] SpLayerDraw, g: [] SpGame, places: [] u32) {
       item := g[0].layer[0].items[i];
       if item.mesh != c[0].pieces[r].id || (n + 1) * SD_ROW > places.count { continue; }
       o := n * SD_ROW;
-      places[o] = f32_bits(item.x); places[o + 1] = f32_bits(item.y - sl_sunk(g, item.id, c[0].pieces[r].top)); places[o + 2] = f32_bits(item.z); places[o + 3] = 0;
+      sunk := ifx item.id == hid then 1000.0f32 else sl_sunk(g, item.id, c[0].pieces[r].top);   // the rover driving you is not also parked
+      places[o] = f32_bits(item.x); places[o + 1] = f32_bits(item.y - sunk); places[o + 2] = f32_bits(item.z); places[o + 3] = 0;
       places[o + 4] = f32_bits(cos(item.yaw)); places[o + 5] = f32_bits(sin(item.yaw)); places[o + 6] = 0; places[o + 7] = 0;
       n += 1;
     }
     d[0].rows[r] = n - d[0].row0[r];
   }
-  d[0].place_n = n; d[0].place_rev = g[0].layer[0].rev; d[0].place_shown = g[0].layer[0].shown; d[0].place_gen += 1;
+  d[0].place_n = n; d[0].place_rev = g[0].layer[0].rev; d[0].place_shown = g[0].layer[0].shown; d[0].place_hid = hid; d[0].place_gen += 1;
 }
 // The layer's draws into `draws` from record `at` (four words a record: first vertex, vertices,
 // the store's flag and the first instance, instances): one for each kind that has a placed piece.

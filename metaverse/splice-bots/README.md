@@ -232,13 +232,18 @@ the copy the page is built with. Run it after every edit.
 | `looks` | Three colours of Splice Bots' palette. A table of its own, because a content table has eight columns at most |
 | `landmarks` | A named place in centimetres, with a radius. The game reads its places from here, not from constants |
 | `kept_clear` | A zone the run needs: a box, grown by a radius. Nothing may be placed in one |
-| `areas` | Where a piece may stand at all: the dome village, the gate corridor, the rail stop and the mine |
+| `areas` | Where a piece may stand at all: the dome village, the gate corridor, the rail stop, the mine, the desert of the solar farm, the room inside the rover and the garage yard |
 | `menu` | A title row: its key (`continue`, `new` or `credits`) and its label. The rows' order is the table's |
 | `credits` | A line of the credits screen |
 | `dolly` | A point of the title camera's path past the rover: the eye and where it looks, in centimetres in the rover's frame, and seconds to the next point |
 | `portals` | A way from one place to another: E at any placed piece of a kind (`kind K`) or at a point (`at X Z`) takes the player to `X Z`, facing a yaw. A vehicle that opens onto a room inside it is a portal from its kind ([the module](../../metaverse-engine/world/portal.coax)) |
 | `starts` | Where a player starts at a time of day. The row with the lowest ID is where a new run starts, at its time of day; a respawn at a time of day with a row goes to that row ([the module](../../metaverse-engine/world/flow.coax)) |
 | `beats` | Where the day moves on: standing in an area while it is `from` makes it `to`, never earlier |
+
+As shipped, a new run starts at the solar farm by day. E at the rover train goes into the room
+inside the rover. E at the desk there starts the drive to the garage, and the garage yard turns
+the day to dusk. Tables saved before the `portals`, `starts` and `beats` tables get them empty,
+so such a world keeps its older opening in the dome village (#13505).
 
 Splice Bots now has 16 tables, the most a content document holds. A new kind of row goes in an
 existing table or needs the format's limit raised first.
@@ -355,7 +360,7 @@ from outside shows in under a second, and a placed piece rises out of the ground
 ### The walk replay
 
 `walk.coax` is the second check, made when a layer is saved. A walker goes the run's whole way on
-foot, 46 legs from the dome village to the banned bot, against the proposed layer. It uses the
+foot, 40 legs from the solar farm to the banned bot, against the proposed layer. It uses the
 engine's steering service to go round things and the game's own step and collision. It refuses a
 layer when:
 

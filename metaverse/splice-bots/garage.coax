@@ -39,6 +39,12 @@ ga_angle :: (k: int) -> f32 { return cast(f32) k * ga_span(); }
 // The lab's back wall, less a step: as far as the boss's charge goes (splice-battle.coax).
 ga_lab_back :: (g: [] SpGame) -> f32 { return g[0].at.gar_z - ga_back(g) - GA_HALL_LONG - GA_LAB_Z + 2; }
 ga_back :: (g: [] SpGame) -> f32 { return g[0].at.gar_r + GA_BAY; }
+// Whether (x, z) is in the mountain: the hallway past the back wall, or the old-world lab past it.
+// Indoors, lit white whatever the time of day.
+ga_in_lab :: (g: [] SpGame, x: f32, z: f32) -> bool {
+  back := g[0].at.gar_z - ga_back(g); end := back - GA_HALL_LONG;
+  return z < back - GA_BACK && z > end - GA_LAB_Z && abs(x - g[0].at.gar_x) < GA_LAB_X;
+}
 // The point r metres from the field's middle at angle a, y up.
 ga_pt :: (g: [] SpGame, a: f32, r: f32, y: f32) -> Point { return v3(g[0].at.gar_x + sin(a) * r, y, g[0].at.gar_z + cos(a) * r); }
 // Where in section k a thing stands `r` metres out (its middle line).
@@ -210,7 +216,7 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   }
   // the hallway into the mountain, past section E1, and the old-world lab: white walls, a rare blue glow
   back := g[0].at.gar_z - rb; end := back - GA_HALL_LONG;
-  kit_pen(p, 221, MAT_WORLD, kit_tint(0.46, 0.40, 0.44));
+  kit_pen(p, 221, MAT_WORLD, kit_tint(0.92, 0.92, 0.90));   // the hallway: the white lab's own walls, so it reads white at night too
   block(buf, p, -GA_HALL - 5, 0, (back + end) * 0.5, 5, 12, GA_HALL_LONG * 0.5 + 1); block(buf, p, GA_HALL + 5, 0, (back + end) * 0.5, 5, 12, GA_HALL_LONG * 0.5 + 1);
   block(buf, p, 0, 10, (back + end) * 0.5, GA_HALL + 0.1, 4, GA_HALL_LONG * 0.5);
   kit_pen(p, 222, MAT_FLOOR, kit_tint(0.90, 0.92, 0.94));
@@ -229,8 +235,15 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   for i: 0..<6 { s := ifx i % 2 == 0 then -1.0f32 else 1.0f32; block(buf, p, s * (GA_LAB_X - 4), 0, end - 10 - cast(f32) (i / 2) * 12, 1.6, 1.4, 2.4); }
 }
 
-// The lamps of the three bays nearest you, into the light slots 2, 3 and 5 (g_lights).
+// The lamps of the three bays nearest you, into the light slots 2, 3 and 5 (g_lights); in the lab, its
+// white ceiling lights in the same slots.
 ga_lights :: (g: [] SpGame, l: [] f32) {
+  if ga_in_lab(g, g[0].px, g[0].pz) {
+    end := g[0].at.gar_z - ga_back(g) - GA_HALL_LONG;
+    slots := [3] int.[2, 3, 5];
+    for i: 0..<3 { light_put(l, slots[i], v3(g[0].at.gar_x, 8.2, end - GA_LAB_Z * (0.2 + cast(f32) i * 0.3)), 22, 1.0, 1.0, 1.0, 1.1); }
+    return;
+  }
   if !ga_inside(g, g[0].px, g[0].pz) { return; }
   k := ga_section_of(g, g[0].px, g[0].pz);
   slots := [3] int.[2, 3, 5];
