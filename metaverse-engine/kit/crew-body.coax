@@ -93,7 +93,7 @@ CT_RINGS :: 11;
 CA_CAP :: 0; CA_SHOULDER :: 1; CA_UPPER :: 2; CA_ELBOW :: 3; CA_FORE :: 4; CA_WRIST :: 5; CA_RINGS :: 6;
 CL_HIP :: 0; CL_THIGH :: 1; CL_MID :: 2; CL_KNEE :: 3; CL_CALF :: 4; CL_ANKLE :: 5; CL_RINGS :: 6;
 CB_TORSO_SIDES :: 18; CB_LIMB_SIDES :: 12;
-CB_TORSO_SQ :: 0.82f32;
+CB_TORSO_SQ :: 0.88f32;
 
 CrewForm :: struct {
   h: f32;                       // the height, metres: the crown's
@@ -120,7 +120,7 @@ cb_form :: (b: CrewBody) -> CrewForm {
   stoop := cast(f32) b.v[CB_STOOP] * 0.01;
 
   head_h := 0.142 * h * head;
-  nl := 0.026 * h * neck_len; nr := lo(0.029 * h * neck, head_h * 0.5 * 0.80 * 0.92);   // a neck is never wider than the head on it
+  nl := 0.026 * h * neck_len; nr := lo(0.029 * h * neck, head_h * 0.5 * 0.77 * 0.92);   // a neck is never wider than the head on it
   chin := h - head_h;
   sy := chin - nl - 0.012 * h;
   crotch := 0.465 * h * leg_len;
@@ -132,20 +132,20 @@ cb_form :: (b: CrewBody) -> CrewForm {
   hip_rx := 0.092 * h * hips; hip_rz := 0.064 * h * hips;
   bel := belly * 0.090 * h;
   arm_r := 0.030 * h * arms;
-  sw := hi(0.112 * h * shoulders, chest_rx * 0.92);
+  sw := hi(0.108 * h * shoulders, chest_rx * 0.92);
 
   // the torso: level rings, each leaning forward with the stoop and pushed forward by the belly
   ts := [CT_RINGS] f32.[0.0, 0.10, 0.20, 0.33, 0.46, 0.62, 0.78, 0.91, 1.0, 1.0, 1.0];
   rx := [CT_RINGS] f32.[hip_rx * 0.62, hip_rx * 0.97, hip_rx + 0.012 * h * belly, lerp(hip_rx, waist_rx, 0.55) + 0.030 * h * belly, waist_rx + 0.025 * h * belly,
-                        lerp(waist_rx, chest_rx, 0.65) + 0.010 * h * belly, chest_rx, hi(chest_rx * 0.94, sw - arm_r * 0.35), sw - arm_r * 0.55, lerp(nr * 1.45, sw, 0.42), nr * 1.45];
+                        lerp(waist_rx, chest_rx, 0.65) + 0.010 * h * belly, chest_rx, hi(chest_rx * 0.94, sw - arm_r * 0.35), sw - arm_r * 0.25, lerp(nr * 1.45, sw, 0.60), nr * 1.45];
   rz := [CT_RINGS] f32.[hip_rz * 0.66, hip_rz * 0.96, hip_rz, lerp(hip_rz, waist_rz, 0.55), waist_rz, lerp(waist_rz, chest_rz, 0.7), chest_rz, chest_rz * 0.9, chest_rz * 0.72, lerp(nr * 1.2, chest_rz, 0.4), nr * 1.2];
   fw := [CT_RINGS] f32.[0.10, 0.30, 0.55, 1.0, 0.85, 0.40, 0.10, 0.0, 0.0, 0.0, 0.0];
   o.torso = loft_new(CB_TORSO_SIDES, CB_TORSO_SQ);
   for i: 0..<CT_RINGS {
     y := crotch + tall * ts[i];
-    if i == CT_UPPER { y = sy - arm_r * 0.9; }   // the shoulder joints' height, so an arm always meets it
-    if i == CT_SHOULDER { y = sy - arm_r * 0.3; }   // the shoulder slopes up from here to the neck
-    if i == CT_TRAP { y = sy + 0.012 * h; }
+    if i == CT_UPPER { y = sy - arm_r * 1.1; }   // the shoulder joints' height, so an arm always meets it
+    if i == CT_SHOULDER { y = sy - arm_r * 0.2; }   // the shoulder slopes up from here to the neck
+    if i == CT_TRAP { y = sy + 0.010 * h; }
     if i == CT_NECK { y = sy + 0.034 * h; }
     k := (y - crotch) / tall;
     z := lean * k * k + bel * fw[i] * 0.5;
@@ -154,7 +154,7 @@ cb_form :: (b: CrewBody) -> CrewForm {
   top_z := lean;
 
   // the head and neck
-  o.head_ry = head_h * 0.5; o.head_rx = head_h * 0.5 * 0.80; o.head_rz = head_h * 0.5 * 0.90;
+  o.head_ry = head_h * 0.5; o.head_rx = head_h * 0.5 * 0.77; o.head_rz = head_h * 0.5 * 0.90;
   o.head = v3(0, h - head_h * 0.5, top_z + stoop * 0.05 * h + 0.008 * h);
   o.neck_r = nr;
   o.neck_foot = v3(0, sy - 0.012 * h, top_z);
@@ -168,7 +168,7 @@ cb_form :: (b: CrewBody) -> CrewForm {
   theta := clamp((wide + wrist_r + 0.035 * h - sw) / (ua + fa * 0.6), 0.10, 0.60);
   for side: 0..<2 {
     sx := cb_side(side);
-    sj := v3(sx * sw, sy - arm_r * 0.9, top_z);
+    sj := v3(sx * sw, sy - arm_r * 1.1, top_z);
     d1 := unit_or(v3(sx * sin(theta), -cos(theta), -0.04), v3(0, -1, 0));
     d2 := unit_or(v3(sx * sin(theta * 0.55), -cos(theta * 0.55), 0.16), v3(0, -1, 0));
     elbow := add(sj, times(d1, ua)); wrist := add(elbow, times(d2, fa));

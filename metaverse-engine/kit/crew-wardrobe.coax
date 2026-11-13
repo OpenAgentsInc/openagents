@@ -354,7 +354,7 @@ cw_legs_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit:
     if kind == CW_LEGS_FLIGHT || kind == CW_LEGS_CARGO || kind == CW_LEGS_OVERALLS {
       // a cargo pocket on the thigh's outer side, its flap strapped down
       big := ifx kind == CW_LEGS_CARGO then 1.2f32 else 1.0f32;
-      cw_pocket(buf, p, f, d, leg, 2.15, cw_out_front(side, 0.42), 0.040 * h * big, 0.052 * h * big, 0.020 * u * big, true, kind != CW_LEGS_OVERALLS);
+      cw_pocket(buf, p, f, d, leg, 2.1, cw_out_front(side, 0.85), 0.042 * h * big, 0.054 * h * big, 0.018 * u * big, true, kind != CW_LEGS_OVERALLS);
     }
     if kind == CW_LEGS_FLIGHT || kind == CW_LEGS_OVERALLS {
       // a knee patch, stitched round
@@ -394,13 +394,11 @@ cw_legs_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit:
     }
   }
   if kind == CW_LEGS_FLIGHT {
-    // the white tab that hangs from the belt on the left thigh
-    leg := m.leg[1];
-    hang := loft_ease(leg, e0 + 0.006 * u, e0 + 0.006 * u);
-    cw_cloth(p, d.obj, CW_SOFT());
-    loft_line(buf, p, f, hang, 0.7, PI * 0.5 - 0.5, 1.7, PI * 0.5 - 0.42, 0.020 * h, 0.004 * u, 4);
+    // the strap that hangs from the belt down the left thigh, a white tab at its end
+    hang := loft_ease(m.leg[1], e0 + 0.004 * u, e0 + 0.004 * u);
+    cw_band(buf, p, f, d, hang, 0.75, PI * 0.5 - 0.35, 1.85, PI * 0.5 - 0.3, 0.020 * h, 0.004 * u);
     cw_thread(p, d.obj);
-    loft_line(buf, p, f, hang, 0.7, PI * 0.5 - 0.5, 1.7, PI * 0.5 - 0.42, 0.011 * h, 0.006 * u, 4);
+    loft_line(buf, p, f, hang, 1.6, PI * 0.5 - 0.31, 1.85, PI * 0.5 - 0.3, 0.012 * h, 0.006 * u, 2);
   }
   if kind == CW_LEGS_OVERALLS { cw_bib(buf, p, f, d, m, fit); }
 }
@@ -472,10 +470,10 @@ cw_boots_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit
     }
     loft_line(buf, p, f, foot, 3.85, 0.12, 3.85, PI - 0.12, d.sw, d.lift, 8);
     front: f32 = PI * 0.5;
-    for i: 0..<4 {
-      t := 0.35 + cast(f32) i * 0.42;
-      s := ifx i % 2 == 0 then 1.0f32 else -1.0f32;
-      loft_line(buf, p, f, shaft, t, front - 0.42 * s, t + 0.34, front + 0.42 * s, d.sw * 0.8, d.lift, 3);
+    for i: 0..<5 {
+      t := 0.25 + cast(f32) i * 0.33;
+      loft_line(buf, p, f, shaft, t, front - 0.36, t + 0.27, front + 0.36, d.sw * 0.7, d.lift, 3);
+      loft_line(buf, p, f, shaft, t, front + 0.36, t + 0.27, front - 0.36, d.sw * 0.7, d.lift, 3);
     }
     loft_line(buf, p, f, foot, 2.3, front - 0.45, 3.0, front + 0.45, d.sw * 0.8, d.lift, 3);
     loft_line(buf, p, f, foot, 2.3, front + 0.45, 3.0, front - 0.45, d.sw * 0.8, d.lift, 3);
@@ -578,7 +576,7 @@ cw_top_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit: 
       // rolled above the wrist: a thick cuff
       sl := cw_sleeve(m, fit, side, 0, 3.7, CW_LOOSE * u + 0.006 * u, CW_LOOSE * u + 0.012 * u);
       cw_cloth(p, d.obj, CW_CLOTH());
-      loft_write_round(buf, p, f, sl, 0.7, 0.01);
+      loft_write_round(buf, p, f, sl, 0.4, 0.01);
       roll := cw_sleeve(m, fit, side, 3.45, 3.95, 0.046 * u, 0.044 * u);
       cw_cloth(p, d.obj, CW_SOFT());
       loft_write(buf, p, f, roll, true, true);
@@ -605,7 +603,7 @@ cw_top_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit: 
       end := ifx kind == CW_TOP_SHIRT then 4.55f32 else 4.85f32;
       sl := cw_sleeve(m, fit, side, 0, end, e + 0.004 * u, e);
       cw_cloth(p, d.obj, CW_CLOTH());
-      loft_write_round(buf, p, f, sl, 0.7, 0);
+      loft_write_round(buf, p, f, sl, 0.4, 0);
       last_s := cast(f32) (sl.n - 1);
       cw_stitch_round(buf, p, f, d, sl, last_s - 0.08);
       if kind == CW_TOP_VAC || kind == CW_TOP_FITTED {
@@ -649,7 +647,7 @@ cw_outer_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit
       // a full sleeve gathered into a cuff, a zip pocket on its upper arm
       sl := cw_sleeve(m, fit, side, 0, 4.55, e, e + 0.02 * u);
       cw_cloth(p, d.obj + 3, CW_SOFT());
-      loft_write_round(buf, p, f, sl, 0.7, 0.01);
+      loft_write_round(buf, p, f, sl, 0.4, 0.01);
       cuff := cw_sleeve(m, fit, side, 4.45, 4.85, 0.030 * u, 0.026 * u);
       cw_cloth(p, d.obj + 3, CW_CLOTH());
       loft_write(buf, p, f, cuff, true, true);
@@ -700,7 +698,7 @@ cw_outer_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit
       // a wide sleeve
       sl := cw_sleeve(m, fit, side, 0, 4.7, e - 0.008 * u, e + 0.012 * u);
       cw_cloth(p, d.obj + 3, CW_CLOTH());
-      loft_write_round(buf, p, f, sl, 0.7, 0);
+      loft_write_round(buf, p, f, sl, 0.4, 0);
       cw_stitch_round(buf, p, f, d, sl, cast(f32) (sl.n - 1) - 0.08); cw_stitch_round(buf, p, f, d, sl, 1.0);
       cw_thread(p, d.obj);
     }

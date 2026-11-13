@@ -7,6 +7,7 @@
 //   ?view=fit       one outfit on all six bodies (&outfit=flight-suit|deckhand|vac-suit|runner|shroud|fitter)
 //   ?view=outfits   the six outfits on one body (&body=bruiser|mechanic|scout|elder|fighter|kid)
 //   ?view=one       a turntable on one character: the page's own document (the default view)
+//   &pane=0         the scene alone, with no pane beside it (a picture of a view)
 //   &turn=DEGREES   holds the turntable at an angle; &doc=BASE64URL loads a crew.character.v1 document;
 //                   &body= and &outfit= dress the turntable's character in a preset
 //
@@ -40,6 +41,7 @@ Crew :: struct {
   // the pane beside the scene (crew-pane.coax): what it was last told, and how many times it was told
   told: int; model: [CD_TEXT + 96] u8; model_n: int;
   // this browser's copy of the character (coax/web/STORAGE.md): asked for once, and kept when the pane says so
+  bare: bool;                           // the address asked for the scene with no pane beside it
   from_address: bool;                   // the address named the character, so the kept one is not loaded over it
   store_get: int; store_put: int;       // 0 nothing to ask, 1 the face is to ask, 2 asked
   kept: bool;                           // the character as it is now is the one this browser keeps
@@ -68,7 +70,8 @@ cr_tell :: (s: [] Crew) {
   s[0].model_n = n + hi_i(k, 0);
   s[0].told += 1;
 }
-crew_pane :: () -> string #export_c #effects(all) { return CR_PANE; }
+// The pane's module, or nothing when the address asks for the scene alone (&pane=0: a picture of a view).
+crew_pane :: (s: [] Crew) -> string #export_c #effects(all) { return ifx s.count > 0 && s[0].facts && !s[0].bare then CR_PANE else ""; }
 crew_pane_rev :: (s: [] Crew) -> int #export_c #effects(all) { return s[0].told; }
 crew_pane_model :: (s: [] Crew) -> string #export_c #effects(all) { return cast(string) s[0].model[0..<s[0].model_n]; }
 // The face's storage asks: 1 when the page wants this browser's character read, 2 when it wants the character kept.
@@ -90,7 +93,7 @@ cr_stored :: (s: [] Crew, body: string) {
   cr_tell(s);
 }
 // Each of the row's six: its body, its outfit and its look (the crew sheet's people, in the black sheet's clothes).
-cr_row_outfit :: (i: int) -> int { t := [6] int.[CW_FLIGHT_SUIT, CW_FITTER, CW_RUNNER, CW_SHROUD, CW_DECKHAND, CW_VAC_SUIT]; return t[i % 6]; }
+cr_row_outfit :: (i: int) -> int { t := [6] int.[CW_FLIGHT_SUIT, CW_FITTER, CW_SHROUD, CW_RUNNER, CW_DECKHAND, CW_VAC_SUIT]; return t[i % 6]; }
 cr_row_look :: (i: int) -> CrewLook {
   if i == CB_BRUISER { return CrewLook.{skin = 3, hair = CH_LONG, hair_colour = 3, jaw = 1, eyes = 1, brows = 2, nose = 2, mark = CH_FULL}; }
   if i == CB_MECHANIC { return CrewLook.{skin = 1, hair = CH_TOPKNOT, hair_colour = 2, jaw = 1, eyes = 1, brows = 2, nose = 2, mark = CH_BEARD}; }
@@ -287,6 +290,7 @@ crew_message :: (s: [] Crew, kind: int, body: string) #export_c #effects(all) {
   if kind != HOST_FACTS || s[0].facts { return; }
   s[0].facts = true;
   url := fact(body, "url");
+  s[0].bare = query(url, "pane") == "0";
   names := [4] string.["view", "outfit", "body", "labels"];
   for k: 0..<4 { v := query(url, names[k]); if v.count > 0 { cr_show(s, names[k], v); } }
   // on the turntable, a body or an outfit named in the address dresses the page's character in that preset
@@ -365,9 +369,9 @@ cr_test_frame :: (h: [] CrTest) -> int { return crew_frame(h[0].s[..], h[0].out[
 }
 #test "the pane is told the view and the character, and this browser's copy is read once and kept on a word" {
   h: [1] CrTest; s := h[0].s[..];
-  #assert crew_pane() == "crew-pane" && crew_pane_rev(s) == 0;
+  #assert crew_pane(s) == "" && crew_pane_rev(s) == 0;
   crew_message(s, HOST_FACTS, "url=https://x/worlds/crew?view=fit&outfit=runner\n");
-  #assert crew_pane_rev(s) == 1 && crew_store_wants(s) == 1;
+  #assert crew_pane_rev(s) == 1 && crew_store_wants(s) == 1 && crew_pane(s) == "crew-pane";
   m := crew_pane_model(s);
   head := "view fit outfit runner body fighter kept 0\n";
   #assert m.count == head.count + CD_PINNED.count && cast(string) m[0..<head.count] == head && cast(string) m[head.count..<m.count] == CD_PINNED;
@@ -391,7 +395,8 @@ cr_test_frame :: (h: [] CrTest) -> int { return crew_frame(h[0].s[..], h[0].out[
   #assert s[0].kept && crew_pane_rev(s) == 3 && crew_store_wants(s) == 0;
   // a character named in the address is never replaced by the browser's copy
   g: [1] CrTest; q := g[0].s[..];
-  crew_message(q, HOST_FACTS, "url=https://x/worlds/crew?body=kid\n");
+  crew_message(q, HOST_FACTS, "url=https://x/worlds/crew?body=kid&pane=0\n");
+  #assert crew_pane(q) == "";
   #assert crew_store_wants(q) == 0 && crew_fact(q, 4) == 160;
   crew_message(q, CR_STORE_REPLY, cast(string) out[0..<16 + n]);
   #assert crew_fact(q, 4) == 160;

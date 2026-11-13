@@ -83,7 +83,7 @@ ch_skin_write :: (buf: [] u32, p: [] Pen, f: Frame, m: CrewForm, l: CrewLook, ob
   limb(buf, p, fp3(f, m.neck_foot), fp3(f, m.neck_top), m.neck_r, m.neck_r * 0.92, fd(f, 1, 0, 0), 10);
   if torso { loft_write(buf, p, f, m.torso, true, true); }
   for side: 0..<2 {
-    if arms { loft_write_round(buf, p, f, m.arm[side], 0.7, 0); }
+    if arms { loft_write_round(buf, p, f, m.arm[side], 0.4, 0); }
     ch_hand(buf, p, f, m, side, 1.0, 0, 1);
   }
 }
@@ -114,15 +114,15 @@ ch_face_write :: (buf: [] u32, p: [] Pen, f: Frame, m: CrewForm, l: CrewLook, ob
   rx := m.head_rx; ry := m.head_ry;
   skin := ch_skin(l); hair := ch_hair(l);
   dark := kit_tint(0.07, 0.05, 0.08);
-  open := ifx l.eyes == 1 then 0.55f32 else ifx l.eyes == 2 then 1.2f32 else 0.9f32;
-  wide := ifx l.eyes == 2 then 0.20f32 else 0.24f32;
+  open := ifx l.eyes == 1 then 0.72f32 else ifx l.eyes == 2 then 1.45f32 else 1.15f32;
+  wide := ifx l.eyes == 2 then 0.21f32 else 0.25f32;
   for k: 0..<2 {
     s := cb_side(k);
     ef := ch_face(h, m, chin, s * rx * 0.42, -ry * 0.10, ry * 0.008);
     ew := rx * wide; eh := ry * 0.085 * open;
     kit_pen(p, obj, MAT_FLAT, kit_tint(0.97, 0.97, 0.97));
     oval(buf, p, ef, ew, eh, 10);
-    iris := frame_move(ef, add(fp(ef, -s * ew * 0.08, -eh * 0.05, 0), times(ef.z, ry * 0.003)));
+    iris := frame_move(ef, add(fp(ef, -s * ew * 0.06, eh * 0.06, 0), times(ef.z, ry * 0.003)));
     kit_pen(p, obj, MAT_FLAT, kit_tint(0.30, 0.38, 0.42));
     oval(buf, p, iris, lo(ew * 0.52, eh * 1.1), lo(eh * 0.98, ew * 0.6), 10);
     kit_pen(p, obj, MAT_FLAT, dark);
@@ -137,11 +137,11 @@ ch_face_write :: (buf: [] u32, p: [] Pen, f: Frame, m: CrewForm, l: CrewLook, ob
     dash(buf, p, lf, s * ew * 0.98, eh * 0.78, s * ew * 1.35, eh * 1.15, ry * 0.036, ry * 0.008);
     dash(buf, p, lf, -s * ew * 0.6, -eh * 1.0, s * ew * 0.7, -eh * 0.92, ry * 0.008, ry * 0.012);
     // the brow
-    bf := ch_face(h, m, chin, s * rx * 0.42, ry * (ifx l.brows == 2 then 0.10f32 else 0.15f32), ry * 0.010);
+    bf := ch_face(h, m, chin, s * rx * 0.42, ry * (ifx l.brows == 2 then 0.13f32 else 0.19f32), ry * 0.010);
     kit_pen(p, obj, MAT_FLAT, ch_shade(hair, 0.8));
     inner := ifx l.brows == 1 then -ry * 0.02 else ifx l.brows == 2 then -ry * 0.035 else 0.0f32;
     outer := ifx l.brows == 1 then ry * 0.03 else ifx l.brows == 2 then ry * 0.02 else 0.0f32;
-    thick := ifx l.brows == 2 then ry * 0.06 else ry * 0.036;
+    thick := ifx l.brows == 2 then ry * 0.055 else ry * 0.030;
     dash(buf, p, bf, -s * ew * 1.05, inner, s * ew * 0.2, outer, thick, thick * 0.9);
     dash(buf, p, bf, s * ew * 0.2, outer, s * ew * 1.15, outer - ry * 0.03, thick * 0.9, thick * 0.3);
   }

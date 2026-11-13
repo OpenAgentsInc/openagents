@@ -44,8 +44,8 @@ static void store(uint32_t state) {
   }
 }
 // The pane beside the scene (coax/web/host.js, "A page's own pane"): its module's name, and what it is told.
-EXPORT("coaxial_pane") uint32_t coaxial_pane(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)crew_pane().data; }
-EXPORT("coaxial_pane_len") uint32_t coaxial_pane_len(uint32_t state) { (void)state; return (uint32_t)crew_pane().count; }
+EXPORT("coaxial_pane") uint32_t coaxial_pane(uint32_t state) { return (uint32_t)(uintptr_t)crew_pane(at(state)).data; }
+EXPORT("coaxial_pane_len") uint32_t coaxial_pane_len(uint32_t state) { return (uint32_t)crew_pane(at(state)).count; }
 EXPORT("coaxial_pane_rev") int32_t coaxial_pane_rev(uint32_t state) { return (int32_t)crew_pane_rev(at(state)); }
 EXPORT("coaxial_pane_model") uint32_t coaxial_pane_model(uint32_t state) { return (uint32_t)(uintptr_t)crew_pane_model(at(state)).data; }
 EXPORT("coaxial_pane_model_len") uint32_t coaxial_pane_model_len(uint32_t state) { return (uint32_t)crew_pane_model(at(state)).count; }

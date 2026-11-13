@@ -3829,9 +3829,9 @@ function paneOpen() {
   const x = engine?.exports;
   if (paneAsked || !x?.coaxial_pane || !arena) return;
   if (new URLSearchParams(location.search).has("edit")) return;   // the editor's shell has the window
-  paneApp = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_pane(arena.state), x.coaxial_pane_len(arena.state)));
-  if (!/^[a-z][a-z0-9-]{0,31}$/.test(paneApp)) return;
-  paneAsked = true;
+  const name = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_pane(arena.state), x.coaxial_pane_len(arena.state)));
+  if (!/^[a-z][a-z0-9-]{0,31}$/.test(name)) return;   // none yet (the page has not read its address), or none asked for
+  paneApp = name; paneAsked = true;
   const root = document.createElement("div"); // a page's pane
   root.id = "coaxial-pane"; root.dataset.coaxialDock = "";
   document.body.appendChild(root);
