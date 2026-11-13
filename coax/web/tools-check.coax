@@ -86,6 +86,39 @@ tc_has :: (s: string, part: string) -> bool {
   for i: 0..<s.count - part.count + 1 { if s[i] == part[0] && s[i..<i + part.count] == part { return true; } }
   return false;
 }
+#test "a listed move: a path was at the base under its old folder" {
+  l := "# moved: old/dir/ -> new/\na.py\n";
+  #assert tc_at_base(l, "old/dir/a.py\nb.py\n", "new/a.py") && tc_at_base(l, "old/dir/a.py\nb.py\n", "b.py");
+  #assert !tc_at_base(l, "old/dir/a.py\n", "new/c.py") && !tc_at_base("", "old/dir/a.py\n", "new/a.py") && !tc_at_base(l, "old/dir/a.py\n", "new/");
+  #assert tc_at_base("# moved: x/ -> y/\n# moved: old/ -> new/\n", "old/a.py\n", "new/a.py") && !tc_at_base("# moved: old/ new/\n", "old/a.py\n", "new/a.py");
+}
+// Whether path was tracked at the base: as a line of base_paths, or, for a folder that has moved
+// since, under the folder a "# moved: OLD/ -> NEW/" line of the list says it came from (#13405).
+tc_at_base :: (list: string, base_paths: string, path: string) -> bool {
+  if tc_listed(base_paths, path) { return true; }
+  head := "# moved: ";
+  sep := " -> ";
+  i := 0;
+  while i < list.count {
+    j := i;
+    while j < list.count && list[j] != '\n' { j += 1; }
+    line := list[i..<j]; i = j + 1;
+    if line.count <= head.count || line[0..<head.count] != head { continue; }
+    rule := line[head.count..<line.count];
+    a := 0;
+    while a + sep.count <= rule.count && rule[a..<a + sep.count] != sep { a += 1; }
+    if a + sep.count > rule.count { continue; }
+    was_at := rule[0..<a]; now_at := rule[a + sep.count..<rule.count];
+    if now_at.count == 0 || path.count <= now_at.count || path[0..<now_at.count] != now_at { continue; }
+    was: [1024] u8;
+    if was_at.count + path.count - now_at.count > was.count { continue; }
+    n := 0;
+    for c: was_at { was[n] = c; n += 1; }
+    for x: now_at.count..<path.count { was[n] = path[x]; n += 1; }
+    if tc_listed(base_paths, cast(string) was[0..<n]) { return true; }
+  }
+  return false;
+}
 // Whether path is a whole line of the list (comment lines start with #).
 tc_listed :: (list: string, path: string) -> bool {
   i := 0;
@@ -215,7 +248,7 @@ tool_main :: () -> int #export_c #effects(all) {
     line := text[k..<e]; k = e + 1;
     if line.count == 0 || line[0] == '#' { continue; }
     if !tc_listed(all, line) { print("on the port list but not tracked (ported? take it off): %\n", line); continue; }
-    if !tc_listed(base_paths, line) { print("on the port list but added after its base commit (write it in Coax, or give it a Firm reason: line): %\n", line); bad += 1; }
+    if !tc_at_base(text, base_paths, line) { print("on the port list but added after its base commit (write it in Coax, or give it a Firm reason: line): %\n", line); bad += 1; }
   }
   print("tools-check: % tracked tool files (% of them vendored upstream vectors), % new without a reason\n", tracked, vendored, bad);
   return ifx bad == 0 then 0 else 1;

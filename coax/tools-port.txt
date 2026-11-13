@@ -7,6 +7,8 @@
 # so a header line would force every checkout to rebuild coax0.
 # The commit this list was taken at: a listed path must have been tracked there
 # (tools-check), so a tool written since is Coax or says its Firm reason:.
+# A folder that has moved since says so in a line "# moved: OLD/ -> NEW/", and a
+# listed path under NEW/ must have been tracked there under OLD/.
 # base: 0c2f9f4cdaff0e9f392a334a288537c452921185
 apps/openagents-desktop/build.sh
 apps/openagents-desktop/zeron/fixtures/fixture.py
