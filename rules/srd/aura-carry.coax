@@ -93,7 +93,7 @@ rs_auras_apply :: (b: [] RsBattle, i: int, in: [] int) -> bool #effects(all) {
 }
 
 #test "aura carry: a poisoned, hexed, raging creature arrives in a new battle with the same effects and the ticks they had left" {
-  b: [1] RsBattle; c: [2] RsCreature; b[0].c = c[..]; b[0].n = 2; b[0].who = -1; b[0].clock = 5000000;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; b[0].c = c[..]; b[0].n = 2; b[0].who = -1; b[0].clock = 5000000;
   c[0] = rs_fighter("Carried", 0, 3); c[1] = rs_fighter("Other", 1, 3);
   #assert rs_effect_add(c[0..<1], RsEffect.{kind = EF_COND, cond = RS_POISONED, by = 1, spell = 7, until = 5000000 + 42000000, save = RS_CON, dc = 13, turn_end = 2});
   #assert rs_effect_add(c[0..<1], RsEffect.{kind = EF_HEX, cond = 3, by = 0, spell = SP_HEX, until = 5000000 + 3600000000, save = -1, dc = 0, turn_end = 1});
@@ -103,7 +103,7 @@ rs_auras_apply :: (b: [] RsBattle, i: int, in: [] int) -> bool #effects(all) {
   want := [24] int.[EF_COND, RS_POISONED, 0, 8, 42000000, RS_CON + 1, 13, 0,  EF_HEX, 3, 1, SP_HEX + 1, 3600000000, 0, 0, 1,  EF_RAGE, 0, 0, 0, 0, 0, 0, 0];
   // the state Aura sits in the list's last place, so it is the third record out
   for q: 0..<24 { #assert w[RS_AURAS_HEAD + q] == want[q]; }
-  d: [1] RsBattle; f: [4] RsCreature; d[0].c = f[..]; d[0].n = 4; d[0].who = -1; d[0].clock = 900;
+  d: [1] RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); f: [4] RsCreature; d[0].c = f[..]; d[0].n = 4; d[0].who = -1; d[0].clock = 900;
   f[3] = rs_fighter("Carried", 0, 3); f[3].conc = -1;
   #assert rs_auras_in(d[..], 3, w[0..<n]);
   #assert (f[3].cond & RS_POISONED) != 0 && rs_effect(f[3], EF_HEX) && rs_effect(f[3], EF_RAGE) && f[3].conc == SP_HEX && f[3].conc_until == 900 + 3600000000;
@@ -115,7 +115,7 @@ rs_auras_apply :: (b: [] RsBattle, i: int, in: [] int) -> bool #effects(all) {
   w2: [RS_AURAS_CARRY] int; n2 := rs_auras_out(d[..], 3, w2[..]); #assert n2 == n; for q: 0..<n { #assert w2[q] == w[q]; }
 }
 #test "aura carry: what belongs to the world left behind, and what is over, stays there" {
-  b: [1] RsBattle; c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1; b[0].who = -1; b[0].clock = 100;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1; b[0].who = -1; b[0].clock = 100;
   c[0] = rs_fighter("Leaver", 0, 3); c[0].restrained_by = -1; c[0].conc = -1;
   for kind: 0..<48 {
     stays := kind <= 0 || kind > 40 || kind == 14 || kind == EF_HALT || kind == EF_ZONE_RESTRAIN || kind == EF_HALT_PENDING || kind == EF_HELP_CHECK || kind == EF_HELP_ATTACK || kind == EF_REST_SLEEP || kind == EF_READY || kind == EF_INFLUENCED;
@@ -144,7 +144,7 @@ rs_auras_apply :: (b: [] RsBattle, i: int, in: [] int) -> bool #effects(all) {
   highs := [8] int.[40, 2147483647, 1, 1000, 2592000000000, 6, 99, 1]; for q: 0..<8 { #assert RS_AURA_HIGH[q] == highs[q]; }
 }
 #test "aura carry: out names a creature and needs room; Concentration goes only with a record it holds" {
-  b: [1] RsBattle; c: [2] RsCreature; b[0].c = c[..]; b[0].n = 2; b[0].who = -1; b[0].clock = 100;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; b[0].c = c[..]; b[0].n = 2; b[0].who = -1; b[0].clock = 100;
   c[0] = rs_fighter("One", 0, 3); c[1] = rs_fighter("Two", 1, 3); c[0].conc = -1; c[1].conc = -1;
   w: [RS_AURAS_CARRY] int; short: [RS_AURAS_CARRY - 1] int;
   #assert rs_auras_out(b[..], -1, w[..]) == 0 && rs_auras_out(b[..], 2, w[..]) == 0 && rs_auras_out(b[..], 0, short[..]) == 0;
@@ -172,7 +172,7 @@ rs_auras_apply :: (b: [] RsBattle, i: int, in: [] int) -> bool #effects(all) {
   #assert rs_auras_out(b[..], 0, w[..]) == 26 && w[18] == EF_VEX && w[19] == 4 && w[22] == 50 && w[10] == EF_BLESS && w[2] == EF_WEAK;
 }
 #test "aura carry: in is all or none, and refuses every malformed list" {
-  b: [1] RsBattle; c: [2] RsCreature; b[0].c = c[..]; b[0].n = 2; b[0].who = -1; b[0].clock = 100;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; b[0].c = c[..]; b[0].n = 2; b[0].who = -1; b[0].clock = 100;
   c[0] = rs_fighter("One", 0, 3); c[1] = rs_fighter("Two", 1, 3); c[0].conc = -1; c[1].conc = -1; c[1].restrained_by = -1;
   good := [18] int.[SP_BLESS + 1, 200,  EF_COND, RS_POISONED, 0, 0, 50, 0, 0, 0,  EF_BLESS, 0, 1, SP_BLESS + 1, 200, 0, 0, 1];
   w := good;
