@@ -136,6 +136,24 @@ wg_build :: (s: [] WebPage) {
   tr_close(t);
   tr_close(t);
 
+  sec = wg_section(t, "sides", "Side", "The frame down the left of every page for someone logged in: the mark and its actions, the places, the page's own list under section heads with a search, and who is logged in at the foot. On a page it stands the window's height.");
+  gs := k_side(t, "side", "Places");
+  gh := k_side_head(t, "side.h", "OpenAgents", "/components");
+  gn := k_icon_button(t, "side.new", IC_CHAT_COMPOSE, "New chat");
+  tr_close(t);
+  gp := k_side_places(t, "side");
+  p1 := k_place(t, u, "side.chats", IC_CHATS, "Chats", "/components", true);
+  p2 := k_place(t, u, "side.projects", IC_FOLDER, "Projects", "/components", false);
+  p3 := k_place(t, u, "side.worlds", IC_GLOBE, "Worlds", "/components", false);
+  gl := k_side_list(t, "side");
+  gq := k_search(t, "side.q", "Search", "Search the chats");
+  gm := k_side_mark(t, "side.recent", "Recent", 3);
+  for k: 0..<3 { r := k_row(t, u, tr_join(buf[..], "side.row.", k), titles[k], "", k == 0); }
+  k_side_end(t);
+  gw := k_who(t, u, "side.who", "a•••@example.com", "/components", false);
+  tr_close(t);
+  tr_close(t);
+
   sec = wg_section(t, "menus", "Menu", "Rows in a panel: the model for the next turn.");
   menu := k_menu(t, u, "menu", "Model");
   models := WG_MODELS; notes := WG_MODEL_NOTES;
@@ -301,6 +319,7 @@ WgTest :: struct { s: [1] WebPage; }
   #assert tr_find(t, "press.primary") > 0 && tr_find(t, "composer") > 0 && tr_find(t, "tool.1") > 0 && tr_find(t, "code.1.pre") > 0;
   #assert tr_find(t, "notice.error") > 0 && tr_find(t, "row.2") > 0 && tr_find(t, "model.0") > 0 && tr_find(t, "msg.1.b0") > 0;
   #assert tr_find(t, "dock.bar.b") > 0 && tr_class(t, tr_find(t, "dock.foot")) == "pane pane-bm" && tr_find(t, "dock.x") > 0 && tr_text_of(t, tr_find(t, "dock.kit.v")) == "rover" && tr_class(t, tr_find(t, "dock")) == "dock";
+  #assert tr_class(t, tr_find(t, "side")) == "side" && tr_find(t, "side.q") > 0 && tr_text_of(t, tr_find(t, "side.who.go.t")) == "a•••@example.com" && tr_find(t, "side.row.2") > 0;
   #assert coaxial_kit_frame(s, 0.016, true) == 0;
   // the stepper steps: more raises its value, and at its last step More can't be pressed
   #assert tr_text_of(t, tr_find(t, "dock.radius")) == "8 m";
