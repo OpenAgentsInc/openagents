@@ -28,6 +28,7 @@ parts=(
 
 write_parts() {   # DIR
   local p name src
+  [[ -x "$coax" ]] || { echo "serve-parts.sh: no Coax compiler at $coax: build it first (coax/build.sh)" >&2; exit 1; }
   mkdir -p "$1"
   for p in "${parts[@]}"; do
     read -r name src <<< "$p"
