@@ -255,6 +255,45 @@ e2cl_test_drawn_whole :: (c: [] E2Cells, x: f32, z: f32) -> bool {
   again: [CELL_LOADS * 2] int; #assert e2cl_asked(d[..], again[..]) == CELL_LOADS && d[0].w[0].cells[out[0]].level == CELL_LOADING && d[0].w[0].cells[out[0]].request > out[1];
   short: [3] int; #assert e2cl_asked(d[..], short[..]) == 1;
 }
+#test "a step toward a cell that is not in is held, and you are never stood in one; a step back, or off the manifest, is not" #steps 400000000 {
+  c: [1] E2Cells; v: [1] E2CellView; #assert e2cl_start(c[..], v[..]);
+  // before the controller has stepped nothing is held
+  n: [1] E2CellView; #assert !e2cv_holds(n[..], 0, 0, 0, -1) && !e2cv_holds_push(n[..], 0, 0, 0, 1, 0);
+  // the first frame with nothing answered: every cell round you is loading, so every way on the land is held
+  out: [CELL_LOADS * 2] int; due: [CELL_MAX] int; for i: 0..<CELL_MAX { due[i] = -1; }
+  _a := e2cl_frame(c[..], v[..], -1, 0, -1, 0, false);
+  #assert e2cv_holds(v[..], -1, 0, 0, -1) && e2cv_holds(v[..], -1, 0, 0, 1) && e2cv_holds(v[..], -1, 0, 1, 0) && !e2cv_holds(v[..], 5000, 0, 1, 0);
+  // the controls' push: forward (key_y 1) at theta 0 is along -z; no push holds nothing
+  #assert e2cv_holds_push(v[..], -1, 0, 0, 1, 0) && e2cv_holds_push(v[..], -1, 0, 1, 0, 0) && !e2cv_holds_push(v[..], -1, 0, 0, 0, 0);
+  // a gallop south behind a loader 3 s late, moving only when the step is not held: you wait for
+  // your own cell, then are never in a cell that does not simulate, and you arrive
+  late := 60; z: f32 = 0; moved := 0; waited := 0;
+  for k: 0..<1600 {
+    if z > -505 { if e2cv_holds_push(v[..], -1, z, 0, 1, 0) { waited += 1; } else { z -= 0.6; moved += 1; } }
+    held := c[0].held;
+    _b := e2cl_frame(c[..], v[..], -1, z, -1, z, false);
+    if moved > 0 { #assert c[0].held == held && e2cv_may_enter(v[..], -1, z); }
+    m := e2cl_asked(c[..], out[..]);
+    for q: 0..<m { i := out[q * 2];
+      if due[i] < 0 { due[i] = k + late; }
+      if due[i] > k { continue; }
+      #assert e2cl_loaded(c[..], i, out[q * 2 + 1], e2cl_digest(c[..], i), false) == CELL_OK; due[i] = -1;
+    }
+  }
+  #assert z <= -505 && moved > 800 && waited >= late && c[0].off == 0;
+  // at the south end, in the middle of the cells that are in, no way is held
+  #assert !e2cv_holds(v[..], -1, z, 0, 1) && !e2cv_holds(v[..], -1, z, 0, -1) && !e2cv_holds_push(v[..], -1, z, 0, -1, 0) && !e2cv_holds(v[..], 5000, 1, 0, -1);
+  // a cell edge south of you whose cell is not in: held from within E2CV_AHEAD of it and no further,
+  // and only toward it; a cell that is resident but does not simulate holds too, one that simulates does not
+  edge: f32 = -64 * 7; k2 := e2cv_of(v[..], -1, f64(edge) - 1); #assert k2 >= 0 && v[0].level[k2] >= E2CV_SIMULATE;
+  lv := v[0].level[k2]; v[0].level[k2] = cast(u8) CELL_LOADING;
+  #assert e2cv_holds(v[..], -1, edge + 1.9, 0, -1) && !e2cv_holds(v[..], -1, edge + 2.1, 0, -1) && !e2cv_holds(v[..], -1, edge + 1.9, 0, 1) && !e2cv_holds(v[..], -1, edge + 1.9, 1, 0);
+  #assert e2cv_holds_push(v[..], -1, edge + 1.9, 0, 1, 0) && !e2cv_holds_push(v[..], -1, edge + 1.9, 0, -1, 0) && e2cv_holds_push(v[..], -1, edge + 1.9, 0, -1, 3.14159265) && e2cv_holds_push(v[..], -1, edge + 1.9, 0, 0.3, 0);
+  v[0].level[k2] = cast(u8) CELL_ABSENT; #assert e2cv_holds(v[..], -1, edge + 1.9, 0, -1);
+  v[0].level[k2] = cast(u8) CELL_RESIDENT_LEVEL; #assert e2cv_holds(v[..], -1, edge + 1.9, 0, -1);
+  v[0].level[k2] = cast(u8) CELL_SIMULATE_LEVEL; #assert !e2cv_holds(v[..], -1, edge + 1.9, 0, -1);
+  v[0].level[k2] = lv;
+}
 #test "the origin follows you by cell: a point near you stays within two cells of it, and an edge crossed back and forth moves nothing" #steps 400000000 {
   c: [1] E2Cells; v: [1] E2CellView; #assert e2cl_start(c[..], v[..]);
   for k: 0..<2400 {

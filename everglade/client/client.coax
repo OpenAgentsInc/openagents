@@ -387,6 +387,16 @@ e2_auto_heading :: (x: f32, z: f32) -> f32 {
 // a heading is the way you face, along (sin, cos).
 e2_walk_theta :: (heading: f32) -> f32 { return figs.wrap_angle(heading + 3.14159265); }
 e2_move_in :: (s: [] E2) -> EgMoveIn #export_c #effects(all) {
+  m := e2_move_asked(s);
+  // a step toward a cell of the world whose content is not in yet is not asked for (cell-view.coax
+  // e2cv_holds): the hold is on the input, so prediction and the room, which is sent it, agree
+  if e2cv_holds_push(s[0].cl[..], s[0].you_x, s[0].you_z, m.key_x, m.key_y, m.theta) || e2cv_holds_push(s[0].cl[..], s[0].you_x, s[0].you_z, m.pad_x, m.pad_y, m.theta) {
+    return EgMoveIn.{theta = m.theta, link_flags = m.link_flags};
+  }
+  return m;
+}
+// What your controls, the run, an agent's walk or the stage ask of the walker this frame.
+e2_move_asked :: (s: [] E2) -> EgMoveIn {
   h := s[0].held;
   #if BUILD_DEBUG { if e2a_noclip(s) { return EgMoveIn.{theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)}; } }
   // Character Create: still in the studio; on the run, on down the path on its own, at a jog

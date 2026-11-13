@@ -46,4 +46,24 @@ e2cv_draws_at :: (v: [] E2CellView, x: f32, z: f32) -> bool {
 }
 // Whether you may stand at (x, z): its cell simulates.
 e2cv_may_enter :: (v: [] E2CellView, x: f32, z: f32) -> bool { i := e2cv_of(v, f64(x), f64(z)); return i >= 0 && v[0].level[i] >= E2CV_SIMULATE; }
+// Whether a step from (x, z) along the unit direction (dx, dz) is held (GitHub #13280): the place
+// E2CV_AHEAD metres on is in a cell of the manifest whose content is not in yet. Land off the
+// manifest holds nobody (the walker's own edges keep you on the land), and neither does a view
+// that has not stepped. The page holds its own input by this before the input is predicted or
+// sent (client.coax e2_move_in), so the room steps the input the page did and keeps you in the
+// same place: no correction comes of a hold.
+E2CV_AHEAD :: 2.0;      // m: a gallop's 12 m/s over three 20 Hz steps is 1.8 m
+e2cv_holds :: (v: [] E2CellView, x: f32, z: f32, dx: f32, dz: f32) -> bool {
+  if !v[0].ready { return false; }
+  i := e2cv_of(v, f64(x + dx * E2CV_AHEAD), f64(z + dz * E2CV_AHEAD));
+  return i >= 0 && v[0].level[i] < E2CV_SIMULATE;
+}
+// The same for what the controls ask (the walker's body_wish: the keys' or the stick's push, turned
+// by the camera's theta; forward is along -(sin theta, cos theta)). No push holds nothing.
+e2cv_holds_push :: (v: [] E2CellView, x: f32, z: f32, ax: f32, ay: f32, theta: f32) -> bool {
+  size := sqrt(ax * ax + ay * ay);
+  if size == 0 { return false; }
+  mx := ax / size; mz := -ay / size; c := cos(theta); s := sin(theta);
+  return e2cv_holds(v, x, z, mx * c + mz * s, -mx * s + mz * c);
+}
 e2cv_probe :: (v: [] E2CellView, f: int) -> int { return ifx f < 0 || f >= E2CV_PROBES then -1 else v[0].probe[f]; }

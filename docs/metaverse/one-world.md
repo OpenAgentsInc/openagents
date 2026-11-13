@@ -56,8 +56,13 @@ The page holds the same manifest and steps the same controller
   request at the manifest's digest. The pack still comes whole, so the page answers its own asks
   in the same frame, as a room does. A reader that pages by cell answers through the same calls
   (#13304).
-- **Where you stand.** Every place you may stand is on a cell of the manifest. The page counts
-  the frames you stood in a cell that did not simulate; with the pack whole it is 0.
+- **Where you stand.** Every place you may stand is on a cell of the manifest. A step toward a
+  cell whose content is not in yet is not taken: the page drops the push from its own input when
+  the place 2 m on is in such a cell (`cell-view.coax` `e2cv_holds`, called by `e2_move_in`). The
+  hold is on the input, before it is predicted and before it is sent, so the room steps the same
+  input and keeps you in the same place; no correction comes of it. You may still turn, and walk
+  any way that stays in the cells that are in. The page also counts the frames you stood in a cell
+  that did not simulate; with the pack whole both are 0.
 - **The origin.** One floating origin follows you by cell (`cell_rebase`). The page keeps it and
   checks it, but nothing on the GPU reads it yet: see "What is left".
 - **Readout.** `coaxial_field_probe(180)` to `(193)`: the manifest's cells, resident, drawing,
@@ -98,7 +103,8 @@ radius. Cells sit above it:
   and a creature walks from the spawn to every named point and back.
 - `everglade/client/cells.coax`: the page's controller. You walk the world's length and back with
   your cell always simulating and everything in reach drawing, inside the budget; a loader 3 s
-  late at a gallop never holds you after your first cell; a wrong, old or failed answer is refused.
+  late at a gallop never holds you after your first cell; a wrong, old or failed answer is refused;
+  a step toward a cell that is not in is held, and one back or off the manifest is not.
 - `everglade/client/walk-test.coax`: you walk the path through the real controller, and a route
   walk for each place (the Glade, the Sunlit Path, the Deep Canopy, the Clearing, the Goblin Camp)
   with the cells stepped as the page steps them. Every place you may stand is on the manifest.
@@ -116,9 +122,9 @@ These are not built. Each is tracked on #13280.
   where f32 keeps 0.06 mm, so nothing is wrong yet. The page keeps the origin; the shaders and the
   pack's vertices are still in world coordinates. The renderer's instance rows are where it goes
   in (#13303).
-- **Holding you at an unloaded cell.** The page counts it and does not stop you. With the pack
-  whole it never happens. When cells load over the network, the hold has to be one the room agrees
-  with, or prediction and the room part.
+- **Holds the hold does not cover.** A throw, a mount's own step and an agent's drive that sets
+  the walker without `e2_move_in` are not held. With the pack whole no cell is ever missing, so
+  this matters only once cells load over the network.
 - **Far terrain level of detail** beyond the stitched 1.3 m rows.
 - **The legacy heightfield** (`metaverse-engine/world/terrain.coax`) still has 12 users.
 - **`everglade-parity` and `everglade/features.coax`** stay until every zone is data.
