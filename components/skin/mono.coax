@@ -230,6 +230,11 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, ".row[data-state=busy]{position:relative;padding-right:32px}.row[data-state=busy] .meta{color:var(--ink)}");
   n = mc(out, n, ".row>.ic{position:absolute;right:10px;top:50%;width:14px;height:14px;margin-top:-7px;color:var(--ink);animation:turn 2.4s linear infinite}");
   n = mc(out, n, "@keyframes turn{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.row>.ic{animation:none}}");
+  // a state's glyph (k_glyph): a dashed ring that turns while it runs, beside "Working" and on a running tool call. In the
+  // page's own rules, not the stage's: the chat has no stage, and there the glyph had no rule and stood still
+  n = mc(out, n, ".gl{display:inline-flex;width:20px;height:20px;align-items:center;justify-content:center;flex:none;color:var(--ink-muted)}.gl .ic{width:16px;height:16px}");
+  n = mc(out, n, ".gl[data-state=run] .ic{animation:turn 1.8s linear infinite}.gl[data-state=ok]{color:#fff}.gl[data-state=no]{color:#000;background:#fff}");
+  n = mc(out, n, "@media (prefers-reduced-motion:reduce){.gl[data-state=run] .ic{animation:none}}");
   // beside the side the chat takes all the room to the window's right edge, so the transcript's scroll bar is at
   // that edge; what it holds stays a centred column as wide as before
   n = mc(out, n, ".chat:has(.side){margin-left:300px;max-width:none;padding-left:0;padding-right:0}");
@@ -273,13 +278,10 @@ mono_stage_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, ".wb-chat .log .msg-user{margin-top:22px;max-width:86%}.wb-chat .msg-ai{margin-top:10px}.wb-chat .tools{margin:12px 0 4px;gap:4px}");
   // a tool call as one line
   n = mc(out, n, ".tl .tool-h{align-items:center;gap:10px;padding:8px 10px 8px 12px}");
-  n = mc(out, n, ".gl{display:inline-flex;width:20px;height:20px;align-items:center;justify-content:center;flex:none;color:var(--ink-muted)}.gl .ic{width:16px;height:16px}");
-  n = mc(out, n, ".gl[data-state=run] .ic{animation:turn 1.8s linear infinite}.gl[data-state=ok]{color:#fff}.gl[data-state=no]{color:#000;background:#fff}");
   n = mc(out, n, ".tl .tool-k{flex:none;font:500 14px/1.4 var(--mono);letter-spacing:.04em;text-transform:none;color:var(--ink-muted)}");
   n = mc(out, n, ".tl .tool-d{font:15px/1.4 var(--mono);color:var(--ink);text-align:right}.tl[data-state=run] .tool-d{color:var(--ink-faint)}");
   n = mc(out, n, ".tl[data-state=no]{--frame-line:var(--line);--frame-deco:#fff}.tl[data-state=no] .tool-d{color:#fff}");
   n = mc(out, n, ".tl .tool-x{display:inline-flex;flex:none}.tl .tool-x .ic{width:12px;height:12px}.tl .tool-b{position:relative;padding-right:40px}.tl .tool-b .ib{position:absolute;top:6px;right:6px}");
-  n = mc(out, n, "@media (prefers-reduced-motion:reduce){.gl[data-state=run] .ic{animation:none}}");
   // the stage: its head, its body, and a line that says what is happening
   n = mc(out, n, ".st-h{display:flex;align-items:baseline;gap:16px;padding-bottom:14px;border-bottom:1px solid var(--line-dim)}");
   n = mc(out, n, ".st-n{font:500 14px/1 var(--mono);letter-spacing:.2em;color:var(--ink-faint);white-space:nowrap}");
@@ -547,7 +549,7 @@ mono_held_css :: (out: [] u8, at: int) -> int {
   #assert mono_kind(MF_BUTTON) == 3 && mono_kind(MF_PANEL) == 2 && mono_kind(MF_FIELD) == 0 && mono_kind(MF_NOTICE) == 1 && mono_kind(MF_HEADER) == 7;
   #assert sets[MF_BUTTON].square == 8 && sets[MF_PANEL].corner_length == 12;
   css: [40960] u8; n := mono_css(css[..]);
-  #assert n > 4000 && n < 16000;
+  #assert n > 4000 && n < 17000;   // with the state glyph's rules (k_glyph), moved here from the stage's
   // and the stage's rules after them
   #assert mono_kind(MF_STAGE) == 5 && mono_kind(MF_MARK) == 3 && sets[MF_STAGE].square == 14 && sets[MF_BOX].square == 6;
   n = mono_stage_css(css[..], n);

@@ -93,6 +93,9 @@ function apply(at, length) {
       const el = els[u16()], p = u16(), a = u16(), parent = p === NONE ? root : els[p];
       let before = a === NONE ? parent.firstChild : els[a].nextSibling;
       if (a === NONE && before && before === frames.get(parent)) before = before.nextSibling;
+      // already there (a sibling made or taken away before it): left alone, since moving a node takes it out of the
+      // page and back, which restarts its animations and its children's (a running glyph's turn, every new tool call)
+      if (before === el && el.parentNode === parent) continue;
       parent.insertBefore(el, before);
     } else if (op === 4) { els[u16()].textContent = str(); }
     else if (op === 5) { els[u16()].setAttribute("class", str()); }
