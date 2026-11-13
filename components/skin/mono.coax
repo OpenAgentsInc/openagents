@@ -335,20 +335,20 @@ mono_stage_css :: (out: [] u8, at: int) -> int {
 mono_dock_css :: (out: [] u8, at: int) -> int {
   n := at;
   // a strip across the top, then a pane each side of what shows through
-  n = mc(out, n, ".dock{display:grid;grid-template:auto minmax(0,1fr)/minmax(0,280px) minmax(0,1fr) minmax(0,300px);gap:10px;height:420px;max-width:100%}");
-  n = mc(out, n, ".dock-over{position:fixed;inset:0;z-index:20;height:auto;padding:10px;pointer-events:none}.dock-over>*{pointer-events:auto}");
+  n = mc(out, n, ".dock{display:grid;grid-template:auto minmax(0,1fr)/minmax(0,220px) minmax(0,1fr) minmax(0,240px);gap:8px;height:420px;max-width:100%}");
+  n = mc(out, n, ".dock-over{position:fixed;inset:0;z-index:20;height:auto;padding:8px;pointer-events:none}.dock-over>*{pointer-events:auto}");
   n = mc(out, n, ".pane{min-width:0;min-height:0;display:flex;flex-direction:column;gap:12px;padding:14px 12px;--frame-line:var(--line-dim);--frame-deco:var(--line)}");
   n = mc(out, n, ".pane-b{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:12px;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}");
   n = mc(out, n, ".pane-t{grid-column:1/-1;padding:8px 12px}.pane-t>.pane-b{flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;overflow:visible}");
   // a side pane is as tall as what it holds, to the dock's height, so what is under the dock shows below it
   n = mc(out, n, ".pane-l{grid-column:1;grid-row:2}.pane-r{grid-column:3;grid-row:2}.pane-l,.pane-r{align-self:start;max-height:100%}");
   // a wide right pane (a file of code): the dock's right column is as wide as it needs
-  n = mc(out, n, ".dock:has(.pane-w){grid-template-columns:minmax(0,280px) minmax(0,1fr) minmax(0,min(720px,54vw))}");
+  n = mc(out, n, ".dock:has(.pane-w){grid-template-columns:minmax(0,220px) minmax(0,1fr) minmax(0,min(720px,54vw))}");
   n = mc(out, n, ".pane .list{width:100%}.pane .card{padding:12px;gap:10px}.pane .notice{padding:10px 12px}.pane-t .meta{margin-left:auto}");
   // the foot: a pane across the bottom, as tall as the skin says; put away, it takes no room. What fills its slot
   // (the chat's conversation) is as tall as the pane, with its own list of sessions left out; a page that hides its
   // own main (a canvas page's words for readers) does not hide this one
-  n = mc(out, n, ".dock:has(.pane-bm){grid-template-rows:auto minmax(0,1fr) auto}.pane-bm{grid-column:1/-1;grid-row:3}.dock-over>.pane-bm{height:min(30vh,280px)}.pane[aria-hidden=true]{display:none}");
+  n = mc(out, n, ".dock:has(.pane-bm){grid-template-rows:auto minmax(0,1fr) auto}.pane-bm{grid-column:1/-1;grid-row:3}.dock-over>.pane-bm{height:min(26vh,240px)}.pane[aria-hidden=true]{display:none}");
   n = mc(out, n, ".slot{flex:1;min-height:0;display:flex;flex-direction:column}.slot .chat{position:static;clip-path:none;white-space:normal;height:100%;max-width:none;width:100%;margin:0;padding:0}.slot .side{display:none}.slot .chat:has(.side){margin-left:0}");
   // a row with a control beside it
   n = mc(out, n, ".row-x{display:flex;align-items:center;gap:2px}.row-x>.row{flex:1;min-width:0;width:auto}");
@@ -357,6 +357,8 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   // a stepper: its name, less, what it is now, more
   n = mc(out, n, ".step{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px}.step .ib{flex:none}.step .fact{min-width:52px;text-align:center}.step .ib[disabled]{opacity:.35;pointer-events:none}");
   // a select in a pane opens downward, and in the right pane toward the middle
+  // in the foot the conversation reads down one edge: what you said is on the left too
+  n = mc(out, n, ".slot .msg-user{align-self:flex-start}");
   n = mc(out, n, ".pane .menu.pop{bottom:auto;top:calc(100% + 10px)}.pane-r .menu.pop{left:auto;right:0}");
   // an open select's menu shows whole, over what is round the pane: the pane's body does not cut it while it is open.
   // In the wide pane it opens over the pane itself.
