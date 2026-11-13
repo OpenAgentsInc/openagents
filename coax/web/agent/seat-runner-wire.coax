@@ -1,0 +1,68 @@
+// The runner's side of a hosted seat's bodies (Protocol E11, GitHub #13250): seat-runner.c calls
+// the #export_c readers and writers below, compiled to C beside it as seat-runner-wire.c and
+// seat-runner-wire.h (deploy.sh, the Dockerfile, coax/web/api/test.sh), and parses and builds no
+// body of its own. The bodies are coax/lib/media/realm_seat_wire.coax's
+// (proto/openagents/verse/seat/v1alpha1/seat.proto) and, for a refusal, the API's ErrorReply
+// (coax/web/api/api-wire.coax):
+//   srw_open_id        POST /seat/open: the seat's id, when the body is a whole RunnerOpen
+//   srw_start_write    the first line for the seat's own process (oa-seat), from that body
+//   srw_id             POST /seat/act and /seat/close: the seat's id
+//   srw_action_write   POST /seat/act: the action, as it came
+//   srw_answer_ok      whether the seat's answer says ok
+//   srw_closed_write   200 from /seat/close
+//   srw_error_write    a refusal
+// proto/verse/realm-seat-v1alpha1.json holds the bytes; coax/web/api/test_room.py sends them to a
+// running runner and requires its answers and the first line it writes to be the fixture's.
+//   coax/bin/coax test coax/web/agent/seat-runner-wire.coax --library
+#load "../api/api-wire.coax";
+#load "../../lib/media/realm_seat_wire.coax";
+
+// The seat's id, or -1 when the body is not a whole open body with the seat's key.
+srw_open_id :: (body: string) -> int #export_c #effects(all) {
+  g: [1] SeatwGrant; ob: [SEATW_ORIGIN] u8;
+  on := seatw_read_runner_open(body, g[..], ob[..]);
+  id := ifx on < 0 || g[0].key_n == 0 then -1 else g[0].id;
+  for i: 0..<g[0].key.count { g[0].key[i] = 0; }
+  return id;
+}
+// The seat's first line from an open body: its length, or -1. The line holds the seat's key: the
+// caller wipes out after sending it.
+srw_start_write :: (body: string, out: [] u8) -> int #export_c #effects(all) {
+  g: [1] SeatwGrant; ob: [SEATW_ORIGIN] u8;
+  on := seatw_read_runner_open(body, g[..], ob[..]);
+  n := ifx on < 0 then -1 else seatw_start_line(g[..], cast(string) ob[0..<on], out);
+  for i: 0..<g[0].key.count { g[0].key[i] = 0; }
+  return n;
+}
+srw_id :: (body: string) -> int #export_c #effects(all) { return seatw_read_id(body); }
+srw_action_write :: (body: string, out: [] u8) -> int #export_c #effects(all) { return seatw_read_runner_action(body, out); }
+srw_answer_ok :: (line: string) -> bool #export_c #effects(all) { return seatw_answer_ok(line); }
+srw_closed_write :: (out: [] u8) -> int #export_c #effects(all) { return seatw_closed(out); }
+srw_error_write :: (text: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); aw_error(o[..], text); return aw_len(o[..]);
+}
+
+#test "the runner reads an open body whole, and writes the seat's first line from it" {
+  b: [512] u8;
+  body := "{\"seat\":{\"id\": 7, \"slug\": \"seat-green\", \"until\": 1762190600123, \"hosted\": true, \"player\": {\"id\": \"p-1a2b\", \"key\": \"k0123456789abcdefghij\"}},\"origin\":\"https://openagents.com\"}";
+  #assert srw_open_id(body) == 7;
+  n := srw_start_write(body, b[..]);
+  #assert cast(string) b[0..<n] == "{\"origin\":\"https://openagents.com\",\"slug\":\"seat-green\",\"player\":{\"id\": \"p-1a2b\", \"key\": \"k0123456789abcdefghij\"}}" && srw_start_write(body, b[0..<n - 1]) == -1;
+  // no key, no origin, a grant with a member missing, and what is no JSON
+  nokey := "{\"seat\":{\"id\": 7, \"slug\": \"seat-green\", \"until\": 1, \"hosted\": true, \"player\": {\"id\": \"p-1a2b\"}},\"origin\":\"https://openagents.com\"}";
+  #assert srw_open_id(nokey) == -1 && srw_start_write(nokey, b[..]) == -1;
+  #assert srw_open_id("{\"seat\":{\"id\": 7, \"slug\": \"g\", \"until\": 1, \"hosted\": true, \"player\": {\"id\": \"p\", \"key\": \"k\"}}}") == -1;
+  #assert srw_open_id("{\"seat\":{\"id\": 7, \"slug\": \"g\", \"player\": {\"id\": \"p\", \"key\": \"k\"}},\"origin\":\"o\"}") == -1 && srw_start_write("{\"seat\":{\"id\": 7},\"origin\":\"o\"}", b[..]) == -1;
+  #assert srw_open_id("") == -1 && srw_open_id("{}") == -1 && srw_start_write("", b[..]) == -1;
+}
+#test "the runner's ids, actions, answers and refusals" {
+  b: [128] u8;
+  #assert srw_id("{\"id\":7}") == 7 && srw_id("{\"id\": 13, \"action\": {\"op\": \"look\"}}") == 13 && srw_id("{}") == -1 && srw_id("{\"id\":0}") == -1 && srw_id("") == -1;
+  n := srw_action_write("{\"id\": 13, \"action\": {\"op\": \"look\", \"turn\": 90}}", b[..]);
+  #assert cast(string) b[0..<n] == "{\"op\": \"look\", \"turn\": 90}" && srw_action_write("{\"id\": 13, \"action\": [1]}", b[..]) == -1;
+  #assert srw_answer_ok("{\"op\":\"open\",\"ok\":true,\"result\":\"seated\"}") && !srw_answer_ok("{\"op\":\"open\",\"ok\":false,\"result\":\"no browser\"}") && !srw_answer_ok("nope");
+  n = srw_closed_write(b[..]);
+  #assert cast(string) b[0..<n] == "{\"closed\":true}" && srw_closed_write(b[0..<14]) == -1;
+  n = srw_error_write("no such seat", b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"no such seat\"}" && srw_error_write("no such seat", b[0..<n - 1]) == -1;
+}

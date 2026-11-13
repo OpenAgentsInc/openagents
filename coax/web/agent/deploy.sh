@@ -40,6 +40,8 @@ mkdir -p "$stage/src"
 "$repo/coax/bin/coax" c "$here/runner-sign.coax" --library --run-steps 250000000 --header "$stage/src/runner-sign.h" > "$stage/src/runner-sign.c"
 # the runner's lines and bodies (runner-wire.coax, openagents.agent.managed.v1alpha1): its C and header
 "$repo/coax/bin/coax" c "$here/runner-wire.coax" --library --header "$stage/src/runner-wire.h" > "$stage/src/runner-wire.c"
+# a hosted seat's bodies as the runner reads and writes them (seat-runner-wire.coax, openagents.verse.seat.v1alpha1)
+"$repo/coax/bin/coax" c "$here/seat-runner-wire.coax" --library --header "$stage/src/seat-runner-wire.h" > "$stage/src/seat-runner-wire.c"
 cp "$here/runner.c" "$here/chat-runner.c" "$here/seat-runner.c" "$here/engine-io.c" "$here/confine-native.c" "$repo/coax/platform/process-native.c" "$repo/coax/platform/process-native.h" "$stage/src/"
 # oa-seat, the hosted seats' engine (seat.coax, docs/verse/realm-seat.md slice 5): its C, the platform's C and the entropy policy
 mkdir -p "$stage/src/seat"

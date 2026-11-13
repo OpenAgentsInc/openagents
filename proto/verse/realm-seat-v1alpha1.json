@@ -4,7 +4,7 @@
     "openagents.verse.seat.v1alpha1",
     "openagents.api.v1alpha1"
   ],
-  "description": "Golden bodies of a seat in a running realm (E11, #13250; the feature is #12655): what coax/web/api/seats.c reads and answers on /api/playtest/seats and what it sends the runner that holds a hosted seat's page. `from` says where a body's bytes came from. api: a running API answered them in coax/web/api/test.sh (test_room.py with SEAT_CAPTURE), on a throwaway database whose players and keys ended with the run; the same test answers each one again on every run and requires these bytes, but for the values a run decides (ids, times, the player and its key, the API's port). caller: the request the CLI and the realm's page send. source: a refusal or a failure the suite does not reach, as seats.c names it. The grant and the list are SQL's (migration 0110), answered as jsonb's text: keys by length, then by bytes, with ', ' and ': ' between items. What seats.c writes itself is compact.",
+  "description": "Golden bodies of a seat in a running realm (E11, #13250; the feature is #12655): what coax/web/api/seats.c reads and answers on /api/playtest/seats, what it sends the runner that holds a hosted seat's page, and what the runner (coax/web/agent/seat-runner.c) answers and hands the seat's own process. `from` says where a body's bytes came from. api: a running API wrote them in coax/web/api/test.sh (test_room.py with SEAT_CAPTURE), on a throwaway database whose players and keys ended with the run. runner: a running runner wrote them in the same test, for a seat the test made up (its key is the test's seatkey-0001-0123456789). The same test gets each of these again on every run and requires these bytes, but for the values a run decides (ids, times, the player and its key, the API's port). caller: the request the CLI and the realm's page send. source: a refusal or a failure the suite does not reach, as seats.c or seat-runner.c names it. The grant, the list and the act handed to the runner are SQL's (migration 0110 and seats.c), written as jsonb's text: keys by length, then by bytes, with ', ' and ': ' between items. What seats.c and the runner write themselves is compact.",
   "check": "coax/web/tool.sh coax/web/api/seat-wire-goldens.coax proto/verse/realm-seat-v1alpha1.json",
   "messages": {
     "error": "openagents.api.v1alpha1.ErrorReply",
@@ -13,9 +13,11 @@
     "none": "openagents.verse.seat.v1alpha1.Grant (no member: a hosted seat's grant that could not be shown without its key)",
     "seats": "openagents.verse.seat.v1alpha1.SeatsReply",
     "kept": "openagents.verse.seat.v1alpha1.Kept",
-    "closed": "openagents.verse.seat.v1alpha1.Closed",
+    "closed": "openagents.verse.seat.v1alpha1.Closed (the API's .../close and the runner's /seat/close)",
     "runner-open": "openagents.verse.seat.v1alpha1.RunnerOpen",
-    "runner-close": "openagents.verse.seat.v1alpha1.RunnerClose"
+    "runner-close": "openagents.verse.seat.v1alpha1.RunnerClose",
+    "runner-act": "openagents.verse.seat.v1alpha1.RunnerAct",
+    "start": "openagents.verse.seat.v1alpha1.SeatStart"
   },
   "goldens": [
     {
@@ -131,6 +133,30 @@
         "id": "13"
       },
       "body": "{\"id\":13}"
+    },
+    {
+      "name": "runner-act",
+      "writer": "runner-act",
+      "from": "api",
+      "values": {
+        "id": 13,
+        "action": "{\"op\": \"look\", \"turn\": 90}"
+      },
+      "body": "{\"id\": 13, \"action\": {\"op\": \"look\", \"turn\": 90}}"
+    },
+    {
+      "name": "start",
+      "writer": "start",
+      "from": "runner",
+      "values": {
+        "id": 1,
+        "slug": "seat-green",
+        "until": 0,
+        "player_id": "p-1",
+        "key": "seatkey-0001-0123456789",
+        "origin": "http://127.0.0.1:7098"
+      },
+      "body": "{\"origin\":\"http://127.0.0.1:7098\",\"slug\":\"seat-green\",\"player\":{\"id\": \"p-1\", \"key\": \"seatkey-0001-0123456789\"}}"
     },
     {
       "name": "refused-unsigned",
@@ -302,6 +328,96 @@
         "text": "not read"
       },
       "body": "{\"error\":\"not read\"}"
+    },
+    {
+      "name": "runner-refused-open",
+      "writer": "error",
+      "from": "runner",
+      "values": {
+        "text": "a seat, its slug and an origin"
+      },
+      "body": "{\"error\":\"a seat, its slug and an origin\"}"
+    },
+    {
+      "name": "runner-refused-open-twice",
+      "writer": "error",
+      "from": "runner",
+      "values": {
+        "text": "that seat is open"
+      },
+      "body": "{\"error\":\"that seat is open\"}"
+    },
+    {
+      "name": "runner-refused-action",
+      "writer": "error",
+      "from": "runner",
+      "values": {
+        "text": "an action is one JSON object"
+      },
+      "body": "{\"error\":\"an action is one JSON object\"}"
+    },
+    {
+      "name": "runner-refused-no-seat",
+      "writer": "error",
+      "from": "runner",
+      "values": {
+        "text": "no such seat"
+      },
+      "body": "{\"error\":\"no such seat\"}"
+    },
+    {
+      "name": "runner-refused-full",
+      "writer": "error",
+      "from": "runner",
+      "values": {
+        "text": "the runner's seats are full"
+      },
+      "body": "{\"error\":\"the runner's seats are full\"}"
+    },
+    {
+      "name": "runner-failed-no-pipe",
+      "writer": "error",
+      "from": "source",
+      "values": {
+        "text": "no pipe"
+      },
+      "body": "{\"error\":\"no pipe\"}"
+    },
+    {
+      "name": "runner-failed-no-process",
+      "writer": "error",
+      "from": "source",
+      "values": {
+        "text": "no process"
+      },
+      "body": "{\"error\":\"no process\"}"
+    },
+    {
+      "name": "runner-failed-not-opened",
+      "writer": "error",
+      "from": "source",
+      "values": {
+        "text": "the seat didn't open"
+      },
+      "body": "{\"error\":\"the seat didn't open\"}"
+    },
+    {
+      "name": "runner-failed-silent",
+      "writer": "error",
+      "from": "source",
+      "values": {
+        "text": "the seat didn't answer"
+      },
+      "body": "{\"error\":\"the seat didn't answer\"}"
+    },
+    {
+      "name": "runner-failed-busy",
+      "writer": "error",
+      "from": "source",
+      "values": {
+        "text": "busy"
+      },
+      "body": "{\"error\":\"busy\"}"
     }
   ]
 }

@@ -5,7 +5,7 @@
 // with the goldens' sealed credential (proto/coder/agent-managed-v1alpha1.json), which
 // runner-wire-goldens.coax also seals with coax/lib/crypto/aes_gcm.coax. Build (coax/web/api/test.sh;
 // deploy.sh's runner-sign.c, runner-wire.c and their headers in WORK):
-//   cc -std=c11 -D_DEFAULT_SOURCE -IWORK runner_seal_check.c WORK/runner-sign.c WORK/runner-wire.c -lsecp256k1 -lcrypto -lcurl -lm
+//   cc -std=c11 -D_DEFAULT_SOURCE -IWORK runner_seal_check.c WORK/runner-sign.c WORK/runner-wire.c WORK/seat-runner-wire.c -lsecp256k1 -lcrypto -lcurl -lm
 //   ./runner_seal_check KEY_HEX NONCE_HEX OWNER KIND PLAIN
 #define main runner_main
 #include "runner.c"

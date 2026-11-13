@@ -16,16 +16,20 @@ import "openagents/options/v1alpha1/options.proto";
 //   POST /api/playtest/seats/<id>/keep   Kept
 //   POST /api/playtest/seats/<id>/close  Closed
 // For a hosted seat the API asks the runner that holds its page
-// (coax/web/agent/seat-runner.c):
+// (coax/web/agent/seat-runner.c, through coax/web/agent/seat-runner-wire.coax):
 //   POST /seat/open    RunnerOpen
-//   POST /seat/close   RunnerClose
-// A refusal is the API's ErrorReply (openagents/api/v1alpha1/error.proto).
+//   POST /seat/act     RunnerAct
+//   POST /seat/close   RunnerClose -> Closed
+// and the runner starts the seat's own process (oa-seat, coax/web/agent/seat.coax)
+// with one line on its stdin, SeatStart.
+// A refusal, the API's or the runner's, is the API's ErrorReply
+// (openagents/api/v1alpha1/error.proto).
 //
 // The server builds Grant and SeatsReply in SQL and answers jsonb's text:
 // keys by length, then by bytes, with ", " and ": " between items. The fields
-// below are in that order. What seats.c writes itself (Kept, Closed,
-// RunnerClose, and RunnerOpen around the grant) is compact. json_name is the
-// key on the wire.
+// below are in that order. RunnerAct is SQL's too. What seats.c writes itself
+// (Kept, Closed, RunnerClose, and RunnerOpen around the grant) is compact, and
+// so is SeatStart around its player. json_name is the key on the wire.
 
 // POST /api/playtest/seats: the made realm to sit in. `hosted` true asks for
 // a seat whose page the runner holds; left out, the caller holds the page.
@@ -87,4 +91,51 @@ message RunnerOpen {
 // The API to the runner, POST /seat/close: {"id":7}.
 message RunnerClose {
   optional int64 id = 1 [json_name = "id"];
+}
+
+// One action for a seat (coax/lib/media/realm_seat.coax, which reads it): `op`
+// is see, look, go, say, use, bye, jump, shot or leave, and the other members
+// are the ones that op takes.
+message Action {
+  optional string op = 1 [json_name = "op"];
+  // look: degrees to turn right (negative: left), -180 to 180.
+  optional double turn = 2 [json_name = "turn"];
+  // look: degrees to look up (positive) or down, -60 to 60, in first person.
+  optional double pitch = 3 [json_name = "pitch"];
+  // go: a character's name, "character:0", "entity:12" or a kind; or x and z.
+  optional string to = 4 [json_name = "to"];
+  // go: seconds to walk at most (10 when left out, at most 30).
+  optional double max = 5 [json_name = "max"];
+  optional double x = 6 [json_name = "x"];
+  optional double z = 7 [json_name = "z"];
+  // say: the words, to the character within reach.
+  optional string words = 8 [json_name = "words"];
+  // use: jump, map or build, and with build the thing to place.
+  optional string tool = 9 [json_name = "tool"];
+  optional string thing = 10 [json_name = "thing"];
+  // shot: the file a screenshot goes to; any action may carry `shot`.
+  optional string out = 11 [json_name = "out"];
+  optional string shot = 12 [json_name = "shot"];
+  // The CLI's token for a seat it holds itself, on this computer; it sends
+  // the member empty for a hosted seat, and the seat does not read it.
+  optional string token = 13 [json_name = "token"];
+}
+
+// The API to the runner, POST /seat/act: the seat and one action, as SQL
+// wrote them (jsonb's text; the action is the caller's object, its keys in
+// jsonb's order).
+message RunnerAct {
+  optional int64 id = 1 [json_name = "id"];
+  optional Action action = 2 [json_name = "action"];
+}
+
+// The runner to the seat's own process, the first line on its stdin: the
+// site the page loads from, the realm, and the seat's player with its key
+// (as the grant spelled it). `phone` true asks for a phone-sized page; the
+// runner leaves it out.
+message SeatStart {
+  optional string origin = 1 [json_name = "origin"];
+  optional string slug = 2 [json_name = "slug", (openagents.options.v1alpha1.max_bytes) = 64];
+  optional Player player = 3 [json_name = "player"];
+  optional bool phone = 4 [json_name = "phone"];
 }

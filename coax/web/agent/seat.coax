@@ -14,6 +14,7 @@
 // tool.sh: run-steps 250000000
 #import "Basic";
 #load "../../lib/media/realm_seat.coax";
+#load "../../lib/media/realm_seat_wire.coax";   // the first line (seat.proto): one reader
 
 eio_read_line :: (timeout_ms: int) -> int #foreign #effects(all);
 eio_line_byte :: (i: int) -> int #foreign #effects(all);
@@ -24,26 +25,23 @@ HOST_IDLE_MS :: 600000;   // seat-policy.coax SP_IDLE_MS
 HOST_LINE :: 65536;
 
 HostOpen :: struct { origin: [256] u8; origin_n: int; slug: [64] u8; slug_n: int; player: [320] u8; player_n: int; phone: bool; }
-// The first line: false when it isn't a seat to open (an origin that isn't http(s), a bad slug, no player).
+// The first line (realm_seat_wire.coax reads it: seat.proto's SeatStart): false when it isn't a
+// seat to open (an origin that isn't http(s), a bad slug, no player).
 host_first :: (line: string, h: [] HostOpen) -> bool {
   h[0] = HostOpen.{};
-  nodes: [64] JvNode; d: [1] Jv;
-  if !jv_parse(d[..], line, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
-  h[0].origin_n = jv_str(d[0], jv_get(d[0], 0, "origin"), h[0].origin[..]);
-  h[0].slug_n = jv_str(d[0], jv_get(d[0], 0, "slug"), h[0].slug[..]);
-  if h[0].origin_n <= 0 || h[0].slug_n <= 0 { return false; }
-  origin := cast(string) h[0].origin[0..<h[0].origin_n];
-  if !(seat_starts(origin, "https://") || seat_starts(origin, "http://127.0.0.1:")) || seat_origin_of(origin) != origin { return false; }
-  if !seat_slug_ok(cast(string) h[0].slug[0..<h[0].slug_n]) { return false; }
-  p := jv_get(d[0], 0, "player");
-  kb: [200] u8; ib: [64] u8;
-  kn := jv_str(d[0], jv_get(d[0], p, "key"), kb[..]); pn := jv_str(d[0], jv_get(d[0], p, "id"), ib[..]);
-  if kn < 20 || pn < 3 { return false; }
+  w: [1] SeatwStart;
+  if !seatw_read_start(line, w[..]) { return false; }
+  origin := seatw_start_origin(w[..]); slug := seatw_start_slug(w[..]);
+  good := (seat_starts(origin, "https://") || seat_starts(origin, "http://127.0.0.1:")) && seat_origin_of(origin) == origin
+          && seat_slug_ok(slug) && w[0].key_n >= 20 && w[0].pid_n >= 3;
   o: [1] Jo; jo_start(o[..], h[0].player[..]); jo_obj(o[..]);
-  jo_key(o[..], "key"); jo_str(o[..], cast(string) kb[0..<kn]); jo_key(o[..], "id"); jo_str(o[..], cast(string) ib[0..<pn]); jo_end(o[..]);
-  if o[0].bad { return false; }
+  jo_key(o[..], "key"); jo_str(o[..], seatw_start_key(w[..])); jo_key(o[..], "id"); jo_str(o[..], seatw_start_pid(w[..])); jo_end(o[..]);
+  for i: 0..<w[0].key.count { w[0].key[i] = 0; }
+  if !good || o[0].bad { h[0] = HostOpen.{}; return false; }
+  for i: 0..<origin.count { h[0].origin[i] = origin[i]; } h[0].origin_n = origin.count;
+  for i: 0..<slug.count { h[0].slug[i] = slug[i]; } h[0].slug_n = slug.count;
   h[0].player_n = jo_text(o[..]).count;
-  h[0].phone = jv_bool(d[0], jv_get(d[0], 0, "phone"));
+  h[0].phone = w[0].phone;
   return true;
 }
 // Whether an action line asks the seat to leave.

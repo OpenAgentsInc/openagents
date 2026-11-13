@@ -13,6 +13,7 @@
 // Chrome on this machine); one not acted in for OA_SEAT_IDLE_MS (10 minutes) is closed, as oa-api
 // closes it then.
 #include <sys/wait.h>
+#include "seat-runner-wire.h"   // the bodies (srw_*): deploy.sh compiles seat-runner-wire.coax
 
 #define SEATS_MOST 8
 static struct { long long id; pid_t pid; int in, out; double last; } seats[SEATS_MOST];
@@ -62,18 +63,29 @@ static void seat_reaped(pid_t p) {
 }
 static void seats_reap(void) { reap(); }
 
+// The bodies are read and written through seat-runner-wire.coax (seat-runner-wire.c): the open
+// body and the seat's first line from it, an act's id and action, a close's id, the answer's ok,
+// {"closed":true} and every refusal.
+static void seat_refuse(int fd, int status, const char *why) {
+  char out[160];
+  int64_t n = srw_error_write(cs(why), (coax_v_u8){(uint8_t *)out, sizeof out - 1});
+  out[n < 0 ? 0 : n] = 0;
+  respond(fd, status, out);
+}
+
 static void seat_open(int fd, const char *body) {
   seats_reap();
-  char *seat = jraw(body, "seat", "{}"), *origin = jstr(body, "origin", "");
-  long long id = jint(seat, "id");
-  char *slug = jstr(seat, "slug", ""), *player = jraw(seat, "player", "{}");
+  long long id = srw_open_id(cs(body));
+  char first[1024];   // the seat's first line: it holds the seat's key
+  int64_t fn = id > 0 ? srw_start_write(cs(body), (coax_v_u8){(uint8_t *)first, sizeof first - 1}) : -1;
   int slot = -1;
-  if (id <= 0 || !*slug || !*origin) { respond(fd, 400, "{\"error\":\"a seat, its slug and an origin\"}"); goto done; }
-  if (seat_find(id) >= 0) { respond(fd, 409, "{\"error\":\"that seat is open\"}"); goto done; }
+  if (fn < 0) { seat_refuse(fd, 400, "a seat, its slug and an origin"); goto done; }
+  first[fn] = 0;
+  if (seat_find(id) >= 0) { seat_refuse(fd, 409, "that seat is open"); goto done; }
   for (int i = 0; i < SEATS_MOST; i++) if (!seats[i].pid) { slot = i; break; }
-  if (slot < 0) { respond(fd, 429, "{\"error\":\"the runner's seats are full\"}"); goto done; }
+  if (slot < 0) { seat_refuse(fd, 429, "the runner's seats are full"); goto done; }
   int in[2], out[2];
-  if (pipe(in) || pipe(out)) { respond(fd, 502, "{\"error\":\"no pipe\"}"); goto done; }
+  if (pipe(in) || pipe(out)) { seat_refuse(fd, 502, "no pipe"); goto done; }
   pid_t pid = fork();
   if (pid == 0) {
     dup2(in[0], 0); dup2(out[1], 1);
@@ -83,50 +95,47 @@ static void seat_open(int fd, const char *body) {
     _exit(127);
   }
   close(in[0]); close(out[1]);
-  if (pid < 0) { close(in[1]); close(out[0]); respond(fd, 502, "{\"error\":\"no process\"}"); goto done; }
+  if (pid < 0) { close(in[1]); close(out[0]); seat_refuse(fd, 502, "no process"); goto done; }
   seats[slot].id = id; seats[slot].pid = pid; seats[slot].in = in[1]; seats[slot].out = out[0]; seats[slot].last = now_ms();
-  text first = {0};
-  puts_(&first, "{\"origin\":"); putq(&first, origin); puts_(&first, ",\"slug\":"); putq(&first, slug);
-  puts_(&first, ",\"player\":"); puts_(&first, player); puts_(&first, "}");
   char line[262144];
-  bool ok = first.p && seat_write_line(seats[slot].in, first.p) && seat_read_line(seats[slot].out, line, sizeof line, 120000) > 0
-            && line[0] == '{';
-  if (ok) { char *said = jraw(line, "ok", "false"); ok = !strcmp(said, "true"); free(said); }
-  if (first.p) { OPENSSL_cleanse(first.p, first.n); free(first.p); }
-  if (!ok) { seat_end(slot); respond(fd, 502, "{\"error\":\"the seat didn't open\"}"); goto done; }
+  bool ok = seat_write_line(seats[slot].in, first) && seat_read_line(seats[slot].out, line, sizeof line, 120000) > 0
+            && line[0] == '{' && srw_answer_ok(cs(line));
+  if (!ok) { seat_end(slot); seat_refuse(fd, 502, "the seat didn't open"); goto done; }
   say("seat %lld open", id);
   respond(fd, 200, line);
 done:
-  if (player) { OPENSSL_cleanse(player, strlen(player)); free(player); }
-  free(seat); free(origin); free(slug);
+  OPENSSL_cleanse(first, sizeof first);
 }
 
 // An action: answered by a child process (a walk takes up to 30 s, an answer 45 s), so the runner
 // goes on taking requests meanwhile.
 static void seat_act(int fd, const char *body) {
   seats_reap();
-  long long id = jint(body, "id");
-  char *action = jraw(body, "action", "");
-  int i = seat_find(id);
-  if (i < 0) { respond(fd, 404, "{\"error\":\"no such seat\"}"); free(action); return; }
-  if (action[0] != '{') { respond(fd, 400, "{\"error\":\"an action is one JSON object\"}"); free(action); return; }
+  int i = seat_find(srw_id(cs(body)));
+  if (i < 0) { seat_refuse(fd, 404, "no such seat"); return; }
+  static char action[16385];
+  int64_t an = srw_action_write(cs(body), (coax_v_u8){(uint8_t *)action, sizeof action - 1});
+  if (an < 0) { seat_refuse(fd, 400, "an action is one JSON object"); return; }
+  action[an] = 0;
   seats[i].last = now_ms();
   pid_t pid = fork();
   if (pid == 0) {
     static char line[262144];
     bool ok = seat_write_line(seats[i].in, action) && seat_read_line(seats[i].out, line, sizeof line, 150000) > 0 && line[0] == '{';
-    respond(fd, ok ? 200 : 502, ok ? line : "{\"error\":\"the seat didn't answer\"}");
+    if (ok) respond(fd, 200, line); else seat_refuse(fd, 502, "the seat didn't answer");
     _exit(0);
   }
-  if (pid < 0) respond(fd, 502, "{\"error\":\"busy\"}");
-  free(action);
+  if (pid < 0) seat_refuse(fd, 502, "busy");
 }
 
 static void seat_close(int fd, const char *body) {
-  int i = seat_find(jint(body, "id"));
-  if (i < 0) { respond(fd, 404, "{\"error\":\"no such seat\"}"); return; }
+  int i = seat_find(srw_id(cs(body)));
+  if (i < 0) { seat_refuse(fd, 404, "no such seat"); return; }
   seat_end(i);
-  respond(fd, 200, "{\"closed\":true}");
+  char out[32];
+  int64_t n = srw_closed_write((coax_v_u8){(uint8_t *)out, sizeof out - 1});
+  out[n < 0 ? 0 : n] = 0;
+  respond(fd, 200, out);
 }
 
 static bool seat_serve(int fd, const char *req, const char *body) {

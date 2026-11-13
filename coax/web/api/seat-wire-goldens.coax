@@ -1,7 +1,7 @@
 // The goldens of a seat's bodies (Protocol E11, GitHub #13250): proto/verse/realm-seat-v1alpha1.json
 // holds what POST and GET /api/playtest/seats, .../keep and .../close answer, what a caller sends to
-// open a seat and what the API sends the runner, byte for byte as a running API answered them. For
-// each one this check
+// open a seat, what the API sends the runner and what the runner answers and hands a seat's own
+// process, byte for byte as a running API and a running runner wrote them. For each one this check
 //   - writes it from its values through coax/lib/media/realm_seat_wire.coax (a refusal, kept,
 //     closed and the runner's two bodies through seat-wire.coax, the writers seats.c calls), and
 //     requires the same bytes;
@@ -10,7 +10,7 @@
 //     field once and in field order where the body always carries them all;
 //   - reads it back through the codec and writes it again from what was read, for the same bytes;
 //     a refusal also goes through the JSON mapper.
-// With --read FILE it does the last two for bodies a running API answered: FILE is
+// With --read FILE it does the last two for bodies a running API or runner wrote: FILE is
 // {"bodies": [{"name", "kind", "body"}]} (coax/web/api/test_room.py writes it).
 //
 //   coax/web/tool.sh coax/web/api/seat-wire-goldens.coax [proto/verse/realm-seat-v1alpha1.json]
@@ -29,16 +29,17 @@ TG_FIXTURE :: "proto/verse/realm-seat-v1alpha1.json";
 TG_DESCRIPTOR :: "proto/descriptors/api-routes.pb";
 TG_BODY :: 8192;
 TG_SEATS :: 16;
-TG_N :: 9;
-TG_WRITERS :: [TG_N] string.["error", "open", "grant", "none", "seats", "kept", "closed", "runner-open", "runner-close"];
+TG_N :: 11;
+TG_WRITERS :: [TG_N] string.["error", "open", "grant", "none", "seats", "kept", "closed", "runner-open", "runner-close", "runner-act", "start"];
 TG_MESSAGES :: [TG_N] string.[".openagents.api.v1alpha1.ErrorReply", ".openagents.verse.seat.v1alpha1.OpenRequest",
                               ".openagents.verse.seat.v1alpha1.Grant", ".openagents.verse.seat.v1alpha1.Grant",
                               ".openagents.verse.seat.v1alpha1.SeatsReply", ".openagents.verse.seat.v1alpha1.Kept",
                               ".openagents.verse.seat.v1alpha1.Closed", ".openagents.verse.seat.v1alpha1.RunnerOpen",
-                              ".openagents.verse.seat.v1alpha1.RunnerClose"];
+                              ".openagents.verse.seat.v1alpha1.RunnerClose", ".openagents.verse.seat.v1alpha1.RunnerAct",
+                              ".openagents.verse.seat.v1alpha1.SeatStart"];
 // Whether a body of the kind always carries every field of its message, in field order (a
 // request may leave hosted out, and a hosted seat's grant has no key).
-TG_EXACT :: [TG_N] bool.[true, false, false, false, true, true, true, false, true];
+TG_EXACT :: [TG_N] bool.[true, false, false, false, true, true, true, false, true, false, false];
 
 TgText :: struct { b: [TG_BODY] u8; n: int; }
 tg_s :: (d: Jv, at: int, key: string, t: [] TgText) -> string {
@@ -84,6 +85,12 @@ tg_write :: (writer: string, d: Jv, v: int, out: [] u8) -> int {
   if writer == "closed" { return stw_closed_write(out); }
   if writer == "runner-open" { return stw_runner_open_write(tg_s(d, v, "seat", a[..]), tg_s(d, v, "origin", b[..]), out); }
   if writer == "runner-close" { return stw_runner_close_write(tg_s(d, v, "id", a[..]), out); }
+  if writer == "runner-act" { return seatw_runner_act(tg_i(d, v, "id"), tg_s(d, v, "action", a[..]), out); }
+  if writer == "start" {
+    g: [1] SeatwGrant;
+    if !seatw_grant_of(g[..], tg_i(d, v, "id"), tg_s(d, v, "slug", a[..]), tg_i(d, v, "until"), true, tg_s(d, v, "player_id", b[..]), tg_s(d, v, "key", c[..])) { return -1; }
+    return seatw_start_line(g[..], tg_s(d, v, "origin", a[..]), out);
+  }
   return -1;
 }
 
@@ -125,6 +132,18 @@ tg_rewrite :: (kind: string, body: string, nodes: [] JvNode, out: [] u8) -> int 
     id := seatw_read_id(body); t: [24] u8;
     if id < 0 { return -1; }
     return stw_runner_close_write(tg_digits(id, t[..]), out);
+  }
+  if kind == "runner-act" {
+    id := seatw_read_id(body); ab: [TG_BODY] u8;
+    an := seatw_read_runner_action(body, ab[..]);
+    if id < 0 || an < 0 { return -1; }
+    return seatw_runner_act(id, cast(string) ab[0..<an], out);
+  }
+  if kind == "start" {
+    s: [1] SeatwStart; g: [1] SeatwGrant;
+    if !seatw_read_start(body, s[..]) || s[0].phone { return -1; }
+    if !seatw_grant_of(g[..], 1, seatw_start_slug(s[..]), 0, true, seatw_start_pid(s[..]), seatw_start_key(s[..])) { return -1; }
+    return seatw_start_line(g[..], seatw_start_origin(s[..]), out);
   }
   return -1;
 }
@@ -221,7 +240,12 @@ tool_main :: () -> int #export_c #effects(all) {
      tg_body(st, "closed", "{\"kept\":true}", w[0].body_nodes[..], w[0].back[..]) == "" ||
      tg_body(st, "open", "{\"slug\":\"g\",\"hosted\":false}", w[0].body_nodes[..], w[0].back[..]) == "" ||
      tg_body(st, "runner-open", "{\"seat\":{\"id\": 7, \"slug\": \"g\", \"until\": 9, \"hosted\": true, \"player\": {\"id\": \"p-1\", \"key\": \"k\"}}, \"origin\":\"https://a.b\"}", w[0].body_nodes[..], w[0].back[..]) == "" ||
-     tg_body(st, "runner-close", "{\"id\":\"7\"}", w[0].body_nodes[..], w[0].back[..]) == "" {
+     tg_body(st, "runner-close", "{\"id\":\"7\"}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     tg_body(st, "runner-act", "{\"id\":7,\"action\":{\"op\":\"look\"}}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     tg_body(st, "runner-act", "{\"id\": 7, \"action\": {\"op\": \"look\", \"speed\": 2}}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     tg_body(st, "runner-act", "{\"id\": 7, \"action\": {\"op\": \"look\", \"turn\": -45.5, \"token\": \"\"}}", w[0].body_nodes[..], w[0].back[..]) != "" ||
+     tg_body(st, "start", "{\"origin\":\"https://a.b\",\"slug\":\"g\",\"player\":{\"id\":\"p-1\",\"key\":\"k\"}}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     tg_body(st, "start", "{\"origin\":\"https://a.b\",\"slug\":\"g\",\"player\":{\"id\": \"p-1\"}}", w[0].body_nodes[..], w[0].back[..]) == "" {
     print("FAIL  the check takes a body it should refuse\n"); return 1;
   }
   buf: [262144] u8;

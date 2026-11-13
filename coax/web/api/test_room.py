@@ -175,6 +175,7 @@ SEAT_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.p
 SEAT_FIXTURE = os.path.join(SEAT_REPO, "proto", "verse", "realm-seat-v1alpha1.json")
 seat_goldens = {g["name"]: g for g in json.load(open(SEAT_FIXTURE))["goldens"]} if os.path.exists(SEAT_FIXTURE) else {}
 seat_seen = []   # (golden's name, the body's bytes)
+seat_runner_ran = False   # the runner's own checks ran (they need RUNNER_BIN)
 
 
 def seat_saw(name, raw):
@@ -208,8 +209,9 @@ def seat_held():
         if g is not None:
             bodies.append({"name": name, "kind": g["writer"], "body": raw})
     answered = {n for n, _ in seat_seen}
-    missed = sorted(n for n, g in seat_goldens.items() if g.get("from") == "api" and n not in answered)
-    check("seats: every golden taken from the API was answered again", not missed, missed)
+    took = ("api", "runner") if seat_runner_ran else ("api",)
+    missed = sorted(n for n, g in seat_goldens.items() if g.get("from") in took and n not in answered)
+    check("seats: every golden taken from the API and the runner was answered again", not missed, missed)
     f = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
     json.dump({"bodies": bodies}, f)
     f.close()
@@ -346,8 +348,7 @@ if os.environ.get("WAKE_PORT"):
           and [b for p, b, _ in runner_seen if p == "/seat/close"] == [{"id": h1["id"]}])
     seat_saw("runner-open", [b for p, b in runner_raw if p == "/seat/open"][0])
     seat_saw("runner-close", [b for p, b in runner_raw if p == "/seat/close"][0])
-    if os.environ.get("SEAT_CAPTURE"):
-        seat_saw("runner-act", [b for p, b in runner_raw if p == "/seat/act"][0])
+    seat_saw("runner-act", [b for p, b in runner_raw if p == "/seat/act"][0])
     # The YOUR AGENT pane (verse/edit/agent.coax): the realm's own page, logged in on this site, opens,
     # acts in and closes a hosted seat with its session; another site's page and the player key can't.
     site_cookie = login_cookie(pubkey_of(OK_))
@@ -379,19 +380,22 @@ if os.environ.get("WAKE_PORT"):
     status, h2 = signed_call("POST", SEATS, {"slug": "seat-green", "hosted": True}, OK_, saw="refused-runner")
     check("no runner answering: no hosted seat, and nothing left open", status == 502
           and sql(f"select count(*) from verse.seats where closed_ms is null and account = '{other_acct}'") == "0", h2)
-seat_held()
 
 # The runner's side (coax/web/agent/seat-runner.c), with a stand-in oa-seat that answers each line:
 # a seat opens with its key on the stand-in's stdin (never in its arguments or the runner's log),
 # its actions are answered, at most 8 are open, one idle past OA_SEAT_IDLE_MS is closed, and a
-# closed one is gone.
+# closed one is gone. The bodies sent are spelled as oa-api spells them (the grant and an act as
+# jsonb's text, the rest compact), and the first line the runner hands the seat and what it answers
+# are held to the fixture with the API's bodies (seat_held).
 if os.environ.get("RUNNER_BIN") and os.environ.get("RUN_KEY_FILE"):
     sdir = tempfile.mkdtemp()
     stand_in = os.path.join(sdir, "oa-seat")
     with open(stand_in, "w") as f:
         f.write("#!/usr/bin/env python3\n"
                 "import json, sys\n"
-                "first = json.loads(sys.stdin.readline())\n"
+                "line = sys.stdin.readline()\n"
+                "open(sys.argv[0] + '.first', 'a').write(line)\n"
+                "first = json.loads(line)\n"
                 "ok = first.get('player', {}).get('key', '').startswith('seatkey') and sys.argv[1:] == []\n"
                 "print(json.dumps({'op': 'open', 'ok': ok, 'result': first['slug']}), flush=True)\n"
                 "for line in sys.stdin:\n"
@@ -405,29 +409,39 @@ if os.environ.get("RUNNER_BIN") and os.environ.get("RUN_KEY_FILE"):
         "OA_API_ORIGIN": API, "OA_RUNNER_KEY": open(os.environ["RUN_KEY_FILE"]).read().strip(), "OA_SEAT_ENGINE": stand_in,
         "OA_SEAT_IDLE_MS": "3000", "PATH": "/usr/bin:/bin:" + os.environ.get("PATH", "")})
 
-    def rpost(path, body):
-        req = urllib.request.Request(f"http://127.0.0.1:{rport}{path}", method="POST", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+    def rpost(path, body, saw=None):
+        sent = body.encode() if isinstance(body, str) else json.dumps(body).encode()   # json.dumps spells as jsonb's text does
+        req = urllib.request.Request(f"http://127.0.0.1:{rport}{path}", method="POST", data=sent, headers={"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=20) as r:
-                return r.status, json.loads(r.read())
+                status, out = r.status, r.read()
         except urllib.error.HTTPError as e:
-            return e.code, json.loads(e.read())
+            status, out = e.code, e.read()
+        if saw:
+            seat_saw(saw, out)
+        return status, json.loads(out)
     for _ in range(50):
         try:
             if urllib.request.urlopen(f"http://127.0.0.1:{rport}/").status == 200:
                 break
         except Exception:
             time.sleep(0.1)
-    seat_of = lambda i: {"seat": {"id": i, "slug": "seat-green", "player": {"id": f"p-{i}", "key": f"seatkey-{i:04d}-0123456789"}}, "origin": API}
+    seat_grant_of = lambda i: {"id": i, "slug": "seat-green", "until": 1794529774049, "hosted": True, "player": {"id": f"p-{i}", "key": f"seatkey-{i:04d}-0123456789"}}
+    seat_of = lambda i: '{"seat":' + json.dumps(seat_grant_of(i)) + ',"origin":' + json.dumps(API) + '}'   # RunnerOpen, as seats.c writes it
     check("the runner opens a hosted seat, its key on the seat's stdin", rpost("/seat/open", seat_of(1)) == (200, {"op": "open", "ok": True, "result": "seat-green"}))
-    check("the same seat twice is refused", rpost("/seat/open", seat_of(1))[0] == 409)
+    seat_saw("start", open(stand_in + ".first").readline().rstrip("\n"))
+    check("the same seat twice is refused", rpost("/seat/open", seat_of(1), saw="runner-refused-open-twice")[0] == 409)
+    check("a body that is not a whole seat with its key and an origin opens none",
+          rpost("/seat/open", '{"seat":' + json.dumps({"id": 21, "slug": "seat-green", "player": {"id": "p-21", "key": "seatkey-0021-0123456789"}}) + ',"origin":' + json.dumps(API) + '}', saw="runner-refused-open")[0] == 400
+          and rpost("/seat/open", '{"seat":' + json.dumps({**seat_grant_of(22), "player": {"id": "p-22"}}) + ',"origin":' + json.dumps(API) + '}')[0] == 400
+          and rpost("/seat/open", '{"seat":' + json.dumps(seat_grant_of(23)) + '}')[0] == 400 and rpost("/seat/open", "{}")[0] == 400)
     check("its actions are answered", rpost("/seat/act", {"id": 1, "action": {"op": "look", "turn": 90}}) == (200, {"op": "look", "ok": True, "result": "acted"}))
-    check("an action is a JSON object, for a seat that is open", rpost("/seat/act", {"id": 1, "action": [1]})[0] == 400
-          and rpost("/seat/act", {"id": 99, "action": {"op": "look"}})[0] == 404)
+    check("an action is a JSON object, for a seat that is open", rpost("/seat/act", {"id": 1, "action": [1]}, saw="runner-refused-action")[0] == 400
+          and rpost("/seat/act", {"id": 99, "action": {"op": "look"}}, saw="runner-refused-no-seat")[0] == 404)
     for i in range(2, 9):
         rpost("/seat/open", seat_of(i))
-    check("at most 8 at once", rpost("/seat/open", seat_of(9))[0] == 429)
-    check("a closed seat is gone and frees its place", rpost("/seat/close", {"id": 2}) == (200, {"closed": True})
+    check("at most 8 at once", rpost("/seat/open", seat_of(9), saw="runner-refused-full")[0] == 429)
+    check("a closed seat is gone and frees its place", rpost("/seat/close", '{"id":2}', saw="closed") == (200, {"closed": True})
           and rpost("/seat/act", {"id": 2, "action": {"op": "look"}})[0] == 404 and rpost("/seat/open", seat_of(9))[0] == 200)
     # Seat 1 is acted in every half second; the rest sit idle past the 3 s limit. The runner looks
     # between requests (at least every 30 s), so each act on seat 1 is also a look. (Seat 3 isn't
@@ -439,3 +453,5 @@ if os.environ.get("RUNNER_BIN") and os.environ.get("RUN_KEY_FILE"):
     check("a seat idle past its limit is closed; one acted in stays", idle[0] == 404 and kept[0] == 200, (idle, kept))
     rproc.terminate(); rproc.wait()
     check("no seat's key reaches the runner's log", "seatkey" not in open(rlog).read())
+    seat_runner_ran = True
+seat_held()

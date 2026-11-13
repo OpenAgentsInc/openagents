@@ -6,12 +6,15 @@
 //   POST /api/playtest/seats/<id>/keep   {"kept":true}
 //   POST /api/playtest/seats/<id>/close  {"closed":true}
 //   the API to the runner                /seat/open  {"seat":GRANT,"origin":"..."}
+//                                        /seat/act   {"id": 7, "action": {...}}
 //                                        /seat/close {"id":7}
+//   the runner to a seat's own process   its first line, {"origin":"...","slug":"...","player":{...}}
 // The server builds a Grant and a SeatsReply in SQL and answers jsonb's text: keys by length, then
 // by bytes, with ", " and ": " between items. The writers here give those bytes; what seats.c
 // writes itself is compact. proto/verse/realm-seat-v1alpha1.json holds the bytes, checked through
-// this file by coax/web/api/seat-wire-goldens.coax and on a running API by
-// coax/web/api/test_room.py. seats.c calls the writers through coax/web/api/seat-wire.coax. A
+// this file by coax/web/api/seat-wire-goldens.coax and on a running API and a running runner by
+// coax/web/api/test_room.py. seats.c calls the writers through coax/web/api/seat-wire.coax, and the
+// runner (coax/web/agent/seat-runner.c) the readers through coax/web/agent/seat-runner-wire.coax. A
 // writer returns the body's length, or -1 when it does not fit or a value is not one it writes;
 // a reader refuses a body whole when a member is missing or of another kind.
 //   coax/bin/coax test coax/lib/media/realm_seat_wire.coax --library
@@ -225,6 +228,76 @@ seatw_read_id :: (body: string) -> int {
   return ifx id < 1 then -1 else id;
 }
 
+// {"id": 7, "action": {"op": "look", "turn": 90}}: the seat's id and one action, as SQL writes
+// them (jsonb's text); the action is an object carried as it came.
+seatw_runner_act :: (id: int, action: string, out: [] u8) -> int {
+  if id < 1 || id > SEATW_MOST || action.count < 2 || action[0] != '{' || action[action.count - 1] != '}' { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_put(o[..], "{\"id\": "); jo_int(o[..], id); jo_put(o[..], ", \"action\": "); jo_put(o[..], action); jo_put(o[..], "}");
+  return seatw_len(o[..]);
+}
+// The action of a runner's act body into out, as it came: its length, or -1 when the body is no
+// object, its action is not one, or it does not fit.
+seatw_read_runner_action :: (body: string, out: [] u8) -> int {
+  nodes: [4096] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], body, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return -1; }
+  a := jv_get(d[0], 0, "action");
+  if jv_kind(d[0], a) != JV_OBJECT { return -1; }
+  raw := jv_raw(d[0], a);
+  if raw.count > out.count { return -1; }
+  for i: 0..<raw.count { out[i] = raw[i]; }
+  return raw.count;
+}
+
+// ---- the runner to a seat's own process (oa-seat, coax/web/agent/seat.coax)
+
+// The first line on its stdin: {"origin":"https://openagents.com","slug":"g","player":{"id": "p-1", "key": "K"}}
+// (the player as the grant spelled it). -1 for a grant with no key: there is no seat to start.
+seatw_start_line :: (g: [] SeatwGrant, origin: string, out: [] u8) -> int {
+  if g[0].key_n == 0 || g[0].pid_n == 0 || g[0].slug_n == 0 || origin.count == 0 { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_put(o[..], "{\"origin\":"); jo_quoted(o[..], origin);
+  jo_put(o[..], ",\"slug\":"); jo_quoted(o[..], seatw_grant_slug(g));
+  jo_put(o[..], ",\"player\":{\"id\": "); jo_quoted(o[..], seatw_grant_pid(g));
+  jo_put(o[..], ", \"key\": "); jo_quoted(o[..], seatw_grant_key(g)); jo_put(o[..], "}}");
+  return seatw_len(o[..]);
+}
+// A first line read. phone: a phone-sized page, only when it is exactly true (the runner never
+// says so; a seat started by hand may).
+SeatwStart :: struct {
+  phone: bool; origin: [SEATW_ORIGIN] u8; origin_n: int; slug: [64] u8; slug_n: int;
+  pid: [SEATW_PID] u8; pid_n: int; key: [SEATW_KEY] u8; key_n: int;
+}
+seatw_start_origin :: (s: [] SeatwStart) -> string { return cast(string) s[0].origin[0..<s[0].origin_n]; }
+seatw_start_slug :: (s: [] SeatwStart) -> string { return cast(string) s[0].slug[0..<s[0].slug_n]; }
+seatw_start_pid :: (s: [] SeatwStart) -> string { return cast(string) s[0].pid[0..<s[0].pid_n]; }
+seatw_start_key :: (s: [] SeatwStart) -> string { return cast(string) s[0].key[0..<s[0].key_n]; }
+// False when the line is no object or its origin, slug or the player's id or key is missing, empty
+// or too long.
+seatw_read_start :: (line: string, s: [] SeatwStart) -> bool {
+  s[0] = SeatwStart.{};
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], line, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  p := jv_get(d[0], 0, "player");
+  on := jv_str(d[0], jv_get(d[0], 0, "origin"), s[0].origin[..]);
+  sn := jv_str(d[0], jv_get(d[0], 0, "slug"), s[0].slug[..]);
+  pn := jv_str(d[0], jv_get(d[0], p, "id"), s[0].pid[..]);
+  kn := jv_str(d[0], jv_get(d[0], p, "key"), s[0].key[..]);
+  if on < 1 || sn < 1 || pn < 1 || kn < 1 { s[0] = SeatwStart.{}; return false; }
+  s[0].origin_n = on; s[0].slug_n = sn; s[0].pid_n = pn; s[0].key_n = kn;
+  s[0].phone = seatw_flag(d[0], 0, "phone") == 1;
+  return true;
+}
+
+// ---- what a seat answers
+
+// Whether a line a seat answered is an object whose `ok` is true (its observation's other members
+// are coax/lib/media/realm_seat.coax's).
+seatw_answer_ok :: (line: string) -> bool {
+  nodes: [1024] JvNode; d: [1] Jv;
+  return jv_parse(d[..], line, nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT && seatw_flag(d[0], 0, "ok") == 1;
+}
+
 #test "the open body, and what the server reads in one" {
   b: [128] u8; r: [1] SeatwOpen;
   n := seatw_open_body("village-green", false, b[..]);
@@ -332,4 +405,46 @@ seatw_read_id :: (body: string) -> int {
   #assert cast(string) b[0..<n] == "{\"id\":12345678901234567890}" && seatw_runner_close("123456789012345678901", b[..]) == -1;
   #assert seatw_runner_close("", b[..]) == -1 && seatw_runner_close("7a", b[..]) == -1 && seatw_runner_close("-7", b[..]) == -1 && seatw_runner_close("/", b[..]) == -1 && seatw_runner_close(":", b[..]) == -1;
   #assert seatw_read_id("{\"id\":0}") == -1 && seatw_read_id("{\"id\":\"7\"}") == -1 && seatw_read_id("{}") == -1 && seatw_read_id("[7]") == -1 && seatw_read_id("") == -1 && seatw_read_id("{\"id\": 42}") == 42;
+}
+#test "an action handed to the runner: the seat's id and the action as it came" {
+  b: [256] u8; a: [64] u8;
+  n := seatw_runner_act(13, "{\"op\": \"look\", \"turn\": 90}", b[..]);
+  want := "{\"id\": 13, \"action\": {\"op\": \"look\", \"turn\": 90}}";
+  #assert cast(string) b[0..<n] == want && seatw_runner_act(13, "{\"op\": \"look\", \"turn\": 90}", b[0..<n - 1]) == -1;
+  #assert seatw_read_id(want) == 13;
+  an := seatw_read_runner_action(want, a[..]);
+  #assert cast(string) a[0..<an] == "{\"op\": \"look\", \"turn\": 90}" && seatw_read_runner_action(want, a[0..<an - 1]) == -1 && seatw_read_runner_action(want, a[0..<an]) == an;
+  an = seatw_read_runner_action("{\"action\":{},\"id\":1}", a[..]);
+  #assert an == 2 && cast(string) a[0..<an] == "{}";
+  #assert seatw_read_runner_action("{\"id\": 1, \"action\": [1]}", a[..]) == -1 && seatw_read_runner_action("{\"id\": 1, \"action\": \"look\"}", a[..]) == -1;
+  #assert seatw_read_runner_action("{\"id\": 1}", a[..]) == -1 && seatw_read_runner_action("[]", a[..]) == -1 && seatw_read_runner_action("", a[..]) == -1 && seatw_read_runner_action("{\"id\": 1, \"action\": {", a[..]) == -1;
+  #assert seatw_runner_act(0, "{}", b[..]) == -1 && seatw_runner_act(1, "", b[..]) == -1 && seatw_runner_act(1, "}", b[..]) == -1 && seatw_runner_act(1, "[]", b[..]) == -1 && seatw_runner_act(1, "{]", b[..]) == -1 && seatw_runner_act(1, "x}", b[..]) == -1;
+  n = seatw_runner_act(1, "{}", b[..]);
+  #assert cast(string) b[0..<n] == "{\"id\": 1, \"action\": {}}" && seatw_runner_act(SEATW_MOST, "{}", b[..]) > 0 && seatw_runner_act(SEATW_MOST + 1, "{}", b[..]) == -1;
+}
+#test "a seat's first line: the origin, the slug and the player as the grant spelled it" {
+  b: [512] u8; g: [1] SeatwGrant; s: [1] SeatwStart;
+  #assert seatw_grant_of(g[..], 7, "seat-green", 9, true, "p-1a2b", "k0123456789abcdefghij");
+  n := seatw_start_line(g[..], "https://openagents.com", b[..]);
+  want := "{\"origin\":\"https://openagents.com\",\"slug\":\"seat-green\",\"player\":{\"id\": \"p-1a2b\", \"key\": \"k0123456789abcdefghij\"}}";
+  #assert cast(string) b[0..<n] == want && seatw_start_line(g[..], "https://openagents.com", b[0..<n - 1]) == -1 && seatw_start_line(g[..], "", b[..]) == -1;
+  #assert seatw_read_start(want, s[..]) && seatw_start_origin(s[..]) == "https://openagents.com" && seatw_start_slug(s[..]) == "seat-green";
+  #assert seatw_start_pid(s[..]) == "p-1a2b" && seatw_start_key(s[..]) == "k0123456789abcdefghij" && !s[0].phone;
+  #assert seatw_grant_of(g[..], 7, "seat-green", 9, true, "p-1a2b", "") && seatw_start_line(g[..], "https://openagents.com", b[..]) == -1;
+  none: [1] SeatwGrant;
+  #assert seatw_start_line(none[..], "https://openagents.com", b[..]) == -1;
+  // a seat started by hand: the player in another order, and a phone-sized page
+  #assert seatw_read_start("{\"origin\":\"http://127.0.0.1:8800\",\"slug\":\"g\",\"player\":{\"key\":\"k\",\"id\":\"p-1\"},\"phone\":true}", s[..]) && s[0].phone && seatw_start_key(s[..]) == "k";
+  #assert seatw_read_start("{\"origin\":\"o\",\"slug\":\"g\",\"player\":{\"key\":\"k\",\"id\":\"p\"},\"phone\":\"true\"}", s[..]) && !s[0].phone;
+  #assert !seatw_read_start("{\"slug\":\"g\",\"player\":{\"key\":\"k\",\"id\":\"p\"}}", s[..]) && s[0].slug_n == 0 && s[0].key_n == 0;
+  #assert !seatw_read_start("{\"origin\":\"o\",\"player\":{\"key\":\"k\",\"id\":\"p\"}}", s[..]) && !seatw_read_start("{\"origin\":\"o\",\"slug\":\"g\"}", s[..]);
+  #assert !seatw_read_start("{\"origin\":\"o\",\"slug\":\"g\",\"player\":{\"id\":\"p\"}}", s[..]) && !seatw_read_start("{\"origin\":\"o\",\"slug\":\"g\",\"player\":{\"key\":\"k\"}}", s[..]);
+  #assert !seatw_read_start("{\"origin\":\"\",\"slug\":\"g\",\"player\":{\"key\":\"k\",\"id\":\"p\"}}", s[..]) && !seatw_read_start("{\"origin\":\"o\",\"slug\":\"\",\"player\":{\"key\":\"k\",\"id\":\"p\"}}", s[..]);
+  #assert !seatw_read_start("{\"origin\":\"o\",\"slug\":\"g\",\"player\":{\"key\":\"\",\"id\":\"p\"}}", s[..]) && !seatw_read_start("{\"origin\":\"o\",\"slug\":\"g\",\"player\":{\"key\":\"k\",\"id\":\"\"}}", s[..]);
+  #assert !seatw_read_start("[]", s[..]) && !seatw_read_start("", s[..]);
+}
+#test "whether a seat's answer says ok" {
+  #assert seatw_answer_ok("{\"op\":\"open\",\"ok\":true,\"result\":\"seated\"}") && seatw_answer_ok("{\"op\": \"open\", \"ok\": true}");
+  #assert !seatw_answer_ok("{\"op\":\"open\",\"ok\":false,\"result\":\"no browser\"}") && !seatw_answer_ok("{\"op\":\"open\"}") && !seatw_answer_ok("{\"ok\":\"true\"}");
+  #assert !seatw_answer_ok("[true]") && !seatw_answer_ok("") && !seatw_answer_ok("{\"ok\":true");
 }

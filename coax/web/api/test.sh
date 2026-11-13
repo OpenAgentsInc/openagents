@@ -152,12 +152,16 @@ export OA_API_DATABASE="host=$work port=$port user=oa_analytics dbname=oa_analyt
 "$cli_coax" c "$here/../agent/runner-wire.coax" --library --header "$work/runner-wire.h" > "$work/runner-wire.c"
 "$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-error=unused-parameter -Wno-error=unused-but-set-variable -D_DEFAULT_SOURCE -fsanitize=address,undefined \
   -c -o "$work/runner-wire.o" "$work/runner-wire.c"
+# And seat-runner-wire.coax's C, a hosted seat's bodies as the runner reads and writes them (Protocol E11).
+"$cli_coax" c "$here/../agent/seat-runner-wire.coax" --library --header "$work/seat-runner-wire.h" > "$work/seat-runner-wire.c"
+"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-error=unused-parameter -Wno-error=unused-but-set-variable -D_DEFAULT_SOURCE -fsanitize=address,undefined \
+  -c -o "$work/seat-runner-wire.o" "$work/seat-runner-wire.c"
 "$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
-  -I"$work" ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} -o "$work/oa-agent" "$here/../agent/runner.c" "$work/runner-sign.o" "$work/runner-wire.o" \
+  -I"$work" ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} -o "$work/oa-agent" "$here/../agent/runner.c" "$work/runner-sign.o" "$work/runner-wire.o" "$work/seat-runner-wire.o" \
   ${secp_lib[@]+"${secp_lib[@]}"} -lsecp256k1 ${ssl_lib[@]+"${ssl_lib[@]}"} -lcrypto -lcurl -lm
 # The runner's credential sealing with a fixed TEST key and nonce (runner_seal_check.c), for test_zchat.py.
 "$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
-  -I"$work" -I"$here/../agent" ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} -o "$work/runner-seal-check" "$here/../agent/runner_seal_check.c" "$work/runner-sign.o" "$work/runner-wire.o" \
+  -I"$work" -I"$here/../agent" ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} -o "$work/runner-seal-check" "$here/../agent/runner_seal_check.c" "$work/runner-sign.o" "$work/runner-wire.o" "$work/seat-runner-wire.o" \
   ${secp_lib[@]+"${secp_lib[@]}"} -lsecp256k1 ${ssl_lib[@]+"${ssl_lib[@]}"} -lcrypto -lcurl -lm
 export RUNNER_BIN="$work/oa-agent" RUNNER_BIN_SRC="$here/../agent/runner.c" SEAL_CHECK_BIN="$work/runner-seal-check"
 export SIGN="$work/sign" ADMIN_KEY="$work/admin.key" OTHER_KEY="$work/other.key"
