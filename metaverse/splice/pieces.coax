@@ -9,15 +9,30 @@
 // body reaches to each side and ahead, up to a walker's height. The table's footprint must be
 // that measurement, so a collider is never wider than what you see (the checks in layer-checks.coax).
 //   coax/bin/coax test metaverse/splice/pieces.coax --library
+// A row may also name a mesh of the world's import pack (GitHub #13420, the browser editor's E11):
+// its `kit` is "pack/NAME", NAME a mesh the editor imported (metaverse-engine/editor/pack-import.coax).
+// Its mesh is the pack's triangles at the row's size, each vertex's own colour tinted by the look's
+// first colour, and its footprint is the mesh's bounds.
 #load "../../metaverse-engine/kit/land.coax";
+#load "../../metaverse-engine/editor/pack-import-read.coax";
 
 // The kit pieces a row may name, by the `kit` column's word.
 PK_ROVER :: 0; PK_CRAB :: 1; PK_WALKER :: 2; PK_SPIDER :: 3; PK_BEAST :: 4; PK_TANK :: 5; PK_MECH :: 6; PK_ROBOT :: 7;
 PK_TURBINE :: 8; PK_DIGGER :: 9; PK_FIGURE :: 10; PK_PALM :: 11; PK_DOME :: 12; PK_CRATE :: 13; PK_KITS :: 14;
 PK_NAME :: [PK_KITS] string.["rover", "crab", "walker", "spider", "beast", "tank", "mech", "robot", "turbine", "digger", "figure", "palm", "dome_house", "crate"];
-// The kit a word names, or -1.
+PK_MESH :: PK_KITS;   // not a kit: a mesh of the world's import pack
+PK_PACK :: "pack/";
+// The mesh a word names ("pack/NAME"), or "": a name is 1 to 24 letters, digits, - and _ (pack-import-policy.coax pip_name).
+pk_mesh :: (kit: string) -> string {
+  if kit.count <= PK_PACK.count || kit.count > PK_PACK.count + PIP_NAME || kit[0..<PK_PACK.count] != PK_PACK { return ""; }
+  name := kit[PK_PACK.count..<kit.count];
+  for c: name { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') { return ""; } }
+  return name;
+}
+// The kit a word names, PK_MESH for a mesh of the pack, or -1.
 pk_of :: (kit: string) -> int {
   for k: 0..<PK_KITS { if PK_NAME[k] == kit { return k; } }
+  if pk_mesh(kit).count > 0 { return PK_MESH; }
   return -1;
 }
 
@@ -46,6 +61,63 @@ sp_piece_write :: (buf: [] u32, p: [] Pen, kit: int, s: f32, f: Frame, o: int, a
   else if kit == PK_PALM { kit_palm(buf, p, f, s, o, a, b); }
   else if kit == PK_DOME { kit_dome_house(buf, p, f, o, a, b, 6 * s, 5 * s); }
   else if kit == PK_CRATE { kit_crate(buf, p, f, o, a, ink, c, s); }
+}
+
+// ---- a mesh of the world's import pack
+
+SP_IMPORT_PACK :: 1048576;   // bytes a world's import pack may be: its budget, and the room a page keeps for it
+SP_IMPORT_FILE :: 524288;    // bytes one imported file may be
+SP_IMPORT_TRIS :: 4000;      // triangles one imported mesh may have (a kind's mesh takes PIECE_VERTS vertices at most)
+SP_IMPORT_SIDE :: 1024;      // texels an imported texture may be wide or tall
+// What Splice holds a world's imports to: shown before a file is sent, enforced where it is packed.
+sp_import_limits :: () -> PipLimits { return PipLimits.{file = SP_IMPORT_FILE, budget = SP_IMPORT_PACK, triangles = SP_IMPORT_TRIS, side = SP_IMPORT_SIDE, meshes = PI_ITEMS, textures = PI_ITEMS, sounds = PI_ITEMS}; }
+// The pack's meshes as the game keeps them: each one's name and its reach in millimetres (to each
+// side, ahead and up). checked: a row that names a pack mesh is held to this table (the server's
+// check); a page is not strict, since an edit may reach it before the pack that edit names does.
+SpImport :: struct { name: [PIP_NAME] u8; n: int; hx: int; hz: int; top: int; }
+SpImports :: struct { m: [PI_ITEMS] SpImport; n: int; checked: bool; gen: int; }
+// Reads a world's import pack into the table ("": a world with no imports). False, and the table
+// as it was, for a pack that does not read.
+sp_imports_read :: (t: [] SpImports, pack: string) -> bool {
+  p: [1] PiPack; r: [1] PackRead; why: [1] string;
+  if !pi_open(pack, p[..], r[..], why[..]) { return false; }
+  for k: 0..<p[0].mesh_n {
+    m := p[0].meshes[k]; e := SpImport.{hx = pi_reach(m, 0), hz = pi_reach(m, 2), top = pi_reach(m, 1)};
+    if m.name.count > PIP_NAME { return false; }
+    for c, i: m.name { e.name[i] = c; }
+    e.n = m.name.count;
+    t[0].m[k] = e;
+  }
+  t[0].n = p[0].mesh_n; t[0].gen += 1;
+  return true;
+}
+sp_import :: (t: [] SpImports, name: string) -> int {
+  for k: 0..<t[0].n { if cast(string) t[0].m[k].name[0..<t[0].m[k].n] == name { return k; } }
+  return -1;
+}
+// A footprint column for a mesh's reach at a size in thousandths: centimetres that cover it.
+sp_import_cm :: (mm: int, scale: int) -> int { return pi_cm((mm * scale + 999) / 1000); }
+// A pack mesh's triangles into the piece store at size s, tinted: true when the pack has the mesh.
+// Each vertex keeps its own colour times the tint; the pen's object number tells the ink pass it
+// is one thing.
+sp_mesh_write :: (buf: [] u32, p: [] Pen, pack: string, name: string, s: f32, o: int, tint: KitTint) -> bool {
+  pk: [1] PiPack; r: [1] PackRead; why: [1] string;
+  if pack.count == 0 || !pi_open(pack, pk[..], r[..], why[..]) { return false; }
+  at := pi_find(pk[..], PIP_MESH, name);
+  if at < 0 { return false; }
+  m := pk[0].meshes[at]; v := pk[0].vertices;
+  p[0].obj = o; p[0].mat = MAT_WORLD; p[0].param = 1;
+  for t: 0..<m.count / 3 {
+    if !room(buf, p, 3) { return true; }
+    for j: 0..<3 {
+      b := pack_u32(pk[0].indices, (m.first + t * 3 + j) * 4) * PI_VERTEX;
+      point := v3(f32_from_bits(cast(u32) pack_u32(v, b)) * s, f32_from_bits(cast(u32) pack_u32(v, b + 4)) * s, f32_from_bits(cast(u32) pack_u32(v, b + 8)) * s);
+      n := v3(f32_from_bits(cast(u32) pack_u32(v, b + 12)), f32_from_bits(cast(u32) pack_u32(v, b + 16)), f32_from_bits(cast(u32) pack_u32(v, b + 20)));
+      p[0].r = cast(f32) v[b + 32] / 255 * tint.r; p[0].g = cast(f32) v[b + 33] / 255 * tint.g; p[0].b = cast(f32) v[b + 34] / 255 * tint.b;
+      vtx(buf, p, point, n);
+    }
+  }
+  return true;
 }
 
 // What a mesh covers: how far its body (the part under PIECE_BODY) reaches to each side (hx) and

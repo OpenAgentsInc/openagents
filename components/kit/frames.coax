@@ -453,6 +453,29 @@ k_row_busy :: (t: [] Tree, u: [] Ui, id: string, title: string, meta: string, cu
   tr_close(t);
   return i;
 }
+// Drop: a place a file is dropped on, or picked from: a press opens the browser's picker, which
+// offers the kinds `accept` names (".glb,.png"). It says what to do and, under it, what it takes.
+// The host tells the page a file's name and size, and the page says what becomes of it
+// (coax/web/dom-host.js, "Files"). While `busy` a file is on its way and it takes no other.
+k_drop :: (t: [] Tree, u: [] Ui, id: string, title: string, note: string, accept: string, busy: bool) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  i := k_frame(t, u, id, TG_BUTTON, "drop", MF_FIELD);
+  if busy { tr_attr(t, i, AT_STATE, "busy"); tr_attr(t, i, AT_DISABLED, ""); } else { tr_attr(t, i, AT_DROP, accept); }
+  a := tr_leaf(t, tr_cat(ida[..], id, ".t"), TG_SPAN, "row-t", title);
+  if note.count > 0 { b := tr_leaf(t, tr_cat(idb[..], id, ".m"), TG_SPAN, "meta", note); }
+  tr_close(t);
+  return i;
+}
+// File: a file or an asset in a list, by its name, with what it is and how big under it. It is text:
+// a list of what is there, not a control.
+k_file :: (t: [] Tree, id: string, name: string, about: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  i := tr_open(t, id, TG_DIV, "file");
+  a := tr_leaf(t, tr_cat(ida[..], id, ".t"), TG_SPAN, "row-t", name);
+  if about.count > 0 { b := tr_leaf(t, tr_cat(idb[..], id, ".m"), TG_SPAN, "meta", about); }
+  tr_close(t);
+  return i;
+}
 // Header: the page's or a conversation's title, typed in. Close it with tr_close.
 k_header :: (t: [] Tree, u: [] Ui, id: string, title: string) -> int {
   ida: [UI_ID] u8;
@@ -594,3 +617,20 @@ k_menu :: (t: [] Tree, u: [] Ui, id: string, label: string) -> int {
   g := tr_leaf(t, "g", TG_SPAN, "", ""); k_var(t, g, 2); #assert tr_attr_of(t, g, AT_VARS) == "--p:1";
   k_var(t, g, -1); #assert tr_attr_of(t, g, AT_VARS) == "--p:0.000";
 }
+
+#test "a drop target says what it takes and names the kinds its picker offers; a busy one takes nothing; a file is its name and what it is" {
+  h: [1] DkDropTest; t := h[0].t[..]; u := h[0].u[..];
+  ui_begin(u, 0, true); tr_begin(t);
+  a := k_drop(t, u, "drop", "Drop a file here, or press to pick one", "512 KB at most", ".glb,.png", false);
+  b := k_drop(t, u, "busy", "Sending rock.glb", "", "", true);
+  f := k_file(t, "file.1", "rock", "Mesh, 2 KB");
+  g := k_file(t, "file.2", "door", "");
+  ui_end(u);
+  #assert t[0].lost == 0 && t[0].depth == 0;
+  #assert t[0].nodes[a].tag == TG_BUTTON && tr_class(t, a) == "drop" && tr_attr_of(t, a, AT_DROP) == ".glb,.png" && !tr_has(t, a, AT_DISABLED) && tr_has(t, a, AT_FRAME);
+  #assert tr_text_of(t, tr_find(t, "drop.t")) == "Drop a file here, or press to pick one" && tr_text_of(t, tr_find(t, "drop.m")) == "512 KB at most";
+  #assert !tr_has(t, b, AT_DROP) && tr_has(t, b, AT_DISABLED) && tr_attr_of(t, b, AT_STATE) == "busy" && tr_find(t, "busy.m") < 0;
+  #assert t[0].nodes[f].tag == TG_DIV && tr_class(t, f) == "file" && tr_text_of(t, tr_find(t, "file.1.t")) == "rock" && tr_text_of(t, tr_find(t, "file.1.m")) == "Mesh, 2 KB" && tr_find(t, "file.2.m") < 0;
+  names := AT_NAMES; #assert names[AT_DROP] == "data-drop" && AT_COUNT == 20;
+}
+DkDropTest :: struct { t: [1] Tree; u: [1] Ui; }

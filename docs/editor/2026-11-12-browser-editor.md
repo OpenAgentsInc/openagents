@@ -209,6 +209,77 @@ not a flat folder scan.
 - **Assets:** an asset browser over the realm's pack and the shared kits.
   Drop a glTF, PNG or audio file to add it: it is packed with a declared
   licence (`metaverse-engine/editor/pack.coax`) and appears in the browser.
+- **As built (E11, #13420):** on the dev server, a file dropped on the editor
+  becomes an entry of the world's import pack, and an imported mesh is a kind
+  to place. The API has no import route yet, so a deployed editor has no
+  Assets button ([the shape](../protocol/world-assets-v1.md)).
+
+  ![The Assets pane beside a placed imported mesh](shots/2026-11-13-e11-asset-import.png)
+
+  - **The importer.** `metaverse-engine/editor/pack-import.coax` (`pi_import`)
+    reads a glTF binary's triangles through its nodes' transforms, a PNG and
+    a WAV, Ogg or MP3 file, and writes the pack through the existing writer
+    (`pack_write`), then reads it back (`pack_read`) before it answers. A
+    mesh stands on the ground with its middle over the origin. A file of a
+    name the pack has replaces that asset. Skins, morphs and animations are
+    not read.
+  - **Licence and limits.** `pack-import-policy.coax` (`#authority`) holds
+    the licences an import may declare (CC0 1.0, CC BY 4.0, CC BY-SA 4.0,
+    chosen by number, never typed) and the limits. Splice's are a 512 KB
+    file, a 1,024 KB pack, 4,000 triangles a mesh and 1,024 texels a side
+    (`metaverse/splice/pieces.coax`, `sp_import_limits`). Each refusal names
+    the file in words.
+  - **A pack-mesh kind.** A row of Splice's `pieces` table whose `kit` is
+    `pack/NAME` draws that mesh from the world's import pack. The page takes
+    the pack as its one data asset, reads it whole or keeps the one it has,
+    and writes the mesh into the piece store beside the kits' meshes. The
+    server saves such a row only when the pack has the mesh and the row's
+    footprint is the mesh's bounds at the row's size.
+  - **The dev route.** `GET` and `POST /api/worlds/ID/assets` and
+    `GET .../assets/pack` on `coax serve` (`world.assets.v1`,
+    `world.asset.import.v1`). The pack and each dropped file are kept by
+    content hash under `apps/openagents-web/build/.worlds/`. A saved import
+    is told to every tab as the live channel's `asset` message, and each tab
+    fetches the pack again by that hash (E1).
+  - **The pane.** The shell's Assets button opens a right pane: the pack
+    against its budget, the limits, a select of the licences, a drop target
+    (`k_drop`, new in the kit with `k_file`, both on `/components`), the
+    world's assets and the kinds it places. A file dropped anywhere on the
+    page goes to it. The pane refuses a file over the limit before it sends
+    anything.
+  - **A mesh becomes a kind.** After a mesh imports, the page writes its row
+    of the `pieces` table as a `cell` edit (E10), so every open page takes it
+    in place and it appears under Add.
+  - **Replacing.** A mesh that replaces one the world has pieces of must fit
+    where they stand. Its kind's row is tried with the new bounds first, and
+    the import is refused in words if a piece would no longer fit.
+  - **Measured in headless Chrome on Splice.** A 2 KB glTF binary imported in
+    121 ms and was under Add. Placing it took the world from revision 1 to 2
+    and added its 36 vertices to the piece store (24,270 to 24,306) with no
+    reload. A replacement was drawn 203 ms after Import. A 1,773 KB file, a
+    third 391 KB sound (a 1,180 KB pack) and a wider mesh where a piece
+    stood were each refused in words.
+  - **Not built:** the import route on the API, with the signed direct upload
+    to storage. See "The production path" below.
+
+  **The production path (not built).** It needs no new cloud resource. The
+  API already opens a resumable upload for an exact size and content type in
+  the private bucket `openagentsgemini-project-drops`, which has a CORS rule
+  for this site and a scan of each file's size and first bytes
+  (`coax/web/api/drops.c`, `open_upload`; glTF binaries, PNG and the three
+  sound formats are kinds it takes). What is missing is code and a
+  migration:
+  1. `POST /api/worlds/ID/assets` on the API: who may write is
+     `world-policy.coax`'s rule; the file is checked with `pi_early`; the
+     answer is an upload session for the object
+     `PREFIX/worlds/ID/files/SHA256`.
+  2. A `done` call: the API reads the object, checks its SHA-256, runs
+     `pi_import` on the world's pack and keeps the new pack by hash.
+  3. A table for a world's pack (its hash and bytes, at most 1 MB) and its
+     files, and `worlds.c` passing the pack to
+     `splice_world_batch_packed`.
+  4. `GET .../assets` and `.../assets/pack`, and the shell's upload in two
+     steps instead of one.
 - **Code:** a realm's Coax source opens in a code panel (`k_code`, plus an edit
   field from `components/core/edit.coax`). Saving sends it to the paired Coder,
   which compiles it with the resident compiler; the live channel swaps it in.

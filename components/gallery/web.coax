@@ -105,6 +105,13 @@ wg_build :: (s: [] WebPage) {
   cf := k_code_field(t, u, "code.edit", "coax", "Code to edit");
   tr_close(t);
 
+  sec = wg_section(t, "drops", "Drop and file", "A place to drop a file, or press to pick one: it says what it takes before anything is sent. A file in a list is its name and what it is. The editor's Assets pane is built from them.");
+  dr := k_drop(t, u, "drop.1", "Drop a file here, or press to pick one", "A .glb, .png, .wav, .ogg or .mp3 file, 512 KB at most", ".glb,.png,.wav,.ogg,.mp3", false);
+  db := k_drop(t, u, "drop.2", "Sending rock.glb", "2 KB", "", true);
+  f1 := k_file(t, "file.1", "rock", "Mesh · 2 KB · CC0 1.0 Universal");
+  f2 := k_file(t, "file.2", "door", "Sound · 4 KB · CC BY 4.0");
+  tr_close(t);
+
   sec = wg_section(t, "notices", "Notice", "Between two lines, bright. It says its kind in words, since there is no red to say it.");
   n1 := k_notice(t, u, "notice.error", "Error", "The runner didn't answer. Your message is back in the composer.");
   tr_close(t);

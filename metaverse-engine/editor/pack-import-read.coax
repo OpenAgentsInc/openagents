@@ -1,0 +1,174 @@
+// A world's import pack, read (GitHub #13420, the browser editor's E11): what pack-import.coax
+// wrote, as a realm and the asset browser read it. The catalog's lines are in pack-import.coax's
+// header. A pack is read whole by pack.coax first (pack_read); then its catalog must be the
+// importer's, every mesh's indices inside its own run of vertices. A realm loads this file, not
+// the importer: it reads no glTF.
+//   coax/bin/coax test metaverse-engine/editor/pack-import.coax      (the checks are the importer's)
+#load "pack.coax";
+#load "pack-import-policy.coax";
+
+PI_VERTEX :: 48;     // bytes a vertex (vertices.coax PACK_VERTEX_BYTES): position, normal, uv, colour, 12 spare
+PI_ITEMS :: 16;      // meshes, textures or sounds an import pack is read with at most
+
+PiMesh :: struct { name: string; first: int; count: int; source: int; vfirst: int; vcount: int; lo: [3] int; hi: [3] int; }   // bounds in millimetres
+PiItem :: struct { name: string; source: int; data: string; }
+PiOrigin :: struct { kind: int; name: string; hash: string; bytes: int; }
+// An import pack as it is read: what its catalog names, and where each asset's bytes are.
+PiPack :: struct {
+  bytes: int; budget: int;
+  meshes: [PI_ITEMS] PiMesh; mesh_n: int;
+  textures: [PI_ITEMS] PiItem; texture_n: int;
+  sounds: [PI_ITEMS] PiItem; sound_n: int;
+  origins: [PI_ITEMS * 3] PiOrigin; origin_n: int;
+  vertices: string; indices: string;
+}
+
+pi_put :: (out: [] u8, n: int, s: string) -> int {
+  if n + s.count > out.count { return out.count + 1; }
+  for i: 0..<s.count { out[n + i] = s[i]; }
+  return n + s.count;
+}
+pi_put_int :: (out: [] u8, n: int, v: int) -> int {
+  d: [20] u8; m := 0; x := ifx v < 0 then -v else v;
+  while true { d[m] = cast,trunc(u8) ('0' + x % 10); m += 1; x = x / 10; if x == 0 { break; } }
+  at := n;
+  if v < 0 { at = pi_put(out, at, "-"); }
+  for k: 0..<m { if at < out.count { out[at] = d[m - 1 - k]; } at += 1; }
+  return ifx at > out.count then out.count + 1 else at;
+}
+// Millimetres as metres to three decimals ("-0.500"), the catalog's spelling of a bound.
+pi_put_mm :: (out: [] u8, n: int, mm: int) -> int {
+  at := n; x := mm;
+  if x < 0 { at = pi_put(out, at, "-"); x = -x; }
+  at = pi_put_int(out, at, x / 1000); at = pi_put(out, at, ".");
+  f := x % 1000;
+  if f < 100 { at = pi_put(out, at, "0"); }
+  if f < 10 { at = pi_put(out, at, "0"); }
+  return pi_put_int(out, at, f);
+}
+PiNum :: struct { ok: bool; v: int; }
+// A bound read back: "-0.500" is -500. Exactly three decimals.
+pi_mm :: (s: string) -> PiNum {
+  neg := s.count > 0 && s[0] == '-';
+  t := ifx neg then s[1..<s.count] else s;
+  if t.count < 5 || t[t.count - 4] != '.' { return PiNum.{}; }
+  whole := pack_number(t[0..<t.count - 4]);
+  f := 0;
+  for k: t.count - 3..<t.count { if t[k] < '0' || t[k] > '9' { return PiNum.{}; } f = f * 10 + cast(int) (t[k] - '0'); }
+  if whole < 0 || whole > 1000000 { return PiNum.{}; }
+  v := whole * 1000 + f;
+  return PiNum.{ok = true, v = ifx neg then -v else v};
+}
+
+// ---- an import pack, read
+
+PI_NOT_OURS :: "not a pack the editor's importer made";
+// Reads an import pack ("": a world that has imported nothing). False, with why, for a pack
+// pack_read refuses and for one whose catalog is not this file's.
+pi_open :: (pack: string, p: [] PiPack, r: [] PackRead, why: [] string) -> bool {
+  p[0] = PiPack.{};
+  why[0] = "";
+  if pack.count == 0 { return true; }
+  if !pack_read(pack, r) { why[0] = r[0].why; return false; }
+  if r[0].sources != PIP_LICENCES { why[0] = PI_NOT_OURS; return false; }
+  for k: 3..<r[0].count { if r[0].entries[k].kind != PACK_LAYER && r[0].entries[k].kind != PACK_SOUND { why[0] = PI_NOT_OURS; return false; } }
+  p[0].bytes = r[0].bytes; p[0].budget = r[0].budget;
+  p[0].vertices = pack_bytes(pack, r, 1); p[0].indices = pack_bytes(pack, r, 2);
+  if p[0].vertices.count % PI_VERTEX != 0 || p[0].indices.count % 4 != 0 { why[0] = PI_NOT_OURS; return false; }
+  cat := pack_bytes(pack, r, 0);
+  at := 0; ours := false;
+  for i: 0..<cat.count {
+    if cat[i] != '\n' { continue; }
+    line := cat[at..<i]; at = i + 1;
+    what := pack_field(line, 0);
+    if what == "imports" && pack_field(line, 1) == "1" { ours = true; }
+    if what == "C" || what == "D" || what == "R" || what == "W" || what == "I" { why[0] = PI_NOT_OURS; return false; }
+    if what == "M" {
+      if p[0].mesh_n == PI_ITEMS { why[0] = PI_NOT_OURS; return false; }
+      m := PiMesh.{name = pack_field(line, 1), first = pack_number(pack_field(line, 2)), count = pack_number(pack_field(line, 3)), source = pack_number(pack_field(line, 4)),
+                   vfirst = pack_number(pack_field(line, 11)), vcount = pack_number(pack_field(line, 12))};
+      for k: 0..<3 {
+        a := pi_mm(pack_field(line, 5 + k)); b := pi_mm(pack_field(line, 8 + k));
+        if !a.ok || !b.ok || a.v > b.v { why[0] = PI_NOT_OURS; return false; }
+        m.lo[k] = a.v; m.hi[k] = b.v;
+      }
+      if m.name.count == 0 || m.first < 0 || m.count < 3 || m.count % 3 != 0 || m.vfirst < 0 || m.vcount < 1
+          || (m.first + m.count) * 4 > p[0].indices.count || (m.vfirst + m.vcount) * PI_VERTEX > p[0].vertices.count { why[0] = PI_NOT_OURS; return false; }
+      for k: m.first..<m.first + m.count {
+        v := pack_u32(p[0].indices, k * 4);
+        if v < m.vfirst || v >= m.vfirst + m.vcount { why[0] = PI_NOT_OURS; return false; }
+      }
+      p[0].meshes[p[0].mesh_n] = m; p[0].mesh_n += 1;
+    }
+    if what == "T" || what == "S" {
+      texture := what == "T";
+      n := ifx texture then p[0].texture_n else p[0].sound_n;
+      e := pack_nth(r, ifx texture then PACK_LAYER else PACK_SOUND, n);
+      if e < 0 || n == PI_ITEMS { why[0] = PI_NOT_OURS; return false; }
+      item := PiItem.{name = r[0].entries[e].name, source = r[0].entries[e].licence, data = pack_bytes(pack, r, e)};
+      if texture && pack_field(line, 2) != item.name { why[0] = PI_NOT_OURS; return false; }
+      if texture { p[0].textures[n] = item; p[0].texture_n += 1; } else { p[0].sounds[n] = item; p[0].sound_n += 1; }
+    }
+    if what == "O" {
+      o := PiOrigin.{kind = pack_number(pack_field(line, 1)), name = pack_field(line, 2), hash = pack_field(line, 3), bytes = pack_number(pack_field(line, 4))};
+      if p[0].origin_n == PI_ITEMS * 3 || o.kind < PIP_MESH || o.kind > PIP_SOUND || o.name.count == 0 || o.hash.count != 64 || o.bytes < 1 { why[0] = PI_NOT_OURS; return false; }
+      p[0].origins[p[0].origin_n] = o; p[0].origin_n += 1;
+    }
+  }
+  if !ours { why[0] = PI_NOT_OURS; return false; }
+  return true;
+}
+// The mesh, texture or sound of this name in a pack read, or -1.
+pi_find :: (p: [] PiPack, kind: int, name: string) -> int {
+  if kind == PIP_MESH { for k: 0..<p[0].mesh_n { if p[0].meshes[k].name == name { return k; } } }
+  if kind == PIP_TEXTURE { for k: 0..<p[0].texture_n { if p[0].textures[k].name == name { return k; } } }
+  if kind == PIP_SOUND { for k: 0..<p[0].sound_n { if p[0].sounds[k].name == name { return k; } } }
+  return -1;
+}
+// The file an asset came from, or -1.
+pi_origin :: (p: [] PiPack, kind: int, name: string) -> int {
+  for k: 0..<p[0].origin_n { if p[0].origins[k].kind == kind && p[0].origins[k].name == name { return k; } }
+  return -1;
+}
+// What an asset takes in the pack: a mesh's vertices and indices, a texture's or a sound's bytes.
+pi_bytes :: (p: [] PiPack, kind: int, k: int) -> int {
+  if kind == PIP_MESH { return p[0].meshes[k].vcount * PI_VERTEX + p[0].meshes[k].count * 4; }
+  if kind == PIP_TEXTURE { return p[0].textures[k].data.count; }
+  return p[0].sounds[k].data.count;
+}
+// Centimetres that cover millimetres: how a footprint is told (a realm's tables keep centimetres).
+pi_cm :: (mm: int) -> int { return (mm + 9) / 10; }
+// A mesh's reach to each side and ahead, and its height, in millimetres: it stands with its
+// middle over the origin, so each is a bound.
+pi_reach :: (m: PiMesh, axis: int) -> int { return ifx axis == 1 then m.hi[1] else ifx m.hi[axis] > -m.lo[axis] then m.hi[axis] else -m.lo[axis]; }
+
+// ---- what a file is refused for before it is read
+
+PI_WHY :: 240;   // bytes a refusal's words take at most
+// Kilobytes, rounded up: how a size is said.
+pi_kb :: (bytes: int) -> int { return (bytes + 1023) / 1024; }
+// A file's name as words may carry it: its printable bytes, 48 at most.
+pi_put_name :: (out: [] u8, n: int, name: string) -> int {
+  at := n; k := 0;
+  for c: name {
+    if k == 48 { break; }
+    if c >= ' ' && c <= '~' && c != '"' && c != '\\' { if at < out.count { out[at] = c; } at += 1; k += 1; }
+  }
+  if k == 0 { return pi_put(out, n, "The file"); }
+  return ifx at > out.count then out.count + 1 else at;
+}
+// A file as it arrives, before a byte of it is read: its name, its size and the licence chosen for
+// it, against the policy (pack-import-policy.coax pip_file). The verdict, and for a refusal its
+// words in out. The importer says these words; the editor says the same ones before it sends a
+// file, so a file over the limit is never sent.
+PiEarly :: struct { verdict: int; n: int; }
+pi_early :: (file: string, bytes: int, licence: int, lim: PipLimits, out: [] u8) -> PiEarly {
+  verdict := pip_file(pip_kind(file), bytes, licence, lim);
+  if verdict == PIP_OK { return PiEarly.{}; }
+  n := pi_put_name(out, 0, file);
+  if verdict == PIP_KIND { n = pi_put(out, n, " is not a file the editor takes. Drop a .glb, .png, .wav, .ogg or .mp3 file."); }
+  if verdict == PIP_EMPTY { n = pi_put(out, n, " is empty."); }
+  if verdict == PIP_LICENCE_NONE { n = pi_put(out, n, " has no licence. Choose one, then import it."); }
+  if verdict == PIP_FILE { n = pi_put(out, n, " is "); n = pi_put_int(out, n, pi_kb(bytes)); n = pi_put(out, n, " KB. A file can be "); n = pi_put_int(out, n, pi_kb(lim.file)); n = pi_put(out, n, " KB at most."); }
+  return PiEarly.{verdict = verdict, n = ifx n > out.count then 0 else n};
+}

@@ -17,9 +17,11 @@
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
 
-ESC_FILES :: [8] string.[
+ESC_FILES :: [10] string.[
   "apps/openagents-web/worldbuilder-world.coax",
   "metaverse-engine/editor/shell.coax",
+  "metaverse-engine/editor/shell-assets.coax",
+  "metaverse-engine/editor/asset-wire.coax",
   "metaverse-engine/editor/code-wire.coax",
   "metaverse-engine/editor/place.coax",
   "metaverse-engine/editor/viewport.coax",

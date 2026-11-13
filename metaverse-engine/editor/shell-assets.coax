@@ -1,0 +1,206 @@
+// The editor shell's Assets pane (GitHub #13420, the browser editor's E11): the world's imported
+// assets and the kinds it places, a place to drop a file, the licence chosen for it, and the
+// limits, shown before anything is sent. shell.coax loads this file; the pane is kit components
+// like the rest of the shell, and this file names no colour, face or size.
+//
+// The shell packs nothing and keeps no pack. It asks the world's server for the list
+// (world.assets.v1, asset-wire.coax) and sends a dropped file to it (world.asset.import.v1); the
+// answer is the list again, or a refusal in words. Both go by the host's dom_file_send and come
+// back as one event (coax/web/dom-host.js, "Files"). Where the server has no such route (a
+// deployed page today), no list comes and the shell has no Assets button.
+//
+// A file is checked before it is sent with the importer's own rules and words
+// (pack-import-read.coax pi_early): a file that is not one the editor takes, an empty one, one
+// with no licence chosen and one over the file limit never leave the browser.
+//
+// An imported mesh becomes a kind the world places: the shell tells the page ("mesh NAME HX HZ
+// TOP", ES_IMPORTED), and the page writes its own row for it as a cell edit of its content tables.
+#load "asset-wire.coax";
+#load "pack-import-read.coax";
+
+ES_FILE :: 10;         // a file was dropped or picked: "BYTES NAME" in the inbox
+ES_SENT :: 11;         // the world's server answered: its status in `slot`, its body in the inbox
+ES_IMPORTED :: 525;    // an action for the page: "mesh NAME HX HZ TOP" (millimetres): a mesh is in the world's pack
+ES_AS_NONE :: 0; ES_AS_LIST :: 1; ES_AS_SEND :: 2;
+ES_AS_SAID_NONE :: 0; ES_AS_SAID_DONE :: 1; ES_AS_SAID_NO :: 2;
+ES_AS_ACCEPT :: ".glb,.png,.wav,.ogg,.mp3";
+ES_AS_KIND :: [4] string.["", "Mesh", "Texture", "Sound"];
+
+es_as_say :: (s: [] EdShell, note: int, words: string) {
+  s[0].as_note = note;
+  s[0].as_words_n = em_copy(s[0].as_words[..], words);
+}
+es_as_limits :: (s: [] EdShell) -> PipLimits {
+  l := s[0].as_list[..];
+  return PipLimits.{file = l[0].file, budget = l[0].budget, triangles = l[0].triangles, side = l[0].side};
+}
+es_as_file_name :: (s: [] EdShell) -> string { return cast(string) s[0].as_file_name[0..<s[0].as_file_name_n]; }
+// One ask of the world's server at a time: its list, or the waiting file. False while another is out.
+es_as_go :: (s: [] EdShell, flight: int) -> bool {
+  m := s[0].model[..];
+  if s[0].as_flight != ES_AS_NONE || !s[0].have || m[0].world_n == 0 { return false; }
+  w := m[0].world;
+  n := ct_put(s[0].as_url[..], 0, "/api/worlds/"); n = ct_put(s[0].as_url[..], n, cast(string) w[0..<m[0].world_n]); n = ct_put(s[0].as_url[..], n, "/assets");
+  if n > s[0].as_url.count { return false; }
+  s[0].as_url_n = n; s[0].as_head_n = 0;
+  if flight == ES_AS_SEND {
+    head := was_import_head(s[0].as_head[..], s[0].as_licence, es_as_file_name(s));
+    if head.count == 0 { return false; }
+    s[0].as_head_n = head.count;
+  }
+  s[0].as_flight = flight; s[0].as_ask = true;
+  return true;
+}
+// A file was dropped or picked: it waits, unless the rules say it can never go.
+es_as_file :: (s: [] EdShell, length: int) {
+  if !s[0].as_have { return; }
+  n := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
+  line := cast(string) s[0].inbox[0..<n];
+  bytes := was_num(was_field(line, 0)); name := was_rest(line, 1);
+  s[0].assets = true; s[0].code = false;
+  if s[0].as_flight == ES_AS_SEND { es_as_say(s, ES_AS_SAID_NO, "The last file is still on its way. Drop this one again when it is in."); return; }
+  nb: [WAS_FILE_NAME] u8; clean := was_file_name(name, nb[..]);
+  s[0].as_file_name_n = em_copy(s[0].as_file_name[..], clean);
+  s[0].as_file_bytes = ifx bytes < 0 then 0 else bytes;
+  // the licence is asked for when Import is pressed; everything else is known now
+  words: [PI_WHY] u8;
+  early := pi_early(clean, s[0].as_file_bytes, 0, es_as_limits(s), words[..]);
+  s[0].as_file = early.verdict == PIP_OK;
+  if early.verdict == PIP_OK { es_as_say(s, ES_AS_SAID_NONE, ""); } else { es_as_say(s, ES_AS_SAID_NO, cast(string) words[0..<early.n]); }
+}
+// Import: the waiting file goes, with the licence chosen for it; with none chosen it stays and the pane says so.
+es_as_send :: (s: [] EdShell) {
+  if !s[0].as_file { return; }
+  words: [PI_WHY] u8;
+  early := pi_early(es_as_file_name(s), s[0].as_file_bytes, s[0].as_licence, es_as_limits(s), words[..]);
+  if early.verdict != PIP_OK { es_as_say(s, ES_AS_SAID_NO, cast(string) words[0..<early.n]); return; }
+  if !es_as_go(s, ES_AS_SEND) { es_as_say(s, ES_AS_SAID_NO, "The last file is still on its way. Try again."); return; }
+  es_as_say(s, ES_AS_SAID_NONE, "");
+}
+// The server's answer: the list, or after a file what the import did or why it did nothing.
+es_as_sent :: (s: [] EdShell, status: int, length: int) {
+  flight := s[0].as_flight;
+  if flight == ES_AS_NONE { return; }
+  s[0].as_flight = ES_AS_NONE;
+  n := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
+  body := cast(string) s[0].inbox[0..<n];
+  m := s[0].model[..]; w := m[0].world;
+  next := s[0].as_next[..];
+  listed := status == 200 && was_read(next, body) && was_world_of(next) == cast(string) w[0..<m[0].world_n];
+  if flight == ES_AS_LIST {
+    // any answer but this world's list: there are no assets here (a server that has no such route)
+    if listed { s[0].as_list[0] = next[0]; s[0].as_have = true; }
+    return;
+  }
+  s[0].as_file = false;
+  if !listed || !next[0].did {
+    words: [EM_WORDS] u8;
+    r := we_refusal_read(body, words[..]);
+    es_as_say(s, ES_AS_SAID_NO, ifx r.ok && r.words_n > 0 then cast(string) words[0..<r.words_n] else "That did not import: the world's server did not answer.");
+    return;
+  }
+  before := s[0].as_list[0].bytes;
+  s[0].as_list[0] = next[0];
+  l := s[0].as_list[..];
+  name := was_text(l[0].did_name[..], l[0].did_name_n);
+  at := was_find(l, l[0].did_kind, name);
+  o: [EM_WORDS] u8;
+  k := ct_put(o[..], 0, name); k = ct_put(o[..], k, ifx l[0].did_replaced then " is replaced: " else " is in the pack: ");
+  k = ct_put_int(o[..], k, pi_kb(l[0].a[at].file)); k = ct_put(o[..], k, " KB as a file, "); k = ct_put_int(o[..], k, pi_kb(l[0].a[at].bytes)); k = ct_put(o[..], k, " KB packed. The pack was ");
+  k = ct_put_int(o[..], k, pi_kb(before)); k = ct_put(o[..], k, " KB and is now "); k = ct_put_int(o[..], k, pi_kb(l[0].bytes)); k = ct_put(o[..], k, " KB of "); k = ct_put_int(o[..], k, pi_kb(l[0].budget)); k = ct_put(o[..], k, " KB.");
+  es_as_say(s, ES_AS_SAID_DONE, ifx k > o.count then "Imported." else cast(string) o[0..<k]);
+  // a mesh is a kind to place: the page writes its row
+  if l[0].did_kind == PIP_MESH {
+    a := l[0].a[at]; act: [96] u8;
+    j := ct_put(act[..], 0, "mesh "); j = ct_put(act[..], j, name);
+    for v: [3] int.[a.hx, a.hz, a.top] { j = ct_put(act[..], j, " "); j = ct_put_int(act[..], j, v); }
+    if !es_act(s, ES_IMPORTED, cast(string) act[0..<j]) { es_as_say(s, ES_AS_SAID_NO, "The mesh is in the pack, but the page is busy: import it again to make it a kind."); }
+  }
+}
+// A press in the Assets pane, or on its button in the strip. Whether it was one.
+es_as_click :: (s: [] EdShell, id: string) -> bool {
+  if !s[0].as_have { return false; }
+  if id == "assets" {
+    s[0].assets = !s[0].assets;
+    if s[0].assets { s[0].code = false; _ := es_as_go(s, ES_AS_LIST); }   // the list as it is now: another tab may have imported
+    return true;
+  }
+  if id == "assets.import" { es_as_send(s); return true; }
+  if id == "assets.leave" { s[0].as_file = false; es_as_say(s, ES_AS_SAID_NONE, ""); return true; }
+  k := es_index(id, "licence.");
+  if k >= 0 && k < s[0].as_list[0].licences { s[0].as_licence = k; if s[0].as_note == ES_AS_SAID_NO { es_as_say(s, ES_AS_SAID_NONE, ""); } return true; }
+  return false;
+}
+// "N KB", and "N KB of M KB".
+es_as_kb :: (out: [] u8, bytes: int, of: int) -> string {
+  n := ct_put_int(out, 0, pi_kb(bytes)); n = ct_put(out, n, " KB");
+  if of > 0 { n = ct_put(out, n, " of "); n = ct_put_int(out, n, pi_kb(of)); n = ct_put(out, n, " KB"); }
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+// The Assets pane: what the last import did, the pack against its budget, the limits, the licence,
+// the place to drop a file, the world's own assets, and the kinds it places.
+es_build_assets :: (s: [] EdShell) {
+  t := s[0].tree[..]; u := s[0].ui[..]; m := s[0].model[..]; l := s[0].as_list[..];
+  buf: [UI_ID] u8; line: [EM_WORDS] u8; name: [EM_NAME] u8;
+  pane := k_pane(t, u, "assets.pane", DK_RIGHT, "Assets");
+  es_build_said(s);
+  if s[0].as_note != ES_AS_SAID_NONE { a := k_notice(t, u, "assets.said", ifx s[0].as_note == ES_AS_SAID_DONE then "Imported" else "Not imported", cast(string) s[0].as_words[0..<s[0].as_words_n]); tr_close(t); }
+  // the budget and the limits, before anything is sent
+  lim := k_card(t, u, "assets.limits", "Limits");
+  f0 := k_fact(t, "assets.pack", "Pack", es_as_kb(line[..], l[0].bytes, l[0].budget));
+  n := ct_put_int(line[..], 0, pi_kb(l[0].file)); n = ct_put(line[..], n, " KB at most");
+  f1 := k_fact(t, "assets.file", "A file", cast(string) line[0..<n]);
+  n = ct_put_int(line[..], 0, l[0].triangles); n = ct_put(line[..], n, " triangles at most");
+  f2 := k_fact(t, "assets.mesh", "A mesh", cast(string) line[0..<n]);
+  n = ct_put_int(line[..], 0, l[0].side); n = ct_put(line[..], n, " texels a side at most");
+  f3 := k_fact(t, "assets.side", "A texture", cast(string) line[0..<n]);
+  tr_close(t);
+  // the licence the next file is imported under: one of the list's, never typed
+  open := s[0].open == ES_OPEN_LICENCE;
+  k_select_begin(t, u, "licence", ifx s[0].as_licence >= 0 then was_licence_of(l, s[0].as_licence) else "Choose a licence", "The licence the next file is imported under", open);
+  if open { for k: 0..<l[0].licences { r := k_row(t, u, tr_join(buf[..], "licence.", k), was_licence_of(l, k), "", k == s[0].as_licence); } }
+  k_select_end(t, open);
+  sending := s[0].as_flight == ES_AS_SEND;
+  if s[0].as_file && !sending {
+    next := k_card(t, u, "assets.next", es_as_file_name(s));
+    size := k_fact(t, "assets.next.size", "Size", es_as_kb(line[..], s[0].as_file_bytes, 0));
+    row := tr_open(t, "assets.next.acts", TG_DIV, "rowf");
+    go := k_button(t, u, "assets.import", "Import", BS_PRIMARY);
+    no := k_link(t, "assets.leave", "Leave it out");
+    tr_close(t);
+    tr_close(t);
+  }
+  if sending {
+    n = ct_put(line[..], 0, "Sending "); n = ct_put(line[..], n, es_as_file_name(s));
+    d := k_drop(t, u, "assets.drop", ifx n > line.count then "Sending" else cast(string) line[0..<n], es_as_kb(buf[..], s[0].as_file_bytes, 0), "", true);
+  } else { d := k_drop(t, u, "assets.drop", "Drop a file here, or press to pick one", "A .glb, .png, .wav, .ogg or .mp3 file", ES_AS_ACCEPT, false); }
+  // the world's own pack
+  mine := k_card(t, u, "assets.mine", "This world's pack");
+  if l[0].n == 0 { none := k_meta(t, "assets.none", "Nothing is imported yet."); }
+  kinds := ES_AS_KIND;
+  for i: 0..<l[0].n {
+    a := l[0].a[i];
+    n = ct_put(line[..], 0, kinds[a.kind]); n = ct_put(line[..], n, " · "); n = ct_put(line[..], n, was_licence_of(l, a.licence)); n = ct_put(line[..], n, " · ");
+    n = ct_put_int(line[..], n, pi_kb(a.file)); n = ct_put(line[..], n, " KB as a file, "); n = ct_put_int(line[..], n, pi_kb(a.bytes)); n = ct_put(line[..], n, " KB packed");
+    r := k_file(t, tr_join(buf[..], "asset.", i), was_asset_name(l, i), ifx n > line.count then "" else cast(string) line[0..<n]);
+  }
+  tr_close(t);
+  // the kinds the world places: the shared kits' pieces, and the meshes of its pack
+  if m[0].nk > 0 {
+    kits := k_card(t, u, "assets.kinds", "Kinds to place");
+    for k: 0..<m[0].nk {
+      kn := m[0].kind_name[k]; about := "";
+      for c: 0..<m[0].nc {
+        col := m[0].c_col[c];
+        if m[0].c_kind[c] != m[0].kind_id[k] || cast(string) col[0..<m[0].c_col_n[c]] != "kit" { continue; }
+        val := m[0].c_val[c]; kit := cast(string) val[0..<m[0].c_val_n[c]];
+        packed := kit.count > 5 && cast(string) kit[0..<5] == "pack/";
+        n = ct_put(line[..], 0, ifx packed then "Mesh of this world's pack · " else "Shared kit · "); n = ct_put(line[..], n, ifx packed then cast(string) kit[5..<kit.count] else kit);
+        about = ifx n > line.count then "" else cast(string) line[0..<n];
+      }
+      r := k_file(t, tr_join(buf[..], "kindrow.", m[0].kind_id[k]), cast(string) kn[0..<m[0].kind_n[k]], about);
+    }
+    tr_close(t);
+  }
+  k_pane_end(t);
+}

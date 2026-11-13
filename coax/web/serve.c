@@ -48,6 +48,12 @@
 // API's rules and Splice's own check, with files under APP_DIR/build/.worlds for rows), and a saved
 // write is told to every tab. --static serves none of it.
 //
+// A world's imported assets (/api/worlds/ID/assets..., the editor's E11, #13420) are answered here
+// too: a dropped file is packed by the world's asset tool (metaverse/splice/tools/asset-local.coax,
+// the editor's importer under the realm's limits), the pack and the file are kept by content hash
+// under APP_DIR/build/.worlds, and every tab is told the pack's new hash ("asset"), so each fetches
+// it again and swaps it in. --static serves none of it (assets_local has the rules).
+//
 // A realm's code from the browser (the editor's E12, #13421) is answered here and nowhere else:
 // POST /coaxial/code (realm.code.v1, metaverse-engine/editor/code-wire.coax) lists, reads and
 // writes one of the page's own realm sources, and a save answers with the compiler's check of it.
@@ -130,6 +136,7 @@ static tail *tails;
 static int tail_count, tail_cap;
 static void tab_says(const uint8_t *text, size_t n);
 static void code_local(client *c);
+static bool header_is(const char *request, const char *name, const char *want);
 
 // This server forks only on its event-loop thread. Mark every owned socket
 // and pipe before the next fork, including accepted live-channel clients.
@@ -525,6 +532,98 @@ static void worlds_local(client *c, const char *method, const char *url) {
   free(out);
   drop(c);
 }
+// A world's imported assets on the dev server (#13420): GET .../assets lists them (world.assets.v1),
+// GET .../assets/pack answers the import pack, and POST .../assets imports a file
+// (world.asset.import.v1: a line, then the file's bytes). The world's asset tool answers
+// ("STATUS\n" then the body). An import's body may be longer than a request this server keeps: what
+// has not arrived is read here, straight into the body's file, up to ASSET_BODY_MAX (past that the
+// answer is a refusal in words, and nothing is read). A saved import is told to every tab as the
+// pack's URL and new SHA-256, the live channel's "asset" (#13410), so each tab that loaded the pack
+// fetches it again by that hash; a tab that refuses the new pack keeps the one it has (#13441). An
+// import a browser sends must come from this server's own page (Sec-Fetch-Site).
+#define ASSET_BODY_MAX (4u << 20)
+static bool assets_route(const char *url) {
+  char id[40]; int end = 0;
+  if (sscanf(url, "/api/worlds/%39[a-z0-9-]/assets%n", id, &end) != 1 || end == 0) return false;
+  const char *rest = url + end;
+  return !*rest || *rest == '?' || !strcmp(rest, "/pack") || !strncmp(rest, "/pack?", 6);
+}
+static void assets_local(client *c, const char *method, const char *url) {
+  char dir[PATH_MAX + 32], body_file[PATH_MAX + 64], cmd[PATH_MAX * 3 + 2200], path[1024];
+  snprintf(dir, sizeof dir, "%s/build/.worlds", app_dir);
+  for (const char *p = url; *p; p++)   // the URL goes into a shell command: only what a route's URL holds
+    if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || strchr("/?&=-_.", *p))) { respond(c->fd, 404, "Not Found", "application/json", "{\"error\":\"not found\"}", 21); drop(c); return; }
+  bool post = !strcmp(method, "POST");
+  if (!post && strcmp(method, "GET")) { respond(c->fd, 405, "Method Not Allowed", "application/json", "{\"error\":\"not found\"}", 21); drop(c); return; }
+  size_t plen = strcspn(url, "?");   // the tool is given the path: a query only names the bytes a tab wants (?live=HASH)
+  if (plen >= sizeof path) plen = sizeof path - 1;
+  memcpy(path, url, plen); path[plen] = 0;
+  body_file[0] = 0;
+  if (post) {
+    // a browser's import comes from this server's own page (Sec-Fetch-Site, which a page can't set); a tool sends none
+    bool told = false;
+    for (const char *p = c->buf; (p = strstr(p, "\r\n")) && p[2] && p[2] != '\r'; p += 2) if (!strncasecmp(p + 2, "Sec-Fetch-Site:", 15)) told = true;
+    if (told && !header_is(c->buf, "Sec-Fetch-Site", "same-origin")) {
+      const char *no = "{\"error\":\"Only this computer's own page may import into a world.\"}";
+      respond(c->fd, 403, "Forbidden", "application/json", no, strlen(no)); drop(c); return;
+    }
+    const char *end = strstr(c->buf, "\r\n\r\n");
+    size_t head = end ? (size_t)(end - c->buf) + 4 : c->n, want = 0;
+    for (const char *p = c->buf; end && p < end; p++)
+      if ((p == c->buf || p[-1] == '\n') && !strncasecmp(p, "Content-Length:", 15)) want = (size_t)strtoul(p + 15, NULL, 10);
+    if (want > ASSET_BODY_MAX) {
+      const char *no = "{\"error\":\"That file is too large to import.\"}";
+      respond(c->fd, 422, "Refused", "application/json", no, strlen(no)); drop(c); return;
+    }
+    mkdir(dir, 0755);
+    snprintf(body_file, sizeof body_file, "%s/.import-%d", dir, (int)getpid());
+    FILE *f = fopen(body_file, "wb");
+    size_t got = c->n > head ? c->n - head : 0;
+    if (got > want) got = want;
+    bool ok = f && fwrite(c->buf + head, 1, got, f) == got;
+    double until = monotonic_ms() + 15000;
+    while (ok && got < want) {   // the rest of the body, as it arrives
+      char part[65536];
+      struct pollfd pf = {c->fd, POLLIN, 0};
+      double left = until - monotonic_ms();
+      if (left <= 0 || poll(&pf, 1, (int)left) <= 0) { ok = false; break; }
+      ssize_t k = recv(c->fd, part, want - got < sizeof part ? want - got : sizeof part, 0);
+      if (k < 0 && (errno == EAGAIN || errno == EINTR)) continue;
+      if (k <= 0 || fwrite(part, 1, (size_t)k, f) != (size_t)k) { ok = false; break; }
+      got += (size_t)k;
+    }
+    if (f) fclose(f);
+    if (!ok) { unlink(body_file); respond(c->fd, 400, "Bad Request", "application/json", "{\"error\":\"the file did not arrive whole\"}", 39); drop(c); return; }
+  }
+  snprintf(cmd, sizeof cmd, "'%s/tool.sh' '%s/../../metaverse/splice/tools/asset-local.coax' '%s' %s '%s' %s%s%s 2>/dev/null", host_dir, host_dir, dir, post ? "POST" : "GET", path,
+           post ? "'" : "", body_file, post ? "'" : "");
+  FILE *run = popen(cmd, "r");
+  size_t cap = (2u << 20) + 64, n = 0; char *out = malloc(cap); size_t k;
+  while (run && out && n < cap && (k = fread(out + n, 1, cap - n, run)) > 0) n += k;
+  int ended = run ? pclose(run) : -1;
+  if (post) unlink(body_file);
+  char *nl = out ? memchr(out, '\n', n) : NULL;
+  int status = nl ? atoi(out) : 0;
+  if (ended != 0 || status < 100) respond(c->fd, 502, "Bad Gateway", "application/json", "{\"error\":\"the world's asset tool did not answer\"}", 48);
+  else {
+    size_t at = (size_t)(nl - out) + 1;
+    bool pack = !post && plen > 5 && !strcmp(path + plen - 5, "/pack");
+    respond(c->fd, status, status == 200 ? "OK" : "Refused", status != 200 ? "application/json" : pack ? "application/octet-stream" : "text/plain; charset=utf-8", out + at, n - at);
+    // "world.assets.v1 ID HASH ...": the pack as it now is, told to every tab
+    char id[40], hash[80];
+    if (post && status == 200 && n - at < cap - 1) {
+      out[n] = 0;
+      if (sscanf(out + at, "world.assets.v1 %39[a-z0-9-] %79[0-9a-f]", id, hash) == 2 && strlen(hash) == 64) {
+        char msg[256];
+        snprintf(msg, sizeof msg, "{\"kind\":\"asset\",\"url\":\"/api/worlds/%s/assets/pack\",\"hash\":\"%s\"}", id, hash);
+        logf_("asset imported: /api/worlds/%s/assets/pack", id);
+        broadcast(msg);
+      }
+    }
+  }
+  free(out);
+  drop(c);
+}
 // Whether the request's body (Content-Length) is all in.
 static bool body_in(const client *c) {
   const char *end = strstr(c->buf, "\r\n\r\n");
@@ -562,6 +661,7 @@ static void handle_request(client *c) {
       respond(c->fd, 404, "Not Found", "text/plain", "not on the realm origin\n", 24); drop(c); return;
     }
   }
+  if (!static_mode && !realm_request && sscanf(c->buf, "%7s %1023s", method, url) == 2 && assets_route(url)) { assets_local(c, method, url); return; }
   if (!static_mode && !realm_request && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/worlds/", 12)) { worlds_local(c, method, url); return; }
   if (!static_mode && !realm_request && !strcmp(method, "POST") && !strcmp(url, "/coaxial/code")) { code_local(c); return; }
   if (api_port && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/", 5)) { proxy_api(c); return; }

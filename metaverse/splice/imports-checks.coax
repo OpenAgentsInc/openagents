@@ -1,0 +1,90 @@
+// The checks of a piece kind whose mesh is a mesh of the world's import pack (pieces.coax,
+// layer-draw.coax, world.coax spw_mesh_rows; GitHub #13420, the browser editor's E11).
+// splice-game.coax loads this file with `#load ... #test;`. The pack is made here by the editor's
+// importer from a glTF binary written in code.
+#load "../../metaverse-engine/editor/pack-import.coax";
+
+SitPack :: struct { w: [1] PitRoom; glb: [4000] u8; pack: [9000] u8; n: int; }
+// A world's import pack with one mesh, "rock": a box 1 m wide, 2 m tall and 0.5 m deep.
+sit_pack :: (k: [] SitPack) -> string { return sit_pack_of(k, 0.5, 1, 0.25); }
+// The same with a box of these half sizes.
+sit_pack_of :: (k: [] SitPack, hx: f32, hy: f32, hz: f32) -> string {
+  d: [1] PiDid;
+  k[0].n = pi_import("", "splice", PiFile.{name = "rock.glb", data = pit_box(3, hy, hx, hy, hz, k[0].glb[..]), licence = 0}, PIT, pit_room(k[0].w[..]), k[0].pack[..], d[..]);
+  return cast(string) k[0].pack[0..<ifx k[0].n < 0 then 0 else k[0].n];
+}
+SIT_ROW :: "201|Rock|pack/rock|1000|1|50|25|200";
+
+#test "a pack mesh's word: pack/NAME names a mesh, and nothing else does" {
+  #assert pk_of("pack/rock") == PK_MESH && pk_mesh("pack/rock") == "rock" && pk_mesh("pack/Rock-2_b") == "Rock-2_b" && PK_MESH == PK_KITS;
+  #assert pk_of("pack/") == -1 && pk_of("pack") == -1 && pk_of("pack/a b") == -1 && pk_of("pack/a/b") == -1 && pk_of("Pack/rock") == -1 && pk_of("pack/rock.glb") == -1;
+  #assert pk_mesh("pack/abcdefghijklmnopqrstuvwx") == "abcdefghijklmnopqrstuvwx" && pk_mesh("pack/abcdefghijklmnopqrstuvwxy") == "" && pk_mesh("rover") == "" && pk_of("rover") == PK_ROVER;
+  #assert sp_import_cm(500, 1000) == 50 && sp_import_cm(501, 1000) == 51 && sp_import_cm(500, 2000) == 100 && sp_import_cm(250, 1500) == 38 && sp_import_cm(333, 100) == 4;
+  l := sp_import_limits();
+  #assert l.file == SP_IMPORT_FILE && l.budget == SP_IMPORT_PACK && l.triangles == SP_IMPORT_TRIS && l.triangles * 3 <= PIECE_VERTS && l.side == SP_IMPORT_SIDE && l.meshes == PI_ITEMS;
+}
+
+#test "the game reads a world's import pack: its meshes' reach, or the table as it was" #steps 2000000000 #traversal 1000000000 {
+  k: [1] SitPack; pack := sit_pack(k[..]);
+  t: [1] SpImports;
+  #assert pack.count > 0 && sp_imports_read(t[..], pack) && t[0].n == 1 && t[0].gen == 1 && !t[0].checked && sp_import(t[..], "rock") == 0 && sp_import(t[..], "Rock") == -1;
+  #assert t[0].m[0].hx == 500 && t[0].m[0].hz == 250 && t[0].m[0].top == 2000;
+  #assert !sp_imports_read(t[..], pack[0..<pack.count - 1]) && !sp_imports_read(t[..], "VPK1") && t[0].n == 1 && t[0].gen == 1;
+  #assert sp_imports_read(t[..], "") && t[0].n == 0 && t[0].gen == 2;   // a world that has imported nothing
+}
+
+#test "a pack mesh is drawn: its triangles in the piece store at the row's size, written again when the pack changes" #steps 8000000000 #traversal 4000000000 {
+  k: [1] SitPack; pack := sit_pack(k[..]);
+  g := [1] SpGame.[SpGame.{}]; b: [1] LcDraw; ct := [1] SpwTables.[SpwTables.{}];
+  lc_mine(g[..]);
+  #assert spw_tables_open(g[..], ct[..], "");
+  row := WorldEdit.{ok = true, op = WE_CELL, id = 202};
+  row.table_n = ct_copy(row.table[..], "pieces"); row.name_n = ct_copy(row.name[..], "*"); row.text_n = ct_copy(row.text[..], "202|Big rock|pack/rock|2000|1|100|50|400");
+  #assert spw_cell(g[..], ct[..], row).ok;   // a page is not held to the pack: an edit may reach it first
+  r := sc_piece(g[0].c[..], 202); d := b[0].d[..];
+  #assert r >= 0 && sl_place(g[..], 202, 2000, 1000, 0).ok;
+  // before the pack arrives the kind has no triangles, and no draw
+  sd_meshes(d, g[..], b[0].pieces[..], ""); sd_places(d, g[..], b[0].places[..]);
+  #assert d[0].mesh_gen == 1 && d[0].count[r] == 0 && d[0].rows[r] == 1 && sd_draws(d, g[..], b[0].draws[..], 2) == 2;
+  kits := d[0].mesh_n;
+  // the pack arrives: the meshes are written again, the rock's among them, twice its size
+  #assert sp_imports_read(g[0].imp[..], pack);
+  sd_meshes(d, g[..], b[0].pieces[..], pack);
+  #assert d[0].mesh_gen == 2 && d[0].count[r] == 36 && d[0].mesh_n == kits + 36 && !d[0].over && sd_draws(d, g[..], b[0].draws[..], 2) == 3;
+  top: f32 = 0; wide: f32 = 0; deep: f32 = 0;
+  for i: d[0].first[r]..<d[0].first[r] + 36 {
+    o := i * VERTEX_WORDS;
+    wide = hi(wide, abs(f32_from_bits(b[0].pieces[o]))); top = hi(top, f32_from_bits(b[0].pieces[o + 1])); deep = hi(deep, abs(f32_from_bits(b[0].pieces[o + 2])));
+    #assert (b[0].pieces[o + 3] >> 24) == cast(u32) ((PIECE_OBJ + (r % 8) * 8) & 255) && (b[0].pieces[o + 4] >> 24) == MAT_WORLD;
+  }
+  #assert abs(wide - 1) < 0.001 && abs(top - 4) < 0.001 && abs(deep - 0.5) < 0.001;
+  // the same pack again writes nothing; a pack without the mesh takes its triangles away
+  sd_meshes(d, g[..], b[0].pieces[..], pack); #assert d[0].mesh_gen == 2;
+  #assert sp_imports_read(g[0].imp[..], "");
+  sd_meshes(d, g[..], b[0].pieces[..], ""); #assert d[0].mesh_gen == 3 && d[0].count[r] == 0 && d[0].mesh_n == kits;
+  // the planner asks the kind's footprint like any kind's
+  #assert spw_kind(g[..], 202).radius == 1.0 && !spw_kind(g[..], 202).natural;
+}
+
+#test "an imported mesh's row: a new kind after the last, or the kind that draws it again with its new footprint; sent as the page's own cell edit" #steps 8000000000 #traversal 4000000000 {
+  o: [WE_TEXT] u8;
+  #assert spw_mesh_row(SC_SHIPPED, "rock", 500, 250, 2000, o[..]) == "201|rock|pack/rock|1000|1|50|25|200";
+  #assert spw_mesh_row(SC_SHIPPED, "Rock-2_b", 501, 1, 9, o[..]) == "201|Rock-2_b|pack/Rock-2_b|1000|1|51|1|1" && spw_mesh_row(SC_SHIPPED, "a b", 1, 1, 1, o[..]) == "" && spw_mesh_row(SC_SHIPPED, "", 1, 1, 1, o[..]) == "";
+  #assert spw_mesh_row(SC_SHIPPED, "rock", 500, 250, 2000, o[0..<20]) == "" && spw_mesh_row("not tables", "rock", 500, 250, 2000, o[..]) == "";
+  // tables that have the kind: its ID, name, size and look stay; the footprint is the new mesh's at that size
+  g := [1] SpGame.[SpGame.{}]; ct := [1] SpwTables.[SpwTables.{}]; lc_mine(g[..]);
+  #assert spw_tables_open(g[..], ct[..], "");
+  row := WorldEdit.{ok = true, op = WE_CELL, id = 205};
+  row.table_n = ct_copy(row.table[..], "pieces"); row.name_n = ct_copy(row.name[..], "*"); row.text_n = ct_copy(row.text[..], "205|Big rock|pack/rock|2000|3|100|50|400");
+  #assert spw_cell(g[..], ct[..], row).ok;
+  mine := spw_tables_text(ct[..]);
+  #assert spw_mesh_row(mine, "rock", 1000, 1000, 1000, o[..]) == "205|Big rock|pack/rock|2000|3|200|200|200" && spw_mesh_row(mine, "post", 100, 100, 4000, o[..]) == "206|post|pack/post|1000|1|10|10|400";
+  // the page sends it as a cell edit from its revision; words that are not an import, or a write on its way, send nothing
+  p := [1] SpwPage.[SpwPage.{}]; f := p[0].f[..];
+  f[0].status = WFS_FOLLOWING; f[0].rev = 4;
+  #assert !spw_import_kind(p[..], "mesh rock 500 250") && !spw_import_kind(p[..], "sound rock 500 250 2000") && !spw_import_kind(p[..], "mesh rock 0 250 2000") && !spw_import_kind(p[..], "mesh a.b 500 250 2000") && f[0].body_n == 0;
+  #assert spw_import_kind(p[..], "mesh rock 500 250 2000");
+  e: [WE_BATCH] WorldEdit; b := we_batch_read(cast(string) f[0].body[0..<f[0].body_n], e[..]);
+  #assert b.ok && b.rev == 4 && b.n == 1 && e[0].op == WE_CELL && e[0].id == 201 && cast(string) e[0].table[0..<e[0].table_n] == "pieces" && cast(string) e[0].name[0..<e[0].name_n] == "*" && cast(string) e[0].text[0..<e[0].text_n] == "201|rock|pack/rock|1000|1|50|25|200";
+  #assert !spw_import_kind(p[..], "mesh post 100 100 4000") && f[0].refused_n > 0;
+}

@@ -32,8 +32,17 @@ splice_world_content :: (out: [] u8) -> int #export_c #effects(all) {
 // of a refusal, how many edits were taken, which edit was refused (-1: none), and the bytes of
 // the tables in out_tables when the batch changed them (0: it did not).
 splice_world_batch :: (doc: string, tables: string, body: string, fenced: bool, out_doc: [] u8, out_tables: [] u8, out_did: [] u8, out_inv: [] u8, out_why: [] u8, n: [] int) -> int #export_c #effects(all) {
+  return splice_world_batch_packed(doc, tables, "", body, fenced, out_doc, out_tables, out_did, out_inv, out_why, n);
+}
+// The same with the world's import pack ("": it has imported nothing): a row of the pieces table
+// that draws a pack mesh is held to the pack (world.coax spw_mesh_rows). A pack that does not
+// read is SPB_DOC.
+splice_world_batch_packed :: (doc: string, tables: string, pack: string, body: string, fenced: bool, out_doc: [] u8, out_tables: [] u8, out_did: [] u8, out_inv: [] u8, out_why: [] u8, n: [] int) -> int #export_c #effects(all) {
   if n.count < 7 || tables.count > SPW_TABLES { return SPB_ROOM; }
   g := [1] SpGame.[SpGame.{}]; x := [1] SpwWork.[SpwWork.{}];
+  for k: 0..<7 { n[k] = 0; } n[5] = -1;
+  if !sp_imports_read(g[0].imp[..], pack) { n[3] = ct_put(out_why, 0, "the world's import pack does not read"); if n[3] > out_why.count { n[3] = 0; } return SPB_DOC; }
+  g[0].imp[0].checked = true;
   x[0].ct[0].text_n = ct_copy(x[0].ct[0].text[..], tables);
   b := spw_batch(g[..], x[..], doc, body, fenced, out_doc, out_did, out_inv, out_why);
   n[0] = b.doc; n[1] = b.did; n[2] = b.inv; n[3] = ifx b.why > out_why.count then 0 else b.why; n[4] = b.edits; n[5] = b.at; n[6] = 0;
@@ -44,6 +53,34 @@ splice_world_batch :: (doc: string, tables: string, body: string, fenced: bool, 
   }
   return b.status;
 }
+// Whether a mesh of the world's import pack may take new bounds (its reach in millimetres) where
+// the world stands: the row of the pieces table that draws it is written again for those bounds
+// (world.coax spw_mesh_row) and carried out on the document with the new pack, in a copy; nothing is
+// saved. True when no row draws the mesh, or the row stands. False with why in words when a placed
+// piece would no longer fit. An import asks this before it replaces a mesh, so a pack never holds
+// a mesh larger than the colliders the world has for it.
+splice_world_mesh_fits :: (doc: string, tables: string, pack: string, mesh: string, hx: int, hz: int, top: int, out_why: [] u8, why_n: [] int) -> bool #export_c #effects(all) {
+  why_n[0] = 0;
+  rb: [WE_TEXT] u8; t := [1] SpwTest0.[SpwTest0.{}]; n: [7] int;
+  mine := ifx tables.count > 0 then tables else SC_SHIPPED;
+  row := spw_mesh_row(mine, mesh, hx, hz, top, rb[..]);
+  if row.count == 0 { return true; }
+  id := ct_num(ct_part(row, '|', 0)).v;
+  c: [1] SpContent;
+  if !sc_load(c[..], mine) || sc_piece(c[..], id) < 0 { return true; }   // a new kind: nothing stands as it yet
+  e: [1] WorldEdit;
+  e[0] = WorldEdit.{ok = true, op = WE_CELL, id = id};
+  e[0].table_n = ct_copy(e[0].table[..], SPW_KINDS); e[0].name_n = ct_copy(e[0].name[..], "*"); e[0].text_n = ct_copy(e[0].text[..], row);
+  body := we_batch_write(0, WB_APPLY, e[..], 1, t[0].body[..]);
+  status := splice_world_batch_packed(doc, tables, pack, body, false, t[0].doc[..], t[0].tables[..], t[0].did[..], t[0].inv[..], out_why, n[..]);
+  if status == SPB_OK || status == SPB_NOTHING { return true; }
+  why_n[0] = n[3];
+  return false;
+}
+SpwTest0 :: struct { doc: [SPW_DOC] u8; tables: [SPW_TABLES] u8; did: [WE_BATCH_BODY] u8; inv: [WE_BATCH_BODY] u8; body: [WE_LINE + 200] u8; }
+// What Splice holds a world's imports to (pieces.coax sp_import_limits), for a caller that packs
+// them: the file, the pack, a mesh's triangles and a texture's side.
+splice_world_import_limits :: () -> PipLimits #effects(all) { return sp_import_limits(); }
 // The world's content tables as a page reads them: its own, or the ones the build shipped with
 // when it has none. -1 for tables this build does not read.
 splice_world_tables :: (tables: string, out: [] u8) -> int #export_c #effects(all) {
@@ -112,3 +149,4 @@ splice_world_words :: (status: int) -> string #export_c #effects(all) {
   #assert splice_world_status(SPB_OK) == 200 && splice_world_status(SPB_BATCH) == 400 && splice_world_status(SPB_STALE) == 409 && splice_world_status(SPB_REFUSED) == 422 && splice_world_status(SPB_WALK) == 422 && splice_world_status(SPB_NOTHING) == 422 && splice_world_status(SPB_DOC) == 500 && splice_world_status(SPB_ROOM) == 500;
   #assert splice_world_words(SPB_STALE).count > 20 && splice_world_words(SPB_BATCH).count > 20 && splice_world_words(SPB_NOTHING) == "nothing to change" && splice_world_words(SPB_DOC) == "not saved";
 }
+#load "imports-api-checks.coax" #test;   // a row that draws a pack mesh, held to the world's import pack (#13420)

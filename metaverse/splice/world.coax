@@ -190,6 +190,8 @@ spw_why :: (g: [] SpGame, r: SpwEdit, out: [] u8) -> string {
   if r.why == SPE_ID { return "that number is not free for a piece"; }
   if r.why == SPE_CELL { return "no such table, row or column, or a value that column does not take"; }
   if r.why == SPE_RULES { return "the tables' rules do not hold with that value"; }
+  if r.why == SPE_NO_MESH { return "the world's pack has no mesh of that name: import it first"; }
+  if r.why == SPE_FOOT { return "a pack mesh's footprint is its bounds: hx, hz and top are not this mesh's at that size"; }
   return sl_why(g, r.v, out);
 }
 
@@ -200,6 +202,8 @@ SPW_TEMPLATES :: "templates";   // the table a saved group of pieces is a row of
 SPW_TABLES :: 16384;   // bytes the content tables' document may take (the shipped one is about 4,000)
 SPE_CELL :: 25;      // no such table, row or column, or a value the column does not take
 SPE_RULES :: 26;     // the tables' rules do not hold with that value
+SPE_NO_MESH :: 27;   // a row names a mesh the world's import pack does not have
+SPE_FOOT :: 28;      // a row's footprint is not its pack mesh's bounds at the row's size
 // A world's content tables as they are edited: the document on the edit log
 // (metaverse-engine/editor/content-edit.coax), and its text as it was last opened or changed.
 // The tables keep the revision they shipped with: an edit changes cells, never what a build reads.
@@ -216,6 +220,20 @@ spw_tables_open :: (g: [] SpGame, ct: [] SpwTables, text: string) -> bool {
   return g_places(g);
 }
 spw_tables_text :: (ct: [] SpwTables) -> string { return cast(string) ct[0].text[0..<ct[0].text_n]; }
+// A row that draws a pack mesh, against the world's import pack: the pack has the mesh, and the
+// row's footprint and height are the mesh's bounds at the row's size, in centimetres that cover
+// them ("no invisible blockers": a collider is what you see). SL_OK for a row that holds, for a
+// kit piece's row and for no row (one an edit dropped); else what does not hold.
+spw_mesh_held :: (g: [] SpGame, c: [] SpContent, id: int) -> int {
+  r := sc_piece(c, id);
+  if r < 0 || c[0].pieces[r].kit != PK_MESH { return SL_OK; }
+  p := c[0].pieces[r];
+  k := sp_import(g[0].imp[..], sc_piece_mesh(c, r));
+  if k < 0 { return SPE_NO_MESH; }
+  m := g[0].imp[0].m[k]; scale := cast(int) floor(p.scale * 1000 + 0.5);
+  if we_cm(p.hx) != sp_import_cm(m.hx, scale) || we_cm(p.hz) != sp_import_cm(m.hz, scale) || we_cm(p.top) != sp_import_cm(m.top, scale) { return SPE_FOOT; }
+  return SL_OK;
+}
 // One cell edit carried out on the tables, checked as a content document is: the cell is one its
 // column takes, the tables' rules hold, the game reads them, and every placed piece still stands
 // where the layer's check lets it. Refused, nothing is changed. The World is built again from the
@@ -230,6 +248,11 @@ spw_cell :: (g: [] SpGame, ct: [] SpwTables, e: WorldEdit) -> SpwEdit {
   if made.count == 0 || !sc_load(read[..], made) {
     _ := we_content_apply(ct[0].d[..], a.inv);
     return spw_no(SPE_RULES);
+  }
+  edited := e; kinds := cast(string) edited.table[0..<edited.table_n] == SPW_KINDS;
+  if g[0].imp[0].checked && kinds {
+    held := spw_mesh_held(g, read[..], e.id);   // the row this edit wrote
+    if held != SL_OK { _ := we_content_apply(ct[0].d[..], a.inv); return spw_no(held); }
   }
   keep := g[0].c[0];
   g[0].c[0] = read[0];
@@ -487,6 +510,57 @@ spw_shell_batch :: (p: [] SpwPage, body: string) -> bool {
   f := p[0].f[..];
   if wf_post(f, body) { return true; }
   f[0].refused_n = em_copy(f[0].refused[..], "The last change is still on its way. Try again."); f[0].refused_status = 1;
+  return false;
+}
+
+// ---- an imported mesh becomes a kind (GitHub #13420, the browser editor's E11)
+
+// The row of the pieces table for a pack mesh, into out ("": it does not fit, or the tables have
+// no look to give it): the row that already draws the mesh, with the footprint the mesh has at
+// that row's size, or a new row after the last, the mesh's name at its own size in the tables'
+// first look. hx, hz and top are the mesh's reach in millimetres (pack-import-read.coax pi_reach).
+spw_mesh_row :: (tables: string, mesh: string, hx: int, hz: int, top: int, out: [] u8) -> string {
+  kb: [5 + PIP_NAME] u8;   // PK_PACK, then a name
+  kn := ct_put(kb[..], 0, PK_PACK); kn = ct_put(kb[..], kn, mesh);
+  if mesh.count == 0 || kn > kb.count || pk_mesh(cast(string) kb[0..<kn]) != mesh { return ""; }
+  kit := cast(string) kb[0..<kn];
+  table := ""; found := ""; last := 200; look := "";
+  for k: 0..<ct_parts(tables, '\n') {
+    line := ct_part(tables, '\n', k);
+    if ct_part(line, ' ', 0) == "table" { table = ct_part(line, ' ', 1); continue; }
+    row := ct_num(ct_part(line, '|', 0));
+    if !row.ok { continue; }
+    if table == "looks" && look.count == 0 { look = ct_part(line, '|', 0); }
+    if table != SPW_KINDS || ct_parts(line, '|') != 8 { continue; }
+    if row.v > last { last = row.v; }
+    if ct_part(line, '|', 2) == kit { found = line; }
+  }
+  scale := ifx found.count > 0 then ct_num(ct_part(found, '|', 3)).v else 1000;
+  n := 0;
+  if found.count > 0 { for c: 0..<5 { n = ct_put(out, n, ct_part(found, '|', c)); n = ct_put(out, n, "|"); } }
+  else {
+    if look.count == 0 { return ""; }
+    n = ct_put_int(out, 0, last + 1); n = ct_put(out, n, "|"); n = ct_put(out, n, mesh); n = ct_put(out, n, "|"); n = ct_put(out, n, kit); n = ct_put(out, n, "|1000|"); n = ct_put(out, n, look); n = ct_put(out, n, "|");
+  }
+  n = ct_put_int(out, n, sp_import_cm(hx, scale)); n = ct_put(out, n, "|"); n = ct_put_int(out, n, sp_import_cm(hz, scale)); n = ct_put(out, n, "|"); n = ct_put_int(out, n, sp_import_cm(top, scale));
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+// "mesh NAME HX HZ TOP" from the editor's shell: a mesh is in the world's import pack. Its row
+// (spw_mesh_row) is sent as this page's own cell edit, so the server holds it to the pack and every
+// open page takes it in place. False when the words are not that, or a write is still on its way.
+spw_import_kind :: (p: [] SpwPage, body: string) -> bool {
+  f := p[0].f[..];
+  hx := ct_num(ct_part(body, ' ', 2)); hz := ct_num(ct_part(body, ' ', 3)); top := ct_num(ct_part(body, ' ', 4));
+  if ct_parts(body, ' ') != 5 || ct_part(body, ' ', 0) != "mesh" || !hx.ok || !hz.ok || !top.ok || hx.v < 1 || hz.v < 1 || top.v < 1 { return false; }
+  rb: [WE_TEXT] u8;
+  row := spw_mesh_row(ifx p[0].ct[0].open then spw_tables_text(p[0].ct[..]) else SC_SHIPPED, ct_part(body, ' ', 1), hx.v, hz.v, top.v, rb[..]);
+  if row.count == 0 { return false; }
+  e: [1] WorldEdit;
+  e[0] = WorldEdit.{ok = true, op = WE_CELL, id = ct_num(ct_part(row, '|', 0)).v};
+  e[0].table_n = ct_copy(e[0].table[..], SPW_KINDS); e[0].name_n = ct_copy(e[0].name[..], "*"); e[0].text_n = ct_copy(e[0].text[..], row);
+  out: [WE_LINE + 200] u8;
+  if wf_post(f, we_batch_write(ifx f[0].rev < 0 then 0 else f[0].rev, WB_APPLY, e[..], 1, out[..])) { return true; }
+  f[0].refused_n = em_copy(f[0].refused[..], "The mesh is in the pack, but the last change is still on its way. Import it again to make it a kind."); f[0].refused_status = 1;
   return false;
 }
 

@@ -4,7 +4,8 @@
 // typing and framed nodes' sizes. The page that opened it (coax/web/host.js) puts its world's
 // model in the inbox (event 6) and takes the shell's actions (dom_act). On a page the dev server
 // serves (event 9) the shell asks that server for the realm's code (#13421): the ask goes by the
-// host's dom_stream, and the answer comes back as events 4 and 5.
+// host's dom_stream, and the answer comes back as events 4 and 5. The world's assets (#13420) are asked of
+// the world's server by the host's dom_file_send, which also sends a dropped file (event 10); its answer is event 11.
 #include "editor-shell.h"
 #include <stddef.h>
 
@@ -12,17 +13,25 @@
 #define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
 
 IMPORT("dom_stream") void dom_stream(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len);
+IMPORT("dom_file_send") void dom_file_send(uint32_t url, uint32_t url_len, uint32_t head, uint32_t head_len);
 
 static coax_v_t_EdShell at(uint32_t state) { return (coax_v_t_EdShell){(coax_t_EdShell *)(uintptr_t)state, 1}; }
 static coax_t_EdShell *raw(uint32_t state) { return (coax_t_EdShell *)(uintptr_t)state; }
 
-// What shell.coax asks of the host: to send its ask to the dev server.
+// What shell.coax asks of the host: to send its ask to the dev server, and its ask to the world's server.
 static void asks(uint32_t state) {
   coax_t_EdShell *s = raw(state);
   int64_t n = coaxial_editor_asking(at(state));
-  if (n <= 0) return;
-  dom_stream((uint32_t)(uintptr_t)s->code_door.e, (uint32_t)s->code_door_n, (uint32_t)(uintptr_t)s->code_req.e, (uint32_t)n);
-  coaxial_editor_asked(at(state));
+  if (n > 0) {
+    dom_stream((uint32_t)(uintptr_t)s->code_door.e, (uint32_t)s->code_door_n, (uint32_t)(uintptr_t)s->code_req.e, (uint32_t)n);
+    coaxial_editor_asked(at(state));
+  }
+  // and of the world's server (#13420): its assets (a GET), or a dropped file for it (the head, then the file's bytes)
+  int64_t f = coaxial_editor_fetching(at(state));
+  if (f > 0) {
+    dom_file_send((uint32_t)(uintptr_t)s->as_url.e, (uint32_t)s->as_url_n, (uint32_t)(uintptr_t)s->as_head.e, f == 2 ? (uint32_t)s->as_head_n : 0u);
+    coaxial_editor_fetched(at(state));
+  }
 }
 
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_EdShell); }

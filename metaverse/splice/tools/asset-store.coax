@@ -1,0 +1,52 @@
+// Where a world's imports live on this computer (GitHub #13420, the browser editor's E11): files
+// beside the world's rows under DIR (world-local.coax), each named by the SHA-256 of its bytes.
+//   DIR/ID.assets         the hash of the world's import pack as it is now, a line
+//   DIR/ID.pack.HASH      an import pack (pack-import.coax writes it)
+//   DIR/ID.file.HASH      a file as it was dropped
+// A pack is written before the line that names it, so a reader never follows the line to
+// nothing. asset-local.coax writes them; world-local.coax reads the pack to check an edit.
+#load "../../../metaverse-engine/core/assets.coax";
+#load "../../../coax/lib/sys/fs.coax";
+
+AS_PATH :: 800;
+// DIR/ID then a part and a hash, in out.
+as_path :: (dir: string, id: string, part: string, hash: string, out: [] u8) -> string {
+  n := 0;
+  for piece: [5] string.[dir, "/", id, part, hash] { if n + piece.count > out.count { return ""; } for c, k: piece { out[n + k] = c; } n += piece.count; }
+  return cast(string) out[0..<n];
+}
+// The hash of the world's import pack as it is now into out (64 bytes), or "".
+as_head :: (dir: string, id: string, out: [] u8) -> string {
+  pb: [AS_PATH] u8; b: [80] u8;
+  n := fs_read(as_path(dir, id, ".assets", "", pb[..]), b[..]);
+  if n != 65 || b[64] != '\n' || out.count < 64 { return ""; }
+  for k: 0..<64 { c := b[k]; if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return ""; } out[k] = c; }
+  return cast(string) out[0..<64];
+}
+// The world's import pack into buf ("": it has imported nothing, or the pack is not the one its
+// line names).
+as_pack :: (dir: string, id: string, buf: [] u8) -> string {
+  pb: [AS_PATH] u8; hb: [64] u8; check: [64] u8;
+  hash := as_head(dir, id, hb[..]);
+  if hash.count == 0 { return ""; }
+  n := fs_read(as_path(dir, id, ".pack.", hash, pb[..]), buf);
+  if n <= 0 || !asset_hex(asset_id(cast(string) buf[0..<n]), check[..]) || cast(string) check[..] != hash { return ""; }
+  return cast(string) buf[0..<n];
+}
+// Bytes kept under their hash (`part` is ".pack." or ".file."): the hash in out, or "".
+as_keep :: (dir: string, id: string, part: string, bytes: string, out: [] u8) -> string {
+  pb: [AS_PATH] u8;
+  if out.count < 64 || !asset_hex(asset_id(bytes), out[0..<64]) { return ""; }
+  hash := cast(string) out[0..<64];
+  path := as_path(dir, id, part, hash, pb[..]);
+  if path.count == 0 || (!fs_exists(path) && !fs_write(path, bytes)) { return ""; }
+  return hash;
+}
+// The world's pack is now the one of this hash.
+as_point :: (dir: string, id: string, hash: string) -> bool {
+  pb: [AS_PATH] u8; line: [65] u8;
+  if hash.count != 64 { return false; }
+  for c, k: hash { line[k] = c; }
+  line[64] = '\n';
+  return fs_write(as_path(dir, id, ".assets", "", pb[..]), cast(string) line[..]);
+}

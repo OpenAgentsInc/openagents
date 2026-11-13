@@ -20,6 +20,7 @@
 #load "place.coax";
 #load "../../coax/lib/agent/world/turn.coax";   // what the agent's turn is told, and a hosted turn's plan
 #load "code-wire.coax";                         // a realm's code on the dev server: what is asked and answered
+#load "shell-assets.coax";                      // the Assets pane: the world's imports, a file dropped, its licence and the limits (#13420)
 
 ES_INBOX :: 200704;    // a model (EM_BYTES), a field's text, or a file of code as typed (RC_TEXT, and room to see that it is longer), from the host
 ES_CSS :: 24576;
@@ -48,7 +49,7 @@ ES_TOOL_NOTE :: [ES_TOOLS] string.["Walk the world as a player", "Tap a thing to
 ES_GRIDS :: 4;
 ES_GRID :: [ES_GRIDS] string.["10 cm", "25 cm", "50 cm", "1 m"];
 ES_GRID_CM :: [ES_GRIDS] int.[10, 25, 50, 100];
-ES_OPEN_NONE :: 0; ES_OPEN_WHEN :: 1; ES_OPEN_KIND :: 2; ES_OPEN_TOOL :: 3; ES_OPEN_GRID :: 4; ES_OPEN_ADD :: 5; ES_OPEN_COUNT :: 6; ES_OPEN_FILE :: 7; ES_OPEN_BRUSH :: 8; ES_OPEN_MAT :: 9;
+ES_OPEN_NONE :: 0; ES_OPEN_WHEN :: 1; ES_OPEN_KIND :: 2; ES_OPEN_TOOL :: 3; ES_OPEN_GRID :: 4; ES_OPEN_ADD :: 5; ES_OPEN_COUNT :: 6; ES_OPEN_FILE :: 7; ES_OPEN_BRUSH :: 8; ES_OPEN_MAT :: 9; ES_OPEN_LICENCE :: 10;
 // The land's brush (E13, #13422), for a world that says its land takes `terrain` edits (the model's `land` line):
 // the tool after the others, the brush's kinds as a person reads them (world-edit.coax WE_BRUSH), and the steps
 // its radius and its strength are picked from.
@@ -102,6 +103,18 @@ EdShell :: struct {
   code_req_n: int; code_resp_n: int; code_lost: bool; // the ask's bytes, the answer's so far, and whether it was more than an answer is
   code_note: int; code_words_n: int;     // what the pane says of the last open or save (ES_NOTE_*), and its words
   clip_n: int;                           // bytes for the clipboard (a code block's Copy), until the host takes them
+  // assets (E11, #13420; shell-assets.coax): the world's imports as its server lists them (no list: no Assets here), and one file at a time
+  assets: bool;                          // the Assets pane is open
+  as_have: bool; as_asked: bool;         // a list came (world.assets.v1); the first was asked for
+  as_flight: int; as_ask: bool;          // what the world's server was asked (ES_AS_*), and whether the ask is still to go to the host
+  as_licence: int = -1;                  // the licence chosen for the next file (-1: none yet)
+  as_file: bool; as_file_bytes: int; as_file_name_n: int;   // the file that waits to be sent
+  as_note: int; as_words_n: int;         // what the pane says of the last file (ES_AS_SAID_*), and its words
+  as_url_n: int; as_head_n: int;         // where the ask goes, and an import's first bytes (0: a GET)
+  as_url: [96] u8; as_head: [200] u8;
+  as_file_name: [WAS_FILE_NAME] u8;
+  as_words: [EM_WORDS] u8;
+  as_list: [1] WasList; as_next: [1] WasList;
   code_door: [16] u8; code_door_n: int;
   code_words: [RC_ERRORS] u8;
   clip: [RC_ERRORS] u8;
@@ -423,8 +436,11 @@ es_build :: (s: [] EdShell) {
   step := k_button(t, u, "step", "Step", BS_PLAIN);
   sim := k_button(t, u, "sim", ifx s[0].sim then "Stop simulating" else "Simulate", BS_PLAIN);
   agent := k_button(t, u, "agent", ifx s[0].agent then "Hide agent" else "Agent", BS_PLAIN);
+  // assets: only where the world's server answered with its list. Closed, its button still takes a dropped file
+  asseting := s[0].assets && s[0].as_have;
+  if s[0].as_have { ab := k_button(t, u, "assets", ifx s[0].assets then "Hide assets" else "Assets", BS_PLAIN); if !s[0].assets { tr_attr(t, ab, AT_DROP, ""); } }
   // code: only where the dev server answered with the realm's files
-  coding := s[0].code && s[0].nfiles > 0;
+  coding := s[0].code && s[0].nfiles > 0 && !asseting;
   if s[0].nfiles > 0 { cb := k_button(t, u, "code", ifx s[0].code then "Hide code" else "Code", BS_PLAIN); }
   w := m[0].world;
   n := ct_put(line[..], 0, cast(string) w[0..<m[0].world_n]);
@@ -461,7 +477,8 @@ es_build :: (s: [] EdShell) {
 
   // the realm's code takes the right side while it is open; else the selected thing, and what was refused
   if coding { es_build_code(s); }
-  if !coding {
+  if asseting { es_build_assets(s); }
+  if !coding && !asseting {
   right := k_pane(t, u, "one", DK_RIGHT, "Selected");
   es_build_said(s);
   if s[0].ngroup > 0 {
@@ -585,9 +602,10 @@ es_click :: (s: [] EdShell, id: string) {
   m := s[0].model[..];
   // a select opens, or closes if it was the open one; any other press closes whichever is open
   was := s[0].open; s[0].open = ES_OPEN_NONE;
-  names := [9] string.["when", "kind", "tool", "grid", "add", "count", "file", "brush", "mat"];
+  names := [10] string.["when", "kind", "tool", "grid", "add", "count", "file", "brush", "mat", "licence"];
   for name, k: names { if id == name { s[0].open = ifx was == k + 1 then ES_OPEN_NONE else k + 1; return; } }
-  if es_code_click(s, id) { return; }
+  if es_as_click(s, id) { return; }
+  if es_code_click(s, id) { if s[0].code { s[0].assets = false; } return; }
   if es_index(id, "when.") >= 0 && es_index(id, "when.") < 2 { s[0].when = es_index(id, "when."); return; }
   // the viewport's tools are the shell's to pick and the page's to obey
   words: [24] u8;
@@ -758,6 +776,7 @@ es_model :: (s: [] EdShell, length: int) {
   // bytes that are not a model close the lists: the shell shows nothing it was not told
   if !em_read(s[0].model[..], cast(string) s[0].inbox[0..<n], s[0].scratch[..]) { s[0].have = false; return; }
   s[0].have = true; s[0].turn_due = true;
+  if !s[0].as_asked && es_as_go(s, ES_AS_LIST) { s[0].as_asked = true; }   // the world's assets, once it is known which world this is
   // a gathered thing that is no longer in the world leaves the group
   kept := 0;
   for k: 0..<s[0].ngroup { if em_entity_at(s[0].model[..], s[0].group[k]) >= 0 { s[0].group[kept] = s[0].group[k]; kept += 1; } }
@@ -832,6 +851,8 @@ es_event :: (s: [] EdShell, kind: int, slot: int, length: int) {
   if kind == ES_CODE_HERE { es_code_here(s, length); return; }
   if kind == ES_PIECE { es_code_piece(s, length); return; }
   if kind == ES_END { es_code_end(s, slot); return; }
+  if kind == ES_FILE { es_as_file(s, length); return; }
+  if kind == ES_SENT { es_as_sent(s, slot, length); return; }
   id := dm_slot_id(s[0].dom[..], slot);
   if id.count == 0 { return; }
   if kind == ES_CLICK { es_click(s, id); }
@@ -892,6 +913,10 @@ coaxial_editor_act_done :: (s: [] EdShell) #export_c #effects(all) {
 // The ask that waits to go to the dev server: its bytes (at code_req; 0: none), to the address at code_door; asked takes it away.
 coaxial_editor_asking :: (s: [] EdShell) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].code_ask then s[0].code_req_n else 0; }
 coaxial_editor_asked :: (s: [] EdShell) #export_c #effects(all) { if s.count > 0 { s[0].code_ask = false; } }
+// The ask that waits to go to the world's server (shell-assets.coax): 0 none, 1 a GET of the address at as_url,
+// 2 a POST there of the bytes at as_head followed by the waiting file's; fetched takes it away.
+coaxial_editor_fetching :: (s: [] EdShell) -> int #export_c #effects(all) { return ifx s.count < 1 || !s[0].as_ask then 0 else ifx s[0].as_head_n > 0 then 2 else 1; }
+coaxial_editor_fetched :: (s: [] EdShell) #export_c #effects(all) { if s.count > 0 { s[0].as_ask = false; } }
 // What a Copy press put by for the clipboard: its bytes (at clip; 0: none); done takes it away.
 coaxial_editor_clip_len :: (s: [] EdShell) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].clip_n else 0; }
 coaxial_editor_clip_done :: (s: [] EdShell) #export_c #effects(all) { if s.count > 0 { s[0].clip_n = 0; } }
@@ -1679,3 +1704,4 @@ es_test_local :: (h: [] EsTest, listed: int, in_all: int) {
   es_test_press(h[..], "tool"); es_test_press(h[..], "tool.1");
   #assert es_test_view(h[..], w[..]) == "tool select" && tr_find(t, "brush") < 0 && tr_find(t, "grid") > 0;
 }
+#load "shell-assets-checks.coax" #test;   // the Assets pane (#13420)

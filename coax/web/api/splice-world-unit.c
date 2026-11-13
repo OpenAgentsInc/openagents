@@ -9,4 +9,8 @@
 #pragma GCC diagnostic ignored "-Wunused-function"
 // A library procedure another unit exports too keeps a name of its own here.
 #define NC_count splice_world_NC_count
+// Splice reads a world's import pack (#13420: pack.coax, by content hash), so this unit has the SHA-256 kernel
+// that nip98's unit exports too.
+#define S_hash splice_world_S_hash
+#define S_hex splice_world_S_hex
 #include "splice-world.generated.c"

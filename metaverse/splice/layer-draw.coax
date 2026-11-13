@@ -14,6 +14,7 @@ SpLayerDraw :: struct {
   mesh_n: int;            // vertices in the piece store
   mesh_gen: int;          // counts the piece store's writes: once, and again when the graybox is switched
   meshed: bool; meshed_gray: bool; over: bool;
+  meshed_pack: int;       // the import pack the meshes were written from (pieces.coax SpImports gen)
   row0: [SC_PIECE_MAX] int; rows: [SC_PIECE_MAX] int;     // each kind's rows in the place store
   place_n: int;           // rows in the place store
   place_rev: int = -1;    // the layer revision the rows were written from
@@ -22,19 +23,22 @@ SpLayerDraw :: struct {
 }
 
 // Every kind's mesh into the piece store, standing at the origin and facing +z. It writes only
-// when nothing is written yet or the graybox was switched.
-sd_meshes :: (d: [] SpLayerDraw, g: [] SpGame, pieces: [] u32) {
-  if d[0].meshed && d[0].meshed_gray == g[0].gray { return; }
+// when nothing is written yet, the graybox was switched or the world's import pack changed.
+// pack: the world's import pack ("": none), which a kind whose kit is a pack mesh draws from; a
+// mesh the pack does not have draws nothing until it does.
+sd_meshes :: (d: [] SpLayerDraw, g: [] SpGame, pieces: [] u32, pack: string) {
+  if d[0].meshed && d[0].meshed_gray == g[0].gray && d[0].meshed_pack == g[0].imp[0].gen { return; }
   c := g[0].c[..];
   pen := [1] Pen.[Pen.{graybox = g[0].gray}];
   for r: 0..<c[0].piece_n {
     p := c[0].pieces[r];
     d[0].first[r] = pen[0].n;
-    sp_piece_write(pieces, pen[..], p.kit, p.scale, frame_at(v3(0, 0, 0), 0), PIECE_OBJ + (r % 8) * 8, sp_tint(p.a), sp_tint(p.b), sp_tint(p.c), INK());
+    if p.kit == PK_MESH { _ := sp_mesh_write(pieces, pen[..], pack, sc_piece_mesh(c, r), p.scale, PIECE_OBJ + (r % 8) * 8, sp_tint(p.a)); }
+    else { sp_piece_write(pieces, pen[..], p.kit, p.scale, frame_at(v3(0, 0, 0), 0), PIECE_OBJ + (r % 8) * 8, sp_tint(p.a), sp_tint(p.b), sp_tint(p.c), INK()); }
     d[0].count[r] = pen[0].n - d[0].first[r];
   }
   d[0].mesh_n = pen[0].n; d[0].over = pen[0].over;
-  d[0].meshed = true; d[0].meshed_gray = g[0].gray; d[0].mesh_gen += 1;
+  d[0].meshed = true; d[0].meshed_gray = g[0].gray; d[0].meshed_pack = g[0].imp[0].gen; d[0].mesh_gen += 1;
 }
 // The layer's placed pieces into the place store, a kind's rows together, by item ID within a
 // kind. It writes only when the layer's revision is not the one the rows were written from.

@@ -1,0 +1,368 @@
+// The editor's asset import (GitHub #13420, the browser editor's E11): a dropped glTF binary, PNG
+// or sound file becomes an entry of a world's asset pack, with the licence declared for it.
+//
+// It writes no pack of its own: the bytes are pack.coax's (pack_write), and what it writes is
+// read back whole (pack_read) before it is answered, so an import is a pack every host reads or
+// it is nothing. pack-import-policy.coax decides what is admitted; this file carries it out.
+//
+// An import pack is a VPK1 pack whose catalog is this file's:
+//   pack NAME / imports 1 / budget BYTES / bytes BYTES
+//   L K LICENCE|LICENCE|URL                  the policy's licences, all of them, in order
+//   M NAME FIRST COUNT K X0 Y0 Z0 X1 Y1 Z1 VFIRST VCOUNT
+//                                            a mesh: its indices (each a vertex of the pack's
+//                                            vertices), its licence, its bounds in metres, and its
+//                                            own run of vertices
+//   T LAYER NAME K                           a texture layer: the PNG as it was dropped
+//   S NAME K                                 a sound: the file as it was dropped
+//   O KIND NAME SHA256 BYTES                 the file an asset came from: its kind (1 mesh, 2
+//                                            texture, 3 sound), its content hash and its size
+// A mesh is written in the pack's 48-byte vertex (vertices.coax): position, normal, uv, colour.
+// It stands on the ground with its middle over the origin: the importer moves it there, so a
+// realm places it like any piece. A mesh's nodes are carried through their transforms; a skin,
+// a morph and an animation are not read.
+//
+// An asset is known by its name (the file's, pack-import-policy.coax pip_name) within its kind:
+// importing a file whose name the pack has replaces that asset and nothing else.
+//   coax/bin/coax test metaverse-engine/editor/pack-import.coax
+#load "pack-import-read.coax";
+#load "../anim/gltf-access.coax";
+#load "../anim/import-container.coax";
+#load "../../coax/lib/image/png.coax";
+
+PI_NODES :: 256;     // nodes a glTF scene may have
+// Why an import did nothing, beyond the policy's verdicts (pack-import-policy.coax PIP_*).
+PI_UNREAD :: 20;     // the file is not what its name says, or holds what the importer does not read
+PI_PACK :: 21;       // the world's pack is not one the importer made
+PI_ROOM :: 22;       // the importer's room is too small
+
+// A dropped file: its name as it was dropped, its bytes and the licence chosen for it (-1: none).
+PiFile :: struct { name: string; data: [] u8; licence: int; }
+// The room an import works in. vertices and indices hold the pack's meshes as they are rebuilt;
+// catalog its text; nodes the glTF's JSON; hash a new file's content hash (64 bytes).
+PiRoom :: struct { vertices: [] u8; indices: [] u8; catalog: [] u8; nodes: [] JvNode; hash: [] u8; }
+// What an import did, or why it did nothing.
+PiDid :: struct {
+  ok: bool; verdict: int;
+  why: [PI_WHY] u8; why_n: int;
+  kind: int; name: [PIP_NAME] u8; name_n: int; replaced: bool;
+  file_bytes: int; entry_bytes: int;       // the file as dropped, and what it takes in the pack
+  before: int; after: int; budget: int;    // the pack before and after, and its budget
+  lo: [3] int; hi: [3] int; triangles: int;   // a mesh: its bounds in millimetres
+  w: int; h: int;                          // a texture: its size
+}
+
+pi_why :: (d: [] PiDid) -> string { return cast(string) d[0].why[0..<d[0].why_n]; }
+// Refused: the verdict and its words, "NAME a N b M c" with the numbers where they belong.
+pi_no :: (d: [] PiDid, verdict: int, name: string, a: string, n: int, b: string, m: int, c: string) -> int {
+  o := d[0].why[..];
+  at := pi_put_name(o, 0, name); at = pi_put(o, at, a);
+  if n >= 0 { at = pi_put_int(o, at, n); }
+  at = pi_put(o, at, b);
+  if m >= 0 { at = pi_put_int(o, at, m); }
+  at = pi_put(o, at, c);
+  d[0].ok = false; d[0].verdict = verdict; d[0].why_n = ifx at > o.count then 0 else at;
+  return -1;
+}
+
+// ---- a glTF binary's meshes into the pack's vertices
+
+PiMat :: struct { m: [12] f32; }   // three rows of four: a turn, a size and a move
+pi_mat_one :: () -> PiMat { r: PiMat; r.m[0] = 1; r.m[5] = 1; r.m[10] = 1; return r; }
+pi_mat_mul :: (a: PiMat, b: PiMat) -> PiMat {
+  r: PiMat;
+  for i: 0..<3 { for j: 0..<4 {
+    v := a.m[i * 4] * b.m[j] + a.m[i * 4 + 1] * b.m[4 + j] + a.m[i * 4 + 2] * b.m[8 + j];
+    if j == 3 { v += a.m[i * 4 + 3]; }
+    r.m[i * 4 + j] = v;
+  } }
+  return r;
+}
+pi_mat_point :: (a: PiMat, p: Point) -> Point {
+  return v3(a.m[0] * p.x + a.m[1] * p.y + a.m[2] * p.z + a.m[3], a.m[4] * p.x + a.m[5] * p.y + a.m[6] * p.z + a.m[7], a.m[8] * p.x + a.m[9] * p.y + a.m[10] * p.z + a.m[11]);
+}
+pi_mat_dir :: (a: PiMat, p: Point) -> Point {
+  return v3(a.m[0] * p.x + a.m[1] * p.y + a.m[2] * p.z, a.m[4] * p.x + a.m[5] * p.y + a.m[6] * p.z, a.m[8] * p.x + a.m[9] * p.y + a.m[10] * p.z);
+}
+// Element i of a JSON array of numbers; a missing or wrong one marks the file bad.
+pi_num :: (g: [] AgFile, arr: int, i: int) -> f32 {
+  v := anim_number(g[0].d, jv_at(g[0].d, arr, i), -1000000, 1000000);
+  if !v.ok { g[0].bad = true; return 0; }
+  return cast(f32) v.value;
+}
+// A node's own transform: its matrix, or its move, turn and size.
+pi_local :: (g: [] AgFile, node: int) -> PiMat {
+  r := pi_mat_one();
+  mx := ag_get(g, node, "matrix");
+  if mx != -1 {
+    if jv_len(g[0].d, mx) != 16 { g[0].bad = true; return r; }
+    for i: 0..<3 { for j: 0..<4 { r.m[i * 4 + j] = pi_num(g, mx, j * 4 + i); } }   // glTF keeps columns
+    return r;
+  }
+  t := ag_get(g, node, "translation"); q := ag_get(g, node, "rotation"); s := ag_get(g, node, "scale");
+  if (t != -1 && jv_len(g[0].d, t) != 3) || (q != -1 && jv_len(g[0].d, q) != 4) || (s != -1 && jv_len(g[0].d, s) != 3) { g[0].bad = true; return r; }
+  if q != -1 {
+    x := pi_num(g, q, 0); y := pi_num(g, q, 1); z := pi_num(g, q, 2); w := pi_num(g, q, 3);
+    r.m[0] = 1 - 2 * (y * y + z * z); r.m[1] = 2 * (x * y - z * w); r.m[2] = 2 * (x * z + y * w);
+    r.m[4] = 2 * (x * y + z * w); r.m[5] = 1 - 2 * (x * x + z * z); r.m[6] = 2 * (y * z - x * w);
+    r.m[8] = 2 * (x * z - y * w); r.m[9] = 2 * (y * z + x * w); r.m[10] = 1 - 2 * (x * x + y * y);
+  }
+  if s != -1 { for j: 0..<3 { k := pi_num(g, s, j); for i: 0..<3 { r.m[i * 4 + j] *= k; } } }
+  if t != -1 { for i: 0..<3 { r.m[i * 4 + 3] = pi_num(g, t, i); } }
+  return r;
+}
+pi_f32 :: (out: [] u8, at: int, v: f32) { pack_put32(out, at, cast(int) f32_bits(v)); }
+pi_get :: (b: [] u8, at: int) -> f32 { return f32_from_bits(cast(u32) pack_u32(cast(string) b, at)); }
+// A colour as the pack's vertex keeps it: sRGB bytes, the layer (none: 0) in the top byte.
+pi_srgb :: (linear: f32) -> int {
+  c := clamp01(linear);
+  s := ifx c <= 0.0031308 then c * 12.92 else 1.055 * pow(c, 1.0 / 2.4) - 0.055;
+  return cast(int) floor(clamp01(s) * 255 + 0.5);
+}
+PiMade :: struct { vertices: int; indices: int; }
+// Every triangle of a glTF binary's scene into the room, from vertex nv and index ni: "" and
+// what it wrote in made, or why not in words that follow the file's name.
+pi_glb :: (data: [] u8, lim: PipLimits, room: PiRoom, nv: int, ni: int, made: [] PiMade) -> string {
+  c := ai_glb(data);
+  if !c.ok { return " is not a glTF binary file."; }
+  d: [1] Jv; g: [1] AgFile;
+  if !jv_parse(d[..], cast(string) data[c.json_first..<c.json_first + c.json_size], room.nodes) || jv_kind(d[0], 0) != JV_OBJECT { return " holds a scene the importer cannot read."; }
+  g[0].d = d[0];
+  buffers := ag_get(g[..], 0, "buffers");
+  buffer := jv_at(d[0], buffers, 0); length := ag_required(g[..], buffer, "byteLength");
+  if jv_len(d[0], buffers) != 1 || ag_get(g[..], buffer, "uri") != -1 || length < 1 || c.binary_size < length || c.binary_size > length + 3 { return " keeps its data outside the file. Export it as one .glb file."; }
+  g[0].binary = data[c.binary_first..<c.binary_first + length];
+  count := jv_len(d[0], ag_get(g[..], 0, "nodes"));
+  if count < 1 || count > PI_NODES { return " has no scene the importer can read."; }
+  parents: [PI_NODES] int;
+  for k: 0..<count { parents[k] = -1; }
+  for k: 0..<count {
+    children := ag_get(g[..], ag_top(g[..], "nodes", k), "children");
+    for j: 0..<jv_len(d[0], children) {
+      child := jv_int(d[0], jv_at(d[0], children, j), -1);
+      if child < 0 || child >= count || child == k || parents[child] >= 0 { return " has a scene whose nodes do not form a tree."; }
+      parents[child] = k;
+    }
+  }
+  v := nv; x := ni;
+  for k: 0..<count {
+    node := ag_top(g[..], "nodes", k);
+    if ag_get(g[..], node, "mesh") == -1 { continue; }
+    world := pi_local(g[..], node); up := parents[k]; depth := 0;
+    while up >= 0 { world = pi_mat_mul(pi_local(g[..], ag_top(g[..], "nodes", up)), world); up = parents[up]; depth += 1; if depth > count { return " has a scene whose nodes do not form a tree."; } }
+    prims := ag_get(g[..], ag_top(g[..], "meshes", ag_required(g[..], node, "mesh")), "primitives");
+    if jv_len(d[0], prims) < 1 { return " has a mesh with nothing in it."; }
+    for pk: 0..<jv_len(d[0], prims) {
+      pr := jv_at(d[0], prims, pk);
+      if ag_int(g[..], pr, "mode", 4) != 4 { return " has shapes that are not triangles."; }
+      attr := ag_get(g[..], pr, "attributes");
+      pa := ag_accessor(g[..], ag_int(g[..], attr, "POSITION", -1));
+      if !pa.ok || pa.components != 3 || pa.component != 5126 { return " has a mesh with no positions the importer can read."; }
+      has_n := ag_get(g[..], attr, "NORMAL") != -1; has_uv := ag_get(g[..], attr, "TEXCOORD_0") != -1; has_c := ag_get(g[..], attr, "COLOR_0") != -1; has_i := ag_get(g[..], pr, "indices") != -1;
+      na := ag_accessor(g[..], ag_int(g[..], attr, "NORMAL", -1)); ua := ag_accessor(g[..], ag_int(g[..], attr, "TEXCOORD_0", -1));
+      ca := ag_accessor(g[..], ag_int(g[..], attr, "COLOR_0", -1)); ia := ag_accessor(g[..], ag_int(g[..], pr, "indices", -1));
+      if (has_n && (!na.ok || na.count != pa.count || na.components != 3)) || (has_uv && (!ua.ok || ua.count != pa.count || ua.components != 2))
+          || (has_c && (!ca.ok || ca.count != pa.count || ca.components < 3)) || (has_i && (!ia.ok || ia.components != 1 || ia.normalized)) { return " has a mesh whose data the importer cannot read."; }
+      n := ifx has_i then ia.count else pa.count;
+      if n < 3 || n % 3 != 0 { return " has shapes that are not triangles."; }
+      if !pip_mesh((x - ni + n) / 3, lim) { made[0].indices = x - ni + n; return ""; }   // over its triangles: the caller says how many
+      if (v + pa.count) * PI_VERTEX > room.vertices.count || (x + n) * 4 > room.indices.count { return " is larger than the importer has room for."; }
+      // the material's colour, unless each vertex has its own
+      tint := [3] int.[255, 255, 255];
+      factor := ag_get(g[..], ag_get(g[..], ag_top(g[..], "materials", ag_int(g[..], pr, "material", -1)), "pbrMetallicRoughness"), "baseColorFactor");
+      if factor != -1 && jv_len(d[0], factor) >= 3 { for j: 0..<3 { tint[j] = pi_srgb(pi_num(g[..], factor, j)); } }
+      for i: 0..<pa.count {
+        at := (v + i) * PI_VERTEX;
+        for j: 0..<PI_VERTEX { room.vertices[at + j] = 0; }
+        p := pi_mat_point(world, v3(ag_value(g[..], pa, i, 0), ag_value(g[..], pa, i, 1), ag_value(g[..], pa, i, 2)));
+        nn := v3(0, 0, 0);
+        if has_n { nn = unit_or(pi_mat_dir(world, v3(ag_value(g[..], na, i, 0), ag_value(g[..], na, i, 1), ag_value(g[..], na, i, 2))), v3(0, 1, 0)); }
+        if !finite3(p) { return " has a mesh with a point that is not a number."; }
+        pi_f32(room.vertices, at, p.x); pi_f32(room.vertices, at + 4, p.y); pi_f32(room.vertices, at + 8, p.z);
+        pi_f32(room.vertices, at + 12, nn.x); pi_f32(room.vertices, at + 16, nn.y); pi_f32(room.vertices, at + 20, nn.z);
+        pi_f32(room.vertices, at + 24, ifx has_uv then clamp(ag_value(g[..], ua, i, 0), -1000, 1000) else 0.5);
+        pi_f32(room.vertices, at + 28, ifx has_uv then clamp(ag_value(g[..], ua, i, 1), -1000, 1000) else 0.5);
+        col := tint;
+        if has_c { for j: 0..<3 { col[j] = cast(int) floor(clamp01(ag_value(g[..], ca, i, j)) * 255 + 0.5); } }
+        room.vertices[at + 32] = cast,trunc(u8) col[0]; room.vertices[at + 33] = cast,trunc(u8) col[1]; room.vertices[at + 34] = cast,trunc(u8) col[2];
+      }
+      for i: 0..<n {
+        id := ifx has_i then cast(int) ag_value(g[..], ia, i, 0) else i;
+        if id < 0 || id >= pa.count { return " has a triangle that names a point the mesh does not have."; }
+        pack_put32(room.indices, (x + i) * 4, v + id);
+      }
+      if !has_n {
+        // no normals: each point takes the mean of its triangles'
+        for t: 0..<n / 3 {
+          ids: [3] int; pt: [3] Point;
+          for j: 0..<3 { ids[j] = pack_u32(cast(string) room.indices, (x + t * 3 + j) * 4); pt[j] = v3(pi_get(room.vertices, ids[j] * PI_VERTEX), pi_get(room.vertices, ids[j] * PI_VERTEX + 4), pi_get(room.vertices, ids[j] * PI_VERTEX + 8)); }
+          face := cross(sub(pt[1], pt[0]), sub(pt[2], pt[0]));
+          for j: 0..<3 { for a: 0..<3 { o := ids[j] * PI_VERTEX + 12 + a * 4; pi_f32(room.vertices, o, pi_get(room.vertices, o) + (ifx a == 0 then face.x else ifx a == 1 then face.y else face.z)); } }
+        }
+        for i: 0..<pa.count {
+          o := (v + i) * PI_VERTEX + 12;
+          u := unit_or(v3(pi_get(room.vertices, o), pi_get(room.vertices, o + 4), pi_get(room.vertices, o + 8)), v3(0, 1, 0));
+          pi_f32(room.vertices, o, u.x); pi_f32(room.vertices, o + 4, u.y); pi_f32(room.vertices, o + 8, u.z);
+        }
+      }
+      v += pa.count; x += n;
+    }
+  }
+  if g[0].bad { return " has numbers the importer cannot read."; }
+  if x == ni { return " has no mesh in its scene."; }
+  made[0].vertices = v - nv; made[0].indices = x - ni;
+  return "";
+}
+// A mesh in the room stood on the ground with its middle over the origin; its bounds, in
+// millimetres, into m.
+pi_stand :: (room: PiRoom, m: [] PiMesh) {
+  low := [3] f32.[1000000, 1000000, 1000000]; high := [3] f32.[-1000000, -1000000, -1000000];
+  for i: m[0].vfirst..<m[0].vfirst + m[0].vcount { for a: 0..<3 { c := pi_get(room.vertices, i * PI_VERTEX + a * 4); low[a] = lo(low[a], c); high[a] = hi(high[a], c); } }
+  move := [3] f32.[-(low[0] + high[0]) / 2, -low[1], -(low[2] + high[2]) / 2];
+  for i: m[0].vfirst..<m[0].vfirst + m[0].vcount { for a: 0..<3 { o := i * PI_VERTEX + a * 4; pi_f32(room.vertices, o, pi_get(room.vertices, o) + move[a]); } }
+  for a: 0..<3 {
+    m[0].lo[a] = cast(int) floor((low[a] + move[a]) * 1000); m[0].hi[a] = -cast(int) floor(-(high[a] + move[a]) * 1000);
+    if m[0].hi[a] == m[0].lo[a] { m[0].hi[a] += 1; }   // a flat mesh still has a reach
+  }
+}
+// What a sound file is by its first bytes: a WAV, an Ogg or an MP3 file.
+pi_sound :: (data: [] u8) -> bool {
+  if data.count < 12 { return false; }
+  s := cast(string) data;
+  if s[0..<4] == "RIFF" && s[8..<12] == "WAVE" { return true; }
+  if s[0..<4] == "OggS" { return true; }
+  return s[0..<3] == "ID3" || (data[0] == 0xff && (data[1] & 0xe0) == 0xe0);
+}
+
+// ---- the pack, written
+
+// The catalog of a pack of `bytes` bytes into out: its length (past out.count: it does not fit).
+pi_catalog :: (p: [] PiPack, name: string, budget: int, bytes: int, out: [] u8) -> int {
+  n := pi_put(out, 0, "pack "); n = pi_put(out, n, name); n = pi_put(out, n, "\nimports 1\nbudget "); n = pi_put_int(out, n, budget);
+  n = pi_put(out, n, "\nbytes "); n = pi_put_int(out, n, bytes); n = pi_put(out, n, "\n");
+  for k: 0..<PIP_LICENCES {
+    n = pi_put(out, n, "L "); n = pi_put_int(out, n, k); n = pi_put(out, n, " "); n = pi_put(out, n, PIP_LICENCE[k]); n = pi_put(out, n, "|");
+    n = pi_put(out, n, PIP_LICENCE[k]); n = pi_put(out, n, "|"); n = pi_put(out, n, PIP_LICENCE_URL[k]); n = pi_put(out, n, "\n");
+  }
+  for k: 0..<p[0].mesh_n {
+    m := p[0].meshes[k];
+    n = pi_put(out, n, "M "); n = pi_put(out, n, m.name); n = pi_put(out, n, " "); n = pi_put_int(out, n, m.first); n = pi_put(out, n, " "); n = pi_put_int(out, n, m.count);
+    n = pi_put(out, n, " "); n = pi_put_int(out, n, m.source);
+    for a: 0..<3 { n = pi_put(out, n, " "); n = pi_put_mm(out, n, m.lo[a]); }
+    for a: 0..<3 { n = pi_put(out, n, " "); n = pi_put_mm(out, n, m.hi[a]); }
+    n = pi_put(out, n, " "); n = pi_put_int(out, n, m.vfirst); n = pi_put(out, n, " "); n = pi_put_int(out, n, m.vcount); n = pi_put(out, n, "\n");
+  }
+  for k: 0..<p[0].texture_n {
+    n = pi_put(out, n, "T "); n = pi_put_int(out, n, k); n = pi_put(out, n, " "); n = pi_put(out, n, p[0].textures[k].name); n = pi_put(out, n, " "); n = pi_put_int(out, n, p[0].textures[k].source); n = pi_put(out, n, "\n");
+  }
+  for k: 0..<p[0].sound_n {
+    n = pi_put(out, n, "S "); n = pi_put(out, n, p[0].sounds[k].name); n = pi_put(out, n, " "); n = pi_put_int(out, n, p[0].sounds[k].source); n = pi_put(out, n, "\n");
+  }
+  for k: 0..<p[0].origin_n {
+    o := p[0].origins[k];
+    n = pi_put(out, n, "O "); n = pi_put_int(out, n, o.kind); n = pi_put(out, n, " "); n = pi_put(out, n, o.name); n = pi_put(out, n, " "); n = pi_put(out, n, o.hash); n = pi_put(out, n, " "); n = pi_put_int(out, n, o.bytes); n = pi_put(out, n, "\n");
+  }
+  return n;
+}
+// The pack's entries, in the format's order, their catalog stating the pack's own size: how many
+// entries, and the pack's bytes in size[0] (-1: the catalog does not fit the room).
+pi_sources :: (p: [] PiPack, name: string, budget: int, room: PiRoom, s: [] PackSource, size: [] int) -> int {
+  n := 3 + p[0].texture_n + p[0].sound_n;
+  s[1] = PackSource.{kind = PACK_VERTICES, licence = PACK_MANY, name = "vertices", data = p[0].vertices};
+  s[2] = PackSource.{kind = PACK_INDICES, licence = PACK_MANY, name = "indices", data = p[0].indices};
+  for k: 0..<p[0].texture_n { s[3 + k] = PackSource.{kind = PACK_LAYER, licence = p[0].textures[k].source, name = p[0].textures[k].name, data = p[0].textures[k].data}; }
+  for k: 0..<p[0].sound_n { s[3 + p[0].texture_n + k] = PackSource.{kind = PACK_SOUND, licence = p[0].sounds[k].source, name = p[0].sounds[k].name, data = p[0].sounds[k].data}; }
+  // the catalog states the pack's size, which its own length is part of: settle it
+  total := 0;
+  for round: 0..<4 {
+    cn := pi_catalog(p, name, budget, total, room.catalog);
+    if cn > room.catalog.count { size[0] = -1; return n; }
+    s[0] = PackSource.{kind = PACK_CATALOG, licence = PACK_MANY, name = "catalog", data = cast(string) room.catalog[0..<cn]};
+    now := pack_size(s[0..<n]);
+    if now == total { break; }
+    total = now;
+  }
+  size[0] = total;
+  return n;
+}
+
+// ---- an import
+
+// Imports a file into a world's import pack (`old`; "": its first) and writes the new pack into
+// out: its bytes, or -1 with why in words and nothing written that a caller may keep. `pack_name`
+// names the pack in its catalog. The new pack is read back whole before it is answered.
+pi_import :: (old: string, pack_name: string, f: PiFile, lim: PipLimits, room: PiRoom, out: [] u8, did: [] PiDid) -> int {
+  did[0] = PiDid.{budget = lim.budget, file_bytes = f.data.count, before = old.count};
+  kind := pip_kind(f.name);
+  did[0].kind = kind;
+  early := pi_early(f.name, f.data.count, f.licence, lim, did[0].why[..]);
+  if early.verdict != PIP_OK { did[0].verdict = early.verdict; did[0].why_n = early.n; return -1; }
+  name := pip_name(f.name, did[0].name[..]);
+  did[0].name_n = name.count;
+  if name.count == 0 { return pi_no(did, PIP_NAMELESS, f.name, " has no letters or digits to name it by.", -1, "", -1, ""); }
+  p: [1] PiPack; r: [1] PackRead; why: [1] string;
+  if !pi_open(old, p[..], r[..], why[..]) { return pi_no(did, PI_PACK, "The world's pack", " is one the importer cannot add to.", -1, "", -1, ""); }
+  at := pi_find(p[..], kind, name);
+  did[0].replaced = at >= 0;
+  have := ifx kind == PIP_MESH then p[0].mesh_n else ifx kind == PIP_TEXTURE then p[0].texture_n else p[0].sound_n;
+  if !pip_room(kind, have, at >= 0, lim) {
+    return pi_no(did, PIP_FULL, f.name, " does not fit: the pack holds ", have,
+                 ifx kind == PIP_MESH then " meshes, the most it takes. Import a file of the same name to replace one." else ifx kind == PIP_TEXTURE then " textures, the most it takes. Import a file of the same name to replace one." else " sounds, the most it takes. Import a file of the same name to replace one.", -1, "");
+  }
+  if have == PI_ITEMS && at < 0 { return pi_no(did, PIP_FULL, f.name, " does not fit: the pack is full.", -1, "", -1, ""); }
+  if kind == PIP_MESH {
+    // the pack's other meshes into the room, each on its own run of vertices, then the new one
+    nv := 0; ni := 0; kept := 0;
+    for k: 0..<p[0].mesh_n {
+      if k == at { continue; }
+      m := p[0].meshes[k];
+      if (nv + m.vcount) * PI_VERTEX > room.vertices.count || (ni + m.count) * 4 > room.indices.count { return pi_no(did, PI_ROOM, f.name, " is larger than the importer has room for.", -1, "", -1, ""); }
+      for j: 0..<m.vcount * PI_VERTEX { room.vertices[nv * PI_VERTEX + j] = p[0].vertices[m.vfirst * PI_VERTEX + j]; }
+      for j: 0..<m.count { pack_put32(room.indices, (ni + j) * 4, pack_u32(p[0].indices, (m.first + j) * 4) - m.vfirst + nv); }
+      m.first = ni; m.vfirst = nv;
+      p[0].meshes[kept] = m; kept += 1;
+      nv += m.vcount; ni += m.count;
+    }
+    made: [1] PiMade;
+    words := pi_glb(f.data, lim, room, nv, ni, made[..]);
+    if words.count > 0 { return pi_no(did, PI_UNREAD, f.name, words, -1, "", -1, ""); }
+    did[0].triangles = made[0].indices / 3;
+    if made[0].vertices == 0 { return pi_no(did, PIP_SHAPE, f.name, " has ", made[0].indices / 3, " triangles or more. A mesh can have ", lim.triangles, " at most."); }
+    fresh := [1] PiMesh.[PiMesh.{name = name, first = ni, count = made[0].indices, source = f.licence, vfirst = nv, vcount = made[0].vertices}];
+    pi_stand(room, fresh[..]);
+    p[0].meshes[kept] = fresh[0]; p[0].mesh_n = kept + 1;
+    p[0].vertices = cast(string) room.vertices[0..<(nv + made[0].vertices) * PI_VERTEX];
+    p[0].indices = cast(string) room.indices[0..<(ni + made[0].indices) * 4];
+    did[0].lo = fresh[0].lo; did[0].hi = fresh[0].hi;
+    did[0].entry_bytes = made[0].vertices * PI_VERTEX + made[0].indices * 4;
+  } else {
+    if kind == PIP_TEXTURE {
+      info := png_info(f.data);
+      if info.status != PNG_OK { return pi_no(did, PI_UNREAD, f.name, " is not a PNG image the importer reads.", -1, "", -1, ""); }
+      did[0].w = info.w; did[0].h = info.h;
+      if !pip_texture(info.w, info.h, lim) { return pi_no(did, PIP_SHAPE, f.name, " is ", ifx info.w > info.h then info.w else info.h, " texels on its longer side. A texture can be ", lim.side, " at most."); }
+    } else if !pi_sound(f.data) { return pi_no(did, PI_UNREAD, f.name, " is not a WAV, Ogg or MP3 sound the importer reads.", -1, "", -1, ""); }
+    item := PiItem.{name = name, source = f.licence, data = cast(string) f.data};
+    slot := ifx at >= 0 then at else have;
+    if kind == PIP_TEXTURE { p[0].textures[slot] = item; if at < 0 { p[0].texture_n += 1; } } else { p[0].sounds[slot] = item; if at < 0 { p[0].sound_n += 1; } }
+    did[0].entry_bytes = f.data.count;
+  }
+  // where the asset came from: the dropped file's content hash and size
+  if room.hash.count < 64 || !asset_hex(asset_id(cast(string) f.data), room.hash[0..<64]) { return pi_no(did, PI_ROOM, f.name, " could not be named by its content.", -1, "", -1, ""); }
+  from := pi_origin(p[..], kind, name);
+  if from < 0 { from = p[0].origin_n; p[0].origin_n += 1; }
+  p[0].origins[from] = PiOrigin.{kind = kind, name = name, hash = cast(string) room.hash[0..<64], bytes = f.data.count};
+  s: [PACK_MAX] PackSource; size: [1] int;
+  n := pi_sources(p[..], pack_name, lim.budget, room, s[..], size[..]);
+  did[0].after = size[0];
+  if size[0] < 0 { return pi_no(did, PIP_BUDGET, f.name, " does not fit: the pack's list of assets is full.", -1, "", -1, ""); }
+  if !pip_fits(size[0], lim) { return pi_no(did, PIP_BUDGET, f.name, " would make the pack ", pi_kb(size[0]), " KB. Its budget is ", pi_kb(lim.budget), " KB."); }
+  w := pack_write(s[0..<n], lim.budget, out);
+  check: [1] PackRead;
+  if w != size[0] || !pack_read(cast(string) out[0..<w], check[..]) {
+    return pi_no(did, PI_ROOM, f.name, ifx w < 0 then " does not fit the room the pack is written in." else " made a pack that does not read back, so it is not kept.", -1, "", -1, "");
+  }
+  did[0].ok = true; did[0].verdict = PIP_OK;
+  return w;
+}
+
+#load "pack-import-checks.coax" #test;

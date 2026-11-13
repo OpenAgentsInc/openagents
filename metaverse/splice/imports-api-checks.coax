@@ -1,0 +1,58 @@
+// The checks of a pack-mesh row through the API's exported calls (world-api.coax; GitHub #13420).
+// world-api.coax loads this file with `#load ... #test;`; the pack is imports-checks.coax's.
+
+#test "a row of the pieces table that draws a pack mesh is held to the pack: the mesh is there and the footprint is its bounds" #steps 8000000000 #traversal 4000000000 {
+  k: [1] SitPack; pack := sit_pack(k[..]);
+  t := [1] SpwTest.[SpwTest.{}]; n: [7] int; tb: [SPW_TABLES] u8; own: [SPW_TABLES] u8; body: [WE_BATCH_BODY] u8;
+  e := splice_world_empty(t[0].doc[..]); empty := cast(string) t[0].doc[0..<e];
+  // no pack, or a pack without the mesh: refused in words
+  s := splice_world_batch(empty, "", spt_cell(body[..], 0, "pieces", 201, "*", SIT_ROW), true, t[0].next[..], tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
+  #assert s == SPB_REFUSED && cast(string) t[0].why[0..<n[3]] == "the world's pack has no mesh of that name: import it first" && n[0] == 0 && n[6] == 0;
+  s = splice_world_batch_packed(empty, "", pack, spt_cell(body[..], 0, "pieces", 201, "*", "201|Rock|pack/stone|1000|1|50|25|200"), true, t[0].next[..], tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
+  #assert s == SPB_REFUSED && cast(string) t[0].why[0..<n[3]] == "the world's pack has no mesh of that name: import it first";
+  // a footprint wider, narrower or shorter than the mesh
+  for bad: [4] string.["201|Rock|pack/rock|1000|1|60|25|200", "201|Rock|pack/rock|1000|1|50|24|200", "201|Rock|pack/rock|1000|1|50|25|199", "201|Rock|pack/rock|2000|1|50|25|200"] {
+    s = splice_world_batch_packed(empty, "", pack, spt_cell(body[..], 0, "pieces", 201, "*", bad), true, t[0].next[..], tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
+    #assert s == SPB_REFUSED && cast(string) t[0].why[0..<n[3]] == "a pack mesh's footprint is its bounds: hx, hz and top are not this mesh's at that size" && n[6] == 0;
+  }
+  #assert splice_world_batch_packed(empty, "", "VPK1", spt_cell(body[..], 0, "pieces", 201, "*", SIT_ROW), true, t[0].next[..], tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]) == SPB_DOC && cast(string) t[0].why[0..<n[3]] == "the world's import pack does not read";
+  // the mesh's own bounds, at its size and at twice it: the row is in the world's tables
+  s = splice_world_batch_packed(empty, "", pack, spt_cell(body[..], 0, "pieces", 202, "*", "202|Big rock|pack/rock|2000|1|100|50|400"), true, t[0].next[..], tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
+  #assert s == SPB_OK && n[6] > 0;
+  s = splice_world_batch_packed(empty, "", pack, spt_cell(body[..], 0, "pieces", 201, "*", SIT_ROW), true, t[0].next[..], tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
+  #assert s == SPB_OK && n[4] == 1 && n[6] > 0;
+  mine := cast(string) tb[0..<n[6]]; one := n[0];
+  c: [1] SpContent;
+  #assert sc_load(c[..], mine) && sc_piece(c[..], 201) >= 0 && c[0].pieces[sc_piece(c[..], 201)].kit == PK_MESH && sc_piece_mesh(c[..], sc_piece(c[..], 201)) == "rock" && sc_piece_mesh(c[..], sc_piece(c[..], 101)) == "" && sc_piece_mesh(c[..], -1) == "";
+  // and it is placed like any piece: a rock where the fixture's palm stands
+  place := "{\"schema\":\"world.edit.v1\",\"rev\":1,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":201,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100}]}";
+  s = splice_world_batch_packed(cast(string) t[0].next[0..<one], mine, pack, place, true, t[0].third[..], own[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
+  #assert s == SPB_OK && n[4] == 1 && splice_world_things(cast(string) t[0].third[0..<n[0]], mine) == 1;
+  // a world whose tables name a pack mesh still opens where no pack is at hand; only a new row is held to it
+  #assert splice_world_things(cast(string) t[0].third[0..<n[0]], mine) == 1 && splice_world_tables(mine, own[..]) == mine.count;
+}
+
+#test "a mesh may take new bounds only where the pieces of its kind still fit: asked before an import replaces it" #steps 8000000000 #traversal 4000000000 {
+  k: [1] SitPack; pack := sit_pack(k[..]);
+  thin_k: [1] SitPack; thin := sit_pack_of(thin_k[..], 0.3, 1.5, 0.15);   // stands where the first did
+  wide_k: [1] SitPack; wide := sit_pack_of(wide_k[..], 25, 1, 25);        // as wide as the yard
+  t := [1] SpwTest.[SpwTest.{}]; n: [7] int; tb: [SPW_TABLES] u8; own: [SPW_TABLES] u8; body: [WE_BATCH_BODY] u8; why: [240] u8; wn: [1] int;
+  e := splice_world_empty(t[0].doc[..]); empty := cast(string) t[0].doc[0..<e];
+  #assert thin.count > 0 && wide.count > 0;
+  // no row draws the mesh yet: any bounds fit
+  #assert splice_world_mesh_fits(empty, "", wide, "rock", 25000, 25000, 2000, why[..], wn[..]) && wn[0] == 0;
+  #assert splice_world_batch_packed(empty, "", pack, spt_cell(body[..], 0, "pieces", 201, "*", SIT_ROW), true, t[0].next[..], tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]) == SPB_OK;
+  mine := cast(string) tb[0..<n[6]]; one := cast(string) t[0].next[0..<n[0]];
+  // the kind exists and nothing is placed: any bounds fit
+  #assert splice_world_mesh_fits(one, mine, wide, "rock", 25000, 25000, 2000, why[..], wn[..]);
+  place := "{\"schema\":\"world.edit.v1\",\"rev\":1,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":201,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100}]}";
+  #assert splice_world_batch_packed(one, mine, pack, place, true, t[0].third[..], own[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]) == SPB_OK;
+  two := cast(string) t[0].third[0..<n[0]];
+  // a rock stands by the scanner gate: a shape no wider fits, a shape as wide as the yard does not, and it is said why
+  #assert splice_world_mesh_fits(two, mine, thin, "rock", 300, 150, 3000, why[..], wn[..]) && wn[0] == 0;
+  #assert !splice_world_mesh_fits(two, mine, wide, "rock", 25000, 25000, 2000, why[..], wn[..]) && wn[0] > 0;
+  #assert splice_world_mesh_fits(two, mine, wide, "post", 25000, 25000, 2000, why[..], wn[..]);   // another mesh: no row draws it
+  // only the row an edit writes is held to the pack: a kit piece's cell is edited while a mesh's row is as it was
+  #assert splice_world_batch_packed(two, mine, "", spt_cell(body[..], 2, "pieces", 117, "name", "Tiny crate"), true, t[0].next[..], own[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]) == SPB_OK;
+  #assert splice_world_batch_packed(two, mine, "", spt_cell(body[..], 2, "pieces", 201, "name", "Stone"), true, t[0].next[..], own[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]) == SPB_REFUSED;
+}

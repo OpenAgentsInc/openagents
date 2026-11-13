@@ -19,6 +19,9 @@ static uint32_t live[LIVE_WORDS];
 #define PLACE_WORDS (64u * 8u)        /* layer-draw.coax SD_PLACE_WORDS: a row a placed piece */
 static uint32_t pieces[PIECE_WORDS];
 static uint32_t places[PLACE_WORDS];
+#define IMPORT_BYTES 1048576u         /* pieces.coax SP_IMPORT_PACK: the world's import pack, as it arrives and as it was last read whole */
+static uint8_t imports_in[IMPORT_BYTES];
+static uint8_t imports[IMPORT_BYTES];
 static float style[128];            /* STYLE_FLOATS */
 static uint32_t frames;
 static bool golden;
@@ -60,10 +63,21 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   animelab_style_block(splice_variant(at(state)), animelab_phone(width, dpr), splice_clock(at(state)), (coax_v_f32){style, 128});
   int64_t n = splice_frame(at(state), out, u, width, height, dpr, dt, (still != 0) || golden,
                            (coax_v_u32){world, WORLD_WORDS}, (coax_v_u32){live, LIVE_WORDS},
-                           (coax_v_u32){pieces, PIECE_WORDS}, (coax_v_u32){places, PLACE_WORDS}, (coax_v_f32){style, 128});
+                           (coax_v_u32){pieces, PIECE_WORDS}, (coax_v_u32){places, PLACE_WORDS}, (coax_v_f32){style, 128}, (coax_v_u8){imports, IMPORT_BYTES});
   frames += 1;
   world_request(state);
   return n < 0 ? 0u : (uint32_t)n;
+}
+
+// The world's import pack (GitHub #13420): the page's one asset, a data asset the host fetches and,
+// on the dev server, fetches again by content hash when an import changes it. The host copies the
+// bytes to where coaxial_asset says; splice.coax reads them whole or keeps the copy from before.
+// A world with no imports has none: the asset is optional, and the page opens without it.
+EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32_t bytes) { (void)state; return i == 0 && bytes <= sizeof imports_in ? (uint32_t)(uintptr_t)imports_in : 0u; }
+EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(uint32_t state, int32_t i) { (void)state; return i == 0 ? (uint32_t)sizeof imports_in : 0u; }
+EXPORT("coaxial_asset_optional_v1") uint32_t coaxial_asset_optional_v1(int32_t i) { (void)i; return 1; }
+EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i, uint32_t bytes) {
+  if (i == 0 && bytes > 0 && bytes <= sizeof imports_in) splice_imports(at(state), (coax_string){(const char *)imports_in, (int64_t)bytes}, (coax_v_u8){imports, IMPORT_BYTES});
 }
 
 // The scene: draws of vertices in order (no index). Store 0 is the Mars world, written once; store 1

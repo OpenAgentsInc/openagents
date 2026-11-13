@@ -1,0 +1,138 @@
+{
+ "profile": "world-assets-v1",
+ "version": 1,
+ "title": "A world's imported assets, and an import's body v1 (world.assets.v1, world.asset.import.v1)",
+ "check": "coax/web/tool.sh metaverse-engine/tools/assets-profile.coax proto/world/assets-v1.json",
+ "spec": "docs/protocol/world-assets-v1.md",
+ "schema": "world.assets.v1",
+ "url": "/api/worlds/ID/assets",
+ "about": "What the editor's asset browser lists and what an import answers (GitHub #13420): the world, its import pack's SHA-256 and size, the limits shown before a file is sent, the licences an import may declare, and each asset of the pack with the file it came from. And world.asset.import.v1: an import's body, a line that names the licence and the file, then the file's bytes. The route that packs an import writes the list and reads the body; the editor's shell reads the list and writes the body's line.",
+ "limits": {
+  "bytes": 8192,
+  "assets": 48,
+  "licences": 8,
+  "licence_bytes": 40,
+  "world_bytes": 32,
+  "name_bytes": 24,
+  "file_name_bytes": 120
+ },
+ "lines": [
+  "world.assets.v1 WORLD HASH|- BYTES BUDGET FILE TRIANGLES SIDE",
+  "l K NAME",
+  "a KIND NAME K FILE BYTES HASH HX HZ TOP",
+  "did KIND NAME new|replaced"
+ ],
+ "kinds": [
+  "mesh",
+  "texture",
+  "sound"
+ ],
+ "list": {
+  "wire": "world.assets.v1 splice 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 6956 1048576 524288 4000 1024\nl 0 CC0 1.0 Universal\nl 1 CC BY 4.0\nl 2 CC BY-SA 4.0\na mesh rock 0 2032 1872 afb4c6323fca47c81e9e8d226a6a8bfdfc667cc5c1f82063709e0d04ea29df5e 500 250 2000\na texture skin 1 166 166 afb4c6323fca47c81e9e8d226a6a8bfdfc667cc5c1f82063709e0d04ea29df5e 0 0 0\na sound door 2 4044 4044 afb4c6323fca47c81e9e8d226a6a8bfdfc667cc5c1f82063709e0d04ea29df5e 0 0 0\ndid mesh rock replaced\n",
+  "world": "splice",
+  "hash": "29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa",
+  "bytes": 6956,
+  "budget": 1048576,
+  "file": 524288,
+  "triangles": 4000,
+  "side": 1024,
+  "licences": [
+   "CC0 1.0 Universal",
+   "CC BY 4.0",
+   "CC BY-SA 4.0"
+  ],
+  "assets": [
+   {
+    "kind": "mesh",
+    "name": "rock",
+    "licence": 0,
+    "file": 2032,
+    "bytes": 1872,
+    "hash": "afb4c6323fca47c81e9e8d226a6a8bfdfc667cc5c1f82063709e0d04ea29df5e",
+    "reach": [
+     500,
+     250,
+     2000
+    ]
+   },
+   {
+    "kind": "texture",
+    "name": "skin",
+    "licence": 1,
+    "file": 166,
+    "bytes": 166,
+    "hash": "afb4c6323fca47c81e9e8d226a6a8bfdfc667cc5c1f82063709e0d04ea29df5e",
+    "reach": [
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "kind": "sound",
+    "name": "door",
+    "licence": 2,
+    "file": 4044,
+    "bytes": 4044,
+    "hash": "afb4c6323fca47c81e9e8d226a6a8bfdfc667cc5c1f82063709e0d04ea29df5e",
+    "reach": [
+     0,
+     0,
+     0
+    ]
+   }
+  ],
+  "did": {
+   "kind": "mesh",
+   "name": "rock",
+   "replaced": true
+  }
+ },
+ "empty": {
+  "wire": "world.assets.v1 splice - 0 1048576 524288 4000 1024\nl 0 CC0 1.0 Universal\nl 1 CC BY 4.0\nl 2 CC BY-SA 4.0\n"
+ },
+ "rejected": [
+  "",
+  "world.assets.v2 splice - 0 1048576 524288 4000 1024\n",
+  "world.assets.v1 Splice - 0 1048576 524288 4000 1024\n",
+  "world.assets.v1 splice - 0 1048576 524288 4000 1024",
+  "world.assets.v1 splice - 12 1048576 524288 4000 1024\n",
+  "world.assets.v1 splice 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 0 1048576 524288 4000 1024\n",
+  "world.assets.v1 splice 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 2000000 1048576 524288 4000 1024\n",
+  "world.assets.v1 splice 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 6956 1048576 524288 4000 1024\nl 1 CC0 1.0 Universal\n",
+  "world.assets.v1 splice 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 6956 1048576 524288 4000 1024\nl 0 CC0 1.0 Universal\nl 1 CC BY 4.0\nl 2 CC BY-SA 4.0\na mesh rock 3 2032 1872 afb4c6323fca47c81e9e8d226a6a8bfdfc667cc5c1f82063709e0d04ea29df5e 500 250 2000\n",
+  "world.assets.v1 splice 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 6956 1048576 524288 4000 1024\nl 0 CC0 1.0 Universal\nl 1 CC BY 4.0\nl 2 CC BY-SA 4.0\na mesh rock 0 2032 1872 afb4c6323fca47c81e9e8d226a6a8bfdfc667cc5c1f82063709e0d04ea29df5e 0 0 0\n",
+  "world.assets.v1 splice 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 6956 1048576 524288 4000 1024\nl 0 CC0 1.0 Universal\nl 1 CC BY 4.0\nl 2 CC BY-SA 4.0\na sound door 0 4044 4044 afb4c6323fca47c81e9e8d226a6a8bfdfc667cc5c1f82063709e0d04ea29df5e 1 0 0\n",
+  "world.assets.v1 splice 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 6956 1048576 524288 4000 1024\nl 0 CC0 1.0 Universal\nl 1 CC BY 4.0\nl 2 CC BY-SA 4.0\na mesh rock 0 2032 1872 afb4c6323fca47c81e9e8d226a6a8bfdfc667cc5c1f82063709e0d04ea29df5e 500 250 2000\na mesh rock 0 2032 1872 afb4c6323fca47c81e9e8d226a6a8bfdfc667cc5c1f82063709e0d04ea29df5e 500 250 2000\n",
+  "world.assets.v1 splice 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 6956 1048576 524288 4000 1024\nl 0 CC0 1.0 Universal\nl 1 CC BY 4.0\nl 2 CC BY-SA 4.0\ndid mesh rock new\n",
+  "world.assets.v1 splice - 0 1048576 524288 4000 1024\nl 0 CC0 1.0 Universal\nl 1 CC BY 4.0\nl 2 CC BY-SA 4.0\na mesh rock 0 2032 1872 afb4c6323fca47c81e9e8d226a6a8bfdfc667cc5c1f82063709e0d04ea29df5e 500 250 2000\n",
+  "world.assets.v1 splice 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 6956 1048576 524288 4000 1024\nl 0 CC0 1.0 Universal\nl 1 CC BY 4.0\nl 2 CC BY-SA 4.0\nx\n"
+ ],
+ "import": {
+  "schema": "world.asset.import.v1",
+  "lines": [
+   "world.asset.import.v1 LICENCE|- NAME, a line end, then the file's bytes"
+  ],
+  "heads": [
+   {
+    "wire": "world.asset.import.v1 1 My Rock (1).glb\n",
+    "licence": 1,
+    "name": "My Rock (1).glb"
+   },
+   {
+    "wire": "world.asset.import.v1 - a.png\n",
+    "licence": -1,
+    "name": "a.png"
+   }
+  ],
+  "rejected": [
+   "",
+   "world.asset.import.v1 0 a.png",
+   "world.asset.import.v2 0 a.png\n",
+   "world.asset.import.v1 x a.png\n",
+   "world.asset.import.v1 0\n",
+   "world.asset.import.v1 0  a.png\n",
+   "world.asset.import.v1 01 a.png\n"
+  ]
+ }
+}

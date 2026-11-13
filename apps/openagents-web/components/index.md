@@ -11,6 +11,7 @@ Every component, working:
 - **Conversation**: your message in a dim frame, a tool call as a row that opens onto what was sent and what came back, and the agent's answer as plain Markdown with no frame.
 - **Code block**: its language and Copy in a strip, then the code.
 - **Code field**: code to edit, in the code face, with no wrapping. Enter makes a line and Tab indents.
+- **Drop and file**: a place to drop a file or pick one, which says what it takes and how large before anything is sent, and a file in a list by its name and what it is.
 - **Notice**: an error, or a request for approval with Allow and Deny.
 - **Row**: a conversation in a list. The current one is bright over an underline.
 - **Menu**: rows in a panel.

@@ -216,11 +216,54 @@ function streamOpen(urlAt, urlLen, bodyAt, bodyLen) {
   })();
 }
 
+// Files (the kit's drop target, k_drop: a node with data-drop). A file dropped on one, or picked from the picker a
+// press on it opens, waits here, and the module is told its size and name (event 10 on the target's slot:
+// "BYTES NAME"). The module then asks for it to be sent (dom_file_send: a POST of the module's own first bytes, then
+// the file's as they are), or asks nothing and the next file takes its place. dom_file_send with no first bytes is a
+// GET. A target whose data-drop is empty takes a dropped file and opens no picker (a button that does something else when
+// pressed). The answer comes back whole as event 11, its status in `slot` (0: no answer), cut to the inbox's size. While
+// the page has a drop target, a file dropped anywhere on the window goes to it when it is the only one, so a miss
+// never opens the file in place of the page.
+let offered = null, picker = null, over = null;
+function dropOn(e) {
+  if (!e.dataTransfer || ![...e.dataTransfer.types].includes("Files")) return undefined;
+  const all = root.querySelectorAll("[data-drop]");
+  if (!all.length) return undefined;
+  const el = e.target?.closest?.("[data-drop]");
+  return el && root.contains(el) ? el : all.length === 1 ? all[0] : null;
+}
+function overNow(el) { if (over === el) return; over?.removeAttribute("data-over"); over = el; el?.setAttribute("data-over", ""); }
+function offer(el, file) { if (!file || !el?.isConnected) return; offered = file; send(10, Number(el.dataset.slot), `${file.size} ${file.name}`); }
+function pick(el) {
+  picker ||= Object.assign(document.createElement("input"), { type: "file", hidden: true });
+  picker.accept = el.dataset.drop; picker.value = "";
+  picker.onchange = () => offer(el, picker.files?.[0]);
+  picker.click();
+}
+function fileSend(urlAt, urlLen, headAt, headLen) {
+  const url = text.decode(new Uint8Array(memory.buffer, urlAt, urlLen));
+  if (!url.startsWith("/") || url.startsWith("//")) return;
+  const head = new Uint8Array(memory.buffer, headAt, headLen).slice(), file = headLen ? offered : null;
+  if (headLen) offered = null;
+  (async () => {
+    let status = 0, n = 0;
+    try {
+      const r = await fetch(url, headLen ? { method: "POST", body: new Blob(file ? [head, file] : [head]), credentials: "same-origin", headers: { "Content-Type": "application/octet-stream" } }
+        : { credentials: "same-origin", cache: "no-store" });
+      const body = new Uint8Array(await r.arrayBuffer());
+      status = r.status; n = Math.min(body.length, x.dom_inbox_cap());
+      new Uint8Array(memory.buffer, x.dom_inbox(state), n).set(body.subarray(0, n));
+    } catch { status = 0; n = 0; }
+    x.dom_event(state, 11, status, n);
+    ask(); own.after?.();
+  })();
+}
+
 async function start() {
   const response = await fetch(`/build/${app}.wasm`, { cache: location.hostname === "127.0.0.1" || location.hostname === "localhost" ? "no-store" : "default" });
   const module = await WebAssembly.compile(await response.arrayBuffer());
   memory = new WebAssembly.Memory({ initial: 256, maximum: 1024 });
-  const imports = { env: { memory, dom_stream: streamOpen, dom_stream_stop: streamStop } };
+  const imports = { env: { memory, dom_stream: streamOpen, dom_stream_stop: streamStop, dom_file_send: fileSend } };
   for (const imp of WebAssembly.Module.imports(module)) {
     if (imp.kind !== "function") continue;
     (imports[imp.module] ||= {})[imp.name] ||= imp.name === "fd_write"
@@ -240,9 +283,14 @@ async function start() {
   x.coaxial_state_init(state);
   root.replaceChildren();
   root.addEventListener("click", (e) => {
+    const drop = e.target.closest?.('button[data-drop]:not([data-drop=""])');
+    if (drop && root.contains(drop)) { pick(drop); return; }   // a drop target that names what it takes: a press opens the picker
     const slot = slotOf(e.target, "button[data-slot]");
     if (slot >= 0) send(1, slot);
   });
+  addEventListener("dragover", (e) => { const el = dropOn(e); if (el === undefined) return; e.preventDefault(); overNow(el); });
+  addEventListener("dragleave", (e) => { if (!e.relatedTarget) overNow(null); });
+  addEventListener("drop", (e) => { const el = dropOn(e); if (el === undefined) return; e.preventDefault(); overNow(null); offer(el, e.dataTransfer.files?.[0]); });
   root.addEventListener("input", (e) => { const slot = slotOf(e.target, "textarea[data-slot],input[data-slot]"); if (slot >= 0) { fit(e.target); send(2, slot, e.target.value); } });
   root.addEventListener("keydown", (e) => {
     // a code field (k_code_field): Enter makes a line, as the browser has it, and Tab indents two spaces

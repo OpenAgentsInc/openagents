@@ -1,0 +1,178 @@
+// Checks for the editor's asset import (pack-import.coax, GitHub #13420): a glTF binary, a PNG and
+// a WAV made here go in; a pack comes out that pack_read reads and pack_admit admits. A file with
+// no licence, an oversize file, a pack over its budget and the rest are refused in words that
+// name the file, and a refusal writes nothing.
+//   coax/bin/coax test metaverse-engine/editor/pack-import.coax
+#load "../export/glb-write.coax";
+#load "../audio/wav.coax";
+
+PIT :: PipLimits.{file = 4000, budget = 9000, triangles = 24, side = 6, meshes = 2, textures = 2, sounds = 1};
+PitRoom :: struct { v: [8192] u8; i: [2048] u8; c: [4096] u8; n: [600] JvNode; h: [64] u8; }
+pit_room :: (w: [] PitRoom) -> PiRoom { return PiRoom.{vertices = w[0].v[..], indices = w[0].i[..], catalog = w[0].c[..], nodes = w[0].n[..], hash = w[0].h[..]}; }
+// A box as a glTF binary: its middle at (x, y, 0), half sizes hx, hy, hz. 36 vertices, 12 triangles, no index.
+pit_box :: (x: f32, y: f32, hx: f32, hy: f32, hz: f32, out: [] u8) -> [] u8 {
+  cel: [36 * VERTEX_WORDS] u32; pen := [1] Pen.[Pen.{}];
+  pen_set(pen[..], 1, MAT_WORLD, 1, 0.5, 0);
+  box(cel[..], pen[..], frame_at(v3(x, y, 0), 0), hx, hy, hz);
+  parts := [1] GlbPart.[GlbPart.{name = "box", first = 0, count = pen[0].n}];
+  n := glb_from_cel(cel[..], parts[..], out);
+  return out[0..<ifx n < 0 then 0 else n];
+}
+pit_wav :: (out: [] u8) -> [] u8 {
+  pcm := [8] int.[0, 1000, 2000, 1000, 0, -1000, -2000, -1000];
+  n := wav_write(pcm[..], 1, 8000, out);
+  return out[0..<ifx n < 0 then 0 else n];
+}
+pit_has :: (text: string, part: string) -> bool {
+  if part.count > text.count { return false; }
+  for k: 0..<text.count - part.count + 1 { if text[k..<k + part.count] == part { return true; } }
+  return false;
+}
+
+#test "import: a glTF binary, a PNG and a WAV go in, and the pack that comes out is read whole and admitted" #steps 2000000000 #traversal 1000000000 {
+  png_flat := PNG_FLAT; png_one := PNG_ONE; png_rgb := PNG_RGB; png_crc := PNG_BAD_BAD_CRC;
+  w: [1] PitRoom; g: [4000] u8; a: [9000] u8; b: [9000] u8; c: [9000] u8; d: [1] PiDid;
+  glb := pit_box(2, 1, 0.5, 1, 0.25, g[..]);
+  #assert glb.count > 1000 && glb.count < 4000;
+  n1 := pi_import("", "splice", PiFile.{name = "Rock.glb", data = glb, licence = 0}, PIT, pit_room(w[..]), a[..], d[..]);
+  #assert n1 > 0 && d[0].ok && d[0].verdict == PIP_OK && pi_why(d[..]) == "" && d[0].kind == PIP_MESH && cast(string) d[0].name[0..<d[0].name_n] == "Rock" && !d[0].replaced;
+  #assert d[0].before == 0 && d[0].after == n1 && d[0].budget == 9000 && d[0].file_bytes == glb.count && d[0].triangles == 12 && d[0].entry_bytes == 36 * 48 + 36 * 4;
+  // it stands on the ground, its middle over the origin: a box 1 m wide, 2 m tall and 0.5 m deep
+  #assert d[0].lo[0] == -500 && d[0].hi[0] == 500 && d[0].lo[1] == 0 && d[0].hi[1] == 2000 && d[0].lo[2] == -250 && d[0].hi[2] == 250;
+  one := cast(string) a[0..<n1];
+  r: [1] PackRead; p: [1] PiPack; why: [1] string;
+  #assert pack_read(one, r[..]) && r[0].count == 3 && r[0].budget == 9000 && r[0].bytes == n1 && r[0].sources == PIP_LICENCES;
+  #assert pi_open(one, p[..], r[..], why[..]) && p[0].mesh_n == 1 && p[0].texture_n == 0 && p[0].sound_n == 0 && p[0].origin_n == 1;
+  m := p[0].meshes[0];
+  #assert m.name == "Rock" && m.first == 0 && m.count == 36 && m.source == 0 && m.vfirst == 0 && m.vcount == 36 && m.hi[1] == 2000 && pi_reach(m, 0) == 500 && pi_reach(m, 1) == 2000 && pi_reach(m, 2) == 250;
+  #assert pi_cm(pi_reach(m, 0)) == 50 && pi_cm(501) == 51 && pi_cm(500) == 50 && pi_cm(0) == 0;
+  #assert p[0].origins[0].kind == PIP_MESH && p[0].origins[0].name == "Rock" && p[0].origins[0].bytes == glb.count && p[0].origins[0].hash.count == 64;
+  hex: [64] u8; #assert asset_hex(asset_id(cast(string) glb), hex[..]) && p[0].origins[0].hash == cast(string) hex[..];
+  // the vertices are the pack's 48 bytes: a point, a unit normal, a uv and the pen's colour
+  v := cast([] u8) w[0].v[0..<48];
+  #assert abs(pi_get(v, 0)) == 0.5 && abs(pi_get(v, 8)) == 0.25 && abs(length(v3(pi_get(v, 12), pi_get(v, 16), pi_get(v, 20))) - 1) < 0.02 && pi_get(v, 24) == 0.5;
+  #assert p[0].vertices[32] == 255 && p[0].vertices[33] == 128 && p[0].vertices[34] == 0 && p[0].vertices[35] == 0;
+  // a PNG and a WAV join it; each import reads the pack before it
+  n2 := pi_import(one, "splice", PiFile.{name = "skin.png", data = png_flat[..], licence = 1}, PIT, pit_room(w[..]), b[..], d[..]);
+  #assert n2 > n1 && d[0].ok && d[0].kind == PIP_TEXTURE && d[0].w == 4 && d[0].h == 3 && d[0].before == n1 && d[0].after == n2 && d[0].entry_bytes == PNG_FLAT.count;
+  two := cast(string) b[0..<n2];
+  wb: [64] u8; wav := pit_wav(wb[..]);
+  n3 := pi_import(two, "splice", PiFile.{name = "door.wav", data = wav, licence = 2}, PIT, pit_room(w[..]), c[..], d[..]);
+  #assert n3 > n2 && d[0].ok && d[0].kind == PIP_SOUND && d[0].entry_bytes == 60;
+  three := cast(string) c[0..<n3];
+  #assert pack_read(three, r[..]) && r[0].count == 5 && r[0].entries[3].kind == PACK_LAYER && r[0].entries[3].licence == 1 && r[0].entries[3].name == "skin" && r[0].entries[4].kind == PACK_SOUND && r[0].entries[4].licence == 2 && r[0].entries[4].name == "door";
+  #assert pack_bytes(three, r[..], 3) == cast(string) png_flat[..] && pack_bytes(three, r[..], 4) == cast(string) wav;
+  cat := pack_bytes(three, r[..], 0);
+  #assert pit_has(cat, "pack splice\nimports 1\nbudget 9000\nbytes ") && pit_has(cat, "\nL 0 CC0 1.0 Universal|CC0 1.0 Universal|https://creativecommons.org/publicdomain/zero/1.0/\n") && pit_has(cat, "\nL 2 CC BY-SA 4.0|");
+  #assert pit_has(cat, "\nM Rock 0 36 0 -0.500 0.000 -0.250 0.500 2.000 0.250 0 36\nT 0 skin 1\nS door 2\nO 1 Rock ") && pit_has(cat, "\nO 2 skin ") && pit_has(cat, "\nO 3 door ");
+  #assert pi_open(three, p[..], r[..], why[..]) && p[0].mesh_n == 1 && p[0].texture_n == 1 && p[0].sound_n == 1 && p[0].origin_n == 3 && pi_find(p[..], PIP_TEXTURE, "skin") == 0 && pi_find(p[..], PIP_SOUND, "door") == 0 && pi_find(p[..], PIP_MESH, "skin") == -1;
+  #assert pi_bytes(p[..], PIP_MESH, 0) == 36 * 52 && pi_bytes(p[..], PIP_TEXTURE, 0) == PNG_FLAT.count && pi_bytes(p[..], PIP_SOUND, 0) == 60 && pi_origin(p[..], PIP_SOUND, "door") == 2 && pi_origin(p[..], PIP_SOUND, "skin") == -1;
+  // a realm's assets take it by content, whole
+  reg: [1] AssetRegistry; reg[0] = asset_registry(20000);
+  #assert pack_admit(reg[..], three, r[..]) == ASSET_OK && reg[0].held == 5 && asset_uses(reg[0], asset_id(cast(string) wav)) == 1;
+}
+
+#test "import: a file of a name the pack has replaces that asset and nothing else; a second mesh keeps its own vertices" #steps 2000000000 #traversal 1000000000 {
+  png_flat := PNG_FLAT; png_one := PNG_ONE; png_rgb := PNG_RGB; png_crc := PNG_BAD_BAD_CRC;
+  w: [1] PitRoom; g: [4000] u8; a: [9000] u8; b: [9000] u8; c: [9000] u8; e: [9000] u8; d: [1] PiDid; r: [1] PackRead; p: [1] PiPack; why: [1] string;
+  n1 := pi_import("", "splice", PiFile.{name = "rock.glb", data = pit_box(0, 1, 0.5, 1, 0.25, g[..]), licence = 0}, PIT, pit_room(w[..]), a[..], d[..]);
+  n2 := pi_import(cast(string) a[0..<n1], "splice", PiFile.{name = "skin.png", data = png_flat[..], licence = 1}, PIT, pit_room(w[..]), b[..], d[..]);
+  n3 := pi_import(cast(string) b[0..<n2], "splice", PiFile.{name = "post.glb", data = pit_box(0, 2, 0.1, 2, 0.1, g[..]), licence = 2}, PIT, pit_room(w[..]), c[..], d[..]);
+  #assert n1 > 0 && n2 > 0 && n3 > 0 && !d[0].replaced;
+  three := cast(string) c[0..<n3];
+  #assert pi_open(three, p[..], r[..], why[..]) && p[0].mesh_n == 2 && p[0].meshes[1].name == "post" && p[0].meshes[1].first == 36 && p[0].meshes[1].vfirst == 36 && p[0].meshes[1].hi[1] == 4000 && p[0].meshes[1].source == 2;
+  // the first mesh again, another shape: it takes the last place, the post moves down, the texture is as it was
+  n4 := pi_import(three, "splice", PiFile.{name = "rock.glb", data = pit_box(0, 1, 1, 0.5, 1, g[..]), licence = 1}, PIT, pit_room(w[..]), e[..], d[..]);
+  #assert n4 == n3 && d[0].ok && d[0].replaced && d[0].before == n3 && d[0].hi[0] == 1000 && d[0].hi[1] == 1000;
+  four := cast(string) e[0..<n4];
+  #assert four != three && pi_open(four, p[..], r[..], why[..]) && p[0].mesh_n == 2 && p[0].texture_n == 1 && p[0].origin_n == 3;
+  #assert p[0].meshes[0].name == "post" && p[0].meshes[0].first == 0 && p[0].meshes[0].vfirst == 0 && p[0].meshes[0].hi[1] == 4000 && p[0].meshes[1].name == "rock" && p[0].meshes[1].vfirst == 36 && p[0].meshes[1].source == 1 && p[0].meshes[1].hi[1] == 1000;
+  #assert p[0].textures[0].data == cast(string) png_flat[..] && pack_u32(p[0].indices, 0) == 0 && pack_u32(p[0].indices, 36 * 4) == 36;
+  // a texture replaced keeps its layer; the same file again makes the same pack, byte for byte
+  n5 := pi_import(four, "splice", PiFile.{name = "skin.png", data = png_one[..], licence = 0}, PIT, pit_room(w[..]), a[..], d[..]);
+  #assert n5 > 0 && d[0].replaced && d[0].w == 1 && pi_open(cast(string) a[0..<n5], p[..], r[..], why[..]) && p[0].texture_n == 1 && p[0].textures[0].source == 0 && p[0].textures[0].data.count == PNG_ONE.count;
+  n6 := pi_import(four, "splice", PiFile.{name = "skin.png", data = png_one[..], licence = 0}, PIT, pit_room(w[..]), b[..], d[..]);
+  #assert n6 == n5 && cast(string) b[0..<n6] == cast(string) a[0..<n5];
+}
+
+pit_refused :: (old: string, file: string, data: [] u8, licence: int, lim: PipLimits, verdict: int, words: string) -> bool {
+  w: [1] PitRoom; out: [9000] u8; d: [1] PiDid;
+  for k: 0..<16 { out[k] = 0xee; }
+  n := pi_import(old, "splice", PiFile.{name = file, data = data, licence = licence}, lim, pit_room(w[..]), out[..], d[..]);
+  return n == -1 && !d[0].ok && d[0].verdict == verdict && pi_why(d[..]) == words;
+}
+#test "import: no licence, an oversize file, a pack over its budget and what is not a mesh, a texture or a sound are refused in words that name the file" #steps 2000000000 #traversal 1000000000 {
+  png_flat := PNG_FLAT; png_one := PNG_ONE; png_rgb := PNG_RGB; png_crc := PNG_BAD_BAD_CRC;
+  w: [1] PitRoom; g: [4000] u8; a: [9000] u8; b: [9000] u8; d: [1] PiDid;
+  glb := pit_box(0, 1, 0.5, 1, 0.25, g[..]);
+  #assert pit_refused("", "rock.glb", glb, -1, PIT, PIP_LICENCE_NONE, "rock.glb has no licence. Choose one, then import it.");
+  #assert pit_refused("", "rock.glb", glb, 3, PIT, PIP_LICENCE_NONE, "rock.glb has no licence. Choose one, then import it.");
+  // sizes are said in kilobytes, rounded up: the file's and the limit's, the pack's and its budget's
+  small := PIT; small.file = 1024; eb: [120] u8;
+  en := pi_put(eb[..], 0, "rock.glb is "); en = pi_put_int(eb[..], en, pi_kb(glb.count)); en = pi_put(eb[..], en, " KB. A file can be 1 KB at most.");
+  #assert glb.count > 1024 && pit_refused("", "rock.glb", glb, 0, small, PIP_FILE, cast(string) eb[0..<en]);
+  exact := PIT; exact.file = glb.count;
+  #assert pi_import("", "splice", PiFile.{name = "rock.glb", data = glb, licence = 0}, exact, pit_room(w[..]), a[..], d[..]) > 0;
+  whole := d[0].after;
+  tight := PIT; tight.budget = 1024;
+  en = pi_put(eb[..], 0, "rock.glb would make the pack "); en = pi_put_int(eb[..], en, pi_kb(whole)); en = pi_put(eb[..], en, " KB. Its budget is 1 KB.");
+  #assert whole > 2048 && pit_refused("", "rock.glb", glb, 0, tight, PIP_BUDGET, cast(string) eb[0..<en]);
+  // the budget is the pack's own bytes: one byte under is refused, the pack's size is taken
+  tight.budget = whole - 1; #assert pi_import("", "splice", PiFile.{name = "rock.glb", data = glb, licence = 0}, tight, pit_room(w[..]), a[..], d[..]) == -1 && d[0].verdict == PIP_BUDGET && d[0].after == whole;
+  tight.budget = whole; #assert pi_import("", "splice", PiFile.{name = "rock.glb", data = glb, licence = 0}, tight, pit_room(w[..]), a[..], d[..]) == whole;
+  #assert pit_refused("", "rock.fbx", glb, 0, PIT, PIP_KIND, "rock.fbx is not a file the editor takes. Drop a .glb, .png, .wav, .ogg or .mp3 file.");
+  #assert pit_refused("", "rock.glb", glb[0..<0], 0, PIT, PIP_EMPTY, "rock.glb is empty.");
+  #assert pit_refused("", ".glb", glb, 0, PIT, PIP_KIND, "The file is not a file the editor takes. Drop a .glb, .png, .wav, .ogg or .mp3 file.") == false;
+  #assert pit_refused("", "a/.png", png_one[..], 0, PIT, PIP_NAMELESS, "a/.png has no letters or digits to name it by.");
+  #assert pit_refused("", "?.png", png_one[..], 0, PIT, PIP_OK, "") == false;
+  // a file that is not what its name says
+  #assert pit_refused("", "rock.glb", png_one[..], 0, PIT, PI_UNREAD, "rock.glb is not a glTF binary file.");
+  #assert pit_refused("", "skin.png", glb, 0, PIT, PI_UNREAD, "skin.png is not a PNG image the importer reads.");
+  #assert pit_refused("", "skin.png", png_crc[..], 0, PIT, PI_UNREAD, "skin.png is not a PNG image the importer reads.");
+  #assert pit_refused("", "door.wav", png_flat[..], 0, PIT, PI_UNREAD, "door.wav is not a WAV, Ogg or MP3 sound the importer reads.");
+  // a mesh over its triangles, a texture over its side
+  thin := PIT; thin.triangles = 11;
+  #assert pit_refused("", "rock.glb", glb, 0, thin, PIP_SHAPE, "rock.glb has 12 triangles or more. A mesh can have 11 at most.");
+  narrow := PIT; narrow.side = 5;
+  #assert pit_refused("", "wide.png", png_rgb[..], 0, narrow, PIP_SHAPE, "wide.png is 6 texels on its longer side. A texture can be 5 at most.") && !pit_refused("", "wide.png", png_rgb[..], 0, PIT, PIP_SHAPE, "");
+  // a pack that holds as many as it takes: a new name is refused, the same name replaces
+  n1 := pi_import("", "splice", PiFile.{name = "door.wav", data = pit_wav(g[0..<64]), licence = 0}, PIT, pit_room(w[..]), a[..], d[..]);
+  #assert n1 > 0;
+  wb: [64] u8; wav := pit_wav(wb[..]);
+  #assert pit_refused(cast(string) a[0..<n1], "bell.wav", wav, 0, PIT, PIP_FULL, "bell.wav does not fit: the pack holds 1 sounds, the most it takes. Import a file of the same name to replace one.");
+  n2 := pi_import(cast(string) a[0..<n1], "splice", PiFile.{name = "door.wav", data = wav, licence = 1}, PIT, pit_room(w[..]), b[..], d[..]);
+  #assert n2 == n1 && d[0].replaced;
+  // a pack the importer did not make is never added to, and a refusal leaves the caller's bytes alone
+  tb: [600] u8; other := pack_test(600, tb[..]);
+  #assert pit_refused(other, "door.wav", wav, 0, PIT, PI_PACK, "The world's pack is one the importer cannot add to.") && pit_refused("VPK1", "door.wav", wav, 0, PIT, PI_PACK, "The world's pack is one the importer cannot add to.");
+  out: [9000] u8; out[0] = 0xee;
+  #assert pi_import("", "splice", PiFile.{name = "rock.glb", data = glb, licence = -1}, PIT, pit_room(w[..]), out[..], d[..]) == -1 && out[0] == 0xee && d[0].file_bytes == glb.count && d[0].budget == 9000;
+}
+
+#test "import: a bound is written and read in millimetres, a size is said in kilobytes, a node's transform is carried" {
+  o: [32] u8;
+  for mm: [7] int.[0, 5, -5, 999, -1000, 123456, -250] { n := pi_put_mm(o[..], 0, mm); back := pi_mm(cast(string) o[0..<n]); #assert back.ok && back.v == mm; }
+  #assert cast(string) o[0..<pi_put_mm(o[..], 0, -250)] == "-0.250" && cast(string) o[0..<pi_put_mm(o[..], 0, 2005)] == "2.005" && cast(string) o[0..<pi_put_mm(o[..], 0, 40)] == "0.040";
+  #assert !pi_mm("").ok && !pi_mm("1").ok && !pi_mm("1.00").ok && !pi_mm("1.0000").ok && !pi_mm(".000").ok && !pi_mm("1.0a0").ok && !pi_mm("x.000").ok && !pi_mm("--1.000").ok;
+  #assert pi_kb(0) == 0 && pi_kb(1) == 1 && pi_kb(1024) == 1 && pi_kb(1025) == 2;
+  #assert cast(string) o[0..<pi_put_int(o[..], 0, -40)] == "-40" && cast(string) o[0..<pi_put_int(o[..], 0, 0)] == "0" && pi_put_int(o[0..<2], 0, 123) == 3 && pi_put(o[0..<2], 0, "abc") == 3;
+  nodes: [64] JvNode; d: [1] Jv; g: [1] AgFile;
+  #assert jv_parse(d[..], "{\"nodes\":[{\"translation\":[1,2,3],\"scale\":[2,2,2]},{\"rotation\":[0,0.7071068,0,0.7071068]},{\"matrix\":[1,0,0,0,0,1,0,0,0,0,1,0,4,5,6,1]},{\"scale\":[1,2]}]}", nodes[..]);
+  g[0].d = d[0];
+  a := pi_local(g[..], ag_top(g[..], "nodes", 0));
+  #assert same(pi_mat_point(a, v3(1, 1, 1)), v3(3, 4, 5), 0.0001) && same(pi_mat_dir(a, v3(1, 0, 0)), v3(2, 0, 0), 0.0001);
+  b := pi_local(g[..], ag_top(g[..], "nodes", 1));   // a quarter turn about y: +x goes to -z
+  #assert same(pi_mat_point(b, v3(1, 0, 0)), v3(0, 0, -1), 0.0001);
+  c := pi_local(g[..], ag_top(g[..], "nodes", 2));
+  #assert same(pi_mat_point(c, v3(0, 0, 0)), v3(4, 5, 6), 0.0001) && same(pi_mat_point(pi_mat_mul(a, c), v3(0, 0, 0)), v3(9, 12, 15), 0.0001) && !g[0].bad;
+  bad := pi_local(g[..], ag_top(g[..], "nodes", 3));
+  #assert g[0].bad && same(pi_mat_point(pi_mat_one(), v3(1, 2, 3)), v3(1, 2, 3), 0);
+  #assert pi_srgb(0) == 0 && pi_srgb(1) == 255 && pi_srgb(2) == 255 && pi_srgb(0.5) == 188 && pi_srgb(0.002) == 7;
+  hd: [12] u8; for ch, k: "RIFFxxxxWAVE" { hd[k] = ch; }
+  #assert pi_sound(hd[..]) && !pi_sound(hd[0..<11]);
+  for ch, k: "OggS" { hd[k] = ch; } #assert pi_sound(hd[..]);
+  for ch, k: "ID3x" { hd[k] = ch; } #assert pi_sound(hd[..]);
+  hd[0] = 0xff; hd[1] = 0xfb; #assert pi_sound(hd[..]);
+  hd[1] = 0x1b; #assert !pi_sound(hd[..]);
+}
+

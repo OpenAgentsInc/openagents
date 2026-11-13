@@ -1,0 +1,295 @@
+// A world's imported assets on the wire (world.assets.v1; GitHub #13420, the browser editor's E11):
+// what the asset browser lists and what an import answers. One codec: the route that packs an
+// import writes it, the editor's shell reads it. docs/protocol/world-assets-v1.md is its spec;
+// proto/world/assets-v1.json pins its bytes (metaverse-engine/tools/assets-profile.coax).
+//
+// Text, a line each, every line ended by a newline:
+//   world.assets.v1 WORLD HASH BYTES BUDGET FILE TRIANGLES SIDE
+//       the world; its import pack's SHA-256 (- when it has imported nothing) and bytes; and the
+//       limits, shown before a file is sent: the pack's budget, a file's bytes, a mesh's
+//       triangles, a texture's side
+//   l K NAME                          a licence an import may declare: its number and its name
+//   a KIND NAME K FILE BYTES HASH HX HZ TOP
+//       an asset of the pack: KIND mesh, texture or sound; its licence; the dropped file's bytes
+//       and SHA-256; the bytes it takes in the pack; and a mesh's reach to each side, ahead and
+//       up, in millimetres (0 for a texture and a sound)
+//   did KIND NAME new|replaced        after an import: the asset it made or replaced
+// The licences come first and count from 0; then the assets; then at most one `did`.
+//
+// An import is sent as one body (world.asset.import.v1): a line, then the file's bytes as they are.
+//   world.asset.import.v1 LICENCE NAME
+//       the licence chosen for the file, by its number (- when none was chosen: the import is
+//       refused in words), and the file's name as it was dropped (1 to 120 printable bytes)
+//   coax/bin/coax test metaverse-engine/editor/asset-wire.coax
+#load "pack-import-policy.coax";
+
+WAS_SCHEMA :: "world.assets.v1";
+WAS_BYTES :: 8192;      // a list is at most this long
+WAS_ASSETS :: 48;       // assets a list holds
+WAS_LICENCES :: 8;      // licences a list holds
+WAS_LICENCE :: 40;      // bytes a licence's name
+WAS_WORLD :: 32;
+WAS_KIND :: [4] string.["", "mesh", "texture", "sound"];   // by pack-import-policy.coax PIP_*
+
+WasAsset :: struct { kind: int; name: [PIP_NAME] u8; name_n: int; licence: int; file: int; bytes: int; hash: [64] u8; hx: int; hz: int; top: int; }
+WasList :: struct {
+  world: [WAS_WORLD] u8; world_n: int;
+  packed: bool; hash: [64] u8;       // the pack's SHA-256, when the world has one
+  bytes: int; budget: int; file: int; triangles: int; side: int;
+  licence: [WAS_LICENCES] [WAS_LICENCE] u8; licence_n: [WAS_LICENCES] int; licences: int;
+  a: [WAS_ASSETS] WasAsset; n: int;
+  did: bool; did_kind: int; did_name: [PIP_NAME] u8; did_name_n: int; did_replaced: bool;
+}
+
+was_put :: (out: [] u8, n: int, s: string) -> int {
+  if n + s.count > out.count { return out.count + 1; }
+  for i: 0..<s.count { out[n + i] = s[i]; }
+  return n + s.count;
+}
+was_put_int :: (out: [] u8, n: int, v: int) -> int {
+  d: [20] u8; m := 0; x := ifx v < 0 then 0 else v;
+  while true { d[m] = cast,trunc(u8) ('0' + x % 10); m += 1; x = x / 10; if x == 0 { break; } }
+  at := n;
+  for k: 0..<m { if at < out.count { out[at] = d[m - 1 - k]; } at += 1; }
+  return ifx at > out.count then out.count + 1 else at;
+}
+// A whole number written plainly (no sign, no leading zero, 10 digits at most), or -1.
+was_num :: (s: string) -> int {
+  if s.count == 0 || s.count > 10 || (s[0] == '0' && s.count > 1) { return -1; }
+  n := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) (c - '0'); }
+  return n;
+}
+// Field i of a line split by single spaces ("" past the last), and the line from field i on.
+was_field :: (line: string, i: int) -> string {
+  at := 0; f := 0;
+  for k: 0..<line.count + 1 {
+    if k == line.count || line[k] == ' ' { if f == i { return line[at..<k]; } f += 1; at = k + 1; }
+  }
+  return "";
+}
+was_rest :: (line: string, i: int) -> string {
+  f := 0;
+  for k: 0..<line.count { if line[k] == ' ' { f += 1; if f == i { return line[k + 1..<line.count]; } } }
+  return "";
+}
+was_fields :: (line: string) -> int { n := 1; for c: line { if c == ' ' { n += 1; } } return n; }
+was_hex :: (s: string) -> bool {
+  if s.count != 64 { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+// An asset's name: 1 to 24 letters, digits, - and _.
+was_name :: (s: string) -> bool {
+  if s.count < 1 || s.count > PIP_NAME { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') { return false; } }
+  return true;
+}
+// A world's ID: a lowercase letter, then lowercase letters, digits and -.
+was_world :: (s: string) -> bool {
+  if s.count < 1 || s.count > WAS_WORLD || s[0] < 'a' || s[0] > 'z' { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+// A licence's name: 1 to 40 printable bytes, no space at either end.
+was_licence :: (s: string) -> bool {
+  if s.count < 1 || s.count > WAS_LICENCE || s[0] == ' ' || s[s.count - 1] == ' ' { return false; }
+  for c: s { if c < ' ' || c > '~' { return false; } }
+  return true;
+}
+was_kind :: (word: string) -> int {
+  for k: 1..<4 { if WAS_KIND[k] == word { return k; } }
+  return 0;
+}
+was_text :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
+was_world_of :: (l: [] WasList) -> string { return cast(string) l[0].world[0..<l[0].world_n]; }
+was_licence_of :: (l: [] WasList, k: int) -> string { return ifx k < 0 || k >= l[0].licences then "" else cast(string) l[0].licence[k][0..<l[0].licence_n[k]]; }
+was_asset_name :: (l: [] WasList, i: int) -> string { return ifx i < 0 || i >= l[0].n then "" else cast(string) l[0].a[i].name[0..<l[0].a[i].name_n]; }
+// The asset of this kind and name, or -1.
+was_find :: (l: [] WasList, kind: int, name: string) -> int {
+  for i: 0..<l[0].n { if l[0].a[i].kind == kind && was_asset_name(l, i) == name { return i; } }
+  return -1;
+}
+
+// ---- an import's body
+
+WAS_IMPORT :: "world.asset.import.v1";
+WAS_FILE_NAME :: 120;
+// A file's name as an import's head carries it: its printable bytes, 120 at most ("file" when none is left).
+was_file_name :: (name: string, out: [] u8) -> string {
+  n := 0;
+  for c: name { if n == WAS_FILE_NAME || n == out.count { break; } if c >= ' ' && c <= '~' { out[n] = c; n += 1; } }
+  while n > 0 && out[n - 1] == ' ' { n -= 1; }
+  from := 0; while from < n && out[from] == ' ' { from += 1; }
+  return ifx n - from == 0 then "file" else cast(string) out[from..<n];
+}
+// The head of an import's body into out ("": it does not fit); the file's bytes follow it.
+was_import_head :: (out: [] u8, licence: int, name: string) -> string {
+  nb: [WAS_FILE_NAME] u8; clean := was_file_name(name, nb[..]);
+  n := was_put(out, 0, WAS_IMPORT); n = was_put(out, n, " ");
+  if licence < 0 { n = was_put(out, n, "-"); } else { n = was_put_int(out, n, licence); }
+  n = was_put(out, n, " "); n = was_put(out, n, clean); n = was_put(out, n, "\n");
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+WasImport :: struct { ok: bool; licence: int = -1; name: string; at: int; }   // at: where the file's bytes begin
+was_import_read :: (body: string) -> WasImport {
+  end := -1;
+  for k: 0..<body.count { if k > WAS_IMPORT.count + 16 + WAS_FILE_NAME { break; } if body[k] == '\n' { end = k; break; } }
+  if end < 0 { return WasImport.{}; }
+  line := body[0..<end]; name := was_rest(line, 2); lic := was_field(line, 1);
+  if was_field(line, 0) != WAS_IMPORT || name.count < 1 || name.count > WAS_FILE_NAME || name[0] == ' ' || name[name.count - 1] == ' ' || (lic != "-" && was_num(lic) < 0) { return WasImport.{}; }
+  for c: name { if c < ' ' || c > '~' { return WasImport.{}; } }
+  return WasImport.{ok = true, licence = ifx lic == "-" then -1 else was_num(lic), name = name, at = end + 1};
+}
+
+// ---- the writer: a list is begun, then its licences, its assets and at most one `did`
+
+was_begin :: (out: [] u8, world: string, hash: string, bytes: int, lim: PipLimits) -> int {
+  if !was_world(world) || (hash.count > 0 && !was_hex(hash)) { return out.count + 1; }
+  n := was_put(out, 0, WAS_SCHEMA); n = was_put(out, n, " "); n = was_put(out, n, world); n = was_put(out, n, " "); n = was_put(out, n, ifx hash.count > 0 then hash else "-");
+  for v: [5] int.[bytes, lim.budget, lim.file, lim.triangles, lim.side] { n = was_put(out, n, " "); n = was_put_int(out, n, v); }
+  return was_put(out, n, "\n");
+}
+was_add_licence :: (out: [] u8, n: int, k: int, name: string) -> int {
+  if !was_licence(name) { return out.count + 1; }
+  at := was_put(out, n, "l "); at = was_put_int(out, at, k); at = was_put(out, at, " "); at = was_put(out, at, name);
+  return was_put(out, at, "\n");
+}
+was_add :: (out: [] u8, n: int, kind: int, name: string, licence: int, file: int, bytes: int, hash: string, hx: int, hz: int, top: int) -> int {
+  if kind < PIP_MESH || kind > PIP_SOUND || !was_name(name) || !was_hex(hash) { return out.count + 1; }
+  at := was_put(out, n, "a "); at = was_put(out, at, WAS_KIND[kind]); at = was_put(out, at, " "); at = was_put(out, at, name);
+  at = was_put(out, at, " "); at = was_put_int(out, at, licence); at = was_put(out, at, " "); at = was_put_int(out, at, file); at = was_put(out, at, " "); at = was_put_int(out, at, bytes);
+  at = was_put(out, at, " "); at = was_put(out, at, hash);
+  for v: [3] int.[hx, hz, top] { at = was_put(out, at, " "); at = was_put_int(out, at, v); }
+  return was_put(out, at, "\n");
+}
+was_add_did :: (out: [] u8, n: int, kind: int, name: string, replaced: bool) -> int {
+  if kind < PIP_MESH || kind > PIP_SOUND || !was_name(name) { return out.count + 1; }
+  at := was_put(out, n, "did "); at = was_put(out, at, WAS_KIND[kind]); at = was_put(out, at, " "); at = was_put(out, at, name);
+  return was_put(out, at, ifx replaced then " replaced\n" else " new\n");
+}
+// A list written again from what was read: the same bytes (the profile's check).
+was_write :: (l: [] WasList, out: [] u8) -> string {
+  lim := PipLimits.{budget = l[0].budget, file = l[0].file, triangles = l[0].triangles, side = l[0].side};
+  n := was_begin(out, was_world_of(l), ifx l[0].packed then cast(string) l[0].hash[..] else "", l[0].bytes, lim);
+  for k: 0..<l[0].licences { n = was_add_licence(out, n, k, was_licence_of(l, k)); }
+  for i: 0..<l[0].n { a := l[0].a[i]; n = was_add(out, n, a.kind, was_asset_name(l, i), a.licence, a.file, a.bytes, cast(string) l[0].a[i].hash[..], a.hx, a.hz, a.top); }
+  if l[0].did { n = was_add_did(out, n, l[0].did_kind, was_text(l[0].did_name[..], l[0].did_name_n), l[0].did_replaced); }
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+
+// ---- the reader: whole, or nothing
+
+was_read :: (l: [] WasList, text: string) -> bool {
+  l[0] = WasList.{};
+  if text.count == 0 || text.count > WAS_BYTES || text[text.count - 1] != '\n' { return false; }
+  at := 0; first := true; stage := 0;   // 0 licences, 1 assets, 2 after the did
+  for i: 0..<text.count {
+    if text[i] != '\n' { continue; }
+    line := text[at..<i]; at = i + 1;
+    what := was_field(line, 0);
+    if first {
+      first = false;
+      if what != WAS_SCHEMA || was_fields(line) != 8 || !was_world(was_field(line, 1)) { return false; }
+      for c, k: was_field(line, 1) { l[0].world[k] = c; }
+      l[0].world_n = was_field(line, 1).count;
+      hash := was_field(line, 2);
+      if hash != "-" { if !was_hex(hash) { return false; } l[0].packed = true; for c, k: hash { l[0].hash[k] = c; } }
+      l[0].bytes = was_num(was_field(line, 3)); l[0].budget = was_num(was_field(line, 4)); l[0].file = was_num(was_field(line, 5)); l[0].triangles = was_num(was_field(line, 6)); l[0].side = was_num(was_field(line, 7));
+      if l[0].bytes < 0 || l[0].budget < 1 || l[0].file < 1 || l[0].triangles < 1 || l[0].side < 1 || l[0].bytes > l[0].budget || l[0].packed != (l[0].bytes > 0) { return false; }
+      continue;
+    }
+    if what == "l" {
+      name := was_rest(line, 2);
+      if stage != 0 || l[0].licences == WAS_LICENCES || was_num(was_field(line, 1)) != l[0].licences || !was_licence(name) { return false; }
+      for c, k: name { l[0].licence[l[0].licences][k] = c; }
+      l[0].licence_n[l[0].licences] = name.count; l[0].licences += 1;
+      continue;
+    }
+    if what == "a" {
+      a := WasAsset.{kind = was_kind(was_field(line, 1)), licence = was_num(was_field(line, 3)), file = was_num(was_field(line, 4)), bytes = was_num(was_field(line, 5)),
+                    hx = was_num(was_field(line, 7)), hz = was_num(was_field(line, 8)), top = was_num(was_field(line, 9))};
+      name := was_field(line, 2); hash := was_field(line, 6);
+      if stage > 1 || l[0].n == WAS_ASSETS || was_fields(line) != 10 || a.kind == 0 || !was_name(name) || !was_hex(hash) || a.licence < 0 || a.licence >= l[0].licences || a.file < 1 || a.bytes < 1 { return false; }
+      if a.hx < 0 || a.hz < 0 || a.top < 0 || ((a.kind == PIP_MESH) != (a.hx > 0 && a.hz > 0 && a.top > 0)) || (a.kind != PIP_MESH && a.hx + a.hz + a.top != 0) { return false; }
+      if !l[0].packed || was_find(l, a.kind, name) >= 0 { return false; }
+      for c, k: name { a.name[k] = c; } a.name_n = name.count;
+      for c, k: hash { a.hash[k] = c; }
+      l[0].a[l[0].n] = a; l[0].n += 1; stage = 1;
+      continue;
+    }
+    if what == "did" {
+      kind := was_kind(was_field(line, 1)); name := was_field(line, 2); how := was_field(line, 3);
+      if stage == 2 || was_fields(line) != 4 || kind == 0 || (how != "new" && how != "replaced") || was_find(l, kind, name) < 0 { return false; }
+      l[0].did = true; l[0].did_kind = kind; l[0].did_replaced = how == "replaced";
+      for c, k: name { l[0].did_name[k] = c; } l[0].did_name_n = name.count;
+      stage = 2;
+      continue;
+    }
+    return false;
+  }
+  return !first;
+}
+
+WAS_TEST_HASH :: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+WAS_TEST :: "world.assets.v1 splice 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef 4096 1000000 500000 4000 1024\nl 0 CC0 1.0 Universal\nl 1 CC BY 4.0\na mesh rock 0 2112 1872 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef 500 250 2000\na texture skin 1 77 77 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef 0 0 0\na sound door 0 60 60 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef 0 0 0\ndid mesh rock replaced\n";
+WAS_TEST_EMPTY :: "world.assets.v1 splice - 0 1000000 500000 4000 1024\nl 0 CC0 1.0 Universal\n";
+
+#test "world.assets.v1: a list is written, read whole and written back as the same bytes" {
+  o: [WAS_BYTES] u8; l: [1] WasList;
+  lim := PipLimits.{budget = 1000000, file = 500000, triangles = 4000, side = 1024};
+  n := was_begin(o[..], "splice", WAS_TEST_HASH, 4096, lim);
+  n = was_add_licence(o[..], n, 0, "CC0 1.0 Universal"); n = was_add_licence(o[..], n, 1, "CC BY 4.0");
+  n = was_add(o[..], n, PIP_MESH, "rock", 0, 2112, 1872, WAS_TEST_HASH, 500, 250, 2000);
+  n = was_add(o[..], n, PIP_TEXTURE, "skin", 1, 77, 77, WAS_TEST_HASH, 0, 0, 0);
+  n = was_add(o[..], n, PIP_SOUND, "door", 0, 60, 60, WAS_TEST_HASH, 0, 0, 0);
+  n = was_add_did(o[..], n, PIP_MESH, "rock", true);
+  #assert n <= o.count && cast(string) o[0..<n] == WAS_TEST;
+  #assert was_read(l[..], WAS_TEST) && was_world_of(l[..]) == "splice" && l[0].packed && cast(string) l[0].hash[..] == WAS_TEST_HASH && l[0].bytes == 4096 && l[0].budget == 1000000 && l[0].file == 500000 && l[0].triangles == 4000 && l[0].side == 1024;
+  #assert l[0].licences == 2 && was_licence_of(l[..], 0) == "CC0 1.0 Universal" && was_licence_of(l[..], 1) == "CC BY 4.0" && was_licence_of(l[..], 2) == "" && was_licence_of(l[..], -1) == "";
+  #assert l[0].n == 3 && was_asset_name(l[..], 0) == "rock" && l[0].a[0].kind == PIP_MESH && l[0].a[0].licence == 0 && l[0].a[0].file == 2112 && l[0].a[0].bytes == 1872 && l[0].a[0].hx == 500 && l[0].a[0].hz == 250 && l[0].a[0].top == 2000;
+  #assert l[0].a[1].kind == PIP_TEXTURE && l[0].a[1].licence == 1 && l[0].a[2].kind == PIP_SOUND && was_find(l[..], PIP_SOUND, "door") == 2 && was_find(l[..], PIP_MESH, "door") == -1 && was_asset_name(l[..], 3) == "";
+  #assert l[0].did && l[0].did_kind == PIP_MESH && was_text(l[0].did_name[..], l[0].did_name_n) == "rock" && l[0].did_replaced;
+  w: [WAS_BYTES] u8; #assert was_write(l[..], w[..]) == WAS_TEST && was_write(l[..], w[0..<100]) == "";
+  #assert was_read(l[..], WAS_TEST_EMPTY) && !l[0].packed && l[0].bytes == 0 && l[0].n == 0 && !l[0].did && l[0].licences == 1 && was_write(l[..], w[..]) == WAS_TEST_EMPTY;
+  // the writer refuses what the reader would
+  #assert was_begin(o[..], "Splice", "", 0, lim) > o.count && was_begin(o[..], "splice", "abc", 0, lim) > o.count && was_add(o[..], 0, 0, "rock", 0, 1, 1, WAS_TEST_HASH, 0, 0, 0) > o.count;
+  #assert was_add(o[..], 0, PIP_MESH, "a b", 0, 1, 1, WAS_TEST_HASH, 1, 1, 1) > o.count && was_add(o[..], 0, PIP_MESH, "rock", 0, 1, 1, "x", 1, 1, 1) > o.count && was_add_licence(o[..], 0, 0, "") > o.count && was_add_did(o[..], 0, 4, "rock", false) > o.count;
+}
+was_test_swap :: (text: string, from: string, to: string, out: [] u8) -> string {
+  for i: 0..<text.count - from.count + 1 {
+    if text[i..<i + from.count] != from { continue; }
+    n := was_put(out, 0, text[0..<i]); n = was_put(out, n, to); n = was_put(out, n, text[i + from.count..<text.count]);
+    return cast(string) out[0..<n];
+  }
+  return "";
+}
+#test "world.assets.v1: a list that is not one is refused whole" {
+  l: [1] WasList; o: [WAS_BYTES] u8;
+  #assert !was_read(l[..], "") && !was_read(l[..], "\n") && !was_read(l[..], WAS_TEST[0..<WAS_TEST.count - 1]) && !was_read(l[..], "world.assets.v2 splice - 0 1 1 1 1\n");
+  bad := [20] string.["world.assets.v1 splice", "v1 splice 0", " 4096 1000000", "4096 1000000 5", "l 0 CC0", "l 1 CC BY 4.0", "a mesh rock 0", "a mesh rock 0 2112 1872", "a mesh", " 500 250 2000", "a texture skin 1 77 77", "a sound door 0", "did mesh rock replaced", "did mesh rock replaced", "did mesh rock", "replaced\n", "a sound door", "world.assets.v1 splice 0", "a texture skin 1", "0 0 0\ndid"];
+  to := [20] string.["world.assets.v1  splice", "v1 9plice 0", " 0 1000000", "4096 1 5", "l 1 CC0", "l 1  CC BY 4.0", "a mesh rock 2", "a mesh rock 0 0 1872", "a model", " 500 0 2000", "a texture skin 1 77 0", "a sound rock 0", "did mesh rock gone", "did sound rock replaced", "did mesh skin", "replaced\ndid mesh rock new\n", "a mesh rock", "world.assets.v1 splice -", "a texture skin 3", "0 0 1\ndid"];
+  for k: 0..<20 {
+    changed := was_test_swap(WAS_TEST, bad[k], to[k], o[..]);
+    #assert changed.count > 0 && changed != WAS_TEST && !was_read(l[..], changed) == (k != 11);
+  }
+  // an asset after the did, a licence after an asset, a line of another kind, a list too long
+  #assert !was_read(l[..], was_test_swap(WAS_TEST, "did mesh rock replaced\n", "did mesh rock new\nl 2 X\n", o[..])) && !was_read(l[..], was_test_swap(WAS_TEST, "a texture", "x texture", o[..]));
+  #assert !was_read(l[..], was_test_swap(WAS_TEST_EMPTY, "l 0 CC0 1.0 Universal\n", "l 0 CC0\na mesh rock 0 1 1 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef 1 1 1\n", o[..]));
+  #assert was_num("0") == 0 && was_num("10") == 10 && was_num("01") == -1 && was_num("") == -1 && was_num("-1") == -1 && was_num("12345678901") == -1 && was_num("1x") == -1;
+  #assert was_field("a b  c", 1) == "b" && was_field("a b  c", 2) == "" && was_field("a b  c", 3) == "c" && was_field("a", 1) == "" && was_rest("l 0 CC BY 4.0", 2) == "CC BY 4.0" && was_rest("l 0", 2) == "" && was_fields("a b c") == 3;
+  #assert was_world("splice") && was_world("a-1") && !was_world("") && !was_world("1a") && !was_world("a_b") && was_name("a-_Z9") && !was_name("") && !was_name("a.b") && was_licence("CC BY 4.0") && !was_licence(" x") && !was_licence("x ") && was_kind("sound") == 3 && was_kind("") == 0;
+}
+#test "world.asset.import.v1: an import's head names the licence and the file, and the file's bytes follow it" {
+  o: [200] u8;
+  #assert was_import_head(o[..], 1, "My Rock (1).glb") == "world.asset.import.v1 1 My Rock (1).glb\n" && was_import_head(o[..], -1, "a.png") == "world.asset.import.v1 - a.png\n";
+  #assert was_import_head(o[..], 0, " a\tb\n.png ") == "world.asset.import.v1 0 ab.png\n" && was_import_head(o[..], 0, "") == "world.asset.import.v1 0 file\n" && was_import_head(o[0..<20], 0, "a.png") == "";
+  r := was_import_read("world.asset.import.v1 2 My Rock (1).glb\nglTF\n\n");
+  #assert r.ok && r.licence == 2 && r.name == "My Rock (1).glb" && r.at == 40;
+  none := was_import_read("world.asset.import.v1 - a.png\n");
+  #assert none.ok && none.licence == -1 && none.name == "a.png" && none.at == 30;
+  for bad: [8] string.["", "world.asset.import.v1 0 a.png", "world.asset.import.v2 0 a.png\n", "world.asset.import.v1 x a.png\n", "world.asset.import.v1 0\n", "world.asset.import.v1 0  a.png\n", "world.asset.import.v1 0 a.png \n", "world.asset.import.v1 01 a.png\n"] { #assert !was_import_read(bad).ok; }
+  long: [300] u8; n := was_put(long[..], 0, "world.asset.import.v1 0 "); for k: 0..<121 { long[n] = 'a'; n += 1; } long[n] = '\n'; n += 1;
+  #assert !was_import_read(cast(string) long[0..<n]).ok;
+  nb: [WAS_FILE_NAME] u8; #assert was_file_name(cast(string) long[24..<n], nb[..]).count == WAS_FILE_NAME && was_file_name("  ", nb[..]) == "file";
+}

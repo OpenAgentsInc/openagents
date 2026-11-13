@@ -1,0 +1,135 @@
+// What the editor's asset import admits (GitHub #13420, the browser editor's E11): which files it
+// takes, the licences an import may declare, and the limits a file, a mesh, a texture and the
+// pack are held to. pack-import.coax carries an import out and asks every question here; nothing
+// is packed that this file refuses.
+//
+// A licence is chosen from the list below, by its number. An import never carries a licence as
+// free text: the catalog's L lines are these, in this order, and nothing else.
+//   coax/bin/coax test metaverse-engine/editor/pack-import-policy.coax
+//   coax/bin/coax mutate metaverse-engine/editor/pack-import-policy.coax --root-only
+#module "metaverse.engine.editor.pack_import_policy";
+#authority;
+
+// What a file is, by its name's ending.
+PIP_NONE :: 0; PIP_MESH :: 1; PIP_TEXTURE :: 2; PIP_SOUND :: 3;
+
+// The licences an import may declare: source K of the pack's catalog is licence K here.
+PIP_LICENCES :: 3;
+PIP_LICENCE :: [PIP_LICENCES] string.["CC0 1.0 Universal", "CC BY 4.0", "CC BY-SA 4.0"];
+PIP_LICENCE_URL :: [PIP_LICENCES] string.["https://creativecommons.org/publicdomain/zero/1.0/", "https://creativecommons.org/licenses/by/4.0/", "https://creativecommons.org/licenses/by-sa/4.0/"];
+
+PIP_NAME :: 24;   // an imported asset's name is 1 to 24 bytes of letters, digits, - and _
+
+// The limits one world's imports are held to. Every one is shown before a file is sent.
+PipLimits :: struct {
+  file: int;        // bytes one dropped file may be
+  budget: int;      // bytes the pack may be
+  triangles: int;   // triangles one mesh may have
+  side: int;        // texels a texture may be wide or tall
+  meshes: int; textures: int; sounds: int;   // how many of each the pack holds
+}
+
+PIP_OK :: 0;
+PIP_KIND :: 1;       // not a file the editor takes
+PIP_EMPTY :: 2;      // no bytes
+PIP_LICENCE_NONE :: 3;   // no licence from the list
+PIP_FILE :: 4;       // over the file limit
+PIP_NAMELESS :: 5;   // no name can be made of the file's
+PIP_FULL :: 6;       // the pack holds as many of this kind as it may
+PIP_BUDGET :: 7;     // the pack would be over its budget
+PIP_SHAPE :: 8;      // a mesh over its triangles, or a texture over its side
+
+pip_lower :: (c: u8) -> u8 #effects(all) { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+// Whether a file's name ends so, letters in either case.
+pip_ends :: (file: string, ending: string) -> bool #effects(all) {
+  if file.count <= ending.count { return false; }
+  for k: 0..<ending.count { if pip_lower(file[file.count - ending.count + k]) != ending[k] { return false; } }
+  return true;
+}
+// What a file is: a binary glTF is a mesh, a PNG a texture, a WAV, Ogg or MP3 file a sound.
+pip_kind :: (file: string) -> int #effects(all) {
+  if pip_ends(file, ".glb") { return PIP_MESH; }
+  if pip_ends(file, ".png") { return PIP_TEXTURE; }
+  if pip_ends(file, ".wav") || pip_ends(file, ".ogg") || pip_ends(file, ".mp3") { return PIP_SOUND; }
+  return PIP_NONE;
+}
+// The asset's name made of a file's: what follows its last slash, up to its last dot, every byte
+// that is not a letter, a digit, - or _ written as _, and no more than PIP_NAME bytes. "" when
+// nothing is left.
+pip_name :: (file: string, out: [] u8) -> string #effects(all) {
+  from := 0; to := file.count;
+  for c, k: file { if c == '/' || c == '\\' { from = k + 1; } }
+  for k: from..<file.count { if file[k] == '.' { to = k; } }
+  n := 0;
+  for k: from..<to {
+    if n == PIP_NAME || n == out.count { break; }
+    c := file[k];
+    plain := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+    out[n] = ifx plain then c else '_';
+    n += 1;
+  }
+  return cast(string) out[0..<n];
+}
+// A file as it arrives: its kind, its bytes and the licence declared for it.
+pip_file :: (kind: int, bytes: int, licence: int, lim: PipLimits) -> int #effects(all) {
+  if kind != PIP_MESH && kind != PIP_TEXTURE && kind != PIP_SOUND { return PIP_KIND; }
+  if bytes < 1 { return PIP_EMPTY; }
+  if licence < 0 || licence >= PIP_LICENCES { return PIP_LICENCE_NONE; }
+  if bytes > lim.file { return PIP_FILE; }
+  return PIP_OK;
+}
+// Whether the pack takes one more of a kind when it holds `have` (a replaced asset takes no room).
+pip_room :: (kind: int, have: int, replaces: bool, lim: PipLimits) -> bool #effects(all) {
+  if replaces { return true; }
+  most := ifx kind == PIP_MESH then lim.meshes else ifx kind == PIP_TEXTURE then lim.textures else lim.sounds;
+  return have < most;
+}
+// A mesh's triangles and a texture's sides, against the limits.
+pip_mesh :: (triangles: int, lim: PipLimits) -> bool #effects(all) { return triangles >= 1 && triangles <= lim.triangles; }
+pip_texture :: (w: int, h: int, lim: PipLimits) -> bool #effects(all) { return w >= 1 && h >= 1 && w <= lim.side && h <= lim.side; }
+// The pack as it would be written, against its budget.
+pip_fits :: (pack_bytes: int, lim: PipLimits) -> bool #effects(all) { return pack_bytes <= lim.budget; }
+
+PIP_TEST :: PipLimits.{file = 1000, budget = 5000, triangles = 12, side = 64, meshes = 2, textures = 3, sounds = 1};
+
+#test "a file's kind is its ending, in either case; anything else is not taken" {
+  #assert pip_kind("rock.glb") == PIP_MESH && pip_kind("Rock.GLB") == PIP_MESH && pip_kind("a/b.Glb") == PIP_MESH;
+  #assert pip_kind("skin.png") == PIP_TEXTURE && pip_kind("SKIN.PNG") == PIP_TEXTURE;
+  #assert pip_kind("door.wav") == PIP_SOUND && pip_kind("door.ogg") == PIP_SOUND && pip_kind("door.mp3") == PIP_SOUND && pip_kind("DOOR.MP3") == PIP_SOUND;
+  #assert pip_kind("rock.gltf") == PIP_NONE && pip_kind("rock.fbx") == PIP_NONE && pip_kind("rock") == PIP_NONE && pip_kind("") == PIP_NONE;
+  // an ending alone names nothing, and an ending is the name's end
+  #assert pip_kind(".glb") == PIP_NONE && pip_kind(".png") == PIP_NONE && pip_kind(".wav") == PIP_NONE && pip_kind("x.glb") == PIP_MESH;
+  #assert pip_kind("rock.glb.txt") == PIP_NONE && pip_kind("rockglb") == PIP_NONE && pip_kind("rock.glc") == PIP_NONE && pip_kind("rock.hlb") == PIP_NONE;
+  #assert pip_ends("a.b", ".b") && !pip_ends(".b", ".b") && !pip_ends("a.c", ".b") && !pip_ends("a:b", ".b") && pip_ends("a.B", ".b");
+  #assert pip_lower('A') == 'a' && pip_lower('Z') == 'z' && pip_lower('a') == 'a' && pip_lower('@') == '@' && pip_lower('[') == '[' && pip_lower('5') == '5';
+}
+#test "a name is made of the file's: its folder and ending dropped, other bytes as _, 24 bytes at most" {
+  b: [64] u8;
+  #assert pip_name("rock.glb", b[..]) == "rock" && pip_name("art/kit/Rock-2_b.glb", b[..]) == "Rock-2_b" && pip_name("C:\\art\\rock.glb", b[..]) == "rock";
+  #assert pip_name("my rock (1).glb", b[..]) == "my_rock__1_" && pip_name("a.b.glb", b[..]) == "a_b" && pip_name("rock", b[..]) == "rock";
+  #assert pip_name(".glb", b[..]) == "" && pip_name("", b[..]) == "" && pip_name("dir/", b[..]) == "" && pip_name("dir/.png", b[..]) == "";
+  #assert pip_name("azAZ09-_.png", b[..]) == "azAZ09-_" && pip_name("`{@[/:.png", b[..]) == "_" && pip_name("`{@[:.png", b[..]) == "_____";
+  #assert pip_name("abcdefghijklmnopqrstuvwxyz.glb", b[..]) == "abcdefghijklmnopqrstuvwx" && pip_name("abcdefghijklmnopqrstuvwx.glb", b[..]).count == PIP_NAME;
+  #assert pip_name("abcdef.glb", b[0..<3]) == "abc" && pip_name("abcdef.glb", b[0..<0]) == "";
+  #assert pip_name("a/b.c/d", b[..]) == "d" && pip_name("a.b/c", b[..]) == "c";
+}
+#test "a file is admitted with a kind, bytes, a licence from the list and under the file limit" {
+  l := PIP_TEST;
+  #assert pip_file(PIP_MESH, 1, 0, l) == PIP_OK && pip_file(PIP_TEXTURE, 1000, 2, l) == PIP_OK && pip_file(PIP_SOUND, 500, 1, l) == PIP_OK;
+  #assert pip_file(PIP_NONE, 10, 0, l) == PIP_KIND && pip_file(4, 10, 0, l) == PIP_KIND && pip_file(-1, 10, 0, l) == PIP_KIND;
+  #assert pip_file(PIP_MESH, 0, 0, l) == PIP_EMPTY && pip_file(PIP_MESH, -5, 0, l) == PIP_EMPTY;
+  #assert pip_file(PIP_MESH, 10, -1, l) == PIP_LICENCE_NONE && pip_file(PIP_MESH, 10, 3, l) == PIP_LICENCE_NONE && pip_file(PIP_MESH, 10, PIP_LICENCES - 1, l) == PIP_OK;
+  #assert pip_file(PIP_MESH, 1001, 0, l) == PIP_FILE && pip_file(PIP_SOUND, 1001, 0, l) == PIP_FILE;
+  // the first thing wrong is the one named: a kind before bytes, bytes before a licence, a licence before the size
+  #assert pip_file(PIP_NONE, 0, -1, l) == PIP_KIND && pip_file(PIP_MESH, 0, -1, l) == PIP_EMPTY && pip_file(PIP_MESH, 2000, -1, l) == PIP_LICENCE_NONE;
+  #assert PIP_LICENCE[0] == "CC0 1.0 Universal" && PIP_LICENCE[2] == "CC BY-SA 4.0" && PIP_LICENCE_URL[1].count > 20;
+}
+#test "the pack takes a kind up to its count, a replaced asset always, and a mesh, a texture and the pack up to their limits" {
+  l := PIP_TEST;
+  #assert pip_room(PIP_MESH, 0, false, l) && pip_room(PIP_MESH, 1, false, l) && !pip_room(PIP_MESH, 2, false, l) && pip_room(PIP_MESH, 2, true, l);
+  #assert pip_room(PIP_TEXTURE, 2, false, l) && !pip_room(PIP_TEXTURE, 3, false, l) && pip_room(PIP_TEXTURE, 9, true, l);
+  #assert pip_room(PIP_SOUND, 0, false, l) && !pip_room(PIP_SOUND, 1, false, l) && pip_room(PIP_SOUND, 1, true, l);
+  #assert pip_mesh(1, l) && pip_mesh(12, l) && !pip_mesh(13, l) && !pip_mesh(0, l) && !pip_mesh(-3, l);
+  #assert pip_texture(1, 1, l) && pip_texture(64, 64, l) && !pip_texture(65, 64, l) && !pip_texture(64, 65, l) && !pip_texture(0, 8, l) && !pip_texture(8, 0, l) && !pip_texture(-1, 8, l) && !pip_texture(8, -1, l);
+  #assert pip_fits(5000, l) && pip_fits(0, l) && !pip_fits(5001, l);
+}

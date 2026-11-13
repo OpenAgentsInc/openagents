@@ -41,7 +41,7 @@ SC_SCALE_MIN :: 100; SC_SCALE_MAX :: 4000;   // a piece's size, thousandths
 // A zone: a box (half sizes hx, hz) round (x, z), grown by r. Metres.
 ScZone :: struct { id: int; x: f32; z: f32; hx: f32; hz: f32; r: f32; name: [SC_NAME] u8; name_n: int; }
 ScMark :: struct { id: int; x: f32; z: f32; r: f32; name: [SC_NAME] u8; name_n: int; }
-ScPiece :: struct { id: int; kit: int; scale: f32; a: int; b: int; c: int; hx: f32; hz: f32; top: f32; name: [SC_NAME] u8; name_n: int; }
+ScPiece :: struct { id: int; kit: int; scale: f32; a: int; b: int; c: int; hx: f32; hz: f32; top: f32; name: [SC_NAME] u8; name_n: int; mesh: [PIP_NAME] u8; mesh_n: int; }   // mesh: a pack mesh's name (kit PK_MESH)
 // The tables as the game reads them each frame: metres, kit numbers, colours.
 SpContent :: struct {
   ok: bool; rev: int;
@@ -113,6 +113,9 @@ sc_load :: (c: [] SpContent, text: string) -> bool {
                   a = ct_get(d[..], SC_LOOKS, look, 2), b = ct_get(d[..], SC_LOOKS, look, 3), c = ct_get(d[..], SC_LOOKS, look, 4),
                   hx = sc_m(ct_get(d[..], SC_PIECES, r, 5)), hz = sc_m(ct_get(d[..], SC_PIECES, r, 6)), top = sc_m(ct_get(d[..], SC_PIECES, r, 7))};
     p.name_n = sc_name(p.name[..], ct_str(d[..], SC_PIECES, r, 1));
+    mesh := pk_mesh(ct_str(d[..], SC_PIECES, r, 2));
+    for ch, i: mesh { p.mesh[i] = ch; }
+    p.mesh_n = mesh.count;
     c[0].pieces[r] = p;
   }
   c[0].piece_n = ct_rows(d[..], SC_PIECES);
@@ -139,6 +142,8 @@ sc_piece :: (c: [] SpContent, id: int) -> int {
 }
 sc_kept_name :: (c: [] SpContent, row: int) -> string { return ifx row < 0 || row >= c[0].kept_n then "" else cast(string) c[0].kept[row].name[0..<c[0].kept[row].name_n]; }
 sc_area_name :: (c: [] SpContent, row: int) -> string { return ifx row < 0 || row >= c[0].area_n then "" else cast(string) c[0].areas[row].name[0..<c[0].areas[row].name_n]; }
+// The pack mesh a row draws ("": a kit piece).
+sc_piece_mesh :: (c: [] SpContent, row: int) -> string { return ifx row < 0 || row >= c[0].piece_n then "" else cast(string) c[0].pieces[row].mesh[0..<c[0].pieces[row].mesh_n]; }
 sc_piece_name :: (c: [] SpContent, row: int) -> string { return ifx row < 0 || row >= c[0].piece_n then "" else cast(string) c[0].pieces[row].name[0..<c[0].pieces[row].name_n]; }
 // The tables without kept-clear zone `row`: what the mutant check plays against.
 sc_drop_kept :: (c: [] SpContent, row: int) {

@@ -177,6 +177,10 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, ".row:hover,.row:focus-visible{color:var(--ink);background:var(--surface);outline:none}");
   n = mc(out, n, ".row[aria-current=true]{color:#fff;background:none;--frame-bg:var(--surface);--frame-line:var(--line-bright);--frame-deco:#fff}");
   n = mc(out, n, ".row-t{font-size:14px;line-height:1.4}");
+  // a drop target: a dashed field that says what to drop, bright while a file is over it; and a file in a list
+  n = mc(out, n, ".drop{appearance:none;border:0;background:none;color:var(--ink-muted);font:inherit;text-align:left;width:100%;flex:none;box-sizing:border-box;min-height:44px;padding:14px 12px;cursor:pointer;display:flex;flex-direction:column;gap:4px;transition:color .15s}");
+  n = mc(out, n, ".drop .fr-line{stroke-dasharray:3 3}.drop:hover,.drop:focus-visible,.drop[data-over]{color:var(--ink);outline:none;--frame-line:var(--line-bright)}.drop[disabled]{cursor:default;color:var(--ink-faint)}");
+  n = mc(out, n, ".drop .meta,.file .meta{text-transform:none;letter-spacing:0;font:12px/1.4 var(--sans)}.file{display:flex;flex-direction:column;gap:2px;padding:7px 0;overflow-wrap:anywhere}");
   n = mc(out, n, ".menu{width:300px;max-width:100%;padding:6px;display:flex;flex-direction:column;gap:2px;--frame-line:var(--line)}");
   // the chat page: the composer alone, at the foot of the window
   n = mc(out, n, ".chat{height:100dvh;max-width:792px;margin:0 auto;padding:16px;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden}");

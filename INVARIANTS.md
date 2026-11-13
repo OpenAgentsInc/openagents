@@ -8101,6 +8101,56 @@ a read, a save, each refusal, `--static` and the realm origin);
 there only where the host says the dev server serves the page ...");
 `coax/web/tool.sh metaverse-engine/tools/code-profile.coax proto/world/code-v1.json`.
 
+## An imported asset has a licence from the list, fits its limits, and joins a pack that reads back whole
+
+The editor's asset import (E11, #13420;
+[docs/protocol/world-assets-v1.md](docs/protocol/world-assets-v1.md)) turns a
+dropped glTF binary, PNG or sound file into an entry of a world's asset pack.
+
+- **A licence from the list, never typed.** An import names its licence by
+  number from `PIP_LICENCE` (`metaverse-engine/editor/pack-import-policy.coax`,
+  `#authority`). The pack's catalog declares exactly those licences, in that
+  order. No shape carries a licence as free text, and an import with no
+  licence is refused.
+- **Limits are enforced where the file is packed, and shown first.** A file
+  over the file limit, a mesh over its triangles, a texture over its side, a
+  pack that holds as many of a kind as it takes, and a pack that would be over
+  its budget are each refused in words that name the file. The editor shows
+  the limits and the pack's size against its budget before it sends anything
+  (`world.assets.v1`), and refuses a file over the file limit without sending
+  it. A realm sets its own limits (Splice: `sp_import_limits`).
+- **One pack writer.** The importer writes through `pack_write`
+  (`metaverse-engine/editor/pack.coax`) and reads the result back with
+  `pack_read` before it answers. A pack that does not read back is not kept.
+- **A refused import changes nothing.** The pack, the files kept by content
+  hash and the world's tables stay as they were.
+- **A pack mesh's collider is what you see.** A `pieces` row that draws a pack
+  mesh (`kit` is `pack/NAME`) is saved only when the world's pack has that
+  mesh and the row's footprint and height are the mesh's bounds at the row's
+  size (`metaverse/splice/world.coax`, `spw_mesh_rows`). The server checks
+  this; a page does not, since an edit may reach it before the pack does.
+- **A page takes a new pack whole or keeps the one it has.** The page reads
+  the pack with `pack_read` and the importer's catalog reader before it uses a
+  byte (`metaverse/splice/splice.coax`, `splice_imports`).
+- **An import is authoring.** It writes the world's pack and the files kept
+  beside it, which are authored state. It reaches neither the character record
+  nor the item ledger (`coax/web/tool.sh layer-check`, the `durable` gate).
+- **Who may import.** Whoever may write the world. Today that is the dev
+  server only, where everyone on this computer is the admin; an import a
+  browser sends must come from that server's own page (`Sec-Fetch-Site`). The
+  API has no import route yet.
+
+Checks: `coax/bin/coax test metaverse-engine/editor/pack-import-policy.coax`
+and `coax/bin/coax mutate metaverse-engine/editor/pack-import-policy.coax
+--root-only` (121 mutants, none survive);
+`coax/bin/coax test metaverse-engine/editor/pack-import.coax` ("import: no
+licence, an oversize file, a pack over its budget ..." and the three beside
+it); `coax/bin/coax test metaverse/splice/world-api.coax --only "pack mesh"`;
+`coax/bin/coax test metaverse/splice/splice.coax --only "import pack"`;
+`coax/bin/coax test metaverse-engine/editor/shell.coax` ("a file the rules
+never take is refused in words before it is sent ...");
+`coax/web/tool.sh metaverse-engine/tools/assets-profile.coax proto/world/assets-v1.json`.
+
 ## A realm that runs someone else's code has no origin, and speaks only typed messages
 
 Such a realm is served from the realm origin, never the site's, in a frame

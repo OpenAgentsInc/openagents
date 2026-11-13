@@ -24,6 +24,7 @@
 #load "splice-cast.coax";
 #load "why.coax";                  // the answers to `why ID` (metaverse-engine/agent/why.coax, #13429)
 #load "why-checks.coax" #test;
+#load "imports-checks.coax" #test;   // a piece kind whose mesh is a mesh of the world's import pack (#13420)
 
 // ---- Tuning (the document's DA_Tuning): every number the run is balanced with
 T_WALK :: 5.6f32; T_TURN :: 2.5f32; T_LOOK :: 0.0032f32; T_RADIUS :: 0.45f32;
@@ -82,6 +83,7 @@ SpGame :: struct {
   ws: [1] SlWorld;            // the colliders: a World of entities (layer.coax)
   layer: [1] SlLayer;         // the edit layer: placed pieces, as typed edits (layer.coax)
   c: [1] SpContent;           // the content tables (content.coax): outlive a reset
+  imp: [1] SpImports;         // the world's import pack's meshes (pieces.coax): outlive a reset
   at: SpPlaces;               // the landmarks the game reads, from them
   gray: bool;                 // graybox (G): the world in grays, orange, yellow and cyan kept; outlives a reset
   mode: int; zone: int; phase: int; t: f32;
@@ -239,7 +241,9 @@ g_reset :: (g: [] SpGame) {
   hide: [TK_KINDS] bool; for k: 0..<TK_KINDS { hide[k] = g[0].hide[k]; }   // and what a host draws is the host's
   tables := g[0].c[0];   // the content tables are read once
   layer := g[0].layer[0];   // the edit layer is the world's, not the run's
+  imports := g[0].imp[0];   // and so are the meshes it imported
   g[0] = SpGame.{};
+  g[0].imp[0] = imports;
   g[0].gray = gray;
   if tables.ok { g[0].c[0] = tables; } else { _ := sc_load(g[0].c[..], SC_SHIPPED); }
   _ := g_places(g);

@@ -11,7 +11,7 @@ yc_scene :: (g: [] SpGame, d: [] SpLayerDraw, pieces: [] u32, places: [] u32) ->
     e := sl_place(g, g[0].c[0].pieces[0].id, cast(int) (g[0].px * 100) + 300 + k * 50, cast(int) (g[0].pz * 100) - 600, 0);
     if e.ok { id = e.id; break; }
   }
-  sd_meshes(d, g, pieces); sd_places(d, g, places);
+  sd_meshes(d, g, pieces, ""); sd_places(d, g, places);
   return id;
 }
 yc_has :: (text: string, part: string) -> bool { return cp_has(text, part); }

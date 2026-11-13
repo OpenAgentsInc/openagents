@@ -1,0 +1,159 @@
+// The checks of the editor shell's Assets pane (shell-assets.coax; GitHub #13420). shell.coax loads
+// this file with `#load ... #test;`. The host is played here: the world's server's answers come as
+// ES_SENT, a dropped file as ES_FILE.
+
+ESA_HASH :: "29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa";
+ESA_EMPTY :: "world.assets.v1 splice - 0 1048576 524288 4000 1024\nl 0 CC0 1.0 Universal\nl 1 CC BY 4.0\nl 2 CC BY-SA 4.0\n";
+ESA_ROCK :: "world.assets.v1 splice 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 2472 1048576 524288 4000 1024\nl 0 CC0 1.0 Universal\nl 1 CC BY 4.0\nl 2 CC BY-SA 4.0\na mesh rock 1 2032 1872 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 500 250 2000\ndid mesh rock new\n";
+ESA_DOOR :: "world.assets.v1 splice 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 6520 1048576 524288 4000 1024\nl 0 CC0 1.0 Universal\nl 1 CC BY 4.0\nl 2 CC BY-SA 4.0\na mesh rock 1 2032 1872 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 500 250 2000\na sound door 0 4044 4044 29189afc700416f2a380b025afe852f7785b2c16e927999b81730308f70812aa 0 0 0\ndid sound door replaced\n";
+
+esa_sent :: (h: [] EsTest, status: int, body: string) {
+  s := h[0].s[..];
+  for c, i: body { s[0].inbox[i] = c; }
+  coaxial_editor_event(s, ES_SENT, status, body.count);
+  es_test_frames(h, 1);
+}
+esa_file :: (h: [] EsTest, target: string, line: string) {
+  s := h[0].s[..];
+  for c, i: line { s[0].inbox[i] = c; }
+  coaxial_editor_event(s, ES_FILE, dm_find(s[0].dom[..], target), line.count);
+  es_test_frames(h, 1);
+}
+// The shell with a world and its server's list of assets, the pane open.
+esa_open :: (h: [] EsTest, list: string) {
+  s := h[0].s[..];
+  es_test_model(h, 0, 7, 3, "");
+  coaxial_editor_fetched(s);
+  esa_sent(h, 200, list);
+  es_test_press(h, "assets");
+  coaxial_editor_fetched(s);
+  esa_sent(h, 200, list);
+}
+esa_url :: (s: [] EdShell) -> string { return cast(string) s[0].as_url[0..<s[0].as_url_n]; }
+esa_head :: (s: [] EdShell) -> string { return cast(string) s[0].as_head[0..<s[0].as_head_n]; }
+esa_said :: (h: [] EsTest) -> string { t := h[0].s[0].tree[..]; i := tr_find(t, "assets.said.t"); return ifx i < 0 then "" else tr_text_of(t, i); }
+
+#test "assets are there only where the world's server lists them: asked once the world is known, and any other answer leaves no Assets button" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  es_test_frames(h[..], 1);
+  #assert coaxial_editor_fetching(s) == 0;
+  es_test_model(h[..], 0, 7, 3, "");
+  #assert coaxial_editor_fetching(s) == 1 && esa_url(s) == "/api/worlds/splice/assets" && s[0].as_head_n == 0;
+  coaxial_editor_fetched(s); #assert coaxial_editor_fetching(s) == 0;
+  es_test_frames(h[..], 1);
+  #assert tr_find(t, "assets") < 0 && tr_find(t, "assets.pane") < 0;
+  // a server with no such route, an answer that is not a list, another world's list: no assets here
+  esa_sent(h[..], 404, "{\"error\":\"no such world\"}"); #assert tr_find(t, "assets") < 0 && !s[0].as_have;
+  es_test_model(h[..], 0, 8, 3, "");
+  #assert coaxial_editor_fetching(s) == 0;   // asked once
+  s[0].as_flight = ES_AS_LIST; esa_sent(h[..], 200, "not a list\n"); #assert tr_find(t, "assets") < 0;
+  s[0].as_flight = ES_AS_LIST; esa_sent(h[..], 200, "world.assets.v1 other - 0 1048576 524288 4000 1024\n"); #assert tr_find(t, "assets") < 0;
+  // a file dropped where there are no assets goes nowhere
+  esa_file(h[..], "undo", "2032 rock.glb"); #assert !s[0].as_file && !s[0].assets && coaxial_editor_fetching(s) == 0;
+  // the list: the strip has Assets, which takes a dropped file and opens no picker (an empty data-drop)
+  s[0].as_flight = ES_AS_LIST; esa_sent(h[..], 200, ESA_EMPTY);
+  b := tr_find(t, "assets");
+  #assert b > 0 && tr_text_of(t, tr_find(t, "assets.l")) == "Assets" && tr_has(t, b, AT_DROP) && tr_attr_of(t, b, AT_DROP) == "" && tr_find(t, "assets.pane") < 0;
+  // pressed, the pane takes the right side and the list is asked again; an answer that never comes keeps the list it has
+  es_test_press(h[..], "assets");
+  #assert tr_find(t, "assets.pane") > 0 && tr_find(t, "one") < 0 && tr_text_of(t, tr_find(t, "assets.l")) == "Hide assets" && !tr_has(t, tr_find(t, "assets"), AT_DROP) && coaxial_editor_fetching(s) == 1;
+  coaxial_editor_fetched(s); esa_sent(h[..], 0, "");
+  #assert tr_find(t, "assets.pane") > 0 && s[0].as_have;
+  es_test_press(h[..], "assets"); #assert tr_find(t, "assets.pane") < 0 && tr_find(t, "one") > 0;
+}
+
+#test "the Assets pane shows the budget and the limits before anything is sent, the licences to choose from, and the world's kinds" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  esa_open(h[..], ESA_EMPTY);
+  #assert tr_text_of(t, tr_find(t, "assets.pack.v")) == "0 KB of 1024 KB" && tr_text_of(t, tr_find(t, "assets.file.v")) == "512 KB at most";
+  #assert tr_text_of(t, tr_find(t, "assets.mesh.v")) == "4000 triangles at most" && tr_text_of(t, tr_find(t, "assets.side.v")) == "1024 texels a side at most";
+  d := tr_find(t, "assets.drop");
+  #assert d > 0 && tr_class(t, d) == "drop" && tr_attr_of(t, d, AT_DROP) == ES_AS_ACCEPT && tr_text_of(t, tr_find(t, "assets.drop.t")) == "Drop a file here, or press to pick one";
+  #assert tr_text_of(t, tr_find(t, "assets.none")) == "Nothing is imported yet." && tr_find(t, "assets.next") < 0 && tr_find(t, "assets.said") < 0;
+  // the licence is one of the list's
+  #assert tr_text_of(t, tr_find(t, "licence.l")) == "Choose a licence" && tr_find(t, "licence.0") < 0;
+  es_test_press(h[..], "licence");
+  #assert tr_text_of(t, tr_find(t, "licence.0.t")) == "CC0 1.0 Universal" && tr_text_of(t, tr_find(t, "licence.2.t")) == "CC BY-SA 4.0" && tr_find(t, "licence.3") < 0;
+  es_test_press(h[..], "licence.1");
+  #assert s[0].as_licence == 1 && tr_text_of(t, tr_find(t, "licence.l")) == "CC BY 4.0" && tr_find(t, "licence.0") < 0;
+  // the kinds the world places, each with the kit it draws
+  #assert tr_text_of(t, tr_find(t, "kindrow.1002.t")) == "Parked rover" && tr_text_of(t, tr_find(t, "kindrow.1002.m")) == "Shared kit · rover" && tr_text_of(t, tr_find(t, "kindrow.1001.t")) == "Cargo crate" && tr_find(t, "kindrow.1001.m") < 0;
+  // every class in the pane is the skin's
+  sheet := cast(string) s[0].css[0..<mono_dock_css(s[0].css[..], mono_css(s[0].css[..]))];
+  seen := 0;
+  for i: 0..<t[0].n {
+    cls := tr_class(t, i);
+    for k: 0..<ct_parts(cls, ' ') {
+      word := ct_part(cls, ' ', k);
+      if word.count == 0 { continue; }
+      bare := ES_TEST_BARE;
+      #assert es_test_styled(sheet, word) || word == bare[0] || word == bare[1];
+      seen += 1;
+    }
+  }
+  #assert seen > 60 && es_test_styled(sheet, "drop") && es_test_styled(sheet, "file");
+}
+
+#test "a dropped file waits with its size; Import sends it with the licence chosen, and the answer is said with the pack before and after" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  esa_open(h[..], ESA_EMPTY);
+  esa_file(h[..], "assets.drop", "2032 rock.glb");
+  #assert s[0].as_file && tr_text_of(t, tr_find(t, "assets.next.h")) == "rock.glb" && tr_text_of(t, tr_find(t, "assets.next.size.v")) == "2 KB" && tr_find(t, "assets.import") > 0 && coaxial_editor_fetching(s) == 0;
+  // no licence chosen: said, and nothing is sent; the file still waits
+  es_test_press(h[..], "assets.import");
+  #assert esa_said(h[..]) == "rock.glb has no licence. Choose one, then import it." && tr_text_of(t, tr_find(t, "assets.said.k")) == "Not imported" && coaxial_editor_fetching(s) == 0 && s[0].as_file;
+  es_test_press(h[..], "licence"); es_test_press(h[..], "licence.1");
+  #assert esa_said(h[..]) == "" && s[0].as_file;
+  es_test_press(h[..], "assets.import");
+  #assert coaxial_editor_fetching(s) == 2 && esa_url(s) == "/api/worlds/splice/assets" && esa_head(s) == "world.asset.import.v1 1 rock.glb\n";
+  coaxial_editor_fetched(s); es_test_frames(h[..], 1);
+  // on its way: the target says so and takes no other file
+  d := tr_find(t, "assets.drop");
+  #assert tr_text_of(t, tr_find(t, "assets.drop.t")) == "Sending rock.glb" && tr_has(t, d, AT_DISABLED) && !tr_has(t, d, AT_DROP) && tr_find(t, "assets.next") < 0;
+  esa_file(h[..], "assets.drop", "166 skin.png");
+  #assert esa_said(h[..]) == "The last file is still on its way. Drop this one again when it is in." && coaxial_editor_fetching(s) == 0;
+  esa_sent(h[..], 200, ESA_ROCK);
+  #assert tr_text_of(t, tr_find(t, "assets.said.k")) == "Imported" && esa_said(h[..]) == "rock is in the pack: 2 KB as a file, 2 KB packed. The pack was 0 KB and is now 3 KB of 1024 KB.";
+  #assert tr_text_of(t, tr_find(t, "assets.pack.v")) == "3 KB of 1024 KB" && tr_text_of(t, tr_find(t, "asset.0.t")) == "rock" && tr_text_of(t, tr_find(t, "asset.0.m")) == "Mesh · CC BY 4.0 · 2 KB as a file, 2 KB packed";
+  #assert !s[0].as_file && tr_find(t, "assets.none") < 0 && tr_has(t, tr_find(t, "assets.drop"), AT_DROP);
+  // a mesh is a kind to place: the page is told its name and its reach, and writes its own row
+  a := s[0].acts[0];
+  #assert coaxial_editor_act_kind(s) == ES_IMPORTED && cast(string) a[0..<coaxial_editor_act_len(s)] == "mesh rock 500 250 2000";
+  coaxial_editor_act_done(s);
+  // a sound replaced: said so, and the page is told nothing
+  esa_file(h[..], "assets.drop", "4044 door.wav"); es_test_press(h[..], "assets.import"); coaxial_editor_fetched(s);
+  esa_sent(h[..], 200, ESA_DOOR);
+  #assert esa_said(h[..]) == "door is replaced: 4 KB as a file, 4 KB packed. The pack was 3 KB and is now 7 KB of 1024 KB." && coaxial_editor_act_kind(s) == 0 && tr_text_of(t, tr_find(t, "asset.1.m")) == "Sound · CC0 1.0 Universal · 4 KB as a file, 4 KB packed";
+  // a file dropped on the strip's button while the pane is shut opens the pane with the file waiting
+  es_test_press(h[..], "assets"); #assert tr_find(t, "assets.pane") < 0;
+  esa_file(h[..], "assets", "166 skin.png");
+  #assert tr_find(t, "assets.pane") > 0 && s[0].as_file && tr_text_of(t, tr_find(t, "assets.next.h")) == "skin.png";
+  es_test_press(h[..], "assets.leave"); #assert !s[0].as_file && tr_find(t, "assets.next") < 0;
+}
+
+#test "a file the rules never take is refused in words before it is sent; the server's refusal is said in its words" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  esa_open(h[..], ESA_ROCK);
+  es_test_press(h[..], "licence"); es_test_press(h[..], "licence.0");
+  esa_file(h[..], "assets.drop", "1815448 huge.glb");
+  #assert esa_said(h[..]) == "huge.glb is 1773 KB. A file can be 512 KB at most." && !s[0].as_file && tr_find(t, "assets.next") < 0 && coaxial_editor_fetching(s) == 0;
+  esa_file(h[..], "assets.drop", "524289 edge.glb"); #assert esa_said(h[..]) == "edge.glb is 513 KB. A file can be 512 KB at most." && !s[0].as_file;
+  esa_file(h[..], "assets.drop", "524288 edge.glb"); #assert esa_said(h[..]) == "" && s[0].as_file;
+  esa_file(h[..], "assets.drop", "40 notes.txt");
+  #assert esa_said(h[..]) == "notes.txt is not a file the editor takes. Drop a .glb, .png, .wav, .ogg or .mp3 file." && !s[0].as_file;
+  esa_file(h[..], "assets.drop", "0 none.png"); #assert esa_said(h[..]) == "none.png is empty." && !s[0].as_file && coaxial_editor_fetching(s) == 0;
+  // a pack over its budget is the server's to say: its words are shown, and the list stays as it was
+  esa_file(h[..], "assets.drop", "400044 long-3.wav"); es_test_press(h[..], "assets.import");
+  #assert coaxial_editor_fetching(s) == 2 && esa_head(s) == "world.asset.import.v1 0 long-3.wav\n";
+  coaxial_editor_fetched(s);
+  esa_sent(h[..], 422, "{\"error\":\"long-3.wav would make the pack 1180 KB. Its budget is 1024 KB.\"}");
+  #assert esa_said(h[..]) == "long-3.wav would make the pack 1180 KB. Its budget is 1024 KB." && tr_text_of(t, tr_find(t, "assets.said.k")) == "Not imported" && tr_text_of(t, tr_find(t, "assets.pack.v")) == "3 KB of 1024 KB" && !s[0].as_file && coaxial_editor_act_kind(s) == 0;
+  // no answer at all
+  esa_file(h[..], "assets.drop", "166 skin.png"); es_test_press(h[..], "assets.import"); coaxial_editor_fetched(s);
+  esa_sent(h[..], 0, "");
+  #assert esa_said(h[..]) == "That did not import: the world's server did not answer." && s[0].as_list[0].n == 1;
+  // Code and Assets share the right side: opening one puts the other away
+  es_test_code(h[..]); es_test_frames(h[..], 1);
+  es_test_press(h[..], "code"); #assert tr_find(t, "code.pane") > 0 && tr_find(t, "assets.pane") < 0;
+  es_test_press(h[..], "assets"); #assert tr_find(t, "assets.pane") > 0 && tr_find(t, "code.pane") < 0;
+}

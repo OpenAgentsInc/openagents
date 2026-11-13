@@ -280,6 +280,13 @@ The editor's Code pane saves a realm's source through the dev server
 watched source, so the same watch builds it and the same messages swap it
 in. Check: `coax/web/tool.sh code-route-check`.
 
+The editor's Assets pane imports a dropped file through the dev server too
+(`/api/worlds/ID/assets`, `world.assets.v1`, #13420;
+[the shape](../docs/protocol/world-assets-v1.md)). The world's asset tool
+packs it, the pack is kept by content hash under `build/.worlds/`, and every
+tab is told the pack's new hash as an `asset` message, so each fetches it
+again and swaps it in.
+
 Dev builds split the generated C into 16 parts with an object cache per
 part, so a one-file edit recompiles one part. Checks:
 `coax/web/tool.sh serve-live-check` (12 cases against a fixture app, 301

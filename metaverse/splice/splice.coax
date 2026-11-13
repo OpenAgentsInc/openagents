@@ -41,6 +41,8 @@ Splice :: struct {
   // the editor's viewport tools (?edit; metaverse-engine/editor/viewport.coax, world.coax spv_*): the tool,
   // the fly camera and the clock; the view last drawn, in device pixels; and the fly keys held (W S A D Q E)
   vp: [1] Viewport; vw: [1] SpvWork; vview: VpView; vkeys: [6] bool;
+  imports_n: int;             // bytes of the world's import pack the face keeps (splice_imports); imports_refused: packs that did not read
+  imports_refused: int;
   tables_seen: int;           // the page's count of table changes it has drawn (world.coax SpwPage.tables_gen)
   drive: [1] Drive;           // the agent driver's lists and its last answer (metaverse-engine/agent/drive.coax)
   // In the site's sandboxed frame (metaverse-engine/host/realm-frame.coax, #13432): what the frame is
@@ -382,7 +384,8 @@ splice_edit_rev :: (s: [] Splice) -> int #export_c #effects(all) {
 // A fact of the page's place in the world, for a host's checks (coaxial.fieldProbe): 0 the revision
 // it stands at (-1: no document yet), 1 outside edits carried out, 2 placed pieces, 3 pieces rising
 // in, 4 the follower's status (world-follow.coax WFS_*), 5 documents read, 6 requests sent, 7 and 8
-// where you stand (x and z, centimetres); from 100,
+// where you stand (x and z, centimetres), 9 import packs read, 10 the meshes the pack has, 11 packs
+// refused, 12 vertices in the piece store, 13 the pack's bytes; from 100,
 // a fact of the run (splice_fact k - 100).
 splice_world_fact :: (s: [] Splice, k: int) -> int #export_c #effects(all) {
   if s.count < 1 { return -1; }
@@ -392,7 +395,21 @@ splice_world_fact :: (s: [] Splice, k: int) -> int #export_c #effects(all) {
   if k == 1 { return f[0].taken; } if k == 2 { return l[0].st[0].n; } if k == 3 { return l[0].rise_n; }
   if k == 4 { return f[0].status; } if k == 5 { return s[0].page[0].loads; } if k == 6 { return f[0].sent; }
   if k == 7 { return we_cm(s[0].game[0].px); } if k == 8 { return we_cm(s[0].game[0].pz); }
+  if k == 9 { return s[0].game[0].imp[0].gen; } if k == 10 { return s[0].game[0].imp[0].n; } if k == 11 { return s[0].imports_refused; }
+  if k == 12 { return s[0].ld[0].mesh_n; } if k == 13 { return s[0].imports_n; }
   return -1;
+}
+// The world's import pack as it arrived (the page's data asset, GitHub #13420): read whole
+// (pack.coax, then the importer's catalog) and copied into `kept`, which the face hands to each
+// frame; or refused, and the copy from before stays. A kind whose kit is a pack mesh is meshed
+// again from it (layer-draw.coax).
+splice_imports :: (s: [] Splice, incoming: string, kept: [] u8) -> bool #export_c #effects(all) {
+  if s.count < 1 || incoming.count == 0 { return false; }
+  t := [1] SpImports.[s[0].game[0].imp[0]];
+  if incoming.count > kept.count || !sp_imports_read(t[..], incoming) { s[0].imports_refused += 1; return false; }
+  for c, k: incoming { kept[k] = c; }
+  s[0].imports_n = incoming.count; s[0].game[0].imp[0] = t[0];
+  return true;
 }
 splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all) {
   if kind == 700 && s.count > 0 { s[0].frame_answer = false; splice_drive(s, body); return; }
@@ -410,6 +427,8 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
     if k.ok && c.ok { _ := spw_plan_add(s[0].game[..], s[0].page[..], s[0].vw[..], PlaceView.{view_x = s[0].vview.ax, view_z = s[0].vview.az, yaw = s[0].vp[0].fyaw}, k.v, c.v); }
     return;
   }
+  // "mesh NAME HX HZ TOP": the shell imported a mesh into the world's pack; its row of the pieces table is this page's write (world.coax spw_import_kind)
+  if kind == 525 && s.count > 0 && s[0].edit && s[0].follow == 2 { _ := spw_import_kind(s[0].page[..], body); return; }
   if kind == 522 && s.count > 0 && s[0].edit { _ := vp_act(s[0].vp[..], body, s[0].vview); return; }   // the viewport's tool, grid, camera and clock
   if kind == 610 && s.count > 0 && body.count > 0 {   // a moment of the game to stand in: "0" to "10"
     n := 0;
@@ -473,7 +492,7 @@ sp_shadow_rows :: (u: [] f32, l: Point, c: Point) {
 // The frame: the anime look over the world. The game steps, writes what moves and draws its
 // interface; a still scene has one fixed camera and no interface.
 splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
-                 world: [] u32, live: [] u32, pieces: [] u32, places: [] u32, style: [] f32) -> int #export_c #effects(all) {
+                 world: [] u32, live: [] u32, pieces: [] u32, places: [] u32, style: [] f32, imports: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || u.count < UNIFORM_FLOATS || !(width >= 1) || !(height >= 1) { return 0; }
   g := s[0].game[..];
   if !s[0].started { s[0].started = true; s[0].time = 0; g_reset(g); }
@@ -542,7 +561,7 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   // the edit layer, retained: the kinds' meshes are written once, the placed pieces' rows when the
   // layer changes, and each kind with a placed piece is one more draw of its instances
   if s[0].fixture == 1 { s[0].fixture = 2; _ := sl_fixture(g); }
-  sd_meshes(s[0].ld[..], g, pieces); sd_places(s[0].ld[..], g, places);
+  sd_meshes(s[0].ld[..], g, pieces, cast(string) imports[0..<ifx s[0].imports_n > imports.count then 0 else s[0].imports_n]); sd_places(s[0].ld[..], g, places);
   s[0].draw_n = sd_draws(s[0].ld[..], g, s[0].draws[..], 2);
   n := g_overlay(g, out, u, width, height);
   // the selected piece is outlined where it stands, or where a drag would leave it
@@ -671,9 +690,9 @@ splice_place_words :: () -> int #export_c #effects(all) { return SD_PLACE_WORDS;
 
 // The frame's stores at check size: the world and what moves, the kinds' meshes, the placed pieces' rows.
 SpFrameCheck :: struct { s: [1] Splice; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; world: [SP_WORLD_WORDS * VERTEX_WORDS] u32; live: [SP_WORLD_WORDS * VERTEX_WORDS] u32;
-                         pieces: [SD_PIECE_WORDS] u32; places: [SD_PLACE_WORDS] u32; style: [STYLE_FLOATS] f32; }
+                         pieces: [SD_PIECE_WORDS] u32; places: [SD_PLACE_WORDS] u32; style: [STYLE_FLOATS] f32; imports: [8192] u8; }
 sp_check_frame :: (b: [] SpFrameCheck) -> int #effects(all) {
-  return splice_frame(b[0].s[..], b[0].out[..], b[0].u[..], 1280, 720, 1, 0.016, false, b[0].world[..], b[0].live[..], b[0].pieces[..], b[0].places[..], b[0].style[..]);
+  return splice_frame(b[0].s[..], b[0].out[..], b[0].u[..], 1280, 720, 1, 0.016, false, b[0].world[..], b[0].live[..], b[0].pieces[..], b[0].places[..], b[0].style[..], b[0].imports[..]);
 }
 #test "only the dev server's page loads the fixture layer, and placed pieces are draws of instances: the world's store is not written again" #steps 2000000000 #traversal 2000000000 {
   b: [1] SpFrameCheck; s := b[0].s[..];
@@ -701,4 +720,14 @@ sp_check_frame :: (b: [] SpFrameCheck) -> int #effects(all) {
   #assert splice_world_version(s) == world && splice_piece_version(s) == 1 && splice_place_version(s) == 3 && splice_place_n(s) == SL_FIXTURE_N - 1;
   splice_message(s, 600, "http://localhost:8800/worlds/splice?x=1&layer=fixture"); #assert s[0].fixture == 2;
   #assert sp_has("abc", "bc") && sp_has("abc", "") && !sp_has("ab", "abc") && !sp_has("abc", "bd");
+}
+
+#test "the page takes the world's import pack whole or keeps the copy from before" #steps 8000000000 #traversal 4000000000 {
+  k: [1] SitPack; pack := sit_pack(k[..]);
+  b: [1] SpFrameCheck; s := b[0].s[..];
+  #assert splice_imports(s, pack, b[0].imports[..]) && s[0].imports_n == pack.count && s[0].game[0].imp[0].n == 1 && s[0].game[0].imp[0].gen == 1 && cast(string) b[0].imports[0..<pack.count] == pack;
+  #assert splice_world_fact(s, 9) == 1 && splice_world_fact(s, 10) == 1 && splice_world_fact(s, 11) == 0 && splice_world_fact(s, 13) == pack.count;
+  #assert !splice_imports(s, "not a pack", b[0].imports[..]) && !splice_imports(s, pack[0..<pack.count - 4], b[0].imports[..]) && s[0].imports_refused == 2 && s[0].game[0].imp[0].gen == 1 && cast(string) b[0].imports[0..<pack.count] == pack;
+  #assert !splice_imports(s, "", b[0].imports[..]) && s[0].imports_refused == 2 && !splice_imports(s, pack, b[0].imports[0..<pack.count - 1]) && s[0].imports_refused == 3 && s[0].imports_n == pack.count;
+  g_reset(s[0].game[..]); #assert s[0].game[0].imp[0].n == 1;   // the meshes are the world's, not the run's
 }

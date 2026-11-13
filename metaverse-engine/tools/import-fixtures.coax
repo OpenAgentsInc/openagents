@@ -1,0 +1,60 @@
+// Files to try the editor's asset import with (GitHub #13420, the browser editor's E11), written in
+// code so no check downloads one: glTF binaries from cel boxes (export/glb-write.coax), a PNG
+// (coax/lib/image/png.coax's own fixture) and WAV files (audio/wav.coax).
+//   coax/web/tool.sh metaverse-engine/tools/import-fixtures.coax DIR
+// It writes into DIR:
+//   rock.glb          a box 1 m wide, 2 m tall and 0.5 m deep, orange
+//   again/rock.glb    the same name, another shape that stands where the first did: 0.6 m wide, 3 m tall and 0.3 m deep, blue
+//   wide/rock.glb     the same name, a shape that needs more ground: 4 m wide, 1 m tall and 4 m deep
+//   skin.png          a 6 by 5 texture
+//   door.wav          a short sound
+//   long-1.wav ... long-3.wav   three sounds of about 400 KB each: the third is over a 1,000 KB pack
+//   huge.glb          a mesh of 21,600 triangles, about 1,800 KB: over a 500 KB file limit
+#import "Basic";
+#load "../export/glb-write.coax";
+#load "../audio/wav.coax";
+#load "../../coax/lib/image/png.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+
+IF_BIG :: 64800;   // vertices of the huge mesh: 1,800 boxes
+IfWork :: struct { cel: [IF_BIG * VERTEX_WORDS] u32; out: [IF_BIG * 28 + 65536] u8; pcm: [200000] int; path: [900] u8; }
+if_path :: (w: [] IfWork, dir: string, name: string) -> string {
+  n := 0;
+  for piece: [3] string.[dir, "/", name] { for c: piece { if n < w[0].path.count { w[0].path[n] = c; n += 1; } } }
+  return cast(string) w[0].path[0..<n];
+}
+// `boxes` boxes side by side as one glTF binary: each hx by hy by hz (half sizes), in a colour.
+if_glb :: (w: [] IfWork, boxes: int, hx: f32, hy: f32, hz: f32, r: f32, g: f32, b: f32) -> string {
+  pen := [1] Pen.[Pen.{}];
+  pen_set(pen[..], 1, MAT_WORLD, r, g, b);
+  for k: 0..<boxes { box(w[0].cel[..], pen[..], frame_at(v3(cast(f32) (k % 60) * hx * 2.5, hy, cast(f32) (k / 60) * hz * 2.5), 0), hx, hy, hz); }
+  parts := [1] GlbPart.[GlbPart.{name = "mesh", first = 0, count = pen[0].n}];
+  n := glb_from_cel(w[0].cel[..], parts[..], w[0].out[..]);
+  return cast(string) w[0].out[0..<ifx n < 0 then 0 else n];
+}
+if_wav :: (w: [] IfWork, samples: int, tone: int) -> string {
+  for i: 0..<samples { w[0].pcm[i] = ((i * tone) % 400 - 200) * 40; }
+  n := wav_write(w[0].pcm[0..<samples], 1, 22050, w[0].out[..]);
+  return cast(string) w[0].out[0..<ifx n < 0 then 0 else n];
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: import-fixtures DIR"); return 2; }
+  dir := args_at(a[..], 0); w := [1] IfWork.[IfWork.{}];
+  made := fs_mkdir(dir); again := fs_mkdir(if_path(w[..], dir, "again")); wide := fs_mkdir(if_path(w[..], dir, "wide"));
+  ok := fs_write(if_path(w[..], dir, "rock.glb"), if_glb(w[..], 1, 0.5, 1, 0.25, 1, 0.5, 0));
+  ok = ok && fs_write(if_path(w[..], dir, "again/rock.glb"), if_glb(w[..], 1, 0.3, 1.5, 0.15, 0.1, 0.4, 1));
+  ok = ok && fs_write(if_path(w[..], dir, "wide/rock.glb"), if_glb(w[..], 1, 2, 0.5, 2, 0.1, 0.4, 1));
+  ok = ok && fs_write(if_path(w[..], dir, "huge.glb"), if_glb(w[..], IF_BIG / 36, 0.1, 0.1, 0.1, 0.5, 0.5, 0.5));
+  png := PNG_RGB;
+  ok = ok && fs_write(if_path(w[..], dir, "skin.png"), cast(string) png[..]);
+  ok = ok && fs_write(if_path(w[..], dir, "door.wav"), if_wav(w[..], 2000, 7));
+  names := [3] string.["long-1.wav", "long-2.wav", "long-3.wav"];
+  for name, k: names { ok = ok && fs_write(if_path(w[..], dir, name), if_wav(w[..], 200000, 3 + k)); }
+  if !ok { tool_errln("import-fixtures: a file was not written"); return 1; }
+  print("import-fixtures: 10 files in %\n", dir);
+  return 0;
+}

@@ -1,0 +1,87 @@
+// Checks proto/world/assets-v1.json against metaverse-engine/editor/asset-wire.coax, the one codec
+// of a world's imported assets and of an import's body (GitHub #13420): the pinned list reads as
+// what the profile says of it and writes back the same bytes; each rejected body does not; an
+// import's head reads as its licence and file name and is written back; the limits, the kinds
+// and the address are the module's; the profile names itself, its version and this check.
+// Usage: coax/web/tool.sh metaverse-engine/tools/assets-profile.coax proto/world/assets-v1.json
+#import "Basic";
+#load "../editor/asset-wire.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+
+WAP_CHECK :: "coax/web/tool.sh metaverse-engine/tools/assets-profile.coax proto/world/assets-v1.json";
+WapWork :: struct { l: [1] WasList; wire: [WAS_BYTES + 256] u8; out: [WAS_BYTES] u8; a: [WAS_BYTES] u8; b: [256] u8; nodes: [2048] JvNode; text: [65536] u8; }
+wap_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+wap_lim :: (d: Jv, name: string) -> int { return jv_int(d, jv_get(d, jv_get(d, 0, "limits"), name), -1); }
+wap_list :: (d: Jv, w: [] WapWork) -> bool {
+  l := w[0].l[..]; one := jv_get(d, 0, "list"); kinds := WAS_KIND;
+  wire := wap_str(d, jv_get(d, one, "wire"), w[0].wire[..]);
+  if wire.count == 0 || !was_read(l, wire) || was_write(l, w[0].out[..]) != wire { return false; }
+  if wap_str(d, jv_get(d, one, "world"), w[0].b[..]) != was_world_of(l) || !l[0].packed || wap_str(d, jv_get(d, one, "hash"), w[0].b[..]) != cast(string) l[0].hash[..] { return false; }
+  if jv_int(d, jv_get(d, one, "bytes"), -1) != l[0].bytes || jv_int(d, jv_get(d, one, "budget"), -1) != l[0].budget || jv_int(d, jv_get(d, one, "file"), -1) != l[0].file { return false; }
+  if jv_int(d, jv_get(d, one, "triangles"), -1) != l[0].triangles || jv_int(d, jv_get(d, one, "side"), -1) != l[0].side { return false; }
+  lics := jv_get(d, one, "licences");
+  if jv_len(d, lics) != l[0].licences || l[0].licences < 1 { return false; }
+  for k: 0..<l[0].licences { if wap_str(d, jv_at(d, lics, k), w[0].b[..]) != was_licence_of(l, k) { return false; } }
+  assets := jv_get(d, one, "assets"); seen := 0;
+  if jv_len(d, assets) != l[0].n || l[0].n < 3 { return false; }
+  for i: 0..<l[0].n {
+    a := jv_at(d, assets, i); got := l[0].a[i]; reach := jv_get(d, a, "reach");
+    if wap_str(d, jv_get(d, a, "kind"), w[0].b[..]) != kinds[got.kind] || wap_str(d, jv_get(d, a, "name"), w[0].b[..]) != was_asset_name(l, i) { return false; }
+    if jv_int(d, jv_get(d, a, "licence"), -1) != got.licence || jv_int(d, jv_get(d, a, "file"), -1) != got.file || jv_int(d, jv_get(d, a, "bytes"), -1) != got.bytes { return false; }
+    if wap_str(d, jv_get(d, a, "hash"), w[0].b[..]) != cast(string) l[0].a[i].hash[..] { return false; }
+    if jv_int(d, jv_at(d, reach, 0), -1) != got.hx || jv_int(d, jv_at(d, reach, 1), -1) != got.hz || jv_int(d, jv_at(d, reach, 2), -1) != got.top { return false; }
+    seen |= 1 << got.kind;
+  }
+  did := jv_get(d, one, "did");
+  if seen != 14 || !l[0].did || wap_str(d, jv_get(d, did, "kind"), w[0].b[..]) != kinds[l[0].did_kind] || wap_str(d, jv_get(d, did, "name"), w[0].b[..]) != was_text(l[0].did_name[..], l[0].did_name_n) || jv_bool(d, jv_get(d, did, "replaced")) != l[0].did_replaced { return false; }
+  empty := wap_str(d, jv_get(d, jv_get(d, 0, "empty"), "wire"), w[0].wire[..]);
+  if empty.count == 0 || !was_read(l, empty) || l[0].packed || l[0].n != 0 || l[0].did || was_write(l, w[0].out[..]) != empty { return false; }
+  no := jv_get(d, 0, "rejected");
+  if jv_kind(d, no) != JV_ARRAY || jv_len(d, no) < 10 { return false; }
+  for i: 0..<jv_len(d, no) {
+    n := jv_str(d, jv_at(d, no, i), w[0].wire[..]);
+    if n < 0 || was_read(l, cast(string) w[0].wire[0..<n]) { return false; }
+  }
+  return true;
+}
+wap_import :: (d: Jv, w: [] WapWork) -> bool {
+  im := jv_get(d, 0, "import"); heads := jv_get(d, im, "heads"); no := jv_get(d, im, "rejected");
+  if wap_str(d, jv_get(d, im, "schema"), w[0].b[..]) != WAS_IMPORT || jv_len(d, heads) < 2 || jv_len(d, no) < 5 { return false; }
+  for i: 0..<jv_len(d, heads) {
+    one := jv_at(d, heads, i);
+    wire := wap_str(d, jv_get(d, one, "wire"), w[0].wire[..]);
+    r := was_import_read(wire);
+    if wire.count == 0 || !r.ok || r.at != wire.count || r.licence != jv_int(d, jv_get(d, one, "licence"), -9) || r.name != wap_str(d, jv_get(d, one, "name"), w[0].a[..]) { return false; }
+    if was_import_head(w[0].out[..], r.licence, r.name) != wire { return false; }
+  }
+  for i: 0..<jv_len(d, no) {
+    n := jv_str(d, jv_at(d, no, i), w[0].wire[..]);
+    if n < 0 || was_import_read(cast(string) w[0].wire[0..<n]).ok { return false; }
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: assets-profile PROFILE.json"); return 2; }
+  w := [1] WapWork.[WapWork.{}]; d: [1] Jv; nb: [256] u8;
+  n := fs_read(args_at(a[..], 0), w[0].text[..]);
+  if n <= 0 || !jv_parse(d[..], cast(string) w[0].text[0..<n], w[0].nodes[..]) { tool_errln("assets-profile: the profile does not read"); return 1; }
+  kinds := WAS_KIND; pk := jv_get(d[0], 0, "kinds");
+  ok := wap_str(d[0], jv_get(d[0], 0, "profile"), nb[..]) == "world-assets-v1" && jv_int(d[0], jv_get(d[0], 0, "version"), -1) == 1;
+  ok = ok && wap_str(d[0], jv_get(d[0], 0, "check"), nb[..]) == WAP_CHECK && wap_str(d[0], jv_get(d[0], 0, "schema"), nb[..]) == WAS_SCHEMA;
+  ok = ok && wap_lim(d[0], "bytes") == WAS_BYTES && wap_lim(d[0], "assets") == WAS_ASSETS && wap_lim(d[0], "licences") == WAS_LICENCES && wap_lim(d[0], "licence_bytes") == WAS_LICENCE;
+  ok = ok && wap_lim(d[0], "world_bytes") == WAS_WORLD && wap_lim(d[0], "name_bytes") == PIP_NAME && wap_lim(d[0], "file_name_bytes") == WAS_FILE_NAME && jv_len(d[0], pk) == 3;
+  for k: 0..<3 { ok = ok && wap_str(d[0], jv_at(d[0], pk, k), nb[..]) == kinds[k + 1]; }
+  if !ok { tool_errln("assets-profile: the profile's name, check, limits or kinds are not the module's"); return 1; }
+  if !wap_list(d[0], w[..]) { tool_errln("assets-profile: a list is not what the profile says, or a rejected one reads"); return 1; }
+  if !wap_import(d[0], w[..]) { tool_errln("assets-profile: an import's head is not what the profile says, or a rejected one reads"); return 1; }
+  print("assets-profile: ok (the list, the empty list, % rejected; % heads, % rejected)\n", jv_len(d[0], jv_get(d[0], 0, "rejected")), jv_len(d[0], jv_get(d[0], jv_get(d[0], 0, "import"), "heads")), jv_len(d[0], jv_get(d[0], jv_get(d[0], 0, "import"), "rejected")));
+  return 0;
+}
