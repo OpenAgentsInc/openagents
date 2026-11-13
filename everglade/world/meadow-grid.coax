@@ -2,7 +2,7 @@
 // everglade/scene/gpu/character-glade.coax cg_meadow_vs draws one instance a cell). Kept apart, with no loads, so a
 // page that draws the meadow can size its draws without loading the meadow itself; meadow.coax checks
 // every number here against its kit's cell and reach.
-#module "verse.everglade2meadowgrid";
+#module "everglade.meadowgrid";
 E2_MEADOW_GRASS :: 33;   // Grass_Common_Short: the grass, drawn in field.coax's four tiers
 // Kit `kit`'s grid side (tier: the grass's tier, 0 to 3); 0 for a kit the meadow does not scatter.
 e2_meadow_side :: (kit: int, tier: int) -> int {

@@ -4,7 +4,7 @@
 // It takes the ground's height and the places to try from its caller, and draws nothing itself:
 // Everglade II plants it through plant.coax and field.coax, and the druid's field bakes it into the
 // glade's pack.
-#module "verse.everglade2meadow";
+#module "everglade.meadow";
 #load "field.coax";   // its hashes (and forest.coax)
 #load "meadow-grid.coax";   // each grid's side
 
