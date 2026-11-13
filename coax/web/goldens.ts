@@ -37,11 +37,16 @@
 // blocks may change are its "golden" in realms.json. A page differs when
 // more of its 8 px blocks changed than the page allows (a block changed
 // when its mean differs by more than SHADE in a channel; 16,000 blocks a
-// page). Every page runs in golden mode (host.js): an app that knows it
-// holds its effects (the house's candles, fireflies, embers and dust) at
-// one moment. Blocks that still move on their own (the landing's orbs, the
-// stars) are found by three more shots of the page and left out, with the
-// blocks round them.
+// page). Every page runs in golden mode (host.js): its clock is counted, not
+// measured (goldenStep: no time until the scene is ready, then 120 frames of
+// a sixtieth of a second, then the clock holds), so a shot is one moment of
+// the build whenever it is taken, and an app that knows it also holds its
+// effects (the house's candles, fireflies, embers and dust). Blocks that
+// still move on their own (anything a page drives from a wall clock) are
+// found by three more shots of the page and left out, with the blocks round
+// them; a page that reports many moving blocks is comparing little, so fix
+// its clock rather than raise its allowance (#13303: before the counted
+// clock Everglade hid a fifth of its frame this way, and one page nine tenths).
 // A moved panel or a changed word does not pass. A shot that differs is kept and its path printed: look at it, and
 // if the change is meant, run --update against staging and commit the
 // goldens with the change.

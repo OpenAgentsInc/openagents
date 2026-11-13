@@ -327,6 +327,20 @@ const probeAt = probe ? Number(new URLSearchParams(location.search).get("at")) |
 const still = (probe && !probeAt) || matchMedia("(prefers-reduced-motion: reduce)").matches;
 // Golden mode (goldens.ts sets coaxialGolden; ?golden by hand): an app that exports coaxial_golden holds its effects still.
 const golden = globalThis.coaxialGolden === true || new URLSearchParams(location.search).has("golden");
+// A golden page's clock is counted, not measured (#13303). A page with a scene (a pack or an index) gets no time until
+// its scene is ready, or 600 frames have gone by; then every page gets GOLDEN_STEPS frames of a sixtieth of a second
+// each, and after them the clock holds. So a golden is one moment of the build, whatever the machine's pace and
+// however long the shot waits: before this, cloud shadows, walkers, water and fire moved between two shots of a build.
+// The first key or pointer press ends it: a walk that plays the page (goldens.ts's journey) gets measured time from then.
+const GOLDEN_STEPS = 120, GOLDEN_WAIT = 600;
+let goldenSteps = 0, goldenWaited = 0, goldenPlayed = false;
+if (golden) for (const type of ["keydown", "pointerdown"]) addEventListener(type, () => { goldenPlayed = true; }, { capture: true, passive: true });
+function goldenStep(scene, measured) {
+  if (goldenPlayed) return measured;
+  if (scene && !globalThis.coaxial.sceneReady && goldenWaited < GOLDEN_WAIT) { goldenWaited++; return 0; }
+  if (goldenSteps >= GOLDEN_STEPS) return 0;
+  goldenSteps++; return 1 / 60;
+}
 // ?shadowmap: the one key-light map even where the realm lays out shadow tiles (A/B timing, #13016)
 const shadowMapOnly = new URLSearchParams(location.search).has("shadowmap");
 let frames = 0;
@@ -367,6 +381,7 @@ const assets = parseAssets((script && script.dataset.assets) || "");
 // What main() loads once the GPU is up (sounds wait to be played; fonts and icons are gpui.js's).
 const LATER = ["sound", "loop", "particles", "cull", "font", "icons", "licence"];
 let firstAssets = assets.filter((a) => !a.pack && !LATER.includes(a.kind)), firstPacks = new Set(assets.filter((a) => a.pack).map((a) => a.pack));
+const goldenScene = firstPacks.size > 0 || firstAssets.some((a) => a.kind === "index");   // goldenStep waits for this scene
 // A realm's loading screen (loader.js): told what really loads, gone on the world's first frame.
 const loading = startLoading({ realm: realmId, assets: firstAssets.length + firstPacks.size,
   textured: firstPacks.size > 0 || firstAssets.some((a) => a.kind === "layers"),
@@ -2808,7 +2823,8 @@ const clipping = globalThis.coaxialClip === true || agentMode;
 const clipRoom = clipping && (globalThis.coaxialClipRoom === true || agentMode), clipStart = agentMode ? 1000 : performance.now();
 // Optional platform timing observations for the desktop profiler. No work is
 // collected in an ordinary page; Coax tools summarize these raw milliseconds.
-const frameTrace = globalThis.coaxialFrameTrace === true ? [] : null;
+// ?frametrace turns the trace on by hand on a development server (coaxial.takeFrameTrace() reads it: row[1] the engine's ms, row[2] the host's encode, row[4] both).
+const frameTrace = globalThis.coaxialFrameTrace === true || (dev && new URLSearchParams(location.search).has("frametrace")) ? [] : null;
 // Pass times (globalThis.coaxialPassTimer = true before the page loads; coax/web/flyover.coax): every
 // render pass of a frame gets its own pair of GPU timestamps, read back after the submit, and
 // coaxial.takePassTimes() gives [SPAN_US, SHADOW_US, PASSES, SUM_US] a frame: the first pass's start to
@@ -3007,7 +3023,8 @@ function draw(now) {
   }
   const offer=hostLifecycle?.offer(Math.floor(now*1000),pending);
   if(hostLifecycle&&!offer){if(traceRow){traceRow[7]=0;traceRow[8]=gpu.device.__coaxialCompletionMs||0;}return;}
-  const dt = offer?offer.dt:(last ? (now - last) / 1000 : 0); last = now;
+  const measured = offer?offer.dt:(last ? (now - last) / 1000 : 0); last = now;
+  const dt = golden ? goldenStep(goldenScene, measured) : measured;
   if (canvas.width !== w || canvas.height !== h) {hostLifeEvent(1,Math.floor(now*1000));canvas.width = w; canvas.height = h; }
   const dpr = scale();
   if (traceRow) {traceRow[5]=w;traceRow[6]=h;}
