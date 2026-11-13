@@ -22,6 +22,7 @@
 #load "code-wire.coax";                         // a realm's code on the dev server: what is asked and answered
 #load "shell-assets.coax";                      // the Assets pane: the world's imports, a file dropped, its licence and the limits (#13420)
 #load "shell-actors.coax";                      // the actors: the time of day, the Actors list and the selected actor's plan (#13466)
+#load "shell-files.coax";                       // the Files pane: the world's and its project's attachments, never a player's (#13468)
 
 ES_INBOX :: 200704;    // a model (EM_BYTES), a field's text, or a file of code as typed (RC_TEXT, and room to see that it is longer), from the host
 ES_CSS :: 24576;
@@ -116,7 +117,9 @@ EdShell :: struct {
   as_url_n: int; as_head_n: int;         // where the ask goes, and an import's first bytes (0: a GET)
   as_how: int;                           // how the ask goes (ES_HOW_*)
   as_told: bool;                         // the page was told the hash of the world's pack (as_pack)
-  as_url: [WAS_URL] u8; as_head: [320] u8;
+  as_url: [WAS_URL] u8; as_head: [FW_HEAD] u8;   // shared by the Files pane (shell-files.coax), whose heads are longer
+  files: bool;                           // the Files pane is open (#13468)
+  fl: EsFiles;
   as_hash: [64] u8; as_pack: [64] u8;    // the waiting file's SHA-256 as the server answered it, and the pack's hash the page was last told
   as_file_name: [WAS_FILE_NAME] u8;
   as_words: [EM_WORDS] u8;
@@ -446,8 +449,11 @@ es_build :: (s: [] EdShell) {
   // assets: only where the world's server answered with its list. Closed, its button still takes a dropped file
   asseting := s[0].assets && s[0].as_have;
   if s[0].as_have { ab := k_button(t, u, "assets", ifx s[0].assets then "Hide assets" else "Assets", BS_PLAIN); if !s[0].assets { tr_attr(t, ab, AT_DROP, ""); } }
+  // files: only where the world's server answered with its attachments (a member, or the dev server)
+  filing := s[0].files && s[0].fl.have && !asseting;
+  if s[0].fl.have { fb := k_button(t, u, "files", ifx filing then "Hide files" else "Files", BS_PLAIN); }
   // code: only where the dev server answered with the realm's files
-  coding := s[0].code && s[0].nfiles > 0 && !asseting;
+  coding := s[0].code && s[0].nfiles > 0 && !asseting && !filing;
   if s[0].nfiles > 0 { cb := k_button(t, u, "code", ifx s[0].code then "Hide code" else "Code", BS_PLAIN); }
   w := m[0].world;
   n := ct_put(line[..], 0, cast(string) w[0..<m[0].world_n]);
@@ -457,6 +463,7 @@ es_build :: (s: [] EdShell) {
 
   // the world's things
   left := k_pane(t, u, "things", DK_LEFT, "Things");
+  es_fl_build_pin(s);   // a picture pinned beside the scene (shell-files.coax)
   // a world that says how many things it holds and takes: the count, and how many of them are listed here
   if m[0].all {
     n = 0;
@@ -486,7 +493,8 @@ es_build :: (s: [] EdShell) {
   // the realm's code takes the right side while it is open; else the selected thing, and what was refused
   if coding { es_build_code(s); }
   if asseting { es_build_assets(s); }
-  if !coding && !asseting {
+  if filing { es_build_files(s); }
+  if !coding && !asseting && !filing {
   right := k_pane(t, u, "one", DK_RIGHT, "Selected");
   es_build_said(s);
   if s[0].ngroup > 0 {
@@ -613,9 +621,10 @@ es_click :: (s: [] EdShell, id: string) {
   was := s[0].open; s[0].open = ES_OPEN_NONE;
   names := [13] string.["when", "kind", "tool", "grid", "add", "count", "file", "brush", "mat", "licence", "clock", "pdo", "pon"];
   for name, k: names { if id == name { s[0].open = ifx was == k + 1 then ES_OPEN_NONE else k + 1; return; } }
-  if es_as_click(s, id) { return; }
+  if es_as_click(s, id) { if s[0].assets { s[0].files = false; } return; }
+  if es_fl_click(s, id) { return; }
   if s[0].have && es_actors_click(s, id) { return; }
-  if es_code_click(s, id) { if s[0].code { s[0].assets = false; } return; }
+  if es_code_click(s, id) { if s[0].code { s[0].assets = false; s[0].files = false; } return; }
   if es_index(id, "when.") >= 0 && es_index(id, "when.") < 2 { s[0].when = es_index(id, "when."); return; }
   // the viewport's tools are the shell's to pick and the page's to obey
   words: [24] u8;
@@ -833,7 +842,7 @@ coaxial_editor_frame :: (s: [] EdShell, dt: f32, reduced: bool) -> int #export_c
       dm_value(d, tr_join(buf[..], "cell.", k), cast(string) val[0..<m[0].c_val_n[k]]);
     }
   }
-  if s[0].have { es_plan_fill(s, d); }
+  if s[0].have { es_plan_fill(s, d); es_fl_fill(s, d); }
   s[0].animating = s[0].ui[0].busy;
   s[0].dirty = false;
   bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
@@ -852,6 +861,7 @@ coaxial_editor_event :: (s: [] EdShell, kind: int, slot: int, length: int) #expo
   if s.count < 1 { return; }
   s[0].dirty = true;
   es_event(s, kind, slot, length);
+  es_fl_kick(s);   // the world's attachments, once the channel to its server is free (shell-files.coax)
   // the conversation in the foot is told of the world as it now is, once the page has room for the word
   if s[0].agent_made && s[0].have && s[0].turn_due && es_turn(s) { s[0].turn_due = false; }
 }
@@ -862,12 +872,14 @@ es_event :: (s: [] EdShell, kind: int, slot: int, length: int) {
   if kind == ES_CODE_HERE { es_code_here(s, length); return; }
   if kind == ES_PIECE { es_code_piece(s, length); return; }
   if kind == ES_END { es_code_end(s, slot); return; }
-  if kind == ES_FILE { es_as_file(s, length); return; }
-  if kind == ES_SENT { es_as_sent(s, slot, length); return; }
+  if kind == ES_FILE { if es_id_is(dm_slot_id(s[0].dom[..], slot), "files") { es_fl_file(s, length); } else { es_as_file(s, length); } return; }
+  if kind == ES_SENT { if s[0].fl.flight != ES_FL_NONE { es_fl_sent(s, slot, length); } else { es_as_sent(s, slot, length); } return; }
   id := dm_slot_id(s[0].dom[..], slot);
   if id.count == 0 { return; }
   if kind == ES_CLICK { es_click(s, id); }
   if id == "code.text" { if kind == ES_INPUT { es_code_typed(s, length); } return; }
+  if kind == ES_INPUT && es_id_is(id, "files.") && es_fl_typed(s, id, length) { return; }
+  if kind == ES_SUBMIT && id == "files.url" { _ := es_fl_click(s, "files.link"); return; }
   if id == "tname" {
     if kind == ES_INPUT {
       lo := 0; hi := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
@@ -1731,4 +1743,5 @@ es_test_local :: (h: [] EsTest, listed: int, in_all: int) {
   #assert es_test_view(h[..], w[..]) == "tool select" && tr_find(t, "brush") < 0 && tr_find(t, "grid") > 0;
 }
 #load "shell-assets-checks.coax" #test;   // the Assets pane (#13420)
+#load "shell-files-checks.coax" #test;    // the Files pane (#13468)
 #load "shell-actors-checks.coax" #test;   // the actors (#13466)

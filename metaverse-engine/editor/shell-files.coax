@@ -1,0 +1,375 @@
+// The editor shell's Files pane (GitHub #13468; docs/editor/2026-11-13-world-attachments.md,
+// docs/protocol/world-files-v1.md): the reference files a maker attaches to a world and to its
+// project (concept art, design notes, PDFs, links). They are never in a pack and never reach a
+// player. shell.coax loads this file; the pane is kit components like the rest of the shell, and
+// this file names no colour, face or size.
+//
+// The shell keeps no file. It asks the world's server for the list (world.files.v1,
+// file-wire.coax) on the same channel the Assets pane uses (one ask at a time), and the answer to
+// every write is the list again, or a refusal in words. A file goes like an asset: on the dev
+// server one POST of a head (world.file.attach.v1) and the file's bytes; on a deployed page by
+// direct upload (world.file.upload.v1: named by its SHA-256, PUT to storage, then said to be done).
+//
+// The list shows the world's own attachments and the project's, each with a preview where it is a
+// picture, found by name, note or tag. One opens large: a picture as itself, a Markdown note
+// rendered, a text as it is, a PDF paged by the browser, a link as a link. A picture can be pinned
+// beside the scene (es_fl_build_pin, at the top of the Things pane) and stays while the maker works.
+// What is opened can be renamed, noted, tagged, moved between the world and the project, and
+// removed; Remove asks once more.
+#load "file-wire.coax";
+
+ES_FL_NONE :: 0; ES_FL_LIST :: 1; ES_FL_SEND :: 2; ES_FL_NAME :: 3; ES_FL_PUT :: 4; ES_FL_DONE :: 5; ES_FL_SAY :: 6; ES_FL_READ :: 7;
+ES_FL_SAID_NONE :: 0; ES_FL_SAID_DONE :: 1; ES_FL_SAID_NO :: 2;
+ES_FL_TEXT :: MD_TEXT;     // bytes of a document shown in the pane
+ES_FL_GROUP :: [2] string.["This world", "The project"];
+
+EsFiles :: struct {
+  have: bool; asked: bool;                    // a list came; the first was asked for
+  flight: int;                                // what the world's server was asked (ES_FL_*)
+  scope: int;                                 // where the next file goes (FW_SCOPE_*)
+  file_bytes: int; file_name: [FW_NAME] u8; file_name_n: int;   // the file on its way
+  note: int; words: [FW_WORDS + 120] u8; words_n: int;          // what the pane says of the last write (ES_FL_SAID_*)
+  open: [FW_ID] u8; opened: bool;             // the attachment opened large
+  pin: [FW_ID] u8; pinned: bool;              // the picture pinned beside the scene
+  sure: bool;                                 // Remove was pressed once for the opened one
+  fill: bool;                                 // the opened one's fields are due its name, note and tags
+  q: [64] u8; q_n: int;                       // what the list is searched for
+  link: [FW_URL] u8; link_n: int;             // an address typed to attach
+  name: [FW_NAME] u8; name_n: int; fnote: [FW_NOTE] u8; fnote_n: int; tags: [FW_TAGS] u8; tags_n: int;   // as typed for the opened one
+  text: [ES_FL_TEXT] u8; text_n: int; text_for: [FW_ID] u8; text_bytes: int;   // the opened document's text, as read
+  doc: [1] MdDoc;
+  l: [1] FwList; next: [1] FwList; scratch: [FW_BYTES] u8;
+}
+
+es_fl_say :: (s: [] EdShell, note: int, words: string) {
+  s[0].fl.note = note;
+  n := 0; for c: words { if n < s[0].fl.words.count { s[0].fl.words[n] = c; n += 1; } }
+  s[0].fl.words_n = n;
+}
+es_fl_text :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
+// The world's attachments' address at its server, then `tail`, into as_url. False when it does not fit.
+es_fl_at :: (s: [] EdShell, tail: string) -> bool {
+  m := s[0].model[..]; w := m[0].world;
+  n := ct_put(s[0].as_url[..], 0, "/api/worlds/"); n = ct_put(s[0].as_url[..], n, cast(string) w[0..<m[0].world_n]); n = ct_put(s[0].as_url[..], n, "/files"); n = ct_put(s[0].as_url[..], n, tail);
+  if n > s[0].as_url.count { return false; }
+  s[0].as_url_n = n;
+  return true;
+}
+// An attachment's bytes, at its server ("" when it does not fit).
+es_fl_src :: (s: [] EdShell, id: string, out: [] u8) -> string {
+  m := s[0].model[..]; w := m[0].world;
+  n := ct_put(out, 0, "/api/worlds/"); n = ct_put(out, n, cast(string) w[0..<m[0].world_n]); n = ct_put(out, n, "/files/"); n = ct_put(out, n, id);
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+// One ask on the shell's one channel to the world's server (shell-assets.coax's): `head` is what
+// goes (a POST), none for a GET; `url` is where a PUT goes. False while another ask is out.
+es_fl_go :: (s: [] EdShell, flight: int, tail: string, head: string, url: string) -> bool {
+  m := s[0].model[..];
+  if s[0].as_flight != ES_AS_NONE || s[0].fl.flight != ES_FL_NONE || s[0].as_ask || !s[0].have || m[0].world_n == 0 { return false; }
+  if head.count > s[0].as_head.count { return false; }
+  ok := false;
+  if flight == ES_FL_PUT { s[0].as_how = ES_HOW_PUT; s[0].as_url_n = ct_put(s[0].as_url[..], 0, url); ok = url.count > 0 && s[0].as_url_n <= s[0].as_url.count; }
+  else {
+    ok = es_fl_at(s, tail);
+    s[0].as_how = ifx flight == ES_FL_LIST || flight == ES_FL_READ then ES_HOW_GET else ifx flight == ES_FL_SEND then ES_HOW_SEND else ifx flight == ES_FL_NAME then ES_HOW_NAME else ES_HOW_SAY;
+  }
+  if !ok { return false; }
+  for c, k: head { s[0].as_head[k] = c; }
+  s[0].as_head_n = head.count;
+  s[0].fl.flight = flight; s[0].as_ask = true;
+  return true;
+}
+// The list is asked for once it is known which world this is, and when the pane opens.
+es_fl_kick :: (s: [] EdShell) {
+  if s[0].have && !s[0].fl.asked && es_fl_go(s, ES_FL_LIST, "", "", "") { s[0].fl.asked = true; }
+}
+es_fl_file_name :: (s: [] EdShell) -> string { return cast(string) s[0].fl.file_name[0..<s[0].fl.file_name_n]; }
+// A file was dropped on the Files pane or picked: it goes at once, to the scope chosen, unless the rules say it can never go.
+es_fl_file :: (s: [] EdShell, length: int) {
+  if !s[0].fl.have { return; }
+  n := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
+  line := cast(string) s[0].inbox[0..<n];
+  bytes := fw_num(fw_field(line, 0)); name := fw_rest(line, 1);
+  s[0].files = true; s[0].assets = false; s[0].code = false;
+  words: [FW_WORDS] u8;
+  if s[0].fl.flight != ES_FL_NONE || s[0].as_flight != ES_AS_NONE { es_fl_say(s, ES_FL_SAID_NO, "The last file is still on its way. Drop this one again when it is in."); return; }
+  if !fw_name_ok(name) { es_fl_say(s, ES_FL_SAID_NO, "That file's name can't be kept: rename it to 100 bytes or fewer, with no slash, and drop it again."); return; }
+  l := s[0].fl.l[..];
+  v := fw_admit(name, bytes, l[0].count, l[0].bytes);
+  if v != FW_OK { es_fl_say(s, ES_FL_SAID_NO, fw_words(v, name, bytes, l[0].bytes, words[..])); return; }
+  s[0].fl.file_name_n = fw_copy(s[0].fl.file_name[..], name); s[0].fl.file_bytes = bytes;
+  head: [FW_HEAD] u8;
+  ok := false;
+  if es_as_dev(s) { ok = es_fl_go(s, ES_FL_SEND, "", fw_attach_head(head[..], s[0].fl.scope, bytes, 0, name, "", "", ""), ""); }
+  else { ok = es_fl_go(s, ES_FL_NAME, "", fw_upload_head(head[..], s[0].fl.scope, bytes, name, "", "", ""), ""); }
+  if !ok { es_fl_say(s, ES_FL_SAID_NO, "That did not go: the last ask to the world's server is still out. Drop it again."); return; }
+  es_fl_say(s, ES_FL_SAID_NONE, "");
+}
+// The opened attachment's place in the list (-1: none).
+es_fl_opened :: (s: [] EdShell) -> int { return ifx s[0].fl.opened then fw_find(s[0].fl.l[..], cast(string) s[0].fl.open[..]) else -1; }
+// What a write did, in words, from the list that came back.
+es_fl_did :: (s: [] EdShell) {
+  l := s[0].fl.l[..];
+  at := fw_find(l, cast(string) l[0].did_id[..]);
+  o: [FW_WORDS + 120] u8; k := 0;
+  if l[0].did == FW_DID_DETACHED { es_fl_say(s, ES_FL_SAID_DONE, "Removed."); return; }
+  name := ifx at >= 0 then fw_name_of(l, at) else "It";
+  k = fw_put(o[..], 0, name);
+  if l[0].did == FW_DID_ATTACHED { k = fw_put(o[..], k, " is attached to "); }
+  if l[0].did == FW_DID_LINKED { k = fw_put(o[..], k, " is linked from "); }
+  if l[0].did == FW_DID_CHANGED { k = fw_put(o[..], k, " is saved, in "); }
+  k = fw_put(o[..], k, ifx at >= 0 && l[0].f[at].scope == FW_SCOPE_PROJECT then "the project." else "this world.");
+  es_fl_say(s, ES_FL_SAID_DONE, ifx k < 0 then "Done." else cast(string) o[0..<k]);
+}
+// The server's answer to the Files pane's ask.
+es_fl_sent :: (s: [] EdShell, status: int, length: int) {
+  flight := s[0].fl.flight;
+  s[0].fl.flight = ES_FL_NONE;
+  n := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
+  body := cast(string) s[0].inbox[0..<n];
+  m := s[0].model[..]; w := m[0].world;
+  if flight == ES_FL_READ {
+    i := es_fl_opened(s);
+    if status != 200 || i < 0 { s[0].fl.text_n = 0; return; }
+    k := ifx n > ES_FL_TEXT then ES_FL_TEXT else n;
+    for c, j: body[0..<k] { s[0].fl.text[j] = c; }
+    s[0].fl.text_n = k; s[0].fl.text_for = s[0].fl.open; s[0].fl.text_bytes = s[0].fl.l[0].f[i].bytes;
+    return;
+  }
+  next := s[0].fl.next[..];
+  listed := status == 200 && fw_read(next, body, s[0].fl.scratch[..]) && fw_world_of(next) == cast(string) w[0..<m[0].world_n];
+  if flight == ES_FL_LIST {
+    // any answer but this world's list: no Files here (a server with no such route, or someone who is not a member)
+    if listed { s[0].fl.l[0] = next[0]; s[0].fl.have = true; }
+    return;
+  }
+  if flight == ES_FL_NAME && status == 200 {
+    r := fw_uploaded_read(body);
+    if r.ok && r.bytes == s[0].fl.file_bytes {
+      head: [FW_HEAD] u8;
+      ask := fw_upload_head(head[..], s[0].fl.scope, r.bytes, es_fl_file_name(s), "", "", cast(string) r.hash[..]);
+      if r.how == FW_PUT && es_fl_go(s, ES_FL_PUT, "", ask, cast(string) r.url[0..<r.url_n]) { s[0].fl.flight = ES_FL_PUT; return; }
+      if r.how == FW_KEPT && es_fl_go(s, ES_FL_DONE, "/done", ask, "") { return; }
+    }
+  }
+  if flight == ES_FL_PUT {
+    // the head the done step says is the one the PUT carried along (as_head), with the hash
+    if status >= 200 && status < 300 {
+      head: [FW_HEAD] u8; hn := s[0].as_head_n;
+      for k: 0..<hn { head[k] = s[0].as_head[k]; }
+      if es_fl_go(s, ES_FL_DONE, "/done", cast(string) head[0..<hn], "") { return; }
+    }
+    es_fl_say(s, ES_FL_SAID_NO, "That did not attach: the file did not reach storage. Drop it again.");
+    return;
+  }
+  if !listed {
+    words: [FW_WORDS] u8;
+    r := we_refusal_read(body, words[..]);
+    es_fl_say(s, ES_FL_SAID_NO, ifx r.ok && r.words_n > 0 then cast(string) words[0..<r.words_n] else "That was not done: the world's server did not answer.");
+    return;
+  }
+  s[0].fl.l[0] = next[0];
+  es_fl_did(s);
+  l := s[0].fl.l[..];
+  // what was removed closes, and comes off the pin
+  if s[0].fl.opened && fw_find(l, cast(string) s[0].fl.open[..]) < 0 { s[0].fl.opened = false; s[0].fl.sure = false; }
+  if s[0].fl.pinned && fw_find(l, cast(string) s[0].fl.pin[..]) < 0 { s[0].fl.pinned = false; }
+  if l[0].did == FW_DID_CHANGED { s[0].fl.fill = true; }
+}
+// Opens an attachment large: its fields are filled, and a document's text is asked for.
+es_fl_open :: (s: [] EdShell, i: int) {
+  l := s[0].fl.l[..];
+  for c, k: fw_id_of(l, i) { s[0].fl.open[k] = c; }
+  s[0].fl.opened = true; s[0].fl.sure = false; s[0].fl.fill = true;
+  s[0].fl.name_n = fw_copy(s[0].fl.name[..], fw_name_of(l, i));
+  s[0].fl.fnote_n = fw_copy(s[0].fl.fnote[..], fw_note_of(l, i));
+  s[0].fl.tags_n = fw_copy(s[0].fl.tags[..], fw_tags_of(l, i));
+  if l[0].f[i].kind == FW_DOCUMENT && fw_is_text(fw_name_of(l, i)) && cast(string) s[0].fl.text_for[..] != fw_id_of(l, i) {
+    s[0].fl.text_n = 0;
+    tail: [FW_ID + 8] u8; n := fw_put(tail[..], 0, "/"); n = fw_put(tail[..], n, fw_id_of(l, i));
+    _ := es_fl_go(s, ES_FL_READ, cast(string) tail[0..<n], "", "");
+  }
+}
+// The opened one's fields, filled once they are on the page (shell.coax coaxial_editor_frame).
+es_fl_fill :: (s: [] EdShell, d: [] Dom) {
+  if !s[0].fl.fill || !s[0].files || es_fl_opened(s) < 0 { return; }
+  s[0].fl.fill = false;
+  dm_value(d, "files.name", es_fl_text(s[0].fl.name[..], s[0].fl.name_n));
+  dm_value(d, "files.note", es_fl_text(s[0].fl.fnote[..], s[0].fl.fnote_n));
+  dm_value(d, "files.tags", es_fl_text(s[0].fl.tags[..], s[0].fl.tags_n));
+}
+// What is typed in the pane's fields. Whether the field was one of them.
+es_fl_typed :: (s: [] EdShell, id: string, length: int) -> bool {
+  n := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
+  typed := cast(string) s[0].inbox[0..<n];
+  if id == "files.q" { s[0].fl.q_n = ifx n > 64 then 0 else fw_copy(s[0].fl.q[..], typed); return true; }
+  if id == "files.url" { s[0].fl.link_n = ifx n > FW_URL then 0 else fw_copy(s[0].fl.link[..], typed); return true; }
+  if id == "files.name" { s[0].fl.name_n = ifx n > FW_NAME then 0 else fw_copy(s[0].fl.name[..], typed); return true; }
+  if id == "files.note" { s[0].fl.fnote_n = ifx n > FW_NOTE then 0 else fw_copy(s[0].fl.fnote[..], typed); return true; }
+  if id == "files.tags" { s[0].fl.tags_n = ifx n > FW_TAGS then 0 else fw_copy(s[0].fl.tags[..], typed); return true; }
+  return false;
+}
+// The opened one, saved as typed: its name, note, tags and scope, all of them (world.file.edit.v1).
+es_fl_save :: (s: [] EdShell, scope: int) {
+  i := es_fl_opened(s);
+  if i < 0 { return; }
+  l := s[0].fl.l[..];
+  name := es_fl_text(s[0].fl.name[..], s[0].fl.name_n);
+  if !fw_rename_ok(l[0].f[i].kind, fw_name_of(l, i), name) || (l[0].f[i].kind != FW_LINK_KIND && !fw_name_ok(name)) || !fw_line_ok(name, FW_NAME) {
+    es_fl_say(s, ES_FL_SAID_NO, "A name is 1 to 100 bytes on one line, and a file keeps its extension."); return;
+  }
+  tg: [FW_TAGS] u8; nt: [FW_NOTE] u8;
+  tags := fw_tags_clean(es_fl_text(s[0].fl.tags[..], s[0].fl.tags_n), tg[..]);
+  note := fw_note_clean(es_fl_text(s[0].fl.fnote[..], s[0].fl.fnote_n), nt[..]);
+  head: [FW_HEAD] u8;
+  if !es_fl_go(s, ES_FL_SAY, "", fw_edit_head(head[..], fw_id_of(l, i), scope, name, note, tags), "") { es_fl_say(s, ES_FL_SAID_NO, "The last ask to the world's server is still out. Try again."); }
+}
+// A press in the Files pane, on its button, or on the pin. Whether it was one.
+es_fl_click :: (s: [] EdShell, id: string) -> bool {
+  if id == "pin.off" { s[0].fl.pinned = false; return true; }
+  if !s[0].fl.have { return false; }
+  if id == "files" {
+    s[0].files = !s[0].files;
+    if s[0].files { s[0].assets = false; s[0].code = false; s[0].fl.fill = true; _ := es_fl_go(s, ES_FL_LIST, "", "", ""); }   // the list as it is now
+    return true;
+  }
+  if !s[0].files { return false; }
+  if id == "files.to.0" || id == "files.to.1" { s[0].fl.scope = ifx id == "files.to.1" then FW_SCOPE_PROJECT else FW_SCOPE_WORLD; return true; }
+  l := s[0].fl.l[..];
+  if id == "files.link" {
+    url := es_fl_text(s[0].fl.link[..], s[0].fl.link_n);
+    if !fw_url_ok(url) { es_fl_say(s, ES_FL_SAID_NO, "A link is an http or https address of 300 bytes at most."); return true; }
+    if fw_admit_link(l[0].count) != FW_OK { es_fl_say(s, ES_FL_SAID_NO, "The project holds 200 attachments already. Remove one first."); return true; }
+    head: [FW_HEAD] u8;
+    if !es_fl_go(s, ES_FL_SAY, "", fw_link_head(head[..], s[0].fl.scope, url, url[0..<ifx url.count > FW_NAME then FW_NAME else url.count], "", ""), "") { es_fl_say(s, ES_FL_SAID_NO, "The last ask to the world's server is still out. Try again."); }
+    return true;
+  }
+  if id == "files.close" { s[0].fl.opened = false; s[0].fl.sure = false; return true; }
+  i := es_fl_opened(s);
+  if id == "files.save" { es_fl_save(s, ifx i >= 0 then l[0].f[i].scope else 0); return true; }
+  if id == "files.move" { if i >= 0 { es_fl_save(s, 1 - l[0].f[i].scope); } return true; }
+  if id == "files.pin" {
+    if i >= 0 && l[0].f[i].kind == FW_IMAGE {
+      on := s[0].fl.pinned && cast(string) s[0].fl.pin[..] == fw_id_of(l, i);
+      s[0].fl.pinned = !on; if !on { s[0].fl.pin = s[0].fl.open; }
+    }
+    return true;
+  }
+  if id == "files.remove" {
+    if i < 0 { return true; }
+    if !s[0].fl.sure { s[0].fl.sure = true; return true; }   // asked once more: the second press removes it
+    head: [FW_HEAD] u8;
+    if es_fl_go(s, ES_FL_SAY, "", fw_detach_head(head[..], fw_id_of(l, i)), "") { s[0].fl.sure = false; }
+    else { es_fl_say(s, ES_FL_SAID_NO, "The last ask to the world's server is still out. Try again."); }
+    return true;
+  }
+  if es_id_is(id, "fl.") && id.count == 3 + FW_ID {
+    k := fw_find(l, cast(string) id[3..<id.count]);
+    if k >= 0 { es_fl_open(s, k); }
+    return true;
+  }
+  return false;
+}
+// "N KB" or "N MB".
+es_fl_size :: (out: [] u8, at: int, bytes: int) -> int {
+  if bytes < 1048576 { n := fw_put_int(out, at, (bytes + 1023) / 1024); return fw_put(out, n, " KB"); }
+  n := fw_put_int(out, at, fw_mb(bytes)); return fw_put(out, n, " MB");
+}
+// What a row says under an attachment's name: what it is, how big, its note and its tags.
+es_fl_about :: (l: [] FwList, i: int, out: [] u8) -> string {
+  kinds := FW_KINDS;
+  n := fw_put(out, 0, kinds[l[0].f[i].kind]);
+  if l[0].f[i].kind != FW_LINK_KIND { n = fw_put(out, n, " · "); n = es_fl_size(out, n, l[0].f[i].bytes); }
+  if l[0].f[i].note_n > 0 { n = fw_put(out, n, " · "); n = fw_put(out, n, fw_note_of(l, i)); }
+  if l[0].f[i].tags_n > 0 { n = fw_put(out, n, " · "); n = fw_put(out, n, fw_tags_of(l, i)); }
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+// The picture pinned beside the scene, at the top of the Things pane, until it is unpinned.
+es_fl_build_pin :: (s: [] EdShell) {
+  if !s[0].fl.pinned { return; }
+  l := s[0].fl.l[..];
+  i := fw_find(l, cast(string) s[0].fl.pin[..]);
+  if i < 0 { return; }
+  t := s[0].tree[..]; u := s[0].ui[..]; src: [160] u8;
+  c := k_card(t, u, "pin", fw_name_of(l, i));
+  p := k_image(t, "pin.img", es_fl_src(s, fw_id_of(l, i), src[..]), fw_name_of(l, i), true);
+  off := k_link(t, "pin.off", "Unpin");
+  tr_close(t);
+}
+// The Files pane: what the last write did, the limits, the place to drop a file or add a link, the
+// search, the two groups, and the attachment opened.
+es_build_files :: (s: [] EdShell) {
+  t := s[0].tree[..]; u := s[0].ui[..]; l := s[0].fl.l[..];
+  buf: [UI_ID] u8; line: [FW_WORDS + 400] u8; src: [160] u8;
+  pane := k_pane(t, u, "files.pane", DK_RIGHT, "Files");
+  if s[0].fl.note != ES_FL_SAID_NONE { a := k_notice(t, u, "files.said", ifx s[0].fl.note == ES_FL_SAID_DONE then "Done" else "Not done", es_fl_text(s[0].fl.words[..], s[0].fl.words_n)); tr_close(t); }
+  // what the project holds against its limits, before anything is sent
+  n := fw_put_int(line[..], 0, l[0].count); n = fw_put(line[..], n, " of "); n = fw_put_int(line[..], n, l[0].files); n = fw_put(line[..], n, " attachments, ");
+  n = es_fl_size(line[..], n, l[0].bytes); n = fw_put(line[..], n, " of "); n = fw_put_int(line[..], n, fw_mb(l[0].total)); n = fw_put(line[..], n, " MB, in the project and its worlds. A file can be ");
+  n = fw_put_int(line[..], n, fw_mb(l[0].file)); n = fw_put(line[..], n, " MB at most. Only the project's members see them; they never reach a player.");
+  lim := k_meta(t, "files.limits", ifx n < 0 then "" else cast(string) line[0..<n]);
+  // where the next file or link goes
+  to := tr_open(t, "files.to", TG_NAV, "list");
+  tr_attr(t, to, AT_LABEL, "Where the next file goes");
+  groups := ES_FL_GROUP;
+  for k: 0..<ifx l[0].project_n > 0 then 2 else 1 { r := k_row(t, u, tr_join(buf[..], "files.to.", k), groups[k], ifx k == 0 then "Attach to this world" else "Attach to the whole project", s[0].fl.scope == k); }
+  tr_close(t);
+  sending := s[0].fl.flight >= ES_FL_SEND && s[0].fl.flight <= ES_FL_DONE;
+  if sending {
+    n = fw_put(line[..], 0, "Sending "); n = fw_put(line[..], n, es_fl_file_name(s));
+    k := es_fl_size(src[..], 0, s[0].fl.file_bytes);
+    d := k_drop(t, u, "files.drop", ifx n < 0 then "Sending" else cast(string) line[0..<n], ifx k < 0 then "" else cast(string) src[0..<k], "", true);
+  } else { d := k_drop(t, u, "files.drop", "Drop a file here, or press to pick one", "A picture (.png, .jpg, .webp, .gif), a note (.md, .txt) or a PDF", FW_TAKES, false); }
+  lk := k_prop(t, u, "files.url", "Link", "https://...");
+  la := k_button(t, u, "files.link", "Add the link", ifx s[0].fl.link_n > 0 then BS_PLAIN else BS_DISABLED);
+  // the opened one, large
+  i := es_fl_opened(s);
+  if i >= 0 {
+    name := fw_name_of(l, i); id := fw_id_of(l, i); kind := l[0].f[i].kind;
+    c := k_card(t, u, "files.open", name);
+    at := es_fl_src(s, id, src[..]);
+    if kind == FW_IMAGE { p := k_image(t, "files.img", at, name, true); }
+    if kind == FW_DOCUMENT && fw_is_pdf(name) { p := k_document(t, "files.pdf", at, name); }
+    if kind == FW_DOCUMENT && fw_is_text(name) && cast(string) s[0].fl.text_for[..] == id && s[0].fl.text_n > 0 {
+      text := es_fl_text(s[0].fl.text[..], s[0].fl.text_n);
+      if fw_is_markdown(name) { p := k_agent_text(t, u, "files.md", s[0].fl.doc[..], text); }
+      else { p := tr_leaf(t, "files.txt", TG_PRE, "", text); }
+      if s[0].fl.text_bytes > s[0].fl.text_n {
+        n = fw_put(line[..], 0, "This shows the first "); n = es_fl_size(line[..], n, s[0].fl.text_n); n = fw_put(line[..], n, " of "); n = es_fl_size(line[..], n, s[0].fl.text_bytes); n = fw_put(line[..], n, ".");
+        cut := k_meta(t, "files.cut", cast(string) line[0..<n]);
+      }
+    }
+    if kind == FW_LINK_KIND { g := k_go(t, "files.go", fw_url_of(l, i), fw_url_of(l, i)); }
+    about := k_meta(t, "files.about", es_fl_about(l, i, line[..]));
+    pn := k_prop(t, u, "files.name", ifx kind == FW_LINK_KIND then "Title" else "Name", "");
+    no := k_prop(t, u, "files.note", "Note", "What it is for");
+    tg := k_prop(t, u, "files.tags", "Tags", "garage, raiders");
+    acts := tr_open(t, "files.acts", TG_DIV, "rowf");
+    sv := k_button(t, u, "files.save", "Save", BS_PRIMARY);
+    if l[0].project_n > 0 { mv := k_button(t, u, "files.move", ifx l[0].f[i].scope == FW_SCOPE_WORLD then "Move to the project" else "Move to this world", BS_PLAIN); }
+    if kind == FW_IMAGE { pinned := s[0].fl.pinned && cast(string) s[0].fl.pin[..] == id; pb := k_button(t, u, "files.pin", ifx pinned then "Unpin" else "Pin beside the scene", BS_PLAIN); }
+    rm := k_button(t, u, "files.remove", ifx s[0].fl.sure then "Remove for good" else "Remove", BS_PLAIN);
+    cl := k_link(t, "files.close", "Close");
+    tr_close(t);
+    if s[0].fl.sure { sure := k_meta(t, "files.sure", "Press Remove for good to remove it, and its stored file, from the project. It can't be undone."); }
+    tr_close(t);
+  }
+  // the search, then the world's own attachments and the project's
+  q := k_prop(t, u, "files.q", "Find", "A name, a note or a tag");
+  query := es_fl_text(s[0].fl.q[..], s[0].fl.q_n);
+  for g: 0..<ifx l[0].project_n > 0 then 2 else 1 {
+    c := k_card(t, u, tr_join(buf[..], "files.g.", g), groups[g]);
+    shown := 0;
+    for k: 0..<l[0].n {
+      if l[0].f[k].scope != g || !fw_matches(l, k, query) { continue; }
+      fid := fw_id_of(l, k);
+      ida: [UI_ID] u8; idb: [UI_ID] u8;
+      r := k_row(t, u, tr_cat(ida[..], "fl.", fid), fw_name_of(l, k), es_fl_about(l, k, line[..]), i == k);
+      if l[0].f[k].kind == FW_IMAGE { pv := k_image(t, tr_cat(idb[..], tr_cat(ida[..], "fl.", fid), ".pv"), es_fl_src(s, fid, src[..]), fw_name_of(l, k), false); }
+      shown += 1;
+    }
+    if shown == 0 { none := k_meta(t, tr_join(buf[..], "files.none.", g), ifx query.count > 0 then "Nothing here matches." else "Nothing is attached here yet."); }
+    tr_close(t);
+  }
+  k_pane_end(t);
+}

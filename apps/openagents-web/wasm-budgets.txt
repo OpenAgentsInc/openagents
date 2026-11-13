@@ -52,7 +52,9 @@ kit 125000
 # Linux build host (the pane is about 22,000 of them); about 6% room.
 # With the actors (#13466: the time-of-day select, the Actors list, the plan's card with its selects and fields, and the plan words of
 # npc-plan.coax, and a new DO sent as its whole row with the route fitted): 184,926 bytes measured 2026-11-13 on a Mac; about 5% room.
-editor-shell 195000
+# With the Files pane (#13468: world.files.v1 read and written by file-wire.coax, the pane's list, search and edits, and the
+# kit's Markdown renderer for an opened note): 230,046 bytes measured 2026-11-13 on a Mac; about 5% room.
+editor-shell 242000
 agents 120000
 # Crew, character creation (#13462): the body, the wardrobe and the document (metaverse-engine/kit/crew-*.coax) on the cel lofts and
 # Anime Lab's uniforms: 161,360 bytes measured 2026-11-13 on a Mac release build; about 10% room.

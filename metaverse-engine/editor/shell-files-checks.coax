@@ -1,0 +1,143 @@
+// The checks of the editor shell's Files pane (shell-files.coax; GitHub #13468). shell.coax loads
+// this file with `#load ... #test;`. The host is played here, as in shell-assets-checks.coax: the
+// world's server's answers come as ES_SENT, a dropped file as ES_FILE, typing as ES_INPUT.
+
+ESF_LIST :: "world.files.v1 splice verse 3 2048 26214400 200 1073741824\nf 00112233445566aa world image 2000 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1763000000000 local RaiderGarage.png\nn The raiders' garage at night\nt garage,raiders\nf 00112233445566bb project document 48 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1763000000001 local Garage notes.md\nf 00112233445566cc project link 0 - 1763000000002 local The design doc\nu https://docs.google.com/document/d/abc\nt design\n";
+ESF_HASH :: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+
+// Where `part` begins in `text` (-1: nowhere).
+esf_at :: (text: string, part: string) -> int {
+  for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return i; } }
+  return -1;
+}
+esf_url :: (s: [] EdShell) -> string { return cast(string) s[0].as_url[0..<s[0].as_url_n]; }
+esf_head :: (s: [] EdShell) -> string { return cast(string) s[0].as_head[0..<s[0].as_head_n]; }
+esf_event :: (h: [] EsTest, kind: int, target: string, status: int, body: string) {
+  s := h[0].s[..];
+  for c, i: body { s[0].inbox[i] = c; }
+  slot := ifx target.count > 0 then dm_find(s[0].dom[..], target) else status;
+  coaxial_editor_event(s, kind, slot, body.count);
+  es_test_frames(h, 1);
+}
+esf_sent :: (h: [] EsTest, status: int, body: string) { coaxial_editor_fetched(h[0].s[..]); esf_event(h, ES_SENT, "", status, body); }
+esf_said :: (h: [] EsTest) -> string { t := h[0].s[0].tree[..]; i := tr_find(t, "files.said.t"); return ifx i < 0 then "" else tr_text_of(t, i); }
+// The shell with a world, no assets, and the world's attachments listed; the pane open.
+esf_open :: (h: [] EsTest) {
+  s := h[0].s[..];
+  es_test_model(h, 0, 7, 3, "");
+  coaxial_editor_fetched(s); esf_event(h, ES_SENT, "", 404, "{\"error\":\"no assets here\"}");   // the assets' list: none
+  #assert s[0].fl.flight == ES_FL_LIST && esf_url(s) == "/api/worlds/splice/files" && s[0].as_how == ES_HOW_GET;
+  esf_sent(h, 200, ESF_LIST);
+  es_test_press(h, "files");
+  #assert s[0].fl.flight == ES_FL_LIST;   // asked again as it opens
+  esf_sent(h, 200, ESF_LIST);
+}
+
+#test "the Files button is there only where the world's server lists the attachments" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  es_test_model(h[..], 0, 7, 3, "");
+  coaxial_editor_fetched(s); esf_event(h[..], ES_SENT, "", 404, "{}");
+  #assert s[0].fl.flight == ES_FL_LIST;
+  esf_sent(h[..], 403, "{\"error\":\"only the project's members and the site's admins see its attachments\"}");
+  #assert tr_find(t, "files") < 0 && !s[0].fl.have && coaxial_editor_fetching(s) == 0;
+  es_test_model(h[..], 0, 8, 3, ""); #assert coaxial_editor_fetching(s) == 0;   // asked once
+  s[0].fl.flight = ES_FL_LIST; esf_sent(h[..], 200, "world.files.v1 other verse 0 0 26214400 200 1073741824\n"); #assert tr_find(t, "files") < 0;
+}
+
+#test "the pane: the limits, two groups with previews, a search by name, note or tag" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  esf_open(h[..]);
+  #assert tr_find(t, "files.pane") > 0 && tr_find(t, "one") < 0 && tr_text_of(t, tr_find(t, "files.l")) == "Hide files";
+  lim := tr_text_of(t, tr_find(t, "files.limits"));
+  #assert esf_at(lim, "3 of 200 attachments, 2 KB of 1024 MB") >= 0 && esf_at(lim, "25 MB at most") >= 0 && esf_at(lim, "never reach a player") >= 0;
+  #assert tr_text_of(t, tr_find(t, "files.g.0.h")) == "This world" && tr_text_of(t, tr_find(t, "files.g.1.h")) == "The project";
+  pv := tr_find(t, "fl.00112233445566aa.pv");
+  #assert pv > 0 && t[0].nodes[pv].tag == TG_IMG && tr_attr_of(t, pv, AT_SRC) == "/api/worlds/splice/files/00112233445566aa";
+  #assert tr_find(t, "fl.00112233445566bb.pv") < 0 && tr_text_of(t, tr_find(t, "fl.00112233445566aa.m")) == "image · 2 KB · The raiders' garage at night · garage,raiders";
+  esf_event(h[..], ES_INPUT, "files.q", 0, "design");
+  #assert tr_find(t, "fl.00112233445566cc") > 0 && tr_find(t, "fl.00112233445566aa") < 0 && tr_text_of(t, tr_find(t, "files.none.0")) == "Nothing here matches.";
+  esf_event(h[..], ES_INPUT, "files.q", 0, "NIGHT");
+  #assert tr_find(t, "fl.00112233445566aa") > 0 && tr_find(t, "fl.00112233445566cc") < 0;
+}
+
+#test "a file dropped on the dev server goes in one POST, to the scope chosen, and the answer lists it" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  for c, i: "splice" { s[0].inbox[i] = c; }
+  coaxial_editor_event(s, ES_CODE_HERE, 0, 6); coaxial_editor_asked(s);
+  esf_open(h[..]);
+  d := tr_find(t, "files.drop");
+  #assert tr_attr_of(t, d, AT_DROP) == FW_TAKES;
+  es_test_press(h[..], "files.to.1");
+  esf_event(h[..], ES_FILE, "files.drop", 0, "52000 Raider garage inside.jpg");
+  #assert coaxial_editor_fetching(s) == ES_HOW_SEND && esf_url(s) == "/api/worlds/splice/files" && esf_head(s) == "world.file.attach.v1 project 52000 0 Raider garage inside.jpg\n-\n";
+  #assert tr_text_of(t, tr_find(t, "files.drop.t")) == "Sending Raider garage inside.jpg";
+  esf_sent(h[..], 200, "world.files.v1 splice verse 4 54048 26214400 200 1073741824\nf 00112233445566dd project image 52000 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1763000000003 local Raider garage inside.jpg\ndid attached 00112233445566dd\n");
+  #assert esf_said(h[..]) == "Raider garage inside.jpg is attached to the project." && tr_find(t, "fl.00112233445566dd.pv") > 0;
+  // what the rules refuse never leaves the browser, and is said in words with the limit
+  esf_event(h[..], ES_FILE, "files.drop", 0, "30000000 big.png");
+  #assert coaxial_editor_fetching(s) == 0 && esf_at(esf_said(h[..]), "25 MB") >= 0;
+  esf_event(h[..], ES_FILE, "files.drop", 0, "100 run.exe");
+  #assert coaxial_editor_fetching(s) == 0 && tr_text_of(t, tr_find(t, "files.said.k")) == "Not done";
+}
+
+#test "a deployed page names the file, sends it to storage, then says it is done" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  esf_open(h[..]);
+  esf_event(h[..], ES_FILE, "files.drop", 0, "2000 City.png");
+  #assert coaxial_editor_fetching(s) == ES_HOW_NAME && esf_head(s) == "world.file.upload.v1 world 2000 City.png\n";
+  esf_sent(h[..], 200, "world.file.upload.v1 put 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 2000 https://storage.googleapis.com/upload/x?upload_id=1\n");
+  #assert coaxial_editor_fetching(s) == ES_HOW_PUT && esf_url(s) == "https://storage.googleapis.com/upload/x?upload_id=1";
+  esf_sent(h[..], 200, "{}");
+  #assert coaxial_editor_fetching(s) == ES_HOW_SAY && esf_url(s) == "/api/worlds/splice/files/done" && esf_head(s) == "world.file.upload.v1 world 2000 City.png\n9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08\n";
+  esf_sent(h[..], 422, "{\"error\":\"City.png is not a picture: its first bytes are not what its name says.\"}");
+  #assert esf_said(h[..]) == "City.png is not a picture: its first bytes are not what its name says." && coaxial_editor_fetching(s) == 0;
+}
+
+#test "opened: a picture large and pinned beside the scene, a note rendered, a link; saved, moved and removed with a second press" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  esf_open(h[..]);
+  es_test_press(h[..], "fl.00112233445566aa");
+  img := tr_find(t, "files.img");
+  #assert img > 0 && tr_class(t, img) == "img img-big" && tr_text_of(t, tr_find(t, "files.pin.l")) == "Pin beside the scene";
+  es_test_press(h[..], "files.pin");
+  p := tr_find(t, "pin.img");
+  #assert p > 0 && tr_attr_of(t, p, AT_SRC) == "/api/worlds/splice/files/00112233445566aa" && tr_find(t, "pin") > 0;
+  // it stays pinned with the pane closed, beside the scene, until it is unpinned
+  es_test_press(h[..], "files");
+  #assert tr_find(t, "files.pane") < 0 && tr_find(t, "pin.img") > 0;
+  es_test_press(h[..], "pin.off"); #assert tr_find(t, "pin.img") < 0;
+  es_test_press(h[..], "files"); esf_sent(h[..], 200, ESF_LIST);
+  // a note is read and rendered
+  es_test_press(h[..], "fl.00112233445566bb");
+  #assert coaxial_editor_fetching(s) == ES_HOW_GET && esf_url(s) == "/api/worlds/splice/files/00112233445566bb";
+  esf_sent(h[..], 200, "# Garage\nThe raiders keep **rovers** here.\nOK!!\n");   // all 48 bytes
+  #assert tr_find(t, "files.md") > 0 && tr_find(t, "files.img") < 0 && tr_find(t, "files.cut") < 0;
+  // a link is a link; its title, note and tags are saved as typed
+  es_test_press(h[..], "fl.00112233445566cc");
+  #assert tr_attr_of(t, tr_find(t, "files.go"), AT_HREF) == "https://docs.google.com/document/d/abc";
+  esf_event(h[..], ES_INPUT, "files.note", 0, "The one to read first");
+  es_test_press(h[..], "files.save");
+  #assert coaxial_editor_fetching(s) == ES_HOW_SAY && esf_head(s) == "world.file.edit.v1 00112233445566cc project\nname The design doc\nn The one to read first\nt design\n";
+  esf_sent(h[..], 200, ESF_LIST);
+  es_test_press(h[..], "files.move");
+  #assert esf_at(esf_head(s), "world.file.edit.v1 00112233445566cc world\n") == 0;
+  esf_sent(h[..], 200, ESF_LIST);
+  // Remove asks once more; the second press sends it, and the answer closes it
+  es_test_press(h[..], "files.remove");
+  #assert coaxial_editor_fetching(s) == 0 && tr_text_of(t, tr_find(t, "files.remove.l")) == "Remove for good" && tr_find(t, "files.sure") > 0;
+  es_test_press(h[..], "files.remove");
+  #assert coaxial_editor_fetching(s) == ES_HOW_SAY && esf_head(s) == "world.file.detach.v1 00112233445566cc\n";
+  esf_sent(h[..], 200, "world.files.v1 splice verse 2 2048 26214400 200 1073741824\nf 00112233445566aa world image 2000 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1763000000000 local RaiderGarage.png\nf 00112233445566bb project document 48 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1763000000001 local Garage notes.md\ndid detached 00112233445566cc\n");
+  #assert esf_said(h[..]) == "Removed." && tr_find(t, "files.open") < 0 && tr_find(t, "fl.00112233445566cc") < 0;
+}
+
+#test "a link is attached from the field" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  esf_open(h[..]);
+  esf_event(h[..], ES_INPUT, "files.url", 0, "javascript:alert(1)");
+  es_test_press(h[..], "files.link");
+  #assert coaxial_editor_fetching(s) == 0 && esf_said(h[..]) == "A link is an http or https address of 300 bytes at most.";
+  esf_event(h[..], ES_INPUT, "files.url", 0, "https://example.com/garage");
+  es_test_press(h[..], "files.link");
+  #assert coaxial_editor_fetching(s) == ES_HOW_SAY && esf_head(s) == "world.file.link.v1 world https://example.com/garage\nname https://example.com/garage\n";
+}

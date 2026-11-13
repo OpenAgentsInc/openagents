@@ -578,6 +578,36 @@ k_file :: (t: [] Tree, id: string, name: string, about: string) -> int {
   tr_close(t);
   return i;
 }
+// Whether a picture's or a document's address is a path on this site: "/" and no second slash after it,
+// no "..", nothing that would make the browser go elsewhere or run something.
+k_here :: (src: string) -> bool {
+  if src.count < 2 || src.count > 600 || src[0] != '/' || src[1] == '/' || src[1] == '\\' { return false; }
+  for i: 0..<src.count {
+    c := src[i];
+    if c <= ' ' || c == 127 || c == '"' || c == '<' || c == '>' || c == '\\' { return false; }
+    if c == '.' && i + 1 < src.count && src[i + 1] == '.' { return false; }
+  }
+  return true;
+}
+// Image: a picture from this site, with words for someone who cannot see it. `big`: as wide as its
+// place and as tall as the skin lets it be (an image opened or pinned); else a small preview in a
+// list. Nothing is drawn for an address that is not a path here.
+k_image :: (t: [] Tree, id: string, src: string, alt: string, big: bool) -> int {
+  if !k_here(src) { return -1; }
+  i := tr_open(t, id, TG_IMG, ifx big then "img img-big" else "img");
+  tr_attr(t, i, AT_SRC, src); tr_attr(t, i, AT_LABEL, alt);
+  tr_close(t);
+  return i;
+}
+// Document: a document from this site the browser shows paged (a PDF), in a frame as wide as its
+// place. `title` names it for a reader. Nothing for an address that is not a path here.
+k_document :: (t: [] Tree, id: string, src: string, title: string) -> int {
+  if !k_here(src) { return -1; }
+  i := tr_open(t, id, TG_IFRAME, "doc");
+  tr_attr(t, i, AT_SRC, src); tr_attr(t, i, AT_TITLE, title);
+  tr_close(t);
+  return i;
+}
 // Header: the page's or a conversation's title, typed in. Close it with tr_close.
 k_header :: (t: [] Tree, u: [] Ui, id: string, title: string) -> int {
   ida: [UI_ID] u8;
@@ -733,7 +763,20 @@ k_menu :: (t: [] Tree, u: [] Ui, id: string, label: string) -> int {
   #assert tr_text_of(t, tr_find(t, "drop.t")) == "Drop a file here, or press to pick one" && tr_text_of(t, tr_find(t, "drop.m")) == "512 KB at most";
   #assert !tr_has(t, b, AT_DROP) && tr_has(t, b, AT_DISABLED) && tr_attr_of(t, b, AT_STATE) == "busy" && tr_find(t, "busy.m") < 0;
   #assert t[0].nodes[f].tag == TG_DIV && tr_class(t, f) == "file" && tr_text_of(t, tr_find(t, "file.1.t")) == "rock" && tr_text_of(t, tr_find(t, "file.1.m")) == "Mesh, 2 KB" && tr_find(t, "file.2.m") < 0;
-  names := AT_NAMES; #assert names[AT_DROP] == "data-drop" && names[AT_STEP] == "step" && AT_COUNT == 23;
+  names := AT_NAMES; #assert names[AT_DROP] == "data-drop" && names[AT_STEP] == "step" && names[AT_SRC] == "src" && AT_COUNT == 24;
+}
+#test "an image and a document from this site, and nothing from anywhere else" {
+  h: [1] DkDropTest; t := h[0].t[..];
+  tr_begin(t);
+  a := k_image(t, "pic", "/api/worlds/splice/files/00112233445566aa", "Raider garage", true);
+  b := k_image(t, "thumb", "/api/worlds/splice/files/00112233445566bb", "City", false);
+  c := k_document(t, "pdf", "/api/worlds/splice/files/00112233445566cc", "Boss reference");
+  #assert t[0].nodes[a].tag == TG_IMG && tr_class(t, a) == "img img-big" && tr_attr_of(t, a, AT_SRC) == "/api/worlds/splice/files/00112233445566aa" && tr_attr_of(t, a, AT_LABEL) == "Raider garage";
+  #assert tr_class(t, b) == "img" && t[0].nodes[c].tag == TG_IFRAME && tr_attr_of(t, c, AT_TITLE) == "Boss reference";
+  for bad: [7] string.["https://evil.example/x.png", "//evil.example/x.png", "javascript:alert(1)", "/a/../b", "/a b", "", "/\\evil"] {
+    #assert k_image(t, "no", bad, "", true) == -1 && k_document(t, "no", bad, "") == -1;
+  }
+  names := TG_NAMES; #assert names[TG_IMG] == "img" && names[TG_IFRAME] == "iframe" && t[0].depth == 0;
 }
 DkDropTest :: struct { t: [1] Tree; u: [1] Ui; }
 

@@ -183,6 +183,7 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, ".drop{appearance:none;border:0;background:none;color:var(--ink-muted);font:inherit;text-align:left;width:100%;flex:none;box-sizing:border-box;min-height:44px;padding:14px 12px;cursor:pointer;display:flex;flex-direction:column;gap:4px;transition:color .15s}");
   n = mc(out, n, ".drop .fr-line{stroke-dasharray:3 3}.drop:hover,.drop:focus-visible,.drop[data-over]{color:var(--ink);outline:none;--frame-line:var(--line-bright)}.drop[disabled]{cursor:default;color:var(--ink-faint)}");
   n = mc(out, n, ".drop .meta,.file .meta{text-transform:none;letter-spacing:0;font:12px/1.4 var(--sans)}.file{display:flex;flex-direction:column;gap:2px;padding:7px 0;overflow-wrap:anywhere}");
+  n = mc(out, n, ".img{display:block;max-width:100%;max-height:96px;width:auto;height:auto;object-fit:contain;border:1px solid var(--line)}.img-big{max-height:70vh;width:100%}.doc{display:block;width:100%;height:70vh;border:1px solid var(--line);background:var(--surface)}");
   n = mc(out, n, ".menu{width:300px;max-width:100%;padding:6px;display:flex;flex-direction:column;gap:2px;--frame-line:var(--line)}");
   // the chat page: the composer alone, at the foot of the window
   n = mc(out, n, ".chat{height:100dvh;max-width:792px;margin:0 auto;padding:16px;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden}");

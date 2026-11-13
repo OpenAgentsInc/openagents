@@ -86,6 +86,7 @@ function apply(at, length) {
     else if (op === 5) { els[u16()].setAttribute("class", str()); }
     else if (op === 6) {                             // attr
       const el = els[u16()], key = str(), value = str();
+      if (key === "src" && (!value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\"))) continue;   // a picture or a document from this site only (k_image, k_document)
       el.setAttribute(key, value);
       if (key === "data-frame") frameOf(el);
       if (key === "autofocus") queueMicrotask(() => el.focus());
