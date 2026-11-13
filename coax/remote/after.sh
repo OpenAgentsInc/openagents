@@ -590,9 +590,9 @@ soak_of() {   # head
     # release is between its staging step and its promotion. Its lock gives way to a release or a deploy
     # (release-set-policy.coax rs_lock_yields): the soak then ends its run unjudged, and the next green
     # head tries again. OA_AFTER_SOAK_LOCK=0 runs it without the lock (a soak of another environment).
-    vmd="$here/../web/room/vm-deploy.sh" tok="" put_off=0
+    vmd="$here/../web/room/vm-deploy.sh" tok="" put_off=0 me=$BASHPID   # this subshell holds the lock: it lives as long as the run
     if [[ "${OA_AFTER_SOAK_LOCK:-1}" != 0 ]]; then
-      got="$(OA_STAGING_LOCK_PID=$BASHPID "$vmd" lock take "soak ${head:0:10}" $(( soak_seconds + 3000 )) 2> "$dir/lock")" || {
+      got="$(OA_STAGING_LOCK_PID=$me "$vmd" lock take "soak ${head:0:10}" $(( soak_seconds + 3000 )) 2> "$dir/lock")" || {
         pl_say "after: the nightly soak at ${head:0:10} is put off: staging is held ($(tail -n 1 "$dir/lock" 2> /dev/null | cut -c1-200))"
         rm -f "$results/last-soak"; exit 0; }
       tok="$(sed -n 's/^lock-token //p' <<<"$got")"
