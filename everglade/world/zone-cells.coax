@@ -4,7 +4,7 @@
 //   coax/web/tool.sh everglade/model/tools/zone-cells.coax --write everglade/world/zone-cells.coax everglade/content/everglade.content
 E2ZCell :: struct { cx: int; cz: int; digest: int; open: int; reached: int; }
 E2Z_CELLS :: 21;
-E2Z_REACHED :: 84657;   // samples a creature can walk to from the spawn
+E2Z_REACHED :: 85881;   // samples a creature can walk to from the spawn
 E2Z_CELL :: [E2Z_CELLS] E2ZCell.[
   E2ZCell.{cx = -1, cz = -8, digest = 35929590, open = 6935, reached = 6935},
   E2ZCell.{cx = 0, cz = -8, digest = 4023926691, open = 5507, reached = 5506},
@@ -16,14 +16,14 @@ E2Z_CELL :: [E2Z_CELLS] E2ZCell.[
   E2ZCell.{cx = 0, cz = -5, digest = 3791214011, open = 3671, reached = 3664},
   E2ZCell.{cx = -1, cz = -4, digest = 207882807, open = 985, reached = 979},
   E2ZCell.{cx = 0, cz = -4, digest = 2650010912, open = 3862, reached = 3854},
-  E2ZCell.{cx = -1, cz = -3, digest = 402867079, open = 3098, reached = 3090},
-  E2ZCell.{cx = 0, cz = -3, digest = 2369032621, open = 9979, reached = 9978},
-  E2ZCell.{cx = 1, cz = -3, digest = 140519958, open = 2436, reached = 2435},
-  E2ZCell.{cx = -1, cz = -2, digest = 2216218592, open = 6385, reached = 6372},
-  E2ZCell.{cx = 0, cz = -2, digest = 2165597531, open = 14993, reached = 14992},
-  E2ZCell.{cx = 1, cz = -2, digest = 830858744, open = 5155, reached = 5155},
+  E2ZCell.{cx = -1, cz = -3, digest = 402867079, open = 3103, reached = 3095},
+  E2ZCell.{cx = 0, cz = -3, digest = 2191928707, open = 10195, reached = 10194},
+  E2ZCell.{cx = 1, cz = -3, digest = 3514886519, open = 2484, reached = 2483},
+  E2ZCell.{cx = -1, cz = -2, digest = 68734944, open = 6392, reached = 6379},
+  E2ZCell.{cx = 0, cz = -2, digest = 1141358796, open = 15746, reached = 15746},
+  E2ZCell.{cx = 1, cz = -2, digest = 3810154483, open = 5197, reached = 5197},
   E2ZCell.{cx = -1, cz = -1, digest = 2764526488, open = 3066, reached = 3027},
-  E2ZCell.{cx = 0, cz = -1, digest = 2592234767, open = 3766, reached = 3759},
+  E2ZCell.{cx = 0, cz = -1, digest = 3447908715, open = 3915, reached = 3911},
   E2ZCell.{cx = 1, cz = -1, digest = 1770875146, open = 74, reached = 74},
   E2ZCell.{cx = -1, cz = 0, digest = 4046701304, open = 1919, reached = 1917},
   E2ZCell.{cx = 0, cz = 0, digest = 3033956189, open = 1857, reached = 1851}

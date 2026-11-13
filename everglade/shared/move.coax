@@ -9,6 +9,7 @@
 #load "../world/rock-hulls.coax";
 #load "../world/camp.coax";   // the goblin camp's props (everglade/server/creatures.coax)
 #load "../world/points.coax";   // the spawn (#13078)
+#load "../range/layout.coax";   // the Archery Range's butts, poles and posts: standing things of the land (#13507)
 #load "../../metaverse-engine/physics/query.coax" as near_query;   // the engine's broadphase, for the land's trunks (#13279)
 #load "../../metaverse-engine/core/spatial.coax" as near_grid;      // its grid's storage
 
@@ -190,6 +191,25 @@ e2_hulls_hold :: (hulls: [] f32, n: int, x: f32, z: f32) -> bool {
   w = e2m_world(items[..], kinds[..], first[..], false, body[..], hulls[..], e2_road_x(-300), -300);
   #assert w.hulls == 0 && w.bodies == 0;
 }
+#test "the Archery Range stands on Everglade's land: open, level ground you may stand on, nothing planted in it, and its butts stop you where they are drawn" #steps 4000000000 {
+  // every lane, the line, both sky poles and where the mounts wait: ground you may stand on, on the clearing's level floor
+  level := e2_height(f32(RG_AT_X), f32(RG_AT_Z) - 40);
+  for i: 0..<RG_PIECES { at := rg_piece_at(i); #assert e2_may_stand(at[0], at[1]) && abs(e2_height(at[0], at[1]) - level) < 0.2 && e2_forest(at[0], at[1]) == 0; }
+  a := rg_arrive(); #assert e2_may_stand(a[0], a[1]) && e2_may_stand(f32(RG_AT_X) + RG_HORSE_X, f32(RG_AT_Z) + RG_HORSE_Z) && e2_may_stand(f32(RG_AT_X) + RG_DRAGON_X, f32(RG_AT_Z) + RG_DRAGON_Z);
+  // and it is reached from the path: open ground from the road to the range's middle lane, where the city's clearing meets the road
+  zl := f32(E2_CITY_Z); for k: 0..<20 { x := e2_road_x(zl) + f32(k) * (f32(RG_AT_X) - e2_road_x(zl)) / 19; #assert e2_may_stand(x, zl); }
+  // nothing planted on the range's ground
+  g: [1] E2MoveGround; e2mg_plant(g[..]);
+  for q: 0..<g[0].first[E2_CELLS_X * E2_CELLS_Z] { o := q * E2_ITEM_FLOATS; #assert !rg_on_ground(g[0].items[o], g[0].items[o + 2], 0); }
+  // the 30 m butt: its straw stops you, kept or worked out here, bit for bit; the line does not
+  f := rg_piece_at(2); body: [E2_NEAR_BODIES * 7] f32; hulls: [E2_HULL_ROOM] f32; bare: [E2_HULL_ROOM] f32; items: [8] f32; kinds: [1] u8; first: [2] int;
+  w := e2mg_move_world(g[..], f[0], f[1] - 0.6, false); #assert w.hulls > 0 && e2_hulls_hold(e2mg_hulls(g[..]), w.hulls, f[0], f[1] - 0.6);
+  v := e2m_world(g[0].items[..], g[0].kinds[..], g[0].first[..], true, body[..], bare[..], f[0], f[1] - 0.6);
+  #assert v.hulls == w.hulls; for q: 0..<w.hulls { #assert f32_bits(bare[q]) == f32_bits(e2mg_hulls(g[..])[q]); }
+  #assert !e2_hulls_hold(e2mg_hulls(g[..]), w.hulls, f[0], f[1] + 1.5);
+  l := e2m_world(items[..], kinds[..], first[..], false, body[..], hulls[..], a[0], a[1] - 3); #assert !e2_hulls_hold(hulls[..], l.hulls, a[0], a[1] - 3);
+  #assert e2_range_ground(a[0], a[1], 0) && !e2_range_ground(0, 0, 10);
+}
 // ---- the land's standing things, worked out once (#13384). A full shard's profile had about a fifth
 // of the room's CPU in the zone's procedural ground, asked again at every movement step for things
 // that never move: each glade item's place and whether the path keeps it, and the land's height and
@@ -272,6 +292,7 @@ E2Still :: struct {
   glade: [CG_ITEMS] E2StillGlade;
   stone: [E2_GLADE_STONES] E2Rock; stone_prep: [E2_GLADE_STONES] E2RockPrep;
   rock_q: [E2_STILL_ROCKS] int; rock: [E2_STILL_ROCKS] E2RockPrep;   // rock_q: the planted rock's number + 1 (0 none)
+  range: [RG_BOXES * 6] f32; range_n: int;   // the Archery Range's colliders over the land's plane (e2_range_boxes)
 }
 // A glade tree's trunk (kinds 0 and 1: its variant among the five of its kind).
 e2_glade_trunk :: (gt: CgItem) -> [3] f32 {
@@ -289,7 +310,30 @@ e2_still :: (s: [] E2Still) {
   }
   for i: 0..<E2_GLADE_STONES { s[0].stone[i] = e2_glade_stone(i); s[0].stone_prep[i] = e2_rock_prep(s[0].stone[i]); }
   for i: 0..<E2_STILL_ROCKS { s[0].rock_q[i] = 0; }
+  s[0].range_n = e2_range_boxes(s[0].range[..]);
   s[0].done = true;
+}
+// ---- the Archery Range (everglade/range/layout.coax, #13507): its five butts, two poles and five
+// posts stand on Everglade's land, on the city's clearing. Each is a box over the land's plane (its
+// bottom under the turf, its top over the ground under it), so you, a mount, a creature's path and an
+// arrow all meet it where it is drawn; the chalk line is walked over. Its faces are the arrows'
+// targets (everglade/shared/archery.coax e2ar_targets).
+e2_range_boxes :: (out: [] f32) -> int { g: [RG_PIECES] f32; return rg_boxes(g[..], 0, out, 0); }
+// Whether (x, z) is on the range's ground, `more` metres round it: no planting and no monster there.
+e2_range_ground :: (x: f32, z: f32, more: f32) -> bool #export_c #effects(all) { return rg_on_ground(x, z, more); }
+// The range's boxes within reach of (x, z) as hulls into `hulls` from `at`, while fewer than E2_NEAR_HULLS
+// are taken (rocks: the count so far). The next place, and the count after, as [2] int.
+E2_RANGE_REACH :: 6.0;
+e2_range_hulls :: (boxes: [] f32, n: int, hulls: [] f32, at: int, rocks: int, x: f32, z: f32) -> [2] int {
+  a := at; r := rocks;
+  if !rg_on_ground(x, z, f32(E2_RANGE_REACH) + 1) { return [2] int.[a, r]; }
+  for q: 0..<n {
+    o := q * 6; hx := (boxes[o + 3] - boxes[o]) * 0.5; hz := (boxes[o + 5] - boxes[o + 2]) * 0.5; cx := boxes[o] + hx; cz := boxes[o + 2] + hz;
+    if abs(cx - x) > f32(E2_RANGE_REACH) + hx || abs(cz - z) > f32(E2_RANGE_REACH) + hz || r >= E2_NEAR_HULLS { continue; }
+    next := e2_box_hull(hulls, a, cx, cz, 0, hx, hz, boxes[o + 4]);
+    if next > a { r += 1; } a = next;
+  }
+  return [2] int.[a, r];
 }
 // Planted rock q's kept numbers, worked out when its slot holds another's.
 e2_still_rock :: (s: [] E2Still, q: int, r: E2Rock) -> E2RockPrep {
@@ -368,6 +412,9 @@ e2m_world_still :: (still: [] E2Still, items: [] f32, kinds: [] u8, first: [] in
     if E2_CAMP_ROUND[p.kit] { n = e2m_body(out, n, px, pz, px, pz, 0.2, h[2] * p.scale, h[0] * p.scale); continue; }
     if rocks < E2_NEAR_HULLS { next := e2_box_hull(hulls, at, px, pz, p.yaw, h[0] * p.scale, h[1] * p.scale, h[2] * p.scale); if next > at { rocks += 1; } at = next; }
   }
+  // the Archery Range's butts, poles and posts (kept, or worked out here: the same numbers)
+  if kept { got := e2_range_hulls(still[0].range[..], still[0].range_n, hulls, at, rocks, x, z); at = got[0]; rocks = got[1]; }
+  else if rg_on_ground(x, z, f32(E2_RANGE_REACH) + 1) { rb: [RG_BOXES * 6] f32; rn := e2_range_boxes(rb[..]); got := e2_range_hulls(rb[..], rn, hulls, at, rocks, x, z); at = got[0]; rocks = got[1]; }
   w.bodies = n; w.hulls = at; return w;
 }
 

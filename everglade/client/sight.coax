@@ -79,6 +79,15 @@ e2_sight_gather :: (s: [] E2, x: f32, z: f32, out: [] E2Sight) {
     if E2_CAMP_ROUND[p.kit] { e2_sight_add(out, px, pz, h[0] * p.scale, g - 1, g + h[2] * p.scale); continue; }
     was := out[0].nh; out[0].nh = e2_box_hull(out[0].hulls[..], out[0].nh, px, pz, p.yaw, h[0] * p.scale, h[1] * p.scale, h[2] * p.scale); e2_sight_lift(out, was, px, pz);
   }
+  // the Archery Range's butts and poles hide what stands behind them (#13507)
+  if rg_on_ground(x, z, 40) {
+    rb: [RG_BOXES * 6] f32; rn := e2_range_boxes(rb[..]);
+    for q: 0..<rn {
+      o := q * 6; hx := (rb[o + 3] - rb[o]) * 0.5; hz := (rb[o + 5] - rb[o + 2]) * 0.5; cx := rb[o] + hx; cz := rb[o + 2] + hz;
+      if e2_sight_off(e, x, z, cx, cz)[1] > 1 + hx + hz { continue; }
+      was := out[0].nh; out[0].nh = e2_box_hull(out[0].hulls[..], out[0].nh, cx, cz, 0, hx, hz, rb[o + 4]); e2_sight_lift(out, was, cx, cz);
+    }
+  }
 }
 // This zone's land under the line from the eye to a body standing at (x, foot, z), tall m.
 e2_sight_land :: (s: [] E2, x: f32, foot: f32, z: f32, tall: f32, heights: [] f32) -> int {

@@ -333,7 +333,7 @@ e2th_top :: (v: [] RmServer, k: int, mo: E2Mon) -> int {
 }
 
 e2mo_room :: (v: [] RmServer, k: int) -> [] E2Monsters { return v[0].eg[k].monsters[..]; }
-e2mo_safe :: (x: f32, z: f32) -> bool { return z > f32(E2M_SAFE_Z); }
+e2mo_safe :: (x: f32, z: f32) -> bool { return z > f32(E2M_SAFE_Z) || e2_range_ground(x, z, 2); }   // and the Archery Range's ground (#13507)
 // Seat s as a monster's quarry: placed, alive and up, and out of the glade.
 e2mo_quarry :: (v: [] RmServer, k: int, s: int) -> bool {
   if s < 0 || s >= eg_cap(v, k) { return false; }

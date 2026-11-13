@@ -34,7 +34,9 @@
 #load "../../../everglade/world/housewright.coax" as hw;
 #load "../../../metaverse-engine/world/build-work.coax" as bwork;
 #load "../../../metaverse-engine/world/build-work-mesh.coax" as bwm;
+#load "../../../everglade/range/layout.coax" as rangel;   // where its pieces stand (#13507)
 #load "../../../everglade/range/place.coax" as range;   // the Archery Range's butts, faces, posts and chalk (--append-range)
+#load "../../../everglade/world/forest.coax";   // Everglade's land, which the range stands on in Everglade II's pack (--append-range-e2, #13507)
 #load "../../../everglade/legacy/v1/glade-zone.coax";
 
 #test "glade static vertices retain positions beyond the people quantization box" {
@@ -627,8 +629,8 @@ gp_append_build :: (input:string,output:string,root:string)->int {
 // (experimental-terrain.coax exp_height), outside the glade's environment draw. The stands are the
 // build parts' timber; straw and a face's paint are their own colours on the plain plaster tile.
 gp_range :: (w:[]Gp) {
- m:[1]bsm.BsMesh;ground:[range.RG_PIECES]f32;
- for i:0..<range.RG_PIECES {at:=range.rg_piece_at(i);ground[i]=meadow.exp_height(at[0],at[1]);}
+ m:[1]bsm.BsMesh;ground:[rangel.RG_PIECES]f32;
+ for i:0..<rangel.RG_PIECES {at:=rangel.rg_piece_at(i);ground[i]=meadow.exp_height(at[0],at[1]);}
  range.rg_build(m[..],ground[..]);
  if m[0].over {ph_die("range mesh exceeds its vertex budget");}
  w[0].rangefirst=w[0].ni;first:=w[0].nv;
@@ -644,7 +646,25 @@ gp_range :: (w:[]Gp) {
 // --append-build adds the parts; the catalog gains "C glade/pile<row>" lines (HW_STOCK_ROWS order).
 // --append-range IN.pack OUT.pack: the Archery Range (gp_range) the same way; the catalog gains
 // one "C glade/range" line.
-gp_append_made :: (input:string,output:string,is_range:bool)->int {
+// The Archery Range in Everglade II's pack (#13507): the same pieces with fewer steps round a face
+// (range.RG_ROUND_E2), each standing on Everglade's land under it (everglade/world/forest.coax
+// e2_height), in world metres, as Everglade II's own vertex colours (kind 9, as the horse's: its
+// shader has no village atlas). Drawn with one record at the origin (everglade/client/range.coax).
+// The stands take the build parts' timber tint; straw and a face's paint are their own colours.
+gp_range_e2 :: (w:[]Gp) {
+ m:[1]bsm.BsMesh;ground:[rangel.RG_PIECES]f32;
+ for i:0..<rangel.RG_PIECES {at:=rangel.rg_piece_at(i);ground[i]=e2_height(at[0],at[1]);}
+ range.rg_build_steps(m[..],ground[..],range.RG_ROUND_E2);
+ if m[0].over {ph_die("range mesh exceeds its vertex budget");}
+ w[0].rangefirst=w[0].ni;first:=w[0].nv;
+ for q:0..<m[0].nv {v:=m[0].v[q];
+  tint:=ifx v.mat==bsite.BS_DAUB || v.mat==range.RG_STRAW_MAT then [3]f32.[1,1,1] else GP_HW_TINT[v.mat];c:=[3]f32.[tint[0]*v.c[0],tint[1]*v.c[1],tint[2]*v.c[2]];
+  _:=gp_v(w,v.p,v.n,[2]f32.[0.5,0.5],c,0,9);}
+ for q:0..<m[0].ni/3 {gp_tri(w,first+m[0].i[q*3],first+m[0].i[q*3+1],first+m[0].i[q*3+2]);}
+ w[0].rangecount=w[0].ni-w[0].rangefirst;
+}
+gp_append_made :: (input:string,output:string,is_range:bool)->int { return gp_append_made_into(input,output,is_range,false); }
+gp_append_made_into :: (input:string,output:string,is_range:bool,e2:bool)->int {
   w:[1]Gp; g:[1]Gltf; src:=w[0].out[..];
   size:=fs_read(input,src);
   if size<32 || cast(string)src[0..<4]!="VPK1" || gl_u32(src,8)!=size { tool_errln("not a VPK1 pack"); return 1; }
@@ -667,11 +687,11 @@ gp_append_made :: (input:string,output:string,is_range:bool)->int {
   }
   if size_at<0 { return 1; }
   for v:0..<vertex_bytes/32 {o:=vertex_at+v*32;if (int(src[o+15])&7)!=4 {continue;}m:=f32_from_bits(cast(u32)gl_u32(src,o+28));if m>=100 && m<116 && abs(m-floor(m)-0.25)<0.001 {w[0].village_layer=gl_u32(src,o+24);break;}}
-  if w[0].village_layer<0 { tool_errln("pack has no village atlas"); return 1; }
-  if is_range { gp_range(w[..]); } else { gp_build_piles(w[..]); }
+  if w[0].village_layer<0 && !e2 { tool_errln("pack has no village atlas"); return 1; }
+  if e2 { gp_range_e2(w[..]); } else if is_range { gp_range(w[..]); } else { gp_build_piles(w[..]); }
   extra:[16384]u8; c:[1]Sb; c[0]=sb(extra[..]);
   sb_byte(c[..],'\n');
-  if is_range {sb_put(c[..],"C glade/range ");sb_int(c[..],index_bytes/4+w[0].rangefirst);sb_byte(c[..],' ');sb_int(c[..],w[0].rangecount);sb_put(c[..]," 251 ");sb_int(c[..],vertex_bytes/4);sb_put(c[..]," 0 0\n");}
+  if is_range {sb_put(c[..],"C glade/range ");sb_int(c[..],index_bytes/4+w[0].rangefirst);sb_byte(c[..],' ');sb_int(c[..],w[0].rangecount);sb_put(c[..],ifx e2 then " 5 " else " 251 ");sb_int(c[..],vertex_bytes/4);sb_put(c[..]," 0 0\n");}   // Everglade II's: source 5, OpenAgents' own models
   for i:0..<(ifx is_range then 0 else hw.HW_STOCKS) {sb_put(c[..],"C glade/pile");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],index_bytes/4+w[0].pilefirst[i]);sb_byte(c[..],' ');sb_int(c[..],w[0].pilecount[i]);sb_put(c[..]," 251 ");sb_int(c[..],vertex_bytes/4);sb_put(c[..]," 0 0\n");}
   appendix:=sb_text(c[..]);
   out:[536870912]u8;
@@ -1007,6 +1027,7 @@ tool_main :: ()->int #export_c #effects(all) {
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-cat" {return gp_append_models(args_at(args[..],1),args_at(args[..],2),GP_APPEND_CAT,args_at(args[..],3));}
  if args_count(args[..])==3 && args_at(args[..],0)=="--append-piles" {return gp_append_made(args_at(args[..],1),args_at(args[..],2),false);}
  if args_count(args[..])==3 && args_at(args[..],0)=="--append-range" {return gp_append_made(args_at(args[..],1),args_at(args[..],2),true);}
+ if args_count(args[..])==3 && args_at(args[..],0)=="--append-range-e2" {return gp_append_made_into(args_at(args[..],1),args_at(args[..],2),true,true);}
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-build" {return gp_append_build(args_at(args[..],1),args_at(args[..],2),args_at(args[..],3));}
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-dragon" {return gp_append_dragon(args_at(args[..],1),args_at(args[..],2),args_at(args[..],3));}
  if args_count(args[..])==3 && args_at(args[..],0)=="--replace-meadow" {return gp_replace_meadow(args_at(args[..],1),args_at(args[..],2));}

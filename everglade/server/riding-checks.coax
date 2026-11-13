@@ -38,14 +38,14 @@ e2rd_test_input :: (v: [] RmServer, c: int, seq: int, kx: int, ky: int, b: int) 
   room := v[0].eg[k..<k + 1]; r := room[0].mounts[..]; h := room[0].hist[..];
   mid := WIRE_ID_MADE + WIRE_MOUNT_EID;
   // the zone's mounts are laid and free, each a row; the wire 7 pages hear them, the wire 6 page none
-  #assert room[0].mounts_laid && r[0].n == 2 && r[0].m[0].state == MOUNT_FREE && r[0].kind[1] == MK_DRAGON;
+  #assert room[0].mounts_laid && r[0].n == 4 && r[0].m[0].state == MOUNT_FREE && r[0].kind[1] == MK_DRAGON;
   w := wire_test_row(h, EG_SLOT_MOUNT, h[0].now);
   #assert cast(int) h[0].id[(h[0].now % WIRE_BASES) * WIRE_ZSLOTS + EG_SLOT_MOUNT] == mid + 1 && w.kind == WK_MOUNT && w.x == 9 && w.z == 9 && w.owner == -1 && w.g == MOUNT_FREE && w.p1 == MK_HORSE;
   #assert eg_test_ent(hd[..], 0, mid).id == mid && eg_test_ent(hd[..], 1, mid + 1).p1 == MK_DRAGON && eg_test_ent(hd[..], 2, mid).id != mid;
-  // an ID past the zone's mounts is no riding ask; a mount the zone doesn't hold is answered so
+  // an ID past the zone's mounts is no riding ask; the Archery Range's dragon (#13507), far off, is out of reach
   rm_heard(v[..], 0, "E 1 20 4"); #assert eg_test_has(e2rt_heard(v[..], 0, out[..]), "r 1 ride") && room[0].seat[0].ride_last == 0;
   rm_heard(v[..], 0, "E 1 20 3"); e2rd_test_tick(v[..], k); eg_test_drain(v[..], hd[..]);
-  #assert eg_test_has(eg_test_of(hd[..], 0), "e ride 1 1 3") && !eg_test_has(eg_test_of(hd[..], 1), "e ride");
+  #assert eg_test_has(eg_test_of(hd[..], 0), "e ride 1 5 3") && !eg_test_has(eg_test_of(hd[..], 1), "e ride");
   // seat 0 (1.2 m from the horse) mounts it: told so alone, and the row names its rider and the tick
   rm_heard(v[..], 0, "E 2 20 0"); at := room[0].tick;
   #assert r[0].m[0].state == MOUNT_MOUNTING && r[0].m[0].rider == 0 && r[0].m[0].since_tick == at && room[0].seat[0].ride_last == 2;

@@ -156,6 +156,7 @@ table point id name:text x:cm z:cm r:int
 40|Road post 22|-1075|-43900|300
 41|Road post 23|-1094|-45500|300
 42|Ogre's ground|-435|-48200|300
+43|Archery Range|3400|-8000|3000
 table quest id name:text
 1|Thin the pack
 2|The goblin camp
