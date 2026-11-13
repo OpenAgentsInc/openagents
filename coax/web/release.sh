@@ -134,9 +134,13 @@ new_starts() {
 }
 
 live() {   # "COMMIT STAMP ..." of the newest release that went live
-  local newest
-  newest="$(gcloud storage ls "gs://$prod_bucket/releases/" 2>/dev/null | grep -E '/releases/[0-9]{8}T[0-9]{6}Z/$' | sort | tail -1)"
-  [[ -n "$newest" ]] && gcloud storage cat "${newest}PASSED" 2>/dev/null | head -1 || true
+  # A release that was rolled back leaves its folder without PASSED, so look past it.
+  local r line
+  for r in $(gcloud storage ls "gs://$prod_bucket/releases/" 2>/dev/null | grep -E '/releases/[0-9]{8}T[0-9]{6}Z/$' | sort -r | head -10); do
+    line="$(gcloud storage cat "${r}PASSED" 2>/dev/null | head -1 || true)"
+    [[ -z "$line" ]] || { echo "$line"; return 0; }
+  done
+  return 0
 }
 
 tree=""

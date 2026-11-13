@@ -154,8 +154,10 @@ production() {
   local f="$results/production" newest c
   if [[ ! -s "$f" ]] || (( $(date +%s) - $(stat -c %Y "$f" 2> /dev/null || stat -f %m "$f") > 600 )); then
     local cfg=(); [[ -n "${CLOUDSDK_CONFIG:-}" || ! -d "$HOME/work/.secrets/gcloud-sa-config" ]] || cfg=(env CLOUDSDK_CONFIG="$HOME/work/.secrets/gcloud-sa-config")
-    newest="$(${cfg[@]+"${cfg[@]}"} gcloud storage ls "gs://$prod_bucket/releases/" 2> /dev/null | grep -E '/releases/[0-9]{8}T[0-9]{6}Z/$' | sort | tail -1)"
-    c="$([[ -z "$newest" ]] || ${cfg[@]+"${cfg[@]}"} gcloud storage cat "${newest}PASSED" 2> /dev/null | awk 'NR == 1 { print $1 }')"
+    # A rolled-back release's folder has no PASSED: take the newest one that does.
+    newest="$(${cfg[@]+"${cfg[@]}"} gcloud storage ls "gs://$prod_bucket/releases/" 2> /dev/null | grep -E '/releases/[0-9]{8}T[0-9]{6}Z/$' | sort -r | head -10)"
+    c=""
+    for r in $newest; do c="$(${cfg[@]+"${cfg[@]}"} gcloud storage cat "${r}PASSED" 2> /dev/null | awk 'NR == 1 { print $1 }')"; [[ -z "$c" ]] || break; done
     if [[ "$c" =~ ^[0-9a-f]{40}$ ]]; then echo "$c" > "$f"; else touch "$f"; fi
   fi
   c="$(cat "$f" 2> /dev/null)"
