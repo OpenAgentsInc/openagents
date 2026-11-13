@@ -539,7 +539,7 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
     if !vp_hands(vp) { g[0].fwd = false; g[0].back = false; g[0].left = false; g[0].right = false; g[0].turn_l = false; g[0].turn_r = false; }
     // the editor's time of day is the world's clock table; Simulate runs the foes as if no one were there (#13466)
     if s[0].edit {
-      g[0].unseen = vp[0].sim;
+      g[0].unseen = vp[0].sim || s[0].page[0].actor > 0;   // an actor shown is looked at, not met
       if s[0].clock_seen != g[0].c[0].clock || s[0].foes_seen != s[0].page[0].tables_gen {
         s[0].clock_seen = g[0].c[0].clock; s[0].foes_seen = s[0].page[0].tables_gen;
         g[0].view = g[0].c[0].clock; g_foes(g);

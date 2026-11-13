@@ -258,9 +258,12 @@ spw_cell :: (g: [] SpGame, ct: [] SpwTables, e: WorldEdit) -> SpwEdit {
   }
   // and no point of a foe's route stands inside a wall
   wall := spw_plan_wall(g, read[..]);
-  if wall > 0 {
+  if wall.id > 0 {
     _ := we_content_apply(ct[0].d[..], a.inv);
-    n := ct_put(ct[0].why[..], 0, "plan "); n = ct_put_int(ct[0].why[..], n, wall); n = ct_put(ct[0].why[..], n, ": a point of the route stands inside a wall; put it where a foe can stand");
+    // the words name the point and the nearest place a foe can stand, so the next try can be right
+    w := ct[0].why[..];
+    n := ct_put(w, 0, "plan "); n = ct_put_int(w, n, wall.id); n = ct_put(w, n, ": the route's point "); n = ct_put_int(w, n, wall.x); n = ct_put(w, n, " "); n = ct_put_int(w, n, wall.z);
+    n = ct_put(w, n, " stands inside a wall; the nearest place a foe can stand is "); n = ct_put_int(w, n, wall.near_x); n = ct_put(w, n, " "); n = ct_put_int(w, n, wall.near_z);
     ct[0].why_n = ifx n > ct[0].why.count then 0 else n;
     return spw_no(SPE_PLAN);
   }
@@ -283,18 +286,43 @@ spw_cell :: (g: [] SpGame, ct: [] SpwTables, e: WorldEdit) -> SpwEdit {
   g[0].layer[0].rev += 1;
   return SpwEdit.{ok = true, id = e.id, did = e, inv = a.inv};
 }
-// The ID of the first plan with a point of its route inside a wall (a collider of the designed world
-// or a placed piece), or 0. A wander's area may hold walls: its middle is held, not its edge.
-spw_plan_wall :: (g: [] SpGame, c: [] SpContent) -> int {
+// The first plan with a point of its route inside a wall (a collider of the designed world or a
+// placed piece): its ID (0: none), the point and the nearest place a foe can stand, centimetres. A
+// wander's area may hold walls: its middle is held, not its edge.
+SpwWall :: struct { id: int; x: int; z: int; near_x: int; near_z: int; }
+spw_plan_wall :: (g: [] SpGame, c: [] SpContent) -> SpwWall {
   for k: 0..<SC_PLAN_MAX {
     p := c[0].plans[k];
     for i: 0..<p.n {
       x := mp_m(p.x[i]); z := mp_m(p.z[i]); q := sl_push(g, x, z, 0.3, true);
-      if abs(q.x - x) > 0.01 || abs(q.z - z) > 0.01 { return npl_id(p.who, p.when); }
+      if abs(q.x - x) > 0.01 || abs(q.z - z) > 0.01 {
+        near := spw_stand_near(g, c, x, z);
+        return SpwWall.{id = npl_id(p.who, p.when), x = p.x[i], z = p.z[i], near_x = we_cm(near.x), near_z = we_cm(near.z)};
+      }
     }
   }
-  return 0;
+  return SpwWall.{};
 }
+// The nearest place to (x, z) a foe can stand inside the mine: rings half a metre apart, 16
+// points each, out to 12 metres; the mine's middle when none holds.
+SpwAt :: struct { x: f32; z: f32; }
+spw_stand_near :: (g: [] SpGame, c: [] SpContent, x: f32, z: f32) -> SpwAt {
+  lo_x: f32 = -44; hi_x: f32 = 44; lo_z: f32 = -82; hi_z: f32 = 20;
+  for a: 0..<c[0].area_n { m := c[0].areas[a]; if m.id == SC_FOE_AREA { lo_x = m.x - m.hx + 0.5; hi_x = m.x + m.hx - 0.5; lo_z = m.z - m.hz + 0.5; hi_z = m.z + m.hz - 0.5; } }
+  for ring: 1..<25 {
+    d := cast(f32) ring * 0.5;
+    for k: 0..<16 {
+      t := cast(f32) k * 0.3926991;
+      px := x + d * cos(t); pz := z + d * sin(t);
+      if px >= lo_x && px <= hi_x && pz >= lo_z && pz <= hi_z {
+        q := sl_push(g, px, pz, 0.3, true);
+        if abs(q.x - px) < 0.005 && abs(q.z - pz) < 0.005 { return SpwAt.{x = px, z = pz}; }
+      }
+    }
+  }
+  return SpwAt.{x = (lo_x + hi_x) / 2, z = (lo_z + hi_z) / 2};
+}
+
 // An edit of either kind: a cell on the tables, anything else on the layer.
 spw_take :: (g: [] SpGame, ct: [] SpwTables, e: WorldEdit, sure: bool) -> SpwEdit {
   if e.op == WE_CELL { return spw_cell(g, ct, e); }
@@ -561,13 +589,18 @@ spw_actor :: (g: [] SpGame, p: [] SpwPage, id: int) {
   g[0].shown = p[0].actor - 1;
   if p[0].actor > 0 && g[0].zone != Z_MINE { g_enter_mine(g); }
 }
-// The fly camera over foe i: above and behind the middle of where it stands and its route at this time of day, looking down at it.
+// The view of foe i: the player stands ten metres off the middle of its route at this time of day,
+// where one can stand, facing it, and the fly camera looks down at the route from above that place,
+// so the foe, its route and its notice ring are in the frame.
 spv_frame_foe :: (g: [] SpGame, vp: [] Viewport, seen: VpView, i: int) {
   pl := sc_plan(g[0].c[..], i, g_phase(g));
   x := g[0].fx[i]; z := g[0].fz[i]; n := 1;
   for k: 0..<pl.n { x += mp_m(pl.x[k]); z += mp_m(pl.z[k]); n += 1; }
   x = x / cast(f32) n; z = z / cast(f32) n;
-  v := seen; v.ex = x; v.ey = 14; v.ez = z + 12; v.ax = x; v.ay = 0; v.az = z;
+  at := sl_push(g, x, z + 10, 0.4, true);
+  g[0].px = at.x; g[0].pz = at.z; g[0].yaw = atan2(x - at.x, z - at.z); g[0].pitch = 0;
+  // the camera above where the player stands (a place one can stand is not inside a wall), looking down at the route
+  v := seen; v.ex = at.x; v.ey = 7; v.ez = at.z; v.ax = x; v.ay = 0; v.az = z;
   vp_fly_from(vp, v); vp[0].fly = true;
 }
 // The shell's batch (world.edit.v1), sent as this page's own write. False while one is in flight.

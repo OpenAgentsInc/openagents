@@ -396,7 +396,14 @@ spt_cell :: (out: [] u8, rev: int, table: string, row: int, col: string, value: 
   #assert wx != 0;
   rt: [64] u8; n := ct_put_int(rt[..], 0, wx); n = ct_put(rt[..], n, " "); n = ct_put_int(rt[..], n, wz); n = ct_put(rt[..], n, ", 850 -5700");
   b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "plans", 62, "route", cast(string) rt[0..<n]), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
-  #assert b.status == SPB_REFUSED && spt_why(t[..], b) == "plan 62: a point of the route stands inside a wall; put it where a foe can stand" && !w[0].ct[0].changed;
+  why := spt_why(t[..], b);
+  #assert b.status == SPB_REFUSED && !w[0].ct[0].changed && ct_parts(why, ' ') == 21 && ct_part(why, ' ', 0) == "plan" && ct_part(why, ' ', 1) == "62:";
+  #assert ct_num(ct_part(why, ' ', 5)).v == wx && ct_num(ct_part(why, ' ', 6)).v == wz && ct_part(why, ' ', 3) == "route's" && ct_part(why, ' ', 12) == "nearest";
+  // the nearest place it names is one a foe can stand: a route through it is taken
+  nx := ct_num(ct_part(why, ' ', 19)).v; nz := ct_num(ct_part(why, ' ', 20)).v;
+  n = ct_put_int(rt[..], 0, nx); n = ct_put(rt[..], n, " "); n = ct_put_int(rt[..], n, nz); n = ct_put(rt[..], n, ", 850 -5700");
+  b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "plans", 62, "route", cast(string) rt[0..<n]), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
+  #assert b.status == SPB_OK;
 }
 
 #test "a page reads the world's own tables after its document, and a cell event changes them in place: the run goes on and the kind's new name is the one it has" #steps 4000000000 #traversal 2000000000 {

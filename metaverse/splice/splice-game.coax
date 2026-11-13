@@ -1221,7 +1221,7 @@ g_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   ui_panel(g, u, bx, pad, bx + bw, pad + 38 * k, ink, 0.97);
   names := [4] string.["DAWN", "DAY", "DUSK", "NIGHT"];
   for i: 0..<4 {
-    cx := bx + (cast(f32) i + 0.5) * bw / 4; on := i == g[0].phase;
+    cx := bx + (cast(f32) i + 0.5) * bw / 4; on := i == g_phase(g);   // the editor's time of day, when one is set
     if on { n = ui_fill(out, n, cx - 40 * k, pad + 6 * k, cx + 40 * k, pad + 32 * k, HEAT()); n = ui_fill(out, n, cx - 37.5 * k, pad + 8.5 * k, cx + 37.5 * k, pad + 29.5 * k, SHADE()); }
     n = ui_mid(out, n, names[i], cx, pad + 23.5 * k, 9.5 * k, ifx on then ink else SHADE());
   }
