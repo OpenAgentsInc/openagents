@@ -159,7 +159,8 @@ sandbox profile, as the tool does; `replace` writes through Microcoder's exact e
 
 `--memory` (`[--session ID | --memory-dir DIR]`): the run store of `coax/lib/agent/workmem/`, in
 `~/.openagents/coder/sessions/ID.workmem` (a new session each run unless `--session` names one;
-a folder made for another workspace is refused). The driver records with no action from the model:
+a folder made for another workspace is refused; one opened again says what it holds in a line
+before the task). The driver records with no action from the model:
 `read`, `lines` and `show` as reads, `edit`, `replace_lines`, `write` and `replace` as changes, and
 each `sh` as a run (the store looks at its files again first, so a file the command changed is seen).
 

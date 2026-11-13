@@ -912,6 +912,17 @@ rc_extend :: (m: [] RcMem, intel: bool, coax: string, memory_dir: string) -> str
   ok := rs_put(r, cast(string) RC_SYSTEM[0..<cut]) && (!intel || rs_put(r, RC_INTEL_NOTE)) && (!e[0].memory || rs_put(r, RC_MEMORY_NOTE)) && rs_put(r, cast(string) RC_SYSTEM[cut..<RC_SYSTEM.count]);
   if !ok { r[0].nh = at; return "the run's memory is full"; }
   st[0].system_tpl = rs_take(r, at); st[0].child_tpl = st[0].system_tpl;
+  // a memory opened again says what it holds, before the task: the conversation is new and the memory is not
+  if e[0].memory {
+    ws := e[0].wm[0].s[..];
+    if ws[0].nfindings + ws[0].nreads + ws[0].nchanges > 0 {
+      at = r[0].nh;
+      ok = rs_put(r, "Your working memory is from an earlier run in this repository: ") && rs_put_int(r, ws[0].nfindings) && rs_put(r, " findings, ") && rs_put_int(r, ws[0].nreads) && rs_put(r, " reads and ") && rs_put_int(r, ws[0].nchanges);
+      ok = ok && rs_put(r, " edits are recorded. known() lists what is still current, and changed() the edits.\n\n") && rs_put(r, RC_FIRST);
+      if !ok { r[0].nh = at; return "the run's memory is full"; }
+      st[0].first_tpl = rs_take(r, at);
+    }
+  }
   return "";
 }
 
@@ -1418,6 +1429,7 @@ rc_selftest_more :: (profile: string, coax: string) -> int {
   g := mc_run_command(cwd, cast(string) sb[0..<n], 60, o[..]);
   if g.exit != 0 { tool_errln("selftest: git init failed:"); tool_errln(g.output); return 1; }
   none: [1] string;
+  if coax.count == 0 { tool_errln("selftest (--intel, --memory): no compiler: run it from the checkout's root, or pass --coax PATH"); return 1; }
   print("selftest (--intel, --memory): workspace % (profile %, compiler %)\n", cwd, profile, coax);
 
   // neither flag: the functions are not there, the prompt is the committed one, the report has no new key
@@ -1519,6 +1531,7 @@ rc_selftest_more :: (profile: string, coax: string) -> int {
   rc_drive(m[0].env[..], m[0].r[..], m[0].st[..], "Say again that these are shapes. The check is `sh test.sh`.", false);
   st = m[0].st[..]; env = m[0].env[..];
   tr = cast(string) st[0].trace[0..<st[0].ntr];
+  rc_expect_true(c[..], "a new run on a memory's folder is told what it holds, before its task", rc_has(st[0].msgs[0].text, "Your working memory is from an earlier run in this repository: 0 findings, 2 reads and 1 edits are recorded. known() lists what is still current, and changed() the edits.\n\nYour task:\n\nSay again"), st[0].msgs[0].text);
   rc_expect_true(c[..], "a new run on the same folder knows what the last one read, and says a read of it is a repeat", why == "" && rc_said(st, "Reads (current):\n") && rc_said(st, "shapes.coax 4-6\n") && rc_said(st, "0 [already read in an earlier run: you have these lines, and known() lists what you have]\n     4\tarea :: (s: Shape) -> int {\n"), tr);
   rc_expect_true(c[..], "a check that passed before an edit is open again", rc_said(st, "FINAL was refused (1 of at most 2 refusals)") && rc_said(st, "check sh test.sh: check passed before the tree changed; run it again: sh test.sh\n"), tr);
   rc_expect_true(c[..], "after two refusals FINAL is accepted, and the report says what is unproven", st[0].answer == "three" && env[0].finish_refused == 2 && st[0].turns == 3, tr);
