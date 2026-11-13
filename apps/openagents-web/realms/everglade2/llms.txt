@@ -10,7 +10,7 @@ The site's index is [llms.txt](https://openagents.com/llms.txt). Look a Coax nam
 - page: `/worlds/everglade2` (module `everglade2`, source `apps/openagents-web/realms/everglade2/`)
 - wire: 7 (`everglade/shared/everglade-wire.coax` `WIRE_VERSION`). A room also seats a page one version behind, 6, for one release. A frame written for any other version is refused with `r 0 version`
 - pins: engine 1, rules 1, content 1 (`WIRE_ENGINE`, `WIRE_RULES`, `WIRE_CONTENT`). A page says them before its hello. A room refuses a hello whose pins are neither its own nor the release before's (`r 0 version`)
-- content: `everglade/content/everglade.content`, revision 2, sha256 `4bce8ce74b0ab604edc4c51782ec1cb74fc99d7b463545125477df7aa1ab0c6c`; on the wire its pin is 2
+- content: `everglade/content/everglade.content`, revision 2, sha256 `f28973a9fb76eb0add9e1eaa8e48aa326fa17d654272d92dc3f04200d31c8568`; on the wire its pin is 2
 - diagnostics: `engine-diagnostics-v1`, 17 codes, sha256 `55aa5a9b50ff02e1256e64909abf901a29f9c98a1575ae6b669281410b69c31c` (`proto/verse/engine-diagnostics-v1.json`)
 - language: Coax; the compiler's version is in `coax/release-status.json` and what it claims to do in `coax/book/capability-claims.json`
 - reference: the last line of this file is the sha256 of everything above it. Two builds with the same line have the same reference
@@ -51,7 +51,7 @@ From `metaverse-engine/editor/authority.coax` (INVARIANTS.md, "Authoring never w
 | `dialogue` | `id npc:text point:ref.point quest:opt.quest line:text` | 6 |
 | `item` | `id name:text slot:int` | 4 |
 | `loot` | `id creature:ref.creature item:opt.item weight:int` | 8 |
-| `point` | `id name:text x:cm z:cm r:int` | 42 |
+| `point` | `id name:text x:cm z:cm r:int` | 43 |
 | `quest` | `id name:text` | 5 |
 | `reward` | `id quest:ref.quest item:opt.item coin:int xp:int` | 5 |
 | `spawn` | `id creature:ref.creature point:ref.point count:int` | 13 |
@@ -82,6 +82,7 @@ The rows of `proto/registry.json` whose codec or files are this realm's (under `
 | `everglade-healers-kit-v1` | profile | world | `proto/verse/everglade-healers-kit-v1.json` |
 | `everglade2-familiar-v2` | profile | world | `proto/verse/everglade2-familiar-v2.json` |
 | `everglade2-riding-v1` | profile | world | `proto/verse/everglade2-riding-v1.json` |
+| `everglade2-range-v1` | profile | world | `proto/verse/everglade2-range-v1.json` |
 | `room-relay-v2` | profile | room-session | `proto/verse/room-relay-v2.json` |
 | `everglade2-combat-v2` | profile | creatures | `proto/verse/everglade2-combat-v2.json` |
 | `everglade-wire-prev-v5` | profile | creatures | `proto/verse/everglade-wire-prev-v5.json` |
@@ -199,4 +200,4 @@ table ability id name:text
 128|Rage
 ```
 
-reference sha256: 42cb96e5d1ed247681c352062305a855fe09f96897621df0544a2722bac1649b
+reference sha256: f5c45bd9d6d6dc99ee6f31c59fab85d849243a4d14282adb2de1ec8c64db0485
