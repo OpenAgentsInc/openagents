@@ -1,14 +1,14 @@
 # 13. Choose an engine
 
 > **Status: partly implemented.** `coder run "TASK"` with no `--engine`
-> asks System One (Baseten's mammoth-1) which engine should take the task,
+> asks System One (Google's Gemini Decision 1 first since 2026-11-13, then
+> local Elephant or Baseten's mammoth-1) which engine should take the task,
 > how hard it is and how much effort to give it, and runs the answer with
 > that effort. In the terminal UI, `--engine auto` or `/engine auto` asks at
 > each conversation's first message. On the labelled set, both halves route
 > 22 of 22 on mammoth-1 (2026-11-02), with a mean probability of 0.95 on the
-> held-out half. Still to come: the question asked through our Decisions
-> API (Clef first) instead of straight to Baseten. That API isn't serving
-> yet; see [The Decisions API](#the-decisions-api).
+> held-out half, and 44 of 44 on Gemini Decision 1 (2026-11-13). See
+> [The door order](#the-door-order).
 
 The labelled accuracy below measures agreement with a routing policy, not
 which engine produces the best patch. The [repository pilot](../../docs/coder/repository-pilot.md)
@@ -48,8 +48,9 @@ plain question or small talk goes to Microcoder. The desktop Lab's router
 (`apps/openagents-desktop/router.coax`) asks the same way; earlier labels
 that split by "code" sent refactors and one-line edits near 50/50.
 
-The key comes from `BASETEN_API_KEY`, or from `~/work/.secrets/baseten.env`
-into curl's environment only (`SoClient.key_value` in
+Each key comes from its variable (`GEMINI_API_KEY`, `BASETEN_API_KEY`), or
+from its file under `~/work/.secrets/` (`openagents-gemini-provider.env`,
+`baseten.env`), into curl's environment only (`SoClient.key_value` in
 `coax/lib/systemone/transport.coax`). It never appears in Coder's own
 environment, curl's arguments or a process listing.
 
@@ -126,19 +127,33 @@ When System One isn't sure, or there is no decision, the current agent runs
 and the route line says why. Later messages in the conversation stay with
 that agent, so its session keeps its context.
 
+## The door order
+
+Since 2026-11-13 (#13473) the route asks Gemini Decision 1 first when a
+Gemini key is available. Without one, Elephant at the configured System One
+URL answers, else mammoth-1, and the route line's note says why. When Gemini
+fails for a reason other than a rule of the request or a safety block, the
+same fallback answers. When the consent ledger has no grant and a local
+Elephant is configured, Elephant answers without one. A `"door"` in
+router.json, or `CODER_ROUTE_DOOR`, names one door (`gemini-decision-1`,
+`elephant-1` or `mammoth-1`), and only that door is asked. On the labelled
+set Gemini routes 44 of 44, the same as mammoth-1, a little slower
+(`coder/tui/route-door-eval.coax`,
+[the comparison](../../docs/research/2026-11-13-gemini-decision-1.md)).
+
 ## The Decisions API
 
-Coder should ask through our Decisions API, Clef first, not Baseten
-directly. As of 2026-11-02 that path doesn't answer:
+The server's `/api/v1/systemone` has answered `"model":"auto"` with Gemini
+Decision 1 first and elephant-1 behind it since 2026-11-13. Before that, as
+of 2026-11-02, the path didn't answer:
 
 - `https://openagents.com/api/v1/decisions` returns 404.
 - `https://openagents.com/api/v1/systemone` is a NIP-98-signed mesh route
   to elephant-1 Pylon providers (`coax/web/api/mesh-client.sh`). With the
   accelerators off, it has no providers to answer.
 
-Until it serves, Coder calls mammoth-1 through `coax/lib/systemone`, the
-same request the desktop Lab sends. Switching is one change: `SoClient.url`
-is configurable, and the request body doesn't change.
+Coder calls the doors directly through `coax/lib/systemone`, the same
+request the desktop Lab sends.
 
 ## Checks
 
@@ -154,7 +169,7 @@ the existing `system-one` session grant. A remote HTTPS door may read
 `PSIONIC_SYSTEMONE_KEY` through curl's environment. The public NIP-98 endpoint
 is a distinct authenticated transport, not a bearer-HTTP drop-in.
 
-Without a config or override, the historical hosted Mammoth path above remains.
+Without a Gemini key, a config or an override, the hosted Mammoth path above remains.
 A configured Elephant failure never falls through to it. The eligible default
 still works, and the route record says why a decision was unavailable or unsure.
 Configured Elephant uses compact typed questions, an eight-second timeout and

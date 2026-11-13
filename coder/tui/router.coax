@@ -447,15 +447,15 @@ rt_coder_env :: (args: [] string, env: [] string, id_out: [] u8) -> string {
 
 // Asks System One a yes-or-no question about state. 1 yes, 0 no, -1 no decision (why in why).
 rt_ask :: (state: string, question: string, why: [] u8, nwhy: [] int) -> int {
-  cb: [1] SoClient; kb: [512] u8;
-  w := agr_keyed(cb[..], kb[..]);
+  cb: [1] SoClient; kb: [512] u8; door: [1] int;
+  w := agr_hosted(cb[..], kb[..], door[..]);
   if w.count > 0 { nwhy[0] = cd_cat(why, 0, w); return -1; }
   buf: [65536] u8; b: [1] SoBody;
   so_begin(b[..], buf[..], SO_MAMMOTH, "");
   so_state_json(b[..], state);
   so_noul(b[..], "answer", question);
   out: [65536] u8; err: [4096] u8;
-  res := so_decide(cb[0], b[..], out[..], err[..]);
+  sc: [65536] u8; res := agr_send(cb[0], kb[..], door[0], b[..], out[..], err[..], sc[..]);
   for i: 0..<kb.count { kb[i] = 0; }
   if res.problem.count > 0 { nwhy[0] = cd_cat(why, 0, ifx res.stderr.count > 0 then res.stderr else res.problem); return -1; }
   p := so_noul_of(res.body, "answer");
@@ -745,8 +745,8 @@ rt_batch_add :: (sb: [] u8, n0: int, k: int, t: RtTrigger, policy: string) -> in
 // Decides the batch's events in one System One request.
 rt_batch_decide :: (bt: [] RtBatch, state: string) {
   for i: 0..<bt[0].n { bt[0].d[i] = -1; }
-  cb: [1] SoClient; kb: [512] u8;
-  w := agr_keyed(cb[..], kb[..]);
+  cb: [1] SoClient; kb: [512] u8; door: [1] int;
+  w := agr_hosted(cb[..], kb[..], door[..]);
   if w.count > 0 { bt[0].nwhy = cd_cat(bt[0].why[..], 0, w); return; }
   // the events' text leaves only under a grant (chapter 18)
   gn: [1] int;
@@ -763,7 +763,7 @@ rt_batch_decide :: (bt: [] RtBatch, state: string) {
   }
   out: [65536] u8; err: [4096] u8;
   t0 := cxproc_wall_us();
-  res := so_decide(cb[0], b[..], out[..], err[..]);
+  sc: [65536] u8; res := agr_send(cb[0], kb[..], door[0], b[..], out[..], err[..], sc[..]);
   bt[0].ms = (cxproc_wall_us() - t0) / 1000;
   for i: 0..<kb.count { kb[i] = 0; }
   if res.problem.count > 0 { bt[0].nwhy = cd_cat(bt[0].why[..], 0, ifx res.stderr.count > 0 then res.stderr else res.problem); return; }

@@ -1,10 +1,12 @@
 // The Lab's router: a user's message and this Mac's environment (the OS,
-// the app, the hardware, which agent CLIs are installed) go to Mammoth
-// (Baseten's mammoth-1, coax/lib/systemone), which says which agent should
+// the app, the hardware, which agent CLIs are installed) go to Gemini
+// Decision 1 when GEMINI_API_KEY is set, else to Mammoth (Baseten's
+// mammoth-1, coax/lib/systemone), which says which agent should
 // take it, how sure it is, how hard the request is, and the reasoning effort
 // and model to run it with. The host shows the decision; nothing runs yet.
 
 #load "../../coax/lib/systemone/systemone.coax";
+#load "../../coax/lib/systemone/gemini.coax";
 
 // The labels split Claude Code and Codex by the job's size, not by "code":
 // router-labels.tsv is the labelled set (22 to tune, 22 held out). On
@@ -38,14 +40,22 @@ route_body :: (b: [] SoBody, buf: [] u8, state: string) {
   so_noul(b, "local_work", "Does the request need to read or change files, or run commands, on this Mac?");
 }
 
-// Asks Mammoth. The checked response goes in out and its length is returned;
-// on a failure the reason goes in out and its length is returned negated.
+// Asks Gemini Decision 1 when GEMINI_API_KEY is set (the door order of
+// 2026-11-13, #13473), and Mammoth when it is not or Gemini can't answer now.
+// The checked response goes in out and its length is returned; on a failure
+// the reason goes in out and its length is returned negated.
 coaxial_route :: (state: string, out: [] u8, scratch: [] u8, err: [] u8) -> int #export_c #effects(all) {
   buf: [16384] u8;
   b: [1] SoBody;
   route_body(b[..], buf[..], state);
-  c: SoClient;
-  r := so_decide(c, b[..], scratch, err);
+  kb: [16] u8; half := scratch.count / 2;
+  r: SoResult; gemini := cl_getenv(GD_KEY_ENV, kb[..]).count > 0;
+  if gemini { r = so_decide_gemini(so_gemini(""), b[..], scratch[0..<half], err, scratch[half..<scratch.count]); }
+  if !gemini || (r.problem.count > 0 && !so_gemini_final(r)) {
+    c: SoClient;
+    route_body(b[..], buf[..], state);   // a fresh body for Baseten's door
+    r = so_decide(c, b[..], scratch, err);
+  }
   text := ifx r.problem.count > 0 then r.problem else r.body;
   if r.problem.count > 0 && r.stderr.count > 0 { text = r.stderr; }
   n := 0;

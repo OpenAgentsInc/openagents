@@ -111,7 +111,40 @@ $0.00005.
   takes the body limit it already had, so in practice it carries text and
   small images only. Larger media goes through the Coax client.
 
-## The door order on /api/v1/systemone
+## The door order
+
+On 2026-11-13 the owner made Gemini Decision 1 the primary decision model
+for everything (#13473). Every caller that asks a decision model now tries
+Gemini Decision 1 first, and the model it used before is the fallback:
+
+| Caller | First | Fallback |
+| --- | --- | --- |
+| `/api/v1/systemone`, `"model":"auto"` | `gemini-decision-1` | `elephant-1` (`OA_DECISION_ORDER`) |
+| Coder's engine route (`coax/lib/agent/engine/route.coax`) | `gemini-decision-1` with a Gemini key | `elephant-1` at the router.json URL, else `mammoth-1` |
+| `coder decide` and the router's checks (`coder/tui/route.coax`, `router.coax`) | `gemini-decision-1` with a Gemini key | `mammoth-1` |
+| The desktop router (`apps/openagents-desktop/router.coax`) | `gemini-decision-1` with `GEMINI_API_KEY` | `mammoth-1` |
+
+The fallback answers when there is no Gemini key, and when Google fails for
+any reason other than a rule of the request or a safety block
+(`so_gemini_final`). For example, it answers on a refused key, a rate limit,
+a missing model, a server error or no response.
+
+These callers still name another model first, on purpose:
+
+- **Everglade's guards** (`everglade/npc/guard-*.coax`) ask
+  `/api/v1/systemone` for `elephant-1` by name. They check the answer's pinned
+  checkpoint identity (`elephant-1@sha256:...`) and replay and evaluate
+  against it. A Gemini answer has no checkpoint digest, so moving them needs
+  a new identity rule in their `#authority` files.
+- **The Lab** (`coax/lib/agent/engine/lab.coax`, `gpu.coax`) exists to
+  exercise our own Elephant on this Mac's GPU.
+- **Psionic and Pylon** (`psionic/`, `apps/openagents-cli/pylon.coax`) serve
+  and measure Elephant and Mammoth. They are the models, not callers of a
+  decision door.
+- **The legacy captain** (`everglade/legacy/v1/captain.coax`) is frozen with
+  the rest of v1.
+
+### /api/v1/systemone
 
 `coax/web/api/mesh-policy.coax` reads routes from `OA_MESH_ROUTES`. A row of
 `{"backend":"gemini"}`, with an optional `"url"` for a stand-in, makes a
@@ -137,14 +170,27 @@ provider rule, and Elephant behind it. Clef and Jev routes are not removed.
 When Clef's GPUs come back, put its route name first in the setting. No code
 change is needed.
 
-## Coder's engine route on this door
+## Coder's engine route
 
 Coder's engine route (`coax/lib/agent/engine/route.coax`) asks three
 questions about each new task: which engine, how hard, and how much effort.
-Set `"door":"gemini-decision-1"` in `~/.openagents/coder/router.json`, or
-`CODER_ROUTE_DOOR=gemini-decision-1`, to send the same questions to Google.
-The task then leaves the machine, so the consent ledger decides first, as
-for the Baseten door.
+Since 2026-11-13 it asks them in this order:
+
+1. Gemini Decision 1, when a Gemini key is available (`GEMINI_API_KEY`, or
+   `~/work/.secrets/openagents-gemini-provider.env`).
+2. Elephant at the System One URL in `~/.openagents/coder/router.json` or
+   `PSIONIC_SYSTEMONE_URL`.
+3. mammoth-1 on Baseten.
+
+When a later door answers, the route line says why. For example:
+`Engine: codex (0.96) · easy · effort low, chosen by System One (no Gemini
+key: set GEMINI_API_KEY or add it to ~/work/.secrets/openagents-gemini-provider.env; mammoth-1 answers)`.
+Gemini takes the task off the machine, so the consent ledger decides first.
+When the ledger has no grant and a local Elephant is configured, Elephant
+answers, and the note gives the command that grants consent.
+
+To use one door only, set `"door"` in router.json, or `CODER_ROUTE_DOOR`,
+which wins, to `gemini-decision-1`, `elephant-1` or `mammoth-1`.
 
 `coder/tui/route-door-eval.coax` sends each labelled message in
 `coder/tui/route-labels.tsv` to mammoth-1 (Baseten, the default without a
@@ -159,11 +205,10 @@ Results from 2026-11-13, measured on a loaded Mac, including curl start-up:
 Across all 44, the two agree on the effort for 42 and on the difficulty level
 for 36. Gemini used 22,962 input tokens, about $0.0023.
 
-The answers are equally right, but Gemini is a little slower. It is not at
-least as good on every measure, so the switch stays off. The default is
-still the router.json door or mammoth-1. Turn the switch on when Google is
-the only door with capacity, or when Baseten's price matters more than about
-100 ms a route.
+The answers are equally right, and Gemini is a little slower. On
+2026-11-13 the switch stayed off for that reason. The owner then made Gemini
+Decision 1 the default for everything, accepting the latency gap (#13473), so
+it is now the route's first door.
 
 ## Where it could replace a model-with-schema call
 
@@ -192,10 +237,10 @@ From `coax/lib/systemone/gemini-smoke.sh --live`:
   ray_of_frost (p 0.9975), range 1.02 (level 1). 494 tokens (241 text and
   253 image), 648 ms.
 
-## What production needs
+## Production settings
 
-The code is on main. Turning it on is a deploy, and these settings:
+Set on 2026-11-13 (`coax/web/api/deploy.sh`, 7a2b52e370):
 
-- the secret `OA_GEMINI_DECISIONS_KEY`, a Gemini API key, on the API service
-- a `"gemini-decision-1":{"backend":"gemini"}` row in `OA_MESH_ROUTES`
+- the secret `OA_GEMINI_DECISIONS_KEY`, from Secret Manager `oa-gemini-decisions-key`
+- a `"gemini-decision-1":{"backend":"gemini"}` row in `OA_MESH_ROUTES` (the `oa-mesh-routes-*` secrets)
 - `OA_DECISION_ORDER=gemini-decision-1,elephant-1` for `"model":"auto"`

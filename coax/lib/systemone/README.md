@@ -20,6 +20,10 @@ System One body. The key goes in `x-goog-api-key` from `GEMINI_API_KEY`.
 covers the mapping and what it loses, the price, the rate limits, and what
 you can't send. `gemini-smoke.sh` runs it against a stand-in, and
 `gemini-smoke.sh --live` runs it against Google.
+Since 2026-11-13 (#13473) Gemini Decision 1 is every caller's first door,
+and the model a caller used before is the fallback. `so_gemini_final` says
+when a Gemini failure is final (a rule of the request or a safety block) and
+when to ask the fallback.
 
 ```jai
 #load "coax/lib/systemone/systemone.coax";   // link coax/platform/process-native.c

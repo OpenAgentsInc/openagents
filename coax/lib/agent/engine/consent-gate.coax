@@ -177,7 +177,11 @@ cg_route :: (task: string, local: bool, r: [] AgRoute, ledger: string) {
   q: [1] AgrAsk;
   if !agr_begin(task, local, r, q[..]) { return; }
   gn: [1] int;
-  if agr_needs_grant(q[..]) && !cg_session_to_so(ledger, agr_question(q[..]), "the task", r[0].why[..], gn[..]) { agr_wipe(q[..]); r[0].ok = false; r[0].nwhy = gn[0]; return; }
+  if agr_needs_grant(q[..]) && !cg_session_to_so(ledger, agr_question(q[..]), "the task", r[0].why[..], gn[..]) {
+    wb: [512] u8; wn := cg_cat(wb[..], 0, cast(string) r[0].why[0..<gn[0]]);
+    // Gemini Decision 1 was first by the order; this machine's Elephant may answer without a grant
+    if !agr_stay_local(q[..], r, cast(string) wb[0..<wn]) { agr_wipe(q[..]); r[0].ok = false; r[0].nwhy = gn[0]; return; }
+  }
   agr_ask(q[..], r);
 }
 

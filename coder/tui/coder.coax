@@ -2348,6 +2348,7 @@ cd_route_line :: (a: [] App, r: [] AgRoute, out: [] u8) -> string {
   else if cd_engine_name(a[0].engine) != agr_engine(r) && !(a[0].engine == ENGINE_MICRO && agr_engine(r) == "micro") {
     n = cd_cat(out, n, ", the default; System One said "); n = cd_cat(out, n, agr_text(r, tb[..]));
   } else { n = cd_cat(out, 0, "  Engine: "); n = cd_cat(out, n, agr_text(r, tb[..])); n = cd_cat(out, n, ", chosen by System One"); }
+  if r[0].nnote > 0 { n = cd_cat(out, n, " ("); n = cd_cat(out, n, cast(string) r[0].note[0..<r[0].nnote]); n = cd_cat(out, n, ")"); }
   return cast(string) out[0..<n];
 }
 
@@ -2365,6 +2366,7 @@ cd_cmd_route :: (task: string, json: bool) -> int {
   if json { cd_outln(agr_json(rt[..], "", ob[..])); }
   else if rt[0].ok { cd_outln(agr_text(rt[..], ob[..])); }
   else { tool_err("coder route: "); tool_errln(cast(string) rt[0].why[0..<rt[0].nwhy]); }
+  if !json && rt[0].nnote > 0 { tool_err("coder route: "); tool_errln(cast(string) rt[0].note[0..<rt[0].nnote]); }   // a door after Gemini Decision 1 answered
   return ifx rt[0].ok then 0 else 1;
 }
 

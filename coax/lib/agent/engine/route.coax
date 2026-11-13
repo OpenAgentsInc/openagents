@@ -5,15 +5,18 @@
 // give it. It is a decision, never a keyword rule. Coder asks when no
 // --engine is given; the Metaverse Engine asks for every conversation's first turn.
 //
-// A shared router.json (~/.openagents/coder/router.json) selects local
-// Elephant or an explicit Pylon System One door. Without that configuration
-// the legacy Baseten Mammoth path remains. The desktop clients create a
-// local, keyless config and never fall back to Baseten. A "door" of
-// "gemini-decision-1" in router.json, or CODER_ROUTE_DOOR=gemini-decision-1,
-// sends the same three questions to Google's Gemini Decision 1 instead
-// (gemini.coax, #13469); the task then leaves this machine, so the consent
-// ledger decides first. docs/research/2026-11-13-gemini-decision-1.md has the
-// comparison with mammoth-1.
+// The door order (owner decision 2026-11-13, #13473): Google's Gemini
+// Decision 1 first whenever a Gemini key is available (GEMINI_API_KEY or
+// ~/work/.secrets/openagents-gemini-provider.env). Without one, Elephant at the
+// System One URL of router.json (~/.openagents/coder/router.json) or
+// PSIONIC_SYSTEMONE_URL answers, else Baseten's mammoth-1, and the route
+// carries a note that says so. When Gemini fails for any reason but a rule of
+// the request or a safety block, the same fallback door answers. A "door" in
+// router.json, or CODER_ROUTE_DOOR (which wins), names one door and only that
+// door is asked: gemini-decision-1, elephant-1 or mammoth-1. Gemini and
+// mammoth-1 take the task off this machine, so the consent ledger decides
+// first. docs/research/2026-11-13-gemini-decision-1.md has the comparison
+// with mammoth-1.
 //
 // Two steps, because the owner keeps its own consent ledger: agr_begin reads
 // the config, the eligible engines and the question; when agr_needs_grant
@@ -59,6 +62,11 @@ AGR_SURE :: 0.5;            // below this the person's default engine runs, and 
 AGR_BASETEN_ENV :: "/work/.secrets/baseten.env";
 AGR_GEMINI_ENV :: "/work/.secrets/openagents-gemini-provider.env";
 AGR_DOOR_ENV :: "CODER_ROUTE_DOOR";
+AGR_DOOR_NONE :: 0;       // no door named: the order above
+AGR_DOOR_GEMINI :: 1;     // gemini-decision-1, Google
+AGR_DOOR_ELEPHANT :: 2;   // elephant-1 at the configured System One URL
+AGR_DOOR_MAMMOTH :: 3;    // mammoth-1, Baseten
+AGR_DOORS :: [4] string.["", "gemini-decision-1", "elephant-1", "mammoth-1"];
 
 AgRoute :: struct {
   ok: bool;
@@ -71,6 +79,7 @@ AgRoute :: struct {
   source: [32]u8; nsource:int;   // nonempty selects the new coder.route.v2 projection
   model: [128]u8; nmodel:int;
   context: [256]u8; ncontext:int; // recent inert conversation text on automatic forks
+  note: [256]u8; nnote:int;      // why a door after Gemini Decision 1 answered
 }
 
 // The question between agr_begin and agr_ask: its state, its door and the
@@ -79,6 +88,7 @@ AgrAsk :: struct {
   state: [32768] u8; nstate: int;
   cfg: [4096] u8; arbuf: [4096] u8; ub: [2048] u8;
   url: string; remote: bool; elephant: bool; gemini: bool;
+  fallback: int;                 // the door asked when Gemini fails; AGR_DOOR_NONE for none
   key: [512] u8;                 // a Baseten key read from the env file, for curl's environment only; wiped after the ask
   client: SoClient;
 }
@@ -205,12 +215,71 @@ agr_gemini_keyed :: (c: [] SoClient, kb: [] u8) -> string {
   return agr_key(c, kb, GD_KEY_ENV, AGR_GEMINI_ENV, "no Gemini key: set GEMINI_API_KEY or add it to ~/work/.secrets/openagents-gemini-provider.env");
 }
 
-// The door router.json or CODER_ROUTE_DOOR (which wins) names: 0 none (the
-// URL or the legacy default), 1 Gemini Decision 1, -1 a door this router
-// does not know.
+// A hosted door for a one-off question (coder decide, the router's checks):
+// Gemini Decision 1 when its key is available, else mammoth-1 on Baseten.
+// door[0] is the AGR_DOOR_ that asks; "" when c is ready, else why neither
+// has a key. Wipe kb after the call.
+agr_hosted :: (c: [] SoClient, kb: [] u8, door: [] int) -> string {
+  door[0] = AGR_DOOR_GEMINI;
+  if agr_gemini_keyed(c, kb).count == 0 { return ""; }
+  door[0] = AGR_DOOR_MAMMOTH;
+  return agr_keyed(c, kb);
+}
+
+// b through the door agr_hosted chose. When Gemini Decision 1 fails for a
+// reason other than the request's rule or a safety block, mammoth-1 answers
+// if it has a key. The result's body is our System One response either way;
+// scratch holds Google's request and response (so_decide_gemini).
+agr_send :: (c: SoClient, kb: [] u8, door: int, b: [] SoBody, out: [] u8, err: [] u8, scratch: [] u8) -> SoResult {
+  if door != AGR_DOOR_GEMINI { return so_decide(c, b, out, err); }
+  r := so_decide_gemini(c, b, out, err, scratch);
+  if r.problem.count == 0 || so_gemini_final(r) { return r; }
+  m: [1] SoClient;
+  if agr_keyed(m[..], kb).count > 0 { return r; }
+  return so_decide(m[0], b, out, err);
+}
+
+// The door router.json or CODER_ROUTE_DOOR (which wins) names, as an
+// AGR_DOOR_ value; -1 for a name this router does not know.
 agr_door :: (env_door: string, config_door: string) -> int {
   door := ifx env_door.count > 0 then env_door else config_door;
-  return ifx door.count == 0 then 0 else ifx door == GD_MODEL then 1 else -1;
+  names := AGR_DOORS;
+  for i: 0..<names.count { if door == names[i] { return i; } }
+  return -1;
+}
+
+// The door that asks: the named one, else Gemini Decision 1 when it has a
+// key, else Elephant when a System One URL is configured, else mammoth-1.
+agr_first :: (named: int, gemini_key: bool, url: bool) -> int {
+  if named != AGR_DOOR_NONE { return named; }
+  return ifx gemini_key then AGR_DOOR_GEMINI else ifx url then AGR_DOOR_ELEPHANT else AGR_DOOR_MAMMOTH;
+}
+
+// The door asked when Gemini Decision 1 fails: none when a door was named.
+agr_fallback :: (named: int, url: bool) -> int {
+  return ifx named != AGR_DOOR_NONE then AGR_DOOR_NONE else ifx url then AGR_DOOR_ELEPHANT else AGR_DOOR_MAMMOTH;
+}
+
+// Why a door after Gemini Decision 1 answers: "no Gemini key; elephant-1 answers".
+agr_note :: (r: [] AgRoute, why: string, door: int) {
+  names := AGR_DOORS;
+  n := agr_cat(r[0].note[..], 0, why); n = agr_cat(r[0].note[..], n, "; "); n = agr_cat(r[0].note[..], n, names[door]);
+  r[0].nnote = agr_cat(r[0].note[..], n, " answers");
+}
+
+// A client for door (elephant or mammoth): "" when it is ready, else why not.
+agr_client :: (q: [] AgrAsk, r: [] AgRoute, door: int) -> string {
+  if door == AGR_DOOR_ELEPHANT {
+    q[0].client = SoClient.{url = q[0].url, key_env = "", timeout_s = 8};
+    keycheck: [1] u8; if cl_getenv(SO_PSIONIC_KEY_ENV, keycheck[..]).count > 0 { q[0].client.key_env = SO_PSIONIC_KEY_ENV; q[0].client.scheme = "Bearer"; }
+    r[0].nsource = agr_cat(r[0].source[..], 0, ifx q[0].remote then "pylon-elephant" else "local-elephant"); r[0].nmodel = 0;
+    q[0].elephant = true; q[0].gemini = false;
+    return "";
+  }
+  cb: [1] SoClient;
+  why := agr_keyed(cb[..], q[0].key[..]);
+  q[0].client = cb[0]; q[0].elephant = false; q[0].gemini = false; r[0].nsource = 0; r[0].nmodel = 0;
+  return why;
 }
 
 agr_fail :: (r: [] AgRoute, why: string) { r[0].ok = false; r[0].nwhy = agr_cat(r[0].why[..], 0, why); }
@@ -236,20 +305,22 @@ agr_begin :: (task: string, local: bool, r: [] AgRoute, q: [] AgrAsk) -> bool {
   if config.count>0 && cl_raw(config,"schema")!="\"coder.router.v1\"" {agr_fail(r,"router.json needs schema coder.router.v1");return false;}
   if config.count>0 && cl_raw(config,"remote")!="true" && cl_raw(config,"remote")!="false" {agr_fail(r,"router.json remote must be a boolean");return false;}
   config_ar:[1]ClArena; config_ar[0]=ClArena.{buf=q[0].arbuf[..]};
-  db:[64]u8; door:=agr_door(cl_getenv(AGR_DOOR_ENV,db[..]),cl_str(config_ar[..],config,"door"));
-  if door<0 {agr_fail(r,"the route door must be gemini-decision-1");return false;}
-  gemini:=door==1;
+  db:[64]u8; named:=agr_door(cl_getenv(AGR_DOOR_ENV,db[..]),cl_str(config_ar[..],config,"door"));
+  if named<0 {agr_fail(r,"the route door must be gemini-decision-1, elephant-1 or mammoth-1");return false;}
   url:=cl_getenv(SO_PSIONIC_URL_ENV,q[0].ub[..]);
   if url.count==0 {url=cl_str(config_ar[..],config,"url");}
-  if gemini {url="";}
-  if exists && url.count==0 && !gemini {agr_fail(r,"router.json needs a System One URL");return false;}
+  gc:[1]SoClient; gwhy:="not asked";
+  if named==AGR_DOOR_NONE || named==AGR_DOOR_GEMINI {gwhy=agr_gemini_keyed(gc[..],q[0].key[..]);}
+  door:=agr_first(named,gwhy.count==0,url.count>0);
+  if named==AGR_DOOR_GEMINI && gwhy.count>0 {agr_fail(r,gwhy);return false;}
+  if door==AGR_DOOR_ELEPHANT && url.count==0 {agr_fail(r,"the elephant-1 door needs a System One URL: router.json url or PSIONIC_SYSTEMONE_URL");return false;}
+  if exists && url.count==0 && named==AGR_DOOR_NONE && door==AGR_DOOR_MAMMOTH {agr_fail(r,"router.json needs a System One URL or a door");return false;}
   remote:=cl_raw(config,"remote")=="true";
   rb:[16]u8; if cl_getenv("CODER_ROUTE_REMOTE",rb[..])=="1" {remote=true;}
-  elephant:=url.count>0;
-  if elephant {
-    r[0].nsource=agr_cat(r[0].source[..],0,ifx remote then "pylon-elephant" else "local-elephant");
-    if !cr_endpoint(url,remote) {agr_fail(r,"router endpoint refused: use loopback locally, or an explicit remote HTTPS/Pylon door");return false;}
-  }
+  fallback:=ifx door==AGR_DOOR_GEMINI then agr_fallback(named,url.count>0) else AGR_DOOR_NONE;
+  if (door==AGR_DOOR_ELEPHANT || fallback==AGR_DOOR_ELEPHANT) && !cr_endpoint(url,remote) {agr_fail(r,"router endpoint refused: use loopback locally, or an explicit remote HTTPS/Pylon door");return false;}
+  q[0].url=ifx door==AGR_DOOR_ELEPHANT || fallback==AGR_DOOR_ELEPHANT then url else ""; q[0].remote=remote; q[0].fallback=fallback;
+  elephant:=door==AGR_DOOR_ELEPHANT || fallback==AGR_DOOR_ELEPHANT;   // Elephant may read the state: clip it to its size
   sb := q[0].state[..];
   cut:=task.count; if elephant {cut=agr_clip(task,768,false).count;}
   state := agr_state(cast(string)task[0..<cut], agr_on_path("claude"), agr_on_path("codex"), local, sb);
@@ -262,19 +333,26 @@ agr_begin :: (task: string, local: bool, r: [] AgRoute, q: [] AgrAsk) -> bool {
   n = json_raw(sb, n, "]}");
   if n < 0 { agr_fail(r, "the task is too long to route"); return false; }
   q[0].nstate = n;
-  cb: [1] SoClient;
   why:="";
-  if elephant {cb[0]=SoClient.{url=url,key_env="",timeout_s=8};
-    keycheck:[1]u8; if cl_getenv(SO_PSIONIC_KEY_ENV,keycheck[..]).count>0 {cb[0].key_env=SO_PSIONIC_KEY_ENV;cb[0].scheme="Bearer";}
-  } else if gemini {why=agr_gemini_keyed(cb[..],q[0].key[..]);r[0].nsource=agr_cat(r[0].source[..],0,GD_MODEL);r[0].nmodel=agr_cat(r[0].model[..],0,GD_MODEL);
-  } else {why=agr_keyed(cb[..],q[0].key[..]);}
+  if door==AGR_DOOR_GEMINI {q[0].client=gc[0];q[0].gemini=true;q[0].elephant=false;r[0].nsource=agr_cat(r[0].source[..],0,GD_MODEL);r[0].nmodel=agr_cat(r[0].model[..],0,GD_MODEL);}
+  else {why=agr_client(q,r,door);if named==AGR_DOOR_NONE && why.count==0 {agr_note(r,gwhy,door);}}
   if why.count > 0 { agr_fail(r, why); return false; }
-  q[0].client = cb[0]; q[0].url = url; q[0].remote = remote; q[0].elephant = elephant; q[0].gemini = gemini;
   return true;
 }
 
 // The task leaves this machine (the hosted door or a remote one): the owner's consent ledger decides first.
 agr_needs_grant :: (q: [] AgrAsk) -> bool { return !q[0].elephant || q[0].remote; }
+// The ledger refused to send the task off this machine (why): when the order
+// chose Gemini Decision 1 and a local Elephant is configured, Elephant answers
+// instead, needing no grant, and the route's note says why. False when there
+// is no local door to fall back to.
+agr_stay_local :: (q: [] AgrAsk, r: [] AgRoute, why: string) -> bool {
+  if !q[0].gemini || q[0].fallback != AGR_DOOR_ELEPHANT || q[0].remote { return false; }
+  agr_wipe(q);
+  if agr_client(q, r, AGR_DOOR_ELEPHANT).count > 0 { return false; }
+  q[0].fallback = AGR_DOOR_NONE; agr_note(r, why, AGR_DOOR_ELEPHANT); r[0].nwhy = 0;
+  return true;
+}
 // What would be sent, for the owner's ledger.
 agr_question :: (q: [] AgrAsk) -> string { return cast(string) q[0].state[0..<q[0].nstate]; }
 // The owner refused the send (it writes its reason into the route): the key is wiped.
@@ -283,12 +361,23 @@ agr_wipe :: (q: [] AgrAsk) { for i: 0..<q[0].key.count { q[0].key[i] = 0; } }
 // Asks System One; r says what it chose, or why there is no decision.
 agr_ask :: (q: [] AgrAsk, r: [] AgRoute) {
   state := agr_question(q);
-  c := q[0].client; elephant := q[0].elephant;
-  buf: [16384] u8; b: [1] SoBody;
-  if elephant {agr_elephant_body(b[..],buf[..],state,r[0].eligible);} else {agr_body(b[..], buf[..], state);}
-  out: [65536] u8; err: [4096] u8;
-  scratch: [65536] u8;
-  res := ifx q[0].gemini then so_decide_gemini(c, b[..], out[..], err[..], scratch[..]) else so_decide(c, b[..], out[..], err[..]);
+  buf: [16384] u8; b: [1] SoBody; out: [65536] u8; err: [4096] u8; scratch: [65536] u8;
+  res: SoResult;
+  if q[0].gemini {
+    agr_body(b[..], buf[..], state);
+    res = so_decide_gemini(q[0].client, b[..], out[..], err[..], scratch[..]);
+    if res.problem.count > 0 && !so_gemini_final(res) && q[0].fallback != AGR_DOOR_NONE {
+      // Gemini Decision 1 can't answer now: the fallback door does, and the route says why
+      why := agr_client(q, r, q[0].fallback);
+      if why.count > 0 { agr_wipe(q); agr_fail(r, why); return; }
+      agr_note(r, res.problem, q[0].fallback);
+    }
+  }
+  elephant := q[0].elephant;
+  if !q[0].gemini {
+    if elephant {agr_elephant_body(b[..],buf[..],state,r[0].eligible);} else {agr_body(b[..], buf[..], state);}
+    res = so_decide(q[0].client, b[..], out[..], err[..]);
+  }
   agr_wipe(q);
   if res.problem.count > 0 { agr_fail(r, ifx res.stderr.count > 0 then res.stderr else res.problem); return; }
   mab: [4096] u8; mar: [1] ClArena; mar[0] = ClArena.{buf = mab[..]};
@@ -375,9 +464,22 @@ agr_json :: (r: [] AgRoute, ran: string, out: [] u8) -> string {
   #assert agr_json(r[..], "codex", b[..]) == "{\"kind\":\"route\",\"ok\":true,\"schema\":\"coder.route.v2\",\"source\":\"local-elephant\",\"model\":\"\",\"engine\":\"codex\",\"probability\":0.050,\"difficulty\":1,\"effort\":\"low\",\"eligible_mask\":4,\"blocked_mask\":0,\"allowed_mask\":15,\"ran\":\"codex\"}";
 }
 
-#test "the route door: CODER_ROUTE_DOOR over router.json, Gemini Decision 1 or none" {
-  #assert agr_door("", "") == 0 && agr_door("", "gemini-decision-1") == 1 && agr_door("gemini-decision-1", "") == 1;
-  #assert agr_door("gemini-decision-1", "jev") == 1 && agr_door("jev", "gemini-decision-1") == -1 && agr_door("", "mammoth-1") == -1;
+#test "the route door: CODER_ROUTE_DOOR over router.json, each door by its name" {
+  #assert agr_door("", "") == AGR_DOOR_NONE && agr_door("", "gemini-decision-1") == AGR_DOOR_GEMINI && agr_door("gemini-decision-1", "") == AGR_DOOR_GEMINI;
+  #assert agr_door("", "elephant-1") == AGR_DOOR_ELEPHANT && agr_door("mammoth-1", "") == AGR_DOOR_MAMMOTH;
+  #assert agr_door("mammoth-1", "gemini-decision-1") == AGR_DOOR_MAMMOTH && agr_door("jev", "gemini-decision-1") == -1 && agr_door("", "Mammoth-1") == -1;
+}
+
+#test "the door order: Gemini Decision 1 with a key, then Elephant at a URL, then mammoth-1; a named door alone" {
+  #assert agr_first(AGR_DOOR_NONE, true, true) == AGR_DOOR_GEMINI && agr_first(AGR_DOOR_NONE, true, false) == AGR_DOOR_GEMINI;
+  #assert agr_first(AGR_DOOR_NONE, false, true) == AGR_DOOR_ELEPHANT && agr_first(AGR_DOOR_NONE, false, false) == AGR_DOOR_MAMMOTH;
+  for d: 1..<4 { #assert agr_first(d, true, true) == d && agr_first(d, false, false) == d && agr_fallback(d, true) == AGR_DOOR_NONE; }
+  #assert agr_fallback(AGR_DOOR_NONE, true) == AGR_DOOR_ELEPHANT && agr_fallback(AGR_DOOR_NONE, false) == AGR_DOOR_MAMMOTH;
+  r: [1] AgRoute;
+  agr_note(r[..], "no Gemini key", AGR_DOOR_MAMMOTH);
+  #assert cast(string) r[0].note[0..<r[0].nnote] == "no Gemini key; mammoth-1 answers";
+  agr_note(r[..], "Google's rate limit: rate", AGR_DOOR_ELEPHANT);
+  #assert cast(string) r[0].note[0..<r[0].nnote] == "Google's rate limit: rate; elephant-1 answers";
 }
 
 #test "env files: export prefixes and quotes" {

@@ -1,8 +1,12 @@
 // Coder's engine route on two doors (#13469): each labelled message in
-// route-labels.tsv goes to mammoth-1 (Baseten, the legacy default) and to
-// Gemini Decision 1 (Google) with the same state and the same three
-// questions (route.coax: agr_body). Prints each row, then each door's
-// accuracy against the labels, how often the doors agree, and their latency.
+// route-labels.tsv goes to Gemini Decision 1 (Google, the route's first door
+// since 2026-11-13, #13473) and to mammoth-1 (Baseten, the door it falls back
+// to without a Gemini key or a local Elephant) with the same state and the
+// same three questions (route.coax: agr_body). Prints each row, then each
+// door's accuracy against the labels, how often the doors agree, and their
+// latency. On 2026-11-13 both were right on all 44 rows and agreed on all 44;
+// Gemini was about 5 to 10 percent slower at the median
+// (docs/research/2026-11-13-gemini-decision-1.md).
 //
 //   coax/bin/coax c coder/tui/route-door-eval.coax > /tmp/rde.c && clang -std=c11 -O1 -Icoax/platform -o /tmp/rde /tmp/rde.c coax/platform/process-native.c coax/platform/store-file-native.c -lm
 //   /tmp/rde                                   the held-out half

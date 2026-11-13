@@ -40,8 +40,8 @@ cd_decide :: (question: string, options: string, state: string, out: [] u8, ok: 
   else if k < 2 { why = "needs 2 to 32 options, separated by commas, none empty"; }
   if why.count == 0 {
     for i: 0..<k { labels[i] = ""; }
-    cb: [1] SoClient; kb: [512] u8;
-    why = agr_keyed(cb[..], kb[..]);
+    cb: [1] SoClient; kb: [512] u8; door: [1] int;
+    why = agr_hosted(cb[..], kb[..], door[..]);
     if why.count == 0 {
       buf: [65536] u8; b: [1] SoBody;
       so_begin(b[..], buf[..], SO_MAMMOTH, "");
@@ -50,7 +50,7 @@ cd_decide :: (question: string, options: string, state: string, out: [] u8, ok: 
       if b[0].at < 0 { why = "the question doesn't fit a System One request"; }
       else {
         ob: [65536] u8; err: [4096] u8;
-        res := so_decide(cb[0], b[..], ob[..], err[..]);
+        sc: [65536] u8; res := agr_send(cb[0], kb[..], door[0], b[..], ob[..], err[..], sc[..]);
         for i: 0..<kb.count { kb[i] = 0; }
         if res.problem.count > 0 { why = ifx res.stderr.count > 0 then res.stderr else res.problem; }
         else {

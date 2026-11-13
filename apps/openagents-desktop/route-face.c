@@ -1,4 +1,4 @@
-// The router's C face (router.coax): Mammoth's decision for one message and
+// The router's C face (router.coax): Gemini Decision 1's decision (Mammoth's without a Gemini key) for one message and
 // this Mac's environment, for the Swift host. Blocks while curl runs.
 #include "router.h"
 #include "face.h"

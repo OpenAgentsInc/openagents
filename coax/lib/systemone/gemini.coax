@@ -99,6 +99,14 @@ so_decide_gemini :: (c: SoClient, b: [] SoBody, out: [] u8, err: [] u8, scratch:
   return r;
 }
 
+// Whether a failed so_decide_gemini is Google's last word on this request: a
+// rule of the request (invalid_request) or a safety block. Any other failure
+// (no key, a refused key, no such model, a rate limit, Google's error, no
+// response, a request the mapping can't take) leaves the next door to try.
+so_gemini_final :: (r: SoResult) -> bool {
+  return r.problem == gd_problem_of(GdErrorKind.invalid_request) || r.problem == gd_problem_of(GdErrorKind.safety);
+}
+
 #test "the client sends the key in x-goog-api-key with no scheme, for 30 seconds" {
   c := so_gemini("");
   #assert c.url == "https://generativelanguage.googleapis.com/v1beta/decisions" && c.key_env == "GEMINI_API_KEY";
@@ -123,6 +131,14 @@ so_decide_gemini :: (c: SoClient, b: [] SoBody, out: [] u8, err: [] u8, scratch:
   e: [1] GdBody; eb: [64] u8; gd_begin(e[..], eb[..], GD_MODEL);
   r := gd_decide(so_gemini(""), e[..], eb[..], eb[..], ar[..]);
   #assert r.problem == "the input is empty" && r.error.kind == GdErrorKind.invalid_request && r.status == 0;
+}
+
+#test "only a rule of the request or a safety block ends the door order" {
+  #assert so_gemini_final(SoResult.{problem = "Google refused the request: invalid_request"});
+  #assert so_gemini_final(SoResult.{problem = "Google blocked the input: safety"});
+  for p: [8] string.["", "Google refused the key: key", "Google has no such model: not_found", "Google's rate limit: rate",
+                     "Google failed: server", "no response from Google: transport", "Google's answer does not hold: malformed",
+                     "a choice takes 2 to 255 options on Gemini Decision 1"] { #assert !so_gemini_final(SoResult.{problem = p}); }
 }
 
 #test "so_decide_gemini refuses before sending what Google can't take" {
