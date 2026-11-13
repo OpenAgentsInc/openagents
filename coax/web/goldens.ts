@@ -228,6 +228,11 @@ async function launch(): Promise<string> {
   return c.port
 }
 
+// The page's engine: the top window's, or, when the page became the app shell (shell.js: a page of the
+// shell's, data-shell, opened at the top of the window holds itself in a frame beside the side; #13487),
+// the held frame's, at the same address. FIELD: ready or sceneReady.
+const engine = (field: string) => `(() => { if (globalThis.coaxial?.${field} === true) return true; const f = document.querySelector("iframe.held"); try { return !!f && f.contentWindow.location.pathname === location.pathname && f.contentWindow.coaxial?.${field} === true } catch { return false } })()`
+
 class Tab {
   ws!: WebSocket
   id = 0
@@ -302,14 +307,14 @@ class Tab {
     const there = await this.until(async () => (await this.evaluate("location.href")).split(/[?#]/)[0] === want.split(/[?#]/)[0], 15000)
     this.check(there, `${name}: at ${want}`)
     if (!there) return null
-    const ready = await this.until(async () => (await this.evaluate("globalThis.coaxial?.ready === true")) === true, 20000)
+    const ready = await this.until(async () => (await this.evaluate(engine("ready"))) === true, 20000)
     this.check(ready, `${name}: the engine started`)
     const quiet = await this.until(async () => !this.inflight.size && Date.now() - this.quietSince > 1500, 30000)
     if (!quiet) this.log(`  info  ${name}: still loading after 30 s: ${[...this.inflight].map((r) => this.urlOf.get(r)).join(", ") || "nothing in flight"}; asked in the last 5 s: ${[...new Set(this.recent.filter(([t]) => t > Date.now() - 5000).map(([, u]) => u))].slice(0, 6).join(", ") || "nothing"}`)
     // Engine readiness precedes GPU setup and asset delivery. The house must
     // submit a nonempty indexed scene frame before its unchanged pixel check.
     if (name === "haunted-house") {
-      const drawn = await this.until(async () => (await this.evaluate("globalThis.coaxial?.sceneReady === true")) === true, 20000)
+      const drawn = await this.until(async () => (await this.evaluate(engine("sceneReady"))) === true, 20000)
       this.check(drawn, `${name}: a scene frame completed`)
     }
     await Bun.sleep(page.settle)
@@ -433,7 +438,7 @@ if (startsOnly) lanes.splice(0, lanes.length, ...Object.keys(PAGES).filter((n) =
   const answer = await fetch(want).then((r) => r.status).catch(() => 0)
   t.check(answer === 200, `${name}: ${want} answers (${answer || "no answer"})`)
   await t.send("Page.navigate", { url: want })
-  const ready = await t.until(async () => (await t.evaluate("location.href"))?.split(/[?#]/)[0] === want.split(/[?#]/)[0] && (await t.evaluate("globalThis.coaxial?.ready === true")) === true, 20000)
+  const ready = await t.until(async () => (await t.evaluate("location.href"))?.split(/[?#]/)[0] === want.split(/[?#]/)[0] && (await t.evaluate(engine("ready"))) === true, 20000)
   t.check(ready, `${name}: the engine started`)
   t.check(t.errors.length === 0, `${name}: no errors${t.errors.length ? ` (${t.errors.join("; ")})` : ""}`)
 } })))
