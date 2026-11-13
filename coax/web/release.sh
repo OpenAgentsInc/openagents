@@ -150,6 +150,14 @@ trap cleanup EXIT
 # group (bounded), which cleanup kills, so no compile outlives the release (#13154).
 trap 'exit 143' TERM INT HUP
 
+# The page checks (goldens.ts --starts) need bun and a headless Chrome. Ask now, before the lock and
+# the build, so a machine without them stops here, saying which is missing (#13492: on Linux it once
+# stopped after the smoke step with no message).
+if ! $build_only; then
+  command -v bun > /dev/null || { echo "release: STOPPED before anything ran. bun is not on PATH, and the page checks run in it (install: curl -fsSL https://bun.sh/install | bash)" >&2; exit 1; }
+  browser="$(bun "$here/chrome.ts" 2>&1)" || { echo "release: STOPPED before anything ran. the page checks need a headless Chrome: $browser" >&2; exit 1; }
+  echo "release: page checks run in $browser"
+fi
 $build_only || take_lock "release ${ref:-origin/main-green}"
 git -C "$repo" fetch -q origin main
 if [[ -z "$ref" ]]; then
@@ -297,9 +305,9 @@ drift_check > "$drift_out" 2>&1 & drift_job=$!
 t=$(now)
 out=$(starts "$staging")
 : > "$reports/starts-done"
-grep -q '^goldens ' <<< "$out" || { kill "$drift_job" 2>/dev/null; echo "release $commit: STOPPED. the staging starts walk did not finish within 1800 s, or did not run (Mac load: $(uptime | sed 's/.*averages*: //')):" >&2; tail -5 <<< "$out" >&2; exit 1; }
+grep -q '^goldens ' <<< "$out" || { kill "$drift_job" 2>/dev/null || true; echo "release $commit: STOPPED. the staging starts walk did not finish within 1800 s, or did not run (Mac load: $(uptime | sed 's/.*averages*: //')):" >&2; tail -5 <<< "$out" >&2; exit 1; }
 broke=$(new_starts "$out" "$base_starts" "$staging")
-[[ -z "$broke" ]] || { kill "$drift_job" 2>/dev/null; echo "release $commit: STOPPED. pages fail on staging that pass on production; production is untouched:" >&2; echo "$broke" | sed 's/^/  /' >&2; exit 1; }
+[[ -z "$broke" ]] || { kill "$drift_job" 2>/dev/null || true; echo "release $commit: STOPPED. pages fail on staging that pass on production; production is untouched:" >&2; echo "$broke" | sed 's/^/  /' >&2; exit 1; }
 echo "  starts     staging $(starts_fails <<< "$out" | sed '/^$/d' | wc -l | tr -d ' ') failing check(s), production $(sed '/^$/d' <<< "$base_starts" | wc -l | tr -d ' '); none new"
 lap starts "$t"
 

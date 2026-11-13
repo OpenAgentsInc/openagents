@@ -333,13 +333,36 @@ cdp_error :: (c: [] Cdp) -> string { return cast(string) c[0].err[0..<c[0].err_n
 // The last message, parsed.
 cdp_doc :: (c: [] Cdp) -> Jv { return c[0].doc[0]; }
 
+#test "a Linux browser is looked for on PATH, then in the Nix profiles a shell may not have on it" {
+  b: [512] u8;
+  #assert cdp_linux_dirs("/x:/y", "/h", "u", b[..]) == "/x:/y:/run/current-system/sw/bin:/h/.nix-profile/bin:/etc/profiles/per-user/u/bin:/nix/var/nix/profiles/default/bin";
+  #assert cdp_linux_dirs("", "", "", b[..]) == ":/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin";
+  s: [8] u8;
+  #assert cdp_linux_dirs("/x", "/h", "u", s[..]) == "/x";
+}
+// PATH, then the system's and the user's Nix profiles (chrome.ts linuxDirs), ':'-separated; PATH alone when out is too small.
+cdp_linux_dirs :: (path: string, home: string, user: string, out: [] u8) -> string {
+  n := cdp_dir_put(out, 0, path);
+  n = cdp_dir_put(out, n, ":/run/current-system/sw/bin");
+  if home.count > 0 { n = cdp_dir_put(out, n, ":"); n = cdp_dir_put(out, n, home); n = cdp_dir_put(out, n, "/.nix-profile/bin"); }
+  if user.count > 0 { n = cdp_dir_put(out, n, ":/etc/profiles/per-user/"); n = cdp_dir_put(out, n, user); n = cdp_dir_put(out, n, "/bin"); }
+  n = cdp_dir_put(out, n, ":/nix/var/nix/profiles/default/bin");
+  if n < 0 { return path; }
+  return cast(string) out[0..<n];
+}
+// a written at out[n..]: the new end, or -1 when it does not fit (or n is already -1).
+cdp_dir_put :: (out: [] u8, n: int, a: string) -> int {
+  if n < 0 || n + a.count > out.count { return -1; }
+  for i: 0..<a.count { out[n + i] = a[i]; }
+  return n + a.count;
+}
 // The headless Chrome to run, into out; "" when there is none.
 cdp_chrome :: (out: [] u8) -> string {
   env := proc_getenv("CHROME", out);
   if env.count > 0 { return env; }
   if cxtool_os() == TOOL_MAC { return cdp_cat2(CDP_MAC_CHROME, "", out); }
-  path: [16384] u8;
-  dirs := cdp_cat2(proc_getenv("PATH", path[..]), ":/run/current-system/sw/bin", path[..]);
+  path: [16384] u8; home: [4096] u8; user: [256] u8; all: [24576] u8;
+  dirs := cdp_linux_dirs(proc_getenv("PATH", path[..]), proc_getenv("HOME", home[..]), proc_getenv("USER", user[..]), all[..]);
   names := [4] string.["chromium", "chromium-browser", "google-chrome-stable", "google-chrome"];
   head: [8192] u8;
   for pass: 0..<2 {
