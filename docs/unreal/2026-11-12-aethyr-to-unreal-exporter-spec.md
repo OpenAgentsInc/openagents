@@ -394,6 +394,11 @@ builds and proves the run (`aethyr/export/unreal/README.md`).
 | Web frame time, the mine, live mesh rebuilt every frame | 16.67 ms (the display's 60 Hz) on both tiers; the host's own work is about 1.2 ms a frame for 16,500 to 20,300 live vertices |
 | Graybox | Toggles in the web build; the interface, world and sky follow the engine's rule |
 
+One caveat on frame time: a later re-measure read 33.33 ms at every stage,
+including one with 2,340 live vertices and 0.27 ms of host work. The Mac was
+then on battery at 17 percent, which halves the browser's frame rate, so
+that reading says nothing about the build. Measure again on mains power.
+
 Frames against the Aethyr page at the same stage (`unreal-frame-compare`,
 1280 by 800, mean difference of 255). These are the first run's numbers, so
 they are the ceiling from here:
