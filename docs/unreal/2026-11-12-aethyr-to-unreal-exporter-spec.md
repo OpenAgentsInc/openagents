@@ -269,6 +269,9 @@ reports any generated actor that was moved by hand.
 
 Each step ends on a check a script runs. No step is done on a claim.
 
+Issues: step 0 is #13399, step 1 is #13400, step 2 is #13401, step 3 is
+#13402.
+
 **Step 0. Prove the two risks. One day.**
 
 1. Compile the game's C inside an Unreal module for Mac and for the Wasm
@@ -326,15 +329,16 @@ other work.
 | R4 | Overlay text drawn with Unreal fonts will not match glyph for glyph | Acceptable if the frame comparison passes. Otherwise the plugin draws from the same atlas layout. |
 | R5 | Rules are not editable in Unreal | By design. Rules are edited in Aethyr and re-exported in seconds. |
 
-Owner decisions:
+Decided, 2026-11-12: the design brief's "Blueprints only" rule does not
+apply to this work. The bridge is a C++ plugin.
+
+Owner decisions still open:
 
 1. **Does the jam accept a game whose rules are a compiled C library inside
    an Unreal project?** I have not read the jam rules. If they require
    gameplay written in Unreal, hosted rules do not qualify and the entry
    stays the hand-built Unreal project.
-2. **Is a C++ plugin acceptable in the jam project?** The design brief says
-   Blueprints only. The project is already a C++ template project.
-3. **Which project receives the export:** the existing `Rovers` project, or
+2. **Which project receives the export:** the existing `Rovers` project, or
    a new clean one.
 
 ## 10. Licence
