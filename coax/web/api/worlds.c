@@ -355,13 +355,26 @@ static char *batch_text(const request *q, PGconn *db, const char *id, int64_t wh
   } else if ((text = malloc(q->body_len + 1))) { memcpy(text, q->body, q->body_len); text[q->body_len] = 0; *n = q->body_len; }
   return text;
 }
+// The `at` a batch's events carry: now, or one millisecond after the last batch's when that is not
+// earlier, so each step of a world has an `at` of its own and a reader finds a step where `at` changes
+// (docs/protocol/world-edit-v1.md "Steps", #13485). The row is locked, so no other batch is between.
+static long long step_at(PGconn *db, const char *id, long long rev) {
+  long long now = (long long)api_now_ms();
+  if (rev < 1) return now;
+  char rs[24]; snprintf(rs, sizeof rs, "%lld", rev);
+  const char *v[2] = {id, rs};
+  PGresult *r = PQexecParams(db, "SELECT at_ms FROM verse.world_outbox WHERE world = $1 AND lane = 'dev' AND rev = $2::bigint", 2, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) { long long last = atoll(PQgetvalue(r, 0, 0)); if (now <= last) now = last + 1; }
+  PQclear(r);
+  return now;
+}
 // A batch carried out is saved: the dev revision and where the undo log stands, a new step where it stands (the steps
 // an undo left ahead of it go), and one outbox event a saved edit, then COMMIT. The transaction is open; false when
 // anything failed (the caller rolls back). *rev, *done and *steps come back as they now stand.
 static bool batch_save(PGconn *db, const char *id, const world_row *w, int64_t what, int64_t step, const char *doc, const char *did, size_t did_n, const char *inv,
                        int64_t edits, long long *rev, long long *done, long long *steps) {
   *rev = w->dev_rev + edits; *done = wr_done(what, w->done); *steps = wr_steps(what, w->done, w->steps);
-  long long now = (long long)api_now_ms();
+  long long now = step_at(db, id, w->dev_rev);
   char rev_s[24], done_s[24], steps_s[24], at_s[24];
   snprintf(rev_s, sizeof rev_s, "%lld", *rev); snprintf(done_s, sizeof done_s, "%lld", *done); snprintf(steps_s, sizeof steps_s, "%lld", *steps); snprintf(at_s, sizeof at_s, "%lld", w->done);
   const char *uv[5] = {id, doc, rev_s, done_s, steps_s};

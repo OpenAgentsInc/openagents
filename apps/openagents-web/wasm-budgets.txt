@@ -64,7 +64,9 @@ kit 160000
 # script list, a manifest and a refusal, each read strictly; the page's script status; the words of every script diagnostic; the
 # API's table for a script's calls by name; and the starter script): 290,589 bytes measured 2026-11-13 on a Mac (the pane and
 # what it reads with are about 55,000 of them); about 5% room.
-editor-shell 305000
+# With the revisions (#13485: the dev lane's events read into steps, undo and redo told apart, and each step's changes in words,
+# world-changes.coax and shell-revs.coax): 309,748 bytes measured 2026-11-13 on a build host; about 3% room.
+editor-shell 320000
 agents 120000
 # Crew, character creation (#13462): the body, the wardrobe and the document (metaverse-engine/kit/crew-*.coax) on the cel lofts and
 # Anime Lab's uniforms: 161,360 bytes measured 2026-11-13 on a Mac release build; about 10% room.

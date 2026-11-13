@@ -44,7 +44,8 @@ EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_
 // A new state's declared defaults (coax_default_T, from the compiler). The host calls this first.
 EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_EdShell(raw(state)); }
 // One frame: bytes of commands at dom_out to apply, 0 for none, -1 to clear the shell and ask again.
-EXPORT("dom_frame") int32_t dom_frame(uint32_t state, float dt, uint32_t reduced) { return (int32_t)coaxial_editor_frame(at(state), dt, reduced != 0); }
+// A frame may ask too: the world's events, read again once its revision moved (shell-revs.coax, #13485).
+EXPORT("dom_frame") int32_t dom_frame(uint32_t state, float dt, uint32_t reduced) { int32_t n = (int32_t)coaxial_editor_frame(at(state), dt, reduced != 0); asks(state); return n; }
 EXPORT("dom_out") uint32_t dom_out(uint32_t state) { return (uint32_t)(uintptr_t)raw(state)->dom.e[0].out.e; }
 EXPORT("dom_busy") uint32_t dom_busy(uint32_t state) { return coaxial_editor_busy(at(state)) ? 1u : 0u; }
 EXPORT("dom_inbox") uint32_t dom_inbox(uint32_t state) { return (uint32_t)(uintptr_t)raw(state)->inbox.e; }

@@ -1,0 +1,99 @@
+// The editor shell's revisions (GitHub #13485): after an agent or a person edits a world, the top
+// bar says at a glance what the newest step did, beside the revision ("+12 things · 8 actor plans ·
+// 3 places · 1 script"), and the revision is a button that opens the Revisions list: the world's
+// recent steps, newest first, each with its revisions and what it changed. A step is one batch, one
+// undo step; an undo and a redo read as such. shell.coax loads this file; the pane is kit components
+// like the rest of the shell, and this file names no colour, face or size.
+//
+// The shell keeps no history. It reads the dev lane's events (`GET /api/worlds/ID/events?lane=dev
+// &after=N`, the newest WCH_EVENTS revisions) on the shell's one channel to the world's server (the
+// Assets, Files and Scripts panes' too, one ask at a time), again each time the model's revision
+// moves, and world-changes.coax says what they changed. The read is asked from a frame, after the
+// panes' own asks, so it waits for them.
+#load "world-changes.coax";
+
+ES_RV_NONE :: 0; ES_RV_LIST :: 1;
+ES_RV_SHOW :: 20;      // steps the Revisions list shows
+
+EsRevs :: struct {
+  flight: int;         // the read that is out (ES_RV_*)
+  read: int = -1;      // the model's revision the last read was asked at
+  after: int;          // the revision that read began after
+  have: bool;          // a read came: the world's server answers its events
+  c: [1] WorldChanges;
+  f: [1] WchFacts;
+}
+
+// The world's events after the newest WCH_EVENTS revisions, asked on the one channel. False while
+// another ask is out, or for a world no server keeps.
+es_rv_go :: (s: [] EdShell) -> bool {
+  m := s[0].model[..];
+  if s[0].rv.flight != ES_RV_NONE || s[0].as_flight != ES_AS_NONE || s[0].fl.flight != ES_FL_NONE || s[0].sc.flight != ES_SC_NONE || s[0].as_ask { return false; }
+  if !s[0].have || m[0].world_n == 0 || m[0].local { return false; }
+  after := ifx m[0].rev > WCH_EVENTS then m[0].rev - WCH_EVENTS else 0;
+  tail: [48] u8; n := ct_put(tail[..], 0, "/events?lane=dev&after="); n = ct_put_int(tail[..], n, after);
+  if n > tail.count || !es_as_at(s, cast(string) tail[0..<n]) { return false; }
+  s[0].as_how = ES_HOW_GET; s[0].as_head_n = 0; s[0].as_ask = true;
+  s[0].rv.flight = ES_RV_LIST; s[0].rv.after = after; s[0].rv.read = m[0].rev;
+  return true;
+}
+// Each frame: the events are read again once the model's revision moved, when the channel is free.
+es_rv_kick :: (s: [] EdShell) {
+  if s[0].have && s[0].model[0].rev != s[0].rv.read { _ := es_rv_go(s); }
+}
+// The world's server answered the read: its events, or no such route (then the revision stays words).
+es_rv_sent :: (s: [] EdShell, status: int, length: int) {
+  s[0].rv.flight = ES_RV_NONE;
+  n := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
+  if status != 200 { return; }
+  ok := wch_read(s[0].rv.c[..], s[0].rv.after, cast(string) s[0].inbox[0..<n]);
+  s[0].rv.have = s[0].rv.have || ok;
+}
+// A press on the revision, or on another pane's button (which puts the Revisions list away). Whether it was the revision.
+es_rv_click :: (s: [] EdShell, id: string) -> bool {
+  if id == "assets" || id == "files" || id == "scripts" || id == "code" { s[0].revs = false; return false; }
+  if id != "bar.revs" || !s[0].rv.have { return false; }
+  s[0].revs = !s[0].revs;
+  if s[0].revs { s[0].assets = false; s[0].files = false; s[0].scripts = false; s[0].code = false; }
+  return true;
+}
+// The bar's revision: a button that opens the Revisions list once the world's events are read, with
+// what the newest step changed beside it; until then, the words alone. The button has its own id
+// (bar.revs): a node keeps its tag on the page, so the words' span could never become a button.
+es_rv_build_bar :: (s: [] EdShell, words: string) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  if !s[0].rv.have { rev := tr_leaf(t, "bar.rev", TG_SPAN, "meta", words); return; }
+  b := k_button(t, u, "bar.revs", words, BS_PLAIN);
+  tr_attr(t, b, AT_TITLE, "The world's recent steps");
+  tr_attr(t, b, AT_PRESSED, ifx s[0].revs then "true" else "false");
+  out: [WCH_LINE] u8;
+  brief := wch_brief(s[0].rv.c[..], s[0].model[..], out[..]);
+  if brief.count > 0 { ch := tr_leaf(t, "bar.changes", TG_SPAN, "meta", brief); }
+}
+// The Revisions list: the newest steps first, each its revisions and a line for each kind of change.
+es_build_revs :: (s: [] EdShell) {
+  t := s[0].tree[..]; u := s[0].ui[..]; c := s[0].rv.c[..]; m := s[0].model[..]; f := s[0].rv.f[..];
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; title: [WCH_LINE] u8; line: [WCH_LINE] u8;
+  pane := k_pane(t, u, "revs.pane", DK_RIGHT, "Revisions");
+  cats := WCH_CAT;
+  shown := 0; k := c[0].nsteps - 1;
+  while k >= 0 && shown < ES_RV_SHOW {
+    st := c[0].step[k];
+    // a step that may have begun before the revisions read is shown only when it is the only one
+    if st.cut && c[0].nsteps > 1 { k -= 1; continue; }
+    first := c[0].ev[st.first].rev;
+    id := tr_join(ida[..], "revs.", first);
+    card := k_card(t, u, id, wch_title(c, k, title[..]));
+    wch_facts(c, k, m, f);
+    for j: 0..<f[0].n { g := k_fact(t, tr_join(idb[..], tr_cat(idc[..], id, "."), j), cats[f[0].cat[j]], cast(string) f[0].text[j][0..<f[0].text_n[j]]); }
+    if st.cut {
+      n := ct_put(line[..], 0, "It began before revision "); n = ct_put_int(line[..], n, first); n = ct_put(line[..], n, ".");
+      cut := k_meta(t, tr_cat(idb[..], id, ".cut"), cast(string) line[0..<n]);
+    }
+    tr_close(t);
+    shown += 1; k -= 1;
+  }
+  if shown == 0 { none := k_meta(t, "revs.none", ifx c[0].ok then "Nothing is edited yet." else "The world's edits could not be read."); }
+  if k >= 0 || c[0].after > 0 { more := k_meta(t, "revs.more", "Older revisions are not listed."); }
+  k_pane_end(t);
+}

@@ -1,0 +1,404 @@
+// What a world's newest steps changed, in words (GitHub #13485): the editor's top bar says what the
+// last step did beside the revision ("+12 things · 8 actor plans · 3 places · 1 script"), and its
+// Revisions list says it for each of the recent steps, newest first (shell-revs.coax draws both).
+//
+// The source is the dev lane's events (world-edit.coax, realm-authoring.world.edited.v1, one a
+// revision), as `GET /api/worlds/ID/events?lane=dev&after=N` answers them. A step is one batch, so
+// one undo step: every event of a batch carries the batch's `at`, and its `seq` rises. A step begins
+// where `at` changes, or where `seq` does not rise past the last event's (the dev server numbers
+// `seq` from the clock, so a batch saved in the same millisecond as the last starts lower); the API
+// gives each batch an `at` above the last one's (docs/protocol/world-edit-v1.md, "Steps").
+//
+// Undo and redo are saved as edits too, so they are read from the steps: a redo repeats a step that
+// was undone, edit for edit; an undo is the newest standing step's inverses, last first (a spawn's is
+// the despawn of its thing, a move's a move of the same thing back to where it stood when that is
+// known). What began before the events read can't be told, and reads as a step of its own.
+//
+// It keeps no world and decides nothing: it only names what the events say, with the names the
+// editor's model (shell-model.coax) knows: kinds, actors, and the tables a world names for its
+// plans and scripts.
+//   coax/bin/coax test metaverse-engine/editor/world-changes.coax --library
+#load "shell-model.coax";
+#load "../ai/npc-plan.coax";        // a plan's row: WHO * 10 + WHEN (npl_id, NPL_WHEN)
+#load "world-changes-checks.coax" #test;
+
+WCH_EVENTS :: 200;    // events one read takes (coax/web/api/worlds.c WORLD_EVENTS): the newest are kept
+WCH_SHOW :: 4;        // names a line lists before "and N more"
+WCH_LINE :: 240;      // bytes of a line of words
+WCH_APPLY :: 0; WCH_UNDO :: 1; WCH_REDO :: 2;
+// What a step changed, by what a person reads it as.
+WCH_ADDED :: 0; WCH_MOVED :: 1; WCH_TURNED :: 2; WCH_SIZED :: 3; WCH_CHANGED :: 4; WCH_REMOVED :: 5; WCH_LAND :: 6;
+WCH_PLANS :: 7; WCH_SCRIPTS :: 8; WCH_PLACES :: 9; WCH_ROWS :: 10;
+WCH_CATS :: 11;
+WCH_CAT :: [WCH_CATS] string.["Added", "Moved", "Turned", "Sized", "Changed", "Removed", "Land", "Actor plans", "Scripts", "Places", "Other rows"];
+// The bar's words for a count of each kind of change (an addition, a removal and the land say their own).
+WCH_ONE :: [WCH_CATS] string.["", "moved", "turned", "sized", "changed", "", "", "actor plan", "script", "place", "row"];
+WCH_MANY :: [WCH_CATS] string.["", "moved", "turned", "sized", "changed", "", "", "actor plans", "scripts", "places", "rows"];
+// The tables whose rows are places.
+WCH_PLACE_TABLES :: [3] string.["areas", "landmarks", "kept_clear"];
+
+WchEvent :: struct { rev: int; at: int; seq: int; e: WorldEdit; }
+// A step: its first event and how many; whether it is an undo or a redo, and of which step; and
+// whether it may have begun before the events read (`cut`).
+WchStep :: struct { first: int; n: int; how: int; of: int = -1; cut: bool; }
+WorldChanges :: struct {
+  ok: bool;
+  after: int;                         // the revision the read began after
+  n: int; ev: [WCH_EVENTS] WchEvent;
+  nsteps: int; step: [WCH_EVENTS] WchStep;
+}
+// A step's changes in lines: each a kind of change (WCH_*) and its words.
+WchFacts :: struct { n: int; cat: [WCH_CATS] int; text: [WCH_CATS] [WCH_LINE] u8; text_n: [WCH_CATS] int; count: [WCH_CATS] int; }
+
+// ---- reading
+
+// The event lines after revision `after`, into c, grouped into steps. False (and c not ok, with no
+// steps) for anything but the events of one lane in order. Publish events (the live lane's) are passed over.
+wch_read :: (c: [] WorldChanges, after: int, text: string) -> bool {
+  c[0].ok = false; c[0].n = 0; c[0].nsteps = 0; c[0].after = after;
+  // the lines that are edits: when they are more than are kept, the newest
+  lines := 0; at := 0;
+  while at < text.count {
+    end := at; while end < text.count && text[end] != '\n' { end += 1; }
+    if end > at && we_event_kind(text[at..<end]) != 2 { lines += 1; }
+    at = end + 1;
+  }
+  skip := ifx lines > WCH_EVENTS then lines - WCH_EVENTS else 0;
+  at = 0; seen := 0;
+  while at < text.count {
+    end := at; while end < text.count && text[end] != '\n' { end += 1; }
+    line := text[at..<end];
+    at = end + 1;
+    if line.count == 0 || we_event_kind(line) == 2 { continue; }
+    seen += 1;
+    if seen <= skip { continue; }
+    v := we_event_read(line);
+    if !v.ok || (c[0].n > 0 && v.rev != c[0].ev[c[0].n - 1].rev + 1) || (c[0].n == 0 && skip == 0 && v.rev != after + 1) { c[0].n = 0; return false; }
+    if c[0].n == 0 && skip > 0 { c[0].after = v.rev - 1; }
+    c[0].ev[c[0].n] = WchEvent.{rev = v.rev, at = v.at, seq = v.seq, e = v.edit};
+    c[0].n += 1;
+  }
+  wch_group(c);
+  wch_how(c);
+  c[0].ok = true;
+  return true;
+}
+// Whether event i begins a step: the first, a new `at`, or a `seq` that does not rise.
+wch_begins :: (c: [] WorldChanges, i: int) -> bool {
+  return i == 0 || c[0].ev[i].at != c[0].ev[i - 1].at || c[0].ev[i].seq <= c[0].ev[i - 1].seq;
+}
+wch_group :: (c: [] WorldChanges) {
+  c[0].nsteps = 0;
+  for i: 0..<c[0].n {
+    if wch_begins(c, i) { c[0].step[c[0].nsteps] = WchStep.{first = i, n = 0}; c[0].nsteps += 1; }
+    c[0].step[c[0].nsteps - 1].n += 1;
+  }
+  // the first step read may hold the end of one that began before the read
+  if c[0].nsteps > 0 && c[0].after > 0 { c[0].step[0].cut = true; }
+}
+
+// ---- undo and redo
+
+wch_same_edit :: (a: WorldEdit, b: WorldEdit) -> bool {
+  if a.op != b.op || a.id != b.id || a.kind != b.kind || a.x != b.x || a.y != b.y || a.z != b.z || a.yaw != b.yaw || a.scale != b.scale { return false; }
+  if a.col != b.col || a.v != b.v || a.r != b.r || a.mat != b.mat || a.table_n != b.table_n || a.name_n != b.name_n || a.text_n != b.text_n { return false; }
+  ta := a.table; tb := b.table; na := a.name; nb := b.name; xa := a.text; xb := b.text;
+  return cast(string) ta[0..<a.table_n] == cast(string) tb[0..<b.table_n] && cast(string) na[0..<a.name_n] == cast(string) nb[0..<b.name_n] && cast(string) xa[0..<a.text_n] == cast(string) xb[0..<b.text_n];
+}
+// Whether step b repeats step a, edit for edit.
+wch_same :: (c: [] WorldChanges, a: int, b: int) -> bool {
+  sa := c[0].step[a]; sb := c[0].step[b];
+  if sa.n != sb.n || sa.cut || sb.cut { return false; }
+  for i: 0..<sa.n { if !wch_same_edit(c[0].ev[sa.first + i].e, c[0].ev[sb.first + i].e) { return false; } }
+  return true;
+}
+// Where thing `id` stood before event `before`, as the events read say (a spawn or a move): found or not.
+WchWas :: struct { place: bool; x: int; y: int; z: int; turn: bool; yaw: int; size: bool; scale: int; }
+wch_was :: (c: [] WorldChanges, before: int, id: int) -> WchWas {
+  w := WchWas.{};
+  for i: 0..<before {
+    e := c[0].ev[i].e;
+    if e.id != id || e.op == WE_CELL || e.op == WE_TERRAIN { continue; }
+    if e.op == WE_SPAWN { w = WchWas.{place = true, x = e.x, y = e.y, z = e.z, turn = true, yaw = e.yaw, size = true, scale = e.scale}; }
+    if e.op == WE_DESPAWN { w = WchWas.{}; }
+    if e.op == WE_MOVE { w.place = true; w.x = e.x; w.y = e.y; w.z = e.z; }
+    if e.op == WE_ROTATE { w.turn = true; w.yaw = e.yaw; }
+    if e.op == WE_SCALE { w.size = true; w.scale = e.scale; }
+    if e.op == WE_SET { w.place = w.place && e.col != WEC_X && e.col != WEC_Y && e.col != WEC_Z; w.turn = w.turn && e.col != WEC_YAW; }
+  }
+  return w;
+}
+// Whether edit u takes back edit p, where p stood at event `at`.
+wch_inverse :: (c: [] WorldChanges, u: WorldEdit, p: WorldEdit, at: int) -> bool {
+  if p.op == WE_SPAWN { return u.op == WE_DESPAWN && u.id == p.id; }
+  if p.op == WE_DESPAWN { return u.op == WE_SPAWN && u.id == p.id; }
+  if p.op == WE_CELL { tp := p.table; return u.op == WE_CELL && u.id == p.id && we_table_is(u, cast(string) tp[0..<p.table_n]); }
+  if p.op == WE_TERRAIN { return u.op == WE_TERRAIN; }
+  if u.op != p.op || u.id != p.id { return false; }
+  if p.op == WE_SET { return u.col == p.col; }
+  w := wch_was(c, at, p.id);
+  if p.op == WE_MOVE { return !w.place || (u.x == w.x && u.y == w.y && u.z == w.z); }
+  if p.op == WE_ROTATE { return !w.turn || u.yaw == w.yaw; }
+  if p.op == WE_SCALE { return !w.size || u.scale == w.scale; }
+  return false;
+}
+// Whether step u takes back step p: p's inverses, last first.
+wch_mirrors :: (c: [] WorldChanges, u: int, p: int) -> bool {
+  su := c[0].step[u]; sp := c[0].step[p];
+  if su.n != sp.n || su.cut || sp.cut { return false; }
+  for i: 0..<su.n {
+    k := sp.first + sp.n - 1 - i;
+    if !wch_inverse(c, c[0].ev[su.first + i].e, c[0].ev[k].e, k) { return false; }
+  }
+  return true;
+}
+// Each step as an apply, an undo or a redo: the steps that stand and the ones undone, as the
+// server's undo log keeps them, played over the steps read.
+wch_how :: (c: [] WorldChanges) {
+  stand: [WCH_EVENTS] int; ns := 0; undone: [WCH_EVENTS] int; nu := 0;
+  for k: 0..<c[0].nsteps {
+    c[0].step[k].how = WCH_APPLY; c[0].step[k].of = -1;
+    if nu > 0 && wch_same(c, undone[nu - 1], k) {
+      c[0].step[k].how = WCH_REDO; c[0].step[k].of = undone[nu - 1];
+      nu -= 1; stand[ns] = k; ns += 1;
+      continue;
+    }
+    if ns > 0 && wch_mirrors(c, k, stand[ns - 1]) {
+      c[0].step[k].how = WCH_UNDO; c[0].step[k].of = stand[ns - 1];
+      undone[nu] = stand[ns - 1]; nu += 1; ns -= 1;
+      continue;
+    }
+    stand[ns] = k; ns += 1; nu = 0;
+  }
+}
+
+// ---- what a step changed
+
+// The kind of thing `id` was, as the events up to `upto` or the model say (0: not known).
+wch_kind_of :: (c: [] WorldChanges, upto: int, id: int, m: [] EdModel) -> int {
+  i := upto - 1;
+  while i >= 0 {
+    e := c[0].ev[i].e;
+    if e.id == id && e.op == WE_SPAWN { return e.kind; }
+    if e.id == id && e.op == WE_SET && e.col == WEC_KIND { return e.v; }
+    i -= 1;
+  }
+  at := em_entity_at(m, id);
+  return ifx at >= 0 then m[0].e_kind[at] else 0;
+}
+// What an edit is, as a person reads it (WCH_*).
+wch_cat :: (e: WorldEdit, m: [] EdModel) -> int {
+  if e.op == WE_SPAWN { return WCH_ADDED; }
+  if e.op == WE_DESPAWN { return WCH_REMOVED; }
+  if e.op == WE_MOVE { return WCH_MOVED; }
+  if e.op == WE_ROTATE { return WCH_TURNED; }
+  if e.op == WE_SCALE { return WCH_SIZED; }
+  if e.op == WE_TERRAIN { return WCH_LAND; }
+  if e.op == WE_SET { return ifx e.col == WEC_X || e.col == WEC_Y || e.col == WEC_Z then WCH_MOVED else ifx e.col == WEC_YAW then WCH_TURNED else WCH_CHANGED; }
+  tb := e.table; table := cast(string) tb[0..<e.table_n];
+  if m[0].ptable_n > 0 && table == cast(string) m[0].ptable[0..<m[0].ptable_n] { return WCH_PLANS; }
+  if m[0].stable_n > 0 && table == cast(string) m[0].stable[0..<m[0].stable_n] { return WCH_SCRIPTS; }
+  places := WCH_PLACE_TABLES;
+  for p: places { if table == p { return WCH_PLACES; } }
+  return WCH_ROWS;
+}
+// Whether event i is the first in step k of its kind of change to name what it names (a thing, a row).
+wch_first_of :: (c: [] WorldChanges, k: int, i: int, cat: int, m: [] EdModel) -> bool {
+  e := c[0].ev[i].e;
+  if e.op == WE_SPAWN { return true; }   // each spawn is a thing of its own
+  for j: c[0].step[k].first..<i {
+    o := c[0].ev[j].e;
+    if wch_cat(o, m) != cat { continue; }
+    if cat == WCH_LAND { return false; }
+    if o.id == e.id && (o.op != WE_CELL || cast(string) o.table[0..<o.table_n] == cast(string) e.table[0..<e.table_n]) { return false; }
+  }
+  return true;
+}
+// Words into out at n, "and N more" once WCH_SHOW are listed. The place after them.
+wch_more :: (out: [] u8, n: int, listed: int, all: int) -> int {
+  if all <= listed { return n; }
+  k := ct_put(out, n, ", and "); k = ct_put_int(out, k, all - listed); return ct_put(out, k, " more");
+}
+// "a, b" joining: the separator before the next name.
+wch_sep :: (out: [] u8, n: int, first: bool, sep: string) -> int { return ifx first then n else ct_put(out, n, sep); }
+// A kind's name, or "Thing" when no kind is known.
+wch_kind_name :: (m: [] EdModel, kind: int, out: [] u8) -> string {
+  name := em_kind_name(m, kind, out);
+  if name.count > 0 { return name; }
+  if kind <= 0 { return "Thing"; }
+  n := ct_put(out, 0, "Kind "); n = ct_put_int(out, n, kind);
+  return cast(string) out[0..<n];
+}
+// The things one kind of change named in step k, by kind: "Solar panel ×10, Crate ×2".
+wch_things :: (c: [] WorldChanges, k: int, cat: int, m: [] EdModel, out: [] u8) -> int {
+  st := c[0].step[k];
+  kinds: [WCH_EVENTS] int; counts: [WCH_EVENTS] int; nk := 0;
+  for i: st.first..<st.first + st.n {
+    e := c[0].ev[i].e;
+    if wch_cat(e, m) != cat || !wch_first_of(c, k, i, cat, m) { continue; }
+    kind := ifx e.op == WE_SPAWN then e.kind else wch_kind_of(c, i, e.id, m);
+    at := -1;
+    for j: 0..<nk { if kinds[j] == kind { at = j; } }
+    if at < 0 { kinds[nk] = kind; counts[nk] = 0; at = nk; nk += 1; }
+    counts[at] += 1;
+  }
+  n := 0; name: [EM_NAME + 16] u8;
+  for j: 0..<nk {
+    if j >= WCH_SHOW { break; }
+    n = wch_sep(out, n, j == 0, ", ");
+    n = ct_put(out, n, wch_kind_name(m, kinds[j], name[..]));
+    if counts[j] > 1 { n = ct_put(out, n, " ×"); n = ct_put_int(out, n, counts[j]); }
+  }
+  return wch_more(out, n, ifx nk < WCH_SHOW then nk else WCH_SHOW, nk);
+}
+// An actor's name by its number, or "Actor N".
+wch_actor :: (m: [] EdModel, who: int, out: [] u8, n: int) -> int {
+  a := em_actor_at(m, who);
+  if a >= 0 { return ct_put(out, n, cast(string) m[0].a_name[a][0..<m[0].a_name_n[a]]); }
+  k := ct_put(out, n, "Actor "); return ct_put_int(out, k, who);
+}
+// Whom a script row drives ("kind K" or "who N"), by name.
+wch_whom :: (m: [] EdModel, target: string, out: [] u8, n: int) -> int {
+  if !em_for_ok(target) { return ct_put(out, n, target); }
+  kind := target[0] == 'k';
+  v := ct_num(target[(ifx kind then 5 else 4)..<target.count]).v;
+  if !kind { return wch_actor(m, v, out, n); }
+  for j: 0..<m[0].nsk { if m[0].sk_id[j] == v { return ct_put(out, n, cast(string) m[0].sk_name[j][0..<m[0].sk_name_n[j]]); } }
+  name: [EM_NAME + 16] u8;
+  return ct_put(out, n, wch_kind_name(m, v, name[..]));
+}
+// The last edit of row `row` of the cell edit at event i's table, in step k: its event.
+wch_last_of :: (c: [] WorldChanges, k: int, i: int) -> int {
+  st := c[0].step[k]; e := c[0].ev[i].e; last := i;
+  for j: i + 1..<st.first + st.n {
+    o := c[0].ev[j].e;
+    if o.op == WE_CELL && o.id == e.id && cast(string) o.table[0..<o.table_n] == cast(string) e.table[0..<e.table_n] { last = j; }
+  }
+  return last;
+}
+// The rows one kind of cell change named in step k, in words.
+wch_rows :: (c: [] WorldChanges, k: int, cat: int, m: [] EdModel, out: [] u8) -> int {
+  st := c[0].step[k]; n := 0; listed := 0; all := 0;
+  lw := NPL_WHEN;
+  // the tables named, in the order they come, for places and other rows: "landmarks: Ridge, North gate"
+  tables: [16] [WE_NAME] u8; tables_n: [16] int; nt := 0;
+  for i: st.first..<st.first + st.n {
+    e := c[0].ev[i].e;
+    if wch_cat(e, m) != cat || !wch_first_of(c, k, i, cat, m) { continue; }
+    all += 1;
+    if cat == WCH_PLANS {
+      if listed >= WCH_SHOW { continue; }
+      n = wch_sep(out, n, listed == 0, ", ");
+      n = wch_actor(m, e.id / 10, out, n);
+      w := e.id % 10;
+      if w >= 0 && w < NPL_WHENS { n = ct_put(out, n, " at "); n = ct_put(out, n, lw[w]); }
+      listed += 1;
+      continue;
+    }
+    if cat == WCH_SCRIPTS {
+      if listed >= WCH_SHOW { continue; }
+      n = wch_sep(out, n, listed == 0, ", ");
+      last := c[0].ev[wch_last_of(c, k, i)].e;
+      whole := cast(string) last.name[0..<last.name_n] == "*";
+      row := cast(string) last.text[0..<last.text_n];
+      if whole && row.count == 0 { n = ct_put(out, n, "script "); n = ct_put_int(out, n, e.id); n = ct_put(out, n, " stopped"); }
+      else if whole && ct_parts(row, '|') == 4 { n = ct_put(out, n, ct_part(row, '|', 1)); n = ct_put(out, n, " drives "); n = wch_whom(m, ct_part(row, '|', 3), out, n); }
+      else {
+        at := em_script_at(m, e.id);
+        if at >= 0 { n = ct_put(out, n, cast(string) m[0].s_name[at][0..<m[0].s_name_n[at]]); } else { n = ct_put(out, n, "script "); n = ct_put_int(out, n, e.id); }
+        n = ct_put(out, n, " changed");
+      }
+      listed += 1;
+      continue;
+    }
+    table := cast(string) e.table[0..<e.table_n];
+    seen := false;
+    for j: 0..<nt { if cast(string) tables[j][0..<tables_n[j]] == table { seen = true; } }
+    if !seen && nt < 16 { tables_n[nt] = ct_copy(tables[nt][..], table); nt += 1; }
+  }
+  if cat == WCH_PLANS || cat == WCH_SCRIPTS { return wch_more(out, n, listed, all); }
+  // places and other rows: each table's rows, places by name where the edits give one
+  for j: 0..<nt {
+    table := cast(string) tables[j][0..<tables_n[j]];
+    n = wch_sep(out, n, j == 0, "; ");
+    for b: table { if n < out.count { out[n] = ifx b == '_' then ' ' else b; n += 1; } else { n = out.count + 1; } }
+    n = ct_put(out, n, ": ");
+    rows := 0; named := 0;
+    for i: st.first..<st.first + st.n {
+      e := c[0].ev[i].e;
+      if e.op != WE_CELL || cast(string) e.table[0..<e.table_n] != table || !wch_first_of(c, k, i, cat, m) { continue; }
+      rows += 1;
+      if cat != WCH_PLACES { continue; }
+      last := c[0].ev[wch_last_of(c, k, i)].e;
+      col := cast(string) last.name[0..<last.name_n]; text := cast(string) last.text[0..<last.text_n];
+      name := ifx col == "*" && ct_parts(text, '|') > 1 then ct_part(text, '|', 1) else ifx col == "name" then text else "";
+      if named >= WCH_SHOW { continue; }
+      n = wch_sep(out, n, named == 0, ", ");
+      if name.count > 0 { n = ct_put(out, n, name); } else { n = ct_put(out, n, "row "); n = ct_put_int(out, n, e.id); }
+      if col == "*" && text.count == 0 { n = ct_put(out, n, " (removed)"); }
+      named += 1;
+    }
+    if cat == WCH_PLACES { n = wch_more(out, n, named, rows); }
+    else { n = ct_put_int(out, n, rows); n = ct_put(out, n, ifx rows == 1 then " row" else " rows"); }
+  }
+  return n;
+}
+// How many things, rows or dabs one kind of change named in step k.
+wch_count :: (c: [] WorldChanges, k: int, cat: int, m: [] EdModel) -> int {
+  st := c[0].step[k]; all := 0;
+  for i: st.first..<st.first + st.n {
+    e := c[0].ev[i].e;
+    if wch_cat(e, m) == cat && (cat == WCH_LAND || wch_first_of(c, k, i, cat, m)) { all += 1; }
+  }
+  return all;
+}
+// Step k's changes, a line for each kind of change it holds, in WCH_CAT's order.
+wch_facts :: (c: [] WorldChanges, k: int, m: [] EdModel, f: [] WchFacts) {
+  f[0].n = 0;
+  if k < 0 || k >= c[0].nsteps { return; }
+  for cat: 0..<WCH_CATS {
+    all := wch_count(c, k, cat, m);
+    if all == 0 { continue; }
+    out := f[0].text[f[0].n][..]; n := 0;
+    if cat <= WCH_REMOVED { n = wch_things(c, k, cat, m, out); }
+    else if cat == WCH_LAND { n = ct_put_int(out, 0, all); n = ct_put(out, n, ifx all == 1 then " brush stroke" else " brush strokes"); }
+    else { n = wch_rows(c, k, cat, m, out); }
+    f[0].cat[f[0].n] = cat; f[0].count[f[0].n] = all;
+    f[0].text_n[f[0].n] = ifx n > out.count then out.count else n;
+    f[0].n += 1;
+  }
+}
+// What the list shows of step k: its revisions, and whether it is an undo or a redo:
+// "Revision 61", "Revisions 31 to 60", "Undo · revisions 61 to 90".
+wch_title :: (c: [] WorldChanges, k: int, out: [] u8) -> string {
+  st := c[0].step[k];
+  from := c[0].ev[st.first].rev; to := c[0].ev[st.first + st.n - 1].rev;
+  n := 0;
+  if st.how == WCH_UNDO { n = ct_put(out, n, "Undo · r"); } else if st.how == WCH_REDO { n = ct_put(out, n, "Redo · r"); } else { n = ct_put(out, n, "R"); }
+  n = ct_put(out, n, ifx from == to then "evision " else "evisions ");
+  n = ct_put_int(out, n, from);
+  if to != from { n = ct_put(out, n, " to "); n = ct_put_int(out, n, to); }
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+// The newest step's changes, short, for the top bar: "+12 things · 8 actor plans · 3 places · 1 script".
+// "" when no step is read.
+wch_brief :: (c: [] WorldChanges, m: [] EdModel, out: [] u8) -> string {
+  if !c[0].ok || c[0].nsteps == 0 { return ""; }
+  k := c[0].nsteps - 1; f: [1] WchFacts;
+  wch_facts(c, k, m, f[..]);
+  n := 0; how := c[0].step[k].how;
+  if how == WCH_UNDO { n = ct_put(out, n, "Undo: "); } else if how == WCH_REDO { n = ct_put(out, n, "Redo: "); }
+  for j: 0..<f[0].n {
+    cat := f[0].cat[j]; all := f[0].count[j];
+    if j > 0 { n = ct_put(out, n, " · "); }
+    if cat == WCH_ADDED || cat == WCH_REMOVED {
+      n = ct_put(out, n, ifx cat == WCH_ADDED then "+" else "−"); n = ct_put_int(out, n, all); n = ct_put(out, n, ifx all == 1 then " thing" else " things");
+      continue;
+    }
+    if cat == WCH_LAND { n = ct_put(out, n, "land shaped"); continue; }
+    n = ct_put_int(out, n, all); n = ct_put(out, n, " ");
+    one := WCH_ONE; many := WCH_MANY;
+    n = ct_put(out, n, ifx all == 1 then one[cat] else many[cat]);
+  }
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}

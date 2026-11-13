@@ -1,0 +1,100 @@
+// The checks of the editor shell's revisions (shell-revs.coax; GitHub #13485). shell.coax loads this
+// file with `#load ... #test;`. The host is played here, as in shell-files-checks.coax: the world's
+// server's answers come as ES_SENT, and a frame is called alone, so the read it asks for waits for its answer.
+
+// The model's world with nothing but its own read asked: the assets', the files' and the scripts' lists answered with none.
+esr_open :: (h: [] EsTest, rev: int) {
+  s := h[0].s[..];
+  es_test_model(h, 0, rev, 3, "");
+  for k: 0..<3 { if coaxial_editor_fetching(s) > 0 { coaxial_editor_fetched(s); coaxial_editor_event(s, ES_SENT, 404, 0); } }
+}
+esr_url :: (s: [] EdShell) -> string { return cast(string) s[0].as_url[0..<s[0].as_url_n]; }
+// The read's answer: these event lines.
+esr_answer :: (h: [] EsTest, status: int, body: string) {
+  s := h[0].s[..];
+  for c, i: body { s[0].inbox[i] = c; }
+  coaxial_editor_fetched(s);
+  coaxial_editor_event(s, ES_SENT, status, body.count);
+}
+// One event line of the world splice: edit e saved as revision `rev`, at `at`.
+esr_line :: (out: [] u8, n: int, rev: int, e: WorldEdit, at: int) -> int {
+  line: [WE_EVENT_BODY] u8;
+  v := we_event_write(rev, "splice", rev, e, at, line[..]);
+  k := ct_put(out, n, v); return ct_put(out, k, "\n");
+}
+// Revisions 1 to 5: five Cargo crates placed in one batch; 6 and 7: the two things there moved.
+esr_events :: (out: [] u8) -> string {
+  n := 0;
+  for i: 0..<5 { n = esr_line(out, n, 1 + i, WorldEdit.{ok = true, op = WE_SPAWN, id = 3 + i, kind = 1001, x = 100 * i}, 1000); }
+  n = esr_line(out, n, 6, WorldEdit.{ok = true, op = WE_MOVE, id = 1, x = 10, z = 10}, 2000);
+  n = esr_line(out, n, 7, WorldEdit.{ok = true, op = WE_MOVE, id = 2, x = 20, z = 20}, 2000);
+  return cast(string) out[0..<n];
+}
+
+#test "a frame asks for the world's events once the panes' asks are answered; the bar then says what the newest step changed" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; ev: [4096] u8;
+  esr_open(h[..], 7);
+  #assert coaxial_editor_fetching(s) == 0 && s[0].rv.flight == ES_RV_NONE;
+  _ := coaxial_editor_frame(s, 0.016, true);
+  #assert s[0].rv.flight == ES_RV_LIST && coaxial_editor_fetching(s) == ES_HOW_GET && esr_url(s) == "/api/worlds/splice/events?lane=dev&after=0" && s[0].as_head_n == 0;
+  // while it is out, no other ask goes, and it is not asked twice
+  #assert !es_fl_go(s, ES_FL_LIST, "", "", "") && !es_as_go(s, ES_AS_LIST, "");
+  _ := coaxial_editor_frame(s, 0.016, true);
+  #assert s[0].rv.flight == ES_RV_LIST;
+  esr_answer(h[..], 200, esr_events(ev[..]));
+  _ := coaxial_editor_frame(s, 0.016, true);
+  #assert s[0].rv.have && s[0].rv.flight == ES_RV_NONE && coaxial_editor_fetching(s) == 0;   // the same revision is not read again
+  #assert tr_text_of(t, tr_find(t, "bar.revs.l")) == "splice · revision 7" && tr_text_of(t, tr_find(t, "bar.changes")) == "2 moved";
+  #assert tr_attr_of(t, tr_find(t, "bar.revs"), AT_PRESSED) == "false" && tr_find(t, "revs.pane") < 0;
+  // a new revision is read again, from the revision WCH_EVENTS below it
+  es_test_model(h[..], 0, 250, 3, "");
+  _ := coaxial_editor_frame(s, 0.016, true);
+  #assert s[0].rv.flight == ES_RV_LIST && esr_url(s) == "/api/worlds/splice/events?lane=dev&after=50";
+  // a server with no such route: the revision stays as it was read
+  esr_answer(h[..], 404, "{\"error\":\"no world\"}");
+  es_test_frames(h[..], 1);
+  #assert s[0].rv.have && tr_text_of(t, tr_find(t, "bar.changes")) == "2 moved";
+}
+
+#test "the revision opens the Revisions list: the newest step first, each its revisions and its changes; another pane puts it away" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; d := s[0].dom[..]; ev: [4096] u8;
+  esr_open(h[..], 7);
+  _ := coaxial_editor_frame(s, 0.016, true);
+  esr_answer(h[..], 200, esr_events(ev[..]));
+  es_test_frames(h[..], 1);
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "bar.revs"), 0);
+  es_test_frames(h[..], 1);
+  #assert s[0].revs && tr_find(t, "revs.pane") > 0 && tr_find(t, "one") < 0 && tr_attr_of(t, tr_find(t, "bar.revs"), AT_PRESSED) == "true";
+  #assert tr_text_of(t, tr_find(t, "revs.6.h")) == "Revisions 6 to 7" && tr_text_of(t, tr_find(t, "revs.6.0.n")) == "Moved" && tr_text_of(t, tr_find(t, "revs.6.0.v")) == "Cargo crate, Parked rover";
+  #assert tr_text_of(t, tr_find(t, "revs.1.h")) == "Revisions 1 to 5" && tr_text_of(t, tr_find(t, "revs.1.0.n")) == "Added" && tr_text_of(t, tr_find(t, "revs.1.0.v")) == "Cargo crate ×5";
+  #assert tr_find(t, "revs.6") < tr_find(t, "revs.1") && tr_find(t, "revs.more") < 0 && tr_find(t, "revs.none") < 0;
+  // pressed again, it closes; opened again, another pane's button puts it away
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "bar.revs"), 0); es_test_frames(h[..], 1);
+  #assert !s[0].revs && tr_find(t, "revs.pane") < 0 && tr_find(t, "one") > 0;
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "bar.revs"), 0); es_test_frames(h[..], 1);
+  #assert s[0].revs && tr_find(t, "revs.pane") > 0;
+  _ := es_rv_click(s, "files"); s[0].dirty = true;   // as a press on the Files button (none in this world) would
+  es_test_frames(h[..], 1);
+  #assert !s[0].revs && tr_find(t, "revs.pane") < 0;
+}
+
+#test "a world with no events yet says so; a world kept on this device asks nothing" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; d := s[0].dom[..];
+  esr_open(h[..], 0);
+  _ := coaxial_editor_frame(s, 0.016, true);
+  #assert esr_url(s) == "/api/worlds/splice/events?lane=dev&after=0";
+  esr_answer(h[..], 200, "");
+  es_test_frames(h[..], 1);
+  #assert s[0].rv.have && tr_find(t, "bar.revs.l") > 0 && tr_find(t, "bar.changes") < 0;
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "bar.revs"), 0); es_test_frames(h[..], 1);
+  #assert tr_text_of(t, tr_find(t, "revs.none")) == "Nothing is edited yet.";
+  // kept on this device: no server, no read, and the revision is words
+  k: [1] EsTest; ks := k[0].s[..]; out := k[0].text[..];
+  cols: [WE_COLS] bool; cols[WEC_X] = true;
+  n := em_begin(out, "my-world", 0, 4, 1, 0, 0); n = em_cols(out, n, cols[..]); n = em_local(out, n);
+  for i: 0..<n { ks[0].inbox[i] = out[i]; }
+  coaxial_editor_event(ks, ES_MODEL, 0, n);
+  for j: 0..<3 { if coaxial_editor_fetching(ks) > 0 { coaxial_editor_fetched(ks); coaxial_editor_event(ks, ES_SENT, 404, 0); } }
+  _ := coaxial_editor_frame(ks, 0.016, true);
+  #assert ks[0].rv.flight == ES_RV_NONE && !ks[0].rv.have && tr_text_of(ks[0].tree[..], tr_find(ks[0].tree[..], "bar.rev")) == "my-world · revision 4";
+}

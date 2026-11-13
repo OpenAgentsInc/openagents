@@ -153,6 +153,7 @@ wc_checks :: (t: [] Ap, w: [] Wc, other: string) {
   st = wc_post(t, w, t[0].admin_key, 10, "apply", "{\"op\":\"despawn\",\"id\":1}");
   ap_check(t, "world: a new edit after an undo cuts the steps ahead of it", moved && st == 200 && w[0].st.rev == 11 && w[0].st.undo == 2 && w[0].st.redo == 0 && ap_sql(t, "SELECT count(*) || ' ' || max(n) FROM verse.world_steps WHERE world = 'splice'", q[..]) == "2 1", ap_body(t));
   ap_check(t, "world: the outbox holds one event a revision", ap_sql(t, "SELECT count(*) || ' ' || max(rev) || ' ' || count(DISTINCT seq) FROM verse.world_outbox WHERE world = 'splice' AND lane = 'dev'", q[..]) == "11 11 11" && wc_events(t, "?lane=dev&after=0", 1, 1) == 11, "");
+  ap_check(t, "world: a batch's events share one at, and each of its six batches has its own (a reader's steps, #13485)", ap_sql(t, "SELECT count(DISTINCT at_ms) || ' ' || (SELECT count(DISTINCT at_ms) FROM verse.world_outbox WHERE world = 'splice' AND lane = 'dev' AND rev IN (7, 8)) FROM verse.world_outbox WHERE world = 'splice' AND lane = 'dev'", q[..]) == "6 1", "");
   // ---- dev and live
   st = wc_post(t, w, t[0].admin_key, 10, "publish-now", "");
   ap_check(t, "world: a publish names the dev revision it read", st == 409, ap_body(t));

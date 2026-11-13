@@ -24,6 +24,7 @@
 #load "shell-actors.coax";                      // the actors: the time of day, the Actors list and the selected actor's plan (#13466)
 #load "shell-files.coax";                       // the Files pane: the world's and its project's attachments, never a player's (#13468)
 #load "shell-scripts.coax";                     // the Scripts pane: a realm script written, built, run, swapped, published and reported (#13467)
+#load "shell-revs.coax";                        // the revisions: what the newest step changed, in the bar, and the Revisions list (#13485)
 
 ES_INBOX :: 200704;    // a model (EM_BYTES), a field's text, or a file of code as typed (RC_TEXT, and room to see that it is longer), from the host
 ES_CSS :: 24576;
@@ -123,6 +124,8 @@ EdShell :: struct {
   fl: EsFiles;
   scripts: bool;                         // the Scripts pane is open (#13467)
   sc: EsScripts;
+  revs: bool;                            // the Revisions list is open (#13485)
+  rv: EsRevs;
   as_hash: [64] u8; as_pack: [64] u8;    // the waiting file's SHA-256 as the server answered it, and the pack's hash the page was last told
   as_file_name: [WAS_FILE_NAME] u8;
   as_words: [EM_WORDS] u8;
@@ -465,8 +468,9 @@ es_build :: (s: [] EdShell) {
   w := m[0].world;
   n := ct_put(line[..], 0, cast(string) w[0..<m[0].world_n]);
   n = ct_put(line[..], n, " · revision "); n = ct_put_int(line[..], n, m[0].rev);
-  rev := tr_leaf(t, "bar.rev", TG_SPAN, "meta", cast(string) line[0..<n]);
+  es_rv_build_bar(s, cast(string) line[0..<n]);   // a button that opens the Revisions list, and what the newest step changed (shell-revs.coax)
   k_pane_end(t);
+  revising := s[0].revs && s[0].rv.have && !coding && !asseting && !filing && !scripting;
 
 
   // the realm's code takes the right side while it is open; else the selected thing, and what was refused
@@ -474,9 +478,10 @@ es_build :: (s: [] EdShell) {
   if asseting { es_build_assets(s); }
   if filing { es_build_files(s); }
   if scripting { es_build_scripts(s); }
+  if revising { es_build_revs(s); }
   // the editor's one side, on the right: what is selected, then the world's things and actors; the realm's code,
   // the assets, the files or the scripts take its place while one of them is open
-  if !coding && !asseting && !filing && !scripting {
+  if !coding && !asseting && !filing && !scripting && !revising {
   right := k_pane(t, u, "one", DK_RIGHT, "Selected");
   es_fl_build_pin(s);   // a picture pinned beside the scene (shell-files.coax)
   es_build_said(s);
@@ -631,6 +636,7 @@ es_click :: (s: [] EdShell, id: string) {
   was := s[0].open; s[0].open = ES_OPEN_NONE;
   names := [14] string.["when", "kind", "tool", "grid", "add", "count", "file", "brush", "mat", "licence", "clock", "pdo", "pon", "sfor"];
   for name, k: names { if id == name { s[0].open = ifx was == k + 1 then ES_OPEN_NONE else k + 1; return; } }
+  if es_rv_click(s, id) { return; }
   if es_as_click(s, id) { if s[0].assets { s[0].files = false; } return; }
   if es_fl_click(s, id) { return; }
   if es_sc_click(s, id) { return; }
@@ -838,6 +844,7 @@ coaxial_editor_frame :: (s: [] EdShell, dt: f32, reduced: bool) -> int #export_c
   }
   step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   s[0].time += step;
+  es_rv_kick(s);   // the world's events, read again once its revision moved and the channel is free (shell-revs.coax)
   if !s[0].dirty && !s[0].animating { return 0; }
   d := s[0].dom[..]; m := s[0].model[..];
   if !d[0].styled {
@@ -900,7 +907,7 @@ es_event :: (s: [] EdShell, kind: int, slot: int, length: int) {
   if kind == ES_PIECE { es_code_piece(s, length); return; }
   if kind == ES_END { es_code_end(s, slot); return; }
   if kind == ES_FILE { if es_id_is(dm_slot_id(s[0].dom[..], slot), "files") { es_fl_file(s, length); } else { es_as_file(s, length); } return; }
-  if kind == ES_SENT { if s[0].sc.flight != ES_SC_NONE { es_sc_sent(s, slot, length); } else if s[0].fl.flight != ES_FL_NONE { es_fl_sent(s, slot, length); } else { es_as_sent(s, slot, length); } return; }
+  if kind == ES_SENT { if s[0].rv.flight != ES_RV_NONE { es_rv_sent(s, slot, length); } else if s[0].sc.flight != ES_SC_NONE { es_sc_sent(s, slot, length); } else if s[0].fl.flight != ES_FL_NONE { es_fl_sent(s, slot, length); } else { es_as_sent(s, slot, length); } return; }
   if kind == ES_VIEWER { s[0].sc.logged = true; return; }
   if kind == ES_STATUS { es_sc_status(s, length); return; }
   id := dm_slot_id(s[0].dom[..], slot);
@@ -1034,7 +1041,15 @@ es_test_kinds :: (h: [] EsTest) {
   for i: 0..<n { s[0].inbox[i] = out[i]; }
   coaxial_editor_event(s, ES_MODEL, 0, n);
 }
-es_test_frames :: (h: [] EsTest, n: int) { for k: 0..<n { _ := coaxial_editor_frame(h[0].s[..], 0.016, true); } }
+// Frames, with the read of the world's events a frame asks for answered as a server with none answers it
+// (shell-revs-checks.coax answers it with events).
+es_test_frames :: (h: [] EsTest, n: int) {
+  s := h[0].s[..];
+  for k: 0..<n {
+    _ := coaxial_editor_frame(s, 0.016, true);
+    if s[0].rv.flight != ES_RV_NONE { coaxial_editor_fetched(s); coaxial_editor_event(s, ES_SENT, 404, 0); }
+  }
+}
 
 #test "before a model the shell says it is opening; with one it lists the world's things by kind" {
   h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
@@ -1777,3 +1792,4 @@ es_test_local :: (h: [] EsTest, listed: int, in_all: int) {
 #load "shell-files-checks.coax" #test;    // the Files pane (#13468)
 #load "shell-actors-checks.coax" #test;   // the actors (#13466)
 #load "shell-scripts-checks.coax" #test;  // the Scripts pane (#13467)
+#load "shell-revs-checks.coax" #test;     // the revisions (#13485)

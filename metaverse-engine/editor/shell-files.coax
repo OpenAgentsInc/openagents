@@ -66,7 +66,7 @@ es_fl_src :: (s: [] EdShell, id: string, out: [] u8) -> string {
 // goes (a POST), none for a GET; `url` is where a PUT goes. False while another ask is out.
 es_fl_go :: (s: [] EdShell, flight: int, tail: string, head: string, url: string) -> bool {
   m := s[0].model[..];
-  if s[0].as_flight != ES_AS_NONE || s[0].fl.flight != ES_FL_NONE || s[0].sc.flight != ES_SC_NONE || s[0].as_ask || !s[0].have || m[0].world_n == 0 { return false; }
+  if s[0].as_flight != ES_AS_NONE || s[0].fl.flight != ES_FL_NONE || s[0].sc.flight != ES_SC_NONE || s[0].rv.flight != ES_RV_NONE || s[0].as_ask || !s[0].have || m[0].world_n == 0 { return false; }
   if head.count > s[0].as_head.count { return false; }
   ok := false;
   if flight == ES_FL_PUT { s[0].as_how = ES_HOW_PUT; s[0].as_url_n = ct_put(s[0].as_url[..], 0, url); ok = url.count > 0 && s[0].as_url_n <= s[0].as_url.count; }

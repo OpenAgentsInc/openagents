@@ -273,7 +273,7 @@ es_sc_refused :: (s: [] EdShell, fallback: string) {
 // while another ask is out.
 es_sc_go :: (s: [] EdShell, flight: int, tail: string, how: int, head: string) -> bool {
   m := s[0].model[..];
-  if s[0].as_flight != ES_AS_NONE || s[0].fl.flight != ES_FL_NONE || s[0].sc.flight != ES_SC_NONE || s[0].as_ask || !s[0].have || m[0].world_n == 0 { return false; }
+  if s[0].as_flight != ES_AS_NONE || s[0].fl.flight != ES_FL_NONE || s[0].sc.flight != ES_SC_NONE || s[0].rv.flight != ES_RV_NONE || s[0].as_ask || !s[0].have || m[0].world_n == 0 { return false; }
   if head.count > s[0].as_head.count || !es_as_at(s, tail) { return false; }
   for c, k: head { s[0].as_head[k] = c; }
   s[0].as_head_n = head.count;

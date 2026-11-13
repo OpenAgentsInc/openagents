@@ -1,0 +1,166 @@
+// The checks of world-changes.coax (GitHub #13485): a world's events grouped into steps, undo and
+// redo told apart, and each step's changes in words. world-changes.coax loads this file with
+// `#load ... #test;`. The events are written by world-edit.coax's own writer, as both servers write them.
+
+WCT_HASH :: "eccf9c327c67229178fd52833fcba669fc8d58c6e7964d334e20b037638772c6";
+WctTest :: struct {
+  c: [1] WorldChanges; m: [1] EdModel; f: [1] WchFacts;
+  text: [65536] u8; n: int;            // the event lines so far
+  model: [EM_BYTES] u8; scratch: [EM_BYTES] u8;
+  out: [WCH_LINE] u8;
+}
+// The model the names come from: two kinds, a thing placed before the events read, two actors, the
+// plans and scripts tables, and a kind a script may drive.
+wct_model :: (h: [] WctTest) {
+  out := h[0].model[..];
+  cols: [WE_COLS] bool; cols[WEC_X] = true; cols[WEC_Z] = true; cols[WEC_YAW] = true;
+  n := em_begin(out, "splice", 0, 40, 1, 0, 0);
+  n = em_cols(out, n, cols[..]);
+  n = em_kind(out, n, 113, "Solar panel");
+  n = em_kind(out, n, 102, "Crate");
+  n = em_entity(out, n, 9, 102, 0, 0, 0, 0, 100);
+  n = em_plans(out, n, "plans");
+  n = em_actor(out, n, 1, "Grox");
+  n = em_actor(out, n, 6, "Imperial 1");
+  n = em_scripts(out, n, "scripts");
+  n = em_script_kind(out, n, 3, "Raider");
+  n = em_script(out, n, 2, "patrol", WCT_HASH, "who 6");
+  #assert n < out.count && em_read(h[0].m[..], cast(string) out[0..<n], h[0].scratch[..]);
+}
+// One event line: edit e saved as revision `rev`, at `at`, numbered `seq`.
+wct_ev :: (h: [] WctTest, seq: int, rev: int, e: WorldEdit, at: int) {
+  line: [WE_EVENT_BODY] u8;
+  v := we_event_write(seq, "splice", rev, e, at, line[..]);
+  #assert v.count > 0;
+  for b: v { h[0].text[h[0].n] = b; h[0].n += 1; }
+  h[0].text[h[0].n] = '\n'; h[0].n += 1;
+}
+wct_spawn :: (id: int, kind: int, x: int, z: int) -> WorldEdit { return WorldEdit.{ok = true, op = WE_SPAWN, id = id, kind = kind, x = x, z = z}; }
+wct_move :: (id: int, x: int, z: int) -> WorldEdit { return WorldEdit.{ok = true, op = WE_MOVE, id = id, x = x, z = z}; }
+wct_cell :: (table: string, row: int, col: string, value: string) -> WorldEdit {
+  e := WorldEdit.{ok = true, op = WE_CELL, id = row};
+  e.table_n = ct_copy(e.table[..], table); e.name_n = ct_copy(e.name[..], col); e.text_n = ct_copy(e.text[..], value);
+  return e;
+}
+wct_read :: (h: [] WctTest, after: int) -> bool { return wch_read(h[0].c[..], after, cast(string) h[0].text[0..<h[0].n]); }
+// Step k's line of one kind of change ("" when it has none).
+wct_line :: (h: [] WctTest, k: int, cat: int) -> string {
+  wch_facts(h[0].c[..], k, h[0].m[..], h[0].f[..]);
+  f := h[0].f[..];
+  for j: 0..<f[0].n { if f[0].cat[j] == cat { return cast(string) f[0].text[j][0..<f[0].text_n[j]]; } }
+  return "";
+}
+wct_brief :: (h: [] WctTest) -> string { return wch_brief(h[0].c[..], h[0].m[..], h[0].out[..]); }
+wct_title :: (h: [] WctTest, k: int) -> string { return wch_title(h[0].c[..], k, h[0].out[..]); }
+
+#test "a step is one batch: one at, a rising seq; a new at or a seq that does not rise begins the next" {
+  h: [1] WctTest; wct_model(h[..]);
+  // the dev server numbers seq from the clock: batch one at 1000, batch two in the next millisecond,
+  // batch three in that same millisecond (its seq starts below the last one's)
+  wct_ev(h[..], 1000, 1, wct_spawn(1, 113, 0, 0), 1000); wct_ev(h[..], 1001, 2, wct_spawn(2, 113, 100, 0), 1000); wct_ev(h[..], 1002, 3, wct_spawn(3, 102, 200, 0), 1000);
+  wct_ev(h[..], 1001, 4, wct_move(1, 50, 50), 1001); wct_ev(h[..], 1002, 5, WorldEdit.{ok = true, op = WE_ROTATE, id = 2, yaw = 90}, 1001);
+  wct_ev(h[..], 1001, 6, WorldEdit.{ok = true, op = WE_DESPAWN, id = 9}, 1001);
+  #assert wct_read(h[..], 0) && h[0].c[0].n == 6 && h[0].c[0].nsteps == 3;
+  c := h[0].c[..];
+  #assert c[0].step[0].first == 0 && c[0].step[0].n == 3 && c[0].step[1].first == 3 && c[0].step[1].n == 2 && c[0].step[2].n == 1 && !c[0].step[0].cut;
+  #assert wct_title(h[..], 0) == "Revisions 1 to 3" && wct_title(h[..], 2) == "Revision 6";
+  // the API's sequence rises across worlds and gives each batch a later at: the at alone splits them
+  h[0].n = 0;
+  wct_ev(h[..], 70, 1, wct_spawn(1, 113, 0, 0), 5000); wct_ev(h[..], 74, 2, wct_spawn(2, 113, 0, 0), 5000); wct_ev(h[..], 75, 3, wct_spawn(3, 113, 0, 0), 5001);
+  #assert wct_read(h[..], 0) && c[0].nsteps == 2 && c[0].step[0].n == 2;
+}
+
+#test "the newest step in the bar and each step's lines: things by kind, plans by actor and time, scripts by whom they drive, places by name, other rows by table" {
+  h: [1] WctTest; wct_model(h[..]);
+  for i: 0..<10 { wct_ev(h[..], 2000 + i, 1 + i, wct_spawn(0, 113, 100 * i, 0), 2000); }
+  wct_ev(h[..], 2010, 11, wct_spawn(20, 102, 0, 0), 2000); wct_ev(h[..], 2011, 12, wct_spawn(21, 102, 0, 0), 2000);
+  #assert wct_read(h[..], 0) && h[0].c[0].nsteps == 1;
+  #assert wct_brief(h[..]) == "+12 things" && wct_line(h[..], 0, WCH_ADDED) == "Solar panel ×10, Crate ×2" && wct_line(h[..], 0, WCH_MOVED) == "";
+  // a step of content cells: three plans, a script run, three places, two rows of another table
+  wct_ev(h[..], 3000, 13, wct_cell("plans", 10, "*", "10|1|dawn|guard|0 0|0|800|call"), 3000);
+  wct_ev(h[..], 3001, 14, wct_cell("plans", 11, "do", "dance"), 3000);
+  wct_ev(h[..], 3002, 15, wct_cell("plans", 62, "speed", "120"), 3000);
+  wct_ev(h[..], 3003, 16, wct_cell("plans", 11, "speed", "90"), 3000);   // the same plan again: one plan
+  wct_ev(h[..], 3004, 17, wct_cell("scripts", 1, "*", "1|my-raider|eccf9c327c67229178fd52833fcba669fc8d58c6e7964d334e20b037638772c6|kind 3"), 3000);
+  wct_ev(h[..], 3005, 18, wct_cell("landmarks", 4, "*", "4|North gate|100|200|300"), 3000);
+  wct_ev(h[..], 3006, 19, wct_cell("areas", 2, "name", "Yard"), 3000);
+  wct_ev(h[..], 3007, 20, wct_cell("kept_clear", 7, "*", ""), 3000);
+  wct_ev(h[..], 3008, 21, wct_cell("pieces", 117, "name", "Tiny crate"), 3000);
+  wct_ev(h[..], 3009, 22, wct_cell("pieces", 118, "kit", "rover"), 3000);
+  wct_ev(h[..], 3010, 23, wct_cell("clock", 1, "when", "dusk"), 3000);
+  #assert wct_read(h[..], 0) && h[0].c[0].nsteps == 2;
+  #assert wct_brief(h[..]) == "3 actor plans · 1 script · 3 places · 3 rows";
+  #assert wct_line(h[..], 1, WCH_PLANS) == "Grox at dawn, Grox at day, Imperial 1 at dusk";
+  #assert wct_line(h[..], 1, WCH_SCRIPTS) == "my-raider drives Raider";
+  #assert wct_line(h[..], 1, WCH_PLACES) == "landmarks: North gate; areas: Yard; kept clear: row 7 (removed)";
+  #assert wct_line(h[..], 1, WCH_ROWS) == "pieces: 2 rows; clock: 1 row";
+  #assert wct_title(h[..], 1) == "Revisions 13 to 23";
+  // a script stopped, one changed by a cell, a plan of an actor the model does not name
+  wct_ev(h[..], 4000, 24, wct_cell("scripts", 1, "*", ""), 4000);
+  wct_ev(h[..], 4001, 25, wct_cell("scripts", 2, "for", "kind 3"), 4000);
+  wct_ev(h[..], 4002, 26, wct_cell("plans", 43, "*", "43|4|night|stand|0 0|0|0|ignore"), 4000);
+  #assert wct_read(h[..], 0) && wct_line(h[..], 2, WCH_SCRIPTS) == "script 1 stopped, patrol changed" && wct_line(h[..], 2, WCH_PLANS) == "Actor 4 at night";
+  #assert wct_brief(h[..]) == "1 actor plan · 2 scripts";
+}
+
+#test "things moved, turned, sized, changed and removed are named by the kind they are, and the land by its strokes" {
+  h: [1] WctTest; wct_model(h[..]);
+  wct_ev(h[..], 10, 1, wct_spawn(5, 113, 0, 0), 10);
+  wct_ev(h[..], 11, 2, wct_move(5, 10, 10), 11); wct_ev(h[..], 12, 3, wct_move(9, 10, 10), 11);
+  wct_ev(h[..], 13, 4, WorldEdit.{ok = true, op = WE_SET, id = 5, col = WEC_X, v = 30}, 11);   // thing 5 again: still one moved
+  wct_ev(h[..], 14, 5, WorldEdit.{ok = true, op = WE_SET, id = 9, col = WEC_YAW, v = 30}, 11);
+  wct_ev(h[..], 15, 6, WorldEdit.{ok = true, op = WE_SCALE, id = 9, scale = 150}, 11);
+  wct_ev(h[..], 16, 7, WorldEdit.{ok = true, op = WE_SET, id = 9, col = 9, v = 4}, 11);
+  wct_ev(h[..], 17, 8, WorldEdit.{ok = true, op = WE_DESPAWN, id = 44}, 11);
+  wct_ev(h[..], 18, 9, WorldEdit.{ok = true, op = WE_TERRAIN, col = 1, x = 0, z = 0, r = 400, v = 50}, 11);
+  wct_ev(h[..], 19, 10, WorldEdit.{ok = true, op = WE_TERRAIN, col = 1, x = 10, z = 0, r = 400, v = 50}, 11);
+  #assert wct_read(h[..], 0) && h[0].c[0].nsteps == 2;
+  #assert wct_line(h[..], 1, WCH_MOVED) == "Solar panel, Crate" && wct_line(h[..], 1, WCH_TURNED) == "Crate" && wct_line(h[..], 1, WCH_SIZED) == "Crate";
+  #assert wct_line(h[..], 1, WCH_CHANGED) == "Crate" && wct_line(h[..], 1, WCH_REMOVED) == "Thing" && wct_line(h[..], 1, WCH_LAND) == "2 brush strokes";
+  #assert wct_brief(h[..]) == "2 moved · 1 turned · 1 sized · 1 changed · −1 thing · land shaped";
+}
+
+#test "an undo reads as one, a redo as one; a move elsewhere is a step of its own" {
+  h: [1] WctTest; wct_model(h[..]);
+  wct_ev(h[..], 1, 1, wct_spawn(5, 113, 100, 200), 100); wct_ev(h[..], 2, 2, wct_spawn(6, 102, 0, 0), 100);   // step 0
+  wct_ev(h[..], 3, 3, wct_move(5, 300, 400), 200);                                                          // step 1
+  wct_ev(h[..], 4, 4, wct_move(5, 100, 200), 300);                                                          // step 2: undo of 1
+  wct_ev(h[..], 5, 5, wct_move(5, 300, 400), 400);                                                          // step 3: redo of 1
+  wct_ev(h[..], 6, 6, wct_move(5, 100, 200), 500);                                                          // step 4: undo again
+  wct_ev(h[..], 7, 7, WorldEdit.{ok = true, op = WE_DESPAWN, id = 6}, 600); wct_ev(h[..], 8, 8, WorldEdit.{ok = true, op = WE_DESPAWN, id = 5}, 600);   // step 5: undo of 0
+  wct_ev(h[..], 9, 9, wct_spawn(5, 113, 100, 200), 700); wct_ev(h[..], 10, 10, wct_spawn(6, 102, 0, 0), 700);   // step 6: redo of 0
+  wct_ev(h[..], 11, 11, wct_move(5, 900, 900), 800);                                                        // step 7: a new move
+  wct_ev(h[..], 12, 12, wct_move(5, 50, 50), 900);                                                          // step 8: not back where it stood: a move
+  #assert wct_read(h[..], 0) && h[0].c[0].nsteps == 9;
+  c := h[0].c[..];
+  #assert c[0].step[0].how == WCH_APPLY && c[0].step[1].how == WCH_APPLY && c[0].step[2].how == WCH_UNDO && c[0].step[2].of == 1;
+  #assert c[0].step[3].how == WCH_REDO && c[0].step[3].of == 1 && c[0].step[4].how == WCH_UNDO && c[0].step[5].how == WCH_UNDO && c[0].step[5].of == 0;
+  #assert c[0].step[6].how == WCH_REDO && c[0].step[6].of == 0 && c[0].step[7].how == WCH_APPLY && c[0].step[8].how == WCH_APPLY;
+  #assert wct_title(h[..], 5) == "Undo · revisions 7 to 8" && wct_title(h[..], 3) == "Redo · revision 5";
+  // the bar says it of the newest step
+  h[0].n = 0;
+  wct_ev(h[..], 1, 1, wct_spawn(5, 113, 100, 200), 100); wct_ev(h[..], 2, 2, wct_spawn(6, 113, 0, 0), 100);
+  wct_ev(h[..], 3, 3, WorldEdit.{ok = true, op = WE_DESPAWN, id = 6}, 200); wct_ev(h[..], 4, 4, WorldEdit.{ok = true, op = WE_DESPAWN, id = 5}, 200);
+  #assert wct_read(h[..], 0) && wct_brief(h[..]) == "Undo: −2 things" && wct_line(h[..], 1, WCH_REMOVED) == "Solar panel ×2";
+}
+
+#test "a read that began after a revision marks its first step as maybe begun before; publishes are passed over; anything else is no read" {
+  h: [1] WctTest; wct_model(h[..]);
+  wct_ev(h[..], 1, 11, wct_spawn(5, 113, 0, 0), 100);
+  pub := "{\"id\":\"realm-authoring.world.published.v1\",\"seq\":913,\"world\":\"splice\",\"rev\":3,\"from\":42,\"when\":\"next\",\"engine\":1,\"rules\":1,\"content\":2,\"wire\":1,\"at\":1762190000500}\n";
+  for b: pub { h[0].text[h[0].n] = b; h[0].n += 1; }
+  wct_ev(h[..], 2, 12, wct_spawn(6, 113, 0, 0), 200);
+  #assert wct_read(h[..], 10) && h[0].c[0].nsteps == 2 && h[0].c[0].step[0].cut && !h[0].c[0].step[1].cut;
+  // a revision missing, an event of the wrong revision, or bytes that are not an event
+  #assert !wct_read(h[..], 9) && !h[0].c[0].ok && h[0].c[0].nsteps == 0 && wct_brief(h[..]) == "";
+  h[0].n = 0; wct_ev(h[..], 1, 1, wct_spawn(5, 113, 0, 0), 100); wct_ev(h[..], 2, 3, wct_spawn(6, 113, 0, 0), 100);
+  #assert !wct_read(h[..], 0);
+  #assert !wch_read(h[0].c[..], 0, "not an event\n") && wch_read(h[0].c[..], 0, "") && h[0].c[0].nsteps == 0 && wct_brief(h[..]) == "";
+}
+
+#test "more events than a read keeps: the newest are kept, and the first kept step may have begun before" {
+  h: [1] WctTest; wct_model(h[..]);
+  for i: 0..<WCH_EVENTS + 5 { wct_ev(h[..], 1 + i, 1 + i, wct_move(9, i, 0), 100 + i / 50); }
+  #assert wct_read(h[..], 0) && h[0].c[0].n == WCH_EVENTS && h[0].c[0].ev[0].rev == 6 && h[0].c[0].after == 5;
+  #assert h[0].c[0].step[0].cut && h[0].c[0].nsteps == 5 && wct_title(h[..], 4) == "Revisions 201 to 205";
+}

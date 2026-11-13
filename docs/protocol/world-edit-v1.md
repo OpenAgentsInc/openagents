@@ -197,6 +197,29 @@ A reader at revision N takes the event whose `rev` is N+1 and no other
 (`we_take`). A publish is `realm-authoring.world.published.v1` on the live
 lane.
 
+### Steps
+
+A step is one batch, so one undo step: an `apply`, an `undo`, a `redo` or an
+`original`. Every event of one batch carries the batch's `at`, and its `seq`
+rises. A reader finds where a step begins without a field of its own (#13485):
+
+- where `at` changes. The API gives each batch of a world an `at` above the
+  last batch's, one millisecond later when the clock has not moved
+  (`worlds.c` `step_at`), so two steps never share one.
+- where `seq` does not rise past the last event's. The dev server numbers
+  `seq` from the clock, one an edit, so a batch saved in the same millisecond
+  as the last one starts with a `seq` that is not above the last one's.
+
+An undo and a redo are saved as edits, so a reader tells them from the steps
+(`metaverse-engine/editor/world-changes.coax`): a redo repeats a step that was
+undone, edit for edit; an undo is the newest standing step's inverses, last
+first. A step that began before the events a reader holds can't be told.
+
+The editor's top bar says what the newest step changed beside the revision,
+and the revision opens the Revisions list: the world's recent steps, newest
+first, each with its revisions and its changes (`shell-revs.coax`). It reads
+the dev lane's newest 200 events again each time the revision moves.
+
 ## A page follows the world
 
 Code: `metaverse-engine/editor/world-follow.coax` (what to ask, and what an

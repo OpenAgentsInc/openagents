@@ -62,7 +62,7 @@ es_as_dev :: (s: [] EdShell) -> bool { return s[0].code_page_n > 0; }
 // upload (`url`: where a PUT goes). False while another is out.
 es_as_go :: (s: [] EdShell, flight: int, url: string) -> bool {
   m := s[0].model[..];
-  if s[0].as_flight != ES_AS_NONE || s[0].fl.flight != ES_FL_NONE || s[0].sc.flight != ES_SC_NONE || !s[0].have || m[0].world_n == 0 { return false; }   // one ask at a time, the Files and the Scripts panes' too
+  if s[0].as_flight != ES_AS_NONE || s[0].fl.flight != ES_FL_NONE || s[0].sc.flight != ES_SC_NONE || s[0].rv.flight != ES_RV_NONE || !s[0].have || m[0].world_n == 0 { return false; }   // one ask at a time, the Files and the Scripts panes' and the revisions' too
   s[0].as_head_n = 0; head := ""; ok := false;
   if flight == ES_AS_LIST { s[0].as_how = ES_HOW_GET; ok = es_as_at(s, "/assets?lane=dev&write=1"); }
   if flight == ES_AS_SEND { s[0].as_how = ES_HOW_SEND; head = was_import_head(s[0].as_head[..], s[0].as_licence, es_as_file_name(s)); ok = head.count > 0 && es_as_at(s, "/assets"); }
