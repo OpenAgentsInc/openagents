@@ -27,7 +27,7 @@
 #   coax/remote/check.sh modules I/N      the I-th of N parts of the web build's modules
 #                                         (wasm.sh alone, as build.sh runs each)
 #   coax/remote/check.sh module NAME      one module of the web build (a bisect)
-#   coax/remote/check.sh reports          tools-check, test-remote.sh, test-after.sh, everglade-parity, wire-check, layer-check,
+#   coax/remote/check.sh reports          tools-check, test-remote.sh, test-after.sh, test-vm-deploy.sh, everglade-parity, wire-check, layer-check,
 #                                         the API's migration numbers, hashes and schema.sql, the pre-push replay, the committed
 #                                         shaders, realm pages and changelog page against
 #                                         their sources, and every realm's link-preview card
@@ -249,6 +249,7 @@ reports() {
   step tools-check coax/web/tool.sh tools-check || status=1
   step remote-cleanup coax/remote/test-remote.sh || status=1
   step after-gates coax/remote/test-after.sh || status=1
+  step release-rules coax/web/room/test-vm-deploy.sh || status=1   # a promotion pins its build; a release holds staging (#13398)
   step everglade-parity coax/web/tool.sh everglade-parity || status=1
   step wire-check coax/web/tool.sh wire-check || status=1
   step layer-check coax/web/tool.sh layer-check || status=1
@@ -446,6 +447,10 @@ reports_since() {
     step remote-cleanup coax/remote/test-remote.sh || status=1
     # after.sh's comparing gates in a scratch repository (#13266)
     step after-gates coax/remote/test-after.sh || status=1
+  fi
+  # the release rules against a stand-in for the room VM (#13398)
+  if grep -qE '^coax/web/(room/(vm-deploy|test-vm-deploy)\.sh|api/deploy\.sh|release-set)' "$out/changed"; then
+    step release-rules coax/web/room/test-vm-deploy.sh || status=1
   fi
   if grep -qv '\.md$' "$out/changed"; then
     step tools-check coax/web/tool.sh tools-check || status=1

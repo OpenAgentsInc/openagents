@@ -20,13 +20,67 @@ only after the ones before it:
 | --- | --- | --- |
 | The API | `coax/web/api/deploy.sh` (staging, then production). Skipped when the API already runs the commit | The deploy fails, or the API's health names another build |
 | The rooms, on staging | The protocol bots play staging's shard as it is. `coax/web/room/vm-deploy.sh deploy --staging` puts the new room there. The bots play it again | The canary fails (below). Staging goes back to its room |
-| The rooms, in production | `vm-deploy.sh canary K` puts the new room on one shard. Its windows are read beside the other shards' for the canary's time. Then `vm-deploy.sh deploy` moves the rest | The canary fails. The canary shard goes back; the other shards never moved |
+| The rooms, in production | `vm-deploy.sh canary K --release NAME` puts the release the set staged on one shard. Its windows are read beside the other shards' for the canary's time. Then `vm-deploy.sh deploy --release NAME` moves the rest | The canary fails, or staging no longer runs `NAME` (below). The canary shard goes back; the other shards never moved |
 | The page | `coax/web/release.sh --ref COMMIT` | A live shard's pins (engine, rules, world) are not the page's, or the shard does not speak the page's wire version. A page ahead of its rooms strands every player (#13163, #13387) |
 
 The set's version is the commit and the time, for example
 `1afd85d5a2.1794518372`. The record of a set (its version, what each part ran
 before and after, which parts moved, where it stopped) is written under the
 pipeline's folder: `~/.openagents/pipeline/release-sets/ENV/VERSION.txt`.
+
+### A promotion pins its build, and a release holds staging
+
+Two rules keep a release from promoting a build it never tested (#13398). On
+2026-11-12 another deploy to staging landed between a release's canary and its
+promotion, and all six production shards took that build (#13397).
+
+**A promotion names its release.** `vm-deploy.sh deploy` and `vm-deploy.sh
+canary K` take `--release NAME`, the release `deploy --staging` printed. The
+release set passes the name it staged. A promotion is refused, and nothing in
+production changes, when:
+
+| Case | It says |
+| --- | --- |
+| No release is named | `no release is named: a promotion names the release it staged (--release NAME)` |
+| Staging's unit runs another release by then | `staging does not run the release this promotion staged: someone deployed to staging since`, with both names |
+| The release is a seeded bad build | `a seeded bad build: production never takes one` |
+| The live page's wire version is outside the range the release speaks | `NAME speaks wire A to B, and the page production serves speaks wire N` |
+| The release's wire range can't be read from staging's room | `could not be read` |
+
+The last two hold for every promotion, inside a release set or not. Rooms
+always speak the version before their own
+([the previous wire](../protocol/everglade-previous-wire.md)), so a release
+one wire version ahead of the page passes. A release two versions ahead does
+not: ship the version between first. When the live page's version can't be
+read, that is not held against the promotion.
+
+**A release holds staging's lock.** `release-set ship` takes the lock before
+its first step and releases it after its last, whether it ships or stops. The
+lock is one line in `/opt/oa-room/staging.lock` on the room VM: a token, when
+it ends, the computer and process that took it, and who holds it. While it is
+held, these refuse anyone who does not pass the holder's token, and name the
+holder:
+
+- `vm-deploy.sh deploy --staging` and `vm-deploy.sh rollback --staging`
+- `coax/web/api/deploy.sh` (every API deploy goes to staging first)
+
+```sh
+coax/web/room/vm-deploy.sh lock status   # who holds staging, until when, and whether the lock is stale
+coax/web/room/vm-deploy.sh lock clear    # remove a stale lock; a live one is refused
+coax/web/room/vm-deploy.sh lock take "why" 3600   # hold staging yourself: prints "lock-token TOKEN"
+coax/web/room/vm-deploy.sh lock release TOKEN
+```
+
+A lock is stale when its time has passed (four hours unless the taker says
+otherwise), or when it was taken on this computer and its process is gone. A
+stale lock never stops a deploy: the next deploy to staging removes it and
+says whose it was. To deploy under your own lock, pass `--lock TOKEN` or set
+`OA_STAGING_LOCK`.
+
+The rules are `rs_promote`, `rs_lock` and `rs_rooms_beside` in
+`coax/web/release-set-policy.coax`. `coax/web/room/test-vm-deploy.sh` runs
+`vm-deploy.sh` and `api/deploy.sh` against a stand-in for the VM and checks
+each refusal.
 
 ### A page never ships ahead of its rooms' wire
 
@@ -110,14 +164,34 @@ part the set skipped or never reached stays where it is:
 | Part | How |
 | --- | --- |
 | The page | Production: the pages kept by the release (`coax/web/rollback.sh STAMP`). Staging keeps no pages, so the commit the API ran before is released there again |
-| The rooms | `vm-deploy.sh rollback` (staging: `rollback --staging`): the release before, each shard drained first |
+| The rooms | `vm-deploy.sh rollback` (staging: `rollback --staging`): the rollback target, each shard drained first |
 | The API | The image the revision before ran is deployed again as a new revision, so the service's traffic stays on its latest and the next deploy takes it as every deploy does |
 
 Migrations stay applied. An API release must keep its schema changes readable
 by the revision before it.
 
+### The rooms' rollback target
+
+`/opt/oa-room/previous` is where `vm-deploy.sh rollback` goes. A promotion
+makes the release it replaces the target, and says so. Three cases keep the
+target right (#13398):
+
+| Case | What happens |
+| --- | --- |
+| The release production runs was a mistake, and you promote its repair | Run `vm-deploy.sh deploy --release NAME --repair`. The target stays where it was, so a rollback never goes to the mistake |
+| A rollback | The release it leaves is marked bad (`/opt/oa-room/bad`). No later promotion makes a bad release the target, and no rollback goes to one |
+| You need another target | `vm-deploy.sh previous NAME` sets it. It refuses a release that is bad, seeded, missing or running. `vm-deploy.sh bad NAME` marks one bad by hand |
+
+`vm-deploy.sh releases` lists every link and the bad releases.
+
+## Status
+
 `release-set status` prints the three parts' builds and the shards' pins, and
-says whether they are one set.
+says whether they are one set. They are one set when the rooms and the page
+run the same commit, and the API runs that commit or a later one that
+contains it. An API release keeps what earlier commits need, so a newer API
+beside the set's rooms and page is still one set, and the line says so. Any
+other mix reads `not one set`, and the command exits 1.
 
 ## Flags and maintenance
 

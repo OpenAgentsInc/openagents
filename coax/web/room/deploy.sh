@@ -51,7 +51,10 @@ project=openagentsgemini region=us-central1 service=oa-room map=coaxial-openagen
 # each drained), and Cloud Run's services stay as they are, the rollback (vm-deploy.sh switch run).
 if gcloud compute url-maps describe "$map" --global --project "$project" --format json 2>/dev/null | grep -q '/backendServices/oa-room-vm-s1"'; then
   echo "room: production's rooms run on the room VM: deploying there (coax/web/room/vm-deploy.sh)"
-  "$here/vm-deploy.sh" deploy --staging && exec "$here/vm-deploy.sh" deploy
+  # the release this deploy staged, by name: nothing else staging may run by then is promoted (#13398)
+  staged="$("$here/vm-deploy.sh" deploy --staging | tee /dev/stderr | sed -n 's/^room-vm: staging runs \([^ ]*\) .*/\1/p' | tail -1)"
+  [[ -n "$staged" ]] || { echo "room: staging did not take the new room: nothing is promoted" >&2; exit 1; }
+  exec "$here/vm-deploy.sh" deploy --release "$staged"
   exit 1
 fi
 # no world event under way on any shard (#12797); a shard that doesn't answer has none

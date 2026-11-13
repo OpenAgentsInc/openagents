@@ -30,7 +30,8 @@ done
 cp "$here/room-host.c" "$here/room-tick.c" "$here/room-crash.c" "$here/room-crash.h" "$here/room-stats.h" "$here/room-wait.h" "$here/room-world.c" "$here/room-world.h" "$here/room-math.c" verse/voice-host/ws.c verse/voice-host/ws.h "$here/compile.sh" "$out/src/"
 cp "$here/room-wt.c" "$here/wt.c" "$here/wt.h" "$out/src/"; cp -R "$here/third_party" "$out/src/third_party"   # WebTransport (#13176)
 cp -R coax/web/compat "$out/compat"
-# the content tables the room loads at start (#13294, room-host.c content_load): beside the binary on a VM, /usr/share/everglade/ in the image
+# the content tables the room loads at start (#13294, room-host.c content_load): in src/ for the VM, whose build keeps them
+# beside the binary (vm-deploy.sh build_on_vm, #13398); /usr/share/everglade/ in the image
 mkdir -p "$out/content"; cp everglade/content/everglade.content "$out/content/"; cp everglade/content/everglade.content "$out/src/"
 git rev-parse HEAD > "$out/commit" 2>/dev/null || true
 echo "room: staged in $out"

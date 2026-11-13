@@ -4,6 +4,11 @@
 #
 #   coax/web/api/deploy.sh            # build, staging, smoke, production, smoke
 #   coax/web/api/deploy.sh --staging  # stop after staging
+#   coax/web/api/deploy.sh --lock TOKEN [--staging]   # the release that holds staging (below)
+#
+# Every deploy puts the API on staging first, so it asks for staging's lock before anything else
+# (#13398, coax/web/room/vm-deploy.sh lock): while a release holds staging, a deploy by anyone else
+# stops here, naming the holder. The release itself passes its token (--lock, or OA_STAGING_LOCK).
 #
 # No test pass gates the deploy (owner, 2026-11-01: the 11-minute test.sh held
 # every API change back). Staging's smoke still gates production. test.sh runs
@@ -36,6 +41,19 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(git -C "$here" rev-parse --show-toplevel)"
+prod=true; lock="${OA_STAGING_LOCK:-}"
+while (( $# )); do
+  case "$1" in
+    --staging) prod=false ;;
+    --lock) lock="${2:?usage: deploy.sh [--lock TOKEN] [--staging]}"; shift ;;
+    *) echo 'usage: deploy.sh [--lock TOKEN] [--staging]' >&2; exit 1 ;;
+  esac
+  shift
+done
+"$here/../room/vm-deploy.sh" lock check ${lock:+--lock "$lock"} ||
+  { echo "api: REFUSED. Staging is held by a release (coax/web/room/vm-deploy.sh lock status): the API is not deployed to staging or production" >&2; exit 1; }
+# the lock's own check (coax/web/room/test-vm-deploy.sh): nothing is deployed from a stand-in
+[[ -z "${OA_ROOM_VM_STANDIN:-}" ]] || { echo "api: staging's lock allows this deploy (a stand-in: nothing is deployed)"; exit 0; }
 commit="$(git -C "$repo" rev-parse --verify HEAD)"
 [[ -z "$(git -C "$repo" status --porcelain --untracked-files=normal -- coax/web/api pay)" ]] || { echo 'api: commit API changes before deployment' >&2; exit 1; }
 work="$(mktemp -d)"
@@ -47,7 +65,6 @@ here="$work/source/coax/web/api"
 source "$here/deploy-command.sh"
 # shellcheck source=deploy-rollout.sh
 source "$here/deploy-rollout.sh"
-case "${1:-}" in '') prod=true ;; --staging) prod=false ;; *) echo 'usage: deploy.sh [--staging]' >&2; exit 1 ;; esac
 project=openagentsgemini region=us-central1
 instance="$project:$region:openagents-production-pg"
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"

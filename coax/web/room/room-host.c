@@ -962,7 +962,8 @@ static void items_post(void) {
 }
 /* The content tables (aethyr-content-v1; room-items.coax rm_content_load, #13294), read once at start: the
    file OA_ROOM_CONTENT names, else the repository's under --dev, else the one staged beside this binary
-   (stage.sh: src/everglade.content on a VM, /usr/share/everglade/ in the image). A file that is not
+   (everglade.content in the release's folder on a VM, where vm-deploy.sh build_on_vm keeps it when it
+   removes the sources, #13398; /usr/share/everglade/ in the image). A file that is not
    Everglade's content stops the room at once; with no file the room runs with no loot or quests. */
 static void content_load(void) {
   static char text[65537], beside[1100];
@@ -970,7 +971,7 @@ static void content_load(void) {
   const char *paths[4] = {env && *env ? env : NULL, dev_dir ? "everglade/content/everglade.content" : NULL, NULL, "/usr/share/everglade/everglade.content"};
 #ifdef __linux__
   char exe[1024]; ssize_t en = readlink("/proc/self/exe", exe, sizeof exe - 1);
-  if (en > 0) { exe[en] = 0; char *slash = strrchr(exe, '/'); if (slash) { *slash = 0; snprintf(beside, sizeof beside, "%s/src/everglade.content", exe); paths[2] = beside; } }
+  if (en > 0) { exe[en] = 0; char *slash = strrchr(exe, '/'); if (slash) { *slash = 0; snprintf(beside, sizeof beside, "%s/everglade.content", exe); paths[2] = beside; } }
 #endif
   FILE *f = NULL; const char *path = NULL;
   for (int i = 0; i < 4 && !f; i++) if (paths[i]) { path = paths[i]; f = fopen(path, "rb"); if (!f && i == 0) { fprintf(stderr, "room: OA_ROOM_CONTENT names %s, which can't be read\n", path); exit(1); } }

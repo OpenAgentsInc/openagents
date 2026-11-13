@@ -113,8 +113,8 @@ resolves addresses from it.
 ## Deploy
 
 ```sh
-coax/web/room/vm-deploy.sh deploy --staging   # build this checkout, run it as oa-room@staging
-coax/web/room/vm-deploy.sh deploy             # promote staging's release to shards 1 to 6
+coax/web/room/vm-deploy.sh deploy --staging          # build this checkout, run it as oa-room@staging; prints the release's NAME
+coax/web/room/vm-deploy.sh deploy --release NAME     # promote that release to shards 1 to 6
 ```
 
 `deploy --staging` turns the room's Coax into C on a build host
@@ -122,11 +122,19 @@ coax/web/room/vm-deploy.sh deploy             # promote staging's release to sha
 Coax to C runs every check the units keep), copies the C to the VM and
 compiles it there with Debian bookworm's gcc, the steps Cloud Run's image
 runs (`compile.sh`), into `/opt/oa-room/releases/NAME/room`. The start check
-must hold. The staging unit restarts on it and must answer its health.
+must hold. The release's content tables (`everglade.content`) are kept beside
+its binary, where the room reads them at start; a release without them is
+refused (#13398: before, the tables were removed with the sources and every
+shard started with `no content tables: no loot or quests`). The staging unit
+restarts on the release and must answer its health. While a release holds
+staging's lock, `deploy --staging` is refused
+([the release set](release-set.md#a-promotion-pins-its-build-and-a-release-holds-staging)).
 
-`deploy` promotes the release staging runs: `/opt/oa-room/current` moves to
-it (the old one becomes `/opt/oa-room/previous`), and each running shard in
-turn is drained, restarted and healthy before the next.
+`deploy --release NAME` promotes the release it names, and only while
+staging's unit still runs it: `/opt/oa-room/current` moves to it (the old one
+becomes the rollback target, `/opt/oa-room/previous`), and each running shard
+in turn is drained, restarted and healthy before the next. It is refused when
+the live page's wire version is outside the range the release speaks.
 
 `coax/web/room/deploy.sh`, the Cloud Run deploy, sees from the url map when
 production runs on the VM and runs these two steps instead.
@@ -135,12 +143,12 @@ A whole release (the API, the rooms behind a canary shard, then the page) is one
 command: [the release set](release-set.md). Its canary uses two more commands:
 
 ```sh
-coax/web/room/vm-deploy.sh canary 6      # production shard 6 alone onto staging's release
+coax/web/room/vm-deploy.sh canary 6 --release NAME   # production shard 6 alone onto that release
 coax/web/room/vm-deploy.sh canary-back   # that shard back on production's release
 coax/web/room/vm-deploy.sh rollback --staging   # the staging unit back on the release before its last
 ```
 
-`deploy` then moves the other shards and leaves the canary running.
+`deploy --release NAME` then moves the other shards and leaves the canary running.
 
 The room's posters hold one libcurl handle each (#13300), so the VM needs
 libcurl's headers to compile a release. `vm/setup.sh` installs

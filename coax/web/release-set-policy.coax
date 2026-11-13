@@ -81,6 +81,67 @@ RsPins :: struct { engine: int; rules: int; content: int; wire_lo: int; wire_hi:
   // a count past the shards read is no reading
   #assert !rs_wire_ship(2, 1, 5, 5) && !rs_wire_ship(1, 0, 6, 5);
 }
+#test "a promotion pins its build: the release it names, and only while staging still runs it (#13398)" {
+  #assert rs_promote("01bdb405f0-20261113020050", "01bdb405f0-20261113020050") == RS_P_OK;
+  // staging moved since the release was staged: another agent's build is not promoted
+  #assert rs_promote("01bdb405f0-20261113020050", "de2783f887-20261113020446") == RS_P_MOVED && rs_promote("01bdb405f0-20261113020050", "01bdb405f0-20261113020051") == RS_P_MOVED;
+  #assert rs_promote("a", "ab") == RS_P_MOVED && rs_promote("ab", "a") == RS_P_MOVED;
+  // no name given, nothing on staging, a seeded bad build
+  #assert rs_promote("", "01bdb405f0-20261113020050") == RS_P_UNNAMED && rs_promote("", "") == RS_P_NONE && rs_promote("x-1", "") == RS_P_NONE;
+  #assert rs_promote("x-1-seeded", "x-1-seeded") == RS_P_SEEDED && rs_promote("x-1-seeded", "x-1") == RS_P_SEEDED && rs_promote("-seeded", "-seeded") == RS_P_SEEDED;
+  #assert rs_promote("seeded", "seeded") == RS_P_OK && rs_promote("x-seeded-1", "x-seeded-1") == RS_P_OK && rs_promote("x-1-seedee", "x-1-seedee") == RS_P_OK;
+  #assert rs_p_word(RS_P_OK) == "" && rs_p_word(RS_P_UNNAMED).count > 0 && rs_p_word(RS_P_MOVED).count > 0 && rs_p_word(RS_P_SEEDED).count > 0 && rs_p_word(RS_P_NONE).count > 0 && rs_p_word(9) == "" && rs_p_word(-1) == "";
+  #assert rs_p_word(RS_P_UNNAMED) != rs_p_word(RS_P_MOVED) && rs_p_word(RS_P_MOVED) != rs_p_word(RS_P_SEEDED) && rs_p_word(RS_P_SEEDED) != rs_p_word(RS_P_NONE) && rs_p_word(RS_P_NONE) != rs_p_word(RS_P_UNNAMED);
+}
+#test "the staging lock: one holder; a deploy by another is refused; a dead holder's lock is stale (#13398)" {
+  // free: anyone deploys. Held (now 50, until 100): its holder (the same token) and nobody else
+  #assert rs_lock(false, "", "", 0, 0, false, false) == RS_L_FREE && rs_lock(false, "t1", "t1", 50, 100, true, true) == RS_L_FREE && rs_lock(false, "t1", "t2", 100, 50, true, false) == RS_L_FREE;
+  #assert rs_lock(true, "t1", "t1", 50, 100, true, true) == RS_L_MINE && rs_lock(true, "t1", "t1", 50, 100, false, false) == RS_L_MINE;
+  #assert rs_lock(true, "t1", "t2", 50, 100, true, true) == RS_L_HELD && rs_lock(true, "t1", "", 50, 100, false, false) == RS_L_HELD && rs_lock(true, "t1", "t", 50, 100, false, true) == RS_L_HELD;
+  // an empty token is nobody's: a lock with none is held against a caller with none
+  #assert rs_lock(true, "", "", 50, 100, false, false) == RS_L_HELD;
+  #assert rs_lock(true, "t", "t", 50, 100, false, false) == RS_L_MINE;
+  // stale: at or past its time, or its process is gone on this computer; another computer's process is not looked at
+  #assert rs_lock(true, "t1", "t2", 100, 100, false, true) == RS_L_STALE && rs_lock(true, "t1", "t2", 101, 100, true, true) == RS_L_STALE && rs_lock(true, "t1", "t2", 99, 100, true, true) == RS_L_HELD;
+  #assert rs_lock(true, "t1", "t2", 50, 100, true, false) == RS_L_STALE && rs_lock(true, "t1", "t2", 50, 100, false, false) == RS_L_HELD;
+  // its own holder past its time, its process gone, still holds it
+  #assert rs_lock(true, "t1", "t1", 500, 100, true, false) == RS_L_MINE;
+  #assert rs_lock_may(RS_L_FREE) && rs_lock_may(RS_L_MINE) && rs_lock_may(RS_L_STALE) && !rs_lock_may(RS_L_HELD) && !rs_lock_may(4) && !rs_lock_may(-1);
+  #assert !rs_lock_clears(RS_L_FREE) && !rs_lock_clears(RS_L_MINE) && rs_lock_clears(RS_L_STALE) && !rs_lock_clears(RS_L_HELD);
+}
+#test "rooms beside the live page: a promotion never leaves the page's wire outside the rooms' range (#13398)" {
+  // the rooms speak 5 to 6: a page on 5 or 6 keeps playing
+  #assert rs_rooms_beside(5, 5, 6) && rs_rooms_beside(6, 5, 6) && rs_rooms_beside(6, 6, 6);
+  // two versions ahead of the page, or behind it: every player would be refused
+  #assert !rs_rooms_beside(5, 6, 7) && !rs_rooms_beside(5, 6, 6) && !rs_rooms_beside(7, 5, 6) && !rs_rooms_beside(4, 5, 6);
+  // the page's version unread (0): nothing is known against the promotion
+  #assert rs_rooms_beside(0, 6, 7) && rs_rooms_beside(-1, 6, 7);
+  // version 1 is a version: read, and held to the range
+  #assert rs_rooms_beside(1, 1, 2) && !rs_rooms_beside(1, 2, 3);
+  // the rooms' range unread: not promoted
+  #assert !rs_rooms_beside(5, 0, 0) && !rs_rooms_beside(5, -1, 6) && !rs_rooms_beside(0, 0, 0) && !rs_rooms_beside(0, 7, 6) && !rs_rooms_beside(5, 0, 6);
+}
+#test "one set: the rooms and the page on one commit, and the API on it or on a later commit that contains it (#13398)" {
+  #assert rs_one_set(true, true, true, false) && rs_one_set(true, true, false, true);
+  #assert !rs_one_set(true, true, false, false) && !rs_one_set(true, false, true, false) && !rs_one_set(false, true, true, false) && !rs_one_set(false, false, false, true) && !rs_one_set(true, false, false, true) && !rs_one_set(false, true, false, true);
+  #assert rs_set_word(true, true, true) == "one set: the API, the rooms and the page run the same commit";
+  #assert rs_set_word(true, false, true) == "one set: the rooms and the page run the same commit, and the API runs a later one that contains it";
+  #assert rs_set_word(true, false, false) == "not one set: the three parts run different commits" && rs_set_word(false, true, true) == rs_set_word(true, false, false) && rs_set_word(false, false, true) == rs_set_word(false, true, false);
+}
+#test "the rollback target: the release a promotion replaces, unless that one was a mistake (#13398)" {
+  // an ordinary promotion: what ran becomes the target
+  #assert rs_previous("a", "b", "z", false, false) == RS_V_REPLACED;
+  // the same release promoted again changes nothing; nothing ran before
+  #assert rs_previous("a", "a", "z", false, false) == RS_V_KEEP && rs_previous("", "b", "z", false, false) == RS_V_KEEP;
+  // a repair, or a release marked bad: the target stays, and is never the bad one
+  #assert rs_previous("a", "b", "z", true, false) == RS_V_KEEP && rs_previous("a", "b", "z", false, true) == RS_V_KEEP && rs_previous("a", "b", "z", true, true) == RS_V_KEEP;
+  // a repair back onto the target itself leaves no release to go back to
+  #assert rs_previous("a", "z", "z", true, false) == RS_V_NONE && rs_previous("a", "z", "z", false, true) == RS_V_NONE && rs_previous("a", "z", "z", false, false) == RS_V_REPLACED;
+  // a seeded bad build is never a target
+  #assert rs_previous("a-seeded", "b", "z", false, false) == RS_V_KEEP && rs_previous("a-seeded", "z", "z", false, false) == RS_V_NONE;
+  // the release production runs, promoted again, keeps its target even when the target is named the same
+  #assert rs_previous("a", "a", "a", false, false) == RS_V_KEEP && rs_previous("a", "a", "a", true, true) == RS_V_KEEP;
+}
 #test "the canary holds when it does what the others do, or better" {
   o := RsShard.{tick_p95_us = 600, refused_ds = 4, seated = 32, unsaved_ms = 5000, windows = 30};
   c := RsShard.{tick_p95_us = 640, refused_ds = 5, seated = 32, unsaved_ms = 5200, windows = 30};
@@ -233,6 +294,70 @@ rs_wire_ship :: (speaking: int, live: int, page: int, was: int) -> bool #effects
 }
 // Whether the page may ship: `matching` of the `live` shards read run its build, all of them, and one at least.
 rs_pins_ship :: (matching: int, live: int) -> bool #effects(all) { return live > 0 && matching == live; }
+
+// ---- a promotion pins its build, and a release holds staging (#13398)
+RS_P_OK :: 0; RS_P_UNNAMED :: 1; RS_P_MOVED :: 2; RS_P_SEEDED :: 3; RS_P_NONE :: 4;
+rs_ends :: (s: string, e: string) -> bool #effects(all) { return s.count >= e.count && s[s.count - e.count..<s.count] == e; }
+// Whether the release a promotion names may go to production: `pinned` the name the release staged and
+// its canary ran, `staging` the release staging's unit runs now. A promotion takes the build it names
+// and no other: when staging has moved since, whoever moved it is not promoted.
+rs_promote :: (pinned: string, staging: string) -> int #effects(all) {
+  if staging.count == 0 { return RS_P_NONE; }
+  if pinned.count == 0 { return RS_P_UNNAMED; }
+  if rs_ends(pinned, "-seeded") || rs_ends(staging, "-seeded") { return RS_P_SEEDED; }
+  if pinned != staging { return RS_P_MOVED; }
+  return RS_P_OK;
+}
+rs_p_word :: (why: int) -> string #effects(all) {
+  if why == RS_P_UNNAMED { return "no release is named: a promotion names the release it staged (--release NAME)"; }
+  if why == RS_P_MOVED { return "staging does not run the release this promotion staged: someone deployed to staging since"; }
+  if why == RS_P_SEEDED { return "a seeded bad build: production never takes one"; }
+  if why == RS_P_NONE { return "staging runs nothing: vm-deploy.sh deploy --staging first"; }
+  return "";
+}
+// The lock on staging. A release holds it from its first step to its last; a deploy to staging's room
+// or API by anyone else is refused while it is held. held: a lock is there; token: its holder's;
+// mine: the caller's (empty: none); now_s and until_s: the time and when the lock ends; same_host and
+// alive: the lock was taken on this computer, and its process still runs. A lock past its time, or
+// whose process is gone, is stale: anyone may clear it or take over.
+RS_L_FREE :: 0; RS_L_MINE :: 1; RS_L_STALE :: 2; RS_L_HELD :: 3;
+rs_lock :: (held: bool, token: string, mine: string, now_s: int, until_s: int, same_host: bool, alive: bool) -> int #effects(all) {
+  if !held { return RS_L_FREE; }
+  if token.count > 0 && token == mine { return RS_L_MINE; }
+  if now_s >= until_s { return RS_L_STALE; }
+  if same_host && !alive { return RS_L_STALE; }
+  return RS_L_HELD;
+}
+rs_lock_may :: (state: int) -> bool #effects(all) { return state == RS_L_FREE || state == RS_L_MINE || state == RS_L_STALE; }
+rs_lock_clears :: (state: int) -> bool #effects(all) { return state == RS_L_STALE; }
+// Whether rooms that speak the wire versions lo..hi may be promoted beside a live page that speaks
+// `page` (0 or less: unread, which is nothing against the promotion). Rooms whose range is unread
+// are not promoted.
+rs_rooms_beside :: (page: int, lo: int, hi: int) -> bool #effects(all) {
+  if lo <= 0 || hi < lo { return false; }
+  if page <= 0 { return true; }
+  return rs_wire_speaks(page, lo, hi);
+}
+// Whether the three parts are one set: the rooms and the page run one commit, and the API runs it
+// too, or a later commit that contains it (an API release keeps what the commits before it need).
+rs_one_set :: (read: bool, rooms_is_page: bool, api_is: bool, api_contains: bool) -> bool #effects(all) {
+  return read && rooms_is_page && (api_is || api_contains);
+}
+rs_set_word :: (one: bool, api_is: bool, rooms_is_page: bool) -> string #effects(all) {
+  if !one || !rooms_is_page { return "not one set: the three parts run different commits"; }
+  if api_is { return "one set: the API, the rooms and the page run the same commit"; }
+  return "one set: the rooms and the page run the same commit, and the API runs a later one that contains it";
+}
+// What a promotion of `next` over `current` does to the rollback target `previous`: the release it
+// replaces becomes the target, unless that release was a mistake (`repair`: this promotion repairs
+// it; `bad`: it is marked bad) or a seeded build, when the target stays. A target that is the
+// release being promoted is no target.
+RS_V_KEEP :: 0; RS_V_REPLACED :: 1; RS_V_NONE :: 2;
+rs_previous :: (current: string, next: string, previous: string, repair: bool, bad: bool) -> int #effects(all) {
+  if !repair && !bad && !rs_ends(current, "-seeded") && current.count > 0 && current != next { return RS_V_REPLACED; }
+  if previous == next && current != next { return RS_V_NONE; }
+  return RS_V_KEEP;
+}
 
 // The canary against the others: its failures as RS_C_* bits; 0 holds.
 rs_canary :: (c: RsShard, o: RsShard) -> int #effects(all) {

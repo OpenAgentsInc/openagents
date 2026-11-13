@@ -12,21 +12,40 @@
 #   coax/web/room/vm-deploy.sh secret             the room keys (room-keys.md), from Secret Manager to the VM only
 #   coax/web/room/vm-deploy.sh deploy --staging   stage this checkout on a build host, compile it on the
 #                                                 VM, run it as oa-room@staging and check its health
-#   coax/web/room/vm-deploy.sh deploy             promote the release staging runs to the production
-#                                                 shards, one at a time: drain, restart, healthy
+#   coax/web/room/vm-deploy.sh deploy --release NAME [--repair]
+#                                                 promote release NAME to the production shards, one at a
+#                                                 time: drain, restart, healthy. NAME is the release this
+#                                                 promotion staged (deploy --staging prints it), and staging
+#                                                 must still run it: anything else there is refused (#13398).
+#                                                 Refused too when the live page's wire version is outside
+#                                                 the release's range. --repair: the release production runs
+#                                                 now was a mistake, so the rollback target stays as it is
 #   coax/web/room/vm-deploy.sh deploy --staging --seed-tick-us N
 #                                                 a seeded bad build for a canary's own check: every tick
 #                                                 busy N microseconds more. Its release is named "-seeded",
 #                                                 and no production shard ever takes one
 #   coax/web/room/vm-deploy.sh rollback           the previous production release, the same way
 #   coax/web/room/vm-deploy.sh rollback --staging the staging unit back on the release before its last
-#   coax/web/room/vm-deploy.sh canary K           production shard K alone onto staging's release (drained,
-#                                                 restarted, healthy): the canary of a release
+#   coax/web/room/vm-deploy.sh canary K --release NAME
+#                                                 production shard K alone onto release NAME, which staging
+#                                                 must run (drained, restarted, healthy): the canary of a release
 #                                                 (coax/web/release-set.coax, #13299); the rest follow with
 #                                                 `deploy`, which leaves the canary running
 #   coax/web/room/vm-deploy.sh canary-back        the canary shard back on production's release
 #   coax/web/room/vm-deploy.sh releases           each link's release, a line each: current, previous,
-#                                                 staging, staging-previous, canary
+#                                                 staging, staging-previous, canary, bad
+#   coax/web/room/vm-deploy.sh previous NAME      make release NAME the rollback target (never one marked bad)
+#   coax/web/room/vm-deploy.sh bad NAME           mark release NAME bad: no promotion makes it the rollback
+#                                                 target and no rollback goes to it (rollback marks the one it leaves)
+#   coax/web/room/vm-deploy.sh lock take HOLDER [SECONDS]   hold staging (its room unit and its API) for a
+#                                                 release: prints "lock-token TOKEN". While it is held,
+#                                                 deploy --staging, rollback --staging and coax/web/api/deploy.sh
+#                                                 refuse anyone who does not pass --lock TOKEN (or OA_STAGING_LOCK)
+#   coax/web/room/vm-deploy.sh lock release TOKEN
+#   coax/web/room/vm-deploy.sh lock status        who holds staging, since when, and whether the lock is stale
+#                                                 (past its time, or its process is gone on this computer)
+#   coax/web/room/vm-deploy.sh lock clear         remove a stale lock (a live one is refused, its holder named)
+#   coax/web/room/vm-deploy.sh lock check [--lock TOKEN]    exit 0 when the caller may deploy to staging
 #   coax/web/room/vm-deploy.sh switch vm|run      production's /api/room/ rules (openagents.com and
 #                                                 everglade.world) to the VM or back to Cloud Run
 #   coax/web/room/vm-deploy.sh switch staging-vm|staging-run    the same for staging.openagents.com
@@ -61,7 +80,12 @@ scratch="$(mktemp -d)"; trap 'rm -rf "${scratch:?}"' EXIT
 g() { gcloud "$@" --project "$project" --quiet; }
 # A command on the VM as its OS Login user (root through sudo), over IAP: gcloud's notices go to a log
 # that is shown only when the command fails.
+# The stand-in (coax/web/room/test-vm-deploy.sh): with OA_ROOM_VM_STANDIN=DIR nothing leaves this
+# computer. A command for the VM runs here, on DIR/opt/oa-room, with DIR/bin's sudo and systemctl; a
+# unit's health is DIR/health-UNIT; no room is built, drained or measured. Never set outside that test.
+standin="${OA_ROOM_VM_STANDIN:-}"
 on_vm() {
+  if [[ -n "$standin" ]]; then local c="${1//$standin\/opt\/oa-room//opt/oa-room}"; PATH="$standin/bin:$PATH" bash -c "${c//\/opt\/oa-room/$standin/opt/oa-room}"; return; fi
   if ! g compute ssh "$vm" --zone "$zone" --tunnel-through-iap --command "$1" 2>"$scratch/ssh.err"; then
     grep -v -i -E "numpy|increasing_the_tcp|^WARNING: *$|^$" "$scratch/ssh.err" >&2 || true; return 1
   fi
@@ -71,6 +95,7 @@ ip() { g compute addresses describe "$address" --region "$region" --format='valu
 backend() { echo "oa-room-vm-$1"; }
 
 health() {   # the body of shard K's /health on the VM through Caddy (K = staging for the staging unit)
+  if [[ -n "$standin" ]]; then cat "$standin/health-$1" 2>/dev/null || echo "ok shard $( [[ "$1" == staging ]] && echo 1 || echo "$1" ), stand-in"; return; fi
   if [[ "$1" == staging ]]; then curl -s -m 10 "https://$staging_host/health" || true
   else curl -s -m 10 "https://$host/api/room/s$1/health" || true; fi
 }
@@ -185,6 +210,7 @@ provision() {
 
 stage() {   # the room's C sources, staged on a build host (Coax to C runs the units' checks)
   local out="$here/build/stage"
+  if [[ -n "$standin" ]]; then echo "$standin/stage"; return; fi
   coax/remote/remote.sh run --no-fallback -- coax/web/room/stage.sh coax/web/room/build/stage >"$scratch/stage.log" 2>&1 ||
     { tail -30 "$scratch/stage.log" >&2; echo "room-vm: staging the sources failed" >&2; exit 1; }
   [[ -s "$out/src/room.c" && -s "$out/src/room-host.c" ]] || { echo "room-vm: the staged sources are missing" >&2; exit 1; }
@@ -192,6 +218,7 @@ stage() {   # the room's C sources, staged on a build host (Coax to C runs the u
 }
 # The release's name: the commit, "+" when the checkout had changes, and the time.
 release_name() {   # [seeded]
+  if [[ -n "$standin" && -n "${OA_ROOM_VM_STANDIN_NAME:-}" ]]; then echo "$OA_ROOM_VM_STANDIN_NAME${1:+-seeded}"; return; fi
   local c; c="$(git rev-parse --short=10 HEAD)"
   [[ -z "$(git status --porcelain -- coax/web/room apps/openagents-web verse aethyr 2>/dev/null)" ]] || c="$c+"
   echo "$c-$(date -u +%Y%m%d%H%M%S)${1:+-seeded}"
@@ -201,19 +228,34 @@ release_name() {   # [seeded]
 build_on_vm() {   # out name [seed-tick-us]
   local out="$1" name="$2" seed="${3:-}"
   [[ -z "$seed" || "$seed" =~ ^[1-9][0-9]{0,6}$ ]] || { echo "room-vm: --seed-tick-us takes microseconds (1 to 9999999)" >&2; exit 2; }
+  if [[ -n "$standin" ]]; then   # no compiler: the staged sources and a stand-in binary, then the same last step
+    on_vm "mkdir -p /opt/oa-room/releases/$name/src && echo room > /opt/oa-room/releases/$name/room && chmod +x /opt/oa-room/releases/$name/room"
+    [[ ! -f "$out/src/everglade.content" ]] || cp "$out/src/everglade.content" "$standin/opt/oa-room/releases/$name/src/"
+    keep_tables "$name"; return
+  fi
   # libcurl's headers: the room's posters hold one libcurl handle each (room-host.c post_do, #13300);
   # vm/setup.sh installs them on a new VM, and a VM from before gets them here
   COPYFILE_DISABLE=1 tar -C "$out" -czf - src |
     on_vm "set -e; r=/opt/oa-room/releases/$name; sudo rm -rf \"\${r:?}\"; sudo mkdir -p \"\$r\"; sudo tar -xzf - -C \"\$r\" 2>/dev/null
       dpkg -s libcurl4-openssl-dev >/dev/null 2>&1 || { sudo apt-get update -q >/dev/null 2>&1; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends libcurl4-openssl-dev >/dev/null; }
       cd \"\$r/src\" && sudo env OA_ROOM_SEED_TICK_US=$seed nice -n 10 sh compile.sh \"\$r/room\" >\"/tmp/compile-$name.log\" 2>&1 || { tail -30 \"/tmp/compile-$name.log\"; exit 1; }
-      sudo rm -rf \"\${r:?}/src\"; \"\$r/room\" --start-check" ||
+      \"\$r/room\" --start-check" ||
     { echo "room-vm: the build on $vm failed" >&2; exit 1; }
+  keep_tables "$name"
   # keep the five newest releases and every one a unit points at
   on_vm "cd /opt/oa-room/releases && keep=\"\$(readlink -f /opt/oa-room/current /opt/oa-room/staging /opt/oa-room/previous /opt/oa-room/staging-previous 2>/dev/null | xargs -n1 basename 2>/dev/null; cut -d' ' -f2 /opt/oa-room/canary 2>/dev/null)\";
     ls -1t | tail -n +6 | while read -r d; do echo \"\$keep\" | grep -qx \"\$d\" || sudo rm -rf \"/opt/oa-room/releases/\${d:?}\"; done" || true
 }
 
+# The content tables stay with the release (#13398): the room reads everglade.content beside its
+# binary (room-host.c content_load), so the tables are kept there when the sources go. Before this, the
+# sources' folder held the only copy and was removed, and every shard started with "no content tables:
+# no loot or quests". A release without tables is not a release.
+keep_tables() {   # name
+  on_vm "r=/opt/oa-room/releases/$1; [ ! -f \"\$r/src/everglade.content\" ] || sudo cp \"\$r/src/everglade.content\" \"\$r/everglade.content\"; sudo rm -rf \"\${r:?}/src\"
+    head -c 17 \"\$r/everglade.content\" 2>/dev/null | grep -qx aethyr.content.v1" ||
+    { echo "room-vm: release $1 has no content tables beside its binary (stage.sh puts everglade.content in src/): not a release" >&2; exit 1; }
+}
 # A release's symbols (#13298, docs/deployment/crash-reports.md): the binary's debug file (objcopy
 # --only-keep-debug, gzipped), from the VM to the symbols bucket under the binary's build ID. The
 # binary itself keeps its line table, so a crash resolves on the VM while the release is there (the
@@ -246,6 +288,7 @@ drain_wait="${OA_ROOM_DRAIN_WAIT:-300}"
 # tells every page "restarting" and saves every seat; then its health says "drain done".
 drain() {
   local k="$1" wait="${2:-$drain_wait}" at mac code h
+  if [[ -n "$standin" ]]; then echo "drain $k" >> "$standin/calls.log"; return 0; fi
   [[ -n "${OA_ROOM_TICKET_KEY:-}" ]] || ! has oa-room-ticket-key || { OA_ROOM_TICKET_KEY="$(g secrets versions access latest --secret oa-room-ticket-key)"; export OA_ROOM_TICKET_KEY; }
   at="$(python3 -I -c 'import time; print(int(time.time() * 1000))')"
   code=000
@@ -282,36 +325,140 @@ restart_shards() {   # [SKIP]: a shard that already runs the release (the canary
   done
 }
 
+# ---- the staging lock (#13398; the rules are coax/web/release-set-policy.coax rs_lock)
+# /opt/oa-room/staging.lock is one line: TOKEN UNTIL HOST PID HOLDER... A release takes it for its whole
+# length. While it is held, a deploy to staging's room unit or API by anyone else is refused.
+gate() { "$here/../tool.sh" release-set "$@"; }
+lock_mine="${OA_STAGING_LOCK:-}"
+lock_read() {   # sets L_LINE and L_TOKEN L_UNTIL L_HOST L_PID L_HOLDER L_STATE (free, mine, stale or held)
+  L_LINE="$(on_vm 'cat /opt/oa-room/staging.lock 2>/dev/null || true')" || { echo "room-vm: staging's lock could not be read" >&2; return 1; }
+  L_TOKEN="" L_UNTIL=0 L_HOST="" L_PID=0 L_HOLDER=""
+  [[ -z "$L_LINE" ]] || read -r L_TOKEN L_UNTIL L_HOST L_PID L_HOLDER <<<"$L_LINE"
+  [[ "$L_UNTIL" =~ ^[0-9]+$ ]] || L_UNTIL=0
+  [[ "$L_PID" =~ ^[0-9]+$ ]] || L_PID=0
+  local same=0 alive=0
+  if [[ -n "$L_LINE" && "$L_HOST" == "$(hostname -s)" ]]; then same=1; (( L_PID > 0 )) && kill -0 "$L_PID" 2>/dev/null && alive=1; fi
+  L_STATE="$(gate lock-gate --held "$( [[ -n "$L_LINE" ]] && echo 1 || echo 0 )" --token "$L_TOKEN" --mine "$lock_mine" --now "$(date +%s)" --until "$L_UNTIL" --same-host "$same" --alive "$alive")" ||
+    { echo "room-vm: the lock's rule did not run" >&2; return 1; }
+}
+lock_who() { echo "$L_HOLDER (on $L_HOST, process $L_PID, until $(date -r "$L_UNTIL" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || date -d "@$L_UNTIL" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || echo "$L_UNTIL"))"; }
+# Whether the caller may deploy to staging: 0 yes. A stale lock is removed and said.
+staging_free() {
+  lock_read || return 1
+  case "$L_STATE" in
+    free|mine) return 0 ;;
+    stale) echo "room-vm: staging's lock was stale and is removed: it was held by $(lock_who)" >&2
+      on_vm 'sudo rm -f /opt/oa-room/staging.lock'; return 0 ;;
+  esac
+  echo "room-vm: REFUSED. Staging is held by $(lock_who). A release is between its staging step and its promotion: nothing else deploys to staging until it ends. vm-deploy.sh lock status says more" >&2
+  return 1
+}
+lock() {
+  case "${1:-}" in
+    take)
+      local holder="${2:?usage: vm-deploy.sh lock take HOLDER [SECONDS]}" secs="${3:-14400}" pid="${OA_STAGING_LOCK_PID:-$PPID}" token
+      [[ "$secs" =~ ^[1-9][0-9]{0,5}$ ]] || { echo "room-vm: lock take HOLDER SECONDS (1 to 999999)" >&2; exit 2; }
+      holder="$(tr -c 'A-Za-z0-9 ._:@+-' '_' <<<"$holder" | head -c 160)"; holder="${holder%_}"
+      staging_free || exit 1
+      [[ "$L_STATE" != mine ]] || { echo "lock-token $L_TOKEN"; return 0; }
+      token="$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
+      # set -C: the line is written only when no lock is there (two takers: one loses)
+      on_vm "sudo sh -c 'set -C; echo \"$token $(( $(date +%s) + secs )) $(hostname -s) $pid $holder\" > /opt/oa-room/staging.lock' 2>/dev/null" ||
+        { lock_read || true; echo "room-vm: REFUSED. Staging was taken first by $(lock_who)" >&2; exit 1; }
+      echo "room-vm: staging is held by $holder for at most $secs s" >&2
+      echo "lock-token $token" ;;
+    release)
+      lock_mine="${2:?usage: vm-deploy.sh lock release TOKEN}"; lock_read || exit 1
+      case "$L_STATE" in
+        mine) on_vm 'sudo rm -f /opt/oa-room/staging.lock'; echo "room-vm: staging's lock is released" ;;
+        free) echo "room-vm: staging was not held" ;;
+        *) echo "room-vm: REFUSED. That token does not hold staging: $(lock_who) does" >&2; exit 1 ;;
+      esac ;;
+    status)
+      lock_mine=""; lock_read || exit 1
+      case "$L_STATE" in
+        free) echo "staging lock: free" ;;
+        stale) echo "staging lock: STALE. Held by $(lock_who); it is past its time or its process is gone. vm-deploy.sh lock clear removes it" ;;
+        *) echo "staging lock: held by $(lock_who)" ;;
+      esac ;;
+    clear)
+      lock_mine=""; lock_read || exit 1
+      case "$L_STATE" in
+        free) echo "room-vm: staging is not held" ;;
+        stale) on_vm 'sudo rm -f /opt/oa-room/staging.lock'; echo "room-vm: the stale lock of $(lock_who) is removed" ;;
+        *) echo "room-vm: REFUSED. The lock is live: $(lock_who). Its holder releases it (vm-deploy.sh lock release TOKEN), or it goes stale when its process ends or its time passes" >&2; exit 1 ;;
+      esac ;;
+    check) shift; [[ "${1:-}" != --lock ]] || lock_mine="${2:-}"
+      # a lock that can't be read (the VM does not answer) is not held against the API's deploy: only a lock that is there stops it
+      on_vm true 2>/dev/null || { echo "room-vm: staging's lock could not be read ($vm did not answer): not held against this deploy" >&2; return 0; }
+      staging_free ;;
+    *) echo "usage: vm-deploy.sh lock take HOLDER [SECONDS] | release TOKEN | status | clear | check [--lock TOKEN]" >&2; exit 2 ;;
+  esac
+}
+
 deploy() {
-  local out name
-  if [[ "${1:-}" == --staging ]]; then
-    local seed=""
-    if [[ "${2:-}" == --seed-tick-us ]]; then seed="${3:?usage: vm-deploy.sh deploy --staging --seed-tick-us MICROSECONDS}"; fi
+  local out name staging=false seed="" pinned="" repair=false
+  while (( $# )); do
+    case "$1" in
+      --staging) staging=true ;;
+      --seed-tick-us) seed="${2:?usage: vm-deploy.sh deploy --staging --seed-tick-us MICROSECONDS}"; shift ;;
+      --release) pinned="${2:?usage: vm-deploy.sh deploy --release NAME}"; shift ;;
+      --lock) lock_mine="${2:?usage: --lock TOKEN}"; shift ;;
+      --repair) repair=true ;;
+      *) echo "room-vm: deploy takes --staging [--seed-tick-us N] [--lock TOKEN], or --release NAME [--repair]" >&2; exit 2 ;;
+    esac
+    shift
+  done
+  if $staging; then
+    staging_free || exit 1
     out="$(stage)"; name="$(release_name ${seed:+seeded})"
     echo "room-vm: building $name on $vm${seed:+ (a seeded bad build: every tick $seed us longer; staging only)}"
     build_on_vm "$out" "$name" "$seed"
+    # a release that took staging while this one was building keeps it: this build stays off the unit
+    staging_free || { echo "room-vm: $name is built and not put on staging's unit" >&2; exit 1; }
     # the release staging ran before stays reachable: vm-deploy.sh rollback --staging
     on_vm "was=\$(readlink -f /opt/oa-room/staging || true); [ -z \"\$was\" ] || [ \"\$was\" = /opt/oa-room/releases/$name ] || sudo ln -sfn \"\$was\" /opt/oa-room/staging-previous
       sudo ln -sfn /opt/oa-room/releases/$name /opt/oa-room/staging && sudo systemctl enable oa-room@staging >/dev/null 2>&1; sudo systemctl restart oa-room@staging"
     wait_healthy staging
-    symbols "$name" || echo "room-vm: the release's symbols were not kept (vm-deploy.sh symbols $name tries again)" >&2
-    echo "room-vm: staging runs $name (https://$staging_host); vm-deploy.sh deploy promotes it"
+    [[ -n "$standin" ]] || symbols "$name" || echo "room-vm: the release's symbols were not kept (vm-deploy.sh symbols $name tries again)" >&2
+    echo "room-vm: staging runs $name (https://$staging_host); vm-deploy.sh deploy --release $name promotes it"
     return
   fi
-  name="$(promotable)"
-  local canary; canary="$(on_vm "cat /opt/oa-room/canary 2>/dev/null || true")"
+  name="$(promotable "$pinned")"
+  local canary cur prev verdict; canary="$(on_vm "cat /opt/oa-room/canary 2>/dev/null || true")"
+  cur="$(link_name current)"; prev="$(link_name previous)"
+  # the rollback target (rs_previous): the release this one replaces, unless that one was a mistake
+  verdict="$(gate previous-gate --current "$cur" --next "$name" --previous "$prev" $($repair && echo --repair) $(is_bad "$cur" && echo --bad))" || { echo "room-vm: the rollback target's rule did not run" >&2; exit 1; }
+  case "$verdict" in
+    replaced) on_vm "sudo ln -sfn /opt/oa-room/releases/$cur /opt/oa-room/previous" ;;
+    none) on_vm "sudo rm -f /opt/oa-room/previous" ;;
+  esac
   # every shard's binary is production's release again (a canary's link pointed at its own)
-  on_vm "cur=\$(readlink -f /opt/oa-room/current || true); [ -z \"\$cur\" ] || [ \"\$cur\" = /opt/oa-room/releases/$name ] || sudo ln -sfn \"\$cur\" /opt/oa-room/previous; sudo ln -sfn /opt/oa-room/releases/$name /opt/oa-room/current
+  on_vm "sudo ln -sfn /opt/oa-room/releases/$name /opt/oa-room/current
     for k in \$(seq 1 $shards); do sudo ln -sfn /opt/oa-room/current/room /opt/oa-room/bin/s\$k; done; sudo rm -f /opt/oa-room/canary"
   echo "room-vm: production's release is $name"
+  prev="$(link_name previous)"
+  case "$verdict" in
+    replaced) echo "room-vm: the rollback target is $prev, the release this one replaces" ;;
+    none) echo "room-vm: there is NO rollback target: the one before was $name itself. vm-deploy.sh previous NAME sets one" ;;
+    *) echo "room-vm: the rollback target stays ${prev:-unset}$($repair && echo " (--repair: $cur was a mistake)")$(is_bad "$cur" && echo " ($cur is marked bad)")" ;;
+  esac
   if [[ "$canary" == *" $name" ]]; then restart_shards "${canary%% *}"; else restart_shards; fi
 }
-# The release staging runs, when production may take it: named, healthy, and not a seeded bad build.
-promotable() {
-  local name
-  name="$(on_vm 'basename "$(readlink -f /opt/oa-room/staging)"')"
-  [[ -n "$name" ]] || { echo "room-vm: staging runs nothing: vm-deploy.sh deploy --staging first" >&2; exit 1; }
-  [[ "$name" != *-seeded ]] || { echo "room-vm: staging runs $name, a seeded bad build: production never takes one" >&2; exit 1; }
+link_name() { on_vm "[ -L /opt/oa-room/$1 ] && basename \"\$(readlink -f /opt/oa-room/$1)\" || true"; }
+is_bad() { [[ -n "$1" ]] && on_vm "grep -qxF '$1' /opt/oa-room/bad 2>/dev/null"; }
+# The release a promotion names, when production may take it (rs_promote, rs_rooms_beside): it is the
+# one staging runs now, staging is healthy, it is not a seeded bad build, and the live page's wire
+# version is inside the range it speaks.
+promotable() {   # PINNED
+  local pinned="${1:-}" name facts=()
+  name="$(link_name staging)"
+  [[ -z "$name" || "$name" =~ ^[A-Za-z0-9.+_-]+$ ]] || { echo "room-vm: staging's release has a name no release has: $name" >&2; exit 1; }
+  # the stand-in's facts: what staging's room and the live page say
+  if [[ -n "$standin" ]]; then facts=(--rooms-wire "$(cat "$standin/rooms-wire" 2>/dev/null || echo 5-6)" --page-wire "$(cat "$standin/page-wire" 2>/dev/null || echo 5)"); fi
+  gate promote-gate --release "$pinned" --staging-runs "$name" ${facts[@]+"${facts[@]}"} >&2 || {
+    [[ -n "$pinned" || -z "$name" ]] || echo "room-vm: to promote what staging runs now, and only that: vm-deploy.sh deploy --release $name" >&2
+    exit 1; }
   wait_healthy staging 10 >&2 || { echo "room-vm: staging isn't healthy: not promoting $name" >&2; exit 1; }
   echo "$name"
 }
@@ -319,9 +466,10 @@ promotable() {
 # Its unit's binary link points at that release; /opt/oa-room/canary says "K NAME" until `deploy`
 # brings the rest, or `canary-back` puts the shard back on production's.
 canary() {
-  local k="${1:?usage: vm-deploy.sh canary K}" name
+  local k="${1:?usage: vm-deploy.sh canary K --release NAME}" name pinned=""
   [[ "$k" =~ ^[1-9][0-9]?$ ]] && (( k <= shards )) || { echo "room-vm: no shard $k" >&2; exit 2; }
-  name="$(promotable)"
+  [[ "${2:-}" != --release ]] || pinned="${3:-}"
+  name="$(promotable "$pinned")"
   active "$k" || { echo "room-vm: shard $k is not running: no canary there" >&2; exit 1; }
   drain "$k" || exit 1
   on_vm "sudo ln -sfn /opt/oa-room/releases/$name/room /opt/oa-room/bin/s$k && echo '$k $name' | sudo tee /opt/oa-room/canary >/dev/null && sudo systemctl restart oa-room@s$k"
@@ -338,12 +486,31 @@ canary_back() {
   echo "room-vm: shard $k is back on production's release"
 }
 releases() {
-  on_vm 'for l in current previous staging staging-previous; do r=""; [ -L /opt/oa-room/$l ] && r="$(basename "$(readlink -f /opt/oa-room/$l)")"; printf "%s: %s\n" "$l" "$r"; done; printf "canary: %s\n" "$(cat /opt/oa-room/canary 2>/dev/null)"'
+  on_vm 'for l in current previous staging staging-previous; do r=""; [ -L /opt/oa-room/$l ] && r="$(basename "$(readlink -f /opt/oa-room/$l)")"; printf "%s: %s\n" "$l" "$r"; done; printf "canary: %s\n" "$(cat /opt/oa-room/canary 2>/dev/null)"; printf "bad: %s\n" "$(tr "\n" " " < /opt/oa-room/bad 2>/dev/null)"'
+}
+# The rollback target, set by name: a release on the VM that is not production's, not seeded, not marked bad.
+previous() {
+  local name="${1:?usage: vm-deploy.sh previous NAME}"
+  [[ "$name" =~ ^[A-Za-z0-9.+_-]+$ ]] || { echo "room-vm: no such release: $name" >&2; exit 2; }
+  on_vm "[ -x /opt/oa-room/releases/$name/room ] || [ -s /opt/oa-room/releases/$name/room ]" || { echo "room-vm: REFUSED. No release $name is on $vm (vm-deploy.sh releases lists the links)" >&2; exit 1; }
+  [[ "$name" != *-seeded ]] || { echo "room-vm: REFUSED. $name is a seeded bad build" >&2; exit 1; }
+  ! is_bad "$name" || { echo "room-vm: REFUSED. $name is marked bad" >&2; exit 1; }
+  [[ "$name" != "$(link_name current)" ]] || { echo "room-vm: REFUSED. $name is what production runs" >&2; exit 1; }
+  on_vm "sudo ln -sfn /opt/oa-room/releases/$name /opt/oa-room/previous"
+  echo "room-vm: the rollback target is $name"
+}
+mark_bad() {
+  local name="${1:?usage: vm-deploy.sh bad NAME}"
+  [[ "$name" =~ ^[A-Za-z0-9.+_-]+$ ]] || { echo "room-vm: no such release: $name" >&2; exit 2; }
+  on_vm "grep -qxF '$name' /opt/oa-room/bad 2>/dev/null || echo '$name' | sudo tee -a /opt/oa-room/bad >/dev/null"
+  echo "room-vm: $name is marked bad: never a rollback target"
 }
 
 rollback() {
   local prev
   if [[ "${1:-}" == --staging ]]; then
+    [[ "${2:-}" != --lock ]] || lock_mine="${3:-}"
+    staging_free || exit 1
     prev="$(on_vm 'readlink -f /opt/oa-room/staging-previous || true')"
     [[ -n "$prev" ]] || { echo "room-vm: no earlier staging release is recorded" >&2; exit 1; }
     # the release it leaves becomes the earlier one, unless it is a seeded bad build: nothing goes back to one
@@ -356,7 +523,10 @@ rollback() {
   fi
   prev="$(on_vm 'readlink -f /opt/oa-room/previous || true')"
   [[ -n "$prev" ]] || { echo "room-vm: no previous release is recorded" >&2; exit 1; }
+  ! is_bad "$(basename "$prev")" || { echo "room-vm: REFUSED. The rollback target $(basename "$prev") is marked bad (production went back from it before). vm-deploy.sh previous NAME sets another" >&2; exit 1; }
+  # the release it leaves is marked bad: no later promotion makes it the rollback target (#13398)
   on_vm "cur=\$(readlink -f /opt/oa-room/current); sudo ln -sfn $prev /opt/oa-room/current; sudo ln -sfn \"\$cur\" /opt/oa-room/previous
+    b=\$(basename \"\$cur\"); grep -qxF \"\$b\" /opt/oa-room/bad 2>/dev/null || echo \"\$b\" | sudo tee -a /opt/oa-room/bad >/dev/null
     for k in \$(seq 1 $shards); do sudo ln -sfn /opt/oa-room/current/room /opt/oa-room/bin/s\$k; done; sudo rm -f /opt/oa-room/canary"
   echo "room-vm: production's release is $(basename "$prev")"
   restart_shards
@@ -456,6 +626,9 @@ case "${1:-}" in
   canary) shift; canary "$@" ;;
   canary-back) canary_back ;;
   releases) releases ;;
+  previous) shift; previous "$@" ;;
+  bad) shift; mark_bad "$@" ;;
+  lock) shift; lock "$@" ;;
   switch) shift; switch "$@" ;;
   drain) shift; drain "${1:?usage: vm-deploy.sh drain K [SECONDS]}" "${2:-$drain_wait}" ;;
   kill) shift; u="${1:?usage: vm-deploy.sh kill K|staging}"; [[ "$u" == staging ]] || u="s$u"
@@ -467,5 +640,5 @@ case "${1:-}" in
   resolve) shift; resolve "$@" ;;
   setup) setup ;;
   status) status ;;
-  *) sed -n '2,34p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,67p' "$0" >&2; exit 2 ;;
 esac

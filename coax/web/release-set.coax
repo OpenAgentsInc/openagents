@@ -20,6 +20,10 @@
 //     the canary must stop it (the release's own check). --skip-api, --skip-page: that part is taken
 //     as moved (a release that changes only the rooms).
 //     A page whose wire version a live shard does not speak ships only this way, with its rooms.
+//     The release holds staging's lock from its first step to its last (vm-deploy.sh lock): nobody
+//     else deploys to staging's room or API meanwhile. Production takes the release the set put on
+//     staging, by name (vm-deploy.sh canary K --release NAME, deploy --release NAME): when staging
+//     runs anything else by then, the promotion is refused (#13398).
 //     It writes the set's record (its version, what each part ran before and after, which parts
 //     moved) under OA_PIPELINE_DIR/release-sets/ENV/, and prints it. Exits 0 when all three moved,
 //     1 when it stopped (the record says where).
@@ -37,6 +41,13 @@
 //     read (the same version ships; another does not). --wire N asks about another version than this
 //     checkout's (a question only: release.sh never passes it). Exits 0 when the page may ship, 1
 //     when it may not (each shard that does not speak it is named, with both versions).
+//   coax/web/tool.sh release-set promote-gate --release NAME --staging-runs NAME [--rooms-wire A-B] [--page-wire N]
+//   coax/web/tool.sh release-set lock-gate --held 0|1 --token T --mine T --now S --until S --same-host 0|1 --alive 0|1
+//   coax/web/tool.sh release-set previous-gate --current NAME --next NAME --previous NAME [--repair] [--bad]
+//     The rules vm-deploy.sh asks (release-set-policy.coax): whether a promotion may go (exit 0 or 1,
+//     with why; the rooms' wire range and the live page's version are read unless given), a lock's
+//     state (free, mine, stale or held), and what a promotion does to the rollback target (keep,
+//     replaced or none).
 // tool.sh: tls
 // tool.sh: run-steps 250000000
 #import "Basic";
@@ -328,6 +339,34 @@ rl_ship :: (a: [] Args) -> int {
   vn := sr_put(vb[..], 0, head[0..<10]); vn = sr_put(vb[..], vn, "."); vn = sr_int(vb[..], vn, t);
   version := cast(string) vb[0..<vn];
   print("release set %: % (%)\n", version, head[0..<10], e.name);
+  // staging is this release's from here to its end
+  lk: [1] Rl;
+  if !rl_lock_take(version, lk[..]) {
+    print("release set %: STOPPED before anything moved: staging is held by another release (coax/web/room/vm-deploy.sh lock status)\n", version);
+    return 1;
+  }
+  st := rl_ship_locked(a, e, head, version, rl_text(lk[..]));
+  rl_lock_release(rl_text(lk[..]));
+  return st;
+}
+// The lock on staging (vm-deploy.sh lock): taken for the set `version`, its token into t. This
+// program is the lock's process: when it is gone, the lock is stale.
+rl_lock_take :: (version: string, t: [] Rl) -> bool {
+  out: [4096] u8; got: [1] int; h: [1] Rl; rl_s(h[..], "release-set "); rl_s(h[..], version);
+  ub: [64] u8; user := proc_getenv("USER", ub[..]); if user.count > 0 { rl_s(h[..], " by "); rl_s(h[..], user); }
+  c := [4] string.["coax/web/room/vm-deploy.sh", "lock", "take", rl_text(h[..])];
+  if rl_run(c[..], 300, out[..], got[..]) != 0 { return false; }
+  rl_s(t, rl_line(cast(string) out[0..<got[0]], "lock-token", ' '));
+  return t[0].n > 0;
+}
+rl_lock_release :: (token: string) {
+  out: [4096] u8; got: [1] int;
+  c := [4] string.["coax/web/room/vm-deploy.sh", "lock", "release", token];
+  if rl_run(c[..], 300, out[..], got[..]) != 0 { print("release-set: staging's lock was not released; coax/web/room/vm-deploy.sh lock status\n"); }
+}
+rl_ship_locked :: (a: [] Args, e: RlEnv, head: string, version: string, lock: string) -> int {
+  out: [RL_OUT] u8; got: [1] int;
+  seed := args_value(a, "--seed-tick-us", "");
   rec: [1] Rl; rl_s(rec[..], "set "); rl_s(rec[..], version); rl_s(rec[..], "\nenv "); rl_s(rec[..], e.name); rl_s(rec[..], "\ncommit "); rl_s(rec[..], head); rl_s(rec[..], "\n");
   moved := 0;
   // ---- the API
@@ -337,8 +376,8 @@ rl_ship :: (a: [] Args) -> int {
   else if has_api && cast(string) api[0].build[0..<api[0].build_n] == head { print("  api: already runs %\n", head[0..<10]); }
   else {
     print("  api: % runs %; deploying\n", e.service, ifx has_api then cast(string) api[0].build[0..<api[0].build_n] else "nothing we can read");
-    d := [2] string.["coax/web/api/deploy.sh", "--staging"];
-    st := rl_run(ifx e.staging then d[..] else d[0..<1], 7200, out[..], got[..]);
+    d := [4] string.["coax/web/api/deploy.sh", "--lock", lock, "--staging"];
+    st := rl_run(ifx e.staging then d[..] else d[0..<3], 7200, out[..], got[..]);
     after: [1] RlApi;
     if st != 0 || !rl_api(e, after[..]) || cast(string) after[0].build[0..<after[0].build_n] != head {
       print("release set %: STOPPED at the api (status %): nothing after it moved\n", version, st);
@@ -361,8 +400,8 @@ rl_ship :: (a: [] Args) -> int {
   print("  rooms: the bots on staging's shard as it is (% players, % s): the others' numbers\n", players, seconds);
   if !rl_bots(st_env, players, seconds, rl_text(fa[..]), others[..]) { others[0] = RsShard.{}; print("  rooms: the bots left no record of the shard as it is: the canary is judged by itself\n"); }
   print("  rooms: staging takes the new room%\n", ifx seed.count > 0 then " (a seeded bad build)" else "");
-  dr := [5] string.["coax/web/room/vm-deploy.sh", "deploy", "--staging", "--seed-tick-us", seed];
-  st := rl_run(ifx seed.count > 0 then dr[..] else dr[0..<3], 3600, out[..], got[..]);
+  dr := [7] string.["coax/web/room/vm-deploy.sh", "deploy", "--staging", "--lock", lock, "--seed-tick-us", seed];
+  st := rl_run(ifx seed.count > 0 then dr[..] else dr[0..<5], 3600, out[..], got[..]);
   if st != 0 {
     print("release set %: STOPPED at the rooms: staging did not take the new room (status %)\n", version, st);
     rl_s(rec[..], "moved 1\nstopped rooms\n"); w := rl_record(e, version, rl_text(rec[..])); return 1;
@@ -377,7 +416,7 @@ rl_ship :: (a: [] Args) -> int {
         canary[0].ticks_ds, others[0].ticks_ds, canary[0].refused_ds, others[0].refused_ds, canary[0].seated, others[0].seated, canary[0].crashes);
   if bits != 0 {
     print("release set %: STOPPED at the canary: %. Staging goes back to its room; nothing after it moved\n", version, rs_c_words(bits, wb[..]));
-    back := [3] string.["coax/web/room/vm-deploy.sh", "rollback", "--staging"];
+    back := [5] string.["coax/web/room/vm-deploy.sh", "rollback", "--staging", "--lock", lock];
     bs := rl_run(back[..], 900, out[..], got[..]);
     rl_s(rec[..], "moved 1\nstopped canary "); rl_s(rec[..], rs_c_words(bits, wb[..])); rl_s(rec[..], "\n"); w := rl_record(e, version, rl_text(rec[..]));
     return 1;
@@ -388,10 +427,11 @@ rl_ship :: (a: [] Args) -> int {
     if k < 1 || k > e.shards { tool_errln("release-set: no shard could be read for a canary"); rl_s(rec[..], "moved 1\nstopped canary unread\n"); w := rl_record(e, version, rl_text(rec[..])); return 1; }
     kb: [8] u8; ks := cast(string) kb[0..<sr_int(kb[..], 0, k)];
     print("  rooms: production's shard % takes the new room first\n", k);
-    cn := [3] string.["coax/web/room/vm-deploy.sh", "canary", ks];
+    // the release this set staged and its canary ran, by name: vm-deploy.sh refuses when staging runs anything else by now (#13398)
+    cn := [5] string.["coax/web/room/vm-deploy.sh", "canary", ks, "--release", rl_text(now_rel[..])];
     if rl_run(cn[..], 1800, out[..], got[..]) != 0 {
       back := [2] string.["coax/web/room/vm-deploy.sh", "canary-back"]; bs := rl_run(back[..], 900, out[..], got[..]);
-      print("release set %: STOPPED at the canary: shard % did not take the new room; it is back on production's\n", version, k);
+      print("release set %: STOPPED at the canary: shard % did not take % (refused, or not healthy); it is on production's room\n", version, k, rl_text(now_rel[..]));
       rl_s(rec[..], "moved 1\nstopped canary unhealthy\n"); w := rl_record(e, version, rl_text(rec[..])); return 1;
     }
     pc: [1] RsShard; po: [1] RsShard;
@@ -406,9 +446,9 @@ rl_ship :: (a: [] Args) -> int {
       rl_s(rec[..], "moved 1\nstopped canary "); rl_s(rec[..], rs_c_words(pbits, wb[..])); rl_s(rec[..], "\n"); w := rl_record(e, version, rl_text(rec[..])); return 1;
     }
     print("  rooms: the canary holds; the other shards follow\n");
-    pr := [2] string.["coax/web/room/vm-deploy.sh", "deploy"];
+    pr := [4] string.["coax/web/room/vm-deploy.sh", "deploy", "--release", rl_text(now_rel[..])];
     if rl_run(pr[..], 7200, out[..], got[..]) != 0 {
-      print("release set %: STOPPED in the rooms: a shard did not come back healthy. release-set rollback moves the rooms and the API back\n", version);
+      print("release set %: STOPPED in the rooms: the promotion of % was refused, or a shard did not come back healthy. coax/web/room/vm-deploy.sh releases shows what runs; release-set rollback moves the rooms and the API back\n", version, rl_text(now_rel[..]));
       rl_s(rec[..], "rooms-after "); rl_s(rec[..], rl_text(now_rel[..])); rl_s(rec[..], "\nmoved 3\nstopped rooms\n"); w := rl_record(e, version, rl_text(rec[..])); return 1;
     }
   }
@@ -534,8 +574,18 @@ rl_status :: (a: [] Args) -> int {
     note := ifx rs_pins_match(RsPins.{engine = mine.engine, rules = mine.rules, content = mine.content, wire_lo = WIRE_VERSION, wire_hi = WIRE_VERSION}, p[0]) then "" else " (not this checkout's page)";
     print("shard % engine % rules % content % wire %-%", q, p[0].engine, p[0].rules, p[0].content, p[0].wire_lo, p[0].wire_hi); print("%\n", note);
   }
-  one := has && rel.count >= 10 && build.count == 40 && cast(string) api[0].build[0..<10] == rel[0..<10] && build[0..<10] == rel[0..<10];
-  print("%\n", ifx one then "one set: the API, the rooms and the page run the same commit" else "not one set: the three parts run different commits");
+  // one set (rs_one_set): the rooms and the page on one commit, and the API on it or on a later commit that contains it
+  read := has && rel.count >= 10 && build.count == 40 && api[0].build_n >= 10;
+  rooms_is_page := read && build[0..<10] == rel[0..<10];
+  api_is := read && cast(string) api[0].build[0..<10] == rel[0..<10];
+  api_contains := false;
+  if read && rooms_is_page && !api_is {
+    gb: [1024] u8; gg: [1] int;
+    g := [5] string.["git", "merge-base", "--is-ancestor", build, cast(string) api[0].build[0..<api[0].build_n]];
+    api_contains = rl_run(g[..], 60, gb[..], gg[..]) == 0;
+  }
+  one := rs_one_set(read, rooms_is_page, api_is, api_contains);
+  print("%\n", rs_set_word(one, api_is, rooms_is_page));
   return ifx one then 0 else 1;
 }
 
@@ -570,6 +620,85 @@ rl_page_wire :: (a: [] Args) -> int {
   return 1;
 }
 
+// ---- the rules vm-deploy.sh asks (#13398)
+// The wire version the page production serves speaks: its build from /status/, and that commit's
+// WIRE_VERSION. 0 when either can't be read.
+rl_live_page_wire :: () -> int {
+  e := rl_env(false); body: [RL_OUT] u8;
+  u: [1] Rl; rl_s(u[..], e.api); rl_s(u[..], "/status/");
+  page := rl_get(rl_text(u[..]), body[..]); build := ""; mark := "data-text=\"build ";
+  for i: 0..<page.count - mark.count - 40 { if page[i..<i + mark.count] == mark { build = page[i + mark.count..<i + mark.count + 40]; break; } }
+  if build.count != 40 { return 0; }
+  out: [4096] u8; got: [1] int;
+  g := [7] string.["git", "grep", "-h", "^WIRE_VERSION :: ", build, "--", "everglade/shared/everglade-wire.coax"];
+  if rl_run(g[..], 60, out[..], got[..]) != 0 { return 0; }
+  return rl_wire_const(cast(string) out[0..<got[0]]);
+}
+// The number in "WIRE_VERSION :: N;...": 0 when the line is not that.
+rl_wire_const :: (line: string) -> int {
+  mark := "WIRE_VERSION :: ";
+  if !rl_starts(line, mark) { return 0; }
+  n := 0; at := mark.count; any := false;
+  while at < line.count && line[at] >= '0' && line[at] <= '9' { n = n * 10 + cast(int) (line[at] - '0'); at += 1; any = true; }
+  return ifx any && at < line.count && line[at] == ';' then n else 0;
+}
+// "A-B" as two whole numbers; false when it is not that.
+rl_range :: (t: string, v: [] int) -> bool {
+  at := 0; v[0] = 0; v[1] = 0;
+  for q: 0..<2 {
+    any := false;
+    while at < t.count && t[at] >= '0' && t[at] <= '9' { v[q] = v[q] * 10 + cast(int) (t[at] - '0'); at += 1; any = true; }
+    if !any { return false; }
+    if q == 0 { if at >= t.count || t[at] != '-' { return false; } at += 1; }
+  }
+  return at == t.count;
+}
+#test "a wire version from its line, and a range from A-B" {
+  #assert rl_wire_const("WIRE_VERSION :: 6;   // 6: rows\n") == 6 && rl_wire_const("WIRE_VERSION :: 12;") == 12 && rl_wire_const("WIRE_VERSION :: ;") == 0 && rl_wire_const("WIRE_VERSION :: 6") == 0 && rl_wire_const("WIRE_MIN :: 5;") == 0 && rl_wire_const("") == 0;
+  v: [2] int;
+  #assert rl_range("5-6", v[..]) && v[0] == 5 && v[1] == 6 && rl_range("10-12", v[..]) && v[0] == 10 && v[1] == 12;
+  #assert !rl_range("5", v[..]) && !rl_range("5-", v[..]) && !rl_range("-6", v[..]) && !rl_range("5-6x", v[..]) && !rl_range("", v[..]) && !rl_range("a-b", v[..]);
+}
+rl_promote_gate :: (a: [] Args) -> int {
+  pinned := args_value(a, "--release", ""); staging := args_value(a, "--staging-runs", "");
+  why := rs_promote(pinned, staging);
+  if why != RS_P_OK {
+    print("promote: REFUSED. %. Staging runs %; this promotion names %. Nothing in production changed\n", rs_p_word(why), ifx staging.count > 0 then staging else "nothing", ifx pinned.count > 0 then pinned else "no release");
+    return 1;
+  }
+  // the rooms' range: staging's unit runs the release
+  w: [2] int; given := args_value(a, "--rooms-wire", "");
+  if given.count > 0 { if !rl_range(given, w[..]) { tool_errln("release-set: --rooms-wire A-B"); return 2; } }
+  else {
+    p: [1] RsPins; body: [32768] u8; read := false;
+    for round: 0..<3 { if rl_pins(rl_vitals(rl_env(true), 1, body[..]), p[..]) { read = true; break; } if round < 2 { proc_sleep(1000); } }
+    if read { w[0] = p[0].wire_lo; w[1] = p[0].wire_hi; }
+  }
+  page := 0; pg := args_value(a, "--page-wire", "");
+  if pg.count > 0 { page = sr_num(pg).v; } else { page = rl_live_page_wire(); }
+  if !rs_rooms_beside(page, w[0], w[1]) {
+    if w[0] <= 0 { print("promote: REFUSED. The wire versions % speaks could not be read from staging's room. Nothing in production changed\n", pinned); }
+    else { print("promote: REFUSED. % speaks wire % to %, and the page production serves speaks wire %: every player on it would be refused. Release the version between first (docs/protocol/everglade-previous-wire.md). Nothing in production changed\n", pinned, w[0], w[1], page); }
+    return 1;
+  }
+  if page > 0 { print("promote: % is what staging runs; it speaks wire % to %, and the live page speaks %\n", pinned, w[0], w[1], page); }
+  else { print("promote: % is what staging runs; it speaks wire % to %. The live page's version could not be read: not held against it\n", pinned, w[0], w[1]); }
+  return 0;
+}
+rl_lock_gate :: (a: [] Args) -> int {
+  state := rs_lock(args_value(a, "--held", "0") == "1", args_value(a, "--token", ""), args_value(a, "--mine", ""), sr_num(args_value(a, "--now", "0")).v,
+                   sr_num(args_value(a, "--until", "0")).v, args_value(a, "--same-host", "0") == "1", args_value(a, "--alive", "0") == "1");
+  words := [4] string.["free", "mine", "stale", "held"];
+  print("%\n", words[state]);
+  return 0;
+}
+rl_previous_gate :: (a: [] Args) -> int {
+  v := rs_previous(args_value(a, "--current", ""), args_value(a, "--next", ""), args_value(a, "--previous", ""), args_has(a, "--repair"), args_has(a, "--bad"));
+  words := [3] string.["keep", "replaced", "none"];
+  print("%\n", words[v]);
+  return 0;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh release-set ship|rollback|status|page-wire [--staging] ..."); return 2; }
@@ -578,6 +707,9 @@ tool_main :: () -> int #export_c #effects(all) {
   if cmd == "rollback" { return rl_rollback(a[..]); }
   if cmd == "status" { return rl_status(a[..]); }
   if cmd == "page-wire" { return rl_page_wire(a[..]); }
+  if cmd == "promote-gate" { return rl_promote_gate(a[..]); }
+  if cmd == "lock-gate" { return rl_lock_gate(a[..]); }
+  if cmd == "previous-gate" { return rl_previous_gate(a[..]); }
   tool_errln("release-set: ship, rollback, status or page-wire");
   return 2;
 }
