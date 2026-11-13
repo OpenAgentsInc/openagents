@@ -34,7 +34,7 @@ mcp_schema_kind :: (o: [] Jo, kind: string) {
   jo_obj(o);
   b := rc_bound(kind);
   if kind == "bool" { jo_key(o, "type"); jo_str(o, "boolean"); }
-  else if kind == "id" || kind == "waitms" || kind == "cm" || kind == "value" || kind == "kind" || kind == "foe" || kind == "speed" || kind == "notice" {
+  else if kind == "id" || kind == "waitms" || kind == "cm" || kind == "value" || kind == "kind" || kind == "foe" || kind == "speed" || kind == "notice" || kind == "place" {
     jo_key(o, "type"); jo_str(o, "integer"); jo_key(o, "minimum"); jo_int(o, b.min); jo_key(o, "maximum"); jo_int(o, b.max);
   } else if kind == "seconds" {
     jo_key(o, "type"); jo_str(o, "integer"); jo_key(o, "minimum"); jo_int(o, b.min); jo_key(o, "maximum"); jo_int(o, b.max);
@@ -359,10 +359,14 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
   #assert acct_has(s, "\"name\":\"realm_go\"") && acct_has(s, "\"x\":{\"type\":\"number\",\"minimum\":-40,\"maximum\":40},\"z\":{\"type\":\"number\",\"minimum\":-40,\"maximum\":40},\"max\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":30},\"dry_run\":{\"type\":\"boolean\"},\"key\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":64}},\"required\":[\"slug\"]");
   #assert acct_has(s, "\"words\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":400},\"dry_run\":{\"type\":\"boolean\"},\"key\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":64}},\"required\":[\"slug\",\"words\"]");
   #assert acct_has(s, "\"required\":[\"slug\",\"tool\"]");
+  // a world's realm scripts (#13467): a row's place a whole number, a hash its 64 digits
+  #assert acct_has(s, "\"name\":\"realm_world_script_run\"") && acct_has(s, "\"place\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":8}") && acct_has(s, "\"script\":{\"type\":\"string\",\"minLength\":64,\"maxLength\":64}");
+  #assert acct_has(s, "\"name\":\"realm_world_script_compile\"") && acct_has(s, "\"name\":\"realm_world_script_put\"") && acct_has(s, "\"name\":\"realm_world_script_report\"") && acct_has(s, "\"confirm\":{\"type\":\"string\",\"minLength\":64,\"maxLength\":519}");
   cfg.read_only = true;
   s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", cfg, out[..], false);
   #assert acct_has(s, "\"name\":\"realm_show\"") && acct_has(s, "\"name\":\"realm_shot\"") && !acct_has(s, "\"name\":\"realm_move\"") && !acct_has(s, "realm_apply");
   #assert acct_has(s, "\"name\":\"realm_play\"") && acct_has(s, "\"name\":\"realm_go\"") && !acct_has(s, "\"name\":\"realm_say\"") && !acct_has(s, "\"name\":\"realm_use\"");
+  #assert acct_has(s, "\"name\":\"realm_world_scripts\"") && !acct_has(s, "\"name\":\"realm_world_script_run\"") && !acct_has(s, "\"name\":\"realm_world_script_put\"");
   #assert acct_has(mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_move\",\"arguments\":{}}}", cfg, out[..], false), "unknown tool");
 }
 #test "mcp: a call becomes the command's own argv" {
@@ -387,6 +391,8 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
   #assert acct_has(s, "realm say g hello there --json");
   s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":13,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_use\",\"arguments\":{\"slug\":\"g\",\"tool\":\"build\",\"thing\":\"barrel\"}}}", cfg, out[..], false);
   #assert acct_has(s, "realm use g build barrel --json");
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":14,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_world_script_run\",\"arguments\":{\"slug\":\"splice\",\"script\":\"528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5\",\"name\":\"pacer\",\"for\":\"kind 1\",\"place\":2}}}", cfg, out[..], false);
+  #assert acct_has(s, "realm world-script-run splice --script 528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5 --name pacer --for kind 1 --place 2 --json");
 }
 
 // The server: one request a line on stdin, one answer a line on stdout, until stdin ends.

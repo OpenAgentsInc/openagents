@@ -1,0 +1,143 @@
+// A world's realm scripts through the built CLI (GitHub #13467): an agent's commands against
+// test.sh's throwaway Postgres and API. It lists the world's scripts, stores a built module with its
+// state fields, runs it as a row of the world's scripts table, publishes (refused with the command that
+// confirms the script, then confirmed), reports it, and compiles a source when SCRIPT_JOB_READY says
+// this machine has the Wasm toolchain. Each step is read back from the database the API writes.
+// The CLI signs with the throwaway admin's key (ADMIN_KEY), passed only in its environment.
+//   CLI=apps/openagents-cli/build/openagents API=... PGURL=... PSQL=... SIGN=... ADMIN_KEY=... \
+//     coax/web/tool.sh coax/web/api/tests/script_cli_checks.coax
+// tool.sh: stack-gib 1
+#load "api_harness.coax";
+#load "../../../../metaverse-engine/script/store.coax";
+#load "../../../../metaverse-engine/script/wasm-make.coax";
+
+SC_OUT :: 65536;
+Sc :: struct {
+  cli: string; key_env: [160] u8; key_n: int; dir: string;
+  out: [SC_OUT] u8; n: int; status: int;
+  nodes: [4096] JvNode; d: [1] Jv; word: [SC_OUT] u8;
+}
+// The built CLI with --json --origin API, the admin's key only in its environment: its exit status
+// (-1 when it did not finish), its output in c.out. Output is never echoed but on a failed check.
+sc_cli :: (t: [] Ap, c: [] Sc, words: [] string) -> int {
+  c[0].n = 0; c[0].status = -1;
+  h := proc_new(); if h < 0 { return -1; }
+  ok := proc_arg(h, c[0].cli) && proc_env(h, "OPENAGENTS_KEYCHAIN=0") && proc_env(h, cast(string) c[0].key_env[0..<c[0].key_n]);
+  for w: words { ok = ok && proc_arg(h, w); }
+  ok = ok && proc_arg(h, "--json") && proc_arg(h, "--origin") && proc_arg(h, t[0].api);
+  if !ok || proc_start(h) != 0 { done := proc_release(h); return -1; }
+  until := proc_now_ms() + 60000; line: [SC_OUT] u8; complete := false;
+  while proc_now_ms() < until {
+    n := proc_line(h, 10, line[..]);
+    if n == PROC_EOF { complete = true; break; }
+    if n == PROC_TIMEOUT { continue; }
+    if n < 0 || c[0].n + n + 1 > SC_OUT { break; }
+    if c[0].n > 0 { c[0].out[c[0].n] = '\n'; c[0].n += 1; }
+    for i: 0..<n { c[0].out[c[0].n + i] = line[i]; } c[0].n += n;
+  }
+  if !complete { killed := proc_kill(h, PROC_SIGKILL); }
+  c[0].status = proc_wait(h, 2000); done := proc_release(h);
+  return ifx complete then c[0].status else -1;
+}
+sc_text :: (c: [] Sc) -> string { return cast(string) c[0].out[0..<c[0].n]; }
+// A member of the CLI's JSON answer as text (a string's value, else its raw JSON); "" when none.
+sc_get :: (c: [] Sc, key: string) -> string {
+  if !jv_parse(c[0].d[..], sc_text(c), c[0].nodes[..]) { return ""; }
+  at := jv_get(c[0].d[0], 0, key);
+  if at < 0 { return ""; }
+  n := jv_str(c[0].d[0], at, c[0].word[..]);
+  return ifx n >= 0 then cast(string) c[0].word[0..<n] else jv_raw(c[0].d[0], at);
+}
+sc_ok :: (c: [] Sc) -> bool { return jv_parse(c[0].d[..], sc_text(c), c[0].nodes[..]) && jv_bool(c[0].d[0], jv_get(c[0].d[0], 0, "ok")); }
+sc_file :: (c: [] Sc, name: string, bytes: string, out: [] u8) -> string {
+  path := fs_join(c[0].dir, name, out);
+  return ifx path != "" && fs_write(path, bytes) then path else "";
+}
+// The manifest coax/web/script.sh writes beside NAME.wasm, as the CLI's --fields reads it.
+sc_manifest :: (out: [] u8) -> string {
+  m := ScriptManifest.{ok = true, bytes = 1234, pages = 1, state = 16, slots = 1, handlers = 1, powers = 3, calls = (1 << SA_X) | (1 << SA_MOVE)};
+  name := "pacer"; for ch, i: name { m.name[i] = ch; } m.name_n = name.count;
+  for i: 0..<64 { m.hash[i] = '0'; }
+  f: ScriptField; fn := "turn_at"; ft := "f32";
+  for ch, i: fn { f.name[i] = ch; } f.name_n = cast(s32) fn.count; for ch, i: ft { f.type[i] = ch; } f.type_n = cast(s32) ft.count; f.at = 4; f.size = 4;
+  m.layout.fields[0] = f; m.layout.n = 1;
+  return sm_write(m, out);
+}
+
+sc_checks :: (t: [] Ap, c: [] Sc, compiles: bool) {
+  q: [400] u8; e: [1] Sb;
+  ra := [2] int.[SA_X, SA_MOVE]; nothing := WB_NOTHING; echo := WB_ECHO;
+  mod: [2048] u8; mn := wb_module(mod[..], ra[..], nothing[..], 0, echo[..]);
+  hb: [64] u8; made := mn > 0 && S_hex(S_hash(cast(string) mod[0..<mn]), hb[..]);
+  ha := cast(string) hb[..];
+  pb: [1024] u8; fb: [1024] u8; bb: [1024] u8; mt: [SM_TEXT] u8;
+  wasm := sc_file(c, "pacer.wasm", cast(string) mod[0..<mn], pb[..]);
+  fields := sc_file(c, "pacer.json", sc_manifest(mt[..]), fb[..]);
+  bad := sc_file(c, "cut.wasm", cast(string) mod[0..<mn - 3], bb[..]);
+  ap_do(t, "DELETE FROM verse.script_reports; DELETE FROM verse.script_off; DELETE FROM verse.world_scripts WHERE world = 'splice'; DELETE FROM verse.world_outbox WHERE world = 'splice'; DELETE FROM verse.world_steps WHERE world = 'splice'; DELETE FROM verse.world_docs WHERE id = 'splice'; INSERT INTO verse.world_docs (id, kind) VALUES ('splice', 'splice'); DELETE FROM auth.limit_counts WHERE name LIKE 'script-%';");
+  // ---- the list
+  list := [3] string.["realm", "world-scripts", "splice"];
+  st := sc_cli(t, c, list[..]);
+  ap_check(t, "cli scripts: world-scripts reads a world with none: no script, and the limits", made && wasm != "" && fields != "" && bad != "" && st == 0 && sc_ok(c) && sc_get(c, "count") == "0" && ap_has(sc_get(c, "limits"), "\"scripts\":8"), sc_text(c));
+  // ---- storing a built module with its state fields
+  put := [7] string.["realm", "world-script-put", "splice", wasm, "--name", "pacer", "--fields"];
+  putf := [8] string.["realm", "world-script-put", "splice", wasm, "--name", "pacer", "--fields", fields];
+  st = sc_cli(t, c, putf[..]);
+  ap_check(t, "cli scripts: world-script-put stores the module with the manifest's state fields, and says the run command", st == 0 && sc_ok(c) && sc_get(c, "hash") == ha && sc_get(c, "calls") == "sa_x, sa_move" && ap_has(sc_get(c, "next"), "world-script-run splice --script") && ap_sql(t, "SELECT count(*) || ' ' || max(hash) || ' ' || bool_or(manifest::text LIKE '%turn_at%')::text FROM verse.world_scripts WHERE world = 'splice'", q[..]) == sb_text_of3(e[..], "1 ", ha, " true"), sc_text(c));
+  st = sc_cli(t, c, list[..]);
+  ap_check(t, "cli scripts: world-scripts lists it, on and with no source", st == 0 && sc_get(c, "count") == "1" && ap_has(sc_get(c, "scripts"), ha) && ap_has(sc_get(c, "scripts"), "\"off\":false,\"why\":\"\",\"source\":false"), sc_text(c));
+  cut := [6] string.["realm", "world-script-put", "splice", bad, "--name", "pacer"];
+  st = sc_cli(t, c, cut[..]);
+  ap_check(t, "cli scripts: a module the check refuses fails with the refusal's words, code and byte, and nothing more is stored", st > 0 && !sc_ok(c) && sc_get(c, "status") == "422" && sc_get(c, "code") == "engine.diagnostic.script-refused-module.v1" && ap_has(sc_get(c, "error"), " at byte ") && ap_sql(t, "SELECT count(*) FROM verse.world_scripts", q[..]) == "1", sc_text(c));
+  st = sc_cli(t, c, put[0..<6]);
+  ap_check(t, "cli scripts: storing the same bytes again answers the same manifest", st == 0 && sc_get(c, "hash") == ha, sc_text(c));
+  // ---- running it: a row of the world's scripts table, through the world's edit route
+  run := [10] string.["realm", "world-script-run", "splice", "--script", ha, "--name", "pacer", "--for", "kind 1", "--dry-run"];
+  st = sc_cli(t, c, run[..]);
+  ap_check(t, "cli scripts: world-script-run --dry-run saves nothing", st == 0 && sc_ok(c) && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "0", sc_text(c));
+  st = sc_cli(t, c, run[0..<9]);
+  ap_check(t, "cli scripts: world-script-run sets the world's first free scripts row, one revision", st == 0 && sc_ok(c) && sc_get(c, "rev") == "1" && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "1", sc_text(c));
+  st = sc_cli(t, c, run[0..<9]);
+  ap_check(t, "cli scripts: running it again changes nothing and sends nothing", st == 0 && sc_ok(c) && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "1", sc_text(c));
+  // ---- publishing: asked about the new script, then confirmed
+  pub := [6] string.["realm", "world-publish", "splice", "now", "--yes", "--confirm"];
+  st = sc_cli(t, c, pub[0..<5]);
+  confirm := sc_get(c, "confirm");
+  ap_check(t, "cli scripts: a publish that adds a script fails, says what it adds and the command that confirms it", st > 0 && !sc_ok(c) && ap_has(sc_get(c, "asks"), "\"name\":\"pacer\"") && ap_has(confirm, sb_text_of3(e[..], "world-publish splice now --confirm ", ha, " --yes")) && ap_sql(t, "SELECT live_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "0", sc_text(c));
+  pubc := [7] string.["realm", "world-publish", "splice", "now", "--yes", "--confirm", ha];
+  st = sc_cli(t, c, pubc[..]);
+  ap_check(t, "cli scripts: world-publish --confirm HASH publishes it", st == 0 && sc_ok(c) && ap_sql(t, "SELECT live_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "1", sc_text(c));
+  // ---- reporting
+  rep := [7] string.["realm", "world-script-report", "splice", ha, "--why", "it strikes players at the gate", "--yes"];
+  st = sc_cli(t, c, rep[0..<6]);
+  asked := st > 0 && ap_sql(t, "SELECT count(*) FROM verse.script_reports", q[..]) == "0";
+  st = sc_cli(t, c, rep[..]);
+  ap_check(t, "cli scripts: world-script-report asks for --yes, then reports the script with the reason", asked && st == 0 && sc_ok(c) && sc_get(c, "reported") == ha && ap_sql(t, "SELECT count(*) || ' ' || max(status) || ' ' || max(why) FROM verse.script_reports", q[..]) == "1 open it strikes players at the gate", sc_text(c));
+  // ---- compiling a source
+  comp := [6] string.["realm", "world-script-compile", "splice", "metaverse-engine/script/examples/pacer.coax", "--name", "pacer"];
+  st = sc_cli(t, c, comp[..]);
+  if !compiles {
+    ap_check(t, "cli scripts: world-script-compile on a server with no compile job fails with the code no-compiler (this machine has no Wasm toolchain)", st > 0 && sc_get(c, "code") == "engine.diagnostic.script-no-compiler.v1", sc_text(c));
+    return;
+  }
+  ap_check(t, "cli scripts: world-script-compile compiles the source on the server, stores it and answers its manifest", st == 0 && sc_ok(c) && sc_get(c, "stored") == "pacer" && sc_get(c, "handlers") == "on_tick, on_hit" && ap_sql(t, "SELECT count(*) FROM verse.world_scripts WHERE source IS NOT NULL", q[..]) == "1", sc_text(c));
+}
+sb_text_of3 :: (s: [] Sb, a: string, b: string, c: string) -> string { sb_clear(s); sb(s, a); sb(s, b); sb(s, c); return sb_text(s); }
+
+tool_main :: () -> int #export_c #effects(all) {
+  t: [1] Ap; c := [1] Sc.[Sc.{}];
+  if !ap_open(t[..]) { return 2; }
+  b1: [1024] u8; c[0].cli = proc_getenv("CLI", b1[..]);
+  if c[0].cli == "" { c[0].cli = "apps/openagents-cli/build/openagents"; }
+  if t[0].admin_key == "" || fs_kind(c[0].cli) != FS_FILE { tool_errln("script cli checks: ADMIN_KEY comes from coax/web/api/test.sh, and CLI is the built CLI (apps/openagents-cli/build.sh --cli)"); return 2; }
+  kb: [128] u8; kn := fs_read(t[0].admin_key, kb[..]);
+  if kn < 64 { tool_errln("script cli checks: ADMIN_KEY holds no key"); return 2; }
+  pre := "OPENAGENTS_NSEC="; for ch, i: pre { c[0].key_env[i] = ch; } c[0].key_n = pre.count;
+  for i: 0..<64 { c[0].key_env[c[0].key_n] = kb[i]; c[0].key_n += 1; kb[i] = 0; }
+  db: [1024] u8; c[0].dir = fs_temp("script-cli", db[..]);
+  if c[0].dir == "" { tool_errln("script cli checks: no temporary directory"); return 2; }
+  rb: [16] u8;
+  sc_checks(t[..], c[..], proc_getenv("SCRIPT_JOB_READY", rb[..]) == "1");
+  ob: [1024] u8; gone := fs_remove(fs_join(c[0].dir, "pacer.wasm", ob[..])) && fs_remove(fs_join(c[0].dir, "pacer.json", ob[..])) && fs_remove(fs_join(c[0].dir, "cut.wasm", ob[..])) && fs_remove(c[0].dir);
+  return ap_done(t[..], "script cli checks");
+}

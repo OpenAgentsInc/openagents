@@ -420,7 +420,7 @@ cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool #effects(all) {
 #load "../../coax/lib/sys/args.coax";
 
 #test "the realm catalogue covers reads and revisioned writes with unique verbs" {
-  #assert REALM_COMMANDS.count == 59;
+  #assert REALM_COMMANDS.count == 64;
   for i: 0..<REALM_COMMANDS.count {
     c := REALM_COMMANDS[i];
     #assert c.domain == "realm" && c.verb.count > 0 && c.help.count > 0;
@@ -500,7 +500,7 @@ cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool #effects(all) {
 }
 
 #test "realm routes and methods match the published command contract" {
-  routes := [59] string.["/mine","","/plan","/visibility","/publish","/fork","shot","/doc","/asks","/proposals","/panes","/switch","/revise","/asks","/asks/:id/delete","/asks/:id/done","/rows/:row/delete","/save","/save","/save","/save","/place","/settings","/lore","/quest","/proposals/:id/accept","/proposals/:id/decline","/undo","/redo","batch","seat","seat","seat","seat","seat","seat","seat","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","files","files","files","files","files"];
+  routes := [64] string.["/mine","","/plan","/visibility","/publish","/fork","shot","/doc","/asks","/proposals","/panes","/switch","/revise","/asks","/asks/:id/delete","/asks/:id/done","/rows/:row/delete","/save","/save","/save","/save","/place","/settings","/lore","/quest","/proposals/:id/accept","/proposals/:id/decline","/undo","/redo","batch","seat","seat","seat","seat","seat","seat","seat","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","files","files","files","files","files"];
   for i: 0..<REALM_COMMANDS.count {
     #assert REALM_COMMANDS[i].route == routes[i];
     method := ifx i == 6 || i >= 29 then "LOCAL" else ifx i == 0 || i == 1 || (i >= 7 && i <= 10) then "GET" else "POST";
@@ -700,7 +700,7 @@ rc_effect_note :: (c: CliCommand, out: [] u8) -> string #effects(all) {
 CliCommand :: struct { domain: string = "realm"; verb: string; effect: string; approval: string; method: string; route: string; arguments: string; optional: int; flags: string; usage: string; help: string; label: string; many: string; }
 // The seat rows (route "seat") drive one realm open in headless Chrome on this computer, as a
 // visitor (apps/openagents-cli/realm-play.coax, docs/metaverse/realm-seat.md).
-REALM_COMMANDS :: [59] CliCommand.[
+REALM_COMMANDS :: [64] CliCommand.[
   CliCommand.{verb="list",effect="read",approval="none",method="GET",route="/mine",help="your realms",label="List your realms",many="List your realms"},
   CliCommand.{verb="show",effect="read",approval="none",method="GET",route="",arguments="slug",usage="SLUG",help="the realm's spec and page",label="Show realm {slug}",many="Show realms"},
   CliCommand.{verb="new",effect="spend",approval="owner",method="POST",route="/plan",arguments="newwords",flags="--from:id|--style:style|--time:time|--camera:camera|--ground:ground",usage="\"WORDS\" [--style S] [--time T] [--camera C] [--ground G] | --from PLAN",help="plan words and make a private realm; --from PLAN makes an existing plan",label="Make a realm[: {words}]",many="Make realms"},
@@ -748,13 +748,19 @@ REALM_COMMANDS :: [59] CliCommand.[
   CliCommand.{verb="world-redo",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug",flags="--rev:id|--shot:shotfile",usage="ID [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="take the step last undone again",label="Redo a step",many="Redo steps"},
   CliCommand.{verb="world-original",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug",flags="--rev:id|--shot:shotfile",usage="ID [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="remove every placed thing: the designed world again (world-undo brings them back)",label="Put the designed world back",many="Put worlds back"},
   CliCommand.{verb="world-apply",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|file",flags="--rev:id|--shot:shotfile",usage="ID FILE.jsonl [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="apply world.edit.v1 edits, a JSON object a line, as one batch: all are saved or none",label="Apply the edits in {file}",many="Apply edit files"},
-  CliCommand.{verb="world-publish",effect="publish",approval="confirm",method="LOCAL",route="world",arguments="slug|when",flags="--rev:id|--yes:bool",usage="ID now|next [--rev N] [--key K] [--yes]",help="make the dev revision live: for open sessions now, or from each person's next session",label="Publish {slug}[ {when}]",many="Publish worlds"},
+  CliCommand.{verb="world-publish",effect="publish",approval="confirm",method="LOCAL",route="world",arguments="slug|when",flags="--rev:id|--confirm:hashes|--yes:bool",usage="ID now|next [--rev N] [--confirm HASH[,HASH]] [--key K] [--yes]",help="make the dev revision live: for open sessions now, or from each person's next session; a script that is new or does more than the live one needs its hash in --confirm, and a publish without it answers what each adds and the command that confirms them",label="Publish {slug}[ {when}]",many="Publish worlds"},
   CliCommand.{verb="world-why",effect="read",approval="none",method="LOCAL",route="world",arguments="slug|target",usage="ID THING",help="why a thing (you, piece-N, ...) is not seen, reached or working: the first link that failed, from the world's page",label="Ask why {target} is not working",many="Ask why"},
   CliCommand.{verb="world-open",effect="read",approval="none",method="LOCAL",route="world",arguments="slug",usage="ID",help="the address of the page that edits the world",label="Find the editor for {slug}",many="Find editors"},
   CliCommand.{verb="world-foes",effect="read",approval="none",method="LOCAL",route="world",arguments="slug",flags="--lane:lane",usage="ID [--lane dev|live]",help="the world's actors by number and name, each one's plan at dawn, day, dusk and night (what it does, its route, speed, notice range and what it does on noticing), the editor's time of day, and the places a route may name",label="Read the foes in {slug}",many="Read foes"},
   CliCommand.{verb="world-plan",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|foe|daytime|act",flags="--route:route|--speed:speed|--notice:notice|--on:onnotice|--rev:id|--shot:shotfile",usage="ID FOE WHEN DO [--route \"X Z, X Z\"] [--speed CM/S] [--notice CM] [--on chase|call|flee|ignore] [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="set what actor FOE does at WHEN (dawn, day, dusk, night): stand, dance, sleep, guard, patrol, wander or follow; without --route its route is cut or grown to fit; one edit, one undo step",label="Set foe {foe}'s {daytime} plan: {act}",many="Set foe plans"},
   CliCommand.{verb="world-route",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|foe|daytime|route",flags="--rev:id|--shot:shotfile",usage="ID FOE WHEN \"X Z, X Z\" [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="set actor FOE's route at WHEN: X Z points in centimetres joined by commas (patrol 2 to 8, a loop ends where it starts; guard the post then where it looks; wander \"X Z R\"; follow \"foe N\")",label="Set foe {foe}'s {daytime} route",many="Set foe routes"},
   CliCommand.{verb="world-time",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|clock",flags="--rev:id|--shot:shotfile",usage="ID story|dawn|day|dusk|night [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="the editor's time of day: the actors keep it and the light is it (story: the run's own clock); play is not changed",label="Set the time of day to {clock}",many="Set the time of day"},
+  // a world's realm scripts (realm-world.coax, docs/protocol/world-scripts-v1.md, #13467): stored by hash, run by a row of its scripts table
+  CliCommand.{verb="world-scripts",effect="read",approval="none",method="LOCAL",route="world",arguments="slug",usage="ID",help="the world's stored realm scripts, one a line: name, hash, bytes, handlers, what it may do and call, whether it is switched off and whether its source is kept; then the limits",label="List {slug}'s scripts",many="List scripts"},
+  CliCommand.{verb="world-script-compile",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|file",flags="--name:sname",usage="ID FILE.coax --name NAME [--dry-run] [--key K]",help="send a realm script's Coax source to be compiled, checked and stored; the answer is the stored script's hash and what it may do, or the compiler's words",label="Compile {file} as script {name}",many="Compile scripts"},
+  CliCommand.{verb="world-script-put",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|file",flags="--name:sname|--fields:file",usage="ID FILE.wasm --name NAME [--fields NAME.json] [--dry-run] [--key K]",help="store a built script module (coax/web/script.sh writes NAME.wasm and NAME.json; --fields NAME.json keeps its state across a swap); the answer is its hash and what it may do",label="Store {file} as script {name}",many="Store scripts"},
+  CliCommand.{verb="world-script-run",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug",flags="--script:hash|--name:sname|--for:sfor|--place:place|--rev:id|--shot:shotfile",usage="ID --script HASH --name NAME --for \"kind K\"|\"who N\" [--place N] [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="run a stored script: a row of the world's scripts table names its hash and what it drives, every thing of kind K or actor N; --place is the row, 1 to 8 (by default the row of that name, else the first free one); one edit, one undo step",label="Run script {name} for {for}",many="Run scripts"},
+  CliCommand.{verb="world-script-report",effect="write",approval="confirm",method="LOCAL",route="world",arguments="slug|hash",flags="--why:reason|--yes:bool",usage="ID HASH --why \"WORDS\" [--yes]",help="report a stored script to the site's admins with a short reason; they keep it or switch it off everywhere",label="Report script {hash}",many="Report scripts"},
   // a world's attachments and its project's (realm-files.coax, #13468): reference files, never in a pack
   CliCommand.{verb="files",effect="read",approval="none",method="LOCAL",route="files",arguments="slug",usage="ID",help="the world's attachments, then its project's: each one's FID, scope, kind, name, size, note and tags, and the limits (25 MB a file, 200 files and 1 GB a project)",label="List {slug}'s attachments",many="List attachments"},
   CliCommand.{verb="file-read",effect="read",approval="none",method="LOCAL",route="files",arguments="slug|fileid|file",optional=1,usage="ID FID [OUT]",help="an attachment: a Markdown or text document is printed; an image or PDF is saved to OUT (default: its name) for you to open",label="Read attachment {fileid}",many="Read attachments"},
@@ -944,6 +950,13 @@ rc_bound :: (kind: string) -> CliBound #effects(all) {
   if kind == "fname" { return CliBound.{min=1,max=100}; }
   if kind == "note" { return CliBound.{min=0,max=600}; }
   if kind == "tags" { return CliBound.{min=0,max=400}; }
+  // a world's realm scripts (realm-world.coax; metaverse-engine/script/rows.coax, store.coax)
+  if kind == "hash" { return CliBound.{min=64,max=64}; }
+  if kind == "hashes" { return CliBound.{min=64,max=CLI_SCRIPTS * 65 - 1}; }
+  if kind == "sname" { return CliBound.{min=1,max=48}; }
+  if kind == "sfor" { return CliBound.{min=5,max=8}; }
+  if kind == "place" { return CliBound.{min=1,max=CLI_SCRIPTS}; }
+  if kind == "reason" { return CliBound.{min=1,max=160}; }
   return CliBound.{};
 }
 rc_value :: (kind: string, value: string) -> bool #effects(all) {
@@ -1003,6 +1016,21 @@ rc_value :: (kind: string, value: string) -> bool #effects(all) {
   if kind == "fileid" { if value.count != 16 { return false; } for c: value { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } } }
   if kind == "scope" { return value == "world" || value == "project"; }
   if kind == "fname" { for c: value { if c < 32 || c == 127 || c == '/' { return false; } } }
+  if kind == "hash" { return cli_hash_ok(value); }
+  if kind == "hashes" {
+    if value.count < 64 || value.count > rc_bound(kind).max || (value.count + 1) % 65 != 0 { return false; }
+    for k: 0..<(value.count + 1) / 65 { if !cli_hash_ok(value[k * 65..<k * 65 + 64]) || (k * 65 + 64 < value.count && value[k * 65 + 64] != ',') { return false; } }
+    return true;
+  }
+  if kind == "sname" {
+    for c, i: value { if !((c >= 'a' && c <= 'z') || (i > 0 && ((c >= '0' && c <= '9') || c == '-'))) { return false; } }
+  }
+  if kind == "sfor" {
+    if cli_prefix(value, "kind ") { return cli_script_number(value[5..<value.count], 0, 255); }
+    return cli_prefix(value, "who ") && cli_script_number(value[4..<value.count], 1, 99);
+  }
+  if kind == "place" { return cli_count(value, 1, CLI_SCRIPTS) >= 1; }
+  if kind == "reason" { for c: value { if c < 32 || c > 126 || c == '"' || c == '\\' { return false; } } }
   b := rc_bound(kind);
   return b.max > 0 && value.count >= b.min && value.count <= b.max;
 }
@@ -1040,6 +1068,71 @@ CLI_PLAN_ON :: [4] string.["chase", "call", "flee", "ignore"];
   for w: CLI_DAYTIME { #assert w.count >= rc_bound("daytime").min && w.count <= rc_bound("daytime").max && rc_value("clock", w); }
   for w: CLI_PLAN_DO { #assert w.count >= rc_bound("act").min && w.count <= rc_bound("act").max; }
   for w: CLI_PLAN_ON { #assert w.count >= rc_bound("onnotice").min && w.count <= rc_bound("onnotice").max; }
+}
+// A world's realm scripts (metaverse-engine/script/rows.coax and store.coax; realm-world.coax checks they agree):
+// how many a world runs, a module's hash, and the number in a script row's FOR.
+CLI_SCRIPTS :: 8;
+cli_hash_ok :: (s: string) -> bool #effects(all) {
+  if s.count != 64 { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+// A whole number with no sign and no leading zero, from lo to hi.
+cli_script_number :: (s: string, lo: int, hi: int) -> bool #effects(all) {
+  if s.count < 1 || s.count > 3 || (s.count > 1 && s[0] == '0') { return false; }
+  v := cli_count(s, 0, hi);
+  return v >= lo;
+}
+#test "a world's script kinds admit only what a script row and the store take" {
+  h := "528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5"; g := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  #assert rc_value("hash", h) && rc_value("hash", g) && !rc_value("hash", h[0..<63]) && !rc_value("hash", "528D98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5") && !rc_value("hash", "g28d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5");
+  for bad: [4] string.["/", ":", "`", "{"] { b: [64] u8; for c, i: g { b[i] = c; } b[5] = bad[0]; #assert !rc_value("hash", cast(string) b[..]); }
+  two: [129] u8; for c, i: h { two[i] = c; two[65 + i] = g[i]; } two[64] = ',';
+  #assert rc_value("hashes", h) && rc_value("hashes", cast(string) two[..]) && !rc_value("hashes", cast(string) two[0..<65]) && !rc_value("hashes", cast(string) two[0..<128]) && !rc_value("hashes", "");
+  two[64] = ';'; #assert !rc_value("hashes", cast(string) two[..]);
+  two[64] = ','; two[70] = 'X'; #assert !rc_value("hashes", cast(string) two[..]);
+  nine: [9 * 65 - 1] u8; for k: 0..<9 { for c, i: h { nine[k * 65 + i] = c; } if k < 8 { nine[k * 65 + 64] = ','; } }
+  #assert rc_value("hashes", cast(string) nine[0..<8 * 65 - 1]) && !rc_value("hashes", cast(string) nine[..]);
+  #assert rc_value("sname", "pacer") && rc_value("sname", "a") && rc_value("sname", "z9-x") && !rc_value("sname", "Pacer") && !rc_value("sname", "9a") && !rc_value("sname", "-a") && !rc_value("sname", "a_b") && !rc_value("sname", "") && !rc_value("sname", "a b");
+  #assert !rc_value("sname", "a{") && !rc_value("sname", "a`") && !rc_value("sname", "a/") && !rc_value("sname", "a:") && !rc_value("sname", "a.");
+  long: [49] u8; for i: 0..<long.count { long[i] = 'a'; }
+  #assert rc_value("sname", cast(string) long[0..<48]) && !rc_value("sname", cast(string) long[..]);
+  #assert rc_value("sfor", "kind 0") && rc_value("sfor", "kind 1") && rc_value("sfor", "kind 255") && rc_value("sfor", "who 1") && rc_value("sfor", "who 99");
+  for bad: [12] string.["kind 256", "kind 01", "kind -1", "kind ", "kind", "who 0", "who 100", "who 09", "who", "foe 1", "kind 1x", "Kind 1"] { #assert !rc_value("sfor", bad); }
+  #assert rc_value("place", "1") && rc_value("place", "8") && !rc_value("place", "0") && !rc_value("place", "9") && !rc_value("place", "x");
+  #assert rc_value("reason", "it strikes players at the gate") && rc_value("reason", "~") && rc_value("reason", " ") && !rc_value("reason", "") && !rc_value("reason", "a \"b\"") && !rc_value("reason", "a\\b") && !rc_value("reason", "a\nb");
+  del: [2] u8; del[0] = 'a'; del[1] = 127; #assert !rc_value("reason", cast(string) del[..]);
+  why: [161] u8; for i: 0..<why.count { why[i] = 'w'; }
+  #assert rc_value("reason", cast(string) why[0..<160]) && !rc_value("reason", cast(string) why[..]);
+  #assert cli_script_number("0", 0, 255) && cli_script_number("255", 0, 255) && !cli_script_number("256", 0, 255) && !cli_script_number("1000", 0, 9999) && !cli_script_number("", 0, 9) && !cli_script_number("00", 0, 9) && !cli_script_number("0", 1, 9);
+  for k: [6] string.["hash","hashes","sname","sfor","place","reason"] { #assert rc_bound(k).max > 0 && rc_why(k) != rc_why("") && rc_why(k).count > 10; }
+  #assert rc_bound("hash").min == 64 && rc_bound("hash").max == 64 && rc_bound("hashes").max == 519 && rc_bound("sname").max == 48 && rc_bound("sfor").min == 5 && rc_bound("sfor").max == 8 && rc_bound("place").max == 8 && rc_bound("reason").max == 160;
+  // the rows: each names what it needs
+  a: [1] Args;
+  for w: [5] string.["realm","world-script-compile","splice","pacer.coax","--name"] { #assert args_add(a[..],w); }
+  #assert rc_validate(a[..],"world-script-compile") == rc_why("sname");
+  #assert args_add(a[..],"pacer") && rc_validate(a[..],"world-script-compile") == "";
+  a[0].n = 4; #assert rc_validate(a[..],"world-script-compile") == "the script needs --name NAME: its name, as its source's #script says";
+  b: [1] Args;
+  for w: [6] string.["realm","world-script-put","splice","pacer.wasm","--fields","pacer.json"] { #assert args_add(b[..],w); }
+  #assert rc_validate(b[..],"world-script-put") == "the script needs --name NAME: its name, as its source's #script says";
+  #assert args_add(b[..],"--name") && args_add(b[..],"pacer") && rc_validate(b[..],"world-script-put") == "";
+  c: [1] Args;
+  for w: [9] string.["realm","world-script-run","splice","--script",h,"--name","pacer","--for","kind 1"] { #assert args_add(c[..],w); }
+  #assert rc_validate(c[..],"world-script-run") == "" && args_add(c[..],"--place") && args_add(c[..],"9") && rc_validate(c[..],"world-script-run") == rc_why("place");
+  for drop: [3] int.[4, 6, 8] {
+    d: [1] Args;
+    for w, i: [9] string.["realm","world-script-run","splice","--script",h,"--name","pacer","--for","kind 1"] { if i != drop - 1 && i != drop { #assert args_add(d[..],w); } }
+    #assert rc_validate(d[..],"world-script-run") == "world-script-run needs --script HASH, --name NAME and --for \"kind K\" or \"who N\"";
+  }
+  e: [1] Args;
+  for w: [4] string.["realm","world-script-report","splice",h] { #assert args_add(e[..],w); }
+  #assert rc_validate(e[..],"world-script-report") == "world-script-report needs --why WORDS: why the admins should look";
+  #assert args_add(e[..],"--why") && args_add(e[..],"it strikes players") && rc_validate(e[..],"world-script-report") == "";
+  f: [1] Args;
+  for w: [6] string.["realm","world-publish","splice","now","--confirm",h] { #assert args_add(f[..],w); }
+  #assert rc_validate(f[..],"world-publish") == "" && rc_needs_yes(REALM_COMMANDS[rc_find("world-script-report")]) && !rc_needs_yes(REALM_COMMANDS[rc_find("world-script-run")]);
+  f[0].v[5] = "abc"; #assert rc_validate(f[..],"world-publish") == rc_why("hashes");
 }
 // What a visitor's build pane offers (myrealm.coax THING_NAMES; realm-play.coax checks they agree).
 CLI_SEAT_THINGS :: [8] string.["crate", "barrel", "tree", "rock", "plant", "lantern", "fence", "chest"];
@@ -1205,6 +1298,9 @@ rc_validate :: (a: [] Args, verb: string) -> string #effects(all) {
   if verb == "use" && pn == expected && p[3] != "build" { return "only build takes a THING"; }
   if verb == "settings" && !rc_has(a,verb,"--tools") { return "settings needs --tools build,talk,..."; }
   if verb == "quest" && !rc_has(a,verb,"--ask") { return "quest needs --ask TEXT (empty removes it)"; }
+  if (verb == "world-script-compile" || verb == "world-script-put") && !rc_has(a,verb,"--name") { return "the script needs --name NAME: its name, as its source's #script says"; }
+  if verb == "world-script-run" && !(rc_has(a,verb,"--script") && rc_has(a,verb,"--name") && rc_has(a,verb,"--for")) { return "world-script-run needs --script HASH, --name NAME and --for \"kind K\" or \"who N\""; }
+  if verb == "world-script-report" && !rc_has(a,verb,"--why") { return "world-script-report needs --why WORDS: why the admins should look"; }
   if verb == "shot" {
     sizes := 0;
     if rc_option(a,verb,"--size","") != "" { sizes += 1; }
@@ -1292,6 +1388,12 @@ rc_why :: (kind: string) -> string #effects(all) {
   if kind == "fname" { return "--name is 1 to 100 bytes on one line, with no slash"; }
   if kind == "note" { return "--note is at most 600 bytes; we keep the first 200, on one line"; }
   if kind == "tags" { return "--tags is at most 400 bytes: words joined by commas; we keep 8, as a-z, 0-9 and -"; }
+  if kind == "hash" { return "HASH (or --script) is a script module's SHA-256: 64 lowercase hex digits (realm world-scripts ID lists them)"; }
+  if kind == "hashes" { return "--confirm is 1 to 8 script hashes joined by commas, each 64 lowercase hex digits"; }
+  if kind == "sname" { return "--name is a script's name: 1 to 48 lowercase letters, digits and hyphens, a letter first"; }
+  if kind == "sfor" { return "--for is \"kind K\" (K from 0 to 255: every thing of that kind) or \"who N\" (N from 1 to 99: that actor)"; }
+  if kind == "place" { return "--place is a row of the world's scripts table, 1 to 8"; }
+  if kind == "reason" { return "--why is 1 to 160 bytes of plain ASCII on one line, with no quote or backslash"; }
   return "an argument is outside its bounds (openagents help)";
 }
 

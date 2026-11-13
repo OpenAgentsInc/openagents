@@ -126,13 +126,18 @@ Every limit is shown here and none is hidden. Past one, the engine refuses or dr
 | `openagents realm world-redo ID [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | take the step last undone again |
 | `openagents realm world-original ID [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | remove every placed thing: the designed world again (world-undo brings them back) |
 | `openagents realm world-apply ID FILE.jsonl [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | apply world.edit.v1 edits, a JSON object a line, as one batch: all are saved or none |
-| `openagents realm world-publish ID now\|next [--rev N] [--key K] [--yes]` | make the dev revision live: for open sessions now, or from each person's next session |
+| `openagents realm world-publish ID now\|next [--rev N] [--confirm HASH[,HASH]] [--key K] [--yes]` | make the dev revision live: for open sessions now, or from each person's next session; a script that is new or does more than the live one needs its hash in --confirm, and a publish without it answers what each adds and the command that confirms them |
 | `openagents realm world-why ID THING` | why a thing (you, piece-N, ...) is not seen, reached or working: the first link that failed, from the world's page |
 | `openagents realm world-open ID` | the address of the page that edits the world |
 | `openagents realm world-foes ID [--lane dev\|live]` | the world's actors by number and name, each one's plan at dawn, day, dusk and night (what it does, its route, speed, notice range and what it does on noticing), the editor's time of day, and the places a route may name |
 | `openagents realm world-plan ID FOE WHEN DO [--route "X Z, X Z"] [--speed CM/S] [--notice CM] [--on chase\|call\|flee\|ignore] [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | set what actor FOE does at WHEN (dawn, day, dusk, night): stand, dance, sleep, guard, patrol, wander or follow; without --route its route is cut or grown to fit; one edit, one undo step |
 | `openagents realm world-route ID FOE WHEN "X Z, X Z" [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | set actor FOE's route at WHEN: X Z points in centimetres joined by commas (patrol 2 to 8, a loop ends where it starts; guard the post then where it looks; wander "X Z R"; follow "foe N") |
 | `openagents realm world-time ID story\|dawn\|day\|dusk\|night [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | the editor's time of day: the actors keep it and the light is it (story: the run's own clock); play is not changed |
+| `openagents realm world-scripts ID` | the world's stored realm scripts, one a line: name, hash, bytes, handlers, what it may do and call, whether it is switched off and whether its source is kept; then the limits |
+| `openagents realm world-script-compile ID FILE.coax --name NAME [--dry-run] [--key K]` | send a realm script's Coax source to be compiled, checked and stored; the answer is the stored script's hash and what it may do, or the compiler's words |
+| `openagents realm world-script-put ID FILE.wasm --name NAME [--fields NAME.json] [--dry-run] [--key K]` | store a built script module (coax/web/script.sh writes NAME.wasm and NAME.json; --fields NAME.json keeps its state across a swap); the answer is its hash and what it may do |
+| `openagents realm world-script-run ID --script HASH --name NAME --for "kind K"\|"who N" [--place N] [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | run a stored script: a row of the world's scripts table names its hash and what it drives, every thing of kind K or actor N; --place is the row, 1 to 8 (by default the row of that name, else the first free one); one edit, one undo step |
+| `openagents realm world-script-report ID HASH --why "WORDS" [--yes]` | report a stored script to the site's admins with a short reason; they keep it or switch it off everywhere |
 
 ## The realm's code
 
@@ -190,4 +195,4 @@ table actors id name:text
 1|Raider 1
 ```
 
-reference sha256: 9a296cef434235a3ba6b107a4ccd4e84745ea745c733c0821a5250ad0dd4e19d
+reference sha256: a5c8762d70ac16efce391d1dc1ecd8856a8814dadf0d8c700b0007ec40c2d678
