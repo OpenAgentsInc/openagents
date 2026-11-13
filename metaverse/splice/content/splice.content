@@ -166,4 +166,5 @@ table plans id who:int when:text do:text route:text speed:int notice:int on:text
 91|9|day|patrol|-3800 -4700, -3800 -5700|180|500|chase
 92|9|dusk|patrol|-3800 -4700, -3800 -5700|180|500|chase
 93|9|night|patrol|-3800 -4700, -3800 -5700|180|500|chase
+table scripts id name:text hash:text for:text
 table templates id name:text parts:text

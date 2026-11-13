@@ -225,6 +225,9 @@ Kept current as stages land (#13467). The contract as built is
 | The interpreter: budget, owned memory, traps as values, rollback | built | `metaverse-engine/script/interp.coax` |
 | The host: a tick of a world's scripts, diagnostics, switch-off | built | `metaverse-engine/script/host.coax` |
 | The manifest and the frame and result bytes | built | `metaverse-engine/script/manifest.coax`, `frame.coax` |
+| A world's script rows (`ID\|NAME\|HASH\|FOR` in a content table) | built | `metaverse-engine/script/rows.coax`, Splice's `scripts` table |
+| Splice's raider and Imperial robot as scripts | built | `metaverse/splice/scripts/`, `metaverse/splice/scripts.coax` |
+| The plan world and the scripted world play the same | proven natively | `coax/web/tool.sh metaverse/splice/tools/script-play.coax` |
 
 Where the build differs from the proposal:
 
@@ -246,6 +249,15 @@ Where the build differs from the proposal:
   imports, limits and every index. The interpreter checks the stack and the
   memory on every step, so a type-confused module computes nonsense inside
   its own memory.
+- **A world never waits on a script.** Splice ships with no script rows, so
+  its foes walk their plans as before. A foe whose script said nothing for a
+  step (no row, no host, a script that is off or that failed) runs its plan
+  for that step. The raider's and the robot's scripts are in the tree, built
+  and checked against the plan's behaviour; a world turns them on with a
+  script row.
+- **A script's word arrives one step later.** The host runs between steps,
+  so a scripted foe reacts to the frame after the step before. In the check
+  the scripted foes stay within 0.11 m of their plan twins.
 - **Plan data reaches a script as a goal.** A thing's plan (#13466) still
   decides where it walks when calm: `sa_goal_x`, `sa_goal_z` and
   `sa_goal_speed` give a script the plan's goal for the tick, so a script

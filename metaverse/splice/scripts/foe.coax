@@ -1,0 +1,48 @@
+// What a Splice foe does on seeing the player, as code a realm script loads (GitHub #13467): the
+// reaction that splice-game.coax's g_foes_step has for a foe with no script, written against the script
+// API. A foe's plan (data, #13466) still says where it walks when calm, how far it sees and what it does
+// on seeing someone; this is the part a plan cannot say: when it starts, when it gives up and when it
+// strikes. The numbers are Splice's own (splice-game.coax T_NOTICE_HEAT, T_GIVE_UP, T_RAIDER_REACH).
+// A library: the two scripts beside it load it, and each declares its own state.
+
+FOE_PLAYER :: 1;                 // the player's id in a Splice frame (scripts.coax SPS_PLAYER)
+FOE_NOTICE_HEAT :: 0.07f32;      // metres further a foe sees for each point of heat
+FOE_GIVE_UP :: 15.0f32;          // metres past which a chase or a flight ends
+FOE_REACH :: 0.95f32;            // metres within which it strikes
+FOE_CALL :: 1;                   // the event that calls the others (scripts.coax SPS_CALL)
+FOE_ON_CALL :: 1; FOE_ON_FLEE :: 2;   // a plan's ON (metaverse-engine/ai/npc-plan.coax NPO_*)
+
+foe_react :: (me: u64) {
+  if sa_var(me, 2) > 0.0 { return; }   // staggered: Splice holds it still
+  d := sa_distance(me, FOE_PLAYER);
+  safe := sa_world(1) != 0.0; unseen := sa_world(2) != 0.0;
+  hostile := sa_var(me, 0) != 0.0; flee := sa_var(me, 1) != 0.0;
+  see := sa_notice(me);
+  if see > 0.0 && !unseen && !hostile && !flee && !safe && d < see + sa_world(0) * FOE_NOTICE_HEAT {
+    on := sa_plan_on(me);
+    if on == FOE_ON_FLEE { flee = true; } else { hostile = true; }
+    if on == FOE_ON_CALL { sa_emit(me, FOE_CALL, 0.0); }
+  }
+  if hostile && (safe || d > FOE_GIVE_UP || unseen) { hostile = false; }
+  if flee && (d > FOE_GIVE_UP || unseen) { flee = false; }
+  if hostile && sa_var(me, 3) != 0.0 {
+    // A guard gives up past twice its notice from its post (4 metres at least).
+    dx := sa_x(me) - sa_point_x(me, 0); dz := sa_z(me) - sa_point_z(me, 0);
+    leash := see * 2.0;
+    if leash < 4.0 { leash = 4.0; }
+    if sqrt(dx * dx + dz * dz) > leash { hostile = false; }
+  }
+  sa_set_var(me, 0, ifx hostile then 1.0f32 else 0.0f32);
+  sa_set_var(me, 1, ifx flee then 1.0f32 else 0.0f32);
+  if hostile {
+    sa_move(me, sa_x(FOE_PLAYER), sa_z(FOE_PLAYER), sa_speed(me));
+    if d < FOE_REACH { sa_strike(me, FOE_PLAYER); }
+    return;
+  }
+  if flee {
+    x := sa_x(me); z := sa_z(me); k := 6.0 / (ifx d > 0.1 then d else 0.1f32);
+    sa_move(me, x + (x - sa_x(FOE_PLAYER)) * k, z + (z - sa_z(FOE_PLAYER)) * k, sa_speed(me));
+    return;
+  }
+  sa_move(me, sa_goal_x(me), sa_goal_z(me), sa_goal_speed(me));
+}

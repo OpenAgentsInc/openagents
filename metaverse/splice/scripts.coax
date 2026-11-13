@@ -1,0 +1,90 @@
+// Splice's side of realm scripts (GitHub #13467, docs/protocol/realm-script-v1.md): the frame Splice
+// hands the script host each step, and what it does with the commands that come back. A foe a script
+// row drives (content.coax, the scripts table: "kind 1" the raiders, "kind 2" the Imperial robots, "who N"
+// one foe) does what its script said for this step; a foe whose script said nothing for this step (no row,
+// no host, a script that is off or that failed) walks its plan as it always did (splice-game.coax,
+// g_foes_step), so the world never waits on a script.
+//
+// What a script sees:
+//   the player   id SPS_PLAYER, kind SPS_KIND_PLAYER
+//   each foe     id SPS_FOE + its number (1 to 9), kind SPS_KIND_RAIDER or SPS_KIND_IMPERIAL; speed: how
+//                fast it runs; health; goal, goal speed, notice and plan on: its plan's for this time of day
+//                (ai/plan.coax); point 0: its plan's first point (a guard's post)
+//                var 0 hostile, var 1 fleeing, var 2 seconds of stagger left, var 3 whether its plan guards
+//   the world    world 0 heat, world 1 whether the player is safe (on the catwalk or out of the mine),
+//                world 2 whether nobody is there to see (Simulate)
+//   events       on_hit when the player strikes a foe
+// What Splice does with a command:
+//   sa_move, sa_stop   where the foe walks this step, and how fast (its walls still stop it)
+//   sa_face            the way it faces
+//   sa_set_var 0, 1    whether it is hostile, whether it flees
+//   sa_strike          a hit on the player, when the foe is hostile and within reach (the hit's own cool-down holds)
+//   sa_emit SPS_CALL   the others within T_CALL become hostile
+// Loaded by splice-game.coax, which declares SpGame.
+
+SPS_PLAYER :: 1; SPS_FOE :: 10;
+SPS_KIND_PLAYER :: 0; SPS_KIND_RAIDER :: 1; SPS_KIND_IMPERIAL :: 2;
+SPS_VAR_HOSTILE :: 0; SPS_VAR_FLEE :: 1; SPS_VAR_STAGGER :: 2; SPS_VAR_GUARD :: 3;
+SPS_WORLD_HEAT :: 0; SPS_WORLD_SAFE :: 1; SPS_WORLD_UNSEEN :: 2;
+SPS_CALL :: 1;        // sa_emit's event: call the others
+SPS_HITS :: 4;        // strikes on foes one step can report
+
+// The script that drives foe i (0 to FOES - 1), or -1: its plan alone.
+sps_script :: (g: [] SpGame, i: int) -> int {
+  return srw_pick(g[0].c[0].scripts[0..<g[0].c[0].script_n], ifx i < F_RAIDERS then SPS_KIND_RAIDER else SPS_KIND_IMPERIAL, i + 1);
+}
+// Whether foe i's script spoke for the step now being taken.
+sps_spoke :: (g: [] SpGame, i: int) -> bool { return g[0].sword[i] == g[0].steps && g[0].steps > 0; }
+// The player is safe from the foes: on the catwalk, or out of the mine's floor.
+sps_safe :: (g: [] SpGame) -> bool { return on_deck(g, g[0].px, g[0].pz) || g[0].pz > -40.5 || g[0].pz < g[0].at.wall_z; }
+
+// Fills the frame for the step just taken. `tick` and `seed` are the caller's: the step's number and the
+// world's seed. Nothing here reads a clock.
+sps_frame :: (g: [] SpGame, f: [] ScriptFrame, dt: f32) {
+  f[0] = ScriptFrame.{tick = g[0].steps, seed = 13467, dt = dt, time = g[0].t, day = cast(f32) g_phase(g) / 4.0};
+  f[0].world[SPS_WORLD_HEAT] = g[0].heat;
+  f[0].world[SPS_WORLD_SAFE] = ifx sps_safe(g) then 1.0f32 else 0.0f32;
+  f[0].world[SPS_WORLD_UNSEEN] = ifx g[0].unseen then 1.0f32 else 0.0f32;
+  n := 0;
+  f[0].things[n] = ScriptThing.{id = SPS_PLAYER, kind = SPS_KIND_PLAYER, alive = g[0].zone == Z_MINE && g[0].mode == M_PLAY, x = g[0].px, z = g[0].pz, facing = g[0].yaw, speed = 0, health = cast(f32) g[0].hearts};
+  n += 1;
+  for i: 0..<FOES {
+    pl := sc_plan(g[0].c[..], i, g_phase(g));
+    lead := ifx pl.act == NPD_FOLLOW && pl.lead >= 1 && pl.lead <= FOES then pl.lead - 1 else i;
+    gl := mp_goal(pl, g[0].t, cast(f32) i * 1.7, i, g[0].fx[lead], g[0].fz[lead], g[0].fyaw[lead]);
+    t := ScriptThing.{id = cast(u64) (SPS_FOE + i + 1), kind = ifx i < F_RAIDERS then cast(s32) SPS_KIND_RAIDER else cast(s32) SPS_KIND_IMPERIAL, team = 1,
+                      script = cast(s32) sps_script(g, i), alive = g[0].fhp[i] > 0 && g[0].zone == Z_MINE,
+                      x = g[0].fx[i], z = g[0].fz[i], facing = g[0].fyaw[i], speed = ifx i < F_RAIDERS then T_RAIDER_SPEED else T_IMPERIAL_SPEED, health = cast(f32) g[0].fhp[i],
+                      goal_x = gl.x, goal_z = gl.z, goal_speed = gl.speed, notice = mp_notice(pl), plan_on = cast(s32) pl.on};
+    if !pl.ok { t.goal_x = foe_ax(g, i); t.goal_z = foe_az(g, i); t.goal_speed = T_PATROL; t.notice = 0; t.plan_on = -1; }
+    t.vars[SPS_VAR_HOSTILE] = ifx g[0].fhost[i] then 1.0f32 else 0.0f32;
+    t.vars[SPS_VAR_FLEE] = ifx g[0].fflee[i] then 1.0f32 else 0.0f32;
+    t.vars[SPS_VAR_STAGGER] = g[0].fstag[i];
+    t.vars[SPS_VAR_GUARD] = ifx pl.ok && pl.act == NPD_GUARD && pl.n > 0 then 1.0f32 else 0.0f32;
+    if pl.ok && pl.n > 0 { t.px[0] = mp_m(pl.x[0]); t.pz[0] = mp_m(pl.z[0]); }
+    f[0].things[n] = t; n += 1;
+  }
+  f[0].n_things = n;
+  for k: 0..<g[0].shit_n { f[0].events[k] = ScriptEvent.{handler = RH_HIT, thing = cast(u64) (SPS_FOE + g[0].shit[k] + 1), other = SPS_PLAYER, amount = 1.0}; }
+  f[0].n_events = g[0].shit_n;
+  g[0].shit_n = 0;
+}
+// Takes a tick's result: what each script said for the next step.
+sps_apply :: (g: [] SpGame, r: [] ScriptRun) {
+  next := g[0].steps + 1;
+  for k: 0..<r[0].n_commands {
+    c := r[0].commands[k];
+    if c.thing <= SPS_FOE || c.thing > SPS_FOE + FOES { continue; }
+    i := cast(int) c.thing - SPS_FOE - 1;
+    if c.op == SA_MOVE { g[0].sx[i] = c.a; g[0].sz[i] = c.b; g[0].ss[i] = c.c; g[0].sword[i] = next; }
+    else if c.op == SA_STOP { g[0].sx[i] = g[0].fx[i]; g[0].sz[i] = g[0].fz[i]; g[0].ss[i] = 0; g[0].sword[i] = next; }
+    else if c.op == SA_FACE { g[0].fyaw[i] = c.a; }
+    else if c.op == SA_SET_VAR && c.i == SPS_VAR_HOSTILE { g[0].fhost[i] = c.a != 0; }
+    else if c.op == SA_SET_VAR && c.i == SPS_VAR_FLEE { g[0].fflee[i] = c.a != 0; }
+    else if c.op == SA_STRIKE && c.target == SPS_PLAYER { g[0].sstrike[i] = next; }
+    else if c.op == SA_EMIT && c.i == SPS_CALL {
+      for j: 0..<FOES { if j != i && g[0].fhp[j] > 0 && dist2(g[0].fx[i], g[0].fz[i], g[0].fx[j], g[0].fz[j]) < T_CALL { g[0].fhost[j] = true; g[0].fflee[j] = false; } }
+    }
+  }
+  g[0].sdiags += r[0].n_diags + r[0].more_diags; g[0].scalls += r[0].calls;
+}

@@ -1,0 +1,92 @@
+// A world's scripts as one value with a byte face (GitHub #13467, docs/protocol/realm-script-v1.md):
+// what a page's script module (apps/openagents-web/script-host.coax) and a room
+// (coax/web/room/room-scripts.coax) both hold. Everything crosses as bytes, so the two run the same
+// frames: a module and its state fields in, a frame in and a result out, and a status out for whoever
+// shows the budgets.
+//
+//   sw_load    a module's bytes and its manifest's state fields into one of SH_SCRIPTS places; a module
+//              that is refused leaves what was running there untouched
+//   sw_tick    script.frame.v1 in, script.result.v1 out (frame.coax): one tick of every loaded script
+//   sw_status  world.script-status.v1: each place's script, what it has spent and its last diagnostic
+//   coax/bin/coax test metaverse-engine/script/world.coax --library
+
+#load "manifest.coax";
+
+SW_STATUS :: 8192;       // a status text's bytes
+SW_STATUS_SCHEMA :: "world.script-status.v1";
+ScriptWorld :: struct {
+  slots: [SH_SCRIPTS + 1] ScriptSlot;     // the last is the scratch a load checks in
+  run: [1] ScriptRun;
+  frame: [1] ScriptFrame;
+  names: [SH_SCRIPTS] [SM_NAME] u8; name_n: [SH_SCRIPTS] int;
+  hashes: [SH_SCRIPTS] [64] u8;
+  ticks: int;
+}
+
+// Loads a module into place `at` (0 to SH_SCRIPTS - 1). `fields` is the JSON array of its manifest's
+// state fields ("" or "[]" for none): what a swap keeps. 0 when it is running; SD_REFUSED or SD_FACE
+// when the module check refused it (sw_refusal says why); -1 for a bad place, name or fields.
+sw_load :: (w: [] ScriptWorld, at: int, name: string, bytes: [] u8, fields: string) -> int {
+  if at < 0 || at >= SH_SCRIPTS || !sm_name_ok(name) { return -1; }
+  layout: [1] ScriptLayout;
+  if fields.count > 0 {
+    nodes: [512] JvNode; d: [1] Jv;
+    if !jv_parse(d[..], fields, nodes[..]) || !sm_fields(d[0], 0, layout[..]) { return -1; }
+  }
+  code := sh_load(w[0].slots[at..<at + 1], w[0].slots[SH_SCRIPTS..<SH_SCRIPTS + 1], bytes, layout[0]);
+  if code != 0 { return code; }
+  for c, i: name { w[0].names[at][i] = c; } w[0].name_n[at] = name.count;
+  hex: [64] u8;
+  if S_hex(S_hash(cast(string) w[0].slots[at].b[0..<w[0].slots[at].n]), hex[..]) { w[0].hashes[at] = hex; }
+  return 0;
+}
+sw_unload :: (w: [] ScriptWorld, at: int) {
+  if at < 0 || at >= SH_SCRIPTS { return; }
+  sh_unload(w[0].slots[at..<at + 1]); w[0].name_n[at] = 0;
+}
+// Why the last load was refused: the diagnostic the scratch kept.
+sw_refusal :: (w: [] ScriptWorld) -> ScriptDiag { return w[0].slots[SH_SCRIPTS].last; }
+// One tick: a frame's bytes in, the result's bytes into out. The result's length, or -1 when the bytes
+// are not a frame (nothing runs) or out is too small.
+sw_tick :: (w: [] ScriptWorld, frame: [] u8, out: [] u8) -> int {
+  if !sf_read(frame, w[0].frame[..]) { return -1; }
+  sh_tick(w[0].slots[0..<SH_SCRIPTS], w[0].run[..], w[0].frame[..]);
+  w[0].ticks += 1;
+  return sr_write(w[0].run[..], out);
+}
+// The status: one line of JSON for the editor's script pane and `coax drive`.
+sw_status :: (w: [] ScriptWorld, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], SW_STATUS_SCHEMA);
+  jo_key(o[..], "ticks"); jo_int(o[..], w[0].ticks);
+  jo_key(o[..], "call_fuel"); jo_int(o[..], SH_CALL_FUEL);
+  jo_key(o[..], "tick_fuel"); jo_int(o[..], SH_TICK_FUEL);
+  jo_key(o[..], "tick_left"); jo_int(o[..], w[0].run[0].fuel);
+  jo_key(o[..], "scripts"); jo_arr(o[..]);
+  for at: 0..<SH_SCRIPTS {
+    if !w[0].slots[at].loaded { continue; }
+    jo_obj(o[..]);
+    jo_key(o[..], "at"); jo_int(o[..], at);
+    jo_key(o[..], "name"); jo_str(o[..], cast(string) w[0].names[at][0..<w[0].name_n[at]]);
+    jo_key(o[..], "hash"); jo_str(o[..], cast(string) w[0].hashes[at][..]);
+    jo_key(o[..], "off"); jo_bool(o[..], w[0].slots[at].off);
+    things := 0; for i: 0..<w[0].slots[at].slots { if w[0].slots[at].owner[i] != 0 { things += 1; } }
+    jo_key(o[..], "things"); jo_int(o[..], things);
+    jo_key(o[..], "calls"); jo_int(o[..], w[0].slots[at].calls);
+    jo_key(o[..], "failures"); jo_int(o[..], w[0].slots[at].failures);
+    jo_key(o[..], "spent"); jo_int(o[..], w[0].slots[at].spent);
+    jo_key(o[..], "peak"); jo_int(o[..], w[0].slots[at].peak);
+    last := w[0].slots[at].last;
+    jo_key(o[..], "last"); jo_str(o[..], ifx last.code > 0 && last.code < SD_CODES then SD_IDS[last.code] else "");
+    jo_key(o[..], "handler"); jo_str(o[..], ifx last.code > 0 && last.handler >= 0 && last.handler < RS_HANDLERS then RH_NAMES[last.handler] else "");
+    jo_key(o[..], "line"); jo_int(o[..], cast(int) last.line);
+    jo_key(o[..], "status"); jo_str(o[..], ifx last.code > 0 && last.status >= 0 && last.status < WI_STATUSES then WI_STATUS_NAMES[last.status] else "");
+    jo_end(o[..]);
+  }
+  jo_end(o[..]); jo_end(o[..]);
+  if o[0].bad { return ""; }
+  return jo_text(o[..]);
+}
+
+#load "world-checks.coax" #test;

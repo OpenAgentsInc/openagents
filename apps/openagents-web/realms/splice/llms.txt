@@ -9,7 +9,7 @@ The site's index is [llms.txt](https://openagents.com/llms.txt). Look a Coax nam
 - realm: splice
 - page: `/worlds/splice` (module `splice`, source `apps/openagents-web/realms/splice/`)
 - wire: none. The page decides the simulation; there is no room to speak to
-- content: `metaverse/splice/content/splice.content`, revision 2, sha256 `2eef988dbe082d5113ff53dcc0cf2ac9d8ed5b6f8507b7e2087233d2aabf3831`
+- content: `metaverse/splice/content/splice.content`, revision 2, sha256 `ffea14ededd4feb4ae2ad36e23f274175aedf857adea2e2eebf7a32ca55067ec`
 - diagnostics: `engine-diagnostics-v1`, 17 codes, sha256 `55aa5a9b50ff02e1256e64909abf901a29f9c98a1575ae6b669281410b69c31c` (`proto/verse/engine-diagnostics-v1.json`)
 - language: Coax; the compiler's version is in `coax/release-status.json` and what it claims to do in `coax/book/capability-claims.json`
 - reference: the last line of this file is the sha256 of everything above it. Two builds with the same line have the same reference
@@ -53,6 +53,7 @@ From `metaverse-engine/editor/authority.coax` (INVARIANTS.md, "Authoring never w
 | `looks` | `id name:text a:int b:int c:int` | 8 |
 | `pieces` | `id name:text kit:text scale:int look:ref.looks hx:int hz:int top:int` | 18 |
 | `plans` | `id who:int when:text do:text route:text speed:int notice:int on:text` | 36 |
+| `scripts` | `id name:text hash:text for:text` | 0 |
 | `templates` | `id name:text parts:text` | 0 |
 
 A table's first column is `id`. Another column is `NAME:int`, `NAME:text`, `NAME:cm` (centimetres), `NAME:ref.TABLE` (the id of a row of TABLE) or `NAME:opt.TABLE` (the same, or 0 for none). A row's id is never changed or used again.
@@ -189,4 +190,4 @@ table actors id name:text
 1|Raider 1
 ```
 
-reference sha256: 9ea8a01a80e3a0305ce876579197d451c6b7579a71913da9384d15727093567c
+reference sha256: 9a296cef434235a3ba6b107a4ccd4e84745ea745c733c0821a5250ad0dd4e19d

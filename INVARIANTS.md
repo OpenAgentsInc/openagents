@@ -8296,6 +8296,34 @@ nothing"); `coax/bin/coax test metaverse-engine/script/host.coax --library`
 `coax/web/tool.sh layer-check` (the engine's script folder loads neither
 durable context).
 
+## A world never waits on a script: a thing whose script said nothing walks its plan
+
+A script adds a reaction to a thing's plan; it does not replace the plan
+(#13467, #13466). In Splice (`metaverse/splice/scripts.coax`,
+`splice-game.coax` `g_foes_step`) a foe a script row drives does what its
+script said for the step being taken. A foe whose script said nothing for
+that step walks and reacts by its plan, as a foe with no script does. That
+covers a world with no script rows (the shipped tables), a page whose script
+module has not loaded, a script that is switched off, a call that failed and
+was undone, and a staggered foe.
+
+- **Plan data first.** A script reads its thing's plan as a goal
+  (`sa_goal_x`, `sa_goal_z`, `sa_goal_speed`, `sa_notice`, `sa_plan_on`), so
+  a route, a speed and a time of day stay data that the editor edits.
+- **Splice's own rules still hold.** A scripted foe's walls stop it, its run
+  speed caps it, and a strike lands only when the foe is hostile and within
+  reach and the hit's cool-down allows.
+- **The scripts are the plan's reaction.** `metaverse/splice/scripts/`
+  holds the raider's and the Imperial robot's reaction as realm scripts.
+
+Checks: `coax/web/tool.sh metaverse/splice/tools/script-play.coax` (builds
+both scripts and steps a plan world and a scripted world through the same
+run, with the host between steps as a page and a room run it: the foes stand
+within 0.25 m of their plan twins, fight, give up and strike as they do, and
+no call fails); `coax/bin/coax test metaverse/splice/content.coax --library`
+("a script row names a module by its hash and whom it drives ...", "tables
+saved before ... the scripts table came ...").
+
 ## Attachments are private and never reach a player or a pack
 
 A world's attachments and its project's (#13468;

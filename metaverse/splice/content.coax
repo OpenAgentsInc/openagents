@@ -24,10 +24,14 @@
 //                                           WHO * 10 + the time of day (dawn 0, day 1, dusk 2, night 3);
 //                                           every foe has a plan for each time of day, and its route
 //                                           stays in the mine (the area SC_FOE_AREA)
+//   scripts     id name hash for            the realm scripts the world runs (metaverse-engine/script/rows.coax,
+//                                           #13467): a script's name, its module's SHA-256 and whom it
+//                                           drives: "kind 1" the raiders, "kind 2" the Imperial robots, or
+//                                           "who N" one foe. No row: every foe walks its plan alone
 //   clock       id when                     the editor's time of day (row 1): story (the run's own), or
 //                                           dawn, day, dusk or night. Only an editor (?edit) reads it;
 //                                           play keeps the story's phases
-// The actors, plans and clock tables came after revision 2 shipped. Tables saved at revision 2 without them
+// The actors, plans, clock and scripts tables came after revision 2 shipped. Tables saved at revision 2 without them
 // read with the shipped ones put in (sc_upgrade), so every saved world document still opens.
 // Places and lengths are centimetres. `looks` is a table of its own because a table has eight
 // columns at most. An edit or a save names a piece by its ID; names are for people and agents.
@@ -37,9 +41,10 @@
 #load "pieces.coax";
 #load "content/shipped.coax";
 #load "../../metaverse-engine/ai/plan.coax";   // the foes' plans (npc-plan.coax) and where they take them
+#load "../../metaverse-engine/script/rows.coax";   // the world's script rows (#13467)
 
-SC_TABLES :: 9;
-SC_ACTORS :: 0; SC_AREAS :: 1; SC_CLOCK :: 2; SC_KEPT :: 3; SC_MARKS :: 4; SC_LOOKS :: 5; SC_PIECES :: 6; SC_PLANS :: 7; SC_TEMPLATES :: 8;
+SC_TABLES :: 10;
+SC_ACTORS :: 0; SC_AREAS :: 1; SC_CLOCK :: 2; SC_KEPT :: 3; SC_MARKS :: 4; SC_LOOKS :: 5; SC_PIECES :: 6; SC_PLANS :: 7; SC_SCRIPTS :: 8; SC_TEMPLATES :: 9;
 SC_TEMPLATE_MAX :: 32;   // templates a world keeps
 SC_HEAD :: [SC_TABLES] string.[
   "table actors id name:text",
@@ -50,6 +55,7 @@ SC_HEAD :: [SC_TABLES] string.[
   "table looks id name:text a:int b:int c:int",
   "table pieces id name:text kit:text scale:int look:ref.looks hx:int hz:int top:int",
   "table plans id who:int when:text do:text route:text speed:int notice:int on:text",
+  SRW_TABLE,
   "table templates id name:text parts:text"];
 SC_NAME :: 24;          // bytes of a row's name kept for a refusal or a listing
 SC_AREA_MAX :: 8; SC_KEPT_MAX :: 48; SC_MARK_MAX :: 96; SC_PIECE_MAX :: 32;
@@ -74,6 +80,7 @@ SpContent :: struct {
   plans: [SC_PLAN_MAX] NplPlan;   // by (WHO - 1) * 4 + the time of day
   clock: int = -1;                // the editor's time of day: -1 the story's, else 0 dawn to 3 night
   actor: [SC_FOES] [SC_NAME] u8; actor_n: [SC_FOES] int;   // each foe's name (the actors table)
+  scripts: [SH_SCRIPTS] ScriptRow; script_n: int;          // the scripts the world runs (the scripts table)
 }
 
 sc_m :: (cm: int) -> f32 { return cast(f32) cm / 100; }
@@ -120,6 +127,8 @@ sc_ok :: (d: [] ContentDoc) -> bool {
 // NPL_ code, npc-plan.coax), a point outside the mine, a foe without a plan for a time of day, or a
 // clock that is not one of SC_CLOCK_WORD. `row`: the plan row it was, when one.
 SCP_OK :: 0; SCP_PLAN :: 40; SCP_OUTSIDE :: 60; SCP_MISSING :: 61; SCP_CLOCK :: 62; SCP_ACTORS :: 63;
+SCP_SCRIPT :: 70;   // + an SRW_ code (metaverse-engine/script/rows.coax): a script row that does not read
+SCP_SCRIPT_WHO :: 78;   // a script row for a foe the world does not have
 ScPlanWhy :: struct { why: int; id: int; }
 sc_plans_check :: (d: [] ContentDoc) -> ScPlanWhy {
   if ct_rows(d, SC_ACTORS) != SC_FOES { return ScPlanWhy.{why = SCP_ACTORS}; }
@@ -128,6 +137,13 @@ sc_plans_check :: (d: [] ContentDoc) -> ScPlanWhy {
   words := SC_CLOCK_WORD; known := false;
   for w: words { if ct_str(d, SC_CLOCK, 0, 1) == w { known = true; } }
   if !known { return ScPlanWhy.{why = SCP_CLOCK, id = 1}; }
+  if ct_rows(d, SC_SCRIPTS) > SH_SCRIPTS { return ScPlanWhy.{why = SCP_SCRIPT + SRW_BAD_ID}; }
+  for r: 0..<ct_rows(d, SC_SCRIPTS) {
+    row: [1] ScriptRow; id := ct_get(d, SC_SCRIPTS, r, 0);
+    why := srw_read(id, ct_str(d, SC_SCRIPTS, r, 1), ct_str(d, SC_SCRIPTS, r, 2), ct_str(d, SC_SCRIPTS, r, 3), row[..]);
+    if why != SRW_OK { return ScPlanWhy.{why = SCP_SCRIPT + why, id = id}; }
+    if !row[0].by_kind && row[0].n > SC_FOES { return ScPlanWhy.{why = SCP_SCRIPT_WHO, id = id}; }
+  }
   area := ct_find(d, SC_AREAS, SC_FOE_AREA);
   if area < 0 || ct_rows(d, SC_PLANS) > SC_PLAN_MAX { return ScPlanWhy.{why = SCP_MISSING}; }
   ax := ct_get(d, SC_AREAS, area, 2); az := ct_get(d, SC_AREAS, area, 3); hx := ct_get(d, SC_AREAS, area, 4); hz := ct_get(d, SC_AREAS, area, 5);
@@ -152,7 +168,9 @@ sc_plans_words :: (text: string, out: [] u8) -> string {
   c := sc_plans_check(d[..]);
   if c.why == SCP_OK { return ""; }
   n := 0;
-  if c.id > 0 && c.why != SCP_CLOCK { n = ct_put(out, 0, "plan "); n = ct_put_int(out, n, c.id); n = ct_put(out, n, ": "); }
+  if c.id > 0 && c.why != SCP_CLOCK { n = ct_put(out, 0, ifx c.why >= SCP_SCRIPT then "script " else "plan "); n = ct_put_int(out, n, c.id); n = ct_put(out, n, ": "); }
+  if c.why >= SCP_SCRIPT && c.why < SCP_SCRIPT_WHO { n = ct_put(out, n, srw_why(c.why - SCP_SCRIPT)); }
+  if c.why == SCP_SCRIPT_WHO { n = ct_put(out, n, "FOR names a foe the world has: who 1 to 9"); }
   if c.why >= SCP_PLAN && c.why < SCP_OUTSIDE { n = ct_put(out, n, npl_why(c.why - SCP_PLAN)); }
   if c.why == SCP_OUTSIDE {
     a := ct_find(d[..], SC_AREAS, SC_FOE_AREA);
@@ -166,23 +184,27 @@ sc_plans_words :: (text: string, out: [] u8) -> string {
   if c.why == SCP_ACTORS { n = ct_put(out, n, "the actors table names foes 1 to 9, one row each: rename one, never drop or add a row"); }
   return ifx n > out.count then "" else cast(string) out[0..<n];
 }
-// Tables saved at revision 2 before the actors, plans and clock tables were: the same tables with the
-// shipped ones put in where they sort (actors before areas, clock before kept_clear, plans before
-// templates), each only where it is missing, into out. Tables that have them all, or are not
+// Tables saved at revision 2 before the actors, plans, clock and scripts tables were: the same tables with the
+// shipped ones put in where they sort (actors before areas, clock before kept_clear, plans and then
+// scripts before templates), each only where it is missing, into out. Tables that have them all, or are not
 // Splice's at all, come back as they were.
 sc_upgrade :: (text: string, out: [] u8) -> string {
   if text.count == 0 { return text; }
   areas := sc_at(text, "\ntable areas "); kept := sc_at(text, "\ntable kept_clear "); tem := sc_at(text, "\ntable templates ");
   if areas < 0 || kept < areas || tem < kept { return text; }
   actors := sc_at(text, "\ntable actors ") < 0; clock := sc_at(text, "\ntable clock ") < 0; plans := sc_at(text, "\ntable plans ") < 0;
-  if !actors && !clock && !plans { return text; }
+  scr := sc_at(text, "\ntable scripts "); scripts := scr < 0;
+  if !actors && !clock && !plans && !scripts { return text; }
+  if !scripts && (scr < kept || scr > tem) { return text; }
+  before := ifx scripts then tem else scr;   // the plans go before the scripts, and both before the templates
   n := ct_put(out, 0, text[0..<areas + 1]);
   if actors { n = ct_put(out, n, sc_shipped_table(SC_SHIPPED, "actors")); }
   n = ct_put(out, n, text[areas + 1..<kept + 1]);
   if clock { n = ct_put(out, n, sc_shipped_table(SC_SHIPPED, "clock")); }
-  n = ct_put(out, n, text[kept + 1..<tem + 1]);
+  n = ct_put(out, n, text[kept + 1..<before + 1]);
   if plans { n = ct_put(out, n, sc_shipped_table(SC_SHIPPED, "plans")); }
-  n = ct_put(out, n, text[tem + 1..<text.count]);
+  if scripts { n = ct_put(out, n, sc_shipped_table(SC_SHIPPED, "scripts")); }
+  n = ct_put(out, n, text[before + 1..<text.count]);
   return ifx n > out.count then text else cast(string) out[0..<n];
 }
 // Where `what` first stands in s, or -1.
@@ -236,6 +258,12 @@ sc_load :: (c: [] SpContent, text: string) -> bool {
   words := SC_CLOCK_WORD;
   for w, k: words { if ct_str(d[..], SC_CLOCK, 0, 1) == w { c[0].clock = k - 1; } }
   for r: 0..<SC_FOES { c[0].actor_n[r] = sc_name(c[0].actor[r][..], ct_str(d[..], SC_ACTORS, r, 1)); }
+  c[0].script_n = ct_rows(d[..], SC_SCRIPTS);
+  for r: 0..<c[0].script_n {
+    row: [1] ScriptRow;
+    _ := srw_read(ct_get(d[..], SC_SCRIPTS, r, 0), ct_str(d[..], SC_SCRIPTS, r, 1), ct_str(d[..], SC_SCRIPTS, r, 2), ct_str(d[..], SC_SCRIPTS, r, 3), row[..]);
+    c[0].scripts[r] = row[0];
+  }
   c[0].ok = true;
   return true;
 }
@@ -373,6 +401,27 @@ sc_plan :: (c: [] SpContent, i: int, when: int) -> NplPlan {
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "the actors table names foes 1 to 9, one row each: rename one, never drop or add a row";
   #assert sc_upgrade(SC_SHIPPED, up[..]) == SC_SHIPPED && sc_upgrade("", up[..]) == "";
   #assert sc_shipped_table(SC_SHIPPED, "templates") == "table templates id name:text parts:text\n" && sc_shipped_table(SC_SHIPPED, "nope") == "";
+  // tables saved before the scripts table came (#13467): it is put in, empty, after the plans; alone, or with the plans missing too
+  before := sc_cut(SC_SHIPPED, sc_shipped_table(SC_SHIPPED, "scripts"), o[..]);
+  #assert before.count < SC_SHIPPED.count && sc_upgrade(before, up[..]) == SC_SHIPPED && sc_load(c[..], before) && c[0].script_n == 0;
+  n = ct_put(t[..], 0, before); before = cast(string) t[0..<n];
+  before = sc_cut(before, sc_shipped_table(SC_SHIPPED, "plans"), o[..]);
+  #assert sc_upgrade(before, up[..]) == SC_SHIPPED;
+}
+#test "a script row names a module by its hash and whom it drives; a row that does not read is refused in words" {
+  c: [1] SpContent; o: [CT_BODY] u8; w: [300] u8;
+  head := "table scripts id name:text hash:text for:text\n";
+  one := "table scripts id name:text hash:text for:text\n1|splice-raider|528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5|kind 1\n2|scout|528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5|who 9\n";
+  good := sc_swap(head, one, o[..]);
+  #assert sc_load(c[..], good) && c[0].script_n == 2 && c[0].scripts[0].ok && c[0].scripts[0].by_kind && c[0].scripts[0].n == 1 && c[0].scripts[1].slot == 1 && !c[0].scripts[1].by_kind;
+  #assert srw_pick(c[0].scripts[0..<c[0].script_n], 1, 3) == 0 && srw_pick(c[0].scripts[0..<c[0].script_n], 2, 9) == 1 && srw_pick(c[0].scripts[0..<c[0].script_n], 2, 6) == -1;
+  bad := sc_swap(head, "table scripts id name:text hash:text for:text\n1|splice-raider|528d|kind 1\n", o[..]);
+  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "script 1: a script's HASH is its module's SHA-256: 64 lowercase hex digits";
+  bad = sc_swap(head, "table scripts id name:text hash:text for:text\n9|a|528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5|kind 1\n", o[..]);
+  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "script 9: a script's ID is 1 to 8: a world runs at most 8 scripts";
+  bad = sc_swap(head, "table scripts id name:text hash:text for:text\n1|a|528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5|who 10\n", o[..]);
+  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "script 1: FOR names a foe the world has: who 1 to 9";
+  #assert sc_load(c[..], SC_SHIPPED) && c[0].script_n == 0;
 }
 // s with its first `was` taken out, into out.
 sc_cut :: (s: string, was: string, out: [] u8) -> string {

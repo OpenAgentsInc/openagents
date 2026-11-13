@@ -16,6 +16,7 @@
 #load "layer-fixture.coax";
 #load "layer-draw.coax";
 #load "world.coax";
+#load "scripts.coax";              // the foes' realm scripts: the frame out, the commands in (#13467)
 #load "layer-checks.coax" #test;   // the colliders' and the layer's checks
 #load "walk-checks.coax" #test;    // the walk replay's, the fixture layer's and the kept-clear zones' checks
 #load "replay.coax";
@@ -102,6 +103,11 @@ SpGame :: struct {
   bot_state: int; bot_x: f32; bot_z: f32; bot_yaw: f32; bot_from: f32; bot_step: int; bot_t: f32; bot_fail: f32; bot_wall: bool; bot_spin: f32;
   fx: [FOES] f32; fz: [FOES] f32; fhp: [FOES] int; fhost: [FOES] bool; fstag: [FOES] f32;
   fyaw: [FOES] f32; fflee: [FOES] bool; fpose: [FOES] int;   // where each faces, whether it runs from you, and its plan's pose (ai/plan.coax MP_*)
+  // realm scripts (scripts.coax, #13467): the foes' steps so far; for each foe, where its script said to walk
+  // and how fast, the step that word is for and the step it asked to strike on; the strikes on foes this step
+  // (for on_hit); and how many calls and diagnostics the scripts have made
+  steps: int; sx: [FOES] f32; sz: [FOES] f32; ss: [FOES] f32; sword: [FOES] int; sstrike: [FOES] int;
+  shit: [SPS_HITS] int; shit_n: int; scalls: int; sdiags: int;
   // the editor's (?edit): its time of day (-1 the story's; content.coax SC_CLOCK_WORD), the foe whose plan
   // is drawn (-1 none), and whether the World runs with nobody in it for the foes to see (Simulate). Each outlives a reset
   view: int = -1; shown: int = -1; unseen: bool;
@@ -463,7 +469,8 @@ g_step :: (g: [] SpGame, dt: f32) {
 // the others near it too, flees, or ignores you; one in a fight or on the run gives up past T_GIVE_UP or at
 // the catwalk, and a guard past twice its notice from its post. Simulating (unseen), nobody is there to see.
 g_foes_step :: (g: [] SpGame, dt: f32) {
-  safe := on_deck(g, g[0].px, g[0].pz) || g[0].pz > -40.5 || g[0].pz < g[0].at.wall_z;
+  safe := sps_safe(g);
+  g[0].steps += 1;
   for i: 0..<FOES {
     if g[0].fhp[i] <= 0 { continue; }
     if g[0].fstag[i] > 0 { g[0].fstag[i] -= dt; continue; }
@@ -471,13 +478,15 @@ g_foes_step :: (g: [] SpGame, dt: f32) {
     pl := sc_plan(g[0].c[..], i, g_phase(g));
     d := dist2(g[0].px, g[0].pz, g[0].fx[i], g[0].fz[i]);
     see := mp_notice(pl);
-    if see > 0 && !g[0].unseen && !g[0].fhost[i] && !g[0].fflee[i] && !safe && d < see + g[0].heat * T_NOTICE_HEAT {
+    // A foe whose script spoke for this step does what it said (scripts.coax); any other reacts by its plan.
+    spoke := sps_spoke(g, i);
+    if !spoke && see > 0 && !g[0].unseen && !g[0].fhost[i] && !g[0].fflee[i] && !safe && d < see + g[0].heat * T_NOTICE_HEAT {
       if pl.on == NPO_FLEE { g[0].fflee[i] = true; } else { g[0].fhost[i] = true; }
       if pl.on == NPO_CALL { for j: 0..<FOES { if j != i && g[0].fhp[j] > 0 && dist2(g[0].fx[i], g[0].fz[i], g[0].fx[j], g[0].fz[j]) < T_CALL { g[0].fhost[j] = true; g[0].fflee[j] = false; } } }
     }
-    if g[0].fhost[i] && (safe || d > T_GIVE_UP || g[0].unseen) { g[0].fhost[i] = false; }
-    if g[0].fflee[i] && (d > T_GIVE_UP || g[0].unseen) { g[0].fflee[i] = false; }
-    if g[0].fhost[i] && pl.act == NPD_GUARD && pl.n > 0 && dist2(g[0].fx[i], g[0].fz[i], mp_m(pl.x[0]), mp_m(pl.z[0])) > hi(2 * see, 4) { g[0].fhost[i] = false; }
+    if !spoke && g[0].fhost[i] && (safe || d > T_GIVE_UP || g[0].unseen) { g[0].fhost[i] = false; }
+    if !spoke && g[0].fflee[i] && (d > T_GIVE_UP || g[0].unseen) { g[0].fflee[i] = false; }
+    if !spoke && g[0].fhost[i] && pl.act == NPD_GUARD && pl.n > 0 && dist2(g[0].fx[i], g[0].fz[i], mp_m(pl.x[0]), mp_m(pl.z[0])) > hi(2 * see, 4) { g[0].fhost[i] = false; }
     lead := ifx pl.act == NPD_FOLLOW && pl.lead >= 1 && pl.lead <= FOES then pl.lead - 1 else i;
     gl := mp_goal(pl, g[0].t, cast(f32) i * 1.7, i, g[0].fx[lead], g[0].fz[lead], g[0].fyaw[lead]);
     tx := gl.x; tz := gl.z; sp := gl.speed;
@@ -486,13 +495,14 @@ g_foes_step :: (g: [] SpGame, dt: f32) {
     run := ifx imperial then T_IMPERIAL_SPEED else T_RAIDER_SPEED;
     if g[0].fhost[i] { tx = g[0].px; tz = g[0].pz; sp = run; g[0].fpose[i] = MP_WALK; }
     if g[0].fflee[i] { k := 6 / hi(d, 0.1); tx = g[0].fx[i] + (g[0].fx[i] - g[0].px) * k; tz = g[0].fz[i] + (g[0].fz[i] - g[0].pz) * k; sp = run; g[0].fpose[i] = MP_WALK; }
+    if spoke { tx = g[0].sx[i]; tz = g[0].sz[i]; sp = lo(g[0].ss[i], run); }
     ex := tx - g[0].fx[i]; ez := tz - g[0].fz[i]; el := sqrt(ex * ex + ez * ez);
     if el > 0.05 {
       g[0].fx[i] += ex / el * lo(sp * dt, el); g[0].fz[i] += ez / el * lo(sp * dt, el);
       if sp * dt > 0.0001 { g[0].fyaw[i] = atan2(ex, ez); }
     } else if gl.look { g[0].fyaw[i] = atan2(gl.look_x - g[0].fx[i], gl.look_z - g[0].fz[i]); }
     g_foe_walls(g, i);
-    if g[0].fhost[i] && d < T_RAIDER_REACH { g_hurt(g); }
+    if g[0].fhost[i] && d < T_RAIDER_REACH && (!spoke || g[0].sstrike[i] == g[0].steps) { g_hurt(g); }
   }
 }
 
@@ -539,6 +549,7 @@ g_stun :: (g: [] SpGame) {
   f := g_foe_near(g);
   if f < 0 { return; }
   g[0].fhp[f] -= 1; g[0].fstag[f] = T_STAGGER; g[0].fhost[f] = true; g[0].flash = 0.2;
+  if g[0].shit_n < SPS_HITS { g[0].shit[g[0].shit_n] = f; g[0].shit_n += 1; }   // its script hears of it (on_hit)
   dx := g[0].fx[f] - g[0].px; dz := g[0].fz[f] - g[0].pz; d := hi(0.01, sqrt(dx * dx + dz * dz));
   g[0].fx[f] += dx / d * T_KNOCK; g[0].fz[f] += dz / d * T_KNOCK; g_foe_walls(g, f);
   if g[0].fhp[f] > 0 { g_say(g, MSG_SMACK); return; }

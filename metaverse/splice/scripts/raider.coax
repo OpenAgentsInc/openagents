@@ -1,0 +1,15 @@
+// Splice's raider as a realm script (GitHub #13467): it walks its plan, and on seeing the player does what
+// its plan says (chase, call, flee), gives up past 15 metres or at the catwalk, and strikes within reach.
+// The behaviour is foe.coax's; this unit is the script: its name, its state and its handlers.
+//   coax/web/script.sh metaverse/splice/scripts/raider.coax --out DIR
+#script "splice-raider";
+#load "../../../metaverse-engine/script/api.coax";
+#load "foe.coax";
+
+Mind :: struct #persisted { hits: s32; }
+
+on_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) { foe_react(me); }
+on_hit :: (me: u64, mind: [] Mind, other: u64, amount: f32) #export_c #effects(reads, writes, traps) {
+  mind[0].hits += 1;
+  sa_set_var(me, 0, 1.0);   // a struck foe fights
+}

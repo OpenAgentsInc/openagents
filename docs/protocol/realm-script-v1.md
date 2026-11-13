@@ -161,6 +161,23 @@ rows.
 
 A reader refuses bytes that are not exactly one frame or one result.
 
+## The status, `world.script-status.v1`
+
+A world reports its scripts as one line of JSON
+(`metaverse-engine/script/world.coax`, `sw_status`), for the editor's script
+pane and `coax drive`:
+
+```json
+{"schema":"world.script-status.v1","ticks":1,"call_fuel":20000,"tick_fuel":400000,"tick_left":399983,
+ "scripts":[{"at":0,"name":"fixture","hash":"…","off":false,"things":1,"calls":1,"failures":0,
+             "spent":17,"peak":17,"last":"","handler":"","line":0,"status":""}]}
+```
+
+`spent` is the instructions the script used this tick and `peak` the most
+one call has used since it was loaded, both against `call_fuel` and
+`tick_fuel`. `last` is the id of its last diagnostic, with the handler, the
+source line and the interpreter's status.
+
 ## Building a script
 
 ```sh
