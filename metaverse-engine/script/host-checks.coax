@@ -185,3 +185,20 @@ hk_counting :: (out: [] u8, rest: [] u8) -> int {
   // A layout that shares nothing starts every field over.
   #assert sh_load(w[0].s[0..<1], w[0].s[1..<2], w[0].b[0..<w[0].n], ScriptLayout.{}) == 0 && hk_state(w[..], 0) == 0;
 }
+#test "a draw on the largest tick wraps its counter and does not trap (script-fuzz)" {
+  // sa_set_var(me, 0, sa_random(me)) on ticks whose tick * 512 does not fit 64 bits.
+  w: [1] HkWorld; rows := [2] int.[SA_SET_VAR, SA_RANDOM];
+  code := [11] u8.[32, 0, 65, 0, 32, 0, 16, 1, 16, 0, 11];
+  #assert hk_load(w[..], rows[..], code[..], 0) == 0;
+  hk_frame(w[..], 1, 9223372036854775807);
+  sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  // (2^63 - 1) * 512 wraps to -512; the tick handler's first draw adds 0.
+  #assert w[0].run[0].failed == 0 && w[0].run[0].n_commands == 1 && w[0].run[0].commands[0].a == rand_unit(2026, 100, -512);
+  hk_frame(w[..], 1, -9223372036854775807);
+  sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  #assert w[0].run[0].failed == 0 && w[0].run[0].commands[0].a == rand_unit(2026, 100, 512);
+  // A tick that fits draws as before: (tick * 8 + handler) * 64 + draw.
+  hk_frame(w[..], 1, -3);
+  sh_tick(w[0].s[0..<1], w[0].run[..], w[0].f[..]);
+  #assert w[0].run[0].commands[0].a == rand_unit(2026, 100, (-3 * 8 + RH_TICK) * 64);
+}

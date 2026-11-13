@@ -179,8 +179,10 @@ sh_import :: (s: [] ScriptSlot, run: [] ScriptRun, f: [] ScriptFrame, c: [] Scri
   else if row == SA_DAY { result = sh_bits(f[0].day); }
   else if row == SA_WORLD { i := wi_s32(a0); if i >= 0 && i < SH_WORLD { result = sh_bits(f[0].world[i]); } }
   else if row == SA_RANDOM {
+    // The counter is (tick * 8 + handler) * 64 + draw, wrapped at 64 bits: a frame's tick is any s64.
     stream := cast(int) (a0 & 9223372036854775807);
-    result = sh_bits(rand_unit(f[0].seed, stream, (f[0].tick * 8 + c[0].handler) * 64 + (c[0].draws & 63)));
+    counter := add_wrap(mul_wrap(cast,trunc(u64) f[0].tick, 512), cast(u64) (c[0].handler * 64 + (c[0].draws & 63)));
+    result = sh_bits(rand_unit(f[0].seed, stream, cast,trunc(int) counter));
     c[0].draws += 1;
   }
   else if row == SA_DISTANCE {

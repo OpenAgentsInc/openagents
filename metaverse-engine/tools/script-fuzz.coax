@@ -1,0 +1,822 @@
+// The realm-script fuzzer (GitHub #13467, docs/research/2026-11-13-realm-scripts.md): holds the promise
+// that nothing a module does can end the host process, and that the host keeps its transaction rules
+// whatever a module does. It runs in one process, deterministically, with no files but the corpus.
+//
+// Each round starts from a valid module and damages it, then loads it with sh_load (host.coax). A module
+// that loads runs several ticks of sh_tick over frames with random things, events of every handler kind,
+// timers and trigger reaches, then direct handler calls (sh_call) and direct interpreter calls (wi_call
+// on every function, imports answered with random bits). The frame and result codecs (sf_read, sr_read)
+// read damaged bytes, and the manifest reader (sm_read) reads damaged text.
+//
+// The modules come from three places:
+//   - a generator: every handler, the face, globals, a table, data, and bodies of random instructions
+//     with balanced blocks, loops, branches, calls, imports called with the handler's own thing, memory
+//     reads and writes, stores into the thing's own state and interesting constants. Operand types are
+//     not kept, so the interpreter also runs code whose types are confused;
+//   - fixed modules from wasm-make.coax (loops, calls, imports, memory);
+//   - with --corpus DIR, every *.wasm in DIR: real compiled scripts (coax/web/script.sh SOURCE --out DIR).
+// Damage is bit flips, interesting bytes (0x00, 0x7f, 0x80, 0xff, opcodes), truncation, a span deleted
+// or duplicated, two modules spliced, and changes inside a function body only, so many mutants still pass.
+//
+// After every round it asserts what a host relies on:
+//   - a refused module leaves the slot as it was: unloaded, or the old script, its bytes and its memory;
+//   - after a call that failed (or was skipped), the script's memory, globals, timers and the tick's
+//     commands are exactly what they were before it; after a direct interpreter call and its rollback,
+//     the memory and globals are what they were before;
+//   - every command names a living thing the calling script drives (and a direct call's, the thing it was
+//     called for), and no command carries a NaN or an infinity;
+//   - the tick's budget never goes below zero, and every count stays inside its limit.
+// A Coax trap (a bounds, overflow, cast or division check) ends the process: that is the failure signal.
+//
+// Round i of seed S runs from seed S + i alone, so a failure reproduces with --seed (S + i) --rounds 1.
+// Progress is printed every 100,000 rounds; after an abort, rerun that block with --trace, which prints
+// each round's seed before it runs.
+//
+// Usage, at the repository root:
+//   coax/web/tool.sh metaverse-engine/tools/script-fuzz.coax --smoke                       the gate: seed 1, 20,000 rounds, under a minute
+//   coax/web/tool.sh metaverse-engine/tools/script-fuzz.coax --seed N --rounds N [--corpus DIR] [--trace]
+// Exit 0 when every round held, 1 when an invariant failed (the round's seed is printed), 2 for usage.
+#import "Basic";
+#load "../script/manifest.coax";
+#load "../script/wasm-make.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+FZ_SEEDS :: 40;           // fixed modules and corpus modules held at once
+FZ_BODY :: 4096;          // a generated function's bytes
+FZ_OUT :: WM_BYTES + 8192;
+FZ_SMOKE_SEED :: 1;
+FZ_SMOKE_ROUNDS :: 20000;
+FZ_PROGRESS :: 100000;
+
+// ---- random numbers: splitmix64, one stream a round ----
+FzRng :: struct { s: u64; }
+fz_next :: (r: [] FzRng) -> u64 {
+  r[0].s = add_wrap(r[0].s, cast(u64) 11400714819323198485);
+  z := r[0].s;
+  z = mul_wrap(z ^ (z >> 30), cast(u64) 13787848793156543929);
+  z = mul_wrap(z ^ (z >> 27), cast(u64) 10723151780598845931);
+  return z ^ (z >> 31);
+}
+fz_below :: (r: [] FzRng, n: int) -> int { if n <= 1 { return 0; } return cast(int) (fz_next(r) % cast(u64) n); }
+fz_chance :: (r: [] FzRng, percent: int) -> bool { return fz_below(r, 100) < percent; }
+fz_int :: (r: [] FzRng) -> int { return cast,trunc(int) fz_next(r); }
+
+// ---- interesting values ----
+FZ_I32 :: [26] int.[0, 1, -1, 2, 3, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256, 1024, 4096, 32767, 32768, 65535, 65536, 262144, 2147483647, -2147483647];
+FZ_I64 :: [10] int.[0, 1, -1, 63, 64, 4294967295, 4294967296, -4294967296, 9223372036854775807, 2147483648];
+FZ_F32 :: [24] u64.[0, 2147483648, 1065353216, 3212836864, 1056964608, 3204448256, 1069547520, 1075838976, 1325400064, 1333788672,
+                    1593835520, 1602224128, 3472883712, 3741319168, 1333788671, 1266679808, 2139095039, 8388608, 2143289344, 4290772992,
+                    2139095040, 4286578688, 1, 2141192192];
+FZ_F64 :: [27] u64.[0, 9223372036854775808, 4607182418800017408, 13830554455654793216, 4602678819172646912, 13826050856027422720,
+                    4609434218613702656, 4612811918334230528, 4746794007248502784, 4751297606875873280, 4890909195324358656,
+                    4895412794951729152, 13970166044103278592, 14114281232179134464, 4841369599423283200, 4602678819172646911,
+                    4751297606875663565, 13970166044105166029, 9218868437227405311, 4503599627370496, 5183643170835005440,
+                    9221120237041090560, 18444492273895866368, 9218868437227405312, 18442240474082181120, 1, 9219994337134247936];
+FZ_BYTES :: [24] u8.[0, 1, 2, 3, 4, 5, 11, 12, 13, 14, 15, 16, 26, 27, 32, 64, 65, 66, 96, 112, 127, 128, 192, 255];
+
+fz_i32 :: (r: [] FzRng) -> int {
+  if fz_chance(r, 70) { return FZ_I32[fz_below(r, FZ_I32.count)]; }
+  return cast(int) (cast,trunc(s32) fz_next(r));
+}
+fz_i64 :: (r: [] FzRng) -> int {
+  pick := fz_below(r, 10);
+  if pick < 4 { return FZ_I32[fz_below(r, FZ_I32.count)]; }
+  if pick < 7 { return FZ_I64[fz_below(r, FZ_I64.count)]; }
+  if pick < 8 { return cast,trunc(int) (cast(u64) 9223372036854775808); }
+  return fz_int(r);
+}
+fz_f32_bits :: (r: [] FzRng) -> u64 {
+  if fz_chance(r, 60) { return FZ_F32[fz_below(r, FZ_F32.count)]; }
+  if fz_chance(r, 50) { return cast(u64) f32_bits(cast(f32) (fz_below(r, 2001) - 1000) / 8.0); }
+  return fz_next(r) & WI_LOW;
+}
+fz_f64_bits :: (r: [] FzRng) -> u64 {
+  if fz_chance(r, 60) { return FZ_F64[fz_below(r, FZ_F64.count)]; }
+  if fz_chance(r, 50) { return f64_bits(cast(f64) (fz_below(r, 2001) - 1000) / 8.0); }
+  return fz_next(r);
+}
+// A float for a frame: mostly ordinary, sometimes NaN, an infinity, a denormal or a huge number.
+fz_float :: (r: [] FzRng, scale: f32) -> f32 {
+  if fz_chance(r, 85) { return (cast(f32) fz_below(r, 20001) / 10000.0 - 1.0) * scale; }
+  return f32_from_bits(cast,trunc(u32) fz_f32_bits(r));
+}
+fz_finite :: (v: f32) -> bool { return v == v && cast(f64) v > -1.0e39 && cast(f64) v < 1.0e39; }
+
+// ---- the work area: tool_main's, a few MiB ----
+FzSeed :: struct { n: int; b: [WM_BYTES] u8; }
+FzShape :: struct {
+  k: int; rows: [12] int;          // the imports, API rows in order
+  handlers: int;                   // bit h for handler h
+  pages: int; max_pages: int;
+  state_at: int; size: int; slots: int;
+  face_bad: int;                   // 0, or which face answer is out of range
+  globals: int; gtype: [4] int; gmut: [4] bool;
+  table: bool; custom: bool; data_n: int;
+  steps: int;                      // instructions a generated body has, about
+  funcs: int;                      // all functions, imports first
+  helper: int;                     // the helper's index
+}
+FzStats :: struct {
+  rounds: int; passed: int; loaded: int; ticked: int; ticks: int;
+  calls: int; kept: int; failed: [SD_CODES] int; statuses: [WI_STATUSES] int; refused: [WM_REFUSALS] int;
+  direct: int; direct_status: [WI_STATUSES] int; shadow: int; frames_read: int; results_read: int; manifests: int; manifests_read: int;
+  swaps: int; commands: int;
+}
+FzWork :: struct {
+  s: [2] ScriptSlot;                 // 0 runs, 1 is the scratch slot sh_load checks in
+  run: [1] ScriptRun; f: [1] ScriptFrame; f2: [1] ScriptFrame; run2: [1] ScriptRun;
+  seeds: [FZ_SEEDS] FzSeed; n_seeds: int; n_fixed: int;
+  b: [FZ_OUT] u8; n: int;            // the round's module
+  other: [FZ_OUT] u8;                // a second module: a splice's other half, a swap's first script
+  sec: [FZ_OUT] u8; fb: [FZ_BODY] u8; body: [FZ_BODY] u8;
+  m: [1] WmModule; jump: [FZ_OUT] s32;
+  shadow: [WI_MEM] u8; shadow_globals: [WM_GLOBALS] u64; shadow_timers: [SH_TIMERS] f32;
+  frame_bytes: [SF_BYTES + 256] u8; result_bytes: [SR_BYTES + 256] u8;
+  text: [SM_TEXT + 64] u8; text2: [SM_TEXT + 64] u8;
+  bad: bool; why: string;
+  stats: FzStats;
+}
+fz_fail :: (w: [] FzWork, why: string) { if !w[0].bad { w[0].bad = true; w[0].why = why; } }
+
+// ---- the module generator ----
+fz_types_of :: (row: int, out: [] u8) -> int { return sa_params(SCRIPT_API[row].params, out); }
+// A handler's type in the generated module, and how many parameters it has.
+fz_handler_type :: (h: int) -> int { return ifx h == RH_TICK then 1 else ifx h == RH_HIT then 3 else ifx h == RH_TIMER then 4 else 2; }
+fz_handler_params :: (h: int) -> int { return ifx h == RH_HIT then 4 else 3; }
+
+fz_const :: (r: [] FzRng, out: [] u8, o: [] WbOut, kind: int) {
+  if kind == 0 { wb_u8(out, o, 65); wb_sleb(out, o, fz_i32(r)); }
+  else if kind == 1 { wb_u8(out, o, 66); wb_sleb(out, o, fz_i64(r)); }
+  else if kind == 2 { wb_u8(out, o, 67); v := fz_f32_bits(r); for i: 0..<4 { wb_u8(out, o, cast(int) ((v >> cast(u64) (i * 8)) & 255)); } }
+  else { wb_u8(out, o, 68); v := fz_f64_bits(r); for i: 0..<8 { wb_u8(out, o, cast(int) ((v >> cast(u64) (i * 8)) & 255)); } }
+}
+fz_kind_of :: (t: u8) -> int { return ifx t == 127 then 0 else ifx t == 126 then 1 else ifx t == 125 then 2 else 3; }
+// The address of the calling thing's state: rs_state + slot * size.
+fz_state_addr :: (out: [] u8, o: [] WbOut, g: [] FzShape) {
+  wb_u8(out, o, 32); wb_leb(out, o, 1); wb_u8(out, o, 65); wb_sleb(out, o, g[0].size); wb_u8(out, o, 108);
+  wb_u8(out, o, 65); wb_sleb(out, o, g[0].state_at); wb_u8(out, o, 106);
+}
+FZ_STORE_KIND :: [9] int.[0, 1, 2, 3, 0, 0, 1, 1, 1];   // the value an op 54 + i stores
+FZ_STORE_SIZE :: [9] int.[4, 8, 4, 8, 1, 2, 1, 2, 4];
+// A body of about `steps` random instructions, its blocks balanced, ending in the function's `end`.
+fz_code :: (r: [] FzRng, out: [] u8, o: [] WbOut, g: [] FzShape, locals: int, steps: int) {
+  kinds: [8] int; elsed: [8] bool; depth := 0;
+  for step: 0..<steps {
+    if o[0].n > out.count - 64 { break; }
+    pick := fz_below(r, 100);
+    if pick < 6 && depth < 8 {
+      op := 2 + fz_below(r, 3);
+      if op == 4 && fz_chance(r, 80) { fz_const(r, out, o, 0); }
+      wb_u8(out, o, op);
+      bt := [5] int.[64, 64, 127, 126, 125];
+      wb_u8(out, o, ifx fz_chance(r, 5) then 124 else bt[fz_below(r, 5)]);
+      kinds[depth] = op; elsed[depth] = false; depth += 1;
+    } else if pick < 10 && depth > 0 {
+      if kinds[depth - 1] == 4 && !elsed[depth - 1] && fz_chance(r, 40) { wb_u8(out, o, 5); elsed[depth - 1] = true; }
+      else { wb_u8(out, o, 11); depth -= 1; }
+    } else if pick < 13 {
+      if fz_chance(r, 60) { fz_const(r, out, o, 0); }
+      wb_u8(out, o, ifx fz_chance(r, 50) then 12 else 13); wb_leb(out, o, fz_below(r, depth + 1));
+    } else if pick < 14 {
+      fz_const(r, out, o, 0);
+      n := fz_below(r, 4);
+      wb_u8(out, o, 14); wb_leb(out, o, n);
+      for i: 0..<n + 1 { wb_leb(out, o, fz_below(r, depth + 1)); }
+    } else if pick < 18 {
+      // A call: mostly the helper, sometimes any function, the handlers and the face too.
+      callee := ifx fz_chance(r, 60) then g[0].helper else fz_below(r, g[0].funcs);
+      if fz_chance(r, 70) { fz_const(r, out, o, 0); }
+      wb_u8(out, o, 16); wb_leb(out, o, callee);
+    } else if pick < 26 && g[0].k > 0 {
+      // An import, called with the handler's own thing and arguments of its types (or not).
+      i := fz_below(r, g[0].k); types: [WM_PARAMS] u8; np := fz_types_of(g[0].rows[i], types[..]);
+      for p: 0..<np {
+        if p == 0 && fz_chance(r, 85) { wb_u8(out, o, 32); wb_leb(out, o, 0); }
+        else { fz_const(r, out, o, fz_kind_of(types[p])); }
+      }
+      wb_u8(out, o, 16); wb_leb(out, o, i);
+      if SCRIPT_API[g[0].rows[i]].result != "" && fz_chance(r, 50) { wb_u8(out, o, 26); }
+    } else if pick < 36 {
+      op := 32 + fz_below(r, 3);
+      if op != 32 && fz_chance(r, 60) { fz_const(r, out, o, fz_below(r, 4)); }
+      wb_u8(out, o, op); wb_leb(out, o, fz_below(r, locals));
+    } else if pick < 38 {
+      g_at := fz_below(r, g[0].globals);
+      if fz_chance(r, 50) || !g[0].gmut[g_at] { wb_u8(out, o, 35); wb_leb(out, o, g_at); }
+      else { fz_const(r, out, o, fz_kind_of(cast(u8) g[0].gtype[g_at])); wb_u8(out, o, 36); wb_leb(out, o, g_at); }
+    } else if pick < 46 {
+      // A store into the calling thing's own state.
+      s := fz_below(r, 9); size := FZ_STORE_SIZE[s];
+      fz_state_addr(out, o, g);
+      fz_const(r, out, o, FZ_STORE_KIND[s]);
+      wb_u8(out, o, 54 + s); wb_leb(out, o, fz_below(r, 4)); wb_leb(out, o, ifx g[0].size > size then fz_below(r, g[0].size - size + 1) else 0);
+    } else if pick < 52 {
+      // A load or a store anywhere, inside or outside the memory.
+      if fz_chance(r, 50) { fz_state_addr(out, o, g); } else { fz_const(r, out, o, 0); }
+      op := 40 + fz_below(r, 23);
+      if op >= 54 { fz_const(r, out, o, ifx op - 54 < 9 then FZ_STORE_KIND[op - 54] else 0); }
+      wb_u8(out, o, op); wb_leb(out, o, fz_below(r, 4));
+      wb_leb(out, o, ifx fz_chance(r, 80) then fz_below(r, 64) else cast(int) (fz_next(r) & WI_LOW));
+    } else if pick < 66 {
+      fz_const(r, out, o, fz_below(r, 4));
+    } else if pick < 88 {
+      // A numeric instruction, usually on operands of a kind it might take.
+      op := 69 + fz_below(r, 128);
+      if fz_chance(r, 50) { kind := fz_below(r, 4); fz_const(r, out, o, kind); fz_const(r, out, o, kind); }
+      wb_u8(out, o, op);
+    } else if pick < 93 {
+      ops := [5] int.[26, 27, 1, 26, 27];
+      op := ops[fz_below(r, 5)];
+      if op == 27 { fz_const(r, out, o, 0); }
+      wb_u8(out, o, op);
+    } else if pick < 95 {
+      if fz_chance(r, 50) { wb_u8(out, o, 63); wb_u8(out, o, 0); } else { fz_const(r, out, o, 0); wb_u8(out, o, 64); wb_u8(out, o, 0); }
+    } else if pick < 96 {
+      wb_u8(out, o, ifx fz_chance(r, 70) then 15 else 0);
+    } else {
+      fz_const(r, out, o, fz_below(r, 4));
+    }
+  }
+  while depth > 0 { wb_u8(out, o, 11); depth -= 1; }
+  wb_u8(out, o, 11);
+}
+// One function: its local groups, then its code, after its size.
+fz_func :: (r: [] FzRng, w: [] FzWork, out: [] u8, o: [] WbOut, g: [] FzShape, np: int, steps: int) {
+  f: [1] WbOut; groups := fz_below(r, 4); locals := np;
+  if np < 3 && groups == 0 { groups = 1; }   // the helper: a local 1 for the state stores
+  wb_leb(w[0].fb[..], f[..], groups);
+  vt := [4] int.[127, 126, 125, 124];
+  for i: 0..<groups { count := 1 + fz_below(r, 3); wb_leb(w[0].fb[..], f[..], count); wb_u8(w[0].fb[..], f[..], vt[fz_below(r, 4)]); locals += count; }
+  if locals < 1 { wb_u8(w[0].fb[..], f[..], 11); }
+  else { fz_code(r, w[0].fb[..], f[..], g, locals, steps); }
+  wb_leb(out, o, f[0].n); wb_bytes(out, o, w[0].fb[0..<f[0].n]);
+}
+fz_face :: (out: [] u8, o: [] WbOut, answer: int) {
+  code: [16] u8; c: [1] WbOut;
+  wb_u8(code[..], c[..], 65); wb_sleb(code[..], c[..], answer); wb_u8(code[..], c[..], 11);
+  wb_leb(out, o, c[0].n + 1); wb_leb(out, o, 0); wb_bytes(out, o, code[0..<c[0].n]);
+}
+// A shape: which imports, handlers, memory, state, globals.
+fz_shape :: (r: [] FzRng, g: [] FzShape) {
+  g[0] = FzShape.{};
+  g[0].k = fz_below(r, 9);
+  for i: 0..<g[0].k { g[0].rows[i] = fz_below(r, SA_ROWS); }
+  g[0].handlers = 1 << fz_below(r, RS_HANDLERS);
+  for h: 0..<RS_HANDLERS { if fz_chance(r, 35) { g[0].handlers = g[0].handlers | (1 << h); } }
+  if fz_chance(r, 60) { g[0].handlers = g[0].handlers | 1; }
+  g[0].pages = 1 + fz_below(r, WM_PAGES); g[0].max_pages = g[0].pages + fz_below(r, WM_PAGES - g[0].pages + 1);
+  mem := g[0].pages * WM_PAGE;
+  g[0].size = ifx fz_chance(r, 70) then 1 + fz_below(r, 32) else 1 + fz_below(r, SH_STATE);
+  most := (mem - 1024) / g[0].size; if most > WM_SLOTS { most = WM_SLOTS; }
+  g[0].slots = 1 + fz_below(r, ifx fz_chance(r, 70) then 8 else most);
+  if g[0].slots > most { g[0].slots = most; }
+  g[0].state_at = 1024 + fz_below(r, mem - 1024 - g[0].size * g[0].slots + 1);
+  g[0].face_bad = ifx fz_chance(r, 4) then 1 + fz_below(r, 4) else 0;
+  g[0].globals = 1 + fz_below(r, 3);
+  g[0].gtype[0] = 127; g[0].gmut[0] = true;
+  vt := [4] int.[127, 126, 125, 124];
+  for i: 1..<g[0].globals { g[0].gtype[i] = vt[fz_below(r, 4)]; g[0].gmut[i] = fz_chance(r, 70); }
+  g[0].table = fz_chance(r, 50); g[0].custom = fz_chance(r, 20); g[0].data_n = fz_below(r, 24);
+  g[0].steps = ifx fz_chance(r, 80) then 10 + fz_below(r, 60) else 60 + fz_below(r, 200);
+  nh := 0; for h: 0..<RS_HANDLERS { if (g[0].handlers & (1 << h)) != 0 { nh += 1; } }
+  g[0].funcs = g[0].k + 4 + nh + 1; g[0].helper = g[0].funcs - 1;
+}
+// Writes the generated module into w[0].b; its length.
+fz_module :: (r: [] FzRng, w: [] FzWork, g: [] FzShape, out: [] u8) -> int {
+  ob: [1] WbOut; sb: [1] WbOut; o := ob[..]; s := sb[..]; sec := w[0].sec[..]; types: [WM_PARAMS] u8;
+  magic := [8] u8.[0, 97, 115, 109, 1, 0, 0, 0];
+  wb_bytes(out, o, magic[..]);
+  if g[0].custom { s[0] = WbOut.{}; wb_name(sec, s, "name"); wb_u8(sec, s, 1); wb_u8(sec, s, 2); wb_section(out, o, 0, sec[0..<s[0].n]); }
+  // types: 0 () -> i32; 1 tick; 2 (i64, i32, i64); 3 hit; 4 timer; 5 helper (i32) -> i32; then one an import.
+  s[0] = WbOut.{};
+  wb_leb(sec, s, 6 + g[0].k);
+  sigs := [5] [5] int.[[5] int.[0, 0, 0, 0, 0], [5] int.[3, 126, 127, 125, 0], [5] int.[3, 126, 127, 126, 0], [5] int.[4, 126, 127, 126, 125], [5] int.[3, 126, 127, 127, 0]];
+  wb_u8(sec, s, 96); wb_leb(sec, s, 0); wb_leb(sec, s, 1); wb_u8(sec, s, 127);
+  for t: 1..<5 { wb_u8(sec, s, 96); wb_leb(sec, s, sigs[t][0]); for p: 0..<sigs[t][0] { wb_u8(sec, s, sigs[t][1 + p]); } wb_leb(sec, s, 0); }
+  wb_u8(sec, s, 96); wb_leb(sec, s, 1); wb_u8(sec, s, 127); wb_leb(sec, s, 1); wb_u8(sec, s, 127);
+  for i: 0..<g[0].k {
+    row := g[0].rows[i]; np := fz_types_of(row, types[..]); result := sa_type(SCRIPT_API[row].result);
+    wb_u8(sec, s, 96); wb_leb(sec, s, np);
+    for p: 0..<np { wb_u8(sec, s, cast(int) types[p]); }
+    if result == 0 { wb_leb(sec, s, 0); } else { wb_leb(sec, s, 1); wb_u8(sec, s, result); }
+  }
+  wb_section(out, o, 1, sec[0..<s[0].n]);
+  if g[0].k > 0 {
+    s[0] = WbOut.{};
+    wb_leb(sec, s, g[0].k);
+    for i: 0..<g[0].k { wb_name(sec, s, "env"); wb_name(sec, s, SCRIPT_API[g[0].rows[i]].name); wb_u8(sec, s, 0); wb_leb(sec, s, 6 + i); }
+    wb_section(out, o, 2, sec[0..<s[0].n]);
+  }
+  s[0] = WbOut.{};
+  wb_leb(sec, s, g[0].funcs - g[0].k);
+  for i: 0..<4 { wb_leb(sec, s, 0); }
+  for h: 0..<RS_HANDLERS { if (g[0].handlers & (1 << h)) != 0 { wb_leb(sec, s, fz_handler_type(h)); } }
+  wb_leb(sec, s, 5);
+  wb_section(out, o, 3, sec[0..<s[0].n]);
+  if g[0].table {
+    s[0] = WbOut.{}; wb_leb(sec, s, 1); wb_u8(sec, s, 112);
+    if fz_chance(r, 50) { wb_u8(sec, s, 0); wb_leb(sec, s, 1); } else { wb_u8(sec, s, 1); wb_leb(sec, s, 1); wb_leb(sec, s, 1); }
+    wb_section(out, o, 4, sec[0..<s[0].n]);
+  }
+  s[0] = WbOut.{};
+  wb_leb(sec, s, 1); wb_u8(sec, s, 1); wb_leb(sec, s, g[0].pages); wb_leb(sec, s, g[0].max_pages);
+  wb_section(out, o, 5, sec[0..<s[0].n]);
+  s[0] = WbOut.{};
+  wb_leb(sec, s, g[0].globals);
+  for i: 0..<g[0].globals {
+    t := g[0].gtype[i];
+    wb_u8(sec, s, t); wb_u8(sec, s, ifx g[0].gmut[i] then 1 else 0);
+    if i == 0 { wb_u8(sec, s, 65); wb_sleb(sec, s, 32768); wb_u8(sec, s, 11); }
+    else { fz_const(r, sec, s, fz_kind_of(cast(u8) t)); wb_u8(sec, s, 11); }
+  }
+  wb_section(out, o, 6, sec[0..<s[0].n]);
+  s[0] = WbOut.{};
+  nh := g[0].funcs - g[0].k - 5;
+  wb_leb(sec, s, 5 + nh);
+  wb_name(sec, s, "memory"); wb_u8(sec, s, 2); wb_leb(sec, s, 0);
+  for e: 0..<4 { wb_name(sec, s, RS_NAMES[e]); wb_u8(sec, s, 0); wb_leb(sec, s, g[0].k + e); }
+  at := g[0].k + 4;
+  for h: 0..<RS_HANDLERS { if (g[0].handlers & (1 << h)) != 0 { wb_name(sec, s, RS_NAMES[RS_FIRST_HANDLER + h]); wb_u8(sec, s, 0); wb_leb(sec, s, at); at += 1; } }
+  wb_section(out, o, 7, sec[0..<s[0].n]);
+  s[0] = WbOut.{};
+  wb_leb(sec, s, g[0].funcs - g[0].k);
+  answers: [4] int; answers[0] = 1; answers[1] = g[0].state_at; answers[2] = g[0].size; answers[3] = g[0].slots;
+  bad := [5] int.[0, 2, -1, 0, 300];
+  if g[0].face_bad > 0 { answers[g[0].face_bad - 1] = bad[fz_below(r, 5)]; }
+  for a: answers { fz_face(sec, s, a); }
+  for h: 0..<RS_HANDLERS { if (g[0].handlers & (1 << h)) != 0 { fz_func(r, w, sec, s, g, fz_handler_params(h), g[0].steps); } }
+  fz_func(r, w, sec, s, g, 1, 4 + fz_below(r, 20));
+  wb_section(out, o, 10, sec[0..<s[0].n]);
+  s[0] = WbOut.{};
+  wb_leb(sec, s, 1); wb_leb(sec, s, 0); wb_u8(sec, s, 65); wb_sleb(sec, s, 16); wb_u8(sec, s, 11);
+  wb_leb(sec, s, g[0].data_n); for i: 0..<g[0].data_n { wb_u8(sec, s, fz_below(r, 256)); }
+  wb_section(out, o, 11, sec[0..<s[0].n]);
+  if o[0].full || s[0].full { return -1; }
+  return o[0].n;
+}
+
+// ---- fixed modules from wasm-make.coax ----
+fz_fixed :: (w: [] FzWork) {
+  echo := WB_ECHO; none: [1] int;
+  // tick: state[slot] += 1 (an i64), sa_move(me, dt, dt, dt)
+  count := [35] u8.[65, 128, 8, 32, 1, 65, 4, 116, 106, 65, 128, 8, 32, 1, 65, 4, 116, 106, 41, 3, 0, 66, 1, 124, 55, 3, 0, 32, 0, 32, 2, 32, 2, 32, 2];
+  // a loop that sums one to ten into memory
+  sum := [40] u8.[66, 10, 33, 4, 2, 64, 3, 64, 32, 4, 80, 13, 1, 32, 3, 32, 4, 124, 33, 3, 32, 4, 66, 1, 125, 33, 4, 12, 0, 11, 11, 65, 192, 0, 32, 3, 55, 3, 0, 11];
+  // a loop that never ends
+  forever := [6] u8.[3, 64, 12, 0, 11, 11];
+  // calls the helper on the slot and stores the answer; then sa_trap(42); unreachable
+  calls := [15] u8.[65, 64, 32, 1, 16, 6, 54, 2, 0, 65, 42, 16, 0, 0, 11];
+  nothing := WB_NOTHING;
+  rows := [4] int.[SA_MOVE, SA_X, SA_RANDOM, SA_TRAP];
+  trap_rows := [1] int.[SA_TRAP];
+  fixed := 0;
+  // count + move
+  move: [38] u8; for v, i: count { move[i] = v; } move[35] = 16; move[36] = 0; move[37] = 11;
+  w[0].seeds[fixed].n = wb_module(w[0].seeds[fixed].b[..], rows[..], move[..], 0, echo[..]); fixed += 1;
+  w[0].seeds[fixed].n = wb_module(w[0].seeds[fixed].b[..], none[0..<0], sum[..], 2, echo[..]); fixed += 1;
+  w[0].seeds[fixed].n = wb_module(w[0].seeds[fixed].b[..], none[0..<0], forever[..], 0, echo[..]); fixed += 1;
+  w[0].seeds[fixed].n = wb_module(w[0].seeds[fixed].b[..], trap_rows[..], calls[..], 0, echo[..]); fixed += 1;
+  w[0].seeds[fixed].n = wb_module(w[0].seeds[fixed].b[..], rows[..], nothing[..], 0, echo[..]); fixed += 1;
+  w[0].n_fixed = fixed; w[0].n_seeds = fixed;
+}
+
+// ---- damage ----
+fz_copy :: (to: [] u8, from: [] u8, n: int) { for i: 0..<n { to[i] = from[i]; } }
+// One raw change to b[0..<n]; the new length.
+fz_damage :: (r: [] FzRng, w: [] FzWork, b: [] u8, n: int) -> int {
+  if n < 1 { return n; }
+  kind := fz_below(r, 10);
+  if kind == 0 { at := fz_below(r, n); b[at] = b[at] ^ cast(u8) (1 << fz_below(r, 8)); return n; }
+  if kind <= 2 { b[fz_below(r, n)] = FZ_BYTES[fz_below(r, FZ_BYTES.count)]; return n; }
+  if kind == 3 { b[fz_below(r, n)] = cast(u8) fz_below(r, 256); return n; }
+  if kind == 4 { return fz_below(r, n); }
+  if kind == 5 {
+    at := fz_below(r, n); span := 1 + fz_below(r, 16); if at + span > n { span = n - at; }
+    for i: at..<n - span { b[i] = b[i + span]; }
+    return n - span;
+  }
+  if kind == 6 {
+    at := fz_below(r, n); span := 1 + fz_below(r, 16); if at + span > n { span = n - at; }
+    if n + span > b.count { return n; }
+    for i: 0..<n - at - span { b[n + span - 1 - i] = b[n - 1 - i]; }
+    for j: 0..<span { b[at + span + j] = b[at + j]; }
+    return n + span;
+  }
+  if kind == 7 && w[0].n_seeds > 0 {
+    // A splice: this module's head and another's tail.
+    other := fz_below(r, w[0].n_seeds);
+    cut := fz_below(r, n); from := fz_below(r, w[0].seeds[other].n + 1); span := w[0].seeds[other].n - from;
+    if cut + span > b.count { span = b.count - cut; }
+    for i: 0..<span { b[cut + i] = w[0].seeds[other].b[from + i]; }
+    return cut + span;
+  }
+  // A LEB-sized field: a byte with its continuation bit flipped.
+  at := fz_below(r, n); b[at] = b[at] ^ 128;
+  return n;
+}
+// A change inside one function body only, the length kept: most such mutants still pass the check.
+fz_smart :: (r: [] FzRng, w: [] FzWork, b: [] u8, n: int) -> bool {
+  if !wm_check(b[0..<n], w[0].m[..], w[0].jump[..]) || w[0].m[0].n_funcs < 1 { return false; }
+  f := w[0].m[0].funcs[fz_below(r, cast(int) w[0].m[0].n_funcs)];
+  first := cast(int) f.body; last := cast(int) f.end - 1;   // keep the function's own end
+  if last <= first { return false; }
+  for times: 0..<1 + fz_below(r, 3) {
+    at := first + fz_below(r, last - first);
+    pick := fz_below(r, 4);
+    if pick == 0 { b[at] = cast(u8) (69 + fz_below(r, 128)); }
+    else if pick == 1 { b[at] = FZ_BYTES[fz_below(r, FZ_BYTES.count)]; }
+    else if pick == 2 { b[at] = cast(u8) fz_below(r, 256); }
+    else { other := first + fz_below(r, last - first); t := b[at]; b[at] = b[other]; b[other] = t; }
+  }
+  return true;
+}
+
+// ---- frames and layouts ----
+FZ_IDS :: [8] u64.[1, 2, 3, 4, 5, 6, 9223372036854775808, 18446744073709551615];
+fz_id :: (r: [] FzRng) -> u64 {
+  if fz_chance(r, 90) { return FZ_IDS[fz_below(r, 5)]; }
+  if fz_chance(r, 50) { return FZ_IDS[fz_below(r, FZ_IDS.count)]; }
+  return ifx fz_chance(r, 50) then cast(u64) 0 else fz_next(r);
+}
+fz_tick :: (r: [] FzRng) -> int {
+  pick := fz_below(r, 10);
+  if pick < 6 { return 1 + fz_below(r, 1000); }
+  if pick < 7 { return 0; }
+  if pick < 8 { return -1 - fz_below(r, 1000); }
+  if pick < 9 { return 9223372036854775807 - fz_below(r, 10); }
+  return fz_int(r);
+}
+fz_frame :: (r: [] FzRng, f: [] ScriptFrame, tick: int, scripts: int) {
+  f[0] = ScriptFrame.{};
+  f[0].tick = tick; f[0].seed = ifx fz_chance(r, 70) then fz_below(r, 1000) else fz_int(r);
+  f[0].dt = ifx fz_chance(r, 85) then cast(f32) (1 + fz_below(r, 100)) / 100.0 else fz_float(r, 10.0);
+  f[0].time = fz_float(r, 1000.0); f[0].day = fz_float(r, 1.0);
+  for i: 0..<SH_WORLD { f[0].world[i] = fz_float(r, 100.0); }
+  n := fz_below(r, 6);
+  if fz_chance(r, 2) { n = ifx fz_chance(r, 50) then -1 - fz_below(r, 5) else SH_THINGS + fz_below(r, 5); }
+  f[0].n_things = n;
+  fill := ifx n < 0 then 0 else ifx n > SH_THINGS then SH_THINGS else n;
+  for i: 0..<fill {
+    t: ScriptThing;
+    t.id = fz_id(r); t.kind = cast(s32) (fz_below(r, 4) - 1); t.team = cast(s32) fz_below(r, 3);
+    t.script = ifx fz_chance(r, 85) then cast(s32) fz_below(r, scripts) else cast(s32) (fz_below(r, 12) - 3);
+    t.alive = fz_chance(r, 90);
+    t.x = fz_float(r, 20.0); t.y = fz_float(r, 2.0); t.z = fz_float(r, 20.0); t.facing = fz_float(r, 3.0);
+    t.speed = fz_float(r, 5.0); t.health = fz_float(r, 10.0);
+    t.reach = ifx fz_chance(r, 40) then fz_float(r, 15.0) else cast(f32) 0.0;
+    t.goal_x = fz_float(r, 20.0); t.goal_z = fz_float(r, 20.0); t.goal_speed = fz_float(r, 3.0); t.notice = fz_float(r, 20.0);
+    t.plan_on = cast(s32) (fz_below(r, 6) - 1);
+    for k: 0..<SH_VARS { t.vars[k] = fz_float(r, 10.0); }
+    for k: 0..<SH_POINTS { t.px[k] = fz_float(r, 20.0); t.pz[k] = fz_float(r, 20.0); }
+    f[0].things[i] = t;
+  }
+  e := fz_below(r, 5);
+  if fz_chance(r, 2) { e = ifx fz_chance(r, 50) then -1 else SH_EVENTS + fz_below(r, 3); }
+  f[0].n_events = e;
+  fill = ifx e < 0 then 0 else ifx e > SH_EVENTS then SH_EVENTS else e;
+  for i: 0..<fill {
+    f[0].events[i] = ScriptEvent.{handler = cast(s32) (fz_below(r, 10) - 1), thing = fz_id(r), other = fz_id(r), amount = fz_float(r, 10.0)};
+  }
+}
+FZ_WORDS :: [6] string.["count", "seen", "x", "chasing", "waited", "a-b"];
+FZ_TYPES :: [5] string.["u64", "f32", "s32", "[4] f32", "bool"];
+// A layout of well-formed words; `wild` puts its places and sizes anywhere.
+fz_layout :: (r: [] FzRng, wild: bool) -> ScriptLayout {
+  l: ScriptLayout; l.n = fz_below(r, 5);
+  for i: 0..<l.n {
+    f: ScriptField; name := FZ_WORDS[fz_below(r, FZ_WORDS.count)]; type := FZ_TYPES[fz_below(r, FZ_TYPES.count)];
+    for c, j: name { f.name[j] = c; } f.name_n = cast(s32) name.count;
+    for c, j: type { f.type[j] = c; } f.type_n = cast(s32) type.count;
+    f.at = cast(s32) fz_below(r, 32); f.size = cast(s32) (1 + fz_below(r, 8));
+    if wild {
+      f.at = cast(s32) (fz_below(r, 600) - 100); f.size = cast(s32) (fz_below(r, 600) - 100);
+      if fz_chance(r, 10) { f.name_n = cast(s32) (fz_below(r, 80) - 10); }
+      if fz_chance(r, 10) { f.type_n = cast(s32) (fz_below(r, 80) - 10); }
+    }
+    l.fields[i] = f;
+  }
+  return l;
+}
+
+// ---- invariants ----
+fz_mem_same :: (w: [] FzWork, vm: [] WiVm) -> bool {
+  for i: 0..<vm[0].mem_n { if vm[0].mem[i] != w[0].shadow[i] { return false; } }
+  for g: 0..<WM_GLOBALS { if vm[0].globals[g] != w[0].shadow_globals[g] { return false; } }
+  return true;
+}
+fz_keep_mem :: (w: [] FzWork, vm: [] WiVm) {
+  for i: 0..<vm[0].mem_n { w[0].shadow[i] = vm[0].mem[i]; }
+  for g: 0..<WM_GLOBALS { w[0].shadow_globals[g] = vm[0].globals[g]; }
+}
+// A command is well formed: an op a script may queue, numbers finite, a var slot that exists.
+fz_command_ok :: (w: [] FzWork, k: ScriptCommand) -> bool {
+  op := cast(int) k.op;
+  if op != SA_MOVE && op != SA_STOP && op != SA_FACE && op != SA_SET_VAR && op != SA_STRIKE && op != SA_SAY && op != SA_EMIT { fz_fail(w, "a command's op is not a write or an engine call"); return false; }
+  if !fz_finite(k.a) || !fz_finite(k.b) || !fz_finite(k.c) { fz_fail(w, "a command carries a NaN or an infinity"); return false; }
+  if op == SA_SET_VAR && (k.i < 0 || k.i >= SH_VARS) { fz_fail(w, "a set_var names a var that does not exist"); return false; }
+  if op == SA_MOVE && k.c < 0.0 { fz_fail(w, "a move has a negative speed"); return false; }
+  return true;
+}
+fz_slot_ok :: (w: [] FzWork, s: [] ScriptSlot) {
+  vm := s[0].vm[..];
+  if vm[0].open || vm[0].n_dirty != 0 { fz_fail(w, "a transaction is left open after a call"); }
+  if vm[0].status == WI_IMPORT { fz_fail(w, "a call is left stopped at an import"); }
+  if s[0].peak < 0 || s[0].peak > SH_CALL_FUEL || s[0].spent < 0 || s[0].spent > SH_TICK_FUEL { fz_fail(w, "spent or peak is out of range"); }
+  if s[0].loaded && !s[0].off && s[0].strikes >= SH_STRIKES { fz_fail(w, "a script with three strikes is still on"); }
+  for i: 0..<WM_SLOTS * SH_TIMERS { t := s[0].timers[i]; if t != t || t < 0.0 { fz_fail(w, "a timer is NaN or negative"); } }
+}
+fz_run_ok :: (w: [] FzWork, run: [] ScriptRun, f: [] ScriptFrame, scripts: int) {
+  if run[0].fuel < 0 || run[0].fuel > SH_TICK_FUEL { fz_fail(w, "the tick's budget is out of range"); }
+  if run[0].n_commands < 0 || run[0].n_commands > SH_COMMANDS || run[0].n_diags < 0 || run[0].n_diags > SH_DIAGS || run[0].more_diags < 0 { fz_fail(w, "a count is out of its limit"); return; }
+  if run[0].failed < 0 || run[0].failed > run[0].calls { fz_fail(w, "more calls failed than ran"); }
+  for i: 0..<run[0].n_commands {
+    k := run[0].commands[i];
+    if !fz_command_ok(w, k) { return; }
+    // The thing is a living thing in the frame that a loaded script drives.
+    found := false;
+    for t: 0..<f[0].n_things {
+      th := f[0].things[t];
+      if th.id == k.thing && th.alive && th.script >= 0 && cast(int) th.script < scripts && w[0].s[cast(int) th.script].loaded { found = true; }
+    }
+    if !found { fz_fail(w, "a command names a thing no script drives"); return; }
+  }
+  for i: 0..<run[0].n_diags {
+    d := run[0].diags[i];
+    if d.code < 1 || d.code >= SD_CODES || d.status < 0 || d.status >= WI_STATUSES { fz_fail(w, "a diagnostic's code or status is out of range"); }
+  }
+}
+fz_count :: (w: [] FzWork, run: [] ScriptRun) {
+  w[0].stats.calls += run[0].calls; w[0].stats.kept += run[0].calls - run[0].failed; w[0].stats.commands += run[0].n_commands;
+  for i: 0..<run[0].n_diags {
+    d := run[0].diags[i];
+    code := cast(int) d.code; status := cast(int) d.status;
+    if code >= 0 && code < SD_CODES { w[0].stats.failed[code] += 1; }
+    if (code == SD_TRAP || code == SD_OVER_BUDGET) && status >= 0 && status < WI_STATUSES { w[0].stats.statuses[status] += 1; }
+  }
+}
+
+// ---- one round's parts ----
+// A tick over a random frame, sometimes read back from damaged bytes; then its result through the codec.
+fz_one_tick :: (r: [] FzRng, w: [] FzWork, tick: int, scripts: int) {
+  fz_frame(r, w[0].f[..], tick, scripts);
+  if fz_chance(r, 15) {
+    n := sf_write(w[0].f[..], w[0].frame_bytes[..]);
+    if n > 0 {
+      for times: 0..<fz_below(r, 4) { w[0].frame_bytes[fz_below(r, n)] = cast(u8) fz_below(r, 256); }
+      span := n;
+      if fz_chance(r, 20) { span = fz_below(r, n + 1); }
+      if sf_read(w[0].frame_bytes[0..<span], w[0].f2[..]) { w[0].f[0] = w[0].f2[0]; w[0].stats.frames_read += 1; }
+    }
+  }
+  was_off := w[0].s[0].off || !w[0].s[0].loaded;
+  sh_tick(w[0].s[0..<scripts], w[0].run[..], w[0].f[..]);
+  w[0].stats.ticks += 1;
+  if was_off && scripts == 1 && w[0].run[0].calls != 0 { fz_fail(w, "a script that is off ran"); }
+  fz_run_ok(w, w[0].run[..], w[0].f[..], scripts);
+  for si: 0..<scripts { fz_slot_ok(w, w[0].s[si..<si + 1]); }
+  fz_count(w, w[0].run[..]);
+  if fz_chance(r, 10) {
+    n := sr_write(w[0].run[..], w[0].result_bytes[..]);
+    if n < 0 { fz_fail(w, "a tick's result does not write"); return; }
+    if !sr_read(w[0].result_bytes[0..<n], w[0].run2[..]) { fz_fail(w, "a tick's result does not read back"); return; }
+    for times: 0..<1 + fz_below(r, 4) { w[0].result_bytes[fz_below(r, n)] = cast(u8) fz_below(r, 256); }
+    span := ifx fz_chance(r, 20) then fz_below(r, n + 1) else n;
+    if sr_read(w[0].result_bytes[0..<span], w[0].run2[..]) { w[0].stats.results_read += 1; }
+  }
+}
+// A direct handler call with the memory kept first: a call that is not kept changes nothing.
+fz_direct_call :: (r: [] FzRng, w: [] FzWork, tick: int) {
+  s := w[0].s[0..<1]; vm := s[0].vm[..];
+  if !s[0].loaded { return; }
+  me := fz_id(r);
+  slot := ifx me != 0 then sh_bind(s, me, tick) else -1;
+  if slot < 0 || fz_chance(r, 5) { slot = fz_below(r, s[0].slots + 2) - 1; }
+  handler := fz_below(r, RS_HANDLERS + 2) - 1;
+  w[0].run[0].fuel = ifx fz_chance(r, 80) then SH_TICK_FUEL else fz_below(r, 2000);
+  w[0].run[0].n_commands = fz_below(r, 4); w[0].run[0].n_diags = 0; w[0].run[0].calls = 0; w[0].run[0].failed = 0;
+  if fz_chance(r, 3) { w[0].run[0].n_commands = SH_COMMANDS - fz_below(r, 2); }
+  for i: 0..<w[0].run[0].n_commands { w[0].run[0].commands[i] = ScriptCommand.{op = SA_STOP, thing = me}; }
+  before := w[0].run[0].n_commands;
+  fz_keep_mem(w, vm);
+  if slot >= 0 && slot < s[0].slots { for k: 0..<SH_TIMERS { w[0].shadow_timers[k] = s[0].timers[slot * SH_TIMERS + k]; } }
+  w[0].f[0].tick = tick;
+  kept := sh_call(s, w[0].run[..], w[0].f[..], 0, handler, me, slot, fz_id(r), fz_f32_bits(r));
+  w[0].stats.shadow += 1;
+  fz_slot_ok(w, s);
+  if w[0].run[0].fuel < 0 { fz_fail(w, "a direct call took the tick's budget below zero"); }
+  if !kept {
+    if !fz_mem_same(w, vm) { fz_fail(w, "a call that was not kept changed the memory or a global"); }
+    if w[0].run[0].n_commands != before { fz_fail(w, "a call that was not kept left commands"); }
+    if slot >= 0 && slot < s[0].slots { for k: 0..<SH_TIMERS { if s[0].timers[slot * SH_TIMERS + k] != w[0].shadow_timers[k] { fz_fail(w, "a call that was not kept changed a timer"); } } }
+  } else {
+    for i: before..<w[0].run[0].n_commands {
+      k := w[0].run[0].commands[i];
+      if k.thing != me { fz_fail(w, "a kept call queued a command for another thing"); }
+      if !fz_command_ok(w, k) { return; }
+    }
+  }
+}
+// Direct interpreter calls on every kind of function, imports answered with random bits, then a rollback.
+fz_direct_vm :: (r: [] FzRng, w: [] FzWork) {
+  s := w[0].s[0..<1]; vm := s[0].vm[..]; m := s[0].m[..];
+  if !s[0].loaded { return; }
+  fz_keep_mem(w, vm);
+  for call: 0..<1 + fz_below(r, 3) {
+    func := fz_below(r, cast(int) m[0].n_imports + cast(int) m[0].n_funcs + 2) - 1;
+    np := 0;
+    if func >= cast(int) m[0].n_imports && func < cast(int) m[0].n_imports + cast(int) m[0].n_funcs { np = cast(int) m[0].types[m[0].funcs[func - cast(int) m[0].n_imports].type].np; }
+    if fz_chance(r, 5) { np = fz_below(r, 6); }
+    args: [8] u64; for i: 0..<np { args[i] = ifx fz_chance(r, 50) then cast(u64) fz_below(r, 8) else fz_next(r); }
+    wi_begin(vm);
+    if wi_call(m, vm, func, args[0..<np], 1 + fz_below(r, SH_CALL_FUEL)) {
+      status := WI_FUEL;
+      for stop: 0..<10000 {
+        status = wi_run(s[0].b[0..<s[0].n], m, s[0].jump[..], vm);
+        if status != WI_IMPORT { break; }
+        a := wi_arg(m, vm, fz_below(r, 6) - 1);
+        if fz_chance(r, 10) && !wi_charge(vm, fz_below(r, 40)) { break; }
+        wi_answer(m, vm, ifx fz_chance(r, 50) then fz_next(r) else cast(u64) fz_below(r, 4));
+      }
+      w[0].stats.direct += 1;
+      if status >= 0 && status < WI_STATUSES { w[0].stats.direct_status[status] += 1; }
+      res := wi_result(vm);
+    }
+    if fz_chance(r, 10) { got := wi_peek(vm, fz_int(r) % 300000); put := wi_poke(vm, fz_int(r) % 300000, 7); }
+    wi_rollback(vm);
+    if !fz_mem_same(w, vm) { fz_fail(w, "a rollback left the memory or a global changed"); }
+  }
+  // A failed import charge or an unfinished call leaves the instance mid-call; the host's next call starts clean.
+  vm[0].status = WI_IDLE;
+}
+// The manifest of the loaded script read back, then damaged and read again.
+fz_manifest :: (r: [] FzRng, w: [] FzWork) {
+  if !w[0].s[0].loaded { return; }
+  mf := sm_of(w[0].s[0..<1], "fuzz-script", fz_layout(r, false));
+  text := sm_write(mf, w[0].text[..]);
+  if !mf.ok || text == "" { fz_fail(w, "a loaded script's manifest does not write"); return; }
+  got: [1] ScriptManifest;
+  if !sm_read(text, got[..]) { fz_fail(w, "a written manifest does not read back"); return; }
+  w[0].stats.manifests += 1;
+  n := text.count;
+  for i: 0..<n { w[0].text2[i] = w[0].text[i]; }
+  marks := "{}[]\",:0123456789-.e ";
+  for times: 0..<1 + fz_below(r, 3) {
+    pick := fz_below(r, 4); at := fz_below(r, n);
+    if pick == 0 { w[0].text2[at] = marks[fz_below(r, marks.count)]; }
+    else if pick == 1 { w[0].text2[at] = cast(u8) fz_below(r, 256); }
+    else if pick == 2 { n = fz_below(r, n + 1); }
+    else if n + 8 < w[0].text2.count {
+      // A digit run grows: a number past every limit.
+      for i: 0..<n - at { w[0].text2[n + 7 - i] = w[0].text2[n - 1 - i]; }
+      for i: 0..<8 { w[0].text2[at + i] = '9'; }
+      n += 8;
+    }
+    if n < 1 { break; }
+  }
+  if sm_read(cast(string) w[0].text2[0..<n], got[..]) { w[0].stats.manifests_read += 1; }
+}
+
+// ---- a round ----
+fz_round :: (w: [] FzWork, seed: int) {
+  rng: [1] FzRng; rng[0].s = cast,trunc(u64) seed; r := rng[..];
+  g: [1] FzShape;
+  w[0].bad = false; w[0].stats.rounds += 1;
+  w[0].s[0].loaded = false; w[0].s[0].off = false; w[0].s[1].loaded = false;
+  // The module.
+  source := fz_below(r, 100); corpus := w[0].n_seeds - w[0].n_fixed;
+  smart := false; clean := false;
+  if source < 40 || (source >= 85 && corpus == 0) {
+    fz_shape(r, g[..]); w[0].n = fz_module(r, w, g[..], w[0].b[..]);
+    if source >= 25 { smart = true; } else { clean = true; }
+  } else if source < 85 {
+    pick := ifx corpus > 0 && fz_chance(r, 60) then w[0].n_fixed + fz_below(r, corpus) else fz_below(r, w[0].n_fixed);
+    if fz_chance(r, 30) { fz_shape(r, g[..]); w[0].n = fz_module(r, w, g[..], w[0].b[..]); }
+    else { w[0].n = w[0].seeds[pick].n; fz_copy(w[0].b[..], w[0].seeds[pick].b[..], w[0].n); }
+    for times: 0..<1 + fz_below(r, 4) { w[0].n = fz_damage(r, w, w[0].b[0..<FZ_OUT], w[0].n); }
+  } else {
+    pick := w[0].n_fixed + fz_below(r, corpus);
+    w[0].n = w[0].seeds[pick].n; fz_copy(w[0].b[..], w[0].seeds[pick].b[..], w[0].n);
+    smart = fz_chance(r, 80);
+  }
+  if w[0].n < 0 { fz_fail(w, "the generator's module did not fit"); return; }
+  if smart { changed := fz_smart(r, w, w[0].b[..], w[0].n); }
+  // Sometimes a script is running already: the load is a swap.
+  scripts := ifx fz_chance(r, 10) then 2 else 1;
+  layout := fz_layout(r, fz_chance(r, 30));
+  if fz_chance(r, 25) {
+    g2: [1] FzShape; fz_shape(r, g2[..]); n2 := fz_module(r, w, g2[..], w[0].other[..]);
+    if n2 > 0 && sh_load(w[0].s[0..<1], w[0].s[1..<2], w[0].other[0..<n2], fz_layout(r, false)) == 0 {
+      fz_one_tick(r, w, 1 + fz_below(r, 100), 1);
+      w[0].stats.swaps += 1;
+    }
+  }
+  was := w[0].s[0].loaded; old_n := w[0].s[0].n; old_sum := 0;
+  if was {
+    fz_keep_mem(w, w[0].s[0].vm[..]);
+    for i: 0..<old_n { old_sum = (old_sum * 31 + cast(int) w[0].s[0].b[i]) % 1000000007; }
+  }
+  code := sh_load(w[0].s[0..<1], w[0].s[1..<2], w[0].b[0..<w[0].n], layout);
+  if code == SD_REFUSED { d := cast(int) w[0].s[1].last.detail; if d >= 0 && d < WM_REFUSALS { w[0].stats.refused[d] += 1; } }
+  // A generated module, undamaged, is one the check must pass.
+  if code == SD_REFUSED && clean { print("refused % at %\n", WM_REFUSAL_NAMES[w[0].s[1].last.detail], w[0].s[1].last.line); fz_fail(w, "the check refused a generated module that is valid"); return; }
+  if code != 0 {
+    if code != SD_REFUSED && code != SD_FACE { fz_fail(w, "a load failed with a code that is not a refusal"); return; }
+    if w[0].s[0].loaded != was { fz_fail(w, "a refused module changed whether the slot is loaded"); return; }
+    if was {
+      sum := 0; for i: 0..<w[0].s[0].n { sum = (sum * 31 + cast(int) w[0].s[0].b[i]) % 1000000007; }
+      if w[0].s[0].n != old_n || sum != old_sum || !fz_mem_same(w, w[0].s[0].vm[..]) { fz_fail(w, "a refused module changed the running script"); return; }
+      fz_one_tick(r, w, 1000 + fz_below(r, 100), 1);
+    }
+    return;
+  }
+  w[0].stats.passed += 1; w[0].stats.loaded += 1;
+  s := w[0].s[0..<1];
+  if s[0].state_size < 1 || s[0].state_size > SH_STATE || s[0].slots < 1 || s[0].slots > WM_SLOTS || s[0].state_at < 0 || s[0].state_at + s[0].state_size * s[0].slots > s[0].vm[0].mem_n {
+    fz_fail(w, "a loaded script's state lies outside its memory"); return;
+  }
+  // Ticks, direct calls, direct interpreter runs, the manifest.
+  tick := fz_tick(r);
+  for t: 0..<1 + fz_below(r, 6) {
+    fz_one_tick(r, w, tick, scripts);
+    if w[0].bad { return; }
+    if tick < 9223372036854775807 { tick += 1; }
+  }
+  w[0].stats.ticked += 1;
+  if fz_chance(r, 30) { for times: 0..<1 + fz_below(r, 3) { fz_direct_call(r, w, tick); if w[0].bad { return; } } }
+  if fz_chance(r, 25) { fz_direct_vm(r, w); }
+  if fz_chance(r, 15) { fz_manifest(r, w); }
+}
+
+// ---- the corpus ----
+fz_ends_with :: (s: string, tail: string) -> bool {
+  if s.count < tail.count { return false; }
+  return s[s.count - tail.count..<s.count] == tail;
+}
+fz_corpus :: (w: [] FzWork, dir: string) -> int {
+  list: [1] FsList; path: [1200] u8;
+  n := fs_list(dir, list[..]);
+  if n < 0 { return -1; }
+  added := 0;
+  for i: 0..<n {
+    name := fs_entry(list[..], i);
+    if !fz_ends_with(name, ".wasm") || w[0].n_seeds >= FZ_SEEDS { continue; }
+    got := fs_read(fs_join(dir, name, path[..]), w[0].seeds[w[0].n_seeds].b[..]);
+    if got < 8 { continue; }
+    w[0].seeds[w[0].n_seeds].n = got; w[0].n_seeds += 1; added += 1;
+  }
+  return added;
+}
+
+fz_print_counts :: (label: string, names: [] const string, counts: [] int) {
+  print("  %:", label);
+  for c, i: counts { if c > 0 && i < names.count { print(" % %", names[i], c); } }
+  print("\n");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) {
+    tool_errln("usage: coax/web/tool.sh metaverse-engine/tools/script-fuzz.coax [--smoke] [--seed N] [--rounds N] [--corpus DIR] [--trace]");
+    return 2;
+  }
+  smoke := args_has(a[..], "--smoke"); trace := args_has(a[..], "--trace");
+  seed_text := args_value(a[..], "--seed", ""); rounds_text := args_value(a[..], "--rounds", "");
+  seed := FZ_SMOKE_SEED; rounds := FZ_SMOKE_ROUNDS;
+  if seed_text != "" { n := args_number(seed_text); if !n.ok || n.value < 0.0 || n.value > 1.0e15 { tool_errln("script-fuzz: --seed takes a whole number"); return 2; } seed = cast(int) n.value; }
+  if rounds_text != "" { n := args_number(rounds_text); if !n.ok || n.value < 1.0 || n.value > 1.0e12 { tool_errln("script-fuzz: --rounds takes a whole number"); return 2; } rounds = cast(int) n.value; }
+  if smoke && (seed_text != "" || rounds_text != "") { tool_errln("script-fuzz: --smoke is seed 1 and 20000 rounds; give no --seed or --rounds with it"); return 2; }
+  work: [1] FzWork; w := work[..];
+  fz_fixed(w);
+  for i: 0..<w[0].n_fixed {
+    if w[0].seeds[i].n < 0 || !wm_check(w[0].seeds[i].b[0..<w[0].seeds[i].n], w[0].m[..], w[0].jump[..]) { print("script-fuzz: fixed module % does not pass the check\n", i); return 1; }
+  }
+  corpus := args_value(a[..], "--corpus", "");
+  if corpus != "" {
+    added := fz_corpus(w, corpus);
+    if added < 0 { tool_err("script-fuzz: no directory "); tool_errln(corpus); return 2; }
+    for i: w[0].n_fixed..<w[0].n_seeds {
+      if !wm_check(w[0].seeds[i].b[0..<w[0].seeds[i].n], w[0].m[..], w[0].jump[..]) { print("script-fuzz: corpus module % does not pass the check (%)\n", i - w[0].n_fixed, WM_REFUSAL_NAMES[w[0].m[0].code]); return 1; }
+    }
+    print("script-fuzz: % corpus modules from %\n", added, corpus);
+  }
+  for i: 0..<rounds {
+    round := seed + i;
+    if trace { print("round %\n", round); }
+    fz_round(w, round);
+    if w[0].bad {
+      print("script-fuzz: FAILED: % (round seed %; rerun: --seed % --rounds 1)\n", w[0].why, round, round);
+      return 1;
+    }
+    if !trace && (i + 1) % FZ_PROGRESS == 0 { print("script-fuzz: % rounds from seed % held\n", i + 1, seed); }
+  }
+  st := w[0].stats;
+  print("script-fuzz: seed %, % rounds held: % passed the check, % ran ticks (% ticks), % swaps\n", seed, st.rounds, st.passed, st.ticked, st.ticks, st.swaps);
+  print("  handler calls: % (% kept), % commands; direct interpreter runs: %; shadowed calls: %\n", st.calls, st.kept, st.commands, st.direct, st.shadow);
+  print("  frames read from damaged bytes: %, results: %; manifests: % (% damaged ones read)\n", st.frames_read, st.results_read, st.manifests, st.manifests_read);
+  fz_print_counts("refused", WM_REFUSAL_NAMES[..], st.refused[..]);
+  fz_print_counts("failed calls", SD_NAMES[..], st.failed[..]);
+  fz_print_counts("trap statuses", WI_STATUS_NAMES[..], st.statuses[..]);
+  fz_print_counts("direct runs", WI_STATUS_NAMES[..], st.direct_status[..]);
+  return 0;
+}
