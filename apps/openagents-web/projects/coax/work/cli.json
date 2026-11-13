@@ -4,7 +4,7 @@
  "initiative": {
   "slug": "openagents-cli",
   "title": "The openagents command line, in Coax",
-  "body": "One native `openagents` binary (apps/openagents-cli) that people and agents use for their account, the project queue, Pylons, Nostr and realms. The first slice shipped 2026-11-01 (57442f33be): a NIP-06 identity in the Keychain, event signing, NIP-98 headers, and pylon start/stop/status/logs. These tasks finish v1.0.0: the project queue from the CLI, Pylon links and listing, account login, and the agent surfaces (skill, MCP). Realm editing is the Verse project's `realm-cli` initiative.",
+  "body": "One native `openagents` binary (apps/openagents-cli) that people and agents use for their account, the project queue, Pylons, Nostr and realms. The first slice shipped 2026-11-01 (57442f33be): a NIP-06 identity in the Keychain, event signing, NIP-98 headers, and pylon start/stop/status/logs. These tasks finish v1.0.0: the project queue from the CLI, Pylon links and listing, account login, and the agent surfaces (skill, MCP). Realm editing is the Metaverse project's `realm-cli` initiative.",
   "spec": "docs/cli/2026-11-01-openagents-cli-v1.md",
   "labels": [
    "cli"

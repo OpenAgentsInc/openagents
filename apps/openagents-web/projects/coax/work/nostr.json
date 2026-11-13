@@ -4,7 +4,7 @@
   "initiative": {
     "slug": "coax-nostr",
     "title": "Coax Nostr: our own Nostr stack, crypto included, in Coax",
-    "body": "Build shared Coax Nostr crypto, verified clients and runtime authority for web, iOS, native tools and Verse. Source-pinned schemas/codecs and TypeScript-backed snapshots exist; the socket byte pipe is shipped, while Coax crypto, live folding and admission remain open. Named profiles and evidence govern support, with independent review before production secrets or retirement. Specification: coax/nostr.md.",
+    "body": "Build shared Coax Nostr crypto, verified clients and runtime authority for web, iOS, native tools and the Metaverse. Source-pinned schemas/codecs and TypeScript-backed snapshots exist; the socket byte pipe is shipped, while Coax crypto, live folding and admission remain open. Named profiles and evidence govern support, with independent review before production secrets or retirement. Specification: coax/nostr.md.",
     "spec": "coax/nostr.md",
     "labels": [
       "nostr",

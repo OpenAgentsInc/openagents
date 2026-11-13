@@ -1,7 +1,7 @@
 {
   "slug": "planetary-villa",
   "name": "Planetary Villa",
-  "description": "A world on the Verse with game expansions. First: Hecate's Cemetery, a moonlit memorial garden where you bring your pet back as a glowing companion.",
+  "description": "A world on the OpenAgents Metaverse with game expansions. First: Hecate's Cemetery, a moonlit memorial garden where you bring your pet back as a glowing companion.",
   "relay": "wss://relay.openagents.com",
   "repo": {
     "d": "openagents",

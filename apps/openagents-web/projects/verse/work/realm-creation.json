@@ -73,7 +73,7 @@
         "realm-creation",
         "web"
       ],
-      "body": "The agent compares the design with what the Verse engine can do and drafts linked engine tasks (reusing existing ones), with `needs` on the waiting tasks.\n\nDesign: `docs/projects/new-project.md` Part 2.",
+      "body": "The agent compares the design with what the Metaverse Engine can do and drafts linked engine tasks (reusing existing ones), with `needs` on the waiting tasks.\n\nDesign: `docs/projects/new-project.md` Part 2.",
       "files": [],
       "acceptance": [
         "Run on the Planetary Villa notes, it finds the engine needs the manual setup found"

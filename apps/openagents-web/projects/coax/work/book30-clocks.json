@@ -11,7 +11,7 @@
         "r13",
         "language"
       ],
-      "body": "Owner-selected full chapter 30 delivery, including prerequisite typed errors and enforced clock effects, nominal simulation/steady/civil and TAI/TT/TDB/UTC instants, pinned mappings, declared schedules and Hold age errors, real Panda/Verse adoption, astronomical conversion and event-capped warp. Implement the linked tasks in order; an initial clock-only profile is not completion. Existing R2 asynchronous acceptance and B2/B3 retained-request work remain open. Current ROADMAP numbering applies; this does not rename the historical r11/r12 project milestones."
+      "body": "Owner-selected full chapter 30 delivery, including prerequisite typed errors and enforced clock effects, nominal simulation/steady/civil and TAI/TT/TDB/UTC instants, pinned mappings, declared schedules and Hold age errors, real Panda/Metaverse adoption, astronomical conversion and event-capped warp. Implement the linked tasks in order; an initial clock-only profile is not completion. Existing R2 asynchronous acceptance and B2/B3 retained-request work remain open. Current ROADMAP numbering applies; this does not rename the historical r11/r12 project milestones."
     },
     {
       "slug": "book30-analysis-cost",
@@ -84,7 +84,7 @@
       "slug": "book30-multirate-consumers",
       "kind": "task",
       "parent": "book30-clocks-and-ticks",
-      "title": "Drive Panda and Verse from declared multirate schedules",
+      "title": "Drive Panda and the Metaverse from declared multirate schedules",
       "size": "L",
       "labels": [
         "book30",
@@ -96,7 +96,7 @@
       "blocked_by": [
         "book30-typed-clocks"
       ],
-      "body": "Each task declares integer/rational rate and phase, with deterministic inspectable within-tick order and explicit resource refusal. Connections declare Hold semantics and maximum age; empty/future/wrong-epoch/stale reads are typed errors with exact inclusive age boundaries. Compare long actual traces against an independent predeclared reference. Migrate actual simulated Panda physics/control to different rates and Verse fixed steps to the declared scheduler, preserving Aethyr nanosecond accounting, frame clamp, default fallback, eight-step cap/drop and interpolation. Preserve native clock-effect order; retain replayable boundaries. Qualify product consumer parity, independent scheduling/hold fault controls, mutation and relevant native/Wasm gates."
+      "body": "Each task declares integer/rational rate and phase, with deterministic inspectable within-tick order and explicit resource refusal. Connections declare Hold semantics and maximum age; empty/future/wrong-epoch/stale reads are typed errors with exact inclusive age boundaries. Compare long actual traces against an independent predeclared reference. Migrate actual simulated Panda physics/control to different rates and Metaverse fixed steps to the declared scheduler, preserving Metaverse Engine nanosecond accounting, frame clamp, default fallback, eight-step cap/drop and interpolation. Preserve native clock-effect order; retain replayable boundaries. Qualify product consumer parity, independent scheduling/hold fault controls, mutation and relevant native/Wasm gates."
     },
     {
       "slug": "book30-astronomical-time",
@@ -147,7 +147,7 @@
       "blocked_by": [
         "book30-event-warp"
       ],
-      "body": "Replace chapter 30 sketches with executable examples covering all declared forms, real Panda/Verse consumers, typed stale errors, pinned astronomical conversion and equal warp event order. Register excerpts/transcripts and run check-examples.sh in debug/release. Update spec, grammar, capability claims, status and verification records to distinguish completed scope from R2 async/B2/B3/R14/R15/R16 work. Preserve evidence identities and source boundaries; pass affected gates and push each completed child before resolving with its actual verified main commit. The full chapter milestone remains open until every promised scenario and prerequisite is implemented."
+      "body": "Replace chapter 30 sketches with executable examples covering all declared forms, real Panda/Metaverse consumers, typed stale errors, pinned astronomical conversion and equal warp event order. Register excerpts/transcripts and run check-examples.sh in debug/release. Update spec, grammar, capability claims, status and verification records to distinguish completed scope from R2 async/B2/B3/R14/R15/R16 work. Preserve evidence identities and source boundaries; pass affected gates and push each completed child before resolving with its actual verified main commit. The full chapter milestone remains open until every promised scenario and prerequisite is implemented."
     }
   ]
 }

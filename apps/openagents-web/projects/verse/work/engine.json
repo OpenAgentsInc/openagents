@@ -3,8 +3,8 @@
   "project": "verse",
   "initiative": {
     "slug": "verse-engine",
-    "title": "The Verse engine: what the worlds need next",
-    "body": "Engine upgrades that worlds built on the Verse are waiting for. Each task names the projects and tasks that need it.",
+    "title": "The Metaverse Engine: what the worlds need next",
+    "body": "Engine upgrades that worlds built on the Metaverse are waiting for. Each task names the projects and tasks that need it.",
     "labels": [
       "engine"
     ]
@@ -19,7 +19,7 @@
     {
       "slug": "engine-everglade-parity",
       "title": "Everglade at parity with the previous engine",
-      "body": "What the Rust Verse engine's Everglade had that the Coax one doesn't yet. The reference is verse/everglade/previous/ (copied from 0b401561a0^, before the Nuke).",
+      "body": "What the Rust Metaverse Engine's Everglade had that the Coax one doesn't yet. The reference is verse/everglade/previous/ (copied from 0b401561a0^, before the Nuke).",
       "parent": "verse-engine"
     }
   ],
@@ -279,14 +279,14 @@
     {
       "slug": "verse-water",
       "parent": "engine-everglade-parity",
-      "title": "The water system from the previous Verse engine",
+      "title": "The water system from the previous Metaverse Engine",
       "size": "XL",
       "labels": [
         "engine",
         "everglade",
         "water"
       ],
-      "body": "Port the whole water system of the previous Rust Verse engine to Coax: everything verse/everglade/previous/water.md specifies and the old engine shipped (phases W1 to W11: the coupling with physics, the shaders per tier, the spectrum, the clipmap, the shared clock, and what floats, swims and splashes), and the coast that reused it (verse/everglade/previous/coast.md, C1). Read the old code with `git show 0b401561a0^:<path>` (the paths in those files). Then Everglade's river and shore use it.\n\nReleased 2026-10-29 (the owner, on Everglade's fountain: \"build whatever is needed from the water epic until this gets replaced\"). Done: W1, W2, W3, W6's ripples, the painted preset and caustics; then the fountain, W4, W5 and the rest of W6, each its own task.",
+      "body": "Port the whole water system of the previous Rust Metaverse Engine to Coax: everything verse/everglade/previous/water.md specifies and the old engine shipped (phases W1 to W11: the coupling with physics, the shaders per tier, the spectrum, the clipmap, the shared clock, and what floats, swims and splashes), and the coast that reused it (verse/everglade/previous/coast.md, C1). Read the old code with `git show 0b401561a0^:<path>` (the paths in those files). Then Everglade's river and shore use it.\n\nReleased 2026-10-29 (the owner, on Everglade's fountain: \"build whatever is needed from the water epic until this gets replaced\"). Done: W1, W2, W3, W6's ripples, the painted preset and caustics; then the fountain, W4, W5 and the rest of W6, each its own task.",
       "files": [
         "verse/",
         "apps/openagents-web/"

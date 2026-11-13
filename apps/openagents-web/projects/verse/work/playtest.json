@@ -50,7 +50,7 @@
     {
       "slug": "qa-1030",
       "title": "Production QA sweep, October 30",
-      "body": "A headless sweep of everything the Verse and Planetary Villa shipped on October 30, as a first-time visitor on a computer (1440x900) and a phone (390x844): the playtest flow, the galaxy, every public realm, Everglade's spells, watch, chat and sledgehammer, and the analytics events. Each defect found is a task here.",
+      "body": "A headless sweep of everything the Metaverse and Planetary Villa shipped on October 30, as a first-time visitor on a computer (1440x900) and a phone (390x844): the playtest flow, the galaxy, every public realm, Everglade's spells, watch, chat and sledgehammer, and the analytics events. Each defect found is a task here.",
       "parent": "playtest-port"
     }
   ],
@@ -81,7 +81,7 @@
     {
       "slug": "pt-landing",
       "parent": "pt-flow",
-      "title": "The landing in Coax: Create anything, Enter the Verse, email or guest",
+      "title": "The landing in Coax: Create anything, Enter the Metaverse, email or guest",
       "size": "M",
       "labels": [
         "playtest",
@@ -372,7 +372,7 @@
         "analytics",
         "data"
       ],
-      "body": "Import everything in the bucket aethyr-demo-data (players, worlds, saves, sessions, feedback) into the new database, idempotently, without changing the demo's bucket. Never delete anything Verse, Aethyr or playtest.",
+      "body": "Import everything in the bucket aethyr-demo-data (players, worlds, saves, sessions, feedback) into the new database, idempotently, without changing the demo's bucket. Never delete anything Metaverse, Metaverse Engine or playtest.",
       "files": [],
       "acceptance": [
         "Counts match source and destination",
@@ -656,7 +656,7 @@
         "verse",
         "redesign"
       ],
-      "body": "The /verse landing (verse.coax) says in short words that this is a Haunted House-themed playtest. The Agent orb is in the landing's scene; tapping it (or its voice button) starts a push-to-talk voice chat with a guide persona on the voice host (a `guide` route): what the test is for, what the Verse is for, what the Haunted House is for. PLAYTEST NOW still opens the house.",
+      "body": "The /verse landing (verse.coax) says in short words that this is a Haunted House-themed playtest. The Agent orb is in the landing's scene; tapping it (or its voice button) starts a push-to-talk voice chat with a guide persona on the voice host (a `guide` route): what the test is for, what the Metaverse is for, what the Haunted House is for. PLAYTEST NOW still opens the house.",
       "files": [
         "apps/openagents-web/verse.coax",
         "verse/voice-host/speech.c"

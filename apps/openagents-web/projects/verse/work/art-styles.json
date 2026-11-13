@@ -4,7 +4,7 @@
   "initiative": {
     "slug": "art-styles",
     "title": "Art styles: lowpoly, painterly and photoreal zones",
-    "body": "Every zone on the Verse is drawn in one of a few art styles, named in realms.json and defined by the engine: lowpoly, painterly (Breath of the Wild's look: soft toon bands, blue haze, painted skies, wind-swept grass) and photoreal. This initiative builds painterly in full and moves Everglade and Hecate's Cemetery onto it.",
+    "body": "Every zone on the Metaverse is drawn in one of a few art styles, named in realms.json and defined by the engine: lowpoly, painterly (Breath of the Wild's look: soft toon bands, blue haze, painted skies, wind-swept grass) and photoreal. This initiative builds painterly in full and moves Everglade and Hecate's Cemetery onto it.",
     "spec": "docs/verse/art-styles.md",
     "labels": [
       "engine",

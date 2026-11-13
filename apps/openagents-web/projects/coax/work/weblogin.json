@@ -92,7 +92,7 @@
     "api",
     "auth"
    ],
-   "body": "`POST /api/auth/key` in `coax/web/api/private.c`: NIP-98 Authorization (kind 27235; u, method, payload = SHA-256 of the body), body {\"kind\":\"login\"}. Sets the same oa_session cookie as /api/auth/poll and moves the Verse player key by poll's rule. Existing freshness window, each event id accepted once, rate limited like approve, this site's Origin required.",
+   "body": "`POST /api/auth/key` in `coax/web/api/private.c`: NIP-98 Authorization (kind 27235; u, method, payload = SHA-256 of the body), body {\"kind\":\"login\"}. Sets the same oa_session cookie as /api/auth/poll and moves the Metaverse player key by poll's rule. Existing freshness window, each event id accepted once, rate limited like approve, this site's Origin required.",
    "files": [
     "coax/web/api/private.c",
     "coax/web/api/test.sh"

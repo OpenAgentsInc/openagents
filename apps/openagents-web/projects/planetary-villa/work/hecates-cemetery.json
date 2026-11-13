@@ -4,7 +4,7 @@
   "initiative": {
     "slug": "hecates-cemetery",
     "title": "Hecate's Cemetery: the first Planetary Villa expansion",
-    "body": "Planetary Villa is a world on the Verse with game expansions. Hecate's Cemetery is the first: a moonlit, low-poly memorial garden seen from a Breath of the Wild camera, where you bring your pet back as a glowing companion, give it a tombstone and a memorial page, play fetch, pick glowing flowers and meet other visitors. Owner: Kiki.",
+    "body": "Planetary Villa is a world on the Metaverse with game expansions. Hecate's Cemetery is the first: a moonlit, low-poly memorial garden seen from a Breath of the Wild camera, where you bring your pet back as a glowing companion, give it a tombstone and a memorial page, play fetch, pick glowing flowers and meet other visitors. Owner: Kiki.",
     "spec": "verse/planetary-villa/README.md",
     "labels": [
       "planetary-villa",
@@ -69,7 +69,7 @@
     {
       "slug": "hc-painterly",
       "title": "Hecate's Cemetery in painterly",
-      "body": "Superseded: Kiki chose a flat low-poly style for Hecate's Cemetery instead of painterly. It shipped in 5a78605fc4 (the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); her sign-off is hc-flat-review. Was: The garden moves to the Verse's painterly style at night (docs/verse/art-styles.md): soft moonlit bands, violet shadows, blue night haze, blob trees and moonlit grass, painted water, with Kiki's sign-off. The engine work is the Verse project's Art styles initiative.",
+      "body": "Superseded: Kiki chose a flat low-poly style for Hecate's Cemetery instead of painterly. It shipped in 5a78605fc4 (the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); her sign-off is hc-flat-review. Was: The garden moves to the Metaverse's painterly style at night (docs/verse/art-styles.md): soft moonlit bands, violet shadows, blue night haze, blob trees and moonlit grass, painted water, with Kiki's sign-off. The engine work is the Metaverse project's Art styles initiative.",
       "parent": "hecates-cemetery",
       "status": "closed"
     }
@@ -107,7 +107,7 @@
         "web",
         "needs-verse"
       ],
-      "body": "Planetary Villa is a planet you can choose on the galaxy map; choosing it starts the flight to the current expansion.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-galaxy, pt-planets. This task can't land until those are done.",
+      "body": "Planetary Villa is a planet you can choose on the galaxy map; choosing it starts the flight to the current expansion.\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): pt-galaxy, pt-planets. This task can't land until those are done.",
       "files": [],
       "acceptance": [
         "Choosing Planetary Villa on the galaxy map at openagents.com opens the flight",
@@ -134,7 +134,7 @@
         "cinematic",
         "needs-verse"
       ],
-      "body": "A skippable cinematic of traveling through space to the expansion this session focuses on (Hecate's Cemetery), ending where you land in the garden.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-cinematics. This task can't land until those are done.",
+      "body": "A skippable cinematic of traveling through space to the expansion this session focuses on (Hecate's Cemetery), ending where you land in the garden.\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-cinematics. This task can't land until those are done.",
       "files": [],
       "acceptance": [
         "The cinematic plays on desktop and phone and can be skipped",
@@ -159,7 +159,7 @@
       "body": "A small set of low-poly models in one stylized look: tombstones (several shapes with room for a name and epitaph), garden beds, hedges, trees, gates, benches, a fountain, path pieces, the open field's edge. Sources must be licensed for our use; list each source.",
       "files": [],
       "acceptance": [
-        "Every model loads in the Verse and fits one style",
+        "Every model loads in the Metaverse and fits one style",
         "Licences recorded next to the assets"
       ],
       "blocked_by": [
@@ -179,7 +179,7 @@
         "lighting",
         "needs-verse"
       ],
-      "body": "The garden at night: moonlight as the only key light, not very bright, soft shadows, a light outline on shapes and paths so they read in the dark.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-moonlight, verse-outlines. This task can't land until those are done.",
+      "body": "The garden at night: moonlight as the only key light, not very bright, soft shadows, a light outline on shapes and paths so they read in the dark.\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-moonlight, verse-outlines. This task can't land until those are done.",
       "files": [],
       "acceptance": [
         "Side-by-side screenshots at desktop and phone show the moonlit look Kiki approves",
@@ -206,7 +206,7 @@
         "web",
         "needs-verse"
       ],
-      "body": "Lay out the garden: paths between tombstone plots with room to grow, a gate into the open field, and spots for the vase and the fountain. Paths are walkable and readable from the third-person view.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-terrain-paths. This task can't land until those are done.",
+      "body": "Lay out the garden: paths between tombstone plots with room to grow, a gate into the open field, and spots for the vase and the fountain. Paths are walkable and readable from the third-person view.\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-terrain-paths. This task can't land until those are done.",
       "files": [],
       "acceptance": [
         "You can walk every path and into the field",
@@ -234,7 +234,7 @@
         "controls",
         "needs-verse"
       ],
-      "body": "The Breath of the Wild perspective: an over-the-shoulder third-person camera that orbits freely, with the walking controller the Haunted House uses, on keyboard, mouse and touch.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-orbit-camera. This task can't land until those are done.",
+      "body": "The Breath of the Wild perspective: an over-the-shoulder third-person camera that orbits freely, with the walking controller the Haunted House uses, on keyboard, mouse and touch.\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-orbit-camera. This task can't land until those are done.",
       "files": [],
       "acceptance": [
         "Orbit, zoom and follow feel right on desktop and phone",
@@ -260,7 +260,7 @@
         "character",
         "needs-verse"
       ],
-      "body": "The visitor is mostly a shadow: an all-black humanoid with soft, fuzzy edges, not detailed.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-soft-silhouette. This task can't land until those are done.",
+      "body": "The visitor is mostly a shadow: an all-black humanoid with soft, fuzzy edges, not detailed.\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-soft-silhouette. This task can't land until those are done.",
       "files": [],
       "acceptance": [
         "The shadow reads clearly against the moonlit garden",
@@ -286,7 +286,7 @@
         "effects",
         "needs-verse"
       ],
-      "body": "A light trail of particles around the visitor while it moves, so it reads as a guest from another realm.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-particles. This task can't land until those are done.",
+      "body": "A light trail of particles around the visitor while it moves, so it reads as a guest from another realm.\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-particles. This task can't land until those are done.",
       "files": [],
       "acceptance": [
         "The particles follow you and stay within the frame budget on a phone"
@@ -309,7 +309,7 @@
         "server",
         "needs-verse"
       ],
-      "body": "A create-your-pet flow drawn in Coax: write about your pet, and drop in photos or a short video, for a late pet or a new one. Uploads are stored privately with size and type limits, and only used to build the avatar.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-player-endpoints. This task can't land until those are done.",
+      "body": "A create-your-pet flow drawn in Coax: write about your pet, and drop in photos or a short video, for a late pet or a new one. Uploads are stored privately with size and type limits, and only used to build the avatar.\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): pt-player-endpoints. This task can't land until those are done.",
       "files": [],
       "acceptance": [
         "Text, image and video uploads work on desktop and phone",
@@ -358,7 +358,7 @@
         "character",
         "needs-verse"
       ],
-      "body": "An editor drawn in Coax: change shape, proportions, colours, pattern and accessories with sliders and swatches, seeing the pet turn and move as you change it. The pet glows white in the world.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-quadruped, verse-glow. This task can't land until those are done.",
+      "body": "An editor drawn in Coax: change shape, proportions, colours, pattern and accessories with sliders and swatches, seeing the pet turn and move as you change it. The pet glows white in the world.\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-quadruped, verse-glow. This task can't land until those are done.",
       "files": [],
       "acceptance": [
         "Every parameter the agent sets can be changed by hand",
@@ -388,7 +388,7 @@
         "animation",
         "needs-verse"
       ],
-      "body": "A set of emotes (sit, play bow, roll over, howl, wag, sleep) to choose from, and new ones an agent makes from what you say about the pet (\"she always spun twice before lying down\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-authored-motions. This task can't land until those are done.",
+      "body": "A set of emotes (sit, play bow, roll over, howl, wag, sleep) to choose from, and new ones an agent makes from what you say about the pet (\"she always spun twice before lying down\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-authored-motions. This task can't land until those are done.",
       "files": [],
       "acceptance": [
         "At least six stock emotes play on the pet",
@@ -437,7 +437,7 @@
         "web",
         "needs-verse"
       ],
-      "body": "When you press play, your pet's tombstone takes a plot in the garden: its name, dates and a line, with its achievements if it was competitive and its most beloved traits and stories.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-saves. This task can't land until those are done.",
+      "body": "When you press play, your pet's tombstone takes a plot in the garden: its name, dates and a line, with its achievements if it was competitive and its most beloved traits and stories.\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): pt-saves. This task can't land until those are done.",
       "files": [],
       "acceptance": [
         "A new pet's tombstone appears in the garden for every visitor",
@@ -510,7 +510,7 @@
         "gameplay",
         "needs-verse"
       ],
-      "body": "Throw a ball in the open field; a pet with the fetch skill runs, picks it up and brings it back.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-throw-physics, verse-quadruped. This task can't land until those are done.",
+      "body": "Throw a ball in the open field; a pet with the fetch skill runs, picks it up and brings it back.\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-throw-physics, verse-quadruped. This task can't land until those are done.",
       "files": [],
       "acceptance": [
         "Fetch works with mouse, keys and touch",
@@ -560,7 +560,7 @@
         "realtime",
         "needs-verse"
       ],
-      "body": "A multiplayer garden: see other visitors' shadows and their glowing pets moving in real time.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-presence-chat. This task can't land until those are done.",
+      "body": "A multiplayer garden: see other visitors' shadows and their glowing pets moving in real time.\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): pt-presence-chat. This task can't land until those are done.",
       "files": [],
       "acceptance": [
         "Two visitors see each other and each other's pets within two seconds",
@@ -586,7 +586,7 @@
         "realtime",
         "needs-verse"
       ],
-      "body": "A chat box in the corner for everyone in the garden, in the style of Horse Isle, drawn in Coax, with names and the pet each visitor brought.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-presence-chat. This task can't land until those are done.",
+      "body": "A chat box in the corner for everyone in the garden, in the style of Horse Isle, drawn in Coax, with names and the pet each visitor brought.\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): pt-presence-chat. This task can't land until those are done.",
       "files": [],
       "acceptance": [
         "Chat works between two visitors on desktop and phone",
@@ -612,7 +612,7 @@
         "gameplay",
         "needs-verse"
       ],
-      "body": "Glowing flowers of three kinds grow in the field; walk up and pick them, and they go in your basket.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-glow, verse-particles. This task can't land until those are done.",
+      "body": "Glowing flowers of three kinds grow in the field; walk up and pick them, and they go in your basket.\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-glow, verse-particles. This task can't land until those are done.",
       "files": [],
       "acceptance": [
         "All three kinds grow, glow and can be picked",
@@ -639,7 +639,7 @@
         "gameplay",
         "needs-verse"
       ],
-      "body": "A close-up arranging view: point and click to put each flower in the vase where you want it.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-closeup-arrange. This task can't land until those are done.",
+      "body": "A close-up arranging view: point and click to put each flower in the vase where you want it.\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-closeup-arrange. This task can't land until those are done.",
       "files": [],
       "acceptance": [
         "Arranging works with a mouse and with touch",
@@ -665,7 +665,7 @@
         "gameplay",
         "needs-verse"
       ],
-      "body": "Carry the vase and set it down anywhere in the world. The tutorial directs you to place it by your pet's tombstone. Placed vases stay for everyone.\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-saves. This task can't land until those are done.",
+      "body": "Carry the vase and set it down anywhere in the world. The tutorial directs you to place it by your pet's tombstone. Placed vases stay for everyone.\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): pt-saves. This task can't land until those are done.",
       "files": [],
       "acceptance": [
         "A vase can be placed anywhere walkable",
@@ -889,7 +889,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Tag the realm `style: painterly` with `clock: fixed:0.0` (always night; the moon keeps its real phase and fixed place). Write the style into verse/planetary-villa/README.md's Look section as Kiki confirms it: painterly at night, the moon the key light, outlines as pale edges only.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-style-field, as-presets. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Tag the realm `style: painterly` with `clock: fixed:0.0` (always night; the moon keeps its real phase and fixed place). Write the style into verse/planetary-villa/README.md's Look section as Kiki confirms it: painterly at night, the moon the key light, outlines as pale edges only.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-style-field, as-presets. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/realms.json",
         "verse/planetary-villa/README.md"
@@ -917,7 +917,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Replace the faceted single-term moonlight with the night preset: smooth normals and three bands (no low-poly facets from `dpdx`/`dpdy`), a moon-silver rim on everything, the moon's shadow map (tombstones, hedges, cypresses and the wall cast soft violet-blue shadows), the night ambient and tone so the garden reads (its golden's `lit` rises from 0.015), night haze (0.10, 0.14, 0.27) from 12 m in place of the near-black fog, and the outlines in their light form at most 0.35, fading with haze. Kiki judges how dim the night is.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-toon-bands, as-rim, as-soft-shadows, as-tone-post, as-haze, as-day-night, as-outline-light. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Replace the faceted single-term moonlight with the night preset: smooth normals and three bands (no low-poly facets from `dpdx`/`dpdy`), a moon-silver rim on everything, the moon's shadow map (tombstones, hedges, cypresses and the wall cast soft violet-blue shadows), the night ambient and tone so the garden reads (its golden's `lit` rises from 0.015), night haze (0.10, 0.14, 0.27) from 12 m in place of the near-black fog, and the outlines in their light form at most 0.35, fading with haze. Kiki judges how dim the night is.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-toon-bands, as-rim, as-soft-shadows, as-tone-post, as-haze, as-day-night, as-outline-light. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/villa.coax",
         "apps/openagents-web/villa-face.c",
@@ -955,7 +955,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Keep the moon in its real phase and the stars; the horizon meets the haze colour so the hills step back in blue layers; clouds per Kiki's answer to the open question (cover 0 until then); faint moon shafts through the cypresses at the night strength.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-painted-sky, as-light-shafts. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Keep the moon in its real phase and the stars; the horizon meets the haze colour so the hills step back in blue layers; clouds per Kiki's answer to the open question (cover 0 until then); faint moon shafts through the cypresses at the night strength.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-painted-sky, as-light-shafts. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/villa.coax",
         "apps/openagents-web/villa-face.c",
@@ -986,7 +986,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: The cypresses (cones) and round trees (spheres) shade as soft ellipsoid and sphere blobs that sway; the hedges become soft rounded masses instead of boxes; moonlit wind-swept grass fills the field and the garden beds, with none on the paths, the plaza or the plots. The glowing flowers stand in the grass and stay findable.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-blob-foliage, as-wind-grass. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: The cypresses (cones) and round trees (spheres) shade as soft ellipsoid and sphere blobs that sway; the hedges become soft rounded masses instead of boxes; moonlit wind-swept grass fills the field and the garden beds, with none on the paths, the plaza or the plots. The glowing flowers stand in the grass and stay findable.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-blob-foliage, as-wind-grass. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/villa.coax",
         "apps/openagents-web/villa-face.c",
@@ -1018,7 +1018,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: The ground and paths lose their fine grit (2.3, 4 and 11 cycles a metre today) for broad painted colour, the path a clean band with its pale edge; the fountain's water takes the painted water preset (night bands, moon sparkles, a clean foam ring).\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-painted-water. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: The ground and paths lose their fine grit (2.3, 4 and 11 cycles a metre today) for broad painted colour, the path a clean band with its pale edge; the fountain's water takes the painted water preset (night bands, moon sparkles, a clean foam ring).\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-painted-water. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/villa.coax",
         "apps/openagents-web/villa-face.c",
@@ -1047,7 +1047,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Your shadow stays all-black with fuzzy edges and the dogs stay glowing white (Kiki's designs, exempt from the bands), but the shadow's body reads as one soft silhouette rather than visible balls and limbs; other visitors match. The character rim applies where it doesn't fight the design.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-character-shading. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Your shadow stays all-black with fuzzy edges and the dogs stay glowing white (Kiki's designs, exempt from the bands), but the shadow's body reads as one soft silhouette rather than visible balls and limbs; other visitors match. The character rim applies where it doesn't fight the design.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-character-shading. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/villa.coax",
         "apps/openagents-web/villa-face.c",
@@ -1079,7 +1079,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: The realm passes the style check in the release walk at desktop and phone, and Kiki approves the side-by-side sheet; the golden moves only with her approval. Her sign-off feeds hc-launch-review.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-style-check, as-phone-tier. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: The realm passes the style check in the release walk at desktop and phone, and Kiki approves the side-by-side sheet; the golden moves only with her approval. Her sign-off feeds hc-launch-review.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): as-style-check, as-phone-tier. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/realms.json"
       ],

@@ -1,7 +1,7 @@
 {
   "slug": "verse",
-  "name": "Verse",
-  "description": "Worlds you walk into, built in Coax on the Verse engine: the Grid, the Haunted House and the playtest flow, on openagents.com.",
+  "name": "Metaverse",
+  "description": "Worlds you walk into, built in Coax on the OpenAgents Metaverse Engine: the Grid, the Haunted House and the playtest flow, on openagents.com.",
   "relay": "wss://relay.openagents.com",
   "repo": {
     "d": "openagents",

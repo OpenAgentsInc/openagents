@@ -3,8 +3,8 @@
   "project": "verse",
   "initiative": {
     "slug": "verse-native-gpu",
-    "title": "Native GPU Verse: Coax everything",
-    "body": "Verse as a native desktop app on the GPU, with Coax writing all of it, shaders included: no browser, no WGSL, no outside shader toolchain. Owner decision 2026-10-30.",
+    "title": "Native GPU Metaverse: Coax everything",
+    "body": "The Metaverse as a native desktop app on the GPU, with Coax writing all of it, shaders included: no browser, no WGSL, no outside shader toolchain. Owner decision 2026-10-30.",
     "spec": "docs/verse/native-gpu.md",
     "labels": [
       "engine",
@@ -160,7 +160,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "The same host presenting with VK_KHR_display and input from evdev, as a CoderOS session that boots into Verse with no desktop. Proved on a screen nobody is using.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "The same host presenting with VK_KHR_display and input from evdev, as a CoderOS session that boots into the Metaverse with no desktop. Proved on a screen nobody is using.\n\nPlan: docs/verse/native-gpu.md",
       "files": [
         "verse/gpu/"
       ],

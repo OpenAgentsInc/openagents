@@ -4,7 +4,7 @@
   "initiative": {
     "slug": "dg-v2",
     "title": "Dead Gears that plays well: aim it, move like a person, fights that feel good",
-    "body": "Owner's review of the first version: \"projectiles are weird, like they auto shoot the nearest thing, and no character controller, it's blocky, horrible.\" First fix aiming (shots go where you point), then move onto Verse's shared controller and skinned character, then the feel of the fights.",
+    "body": "Owner's review of the first version: \"projectiles are weird, like they auto shoot the nearest thing, and no character controller, it's blocky, horrible.\" First fix aiming (shots go where you point), then move onto the Metaverse's shared controller and skinned character, then the feel of the fights.",
     "spec": "verse/deadgears/"
   },
   "milestones": [
@@ -16,7 +16,7 @@
     {
       "slug": "dg-character",
       "title": "A real character",
-      "body": "Verse's player controller and skinned character for you and the support engineer, and creatures with real bodies."
+      "body": "The Metaverse's player controller and skinned character for you and the support engineer, and creatures with real bodies."
     },
     {
       "slug": "dg-feel",
@@ -95,7 +95,7 @@
     },
     {
       "slug": "dg-controller",
-      "title": "Use Verse's player controller",
+      "title": "Use the Metaverse's player controller",
       "parent": "dg-character",
       "size": "L",
       "body": "Owner: \"no character controller, it's blocky, horrible\". Dead Gears walks you with its own 40-line walk() (fixed speeds, no acceleration, no jump, yaw = camera). The Grid, Everglade and the garden share aethyr/move/player.coax: acceleration, turning to face your way, run, gravity, jump, steps, a camera that pulls in at walls. Move Dead Gears onto it: the arena's hull, reactor and cover as its walls, the creatures and the support engineer as its bodies. Strafe while aiming (the character faces the crosshair when the cutter is up, faces the way it walks when not).",

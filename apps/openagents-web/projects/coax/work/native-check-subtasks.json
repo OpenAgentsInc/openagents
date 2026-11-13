@@ -73,7 +73,7 @@
       "slug": "r0-native-check-consumers",
       "kind": "task",
       "parent": "r0-native-check-exe",
-      "title": "Qualify real Verse and Psionic checks with native execution",
+      "title": "Qualify real Metaverse and Psionic checks with native execution",
       "size": "S",
       "labels": [
         "r0",
@@ -84,7 +84,7 @@
       "blocked_by": [
         "r0-native-check-semantics"
       ],
-      "body": "## Scope\n\nUse actual Verse HUD and Psionic tensor/decision checks, preserving all evaluator and physical-source authority obligations. Record selected and unsupported checks, commands, native identities and source-bound outcomes. Large evaluator exhaustion remains inconclusive and authority-unqualified even when a supplemental native test passes; native verification is not a product-gate bypass.\n\n## Acceptance\n\nActual selected Verse/Psionic checks execute evaluator/O0/O2 as supported; original root/dependency mutation scopes remain distinct; default compile/check failure behavior is retained; source docs and catalogue advertise only the qualified subset.\n\n## Bounds\n\nAcceptance-complete child of r0-native-check-exe. Keep the parent open until every required core and real-consumer gate passes. Coax owns new admission/policy with check-first tests and zero-survivor mutation; hosts perform effects. Finish and push within two hours; commands remain below fifteen minutes. Existing semantic profiles and native-lp64 facts suffice for this bounded native slice; broader target/profile manifests remain workstream 6."
+      "body": "## Scope\n\nUse actual Metaverse HUD and Psionic tensor/decision checks, preserving all evaluator and physical-source authority obligations. Record selected and unsupported checks, commands, native identities and source-bound outcomes. Large evaluator exhaustion remains inconclusive and authority-unqualified even when a supplemental native test passes; native verification is not a product-gate bypass.\n\n## Acceptance\n\nActual selected Metaverse/Psionic checks execute evaluator/O0/O2 as supported; original root/dependency mutation scopes remain distinct; default compile/check failure behavior is retained; source docs and catalogue advertise only the qualified subset.\n\n## Bounds\n\nAcceptance-complete child of r0-native-check-exe. Keep the parent open until every required core and real-consumer gate passes. Coax owns new admission/policy with check-first tests and zero-survivor mutation; hosts perform effects. Finish and push within two hours; commands remain below fifteen minutes. Existing semantic profiles and native-lp64 facts suffice for this bounded native slice; broader target/profile manifests remain workstream 6."
     }
   ]
 }

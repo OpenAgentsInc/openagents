@@ -1,7 +1,7 @@
 {
   "slug": "dead-gears",
   "name": "Dead Gears",
-  "description": "A Verse realm: hold a broken reactor against waves of mutants with a cutter that has to be aimed. Making it play well: real aiming, a real character, and fights that feel good.",
+  "description": "A Metaverse realm: hold a broken reactor against waves of mutants with a cutter that has to be aimed. Making it play well: real aiming, a real character, and fights that feel good.",
   "relay": "wss://relay.openagents.com",
   "repo": {
     "d": "openagents",

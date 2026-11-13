@@ -190,7 +190,7 @@
         "realms",
         "ice-cream-man"
       ],
-      "body": "Port src/icecream/mesh.cpp: the seeded house, rooms, furniture and models, drawn by the Verse renderer.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "Port src/icecream/mesh.cpp: the seeded house, rooms, furniture and models, drawn by the Metaverse renderer.\n\nPlan: `docs/verse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "verse/"

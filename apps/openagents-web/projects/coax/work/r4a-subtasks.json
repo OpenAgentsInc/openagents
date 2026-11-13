@@ -74,7 +74,7 @@
       "blocked_by": [
         "r4a-constraints"
       ],
-      "body": "Pick a real duplicated bounded container or algorithm in the compiler kernels, Verse or the web app (for example insertion sort or bounded search written once per element type) and replace the copies with one generic procedure. Compare outputs, memory and iteration cost before and after, and test rejected constraints and specialization limits on that consumer. Then audit #76ba's acceptance and close it.\n\n## Files\n\n- `coax/tests/generics.py`\n- `docs/verification/`\n\n## Acceptance\n\n- The consumer's existing checks pass unchanged and its generated behavior is identical (differential fixtures)\n- A retained before/after record of generated C size, peak memory and iteration cost\n- #76ba closes only when the four earlier children and this consumer pass"
+      "body": "Pick a real duplicated bounded container or algorithm in the compiler kernels, the Metaverse or the web app (for example insertion sort or bounded search written once per element type) and replace the copies with one generic procedure. Compare outputs, memory and iteration cost before and after, and test rejected constraints and specialization limits on that consumer. Then audit #76ba's acceptance and close it.\n\n## Files\n\n- `coax/tests/generics.py`\n- `docs/verification/`\n\n## Acceptance\n\n- The consumer's existing checks pass unchanged and its generated behavior is identical (differential fixtures)\n- A retained before/after record of generated C size, peak memory and iteration cost\n- #76ba closes only when the four earlier children and this consumer pass"
     }
   ]
 }

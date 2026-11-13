@@ -4,7 +4,7 @@
  "initiative": {
   "slug": "realm-cli",
   "title": "Edit realms from the command line",
-  "body": "Aethyrforge's programmatic surface: `openagents realm ...` makes and edits realms through the same routes, SQL rules and forge edit operations as the page, so Claude Code and other agents can build realms. Plan: docs/cli/2026-11-01-openagents-cli-v1.md, 'The realm domain'. Needs the Coax project's cli-account milestone (NIP-98 as the caller).",
+  "body": "The Metaverse Engine's programmatic surface: `openagents realm ...` makes and edits realms through the same routes, SQL rules and forge edit operations as the page, so Claude Code and other agents can build realms. Plan: docs/cli/2026-11-01-openagents-cli-v1.md, 'The realm domain'. Needs the Coax project's cli-account milestone (NIP-98 as the caller).",
   "spec": "docs/cli/2026-11-01-openagents-cli-v1.md",
   "labels": [
    "cli",

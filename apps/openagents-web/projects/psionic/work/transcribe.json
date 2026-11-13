@@ -4,7 +4,7 @@
   "initiative": {
     "slug": "psionic-transcribe",
     "title": "Speech to text as a Psionic primitive",
-    "body": "Whisper (MIT) in Psionic, read from whisper.cpp's ggml files so whisper.cpp is an exact oracle on the same bytes. One primitive for `openagents transcribe FILE` and for in-game voice in the Verse. CPU first, then Metal. The CLI uses it by default. Epic: GitHub #12614.",
+    "body": "Whisper (MIT) in Psionic, read from whisper.cpp's ggml files so whisper.cpp is an exact oracle on the same bytes. One primitive for `openagents transcribe FILE` and for in-game voice in the Metaverse. CPU first, then Metal. The CLI uses it by default. Epic: GitHub #12614.",
     "spec": "psionic/docs/transcribe.md",
     "labels": ["psionic", "speech", "transcribe"]
   },
@@ -128,10 +128,10 @@
     {
       "slug": "transcribe-engine-voice",
       "parent": "transcribe-surfaces",
-      "title": "In-game voice on Psionic: PROVIDER_PSIONIC and an Aethyr procedure",
+      "title": "In-game voice on Psionic: PROVIDER_PSIONIC and a Metaverse Engine procedure",
       "size": "M",
       "labels": ["speech", "verse", "voice"],
-      "body": "GitHub #12622. voice-host --provider psionic: speech_recognize hands the turn's 16 kHz audio to psionic_stt_text (psionic/platform/psionic-stt.h, linked as libpsionic-whisper.a), with the model mapped once at startup (--whisper-model, --words). The encoder runs on the GPU when there is one. Aethyr programs see the engine's Coax procedures, never the C host. Google and PROVIDER_LOCAL stay available.",
+      "body": "GitHub #12622. voice-host --provider psionic: speech_recognize hands the turn's 16 kHz audio to psionic_stt_text (psionic/platform/psionic-stt.h, linked as libpsionic-whisper.a), with the model mapped once at startup (--whisper-model, --words). The encoder runs on the GPU when there is one. Metaverse Engine programs see the engine's Coax procedures, never the C host. Google and PROVIDER_LOCAL stay available.",
       "files": ["verse/voice-host/speech.c", "verse/voice-host/speech.h", "verse/voice-host/host.c", "verse/voice-host/test.sh", "psionic/platform/psionic-stt.h", "psionic/platform/whisper-face.c"],
       "acceptance": [
         "verse/voice-host/test.sh --offline plays a say fixture with PROVIDER_PSIONIC and asserts the transcript.",
