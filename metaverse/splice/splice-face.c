@@ -15,8 +15,8 @@ static coax_v_t_Splice at(uint32_t state) { return (coax_v_t_Splice){splice_stat
 #define LIVE_WORDS (150000u * 6u)
 static uint32_t world[WORLD_WORDS];
 static uint32_t live[LIVE_WORDS];
-#define PIECE_WORDS (40000u * 6u)    /* layer-draw.coax SD_PIECE_WORDS: every kind of placed piece's mesh, written once */
-#define PLACE_WORDS (64u * 8u)        /* layer-draw.coax SD_PLACE_WORDS: a row a placed piece */
+#define PIECE_WORDS ((40000u + 10u * 30000u) * 6u)    /* layer-draw.coax SD_PIECE_WORDS: every kind of placed piece's mesh, written once, then the player's ten walk poses */
+#define PLACE_WORDS (65u * 8u)        /* layer-draw.coax SD_PLACE_WORDS: a row a placed piece, and the player's */
 static uint32_t pieces[PIECE_WORDS];
 static uint32_t places[PLACE_WORDS];
 #define IMPORT_BYTES 1048576u         /* pieces.coax SP_IMPORT_PACK: the world's import pack, as it arrives and as it was last read whole */
@@ -67,6 +67,25 @@ EXPORT("coaxial_script_wants_len") uint32_t coaxial_script_wants_len(uint32_t st
 EXPORT("coaxial_script_frame") uint32_t coaxial_script_frame(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)script_frame; }
 EXPORT("coaxial_script_frame_len") uint32_t coaxial_script_frame_len(uint32_t state) { return (uint32_t)splice_script_frame(at(state), (coax_v_u8){script_frame, sizeof script_frame}); }
 
+// This browser's storage (coax/web/STORAGE.md): your character in the crew page's record (slot 0)
+// and the run this browser keeps (slot 1); the host answers through the inbox (768 + slot).
+__attribute__((import_module("env"), import_name("coaxial_storage_put"))) int32_t coaxial_storage_put(int32_t slot, int32_t token, uint32_t space, int32_t space_len, int32_t version, uint32_t key, int32_t key_len, uint32_t bytes, int32_t bytes_len);
+__attribute__((import_module("env"), import_name("coaxial_storage_get"))) int32_t coaxial_storage_get(int32_t slot, int32_t token, uint32_t space, int32_t space_len, int32_t version, uint32_t key, int32_t key_len);
+static const char crew_space[] = "crew", crew_key[] = "character";   /* crew-player.coax CP_STORE_SPACE, CP_STORE_KEY */
+static const char run_space[] = "splice", run_key[] = "run";         /* front.coax FR_STORE_SPACE, FR_STORE_KEY */
+static void store(uint32_t state) {
+  int64_t wants = splice_store_wants(at(state));
+  int32_t slot = wants <= 2 ? 0 : 1;
+  uint32_t space = (uint32_t)(uintptr_t)(slot == 0 ? crew_space : run_space), key = (uint32_t)(uintptr_t)(slot == 0 ? crew_key : run_key);
+  int32_t space_len = slot == 0 ? 4 : 6, key_len = slot == 0 ? 9 : 3;
+  if (wants == 1 || wants == 3) {
+    splice_store_asked(at(state), wants, coaxial_storage_get(slot, (int32_t)wants, space, space_len, 1, key, key_len) == 0);
+  } else if (wants == 2 || wants == 4) {
+    coax_string text = splice_store_text(at(state), wants);
+    splice_store_asked(at(state), wants, coaxial_storage_put(slot, (int32_t)wants, space, space_len, 1, key, key_len, (uint32_t)(uintptr_t)text.data, (int32_t)text.count) == 0);
+  }
+}
+
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float width, float height, float dpr, float dt, uint32_t still) {
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_splice_max_vertices() * coaxial_splice_vertex_floats()};
@@ -79,6 +98,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
                            (coax_v_u32){pieces, PIECE_WORDS}, (coax_v_u32){places, PLACE_WORDS}, (coax_v_f32){style, 128}, (coax_v_u8){imports, IMPORT_BYTES});
   frames += 1;
   world_request(state);
+  store(state);
   return n < 0 ? 0u : (uint32_t)n;
 }
 
@@ -145,4 +165,5 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (length > sizeof inbox) length = sizeof inbox;
   splice_message(at(state), kind, (coax_string){(const char *)inbox, (int64_t)length});
   world_request(state);
+  store(state);
 }

@@ -1,0 +1,172 @@
+// A crew character as a realm's player: the character's document (crew-doc.coax) drawn walking.
+// A realm that lets you play as the character you made reads the document this browser keeps
+// (CP_STORE_*, the same record /worlds/crew keeps, coax/web/STORAGE.md), and draws it each frame
+// with cp_write in place of its own figure. Its gameplay stays the realm's.
+//
+// The walk is the least that looks right on a figure with no skin weights: each leg turns about
+// its hip joint and each arm about its shoulder, by the form's named joints (crew-body.coax CJ_*),
+// legs opposite each other and each arm against its leg, and the body sinks by what the swung legs
+// lose in height, so the feet stay on the ground. The garments follow, because they are drawn from
+// the same rings. Knees and elbows don't bend yet: a gait on the engine's figure rig
+// (metaverse-engine/anim/figure.coax) is what comes next.
+//   coax/bin/coax test metaverse-engine/kit/crew-player.coax
+#load "crew-doc.coax";
+
+// Where this browser keeps the character it plays as: the crew page's record.
+CP_STORE_SPACE :: "crew"; CP_STORE_VERSION :: 1; CP_STORE_KEY :: "character";
+
+CP_LEG_SWING :: 0.34f32;    // radians a leg turns at the stride's peak (a 0.26 m step on a 0.78 m leg)
+CP_ARM_SWING :: 0.30f32;    // and an arm, against its leg
+
+// p turned by a radians about the x axis through o: positive turns down-pointing things forward (+z).
+cp_turn_x :: (q: Point, o: Point, a: f32) -> Point {
+  y := q.y - o.y; z := q.z - o.z; c := cos(a); s := sin(a);
+  return v3(q.x, o.y + y * c + z * s, o.z - y * s + z * c);
+}
+cp_dir_x :: (d: Point, a: f32) -> Point { return cp_turn_x(d, v3(0, 0, 0), a); }
+cp_ring_x :: (r: Ring, o: Point, a: f32) -> Ring {
+  return Ring.{c = cp_turn_x(r.c, o, a), ax = cp_dir_x(r.ax, a), az = cp_dir_x(r.az, a), rx = r.rx, rz = r.rz};
+}
+cp_loft_x :: (l: Loft, o: Point, a: f32) -> Loft { out := l; for i: 0..<l.n { out.r[i] = cp_ring_x(l.r[i], o, a); } return out; }
+
+// How far each limb turns at this stride (radians, a gait's phase): side 0's leg forward as side 1's goes back.
+cp_leg_angle :: (stride: f32, side: int) -> f32 { a := sin(stride) * CP_LEG_SWING; return ifx side == 0 then a else -a; }
+cp_arm_angle :: (stride: f32, side: int) -> f32 { return -cp_leg_angle(stride, side) * CP_ARM_SWING / CP_LEG_SWING; }
+// How far the body sinks so the swung legs still reach the ground.
+cp_sink :: (m: CrewForm, stride: f32) -> f32 {
+  leg := m.joint[CJ_R_HIP].y - m.joint[CJ_R_FOOT].y;
+  return leg * (1 - cos(cp_leg_angle(stride, 0)));
+}
+
+// The form walking at this stride: legs and their joints turned about the hips, arms and hands
+// about the shoulders. A stride of 0 (or any whole number of half turns) is the form as it stands.
+cp_walk :: (m: CrewForm, stride: f32) -> CrewForm {
+  o := m;
+  for side: 0..<2 {
+    hip := ifx side == 0 then CJ_R_HIP else CJ_L_HIP;
+    a := cp_leg_angle(stride, side); hj := m.joint[hip];
+    o.leg[side] = cp_loft_x(m.leg[side], hj, a);
+    for j: hip + 1..<hip + 4 { o.joint[j] = cp_turn_x(m.joint[j], hj, a); }
+    sh := ifx side == 0 then CJ_R_SHOULDER else CJ_L_SHOULDER;
+    b := cp_arm_angle(stride, side); sj := m.joint[sh];
+    o.arm[side] = cp_loft_x(m.arm[side], sj, b);
+    for j: sh + 1..<sh + 3 { o.joint[j] = cp_turn_x(m.joint[j], sj, b); }
+    o.hand[side] = cp_turn_x(m.hand[side], sj, b); o.hand_along[side] = cp_dir_x(m.hand_along[side], b);
+  }
+  return o;
+}
+
+// Writes the character walking at this stride, standing in frame f (its feet at the frame's
+// origin, facing its z). It uses objects obj to obj + 9, as cw_write does.
+cp_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CrewDoc, stride: f32, obj: int) {
+  m := cb_form(d.body);
+  w := cp_walk(m, stride);
+  none: [1] CwLog;
+  cw_write(buf, p, kit_at(f, 0, -cp_sink(m, stride), 0), w, d.look, d.wear, obj, none[0..<0]);
+}
+// A walk cycle as n poses written once (a realm that draws its player as instances of meshes): the
+// stride pose i stands for, and the pose a stride shows.
+cp_pose_stride :: (i: int, n: int) -> f32 { return ifx n < 1 then 0.0f32 else TAU * cast(f32) i / cast(f32) n; }
+cp_pose_of :: (stride: f32, n: int) -> int {
+  if n < 1 || !(stride == stride) { return 0; }
+  k := cast(int) floor(stride / TAU * cast(f32) n + 0.5);
+  return ((k % n) + n) % n;
+}
+
+// ---- a creation screen's rows: the fields of a character a game screen steps left and right
+// (the crew page's pane has every number; a game screen offers these, on the same document)
+CP_BODY :: 0; CP_OUTFIT :: 1; CP_HEIGHT :: 2; CP_SKIN :: 3; CP_HAIR :: 4; CP_HAIR_COLOUR :: 5; CP_MARK :: 6;
+CP_FIELDS :: 7;
+CP_FIELD_NAMES :: [CP_FIELDS] string.["Body", "Outfit", "Height", "Skin", "Hair", "Hair colour", "Face"];
+CP_HEIGHT_STEP :: 5;   // centimetres a step of the height row
+cp_wrap :: (v: int, n: int) -> int { return ((v % n) + n) % n; }
+// The document with one field stepped (dir -1 or 1). A body steps through the presets (from one
+// that is no preset, to the first); an outfit through the six; the height by CP_HEIGHT_STEP within
+// its range; skin, hair, its colour and the face's mark round their lists.
+cp_step :: (d: CrewDoc, field: int, dir: int) -> CrewDoc {
+  o := d; s := ifx dir < 0 then -1 else 1;
+  if field == CP_BODY { k := cb_preset_of(d.body); o.body = cb_preset(ifx k < 0 then 0 else cp_wrap(k + s, CB_PRESETS)); }
+  if field == CP_OUTFIT { k := cw_outfit_of(d.wear); o.wear = cw_outfit(ifx k < 0 then 0 else cp_wrap(k + s, CW_OUTFITS)); }
+  if field == CP_HEIGHT { o.body = cb_nudge(d.body, CB_HEIGHT, s * CP_HEIGHT_STEP); }
+  if field == CP_SKIN { o.look.skin = cp_wrap(d.look.skin + s, CH_SKINS); }
+  if field == CP_HAIR { o.look.hair = cp_wrap(d.look.hair + s, CH_HAIRS); }
+  if field == CP_HAIR_COLOUR { o.look.hair_colour = cp_wrap(d.look.hair_colour + s, CH_HAIR_COLOURS); }
+  if field == CP_MARK { o.look.mark = cp_wrap(d.look.mark + s, CH_MARKS); }
+  return o;
+}
+// A field's value in words, into buf ("Custom" for a body or an outfit that is no preset).
+cp_value :: (d: CrewDoc, field: int, buf: [] u8) -> string {
+  t := "";
+  if field == CP_BODY { k := cb_preset_of(d.body); names := CB_PRESET_NAMES; t = ifx k < 0 then "Custom" else names[k]; }
+  if field == CP_OUTFIT { k := cw_outfit_of(d.wear); names := CW_OUTFIT_NAMES; t = ifx k < 0 then "Custom" else names[k]; }
+  if field == CP_SKIN { names := CH_SKIN_NAMES; t = names[cp_wrap(d.look.skin, CH_SKINS)]; }
+  if field == CP_HAIR { names := CH_HAIR_NAMES; t = names[cp_wrap(d.look.hair, CH_HAIRS)]; }
+  if field == CP_HAIR_COLOUR { names := CH_HAIR_COLOUR_NAMES; t = names[cp_wrap(d.look.hair_colour, CH_HAIR_COLOURS)]; }
+  if field == CP_MARK { names := CH_MARK_NAMES; t = names[cp_wrap(d.look.mark, CH_MARKS)]; }
+  if field == CP_HEIGHT { n := cd_put_int(buf, 0, d.body.v[CB_HEIGHT]); n = cd_put(buf, n, " cm"); return cast(string) buf[0..<n]; }
+  return t;
+}
+
+#test "a stride of 0 is the form as it stands, and a half turn is too" {
+  m := cb_form(cb_usual());
+  a := cp_walk(m, 0); b := cp_walk(m, PI);
+  for j: 0..<CB_JOINTS {
+    #assert length(sub(a.joint[j], m.joint[j])) < 0.0001 && length(sub(b.joint[j], m.joint[j])) < 0.0001;
+  }
+  #assert cp_sink(m, 0) == 0 && length(sub(a.leg[0].r[CL_ANKLE].c, m.leg[0].r[CL_ANKLE].c)) < 0.0001;
+}
+#test "a step turns each leg about its hip and each arm about its shoulder: lengths kept, legs apart, arms against them" {
+  m := cb_form(cb_preset(CB_BRUISER));
+  w := cp_walk(m, PI * 0.5);
+  for side: 0..<2 {
+    hip := ifx side == 0 then CJ_R_HIP else CJ_L_HIP; sh := ifx side == 0 then CJ_R_SHOULDER else CJ_L_SHOULDER;
+    // the hip and shoulder stay; the knee, foot, elbow and hand keep their distance from them
+    #assert length(sub(w.joint[hip], m.joint[hip])) < 0.0001 && length(sub(w.joint[sh], m.joint[sh])) < 0.0001;
+    #assert abs(length(sub(w.joint[hip + 2], w.joint[hip])) - length(sub(m.joint[hip + 2], m.joint[hip]))) < 0.0001;
+    #assert abs(length(sub(w.joint[sh + 2], w.joint[sh])) - length(sub(m.joint[sh + 2], m.joint[sh]))) < 0.0001;
+    #assert abs(length(sub(w.hand[side], w.joint[sh])) - length(sub(m.hand[side], m.joint[sh]))) < 0.0001;
+    #assert abs(w.leg[side].r[CL_ANKLE].rx - m.leg[side].r[CL_ANKLE].rx) < 0.0001;
+  }
+  // the right foot forward, the left back; the right hand back, the left forward
+  #assert w.joint[CJ_R_FOOT].z > m.joint[CJ_R_FOOT].z + 0.2 && w.joint[CJ_L_FOOT].z < m.joint[CJ_L_FOOT].z - 0.2;
+  #assert w.joint[CJ_R_HAND].z < m.joint[CJ_R_HAND].z && w.joint[CJ_L_HAND].z > m.joint[CJ_L_HAND].z;
+  // the body sinks by what the legs lose, so a foot is where it stood in height
+  sink := cp_sink(m, PI * 0.5);
+  #assert sink > 0.03 && sink < 0.08 && abs(w.joint[CJ_R_FOOT].y - sink - m.joint[CJ_R_FOOT].y) < 0.03;
+}
+#test "the walking character fits one character's vertices, in every outfit" #steps 400000000 {
+  t: [1] CwTest;
+  for k: 0..<CW_OUTFITS {
+    d := cd_first(); d.wear = cw_outfit(k);
+    pen := [1] Pen.[Pen.{}];
+    cp_write(t[0].buf[..], pen[..], frame_at(v3(0, 0, 0), 0), d, 1.2, 16);
+    #assert !pen[0].over && pen[0].n > 6000 && pen[0].n <= CW_BUDGET;
+  }
+}
+#test "a walk cycle's poses: each pose's stride, and the pose a stride shows, round the cycle" {
+  #assert cp_pose_stride(0, 10) == 0 && abs(cp_pose_stride(5, 10) - PI) < 0.0001 && cp_pose_stride(3, 0) == 0;
+  #assert cp_pose_of(0, 10) == 0 && cp_pose_of(PI, 10) == 5 && cp_pose_of(TAU, 10) == 0 && cp_pose_of(TAU * 3 + 0.01, 10) == 0;
+  #assert cp_pose_of(-0.7, 10) == 9 && cp_pose_of(1, 0) == 0;
+  for i: 0..<10 { #assert cp_pose_of(cp_pose_stride(i, 10), 10) == i; }
+}
+#test "a creation screen's rows step the document and say its values; every stepped document reads back whole" {
+  d := cd_first(); buf: [32] u8;
+  #assert cp_value(d, CP_BODY, buf[..]) == "Fighter" && cp_value(d, CP_OUTFIT, buf[..]) == "Flight suit" && cp_value(d, CP_HEIGHT, buf[..]) == "175 cm";
+  b := cp_step(d, CP_BODY, 1);
+  #assert cp_value(b, CP_BODY, buf[..]) == "Kid" && cp_value(cp_step(b, CP_BODY, 1), CP_BODY, buf[..]) == "Bruiser" && cp_value(cp_step(d, CP_BODY, -1), CP_BODY, buf[..]) == "Elder";
+  t := cp_step(d, CP_HEIGHT, 1);
+  #assert t.body.v[CB_HEIGHT] == 180 && cp_value(t, CP_BODY, buf[..]) == "Custom" && cp_value(cp_step(t, CP_BODY, 1), CP_BODY, buf[..]) == "Bruiser";
+  low := d; for i: 0..<40 { low = cp_step(low, CP_HEIGHT, -1); }
+  #assert low.body.v[CB_HEIGHT] == 145;
+  #assert cp_value(cp_step(d, CP_OUTFIT, 1), CP_OUTFIT, buf[..]) == "Deckhand" && cp_value(cp_step(d, CP_OUTFIT, -1), CP_OUTFIT, buf[..]) == "Fitter";
+  s := d; for i: 0..<CH_SKINS { s = cp_step(s, CP_SKIN, 1); }
+  #assert s.look.skin == d.look.skin && cp_value(cp_step(d, CP_SKIN, -1), CP_SKIN, buf[..]) == "Fair";
+  #assert cp_value(cp_step(d, CP_HAIR, -1), CP_HAIR, buf[..]) == "Long, loose" && cp_value(cp_step(d, CP_HAIR_COLOUR, 1), CP_HAIR_COLOUR, buf[..]) == "Dark brown" && cp_value(cp_step(d, CP_MARK, 1), CP_MARK, buf[..]) == "Scar";
+  out: [CD_TEXT] u8;
+  for f: 0..<CP_FIELDS { for dir: 0..<2 {
+    e := cp_step(cp_step(d, f, dir * 2 - 1), f, dir * 2 - 1);
+    n := cd_write(e, out[..]);
+    r := [1] CdRead.[cd_read(cast(string) out[0..<n])];
+    #assert n > 0 && r[0].ok && cd_ok(e);
+  } }
+}

@@ -25,14 +25,14 @@ SyPage :: struct {
   aspect: f32 = 1.7778;
   held: bool;            // the frame didn't step (a still or a golden frame)
   gallery: bool;         // ?scene=N: the page is a still scene, not the game
-  places_cap: int = SD_PLACE_WORDS;
+  places_cap: int = SL_ITEMS * SD_ROW;   // the placed pieces' rows (the place store's last row is the player's)
   draws_cap: int = 4 * (2 + SC_PIECE_MAX);
   world_over: bool; live_over: bool;   // the world's or the live store's writer ran out of room
   store_cap: int = 150000;             // vertices either store holds (splice.coax SP_WORLD_WORDS)
 }
 
-SY_MODES :: [7] string.["title", "play", "bay", "banner", "memory", "restored", "ride"];
-sy_mode :: (m: int) -> string { return ifx m >= 0 && m < 7 then SY_MODES[m] else "?"; }
+SY_MODES :: [9] string.["title", "play", "bay", "banner", "memory", "restored", "ride", "character", "credits"];
+sy_mode :: (m: int) -> string { return ifx m >= 0 && m < SY_MODES.count then SY_MODES[m] else "?"; }
 // "piece-12" with head "piece-" is 12; -1 when it isn't that.
 sy_number :: (id: string, head: string) -> int {
   if id.count <= head.count || id.count > head.count + 6 || id[0..<head.count] != head { return -1; }

@@ -420,6 +420,8 @@ splice_imports :: (s: [] Splice, incoming: string, kept: [] u8) -> bool #export_
   return true;
 }
 splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all) {
+  // this browser's storage answers (coax/web/STORAGE.md): slot 0 your character, slot 1 the kept run (front.coax)
+  if (kind == 768 || kind == 769) && s.count > 0 && !s[0].gallery { fr_stored(s[0].game[..], kind - 768, body); return; }
   if kind == 700 && s.count > 0 { s[0].frame_answer = false; splice_drive(s, body); return; }
   if kind == 721 && s.count > 0 { s[0].frame_isolated = sp_whole(body, 0) == 1; s[0].frame_opaque = sp_whole(body, 1) == 1; return; }
   if kind == 720 && s.count > 0 { splice_framed(s, body); return; }
@@ -587,6 +589,7 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   if s[0].fixture == 1 { s[0].fixture = 2; _ := sl_fixture(g); }
   sd_meshes(s[0].ld[..], g, pieces, cast(string) imports[0..<ifx s[0].imports_n > imports.count then 0 else s[0].imports_n]); sd_places(s[0].ld[..], g, places);
   s[0].draw_n = sd_draws(s[0].ld[..], g, s[0].draws[..], 2);
+  s[0].draw_n = fr_player(g, s[0].ld[..], pieces, places, s[0].draws[..], s[0].draw_n);   // you, as your character (front.coax)
   n := g_overlay(g, out, u, width, height);
   // the selected piece is outlined where it stands, or where a drag would leave it
   if s[0].edit {
@@ -677,10 +680,16 @@ splice_live_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].liv
 splice_draw_count :: (s: [] Splice) -> int #export_c #effects(all) { return ifx !s[0].world_built then 0 else s[0].draw_n; }
 // The edit layer's two stores: the kinds' meshes (vertices, and a count of its writes) and the
 // placed pieces' rows (SD_ROW words each, and a count of their writes).
-splice_piece_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].ld[0].mesh_n; }
-splice_piece_version :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].ld[0].mesh_gen; }
-splice_place_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].ld[0].place_n; }
-splice_place_version :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].ld[0].place_gen; }
+// After the kinds' meshes, the player's walk poses; after the placed pieces' rows, the player's row (front.coax fr_player).
+splice_piece_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].ld[0].mesh_n + s[0].game[0].fr[0].pose_n; }
+splice_piece_version :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].ld[0].mesh_gen + s[0].game[0].fr[0].pose_gen; }
+splice_place_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].ld[0].place_n + (ifx s[0].game[0].fr[0].row then 1 else 0); }
+splice_place_version :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].ld[0].place_gen + s[0].game[0].fr[0].row_gen; }
+// This browser's storage (coax/web/STORAGE.md; front.coax): what to ask the host next (0 nothing,
+// 1 read your character, 2 keep it, 3 read the kept run, 4 keep it), the bytes to keep, and whether the host took it.
+splice_store_wants :: (s: [] Splice) -> int #export_c #effects(all) { return ifx s.count < 1 || s[0].gallery || !s[0].started then 0 else fr_store_wants(s[0].game[..]); }
+splice_store_text :: (s: [] Splice, which: int) -> string #export_c #effects(all) { return fr_store_text(s[0].game[..], which); }
+splice_store_asked :: (s: [] Splice, which: int, accepted: bool) #export_c #effects(all) { fr_store_asked(s[0].game[..], which, accepted); }
 splice_piece_words :: () -> int #export_c #effects(all) { return SD_PIECE_WORDS; }
 splice_place_words :: () -> int #export_c #effects(all) { return SD_PLACE_WORDS; }
 

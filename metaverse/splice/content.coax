@@ -28,6 +28,14 @@
 //                                           #13467): a script's name, its module's SHA-256 and whom it
 //                                           drives: "kind 1" the raiders, "kind 2" the Imperial robots, or
 //                                           "who N" one foe. No row: every foe walks its plan alone
+//   menu        id key label                the title screen's menu, top to bottom by ID (front.coax): KEY is
+//                                           continue, new or credits, each at most once and new always;
+//                                           LABEL is what the row says
+//   credits     id line                     the credits screen's lines, top to bottom by ID
+//   dolly       id x y z ax ay az secs      the title screen's camera path past the rover on the rail: where
+//                                           the camera is and what it looks at, in centimetres from the
+//                                           rover (x its right, z ahead), and the seconds it takes to come
+//                                           there from the row before; the last row runs back to the first
 //   clock       id when                     the editor's time of day (row 1): story (the run's own), or
 //                                           dawn, day, dusk or night. Only an editor (?edit) reads it;
 //                                           play keeps the story's phases
@@ -43,16 +51,19 @@
 #load "../../metaverse-engine/ai/plan.coax";   // the foes' plans (npc-plan.coax) and where they take them
 #load "../../metaverse-engine/script/rows.coax";   // the world's script rows (#13467)
 
-SC_TABLES :: 10;
-SC_ACTORS :: 0; SC_AREAS :: 1; SC_CLOCK :: 2; SC_KEPT :: 3; SC_MARKS :: 4; SC_LOOKS :: 5; SC_PIECES :: 6; SC_PLANS :: 7; SC_SCRIPTS :: 8; SC_TEMPLATES :: 9;
+SC_TABLES :: 13;
+SC_ACTORS :: 0; SC_AREAS :: 1; SC_CLOCK :: 2; SC_CREDITS :: 3; SC_DOLLY :: 4; SC_KEPT :: 5; SC_MARKS :: 6; SC_LOOKS :: 7; SC_MENU :: 8; SC_PIECES :: 9; SC_PLANS :: 10; SC_SCRIPTS :: 11; SC_TEMPLATES :: 12;
 SC_TEMPLATE_MAX :: 32;   // templates a world keeps
 SC_HEAD :: [SC_TABLES] string.[
   "table actors id name:text",
   "table areas id name:text x:cm z:cm hx:int hz:int r:int",
   "table clock id when:text",
+  "table credits id line:text",
+  "table dolly id x:cm y:cm z:cm ax:cm ay:cm az:cm secs:int",
   "table kept_clear id name:text x:cm z:cm hx:int hz:int r:int",
   "table landmarks id name:text x:cm z:cm r:int",
   "table looks id name:text a:int b:int c:int",
+  "table menu id key:text label:text",
   "table pieces id name:text kit:text scale:int look:ref.looks hx:int hz:int top:int",
   "table plans id who:int when:text do:text route:text speed:int notice:int on:text",
   SRW_TABLE,
@@ -63,6 +74,8 @@ SC_SCALE_MIN :: 100; SC_SCALE_MAX :: 4000;   // a piece's size, thousandths
 SC_FOES :: 9;           // the party's people a plan names: raiders 1 to 5, Imperial robots 6 to 9
 SC_PLAN_MAX :: SC_FOES * NPL_WHENS;
 SC_FOE_AREA :: 4;       // the area (the mine) every point of a foe's route stands in
+SC_MENU_KEYS :: [3] string.["continue", "new", "credits"];   // what a menu row does (front.coax FR_*: its place here plus 1)
+SC_MENU_MAX :: 6; SC_CREDIT_MAX :: 12; SC_DOLLY_MAX :: 8; SC_LINE :: 48;   // rows the game keeps, and the bytes of a label or a line
 SC_CLOCKS :: 5;
 SC_CLOCK_WORD :: [SC_CLOCKS] string.["story", "dawn", "day", "dusk", "night"];   // the editor's clock: -1 (the story's), then PH_DAWN..PH_NIGHT
 
@@ -81,6 +94,11 @@ SpContent :: struct {
   clock: int = -1;                // the editor's time of day: -1 the story's, else 0 dawn to 3 night
   actor: [SC_FOES] [SC_NAME] u8; actor_n: [SC_FOES] int;   // each foe's name (the actors table)
   scripts: [SH_SCRIPTS] ScriptRow; script_n: int;          // the scripts the world runs (the scripts table)
+  // the front screens (front.coax): the menu's rows (each a key, 1 + its place in SC_MENU_KEYS, and its label),
+  // the credits' lines, and the title camera's path (metres from the rover, and seconds a leg)
+  menu: [SC_MENU_MAX] int; menu_label: [SC_MENU_MAX] [SC_LINE] u8; menu_label_n: [SC_MENU_MAX] int; menu_n: int;
+  credit: [SC_CREDIT_MAX] [SC_LINE] u8; credit_n: [SC_CREDIT_MAX] int; credits: int;
+  dolly: [SC_DOLLY_MAX * 7] f32; dolly_n: int;
 }
 
 sc_m :: (cm: int) -> f32 { return cast(f32) cm / 100; }
@@ -129,8 +147,30 @@ sc_ok :: (d: [] ContentDoc) -> bool {
 SCP_OK :: 0; SCP_PLAN :: 40; SCP_OUTSIDE :: 60; SCP_MISSING :: 61; SCP_CLOCK :: 62; SCP_ACTORS :: 63;
 SCP_SCRIPT :: 70;   // + an SRW_ code (metaverse-engine/script/rows.coax): a script row that does not read
 SCP_SCRIPT_WHO :: 78;   // a script row for a foe the world does not have
+SCP_MENU :: 80; SCP_CREDITS :: 81; SCP_DOLLY :: 82;   // the front screens' tables (front.coax)
+// Why the front screens' tables do not hold: a menu row whose key is not one the game knows, a key
+// twice, no "new" row, a label that is empty or too long; too many credits or a line too long; a
+// camera path with no row, too many, or a leg that takes no time.
+sc_front_why :: (d: [] ContentDoc) -> int {
+  n := ct_rows(d, SC_MENU); keys := SC_MENU_KEYS; seen: [3] bool;
+  if n < 1 || n > SC_MENU_MAX { return SCP_MENU; }
+  for r: 0..<n {
+    k := -1; for w, i: keys { if ct_str(d, SC_MENU, r, 1) == w { k = i; } }
+    l := ct_str(d, SC_MENU, r, 2);
+    if k < 0 || seen[k] || l.count < 1 || l.count > SC_LINE { return SCP_MENU; }
+    seen[k] = true;
+  }
+  if !seen[1] { return SCP_MENU; }
+  if ct_rows(d, SC_CREDITS) > SC_CREDIT_MAX { return SCP_CREDITS; }
+  for r: 0..<ct_rows(d, SC_CREDITS) { if ct_str(d, SC_CREDITS, r, 1).count > SC_LINE { return SCP_CREDITS; } }
+  if ct_rows(d, SC_DOLLY) < 1 || ct_rows(d, SC_DOLLY) > SC_DOLLY_MAX { return SCP_DOLLY; }
+  for r: 0..<ct_rows(d, SC_DOLLY) { if ct_get(d, SC_DOLLY, r, 7) < 1 { return SCP_DOLLY; } }
+  return SCP_OK;
+}
 ScPlanWhy :: struct { why: int; id: int; }
 sc_plans_check :: (d: [] ContentDoc) -> ScPlanWhy {
+  front := sc_front_why(d);
+  if front != SCP_OK { return ScPlanWhy.{why = front}; }
   if ct_rows(d, SC_ACTORS) != SC_FOES { return ScPlanWhy.{why = SCP_ACTORS}; }
   for r: 0..<SC_FOES { if ct_get(d, SC_ACTORS, r, 0) != r + 1 { return ScPlanWhy.{why = SCP_ACTORS}; } }
   if ct_rows(d, SC_CLOCK) != 1 || ct_get(d, SC_CLOCK, 0, 0) != 1 { return ScPlanWhy.{why = SCP_CLOCK}; }
@@ -179,6 +219,9 @@ sc_plans_words :: (text: string, out: [] u8) -> string {
     n = ct_put(out, n, ", z "); n = ct_put_int(out, n, ct_get(d[..], SC_AREAS, a, 3) - ct_get(d[..], SC_AREAS, a, 5)); n = ct_put(out, n, " to "); n = ct_put_int(out, n, ct_get(d[..], SC_AREAS, a, 3) + ct_get(d[..], SC_AREAS, a, 5));
     n = ct_put(out, n, " centimetres (the dome village is a stage of its own, with no foes in it)");
   }
+  if c.why == SCP_MENU { n = ct_put(out, n, "the menu's rows are continue, new and credits, each at most once and new always, each with a label of 1 to 48 bytes"); }
+  if c.why == SCP_CREDITS { n = ct_put(out, n, "the credits are at most 12 lines of at most 48 bytes"); }
+  if c.why == SCP_DOLLY { n = ct_put(out, n, "the title camera's path has 1 to 8 rows, each taking 1 second or more"); }
   if c.why == SCP_MISSING { n = ct_put(out, n, "every foe keeps a plan for dawn, day, dusk and night: set a plan's cells, never drop its row"); }
   if c.why == SCP_CLOCK { n = ct_put(out, n, "the clock's row 1 is story, dawn, day, dusk or night"); }
   if c.why == SCP_ACTORS { n = ct_put(out, n, "the actors table names foes 1 to 9, one row each: rename one, never drop or add a row"); }
@@ -199,13 +242,50 @@ sc_upgrade :: (text: string, out: [] u8) -> string {
   before := ifx scripts then tem else scr;   // the plans go before the scripts, and both before the templates
   n := ct_put(out, 0, text[0..<areas + 1]);
   if actors { n = ct_put(out, n, sc_shipped_table(SC_SHIPPED, "actors")); }
-  n = ct_put(out, n, text[areas + 1..<kept + 1]);
+  // the clock sorts before the credits and the dolly too, when the tables have them (#13482)
+  at := kept;
+  for h: [2] string.["\ntable credits ", "\ntable dolly "] { q := sc_at(text, h); if q > areas && q < at { at = q; } }
+  n = ct_put(out, n, text[areas + 1..<at + 1]);
   if clock { n = ct_put(out, n, sc_shipped_table(SC_SHIPPED, "clock")); }
-  n = ct_put(out, n, text[kept + 1..<before + 1]);
+  n = ct_put(out, n, text[at + 1..<before + 1]);
   if plans { n = ct_put(out, n, sc_shipped_table(SC_SHIPPED, "plans")); }
   if scripts { n = ct_put(out, n, sc_shipped_table(SC_SHIPPED, "scripts")); }
   n = ct_put(out, n, text[before + 1..<text.count]);
   return ifx n > out.count then text else cast(string) out[0..<n];
+}
+// Tables saved before the front screens' were (the credits, dolly and menu tables, #13482): each one
+// missing is put in where it sorts, from the shipped tables. Tables that have them all, or are not
+// Splice's (no templates table at their end), come back as they were.
+SC_FRONT_TABLES :: [3] string.["credits", "dolly", "menu"];
+sc_upgrade_front :: (text: string, out: [] u8) -> string {
+  if text.count == 0 || sc_at(text, "\ntable templates ") < 0 { return text; }
+  names := SC_FRONT_TABLES; missing := false;
+  for nm: names { if sc_at(text, sc_head_of(nm)) < 0 { missing = true; } }
+  if !missing { return text; }
+  n := 0; at := 0;
+  for nm: names {
+    if sc_at(text, sc_head_of(nm)) >= 0 { continue; }
+    // before the first table whose name sorts after this one
+    before := text.count - 1; i := ifx at > 0 then at - 1 else 0;
+    while i + 7 < text.count {
+      if text[i] == '\n' && text[i + 1..<i + 7] == "table " {
+        e := i + 7; while e < text.count && text[e] != ' ' && text[e] != '\n' { e += 1; }
+        if sc_after(text[i + 7..<e], nm) { before = i; break; }
+      }
+      i += 1;
+    }
+    n = ct_put(out, n, text[at..<before + 1]); n = ct_put(out, n, sc_shipped_table(SC_SHIPPED, nm)); at = before + 1;
+  }
+  n = ct_put(out, n, text[at..<text.count]);
+  return ifx n > out.count then text else cast(string) out[0..<n];
+}
+// "\ntable NAME ", for a table name of at most 24 bytes.
+SC_HEADS :: [3] string.["\ntable credits ", "\ntable dolly ", "\ntable menu "];
+sc_head_of :: (nm: string) -> string { names := SC_FRONT_TABLES; heads := SC_HEADS; for w, i: names { if w == nm { return heads[i]; } } return "\ntable ?"; }
+// Whether name a sorts after b, byte by byte.
+sc_after :: (a: string, b: string) -> bool {
+  for i: 0..<(ifx a.count < b.count then a.count else b.count) { if a[i] != b[i] { return a[i] > b[i]; } }
+  return a.count > b.count;
 }
 // Where `what` first stands in s, or -1.
 sc_at :: (s: string, what: string) -> int {
@@ -224,8 +304,8 @@ sc_shipped_table :: (s: string, name: string) -> string {
 // The tables in text into c; false, and c not ok, for anything but Splice's content.
 sc_load :: (c: [] SpContent, text: string) -> bool {
   c[0].ok = false; c[0].area_n = 0; c[0].kept_n = 0; c[0].mark_n = 0; c[0].piece_n = 0;
-  d: [1] ContentDoc; up: [CT_BODY] u8;
-  if !ct_read(d[..], sc_upgrade(text, up[..])) || !sc_ok(d[..]) { return false; }
+  d: [1] ContentDoc; up: [CT_BODY] u8; up2: [CT_BODY] u8;
+  if !ct_read(d[..], sc_upgrade_front(sc_upgrade(text, up[..]), up2[..])) || !sc_ok(d[..]) { return false; }
   c[0].rev = d[0].rev;
   for r: 0..<ct_rows(d[..], SC_AREAS) { c[0].areas[r] = sc_zone(d[..], SC_AREAS, r); }
   c[0].area_n = ct_rows(d[..], SC_AREAS);
@@ -264,9 +344,21 @@ sc_load :: (c: [] SpContent, text: string) -> bool {
     _ := srw_read(ct_get(d[..], SC_SCRIPTS, r, 0), ct_str(d[..], SC_SCRIPTS, r, 1), ct_str(d[..], SC_SCRIPTS, r, 2), ct_str(d[..], SC_SCRIPTS, r, 3), row[..]);
     c[0].scripts[r] = row[0];
   }
+  c[0].menu_n = ct_rows(d[..], SC_MENU);
+  for r: 0..<c[0].menu_n {
+    keys := SC_MENU_KEYS;
+    for w, i: keys { if ct_str(d[..], SC_MENU, r, 1) == w { c[0].menu[r] = i + 1; } }
+    c[0].menu_label_n[r] = sc_name(c[0].menu_label[r][..], ct_str(d[..], SC_MENU, r, 2));
+  }
+  c[0].credits = ct_rows(d[..], SC_CREDITS);
+  for r: 0..<c[0].credits { c[0].credit_n[r] = sc_name(c[0].credit[r][..], ct_str(d[..], SC_CREDITS, r, 1)); }
+  c[0].dolly_n = ct_rows(d[..], SC_DOLLY);
+  for r: 0..<c[0].dolly_n { for k: 0..<6 { c[0].dolly[r * 7 + k] = sc_m(ct_get(d[..], SC_DOLLY, r, k + 1)); } c[0].dolly[r * 7 + 6] = cast(f32) ct_get(d[..], SC_DOLLY, r, 7); }
   c[0].ok = true;
   return true;
 }
+sc_menu_label :: (c: [] SpContent, r: int) -> string { return ifx r < 0 || r >= c[0].menu_n then "" else cast(string) c[0].menu_label[r][0..<c[0].menu_label_n[r]]; }
+sc_credit :: (c: [] SpContent, r: int) -> string { return ifx r < 0 || r >= c[0].credits then "" else cast(string) c[0].credit[r][0..<c[0].credit_n[r]]; }
 // The landmark with this ID (rows ascend by ID), or one at the origin with ID 0.
 sc_mark :: (c: [] SpContent, id: int) -> ScMark {
   lo := 0; hi := c[0].mark_n;
@@ -433,3 +525,31 @@ sc_cut :: (s: string, was: string, out: [] u8) -> string {
   return s;
 }
 sc_cm :: (m: f32) -> int { return cast(int) floor(m * 100 + 0.5); }
+#test "the front screens' tables read, tables saved before them read with the shipped ones put in, and a bad row is refused in words" {
+  c: [1] SpContent; o: [CT_BODY] u8; up: [CT_BODY] u8; t: [CT_BODY] u8; w: [300] u8;
+  #assert sc_load(c[..], SC_SHIPPED) && c[0].menu_n == 3 && c[0].menu[0] == 1 && c[0].menu[1] == 2 && c[0].menu[2] == 3 && sc_menu_label(c[..], 1) == "NEW RUN" && sc_menu_label(c[..], 9) == "";
+  #assert c[0].credits >= 3 && sc_credit(c[..], 0).count > 0 && sc_credit(c[..], -1) == "" && c[0].dolly_n >= 1 && c[0].dolly[6] >= 1;
+  // saved before the three came: each put in where it sorts
+  old := sc_cut(SC_SHIPPED, sc_shipped_table(SC_SHIPPED, "menu"), o[..]);
+  n := ct_put(t[..], 0, old); old = cast(string) t[0..<n];
+  old = sc_cut(old, sc_shipped_table(SC_SHIPPED, "credits"), o[..]);
+  n = ct_put(t[..], 0, old); old = cast(string) t[0..<n];
+  old = sc_cut(old, sc_shipped_table(SC_SHIPPED, "dolly"), o[..]);
+  #assert old.count < SC_SHIPPED.count && sc_upgrade_front(old, up[..]) == SC_SHIPPED && sc_load(c[..], old) && c[0].menu_n == 3;
+  // and saved before the clock and the plans too
+  n = ct_put(t[..], 0, old); old = cast(string) t[0..<n];
+  old = sc_cut(old, sc_shipped_table(SC_SHIPPED, "clock"), o[..]);
+  #assert sc_load(c[..], old) && c[0].clock == -1 && c[0].dolly_n >= 1;
+  #assert sc_upgrade_front(SC_SHIPPED, up[..]) == SC_SHIPPED && sc_upgrade_front("", up[..]) == "" && sc_upgrade_front("nope", up[..]) == "nope";
+  #assert sc_after("menu", "dolly") && !sc_after("dolly", "menu") && sc_after("menus", "menu") && !sc_after("menu", "menu");
+  // a menu reordered and relabelled reads; one without NEW RUN, with a key twice or a key it doesn't know is refused
+  good := sc_swap("1|continue|CONTINUE\n2|new|NEW RUN\n", "1|new|START\n2|continue|CONTINUE\n", o[..]);
+  #assert sc_load(c[..], good) && c[0].menu[0] == 2 && sc_menu_label(c[..], 0) == "START";
+  bad := sc_swap("2|new|NEW RUN\n", "2|credits|NEW RUN\n", o[..]);
+  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "the menu's rows are continue, new and credits, each at most once and new always, each with a label of 1 to 48 bytes";
+  #assert !sc_load(c[..], sc_swap("2|new|NEW RUN\n", "2|settings|NEW RUN\n", o[..])) && !sc_load(c[..], sc_swap("2|new|NEW RUN\n", "2|new|\n", o[..]));
+  bad = sc_swap("|0|150|0|12\n", "|0|150|0|0\n", o[..]);
+  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "the title camera's path has 1 to 8 rows, each taking 1 second or more";
+  bad = sc_swap("1|SPLICE: A METAVERSE ENGINE GAME BY OPENAGENTS\n", "1|SPLICE: A METAVERSE ENGINE GAME BY OPENAGENTS, AND MORE WORDS THAN FIT\n", o[..]);
+  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "the credits are at most 12 lines of at most 48 bytes";
+}

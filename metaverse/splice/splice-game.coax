@@ -23,6 +23,8 @@
 #load "replay-checks.coax" #test;   // the outcome replay's checks, and each check's broken variant
 #load "world-checks.coax" #test;   // the world document's and the saved batch's checks
 #load "splice-cast.coax";
+#load "front.coax";                 // the title, character creation and the kept run (#13482)
+#load "front-checks.coax" #test;
 #load "why.coax";                  // the answers to `why ID` (metaverse-engine/agent/why.coax, #13429)
 #load "why-checks.coax" #test;
 #load "imports-checks.coax" #test;   // a piece kind whose mesh is a mesh of the world's import pack (#13420)
@@ -124,6 +126,7 @@ SpGame :: struct {
   things: [THINGS * THING_FLOATS] f32; thing_first: [THINGS] int; thing_count: [THINGS] int; thing_n: int;
   hide: [TK_KINDS] bool;       // kinds a host draws itself: listed, but not written to the live store; outlives a reset
   events: [EVENTS] int; event_n: int;
+  fr: [1] SpFront;             // the front door (front.coax): the menus, your character, the kept run; outlives a reset
 }
 
 // ---- Things and events, for a host that shows the game with its own models and sounds
@@ -262,7 +265,9 @@ g_reset :: (g: [] SpGame) {
   layer := g[0].layer[0];   // the edit layer is the world's, not the run's
   imports := g[0].imp[0];   // and so are the meshes it imported
   view := g[0].view; shown := g[0].shown; unseen := g[0].unseen;   // and the editor's clock, its shown foe and Simulate
+  front := g[0].fr[0];   // and the front door: your character and the run this browser keeps
   g[0] = SpGame.{};
+  g[0].fr[0] = front;
   g[0].view = view; g[0].shown = shown; g[0].unseen = unseen;
   g[0].imp[0] = imports;
   g[0].gray = gray;
@@ -412,6 +417,8 @@ g_walk :: (g: [] SpGame, dt: f32) {
 }
 g_step :: (g: [] SpGame, dt: f32) {
   g[0].t += dt;
+  fr_autosave(g, dt);   // the run this browser keeps (front.coax)
+  if fr_front(g) { if g[0].mode == M_CREW { g[0].fr[0].turn += dt * 0.35; } return; }
   if g[0].msg_t > 0 { g[0].msg_t -= dt; if g[0].msg_t <= 0 { g[0].msg = MSG_NONE; } }
   if g[0].flash > 0 { g[0].flash = hi(0, g[0].flash - dt * 1.6); }
   if g[0].mode == M_BANNER { g[0].banner_t -= dt; if g[0].banner_t <= 0 { g_respawn(g); g[0].mode = M_PLAY; } return; }
@@ -565,6 +572,7 @@ g_use :: (g: [] SpGame) {
 }
 // A key the page uses returns true (the browser then keeps it from scrolling or moving focus).
 g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
+  if fr_front(g) { return down && fr_key(g, key); }   // the title, creation and credits screens (front.coax)
   if key == 'w' || key == 'W' || key == -6 { g[0].fwd = down; return true; }
   if key == 's' || key == 'S' || key == -7 { g[0].back = down; return true; }
   if key == 'a' || key == 'A' { g[0].left = down; return true; }
@@ -573,7 +581,6 @@ g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
   if key == -5 { g[0].turn_r = down; return true; }
   if !down { return false; }
   enter := key == -2 || key == ' ';
-  if g[0].mode == M_TITLE { if enter || key == 'e' || key == 'E' { g[0].mode = M_PLAY; g[0].look_free = false; return true; } return false; }
   if g[0].mode == M_RESTORED { if enter || key == 'r' || key == 'R' { g_reset(g); g[0].mode = M_PLAY; return true; } return false; }
   if g[0].mode == M_MEMORY { g[0].mode = M_RESTORED; return true; }
   if g[0].mode == M_BAY {
@@ -598,6 +605,7 @@ g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
 }
 in_box :: (b: [] f32, o: int, x: f32, y: f32) -> bool { return x >= b[o] && x <= b[o + 2] && y >= b[o + 1] && y <= b[o + 3]; }
 g_pointer :: (g: [] SpGame, x: f32, y: f32, phase: int) -> bool {
+  if fr_front(g) { return fr_pointer(g, x, y, phase); }
   if g[0].mode == M_BAY {
     // drag a part or a card from its list onto the timeline; a click with no drag places it too
     if phase == 1 && g[0].drag >= 0 { if abs(x - g[0].drag_x) + abs(y - g[0].drag_y) > 6 { g[0].drag_far = true; } g[0].drag_x = x; g[0].drag_y = y; return true; }
@@ -613,7 +621,7 @@ g_pointer :: (g: [] SpGame, x: f32, y: f32, phase: int) -> bool {
     }
   }
   if phase != 0 { return false; }
-  if g[0].mode == M_TITLE || g[0].mode == M_MEMORY || g[0].mode == M_RESTORED { return g_key(g, -2, true); }
+  if g[0].mode == M_MEMORY || g[0].mode == M_RESTORED { return g_key(g, -2, true); }
   if g[0].mode == M_PLAY || g[0].mode == M_RIDE { g[0].look_free = false; return false; }   // a click takes the pointer back for looking
   for i: 0..<g[0].btn_n {
     if !in_box(g[0].btn[..], i * 4, x, y) { continue; }
@@ -816,6 +824,7 @@ g_draw_rover :: (buf: [] u32, p: [] Pen, at: Point, yaw: f32) {
 g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   t := g[0].t; blue := GLOW();
   g[0].thing_n = 0;
+  if fr_front(g) { fr_live(g, buf, p); return; }
   if g[0].mode == M_MEMORY {
     // robots and people working side by side, all hologram blue
     for i: 0..<3 {
@@ -845,12 +854,10 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   y := ifx g[0].zone == Z_MINE then ground_y(g, g[0].px, g[0].pz) else 0.0f32;
   blink := g[0].hit_cool > 0 && fract(t * 8) < 0.5;
   if !blink {
-    // the smuggler (splice-cast.coax), walking when a move key is held
+    // the smuggler: listed here, drawn as your character from its walk poses in the piece store (front.coax fr_player)
     pf := frame_at(v3(g[0].px, y, g[0].pz), g[0].yaw);
     sk := g_thing(g, p, TK_SMUGGLER, 0, pf, 0.85, g[0].stride);
-    if sk >= 0 {
-    cast_smuggler(buf, p, pf, 0.85, 200, g[0].stride, cast_colour());
-    g_thing_end(g, p, sk); }
+    g_thing_end(g, p, sk);
   }
   if g[0].zone != Z_MINE { return; }
   if g[0].have[H_CORE] { kit_pen(p, 66, MAT_GLOW, blue); ball(buf, p, v3(g[0].px - sin(g[0].yaw) * 0.45, y + 1.2, g[0].pz - cos(g[0].yaw) * 0.45), 0.24, 10); }
@@ -1004,7 +1011,7 @@ g_camera :: (g: [] SpGame) -> CamNow {
   t := g[0].t;
   if g[0].mode == M_BAY { return CamNow.{eye = v3(g[0].at.bay_x + 3.4, 2.4, g[0].at.bay_z + 8.6), at = v3(g[0].at.bay_x, 0.6, g[0].at.bay_z), fov = 0.62}; }
   if g[0].mode == M_MEMORY || g[0].mode == M_RESTORED { k := g[0].mem_t / T_MEMORY; return CamNow.{eye = v3(g[0].at.mem_x - 9 + k * 16, 2.0, g[0].at.mem_z + 9), at = v3(g[0].at.mem_x - 3 + k * 6, 1.3, g[0].at.mem_z - 1), fov = 0.7}; }
-  if g[0].mode == M_TITLE { a := t * 0.12; return CamNow.{eye = v3(g[0].at.rover_x - 3 + sin(a) * 13, 3.2, g[0].at.rover_z + 2 + cos(a) * 13), at = v3(g[0].at.rover_x - 3, 1.8, g[0].at.rover_z - 2), fov = 0.7}; }
+  if fr_front(g) { return fr_camera(g); }   // the rover on the rail and the dolly past it (front.coax)
   if g[0].mode == M_RIDE {
     c := rail_at(g, g[0].rail_s); y := rail_yaw(g, g[0].rail_s);
     return CamNow.{eye = v3(c.x - sin(y) * 10, 4.6 + g[0].pitch * 4, c.z - cos(y) * 10), at = v3(c.x + sin(y) * 6, 2.0, c.z + cos(y) * 6), fov = 0.82};
@@ -1022,7 +1029,7 @@ g_camera :: (g: [] SpGame) -> CamNow {
 g_variant :: (g: [] SpGame) -> int {
   if g[0].mode == M_BAY { return 0; }
   if g[0].mode == M_MEMORY || g[0].mode == M_RESTORED { return 3; }
-  if g[0].mode == M_TITLE { return 2; }
+  if fr_front(g) { return 2; }
   ph := g_phase(g);
   return ifx ph <= PH_DAY then 0 else ifx ph == PH_DUSK then 2 else 3;
 }
@@ -1406,20 +1413,7 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
   if g[0].mode == M_PLAY || g[0].mode == M_RIDE { g[0].btn_n = 0; return g_hud(g, out, u, q); }
   if g[0].mode == M_BAY { return g_bay(g, out, u, q); }
   g[0].btn_n = 0;
-  if g[0].mode == M_TITLE {
-    // sprocket bars top and bottom, SPLICE in an ink frame, the tagline in the footer
-    ui_panel(g, u, -20, -20, w + 20, 64 * k, ink, 1); ui_panel(g, u, -20, h - 96 * k, w + 20, h + 20, ink, 1);
-    n = ui_sprockets(out, n, 0, w, 32 * k, 16 * k, paper); n = ui_sprockets(out, n, 0, w, h - 24 * k, 16 * k, paper);
-    n = ui_title_mid(out, n, "RESTORE WHAT THE EMPEROR ERASED", w * 0.5, h - 58 * k, 11 * k, paper);
-    fx0 := w * 0.5 - 330 * k; fy0 := h * 0.5 - 170 * k;
-    ui_panel(g, u, fx0, fy0, fx0 + 660 * k, fy0 + 300 * k, paper, 0.97);
-    n = ui_box(out, n, fx0, fy0, fx0 + 660 * k, fy0 + 300 * k, 6 * k, ink);
-    n = ui_box(out, n, fx0 + 14 * k, fy0 + 14 * k, fx0 + 646 * k, fy0 + 286 * k, 2 * k, ink);
-    n = ui_title_mid(out, n, "SPLICE", w * 0.5, fy0 + 142 * k, 64 * k, ink);
-    if fract(g[0].t * 0.8) < 0.7 { n = ui_button(g, out, n, "CLICK TO PLAY", w * 0.5 - 170 * k, fy0 + 184 * k, w * 0.5 + 170 * k, fy0 + 236 * k, 0, -2); }
-    n = ui_mid(out, n, "WASD move · mouse look · E interact · TAB edit bay · F stun · G graybox", w * 0.5, fy0 + 268 * k, 8 * k, ink);
-    return n;
-  }
+  if fr_front(g) { return fr_overlay(g, out, u, w, h); }   // the title, creation and credits screens (front.coax)
   if g[0].mode == M_BANNER {
     sweep := g[0].banner == B_SWEEP;
     ui_panel(g, u, -20, -20, w + 20, h + 20, ifx sweep then HEAT() else ink, 1);
@@ -1574,6 +1568,8 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
 // The game keeps its edit layer through the run's reset, so this plays whatever layer g holds.
 g_play_run :: (g: [] SpGame) -> int {
   g_reset(g);
+  // the title's NEW RUN, then USE THIS CHARACTER on the creation screen
+  if !(g_key(g, -2, true) && g[0].mode == M_CREW) { return 1; }
   if !(g_key(g, -2, true) && g[0].mode == M_PLAY && g[0].zone == Z_VILLAGE && g[0].phase == PH_DAWN) { return 1; }
   // the village: walk out through the scanner gate
   if !(g_key(g, 'w', true)) { return 2; }

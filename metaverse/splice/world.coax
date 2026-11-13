@@ -216,8 +216,9 @@ SPE_PLAN :: 29;      // a foe's plan or the clock does not hold: the words are t
 // Opens the tables from text ("": the ones the build shipped with) into the edit log and the game.
 // False, and nothing changed, for anything but Splice's content at this build's revision.
 spw_tables_open :: (g: [] SpGame, ct: [] SpwTables, text: string) -> bool {
-  up: [SPW_TABLES] u8;
-  from := sc_upgrade(ifx text.count == 0 then SC_SHIPPED else text, up[..]);   // tables saved before the plans and the clock get the shipped ones
+  up: [SPW_TABLES] u8; up2: [SPW_TABLES] u8;
+  // tables saved before the plans and the clock, or before the front door's menu, credits and dolly, get the shipped ones
+  from := sc_upgrade_front(sc_upgrade(ifx text.count == 0 then SC_SHIPPED else text, up[..]), up2[..]);
   read: [1] SpContent; shipped: [1] SpContent;
   if from.count > SPW_TABLES || !sc_load(read[..], from) || !sc_load(shipped[..], SC_SHIPPED) || read[0].rev != shipped[0].rev { return false; }
   if !forge_content_open(ct[0].d[..], from) { return false; }

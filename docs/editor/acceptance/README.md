@@ -115,6 +115,27 @@ It runs with `--real-time` because under the agent clock the page does not
 reach its world's first revision on the dev server (#13475), so `state`
 shows the time of day and the actor where `clock until` would hold them.
 
+## Splice's front door
+
+A pass through the title, the creation screen and the start of play
+(#13482), as a player opens the page. Use a fresh browser profile (the
+driver's own), so no character or run is kept:
+
+```sh
+coax/web/tool.sh drive web apps/openagents-web /worlds/splice \
+  --size 1280x720 --live http://127.0.0.1:9538 \
+  --real-time --ops docs/editor/acceptance/splice-front-run.ops
+```
+
+It opens CREDITS with the pointer and goes back with Escape, starts NEW
+RUN with the keys, changes the body with D and the outfit with the
+pointer, goes back with Escape and in again, and plays with USE THIS
+CHARACTER. `state` shows each step's mode (0 the title, 7 the
+character, 8 the credits, 1 play), the character's changes and its walk
+poses. It leaves `splice-front-title.png`, `splice-front-credits.png`,
+`splice-front-character.png`, `splice-front-play.png` and
+`splice-front-walk.png` in `apps/openagents-web/build/`.
+
 ## Foes in the agent pane
 
 A fourth pass sends the same request through the editor's agent pane

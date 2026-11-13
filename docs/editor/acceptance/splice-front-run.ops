@@ -1,0 +1,51 @@
+# Splice's front door (#13482), for coax drive (docs/editor/acceptance/README.md, "Splice's front door").
+# Size 1280x720, no query (the page as a player opens it), --real-time: the page has no agent clock, so
+# `clock +MS` waits. A fresh browser: no character and no run kept, so CONTINUE is not shown.
+clock +4000
+state game.mode
+state game.fr.menu
+screenshot apps/openagents-web/build/splice-front-title.png
+# the pointer: hover CREDITS (it takes the focus), press it, then Escape back
+tap 240 351
+clock +600
+state game.mode
+screenshot apps/openagents-web/build/splice-front-credits.png
+type - key Escape
+clock +400
+state game.mode
+# NEW RUN by the keys: up from CREDITS, Enter
+type - key ArrowUp
+type - key Enter
+clock +800
+state game.mode
+# the character: up to Body and change it with D, then Outfit's right arrow by the pointer
+type - key ArrowUp
+type - key ArrowUp
+type - key ArrowUp
+type - key ArrowUp
+type - key ArrowUp
+type - key ArrowUp
+type - key d
+tap 386 270
+clock +1500
+state game.fr.doc_gen
+screenshot apps/openagents-web/build/splice-front-character.png
+# Escape goes back to the title and keeps the character; NEW RUN again
+type - key Escape
+clock +400
+state game.mode
+type - key Enter
+clock +400
+state game.mode
+# USE THIS CHARACTER (the creation screen opens on it): play as that character
+type - key Enter
+clock +1500
+state game.mode
+state game.fr.posed_n
+state game.fr.crew_put
+screenshot apps/openagents-web/build/splice-front-play.png
+# walk: the character's poses play
+type - key w
+clock +1200
+state game.stride
+screenshot apps/openagents-web/build/splice-front-walk.png

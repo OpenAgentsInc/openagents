@@ -1,0 +1,211 @@
+// One format for a game's screens (the title, a creation screen, a pause, a death card): a dark
+// panel down the left over the world, a title at its top, the content under it, a foot of small
+// lines, and the key hints at the bottom right. And a menu in that panel, chosen with the keys or
+// the pointer: rows that are picked, and rows whose value steps left and right.
+//
+// It only lays out and decides. It returns boxes and what a key or a press did; the realm draws
+// them in its own look (Splice draws its tactical panels, metaverse/splice/front.coax). Every size
+// is in the design's pixels at 1280 by 720 and scales with the screen, so a 2560 by 1440 screen is
+// the same picture twice as big.
+//   coax/bin/coax test metaverse-engine/ui/screen.coax
+
+SCR_DESIGN_W :: 1280.0f32; SCR_DESIGN_H :: 720.0f32;
+
+// A screen's spec, in design pixels: how wide the panel is, the left margin in it, where the title's
+// top is, where the content starts, the foot's distance from the bottom, the hints' corner, and
+// the menu's row height, gap and width.
+ScrSpec :: struct {
+  panel: f32 = 480; pad: f32 = 72; top: f32 = 96; body: f32 = 268; foot: f32 = 64;
+  hint_right: f32 = 40; hint_bottom: f32 = 32;
+  row: f32 = 50; gap: f32 = 8; width: f32 = 336;
+}
+// The title screen's spec (the defaults), and a narrower one for a screen over a game in play.
+scr_title_spec :: () -> ScrSpec { return ScrSpec.{}; }
+scr_pause_spec :: () -> ScrSpec { return ScrSpec.{panel = 360, pad = 40, top = 40, body = 120, foot = 40, row = 48, width = 280}; }
+
+ScrBox :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+scr_in :: (b: ScrBox, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+
+// The frame on a w by h screen: k design pixels to the device's, the panel, the left of everything
+// in it, the title's top, the content's top, the foot's baseline and the hints' bottom right.
+ScrFrame :: struct { k: f32; w: f32; h: f32; panel: ScrBox; left: f32; top: f32; body: f32; foot: f32; hint_x1: f32; hint_y1: f32; row: f32; gap: f32; width: f32; }
+scr_frame :: (w: f32, h: f32, s: ScrSpec) -> ScrFrame {
+  k := w / SCR_DESIGN_W; kh := h / SCR_DESIGN_H; if kh < k { k = kh; }
+  if !(k > 0) { k = 1; }
+  f: ScrFrame;
+  f.k = k; f.w = w; f.h = h;
+  f.panel = ScrBox.{x0 = 0, y0 = 0, x1 = s.panel * k, y1 = h};
+  f.left = s.pad * k; f.top = s.top * k; f.body = s.body * k; f.foot = h - s.foot * k;
+  f.hint_x1 = w - s.hint_right * k; f.hint_y1 = h - s.hint_bottom * k;
+  f.row = s.row * k; f.gap = s.gap * k; f.width = s.width * k;
+  return f;
+}
+// The middle of what the panel leaves free: where a scene's subject is framed.
+scr_free_x :: (f: ScrFrame) -> f32 { return (f.panel.x1 + f.w) * 0.5; }
+
+// ---- the menu
+
+SCR_ROWS :: 10;
+SCR_NONE :: 0;     // nothing happened
+SCR_FOCUS :: 1;    // the focus moved (a key or the pointer)
+SCR_PICK :: 2;     // a row was picked (Enter, Space, or a press on it)
+SCR_BACK :: 3;     // back (Escape or Backspace)
+SCR_LEFT :: 4;     // a value row stepped down (the left arrow, or a press on its left arrow)
+SCR_RIGHT :: 5;    // ... and up
+// Keys as coax/web/host.js numbers them.
+SCR_KEY_ESC :: -1; SCR_KEY_ENTER :: -2; SCR_KEY_BACKSPACE :: -3; SCR_KEY_LEFT :: -4; SCR_KEY_RIGHT :: -5; SCR_KEY_UP :: -6; SCR_KEY_DOWN :: -7;
+
+// A menu: rows by the realm's own IDs, each shown or not and each a plain row or a value row.
+// The focus is a row's place, always on a shown row while there is one.
+ScrMenu :: struct { n: int; id: [SCR_ROWS] int; shown: [SCR_ROWS] bool; value: [SCR_ROWS] bool; focus: int; }
+ScrAct :: struct { act: int; id: int = -1; }
+
+scr_menu_clear :: (m: [] ScrMenu) { m[0].n = 0; }
+// Adds a row; its place, or -1 when the menu is full.
+scr_menu_add :: (m: [] ScrMenu, id: int, shown: bool, value: bool) -> int {
+  if m[0].n >= SCR_ROWS { return -1; }
+  i := m[0].n; m[0].id[i] = id; m[0].shown[i] = shown; m[0].value[i] = value; m[0].n += 1;
+  return i;
+}
+// The place of the row with this ID, or -1.
+scr_menu_at :: (m: [] ScrMenu, id: int) -> int { for i: 0..<m[0].n { if m[0].id[i] == id { return i; } } return -1; }
+// The focused row's ID (-1 when no row is shown).
+scr_focused :: (m: [] ScrMenu) -> int { f := m[0].focus; return ifx f >= 0 && f < m[0].n && m[0].shown[f] then m[0].id[f] else -1; }
+// Puts the focus on the row with this ID when it is shown; otherwise on the first shown row.
+scr_focus :: (m: [] ScrMenu, id: int) {
+  i := scr_menu_at(m, id);
+  if i >= 0 && m[0].shown[i] { m[0].focus = i; return; }
+  m[0].focus = 0;
+  for k: 0..<m[0].n { if m[0].shown[k] { m[0].focus = k; return; } }
+}
+// The next shown row from the focus, by step (1 down, -1 up), round the ends.
+scr_step :: (m: [] ScrMenu, step: int) -> bool {
+  n := m[0].n; if n == 0 { return false; }
+  i := m[0].focus;
+  for k: 0..<n {
+    i = (i + step + n) % n;
+    if m[0].shown[i] { was := m[0].focus; m[0].focus = i; return was != i; }
+  }
+  return false;
+}
+// What a key does: up and down (and W, S) move the focus, Enter and Space pick, Escape and
+// Backspace go back, left and right (and A, D) step a value row.
+scr_key :: (m: [] ScrMenu, key: int) -> ScrAct {
+  if key == SCR_KEY_ESC || key == SCR_KEY_BACKSPACE { return ScrAct.{act = SCR_BACK}; }
+  id := scr_focused(m);
+  if key == SCR_KEY_UP || key == 'w' || key == 'W' { return ScrAct.{act = ifx scr_step(m, -1) then SCR_FOCUS else SCR_NONE, id = scr_focused(m)}; }
+  if key == SCR_KEY_DOWN || key == 's' || key == 'S' { return ScrAct.{act = ifx scr_step(m, 1) then SCR_FOCUS else SCR_NONE, id = scr_focused(m)}; }
+  if id < 0 { return ScrAct.{}; }
+  value := m[0].value[m[0].focus];
+  if key == SCR_KEY_ENTER || key == ' ' { return ScrAct.{act = ifx value then SCR_RIGHT else SCR_PICK, id = id}; }
+  if value && (key == SCR_KEY_LEFT || key == 'a' || key == 'A') { return ScrAct.{act = SCR_LEFT, id = id}; }
+  if value && (key == SCR_KEY_RIGHT || key == 'd' || key == 'D') { return ScrAct.{act = SCR_RIGHT, id = id}; }
+  return ScrAct.{};
+}
+// Row i's box: the shown rows stack down from the content's top, row tall and gap apart.
+scr_row_box :: (f: ScrFrame, m: [] ScrMenu, i: int) -> ScrBox {
+  if i < 0 || i >= m[0].n || !m[0].shown[i] { return ScrBox.{}; }
+  y := f.body;
+  for k: 0..<i { if m[0].shown[k] { y += f.row + f.gap; } }
+  return ScrBox.{x0 = f.left, y0 = y, x1 = f.left + f.width, y1 = y + f.row};
+}
+// A value row's two arrows: square boxes at the two ends of its right half.
+scr_arrow_box :: (f: ScrFrame, m: [] ScrMenu, i: int, right: bool) -> ScrBox {
+  b := scr_row_box(f, m, i);
+  if b.x1 <= b.x0 || !m[0].value[i] { return ScrBox.{}; }
+  s := b.y1 - b.y0; x := ifx right then b.x1 - s else b.x0 + (b.x1 - b.x0) * 0.45;
+  return ScrBox.{x0 = x, y0 = b.y0, x1 = x + s, y1 = b.y1};
+}
+// What the pointer does (phase 0 a press, 1 a move, as coax/web/host.js says): over a row it takes
+// the focus; a press picks the row, or steps a value row by the arrow it is on (the right one when
+// it is on neither).
+scr_point :: (f: ScrFrame, m: [] ScrMenu, x: f32, y: f32, phase: int) -> ScrAct {
+  if phase != 0 && phase != 1 { return ScrAct.{}; }
+  for i: 0..<m[0].n {
+    if !scr_in(scr_row_box(f, m, i), x, y) { continue; }
+    moved := m[0].focus != i; m[0].focus = i; id := m[0].id[i];
+    if phase == 1 { return ScrAct.{act = ifx moved then SCR_FOCUS else SCR_NONE, id = id}; }
+    if !m[0].value[i] { return ScrAct.{act = SCR_PICK, id = id}; }
+    return ScrAct.{act = ifx scr_in(scr_arrow_box(f, m, i, false), x, y) then SCR_LEFT else SCR_RIGHT, id = id};
+  }
+  return ScrAct.{};
+}
+
+// ---- the key hints: a key's cap and its word, laid from the right edge leftward
+
+SCR_HINTS :: 4;
+// Where hint i's cap starts, given each cap's and each word's width (device pixels) and the space
+// between a cap and its word (pad) and between two hints (apart).
+scr_hint_x :: (f: ScrFrame, caps: [] f32, words: [] f32, n: int, i: int, pad: f32, apart: f32) -> f32 {
+  x := f.hint_x1;
+  k := n - 1;
+  while k >= i { x -= caps[k] + pad + words[k]; if k > i { x -= apart; } k -= 1; }
+  return x;
+}
+
+#test "the title screen's frame is the design's numbers at 1280 by 720, and twice them at 2560 by 1440" {
+  f := scr_frame(1280, 720, scr_title_spec());
+  #assert f.k == 1 && f.panel.x1 == 480 && f.left == 72 && f.top == 96 && f.body == 268 && f.foot == 656 && f.hint_x1 == 1240 && f.hint_y1 == 688;
+  #assert scr_free_x(f) == 880;
+  g := scr_frame(2560, 1440, scr_title_spec());
+  #assert g.k == 2 && g.panel.x1 == 960 && g.left == 144 && g.body == 536 && g.row == 100;
+  // a wide screen keeps the height's scale, so the panel never runs off the bottom
+  w := scr_frame(2560, 720, scr_title_spec());
+  #assert w.k == 1 && w.panel.x1 == 480 && w.hint_x1 == 2520;
+  p := scr_frame(1280, 720, scr_pause_spec());
+  #assert p.panel.x1 == 360 && p.left == 40;
+  #assert scr_frame(0, 0, scr_title_spec()).k == 1;
+}
+#test "keys move the focus round the shown rows, skip a hidden one, pick it and go back" {
+  m: [1] ScrMenu;
+  #assert scr_menu_add(m[..], 10, false, false) == 0 && scr_menu_add(m[..], 20, true, false) == 1 && scr_menu_add(m[..], 30, true, false) == 2;
+  scr_focus(m[..], 10);   // hidden: the first shown row instead
+  #assert scr_focused(m[..]) == 20;
+  a := scr_key(m[..], SCR_KEY_DOWN);
+  #assert a.act == SCR_FOCUS && a.id == 30;
+  a = scr_key(m[..], SCR_KEY_DOWN);   // round the end, past the hidden row
+  #assert a.act == SCR_FOCUS && a.id == 20;
+  a = scr_key(m[..], 'w');
+  #assert a.act == SCR_FOCUS && a.id == 30;
+  a = scr_key(m[..], SCR_KEY_ENTER);
+  #assert a.act == SCR_PICK && a.id == 30;
+  #assert scr_key(m[..], ' ').act == SCR_PICK && scr_key(m[..], SCR_KEY_ESC).act == SCR_BACK && scr_key(m[..], SCR_KEY_BACKSPACE).act == SCR_BACK;
+  #assert scr_key(m[..], SCR_KEY_LEFT).act == SCR_NONE && scr_key(m[..], 'q').act == SCR_NONE;
+  // one shown row: up and down move nothing
+  one: [1] ScrMenu; _ := scr_menu_add(one[..], 1, true, false);
+  #assert scr_key(one[..], SCR_KEY_DOWN).act == SCR_NONE && scr_focused(one[..]) == 1;
+  // no shown row: nothing to pick
+  none: [1] ScrMenu; _ = scr_menu_add(none[..], 1, false, false); scr_focus(none[..], 1);
+  #assert scr_focused(none[..]) == -1 && scr_key(none[..], SCR_KEY_ENTER).act == SCR_NONE && scr_key(none[..], SCR_KEY_DOWN).act == SCR_NONE;
+  full: [1] ScrMenu; for i: 0..<SCR_ROWS { _ = scr_menu_add(full[..], i, true, false); }
+  #assert scr_menu_add(full[..], 99, true, false) == -1 && scr_menu_at(full[..], 99) == -1;
+  scr_menu_clear(full[..]); #assert full[0].n == 0;
+}
+#test "a value row steps with left and right, and Enter steps it up" {
+  m: [1] ScrMenu; _ := scr_menu_add(m[..], 1, true, true); _ = scr_menu_add(m[..], 2, true, false);
+  scr_focus(m[..], 1);
+  #assert scr_key(m[..], SCR_KEY_LEFT).act == SCR_LEFT && scr_key(m[..], 'a').act == SCR_LEFT && scr_key(m[..], SCR_KEY_RIGHT).act == SCR_RIGHT && scr_key(m[..], 'D').act == SCR_RIGHT;
+  #assert scr_key(m[..], SCR_KEY_ENTER).act == SCR_RIGHT;
+  scr_focus(m[..], 2);
+  #assert scr_key(m[..], SCR_KEY_RIGHT).act == SCR_NONE && scr_key(m[..], SCR_KEY_ENTER).act == SCR_PICK;
+}
+#test "the pointer takes the focus over a row, a press picks it, and a value row's arrows step it" {
+  f := scr_frame(1280, 720, scr_title_spec());
+  m: [1] ScrMenu; _ := scr_menu_add(m[..], 1, true, false); _ = scr_menu_add(m[..], 2, false, false); _ = scr_menu_add(m[..], 3, true, false); _ = scr_menu_add(m[..], 4, true, true);
+  // rows stack past the hidden one: 268, 326, 384
+  #assert scr_row_box(f, m[..], 0).y0 == 268 && scr_row_box(f, m[..], 1).x1 == 0 && scr_row_box(f, m[..], 2).y0 == 326 && scr_row_box(f, m[..], 3).y0 == 384 && scr_row_box(f, m[..], 3).x1 == 408;
+  a := scr_point(f, m[..], 100, 340, 1);
+  #assert a.act == SCR_FOCUS && a.id == 3 && scr_focused(m[..]) == 3;
+  #assert scr_point(f, m[..], 110, 341, 1).act == SCR_NONE;
+  a = scr_point(f, m[..], 100, 280, 0);
+  #assert a.act == SCR_PICK && a.id == 1 && scr_focused(m[..]) == 1;
+  #assert scr_point(f, m[..], 600, 280, 0).act == SCR_NONE && scr_point(f, m[..], 100, 280, 2).act == SCR_NONE;
+  l := scr_arrow_box(f, m[..], 3, false); r := scr_arrow_box(f, m[..], 3, true);
+  #assert abs(l.x1 - l.x0 - 50) < 0.001 && r.x1 == 408 && l.x0 < r.x0 && scr_arrow_box(f, m[..], 0, true).x1 == 0;
+  #assert scr_point(f, m[..], l.x0 + 5, 400, 0).act == SCR_LEFT && scr_point(f, m[..], r.x0 + 5, 400, 0).act == SCR_RIGHT && scr_point(f, m[..], 80, 400, 0).act == SCR_RIGHT;
+}
+#test "the hints lay from the right edge, the last one nearest it" {
+  f := scr_frame(1280, 720, scr_title_spec());
+  caps := [2] f32.[48, 34]; words := [2] f32.[50, 34];
+  #assert scr_hint_x(f, caps[..], words[..], 2, 1, 6, 20) == 1240 - 74 && scr_hint_x(f, caps[..], words[..], 2, 0, 6, 20) == 1240 - 74 - 20 - 104;
+}
