@@ -1,7 +1,7 @@
 // A lab walk's C face (metaverse/lab-walk.coax) for the browser (coax/web/host.js) and the Mac and iPhone
 // apps' page host (metaverse-engine/host/apple): scalar exports over the world's module. It decides nothing. The
-// module is an Everglade zone (everglade/zone.coax), as the Archery Range's is (archery-range-face.c,
-// whose shape this follows): nearly every export hands the host's call to the zone, and the frame, the
+// module is an Everglade zone (everglade/zone.coax), as the Archery Range's was before it moved into
+// Everglade II (#13507): nearly every export hands the host's call to the zone, and the frame, the
 // pointer and the page's message go through the world (LAB_FRAME, LAB_POINTER, LAB_MESSAGE). The scene
 // draws your figure with Character Create's passes (everglade/scene/gpu/charactercreator.coax); the Grid, its sky and
 // the stations are the walk's quads, drawn after it as the page's particles by bitcoin-lab-fx.wgsl

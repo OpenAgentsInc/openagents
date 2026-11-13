@@ -1,10 +1,13 @@
 # The Archery Range (spec)
 
-Written 2026-11-10. Status: **built, version 2**, as a realm on the web at
-`/worlds/archery-range`, in a module of its own, `archery-range` (section 9).
-Version 1 was a scene written for the Everglade apps alone, with its own draw
-key, aim, camera, reticle, hit test and mounts. It is deleted. Version 2 is
-built only from the systems the game already has.
+Written 2026-11-10. Status: **built, version 3**: a place on Everglade's
+land, opened at `/worlds/archery-range` by Everglade's one client
+(`everglade/client/`) in range mode (section 9, #13507). Version 1 was a scene
+written for the Everglade apps alone, with its own draw key, aim, camera,
+reticle, hit test and mounts. It is deleted. Version 2 was a module of its own,
+`archery-range`, on the zone Experimental runs. It is deleted too. Version 3 is
+built only from the systems the game already has, and its arrows are the
+room's.
 
 The range is a place to practise the Ranger's Longbow: shoot at faces for
 points, see how accurate you are, and do it at different distances, on
@@ -26,7 +29,7 @@ foot, from horseback and from dragonback.
 
 ## 1. What you do
 
-You arrive as a Ranger on an open meadow, behind a chalk shooting line,
+You arrive in Everglade, on the city clearing east of the path, behind a chalk shooting line,
 facing five straw butts. Hold the right mouse button to draw, aim with the
 crosshair and let go to loose. The arrow flies a real arc and sticks where it
 lands. An arrow in a face shows its points over the face. Walk anywhere:
@@ -37,7 +40,10 @@ the air.
 ## 2. The ground
 
 All numbers are in [`everglade/range/layout.coax`](../range/layout.coax).
-The rules, the mesh and the realm all read that one file.
+The rules, the mesh, the room and the client all read that one file. The
+range's own frame (the numbers below) stands at `RG_AT_X`, `RG_AT_Z` = (34, -80)
+on Everglade's land: the city clearing east of the path, level and open,
+inside the land's cells, so the ground needed no new bake.
 
 | Thing | Where |
 | --- | --- |
@@ -50,15 +56,15 @@ The rules, the mesh and the realm all read that one file.
 | The horse | Waits 8 m behind the line |
 | The dragon | Waits 15 m behind the line |
 
-The range is a clearing: the meadow scatters no rocks from 34 m either side of
-the middle, from 78 m downrange to 24 m behind the line (`RG_CLEAR`). The lanes,
-the line and where the mounts wait are open grass and flowers. A few rocks
-edge it: a quarter of the meadow's, in a band 9 m wide. Past the band the
-range's meadow has no rocks. Experimental's and the Druid's meadows are
-unchanged.
+The range is a clearing: nothing is planted from 34 m either side of the
+middle, from 78 m downrange to 24 m behind the line (`RG_CLEAR`,
+`rg_on_ground`): no tree, understory or boulder (`everglade/world/plant.coax`).
+The content names the place (`43|Archery Range` in
+`everglade/content/everglade.content`), and no monster wanders onto it
+(`everglade/server/creatures.coax`).
 
-Every piece stands on the meadow's own ground under it. There is no fence:
-the meadow is open, and its edge is the realm's.
+Every piece stands on Everglade's ground under it (`e2_height`). There is no
+fence: the range is open to the rest of the land.
 
 Each butt, pole and post has a collider the size of what you see. You walk
 into it, a mount goes round it, and an arrow sticks in it. The chalk has
@@ -112,6 +118,11 @@ Riding is Everglade's mounts ([mounts spec](mounts-spec.md)), unchanged.
 
 ## 6. On a phone
 
+Version 3 runs on Everglade II's own touch controls, as the rest of its land
+does; the range adds RESET in its panel. The table below is version 2's, on
+the zone: its FOOT, HORSE and DRAGON buttons, and RESET putting you back
+behind the line, are not in version 3 yet (section 10).
+
 A touch screen has the same range, in a phone's browser and in the iPhone
 app. The controls come up at the first touch (the iPhone app shows them from
 the start).
@@ -149,8 +160,11 @@ bow's slot shows none, because holding it is the draw.
 
 ## 7. The tally
 
-Shown at the top left, where other realms show the class picker. The range
-has one class, so it has no picker. It is kept until you leave the page.
+Shown at the top left in range mode. The room keeps it, one per seat
+(`everglade/server/seat.coax`), and tells the archer alone what each arrow on
+the range scored (`e range`, [protocol](../../docs/protocol/everglade-range-v1.md));
+the page keeps its copy by the same rule. RESET clears both (E kind 23). It
+lasts as long as your seat; it is not yet on your character's record.
 
 - **Overall:** arrows, hits, accuracy (hits in a hundred), points, your
   run of hits in a row and the longest, golds (9s and 10s), and points an
@@ -167,7 +181,8 @@ has one class, so it has no picker. It is kept until you leave the page.
 ## 8. What it is built from
 
 Nothing about drawing, aiming, flying arrows, hitting or riding is written
-in the range. The range's module is an Everglade zone with the range on it.
+in the range. The range is a place in Everglade II: the client draws it, the
+room flies and scores its arrows.
 
 | Piece | Where | Layer |
 | --- | --- | --- |
@@ -179,34 +194,31 @@ in the range. The range's module is an Everglade zone with the range on it.
 | Mounting, riding and flying | `metaverse-engine/action/mount.coax`, `metaverse-engine/action/flight.coax`, `metaverse-engine/action/ride-pose.coax` | Engine |
 | The butts' and faces' meshes | [`metaverse-engine/world/build-site-mesh.coax`](../../metaverse-engine/world/build-site-mesh.coax) | Engine |
 | The HUD panel and hit numbers | `metaverse-engine/ui/hud-menu.coax`, `metaverse-engine/action/floats.coax` | Engine |
-| **The zone**: one player's world. Its state (`EgZone`), your body's step, the keys and the pointer, the frame, the host's messages | [`everglade/zone.coax`](../zone.coax) | Game: moved out of `fivelab.coax` |
-| The bow in a zone: its ground and walls, its monsters as bodies, the SRD Longbow attack, the draw and the loose | [`everglade/zone-bow.coax`](../zone-bow.coax) | Game: moved out of `everglade/zone-combat.coax` |
-| Riding in a zone: E, the saddle, the dragon's Fire Breath | [`everglade/zone-ride.coax`](../zone-ride.coax) | Game: moved out of `experimental-ride.coax` |
-| The agent driver in a zone | [`everglade/zone-drive.coax`](../zone-drive.coax) | Game: moved from `fivelab-drive.coax` |
+| Everglade's arrows: loosed, flown and ended by the room, a stuck end naming the face it struck | [`everglade/server/arrows.coax`](../server/arrows.coax), [`metaverse-engine/net/projectile.coax`](../../metaverse-engine/net/projectile.coax) | Game |
+| The faces as targets the room and the page both know | [`everglade/shared/archery.coax`](../shared/archery.coax) (`e2ar_range_targets`) | Game |
+| The butts as walls you walk into, and the range's ground | [`everglade/shared/move.coax`](../shared/move.coax) (`e2_range_hulls`, `e2_range_ground`) | Game |
 | The Longbow's feel: where the arrow leaves, how far the reticle looks, the mouse buttons, the sounds and the dust | [`everglade/longbow.coax`](../longbow.coax) | Game |
 | The bow in the hand, its string, the draw pose | [`everglade/held-kit.coax`](../held-kit.coax) | Game |
 | The horse and the red dragon, and the rider's keys | [`everglade/mounts.coax`](../mounts.coax) | Game |
-| The mounts standing in a zone: E, the saddle, the prompt | [`everglade/zone-mounts.coax`](../zone-mounts.coax) | Game |
-| The scene: the meadow, your Ranger, the mounts drawn | `everglade/scene/charactercreator.coax` | App directory (section 9) |
-| The Ranger's bar and the Longbow's rules | `everglade/zone-combat.coax`, `class-kit.coax`, `rules/srd/` | App directory (section 9) |
+| The horse and the dragon standing at the range | [`everglade/shared/mount-land.coax`](../shared/mount-land.coax) (`E2ML_PLACES`) | Game |
 | Where things are | [`everglade/range/layout.coax`](../range/layout.coax) | The range |
 | Ring points and the tally | [`everglade/range/score.coax`](../range/score.coax) | The range |
 | The pieces' meshes and colliders | [`everglade/range/place.coax`](../range/place.coax) | The range |
-| The realm: arriving, standing the range, following each arrow, the tally's panel, the module's frame and messages | [`apps/openagents-web/archery-range.coax`](../../apps/openagents-web/archery-range.coax) | The range |
+| The tally on the wire: the one codec, the room's and the page's | [`everglade/server/range-wire.coax`](../server/range-wire.coax) | The range |
+| Range mode in the client: arriving, the mesh, the points over a face, the tally's panel and RESET, the driver's faces | [`everglade/client/range.coax`](../client/range.coax) | The range |
 
-The range's mesh is one entry in the glade pack (`C glade/range`), added
-with:
+The range's mesh is one entry in Everglade II's pack (`C glade/range`, source
+5, Everglade II's vertex colours, each piece on `e2_height`), added to the
+working form of the pack and sealed again:
 
 ```sh
-coax/web/tool.sh metaverse/tools/assets/character_glade_pack.coax --append-range IN.pack OUT.pack
+coax/web/tool.sh metaverse-engine/tools/pack-seal.coax --working IN.pack WORK.pack
+coax/web/tool.sh metaverse/tools/assets/character_glade_pack.coax --append-range-e2 WORK.pack OUT.pack
+coax/web/tool.sh metaverse-engine/tools/pack-seal.coax OUT.pack apps/openagents-web/realms/everglade2/assets/everglade2.pack
 ```
 
-Everglade Experimental and the range run the same zone: the same walker, bow,
-riding, bar and HUD, from the same files. Experimental's module
-(`fivelab.coax`) holds an `EgZone` beside the 5E Lab's tabletop and adds what
-is Experimental's alone: its labels, film stages and local test addresses.
 Everglade II uses the archer's frame and the Longbow's sounds, keeps its own
-mouse buttons, and its room resolves the arrow.
+mouse buttons, and its room resolves every arrow, on the range as anywhere.
 
 Check the Coax:
 
@@ -218,44 +230,25 @@ coax/bin/coax test --library metaverse-engine/action/target.coax
 coax/bin/coax test --library metaverse-engine/world/props.coax
 coax/bin/coax test --library everglade/range/score.coax
 coax/bin/coax test --library everglade/range/place.coax
-COAX_NATIVE_CHECKS=1 coax/bin/coax test apps/openagents-web/archery-range.coax   # the zone's checks and the range's four, about 10 s
-COAX_NATIVE_CHECKS=1 coax/bin/coax test apps/openagents-web/old/experimental/fivelab.coax         # Experimental on the same zone
+coax/bin/coax test --library everglade/server/range-wire.coax
+coax/bin/coax test --library everglade/client/client.coax --only "archery range"
+coax/bin/coax test --library coax/web/room/room.coax --steps 4000000000 --only "e2 arrows"
 ```
 
 ## 9. The realm and the apps
 
-The Archery Range is a realm of its own in `apps/openagents-web/realms.json`:
-its own page (`/worlds/archery-range`), save slot and row. It is unlisted, as
-Everglade Experimental and Everglade II are.
+The Archery Range keeps its row in `apps/openagents-web/realms.json` and its
+page (`/worlds/archery-range`, unlisted). The row is a place of Everglade II
+(`place_of everglade2`): the page loads Everglade II's module, pack and save
+slot. On that path the client starts in range mode
+(`everglade/client/range.coax`): you arrive behind the line in the room, and
+the tally's panel shows.
 
-It is also a module of its own, `archery-range`:
-
-| File | What |
-| --- | --- |
-| [`apps/openagents-web/archery-range.coax`](../../apps/openagents-web/archery-range.coax) | The module's root: its state (`Range`: one `EgZone` and the range), `range_frame`, `range_message`, and the range |
-| [`apps/openagents-web/archery-range-face.c`](../../apps/openagents-web/archery-range-face.c) | Its C face. It hands the host's calls to the zone and decides nothing |
-| `apps/openagents-web/build.sh` | Builds `build/archery-range.wasm` with `coax/web/wasm.sh`, beside `fivelab.wasm` |
-| `apps/openagents-web/wasm-budgets.txt` | Its size budget |
-
-The module has none of the 5E Lab's tabletop: no battle of armies, class
-turns, siege, Warlock, film or sliders. It draws with Character Create's passes
-(`charactercreator.wgsl`, which `metaverse-engine/render/page-render.coax` names for the
-page) and the glade's effects (`fivelab-fx.wgsl`), and loads the glade pack, as
-Experimental does.
-
-The module's checks run as native code, as every unit's do
-([native checks](../../coax/docs/native-checks.md)). They are the zone's checks,
-which fivelab also runs, and the range's four.
-
-In the Mac app the world list's row for the Archery Range opens this realm
-natively, through the OpenAgents Metaverse Engine's page host, with its sound
-([app scenes spec](app-scenes-spec.md), section 4). The app builds the module
-as the site does (`metaverse/native/build.sh archery-range OUT` takes the module,
-its face and the libraries `build.sh` links it with) into
-`libarchery-range.dylib`, and the realm table (`Realms.swift`) names it. Its
-pack is Experimental's, so the app keeps one copy. The range and Experimental
-are two libraries now, so both can be open. The iPhone app's build has the same
-lines.
+In the Mac and iPhone apps the world list's row for the Archery Range opens the
+same page natively, through the Metaverse Engine's page host
+([app scenes spec](app-scenes-spec.md), section 4). Its realm table row
+(`Realms.swift`) names module `everglade2`, so the range and Everglade are one
+library and one is open at a time.
 
 ## 10. What is not done
 
@@ -266,14 +259,14 @@ lines.
   `everglade/zone.coax` from where they are. They belong in `everglade/`. Each
   is tied to a page: the scene to Character Create's studio, the combat to
   Experimental's twelve classes and its monsters.
-- **The range carries more than it uses.** Its module holds the whole zone:
-  every class's bar, the monsters (the range stands none and marks them dead),
-  the village's and the dungeon's walls, Shapechange. The module is about the
-  size of fivelab's. It shrinks when the zone's parts can be loaded one at a
-  time.
+- **The tally is not on your character's record.** It lasts as long as your
+  seat. Keeping it means a new character record version and its migration.
+- **RESET clears the tally only.** It does not walk you back to the line, and
+  the panel has no FOOT, HORSE or DRAGON buttons yet (section 6).
+- **No dragon frames in the pack.** The horse's frames are there; the dragon's
+  do not fit the browser's arena beside the range's mesh.
 - **Experimental has no module of its own.** It and the Druid's meadow still
-  build into `fivelab` with the 5E Lab and Character Create. They can move to a
-  module on the zone the way the range did.
+  build into `fivelab` with the 5E Lab and Character Create, on the zone.
 - **Fire Breath** is in `everglade/zone-ride.coax` now. **The film stages**
   stay in `apps/openagents-web/old/experimental/experimental-stages.coax`: they are
   Experimental's own.

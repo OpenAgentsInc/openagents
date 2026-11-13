@@ -20,8 +20,9 @@ Specifications for Everglade systems that aren't yet chapters of
   main flow, Experimental and the Archery Range into them.
 - [The Archery Range](archery-range-spec.md): five butts from 10 to 70 m and
   two sky faces, shot on foot, from horseback and from dragonback, with ring
-  scoring and accuracy by distance. A realm on the web at
-  `/worlds/archery-range`, built from the game's own bow, mounts and HUD.
+  scoring and accuracy by distance. A place on Everglade's land, opened at
+  `/worlds/archery-range` by Everglade's client, built from the game's own bow,
+  mounts and HUD, its arrows scored by the room.
 - [Next issue: pick what to work on, from caches, and measure every call](next-issue-spec.md):
   the desktop app's Next issue button: the GitHub cache under `~/.openagents`,
   how your priorities are read, the reply in your own words, the coding-flow

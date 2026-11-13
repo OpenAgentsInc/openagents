@@ -410,11 +410,6 @@ watchtower=$!
 old timed fivelab "$here/../../coax/web/wasm.sh" "$here/old/experimental/fivelab.coax" "$here/old/experimental/fivelab-face.c" "$here/build/fivelab.wasm" \
   "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 fivelab=$!
-# /worlds/archery-range (unlisted): the Archery Range, an Everglade zone (everglade/zone.coax) with the range on it
-# (everglade/docs/archery-range-spec.md). It draws with Character Create's passes (charactercreator.wgsl).
-timed archery-range "$here/../../coax/web/wasm.sh" "$here/archery-range.coax" "$here/archery-range-face.c" "$here/build/archery-range.wasm" \
-  "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
-archery_range=$!
 # /worlds/bitcoin-lab (unlisted): Bitcoin Lab, the Bitcoin book's first chapter as a walk on the Grid: an Everglade
 # zone (everglade/zone.coax) with your character, its stations drawn as quads by bitcoin-lab-fx.wgsl (metaverse-engine/fx/gpu-quads.coax).
 old timed bitcoin-lab-walk "$here/../../coax/web/wasm.sh" "$here/old/labs/bitcoin-lab-walk.coax" "$here/old/labs/bitcoin-lab-walk-face.c" "$here/build/bitcoin-lab-walk.wasm" \
@@ -584,7 +579,6 @@ wait "$stair"
 wait "$painted"
 wait "$watchtower"
 wait "$fivelab"
-wait "$archery_range"
 wait "$bitcoin_lab_walk"
 wait "$nostr_lab_walk"
 wait "$coax_lab_walk"

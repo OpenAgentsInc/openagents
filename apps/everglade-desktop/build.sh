@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around coax, clang, metal and swiftc; holds no logic)
 # Builds Everglade.app for this Mac (everglade/docs/desktop-app-spec.md): the worlds (the list,
-# the Workshop, and the web's realms run natively: Everglade itself, everglade2, Experimental, fivelab, and the Archery Range, archery-range, with their sound) with the Next issue panel (desktop.coax) and your model (model.coax) compiled to C
+# the Workshop, and the web's realms run natively: Everglade itself, everglade2, and Experimental, fivelab, with their sound; the Archery Range is a place in everglade2) with the Next issue panel (desktop.coax) and your model (model.coax) compiled to C
 # behind face.h, Next issue (next.coax, in the scene's unit: the Coax Claude Agent SDK), the
 # context program it asks the host to run (next-context.coax, as everglade-next), their shaders,
 # Everglade II's pack, on the shared Mac host (apps/shared/host/apple/ui-host.m, the ui-host.h
@@ -93,12 +93,6 @@ emit_page everglade2 everglade2 everglade2 everglade2-fx e2fx
 build_realm fivelab
 emit_page fivelab charactercreator charactercreator fivelab-fx fxg
 cp "$repo/apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz" "$app/Contents/Resources/fivelab/glade.pack.gz"
-# The Archery Range: a module of its own (apps/openagents-web/archery-range.coax, an Everglade zone
-# with the range on it), drawn with the same passes. Its pack is Experimental's, so the app keeps one
-# copy: the realm table's row for it (Sources/Realms.swift) names module archery-range and pack
-# fivelab/glade.pack.gz.
-build_realm archery-range
-emit_page archery-range charactercreator charactercreator fivelab-fx fxg
 # The Bitcoin Lab: its own module (apps/openagents-web/old/labs/bitcoin-lab-walk.coax), the same passes with its
 # Grid and stations in the particle pass (bitcoin-lab-fx), Experimental's pack.
 build_realm bitcoin-lab-walk

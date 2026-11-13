@@ -401,7 +401,8 @@ multiplayer realm.
    along its boundary, but cannot deepen (#13491): touching two boxes by a
    hair must not let the body walk through both. Route walks check it: the horse and the dragon across Experimental's
    glade, meadow and village (`everglade/zone-mounts.coax`, "route walk")
-   and down the Archery Range (`archery-range.coax`).
+   and round the Archery Range's butts on Everglade's land
+   (`everglade/shared/mount-land.coax`).
    **A mount never stands stuck on open ground** (GitHub #13449). Four
    faults did that, and each is fixed where every zone gets it:
    - *A round thing is round.* A world gives a trunk, a pillar or the tall

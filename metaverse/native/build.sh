@@ -95,9 +95,9 @@ esac
 unit="$(basename "$app" .coax)"
 mkdir -p "$out"
 out="$(cd "$out" && pwd -P)"
-# fivelab's and the range's checks run natively, as coax/web/wasm.sh runs them (native_check_units):
+# fivelab's and the lab walks' checks run natively, as coax/web/wasm.sh runs them (native_check_units):
 # interpreted, fivelab's film-stage check runs past the compiler's traversal budget and nothing is emitted.
-case "$realm" in fivelab|archery-range|bitcoin-lab-walk) export COAX_NATIVE_CHECKS=1 ;; esac
+case "$realm" in fivelab|bitcoin-lab-walk) export COAX_NATIVE_CHECKS=1 ;; esac
 coax="${COAX:-$root/coax/bin/coax}"
 if [[ -x "$coax" ]]; then
   relative() { echo "${1#"$root"/}"; }

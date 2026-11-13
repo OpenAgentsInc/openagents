@@ -191,9 +191,9 @@ sc_scene :: (s: []Scenes) -> int #export_c #effects(all) { return s[0].scene; }
 sc_place :: (s: []Scenes) -> int #export_c #effects(all) { return SC_PLACE_TEMPLE; }
 // Opens a world from outside (a host's own menu or a launch argument): SC_LIST to SC_BTCLAB.
 sc_go :: (s: []Scenes, world: int) #export_c #effects(all) { sc_open(s, world); }
-// The host says whether it runs a realm itself (SC_MAIN: Everglade, the web's everglade2;
-// SC_RANGE and SC_EXPERIMENTAL: the web's fivelab on the Archery Range's and Experimental's
-// pages). It then draws the realm and sends
+// The host says whether it runs a realm itself (SC_MAIN and SC_RANGE: the web's everglade2 on
+// Everglade's and the Archery Range's pages; SC_EXPERIMENTAL: the web's fivelab on Experimental's
+// page). It then draws the realm and sends
 // it the keys and presses while that world is open; this file draws the Worlds button over it and
 // takes the presses that begin on it (sc_on_worlds).
 sc_host_runs :: (s: []Scenes, world: int, runs: bool) #export_c #effects(all) {

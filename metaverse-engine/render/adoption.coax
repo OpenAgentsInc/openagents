@@ -7,7 +7,7 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
 
 // Source inspectors and the fivelab animation palette need the larger
 // bounded Wasm ceiling. Other producers retain the 64 MiB ceiling.
-render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animationlab" || app=="ocarinalab" || app=="fivelab" || app=="archery-range" || app=="bitcoin-lab-walk" || app=="nostr-lab-walk" || app=="coax-lab-walk" || app=="worldbuilder" || app=="worldbuilder-walk" || app=="nights" then 4096 else 1024;}
+render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animationlab" || app=="ocarinalab" || app=="fivelab" || app=="bitcoin-lab-walk" || app=="nostr-lab-walk" || app=="coax-lab-walk" || app=="worldbuilder" || app=="worldbuilder-walk" || app=="nights" then 4096 else 1024;}
 #test "the source inspectors request the bounded larger Wasm memory" {
   #assert render_memory_pages("animationlab")==4096 && render_memory_pages("ocarinalab")==4096 && render_memory_pages("fivelab")==4096;
   for app:[4]string.["", "animationla", "animelab", "valleycanyon"] {#assert render_memory_pages(app)==1024;}
@@ -72,7 +72,7 @@ render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animati
   #assert !render_adoption("everglade-experimental", "everglade").tracked_legacy;
   #assert !render_adoption("everglade-experiment", "fivelab").tracked_legacy;
   #assert render_adoption("druid", "fivelab").tracked_legacy && !render_adoption("druid", "everglade").tracked_legacy;
-  #assert render_adoption("archery-range", "archery-range").tracked_legacy && !render_adoption("archery-range", "fivelab").tracked_legacy && !render_adoption("archery-range", "everglade2").tracked_legacy;
+  #assert render_adoption("archery-range", "everglade2").tracked_legacy && !render_adoption("archery-range", "fivelab").tracked_legacy && !render_adoption("archery-range", "archery-range").tracked_legacy;
 }
 #test "Everglade on the 5E module and Everglade Classic are tracked legacy consumers" {
   route := render_adoption("everglade", "everglade5e");
@@ -175,7 +175,7 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
   if slug == "5e-mmo" && app == "fivemmo" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "everglade-experimental" && app == "fivelab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "druid" && app == "fivelab" { return RenderAdoption.{tracked_legacy = true}; }   // the druid's grove: Experimental's world and passes
-  if slug == "archery-range" && app == "archery-range" { return RenderAdoption.{tracked_legacy = true}; }   // the Archery Range: a module of its own on the same scene and passes
+  if slug == "archery-range" && app == "everglade2" { return RenderAdoption.{tracked_legacy = true}; }   // the Archery Range: a place in Everglade II (#13507; was a module of its own)
   if slug == "everglade" && app == "everglade5e" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "everglade-classic" && app == "everglade" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "metahuman-lab" && app == "metahumanlab" { return RenderAdoption.{tracked_legacy = true}; }

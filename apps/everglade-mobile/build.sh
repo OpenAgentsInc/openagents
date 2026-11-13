@@ -2,8 +2,8 @@
 # Firm reason: 5 (thin wrapper around coax, clang, metal, swiftc and simctl; holds no logic)
 # Builds Everglade for the iOS simulator (apps/everglade-mobile/README.md): the same Coax as the
 # desktop app (the scene, your model, the temple's parts and Metaverse Engine shaders) with the iOS host, and
-# the web's realms run natively as the Mac app runs them (Everglade itself, everglade2; the Archery
-# Range, archery-range; Experimental, fivelab) through the Metaverse Engine's page host (metaverse-engine/host/apple/).
+# the web's realms run natively as the Mac app runs them (Everglade itself and the Archery Range,
+# everglade2; Experimental, fivelab) through the Metaverse Engine's page host (metaverse-engine/host/apple/).
 #   apps/everglade-mobile/build.sh           builds build/ios/Everglade.app
 #   apps/everglade-mobile/build.sh --open    builds, then installs and opens it in a simulator
 #   apps/everglade-mobile/build.sh --device  builds build/ios-device/Everglade.app for a phone, unsigned
@@ -98,9 +98,6 @@ emit_page everglade2 everglade2 everglade2 everglade2-fx e2fx
 build_realm fivelab
 emit_page fivelab charactercreator charactercreator fivelab-fx fxg
 cp "$repo/apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz" "$app/fivelab/glade.pack.gz"
-# The Archery Range: a module of its own (apps/openagents-web/archery-range.coax), the same passes, Experimental's pack.
-build_realm archery-range
-emit_page archery-range charactercreator charactercreator fivelab-fx fxg
 # The Bitcoin Lab: its own module (apps/openagents-web/old/labs/bitcoin-lab-walk.coax), the same passes with its
 # Grid and stations in the particle pass (bitcoin-lab-fx), Experimental's pack.
 build_realm bitcoin-lab-walk

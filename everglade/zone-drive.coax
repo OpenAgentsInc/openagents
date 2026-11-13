@@ -35,7 +35,7 @@ fd_frame :: (s: [] EgZone) {
     dragon := m[0].kind[k] == egm.EG_DRAGON;
     drv_add(d, DRV_MOUNT, ifx dragon then "dragon" else "horse", k, ifx dragon then "Dragon" else "Horse", m[0].mounts[k].x, s[0].you_y, m[0].mounts[k].z, -1, -1, false);
   }
-  // the Archery Range's faces (apps/openagents-web/archery-range.coax): its butts by their distance downrange, its sky faces by their height
+  // a range's faces on a zone (the Archery Range itself is Everglade II's now: everglade/client/range.coax): its butts by their distance downrange, its sky faces by their height
   if s[0].creator[0].range_on {
     ft := x[0].ar[0].targets[0];
     for i: 0..<ft.n { if i < FD_FACE_IDS.count { f := ft.face[i]; drv_add(d, DRV_OBJECT, FD_FACE_IDS[i], i, FD_FACE_IDS[i], f.x, f.y, f.z, -1, -1, false); } }
