@@ -166,7 +166,50 @@ every connection for every frame.
 
 ## Measurements
 
-To come: the 150-seat zone soak, text against binary, on one host.
+Recorded on coderos-4080 (24 cores, RTX 4080) on 2026-11-13. Other agents built on the host
+throughout, so the 1-minute load is given for each run.
+
+**The 150-seat zone soak.** `coax/web/tool.sh coax/web/room/soak.coax zone ROOM 150 9733 150`: 150 bots
+seated in one zone for 150 s. The bots speak binary unless `OA_BOTS_WIRE=text`. "Before" is 3bf589454f,
+built and run from its own tree, before the field table, the out buffer and the binary frames.
+
+| Build | Bots | Load (start to end) | Bytes a player a second | Tick p50 / p95 / p99 | ACK p95 |
+| --- | --- | --- | --- | --- | --- |
+| 3bf589454f (before) | text | 7.8 to 4.7 | 11,833 | 8.24 / 16.09 / 20.75 ms | 45 ms |
+| `main` (2e683ca12c) | text | 4.7 to 3.5 | 11,831 | 5.85 / 11.89 / 18.53 ms | 39 ms |
+| `main` | text | 4.9 to 16.0 | 11,837 | 11.86 / 17.41 / 38.85 ms | 44 ms |
+| `main` | binary | 12.7 to 7.1 | 10,096 | 8.96 / 14.79 / 21.97 ms | 44 ms |
+| `main` | binary | 3.5 to 23.6 | 10,089 | 16.54 / 25.54 / 38.85 ms (not usable: the host) | 54 ms |
+
+- Bytes: binary frames take a player's stream from about 11,830 to about 10,090 bytes a second,
+  15% less. The figure barely moves from run to run.
+- Tick: on the quietest pair of runs (load under 8), `main` with text bots ticks at 5.85 ms p50
+  against the base's 8.24 ms: the single write into each connection's out buffer, with the
+  scratch and table cuts of feee2dc324 and 64466dd183. Binary against text on `main` is not
+  settled by these runs, because the host's load moved more than the tick did. Every run fails the
+  soak's slow-tick bar (p99 over 10 ms) at 150 seats, as it did before. Run the four rows again on
+  a host with load under 2.
+
+**The loss matrix on this version.** `coax/web/room/net-matrix.coax --check
+docs/audits/2026-11-11-room-loss-matrix.jsonl`, each round trip on a fresh local room. Every cell
+holds: 24 of 24 (loss 0, 2, 5 and 10%; round trip 50, 100 and 150 ms, ±30 ms; WebSocket and
+WebTransport) see 12 of 12 arrows, inside 1.5 times the baseline's remote-arrow p95 plus 50 ms.
+The page speaks binary on WebSocket and keeps text on WebTransport (above). The cells are in
+[`docs/audits/2026-11-13-room-loss-matrix-binary.jsonl`](../audits/2026-11-13-room-loss-matrix-binary.jsonl).
+
+| Transport | RTT | Remote arrow p95 at 0 / 2 / 5 / 10% loss |
+| --- | --- | --- |
+| WebSocket (binary) | 50 ms | 125 / 123 / 363 / 360 ms |
+| WebSocket (binary) | 100 ms | 173 / 347 / 343 / 410 ms |
+| WebSocket (binary) | 150 ms | 209 / 473 / 630 / 798 ms |
+| WebTransport | 50 ms | 116 / 128 / 124 / 116 ms |
+| WebTransport | 100 ms | 178 / 177 / 177 / 189 ms |
+| WebTransport | 150 ms | 222 / 249 / 245 / 229 ms |
+
+**What is left.** The text writers stay until production's page and room both speak binary.
+The previous-wire rule removes a form only after the release that ships its replacement
+(`docs/protocol/everglade-previous-wire.md`), so they come out in the release after the one
+that ships these frames.
 
 ## Adding a kind
 
