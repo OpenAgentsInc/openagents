@@ -61,52 +61,54 @@ eg_im_pick_fields :: (v:[]RmServer,k:int,s_id:SeatId,x:f32,z:f32,pick:[]f32,fiel
 }
 // Whether seat s blocks seat q (its n entry, who q is, isn't sent either).
 eg_im_blocks :: (v: [] RmServer, k: int, s_id: SeatId, q_id: SeatId) -> bool { q := q_id.value; s := s_id.value;
-  return s >= 0 && s < IM_SEATS && q >= 0 && q < IM_SEATS && ((v[0].eg[k].im[0].blocks[s] >> q) & 1) != 0;
+  return im_blocked(v[0].eg[k].im[..], s, q);
 }
 
-// The seats that seat s doesn't hear of this tick, one bit each: those it blocks, and those outside
-// its interest (eg_im_pick's -1). Never s itself, nor a seat that has left or isn't placed: there is
-// nothing of it to hide, and the word that it went (e stop SS SLOT left) must reach everyone.
-eg_im_unseen :: (v: [] RmServer, k: int, s_id: SeatId, pick: [] f32) -> int { s := s_id.value;
-  m := v[0].eg[k].im[0].blocks[s];
+// The seats that seat s doesn't hear of this tick, into `out` (a set of seats, aethyr/core/slot-set.coax):
+// those it blocks, and those outside its interest (eg_im_pick's -1). Never s itself, nor a seat that
+// has left or isn't placed: there is nothing of it to hide, and the word that it went (e stop SS SLOT
+// left) must reach everyone.
+eg_im_unseen :: (v: [] RmServer, k: int, s_id: SeatId, pick: [] f32, out: [] int) { s := s_id.value;
+  slot_set_clear(out); slot_set_join(out, im_blocks_of(v[0].eg[k].im[..], s));
   for q: 0..<IM_SEATS {
-    if q != s && q < pick.count && pick[q] < 0 && v[0].eg[k].seat[q].live && v[0].eg[k].seat[q].placed { m = m | (1 << q); }
+    if q != s && q < pick.count && pick[q] < 0 && v[0].eg[k].seat[q].live && v[0].eg[k].seat[q].placed { _ := slot_set_put(out, q, true); }
   }
-  return m - (m & (1 << s));
+  _ := slot_set_put(out, s, false);
 }
-// The seats event q of room k tells of, one bit each: who acts and who is acted on, as the wire writes
-// them (e cast, e stop, e xp, e level SS; e hit WHO BY and e heal, e die WHO as TGT codes, 1000 + SS a
-// seat), and the seats it names beyond its fields (ev_who).
-eg_im_event_seats :: (v: [] RmServer, k: int, q: int) -> int {
-  m := v[0].eg[k].ev_who[q];
+// The seats event q of room k tells of, into `m` (a set of seats): who acts and who is acted on, as
+// the wire writes them (e cast, e stop, e xp, e level SS; e hit WHO BY and e heal, e die WHO as TGT
+// codes, 1000 + SS a seat), and the seat it is aimed at beyond its fields (ev_to).
+eg_im_event_seats :: (v: [] RmServer, k: int, q: int, m: [] int) {
+  slot_set_clear(m);
+  _ := slot_set_put(m, v[0].eg[k].ev_to[q] - 1, true);
   a := v[0].eg[k].ev_at[q];
   text := cast(string) v[0].eg[k].ev[a..<a + v[0].eg[k].ev_len[q]];
-  if text.count < 3 || text[0] != 'e' || text[1] != ' ' { return m; }
+  if text.count < 3 || text[0] != 'e' || text[1] != ' ' { return; }
   r: [1] WireRd; r[0] = wire_rd(text, 1);
   what := wire_word(text, r[..]);
   if what == "cast" || what == "stop" || what == "xp" || what == "level" {
     ss := wire_num(text, r[..]);
-    if r[0].ok && ss >= 0 && ss < IM_SEATS { m = m | (1 << ss); }
+    if r[0].ok && ss < IM_SEATS { _ := slot_set_put(m, ss, true); }
   }
   if what == "hit" || what == "heal" || what == "die" {
     for f: 0..<(ifx what == "hit" then 2 else 1) {
       code := wire_num(text, r[..]);
-      if !r[0].ok { return m; }
+      if !r[0].ok { return; }
       ss := code - WIRE_TGT_SEAT;
-      if ss >= 0 && ss < IM_SEATS { m = m | (1 << ss); }
+      if ss < IM_SEATS { _ := slot_set_put(m, ss, true); }
     }
   }
-  return m;
 }
 // Whether event q isn't sent to seat s: it tells of a player s blocks; or, unless it's room-wide or
 // tells of s itself (a hit on you from out of sight still reaches you), of a player outside s's
 // interest (unseen, eg_im_unseen).
-eg_im_event_withheld :: (v: [] RmServer, k: int, s_id: SeatId, q_id: SeatId, unseen: int) -> bool { q := q_id.value; s := s_id.value;
-  if unseen == 0 { return false; }
-  m := eg_im_event_seats(v, k, q);
-  if (m & v[0].eg[k].im[0].blocks[s]) != 0 { return true; }
-  if v[0].eg[k].ev_all[q] || ((m >> s) & 1) != 0 { return false; }
-  return (m & unseen) != 0;
+eg_im_event_withheld :: (v: [] RmServer, k: int, s_id: SeatId, q_id: SeatId, unseen: [] int) -> bool { q := q_id.value; s := s_id.value;
+  if !slot_set_any(unseen) { return false; }
+  m: [IM_SEAT_WORDS] int;
+  eg_im_event_seats(v, k, q, m[..]);
+  if slot_set_meets(m[..], im_blocks_of(v[0].eg[k].im[..], s)) { return true; }
+  if v[0].eg[k].ev_all[q] || slot_set_has(m[..], s) { return false; }
+  return slot_set_meets(m[..], unseen);
 }
 
 // K PID PID ...: seat s's blocks, by player id (the page's list: the ticket's "blocked" and its BLOCK
@@ -126,11 +128,11 @@ im_heard_blocks :: (v: [] RmServer, k: int, s_id: SeatId, text: string) { s := s
   }
   im_room_blocks(v, k);
 }
-// Each seat's block mask from the lists and who sits now: after a K, a join and a leave.
+// Each seat's blocks (a set of seats) from the lists and who sits now: after a K, a join and a leave.
 im_room_blocks :: (v: [] RmServer, k: int) {
   if k < 0 || k >= EG_ROOMS { return; }
   for s: 0..<IM_SEATS {
-    mask := 0;
+    set: [IM_SEAT_WORDS] int;
     l := v[0].eg[k].im_blk[s];
     if v[0].eg[k].seat[s].live && l.n > 0 {
       for q: 0..<IM_SEATS {
@@ -138,13 +140,19 @@ im_room_blocks :: (v: [] RmServer, k: int) {
         tq := eg_ticket(v, k, SeatId.{value = q});
         if !tq.ok { continue; }
         pid := cast(string) tq.pid[0..<tq.pid_n];
-        for b: 0..<l.n { if cast(string) l.id[b * TICKET_PID..<b * TICKET_PID + l.id_n[b]] == pid { mask = mask | (1 << q); } }
+        for b: 0..<l.n { if cast(string) l.id[b * TICKET_PID..<b * TICKET_PID + l.id_n[b]] == pid { _ := slot_set_put(set[..], q, true); } }
       }
     }
-    im_blocks(v[0].eg[k].im[..], SeatId.{value = s}, mask);
+    im_blocks(v[0].eg[k].im[..], SeatId.{value = s}, set[..]);
   }
 }
 
+// A check's reading of whom seat s blocks: seat q is worth 1 << q (the checks' seats are the first few).
+im_test_blocks :: (im: [] Interest, s: int) -> int {
+  m := 0; q := slot_set_next(im_blocks_of(im, s), 0);
+  while q >= 0 { m += 1 << q; q = slot_set_next(im_blocks_of(im, s), q + 1); }
+  return m;
+}
 #test "blocks: a seat's K list withholds those players by id, a later joiner too; K - clears it; a leaver's blocks go with it" #steps 4000000000 {
   v: [1] RmServer;
   rm_init(v[..]);
@@ -160,24 +168,24 @@ im_room_blocks :: (v: [] RmServer, k: int) {
   k := eg_room_at(v[..], v[0].conns[0].relay);
   im := v[0].eg[k].im[..];
   rm_heard(v[..], 0, "K p-00000000000000bb p-00000000000000cc");
-  #assert im[0].blocks[0] == 2 && im[0].blocks[1] == 0;
+  #assert im_test_blocks(im, 0) == 2 && im_test_blocks(im, 1) == 0;
   // cc sits: withheld from seat 0 at once
   n = tk_sign(key, "p-00000000000000cc", false, "", "pair-e2-blk", now + 60000, -1, t[..]);
   #assert rm_join(v[..], 2, tk_test_ask_in(r[..], t[..], n, "pair-e2-blk")) == 2;
-  #assert im[0].blocks[0] == 6;
+  #assert im_test_blocks(im, 0) == 6;
   // bb leaves: held for them, still withheld; their grace over, gone
   rm_left(v[..], 1);
-  #assert im[0].blocks[0] == 6;
+  #assert im_test_blocks(im, 0) == 6;
   rm_clock(v[..], EG_GRACE_MS + 1000, now);
   if rm_eg_begin(v[..], k) {}
-  #assert im[0].blocks[0] == 4;
+  #assert im_test_blocks(im, 0) == 4;
   rm_heard(v[..], 0, "K -");
-  #assert im[0].blocks[0] == 0;
+  #assert im_test_blocks(im, 0) == 0;
   rm_heard(v[..], 2, "K p-00000000000000aa");
-  #assert im[0].blocks[2] == 1;
+  #assert im_test_blocks(im, 2) == 1;
   v[0].conns[2].kicked = true;   // (kicked: it leaves at once)
   rm_left(v[..], 2);
-  #assert im[0].blocks[2] == 0;
+  #assert im_test_blocks(im, 2) == 0;
 }
 
 #test "interest in the room: a blocked player's row and name never reach the blocker; a far player goes past 130 m and comes back within 110 m" #steps 6000000000 {
@@ -306,5 +314,5 @@ im_room_blocks :: (v: [] RmServer, k: int) {
   #assert eg_test_has(w, "s 2 ");
   // neither of the pair hurt the other, PvP on
   bb := v[0].eg[k].rules[0].b[0].c[EGB_SEAT + 0]; aa := v[0].eg[k].rules[0].b[0].c[EGB_SEAT + 2];
-  #assert aa.hp == aa.hp_max && bb.hp == bb.hp_max && ((v[0].eg[k].im[0].blocks[0] >> 2) & 1) + ((v[0].eg[k].im[0].blocks[2] >> 0) & 1) > 0 && ((v[0].eg[k].im[0].blocks[0] >> 1) & 1) == 0;
+  #assert aa.hp == aa.hp_max && bb.hp == bb.hp_max && (im_blocked(v[0].eg[k].im[..], 0, 2) || im_blocked(v[0].eg[k].im[..], 2, 0)) && !im_blocked(v[0].eg[k].im[..], 0, 1);
 }

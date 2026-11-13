@@ -1,0 +1,118 @@
+// A set of slots, engine-wide (#13275; docs/decisions/0007): one bit a slot in a column of words.
+// A room keeps who a seat blocks, who a seat cannot see this tick and who a creature was hurt by in
+// one, on its own storage, so no shape there holds a seat count: a zone of 16 seats is one word a
+// set and a zone of 150 is five, with the same procedures.
+//
+// A set is a view of the realm's words, SLOT_SET_BITS slots a word (32: a word stays a small
+// positive number in every host's 64-bit int). A slot past the view is in no set: asking is false,
+// and putting it refused. Storage of zeros is an empty set.
+//   coax/bin/coax test aethyr/core/slot-set.coax
+//   coax/bin/coax mutate aethyr/core/slot-set.coax
+#module "aethyr.slotset";
+#authority;
+
+// book:begin slot-set
+SLOT_SET_BITS :: 32;
+// The words a set over `cap` slots takes.
+slot_set_words :: (cap: int) -> int #effects(all) { return ifx cap < 1 then 0 else (cap + SLOT_SET_BITS - 1) / SLOT_SET_BITS; }
+slot_set_clear :: (w: [] int) #effects(all) { for k: 0..<w.count { w[k] = 0; } }
+slot_set_has :: (w: [] int, i: int) -> bool #effects(all) {
+  if i < 0 || i >= w.count * SLOT_SET_BITS { return false; }
+  return ((w[i / SLOT_SET_BITS] >> (i % SLOT_SET_BITS)) & 1) != 0;
+}
+// Slot i in the set, or out of it. False, and nothing changed, for a slot the view has no bit for.
+slot_set_put :: (w: [] int, i: int, on: bool) -> bool #effects(all) {
+  if i < 0 || i >= w.count * SLOT_SET_BITS { return false; }
+  bit := 1 << (i % SLOT_SET_BITS); k := i / SLOT_SET_BITS;
+  w[k] = ifx on then w[k] | bit else w[k] - (w[k] & bit);
+  return true;
+}
+slot_set_any :: (w: [] int) -> bool #effects(all) {
+  for k: 0..<w.count { if w[k] != 0 { return true; } }
+  return false;
+}
+slot_set_count :: (w: [] int) -> int #effects(all) {
+  n := 0;
+  for k: 0..<w.count { x := w[k]; while x != 0 { n += x & 1; x = x >> 1; } }
+  return n;
+}
+// Whether the two sets share a slot. Sets of different lengths meet over the shorter.
+slot_set_meets :: (a: [] int, b: [] int) -> bool #effects(all) {
+  for k: 0..<a.count { if k < b.count && (a[k] & b[k]) != 0 { return true; } }
+  return false;
+}
+// Every slot of `from` into `into` (over the shorter of the two).
+slot_set_join :: (into: [] int, from: [] int) #effects(all) {
+  for k: 0..<into.count { if k < from.count { into[k] = into[k] | from[k]; } }
+}
+// The first slot in the set at `from` or after, -1 none (and for a `from` below 0, which is no
+// slot): a walk of a set looks at its words, not at every slot (an empty word is passed whole).
+slot_set_next :: (w: [] int, from: int) -> int #effects(all) {
+  if from < 0 { return -1; }
+  i := from;
+  while i < w.count * SLOT_SET_BITS {
+    k := i / SLOT_SET_BITS; x := w[k] >> (i % SLOT_SET_BITS);
+    if x == 0 { i = (k + 1) * SLOT_SET_BITS; continue; }
+    while (x & 1) == 0 { x = x >> 1; i += 1; }
+    return i;
+  }
+  return -1;
+}
+// book:end slot-set
+
+#test "slot set: the words a cap takes; a slot is in after a put and out after its taking, and no other slot moves" {
+  #assert slot_set_words(0) == 0 && slot_set_words(-4) == 0 && slot_set_words(1) == 1 && slot_set_words(32) == 1 && slot_set_words(33) == 2 && slot_set_words(150) == 5;
+  w: [5] int;
+  #assert !slot_set_any(w[..]) && slot_set_count(w[..]) == 0 && !slot_set_has(w[..], 0);
+  #assert slot_set_put(w[..], 0, true) && slot_set_put(w[..], 31, true) && slot_set_put(w[..], 32, true) && slot_set_put(w[..], 149, true);
+  #assert w[0] == 1 + 2147483648 && w[1] == 1 && w[2] == 0 && w[3] == 0 && w[4] == 2097152;
+  #assert slot_set_has(w[..], 0) && slot_set_has(w[..], 31) && slot_set_has(w[..], 32) && slot_set_has(w[..], 149);
+  #assert !slot_set_has(w[..], 1) && !slot_set_has(w[..], 30) && !slot_set_has(w[..], 33) && !slot_set_has(w[..], 148) && !slot_set_has(w[..], 150);
+  #assert slot_set_any(w[..]) && slot_set_count(w[..]) == 4;
+  // put twice is put once; taken out, only it goes; taken out twice changes nothing
+  #assert slot_set_put(w[..], 31, true) && slot_set_count(w[..]) == 4 && w[0] == 1 + 2147483648;
+  #assert slot_set_put(w[..], 31, false) && !slot_set_has(w[..], 31) && slot_set_has(w[..], 0) && w[0] == 1;
+  #assert slot_set_put(w[..], 31, false) && w[0] == 1 && slot_set_count(w[..]) == 3;
+  slot_set_clear(w[..]);
+  #assert !slot_set_any(w[..]) && w[0] == 0 && w[1] == 0 && w[4] == 0;
+  // one slot alone, in the first word and then in the second: the set has it, and only it
+  #assert slot_set_put(w[..], 0, true) && slot_set_any(w[..]) && slot_set_any(w[0..<1]) && !slot_set_any(w[1..<5]);
+  slot_set_clear(w[..]);
+  #assert slot_set_put(w[..], 32, true) && slot_set_has(w[..], 32) && !slot_set_has(w[..], 0) && w[0] == 0 && w[1] == 1;
+}
+#test "slot set: a slot the view has no bit for is in no set and is refused" {
+  w: [2] int;
+  #assert !slot_set_put(w[..], -1, true) && !slot_set_put(w[..], 64, true) && !slot_set_put(w[..], 64, false) && !slot_set_any(w[..]);
+  #assert slot_set_put(w[..], 63, true) && slot_set_has(w[..], 63) && !slot_set_has(w[..], 64) && !slot_set_has(w[..], -1) && !slot_set_has(w[..], 95);
+  // an empty view is an empty set
+  #assert !slot_set_has(w[0..<0], 0) && !slot_set_put(w[0..<0], 0, true) && !slot_set_any(w[0..<0]) && slot_set_count(w[0..<0]) == 0 && slot_set_next(w[0..<0], 0) == -1;
+}
+#test "slot set: two sets meet where they share a slot; a join adds and takes nothing away; different lengths use the shorter" {
+  a: [3] int; b: [3] int;
+  _ := slot_set_put(a[..], 5, true); _ := slot_set_put(a[..], 70, true);
+  _ := slot_set_put(b[..], 6, true); _ := slot_set_put(b[..], 71, true);
+  #assert !slot_set_meets(a[..], b[..]) && !slot_set_meets(b[..], a[..]);
+  _ := slot_set_put(b[..], 70, true);
+  #assert slot_set_meets(a[..], b[..]) && slot_set_meets(b[..], a[..]);
+  // the shared slot is past the shorter view: they do not meet there
+  #assert !slot_set_meets(a[0..<2], b[..]) && !slot_set_meets(a[..], b[0..<2]) && !slot_set_meets(a[0..<0], b[..]);
+  _ := slot_set_put(b[..], 5, true);
+  #assert slot_set_meets(a[0..<1], b[..]) && slot_set_meets(a[..], b[0..<1]);
+  c: [3] int; _ := slot_set_put(c[..], 1, true);
+  slot_set_join(c[..], a[..]);
+  #assert slot_set_has(c[..], 1) && slot_set_has(c[..], 5) && slot_set_has(c[..], 70) && slot_set_count(c[..]) == 3 && slot_set_count(a[..]) == 2;
+  d: [1] int; slot_set_join(d[..], a[..]);
+  #assert slot_set_count(d[..]) == 1 && slot_set_has(d[..], 5);
+  e: [3] int; slot_set_join(e[..], a[0..<1]);
+  #assert slot_set_count(e[..]) == 1 && slot_set_has(e[..], 5) && !slot_set_has(e[..], 70);
+}
+#test "slot set: a walk names each slot in order and passes empty words" {
+  w: [5] int;
+  #assert slot_set_next(w[..], 0) == -1 && slot_set_next(w[..], -1) == -1;
+  _ := slot_set_put(w[..], 0, true); _ := slot_set_put(w[..], 3, true); _ := slot_set_put(w[..], 31, true); _ := slot_set_put(w[..], 96, true); _ := slot_set_put(w[..], 159, true);
+  #assert slot_set_next(w[..], -1) == -1 && slot_set_next(w[..], 0) == 0 && slot_set_next(w[..], 1) == 3 && slot_set_next(w[..], 3) == 3 && slot_set_next(w[..], 4) == 31;
+  #assert slot_set_next(w[..], 32) == 96 && slot_set_next(w[..], 96) == 96 && slot_set_next(w[..], 97) == 159 && slot_set_next(w[..], 159) == 159 && slot_set_next(w[..], 160) == -1 && slot_set_next(w[..], 4000) == -1;
+  seen := 0; sum := 0; i := slot_set_next(w[..], 0);
+  while i >= 0 { seen += 1; sum += i; i = slot_set_next(w[..], i + 1); }
+  #assert seen == 5 && sum == 0 + 3 + 31 + 96 + 159 && seen == slot_set_count(w[..]);
+}

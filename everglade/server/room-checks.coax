@@ -364,7 +364,7 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   b: [64] u8;
   for q: 0..<200 { n := wire_put_hit(b[..], 0, WireHit.{who = 2000 + q, by = 2001, amt = 7, kind = 3}); eg_event(v[..], k, cast(string) b[0..<n], 0, 0, false); }
   lost := v[0].st.ev_lost; dropped := v[0].st.cue_drop;
-  n := wire_put_hit(b[..], 0, WireHit.{who = 1001, by = 2400, amt = 9, kind = 3}); eg_event_who(v[..], k, cast(string) b[0..<n], 900, 900, false, 2);
+  n := wire_put_hit(b[..], 0, WireHit.{who = 1001, by = 2400, amt = 9, kind = 3}); eg_event_to(v[..], k, cast(string) b[0..<n], 900, 900, false, 1);
   for q: 0..<20 { n = wire_int(b[..], wire_put(b[..], 0, "e break"), 100 + q); eg_event(v[..], k, cast(string) b[0..<n], 0, 0, true); }
   #assert v[0].st.ev_lost == lost;   // the outcomes had their own room
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);

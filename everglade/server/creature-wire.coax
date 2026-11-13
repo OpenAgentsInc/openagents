@@ -77,6 +77,6 @@ egc_mon_hit_read :: (t: string) -> EgcMonHit {
   for bad: [7] string.["e mon 90 5 3 0 4", "e mon 90 3 10 0 0 500 -30000 520 -31000 5001", "e mon 90 3 10 0 0 500 -30000 520 -31000", "e mon 90 2 3 -1 4 1", "e mon 90 2 12 -1 4", "e mon 90 2 3 -1 1000", "e guard 90 2 3 -1"] {
     #assert !egc_mon_hit_read(bad).ok;
   }
-  // an entry of the reliable class: never a cue the budget may drop (everglade/server/seats.coax eg_event_who)
+  // an entry of the reliable class: never a cue the budget may drop (everglade/server/seats.coax eg_event_to)
   #assert egc_kept("e mon 90 2 3 -1 4") && egc_kept("e guard 90 1 2 5") && !egc_kept("e hit 1001 2003 7 3") && !egc_kept("e monk 1") && !egc_kept("e guards 1") && !egc_kept("e mon");
 }

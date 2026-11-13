@@ -33,7 +33,7 @@ RmMod :: struct {
   fly: bool; fly_at: int; fly_hi: int;   // the post in flight, and the newest action it carries
   tries: int; retry_at: int;
   out: [MOD_BODY] u8; out_n: int; mac: [64] u8;
-  // a moderator's move: each room's seat (as a bit; 0 none) to put at (x, z) facing yaw on the host's next tick
+  // a moderator's move: each room's seat (plus 1; 0 none) to put at (x, z) facing yaw on the host's next tick
   warp: [EG_ROOMS] int; warp_x: [EG_ROOMS] f32; warp_z: [EG_ROOMS] f32; warp_yaw: [EG_ROOMS] f32;
   // counted since start
   heard: int; dropped: int; refused: int; full: int; posts: int; failed: int; logged: int; late: int;
@@ -98,7 +98,7 @@ rm_mod_heard :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) {
   }
   if r.verb == MOD_MOVE {
     p := v[0].eg[k].seat[seat].pose;
-    v[0].mod.warp[k] = 1 << target; v[0].mod.warp_x[k] = p.x; v[0].mod.warp_z[k] = p.z; v[0].mod.warp_yaw[k] = p.yaw;
+    v[0].mod.warp[k] = target + 1; v[0].mod.warp_x[k] = p.x; v[0].mod.warp_z[k] = p.z; v[0].mod.warp_yaw[k] = p.yaw;
   }
   if r.verb == MOD_LOOK {
     c := v[0].eg[k].rules[0].b[0].c[EGB_SEAT + target]; p := v[0].eg[k].seat[target].pose;
@@ -113,7 +113,7 @@ rm_mod_heard :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) {
 }
 // The host's tick (room-tick.c, through rm_e2_admin_warp): a moderator's move of seat s, taken once, into out (x, z, yaw).
 rm_mod_warp :: (v: [] RmServer, k: int, s: int, out: [] f32) -> bool {
-  if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || out.count < 3 || v[0].mod.warp[k] != (1 << s) { return false; }
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || out.count < 3 || v[0].mod.warp[k] != s + 1 { return false; }
   v[0].mod.warp[k] = 0;
   out[0] = v[0].mod.warp_x[k]; out[1] = v[0].mod.warp_z[k]; out[2] = v[0].mod.warp_yaw[k];
   return true;
@@ -253,7 +253,7 @@ rm_mod_test_told :: (v: [] RmServer, c: int, out: [] u8) -> string {
   #assert rm_mod_pending(v[..]) == 7 && rm_mod_test_told(v[..], 0, o[..]).count > 30;
   // a local room's admin lines are still a local room's only
   rm_heard(v[..], 0, "X heal"); rm_heard(v[..], 0, "X god 1");
-  #assert v[0].adm.dropped == 2 && v[0].adm.heard == 0 && v[0].adm.god[k] == 0;
+  #assert v[0].adm.dropped == 2 && v[0].adm.heard == 0 && !slot_set_any(e2_admin_set(v[0].adm.god[..], k));
   // the report: every action, in order, signed for the purpose "moderation"
   n := rm_mod_due(v[..]);
   body := cast(string) v[0].mod.out[0..<n];

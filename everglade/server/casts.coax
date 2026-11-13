@@ -109,7 +109,7 @@ eg_e2_corpse :: (v: [] RmServer, k: int, s: int) -> int {
   best:=1.524f32*1.524f32*2; target:=-1;
   for j:0..<EG_SEATS {
     if j==s || !room[0].seat[j].live || !room[0].seat[j].placed || !rules[0].live[j] { continue; }
-    if (room[0].im[0].blocks[s] & (1 << j))!=0 || (room[0].im[0].blocks[j] & (1 << s))!=0 { continue; }
+    if im_blocked(room[0].im[..], s, j) || im_blocked(room[0].im[..], j, s) { continue; }
     if !b[0].c[EGB_SEAT+j].dead { continue; }
     d:=e2_aid_distance(room[0].seat[s].pose,room[0].seat[j].pose);
     if d<=best && (target<0 || d<best) { best=d; target=j; }

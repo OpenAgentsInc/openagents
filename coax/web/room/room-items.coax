@@ -232,7 +232,7 @@ ri_event :: (v: [] RmServer, c: int, what: int, a: int, b: int, d: int) -> bool 
   t: [48] u8;
   n := wire_put_own(t[..], 0, what, WireOwn.{ss = s, a = a, b = b, c = d});
   p := v[0].eg[k].seat[s].pose;
-  eg_event_who(v, k, cast(string) t[0..<n], p.x, p.z, false, 1 << s);
+  eg_event_to(v, k, cast(string) t[0..<n], p.x, p.z, false, s);
   return true;
 }
 // Where item `item` of record r is worn: 1 to 10, or 0.
@@ -694,7 +694,7 @@ ri_test_plays :: (first: int) -> int {
   #assert rm_items_pending(v[..]) == 0 && char_stage(v[0].itm.c[0].rec, 1) == 1;
   // a Wolf the seat hurt falls in the room's own step: the quest's kill, by the room
   mo := v[0].eg[k].monsters[0].mon[0..<1];
-  mo[0].q = 0; mo[0].id = 987654; mo[0].state = E2M_CHASE; mo[0].kind = E2M_WOLF; mo[0].hurt_by = 1;
+  mo[0].q = 0; mo[0].id = 987654; mo[0].state = E2M_CHASE; mo[0].kind = E2M_WOLF; _ := slot_set_put(mo[0].hurt_by[..], 0, true);
   e2_monsters_after(v[..], k);
   #assert rm_items_pending(v[..]) >= 1 && ri_soon(v[..], 0, 1) == 2;
   while rm_items_due(v[..]) > 0 { rm_items_local(v[..]); }

@@ -78,7 +78,7 @@ E2Mon :: struct {
   orbit: f32; spin: f32 = 1; // where round its quarry a wolf circles, and which way
   escape_t: int;             // the tick its Nimble Escape ends
   down_t: int = -100000;     // the tick it fell
-  hurt_by: int;              // the seats that hurt it (one bit each): its XP's share
+  hurt_by: [EG_SEAT_WORDS] int;   // the seats that hurt it (a set of seats, aethyr/core/slot-set.coax): its XP's share
   hit_t: int = -100000; hit_seat: int = -1;   // when it last struck at a player, and whom (the guard's word)
   ray: int = -1; ray_seat: int = -1; seen: bool;   // this tick's line-of-sight question (rm_eg_sights)
   way_x: f32; way_z: f32;    // the way its last step went (0, 0: it stood): what it faces as it walks
@@ -245,7 +245,7 @@ e2mo_rest_home :: (v: [] RmServer, k: int, m: int) {
   mo := e2mo_room(v, k)[0].mon[m..<m + 1]; b := v[0].eg[k].rules[0].b[..]; i := e2mo_creature(mo[0]);
   mo[0].x = mo[0].hx; mo[0].z = mo[0].hz; mo[0].yaw = mo[0].hyaw;
   b[0].c[i].hp = b[0].c[i].hp_max; b[0].c[i].cond = 0; b[0].c[i].temp = 0;
-  mo[0].state = E2M_IDLE; mo[0].hurt_by = 0; mo[0].act = 0; mo[0].foe = -1; mo[0].home_t = 0;
+  mo[0].state = E2M_IDLE; slot_set_clear(mo[0].hurt_by[..]); mo[0].act = 0; mo[0].foe = -1; mo[0].home_t = 0;
 }
 
 // ---- the tick (before the rules' step): spawns, notices, chases, blows and arrows
@@ -408,7 +408,7 @@ e2mo_loose :: (v: [] RmServer, k: int, m: int, s: int) {
   n := egc_mon_hit_put(out[..], EgcMonHit.{tick = t, kind = EGC_MON_LOOSED, m = m, seat = s, amount = 0,
     fx = cast(int) floor(mo.x * 100 + 0.5), fz = cast(int) floor(mo.z * 100 + 0.5), tx = cast(int) floor(p.x * 100 + 0.5), tz = cast(int) floor(p.z * 100 + 0.5),
     fly = cast(int) floor(fly * 1000 + 0.5)});
-  eg_event_who(v, k, cast(string) out[0..<n], mo.x, mo.z, false, 1 << s);
+  eg_event_to(v, k, cast(string) out[0..<n], mo.x, mo.z, false, s);
 }
 // The arrows that land this tick: one at a player still within a metre of where it was aimed is the
 // Shortbow's attack roll; one stepped out of, a miss.
@@ -440,10 +440,10 @@ e2_monsters_after :: (v: [] RmServer, k: int) {
     mo[0].state = E2M_DEAD; mo[0].down_t = t; mo[0].act = 0; mo[0].foe = -1;
     e2mo_tell(v, k, 4, m, -1, 0, mo[0].x, mo[0].z);
     // its SRD XP, split evenly among the seats that hurt it
-    n := 0; for s: 0..<EG_SEATS { if (mo[0].hurt_by & (1 << s)) != 0 && v[0].eg[k].seat[s].live { n += 1; } }
-    if n > 0 { for s: 0..<EG_SEATS { if (mo[0].hurt_by & (1 << s)) != 0 && v[0].eg[k].seat[s].live { ev_award(v, k, SeatId.{value = s}, rs_max(E2M_XP[mo[0].kind] / n, 1)); } } }
+    n := 0; for s: 0..<EG_SEATS { if slot_set_has(mo[0].hurt_by[..], s) && v[0].eg[k].seat[s].live { n += 1; } }
+    if n > 0 { for s: 0..<EG_SEATS { if slot_set_has(mo[0].hurt_by[..], s) && v[0].eg[k].seat[s].live { ev_award(v, k, SeatId.{value = s}, rs_max(E2M_XP[mo[0].kind] / n, 1)); } } }
     // its drop and its place in their quests, by the content tables (coax/web/room/room-items.coax, #13291, #13292)
-    for s: 0..<EG_SEATS { if (mo[0].hurt_by & (1 << s)) != 0 && v[0].eg[k].seat[s].live { ri_kill(v, k, SeatId.{value = s}, mo[0].kind); } }
+    for s: 0..<EG_SEATS { if slot_set_has(mo[0].hurt_by[..], s) && v[0].eg[k].seat[s].live { ri_kill(v, k, SeatId.{value = s}, mo[0].kind); } }
   }
 }
 
@@ -468,7 +468,7 @@ e2_monster_struck :: (v: [] RmServer, k: int, s: int, i: int, hp_before: int) {
     mo := ms[0].mon[m..<m + 1];
     if mo[0].q < 0 || EGB_BEAST0 + mo[0].q != i { continue; }
     hp := v[0].eg[k].rules[0].b[0].c[i].hp;
-    mo[0].hurt_by = mo[0].hurt_by | (1 << s);
+    _ := slot_set_put(mo[0].hurt_by[..], s, true);
     if mo[0].state == E2M_IDLE && e2mo_quarry(v, k, s) { e2mo_rouse(v, k, mo[0].group, s); }
     e2mo_tell(v, k, 2, m, s, rs_max(hp_before - hp, 0), mo[0].x, mo[0].z);
     return;
@@ -550,7 +550,7 @@ e2mo_tell :: (v: [] RmServer, k: int, kind: int, m: int, s: int, amount: int, x:
 e2mo_tell_at :: (v: [] RmServer, k: int, tick: int, kind: int, m: int, s: int, amount: int, x: f32, z: f32) {
   out: [96] u8;
   n := egc_mon_hit_put(out[..], EgcMonHit.{tick = tick, kind = kind, m = m, seat = s, amount = amount});
-  eg_event_who(v, k, cast(string) out[0..<n], x, z, false, ifx s >= 0 && s < EG_SEATS then 1 << s else 0);
+  eg_event_to(v, k, cast(string) out[0..<n], x, z, false, s);
 }
 // The monster whose creature is the rules' beast q, -1 none.
 e2_monster_of_beast :: (v: [] RmServer, k: int, q: int) -> int {

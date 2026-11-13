@@ -23,14 +23,14 @@ chapters 86 to 100, at the scale it runs.
 
 <!-- source: everglade/server/seat.coax room-size -->
 ```jai
-EG_ROOMS :: 16;                 // simulated rooms at once (256 players)
+EG_ROOMS :: 4;                  // simulated rooms at once (64 players): the directory gives a shard 2 (verse.room_shards.rooms_cap), a 150-seat zone 1 (docs/decisions/0007)
 EG_SEATS :: 16;
 EG_HZ :: 30;
 ```
 
 | Layer | Chapter | Everglade |
 | --- | --- | --- |
-| Server | 86 | oa-room, one thread, 16 rooms at 30 Hz |
+| Server | 86 | oa-room, one thread, 4 rooms at 30 Hz |
 | Shared code | 87 | `everglade-step.coax`, the SRD rules, the `everglade` world document |
 | Seats | 88 | HMAC seat tickets from the API, 16 a room |
 | Intents | 89 | `I`, `C`, `E`, `R`; refusals with reasons |
@@ -50,10 +50,12 @@ EG_HZ :: 30;
 **Seats.** 16 a room keeps a full room's mutual visibility affordable: 16
 players see each other at 30 Hz (chapter 92's estimate).
 
-**Rooms per process.** One oa-room process holds 16 rooms, 256 players
-(commit 6a846432d2). Measured locally, 16 full rooms in one process kept the
-acknowledgement's p95 under 40 ms with 10.9 s of tick work a minute; in
-production, 2 full rooms ran at a tick p95 of 3.9 ms (launch runbook).
+**Rooms per process.** One oa-room process holds 4 rooms, 64 players. It held
+16 until #13275 (commit 6a846432d2: 16 full rooms in one process kept the
+acknowledgement's p95 under 40 ms with 10.9 s of tick work a minute), but the
+directory never gives a shard more than its `rooms_cap`, which is 2, and a
+zone of 150 players gets a process to itself (decision 0007). In production, 2
+full rooms ran at a tick p95 of 3.9 ms (launch runbook).
 
 **Shards.** Six Cloud Run services, each one process (`--max-instances 1`),
 so a room has one owner, except while a deploy overlaps an old and a new

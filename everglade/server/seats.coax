@@ -211,9 +211,11 @@ rm_eg_dropped :: (v: [] RmServer) -> int #export_c #effects(all) {
 // Whether e entry t is an outcome (everglade-wire.coax WIRE_OUTCOMES), not a cue.
 eg_ev_outcome :: (t: string) -> bool { return wire_outcome(t); }
 // An event since the last D, heard within EG_VIEW of (x, z), or by everyone (all).
-eg_event :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool) { eg_event_who(v, k, text, x, z, all, 0); }
-// The same, telling of the seats in `who` too (a raider's cast aimed at a seat): one bit a seat.
-eg_event_who :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool, who: int) {
+eg_event :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool) { eg_event_to(v, k, text, x, z, all, -1); }
+// The same, aimed at seat `to` too (what a monster did to it, its own gain): it hears the event
+// wherever it stands. -1, or a seat that is none: aimed at nobody.
+eg_event_to :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool, to: int) {
+  who := ifx to >= 0 && to < EG_SEATS then to + 1 else 0;
   e := v[0].eg[k].ev_n;
   out := eg_ev_outcome(text);
   // (one aimed at a seat has the outcomes' room too: it is on that player; and what a monster or the
@@ -228,7 +230,7 @@ eg_event_who :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool
   v[0].eg[k].ev_out[e] = out || kept;
   a := v[0].eg[k].ev_bytes;
   for i: 0..<text.count { v[0].eg[k].ev[a + i] = text[i]; }
-  v[0].eg[k].ev_at[e] = a; v[0].eg[k].ev_len[e] = text.count; v[0].eg[k].ev_x[e] = x; v[0].eg[k].ev_z[e] = z; v[0].eg[k].ev_all[e] = all; v[0].eg[k].ev_who[e] = who;
+  v[0].eg[k].ev_at[e] = a; v[0].eg[k].ev_len[e] = text.count; v[0].eg[k].ev_x[e] = x; v[0].eg[k].ev_z[e] = z; v[0].eg[k].ev_all[e] = all; v[0].eg[k].ev_to[e] = who;
   v[0].eg[k].ev_bytes += text.count; v[0].eg[k].ev_n = e + 1;
 }
 

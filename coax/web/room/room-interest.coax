@@ -1,5 +1,6 @@
 #load "../../../aethyr/core/ids.coax";
 #load "../../../aethyr/net/grid.coax";   // the engine's spatial grid (#13178)
+#load "../../../aethyr/core/slot-set.coax";   // who a seat blocks: one bit a seat in a column of words (#13275)
 // Interest management for the Everglade rooms (#12789; docs/research/mmo.md section 7): which of a
 // room's entities each seat may receive this tick, and how much each matters. The send path
 // (room-everglade.coax eg_send, the v3 replication of #12783) asks im_pick once per seat per tick and
@@ -32,6 +33,7 @@
 // as blocked and withheld as hidden, per seat, from the last pick.
 
 IM_SEATS :: 16;                 // EG_SEATS
+IM_SEAT_WORDS :: (IM_SEATS + SLOT_SET_BITS - 1) / SLOT_SET_BITS;   // a set of seats' words (aethyr/core/slot-set.coax)
 IM_ENTS :: 512;                 // original entities plus the separate forest records (#12940)
 IM_PICKS :: IM_ENTS;
 IM_KEYS :: 1024;                // the ID table's lists (a power of two)
@@ -60,7 +62,7 @@ Interest :: struct {
   own: [IM_SEATS] int;                    // each seat's list's first slot, plus 1
   room: [IM_ENTS] int; room_n: int;       // the room-wide slots
   // per seat
-  blocks: [IM_SEATS] int;                 // the seats it blocks, one bit each
+  blocks: [IM_SEATS * IM_SEAT_WORDS] int; // the seats it blocks: a set of seats each (im_blocks_of), whatever the seats' number
   party: [IM_SEATS] int;                  // its party (0 none)
   serial: [IM_SEATS] int;                 // its picks so far
   had: [IM_SEATS * IM_ENTS] int;          // the serial of its last pick that held each slot (hysteresis)
@@ -71,12 +73,19 @@ Interest :: struct {
   visits: int;                            // entities im_pick has looked at, all seats, since im_clear (the cost)
 }
 
+// The seats seat s blocks, as a set (aethyr/core/slot-set.coax); the empty set for a seat that is none.
+im_blocks_of :: (im: [] Interest, s: int) -> [] int {
+  if s < 0 || s >= IM_SEATS { return im[0].blocks[0..<0]; }
+  return im[0].blocks[s * IM_SEAT_WORDS..<(s + 1) * IM_SEAT_WORDS];
+}
+// Whether seat s blocks seat q.
+im_blocked :: (im: [] Interest, s: int, q: int) -> bool { return q < IM_SEATS && slot_set_has(im_blocks_of(im, s), q); }
 im_clear :: (im: [] Interest) {
   im[0].used = 0; im[0].free_n = 0; im[0].room_n = 0; im[0].mark_n = 0; im[0].visits = 0; im[0].over = 0;
   for q: 0..<IM_KEYS { im[0].key[q] = 0; }
   net_grid_init(im[0].grid[..], f32(IM_EXIT));
   for s: 0..<IM_SEATS {
-    im[0].own[s] = 0; im[0].blocks[s] = 0; im[0].party[s] = 0; im[0].serial[s] = 0;
+    im[0].own[s] = 0; slot_set_clear(im_blocks_of(im, s)); im[0].party[s] = 0; im[0].serial[s] = 0;
     im[0].n_full[s] = 0; im[0].n_health[s] = 0; im[0].n_blocked[s] = 0; im[0].n_hidden[s] = 0;
   }
   for q: 0..<IM_SEATS * IM_ENTS { im[0].had[q] = 0; im[0].reveal[q] = 0; }
@@ -164,9 +173,14 @@ im_sweep :: (im: [] Interest, tick: int) {
 
 im_block :: (im: [] Interest, s_id: SeatId, q_id: SeatId, on: bool) { q := q_id.value; s := s_id.value;
   if s < 0 || s >= IM_SEATS || q < 0 || q >= IM_SEATS || s == q { return; }
-  im[0].blocks[s] = ifx on then im[0].blocks[s] | (1 << q) else im[0].blocks[s] - (im[0].blocks[s] & (1 << q));
+  _ := slot_set_put(im_blocks_of(im, s), q, on);
 }
-im_blocks :: (im: [] Interest, s_id: SeatId, mask: int) { s := s_id.value; if s >= 0 && s < IM_SEATS { im[0].blocks[s] = mask - (mask & (1 << s)); } }
+// Seat s blocks the seats in `set` and no others (a set of seats; its own place in it is ignored).
+im_blocks :: (im: [] Interest, s_id: SeatId, set: [] int) { s := s_id.value;
+  b := im_blocks_of(im, s);
+  slot_set_clear(b); slot_set_join(b, set);
+  _ := slot_set_put(b, s, false);
+}
 im_party :: (im: [] Interest, s_id: SeatId, party: int) { s := s_id.value; if s >= 0 && s < IM_SEATS { im[0].party[s] = party; } }
 // Seat s sees hidden entity id until tick until.
 im_reveal :: (im: [] Interest, identity: EntityId, s_id: SeatId, until: int) { s := s_id.value;
@@ -176,15 +190,15 @@ im_reveal :: (im: [] Interest, identity: EntityId, s_id: SeatId, until: int) { s
 // Seat s sat or left: what it held and blocked is forgotten.
 im_seat_reset :: (im: [] Interest, s_id: SeatId) { s := s_id.value;
   if s < 0 || s >= IM_SEATS { return; }
-  im[0].blocks[s] = 0; im[0].party[s] = 0;
-  for q: 0..<IM_SEATS { if q != s { im[0].blocks[q] = im[0].blocks[q] - (im[0].blocks[q] & (1 << s)); } }
+  slot_set_clear(im_blocks_of(im, s)); im[0].party[s] = 0;
+  for q: 0..<IM_SEATS { _ := slot_set_put(im_blocks_of(im, q), s, false); }
   for i: 0..<IM_ENTS { im[0].had[s * IM_ENTS + i] = 0; im[0].reveal[s * IM_ENTS + i] = 0; }
 }
 
 // Why seat s may not have slot i at tick: 0 it may, 1 it blocks the player it rides on, 2 it's hidden.
 im_withheld :: (im: [] Interest, s_id: SeatId, i: int, tick: int) -> int { s := s_id.value;
   e := im[0].e[i];
-  if e.of >= 0 && e.of != s && ((im[0].blocks[s] >> e.of) & 1) != 0 { return 1; }
+  if e.of != s && im_blocked(im, s, e.of) { return 1; }
   if (e.flags & IM_HIDDEN) != 0 && e.of != s && im[0].reveal[s * IM_ENTS + i] < tick { return 2; }
   return 0;
 }
@@ -241,7 +255,7 @@ im_pick :: (im: [] Interest, s_id: SeatId, x: f32, z: f32, tick: int, out: [] Im
   if im[0].party[s] != 0 {
     for q: 0..<IM_SEATS {
       // the roster's visibility (aethyr/session/party.coax): the same party, neither blocking the other
-      blocked := ((im[0].blocks[s] >> q) & 1) != 0 || ((im[0].blocks[q] >> s) & 1) != 0;
+      blocked := im_blocked(im, s, q) || im_blocked(im, q, s);
       if q == s || !party_sees(im[0].party[q] == im[0].party[s], false, false, blocked) { continue; }
       i = im_find(im, EntityId.{value = q});   // a player's wire ID is its seat
       if i < 0 || im[0].mark[i] == im[0].mark_n { continue; }
@@ -324,7 +338,9 @@ im_has :: (p: [] ImPick, n: int, identity: EntityId) -> int { id := identity.val
   im_block(im[..], SeatId.{value = 0}, SeatId.{value = 1}, false);
   n = im_pick(im[..], SeatId.{value = 0}, 0, 0, t, p[..]);
   #assert im_has(p[..], n, EntityId.{value = 1}) >= 0;
-  im_blocks(im[..], SeatId.{value = 0}, 2 | 4 | 1);   // its own bit is ignored
+  set: [IM_SEAT_WORDS] int; for q: 0..<3 { _ := slot_set_put(set[..], q, true); }
+  im_blocks(im[..], SeatId.{value = 0}, set[..]);   // seats 0, 1 and 2: its own place is ignored
+  #assert !im_blocked(im[..], 0, 0) && im_blocked(im[..], 0, 1) && im_blocked(im[..], 0, 2) && !im_blocked(im[..], 0, 3) && !im_blocked(im[..], 1, 0);
   n = im_pick(im[..], SeatId.{value = 0}, 0, 0, t, p[..]);
   #assert im_has(p[..], n, EntityId.{value = 0}) >= 0 && im_has(p[..], n, EntityId.{value = 1}) < 0 && im_has(p[..], n, EntityId.{value = 2}) < 0;
   im_seat_reset(im[..], SeatId.{value = 0});
@@ -374,11 +390,11 @@ im_has :: (p: [] ImPick, n: int, identity: EntityId) -> int { id := identity.val
 
 // A brute-force reference: every entity for every seat, with its own hysteresis.
 ImRef :: struct { id: [IM_ENTS] int; x: [IM_ENTS] f32; z: [IM_ENTS] f32; of: [IM_ENTS] int; flags: [IM_ENTS] int; n: int; had: [IM_SEATS * IM_ENTS] bool; }
-im_ref_pick :: (r: [] ImRef, blocks: int, s_id: SeatId, x: f32, z: f32, out: [] int) -> int { s := s_id.value;
+im_ref_pick :: (r: [] ImRef, blocks: [] int, s_id: SeatId, x: f32, z: f32, out: [] int) -> int { s := s_id.value;
   n := 0;
   for i: 0..<r[0].n {
     dx := r[0].x[i] - x; dz := r[0].z[i] - z; d2 := dx * dx + dz * dz;
-    blocked := r[0].of[i] >= 0 && r[0].of[i] != s && ((blocks >> r[0].of[i]) & 1) != 0;
+    blocked := r[0].of[i] >= 0 && r[0].of[i] != s && slot_set_has(blocks, r[0].of[i]);
     own := r[0].of[i] == s;
     in := own || (!blocked && ((r[0].flags[i] & IM_ROOM) != 0 || d2 <= f32(IM_ENTER * IM_ENTER) || (r[0].had[s * IM_ENTS + i] && d2 <= f32(IM_EXIT * IM_EXIT))));
     r[0].had[s * IM_ENTS + i] = in;
@@ -401,9 +417,11 @@ im_rand :: (seed: [] int) -> int { seed[0] = (seed[0] * 1103515245 + 12345) & 0x
     r[0].of[i] = ifx i < 16 then i else ifx i >= 86 then i - 86 else -1;
     r[0].flags[i] = ifx i >= 82 && i < 86 then IM_ROOM else 0;
   }
-  blocks: [IM_SEATS] int;
-  blocks[3] = (1 << 4) | (1 << 9); blocks[7] = 1 << 0;
-  for s: 0..<IM_SEATS { im_blocks(im[..], SeatId.{value = s}, blocks[s]); }
+  // seat 3 blocks seats 4 and 9, seat 7 seat 0; the reference keeps its own sets
+  blocks: [IM_SEATS * IM_SEAT_WORDS] int;
+  _ := slot_set_put(blocks[3 * IM_SEAT_WORDS..<4 * IM_SEAT_WORDS], 4, true); _ := slot_set_put(blocks[3 * IM_SEAT_WORDS..<4 * IM_SEAT_WORDS], 9, true);
+  _ := slot_set_put(blocks[7 * IM_SEAT_WORDS..<8 * IM_SEAT_WORDS], 0, true);
+  for s: 0..<IM_SEATS { im_blocks(im[..], SeatId.{value = s}, blocks[s * IM_SEAT_WORDS..<(s + 1) * IM_SEAT_WORDS]); }
   for t: 1..<200 {
     for i: 0..<96 {
       r[0].x[i] += f32(im_rand(seed[..]) % 1601 - 800) / 100.0; r[0].z[i] += f32(im_rand(seed[..]) % 1601 - 800) / 100.0;
@@ -413,7 +431,7 @@ im_rand :: (seed: [] int) -> int { seed[0] = (seed[0] * 1103515245 + 12345) & 0x
     im_sweep(im[..], t);
     for s: 0..<IM_SEATS {
       n := im_pick(im[..], SeatId.{value = s}, r[0].x[s], r[0].z[s], t, p[..]);
-      m := im_ref_pick(r[..], blocks[s], SeatId.{value = s}, r[0].x[s], r[0].z[s], want[..]);
+      m := im_ref_pick(r[..], blocks[s * IM_SEAT_WORDS..<(s + 1) * IM_SEAT_WORDS], SeatId.{value = s}, r[0].x[s], r[0].z[s], want[..]);
       #assert n == m;
       for q: 0..<m { #assert im_has(p[..], n, EntityId.{value = want[q]}) >= 0; }
     }

@@ -377,7 +377,7 @@ e2g_tell_at :: (v: [] RmServer, k: int, tick: int, kind: int, s: int, amount: in
   out: [64] u8;
   n := egc_guard_hit_put(out[..], EgcGuardHit.{tick = tick, kind = kind, seat = s, amount = amount});
   // to the seats near him, and to the one it names wherever it is: an e entry of the reliable class (#13276)
-  eg_event_who(v, k, cast(string) out[0..<n], g.x, g.z, false, ifx s >= 0 && s < EG_SEATS then 1 << s else 0);
+  eg_event_to(v, k, cast(string) out[0..<n], g.x, g.z, false, s);
 }
 // His row into the tick's table (everglade/server/send.coax eg_table; everglade-wire.coax WK_GUARD):
 // none while there is no guard, and the next one is a new life.

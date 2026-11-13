@@ -234,13 +234,14 @@ eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   // who each seat is and its WANTED level: on change, and again WIRE_RESEND ticks on until a tick that
   // held it is acknowledged (a frame the relay's queue had no room for)
   keep := ((1 << WIRE_ACKS) - 1) ^ (1 << (now % WIRE_ACKS));
-  unseen := eg_im_unseen(v, k, s_id, pick[..]);
+  unseen: [EG_SEAT_WORDS] int;
+  eg_im_unseen(v, k, s_id, pick[..], unseen[..]);
   meta := 0;
   for q: 0..<EG_SEATS {
     st[0].n_bits[q] = st[0].n_bits[q] & keep; st[0].w_bits[q] = st[0].w_bits[q] & keep;
     other := v[0].eg[k].seat[q..<q + 1];   // a view: no copy of the seat (its rep is large)
     // (outside this seat's interest or blocked: nothing of them, sent again when they come in, #12789)
-    if !other[0].live || !other[0].placed || ((unseen >> q) & 1) != 0 { st[0].heard_n[q] = 0; st[0].heard_w[q] = 0; continue; }
+    if !other[0].live || !other[0].placed || slot_set_has(unseen[..], q) { st[0].heard_n[q] = 0; st[0].heard_w[q] = 0; continue; }
     // (each from EG_META_BUDGET: one past it waits, unsent, for the next tick)
     h := rm[0].cn_h[q];
     if h != st[0].heard_n[q] || (!st[0].n_ok[q] && now - st[0].n_t[q] >= WIRE_RESEND) {
@@ -269,9 +270,9 @@ eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   // the events since the last state, near you: cues from EG_CUE_BUDGET, outcomes and what is aimed at you without
   cue := 0; ob := 0;
   for q: 0..<v[0].eg[k].ev_n {
-    aimed := ((v[0].eg[k].ev_who[q] >> s) & 1) != 0;
+    aimed := v[0].eg[k].ev_to[q] == s + 1;
     if !v[0].eg[k].ev_all[q] && !aimed && !eg_near(me, v[0].eg[k].ev_x[q], v[0].eg[k].ev_z[q]) { continue; }   // (aimed at s: wherever it is)
-    if eg_im_event_withheld(v, k, s_id, SeatId.{value = q}, unseen) { continue; }   // of a player it blocks or can't see (room-blocks.coax, #12789)
+    if eg_im_event_withheld(v, k, s_id, SeatId.{value = q}, unseen[..]) { continue; }   // of a player it blocks or can't see (room-blocks.coax, #12789)
     a := v[0].eg[k].ev_at[q]; m := v[0].eg[k].ev_len[q] + 1;
     // a seat on the previous wire hears what that wire said as a frame of its own that way (wire-prev.coax, #13398)
     if wprev_entry(v, k, s, cast(string) v[0].eg[k].ev[a..<a + v[0].eg[k].ev_len[q]]) { v[0].st.out_b += m; continue; }

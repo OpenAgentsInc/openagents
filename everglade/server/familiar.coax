@@ -37,7 +37,7 @@
     if v[0].rto[1] { seen_peer=true; }
   }
   #assert ack && seen_owner && seen_peer;
-  v[0].eg[k].im[0].blocks[1]=1;
+  im_block(v[0].eg[k].im[..], SeatId.{value = 1}, SeatId.{value = 0}, true);
   rm_heard(v[..],0,"M1 2 0 0");
   rc_test_tick(v[..],k,true);
   prefix=wire_int(wire[..],wire_put(wire[..],0,"m2"),v[0].eg[k].tick);
@@ -190,7 +190,7 @@ E2StepReactions :: struct { n:int; choice:[EGB_BEASTS]RsOpportunityChoice; }
 e2_familiar_heal_target :: (v:[]RmServer,k:int,s:int,target:int)->bool {
   room:=v[0].eg[k..<k+1]; rules:=room[0].rules[..]; b:=rules[0].b[..];
   if !room[0].seat[target].live || !room[0].seat[target].placed || !rules[0].live[target] { return false; }
-  if (room[0].im[0].blocks[s]&(1<<target))!=0 || (room[0].im[0].blocks[target]&(1<<s))!=0 { return false; }
+  if im_blocked(room[0].im[..], s, target) || im_blocked(room[0].im[..], target, s) { return false; }
   c:=b[0].c[EGB_SEAT+target..<EGB_SEAT+target+1];
   return !c[0].dead && c[0].hp<c[0].hp_max;
 }
@@ -423,7 +423,7 @@ e2_familiar_snapshot :: (v:[]RmServer,k:int,s:int) {
   rows:[960]u8; size:=0; count:=0;
   for owner:0..<EG_SEATS {
     if !room[0].seat[owner].live || !room[0].seat[owner].placed { continue; }
-    if (room[0].im[0].blocks[s]&(1<<owner))!=0 || (room[0].im[0].blocks[owner]&(1<<s))!=0 { continue; }
+    if im_blocked(room[0].im[..], s, owner) || im_blocked(room[0].im[..], owner, s) { continue; }
     f:=rules[0].familiar[owner].me; c:=b[0].c[f..<f+1];
     if c[0].dead || c[0].hp<=0 { continue; }
     form:=-1;

@@ -16,8 +16,9 @@
 RmE2Admin :: struct {
   local: bool;                                  // rm_admin_local: --dev on 127.0.0.1
   heard: int; dropped: int;                     // X lines taken, and dropped by a room that isn't local
-  // each room's seats by bit (small: checks copy the whole server): god mode, KNOCK OUT, a teleport due
-  god: [EG_ROOMS] int; ko: [EG_ROOMS] int; warp: [EG_ROOMS] int;
+  // each room's seats in god mode and with KNOCK OUT on (a set of seats each: e2_admin_set), and the
+  // seat a teleport is due for, plus 1 (0 none)
+  god: [EG_ROOMS * EG_SEAT_WORDS] int; ko: [EG_ROOMS * EG_SEAT_WORDS] int; warp: [EG_ROOMS] int;
   warp_x: [EG_ROOMS] f32; warp_z: [EG_ROOMS] f32; warp_yaw: [EG_ROOMS] f32;   // the room's last teleport asked (one admin at a time)
   guard_off: [EG_ROOMS] bool;
 }
@@ -27,6 +28,8 @@ rm_admin_local :: (v: [] RmServer, address: string) -> bool #export_c #effects(a
   v[0].adm.local = e2_admin_allowed(v[0].dev.on, address);
   return v[0].adm.local;
 }
+// Room k's part of a per-room column of seat sets (RmE2Admin's god and ko).
+e2_admin_set :: (sets: [] int, k: int) -> [] int { return sets[k * EG_SEAT_WORDS..<(k + 1) * EG_SEAT_WORDS]; }
 e2_admin_allowed :: (dev: bool, address: string) -> bool { return dev && address == "127.0.0.1"; }
 
 // A seat's X line (room-everglade.coax eg_heard), read with everglade-wire.coax wire_read_admin.
@@ -36,19 +39,18 @@ e2_admin_heard :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) {
   if rm_mod_line(text) { rm_mod_heard(v, k, seat_id, text); return; }
   if !v[0].adm.local || s < 0 || s >= EG_SEATS { v[0].adm.dropped += 1; return; }
   v[0].adm.heard += 1;
-  bit := 1 << s;
   rd: [1] WireRd; rd[0] = wire_rd(text, 1);
   line := wire_read_admin(text, rd[..]);
   if !rd[0].ok { return; }
   verb := line.verb; arg := line.arg;
   b := v[0].eg[k].rules[0].b[..]; c := b[0].c[EGB_SEAT + s..<EGB_SEAT + s + 1];
   if verb == WIRE_X_HEAL { c[0].hp = c[0].hp_max; c[0].dead = false; c[0].stable = false; c[0].death_ok = 0; c[0].death_fail = 0; if (c[0].cond & RS_UNCONSCIOUS) != 0 { c[0].cond -= RS_UNCONSCIOUS; } return; }
-  if verb == WIRE_X_GOD { v[0].adm.god[k] = ifx arg == "1" then v[0].adm.god[k] | bit else v[0].adm.god[k] & (65535 - bit); return; }
-  if verb == WIRE_X_KO { v[0].adm.ko[k] = ifx arg == "1" then v[0].adm.ko[k] | bit else v[0].adm.ko[k] & (65535 - bit); return; }
+  if verb == WIRE_X_GOD { _ := slot_set_put(e2_admin_set(v[0].adm.god[..], k), s, arg == "1"); return; }
+  if verb == WIRE_X_KO { _ := slot_set_put(e2_admin_set(v[0].adm.ko[..], k), s, arg == "1"); return; }
   if verb == WIRE_X_AT {
     x := line.x; z := line.z; yaw := line.yaw;
     if x < -400000 || x > 400000 || z < -600000 || z > 100000 || yaw < -7000 || yaw > 7000 { return; }
-    v[0].adm.warp[k] = bit; v[0].adm.warp_x[k] = f32(x) / 1000; v[0].adm.warp_z[k] = f32(z) / 1000; v[0].adm.warp_yaw[k] = f32(yaw) / 1000;
+    v[0].adm.warp[k] = s + 1; v[0].adm.warp_x[k] = f32(x) / 1000; v[0].adm.warp_z[k] = f32(z) / 1000; v[0].adm.warp_yaw[k] = f32(yaw) / 1000;
     return;
   }
   // the CLASSES and LEVEL menus: the seat sits again as that SRD class and level (srd-CLASS or
@@ -76,12 +78,12 @@ e2_admin_after :: (v: [] RmServer, k: int) {
   if !v[0].adm.local { return; }
   b := v[0].eg[k].rules[0].b[..];
   for s: 0..<EG_SEATS {
-    if (v[0].adm.god[k] & (1 << s)) == 0 || !v[0].eg[k].seat[s].live { continue; }
+    if !slot_set_has(e2_admin_set(v[0].adm.god[..], k), s) || !v[0].eg[k].seat[s].live { continue; }
     c := b[0].c[EGB_SEAT + s..<EGB_SEAT + s + 1];
     c[0].hp = c[0].hp_max; c[0].dead = false; if (c[0].cond & RS_UNCONSCIOUS) != 0 { c[0].cond -= RS_UNCONSCIOUS; }
   }
   g := v[0].eg[k].guard[0];
-  if g.q >= 0 && g.foe >= 0 && g.foe < EG_SEATS && (v[0].adm.ko[k] & (1 << g.foe)) != 0 {
+  if g.q >= 0 && g.foe < EG_SEATS && slot_set_has(e2_admin_set(v[0].adm.ko[..], k), g.foe) {
     c := b[0].c[EGB_BEAST0 + g.q..<EGB_BEAST0 + g.q + 1];
     if c[0].hp <= 0 { c[0].hp = 1; c[0].dead = false; c[0].cond = c[0].cond | RS_UNCONSCIOUS; }
   }
@@ -91,7 +93,7 @@ rm_e2_admin_warp :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) -> bool 
   s := s_id.value;
   if rm_mod_warp(v, k, s, out) { return true; }   // a moderator's move, in any room (coax/web/room/room-mod.coax, #13302)
   if !v[0].adm.local || k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || out.count < 3 { return false; }
-  if v[0].adm.warp[k] != (1 << s) { return false; }
+  if v[0].adm.warp[k] != s + 1 { return false; }
   v[0].adm.warp[k] = 0;
   out[0] = v[0].adm.warp_x[k]; out[1] = v[0].adm.warp_z[k]; out[2] = v[0].adm.warp_yaw[k];
   return true;
@@ -116,11 +118,11 @@ rm_e2_admin_warp :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) -> bool 
     for line: [6] string.["X heal", "X god 1", "X ko 1", "X at 5000 -40000 0", "X guard off", "X class srd-ranger-3"] { rm_heard(v[..], 0, line); }
     out: [3] f32;
     if local == 0 {
-      #assert c[0].hp == 1 && v[0].adm.god[k] == 0 && v[0].adm.ko[k] == 0 && !v[0].adm.guard_off[k];
+      #assert c[0].hp == 1 && !slot_set_any(e2_admin_set(v[0].adm.god[..], k)) && !slot_set_any(e2_admin_set(v[0].adm.ko[..], k)) && !v[0].adm.guard_off[k];
       #assert !rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, out[..]) && v[0].eg[k].guard[0].q >= 0 && v[0].adm.heard == 0 && v[0].adm.dropped == 6;
       #assert v[0].eg[k].rules[0].klass[0] == EGB_CL0 + FB_CL_FIGHTER;
     } else {
-      #assert c[0].hp == c[0].hp_max && v[0].adm.god[k] == 1 && v[0].adm.ko[k] == 1 && v[0].adm.guard_off[k] && v[0].adm.heard == 6;
+      #assert c[0].hp == c[0].hp_max && slot_set_has(e2_admin_set(v[0].adm.god[..], k), 0) && slot_set_count(e2_admin_set(v[0].adm.god[..], k)) == 1 && slot_set_has(e2_admin_set(v[0].adm.ko[..], k), 0) && slot_set_count(e2_admin_set(v[0].adm.ko[..], k)) == 1 && v[0].adm.guard_off[k] && v[0].adm.heard == 6;
       #assert v[0].eg[k].rules[0].klass[0] == EGB_CL0 + FB_CL_RANGER && v[0].eg[k].rules[0].b[0].c[EGB_SEAT].level == 3;   // the CLASSES menu
       #assert rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, out[..]) && out[0] == 5 && out[1] == -40 && !rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, out[..]);
       #assert v[0].eg[k].guard[0].q < 0;

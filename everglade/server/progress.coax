@@ -67,14 +67,14 @@ ev_gain :: (v: [] RmServer, k: int, s_id: SeatId, amount: int) { s := s_id.value
   b: [64] u8;
   // its class's level from the same table, up to 6 (seats.coax eg_level_up, #13259)
   was := fb_cl_level_of_kind(cast(string) v[0].eg[k].seat[s].klass[0..<v[0].eg[k].seat[s].klass_n]); _ := eg_level_up(v, k, s_id);
-  // aimed at the seat (ev_who): the gainer always hears its own gain and level-up, however busy the
+  // aimed at the seat (ev_to): the gainer always hears its own gain and level-up, however busy the
   // tick (the outcomes' room, no cue allowance); the seats near it hear them as cues
   n := wire_put_xp(b[..], 0, WireGain.{ss = s, v = amount});
-  eg_event_who(v, k, cast(string) b[0..<n], p.x, p.z, false, 1 << s);
+  eg_event_to(v, k, cast(string) b[0..<n], p.x, p.z, false, s);
   now := fb_cl_level_of_kind(cast(string) v[0].eg[k].seat[s].klass[0..<v[0].eg[k].seat[s].klass_n]);
   if now > was {
     n = wire_put_level(b[..], 0, WireGain.{ss = s, v = now});
-    eg_event_who(v, k, cast(string) b[0..<n], p.x, p.z, true, 1 << s);
+    eg_event_to(v, k, cast(string) b[0..<n], p.x, p.z, true, s);
   }
 }
 

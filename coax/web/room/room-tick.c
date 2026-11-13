@@ -32,6 +32,12 @@ static bool dice_key_in(void) {
   rm_dice_key(view(), hi, lo);
   return true;
 }
+/* The host's numbers are the room's (#13275): room-world.h's rooms, seats and tick, which size the
+   host's own tables, against everglade/server/seat.coax's. False: the host refuses to start, so a
+   seat past the host's tables is never stepped. */
+static bool world_sizes_agree(void) {
+  return rm_eg_rooms() == WORLD_ROOMS && rm_eg_seats() == WORLD_SEATS && rm_eg_hz() == WORLD_HZ;
+}
 static const char *part_name[PARTS] = {"move", "abilities", "town", "spells", "people", "rules", "write", "send"};
 /* Only the opt-in native observation adapter consumes these SDK timestamps.
    The worker shares the same simulation and does not claim remote latency. */

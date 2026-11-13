@@ -692,6 +692,8 @@ rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
   #assert rm_join(v[..], 24, "GET /api/room/relay/everglade/everglade2-02 HTTP/1.1\r\n\r\n") == 0;
   n := rm_rooms(v[..], req);
   #assert cast(string) v[0].jout[0..<n] == "{\"realm\":\"everglade2\",\"game\":\"everglade\",\"seats\":16,\"join\":\"everglade2-2\",\"rooms\":[{\"code\":\"everglade2-1\",\"players\":16},{\"code\":\"everglade2-3\",\"players\":1}]}";
+  // (the room "everglade2-02" closes with its one socket: a process runs EG_ROOMS simulations, and room 2 takes the fourth)
+  rm_left(v[..], 24);
   for i: 0..<16 { #assert rm_join(v[..], 30 + i, e2) == i; }
   n = rm_rooms(v[..], "GET /api/playtest/rooms/everglade2?x=1 HTTP/1.1\r\n\r\n");
   #assert cast(string) v[0].jout[0..<n] == "{\"realm\":\"everglade2\",\"game\":\"everglade\",\"seats\":16,\"join\":\"everglade2-3\",\"rooms\":[{\"code\":\"everglade2-1\",\"players\":16},{\"code\":\"everglade2-2\",\"players\":16},{\"code\":\"everglade2-3\",\"players\":1}]}";

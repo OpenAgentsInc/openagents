@@ -1182,6 +1182,7 @@ int main(int argc, char **argv) {
   if (!server) { fprintf(stderr, "room: out of memory\n"); return 1; }
   started_ok = rm_start_check(view()) == 0;   /* readiness needs the started server to hold its defaults (#12797) */
   if (!dice_key_in()) { fprintf(stderr, "room: no OS random source for the dice (getentropy)\n"); return 1; }   /* #13258 */
+  if (!world_sizes_agree()) { fprintf(stderr, "room: room-world.h's rooms, seats or tick are not the room's (everglade/server/seat.coax)\n"); return 1; }   /* #13275 */
   rm_vitals_gen(view(), wall_ms());   /* this process's generation, in every vitals operation ID (#12793) */
   { const char *dg = getenv("OA_ROOM_DIR_GEN"); if (dg && !strcmp(dg, "1")) rm_dir_gen(view(), true); }   /* the directory's fence (#12797) */
   signal(SIGTERM, on_term);

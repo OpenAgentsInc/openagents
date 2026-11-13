@@ -168,9 +168,16 @@ rm_start_check :: (v: [] RmServer) -> int #export_c #effects(all) {
   return bad;
 }
 
-// The room's size is one number: what the pages say (WIRE_SEATS) is what the room seats (#13263).
+// The room's size is one number: what the pages say (WIRE_SEATS) is what the room seats (#13263),
+// what its interest, its battle and its arrows' past hold a place each for, and what the table's
+// slots are counted from (#13275, docs/decisions/0007: no shape holds the number, so raising it is
+// raising these together).
 #test "start: a room seats WIRE_SEATS players, the number the pages say" {
   #assert EG_SEATS == WIRE_SEATS && RELAY_SEATS == WIRE_SEATS;
+  #assert IM_SEATS == EG_SEATS && EGB_SEATS == EG_SEATS && NET_PAST_BODIES >= EG_SEATS;
+  #assert EG_SEAT_WORDS == slot_set_words(EG_SEATS) && IM_SEAT_WORDS == EG_SEAT_WORDS;
+  // the table: the players first, a slot a seat, then every other kind's slots after them, inside the table
+  #assert EG_SLOT_FOLK == EG_SEATS && EG_SLOT_AB < EG_SLOT_BOAT && EG_SLOT_DOORS + 1 == EG_SLOT_TREE && EG_SLOT_GUARD < WIRE_SLOTS && IM_ENTS == WIRE_SLOTS;
 }
 
 #test "start: rm_init keeps every declared default (the reward 100, seats -1)" {

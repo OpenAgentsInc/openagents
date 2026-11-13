@@ -38,7 +38,7 @@ rm_work_request_ready::(request:string,prepared:bool)->bool #export_c #effects(a
   rm_work_done(v[..],k,1000);
   #assert rm_join(v[..],2,"GET /api/room/relay/everglade/pair-e2-work-debt HTTP/1.1\r\n\r\n")==1;
 }
-#test "overload: a lone room whose ticks cost 2 ms keeps 30 Hz and admits seats; sixteen such rooms defer (#12936)" #steps 3000000000 {
+#test "overload: a lone room whose ticks cost 2 ms keeps 30 Hz and admits seats; at the pool's smallest share they defer (#12936)" #steps 3000000000 {
   v:[1]RmServer;k:=rc_test_room(v[..],"pair-e2-work-lone",1,false);
   at:=v[0].mono_ms;ran:=0;
   for t:0..<60{
@@ -49,8 +49,8 @@ rm_work_request_ready::(request:string,prepared:bool)->bool #export_c #effects(a
   // a join's tick (whole snapshots) of 4 ms, past a sixteenth's 3 ms burst, still admits the next seat
   rm_work_done(v[..],k,4000);
   #assert rm_join(v[..],1,"GET /api/room/relay/everglade/pair-e2-work-lone HTTP/1.1\r\n\r\n")==1&&v[0].eg[k].work[0].refused==0;
-  // the same tick with all sixteen rooms live is past a sixteenth of the pool
-  b:[1]WorkBudget;wb_rate(b[..],wb_share(EG_ROOMS));ran=0;
+  // the same tick at the pool's smallest share (WB_ROOMS rooms' worth, work-budget.coax) is past it
+  b:[1]WorkBudget;wb_rate(b[..],wb_share(WB_ROOMS));ran=0;
   for t:0..<60{if wb_ready(b[..],(t+1)*33){ran+=1;ignored:=wb_charge(b[..],2000);}}
   #assert ran<60;
 }

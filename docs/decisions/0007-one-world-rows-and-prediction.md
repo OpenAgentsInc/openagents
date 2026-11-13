@@ -19,8 +19,24 @@ These four issues are one change to how a room holds and tells its entities, so 
 - A seat is an entity with a seat record beside its slot. Nothing indexes by a seat count.
 - The shapes that carry the count today go: one-integer seat masks (an event's `ev_who`, a creature's `hurt_by`, interest's block words) become lists of entity slots or one bit a slot in a column of words; arrays `[EG_SEATS]` inside a seat (`heard_n`, `heard_w`, `n_t`, `w_t`) become rows of a per-recipient table sized by what interest lets the seat see; ids packed by 1,000 (`EG_TGT_SEAT`, `room-tick.c`) become `EntityId`s.
 - The tick is the World's system list, in this order: input, movement, creatures, battle, effects, rows, interest, send. Each declares its components, so two zones never share a step and a later scheduler can run systems that do not meet.
-- One zone to a thread: the host's `poll()` loop hands each zone's sockets to that zone's thread. A slow zone delays nobody else.
+- One zone to a process (settled 2026-11-12, #13275; this replaces "one zone to a thread"). A zone of 150 seats gets a room process to itself: a shard. A slow zone delays nobody else, because the kernel schedules each process on its own. See "Why a process, not a thread" below.
+- The seats' number is one constant (`WIRE_SEATS`, with `EG_SEATS`, `RELAY_SEATS`, `IM_SEATS` and `EGB_SEATS` held equal to it by a check in `room.coax`; both hosts refuse to start when `room-world.h` says another). No integer holds a bit a seat any more: a set of seats is `aethyr/core/slot-set.coax`, an event names the seat it is aimed at, and the table's slots after the players' are counted from the seats' number.
+- A process runs 4 rooms (`EG_ROOMS`, 16 before): the directory gives a shard 2 (`verse.room_shards.rooms_cap`), and a 150-seat zone gets a shard with a cap of 1.
 - The design number is 150 players a zone ([0003](0003-150-a-zone.md)); `WorldStore` holds 4,096 slots.
+
+**Why a process, not a thread.** Issue #13275 allows either. The room's state is one record (`RmServer`) and every procedure takes it. A tick writes parts of it that every room shares: the relay's frame queue, the connection table, checkpoints, the item ledger's outbox, vitals, statistics and journeys. A thread a zone needs each of those split by zone or locked, and no `#test` or `coax mutate` run can show that two threads never meet in them. A process a zone needs none of that:
+
+- The room VM already runs one process a shard (`oa-room@N`), each with its own loop and its own wait set (`room-wait.h`), and the directory already places an instance on a shard.
+- A zone's crash, memory and scheduling policy are its own. The other zones keep their players.
+- The same checks cover one process whatever the host runs beside it.
+
+What it costs: each process holds a whole server record, and travel between zones always crosses processes (#13282 carries the character). A shard that runs one large zone reports one free simulation to the directory, not `EG_ROOMS`.
+
+**What still holds the seats at 16** (found 2026-11-12 by setting the constants to 150; none is built yet):
+
+- **The server record is compile-time storage.** Every room check declares a whole `RmServer`, and the compiler allows a check 33,554,432 value slots. The record uses 33.49 million of them at 16 seats, and with 150 seats it does not fit even with one room. A zone's seats, replicas, history and interest must become the zone's own storage, sized by its declared cap and handed to the room as views (as `RmServer.e2land` and the World's storage already are), so a check makes a zone of 16 and a zone process makes one of 150. The loops then run to the zone's cap, not to a constant.
+- **The rules' creature table** holds 216 creatures a battle (16 seats, 96 creatures, familiars). It is the combat context's (#13285); 150 seats need it sized by the zone's cap too.
+- **The wire.** `WIRE_SEATS`, the page's per-seat arrays and its 512-entity mirror change together, as a wire version, through the release mechanism of #13398.
 
 **Rows (#13276).** Every replicated entity is a row of the session wire, from its World columns.
 

@@ -226,12 +226,12 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   rm_shard(v[..], 3);
   rm_clock(v[..], 0, 990000);
   rm_vitals_gen(v[..], 777);
-  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 990000\ns 3 16\n";   // off: as before
+  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 990000\ns 3 4\n";   // off: as before
   rm_dir_gen(v[..], true);
-  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 990000\ns 3 16\ng 777\n";
+  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 990000\ns 3 4\ng 777\n";
   #assert rm_directory_due(v[..]) == 0;
   _ := rm_drain_tell(v[..]);   // draining: said at once
-  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 990000\ns 3 16\ng 777 d\n";
+  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 990000\ns 3 4\ng 777 d\n";
 }
 
 #test "directory: a VM shard names its endpoint and health, and reports every 5 s with no room (#13179)" #steps 400000000 {
@@ -244,7 +244,7 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   #assert !rm_endpoint(v[..], "ws://room.openagents.com/api/room/s2/") && !rm_endpoint(v[..], "wss://room.openagents.com/api/room/s2") && v[0].dir.ep_n == 0;
   #assert rm_endpoint(v[..], "wss://room.openagents.com/api/room/s2/");
   rm_dir_tick(v[..], 640);
-  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 990000\ns 2 16\ne wss://room.openagents.com/api/room/s2/\nh 0 640\n";
+  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 990000\ns 2 4\ne wss://room.openagents.com/api/room/s2/\nh 0 640\n";
   rm_clock(v[..], 0, 993000);
   #assert rm_directory_due(v[..]) == 0;   // nothing changed and 5 s haven't passed
   rm_clock(v[..], 0, 995000);
@@ -268,7 +268,7 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   rm_dir_gen(v[..], true);
   #assert rm_endpoint(v[..], "wss://room.openagents.com/api/room/s2/");
   rm_dir_tick(v[..], 640);
-  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 990000\ns 2 16\ng 777\ne wss://room.openagents.com/api/room/s2/\nh 0 640\n";
+  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 990000\ns 2 4\ng 777\ne wss://room.openagents.com/api/room/s2/\nh 0 640\n";
   // another shard's flag, and a flag that is no shard's business
   rm_control(v[..], "pvp 0\nflag closed-s3 1\nflag ticks 30\n");
   #assert !rc_closed(v[..]) && rm_flag(v[..], "ticks", 0) == 30 && rm_flag(v[..], "closed-s3", 0) == 1 && rm_flag(v[..], "none", 7) == 7;
@@ -276,7 +276,7 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   rm_control(v[..], "pvp 0\nflag closed-s2 1\n");
   #assert rc_closed(v[..]) && rm_flag(v[..], "ticks", 0) == 0;
   rm_clock(v[..], 0, 995000);
-  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 995000\ns 2 16\ng 777 d\ne wss://room.openagents.com/api/room/s2/\nh 0 640\n";
+  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 995000\ns 2 4\ng 777 d\ne wss://room.openagents.com/api/room/s2/\nh 0 640\n";
   // every shard's
   rm_control(v[..], "pvp 0\nflag closed 1\n");
   #assert rc_closed(v[..]);
@@ -285,7 +285,7 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   // taken away: the room is in rotation again
   rm_control(v[..], "pvp 0\n");
   rm_clock(v[..], 0, 1000000);
-  #assert !rc_closed(v[..]) && rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 1000000\ns 2 16\ng 777\ne wss://room.openagents.com/api/room/s2/\nh 0 640\n";
+  #assert !rc_closed(v[..]) && rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 1000000\ns 2 4\ng 777\ne wss://room.openagents.com/api/room/s2/\nh 0 640\n";
   // a line that is no flag is none: no value, a value that is no number, a name too long
   rm_control(v[..], "flag closed\nflag closed x\nflag closed -1\nflag abcdefghijklmnopqrstuvwxyz0123456789 1\nflag ok 5\n");
   #assert !rc_closed(v[..]) && v[0].ctl.flags == 1 && rm_flag(v[..], "ok", 0) == 5;
@@ -356,8 +356,8 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   rm_shard(v[..], 3);
   rm_clock(v[..], 0, 990000);
   // nothing has run yet: nothing to say
-  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 990000\ns 3 16\n";
-  #assert cast(string) v[0].dir.mac[..] == "67b42ad70fdab1895ed3734c70fba005118c8e8f896de2990a38e5d7f5a74be2";
+  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 990000\ns 3 4\n";
+  #assert cast(string) v[0].dir.mac[..] == "e2a61232c876c73c011bea2f771473e23c792de9f0f6ecd49abec49ff1b0d5a6";
   #assert rm_directory_due(v[..]) == 0;
   t: [256] u8; r: [512] u8;
   for p: 0..<2 {
@@ -368,7 +368,7 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   }
   rm_clock(v[..], 0, 990500);
   n := rm_directory_due(v[..]);
-  #assert cast(string) v[0].dir.out[0..<n] == "t 990500\ns 3 15\nr everglade2-2 2 p-00000000000000a1 p-00000000000000a2\n";
+  #assert cast(string) v[0].dir.out[0..<n] == "t 990500\ns 3 3\nr everglade2-2 2 p-00000000000000a1 p-00000000000000a2\n";
   // its MAC is the body's, under the key
   want: [64] u8;
   kb: [64] u8; for i: 0..<key.count { kb[i] = key[i]; }
@@ -376,7 +376,7 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   #assert hmac_sha256_checked(kb[0..<key.count], v[0].dir.out[0..<n], mac[..], false) == SHA_OK;
   for i: 0..<32 { want[i * 2] = tk_hex(cast(int) (mac[i] >> 4)); want[i * 2 + 1] = tk_hex(cast(int) (mac[i] & 15)); }
   #assert cast(string) want[..] == cast(string) v[0].dir.mac[..];
-  #assert cast(string) v[0].dir.mac[..] == "0bcda6cc84d75ca8e8d364fb94705047ddb9bf98b157c0671429495c8b1e5910";   // Python's hmac
+  #assert cast(string) v[0].dir.mac[..] == "5b2477de2dad78d9a93409fad2c50a264bd98710f072c6583315709e929a881e";   // Python's hmac
   // the same a second later: not due; five seconds on: due again
   rm_clock(v[..], 0, 991500);
   #assert rm_directory_due(v[..]) == 0;
@@ -389,12 +389,12 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   #assert d0 == 0 || eg_test_has(cast(string) v[0].dir.out[0..<d0], "r everglade2-2 2 ");
   rm_clock(v[..], EG_GRACE_MS + 1000, 995500);
   if rm_eg_begin(v[..], kd) {}
-  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 995500\ns 3 15\nr everglade2-2 1 p-00000000000000a2\n";
+  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 995500\ns 3 3\nr everglade2-2 1 p-00000000000000a2\n";
   // the last leaves: the room closes, and one report says so; then nothing until something changes
   rm_left(v[..], 1);
   rm_clock(v[..], 2 * EG_GRACE_MS + 2000, 995500);
   if rm_eg_begin(v[..], kd) {}
-  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 995500\ns 3 16\n";
+  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 995500\ns 3 4\n";
   rm_clock(v[..], 0, 999500);
   #assert rm_directory_due(v[..]) == 0;
 }
