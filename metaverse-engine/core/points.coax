@@ -9,6 +9,7 @@
 //   coax/bin/coax test metaverse-engine/core/points.coax --library
 
 #load "space.coax" as feet_space;
+#load "angle.coax";
 
 PI :: 3.14159265;
 TAU :: 6.2831853;
@@ -51,27 +52,13 @@ unit_or :: (a: Point, otherwise: Point) -> Point {
   return times(a, 1 / l);
 }
 
-// An angle in [-PI, PI).
-wrap_angle :: (a: f32) -> f32 { return a - f32(TAU) * floor((a + f32(PI)) / f32(TAU)); }
-
-// atan on [0, 1], within 2e-5 rad.
-atan_unit :: (t: f32) -> f32 {
-  s := t * t;
-  return t * (0.99997726 + s * (-0.33262347 + s * (0.19354346 + s * (-0.11643287 + s * (0.05265332 + s * -0.01172120)))));
-}
-
-// The angle of (x, y) from +X, in [-PI, PI]; 0 for the origin.
-atan2 :: (y: f32, x: f32) -> f32 {
-  ax := abs(x); ay := abs(y);
-  if ax == 0 && ay == 0 { return 0; }
-  a := ifx ay > ax then f32(PI) / 2 - atan_unit(ax / ay) else atan_unit(ay / ax);
-  if x < 0 { a = f32(PI) - a; }
-  if y < 0 { a = -a; }
-  return a;
-}
-
-// The yaw that faces along (x, z): 0 is +Z, PI/2 is +X.
-yaw_of :: (x: f32, z: f32) -> f32 { return atan2(x, z); }
+// The angles are metaverse-engine/core/angle.coax's, which has a module of its own so that any module
+// can load it (#13460). These names keep them reachable where a program reaches this file's names
+// through another module's alias (an Everglade zone's `figs.atan2`).
+wrap_angle :: (a: f32) -> f32 { return angle_wrap(a); }
+atan_unit :: (t: f32) -> f32 { return angle_atan_unit(t); }
+atan2 :: (y: f32, x: f32) -> f32 { return angle_atan2(y, x); }
+yaw_of :: (x: f32, z: f32) -> f32 { return angle_yaw_of(x, z); }
 
 // How much of `rate` (per second) a frame of dt applies, framerate-free.
 settle :: (rate: f32, dt: f32) -> f32 { return 1 - exp(-rate * hi(dt, 0)); }

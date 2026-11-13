@@ -49,6 +49,7 @@ undo was hand-rolled and had no redo, while the OpenAgents Metaverse Engine's ed
 | Editing a world: typed edits, undo and redo, revision-checked saves | The Metaverse Engine's edit log | `metaverse-engine/editor/edit.coax`, `metaverse-engine/editor/doc.coax` |
 | Publishing or packing a realm | Metaverse Engine | `metaverse-engine/editor/publish.coax`, `metaverse-engine/editor/pack.coax` |
 | The player character, walking, WASD, jump, touch stick | The Everglade zone controller | `everglade/zone.coax`, `everglade/zone-touch.coax`, `metaverse-engine/move/walk.coax`, `metaverse-engine/move/player.coax` |
+| An angle: atan2, a yaw from a direction, wrapping to [-PI, PI) | The engine's angle module, which any module can load (a file without a module of its own can't be loaded under two) | `metaverse-engine/core/angle.coax` (`angle_atan2`, `angle_yaw_of`, `angle_wrap`) |
 | A follow, orbit or free camera | The Metaverse Engine's cameras | `metaverse-engine/cam/follow.coax`, `metaverse-engine/physics/orbit.coax`, `metaverse-engine/cam/camera.coax`, `metaverse-engine/cam/` |
 | Characters, rigs, faces, poses, materials | The Metaverse Engine's character | `metaverse-engine/character/`, `metaverse-engine/character/character-appearance.coax` |
 | Ground, terrain, heights, ground rays | The Metaverse Engine's terrain | `metaverse-engine/world/terrain.coax`, `metaverse-engine/world/terrain-tile.coax`, `metaverse-engine/physics/ground-query.coax` |

@@ -33,6 +33,7 @@
 #load "textkeys.coax";
 #load "worldbuilder-plan.coax";
 #load "../../metaverse-engine/physics/ground-query.coax";
+#load "../../metaverse-engine/core/angle.coax";   // the one atan2 (#13460)
 
 VERTEX_FLOATS :: GP_VERTEX_FLOATS;
 MAX_VERTICES :: 8192;
@@ -968,7 +969,7 @@ view_rows :: (s: [] WorldBuilder) {
   s[0].right[0] = rx / sx; s[0].right[1] = 0; s[0].right[2] = rz / sx;
   s[0].up[0] = ux / sy; s[0].up[1] = uy / sy; s[0].up[2] = uz / sy;
   // the same view as the viewport's tools read it: a pick's ray and a drag's ground point come from it
-  s[0].vview = VpView.{ex = ex, ey = ey, ez = ez, ax = ex + fx, ay = ey + fy, az = ez + fz, fov = 2 * vp_atan2(1, sy), w = s[0].width, h = s[0].height};
+  s[0].vview = VpView.{ex = ex, ey = ey, ez = ez, ax = ex + fx, ay = ey + fy, az = ez + fz, fov = 2 * angle_atan2(1, sy), w = s[0].width, h = s[0].height};
 }
 
 // ---- the scene: one draw a mesh, its instances' rows

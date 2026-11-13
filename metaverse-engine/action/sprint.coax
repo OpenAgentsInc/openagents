@@ -17,6 +17,7 @@
 //   a body's sprint (Sprint, sprint_start, sprint_pace, sprint_frame): the state a realm keeps.
 //   coax/bin/coax test metaverse-engine/action/sprint.coax --library
 #module "metaverse.engine.action.sprint";
+#load "../core/angle.coax";   // the one atan2 (#13460)
 
 SPRINT_SECONDS :: 1.8;   // seconds a sprint lasts
 SPRINT_RISE :: 0.12;     // seconds to its peak
@@ -61,18 +62,7 @@ sprint_push_face :: (yaw: f32, kx: f32, ky: f32) -> f32 {
   size := sqrt(kx * kx + ky * ky);
   if size == 0 { return 0; }
   mx := kx / size; mz := -ky / size; c := cos(yaw); sn := sin(yaw);
-  return sprint_atan2(mx * c + mz * sn, -mx * sn + mz * c);
-}
-// The angle of (x, y) from +X, in [-PI, PI] (metaverse-engine/core/points.coax's, within 2e-5 rad).
-sprint_atan2 :: (y: f32, x: f32) -> f32 {
-  ax := abs(x); ay := abs(y);
-  if ax == 0 && ay == 0 { return 0; }
-  q := ifx ay > ax then ax / ay else ay / ax; s := q * q;
-  u := q * (0.99997726 + s * (-0.33262347 + s * (0.19354346 + s * (-0.11643287 + s * (0.05265332 + s * -0.01172120)))));
-  a := ifx ay > ax then f32(SPRINT_PI) / 2 - u else u;
-  if x < 0 { a = f32(SPRINT_PI) - a; }
-  if y < 0 { a = -a; }
-  return a;
+  return angle_atan2(mx * c + mz * sn, -mx * sn + mz * c);
 }
 // Whether a sprint at `share` of its peak (sprint_shape) kicks up its next puff of dust now, the
 // last at `last`: on the ground, every SPRINT_TRAIL_EVERY while it is more than a run. The realm

@@ -10,6 +10,7 @@
 // clock and the road.
 // Loaded into charactercreator.coax, so it shares its Creator, glade and figs.
 
+#load "../../metaverse-engine/core/angle.coax";   // the one atan2 (#13460)
 CC_WALK_SECONDS :: 30.0;   // from the first step to the end of the road, inside the gate
 CC_WALK_LEAD :: 0.35;      // the controls fade and the character turns before it steps off
 CC_WALK_ACCEL :: 1.2;      // seconds to reach walking pace
@@ -83,13 +84,7 @@ walk_distance :: (w:CcWalk,t:f32)->f32 {
   d:=ifx tau<a then v*tau*tau/(2*a) else v*(tau-a*0.5);
   return ifx d>w.length then w.length else d;
 }
-walk_heading :: (w:CcWalk,d:f32)->f32 {a:=walk_point(w,d-0.5);b:=walk_point(w,d+0.5);return walk_atan2(b[0]-a[0],b[2]-a[2]);}
-// The angle of (x, y) from +x in [-pi, pi], within 2e-5 rad (metaverse-engine/core/points.coax's polynomial).
-walk_atan2 :: (y:f32,x:f32)->f32 {
-  ax:=abs(x);ay:=abs(y);if ax==0 && ay==0 {return 0;}t:=ifx ay>ax then ax/ay else ay/ax;q:=t*t;
-  a:=t*(0.99997726+q*(-0.33262347+q*(0.19354346+q*(-0.11643287+q*(0.05265332+q*-0.01172120)))));
-  if ay>ax {a=1.5707964-a;}if x<0 {a=3.1415927-a;}if y<0 {a= -a;}return a;
-}
+walk_heading :: (w:CcWalk,d:f32)->f32 {a:=walk_point(w,d-0.5);b:=walk_point(w,d+0.5);return angle_atan2(b[0]-a[0],b[2]-a[2]);}
 walk_wrap :: (a:f32)->f32 {v:=a;while v>3.14159265 {v-=6.2831853;}while v< -3.14159265 {v+=6.2831853;}return v;}
 walk_ease :: (v:f32)->f32 {t:=cc_clamp(v,0,1);return t*t*(3-2*t);}
 

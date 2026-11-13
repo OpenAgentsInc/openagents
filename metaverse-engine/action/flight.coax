@@ -25,6 +25,7 @@
 #module "metaverse.engine.action.flight";
 #authority;
 #load "../move/flight.coax";
+#load "../core/angle.coax";   // the one atan2 (#13460)
 
 WING_GROUND :: 0; WING_TAKEOFF :: 1; WING_AIR :: 2; WING_LANDING :: 3;
 // the clip a body shows (wing_clip)
@@ -72,18 +73,6 @@ wf_lo :: (a: f32, b: f32) -> f32 #effects(all) { return ifx a < b then a else b;
 wf_hi :: (a: f32, b: f32) -> f32 #effects(all) { return ifx a > b then a else b; }
 wf_clamp :: (a: f32, l: f32, h: f32) -> f32 #effects(all) { return wf_lo(h, wf_hi(l, a)); }
 wf_wrap :: (a: f32) -> f32 #effects(all) { return a - f32(WF_TAU) * floor((a + f32(WF_PI)) / f32(WF_TAU)); }
-wf_atan_unit :: (t: f32) -> f32 #effects(all) {
-  s := t * t;
-  return t * (0.99997726 + s * (-0.33262347 + s * (0.19354346 + s * (-0.11643287 + s * (0.05265332 + s * -0.01172120)))));
-}
-wf_atan2 :: (y: f32, x: f32) -> f32 #effects(all) {
-  ax := abs(x); ay := abs(y);
-  if ax == 0 && ay == 0 { return 0; }
-  a := ifx ay > ax then f32(WF_PI / 2) - wf_atan_unit(ax / ay) else wf_atan_unit(ay / ax);
-  if x < 0 { a = f32(WF_PI) - a; }
-  if y < 0 { a = -a; }
-  return a;
-}
 wf_toward :: (a: f32, b: f32, step: f32) -> f32 #effects(all) {
   if a < b { return wf_lo(b, a + step); }
   return wf_hi(b, a - step);
@@ -113,7 +102,7 @@ wing_step :: (p: WingProfile, s: WingState, in: WingInput, ground: f32, dt: f32)
   o := s; o.t = s.t + dt; o.beat = false; o.diving = false;
   if !(dt > 0) || dt > 1 { return s; }
   want := wf_clamp(sqrt(in.mx * in.mx + in.mz * in.mz), 0, 1);
-  goal := ifx want > 0.001 then wf_atan2(in.mx, in.mz) else s.yaw;
+  goal := ifx want > 0.001 then angle_atan2(in.mx, in.mz) else s.yaw;
   rate := ifx o.phase == WING_GROUND || o.phase == WING_LANDING then p.ground_turn else p.turn;
   d := wf_wrap(goal - s.yaw);
   step := wf_clamp(d, -rate * dt, rate * dt);

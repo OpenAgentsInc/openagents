@@ -26,6 +26,7 @@
 #load "../core/loop.coax";
 #load "../core/input.coax";
 #load "../physics/query.coax";   // the ground under you: one query for every walking realm
+#load "../core/angle.coax";   // the one atan2 (#13460)
 #load "../core/math.coax";    // sine, cosine and powers with the same bits natively and in the browser
 #load "../cam/follow.coax";  // the camera: the Metaverse Engine's follow, which every realm shares
 #load "../physics/collide.coax"; // checked capsule resolution and the trusted legacy adapters
@@ -176,24 +177,11 @@ finite :: (a: f32) -> bool #effects(all) { return a == a && a < 1000000.0 && a >
 // neither signed zero is negative, and an unordered value is not negative.
 player_negative :: (value: f32) -> bool #effects(all) { return value < 0; }
 
-// An angle in [-PI, PI).
-wrap_angle :: (a: f32) -> f32 #effects(all) { return a - f32(TAU) * floor((a + f32(PI)) / f32(TAU)); }
-
-// atan on [0, 1], within 2e-5 rad.
-atan_unit :: (t: f32) -> f32 #effects(all) {
-  s := t * t;
-  return t * (0.99997726 + s * (-0.33262347 + s * (0.19354346 + s * (-0.11643287 + s * (0.05265332 + s * -0.01172120)))));
-}
-
-// The angle of (x, y) from +X, in [-PI, PI]; 0 for the origin.
-atan2 :: (y: f32, x: f32) -> f32 #effects(all) {
-  ax := abs(x); ay := abs(y);
-  if ax == 0 && ay == 0 { return 0; }
-  a := ifx ay > ax then f32(PI / 2) - atan_unit(ax / ay) else atan_unit(ay / ax);
-  if player_negative(x) { a = f32(PI) - a; }
-  if y < 0 { a = -a; }
-  return a;
-}
+// The angles are metaverse-engine/core/angle.coax's (#13460), under this module's names for the
+// realms that reach them through its alias (`pc.atan2`).
+wrap_angle :: (a: f32) -> f32 #effects(all) { return angle_wrap(a); }
+atan_unit :: (t: f32) -> f32 #effects(all) { return angle_atan_unit(t); }
+atan2 :: (y: f32, x: f32) -> f32 #effects(all) { return angle_atan2(y, x); }
 
 // ---- The world ----
 

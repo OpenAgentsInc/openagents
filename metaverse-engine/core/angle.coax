@@ -1,0 +1,68 @@
+// The engine's angles: one atan2 and what is made from it, in a module of its own (GitHub #13460).
+// metaverse-engine/core/points.coax has no module, so a program holds it under the module that
+// loads it, and a second module of the same program cannot load it too (E0607). This file claims
+// its own, so any module loads it: points.coax, the walker, the viewport, the actions, a zone page.
+//
+// Units are radians; yaw 0 faces +Z and a quarter turn faces +X, as in openagents.engine.v1.
+//   coax/bin/coax test metaverse-engine/core/angle.coax --library
+
+#module "metaverse.engine.angle";
+
+ANGLE_PI :: 3.14159265;
+ANGLE_TAU :: 6.2831853;
+
+// An angle in [-PI, PI).
+angle_wrap :: (a: f32) -> f32 { return a - f32(ANGLE_TAU) * floor((a + f32(ANGLE_PI)) / f32(ANGLE_TAU)); }
+
+// atan on [0, 1], within 2e-5 rad.
+angle_atan_unit :: (t: f32) -> f32 {
+  s := t * t;
+  return t * (0.99997726 + s * (-0.33262347 + s * (0.19354346 + s * (-0.11643287 + s * (0.05265332 + s * -0.01172120)))));
+}
+
+// The angle of (x, y) from +X, in [-PI, PI]; 0 for the origin. Behind is +PI, not -PI.
+angle_atan2 :: (y: f32, x: f32) -> f32 {
+  ax := abs(x); ay := abs(y);
+  if ax == 0 && ay == 0 { return 0; }
+  a := ifx ay > ax then f32(ANGLE_PI) / 2 - angle_atan_unit(ax / ay) else angle_atan_unit(ay / ax);
+  if x < 0 { a = f32(ANGLE_PI) - a; }
+  if y < 0 { a = -a; }
+  return a;
+}
+
+// The yaw that faces along (x, z): 0 is +Z, PI/2 is +X.
+angle_yaw_of :: (x: f32, z: f32) -> f32 { return angle_atan2(x, z); }
+
+angle_near :: (a: f32, b: f32, tolerance: f32) -> bool { return abs(a - b) <= tolerance; }
+
+#forall "atan2 points the right way" ix: -4..<5, iy: -4..<5 {
+  x := f32(ix) * 0.5; y := f32(iy) * 0.5;
+  a := angle_atan2(y, x);
+  #assert a >= -f32(ANGLE_PI) && a <= f32(ANGLE_PI);
+  r := sqrt(x * x + y * y);
+  if r == 0 { #assert a == 0; }
+  else { #assert angle_near(cos(a) * r, x, 0.0001 * r) && angle_near(sin(a) * r, y, 0.0001 * r); }
+}
+
+#test "atan2 at the quadrants, and behind is +PI" {
+  #assert angle_atan2(0, -1) == f32(ANGLE_PI) && angle_atan2(-0.5, -1) < 0 && angle_atan2(0, 0) == 0;
+  #assert angle_near(angle_atan2(1, 0), f32(ANGLE_PI) / 2, 0.00002) && angle_near(angle_atan2(-1, 0), -f32(ANGLE_PI) / 2, 0.00002);
+  #assert angle_near(angle_atan2(1, 1), 0.7853982, 0.00002) && angle_near(angle_atan2(1, -1), 2.3561945, 0.00002) && angle_near(angle_atan2(-1, -1), -2.3561945, 0.00002);
+}
+
+#forall "atan_unit is within 2e-5 rad on [0, 1]" i: 0..<101 {
+  t := f32(i) / 100;
+  a := angle_atan_unit(t);
+  #assert angle_near(sin(a), t * cos(a), 0.00003);
+}
+
+#forall "wrap_angle keeps the direction" k: -30..<31 {
+  a := f32(k) * 0.7;
+  w := angle_wrap(a);
+  #assert w >= -f32(ANGLE_PI) && w < f32(ANGLE_PI);
+  #assert angle_near(sin(w), sin(a), 0.0005) && angle_near(cos(w), cos(a), 0.0005);
+}
+
+#test "yaw 0 faces +Z and a quarter turn faces +X" {
+  #assert angle_near(angle_yaw_of(0, 1), 0, 0.0001) && angle_near(angle_yaw_of(1, 0), f32(ANGLE_PI) / 2, 0.0001);
+}
