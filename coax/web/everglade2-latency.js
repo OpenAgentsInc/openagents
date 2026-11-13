@@ -10,7 +10,7 @@
   // the probes read each frame, in this order (the columns since() and seen() name)
   // 20 to 22 (5, 38: where you are, cm; 89: cast sounds played) are on builds from before #13157 too, so
   // the same check times production's page
-  const P = [190, 191, 192, 193, 143, 153, 154, 82, 88, 83, 194, 195, 196, 197, 46, 47, 55, 44, 198, 199, 5, 38, 89];
+  const P = [210, 211, 212, 213, 143, 153, 154, 82, 88, 83, 214, 215, 216, 217, 46, 47, 55, 44, 218, 219, 5, 38, 89];
   const E = (window.__lat = { x: null, state: 0, fr: [], ev: [], cols: P });
   const probe = (f) => (E.x && E.state && E.x.coaxial_field_probe ? E.x.coaxial_field_probe(E.state, f) : -1);
   E.probe = probe;
@@ -158,7 +158,7 @@
   // looks): returns how far off it still is (mrad). The first steps learn which way the travel turns.
   E.turn = { k: 0.5, last: null };
   E.toward = (x, z) => {
-    const ax = probe(190) / 1000, az = probe(191) / 1000, f = probe(192) / 1000;
+    const ax = probe(210) / 1000, az = probe(211) / 1000, f = probe(212) / 1000;
     let d = Math.atan2(x - ax, z - az) - f; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
     const T = E.turn;
     if (T.last !== null && Math.abs(d) > Math.abs(T.last) * 1.05 && Math.abs(T.last) > 0.05) T.k = -T.k;

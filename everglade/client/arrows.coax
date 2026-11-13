@@ -8,7 +8,7 @@
 // request), and the room flies the same arrow from the moment your page was drawing, against the
 // monsters as they stood then, and names it (a). Your page matches that word to its own arrow by the
 // request's number and takes the room's flight for it; how far the two were apart is kept (e2_probe
-// 199). Everyone else's arrow is drawn from the room's word, the same delay behind as its archer is
+// 219). Everyone else's arrow is drawn from the room's word, the same delay behind as its archer is
 // drawn, so it leaves the bow you see. Where an arrow ends is the room's word too (d): stuck in the
 // ground, or in a body. Your own page stops your arrow where its own flight says, at once, and the
 // room's word then puts it right. A refused loose fades its arrow out. Nothing here harms anyone: the
@@ -124,11 +124,11 @@ e2bw_puffs :: (s: [] E2, pf: [] FxPuffs) {
     fxp_arrow_at(pf, fxp_v(w.at[0] + o[0], w.at[1] + o[1], w.at[2] + o[2]), fxp_v(w.dir[0], w.dir[1], w.dir[2]), w.alpha * net_shots_shown(b[0].net[..], i, now), w.flying, w.seed);
   }
 }
-// What the checks read (e2_probe 194 on).
+// What the checks read (e2_probe 214 on).
 e2bw_probe :: (s: [] E2, field: int) -> int {
   sh := s[0].bows[0].net[0];
-  if field == 194 { return sh.loosed; } if field == 195 { return sh.others; }
-  if field == 196 { return net_shots_up(s[0].bows[0].ar[0].arrows[..]); }
-  if field == 197 { return sh.landed; } if field == 198 { return sh.named; } if field == 199 { return sh.fix_mm; }
+  if field == 214 { return sh.loosed; } if field == 215 { return sh.others; }
+  if field == 216 { return net_shots_up(s[0].bows[0].ar[0].arrows[..]); }
+  if field == 217 { return sh.landed; } if field == 218 { return sh.named; } if field == 219 { return sh.fix_mm; }
   return -1;
 }

@@ -9,12 +9,12 @@
 // What it times, N trials each (everglade2-latency.js keeps each input's and each frame's time):
 //   walk     W down to the first frame that draws you somewhere else (e2_probe 5, 38: on older builds too)
 //   turn     the mouse's travel, while the mouse looks, to the camera turned (143) and to your body
-//            facing another way (192)
+//            facing another way (212)
 //   attack   the Attack's key to the first frame that answers it on A: a cast's sound played (89)
 //            or the bow's aim rising (154)
 //   draw     the right button down to the bow's aim rising (154)
 //   loose    the right button up to the Attack's first sound (89), to an arrow of yours in the air
-//            (194), and to B drawing that arrow (195); then whether it stuck (197) on both
+//            (214), and to B drawing that arrow (215); then whether it stuck (217) on both
 // and, over a 6 s walk that turns: the frame rate, your own stalls, the largest turn of your body in
 // one frame, the re-runs and their largest move, the round trip and the others' delay.
 // With --shot DIR it keeps A's and B's frames of the last loose as DIR/LABEL-a-NN.jpg and -b-NN.jpg
@@ -151,7 +151,7 @@ el_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
   }
   el_line("attack (the Attack's key to the first frame that answers it)", attack[..]);
   // the bow: the right button down draws, up looses
-  stuck_a0 := el_probe(A, 197); stuck_b0 := el_probe(B, 197);
+  stuck_a0 := el_probe(A, 217); stuck_b0 := el_probe(B, 217);
   for q: 0..<trials {
     from := el_mark(A, t0[..]);
     _ = el_int(A, "__lat.button(2, 0)", 0); proc_sleep(1000);
@@ -161,13 +161,13 @@ el_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
     last := q == trials - 1;
     if last && shot.count > 0 {
       // the clip's shot: A turns to face 3 m to B's side, so B sees the arrow come and stick near it
-      bx := el_probe(B, 190); bz := el_probe(B, 191);
+      bx := el_probe(B, 210); bz := el_probe(B, 211);
       q2: [1] Buf; bput(q2[..], "__lat.toward("); bint(q2[..], bx + 3000); bput(q2[..], "/1000,"); bint(q2[..], bz); bput(q2[..], "/1000)");
       off := 9999; for t: 0..<40 { off = el_int(A, btext(q2[..]), 9999); if off < 30 { break; } proc_sleep(80); }
       print("  the clip: A faced B's side to within % mrad\n", off);
       // and B turns to face A, so the arrow comes at its camera
       _ = el_int(B, "__lat.lock(1)", 0); proc_sleep(300);
-      ax := el_probe(A, 190); az := el_probe(A, 191);
+      ax := el_probe(A, 210); az := el_probe(A, 211);
       q3: [1] Buf; bput(q3[..], "__lat.toward("); bint(q3[..], ax); bput(q3[..], "/1000,"); bint(q3[..], az); bput(q3[..], "/1000)");
       offb := 9999; for t: 0..<40 { offb = el_int(B, btext(q3[..]), 9999); if offb < 30 { break; } proc_sleep(80); }
       print("  the clip: B faced A to within % mrad\n", offb);
@@ -188,11 +188,11 @@ el_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
   el_line("loose (right button up to your arrow in the air, A)", arrow[..]);
   el_line("loose (A's button up to B playing the Attack)", loose_b[..]);
   el_line("loose (A's button up to B drawing the arrow)", arrow_b[..]);
-  stuck_a := el_probe(A, 197) - stuck_a0; stuck_b := el_probe(B, 197) - stuck_b0;
+  stuck_a := el_probe(A, 217) - stuck_a0; stuck_b := el_probe(B, 217) - stuck_b0;
   rb: [256] u8; print("  bandwidth (A): %\n", el_str(A, "__lat.rate()", rb[..]));
   hb: [4096] u8; print("  the room said to A (first lines): %\n", el_str(A, "JSON.stringify(__lat.heard.slice(0, 12))", hb[..]));
   print("  casts: A sent % to the room and heard % of them back (the rest refused or unanswered); B played % of A's\n", el_probe(A, 82), el_probe(A, 88), el_probe(B, 83));
-  print("  arrows: A loosed % and saw % land; B saw % land; A's the room confirmed %, the last % mm from where A had drawn it\n", el_probe(A, 194), stuck_a, stuck_b, el_probe(A, 198), el_probe(A, 199));
+  print("  arrows: A loosed % and saw % land; B saw % land; A's the room confirmed %, the last % mm from where A had drawn it\n", el_probe(A, 214), stuck_a, stuck_b, el_probe(A, 218), el_probe(A, 219));
   if shot.count > 0 { el_film(shot, label, "a", 6); el_film(shot, label, "b", 6); }
   // a walk that turns: your own motion as drawn
   from := el_mark(A, t0[..]);
@@ -210,6 +210,6 @@ el_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
   el_json("loose", loose[..], false); el_json("arrow", arrow[..], false); el_json("loose_remote", loose_b[..], false); el_json("arrow_remote", arrow_b[..], false);
   bb: [256] u8; bytes := el_str(A, "__lat.bytes()", bb[..]);
   print("\"bytes\":%,", ifx bytes.count > 1 then bytes else "{}");
-  print("\"arrows_loosed\":%,\"arrows_landed_a\":%,\"arrows_landed_b\":%,\"arrows_confirmed\":%,\"motion\":%}\n%\n", el_probe(A, 194), stuck_a, stuck_b, el_probe(A, 198), ifx motion.count > 0 then motion else "null", ifx all then "holds" else "fails");
+  print("\"arrows_loosed\":%,\"arrows_landed_a\":%,\"arrows_landed_b\":%,\"arrows_confirmed\":%,\"motion\":%}\n%\n", el_probe(A, 214), stuck_a, stuck_b, el_probe(A, 218), ifx motion.count > 0 then motion else "null", ifx all then "holds" else "fails");
   return ifx all then 0 else 1;
 }

@@ -374,6 +374,12 @@ E2_HOST_SHOWN :: 602;    // and shown again (with now= when handed over in place
 // (everglade/client/gpu/everglade2.coax cc_player_fs: cloth sheen, skin's wrapped light, hair's highlight), and
 // ?maps=0 without their normal and ORM maps, for before/after captures.
 e2_material_facts :: (s: [] E2, t: string) { s[0].film = e2c_fact_has(t, "film"); s[0].maps_off = e2c_fact_has(t, "maps=0"); }
+#test "the latency check's probes are answered by their own fields: none is another readout's number" {
+  s: [1] E2; s[0].you_x = 1.5; s[0].you_z = -2.25; s[0].casts[0].shown = 7;
+  s[0].bows[0].net[0].loosed = 3; s[0].bows[0].net[0].others = 4; s[0].bows[0].net[0].landed = 5; s[0].bows[0].net[0].named = 6; s[0].bows[0].net[0].fix_mm = 9;
+  #assert e2_probe(s[..], 210) == 1500 && e2_probe(s[..], 211) == -2250 && e2_probe(s[..], 213) == 7;
+  #assert e2_probe(s[..], 214) == 3 && e2_probe(s[..], 215) == 4 && e2_probe(s[..], 217) == 5 && e2_probe(s[..], 218) == 6 && e2_probe(s[..], 219) == 9;
+}
 #test "?film and ?maps=0 set the characters' shading quality" {
   s: [1] E2; e2_material_facts(s[..], "url=/worlds/character-creator?film&maps=0\n"); #assert s[0].film && s[0].maps_off;
   e2_material_facts(s[..], "url=/worlds/character-creator?filmic=1\n"); #assert !s[0].film && !s[0].maps_off;
@@ -1911,11 +1917,12 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   if field == 145 || field == 146 { k := s[0].casts[..]; b := e2k_box(k, 0, s[0].width, s[0].height, s[0].k); return cast(int)(ifx field == 145 then (b[0] + b[2]) / 2 else (b[1] + b[3]) / 2); }
   if field == 147 { return s[0].casts[0].hover; }
   if field >= 150 && field < 160 { return e2m_probe(s, field); }   // the mouse buttons (everglade/client/mouse.coax)
-  // the latency check's (coax/web/everglade2-latency.coax): 190, 191 where you are drawn (mm), 192 the
-  // way your body faces as drawn (mrad), 193 your own casts' presentations begun (everglade/client/cast.coax e2k_play)
-  if field == 190 { return cast(int)(s[0].you_x * 1000); } if field == 191 { return cast(int)(s[0].you_z * 1000); }
-  if field == 192 { return cast(int)(e2_show_face(s) * 1000); } if field == 193 { return s[0].casts[0].shown; }
-  if field >= 194 && field <= 199 { return e2bw_probe(s, field); }   // the arrows (everglade/client/arrows.coax)
+  // the latency check's (coax/web/everglade2-latency.coax): 210, 211 where you are drawn (mm), 212 the
+  // way your body faces as drawn (mrad), 213 your own casts' presentations begun (everglade/client/cast.coax e2k_play).
+  // They were 190 to 199, which the cells' view (180 to 193) and the world by cell (194 to 198) answer first.
+  if field == 210 { return cast(int)(s[0].you_x * 1000); } if field == 211 { return cast(int)(s[0].you_z * 1000); }
+  if field == 212 { return cast(int)(e2_show_face(s) * 1000); } if field == 213 { return s[0].casts[0].shown; }
+  if field >= 214 && field <= 219 { return e2bw_probe(s, field); }   // the arrows (everglade/client/arrows.coax)
   if field == 7 { return cast(int)((s[0].eye[1] - s[0].you_y) * 100); }
   if field == 8 { return cast(int)((s[0].you_y - e2_height(s[0].you_x, s[0].you_z)) * 100); }
   // 9 the bake's publish status (0 live, -1 not yet), 10 the baked AO at you (thousandths), 11 its crowns
