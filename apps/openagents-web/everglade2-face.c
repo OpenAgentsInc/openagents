@@ -29,6 +29,7 @@ static uint8_t inbox[4096];
 static uint8_t catalog[8388608];   /* the pack's catalog, with the ground's record in its G lines (#13059) and the woods in its P lines (#13150) */
 static uint8_t ground_record[1048576], catalog_rest[65536];   /* that record decoded, and the catalog without it */
 static coax_t_E2Tiles ground_tiles[2];   /* the ground's tile sets, published and staged (verse/everglade2/ground.coax) */
+static coax_t_E2Cells world_cells;   /* the world's cell controller (everglade/client/cells.coax, #13280); the frame reads its levels from the state's view */
 static coax_t_People rig;
 static uint32_t baked;
 static uint32_t frames;
@@ -241,6 +242,9 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   draw_n = 0;
   if (e2_at(state)->bodies.e[0].ready) {
     if (!baked) { e2_bake(at(state), (coax_v_t_People){&rig, 1}); baked = 1; }
+    /* the world's cells round you and the eye, once the woods are in: the pack came whole, so each
+       cell's content is here when it is asked for */
+    if (e2_cells_due(at(state))) e2cl_page_frame((coax_v_t_E2Cells){&world_cells, 1}, e2_cell_view(at(state)), e2_at(state)->you_x, e2_at(state)->you_z, e2_at(state)->eye.e[0], e2_at(state)->eye.e[2], true);
     draw_n = e2_scene(at(state));
   }
   cull_n = draw_n > 0 ? e2_cull_fill(at(state), u, (coax_v_f32){cull_u, 100}, (coax_v_u32){cull_buckets, sizeof cull_buckets / 4},

@@ -1,0 +1,8 @@
+// The page's step unit (GitHub #13280): the walker's step the page and the room share
+// (everglade/shared/everglade-step.coax) and the world's cell controller (cells.coax), as one unit of
+// the page's build beside the client's. Both reach the engine's Input module, and a page reaches it
+// from one unit only (INVARIANTS.md, "Walking profiles"; coax/web/wasm.sh names a second copy
+// before it links), so they are loaded together here. The face includes this unit's header as
+// "Everglade-step.h", as it did the shared step's.
+#load "../shared/everglade-step.coax";
+#load "cells.coax";

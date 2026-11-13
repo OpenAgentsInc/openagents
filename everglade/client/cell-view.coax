@@ -1,0 +1,49 @@
+// What the page's frame reads of the world's cells (GitHub #13280; docs/verse/one-world.md): each
+// cell's level, each planting cell's owner and the readout, as plain numbers. The controller that
+// writes them is everglade/client/cells.coax. It is a unit of its own in the page's build, beside
+// the walker's step (everglade/client/everglade-step.coax): the engine's cell controller loads the
+// replay envelope, and so the Input module, which a page may reach from one unit only
+// (INVARIANTS.md, "Walking profiles"). So the client's unit loads this file and no more.
+//   coax/bin/coax test --library everglade/client/cells.coax
+#load "../../verse/everglade2/plant.coax";
+
+E2CV_CELLS :: 256;      // aethyr/world/cells.coax CELL_MAX (cells.coax checks it)
+E2CV_DRAW :: 4;         // CELL_DRAW_LEVEL
+E2CV_SIMULATE :: 3;     // CELL_SIMULATE_LEVEL
+E2CV_SIZE :: 64.0;      // CELL_SIZE
+// The cell keys the lookup holds: cx from E2CV_KEY_X0, cz from E2CV_KEY_Z0, 16 each way (1,024 m a
+// side: Everglade is 736 m long).
+E2CV_KEYS :: 16; E2CV_KEY_X0 :: -8; E2CV_KEY_Z0 :: -12;
+E2CV_PROBES :: 14;
+
+E2CellView :: struct {
+  ready: bool;                              // the controller has stepped: until then everything draws
+  level: [E2CV_CELLS] u8;                   // each cell's level
+  key: [E2CV_KEYS * E2CV_KEYS] int;         // by cell key: the manifest's index + 1 (0: no such cell)
+  owner: [E2_CELLS_X * E2_CELLS_Z] int;     // by planting cell: its world cell's index + 1 (0: the backdrop)
+  probe: [E2CV_PROBES] int;                 // the readout (cells.coax e2cl_probe)
+}
+e2cv_key_at :: (cx: int, cz: int) -> int {
+  i := cx - E2CV_KEY_X0; j := cz - E2CV_KEY_Z0;
+  return ifx i < 0 || j < 0 || i >= E2CV_KEYS || j >= E2CV_KEYS then -1 else j * E2CV_KEYS + i;
+}
+// The manifest's index of the cell at (x, z), or -1.
+e2cv_of :: (v: [] E2CellView, x: f64, z: f64) -> int {
+  k := e2cv_key_at(cast(int) floor(x / E2CV_SIZE), cast(int) floor(z / E2CV_SIZE));
+  return ifx k < 0 then -1 else v[0].key[k] - 1;
+}
+// Whether a planting cell's pieces draw: its world cell draws, or it is the backdrop's.
+e2cv_plant_draws :: (v: [] E2CellView, p: int) -> bool {
+  if !v[0].ready { return true; }
+  o := v[0].owner[p];
+  return o == 0 || v[0].level[o - 1] == E2CV_DRAW;
+}
+// Whether what stands at (x, z) draws, by the same rule.
+e2cv_draws_at :: (v: [] E2CellView, x: f32, z: f32) -> bool {
+  if !v[0].ready { return true; }
+  i := e2cv_of(v, f64(x), f64(z));
+  return i < 0 || v[0].level[i] == E2CV_DRAW;
+}
+// Whether you may stand at (x, z): its cell simulates.
+e2cv_may_enter :: (v: [] E2CellView, x: f32, z: f32) -> bool { i := e2cv_of(v, f64(x), f64(z)); return i >= 0 && v[0].level[i] >= E2CV_SIMULATE; }
+e2cv_probe :: (v: [] E2CellView, f: int) -> int { return ifx f < 0 || f >= E2CV_PROBES then -1 else v[0].probe[f]; }

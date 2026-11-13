@@ -397,7 +397,7 @@ timed cull-fixture in_repo coax/web/tool.sh aethyr/tools/cull-fixture.coax "$her
 cullfixture=$!
 # /worlds/everglade2 (unlisted): Everglade v2, the glade, one path through the woods and a clearing (docs/verse/everglade2.md).
 timed everglade2 "$here/../../coax/web/wasm.sh" "$here/../../everglade/client/client.coax" "$here/everglade2-face.c" "$here/build/everglade2.wasm" \
-  "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
+  "$here/../../everglade/client/everglade-step.coax" "$a/core/sticks.coax" &
 everglade2=$!
 # /worlds/metahuman-lab (unlisted): one figure on the CC0 people rig's skeleton and clips (docs/verse/metahuman-support.md).
 old timed metahumanlab "$here/../../coax/web/wasm.sh" "$here/metahumanlab.coax" "$here/metahumanlab-face.c" "$here/build/metahumanlab.wasm" &

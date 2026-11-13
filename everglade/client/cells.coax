@@ -1,0 +1,272 @@
+// The page's half of the world in cells (GitHub #13280, AAA P2.7; docs/verse/one-world.md): the
+// page holds the zone's manifest (everglade/world/zone.coax, the room's own) and steps the engine's
+// cell controller (aethyr/world/cells.coax) on where you stand and where the eye is, once a frame.
+// The glade and the forest path are neighbouring cells of that one world: nothing is handed over
+// between them.
+//
+// What a cell is on the page:
+//   - Its level: absent, loading, resident, simulate or draw, by the page's rings
+//     (e2z_page_rings). The draw ring is past the farthest a planted piece shows, so the controller
+//     never cuts off something you can see; the piece's own fade does that (client.coax
+//     e2_piece_shown).
+//   - Its content: the planted pieces whose planting cell (verse/everglade2/plant.coax, 16 m) has
+//     its middle in the cell. A planting cell off the manifest is the zone's backdrop: land nobody
+//     walks, resident with the zone and drawn by distance alone.
+//   - Where you may be: you stand only on the manifest's cells (walk-test.coax checks that every
+//     place you may stand is on one), and `held` counts the frames you stood in a cell that did not
+//     simulate. It is 0 while loads come in time.
+//
+// The frame reads the levels from a plain view (cell-view.coax, in the client's state); this file
+// writes it. In the page's build this file is a unit beside the walker's step
+// (everglade/client/everglade-step.coax), and the face calls e2cl_page_frame once a frame.
+//
+// The loader. The controller asks for a cell; whatever holds the pack answers, and the answer is
+// admitted only for the cell's current request at the manifest's digest (cell_complete). The whole
+// interface is three calls, so a paged pack reader can sit behind it (GitHub #13304):
+//   e2cl_asked(c, out)                       the cells waiting for their content, each (cell, request)
+//   e2cl_key(c, cell)                        that cell's (cx, cz), for the catalog's line of its bytes
+//   e2cl_loaded(c, cell, request, digest, failed)   the answer; what the controller said to it
+// Today the pack comes whole (the `.vpk3` is fetched at the start), so the page answers its own
+// asks at once, as a room does (everglade/server/nav.coax): e2cl_frame with `whole`. A paged host
+// passes whole = false and answers through e2cl_loaded as each cell's bytes arrive.
+//
+// The origin. One floating origin (cells.coax CellOrigin) follows you by cell (cell_rebase):
+// e2cl_local gives a world point from it as f32. The page's shaders still take world f32 (Everglade
+// is 736 m long, where f32 keeps 0.06 mm); the origin is kept and checked here so the renderer's
+// instance rows can take it (GitHub #13303).
+//   coax/bin/coax test --library everglade/client/cells.coax
+#load "../world/zone.coax";
+#load "cell-view.coax";
+
+E2CL_SETTLE :: 16;      // controller steps a frame at most while asks are answered at once
+E2CL_OWN_SLACK :: 12.0; // m: a piece stands at most this far from its planting cell's middle (half of 16 m's diagonal)
+E2CL_EYE_SLACK :: 13.0; // m: the eye stands at most this far from you (client.coax E2_CAM_REACH)
+
+E2Cells :: struct {
+  w: [1] CellWorld; ready: bool;
+  origin: CellOrigin; rebases: int;
+  frames: int;       // frames stepped
+  asks: int;         // loads asked
+  held: int;         // frames you stood in a cell that did not simulate
+  off: int;          // frames you stood off the manifest
+  peak: int;         // the most cells resident at once
+  here: int = -1;    // your cell (-1 off the manifest)
+}
+
+// The zone's manifest, every cell absent; the view's lookup by key and each planting cell's owner.
+e2cl_start :: (c: [] E2Cells, v: [] E2CellView) -> bool {
+  e2z_manifest(c[0].w[..]);
+  v[0].ready = false;
+  for k: 0..<E2CV_KEYS * E2CV_KEYS { v[0].key[k] = 0; }
+  for i: 0..<E2CV_CELLS { v[0].level[i] = 0; }
+  for i: 0..<c[0].w[0].n {
+    k := e2cv_key_at(c[0].w[0].manifest[i].cx, c[0].w[0].manifest[i].cz);
+    if k < 0 { return false; }
+    v[0].key[k] = i + 1;
+  }
+  for p: 0..<E2_CELLS_X * E2_CELLS_Z {
+    mx := f64(e2_cell_x(p % E2_CELLS_X)) + E2_CELL * 0.5; mz := f64(e2_cell_z(p / E2_CELLS_X)) - E2_CELL * 0.5;
+    v[0].owner[p] = e2cv_of(v, mx, mz) + 1;
+  }
+  c[0].origin = CellOrigin.{}; c[0].rebases = 0; c[0].frames = 0; c[0].asks = 0; c[0].held = 0; c[0].off = 0; c[0].peak = 0; c[0].here = -1;
+  c[0].ready = cell_manifest_ok(c[0].w[..]) && cell_rings_ok(e2z_page_rings());
+  e2cl_publish(c, v);
+  return c[0].ready;
+}
+// The levels and the readout into the view.
+e2cl_publish :: (c: [] E2Cells, v: [] E2CellView) {
+  for i: 0..<c[0].w[0].n { v[0].level[i] = cast(u8) c[0].w[0].cells[i].level; }
+  for f: 0..<E2CV_PROBES { v[0].probe[f] = e2cl_probe(c, f); }
+  v[0].ready = c[0].ready;
+}
+
+// ---- the loader's three calls
+// The cells waiting for their content: out takes (cell, request) pairs; how many.
+e2cl_asked :: (c: [] E2Cells, out: [] int) -> int #export_c #effects(all) {
+  n := 0;
+  for i: 0..<c[0].w[0].n {
+    if c[0].w[0].cells[i].level != CELL_LOADING || n * 2 + 1 >= out.count { continue; }
+    out[n * 2] = i; out[n * 2 + 1] = c[0].w[0].cells[i].request; n += 1;
+  }
+  return n;
+}
+// A cell's key, cx in the high half and cz in the low, each offset by 32768 (a catalog line names a cell by it).
+e2cl_key :: (c: [] E2Cells, cell: int) -> int #export_c #effects(all) {
+  if cell < 0 || cell >= c[0].w[0].n { return -1; }
+  return (c[0].w[0].manifest[cell].cx + 32768) * 65536 + (c[0].w[0].manifest[cell].cz + 32768);
+}
+// The digest a cell's content must have.
+e2cl_digest :: (c: [] E2Cells, cell: int) -> int #export_c #effects(all) { return ifx cell < 0 || cell >= c[0].w[0].n then 0 else c[0].w[0].manifest[cell].digest; }
+// The loader's answer for a cell: what the controller said (CELL_OK, or why it was refused).
+e2cl_loaded :: (c: [] E2Cells, cell: int, request: int, digest: int, failed: bool) -> int #export_c #effects(all) {
+  return cell_complete(c[0].w[..], cell_answer(request, 1, cell, digest, failed));
+}
+
+// One frame of the controller with you at (x, z) and the eye over (ex, ez): a cell's distance is to
+// the nearer of the two, so a camera that leaves you (a film stage's) still has its cells. `whole`:
+// the pack is in whole, so each ask is answered here at once and the cells settle this frame.
+// Returns the loads asked this frame.
+e2cl_frame :: (c: [] E2Cells, v: [] E2CellView, x: f32, z: f32, ex: f32, ez: f32, whole: bool) -> int {
+  if !c[0].ready { return 0; }
+  w := c[0].w[..]; rings := e2z_page_rings(); asked := 0;
+  at := [4] f64.[f64(x), f64(z), f64(ex), f64(ez)];
+  o := cell_rebase(c[0].origin, f64(x), f64(z));
+  if o.x != c[0].origin.x || o.z != c[0].origin.z { c[0].origin = o; c[0].rebases += 1; }
+  for round: 0..<E2CL_SETTLE {
+    s := cell_step_from(w, at[..], rings);
+    asked += s.asked_n;
+    if !whole { break; }
+    pending := 0;
+    for i: 0..<w[0].n { if w[0].cells[i].level == CELL_LOADING { pending += 1; _v := e2cl_loaded(c, i, w[0].cells[i].request, w[0].manifest[i].digest, false); } }
+    // an answered cell rises to its ring's level on the next step: one more round, then it is settled
+    if pending == 0 && s.asked_n == 0 { break; }
+  }
+  c[0].frames += 1; c[0].asks += asked;
+  c[0].here = cell_of(w, f64(x), f64(z));
+  if c[0].here < 0 { c[0].off += 1; } else if !cell_simulates(w, c[0].here) { c[0].held += 1; }
+  r := cell_resident_count(w); if r > c[0].peak { c[0].peak = r; }
+  e2cl_publish(c, v);
+  return asked;
+}
+// The page's frame (everglade2-face.c, once a frame before the scene is listed): the controller is
+// started on its first call. `whole` is true while the pack comes whole.
+e2cl_page_frame :: (c: [] E2Cells, v: [] E2CellView, x: f32, z: f32, ex: f32, ez: f32, whole: bool) -> int #export_c #effects(all) {
+  if !c[0].ready && !e2cl_start(c, v) { return 0; }
+  return e2cl_frame(c, v, x, z, ex, ez, whole);
+}
+
+// A world point from the origin, as f32.
+e2cl_local :: (c: [] E2Cells, x: f64, y: f64, z: f64) -> [3] f32 { return cell_local(c[0].origin, x, y, z); }
+// The page's readout (client.coax e2_probe 180 to 193, through the view).
+e2cl_probe :: (c: [] E2Cells, f: int) -> int {
+  w := c[0].w[..];
+  if f == 0 { return ifx c[0].ready then w[0].n else 0; }
+  if f == 1 { return cell_resident_count(w); }
+  if f == 2 { n := 0; for i: 0..<w[0].n { if w[0].cells[i].level == CELL_DRAW_LEVEL { n += 1; } } return n; }
+  if f == 3 { return cell_loading_count(w); }
+  if f == 4 { return c[0].held; }
+  if f == 5 { return w[0].counts[CELL_REFUSED]; }
+  if f == 6 { return c[0].rebases; }
+  if f == 7 { return c[0].here; }
+  if f == 8 { return cell_key(c[0].origin.x); }
+  if f == 9 { return cell_key(c[0].origin.z); }
+  if f == 10 { return c[0].peak; }
+  if f == 11 { return c[0].off; }
+  if f == 12 { return c[0].asks; }
+  if f == 13 { return w[0].counts[CELL_WRONG_CONTENT] + w[0].counts[CELL_FAILED] + w[0].counts[CELL_NOT_ASKED] + w[0].counts[CELL_DROPPED] + w[0].counts[CELL_UNKNOWN]; }
+  return -1;
+}
+
+// The path's middle is not this file's to know: the checks walk the manifest's own line, x 0 from
+// the glade south to the far clearing's row, which every row of the manifest has a cell on.
+e2cl_test_drawn_whole :: (c: [] E2Cells, x: f32, z: f32) -> bool {
+  // every cell whose nearest point is within the draw ring draws, and none is loading
+  rings := e2z_page_rings(); w := c[0].w[..];
+  for i: 0..<w[0].n { if cell_distance(w, i, f64(x), f64(z)) <= rings.draw && !cell_draws(w, i) { return false; } }
+  return cell_loading_count(w) == 0;
+}
+#test "the page holds the room's manifest, and its draw ring is past the farthest a planted piece shows" {
+  c: [1] E2Cells; v: [1] E2CellView; #assert e2cl_start(c[..], v[..]) && c[0].w[0].n == E2Z_CELLS;
+  far := E2_KIT_FAR; rings := e2z_page_rings(); most := 0.0;
+  for k: 0..<E2_KITS { if f64(far[k]) > most { most = f64(far[k]); } }
+  #assert most + E2CL_OWN_SLACK + E2CL_EYE_SLACK <= rings.draw && rings.draw <= rings.simulate && rings.simulate + CELL_SIZE <= rings.load;
+  // each cell is found by its key, and a planting cell is its world cell's or the backdrop's
+  for i: 0..<E2Z_CELLS { #assert e2cv_of(v[..], (f64(c[0].w[0].manifest[i].cx) + 0.5) * CELL_SIZE, (f64(c[0].w[0].manifest[i].cz) + 0.5) * CELL_SIZE) == i; }
+  owned := 0; back := 0;
+  for p: 0..<E2_CELLS_X * E2_CELLS_Z {
+    mx := f64(e2_cell_x(p % E2_CELLS_X)) + 8; mz := f64(e2_cell_z(p / E2_CELLS_X)) - 8;
+    o := v[0].owner[p];
+    if o == 0 { back += 1; #assert cell_of(c[0].w[..], mx, mz) < 0; }
+    else { owned += 1; #assert cell_of(c[0].w[..], mx, mz) == o - 1; }
+  }
+  #assert owned == E2Z_CELLS * 16 && back == E2_CELLS_X * E2_CELLS_Z - owned;
+  #assert e2cv_of(v[..], 5000, 0) == -1 && e2cv_of(v[..], 0, -5000) == -1 && e2cl_key(c[..], -1) == -1 && e2cl_key(c[..], E2Z_CELLS) == -1;
+  k := e2cl_key(c[..], 0); #assert k / 65536 - 32768 == c[0].w[0].manifest[0].cx && k % 65536 - 32768 == c[0].w[0].manifest[0].cz && e2cl_digest(c[..], 0) == c[0].w[0].manifest[0].digest && e2cl_digest(c[..], -1) == 0;
+}
+#test "at the spawn the glade and the path's cells draw in one frame and the far clearing is not resident" {
+  c: [1] E2Cells; v: [1] E2CellView; #assert e2cl_start(c[..], v[..]);
+  // not started: everything draws, nothing is stepped
+  n: [1] E2Cells; nv: [1] E2CellView; #assert e2cv_plant_draws(nv[..], 0) && e2cv_draws_at(nv[..], 0, 0) && e2cl_frame(n[..], nv[..], 0, 0, 0, 0, true) == 0 && n[0].frames == 0 && !nv[0].ready;
+  // the page's own call starts it
+  #assert e2cl_page_frame(n[..], nv[..], 0, 0, 0, 0, true) > 0 && n[0].frames == 1 && nv[0].ready && E2CV_CELLS == CELL_MAX && E2CV_DRAW == CELL_DRAW_LEVEL && E2CV_SIMULATE == CELL_SIMULATE_LEVEL && E2CV_SIZE == CELL_SIZE;
+  asked := e2cl_frame(c[..], v[..], 0, 0, 0, 0, true);
+  #assert asked > 0 && asked == c[0].asks && c[0].frames == 1 && c[0].held == 0 && c[0].off == 0 && e2cl_test_drawn_whole(c[..], 0, 0);
+  #assert c[0].here == e2cv_of(v[..], 0.5, 0.5) && e2cv_may_enter(v[..], 0, -0.5) && e2cv_may_enter(v[..], 0, -70) && e2cv_draws_at(v[..], 0, -70);
+  far := e2cv_of(v[..], -10, -470); #assert far >= 0 && c[0].w[0].cells[far].level == CELL_ABSENT && !e2cv_may_enter(v[..], -10, -470) && !e2cv_draws_at(v[..], -10, -470);
+  #assert e2cl_probe(c[..], 0) == E2Z_CELLS;
+  #assert e2cl_probe(c[..], 1) == asked;
+  #assert e2cl_probe(c[..], 2) > 0;
+  // more were wanted than load at once, so some waited a round (counted), and all are in this frame
+  #assert e2cl_probe(c[..], 3) == 0 && e2cl_probe(c[..], 5) > 0;
+  #assert e2cl_probe(c[..], 10) == asked;
+  #assert e2cl_probe(c[..], 4) == 0 && e2cl_probe(c[..], 7) == c[0].here && e2cl_probe(c[..], 11) == 0 && e2cl_probe(c[..], 12) == asked && e2cl_probe(c[..], 13) == 0 && e2cl_probe(c[..], 99) == -1;
+  for f: 0..<E2CV_PROBES { #assert e2cv_probe(v[..], f) == e2cl_probe(c[..], f); } #assert e2cv_probe(v[..], -1) == -1 && e2cv_probe(v[..], E2CV_PROBES) == -1;
+  // the far clearing's planting cells are its cell's and don't draw; the backdrop's do
+  fp := -1; bp := -1;
+  for p: 0..<E2_CELLS_X * E2_CELLS_Z { if v[0].owner[p] == far + 1 { fp = p; } if v[0].owner[p] == 0 { bp = p; } }
+  #assert fp >= 0 && bp >= 0 && !e2cv_plant_draws(v[..], fp) && e2cv_plant_draws(v[..], bp) && e2cv_draws_at(v[..], 5000, 0);
+  // a second frame where you stand asks for nothing
+  #assert e2cl_frame(c[..], v[..], 0, 0, 0, 0, true) == 0 && c[0].frames == 2;
+  // an eye that leaves you (a film stage's) holds its own cells: the far clearing draws for it
+  _f := e2cl_frame(c[..], v[..], 0, 0, -10, -470, true); #assert c[0].w[0].cells[far].level == CELL_DRAW_LEVEL && e2cv_plant_draws(v[..], fp) && c[0].here == e2cv_of(v[..], 0.5, 0.5);
+  // off the manifest is counted, and nowhere to enter
+  _o := e2cl_frame(c[..], v[..], 150, 40, 150, 40, true); #assert c[0].off == 1 && c[0].here == -1 && !e2cv_may_enter(v[..], 150, 40);
+}
+#test "walking the world's length with the pack whole: your cell always simulates and all in reach draws, inside the budget" #steps 400000000 {
+  c: [1] E2Cells; v: [1] E2CellView; #assert e2cl_start(c[..], v[..]);
+  // 4.25 m/s at 20 frames a second, south to the far clearing and back
+  for leg: 0..<2 { for k: 0..<2400 {
+    z := ifx leg == 0 then -f32(k) * 0.2125 else -510 + f32(k) * 0.2125;
+    _a := e2cl_frame(c[..], v[..], -1, z, -1, z, true);
+    #assert c[0].held == 0 && c[0].off == 0 && e2cv_may_enter(v[..], -1, z) && e2cl_test_drawn_whole(c[..], -1, z);
+  } }
+  #assert c[0].peak <= CELL_RESIDENT && c[0].peak <= E2Z_CELLS && e2cl_probe(c[..], 13) == 0;
+  // cells were let go behind you and asked for again on the way back
+  #assert c[0].asks > E2Z_CELLS;
+}
+#test "a loader that answers late: cells arrive before you reach them, and a wrong, old or failed answer is refused" #steps 400000000 {
+  c: [1] E2Cells; v: [1] E2CellView; #assert e2cl_start(c[..], v[..]);
+  out: [CELL_LOADS * 2] int; due: [CELL_MAX] int; for i: 0..<CELL_MAX { due[i] = -1; }
+  // a horse's gallop, 12 m/s at 20 frames a second, and a loader that takes 3 s a cell: you wait
+  // where you start until your own cell is in, and are never held after
+  late := 60; z: f32 = 0; moved := 0;
+  for k: 0..<1400 {
+    if e2cv_may_enter(v[..], -1, z) && z > -505 { z -= 0.6; moved += 1; }
+    held := c[0].held;
+    _a := e2cl_frame(c[..], v[..], -1, z, -1, z, false);
+    if moved > 1 { #assert c[0].held == held; }
+    n := e2cl_asked(c[..], out[..]);
+    #assert n <= CELL_LOADS && c[0].off == 0;
+    for q: 0..<n { i := out[q * 2];
+      if due[i] < 0 { due[i] = k + late; }
+      if due[i] > k { continue; }
+      #assert e2cl_loaded(c[..], i, out[q * 2 + 1], e2cl_digest(c[..], i), false) == CELL_OK; due[i] = -1;
+    }
+  }
+  #assert z <= -505 && moved > 800 && c[0].held > 0 && c[0].held <= late + 2 && e2cl_probe(c[..], 13) == 0;
+  // a wrong digest, an old request and a failed load are each refused, and the cell is asked again
+  d: [1] E2Cells; dv: [1] E2CellView; #assert e2cl_start(d[..], dv[..]); _b := e2cl_frame(d[..], dv[..], 0, 0, 0, 0, false);
+  m := e2cl_asked(d[..], out[..]); #assert m == CELL_LOADS;
+  #assert e2cl_loaded(d[..], out[0], out[1] - 100, e2cl_digest(d[..], out[0]), false) == CELL_NOT_ASKED && d[0].w[0].cells[out[0]].level == CELL_LOADING;
+  #assert e2cl_loaded(d[..], out[0], out[1], e2cl_digest(d[..], out[0]) + 1, false) == CELL_WRONG_CONTENT && d[0].w[0].cells[out[0]].level == CELL_ABSENT;
+  #assert e2cl_loaded(d[..], out[2], out[3], e2cl_digest(d[..], out[2]), true) == CELL_FAILED && d[0].w[0].cells[out[2]].level == CELL_ABSENT;
+  #assert e2cl_loaded(d[..], out[4], out[5], e2cl_digest(d[..], out[4]), false) == CELL_OK && e2cl_probe(d[..], 13) == 3;
+  _e := e2cl_frame(d[..], dv[..], 0, 0, 0, 0, false);
+  again: [CELL_LOADS * 2] int; #assert e2cl_asked(d[..], again[..]) == CELL_LOADS && d[0].w[0].cells[out[0]].level == CELL_LOADING && d[0].w[0].cells[out[0]].request > out[1];
+  short: [3] int; #assert e2cl_asked(d[..], short[..]) == 1;
+}
+#test "the origin follows you by cell: a point near you stays within two cells of it, and an edge crossed back and forth moves nothing" #steps 400000000 {
+  c: [1] E2Cells; v: [1] E2CellView; #assert e2cl_start(c[..], v[..]);
+  for k: 0..<2400 {
+    z := -f32(k) * 0.2125;
+    _a := e2cl_frame(c[..], v[..], -1, z, -1, z, true);
+    l := e2cl_local(c[..], -1, 1.5, f64(z));
+    #assert abs(l[0]) <= 128 && abs(l[2]) <= 128 && l[1] == 1.5;
+    // the same point through the origin is the world point again, to under a hundredth of a millimetre
+    #assert abs(f64(l[2]) + c[0].origin.z - f64(z)) < 0.00001;
+  }
+  #assert c[0].rebases >= 3 && c[0].rebases <= 8 && e2cl_probe(c[..], 6) == c[0].rebases && e2cl_probe(c[..], 9) == cell_key(c[0].origin.z) && e2cl_probe(c[..], 8) == cell_key(c[0].origin.x);
+  was := c[0].rebases;
+  for k: 0..<200 { _a := e2cl_frame(c[..], v[..], -1, cast(f32) (ifx k % 2 == 0 then c[0].origin.z + 63.9 else c[0].origin.z + 64.1), -1, cast(f32) (ifx k % 2 == 0 then c[0].origin.z + 63.9 else c[0].origin.z + 64.1), true); }
+  #assert c[0].rebases == was;
+}

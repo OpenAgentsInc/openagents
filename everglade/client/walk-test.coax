@@ -4,6 +4,7 @@
 //   coax/bin/coax test --library everglade/client/walk-test.coax
 #load "client.coax";
 #load "../shared/everglade-step.coax" as step;
+#load "cells.coax";   // the world's cell controller, stepped in the route walks as the page steps it
 #load "../../aethyr/move/walk.coax" as walk;
 #load "../../aethyr/physics/query.coax" as scaled;
 
@@ -153,4 +154,81 @@ e2t_path_walk :: (s: [] E2, off: f32) -> f32 {
 #test "you run the whole path a metre right of its middle, and nothing stops you" #steps 6000000000 {
   s: [1] E2; s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true;
   #assert e2t_path_walk(s[..], 1) < 0.3;
+}
+
+// ---- the route walks, one a place (GitHub #13280): what you can see you can walk to. Each walks
+// from the place before to a named point of this one, down the path's middle and then straight at
+// the point, through the real controller among every collider the page builds, with the world's
+// cells stepped as the page steps them (everglade/client/cells.coax). The longest you were held up
+// (seconds); 1000 when you never arrived, 2000 when an edge you can't see turned you, 3000 when your
+// cell did not simulate as you stepped into it. `turn`: metres short of the point, along the path,
+// from where you leave the path's middle and walk straight at it.
+E2T_ROUTE_TURN :: 30.0;
+e2t_route :: (s: [] E2, x0: f32, z0: f32, tx: f32, tz: f32, near: f32, turn: f32) -> f32 {
+  c: [1] E2Cells; if !e2cl_start(c[..], s[0].cl[..]) { return 1000; }
+  p := walk.walk_place(x0, 0, z0, 0);
+  dt := 1.0f32 / 20; held := 0.0f32; worst := 0.0f32;
+  for k: 0..<3000 {
+    x := p.body.pos.x; z := p.body.pos.z;
+    _c := e2cl_frame(c[..], s[0].cl[..], x, z, x, z, true);
+    if !e2cv_may_enter(s[0].cl[..], x, z) || c[0].held > 0 || c[0].off > 0 { return 3000; }
+    gx := tx - x; gz := tz - z; gap := sqrt(gx * gx + gz * gz);
+    if gap < near { return worst; }
+    ax := tx; az := tz;
+    if z - tz > turn { az = z - 3; ax = e2_road_x(az); }
+    i := EgMoveIn.{key_y = 1, run = false, theta = e2_walk_theta(walk.atan2(ax - x, az - z))};
+    i.run = walk.walk_runs(i.run, false, 0, 0);
+    w := e2_move_world(s, x, z); w.pace = e2_pace(i.run);
+    none: [1] f32;
+    p.body = step.eg_step_begin(p.body, i, w, dt); p.body = step.eg_step_advance_among(p.body, w, s[0].move_bodies[0..<w.bodies * 7], none[0..<0], none[0..<0], s[0].move_hulls[0..<w.hulls], dt);
+    kept := e2_keep(s, p.body.pos.x, p.body.pos.z);
+    if kept.x != p.body.pos.x || kept.z != p.body.pos.z { return 2000; }
+    s[0].you_x = p.body.pos.x; s[0].you_z = p.body.pos.z;
+    mx := p.body.pos.x - x; mz := p.body.pos.z - z;
+    if sqrt(mx * mx + mz * mz) < f32(E2_RUN_SPEED) * dt * 0.5 { held += dt; if held > worst { worst = held; } } else { held = 0; }
+  }
+  return 1000;
+}
+// A path point's place in the world: its x is metres across from the path's middle at its z.
+e2t_at :: (name: string) -> walk.Vec3 { p := e2_point(name); return walk.Vec3.{x = e2_road_x(p.z) + p.x, y = 0, z = p.z}; }
+#test "route walk, The Glade: from the spawn to the guard's post" #steps 6000000000 {
+  s: [1] E2; s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true;
+  to := e2t_at("guard-post"); #assert e2_point("guard-post").found && e2_zone(to.x, to.z) == 0;
+  #assert e2t_route(s[..], f32(E2_SPAWN_X), f32(E2_SPAWN_Z) - f32(E2T_PATH_FROM), to.x, to.z, 1, f32(E2T_ROUTE_TURN)) < 0.3;
+}
+#test "route walk, The Sunlit Path: from the guard's post into the woods" #steps 6000000000 {
+  s: [1] E2; s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true;
+  from := e2t_at("guard-post"); to := e2t_at("woods"); #assert e2_point("woods").found && e2_zone(to.x, to.z) == 1;
+  #assert e2t_route(s[..], from.x, from.z, to.x, to.z, 1, f32(E2T_ROUTE_TURN)) < 0.3;
+}
+#test "route walk, The Deep Canopy: from the woods to under the deepest canopy" #steps 6000000000 {
+  s: [1] E2; s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true;
+  from := e2t_at("woods"); to := e2t_at("deep-canopy"); #assert e2_point("deep-canopy").found && e2_zone(to.x, to.z) == 2;
+  #assert e2t_route(s[..], from.x, from.z, to.x, to.z, 1, f32(E2T_ROUTE_TURN)) < 0.3;
+}
+#test "route walk, The Clearing: from the deep canopy to the clearing's middle" #steps 6000000000 {
+  s: [1] E2; s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true;
+  from := e2t_at("deep-canopy"); to := e2t_at("clearing"); #assert e2_zone(to.x, to.z) == 3;
+  #assert e2t_route(s[..], from.x, from.z, to.x, to.z, 1, f32(E2T_ROUTE_TURN)) < 0.3;
+}
+#test "route walk, Goblin Camp: from the path's last bend to the camp" #steps 6000000000 #traversal 1000000000 {
+  s: [1] E2; s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true;
+  from := walk.Vec3.{x = e2_road_x(-400), y = 0, z = -400}; #assert e2_point("goblin-camp").found && e2_zone(e2_camp_x(), f32(E2_CAMP_Z)) == 4;
+  // down the path until you are level with the camp, then across the clearing's grass to within
+  // sight of its fire: the camp's own things stand in its middle
+  held := e2t_route(s[..], from.x, from.z, e2_camp_x(), f32(E2_CAMP_Z), 8, 0.5);
+  #assert held != 3000;
+  #assert held != 2000;
+  #assert held != 1000;
+  #assert held < 0.3;
+}
+#test "everywhere you may stand is a cell of the world's manifest" #steps 6000000000 {
+  c: [1] E2Cells; v: [1] E2CellView; #assert e2cl_start(c[..], v[..]);
+  stood := 0;
+  for j: 0..<361 { for i: 0..<211 {
+    x := f32(E2_WEST) + f32(i) * 2; z := f32(E2_BACK) - f32(j) * 2;
+    if !e2_may_stand(x, z) { continue; }
+    stood += 1; #assert e2cv_of(v[..], f64(x), f64(z)) >= 0;
+  } }
+  #assert stood > 2000;
 }

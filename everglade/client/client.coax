@@ -36,6 +36,7 @@
 #load "create.coax";   // Character Create, in this world: /worlds/character-creator
 #load "../../aethyr/character/material.coax" as cmat;   // the characters' material table (#13012)
 #load "cull.coax";   // what the host's instance cull reads each frame (#13050)
+#load "cell-view.coax";  // the world's cells as the frame reads them; the controller is everglade/client/cells.coax, in the step's unit (#13280)
 #load "../../aethyr/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
 #load "../../verse/everglade2/environment.coax";   // the world's places and their light (#13065)
 #load "../../aethyr/render/environment-debug.coax" as envd;   // ?light=VIEW: the developer's light views (#13067)
@@ -85,6 +86,7 @@ E2 :: struct {
   items: [E2_ITEMS * E2_ITEM_FLOATS] f32; kinds: [E2_ITEMS] u8; first: [E2_CELLS_X * E2_CELLS_Z + 1] int; planted: int; plant_done: bool;
   plant_due: bool; plant_route: int;   // plant here on the next frame; 1 the pack's P lines, 2 planted here (e2_take_planting)
   eg: [1] E2Ground;                                   // the ground's tiles and the glade's baked AO (verse/everglade2/ground.coax)
+  cl: [1] E2CellView;                                 // the world's cells round you: each one's level, written by the cell controller once a frame (everglade/client/cells.coax)
   catalog_in: bool; ground_code: int = -1; ground_done: bool;   // the catalog came; its ground record's status (-1 none); the ground settled and baked
   kit_first: [E2_BUCKETS] int; kit_count: [E2_BUCKETS] int; kits: bool;
   records: [E2_RECORDS * 24] f32;
@@ -164,6 +166,10 @@ E2Head :: struct { x: f32; y: f32; z: f32; fade: f32 = 1; name: [NET_NAME] u8; n
 // ---- the pack: the catalog's kit rows (e2/k<kit>/<level>), and Character Create's own rows
 // The face keeps the ground's two tile sets outside the state (everglade2-face.c), as it does the catalog.
 e2_ground_store :: (s: [] E2, sets: [] E2Tiles) #export_c #effects(all) { e2g_store(s[0].eg[..], sets); }
+// The world's cells as the frame reads them, for the face to hand the cell controller once a frame
+// (everglade/client/cells.coax e2cl_page_frame), and whether the woods are in: the cells' content.
+e2_cell_view :: (s: [] E2) -> [] E2CellView #export_c #effects(all) { return s[0].cl[..]; }
+e2_cells_due :: (s: [] E2) -> bool #export_c #effects(all) { return s[0].plant_done; }
 e2_catalog :: (s: [] E2, whole: string, rec: [] u8, rest: [] u8) #export_c #effects(all) {
   // the ground's record rides in the catalog as G lines (verse/everglade2/ground.coax): read and
   // published now, whole or not at all; the rest is the catalog the others read
@@ -1429,6 +1435,7 @@ e2_field :: (s: [] E2, d: [] u32, n0: int) -> int {
       far := sqrt(fx * fx + fz * fz);
       if near > out || far < inner { continue; }
       cx := wx + bs * 0.5; cz := nz - bs * 0.5;
+      if !e2cv_draws_at(s[0].cl[..], cx, cz) { continue; }
       if !e2_in_view(s, cx, e2_height(cx, cz) + 1, cz, bs * 0.75) { continue; }
       // one draw a block: every tier draws Grass_Common_Short (465 vertices a tuft)
       b := E2_GRASS * E2_LODS;
@@ -1462,6 +1469,7 @@ e2_pieces :: (s: [] E2, d: [] u32, n0: int, casting: bool) -> int {
     for c: 0..<E2_CELLS_X * E2_CELLS_Z {
       i := c % E2_CELLS_X; j := c / E2_CELLS_X;
       mx := e2_cell_x(i) + f32(E2_CELL) * 0.5; mz := e2_cell_z(j) - f32(E2_CELL) * 0.5;
+      if !e2cv_plant_draws(s[0].cl[..], c) { continue; }   // its world cell isn't drawn (everglade/client/cells.coax)
       far := ifx casting then (ifx cast_far < reach0 then cast_far else reach0) else reach0;
       dx := mx - ex; dz := mz - ez;
       if dx * dx + dz * dz > (far + 12) * (far + 12) { continue; }
@@ -1672,6 +1680,11 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   #if BUILD_DEBUG { if field >= 980 && field < 1000 { return e2a_probe(s, field); } }
   if field == 0 { return s[0].draw_n; } if field == 1 { return s[0].shadow_n; } if field == 2 { return s[0].inst_n; }
   if field == 3 { return s[0].planted; } if field == 173 { return s[0].plant_route; }
+  // the world's cells (everglade/client/cells.coax e2cl_probe): 180 the manifest's cells, 181 resident,
+  // 182 drawing, 183 loading, 184 frames you stood in a cell that didn't simulate, 185 loads that waited
+  // a round, 186 origin rebases, 187 your cell, 188 and 189 the origin's cell, 190 the most resident,
+  // 191 frames off the manifest, 192 loads asked, 193 answers refused
+  if field >= 180 && field < 194 { return e2cv_probe(s[0].cl[..], field - 180); }
   // 160 to 168 the graphics quality (e2_knobs_frame): the rung, its tier, the mode, the knobs as the
   // frame uses them (in hundredths: grass, scenery, shadow, post, crowd), the bloom passes
   if field == 160 { return ifx s[0].q_ready then s[0].q[0].rung else -1; } if field == 161 { return ifx s[0].q_ready then quality_tier(s[0].q[..]) else -1; }
