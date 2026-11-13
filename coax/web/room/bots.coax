@@ -10,8 +10,12 @@
 //   fights   the scripted player's press each time a cast can go: a heal when hurt, its buffs once a
 //            fight, then harm at the nearest monster (h2), counted when the room takes it (e cast)
 //   earns    the XP and levels the room grants it (e xp, e level): each grant is a monster it helped
-//            fell (kills). Loot has no wire message yet (#13291 moves rewards onto the item ledger);
-//            a bot counts XP in its place
+//            fell (kills)
+//   quests   where it first stood (the glade, by the Warden) it asks to talk to each of the Warden's
+//            dialogues every few seconds (E SEQ 6 ID), and counts what the room tells its seat of its own
+//            character (e say, e quest, e loot, e item, e coin: room-items.coax): lines heard, quest stages
+//            gained, drops, items now held and worn, coin. It wears what it is given (E SEQ 7 ID). So a run
+//            proves the loop a player plays: take the quest, kill, loot through the ledger, hand in, reward once
 //   A bot the directory places on a shard that does not answer (staging runs one shard) asks three
 //   times and is then out for the run (unplaced), so it does not spend the address's ticket limit.
 //   reconnects  every --reconnect seconds: it closes its socket, asks the directory again and sits
@@ -43,6 +47,9 @@
 #load "../../../everglade/server/creature-wire.coax";   // the monsters' frames, as the page reads them
 #load "script-player.coax";
 #load "bot-bars.coax";
+#load "../../../everglade/model/content.coax";      // the content tables' rules: where a quest's reward is
+#load "../../../everglade/content/shipped.coax";    // the tables the bots are built with
+#load "../../../everglade/shared/pins-prev.coax";   // the revision in a tables document's first line: the bots' content pin
 #load "capacity-client.coax";   // input-to-ACK timing and its quantiles
 #load "room-post.coax";         // a load check's signed fault (#13300)
 
@@ -55,7 +62,11 @@ BT_ASKS :: 96;                // a window's ticket times kept, each
 BT_CAST_MS :: 400;            // between presses
 BT_REACH :: 2.5;              // m: as near a monster as a bot walks
 BT_SIGHT :: 60.0;             // m: a monster farther is not gone after
-BT_PATROL :: 330.0;           // m down the path from where it first stood (past the third wolf pack, creatures.coax e2mo_home), then back
+BT_QUESTS :: 8; BT_ITEMS :: 32;
+BT_TALK_MS :: 3000;           // between its asks to talk
+BT_TALK_NEAR :: 4.0;          // m from where it first stood: near enough the Warden to be heard (the content tables' point)
+BT_DIALOGUES :: 2;            // the Warden's dialogues it asks for, 1 on
+BT_PATROL :: 330.0;           // m down the path from where it first stood (past the third wolf pack: the content tables' spawns), then back
 
 Bot :: struct {
   state: int; until: int;
@@ -75,6 +86,10 @@ Bot :: struct {
   d_at: int; d_tick: int; down: bool;
   travel_seq: int;
   sit_fails: int;               // sockets that would not open, in a row: three and the bot is out (BT_OUT)
+  talk_t: int; talk_i: int;     // when it next asks the Warden, and which dialogue
+  stage: [BT_QUESTS] int;       // its quests' stages as the room last said them (quest ID - 1)
+  coin: int;                    // its coin as the room last said it
+  item: [BT_ITEMS] int; item_kind: [BT_ITEMS] int; item_slot: [BT_ITEMS] int; item_n: int;   // the items it holds, by instance: each one's kind (its content ID) and the slot it is worn in (0 none)
 }
 // One window's counts (and the run's, summed).
 BtStats :: struct {
@@ -84,6 +99,7 @@ BtStats :: struct {
   casts: int; taken: int; refused: int; blows: int; kills: int; xp: int; levels: int; downs: int;
   reconnects: int; rejoined: int; rejoin_ms_most: int; travels: int; travelled: int; travel_refused: int;
   version_refused: int;
+  says: int; stages: int; loot: int; gained: int; worn: int; coin: int; done: int;   // lines heard, quest stages gained, drops told, items gained, items put on, coin gained, quests whose reward was paid (a stage after the hand-in)
   unplaced: int;                // bots the directory placed where no room answers (three sockets that would not open): out for the run
 }
 
@@ -223,11 +239,54 @@ bt_hear :: (b: [] Bot, s: [] BtStats, t: string, now: int) {
     if wire_is(e, EGC_MON_E) { h := egc_mon_hit_read(e); if h.ok && h.seat == b[0].seat && h.kind == EGC_MON_HIT { s[0].blows += 1; } }
     if wire_is(e, "e xp") && rs_num(rs_field(e, 2)) == b[0].seat { s[0].xp += rs_num(rs_field(e, 3)); s[0].kills += 1; }   // XP is granted for a monster it helped fell
     if wire_is(e, "e level") && rs_num(rs_field(e, 2)) == b[0].seat { s[0].levels += 1; b[0].level = rs_num(rs_field(e, 3)); }
+    what := wire_own(e);
+    if what >= 0 { bt_own(b, s, e, what); }
     if wire_is(e, "v") {
       ry: [1] WireRd; ry[0] = wire_rd(e, 1); you := wire_read_you(e, ry[..]);
       if ry[0].ok && you.ss == b[0].seat && you.level >= 1 { b[0].level = you.level; }
     }
   }
+}
+// What the room tells the bot's seat of its own character (everglade-wire.coax wire_read_own): counted.
+bt_own :: (b: [] Bot, s: [] BtStats, e: string, what: int) {
+  r: [1] WireRd; r[0] = wire_rd(e, WIRE_OWN[what].count); o := wire_read_own(e, r[..], what);
+  if !r[0].ok || o.ss != b[0].seat { return; }
+  if what == WO_SAY { s[0].says += 1; }
+  if what == WO_LOOT { s[0].loot += 1; }
+  if what == WO_COIN { if o.a > b[0].coin { s[0].coin += o.a - b[0].coin; } b[0].coin = o.a; }
+  if what == WO_QUEST && o.a >= 1 && o.a <= BT_QUESTS {
+    was := b[0].stage[o.a - 1];
+    if o.b > was { s[0].stages += o.b - was; if was > 0 && bt_quest_paid(o.a, was, o.b) { s[0].done += 1; } }
+    b[0].stage[o.a - 1] = o.b;
+  }
+  if what == WO_ITEM {
+    at := -1; for i: 0..<b[0].item_n { if b[0].item[i] == o.a { at = i; } }
+    if o.b == 0 { if at >= 0 { b[0].item_n -= 1; b[0].item[at] = b[0].item[b[0].item_n]; b[0].item_kind[at] = b[0].item_kind[b[0].item_n]; b[0].item_slot[at] = b[0].item_slot[b[0].item_n]; } return; }   // gone
+    if at < 0 && b[0].item_n < BT_ITEMS { at = b[0].item_n; b[0].item_n += 1; b[0].item[at] = o.a; b[0].item_kind[at] = o.b; b[0].item_slot[at] = 0; s[0].gained += 1; }
+    if at >= 0 { if o.c > 0 && b[0].item_slot[at] == 0 { s[0].worn += 1; } b[0].item_slot[at] = o.c; }
+  }
+}
+// Whether quest's stage rising from `was` to `to` passed its reward: the stage after its steps' units
+// (everglade/model/content.coax: 1 taken, each unit one more, then each reward one more), by the
+// tables the bots are built with.
+bt_quest_paid :: (quest: int, was: int, to: int) -> bool {
+  d: [1] ContentDoc; if !ct_read(d[..], EC_SHIPPED) { return false; }
+  paid := 1 + ec_total(d[..], quest);
+  return ec_rewards(d[..], quest) > 0 && was <= paid && to > paid;
+}
+// Whether an item of content kind `kind` is worn in a slot, by the tables the bots are built with.
+bt_wearable :: (kind: int) -> bool { d: [1] ContentDoc; return ct_read(d[..], EC_SHIPPED) && ec_slot(d[..], kind) >= 0; }
+#test "a bot counts what the room tells it of its own character: a line, a quest's stages, a drop, an item worn, coin, a reward once" {
+  b: [1] Bot; s: [1] BtStats; b[0].seat = 3;
+  bt_hear(b[..], s[..], "D 40 5 0 0 e coin 3 0;e say 3 1;e quest 3 1 1;e quest 4 1 5;e loot 3 1;e item 3 4107 1 0;e coin 4 99", 30);
+  #assert s[0].says == 1 && s[0].stages == 1 && s[0].loot == 1 && s[0].gained == 1 && s[0].worn == 0 && s[0].coin == 0 && s[0].done == 0 && b[0].item_n == 1;
+  bt_hear(b[..], s[..], "D 41 5 0 0 e quest 3 1 5;e quest 3 1 7;e item 3 4107 0 0;e quest 3 1 8", 30);
+  #assert s[0].stages == 8 && b[0].item_n == 0 && s[0].done == 0 && b[0].stage[0] == 8;
+  // the reward: its stage, its cloak, its coin; said again, it is not a second reward
+  bt_hear(b[..], s[..], "D 42 5 0 0 e quest 3 1 9;e item 3 4200 3 0;e coin 3 25;e item 3 4200 3 2;e quest 3 1 9;e coin 3 25;e item 3 4200 3 2", 30);
+  #assert s[0].done == 1 && s[0].stages == 9 && s[0].gained == 2 && s[0].worn == 1 && s[0].coin == 25 && b[0].item_slot[0] == 2;
+  #assert bt_wearable(3) && bt_wearable(4) && !bt_wearable(1) && !bt_wearable(0) && !bt_wearable(99) && b[0].item_kind[0] == 3;
+  #assert bt_quest_paid(1, 8, 9) && !bt_quest_paid(1, 7, 8) && !bt_quest_paid(1, 9, 10) && bt_quest_paid(2, 5, 6) && !bt_quest_paid(7, 1, 2);
 }
 #test "a bot hears its seat, its casts taken and refused, its blows and its XP" {
   b: [1] Bot; s: [1] BtStats;
@@ -301,7 +360,8 @@ bt_ask :: (o: BtOpts, b: [] Bot, s: [] BtStats, now: int) {
 // The hello, after P (and A when it sits again where it stood).
 bt_hello :: (c: [] RelayConn, b: [] Bot, room: int, i: int) -> bool {
   m: [160] u8;
-  ok := relay_conn_send(c, cast(string) m[0..<wire_put_pins(m[..], 0, WirePins.{})]);
+  // the pins of the tables the bots are built with, as a page says its own: the room plays a bot by this checkout's tables
+  ok := relay_conn_send(c, cast(string) m[0..<wire_put_pins(m[..], 0, wire_pins_at(pprev_doc_rev(EC_SHIPPED)))]);
   if b[0].placed { ok = relay_conn_send(c, cast(string) m[0..<wire_put_at(m[..], 0, WireAt.{x = b[0].x, y = b[0].y, z = b[0].z})]) && ok; }
   nm: [32] u8; k := rs_int(nm[..], rs_put(nm[..], rs_int(nm[..], rs_put(nm[..], 0, "Bot "), room), "-"), i);
   n := wire_put_hello(m[..], 0, WireHello.{look = "ranger.0.0.0", kind = RS_CL_KIND[i % RS_CL_N], flags = 0, name = cast(string) nm[0..<k]});
@@ -406,6 +466,20 @@ bt_play :: (o: BtOpts, c: [] RelayConn, b: [] Bot, s: [] BtStats, room: int, i: 
     _ := relay_conn_send(c, cast(string) m[0..<n]);
     b[0].next_t = now + 1000;
   }
+  // by the Warden (where it first stood): it asks for each of his dialogues in turn, and wears what it holds unworn
+  if now >= b[0].talk_t && b[0].placed && !b[0].down && b[0].seat >= 0 {
+    b[0].talk_t = now + BT_TALK_MS;
+    dz := b[0].z - b[0].z0;
+    if dz * dz < f32(BT_TALK_NEAR) * f32(BT_TALK_NEAR) {
+      b[0].seq += 1; b[0].talk_i = b[0].talk_i % BT_DIALOGUES + 1;
+      n := wire_put_use(m[..], 0, WireUse.{seq = b[0].seq, kind = 6, id = b[0].talk_i});
+      _ := relay_conn_send(c, cast(string) m[0..<n]);
+    }
+    for q: 0..<b[0].item_n { if b[0].item_slot[q] == 0 && bt_wearable(b[0].item_kind[q]) {
+      b[0].seq += 1; n := wire_put_use(m[..], 0, WireUse.{seq = b[0].seq, kind = 7, id = b[0].item[q]});
+      _ := relay_conn_send(c, cast(string) m[0..<n]); break;
+    } }
+  }
   // a fight over (no monster in sight for 10 s): its buffs are for the next one
   if foe >= 0 { b[0].fight_at = now; }
   if foe < 0 && b[0].fight_at > 0 && now - b[0].fight_at > 10000 { for q: 0..<BT_BAR { b[0].used[q] = false; } b[0].fight_at = 0; b[0].turn = 0; }
@@ -483,6 +557,13 @@ bt_json :: (s: [] BtStats, tm: [] CfTiming, n: int, secs: int, room: int, out: [
   jo_key(o[..], "xp"); jo_int(o[..], s[0].xp);
   jo_key(o[..], "levels"); jo_int(o[..], s[0].levels);
   jo_key(o[..], "downs"); jo_int(o[..], s[0].downs);
+  jo_key(o[..], "says"); jo_int(o[..], s[0].says);
+  jo_key(o[..], "quest_stages"); jo_int(o[..], s[0].stages);
+  jo_key(o[..], "loot"); jo_int(o[..], s[0].loot);
+  jo_key(o[..], "items"); jo_int(o[..], s[0].gained);
+  jo_key(o[..], "worn"); jo_int(o[..], s[0].worn);
+  jo_key(o[..], "coin"); jo_int(o[..], s[0].coin);
+  jo_key(o[..], "quests_paid"); jo_int(o[..], s[0].done);
   jo_key(o[..], "reconnects"); jo_int(o[..], s[0].reconnects);
   jo_key(o[..], "rejoined"); jo_int(o[..], s[0].rejoined);
   jo_key(o[..], "rejoin_ms_most"); jo_int(o[..], s[0].rejoin_ms_most);
@@ -502,6 +583,7 @@ bt_sum :: (a: [] BtStats, b: [] BtStats) {
   for k: 0..<CF_HIST { a[0].ask_ms[k] += b[0].ask_ms[k]; }
   a[0].casts += b[0].casts; a[0].taken += b[0].taken; a[0].refused += b[0].refused; a[0].blows += b[0].blows; a[0].kills += b[0].kills;
   a[0].xp += b[0].xp; a[0].levels += b[0].levels; a[0].downs += b[0].downs;
+  a[0].says += b[0].says; a[0].stages += b[0].stages; a[0].loot += b[0].loot; a[0].gained += b[0].gained; a[0].worn += b[0].worn; a[0].coin += b[0].coin; a[0].done += b[0].done;
   a[0].reconnects += b[0].reconnects; a[0].rejoined += b[0].rejoined;
   if b[0].rejoin_ms_most > a[0].rejoin_ms_most { a[0].rejoin_ms_most = b[0].rejoin_ms_most; }
   a[0].travels += b[0].travels; a[0].travelled += b[0].travelled; a[0].travel_refused += b[0].travel_refused; a[0].version_refused += b[0].version_refused;
@@ -648,8 +730,9 @@ bt_run :: (o: BtOpts, players: int, seconds: int, opts: [] string) -> int {
     if !ok || proc_start(h) != 0 { tool_errln("bots: can't start a room's process (run it from the repository's root)"); return 1; }
   }
   line: [8192] u8; left := rooms; finals := 0;
-  totals: [18] int;
-  keys := [18] string.["seated", "d", "bytes", "stalls", "dropped", "lost", "asks", "ask_ok", "ask_limited", "ask_failed", "casts", "taken", "refused", "kills", "xp", "rejoined", "travelled", "version_refused"];
+  totals: [26] int;
+  keys := [26] string.["seated", "d", "bytes", "stalls", "dropped", "lost", "asks", "ask_ok", "ask_limited", "ask_failed", "casts", "taken", "refused", "kills", "xp", "rejoined", "travelled", "version_refused",
+    "levels", "says", "quest_stages", "loot", "items", "worn", "coin", "quests_paid"];
   t_end := rs_now() + (seconds + 180) * 1000;
   while left > 0 && rs_now() < t_end {
     idle := true;
@@ -665,7 +748,7 @@ bt_run :: (o: BtOpts, players: int, seconds: int, opts: [] string) -> int {
         finals += 1;
         at := 0; f := 0; while at < t.count && f < 2 { if t[at] == ' ' { f += 1; } at += 1; }
         nodes: [256] JvNode; j: [1] Jv;
-        if jv_parse(j[..], t[at..<t.count], nodes[..]) { for q: 0..<18 { p := jv_path(j[0], 0, keys[q]); if p >= 0 { totals[q] += rs_num(jv_raw(j[0], p)); } } }
+        if jv_parse(j[..], t[at..<t.count], nodes[..]) { for q: 0..<26 { p := jv_path(j[0], 0, keys[q]); if p >= 0 { totals[q] += rs_num(jv_raw(j[0], p)); } } }
       }
     }
     if idle { proc_sleep(5); }
@@ -677,7 +760,7 @@ bt_run :: (o: BtOpts, players: int, seconds: int, opts: [] string) -> int {
   jo_key(jo[..], "rooms"); jo_int(jo[..], rooms);
   jo_key(jo[..], "finished"); jo_int(jo[..], finals);
   jo_key(jo[..], "seconds"); jo_int(jo[..], seconds);
-  for q: 0..<18 { jo_key(jo[..], keys[q]); jo_int(jo[..], totals[q]); }
+  for q: 0..<26 { jo_key(jo[..], keys[q]); jo_int(jo[..], totals[q]); }
   jo_end(jo[..]);
   print("bots %\n", jo_text(jo[..]));
   return ifx finals == rooms then 0 else 1;
