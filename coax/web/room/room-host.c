@@ -1264,12 +1264,15 @@ int main(int argc, char **argv) {
         return rm_checkpoint_clean(view()) ? 0 : 1;
       }
     }
-    int wait = (int)(next - (double)now_ms());
-    if (wts) { int wto = wt_timeout_ms(wts); if (wto < wait) wait = wto; }
+    /* until the next beat, to the microsecond: a wait in whole milliseconds left the loop asking the
+       kernel again and again through each beat's last part (room-wait.h, #13384) */
+    int64_t wait = (int64_t)(next * 1000.0) - now_us();
+    if (wts) { int64_t wto = (int64_t)wt_timeout_ms(wts) * 1000; if (wto < wait) wait = wto; }
     wait_event evs[WAIT_BATCH];
     int n = wait_for(&waits, evs, WAIT_BATCH, wait);
     if (n < 0) { perror("room: wait"); return 1; }
     int64_t now = now_ms();
+    bool beat = now_us() >= (int64_t)(next * 1000.0);   /* the beat is due (by the clock the wait was set by) */
     clock_in();
     for (int k = 0; k < n; k++) {
       int i = evs[k].tag;
@@ -1305,9 +1308,9 @@ int main(int argc, char **argv) {
     /* silent 20 s, or kicked: a player's silent socket their new one replaced (rl_replace_stale) says
        nothing more, so no frame of its own will doom it; nor may it wait on the API's next control reply.
        Asked once a beat, of the open connections (a socket that speaks is asked at each frame, frames) */
-    if ((double)now >= next) for (int q = 0; q < live_n; q++) { int i = live[q]; if (now - conns[i].heard > 20000 || (conns[i].ws && rm_relay_kicked(view(), i))) doom(i); }
+    if (beat) for (int q = 0; q < live_n; q++) { int i = live[q]; if (now - conns[i].heard > 20000 || (conns[i].ws && rm_relay_kicked(view(), i))) doom(i); }
     reap();
-    if ((double)now >= next) {
+    if (beat) {
       clock_in();
       int64_t t_tick = now_us();
       /* each realm steps when its profile says (room.coax rm_profile: 0 the games on their own paths, room-games.coax; 1 Everglade) */
