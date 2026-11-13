@@ -78,6 +78,13 @@ esf_open :: (h: [] EsTest) {
   #assert coaxial_editor_fetching(s) == 0 && esf_at(esf_said(h[..]), "25 MB") >= 0;
   esf_event(h[..], ES_FILE, "files.drop", 0, "100 run.exe");
   #assert coaxial_editor_fetching(s) == 0 && tr_text_of(t, tr_find(t, "files.said.k")) == "Not done";
+  // a file dropped while the list is being asked for waits for its answer, then goes
+  es_test_press(h[..], "files"); es_test_press(h[..], "files");
+  #assert s[0].fl.flight == ES_FL_LIST;
+  esf_event(h[..], ES_FILE, "files.drop", 0, "900 City.png");
+  #assert s[0].fl.waiting && tr_text_of(t, tr_find(t, "files.drop.t")) == "Sending City.png";
+  esf_sent(h[..], 200, ESF_LIST);
+  #assert !s[0].fl.waiting && coaxial_editor_fetching(s) == ES_HOW_SEND && esf_head(s) == "world.file.attach.v1 project 900 0 City.png\n-\n";
 }
 
 #test "a deployed page names the file, sends it to storage, then says it is done" {

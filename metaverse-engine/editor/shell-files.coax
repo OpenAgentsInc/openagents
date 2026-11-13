@@ -28,6 +28,7 @@ EsFiles :: struct {
   flight: int;                                // what the world's server was asked (ES_FL_*)
   scope: int;                                 // where the next file goes (FW_SCOPE_*)
   file_bytes: int; file_name: [FW_NAME] u8; file_name_n: int;   // the file on its way
+  waiting: bool;                              // it waits for the channel (the list was being asked for when it was dropped)
   note: int; words: [FW_WORDS + 120] u8; words_n: int;          // what the pane says of the last write (ES_FL_SAID_*)
   open: [FW_ID] u8; opened: bool;             // the attachment opened large
   pin: [FW_ID] u8; pinned: bool;              // the picture pinned beside the scene
@@ -79,9 +80,18 @@ es_fl_go :: (s: [] EdShell, flight: int, tail: string, head: string, url: string
   s[0].fl.flight = flight; s[0].as_ask = true;
   return true;
 }
-// The list is asked for once it is known which world this is, and when the pane opens.
+// The list is asked for once it is known which world this is, and when the pane opens; a file
+// dropped while another ask was out goes once the channel is free.
 es_fl_kick :: (s: [] EdShell) {
   if s[0].have && !s[0].fl.asked && es_fl_go(s, ES_FL_LIST, "", "", "") { s[0].fl.asked = true; }
+  if s[0].fl.waiting && es_fl_send(s) { s[0].fl.waiting = false; }
+}
+// The file that waits, sent: in one POST on the dev server, else named for a direct upload.
+es_fl_send :: (s: [] EdShell) -> bool {
+  head: [FW_HEAD] u8;
+  name := es_fl_file_name(s); bytes := s[0].fl.file_bytes;
+  if es_as_dev(s) { return es_fl_go(s, ES_FL_SEND, "", fw_attach_head(head[..], s[0].fl.scope, bytes, 0, name, "", "", ""), ""); }
+  return es_fl_go(s, ES_FL_NAME, "", fw_upload_head(head[..], s[0].fl.scope, bytes, name, "", "", ""), "");
 }
 es_fl_file_name :: (s: [] EdShell) -> string { return cast(string) s[0].fl.file_name[0..<s[0].fl.file_name_n]; }
 // A file was dropped on the Files pane or picked: it goes at once, to the scope chosen, unless the rules say it can never go.
@@ -92,17 +102,14 @@ es_fl_file :: (s: [] EdShell, length: int) {
   bytes := fw_num(fw_field(line, 0)); name := fw_rest(line, 1);
   s[0].files = true; s[0].assets = false; s[0].code = false;
   words: [FW_WORDS] u8;
-  if s[0].fl.flight != ES_FL_NONE || s[0].as_flight != ES_AS_NONE { es_fl_say(s, ES_FL_SAID_NO, "The last file is still on its way. Drop this one again when it is in."); return; }
+  if (s[0].fl.flight >= ES_FL_SEND && s[0].fl.flight <= ES_FL_DONE) || s[0].fl.waiting || s[0].as_flight >= ES_AS_SEND { es_fl_say(s, ES_FL_SAID_NO, "The last file is still on its way. Drop this one again when it is in."); return; }
   if !fw_name_ok(name) { es_fl_say(s, ES_FL_SAID_NO, "That file's name can't be kept: rename it to 100 bytes or fewer, with no slash, and drop it again."); return; }
   l := s[0].fl.l[..];
   v := fw_admit(name, bytes, l[0].count, l[0].bytes);
   if v != FW_OK { es_fl_say(s, ES_FL_SAID_NO, fw_words(v, name, bytes, l[0].bytes, words[..])); return; }
   s[0].fl.file_name_n = fw_copy(s[0].fl.file_name[..], name); s[0].fl.file_bytes = bytes;
-  head: [FW_HEAD] u8;
-  ok := false;
-  if es_as_dev(s) { ok = es_fl_go(s, ES_FL_SEND, "", fw_attach_head(head[..], s[0].fl.scope, bytes, 0, name, "", "", ""), ""); }
-  else { ok = es_fl_go(s, ES_FL_NAME, "", fw_upload_head(head[..], s[0].fl.scope, bytes, name, "", "", ""), ""); }
-  if !ok { es_fl_say(s, ES_FL_SAID_NO, "That did not go: the last ask to the world's server is still out. Drop it again."); return; }
+  // it goes now, or as soon as the ask that is out (a list) is answered
+  s[0].fl.waiting = !es_fl_send(s);
   es_fl_say(s, ES_FL_SAID_NONE, "");
 }
 // The opened attachment's place in the list (-1: none).
@@ -314,7 +321,7 @@ es_build_files :: (s: [] EdShell) {
   groups := ES_FL_GROUP;
   for k: 0..<ifx l[0].project_n > 0 then 2 else 1 { r := k_row(t, u, tr_join(buf[..], "files.to.", k), groups[k], ifx k == 0 then "Attach to this world" else "Attach to the whole project", s[0].fl.scope == k); }
   tr_close(t);
-  sending := s[0].fl.flight >= ES_FL_SEND && s[0].fl.flight <= ES_FL_DONE;
+  sending := (s[0].fl.flight >= ES_FL_SEND && s[0].fl.flight <= ES_FL_DONE) || s[0].fl.waiting;
   if sending {
     n = fw_put(line[..], 0, "Sending "); n = fw_put(line[..], n, es_fl_file_name(s));
     k := es_fl_size(src[..], 0, s[0].fl.file_bytes);

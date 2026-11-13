@@ -56,6 +56,9 @@
 //                                 (a tap, a type or a swap on one of the page's own elements waits up to 4 s of real
 //                                 time for it to be there: a pane that is opening, a file still being read)
 //   swap ID OLD => NEW            the first OLD in the field ID becomes NEW, as a person's edit (a line in the Code pane)
+//   drop ID FILE                  the file at the absolute path FILE dragged from the desktop and dropped on the page's own
+//                                 element ID (a drop target, k_drop), as the browser's own drag and drop: the bytes never pass
+//                                 through the driver (#13468)
 //   answer PATH FILE              the page's own requests to PATH are answered with FILE's bytes instead of by the
 //                                 server: a scripted answer for a route the dev server does not have (a model's)
 //   swaps | swaps until KIND >= N [within MS]
@@ -465,6 +468,15 @@ dv_mouse :: (s: [] DvS, kind: string, x: int, y: int) -> bool {
   jo_key(j[..], "button"); jo_str(j[..], "left"); jo_key(j[..], "buttons"); jo_int(j[..], ifx kind == "mousePressed" then 1 else 0); jo_key(j[..], "clickCount"); jo_int(j[..], 1); jo_end(j[..]);
   return cdp_call(s[0].c[..], "Input.dispatchMouseEvent", jo_text(j[..]), CDP_CALL_MS) >= 0;
 }
+// A file dragged over a point and dropped there (Input.dispatchDragEvent): the browser reads it from its path.
+dv_drag :: (s: [] DvS, kind: string, x: int, y: int, path: string) -> bool {
+  p: [4096] u8; j: [1] Jo; jo_start(j[..], p[..]);
+  jo_obj(j[..]); jo_key(j[..], "type"); jo_str(j[..], kind); jo_key(j[..], "x"); jo_int(j[..], x); jo_key(j[..], "y"); jo_int(j[..], y);
+  jo_key(j[..], "data"); jo_obj(j[..]); jo_key(j[..], "items"); jo_arr(j[..]); jo_end(j[..]);
+  jo_key(j[..], "files"); jo_arr(j[..]); jo_str(j[..], path); jo_end(j[..]); jo_key(j[..], "dragOperationsMask"); jo_int(j[..], 1); jo_end(j[..]);
+  jo_end(j[..]);
+  return cdp_call(s[0].c[..], "Input.dispatchDragEvent", jo_text(j[..]), CDP_CALL_MS) >= 0;
+}
 // The mouse moved with its button held.
 dv_mouse_held :: (s: [] DvS, x: int, y: int) -> bool {
   p: [512] u8; j: [1] Jo; jo_start(j[..], p[..]);
@@ -714,8 +726,8 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
   }
   if s[0].dom {
     if w0 == "tree" || w0 == "layout" { js: [16384] u8; dv_s(out, dv_eval(s, dd_tree_js(js[..]))); return true; }
-    if w0 != "tap" && w0 != "type" && w0 != "swap" && w0 != "answer" && w0 != "screenshot" && w0 != "logs" && w0 != "prefer" {
-      dv_s(out, "this page is drawn by the browser and has no world: it takes tree, hit X Y, taps, tap ID, type ID TEXT, swap, answer, screenshot, logs and prefer"); return false;
+    if w0 != "tap" && w0 != "type" && w0 != "swap" && w0 != "answer" && w0 != "screenshot" && w0 != "logs" && w0 != "prefer" && w0 != "drop" {
+      dv_s(out, "this page is drawn by the browser and has no world: it takes tree, hit X Y, taps, tap ID, type ID TEXT, swap, answer, drop ID FILE, screenshot, logs and prefer"); return false;
     }
   }
   if w0 == "tree" || w0 == "layout" || w0 == "status" || w0 == "target" || w0 == "why" { dv_s(out, dv_send(s, op)); return true; }
@@ -739,6 +751,19 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
     return true;
   }
   if w0 == "state" { return dv_state(s, dv_word(op, 1), out); }
+  if w0 == "drop" {
+    id := dv_word(op, 1); path := dv_rest(op, 2);
+    if id.count == 0 || path.count < 2 || path[0] != '/' || fs_size(path) < 0 { dv_s(out, "drop takes the id of one of the page's elements and the absolute path of a file"); return false; }
+    tj: [2048] u8;
+    at := dv_eval(s, dd_target_js(id, tj[..]));
+    waited := 0;
+    while (dv_starts(at, "no element") || dv_starts(at, "that element does not show")) && waited < DV_APPEAR_MS { proc_sleep(100); waited += 100; at = dv_eval(s, dd_target_js(id, tj[..])); }
+    x := dv_int(dv_word(at, 0)); y := dv_int(dv_word(at, 1));
+    if x < 0 || y < 0 || dv_word(at, 2).count > 0 { dv_s(out, at); return false; }
+    if !dv_drag(s, "dragEnter", x, y, path) || !dv_drag(s, "dragOver", x, y, path) || !dv_drag(s, "drop", x, y, path) { dv_s(out, "the drop failed: "); dv_s(out, cdp_error(s[0].c[..])); return false; }
+    dv_s(out, "dropped "); dv_s(out, fs_base(path)); dv_s(out, " on "); dv_s(out, id); dv_s(out, " at "); dv_s(out, at);
+    return true;
+  }
   if w0 == "tap" || w0 == "type" {
     id := dv_word(op, 1);
     if id.count == 0 { dv_s(out, w0); dv_s(out, " takes an id from the tree"); return false; }
