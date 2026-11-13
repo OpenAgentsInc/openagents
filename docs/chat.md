@@ -7,7 +7,18 @@ a transcript. A message is answered by one model call with the conversation
 so far, streamed, through `POST /api/chat/complete`: a Chat Completions
 request handed to the inference route's own ask (`inference.c`
 `inference_ask`: Gemini on Vertex, its caps and its metering) for the admin
-the cookie names. No agent is behind it yet, and nothing is stored.
+the cookie names. Nothing is stored.
+
+A Gemini message has our own read tools (#13504,
+`apps/openagents-web/chat-hosted.coax`): the `REALM_COMMANDS` rows that only
+read and that the page can answer through the API with your login (your
+worlds and realms, a realm's map, entities, scripts and score, a world's card,
+foes, scripts and attachments). They go to the model as function tools with
+the row's help and properties. The page runs each call as a GET with your
+cookie, shows it as a tool row, and asks the model again with what came back,
+at most four times per message; the last ask has no tools. The tools only
+read: changes to a world go through the editor or the agents on your own
+computer. Web search is not configured.
 To run it on your own computer with real answers, run one command:
 
 ```sh
@@ -165,6 +176,8 @@ conversation you reload and one that is running:
   times a call from when it sees the call to when it sees the answer.
 - **The hosted agent.** From `GET /api/chat/turn`'s `tools` (name and
   detail). The API keeps no results, so each call shows as done.
+- **Our tools on a Gemini message.** Each call shows with the command
+  table's words and the HTTP answer it got.
 - **A Gemini turn in the editor.** Each world step is a call with its own
   words ("Place Cargo crate at 420, -75").
 

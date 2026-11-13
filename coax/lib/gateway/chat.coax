@@ -65,6 +65,7 @@ gw_chat_body :: (req: GwRequest, flags: int, out: [] u8) -> int {
     n = json_raw(out, n, req.schema);
     n = json_raw(out, n, ",\"strict\":true}}");
   }
+  if req.tools.count > 0 { n = json_raw(out, n, ",\"tools\":"); n = json_raw(out, n, req.tools); }
   if req.max_tokens > 0 {
     n = json_raw(out, n, ifx (flags & GW_CHAT_LEGACY_MAX_TOKENS) != 0 then ",\"max_tokens\":" else ",\"max_completion_tokens\":");
     n = json_write_int(out, n, req.max_tokens);
@@ -142,6 +143,20 @@ gw_chat_provider :: (ps: [] GwParse, ar: [] ClArena, obj: string) {
   ps[0].np = p.count;
 }
 
+// The function calls of a delta or a message (tool_calls), each as GW_EV_TOOL: its index (a delta's own, else
+// its place), its name and its arguments' JSON as far as this piece has it.
+gw_chat_tools :: (ar: [] ClArena, obj: string, out: [] GwEvent, at: int) -> int {
+  n := at;
+  calls := cl_raw(obj, "tool_calls");
+  if calls.count == 0 { return n; }
+  for i: 0..<cl_count(calls) {
+    c := cl_json(calls, cl_item(calls, i));
+    k := cl_int(c, "index");
+    n = gw_put(out, n, GwEvent.{kind = GW_EV_TOOL, status = ifx k.ok then k.value else i, text = cl_str(ar, c, "function.name"), reason = cl_str(ar, c, "function.arguments")});
+  }
+  return n;
+}
+
 // One streamed chunk. Text and reasoning come out as they arrive; how it
 // finished and its usage are held until [DONE] (or the stream's end:
 // gw_chat_end), since usage comes in a chunk after finish_reason.
@@ -163,6 +178,7 @@ gw_chat_chunk :: (ps: [] GwParse, ar: [] ClArena, data: string, out: [] GwEvent)
   if r.count > 0 { n = gw_put(out, n, GwEvent.{kind = GW_EV_REASONING, text = r}); }
   t := cl_str(ar, data, "choices.0.delta.content");
   if t.count > 0 { n = gw_put(out, n, GwEvent.{kind = GW_EV_TEXT, text = t}); }
+  n = gw_chat_tools(ar, cl_raw(data, "choices.0.delta"), out, n);
   fin := cl_str(ar, data, "choices.0.finish_reason");
   if fin.count > 0 { ps[0].finish = gw_chat_finish_of(fin); }
   u := gw_chat_usage_of(cl_raw(data, "usage"));
@@ -191,6 +207,7 @@ gw_chat_whole :: (ar: [] ClArena, body: string, out: [] GwEvent) -> int {
   if r.count > 0 { n = gw_put(out, n, GwEvent.{kind = GW_EV_REASONING, text = r}); }
   t := cl_str(ar, msg, "content");
   if t.count > 0 { n = gw_put(out, n, GwEvent.{kind = GW_EV_TEXT, text = t}); }
+  n = gw_chat_tools(ar, msg, out, n);
   refusal := cl_str(ar, msg, "refusal");
   if refusal.count > 0 { return gw_put(out, n, GwEvent.{kind = GW_EV_REFUSED, status = 200, reason = refusal}); }
   // the provider is borrowed from body, which outlives the events

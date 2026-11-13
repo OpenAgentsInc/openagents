@@ -17,6 +17,9 @@ GW_EV_TEXT :: 1;                 // text: a piece of the answer
 GW_EV_REASONING :: 2;            // text: a piece of the model's reasoning, never the answer
 GW_EV_DONE :: 3;                 // usage; reason "stop" or "length"
 GW_EV_REFUSED :: 4;              // status (HTTP; 0 inside a 200 stream or with no response) and reason
+GW_EV_TOOL :: 5;                 // a function call the model asked for (Chat Completions tool_calls, a request with tools):
+                                 // status its index, text its name ("" on a later piece of the same call), reason a piece
+                                 // of its arguments' JSON (the pieces of one index joined are the whole)
 
 GwUsage :: struct {
   observed: int;                 // token presence bits: input=1 output=2 cache=4 reasoning=8 cache-write=16
@@ -54,6 +57,7 @@ GwRequest :: struct {
   effort: string;                // "low" | "medium" | "high", "" to leave it to the provider
   max_tokens: int;               // 0 to leave it to the provider
   stream: bool = true;
+  tools: string;                 // Chat Completions function tools, a JSON array sent as it is; "" for none
 }
 
 Gateway :: struct {

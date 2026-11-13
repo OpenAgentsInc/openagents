@@ -73,6 +73,28 @@
   #assert n == 1 && ev[0].kind == GW_EV_REFUSED && ev[0].reason == "content_filter";
 }
 
+#test "function tools: the request carries them as given, and a call comes back as its index, name and arguments, streamed or whole" {
+  out: [2048] u8; why: [1] string;
+  msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "what worlds do I have?"};
+  tools := "[{\"type\":\"function\",\"function\":{\"name\":\"realm_list\",\"description\":\"your realms\",\"parameters\":{\"type\":\"object\",\"properties\":{}}}}]";
+  g := Gateway.{name = "ours", wire = GW_WIRE_CHAT};
+  body := gw_translate(g, GwRequest.{model = "google/gemini-4-hydrogen", messages = msgs[..], tools = tools}, out[..], why[..]);
+  #assert json_valid(body) && cl_raw(body, "tools") == tools && cl_raw(body, "stream") == "true";
+  #assert !gw_test_has_tools(gw_translate(g, GwRequest.{model = "m", messages = msgs[..]}, out[..], why[..]));
+  arena: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = arena[..]};
+  ev: [8] GwEvent; ps: [1] GwParse;
+  n := gw_parse(GW_WIRE_CHAT, ps[..], ar[..], "message", "{\"choices\":[{\"delta\":{\"role\":\"assistant\",\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"realm_world\",\"arguments\":\"{\\\"slug\\\":\"}},{\"index\":1,\"function\":{\"name\":\"realm_list\",\"arguments\":\"{}\"}}]}}]}", ev[..]);
+  #assert n == 2 && ev[0].kind == GW_EV_TOOL && ev[0].status == 0 && ev[0].text == "realm_world" && ev[0].reason == "{\"slug\":";
+  #assert ev[1].kind == GW_EV_TOOL && ev[1].status == 1 && ev[1].text == "realm_list" && ev[1].reason == "{}";
+  n = gw_parse(GW_WIRE_CHAT, ps[..], ar[..], "message", "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"splice\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}", ev[..]);
+  #assert n == 1 && ev[0].kind == GW_EV_TOOL && ev[0].status == 0 && ev[0].text == "" && ev[0].reason == "\"splice\"}";
+  n = gw_parse(GW_WIRE_CHAT, ps[..], ar[..], "message", "[DONE]", ev[..]);
+  #assert n == 1 && ev[0].kind == GW_EV_DONE && ev[0].reason == "tool_calls";
+  n = gw_chat_whole(ar[..], "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"c\",\"type\":\"function\",\"function\":{\"name\":\"realm_files\",\"arguments\":\"{\\\"slug\\\":\\\"splice\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}", ev[..]);
+  #assert n == 2 && ev[0].kind == GW_EV_TOOL && ev[0].status == 0 && ev[0].text == "realm_files" && ev[0].reason == "{\"slug\":\"splice\"}" && ev[1].kind == GW_EV_DONE;
+}
+gw_test_has_tools :: (body: string) -> bool { return cl_raw(body, "tools").count > 0; }
+
 #test "the recorded Vertex OpenAI-endpoint stream (gemini-3.8-flash) parses, and reasoning beside completion_tokens is added in" {
   r: [1] GwReplay; fx := GW_FX_VERTEX_OPENAI_GEMINI_3_8_FLASH;
   gw_replay(GW_WIRE_CHAT, fx[..], r[..]);

@@ -11,12 +11,12 @@
 tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   if !args_load(args[..]) { return 2; }
-  out: [65536] u8;
+  out: [131072] u8;
   n := rc_tools_text(out[..]);
   if n < 0 { tool_errln("the tool words do not fit"); return 1; }
   text := cast(string) out[0..<n];
   if args_has(args[..], "--check") {
-    old: [65536] u8;
+    old: [131072] u8;
     m := fs_read(RC_TOOLS_FILE, old[..]);
     if m != n || cast(string) old[0..<m] != text { tool_errln("apps/openagents-web/realm-tools.coax is stale: coax/web/tool.sh apps/openagents-cli/tool-labels.coax --write"); return 1; }
     print("realm tools: % rows, the page's copy is the table's\n", REALM_COMMANDS.count);

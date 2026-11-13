@@ -832,13 +832,14 @@ rc_label_ok :: (c: CliCommand) -> bool #effects(all) {
   return !part;
 }
 // The page's copy of the table's tool words, apps/openagents-web/realm-tools.coax, as its text: each row's tool
-// name, effect, label and many (the chat reads a tool call through it, #13481). Bytes written, or -1 when it
-// doesn't fit. apps/openagents-cli/tool-labels.coax writes it; a check below holds it to the table.
+// name, effect, label and many (the chat reads a tool call through it, #13481), and its help, method, route and
+// required properties (the hosted agent on /chat declares the rows it can run from them). Bytes written, or -1
+// when it doesn't fit. apps/openagents-cli/tool-labels.coax writes it; a check below holds it to the table.
 RC_TOOLS_FILE :: "apps/openagents-web/realm-tools.coax";
 rc_tools_text :: (out: [] u8) -> int #effects(all) {
-  nb: [64] u8;
-  n := editor_put(out, 0, "// Generated from REALM_COMMANDS (apps/openagents-cli/commands.coax) by\n//   coax/web/tool.sh apps/openagents-cli/tool-labels.coax --write\n// Do not edit: each realm_* MCP tool's name, effect, label and many, for the chat's tool rows (#13481).\n");
-  n = editor_put(out, n, "RealmTool :: struct { name: string; effect: string; label: string; many: string; }\nREALM_TOOLS :: [");
+  nb: [64] u8; pb: [200] u8;
+  n := editor_put(out, 0, "// Generated from REALM_COMMANDS (apps/openagents-cli/commands.coax) by\n//   coax/web/tool.sh apps/openagents-cli/tool-labels.coax --write\n// Do not edit: each realm_* MCP tool's name, effect, label and many, for the chat's tool rows (#13481), and its\n// help, method, route and required properties, for the hosted agent's tools on /chat.\n");
+  n = editor_put(out, n, "RealmTool :: struct { name: string; effect: string; label: string; many: string; help: string; method: string; route: string; props: string; }\nREALM_TOOLS :: [");
   n = editor_put_int(out, n, REALM_COMMANDS.count);
   n = editor_put(out, n, "] RealmTool.[\n");
   for c, i: REALM_COMMANDS {
@@ -846,9 +847,25 @@ rc_tools_text :: (out: [] u8) -> int #effects(all) {
     n = editor_put(out, n, "\",effect=\""); n = rc_lit(out, n, c.effect);
     n = editor_put(out, n, "\",label=\""); n = rc_lit(out, n, c.label);
     n = editor_put(out, n, "\",many=\""); n = rc_lit(out, n, c.many);
+    n = editor_put(out, n, "\",help=\""); n = rc_lit(out, n, c.help);
+    n = editor_put(out, n, "\",method=\""); n = rc_lit(out, n, c.method);
+    n = editor_put(out, n, "\",route=\""); n = rc_lit(out, n, c.route);
+    n = editor_put(out, n, "\",props=\""); n = rc_lit(out, n, rc_required_props(c, pb[..]));
     n = editor_put(out, n, ifx i + 1 < REALM_COMMANDS.count then "\"},\n" else "\"}\n");
   }
   return editor_put(out, n, "];\n");
+}
+// The MCP properties a row's tool requires, '|' between them: its positionals' names (mcp_arg_name), the last left
+// out when the row says it is optional. "" when there are none or they don't fit.
+rc_required_props :: (c: CliCommand, out: [] u8) -> string #effects(all) {
+  count := 0; while cli_field(c.arguments, count) != "" { count += 1; }
+  if c.optional == 1 && count > 0 { count -= 1; }
+  n := 0;
+  for i: 0..<count {
+    if i > 0 { n = editor_put(out, n, "|"); }
+    n = editor_put(out, n, mcp_arg_name(cli_field(c.arguments, i), mcp_kind_index(c, i)));
+  }
+  return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 // Text into a Coax string literal: a quote and a backslash escaped.
 rc_lit :: (out: [] u8, at: int, text: string) -> int #effects(all) {
@@ -889,9 +906,14 @@ rc_lit :: (out: [] u8, at: int, text: string) -> int #effects(all) {
   #assert REALM_TOOLS.count == REALM_COMMANDS.count;
   for c, i: REALM_COMMANDS {
     r := REALM_TOOLS[i];
+    pb: [200] u8;
     #assert r.name == mcp_tool_name(c.verb, nb[..]) && r.effect == c.effect && r.label == c.label && r.many == c.many;
+    #assert r.help == c.help && r.method == c.method && r.route == c.route && r.props == rc_required_props(c, pb[..]);
   }
-  out: [32768] u8; n := rc_tools_text(out[..]);
+  pb: [200] u8;
+  #assert rc_required_props(REALM_COMMANDS[rc_find("file-read")], pb[..]) == "slug|fileid" && rc_required_props(REALM_COMMANDS[rc_find("list")], pb[..]) == "";
+  #assert rc_required_props(REALM_COMMANDS[rc_find("move")], pb[..]) == "slug|entity|x|z";
+  out: [65536] u8; n := rc_tools_text(out[..]);
   #assert n > 1000 && rc_tools_text(out[0..<100]) == -1 && rc_lit(out[..], 0, "a\"b\\c") == 7 && cast(string) out[0..<7] == "a\\\"b\\\\c" && rc_lit(out[0..<2], 0, "abc") == -1;
 }
 CliBound :: struct { min: int; max: int; }

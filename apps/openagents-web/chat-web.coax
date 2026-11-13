@@ -6,10 +6,14 @@
 // answer, Copy copies it. The page before this one is /chat-gpu (chat.coax).
 //
 // Who answers is the model chosen in the menu at the composer's foot:
-// - Gemini (4 Hydrogen, 4 Argon, 4 Carbon): one model call with the
+// - Gemini (4 Hydrogen, 4 Argon, 4 Carbon): a model call with the
 //   conversation so far, streamed, through OpenAgents' own inference route
 //   (coax/web/api/inference.c: Vertex, its caps and its metering) by /chat's
-//   door to it, POST /api/chat/complete. No tools, no memory.
+//   door to it, POST /api/chat/complete, with our own tools (chat-hosted.coax):
+//   the read-only rows of the realm command table, as function tools. A call
+//   the model makes is run by this page through the API's route for its row,
+//   with the page's login, shown as a tool call while it runs, and its answer
+//   goes back to the model, at most CH_STEPS asks a message. No memory.
 // - Claude (Haiku, Sonnet, Opus 5.5), offered once a Claude account is
 //   connected: a turn of /chat's hosted agent (POST /api/chat/send, then GET
 //   /api/chat/turn?t=ID each second), which runs the Claude CLI through the
@@ -48,6 +52,7 @@
 #load "../../components/kit/frames.coax";
 #load "../../components/kit/listing.coax";      // k_held, k_loading: another page held beside the side, and its loading screen
 #load "chat-tools.coax";                     // tool calls: what each is called, how it stands, a run drawn (#13481)
+#load "chat-hosted.coax";                    // our own tools for a Gemini message: the command table's reads, run as the person
 #load "site-side.coax";                      // the side's rules: places, who is logged in, search, sections
 #load "settings-web.coax";                   // Settings in the shell: its sections, its search, Account, Limits, About
 #load "chat-settings.coax";                  // and the sections that are this module's state: Agents and models, Appearance
@@ -119,6 +124,7 @@ CF_WORLDS :: 20;        // the worlds the person may edit, under Worlds in the s
 CF_LIMITS :: 21;        // Settings, Limits: every login limit (/api/auth/limits?as=lines)
 CF_ABOUT :: 22;         // Settings, About: the release this page is from (/build/about.txt)
 CF_PROJECTS :: 23;      // the projects the person is in, under Projects in the side (/api/projects)
+CF_HCALL :: 24;         // one request of a tool call a Gemini message made (chat-hosted.coax ch_path)
 CW_PLAN_ASK :: 24576;   // bytes of the conversation sent with a turn in the editor (the world goes with it)
 // A world step's realm tool (turn.coax WT_TOOL; a size is a set), for its icon and how a run of them is named.
 CW_STEP_TOOLS :: [7] string.["realm_world_place", "realm_world_move", "realm_world_turn", "realm_world_set", "realm_world_remove", "realm_world_undo", "realm_world_redo"];
@@ -131,7 +137,7 @@ CW_LOG_EVERY :: 1.0;   // and of the shown session's log while it runs
 CW_LOG_WAIT :: 20;     // reads that may find no log before the session is called gone (one just started writes its log a moment later)
 CA_NONE :: 0; CA_KEY :: 1; CA_TOKEN :: 2;   // the connected Claude credential's kind
 CW_POLL :: 1.0;        // seconds between reads of a Claude turn
-CW_SYSTEM :: "You are OpenAgents, answering in the chat on openagents.com. Speak as \"we\" for OpenAgents. Be direct and brief, and use Markdown where it helps. You can't use tools, read files or the web, or remember earlier conversations yet; say so plainly if asked to. You have no knowledge base about OpenAgents yet, so if you aren't sure of a fact about OpenAgents, say you aren't sure. If asked which model you are, say exactly this and never guess another version: the model answering is ";
+// What a Gemini message is told is chat-hosted.coax ch_system: who we are, our tools and the model.
 // What the host sends (coax/web/dom-host.js): a press, a field's text, Enter in a field,
 // a piece of the answer's stream (the inbox holds it), and the stream's end (the slot is its HTTP status, 0 for none).
 CW_CLICK :: 1; CW_INPUT :: 2; CW_SUBMIT :: 3; CW_PIECE :: 4; CW_END :: 5;
@@ -217,6 +223,12 @@ ChatWeb :: struct {
   opened: [WP_OPEN] [WT_FID] u8; nopened: int;   // the attachments a hosted turn asked to open (#13468): its second ask carries them
   pmodel: int;                       // the model a hosted turn in the editor went to
   card_due: [WT_WORLD] u8; card_due_n: int;   // a world an agent's tool named: its card is read when the page is free
+  // a Gemini message's own tool calls (chat-hosted.coax): the asks so far, the calls the last ask made, the one
+  // running and which of its requests, its answer so far, and every answer for the next ask
+  hstep: int; hmodel: int;
+  hcalls: [CH_CALLS] ChCall; hn: int; hat: int; hpart: int; hfailed: bool;
+  hout: [CH_RESULT] u8; hout_n: int;
+  hres: [CH_RESULTS] u8; hres_n: int;
   live: bool;                        // the last message is an answer still coming
   status: int;                       // the stream's HTTP status once a piece has come
   cut: bool;                         // the answer passed CW_ANSWER: the rest was not kept
@@ -929,9 +941,11 @@ cw_index :: (id: string, part: string) -> int {
 cw_complete :: (s: [] ChatWeb, model: int) -> bool {
   in_world := s[0].wwire_n > 0;
   first := s[0].count; bytes := 0;
-  while first > 0 && bytes + s[0].len[first - 1] <= (ifx in_world then CW_PLAN_ASK else CW_ASK) { first -= 1; bytes += s[0].len[first]; }
+  // a Gemini message's tools and what they answered go with it, so the conversation gets less room
+  most := ifx in_world then CW_PLAN_ASK else CW_ASK - s[0].hres_n;
+  while first > 0 && bytes + s[0].len[first - 1] <= most { first -= 1; bytes += s[0].len[first]; }
   if first == s[0].count && s[0].count > 0 { first = s[0].count - 1; }   // the message itself always goes
-  messages: [CW_MESSAGES] GwMessage; n := 0;
+  messages: [CW_MESSAGES + 1] GwMessage; n := 0;
   for k: first..<s[0].count {
     if s[0].len[k] == 0 || s[0].who[k] == CW_TOOL || s[0].who[k] == CW_CARD { continue; }   // an answer that never came, tool calls, or a card
     messages[n] = GwMessage.{role = ifx s[0].who[k] == CW_AGENT then "assistant" else "user", text = cw_text(s, k)};
@@ -963,14 +977,25 @@ cw_complete :: (s: [] ChatWeb, model: int) -> bool {
     }
     return bn > 0 && req.system.count > 0 && req.schema.count > 0 && cw_go(s, CF_PLAN, "/api/chat/complete", cast(string) body[0..<bn]);
   }
-  system: [1024] u8;
-  sn := cw_put(system[..], 0, CW_SYSTEM);
-  sn = cw_put(system[..], sn, names[model]); sn = cw_put(system[..], sn, " ("); sn = cw_put(system[..], sn, ids[model]);
-  sn = cw_put(system[..], sn, ") on Google's Vertex AI.");
-  req := GwRequest.{model = ids[model], system = cast(string) system[0..<sn], messages = messages[0..<n], effort = "low", stream = true};
+  // our own tools (chat-hosted.coax): offered on every ask but a message's last, which answers from what they said
+  s[0].hmodel = model;
+  answers: [CH_RESULTS + 256] u8;
+  if s[0].hres_n > 0 {
+    an := cw_put(answers[..], 0, CH_ANSWERS); an = cw_put(answers[..], an, cast(string) s[0].hres[0..<s[0].hres_n]);
+    if s[0].hstep >= CH_STEPS - 1 { an = cw_put(answers[..], an, CH_LAST); }
+    messages[n] = GwMessage.{role = "user", text = cast(string) answers[0..<an]}; n += 1;
+  }
+  projects: [SS_WORLDS_MAX * 72] u8; pn := 0;
+  for k: 0..<s[0].projects_n {
+    if pn > 0 { pn = cw_put(projects[..], pn, ", "); }
+    pn = cw_put(projects[..], pn, cast(string) s[0].projects[k].name[0..<s[0].projects[k].name_n]);
+  }
+  system: [CH_SYSTEM] u8; tools: [CH_TOOLS] u8;
+  req := GwRequest.{model = ids[model], system = ch_system(cast(string) projects[0..<pn], names[model], ids[model], system[..]), messages = messages[0..<n], effort = "low", stream = true,
+    tools = ifx s[0].hstep < CH_STEPS - 1 then ch_tools(tools[..]) else ""};
   body: [CW_REQUEST] u8;
   bn := gw_chat_body(req, 0, body[..]);
-  return cw_go(s, CF_COMPLETE, "/api/chat/complete", cast(string) body[0..<bn]);
+  return bn > 0 && cw_go(s, CF_COMPLETE, "/api/chat/complete", cast(string) body[0..<bn]);
 }
 // A Claude message: a turn of the hosted agent, in this visit's conversation there (a new one the first time).
 cw_turn_send :: (s: [] ChatWeb, model: int, text: string) -> bool {
@@ -1012,6 +1037,7 @@ cw_send :: (s: [] ChatWeb) {
   }
   cw_add(s, cast(string) s[0].draft[lo..<hi], CW_YOU, CW_ANSWER);
   s[0].nopened = 0;   // a new message: a hosted turn may open attachments again
+  s[0].hstep = 0; s[0].hn = 0; s[0].hres_n = 0; s[0].tools_n = 0; s[0].ntools = 0;   // and a Gemini message starts with no tool calls
   sent := ifx cw_claude_model(model) || model == CW_GEMINI_AGENT then cw_turn_send(s, model, cw_text(s, s[0].count - 1)) else cw_complete(s, model);
   cw_add(s, "", CW_AGENT, CW_ANSWER);
   names := CW_MODEL_NAMES;
@@ -1028,8 +1054,10 @@ cw_send :: (s: [] ChatWeb) {
 // and ends when the runner says it has.
 cw_stop :: (s: [] ChatWeb) {
   if !s[0].live || s[0].stopping { return; }
-  if s[0].flight == CF_COMPLETE || s[0].flight == CF_PLAN {
+  if s[0].flight == CF_COMPLETE || s[0].flight == CF_PLAN || s[0].flight == CF_HCALL {
     s[0].stop = true; s[0].ask = false; s[0].flight = CF_NONE;
+    s[0].hn = 0;
+    cw_tools_above(s);   // the tool calls it made so far stay, above what came of the answer
     s[0].live = false;
     return;
   }
@@ -1053,6 +1081,7 @@ cw_event :: (s: [] ChatWeb, lines: string) {
       n := gw_chat_chunk(s[0].ps[..], ar[..], ev.data, out[..]);
       for k: 0..<n {
         if out[k].kind == GW_EV_TEXT { cw_more(s, out[k].text); }
+        else if out[k].kind == GW_EV_TOOL { s[0].hn = ch_gather(s[0].hcalls[..], s[0].hn, out[k].status, out[k].text, out[k].reason); }
         else if out[k].kind == GW_EV_REFUSED { cw_say(s, ifx out[k].reason.count > 0 then out[k].reason else "The model stopped before it finished."); }
       }
     }
@@ -1118,21 +1147,7 @@ cw_turn_read :: (s: [] ChatWeb, body: string) {
   }
   // the newest is the one it is at, while it works
   if status == "queued" || status == "running" { if s[0].ntools > 0 { last := cq_at(cast(string) s[0].tools[0..<s[0].tools_n], s[0].ntools - 1); if last >= 0 { s[0].tools[last] = cast(u8) ('0' + KW_RUN); } } return; }
-  k := s[0].count - 1;
-  if s[0].ntools > 0 && k >= 0 && s[0].who[k] == CW_AGENT {
-    // its tools go above the answer, as a run of tool calls
-    meta := s[0].meta[k]; meta_n := s[0].meta_n[k];
-    s[0].count = k; s[0].total -= 1; s[0].pool_n = s[0].at[k];
-    cw_add(s, cast(string) s[0].tools[0..<s[0].tools_n], CW_TOOL, 0);
-    cw_add(s, "", CW_AGENT, CW_ANSWER);
-    k = s[0].count - 1; s[0].meta[k] = meta; s[0].meta_n[k] = meta_n;
-  }
-  if s[0].ntools > 0 {
-    num: [24] u8;
-    n := cw_put(s[0].meta[k][..], s[0].meta_n[k], " · ");
-    n = cw_put(s[0].meta[k][..], n, tr_join(num[..], "", s[0].ntools));
-    s[0].meta_n[k] = cw_put(s[0].meta[k][..], n, ifx s[0].ntools == 1 then " tool" else " tools");
-  }
+  cw_tools_above(s);
   if status == "done" { cw_more(s, cl_str(ar[..], body, "answer")); }
   else if status != "stopped" {
     why := cl_str(ar[..], body, "error");
@@ -1140,6 +1155,70 @@ cw_turn_read :: (s: [] ChatWeb, body: string) {
   }
   if s[0].cut { cw_say(s, "The answer was longer than this page keeps, so its end is missing."); }
   s[0].live = false; s[0].stopping = false; s[0].turn = 0; s[0].working_n = 0; s[0].tools_n = 0;
+}
+// A hosted turn's tools go above its answer, as a run of tool calls, and the line under the answer counts them.
+// The answer keeps what came of it so far.
+cw_tools_above :: (s: [] ChatWeb) {
+  k := s[0].count - 1;
+  if s[0].ntools == 0 || k < 0 || s[0].who[k] != CW_AGENT { return; }
+  meta := s[0].meta[k]; meta_n := s[0].meta_n[k];
+  said := s[0].len[k];
+  for i: 0..<said { s[0].scratch[i] = s[0].pool[s[0].at[k] + i]; }
+  s[0].count = k; s[0].total -= 1; s[0].pool_n = s[0].at[k];
+  closed := cq_close(cast(string) s[0].tools[0..<s[0].tools_n], s[0].wbuf[..]);
+  if closed > 0 { cw_add(s, cast(string) s[0].wbuf[0..<closed], CW_TOOL, 0); }
+  cw_add(s, cast(string) s[0].scratch[0..<said], CW_AGENT, CW_ANSWER);
+  k = s[0].count - 1; s[0].meta[k] = meta; s[0].meta_n[k] = meta_n;
+  num: [24] u8;
+  n := cw_put(s[0].meta[k][..], s[0].meta_n[k], " · ");
+  n = cw_put(s[0].meta[k][..], n, tr_join(num[..], "", s[0].ntools));
+  s[0].meta_n[k] = cw_put(s[0].meta[k][..], n, ifx s[0].ntools == 1 then " tool" else " tools");
+  s[0].tools_n = 0; s[0].ntools = 0;
+}
+// A Gemini message's tool calls, once the model's ask that made them has ended: each is read against its row and
+// shown as a call while it runs; one that can't run says why, to the model too. Then the first request goes.
+cw_hosted_calls :: (s: [] ChatWeb) {
+  num: [24] u8; idb: [32] u8;
+  for i: 0..<s[0].hn {
+    c := s[0].hcalls[i..<i + 1];
+    ok := ch_read(c);
+    id := tr_cat(idb[..], tr_join(num[..], "h", s[0].hstep * CH_CALLS + i), "");
+    n := cq_write(s[0].tools[..], s[0].tools_n, CqCall.{state = ifx ok then KW_RUN else KW_FAILED, t0 = cw_ms(s), ms = ifx ok then -1 else 0, name = ch_name(c), id = id,
+      input = ch_args(c), output = ifx ok then "" else c[0].why});
+    if n > 0 { s[0].tools_n = n; s[0].ntools += 1; }
+    if !ok { s[0].hres_n = ch_refused(s[0].hres[..], s[0].hres_n, c); }
+  }
+  s[0].hat = 0; s[0].hpart = 0; s[0].hout_n = 0; s[0].hfailed = false;
+  cw_hosted_next(s);
+}
+// The next request of the calls, or, when every one has answered, the model asked again with their answers.
+cw_hosted_next :: (s: [] ChatWeb) {
+  path: [CH_PATH] u8;
+  while s[0].hat < s[0].hn {
+    c := s[0].hcalls[s[0].hat..<s[0].hat + 1];
+    p := ch_path(c, s[0].hpart, path[..]);
+    if p.count > 0 {
+      if !cw_go(s, CF_HCALL, p, "") { cw_say(s, "The tool call couldn't be sent. Send your message again."); s[0].live = false; }
+      return;
+    }
+    if s[0].hpart > 0 { cw_hosted_answered(s); }   // its last request has answered
+    s[0].hat += 1; s[0].hpart = 0; s[0].hout_n = 0; s[0].hfailed = false;
+  }
+  s[0].hn = 0; s[0].hstep += 1;
+  s[0].working_n = 0;
+  fresh: GwParse; s[0].ps[0] = fresh; s[0].event_n = 0; s[0].cut = false;
+  if !cw_complete(s, s[0].hmodel) { cw_say(s, "What the tools answered is more than one message can carry. Ask about less at once."); cw_tools_above(s); s[0].live = false; }
+}
+// A call's every request has answered: its call shows what came back, and a world it read brings that world's card.
+cw_hosted_answered :: (s: [] ChatWeb) {
+  c := s[0].hcalls[s[0].hat..<s[0].hat + 1];
+  num: [24] u8; idb: [32] u8; nb: [128] u8;
+  note := ch_note(c, nb[..]);
+  if note.count > 0 { s[0].hres_n = cw_put(s[0].hres[..], s[0].hres_n, note); s[0].hres_n = cw_put(s[0].hres[..], s[0].hres_n, "\n\n"); s[0].hout_n = cw_put(s[0].hout[..], s[0].hout_n, note); }
+  id := tr_cat(idb[..], tr_join(num[..], "h", (s[0].hstep * CH_CALLS) + s[0].hat), "");
+  n := cq_answer(cast(string) s[0].tools[0..<s[0].tools_n], s[0].wbuf[..], id, cast(string) s[0].hout[0..<s[0].hout_n], s[0].hfailed, false, cw_ms(s));
+  if n > 0 && n <= CW_TOOLS { for i: 0..<n { s[0].tools[i] = s[0].wbuf[i]; } s[0].tools_n = n; }
+  if !s[0].hfailed && ch_world(c) && s[0].wwire_n == 0 { s[0].card_due_n = cw_put(s[0].card_due[..], 0, ch_slug(c)); }
 }
 // A hosted turn's typed answer, in the editor: talk is the answer; an edit's steps show as the tools they are,
 // go to the editor as a plan, and what it says is the answer. The editor sends the edits as the person's own, so
@@ -1233,12 +1312,27 @@ cw_end :: (s: [] ChatWeb, status: int) {
     else { s[0].note_n = cw_why(s, status, s[0].note[..]); }
   } else if kind == CF_COMPLETE {
     if !s[0].live { return; }
-    s[0].live = false;
     if s[0].event_n > 0 { cw_event(s, cast(string) s[0].event[0..<s[0].event_n]); s[0].event_n = 0; }
+    // the model called our tools: they run, and it is asked again with what they answered
+    if status == 200 && s[0].hn > 0 && s[0].error_n == 0 { cw_hosted_calls(s); return; }
+    s[0].hn = 0;
+    cw_tools_above(s);
+    s[0].live = false;
     got := s[0].count > 0 && s[0].len[s[0].count - 1] > 0;
     if status != 200 { cw_fail(s, status); }
     else if s[0].cut { cw_say(s, "The answer was longer than this page keeps, so its end is missing."); }
     else if !got && s[0].error_n == 0 { cw_say(s, "The model sent no answer."); }
+  } else if kind == CF_HCALL {
+    if !s[0].live { return; }
+    // one request of a tool call answered: onto what the model is sent, and onto the call's own answer
+    c := s[0].hcalls[s[0].hat..<s[0].hat + 1];
+    path: [CH_PATH] u8;
+    s[0].hres_n = ch_result(s[0].hres[..], s[0].hres_n, c, ch_path(c, s[0].hpart, path[..]), status, body);
+    if s[0].hout_n > 0 { s[0].hout_n = cw_put(s[0].hout[..], s[0].hout_n, "\n"); }
+    s[0].hout_n = cw_put(s[0].hout[..], s[0].hout_n, ifx body.count > CH_RESULT then cast(string) body[0..<CH_RESULT] else body);
+    if status != 200 { s[0].hfailed = true; }
+    s[0].hpart += 1;
+    cw_hosted_next(s);
   } else if kind == CF_PLAN {
     if !s[0].live { return; }
     s[0].live = false;
@@ -2354,6 +2448,71 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
   count := s[0].count;
   cw_test_answer(s, 404, "{\"error\":\"not found\"}");
   #assert s[0].count == count;
+}
+
+#test "a Gemini message has our tools: a call runs through the API's route as the person, shows as a call, and the model answers from what it said" {
+  h: [1] CwTest; s := h[0].s[..];
+  cw_test_open(s, "{\"claude\":null}");
+  cw_test_type(s, "composer", "what worlds do I have?");
+  cw_test_enter(s, "composer");
+  body := cw_test_body(s);
+  // the tools go with the message, from the command table's rows, and the instructions name them
+  #assert cw_test_door(s) == "/api/chat/complete" && cw_test_has(body, "\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"realm_list\"");
+  #assert cw_test_has(body, "- realm_list: your realms, and the worlds you may edit as the side lists them") && cw_test_has(body, "the side lists them: Coax.");
+  #assert !cw_test_has(body, "can't use tools") && !cw_test_has(body, "realm_world_place");
+  // the model calls realm_list and realm_world, in pieces, and a tool we don't have
+  cw_test_answer(s, 200, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"realm_list\",\"arguments\":\"{}\"}},{\"index\":1,\"function\":{\"name\":\"realm_world\",\"arguments\":\"{\\\"slug\\\":\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"function\":{\"arguments\":\"\\\"splice\\\"}\"}},{\"index\":2,\"function\":{\"name\":\"realm_world_place\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n");
+  // each runs through its row's route, a request at a time, with the page's login
+  #assert s[0].live && s[0].flight == CF_HCALL && cw_test_door(s) == "/api/worlds" && cw_test_body(s) == "" && s[0].ntools == 3;
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert tr_find(t, "m.1.calls") > 0 && tr_attr_of(t, tr_find(t, "m.1"), AT_STATE) == "waiting";   // the calls show in the answer that is coming
+  cw_test_answer(s, 200, "world splice Splice Bots\nworld garden Garden\n");
+  #assert cw_test_door(s) == "/api/playtest/realms/mine";
+  cw_test_answer(s, 200, "{\"realms\":[]}");
+  #assert cw_test_door(s) == "/api/worlds/splice/card";
+  cw_test_answer(s, 200, "world.card.v1 splice 3 14\nname Splice Bots\n");
+  #assert cw_test_door(s) == "/api/worlds/splice/content?lane=dev";
+  cw_test_answer(s, 200, "aethyr.content.v1\n");
+  // then the model is asked again with what they answered, and the tool it doesn't have says why
+  body = cw_test_body(s);
+  #assert s[0].flight == CF_COMPLETE && s[0].hstep == 1 && cw_test_has(body, "\"tools\":[");
+  #assert cw_test_has(body, "What our tools answered") && cw_test_has(body, "realm_list {}: GET /api/worlds answered HTTP 200\\nworld splice Splice Bots\\nworld garden Garden\\n");
+  #assert cw_test_has(body, "realm_world {\\\"slug\\\":\\\"splice\\\"}: GET /api/worlds/splice/card answered HTTP 200") && cw_test_has(body, "realm_world_place {}: not run: we have no such tool here");
+  cw_test_answer(s, 200, "data: {\"choices\":[{\"delta\":{\"content\":\"You have **Splice Bots** and **Garden**.\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  // the calls go above the answer as a run, the line under it counts them, and the world read brings its card
+  #assert !s[0].live && s[0].error_n == 0 && s[0].count == 3 && s[0].who[1] == CW_TOOL && cw_text(s, 2) == "You have **Splice Bots** and **Garden**.";
+  #assert cw_test_labels(s, 1) == "List your realms\nRead the world splice\nPlace a thing of kind ? at ?, ?";
+  calls: [CQ_MOST] CqCall; k := cq_calls(cw_text(s, 1), calls[..]);
+  #assert k == 3 && calls[0].state == KW_DONE && calls[0].output == "world splice Splice Bots\nworld garden Garden\n\n{\"realms\":[]}" && calls[2].state == KW_FAILED;
+  #assert tr_text_of(t, tr_find(t, "m.2.meta")) == "Gemini 4 Hydrogen · 3 tools" && s[0].flight == CF_CARD && cw_test_door(s) == "/api/worlds/splice/card";
+}
+
+#test "a Gemini message's last ask has no tools, a refused route says so, and Stop keeps the calls made" {
+  h: [1] CwTest; s := h[0].s[..];
+  cw_test_open(s, "{\"claude\":null}");
+  cw_test_type(s, "composer", "read the garden's document");
+  cw_test_enter(s, "composer");
+  call := "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"realm_doc\",\"arguments\":\"{\\\"slug\\\":\\\"garden\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n";
+  for step: 0..<CH_STEPS - 1 {
+    #assert cw_test_has(cw_test_body(s), "\"tools\":[");
+    cw_test_answer(s, 200, call);
+    #assert cw_test_door(s) == "/api/playtest/realms/garden/doc";
+    cw_test_answer(s, 404, "{\"error\":\"no such world\"}");
+  }
+  body := cw_test_body(s);
+  #assert s[0].hstep == CH_STEPS - 1 && !cw_test_has(body, "\"tools\":") && cw_test_has(body, "answered HTTP 404") && cw_test_has(body, CH_LAST);
+  cw_test_answer(s, 200, "data: {\"choices\":[{\"delta\":{\"content\":\"We couldn't find a realm called garden.\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
+  calls: [CQ_MOST] CqCall;
+  #assert !s[0].live && s[0].who[1] == CW_TOOL && cq_calls(cw_text(s, 1), calls[..]) == 3 && calls[0].state == KW_FAILED;
+  // Stop while a call runs: the calls made so far stay, and nothing more is asked
+  cw_test_type(s, "composer", "again");
+  cw_test_enter(s, "composer");
+  cw_test_answer(s, 200, call);
+  #assert s[0].flight == CF_HCALL;
+  cw_test_press(s, "composer.send");
+  #assert !s[0].live && s[0].flight == CF_NONE && s[0].who[s[0].count - 2] == CW_TOOL && coaxial_chatweb_stop(s);
 }
 
 #test "a message sent in the page's first moment, while the account is still being read, goes when that read is back" {
