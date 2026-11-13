@@ -259,11 +259,48 @@ splice_variant :: (s: [] Splice) -> int #export_c #effects(all) { if !s[0].galle
 splice_clock :: (s: [] Splice) -> f32 #export_c #effects(all) { if !s[0].gallery { return g_clock(s[0].game[..]); } return sp_look(s[0].scene).clock; }
 
 // The page's facts (kind 600) carry the URL: ?scene=N picks the scene, 0 to SP_SCENES - 1; anything else is 0.
+// The n-th whole number in text ("-1250 300": 0 gives -1250, 1 gives 300); 0 when there is none.
+sp_whole :: (text: string, n: int) -> int {
+  i := 0; k := 0;
+  while i < text.count {
+    while i < text.count && text[i] != '-' && (text[i] < '0' || text[i] > '9') { i += 1; }
+    if i >= text.count { break; }
+    neg := text[i] == '-'; if neg { i += 1; }
+    v := 0; while i < text.count && text[i] >= '0' && text[i] <= '9' { v = v * 10 + cast(int) (text[i] - '0'); i += 1; }
+    if k == n { return ifx neg then -v else v; }
+    k += 1;
+  }
+  return 0;
+}
+// A fact of the run for a host's checks and logs: 0 mode, 1 zone, 2 phase, 3 hearts, 4 Heat,
+// 5 robot pieces, 6 cells, 7 the rubble is gone, 8 the boss wall is gone, 9 the boss is down,
+// 10 graybox, 11 to 17 a part or card is held (H_ARM to H_CORE). -1 for anything else.
+splice_fact :: (s: [] Splice, k: int) -> int #export_c #effects(all) {
+  if s.count < 1 || s[0].gallery { return -1; }
+  g := s[0].game[..];
+  if k == 0 { return g[0].mode; } if k == 1 { return g[0].zone; } if k == 2 { return g[0].phase; }
+  if k == 3 { return g[0].hearts; } if k == 4 { return cast(int) floor(g[0].heat + 0.5); }
+  if k == 5 { return g[0].scrap; } if k == 6 { return g[0].cells; }
+  if k == 7 { return ifx g[0].rubble_gone then 1 else 0; } if k == 8 { return ifx g[0].wall_gone then 1 else 0; }
+  if k == 9 { return ifx g[0].boss_down then 1 else 0; } if k == 10 { return ifx g[0].gray then 1 else 0; }
+  if k >= 11 && k < 11 + HAVES { return ifx g[0].have[k - 11] then 1 else 0; }
+  return -1;
+}
 splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all) {
   if kind == 610 && s.count > 0 && body.count > 0 {   // a moment of the game to stand in: "0" to "10"
     n := 0;
     for i: 0..<body.count { d := cast(int) body[i] - 48; if d >= 0 && d <= 9 { n = n * 10 + d; } }
     s[0].started = true; g_stage(s[0].game[..], n);
+    return;
+  }
+  // A scripted host places the smuggler (aethyr/export/unreal/aethyr_script.c, the Unreal bridge's
+  // run): 611 "x z" in centimetres, 612 "i" beside foe i, 613 "i" at the boss's weak point i.
+  if kind >= 611 && kind <= 613 && s.count > 0 && s[0].started && !s[0].gallery {
+    g := s[0].game[..];
+    if kind == 611 { g[0].px = cast(f32) sp_whole(body, 0) / 100; g[0].pz = cast(f32) sp_whole(body, 1) / 100; }
+    i := sp_whole(body, 0);
+    if kind == 612 && i >= 0 && i < FOES { g[0].px = g[0].fx[i] + 1; g[0].pz = g[0].fz[i]; }
+    if kind == 613 && i >= 0 && i < 3 { w := weak_at(i); g[0].px = w.x; g[0].pz = w.z + 0.1; g_collide(g); }
     return;
   }
   if kind != 600 || s.count < 1 { return; }
@@ -371,6 +408,9 @@ splice_world_version :: (s: [] Splice) -> int #export_c #effects(all) { return s
 splice_live_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].live_n; }
 splice_draw_count :: (s: [] Splice) -> int #export_c #effects(all) { return ifx !s[0].world_built then 0 else ifx s[0].gallery then 1 else 2; }
 
+#test "a scripted host's numbers parse, signs and all, and a missing one is 0" {
+  #assert sp_whole("-1250 300", 0) == -1250 && sp_whole("-1250 300", 1) == 300 && sp_whole("7", 0) == 7 && sp_whole("7", 1) == 0 && sp_whole("", 0) == 0;
+}
 #test "two digit scenes parse, and an unknown scene is the first" {
   s := [1] Splice.[Splice.{}];
   splice_message(s[..], 600, "https://x/worlds/splice?scene=16");

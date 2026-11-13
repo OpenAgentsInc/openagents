@@ -1,0 +1,114 @@
+# Splice from the title to SCENE RESTORED, through the host interface: the same beats as the
+# game's own test ("the run plays from the title to SCENE RESTORED", splice-game.coax). Walking
+# between beats is stood in for by msg 611 (place, centimetres), 612 (beside a foe) and 613 (at a
+# weak point), as that test does. Facts: 0 mode, 1 zone, 2 phase, 3 hearts, 4 Heat, 5 robot
+# pieces, 6 cells, 7 rubble gone, 8 boss wall gone, 9 boss down, 11.. a part or card held.
+size 1280 800
+frames 2 20
+beat title
+expect 0 0
+key -2
+expect 0 1
+expect 1 0
+# the village: out through the scanner gate
+key w
+frames 500 20
+expect 1 1
+expect 0 6
+beat rail
+# the rail: the ping stops the rover; the Battery is at the marker
+frames 600 20
+expect 0 1
+key w up
+key e
+expect 0 1
+msg 611 18700 9400
+key e
+expect 13 1
+msg 611 16978 9500
+key e
+expect 0 6
+frames 1000 20
+expect 1 2
+expect 0 1
+beat mine
+# the day mine: four pickups, then the edit bay
+msg 611 -600 -1300
+key e
+msg 611 600 -1200
+key e
+msg 611 500 -1900
+key e
+msg 611 0 -1600
+key e
+expect 11 1
+expect 12 1
+expect 14 1
+expect 15 1
+msg 611 300 500
+frames 1 20
+key -15
+expect 0 2
+beat bay
+key 4
+key 5
+key 6
+key 1
+key 2
+key -2
+frames 1500 20
+expect 7 1
+expect 2 2
+beat dusk
+# into the passage: night; a cell, a fight, the one blue piece
+msg 611 0 -3700
+frames 1 20
+expect 2 3
+beat night
+msg 611 -2800 -4300
+key e
+expect 6 1
+msg 612 4
+key f
+msg 612 4
+key f
+expect 5 1
+expect 4 10
+msg 611 -3950 -5850
+key e
+expect 16 1
+expect 4 35
+msg 611 -950 -5700
+frames 100 20
+key e
+expect 0 2
+key c
+key 1
+key 3
+key -2
+msg 611 1300 -5000
+frames 1500 20
+expect 8 1
+beat wall-open
+# the boss: a sweep costs a heart; three stuns power it down
+msg 611 400 -7200
+frames 400 20
+msg 613 0
+key f
+msg 613 1
+key f
+msg 613 2
+key f
+expect 9 1
+beat boss-down
+msg 611 0 -6750
+key e
+expect 17 1
+msg 611 -950 -5700
+key -15
+key x
+expect 0 4
+beat memory
+frames 800 20
+expect 0 5
+beat restored

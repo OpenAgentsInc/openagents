@@ -32,6 +32,8 @@ int aethyr_mouselook(void *state);                /* 1: the host should capture 
 void aethyr_look_delta(void *state, float dx, float dy);
 void aethyr_pointer_lock(void *state, int status);
 void aethyr_message(void *state, int kind, const char *body, size_t length);
+/* A fact of the run for checks and logs; what each number means is the world's (its -ue-face.c). */
+int aethyr_fact(void *state, int k);
 
 #ifdef __cplusplus
 }

@@ -50,3 +50,4 @@ void aethyr_pointer_lock(void *state, int status) { splice_lock(at(state), statu
 void aethyr_message(void *state, int kind, const char *body, size_t length) {
   splice_message(at(state), kind, (coax_string){body, (int64_t)length});
 }
+int aethyr_fact(void *state, int k) { return (int)splice_fact(at(state), k); }
