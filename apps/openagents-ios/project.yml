@@ -115,7 +115,7 @@ schemes:
         - name: OpenAgentsTests
           selectedTests: [NativePackageTests, SparkBalanceTests]
         - name: OpenAgentsUITests
-          selectedTests: [StarterUITests/testEmbeddedCoaxModuleRunsOfflineAndChangesSharedState, BalanceUITests]
+          selectedTests: [StarterUITests/testEmbeddedCoaxAccountModuleRuns, BalanceUITests]
   CoaxNativeLive:
     build:
       targets:

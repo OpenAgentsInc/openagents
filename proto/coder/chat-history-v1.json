@@ -1,0 +1,16 @@
+{
+  "schema": "openagents.chat.history.v1",
+  "transport": "GET /api/chat/history; application/json; no-store",
+  "authentication": "Person account, including email L1. Linked Nostr-key owners only. No agents, guests or cross-account reads.",
+  "fields": {
+    "schema": "literal openagents.chat.history.v1",
+    "chats": "0..60 rows, updated_ms descending then numeric id descending",
+    "chats[].id": "decimal conversation id, 1..24 UTF-8 bytes",
+    "chats[].title": "up to 80 Unicode characters / 512 UTF-8 bytes",
+    "chats[].model": "up to 96 UTF-8 bytes",
+    "chats[].folder": "up to 512 UTF-8 bytes",
+    "chats[].updated_ms": "integer Unix milliseconds",
+    "chats[].busy": "boolean"
+  },
+  "golden": "{\"schema\":\"openagents.chat.history.v1\",\"chats\":[{\"id\":\"42\",\"title\":\"A \\\"chat\\\"\",\"model\":\"m\",\"folder\":\"Code\",\"updated_ms\":12,\"busy\":false}]}"
+}

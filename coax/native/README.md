@@ -6,7 +6,8 @@ runs Coax-generated Wasm, and the existing shared component DOM backend
 draws the app. This is the WebKit/Wasm delivery profile of
 [Coax Native](../native.md), not the proposed native-control renderer.
 
-The starter is `starter/app.coax`. Its canonical resources live here and in
+The reusable starter is `starter/app.coax`; OpenAgents builds its application
+surface from `apps/openagents-ios/home/app.coax`. Its canonical resources live here and in
 `components/` and `coax/web/`; generated copies are ignored. The iOS target
 uses the existing bundle `com.openagents.app`, signing team, icons,
 entitlements and 1.0.0 version line. Old world/wallet screens are excluded
@@ -58,8 +59,9 @@ Chat can use the existing send/state/turn polling API. Streaming transport,
 wallet payments, notifications and arbitrary new native SDKs are not exposed by this
 profile. The OpenAgents-only build 1069 adds a read-only `wallet.balance`
 service for its separate Extras module; it is not book functionality.
-Login/chat UI and state can be added entirely in Coax OTA within
-these services; that full application is subsequent book work (#13512).
+The OpenAgents `home/` module adds email-code login and read-only account
+history over these services. Full conversation functionality remains
+subsequent book work (#13512).
 
 ## Publish an update
 

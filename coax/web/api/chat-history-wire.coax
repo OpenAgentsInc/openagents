@@ -1,0 +1,39 @@
+#load "chat-history-policy.coax";
+#load "../../lib/json/json.coax";
+CHH_SCHEMA :: "openagents.chat.history.v1";
+CHH_MAX :: 60;
+ChatHistoryRow :: struct {owner:string;id:string;title:string;model:string;folder:string;updated_ms:int;busy:bool;}
+ChatHistoryItem :: struct {id:[24]u8;id_n:int;title:[512]u8;title_n:int;folder:[512]u8;folder_n:int;model:[96]u8;model_n:int;updated_ms:int;busy:bool;}
+ChatHistory :: struct {ok:bool;n:int;items:[CHH_MAX]ChatHistoryItem;}
+chh_write :: (kind:int,account:string,rows:[]ChatHistoryRow,out:[]u8)->int #export_c #effects(all) {
+  if !chh_owns(kind,account,account) || rows.count>CHH_MAX {return -1;}
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],CHH_SCHEMA);jo_key(o[..],"chats");jo_arr(o[..]);
+  for r:rows {
+    if !chh_owns(kind,account,r.owner) {continue;}
+    jo_obj(o[..]);jo_key(o[..],"id");jo_str(o[..],r.id);jo_key(o[..],"title");jo_str(o[..],r.title);
+    jo_key(o[..],"model");jo_str(o[..],r.model);jo_key(o[..],"folder");jo_str(o[..],r.folder);
+    jo_key(o[..],"updated_ms");jo_int(o[..],r.updated_ms);jo_key(o[..],"busy");jo_bool(o[..],r.busy);jo_end(o[..]);
+  }
+  jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+chh_read :: (raw:string)->ChatHistory {
+  bad:ChatHistory;nodes:[1024]JvNode;d:[1]Jv;
+  if !jv_parse(d[..],raw,nodes[..]) {return bad;}v:=d[0];
+  list:=jv_get(v,0,"chats");if jv_kind(v,0)!=JV_OBJECT || jv_raw(v,jv_get(v,0,"schema"))!=CHH_SCHEMA || jv_kind(v,list)!=JV_ARRAY {return bad;}
+  n:=jv_len(v,list);if n>CHH_MAX {return bad;}h:ChatHistory;h.n=n;
+  for i:0..<n {
+    row:=jv_at(v,list,i);if jv_kind(v,row)!=JV_OBJECT || jv_kind(v,jv_get(v,row,"updated_ms"))!=JV_NUMBER || (jv_kind(v,jv_get(v,row,"busy"))!=JV_TRUE && jv_kind(v,jv_get(v,row,"busy"))!=JV_FALSE) {return bad;}h.items[i].id_n=jv_str(v,jv_get(v,row,"id"),h.items[i].id[..]);
+    h.items[i].title_n=jv_str(v,jv_get(v,row,"title"),h.items[i].title[..]);
+    h.items[i].model_n=jv_str(v,jv_get(v,row,"model"),h.items[i].model[..]);
+    h.items[i].folder_n=jv_str(v,jv_get(v,row,"folder"),h.items[i].folder[..]);
+    if h.items[i].id_n<1 || h.items[i].title_n<0 || h.items[i].model_n<0 || h.items[i].folder_n<0 {return bad;}
+    h.items[i].updated_ms=jv_int(v,jv_get(v,row,"updated_ms"),0);h.items[i].busy=jv_bool(v,jv_get(v,row,"busy"));
+  }
+  h.ok=true;return h;
+}
+#test "the shared history codec escapes titles and omits another account" {
+  rows:=[2]ChatHistoryRow.[ChatHistoryRow.{owner="acct_a",id="42",title="A \"chat\"",model="m",folder="Code",updated_ms=12},ChatHistoryRow.{owner="acct_b",id="43",title="private"}];
+  out:[4096]u8;n:=chh_write(2,"acct_a",rows[..],out[..]);#assert n>0;
+  h:=chh_read(cast(string)out[0..<n]);#assert h.ok && h.n==1 && cast(string)h.items[0].title[0..<h.items[0].title_n]=="A \"chat\"";
+  #assert chh_write(0,"acct_a",rows[..],out[..])== -1 && !chh_read("{}").ok;
+}

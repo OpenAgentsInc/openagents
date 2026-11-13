@@ -72,7 +72,7 @@
             </BuildableReference>
             <SelectedTests>
                <Test
-                  Identifier = "StarterUITests/testEmbeddedCoaxModuleRunsOfflineAndChangesSharedState">
+                  Identifier = "StarterUITests/testEmbeddedCoaxAccountModuleRuns">
                </Test>
                <Test
                   Identifier = "BalanceUITests">

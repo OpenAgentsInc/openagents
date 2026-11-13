@@ -1,0 +1,12 @@
+// Read-only account history. Email sessions may read their own records;
+// this grants no admin, inference, credential or conversation-write access.
+#authority;
+#test "a person can read only the exact nonempty owning account" {
+  #assert chh_owns(2,"acct_a","acct_a") && chh_owns(2,"a","a");
+  #assert !chh_owns(2,"acct_a","acct_b") && !chh_owns(2,"","");
+  for kind:0..<6 {if kind!=2 {#assert !chh_owns(kind,"acct_a","acct_a");}}
+  #assert !chh_owns(2,"acct_a","") && !chh_owns(2,"","acct_a");
+}
+chh_owns :: (kind:int,account:string,owner:string)->bool #export_c #effects(all) {
+  return kind==2 && account.count>0 && account==owner;
+}

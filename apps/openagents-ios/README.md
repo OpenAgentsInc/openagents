@@ -25,6 +25,10 @@ The independent extras module and starter reuse the same components and
 browser ABI. A future app update may remove the extras surface without a
 native rebuild. The seed and recovery words stay in Swift/SDK memory.
 
+The production account surface is now [`home/`](home/README.md): email-code
+login and a read-only list of account-saved chats, delivered over the air to
+build 1069. The original starter remains reusable.
+
 ## Build and check
 
 `apps/openagents-ios/build.sh` generates on a remote build host and builds

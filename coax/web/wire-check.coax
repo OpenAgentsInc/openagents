@@ -476,7 +476,7 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
   if owner == "payments" { return wc_under(codec, "pay/") || wc_under(codec, "coax/lib/pay/") || wc_under(codec, "coax/lib/bitcoin/") || wc_under(codec, "coax/lib/lightning/") || wc_under(codec, "coax/lib/lnaddr/")
     || codec == "coax/lib/nostr/vault-wallet.coax"; }   // the wallet backup's codec stays below Nostr (docs/architecture/contexts.md)
   if owner == "coder" { return wc_under(codec, "coder/") || wc_under(codec, "coax/lib/agent/") || wc_under(codec, "coax/lib/boat/") || wc_under(codec, "coax/lib/microcoder/") || wc_under(codec, "coax/lib/gateway/") || wc_under(codec, "coax/lib/repo/") || wc_under(codec, "coax/web/repo/") || wc_under(codec, "coax/web/agent/"); }
-  if owner == "chat" { return wc_under(codec, "components/zeron/") || wc_under(codec, "apps/openagents-web/chat.coax") || wc_under(codec, "coax/web/api/chat.c"); }
+  if owner == "chat" { return wc_under(codec, "components/zeron/") || wc_under(codec, "apps/openagents-web/chat.coax") || (wc_under(codec, "coax/web/api/chat.c") || wc_starts(codec, "coax/web/api/chat-history")); }
   if owner == "projects" { return wc_under(codec, "coax/web/api/private.c") || wc_under(codec, "coax/web/api/drops.c") || wc_under(codec, "coax/web/project/"); }
   if owner == "nostr" { return wc_under(codec, "nostr/") || (wc_under(codec, "coax/lib/nostr/") && codec != "coax/lib/nostr/vault-wallet.coax"); }
   if owner == "psionic" { return wc_under(codec, "psionic/") || wc_under(codec, "coax/lib/systemone/") || wc_under(codec, "coax/web/api/inference.c") || wc_starts(codec, "coax/web/api/mesh"); }   // /api/v1/systemone is a System One door
@@ -492,7 +492,7 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
       && !wc_under(codec, "coax/lib/bitcoin/") && !wc_under(codec, "coax/lib/lightning/") && !wc_under(codec, "coax/lib/lnaddr/")
       && !wc_under(codec, "coax/lib/systemone/") && !wc_under(codec, "coax/web/room/") && !wc_starts(codec, "coax/web/api/auth") && codec != "coax/web/api/agent-wire.coax"
       && !wc_under(codec, "coax/web/api/worldbuilder.c") && !wc_under(codec, "coax/web/api/realms.c")
-      && !wc_under(codec, "coax/web/api/chat.c") && !wc_under(codec, "coax/web/api/private.c") && !wc_under(codec, "coax/web/api/drops.c") && !wc_under(codec, "coax/web/project/")
+      && !(wc_under(codec, "coax/web/api/chat.c") || wc_starts(codec, "coax/web/api/chat-history")) && !wc_under(codec, "coax/web/api/private.c") && !wc_under(codec, "coax/web/api/drops.c") && !wc_under(codec, "coax/web/project/")
       && !wc_under(codec, "coax/web/api/inference.c") && !wc_starts(codec, "coax/web/api/mesh") && !wc_under(codec, "coax/web/api/analytics.c")
       && !wc_under(codec, "coax/web/api/email.c") && !wc_under(codec, "coax/web/api/jobs.c") && !wc_under(codec, "coax/web/api/access.c");
   }

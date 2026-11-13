@@ -1,14 +1,12 @@
 import XCTest
 
 final class StarterUITests:XCTestCase {
-    func testEmbeddedCoaxModuleRunsOfflineAndChangesSharedState() {
+    func testEmbeddedCoaxAccountModuleRuns() {
         let app=XCUIApplication(); app.launchArguments=["-OAAutomation","YES"]; app.launch()
-        let button=app.webViews.buttons["TRY THE STARTER"]
-        XCTAssertTrue(button.waitForExistence(timeout:20))
-        button.tap()
-        XCTAssertTrue(app.webViews.staticTexts["1"].waitForExistence(timeout:5))
-        XCTAssertTrue(app.webViews.buttons["CHECK FOR UPDATES"].exists)
-        let shot=XCTAttachment(screenshot:app.screenshot()); shot.name="Coax Native starter"; shot.lifetime = .keepAlways; add(shot)
+        XCTAssertTrue(app.webViews.buttons["CHECK FOR UPDATES"].waitForExistence(timeout:20))
+        XCTAssertTrue(app.webViews.buttons["BUILD DETAILS"].exists)
+        XCTAssertTrue(app.webViews.buttons["MORE"].exists)
+        let shot=XCTAttachment(screenshot:app.screenshot());shot.name="Embedded Coax account surface";shot.lifetime = .keepAlways;add(shot)
     }
     // Select explicitly after publishing the live demonstration package.
     func testLiveSignedCoaxUpdateChangesInstalledApp() {

@@ -151,7 +151,7 @@ Owning contexts (`owner` slugs, from [`docs/architecture/contexts.md`](../docs/a
 | `identity` | Identity and auth | `coax/web/api/auth*`, `coax/web/api/agent-wire.coax` |
 | `payments` | Payments and wallet | `pay/`, `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/`, `coax/lib/nostr/vault-wallet.coax` |
 | `coder` | Coder and agents | `coder/`, `coax/lib/agent/`, `coax/lib/boat/`, `coax/lib/boat/`, `coax/lib/microcoder/`, `coax/lib/gateway/`, `coax/lib/repo/`, `coax/web/repo/`, `coax/web/agent/` |
-| `chat` | Chat | `components/zeron/`, `apps/openagents-web/chat.coax`, `coax/web/api/chat.c` |
+| `chat` | Chat | `components/zeron/`, `apps/openagents-web/chat.coax`, `coax/web/api/chat.c`, `coax/web/api/chat-history*` |
 | `projects` | Projects | `coax/web/api/private.c`, `coax/web/api/drops.c`, `coax/web/project/` |
 | `nostr` | Nostr | `nostr/`, `coax/lib/nostr/` |
 | `psionic` | Psionic and inference | `psionic/`, `coax/lib/systemone/`, `coax/web/api/inference.c`, `coax/web/api/mesh*` (the System One door) |

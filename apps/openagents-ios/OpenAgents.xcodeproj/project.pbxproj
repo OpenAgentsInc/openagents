@@ -40,6 +40,7 @@
 		D038A28C391888C7188F57E5 /* WalletBalance.c in Sources */ = {isa = PBXBuildFile; fileRef = BE3E54671A8869C147608A21 /* WalletBalance.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 		D3B1BBC9420E21741699D348 /* DeviceKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */; };
 		DACD4EFCA7D115FAA1A3D126 /* NativePackageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */; };
+		ECDFE75FB85014389B5354CF /* EmailLoginUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDB48A2A187EC9ADCAC59E7D /* EmailLoginUITests.swift */; };
 		F63C92AB22EF7A80B98AB547 /* PhoneSignin.c in Sources */ = {isa = PBXBuildFile; fileRef = 1EB43B9790841620D29A9F92 /* PhoneSignin.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 /* End PBXBuildFile section */
 
@@ -97,6 +98,7 @@
 		E9B32CD7EF30EADCBFE18124 /* BreezKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreezKey.swift; sourceTree = "<group>"; };
 		FA482D60928E6CCB2F0BDDA5 /* precomputed_ecmult.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = precomputed_ecmult.c; sourceTree = "<group>"; };
 		FD6C5DA61B10FDC9F445E9BF /* SparkBalanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkBalanceTests.swift; sourceTree = "<group>"; };
+		FDB48A2A187EC9ADCAC59E7D /* EmailLoginUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailLoginUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -228,6 +230,7 @@
 			isa = PBXGroup;
 			children = (
 				0ED6598EDE69B5D065A7D102 /* BalanceUITests.swift */,
+				FDB48A2A187EC9ADCAC59E7D /* EmailLoginUITests.swift */,
 				09C4767D8A37A4590FBE5B4D /* SharedAppDeviceUITests.swift */,
 				84FCC7F13CC90E6C87B4D65D /* SharedAppUITests.swift */,
 				88DAD8B0C2CFFD99B8FB4D20 /* StarterUITests.swift */,
@@ -422,6 +425,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				47402381B8C043A601D16232 /* BalanceUITests.swift in Sources */,
+				ECDFE75FB85014389B5354CF /* EmailLoginUITests.swift in Sources */,
 				103180BD57D2AA2E93F4A6B7 /* SharedAppDeviceUITests.swift in Sources */,
 				A05D687346C45546701CEFF7 /* SharedAppUITests.swift in Sources */,
 				647B0F6C417120E15A1A68A3 /* StarterUITests.swift in Sources */,

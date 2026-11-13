@@ -221,17 +221,27 @@ k_select_end :: (t: [] Tree, open: bool) {
   if open { tr_close(t); }
   tr_close(t);
 }
-// Secret: a one-line field for something pasted once and never shown (a key): hidden as it is typed, and
-// the browser is asked not to keep it.
-k_secret :: (t: [] Tree, u: [] Ui, id: string, placeholder: string, label: string) -> int {
+#test "single-line inputs keep native keyboard and autofill hints" {
+  t:[1]Tree;u:[1]Ui;tr_begin(t[..]);ui_begin(u[..],0,true);
+  f:=k_input(t[..],u[..],"email","you@example.com","Email address","email","email");
+  #assert tr_attr_of(t[..],f,AT_TYPE)=="email" && tr_attr_of(t[..],f,AT_COMPLETE)=="email";
+  f=k_secret(t[..],u[..],"secret","","Secret");
+  #assert tr_attr_of(t[..],f,AT_TYPE)=="password" && tr_attr_of(t[..],f,AT_COMPLETE)=="off";
+}
+// A single-line field, with the platform's keyboard and autofill hints.
+k_input :: (t: [] Tree, u: [] Ui, id: string, placeholder: string, label: string, type: string, complete: string) -> int {
   ida: [UI_ID] u8;
   i := k_frame(t, u, tr_cat(ida[..], id, ".frame"), TG_DIV, "field", MF_FIELD);
   f := tr_open(t, id, TG_INPUT, "");
-  tr_attr(t, f, AT_TYPE, "password"); tr_attr(t, f, AT_COMPLETE, "off");
+  tr_attr(t, f, AT_TYPE, type); tr_attr(t, f, AT_COMPLETE, complete);
   tr_attr(t, f, AT_PLACEHOLDER, placeholder); tr_attr(t, f, AT_LABEL, label);
   tr_close(t);
   tr_close(t);
   return f;
+}
+// A secret is never offered to the browser's saved-value store.
+k_secret :: (t: [] Tree, u: [] Ui, id: string, placeholder: string, label: string) -> int {
+  return k_input(t,u,id,placeholder,label,"password","off");
 }
 // Card: a panel with a title, for a group of settings. Close it with tr_close.
 k_card :: (t: [] Tree, u: [] Ui, id: string, title: string) -> int {

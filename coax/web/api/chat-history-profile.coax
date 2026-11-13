@@ -1,0 +1,14 @@
+// The schema's frozen JSON is read and written by the one history codec.
+#load "chat-history-wire.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/tool.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  raw:[8192]u8;gold:[4096]u8;out:[4096]u8;nodes:[128]JvNode;d:[1]Jv;
+  n:=fs_read("proto/coder/chat-history-v1.json",raw[..]);
+  if n<1 || !jv_parse(d[..],cast(string)raw[0..<n],nodes[..]) {return 1;}
+  gn:=jv_str(d[0],jv_get(d[0],0,"golden"),gold[..]);if gn<1 {return 1;}
+  h:=chh_read(cast(string)gold[0..<gn]);if !h.ok || h.n!=1 {return 1;}
+  r:=h.items[0];rows:=[1]ChatHistoryRow.[ChatHistoryRow.{owner="acct_a",id=cast(string)r.id[0..<r.id_n],title=cast(string)r.title[0..<r.title_n],model=cast(string)r.model[0..<r.model_n],folder=cast(string)r.folder[0..<r.folder_n],updated_ms=r.updated_ms,busy=r.busy}];
+  k:=chh_write(2,"acct_a",rows[..],out[..]);if k!=gn || cast(string)out[0..<k]!=cast(string)gold[0..<gn] {return 1;}
+  print("chat history: exact schema golden passes\n");return 0;
+}
