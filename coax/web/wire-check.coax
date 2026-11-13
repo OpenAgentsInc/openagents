@@ -3,7 +3,8 @@
 // that may write it and the command that checks it. proto/wire-allowlist.txt names what is not
 // compliant yet. This tool fails when the tree has a shape that neither knows. Run it before a push:
 //   coax/web/tool.sh wire-check                  (from the repository root)
-//   coax/web/tool.sh wire-check --base REV       compare the allowlist with REV's (default origin/main)
+//   coax/web/tool.sh wire-check --base REV       compare the allowlist with REV's (default origin/main), at
+//                                              the commit where this checkout left REV
 //   coax/web/tool.sh wire-check --list           every schema id found, with its file, and pass or fail
 //   coax/bin/coax test coax/web/wire-check.coax --library
 //
@@ -718,6 +719,16 @@ tool_main :: () -> int #export_c #effects(all) {
   run: WcRun; run.list = args_has(args[..], "--list");
   base := args_value(args[..], "--base", "origin/main");
   err: [4096] u8;
+  // The base is where this checkout left it (git merge-base HEAD BASE). A checkout behind BASE
+  // (the after-landing check of a commit main has moved past) is compared with its own ancestor,
+  // not with a later allowlist that has shrunk since, where every line it still has looks new.
+  fork: [64] u8;
+  {
+    mb := [4] string.["git", "merge-base", "HEAD", base];
+    m := proc_run(mb[..], 60000, fork[..], err[..]);
+    n := m.out_n; while n > 0 && (fork[n - 1] == 10 || fork[n - 1] == ' ') { n -= 1; }
+    if m.started == 0 && m.status == 0 && n >= 40 { base = cast(string) fork[0..<n]; }
+  }
   rtext: [1048576] u8; rnodes: [WC_NODES] JvNode; rd: [1] Jv;
   rn := fs_read(WC_REGISTRY, rtext[..]);
   if rn < 0 { tool_errln("wire-check: run from the repository root (no proto/registry.json here)"); return 2; }

@@ -5,7 +5,8 @@
 // folder, and fails on a load that breaks a rule and that aethyr/layer-allowlist.txt does not
 // excuse. Run it before a push:
 //   coax/web/tool.sh layer-check                 (from the repository root)
-//   coax/web/tool.sh layer-check --base REV      compare the allowlist with REV's (default origin/main)
+//   coax/web/tool.sh layer-check --base REV      compare the allowlist with REV's (default origin/main), at
+//                                              the commit where this checkout left REV
 //   coax/web/tool.sh layer-check --consumers     report the engine modules no product loads, each with its line in aethyr/consumers.txt (#13272)
 //   coax/bin/coax test coax/web/layer-check.coax --library
 //
@@ -697,6 +698,16 @@ tool_main :: () -> int #export_c #effects(all) {
   run: LcRun;
   base := args_value(args[..], "--base", "origin/main");
   err: [4096] u8;
+  // The base is where this checkout left it (git merge-base HEAD BASE). A checkout behind BASE
+  // (the after-landing check of a commit main has moved past) is compared with its own ancestor,
+  // not with a later allowlist that has shrunk since, where every line it still has looks new.
+  fork: [64] u8;
+  {
+    mb := [4] string.["git", "merge-base", "HEAD", base];
+    m := proc_run(mb[..], 60000, fork[..], err[..]);
+    n := m.out_n; while n > 0 && (fork[n - 1] == 10 || fork[n - 1] == ' ') { n -= 1; }
+    if m.started == 0 && m.status == 0 && n >= 40 { base = cast(string) fork[0..<n]; }
+  }
   atext: [1048576] u8;
   an := fs_read(LC_ALLOW, atext[..]);
   if an < 0 { print("layer-check: no % here; run from the repository root (an empty file is the goal; a missing one is not)\n", LC_ALLOW); return 2; }
