@@ -1327,12 +1327,12 @@ g_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   // under them: the hoverboard, when the world gives one: what it is doing, and its keys
   if g_board_given(g) && g[0].mode == M_PLAY {
     y0 := pad + 58 * k; bd := g[0].board[0]; on := g_riding(g);
-    ui_panel(g, u, pad, y0, pad + 236 * k, y0 + 50 * k, ifx on then ink else paper, 0.96);
-    n = ui_box(out, n, pad, y0, pad + 236 * k, y0 + 50 * k, 3 * k, ink);
+    ui_panel(g, u, pad, y0, pad + 272 * k, y0 + 50 * k, ifx on then ink else paper, 0.96);
+    n = ui_box(out, n, pad, y0, pad + 272 * k, y0 + 50 * k, 3 * k, ink);
     fg := ifx on then paper else ink;
     what := ifx !on then "BOARD OFF" else ifx bd.fast then "BOARD · VERY FAST" else "BOARD · CASUAL";
     n = ui_text(out, n, what, pad + 12 * k, y0 + 20 * k, 9.5 * k, ifx on && bd.fast then HEAT() else fg);
-    if on { n = ui_right(out, n, num(buf[..], "", cast(int) (abs(bd.m.speed) * 3.6 + 0.5), " km/h"), pad + 224 * k, y0 + 20 * k, 9.5 * k, fg); }
+    if on { n = ui_right(out, n, num(buf[..], "", cast(int) (abs(bd.m.speed) * 3.6 + 0.5), " km/h"), pad + 260 * k, y0 + 20 * k, 9.5 * k, fg); }
     n = ui_text(out, n, ifx on then "B off · Q casual or fast · Space hop" else "B board · Q casual or fast", pad + 12 * k, y0 + 40 * k, 7.5 * k, fg);
   }
   // top centre: the phase, four chips on an ink bar
