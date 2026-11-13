@@ -11,7 +11,7 @@
 // Everyone on this computer is the admin: the dev server listens on 127.0.0.1 only.
 //
 //   coax/web/tool.sh metaverse/splice/tools/world-local.coax DIR METHOD URL [BODY_FILE]
-// POST ...?dry=1 carries the batch out and saves nothing; GET .../content answers the content tables.
+// POST ...?dry=1 carries the batch out and saves nothing; GET .../content[?lane=dev] answers the lane's content tables.
 // It prints the status, a newline, and the answer's bytes (the routes' own: world.state.v1, a
 // refusal, or event lines), and exits 0 when it answered.
 // tool.sh: run-steps 250000000
@@ -30,6 +30,7 @@ WlLocal :: struct {
   path: [700] u8;
   doc: [SPW_DOC] u8; out_doc: [SPW_DOC] u8; did: [WE_BATCH_BODY] u8; inv: [WE_BATCH_BODY] u8; body: [WE_BATCH_BODY] u8; step: [WE_BATCH_BODY] u8;
   answer: [SPW_DOC * 2 + WE_BATCH_BODY] u8; events: [262144] u8;
+  tables: [SPW_TABLES] u8; out_tables: [SPW_TABLES] u8;   // a lane's content tables as read, and as a batch changed them
 }
 wl_id :: (t: [] WlLocal) -> string { return cast(string) t[0].id[0..<t[0].id_n]; }
 // DIR/ID then the parts, in t's path buffer.
@@ -53,6 +54,11 @@ wl_row_write :: (t: [] WlLocal) -> bool {
   for k: 0..<WL_ROW { if k > 0 { n = ct_put(b[..], n, " "); } n = wd_put_int(b[..], n, t[0].row[k]); }
   n = ct_put(b[..], n, "\n");
   return n <= b.count && fs_write(wl_path(t, ".row", -1, ""), cast(string) b[0..<n]);
+}
+// A lane's content tables as they were saved ("": none saved, the build's).
+wl_tables :: (t: [] WlLocal, lane: string) -> string {
+  n := fs_read(wl_path(t, lane, -1, ""), t[0].tables[..]);
+  return ifx n > 0 then cast(string) t[0].tables[0..<n] else "";
 }
 // A lane's document as kept, or Splice with nothing placed.
 wl_doc :: (t: [] WlLocal, lane: string) -> string {
@@ -107,7 +113,7 @@ wl_events :: (t: [] WlLocal, query: string) -> int {
   return wl_say(200, text[from..<text.count]);
 }
 wl_post :: (t: [] WlLocal, body: string, dry: bool) -> int {
-  r := t[0].row[..]; head: [3] int; here: [4] int; n: [6] int; why: [240] u8;
+  r := t[0].row[..]; head: [3] int; here: [4] int; n: [7] int; why: [240] u8;
   batch_ok := wr_batch(body, head[..]);
   what := head[1];
   verdict := wr_write(true, true, true, wr_authored(wl_id(t), what), batch_ok, what, head[0], r[R_DEV], r[R_DONE], r[R_STEPS]);
@@ -121,11 +127,14 @@ wl_post :: (t: [] WlLocal, body: string, dry: bool) -> int {
     if wr_keeps(has_live, here[0], here[1], here[2], here[3], r[R_LIVE_PINS], r[R_LIVE_PINS + 1], r[R_LIVE_PINS + 2], r[R_LIVE_PINS + 3]) {
       kept := wl_doc(t, ".live");
       if !fs_write(wl_path(t, ".prev", -1, ""), kept) { return wl_refuse(t, 500, "not saved", -1); }
+      if !fs_write(wl_path(t, ".prev.tables", -1, ""), wl_tables(t, ".live.tables")) { return wl_refuse(t, 500, "not saved", -1); }
       r[R_PREV] = r[R_LIVE]; for k: 0..<4 { r[R_PREV_PINS + k] = r[R_LIVE_PINS + k]; }
     }
     doc := wl_doc(t, ".dev");
     r[R_LIVE] += 1; r[R_FROM] = r[R_DEV]; r[R_WHEN] = when; for k: 0..<4 { r[R_LIVE_PINS + k] = here[k]; }
     en := wr_published(seq, wl_id(t), r[R_LIVE], r[R_DEV], when, here[0], here[1], here[2], here[3], now, t[0].step[..]);
+    if !fs_write(wl_path(t, ".live.tables", -1, ""), wl_tables(t, ".dev.tables")) { return wl_refuse(t, 500, "not saved", -1); }
+    doc = wl_doc(t, ".dev");
     if en < 0 || !fs_write(wl_path(t, ".live", -1, ""), doc) || !fs_append(wl_path(t, ".live.events", -1, ""), cast(string) t[0].step[0..<en]) || !fs_append(wl_path(t, ".live.events", -1, ""), "\n") || !wl_row_write(t) {
       return wl_refuse(t, 500, "not saved", -1);
     }
@@ -139,7 +148,7 @@ wl_post :: (t: [] WlLocal, body: string, dry: bool) -> int {
     text = cast(string) t[0].step[0..<sn]; fenced = false;
   }
   doc := wl_doc(t, ".dev");
-  status := splice_world_batch(doc, text, fenced, t[0].out_doc[..], t[0].did[..], t[0].inv[..], why[..], n[..]);
+  status := splice_world_batch(doc, wl_tables(t, ".dev.tables"), text, fenced, t[0].out_doc[..], t[0].out_tables[..], t[0].did[..], t[0].inv[..], why[..], n[..]);
   if status != SPB_OK { return wl_refuse(t, splice_world_status(status), ifx n[3] > 0 then cast(string) why[0..<n[3]] else splice_world_words(status), n[5]); }
   did := cast(string) t[0].did[0..<n[1]];
   if dry { return wl_state(t, wr_lane("dev"), r[R_DEV], here[..], "", did); }   // carried out in a copy; nothing is saved
@@ -155,6 +164,7 @@ wl_post :: (t: [] WlLocal, body: string, dry: bool) -> int {
     if !fs_append(wl_path(t, ".dev.events", -1, ""), cast(string) ev[0..<vn + 1]) { return wl_refuse(t, 500, "not saved", -1); }
   }
   r[R_STEPS] = wr_steps(what, r[R_DONE], r[R_STEPS]); r[R_DONE] = wr_done(what, r[R_DONE]); r[R_DEV] += n[4];
+  if n[6] > 0 && !fs_write(wl_path(t, ".dev.tables", -1, ""), cast(string) t[0].out_tables[0..<n[6]]) { return wl_refuse(t, 500, "not saved", -1); }
   if !fs_write(wl_path(t, ".dev", -1, ""), cast(string) t[0].out_doc[0..<n[0]]) || !wl_row_write(t) { return wl_refuse(t, 500, "not saved", -1); }
   return wl_state(t, wr_lane("dev"), r[R_DEV], here[..], "", did);
 }
@@ -171,8 +181,13 @@ tool_main :: () -> int #export_c #effects(all) {
   path := ct_part(rest, '?', 0); query := ifx ct_parts(rest, '?') > 1 then rest[path.count + 1..<rest.count] else "";
   id := ct_part(path, '/', 0); tail := ifx ct_parts(path, '/') > 1 then path[id.count..<path.count] else "";
   if id != SPW_ID || (tail != "" && tail != "/events" && tail != "/content") || (method != "GET" && method != "POST") || (tail != "" && method != "GET") { return wl_refuse(t[..], 404, wr_words(WR_NO_WORLD), -1); }
-  if tail == "/content" { cn := splice_world_content(t[0].events[..]); return wl_say(200, cast(string) t[0].events[0..<ifx cn < 0 then 0 else cn]); }
   t[0].id_n = ct_copy(t[0].id[..], id);
+  if tail == "/content" {
+    // the lane's own tables once a cell was edited (dev: as they are edited; else as published), else the build's
+    lane := wl_query(query, "lane");
+    cn := splice_world_tables(wl_tables(t[..], ifx lane == "dev" then ".dev.tables" else ".live.tables"), t[0].events[..]);
+    return wl_say(200, cast(string) t[0].events[0..<ifx cn < 0 then 0 else cn]);
+  }
   ok := fs_mkdir(dir);
   wl_row_read(t[..]);
   if tail == "/events" { return wl_events(t[..], query); }

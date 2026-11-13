@@ -9,6 +9,8 @@
 //                                       lane's revision, the steps that can be undone and redone, and
 //                                       the selected entity's ID (0: none)
 //   cols NAME ...                       the World columns an edit may set on an entity (world-edit.coax WE_COL)
+//   table NAME                          the content table the kinds are rows of, when its cells may be
+//                                       edited (E10, #13419): a cell's edit names it; left out, cells are only shown
 //   k KIND NAME                         a kind: its content ID and its name
 //   e ID KIND X Y Z YAW SCALE           an entity: its ID on the wire, its kind, where it stands in whole
 //                                       centimetres, its turn in whole degrees, its size in whole percent
@@ -36,6 +38,7 @@ EdModel :: struct {
   world: [WE_WORLD] u8; world_n: int;
   lane: int; rev: int; undo: int; redo: int; sel: int;
   cols: [WE_COLS] bool;
+  table: [WE_NAME] u8; table_n: int;
   nk: int; kind_id: [EM_KINDS] int; kind_name: [EM_KINDS] [EM_NAME] u8; kind_n: [EM_KINDS] int;
   ne: int; e_id: [EM_ENTS] int; e_kind: [EM_ENTS] int; e_x: [EM_ENTS] int; e_y: [EM_ENTS] int; e_z: [EM_ENTS] int; e_yaw: [EM_ENTS] int; e_scale: [EM_ENTS] int;
   nc: int; c_kind: [EM_CELLS] int; c_col: [EM_CELLS] [WE_NAME] u8; c_col_n: [EM_CELLS] int; c_val: [EM_CELLS] [EM_VALUE] u8; c_val_n: [EM_CELLS] int;
@@ -67,6 +70,11 @@ em_cols :: (out: [] u8, at: int, cols: [] bool) -> int {
   names := WE_COL;
   n := ct_put(out, at, "cols");
   for k: 0..<WE_COLS { if k < cols.count && cols[k] { n = ct_put(out, n, " "); n = ct_put(out, n, names[k]); } }
+  return ct_put(out, n, "\n");
+}
+em_table :: (out: [] u8, at: int, name: string) -> int {
+  if !ct_name_ok(name) { return out.count + 1; }
+  n := ct_put(out, at, "table "); n = ct_put(out, n, name);
   return ct_put(out, n, "\n");
 }
 em_kind :: (out: [] u8, at: int, id: int, name: string) -> int {
@@ -106,6 +114,7 @@ em_no :: (out: [] u8, at: int, words: string) -> int {
 em_write :: (m: [] EdModel, out: [] u8) -> string {
   n := em_begin(out, cast(string) m[0].world[0..<m[0].world_n], m[0].lane, m[0].rev, m[0].undo, m[0].redo, m[0].sel);
   n = em_cols(out, n, m[0].cols[..]);
+  if m[0].table_n > 0 { n = em_table(out, n, cast(string) m[0].table[0..<m[0].table_n]); }
   for k: 0..<m[0].nk { n = em_kind(out, n, m[0].kind_id[k], cast(string) m[0].kind_name[k][0..<m[0].kind_n[k]]); }
   for k: 0..<m[0].ne { n = em_entity(out, n, m[0].e_id[k], m[0].e_kind[k], m[0].e_x[k], m[0].e_y[k], m[0].e_z[k], m[0].e_yaw[k], m[0].e_scale[k]); }
   for k: 0..<m[0].nc { n = em_cell(out, n, m[0].c_kind[k], cast(string) m[0].c_col[k][0..<m[0].c_col_n[k]], cast(string) m[0].c_val[k][0..<m[0].c_val_n[k]]); }
@@ -130,7 +139,7 @@ em_copy :: (to: [] u8, s: string) -> int {
 }
 // The model in text, into m. False (and m not ok) for any bytes em_write would not write.
 em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
-  m[0].ok = false; m[0].nk = 0; m[0].ne = 0; m[0].nc = 0; m[0].no_n = 0; m[0].world_n = 0; m[0].here = false;
+  m[0].ok = false; m[0].nk = 0; m[0].ne = 0; m[0].nc = 0; m[0].no_n = 0; m[0].world_n = 0; m[0].here = false; m[0].table_n = 0;
   for k: 0..<WE_COLS { m[0].cols[k] = false; }
   if text.count < EM_SCHEMA.count || text.count > EM_BYTES { return false; }
   lines := ct_parts(text, '\n');
@@ -146,6 +155,8 @@ em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
     word := ct_part(line, ' ', 0);
     if word == "cols" {
       for k: 1..<ct_parts(line, ' ') { c := we_col(ct_part(line, ' ', k)); if c >= 0 { m[0].cols[c] = true; } }
+    } else if word == "table" {
+      m[0].table_n = em_copy(m[0].table[..], em_rest(line, 1));
     } else if word == "k" && m[0].nk < EM_KINDS {
       k := m[0].nk;
       m[0].kind_id[k] = ct_num(ct_part(line, ' ', 1)).v;
@@ -193,6 +204,7 @@ em_test_text :: (out: [] u8) -> string {
   cols: [WE_COLS] bool; cols[WEC_X] = true; cols[WEC_Z] = true; cols[WEC_YAW] = true;
   n := em_begin(out, "splice", 0, 7, 3, 1, 2);
   n = em_cols(out, n, cols[..]);
+  n = em_table(out, n, "pieces");
   n = em_kind(out, n, 1001, "Cargo crate");
   n = em_kind(out, n, 1002, "Parked rover");
   n = em_entity(out, n, 1, 1001, 350, 0, -1200, 90, 100);
@@ -217,6 +229,8 @@ em_test_text :: (out: [] u8) -> string {
   #assert em_kind_name(m, 1002, name[..]) == "Parked rover" && em_kind_name(m, 7, name[..]) == "";
   #assert em_entity_at(m, 2) == 1 && em_entity_at(m, 3) == -1 && em_entity_at(m, 0) == -1;
   #assert m[0].here && m[0].here_x == 420 && m[0].here_z == -75;
+  tb := m[0].table;
+  #assert cast(string) tb[0..<m[0].table_n] == "pieces";
 }
 
 #test "a model with nothing in it reads, and bytes the writer would not write are refused" {
@@ -226,7 +240,8 @@ em_test_text :: (out: [] u8) -> string {
   n = em_cols(h[0].out[..], n, none[..]);
   #assert em_read(m, cast(string) h[0].out[0..<n], h[0].scratch[..]) && m[0].lane == 1 && m[0].ne == 0 && m[0].no_n == 0 && !m[0].here;
   #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nhere 1\n", h[0].scratch[..]) && !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nhere 1 2 3\n", h[0].scratch[..]);
-  #assert em_here(h[0].out[..], 0, WE_REACH + 1, 0) > EM_BYTES;
+  #assert em_here(h[0].out[..], 0, WE_REACH + 1, 0) > EM_BYTES && m[0].table_n == 0;
+  #assert em_table(h[0].out[..], 0, "Pieces") > EM_BYTES && !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\ntable two words\n", h[0].scratch[..]);
   #assert !em_read(m, "editor.model.v2 splice dev 0 0 0 0\ncols\n", h[0].scratch[..]);
   #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\ne 1 5 0 0 0 0 100 extra\n", h[0].scratch[..]);
   #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\ne 01 5 0 0 0 0 100\n", h[0].scratch[..]);

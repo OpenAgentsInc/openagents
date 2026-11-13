@@ -175,6 +175,13 @@ not a flat folder scan.
   new thing at "here". `coax drive` taps and drags at points of the page
   (`tap X Y`, `drag X0 Y0 X1 Y1`). Splice is the first realm
   (`metaverse/splice/world.coax`, `spv_*`).
+- **As built (E10, #13419):** where a realm names the table its kinds are
+  rows of, the inspector shows the selected thing's content row as fields. A
+  changed cell is a `cell` edit of the world's one log, checked by the server
+  through `metaverse-engine/editor/content-edit.coax` and the realm's own
+  rules, and saved with the lane's tables. Pages carry the event out in
+  place. Splice is the first realm
+  ([the cell edit](../protocol/world-edit-v1.md)).
 - **Assets:** an asset browser over the realm's pack and the shared kits.
   Drop a glTF, PNG or audio file to add it: it is packed with a declared
   licence (`metaverse-engine/editor/pack.coax`) and appears in the browser.

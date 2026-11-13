@@ -38,8 +38,8 @@ DM_OUT :: 524288;      // bytes of commands one flush can hold
 DM_ID :: 64;           // bytes of an id kept
 DM_NONE :: 65535;
 DC_MAKE :: 1; DC_REMOVE :: 2; DC_PLACE :: 3; DC_TEXT :: 4; DC_CLASS :: 5; DC_ATTR :: 6; DC_UNATTR :: 7; DC_FRAME :: 8; DC_STYLE :: 9; DC_VALUE :: 10; DC_FOCUS :: 11;
-DM_VALUE :: 1024;      // bytes of the fields' values the page can set before a flush
-DM_VALUES :: 16;       // fields the page can set before a flush
+DM_VALUE :: 4096;      // bytes of the fields' values the page can set before a flush
+DM_VALUES :: 48;       // fields the page can set before a flush (a form: an editor's columns and a row's cells)
 
 DomSlot :: struct {
   live: bool; seen: bool;

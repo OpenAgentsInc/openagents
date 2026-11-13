@@ -8002,6 +8002,12 @@ Worlds with an ID (#13412; `docs/protocol/world-edit-v1.md`, `world-doc-v1.md`,
 - Each saved edit is one outbox row (`realm-authoring.world.edited.v1`),
   written in the transaction that changes the document, one a revision.
 - An undo is saved as edits of its own, so every reader follows it the same way.
+- A cell of a world's content tables is an edit of the same log (#13419). The
+  server checks it as a content document is checked
+  (`metaverse-engine/editor/content-edit.coax`), with the realm's own rules
+  and its check of every placed thing, and saves the tables in the
+  transaction that saves the document (Splice: `spw_cell`). The tables keep
+  the revision their build shipped with: a cell edit never changes a pin.
 - A session never takes a live revision whose pins (engine, rules, content,
   wire) are not its own. An update that changes a pin starts with the next
   session, and live keeps the revision before it for one release

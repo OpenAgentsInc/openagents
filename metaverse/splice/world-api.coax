@@ -26,15 +26,31 @@ splice_world_content :: (out: [] u8) -> int #export_c #effects(all) {
   n := ct_put(out, 0, SC_SHIPPED);
   return ifx n > out.count then -1 else n;
 }
-// A batch carried out on a document (world.coax spw_batch): its status (SPB_*). n takes six
+// A batch carried out on a document and the world's content tables (world.coax spw_batch): its
+// status (SPB_*). tables: the world's own ("": the ones the build shipped with). n takes seven
 // numbers: the bytes of the new document, of the batch as taken and of its inverse, of the words
-// of a refusal, how many edits were taken, and which edit was refused (-1: none).
-splice_world_batch :: (doc: string, body: string, fenced: bool, out_doc: [] u8, out_did: [] u8, out_inv: [] u8, out_why: [] u8, n: [] int) -> int #export_c #effects(all) {
-  if n.count < 6 { return SPB_ROOM; }
+// of a refusal, how many edits were taken, which edit was refused (-1: none), and the bytes of
+// the tables in out_tables when the batch changed them (0: it did not).
+splice_world_batch :: (doc: string, tables: string, body: string, fenced: bool, out_doc: [] u8, out_tables: [] u8, out_did: [] u8, out_inv: [] u8, out_why: [] u8, n: [] int) -> int #export_c #effects(all) {
+  if n.count < 7 || tables.count > SPW_TABLES { return SPB_ROOM; }
   g := [1] SpGame.[SpGame.{}]; x := [1] SpwWork.[SpwWork.{}];
+  x[0].ct[0].text_n = ct_copy(x[0].ct[0].text[..], tables);
   b := spw_batch(g[..], x[..], doc, body, fenced, out_doc, out_did, out_inv, out_why);
-  n[0] = b.doc; n[1] = b.did; n[2] = b.inv; n[3] = ifx b.why > out_why.count then 0 else b.why; n[4] = b.edits; n[5] = b.at;
+  n[0] = b.doc; n[1] = b.did; n[2] = b.inv; n[3] = ifx b.why > out_why.count then 0 else b.why; n[4] = b.edits; n[5] = b.at; n[6] = 0;
+  if b.status == SPB_OK && x[0].ct[0].changed {
+    made := spw_tables_text(x[0].ct[..]);
+    if made.count > out_tables.count { return SPB_ROOM; }
+    n[6] = ct_copy(out_tables, made);
+  }
   return b.status;
+}
+// The world's content tables as a page reads them: its own, or the ones the build shipped with
+// when it has none. -1 for tables this build does not read.
+splice_world_tables :: (tables: string, out: [] u8) -> int #export_c #effects(all) {
+  if tables.count == 0 { return splice_world_content(out); }
+  g := [1] SpGame.[SpGame.{}]; ct := [1] SpwTables.[SpwTables.{}];
+  if !spw_tables_open(g[..], ct[..], tables) || tables.count > out.count { return -1; }
+  return ct_copy(out, tables);
 }
 // What the API answers for a status: 200 saved; 400 no batch; 409 stale; 422 refused, with words;
 // 500 the stored document did not open or an answer did not fit.
@@ -54,17 +70,28 @@ splice_world_words :: (status: int) -> string #export_c #effects(all) {
 }
 
 #test "the API's Splice: the empty document, the pins, and a batch through the exported calls" #steps 4000000000 #traversal 2000000000 {
-  t := [1] SpwTest.[SpwTest.{}]; n: [6] int; pins: [4] int;
+  t := [1] SpwTest.[SpwTest.{}]; n: [7] int; pins: [4] int; tb: [SPW_TABLES] u8; own: [SPW_TABLES] u8; body: [WE_BATCH_BODY] u8;
   cn := splice_world_content(t[0].third[..]); cd: [1] ContentDoc;
   #assert cn > 0 && ct_read(cd[..], cast(string) t[0].third[0..<cn]) && ct_table(cd[..], "pieces") >= 0 && ct_table(cd[..], "landmarks") >= 0 && ct_table(cd[..], "kept_clear") >= 0 && splice_world_content(t[0].third[0..<64]) == -1;
   e := splice_world_empty(t[0].doc[..]);
   #assert e > 0 && splice_world_empty(t[0].doc[0..<64]) == -1 && splice_world_pins(pins[..]) && pins[0] == SPW_ENGINE && pins[1] == SPW_RULES && pins[2] >= 1 && pins[3] == SPW_WIRE && !splice_world_pins(pins[0..<3]);
   empty := cast(string) t[0].doc[0..<e];
-  s := splice_world_batch(empty, SPT_TWO, true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
-  #assert s == SPB_OK && n[0] > 0 && n[1] > 0 && n[2] > 0 && n[3] == 0 && n[4] == 2 && n[5] == -1;
-  s = splice_world_batch(cast(string) t[0].next[0..<n[0]], sc_edit_swap(SPT_TWO, "\"rev\":0", "\"rev\":2", t[0].back[..]), true, t[0].third[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
+  s := splice_world_batch(empty, "", SPT_TWO, true, t[0].next[..], tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
+  #assert s == SPB_OK && n[0] > 0 && n[1] > 0 && n[2] > 0 && n[3] == 0 && n[4] == 2 && n[5] == -1 && n[6] == 0;
+  two := n[0];
+  s = splice_world_batch(cast(string) t[0].next[0..<two], "", sc_edit_swap(SPT_TWO, "\"rev\":0", "\"rev\":2", t[0].back[..]), true, t[0].third[..], tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
   #assert s == SPB_REFUSED && n[0] == 0 && n[5] == 0 && cast(string) t[0].why[0..<n[3]] == "inside the placed piece 0";
-  #assert splice_world_batch(empty, SPT_TWO, true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[0..<5]) == SPB_ROOM;
+  // a cell edit answers the world's tables as they now are; given back, they are the ones the next batch and a page read
+  s = splice_world_batch(cast(string) t[0].next[0..<two], "", spt_cell(body[..], 2, "pieces", 117, "name", "Tiny crate"), true, t[0].third[..], tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
+  #assert s == SPB_OK && n[6] > 3000 && n[4] == 1;
+  mine := cast(string) tb[0..<n[6]]; three := n[0];
+  on := splice_world_tables(mine, own[..]);
+  #assert on == mine.count && cast(string) own[0..<on] == mine && splice_world_tables("", own[..]) == cn && splice_world_tables("not tables", own[..]) == -1 && splice_world_tables(mine, own[0..<64]) == -1;
+  s = splice_world_batch(cast(string) t[0].third[0..<three], mine, spt_cell(body[..], 3, "pieces", 117, "name", "Small crate"), true, t[0].next[..], own[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
+  shipped := cast(string) own[0..<n[6]];
+  #assert s == SPB_OK && n[6] == cn && splice_world_content(t[0].doc[..]) == cn && shipped == cast(string) t[0].doc[0..<cn];
+  #assert splice_world_batch(empty, "not tables", SPT_TWO, true, t[0].next[..], tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]) == SPB_DOC;
+  #assert splice_world_batch(empty, "", SPT_TWO, true, t[0].next[..], tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[0..<6]) == SPB_ROOM;
   #assert splice_world_status(SPB_OK) == 200 && splice_world_status(SPB_BATCH) == 400 && splice_world_status(SPB_STALE) == 409 && splice_world_status(SPB_REFUSED) == 422 && splice_world_status(SPB_WALK) == 422 && splice_world_status(SPB_NOTHING) == 422 && splice_world_status(SPB_DOC) == 500 && splice_world_status(SPB_ROOM) == 500;
   #assert splice_world_words(SPB_STALE).count > 20 && splice_world_words(SPB_BATCH).count > 20 && splice_world_words(SPB_NOTHING) == "nothing to change" && splice_world_words(SPB_DOC) == "not saved";
 }

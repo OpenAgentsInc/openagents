@@ -157,6 +157,27 @@ wc_checks :: (t: [] Ap, w: [] Wc, other: string) {
   ap_check(t, "world: ORIGINAL removes every placed piece, and a publish on the same pins is taken now and leaves the kept revision", bare && st == 200 && w[0].st.rev == 3 && w[0].st.when == WU_NOW && ap_sql(t, "SELECT prev_rev || ' ' || prev_wire FROM verse.world_docs WHERE id = 'splice'", q[..]) == "1 2", ap_body(t));
   st = wc_post(t, w, t[0].admin_key, 13, "original", "");
   ap_check(t, "world: ORIGINAL with nothing placed changes nothing", st == 422 && wc_refusal(t, w, edit[..]) == "nothing to change", ap_body(t));
+  // ---- the content tables, edited (#13419): a cell is an edit of the same log, and the tables are saved with the document
+  st = wc_post(t, w, t[0].admin_key, 13, "apply", "{\"op\":\"cell\",\"table\":\"pieces\",\"row\":117,\"col\":\"name\",\"v\":\"Tiny crate\"}");
+  celled := st == 200 && w[0].st.rev == 14 && w[0].st.undo >= 1 && ap_has(wc_did(w), "\"op\":\"cell\"");
+  st = ap_call(t, "GET", "/api/worlds/splice/content?lane=dev", "", t[0].no[0..<0]);
+  dev_new := st == 200 && ap_has(ap_body(t), "\n117|Tiny crate|") && ap_starts(ap_body(t), "aethyr.content.v1 splice ");
+  st = ap_call(t, "GET", "/api/worlds/splice/content", "", t[0].no[0..<0]);
+  ap_check(t, "world: a cell of the content tables is an edit: dev's tables hold it, live's do not until a publish, and it is one event", celled && dev_new && st == 200 && ap_has(ap_body(t), "\n117|Small crate|") && wc_events(t, "?lane=dev&after=13", 14, 1) == 1 && ap_has(ap_body(t), "\"op\":\"cell\"") && ap_sql(t, "SELECT (dev_tables <> '')::int || ' ' || (live_tables = '')::int FROM verse.world_docs WHERE id = 'splice'", q[..]) == "1 1", ap_body(t));
+  st = wc_post(t, w, t[0].admin_key, 14, "apply", "{\"op\":\"cell\",\"table\":\"pieces\",\"row\":117,\"col\":\"colour\",\"v\":\"red\"}");
+  no_col := st == 422 && wc_refusal(t, w, edit[..]) == "no such table, row or column, or a value that column does not take";
+  st = wc_post(t, w, t[0].admin_key, 14, "apply", "{\"op\":\"cell\",\"table\":\"pieces\",\"row\":117,\"col\":\"scale\",\"v\":\"5\"}");
+  ap_check(t, "world: a cell its column or the tables' rules refuse is refused in words and changes nothing", no_col && st == 422 && wc_refusal(t, w, edit[..]) == "the tables' rules do not hold with that value" && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "14", ap_body(t));
+  st = wc_post(t, w, t[0].admin_key, 14, "undo", "");
+  undone := st == 200 && w[0].st.rev == 15;
+  st = ap_call(t, "GET", "/api/worlds/splice/content?lane=dev", "", t[0].no[0..<0]);
+  back := st == 200 && ap_has(ap_body(t), "\n117|Small crate|");
+  st = wc_post(t, w, t[0].admin_key, 15, "redo", "");
+  again := st == 200 && w[0].st.rev == 16;
+  st = wc_post(t, w, t[0].admin_key, 16, "publish-now", "");
+  shown := st == 200;
+  st = ap_call(t, "GET", "/api/worlds/splice/content", "", t[0].no[0..<0]);
+  ap_check(t, "world: an undo takes a cell back, a redo brings it again, and a publish makes the tables live", undone && back && again && shown && st == 200 && ap_has(ap_body(t), "\n117|Tiny crate|"), ap_body(t));
   wc_reset(t);
 }
 

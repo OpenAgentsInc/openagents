@@ -215,7 +215,9 @@ SptShell :: struct { m: [1] EdModel; scratch: [EM_BYTES] u8; name: [EM_NAME] u8;
   #assert spw_page_open(g, p, WL_DEV) && spt_round(x[..], 0.016, spt_state(x[..], WL_DEV, 2, cast(string) t[0].next[0..<b.doc])) == WFQ_DOC;
   // the model reads: two pieces, each of a kind the content names, and the columns a piece's edit may set
   #assert em_read(m, spw_model(g, p), k[0].scratch[..]) && p[0].model_rev == 1;
-  #assert m[0].ne == 2 && m[0].rev == 2 && m[0].lane == 0 && m[0].sel == 0 && m[0].nk == g[0].c[0].piece_n && m[0].nc == 4 * m[0].nk && m[0].no_n == 0;
+  #assert m[0].ne == 2 && m[0].rev == 2 && m[0].lane == 0 && m[0].sel == 0 && m[0].nk == g[0].c[0].piece_n && m[0].nc == 7 * m[0].nk && m[0].no_n == 0;
+  mt := m[0].table; c0 := m[0].c_col[0]; v0 := m[0].c_val[0];
+  #assert cast(string) mt[0..<m[0].table_n] == "pieces" && cast(string) c0[0..<m[0].c_col_n[0]] == "name" && cast(string) v0[0..<m[0].c_val_n[0]] == sc_piece_name(g[0].c[..], 0) && m[0].c_kind[0] == g[0].c[0].pieces[0].id;
   #assert m[0].e_id[0] == 1 && m[0].e_kind[0] == 113 && m[0].e_x[0] == 17720 && m[0].e_z[0] == -7060 && m[0].e_id[1] == 2 && m[0].e_kind[1] == 117;
   #assert m[0].cols[WEC_X] && m[0].cols[WEC_Z] && m[0].cols[WEC_YAW] && !m[0].cols[WEC_Y] && !m[0].cols[WEC_KIND];
   #assert em_kind_name(m, 113, k[0].name[..]).count > 0 && em_kind_name(m, 113, k[0].name[..]) == sc_piece_name(g[0].c[..], sc_piece(g[0].c[..], 113));
@@ -297,4 +299,89 @@ SptView :: struct { vp: [1] Viewport; w: [1] SpvWork; }
   yaw := vp[0].fyaw;
   spv_pointer(g, p, vp, w, v, 500, 250, 0); spv_pointer(g, p, vp, w, v, 560, 250, 1); spv_pointer(g, p, vp, w, v, 560, 250, 2);
   #assert vp[0].fyaw != yaw && f[0].body_n == 0;
+}
+
+SptCell :: struct { c: [1] SpContent; keep: [SPW_TABLES] u8; two: [SPW_DOC] u8; after: [SPW_DOC] u8; }
+// A batch of one cell edit from a revision.
+spt_cell :: (out: [] u8, rev: int, table: string, row: int, col: string, value: string) -> string {
+  e: [1] WorldEdit;
+  e[0] = WorldEdit.{ok = true, op = WE_CELL, id = row};
+  e[0].table_n = ct_copy(e[0].table[..], table); e[0].name_n = ct_copy(e[0].name[..], col); e[0].text_n = ct_copy(e[0].text[..], value);
+  return we_batch_write(rev, WB_APPLY, e[..], 1, out);
+}
+
+#test "Splice's world: a cell of the content tables is an edit: it is saved with the tables, its inverse takes it back, and what the column, the rules or a placed piece refuses changes nothing" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SpwTest.[SpwTest.{}]; g := t[0].g[..]; x := t[0].x[..]; k := [1] SptCell.[SptCell.{}]; body: [WE_BATCH_BODY] u8;
+  empty := spw_empty(g, x[0].k[..], t[0].doc[..]);
+  b := spw_batch(g, x, empty, SPT_TWO, true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  two := cast(string) k[0].two[0..<ct_copy(k[0].two[..], cast(string) t[0].next[0..<b.doc])];   // kept: the out buffers are written again below
+  #assert b.status == SPB_OK && !x[0].ct[0].changed;
+  // the small crate's name: one cell, saved as the tables' new text at the same revision
+  b = spw_batch(g, x, two, spt_cell(body[..], 2, "pieces", 117, "name", "Tiny crate"), true, t[0].third[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  #assert b.status == SPB_OK && b.edits == 1 && x[0].ct[0].changed && x[0].ct[0].open;
+  text := cast(string) k[0].keep[0..<ct_copy(k[0].keep[..], spw_tables_text(x[0].ct[..]))];   // kept: the work's own text changes with its next batch
+  #assert sc_load(k[0].c[..], text) && k[0].c[0].rev == 1 && sc_piece_name(k[0].c[..], sc_piece(k[0].c[..], 117)) == "Tiny crate" && sc_piece_name(g[0].c[..], sc_piece(g[0].c[..], 117)) == "Tiny crate";
+  // the document's revision moved on; its pieces did not
+  after := cast(string) k[0].after[0..<ct_copy(k[0].after[..], cast(string) t[0].third[0..<b.doc])];
+  #assert after != two && g[0].layer[0].head == 3 && g[0].layer[0].st[0].n == 2;
+  // the batch that takes it back is a cell edit too, and leaves the shipped tables
+  inv := cast(string) t[0].inv[0..<b.inv];
+  b = spw_batch(g, x, after, inv, true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
+  #assert b.status == SPB_OK && spw_tables_text(x[0].ct[..]) == SC_SHIPPED && sc_piece_name(g[0].c[..], sc_piece(g[0].c[..], 117)) == "Small crate";
+  // a work that is given the world's own tables reads them: the name edited before is the one the game has
+  y := [1] SpwWork.[SpwWork.{}];
+  y[0].ct[0].text_n = ct_copy(y[0].ct[0].text[..], text);
+  b = spw_batch(g, y[..], after, spt_cell(body[..], 3, "pieces", 116, "name", "Big crate"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
+  #assert b.status == SPB_OK && sc_piece_name(g[0].c[..], sc_piece(g[0].c[..], 117)) == "Tiny crate" && sc_piece_name(g[0].c[..], sc_piece(g[0].c[..], 116)) == "Big crate";
+  // tables that are not this build's are refused whole
+  z := [1] SpwWork.[SpwWork.{}];
+  z[0].ct[0].text_n = ct_copy(z[0].ct[0].text[..], "aethyr.content.v1 other 1\nreach 100\n");
+  b = spw_batch(g, z[..], after, spt_cell(body[..], 3, "pieces", 116, "name", "Big crate"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
+  #assert b.status == SPB_DOC && spt_why(t[..], b).count > 20;
+  // no such column; a value its column does not take; a size the rules refuse; each in words, and nothing changed
+  w := [1] SpwWork.[SpwWork.{}];
+  b = spw_batch(g, w[..], two, spt_cell(body[..], 2, "pieces", 117, "colour", "red"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
+  #assert b.status == SPB_REFUSED && b.at == 0 && spt_why(t[..], b) == "no such table, row or column, or a value that column does not take" && !w[0].ct[0].changed;
+  b = spw_batch(g, w[..], two, spt_cell(body[..], 2, "pieces", 117, "scale", "lots"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
+  #assert b.status == SPB_REFUSED && !w[0].ct[0].changed;
+  b = spw_batch(g, w[..], two, spt_cell(body[..], 2, "pieces", 117, "scale", "5"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
+  #assert b.status == SPB_REFUSED && spt_why(t[..], b) == "the tables' rules do not hold with that value" && !w[0].ct[0].changed && spw_tables_text(w[0].ct[..]) == SC_SHIPPED;
+  // a kind grown until the piece of it that is placed no longer fits where it stands: the layer's own refusal
+  b = spw_batch(g, w[..], two, spt_cell(body[..], 2, "pieces", 117, "hx", "9000"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
+  #assert b.status == SPB_REFUSED && spt_why(t[..], b).count > 10 && !w[0].ct[0].changed && sc_piece(g[0].c[..], 117) >= 0;
+  hx := g[0].c[0].pieces[sc_piece(g[0].c[..], 117)].hx;
+  #assert hx < 1;
+}
+
+#test "a page reads the world's own tables after its document, and a cell event changes them in place: the run goes on and the kind's new name is the one it has" #steps 4000000000 #traversal 2000000000 {
+  x := [1] SptPage.[SptPage.{}]; g := x[0].g[..]; t := x[0].t[..]; p := x[0].p[..]; f := p[0].f[..];
+  k := [1] SptCell.[SptCell.{}]; body: [WE_BATCH_BODY] u8; ans: [SPW_TABLES + 8] u8;
+  empty := spw_empty(t[0].g[..], t[0].x[0].k[..], t[0].doc[..]);
+  b := spw_batch(t[0].g[..], t[0].x[..], empty, SPT_TWO, true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  two := cast(string) k[0].two[0..<ct_copy(k[0].two[..], cast(string) t[0].next[0..<b.doc])];
+  // the server's tables after one cell edit
+  b = spw_batch(t[0].g[..], t[0].x[..], two, spt_cell(body[..], 2, "pieces", 117, "name", "Tiny crate"), true, t[0].third[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  edited := cast(string) k[0].keep[0..<ct_copy(k[0].keep[..], spw_tables_text(t[0].x[0].ct[..]))];
+  three := cast(string) k[0].after[0..<ct_copy(k[0].after[..], cast(string) t[0].third[0..<b.doc])];
+  #assert b.status == SPB_OK && edited != SC_SHIPPED;
+  // the page opens mid-run on the document at revision 3, then asks for the tables before any event
+  g_reset(g); g_stage(g, 5); g[0].heat = 37; px := g[0].px;
+  #assert spw_page_open(g, p, WL_DEV);
+  f[0].tables = true;
+  #assert spt_round(x[..], 0.016, spt_state(x[..], WL_DEV, 3, three)) == WFQ_DOC && f[0].rev == 3 && !f[0].tabled;
+  n := ct_put(ans[..], 0, "200\n"); n = ct_put(ans[..], n, edited);
+  #assert spt_round(x[..], 0.016, cast(string) ans[0..<n]) == WFQ_TABLES && f[0].tabled && p[0].tables_gen == 1;
+  #assert sc_piece_name(g[0].c[..], sc_piece(g[0].c[..], 117)) == "Tiny crate" && g[0].px == px && g[0].heat == 37 && g[0].layer[0].st[0].n == 2;
+  // the same tables again change nothing; tables that are not this build's are not read
+  #assert !spw_page_tables(g, p, edited) && !spw_page_tables(g, p, "aethyr.content.v1 other 1\nreach 100\n") && p[0].tables_gen == 1;
+  // an outside cell edit arrives as event 4: the tables change in place
+  out := spt_cell(body[..], 3, "pieces", 116, "name", "Big crate");
+  #assert spt_round(x[..], 1.1, spt_events(x[..], out, 4)) == WFQ_EVENTS && f[0].rev == 4 && p[0].tables_gen == 2;
+  #assert sc_piece_name(g[0].c[..], sc_piece(g[0].c[..], 116)) == "Big crate" && g[0].px == px && g[0].layer[0].head == 4;
+  // and the shell is told the new names
+  km := [1] SptShell.[SptShell.{}];
+  #assert em_read(km[0].m[..], spw_model(g, p), km[0].scratch[..]) && em_kind_name(km[0].m[..], 116, km[0].name[..]) == "Big crate" && em_kind_name(km[0].m[..], 117, km[0].name[..]) == "Tiny crate";
+  // a cell event the tables refuse sends the page back to the document
+  bad := spt_cell(body[..], 4, "pieces", 116, "colour", "red");
+  #assert spt_round(x[..], 1.1, spt_events(x[..], bad, 5)) == WFQ_EVENTS && f[0].rev == 4 && f[0].reopened == 1;
 }

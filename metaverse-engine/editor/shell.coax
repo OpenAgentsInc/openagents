@@ -52,6 +52,7 @@ EdShell :: struct {
   agent: bool; agent_made: bool;         // the foot with the chat's conversation is open; it was opened once (it is then kept, put away)
   said: [EM_WORDS] u8; said_n: int;      // the shell's own word about what was typed, until the next action
   draft: [WE_COLS] [ES_DRAFT] u8; draft_n: [WE_COLS] int;
+  cell: [EM_CELLS] [EM_VALUE] u8; cell_n: [EM_CELLS] int;   // what is typed into a content cell's field, by the cell's place in the model
   shown_sel: int; shown_rev: int;        // the thing and the revision the fields were last filled for
   acts: [ES_ACTS] [ES_ACT] u8; act_n: [ES_ACTS] int; act_kind: [ES_ACTS] int; nacts: int;
   inbox: [ES_INBOX] u8;
@@ -199,7 +200,9 @@ es_build :: (s: [] EdShell) {
       for k: 0..<m[0].nc {
         if m[0].c_kind[k] != m[0].e_kind[sel] { continue; }
         col := m[0].c_col[k]; val := m[0].c_val[k];
-        g := k_fact(t, tr_join(buf2[..], "fact.", k), cast(string) col[0..<m[0].c_col_n[k]], cast(string) val[0..<m[0].c_val_n[k]]);
+        // a table whose cells may be edited shows each as a field; else as what it is
+        if m[0].table_n > 0 { f := k_prop(t, u, tr_join(buf2[..], "cell.", k), cast(string) col[0..<m[0].c_col_n[k]], ""); }
+        else { g := k_fact(t, tr_join(buf2[..], "fact.", k), cast(string) col[0..<m[0].c_col_n[k]], cast(string) val[0..<m[0].c_val_n[k]]); }
       }
       tr_close(t);
     }
@@ -284,6 +287,25 @@ es_submit :: (s: [] EdShell, col: int) {
   if v.v == es_value(m, at, col) { s[0].said_n = 0; return; }
   es_batch(s, WB_APPLY, WorldEdit.{ok = true, op = WE_SET, id = m[0].sel, col = col, v = v.v});
 }
+// Enter in a content cell's field: what is typed becomes a cell edit of the kind's row, unless it is what the cell holds.
+es_submit_cell :: (s: [] EdShell, k: int) {
+  m := s[0].model[..];
+  at := em_entity_at(m, m[0].sel);
+  if at < 0 || k < 0 || k >= m[0].nc || m[0].table_n == 0 || m[0].c_kind[k] != m[0].e_kind[at] { return; }
+  typed := s[0].cell[k]; val := m[0].c_val[k];
+  text := cast(string) typed[0..<s[0].cell_n[k]];
+  if text == cast(string) val[0..<m[0].c_val_n[k]] { s[0].said_n = 0; return; }
+  if !em_text_ok(text, EM_VALUE) {
+    es_say(s, "A cell takes one line of words or a number, and may not be empty.");
+    return;
+  }
+  e := WorldEdit.{ok = true, op = WE_CELL, id = m[0].c_kind[k]};
+  tb := m[0].table; cn := m[0].c_col[k];
+  e.table_n = ct_copy(e.table[..], cast(string) tb[0..<m[0].table_n]);
+  e.name_n = ct_copy(e.name[..], cast(string) cn[0..<m[0].c_col_n[k]]);
+  e.text_n = ct_copy(e.text[..], text);
+  es_batch(s, WB_APPLY, e);
+}
 // The model the page sent is in the inbox.
 es_model :: (s: [] EdShell, length: int) {
   n := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
@@ -325,6 +347,12 @@ coaxial_editor_frame :: (s: [] EdShell, dt: f32, reduced: bool) -> int #export_c
       dr := s[0].draft[c];
       dm_value(d, tr_join(buf[..], "col.", c), cast(string) dr[0..<n]);
     }
+    for k: 0..<m[0].nc {
+      if at < 0 || m[0].table_n == 0 || m[0].c_kind[k] != m[0].e_kind[at] { continue; }
+      val := m[0].c_val[k];
+      s[0].cell_n[k] = em_copy(s[0].cell[k][..], cast(string) val[0..<m[0].c_val_n[k]]);
+      dm_value(d, tr_join(buf[..], "cell.", k), cast(string) val[0..<m[0].c_val_n[k]]);
+    }
   }
   s[0].animating = s[0].ui[0].busy;
   s[0].dirty = false;
@@ -342,6 +370,19 @@ coaxial_editor_event :: (s: [] EdShell, kind: int, slot: int, length: int) #expo
   id := dm_slot_id(s[0].dom[..], slot);
   if id.count == 0 { return; }
   if kind == ES_CLICK { es_click(s, id); }
+  cell := es_index(id, "cell.");
+  if cell >= 0 && cell < EM_CELLS {
+    if kind == ES_INPUT {
+      lo := 0; hi := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
+      while lo < hi && (s[0].inbox[lo] == ' ' || s[0].inbox[lo] == '\n') { lo += 1; }
+      while hi > lo && (s[0].inbox[hi - 1] == ' ' || s[0].inbox[hi - 1] == '\n') { hi -= 1; }
+      n := ifx hi - lo > EM_VALUE then 0 else hi - lo;   // longer than a cell holds: not one
+      for i: 0..<n { s[0].cell[cell][i] = s[0].inbox[lo + i]; }
+      s[0].cell_n[cell] = n;
+    }
+    if kind == ES_SUBMIT { es_submit_cell(s, cell); }
+    return;
+  }
   col := es_index(id, "col.");
   if col < 0 || col >= WE_COLS { return; }
   if kind == ES_INPUT {
@@ -688,4 +729,50 @@ es_test_here :: (h: [] EsTest) {
   coaxial_editor_event(ks, ES_AGENT, 0, 0);
   es_test_frames(k[..], 1);
   #assert tr_find(ks[0].tree[..], "agent.slot") > 0 && !tr_has(ks[0].tree[..], tr_find(ks[0].tree[..], "agent.pane"), AT_HIDDEN);
+}
+
+// The fixture world whose kinds' cells may be edited: the table is named.
+es_test_table :: (h: [] EsTest, rev: int) {
+  s := h[0].s[..]; out := h[0].text[..];
+  cols: [WE_COLS] bool; cols[WEC_X] = true;
+  n := em_begin(out, "splice", 0, rev, 0, 0, 2);
+  n = em_cols(out, n, cols[..]);
+  n = em_table(out, n, "pieces");
+  n = em_kind(out, n, 1001, "Cargo crate");
+  n = em_kind(out, n, 1002, "Parked rover");
+  n = em_entity(out, n, 1, 1001, 350, 0, -1200, 90, 100);
+  n = em_entity(out, n, 2, 1002, -40, 12, 600, -179, 100);
+  n = em_cell(out, n, 1001, "name", "Cargo crate");
+  n = em_cell(out, n, 1002, "name", "Parked rover");
+  n = em_cell(out, n, 1002, "scale", "1500");
+  for i: 0..<n { s[0].inbox[i] = out[i]; }
+  coaxial_editor_event(s, ES_MODEL, 0, n);
+}
+
+#test "a table whose cells may be edited shows the selected kind's cells as filled fields: a changed one is a cell edit that names the table, the row and the column; the same words ask nothing and an empty cell is said" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; d := s[0].dom[..];
+  es_test_table(h[..], 5);
+  n := coaxial_editor_frame(s, 0.016, true);
+  // the selected thing is a Parked rover: its two cells are fields, the other kind's is not shown
+  #assert tr_find(t, "cell.1") > 0 && tr_find(t, "cell.2") > 0 && tr_find(t, "cell.0") < 0 && tr_find(t, "fact.1") < 0 && tr_text_of(t, tr_find(t, "cell.2.n")) == "scale";
+  #assert dm_test_count(d, n, DC_VALUE) == 3;   // its one column and its two cells
+  c2 := s[0].cell[2];
+  #assert cast(string) c2[0..<s[0].cell_n[2]] == "1500";
+  es_test_type(h[..], "cell.2", " 1800 ");
+  #assert es_test_batch(h[..], 5) == WB_APPLY;
+  e := h[0].edits[0]; tb := e.table; nm := e.name; tx := e.text;
+  #assert e.op == WE_CELL && e.id == 1002 && cast(string) tb[0..<e.table_n] == "pieces" && cast(string) nm[0..<e.name_n] == "scale" && cast(string) tx[0..<e.text_n] == "1800" && we_valid(e);
+  coaxial_editor_act_done(s);
+  es_test_type(h[..], "cell.1", "Parked rover");
+  #assert s[0].nacts == 0 && s[0].said_n == 0;
+  es_test_type(h[..], "cell.1", "   ");
+  es_test_frames(h[..], 1);
+  #assert s[0].nacts == 0 && tr_text_of(t, tr_find(t, "said.t")) == "A cell takes one line of words or a number, and may not be empty.";
+  es_test_type(h[..], "cell.1", "Long-range rover");
+  #assert es_test_batch(h[..], 5) == WB_APPLY && h[0].edits[0].id == 1002 && s[0].said_n == 0;
+  // without a table the cells are facts, as before
+  k: [1] EsTest;
+  es_test_model(k[..], 2, 7, 3, "");
+  es_test_frames(k[..], 1);
+  #assert tr_find(k[0].s[0].tree[..], "fact.0") > 0 && tr_find(k[0].s[0].tree[..], "cell.0") < 0;
 }

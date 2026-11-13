@@ -41,6 +41,7 @@ Splice :: struct {
   // the editor's viewport tools (?edit; metaverse-engine/editor/viewport.coax, world.coax spv_*): the tool,
   // the fly camera and the clock; the view last drawn, in device pixels; and the fly keys held (W S A D Q E)
   vp: [1] Viewport; vw: [1] SpvWork; vview: VpView; vkeys: [6] bool;
+  tables_seen: int;           // the page's count of table changes it has drawn (world.coax SpwPage.tables_gen)
   drive: [1] Drive;           // the agent driver's lists and its last answer (metaverse-engine/agent/drive.coax)
   // In the site's sandboxed frame (metaverse-engine/host/realm-frame.coax, #13432): what the frame is
   // (the host says before each message), and the last answer to the page that holds it.
@@ -487,7 +488,12 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   s[0].live_n = 0;
   if !s[0].gallery {
     // the world: opened once the page's facts came, then its one request at a time and any piece rising in
-    if s[0].follow == 1 { s[0].follow = ifx spw_page_open(g, s[0].page[..], ifx s[0].edit then WL_DEV else WL_LIVE) then 2 else 3; }
+    if s[0].follow == 1 {
+      s[0].follow = ifx spw_page_open(g, s[0].page[..], ifx s[0].edit then WL_DEV else WL_LIVE) then 2 else 3;
+      s[0].page[0].f[0].tables = true;   // this page reads the world's own content tables (#13419)
+    }
+    // tables that changed (the world's own read, or a cell edited): the kinds' meshes and the designed world are written again
+    if s[0].tables_seen != s[0].page[0].tables_gen { s[0].tables_seen = s[0].page[0].tables_gen; s[0].ld[0].meshed = false; s[0].world_built = false; }
     if s[0].follow == 2 { wf_step(s[0].page[0].f[..], step); }
     sl_rise_step(g, step);
     // the editor's clock (pause, step) and hands: while a tool is picked, the camera flies or the World is

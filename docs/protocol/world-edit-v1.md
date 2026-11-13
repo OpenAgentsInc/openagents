@@ -30,8 +30,31 @@ A reader refuses any bytes but the ones the writer writes: the keys in this
 order, no spaces, every number in range.
 
 A world takes the ops its own code allows and refuses the rest in words.
-Splice takes `spawn`, `despawn`, `move`, `rotate`, and a `set` of `x`, `z` or
-`yaw`. It refuses a size, the land and a content cell, and says why.
+Splice takes `spawn`, `despawn`, `move`, `rotate`, a `set` of `x`, `z` or
+`yaw`, and a `cell` of its content tables. It refuses a size and the land, and
+says why.
+
+### A cell of the content tables
+
+A `cell` edit changes one cell of the world's content tables, or with column
+`*` a whole row. It is an edit of the same log as a move: it has a revision,
+an event, an inverse, and undo and redo walk it.
+
+- The tables are saved beside the lane's document: dev's as they are edited,
+  live's as a publish made them. Until a cell is edited, a world's tables are
+  the ones its build shipped with.
+- The server checks a cell the way a content document is checked
+  (`metaverse-engine/editor/content-edit.coax`): the column takes the value,
+  the tables' rules hold, the realm reads them, and every placed thing still
+  stands where the realm's own check lets it. A refusal is in words.
+- The tables keep the revision they shipped with. A cell edit never changes
+  what a build reads, so no page is told to reload.
+- A page reads the lane's tables after its document
+  (`GET /api/worlds/<id>/content?lane=dev`, or without the lane for live) and
+  carries a `cell` event out in place.
+- To put a world's tables in the repository, save the answer of
+  `openagents realm world ID --json` (its `content`) as the realm's content
+  file.
 
 ## A batch
 

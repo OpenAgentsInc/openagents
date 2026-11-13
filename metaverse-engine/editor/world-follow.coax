@@ -25,6 +25,7 @@ WF_RETRY :: 2.0f32;       // seconds before a request that got no answer is aske
 WF_URL :: 200;
 WF_HTTP_POST :: 1; WF_HTTP_WANTED :: 4;   // coaxial_http's flags (coax/web/http-requests.js)
 WFQ_NONE :: 0; WFQ_DOC :: 1; WFQ_EVENTS :: 2; WFQ_POST :: 3;
+WFQ_TABLES :: 4;     // the lane's content tables (GET .../content), for a realm that reads the world's own (#13419)
 WFS_OFF :: 0;        // no world is open
 WFS_OPENING :: 1;    // the document is being read
 WFS_FOLLOWING :: 2;  // the page stands at `rev` and takes events
@@ -45,6 +46,8 @@ WorldFollow :: struct {
   nudged: bool; refetch: bool;
   refused: [240] u8; refused_n: int; refused_edit: int = -1; refused_status: int;   // the last write's refusal, in words
   taken: int; reopened: int; sent: int;        // counters: events carried out, returns to the document, requests sent
+  tables: bool;               // the realm reads the world's own content tables: each document read is followed by a read of them
+  tabled: bool;               // they were read for the document the page stands at
 }
 wf_id :: (f: [] WorldFollow) -> string { return cast(string) f[0].id[0..<f[0].id_n]; }
 // Open world `id` on a lane, for a build with these pins. False for what is no world or lane.
@@ -93,6 +96,8 @@ wf_step :: (f: [] WorldFollow, dt: f32) {
     if f[0].since >= f[0].hold { wf_put_url(f, "?", -1, f[0].lane == WL_LIVE); f[0].want = WFQ_DOC; f[0].since = 0; f[0].hold = 0; }
     return;
   }
+  // the document the page stands at was read: its tables next, before any event (an event may be a cell of them)
+  if f[0].tables && !f[0].tabled && f[0].status == WFS_FOLLOWING { wf_put_url(f, "/content?", -1, false); f[0].want = WFQ_TABLES; return; }
   every := ifx f[0].status == WFS_NOTHING then WF_IDLE else (ifx f[0].lane == WL_DEV then WF_POLL else WF_POLL_LIVE);
   due := f[0].nudged || f[0].since >= every;
   if (f[0].status == WFS_FOLLOWING || f[0].status == WFS_NOTHING) && due {
@@ -127,9 +132,11 @@ wf_answer :: (f: [] WorldFollow, host_id: int, text: string) -> WfAnswer {
 }
 // The page read the lane's document and stands at its revision. v: the state that carried it.
 wf_loaded :: (f: [] WorldFollow, v: WorldState) {
-  f[0].status = WFS_FOLLOWING; f[0].refetch = false; f[0].nudged = false; f[0].since = 0;
+  f[0].status = WFS_FOLLOWING; f[0].refetch = false; f[0].nudged = false; f[0].since = 0; f[0].tabled = false;
   f[0].rev = v.rev; f[0].dev = v.dev; f[0].live = v.live; f[0].undo = v.undo; f[0].redo = v.redo;
 }
+// The realm read the lane's tables (or the answer was none, and it keeps the ones it has).
+wf_tabled :: (f: [] WorldFollow) { f[0].tabled = true; }
 // The document could not be read: `status` is the route's. 404 on live: nothing is published
 // yet. 409: this build reads neither live revision. Anything else is asked again.
 wf_not_loaded :: (f: [] WorldFollow, status: int) {
@@ -241,4 +248,36 @@ wf_line :: (body: string, k: int) -> string { return ct_part(body, '\n', k); }
   wf_step(f[..], 0.016); wf_sent(f[..], 0); a = wf_answer(f[..], 0, "200\n{}"); wf_loaded(f[..], WorldState.{rev = 1, live = 1});
   #assert wf_post(f[..], WE_UNDO_FIXTURE);
   wf_step(f[..], 0.016); #assert f[0].want != WFQ_POST;
+}
+
+#test "a realm that reads the world's own tables asks for them after each document, before any event; one that does not never asks" {
+  f := [1] WorldFollow.[WorldFollow.{}];
+  #assert wf_open(f[..], "splice", WL_DEV, WorldPins.{engine = 1, rules = 1, content = 1, wire = 1});
+  f[0].tables = true;
+  wf_step(f[..], 0.016);
+  #assert f[0].want == WFQ_DOC;
+  wf_sent(f[..], 1); a := wf_answer(f[..], 1, "200\nx");
+  wf_loaded(f[..], WorldState.{rev = 3, dev = 3});
+  wf_step(f[..], 5);
+  #assert f[0].want == WFQ_TABLES && wf_url(f[..]) == "/api/worlds/splice/content?lane=dev" && wf_body(f[..]) == "" && wf_flags(f[..]) == WF_HTTP_WANTED;
+  wf_sent(f[..], 2); a = wf_answer(f[..], 2, "200\ntables");
+  #assert a.what == WFQ_TABLES && a.status == 200 && a.body == "tables";
+  wf_tabled(f[..]);
+  wf_step(f[..], 5);
+  #assert f[0].want == WFQ_EVENTS;
+  wf_sent(f[..], 3); a = wf_answer(f[..], 3, "200\n");
+  // back to the document: its tables are read again
+  wf_reopen(f[..]); wf_step(f[..], 0.016);
+  #assert f[0].want == WFQ_DOC;
+  wf_sent(f[..], 4); a = wf_answer(f[..], 4, "200\nx");
+  wf_loaded(f[..], WorldState.{rev = 4, dev = 4});
+  wf_step(f[..], 0.016);
+  #assert f[0].want == WFQ_TABLES;
+  // a realm that keeps its build's tables
+  k := [1] WorldFollow.[WorldFollow.{}];
+  #assert wf_open(k[..], "splice", WL_LIVE, WorldPins.{engine = 1, rules = 1, content = 1, wire = 1});
+  wf_step(k[..], 0.016); wf_sent(k[..], 1); a = wf_answer(k[..], 1, "200\nx");
+  wf_loaded(k[..], WorldState.{lane = WL_LIVE, rev = 1, live = 1});
+  wf_step(k[..], 60);
+  #assert k[0].want == WFQ_EVENTS;
 }

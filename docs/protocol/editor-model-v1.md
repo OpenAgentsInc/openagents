@@ -21,6 +21,7 @@ The model is lines of text, in this order.
 | --- | --- |
 | `editor.model.v1 WORLD LANE REV UNDO REDO SELECTED` | The world's ID, its lane (`dev` or `live`), the lane's revision, the steps that can be undone and redone, and the selected entity's ID (0 for none). |
 | `cols NAME ...` | The World columns an edit may set on an entity (`x`, `z`, `yaw` and the others in `world.edit.v1`). The shell shows a field for each. |
+| `table NAME` | The content table the kinds are rows of, when its cells may be edited. The shell then shows each cell as a field, and a changed cell is a `cell` edit that names this table. Left out, cells are only shown. |
 | `k KIND NAME` | A kind: its content ID and its name. |
 | `e ID KIND X Y Z YAW SCALE` | An entity: its ID on the wire, its kind, its place in whole centimetres, its turn in whole degrees and its size in whole percent. |
 | `c KIND COLUMN VALUE` | A cell of a kind's content row. The shell shows the selected entity's as facts. |

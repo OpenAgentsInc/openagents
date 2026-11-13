@@ -188,7 +188,8 @@ rw_show :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RwWork) 
   st := w[0].st;
   if !st.ok { return fail(r, EXIT_FAIL, "the world's answer is not a world.state.v1"); }
   doc := cast(string) w[0].doc[0..<st.doc_n];
-  cres := api_call(a, profile, "GET", rw_path(slug, "/content", w[0].path[..]), "", w[0].content[..]);
+  // the lane's own content tables: dev's as they are edited, live's as they were published (#13419)
+  cres := api_call(a, profile, "GET", rw_path(slug, ifx lane == "dev" then "/content?lane=dev" else "/content", w[0].path[..]), "", w[0].content[..]);
   content := ifx api_ok(cres) then cast(string) w[0].content[0..<cres.n] else "";
   pb: [160] u8; lb: [200] u8; bb: [64] u8;
   bn := 0; for k: 0..<4 { if k > 0 { bn = forge_put(bb[..],bn,"."); } bn = forge_put_int(bb[..],bn,st.build[k]); }

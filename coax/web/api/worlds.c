@@ -13,7 +13,8 @@
 //                                                the world and nothing is saved: the answer is the
 //                                                state as it stands with the batch as it would be taken
 //   GET  /api/worlds/<id>/events?lane=L&after=N  the lane's saved events after revision N, a line each
-//   GET  /api/worlds/<id>/content                the realm's content tables (aethyr.content.v1): what a
+//   GET  /api/worlds/<id>/content[?lane=dev]     the world's content tables (aethyr.content.v1): its own once a cell
+//                                                was edited (dev: as they are edited; else as published), else the build's: what a
 //                                                caller reads to aim an edit
 //
 // This file moves facts in and answers out. The rules are Coax: who may write, the revision
@@ -35,6 +36,7 @@
 
 #define WORLD_DOC 131072     // a document's bytes at most (metaverse/splice/world.coax SPW_DOC)
 #define WORLD_BATCH 65536    // a batch's (world-edit.coax WE_BATCH_BODY)
+#define WORLD_TABLES 16384   // the content tables' bytes at most (metaverse/splice/world.coax SPW_TABLES)
 #define WORLD_EDIT 1400      // an edit's (WE_LINE)
 #define WORLD_EVENTS 200     // events one read answers
 
@@ -57,15 +59,16 @@ typedef struct {
   int live_when;
   long long live_pins[4], prev_pins[4];
   char *dev_doc, *live_doc, *prev_doc;   // malloc'd; "" for none
+  char *dev_tables, *live_tables, *prev_tables;   // the lane's content tables; "" for the ones the build shipped with
 } world_row;
 
-static void row_free(world_row *w) { free(w->dev_doc); free(w->live_doc); free(w->prev_doc); }
+static void row_free(world_row *w) { free(w->dev_doc); free(w->live_doc); free(w->prev_doc); free(w->dev_tables); free(w->live_tables); free(w->prev_tables); }
 static bool row_read(PGconn *db, const char *id, bool lock, world_row *w) {
   memset(w, 0, sizeof *w);
   const char *v[1] = {id};
   PGresult *r = PQexecParams(db, lock
-    ? "SELECT kind, dev_rev, dev_doc, done, steps, live_rev, live_from, live_doc, live_when, live_engine, live_rules, live_content, live_wire, prev_rev, prev_doc, prev_engine, prev_rules, prev_content, prev_wire FROM verse.world_docs WHERE id = $1 FOR UPDATE"
-    : "SELECT kind, dev_rev, dev_doc, done, steps, live_rev, live_from, live_doc, live_when, live_engine, live_rules, live_content, live_wire, prev_rev, prev_doc, prev_engine, prev_rules, prev_content, prev_wire FROM verse.world_docs WHERE id = $1",
+    ? "SELECT kind, dev_rev, dev_doc, done, steps, live_rev, live_from, live_doc, live_when, live_engine, live_rules, live_content, live_wire, prev_rev, prev_doc, prev_engine, prev_rules, prev_content, prev_wire, dev_tables, live_tables, prev_tables FROM verse.world_docs WHERE id = $1 FOR UPDATE"
+    : "SELECT kind, dev_rev, dev_doc, done, steps, live_rev, live_from, live_doc, live_when, live_engine, live_rules, live_content, live_wire, prev_rev, prev_doc, prev_engine, prev_rules, prev_content, prev_wire, dev_tables, live_tables, prev_tables FROM verse.world_docs WHERE id = $1",
     1, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("worlds: %s", PQerrorMessage(db)); PQclear(r); return false; }
   if (PQntuples(r) == 1) {
@@ -77,6 +80,7 @@ static bool row_read(PGconn *db, const char *id, bool lock, world_row *w) {
     w->live_when = atoi(PQgetvalue(r, 0, 8));
     for (int k = 0; k < 4; k++) { w->live_pins[k] = atoll(PQgetvalue(r, 0, 9 + k)); w->prev_pins[k] = atoll(PQgetvalue(r, 0, 15 + k)); }
     w->prev_rev = atoll(PQgetvalue(r, 0, 13)); w->prev_doc = strdup(PQgetvalue(r, 0, 14));
+    w->dev_tables = strdup(PQgetvalue(r, 0, 19)); w->live_tables = strdup(PQgetvalue(r, 0, 20)); w->prev_tables = strdup(PQgetvalue(r, 0, 21));
   }
   PQclear(r);
   return true;
@@ -204,10 +208,10 @@ static void world_publish(const request *q, PGconn *db, const char *id, world_ro
   char rev_s[24], from_s[24], when_s[8], p[4][24];
   snprintf(rev_s, sizeof rev_s, "%lld", live); snprintf(from_s, sizeof from_s, "%lld", w->dev_rev); snprintf(when_s, sizeof when_s, "%d", (int)when);
   for (int k = 0; k < 4; k++) snprintf(p[k], sizeof p[k], "%lld", pins[k]);
-  const char *sv[9] = {id, rev_s, from_s, doc, when_s, p[0], p[1], p[2], p[3]};
+  const char *sv[10] = {id, rev_s, from_s, doc, when_s, p[0], p[1], p[2], p[3], w->dev_tables ? w->dev_tables : ""};
   // the revision before a pin change stays for one release (world-live.coax); a publish on the same pins leaves it
-  bool ok = (!keeps || run(db, "UPDATE verse.world_docs SET prev_rev = live_rev, prev_doc = live_doc, prev_engine = live_engine, prev_rules = live_rules, prev_content = live_content, prev_wire = live_wire WHERE id = $1", 1, sv))
-    && run(db, "UPDATE verse.world_docs SET live_rev = $2::bigint, live_from = $3::bigint, live_doc = $4, live_when = $5::int, live_engine = $6::int, live_rules = $7::int, live_content = $8::int, live_wire = $9::int WHERE id = $1", 9, sv)
+  bool ok = (!keeps || run(db, "UPDATE verse.world_docs SET prev_rev = live_rev, prev_doc = live_doc, prev_engine = live_engine, prev_rules = live_rules, prev_content = live_content, prev_wire = live_wire, prev_tables = live_tables WHERE id = $1", 1, sv))
+    && run(db, "UPDATE verse.world_docs SET live_rev = $2::bigint, live_from = $3::bigint, live_doc = $4, live_when = $5::int, live_engine = $6::int, live_rules = $7::int, live_content = $8::int, live_wire = $9::int, live_tables = $10 WHERE id = $1", 10, sv)
     && outbox(db, seq, wr_event_id(true), id, "live", live, event, now)
     && run(db, "COMMIT", 0, NULL);
   if (!ok) { free(doc); rollback(db); refuse(q->fd, 500, cs("not saved"), -1); return; }
@@ -242,11 +246,12 @@ static void world_post(const request *q, PGconn *db, const char *id) {
   } else { text = malloc(q->body_len + 1); if (text) { memcpy(text, q->body, q->body_len); text[q->body_len] = 0; text_n = q->body_len; } }
   size_t doc_n = 0;
   char *doc = doc_of(w.kind, w.dev_doc, &doc_n);
-  char *out_doc = malloc(WORLD_DOC + 1), *did = malloc(WORLD_BATCH + 1), *inv = malloc(WORLD_BATCH + 1);
-  char why[240]; int64_t n[6] = {0, 0, 0, 0, 0, -1};
-  if (!text || !doc || !out_doc || !did || !inv) { rollback(db); refuse(q->fd, 500, cs("not read"), -1); goto done; }
-  int64_t status = splice_world_batch(csn(doc, doc_n), csn(text, text_n), fenced, (coax_v_u8){(uint8_t *)out_doc, WORLD_DOC}, (coax_v_u8){(uint8_t *)did, WORLD_BATCH},
-                                      (coax_v_u8){(uint8_t *)inv, WORLD_BATCH}, (coax_v_u8){(uint8_t *)why, sizeof why}, (coax_v_s64){n, 6});
+  char *out_doc = malloc(WORLD_DOC + 1), *did = malloc(WORLD_BATCH + 1), *inv = malloc(WORLD_BATCH + 1), *out_tables = malloc(WORLD_TABLES + 1);
+  char why[240]; int64_t n[7] = {0, 0, 0, 0, 0, -1, 0};
+  if (!text || !doc || !out_doc || !did || !inv || !out_tables) { rollback(db); refuse(q->fd, 500, cs("not read"), -1); goto done; }
+  int64_t status = splice_world_batch(csn(doc, doc_n), cs(w.dev_tables ? w.dev_tables : ""), csn(text, text_n), fenced, (coax_v_u8){(uint8_t *)out_doc, WORLD_DOC},
+                                      (coax_v_u8){(uint8_t *)out_tables, WORLD_TABLES}, (coax_v_u8){(uint8_t *)did, WORLD_BATCH},
+                                      (coax_v_u8){(uint8_t *)inv, WORLD_BATCH}, (coax_v_u8){(uint8_t *)why, sizeof why}, (coax_v_s64){n, 7});
   if (status != 0) {
     rollback(db);
     int http = (int)splice_world_status(status);
@@ -254,7 +259,7 @@ static void world_post(const request *q, PGconn *db, const char *id) {
     refuse(q->fd, http, n[3] > 0 ? csn(why, (size_t)n[3]) : splice_world_words(status), (int)n[5]);
     goto done;
   }
-  out_doc[n[0]] = 0; did[n[1]] = 0; inv[n[2]] = 0;
+  out_doc[n[0]] = 0; did[n[1]] = 0; inv[n[2]] = 0; out_tables[n[6]] = 0;
   char dry[4] = "";
   if (api_query(q, "dry", dry, sizeof dry) && dry[0] == '1') {
     // a dry run: the world's own code carried it out in a copy; nothing is saved (#13436)
@@ -270,6 +275,9 @@ static void world_post(const request *q, PGconn *db, const char *id) {
     snprintf(rev_s, sizeof rev_s, "%lld", rev); snprintf(done_s, sizeof done_s, "%lld", done); snprintf(steps_s, sizeof steps_s, "%lld", steps); snprintf(at_s, sizeof at_s, "%lld", w.done);
     const char *uv[5] = {id, out_doc, rev_s, done_s, steps_s};
     bool ok = run(db, "UPDATE verse.world_docs SET dev_doc = $2, dev_rev = $3::bigint, done = $4::int, steps = $5::int WHERE id = $1", 5, uv);
+    // a batch that changed the content tables saves them with the document, in the same transaction
+    const char *tv[2] = {id, out_tables};
+    if (ok && n[6] > 0) ok = run(db, "UPDATE verse.world_docs SET dev_tables = $2 WHERE id = $1", 2, tv);
     if (ok && step < 0) {
       // a new step where the log stands: the steps an undo left ahead of it go
       const char *sv[4] = {id, at_s, did, inv};
@@ -293,12 +301,22 @@ static void world_post(const request *q, PGconn *db, const char *id) {
     answer_state(q, id, (int)wr_lane(cs("dev")), rev, here, &w, rev, w.live_rev, done, steps, "", 0, did, (size_t)n[1]);
   }
 done:
-  free(text); free(doc); free(out_doc); free(did); free(inv); row_free(&w);
+  free(text); free(doc); free(out_doc); free(did); free(inv); free(out_tables); row_free(&w);
 }
 
-static void world_content(const request *q, const char *id) {
+// The content tables a lane's revision is read with: the world's own once a cell was edited, else
+// the ones the build shipped with. ?lane=dev is the tables as they are edited; without it, live's.
+static void world_content(const request *q, PGconn *db, const char *id) {
   char *out = malloc(WORLD_DOC);
-  int64_t n = out && !strcmp(id, "splice") && wr_loads(cs(id)) ? splice_world_content((coax_v_u8){(uint8_t *)out, WORLD_DOC}) : -1;
+  char lane[8] = "";
+  bool dev = api_query(q, "lane", lane, sizeof lane) && wr_is_dev(wr_lane(cs(lane)));
+  world_row w;
+  int64_t n = -1;
+  if (out && !strcmp(id, "splice") && wr_loads(cs(id)) && row_read(db, id, false, &w)) {
+    const char *own = w.exists ? (dev ? w.dev_tables : w.live_tables) : "";
+    n = splice_world_tables(cs(own ? own : ""), (coax_v_u8){(uint8_t *)out, WORLD_DOC});
+    row_free(&w);
+  }
   if (n < 0) refuse_verdict(q->fd, wr_read(false, 0, 0));
   else api_respond(q->fd, 200, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", out, (size_t)n);
   free(out);
@@ -315,10 +333,10 @@ bool worlds_route(const request *q) {
   const char *tail = rest + k;
   bool content = !strcmp(tail, "/content");
   if ((!get && !post) || !wr_world_ok(cs(id)) || (*tail && strcmp(tail, "/events") && !content) || (*tail && !get)) { refuse(q->fd, 404, cs("not found"), -1); return true; }
-  if (content) { world_content(q, id); return true; }
   PGconn *db = api_db();
   if (!db) { refuse(q->fd, 503, cs("no database"), -1); return true; }
-  if (*tail) world_events(q, db, id);
+  if (content) world_content(q, db, id);
+  else if (*tail) world_events(q, db, id);
   else if (get) world_get(q, db, id);
   else world_post(q, db, id);
   return true;

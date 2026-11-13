@@ -188,7 +188,66 @@ spw_why :: (g: [] SpGame, r: SpwEdit, out: [] u8) -> string {
   if r.why == SPE_COLUMN { return "a placed piece can be moved and turned; it has nothing else to set"; }
   if r.why == SPE_TABLES { return "Splice's content tables change with a build, not with an edit"; }
   if r.why == SPE_ID { return "that number is not free for a piece"; }
+  if r.why == SPE_CELL { return "no such table, row or column, or a value that column does not take"; }
+  if r.why == SPE_RULES { return "the tables' rules do not hold with that value"; }
   return sl_why(g, r.v, out);
+}
+
+// ---- the content tables, edited (GitHub #13419, the browser editor's E10)
+
+SPW_KINDS :: "pieces";   // the table a placed piece's kind is a row of
+SPW_TABLES :: 16384;   // bytes the content tables' document may take (the shipped one is about 4,000)
+SPE_CELL :: 25;      // no such table, row or column, or a value the column does not take
+SPE_RULES :: 26;     // the tables' rules do not hold with that value
+// A world's content tables as they are edited: the document on the edit log
+// (metaverse-engine/editor/content-edit.coax), and its text as it was last opened or changed.
+// The tables keep the revision they shipped with: an edit changes cells, never what a build reads.
+SpwTables :: struct { d: [1] ForgeDoc; text: [SPW_TABLES] u8; text_n: int; open: bool; changed: bool; }
+// Opens the tables from text ("": the ones the build shipped with) into the edit log and the game.
+// False, and nothing changed, for anything but Splice's content at this build's revision.
+spw_tables_open :: (g: [] SpGame, ct: [] SpwTables, text: string) -> bool {
+  from := ifx text.count == 0 then SC_SHIPPED else text;
+  read: [1] SpContent; shipped: [1] SpContent;
+  if from.count > SPW_TABLES || !sc_load(read[..], from) || !sc_load(shipped[..], SC_SHIPPED) || read[0].rev != shipped[0].rev { return false; }
+  if !forge_content_open(ct[0].d[..], from) { return false; }
+  g[0].c[0] = read[0];
+  ct[0].text_n = ct_copy(ct[0].text[..], from); ct[0].open = true; ct[0].changed = false;
+  return g_places(g);
+}
+spw_tables_text :: (ct: [] SpwTables) -> string { return cast(string) ct[0].text[0..<ct[0].text_n]; }
+// One cell edit carried out on the tables, checked as a content document is: the cell is one its
+// column takes, the tables' rules hold, the game reads them, and every placed piece still stands
+// where the layer's check lets it. Refused, nothing is changed. The World is built again from the
+// new tables (a piece's size is its kind's).
+spw_cell :: (g: [] SpGame, ct: [] SpwTables, e: WorldEdit) -> SpwEdit {
+  if !we_valid(e) || e.op != WE_CELL { return spw_no(SL_NOTHING); }
+  if !ct[0].open && !spw_tables_open(g, ct, "") { return spw_no(SPE_RULES); }   // tables nobody has edited yet: the shipped ones
+  a := we_content_apply(ct[0].d[..], e);
+  if !a.ok { return spw_no(SPE_CELL); }
+  out: [SPW_TABLES] u8; read: [1] SpContent;
+  made := forge_content_text(ct[0].d[..], g[0].c[0].rev, out[..]);
+  if made.count == 0 || !sc_load(read[..], made) {
+    _ := we_content_apply(ct[0].d[..], a.inv);
+    return spw_no(SPE_RULES);
+  }
+  keep := g[0].c[0];
+  g[0].c[0] = read[0];
+  placed := g_places(g);
+  sl_sync(g);
+  v := sl_all_ok(g);
+  if !placed || v.why != SL_OK {
+    g[0].c[0] = keep; _ := g_places(g); sl_sync(g);
+    _ := we_content_apply(ct[0].d[..], a.inv);
+    return ifx placed then SpwEdit.{why = v.why, v = v} else spw_no(SPE_RULES);
+  }
+  ct[0].text_n = ct_copy(ct[0].text[..], made); ct[0].changed = true;
+  g[0].layer[0].rev += 1;
+  return SpwEdit.{ok = true, id = e.id, did = e, inv = a.inv};
+}
+// An edit of either kind: a cell on the tables, anything else on the layer.
+spw_take :: (g: [] SpGame, ct: [] SpwTables, e: WorldEdit, sure: bool) -> SpwEdit {
+  if e.op == WE_CELL { return spw_cell(g, ct, e); }
+  return spw_edit(g, e, sure);
 }
 
 // ---- a batch, as the server saves it
@@ -205,7 +264,8 @@ SPB_ROOM :: 7;       // an answer did not fit
 // batch as it was taken (every spawn numbered; an ORIGINAL as its removals) and the batch that
 // takes it back (the inverses, last first). edits: how many edits were taken. at: the edit refused.
 SpwBatch :: struct { status: int; doc: int; did: int; inv: int; why: int; edits: int; at: int = -1; }
-SpwWork :: struct { e: [WE_BATCH] WorldEdit; did: [WE_BATCH] WorldEdit; inv: [WE_BATCH] WorldEdit; k: [1] SpwScratch; w: [1] SwWalker; }
+// ct: the world's content tables: the caller puts their text in (none: the shipped ones) and reads it back when a batch changed them.
+SpwWork :: struct { e: [WE_BATCH] WorldEdit; did: [WE_BATCH] WorldEdit; inv: [WE_BATCH] WorldEdit; k: [1] SpwScratch; w: [1] SwWalker; ct: [1] SpwTables; }
 // Carries a batch out on the document `doc`, on a game of its own (g is reset; the caller keeps
 // nothing in it). `fenced`: the batch must name the document's head (a page's or an agent's
 // edits); without it the revision is not asked (a stored step taken again by an undo or a redo,
@@ -213,6 +273,11 @@ SpwWork :: struct { e: [WE_BATCH] WorldEdit; did: [WE_BATCH] WorldEdit; inv: [WE
 spw_batch :: (g: [] SpGame, x: [] SpwWork, doc: string, body: string, fenced: bool, out_doc: [] u8, out_did: [] u8, out_inv: [] u8, out_why: [] u8) -> SpwBatch {
   b := SpwBatch.{};
   g_reset(g);
+  // the world's own tables when the caller gave them; without, the game's (the shipped ones)
+  if x[0].ct[0].text_n > 0 && !spw_tables_open(g, x[0].ct[..], spw_tables_text(x[0].ct[..])) {
+    b.status = SPB_DOC; b.why = ct_put(out_why, 0, "the world's content tables are not ones this build reads");
+    return b;
+  }
   g[0].px = g[0].at.bay_x; g[0].pz = g[0].at.bay_z;   // nobody stands in the server's world
   opened := spw_open(g, x[0].k[..], doc);
   if opened != SPW_OK {
@@ -232,7 +297,7 @@ spw_batch :: (g: [] SpGame, x: [] SpwWork, doc: string, body: string, fenced: bo
   }
   if n == 0 { b.status = SPB_NOTHING; b.why = ct_put(out_why, 0, "nothing to change"); return b; }
   for i: 0..<n {
-    r := spw_edit(g, x[0].e[i], false);
+    r := spw_take(g, x[0].ct[..], x[0].e[i], false);
     if !r.ok {
       b.status = SPB_REFUSED; b.at = i;
       wb: [200] u8; b.why = ct_put(out_why, 0, spw_why(g, r, wb[..]));
@@ -241,7 +306,7 @@ spw_batch :: (g: [] SpGame, x: [] SpwWork, doc: string, body: string, fenced: bo
     x[0].did[i] = r.did; x[0].inv[n - 1 - i] = r.inv;
   }
   // the second check: the run's whole way on foot against the layer as it would be saved
-  if g[0].layer[0].st[0].n > 0 {
+  if g[0].layer[0].st[0].n > 0 || x[0].ct[0].changed {
     keep := g[0].layer[0];
     walk := sw_replay(g, x[0].w[..]);
     if walk.why != SW_OK {
@@ -276,6 +341,8 @@ SpwPage :: struct {
   f: [1] WorldFollow; k: [1] SpwScratch; doc: [SPW_DOC] u8; did: [64] u8; scratch: [SPW_INBOX] u8; loads: int;
   // what the editor shell is told (shell-model.coax, GitHub #13416): the selected piece's number on the
   // wire (0: none), the revision this page's last write made, and the model with what it was made from
+  ct: [1] SpwTables;   // the world's content tables as this page has them (the shipped ones until the world's are read)
+  tables_gen: int;     // counts the changes to them the page must draw: a read of other tables, or a cell event
   sel: int; own_rev: int = -1;
   here: bool; here_x: int; here_z: int;   // the last point tapped on the ground (viewport.coax), centimetres
   model: [EM_BYTES] u8; model_n: int; model_rev: int; model_key: [10] int;
@@ -308,8 +375,9 @@ spw_page_events :: (g: [] SpGame, p: [] SpwPage, a: WfAnswer) -> int {
       v := we_event_read(line);
       if v.ok && v.rev <= f[0].rev { continue; }   // one the page has taken already
       if !we_take(f[0].rev, v) || !we_event_world_is(v, SPW_ID) { wf_reopen(f); break; }
-      r := spw_edit(g, v.edit, true);
+      r := spw_take(g, p[0].ct[..], v.edit, true);
       if !r.ok { wf_reopen(f); break; }
+      if v.edit.op == WE_CELL { p[0].tables_gen += 1; }
       if v.edit.op == WE_SPAWN { sl_rise(g, r.id - 1); }
       wf_took(f); g[0].layer[0].head = f[0].rev; took += 1;
     } else if kind == 2 && f[0].lane == WL_LIVE {
@@ -324,12 +392,25 @@ spw_page_events :: (g: [] SpGame, p: [] SpwPage, a: WfAnswer) -> int {
   }
   return took;
 }
+// The lane's content tables, answered: when they are not the ones the page has, the page reads
+// them and its World is built from them where it stands (a piece's size is its kind's). True when
+// they changed. Tables this build does not read leave the page with the ones it has.
+spw_page_tables :: (g: [] SpGame, p: [] SpwPage, text: string) -> bool {
+  have := ifx p[0].ct[0].open then spw_tables_text(p[0].ct[..]) else SC_SHIPPED;
+  if text == have || !spw_tables_open(g, p[0].ct[..], text) { return false; }
+  sl_sync(g); g[0].layer[0].rev += 1; p[0].tables_gen += 1;
+  return true;
+}
 // An answer from the host for request `host_id`: the document, events or a write's answer, each
 // carried out. What it answered (WFQ_NONE: not the world's).
 spw_page_answer :: (g: [] SpGame, p: [] SpwPage, host_id: int, text: string) -> int {
   a := wf_answer(p[0].f[..], host_id, text);
   if a.what == WFQ_DOC { ok := spw_page_doc(g, p, a); }
   if a.what == WFQ_EVENTS { n := spw_page_events(g, p, a); }
+  if a.what == WFQ_TABLES {
+    if a.status == 200 { _ := spw_page_tables(g, p, a.body); }
+    wf_tabled(p[0].f[..]);
+  }
   if a.what == WFQ_POST {
     wf_posted(p[0].f[..], a);
     // a write that stood says what can now be undone and redone (it carries no document: its batch goes where one would)
@@ -371,21 +452,24 @@ spw_model :: (g: [] SpGame, p: [] SpwPage) -> string {
   cols: [WE_COLS] bool; cols[WEC_X] = true; cols[WEC_Z] = true; cols[WEC_YAW] = true;
   n := em_begin(out, SPW_ID, f[0].lane, ifx f[0].rev < 0 then 0 else f[0].rev, f[0].undo, f[0].redo, p[0].sel);
   n = em_cols(out, n, cols[..]);
+  n = em_table(out, n, SPW_KINDS);
   for r: 0..<c[0].piece_n { n = em_kind(out, n, c[0].pieces[r].id, sc_piece_name(c, r)); }
   for i: 0..<l[0].st[0].n {
     item := l[0].items[i];
     n = em_entity(out, n, item.id + 1, item.mesh, we_cm(item.x), we_cm(item.y), we_cm(item.z), we_deg(item.yaw), 100);
   }
-  // a kind's facts, as a person reads them
-  num: [16] u8;
-  names := [4] string.["size", "width", "depth", "height"];
-  units := [4] string.[" %", " cm", " cm", " cm"];
-  for r: 0..<c[0].piece_n {
-    pc := c[0].pieces[r];
-    vals := [4] int.[cast(int) (pc.scale * 100 + 0.5), cast(int) (pc.hx * 200 + 0.5), cast(int) (pc.hz * 200 + 0.5), cast(int) (pc.top * 100 + 0.5)];
-    for k: 0..<4 {
-      m := ct_put_int(num[..], 0, vals[k]); m = ct_put(num[..], m, units[k]);
-      n = em_cell(out, n, pc.id, names[k], cast(string) num[0..<m]);
+  // each kind's row of the pieces table, cell by cell as the tables hold it: the shell edits them (a cell edit, spw_cell)
+  tables := ifx p[0].ct[0].open then spw_tables_text(p[0].ct[..]) else SC_SHIPPED;
+  head := ""; inside := false;
+  for k: 0..<ct_parts(tables, '\n') {
+    line := ct_part(tables, '\n', k);
+    if ct_part(line, ' ', 0) == "table" { inside = ct_part(line, ' ', 1) == SPW_KINDS; head = line; continue; }
+    row := ct_num(ct_part(line, '|', 0));
+    if !inside || !row.ok { continue; }
+    // the header is "table NAME id COL:KIND ...": column c of a row is its word c + 2
+    for ci: 1..<ct_parts(line, '|') {
+      col := ct_part(ct_part(head, ' ', ci + 2), ':', 0); val := ct_part(line, '|', ci);
+      if col.count > 0 && val.count > 0 { n = em_cell(out, n, row.v, col, val); }
     }
   }
   if p[0].here { n = em_here(out, n, p[0].here_x, p[0].here_z); }
