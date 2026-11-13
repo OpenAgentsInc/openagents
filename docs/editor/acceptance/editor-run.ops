@@ -15,12 +15,12 @@ tap tool
 tap tool.1
 tap 820 480
 clock until page.sel == 3 within 6000
-tap 465 500
+tap 475 525
 clock until page.sel == 2 within 6000
 # move it with the gizmo: one snapped move, revision 4
 tap tool
 tap tool.2
-drag 465 500 400 600
+drag 475 525 435 525
 clock until page.f.rev == 4 within 6000
 # turn it: revision 5
 tap thing.2
@@ -42,6 +42,32 @@ tap undo
 clock until game.layer.st.n == 3 within 6000
 tap redo
 clock until game.layer.st.n == 2 within 6000
+# ---- a line of game code and a shader, from the Code pane (the dev server watches and rebuilds)
+tap code
+tap file
+tap file=splice-game.coax
+# one constant, saved: the engine swaps and the run keeps its state; then back, so the file is as it was found
+swap code.text T_HIT_COOL :: 1.0f32 => T_HIT_COOL :: 1.5f32
+tap code.save
+swaps until wasm >= 1 within 4000
+swap code.text T_HIT_COOL :: 1.5f32 => T_HIT_COOL :: 1.0f32
+tap code.save
+swaps until wasm >= 2 within 4000
+# a shader: the Coax that writes Splice's WGSL
+tap file
+tap file=gpu/splice.coax
+swap code.text pow(face,0.85f32) => pow(face,0.80f32)
+tap code.save
+swaps until wgsl >= 1 within 4000
+swap code.text pow(face,0.80f32) => pow(face,0.85f32)
+tap code.save
+swaps until wgsl >= 2 within 4000
+# the world came through the four swaps: the same revision, the same two pieces
+clock until page.f.rev == 9 within 500
+clock until game.layer.st.n == 2 within 500
+tap code
+swaps
+# the agent's turns come right after the swaps: a page whose engine was swapped follows its world at once (#13457)
 # ---- the same kind of edits through an agent: the /chat conversation in the editor's foot.
 # The model's answers are scripted (the dev server has no model). After the answer everything is the real
 # path: the plan, the shell's batch, the world's route and its rules.
@@ -70,38 +96,13 @@ type composer key Enter
 clock +1500
 clock until page.f.rev == 15 within 500
 tap agent
-# ---- a line of game code and a shader, from the Code pane (the dev server watches and rebuilds)
-tap code
-tap file
-tap file=splice-game.coax
-# one constant, saved: the engine swaps and the run keeps its state; then back, so the file is as it was found
-swap code.text T_HIT_COOL :: 1.0f32 => T_HIT_COOL :: 1.5f32
-tap code.save
-swaps until wasm >= 1 within 4000
-swap code.text T_HIT_COOL :: 1.5f32 => T_HIT_COOL :: 1.0f32
-tap code.save
-swaps until wasm >= 2 within 4000
-# a shader: the Coax that writes Splice's WGSL
-tap file
-tap file=gpu/splice.coax
-swap code.text pow(face,0.85f32) => pow(face,0.80f32)
-tap code.save
-swaps until wgsl >= 1 within 4000
-swap code.text pow(face,0.80f32) => pow(face,0.85f32)
-tap code.save
-swaps until wgsl >= 2 within 4000
-# the world came through the four swaps: the same revision, the same four pieces
-clock until page.f.rev == 15 within 500
-clock until game.layer.st.n == 4 within 500
-tap code
-swaps
 # the run kept its state: the player has not moved from where stage 5 put them
 where
 # what a tap reaches, and the tap targets
 hit 57 35
 hit 640 300
 screenshot apps/openagents-web/build/editor-run.png
-# a phone's size: the strip wraps, the two panes stand side by side over the world
+# a phone's size: the strip wraps, the two panes stand side by side above the world
 prefer size 390x844
 clock +300
 hit 60 35

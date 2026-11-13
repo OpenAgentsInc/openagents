@@ -31,6 +31,8 @@ not hold.
 
 2. Start from an empty world. Stop the server, delete the files named
    `splice.*` in `apps/openagents-web/build/.worlds/`, and start it again.
+   Wait about a minute after the server says `engine rebuilt`: until then it
+   can miss a source the Code pane saves (#13464).
 
 3. Run the pass:
 
@@ -83,16 +85,16 @@ so take that picture from a fresh load at 390x844.
 | Edit a content row | The kind's name changes in place, with no reload. |
 | Remove | The piece is gone, one revision. |
 | Undo, then Redo | The piece comes back, then goes again. |
+| Change a line of game code | In the Code pane, one constant of `splice-game.coax` is changed and saved. The engine swaps within 4 s (the step says how long it took; the bar is 2 s), and again when it is put back. |
+| Change a shader | The same in `gpu/splice.coax`, the Coax that writes Splice's WGSL. The shaders swap, twice. |
+| The world after four swaps | The same revision and the same pieces: the run kept its state. The agent's turns that follow show at once (#13457). |
 | Place through the agent | In the conversation in the editor's foot, a turn places two crates: one batch, a revision for each. |
 | Move and remove through the agent | One turn, one batch. |
 | Undo through the agent | One step takes the whole turn back. |
 | Talk to the agent | Nothing changes. |
-| Change a line of game code | In the Code pane, one constant of `splice-game.coax` is changed and saved. The engine swaps within 4 s (the step says how long it took; the bar is 2 s), and again when it is put back. |
-| Change a shader | The same in `gpu/splice.coax`, the Coax that writes Splice's WGSL. The shaders swap, twice. |
-| The world after four swaps | The same revision and the same pieces: the run kept its state. |
 | Where the player stands | The run kept its state: the player has not moved. |
 | What a tap reaches | The shell's button over the canvas, and the world where no pane is. |
-| A phone's size | The strip wraps and the panes stand side by side over the world. |
+| A phone's size | The strip wraps and the panes stand side by side above the world. |
 
 The swaps are timed in real time. On the build this was written against, on
 a Mac that was busy with other builds, the engine swapped 950 to 1,040 ms
@@ -116,11 +118,6 @@ agent's clock.
 - **An agent on your own computer.** The run does not start Claude Code or
   Codex. Their edits are the realm commands the first steps use (`place`),
   which is the path their `realm_world` tools take.
-- **A world edit straight after a code swap.** The run does its world edits
-  first and its code edits last. After an engine swap the page can take up
-  to 10 seconds to follow its world again: a request that was in flight at
-  the swap gets no answer, and the follower gives it up only then
-  (#13457).
 - **Real Chrome and a real phone.** This run is headless Chrome. The pass with
   a hand on a mouse and a finger on a phone is the owner's step in
   `NEEDS_OWNER.md`.

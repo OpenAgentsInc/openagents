@@ -21,10 +21,12 @@
 //   hit X Y                       what receives a tap at a point (CSS px), what it is drawn over and the tap targets
 //                                 there that it covers: the browser's own hit test for a page's elements, the HUD's
 //                                 layout trace where a canvas is on top (metaverse-engine/agent/drive.coax, #13433)
+//                                 (points are the window's; in the editor the canvas is framed by the panes, and the
+//                                 HUD is asked at the point less the canvas's corner, which its answer names)
 //   taps                          every tap target audited: under 44 px either way, covered by something drawn over
 //                                 it (an overlay that steals the click), or overlapping another
 //   tap ID                        a click at the centre of HUD widget ID, or of the page's own element with that id
-//                                 (the editor's shell over a canvas)
+//                                 (the editor's shell over a canvas); a HUD widget's centre is moved by the canvas's corner
 //   tap X Y                       a click at a point of the page (CSS px): a pick in the world
 //   drag X0 Y0 X1 Y1              a press at one point, a move to another and a release there: a gizmo's drag
 //   type ID TEXT | type ID key NAME   tap ID, then the text (or one key: Enter, Escape, 1, w ...);
@@ -438,6 +440,13 @@ dv_eval :: (s: [] DvS, script: string) -> string {
   n := media_value(s[0].c[..], script, s[0].value[..]);
   return ifx n >= 0 then cast(string) s[0].value[0..<n] else "";
 }
+// Where the page's canvas has its corner in the window, in CSS px: 0 0, but in the editor's frame (#13422).
+DvCorner :: struct { x: int; y: int; }
+dv_canvas_at :: (s: [] DvS) -> DvCorner {
+  v := dv_eval(s, "(() => { const c = document.getElementById('coaxial'); if (!c) return '0 0'; const r = c.getBoundingClientRect(); return Math.round(r.left) + ' ' + Math.round(r.top); })()");
+  x := dv_int(dv_word(v, 0)); y := dv_int(dv_word(v, 1));
+  return ifx x < 0 || y < 0 then DvCorner.{} else DvCorner.{x = x, y = y};
+}
 // A command to the realm: its answer (it retries while the engine is between modules).
 dv_send :: (s: [] DvS, cmd: string) -> string {
   js: [8192] u8; j: [1] Jo; jo_start(j[..], js[..]); jo_str(j[..], cmd);
@@ -675,8 +684,16 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
     pn := dd_put(pb[..], 0, dv_eval(s, dd_hit_js(x, y, js[..])));
     page := cast(string) pb[0..<pn]; en := 0;
     if !s[0].dom && pn > 0 && (pb[0] == 'C' || pb[0] == 'c') {
-      e := dv_send(s, op);
-      if dv_starts(e, "hit ") { en = dd_put(eb[..], 0, e); }
+      // the engine takes the point in its canvas's own pixels (in the editor the canvas is framed by the panes)
+      at := dv_canvas_at(s); ht: [1] Dv;
+      dv_s(ht[..], "hit "); dv_i(ht[..], x - at.x); dv_s(ht[..], " "); dv_i(ht[..], y - at.y);
+      e := dv_send(s, dv_text(ht[..]));
+      if dv_starts(e, dv_text(ht[..])) {
+        // its answer under this point's own head; positions in it are the canvas's, said once when it is framed
+        en = dd_put(eb[..], 0, "hit "); en = dd_int(eb[..], en, x); en = dd_put(eb[..], en, " "); en = dd_int(eb[..], en, y);
+        en = dd_put(eb[..], en, e[ht[0].n..<e.count]);
+        if (at.x != 0 || at.y != 0) && dv_has(e, " at ") { en = dd_put(eb[..], en, "(positions in the canvas, whose corner is at "); en = dd_int(eb[..], en, at.x); en = dd_put(eb[..], en, " "); en = dd_int(eb[..], en, at.y); en = dd_put(eb[..], en, ")\n"); }
+      }
     }
     dv_s(out, dd_hit_answer(x, y, page, cast(string) eb[0..<en], ob[..])); return true;
   }
@@ -732,6 +749,8 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
       eq := dd_named_at(id);   // PREFIX=WORDS: a list's row by what it says (the page's own elements)
       at := ifx eq > 0 then dv_eval(s, dd_named_js(id[0..<eq], dv_named_words(op, eq), tj[..])) else ifx s[0].dom then dv_eval(s, dd_target_js(id, tj[..])) else dv_send(s, dv_cat2("target ", id, jb[..]));
       x := dv_int(dv_word(at, 0)); y := dv_int(dv_word(at, 1));
+      // the HUD's target is in its canvas's own pixels: the window's are those plus the canvas's corner
+      if !s[0].dom && eq < 0 && x >= 0 && y >= 0 && dv_word(at, 2).count == 0 { c0 := dv_canvas_at(s); x += c0.x; y += c0.y; }
       // an id the HUD doesn't have may be one of the page's own elements over the canvas (the editor's shell, #13416)
       if !s[0].dom && eq < 0 && (x < 0 || y < 0 || dv_word(at, 2).count > 0) {
         at = dv_eval(s, dd_target_js(id, tj[..]));
