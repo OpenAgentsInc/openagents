@@ -124,6 +124,6 @@ LAB_CHAPTERS :: [125]LabChapter.[
   LabChapter.{title="One seed for Nostr and Bitcoin",file="ch121-one-seed-for-nostr-and-bitcoin.md",status="implemented",station=3},
   LabChapter.{title="Agent treasuries",file="ch122-agent-treasuries.md",status="implemented",station=5},
   LabChapter.{title="Paying for requests",file="PLAN.md#L327",status="planned",station=5},
-  LabChapter.{title="Our node on Pylons and Verse OS",file="PLAN.md#L328",status="planned",station=3},
+  LabChapter.{title="Our node on Pylons and Metaverse OS",file="PLAN.md#L328",status="planned",station=3},
   LabChapter.{title="Address history, balances and spends",file="ch125-address-history-balances-and-spends.md",status="implemented",station=1},
 ];

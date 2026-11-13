@@ -5,7 +5,7 @@ read from aethyr/ui/font.coax, so the card and the pages agree).
 Tooling only: it runs on this machine and ships a JPEG.
 
     python3 -I coax/web/og-card.py SHOT.png OUT.jpg --crop X0,Y0,X1,Y1 \
-        --eyebrow PLAYTEST --title "ENTER THE|VERSE" \
+        --eyebrow PLAYTEST --title "ENTER THE|METAVERSE" \
         --line "EDIT OUR HAUNTED HOUSE." --line "CAN YOU MAKE IT SCARIER?" \
         --foot "OPENAGENTS · OPENAGENTS.COM/VERSE"
 

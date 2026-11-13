@@ -67,7 +67,7 @@ export function brief(text: string, max = 200): string {
 }
 
 /** A page's title without the site's name after it. */
-export const bare = (title: string) => title.replace(/\s*[·—|-]\s*(OpenAgents( project)?|The Verse)\s*$/, "").trim()
+export const bare = (title: string) => title.replace(/\s*[·—|-]\s*(OpenAgents( project)?|The Verse|The Metaverse)\s*$/, "").trim()
 
 /** Width and height of a JPEG or PNG, or null. */
 export function size(bytes: Uint8Array): { w: number; h: number; type: "jpeg" | "png" } | null {

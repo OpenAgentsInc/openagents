@@ -22,6 +22,7 @@ test("titles lose the site's name; long lines are cut at a sentence, else a word
   expect(bare("Coax · OpenAgents project")).toBe("Coax")
   expect(bare("Connect a Pylon — OpenAgents")).toBe("Connect a Pylon")
   expect(bare("Galaxy · The Verse")).toBe("Galaxy")
+  expect(bare("Galaxy · The Metaverse")).toBe("Galaxy")
   const two = "A".repeat(120) + ". " + "B".repeat(120) + "."
   expect(brief(two)).toBe("A".repeat(120) + ".")
   const words = Array(60).fill("word").join(" ")

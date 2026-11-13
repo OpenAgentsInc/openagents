@@ -239,11 +239,11 @@ export function listMarkdown(list: World[]): string {
   return [
     "# Worlds",
     "",
-    "Worlds on the Verse you play in the browser, newest first. The page sorts them by most recent, most visited, most played and A to Z; visits leave out our own team and automation.",
+    "Worlds on the OpenAgents Metaverse you play in the browser, newest first. The page sorts them by most recent, most visited, most played and A to Z; visits leave out our own team and automation.",
     "",
     ...rows.map((r) => `- [${r.title}](https://openagents.com/worlds/${r.slug}): ${r.line}. Opened ${day(r.added!)}.`),
     "",
-    "Also: [the Verse](https://openagents.com/verse), [build your own world](https://openagents.com/worlds/new).",
+    "Also: [the Metaverse](https://openagents.com/verse), [build your own world](https://openagents.com/worlds/new).",
     "",
   ].join("\n")
 }
@@ -255,11 +255,11 @@ export function listPage(list: World[]): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Worlds · OpenAgents</title>
-<meta name="description" content="Every world on the Verse you can play in the browser, sorted by most popular, most recent, most played or A to Z.">
+<meta name="description" content="Every world on the OpenAgents Metaverse you can play in the browser, sorted by most popular, most recent, most played or A to Z.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="OpenAgents">
 <meta property="og:title" content="Worlds">
-<meta property="og:description" content="Every world on the Verse you can play in the browser.">
+<meta property="og:description" content="Every world on the OpenAgents Metaverse you can play in the browser.">
 <meta property="og:url" content="https://openagents.com/worlds">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#000000">
