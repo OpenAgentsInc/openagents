@@ -963,7 +963,7 @@ rlm_test_fx :: (mem: [] RlmTestMem, r: [] Rs, src: string, answers: [] string, t
   out = rlm_test_fx(mem, r, "m = search('foo(', limit=5)\nd = sh('sleep 9')\nprint(len(m), m[1], d['exit'], d['timed_out'], replace_lines('a.c', 4, 4, 'new'))", answers2[..], t[..]);
   #assert out == "2 b.c:9:foo(1) -1 True      4\tnew\n\n" && t[0].reqs[0] == "search|foo(||5|0" && t[0].reqs[1] == "sh|sleep 9|120" && t[0].reqs[2] == "replace_lines|a.c|4|4|new";
   out = rlm_test_fx(mem, r, "print(search('a.b', 'src/', regex=True), write('n.txt', 'hi'), lines('a.c', 2, 3))", answers2[..], t[..]);
-  #assert t[0].reqs[0] == "search|a.b|src/|200|1" && t[0].reqs[1] == "write|n.txt|hi" && t[0].reqs[2] == "lines|a.c|2|3";
+  #assert t[0].reqs[0] == "search|a.b|src/|40|1" && t[0].reqs[1] == "write|n.txt|hi" && t[0].reqs[2] == "lines|a.c|2|3";
 }
 
 #test "the code environment's functions: wrong arguments are refused before any effect, and without a workspace each one fails" {

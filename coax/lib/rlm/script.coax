@@ -1952,7 +1952,7 @@ rs_ask :: (r: [] Rs, kind: int, q: RsVal) -> RsVal {
 // block as a sub-model call does (RS_ASK_FX); the driver does the effect once, and its result
 // comes back from the memo on every later pass.
 RS_ENV :: [10] string.["files prefix:s=", "read path:s", "lines path:s a:i b:i", "count_lines path:s",
-  "search pattern:s prefix:s= limit:i=200 regex:b=0", "edit path:s old:s new:s", "replace_lines path:s a:i b:i text:s",
+  "search pattern:s prefix:s= limit:i=40 regex:b=0", "edit path:s old:s new:s", "replace_lines path:s a:i b:i text:s",
   "write path:s text:s", "sh cmd:s seconds:i=120", "outline path:s"];
 
 // The first word of s.
