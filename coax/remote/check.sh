@@ -374,6 +374,8 @@ e2_gate() {   # prod
   mkdir -p "$w"; t0=$(date +%s)
   echo "== e2-pair against production ${prod:0:10}" >> "$log"
   git rev-parse -q --verify "$prod^{commit}" > /dev/null 2>&1 || git -C "$HOME/oa" fetch -q origin main 2> /dev/null
+  # a hotfix release is a tag off main (release/NAME): ask for its commit by name
+  git rev-parse -q --verify "$prod^{commit}" > /dev/null 2>&1 || git -C "$HOME/oa" fetch -q origin "$prod" 2> /dev/null || git -C "$HOME/oa" fetch -q origin 'refs/tags/release/*:refs/tags/release/*' 2> /dev/null
   git rev-parse -q --verify "$prod^{commit}" > /dev/null 2>&1 || { echo "e2-pair: production's commit $prod is not here; not judged" >> "$log"; return 0; }
   [[ -x coax/web/room/bin/room ]] || { echo "e2 room" >> "$out/failed"; return 1; }
   pt="$HOME/oa-e2/${prod:0:12}"
@@ -397,11 +399,14 @@ e2_gate() {   # prod
       git -C "$HOME/oa" worktree remove --force "$old/tree" 2> /dev/null; rm -rf "$old"
     done
   ) 9> "$HOME/oa-e2.lock" >> "$log" 2>&1 || { echo "e2-pair: production's room did not build on this host; not judged" >> "$log"; return 0; }
+  e2_abs() { case "$1" in /*) echo "$1" ;; *) echo "$root/$1" ;; esac; }   # a room's path, whatever the directory it starts in
   e2_one() {   # side room tree round: one load run on its own port; its numbers on one line of e2.tsv
     local side="$1" bin="$2" tree="$3" r="$4" port pid n
     # a port nothing answers on (another slot's room may be on one)
     for n in 1 2 3 4 5 6 7 8; do port=$(( 20000 + RANDOM % 20000 )); curl -s -m 1 -o /dev/null "http://127.0.0.1:$port/" 2> /dev/null || break; done
-    OA_ROOM_TICKET_KEY="$key" "$bin" --port "$port" --dev "$tree/coax/web/room/dev" > "$w/$side-$r.room.log" 2>&1 & pid=$!
+    # from its own tree: a room reads its content tables beside where it starts (everglade/content/), and
+    # production's room started in this commit's tree read this commit's tables, refused them and seated nobody
+    ( cd "$tree" && OA_ROOM_TICKET_KEY="$key" exec "$(e2_abs "$bin")" --port "$port" --dev "$tree/coax/web/room/dev" ) > "$w/$side-$r.room.log" 2>&1 & pid=$!
     for n in $(seq 1 100); do curl -fs "http://127.0.0.1:$port/health" > /dev/null 2>&1 && break; read -r -t 0.1 < /dev/zero || true; done
     (cd "$tree" && OA_ROOM_TICKET_KEY="$key" coax/web/tool.sh coax/web/room/load.coax everglade2 "ws://localhost:$port" "$players" "$secs") > "$w/$side-$r.load" 2>&1
     curl -fs "http://127.0.0.1:$port/health" > "$w/$side-$r.health" 2>&1
@@ -412,11 +417,12 @@ e2_gate() {   # prod
       "$(grep -o '"bytes_per_s":[0-9]*' "$w/$side-$r.load" | head -1 | cut -d: -f2)" \
       "$(sed -nE 's/.*everglade tick p50 [0-9]+ us at the 95th ([0-9]+) us.*/\1/p' "$w/$side-$r.health" | head -1)" >> "$w/e2.tsv"
   }
-  : > "$w/e2.tsv"
+  : > "$w/e2.tsv"; : > "$w/range.worse"
   for (( r = 1; r <= rounds; r++ )); do
     e2_one head coax/web/room/bin/room "$root" "$r"
     e2_one prod "$pt/room" "$pt/tree" "$r"
   done
+  e2_range "$prod" || true
   e2_prev "$pt" "$key" || true
   e2_pins "$prod" || true
   cp "$w/e2.tsv" "$out/e2.tsv"
@@ -439,6 +445,7 @@ e2_gate() {   # prod
       printf "e2 bytes: this commit %d B/s, production %d B/s (margin %d%%)\n", hb, pb, pct > "/dev/stderr"
       if (hb >= 0 && pb > 0 && hb * 100 > pb * (100 + pct)) print "e2 bytes"
     }' "$w/e2.tsv" > "$w/worse" 2>> "$log"
+  [[ ! -s "$w/range.worse" ]] || grep -qx 'e2 prev-wire' "$w/prev.worse" 2> /dev/null || cat "$w/range.worse" >> "$w/prev.worse"
   [[ ! -s "$w/prev.worse" ]] || cat "$w/prev.worse" >> "$w/worse"
   echo "== e2-pair: $( [[ -s "$w/worse" ]] && echo "WORSE than production: $(paste -sd, "$w/worse")" || echo "not worse than production"), $(( $(date +%s) - t0 )) s" >> "$log"
   [[ ! -s "$w/worse" ]] || { cat "$w/worse" >> "$out/failed"; return 1; }
@@ -451,13 +458,14 @@ e2_gate() {   # prod
 # tells no monster's blow or fells no monster where production's room did (the bots aim at the monsters
 # they are told of: none told, none fought). A wire raised without the version before it kept fails here.
 e2_prev() {   # pt key
-  local pt="$1" key="$2" secs="${OA_E2_PREV_SECONDS:-150}" players="${OA_E2_PREV_PLAYERS:-4}" side bin port pid n
+  local pt="$1" key="$2" secs="${OA_E2_PREV_SECONDS:-150}" players="${OA_E2_PREV_PLAYERS:-4}" side bin port pid n tree
   : > "$w/prev.worse"
   [[ -f "$pt/tree/coax/web/room/bots.coax" ]] || { echo "e2 prev-wire: production's tree has no protocol bots; not judged" >> "$log"; return 0; }
   for side in head prod; do
     bin="coax/web/room/bin/room"; [[ "$side" == head ]] || bin="$pt/room"
     for n in 1 2 3 4 5 6 7 8; do port=$(( 20000 + RANDOM % 20000 )); curl -s -m 1 -o /dev/null "http://127.0.0.1:$port/" 2> /dev/null || break; done
-    OA_ROOM_TICKET_KEY="$key" "$bin" --port "$port" --dev "$( [[ "$side" == head ]] && echo "$root" || echo "$pt/tree" )/coax/web/room/dev" > "$w/prev-$side.room.log" 2>&1 & pid=$!
+    tree="$root"; [[ "$side" == head ]] || tree="$pt/tree"
+    ( cd "$tree" && OA_ROOM_TICKET_KEY="$key" exec "$(e2_abs "$bin")" --port "$port" --dev "$tree/coax/web/room/dev" ) > "$w/prev-$side.room.log" 2>&1 & pid=$!   # from its own tree, as e2_one
     for n in $(seq 1 100); do curl -fs "http://127.0.0.1:$port/health" > /dev/null 2>&1 && break; read -r -t 0.1 < /dev/zero || true; done
     (cd "$pt/tree" && OA_ROOM_TICKET_KEY="$key" coax/web/tool.sh coax/web/room/bots.coax run "ws://localhost:$port" "$players" "$secs" --direct --realm pair-e2-prev --reconnect 0 --travel 0) > "$w/prev-$side.bots" 2>&1
     curl -fs "http://127.0.0.1:$port/vitals" > "$w/prev-$side.vitals" 2>&1 || curl -fs "http://127.0.0.1:$port/health" > "$w/prev-$side.vitals" 2>&1
@@ -474,6 +482,24 @@ e2_prev() {   # pt key
   if [[ -z "$hs" || "${hv:-0}" -gt 0 || "$hs" -lt "$ps" ]] || [[ "${ptk:-0}" -gt 0 && "${ht:-0}" -eq 0 ]] || [[ "${pk:-0}" -gt 0 && "${hk:-0}" -eq 0 ]] || [[ "$pb" -gt 0 && "$hb" -eq 0 ]]; then
     echo "e2 prev-wire" > "$w/prev.worse"
     echo "e2 prev-wire: this commit's room does not serve production's client (its wire or what it reads). See everglade/server/wire-prev.coax" >> "$log"
+  fi
+}
+# The wire range (#13398): production's page speaks its commit's WIRE_VERSION, and this commit's room
+# must seat it: it is from this tree's WIRE_MIN (the lower of WIRE_LIVE and the version before
+# WIRE_VERSION) to its WIRE_VERSION. "e2 prev-wire" when it is not: the wire was raised with a version
+# production still speaks dropped, or WIRE_LIVE was raised before the release it names. e2_prev's bots
+# then show the same room refusing them. Read from the two files, so it needs no room.
+e2_range() {   # prod
+  local prod="$1" pv hv hl hm
+  wire_num() { sed -n "s/^$1 :: \([0-9][0-9]*\);.*/\1/p" | head -1; }
+  pv="$(git show "$prod:everglade/shared/everglade-wire.coax" 2> /dev/null | wire_num WIRE_VERSION)"
+  hv="$(wire_num WIRE_VERSION < everglade/shared/everglade-wire.coax)"; hl="$(wire_num WIRE_LIVE < everglade/shared/everglade-wire.coax)"
+  [[ -n "$pv" && -n "$hv" ]] || { echo "e2 prev-wire: production's wire version or this commit's could not be read; the range is not judged" >> "$log"; return 0; }
+  hm=$(( hv - 1 )); [[ -z "$hl" ]] || (( hl >= hm )) || hm="$hl"
+  echo "e2 prev-wire: production's page speaks wire $pv; this commit's room speaks wire $hm to $hv${hl:+ (WIRE_LIVE $hl)}" >> "$log"
+  if (( pv < hm || pv > hv )); then
+    echo "e2 prev-wire" >> "$w/range.worse"
+    echo "e2 prev-wire: this commit's room refuses production's page for its version. WIRE_LIVE in everglade/shared/everglade-wire.coax is the wire production's page speaks ($pv), and everglade/server/wire-prev.coax keeps the writers from it up (docs/protocol/everglade-previous-wire.md)" >> "$log"
   fi
 }
 # The previous pins (#13408, everglade/shared/pins-prev.coax; docs/protocol/everglade-previous-pins.md):

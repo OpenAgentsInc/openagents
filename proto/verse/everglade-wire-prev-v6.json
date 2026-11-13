@@ -4,7 +4,7 @@
   "serves": 6,
   "under": 7,
   "base_session": "everglade-session-v7",
-  "scope": "What a room on wire 7 writes a seat whose hello said wire 6, and reads from it, in place of what wire 7 changed: Everglade II's familiars and Healer's Kit as the frames a wire 6 page reads and writes. Kept for one release (#13398).",
+  "scope": "What a room on wire 7 writes a seat whose hello said wire 6, and reads from it, in place of what wire 7 changed: Everglade II's familiars and Healer's Kit as the frames a wire 6 page reads and writes. A wire 5 seat is served this way too, with everglade-wire-prev-v5 beside it. Kept until production's page speaks wire 7 (WIRE_LIVE, #13398).",
   "docs": ["docs/protocol/everglade-previous-wire.md", "docs/protocol/everglade-familiar-v2.md"],
   "codec": "everglade/server/wire-prev-wire.coax",
   "withheld": {"row_kinds": [15, 16], "entries": []},

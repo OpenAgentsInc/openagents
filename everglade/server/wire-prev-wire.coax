@@ -1,11 +1,14 @@
-// The previous wire's frames (#13398): the one codec for what a room writes a seat on WIRE_MIN in
-// place of what WIRE_VERSION changed, and for what such a page says. The room's hooks are
-// wire-prev.coax, which says the rule; the profile is proto/verse/everglade-wire-prev-v6.json, held to
-// this file by
-//   coax/web/tool.sh coax/web/room/wire-prev-profile.coax proto/verse/everglade-wire-prev-v6.json
-// Wire 6 under wire 7 (#13276 made Everglade II's familiars rows, their requests and the Healer's
-// Kit's E kinds, and the room's answers e entries of D: familiar-wire.coax). A wire 6 page reads and
-// writes these frames instead:
+// The previous wires' frames (#13398): the one codec for what a room writes a seat on a version from
+// WIRE_MIN up to the one before its own, in place of what each later version changed, and for what
+// such a page says. The room's hooks are wire-prev.coax, which says the rule. Each version served has
+// a profile, proto/verse/everglade-wire-prev-vN.json, held to this file by
+//   coax/web/tool.sh coax/web/room/wire-prev-profile.coax proto/verse/everglade-wire-prev-vN.json
+// A seat is sent every older form from its own version up: a wire 5 seat hears wire 5's frames and
+// wire 6's, a wire 6 seat wire 6's alone.
+//
+// Wire 6 and below, under wire 7 (#13276 made Everglade II's familiars rows, their requests and the
+// Healer's Kit's E kinds, and the room's answers e entries of D: familiar-wire.coax). A page of wire 6
+// or 5 reads and writes these frames instead:
 //   M1 SEQ FORM SLOT, M3 SEQ FORM SLOT SPIRIT, M4 SEQ ORDER, M5 SEQ, M6 SEQ SEAT, M7 SEQ   its requests
 //   U1 SEQ                                       the Healer's Kit's ask (kit-wire.coax)
 //   m1 SEQ FORM, m4 SEQ ORDER, m5 SEQ, m6 SEQ, m7 SEQ   this wire's e fam entry, by its order
@@ -15,16 +18,30 @@
 //   m8 MODE                                      whose senses the seat has: this wire's familiar row's G
 // The frames' own profiles are proto/verse/everglade-familiar*-v1.json, everglade-find-familiar-v1.json
 // and everglade-healers-kit-v1.json (coax/web/room/familiar-profile.coax runs these functions on them).
+//
+// Wire 5, under wire 6 (#13276 made Everglade II's monsters and guard rows, and their blows e entries
+// of D: creature-wire.coax). A wire 5 page (production's 01bdb405f0) reads four frames instead, as
+// that commit's creature-wire.coax wrote and read them. Whole numbers a space apart. The guard's X Z
+// are mm and his YAW thousandths of a radian; a monster's X Z are cm and its YAW thousandths. Ticks
+// are the room's.
+//   g2 TICK LIFE STATE X Z YAW HP MAX SWING FOE     the guard, each tick he changes, else once a second
+//   g3 TICK KIND SEAT AMOUNT                        a blow: this wire's e guard entry, field for field
+//   h2 TICK COUNT [M LIFE KIND STATE X Z YAW HP MAX ACT ACT_TICK FOE]...   the monsters in view
+//   h3 TICK KIND M SEAT AMOUNT [FX FZ TX TZ FLY_MS] a monster's event: this wire's e mon entry
 // A reader takes a frame whole or not at all (ok false): a field missing, extra or out of range.
 //   coax/bin/coax test everglade/server/wire-prev-wire.coax
 #load "familiar-wire.coax";
 #load "kit-wire.coax";
+#load "creature-wire.coax";
 
-WPREV_SERVES :: 6;   // the wire version these writers speak
+WPREV_SERVES :: 5;   // the oldest wire version these writers speak: every version from it to WPREV_UNDER - 1 is served
 WPREV_UNDER :: 7;    // the WIRE_VERSION they were written under: a room of any other version fails its checks
+WPREV_FAMILIARS :: 7;   // the version that made the familiars rows: a seat below it hears M and m frames
+WPREV_CREATURES :: 6;   // the version that made the monsters and the guard rows: a seat below it hears g2 g3 h2 h3
 
-// What the old wire's writers keep for a seat: the familiars' list and the senses' mode it last heard.
-WprevSeat :: struct { familiar_hash: int; familiar_sent: int; sense_sent: int; }
+// What the old wires' writers keep for a seat: the familiars' list and the senses' mode it last heard
+// (a seat below wire 7), and what it last heard of the guard and the monsters (a seat below wire 6).
+WprevSeat :: struct { familiar_hash: int; familiar_sent: int; sense_sent: int; guard_hash: int; guard_sent: int; monster_hash: int; monster_sent: int; }
 
 // ---- the wire 6 familiar frames: one reader, and the writers
 // A request's order: 0 a summons (M1, or the Wizard's M3), 1 to 3 the lifecycle's (M4), then step (M5),
@@ -64,16 +81,94 @@ e2_familiar_put_rows :: (out:[]u8,tick:int,count:int,rows:string)->int {
 }
 
 
+// ---- the wire 5 creature frames
+WprevGuard :: struct { ok: bool; tick: int; life: int; state: int; x: int; z: int; yaw: int; hp: int; max: int; swing: int; foe: int; }
+WprevMon :: struct { m: int; life: int; kind: int; state: int; x: int; z: int; yaw: int; hp: int; max: int; act: int; act_tick: int; foe: int; }
+WprevMons :: struct { ok: bool; tick: int; count: int; row: [EGC_MONS] WprevMon; }
+WPREV_GUARD :: "g2"; WPREV_GUARD_HIT :: "g3"; WPREV_MONS :: "h2"; WPREV_MON_HIT :: "h3";
+
+// ---- g2
+// The guard's fields after TICK (LIFE to FOE): the bytes the room compares to know he changed.
+wprev_guard_put_body :: (out: [] u8, at: int, g: WprevGuard) -> int {
+  n := wire_int(out, wire_int(out, at, g.life), g.state);
+  n = wire_int(out, wire_int(out, wire_int(out, n, g.x), g.z), g.yaw);
+  return wire_int(out, wire_int(out, wire_int(out, wire_int(out, n, g.hp), g.max), g.swing), g.foe);
+}
+wprev_guard_put :: (out: [] u8, tick: int, body: string) -> int { return wire_put(out, wire_int(out, wire_put(out, 0, WPREV_GUARD), tick), body); }
+wprev_guard_read :: (t: string) -> WprevGuard {
+  if !wire_is(t, WPREV_GUARD) { return WprevGuard.{}; }
+  rd := [1] WireRd.[wire_rd(t, 2)];
+  g: WprevGuard;
+  g.tick = wire_num(t, rd[..]); g.life = wire_num(t, rd[..]); g.state = wire_num(t, rd[..]);
+  g.x = wire_num(t, rd[..]); g.z = wire_num(t, rd[..]); g.yaw = wire_num(t, rd[..]);
+  g.hp = wire_num(t, rd[..]); g.max = wire_num(t, rd[..]); g.swing = wire_num(t, rd[..]); g.foe = wire_num(t, rd[..]);
+  g.ok = rd[0].ok && !wire_more(t, rd[..]) && g.tick >= 0 && g.life >= 0 && g.state >= 0 && g.state <= 4 && g.hp >= 0 && g.max >= g.hp &&
+    g.x >= -200000 && g.x <= 200000 && g.z >= -650000 && g.z <= 200000 && g.yaw >= -7000 && g.yaw <= 7000 && egc_seat_ok(g.foe);
+  return g;
+}
+
+// ---- h2
+// One monster's row appended to rows at at; then the frame round count rows.
+wprev_mon_put_row :: (rows: [] u8, at: int, r: WprevMon) -> int {
+  n := wire_int(rows, wire_int(rows, wire_int(rows, wire_int(rows, at, r.m), r.life), r.kind), r.state);
+  n = wire_int(rows, wire_int(rows, n, r.x), r.z);
+  n = wire_int(rows, wire_int(rows, wire_int(rows, n, r.yaw), r.hp), r.max);
+  return wire_int(rows, wire_int(rows, wire_int(rows, n, r.act), r.act_tick), r.foe);
+}
+wprev_mon_put :: (out: [] u8, tick: int, count: int, rows: string) -> int {
+  return wire_put(out, wire_int(out, wire_int(out, wire_put(out, 0, WPREV_MONS), tick), count), rows);
+}
+wprev_mon_read :: (t: string) -> WprevMons {
+  if !wire_is(t, WPREV_MONS) { return WprevMons.{}; }
+  rd := [1] WireRd.[wire_rd(t, 2)];
+  o: WprevMons;
+  o.tick = wire_num(t, rd[..]); o.count = wire_num(t, rd[..]);
+  if !rd[0].ok || o.tick < 0 || o.count < 0 || o.count > EGC_MONS { return WprevMons.{}; }
+  for q: 0..<o.count {
+    r: WprevMon;
+    r.m = wire_num(t, rd[..]); r.life = wire_num(t, rd[..]); r.kind = wire_num(t, rd[..]); r.state = wire_num(t, rd[..]);
+    r.x = wire_num(t, rd[..]); r.z = wire_num(t, rd[..]); r.yaw = wire_num(t, rd[..]); r.hp = wire_num(t, rd[..]); r.max = wire_num(t, rd[..]);
+    r.act = wire_num(t, rd[..]); r.act_tick = wire_num(t, rd[..]); r.foe = wire_num(t, rd[..]);
+    if !rd[0].ok || r.m < 0 || r.m >= EGC_MONS || r.life < 0 || r.kind < 0 || r.kind > 1 || r.state < 0 || r.state > 5 ||
+      r.hp < 0 || r.max < 1 || r.hp > r.max || r.act < 0 || r.act > 2 || !egc_seat_ok(r.foe) ||
+      r.x < -20000 || r.x > 20000 || r.z < -65000 || r.z > 20000 || r.yaw < -1000000 || r.yaw > 1000000 { return WprevMons.{}; }
+    o.row[q] = r;
+  }
+  if wire_more(t, rd[..]) { return WprevMons.{}; }
+  o.ok = true;
+  return o;
+}
+
+// ---- g3 and h3: an e guard or e mon entry's fields under the old head
+// An old frame as the entry it is on this wire (the old page's reader, for the checks and the profile).
+wprev_guard_hit_read :: (t: string) -> EgcGuardHit {
+  if !wire_is(t, WPREV_GUARD_HIT) { return EgcGuardHit.{}; }
+  b: [128] u8; n := wire_put(b[..], wire_put(b[..], 0, EGC_GUARD_E), t[2..<t.count]);
+  return egc_guard_hit_read(cast(string) b[0..<n]);
+}
+wprev_mon_hit_read :: (t: string) -> EgcMonHit {
+  if !wire_is(t, WPREV_MON_HIT) { return EgcMonHit.{}; }
+  b: [160] u8; n := wire_put(b[..], wire_put(b[..], 0, EGC_MON_E), t[2..<t.count]);
+  return egc_mon_hit_read(cast(string) b[0..<n]);
+}
+
+
 // ---- between the wires
-// A D entry of this wire as the old wire's frame: its length in out, 0 when the old wire said it as
-// the same entry (or the entry is malformed: it stays as it is).
-wprev_entry_put :: (out: [] u8, entry: string) -> int {
-  d := egf_done_read(entry);
-  if d.ok { return e2_familiar_put_done(out, d.order, d.seq, d.form); }
-  c := egf_cast_read(entry);
-  if c.ok { return e2_familiar_put_status(out, c.seq, c.status); }
-  k := egf_kit_used(entry);
-  if k.ok { return egk_used_put(out, k.seq, k.left); }
+// A D entry of this wire as the frame a seat on `wire` hears it as: its length in out, 0 when that
+// wire said it as the same entry (or the entry is malformed: it stays as it is).
+wprev_entry_put :: (out: [] u8, entry: string, wire: int) -> int {
+  if wire < WPREV_FAMILIARS {
+    d := egf_done_read(entry);
+    if d.ok { return e2_familiar_put_done(out, d.order, d.seq, d.form); }
+    c := egf_cast_read(entry);
+    if c.ok { return e2_familiar_put_status(out, c.seq, c.status); }
+    k := egf_kit_used(entry);
+    if k.ok { return egk_used_put(out, k.seq, k.left); }
+  }
+  if wire < WPREV_CREATURES {
+    if wire_is(entry, EGC_GUARD_E) && egc_guard_hit_read(entry).ok { return wire_put(out, wire_put(out, 0, WPREV_GUARD_HIT), entry[EGC_GUARD_E.count..<entry.count]); }
+    if wire_is(entry, EGC_MON_E) && egc_mon_hit_read(entry).ok { return wire_put(out, wire_put(out, 0, WPREV_MON_HIT), entry[EGC_MON_E.count..<entry.count]); }
+  }
   return 0;
 }
 // A frame the old page says as the E (use) it is on this wire: kind 0 when it is none of them, or malformed.
@@ -85,12 +180,16 @@ wprev_use_read :: (text: string) -> WireUse {
   return WireUse.{};
 }
 
-wpw_said :: (b: [] u8, entry: string) -> string { return cast(string) b[0..<wprev_entry_put(b, entry)]; }
+wpw_said :: (b: [] u8, entry: string, wire: int) -> string { return cast(string) b[0..<wprev_entry_put(b, entry, wire)]; }
 #test "previous wire: each answer of this wire is the old frame, and each old request the use it is on this wire" {
   b: [64] u8;
-  #assert wpw_said(b[..], "e fam 4000001 0 8") == "m1 4000001 8" && wpw_said(b[..], "e fam 9 2 0") == "m4 9 2" && wpw_said(b[..], "e fam 10 4 0") == "m5 10";
-  #assert wpw_said(b[..], "e fam 11 5 0") == "m6 11" && wpw_said(b[..], "e fam 12 6 0") == "m7 12" && wpw_said(b[..], "e fam-cast 7 2") == "m3 7 2" && wpw_said(b[..], "e kit 3000001 9") == "u1 3000001 9";
-  for same: [7] string.["e hit 1001 2003 7 3", "e mon 90 2 3 -1 4", "e fam 3 7 0", "e fam-cast 1 4", "e kit 7 10", "e family 1", "s 1 0 7 1"] { #assert wprev_entry_put(b[..], same) == 0; }
+  #assert wpw_said(b[..], "e fam 4000001 0 8", 6) == "m1 4000001 8" && wpw_said(b[..], "e fam 9 2 0", 6) == "m4 9 2" && wpw_said(b[..], "e fam 10 4 0", 5) == "m5 10";
+  #assert wpw_said(b[..], "e fam 11 5 0", 6) == "m6 11" && wpw_said(b[..], "e fam 12 6 0", 6) == "m7 12" && wpw_said(b[..], "e fam-cast 7 2", 5) == "m3 7 2" && wpw_said(b[..], "e kit 3000001 9", 6) == "u1 3000001 9";
+  for same: [7] string.["e hit 1001 2003 7 3", "e mon 90 2 3 -1 4", "e fam 3 7 0", "e fam-cast 1 4", "e kit 7 10", "e family 1", "s 1 0 7 1"] { #assert wprev_entry_put(b[..], same, 6) == 0; }
+  // a seat of this room's own version hears every entry as it is; a wire 6 seat hears a creature's entry as it is, a wire 5 seat as its frame
+  #assert wprev_entry_put(b[..], "e fam 9 2 0", 7) == 0 && wprev_entry_put(b[..], "e mon 90 2 3 -1 4", 7) == 0 && wprev_entry_put(b[..], "e guard 90 1 2 5", 6) == 0;
+  #assert wpw_said(b[..], "e mon 90 2 3 -1 4", 5) == "h3 90 2 3 -1 4" && wpw_said(b[..], "e guard 90 1 2 5", 5) == "g3 90 1 2 5";
+  #assert WPREV_FAMILIARS == 7 && WPREV_CREATURES == 6 && WPREV_SERVES == 5;
   u := wprev_use_read("M1 4000001 8 2"); #assert u.seq == 4000001 && u.kind == WE_FAM_SUMMON && u.id == 208;
   u = wprev_use_read("M3 7 8 1 3"); #assert u.kind == WE_FAM_RITE && u.id == 30108 && u.seq == 7;
   u = wprev_use_read("M4 9 2"); #assert u.kind == WE_FAM_ORDER && u.id == 2;
@@ -103,4 +202,31 @@ wpw_said :: (b: [] u8, entry: string) -> string { return cast(string) b[0..<wpre
   a := e2_familiar_read("M3 7 8 1 3"); r := egf_use_read(wprev_use_read("M3 7 8 1 3"), WPREV_FEY);
   #assert a.ok && r.ok && a.wizard == r.wizard && a.seq == r.seq && a.choice == r.choice && a.slot == r.slot && a.spirit == r.spirit && a.lifecycle == r.lifecycle;
   #assert WPREV_FEY == 1;
+}
+#test "previous wire: each wire 5 frame written reads back, and a bad one is refused whole" {
+  b: [256] u8; body: [128] u8;
+  g := WprevGuard.{life = 1, state = 0, x = 0, z = -20000, yaw = 3140, hp = 11, max = 11, swing = -1, foe = -1};
+  bn := wprev_guard_put_body(body[..], 0, g);
+  n := wprev_guard_put(b[..], 30, cast(string) body[0..<bn]);
+  #assert cast(string) b[0..<n] == "g2 30 1 0 0 -20000 3140 11 11 -1 -1";
+  r := wprev_guard_read(cast(string) b[0..<n]); #assert r.ok && r.tick == 30 && r.z == -20000 && r.yaw == 3140 && r.foe == -1 && r.swing == -1;
+  for bad: [7] string.["g2 30 1 5 0 0 0 1 1 -1 -1", "g2 30 1 0 0 0 0 2 1 -1 -1", "g2 30 1 0 0 0 7001 1 1 -1 -1", "g2 30 1 0 0 0 0 1 1 -1 64",
+    "g2 30 1 0 0 0 0 1 1 -1", "g2 30 1 0 0 0 0 1 1 -1 -1 0", "h2 30 1 0 0 0 0 1 1 -1 -1"] { #assert !wprev_guard_read(bad).ok; }
+  rows: [256] u8;
+  rn := wprev_mon_put_row(rows[..], 0, WprevMon.{m = 3, life = 1, kind = 0, state = 1, x = 1000, z = -20000, yaw = 3140, hp = 11, max = 11, act = 0, act_tick = 0, foe = 0});
+  rn = wprev_mon_put_row(rows[..], rn, WprevMon.{m = 9, life = 1, kind = 1, state = 0, x = 500, z = -30000, yaw = 0, hp = 7, max = 7, act = 2, act_tick = 30, foe = -1});
+  n = wprev_mon_put(b[..], 30, 2, cast(string) rows[0..<rn]);
+  #assert cast(string) b[0..<n] == "h2 30 2 3 1 0 1 1000 -20000 3140 11 11 0 0 0 9 1 1 0 500 -30000 0 7 7 2 30 -1";
+  m := wprev_mon_read(cast(string) b[0..<n]); #assert m.ok && m.count == 2 && m.row[1].m == 9 && m.row[1].act_tick == 30 && m.row[1].foe == -1;
+  #assert wprev_mon_read("h2 3 0").ok && wprev_mon_read("h2 3 0").count == 0;
+  for bad: [6] string.["h2 61 1 3 1 0 1 1300 -20000 3140 99 11 1 45 0", "h2 61 13", "h2 61 1 12 1 0 1 0 0 0 1 1 0 0 0", "h2 61 2 3 1 0 1 0 0 0 1 1 0 0 0",
+    "h2 61 1 3 1 0 1 0 0 0 1 1 0 0 0 7", "h2 61 1 3 1 0 1 0 0 1000001 1 1 0 0 0"] { #assert !wprev_mon_read(bad).ok; }
+  // an e guard or e mon entry is the old g3 or h3, field for field; any other entry is said as it is
+  n = wprev_entry_put(b[..], "e guard 90 1 2 5", 5); #assert cast(string) b[0..<n] == "g3 90 1 2 5" && wprev_guard_hit_read("g3 90 1 2 5").amount == 5;
+  n = wprev_entry_put(b[..], "e mon 90 3 10 0 0 500 -30000 520 -31000 700", 5); #assert cast(string) b[0..<n] == "h3 90 3 10 0 0 500 -30000 520 -31000 700";
+  h := wprev_mon_hit_read(cast(string) b[0..<n]); #assert h.ok && h.tz == -31000 && h.fly == 700 && h.m == 10;
+  n = wprev_entry_put(b[..], "e mon 90 2 3 -1 4", 5); #assert cast(string) b[0..<n] == "h3 90 2 3 -1 4" && wprev_mon_hit_read("h3 90 2 3 -1 4").ok;
+  for same: [5] string.["e hit 1001 2003 7 3", "e mon 90 5 3 0 4", "e guard 90 3 2 5", "e monk 1", "s 1 0 7 1"] { #assert wprev_entry_put(b[..], same, 5) == 0; }
+  for bad: [5] string.["g3 90 3 2 5", "g3 90 1 2", "e guard 90 1 2 5", "h3 90 1 2 5", "g2 90 1 2 5"] { #assert !wprev_guard_hit_read(bad).ok; }
+  for bad: [4] string.["h3 90 5 3 0 4", "h3 90 2 12 -1 4", "e mon 90 2 3 -1 4", "g3 90 2 3 -1 4"] { #assert !wprev_mon_hit_read(bad).ok; }
 }

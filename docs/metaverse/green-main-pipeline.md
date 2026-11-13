@@ -476,7 +476,15 @@ production's room beside it (#13398). A release moves its rooms before its
 page, so a head's room must serve production's client: `e2 prev-wire` fails
 when the room refuses a bot for its version, seats fewer bots than
 production's room did, or takes no cast, tells no monster's blow or fells no
-monster where production's room did ([the previous wire](../protocol/everglade-previous-wire.md)).
+monster where production's room did ([the previous wires](../protocol/everglade-previous-wire.md)).
+Before the bots run, the same line fails when production's `WIRE_VERSION` is
+outside the head's `WIRE_MIN` to `WIRE_VERSION` (its `WIRE_LIVE` is wrong, or
+the wire was lowered). Production's commit is fetched by name when the host
+does not have it: a hotfix release is a tag off `main`.
+Each side's room starts in its own tree. A room reads its content tables
+beside where it starts, and until 2026-11-13 production's room was started in
+the head's tree, refused the head's tables and seated nobody, so the pair was
+"not judged" on every head.
 
 A failing measure is a line `e2 NAME` (`e2 holds`, `e2 tick-p95`, `e2
 ack-p95`, `e2 bytes`, `e2 prev-wire`). It is run again on the head first, as every failure is,

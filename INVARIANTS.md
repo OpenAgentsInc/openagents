@@ -1298,8 +1298,9 @@ release (`everglade/shared/pins-prev.coax`, `#authority`; a seat on the content
 tables before plays by those tables, `everglade/server/pins-prev.coax`, #13408;
 a pin raised without the release before's value kept fails the room's checks
 and `e2 prev-pins`), its
-wire is in `WIRE_MIN..WIRE_VERSION` (`WIRE_MIN` is always the version before
-`WIRE_VERSION`, and the room writes a seat on it what that page reads:
+wire is in `WIRE_MIN..WIRE_VERSION` (`WIRE_MIN` is the wire production's page
+speaks, `WIRE_LIVE`, and never newer than the version before `WIRE_VERSION`;
+the room writes a seat on any older version what that page reads:
 `everglade/server/wire-prev.coax`, #13398), and the saved data its ticket brings
 back is a format the room reads (`Ticket.schema` up to `RV_SCHEMA`). Any
 other hello gets `r 0 version`, its socket is closed, and the refusal is

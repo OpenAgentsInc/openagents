@@ -1,0 +1,40 @@
+{
+  "identity": "everglade-wire-prev-v5",
+  "check": "coax/web/tool.sh coax/web/room/wire-prev-profile.coax proto/verse/everglade-wire-prev-v5.json",
+  "serves": 5,
+  "under": 7,
+  "base_session": "everglade-session-v7",
+  "page": "01bdb405f0",
+  "scope": "What a room on wire 7 writes a seat whose hello said wire 5, in place of what wire 6 changed: Everglade II's path guard and monsters as the four frames a wire 5 page reads. Such a seat is also served as wire 6 is (everglade-wire-prev-v6). Kept while production's page speaks wire 5 (WIRE_LIVE, #13398)",
+  "docs": ["docs/protocol/everglade-previous-wire.md"],
+  "codec": "everglade/server/wire-prev-wire.coax",
+  "guard": "g2 TICK LIFE STATE X Z YAW HP MAX SWING FOE",
+  "guard_hit": "g3 TICK KIND SEAT AMOUNT",
+  "monsters": "h2 TICK COUNT [M LIFE KIND STATE X Z YAW HP MAX ACT ACT_TICK FOE]...",
+  "monster_event": "h3 TICK KIND M SEAT AMOUNT [FX FZ TX TZ FLY_MS]",
+  "units": {"guard": "X Z integer millimetres, YAW thousandths of a radian, SWING the tick of his last blow or -1, FOE a seat or -1", "monsters": "X Z integer centimetres, YAW thousandths of a radian, ACT 0 none 1 a blow 2 a shot, ACT_TICK its tell's tick, FOE a seat or -1", "monster_event": "FX FZ TX TZ integer centimetres, FLY_MS the arrow's flight in ms; present only when KIND is loosed"},
+  "withheld": {"row_kinds": [13, 14], "entries": ["e guard", "e mon"]},
+  "said_as": [{"entry": "e guard 90 1 2 5", "frame": "g3 90 1 2 5"}, {"entry": "e guard 913 4 3 17", "frame": "g3 913 4 3 17"}, {"entry": "e mon 90 3 10 0 0 500 -30000 520 -31000 700", "frame": "h3 90 3 10 0 0 500 -30000 520 -31000 700"}, {"entry": "e mon 92 4 3 -1 0", "frame": "h3 92 4 3 -1 0"}],
+  "max_monsters": 12,
+  "max_seats": 64,
+  "max_snapshot_bytes": 1700,
+  "frames": [
+    {"frame": "guard", "values": {"TICK": 30, "LIFE": 1, "STATE": 0, "X": 0, "Z": -20000, "YAW": 3140, "HP": 11, "MAX": 11, "SWING": -1, "FOE": -1}, "text": "g2 30 1 0 0 -20000 3140 11 11 -1 -1"},
+    {"frame": "guard", "values": {"TICK": 912, "LIFE": 2, "STATE": 1, "X": -1250, "Z": -305400, "YAW": -1571, "HP": 47, "MAX": 84, "SWING": 905, "FOE": 3}, "text": "g2 912 2 1 -1250 -305400 -1571 47 84 905 3"},
+    {"frame": "guard_hit", "values": {"TICK": 90, "KIND": 1, "SEAT": 2, "AMOUNT": 5}, "text": "g3 90 1 2 5"},
+    {"frame": "guard_hit", "values": {"TICK": 913, "KIND": 4, "SEAT": 3, "AMOUNT": 17}, "text": "g3 913 4 3 17"},
+    {"frame": "guard_hit", "values": {"TICK": 914, "KIND": 5, "SEAT": 0, "AMOUNT": 0}, "text": "g3 914 5 0 0"},
+    {"frame": "monsters", "values": {"TICK": 30, "COUNT": 2, "ROWS": [[3, 1, 0, 1, 1000, -20000, 3140, 11, 11, 0, 0, 0], [9, 1, 1, 0, 500, -30000, 0, 7, 7, 2, 30, -1]]}, "text": "h2 30 2 3 1 0 1 1000 -20000 3140 11 11 0 0 0 9 1 1 0 500 -30000 0 7 7 2 30 -1"},
+    {"frame": "monsters", "values": {"TICK": 3, "COUNT": 0, "ROWS": []}, "text": "h2 3 0"},
+    {"frame": "monster_event", "values": {"TICK": 90, "KIND": 3, "M": 10, "SEAT": 0, "AMOUNT": 0, "FX": 500, "FZ": -30000, "TX": 520, "TZ": -31000, "FLY_MS": 700}, "text": "h3 90 3 10 0 0 500 -30000 520 -31000 700"},
+    {"frame": "monster_event", "values": {"TICK": 90, "KIND": 2, "M": 3, "SEAT": -1, "AMOUNT": 4}, "text": "h3 90 2 3 -1 4"},
+    {"frame": "monster_event", "values": {"TICK": 91, "KIND": 1, "M": 3, "SEAT": 0, "AMOUNT": 2}, "text": "h3 91 1 3 0 2"},
+    {"frame": "monster_event", "values": {"TICK": 92, "KIND": 4, "M": 3, "SEAT": -1, "AMOUNT": 0}, "text": "h3 92 4 3 -1 0"}
+  ],
+  "malformed": {
+    "guard": ["g2 30 1 5 0 0 0 1 1 -1 -1", "g2 30 1 0 0 0 0 2 1 -1 -1", "g2 30 1 0 0 0 7001 1 1 -1 -1", "g2 30 1 0 0 0 0 1 1 -1 64", "g2 30 1 0 0 0 0 1 1 -1", "g2 30 1 0 0 0 0 1 1 -1 -1 0", "g2 30 1 0 200001 0 0 1 1 -1 -1"],
+    "guard_hit": ["g3 90 3 2 5", "g3 90 7 2 5", "g3 90 1 2 1000", "g3 90 1 -2 5", "g3 90 1 2", "g3 90 1 2 5 0"],
+    "monsters": ["h2 61 1 3 1 0 1 1300 -20000 3140 99 11 1 45 0", "h2 61 13", "h2 61 1 12 1 0 1 0 0 0 1 1 0 0 0", "h2 61 2 3 1 0 1 0 0 0 1 1 0 0 0", "h2 61 1 3 1 0 1 0 0 0 1 1 0 0 0 7", "h2 61 1 3 1 0 1 0 0 1000001 1 1 0 0 0", "h2 61 1 3 1 2 1 0 0 0 1 1 0 0 0"],
+    "monster_event": ["h3 90 5 3 0 4", "h3 90 3 10 0 0 500 -30000 520 -31000 5001", "h3 90 3 10 0 0 500 -30000 520 -31000", "h3 90 2 3 -1 4 1", "h3 90 2 12 -1 4", "h3 90 2 3 -1 1000"]
+  }
+}

@@ -50,10 +50,11 @@ production changes, when:
 | The release's pins, or the pins it seats before, can't be read from staging's room | `The pins NAME runs and seats could not be read` |
 
 The last two hold for every promotion, inside a release set or not. Rooms
-always speak the version before their own
-([the previous wire](../protocol/everglade-previous-wire.md)), so a release
-one wire version ahead of the page passes. A release two versions ahead does
-not: ship the version between first. When the live page's version can't be
+speak every version from the one production's page speaks (`WIRE_LIVE`) to
+their own ([the previous wires](../protocol/everglade-previous-wire.md)), so a
+release passes however many times the wire was raised since the last one. A
+release whose range leaves the live page out does not: its tree's `WIRE_LIVE`
+is wrong, and the landing check `e2 prev-wire` says so on that head. When the live page's version can't be
 read, that is not held against the promotion.
 
 The engine, rules and content pins have the same rule: a room seats the build

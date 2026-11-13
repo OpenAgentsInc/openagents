@@ -9,13 +9,15 @@ contract is
 path guard, and [version 5](everglade-session-v5.md) added the room's forest
 state. All existing message fields and units keep their meanings.
 
-Pages use version 7. Rooms use version 7 with oldest version 6, and build
-pins 1.1.1: a room still seats a version 6 page for one release, so rooms can
-be promoted before the page ([the previous wire](everglade-previous-wire.md),
-#13398). To a version 6 page the room speaks the version 6 words: it reads
-`M1`, `M3` to `M7` and `U1`, writes `m1` to `m8` and `u1`, and sends it no
-familiar's row. The room picks by each seat's hello. A version 5 page
-receives `r 0 version` and reloads. A version 7 page never
+Pages use version 7. Rooms use version 7 with oldest version 5, the version
+production's page speaks (`WIRE_LIVE`), and build pins 1.1.1: a room still
+seats every version from production's page up, so rooms can be promoted before
+the page ([the previous wires](everglade-previous-wire.md), #13398). To a
+version 6 or 5 page the room speaks the version 6 words: it reads `M1`, `M3`
+to `M7` and `U1`, writes `m1` to `m8` and `u1`, and sends it no familiar's
+row. To a version 5 page it also writes `g2`, `g3`, `h2` and `h3` and sends no
+monster's row or the guard's. The room picks by each seat's hello. A version 4
+page receives `r 0 version` and reloads. A version 7 page never
 ships ahead of its rooms: see
 [the release set](../deployment/release-set.md).
 
