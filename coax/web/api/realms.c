@@ -833,6 +833,14 @@ bool realms_route(const request *q) {
   int sig = access_signed(q, db, signer);
   if (sig < 0) return true;
   if (sig > 0 && !access_caller_key(db, signer, key)) { refuse(q->fd, 500, "not read"); return true; }
+#ifdef OA_LOCAL_SERVE
+  // On the dev server a request from this computer with no key and no signature is the local admin's (auth.c
+  // local_admin): its account key's player, as worlds.c's who_asks takes it, so the page and a CLI are one account.
+  if (sig == 0 && !key[0]) {
+    const auth_principal *p = auth_principal_of(q);
+    if (p && p->pubkey[0] && !access_caller_key(db, p->pubkey, key)) { refuse(q->fd, 500, "not read"); return true; }
+  }
+#endif
   const char *by = sig > 0 ? signer : NULL;
   if (!*rest) {
     if (!post) { refuse(q->fd, 405, "POST a board"); return true; }

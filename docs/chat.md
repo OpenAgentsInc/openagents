@@ -15,11 +15,25 @@ coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:PORT
 ```
 
 With no `--api`, `serve.sh` first starts the local API (`coax/web/api/test.sh
---serve`: its own Postgres, gone when you stop the server) and then serves the
-pages with `--api` pointing at it (#13463). You need no login: in this local
-serve mode a request from this computer with no login is the API's admin
-(`auth.c` `local_admin`, built only with `-DOA_LOCAL_SERVE`, which the image
-never has). The model is Gemini on Vertex, Google first, on a token the API
+--serve`) and then serves the pages with `--api` pointing at it (#13463). You
+need no login: in this local serve mode a request from this computer with no
+login is the API's admin (`auth.c` `local_admin`, built only with
+`-DOA_LOCAL_SERVE`, which the image never has). That admin is you:
+
+- **Your account.** It is your `openagents` login's key
+  (`coax/web/dev-identity.sh`: `OA_SERVE_PROFILE`, `OPENAGENTS_PROFILE`, then
+  the profiles `default` and `admin`, the first with a key). It is the same
+  key on every restart, and the same key the CLI and Claude Code's realm
+  tools sign with, so the side's Worlds and `openagents realm list` (its
+  `worlds`) answer the same list. With no login here, the server makes a key
+  of its own and keeps it with the database.
+- **Your data.** The database, its sealing keys and /chat's sessions live in
+  `~/.openagents/dev` (`OA_SERVE_STATE`) and outlast the server: a restart
+  opens the same database and applies new migrations on top. One server uses
+  that folder at a time. `serve.sh --fresh` (or `OA_SERVE_FRESH=1`) uses a
+  throwaway database instead, for a test run on its own port.
+
+The model is Gemini on Vertex, Google first, on a token the API
 reads from a 0600 file that `test.sh` refreshes every 40 minutes:
 
 - With the service account's gcloud config on the machine
@@ -28,8 +42,8 @@ reads from a 0600 file that `test.sh` refreshes every 40 minutes:
   page says to run `gcloud auth login`; the next turn picks the new login up
   within a minute.
 - With neither, each turn goes to openagents.com's `/api/v1/inference`,
-  signed by your `openagents` login (`openagents login`; the profile is
-  `OA_SERVE_PROFILE`, default `default`), so no key is pasted anywhere. That
+  signed by your `openagents` login (`openagents login`; the profile is the
+  one you are logged in as, above), so no key is pasted anywhere. That
   route is free for an admin's key; another key needs credit.
 
 `OA_SERVE_MODEL=openagents` skips Google, `OA_SERVE_NO_API=1` serves the pages

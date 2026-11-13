@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 # coax serve: builds the Coaxial dev server and runs it on an app.
-#   coax/web/serve.sh APP_DIR [--listen HOST:PORT] [--build CMD] [--api PORT]
+#   coax/web/serve.sh APP_DIR [--listen HOST:PORT] [--build CMD] [--api PORT] [--fresh]
 # On apps/openagents-web with no --api (and not --static), it starts the local API first
 # (coax/web/api/test.sh --serve: its own Postgres, you as its admin, Gemini on a token that
 # refreshes itself) and Coder's local side (coder/tui/coder.sh mcp --http, behind --local:
 # the agents on this machine, #13465), and stops both with the server, so /chat and the
 # editor's agent answer (#13463). OA_SERVE_NO_API=1 leaves both out, OA_SERVE_NO_CODER=1 Coder.
+# You are your `openagents` login (dev-identity.sh, #13493), the same account on every restart, and the local API keeps
+# its database in ~/.openagents/dev (OA_SERVE_STATE), so a restart keeps your chats, worlds and settings and
+# applies new migrations on top. --fresh (or OA_SERVE_FRESH=1): a throwaway database instead, for a test run.
+# Claude's realm tools (Coder's `openagents mcp`) act on this server as the same login.
 set -euo pipefail
+fresh="${OA_SERVE_FRESH:-}"; args=()
+for a in "$@"; do if [[ "$a" == --fresh ]]; then fresh=1; else args+=("$a"); fi; done
+set -- ${args[@]+"${args[@]}"}
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
 # serve.c's Coax parts are listed once, in serve-parts.sh (#13447): the dev
@@ -37,13 +44,24 @@ port_file="$(mktemp)"; coder_log="$(mktemp)"
 trap 'kill ${serve_pid:-} ${api_pid:-} ${coder_pid:-} 2>/dev/null || true; rm -f "$port_file" "$coder_log"' EXIT
 echo "serve: starting the local API for /chat and the editor's agent (a minute or two the first time)"
 # The editor's Gemini turn opens attachments from the dev server's own store (serve.c files_local, #13468).
-OA_WORLD_FILES_DIR="$(cd "$1" && pwd -P)/build/.worlds" OA_SERVE_PORT_FILE="$port_file" "$here/api/test.sh" --serve "http://$listen" & api_pid=$!
+state=""; [[ -n "$fresh" ]] || state="${OA_SERVE_STATE:-$HOME/.openagents/dev}"
+# Who you are: your openagents login's profile, which the API logs you in as and Coder's realm tools sign with.
+me="$("$here/dev-identity.sh" || true)"; me_profile="${me% *}"
+OA_SERVE_STATE="$state" OA_SERVE_PROFILE="${me_profile:-${OA_SERVE_PROFILE:-}}" \
+  OA_WORLD_FILES_DIR="$(cd "$1" && pwd -P)/build/.worlds" OA_SERVE_PORT_FILE="$port_file" "$here/api/test.sh" --serve "http://$listen" & api_pid=$!
 # Coder's local routes for the agents on this machine, from this checkout, on a port of its own. A harness
 # never opens a browser sign-in from here: an agent with no login shows as not ready (Settings, This machine).
 if [[ -z "${OA_SERVE_NO_CODER:-}" ]]; then
   echo "serve: starting Coder's local side for the agents on this machine"
-  # its realm tools (openagents mcp) edit this server's worlds, the ones the open editor shows (#13466)
-  (cd "$here/../.." && BROWSER=/usr/bin/true CODER_REALM_ORIGIN="http://$listen" exec "$here/../../coder/tui/coder.sh" mcp --http 0) > "$coder_log" 2>&1 & coder_pid=$!
+  # Its realm tools are this checkout's CLI (coder.coax cd_claude_realm_tools): built here when a source is newer.
+  cli_bin="$here/../../apps/openagents-cli/build/openagents"
+  if [[ ! -x "$cli_bin" || -n "$(find "$here/../../apps/openagents-cli" "$here/../../coax/lib" -name '*.coax' -newer "$cli_bin" -print -quit 2>/dev/null)" ]]; then
+    echo "serve: building the openagents CLI for Claude's realm tools"
+    (cd "$here/../.." && apps/openagents-cli/build.sh --cli > /dev/null) || echo "serve: the CLI didn't build; Claude has no realm tools this run" >&2
+  fi
+  # its realm tools (openagents mcp) edit this server's worlds, the ones the open editor shows (#13466), signed by
+  # the same login the page is (OPENAGENTS_PROFILE), so `realm list` and the side list the same worlds
+  (cd "$here/../.." && BROWSER=/usr/bin/true CODER_REALM_ORIGIN="http://$listen" OPENAGENTS_PROFILE="${me_profile:-${OPENAGENTS_PROFILE:-}}" exec "$here/../../coder/tui/coder.sh" mcp --http 0) > "$coder_log" 2>&1 & coder_pid=$!
 fi
 while [[ ! -s "$port_file" ]]; do
   kill -0 "$api_pid" 2>/dev/null || { echo "serve: the local API didn't start (above); OA_SERVE_NO_API=1 serves the pages without it" >&2; exit 1; }

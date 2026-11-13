@@ -171,6 +171,11 @@ static bool who_asks(const request *q, PGconn *db, world_asker *a) {
   a->admin = p->admin; a->signed_in = p->account[0] || p->pubkey[0];
   snprintf(a->key, sizeof a->key, "%s", p->player);
   if (p->credential == AUTH_NOSTR && p->pubkey[0] && p->event_id[0] && !access_caller_key(db, p->pubkey, a->key)) return false;
+#ifdef OA_LOCAL_SERVE
+  // The dev server's local admin (auth.c local_admin) sends no player key: it is its account key's, as a signed
+  // caller's is, so the side and a CLI on this computer are one account (realms.c reads it the same way, #13493).
+  if (!a->key[0] && p->pubkey[0] && !access_caller_key(db, p->pubkey, a->key)) return false;
+#endif
   a->player = a->key[0] != 0;
   return true;
 }
@@ -1065,7 +1070,8 @@ int world_files_turn(const request *q, PGconn *db, char **out, char *words, size
 
 // GET /api/worlds: the worlds the asker may edit, Splice first, one line each: "world ID NAME". Who may is the
 // rule a write is held to (wr_may: a site admin, or a realm's owner and admins); someone logged out gets none.
-// The site's side lists them under Worlds, each opening its editor.
+// The site's side lists them under Worlds, each opening its editor, and `openagents realm list` shows the same
+// rows as its "worlds" (apps/openagents-cli/realm.coax, #13493).
 static void world_list(const request *q, PGconn *db) {
   world_asker a;
   if (!who_asks(q, db, &a)) { refuse(q->fd, 500, cs("not read"), -1); return; }

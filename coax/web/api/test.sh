@@ -20,7 +20,12 @@
 #                           ~/.openagents/bin/openagents). OA_SERVE_MODEL=openagents skips Google;
 #                           OA_SERVE_INFERENCE_TOKEN, a Google access token, is used as it is, not refreshed.
 #                           OA_SERVE_PORT_FILE: the API's port is written there once it answers (serve.sh).
-#                           Everything is gone when it is stopped.
+#                           You are your `openagents` login (dev-identity.sh, #13493: OA_SERVE_PROFILE, OPENAGENTS_PROFILE,
+#                           then the profiles default and admin, the first with a key): the page, the CLI and Claude's
+#                           realm tools on this computer are one account, the same on every run.
+#                           OA_SERVE_STATE=DIR keeps the database, its keys and /chat's sessions in DIR across runs
+#                           (serve.sh gives ~/.openagents/dev; --fresh none): a restart opens the same database and
+#                           applies the new migrations on top. Without it everything is gone when it is stopped.
 # On macOS it takes Apple's clang and Homebrew's postgresql@16, secp256k1 and
 # openssl@3; on a Linux build host the system's clang (else gcc, or CC),
 # libpq, libsecp256k1, OpenSSL, curl and zlib, and PGDG's postgresql-16
@@ -111,9 +116,27 @@ for old in "$tmp_root"/oa-api-test.*; do
   rm -rf -- "${old:?}"
 done
 work="$(mktemp -d "$tmp_root/oa-api-test.XXXXXXXX")"; printf '%s\n' "$$" > "$work/owner.pid"
+# OA_SERVE_STATE (--serve only): the database, its keys and /chat's sessions live there and outlast the run.
+# One run at a time uses it; a run that was killed outright left its Postgres running, and this one stops it.
+state=""; db="$work/db"
+if [[ $serve == 1 && -n "${OA_SERVE_STATE:-}" ]]; then
+  state="${OA_SERVE_STATE%/}"; mkdir -p "$state"; chmod 700 "$state"; db="$state/db"
+  other="$(cat "$state/owner.pid" 2>/dev/null || true)"
+  if [[ "$other" =~ ^[0-9]+$ && "$other" != "$$" ]] && kill -0 "$other" 2>/dev/null; then
+    echo "test.sh: another dev server (pid $other) has $state open: stop it first, or serve with --fresh (OA_SERVE_FRESH=1) for a throwaway database" >&2
+    rm -rf -- "${work:?}"; exit 1
+  fi
+  "$pgbin/pg_ctl" -D "$db" -m fast stop >/dev/null 2>&1 || true
+  printf '%s\n' "$$" > "$state/owner.pid"
+fi
 cleanup() {
   kill ${api_pid:-} ${notice_relay_pid:-} ${runner_pid:-} ${ports_pid:-} ${token_pid:-} 2>/dev/null || true
-  "$pgbin/pg_ctl" -D "$work/db" -m immediate stop >/dev/null 2>&1 || true
+  if [[ -n "$state" ]]; then
+    "$pgbin/pg_ctl" -D "$db" -m fast stop >/dev/null 2>&1 || true
+    [[ "$(cat "$state/owner.pid" 2>/dev/null)" != "$$" ]] || rm -f "$state/owner.pid"
+  else
+    "$pgbin/pg_ctl" -D "$db" -m immediate stop >/dev/null 2>&1 || true
+  fi
   rm -rf -- "${work:?}"
 }
 # A stop (Ctrl-C, kill, a closed terminal) exits, and the exit cleans up.
@@ -150,7 +173,12 @@ if runs checks; then
 [[ $serve == 1 ]] || "$work/nip98_diff" "$here/nip98_corpus.tsv" 400
 fi
 lap "the API built (and in the checks' part, its NIP-98 check)"
-"$pgbin/initdb" -D "$work/db" -U postgres -A trust >/dev/null
+if [[ -n "$state" && -f "$db/PG_VERSION" ]]; then
+  [[ "$(cat "$db/PG_VERSION")" == "$("$pgbin/postgres" --version | sed -E 's/.* ([0-9]+)\..*/\1/')" ]] ||
+    { echo "test.sh: $db was made by Postgres $(cat "$db/PG_VERSION"), not $pgbin's: move it aside, or serve with --fresh" >&2; exit 1; }
+else
+  "$pgbin/initdb" -D "$db" -U postgres -A trust >/dev/null
+fi
 # The run's TCP ports (port_locks.coax, #13331): one block for each service below, free when taken
 # and locked for this run until it ends, so neither another run beside it nor an outgoing connection
 # (the ranges are under the kernels' ephemeral ports) takes one before its server binds it. WAKE's
@@ -165,8 +193,10 @@ for _ in $(seq 1200); do [[ -s "$work/ports" ]] && break; kill -0 "$ports_pid" 2
 while IFS='=' read -r name value; do printf -v "$name" '%s' "$value"; done < "$work/ports"
 port=$((56000 + RANDOM % 1000))   # the database's: its socket is in $work, so no other run shares it
 api_port=$API_PORT
-"$pgbin/pg_ctl" -D "$work/db" -o "-p $port -k $work -c listen_addresses=''" -l "$work/pg.log" -w start >/dev/null
-"$pgbin/psql" -h "$work" -p $port -U postgres -q -c "CREATE ROLE oa_analytics LOGIN" -c "CREATE DATABASE oa_analytics OWNER oa_analytics"
+"$pgbin/pg_ctl" -D "$db" -o "-p $port -k $work -c listen_addresses=''" -l "$work/pg.log" -w start >/dev/null
+if [[ -z "$state" || "$("$pgbin/psql" -h "$work" -p $port -U postgres -XAtqc "SELECT 1 FROM pg_roles WHERE rolname = 'oa_analytics'")" != 1 ]]; then
+  "$pgbin/psql" -h "$work" -p $port -U postgres -q -c "CREATE ROLE oa_analytics LOGIN" -c "CREATE DATABASE oa_analytics OWNER oa_analytics"
+fi
 export OA_API_DATABASE="host=$work port=$port user=oa_analytics dbname=oa_analytics"
 # The signer (sign.c), and two throwaway keys: an admin and someone else.
 "$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
@@ -256,12 +286,29 @@ infer_url="http://127.0.0.1:$INFER_PORT/chat/completions" infer_token=test-token
 export OA_LOCAL_ADMIN="$OA_ADMIN_PUBKEYS"
 local_model=()
 if [[ $serve == 1 ]]; then
+  common="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)"
+  cli="${OA_SERVE_CLI:-$HOME/.openagents/bin/openagents}"
+  [[ -x "$cli" ]] || cli="$(dirname "$common")/apps/openagents-cli/build/openagents"
+  # Who you are here: your `openagents` login's key (dev-identity.sh), the same key a CLI or Claude's realm tools
+  # on this computer sign with, so they and the page are one account. With no login, a key of this server's own,
+  # kept in OA_SERVE_STATE so you stay one account across restarts.
+  me="$(OA_SERVE_CLI="$cli" "$here/../dev-identity.sh" || true)"; me_profile="${me% *}"; me_pub="${me#* }"
+  if [[ "$me_pub" =~ ^[0-9a-f]{64}$ ]]; then
+    export OA_ADMIN_PUBKEYS="$me_pub" OA_LOCAL_ADMIN="$me_pub"
+    me_says="your openagents login (profile $me_profile)"
+  elif [[ -n "$state" ]]; then
+    [[ -s "$state/admin.key" ]] || "$SIGN" --new "$state/admin.key" >/dev/null
+    ADMIN_KEY="$state/admin.key"; me_profile=""
+    export OA_ADMIN_PUBKEYS="$("$SIGN" --key "$ADMIN_KEY" --pubkey)"; export OA_LOCAL_ADMIN="$OA_ADMIN_PUBKEYS"
+    me_says="this server's own key ($ADMIN_KEY): no openagents login here; run openagents login and restart to be yourself"
+  else
+    me_profile=""; me_says="a throwaway key: no openagents login here"
+  fi
   api_origin="$serve_origin"
   infer_url="https://aiplatform.us.rep.googleapis.com/v1/projects/openagentsgemini/locations/us/endpoints/openapi/chat/completions"
   infer_token="" infer_daily=500
   # The model's Google token, kept fresh in a 0600 file the API reads on every call (never on a command line).
   token_file="$work/google.token"; (umask 077; : > "$token_file")
-  common="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)"
   sa_config="${OA_SERVE_GCLOUD_CONFIG:-$(dirname "$(dirname "$common")")/.secrets/gcloud-sa-config}"
   gcloud_bin="$(command -v gcloud || true)"
   google_token() {   # a token into the file, or false; an old token is kept until it is 50 minutes old
@@ -288,10 +335,8 @@ if [[ $serve == 1 ]]; then
       done ) & token_pid=$!
   fi
   # With no Google token: openagents.com's inference route, signed by this computer's `openagents` login.
-  cli="${OA_SERVE_CLI:-$HOME/.openagents/bin/openagents}"
-  [[ -x "$cli" ]] || cli="$(dirname "$common")/apps/openagents-cli/build/openagents"
   remote="${OA_SERVE_REMOTE_API:-https://openagents.com}/api/v1/inference"
-  profile="${OA_SERVE_PROFILE:-default}"
+  profile="${me_profile:-${OA_SERVE_PROFILE:-default}}"
   if [[ -x "$cli" ]]; then local_model=(OA_INFERENCE_SIGNER="$cli" OA_INFERENCE_SIGNER_PROFILE="$profile" OA_INFERENCE_REMOTE_URL="$remote"); fi
   if [[ -z "${model_says:-}" ]]; then
     if [[ -x "$cli" ]] && "$cli" --profile "$profile" nostr show >/dev/null 2>&1; then
@@ -302,6 +347,17 @@ if [[ $serve == 1 ]]; then
   fi
   local_model+=(OA_INFERENCE_TOKEN_FILE="$token_file")
 fi
+# The keys the database's rows are sealed with: new each run, or with OA_SERVE_STATE made once and kept there
+# (0600), so a restart opens what the last run sealed (emails, projects, /chat's saved credentials).
+keys_new() {
+  printf 'k_project=%s\nk_seal=1:%s,2:%s\nk_pepper=1:%s\nk_notice=%s\nk_chat=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" \
+    "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" "$(openssl rand -hex 32)"
+}
+keys_file="$work/keys"
+[[ -z "$state" ]] || keys_file="$state/keys"
+[[ -s "$keys_file" ]] || (umask 077; keys_new > "$keys_file.new" && mv "$keys_file.new" "$keys_file")
+while IFS='=' read -r name value; do [[ "$name" =~ ^k_[a-z]+$ && "$value" =~ ^[0-9a-f:,]+$ ]] && printf -v "$name" '%s' "$value"; done < "$keys_file"
+[[ -n "${k_project:-}" && -n "${k_seal:-}" && -n "${k_pepper:-}" && -n "${k_notice:-}" && -n "${k_chat:-}" ]] || { echo "test.sh: $keys_file is not a keys file" >&2; exit 1; }
 # The realm scripts' compile job (#13467, tests/script_checks.coax and script_cli_checks.coax): the local tool through its wrapper, where this
 # machine has the Wasm toolchain and the job's own check passes its first case; else the API has no job and the
 # checks say the compile route's did not run. SCRIPT_JOB_READY tells the checks which.
@@ -320,15 +376,15 @@ export SCRIPT_JOB_READY="${script_job:+1}"
 OA_SCRIPT_JOB="$script_job" COAX="$cli_coax" \
 OA_CHAT_RUNNER_URL="http://127.0.0.1:$CHAT_PORT" OA_CHAT_DAILY_USD=1 \
 OA_AGENT_PROJECTS=agent-proj OA_AGENT_WAKE_URL="http://127.0.0.1:$WAKE_PORT/wake" OA_AGENT_WAKE_TOKEN=test-wake \
-OA_PROJECT_KEK="$(openssl rand -hex 32)" OA_PUBLISH_RELAY="ws://127.0.0.1:$RELAY_PORT" OA_SITE_BUCKET=site-test \
+OA_PROJECT_KEK="$k_project" OA_PUBLISH_RELAY="ws://127.0.0.1:$RELAY_PORT" OA_SITE_BUCKET=site-test \
 OA_DROPS_GCS="http://127.0.0.1:$GCS_PORT" OA_DROPS_TOKEN=test-gcs OA_DROPS_BUCKET=drops-test OA_DROPS_PREFIX=test OA_DRAFT_URL="http://127.0.0.1:$GCS_PORT/model" OA_VILLA_URL="http://127.0.0.1:$GCS_PORT/villa-model" \
 OA_INFERENCE_URL="$infer_url" OA_INFERENCE_TOKEN="$infer_token" OA_INFERENCE_DAILY_REQUESTS="$infer_daily" \
 OA_SPARK_URL="http://127.0.0.1:$SPARK_PORT" OA_SPARK_TOKEN=test-spark OA_LNADDR_TEST_PORT="$SPARK_PORT" \
 OA_RESEND_URL="http://127.0.0.1:$RESEND_PORT/emails" OA_RESEND_API_KEY=test-resend OA_EMAIL_ALLOW=device-a@example.com,device-b@example.com,life-a@example.com,life-c@example.com,life-d@example.com,life-f@example.com,life-h@example.com,owner@example.com,ada@example.com,frozen@example.com,app@example.com,rec@example.com,push-a@example.com,push-b@example.com,solo@example.com,pk@example.com,newcomer@example.com,wallet@example.com OA_EMAIL_BACKOFF_MS=10 \
-OA_AUTH_SEAL_KEY="1:$(openssl rand -hex 32),2:$(openssl rand -hex 32)" OA_AUTH_LOOKUP_PEPPER="1:$(openssl rand -hex 32)" \
+OA_AUTH_SEAL_KEY="$k_seal" OA_AUTH_LOOKUP_PEPPER="$k_pepper" \
 OA_APNS_KEY="$(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 2>/dev/null)" OA_APNS_KEY_ID=TESTKEY123 OA_APNS_URL="http://127.0.0.1:$RESEND_PORT/apns" OA_APNS_SANDBOX_URL="http://127.0.0.1:$RESEND_PORT/apns-sandbox" \
 OA_FCM_PROJECT=test-project OA_FCM_URL="http://127.0.0.1:$RESEND_PORT/fcm" OA_FCM_TOKEN=test-fcm \
-OA_AUTH_NOTICE_NSEC="$(openssl rand -hex 32)" OA_AUTH_NOTICE_RELAY="ws://127.0.0.1:$NOTICE_RELAY_PORT" OA_LNADDR_PROFILE_RELAYS="ws://127.0.0.1:$NOTICE_RELAY_PORT" OA_AUTH_NOTICE_SYNC=1 OA_AUTH_SCRYPT_LOG_N=10 \
+OA_AUTH_NOTICE_NSEC="$k_notice" OA_AUTH_NOTICE_RELAY="ws://127.0.0.1:$NOTICE_RELAY_PORT" OA_LNADDR_PROFILE_RELAYS="ws://127.0.0.1:$NOTICE_RELAY_PORT" OA_AUTH_NOTICE_SYNC=1 OA_AUTH_SCRYPT_LOG_N=10 \
 OA_TOKENINFO_URL="http://127.0.0.1:$TOKENINFO_PORT/tokeninfo" OA_JOBS_CALLER=jobs@example.iam.gserviceaccount.com OA_ALERT_TO=owner@example.com OA_DEVICE_TTL_MS=4000 \
 OA_NPC_URL="http://127.0.0.1:$NPC_PORT/model" OA_NPC_TOKEN=test-token OA_NPC_DAILY_CAP=5 OA_NPC_KEY_10M=3 OA_NPC_ADDR_10M=5 OA_NPC_RUNNING=3 OA_NPC_RUNNING_KEY=1 OA_PIECE_URL="http://127.0.0.1:$PIECE_PORT/model" OA_PIECE_DAILY_CAP=40 OA_EDIT_URL="http://127.0.0.1:$PIECE_PORT/edit-model" OA_EDIT_TIMEOUT_MS=1500 OA_BUILDER_URL="http://127.0.0.1:$BUILDER_PORT/model" OA_BUILDER_TIMEOUT_MS=1200 OA_BUILDER_PER_DAY=6 \
 OA_ANIME_URL="http://127.0.0.1:$ANIME_PORT/model" OA_ANIME_TIMEOUT_MS=500 \
@@ -380,9 +436,9 @@ if [[ $serve == 1 ]]; then
       git --git-dir="$mirror" symbolic-ref HEAD refs/heads/main
     fi
     env -i HOME="$HOME" PATH="$(dirname "$claude_bin"):/opt/homebrew/bin:/usr/bin:/bin" \
-      OA_API_ORIGIN="$api_origin" OA_RUNNER_KEY="$(cat "$RUN_KEY_FILE")" OA_CHAT_SEAL_KEY="$(openssl rand -hex 32)" \
+      OA_API_ORIGIN="$api_origin" OA_RUNNER_KEY="$(cat "$RUN_KEY_FILE")" OA_CHAT_SEAL_KEY="$k_chat" \
       OA_CHAT_ENGINE="$work/oa-chat-turn" OA_CLAUDE="$claude_bin" OA_CHAT_REPO="${OA_SERVE_CHAT_REPO:-file://$(dirname "$common")}" \
-      OA_CHAT_SESSIONS="$work/sessions" OA_AGENT_WORK="$work/agent" OA_GIT="$(command -v git)" OA_REPO_MIRROR="$mirror" \
+      OA_CHAT_SESSIONS="${state:-$work}/sessions" OA_AGENT_WORK="$work/agent" OA_GIT="$(command -v git)" OA_REPO_MIRROR="$mirror" \
       "$RUNNER_BIN" --listen "127.0.0.1:$CHAT_PORT" 2>"$work/runner.log" & runner_pid=$!
     echo "serve: /chat's runner is on 127.0.0.1:$CHAT_PORT with $claude_bin (its log: $work/runner.log)${mirror:+, reading the mirror $mirror}"
   else
@@ -391,10 +447,13 @@ if [[ $serve == 1 ]]; then
   # The local admin: a request from this machine with no login is the admin's (auth.c local_admin).
   admin_now="$(curl -s -o /dev/null -w '%{http_code}' -m 5 -H "Host: 127.0.0.1:$api_port" "http://127.0.0.1:$api_port/api/chat/account" || true)"
   [[ "$admin_now" == 200 ]] || { echo "test.sh: the local admin isn't working (/api/chat/account answered $admin_now)" >&2; cat "$work/api.log" >&2; exit 1; }
-  login="$("$SIGN" --key "$ADMIN_KEY" GET "$api_origin/api/admin/login")"
+  if [[ -n "$me_profile" ]]; then login="$("$cli" --profile "$me_profile" nostr auth "$api_origin/api/admin/login" 2>/dev/null || true)"; login="${login#Nostr }"
+  else login="$("$SIGN" --key "$ADMIN_KEY" GET "$api_origin/api/admin/login")"; fi
   echo "serve: the API is on 127.0.0.1:$api_port (its log: $work/api.log)"
   [[ -n "${OA_SERVE_PORT_FILE:-}" ]] || echo "serve: run the dev server with --api $api_port"
-  echo "serve: on this computer you are its admin: no login step"
+  echo "serve: on this computer you are its admin with no login step: the key $OA_LOCAL_ADMIN, $me_says"
+  if [[ -n "$state" ]]; then echo "serve: the database is $db, kept across restarts (serve.sh --fresh: a throwaway one)"
+  else echo "serve: the database is a throwaway one, gone when this stops"; fi
   echo "serve: the model: $model_says"
   echo "serve: from another computer, an admin login good for 60 seconds: $api_origin/api/admin/login?auth=$(python3 -I -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$login")&next=chat"
   [[ -z "${OA_SERVE_PORT_FILE:-}" ]] || printf '%s\n' "$api_port" > "$OA_SERVE_PORT_FILE"
