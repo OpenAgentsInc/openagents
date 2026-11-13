@@ -159,6 +159,13 @@ func live(_ dir: URL, origin: String) async {
     print("account-check: a reused refresh token ended the login")
 
     do { try await me.keyLogin() } catch { fail("logging in again: \(error.localizedDescription)") }
+    // Security notices (#13233): this login's device takes a push target, the Security sheet reads
+    // the account (a new account: no recovery waiting), and there is nothing to cancel.
+    do { try await me.auth.pushTarget(Data((0..<32).map { UInt8(truncatingIfNeeded: $0 &* 7 &+ 3) })) } catch { fail("the push target: \(error.localizedDescription)") }
+    guard let sec = try? await me.auth.security(), !sec.recoveryOpen else { fail("the Security sheet's read") }
+    do { try await me.auth.cancelRecovery(); fail("a recovery was cancelled on an account with none") }
+    catch { guard error.localizedDescription == "There is no recovery waiting." else { fail("cancel with none waiting: \(error.localizedDescription)") } }
+    print("account-check: the device took a push target; Security reads \(sec.notices.count) notice(s) and no recovery")
     await me.logout()
     guard !me.loggedIn else { fail("logout") }
     print("account-check: live ok")
