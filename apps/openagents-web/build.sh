@@ -185,7 +185,7 @@ host_packs=$!
 # realms.json is written from its tracked .pack beside it (rewritten only when the pack changed),
 # and so is each block build (metaverse-engine/tools/block-pack.coax) a realm's blocks: asset names.
 # Everglade II's first takes the people's rig as its rig entry (everglade/model/tools/rig-pack.coax,
-# #13306) and this tree's world by cell (everglade/model/tools/cell-pack.coax, #13280): the planting
+# #13306: version 2 of the tracked source everglade/model/rigs.vrg) and this tree's world by cell (everglade/model/tools/cell-pack.coax, #13280): the planting
 # and the ground's record leave the catalog for a cells entry the page fetches cell by cell.
 vpk3s() {
   # Before Everglade II's pack is written, its zone is checked (everglade/model/tools/zone-cells.coax, #13280,
@@ -195,7 +195,7 @@ vpk3s() {
   for vpk3 in "$here"/realms/everglade2/assets/everglade2.vpk3; do
     # the people's rig as its rig entry: the page bakes from it. It goes in first, because ...
     rigged="$here/build/$(basename "${vpk3%.vpk3}")-rigged.pack"
-    "$here/../../coax/web/tool.sh" "$here/../../everglade/model/tools/rig-pack.coax" --into "${vpk3%.vpk3}.pack" "$rigged" people > /dev/null
+    "$here/../../coax/web/tool.sh" "$here/../../everglade/model/tools/rig-pack.coax" --into "$here/../../everglade/model/rigs.vrg" "${vpk3%.vpk3}.pack" "$rigged" people > /dev/null
     # ... the world's cells go in last: each cell's line in the catalog names its bytes' place in the pack.
     # page-pack defers the cells entry, so the pack publishes without it (docs/metaverse/one-world.md).
     celled="${rigged%-rigged.pack}-celled.pack"
