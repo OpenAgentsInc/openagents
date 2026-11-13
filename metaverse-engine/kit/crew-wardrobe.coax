@@ -1,0 +1,1063 @@
+// The crew's wardrobe (docs/metaverse/2026-11-13-character-creation.md): black work clothes with
+// white stitch lines, silver buckles, fingerless gloves and chunky lace-up boots. A garment is a
+// function of the body's form (crew-body.coax): it takes the form's rings, adds its ease and draws
+// itself round them, so every garment fits every body and none has a mesh of its own.
+//
+// The look lives here once: the cloth's tones, the stitch line, the buckle's metal and the boot's
+// tread (CW_* and the cw_stitch, cw_pocket, cw_buckle and cw_band helpers). A stitch line is
+// geometry that lies on the garment's own surface, so no body shape stretches it.
+//
+// An outfit is one piece a slot. The six outfits of the sheet are presets; a player may mix
+// pieces. What one piece hides of another is data (CW_RULES).
+//   coax/bin/coax test metaverse-engine/kit/crew-wardrobe.coax
+#load "crew-head.coax";
+
+CW_SLOTS :: 11;
+CW_HEAD :: 0; CW_FACE :: 1; CW_TOP :: 2; CW_OUTER :: 3; CW_HANDS :: 4; CW_BELT :: 5; CW_LEGS :: 6; CW_FEET :: 7; CW_PACK :: 8; CW_SATCHEL :: 9; CW_TOOL :: 10;
+CW_SLOT_KEYS :: [CW_SLOTS] string.["head", "face", "top", "outer", "hands", "belt", "legs", "feet", "pack", "satchel", "tool"];
+CW_SLOT_NAMES :: [CW_SLOTS] string.["Head", "Face", "Top", "Outer", "Hands", "Belt", "Legs", "Feet", "Pack", "Satchel", "Tool"];
+CW_COUNT :: [CW_SLOTS] int.[4, 2, 6, 3, 3, 6, 6, 2, 2, 2, 2];
+CW_MOST :: 6;   // the most pieces a slot has
+// head
+CW_GOGGLES :: 1; CW_HELMET :: 2; CW_HOOD :: 3;
+// face
+CW_MASK :: 1;
+// top
+CW_TOP_FLIGHT :: 0; CW_TOP_CROP :: 1; CW_TOP_VAC :: 2; CW_TOP_FITTED :: 3; CW_TOP_TUNIC :: 4; CW_TOP_SHIRT :: 5;
+// outer
+CW_JACKET :: 1; CW_COAT :: 2;
+// hands
+CW_GLOVES :: 1; CW_LONG_GLOVES :: 2;
+// belt
+CW_BELT_WIDE :: 1; CW_BELT_UTILITY :: 2; CW_BELT_SLUNG :: 3; CW_BELT_DOUBLE :: 4; CW_BELT_TIED :: 5;
+// legs
+CW_LEGS_FLIGHT :: 0; CW_LEGS_CARGO :: 1; CW_LEGS_VAC :: 2; CW_LEGS_LEGGINGS :: 3; CW_LEGS_WRAPS :: 4; CW_LEGS_OVERALLS :: 5;
+// feet
+CW_BOOTS_LACE :: 0; CW_BOOTS_STRAP :: 1;
+CW_PIECE_KEYS :: [CW_SLOTS * CW_MOST] string.[
+  "none", "goggles", "helmet", "hood", "", "",
+  "none", "mask", "", "", "", "",
+  "flight", "crop", "vac", "fitted", "tunic", "shirt",
+  "none", "jacket", "coat", "", "", "",
+  "none", "gloves", "long-gloves", "", "", "",
+  "none", "wide", "utility", "slung", "double", "tied-jacket",
+  "flight", "cargo", "vac", "leggings", "wraps", "overalls",
+  "lace-boots", "strap-boots", "", "", "", "",
+  "none", "hip-pack", "", "", "", "",
+  "none", "satchel", "", "", "", "",
+  "none", "wrench", "", "", "", ""];
+CW_PIECE_NAMES :: [CW_SLOTS * CW_MOST] string.[
+  "Bare", "Goggles", "Bubble helmet", "Hood", "", "",
+  "Bare", "Face mask", "", "", "", "",
+  "Zipped flight top", "Cropped top, mesh sleeves", "Vac suit top", "Fitted top", "Wrapped tunic", "Long-sleeved shirt",
+  "None", "Cropped hooded jacket", "Long open coat", "", "", "",
+  "Bare", "Fingerless gloves", "Sealed gloves", "", "", "",
+  "None", "Wide belt", "Utility belt", "Slung belt and thigh strap", "Belt and chest strap", "Jacket tied round the waist",
+  "Flight trousers", "Baggy cargo trousers", "Vac suit legs", "Leggings and knee pads", "Wraps and shin guards", "Bib overalls",
+  "Lace-up boots", "Strapped boots", "", "", "", "",
+  "None", "Hip pack", "", "", "", "",
+  "None", "Satchel", "", "", "", "",
+  "None", "Wrench", "", "", "", ""];
+cw_piece_key :: (slot: int, k: int) -> string { t := CW_PIECE_KEYS; return ifx slot < 0 || slot >= CW_SLOTS || k < 0 || k >= CW_MOST then "" else t[slot * CW_MOST + k]; }
+cw_piece_name :: (slot: int, k: int) -> string { t := CW_PIECE_NAMES; return ifx slot < 0 || slot >= CW_SLOTS || k < 0 || k >= CW_MOST then "" else t[slot * CW_MOST + k]; }
+
+CrewOutfit :: struct { v: [CW_SLOTS] int; }
+// The first slot whose piece is not one of its own, -1 when every slot's is.
+cw_bad :: (o: CrewOutfit) -> int {
+  n := CW_COUNT;
+  for i: 0..<CW_SLOTS { if o.v[i] < 0 || o.v[i] >= n[i] { return i; } }
+  return -1;
+}
+
+// The six outfits of the sheet.
+CW_OUTFITS :: 6;
+CW_FLIGHT_SUIT :: 0; CW_DECKHAND :: 1; CW_VAC_SUIT :: 2; CW_RUNNER :: 3; CW_SHROUD :: 4; CW_FITTER :: 5;
+CW_OUTFIT_KEYS :: [CW_OUTFITS] string.["flight-suit", "deckhand", "vac-suit", "runner", "shroud", "fitter"];
+CW_OUTFIT_NAMES :: [CW_OUTFITS] string.["Flight suit", "Deckhand", "Vac suit", "Runner", "Shroud", "Fitter"];
+CW_OUTFIT_NOTES :: [CW_OUTFITS] string.["Zipped jumpsuit, wide belt, cargo pockets", "Cropped top, baggy cargos, tied jacket", "Fitted suit with piping, bubble helmet",
+                                        "Cropped hooded jacket, leggings, knee pads", "Hood and mask, long open coat", "Bib overalls, satchel, wrench, goggles"];
+//                                            head face top outer hands belt legs feet pack satchel tool
+CW_OUTFIT :: [CW_OUTFITS * CW_SLOTS] int.[0, 0, CW_TOP_FLIGHT, 0, CW_GLOVES, CW_BELT_WIDE, CW_LEGS_FLIGHT, CW_BOOTS_STRAP, 0, 0, 0,
+                                          0, 0, CW_TOP_CROP, 0, CW_GLOVES, CW_BELT_TIED, CW_LEGS_CARGO, CW_BOOTS_LACE, 0, 0, 0,
+                                          CW_HELMET, 0, CW_TOP_VAC, 0, CW_LONG_GLOVES, CW_BELT_UTILITY, CW_LEGS_VAC, CW_BOOTS_LACE, 1, 0, 0,
+                                          0, 0, CW_TOP_FITTED, CW_JACKET, CW_GLOVES, CW_BELT_SLUNG, CW_LEGS_LEGGINGS, CW_BOOTS_LACE, 0, 0, 0,
+                                          CW_HOOD, CW_MASK, CW_TOP_TUNIC, CW_COAT, CW_GLOVES, CW_BELT_DOUBLE, CW_LEGS_WRAPS, CW_BOOTS_STRAP, 0, 0, 0,
+                                          CW_GOGGLES, 0, CW_TOP_SHIRT, 0, CW_GLOVES, 0, CW_LEGS_OVERALLS, CW_BOOTS_LACE, 0, 1, 1];
+cw_outfit :: (k: int) -> CrewOutfit {
+  o: CrewOutfit; t := CW_OUTFIT;
+  at := ifx k < 0 || k >= CW_OUTFITS then 0 else k;
+  for i: 0..<CW_SLOTS { o.v[i] = t[at * CW_SLOTS + i]; }
+  return o;
+}
+cw_outfit_of :: (o: CrewOutfit) -> int {
+  t := CW_OUTFIT;
+  for k: 0..<CW_OUTFITS {
+    same := true;
+    for i: 0..<CW_SLOTS { if o.v[i] != t[k * CW_SLOTS + i] { same = false; } }
+    if same { return k; }
+  }
+  return -1;
+}
+
+// What one piece hides of another, as data: the piece in `slot`, when it is `piece`, hides what is
+// in `hides` (a slot, or the hair, or a jacket's hood) when that is `of` (-1: whatever it is).
+CW_HAIR :: 11; CW_JACKET_HOOD :: 12;
+CwRule :: struct { slot: int; piece: int; hides: int; of: int; }
+CW_RULE_N :: 5;
+CW_RULES :: [CW_RULE_N] CwRule.[
+  CwRule.{slot = CW_HEAD, piece = CW_HELMET, hides = CW_HAIR, of = -1},          // a helmet hides the hair
+  CwRule.{slot = CW_HEAD, piece = CW_HELMET, hides = CW_JACKET_HOOD, of = -1},   // and a jacket's hood
+  CwRule.{slot = CW_HEAD, piece = CW_HOOD, hides = CW_HAIR, of = -1},            // a hood presses the hair flat
+  CwRule.{slot = CW_OUTER, piece = CW_COAT, hides = CW_BELT, of = CW_BELT_TIED}, // a coat hides a jacket tied round the waist
+  CwRule.{slot = CW_LEGS, piece = CW_LEGS_OVERALLS, hides = CW_BELT, of = -1}];  // overalls replace the belt
+// Whether the outfit's own pieces hide what is in `what` (a slot, CW_HAIR or CW_JACKET_HOOD).
+cw_hidden :: (o: CrewOutfit, what: int) -> bool {
+  rules := CW_RULES;
+  for i: 0..<CW_RULE_N {
+    r := rules[i];
+    if r.hides != what || o.v[r.slot] != r.piece { continue; }
+    if r.of < 0 || (what < CW_SLOTS && o.v[what] == r.of) { return true; }
+  }
+  return false;
+}
+// The piece a slot shows: its own, or none when another piece hides it.
+cw_shown :: (o: CrewOutfit, slot: int) -> int { return ifx cw_hidden(o, slot) then 0 else o.v[slot]; }
+
+// ---- the look, in one place
+
+CW_CLOTH :: () -> KitTint { return kit_tint(0.098, 0.098, 0.115); }   // the cloth
+CW_DEEP :: () -> KitTint { return kit_tint(0.058, 0.058, 0.070); }    // boots, gloves, belts, straps
+CW_SOFT :: () -> KitTint { return kit_tint(0.150, 0.150, 0.172); }    // pockets, patches, an outer layer
+CW_STITCH :: () -> KitTint { return kit_tint(0.95, 0.95, 0.97); }
+CW_METAL :: () -> KitTint { return kit_tint(0.80, 0.83, 0.88); }
+CW_SHELL :: () -> KitTint { return kit_tint(0.90, 0.91, 0.93); }      // a helmet's ring, a pack's case
+CW_FITTED :: 0.008f32; CW_LOOSE :: 0.022f32; CW_BAGGY :: 0.05f32;     // the eases, metres on a 1.75 m body
+CW_BOOT_T :: 4.4f32;   // where a boot's top is on a leg's loft (between the calf and the ankle)
+CW_BUDGET :: 30000;    // the most vertices one dressed character takes
+
+// What a garment was fitted round: the torso, an arm, a leg, or the whole body's hull (a skirt, a coat).
+CW_ON_TORSO :: 0; CW_ON_ARM :: 1; CW_ON_LEG :: 2; CW_ON_HULL :: 3;
+CW_LAYERS :: 56;
+// Every fitted loft a dressed character drew, for the check that none is thinner than the body under it.
+CwLog :: struct { n: int; over: bool; loft: [CW_LAYERS] Loft; base: [CW_LAYERS] int; side: [CW_LAYERS] int; }
+cw_note :: (fit: [] CwLog, l: Loft, base: int, side: int) -> Loft {
+  if fit.count < 1 { return l; }
+  if fit[0].n >= CW_LAYERS { fit[0].over = true; return l; }
+  k := fit[0].n;
+  fit[0].loft[k] = l; fit[0].base[k] = base; fit[0].side[k] = side; fit[0].n += 1;
+  return l;
+}
+// Whether a fitted loft covers the body it was fitted round at every one of its rings.
+cw_covers :: (m: CrewForm, l: Loft, base: int, side: int) -> bool {
+  e: f32 = 0.0005;
+  for i: 0..<l.n {
+    r := l.r[i];
+    if base == CW_ON_TORSO || base == CW_ON_HULL {
+      g := ifx base == CW_ON_TORSO then cb_torso_at(m, r.c.y) else cb_hull_at(m, r.c.y);
+      if r.rx < g.rx - e || r.c.z + r.rz < g.front - e || r.c.z - r.rz > g.back + e { return false; }
+    } else {
+      body := ifx base == CW_ON_ARM then m.arm[side] else m.leg[side];
+      // the body's ring nearest this one's middle
+      best: f32 = 0; far: f32 = 1000000;
+      for s: 0..<(body.n - 1) * 8 + 1 {
+        t := cast(f32) s / 8.0;
+        d := length(sub(loft_ring(body, t).c, r.c));
+        if d < far { far = d; best = t; }
+      }
+      b := loft_ring(body, best);
+      off := sub(r.c, b.c);
+      if r.rx - abs(dot(off, b.ax)) < b.rx - e - 0.004 || r.rz - abs(dot(off, b.az)) < b.rz - e - 0.004 { return false; }
+    }
+  }
+  return true;
+}
+
+// The pens.
+cw_cloth :: (p: [] Pen, obj: int, c: KitTint) { kit_pen(p, obj, MAT_CLOTH, c); }
+cw_thread :: (p: [] Pen, obj: int) { kit_pen(p, obj, MAT_FLAT, CW_STITCH()); }
+cw_silver :: (p: [] Pen, obj: int) { kit_pen(p, obj, MAT_FLAT, CW_METAL()); }
+// A dressed figure's sizes: the scale of a 1.75 m body, the stitch line's width and how far it stands off the cloth.
+CwDraw :: struct { u: f32; sw: f32; lift: f32; obj: int; }
+cw_draw :: (m: CrewForm, obj: int) -> CwDraw { u := m.h / 1.75; return CwDraw.{u = u, sw = 0.0072 * u, lift = 0.0035 * u, obj = obj}; }
+
+// A stitch line round a loft at t.
+cw_stitch_round :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, l: Loft, t: f32) {
+  cw_thread(p, d.obj);
+  loft_line(buf, p, f, l, t, 0, t, TAU, d.sw, d.lift, l.sides * 2);
+}
+// A stitch line along a loft at angle a, from t0 to t1.
+cw_stitch_along :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, l: Loft, t0: f32, t1: f32, a: f32) {
+  cw_thread(p, d.obj);
+  loft_line(buf, p, f, l, t0, a, t1, a, d.sw, d.lift, hi_i(cast(int) (abs(t1 - t0) * 3 + 1), 2));
+}
+// A stitch line from one place on a loft to another.
+cw_stitch :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, l: Loft, t0: f32, a0: f32, t1: f32, a1: f32) {
+  cw_thread(p, d.obj);
+  loft_line(buf, p, f, l, t0, a0, t1, a1, d.sw, d.lift, hi_i(cast(int) (abs(t1 - t0) * 3 + abs(a1 - a0) * 4 + 1), 2));
+}
+// A stitched rectangle on a frame's face: half sizes hx, hy.
+cw_stitch_box :: (buf: [] u32, p: [] Pen, fr: Frame, d: CwDraw, hx: f32, hy: f32) {
+  cw_thread(p, d.obj);
+  dash(buf, p, fr, -hx, -hy, hx, -hy, d.sw, d.sw); dash(buf, p, fr, hx, -hy, hx, hy, d.sw, d.sw);
+  dash(buf, p, fr, hx, hy, -hx, hy, d.sw, d.sw); dash(buf, p, fr, -hx, hy, -hx, -hy, d.sw, d.sw);
+}
+// A buckle on a frame's face: a silver frame with a bar across it, half sizes hx, hy.
+cw_buckle :: (buf: [] u32, p: [] Pen, fr: Frame, d: CwDraw, hx: f32, hy: f32) {
+  cw_cloth(p, d.obj, CW_DEEP());
+  box(buf, p, frame_move(fr, add(fr.o, times(fr.z, -0.002 * d.u))), hx, hy, 0.004 * d.u);
+  cw_silver(p, d.obj);
+  top := frame_move(fr, add(fr.o, times(fr.z, 0.0035 * d.u)));
+  w := d.sw * 1.5;
+  dash(buf, p, top, -hx, -hy, hx, -hy, w, w); dash(buf, p, top, hx, -hy, hx, hy, w, w);
+  dash(buf, p, top, hx, hy, -hx, hy, w, w); dash(buf, p, top, -hx, hy, -hx, -hy, w, w);
+  dash(buf, p, top, 0, -hy, 0, hy, w, w);
+}
+// A pocket standing on a loft at (t, a): a shallow box of half sizes hx, hy, its face stitched round,
+// a flap line across it when asked and a strap with a buckle down it when asked.
+cw_pocket :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, l: Loft, t: f32, a: f32, hx: f32, hy: f32, deep: f32, flap: bool, strap: bool) {
+  fr := loft_frame(l, t, a, deep * 0.5);
+  wf := Frame.{o = fp3(f, fr.o), x = fd3(f, fr.x), y = fd3(f, fr.y), z = fd3(f, fr.z)};
+  cw_cloth(p, d.obj, CW_CLOTH());
+  box(buf, p, wf, hx, hy, deep * 0.5 + 0.004 * d.u);
+  face := frame_move(wf, add(wf.o, times(wf.z, deep * 0.5 + 0.004 * d.u + d.lift)));
+  cw_stitch_box(buf, p, face, d, hx - d.sw * 1.6, hy - d.sw * 1.6);
+  // a loft's frame runs toward its later rings: on a limb that is down, so the flap is toward the frame's -y
+  up := ifx wf.y.y < 0 then -1.0f32 else 1.0f32;
+  if flap { dash(buf, p, face, -hx + d.sw * 1.6, up * hy * 0.42, hx - d.sw * 1.6, up * hy * 0.42, d.sw, d.sw); }
+  if strap {
+    cw_cloth(p, d.obj, CW_DEEP());
+    box(buf, p, frame_move(face, add(face.o, times(wf.y, up * hy * 0.3))), hx * 0.2, hy * 0.75, 0.002 * d.u);
+    cw_buckle(buf, p, frame_move(face, add(face.o, add(times(wf.y, up * hy * 0.42), times(wf.z, 0.004 * d.u)))), d, hx * 0.3, hx * 0.24);
+  }
+}
+// A patch lying on a loft (a knee patch, a bib): the cloth, then a stitch line round it.
+cw_patch :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, l: Loft, tone: KitTint, t0: f32, a0: f32, b0: f32, t1: f32, a1: f32, b1: f32, out: f32) {
+  cw_cloth(p, d.obj, tone);
+  loft_patch(buf, p, f, l, t0, a0, b0, t1, a1, b1, out, hi_i(cast(int) (abs(t1 - t0) * 3 + 1), 2), 4);
+  cw_thread(p, d.obj);
+  n := hi_i(cast(int) (abs(t1 - t0) * 3 + 1), 2);
+  loft_line(buf, p, f, l, t0, a0, t1, a1, d.sw, out + d.lift, n); loft_line(buf, p, f, l, t0, b0, t1, b1, d.sw, out + d.lift, n);
+  loft_line(buf, p, f, l, t0, a0, t0, b0, d.sw, out + d.lift, 4); loft_line(buf, p, f, l, t1, a1, t1, b1, d.sw, out + d.lift, 4);
+}
+// A strap lying on a loft from one place to another, w wide: the webbing and a stitch line down each edge.
+cw_band :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, l: Loft, t0: f32, a0: f32, t1: f32, a1: f32, w: f32, out: f32) {
+  n := hi_i(cast(int) (abs(t1 - t0) * 3 + abs(a1 - a0) * 5 + 1), 3);
+  cw_cloth(p, d.obj, CW_DEEP());
+  loft_line(buf, p, f, l, t0, a0, t1, a1, w, out, n);
+  cw_thread(p, d.obj);
+  loft_line_beside(buf, p, f, l, t0, a0, t1, a1, d.sw * 0.8, out + d.lift, n, w * 0.5 - d.sw);
+  loft_line_beside(buf, p, f, l, t0, a0, t1, a1, d.sw * 0.8, out + d.lift, n, -(w * 0.5 - d.sw));
+}
+// A belt: a band of the torso's loft from t0 to t1 with `ease`, stitched at both edges.
+cw_belt :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit: [] CwLog, t0: f32, t1: f32, ease: f32, tone: KitTint) -> Loft {
+  b := cw_note(fit, loft_ease(loft_cut(m.torso, t0, t1), ease, ease), CW_ON_TORSO, 0);
+  cw_cloth(p, d.obj, tone);
+  loft_write(buf, p, f, b, true, true);
+  cw_stitch_round(buf, p, f, d, b, 0.12); cw_stitch_round(buf, p, f, d, b, cast(f32) (b.n - 1) - 0.12);
+  return b;
+}
+// A frame standing on a loft, in the world: for a buckle or a mark put on a garment.
+cw_on :: (f: Frame, l: Loft, t: f32, a: f32, out: f32) -> Frame {
+  fr := loft_frame(l, t, a, out);
+  return Frame.{o = fp3(f, fr.o), x = fd3(f, fr.x), y = fd3(f, fr.y), z = fd3(f, fr.z)};
+}
+// The outer side of a limb's loft (a quarter turn is its front): 0 on the figure's left limb, half a turn on its right.
+cw_outside :: (side: int) -> f32 { return ifx side == 0 then PI else 0.0f32; }
+// An angle on a limb's loft, `toward_front` round from its outer side toward the front.
+cw_out_front :: (side: int, toward_front: f32) -> f32 { return ifx side == 0 then PI - toward_front else toward_front; }
+
+// ---- fitted lofts
+
+// The torso's rings from t0 to t1 with an ease.
+cw_torso :: (m: CrewForm, fit: [] CwLog, t0: f32, t1: f32, ease: f32) -> Loft {
+  return cw_note(fit, loft_ease(loft_cut(m.torso, t0, t1), ease, ease), CW_ON_TORSO, 0);
+}
+// An arm's rings from t0 to t1 with an ease at its top and at its end (a sleeve that widens or narrows).
+cw_sleeve :: (m: CrewForm, fit: [] CwLog, side: int, t0: f32, t1: f32, ease0: f32, ease1: f32) -> Loft {
+  l := loft_cut(m.arm[side], t0, t1);
+  for i: 0..<l.n {
+    k := ifx l.n > 1 then cast(f32) i / cast(f32) (l.n - 1) else 0.0f32;
+    e := lerp(ease0, ease1, k);
+    l.r[i].rx += e; l.r[i].rz += e;
+  }
+  return cw_note(fit, l, CW_ON_ARM, side);
+}
+// A trouser leg: the leg's rings to the boot with an ease that grows from the hip (e0) to the calf
+// (e1), a `bulge` over the boot's top, and a gathered hem `hem` wider than the leg.
+cw_leg :: (m: CrewForm, fit: [] CwLog, side: int, e0: f32, e1: f32, bulge: f32, hem: f32) -> Loft {
+  body := m.leg[side];
+  l := loft_new(body.sides, 1);
+  for i: 0..<CL_CALF + 1 {
+    r := body.r[i];
+    e := lerp(e0, e1, cast(f32) i / cast(f32) CL_CALF);
+    r.rx += e; r.rz += e;
+    l = loft_add(l, r);
+  }
+  if bulge > 0 { r := loft_ring(body, CW_BOOT_T - 0.2); r.rx += bulge; r.rz += bulge; l = loft_add(l, r); }
+  r := loft_ring(body, CW_BOOT_T + 0.08); r.rx += hem; r.rz += hem;
+  l = loft_add(l, r);
+  return cw_note(fit, l, CW_ON_LEG, side);
+}
+// The trousers' seat: the torso's rings from the crotch to the waistband, the crotch dropped a little when baggy.
+cw_seat :: (m: CrewForm, fit: [] CwLog, ease: f32, top: f32) -> Loft {
+  l := loft_ease(loft_cut(m.torso, 0, top), ease, ease);
+  l.r[0].c.y -= ease * 0.9;
+  return cw_note(fit, l, CW_ON_TORSO, 0);
+}
+// A skirt of level rings under a garment: from the torso at t (with ease) down to the height y1,
+// each ring as wide as the body's hull there and `flare` more at the foot.
+cw_skirt :: (m: CrewForm, fit: [] CwLog, t: f32, y1: f32, ease: f32, flare: f32, steps: int) -> Loft {
+  l := loft_new(m.torso.sides, CB_TORSO_SQ);
+  y0 := loft_ring(m.torso, t).c.y;
+  n := hi_i(steps, 2);
+  for i: 0..<n + 1 {
+    k := cast(f32) i / cast(f32) n;
+    y := lerp(y0, y1, k);
+    g := cb_hull_at(m, y);
+    // never narrower than the hips above it: a skirt hangs from them
+    hips := cb_torso_at(m, m.torso.r[CT_HIPS].c.y);
+    rx := ifx y < m.torso.r[CT_HIPS].c.y then hi(g.rx, hips.rx) else g.rx;
+    front := ifx y < m.torso.r[CT_HIPS].c.y then hi(g.front, hips.front) else g.front;
+    back := ifx y < m.torso.r[CT_HIPS].c.y then lo(g.back, hips.back) else g.back;
+    e := ease + flare * k;
+    l = loft_add(l, ring_level(v3(0, y, (front + back) * 0.5), rx + e, (front - back) * 0.5 + e));
+  }
+  return cw_note(fit, l, CW_ON_HULL, 0);
+}
+
+// ---- the pieces
+
+// Trousers, by kind. Their seat and legs are one cloth; pockets, patches, pads and piping by kind.
+cw_legs_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit: [] CwLog, kind: int) {
+  u := d.u; h := m.h;
+  baggy := kind == CW_LEGS_FLIGHT || kind == CW_LEGS_CARGO || kind == CW_LEGS_OVERALLS;
+  e0 := ifx kind == CW_LEGS_CARGO then 0.040 * u else ifx baggy then 0.032 * u else ifx kind == CW_LEGS_WRAPS then 0.016 * u else 0.012 * u;
+  e1 := ifx kind == CW_LEGS_CARGO then 0.105 * u else ifx kind == CW_LEGS_OVERALLS then 0.088 * u else ifx kind == CW_LEGS_FLIGHT then 0.078 * u else e0;
+  bulge := ifx baggy then e1 * 1.02 else 0.0f32;
+  hem := ifx baggy then 0.034 * u else e0;
+  seat := cw_seat(m, fit, e0, cast(f32) CT_WAIST + 0.25);
+  cw_cloth(p, d.obj, CW_CLOTH());
+  loft_write_round(buf, p, f, seat, 0.5, 0);
+  // the fly and the waistband's line
+  cw_stitch_along(buf, p, f, d, seat, 0.9, cast(f32) (seat.n - 1) - 0.15, PI * 0.5);
+  if kind != CW_LEGS_OVERALLS { cw_stitch_round(buf, p, f, d, seat, cast(f32) (seat.n - 1) - 0.1); }
+  for side: 0..<2 {
+    leg := cw_leg(m, fit, side, e0, e1, bulge, hem);
+    last := cast(f32) (leg.n - 1);
+    cw_cloth(p, d.obj, CW_CLOTH());
+    loft_write(buf, p, f, leg, false, true);
+    out := cw_outside(side);
+    front: f32 = PI * 0.5;
+    // the side seam, and the gathered hem's line
+    cw_stitch_along(buf, p, f, d, leg, 0.9, last - 0.15, out);
+    if baggy { cw_stitch_round(buf, p, f, d, leg, last - 0.5); }
+    if kind == CW_LEGS_FLIGHT || kind == CW_LEGS_CARGO || kind == CW_LEGS_OVERALLS {
+      // a cargo pocket on the thigh's outer side, its flap strapped down
+      big := ifx kind == CW_LEGS_CARGO then 1.2f32 else 1.0f32;
+      cw_pocket(buf, p, f, d, leg, 2.15, cw_out_front(side, 0.42), 0.040 * h * big, 0.052 * h * big, 0.020 * u * big, true, kind != CW_LEGS_OVERALLS);
+    }
+    if kind == CW_LEGS_FLIGHT || kind == CW_LEGS_OVERALLS {
+      // a knee patch, stitched round
+      cw_patch(buf, p, f, d, leg, CW_CLOTH(), 2.85, front - 0.55, front + 0.55, 3.5, front - 0.5, front + 0.5, 0.005 * u);
+    }
+    if kind == CW_LEGS_CARGO {
+      // a strap and buckle under the pocket, and a seam down the front of the shin
+      cw_band(buf, p, f, d, leg, 3.0, out - 1.2, 3.0, out + 1.2, 0.024 * h, 0.004 * u);
+      cw_buckle(buf, p, cw_on(f, leg, 3.0, cw_out_front(side, 0.5), 0.010 * u), d, 0.016 * h, 0.012 * h);
+      cw_stitch_along(buf, p, f, d, leg, 3.2, last - 0.6, front);
+    }
+    if kind == CW_LEGS_VAC || kind == CW_LEGS_LEGGINGS {
+      // piping: down the front of the thigh, round over the knee, and down the shin's outer side
+      cw_stitch(buf, p, f, d, leg, 0.9, front + (ifx side == 0 then 0.5f32 else -0.5f32), 2.55, front + (ifx side == 0 then 0.25f32 else -0.25f32));
+      cw_stitch(buf, p, f, d, leg, 3.5, cw_out_front(side, 1.0), last - 0.1, cw_out_front(side, 0.5));
+      cw_stitch(buf, p, f, d, leg, 1.6, cw_out_front(side, -0.5), 2.6, cw_out_front(side, 0.5));
+      // a knee pad: hard, raised, outlined
+      cw_patch(buf, p, f, d, leg, CW_DEEP(), 2.7, front - 0.5, front + 0.5, 3.4, front - 0.46, front + 0.46, 0.014 * u);
+      cw_stitch(buf, p, f, d, leg, 3.0, front - 0.3, 3.0, front + 0.3);
+    }
+    if kind == CW_LEGS_LEGGINGS && side == 0 {
+      // the thigh strap on the right leg
+      cw_band(buf, p, f, d, leg, 1.55, 0, 1.55, TAU, 0.022 * h, 0.004 * u);
+      cw_buckle(buf, p, cw_on(f, leg, 1.55, front + 0.35, 0.010 * u), d, 0.014 * h, 0.011 * h);
+    }
+    if kind == CW_LEGS_VAC && side == 1 {
+      // a strap and a small pouch on the left thigh
+      cw_band(buf, p, f, d, leg, 1.9, 0, 1.9, TAU, 0.018 * h, 0.004 * u);
+      cw_pocket(buf, p, f, d, leg, 1.9, cw_out_front(side, 0.3), 0.020 * h, 0.022 * h, 0.014 * u, true, false);
+    }
+    if kind == CW_LEGS_WRAPS {
+      // a knee pad and a shin guard in three plates
+      cw_patch(buf, p, f, d, leg, CW_DEEP(), 2.65, front - 0.62, front + 0.62, 3.4, front - 0.56, front + 0.56, 0.014 * u);
+      cw_patch(buf, p, f, d, leg, CW_SOFT(), 3.5, front - 0.8, front + 0.8, last - 0.05, front - 0.9, front + 0.9, 0.010 * u);
+      for i: 1..<3 { t := lerp(3.5, last - 0.05, cast(f32) i / 3.0); cw_stitch(buf, p, f, d, leg, t, front - 0.82, t, front + 0.82); }
+      cw_band(buf, p, f, d, leg, 3.75, 0, 3.75, TAU, 0.016 * h, 0.003 * u);
+    }
+  }
+  if kind == CW_LEGS_FLIGHT {
+    // the white tab that hangs from the belt on the left thigh
+    leg := m.leg[1];
+    hang := loft_ease(leg, e0 + 0.006 * u, e0 + 0.006 * u);
+    cw_cloth(p, d.obj, CW_SOFT());
+    loft_line(buf, p, f, hang, 0.7, PI * 0.5 - 0.5, 1.7, PI * 0.5 - 0.42, 0.020 * h, 0.004 * u, 4);
+    cw_thread(p, d.obj);
+    loft_line(buf, p, f, hang, 0.7, PI * 0.5 - 0.5, 1.7, PI * 0.5 - 0.42, 0.011 * h, 0.006 * u, 4);
+  }
+  if kind == CW_LEGS_OVERALLS { cw_bib(buf, p, f, d, m, fit); }
+}
+// The overalls' bib: a panel up the chest with a pocket, a waistband, and two straps over the
+// shoulders to the back, each with a buckle where it meets the bib.
+cw_bib :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit: [] CwLog) {
+  u := d.u; front: f32 = PI * 0.5; back: f32 = -PI * 0.5;
+  over := cw_torso(m, fit, 0, cast(f32) CT_NECK, 0.034 * u);
+  waist := cast(f32) CT_WAIST; topt := cast(f32) CT_UPPER - 0.25;
+  cw_patch(buf, p, f, d, over, CW_CLOTH(), waist - 0.1, front - 0.95, front + 0.95, topt, front - 0.6, front + 0.6, 0);
+  cw_patch(buf, p, f, d, over, CW_SOFT(), waist + 1.0, front - 0.36, front + 0.36, waist + 1.9, front - 0.36, front + 0.36, 0.005 * u);
+  cw_stitch(buf, p, f, d, over, waist + 1.62, front - 0.36, waist + 1.62, front + 0.36);
+  wb := cw_belt(buf, p, f, d, m, fit, waist - 0.3, waist + 0.3, 0.040 * u, CW_CLOTH());
+  for side: 0..<2 {
+    s := ifx side == 0 then -1.0f32 else 1.0f32;
+    a := front + s * 0.5; b := back - s * 0.42;
+    top := cast(f32) CT_SHOULDER + 0.42;
+    cw_band(buf, p, f, d, over, topt - 0.5, a, top, a, 0.026 * m.h, 0.004 * u);
+    cw_band(buf, p, f, d, over, top, a, top, a + s * (PI - 0.92), 0.026 * m.h, 0.004 * u);
+    cw_band(buf, p, f, d, over, top, b, waist + 0.3, back - s * 0.2, 0.026 * m.h, 0.004 * u);
+    cw_buckle(buf, p, cw_on(f, over, topt - 0.25, a, 0.010 * u), d, 0.018 * m.h, 0.013 * m.h);
+  }
+}
+
+// Boots: a shaft round the lower leg, a chunky foot, a thick sole with its tread, laces, and a
+// strap with a buckle when asked.
+cw_boots_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit: [] CwLog, kind: int) {
+  u := d.u; h := m.h;
+  for side: 0..<2 {
+    leg := m.leg[side];
+    ankle := leg.r[CL_ANKLE];
+    sole := 0.019 * h;
+    half := m.foot_w * 0.5 * 1.28; flen := m.foot_len;
+    cx := ankle.c.x; z0 := ankle.c.z;
+    // the shaft: from the boot's top to the ankle, then widening into the foot
+    shaft := loft_new(leg.sides, 1);
+    lip := loft_ring(leg, CW_BOOT_T); lip.rx += 0.026 * u; lip.rz += 0.026 * u;
+    shaft = loft_add(shaft, lip);
+    mid := loft_ring(leg, CW_BOOT_T + 0.3); mid.rx += 0.022 * u; mid.rz += 0.022 * u;
+    shaft = loft_add(shaft, mid);
+    an := ankle; an.rx += 0.024 * u; an.rz += 0.028 * u;
+    shaft = loft_add(shaft, an);
+    shaft = cw_note(fit, shaft, CW_ON_LEG, side);
+    cw_cloth(p, d.obj + 1, CW_DEEP());
+    loft_write(buf, p, f, shaft, false, false);
+    low := loft_new(leg.sides, 1);
+    low = loft_add(low, an);
+    low = loft_add(low, ring_level(v3(cx, sole + 0.012 * h, z0 + 0.01 * h), hi(half * 0.86, an.rx), hi(flen * 0.30, an.rz)));
+    loft_write(buf, p, f, low, false, false);
+    // the foot: rings that stand across it, from the heel to the toe
+    foot := loft_new(12, 0.72);
+    zs := [7] f32.[-0.34, -0.27, -0.04, 0.26, 0.55, 0.70, 0.755];
+    ws := [7] f32.[0.50, 0.90, 1.0, 1.08, 1.04, 0.80, 0.30];
+    hs := [7] f32.[0.020, 0.033, 0.040, 0.034, 0.029, 0.024, 0.012];
+    for i: 0..<7 { foot = loft_add(foot, ring_axes(v3(cx, sole + hs[i] * h, z0 + zs[i] * flen), v3(1, 0, 0), v3(0, 1, 0), half * ws[i], hs[i] * h)); }
+    loft_write(buf, p, f, foot, true, true);
+    // the sole: a slab under it, wider than the foot
+    tread := loft_new(14, 0.62);
+    tread = loft_add(tread, ring_level(v3(cx, 0, z0 + 0.205 * flen), half * 1.10, flen * 0.575));
+    tread = loft_add(tread, ring_level(v3(cx, sole, z0 + 0.205 * flen), half * 1.13, flen * 0.585));
+    cw_cloth(p, d.obj + 2, CW_CLOTH());
+    loft_write(buf, p, f, tread, true, true);
+    // the look: a welt line round the sole's top, notches of tread, a toe cap, laces up the front
+    cw_stitch_round(buf, p, f, d, tread, 0.86);
+    cw_thread(p, d.obj);
+    for i: 0..<12 {
+      a := cast(f32) i * TAU / 12.0 + 0.26;
+      loft_line(buf, p, f, tread, 0.12, a, 0.62, a, d.sw * 0.8, d.lift, 1);
+    }
+    loft_line(buf, p, f, foot, 3.85, 0.12, 3.85, PI - 0.12, d.sw, d.lift, 8);
+    front: f32 = PI * 0.5;
+    for i: 0..<4 {
+      t := 0.35 + cast(f32) i * 0.42;
+      s := ifx i % 2 == 0 then 1.0f32 else -1.0f32;
+      loft_line(buf, p, f, shaft, t, front - 0.42 * s, t + 0.34, front + 0.42 * s, d.sw * 0.8, d.lift, 3);
+    }
+    loft_line(buf, p, f, foot, 2.3, front - 0.45, 3.0, front + 0.45, d.sw * 0.8, d.lift, 3);
+    loft_line(buf, p, f, foot, 2.3, front + 0.45, 3.0, front - 0.45, d.sw * 0.8, d.lift, 3);
+    cw_stitch_round(buf, p, f, d, shaft, 0.08);
+    if kind == CW_BOOTS_STRAP {
+      cw_band(buf, p, f, d, shaft, 0.55, 0, 0.55, TAU, 0.022 * h, 0.004 * u);
+      cw_buckle(buf, p, cw_on(f, shaft, 0.55, cw_out_front(side, 0.75), 0.009 * u), d, 0.015 * h, 0.012 * h);
+      cw_band(buf, p, f, d, shaft, 1.75, 0, 1.75, TAU, 0.020 * h, 0.004 * u);
+      cw_buckle(buf, p, cw_on(f, shaft, 1.75, cw_out_front(side, 0.75), 0.009 * u), d, 0.014 * h, 0.011 * h);
+    }
+  }
+}
+
+// Gloves: the palm covered and the fingers bare, with a stitched cuff; sealed gloves cover the whole hand.
+cw_gloves_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit: [] CwLog, kind: int) {
+  u := d.u;
+  for side: 0..<2 {
+    cw_cloth(p, d.obj + 1, CW_DEEP());
+    ch_hand(buf, p, f, m, side, 1.22, 0, ifx kind == CW_LONG_GLOVES then 1.0f32 else 0.60f32);
+    cuff := cw_sleeve(m, fit, side, ifx kind == CW_LONG_GLOVES then 4.25f32 else 4.62f32, 5, 0.017 * u, 0.019 * u);
+    loft_write(buf, p, f, cuff, false, true);
+    cw_stitch_round(buf, p, f, d, cuff, 0.06);
+    if kind == CW_LONG_GLOVES {
+      cw_cloth(p, d.obj + 1, CW_SHELL());
+      loft_line(buf, p, f, cuff, 0.45, 0, 0.45, TAU, 0.014 * m.h, 0.004 * u, cuff.sides);
+    } else {
+      // the knuckle line and a tab on the back of the hand
+      cw_stitch_round(buf, p, f, d, cuff, cast(f32) (cuff.n - 1) - 0.1);
+    }
+  }
+}
+
+// A top, by kind: the torso's cloth, its sleeves, its collar and its marks.
+cw_top_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit: [] CwLog, kind: int, skin: KitTint) {
+  u := d.u; h := m.h; front: f32 = PI * 0.5;
+  loose := kind == CW_TOP_FLIGHT || kind == CW_TOP_SHIRT || kind == CW_TOP_TUNIC;
+  ease := ifx loose then CW_LOOSE * u else CW_FITTED * u;
+  neck := cast(f32) CT_NECK; chest := cast(f32) CT_CHEST;
+  t0 := ifx kind == CW_TOP_CROP then cast(f32) CT_RIBS + 0.15 else 1.2f32;
+  body := cw_torso(m, fit, t0, neck, ease);
+  last := cast(f32) (body.n - 1);
+  cw_cloth(p, d.obj, CW_CLOTH());
+  loft_write(buf, p, f, body, kind == CW_TOP_CROP, true);
+  // the collar: a band standing round the neck, open at the front on a flight top
+  nk := m.torso.r[CT_NECK];
+  collar := loft_new(14, 1);
+  stand := ifx kind == CW_TOP_FLIGHT then 0.036 * h else ifx kind == CW_TOP_SHIRT || kind == CW_TOP_TUNIC then 0.012 * h else 0.030 * h;
+  flare := ifx kind == CW_TOP_FLIGHT then 0.018 * h else 0.0f32;
+  collar = loft_add(collar, ring_level(v3(0, nk.c.y - 0.012 * h, nk.c.z), nk.rx + ease + 0.004 * u, nk.rz + ease + 0.004 * u));
+  collar = loft_add(collar, ring_level(v3(0, nk.c.y + stand, m.neck_foot.z + (m.neck_top.z - m.neck_foot.z) * 0.4), m.neck_r + 0.006 * u + flare, m.neck_r + 0.006 * u + flare));
+  cw_cloth(p, d.obj, ifx kind == CW_TOP_FLIGHT then CW_SOFT() else CW_CLOTH());
+  if kind == CW_TOP_FLIGHT {
+    // open at the throat: the skin shows in a V down to the zip
+    loft_patch(buf, p, f, collar, 0, front + 0.55, front + TAU - 0.55, 1, front + 0.85, front + TAU - 0.85, 0, 2, 12);
+    kit_pen(p, d.obj - 2, MAT_SKIN, skin);
+    loft_patch(buf, p, f, body, ((chest + 0.55) - t0), front, front, last - 0.02, front - 0.34, front + 0.34, 0.003 * u, 5, 3);
+    cw_stitch(buf, p, f, d, body, ((chest + 0.55) - t0), front, last - 0.02, front - 0.36);
+    cw_stitch(buf, p, f, d, body, ((chest + 0.55) - t0), front, last - 0.02, front + 0.36);
+    // the zip, the chest pockets with their flaps, and a tab on the left sleeve
+    cw_silver(p, d.obj);
+    loft_line(buf, p, f, body, 0.1, front, ((chest + 0.55) - t0), front, d.sw * 1.5, d.lift, 8);
+    for side: 0..<2 {
+      s := ifx side == 0 then -1.0f32 else 1.0f32;
+      cw_pocket(buf, p, f, d, body, ((chest - 0.25) - t0), front + s * 0.56, lo(0.034 * h, m.torso.r[CT_CHEST].rx * 0.36), 0.030 * h, 0.008 * u, true, false);
+    }
+  } else {
+    loft_write(buf, p, f, collar, false, false);
+    cw_stitch_round(buf, p, f, d, collar, 0.95);
+  }
+  if kind == CW_TOP_CROP {
+    // the hem under the ribs, and a seam under the bust
+    cw_stitch_round(buf, p, f, d, body, 0.08);
+    cw_stitch(buf, p, f, d, body, ((chest - 0.3) - t0), front - 1.2, ((chest - 0.3) - t0), front + 1.2);
+  }
+  if kind == CW_TOP_VAC || kind == CW_TOP_FITTED {
+    // piping: the front seam, and a line from each armhole down to the hip
+    cw_stitch_along(buf, p, f, d, body, 0.1, last - 0.9, front);
+    for side: 0..<2 {
+      s := ifx side == 0 then -1.0f32 else 1.0f32;
+      cw_stitch(buf, p, f, d, body, ((chest + 0.9) - t0), front + s * 0.95, ((cast(f32) CT_WAIST) - t0), front + s * 0.62);
+      cw_stitch(buf, p, f, d, body, ((cast(f32) CT_WAIST) - t0), front + s * 0.62, 0.1, front + s * 0.8);
+    }
+    if kind == CW_TOP_VAC {
+      // a badge on the chest
+      cw_stitch_box(buf, p, cw_on(f, body, ((chest + 0.15) - t0), front - 0.5, d.lift), d, 0.016 * h, 0.009 * h);
+    }
+  }
+  if kind == CW_TOP_TUNIC {
+    // the wrap: one side crosses over the other
+    cw_stitch(buf, p, f, d, body, last - 0.25, front + 0.6, ((cast(f32) CT_WAIST) - t0), front - 0.75);
+    cw_stitch(buf, p, f, d, body, last - 0.25, front - 0.6, ((chest - 0.5) - t0), front - 0.05);
+  }
+  if kind == CW_TOP_SHIRT {
+    cw_stitch_along(buf, p, f, d, body, ((chest + 0.4) - t0), last - 0.1, front);
+  }
+  // the sleeves
+  for side: 0..<2 {
+    out := cw_outside(side);
+    if kind == CW_TOP_FLIGHT {
+      // rolled above the wrist: a thick cuff
+      sl := cw_sleeve(m, fit, side, 0, 3.7, CW_LOOSE * u + 0.006 * u, CW_LOOSE * u + 0.012 * u);
+      cw_cloth(p, d.obj, CW_CLOTH());
+      loft_write_round(buf, p, f, sl, 0.7, 0.01);
+      roll := cw_sleeve(m, fit, side, 3.45, 3.95, 0.046 * u, 0.044 * u);
+      cw_cloth(p, d.obj, CW_SOFT());
+      loft_write(buf, p, f, roll, true, true);
+      cw_stitch_round(buf, p, f, d, roll, 0.1); cw_stitch_round(buf, p, f, d, roll, cast(f32) (roll.n - 1) - 0.1);
+      cw_stitch_round(buf, p, f, d, sl, 1.05);
+      if side == 1 { cw_stitch_box(buf, p, cw_on(f, sl, 2.0, out + 0.5, d.lift), d, 0.013 * h, 0.019 * h); }
+    } else if kind == CW_TOP_CROP {
+      // a short mesh sleeve, then a long cuff from above the elbow to the wrist
+      mesh := cw_sleeve(m, fit, side, 0, 2.2, 0.006 * u, 0.006 * u);
+      kit_pen(p, d.obj, MAT_FLAT, kit_tint(0.10, 0.10, 0.12));
+      for i: 0..<8 {
+        a := cast(f32) i * TAU / 8.0;
+        loft_line(buf, p, f, mesh, 0.6, a, 2.0, a + 1.5, d.sw * 0.7, 0.001 * u, 6);
+        loft_line(buf, p, f, mesh, 0.6, a, 2.0, a - 1.5, d.sw * 0.7, 0.001 * u, 6);
+      }
+      cw_cloth(p, d.obj, CW_CLOTH());
+      loft_line(buf, p, f, mesh, 2.0, 0, 2.0, TAU, 0.014 * h, 0.002 * u, mesh.sides);
+      cuff := cw_sleeve(m, fit, side, 2.55, 4.7, CW_FITTED * u, CW_FITTED * u);
+      loft_write(buf, p, f, cuff, false, false);
+      cw_stitch_round(buf, p, f, d, cuff, 0.06);
+      cw_stitch_along(buf, p, f, d, cuff, 0.1, cast(f32) (cuff.n - 1) - 0.1, out);
+    } else {
+      e := ifx loose then CW_LOOSE * u else CW_FITTED * u;
+      end := ifx kind == CW_TOP_SHIRT then 4.55f32 else 4.85f32;
+      sl := cw_sleeve(m, fit, side, 0, end, e + 0.004 * u, e);
+      cw_cloth(p, d.obj, CW_CLOTH());
+      loft_write_round(buf, p, f, sl, 0.7, 0);
+      last_s := cast(f32) (sl.n - 1);
+      cw_stitch_round(buf, p, f, d, sl, last_s - 0.08);
+      if kind == CW_TOP_VAC || kind == CW_TOP_FITTED {
+        // piping down the outside of the arm, and a ring round the shoulder
+        cw_stitch_along(buf, p, f, d, sl, 1.0, last_s - 0.1, out);
+        cw_stitch_round(buf, p, f, d, sl, 1.0);
+      }
+      if kind == CW_TOP_VAC {
+        // a hard cap on the elbow and a band round the forearm
+        back: f32 = -PI * 0.5;
+        cw_patch(buf, p, f, d, sl, CW_DEEP(), 2.6, back - 0.7, back + 0.7, 3.4, back - 0.7, back + 0.7, 0.012 * u);
+        cw_band(buf, p, f, d, sl, 4.1, 0, 4.1, TAU, 0.016 * h, 0.003 * u);
+      }
+      if kind == CW_TOP_SHIRT || kind == CW_TOP_TUNIC { cw_stitch_round(buf, p, f, d, sl, 1.0); }
+    }
+  }
+}
+
+// The outer layer: a cropped hooded jacket, or a long open coat with a layered scarf.
+cw_outer_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit: [] CwLog, kind: int, hood_down: bool) {
+  u := d.u; h := m.h; front: f32 = PI * 0.5;
+  if kind == CW_JACKET {
+    e := 0.046 * u;
+    t0 := cast(f32) CT_RIBS + 0.1;
+    body := cw_torso(m, fit, t0, cast(f32) CT_NECK, e);
+    last := cast(f32) (body.n - 1);
+    cw_cloth(p, d.obj + 3, CW_SOFT());
+    loft_write(buf, p, f, body, true, true);
+    // the ribbed hem, the zip, and a short zip on each side of the chest
+    hem := cw_torso(m, fit, t0 - 0.05, t0 + 0.4, e + 0.010 * u);
+    cw_cloth(p, d.obj + 3, CW_CLOTH());
+    loft_write(buf, p, f, hem, true, true);
+    cw_stitch_round(buf, p, f, d, hem, 0.1); cw_stitch_round(buf, p, f, d, hem, cast(f32) (hem.n - 1) - 0.1);
+    cw_silver(p, d.obj);
+    loft_line(buf, p, f, body, 0.5, front, last - 0.9, front, d.sw * 1.5, d.lift, 8);
+    for side: 0..<2 {
+      s := ifx side == 0 then -1.0f32 else 1.0f32;
+      cw_silver(p, d.obj);
+      loft_line(buf, p, f, body, last - 2.3, front + s * 0.55, last - 1.6, front + s * 0.5, d.sw * 1.5, d.lift, 3);
+      cw_stitch(buf, p, f, d, body, 0.5, front + s * 0.2, last - 0.9, front + s * 0.26);
+      // a full sleeve gathered into a cuff, a zip pocket on its upper arm
+      sl := cw_sleeve(m, fit, side, 0, 4.55, e, e + 0.02 * u);
+      cw_cloth(p, d.obj + 3, CW_SOFT());
+      loft_write_round(buf, p, f, sl, 0.7, 0.01);
+      cuff := cw_sleeve(m, fit, side, 4.45, 4.85, 0.030 * u, 0.026 * u);
+      cw_cloth(p, d.obj + 3, CW_CLOTH());
+      loft_write(buf, p, f, cuff, true, true);
+      cw_stitch_round(buf, p, f, d, cuff, 0.1);
+      cw_stitch_round(buf, p, f, d, sl, 1.0);
+      out := cw_outside(side);
+      cw_stitch_box(buf, p, cw_on(f, sl, 2.0, out, d.lift), d, 0.014 * h, 0.022 * h);
+      cw_silver(p, d.obj);
+      loft_line(buf, p, f, sl, 1.75, out, 2.25, out, d.sw * 1.4, d.lift * 1.5, 2);
+    }
+    // the collar, and the hood lying on the back when it is down
+    nk := m.torso.r[CT_NECK];
+    collar := loft_new(14, 1);
+    collar = loft_add(collar, ring_level(v3(0, nk.c.y - 0.02 * h, nk.c.z), nk.rx + e + 0.01 * u, nk.rz + e + 0.01 * u));
+    collar = loft_add(collar, ring_level(v3(0, nk.c.y + 0.040 * h, nk.c.z - 0.008 * h), m.neck_r + 0.036 * u, m.neck_r + 0.040 * u));
+    cw_cloth(p, d.obj + 3, CW_SOFT());
+    loft_patch(buf, p, f, collar, 0, front + 0.35, front + TAU - 0.35, 1, front + 0.6, front + TAU - 0.6, 0, 2, 12);
+    cw_thread(p, d.obj);
+    loft_line(buf, p, f, collar, 1, front + 0.6, 1, front + TAU - 0.6, d.sw, d.lift, 14);
+    if hood_down {
+      cw_cloth(p, d.obj + 3, CW_SOFT());
+      ellipsoid(buf, p, kit_at(f, 0, nk.c.y + 0.005 * h, nk.c.z - nk.rz - e - 0.035 * h), m.neck_r * 2.3, 0.065 * h, 0.050 * h, 10, 6, 0);
+    }
+    // the drawstrings' silver ends
+    for side: 0..<2 {
+      s := ifx side == 0 then -1.0f32 else 1.0f32;
+      cw_silver(p, d.obj);
+      loft_line(buf, p, f, body, last - 1.2, front + s * 0.3, last - 0.75, front + s * 0.33, d.sw * 1.6, d.lift * 2, 2);
+    }
+  }
+  if kind == CW_COAT {
+    e := 0.050 * u;
+    top := cw_torso(m, fit, cast(f32) CT_HIPS, cast(f32) CT_NECK, e);
+    last := cast(f32) (top.n - 1);
+    gap0: f32 = 0.34; gap1: f32 = 0.50;
+    cw_cloth(p, d.obj + 3, CW_CLOTH());
+    loft_patch(buf, p, f, top, 0, front + gap1, front + TAU - gap1, last - 1, front + gap0, front + TAU - gap0, 0, (top.n - 2) * 2, 16);
+    loft_patch(buf, p, f, top, last - 1, front + gap0, front + TAU - gap0, last, front + 0.2, front + TAU - 0.2, 0, 2, 16);
+    skirt := cw_skirt(m, fit, cast(f32) CT_HIPS, 0.20 * h, e, 0.05 * h, 5);
+    ls := cast(f32) (skirt.n - 1);
+    loft_patch(buf, p, f, skirt, 0, front + gap1, front + TAU - gap1, ls, front + 0.85, front + TAU - 0.85, 0, 10, 16);
+    // the stitched edges and the hem
+    cw_thread(p, d.obj);
+    for side: 0..<2 {
+      s := ifx side == 0 then -1.0f32 else 1.0f32;
+      loft_line(buf, p, f, top, 0, front + s * (gap1 + 0.05), last - 1, front + s * (gap0 + 0.05), d.sw, d.lift, 10);
+      loft_line(buf, p, f, skirt, 0, front + s * (gap1 + 0.05), ls, front + s * 0.9, d.sw, d.lift, 8);
+      // a wide sleeve
+      sl := cw_sleeve(m, fit, side, 0, 4.7, e - 0.008 * u, e + 0.012 * u);
+      cw_cloth(p, d.obj + 3, CW_CLOTH());
+      loft_write_round(buf, p, f, sl, 0.7, 0);
+      cw_stitch_round(buf, p, f, d, sl, cast(f32) (sl.n - 1) - 0.08); cw_stitch_round(buf, p, f, d, sl, 1.0);
+      cw_thread(p, d.obj);
+    }
+    loft_line(buf, p, f, skirt, ls - 0.06, front + 0.87, ls - 0.06, front + TAU - 0.87, d.sw, d.lift, 24);
+    // the scarf: two layers round the shoulders and the neck, and an end hanging down the front
+    nk := m.torso.r[CT_NECK]; sh := m.torso.r[CT_SHOULDER];
+    cw_cloth(p, d.obj + 4, CW_SOFT());
+    for layer: 0..<2 {
+      k := cast(f32) layer;
+      sc := loft_new(14, 1);
+      tilt := unit_or(v3(0, 0.16 - k * 0.3, 1), v3(0, 0, 1));
+      sc = loft_add(sc, ring_axes(v3(0.01 * h * (k - 0.5), sh.c.y - 0.02 * h + k * 0.035 * h, sh.c.z + 0.01 * h), v3(1, 0, 0), tilt, lerp(sh.rx * 0.70, nk.rx * 1.3, k) + e, lerp(sh.rz * 1.15, nk.rz * 1.5, k) + e));
+      sc = loft_add(sc, ring_axes(v3(0.01 * h * (k - 0.5), sh.c.y + 0.016 * h + k * 0.035 * h, sh.c.z + 0.012 * h), v3(1, 0, 0), tilt, lerp(sh.rx * 0.74, nk.rx * 1.45, k) + e + 0.01 * h, lerp(sh.rz * 1.2, nk.rz * 1.6, k) + e + 0.01 * h));
+      sc = loft_add(sc, ring_axes(v3(0.01 * h * (k - 0.5), sh.c.y + 0.050 * h + k * 0.035 * h, sh.c.z + 0.008 * h), v3(1, 0, 0), tilt, lerp(sh.rx * 0.55, nk.rx * 1.2, k) + e * 0.6, lerp(sh.rz * 1.0, nk.rz * 1.3, k) + e * 0.6));
+      loft_write(buf, p, f, sc, false, false);
+    }
+    endf := kit_at(f, sh.rx * 0.34, sh.c.y - 0.085 * h, sh.c.z + sh.rz + e + 0.022 * h);
+    box(buf, p, frame_turn(endf, 2, 0.12), 0.030 * h, 0.085 * h, 0.008 * h);
+    cw_stitch_box(buf, p, frame_move(frame_turn(endf, 2, 0.12), add(endf.o, times(endf.z, 0.008 * h + d.lift))), d, 0.024 * h, 0.079 * h);
+  }
+}
+
+// A belt, by kind.
+cw_belt_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit: [] CwLog, kind: int, under: f32) {
+  u := d.u; h := m.h; front: f32 = PI * 0.5;
+  waist := cast(f32) CT_WAIST;
+  e := under + 0.012 * u;
+  if kind == CW_BELT_WIDE {
+    b := cw_belt(buf, p, f, d, m, fit, waist - 0.28, waist + 0.30, e, CW_DEEP());
+    mid := cast(f32) (b.n - 1) * 0.5;
+    cw_buckle(buf, p, cw_on(f, b, mid, front, 0.008 * u), d, 0.026 * h, 0.019 * h);
+    // belt loops and a keeper
+    for i: 0..<4 {
+      a := front + (cast(f32) i - 1.5) * 0.85;
+      cw_cloth(p, d.obj, CW_SOFT());
+      loft_line(buf, p, f, b, 0, a, cast(f32) (b.n - 1), a, 0.012 * h, 0.005 * u, 2);
+    }
+  }
+  if kind == CW_BELT_UTILITY {
+    b := cw_belt(buf, p, f, d, m, fit, waist - 0.16, waist + 0.16, e, CW_DEEP());
+    mid := cast(f32) (b.n - 1) * 0.5;
+    cw_buckle(buf, p, cw_on(f, b, mid, front, 0.007 * u), d, 0.017 * h, 0.012 * h);
+    cw_pocket(buf, p, f, d, b, mid, front + 0.95, 0.022 * h, 0.020 * h, 0.016 * u, true, false);
+    cw_cloth(p, d.obj, CW_SHELL());
+    box(buf, p, cw_on(f, b, mid, front - 0.7, 0.008 * u), 0.014 * h, 0.008 * h, 0.006 * u);
+  }
+  if kind == CW_BELT_SLUNG {
+    // a narrow belt that dips to the left hip
+    low := loft_ease(loft_cut(m.torso, cast(f32) CT_HIPS + 0.3, waist + 0.2), e, e);
+    ll := cast(f32) (low.n - 1);
+    cw_band(buf, p, f, d, low, ll - 0.1, front - PI, ll * 0.35, front - 0.6, 0.022 * h, 0.004 * u);
+    cw_band(buf, p, f, d, low, ll * 0.35, front - 0.6, ll * 0.2, front + 0.5, 0.022 * h, 0.004 * u);
+    cw_band(buf, p, f, d, low, ll * 0.2, front + 0.5, ll - 0.1, front + PI, 0.022 * h, 0.004 * u);
+    cw_buckle(buf, p, cw_on(f, low, ll * 0.28, front, 0.010 * u), d, 0.017 * h, 0.012 * h);
+    cw_pocket(buf, p, f, d, low, ll * 0.3, front + 1.25, 0.020 * h, 0.022 * h, 0.014 * u, true, false);
+  }
+  if kind == CW_BELT_DOUBLE {
+    b := cw_belt(buf, p, f, d, m, fit, waist - 0.22, waist + 0.24, e + 0.03 * u, CW_DEEP());
+    mid := cast(f32) (b.n - 1) * 0.5;
+    cw_buckle(buf, p, cw_on(f, b, mid, front - 0.18, 0.008 * u), d, 0.020 * h, 0.015 * h);
+    cw_buckle(buf, p, cw_on(f, b, mid, front + 0.55, 0.008 * u), d, 0.014 * h, 0.013 * h);
+    // the chest strap: from the left shoulder across to the right hip and up the back
+    chest := loft_ease(m.torso, e + 0.045 * u, e + 0.045 * u);
+    top := cast(f32) CT_UPPER + 0.5;
+    cw_band(buf, p, f, d, chest, top, front + 0.95, waist + 0.4, front - 1.15, 0.028 * h, 0.004 * u);
+    cw_band(buf, p, f, d, chest, waist + 0.4, front - 1.15, waist + 0.9, front - 2.2, 0.028 * h, 0.004 * u);
+    cw_band(buf, p, f, d, chest, waist + 0.9, front - 2.2, top, front - 4.3, 0.028 * h, 0.004 * u);
+    cw_buckle(buf, p, cw_on(f, chest, lerp(top, waist + 0.4, 0.3), lerp(front + 0.95, front - 1.15, 0.3), 0.010 * u), d, 0.019 * h, 0.014 * h);
+    cw_buckle(buf, p, cw_on(f, chest, lerp(top, waist + 0.4, 0.72), lerp(front + 0.95, front - 1.15, 0.72), 0.010 * u), d, 0.019 * h, 0.014 * h);
+  }
+  if kind == CW_BELT_TIED {
+    // a jacket tied by its sleeves: a roll round the hips, the knot in front with two sleeve ends
+    // hanging from it, and the jacket's body down the back
+    roll := cw_note(fit, loft_ease(loft_cut(m.torso, cast(f32) CT_HIPS + 0.5, waist + 0.05), e + 0.036 * u, e + 0.042 * u), CW_ON_TORSO, 0);
+    cw_cloth(p, d.obj + 3, CW_SOFT());
+    loft_write(buf, p, f, roll, true, true);
+    lr := cast(f32) (roll.n - 1);
+    cw_stitch_round(buf, p, f, d, roll, lr * 0.5);
+    drape := cw_skirt(m, fit, cast(f32) CT_HIPS + 0.6, m.crotch_y - 0.17 * h, e + 0.03 * u, 0.02 * h, 4);
+    ld := cast(f32) (drape.n - 1);
+    cw_cloth(p, d.obj + 3, CW_SOFT());
+    loft_patch(buf, p, f, drape, 0, front + 1.0, front + TAU - 1.0, ld, front + 1.45, front + TAU - 1.45, 0, 8, 14);
+    cw_thread(p, d.obj);
+    loft_line(buf, p, f, drape, ld - 0.05, front + 1.47, ld - 0.05, front + TAU - 1.47, d.sw, d.lift, 16);
+    loft_line(buf, p, f, drape, 0, front + 1.05, ld, front + 1.5, d.sw, d.lift, 6);
+    loft_line(buf, p, f, drape, 0, front + TAU - 1.05, ld, front + TAU - 1.5, d.sw, d.lift, 6);
+    kf := cw_on(f, roll, lr * 0.5, front, 0.02 * u);
+    cw_cloth(p, d.obj + 3, CW_SOFT());
+    ellipsoid(buf, p, kf, 0.040 * h, 0.030 * h, 0.028 * h, 8, 5, 0);
+    for side: 0..<2 {
+      s := ifx side == 0 then -1.0f32 else 1.0f32;
+      a := fp(kf, s * 0.022 * h, -0.01 * h, 0); b := fp(kf, s * 0.070 * h, -0.155 * h, 0.012 * h);
+      cw_cloth(p, d.obj + 3, CW_SOFT());
+      limb(buf, p, a, b, 0.024 * h, 0.030 * h, fd(f, 0, 0, 1), 8);
+      // the sleeve end's cuff
+      cw_cloth(p, d.obj + 3, CW_CLOTH());
+      limb(buf, p, add(b, times(sub(b, a), -0.14)), add(b, times(sub(b, a), 0.04)), 0.033 * h, 0.033 * h, fd(f, 0, 0, 1), 8);
+      cw_thread(p, d.obj);
+      cf := frame_along(a, b, fd(f, 1, 0, 0));
+      tube(buf, p, kit_at(cf, 0, length(sub(b, a)) * 0.83, 0), d.sw, 0.033 * h + d.lift, 0.033 * h + d.lift, 0.033 * h + d.lift, 0.033 * h + d.lift, 8, false);
+    }
+  }
+}
+
+// What is worn on the head and the face.
+cw_head_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit: [] CwLog, head: int, face: int) {
+  u := d.u; h := m.h;
+  hf := ch_frame(f, m);
+  rx := m.head_rx; ry := m.head_ry; rz := m.head_rz;
+  if face == CW_MASK {
+    cw_cloth(p, d.obj + 4, CW_DEEP());
+    ellipsoid(buf, p, kit_at(hf, 0, -ry * 0.50, rz * 0.07), rx * 1.03, ry * 0.60, rz * 1.02, 12, 6, 0);
+    cw_thread(p, d.obj);
+    dash(buf, p, kit_at(hf, 0, -ry * 0.16, rz * 1.0), -rx * 0.42, 0, rx * 0.42, 0, d.sw * 0.8, d.sw * 0.8);
+  }
+  if head == CW_GOGGLES {
+    // pushed up on the brow: a strap round the head and two lenses in silver rims
+    cw_cloth(p, d.obj + 4, CW_DEEP());
+    tube(buf, p, kit_at(hf, 0, ry * 0.36, -rz * 0.04), ry * 0.2, rx * 1.10, rz * 1.10, rx * 1.03, rz * 1.06, 14, false);
+    for side: 0..<2 {
+      sx := cb_side(side);
+      a := fp(hf, sx * rx * 0.40, ry * 0.52, rz * 0.80); b := fp(hf, sx * rx * 0.42, ry * 0.60, rz * 1.12);
+      kit_pen(p, d.obj + 4, MAT_SKIN, CW_METAL());
+      limb(buf, p, a, b, rx * 0.34, rx * 0.34, hf.x, 10);
+      kit_pen(p, d.obj + 5, MAT_WINDOW, kit_tint(0.10, 0.13, 0.16));
+      limb(buf, p, a, add(b, times(unit_or(sub(b, a), hf.z), 0.004 * u)), rx * 0.26, rx * 0.26, hf.x, 10);
+    }
+  }
+  if head == CW_HOOD {
+    // a hood up over the head: open round the face, peaked, falling to the shoulders
+    nk := m.torso.r[CT_NECK];
+    hood := loft_new(16, 1);
+    ys := [7] f32.[-1.55, -1.0, -0.45, 0.2, 0.7, 1.05, 1.28];
+    ws := [7] f32.[1.25, 1.18, 1.26, 1.30, 1.16, 0.78, 0.10];
+    fr := [7] f32.[1.10, 1.22, 1.34, 1.36, 1.26, 0.9, 0.2];
+    bk := [7] f32.[1.15, 1.20, 1.30, 1.36, 1.30, 1.0, 0.35];
+    for i: 0..<7 {
+      y := m.head.y + ys[i] * ry;
+      g := cb_hull_at(m, y);
+      wx := hi(rx * ws[i], g.rx + 0.01 * u);
+      front := hi(m.head.z + rz * fr[i], g.front + 0.008 * u); back := lo(m.head.z - rz * bk[i], g.back - 0.01 * u);
+      if i == 6 { wx = rx * ws[i]; front = m.head.z + rz * fr[i]; back = m.head.z - rz * bk[i]; }
+      hood = loft_add(hood, ring_level(v3(0, y, (front + back) * 0.5), wx, (front - back) * 0.5));
+    }
+    open := [7] f32.[0.0, 0.42, 0.74, 0.80, 0.62, 0.0, 0.0];
+    q: f32 = PI * 0.5;
+    cw_cloth(p, d.obj + 4, CW_CLOTH());
+    for i: 0..<6 { loft_patch(buf, p, f, hood, cast(f32) i, q + open[i], q + TAU - open[i], cast(f32) i + 1, q + open[i + 1], q + TAU - open[i + 1], 0, 2, 16); }
+    cw_thread(p, d.obj);
+    for i: 1..<5 {
+      loft_line(buf, p, f, hood, cast(f32) i, q + open[i] + 0.04, cast(f32) i + 1, q + open[i + 1] + 0.04, d.sw, d.lift, 3);
+      loft_line(buf, p, f, hood, cast(f32) i, q - open[i] - 0.04, cast(f32) i + 1, q - open[i + 1] - 0.04, d.sw, d.lift, 3);
+    }
+  }
+  if head == CW_HELMET {
+    // a clear bubble: its seat ring on the collar, hoops for the glass, and an ear piece each side
+    nk := m.torso.r[CT_NECK];
+    seat := loft_new(16, 1);
+    r := rx * 1.72;
+    seat = loft_add(seat, ring_level(v3(0, nk.c.y + 0.004 * h, nk.c.z), lo(nk.rx + 0.03 * h, r * 0.9), lo(nk.rz + 0.03 * h, r * 0.9)));
+    seat = loft_add(seat, ring_level(v3(0, nk.c.y + 0.022 * h, m.head.z), r * 0.80, r * 0.80));
+    seat = loft_add(seat, ring_level(v3(0, nk.c.y + 0.040 * h, m.head.z), r * 0.84, r * 0.84));
+    kit_pen(p, d.obj + 4, MAT_SKIN, CW_SHELL());
+    loft_write(buf, p, f, seat, false, false);
+    cw_cloth(p, d.obj + 4, CW_DEEP());
+    loft_line(buf, p, f, seat, 1.5, 0, 1.5, TAU, 0.008 * h, 0.002 * u, 16);
+    c := v3(m.head.x, m.head.y + ry * 0.12, m.head.z);
+    kit_pen(p, d.obj + 5, MAT_SKIN, CW_SHELL());
+    for hoop: 0..<2 {
+      for i: 0..<20 {
+        a0 := -0.62 + cast(f32) i * (PI + 1.24) / 20.0; a1 := -0.62 + cast(f32) (i + 1) * (PI + 1.24) / 20.0;
+        p0 := ifx hoop == 0 then v3(c.x + cos(a0) * r, c.y + sin(a0) * r, c.z) else v3(c.x, c.y + sin(a0) * r, c.z + cos(a0) * r);
+        p1 := ifx hoop == 0 then v3(c.x + cos(a1) * r, c.y + sin(a1) * r, c.z) else v3(c.x, c.y + sin(a1) * r, c.z + cos(a1) * r);
+        limb(buf, p, fp3(f, p0), fp3(f, p1), 0.0045 * h, 0.0045 * h, fd(f, 0.3, 0.2, 0.9), 5);
+      }
+    }
+    for side: 0..<2 {
+      sx := cb_side(side);
+      kit_pen(p, d.obj + 5, MAT_SKIN, CW_SHELL());
+      limb(buf, p, fp(hf, sx * rx * 0.95, -ry * 0.08, 0), fp(hf, sx * rx * 1.42, -ry * 0.08, 0), rx * 0.38, rx * 0.32, hf.z, 10);
+      cw_cloth(p, d.obj + 4, CW_DEEP());
+      limb(buf, p, fp(hf, sx * rx * 1.42, -ry * 0.08, 0), fp(hf, sx * rx * 1.50, -ry * 0.08, 0), rx * 0.20, rx * 0.18, hf.z, 8);
+    }
+  }
+}
+
+// What is carried: a pack on the right hip with its hose, a satchel on a cross strap, a wrench at the left hip.
+cw_carry_write :: (buf: [] u32, p: [] Pen, f: Frame, d: CwDraw, m: CrewForm, fit: [] CwLog, pack: int, satchel: int, tool: int, under: f32) {
+  u := d.u; h := m.h; front: f32 = PI * 0.5;
+  waist := cast(f32) CT_WAIST;
+  over := loft_ease(m.torso, under + 0.016 * u, under + 0.016 * u);
+  if pack == 1 {
+    // on the right hip (the figure's -x): a white case with a dark face, strapped on, a hose to the back
+    pf := cw_on(f, over, cast(f32) CT_HIPS + 0.8, front + 1.75, 0.045 * h);
+    kit_pen(p, d.obj + 6, MAT_SKIN, CW_SHELL());
+    box(buf, p, pf, 0.040 * h, 0.058 * h, 0.036 * h);
+    ellipsoid(buf, p, kit_at(pf, 0, 0.058 * h, 0), 0.040 * h, 0.022 * h, 0.036 * h, 8, 4, 0);
+    cw_cloth(p, d.obj + 6, CW_DEEP());
+    box(buf, p, kit_at(pf, 0, 0.004 * h, 0.036 * h), 0.026 * h, 0.036 * h, 0.004 * h);
+    cw_silver(p, d.obj);
+    dash(buf, p, kit_at(pf, 0, 0.004 * h, 0.041 * h), -0.014 * h, 0.018 * h, 0.014 * h, 0.018 * h, d.sw, d.sw);
+    cw_cloth(p, d.obj + 6, CW_DEEP());
+    for i: 0..<6 {
+      a0 := cast(f32) i * 0.5; a1 := cast(f32) (i + 1) * 0.5;
+      q0 := fp(pf, -0.03 * h - sin(a0) * 0.03 * h, 0.06 * h - a0 * 0.03 * h, -0.02 * h - (1 - cos(a0)) * 0.03 * h);
+      q1 := fp(pf, -0.03 * h - sin(a1) * 0.03 * h, 0.06 * h - a1 * 0.03 * h, -0.02 * h - (1 - cos(a1)) * 0.03 * h);
+      limb(buf, p, q0, q1, 0.010 * h, 0.010 * h, fd(f, 0, 0, 1), 6);
+    }
+    cw_band(buf, p, f, d, over, waist + 0.2, front + 1.2, cast(f32) CT_UPPER + 0.4, front + 0.75, 0.020 * h, 0.004 * u);
+  }
+  if satchel == 1 {
+    // a strap from the right shoulder across the chest to a bag on the left hip
+    top := cast(f32) CT_UPPER + 0.55;
+    cw_band(buf, p, f, d, over, top, front + 0.95, waist - 0.6, front - 1.3, 0.026 * h, 0.006 * u);
+    cw_band(buf, p, f, d, over, waist - 0.6, front - 1.3, waist + 0.6, front - 2.6, 0.026 * h, 0.006 * u);
+    cw_band(buf, p, f, d, over, waist + 0.6, front - 2.6, top, front - 4.3, 0.026 * h, 0.006 * u);
+    cw_buckle(buf, p, cw_on(f, over, lerp(top, waist - 0.6, 0.35), lerp(front + 0.95, front - 1.3, 0.35), 0.012 * u), d, 0.018 * h, 0.013 * h);
+    bf := cw_on(f, over, cast(f32) CT_HIPS + 0.3, front - 1.35, 0.045 * h);
+    cw_cloth(p, d.obj + 6, CW_SOFT());
+    box(buf, p, bf, 0.052 * h, 0.056 * h, 0.030 * h);
+    face := frame_move(bf, add(bf.o, times(bf.z, 0.030 * h + d.lift)));
+    cw_stitch_box(buf, p, face, d, 0.046 * h, 0.050 * h);
+    cw_thread(p, d.obj);
+    dash(buf, p, face, -0.046 * h, 0.012 * h, 0.046 * h, 0.012 * h, d.sw, d.sw);
+    cw_buckle(buf, p, frame_move(face, add(face.o, times(bf.y, 0.012 * h))), d, 0.012 * h, 0.010 * h);
+  }
+  if tool == 1 {
+    // a wrench hanging at the right hip, jaws down
+    tf := cw_on(f, over, cast(f32) CT_HIPS + 0.9, front + 1.05, 0.016 * h);
+    cw_cloth(p, d.obj + 6, CW_DEEP());
+    box(buf, p, kit_at(tf, 0, 0.012 * h, 0), 0.012 * h, 0.020 * h, 0.006 * h);
+    kit_pen(p, d.obj + 7, MAT_SKIN, CW_METAL());
+    box(buf, p, kit_at(tf, 0, -0.06 * h, 0.004 * h), 0.009 * h, 0.07 * h, 0.004 * h);
+    box(buf, p, kit_at(tf, -0.012 * h, -0.142 * h, 0.004 * h), 0.006 * h, 0.018 * h, 0.004 * h);
+    box(buf, p, kit_at(tf, 0.012 * h, -0.142 * h, 0.004 * h), 0.006 * h, 0.018 * h, 0.004 * h);
+    box(buf, p, kit_at(tf, 0, -0.126 * h, 0.004 * h), 0.018 * h, 0.008 * h, 0.004 * h);
+  }
+}
+
+// ---- a whole dressed character
+
+// How much room the top and the outer layer take over the torso, for a belt or a strap over them.
+cw_under :: (o: CrewOutfit, u: f32) -> f32 {
+  top := o.v[CW_TOP];
+  loose := top == CW_TOP_FLIGHT || top == CW_TOP_SHIRT || top == CW_TOP_TUNIC;
+  legs := o.v[CW_LEGS];
+  seat := ifx legs == CW_LEGS_CARGO then 0.040 * u else ifx legs == CW_LEGS_FLIGHT || legs == CW_LEGS_OVERALLS then 0.032 * u else 0.016 * u;
+  return hi(ifx loose then CW_LOOSE * u else CW_FITTED * u, seat);
+}
+// Writes the character: skin, face and hair (crew-head.coax), then the outfit's pieces, each fitted
+// to the form. It uses objects obj to obj + 9, and notes every fitted loft in `fit` (pass an empty
+// view to skip the notes).
+cw_write :: (buf: [] u32, p: [] Pen, f: Frame, m: CrewForm, look: CrewLook, o: CrewOutfit, obj: int, fit: [] CwLog) {
+  d := cw_draw(m, obj + 2);
+  top := o.v[CW_TOP];
+  ch_skin_write(buf, p, f, m, look, obj, top == CW_TOP_CROP, top == CW_TOP_CROP || top == CW_TOP_FLIGHT);
+  if o.v[CW_FACE] != CW_MASK || true { ch_face_write(buf, p, f, m, look, obj); }
+  ch_hair_write(buf, p, f, m, look, obj + 1, ifx cw_hidden(o, CW_HAIR) then CH_PRESSED else CH_BARE);
+  cw_legs_write(buf, p, f, d, m, fit, o.v[CW_LEGS]);
+  cw_boots_write(buf, p, f, d, m, fit, o.v[CW_FEET]);
+  cw_top_write(buf, p, f, d, m, fit, top, ch_skin(look));
+  if o.v[CW_HANDS] != 0 { cw_gloves_write(buf, p, f, d, m, fit, o.v[CW_HANDS]); }
+  under := cw_under(o, d.u);
+  outer := o.v[CW_OUTER];
+  if outer != 0 { cw_outer_write(buf, p, f, d, m, fit, outer, !cw_hidden(o, CW_JACKET_HOOD)); }
+  belt := cw_shown(o, CW_BELT);
+  if belt != 0 { cw_belt_write(buf, p, f, d, m, fit, belt, under); }
+  cw_head_write(buf, p, f, d, m, fit, o.v[CW_HEAD], o.v[CW_FACE]);
+  over := ifx outer == CW_COAT then 0.050 * d.u else ifx outer == CW_JACKET then 0.046 * d.u else under;
+  cw_carry_write(buf, p, f, d, m, fit, o.v[CW_PACK], o.v[CW_SATCHEL], o.v[CW_TOOL], hi(under, over));
+}
+
+CwTest :: struct { buf: [CW_BUDGET * VERTEX_WORDS] u32; fit: [1] CwLog; }
+
+#test "every slot's pieces have a name and a key, and the six outfits are whole" {
+  n := CW_COUNT;
+  for s: 0..<CW_SLOTS {
+    #assert n[s] >= 2 && n[s] <= CW_MOST;
+    for k: 0..<CW_MOST {
+      has := cw_piece_key(s, k).count > 0;
+      #assert has == (k < n[s]) && (cw_piece_name(s, k).count > 0) == has;
+    }
+  }
+  for k: 0..<CW_OUTFITS {
+    o := cw_outfit(k);
+    #assert cw_bad(o) == -1 && cw_outfit_of(o) == k;
+    // every outfit has boots, gloves, a top and trousers
+    #assert o.v[CW_HANDS] != 0;
+  }
+  bad := cw_outfit(0); bad.v[CW_BELT] = 6;
+  #assert cw_bad(bad) == CW_BELT && cw_outfit_of(bad) == -1;
+  bad.v[CW_BELT] = 1; bad.v[CW_HEAD] = -1;
+  #assert cw_bad(bad) == CW_HEAD;
+}
+#test "the rules between slots: a helmet hides the hair and a hood, a coat hides a tied jacket, overalls replace the belt" {
+  vac := cw_outfit(CW_VAC_SUIT);
+  #assert cw_hidden(vac, CW_HAIR) && cw_hidden(vac, CW_JACKET_HOOD) && !cw_hidden(vac, CW_BELT);
+  #assert !cw_hidden(cw_outfit(CW_RUNNER), CW_HAIR) && !cw_hidden(cw_outfit(CW_RUNNER), CW_JACKET_HOOD);
+  #assert cw_hidden(cw_outfit(CW_SHROUD), CW_HAIR);
+  o := cw_outfit(CW_DECKHAND);
+  #assert cw_shown(o, CW_BELT) == CW_BELT_TIED;
+  o.v[CW_OUTER] = CW_COAT;
+  #assert cw_hidden(o, CW_BELT) && cw_shown(o, CW_BELT) == 0;
+  o.v[CW_BELT] = CW_BELT_WIDE;
+  #assert !cw_hidden(o, CW_BELT) && cw_shown(o, CW_BELT) == CW_BELT_WIDE;   // a coat hides only the tied jacket
+  o.v[CW_LEGS] = CW_LEGS_OVERALLS;
+  #assert cw_shown(o, CW_BELT) == 0;
+  #assert cw_shown(cw_outfit(CW_FITTER), CW_LEGS) == CW_LEGS_OVERALLS;
+}
+#test "every outfit on every body: no garment thinner than the body under it, and inside the vertex budget" {
+  h: [1] CwTest;
+  for body: 0..<CB_PRESETS {
+    m := cb_form(cb_preset(body));
+    for outfit: 0..<CW_OUTFITS {
+      pen := [1] Pen.[Pen.{}];
+      h[0].fit[0].n = 0; h[0].fit[0].over = false;
+      cw_write(h[0].buf[..], pen[..], frame_at(v3(0, 0, 0), 0), m, CrewLook.{}, cw_outfit(outfit), 8, h[0].fit[..]);
+      #assert !pen[0].over && pen[0].n > 6000 && pen[0].n <= CW_BUDGET;
+      #assert !h[0].fit[0].over && h[0].fit[0].n >= 8;
+      for i: 0..<h[0].fit[0].n { #assert cw_covers(m, h[0].fit[0].loft[i], h[0].fit[0].base[i], h[0].fit[0].side[i]); }
+    }
+  }
+}
+#test "every single piece fits the two bodies furthest apart, and a thinned garment is caught" {
+  h: [1] CwTest;
+  n := CW_COUNT;
+  for body: 0..<2 {
+    m := cb_form(cb_preset(ifx body == 0 then CB_ELDER else CB_KID));
+    for s: 0..<CW_SLOTS {
+      for k: 0..<n[s] {
+        o := cw_outfit(CW_FLIGHT_SUIT); o.v[s] = k;
+        pen := [1] Pen.[Pen.{}];
+        h[0].fit[0].n = 0; h[0].fit[0].over = false;
+        cw_write(h[0].buf[..], pen[..], frame_at(v3(0, 0, 0), 0), m, CrewLook.{}, o, 8, h[0].fit[..]);
+        #assert !pen[0].over && !h[0].fit[0].over;
+        for i: 0..<h[0].fit[0].n { #assert cw_covers(m, h[0].fit[0].loft[i], h[0].fit[0].base[i], h[0].fit[0].side[i]); }
+      }
+    }
+  }
+  m := cb_form(cb_preset(CB_ELDER));
+  thin := loft_ease(m.torso, -0.01, -0.01);
+  #assert !cw_covers(m, thin, CW_ON_TORSO, 0) && cw_covers(m, loft_ease(m.torso, 0.01, 0.01), CW_ON_TORSO, 0);
+  #assert !cw_covers(m, loft_ease(m.leg[0], -0.01, -0.01), CW_ON_LEG, 0) && cw_covers(m, loft_ease(m.arm[1], 0.002, 0.002), CW_ON_ARM, 1);
+  // a skirt cut for the kid does not cover the elder
+  spare: [1] CwLog; empty := spare[0..<0];
+  small := cw_skirt(cb_form(cb_preset(CB_KID)), empty, cast(f32) CT_HIPS, 0.3, 0.02, 0.02, 4);
+  #assert !cw_covers(m, small, CW_ON_HULL, 0);
+}
+#test "a garment follows the body: the elder's belt is longer round than the kid's, the bruiser's sleeve wider than the scout's" {
+  spare: [1] CwLog; empty := spare[0..<0];
+  el := cb_form(cb_preset(CB_ELDER)); ki := cb_form(cb_preset(CB_KID));
+  be := cw_torso(el, empty, cast(f32) CT_WAIST - 0.2, cast(f32) CT_WAIST + 0.2, 0.02);
+  bk := cw_torso(ki, empty, cast(f32) CT_WAIST - 0.2, cast(f32) CT_WAIST + 0.2, 0.02);
+  #assert be.r[0].rx > bk.r[0].rx * 1.8 && be.r[0].rz > bk.r[0].rz * 2;
+  br := cb_form(cb_preset(CB_BRUISER)); sc := cb_form(cb_preset(CB_SCOUT));
+  #assert cw_sleeve(br, empty, 0, 0, 5, 0.02, 0.02).r[2].rx > cw_sleeve(sc, empty, 0, 0, 5, 0.02, 0.02).r[2].rx * 1.6;
+  // a baggy leg is wider at the calf than at the hip's ease, and gathered at the boot
+  leg := cw_leg(sc, empty, 0, 0.03, 0.08, 0.08, 0.03);
+  #assert leg.n == CL_CALF + 3 && leg.r[CL_CALF].rx - sc.leg[0].r[CL_CALF].rx > 0.079 && leg.r[leg.n - 1].rx < leg.r[leg.n - 2].rx;
+}

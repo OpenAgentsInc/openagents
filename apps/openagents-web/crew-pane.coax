@@ -1,0 +1,536 @@
+// Crew's pane (GitHub #13462; docs/metaverse/2026-11-13-character-creation.md, "The process a
+// player sees"): the creation screen's controls, standing beside the scene and never over the
+// character. A strip of views across the top, and on the turntable a pane of five steps a player
+// may take in any order: Body, Face and hair, Outfit, Carry, Name. RANDOM makes a whole valid
+// character.
+//
+// It is a module of its own beside the page's (crew.coax), as the editor's shell is. It holds the
+// character's document (metaverse-engine/kit/crew-doc.coax) and sends it to the page whenever it
+// changes, with the words that say what to show and the word to keep it (crew-show.coax). The
+// page tells it what it holds when the page opens.
+//
+// It has no look of its own. Every node is a kit component (components/kit/frames.coax and
+// dock.coax), the stylesheet is the mono skin's, and this file names no colour, face or size
+// (coax/web/tool.sh editor-skin-check).
+//   coax/bin/coax test apps/openagents-web/crew-pane.coax
+#load "../../components/kit/dock.coax";
+#load "../../components/backend/dom.coax";
+#load "../../metaverse-engine/kit/crew-doc.coax";
+#load "crew-show.coax";
+
+CP_INBOX :: 2048;
+CP_CSS :: 28672;
+CP_ACT :: CD_TEXT;      // bytes one action for the page takes
+CP_ACTS :: 4;
+CP_CLICK :: 1; CP_INPUT :: 2; CP_SUBMIT :: 3; CP_MODEL :: 6;
+CP_STEPS :: 5;
+CP_BODY :: 0; CP_FACE :: 1; CP_OUTFIT :: 2; CP_CARRY :: 3; CP_NAME :: 4;
+CP_STEP_NAMES :: [CP_STEPS] string.["Body", "Face and hair", "Outfit", "Carry", "Name"];
+CP_LOOK_NAMES :: [CH_FIELDS] string.["Skin", "Hair", "Hair colour", "Jaw", "Eyes", "Brows", "Nose", "Mark"];
+CP_OPEN_NONE :: 0; CP_OPEN_OUTFIT :: 1; CP_OPEN_BODY :: 2;
+
+CrewPane :: struct {
+  ready: bool; time: f32; dirty: bool; animating: bool;
+  have: bool;                           // the page said what it holds
+  doc: [1] CrewDoc;
+  step: int;
+  view: int = CR_ONE; outfit: int; body: int = CB_FIGHTER;   // what the scene shows
+  open: int;                            // the one select that is open (CP_OPEN_*)
+  spin: bool = true;
+  seed: int;                            // RANDOM's next seed
+  kept: bool;                           // this browser keeps the character as it is now
+  fill: bool;                           // the sliders and the name field are due their values
+  name: [CD_NAME] u8; name_n: int;      // the name as typed, until it is one a document may carry
+  name_bad: bool;
+  text: [CD_TEXT] u8; text_n: int;      // the document's text, as it is shown and sent
+  acts: [CP_ACTS] [CP_ACT] u8; act_n: [CP_ACTS] int; act_kind: [CP_ACTS] int; nacts: int;
+  inbox: [CP_INBOX] u8;
+  sets: [MF_COUNT] AfSettings;
+  css: [CP_CSS] u8;
+  ui: [1] Ui;
+  tree: [1] Tree;
+  dom: [1] Dom;
+}
+
+cp_act :: (s: [] CrewPane, kind: int, body: string) -> bool {
+  if s[0].nacts >= CP_ACTS || body.count > CP_ACT || body.count == 0 { return false; }
+  k := s[0].nacts;
+  for i: 0..<body.count { s[0].acts[k][i] = body[i]; }
+  s[0].act_n[k] = body.count; s[0].act_kind[k] = kind; s[0].nacts += 1;
+  return true;
+}
+// The character changed here: its text is written again, the page is sent it, and it is no longer the kept one.
+cp_changed :: (s: [] CrewPane) {
+  n := cd_write(s[0].doc[0], s[0].text[..]);
+  s[0].text_n = hi_i(n, 0);
+  s[0].kept = false;
+  // only the newest document matters to the page: one that still waits is replaced
+  for k: 0..<s[0].nacts { if s[0].act_kind[k] == CR_LOAD_DOC { for i: 0..<s[0].text_n { s[0].acts[k][i] = s[0].text[i]; } s[0].act_n[k] = s[0].text_n; return; } }
+  _ = cp_act(s, CR_LOAD_DOC, cast(string) s[0].text[0..<s[0].text_n]);
+}
+// The page is told what to show: "view fit outfit runner body kid spin on".
+cp_show :: (s: [] CrewPane) {
+  vk := CR_VIEW_KEYS; ok := CW_OUTFIT_KEYS; bk := CB_PRESET_KEYS;
+  line: [96] u8;
+  n := cd_put(line[..], 0, "view "); n = cd_put(line[..], n, vk[s[0].view]);
+  n = cd_put(line[..], n, " outfit "); n = cd_put(line[..], n, ok[s[0].outfit]);
+  n = cd_put(line[..], n, " body "); n = cd_put(line[..], n, bk[s[0].body]);
+  n = cd_put(line[..], n, " spin "); n = cd_put(line[..], n, ifx s[0].spin then "on" else "off");
+  _ = cp_act(s, CR_SHOW, cast(string) line[0..<n]);
+}
+cp_id_is :: (id: string, part: string) -> bool { return id.count > part.count && cast(string) id[0..<part.count] == part; }
+// The number an id ends with after `part` ("b.12" after "b." is 12), -1 when it is not one. `tail`: what may follow the number (".less").
+cp_index :: (id: string, part: string, tail: string) -> int {
+  if !cp_id_is(id, part) { return -1; }
+  end := id.count;
+  if tail.count > 0 {
+    if id.count <= part.count + tail.count || cast(string) id[id.count - tail.count..<id.count] != tail { return -1; }
+    end = id.count - tail.count;
+  }
+  v := 0;
+  for i: part.count..<end { c := cast(int) id[i] - 48; if c < 0 || c > 9 { return -1; } v = v * 10 + c; }
+  return ifx end > part.count then v else -1;
+}
+// A body number as words: "175 cm", "104%", "25".
+cp_number :: (out: [] u8, i: int, v: int) -> string {
+  units := CB_UNITS;
+  n := cd_put_int(out, 0, v); n = cd_put(out, n, units[i]);
+  return cast(string) out[0..<n];
+}
+// The name of a look's choice.
+cp_look_name :: (out: [] u8, field: int, v: int) -> string {
+  if field == 0 { t := CH_SKIN_NAMES; return t[v]; }
+  if field == 1 { t := CH_HAIR_NAMES; return t[v]; }
+  if field == 2 { t := CH_HAIR_COLOUR_NAMES; return t[v]; }
+  if field == 3 { t := CH_JAW_NAMES; return t[v]; }
+  if field == 4 { t := CH_EYE_NAMES; return t[v]; }
+  if field == 5 { t := CH_BROW_NAMES; return t[v]; }
+  if field == 6 { t := CH_NOSE_NAMES; return t[v]; }
+  t := CH_MARK_NAMES; return t[v];
+}
+
+cp_build :: (s: [] CrewPane) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  buf: [UI_ID] u8; line: [64] u8;
+  d := s[0].doc[0];
+  tr_begin(t);
+  dock := k_dock(t, "crew", true);
+  bar := k_pane(t, u, "bar", DK_TOP, "");
+  tr_attr(t, bar, AT_LABEL, "Crew");
+  if !s[0].have {
+    wait := tr_leaf(t, "bar.wait", TG_SPAN, "meta", "Opening the wardrobe");
+    k_pane_end(t);
+    tr_close(t);
+    return;
+  }
+  // the strip: which scene shows, and what a scene of six is of
+  vn := CR_VIEW_NAMES;
+  order := [CR_VIEWS] int.[CR_ONE, CR_ROW, CR_FIT, CR_OUTFITS];
+  for k: 0..<CR_VIEWS { v := order[k]; b := k_button(t, u, tr_join(buf[..], "view.", v), vn[v], ifx v == s[0].view then BS_PRIMARY else BS_PLAIN); }
+  if s[0].view == CR_FIT {
+    on := CW_OUTFIT_NAMES; notes := CW_OUTFIT_NOTES;
+    k_select_begin(t, u, "fit", on[s[0].outfit], "The outfit all six bodies wear", s[0].open == CP_OPEN_OUTFIT);
+    if s[0].open == CP_OPEN_OUTFIT { for k: 0..<CW_OUTFITS { r := k_row(t, u, tr_join(buf[..], "fit.", k), on[k], notes[k], k == s[0].outfit); } }
+    k_select_end(t, s[0].open == CP_OPEN_OUTFIT);
+  }
+  if s[0].view == CR_OUTFITS {
+    bn := CB_PRESET_NAMES; notes := CB_PRESET_NOTES;
+    k_select_begin(t, u, "who", bn[s[0].body], "The body that wears the six outfits", s[0].open == CP_OPEN_BODY);
+    if s[0].open == CP_OPEN_BODY { for k: 0..<CB_PRESETS { r := k_row(t, u, tr_join(buf[..], "who.", k), bn[k], notes[k], k == s[0].body); } }
+    k_select_end(t, s[0].open == CP_OPEN_BODY);
+  }
+  if s[0].view == CR_ONE {
+    rnd := k_button(t, u, "random", "Random", BS_PLAIN);
+    tr_attr(t, rnd, AT_TITLE, "Make a whole new character");
+    sp := k_button(t, u, "spin", ifx s[0].spin then "Hold still" else "Turn", BS_PLAIN);
+  }
+  k_pane_end(t);
+  if s[0].view != CR_ONE { tr_close(t); return; }
+
+  // the five steps, then the step that is open
+  steps := CP_STEP_NAMES;
+  side := k_pane(t, u, "steps", DK_RIGHT, "Character");
+  for k: 0..<CP_STEPS { r := k_row(t, u, tr_join(buf[..], "step.", k), steps[k], "", k == s[0].step); }
+  h := tr_leaf(t, "step.h", TG_H2, "sec-h", steps[s[0].step]);
+  if s[0].step == CP_BODY {
+    bn := CB_PRESET_NAMES; notes := CB_PRESET_NOTES;
+    was := cb_preset_of(d.body);
+    for k: 0..<CB_PRESETS { r := k_row(t, u, tr_join(buf[..], "shape.", k), bn[k], notes[k], k == was); }
+    names := CB_NAMES; low := CB_LO; high := CB_HI; step := CB_STEP;
+    for i: 0..<CB_NUMBERS { f := k_slider(t, tr_join(buf[..], "b.", i), names[i], cp_number(line[..], i, d.body.v[i]), low[i], high[i], step[i]); }
+  }
+  if s[0].step == CP_FACE {
+    names := CP_LOOK_NAMES; counts := CH_COUNTS;
+    for i: 0..<CH_FIELDS {
+      v := ch_get(d.look, i);
+      f := k_stepper(t, tr_join(buf[..], "l.", i), names[i], cp_look_name(line[..], i, v), v > 0, v < counts[i] - 1);
+    }
+  }
+  if s[0].step == CP_OUTFIT || s[0].step == CP_CARRY {
+    if s[0].step == CP_OUTFIT {
+      on := CW_OUTFIT_NAMES; notes := CW_OUTFIT_NOTES;
+      was := cw_outfit_of(d.wear);
+      for k: 0..<CW_OUTFITS { r := k_row(t, u, tr_join(buf[..], "suit.", k), on[k], notes[k], k == was); }
+    }
+    slots := CW_SLOT_NAMES; counts := CW_COUNT;
+    from := ifx s[0].step == CP_OUTFIT then 0 else CW_PACK; to := ifx s[0].step == CP_OUTFIT then CW_PACK else CW_SLOTS;
+    for i: from..<to {
+      v := d.wear.v[i];
+      f := k_stepper(t, tr_join(buf[..], "w.", i), slots[i], cw_piece_name(i, v), v > 0, v < counts[i] - 1);
+      // a piece another piece hides is said to be hidden, so a choice that shows nothing is no surprise
+      if cw_hidden(d.wear, i) && v != 0 {
+        n := cd_put(line[..], 0, slots[i]); n = cd_put(line[..], n, ": hidden by what is worn over it");
+        m := k_meta(t, tr_join(buf[..], "w.hid.", i), cast(string) line[0..<n]);
+      }
+    }
+  }
+  if s[0].step == CP_NAME {
+    f := k_prop(t, u, "name", "Name", "Ash");
+    if s[0].name_bad { m := k_meta(t, "name.bad", "A name is 1 to 24 letters, digits or marks, with no space at either end."); }
+    use := k_button(t, u, "use", "Use this character", ifx s[0].name_bad then BS_DISABLED else BS_PRIMARY);
+    if s[0].kept { nt := k_notice(t, u, "kept", "Kept", "This browser keeps the character. It opens here next time."); }
+    dh := tr_leaf(t, "doc.h", TG_H2, "sec-h", "Document");
+    code := k_code(t, u, "doc", "", cast(string) s[0].text[0..<s[0].text_n]);
+  }
+  k_pane_end(t);
+  tr_close(t);
+}
+
+cp_click :: (s: [] CrewPane, id: string) {
+  d := s[0].doc[0];
+  was_open := s[0].open;
+  s[0].open = CP_OPEN_NONE;
+  k := cp_index(id, "view.", "");
+  if k >= 0 && k < CR_VIEWS { if k != s[0].view { s[0].view = k; s[0].fill = true; cp_show(s); } return; }
+  if id == "fit" || id == "fit.l" { s[0].open = ifx was_open == CP_OPEN_OUTFIT then CP_OPEN_NONE else CP_OPEN_OUTFIT; return; }
+  if id == "who" || id == "who.l" { s[0].open = ifx was_open == CP_OPEN_BODY then CP_OPEN_NONE else CP_OPEN_BODY; return; }
+  k = cp_index(id, "fit.", "");
+  if k >= 0 && k < CW_OUTFITS { s[0].outfit = k; cp_show(s); return; }
+  k = cp_index(id, "who.", "");
+  if k >= 0 && k < CB_PRESETS { s[0].body = k; cp_show(s); return; }
+  if id == "spin" { s[0].spin = !s[0].spin; cp_show(s); return; }
+  if id == "random" {
+    s[0].seed += 1;
+    s[0].doc[0] = cd_random(s[0].seed);
+    s[0].name_n = s[0].doc[0].name_n; s[0].name = s[0].doc[0].name; s[0].name_bad = false;
+    s[0].fill = true; cp_changed(s);
+    return;
+  }
+  k = cp_index(id, "step.", "");
+  if k >= 0 && k < CP_STEPS { if k != s[0].step { s[0].step = k; s[0].fill = true; } return; }
+  k = cp_index(id, "shape.", "");
+  if k >= 0 && k < CB_PRESETS { s[0].doc[0].body = cb_preset(k); s[0].fill = true; cp_changed(s); return; }
+  k = cp_index(id, "suit.", "");
+  if k >= 0 && k < CW_OUTFITS { s[0].doc[0].wear = cw_outfit(k); cp_changed(s); return; }
+  for way: 0..<2 {
+    by := ifx way == 0 then -1 else 1;
+    tail := ifx way == 0 then ".less" else ".more";
+    k = cp_index(id, "l.", tail);
+    counts := CH_COUNTS;
+    if k >= 0 && k < CH_FIELDS {
+      v := ch_get(d.look, k) + by;
+      if v >= 0 && v < counts[k] { s[0].doc[0].look = ch_set(d.look, k, v); cp_changed(s); }
+      return;
+    }
+    k = cp_index(id, "w.", tail);
+    pieces := CW_COUNT;
+    if k >= 0 && k < CW_SLOTS {
+      v := d.wear.v[k] + by;
+      if v >= 0 && v < pieces[k] { s[0].doc[0].wear.v[k] = v; cp_changed(s); }
+      return;
+    }
+  }
+  if id == "use" && !s[0].name_bad {
+    _ = cp_act(s, CR_KEEP, "keep");
+    s[0].kept = true;   // until the page says otherwise
+  }
+}
+// What was typed or dragged: a slider's number, or the name.
+cp_input :: (s: [] CrewPane, id: string, length: int) {
+  n := ifx length < 0 then 0 else ifx length > CP_INBOX then CP_INBOX else length;
+  lo := 0; hi := n;
+  while lo < hi && (s[0].inbox[lo] == ' ' || s[0].inbox[lo] == '\n') { lo += 1; }
+  while hi > lo && (s[0].inbox[hi - 1] == ' ' || s[0].inbox[hi - 1] == '\n') { hi -= 1; }
+  typed := cast(string) s[0].inbox[lo..<hi];
+  k := cp_index(id, "b.", "");
+  if k >= 0 && k < CB_NUMBERS {
+    v := cd_int(typed);
+    low := CB_LO; high := CB_HI;
+    // the control's own ends are the range's, so a number outside them is not a move of it
+    if v == CD_NONE || v < low[k] || v > high[k] || v == s[0].doc[0].body.v[k] { return; }
+    s[0].doc[0].body.v[k] = v;
+    cp_changed(s);
+    return;
+  }
+  if id == "name" {
+    s[0].name_bad = !cd_name_ok(typed);
+    if s[0].name_bad { return; }
+    s[0].doc[0] = cd_set_name(s[0].doc[0], typed);
+    cp_changed(s);
+  }
+}
+// The page's word: a line of what it shows, then the character it holds.
+cp_model :: (s: [] CrewPane, length: int) {
+  n := ifx length < 0 then 0 else ifx length > CP_INBOX then CP_INBOX else length;
+  body := cast(string) s[0].inbox[0..<n];
+  e := 0; while e < body.count && body[e] != '\n' { e += 1; }
+  i := 0;
+  while i < e {
+    w := i; while w < e && body[w] != ' ' { w += 1; }
+    v := w + 1; ve := v; while ve < e && body[ve] != ' ' { ve += 1; }
+    what := cast(string) body[i..<w]; value := ifx v <= e then cast(string) body[v..<ve] else "";
+    if what == "view" { vk := CR_VIEW_KEYS; for k: 0..<CR_VIEWS { if vk[k] == value { s[0].view = k; } } }
+    if what == "outfit" { ok := CW_OUTFIT_KEYS; for k: 0..<CW_OUTFITS { if ok[k] == value { s[0].outfit = k; } } }
+    if what == "body" { bk := CB_PRESET_KEYS; for k: 0..<CB_PRESETS { if bk[k] == value { s[0].body = k; } } }
+    if what == "kept" { s[0].kept = value == "1"; }
+    i = ve + 1;
+  }
+  if e + 1 < body.count {
+    r := cd_read(cast(string) body[e + 1..<body.count]);
+    if r.ok {
+      s[0].doc[0] = r.doc;
+      s[0].name = r.doc.name; s[0].name_n = r.doc.name_n; s[0].name_bad = false;
+      m := cd_write(r.doc, s[0].text[..]);
+      s[0].text_n = hi_i(m, 0);
+      s[0].fill = true;
+    }
+  }
+  s[0].have = true;
+}
+
+// ---------------------------------------------------------------- the face's calls
+
+// One frame: builds and flushes if something changed or is entering. Bytes of commands to apply.
+coaxial_crewpane_frame :: (s: [] CrewPane, dt: f32, reduced: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  if !s[0].ready {
+    n := mono_frames(s[0].sets[..]);
+    s[0].ready = true; s[0].dirty = true; s[0].seed = 0;
+    s[0].doc[0] = cd_first();
+    m := cd_write(s[0].doc[0], s[0].text[..]);
+    s[0].text_n = hi_i(m, 0);
+    s[0].name = s[0].doc[0].name; s[0].name_n = s[0].doc[0].name_n;
+  }
+  step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].time += step;
+  if !s[0].dirty && !s[0].animating { return 0; }
+  d := s[0].dom[..];
+  if !d[0].styled {
+    n := mono_dock_css(s[0].css[..], mono_css(s[0].css[..]));
+    dm_style(d, cast(string) s[0].css[0..<n]);
+  }
+  ui_begin(s[0].ui[..], s[0].time, reduced);
+  cp_build(s);
+  ui_end(s[0].ui[..]);
+  // the sliders and the name's field hold the character's values: put on them when the character came
+  // from somewhere other than those controls (a preset, RANDOM, the page), in the flush that makes them
+  if s[0].fill && s[0].have && s[0].view == CR_ONE {
+    buf: [UI_ID] u8; num: [12] u8;
+    if s[0].step == CP_BODY {
+      for i: 0..<CB_NUMBERS { n := cd_put_int(num[..], 0, s[0].doc[0].body.v[i]); dm_value(d, tr_join(buf[..], "b.", i), cast(string) num[0..<n]); }
+    }
+    if s[0].step == CP_NAME { nm := s[0].name; dm_value(d, "name", cast(string) nm[0..<s[0].name_n]); }
+    s[0].fill = false;
+  }
+  s[0].animating = s[0].ui[0].busy;
+  s[0].dirty = false;
+  bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
+  if d[0].overflow { dm_reset(d); s[0].dirty = true; s[0].fill = true; return -1; }
+  return bytes;
+}
+coaxial_crewpane_busy :: (s: [] CrewPane) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating); }
+// A press (1), a field's text (2) or Enter in a field (3) on the node in this slot; or the page's word (6), in the inbox.
+coaxial_crewpane_event :: (s: [] CrewPane, kind: int, slot: int, length: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].dirty = true;
+  if kind == CP_MODEL { cp_model(s, length); return; }
+  id := dm_slot_id(s[0].dom[..], slot);
+  if id.count == 0 { return; }
+  if kind == CP_CLICK { cp_click(s, id); }
+  if kind == CP_INPUT { cp_input(s, id, length); }
+}
+coaxial_crewpane_size :: (s: [] CrewPane, slot: int, w: f32, h: f32) #export_c #effects(all) {
+  if s.count > 0 && dm_size(s[0].dom[..], slot, w, h) { s[0].dirty = true; }
+}
+coaxial_crewpane_inbox_cap :: () -> int #export_c #effects(all) { return CP_INBOX; }
+// The action that waits for the page: its kind (0: none) and its bytes (at acts[0]); done takes it away.
+coaxial_crewpane_act_kind :: (s: [] CrewPane) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].nacts > 0 then s[0].act_kind[0] else 0; }
+coaxial_crewpane_act_len :: (s: [] CrewPane) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].nacts > 0 then s[0].act_n[0] else 0; }
+coaxial_crewpane_act_done :: (s: [] CrewPane) #export_c #effects(all) {
+  if s.count < 1 || s[0].nacts < 1 { return; }
+  for k: 1..<s[0].nacts { s[0].acts[k - 1] = s[0].acts[k]; s[0].act_n[k - 1] = s[0].act_n[k]; s[0].act_kind[k - 1] = s[0].act_kind[k]; }
+  s[0].nacts -= 1;
+}
+
+// ---------------------------------------------------------------- checks
+
+CpTest :: struct { s: [1] CrewPane; }
+cp_test_frames :: (h: [] CpTest, n: int) { for k: 0..<n { _ = coaxial_crewpane_frame(h[0].s[..], 0.016, true); } }
+cp_test_told :: (h: [] CpTest, words: string, doc: string) {
+  s := h[0].s[..];
+  cp_test_frames(h, 1);
+  n := cd_put(s[0].inbox[..], 0, words); n = cd_put(s[0].inbox[..], n, "\n"); n = cd_put(s[0].inbox[..], n, doc);
+  coaxial_crewpane_event(s, CP_MODEL, 0, n);
+  cp_test_frames(h, 2);
+}
+cp_test_press :: (h: [] CpTest, id: string) { s := h[0].s[..]; coaxial_crewpane_event(s, CP_CLICK, dm_find(s[0].dom[..], id), 0); cp_test_frames(h, 1); }
+cp_test_type :: (h: [] CpTest, id: string, text: string) {
+  s := h[0].s[..];
+  n := cd_put(s[0].inbox[..], 0, text);
+  coaxial_crewpane_event(s, CP_INPUT, dm_find(s[0].dom[..], id), n);
+  cp_test_frames(h, 1);
+}
+// The action that waits, taken: its kind, and its words in out.
+cp_test_take :: (h: [] CpTest, out: [] u8) -> int {
+  s := h[0].s[..];
+  kind := coaxial_crewpane_act_kind(s);
+  n := coaxial_crewpane_act_len(s);
+  for i: 0..<n { out[i] = s[0].acts[0][i]; }
+  out[n] = 0;
+  coaxial_crewpane_act_done(s);
+  return kind * 100000 + n;
+}
+cp_test_styled :: (css: string, name: string) -> bool {
+  for i: 0..<css.count {
+    if css[i] != '.' || i + 1 + name.count > css.count || cast(string) css[i + 1..<i + 1 + name.count] != name { continue; }
+    after := i + 1 + name.count;
+    if after >= css.count { return true; }
+    b := css[after];
+    if !((b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '-' || b == '_') { return true; }
+  }
+  return false;
+}
+
+#test "before the page speaks the pane waits; then it is a strip of views and the five steps, with the body's presets and sliders" {
+  h: [1] CpTest; s := h[0].s[..]; t := s[0].tree[..];
+  cp_test_frames(h[..], 1);
+  #assert tr_find(t, "bar.wait") > 0 && tr_find(t, "steps") < 0;
+  cp_test_told(h[..], "view one outfit flight-suit body fighter kept 0", CD_PINNED);
+  #assert tr_find(t, "bar.wait") < 0 && tr_class(t, tr_find(t, "crew")) == "dock dock-over" && tr_class(t, tr_find(t, "steps")) == "pane pane-r";
+  #assert tr_attr_of(t, tr_find(t, "view.3"), AT_STATE) == "primary" && !tr_has(t, tr_find(t, "view.0"), AT_STATE) && tr_text_of(t, tr_find(t, "view.3.l")) == "Create";
+  for k: 0..<CP_STEPS { buf: [UI_ID] u8; #assert tr_find(t, tr_join(buf[..], "step.", k)) > 0; }
+  #assert tr_has(t, tr_find(t, "step.0"), AT_CURRENT) && tr_text_of(t, tr_find(t, "step.h")) == "Body";
+  // the fighter's preset is the current one; every number has a slider with its range and its value in words
+  #assert tr_has(t, tr_find(t, "shape.4"), AT_CURRENT) && !tr_has(t, tr_find(t, "shape.0"), AT_CURRENT);
+  #assert tr_attr_of(t, tr_find(t, "b.0"), AT_MIN) == "145" && tr_attr_of(t, tr_find(t, "b.0"), AT_MAX) == "225" && tr_text_of(t, tr_find(t, "b.0.v")) == "175 cm";
+  #assert tr_text_of(t, tr_find(t, "b.3.n")) == "Waist" && tr_text_of(t, tr_find(t, "b.3.v")) == "82%" && tr_find(t, "b.15") > 0 && tr_find(t, "b.16") < 0;
+  #assert t[0].lost == 0 && t[0].depth == 0 && s[0].nacts == 0;
+}
+#test "a preset, a slider, a look and a piece each change the document and send it to the page" {
+  h: [1] CpTest; s := h[0].s[..]; t := s[0].tree[..]; out: [CD_TEXT + 1] u8;
+  cp_test_told(h[..], "view one outfit flight-suit body fighter kept 1", CD_PINNED);
+  #assert s[0].kept;
+  cp_test_press(h[..], "shape.3");
+  #assert cb_preset_of(s[0].doc[0].body) == CB_ELDER && tr_has(t, tr_find(t, "shape.3"), AT_CURRENT) && tr_text_of(t, tr_find(t, "b.0.v")) == "210 cm" && !s[0].kept;
+  r := cp_test_take(h[..], out[..]);
+  #assert r / 100000 == CR_LOAD_DOC && cd_read(cast(string) out[0..<r % 100000]).ok && cb_preset_of(cd_read(cast(string) out[0..<r % 100000]).doc.body) == CB_ELDER;
+  // a slider's move is its number; one outside the range or not a number changes nothing
+  cp_test_type(h[..], "b.0", "199");
+  #assert s[0].doc[0].body.v[CB_HEIGHT] == 199 && tr_text_of(t, tr_find(t, "b.0.v")) == "199 cm" && cb_preset_of(s[0].doc[0].body) == -1 && !tr_has(t, tr_find(t, "shape.3"), AT_CURRENT);
+  cp_test_type(h[..], "b.0", "300");
+  cp_test_type(h[..], "b.0", "tall");
+  #assert s[0].doc[0].body.v[CB_HEIGHT] == 199 && s[0].nacts == 1;
+  r = cp_test_take(h[..], out[..]);
+  // face and hair: a stepper each; at an end it can't be pressed further
+  cp_test_press(h[..], "step.1");
+  #assert tr_text_of(t, tr_find(t, "step.h")) == "Face and hair" && tr_find(t, "b.0") < 0 && tr_text_of(t, tr_find(t, "l.1")) == "Messy bun" && tr_has(t, tr_find(t, "l.1.less"), AT_DISABLED);
+  cp_test_press(h[..], "l.1.more");
+  #assert s[0].doc[0].look.hair == CH_CROP && tr_text_of(t, tr_find(t, "l.1")) == "Crop" && !tr_has(t, tr_find(t, "l.1.less"), AT_DISABLED);
+  cp_test_press(h[..], "l.1.less"); cp_test_press(h[..], "l.1.less");
+  #assert s[0].doc[0].look.hair == CH_BUN;
+  r = cp_test_take(h[..], out[..]);
+  // the outfit: six presets, then a row a slot; overalls say the belt is hidden
+  cp_test_press(h[..], "step.2");
+  #assert tr_has(t, tr_find(t, "suit.0"), AT_CURRENT) && tr_text_of(t, tr_find(t, "w.5")) == "Wide belt" && tr_find(t, "w.8") < 0 && tr_find(t, "w.hid.5") < 0;
+  for k: 0..<5 { cp_test_press(h[..], "w.6.more"); }
+  #assert s[0].doc[0].wear.v[CW_LEGS] == CW_LEGS_OVERALLS && tr_text_of(t, tr_find(t, "w.6")) == "Bib overalls" && tr_find(t, "w.hid.5") > 0 && tr_has(t, tr_find(t, "w.6.more"), AT_DISABLED);
+  #assert cw_outfit_of(s[0].doc[0].wear) == -1 && !tr_has(t, tr_find(t, "suit.0"), AT_CURRENT);
+  cp_test_press(h[..], "suit.4");
+  #assert cw_outfit_of(s[0].doc[0].wear) == CW_SHROUD && tr_text_of(t, tr_find(t, "w.0")) == "Hood";
+  // carry: the three carried things
+  cp_test_press(h[..], "step.3");
+  #assert tr_find(t, "w.8") > 0 && tr_find(t, "w.10") > 0 && tr_find(t, "w.0") < 0;
+  cp_test_press(h[..], "w.9.more");
+  #assert s[0].doc[0].wear.v[CW_SATCHEL] == 1 && cd_ok(s[0].doc[0]);
+  r = cp_test_take(h[..], out[..]);
+  got := cd_read(cast(string) out[0..<r % 100000]);
+  #assert r / 100000 == CR_LOAD_DOC && got.ok && got.doc.wear.v[CW_SATCHEL] == 1 && got.doc.body.v[CB_HEIGHT] == 199 && s[0].nacts == 0;
+}
+#test "a name is kept only when a document may carry it, and USE THIS CHARACTER asks the page to keep it" {
+  h: [1] CpTest; s := h[0].s[..]; t := s[0].tree[..]; out: [CD_TEXT + 1] u8;
+  cp_test_told(h[..], "view one outfit flight-suit body fighter kept 0", CD_PINNED);
+  cp_test_press(h[..], "step.4");
+  #assert tr_find(t, "name") > 0 && tr_find(t, "kept") < 0 && tr_text_of(t, tr_find(t, "use.l")) == "Use this character" && tr_attr_of(t, tr_find(t, "use"), AT_STATE) == "primary";
+  cp_test_type(h[..], "name", "  Brink  ");
+  nm := s[0].doc[0].name;
+  #assert cast(string) nm[0..<s[0].doc[0].name_n] == "Brink" && !s[0].name_bad;
+  r := cp_test_take(h[..], out[..]);
+  #assert r / 100000 == CR_LOAD_DOC;
+  cp_test_type(h[..], "name", "");
+  #assert s[0].name_bad && tr_find(t, "name.bad") > 0 && tr_has(t, tr_find(t, "use"), AT_DISABLED) && s[0].nacts == 0;
+  cp_test_press(h[..], "use");
+  #assert s[0].nacts == 0 && !s[0].kept;
+  cp_test_type(h[..], "name", "Brink");
+  r = cp_test_take(h[..], out[..]);
+  cp_test_press(h[..], "use");
+  r = cp_test_take(h[..], out[..]);
+  #assert r / 100000 == CR_KEEP && s[0].kept && tr_find(t, "kept") > 0;
+  // a change after that is not the kept character
+  cp_test_press(h[..], "step.0"); cp_test_press(h[..], "shape.5");
+  #assert !s[0].kept;
+}
+#test "the views: a scene of six has no steps, picks its outfit or its body from a select, and RANDOM makes a whole valid character" {
+  h: [1] CpTest; s := h[0].s[..]; t := s[0].tree[..]; out: [CD_TEXT + 1] u8;
+  cp_test_told(h[..], "view one outfit flight-suit body fighter kept 0", CD_PINNED);
+  cp_test_press(h[..], "view.1");
+  r := cp_test_take(h[..], out[..]);
+  #assert r / 100000 == CR_SHOW && cast(string) out[0..<r % 100000] == "view fit outfit flight-suit body fighter spin on";
+  #assert tr_find(t, "steps") < 0 && tr_find(t, "random") < 0 && tr_find(t, "fit") > 0 && tr_find(t, "fit.2") < 0;
+  cp_test_press(h[..], "fit");
+  #assert tr_find(t, "fit.2") > 0 && tr_has(t, tr_find(t, "fit.0"), AT_CURRENT);
+  cp_test_press(h[..], "fit.3");
+  r = cp_test_take(h[..], out[..]);
+  #assert cast(string) out[0..<r % 100000] == "view fit outfit runner body fighter spin on" && tr_find(t, "fit.2") < 0 && tr_text_of(t, tr_find(t, "fit.l")) == "Runner";
+  cp_test_press(h[..], "view.2"); r = cp_test_take(h[..], out[..]);
+  cp_test_press(h[..], "who"); cp_test_press(h[..], "who.5");
+  r = cp_test_take(h[..], out[..]);
+  #assert cast(string) out[0..<r % 100000] == "view outfits outfit runner body kid spin on";
+  cp_test_press(h[..], "view.3"); r = cp_test_take(h[..], out[..]);
+  #assert tr_find(t, "steps") > 0 && tr_find(t, "who") < 0;
+  cp_test_press(h[..], "spin");
+  r = cp_test_take(h[..], out[..]);
+  #assert cast(string) out[0..<r % 100000] == "view one outfit runner body kid spin off" && tr_text_of(t, tr_find(t, "spin.l")) == "Turn";
+  for k: 0..<20 {
+    cp_test_press(h[..], "random");
+    r = cp_test_take(h[..], out[..]);
+    got := cd_read(cast(string) out[0..<r % 100000]);
+    #assert r / 100000 == CR_LOAD_DOC && got.ok && cd_ok(s[0].doc[0]) && s[0].nacts == 0;
+  }
+  // the page's word of another view and character is taken whole
+  cp_test_told(h[..], "view row outfit shroud body elder kept 1", CD_PINNED);
+  #assert s[0].view == CR_ROW && s[0].outfit == CW_SHROUD && s[0].body == CB_ELDER && s[0].kept && cb_preset_of(s[0].doc[0].body) == CB_FIGHTER;
+}
+#test "every class the pane uses on every step has a rule in the mono skin's stylesheet" {
+  h: [1] CpTest; s := h[0].s[..]; t := s[0].tree[..];
+  cp_test_told(h[..], "view one outfit flight-suit body fighter kept 1", CD_PINNED);
+  sheet := cast(string) s[0].css[0..<mono_dock_css(s[0].css[..], mono_css(s[0].css[..]))];
+  #assert sheet.count < CP_CSS - 64 && cp_test_styled(sheet, "slide") && !cp_test_styled(sheet, "slid");
+  seen := 0;
+  for step: 0..<CP_STEPS + 1 {
+    buf: [UI_ID] u8;
+    if step < CP_STEPS { cp_test_press(h[..], tr_join(buf[..], "step.", step)); } else { cp_test_press(h[..], "view.1"); cp_test_press(h[..], "fit"); }
+    for i: 0..<t[0].n {
+      cls := tr_class(t, i);
+      at := 0;
+      while at < cls.count {
+        e := at; while e < cls.count && cls[e] != ' ' { e += 1; }
+        word := cast(string) cls[at..<e];
+        at = e + 1;
+        if word.count == 0 { continue; }
+        #assert cp_test_styled(sheet, word) || word == "btn-l" || word == "sel-l";
+        seen += 1;
+      }
+    }
+  }
+  #assert seen > 200;
+}

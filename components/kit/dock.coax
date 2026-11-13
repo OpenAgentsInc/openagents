@@ -2,7 +2,7 @@
 // document, a map) and leave it showing (GitHub #13416). A dock is a layer over the page that
 // takes no press itself; a pane is a panel on one of its sides with a strip of controls or a
 // body that scrolls inside it; a prop is a field with its name beside it; a stepper is a value with
-// a button to lower it and one to raise it. Each builds nodes in
+// a button to lower it and one to raise it; a slider is a value dragged along a line. Each builds nodes in
 // the tree and nothing else; every look is the skin's (components/skin/mono.coax, mono_dock_css).
 //   coax/bin/coax test components/kit/dock.coax
 
@@ -84,6 +84,24 @@ k_stepper :: (t: [] Tree, id: string, name: string, value: string, can_less: boo
   return v;
 }
 
+// Slider: a named whole number dragged along a line between two ends (a body's height, a volume):
+// its name, the line, and what it is now as words. The line is the browser's own range control, so
+// the arrow keys move it too. The tree holds its ends and its step, never its place: the page puts
+// the value on it (dm_value) and hears each move as the field's text. Answers the line's node (its
+// id is `id`); the words' id is `id` with ".v".
+k_slider :: (t: [] Tree, id: string, name: string, value: string, low: int, high: int, step: int) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; na: [12] u8; nb: [12] u8; nc: [12] u8;
+  p := tr_open(t, tr_cat(ida[..], id, ".slide"), TG_DIV, "slide");
+  n := tr_leaf(t, tr_cat(idb[..], id, ".n"), TG_SPAN, "meta", name);
+  f := tr_open(t, id, TG_INPUT, "");
+  tr_attr(t, f, AT_TYPE, "range"); tr_attr(t, f, AT_LABEL, name);
+  tr_attr(t, f, AT_MIN, tr_join(na[..], "", low)); tr_attr(t, f, AT_MAX, tr_join(nb[..], "", high)); tr_attr(t, f, AT_STEP, tr_join(nc[..], "", ifx step < 1 then 1 else step));
+  tr_close(t);
+  v := tr_leaf(t, tr_cat(idc[..], id, ".v"), TG_SPAN, "fact", value);
+  tr_close(t);
+  return f;
+}
+
 DkTest :: struct { t: [1] Tree; u: [1] Ui; }
 
 #test "a dock holds a strip and side panes, each a framed section whose body is its own node" {
@@ -121,6 +139,12 @@ DkTest :: struct { t: [1] Tree; u: [1] Ui; }
   #assert sv == tr_find(t, "radius") && tr_text_of(t, sv) == "8 m" && tr_class(t, sv) == "fact";
   #assert tr_class(t, tr_find(t, "radius.less")) == "ib" && tr_attr_of(t, tr_find(t, "radius.less"), AT_LABEL) == "Less: Radius" && !tr_has(t, tr_find(t, "radius.less"), AT_DISABLED);
   #assert tr_attr_of(t, tr_find(t, "radius.more"), AT_LABEL) == "More: Radius" && tr_has(t, tr_find(t, "radius.more"), AT_DISABLED) && t[0].depth == 0;
+  // a slider: its name, the browser's range control with its ends and step, and the value in words
+  tr_begin(t);
+  ln := k_slider(t, "height", "Height", "175 cm", 145, 225, 1);
+  #assert ln == tr_find(t, "height") && t[0].nodes[ln].tag == TG_INPUT && tr_attr_of(t, ln, AT_TYPE) == "range" && tr_attr_of(t, ln, AT_LABEL) == "Height";
+  #assert tr_attr_of(t, ln, AT_MIN) == "145" && tr_attr_of(t, ln, AT_MAX) == "225" && tr_attr_of(t, ln, AT_STEP) == "1";
+  #assert tr_class(t, tr_find(t, "height.slide")) == "slide" && tr_text_of(t, tr_find(t, "height.n")) == "Height" && tr_text_of(t, tr_find(t, "height.v")) == "175 cm" && t[0].depth == 0;
   tr_begin(t);
   d = k_dock(t, "dock", false);
   w := k_pane(t, u, "code", DK_WIDE, "Code");

@@ -631,6 +631,6 @@ k_menu :: (t: [] Tree, u: [] Ui, id: string, label: string) -> int {
   #assert tr_text_of(t, tr_find(t, "drop.t")) == "Drop a file here, or press to pick one" && tr_text_of(t, tr_find(t, "drop.m")) == "512 KB at most";
   #assert !tr_has(t, b, AT_DROP) && tr_has(t, b, AT_DISABLED) && tr_attr_of(t, b, AT_STATE) == "busy" && tr_find(t, "busy.m") < 0;
   #assert t[0].nodes[f].tag == TG_DIV && tr_class(t, f) == "file" && tr_text_of(t, tr_find(t, "file.1.t")) == "rock" && tr_text_of(t, tr_find(t, "file.1.m")) == "Mesh, 2 KB" && tr_find(t, "file.2.m") < 0;
-  names := AT_NAMES; #assert names[AT_DROP] == "data-drop" && AT_COUNT == 20;
+  names := AT_NAMES; #assert names[AT_DROP] == "data-drop" && names[AT_STEP] == "step" && AT_COUNT == 23;
 }
 DkDropTest :: struct { t: [1] Tree; u: [1] Ui; }

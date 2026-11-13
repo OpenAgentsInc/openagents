@@ -3192,7 +3192,7 @@ function draw(now) {
     const engineStart = traceRow ? performance.now() : 0;
     n = engine.exports.coaxial_frame(trap ? -16 : arena.state, arena.vertices, arena.uniforms, w, h, dpr, dt, still ? 1 : 0);
     if (traceRow) {traceRow[1] = performance.now() - engineStart;for(let i=0;i<3;i++)traceRow[11+i]=engine.exports.coaxial_frame_parts?.(arena.state,i)||0;}
-    editorStep();
+    editorStep(); paneStep();
     if (gpu.gpuiOn) gpuiFrame(dpr);
   } catch (e) { trapped(e); return; }
   if (gpu.renderer) {
@@ -3798,7 +3798,7 @@ function player() {
 // the shell's panes leave free (message 525), so the page's own interface is not under them.
 const EDITOR = "editor-shell";
 // A press, a key or a paste on the shell is the shell's: the world under it hears nothing of it.
-const inEditor = (e) => !!e.target?.closest?.("#coaxial-editor");
+const inEditor = (e) => !!e.target?.closest?.("[data-coaxial-dock]");   // the editor shell, or a page's own pane (below)
 let editorAsked = false, editorRev = -1, editorFor = null;
 function editorOpen() {
   if (editorAsked || !engine?.exports.coaxial_edit_model || !new URLSearchParams(location.search).has("edit")) return;
@@ -3807,7 +3807,7 @@ function editorOpen() {
   if (!dev && !viewerAdmin && !engine.exports.coaxial_edit_own?.()) return;
   editorAsked = true;
   const root = document.createElement("div"); // editor shell
-  root.id = "coaxial-editor";
+  root.id = "coaxial-editor"; root.dataset.coaxialDock = "";
   document.body.appendChild(root);
   import(`/coaxial/dom-host.js?app=${EDITOR}&root=${root.id}`).catch((error) => { console.error(error); document.documentElement.dataset.coaxialError = String(error); });
 }
@@ -3818,6 +3818,56 @@ function editorStep() {
   editorIn = true;
   try { editorCarry(shell, x); } finally { editorIn = false; }
   if ((editorTicks++ & 7) === 0) editorRoom();   // the panes may have changed size since the last look: a few times a second is enough
+}
+// A page's own pane (Crew's creation steps, #13462): a module of the page's own that the browser draws beside the
+// canvas (dom-host.js), for a page whose controls are the frames set and not its HUD. The page names the module
+// (coaxial_pane, coaxial_pane_len) and tells it what it holds (coaxial_pane_rev, coaxial_pane_model, event 6); the
+// pane's actions go to the page as messages of the kinds the pane names. As with the editor's shell, this host
+// only carries bytes, and the canvas is the part of the window the pane leaves free (editorRoom).
+let paneAsked = false, paneApp = "", paneRev = -1, paneFor = null, paneTicks = 0;
+function paneOpen() {
+  const x = engine?.exports;
+  if (paneAsked || !x?.coaxial_pane || !arena) return;
+  if (new URLSearchParams(location.search).has("edit")) return;   // the editor's shell has the window
+  paneApp = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_pane(arena.state), x.coaxial_pane_len(arena.state)));
+  if (!/^[a-z][a-z0-9-]{0,31}$/.test(paneApp)) return;
+  paneAsked = true;
+  const root = document.createElement("div"); // a page's pane
+  root.id = "coaxial-pane"; root.dataset.coaxialDock = "";
+  document.body.appendChild(root);
+  import(`/coaxial/dom-host.js?app=${paneApp}&root=${root.id}`).catch((error) => { console.error(error); document.documentElement.dataset.coaxialError = String(error); });
+}
+function paneActs() {
+  const pane = globalThis.coaxialDoms?.[paneApp];
+  if (!pane) return;
+  const px = pane.exports(), st = pane.state();
+  for (let kind; (kind = px.dom_act_kind(st)); ) {
+    const body = new Uint8Array(pane.memory().buffer, px.dom_act(st), px.dom_act_len(st)).slice();
+    px.dom_act_done(st);
+    send(kind, body);
+  }
+}
+let paneIn = false;
+function paneStep() {
+  paneOpen();
+  const pane = globalThis.coaxialDoms?.[paneApp], x = engine?.exports;
+  if (!pane || !x?.coaxial_pane_model || !arena || paneIn) return;
+  paneIn = true;
+  try {
+    pane.after ||= () => { paneActs(); editorRoom(); after(false); };
+    pane.still = agentMode;
+    const rev = x.coaxial_pane_rev(arena.state);
+    if (rev !== paneRev || paneFor !== engine) {
+      paneRev = rev; paneFor = engine;
+      const n = x.coaxial_pane_model_len(arena.state);
+      const px = pane.exports(), most = Math.min(n, px.dom_inbox_cap());
+      new Uint8Array(pane.memory().buffer, px.dom_inbox(pane.state()), most).set(new Uint8Array(memory.buffer, x.coaxial_pane_model(arena.state), most));
+      px.dom_event(pane.state(), 6, 0, most);
+      if (agentMode) pane.now(); else pane.ask();
+    }
+    paneActs();
+  } finally { paneIn = false; }
+  if ((paneTicks++ & 7) === 0) editorRoom();
 }
 // The agent strip (E9, #13418): the shell's foot has a slot, and what fills it is the chat page's own
 // module (chat-web, the same conversation as /chat), opened by address the first time the slot is there.
@@ -3888,10 +3938,10 @@ function editorCarry(shell, x) {
 // The part of the window the shell's panes leave free, for a page that asks (coaxial_edit_room_v1): message
 // 525, "X0 Y0 X1 Y1" in CSS pixels. A pane that lies across is a strip above or below it; a narrow one is a side.
 function editorRoom() {
-  if (!arena || !document.getElementById("coaxial-editor")) return;
+  if (!arena || !document.querySelector("[data-coaxial-dock]")) return;
   const w = innerWidth, h = innerHeight;
   let x0 = 0, y0 = 0, x1 = w, y1 = h;
-  for (const pane of document.querySelectorAll("#coaxial-editor .pane")) {
+  for (const pane of document.querySelectorAll("[data-coaxial-dock] .pane")) {
     const r = pane.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) continue;
     if (r.width > w * 0.4) { if (r.top + r.height / 2 < h / 2) y0 = Math.max(y0, r.bottom); else y1 = Math.min(y1, r.top); }
@@ -3917,7 +3967,7 @@ function editorRoom() {
 }
 // The space between a pane and the scene's frame: the dock's own gap.
 function editorGap() {
-  const dock = document.querySelector("#coaxial-editor .dock");
+  const dock = document.querySelector("[data-coaxial-dock] .dock");
   return dock ? parseFloat(getComputedStyle(dock).rowGap) || 0 : 0;
 }
 // Where the canvas's corner is in the window (CSS pixels): the window's corner, but in the editor's frame.
@@ -3952,6 +4002,7 @@ function send(kind, text = "") {
   new Uint8Array(memory.buffer, x.coaxial_inbox(arena.state), bytes.length).set(bytes);
   x.coaxial_message(arena.state, kind, bytes.length);
   editorStep();   // an answer may have changed what the editor's shell shows, whether or not a frame follows
+  paneStep();
   if(kind===607&&mediaNoticeTrace){
     if(mediaNoticeTrace.length<112)mediaNoticeTrace.push({kind,bytes:Array.from(bytes)});
     else mediaNoticeDropped++;

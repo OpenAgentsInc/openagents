@@ -1,0 +1,409 @@
+// Crew, openagents.com/worlds/crew (unlisted): character creation for the cel realms
+// (docs/metaverse/2026-11-13-character-creation.md). A standalone scene of example characters on a
+// studio's grey paper, built like the review scenes of Splice's cast: six bodies, one black
+// wardrobe, every garment fitted to the body that wears it.
+//
+//   ?view=row       the six bodies in a row beside a height scale, each in a different outfit
+//   ?view=fit       one outfit on all six bodies (&outfit=flight-suit|deckhand|vac-suit|runner|shroud|fitter)
+//   ?view=outfits   the six outfits on one body (&body=bruiser|mechanic|scout|elder|fighter|kid)
+//   ?view=one       a turntable on one character: the page's own document (the default view)
+//   &turn=DEGREES   holds the turntable at an angle; &doc=BASE64URL loads a crew.character.v1 document;
+//                   &body= and &outfit= dress the turntable's character in a preset
+//
+// Everything that draws is the Metaverse Engine's: the body, the wardrobe and the document
+// (metaverse-engine/kit/crew-*.coax) on the cel lofts (metaverse-engine/render/cel-loft.coax), with
+// Anime Lab's uniform layout, camera rows and shader (gpu/crew.coax loads gpu/animelab.coax). The
+// controls are a pane of their own beside the scene (crew-pane.coax, the frames set in the mono
+// skin); it sends this page the character's document (message 701) and what to show (702).
+//   coax/bin/coax test apps/openagents-web/crew.coax
+#load "animelab.coax";
+#load "../../metaverse-engine/kit/crew-doc.coax";
+#load "crew-show.coax";
+
+CR_WORLD_VERTICES :: 230000;   // store 0: the paper's floor, the scale and up to six characters
+#assert CR_LOAD_DOC != HOST_FACTS && CR_SHOW != HOST_FACTS && CR_KEEP != HOST_FACTS;
+CR_SPACING :: 1.30f32;         // metres between two characters in a row
+CR_SHADOW_HALF :: 6.0f32;
+
+Crew :: struct {
+  started: bool; facts: bool;
+  view: int = CR_ONE;
+  outfit: int; body: int = CB_FIGHTER;   // the fit view's outfit and the outfits view's body
+  doc: [1] CrewDoc;                      // the turntable's character
+  refused: [CD_WHY] u8; refused_n: int;  // why the last document was refused (none: it stood)
+  turn: f32; pinned: bool; spin: bool = true; labels: bool = true;
+  time: f32;
+  variant: int; clock: f32 = 0.5;
+  want: int = 1; built: int;             // the scene that is wanted, and the one the store holds
+  world_n: int; over: bool;
+  draws: [DRAWS * 4] u32;
+  // the pane beside the scene (crew-pane.coax): what it was last told, and how many times it was told
+  told: int; model: [CD_TEXT + 96] u8; model_n: int;
+  // this browser's copy of the character (coax/web/STORAGE.md): asked for once, and kept when the pane says so
+  from_address: bool;                   // the address named the character, so the kept one is not loaded over it
+  store_get: int; store_put: int;       // 0 nothing to ask, 1 the face is to ask, 2 asked
+  kept: bool;                           // the character as it is now is the one this browser keeps
+  kept_text: [CD_TEXT] u8; kept_n: int;
+}
+CR_STORE_SPACE :: "crew";   // the storage namespace, its version and the character's key
+CR_STORE_VERSION :: 1;
+CR_STORE_KEY :: "character";
+CR_STORE_REPLY :: 768;      // the host's answer to a storage request in slot 0 (coax/web/STORAGE.md)
+CR_PANE :: "crew-pane";     // the pane's module
+
+crew_reset :: (s: [] Crew) {
+  s[0].started = true;
+  s[0].doc[0] = cd_first();
+}
+// What the pane is told: a line of the words the page takes ("view one outfit runner body kid kept 1"), then the character's document.
+cr_tell :: (s: [] Crew) {
+  vk := CR_VIEW_KEYS; ok := CW_OUTFIT_KEYS; bk := CB_PRESET_KEYS;
+  m := s[0].model[..];
+  n := cd_put(m, 0, "view "); n = cd_put(m, n, vk[s[0].view]);
+  n = cd_put(m, n, " outfit "); n = cd_put(m, n, ok[s[0].outfit]);
+  n = cd_put(m, n, " body "); n = cd_put(m, n, bk[s[0].body]);
+  n = cd_put(m, n, " kept "); n = cd_put(m, n, ifx s[0].kept then "1" else "0");
+  n = cd_put(m, n, "\n");
+  k := cd_write(s[0].doc[0], s[0].model[n..<s[0].model.count]);
+  s[0].model_n = n + hi_i(k, 0);
+  s[0].told += 1;
+}
+crew_pane :: () -> string #export_c #effects(all) { return CR_PANE; }
+crew_pane_rev :: (s: [] Crew) -> int #export_c #effects(all) { return s[0].told; }
+crew_pane_model :: (s: [] Crew) -> string #export_c #effects(all) { return cast(string) s[0].model[0..<s[0].model_n]; }
+// The face's storage asks: 1 when the page wants this browser's character read, 2 when it wants the character kept.
+crew_store_wants :: (s: [] Crew) -> int #export_c #effects(all) { return ifx s[0].store_put == 1 then 2 else ifx s[0].store_get == 1 then 1 else 0; }
+crew_store_asked :: (s: [] Crew, which: int, accepted: bool) #export_c #effects(all) {
+  if which == 2 { s[0].store_put = ifx accepted then 2 else 0; } else { s[0].store_get = ifx accepted then 2 else 0; }
+}
+crew_store_text :: (s: [] Crew) -> string #export_c #effects(all) { return cast(string) s[0].kept_text[0..<s[0].kept_n]; }
+// The host's answer: 16 bytes (token, status, length, needed), then a read's bytes. Token 1 is the read, 2 the keep.
+cr_stored :: (s: [] Crew, body: string) {
+  if body.count < 16 { return; }
+  token := cast(int) body[0]; status := cast(int) body[4] | (cast(int) body[5] << 8);
+  size := cast(int) body[8] | (cast(int) body[9] << 8) | (cast(int) body[10] << 16);
+  if token == 2 { s[0].store_put = 0; s[0].kept = status == 0; cr_tell(s); return; }
+  s[0].store_get = 0;
+  if token != 1 || status != 0 || size < 1 || 16 + size > body.count || s[0].from_address { return; }
+  if crew_load(s, cast(string) body[16..<16 + size]) { s[0].kept = true; }
+  s[0].refused_n = 0;   // a kept document this build no longer reads is left alone, and the first character stands
+  cr_tell(s);
+}
+// Each of the row's six: its body, its outfit and its look (the crew sheet's people, in the black sheet's clothes).
+cr_row_outfit :: (i: int) -> int { t := [6] int.[CW_FLIGHT_SUIT, CW_FITTER, CW_RUNNER, CW_SHROUD, CW_DECKHAND, CW_VAC_SUIT]; return t[i % 6]; }
+cr_row_look :: (i: int) -> CrewLook {
+  if i == CB_BRUISER { return CrewLook.{skin = 3, hair = CH_LONG, hair_colour = 3, jaw = 1, eyes = 1, brows = 2, nose = 2, mark = CH_FULL}; }
+  if i == CB_MECHANIC { return CrewLook.{skin = 1, hair = CH_TOPKNOT, hair_colour = 2, jaw = 1, eyes = 1, brows = 2, nose = 2, mark = CH_BEARD}; }
+  if i == CB_SCOUT { return CrewLook.{skin = 5, hair = CH_MOHAWK, hair_colour = 0, jaw = 2, eyes = 1, brows = 0, nose = 1, mark = CH_NO_MARK}; }
+  if i == CB_ELDER { return CrewLook.{skin = 1, hair = CH_TIED, hair_colour = 6, jaw = 1, eyes = 1, brows = 2, nose = 2, mark = CH_FULL}; }
+  if i == CB_FIGHTER { return CrewLook.{skin = 5, hair = CH_BUN, hair_colour = 0, jaw = 0, eyes = 0, brows = 1, nose = 0, mark = CH_NO_MARK}; }
+  return CrewLook.{skin = 1, hair = CH_CROP, hair_colour = 4, jaw = 2, eyes = 2, brows = 0, nose = 0, mark = CH_NO_MARK};
+}
+// The outfit sheet's person: warm skin, black hair in a messy bun.
+cr_sheet_look :: () -> CrewLook { return CrewLook.{skin = 2, hair = CH_BUN, hair_colour = 0}; }
+// Where the row's place i of n stands.
+cr_place :: (i: int, n: int) -> f32 { return (cast(f32) i - cast(f32) (n - 1) * 0.5) * CR_SPACING; }
+
+// The scale: a post with a tick every 10 cm and a longer one every 50, and a 1.8 m figure in flat grey.
+cr_scale :: (buf: [] u32, p: [] Pen, x: f32) {
+  kit_pen(p, 2, MAT_FLAT, kit_tint(0.16, 0.16, 0.18));
+  block(buf, p, x, 0, 0, 0.008, 2.4, 0.004);
+  for i: 0..<25 {
+    y := cast(f32) i * 0.1;
+    long := ifx i % 10 == 0 then 0.10f32 else ifx i % 5 == 0 then 0.065f32 else 0.03f32;
+    box(buf, p, frame_at(v3(x + long * 0.5, y, 0), 0), long * 0.5, ifx i % 5 == 0 then 0.006f32 else 0.003f32, 0.004);
+  }
+  b := cb_usual(); b.v[CB_HEIGHT] = 180;
+  m := cb_form(b);
+  f := frame_at(v3(x + 0.62, 0, 0), 0);
+  kit_pen(p, 3, MAT_FLAT, kit_tint(0.34, 0.34, 0.36));
+  loft_write(buf, p, f, m.torso, true, true);
+  for side: 0..<2 {
+    loft_write(buf, p, f, m.arm[side], true, true); loft_write(buf, p, f, m.leg[side], true, true);
+    ch_hand(buf, p, f, m, side, 1, 0, 1);
+    an := m.leg[side].r[CL_ANKLE];
+    ellipsoid(buf, p, kit_at(f, an.c.x, 0.035, an.c.z + m.foot_len * 0.22), m.foot_w * 0.55, 0.035, m.foot_len * 0.5, 8, 4, 0);
+  }
+  limb(buf, p, fp3(f, m.neck_foot), fp3(f, m.neck_top), m.neck_r, m.neck_r, fd(f, 1, 0, 0), 8);
+  ellipsoid(buf, p, ch_frame(f, m), m.head_rx, m.head_ry, m.head_rz, 12, 8, 0.5);
+}
+// The scene, written once for what is wanted: the floor, then the characters.
+cr_build :: (s: [] Crew, buf: [] u32, p: [] Pen) {
+  pen_set(p, 1, MAT_FLOOR, 0.5, 0.5, 0.5);
+  quad(buf, p, v3(-60, 0, -60), v3(-60, 0, 60), v3(60, 0, 60), v3(60, 0, -60));
+  none: [1] CwLog; skip := none[0..<0];
+  if s[0].view == CR_ONE {
+    d := s[0].doc[0];
+    cw_write(buf, p, frame_at(v3(0, 0, 0), 0), cb_form(d.body), d.look, d.wear, 16, skip);
+    return;
+  }
+  cr_scale(buf, p, cr_place(0, 6) - 1.75);
+  for i: 0..<6 {
+    body := ifx s[0].view == CR_OUTFITS then cb_preset(s[0].body) else cb_preset(i);
+    outfit := ifx s[0].view == CR_ROW then cr_row_outfit(i) else ifx s[0].view == CR_FIT then s[0].outfit else i;
+    look := ifx s[0].view == CR_OUTFITS then cr_sheet_look() else cr_row_look(i);
+    cw_write(buf, p, frame_at(v3(cr_place(i, 6), 0, 0), 0), cb_form(body), look, cw_outfit(outfit), 16 + i * 12, skip);
+  }
+}
+
+// The key light's orthographic view of the stage, close round it, for a crisp shadow.
+cr_shadow_rows :: (u: [] f32, l: Point, c: Point) {
+  z := unit_or(l, v3(0, 1, 0));
+  r := unit_or(cross(v3(0, 1, 0), z), v3(1, 0, 0));
+  up := cross(z, r);
+  k := 1 / CR_SHADOW_HALF;
+  put4(u, U_SHADOW, r.x * k, r.y * k, r.z * k, -dot(r, c) * k);
+  put4(u, U_SHADOW + 4, up.x * k, up.y * k, up.z * k, -dot(up, c) * k);
+  d := -0.5 / SHADOW_DEEP;
+  put4(u, U_SHADOW + 8, z.x * d, z.y * d, z.z * d, 0.5 - dot(z, c) * d);
+  put4(u, U_SHADOW + 12, 0, 0, 0, 1);
+}
+// The camera: far and narrow for the row (a sheet's flat look), an orbit for the turntable.
+cr_camera :: (s: [] Crew, aspect: f32) -> CamNow {
+  if s[0].view == CR_ONE {
+    h := cast(f32) s[0].doc[0].body.v[CB_HEIGHT] * 0.01;
+    fov: f32 = 0.42;
+    tall := h * 1.22 + 0.1;
+    dist := hi(tall * 0.5 / tan(fov * 0.5), 0.72 / (tan(fov * 0.5) * hi(aspect, 0.3)));
+    a := s[0].turn;
+    return CamNow.{eye = v3(sin(a) * dist, h * 0.56, cos(a) * dist), at = v3(0, h * 0.52, 0), fov = fov};
+  }
+  fov: f32 = 0.30;
+  wide := CR_SPACING * 6 + 1.9;
+  dist := hi(wide * 0.5 / (tan(fov * 0.5) * hi(aspect, 0.3)), 2.9 * 0.5 / tan(fov * 0.5));
+  return CamNow.{eye = v3(-0.62, 1.22, dist), at = v3(-0.62, 1.10, 0), fov = fov};
+}
+
+crew_frame :: (s: [] Crew, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
+               world: [] u32, style: [] f32) -> int #export_c #effects(all) {
+  if s.count < 1 || u.count < UNIFORM_FLOATS || !(width >= 1) || !(height >= 1) { return 0; }
+  if !s[0].started { crew_reset(s); }
+  if s[0].built != s[0].want {
+    pen := [1] Pen.[Pen.{}];
+    cr_build(s, world, pen[..]);
+    s[0].world_n = pen[0].n; s[0].over = pen[0].over; s[0].built = s[0].want;
+  }
+  step := ifx still then 0.0f32 else clamp(dt, 0, 0.1);
+  s[0].time += step;
+  if s[0].view == CR_ONE && s[0].spin && !s[0].pinned { s[0].turn = wrap_angle(s[0].turn + step * 0.5); }
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  for i: 0..<lo_i(style.count, STYLE_FLOATS) { u[U_STYLE + i] = style[i]; }
+  aspect := width / height;
+  cam := cr_camera(s, aspect);
+  view_rows(u, cam, aspect);
+  // the key light stands with the camera, high and to its left, so a turned character is lit as a facing one
+  a := ifx s[0].view == CR_ONE then s[0].turn else 0.0f32;
+  key := unit_or(v3(sin(a - 0.62), 0.78, cos(a - 0.62)), v3(0, 1, 0));
+  if style.count >= STYLE_FLOATS { u[U_STYLE + SU_KEY_DIR] = key.x; u[U_STYLE + SU_KEY_DIR + 1] = key.y; u[U_STYLE + SU_KEY_DIR + 2] = key.z; u[U_STYLE + SU_KEY_DIR + 3] = 0; }
+  cr_shadow_rows(u, key, v3(ifx s[0].view == CR_ONE then 0.0f32 else -0.62f32, 0, 0));
+  put4(u, U_SIZE, width, height, s[0].time, dpr);
+  put4(u, U_FX, 0, 0, 0, hi(1, lo(width, height) / 720));
+  put4(u, U_DRAW, 0, 0, 0, -1);
+  put4(u, U_MISC, ifx animelab_phone(width, dpr) then 1.0f32 else 0.0f32, 0.5, 0.45, 0);
+  s[0].draws[0] = 0; s[0].draws[1] = cast(u32) s[0].world_n; s[0].draws[2] = 0x80000000; s[0].draws[3] = 1;
+  return cr_overlay(s, out, u, width, height, dpr);
+}
+// The labels: the scale's metres, and under each character its body and its outfit.
+cr_overlay :: (s: [] Crew, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32) -> int {
+  n := 0;
+  if !s[0].labels { return 0; }
+  cap := hi(lo(w / 150, h / 60), 5 * dpr);
+  ink := ink_of(1, 1, 1, 1);
+  line: [64] u8;
+  if s[0].refused_n > 0 {
+    why := s[0].refused;
+    n = label(out, n, "DOCUMENT REFUSED", 16 * dpr, h - cap * 4.4, cap, ink_of(1, 0.72, 0.62, 1));
+    n = label(out, n, cast(string) why[0..<s[0].refused_n], 16 * dpr, h - cap * 2.2, cap, ink_of(1, 0.72, 0.62, 1));
+  }
+  if s[0].view == CR_ONE { return n; }
+  x0 := cr_place(0, 6) - 1.75;
+  for i: 1..<5 {
+    at := screen_of(u, v3(x0 - 0.05, cast(f32) i * 0.5, 0), w, h);
+    k := tput_int(line[..], 0, i / 2); k = tput(line[..], k, ifx i % 2 == 1 then ".5 m" else " m");
+    t := cast(string) line[0..<k];
+    if at.ahead { n = label(out, n, t, at.x - text_w(t, cap) - cap * 0.4, at.y + cap * 0.5, cap, ink); }
+  }
+  ref := screen_of(u, v3(x0 + 0.62, 0, 0), w, h);
+  if ref.ahead { n = label(out, n, "1.8 m", ref.x - text_w("1.8 m", cap) * 0.5, ref.y + cap * 2.4, cap, ink); }
+  bodies := CB_PRESET_NAMES; outfits := CW_OUTFIT_NAMES;
+  for i: 0..<6 {
+    body := ifx s[0].view == CR_OUTFITS then s[0].body else i;
+    outfit := ifx s[0].view == CR_ROW then cr_row_outfit(i) else ifx s[0].view == CR_FIT then s[0].outfit else i;
+    at := screen_of(u, v3(cr_place(i, 6), 0, 0), w, h);
+    if !at.ahead { continue; }
+    k := tput(line[..], 0, bodies[body]); k = tput(line[..], k, "  ");
+    k = tput_int(line[..], k, cb_preset(body).v[CB_HEIGHT]); k = tput(line[..], k, " cm");
+    a := cast(string) line[0..<k];
+    n = label(out, n, a, at.x - text_w(a, cap) * 0.5, at.y + cap * 2.4, cap, ink);
+    b := outfits[outfit];
+    n = label(out, n, b, at.x - text_w(b, cap) * 0.5, at.y + cap * 4.4, cap, ink_of(0.86, 0.86, 0.88, 1));
+  }
+  return n;
+}
+
+// ---- what the page is told
+
+cr_key_of :: (keys: [] const string, t: string) -> int { for i: 0..<keys.count { if keys[i] == t { return i; } } return -1; }
+// One word of what to show: "view one", "outfit runner", "body kid", "turn 90", "spin on", "labels off".
+cr_show :: (s: [] Crew, what: string, value: string) {
+  if what == "view" { vk := CR_VIEW_KEYS; k := cr_key_of(vk[..], value); if k >= 0 && k != s[0].view { s[0].view = k; s[0].want += 1; } }
+  if what == "outfit" { ok := CW_OUTFIT_KEYS; k := cr_key_of(ok[..], value); if k >= 0 && k != s[0].outfit { s[0].outfit = k; s[0].want += 1; } }
+  if what == "body" { bk := CB_PRESET_KEYS; k := cr_key_of(bk[..], value); if k >= 0 && k != s[0].body { s[0].body = k; s[0].want += 1; } }
+  if what == "turn" { k := decimal(value); if k >= 0 && k <= 360 { s[0].turn = wrap_angle(k * PI / 180); s[0].pinned = true; } else { s[0].pinned = false; } }
+  if what == "spin" { s[0].spin = value == "on"; s[0].pinned = false; }
+  if what == "labels" { s[0].labels = value != "off" && value != "0"; }
+}
+// A document for the turntable: it stands whole, or it is refused with its reason and the character stays.
+crew_load :: (s: [] Crew, text: string) -> bool {
+  r := [1] CdRead.[cd_read(text)];
+  if !r[0].ok {
+    s[0].refused_n = r[0].why_n;
+    for i: 0..<r[0].why_n { s[0].refused[i] = r[0].why[i]; }
+    return false;
+  }
+  s[0].refused_n = 0; s[0].doc[0] = r[0].doc; s[0].want += 1;
+  return true;
+}
+crew_message :: (s: [] Crew, kind: int, body: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].started { crew_reset(s); }
+  if kind == CR_LOAD_DOC { if crew_load(s, body) { s[0].kept = false; } return; }
+  if kind == CR_KEEP {
+    n := cd_write(s[0].doc[0], s[0].kept_text[..]);
+    if n > 0 { s[0].kept_n = n; s[0].store_put = 1; }
+    return;
+  }
+  if kind == CR_STORE_REPLY { cr_stored(s, body); return; }
+  if kind == CR_SHOW {
+    i := 0;
+    while i < body.count {
+      e := i; while e < body.count && body[e] != ' ' && body[e] != '\n' { e += 1; }
+      v := e + 1; ve := v; while ve < body.count && body[ve] != ' ' && body[ve] != '\n' { ve += 1; }
+      if v <= body.count { cr_show(s, cast(string) body[i..<e], ifx v < body.count then cast(string) body[v..<ve] else ""); }
+      i = ve + 1;
+    }
+    return;
+  }
+  if kind != HOST_FACTS || s[0].facts { return; }
+  s[0].facts = true;
+  url := fact(body, "url");
+  names := [4] string.["view", "outfit", "body", "labels"];
+  for k: 0..<4 { v := query(url, names[k]); if v.count > 0 { cr_show(s, names[k], v); } }
+  // on the turntable, a body or an outfit named in the address dresses the page's character in that preset
+  if s[0].view == CR_ONE && query(url, "body").count > 0 { bk := CB_PRESET_KEYS; k := cr_key_of(bk[..], query(url, "body")); if k >= 0 { s[0].from_address = true; s[0].doc[0].body = cb_preset(k); s[0].doc[0].look = cr_row_look(k); s[0].want += 1; } }
+  if s[0].view == CR_ONE && query(url, "outfit").count > 0 { ok := CW_OUTFIT_KEYS; k := cr_key_of(ok[..], query(url, "outfit")); if k >= 0 { s[0].from_address = true; s[0].doc[0].wear = cw_outfit(k); s[0].want += 1; } }
+  t := query(url, "turn");
+  if t.count > 0 { cr_show(s, "turn", t); }
+  d := query(url, "doc");
+  if d.count > 0 {
+    decoded: [CD_TEXT] u8;
+    code := fi_b64url_decode(d, decoded[..]);
+    s[0].from_address = true;
+    if code.error == NC_OK { _ = crew_load(s, cast(string) decoded[0..<code.written]); }
+    else { why := "the address's doc is not base64url"; s[0].refused_n = why.count; for i: 0..<why.count { s[0].refused[i] = why[i]; } }
+  }
+  vnames := [4] string.["pastoral", "action", "dusk", "neon"];
+  for v: 0..<4 { if fact(body, "variant") == vnames[v] { s[0].variant = v; } }
+  c := fact(body, "clock");
+  if c.count > 6 && c[0..<6] == "fixed:" { k := decimal(c[6..<c.count]); if k >= 0 && k <= 1 { s[0].clock = k; } }
+  if !s[0].from_address { s[0].store_get = 1; }
+  cr_tell(s);
+}
+
+coaxial_crew_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
+coaxial_crew_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+coaxial_crew_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
+crew_world_vertices :: () -> int #export_c #effects(all) { return CR_WORLD_VERTICES; }
+crew_world_n :: (s: [] Crew) -> int #export_c #effects(all) { return s[0].world_n; }
+crew_version :: (s: [] Crew) -> int #export_c #effects(all) { return s[0].built; }
+crew_draw_count :: (s: [] Crew) -> int #export_c #effects(all) { return ifx s[0].built > 0 then 1 else 0; }
+crew_variant :: (s: [] Crew) -> int #export_c #effects(all) { return s[0].variant; }
+crew_clock :: (s: [] Crew) -> f32 #export_c #effects(all) { return s[0].clock; }
+// Facts for a headless check (coaxial.fieldProbe): 0 the view, 1 the store's vertices, 2 whether the store ran out, 3 whether the last document was refused, 4 the character's height in cm.
+crew_fact :: (s: [] Crew, field: int) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  if field == 0 { return s[0].view; } if field == 1 { return s[0].world_n; } if field == 2 { return ifx s[0].over then 1 else 0; }
+  if field == 3 { return ifx s[0].refused_n > 0 then 1 else 0; } if field == 4 { return s[0].doc[0].body.v[CB_HEIGHT]; }
+  return 0;
+}
+
+CrTest :: struct { s: [1] Crew; world: [CR_WORLD_VERTICES * VERTEX_WORDS] u32; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; style: [STYLE_FLOATS] f32; }
+cr_test_frame :: (h: [] CrTest) -> int { return crew_frame(h[0].s[..], h[0].out[..], h[0].u[..], 1280, 720, 1, 0.016, false, h[0].world[..], h[0].style[..]); }
+
+#test "every view fits the store, and the row holds six characters and the scale" {
+  h: [1] CrTest;
+  crew_message(h[0].s[..], HOST_FACTS, "url=https://x/worlds/crew?view=one\n");
+  n := cr_test_frame(h[..]);
+  one := h[0].s[0].world_n;
+  #assert h[0].s[0].view == CR_ONE && one > 6000 && one <= CW_BUDGET + 6 && !h[0].s[0].over && n == 0;
+  for v: 0..<3 {
+    vk := CR_VIEW_KEYS;
+    crew_message(h[0].s[..], CR_SHOW, vk[v]);   // a word alone changes nothing
+    line: [32] u8; k := tput(line[..], 0, "view "); k = tput(line[..], k, vk[v]);
+    crew_message(h[0].s[..], CR_SHOW, cast(string) line[0..<k]);
+    labels := cr_test_frame(h[..]);
+    #assert h[0].s[0].view == v && h[0].s[0].world_n > one * 4 && !h[0].s[0].over && labels > 100;
+    #assert crew_draw_count(h[0].s[..]) == 1 && h[0].s[0].draws[1] == cast(u32) h[0].s[0].world_n;
+  }
+}
+#test "a document loads whole or is refused with its reason, and the character stays" {
+  h: [1] CrTest;
+  crew_message(h[0].s[..], HOST_FACTS, "url=https://x/worlds/crew\n");
+  _ = cr_test_frame(h[..]);
+  was := h[0].s[0].built;
+  out: [CD_TEXT] u8;
+  d := cd_first(); d.body = cb_preset(CB_ELDER); d.wear = cw_outfit(CW_SHROUD);
+  n := cd_write(d, out[..]);
+  crew_message(h[0].s[..], CR_LOAD_DOC, cast(string) out[0..<n]);
+  _ = cr_test_frame(h[..]);
+  #assert h[0].s[0].built == was + 1 && crew_fact(h[0].s[..], 4) == 210 && crew_fact(h[0].s[..], 3) == 0;
+  crew_message(h[0].s[..], CR_LOAD_DOC, "crew.character.v1\nname X\n");
+  _ = cr_test_frame(h[..]);
+  #assert h[0].s[0].built == was + 1 && crew_fact(h[0].s[..], 4) == 210 && crew_fact(h[0].s[..], 3) == 1;
+  crew_message(h[0].s[..], CR_LOAD_DOC, CD_PINNED);
+  #assert crew_fact(h[0].s[..], 3) == 0 && crew_fact(h[0].s[..], 4) == 175;
+}
+#test "the pane is told the view and the character, and this browser's copy is read once and kept on a word" {
+  h: [1] CrTest; s := h[0].s[..];
+  #assert crew_pane() == "crew-pane" && crew_pane_rev(s) == 0;
+  crew_message(s, HOST_FACTS, "url=https://x/worlds/crew?view=fit&outfit=runner\n");
+  #assert crew_pane_rev(s) == 1 && crew_store_wants(s) == 1;
+  m := crew_pane_model(s);
+  head := "view fit outfit runner body fighter kept 0\n";
+  #assert m.count == head.count + CD_PINNED.count && cast(string) m[0..<head.count] == head && cast(string) m[head.count..<m.count] == CD_PINNED;
+  crew_store_asked(s, 1, true);
+  #assert crew_store_wants(s) == 0;
+  // the browser's copy comes: the elder in the shroud
+  out: [CD_TEXT + 16] u8;
+  d := cd_first(); d.body = cb_preset(CB_ELDER); d.wear = cw_outfit(CW_SHROUD);
+  n := cd_write(d, out[16..<out.count]);
+  out[0] = 1; out[8] = cast(u8) (n & 255); out[9] = cast(u8) (n >> 8);
+  crew_message(s, CR_STORE_REPLY, cast(string) out[0..<16 + n]);
+  #assert crew_fact(s, 4) == 210 && s[0].kept && crew_pane_rev(s) == 2;
+  // the pane changes the character: it is no longer the kept one, until the pane says keep
+  crew_message(s, CR_LOAD_DOC, CD_PINNED);
+  #assert !s[0].kept && crew_fact(s, 4) == 175 && crew_pane_rev(s) == 2;
+  crew_message(s, CR_KEEP, "");
+  #assert crew_store_wants(s) == 2 && crew_store_text(s) == CD_PINNED;
+  crew_store_asked(s, 2, true);
+  ack: [16] u8; ack[0] = 2;
+  crew_message(s, CR_STORE_REPLY, cast(string) ack[0..<16]);
+  #assert s[0].kept && crew_pane_rev(s) == 3 && crew_store_wants(s) == 0;
+  // a character named in the address is never replaced by the browser's copy
+  g: [1] CrTest; q := g[0].s[..];
+  crew_message(q, HOST_FACTS, "url=https://x/worlds/crew?body=kid\n");
+  #assert crew_store_wants(q) == 0 && crew_fact(q, 4) == 160;
+  crew_message(q, CR_STORE_REPLY, cast(string) out[0..<16 + n]);
+  #assert crew_fact(q, 4) == 160;
+}
+#test "the address picks the view, the outfit and the body, and a turn holds the turntable" {
+  h: [1] CrTest;
+  crew_message(h[0].s[..], HOST_FACTS, "url=https://x/worlds/crew?view=fit&outfit=shroud&body=kid&turn=90\n");
+  #assert h[0].s[0].view == CR_FIT && h[0].s[0].outfit == CW_SHROUD && h[0].s[0].body == CB_KID && h[0].s[0].pinned && near(h[0].s[0].turn, PI * 0.5, 0.001);
+  crew_message(h[0].s[..], CR_SHOW, "view one spin on");
+  was := h[0].s[0].turn;
+  _ = cr_test_frame(h[..]);
+  #assert !h[0].s[0].pinned && h[0].s[0].turn > was;
+  crew_message(h[0].s[..], CR_SHOW, "outfit nothing body nobody view nowhere");
+  #assert h[0].s[0].view == CR_ONE && h[0].s[0].outfit == CW_SHROUD && h[0].s[0].body == CB_KID;
+}

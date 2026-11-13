@@ -1,0 +1,12 @@
+// What Crew's page and its pane say to each other (crew.coax, crew-pane.coax; #13462). Neither
+// leaves the browser tab. The pane sends the page three kinds of message: the character's document
+// (crew.character.v1, metaverse-engine/kit/crew-doc.coax), words that say what to show, and a word
+// to keep the character in this browser. The page tells the pane what it holds: one line of the
+// same words, then the document.
+CR_LOAD_DOC :: 701;   // a crew.character.v1 document, as text: the turntable's character
+CR_SHOW :: 702;       // what to show, as words: "view one", "outfit runner", "body kid", "turn 90", "spin on"
+CR_KEEP :: 703;       // keep the turntable's character in this browser
+CR_ROW :: 0; CR_FIT :: 1; CR_OUTFITS :: 2; CR_ONE :: 3;
+CR_VIEWS :: 4;
+CR_VIEW_KEYS :: [CR_VIEWS] string.["row", "fit", "outfits", "one"];
+CR_VIEW_NAMES :: [CR_VIEWS] string.["Six bodies", "One outfit, six bodies", "Six outfits, one body", "Create"];

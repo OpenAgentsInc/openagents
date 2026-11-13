@@ -1,0 +1,25 @@
+// Crew's shaders (crew.coax, docs/metaverse/2026-11-13-character-creation.md): Anime Lab's anime
+// scene, ink and post pass, so this file loads Anime Lab's. build.sh writes
+// apps/openagents-web/crew.wgsl from it with coax/web/wgsl-module.coax (crew.module and
+// crew.bindings: Anime Lab's bindings). No WGSL is written by hand.
+//
+// Two things are Crew's own: the backdrop is a studio's plain grey paper, not a sky (bg_fs), and
+// the floor is that same paper, darker only where a figure's shadow falls (scene_fs), so the
+// characters stand on a sheet with no horizon, as a character sheet does.
+#load "animelab.coax";
+
+// The paper's light, before the post pass tones it.
+crew_paper :: ()->V3 {return v3(0.185f32,0.185f32,0.195f32);}
+bg_fs :: (pos:V4,u:[]f32)->AnimelabLit {
+  c:V3=crew_paper();
+  return AnimelabLit.{light=v4(c.x,c.y,c.z,0.0f32),aux=v4(0.0f32,0.0f32,0.0f32,-1.0f32)};
+}
+scene_fs :: (s:AnimelabS,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->AnimelabLit {
+  // the floor (material 5): the paper, with the key light's shadow on it and no ink
+  if ((s.mat>4.5f32)&&(s.mat<5.5f32)) {
+    lit:f32=al_lit(s.world,v3(0.0f32,1.0f32,0.0f32),u,shadow_map,shadow_cmp);
+    c:V3=al_scale3(crew_paper(),mix(0.74f32,1.0f32,lit));
+    return AnimelabLit.{light=v4(c.x,c.y,c.z,0.0f32),aux=v4(0.0f32,1.0f32,0.0f32,-1.0f32)};
+  }
+  return animelab_scene_fs(s,u,shadow_map,shadow_cmp);
+}

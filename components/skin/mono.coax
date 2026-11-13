@@ -356,6 +356,14 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, ".prop{display:grid;grid-template-columns:76px minmax(0,1fr);gap:10px;align-items:center}.prop .field{padding:6px 10px;max-width:none}.fact{overflow-wrap:anywhere}");
   // a stepper: its name, less, what it is now, more
   n = mc(out, n, ".step{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px}.step .ib{flex:none}.step .fact{min-width:52px;text-align:center}.step .ib[disabled]{opacity:.35;pointer-events:none}");
+  // a slider: its name, a hairline with a block to drag, what it is now
+  n = mc(out, n, ".slide{display:grid;grid-template-columns:76px minmax(0,1fr) 58px;gap:10px;align-items:center}.slide .fact{text-align:right;white-space:nowrap}");
+  n = mc(out, n, ".slide input{appearance:none;-webkit-appearance:none;width:100%;height:28px;margin:0;padding:0;background:none;cursor:pointer;outline:none}");
+  n = mc(out, n, ".slide input::-webkit-slider-runnable-track{height:1px;background:var(--line)}.slide input::-moz-range-track{height:1px;background:var(--line)}");
+  n = mc(out, n, ".slide input::-webkit-slider-thumb{-webkit-appearance:none;width:9px;height:17px;margin-top:-8px;border:0;border-radius:0;background:var(--ink)}");
+  n = mc(out, n, ".slide input::-moz-range-thumb{width:9px;height:17px;border:0;border-radius:0;background:var(--ink)}");
+  n = mc(out, n, ".slide input:hover::-webkit-slider-thumb,.slide input:focus-visible::-webkit-slider-thumb{background:var(--line-bright)}.slide input:focus-visible::-webkit-slider-runnable-track{background:var(--line-bright)}");
+  n = mc(out, n, "@media (pointer:coarse){.slide input{height:44px}.slide input::-webkit-slider-thumb{width:15px;height:27px;margin-top:-13px}}");
   // a select in a pane opens downward, and in the right pane toward the middle
   // in the foot the conversation reads down one edge: what you said is on the left too
   n = mc(out, n, ".slot .msg-user{align-self:flex-start}");

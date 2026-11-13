@@ -1,0 +1,273 @@
+// Cel lofts: a smooth skin over a row of rings, for the shapes a tube can't make (a torso, a
+// trouser leg, a boot), and the marks that lie on one (a stitch line, a patch, a frame to stand a
+// pocket on). A ring is an ellipse in its own plane; a loft joins each ring to the next. Every
+// point is in the caller's frame (cel-mesh.coax Frame), so a figure is posed by moving its frame.
+// Nothing here decides; it only measures and writes.
+//   coax/bin/coax test metaverse-engine/render/cel-loft.coax
+#load "cel-mesh.coax";
+
+LOFT_RINGS :: 20;
+LOFT_SIDES :: 24;
+
+// A ring: its middle, the two unit axes of its plane (ax its right, az its front), and its radii on them.
+Ring :: struct { c: Point; ax: Point; az: Point; rx: f32; rz: f32; }
+// A loft: its rings in order, how many sides it is drawn with, and how square its rings are
+// (sq 1 an ellipse; less is squarer, 0.8 a torso's).
+Loft :: struct { r: [LOFT_RINGS] Ring; n: int; sides: int = 12; sq: f32 = 1; }
+
+// A level ring: right is +x, front is +z.
+ring_level :: (c: Point, rx: f32, rz: f32) -> Ring { return Ring.{c = c, ax = v3(1, 0, 0), az = v3(0, 0, 1), rx = rx, rz = rz}; }
+// A ring square to `along` (a limb's direction), its right as near +x and its front as near +z as it can be.
+ring_square :: (c: Point, along: Point, rx: f32, rz: f32) -> Ring {
+  d := unit_or(along, v3(0, 1, 0));
+  ax := sub(v3(1, 0, 0), times(d, d.x));
+  if length(ax) < 0.01 { ax = sub(v3(0, 1, 0), times(d, d.y)); }
+  ax = unit_or(ax, v3(1, 0, 0));
+  az := sub(sub(v3(0, 0, 1), times(d, d.z)), times(ax, ax.z));
+  if length(az) < 0.01 { az = cross(ax, d); }
+  az = unit_or(az, v3(0, 0, 1));
+  return Ring.{c = c, ax = ax, az = az, rx = rx, rz = rz};
+}
+// A ring whose plane has these axes (a boot's foot runs along z: its rings stand in x and y).
+ring_axes :: (c: Point, ax: Point, az: Point, rx: f32, rz: f32) -> Ring { return Ring.{c = c, ax = ax, az = az, rx = rx, rz = rz}; }
+loft_new :: (sides: int, sq: f32) -> Loft { l: Loft; l.sides = lo_i(hi_i(sides, 3), LOFT_SIDES); l.sq = sq; return l; }
+loft_add :: (l: Loft, r: Ring) -> Loft { o := l; if o.n < LOFT_RINGS { o.r[o.n] = r; o.n += 1; } return o; }
+
+ring_mix :: (a: Ring, b: Ring, k: f32) -> Ring {
+  return Ring.{c = mix(a.c, b.c, k), ax = mix(a.ax, b.ax, k), az = mix(a.az, b.az, k), rx = lerp(a.rx, b.rx, k), rz = lerp(a.rz, b.rz, k)};
+}
+// The ring at t, where t counts rings (1.5 is half way from ring 1 to ring 2), held to the loft's ends.
+loft_ring :: (l: Loft, t: f32) -> Ring {
+  if l.n < 1 { return Ring.{}; }
+  u := clamp(t, 0, cast(f32) (l.n - 1));
+  i := cast(int) floor(u);
+  if i >= l.n - 1 { return l.r[l.n - 1]; }
+  return ring_mix(l.r[i], l.r[i + 1], u - cast(f32) i);
+}
+// cos or sin made squarer: its sign kept, its size raised to sq.
+loft_sq :: (v: f32, sq: f32) -> f32 {
+  if sq > 0.999 && sq < 1.001 { return v; }
+  a := abs(v);
+  if a < 0.00001 { return 0; }
+  k := pow(a, sq);
+  return ifx v < 0 then -k else k;
+}
+// The point of a ring at angle a (0 its right, a quarter turn its front), `out` further from its middle.
+ring_point :: (r: Ring, a: f32, sq: f32, out: f32) -> Point {
+  x := loft_sq(cos(a), sq); z := loft_sq(sin(a), sq);
+  return add(r.c, add(times(r.ax, x * (r.rx + out)), times(r.az, z * (r.rz + out))));
+}
+loft_point :: (l: Loft, t: f32, a: f32) -> Point { return ring_point(loft_ring(l, t), a, l.sq, 0); }
+// The loft's outward normal at (t, a), from its neighbours.
+loft_normal :: (l: Loft, t: f32, a: f32) -> Point {
+  e: f32 = 0.05; top := cast(f32) (l.n - 1);
+  t0 := hi(t - e, 0); t1 := lo(t + e, top);
+  along := sub(loft_point(l, t1, a), loft_point(l, t0, a));
+  round := sub(loft_point(l, t, a + 0.05), loft_point(l, t, a - 0.05));
+  r := loft_ring(l, t);
+  from := sub(loft_point(l, t, a), r.c);
+  n := cross(along, round);
+  if length(n) < 0.0000001 { return unit_or(from, v3(0, 1, 0)); }
+  n = unit_or(n, v3(0, 1, 0));
+  if dot(n, from) < 0 { n = times(n, -1); }
+  return n;
+}
+// A frame standing on the loft at (t, a), lifted `out` off it: z out of the surface, y along the
+// loft toward its later rings, x round it. A pocket, a buckle or a patch is built in it.
+loft_frame :: (l: Loft, t: f32, a: f32, out: f32) -> Frame {
+  n := loft_normal(l, t, a);
+  top := cast(f32) (l.n - 1);
+  up := sub(loft_point(l, lo(t + 0.05, top), a), loft_point(l, hi(t - 0.05, 0), a));
+  up = sub(up, times(n, dot(up, n)));
+  up = unit_or(up, v3(0, 1, 0));
+  return Frame.{o = add(loft_point(l, t, a), times(n, out)), x = cross(up, n), y = up, z = n};
+}
+
+// Each ring made wider by ex on its right axis and ez on its front axis (a garment's ease).
+loft_ease :: (l: Loft, ex: f32, ez: f32) -> Loft {
+  o := l;
+  for i: 0..<o.n { o.r[i].rx += ex; o.r[i].rz += ez; }
+  return o;
+}
+// The part of a loft from t0 to t1: every ring between, and a ring at each end.
+loft_cut :: (l: Loft, t0: f32, t1: f32) -> Loft {
+  o := loft_new(l.sides, l.sq);
+  top := cast(f32) (l.n - 1);
+  a := clamp(t0, 0, top); b := clamp(t1, a, top);
+  o = loft_add(o, loft_ring(l, a));
+  for i: 0..<l.n { fi := cast(f32) i; if fi > a + 0.001 && fi < b - 0.001 { o = loft_add(o, l.r[i]); } }
+  if b > a + 0.001 { o = loft_add(o, loft_ring(l, b)); }
+  return o;
+}
+
+// Writes the loft into the store, in frame f: two triangles a side between each ring and the next,
+// smooth; an end is closed flat when asked (cap0 the first ring, cap1 the last).
+loft_write :: (buf: [] u32, p: [] Pen, f: Frame, l: Loft, cap0: bool, cap1: bool) {
+  if l.n < 2 { return; }
+  k := lo_i(hi_i(l.sides, 3), LOFT_SIDES);
+  pa: [LOFT_SIDES + 1] Point; na: [LOFT_SIDES + 1] Point; pb: [LOFT_SIDES + 1] Point; nb: [LOFT_SIDES + 1] Point;
+  for j: 0..<k + 1 {
+    a := TAU * cast(f32) j / cast(f32) k;
+    pa[j] = fp3(f, loft_point(l, 0, a)); na[j] = fd3(f, loft_normal(l, 0, a));
+  }
+  for i: 1..<l.n {
+    t := cast(f32) i;
+    for j: 0..<k + 1 {
+      a := TAU * cast(f32) j / cast(f32) k;
+      pb[j] = fp3(f, loft_point(l, t, a)); nb[j] = fd3(f, loft_normal(l, t, a));
+    }
+    for j: 0..<k {
+      tri(buf, p, pa[j], pb[j], pb[j + 1], na[j], nb[j], nb[j + 1]);
+      tri(buf, p, pa[j], pb[j + 1], pa[j + 1], na[j], nb[j + 1], na[j + 1]);
+    }
+    for j: 0..<k + 1 { pa[j] = pb[j]; na[j] = nb[j]; }
+  }
+  if cap0 { loft_cap(buf, p, f, l, 0); }
+  if cap1 { loft_cap(buf, p, f, l, l.n - 1); }
+}
+loft_cap :: (buf: [] u32, p: [] Pen, f: Frame, l: Loft, i: int) {
+  k := lo_i(hi_i(l.sides, 3), LOFT_SIDES);
+  r := l.r[i];
+  n := cross(r.az, r.ax);
+  other := ifx i == 0 then l.r[1].c else l.r[l.n - 2].c;
+  if dot(n, sub(r.c, other)) < 0 { n = times(n, -1); }
+  n = fd3(f, unit_or(n, v3(0, 1, 0)));
+  c := fp3(f, r.c);
+  for j: 0..<k {
+    a0 := TAU * cast(f32) j / cast(f32) k; a1 := TAU * cast(f32) (j + 1) / cast(f32) k;
+    tri(buf, p, c, fp3(f, ring_point(r, a0, l.sq, 0)), fp3(f, ring_point(r, a1, l.sq, 0)), n, n, n);
+  }
+}
+// The same loft with an end rounded: a dome over ring 0 (dome0) or the last ring (dome1), as high
+// as that share of the ring's smaller radius; 0 leaves the end open.
+loft_write_round :: (buf: [] u32, p: [] Pen, f: Frame, l: Loft, dome0: f32, dome1: f32) {
+  loft_write(buf, p, f, l, false, false);
+  if l.n < 2 { return; }
+  if dome0 > 0 { loft_dome(buf, p, f, l, 0, dome0); }
+  if dome1 > 0 { loft_dome(buf, p, f, l, l.n - 1, dome1); }
+}
+loft_dome :: (buf: [] u32, p: [] Pen, f: Frame, l: Loft, i: int, share: f32) {
+  r := l.r[i];
+  n := cross(r.az, r.ax);
+  other := ifx i == 0 then l.r[1].c else l.r[l.n - 2].c;
+  if dot(n, sub(r.c, other)) < 0 { n = times(n, -1); }
+  n = unit_or(n, v3(0, 1, 0));
+  tall := lo(r.rx, r.rz) * share;
+  d := loft_new(l.sides, l.sq);
+  steps := 4;
+  for k: 0..<steps + 1 {
+    a := cast(f32) k / cast(f32) steps * PI * 0.5;
+    w := hi(cos(a), 0.02);
+    d = loft_add(d, Ring.{c = add(r.c, times(n, tall * sin(a))), ax = r.ax, az = r.az, rx = r.rx * w, rz = r.rz * w});
+  }
+  loft_write(buf, p, f, d, false, false);
+}
+fp3 :: (f: Frame, q: Point) -> Point { return fp(f, q.x, q.y, q.z); }
+fd3 :: (f: Frame, q: Point) -> Point { return fd(f, q.x, q.y, q.z); }
+
+// A line lying on the loft from (t0, a0) to (t1, a1), w wide, lifted `out` off the surface, in
+// `steps` pieces: a stitch line, a zip, piping. It takes the pen's colour as it is.
+loft_line :: (buf: [] u32, p: [] Pen, f: Frame, l: Loft, t0: f32, a0: f32, t1: f32, a1: f32, w: f32, out: f32, steps: int) {
+  loft_line_beside(buf, p, f, l, t0, a0, t1, a1, w, out, steps, 0);
+}
+// The same line moved `shift` to its left along the surface (a strap's two stitched edges).
+loft_line_beside :: (buf: [] u32, p: [] Pen, f: Frame, l: Loft, t0: f32, a0: f32, t1: f32, a1: f32, w: f32, out: f32, steps: int, shift: f32) {
+  n := hi_i(steps, 1);
+  was_l := v3(0, 0, 0); was_r := v3(0, 0, 0); was_n := v3(0, 1, 0);
+  for i: 0..<n + 1 {
+    k := cast(f32) i / cast(f32) n;
+    t := lerp(t0, t1, k); a := lerp(a0, a1, k);
+    e: f32 = 0.5 / cast(f32) n;
+    q := loft_point(l, t, a); nn := loft_normal(l, t, a);
+    dir := sub(loft_point(l, lerp(t0, t1, k + e), lerp(a0, a1, k + e)), loft_point(l, lerp(t0, t1, k - e), lerp(a0, a1, k - e)));
+    side := unit_or(cross(nn, dir), v3(1, 0, 0));
+    o := add(add(q, times(nn, out)), times(side, shift));
+    le := fp3(f, add(o, times(side, w * 0.5))); ri := fp3(f, sub(o, times(side, w * 0.5))); nw := fd3(f, nn);
+    if i > 0 { tri(buf, p, was_l, was_r, ri, was_n, was_n, nw); tri(buf, p, was_l, ri, le, was_n, nw, nw); }
+    was_l = le; was_r = ri; was_n = nw;
+  }
+}
+// A patch lying on the loft, `out` off it: the part from t0 to t1 between the angles (a0, b0) at t0
+// and (a1, b1) at t1, in `steps` pieces along and `across` round. A collar's opening, a bib, a panel.
+loft_patch :: (buf: [] u32, p: [] Pen, f: Frame, l: Loft, t0: f32, a0: f32, b0: f32, t1: f32, a1: f32, b1: f32, out: f32, steps: int, across: int) {
+  n := hi_i(steps, 1); m := hi_i(across, 1);
+  for i: 0..<n {
+    for j: 0..<m {
+      q: [4] Point; nn: [4] Point;
+      for c: 0..<4 {
+        ki := cast(f32) (i + (c >> 1)) / cast(f32) n; kj := cast(f32) (j + (c & 1)) / cast(f32) m;
+        t := lerp(t0, t1, ki);
+        a := lerp(lerp(a0, a1, ki), lerp(b0, b1, ki), kj);
+        nl := loft_normal(l, t, a);
+        q[c] = fp3(f, add(loft_point(l, t, a), times(nl, out))); nn[c] = fd3(f, nl);
+      }
+      tri(buf, p, q[0], q[1], q[3], nn[0], nn[1], nn[3]); tri(buf, p, q[0], q[3], q[2], nn[0], nn[3], nn[2]);
+    }
+  }
+}
+
+// How far the loft's surface is from its ring's middle toward its front (a quarter turn), its back
+// and its right, at t: what a garment over it is measured against.
+loft_front :: (l: Loft, t: f32) -> f32 { r := loft_ring(l, t); return dot(add(r.c, times(r.az, r.rz)), v3(0, 0, 1)); }
+
+#test "a loft of two level rings is a tube: its points on the rings, its normals outward" {
+  l := loft_new(8, 1);
+  l = loft_add(l, ring_level(v3(0, 0, 0), 1, 2));
+  l = loft_add(l, ring_level(v3(0, 4, 0), 1, 2));
+  #assert l.n == 2 && same(loft_point(l, 0, 0), v3(1, 0, 0), 0.0001) && same(loft_point(l, 1, PI * 0.5), v3(0, 4, 2), 0.0001);
+  #assert same(loft_point(l, 0.5, PI), v3(-1, 2, 0), 0.0001);
+  #assert same(loft_normal(l, 0.5, 0), v3(1, 0, 0), 0.01) && same(loft_normal(l, 0.5, PI * 0.5), v3(0, 0, 1), 0.01);
+  buf: [8 * 6 * 3 * VERTEX_WORDS] u32;
+  pen := [1] Pen.[Pen.{}];
+  loft_write(buf[..], pen[..], frame_at(v3(0, 0, 0), 0), l, true, true);
+  #assert pen[0].n == 8 * 6 + 16 * 3;
+  #assert !pen[0].over;
+}
+#test "eased rings are wider by the ease, a cut keeps the rings between, and a frame stands on the surface" {
+  l := loft_new(10, 1);
+  for i: 0..<5 { l = loft_add(l, ring_level(v3(0, cast(f32) i, 0), 1, 1)); }
+  e := loft_ease(l, 0.25, 0.5);
+  #assert near(e.r[2].rx, 1.25, 0.0001) && near(e.r[2].rz, 1.5, 0.0001) && e.n == 5;
+  c := loft_cut(l, 0.5, 3.5);
+  #assert c.n == 5 && near(c.r[0].c.y, 0.5, 0.0001) && near(c.r[1].c.y, 1, 0.0001) && near(c.r[4].c.y, 3.5, 0.0001);
+  fr := loft_frame(l, 2, PI * 0.5, 0.1);
+  #assert same(fr.o, v3(0, 2, 1.1), 0.001) && same(fr.z, v3(0, 0, 1), 0.01) && same(fr.y, v3(0, 1, 0), 0.01);
+  // a squarer ring reaches further at the diagonal and no further on its axes
+  s := loft_new(10, 0.5);
+  s = loft_add(s, ring_level(v3(0, 0, 0), 1, 1)); s = loft_add(s, ring_level(v3(0, 1, 0), 1, 1));
+  d := loft_point(s, 0, PI * 0.25);
+  #assert d.x > 0.8 && d.z > 0.8 && near(loft_point(s, 0, 0).x, 1, 0.0001);
+}
+#test "a ring square to a limb keeps its right near +x and its front near +z" {
+  r := ring_square(v3(0, 0, 0), v3(0.2, -1, 0.1), 1, 1);
+  #assert r.ax.x > 0.9 && r.az.z > 0.9 && abs(dot(r.ax, r.az)) < 0.001;
+  d := unit_or(v3(0.2, -1, 0.1), v3(0, 1, 0));
+  #assert abs(dot(r.ax, d)) < 0.001 && abs(dot(r.az, d)) < 0.001;
+  u := ring_square(v3(0, 0, 0), v3(0, 1, 0), 1, 1);
+  #assert same(u.ax, v3(1, 0, 0), 0.001) && same(u.az, v3(0, 0, 1), 0.001);
+}
+#test "a line and a patch on a loft write triangles and stop when the store is full" {
+  l := loft_new(10, 1);
+  l = loft_add(l, ring_level(v3(0, 0, 0), 1, 1)); l = loft_add(l, ring_level(v3(0, 2, 0), 1, 1));
+  buf: [4000] u32;
+  pen := [1] Pen.[Pen.{}];
+  loft_line(buf[..], pen[..], frame_at(v3(0, 0, 0), 0), l, 0, 0, 1, 1, 0.02, 0.003, 4);
+  #assert pen[0].n == 4 * 6;
+  // the line lies just off the surface
+  x := f32_from_bits(buf[0]); z := f32_from_bits(buf[2]);
+  #assert sqrt(x * x + z * z) > 1.0 && sqrt(x * x + z * z) < 1.02;
+  loft_patch(buf[..], pen[..], frame_at(v3(0, 0, 0), 0), l, 0, 0, 1, 1, 0.2, 0.8, 0.004, 2, 3);
+  #assert pen[0].n == 4 * 6 + 2 * 3 * 6 && !pen[0].over;
+  small: [60] u32;
+  q := [1] Pen.[Pen.{}];
+  loft_write(small[..], q[..], frame_at(v3(0, 0, 0), 0), l, false, false);
+  #assert q[0].over && q[0].n * VERTEX_WORDS <= small.count;
+  // a rounded end: a dome of four bands over the last ring, its top above the ring by the share asked
+  big: [10 * 6 * 5 * VERTEX_WORDS] u32;
+  w := [1] Pen.[Pen.{}];
+  loft_write_round(big[..], w[..], frame_at(v3(0, 0, 0), 0), l, 0, 0.5);
+  #assert w[0].n == 10 * 6 * 5 && !w[0].over;
+  top: f32 = 0;
+  for i: 0..<w[0].n { top = hi(top, f32_from_bits(big[i * VERTEX_WORDS + 1])); }
+  #assert near(top, 2.5, 0.001);
+}

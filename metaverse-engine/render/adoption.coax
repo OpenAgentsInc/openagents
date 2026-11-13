@@ -186,7 +186,13 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
   if slug == "painted-village" && app == "painted" { return RenderAdoption.{tracked_legacy = true}; }   // the Metaverse Engine's stylized shading (metaverse-engine/render/stylized.coax) on the page's own passes
   if slug == "create-world" && app == "worldbuilder" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "splice" && app == "splice" { return RenderAdoption.{tracked_legacy = true}; }   // Splice: Mars at dusk on Anime Lab's shading (metaverse/splice/splice.coax)   // WorldBuilder: chat a world onto the Grid, on its own passes
+  if slug == "crew" && app == "crew" { return RenderAdoption.{tracked_legacy = true}; }   // Crew: character creation on Anime Lab's shading, a studio's paper for a sky (apps/openagents-web/crew.coax, #13462)
   return RenderAdoption.{};
+}
+#test "Crew binds Anime Lab's passes only to its own producer" {
+  r := render_adoption("crew", "crew");
+  #assert r.tracked_legacy && !r.shared && r.profile == -1;
+  #assert !render_adoption("crew", "splice").tracked_legacy && !render_adoption("splice", "crew").tracked_legacy && !render_adoption("cre", "crew").tracked_legacy;
 }
 #test "WorldBuilder binds its own passes only to its own producer" {
   r := render_adoption("create-world", "worldbuilder");

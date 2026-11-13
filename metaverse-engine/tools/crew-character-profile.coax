@@ -1,0 +1,100 @@
+// Checks proto/aethyr/crew-character-v1.json against metaverse-engine/kit/crew-doc.coax, the one
+// codec of a crew member's document (GitHub #13462): each pinned document reads as what the
+// profile says of it and writes back the same bytes; each rejected document is refused with the
+// profile's reason; the ranges, the choices and the pieces are the modules' own; the limits are the
+// codec's; the profile names itself, its version and this check.
+// Usage: coax/web/tool.sh metaverse-engine/tools/crew-character-profile.coax proto/aethyr/crew-character-v1.json
+#import "Basic";
+#load "../kit/crew-doc.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+
+CCP_CHECK :: "coax/web/tool.sh metaverse-engine/tools/crew-character-profile.coax proto/aethyr/crew-character-v1.json";
+CCP_BYTES :: 1024;
+CcpWork :: struct { wire: [CCP_BYTES] u8; out: [CCP_BYTES] u8; a: [CCP_BYTES] u8; b: [CCP_BYTES] u8; nodes: [2048] JvNode; r: [1] CdRead; d: [1] CrewDoc; }
+ccp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+ccp_lim :: (d: Jv, name: string) -> int { return jv_int(d, jv_get(d, jv_get(d, 0, "limits"), name), -1); }
+// The ranges, the choices and the pieces the profile lists are the modules' own, in their order.
+ccp_tables :: (d: Jv, w: [] CcpWork) -> bool {
+  body := jv_get(d, 0, "body"); keys := CB_KEYS; low := CB_LO; high := CB_HI;
+  if jv_len(d, body) != CB_NUMBERS { return false; }
+  for i: 0..<CB_NUMBERS {
+    row := jv_at(d, body, i);
+    if ccp_str(d, jv_get(d, row, "key"), w[0].a[..]) != keys[i] || jv_int(d, jv_get(d, row, "low"), -1) != low[i] || jv_int(d, jv_get(d, row, "high"), -1) != high[i] { return false; }
+  }
+  look := jv_get(d, 0, "look"); lk := CH_KEYS; counts := CH_COUNTS; hk := CH_HAIR_KEYS; mk := CH_MARK_KEYS;
+  if jv_len(d, look) != CH_FIELDS { return false; }
+  for i: 0..<CH_FIELDS {
+    row := jv_at(d, look, i);
+    if ccp_str(d, jv_get(d, row, "key"), w[0].a[..]) != lk[i] { return false; }
+    names := jv_get(d, row, "names");
+    if i == 1 || i == 7 {
+      if jv_len(d, names) != counts[i] { return false; }
+      for k: 0..<counts[i] { if ccp_str(d, jv_at(d, names, k), w[0].a[..]) != (ifx i == 1 then hk[k] else mk[k]) { return false; } }
+    } else if jv_int(d, jv_get(d, row, "choices"), -1) != counts[i] { return false; }
+  }
+  wear := jv_get(d, 0, "wear"); sk := CW_SLOT_KEYS; pieces := CW_COUNT;
+  if jv_len(d, wear) != CW_SLOTS { return false; }
+  for i: 0..<CW_SLOTS {
+    row := jv_at(d, wear, i); list := jv_get(d, row, "pieces");
+    if ccp_str(d, jv_get(d, row, "slot"), w[0].a[..]) != sk[i] || jv_len(d, list) != pieces[i] { return false; }
+    for k: 0..<pieces[i] { if ccp_str(d, jv_at(d, list, k), w[0].a[..]) != cw_piece_key(i, k) { return false; } }
+  }
+  return true;
+}
+ccp_documents :: (d: Jv, w: [] CcpWork) -> bool {
+  list := jv_get(d, 0, "documents"); hk := CH_HAIR_KEYS;
+  if jv_kind(d, list) != JV_ARRAY || jv_len(d, list) < 2 { return false; }
+  for i: 0..<jv_len(d, list) {
+    one := jv_at(d, list, i);
+    wire := ccp_str(d, jv_get(d, one, "wire"), w[0].wire[..]);
+    w[0].r[0] = cd_read(wire);
+    if wire.count == 0 || !w[0].r[0].ok { return false; }
+    w[0].d[0] = w[0].r[0].doc;
+    if cd_name(w[0].d[..]) != ccp_str(d, jv_get(d, one, "name"), w[0].a[..]) || w[0].d[0].body.v[CB_HEIGHT] != jv_int(d, jv_get(d, one, "height"), -1) { return false; }
+    if hk[w[0].d[0].look.hair] != ccp_str(d, jv_get(d, one, "hair"), w[0].a[..]) || cw_piece_key(CW_TOP, w[0].d[0].wear.v[CW_TOP]) != ccp_str(d, jv_get(d, one, "top"), w[0].a[..]) { return false; }
+    n := cd_write(w[0].d[0], w[0].out[..]);
+    if n < 0 || cast(string) w[0].out[0..<n] != wire { return false; }
+  }
+  // the first pinned document is the codec's own pin
+  first := ccp_str(d, jv_get(d, jv_at(d, list, 0), "wire"), w[0].wire[..]);
+  return first == CD_PINNED;
+}
+ccp_rejects :: (d: Jv, w: [] CcpWork) -> bool {
+  list := jv_get(d, 0, "rejected");
+  if jv_kind(d, list) != JV_ARRAY || jv_len(d, list) < 10 { return false; }
+  for i: 0..<jv_len(d, list) {
+    one := jv_at(d, list, i);
+    n := jv_str(d, jv_get(d, one, "wire"), w[0].wire[..]);
+    if n < 0 { return false; }
+    w[0].r[0] = cd_read(cast(string) w[0].wire[0..<n]);
+    if w[0].r[0].ok || cd_why(w[0].r[..]) != ccp_str(d, jv_get(d, one, "why"), w[0].a[..]) { return false; }
+  }
+  return true;
+}
+ccp_check :: (profile_json: string, w: [] CcpWork) -> bool #effects(all) {
+  da: [1] Jv; nb: [128] u8; cb: [256] u8;
+  if !jv_parse(da[..], profile_json, w[0].nodes[..]) { return false; }
+  d := da[0];
+  if ccp_str(d, jv_get(d, 0, "profile"), nb[..]) != "crew-character-v1" || jv_int(d, jv_get(d, 0, "version"), 0) != 1 || ccp_str(d, jv_get(d, 0, "check"), cb[..]) != CCP_CHECK { return false; }
+  if ccp_str(d, jv_get(d, 0, "schema"), nb[..]) != CD_VERSION { return false; }
+  if ccp_lim(d, "bytes") != CD_TEXT || ccp_lim(d, "name_bytes") != CD_NAME || ccp_lim(d, "body_numbers") != CB_NUMBERS || ccp_lim(d, "look_choices") != CH_FIELDS || ccp_lim(d, "slots") != CW_SLOTS { return false; }
+  return ccp_tables(d, w) && ccp_documents(d, w) && ccp_rejects(d, w);
+}
+#test "crew character profile tool refuses a profile that is not one" { w: [1] CcpWork; #assert !ccp_check("{}", w[..]) && !ccp_check("bad", w[..]); }
+
+CcpMain :: struct { w: [1] CcpWork; raw: [65536] u8; }
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; h: [1] CcpMain;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: crew-character-profile FILE.json"); return 2; }
+  n := fs_read(args_at(a[..], 0), h[0].raw[..]);
+  if n <= 0 { tool_errln("crew-character-profile: cannot read JSON"); return 2; }
+  if !ccp_check(cast(string) h[0].raw[0..<n], h[0].w[..]) { print("crew-character-v1: profile fails\n"); return 1; }
+  print("crew-character-v1: profile holds\n");
+  return 0;
+}

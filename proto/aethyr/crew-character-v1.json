@@ -1,0 +1,319 @@
+{
+ "profile": "crew-character-v1",
+ "version": 1,
+ "title": "A crew member as a document v1 (crew.character.v1)",
+ "check": "coax/web/tool.sh metaverse-engine/tools/crew-character-profile.coax proto/aethyr/crew-character-v1.json",
+ "spec": "docs/protocol/crew-character-v1.md",
+ "schema": "crew.character.v1",
+ "about": "A character made on the creation page (GitHub #13462; docs/metaverse/2026-11-13-character-creation.md): a name, the body's record of clamped numbers, the face and hair choices, and one piece of the wardrobe a slot. The creation page writes it, keeps it in the browser and takes one from its address or from a message; a game reads it. A document with a value out of range, an unknown key, a key twice or a part missing is refused with a reason in words, never clamped.",
+ "limits": {
+  "bytes": 640,
+  "name_bytes": 24,
+  "body_numbers": 16,
+  "look_choices": 8,
+  "slots": 11
+ },
+ "lines": [
+  "crew.character.v1",
+  "name NAME",
+  "body KEY=NUMBER ... (all 16, any order)",
+  "look KEY=CHOICE ... (all 8, any order)",
+  "wear SLOT=PIECE ... (all 11, any order)"
+ ],
+ "body": [
+  {
+   "key": "height",
+   "low": 145,
+   "high": 225
+  },
+  {
+   "key": "shoulders",
+   "low": 80,
+   "high": 150
+  },
+  {
+   "key": "chest",
+   "low": 80,
+   "high": 150
+  },
+  {
+   "key": "waist",
+   "low": 75,
+   "high": 160
+  },
+  {
+   "key": "belly",
+   "low": 0,
+   "high": 100
+  },
+  {
+   "key": "hips",
+   "low": 80,
+   "high": 150
+  },
+  {
+   "key": "arms",
+   "low": 70,
+   "high": 170
+  },
+  {
+   "key": "legs",
+   "low": 70,
+   "high": 160
+  },
+  {
+   "key": "arm_length",
+   "low": 88,
+   "high": 112
+  },
+  {
+   "key": "leg_length",
+   "low": 85,
+   "high": 112
+  },
+  {
+   "key": "neck_length",
+   "low": 50,
+   "high": 130
+  },
+  {
+   "key": "neck",
+   "low": 80,
+   "high": 170
+  },
+  {
+   "key": "head",
+   "low": 88,
+   "high": 125
+  },
+  {
+   "key": "hands",
+   "low": 85,
+   "high": 140
+  },
+  {
+   "key": "feet",
+   "low": 85,
+   "high": 135
+  },
+  {
+   "key": "stoop",
+   "low": 0,
+   "high": 100
+  }
+ ],
+ "look": [
+  {
+   "key": "skin",
+   "choices": 8
+  },
+  {
+   "key": "hair",
+   "names": [
+    "bun",
+    "crop",
+    "mohawk",
+    "tied",
+    "curls",
+    "shaved",
+    "topknot",
+    "long"
+   ]
+  },
+  {
+   "key": "hair_colour",
+   "choices": 8
+  },
+  {
+   "key": "jaw",
+   "choices": 3
+  },
+  {
+   "key": "eyes",
+   "choices": 3
+  },
+  {
+   "key": "brows",
+   "choices": 3
+  },
+  {
+   "key": "nose",
+   "choices": 3
+  },
+  {
+   "key": "mark",
+   "names": [
+    "none",
+    "scar",
+    "moustache",
+    "beard",
+    "full"
+   ]
+  }
+ ],
+ "wear": [
+  {
+   "slot": "head",
+   "pieces": [
+    "none",
+    "goggles",
+    "helmet",
+    "hood"
+   ]
+  },
+  {
+   "slot": "face",
+   "pieces": [
+    "none",
+    "mask"
+   ]
+  },
+  {
+   "slot": "top",
+   "pieces": [
+    "flight",
+    "crop",
+    "vac",
+    "fitted",
+    "tunic",
+    "shirt"
+   ]
+  },
+  {
+   "slot": "outer",
+   "pieces": [
+    "none",
+    "jacket",
+    "coat"
+   ]
+  },
+  {
+   "slot": "hands",
+   "pieces": [
+    "none",
+    "gloves",
+    "long-gloves"
+   ]
+  },
+  {
+   "slot": "belt",
+   "pieces": [
+    "none",
+    "wide",
+    "utility",
+    "slung",
+    "double",
+    "tied-jacket"
+   ]
+  },
+  {
+   "slot": "legs",
+   "pieces": [
+    "flight",
+    "cargo",
+    "vac",
+    "leggings",
+    "wraps",
+    "overalls"
+   ]
+  },
+  {
+   "slot": "feet",
+   "pieces": [
+    "lace-boots",
+    "strap-boots"
+   ]
+  },
+  {
+   "slot": "pack",
+   "pieces": [
+    "none",
+    "hip-pack"
+   ]
+  },
+  {
+   "slot": "satchel",
+   "pieces": [
+    "none",
+    "satchel"
+   ]
+  },
+  {
+   "slot": "tool",
+   "pieces": [
+    "none",
+    "wrench"
+   ]
+  }
+ ],
+ "documents": [
+  {
+   "wire": "crew.character.v1\nname Ash\nbody height=175 shoulders=98 chest=96 waist=82 belly=0 hips=104 arms=96 legs=106 arm_length=100 leg_length=102 neck_length=100 neck=96 head=100 hands=100 feet=100 stoop=0\nlook skin=2 hair=bun hair_colour=0 jaw=0 eyes=0 brows=0 nose=0 mark=none\nwear head=none face=none top=flight outer=none hands=gloves belt=wide legs=flight feet=strap-boots pack=none satchel=none tool=none\n",
+   "name": "Ash",
+   "height": 175,
+   "hair": "bun",
+   "top": "flight"
+  },
+  {
+   "wire": "crew.character.v1\nname Old Brink\nbody height=210 shoulders=120 chest=136 waist=158 belly=96 hips=148 arms=134 legs=142 arm_length=98 leg_length=92 neck_length=55 neck=150 head=104 hands=120 feet=120 stoop=24\nlook skin=1 hair=tied hair_colour=6 jaw=1 eyes=1 brows=2 nose=2 mark=full\nwear head=hood face=mask top=tunic outer=coat hands=gloves belt=double legs=wraps feet=strap-boots pack=none satchel=none tool=none\n",
+   "name": "Old Brink",
+   "height": 210,
+   "hair": "tied",
+   "top": "tunic"
+  }
+ ],
+ "rejected": [
+  {
+   "wire": "",
+   "why": "the document is empty"
+  },
+  {
+   "wire": "crew.character.v2\nname Ash\nbody height=175 shoulders=98 chest=96 waist=82 belly=0 hips=104 arms=96 legs=106 arm_length=100 leg_length=102 neck_length=100 neck=96 head=100 hands=100 feet=100 stoop=0\nlook skin=2 hair=bun hair_colour=0 jaw=0 eyes=0 brows=0 nose=0 mark=none\nwear head=none face=none top=flight outer=none hands=gloves belt=wide legs=flight feet=strap-boots pack=none satchel=none tool=none\n",
+   "why": "the first line is not crew.character.v1"
+  },
+  {
+   "wire": "crew.character.v1\nname Ash\nbody height=300 shoulders=98 chest=96 waist=82 belly=0 hips=104 arms=96 legs=106 arm_length=100 leg_length=102 neck_length=100 neck=96 head=100 hands=100 feet=100 stoop=0\nlook skin=2 hair=bun hair_colour=0 jaw=0 eyes=0 brows=0 nose=0 mark=none\nwear head=none face=none top=flight outer=none hands=gloves belt=wide legs=flight feet=strap-boots pack=none satchel=none tool=none\n",
+   "why": "the body's height is 300, outside 145 to 225"
+  },
+  {
+   "wire": "crew.character.v1\nname Ash\nbody height=175 shoulders=98 chest=96 waist=82 belly=-5 hips=104 arms=96 legs=106 arm_length=100 leg_length=102 neck_length=100 neck=96 head=100 hands=100 feet=100 stoop=0\nlook skin=2 hair=bun hair_colour=0 jaw=0 eyes=0 brows=0 nose=0 mark=none\nwear head=none face=none top=flight outer=none hands=gloves belt=wide legs=flight feet=strap-boots pack=none satchel=none tool=none\n",
+   "why": "the body's belly is -5, outside 0 to 100"
+  },
+  {
+   "wire": "crew.character.v1\nname Ash\nbody height=175 shoulders=98 chest=96 waist=82 belly=0 hips=104 arms=96 legs=106 arm_length=100 leg_length=102 neck_length=100 neck=96 head=100 hands=100 feet=100 stoop=0 stoop=5\nlook skin=2 hair=bun hair_colour=0 jaw=0 eyes=0 brows=0 nose=0 mark=none\nwear head=none face=none top=flight outer=none hands=gloves belt=wide legs=flight feet=strap-boots pack=none satchel=none tool=none\n",
+   "why": "the body's stoop is there twice"
+  },
+  {
+   "wire": "crew.character.v1\nname Ash\nbody height=175 shoulders=98 chest=96 waist=82 belly=0 hips=104 arms=96 legs=106 arm_length=100 leg_length=102 neck_length=100 neck=96 head=100 hands=100 feet=100\nlook skin=2 hair=bun hair_colour=0 jaw=0 eyes=0 brows=0 nose=0 mark=none\nwear head=none face=none top=flight outer=none hands=gloves belt=wide legs=flight feet=strap-boots pack=none satchel=none tool=none\n",
+   "why": "the body's stoop is missing"
+  },
+  {
+   "wire": "crew.character.v1\nname Ash\nbody height=175 shoulders=98 chest=96 wings=2 belly=0 hips=104 arms=96 legs=106 arm_length=100 leg_length=102 neck_length=100 neck=96 head=100 hands=100 feet=100 stoop=0\nlook skin=2 hair=bun hair_colour=0 jaw=0 eyes=0 brows=0 nose=0 mark=none\nwear head=none face=none top=flight outer=none hands=gloves belt=wide legs=flight feet=strap-boots pack=none satchel=none tool=none\n",
+   "why": "the body has no number named wings"
+  },
+  {
+   "wire": "crew.character.v1\nname Ash\nbody height=175 shoulders=98 chest=96 waist=82 belly=0 hips=104 arms=96 legs=106 arm_length=100 leg_length=102 neck_length=100 neck=96 head=100 hands=100 feet=100 stoop=0\nlook skin=2 hair=wig hair_colour=0 jaw=0 eyes=0 brows=0 nose=0 mark=none\nwear head=none face=none top=flight outer=none hands=gloves belt=wide legs=flight feet=strap-boots pack=none satchel=none tool=none\n",
+   "why": "the look's hair is not one of its choices"
+  },
+  {
+   "wire": "crew.character.v1\nname Ash\nbody height=175 shoulders=98 chest=96 waist=82 belly=0 hips=104 arms=96 legs=106 arm_length=100 leg_length=102 neck_length=100 neck=96 head=100 hands=100 feet=100 stoop=0\nlook skin=8 hair=bun hair_colour=0 jaw=0 eyes=0 brows=0 nose=0 mark=none\nwear head=none face=none top=flight outer=none hands=gloves belt=wide legs=flight feet=strap-boots pack=none satchel=none tool=none\n",
+   "why": "the look's skin is not one of its choices"
+  },
+  {
+   "wire": "crew.character.v1\nname Ash\nbody height=175 shoulders=98 chest=96 waist=82 belly=0 hips=104 arms=96 legs=106 arm_length=100 leg_length=102 neck_length=100 neck=96 head=100 hands=100 feet=100 stoop=0\nlook skin=2 hair=bun hair_colour=0 jaw=0 eyes=0 brows=0 nose=0 mark=none\nwear head=none face=none top=cape outer=none hands=gloves belt=wide legs=flight feet=strap-boots pack=none satchel=none tool=none\n",
+   "why": "the outfit's top has no such piece"
+  },
+  {
+   "wire": "crew.character.v1\nname Ash\nbody height=175 shoulders=98 chest=96 waist=82 belly=0 hips=104 arms=96 legs=106 arm_length=100 leg_length=102 neck_length=100 neck=96 head=100 hands=100 feet=100 stoop=0\nlook skin=2 hair=bun hair_colour=0 jaw=0 eyes=0 brows=0 nose=0 mark=none\npose head=none face=none top=flight outer=none hands=gloves belt=wide legs=flight feet=strap-boots pack=none satchel=none tool=none\n",
+   "why": "no part is named pose"
+  },
+  {
+   "wire": "crew.character.v1\nbody height=175 shoulders=98 chest=96 waist=82 belly=0 hips=104 arms=96 legs=106 arm_length=100 leg_length=102 neck_length=100 neck=96 head=100 hands=100 feet=100 stoop=0\nlook skin=2 hair=bun hair_colour=0 jaw=0 eyes=0 brows=0 nose=0 mark=none\nwear head=none face=none top=flight outer=none hands=gloves belt=wide legs=flight feet=strap-boots pack=none satchel=none tool=none\n",
+   "why": "the part name is missing"
+  },
+  {
+   "wire": "crew.character.v1\nname \nbody height=175 shoulders=98 chest=96 waist=82 belly=0 hips=104 arms=96 legs=106 arm_length=100 leg_length=102 neck_length=100 neck=96 head=100 hands=100 feet=100 stoop=0\nlook skin=2 hair=bun hair_colour=0 jaw=0 eyes=0 brows=0 nose=0 mark=none\nwear head=none face=none top=flight outer=none hands=gloves belt=wide legs=flight feet=strap-boots pack=none satchel=none tool=none\n",
+   "why": "the name is not 1 to 24 printable characters"
+  }
+ ]
+}

@@ -1,0 +1,308 @@
+// A crew member's skin, face and hair (docs/metaverse/2026-11-13-character-creation.md): the look a
+// player picks (a row of skin tones, a few shapes for jaw, eyes, brows and nose, a scar, beard or
+// moustache, eight hair styles in any of a row of colours) and the writers that draw it on a body's
+// form (crew-body.coax) with the cel kit's shapes. Faces are marks on the head, as Anime Lab's are.
+//   coax/bin/coax test metaverse-engine/kit/crew-head.coax
+#load "crew-body.coax";
+
+CH_SKINS :: 8;
+CH_SKIN_NAMES :: [CH_SKINS] string.["Porcelain", "Fair", "Warm", "Tan", "Olive", "Brown", "Deep", "Dark"];
+CH_SKIN :: [CH_SKINS * 3] f32.[0.98, 0.87, 0.80, 0.95, 0.80, 0.69, 0.90, 0.72, 0.58, 0.82, 0.62, 0.47,
+                               0.72, 0.54, 0.40, 0.58, 0.40, 0.29, 0.43, 0.29, 0.21, 0.30, 0.20, 0.15];
+CH_HAIR_COLOURS :: 8;
+CH_HAIR_COLOUR_NAMES :: [CH_HAIR_COLOURS] string.["Black", "Dark brown", "Brown", "Auburn", "Blond", "Grey", "White", "Blue"];
+CH_HAIR_COLOUR :: [CH_HAIR_COLOURS * 3] f32.[0.09, 0.09, 0.11, 0.21, 0.14, 0.11, 0.38, 0.24, 0.15, 0.52, 0.21, 0.13,
+                                             0.86, 0.71, 0.43, 0.62, 0.62, 0.65, 0.92, 0.92, 0.93, 0.20, 0.36, 0.62];
+CH_HAIRS :: 8;
+CH_BUN :: 0; CH_CROP :: 1; CH_MOHAWK :: 2; CH_TIED :: 3; CH_CURLS :: 4; CH_SHAVED :: 5; CH_TOPKNOT :: 6; CH_LONG :: 7;
+CH_HAIR_KEYS :: [CH_HAIRS] string.["bun", "crop", "mohawk", "tied", "curls", "shaved", "topknot", "long"];
+CH_HAIR_NAMES :: [CH_HAIRS] string.["Messy bun", "Crop", "Mohawk and braid", "Long, tied", "Curls", "Shaved", "Topknot", "Long, loose"];
+CH_JAWS :: 3; CH_JAW_NAMES :: [CH_JAWS] string.["Soft", "Square", "Narrow"];
+CH_EYES :: 3; CH_EYE_NAMES :: [CH_EYES] string.["Wide", "Narrow", "Round"];
+CH_BROWS :: 3; CH_BROW_NAMES :: [CH_BROWS] string.["Straight", "Arched", "Heavy"];
+CH_NOSES :: 3; CH_NOSE_NAMES :: [CH_NOSES] string.["Small", "Long", "Broad"];
+CH_MARKS :: 5;
+CH_NO_MARK :: 0; CH_SCAR :: 1; CH_MOUSTACHE :: 2; CH_BEARD :: 3; CH_FULL :: 4;
+CH_MARK_KEYS :: [CH_MARKS] string.["none", "scar", "moustache", "beard", "full"];
+CH_MARK_NAMES :: [CH_MARKS] string.["None", "Scar", "Moustache", "Beard", "Beard and moustache"];
+
+CrewLook :: struct { skin: int = 2; hair: int; hair_colour: int; jaw: int; eyes: int; brows: int; nose: int; mark: int; }
+CH_FIELDS :: 8;
+CH_KEYS :: [CH_FIELDS] string.["skin", "hair", "hair_colour", "jaw", "eyes", "brows", "nose", "mark"];
+CH_COUNTS :: [CH_FIELDS] int.[CH_SKINS, CH_HAIRS, CH_HAIR_COLOURS, CH_JAWS, CH_EYES, CH_BROWS, CH_NOSES, CH_MARKS];
+ch_get :: (l: CrewLook, i: int) -> int {
+  return ifx i == 0 then l.skin else ifx i == 1 then l.hair else ifx i == 2 then l.hair_colour else ifx i == 3 then l.jaw
+    else ifx i == 4 then l.eyes else ifx i == 5 then l.brows else ifx i == 6 then l.nose else l.mark;
+}
+ch_set :: (l: CrewLook, i: int, v: int) -> CrewLook {
+  o := l;
+  if i == 0 { o.skin = v; } if i == 1 { o.hair = v; } if i == 2 { o.hair_colour = v; } if i == 3 { o.jaw = v; }
+  if i == 4 { o.eyes = v; } if i == 5 { o.brows = v; } if i == 6 { o.nose = v; } if i == 7 { o.mark = v; }
+  return o;
+}
+// The first choice outside its row, -1 when every one is in it.
+ch_bad :: (l: CrewLook) -> int {
+  n := CH_COUNTS;
+  for i: 0..<CH_FIELDS { if ch_get(l, i) < 0 || ch_get(l, i) >= n[i] { return i; } }
+  return -1;
+}
+ch_skin :: (l: CrewLook) -> KitTint { t := CH_SKIN; k := lo_i(hi_i(l.skin, 0), CH_SKINS - 1) * 3; return kit_tint(t[k], t[k + 1], t[k + 2]); }
+ch_hair :: (l: CrewLook) -> KitTint { t := CH_HAIR_COLOUR; k := lo_i(hi_i(l.hair_colour, 0), CH_HAIR_COLOURS - 1) * 3; return kit_tint(t[k], t[k + 1], t[k + 2]); }
+ch_shade :: (c: KitTint, k: f32) -> KitTint { return kit_tint(c.r * k, c.g * k, c.b * k); }
+
+// What is on the head over the hair: nothing, something that presses it flat (a hood, a helmet), which
+// leaves the cap and the fringe.
+CH_BARE :: 0; CH_PRESSED :: 1;
+
+// The head's frame: its middle, its axes the figure's.
+ch_frame :: (f: Frame, m: CrewForm) -> Frame { return kit_at(f, m.head.x, m.head.y, m.head.z); }
+ch_chin :: (l: CrewLook) -> f32 { return ifx l.jaw == 1 then 0.28f32 else ifx l.jaw == 2 then 0.85f32 else 0.55f32; }
+// A frame on the face at (x, y) from the head's middle, `out` off the skin, facing out of it.
+ch_face :: (h: Frame, m: CrewForm, chin: f32, x: f32, y: f32, out: f32) -> Frame {
+  rx := m.head_rx; ry := m.head_ry; rz := m.head_rz;
+  if y < 0 { k := chin * (y / ry) * (y / ry); rx = rx * (1 - k * 0.55); rz = rz * (1 + k * 0.12); }
+  q := 1 - (x / rx) * (x / rx) - (y / ry) * (y / ry);
+  z := ifx q > 0 then rz * sqrt(q) else 0.0f32;
+  n := unit_or(fd(h, x / (rx * rx), y / (ry * ry), z / (rz * rz)), h.z);
+  o := add(fp(h, x, y, z), times(n, out));
+  side := unit_or(cross(h.y, n), h.x);
+  return Frame.{o = o, x = side, y = cross(n, side), z = n};
+}
+
+// The skin: the head with its ears, the neck, the hands, and the parts of the body asked for (the
+// torso under a cropped top, the arms under rolled sleeves). Object obj.
+ch_skin_write :: (buf: [] u32, p: [] Pen, f: Frame, m: CrewForm, l: CrewLook, obj: int, torso: bool, arms: bool) {
+  skin := ch_skin(l);
+  kit_pen(p, obj, MAT_SKIN, skin);
+  h := ch_frame(f, m);
+  ellipsoid(buf, p, h, m.head_rx, m.head_ry, m.head_rz, 16, 10, ch_chin(l));
+  for side: 0..<2 {
+    sx := cb_side(side);
+    ellipsoid(buf, p, kit_at(h, sx * m.head_rx * 0.97, -m.head_ry * 0.10, -m.head_rz * 0.08), m.head_rx * 0.13, m.head_ry * 0.20, m.head_rz * 0.15, 6, 4, 0);
+  }
+  limb(buf, p, fp3(f, m.neck_foot), fp3(f, m.neck_top), m.neck_r, m.neck_r * 0.92, fd(f, 1, 0, 0), 10);
+  if torso { loft_write(buf, p, f, m.torso, true, true); }
+  for side: 0..<2 {
+    if arms { loft_write_round(buf, p, f, m.arm[side], 0.7, 0); }
+    ch_hand(buf, p, f, m, side, 1.0, 0, 1);
+  }
+}
+// A hand: the palm and the fingers, each `swell` times its size, from share k0 to k1 of its length
+// (a glove draws the palm a little larger over it). The palm faces the body.
+ch_hand :: (buf: [] u32, p: [] Pen, f: Frame, m: CrewForm, side: int, swell: f32, k0: f32, k1: f32) {
+  d := m.hand_along[side];
+  wrist := sub(m.hand[side], times(d, m.hand_len * 0.5));
+  a := add(wrist, times(d, m.hand_len * k0)); b := add(wrist, times(d, m.hand_len * k1));
+  mid := times(add(a, b), 0.5);
+  hf := frame_along(fp3(f, a), fp3(f, b), fd(f, 0, 0, 1));
+  hf = frame_move(hf, fp3(f, mid));
+  // hf.y runs along the hand; hf.x is across the palm (front to back of the figure); hf.z its thickness
+  ellipsoid(buf, p, hf, m.hand_w * 0.5 * swell, m.hand_len * (k1 - k0) * 0.56 * swell, m.hand_w * 0.26 * swell, 8, 5, 0);
+  if k0 < 0.01 {
+    // the thumb, ahead of the palm
+    t0 := add(wrist, add(times(d, m.hand_len * 0.22), v3(0, 0, m.hand_w * 0.34)));
+    t1 := add(t0, add(times(d, m.hand_len * 0.34), v3(0, 0, m.hand_w * 0.22)));
+    limb(buf, p, fp3(f, t0), fp3(f, t1), m.hand_w * 0.17 * swell, m.hand_w * 0.13 * swell, fd(f, 1, 0, 0), 6);
+  }
+}
+
+// The face's marks: eyes, brows, a nose, a mouth, and a scar, moustache or beard. They are flat
+// marks on object obj (no ink round them).
+ch_face_write :: (buf: [] u32, p: [] Pen, f: Frame, m: CrewForm, l: CrewLook, obj: int) {
+  h := ch_frame(f, m);
+  chin := ch_chin(l);
+  rx := m.head_rx; ry := m.head_ry;
+  skin := ch_skin(l); hair := ch_hair(l);
+  dark := kit_tint(0.07, 0.05, 0.08);
+  open := ifx l.eyes == 1 then 0.55f32 else ifx l.eyes == 2 then 1.2f32 else 0.9f32;
+  wide := ifx l.eyes == 2 then 0.20f32 else 0.24f32;
+  for k: 0..<2 {
+    s := cb_side(k);
+    ef := ch_face(h, m, chin, s * rx * 0.42, -ry * 0.10, ry * 0.008);
+    ew := rx * wide; eh := ry * 0.085 * open;
+    kit_pen(p, obj, MAT_FLAT, kit_tint(0.97, 0.97, 0.97));
+    oval(buf, p, ef, ew, eh, 10);
+    iris := frame_move(ef, add(fp(ef, -s * ew * 0.08, -eh * 0.05, 0), times(ef.z, ry * 0.003)));
+    kit_pen(p, obj, MAT_FLAT, kit_tint(0.30, 0.38, 0.42));
+    oval(buf, p, iris, lo(ew * 0.52, eh * 1.1), lo(eh * 0.98, ew * 0.6), 10);
+    kit_pen(p, obj, MAT_FLAT, dark);
+    oval(buf, p, frame_move(iris, add(iris.o, times(ef.z, ry * 0.003))), lo(ew * 0.26, eh * 0.55), lo(eh * 0.55, ew * 0.3), 8);
+    kit_pen(p, obj, MAT_FLAT, kit_tint(1, 1, 1));
+    oval(buf, p, frame_move(iris, add(fp(iris, s * ew * 0.16, eh * 0.38, 0), times(ef.z, ry * 0.006))), ew * 0.10, ew * 0.10, 6);
+    // the lash line over the eye, flicking out at its outer end, and a thin line under it
+    kit_pen(p, obj, MAT_FLAT, dark);
+    lf := frame_move(ef, add(ef.o, times(ef.z, ry * 0.008)));
+    dash(buf, p, lf, -s * ew * 1.05, eh * 0.55, 0, eh * 1.08, ry * 0.022, ry * 0.034);
+    dash(buf, p, lf, 0, eh * 1.08, s * ew * 1.0, eh * 0.78, ry * 0.034, ry * 0.040);
+    dash(buf, p, lf, s * ew * 0.98, eh * 0.78, s * ew * 1.35, eh * 1.15, ry * 0.036, ry * 0.008);
+    dash(buf, p, lf, -s * ew * 0.6, -eh * 1.0, s * ew * 0.7, -eh * 0.92, ry * 0.008, ry * 0.012);
+    // the brow
+    bf := ch_face(h, m, chin, s * rx * 0.42, ry * (ifx l.brows == 2 then 0.10f32 else 0.15f32), ry * 0.010);
+    kit_pen(p, obj, MAT_FLAT, ch_shade(hair, 0.8));
+    inner := ifx l.brows == 1 then -ry * 0.02 else ifx l.brows == 2 then -ry * 0.035 else 0.0f32;
+    outer := ifx l.brows == 1 then ry * 0.03 else ifx l.brows == 2 then ry * 0.02 else 0.0f32;
+    thick := ifx l.brows == 2 then ry * 0.06 else ry * 0.036;
+    dash(buf, p, bf, -s * ew * 1.05, inner, s * ew * 0.2, outer, thick, thick * 0.9);
+    dash(buf, p, bf, s * ew * 0.2, outer, s * ew * 1.15, outer - ry * 0.03, thick * 0.9, thick * 0.3);
+  }
+  // the nose: a short shadow down its side, and under it
+  nf := ch_face(h, m, chin, 0, -ry * 0.33, ry * 0.010);
+  kit_pen(p, obj, MAT_FLAT, ch_shade(skin, 0.66));
+  long := ifx l.nose == 1 then ry * 0.24 else ry * 0.13;
+  dash(buf, p, nf, rx * 0.05, long, rx * 0.07, 0, ry * 0.012, ry * 0.02);
+  dash(buf, p, nf, -rx * (ifx l.nose == 2 then 0.16f32 else 0.08f32), -ry * 0.02, rx * (ifx l.nose == 2 then 0.16f32 else 0.08f32), -ry * 0.02, ry * 0.02, ry * 0.02);
+  // the mouth: a line, a little heavier in its middle
+  mf := ch_face(h, m, chin, 0, -ry * 0.58, ry * 0.010);
+  kit_pen(p, obj, MAT_FLAT, kit_tint(skin.r * 0.52, skin.g * 0.34, skin.b * 0.34));
+  dash(buf, p, mf, -rx * 0.24, ry * 0.006, 0, -ry * 0.004, ry * 0.014, ry * 0.03);
+  dash(buf, p, mf, 0, -ry * 0.004, rx * 0.24, ry * 0.006, ry * 0.03, ry * 0.014);
+  if l.mark == CH_SCAR {
+    sf := ch_face(h, m, chin, rx * 0.46, -ry * 0.12, ry * 0.014);
+    kit_pen(p, obj, MAT_FLAT, kit_tint(lo(skin.r * 1.12 + 0.06, 1), skin.g * 0.82, skin.b * 0.80));
+    dash(buf, p, sf, -rx * 0.10, ry * 0.36, rx * 0.06, -ry * 0.34, ry * 0.02, ry * 0.035);
+  }
+  if l.mark == CH_MOUSTACHE || l.mark == CH_FULL {
+    uf := ch_face(h, m, chin, 0, -ry * 0.49, ry * 0.014);
+    kit_pen(p, obj, MAT_FLAT, hair);
+    dash(buf, p, uf, 0, ry * 0.01, -rx * 0.34, -ry * 0.07, ry * 0.07, ry * 0.02);
+    dash(buf, p, uf, 0, ry * 0.01, rx * 0.34, -ry * 0.07, ry * 0.07, ry * 0.02);
+  }
+}
+
+// The hair, on objects obj (the hair itself). `over`: what is worn over it (CH_BARE, CH_PRESSED).
+// A beard is hair too, so it is drawn here.
+ch_hair_write :: (buf: [] u32, p: [] Pen, f: Frame, m: CrewForm, l: CrewLook, obj: int, over: int) {
+  h := ch_frame(f, m);
+  rx := m.head_rx; ry := m.head_ry; rz := m.head_rz;
+  col := ch_hair(l);
+  kit_pen(p, obj, MAT_HAIR, col);
+  if l.mark == CH_BEARD || l.mark == CH_FULL {
+    ellipsoid(buf, p, kit_at(h, 0, -ry * 0.70, rz * 0.30), rx * 0.60, ry * 0.42, rz * 0.62, 10, 6, 0);
+  }
+  style := l.hair;
+  // the cap: a dome over the skull, its front edge the hairline. Shaved hair is a thin shadow of it.
+  low := ifx style == CH_LONG || style == CH_TIED || style == CH_BUN then -0.55f32 else ifx style == CH_MOHAWK || style == CH_SHAVED then -0.30f32 else -0.42f32;
+  pad := ifx style == CH_SHAVED || style == CH_MOHAWK then ry * 0.012 else ifx style == CH_CURLS then ry * 0.10 else ry * 0.055;
+  if style == CH_SHAVED || style == CH_MOHAWK { sk := ch_skin(l); kit_pen(p, obj, MAT_HAIR, kit_tint(lerp(sk.r, col.r, 0.62), lerp(sk.g, col.g, 0.62), lerp(sk.b, col.b, 0.62))); }
+  cap := loft_new(16, 1);
+  steps := 8;
+  for i: 0..<steps + 1 {
+    k := cast(f32) i / cast(f32) steps;
+    y := lerp(0.995, low, k);
+    w := sqrt(hi(1 - y * y, 0.0004));
+    front := ifx y > 0.55 then 1.06f32 else ifx y > 0.1 then lerp(0.25, 1.06, (y - 0.1) / 0.45) else lerp(-0.25, 0.25, clamp01((y + 0.5) / 0.6));
+    fr := rz * w * front + pad; bk := rz * w * 1.06 + pad;
+    cap = loft_add(cap, ring_level(v3(m.head.x, m.head.y + y * ry + pad * 0.6, m.head.z + (fr - bk) * 0.5), rx * w * 1.05 + pad, (fr + bk) * 0.5));
+  }
+  loft_write(buf, p, f, cap, false, true);
+  kit_pen(p, obj, MAT_HAIR, col);
+  top := fp(h, 0, ry + pad, -rz * 0.1);
+  if style == CH_SHAVED { return; }
+  if style == CH_MOHAWK {
+    // a ridge of spikes from the brow to the nape, and a braid down one side
+    for i: 0..<7 {
+      k := cast(f32) i / 6.0;
+      ang := lerp(-0.5, 2.3, k);
+      base := fp(h, 0, cos(ang) * ry * 0.96, -sin(ang) * rz * 0.98 + rz * 0.05);
+      tip := add(base, fd(h, 0, cos(ang - 0.25) * ry * 0.62, -sin(ang - 0.25) * ry * 0.62));
+      if over == CH_BARE { limb(buf, p, base, tip, rx * 0.26, rx * 0.03, h.x, 6); }
+    }
+    for i: 0..<6 {
+      k := cast(f32) i;
+      ball(buf, p, fp(h, -rx * 0.9, -ry * (0.35 + k * 0.30), -rz * 0.55), rx * (0.15 - k * 0.012), 6);
+    }
+    return;
+  }
+  // a fringe: locks from the hairline over the brow, and one down each side of the face
+  if style != CH_CURLS {
+    for i: 0..<5 {
+      k := cast(f32) i - 2;
+      base := fp(h, k * rx * 0.36, ry * 0.80, rz * 0.62);
+      tip := fp(h, k * rx * 0.47 + rx * 0.08, ry * (ifx style == CH_CROP then 0.34f32 else 0.26f32) + abs(k) * ry * 0.03, rz * 0.98);
+      limb(buf, p, base, tip, rx * 0.21, rx * 0.03, h.x, 5);
+    }
+    if style != CH_CROP && style != CH_TOPKNOT {
+      for side: 0..<2 {
+        sx := cb_side(side);
+        limb(buf, p, fp(h, sx * rx * 0.92, ry * 0.42, rz * 0.42), fp(h, sx * rx * 0.99, -ry * (ifx style == CH_LONG then 1.5f32 else 0.72f32), rz * 0.50), rx * 0.15, rx * 0.035, h.x, 5);
+      }
+    }
+  }
+  if style == CH_CURLS {
+    for i: 0..<22 {
+      k := cast(f32) i;
+      a := k * 2.399; y := 0.95 - fract(k * 0.618) * 1.05;
+      w := sqrt(hi(1 - y * y, 0.05));
+      z := -cos(a) * w;
+      if z > 0.45 && y < 0.55 { continue; }
+      ball(buf, p, fp(h, sin(a) * w * rx * 1.08, y * ry * 1.04 + ry * 0.05, z * rz * 1.08 - rz * 0.05), rx * 0.30, 6);
+    }
+    return;
+  }
+  if over != CH_BARE { return; }
+  if style == CH_BUN || style == CH_TOPKNOT {
+    r := ifx style == CH_BUN then rx * 0.56 else rx * 0.34;
+    at := ifx style == CH_BUN then fp(h, 0, ry * 1.12, -rz * 0.42) else fp(h, 0, ry * 1.22, -rz * 0.1);
+    ball(buf, p, at, r, 8);
+    // loose ends round the bun
+    n := ifx style == CH_BUN then 9 else 3;
+    for i: 0..<n {
+      a := cast(f32) i * 0.7 + 0.2;
+      d := fd(h, cos(a) * 0.8, 0.55 + 0.25 * sin(a * 2.3), sin(a) * 0.5 - 0.3);
+      limb(buf, p, add(at, times(d, r * 0.5)), add(at, times(d, r * 1.38)), r * 0.34, r * 0.04, h.x, 5);
+    }
+  }
+  if style == CH_TIED {
+    // a tail from the crown's back down between the shoulders
+    a := fp(h, 0, ry * 0.55, -rz * 1.0); b := fp(h, 0, -ry * 0.2, -rz * 1.55); c := fp(h, 0, -ry * 2.6, -rz * 1.25);
+    ball(buf, p, a, rx * 0.26, 6);
+    limb(buf, p, a, b, rx * 0.24, rx * 0.22, h.x, 7);
+    limb(buf, p, b, c, rx * 0.22, rx * 0.04, h.x, 7);
+  }
+  if style == CH_LONG {
+    // a fall down the back to the shoulder blades
+    ellipsoid(buf, p, kit_at(h, 0, -ry * 1.0, -rz * 0.72), rx * 1.02, ry * 1.45, rz * 0.55, 10, 6, 0);
+  }
+}
+
+CH_HEAD_BUDGET :: 5200;   // the most vertices a head, its face and its hair take
+
+#test "every look is in its rows, and one outside is named" {
+  l := CrewLook.{};
+  #assert ch_bad(l) == -1;
+  n := CH_COUNTS;
+  for i: 0..<CH_FIELDS {
+    #assert ch_bad(ch_set(l, i, n[i] - 1)) == -1 && ch_bad(ch_set(l, i, n[i])) == i && ch_bad(ch_set(l, i, -1)) == i;
+    #assert ch_get(ch_set(l, i, 1), i) == 1;
+  }
+  #assert ch_skin(ch_set(l, 0, 7)).r < ch_skin(ch_set(l, 0, 0)).r;
+}
+#test "every hair style and mark writes a head inside its budget, on every body" {
+  buf: [CH_HEAD_BUDGET * VERTEX_WORDS] u32;
+  for k: 0..<CB_PRESETS {
+    m := cb_form(cb_preset(k));
+    for style: 0..<CH_HAIRS {
+      for mark: 0..<CH_MARKS {
+        pen := [1] Pen.[Pen.{}];
+        l := CrewLook.{hair = style, mark = mark, eyes = style % CH_EYES, brows = mark % CH_BROWS, nose = style % CH_NOSES, jaw = mark % CH_JAWS};
+        f := frame_at(v3(0, 0, 0), 0);
+        ch_skin_write(buf[..], pen[..], f, m, l, 4, false, false);
+        skin := pen[0].n;
+        ch_face_write(buf[..], pen[..], f, m, l, 4);
+        ch_hair_write(buf[..], pen[..], f, m, l, 5, CH_BARE);
+        #assert skin > 800 && pen[0].n > skin + 300 && !pen[0].over;
+      }
+    }
+  }
+}
+#test "pressed hair is fewer vertices than bare hair, and a face mark stands off the skin" {
+  buf: [CH_HEAD_BUDGET * VERTEX_WORDS] u32;
+  m := cb_form(cb_usual());
+  a := [1] Pen.[Pen.{}]; b := [1] Pen.[Pen.{}];
+  ch_hair_write(buf[..], a[..], frame_at(v3(0, 0, 0), 0), m, CrewLook.{hair = CH_BUN}, 5, CH_BARE);
+  ch_hair_write(buf[..], b[..], frame_at(v3(0, 0, 0), 0), m, CrewLook.{hair = CH_BUN}, 5, CH_PRESSED);
+  #assert b[0].n < a[0].n && b[0].n > 300;
+  h := ch_frame(frame_at(v3(0, 0, 0), 0), m);
+  e := ch_face(h, m, 0.55, 0, 0, 0.01);
+  #assert near(e.o.z, m.head.z + m.head_rz + 0.01, 0.0005) && same(e.z, v3(0, 0, 1), 0.001);
+}

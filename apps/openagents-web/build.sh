@@ -346,6 +346,12 @@ animelab=$!
 # /worlds/splice (unlisted): Mars at dusk on Anime Lab's shading (metaverse/splice/splice.coax, metaverse/splice/splice-face.c, metaverse/splice/gpu/splice.coax).
 timed splice "$here/../../coax/web/wasm.sh" "$here/../../metaverse/splice/splice.coax" "$here/../../metaverse/splice/splice-face.c" "$here/build/splice.wasm" "$here/animelab-style.coax" &
 splice=$!
+# /worlds/crew (unlisted): character creation, six bodies and one fitted wardrobe on Anime Lab's shading (crew.coax, crew-face.c, gpu/crew.coax; #13462).
+timed crew "$here/../../coax/web/wasm.sh" "$here/crew.coax" "$here/crew-face.c" "$here/build/crew.wasm" "$here/animelab-style.coax" &
+crew=$!
+# ... and its pane, the creation steps beside the scene: the frames set in the mono skin, drawn by the browser (crew-pane.coax, coax/web/dom-host.js).
+timed crew-pane "$here/../../coax/web/wasm.sh" "$here/crew-pane.coax" "$here/crew-pane-face.c" "$here/build/crew-pane.wasm" &
+crew_pane=$!
 # /worlds/drop and every /projects/<slug>/realm: a project's first realm, its drop's models on a floor.
 timed droprealm "$here/../../coax/web/wasm.sh" "$here/droprealm.coax" "$here/droprealm-face.c" "$here/build/droprealm.wasm" &
 droprealm=$!
@@ -586,6 +592,8 @@ wait "$fairy"
 wait "$villa"
 wait "$animelab"
 wait "$splice"
+wait "$crew"
+wait "$crew_pane"
 wait "$changelog"
 
 wait "$state_lab"

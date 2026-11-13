@@ -172,6 +172,8 @@ wg_build :: (s: [] WebPage) {
   // a stepper: a value that is stepped, not typed
   radii := [5] string.["2 m", "4 m", "8 m", "16 m", "32 m"];
   sr := k_stepper(t, "dock.radius", "Radius", radii[s[0].radius], s[0].radius > 0, s[0].radius < 4);
+  // a slider: a whole number dragged along a line (its place is the browser's own; the words beside it say the usual)
+  sh := k_slider(t, "dock.height", "Height", "145 to 225 cm", 145, 225, 1);
   tr_close(t);
   k_pane_end(t);
   dfoot := k_pane(t, u, "dock.foot", DK_BOTTOM, "Agent");

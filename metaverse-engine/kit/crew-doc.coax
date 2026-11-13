@@ -1,0 +1,299 @@
+// A crew member as a document, crew.character.v1 (docs/protocol/crew-character-v1.md,
+// proto/metaverse-engine/crew-character-v1.json): a name, the body's record (crew-body.coax), the
+// face and hair choices (crew-head.coax) and one piece a slot (crew-wardrobe.coax). This file is
+// its one codec: the creation page saves and loads it, an agent writes it through the page's
+// address, and a game reads it. Text, a line a part:
+//
+//   crew.character.v1
+//   name Ash
+//   body height=175 shoulders=100 chest=100 waist=100 belly=0 hips=100 arms=100 legs=100 arm_length=100 leg_length=100 neck_length=100 neck=100 head=100 hands=100 feet=100 stoop=0
+//   look skin=2 hair=bun hair_colour=0 jaw=0 eyes=0 brows=0 nose=0 mark=none
+//   wear head=none face=none top=flight outer=none hands=gloves belt=wide legs=flight feet=strap-boots pack=none satchel=none tool=none
+//
+// A document with a value out of range, a key it doesn't know, a key twice or a part missing is
+// refused with a reason in words (cd_read's why), never clamped or repaired.
+//   coax/bin/coax test metaverse-engine/kit/crew-doc.coax
+#load "crew-wardrobe.coax";
+
+CD_VERSION :: "crew.character.v1";
+CD_NAME :: 24;      // the most bytes in a name
+CD_TEXT :: 640;     // the most bytes a document is
+CD_WHY :: 120;
+
+CrewDoc :: struct { name: [CD_NAME] u8; name_n: int; body: CrewBody; look: CrewLook; wear: CrewOutfit; }
+CdRead :: struct { ok: bool; doc: CrewDoc; why: [CD_WHY] u8; why_n: int; }
+
+cd_name :: (d: [] CrewDoc) -> string { return cast(string) d[0].name[0..<d[0].name_n]; }
+cd_put :: (out: [] u8, at: int, t: string) -> int { n := at; for i: 0..<t.count { if n < out.count { out[n] = t[i]; n += 1; } } return n; }
+cd_put_int :: (out: [] u8, at: int, v: int) -> int {
+  digits: [12] u8; k := 0; x := ifx v < 0 then -v else v; n := at;
+  if v < 0 { n = cd_put(out, n, "-"); }
+  while true { digits[k] = cast(u8) (48 + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  while k > 0 && n < out.count { k -= 1; out[n] = digits[k]; n += 1; }
+  return n;
+}
+// A name a document may carry: 1 to CD_NAME bytes, printable ASCII, no space at either end.
+cd_name_ok :: (t: string) -> bool {
+  if t.count < 1 || t.count > CD_NAME || t[0] == ' ' || t[t.count - 1] == ' ' { return false; }
+  for i: 0..<t.count { if t[i] < 32 || t[i] > 126 { return false; } }
+  return true;
+}
+cd_set_name :: (d: CrewDoc, t: string) -> CrewDoc {
+  o := d;
+  if !cd_name_ok(t) { return o; }
+  for i: 0..<t.count { o.name[i] = t[i]; }
+  o.name_n = t.count;
+  return o;
+}
+// The first character: the fighter's body in the flight suit.
+cd_first :: () -> CrewDoc {
+  d: CrewDoc;
+  d.body = cb_preset(CB_FIGHTER); d.wear = cw_outfit(CW_FLIGHT_SUIT);
+  return cd_set_name(d, "Ash");
+}
+// Whether every part of a character is inside its ranges and rows.
+cd_ok :: (d: CrewDoc) -> bool {
+  nm := d.name;
+  return cb_ok(d.body) && ch_bad(d.look) < 0 && cw_bad(d.wear) < 0 && cd_name_ok(cast(string) nm[0..<d.name_n]);
+}
+
+// Writes the document's text into out; its length, or -1 when out is too small.
+cd_write :: (d: CrewDoc, out: [] u8) -> int {
+  if out.count < CD_TEXT { return -1; }
+  nm := d.name;
+  n := cd_put(out, 0, CD_VERSION);
+  n = cd_put(out, n, "\nname "); n = cd_put(out, n, cast(string) nm[0..<d.name_n]);
+  n = cd_put(out, n, "\nbody");
+  bk := CB_KEYS;
+  for i: 0..<CB_NUMBERS { n = cd_put(out, n, " "); n = cd_put(out, n, bk[i]); n = cd_put(out, n, "="); n = cd_put_int(out, n, d.body.v[i]); }
+  n = cd_put(out, n, "\nlook");
+  lk := CH_KEYS; hk := CH_HAIR_KEYS; mk := CH_MARK_KEYS;
+  for i: 0..<CH_FIELDS {
+    n = cd_put(out, n, " "); n = cd_put(out, n, lk[i]); n = cd_put(out, n, "=");
+    v := ch_get(d.look, i);
+    if i == 1 && v >= 0 && v < CH_HAIRS { n = cd_put(out, n, hk[v]); }
+    else if i == 7 && v >= 0 && v < CH_MARKS { n = cd_put(out, n, mk[v]); }
+    else { n = cd_put_int(out, n, v); }
+  }
+  n = cd_put(out, n, "\nwear");
+  sk := CW_SLOT_KEYS;
+  for i: 0..<CW_SLOTS { n = cd_put(out, n, " "); n = cd_put(out, n, sk[i]); n = cd_put(out, n, "="); n = cd_put(out, n, cw_piece_key(i, d.wear.v[i])); }
+  n = cd_put(out, n, "\n");
+  return n;
+}
+
+cd_refuse :: (a: string, b: string, c: string) -> CdRead {
+  r: CdRead;
+  n := cd_put(r.why[..], 0, a); n = cd_put(r.why[..], n, b); n = cd_put(r.why[..], n, c);
+  r.why_n = n;
+  return r;
+}
+cd_why :: (r: [] CdRead) -> string { return cast(string) r[0].why[0..<r[0].why_n]; }
+// A whole number, or `none` (-1000000) when the text is not one.
+CD_NONE :: -1000000;
+cd_int :: (t: string) -> int {
+  if t.count < 1 || t.count > 6 { return CD_NONE; }
+  v := 0;
+  for i: 0..<t.count { c := cast(int) t[i] - 48; if c < 0 || c > 9 { return CD_NONE; } v = v * 10 + c; }
+  return v;
+}
+// Reads a document. ok, and the character; or not ok, and why.
+cd_read :: (text: string) -> CdRead {
+  if text.count > CD_TEXT { return cd_refuse("the document is longer than ", "640", " bytes"); }
+  r: CdRead;
+  seen: [4] bool;
+  body_seen: [CB_NUMBERS] bool; look_seen: [CH_FIELDS] bool; wear_seen: [CW_SLOTS] bool;
+  line := 0; i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    row := cast(string) text[i..<e];
+    i = e + 1;
+    if row.count == 0 { continue; }
+    if line == 0 {
+      if row != CD_VERSION { return cd_refuse("the first line is not ", CD_VERSION, ""); }
+      line += 1; continue;
+    }
+    line += 1;
+    w := 0; while w < row.count && row[w] != ' ' { w += 1; }
+    part := cast(string) row[0..<w];
+    rest := ifx w < row.count then cast(string) row[w + 1..<row.count] else "";
+    which := ifx part == "name" then 0 else ifx part == "body" then 1 else ifx part == "look" then 2 else ifx part == "wear" then 3 else -1;
+    if which < 0 { return cd_refuse("no part is named ", part, ""); }
+    if seen[which] { return cd_refuse("the part ", part, " is there twice"); }
+    seen[which] = true;
+    if which == 0 {
+      if !cd_name_ok(rest) { return cd_refuse("the name is not 1 to 24 printable characters", "", ""); }
+      r.doc = cd_set_name(r.doc, rest);
+      continue;
+    }
+    k := 0;
+    while k < rest.count {
+      t := k; while t < rest.count && rest[t] != ' ' { t += 1; }
+      pair := cast(string) rest[k..<t];
+      k = t + 1;
+      if pair.count == 0 { continue; }
+      q := 0; while q < pair.count && pair[q] != '=' { q += 1; }
+      if q >= pair.count { return cd_refuse(part, " has a word with no = in it: ", pair); }
+      key := cast(string) pair[0..<q]; value := cast(string) pair[q + 1..<pair.count];
+      if which == 1 {
+        keys := CB_KEYS; at := -1;
+        for j: 0..<CB_NUMBERS { if keys[j] == key { at = j; } }
+        if at < 0 { return cd_refuse("the body has no number named ", key, ""); }
+        if body_seen[at] { return cd_refuse("the body's ", key, " is there twice"); }
+        body_seen[at] = true;
+        v := cd_int(value);
+        low := CB_LO; high := CB_HI;
+        if v == CD_NONE || v < low[at] || v > high[at] {
+          o := cd_refuse("the body's ", key, " is ");
+          n := cd_put(o.why[..], o.why_n, value); n = cd_put(o.why[..], n, ", outside "); n = cd_put_int(o.why[..], n, low[at]);
+          n = cd_put(o.why[..], n, " to "); n = cd_put_int(o.why[..], n, high[at]);
+          o.why_n = n;
+          return o;
+        }
+        r.doc.body.v[at] = v;
+      }
+      if which == 2 {
+        keys := CH_KEYS; at := -1;
+        for j: 0..<CH_FIELDS { if keys[j] == key { at = j; } }
+        if at < 0 { return cd_refuse("the look has no choice named ", key, ""); }
+        if look_seen[at] { return cd_refuse("the look's ", key, " is there twice"); }
+        look_seen[at] = true;
+        v := cd_int(value);
+        if at == 1 { hk := CH_HAIR_KEYS; v = CD_NONE; for j: 0..<CH_HAIRS { if hk[j] == value { v = j; } } }
+        if at == 7 { mk := CH_MARK_KEYS; v = CD_NONE; for j: 0..<CH_MARKS { if mk[j] == value { v = j; } } }
+        counts := CH_COUNTS;
+        if v == CD_NONE || v < 0 || v >= counts[at] { return cd_refuse("the look's ", key, " is not one of its choices"); }
+        r.doc.look = ch_set(r.doc.look, at, v);
+      }
+      if which == 3 {
+        keys := CW_SLOT_KEYS; at := -1;
+        for j: 0..<CW_SLOTS { if keys[j] == key { at = j; } }
+        if at < 0 { return cd_refuse("the outfit has no slot named ", key, ""); }
+        if wear_seen[at] { return cd_refuse("the outfit's ", key, " is there twice"); }
+        wear_seen[at] = true;
+        counts := CW_COUNT; v := -1;
+        for j: 0..<counts[at] { if cw_piece_key(at, j) == value { v = j; } }
+        if v < 0 { return cd_refuse("the outfit's ", key, " has no such piece"); }
+        r.doc.wear.v[at] = v;
+      }
+    }
+  }
+  if line == 0 { return cd_refuse("the document is empty", "", ""); }
+  parts := [4] string.["name", "body", "look", "wear"];
+  for j: 0..<4 { if !seen[j] { return cd_refuse("the part ", parts[j], " is missing"); } }
+  bk := CB_KEYS; for j: 0..<CB_NUMBERS { if !body_seen[j] { return cd_refuse("the body's ", bk[j], " is missing"); } }
+  lk := CH_KEYS; for j: 0..<CH_FIELDS { if !look_seen[j] { return cd_refuse("the look's ", lk[j], " is missing"); } }
+  sk := CW_SLOT_KEYS; for j: 0..<CW_SLOTS { if !wear_seen[j] { return cd_refuse("the outfit's ", sk[j], " is missing"); } }
+  r.ok = true;
+  return r;
+}
+
+// A whole valid character from a seed (RANDOM): a body between the presets' extremes, any look, and
+// either one of the six outfits or a mix of pieces.
+cd_step :: (seed: int) -> int { return (seed * 1103515245 + 12345) & 0x7fffffff; }
+cd_random :: (seed: int) -> CrewDoc {
+  d: CrewDoc;
+  s := cd_step(seed ^ 0x5bd1e995);
+  low := CB_LO; high := CB_HI; step := CB_STEP;
+  base := cb_preset((s >> 8) % CB_PRESETS);
+  for i: 0..<CB_NUMBERS {
+    s = cd_step(s);
+    span := (high[i] - low[i]) / 6;
+    v := base.v[i] + ((s >> 8) % (span * 2 + 1)) - span;
+    v = v - v % step[i];
+    d.body.v[i] = ifx v < low[i] then low[i] else ifx v > high[i] then high[i] else v;
+  }
+  counts := CH_COUNTS;
+  for i: 0..<CH_FIELDS { s = cd_step(s); d.look = ch_set(d.look, i, (s >> 8) % counts[i]); }
+  s = cd_step(s);
+  d.wear = cw_outfit((s >> 8) % CW_OUTFITS);
+  s = cd_step(s);
+  if (s >> 8) % 3 == 0 {
+    n := CW_COUNT;
+    for i: 0..<CW_SLOTS { s = cd_step(s); d.wear.v[i] = (s >> 8) % n[i]; }
+  }
+  names := [8] string.["Ash", "Brink", "Cinder", "Dune", "Ember", "Flint", "Gale", "Hex"];
+  s = cd_step(s);
+  return cd_set_name(d, names[(s >> 8) % 8]);
+}
+
+// The pinned bytes (proto/metaverse-engine/crew-character-v1.txt): the first character.
+CD_PINNED :: "crew.character.v1\nname Ash\nbody height=175 shoulders=98 chest=96 waist=82 belly=0 hips=104 arms=96 legs=106 arm_length=100 leg_length=102 neck_length=100 neck=96 head=100 hands=100 feet=100 stoop=0\nlook skin=2 hair=bun hair_colour=0 jaw=0 eyes=0 brows=0 nose=0 mark=none\nwear head=none face=none top=flight outer=none hands=gloves belt=wide legs=flight feet=strap-boots pack=none satchel=none tool=none\n";
+
+#test "the first character writes the pinned bytes and reads back the same" {
+  out: [CD_TEXT] u8;
+  d := cd_first();
+  n := cd_write(d, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == CD_PINNED;
+  r := [1] CdRead.[cd_read(CD_PINNED)];
+  #assert r[0].ok && cd_ok(r[0].doc);
+  back: [CD_TEXT] u8;
+  m := cd_write(r[0].doc, back[..]);
+  #assert cast(string) back[0..<m] == CD_PINNED;
+  small: [64] u8;
+  #assert cd_write(d, small[..]) == -1;
+}
+#test "every preset body in every outfit round-trips" {
+  out: [CD_TEXT] u8;
+  for b: 0..<CB_PRESETS {
+    for o: 0..<CW_OUTFITS {
+      d := cd_first(); d.body = cb_preset(b); d.wear = cw_outfit(o);
+      d.look = CrewLook.{skin = b, hair = o, hair_colour = b, mark = o % CH_MARKS, eyes = b % CH_EYES};
+      n := cd_write(d, out[..]);
+      r := cd_read(cast(string) out[0..<n]);
+      #assert r.ok && cb_preset_of(r.doc.body) == b && cw_outfit_of(r.doc.wear) == o && r.doc.look.hair == o && r.doc.look.skin == b && r.doc.look.mark == o % CH_MARKS;
+    }
+  }
+}
+// The pinned document with its first `from` made `to` (the refusal checks).
+cd_test_swap :: (from: string, to: string, out: [] u8) -> string {
+  src := CD_PINNED; n := 0; i := 0; done := false;
+  while i < src.count {
+    if !done && i + from.count <= src.count && cast(string) src[i..<i + from.count] == from { n = cd_put(out, n, to); i += from.count; done = true; }
+    else { out[n] = src[i]; n += 1; i += 1; }
+  }
+  return cast(string) out[0..<n];
+}
+#test "a document out of range, unknown, doubled or short is refused with its reason, never clamped" {
+  b: [CD_TEXT + 64] u8;
+  r := [1] CdRead.[cd_read(cd_test_swap("height=175", "height=300", b[..]))];
+  #assert !r[0].ok && cd_why(r[..]) == "the body's height is 300, outside 145 to 225";
+  r[0] = cd_read(cd_test_swap("belly=0", "belly=-5", b[..]));
+  #assert !r[0].ok && cd_why(r[..]) == "the body's belly is -5, outside 0 to 100";
+  r[0] = cd_read(cd_test_swap("hair=bun", "hair=wig", b[..]));
+  #assert !r[0].ok && cd_why(r[..]) == "the look's hair is not one of its choices";
+  r[0] = cd_read(cd_test_swap("skin=2", "skin=8", b[..]));
+  #assert !r[0].ok;
+  r[0] = cd_read(cd_test_swap("top=flight", "top=cape", b[..]));
+  #assert !r[0].ok && cd_why(r[..]) == "the outfit's top has no such piece";
+  r[0] = cd_read(cd_test_swap("stoop=0", "stoop=0 stoop=5", b[..]));
+  #assert !r[0].ok && cd_why(r[..]) == "the body's stoop is there twice";
+  r[0] = cd_read(cd_test_swap(" stoop=0", "", b[..]));
+  #assert !r[0].ok && cd_why(r[..]) == "the body's stoop is missing";
+  r[0] = cd_read(cd_test_swap("waist=82", "wings=2", b[..]));
+  #assert !r[0].ok && cd_why(r[..]) == "the body has no number named wings";
+  r[0] = cd_read(cd_test_swap("crew.character.v1", "crew.character.v2", b[..]));
+  #assert !r[0].ok && cd_why(r[..]) == "the first line is not crew.character.v1";
+  r[0] = cd_read(cd_test_swap("name Ash", "name ", b[..]));
+  #assert !r[0].ok;
+  r[0] = cd_read(cd_test_swap("name Ash\n", "", b[..]));
+  #assert !r[0].ok && cd_why(r[..]) == "the part name is missing";
+  r[0] = cd_read(cd_test_swap("look skin", "look tail=1 skin", b[..]));
+  #assert !r[0].ok && cd_why(r[..]) == "the look has no choice named tail";
+  r[0] = cd_read(cd_test_swap("wear head", "pose head", b[..]));
+  #assert !r[0].ok && cd_why(r[..]) == "no part is named pose";
+  r[0] = cd_read("");
+  #assert !r[0].ok && cd_why(r[..]) == "the document is empty";
+}
+#test "RANDOM always makes a whole valid character, and the same seed the same one" {
+  out: [CD_TEXT] u8; again: [CD_TEXT] u8;
+  mixed := 0;
+  for seed: 0..<400 {
+    d := cd_random(seed);
+    #assert cd_ok(d) && cb_joined(cb_form(d.body)) == CB_JOINED;
+    n := cd_write(d, out[..]); m := cd_write(cd_random(seed), again[..]);
+    #assert n > 0 && cast(string) out[0..<n] == cast(string) again[0..<m] && cd_read(cast(string) out[0..<n]).ok;
+    if cw_outfit_of(d.wear) < 0 { mixed += 1; }
+  }
+  #assert mixed > 40 && mixed < 300;
+}

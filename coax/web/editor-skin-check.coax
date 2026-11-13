@@ -17,7 +17,9 @@
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
 
-ESC_FILES :: [10] string.[
+ESC_FILES :: [12] string.[
+  "apps/openagents-web/crew-pane.coax",       // Crew's pane has no look of its own either (#13462)
+  "apps/openagents-web/crew-pane-face.c",
   "apps/openagents-web/worldbuilder-world.coax",
   "metaverse-engine/editor/shell.coax",
   "metaverse-engine/editor/shell-assets.coax",

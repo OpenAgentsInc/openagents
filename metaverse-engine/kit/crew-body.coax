@@ -1,0 +1,357 @@
+// A crew member's body (docs/metaverse/2026-11-13-character-creation.md): a small record of
+// clamped numbers, six presets of it, and the form it makes: the joints of the engine's figure rig
+// (metaverse-engine/anim/figure.coax's person, by the same names) and a loft (render/cel-loft.coax)
+// for the torso and for each arm and leg. Bodies differ in lengths and girths, never in their
+// joints. A garment (crew-wardrobe.coax) is drawn from the form's rings, so it fits every body.
+//
+// The record is whole numbers: the height in centimetres, a stoop and a belly from 0 to 100, and
+// every other number a percentage of the usual build at that height. A record out of range is
+// refused (cb_ok), never clamped silently.
+//   coax/bin/coax test metaverse-engine/kit/crew-body.coax
+#load "../render/cel-loft.coax";
+#load "machines.coax";
+
+CB_NUMBERS :: 16;
+CB_HEIGHT :: 0; CB_SHOULDERS :: 1; CB_CHEST :: 2; CB_WAIST :: 3; CB_BELLY :: 4; CB_HIPS :: 5; CB_ARMS :: 6; CB_LEGS :: 7;
+CB_ARM_LEN :: 8; CB_LEG_LEN :: 9; CB_NECK_LEN :: 10; CB_NECK :: 11; CB_HEAD :: 12; CB_HANDS :: 13; CB_FEET :: 14; CB_STOOP :: 15;
+CB_KEYS :: [CB_NUMBERS] string.["height", "shoulders", "chest", "waist", "belly", "hips", "arms", "legs",
+                                "arm_length", "leg_length", "neck_length", "neck", "head", "hands", "feet", "stoop"];
+CB_NAMES :: [CB_NUMBERS] string.["Height", "Shoulders", "Chest", "Waist", "Belly", "Hips", "Arm girth", "Leg girth",
+                                 "Arm length", "Leg length", "Neck length", "Neck girth", "Head", "Hands", "Feet", "Stoop"];
+CB_UNITS :: [CB_NUMBERS] string.[" cm", "%", "%", "%", "", "%", "%", "%", "%", "%", "%", "%", "%", "%", "%", ""];
+CB_LO :: [CB_NUMBERS] int.[145, 80, 80, 75, 0, 80, 70, 70, 88, 85, 50, 80, 88, 85, 85, 0];
+CB_HI :: [CB_NUMBERS] int.[225, 150, 150, 160, 100, 150, 170, 160, 112, 112, 130, 170, 125, 140, 135, 100];
+CB_USUAL :: [CB_NUMBERS] int.[175, 100, 100, 100, 0, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 0];
+CB_STEP :: [CB_NUMBERS] int.[1, 2, 2, 2, 5, 2, 2, 2, 1, 1, 5, 2, 1, 2, 2, 5];
+
+CrewBody :: struct { v: [CB_NUMBERS] int; }
+
+cb_usual :: () -> CrewBody { b: CrewBody; u := CB_USUAL; for i: 0..<CB_NUMBERS { b.v[i] = u[i]; } return b; }
+// Whether every number is inside its range.
+cb_ok :: (b: CrewBody) -> bool { return cb_bad(b) < 0; }
+// The first number out of its range, -1 when none is.
+cb_bad :: (b: CrewBody) -> int {
+  low := CB_LO; high := CB_HI;
+  for i: 0..<CB_NUMBERS { if b.v[i] < low[i] || b.v[i] > high[i] { return i; } }
+  return -1;
+}
+// A number changed by `steps` of its step, held to its range (a slider's move; a document is never held).
+cb_nudge :: (b: CrewBody, i: int, steps: int) -> CrewBody {
+  o := b;
+  if i < 0 || i >= CB_NUMBERS { return o; }
+  low := CB_LO; high := CB_HI; step := CB_STEP;
+  v := o.v[i] + steps * step[i];
+  o.v[i] = ifx v < low[i] then low[i] else ifx v > high[i] then high[i] else v;
+  return o;
+}
+
+// The six bodies of the crew sheet.
+CB_PRESETS :: 6;
+CB_BRUISER :: 0; CB_MECHANIC :: 1; CB_SCOUT :: 2; CB_ELDER :: 3; CB_FIGHTER :: 4; CB_KID :: 5;
+CB_PRESET_KEYS :: [CB_PRESETS] string.["bruiser", "mechanic", "scout", "elder", "fighter", "kid"];
+CB_PRESET_NAMES :: [CB_PRESETS] string.["Bruiser", "Mechanic", "Scout", "Elder", "Fighter", "Kid"];
+CB_PRESET_NOTES :: [CB_PRESETS] string.["2.2 m, very wide shoulders, thick arms", "1.5 m, short and stocky, round belly", "1.9 m, tall and lean, long legs",
+                                        "2.1 m, very heavy, wide belly and hips", "1.75 m, athletic, defined waist", "1.6 m, small and slight, larger head"];
+//                                      height shoulders chest waist belly hips arms legs arm_l leg_l neck_l neck head hands feet stoop
+CB_PRESET :: [CB_PRESETS * CB_NUMBERS] int.[220, 140, 138, 108, 8, 96, 160, 126, 104, 100, 65, 160, 95, 134, 124, 8,
+                                            150, 114, 120, 136, 62, 120, 136, 128, 96, 87, 60, 130, 114, 122, 110, 12,
+                                            190, 90, 88, 84, 0, 86, 82, 84, 105, 108, 118, 90, 96, 96, 100, 0,
+                                            210, 120, 136, 158, 96, 148, 134, 142, 98, 92, 55, 150, 104, 120, 120, 24,
+                                            175, 98, 96, 82, 0, 104, 96, 106, 100, 102, 100, 96, 100, 100, 100, 0,
+                                            160, 84, 84, 86, 0, 86, 76, 78, 97, 96, 95, 84, 120, 92, 96, 0];
+cb_preset :: (k: int) -> CrewBody {
+  b: CrewBody; t := CB_PRESET;
+  at := ifx k < 0 || k >= CB_PRESETS then CB_FIGHTER else k;
+  for i: 0..<CB_NUMBERS { b.v[i] = t[at * CB_NUMBERS + i]; }
+  return b;
+}
+// Which preset a body is, -1 when it is none of them.
+cb_preset_of :: (b: CrewBody) -> int {
+  t := CB_PRESET;
+  for k: 0..<CB_PRESETS {
+    same := true;
+    for i: 0..<CB_NUMBERS { if b.v[i] != t[k * CB_NUMBERS + i] { same = false; } }
+    if same { return k; }
+  }
+  return -1;
+}
+
+// ---- the form
+
+// The joints, by figure.coax's numbers for a person (P_HIPS ...). Side 0 is the figure's right (-x), 1 its left.
+CJ_HIPS :: 0; CJ_SPINE :: 1; CJ_CHEST :: 2; CJ_NECK :: 3; CJ_HEAD :: 4; CJ_CROWN :: 5;
+CJ_L_SHOULDER :: 6; CJ_L_ELBOW :: 7; CJ_L_HAND :: 8; CJ_R_SHOULDER :: 9; CJ_R_ELBOW :: 10; CJ_R_HAND :: 11;
+CJ_L_HIP :: 12; CJ_L_KNEE :: 13; CJ_L_FOOT :: 14; CJ_L_TOE :: 15; CJ_R_HIP :: 16; CJ_R_KNEE :: 17; CJ_R_FOOT :: 18; CJ_R_TOE :: 19;
+CB_JOINTS :: 20;
+CB_JOINT_NAMES :: [CB_JOINTS] string.["hips", "spine", "chest", "neck", "head", "crown",
+                                      "left shoulder", "left elbow", "left hand", "right shoulder", "right elbow", "right hand",
+                                      "left hip", "left knee", "left foot", "left toe", "right hip", "right knee", "right foot", "right toe"];
+// The torso's rings, from the crotch up.
+CT_CROTCH :: 0; CT_SEAT :: 1; CT_HIPS :: 2; CT_BELLY :: 3; CT_WAIST :: 4; CT_RIBS :: 5; CT_CHEST :: 6; CT_UPPER :: 7; CT_SHOULDER :: 8; CT_TRAP :: 9; CT_NECK :: 10;
+CT_RINGS :: 11;
+// An arm's rings, from the shoulder down, and a leg's, from the hip down.
+CA_CAP :: 0; CA_SHOULDER :: 1; CA_UPPER :: 2; CA_ELBOW :: 3; CA_FORE :: 4; CA_WRIST :: 5; CA_RINGS :: 6;
+CL_HIP :: 0; CL_THIGH :: 1; CL_MID :: 2; CL_KNEE :: 3; CL_CALF :: 4; CL_ANKLE :: 5; CL_RINGS :: 6;
+CB_TORSO_SIDES :: 18; CB_LIMB_SIDES :: 12;
+CB_TORSO_SQ :: 0.82f32;
+
+CrewForm :: struct {
+  h: f32;                       // the height, metres: the crown's
+  joint: [CB_JOINTS] Point;
+  torso: Loft;
+  arm: [2] Loft; leg: [2] Loft;
+  neck_r: f32; neck_foot: Point; neck_top: Point;
+  head: Point; head_rx: f32; head_ry: f32; head_rz: f32;
+  hand: [2] Point; hand_along: [2] Point; hand_len: f32; hand_w: f32;
+  foot_len: f32; foot_w: f32;
+  shoulder_y: f32; crotch_y: f32; chin_y: f32;
+}
+
+cb_side :: (side: int) -> f32 { return ifx side == 0 then -1.0f32 else 1.0f32; }
+
+cb_form :: (b: CrewBody) -> CrewForm {
+  o: CrewForm;
+  h := cast(f32) b.v[CB_HEIGHT] * 0.01;
+  o.h = h;
+  shoulders := cast(f32) b.v[CB_SHOULDERS] * 0.01; chest := cast(f32) b.v[CB_CHEST] * 0.01; waist := cast(f32) b.v[CB_WAIST] * 0.01;
+  belly := cast(f32) b.v[CB_BELLY] * 0.01; hips := cast(f32) b.v[CB_HIPS] * 0.01; arms := cast(f32) b.v[CB_ARMS] * 0.01; legs := cast(f32) b.v[CB_LEGS] * 0.01;
+  arm_len := cast(f32) b.v[CB_ARM_LEN] * 0.01; leg_len := cast(f32) b.v[CB_LEG_LEN] * 0.01; neck_len := cast(f32) b.v[CB_NECK_LEN] * 0.01;
+  neck := cast(f32) b.v[CB_NECK] * 0.01; head := cast(f32) b.v[CB_HEAD] * 0.01; hands := cast(f32) b.v[CB_HANDS] * 0.01; feet := cast(f32) b.v[CB_FEET] * 0.01;
+  stoop := cast(f32) b.v[CB_STOOP] * 0.01;
+
+  head_h := 0.142 * h * head;
+  nl := 0.026 * h * neck_len; nr := lo(0.029 * h * neck, head_h * 0.5 * 0.80 * 0.92);   // a neck is never wider than the head on it
+  chin := h - head_h;
+  sy := chin - nl - 0.012 * h;
+  crotch := 0.465 * h * leg_len;
+  tall := sy - crotch;
+  o.shoulder_y = sy; o.crotch_y = crotch; o.chin_y = chin;
+  lean := stoop * 0.10 * h;
+  chest_rx := 0.088 * h * chest; chest_rz := 0.060 * h * chest;
+  waist_rx := 0.070 * h * waist; waist_rz := 0.050 * h * waist;
+  hip_rx := 0.092 * h * hips; hip_rz := 0.064 * h * hips;
+  bel := belly * 0.090 * h;
+  arm_r := 0.030 * h * arms;
+  sw := hi(0.112 * h * shoulders, chest_rx * 0.92);
+
+  // the torso: level rings, each leaning forward with the stoop and pushed forward by the belly
+  ts := [CT_RINGS] f32.[0.0, 0.10, 0.20, 0.33, 0.46, 0.62, 0.78, 0.91, 1.0, 1.0, 1.0];
+  rx := [CT_RINGS] f32.[hip_rx * 0.62, hip_rx * 0.97, hip_rx + 0.012 * h * belly, lerp(hip_rx, waist_rx, 0.55) + 0.030 * h * belly, waist_rx + 0.025 * h * belly,
+                        lerp(waist_rx, chest_rx, 0.65) + 0.010 * h * belly, chest_rx, hi(chest_rx * 0.94, sw - arm_r * 0.35), sw - arm_r * 0.55, lerp(nr * 1.45, sw, 0.42), nr * 1.45];
+  rz := [CT_RINGS] f32.[hip_rz * 0.66, hip_rz * 0.96, hip_rz, lerp(hip_rz, waist_rz, 0.55), waist_rz, lerp(waist_rz, chest_rz, 0.7), chest_rz, chest_rz * 0.9, chest_rz * 0.72, lerp(nr * 1.2, chest_rz, 0.4), nr * 1.2];
+  fw := [CT_RINGS] f32.[0.10, 0.30, 0.55, 1.0, 0.85, 0.40, 0.10, 0.0, 0.0, 0.0, 0.0];
+  o.torso = loft_new(CB_TORSO_SIDES, CB_TORSO_SQ);
+  for i: 0..<CT_RINGS {
+    y := crotch + tall * ts[i];
+    if i == CT_UPPER { y = sy - arm_r * 0.9; }   // the shoulder joints' height, so an arm always meets it
+    if i == CT_SHOULDER { y = sy - arm_r * 0.3; }   // the shoulder slopes up from here to the neck
+    if i == CT_TRAP { y = sy + 0.012 * h; }
+    if i == CT_NECK { y = sy + 0.034 * h; }
+    k := (y - crotch) / tall;
+    z := lean * k * k + bel * fw[i] * 0.5;
+    o.torso = loft_add(o.torso, ring_level(v3(0, y, z), rx[i], rz[i] + bel * fw[i] * 0.5));
+  }
+  top_z := lean;
+
+  // the head and neck
+  o.head_ry = head_h * 0.5; o.head_rx = head_h * 0.5 * 0.80; o.head_rz = head_h * 0.5 * 0.90;
+  o.head = v3(0, h - head_h * 0.5, top_z + stoop * 0.05 * h + 0.008 * h);
+  o.neck_r = nr;
+  o.neck_foot = v3(0, sy - 0.012 * h, top_z);
+  o.neck_top = v3(0, chin + head_h * 0.22, o.head.z - lo(0.012 * h, hi(o.head_rz - nr * 1.05, 0)));
+
+  // the arms hang clear of the widest part of the torso below them
+  ua := 0.168 * h * arm_len; fa := 0.140 * h * arm_len;
+  o.hand_len = 0.092 * h * hands; o.hand_w = 0.046 * h * hands;
+  wide := hi(hi(rx[CT_HIPS], rx[CT_BELLY]), hi(rx[CT_WAIST], rx[CT_RIBS]));
+  wrist_r := 0.019 * h * arms;
+  theta := clamp((wide + wrist_r + 0.035 * h - sw) / (ua + fa * 0.6), 0.10, 0.60);
+  for side: 0..<2 {
+    sx := cb_side(side);
+    sj := v3(sx * sw, sy - arm_r * 0.9, top_z);
+    d1 := unit_or(v3(sx * sin(theta), -cos(theta), -0.04), v3(0, -1, 0));
+    d2 := unit_or(v3(sx * sin(theta * 0.55), -cos(theta * 0.55), 0.16), v3(0, -1, 0));
+    elbow := add(sj, times(d1, ua)); wrist := add(elbow, times(d2, fa));
+    bend := unit_or(add(d1, d2), d1);
+    l := loft_new(CB_LIMB_SIDES, 1);
+    l = loft_add(l, ring_square(sub(sj, times(d1, arm_r * 0.45)), d1, arm_r * 0.86, arm_r * 0.9));
+    l = loft_add(l, ring_square(sj, d1, arm_r, arm_r * 1.04));
+    l = loft_add(l, ring_square(add(sj, times(d1, ua * 0.48)), d1, 0.027 * h * arms, 0.028 * h * arms));
+    l = loft_add(l, ring_square(elbow, bend, 0.023 * h * arms, 0.023 * h * arms));
+    l = loft_add(l, ring_square(add(elbow, times(d2, fa * 0.3)), d2, 0.025 * h * arms, 0.024 * h * arms));
+    l = loft_add(l, ring_square(wrist, d2, wrist_r, 0.016 * h * arms));
+    o.arm[side] = l;
+    o.hand[side] = add(wrist, times(d2, o.hand_len * 0.5)); o.hand_along[side] = d2;
+    o.joint[ifx side == 0 then CJ_R_SHOULDER else CJ_L_SHOULDER] = sj;
+    o.joint[ifx side == 0 then CJ_R_ELBOW else CJ_L_ELBOW] = elbow;
+    o.joint[ifx side == 0 then CJ_R_HAND else CJ_L_HAND] = wrist;
+  }
+
+  // the legs: a stance a little wider than the hips
+  thigh_r := 0.050 * h * legs;
+  hx := hip_rx * 0.50; fx := hx + 0.022 * h + thigh_r * 0.25;
+  knee_y := 0.275 * h * leg_len; ankle_y := 0.055 * h;
+  o.foot_len = 0.162 * h * feet; o.foot_w = 0.056 * h * feet;
+  for side: 0..<2 {
+    sx := cb_side(side);
+    hj := v3(sx * hx, crotch + 0.05 * h, o.torso.r[CT_SEAT].c.z - bel * 0.15);
+    knee := v3(sx * lerp(hx, fx, 0.55), knee_y, 0.012 * h);
+    ankle := v3(sx * fx, ankle_y, -0.004 * h);
+    d1 := unit_or(sub(knee, hj), v3(0, -1, 0)); d2 := unit_or(sub(ankle, knee), v3(0, -1, 0));
+    l := loft_new(CB_LIMB_SIDES, 1);
+    l = loft_add(l, ring_square(add(hj, v3(0, 0.04 * h, 0)), d1, thigh_r * 0.9, thigh_r * 0.95));
+    l = loft_add(l, ring_square(add(hj, times(d1, 0.065 * h)), d1, thigh_r, thigh_r * 1.06));
+    l = loft_add(l, ring_square(mix(hj, knee, 0.58), d1, thigh_r * 0.86, thigh_r * 0.9));
+    l = loft_add(l, ring_square(knee, unit_or(add(d1, d2), d1), 0.035 * h * legs, 0.036 * h * legs));
+    l = loft_add(l, ring_square(add(mix(knee, ankle, 0.3), v3(0, 0, -0.006 * h)), d2, 0.037 * h * legs, 0.039 * h * legs));
+    l = loft_add(l, ring_square(ankle, d2, 0.024 * h * legs, 0.026 * h * legs));
+    o.leg[side] = l;
+    o.joint[ifx side == 0 then CJ_R_HIP else CJ_L_HIP] = hj;
+    o.joint[ifx side == 0 then CJ_R_KNEE else CJ_L_KNEE] = knee;
+    o.joint[ifx side == 0 then CJ_R_FOOT else CJ_L_FOOT] = ankle;
+    o.joint[ifx side == 0 then CJ_R_TOE else CJ_L_TOE] = v3(sx * fx, 0, o.foot_len * 0.72);
+  }
+  o.joint[CJ_HIPS] = v3(0, crotch + 0.05 * h, o.torso.r[CT_SEAT].c.z);
+  o.joint[CJ_SPINE] = o.torso.r[CT_WAIST].c; o.joint[CJ_CHEST] = o.torso.r[CT_CHEST].c;
+  o.joint[CJ_NECK] = o.neck_foot; o.joint[CJ_HEAD] = o.head; o.joint[CJ_CROWN] = v3(0, h, o.head.z);
+  return o;
+}
+
+// The torso's half width and its front and back at height y, between its rings (what an arm or a
+// garment is measured against). Below the torso it is the crotch ring's.
+CbGirth :: struct { rx: f32; front: f32; back: f32; t: f32; }
+cb_torso_at :: (f: CrewForm, y: f32) -> CbGirth {
+  l := f.torso;
+  t: f32 = 0;
+  if y >= l.r[CT_NECK].c.y { t = cast(f32) CT_NECK; }
+  else if y > l.r[0].c.y {
+    for i: 0..<CT_NECK {
+      a := l.r[i].c.y; b := l.r[i + 1].c.y;
+      if y >= a && y <= b && b > a { t = cast(f32) i + (y - a) / (b - a); }
+    }
+  }
+  r := loft_ring(l, t);
+  return CbGirth.{rx = r.rx, front = r.c.z + r.rz, back = r.c.z - r.rz, t = t};
+}
+// Where on a leg's loft the height y is (a leg's rings go down), in rings.
+cb_leg_t :: (l: Loft, y: f32) -> f32 {
+  if y >= l.r[0].c.y { return 0; }
+  for i: 0..<l.n - 1 {
+    a := l.r[i].c.y; b := l.r[i + 1].c.y;
+    if y <= a && y >= b && a > b { return cast(f32) i + (a - y) / (a - b); }
+  }
+  return cast(f32) (l.n - 1);
+}
+// The whole body's half width, front and back at height y: the legs' outsides under the crotch, the
+// torso to the neck, the neck to the chin, and the head above it. A skirt, a coat or a hood is
+// measured against it.
+cb_hull_at :: (f: CrewForm, y: f32) -> CbGirth {
+  if y < f.crotch_y {
+    l := f.leg[1];
+    r := loft_ring(l, cb_leg_t(l, y));
+    return CbGirth.{rx = abs(r.c.x) + r.rx, front = r.c.z + r.rz, back = r.c.z - r.rz};
+  }
+  if y <= f.torso.r[CT_NECK].c.y { return cb_torso_at(f, y); }
+  if y < f.head.y - f.head_ry { return CbGirth.{rx = f.neck_r, front = f.neck_top.z + f.neck_r, back = f.neck_foot.z - f.neck_r}; }
+  k := clamp((y - f.head.y) / f.head_ry, -1, 1);
+  w := sqrt(hi(1 - k * k, 0));
+  return CbGirth.{rx = f.head_rx * w, front = f.head.z + f.head_rz * w, back = f.head.z - f.head_rz * w};
+}
+
+// ---- the check that a body's parts still join
+
+CB_JOINED :: 0; CB_GAP_SHOULDER :: 1; CB_GAP_HIP :: 2; CB_GAP_KNEE :: 3; CB_GAP_NECK :: 4; CB_OFF_GROUND :: 5; CB_NOT_FINITE :: 6; CB_NO_TORSO :: 7;
+CB_GAP_NAMES :: [8] string.["joined", "a gap at a shoulder", "a gap at a hip", "a gap at a knee", "a gap at the neck", "feet off the ground", "a number that is not finite", "no torso left"];
+// 0 when every part meets its neighbour, else which join failed (CB_GAP_*).
+cb_joined :: (f: CrewForm) -> int {
+  for i: 0..<CB_JOINTS { if !finite3(f.joint[i]) { return CB_NOT_FINITE; } }
+  for i: 0..<CT_RINGS { if !finite3(f.torso.r[i].c) || !(f.torso.r[i].rx > 0.005) || !(f.torso.r[i].rz > 0.005) { return CB_NOT_FINITE; } }
+  if f.shoulder_y - f.crotch_y < 0.2 * f.h { return CB_NO_TORSO; }
+  for i: 1..<CT_RINGS { if f.torso.r[i].c.y <= f.torso.r[i - 1].c.y { return CB_NO_TORSO; } }
+  for side: 0..<2 {
+    a := f.arm[side]; l := f.leg[side];
+    for i: 0..<CA_RINGS { if !finite3(a.r[i].c) || !(a.r[i].rx > 0.003) || !(a.r[i].rz > 0.003) { return CB_NOT_FINITE; } }
+    for i: 0..<CL_RINGS { if !finite3(l.r[i].c) || !(l.r[i].rx > 0.003) || !(l.r[i].rz > 0.003) { return CB_NOT_FINITE; } }
+    // the shoulder: the arm's widest ring reaches inside the torso at its height
+    sh := a.r[CA_SHOULDER];
+    if abs(sh.c.x) - sh.rx > cb_torso_at(f, sh.c.y).rx { return CB_GAP_SHOULDER; }
+    // the hip: the leg's first ring starts inside the torso, above the crotch
+    hp := l.r[CL_HIP];
+    g := cb_torso_at(f, hp.c.y);
+    if abs(hp.c.x) > g.rx || hp.c.y < f.crotch_y || hp.c.z > g.front || hp.c.z < g.back { return CB_GAP_HIP; }
+    // the knee: thigh and calf are one loft through it, each ring lower than the last
+    for i: 1..<CL_RINGS { if l.r[i].c.y >= l.r[i - 1].c.y { return CB_GAP_KNEE; } }
+    if !same(l.r[CL_KNEE].c, f.joint[ifx side == 0 then CJ_R_KNEE else CJ_L_KNEE], 0.0001) { return CB_GAP_KNEE; }
+    // the foot: the ankle above the ground, the sole on it
+    if l.r[CL_ANKLE].c.y <= 0 || f.joint[ifx side == 0 then CJ_R_TOE else CJ_L_TOE].y != 0 { return CB_OFF_GROUND; }
+  }
+  // the neck: its foot inside the torso's top, its top inside the head
+  nk := f.torso.r[CT_NECK];
+  if f.neck_r > nk.rx || f.neck_foot.y > nk.c.y || f.neck_top.y < f.head.y - f.head_ry || f.neck_r > f.head_rx { return CB_GAP_NECK; }
+  dz := f.neck_top.z - f.head.z;
+  if abs(dz) + f.neck_r > f.head_rz { return CB_GAP_NECK; }
+  return CB_JOINED;
+}
+// How far an arm's wrist stands clear of the torso beside it (metres; under zero it is inside).
+cb_arm_clear :: (f: CrewForm, side: int) -> f32 {
+  w := f.arm[side].r[CA_WRIST];
+  return abs(w.c.x) - w.rx - cb_torso_at(f, w.c.y).rx;
+}
+
+#test "the usual body and every preset are in range, joined, and as tall as they say" {
+  #assert cb_ok(cb_usual()) && cb_joined(cb_form(cb_usual())) == CB_JOINED;
+  for k: 0..<CB_PRESETS {
+    b := cb_preset(k);
+    #assert cb_ok(b) && cb_preset_of(b) == k;
+    f := cb_form(b);
+    #assert cb_joined(f) == CB_JOINED;
+    #assert near(f.joint[CJ_CROWN].y, cast(f32) b.v[CB_HEIGHT] * 0.01, 0.0001) && near(f.head.y + f.head_ry, f.h, 0.0001);
+    // the arms hang clear of the body, with room for a sleeve and a coat
+    #assert cb_arm_clear(f, 0) > 0.02 && cb_arm_clear(f, 1) > 0.02;
+    // the two sides mirror each other
+    #assert near(f.joint[CJ_L_HAND].x, -f.joint[CJ_R_HAND].x, 0.0001) && near(f.joint[CJ_L_FOOT].y, f.joint[CJ_R_FOOT].y, 0.0001);
+  }
+  #assert cb_preset_of(cb_usual()) == -1;
+}
+#test "the six bodies differ as the crew sheet's do" {
+  br := cb_form(cb_preset(CB_BRUISER)); me := cb_form(cb_preset(CB_MECHANIC)); sc := cb_form(cb_preset(CB_SCOUT));
+  el := cb_form(cb_preset(CB_ELDER)); fi := cb_form(cb_preset(CB_FIGHTER)); ki := cb_form(cb_preset(CB_KID));
+  // tallest to shortest: bruiser, elder, scout, fighter, kid, mechanic
+  #assert br.h > el.h && el.h > sc.h && sc.h > fi.h && fi.h > ki.h && ki.h > me.h;
+  // the bruiser's shoulders are the widest, the elder's belly the deepest, the scout's legs the longest for the height
+  #assert br.joint[CJ_L_SHOULDER].x > el.joint[CJ_L_SHOULDER].x && el.joint[CJ_L_SHOULDER].x > sc.joint[CJ_L_SHOULDER].x;
+  #assert cb_torso_at(el, el.torso.r[CT_BELLY].c.y).front > cb_torso_at(br, br.torso.r[CT_BELLY].c.y).front * 1.5;
+  #assert sc.crotch_y / sc.h > me.crotch_y / me.h + 0.05;
+  // the kid's head is the largest for the body, the fighter's waist narrower than the hips
+  #assert ki.head_ry / ki.h > fi.head_ry / fi.h * 1.15 && fi.torso.r[CT_WAIST].rx < fi.torso.r[CT_HIPS].rx * 0.8;
+}
+#test "every corner of the ranges makes a body whose parts still join" {
+  low := CB_LO; high := CB_HI;
+  for mask: 0..<65536 {
+    b: CrewBody;
+    for i: 0..<CB_NUMBERS { b.v[i] = ifx (mask >> i) & 1 == 1 then high[i] else low[i]; }
+    #assert cb_ok(b);
+    #assert cb_joined(cb_form(b)) == CB_JOINED;
+  }
+}
+#test "a number out of range is named, and a nudge stops at the range's ends" {
+  b := cb_usual();
+  b.v[CB_BELLY] = 101;
+  #assert !cb_ok(b) && cb_bad(b) == CB_BELLY;
+  b.v[CB_BELLY] = 100; b.v[CB_HEIGHT] = 144;
+  #assert cb_bad(b) == CB_HEIGHT;
+  n := cb_nudge(cb_usual(), CB_HEIGHT, 100);
+  #assert n.v[CB_HEIGHT] == 225 && cb_nudge(n, CB_HEIGHT, -1).v[CB_HEIGHT] == 224 && cb_nudge(cb_usual(), CB_STOOP, -3).v[CB_STOOP] == 0;
+  #assert cb_nudge(cb_usual(), 99, 1).v[CB_HEIGHT] == 175;
+}
+#test "a gap is caught: an arm moved off its shoulder, a foot lifted" {
+  f := cb_form(cb_usual());
+  g := f; g.arm[0].r[CA_SHOULDER].c.x -= 0.5;
+  #assert cb_joined(g) == CB_GAP_SHOULDER;
+  g = f; g.joint[CJ_L_TOE].y = 0.1;
+  #assert cb_joined(g) == CB_OFF_GROUND;
+  g = f; g.neck_r = 1;
+  #assert cb_joined(g) == CB_GAP_NECK;
+  g = f; g.leg[1].r[CL_HIP].c.x += 1;
+  #assert cb_joined(g) == CB_GAP_HIP;
+}

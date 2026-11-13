@@ -1,0 +1,3 @@
+--vertices animelab_bg_vs,animelab_shadow_vs,animelab_scene_vs,animelab_fx_vs
+--fragments bg_fs,animelab_shadow_fs,scene_fs,animelab_bloom_fs,animelab_post_fs,animelab_fx_fs
+--bindings apps/openagents-web/gpu/crew.bindings --strip animelab_
