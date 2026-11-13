@@ -19,7 +19,8 @@
 //   coaxial_frame_plan_v1(state, features, out, cap)  optional: the frame's order, from the engine (GitHub #13303):
 //                             metaverse-engine/render/passes.coax's operations as records of 8 words
 //                             (render/frame-plan.coax) written to `out`; the words written, 0 refused. `features`
-//                             is this host's word (FPH_*). draw() walks the records and decides no order; a page
+//                             is this host's word (FPH_*). draw() walks the records and decides no order, and a
+//                             refused plan clears the frame; only a page
 //                             without it is drawn in the built-in order. ?plan=check and ?plan=off on a
 //                             development server; coaxial.framePlan() says what was walked
 //   coaxial_bloom_passes_v1(state) optional: how many of the five bloom passes to draw this frame (the rest
@@ -3504,7 +3505,11 @@ function draw(now) {
       planStats.frames++; planStats.ops = planned;
     }
   }
-  if (!planned) timed = builtin(encoder, passTimer, true);
+  // A page with a plan is never drawn in the built-in order (#13303): when its engine refuses this
+  // frame's plan the frame is cleared and nothing is drawn (coaxial.framePlan().refused counts them).
+  // The built-in order is for a page whose engine has no plan yet, and for ?plan=off.
+  if (!planned && x.coaxial_frame_plan_v1 && planMode !== "off") timedPass(encoder, passTimer, { colorAttachments: [screen()] }).end();
+  else if (!planned) timed = builtin(encoder, passTimer, true);
   if (timed) {
     encoder.resolveQuerySet(gpu.timer.set, 0, 4, gpu.timer.resolve, 0);
     encoder.copyBufferToBuffer(gpu.timer.resolve, 0, gpu.timer.read, 0, 32);
