@@ -83,7 +83,7 @@ sc_checks :: (t: [] Ap, c: [] Sc, compiles: bool) {
   put := [7] string.["realm", "world-script-put", "splice-bots", wasm, "--name", "pacer", "--fields"];
   putf := [8] string.["realm", "world-script-put", "splice-bots", wasm, "--name", "pacer", "--fields", fields];
   st = sc_cli(t, c, putf[..]);
-  ap_check(t, "cli scripts: world-script-put stores the module with the manifest's state fields, and says the run command", st == 0 && sc_ok(c) && sc_get(c, "hash") == ha && sc_get(c, "calls") == "sa_x, sa_move" && ap_has(sc_get(c, "next"), "world-script-run splice --script") && ap_sql(t, "SELECT count(*) || ' ' || max(hash) || ' ' || bool_or(manifest::text LIKE '%turn_at%')::text FROM verse.world_scripts WHERE world = 'splice-bots'", q[..]) == sb_text_of3(e[..], "1 ", ha, " true"), sc_text(c));
+  ap_check(t, "cli scripts: world-script-put stores the module with the manifest's state fields, and says the run command", st == 0 && sc_ok(c) && sc_get(c, "hash") == ha && sc_get(c, "calls") == "sa_x, sa_move" && ap_has(sc_get(c, "next"), "world-script-run splice-bots --script") && ap_sql(t, "SELECT count(*) || ' ' || max(hash) || ' ' || bool_or(manifest::text LIKE '%turn_at%')::text FROM verse.world_scripts WHERE world = 'splice-bots'", q[..]) == sb_text_of3(e[..], "1 ", ha, " true"), sc_text(c));
   st = sc_cli(t, c, list[..]);
   ap_check(t, "cli scripts: world-scripts lists it, on and with no source", st == 0 && sc_get(c, "count") == "1" && ap_has(sc_get(c, "scripts"), ha) && ap_has(sc_get(c, "scripts"), "\"off\":false,\"why\":\"\",\"source\":false"), sc_text(c));
   cut := [6] string.["realm", "world-script-put", "splice-bots", bad, "--name", "pacer"];
@@ -103,7 +103,7 @@ sc_checks :: (t: [] Ap, c: [] Sc, compiles: bool) {
   pub := [6] string.["realm", "world-publish", "splice-bots", "now", "--yes", "--confirm"];
   st = sc_cli(t, c, pub[0..<5]);
   confirm := sc_get(c, "confirm");
-  ap_check(t, "cli scripts: a publish that adds a script fails, says what it adds and the command that confirms it", st > 0 && !sc_ok(c) && ap_has(sc_get(c, "asks"), "\"name\":\"pacer\"") && ap_has(confirm, sb_text_of3(e[..], "world-publish splice now --confirm ", ha, " --yes")) && ap_sql(t, "SELECT live_rev FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "0", sc_text(c));
+  ap_check(t, "cli scripts: a publish that adds a script fails, says what it adds and the command that confirms it", st > 0 && !sc_ok(c) && ap_has(sc_get(c, "asks"), "\"name\":\"pacer\"") && ap_has(confirm, sb_text_of3(e[..], "world-publish splice-bots now --confirm ", ha, " --yes")) && ap_sql(t, "SELECT live_rev FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "0", sc_text(c));
   pubc := [7] string.["realm", "world-publish", "splice-bots", "now", "--yes", "--confirm", ha];
   st = sc_cli(t, c, pubc[..]);
   ap_check(t, "cli scripts: world-publish --confirm HASH publishes it", st == 0 && sc_ok(c) && ap_sql(t, "SELECT live_rev FROM verse.world_docs WHERE id = 'splice-bots'", q[..]) == "1", sc_text(c));
