@@ -9,10 +9,10 @@
 //                                           circle is hx 0, hz 0 and a radius
 //   landmarks   id name x z r               a named place and its radius (a pickup's reach, a door's width)
 //   looks       id name a b c               three colours of Splice's palette, red green blue bytes in one number
-//   pieces      id name kit scale look hx hz   a placeable piece: the engine kit piece it draws
+//   pieces      id name kit scale look hx hz top   a placeable piece: the engine kit piece it draws
 //                                           (pieces.coax PK_NAME), its size in thousandths, its look,
 //                                           and its footprint: how far its body reaches to each
-//                                           side (hx) and ahead (hz)
+//                                           side (hx) and ahead (hz), and how tall it is (top)
 // Places and lengths are centimetres. `looks` is a table of its own because a table has eight
 // columns at most. An edit or a save names a piece by its ID; names are for people and agents.
 //   coax/bin/coax test verse/splice/content.coax --library
@@ -27,7 +27,7 @@ SC_HEAD :: [SC_TABLES] string.[
   "table kept_clear id name:text x:cm z:cm hx:int hz:int r:int",
   "table landmarks id name:text x:cm z:cm r:int",
   "table looks id name:text a:int b:int c:int",
-  "table pieces id name:text kit:text scale:int look:ref.looks hx:int hz:int"];
+  "table pieces id name:text kit:text scale:int look:ref.looks hx:int hz:int top:int"];
 SC_NAME :: 24;          // bytes of a row's name kept for a refusal or a listing
 SC_AREA_MAX :: 8; SC_KEPT_MAX :: 48; SC_MARK_MAX :: 96; SC_PIECE_MAX :: 32;
 SC_SCALE_MIN :: 100; SC_SCALE_MAX :: 4000;   // a piece's size, thousandths
@@ -35,7 +35,7 @@ SC_SCALE_MIN :: 100; SC_SCALE_MAX :: 4000;   // a piece's size, thousandths
 // A zone: a box (half sizes hx, hz) round (x, z), grown by r. Metres.
 ScZone :: struct { id: int; x: f32; z: f32; hx: f32; hz: f32; r: f32; name: [SC_NAME] u8; name_n: int; }
 ScMark :: struct { id: int; x: f32; z: f32; r: f32; name: [SC_NAME] u8; name_n: int; }
-ScPiece :: struct { id: int; kit: int; scale: f32; a: int; b: int; c: int; hx: f32; hz: f32; name: [SC_NAME] u8; name_n: int; }
+ScPiece :: struct { id: int; kit: int; scale: f32; a: int; b: int; c: int; hx: f32; hz: f32; top: f32; name: [SC_NAME] u8; name_n: int; }
 // The tables as the game reads them each frame: metres, kit numbers, colours.
 SpContent :: struct {
   ok: bool; rev: int;
@@ -73,7 +73,7 @@ sc_ok :: (d: [] ContentDoc) -> bool {
   for r: 0..<ct_rows(d, SC_LOOKS) { for k: 2..<5 { if ct_get(d, SC_LOOKS, r, k) > 0xFFFFFF { return false; } } }
   for r: 0..<ct_rows(d, SC_PIECES) {
     s := ct_get(d, SC_PIECES, r, 3);
-    if pk_of(ct_str(d, SC_PIECES, r, 2)) < 0 || s < SC_SCALE_MIN || s > SC_SCALE_MAX || ct_get(d, SC_PIECES, r, 5) < 1 || ct_get(d, SC_PIECES, r, 6) < 1 { return false; }
+    if pk_of(ct_str(d, SC_PIECES, r, 2)) < 0 || s < SC_SCALE_MIN || s > SC_SCALE_MAX || ct_get(d, SC_PIECES, r, 5) < 1 || ct_get(d, SC_PIECES, r, 6) < 1 || ct_get(d, SC_PIECES, r, 7) < 1 { return false; }
   }
   return true;
 }
@@ -97,7 +97,7 @@ sc_load :: (c: [] SpContent, text: string) -> bool {
     look := ct_find(d[..], SC_LOOKS, ct_get(d[..], SC_PIECES, r, 4));
     p := ScPiece.{id = ct_get(d[..], SC_PIECES, r, 0), kit = pk_of(ct_str(d[..], SC_PIECES, r, 2)), scale = cast(f32) ct_get(d[..], SC_PIECES, r, 3) / 1000,
                   a = ct_get(d[..], SC_LOOKS, look, 2), b = ct_get(d[..], SC_LOOKS, look, 3), c = ct_get(d[..], SC_LOOKS, look, 4),
-                  hx = sc_m(ct_get(d[..], SC_PIECES, r, 5)), hz = sc_m(ct_get(d[..], SC_PIECES, r, 6))};
+                  hx = sc_m(ct_get(d[..], SC_PIECES, r, 5)), hz = sc_m(ct_get(d[..], SC_PIECES, r, 6)), top = sc_m(ct_get(d[..], SC_PIECES, r, 7))};
     p.name_n = sc_name(p.name[..], ct_str(d[..], SC_PIECES, r, 1));
     c[0].pieces[r] = p;
   }
@@ -152,11 +152,11 @@ sc_drop_kept :: (c: [] SpContent, row: int) {
   c: [1] SpContent; o: [CT_BODY] u8;
   #assert !sc_load(c[..], "aethyr.content.v1 splice 1\nreach 30000\n") && !c[0].ok;
   #assert !sc_load(c[..], sc_swap("|rover|1500|", "|rocket|1500|", o[..]));
-  #assert !sc_load(c[..], sc_swap("|rover|1500|1|165|240", "|rover|1500|1|0|240", o[..]));
-  #assert !sc_load(c[..], sc_swap("|rover|1500|1|165|240", "|rover|99|1|165|240", o[..]));
+  #assert !sc_load(c[..], sc_swap("|rover|1500|1|165|240|375", "|rover|1500|1|0|240|375", o[..]));
+  #assert !sc_load(c[..], sc_swap("|rover|1500|1|165|240|375", "|rover|99|1|165|240|375", o[..]));
   #assert !sc_load(c[..], sc_swap("1|Dome village|17500|-7500|0|0|630", "1|Dome village|17500|-7500|10|10|630", o[..]));
   #assert !sc_load(c[..], sc_swap("1|Dome village|17500|-7500|0|0|630", "1|Dome village|17500|-7500|0|0|0", o[..]));
-  #assert sc_load(c[..], sc_swap("|rover|1500|1|165|240", "|rover|1500|2|165|240", o[..]));
+  #assert sc_load(c[..], sc_swap("|rover|1500|1|165|240|375", "|rover|1500|2|165|240|375", o[..]));
 }
 // SC_SHIPPED with its first `was` replaced by `with`, into out ("" when `was` is not in it).
 sc_swap :: (was: string, with: string, out: [] u8) -> string {

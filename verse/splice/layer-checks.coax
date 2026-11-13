@@ -1,0 +1,182 @@
+// The checks of Splice's colliders and edit layer (layer.coax, pieces.coax; GitHub #13404).
+// splice-game.coax loads this file with `#load "layer-checks.coax" #test;`.
+
+// The game as a check starts it: in the mine, by the rover, in daylight.
+lc_mine :: (g: [] SpGame) { g_stage(g, 5); }
+
+// The walk the game had before its walls were World colliders: a circle pushed out of each box of
+// the layout in turn, then the rubble, the boss wall and the banned bot. The oracle the new walk
+// is compared with.
+lc_old_push :: (q: Point, x0: f32, x1: f32, z0: f32, z1: f32, r: f32) -> Point {
+  cx := clamp(q.x, x0, x1); cz := clamp(q.z, z0, z1);
+  dx := q.x - cx; dz := q.z - cz; d := sqrt(dx * dx + dz * dz);
+  if d >= r { return q; }
+  if d > 0.0001 { return v3(cx + dx / d * r, 0, cz + dz / d * r); }
+  l := q.x - x0; rr := x1 - q.x; f := q.z - z0; b := z1 - q.z;
+  m := lo(lo(l, rr), lo(f, b));
+  if m == l { return v3(x0 - r, 0, q.z); }
+  if m == rr { return v3(x1 + r, 0, q.z); }
+  if m == f { return v3(q.x, 0, z0 - r); }
+  return v3(q.x, 0, z1 + r);
+}
+lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
+  q := v3(x, 0, z);
+  for i: 0..<g[0].wall_n { o := i * 5; q = lc_old_push(q, g[0].walls[o], g[0].walls[o + 1], g[0].walls[o + 2], g[0].walls[o + 3], T_RADIUS); }
+  if !g[0].rubble_gone { q = lc_old_push(q, -3, 3, g[0].at.rubble_z - 1, g[0].at.rubble_z + 1, T_RADIUS); }
+  if !g[0].wall_gone { q = lc_old_push(q, -4, 4, g[0].at.wall_z - 1, g[0].at.wall_z + 1, T_RADIUS); }
+  dx := q.x - g[0].at.boss_x; dz := q.z - g[0].at.boss_z; d := sqrt(dx * dx + dz * dz);
+  if d < 2.1 && d > 0.001 { q = v3(g[0].at.boss_x + dx / d * 2.1, 0, g[0].at.boss_z + dz / d * 2.1); }
+  return q;
+}
+
+#test "the walls are World entities: every wall is there, a long one in parts, and none was refused" {
+  g := [1] SpGame.[SpGame.{}];
+  lc_mine(g[..]);
+  w := sl_world(g[..]);
+  #assert world_ready(w) && g[0].ws[0].refused == 0 && g[0].wall_n == 30 && g[0].wall_n <= WALLS;
+  seen: [WALLS] int; gates := 0; boss := 0; stop := 0;
+  for s: 0..<world_high(w) {
+    #assert world_at(w, s) != ENTITY_NONE && world_has(w, s, WORLD_TRANSFORM | WORLD_BODY | WORLD_KIND | WORLD_ROW) && !world_has(w, s, WORLD_HEALTH);
+    kind := world_i(w, WI_KIND, s); row := world_i(w, WI_ROW, s);
+    if kind == SK_WALL && row >= 0 { seen[row] += 1; }
+    if kind == SK_WALL && row < 0 { stop += 1; }
+    if kind == SK_RUBBLE || kind == SK_BOSS_WALL { gates += 1; }
+    if kind == SK_BOSS { boss += 1; }
+    #assert world_f(w, WF_RADIUS, s) <= SL_CELL * 0.71;   // no part reaches further than a cell's half diagonal
+  }
+  for i: 0..<g[0].wall_n { #assert seen[i] >= 1; }
+  #assert seen[0] == 3 && seen[23] == 6 && gates == 2 && boss == 1 && stop == 1;   // the mine mouth's 40 m wall, the 88 m back wall
+  #assert world_count(w) > 90 && world_count(w) < SL_CAP - SL_ITEMS && g[0].ws[0].reach < SL_CELL;
+}
+#test "a step asks the index, not the list: it looks at a few entities of more than ninety" {
+  g := [1] SpGame.[SpGame.{}];
+  lc_mine(g[..]);
+  w := sl_world(g[..]);
+  before := w.grid.n[SPATIAL_VISITS];
+  g[0].px = -3.9; g[0].pz = -6; g_collide(g[..]);
+  #assert w.grid.n[SPATIAL_VISITS] - before <= 24 && world_count(w) > 90 && g[0].ws[0].crowded == 0;
+}
+// Every 0.74 m across the mine, the party and the boss chamber, with the rubble and the boss
+// wall shut and then open: the World's walk puts the smuggler where the old list's walk did,
+// wherever a step can take a walker (up to 0.6 m into a wall).
+#test "the World's walk is the old wall list's walk, to a tenth of a millimetre inside no wall" #steps 2000000000 #traversal 1000000000 {
+  g := [1] SpGame.[SpGame.{}];
+  lc_mine(g[..]);
+  for pass: 0..<2 {
+    g[0].rubble_gone = pass == 1; g[0].wall_gone = pass == 1;
+    free := 0; pushed := 0;
+    for i: 0..<120 { for k: 0..<140 {
+      x := -44.2 + cast(f32) i * 0.74; z := -82.3 + cast(f32) k * 0.74;
+      g[0].px = x; g[0].pz = z; g_collide(g[..]);
+      old := lc_old_collide(g[..], x, z);
+      moved := dist2(x, z, old.x, old.z);
+      if moved > 0.6 { continue; }   // set deeper inside a wall than a step can take a walker
+      #assert dist2(g[0].px, g[0].pz, old.x, old.z) < 0.0001;
+      if moved == 0 { free += 1; } else { pushed += 1; }
+    } }
+    #assert free > 2500 && pushed > 700;
+  }
+}
+#test "a placed piece is a collider: it stops the smuggler at its footprint, and not once it is removed" {
+  g := [1] SpGame.[SpGame.{}];
+  lc_mine(g[..]);
+  w := sl_world(g[..]); count := world_count(w);
+  e := sl_place(g[..], 117, 2000, 1000, 0);          // a small crate east of the rover: 0.6 m to each side, 0.47 m ahead
+  #assert e.ok && e.id == 0 && world_count(w) == count + 1 && g[0].layer[0].rev == 1;
+  g[0].px = 20; g[0].pz = 10 + 0.6; g_collide(g[..]);           // from the north: its long side
+  #assert abs(g[0].pz - (10 + 0.47 + T_RADIUS)) < 0.001 && g[0].px == 20;
+  g[0].px = 20 + 0.8; g[0].pz = 10; g_collide(g[..]);           // from the east: its rounded end
+  #assert abs(g[0].px - (20 + 0.6 + T_RADIUS)) < 0.001;
+  g[0].px = 20 + 2; g[0].pz = 10; g_collide(g[..]); #assert g[0].px == 22;
+  // turned a quarter, its long side faces east
+  #assert sl_turn(g[..], 0, 90).ok;
+  g[0].px = 20 + 0.6; g[0].pz = 10; g_collide(g[..]);
+  #assert abs(g[0].px - (20 + 0.47 + T_RADIUS)) < 0.001;
+  #assert sl_remove(g[..], 0).ok && world_count(w) == count;
+  g[0].px = 20; g[0].pz = 10; g_collide(g[..]); #assert g[0].px == 20 && g[0].pz == 10;
+  g[0].px = 0; g[0].pz = 9;
+  // scenery: no hit points, and the party's people and the camera meet only what is tall
+  #assert sl_place(g[..], 101, 2000, 1000, 0).ok && sl_inside(g[..], 20, 10, 0.3) && !sl_inside(g[..], 25, 10, 0.3);
+  s := world_high(w) - 1; #assert world_i(w, WI_KIND, s) == 101 && !world_has(w, s, WORLD_HEALTH);
+}
+#test "undo and redo walk the layer's log, and a reset keeps the layer" {
+  g := [1] SpGame.[SpGame.{}];
+  lc_mine(g[..]);
+  w := sl_world(g[..]); count := world_count(w);
+  #assert sl_undo(g[..]).v.why == SL_NOTHING && sl_redo(g[..]).v.why == SL_NOTHING;
+  a := sl_place(g[..], 117, 2000, 1000, 0); b := sl_place(g[..], 113, 2400, 1000, 45);
+  #assert a.ok && b.ok && b.id == 1 && world_count(w) == count + 2;
+  #assert sl_move(g[..], 1, 2400, 1200).ok && g[0].layer[0].items[1].z == 12;
+  #assert sl_undo(g[..]).ok && g[0].layer[0].items[1].z == 10;
+  #assert sl_undo(g[..]).ok && world_count(w) == count + 1 && sl_redo(g[..]).ok && sl_redo(g[..]).ok && g[0].layer[0].items[1].z == 12;
+  rev := g[0].layer[0].rev;
+  g_reset(g[..]);
+  #assert g[0].layer[0].st[0].n == 2 && g[0].layer[0].rev == rev && world_count(sl_world(g[..])) == count + 2 && g[0].mode == M_TITLE;
+  // an undo that would put a piece back where you now stand is refused, and nothing changes
+  lc_mine(g[..]);
+  #assert sl_remove(g[..], 0).ok;
+  g[0].px = 20; g[0].pz = 10;
+  u := sl_undo(g[..]);
+  #assert !u.ok && u.v.why == SL_PLAYER && g[0].layer[0].st[0].n == 1;
+  sl_clear(g[..]); #assert g[0].layer[0].st[0].n == 0 && world_count(sl_world(g[..])) == count;
+}
+#test "an edit is refused past the map's edge, in a kept-clear zone (named), on the player, and inside what stands there" {
+  g := [1] SpGame.[SpGame.{}]; o: [160] u8;
+  lc_mine(g[..]);
+  #assert sl_place(g[..], 999, 2000, 1000, 0).v.why == SL_NO_PIECE;
+  #assert sl_place(g[..], 117, 2000, 1000, 181).v.why == SL_TURN && sl_place(g[..], 117, 2000, 1000, -180).v.why == SL_TURN;
+  // the edge: outside every area, and half over the mine's
+  #assert sl_place(g[..], 117, 9000, 1000, 0).v.why == SL_EDGE && sl_place(g[..], 117, 4380, 1000, 0).v.why == SL_EDGE && sl_place(g[..], 117, -10000, 13600, 0).v.why == SL_EDGE;
+  #assert sl_why(g[..], SlVerdict.{why = SL_EDGE}, o[..]).count > 20;
+  // a kept-clear zone, by name: the scanner gate's corridor, a pickup's reach, the Digger's lane
+  v := sl_place(g[..], 117, 17500, -6700, 0).v;
+  #assert v.why == SL_KEPT && sl_why(g[..], v, o[..]) == "in the kept-clear zone 'Scanner gate'";
+  v = sl_place(g[..], 117, -600, -1250, 0).v;
+  #assert v.why == SL_KEPT && sl_why(g[..], v, o[..]) == "in the kept-clear zone 'Drill arm'";
+  v = sl_place(g[..], 113, 0, 300, 0).v;
+  #assert v.why == SL_KEPT && sl_why(g[..], v, o[..]) == "in the kept-clear zone 'Mine mouth lane'";
+  // a footprint that only reaches into a zone is refused too; a step further out it stands
+  #assert sl_place(g[..], 117, -600 + 220 + 55, -1400, 0).v.why == SL_KEPT && sl_place(g[..], 117, -600 + 220 + 65, -1400, 0).ok;
+  // on the player
+  g[0].px = 20; g[0].pz = 10;
+  v = sl_place(g[..], 117, 2050, 1000, 0).v;
+  #assert v.why == SL_PLAYER && sl_why(g[..], v, o[..]) == "on top of the player";
+  // inside a wall, the rover, another placed piece
+  v = sl_place(g[..], 117, -2000, -600, 0).v;
+  #assert v.why == SL_COLLIDER && sl_why(g[..], v, o[..]) == "inside a wall or a thing that already stands there";
+  #assert sl_place(g[..], 117, 780, 760, 0).v.why == SL_COLLIDER;
+  first := sl_place(g[..], 117, 2500, 1500, 0); #assert first.ok;
+  v = sl_place(g[..], 117, 2580, 1500, 0).v;
+  #assert v.why == SL_COLLIDER && sl_why(g[..], v, o[..]) == "inside the placed piece 1";
+  // a move is checked the same way, and a piece does not block its own move
+  #assert sl_move(g[..], first.id, 2530, 1500).ok && sl_move(g[..], first.id, 0, 300).v.why == SL_KEPT && sl_move(g[..], 77, 0, 0).v.why == SL_NO_ITEM;
+  #assert g[0].layer[0].items[1].x == 25.3;
+}
+// Two games given the same edits hold the same World, a step at a time; a different edit differs.
+#test "the same edits give the same digest at every step, and the digest covers the layer" {
+  a := [1] SpGame.[SpGame.{}]; b := [1] SpGame.[SpGame.{}];
+  lc_mine(a[..]); lc_mine(b[..]);
+  #assert sl_digest(a[..]) == sl_digest(b[..]);
+  base := sl_digest(a[..]);
+  #assert sl_place(a[..], 117, 2000, 1000, 0).ok; #assert sl_digest(a[..]) != base;
+  #assert sl_place(b[..], 117, 2000, 1000, 0).ok; #assert sl_digest(a[..]) == sl_digest(b[..]);
+  #assert sl_place(a[..], 103, 2600, 1400, 30).ok && sl_place(b[..], 103, 2600, 1400, 30).ok && sl_digest(a[..]) == sl_digest(b[..]);
+  #assert sl_turn(a[..], 1, -60).ok && sl_digest(a[..]) != sl_digest(b[..]);
+  #assert sl_turn(b[..], 1, -60).ok && sl_digest(a[..]) == sl_digest(b[..]);
+  #assert sl_remove(a[..], 0).ok && sl_remove(b[..], 0).ok && sl_digest(a[..]) == sl_digest(b[..]) && sl_digest(a[..]) != base;
+  // a different piece in the same place, and the same piece a centimetre away, are different worlds
+  #assert sl_place(a[..], 117, 3000, 1000, 0).ok && sl_place(b[..], 116, 3000, 1000, 0).ok && sl_digest(a[..]) != sl_digest(b[..]);
+  was := sl_digest(a[..]);
+  #assert sl_move(a[..], 2, 3001, 1000).ok && sl_digest(a[..]) != was && sl_undo(a[..]).ok && sl_digest(a[..]) != was;   // rebuilt: new entities
+}
+// "No invisible blockers": a row's footprint and height are what its kit piece's triangles measure.
+#test "every piece's footprint is the footprint of the triangles it writes" {
+  c: [1] SpContent; w: [1] SpMeshScratch;
+  #assert sc_load(c[..], SC_SHIPPED);
+  for r: 0..<c[0].piece_n {
+    p := c[0].pieces[r];
+    m := sp_piece_measure(w[..], p.kit, p.scale);
+    #assert !m.over && m.n >= 3;
+    #assert abs(m.hx - p.hx) <= 0.015 && abs(m.hz - p.hz) <= 0.015 && abs(m.top - p.top) <= 0.015;
+  }
+}

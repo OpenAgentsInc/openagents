@@ -295,4 +295,7 @@ portallab 80000
 # Painted Village: the page, the village (road and plaza) and Aethyr's village, plaza and flora generators, with their solids
 # and Aethyr's walking capsule (aethyr/physics/collide.coax); 161,781 bytes as the dev build writes it; about 25% room for the next scenes.
 painted 200000
-splice 230000
+# Splice with its content tables (aethyr/content/tables.coax), its colliders as a World (aethyr/core/world.coax, spatial.coax, the
+# walking rules of aethyr/physics/collide.coax) and its edit layer on the engine's edit log (aethyr/forge/edit.coax, #13404):
+# 239,218 bytes measured on a Linux build host; about 5% room.
+splice 252000

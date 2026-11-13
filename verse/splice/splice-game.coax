@@ -11,6 +11,8 @@
 #load "../../apps/openagents-web/animelab.coax";
 #load "../../aethyr/kit/land.coax";
 #load "content.coax";
+#load "layer.coax";
+#load "layer-checks.coax" #test;   // the colliders' and the layer's checks
 #load "splice-cast.coax";
 
 // ---- Tuning (the document's DA_Tuning): every number the run is balanced with
@@ -67,6 +69,8 @@ B_SWEEP :: 1; B_CUT :: 2;
 SpSave :: struct { have: [HAVES] bool; taken: [PICKS] bool; slot: [3] bool; strip: [3] int; strip_n: int; scrap: int; cells: int; }
 
 SpGame :: struct {
+  ws: [1] SlWorld;            // the colliders: a World of entities (layer.coax)
+  layer: [1] SlLayer;         // the edit layer: placed pieces, as typed edits (layer.coax)
   c: [1] SpContent;           // the content tables (content.coax): outlive a reset
   at: SpPlaces;               // the landmarks the game reads, from them
   gray: bool;                 // graybox (G): the world in grays, orange, yellow and cyan kept; outlives a reset
@@ -130,7 +134,8 @@ GLOW :: () -> KitTint { return kit_tint(0.310, 0.702, 0.851); }
 GLOW_INK :: () -> KitTint { return kit_tint(0.122, 0.373, 0.502); }
 t3 :: (r: f32, g: f32, b: f32) -> KitTint { return kit_tint(r, g, b); }
 
-// ---- The mine's walls: boxes x0, x1, z0, z1, height. They are drawn and they block.
+// ---- The mine's walls: boxes x0, x1, z0, z1, height. They are drawn from this list, and each is a
+// collider in the World (sl_build).
 g_wall :: (g: [] SpGame, x0: f32, x1: f32, z0: f32, z1: f32, h: f32) {
   n := g[0].wall_n;
   if n >= WALLS { return; }
@@ -157,6 +162,7 @@ g_layout :: (g: [] SpGame) {
   g_wall(g, g[0].at.crate_x - 0.9, g[0].at.crate_x + 0.9, g[0].at.crate_z - 0.7, g[0].at.crate_z + 0.7, 0); // the stash crate
   g_wall(g, g[0].at.deck_x - 0.12, g[0].at.deck_x + 0.12, g[0].at.deck_z0 + RAMP, g[0].at.deck_z1 - RAMP, 0);   // the catwalk's rail, between its two ramps
   g_wall(g, -60, 60, 20, 24, 0); g_wall(g, -64, -44, -92, 24, 0); g_wall(g, 44, 64, -92, 24, 0);   // the edge of the map
+  sl_build(g);   // the walls become colliders in the World (layer.coax), with the layer's placed pieces
 }
 pick_x :: (g: [] SpGame, i: int) -> f32 { return g[0].at.pick_x[i]; }
 pick_z :: (g: [] SpGame, i: int) -> f32 { return g[0].at.pick_z[i]; }
@@ -222,10 +228,12 @@ g_reset :: (g: [] SpGame) {
   gray := g[0].gray;   // the graybox toggle is the viewer's, not the run's
   hide: [TK_KINDS] bool; for k: 0..<TK_KINDS { hide[k] = g[0].hide[k]; }   // and what a host draws is the host's
   tables := g[0].c[0];   // the content tables are read once
+  layer := g[0].layer[0];   // the edit layer is the world's, not the run's
   g[0] = SpGame.{};
   g[0].gray = gray;
   if tables.ok { g[0].c[0] = tables; } else { _ := sc_load(g[0].c[..], SC_SHIPPED); }
   _ := g_places(g);
+  g[0].layer[0] = layer;
   for k: 0..<TK_KINDS { g[0].hide[k] = hide[k]; }
   g_layout(g);
   g[0].mode = M_TITLE; g[0].zone = Z_VILLAGE; g[0].phase = PH_DAWN; g[0].drag = -1;
@@ -237,51 +245,30 @@ g_say :: (g: [] SpGame, m: int) { g[0].msg = m; g[0].msg_t = 3.5; g_event(g, m);
 g_bot_home :: (g: [] SpGame) { g[0].bot_state = BOT_FOLLOW; g[0].bot_x = g[0].px - sin(g[0].yaw) * 1.7 - cos(g[0].yaw) * 1.1; g[0].bot_z = g[0].pz - cos(g[0].yaw) * 1.7 + sin(g[0].yaw) * 1.1; g[0].bot_yaw = g[0].yaw; }
 g_enter_mine :: (g: [] SpGame) { g[0].zone = Z_MINE; g[0].mode = M_PLAY; g[0].phase = PH_DAY; g[0].px = g[0].at.start_x; g[0].pz = g[0].at.start_z; g[0].yaw = PI; g[0].pitch = 0; g_bot_home(g); g_keep(g); }
 
-// ---- Collision: a circle against boxes, the two walls that open, and the village's round room
-push_pt :: (q: Point, x0: f32, x1: f32, z0: f32, z1: f32, r: f32) -> Point {
-  cx := clamp(q.x, x0, x1); cz := clamp(q.z, z0, z1);
-  dx := q.x - cx; dz := q.z - cz; d := sqrt(dx * dx + dz * dz);
-  if d >= r { return q; }
-  if d > 0.0001 { return v3(cx + dx / d * r, 0, cz + dz / d * r); }
-  // inside the box: out through its nearest side
-  l := q.x - x0; rr := x1 - q.x; f := q.z - z0; b := z1 - q.z;
-  m := lo(lo(l, rr), lo(f, b));
-  if m == l { return v3(x0 - r, 0, q.z); }
-  if m == rr { return v3(x1 + r, 0, q.z); }
-  if m == f { return v3(q.x, 0, z0 - r); }
-  return v3(q.x, 0, z1 + r);
-}
-g_push :: (g: [] SpGame, x0: f32, x1: f32, z0: f32, z1: f32, r: f32) {
-  q := push_pt(v3(g[0].px, 0, g[0].pz), x0, x1, z0, z1, r); g[0].px = q.x; g[0].pz = q.z;
-}
+// ---- Collision: the smuggler is a circle. The dome village's round room and the ground round the
+// rail stop hold it in; everything else that blocks is a collider in the World (layer.coax): the
+// walls, the rubble and the boss wall until they open, the banned bot, the stopped rover and
+// every placed piece.
 dist2 :: (ax: f32, az: f32, bx: f32, bz: f32) -> f32 { return sqrt((ax - bx) * (ax - bx) + (az - bz) * (az - bz)); }
 g_collide :: (g: [] SpGame) {
   if g[0].zone == Z_VILLAGE {
     // the dome's round floor, and the gate's corridor out of it
     d := dist2(g[0].px, g[0].pz, g[0].at.vil_x, g[0].at.vil_z);
-    if d <= g[0].at.vil_r - 0.7 { return; }
-    if g[0].pz > g[0].at.vil_z + 5.5 && abs(g[0].px - g[0].at.vil_x) < 1.6 { g[0].px = clamp(g[0].px, g[0].at.vil_x - 1.0, g[0].at.vil_x + 1.0); return; }
-    k := (g[0].at.vil_r - 0.7) / d; g[0].px = g[0].at.vil_x + (g[0].px - g[0].at.vil_x) * k; g[0].pz = g[0].at.vil_z + (g[0].pz - g[0].at.vil_z) * k;
-    return;
+    if d > g[0].at.vil_r - 0.7 {
+      if g[0].pz > g[0].at.vil_z + 5.5 && abs(g[0].px - g[0].at.vil_x) < 1.6 { g[0].px = clamp(g[0].px, g[0].at.vil_x - 1.0, g[0].at.vil_x + 1.0); }
+      else { k := (g[0].at.vil_r - 0.7) / d; g[0].px = g[0].at.vil_x + (g[0].px - g[0].at.vil_x) * k; g[0].pz = g[0].at.vil_z + (g[0].pz - g[0].at.vil_z) * k; }
+    }
   }
   if g[0].zone == Z_RAIL {
     // on foot at the sensor ping: the ground round the stopped rover
     c := rail_at(g, T_RAIL_PING); d := dist2(g[0].px, g[0].pz, c.x, c.z);
     if d > 26 { g[0].px = c.x + (g[0].px - c.x) * 26 / d; g[0].pz = c.z + (g[0].pz - c.z) * 26 / d; }
-    g_push(g, c.x - 1.5, c.x + 1.5, c.z - 2.4, c.z + 2.4, T_RADIUS);
-    return;
   }
-  for i: 0..<g[0].wall_n { o := i * 5; g_push(g, g[0].walls[o], g[0].walls[o + 1], g[0].walls[o + 2], g[0].walls[o + 3], T_RADIUS); }
-  if !g[0].rubble_gone { g_push(g, -3, 3, g[0].at.rubble_z - 1, g[0].at.rubble_z + 1, T_RADIUS); }
-  if !g[0].wall_gone { g_push(g, -4, 4, g[0].at.wall_z - 1, g[0].at.wall_z + 1, T_RADIUS); }
-  dx := g[0].px - g[0].at.boss_x; dz := g[0].pz - g[0].at.boss_z; d := sqrt(dx * dx + dz * dz);
-  if d < 2.1 && d > 0.001 { g[0].px = g[0].at.boss_x + dx / d * 2.1; g[0].pz = g[0].at.boss_z + dz / d * 2.1; }
+  q := sl_push(g, g[0].px, g[0].pz, T_RADIUS, false); g[0].px = q.x; g[0].pz = q.z;
 }
 g_inside :: (g: [] SpGame, x: f32, z: f32) -> bool {
-  if g[0].zone == Z_VILLAGE { return dist2(x, z, g[0].at.vil_x, g[0].at.vil_z) > g[0].at.vil_r - 0.5 && !(z > g[0].at.vil_z + 5 && abs(x - g[0].at.vil_x) < 1.5); }
-  if g[0].zone != Z_MINE { return false; }
-  for i: 0..<g[0].wall_n { o := i * 5; if g[0].walls[o + 4] > 1 && x > g[0].walls[o] - 0.3 && x < g[0].walls[o + 1] + 0.3 && z > g[0].walls[o + 2] - 0.3 && z < g[0].walls[o + 3] + 0.3 { return true; } }
-  return false;
+  if g[0].zone == Z_VILLAGE && dist2(x, z, g[0].at.vil_x, g[0].at.vil_z) > g[0].at.vil_r - 0.5 && !(z > g[0].at.vil_z + 5 && abs(x - g[0].at.vil_x) < 1.5) { return true; }
+  return sl_inside(g, x, z, 0.3);
 }
 // The catwalk: a deck along the party's east wall, a ramp at each end.
 on_deck :: (g: [] SpGame, x: f32, z: f32) -> bool { return x > g[0].at.deck_x - 0.2 && z > g[0].at.deck_z0 && z < g[0].at.deck_z1; }
@@ -373,8 +360,7 @@ g_hurt :: (g: [] SpGame) {
   if g[0].hearts <= 0 { g[0].mode = M_BANNER; g[0].banner = B_CUT; g[0].banner_t = T_BANNER; }
 }
 g_foe_walls :: (g: [] SpGame, i: int) {
-  q := v3(g[0].fx[i], 0, g[0].fz[i]);
-  for w: 0..<g[0].wall_n { o := w * 5; if g[0].walls[o + 4] > 1 { q = push_pt(q, g[0].walls[o], g[0].walls[o + 1], g[0].walls[o + 2], g[0].walls[o + 3], 0.45); } }
+  q := sl_push(g, g[0].fx[i], g[0].fz[i], 0.45, true);
   g[0].fx[i] = q.x; g[0].fz[i] = q.z;
 }
 boss_arm :: (g: [] SpGame) -> f32 { if g[0].boss_t <= T_SWEEP_EVERY { return 2.6; } return 2.6 + (g[0].boss_t - T_SWEEP_EVERY) / T_SWEEP_TIME * TAU; }
