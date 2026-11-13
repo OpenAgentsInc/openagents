@@ -1,0 +1,168 @@
+// Exports Splice for Unreal (docs/unreal/2026-11-12-aethyr-to-unreal-exporter-spec.md, GitHub
+// #13400): the static world as glTF, and a manifest of what the importer builds around it
+// (collision boxes, placements, tuning, key codes, reference shots). It runs the game's own
+// layout and world code and re-describes nothing. Same source, same bytes; it refuses a folder
+// that exists. Run from the repository root:
+//   coax/web/tool.sh apps/openagents-web/splice-export.coax NEW_DIR
+// The tuning and placement lists below name the game's constants one by one: a constant added
+// to splice-game.coax is not exported until it is listed here.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "splice-game.coax";
+#load "../../aethyr/export/bundle.coax";
+
+ceil :: (x: f64) -> f64 #foreign #effects(all);   // libm's, for the PNG writer (coax/lib/image/pillow.coax)
+
+SX_SHOTS :: 6;
+sx_shot :: (i: int) -> ExCam {
+  if i == 0 { return ExCam.{eye = v3(ROVER_X - 3, 3.2, ROVER_Z + 15), at = v3(ROVER_X - 3, 1.8, ROVER_Z - 2), fov = 0.7}; }    // the rover at the mine
+  if i == 1 { return ExCam.{eye = v3(0, 3.5, 14), at = v3(0, 1.5, -10), fov = 0.82}; }                                      // the mine mouth
+  if i == 2 { return ExCam.{eye = v3(0, 2.6, -16), at = v3(0, 1.5, RUBBLE_Z), fov = 0.82}; }                                // the tunnel
+  if i == 3 { return ExCam.{eye = v3(9, 5, -43), at = v3(-9, 1, -55), fov = 0.82}; }                                        // the party hall
+  if i == 4 { return ExCam.{eye = v3(0, 4, WALL_Z - 1.5), at = v3(BOSS_X, 2, BOSS_Z - 4), fov = 0.82}; }                    // the boss chamber
+  return ExCam.{eye = v3(VIL_X + 14, 6, VIL_Z + 18), at = v3(VIL_X, 2, VIL_Z), fov = 0.82};                                 // the dome village
+}
+sx_shot_name :: (i: int) -> string { names := [SX_SHOTS] string.["rover", "mine-mouth", "tunnel", "party-hall", "boss-chamber", "village"]; return names[i]; }
+sx_mat_name :: (m: int) -> string { names := [11] string.["world", "skin", "hair", "glow", "flat", "floor", "made", "ink", "smoke", "window", "cloth"]; return ifx m >= 0 && m < 11 then names[m] else "unknown"; }
+sx_pick_name :: (i: int) -> string { names := [PICKS] string.["drill-arm", "treads", "battery", "card-move", "card-drill", "drill-plus", "cell-0", "cell-1", "cell-2", "cell-3"]; return names[i]; }
+
+sx_place :: (o: [] Jo, kind: string, name: string, x: f32, y: f32, z: f32) #effects(all) {
+  jo_obj(o); ex_str(o, "kind", kind); ex_str(o, "name", name); ex_p3(o, "at", x, y, z); jo_end(o);
+}
+sx_tune :: (o: [] Jo, name: string, v: f32) #effects(all) { ex_num(o, name, v); }
+sx_file_name :: (prefix: string, i: int, tail: string, out: [] u8) -> string {
+  n := 0; for c: prefix { out[n] = c; n += 1; }
+  out[n] = cast,trunc(u8) (48 + i); n += 1;
+  for c: tail { out[n] = c; n += 1; }
+  return cast(string) out[0..<n];
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { print("usage: splice-export NEW_DIR   (run from the repository root)\n"); return 2; }
+  dir := args_at(a[..], 0);
+  if fs_exists(dir) { print("splice-export: % exists; give a folder that does not\n", dir); return 1; }
+
+  // the game's own world: reset (which lays out the walls), then the world's triangles
+  g: [1] SpGame; g_reset(g[..]);
+  world: [150000 * VERTEX_WORDS] u32; pen: [1] Pen;   // the page's store: splice.coax SP_WORLD_WORDS vertices
+  g_world(g[..], world[..], pen[..]);
+  if pen[0].over || pen[0].n < 3 { print("splice-export: the world did not fit its store\n"); return 1; }
+  vertices := pen[0].n;
+
+  glb: [8388608] u8; scratch: [8388608] u8; groups: [GLB_GROUPS] GlbGroup;
+  w := glb_world(world[..], vertices, EX_CELL, glb[..], scratch[..], groups[..]);
+  if !w.ok { print("splice-export: the glTF writer refused the world\n"); return 1; }
+
+  path: [4096] u8; name: [64] u8; hex: [64] u8;
+  if !fs_mkdir(dir) || !fs_mkdir(fs_join(dir, "shots", path[..])) || !fs_mkdir(fs_join(dir, "fonts", path[..])) { print("splice-export: could not make the folder\n"); return 1; }
+  if !ex_put(dir, "world.glb", glb[0..<w.bytes]) { print("splice-export: could not write world.glb\n"); return 1; }
+
+  json: [1048576] u8; o: [1] Jo; jo_start(o[..], json[..]); j := o[..];
+  jo_obj(j);
+  ex_int(j, "aexport", EX_VERSION);
+  jo_key(j, "game"); jo_obj(j); ex_str(j, "id", "splice"); ex_str(j, "name", "Splice"); ex_str(j, "source", "apps/openagents-web/splice-game.coax"); jo_end(j);
+  // Aethyr: metres, right-handed, y up (glTF's own convention). Measured with Unreal 5.9's default
+  // glTF import (GitHub #13399): Unreal X = x, Y = z, Z = y, centimetres.
+  jo_key(j, "axes"); jo_obj(j); ex_str(j, "aethyr", "metres, right-handed, y up"); ex_str(j, "unreal_x", "x"); ex_str(j, "unreal_y", "z"); ex_str(j, "unreal_z", "y"); ex_num(j, "unreal_units_per_metre", 100); jo_end(j);
+
+  jo_key(j, "world"); jo_obj(j);
+  sha := ex_sha(glb[0..<w.bytes], hex[..]);
+  if sha == "" { print("splice-export: could not hash world.glb\n"); return 1; }
+  ex_str(j, "file", "world.glb"); ex_str(j, "sha256", sha); ex_int(j, "bytes", w.bytes);
+  ex_num(j, "cell_metres", EX_CELL); ex_int(j, "triangles", w.triangles); ex_int(j, "source_vertices", w.vertices); ex_int(j, "vertices", w.welded);
+  ex_p3(j, "min", w.lo[0], w.lo[1], w.lo[2]); ex_p3(j, "max", w.hi[0], w.hi[1], w.hi[2]);
+  ex_str(j, "attributes", "POSITION, NORMAL, COLOR_0 (linear), TEXCOORD_0 (x: the cel vertex parameter, y: its object number)");
+  jo_key(j, "groups"); jo_arr(j);
+  for gi: 0..<w.groups {
+    gr := groups[gi];
+    jo_obj(j); ex_str(j, "name", glb_name(gr, name[..])); ex_str(j, "material", sx_mat_name(gr.mat)); ex_int(j, "material_id", gr.mat); ex_int(j, "cell_x", gr.cx); ex_int(j, "cell_z", gr.cz);
+    ex_int(j, "vertices", gr.vertices); ex_int(j, "triangles", gr.triangles); ex_p3(j, "min", gr.lo[0], gr.lo[1], gr.lo[2]); ex_p3(j, "max", gr.hi[0], gr.hi[1], gr.hi[2]);
+    jo_end(j);
+  }
+  jo_end(j); jo_end(j);
+
+  jo_key(j, "materials"); jo_arr(j);
+  for m: 0..<11 { used := 0; for gi: 0..<w.groups { if groups[gi].mat == m { used += groups[gi].triangles; } } jo_obj(j); ex_int(j, "id", m); ex_str(j, "name", sx_mat_name(m)); ex_int(j, "triangles", used); jo_end(j); }
+  jo_end(j);
+
+  // collision: the rules' own boxes. A height of 0 is a box the world draws another way (the
+  // rover, the crate, the stage, the catwalk's rail, the edge of the map): it still blocks.
+  jo_key(j, "collision"); jo_obj(j);
+  jo_key(j, "boxes"); jo_arr(j);
+  for i: 0..<g[0].wall_n { k := i * 5; jo_obj(j); ex_num(j, "x0", g[0].walls[k]); ex_num(j, "x1", g[0].walls[k + 1]); ex_num(j, "z0", g[0].walls[k + 2]); ex_num(j, "z1", g[0].walls[k + 3]); ex_num(j, "height", g[0].walls[k + 4]); jo_end(j); }
+  jo_end(j);
+  jo_key(j, "deck"); jo_obj(j); ex_num(j, "x", DECK_X); ex_num(j, "x_far", 20); ex_num(j, "z0", DECK_Z0); ex_num(j, "z1", DECK_Z1); ex_num(j, "y", DECK_Y); ex_num(j, "ramp", RAMP); ex_num(j, "ramp_run", 3); jo_end(j);
+  ex_num(j, "player_radius", T_RADIUS);
+  jo_end(j);
+
+  jo_key(j, "placements"); jo_arr(j);
+  sx_place(j, "start", "mine-start", START_X, 0, START_Z);
+  sx_place(j, "start", "village-start", VIL_X, 0, VIL_Z - 3);
+  sx_place(j, "rover", "rover", ROVER_X, 0, ROVER_Z);
+  sx_place(j, "checkpoint", "post", POST_X, 0, POST_Z);
+  sx_place(j, "crate", "stash-crate", CRATE_X, 0, CRATE_Z);
+  sx_place(j, "rubble", "rubble", 0, 0, RUBBLE_Z);
+  sx_place(j, "boss-wall", "boss-wall", 0, 0, WALL_Z);
+  sx_place(j, "boss", "boss", BOSS_X, 0, BOSS_Z);
+  for i: 0..<3 { p := weak_at(i); sx_place(j, "weak-point", sx_file_name("weak-", i, "", name[..]), p.x, p.y, p.z); }
+  sx_place(j, "stage", "edit-bay", BAY_X, 0, BAY_Z);
+  sx_place(j, "stage", "memory", MEM_X, 0, MEM_Z);
+  sx_place(j, "village", "village", VIL_X, 0, VIL_Z);
+  sx_place(j, "scanner", "scanner-gate", VIL_X, 0, SCAN_Z);
+  for i: 0..<PICKS { sx_place(j, "pickup", sx_pick_name(i), pick_x(i), 0, pick_z(i)); }
+  for i: 0..<FOES {
+    kind := ifx i < F_RAIDERS then "raider" else "imperial";
+    sx_place(j, kind, sx_file_name(ifx i < F_RAIDERS then "raider-" else "imperial-", i, "-a", name[..]), foe_ax(i), 0, foe_az(i));
+    sx_place(j, kind, sx_file_name(ifx i < F_RAIDERS then "raider-" else "imperial-", i, "-b", name[..]), foe_bx(i), 0, foe_bz(i));
+  }
+  for i: 0..<7 { p := rail_at(cast(f32) i * 50); sx_place(j, "rail", sx_file_name("rail-", i, "", name[..]), p.x, p.y, p.z); }
+  jo_end(j);
+
+  jo_key(j, "tuning"); jo_obj(j);
+  sx_tune(j, "T_WALK", T_WALK); sx_tune(j, "T_TURN", T_TURN); sx_tune(j, "T_LOOK", T_LOOK); sx_tune(j, "T_RADIUS", T_RADIUS);
+  sx_tune(j, "T_HEAT_PIECE", T_HEAT_PIECE); sx_tune(j, "T_HEAT_MAX", T_HEAT_MAX); sx_tune(j, "T_HEAT_COOL", T_HEAT_COOL); sx_tune(j, "T_COOL_RANGE", T_COOL_RANGE);
+  sx_tune(j, "T_HEARTS", cast(f32) T_HEARTS); sx_tune(j, "T_HIT_COOL", T_HIT_COOL);
+  sx_tune(j, "T_NOTICE", T_NOTICE); sx_tune(j, "T_NOTICE_HEAT", T_NOTICE_HEAT); sx_tune(j, "T_RAIDER_SPEED", T_RAIDER_SPEED); sx_tune(j, "T_RAIDER_WANDER", T_RAIDER_WANDER); sx_tune(j, "T_GIVE_UP", T_GIVE_UP); sx_tune(j, "T_RAIDER_REACH", T_RAIDER_REACH);
+  sx_tune(j, "T_USE_RANGE", T_USE_RANGE); sx_tune(j, "T_PICK_RANGE", T_PICK_RANGE); sx_tune(j, "T_SAVE_RANGE", T_SAVE_RANGE); sx_tune(j, "T_CARD_TIME", T_CARD_TIME);
+  sx_tune(j, "T_MOVE_SHORT", T_MOVE_SHORT); sx_tune(j, "T_MOVE_MAX", T_MOVE_MAX); sx_tune(j, "T_DRILL_REACH", T_DRILL_REACH); sx_tune(j, "T_BAD_CUT", T_BAD_CUT);
+  sx_tune(j, "T_SWEEP_EVERY", T_SWEEP_EVERY); sx_tune(j, "T_SWEEP_TIME", T_SWEEP_TIME); sx_tune(j, "T_SWEEP_WARN", T_SWEEP_WARN); sx_tune(j, "T_ARM", T_ARM);
+  sx_tune(j, "T_STUN_RANGE", T_STUN_RANGE); sx_tune(j, "T_STUN_TIME", T_STUN_TIME);
+  sx_tune(j, "T_HIT_RANGE", T_HIT_RANGE); sx_tune(j, "T_STAGGER", T_STAGGER); sx_tune(j, "T_KNOCK", T_KNOCK); sx_tune(j, "T_RAIDER_HP", cast(f32) T_RAIDER_HP); sx_tune(j, "T_IMPERIAL_HP", cast(f32) T_IMPERIAL_HP); sx_tune(j, "T_IMPERIAL_SPEED", T_IMPERIAL_SPEED); sx_tune(j, "T_PATROL", T_PATROL);
+  sx_tune(j, "T_HEAT_SCRAP", T_HEAT_SCRAP); sx_tune(j, "T_FOLLOW", T_FOLLOW); sx_tune(j, "T_BOT_GO", T_BOT_GO);
+  sx_tune(j, "T_BANNER", T_BANNER); sx_tune(j, "T_MEMORY", T_MEMORY); sx_tune(j, "T_FADE", T_FADE); sx_tune(j, "T_PASS", T_PASS);
+  sx_tune(j, "T_RAIL", T_RAIL); sx_tune(j, "T_RAIL_PING", T_RAIL_PING); sx_tune(j, "T_RAIL_SPEED", T_RAIL_SPEED); sx_tune(j, "T_RAIL_SLOW", T_RAIL_SLOW); sx_tune(j, "T_RAIL_FAST", T_RAIL_FAST);
+  jo_end(j);
+
+  // the codes g_key takes: a letter is its character code, the rest are these
+  jo_key(j, "keys"); jo_obj(j);
+  ex_int(j, "enter", -2); ex_int(j, "left", -4); ex_int(j, "right", -5); ex_int(j, "up", -6); ex_int(j, "down", -7); ex_int(j, "space", 32);
+  ex_str(j, "letters", "the character code: w a s d e f g c x and 1 2 3");
+  jo_end(j);
+
+  jo_key(j, "fonts"); jo_arr(j); jo_str(j, "fonts/IBMPlexMono-Medium.ttf"); jo_str(j, "fonts/Michroma-Regular.ttf"); jo_end(j);
+
+  jo_key(j, "shots"); jo_obj(j);
+  ex_int(j, "width", EX_SHOT_W); ex_int(j, "height", EX_SHOT_H);
+  ex_str(j, "about", "the static world from each camera, flat vertex colour, both faces drawn, no shading or sky; fov is the vertical angle in radians");
+  jo_key(j, "list"); jo_arr(j);
+  for i: 0..<SX_SHOTS {
+    c := sx_shot(i); file := sx_file_name("shots/shot-", i, ".png", name[..]);
+    covered := ex_shot(world[..], vertices, c, dir, file);
+    if covered < 0 { print("splice-export: could not write %\n", file); return 1; }
+    jo_obj(j); ex_str(j, "name", sx_shot_name(i)); ex_str(j, "file", file); ex_point(j, "eye", c.eye); ex_point(j, "at", c.at); ex_num(j, "fov", c.fov); ex_int(j, "covered_pixels", covered); jo_end(j);
+  }
+  jo_end(j); jo_end(j);
+  jo_end(j);
+  if o[0].bad { print("splice-export: the manifest did not fit\n"); return 1; }
+  if !ex_put(dir, "manifest.json", json[0..<o[0].n]) { print("splice-export: could not write manifest.json\n"); return 1; }
+
+  font: [524288] u8; fonts := [2] string.["IBMPlexMono-Medium.ttf", "Michroma-Regular.ttf"];
+  for f: fonts {
+    n := fs_read(fs_join("apps/openagents-web/realms/splice/assets/fonts", f, path[..]), font[..]);
+    out_path: [4096] u8;
+    if n < 1 || !fs_write(fs_join(fs_join(dir, "fonts", path[..]), f, out_path[..]), cast(string) font[0..<n]) { print("splice-export: could not copy the font % (run from the repository root)\n", f); return 1; }
+  }
+  print("splice-export: % groups, % triangles, % vertices welded from %, world.glb % bytes\n", w.groups, w.triangles, w.welded, w.vertices, w.bytes);
+  return 0;
+}

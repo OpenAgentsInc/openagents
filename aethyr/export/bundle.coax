@@ -1,0 +1,44 @@
+// The export bundle's shared pieces (docs/unreal/2026-11-12-aethyr-to-unreal-exporter-spec.md,
+// section 3): manifest numbers and points, a file's SHA-256, a file into the bundle folder, and
+// a reference shot as a PNG. A game's own -export.coax decides what goes in; nothing here knows
+// a game. Effects: files only.
+#load "glb-write.coax";
+#load "raster.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/crypto/sha256-memory.coax";
+#load "../../coax/lib/image/pillow.coax";
+
+EX_VERSION :: 1;          // manifest.json "aexport"
+EX_CELL :: 64.0f32;       // metres a side of a world group's ground cell
+EX_SHOT_W :: 480; EX_SHOT_H :: 300;
+
+ex_num :: (o: [] Jo, key: string, v: f32) #effects(all) { jo_key(o, key); glb_num(o, v); }
+ex_int :: (o: [] Jo, key: string, v: int) #effects(all) { jo_key(o, key); jo_int(o, v); }
+ex_str :: (o: [] Jo, key: string, v: string) #effects(all) { jo_key(o, key); jo_str(o, v); }
+ex_p3 :: (o: [] Jo, key: string, x: f32, y: f32, z: f32) #effects(all) { jo_key(o, key); jo_arr(o); glb_num(o, x); glb_num(o, y); glb_num(o, z); jo_end(o); }
+ex_point :: (o: [] Jo, key: string, p: Point) #effects(all) { ex_p3(o, key, p.x, p.y, p.z); }
+
+// The bytes' SHA-256 as 64 hex digits into out, or "" when the hash could not be made.
+ex_sha :: (bytes: [] u8, out: [] u8) -> string #effects(all) {
+  // in pieces: the library takes at most a mebibyte a call
+  digest: [32] u8; state: [SHA_STATE_BYTES] u8; ok := sha256_init(state[..]) == SHA_OK; at := 0;
+  while ok && at < bytes.count { n := bytes.count - at; if n > 65536 { n = 65536; } ok = sha256_update(state[..], bytes[at..<at + n]) == SHA_OK; at += n; }
+  ok = ok && sha256_final(state[..], digest[..]) == SHA_OK;
+  if !ok { return ""; }
+  for b, k: digest { hi4 := cast(int) b >> 4; lo4 := cast(int) b & 15; out[k * 2] = cast,trunc(u8) (ifx hi4 < 10 then 48 + hi4 else 87 + hi4); out[k * 2 + 1] = cast,trunc(u8) (ifx lo4 < 10 then 48 + lo4 else 87 + lo4); }
+  return cast(string) out[0..<64];
+}
+// data into dir/name. False when it could not be written.
+ex_put :: (dir: string, name: string, data: [] u8) -> bool #effects(all) {
+  path: [4096] u8; return fs_write(fs_join(dir, name, path[..]), cast(string) data);
+}
+// The reference shot of the cel vertices from cam, as a PNG at dir/name. Its covered pixels, or -1.
+ex_shot :: (buf: [] u32, vertices: int, cam: ExCam, dir: string, name: string) -> int #effects(all) {
+  px: [EX_SHOT_W * EX_SHOT_H * 4] u8; depth: [EX_SHOT_W * EX_SHOT_H] f32;
+  if !ex_raster(buf, vertices, cam, EX_SHOT_W, EX_SHOT_H, px[..], depth[..]) { return -1; }
+  covered := 0; for i: 0..<EX_SHOT_W * EX_SHOT_H { if px[i * 4 + 3] != 0 { covered += 1; } }
+  z: [1] PiZ; filtered: [EX_SHOT_H * (1 + EX_SHOT_W * 4)] u8; out: [EX_SHOT_W * EX_SHOT_H * 4 + 65536] u8;
+  n := pi_png(pi_img(px[..], EX_SHOT_W, EX_SHOT_H, 4), z[..], filtered[..], out[..]);
+  if n < 0 || !ex_put(dir, name, out[0..<n]) { return -1; }
+  return covered;
+}
