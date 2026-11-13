@@ -31,10 +31,12 @@ should not adopt for Everglade.
 
 ## Order, given what is in flight
 
-1. **N2 and the update policy first.** #13397 (production rooms and page on
-   different wires) is the live version of the problem Spawn solves with
-   version-matched docs and "now or next session" updates. Fix #13397 and
-   #13398 under P5.5, then put the pins in N2's pack and E3's revisions.
+1. **N2 and the update policy first.** #13397 (production rooms on wire 6,
+   page on wire 5, for 11 minutes on 2026-11-12; fixed by a rollback) was the
+   live version of the problem Spawn solves with version-matched docs and "now
+   or next session" updates. The risk is back: production is wire 5 and main
+   is wire 7, past the one-version overlap (#13398). Close that under P5.5,
+   then put the pins in N2's pack and E3's revisions.
 2. **N1 next**, with P5.3: one set of codes for agents, the editor and
    alerts.
 3. **N6 inside P2.6**, before P2.7 adds terrain tile seams.
@@ -56,7 +58,7 @@ should not adopt for Everglade.
 | Three kinds of state: authored, running, durable | All three exist (content tables and edits; the World and E2's state keeping; the character record, P4.1 #13290, and the item ledger, P4.2 #13291 and DDD.7 #13318, all closed) but no rule says an authored rollback never touches durable data | **Adapt now** as an invariant (N3) |
 | Three kinds of authority: content, simulation, durability | Server-authoritative simulation (AAA P0); admin writes for content; the ledger for durability. Not written per realm | **Adapt now**, inside N3 |
 | The game in a separate origin (`play.spawn.co`), sandboxed, cross-origin isolated | Pages are cross-origin isolated (COOP/COEP in `serve.c`) but served from the site's own origin | **Adapt soon:** required before anyone's realm code runs for other people (E12) (N4) |
-| Git as a world's source of truth; publish moves a ref; an update applies to sessions now or at next session | Code is in the monorepo; worlds will be documents with revisions (E3); a publish pins the build (0107); rooms accept the previous pins for one release (#13408, closed) but production is split today (#13397: rooms on wire 6, page on wire 5); one release moves API, rooms and page in order (P5.5 #13299, closed) | **Adapt the policy, not Git:** each world gets a `dev` and a `live` revision, and an update says "now" or "next session". Added to E3 |
+| Git as a world's source of truth; publish moves a ref; an update applies to sessions now or at next session | Code is in the monorepo; worlds will be documents with revisions (E3); a publish pins the build (0107); rooms accept the previous pins for one release (#13408, closed) but production was split for 11 minutes on 2026-11-12 (#13397), and main is now two wire versions ahead of production (#13398); one release moves API, rooms and page in order (P5.5 #13299, closed) | **Adapt the policy, not Git:** each world gets a `dev` and a `live` revision, and an update says "now" or "next session". Added to E3 |
 | Content-addressed assets, CDN, direct upload for large files | Packs are content-named (`pack.coax`, `publish.coax`) | **Adapt with E11:** a signed direct upload to storage, so big files skip the API |
 | Workers: simulation, transport, rendering, jobs, shader compile, texture decode | The offline room runs in a Web Worker; GPU device loss is handled (`host.js` `deviceLost`); otherwise one thread | **Soon, measured first:** move pack parsing and texture decode off the frame (with P6.2 #13304, one pack reader on every platform), then decide on a render worker |
 | A renderer restart that keeps simulation state | `deviceLost` recovery, plus E2's state keeping for code swaps | **Have most of it** |
@@ -132,7 +134,7 @@ Each is an issue on project 22 (#13429-#13434).
   twice. P2.7's terrain tiles (#13280) add tile seams; the same check covers
   them.
 - **Dev and live revisions per world, and an update policy** of "now" or
-  "next session". Added to E3 (#13412). Today's production split (#13397)
+  "next session". Added to E3 (#13412). The 2026-11-12 production split (#13397)
   is exactly this case: a realm says which live revision a session joins,
   and an update to rules or wire waits for the next session. Build it on
   P5.5's ordered release and #13408's one-release overlap, not beside them.
