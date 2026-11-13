@@ -1,0 +1,115 @@
+// The ground's tiles as their vertex stage draws them (#13509): the page's real ground store
+// (everglade/world/ground.coax e2g_gpu) read by the shader's own vertex placing
+// (everglade2.coax e2_tile_place), at every mix of levels two neighbours can be at. Where two tiles
+// both draw ground along their shared edge, each one's edge vertices lie on the other's edge line:
+// the same height bit for bit where both have a sample, and on the line between the coarser one's
+// two samples where only the finer has one (terrain_tile_stitched). So no level shows a crack.
+//   coax/bin/coax test --library everglade/client/gpu/ground-tiles-check.coax
+#load "everglade2.coax";
+#load "../../world/ground.coax";
+
+E2tcEdge :: struct { n: int; a: [128] f32; h: [128] f32; }
+E2tcCheck :: struct {
+  g: [1] E2Ground; gt: [2] E2Tiles;
+  store: [E2G_GPU_FLOATS / 4] V4;
+  edge: [E2G_TILES * 4] E2tcEdge;     // each slot's four sides: south, east, north, west
+  levels: [E2G_TILES] int; codes: [E2G_TILES] int;
+}
+e2tc_x :: (i: int) -> f32 { return E2_TILE_WEST + cast(f32) i * E2_TILE_SPACING; }
+e2tc_z :: (j: int) -> f32 { return E2_TILE_SOUTH + cast(f32) j * E2_TILE_SPACING; }
+e2tc_add :: (e: [] E2tcEdge, at: f32, h: f32) {
+  for q: 0..<e[0].n { if f32_bits(e[0].a[q]) == f32_bits(at) { return; } }
+  e[0].a[e[0].n] = at; e[0].h[e[0].n] = h; e[0].n += 1;
+}
+// Every vertex slot t draws with its word: those on its sides into its edges. The cells drawn.
+e2tc_place :: (c: [] E2tcCheck, t: int) -> int {
+  g := c[0].g[..]; m := g[0].slot_m[t]; k := g[0].slot_k[t]; n := e2g_cells_of(k); st := e2g_step(k);
+  x0 := e2tc_x(e2g_x0(m)); x1 := e2tc_x(e2g_x0(m) + n * st); z0 := e2tc_z(e2g_z0(k)); z1 := e2tc_z(e2g_z0(k) + n * st);
+  for s: 0..<4 { c[0].edge[t * 4 + s].n = 0; }
+  count := e2g_tile_vertices(g, t, c[0].levels[t]); drawn := 0;
+  for id: 0..<count {
+    v := e2_tile_place(cast(u32) id, cast(u32) c[0].codes[t], c[0].store[..]);
+    if v.keep < 0.5 { continue; }
+    if id % 6 == 0 { drawn += 1; }
+    if f32_bits(v.p.z) == f32_bits(z0) { e2tc_add(c[0].edge[t * 4..<t * 4 + 1], v.p.x, v.p.y); }
+    if f32_bits(v.p.x) == f32_bits(x1) { e2tc_add(c[0].edge[t * 4 + 1..<t * 4 + 2], v.p.z, v.p.y); }
+    if f32_bits(v.p.z) == f32_bits(z1) { e2tc_add(c[0].edge[t * 4 + 2..<t * 4 + 3], v.p.x, v.p.y); }
+    if f32_bits(v.p.x) == f32_bits(x0) { e2tc_add(c[0].edge[t * 4 + 3..<t * 4 + 4], v.p.z, v.p.y); }
+  }
+  return drawn;
+}
+// Side s of slot t against its neighbour's facing side: every vertex of each that the other's edge
+// spans lies on the other's line. The vertices compared.
+e2tc_meet :: (a: E2tcEdge, b: E2tcEdge, stride: f32) -> int {
+  seen := 0;
+  for q: 0..<a.n {
+    lo := -1; hi := -1;
+    for r: 0..<b.n {
+      if b.a[r] <= a.a[q] && (lo < 0 || b.a[r] > b.a[lo]) { lo = r; }
+      if b.a[r] >= a.a[q] && (hi < 0 || b.a[r] < b.a[hi]) { hi = r; }
+    }
+    if lo < 0 || hi < 0 { continue; }
+    if f32_bits(b.a[lo]) == f32_bits(a.a[q]) { #assert f32_bits(b.h[lo]) == f32_bits(a.h[q]); seen += 1; continue; }
+    // only two neighbouring samples of the other's edge: a span with a hole in it is no line of ground
+    gap := b.a[hi] - b.a[lo]; if abs(gap - stride) > 0.001 { continue; }
+    want := b.h[lo] + (b.h[hi] - b.h[lo]) * (a.a[q] - b.a[lo]) / gap;
+    #assert abs(a.h[q] - want) < 0.0002;
+    seen += 1;
+  }
+  return seen;
+}
+e2tc_round :: (c: [] E2tcCheck) -> int {
+  g := c[0].g[..]; seen := 0;
+  for t: 0..<g[0].slot_n { c[0].codes[t] = e2g_tile_code(g, c[0].levels[..], t); _d := e2tc_place(c, t); }
+  near := [4][2] int.[[2] int.[0, 1], [2] int.[1, 0], [2] int.[0, -1], [2] int.[-1, 0]];
+  for t: 0..<g[0].slot_n { for s: 0..<4 {
+    u := e2g_slot_of(g, g[0].slot_m[t] + near[s][0], g[0].slot_k[t] + near[s][1]);
+    if u < 0 { continue; }
+    seen += e2tc_meet(c[0].edge[t * 4 + s], c[0].edge[u * 4 + (s + 2) % 4], cast(f32) e2g_slot_stride(g, u, c[0].levels[u]) * E2_TILE_SPACING);
+  } }
+  return seen;
+}
+#test "no level shows a crack: every pair of neighbouring tiles at any two levels meets along one line" #steps 60000000000 {
+  c: [1] E2tcCheck; g := c[0].g[..];
+  e2g_store(g, c[0].gt[..]); #assert e2g_build(g);
+  for q: 0..<E2G_GPU_FLOATS / 4 { c[0].store[q] = v4(g[0].gpu[q * 4], g[0].gpu[q * 4 + 1], g[0].gpu[q * 4 + 2], g[0].gpu[q * 4 + 3]); }
+  // every tile at every level it has, against its neighbours at theirs: rounds of levels by a pattern
+  for round: 0..<6 {
+    for t: 0..<g[0].slot_n {
+      most := e2g_far_level(g[0].slot_k[t]); m := g[0].slot_m[t]; k := g[0].slot_k[t];
+      c[0].levels[t] = ifx round == 0 then 0 else ifx round == 5 then most else ((m + 9) * 7 + (k + 2) * 3 + round) % (most + 1);
+    }
+    #assert e2tc_round(c[..]) > 300;
+  }
+  // from places along the walk, the levels the page picks
+  for e: 0..<4 {
+    ez := -20.0f32 - f32(e) * 130; ex := e2g_ribbon_x(ez);
+    for t: 0..<g[0].slot_n { c[0].levels[t] = e2g_slot_level(g, t, ex, ez); }
+    #assert e2tc_round(c[..]) > 300;
+  }
+  // the static stitch the record carries (row 4 onto the clearing's row) is the line the stitch draws:
+  // its south edge at level 0 with a level-1 stitch is its own stored samples
+  for t: 0..<g[0].slot_n { c[0].levels[t] = 0; }
+  s := e2g_live_set(g);
+  for t: 0..<g[0].slot_n {
+    if g[0].slot_k[t] != E2G_COARSE_ROW - 1 || e2g_slot_of(g, g[0].slot_m[t], E2G_COARSE_ROW) < 0 { continue; }
+    code := e2g_tile_code(g, c[0].levels[..], t); #assert ((code >> 7) & 3) == 1;
+    hs := e2g_h(s, e2g_find(s, g[0].slot_m[t], g[0].slot_k[t])); n := E2G_CELLS;
+    for e: 0..<n + 1 {
+      v := e2_tile_place(cast(u32)(e2tc_corner_id(n, e)), cast(u32) code, c[0].store[..]);
+      if v.keep < 0.5 { continue; }
+      #assert abs(v.p.y + E2_TILE_DROP - e2tt.terrain_tile_stitched(hs, n, 0, 1, e)) < 0.00002;
+    }
+  }
+  // a level drops the cells with no ground: the clearing's far level draws its solid cells and no others
+  t := e2g_slot_of(g, 0, E2G_ROWS - 1);
+  if t >= 0 {
+    c[0].levels[t] = 1; c[0].codes[t] = e2g_tile_code(g, c[0].levels[..], t);
+    hl := e2g_hl(s, e2g_find(s, 0, E2G_ROWS - 1)); n := e2g_cells_of(E2G_ROWS - 1); solid := 0;
+    for cj: 0..<n / 2 { for ci: 0..<n / 2 { if e2g_level_solid(hl, n, 1, ci, cj) { solid += 1; } } }
+    #assert e2tc_place(c[..], t) == solid && solid > 0;
+  }
+}
+// The id of a vertex at south-edge sample e of a level-0 tile of n cells: corner SW (id 2) of
+// cell e, or SE (id 4) of the last cell for e = n.
+e2tc_corner_id :: (n: int, e: int) -> int { return ifx e < n then e * 6 + 2 else (n - 1) * 6 + 4; }

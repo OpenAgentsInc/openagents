@@ -154,9 +154,12 @@ in the clearing, and that trees crowd the path.
 
 - Character Create's people pack (the wardrobe and the rig).
 - The glade's own composition, placed on Everglade II's land.
-- The ground: the admitted tiles' own samples (their solid cells only), the coarse 4 m ground
-  out to the valley's edges, and the tiles' record in the catalog. The ground vertices carry no
-  colour: the shader takes the ground's colour from the material table.
+- The ground: the coarse 4 m ground out to the valley's edges, and the tiles' record (version 2,
+  with each sample's drawn normal) in the catalog's `G` lines. The tiles themselves are not in the
+  mesh: `cell-pack.coax` splits the record by cell and writes the far tiles' coarse levels as `F`
+  lines, and the page draws each tile from the record (see
+  [The ground by cell](one-world.md#the-ground-by-cell)). The ground vertices carry no colour: the
+  shader takes the ground's colour from the material table.
 - The 36 kit pieces, each at the origin. Each tree has three levels of detail: whole; two crown
   cards in three with bark on the lower half; and one crown card in three with bark on the
   trunk only.
@@ -177,7 +180,14 @@ coax/web/tool.sh metaverse-engine/tools/pack-seal.coax /tmp/everglade2-working.p
 ```
 
 `everglade2_plant.coax` (the web build's planting step) reads the sealed pack and seals what it
-writes. Experimental's `glade.pack.gz` is sealed the same way (inflate it, seal, `gzip -n -6`).
+writes. A pack that still holds the tiles' mesh and a version 1 record (any pack built before
+#13509) loses them with `everglade/model/tools/ground-cut.coax`. The tool checks every cut vertex
+and index against the land it converts, moves the indices and the `C` lines after them, writes the
+version 2 record, and keeps the pack sealed:
+
+```sh
+coax/web/tool.sh everglade/model/tools/ground-cut.coax "$P" /tmp/everglade2-cut.pack && mv /tmp/everglade2-cut.pack "$P"
+``` Experimental's `glade.pack.gz` is sealed the same way (inflate it, seal, `gzip -n -6`).
 
 Build it from the repository root:
 

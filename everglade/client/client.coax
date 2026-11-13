@@ -101,6 +101,8 @@ E2 :: struct {
   eg: [1] E2Ground;                                   // the ground's tiles and the glade's baked AO (everglade/world/ground.coax)
   cl: [1] E2CellView;                                 // the world's cells round you: each one's level, written by the cell controller once a frame (everglade/client/cells.coax)
   catalog_in: bool; ground_code: int = -1; ground_done: bool;   // the catalog came; its ground record's status (-1 none); the ground settled and baked
+  far_code: int = -1;                                 // the far record's status (#13509: -1 none)
+  tile_draws: int; tile_level: [3] int;               // this frame's ground tile draws, and how many at each level
   kit_first: [E2_BUCKETS] int; kit_count: [E2_BUCKETS] int; kits: bool;
   records: [E2_RECORDS * 24] f32;
   // the characters' materials, one record a colour layer (metaverse-engine/character/material.coax), the
@@ -207,6 +209,10 @@ e2_catalog :: (s: [] E2, whole: string, rec: [] u8, rest: [] u8) #export_c #effe
   s[0].paged = e2_catalog_paged(whole);
   n := e2g_record_from_catalog(whole, rec);
   s[0].ground_code = ifx n > 0 then e2g_record_read(s[0].eg[..], rec[0..<n]) else -1;
+  // by cell, every tile's far level rides in the catalog's F lines (#13509), so the land far off draws
+  // before its cells are in
+  f := e2g_from_catalog(whole, rec, 'F');
+  s[0].far_code = ifx f > 0 then e2g_far_read(s[0].eg[..], rec[0..<f]) else -1;
   e2_take_planting(s, whole); s[0].catalog_in = true;
   text := e2_catalog_rest(whole, rest);
   figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text); e2w_catalog(s, text); e2b_catalog(s, text); e2rv_catalog(s, text); e2rg_catalog(s, text);
@@ -267,13 +273,15 @@ e2_cell_shades :: (s: [] E2, cell: int) -> bool {
   }
   return false;
 }
-// A cell's content, once the controller has admitted the cell (e2_cell_checks held): the ground's
-// record when no ground is published yet, and the cell's planting into the page's.
+// A cell's content, once the controller has admitted the cell (e2_cell_checks held): its ground's
+// tiles into the published set (#13509: a cell brings only its own ground), and the cell's planting
+// into the page's.
 e2_cell_take :: (s: [] E2, cell: int, b: [] u8) #export_c #effects(all) {
   if !e2_cell_checks(s, cell, b) { return; }
-  if !s[0].eg[0].ok && s[0].ground_code != E2G_REC_OK {
-    rec := e2cc_ground(b);
-    if rec.count > 0 { s[0].ground_code = e2g_record_read(s[0].eg[..], rec); }
+  rec := e2cc_ground(b);
+  if rec.count > 0 && s[0].eg[0].route != E2G_ROUTE_CONVERTED {
+    s[0].ground_code = e2g_record_take(s[0].eg[..], rec, cell);
+    if s[0].eg[0].glade && s[0].eg[0].baked != e2bk.BAKE_OK { s[0].bake_due = true; }   // the glade's tile came: its canopy bakes
   }
   n := e2cc_insert(e2cc_blob(b, E2CC_PLANT), s[0].items[..], s[0].kinds[..], s[0].first[..], s[0].plant_held[..], s[0].planted);
   if n < 0 { return; }
@@ -289,6 +297,7 @@ e2_cells_settle :: (s: [] E2, near_in: bool) #export_c #effects(all) {
     if !s[0].cell_have[i] || s[0].cl[0].level[i] != 0 { continue; }
     if e2_cell_shades(s, i) { s[0].bake_due = true; }
     s[0].planted = e2cc_remove(i, s[0].items[..], s[0].kinds[..], s[0].first[..], s[0].plant_held[..], s[0].planted);
+    _g := e2g_drop_cell(s[0].eg[..], i);   // its tiles go back to their far level
     s[0].cell_have[i] = false; s[0].cells_out += 1;
   }
   if near_in { s[0].world_in = true; }
@@ -333,12 +342,12 @@ e2_world_ready :: (s: [] E2) -> bool #export_c #effects(all) { return !s[0].page
   w: [1] E2; e2_catalog(w[..], "C glade/environment 9 12 250 100 8 0\n", rec[..], rest[..]);
   #assert !w[0].paged && e2_world_ready(w[..]) && !e2_cell_checks(w[..], 2, b[0..<n]);
 }
-// The catalog without its G and P lines (or as it came, when that is too long to copy).
+// The catalog without its G, F and P lines (or as it came, when that is too long to copy).
 e2_catalog_rest :: (t: string, out: [] u8) -> string {
   n := 0; at := 0;
   while at < t.count {
     e := at; while e < t.count && t[e] != '\n' { e += 1; }
-    if !(e - at > 1 && (t[at] == 'G' || t[at] == 'P') && t[at + 1] == ' ') {
+    if !(e - at > 1 && (t[at] == 'G' || t[at] == 'F' || t[at] == 'P') && t[at + 1] == ' ') {
       if n + e - at + 1 > out.count { return t; }
       for q: at..<e { out[n] = t[q]; n += 1; } out[n] = '\n'; n += 1;
     }
@@ -346,12 +355,15 @@ e2_catalog_rest :: (t: string, out: [] u8) -> string {
   }
   return cast(string) out[0..<n];
 }
-// The ground, once the planting and the catalog are in: the pack's record published it, or (no
-// record, or it refused) the land is converted here; then the woods' crowns are baked onto the glade's tile.
+// The ground, once the planting and the catalog are in: the pack's record published it (whole, or by
+// cell the cells' that are in), or (no record, or one refused) the land is converted here, whole; then
+// the woods' crowns are baked onto the glade's tile, once it is in.
 e2_ground :: (s: [] E2) {
   s[0].ground_done = true; s[0].bake_due = false;
-  if !s[0].eg[0].ok && !e2g_build(s[0].eg[..]) { return; }
-  _b := e2g_bake(s[0].eg[..], s[0].items[..], s[0].kinds[..], s[0].planted);
+  g := s[0].eg[..];
+  whole := ifx s[0].paged then s[0].ground_code > 0 && g[0].route != E2G_ROUTE_CONVERTED else !g[0].ok;
+  if whole && !e2g_build(g) { return; }
+  _b := e2g_bake(g, s[0].items[..], s[0].kinds[..], s[0].planted);
 }
 // The clips, baked once into the state's own store, sized by the bodies module so it never falls behind.
 // The clips, once: the shared ones and the bow's draw.
@@ -1761,6 +1773,25 @@ e2_test_view :: (s: [] E2, d: [] u32, m: f32) -> int {
   #assert nb == na && s[0].inst_n == an && an > 1000;
   for k: 0..<an { #assert s[0].inst[k] == a[k]; }
 }
+// The ground's tiles (#13509): every slot of the ground store (everglade/world/ground.coax e2g_gpu, the
+// published set's tiles and the far record's others) at the level its nearest point's distance from
+// the eye picks, stitched to its neighbours' levels, as a draw of its own when its middle is in view.
+// With the glade's in the shadow list (`shadows`) every one goes there too. The draws' new counts.
+e2_ground_draws :: (s: [] E2, n0: int, sn0: int, shadows: bool) -> [2] int {
+  g := s[0].eg[..]; n := n0; sn := sn0; levels: [E2G_TILES] int;
+  s[0].tile_draws = 0; for l: 0..<3 { s[0].tile_level[l] = 0; }
+  for t: 0..<g[0].slot_n { levels[t] = e2g_slot_level(g, t, s[0].eye[0], s[0].eye[2]); }
+  span := f32(E2G_CELLS) * f32(E2G_SPACING);
+  for t: 0..<g[0].slot_n {
+    count := e2g_tile_vertices(g, t, levels[t]); word := 0x80000000 | (E2G_TILE_BASE + e2g_tile_code(g, levels[..], t));
+    mx := e2g_at(f32(E2G_WEST), e2g_x0(g[0].slot_m[t])) + span * 0.5; mz := e2g_at(f32(E2G_SOUTH), e2g_z0(g[0].slot_k[t])) + span * 0.5;
+    if shadows { sn = e2_draw(s[0].shadow[..], sn, 0, count, word, 1); }
+    if !e2_in_view(s, mx, g[0].slot_y[t], mz, span * 0.75 + 20) { continue; }
+    was := n; n = e2_draw(s[0].draws[..], n, 0, count, word, 1);
+    if n > was { s[0].tile_draws += 1; s[0].tile_level[levels[t]] += 1; }
+  }
+  return [2] int.[n, sn];
+}
 e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   c := s[0].creator[0]; b := s[0].bodies[..];
   s[0].draw_n = 0; s[0].shadow_n = 0; s[0].inst_n = 0; s[0].rec_n = 0;
@@ -1772,6 +1803,8 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   tile := s[0].casc[0].on && s[0].casc[0].draw >= 0;
   near_glade := s[0].eye[2] - e2_cast_reach(s) < 75;
   if tile && near_glade { sn = e2_draw(s[0].shadow[..], sn, c.glade_first, c.glade_count, 0, 1); }
+  // the ground's tiles, each at the level its distance from the eye picks (#13509)
+  gd := e2_ground_draws(s, n, sn, tile && near_glade); n = gd[0]; sn = gd[1];
   rec := 1;
   // the glade's own grass (Character Create's, about 27 000 tufts of up to 1 482 vertices: 35 million
   // vertices a frame) is not drawn: the grass field (everglade/world/field.coax) covers the glade too.
@@ -1903,6 +1936,11 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   // round you were in once (the scene may draw), 198 the ground's record's status (0 published, -1 none yet)
   if field == 194 { return ifx s[0].paged then 1 else 0; } if field == 195 { return s[0].cells_in; } if field == 196 { return s[0].cells_out; }
   if field == 197 { return ifx e2_world_ready(s) then 1 else 0; } if field == 198 { return s[0].ground_code; }
+  // the ground's tiles (#13509): 174 drawn this frame, 175 to 177 at levels 0, 1 and 2, 178 drawn at
+  // their far level only (no cell has brought them), 199 the far record's status (0 read, -1 none)
+  if field == 174 { return s[0].tile_draws; } if field >= 175 && field <= 177 { return s[0].tile_level[field - 175]; }
+  if field == 178 { v := 0; for t: 0..<s[0].eg[0].slot_n { if !s[0].eg[0].slot_whole[t] { v += 1; } } return v; }
+  if field == 199 { return s[0].far_code; }
   // 160 to 168 the graphics quality (e2_knobs_frame): the rung, its tier, the mode, the knobs as the
   // frame uses them (in hundredths: grass, scenery, shadow, post, crowd), the bloom passes
   if field == 160 { return ifx s[0].q_ready then s[0].q[0].rung else -1; } if field == 161 { return ifx s[0].q_ready then quality_tier(s[0].q[..]) else -1; }
@@ -1940,7 +1978,7 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   if field == 12 || field == 13 { n := ifx field == 12 then s[0].draw_n else s[0].shadow_n; v := 0;
     for i: 0..<n { k := i * 4; v += cast(int)(ifx field == 12 then s[0].draws[k + 1] * s[0].draws[k + 3] else s[0].shadow[k + 1] * s[0].shadow[k + 3]) / 1000; } return v; }
   // 14 the grass field's share of 12 (thousands), 15 the trees' (kits 0 to 14)
-  if field == 14 || field == 15 { v := 0; for i: 0..<s[0].draw_n { k := i * 4; grass := s[0].draws[k + 2] >= cast(u32) E2_FIELD_BASE;
+  if field == 14 || field == 15 { v := 0; for i: 0..<s[0].draw_n { k := i * 4; grass := s[0].draws[k + 2] >= cast(u32) E2_FIELD_BASE && s[0].draws[k + 2] < cast(u32) E2G_TILE_BASE;
       tree := !grass && s[0].draws[k + 2] >= cast(u32) E2_KIT_BASE && s[0].draws[k] < cast(u32) s[0].kit_first[E2_TREES * E2_LODS];
       if (field == 14 && grass) || (field == 15 && tree) { v += cast(int)(s[0].draws[k + 1] * s[0].draws[k + 3]) / 1000; } } return v; }
   // 16 the plates drawn over bodies this frame (e2_heads), 17 the others' heads collected for them

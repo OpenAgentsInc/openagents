@@ -64,7 +64,7 @@ The page holds the same manifest and steps the same controller
   any way that stays in the cells that are in. The page also counts the frames you stood in a cell
   that did not simulate; with the pack whole both are 0.
 - **The origin.** One floating origin follows you by cell (`cell_rebase`). The page keeps it and
-  checks it, but nothing on the GPU reads it yet: see "What is left".
+  checks it. The GPU does not need it: see "The ground by cell".
 - **Readout.** `coaxial_field_probe(180)` to `(193)`: the manifest's cells, resident, drawing,
   loading, frames held, loads that waited a round, rebases, your cell, the origin's cell, the
   most resident, frames off the manifest, loads asked, answers refused.
@@ -81,11 +81,11 @@ its controller asks for it.
   tracked pack (after `rig-pack --into`, before `page-pack`). It moves this tree's planting and
   the ground's record out of the catalog into one more entry, kind 8 (`PACK_CELLS`, "cells"),
   which `page-pack` never makes a root. The entry is a run of blobs
-  (`everglade/world/cell-content.coax`): the ground's record, then a cell's planting for each
-  cell of the manifest. The catalog gets a `W` line (the entry's licence) and a `Z` line a cell
-  (`metaverse-engine/host/pack-cells.coax`): the cell's digest, the ground's blob and its own.
-  Today the entry is 3.0 MB: the ground 0.7 MB, and 70,132 pieces in 21 cells, the largest
-  0.3 MB.
+  (`everglade/world/cell-content.coax`): for each cell of the manifest, its own ground, then its
+  planting. The catalog gets a `W` line (the entry's licence) and a `Z` line a cell
+  (`metaverse-engine/host/pack-cells.coax`): the cell's digest and its run. Today the entry is
+  3.3 MB: the ground 1.0 MB in 14 cells' runs, and 68,604 pieces in 21 cells, the largest run
+  0.35 MB.
 - **Who carries what.** A planting cell (16 m) whose middle is in a world cell is that cell's. A
   backdrop planting cell rides with the manifest's nearest cell when that cell draws from
   everywhere the backdrop's pieces can show (`everglade/world/cell-pack.coax`, checked every 8 m
@@ -103,8 +103,8 @@ its controller asks for it.
   Only then is the controller answered with the line's digest, and only when the controller
   admits the answer is the content taken (`e2_cell_take`): the cell's pieces go into the
   planting where its planting cells' empty ranges are, so every reader of the planting sees a
-  cell that is not in as empty. The first cell in brings the ground's record, which is published
-  whole or not at all, as before. A cell whose level falls back to absent gives its pieces back
+  cell that is not in as empty. A cell brings its own ground tiles (`e2g_record_take`, see "The
+  ground by cell"). A cell whose level falls back to absent gives its pieces and its tiles back
   (`e2_cells_settle`), and is fetched again if you return.
 - **The start.** The scene draws nothing until every cell within the draw ring of you is in and
   the ground has settled (`e2_world_ready`), so the woods never arrive in a picture. The host's
@@ -120,10 +120,55 @@ its controller asks for it.
   key, milliseconds, bytes, what the page said). In development `?celldelay=MS` holds each
   answer back, and `?cellfree=N` lets the first N through.
 
-What this does not do yet: the ground's tiles and the pack's meshes and textures still come with
-the roots, and the ground's record comes whole with the first cell. A step toward a cell that is
+What this does not do yet: the pack's meshes and textures still come with the roots. A step toward a cell that is
 not in is held (above), but a trunk in a neighbouring cell that is not in yet is not there to
 stop you, so on a very slow connection the room may correct a step the page predicted.
+
+## The ground by cell
+
+The ground's tiles come with their cells and draw at a level by distance (#13509).
+
+- **The pack.** The tracked pack holds no tile mesh, only the coarse 4 m ground under the tiles.
+  The catalog's `G` lines are the tiles' record, version 2: each live sample's height and
+  weights, and its drawn normal (the pack tool's own central difference,
+  `everglade/world/ground.coax` `e2g_normal_code`), under a digest. `cell-pack.coax` splits the
+  record by cell: a tile goes with the manifest cell its middle is in, or the nearest one
+  (`e2cp_tile_carrier`), as that cell's `E2CG` blob, a record of its tiles only. The far tiles'
+  coarsest level (26 by 26 samples each) goes into the catalog as `F` lines, so a tile whose cell
+  is not in still draws from afar. `everglade/model/tools/ground-cut.coax` took the tiles' mesh
+  out of the tracked pack: 79,855 vertices and 463,266 indices, 4.4 MB of the roots.
+- **The page.** `e2g_record_take` takes a cell's tiles into the ground set, `e2g_drop_cell` drops
+  them when the cell leaves, and `e2g_gpu` writes each tile to a slot of the ground store
+  (store 4): its samples' heights and normals, and its cells' solidity at each level. A tile that
+  is not in keeps its far slot.
+- **The draw.** `e2_ground_draws` (`everglade/client/client.coax`) draws each slot as its own
+  non-indexed draw after the environment's, in the scene and shadow passes. The vertex stage
+  (`everglade/client/gpu/everglade2.coax` `e2_tile_vs`) pulls each vertex from the store. A
+  0.65 m tile draws every sample within 48 m of the eye, every second within 128 m and every
+  fourth past that; a 1.3 m tile every sample within 128 m and every second past it. A coarser
+  cell draws where any of its own cells is solid.
+- **No cracks.** Where two tiles meet at different levels, the finer one's edge vertices take the
+  coarser one's line (`terrain_tile_stitched`, `metaverse-engine/world/terrain-tile.coax`, checked
+  to level 3). `everglade/client/gpu/ground-tiles-check.coax` runs the real store through the
+  shader's own vertex placing at every mix of neighbouring levels and at the levels the page picks
+  along the walk.
+- **The origin.** The vertex stage works in world coordinates, in f32. Everglade's land lies within
+  1,024 m of the world's origin, where an f32's step is 2^-14 m, 0.061 mm. That is under a pixel
+  at any distance the camera can get to the ground, and neighbouring tiles compute shared vertices
+  by the same expression, so they agree bit for bit. So the GPU needs no floating origin; the page's
+  origin (`cell_rebase`) stays for the room's and the index's sake.
+- **Measured** (headless Chrome, 1440x900, dpr 1, at the spawn, ten seconds unthrottled, before
+  and after #13509): the page's `.vpk3` went from 32.6 MB to 31.8 MB, and the roots lost the
+  tiles' 4.4 MB mesh. The 17 cells the spawn fetches came to 4.22 MB before (each carried the
+  whole 0.7 MB record) and 2.36 MB after; a cell's own ground is 0 to 153 KB, 1.04 MB for all
+  24 tiles, with 182 KB of far levels in the catalog. GPU time stayed 2.04 ms a frame before and
+  2.05 ms after (p50; the scene pass 2.0 ms both). With vsync the page holds 60 FPS, at 6.5 ms of
+  GPU a frame. At the spawn the ground is 24 draws: 1 tile at level 0, 12 at level 1, 11 at
+  level 2, 9 of them far-only. The page's memory is 64.9 MB of its 64 MiB: the tiles' slots cost
+  2.4 MB of state, so a set keeps one normal code a sample and the land at most 26 tiles
+  (`E2G_TILES`).
+- **Readout.** `coaxial_field_probe(174)` the tile draws, `(175)` to `(177)` the slots at each
+  level, `(178)` the far-only slots, `(199)` the far record's status.
 
 ## Cells and the spatial index
 
@@ -167,6 +212,10 @@ radius. Cells sit above it:
   finds its bytes, and the catalog's planting and every cell's together are the whole planting.
 - `everglade/client/client.coax` ("the world by cell"): a cell's content is taken for its own
   cell once, and given back when the cell leaves.
+- `everglade/world/ground.coax`: the cells' records together publish the whole land's ground; a
+  cell that leaves takes its tiles; a damaged record or far record changes nothing; the drawn
+  normals are the pack's; every level's corners are filled.
+- `everglade/client/gpu/ground-tiles-check.coax`: no level shows a crack (above).
 - `everglade/client/walk-test.coax`: you walk the path through the real controller, and a route
   walk for each place (the Glade, the Sunlit Path, the Deep Canopy, the Clearing, the Goblin Camp)
   with the cells stepped as the page steps them. Every place you may stand is on the manifest.
@@ -175,15 +224,10 @@ radius. Cells sit above it:
 
 These are not built. Each is tracked on #13280.
 
-- **The ground's tiles and meshes by cell.** The planting is paged by cell; the ground's tiles
-  are one draw and one record, and the pack's meshes and textures are roots. Drawing a tile a
-  cell is the frame graph's (#13303).
+- **Meshes and textures by cell.** The planting and the ground are paged by cell; the pack's
+  meshes and textures are roots (#13303).
 - **The native apps** bundle the tracked pack and hold the world whole. Their reader has the same
   three steps (`aethyr_pack_cell_ranges`, `metaverse-engine/host/README.md`).
-- **The origin on the GPU.** Positions are f32 from the world's middle. Everglade is 736 m long,
-  where f32 keeps 0.06 mm, so nothing is wrong yet. The page keeps the origin; the shaders and the
-  pack's vertices are still in world coordinates. The renderer's instance rows are where it goes
-  in (#13303).
 - **What the hold is not.** Every push the page makes goes through `e2_move_in` and is held: your
   keys and stick, the run after Character Create, a film stage's walk and an agent's walk-to
   (`drive.coax`). A mount's input has to go through it too when riding lands (#13268). A move the
@@ -191,7 +235,6 @@ These are not built. Each is tracked on #13280.
   step, and the room holds every cell. If one carries you into a cell that is not in, the page
   follows the room and counts the frames (probe 184). A page that could refuse the room's step
   could stall its own character, so the fix for that case is cells that load sooner, not a hold.
-- **Far terrain level of detail** beyond the stitched 1.3 m rows.
 - **`everglade-parity` and `everglade/features.coax`** stay until every zone is data.
 - **Proof on a phone and in a visible Chrome.** A headless pass is not a claim that the walk is
   seamless.

@@ -13,9 +13,11 @@
 //     page's draw ring of the carrier;
 //   - any other stays in the catalog's P record (plant.coax E2P1), in with the catalog: 28 of
 //     Everglade's 1,242 today, east of where the manifest narrows (a check bounds them).
-// The entry is the ground's record's blob, then a blob a cell in the manifest's order, four zero
-// bytes between two, so no two ranges of a line touch. A cell's line names the ground's blob and
-// its own.
+// Which cell carries a ground tile (65 m, everglade/world/ground.coax, #13509): the cell its middle
+// is in, else the manifest's nearest; the cell's ground blob is a record of its tiles alone. Every
+// tile's far level stays in the catalog (F lines), so a tile draws far off before its cell is in.
+// The entry is a run a cell in the manifest's order, four zero bytes before each: the cell's
+// ground blob when it carries a tile, then its planting blob. A cell's line names its run.
 //   coax/bin/coax test --library everglade/world/cell-pack.coax
 #load "cell-content.coax";
 #load "zone.coax";
@@ -30,7 +32,17 @@ E2cpWorld :: struct {
   carrier: [E2P_CELLS] int; kept: int;                   // each planting cell's cell + 1 (0: the catalog's); planting cells left to the catalog
   rest_items: [E2_ITEMS * E2_ITEM_FLOATS] f32; rest_kinds: [E2_ITEMS] u8; rest_first: [E2P_CELLS + 1] int; rest: int;   // the catalog's planting
   entry: [E2CP_ENTRY] u8; bytes: int;
-  ground_at: int; ground_n: int; cell_at: [E2Z_CELLS] int; cell_n: [E2Z_CELLS] int; cell_items: [E2Z_CELLS] int;
+  cell_at: [E2Z_CELLS] int; cell_n: [E2Z_CELLS] int; cell_items: [E2Z_CELLS] int;   // each cell's run, and its pieces
+  ground_n: [E2Z_CELLS] int;                             // the bytes of the cell's ground blob at the run's start (0: none)
+}
+// The cell that carries the ground tile whose middle is (mx, mz): the one it is in, else the nearest.
+e2cp_tile_carrier :: (mx: f64, mz: f64) -> int {
+  cells := E2Z_CELL; best := -1; bd := 1.0e18;
+  for i: 0..<E2Z_CELLS {
+    if cells[i].cx == cell_key(mx) && cells[i].cz == cell_key(mz) { return i; }
+    d := e2cp_gap(cells[i], mx, mz); if d < bd { bd = d; best = i; }
+  }
+  return best;
 }
 // Metres from (x, z) to cell c's nearest point.
 e2cp_gap :: (c: E2ZCell, x: f64, z: f64) -> f64 { dx := cell_gap(x, f64(c.cx) * CELL_SIZE); dz := cell_gap(z, f64(c.cz) * CELL_SIZE); return sqrt(dx * dx + dz * dz); }
@@ -65,9 +77,10 @@ e2cp_carriers :: (carrier: [] int) -> int {
   }
   return kept;
 }
-// The world from a planting already in w (items, kinds, first, planted) and the ground's record:
-// the carriers, the catalog's planting and the entry. False when something does not fit.
-e2cp_build :: (w: [] E2cpWorld, rec: [] u8) -> bool {
+// The world from a planting already in w (items, kinds, first, planted) and each cell's ground
+// record (cell i's at recs[at[i]..<at[i] + n[i]], none when n[i] is 0): the carriers, the catalog's
+// planting and the entry. False when something does not fit.
+e2cp_build :: (w: [] E2cpWorld, recs: [] u8, rec_at: [] int, rec_n: [] int) -> bool {
   w[0].kept = e2cp_carriers(w[0].carrier[..]);
   // what no cell carries, as a planting of its own: the same cells, the carried ones empty
   n := 0;
@@ -80,15 +93,20 @@ e2cp_build :: (w: [] E2cpWorld, rec: [] u8) -> bool {
     }
   }
   w[0].rest_first[E2P_CELLS] = n; w[0].rest = n;
-  at := e2cc_ground_write(rec, w[0].entry[..]);
-  if at < 0 { return false; }
-  w[0].ground_at = 0; w[0].ground_n = at;
+  at := 0;
   for i: 0..<E2Z_CELLS {
     if at + E2CP_GAP > E2CP_ENTRY { return false; }
     for k: 0..<E2CP_GAP { w[0].entry[at + k] = 0; } at += E2CP_GAP;
+    w[0].cell_at[i] = at; w[0].ground_n[i] = 0;
+    if rec_n[i] > 0 {
+      g := e2cc_ground_write(recs[rec_at[i]..<rec_at[i] + rec_n[i]], w[0].entry[at..<E2CP_ENTRY]);
+      if g < 0 { return false; }
+      w[0].ground_n[i] = g; at += g;
+    }
     size := e2cc_plant_write(w[0].items[..], w[0].kinds[..], w[0].first[..], w[0].carrier[..], i, w[0].entry[at..<E2CP_ENTRY]);
     if size < 0 { return false; }
-    w[0].cell_at[i] = at; w[0].cell_n[i] = size; w[0].cell_items[i] = e2cc_u32(w[0].entry[at..<at + size], 16); at += size;
+    w[0].cell_items[i] = e2cc_u32(w[0].entry[at..<at + size], 16); at += size;
+    w[0].cell_n[i] = at - w[0].cell_at[i];
   }
   w[0].bytes = at;
   return true;
@@ -99,7 +117,7 @@ e2cp_lines :: (w: [] E2cpWorld, entry_at: int, image_bytes: int, out: [] u8) -> 
   cells := E2Z_CELL; n := 0;
   for i: 0..<E2Z_CELLS {
     if n + PACK_CELL_LINE > out.count { return -1; }
-    at := [2] int.[entry_at + w[0].ground_at, entry_at + w[0].cell_at[i]]; size := [2] int.[w[0].ground_n, w[0].cell_n[i]];
+    at := [1] int.[entry_at + w[0].cell_at[i]]; size := [1] int.[w[0].cell_n[i]];
     line := pack_cell_line(cells[i].cx, cells[i].cz, cells[i].digest, at[..], size[..], image_bytes, out[n..<out.count]);
     if line < 0 { return -1; }
     n += line;
@@ -107,10 +125,12 @@ e2cp_lines :: (w: [] E2cpWorld, entry_at: int, image_bytes: int, out: [] u8) -> 
   return n;
 }
 
+// A test world: the planting's rows, and a six-byte stand-in ground record for every third cell.
 e2cp_test_world :: (w: [] E2cpWorld, rows: u64) -> bool {
   w[0].planted = e2_plant_rows(w[0].items[..], w[0].kinds[..], w[0].first[..], rows);
-  rec := [6] u8.[1, 2, 3, 4, 5, 6];
-  return e2cp_build(w, rec[..]);
+  rec := [6] u8.[1, 2, 3, 4, 5, 6]; at: [E2Z_CELLS] int; n: [E2Z_CELLS] int;
+  for i: 0..<E2Z_CELLS { n[i] = ifx i % 3 == 0 then 6 else 0; }
+  return e2cp_build(w, rec[..], at[..], n[..]);
 }
 #test "every planting cell has a carrier, its own cell or for the backdrop the nearest that is in wherever its pieces show, or stays in the catalog" #steps 4000000000 {
   carrier: [E2P_CELLS] int; kept := e2cp_carriers(carrier[..]); #assert kept >= 0 && kept < 64;
@@ -135,13 +155,14 @@ e2cp_test_world :: (w: [] E2cpWorld, rows: u64) -> bool {
 #test "the world by cell: every piece is in one cell's blob or the catalog's planting, and the blobs read back into the planting" #steps 8000000000 {
   // rows where the manifest is its narrowest, with planting cells no cell carries, and rows by the far clearing
   t: [1] E2cpWorld; #assert e2cp_test_world(t[..], e2_rows(19, 22) | e2_rows(30, 33)) && t[0].planted > 6000 && t[0].kept > 0 && t[0].rest > 0 && t[0].rest < t[0].planted / 4;
-  // the ground's blob first, then a blob a cell, none touching
-  g := e2cc_ground(t[0].entry[0..<t[0].ground_n]); #assert g.count == 6 && g[5] == 6 && t[0].ground_at == 0;
-  end := t[0].ground_n; sum := 0;
+  // a run a cell, none touching: its ground's blob when it carries any, then its planting
+  end := 0; sum := 0;
   back: [1] E2ccCheck; m := 0;
   for i: 0..<E2Z_CELLS {
     #assert t[0].cell_at[i] == end + E2CP_GAP; end = t[0].cell_at[i] + t[0].cell_n[i];
-    blob := t[0].entry[t[0].cell_at[i]..<end]; r := e2cc_plant_read(blob); #assert r.ok && r.cell == i && r.items == t[0].cell_items[i] && e2cc_agrees(blob); sum += r.items;
+    run := t[0].entry[t[0].cell_at[i]..<end]; g := e2cc_ground(run);
+    #assert e2cc_whole(run) && (ifx i % 3 == 0 then g.count == 6 && g[5] == 6 && t[0].ground_n[i] == 20 else g.count == 0 && t[0].ground_n[i] == 0);
+    blob := e2cc_blob(run, E2CC_PLANT); r := e2cc_plant_read(blob); #assert r.ok && r.cell == i && r.items == t[0].cell_items[i] && e2cc_agrees(blob); sum += r.items;
     m = e2cc_insert(blob, back[0].b[..], back[0].bk[..], back[0].bf[..], back[0].held[..], m); #assert m == sum;
   }
   #assert end == t[0].bytes && sum + t[0].rest == t[0].planted && t[0].rest_first[E2P_CELLS] == t[0].rest;
@@ -152,12 +173,28 @@ e2cp_test_world :: (w: [] E2cpWorld, rows: u64) -> bool {
     for q: 0..<mine { #assert back[0].bk[back[0].bf[c] + q] == t[0].kinds[t[0].first[c] + q] && f32_bits(back[0].b[(back[0].bf[c] + q) * E2_ITEM_FLOATS + 2]) == f32_bits(t[0].items[(t[0].first[c] + q) * E2_ITEM_FLOATS + 2]); }
     for q: 0..<rest { #assert t[0].rest_kinds[t[0].rest_first[c] + q] == t[0].kinds[t[0].first[c] + q] && f32_bits(t[0].rest_items[(t[0].rest_first[c] + q) * E2_ITEM_FLOATS]) == f32_bits(t[0].items[(t[0].first[c] + q) * E2_ITEM_FLOATS]); }
   }
-  // the lines: a cell is found by the page's key, with the ground's range and its own
+  // the lines: a cell is found by the page's key, with its run
   lines: [E2Z_CELLS * PACK_CELL_LINE] u8; image := 1000 + t[0].bytes;
   ln := e2cp_lines(t[..], 1000, image, lines[..]); #assert ln > E2Z_CELLS * 20 && e2cp_lines(t[..], 1000, image, lines[0..<PACK_CELL_LINE * 3]) == -1 && e2cp_lines(t[..], 1000, image - 1, lines[..]) == -1;
   cells := E2Z_CELL;
   for i: 0..<E2Z_CELLS {
     c := pack_cell_find(cast(string) lines[0..<ln], pack_cell_key(cells[i].cx, cells[i].cz), image);
-    #assert c.ok && c.digest == cells[i].digest && c.ranges == 2 && c.at[0] == 1000 && c.n[0] == t[0].ground_n && c.at[1] == 1000 + t[0].cell_at[i] && c.n[1] == t[0].cell_n[i];
+    #assert c.ok && c.digest == cells[i].digest && c.ranges == 1 && c.at[0] == 1000 + t[0].cell_at[i] && c.n[0] == t[0].cell_n[i];
   }
+}
+#test "every ground tile has a carrier: the cell its middle is in, else the nearest, near every place on the manifest the tile covers" {
+  cells := E2Z_CELL; w: [1] CellWorld; e2z_manifest(w[..]); rings := e2z_page_rings();
+  span := 65.0;
+  for k: -1..<8 { for m: -4..<5 {
+    if k == -1 && m != 0 { continue; }
+    x0 := -32.5 + f64(m) * span; z0 := -60.0 - f64(k + 1) * span; mx := x0 + span / 2; mz := z0 + span / 2;
+    c := e2cp_tile_carrier(mx, mz); #assert c >= 0 && c < E2Z_CELLS;
+    own := cell_of(w[..], mx, mz); #assert own < 0 || c == own;
+    // you stand on the tile only on the manifest: there the carrier is well inside the ring that must be in before the world draws
+    for v: 0..<14 { for u: 0..<14 {
+      px := x0 + f64(u) * 5; pz := z0 + f64(v) * 5;
+      if cell_of(w[..], px, pz) < 0 { continue; }
+      #assert sqrt(cell_gap(px, f64(cells[c].cx) * CELL_SIZE) * cell_gap(px, f64(cells[c].cx) * CELL_SIZE) + cell_gap(pz, f64(cells[c].cz) * CELL_SIZE) * cell_gap(pz, f64(cells[c].cz) * CELL_SIZE)) < rings.draw / 2;
+    } }
+  } }
 }

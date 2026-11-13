@@ -27,7 +27,7 @@ IMPORT("coaxial_now_ms") int64_t coaxial_now_ms(void);
 
 static uint8_t inbox[4096];
 static uint8_t catalog[5242880];   /* the pack's catalog: 0.1 MB by cell (#13280), 1 MB in the tracked pack with the ground's record in its G lines (#13059), 4.3 MB in a pack built before the cells with the whole planting in its P lines (#13150) */
-static uint8_t ground_record[1048576], catalog_rest[65536];   /* that record decoded, and the catalog without it */
+static uint8_t ground_record[1179648], catalog_rest[65536];   /* that record decoded (then the far record, #13509), and the catalog without it */
 static coax_t_E2Tiles ground_tiles[2];   /* the ground's tile sets, published and staged (everglade/world/ground.coax) */
 static coax_t_E2Cells world_cells;   /* the world's cell controller (everglade/client/cells.coax, #13280); the frame reads its levels from the state's view */
 /* the world by cell (#13280): a cell's bytes as the host hands them over (everglade/world/cell-content.coax: the

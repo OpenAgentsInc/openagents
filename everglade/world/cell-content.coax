@@ -7,8 +7,10 @@
 //   E2CP  a cell's planting: the cell, its planting cells (16 m, everglade/world/plant.coax) each
 //         with its count, then every piece's eight floats and its kind. A world cell carries the
 //         planting cells whose middle is in it, and the backdrop's planting cells nearest it.
-//   E2CG  the ground's record (E2T1, everglade/world/ground.coax), whole. Every cell's line names
-//         it, so the first cell in brings the ground; it is published whole or not at all, as ever.
+//   E2CG  the cell's own ground (#13509): a ground record (E2T1, everglade/world/ground.coax) of
+//         the tiles whose middle is in the cell, or nearest it. The page takes it with the cell
+//         (e2g_record_take) and drops it when the cell leaves (e2g_drop_cell); a cell with no
+//         tiles has no E2CG. The far tiles' coarse levels come with the catalog (its F lines).
 // The page puts a cell's pieces into its planting where the planting cell's empty range is
 // (e2cc_insert) and takes them out when the cell leaves (e2cc_remove). Every reader of the planting
 // walks first[c]..<first[c + 1], so a planting cell that is not in is an empty range to them.

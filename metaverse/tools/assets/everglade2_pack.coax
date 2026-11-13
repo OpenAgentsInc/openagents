@@ -143,27 +143,18 @@ gp_e2_catalog :: (c:[]Sb,w:[]Gp,index_base:int,vertex_word:int) {
   sb_int(c,index_base+w[0].mfirst[k]);sb_byte(c,' ');sb_int(c,w[0].mcount[k]);sb_put(c,ifx k<GP_E2_WOLVES || k==GP_E2_FRAMES-1 then " 253 " else " 254 ");sb_int(c,vertex_word);sb_put(c," 0 0\n");
  }
 }
-// The ground (#13059): the admitted tiles' own samples (everglade/world/ground.coax), each drawn
-// E2G_DRAW_DROP below the admitted surface, every solid cell split on its south-west / north-east
-// diagonal as the tiles are; then coarse 4 m ground out to the valley's edges under them, a little
-// lower. The ground's colour is the material table's, per pixel (everglade/client/gpu/everglade2.coax
-// e2_ground_albedo): its vertices carry no colour of their own.
+// The ground (#13059): the admitted tiles (everglade/world/ground.coax) are not in the mesh. Since
+// #13509 the page draws them from the ground's record, by cell, at a level by distance
+// (everglade/client/gpu/everglade2.coax e2_tile_vs); the record carries their drawn normals, which are
+// gp_ground_v's (ground.coax e2g_normal_code). The pack keeps the coarse 4 m ground out to the
+// valley's edges under them, a little lower. The ground's colour is the material table's, per pixel
+// (everglade2.coax e2_ground_albedo): its vertices carry no colour of their own.
 GP_NO_COLOUR :: [3]f32.[0,0,0];
 gp_ground_v :: (w:[]Gp,x:f32,z:f32,y:f32,step:f32)->int {
  e:=step*0.5;dx:=(e2_height(x+e,z)-e2_height(x-e,z))/(2*e);dz:=(e2_height(x,z+e)-e2_height(x,z-e))/(2*e);l:=sqrt(dx*dx+1+dz*dz);
  return gp_v(w,[3]f32.[x,y,z],[3]f32.[-dx/l,1/l,-dz/l],[2]f32.[0.5,0.5],GP_NO_COLOUR,0,5);
 }
-// Tile t's solid cells: their corners once each, then two triangles a cell (NW, NE, SW), (NE, SE, SW).
-gp_tile :: (w:[]Gp,g:[]E2Ground,t:int) {
- s:=e2g_live_set(g);n:=e2g_n(s,t);side:=n+1;hs:=e2g_h(s,t);hl:=e2g_hl(s,t);st:=e2g_step(s[0].k[t]);
- at:[E2G_POINTS]int;for q:0..<side*side {at[q]= -1;}
- for j:0..<n {for i:0..<n {if hl[j*n+i]!=0 {continue;}for c:[4]int.[j*side+i,j*side+i+1,(j+1)*side+i,(j+1)*side+i+1] {
-  if at[c]>=0 {continue;}ci:=c%side;cj:=c/side;
-  x:=e2g_at(f32(E2G_WEST),e2g_x0(s[0].m[t])+ci*st);z:=e2g_at(f32(E2G_SOUTH),e2g_z0(s[0].k[t])+cj*st);at[c]=gp_ground_v(w,x,z,hs[c]-f32(E2G_DRAW_DROP),0.2);}}}
- for j:0..<n {for i:0..<n {if hl[j*n+i]!=0 {continue;}sw:=at[j*side+i];se:=at[j*side+i+1];nw:=at[(j+1)*side+i];ne:=at[(j+1)*side+i+1];gp_tri(w,nw,ne,sw);gp_tri(w,ne,se,sw);}}
-}
 gp_ground :: (w:[]Gp,g:[]E2Ground) {
- s:=e2g_live_set(g);for t:0..<s[0].n {gp_tile(w,g,t);}
  // the coarse ground: only the cells the tiles don't cover with a metre to spare, and only their corners
  gx:=106;gz:=181;at:[106*181]int;for q:0..<gx*gz {at[q]= -1;}
  for iz:0..<gz-1 {for ix:0..<gx-1 {x0:=f32(E2_WEST)+f32(ix)*4;z0:=f32(E2_BACK)-f32(iz)*4;
@@ -254,7 +245,7 @@ tool_main :: ()->int #export_c #effects(all) {
  gp_familiar_catalog(c[..],famfirst[..],famcount[..],in/4,vn/4);
  if monsters {gp_e2_catalog(c[..],w[..],in/4,vn/4);}
  for i:0..<w[0].nt {sb_put(c[..],"T ");sb_int(c[..],w[0].layers+i);sb_put(c[..]," glade/");sb_int(c[..],i);sb_put(c[..]," 250\n");}
- lb:[1500000]u8;ln:=e2g_record_lines(rec[0..<rn],lb[..]);if ln<0 {ph_die("everglade2 ground record lines overflow");}sb_put(c[..],cast(string)lb[0..<ln]);
+ lb:[2200000]u8;ln:=e2g_record_lines(rec[0..<rn],lb[..]);if ln<0 {ph_die("everglade2 ground record lines overflow");}sb_put(c[..],cast(string)lb[0..<ln]);
  count:=ne+w[0].nt;at:=32+count*48;gp_word(w[0].out[..],0,0x314b5056);put_u32(w[0].out[..],4,count);put_u32(w[0].out[..],12,E2_PACK_BUDGET);put_u32(w[0].out[..],16,32);put_u32(w[0].out[..],20,at);
  for i:0..<ne {r:=table+i*48;kind:=int(old[r]);off:=gl_u32(old,r+4);size:=gl_u32(old,r+8);start:=at;
   if kind==1 {body:=sb_text(c[..]);for ch:body {w[0].out[at]=ch;at+=1;}}

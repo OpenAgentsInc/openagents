@@ -1,0 +1,203 @@
+// Everglade II's tracked pack without the ground tiles' mesh (GitHub #13509; docs/metaverse/one-world.md,
+// "The ground by cell"). The page draws the tiles from the ground's own record now
+// (everglade/client/gpu/everglade2.coax e2_tile_vs), so the pack's copy of them goes: the tiles'
+// vertices at the start of the glade's block and their triangles at the start of its environment
+// run. Everything after them moves down: the C lines' first indices and vertex words, the
+// environment's count, the block's vertex count, and every index into the block. The catalog's G
+// lines become the record's version 2 (everglade/world/ground.coax: with the drawn normals). Before
+// anything is cut the tool converts the land and checks it is the land the old record and the mesh
+// hold: the record's set revision, and every cut vertex and index, bit for bit (positions, the
+// drawn normal codes) as the pack tool drew them (metaverse/tools/assets/everglade2_pack.coax gp_tile).
+// The pack stays sealed (pack-seal changes no byte of it).
+// Run: coax/web/tool.sh everglade/model/tools/ground-cut.coax IN.pack OUT.pack
+// tool.sh: release
+// tool.sh: stack-gib 8
+#import "Basic";
+#load "pack-entry.coax";
+#load "../../world/ground.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/args.coax";
+
+GC_PACK :: 67108864;
+GC_CATALOG :: 4194304;
+GC_LINES :: 1024;           // C lines at most
+
+GcLine :: struct { at: int; end: int; first: int; count: int; word: int; nv: int; fields: int; }
+GcCut :: struct {
+  g: [1] E2Ground; sets: [2] E2Tiles; rec: [E2G_RECORD_MAX] u8; lines: [2200000] u8;
+  c: [GC_LINES] GcLine; cn: int;
+  done: [GC_PACK / 4] bool;   // index positions already moved
+  v0: int; nv: int; i0: int; tv: int; ti: int;
+}
+gc_u32 :: (b: [] u8, at: int) -> int { return cast(int) pack_u32(cast(string) b, at); }
+// The fields of the C line at text[at..<end]: first index, count, vertex word and vertex count (fields 2, 3, 5, 6).
+gc_parse :: (text: string, at: int, end: int) -> GcLine {
+  l: GcLine; l.at = at; l.end = end; f := 0; p := at; v: [8] int;
+  while p < end && f < 8 {
+    while p < end && text[p] == ' ' { p += 1; }
+    s := p; n := 0; digits := true;
+    while p < end && text[p] != ' ' { if text[p] < '0' || text[p] > '9' { digits = false; } else { n = n * 10 + cast(int)(text[p] - '0'); } p += 1; }
+    v[f] = ifx digits && p > s then n else -1; f += 1;
+  }
+  l.fields = f; l.first = v[2]; l.count = v[3]; l.word = v[5]; l.nv = v[6];
+  return l;
+}
+// The tiles' mesh as gp_tile drew it, checked against the pack's: vertices from v0, triangles from i0.
+// The vertices and indices it takes, or -1 with the first difference reported.
+gc_check_mesh :: (c: [] GcCut, verts: [] u8, idx: [] u8) -> [2] int {
+  s := e2g_live_set(c[0].g[..]); nv := 0; ni := 0; bad := [2] int.[-1, -1];
+  at: [E2G_POINTS] int;
+  for t: 0..<s[0].n {
+    n := e2g_n(s, t); side := n + 1; hs := e2g_h(s, t); hl := e2g_hl(s, t); dr := e2g_dr(s, t); st := e2g_step(s[0].k[t]);
+    for q: 0..<side * side { at[q] = -1; }
+    for j: 0..<n { for i: 0..<n {
+      if hl[j * n + i] != 0 { continue; }
+      for k: 0..<4 {
+        q := (j + k / 2) * side + i + k % 2;
+        if at[q] >= 0 { continue; }
+        x := e2g_at(f32(E2G_WEST), e2g_x0(s[0].m[t]) + (q % side) * st); z := e2g_at(f32(E2G_SOUTH), e2g_z0(s[0].k[t]) + (q / side) * st);
+        want := [8] int.[cast(int) f32_bits(x), cast(int) f32_bits(hs[q] - f32(E2G_DRAW_DROP)), cast(int) f32_bits(z), (5 << 24) | cast(int) dr[q], 0x7fff7fff, 0xff000000, 0, 0];
+        b := (c[0].v0 + nv) * 32;
+        for w: 0..<8 { if gc_u32(verts, b + w * 4) != want[w] { print("ground-cut: tile % vertex % word %: the pack's % against %\n", t, nv, w, gc_u32(verts, b + w * 4), want[w]); return bad; } }
+        at[q] = nv; nv += 1;
+      }
+    } }
+    for j: 0..<n { for i: 0..<n {
+      if hl[j * n + i] != 0 { continue; }
+      sw := at[j * side + i]; se := at[j * side + i + 1]; nw := at[(j + 1) * side + i]; ne := at[(j + 1) * side + i + 1];
+      for v: [6] int.[nw, ne, sw, ne, se, sw] {
+        if gc_u32(idx, (c[0].i0 + ni) * 4) != v { print("ground-cut: tile % index %: the pack's % against %\n", t, ni, gc_u32(idx, (c[0].i0 + ni) * 4), v); return bad; }
+        ni += 1;
+      }
+    } }
+  }
+  return [2] int.[nv, ni];
+}
+gc_put_number :: (out: [] u8, at: int, v: int) -> int { return at + pke_number(v, out[at..<out.count]); }
+gc_cut :: (c: [] GcCut, pack: [] u8, out: [] u8, body: [] u8) -> int {
+  t: [1] PackTable;
+  if !pack_table(cast(string) pack, pack.count, t[..]) || t[0].count < 3 || t[0].entries[0].kind != PACK_CATALOG { tool_errln("ground-cut: not a pack with a catalog"); return -1; }
+  vk := -1; ik := -1;
+  for k: 0..<t[0].count { if t[0].entries[k].kind == PACK_VERTICES { vk = k; } if t[0].entries[k].kind == PACK_INDICES { ik = k; } }
+  if vk < 0 || ik < 0 { tool_errln("ground-cut: no vertices or indices"); return -1; }
+  cat := cast(string) pack[t[0].entries[0].at..<t[0].entries[0].at + t[0].entries[0].n];
+  verts := pack[t[0].entries[vk].at..<t[0].entries[vk].at + t[0].entries[vk].n]; idx := pack[t[0].entries[ik].at..<t[0].entries[ik].at + t[0].entries[ik].n];
+  // the land, converted here, is the land the old record holds
+  g := c[0].g[..]; e2g_store(g, c[0].sets[..]);
+  rn := e2g_record_from_catalog(cat, c[0].rec[..]);
+  if rn < E2G_RECORD_HEAD || e2g_get32(c[0].rec[..], 0) != cast(u32) E2G_RECORD_MAGIC { tool_errln("ground-cut: the catalog has no ground record"); return -1; }
+  if e2g_get32(c[0].rec[..], 4) != 1 { tool_errln("ground-cut: the ground record is not version 1: the pack is cut already"); return -1; }
+  if !e2g_build(g) || !e2tt.terrain_tile_same(e2g_get_words(c[0].rec[..], 88), e2g_live_set(g)[0].revision) { tool_errln("ground-cut: the land converted here is not the record's"); return -1; }
+  // the C lines; the environment's run and the glade block
+  c[0].cn = 0; env := -1; p := 0;
+  while p < cat.count {
+    e := p; while e < cat.count && cat[e] != '\n' { e += 1; }
+    if e - p > 2 && cat[p] == 'C' && cat[p + 1] == ' ' {
+      if c[0].cn >= GC_LINES { return -1; }
+      l := gc_parse(cat, p, e); c[0].c[c[0].cn] = l;
+      if e - p > 20 && cat[p..<p + 20] == "C glade/environment " { env = c[0].cn; }
+      c[0].cn += 1;
+    }
+    p = e + 1;
+  }
+  if env < 0 { tool_errln("ground-cut: no glade/environment line"); return -1; }
+  el := c[0].c[env]; c[0].v0 = el.word / 8; c[0].nv = el.nv; c[0].i0 = el.first;
+  if el.word % 8 != 0 || el.nv <= 0 { return -1; }
+  r := gc_check_mesh(c, verts, idx); c[0].tv = r[0]; c[0].ti = r[1];
+  if c[0].tv <= 0 || c[0].ti <= 0 || c[0].ti > el.count { tool_errln("ground-cut: the pack's first ground vertices and triangles are not the tiles'"); return -1; }
+  v0 := c[0].v0; tv := c[0].tv; i0 := c[0].i0; ti := c[0].ti; nv := c[0].nv;
+  // the index entry: the tiles' triangles out; each index of a run on the glade block one block start further
+  ni := idx.count / 4; for q: 0..<ni { c[0].done[q] = false; }
+  // (the new entries are built in out after the table; first the catalog, below, sizes them)
+  // the catalog: its C lines moved, its G lines the version 2 record, its bytes line the new size
+  wn := e2g_record_write(g, e2g_live_set(g), c[0].rec[..]);
+  if wn < 0 { return -1; }
+  ln := e2g_record_lines(c[0].rec[0..<wn], c[0].lines[..]);
+  if ln < 0 { return -1; }
+  bn := 0; p = 0; li := 0;
+  while p < cat.count {
+    e := p; while e < cat.count && cat[e] != '\n' { e += 1; }
+    line := cat[p..<e];
+    skip := (e - p > 1 && cat[p] == 'G' && cat[p + 1] == ' ') || (e - p > 5 && line[0..<6] == "bytes ") || e == p;
+    if !skip && e - p > 2 && cat[p] == 'C' && cat[p + 1] == ' ' {
+      l := c[0].c[li]; li += 1;
+      if l.fields < 7 || l.first < 0 || l.count < 0 || l.word < 0 || l.nv < 0 { tool_errln("ground-cut: a C line does not read"); return -1; }
+      first := l.first; count := l.count; word := l.word; lnv := l.nv;
+      if first == i0 { count -= ti; } else if first >= i0 + ti { first -= ti; } else if first + count > i0 { tool_errln("ground-cut: a run overlaps the tiles' triangles"); return -1; }
+      if word >= (v0 + tv) * 8 { word -= tv * 8; } else if word > v0 * 8 { tool_errln("ground-cut: a vertex word inside the tiles' vertices"); return -1; }
+      if word == v0 * 8 && lnv > 0 { lnv -= tv; }
+      // the fields before first, then the numbers, then the rest after the vertex count
+      f := 0; q := p; while q < e && f < 2 { if cat[q] == ' ' { f += 1; } q += 1; }
+      for k: p..<q { body[bn] = cat[k]; bn += 1; }
+      bn = gc_put_number(body, bn, first); body[bn] = ' '; bn += 1; bn = gc_put_number(body, bn, count); body[bn] = ' '; bn += 1;
+      f = 0; q = p; while q < e && f < 4 { if cat[q] == ' ' { f += 1; } q += 1; }
+      lic := q; while q < e && cat[q] != ' ' { q += 1; }
+      for k: lic..<q { body[bn] = cat[k]; bn += 1; }
+      body[bn] = ' '; bn += 1; bn = gc_put_number(body, bn, word); body[bn] = ' '; bn += 1; bn = gc_put_number(body, bn, lnv);
+      f = 0; q = p; while q < e && f < 7 { if cat[q] == ' ' { f += 1; } q += 1; }
+      if q < e || f == 7 { body[bn] = ' '; bn += 1; for k: q..<e { body[bn] = cat[k]; bn += 1; } }
+      body[bn] = '\n'; bn += 1;
+      // its indices, when the run is on the glade block (its vertex word inside it): one block start further
+      if l.word >= v0 * 8 && l.word < (v0 + nv) * 8 {
+        for q2: (ifx l.first == i0 then i0 + ti else l.first)..<l.first + l.count {
+          if c[0].done[q2] { continue; }
+          v := gc_u32(idx, q2 * 4);
+          if v < tv { tool_errln("ground-cut: a run on the glade block uses a tile vertex"); return -1; }
+          c[0].done[q2] = true;
+        }
+      }
+    } else if !skip {
+      if bn + e - p + 1 > body.count { return -1; }
+      for k: p..<e { body[bn] = cat[k]; bn += 1; } body[bn] = '\n'; bn += 1;
+    }
+    p = e + 1;
+  }
+  for k: 0..<ln { body[bn] = c[0].lines[k]; bn += 1; }
+  // the bytes line until it stands
+  vn := verts.count - tv * 32; inn := idx.count - ti * 4;
+  total := 0; cn := -1; stood := false;
+  for round: 0..<4 {
+    cn = pke_bytes(body, bn, total);
+    if cn < 0 { return -1; }
+    size := PACK_HEADER + PACK_ENTRY * t[0].count + pke_pad(cn);
+    for k: 1..<t[0].count { size += pke_pad(ifx k == vk then vn else ifx k == ik then inn else t[0].entries[k].n); }
+    if size == total { stood = true; break; }
+    total = size;
+  }
+  if !stood || total > out.count { return -1; }
+  // the pack: its header and table, then each entry in its order from a 4-byte boundary
+  for k: 0..<PACK_HEADER + PACK_ENTRY * t[0].count { out[k] = pack[k]; }
+  at := PACK_HEADER + PACK_ENTRY * t[0].count;
+  for k: 0..<t[0].count {
+    row := PACK_HEADER + PACK_ENTRY * k; start := at; e := t[0].entries[k]; src := pack[e.at..<e.at + e.n];
+    if k == 0 { for q: 0..<cn { out[at] = body[q]; at += 1; } }
+    else if k == vk { for q: 0..<v0 * 32 { out[at] = src[q]; at += 1; } for q: (v0 + tv) * 32..<e.n { out[at] = src[q]; at += 1; } }
+    else if k == ik {
+      for q: 0..<i0 { for b: 0..<4 { out[at + b] = src[q * 4 + b]; } at += 4; }
+      for q: i0 + ti..<e.n / 4 {
+        v := gc_u32(src, q * 4); if c[0].done[q] { v -= tv; }
+        pack_put32(out, at, v); at += 4;
+      }
+    }
+    else { for q: 0..<e.n { out[at] = src[q]; at += 1; } }
+    pack_put32(out, row + 4, start); pack_put32(out, row + 8, at - start);
+    while at % 4 != 0 { out[at] = 0; at += 1; }
+  }
+  pack_put32(out, 8, at);
+  if at != total { return -1; }
+  print("ground-cut: % tile vertices and % indices out (% bytes), % indices moved; the record % bytes in % G-line bytes; the pack % bytes, was %\n", tv, ti, tv * 32 + ti * 4, gc_moved(c), wn, ln, at, pack.count);
+  return at;
+}
+gc_moved :: (c: [] GcCut) -> int { n := 0; for q: 0..<c[0].done.count { if c[0].done[q] { n += 1; } } return n; }
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 2 { tool_errln("usage: ground-cut IN.pack OUT.pack"); return 2; }
+  pack: [GC_PACK] u8; out: [GC_PACK] u8; body: [GC_CATALOG] u8; c: [1] GcCut;
+  size := fs_read(args_at(a[..], 0), pack[..]);
+  if size < 32 { tool_errln("ground-cut: can't read the pack"); return 1; }
+  n := gc_cut(c[..], pack[0..<size], out[..], body[..]);
+  if n < 0 { tool_errln("ground-cut: refused"); return 1; }
+  if !fs_write(args_at(a[..], 1), cast(string) out[0..<n]) { return 1; }
+  return 0;
+}

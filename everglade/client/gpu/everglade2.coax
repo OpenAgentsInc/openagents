@@ -125,7 +125,8 @@ e2_prop_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->Fivelab
  #assert abs(o.world.x-10)<0.0001 && abs(o.world.y-2.5)<0.0001 && abs(o.world.z+6)<0.0001 && abs(o.normal.z+1)<0.0001;
  #assert o.slice==14 && o.uv.x==0.25 && o.uv.y==0.75 && abs(o.tint.x-0.25f32)<0.01 && o.tint.y==1 && o.local.x==10 && o.who==3;
 }
-everglade2_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]u32,items:[]V4)->FivelabS {
+everglade2_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]u32,items:[]V4,ground:[]V4)->FivelabS {
+ if (instance>=cast(u32)E2_TILE_BASE) {return e2_tile_vs(id,instance,u,objects,ground);}
  if (instance>=cast(u32)E2_FIELD_BASE) {return e2_field_vs(id,instance,u,vertices);}
  if (instance>=cast(u32)E2_KIT_BASE) {return e2_kit_vs(id,instance,u,vertices,inst,items);}
  if (instance<cast(u32)65536) {mp:=objects[cast(int)instance];if (mp.d.w>20.5f32 && mp.d.w<21.5f32) {return e2_prop_vs(id,instance,mp,u,vertices);}}
@@ -204,11 +205,11 @@ e2_body_fade :: (s:FivelabS,objects:[]FivelabObj)->f32 {
  if (s.dye.w>11.5f32) {return 0;}
  w:=objects[cast(int)s.who].f.w;return ifx w>2.0005f32 && w<3.0f32 then w-2.0f32 else 0.0f32;
 }
-everglade2_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]u32,items:[]V4)->E2Shadow {
+everglade2_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]u32,items:[]V4,ground:[]V4)->E2Shadow {
  o:E2Shadow;o.pos=v4(0,0,-2,1);
  k:=cast(int)u[E2_U_CASCADE+1];
  if (u[10]<1.5f32 || u[E2_U_CASCADE]<0.5f32 || k<0 || k>3) {return o;}
- s:=everglade2_scene_vs(id,instance,u,vertices,objects,bake,inst,items);if (s.dye.w>11.5f32 && s.local.x<0.5f32) {return o;}
+ s:=everglade2_scene_vs(id,instance,u,vertices,objects,bake,inst,items,ground);if (s.dye.w>11.5f32 && s.local.x<0.5f32) {return o;}
  q:=e2_casc_place(s.world,u,k);o.pos=e2_casc_clip(q,u,k);o.edge=v2(q.x,q.y);o.uv=s.uv;o.slice=s.slice;o.fade=e2_body_fade(s,objects);return o;
 }
 everglade2_shadow_fs :: (s:E2Shadow,sheets:Tex2DArray,sheet:Sampler) {
@@ -247,6 +248,67 @@ e2_shadow_visibility :: (p:V3,n:V3,u:[]f32,map:TexDepth,cmp:SamplerCompare)->f32
  c:=e2_casc_try(p,n,u,map,cmp,2);if (c>=0) {return c;}
  d:=e2_casc_try(p,n,u,map,cmp,3);if (d>=0) {return d;}
  return 1;
+}
+// ---- the ground's tiles by cell, each at its level (#13509): drawn by pulling their samples from the
+// ground store (everglade/world/ground.coax e2g_gpu), no vertex buffer. A draw's base instance is
+// E2_TILE_BASE plus the tile's word (ground.coax e2g_tile_code): its slot (5 bits), its level (2) and
+// a stitch level a side (2 each: south, east, north, west). Vertex id: cell id / 6 of the level's
+// cells (rows south to north), the corner id % 6 of its two triangles (NW, NE, SW), (NE, SE, SW), as
+// the pack drew them. A cell with no ground at its level (none of its own cells has any) gives three
+// points off the screen. On a stitched side the samples between the coarser neighbour's lie on the
+// line between its two (metaverse-engine/world/terrain-tile.coax terrain_tile_stitched), so the
+// edge is the neighbour's and nothing shows through.
+E2_TILE_BASE :: 1073741824;   // ground.coax E2G_TILE_BASE
+E2_TILE_TABLE :: 10292; E2_TILE_SLOT0 :: 10516; E2_TILE_SOLID :: 20402; E2_TILE_SLOT :: 21224;   // ground.coax E2G_GPU_TABLE, _SLOT0, _SOLID, _SLOT
+E2_TILE_WEST :: -32.5; E2_TILE_SOUTH :: -60.0; E2_TILE_SPACING :: 0.65; E2_TILE_DROP :: 0.035;   // ground.coax E2G_WEST, E2G_SOUTH, E2G_SPACING, E2G_DRAW_DROP
+E2TileV :: struct {p:V3;n:f32;keep:f32;}
+e2_gf :: (ground:[]V4,k:int)->f32 {v:=ground[k/4];r:=k%4;return ifx r==0 then v.x else ifx r==1 then v.y else ifx r==2 then v.z else v.w;}
+// Sample (i, j) of the level (st of the tile's own samples apart) in the slot at base.
+e2_tile_h :: (ground:[]V4,base:int,n:int,st:int,i:int,j:int)->f32 {return e2_gf(ground,base+((j*st)*(n+1)+i*st)*2);}
+// Along an edge: sample e of the level on it (horizontal: along i at row j0; else along j at column
+// i0), stitched to r = 2^q of them.
+e2_tile_edge :: (ground:[]V4,base:int,n:int,st:int,e:int,at:int,along_i:bool,q:int)->f32 {
+ r:=1<<cast(u32)q;rem:=e%r;lo:=e-rem;
+ a:=ifx along_i then e2_tile_h(ground,base,n,st,lo,at) else e2_tile_h(ground,base,n,st,at,lo);
+ if (rem==0) {return a;}
+ b:=ifx along_i then e2_tile_h(ground,base,n,st,lo+r,at) else e2_tile_h(ground,base,n,st,at,lo+r);
+ return a+(b-a)*(cast(f32)rem/cast(f32)r);
+}
+e2_tile_place :: (id:u32,code:u32,ground:[]V4)->E2TileV {
+ o:E2TileV;o.keep=0.0f32;
+ slot:=cast(int)(code&cast(u32)31);lv:=cast(int)((code>>cast(u32)5)&cast(u32)3);
+ a:=ground[E2_TILE_TABLE/4+slot*2];
+ n:=cast(int)a.w;stp:=cast(int)a.z;st:=1<<cast(u32)lv;nl:=n/st;
+ c:=cast(int)(id/cast(u32)6);corner:=cast(int)(id%cast(u32)6);
+ if (nl<1 || c>=nl*nl) {return o;}
+ ci:=c%nl;cj:=c/nl;
+ base:=E2_TILE_SLOT0+slot*E2_TILE_SLOT;
+ lb:=ifx lv==0 then 0 else ifx lv==1 then n*n else n*n+(n/2)*(n/2);
+ b:=lb+cj*nl+ci;word:=cast(u32)e2_gf(ground,base+E2_TILE_SOLID+b/16);
+ if (((word>>cast(u32)(b%16))&cast(u32)1)==cast(u32)0) {return o;}
+ di:=ifx corner==1 || corner==3 || corner==4 then 1 else 0;dj:=ifx corner==0 || corner==1 || corner==3 then 1 else 0;
+ li:=ci+di;lj:=cj+dj;
+ h:=e2_tile_h(ground,base,n,st,li,lj);
+ qs:=cast(int)((code>>cast(u32)7)&cast(u32)3);qe:=cast(int)((code>>cast(u32)9)&cast(u32)3);qn:=cast(int)((code>>cast(u32)11)&cast(u32)3);qw:=cast(int)((code>>cast(u32)13)&cast(u32)3);
+ if (lj==0 && qs>0) {h=e2_tile_edge(ground,base,n,st,li,0,true,qs);}
+ else if (lj==nl && qn>0) {h=e2_tile_edge(ground,base,n,st,li,nl,true,qn);}
+ else if (li==0 && qw>0) {h=e2_tile_edge(ground,base,n,st,lj,0,false,qw);}
+ else if (li==nl && qe>0) {h=e2_tile_edge(ground,base,n,st,lj,nl,false,qe);}
+ gi:=cast(int)a.x+li*st*stp;gj:=cast(int)a.y+lj*st*stp;
+ o.p=v3(E2_TILE_WEST+cast(f32)gi*E2_TILE_SPACING,h-E2_TILE_DROP,E2_TILE_SOUTH+cast(f32)gj*E2_TILE_SPACING);
+ o.n=e2_gf(ground,base+((lj*st)*(n+1)+li*st)*2+1);o.keep=1.0f32;
+ return o;
+}
+// A tile's vertex as the pack's ground vertices drew (character-glade.coax cg_environment_vs, kind 5,
+// the glade's record 0): the material table colours it per pixel.
+e2_tile_vs :: (id:u32,instance:u32,u:[]f32,objects:[]FivelabObj,ground:[]V4)->FivelabS {
+ o:FivelabS;o.pos=v4(0,0,-2,1);
+ t:=e2_tile_place(id,instance-cast(u32)E2_TILE_BASE,ground);
+ if (t.keep<0.5f32) {return o;}
+ m:=objects[0];nw:=wg_unpack4x8snorm(cast(u32)t.n);
+ o.pos=fivelab_project(t.p,u);o.world=t.p;o.normal=v3(nw.x,nw.y,nw.z);o.uv=wg_unpack2x16unorm(cast(u32)0x7fff7fff);o.slice=cast(u32)0;
+ o.tint=v3(0,0,0);o.dye=v4(ifx m.d.w<16.5f32 && m.c.x>0.5f32 then 1.0f32 else 0.0f32,0.0f32,0.0f32,12.0f32);o.local=v3(5,0,0);o.who=cast(u32)0;
+ return o;
 }
 // ---- the ground: drawn from the admitted material table and the canopy's bake (#13052)
 // The page's ground store (everglade/world/ground.coax e2g_gpu): vec4 0 the bake grid (cells, spacing,
