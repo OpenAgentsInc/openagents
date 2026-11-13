@@ -64,6 +64,7 @@ that already touches the file (#13267 to #13269, #13280).
 | Coax | The language every book is written in. | Coax |
 | `coax0` | The bootstrap compiler. It emits C11, which also builds to WebAssembly, and shader functions for Metal and WGSL. | Coax 27 |
 | Coaxial | The Coax web framework that draws openagents.com and realm pages. | [coax/web.md](../../coax/web.md) |
+| Coax Native | The proposed shared Coax application framework: app state and actions, components, native hosts, platform services and one agent interface. | [coax/native.md](../../coax/native.md) |
 | Metaverse Engine | The engine: the frame loop, the world, rendering, physics, rooms and the realm format. Named on 2026-10-31. | Metaverse Engine |
 | Metaverse Engine | The realm builder and world-creation tools on the Metaverse Engine. | Metaverse Engine Parts VI and X |
 | The Metaverse | The world that the Metaverse Engine runs: a set of realms on the open web. The `metaverse/` directory holds engine and realm code from before the engine had its own name. | Metaverse Engine Part VII |

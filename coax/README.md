@@ -14,6 +14,7 @@ Building a Coaxial page or a realm? Read [start-here.md](start-here.md) first.
 | [`STATUS.md`](STATUS.md), [`RELEASE.md`](RELEASE.md) | Generated current status and the single-source release/drift workflow |
 | [`verification-differential.md`](verification-differential.md) | Checked-AST authored native execution, bounded conformance probes and reduction |
 | [`web.md`](web.md) | Proposal: the Coax web framework for openagents.com (Coaxial), with open questions |
+| [`native.md`](native.md) | Proposal: Coax Native, the shared app model, native hosts, platform services and agent interface |
 | [`font.md`](font.md) | Proposal: Filament, the stroke font Coaxial pages draw text with |
 | [`grammar.ebnf`](grammar.ebnf) | The bootstrap grammar for what coax0 accepts |
 | [`script-profile.md`](script-profile.md) | The realm-script profile: what `#script "name";` makes the compiler enforce, and `coax script` |
