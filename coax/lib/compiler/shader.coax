@@ -1868,6 +1868,28 @@ sh_iface :: (tree:[]u32,end:int,w:[]u32,which:int,t:u32,n:int)->int #effects(all
   // A helper of two views, bound both ways round: two copies.
   #assert sh_pin(SH_VS,SH_T_TWO,"0 2 7 7 2 7 7 | 1 2 2 27 42 40 0 16 3 0 2 27 42 40 1 16 3 1 ;","2 0 0 0 1 1 1 2 3 4")==PIN_TWO;
 }
+// A typed uniform block (#13451): ub_vs and ub_fs read u[0] of a []Ub, Ub :: struct {view:V4;
+// time:f32; gain:f32; a:f32; b:f32;} (the tree WGSL's WG_SAMPLE_UB is).
+SH_SAMPLE_UB :: "2 9 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 5 6 0 2 16 2 20 2 24 2 28 32 9 7 4 6 3 4 4 8 3 4 4 8 25 1 1 4 22 2 4 27 41 42 40 2 16 5 0 0 1 16 2 0 16 2 0 16 2 1065353216 6 2 6 8 3 6 8 6 42 1 2 3 40 2 27 41 42 40 1 16 5 0 0 0 4 22 2 4 27 41 40 2 0 22 3 1 18 1 27 41 42 40 1 16 5 0 0 4 16 2 1065353216 6 4 2 2 2 2 4 2 2 2 2 14 1 1 4 31 6 4 18 0 18 1 18 2 18 3 2 1 8 1 8 27 1 1 4 19 3 27 41 41 42 40 0 16 5 0 0 0 1 27 41 42 40 0 16 5 0 0 2 2 0 0 0 1 2 1 1 3 2";
+#test "a typed uniform block is a Block of its struct, each field at its Offset, the element's stride its size" {
+  out:[8192] u32;work:[SH_CHECK_WORK] u32;
+  n:=sh_text(SH_SAMPLE_UB,out[..],work[..]);
+  #assert n>0 && work[0]==1;
+  // OpMemberDecorate of each of Ub's fields: Offset (35) 0, 16, 20, 24 and 28
+  offsets:=[5] u32.[0,16,20,24,28];
+  for i:0..<5 {
+    found:=false;
+    for at:0..<n-4 {if out[at]==(5<<16|72) && out[at+2]==cast(u32)i && out[at+3]==35 && out[at+4]==offsets[i] {found=true;}}
+    #assert found;
+  }
+  // the element's ArrayStride (6) 32, and the Block (2) that holds it
+  stride:=false;block:=false;
+  for at:0..<n-3 {
+    if out[at]==(4<<16|71) && out[at+2]==6 && out[at+3]==32 {stride=true;}
+    if out[at]==(3<<16|71) && out[at+2]==2 {block=true;}
+  }
+  #assert stride && block;
+}
 #test "bindings: one per name, of views of numbers" {
   #assert sh_pin("6 3 4 4 7 3 4 4 7 | 4 17 6 ;","0 2 6 7 2 6 7 | 5 ;","","2 0 0 0 1 2 1 1 3 2")==PIN_SHARED;
   #assert sh_build("6 3 4 4 7 3 4 4 7 | 4 17 6 ;","0 2 6 8 2 6 8 | 5 ;","","2 0 0 0 1 2 1 1 3 2")==-7;
