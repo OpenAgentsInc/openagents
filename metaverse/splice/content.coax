@@ -601,7 +601,7 @@ sc_cut :: (s: string, was: string, out: [] u8) -> string {
   return s;
 }
 sc_cm :: (m: f32) -> int { return cast(int) floor(m * 100 + 0.5); }
-#test "the front screens' tables read, tables saved before them read with the shipped ones put in, and a bad row is refused in words" {
+#test "the front screens' tables read, tables saved before them read with the shipped ones put in, and a bad row is refused in words" #steps 100000000 {
   c: [1] SpContent; o: [CT_BODY] u8; up: [CT_BODY] u8; t: [CT_BODY] u8; w: [300] u8;
   #assert sc_load(c[..], SC_SHIPPED) && c[0].menu_n == 3 && c[0].menu[0] == 1 && c[0].menu[1] == 2 && c[0].menu[2] == 3 && sc_menu_label(c[..], 1) == "NEW RUN" && sc_menu_label(c[..], 9) == "";
   #assert c[0].credits >= 3 && sc_credit(c[..], 0).count > 0 && sc_credit(c[..], -1) == "" && c[0].dolly_n >= 1 && c[0].dolly[6] >= 1;
@@ -626,7 +626,7 @@ sc_cm :: (m: f32) -> int { return cast(int) floor(m * 100 + 0.5); }
   #assert !sc_load(c[..], sc_swap("2|new|NEW RUN\n", "2|settings|NEW RUN\n", o[..])) && !sc_load(c[..], sc_swap("2|new|NEW RUN\n", "2|new|\n", o[..]));
   bad = sc_swap("|0|150|0|12\n", "|0|150|0|0\n", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "the title camera's path has 1 to 8 rows, each taking 1 second or more";
-  bad = sc_swap("1|SPLICE: A METAVERSE ENGINE GAME BY OPENAGENTS\n", "1|SPLICE: A METAVERSE ENGINE GAME BY OPENAGENTS, AND MORE WORDS THAN FIT\n", o[..]);
+  bad = sc_swap("1|SPLICE BOTS: A METAVERSE ENGINE GAME\n", "1|SPLICE BOTS: A METAVERSE ENGINE GAME BY OPENAGENTS, MORE THAN FITS\n", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "the credits are at most 12 lines of at most 48 bytes";
 }
 

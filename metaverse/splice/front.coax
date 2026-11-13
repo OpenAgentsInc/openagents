@@ -1,4 +1,4 @@
-// Splice's front door (GitHub #13482): the title screen, character creation, the credits, and the
+// Splice Bots' front door (GitHub #13482): the title screen, character creation, the credits, and the
 // run this browser keeps. Each screen is the engine's one screen format (metaverse-engine/ui/screen.coax:
 // a dark panel down the left over the world, the title at its top, the content under it, the key
 // hints at the bottom right) drawn in Splice's tactical look; the player is the crew character you
@@ -369,13 +369,16 @@ FR_HINT :: () -> KitTint { return t3(0.812, 0.776, 0.714); }
 FR_EDGE :: () -> KitTint { return t3(0.353, 0.325, 0.290); }
 
 // The frame every screen shares: the panel and its edge, the kicker in orange, the title, the rule under it.
-fr_head :: (g: [] SpGame, out: [] f32, u: [] f32, n: int, f: ScrFrame, kicker: string, title: string, em: f32) -> int {
+// A second title line (second, "" for none) sits under the first at the same size: SPLICE / BOTS fits the
+// panel's 336 px at the board's 56 px, where one line would not.
+fr_head :: (g: [] SpGame, out: [] f32, u: [] f32, n: int, f: ScrFrame, kicker: string, title: string, second: string, em: f32) -> int {
   k := f.k; m := n;
   ui_panel(g, u, f.panel.x0 - 2, f.panel.y0 - 2, f.panel.x1, f.panel.y1 + 2, FR_PANEL(), 0.95);
   m = ui_seg(out, m, f.panel.x1, 0, f.panel.x1, f.h, 0.5 * k, FR_RULE(), 1);
   m = fr_tracked(out, m, kicker, f.left, f.top + 9 * k, 8.4 * k, 3 * k, FR_ORANGE());
   base := f.top + 22 * k + em * k * 0.86;
   m = ui_put(out, m, F_TITLE, title, f.left, base, em * TITLE_CAP * k, FR_CREAM(), 1);
+  if second.count > 0 { base += em * k * 0.93; m = ui_put(out, m, F_TITLE, second, f.left, base, em * TITLE_CAP * k, FR_CREAM(), 1); }
   m = ui_seg(out, m, f.left + 1.5 * k, base + 11 * k, f.left + 62.5 * k, base + 11 * k, 1.5 * k, FR_ORANGE(), 1);
   return m;
 }
@@ -422,7 +425,7 @@ fr_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
   buf: [64] u8;
   name := cd_name(fs[0].doc[..]);
   if g[0].mode == M_CREW {
-    n = fr_head(g, out, u, n, f, "NEW RUN // REEL 01", "CHARACTER", 30);
+    n = fr_head(g, out, u, n, f, "NEW RUN // REEL 01", "CHARACTER", "", 30);
     rows := fs[0].rows[..];
     for i: 0..<rows[0].n {
       b := scr_row_box(f, rows, i); id := rows[0].id[i]; on := rows[0].focus == i;
@@ -445,14 +448,14 @@ fr_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
     return fr_hints(g, out, u, n, f, keys[..], words[..]);
   }
   if g[0].mode == M_CREDITS {
-    n = fr_head(g, out, u, n, f, "REEL 01 // CREDITS", "CREDITS", 30);
+    n = fr_head(g, out, u, n, f, "REEL 01 // CREDITS", "CREDITS", "", 30);
     for i: 0..<c[0].credits { n = ui_put(out, n, F_MONO, sc_credit(c, i), f.left, 214 * k + cast(f32) i * 26 * k, 8.4 * k, ifx i == 0 then FR_CREAM() else FR_HINT(), 1); }
     n = fr_row(g, out, u, n, f, scr_row_box(f, fs[0].back[..], 0), "BACK", true);
     keys := [2] string.["ENTER", "ESC"]; words := [2] string.["SELECT", "BACK"];
     return fr_hints(g, out, u, n, f, keys[..], words[..]);
   }
   // the title: REEL 01 is Splice's one reel; the menu is the table's rows
-  n = fr_head(g, out, u, n, f, "REEL 024 // DIRECTOR'S CUT", "SPLICE", 56);
+  n = fr_head(g, out, u, n, f, "REEL 024 // DIRECTOR'S CUT", "SPLICE", "BOTS", 56);
   m := fs[0].menu[..];
   for i: 0..<m[0].n {
     if !m[0].shown[i] { continue; }
