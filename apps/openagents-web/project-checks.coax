@@ -165,7 +165,7 @@
   p := Pen.{d = 1, fade = 1, time = 20, demo = false};
   w: [1] Work;
   read_work(w[..], COAX_WORK_ITEMS);
-  #assert rows(COAX_WORK_ITEMS) <= MAX_ITEMS && w[0].n == rows(COAX_WORK_ITEMS) && rows(VERSE_WORK_ITEMS) <= MAX_ITEMS;
+  #assert rows(COAX_WORK_ITEMS) <= MAX_ITEMS && w[0].n == rows(COAX_WORK_ITEMS) && rows(METAVERSE_WORK_ITEMS) <= MAX_ITEMS;
   b := Box.{x0 = 0, y0 = 0, x1 = 390, y1 = 700};
   n := real_queue(out[..], 0, b, p, w[..]);
   #assert n > 600;
