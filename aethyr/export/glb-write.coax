@@ -170,6 +170,11 @@ glb_same :: (buf: [] u32, a: int, b: int) -> bool {
   for w: 0..<VERTEX_WORDS { if buf[a * VERTEX_WORDS + w] != buf[b * VERTEX_WORDS + w] { return false; } }
   return true;
 }
+// Two vertices in the same place, whatever their normals and colours.
+glb_at :: (buf: [] u32, a: int, b: int) -> bool {
+  for w: 0..<3 { if buf[a * VERTEX_WORDS + w] != buf[b * VERTEX_WORDS + w] { return false; } }
+  return true;
+}
 glb_hash :: (buf: [] u32, v: int) -> int {
   h := 2166136261;   // 64-bit, kept to 32 bits: the product never overflows
   for w: 0..<VERTEX_WORDS { h = ((h ^ cast(int) buf[v * VERTEX_WORDS + w]) * 16777619) & 0xFFFFFFFF; h = h ^ (h >> 15); }
@@ -227,6 +232,9 @@ glb_meshes :: (buf: [] u32, vertices: int, keys: [] int, distinct: [] int, parts
     // welded vertices first, in the order the triangles first use them
     for t: 0..<tris {
       if keys[t] != k { continue; }
+      // a triangle with two corners in the same place has no area and draws nothing (a tube closed to a
+      // point makes them); importers drop it, so it is left out here and never counted
+      if glb_at(buf, t * 3, t * 3 + 1) || glb_at(buf, t * 3 + 1, t * 3 + 2) || glb_at(buf, t * 3, t * 3 + 2) { keys[t] = -2; continue; }
       for c: 0..<3 {
         v := t * 3 + c; slot := glb_hash(buf, v);
         while table[slot] >= 0 && !glb_same(buf, table[slot], v) { slot = (slot + 1) & (GLB_TABLE - 1); }
@@ -261,7 +269,7 @@ glb_meshes :: (buf: [] u32, vertices: int, keys: [] int, distinct: [] int, parts
       if gi == 0 || g.lo[a] < r.lo[a] { r.lo[a] = g.lo[a]; }
       if gi == 0 || g.hi[a] > r.hi[a] { r.hi[a] = g.hi[a]; }
     }
-    r.welded += g.vertices;
+    r.welded += g.vertices; r.triangles += g.triangles;
   }
   json: [1048576] u8; o: [1] Jo; jo_start(o[..], json[..]); name: [16] u8;
   jo_obj(o[..]);
@@ -323,7 +331,7 @@ glb_meshes :: (buf: [] u32, vertices: int, keys: [] int, distinct: [] int, parts
   at += json_n + json_pad;
   glb_u32(out, at, cast,trunc(u32) bin); glb_u32(out, at + 4, 0x004E4942); at += 8;
   for b: 0..<bin { out[at + b] = scratch[b]; }
-  r.ok = true; r.bytes = total; r.groups = n; r.vertices = vertices; r.triangles = tris;
+  r.ok = true; r.bytes = total; r.groups = n; r.vertices = vertices;
   return r;
 }
 
@@ -386,6 +394,16 @@ glb_meshes :: (buf: [] u32, vertices: int, keys: [] int, distinct: [] int, parts
   #assert groups[0].lo[0] == 2.75 && groups[1].lo[0] == -0.5 && groups[0].triangles == 12;
   bad := [1] GlbPart.[GlbPart.{name = "odd", first = 1, count = 36}];
   #assert !glb_parts(buf[..], bad[..], out[..], scratch[..], groups[..]).ok;
+}
+#test "a triangle with two corners in the same place is left out and not counted" {
+  buf: [9 * VERTEX_WORDS] u32; p: [1] Pen; pen_set(p[..], 1, MAT_FLAT, 1, 0, 0);
+  n := v3(0, 1, 0);
+  tri(buf[..], p[..], v3(1, 0, 1), v3(2, 0, 1), v3(1, 0, 2), n, n, n);
+  tri(buf[..], p[..], v3(1, 0, 1), v3(1, 0, 1), v3(3, 0, 3), n, v3(1, 0, 0), n);   // no area: one place, two normals
+  tri(buf[..], p[..], v3(2, 0, 1), v3(2, 0, 2), v3(1, 0, 2), n, n, n);
+  out: [8192] u8; scratch: [8192] u8; groups: [4] GlbGroup;
+  r := glb_world(buf[..], 9, 64, out[..], scratch[..], groups[..]);
+  #assert r.ok && r.triangles == 2 && r.groups == 1 && groups[0].triangles == 2 && groups[0].vertices == 4;
 }
 #test "an sRGB byte becomes linear: 0, 1 and the middle grey" {
   #assert glb_linear(0) == 0 && glb_linear(255) == 1;

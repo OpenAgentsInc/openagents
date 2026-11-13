@@ -416,11 +416,23 @@ check(len(meshes) == len(groups), "imported %d meshes, the manifest lists %d" % 
 # Unreal's glTF import turns Nanite on, and a Nanite mesh renders a reduced fallback where Nanite
 # is not supported (the web build has none). The export is the mesh, triangle for triangle.
 mesh_tools = unreal.get_editor_subsystem(unreal.StaticMeshEditorSubsystem)
-for mesh in meshes.values():
+
+
+def keep_every_triangle(mesh):
+    # Unreal's mesh build also drops triangles it finds degenerate (a sliver, a zero-area cap).
+    # The export is the mesh as the world drew it, so they stay.
+    build = mesh_tools.get_lod_build_settings(mesh, 0)
+    if build.remove_degenerates:
+        build.remove_degenerates = False
+        mesh_tools.set_lod_build_settings(mesh, 0, build)
     nanite = mesh.get_editor_property("nanite_settings")
     if nanite.enabled:
         nanite.enabled = False
         mesh_tools.set_nanite_settings(mesh, nanite, True)
+
+
+for mesh in meshes.values():
+    keep_every_triangle(mesh)
 
 # ---- the moving things' models: one mesh for each kind and variant
 thing_meshes = {}
@@ -437,10 +449,7 @@ if things:
     for data in registry.get_assets_by_path(GEN, recursive=True):
         asset = data.get_asset()
         if isinstance(asset, unreal.StaticMesh) and asset.get_name() in wanted:
-            nanite = asset.get_editor_property("nanite_settings")
-            if nanite.enabled:
-                nanite.enabled = False
-                mesh_tools.set_nanite_settings(asset, nanite, True)
+            keep_every_triangle(asset)
             thing_meshes[asset.get_name()] = asset
     checks.finish_compiling()
     for name, m in wanted.items():
