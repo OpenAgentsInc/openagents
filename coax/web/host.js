@@ -4133,7 +4133,7 @@ function playBarOpen() {
   if (playBarAsked || !engine || !location.pathname.startsWith("/worlds/") || new URLSearchParams(location.search).has("edit")) return;
   if (engine.exports.coaxial_pane || window.frameElement?.dataset?.zone === "1") return;
   playBarAsked = true;
-  const root = document.createElement("div"); // the play page's bar
+  const root = document.createElement("div"); // play bar
   root.id = "coaxial-play"; root.dataset.coaxialDock = "";
   document.body.appendChild(root);
   // the module names itself once its Wasm is in, after the import settles: its presses are taken from then on
