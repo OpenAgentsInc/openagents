@@ -1,6 +1,7 @@
 # Attachments: reference files on a project and its worlds
 
-Status: spec, 2026-11-13. Issue #13468.
+Status: built, 2026-11-13, except the `/projects/SLUG` list. Issue #13468.
+"As built" at the end says where the build differs from this spec.
 
 ## What we want
 
@@ -101,3 +102,44 @@ Then, in the editor: the pane lists them with previews; an image pins
 beside the scene; and the agent, asked "what does the raiders' garage look
 like in the concept art, and what in this world should change to match?",
 opens the right file and answers from it.
+
+## As built
+
+- **Storage.** Deployed, a file goes by direct upload to the drops bucket at
+  `PREFIX/attachments/SHA256`: the client names it by its SHA-256, the API
+  opens an upload session, the client sends the bytes there, and
+  `.../files/done` reads the object back, checks its size, hash and first
+  bytes, and attaches it, or deletes it. The lists are rows of
+  `verse.attachment_lists` (migration 0184). On the dev server the same
+  shared code (`metaverse-engine/editor/file-store.coax`) keeps the lists and
+  bytes under `apps/openagents-web/build/.worlds`, and takes a file whole or
+  in parts. The wire is `docs/protocol/world-files-v1.md`.
+- **The pane.** The pin is a card at the top of the Things pane, so the image
+  stays beside the scene while the Files pane is closed. Pins last for the
+  page, not across loads.
+- **The turn.** `world.turn.v1` lists attachments as `a ID KIND BYTES NAME`,
+  `an NOTE` and `at TAGS` lines, at most 24 (`docs/protocol/world-turn-v1.md`).
+  A hosted Gemini turn takes route `open` with at most 3 IDs; the server joins
+  them to that one model call, 8 MB a turn together.
+- **PDFs.** A PDF goes to Gemini as the file itself. Gemini reads a PDF's text
+  and its page images, so there is no separate text-first step.
+  `realm file-read` saves a PDF for a local agent to open.
+- **Not built yet.** `/projects/SLUG` does not list the project's attachments.
+  `GET /api/projects/SLUG/files` answers the list for members, and
+  `openagents realm files` shows it.
+
+## How it was checked
+
+On a dev server (`coax/web/serve.sh apps/openagents-web`), the eight images
+from the Concept art folder and a Markdown note about the raiders' garage
+were attached to Splice: seven images and the note by `openagents realm
+attach`, and one image ("City") by a headless drop on the pane
+(`coax drive ... "drop files.drop FILE"`). The pane showed the list with
+previews, and an image opened large and pinned. A real Gemini 3.8 Flash
+turn, asked the question above, opened `RaiderGarage.png`,
+`Raider garage inside.png` and the note, and described the garage from the
+art. It described a ring of salvage walls with numbered bunker bays outside,
+and a workshop inside with gantry cranes and mechs. It said the world has no
+things placed yet and proposed rovers, raiders, crates and dome houses as
+stand-ins. A second turn read a PDF and answered from its text.
+
