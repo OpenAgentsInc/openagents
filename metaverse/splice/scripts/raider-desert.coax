@@ -1,0 +1,54 @@
+// Splice's raiders, hostile only in the desert (GitHub #13485): a realm script that a world row runs for
+// "kind 1" (every raider). Out in the desert a raider that sees you does what its plan says on seeing you
+// (chase, call, flee), strikes within reach, and gives up when you leave the desert or get 15 metres away.
+// Anywhere else (the garage, the party, the solar farm's edge past the desert) it walks its plan and leaves
+// you alone, whatever its plan's ON says. The desert is the box below, the world's area "Desert" as the
+// designer laid it out: change both together.
+//   coax/web/script.sh metaverse/splice/scripts/raider-desert.coax --out DIR
+#script "splice-raider-desert";
+#load "../../../metaverse-engine/script/api.coax";
+
+PLAYER :: 1;                     // the player's id in a Splice frame (scripts.coax SPS_PLAYER)
+DESERT_X0 :: -60.0f32; DESERT_X1 :: 60.0f32; DESERT_Z0 :: 20.0f32; DESERT_Z1 :: 100.0f32;   // metres
+NOTICE_HEAT :: 0.07f32;          // metres further a raider sees for each point of heat (world 0)
+GIVE_UP :: 15.0f32;              // metres past which a chase or a flight ends
+REACH :: 0.95f32;                // metres within which it strikes
+CALL :: 1;                       // the event that calls the others (scripts.coax SPS_CALL)
+ON_CALL :: 1; ON_FLEE :: 2; ON_IGNORE :: 3;
+
+Mind :: struct #persisted { hits: s32; }
+
+in_desert :: (x: f32, z: f32) -> bool { return x >= DESERT_X0 && x <= DESERT_X1 && z >= DESERT_Z0 && z <= DESERT_Z1; }
+
+on_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) {
+  if sa_var(me, 2) > 0.0 { return; }   // staggered: Splice holds it still
+  d := sa_distance(me, PLAYER);
+  out := in_desert(sa_x(PLAYER), sa_z(PLAYER)) && sa_alive(PLAYER);
+  unseen := sa_world(2) != 0.0;
+  hostile := sa_var(me, 0) != 0.0; flee := sa_var(me, 1) != 0.0;
+  see := sa_notice(me); on := sa_plan_on(me);
+  if out && see > 0.0 && !unseen && !hostile && !flee && on != ON_IGNORE && d < see + sa_world(0) * NOTICE_HEAT {
+    if on == ON_FLEE { flee = true; } else { hostile = true; }
+    if on == ON_CALL { sa_emit(me, CALL, 0.0); }
+  }
+  if hostile && (!out || d > GIVE_UP || unseen) { hostile = false; }
+  if flee && (!out || d > GIVE_UP || unseen) { flee = false; }
+  sa_set_var(me, 0, ifx hostile then 1.0f32 else 0.0f32);
+  sa_set_var(me, 1, ifx flee then 1.0f32 else 0.0f32);
+  if hostile {
+    sa_move(me, sa_x(PLAYER), sa_z(PLAYER), sa_speed(me));
+    if d < REACH { sa_strike(me, PLAYER); }
+    return;
+  }
+  if flee {
+    x := sa_x(me); z := sa_z(me); k := 6.0 / (ifx d > 0.1 then d else 0.1f32);
+    sa_move(me, x + (x - sa_x(PLAYER)) * k, z + (z - sa_z(PLAYER)) * k, sa_speed(me));
+    return;
+  }
+  sa_move(me, sa_goal_x(me), sa_goal_z(me), sa_goal_speed(me));
+}
+// A raider you strike fights back where it stands, in the desert or not.
+on_hit :: (me: u64, mind: [] Mind, other: u64, amount: f32) #export_c #effects(reads, writes, traps) {
+  mind[0].hits += 1;
+  sa_set_var(me, 0, 1.0);
+}

@@ -382,7 +382,7 @@ spt_cell :: (out: [] u8, rev: int, table: string, row: int, col: string, value: 
   // the dome village has no foes: a route there is refused, and says where a route may go
   w := [1] SpwWork.[SpwWork.{}];
   b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "plans", 62, "route", "17720 -7060, 17720 -6000"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
-  #assert b.status == SPB_REFUSED && spt_why(t[..], b) == "plan 62: a foe's route stays in the mine: x -4400 to 4400, z -8200 to 2000 centimetres (the dome village is a stage of its own, with no foes in it)" && !w[0].ct[0].changed;
+  #assert b.status == SPB_REFUSED && spt_why(t[..], b) == "plan 62: a foe's route stays in the mine (x -4400 to 4400, z -8200 to 2000 centimetres) or an area added after it (ID 5 and up); the dome village, the gate corridor and the rail stop are stages of their own, with no foes in them" && !w[0].ct[0].changed;
   b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "plans", 62, "do", "stand"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
   #assert b.status == SPB_REFUSED && spt_why(t[..], b) == "plan 62: stand, dance, sleep and wander take one point, guard one or two (the post, then where it looks), patrol 2 to 8";
   b = spw_batch(g, w[..], empty, spt_cell(body[..], 0, "clock", 1, "when", "noon"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);

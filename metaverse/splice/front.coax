@@ -249,7 +249,7 @@ fr_act :: (g: [] SpGame, a: ScrAct) -> bool {
       // keep the character (the crew page's record too), let the old run go, and start a new one
       f[0].crew_n = hi_int(cd_write(f[0].doc[0], f[0].crew_text[..]), 0); if f[0].crew_n > 0 { f[0].crew_put = 1; }
       f[0].run_n = 0; f[0].run_put = 1; f[0].run[0] = SpRun.{};
-      g[0].mode = M_PLAY; g[0].look_free = false;
+      g_begin(g);   // the dome village, or the world's first start row (#13485)
     }
   }
   return true;

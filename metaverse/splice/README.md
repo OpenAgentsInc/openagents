@@ -105,6 +105,12 @@ the copy the page is built with. Run it after every edit.
 | `menu` | A title row: its key (`continue`, `new` or `credits`) and its label. The rows' order is the table's |
 | `credits` | A line of the credits screen |
 | `dolly` | A point of the title camera's path past the rover: the eye and where it looks, in centimetres in the rover's frame, and seconds to the next point |
+| `portals` | A way from one place to another: E at any placed piece of a kind (`kind K`) or at a point (`at X Z`) takes the player to `X Z`, facing a yaw. A vehicle that opens onto a room inside it is a portal from its kind ([the module](../../metaverse-engine/world/portal.coax)) |
+| `starts` | Where a player starts at a time of day. The row with the lowest ID is where a new run starts, at its time of day; a respawn at a time of day with a row goes to that row ([the module](../../metaverse-engine/world/flow.coax)) |
+| `beats` | Where the day moves on: standing in an area while it is `from` makes it `to`, never earlier |
+
+Splice now has 16 tables, the most a content document holds. A new kind of row goes in an
+existing table or needs the format's limit raised first.
 
 Edits and saves name a piece by its content ID. Names are for people and agents to read.
 
@@ -127,11 +133,15 @@ no model call at run time ([the module](../../metaverse-engine/ai/npc-plan.coax)
 | `on` | What it does on noticing you: `chase`, `call` (the others near it chase too), `flee` or `ignore` |
 
 The shipped rows are the movement Splice had in code, so play is unchanged. The table `clock` holds
-the editor's time of day (`story` in play). A route stays in the mine, and a point inside a wall
+the editor's time of day (`story` in play). A route stays in the mine or in an area added after it
+(ID 5 and up, such as a desert), and a point inside a wall
 is refused with the nearest place a foe can stand. `world.coax` checks both on every cell edit.
 
 An agent edits plans with the realm commands (`openagents realm world-foes`, `world-plan`,
 `world-route`, `world-time`; [the table](../../docs/protocol/world-edit-v1.md)). A behaviour the
+plans cannot express goes in a realm script first: `scripts/raider-desert.coax` makes raiders
+hostile only while the player is in the desert (`coax/web/script.sh`, then `world-script-compile`
+and `world-script-run --for "kind 1"`). Anything else the
 plans cannot express is a change to `splice-game.coax` (`g_foes_step`) on a dev server, which
 rebuilds and swaps the engine on save and keeps the world's plans and state.
 

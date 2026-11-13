@@ -1,0 +1,123 @@
+// A run's flow through the day (GitHub #13485): where a player starts at each time of day, and where
+// the time of day moves on, kept as rows of a realm's content tables and edited like any cell
+// (world.edit.v1 `cell`), so undo, the revision fence and the server's checks hold for them as for
+// every edit. This file is the rows' one codec and the rules; the realm moves the player and keeps
+// its clock. Times of day are npc-plan.coax's: dawn, day, dusk, night (0 to 3).
+//
+//   table starts id when:text at:text yaw:int
+//   ID|WHEN|AT|YAW       where a player starts at time of day WHEN: AT is "X Z", whole centimetres,
+//                        facing YAW whole degrees (-179 to 180). The row with the lowest ID is where a
+//                        run starts, at its WHEN; a realm that sends a player back (a respawn) at a
+//                        time of day with a row sends them to that row's place
+//
+//   table beats id area:int from:text to:text
+//   ID|AREA|FROM|TO      when a player stands in area AREA (the ID of a row of the realm's areas) while
+//                        it is FROM, the time of day becomes TO. A beat moves the day on: TO comes after
+//                        FROM (dawn, day, dusk, night), so no beat turns the clock back and no two beats
+//                        can loop
+// No row: the realm's own start and its own clock, as before.
+//   coax/bin/coax test metaverse-engine/world/flow.coax --library
+#load "../content/tables.coax";
+#load "../ai/npc-plan.coax";   // NPL_WHEN: the times of day
+
+FLW_STARTS :: "table starts id when:text at:text yaw:int";
+FLW_BEATS :: "table beats id area:int from:text to:text";
+FLW_MAX :: 16;              // rows of each table a world keeps
+FLW_REACH :: 1000000;       // centimetres either way a point may be
+
+FlowStart :: struct { ok: bool; id: int; when: int; x: int; z: int; yaw: int; }
+FlowBeat :: struct { ok: bool; id: int; area: int; from: int; to: int; }
+FLW_OK :: 0; FLW_BAD_ID :: 1; FLW_BAD_WHEN :: 2; FLW_BAD_AT :: 3; FLW_BAD_YAW :: 4; FLW_BAD_AREA :: 5; FLW_BACK :: 6; FLW_TOO_MANY :: 7;
+
+flw_why :: (why: int) -> string {
+  if why == FLW_BAD_ID { return "an ID is 1 and up"; }
+  if why == FLW_BAD_WHEN { return "a time of day is dawn, day, dusk or night"; }
+  if why == FLW_BAD_AT { return "AT is X Z, whole centimetres"; }
+  if why == FLW_BAD_YAW { return "YAW is whole degrees, -179 to 180"; }
+  if why == FLW_BAD_AREA { return "AREA is the ID of one of the world's areas"; }
+  if why == FLW_BACK { return "a beat moves the day on: TO comes after FROM (dawn, day, dusk, night)"; }
+  if why == FLW_TOO_MANY { return "a world keeps 16 starts and 16 beats"; }
+  return "";
+}
+flw_when :: (s: string) -> int { w := NPL_WHEN; return npl_word(w[..], s); }
+
+flw_start_read :: (id: int, when: string, at: string, yaw: int, s: [] FlowStart) -> int {
+  s[0] = FlowStart.{};
+  if id < 1 { return FLW_BAD_ID; }
+  w := flw_when(when);
+  if w < 0 { return FLW_BAD_WHEN; }
+  if at.count == 0 || ct_parts(at, ' ') != 2 { return FLW_BAD_AT; }
+  x := ct_num(ct_part(at, ' ', 0)); z := ct_num(ct_part(at, ' ', 1));
+  if !x.ok || !z.ok || x.v < -FLW_REACH || x.v > FLW_REACH || z.v < -FLW_REACH || z.v > FLW_REACH { return FLW_BAD_AT; }
+  if yaw < -179 || yaw > 180 { return FLW_BAD_YAW; }
+  s[0] = FlowStart.{ok = true, id = id, when = w, x = x.v, z = z.v, yaw = yaw};
+  return FLW_OK;
+}
+// `area_ok`: whether AREA names one of the realm's areas (the realm asks its own table).
+flw_beat_read :: (id: int, area: int, from: string, to: string, area_ok: bool, b: [] FlowBeat) -> int {
+  b[0] = FlowBeat.{};
+  if id < 1 { return FLW_BAD_ID; }
+  if !area_ok || area < 1 { return FLW_BAD_AREA; }
+  f := flw_when(from); t := flw_when(to);
+  if f < 0 || t < 0 { return FLW_BAD_WHEN; }
+  if t <= f { return FLW_BACK; }
+  b[0] = FlowBeat.{ok = true, id = id, area = area, from = f, to = t};
+  return FLW_OK;
+}
+
+// Where a run starts: the row with the lowest ID (rows ascend by ID, so the first ok one), or -1.
+flw_first :: (s: [] FlowStart, n: int) -> int {
+  for k: 0..<n { if s[k].ok { return k; } }
+  return -1;
+}
+// Where a player sent back at time of day `when` goes: that time's first row, or -1.
+flw_at :: (s: [] FlowStart, n: int, when: int) -> int {
+  for k: 0..<n { if s[k].ok && s[k].when == when { return k; } }
+  return -1;
+}
+// The time of day after a step: `when` moved on by the first beat whose area the player stands in
+// (inside[k]: whether they stand in beat k's area), or `when` as it was.
+flw_step :: (b: [] FlowBeat, n: int, inside: [] bool, when: int) -> int {
+  for k: 0..<n { if b[k].ok && inside[k] && b[k].from == when { return b[k].to; } }
+  return when;
+}
+
+#test "a start reads: a time of day, a point and a way to face" {
+  s: [1] FlowStart;
+  #assert flw_start_read(1, "day", "1500 3500", 90, s[..]) == FLW_OK && s[0].ok && s[0].when == 1 && s[0].x == 1500 && s[0].z == 3500 && s[0].yaw == 90;
+  #assert flw_start_read(2, "night", "-1000000 1000000", -179, s[..]) == FLW_OK && s[0].when == 3;
+  #assert flw_start_read(0, "day", "0 0", 0, s[..]) == FLW_BAD_ID && !s[0].ok;
+  #assert flw_start_read(1, "noon", "0 0", 0, s[..]) == FLW_BAD_WHEN && flw_start_read(1, "", "0 0", 0, s[..]) == FLW_BAD_WHEN;
+  bad := [6] string.["", "1", "1 2 3", "x 2", "1000001 0", "0 -1000001"];
+  for a: bad { #assert flw_start_read(1, "dawn", a, 0, s[..]) == FLW_BAD_AT; }
+  #assert flw_start_read(1, "dawn", "0 0", 181, s[..]) == FLW_BAD_YAW && flw_start_read(1, "dawn", "0 0", -180, s[..]) == FLW_BAD_YAW && flw_start_read(1, "dawn", "0 0", 180, s[..]) == FLW_OK;
+}
+#test "a beat reads, names an area the realm has and only moves the day on" {
+  b: [1] FlowBeat;
+  #assert flw_beat_read(1, 5, "day", "dusk", true, b[..]) == FLW_OK && b[0].ok && b[0].area == 5 && b[0].from == 1 && b[0].to == 2;
+  #assert flw_beat_read(2, 5, "dawn", "night", true, b[..]) == FLW_OK;
+  #assert flw_beat_read(1, 5, "day", "dusk", false, b[..]) == FLW_BAD_AREA && !b[0].ok && flw_beat_read(1, 0, "day", "dusk", true, b[..]) == FLW_BAD_AREA;
+  #assert flw_beat_read(1, 5, "dusk", "day", true, b[..]) == FLW_BACK && flw_beat_read(1, 5, "day", "day", true, b[..]) == FLW_BACK;
+  #assert flw_beat_read(1, 5, "noon", "dusk", true, b[..]) == FLW_BAD_WHEN && flw_beat_read(1, 5, "day", "", true, b[..]) == FLW_BAD_WHEN;
+  #assert flw_beat_read(0, 5, "day", "dusk", true, b[..]) == FLW_BAD_ID;
+  for w: 1..<8 { #assert flw_why(w).count > 0; }
+  #assert flw_why(FLW_OK) == "";
+}
+#test "a run starts at the lowest row; a respawn goes to its time of day's row; a beat moves the clock where you stand" {
+  s: [3] FlowStart;
+  _ := flw_start_read(2, "day", "1500 3500", 0, s[0..<1]);
+  _ = flw_start_read(3, "night", "0 -4500", 0, s[1..<2]);
+  #assert flw_first(s[..], 2) == 0 && flw_first(s[..], 0) == -1;
+  #assert flw_at(s[..], 2, 3) == 1 && flw_at(s[..], 2, 1) == 0 && flw_at(s[..], 2, 0) == -1 && flw_at(s[..], 2, 2) == -1;
+  b: [2] FlowBeat; in: [2] bool;
+  _ = flw_beat_read(1, 7, "day", "dusk", true, b[0..<1]);
+  _ = flw_beat_read(2, 4, "dusk", "night", true, b[1..<2]);
+  in[0] = true; in[1] = false;
+  #assert flw_step(b[..], 2, in[..], 1) == 2;     // in the garage by day: dusk
+  #assert flw_step(b[..], 2, in[..], 2) == 2;     // and it stays dusk there
+  in[1] = true;
+  #assert flw_step(b[..], 2, in[..], 2) == 3;     // in the mine at dusk: night
+  #assert flw_step(b[..], 2, in[..], 0) == 0;     // no beat from dawn
+  in[0] = false; in[1] = false;
+  #assert flw_step(b[..], 2, in[..], 1) == 1 && flw_step(b[..], 0, in[..], 1) == 1;
+}

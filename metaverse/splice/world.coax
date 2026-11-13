@@ -305,9 +305,19 @@ spw_plan_wall :: (g: [] SpGame, c: [] SpContent) -> SpwWall {
   }
   return SpwWall.{};
 }
-// The nearest place to (x, z) a foe can stand inside the mine: rings half a metre apart, 16
-// points each, out to 12 metres; the mine's middle when none holds.
+// The nearest place to (x, z) a foe can stand on the ground foes walk (the mine and the areas added
+// after it, content.coax sc_foe_ground): rings half a metre apart, 16 points each, out to 12 metres;
+// the mine's middle when none holds.
 SpwAt :: struct { x: f32; z: f32; }
+spw_foe_ground :: (c: [] SpContent, x: f32, z: f32) -> bool {
+  for a: 0..<c[0].area_n {
+    m := c[0].areas[a];
+    if m.id < SC_FOE_AREA { continue; }
+    if m.r > 0 { if dist2(x, z, m.x, m.z) <= m.r - 0.5 { return true; } }
+    else if x >= m.x - m.hx + 0.5 && x <= m.x + m.hx - 0.5 && z >= m.z - m.hz + 0.5 && z <= m.z + m.hz - 0.5 { return true; }
+  }
+  return false;
+}
 spw_stand_near :: (g: [] SpGame, c: [] SpContent, x: f32, z: f32) -> SpwAt {
   lo_x: f32 = -44; hi_x: f32 = 44; lo_z: f32 = -82; hi_z: f32 = 20;
   for a: 0..<c[0].area_n { m := c[0].areas[a]; if m.id == SC_FOE_AREA { lo_x = m.x - m.hx + 0.5; hi_x = m.x + m.hx - 0.5; lo_z = m.z - m.hz + 0.5; hi_z = m.z + m.hz - 0.5; } }
@@ -316,7 +326,7 @@ spw_stand_near :: (g: [] SpGame, c: [] SpContent, x: f32, z: f32) -> SpwAt {
     for k: 0..<16 {
       t := cast(f32) k * 0.3926991;
       px := x + d * cos(t); pz := z + d * sin(t);
-      if px >= lo_x && px <= hi_x && pz >= lo_z && pz <= hi_z {
+      if spw_foe_ground(c, px, pz) {
         q := sl_push(g, px, pz, 0.3, true);
         if abs(q.x - px) < 0.005 && abs(q.z - pz) < 0.005 { return SpwAt.{x = px, z = pz}; }
       }
