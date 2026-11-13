@@ -103,6 +103,38 @@ hours (12 unless asked, never off), and $5.00 of box time a UTC day,
 counting what the boxes up will cost until they auto-stop. A start that
 would cross the cap is cut short or refused. `ls` and `cost` print them all.
 
+## From Coder and the local /chat: `--on boat:ID`
+
+Stage 3 made a box one of Coder's machines, beside `ssh:DEST` and `cloud`:
+
+```sh
+coder run "Work on #NNNN" --engine claude --detach --on boat:bx_fwh3xnws   # resumes it under the policy if stopped
+coder ls --on boat:bx_fwh3xnws
+coder log ID        # the session's record (sessions/ID.remote) says it lives on the box
+```
+
+A `run` or `fork` that finds the box stopped resumes it under the dev box
+policy. Every other verb only uses a box that is already up. After the box
+is up, the route rewrites its SSH entry (a new address and host key after
+every resume) and is then the `ssh:` route, in the box's checkout `~/oa`. A
+session started this way leaves `sessions/ID.remote` with the box, task and
+engine. `status`, `log`, `stop`, `attach` and `replay` of that ID refresh
+the entry and go to the box.
+
+The /chat page served locally reaches box sessions through Coder's `/local/`
+side (`coder mcp --http`):
+
+- `GET /sessions` lists them beside this machine's sessions, with state `on boat`.
+- `GET /log` reads a box session's log over SSH, with the same offsets.
+- `POST /send` continues the conversation on the box (`fork --same-conversation`).
+- `POST /stop` stops it there.
+- `POST /run` with `"on": "boat:ID"` starts one there.
+
+Checked end to end on 2026-11-13 against a loopback boat fake and this
+box's own sshd: the SSH entry with strict host-key checking, `coder ls` and
+`run` on the box, its record, and `/sessions` and `/log` through
+`coder mcp --http`.
+
 ## Stop
 
 ```sh

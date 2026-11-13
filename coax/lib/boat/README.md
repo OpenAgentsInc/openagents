@@ -11,6 +11,7 @@ boat's v1 HTTP API: no CLI wrapper, no generated client.
 | `client.coax` | `BoatClient` on the gateway's curl transport (`coax/lib/gateway/transport.coax`): one synchronous call, or an NDJSON stream read line by line without blocking. Holds the hosted guard, and a fake for checks |
 | `boat.coax` | The calls: limits; create, get, list, stop, resume, set the auto-stop, delete, usage, wait until up; commands synchronous, streamed, and detached with attach, status and kill; files; saved snapshots; SSH keys; environments |
 | `policy.coax` | `#authority`, zero surviving mutants: the sizes we use, 2 boxes at once, auto-stop 15 minutes to 24 hours (12 by default, never off), $5.00 of box time a UTC day, and which calls may be retried and when |
+| `local.coax` | The SDK on the machine you work from: the key from `~/.openagents/boat/api-key`, today's spend and boxes, a box brought up under the policy (`bt_bring_up`), and the SSH entry refreshed (`bt_ssh_refresh`). `tool.sh boat` and Coder's `--on boat:ID` share it |
 | `ssh.coax` | The `~/.ssh/config` block (`Host boat-ID`) and the strict known-hosts line, rewritten from boat's `sshkey` answer after every resume |
 | `checks.coax` | Every call and error against canned answers. No check sends anything |
 

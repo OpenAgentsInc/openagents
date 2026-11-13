@@ -17,16 +17,12 @@
 // BOAT_API_BASE points at another Boat-shaped service.
 
 #load "../lib/sys/tool.coax";
-#load "../lib/sys/fs.coax";
 #load "../lib/sys/proc.coax";
-#load "../lib/boat/boat.coax";
-
-BX_TEMPLATE :: "oa-devbox-20261113";
-BX_ENV :: "oa-devbox";
-BX_KEY_FILE :: "/.openagents/boat/api-key";    // under $HOME
+#load "../lib/boat/local.coax";
 
 BxIo :: struct {
   out: [262144] u8;
+  list: [262144] u8;
   arena: [65536] u8;
   ar: [1] ClArena;
   key: [512] u8;
@@ -35,16 +31,7 @@ BxIo :: struct {
 
 bx_io :: (io: [] BxIo) -> BoatClient {
   io[0].ar[0] = ClArena.{buf = io[0].arena[..]};
-  c := bt_client_env(io[0].base[..]);
-  kb: [8] u8;
-  if proc_getenv(BT_KEY_ENV, kb[..]).count == 0 {
-    hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
-    pb: [1200] u8; pn := json_raw(pb[..], json_raw(pb[..], 0, home), BX_KEY_FILE);
-    n := fs_read(cast(string) pb[0..<pn], io[0].key[..]);
-    while n > 0 && (io[0].key[n - 1] == '\n' || io[0].key[n - 1] == ' ' || io[0].key[n - 1] == '\r') { n -= 1; }
-    if n > 0 { c.key_value = cast(string) io[0].key[0..<n]; }
-  }
-  return c;
+  return bt_local_client(io[0].base[..], io[0].key[..]);
 }
 
 bx_reset :: (io: [] BxIo) { io[0].ar[0].at = 0; io[0].ar[0].full = false; }
@@ -69,50 +56,7 @@ bx_fail :: (what: string, e: BtError) -> int {
   return 1;
 }
 
-// Today's UTC midnight as boat takes it, from `date -u`.
-bx_day_start :: (out: [] u8) -> string {
-  argv := [3] string.["date", "-u", "+%Y-%m-%dT00:00:00.000Z"];
-  err: [256] u8;
-  r := proc_run(argv[..], 5000, out, err[..]);
-  n := r.out_n; while n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r') { n -= 1; }
-  return ifx r.status == 0 then cast(string) out[0..<n] else "";
-}
-
-// Our boxes and what they cost: the state the policy decides from.
-BxDay :: struct {
-  boxes: [32] BtSandbox; n: int;
-  up: int;
-  spent_mc: int;          // today, all our boxes
-  committed_mc: int;      // what the boxes up will cost until they auto-stop
-  limits: BtLimits;
-  error: BtError;
-  what: string;
-}
-
-// Reads it all; strings in d borrow from io's buffers, so read d before another call.
-bx_day :: (c: BoatClient, io: [] BxIo, d: [] BxDay, out: [] u8) {
-  d[0] = BxDay.{};
-  r := bt_limits(c, io[0].out[..], io[0].ar[..]);
-  if bt_failed(r.error) { d[0].error = r.error; d[0].what = "limits"; return; }
-  d[0].limits = bt_read_limits(io[0].ar[..], r.body);
-  // the list goes into out, which stays put while usage is asked into io's buffer
-  r = bt_list(c, "", BP_PREFIX, "", out, io[0].ar[..]);
-  if bt_failed(r.error) { d[0].error = r.error; d[0].what = "list"; return; }
-  d[0].n = bt_read_list(io[0].ar[..], r.body, d[0].boxes[..]);
-  if d[0].n < 0 { d[0].n = 0; }
-  db: [64] u8; day := bx_day_start(db[..]);
-  for i: 0..<d[0].n {
-    b := d[0].boxes[i];
-    if !bp_ours(b.name) { continue; }
-    if !bt_down(b) && !bt_broken(b) { d[0].up += 1; d[0].committed_mc += bp_cost_mc(b.type, ifx b.ttl_s > 0 then b.ttl_s else BP_TTL_MAX_S); }
-    u := bt_usage(c, b.id, day, io[0].out[..], io[0].ar[..]);
-    if bt_failed(u.error) { continue; }
-    us := bt_read_usage(io[0].ar[..], u.body);
-    if us.ok { d[0].spent_mc += us.millicents; }
-  }
-}
-
-bx_caps :: (d: [] BxDay) {
+bx_caps :: (d: [] BtDay) {
   a: [32] u8; b: [32] u8; m: [32] u8;
   print("caps: sizes small, default, large (large unless asked) · % boxes at once · auto-stop 15 min to 24 h, 12 h unless asked · % a UTC day\n", BP_MAX_UP, bx_money(m[..], BP_DAY_CAP_MC));
   print("today: % spent, % more if the boxes up run to their auto-stop · % of % up\n", bx_money(a[..], d[0].spent_mc), bx_money(b[..], d[0].committed_mc), d[0].up, BP_MAX_UP);
@@ -120,23 +64,17 @@ bx_caps :: (d: [] BxDay) {
   print("boat: plan %, % included hours left (default size), starts left % this minute, % today%\n", l.plan, l.included_left_s / 3600, l.minute.remaining, l.day.remaining, ifx l.can_start then "" else " · boat refuses starts now");
 }
 
-bx_ls :: (c: BoatClient, io: [] BxIo) -> int {
-  d: [1] BxDay; lb: [262144] u8;
-  bx_day(c, io, d[..], lb[..]);
+bx_ls :: (c: BoatClient, io: [] BxIo, boxes: bool) -> int {
+  d: [1] BtDay;
+  bt_day(c, d[..], io[0].list[..], io[0].out[..], io[0].ar[..]);
   if bt_failed(d[0].error) { return bx_fail(d[0].what, d[0].error); }
-  for i: 0..<d[0].n {
-    b := d[0].boxes[i];
-    print("% %  %  %  %  %\n", b.id, b.name, b.state, b.type, ifx b.ip.count > 0 then b.ip else "-", ifx bt_up(b) && b.archive_after.count > 0 then b.archive_after else "");
+  if boxes {
+    for i: 0..<d[0].n {
+      b := d[0].boxes[i];
+      print("% %  %  %  %  %\n", b.id, b.name, b.state, b.type, ifx b.ip.count > 0 then b.ip else "-", ifx bt_up(b) && b.archive_after.count > 0 then b.archive_after else "");
+    }
+    if d[0].n == 0 { print("no dev boxes (names start %)\n", BP_PREFIX); }
   }
-  if d[0].n == 0 { print("no dev boxes (names start %)\n", BP_PREFIX); }
-  bx_caps(d[..]);
-  return 0;
-}
-
-bx_cost :: (c: BoatClient, io: [] BxIo) -> int {
-  d: [1] BxDay; lb: [262144] u8;
-  bx_day(c, io, d[..], lb[..]);
-  if bt_failed(d[0].error) { return bx_fail(d[0].what, d[0].error); }
   bx_caps(d[..]);
   return 0;
 }
@@ -144,37 +82,22 @@ bx_cost :: (c: BoatClient, io: [] BxIo) -> int {
 // The auto-stop for --hours H (0: the policy's default), or -1 refused.
 bx_hours :: (args: [] Args) -> int {
   h := args_value(args, "--hours", "");
-  if h.count == 0 { return bp_ttl(0); }
+  if h.count == 0 { return 0; }
   v := args_whole(h);
-  return ifx v <= 0 then -1 else bp_ttl(v * 3600);
+  return ifx v <= 0 || bp_ttl(v * 3600) < 0 then -1 else v * 3600;
 }
 
-// The SSH entry, fresh: register ~/.ssh/id_ed25519.pub, rewrite the config block and known_hosts.
 bx_ssh_entry :: (c: BoatClient, io: [] BxIo, id: string) -> int {
-  hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
-  pk: [4096] u8; pp: [1200] u8;
-  pkn := fs_read(cast(string) pp[0..<json_raw(pp[..], json_raw(pp[..], 0, home), "/.ssh/id_ed25519.pub")], pk[..]);
-  if pkn <= 0 { tool_errln("boat: no ~/.ssh/id_ed25519.pub to let in (ssh-keygen -t ed25519)"); return 1; }
-  while pkn > 0 && (pk[pkn - 1] == '\n' || pk[pkn - 1] == ' ') { pkn -= 1; }
   bx_reset(io);
-  r := bt_sshkey(c, id, cast(string) pk[0..<pkn], io[0].out[..], io[0].ar[..]);
-  if bt_failed(r.error) { return bx_fail("sshkey", r.error); }
-  s := bt_read_ssh(io[0].ar[..], r.body);
-  kp: [1200] u8; known := cast(string) kp[0..<json_raw(kp[..], json_raw(kp[..], 0, home), BT_SSH_KNOWN)];
-  db: [1200] u8; x := fs_mkdir(cast(string) db[0..<json_raw(db[..], json_raw(db[..], 0, home), "/.openagents")]);
-  x = fs_mkdir(fs_dir(known));
-  bb: [2048] u8; block := bt_ssh_block(bb[..], id, s, known);
-  lb: [8192] u8; line := bt_ssh_known_line(lb[..], id, s);
-  if block.count == 0 || line.count == 0 { tool_errln("boat: boat's SSH answer holds no address or host key we can write safely"); return 1; }
-  cp: [1200] u8; cfg := cast(string) cp[0..<json_raw(cp[..], json_raw(cp[..], 0, home), "/.ssh/config")];
-  old: [262144] u8; on := fs_read(cfg, old[..]); if on < 0 { on = 0; }
-  nb: [270336] u8; nc := bt_ssh_config(nb[..], cast(string) old[0..<on], id, block);
-  ok: [262144] u8; kn := fs_read(known, ok[..]); if kn < 0 { kn = 0; }
-  kb: [270336] u8; nk := bt_ssh_known(kb[..], cast(string) ok[0..<kn], id, line);
-  if nc.count == 0 || nk.count == 0 || !fs_write(cfg, nc) || !fs_write(known, nk) { tool_errln("boat: could not write ~/.ssh/config or the known hosts"); return 1; }
+  why := bt_ssh_refresh(c, id, io[0].out[..], io[0].ar[..]);
+  if why.count > 0 { tool_err("boat: ssh: "); tool_errln(why); return 1; }
   ab: [32] u8;
   print("ssh %   (entry in ~/.ssh/config, host key in ~%)\n", bt_ssh_alias(ab[..], id), BT_SSH_KNOWN);
   return 0;
+}
+
+bx_up_said :: (id: string, u: BtUp) {
+  print("% is %, auto-stop in % h % min%\n", id, u.sandbox.state, u.run.ttl_s / 3600, (u.run.ttl_s % 3600) / 60, ifx u.run.cut then " (cut so today stays under the cap)" else "");
 }
 
 bx_up :: (c: BoatClient, io: [] BxIo, args: [] Args) -> int {
@@ -182,47 +105,33 @@ bx_up :: (c: BoatClient, io: [] BxIo, args: [] Args) -> int {
   type := args_value(args, "--type", BP_TYPE);
   ttl := bx_hours(args);
   if ttl < 0 { tool_errln("boat: --hours is 1 to 24"); return 2; }
-  d: [1] BxDay; lb: [262144] u8;
-  bx_day(c, io, d[..], lb[..]);
+  d: [1] BtDay;
+  bt_day(c, d[..], io[0].list[..], io[0].out[..], io[0].ar[..]);
   if bt_failed(d[0].error) { return bx_fail(d[0].what, d[0].error); }
-  code := bp_admit(type, bp_ours(name), d[0].up, d[0].limits.can_start, ttl, d[0].spent_mc, d[0].committed_mc);
+  code := bp_admit(type, bp_ours(name), d[0].up, d[0].limits.can_start, bp_ttl(ttl), d[0].spent_mc, d[0].committed_mc);
   if code != BP_OK { tool_err("boat: no: "); tool_errln(bp_words(code)); return 1; }
-  run := bp_run(type, ttl, d[0].spent_mc, d[0].committed_mc);
-  if run.cut { print("auto-stop cut to % min so today stays under the cap\n", run.ttl_s / 60); }
-  ib: [64] u8; idem := cast(string) ib[0..<json_write_int(ib[..], json_raw(ib[..], json_raw(ib[..], 0, name), "-"), proc_now_ns() / 1000000)];
+  u: BtUp; u.run = bp_run(type, bp_ttl(ttl), d[0].spent_mc, d[0].committed_mc);
+  ib: [96] u8; idem := cast(string) ib[0..<json_write_int(ib[..], json_raw(ib[..], json_raw(ib[..], 0, name), "-"), proc_now_ns() / 1000000)];
   bx_reset(io);
-  r := bt_create(c, BtCreate.{from = args_value(args, "--from", BX_TEMPLATE), type = type, environment = args_value(args, "--env", BX_ENV), name = name, ttl_s = run.ttl_s}, idem, io[0].out[..], io[0].ar[..]);
+  r := bt_create(c, BtCreate.{from = args_value(args, "--from", BT_TEMPLATE), type = type, environment = args_value(args, "--env", BT_ENV), name = name, ttl_s = u.run.ttl_s}, idem, io[0].out[..], io[0].ar[..]);
   if bt_failed(r.error) { return bx_fail("create", r.error); }
   s := bt_read_sandbox(io[0].ar[..], r.body);
   idb: [16] u8; for ch, i: s.id { if i < 16 { idb[i] = ch; } }
   id := cast(string) idb[0..<s.id.count];
   w := bt_wait_up(c, id, 180, io[0].out[..], io[0].ar[..]);
   if bt_failed(w.error) { return bx_fail("wait", w.error); }
-  print("% % is %, auto-stop in % h % min\n", id, name, w.sandbox.state, run.ttl_s / 3600, (run.ttl_s % 3600) / 60);
+  u.sandbox = w.sandbox;
+  bx_up_said(id, u);
   return bx_ssh_entry(c, io, id);
 }
 
 bx_resume :: (c: BoatClient, io: [] BxIo, id: string, args: [] Args) -> int {
   ttl := bx_hours(args);
   if ttl < 0 { tool_errln("boat: --hours is 1 to 24"); return 2; }
-  d: [1] BxDay; lb: [262144] u8;
-  bx_day(c, io, d[..], lb[..]);
-  if bt_failed(d[0].error) { return bx_fail(d[0].what, d[0].error); }
-  me := -1;
-  for i: 0..<d[0].n { if d[0].boxes[i].id == id { me = i; } }
-  if me < 0 { tool_errln("boat: not one of our dev boxes (names start oa-devbox)"); return 1; }
-  b := d[0].boxes[me];
-  if bt_up(b) { print("% is up already\n", id); return bx_ssh_entry(c, io, id); }
-  code := bp_admit(b.type, bp_ours(b.name), d[0].up, d[0].limits.can_start, ttl, d[0].spent_mc, d[0].committed_mc);
-  if code != BP_OK { tool_err("boat: no: "); tool_errln(bp_words(code)); return 1; }
-  run := bp_run(b.type, ttl, d[0].spent_mc, d[0].committed_mc);
-  bx_reset(io);
-  r := bt_resume(c, id, BtResume.{ttl_s = run.ttl_s}, io[0].out[..], io[0].ar[..]);
-  if r.error.kind == BtErrKind.stopping { print("% is still stopping; resuming it as soon as boat lets us\n", id); bt_pause(c, 5); r = bt_resume(c, id, BtResume.{ttl_s = run.ttl_s}, io[0].out[..], io[0].ar[..]); }
-  if bt_failed(r.error) { return bx_fail("resume", r.error); }
-  w := bt_wait_up(c, id, 180, io[0].out[..], io[0].ar[..]);
-  if bt_failed(w.error) { return bx_fail("wait", w.error); }
-  print("% is %, auto-stop in % h % min\n", id, w.sandbox.state, run.ttl_s / 3600, (run.ttl_s % 3600) / 60);
+  u := bt_bring_up(c, id, true, ttl, io[0].list[..], io[0].out[..], io[0].ar[..]);
+  if u.refused != BP_OK { tool_err("boat: no: "); tool_errln(bp_words(u.refused)); return 1; }
+  if bt_failed(u.error) { return bx_fail("resume", u.error); }
+  if u.resumed { bx_up_said(id, u); } else { print("% is up already\n", id); }
   return bx_ssh_entry(c, io, id);
 }
 
@@ -262,8 +171,8 @@ tool_main :: () -> int #export_c #effects(all) {
   c := bx_io(io[..]);
   verb := args_at(args[..], 0);
   id := ifx args_count(args[..]) > 1 then args_at(args[..], 1) else "";
-  if verb == "ls" { return bx_ls(c, io[..]); }
-  if verb == "cost" { return bx_cost(c, io[..]); }
+  if verb == "ls" { return bx_ls(c, io[..], true); }
+  if verb == "cost" { return bx_ls(c, io[..], false); }
   if verb == "up" { return bx_up(c, io[..], args[..]); }
   if !bt_id_ok(id) { tool_errln("boat: name the box by its id (bx_...): coax/web/tool.sh boat ls"); return 2; }
   if verb == "resume" { return bx_resume(c, io[..], id, args[..]); }

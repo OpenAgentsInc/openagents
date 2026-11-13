@@ -1,0 +1,148 @@
+// The SDK on the machine a person or Coder works from (GitHub #13474,
+// stages 2 and 3): the key from its file, today's spend and boxes as the
+// policy needs them, bringing a box up under the policy, and the SSH entry
+// written after every resume. `coax/web/tool.sh boat` and Coder's
+// --on boat:ID (coder/tui/remote.coax) share it.
+
+#load "boat.coax";
+#load "../sys/fs.coax";
+#load "../agent/session/writer.coax";    // sw_civil and sw_digits for the day, cxproc_wall_us
+
+BT_KEY_FILE :: "/.openagents/boat/api-key";       // under $HOME, mode 0600
+BT_TEMPLATE :: "oa-devbox-20261113";               // what `up` starts from (stage 5 rotates it)
+BT_ENV :: "oa-devbox";                             // the environment that gives a box its two tokens
+
+// The client from the environment, with the key from BT_KEY_FILE when
+// BOAT_API_KEY is unset. key and base hold what the client borrows.
+bt_local_client :: (base: [] u8, key: [] u8) -> BoatClient {
+  c := bt_client_env(base);
+  kb: [8] u8;
+  if cl_getenv(BT_KEY_ENV, kb[..]).count > 0 { return c; }
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  pb: [1200] u8; pn := json_raw(pb[..], json_raw(pb[..], 0, home), BT_KEY_FILE);
+  if home.count == 0 || pn < 0 { return c; }
+  n := fs_read(cast(string) pb[0..<pn], key);
+  while n > 0 && (key[n - 1] == '\n' || key[n - 1] == ' ' || key[n - 1] == '\r') { n -= 1; }
+  if n > 0 { c.key_value = cast(string) key[0..<n]; }
+  return c;
+}
+
+// Today's UTC midnight as boat takes it ("2026-11-13T00:00:00.000Z"), from
+// the wall clock; "" when there is none.
+bt_day_start :: (out: [] u8) -> string {
+  us := cxproc_wall_us();
+  if us <= 0 { return ""; }
+  ymd := sw_civil(us / 1000000 / 86400);
+  n := sw_digits(out, 0, ymd / 10000, 4); n = sw_cat(out, n, "-"); n = sw_digits(out, n, (ymd / 100) % 100, 2);
+  n = sw_cat(out, n, "-"); n = sw_digits(out, n, ymd % 100, 2); n = sw_cat(out, n, "T00:00:00.000Z");
+  return cast(string) out[0..<n];
+}
+
+// Our boxes (named BP_PREFIX...) and what they cost: what the policy decides from.
+BtDay :: struct {
+  boxes: [32] BtSandbox; n: int;
+  up: int;
+  spent_mc: int;          // today, all our boxes
+  committed_mc: int;      // what the boxes up will cost until they auto-stop
+  limits: BtLimits;
+  error: BtError;
+  what: string;           // the call that failed
+}
+
+// Reads it all. The list stays in list (keep it while you read d); usage is
+// asked into out, which the caller may reuse afterwards.
+bt_day :: (c: BoatClient, d: [] BtDay, list: [] u8, out: [] u8, ar: [] ClArena) {
+  d[0] = BtDay.{};
+  r := bt_limits(c, out, ar);
+  if bt_failed(r.error) { d[0].error = r.error; d[0].what = "limits"; return; }
+  d[0].limits = bt_read_limits(ar, r.body);
+  r = bt_list(c, "", BP_PREFIX, "", list, ar);
+  if bt_failed(r.error) { d[0].error = r.error; d[0].what = "list"; return; }
+  d[0].n = bt_read_list(ar, r.body, d[0].boxes[..]);
+  if d[0].n < 0 { d[0].n = 0; }
+  db: [64] u8; day := bt_day_start(db[..]);
+  for i: 0..<d[0].n {
+    b := d[0].boxes[i];
+    if !bp_ours(b.name) { continue; }
+    if !bt_down(b) && !bt_broken(b) { d[0].up += 1; d[0].committed_mc += bp_cost_mc(b.type, ifx b.ttl_s > 0 then b.ttl_s else BP_TTL_MAX_S); }
+    u := bt_usage(c, b.id, day, out, ar);
+    if bt_failed(u.error) { continue; }
+    us := bt_read_usage(ar, u.body);
+    if us.ok { d[0].spent_mc += us.millicents; }
+  }
+}
+
+// The box with this id among d's, or -1.
+bt_day_find :: (d: [] BtDay, id: string) -> int {
+  for i: 0..<d[0].n { if d[0].boxes[i].id == id { return i; } }
+  return -1;
+}
+
+BtUp :: struct {
+  sandbox: BtSandbox;
+  resumed: bool;
+  run: BpRun;             // the auto-stop it got, and whether the cap cut it
+  refused: int;           // a policy code (BP_...), BP_OK when it may run
+  error: BtError;
+}
+
+// Brings our box id up: as it is when it is up; resumed for ttl_s (0: the
+// policy's default) when it is stopped and start is set, if the policy
+// admits it; else a refusal. Waits for ready. The sandbox read may borrow
+// from list or out.
+bt_bring_up :: (c: BoatClient, id_in: string, start: bool, ttl_s: int, list: [] u8, out: [] u8, ar: [] ClArena) -> BtUp {
+  u: BtUp;
+  ib: [16] u8;
+  if !bt_id_ok(id_in) { u.error = bt_err(BtErrKind.config, "not a sandbox id"); return u; }
+  for ch, i: id_in { ib[i] = ch; }
+  id := cast(string) ib[0..<id_in.count];
+  d: [1] BtDay;
+  bt_day(c, d[..], list, out, ar);
+  if bt_failed(d[0].error) { u.error = d[0].error; return u; }
+  me := bt_day_find(d[..], id);
+  if me < 0 { u.refused = BP_NOT_OURS; return u; }
+  b := d[0].boxes[me];
+  if bt_up(b) { u.sandbox = b; return u; }
+  if !start { u.error = bt_err(BtErrKind.not_running, "the box is stopped: coax/web/tool.sh boat resume ID"); return u; }
+  ttl := bp_ttl(ttl_s);
+  if ttl < 0 { u.refused = BP_CAP; return u; }
+  u.refused = bp_admit(b.type, bp_ours(b.name), d[0].up, d[0].limits.can_start, ttl, d[0].spent_mc, d[0].committed_mc);
+  if u.refused != BP_OK { return u; }
+  u.run = bp_run(b.type, ttl, d[0].spent_mc, d[0].committed_mc);
+  r := bt_resume(c, id, BtResume.{ttl_s = u.run.ttl_s}, out, ar);
+  if r.error.kind == BtErrKind.stopping { bt_pause(c, 5); r = bt_resume(c, id, BtResume.{ttl_s = u.run.ttl_s}, out, ar); }
+  if bt_failed(r.error) { u.error = r.error; return u; }
+  u.resumed = true;
+  w := bt_wait_up(c, id, 180, out, ar);
+  u.sandbox = w.sandbox; u.error = w.error;
+  return u;
+}
+
+// The SSH entry for box id, fresh: lets ~/.ssh/id_ed25519.pub in, then
+// rewrites its block in ~/.ssh/config and its line in the known hosts.
+// "" when done, else what went wrong.
+bt_ssh_refresh :: (c: BoatClient, id: string, out: [] u8, ar: [] ClArena) -> string {
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 { return "no HOME"; }
+  pk: [4096] u8; pp: [1200] u8;
+  pkn := fs_read(cast(string) pp[0..<json_raw(pp[..], json_raw(pp[..], 0, home), "/.ssh/id_ed25519.pub")], pk[..]);
+  if pkn <= 0 { return "no ~/.ssh/id_ed25519.pub to let in (ssh-keygen -t ed25519)"; }
+  while pkn > 0 && (pk[pkn - 1] == '\n' || pk[pkn - 1] == ' ') { pkn -= 1; }
+  r := bt_sshkey(c, id, cast(string) pk[0..<pkn], out, ar);
+  if bt_failed(r.error) { return ifx r.error.kind == BtErrKind.not_running then "the box is stopped" else "boat refused the SSH key"; }
+  s := bt_read_ssh(ar, r.body);
+  kp: [1200] u8; known := cast(string) kp[0..<json_raw(kp[..], json_raw(kp[..], 0, home), BT_SSH_KNOWN)];
+  db: [1200] u8; x := fs_mkdir(cast(string) db[0..<json_raw(db[..], json_raw(db[..], 0, home), "/.openagents")]);
+  x = fs_mkdir(fs_dir(known));
+  sd: [1200] u8; x = fs_mkdir(cast(string) sd[0..<json_raw(sd[..], json_raw(sd[..], 0, home), "/.ssh")]);
+  bb: [2048] u8; block := bt_ssh_block(bb[..], id, s, known);
+  lb: [8192] u8; line := bt_ssh_known_line(lb[..], id, s);
+  if block.count == 0 || line.count == 0 { return "boat's SSH answer holds no address or host key we can write safely"; }
+  cp: [1200] u8; cfg := cast(string) cp[0..<json_raw(cp[..], json_raw(cp[..], 0, home), "/.ssh/config")];
+  old: [262144] u8; on := fs_read(cfg, old[..]); if on < 0 { on = 0; }
+  nb: [270336] u8; nc := bt_ssh_config(nb[..], cast(string) old[0..<on], id, block);
+  ok: [262144] u8; kn := fs_read(known, ok[..]); if kn < 0 { kn = 0; }
+  kb: [270336] u8; nk := bt_ssh_known(kb[..], cast(string) ok[0..<kn], id, line);
+  if nc.count == 0 || nk.count == 0 || !fs_write(cfg, nc) || !fs_write(known, nk) { return "could not write ~/.ssh/config or the known hosts"; }
+  return "";
+}

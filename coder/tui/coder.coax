@@ -58,6 +58,7 @@
 #load "approvals.coax";
 #load "term.coax";
 #load "acp.coax";
+#load "../../coax/lib/boat/local.coax";   // --on boat:ID (remote.coax)
 #load "remote.coax";
 #load "daemon.coax";
 #load "import.coax";

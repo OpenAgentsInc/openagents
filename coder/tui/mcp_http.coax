@@ -91,7 +91,11 @@ cd_http_held :: (ss: [] CdHttpSessions, sid: string) -> int {
 //   GET  /sessions                    `coder ls --json`: every session, newest first
 //   GET  /log?id=ID&after=N           the session log's complete lines from byte N (-1: its last
 //                                     CD_LOCAL_CHUNK bytes), after one line {"next":N,"size":Z}
-//   POST /run   {"task","engine","model","effort","cwd"}   a detached session; the body is its ID
+//   POST /run   {"task","engine","model","effort","cwd","on"}   a detached session; the body is its ID.
+//                                     "on": "boat:ID" runs it on that boat dev box (#13474), resumed
+//                                     under the dev box policy when it is stopped
+//   GET  /sessions also lists the sessions started on boat boxes (their .remote records); /log, /send
+//                                     and /stop of one go to its box
 //   POST /send  {"id","message"}      the session's next turn (an ended one continues in a new session)
 //   POST /stop  {"id"}
 //   GET  /claude                      this folder's Claude Code conversations, newest first (`coder session-read list`)
@@ -141,13 +145,39 @@ cd_local_log :: (id: string, after: int, out: [] u8) -> string {
   chunk: [CD_LOCAL_CHUNK] u8;
   got := fs_read_at(path, from, chunk[..]);
   if got < 0 { got = 0; }
-  span := cd_local_lines(cast(string) chunk[0..<got], after < 0 && from > 0);
+  return cd_local_log_answer(size, from, after, cast(string) chunk[0..<got], out);
+}
+// The /log answer for chunk, read from byte from of a log of size bytes for an ask after after.
+cd_local_log_answer :: (size: int, from: int, after: int, chunk: string, out: [] u8) -> string {
+  got := chunk.count;
+  span := cd_local_lines(chunk, after < 0 && from > 0);
   // a line longer than a chunk is passed over, so a reader never stalls on it
   next := ifx span.end > span.at then from + span.end else ifx got == CD_LOCAL_CHUNK then from + got else from + span.at;
   tb: [24] u8;
   n := cd_cat(out, 0, "{\"next\":"); n = cd_cat(out, n, cd_itoa(next, tb[..])); n = cd_cat(out, n, ",\"size\":"); n = cd_cat(out, n, cd_itoa(size, tb[..])); n = cd_cat(out, n, "}\n");
   if span.end > span.at { n = cd_cat(out, n, cast(string) chunk[span.at..<span.end]); }
   return cast(string) out[0..<n];
+}
+// The same for a session that lives on a boat box: one ssh reads the size and the chunk there.
+cd_local_boat_log :: (r: [] CdRoute2, id: string, after: int, out: [] u8) -> string {
+  if !cd_r2_boat_fresh(r, false) { return ""; }
+  tb: [24] u8; lb: [1024] u8;
+  n := cd_cat(lb[..], 0, "f=\"$HOME/.openagents/coder/sessions/"); n = cd_cat(lb[..], n, id);
+  n = cd_cat(lb[..], n, ".jsonl\"; s=$(stat -c %s \"$f\" 2>/dev/null) || exit 3; a=");
+  n = cd_cat(lb[..], n, ifx after < 0 then "-1" else cd_itoa(after, tb[..]));
+  n = cd_cat(lb[..], n, "; c=240000; if [ $a -lt 0 ]; then a=$((s > c ? s - c : 0)); elif [ $a -gt $s ]; then a=$s; fi; echo \"$s $a\"; tail -c +$((a + 1)) \"$f\" | head -c $c");
+  argv: [32] string; bufs: [3] [1200] u8;
+  na := cd_r2_argv(r, cast(string) lb[0..<n], argv[..], bufs[..]);
+  ok: [1] bool; none: [1] string;
+  got: [CD_LOCAL_CHUNK + 64] u8;
+  text := rt_run_in(argv[0..<na], none[0..<0], "", 60, got[..], ok[..]);
+  if !ok[0] { return ""; }
+  e := 0; while e < text.count && text[e] != '\n' { e += 1; }
+  sp := 0; while sp < e && text[sp] != ' ' { sp += 1; }
+  if sp >= e { return ""; }
+  size := cd_atoi(cast(string) text[0..<sp]); from := cd_atoi(cast(string) text[sp + 1..<e]);
+  body := ifx e < text.count then cast(string) text[e + 1..<text.count] else "";
+  return cd_local_log_answer(size, from, after, body, out);
 }
 // Whether a session belongs beside the chat: one that is running, or one started in the last day that
 // is not a copy of a Claude Code conversation (those are listed as the conversations they are).
@@ -184,8 +214,55 @@ cd_local_sessions :: (now_us: int, out: [] u8, ok: [] bool) -> string {
     if kept > 0 { n = cd_cat(out, n, ","); }
     n = cd_cat(out, n, one); kept += 1;
   }
+  n = cd_local_boat_sessions(now_us, out, n, kept);
   n = cd_cat(out, n, "]");
   return cast(string) out[0..<n];
+}
+// The sessions started on boat boxes in the last day, from their .remote records, as list entries
+// (state "on boat", cwd "boat:ID"), after kept entries already in out. The new length.
+cd_local_boat_sessions :: (now_us: int, out: [] u8, at: int, kept_in: int) -> int {
+  db: [1100] u8; dir := cs_dir(db[..]);
+  if dir.count == 0 { return at; }
+  l: [1] FsList; count := fs_list(dir, l[..]);
+  n := at; kept := kept_in;
+  for i: 0..<(ifx count < 0 then 0 else count) {
+    name := fs_entry(l[..], i);
+    if name.count < 8 || cast(string) name[name.count - 7..<name.count] != ".remote" { continue; }
+    id := cast(string) name[0..<name.count - 7];
+    if !cd_local_id_ok(id) { continue; }
+    pb: [2048] u8; path := fs_join(dir, name, pb[..]);
+    started := fs_mtime_ns(path) / 1000;
+    if started <= 0 || now_us - started >= CD_LOCAL_DAY_US { continue; }
+    fb: [4096] u8; k := fs_read(path, fb[..]);
+    if k <= 0 { continue; }
+    eb: [2048] u8; e := cd_local_boat_entry(cast(string) fb[0..<k], id, started, eb[..]);
+    if e.count == 0 { continue; }
+    if kept > 0 { n = cd_cat(out, n, ","); }
+    for c: e { if n < out.count { out[n] = c; n += 1; } }
+    kept += 1;
+  }
+  return n;
+}
+// One list entry for a boat session's record; "" when the record is not a boat one. Written into
+// scratch (which may be out's free end: the caller copies it into place).
+cd_local_boat_entry :: (rec: string, id: string, started_us: int, scratch: [] u8) -> string {
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  if cl_str(ar[..], rec, "on") != "boat" { return ""; }
+  box := cl_str(ar[..], rec, "box");
+  if !bt_id_ok(box) { return ""; }
+  o: [2048] u8;
+  n := json_raw(o[..], 0, "{\"id\":"); n = json_write_string(o[..], n, id);
+  eng := cl_str(ar[..], rec, "engine");
+  n = json_raw(o[..], n, ",\"engine\":"); n = json_write_string(o[..], n, ifx eng.count > 0 then eng else "claude");
+  n = json_raw(o[..], n, ",\"state\":\"on boat\",\"turns\":0,\"steps\":0,\"started_us\":"); n = json_write_int(o[..], n, started_us);
+  n = json_raw(o[..], n, ",\"cwd\":\"boat:"); n = json_raw(o[..], n, box);
+  n = json_raw(o[..], n, "\",\"on\":\"boat:"); n = json_raw(o[..], n, box);
+  n = json_raw(o[..], n, "\",\"task\":"); n = json_write_string(o[..], n, cl_str(ar[..], rec, "task"));
+  n = json_raw(o[..], n, "}");
+  if n < 0 || n > scratch.count { return ""; }
+  // scratch may sit after what out already holds: copy forward
+  for i: 0..<n { scratch[i] = o[i]; }
+  return cast(string) scratch[0..<n];
 }
 // Whether target is one of the local routes.
 cd_local_route :: (path: string) -> bool { return path == "/sessions" || path == "/log" || path == "/run" || path == "/send" || path == "/stop" || path == "/claude" || path == "/import" || path == "/agents"; }
@@ -329,6 +406,12 @@ cd_local_reply :: (head: string, body: string, out: [] u8) -> CdHttpReply {
   if path == "/log" {
     id := cd_local_query(target, "id"); after := cd_local_query(target, "after");
     if !cd_local_id_ok(id) { r.status = 400; return r; }
+    rr: [1] CdRoute2; full: [64] u8;
+    if cd_r2_recorded(id, rr[..], full[..]) && rr[0].boat {
+      r.body = cd_local_boat_log(rr[..], id, ifx after.count == 0 || after[0] == '-' then -1 else cd_atoi(after), out);
+      r.status = ifx r.body.count > 0 then 200 else 502;
+      return r;
+    }
     r.body = cd_local_log(id, ifx after.count == 0 || after[0] == '-' then -1 else cd_atoi(after), out);
     r.status = ifx r.body.count > 0 then 200 else 404;
     return r;
@@ -340,11 +423,33 @@ cd_local_reply :: (head: string, body: string, out: [] u8) -> CdHttpReply {
     a[0] = "run"; a[1] = task; a[2] = "--detach"; na = 3;
     names := [4] string.["engine", "model", "effort", "cwd"]; flags := [4] string.["--engine", "--model", "--effort", "--cwd"];
     for k: 0..<names.count { v := cl_str(ar[..], body, names[k]); if v.count > 0 { a[na] = flags[k]; a[na + 1] = v; na += 2; } }
+    on := cl_str(ar[..], body, "on");
+    if on.count > 0 {
+      if !(on.count > 5 && cast(string) on[0..<5] == "boat:" && bt_id_ok(cast(string) on[5..<on.count])) { r.status = 400; return r; }
+      a[na] = "--on"; a[na + 1] = on; na += 2;
+    }
     r.body = cd_mcp_coder(a[0..<na], out, ok[..]);
   } else if !cd_local_id_ok(id) { r.status = 400; return r; }
   else if path == "/send" {
     msg := cl_str(ar[..], body, "message");
     if msg.count == 0 { r.status = 400; return r; }
+    // a session on a boat box goes on there: the same conversation, a new session beside it
+    rr: [1] CdRoute2; full: [64] u8;
+    if cd_r2_recorded(id, rr[..], full[..]) && rr[0].boat {
+      ob: [64] u8; on := cast(string) ob[0..<cd_cat(ob[..], cd_cat(ob[..], 0, "boat:"), cd_r2_s(rr[0].box[..], rr[0].nbox))];
+      a[0] = "fork"; a[1] = id; a[2] = msg; a[3] = "--same-conversation"; a[4] = "--detach"; a[5] = "--on"; a[6] = on;
+      said := cd_mcp_coder(a[0..<7], out, ok[..]);
+      sb: [4096] u8; sar: [1] ClArena; sar[0] = ClArena.{buf = sb[..]};
+      nid := ""; at := 0;
+      while at < said.count && nid.count == 0 {
+        e := at; while e < said.count && said[e] != '\n' { e += 1; }
+        nid = cd_r2_session_of(cast(string) said[at..<e], sar[..]); at = e + 1;
+      }
+      if !ok[0] || !cd_local_id_ok(nid) { r.body = said; r.status = 500; return r; }
+      idb: [48] u8; k := cd_cat(idb[..], 0, nid);
+      n := cd_cat(out, 0, "{\"id\":\""); n = cd_cat(out, n, cast(string) idb[0..<k]); n = cd_cat(out, n, "\"}");
+      r.body = cast(string) out[0..<n]; r.status = 200; return r;
+    }
     // An ended Claude Code session goes on as the same conversation, unless a window has it open:
     // two claude processes writing one conversation would break it, and the window can't take a
     // message from here, so the page says where to type instead.
@@ -503,6 +608,20 @@ cd_cmd_mcp_http :: (port: int) -> int {
   #assert cd_http_reply(sh, "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}", ss[..], "fa", out[..]).status == 404;   // ended
   #assert cd_http_origin_ok("http://127.0.0.1:8080") && cd_http_origin_ok("") && cd_http_origin_ok("http://[::1]");
   #assert !cd_http_origin_ok("http://localhost.evil.example") && !cd_http_origin_ok("http://localhost:80x") && !cd_http_origin_ok("null");
+}
+
+#test "the local routes: a boat session's record becomes a list entry; other records don't" {
+  sb: [1024] u8;
+  e := cd_local_boat_entry("{\"id\":\"20261113-160000-001\",\"on\":\"boat\",\"box\":\"bx_fwh3xnws\",\"dest\":\"boat-bx_fwh3xnws\",\"repo\":\"~/oa\",\"task\":\"fix \\\"it\\\"\",\"engine\":\"codex\"}", "20261113-160000-001", 7, sb[..]);
+  #assert e == "{\"id\":\"20261113-160000-001\",\"engine\":\"codex\",\"state\":\"on boat\",\"turns\":0,\"steps\":0,\"started_us\":7,\"cwd\":\"boat:bx_fwh3xnws\",\"on\":\"boat:bx_fwh3xnws\",\"task\":\"fix \\\"it\\\"\"}";
+  #assert cd_local_boat_entry("{\"on\":\"boat\",\"box\":\"bx_fwh3xnws\"}", "1-2", 1, sb[..]) == "{\"id\":\"1-2\",\"engine\":\"claude\",\"state\":\"on boat\",\"turns\":0,\"steps\":0,\"started_us\":1,\"cwd\":\"boat:bx_fwh3xnws\",\"on\":\"boat:bx_fwh3xnws\",\"task\":\"\"}";
+  #assert cd_local_boat_entry("{\"on\":\"ssh\",\"dest\":\"coderos-4080\"}", "1-2", 1, sb[..]) == "" && cd_local_boat_entry("{\"on\":\"boat\",\"box\":\"x\"}", "1-2", 1, sb[..]) == "";
+  tiny: [8] u8;
+  #assert cd_local_boat_entry("{\"on\":\"boat\",\"box\":\"bx_fwh3xnws\"}", "1-2", 1, tiny[..]) == "";
+  // a remote log's answer: the same lines and offsets as a local one
+  ob: [256] u8;
+  #assert cd_local_log_answer(20, 0, 0, "{\"a\":1}\n{\"b\":2}\n{\"c", ob[..]) == "{\"next\":16,\"size\":20}\n{\"a\":1}\n{\"b\":2}\n";
+  #assert cd_local_log_answer(20, 4, -1, "x}\n{\"b\":2}\n", ob[..]) == "{\"next\":15,\"size\":20}\n{\"b\":2}\n";
 }
 
 #test "the local routes: only with the header a page elsewhere can't send, and only well-formed asks" {

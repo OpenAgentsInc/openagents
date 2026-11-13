@@ -1,22 +1,31 @@
 // Coder on another machine (Coder book chapter 23): --on ssh:DEST runs a
-// verb with Coder on that machine over ssh, and --on cloud runs it on a host
+// verb with Coder on that machine over ssh, --on cloud runs it on a host
 // of the GCE pool (`openagents cloud`), reached as user coder through an IAP
-// tunnel with the pool's key. The remote machine's own checkout runs the
+// tunnel with the pool's key, and --on boat:ID runs it on a boat dev box
+// (#13474): resumed under the dev box policy when a run or fork finds it
+// stopped, its SSH entry (Host boat-ID) rewritten after every resume, its
+// checkout ~/oa, and from there the ssh: route. The remote machine's own checkout runs the
 // verb (--remote-repo DIR, default ~/openagents), so its sessions stay there.
 // A session started this way leaves a record here, sessions/ID.remote, and
 // status, log, stop, attach and replay of that ID go back to its machine.
 //
 //   coder run "TASK" --on ssh:coderos-4080 --engine echo
 //   coder ls --on ssh:coderos-4080
+//   coder run "TASK" --on boat:bx_fwh3xnws --engine claude
 //   coder log ID                      (the record says where ID lives)
 
 CD_REMOTE_REPO :: "~/openagents";
+CD_BOAT_REPO :: "~/oa";                                 // the dev box template's checkout (docs/cloud/boat-devbox.md)
 CD_POOL_KEY :: "/.openagents/cloud/pool_ed25519";      // under $HOME
 CD_REMOTE_LINE :: 1048576;
 
 CdRoute2 :: struct {
   ok: bool;
   ssh: bool; cloud: bool;
+  boat: bool;                           // ssh to a boat box, by its alias boat-ID
+  box: [16] u8; nbox: int;              // the box's id
+  task: [512] u8; ntask: int;           // a boat session's task and engine, recorded for the chat's list
+  engine: [32] u8; nengine: int;
   dest: [256] u8; ndest: int;           // ssh destination, or the pool host's name
   zone: [64] u8; nzone: int;
   project: [64] u8; nproject: int;
@@ -57,9 +66,45 @@ cd_r2_route :: (on: string, repo: string, start: bool, r: [] CdRoute2) -> bool {
     r[0].ssh = true; r[0].ndest = cd_cat(r[0].dest[..], 0, d); r[0].ok = true;
     return true;
   }
-  if on != "cloud" { return cd_r2_fail(r, "--on is local, ssh:DEST or cloud"); }
+  if on.count > 5 && cast(string) on[0..<5] == "boat:" {
+    if repo.count == 0 { r[0].nrepo = cd_cat(r[0].repo[..], 0, CD_BOAT_REPO); }
+    return cd_r2_boat(r, cast(string) on[5..<on.count], start);
+  }
+  if on != "cloud" { return cd_r2_fail(r, "--on is local, ssh:DEST, boat:ID or cloud"); }
   r[0].cloud = true;
   return cd_r2_pool_host(r, start);
+}
+
+// A boat box as an ssh route: up (resumed under the policy when start is
+// set and it is stopped), its SSH entry fresh, then ssh to boat-ID.
+cd_r2_boat :: (r: [] CdRoute2, id: string, start: bool) -> bool {
+  if !bt_id_ok(id) { return cd_r2_fail(r, "--on boat:ID takes a box id (bx_...): coax/web/tool.sh boat ls"); }
+  r[0].boat = true; r[0].ssh = true;
+  r[0].nbox = cd_cat(r[0].box[..], 0, id);
+  ab: [32] u8; r[0].ndest = cd_cat(r[0].dest[..], 0, bt_ssh_alias(ab[..], id));
+  return cd_r2_boat_fresh(r, start);
+}
+
+// The box of a boat route up and its SSH entry rewritten; false (with why) when it can't be.
+cd_r2_boat_fresh :: (r: [] CdRoute2, start: bool) -> bool {
+  id := cd_r2_s(r[0].box[..], r[0].nbox);
+  bb: [512] u8; kb: [512] u8;
+  c := bt_local_client(bb[..], kb[..]);
+  lb: [262144] u8; ob: [262144] u8; arb: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = arb[..]};
+  u := bt_bring_up(c, id, start, 0, lb[..], ob[..], ar[..]);
+  if u.refused != BP_OK { return cd_r2_fail(r, bp_words(u.refused)); }
+  if bt_failed(u.error) {
+    wb: [512] u8; w := cd_cat(wb[..], 0, "boat: "); w = cd_cat(wb[..], w, bt_kind_name(u.error.kind));
+    if u.error.code.count > 0 { w = cd_cat(wb[..], w, " "); w = cd_cat(wb[..], w, u.error.code); }
+    if u.error.why.count > 0 { w = cd_cat(wb[..], w, ": "); w = cd_cat(wb[..], w, u.error.why); }
+    return cd_r2_fail(r, cast(string) wb[0..<w]);
+  }
+  if u.resumed { tool_err("coder: resumed "); tool_errln(id); }
+  ar[0].at = 0;
+  why := bt_ssh_refresh(c, id, ob[..], ar[..]);
+  if why.count > 0 { return cd_r2_fail(r, why); }
+  r[0].ok = true;
+  return true;
 }
 
 // The pool's first running host, from `openagents --json cloud status`; with
@@ -191,7 +236,10 @@ cd_r2_run :: (r: [] CdRoute2, args: [] string, sid: [] u8) -> int {
 cd_r2_json :: (r: [] CdRoute2, id: string, o: [] u8) -> int {
   n := json_raw(o, 0, "{");
   if id.count > 0 { n = json_raw(o, n, "\"id\":"); n = json_write_string(o, n, id); n = json_raw(o, n, ","); }
-  n = json_raw(o, n, ifx r[0].ssh then "\"on\":\"ssh\"" else "\"on\":\"cloud\"");
+  n = json_raw(o, n, ifx r[0].boat then "\"on\":\"boat\"" else ifx r[0].ssh then "\"on\":\"ssh\"" else "\"on\":\"cloud\"");
+  if r[0].boat { n = json_raw(o, n, ",\"box\":"); n = json_write_string(o, n, cd_r2_s(r[0].box[..], r[0].nbox)); }
+  if r[0].ntask > 0 { n = json_raw(o, n, ",\"task\":"); n = json_write_string(o, n, cd_r2_s(r[0].task[..], r[0].ntask)); }
+  if r[0].nengine > 0 { n = json_raw(o, n, ",\"engine\":"); n = json_write_string(o, n, cd_r2_s(r[0].engine[..], r[0].nengine)); }
   n = json_raw(o, n, ",\"dest\":"); n = json_write_string(o, n, cd_r2_s(r[0].dest[..], r[0].ndest));
   n = json_raw(o, n, ",\"repo\":"); n = json_write_string(o, n, cd_r2_s(r[0].repo[..], r[0].nrepo));
   if r[0].cloud {
@@ -207,7 +255,10 @@ cd_r2_parse :: (rec: string, r: [] CdRoute2) -> bool {
   r[0] = CdRoute2.{};
   ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   on := cl_str(ar[..], rec, "on");
-  r[0].ssh = on == "ssh"; r[0].cloud = on == "cloud";
+  r[0].boat = on == "boat";
+  r[0].ssh = on == "ssh" || r[0].boat; r[0].cloud = on == "cloud";
+  r[0].nbox = cd_cat(r[0].box[..], 0, cl_str(ar[..], rec, "box"));
+  if r[0].boat && !bt_id_ok(cd_r2_s(r[0].box[..], r[0].nbox)) { return false; }
   r[0].ndest = cd_cat(r[0].dest[..], 0, cl_str(ar[..], rec, "dest"));
   r[0].nrepo = cd_cat(r[0].repo[..], 0, cl_str(ar[..], rec, "repo"));
   r[0].nzone = cd_cat(r[0].zone[..], 0, cl_str(ar[..], rec, "zone"));
@@ -277,6 +328,11 @@ cd_cmd_on :: (args: [] Args, verb: string, on: string) -> int {
   sid: [64] u8;
   st := cd_r2_run(r[..], a[0..<na], sid[..]);
   k := 0; while k < sid.count && sid[k] != 0 { k += 1; }
+  if r[0].boat {
+    t := ifx verb == "fork" then args_at(args, 2) else ifx args_count(args) > 1 then args_at(args, 1) else "";
+    r[0].ntask = cd_cat(r[0].task[..], 0, ifx t.count > 500 then cast(string) t[0..<500] else t);
+    r[0].nengine = cd_cat(r[0].engine[..], 0, args_value(args, "--engine", "claude"));
+  }
   if k > 0 && (verb == "run" || verb == "fork") { x := cd_r2_record(r[..], cast(string) sid[0..<k]); }
   if verb == "queue" && st == 255 { return dm_hold(r[..], a[0..<na], args_has(args, "--json")); }   // ssh could not reach it: the daemon here sends it later
   return st;
@@ -286,6 +342,7 @@ cd_cmd_on :: (args: [] Args, verb: string, on: string) -> int {
 cd_cmd_remote_id :: (args: [] Args, id: string) -> int {
   r: [1] CdRoute2; full: [64] u8;
   if !cd_r2_recorded(id, r[..], full[..]) { return -1; }
+  if r[0].boat && !cd_r2_boat_fresh(r[..], false) { tool_err("coder: "); tool_errln(cd_r2_s(r[0].why[..], r[0].nwhy)); return 1; }
   a: [256] string; na := cd_r2_args(args, a[..]);
   k := 0; while k < full.count && full[k] != 0 { k += 1; }
   for i: 0..<na { if a[i] == id { a[i] = cast(string) full[0..<k]; } }   // the remote's ID in full
@@ -302,10 +359,25 @@ cd_cmd_remote_id :: (args: [] Args, id: string) -> int {
   #assert !cd_r2_route("ssh:-oProxyCommand=x", "", false, r[..]);
   #assert !cd_r2_route("ssh:host;reboot", "", false, r[..]);
   #assert !cd_r2_route("mars", "", false, r[..]);
+  #assert !cd_r2_route("boat:bx_nope", "", false, r[..]) && cd_r2_s(r[0].why[..], r[0].nwhy) == "--on boat:ID takes a box id (bx_...): coax/web/tool.sh boat ls";
   #assert !cd_r2_route("ssh:h", "/tmp/a b", false, r[..]);
   ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   #assert cd_r2_session_of("{\"kind\":\"session\",\"id\":\"20261102-073134-163\"}", ar[..]) == "20261102-073134-163";
   #assert cd_r2_session_of("20261102-073134-163", ar[..]) == "20261102-073134-163";
   #assert cd_r2_session_of("  session 20261102-073134-163", ar[..]) == "20261102-073134-163";
   #assert cd_r2_session_of("› $ echo hi", ar[..]) == "";
+}
+
+#test "remote: a boat route is recorded with its box and read back as ssh to boat-ID" {
+  r: [1] CdRoute2; r[0] = CdRoute2.{};
+  r[0].boat = true; r[0].ssh = true; r[0].ok = true;
+  r[0].nbox = cd_cat(r[0].box[..], 0, "bx_fwh3xnws"); r[0].ndest = cd_cat(r[0].dest[..], 0, "boat-bx_fwh3xnws"); r[0].nrepo = cd_cat(r[0].repo[..], 0, CD_BOAT_REPO);
+  o: [1024] u8; n := cd_r2_json(r[..], "20261113-160000-001", o[..]);
+  rec := cast(string) o[0..<n];
+  #assert rec == "{\"id\":\"20261113-160000-001\",\"on\":\"boat\",\"box\":\"bx_fwh3xnws\",\"dest\":\"boat-bx_fwh3xnws\",\"repo\":\"~/oa\"}";
+  b: [1] CdRoute2;
+  #assert cd_r2_parse(rec, b[..]) && b[0].boat && b[0].ssh && !b[0].cloud && cd_r2_s(b[0].box[..], b[0].nbox) == "bx_fwh3xnws" && cd_r2_s(b[0].dest[..], b[0].ndest) == "boat-bx_fwh3xnws";
+  lb: [512] u8; a := [2] string.["ls", "--json"];
+  #assert cd_r2_line(b[..], a[..], lb[..]) == "cd \"$HOME\"/oa && BROWSER=/usr/bin/true coder/tui/coder.sh 'ls' '--json'";
+  #assert !cd_r2_parse("{\"on\":\"boat\",\"box\":\"bx_no\",\"dest\":\"boat-bx_no\",\"repo\":\"~/oa\"}", b[..]);
 }
