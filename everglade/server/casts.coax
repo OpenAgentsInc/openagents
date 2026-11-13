@@ -76,7 +76,7 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   n := wire_put_cast_e(b[..], 0, WireCastE.{ss = seat, slot = wc.slot, ax = wc.ax, ay = wc.ay, az = wc.az, seed = 1 + (v[0].eg[k].seed + t * 31 + seat * 977 + wc.slot * 7) % 999983});
   eg_event(v, k, cast(string) b[0..<n], me.x, me.z, false);
 }
-// ---- lag compensation for melee and spells (#13289, docs/verse/2026-11-03-everglade-multiplayer-spec.md 3.9)
+// ---- lag compensation for melee and spells (#13289, docs/metaverse/2026-11-03-everglade-multiplayer-spec.md 6.1.1)
 // A page casts at what it draws: its own body now, everyone else a jitter buffer's delay ago. Its C
 // says the moment it was drawing the others at (VIEW, the number an arrow's F says), and the room
 // judges the cast there, inside the arrows' bound (metaverse-engine/net/rewind.coax: NET_REWIND_AGE_MS
