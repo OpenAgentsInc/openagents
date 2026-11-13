@@ -4996,7 +4996,7 @@ BEGIN
       drops.tag('web', r->>'web'), drops.tag('clone', r->>'clone'), drops.tag('relays', relay), drops.tag('r', r->>'euc', 'euc')];
   ELSIF i.item = 'project' THEN
     tags := ARRAY[drops.tag('d', p.slug), drops.tag('name', p.name), drops.tag('description', p.line), drops.tag('a', rc, relay),
-      drops.tag('path', rc, 'verse/' || p.slug || '/'), drops.tag('contributions', 'open'), drops.tag('license', 'Apache-2.0'),
+      drops.tag('path', rc, 'metaverse/' || p.slug || '/'), drops.tag('contributions', 'open'), drops.tag('license', 'Apache-2.0'),
       drops.tag('visibility', p.visibility), drops.tag('buzz-visibility', CASE WHEN p.visibility = 'public' THEN 'listed' ELSE 'unlisted' END), drops.tag('p', p.owner, '', 'maintainer')];
     IF drops.has_realm(p.slug) THEN tags := tags || drops.tag('realm', '/projects/' || p.slug || '/realm'); END IF;
   ELSIF i.item = 'order' THEN
