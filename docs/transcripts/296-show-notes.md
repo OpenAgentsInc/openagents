@@ -198,7 +198,7 @@ What to take from it:
 - **The default Coax build is slow.** It's unoptimized and fully checked,
   about four times slower than `--opt 2`. Say so.
 - **This is one small program.** It isn't our signature code, where we're
-  still about 45 times behind libsecp256k1.
+  about 2.1 times behind libsecp256k1 (measured 2026-11-13).
 
 ### How fast it compiles
 
@@ -418,8 +418,8 @@ Say this part plainly, as in 294 and 295.
   There is no general one, and there won't be.
 - **Not self-hosted.** Half the compiler is still C++.
 - **No package manager, and one module.**
-- **Speed.** Our signature check is about 45 times slower than
-  libsecp256k1 (Episode 294).
+- **Speed.** Our signature check is about 2.1 times slower than
+  libsecp256k1 (measured 2026-11-13; it was about 45 times at Episode 294).
 - **Builds aren't fast yet.** Checking is fast. A full debug build is no
   faster than Rust's, because we go through a C compiler
   ([measured above](#how-it-compares-measured)).
@@ -492,8 +492,9 @@ the folder table or station 17 (4), the book's contents (5).
 - **The counts** (7,448 files, about 1.5 million lines, the folder table)
   are from `git ls-files '*.coax'` on 2026-11-13 and include tests,
   examples and generated compiler seeds. Say "about 7,000 files" out loud.
-- **"45 times slower"** is from the Episode 294 analysis and was not
-  measured again.
+- **"2.1 times slower"** was measured on 2026-11-13 with
+  `coax/tests/bitcoin/secp_bench.sh` (issue #13450). Episode 294 said 45
+  times.
 - **Timing in step 2.** A quarter of a second was one run on this Mac.
   Run it once before recording so the first run isn't the slow one.
 - **The book's own introduction is behind the compiler.** It says generics

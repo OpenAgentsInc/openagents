@@ -1,0 +1,244 @@
+// a·G + b·P on secp256k1 for verification: Jacobian coordinates on the
+// 52-bit-limb field (secp_fe.coax), a doubling and additions that are not
+// complete formulas, and the endomorphism split of chapter 77 over a wider
+// table for G. It gives the same point as chapter 16's ecmult_vartime and
+// chapter 77's ecmult_glv_vartime, which stay as its references.
+//
+// Every procedure branches and indexes on its inputs. They are for public
+// data only: signing, key generation and ECDH keep their fixed-work paths.
+#load "secp_glv.coax";
+#load "secp_fe.coax";
+#load "secp_fast-checks.coax" #test;
+#authority;
+// An affine point; never infinity.
+Fge :: struct { x: Fe; y: Fe; }
+FgeResult :: struct { value: Fge; ok: bool; }
+// A Jacobian point (x, y) = (X/Z², Y/Z³). Between operations X has
+// magnitude at most 6, Y at most 4 and Z at most 2.
+Fgej :: struct { x: Fe; y: Fe; z: Fe; infinity: bool; }
+FG_BITS :: 129;
+FG_P_WINDOW :: 5;
+// A width-w wNAF of a number below 2^128: digit i has weight 2^i.
+FgWnaf :: struct { digits: [129] int; }
+// One half of a split scalar: the wNAF of its magnitude, and its sign.
+FgHalf :: struct { wnaf: FgWnaf; negative: bool; }
+// A nonzero wNAF digit as a table index, (|d| - 1)/2, and its sign.
+FgDigit :: struct { index: int; negative: bool; }
+#load "secp_fast_table.coax";
+// p - n, below 2^129: a signature's r stands for x = r and, when r is below
+// this, for x = r + n too.
+fg_p_minus_n :: () -> ScScalar #effects(all) { return ScScalar.{limbs=[8] u32.[0x2FC9BAEE,0x402DA172,0x50B75FC4,0x45512319,1,0,0,0]}; }
+
+// ---- the group law
+fg_infinity :: () -> Fgej #effects(all) { r: Fgej; r.infinity = true; return r; }
+fg_from_affine :: (a: Fge) -> Fgej #effects(all) { return Fgej.{x=a.x,y=a.y,z=fe_one()}; }
+// 2a, for the curve y² = x³ + 7 (three multiplications and four squarings).
+// With M = 3X² and S = 4XY²: X' = M² - 2S, Y' = M(S - X') - 8Y⁴, Z' = 2YZ.
+// No point of this curve has y = 0, so a finite point never doubles to
+// infinity. The comments give each value's magnitude.
+fg_double :: (a: Fgej) -> Fgej #effects(all) {
+  if a.infinity { return a; }
+  r: Fgej;
+  r.z = fe_scale(fe_mul(a.y, a.z), 2);                         // 2
+  m := fe_scale(fe_sqr(a.x), 3);                               // 3X², 3
+  m2 := fe_sqr(m);                                             // 9X⁴, 1
+  y2 := fe_scale(fe_sqr(a.y), 2);                              // 2Y², 2
+  y4 := fe_scale(fe_sqr(y2), 2);                               // 8Y⁴, 2
+  half := fe_mul(y2, a.x);                                     // 2XY² = S/2, 1
+  r.x = fe_add(fe_negate(fe_scale(half, 4), 4), m2); // mutant: equivalent (a larger multiple of p is the same residue; the sum is M² - 2S, 6)
+  rest := fe_add(fe_scale(half, 6), fe_negate(m2, 1)); // mutant: equivalent (a larger multiple of p is the same residue; the sum is S - X', 8)
+  r.y = fe_add(fe_mul(m, rest), fe_negate(y4, 2)); // mutant: equivalent (a larger multiple of p is the same residue; the sum is 4)
+  return r;
+}
+// The end of both additions. With u1, s1 the first point's x and y on the
+// common denominator, h = u2 - u1 and i = s1 - s2 (h is not zero):
+// X' = i² - h³ - 2·u1·h² and Y' = i·(X' - u1·h²) - s1·h³, computed from
+// h2 = -h² and h3 = -h³. The result has magnitudes 4 and 2; the caller
+// sets Z.
+fg_add_finish :: (u1: Fe, s1: Fe, h: Fe, i: Fe) -> Fgej #effects(all) {
+  r: Fgej;
+  h2 := fe_negate(fe_sqr(h), 1); // mutant: equivalent (a larger multiple of p is the same residue; the sum is -h², 2)
+  h3 := fe_mul(h2, h);                                         // -h³, 1
+  t := fe_mul(u1, h2);                                         // -u1·h², 1
+  r.x = fe_add(fe_add(fe_sqr(i), h3), fe_scale(t, 2));         // 4
+  r.y = fe_add(fe_mul(fe_add(t, r.x), i), fe_mul(h3, s1));     // 2
+  return r;
+}
+// a + b for an affine b (eight multiplications and three squarings). Equal
+// points double, and opposite points give infinity.
+fg_add_affine :: (a: Fgej, b: Fge) -> Fgej #effects(all) {
+  if a.infinity { return fg_from_affine(b); }
+  z2 := fe_sqr(a.z);
+  u2 := fe_mul(b.x, z2);
+  s2 := fe_mul(fe_mul(b.y, z2), a.z);
+  h := fe_add(fe_negate(a.x, 6), u2); // mutant: equivalent (a larger multiple of p is the same residue; the sum is 8)
+  i := fe_add(fe_negate(s2, 1), a.y); // mutant: equivalent (a larger multiple of p is the same residue; the sum is 6)
+  if fe_is_zero_vartime(h) {
+    if fe_is_zero_vartime(i) { return fg_double(a); }
+    return fg_infinity();
+  }
+  r := fg_add_finish(a.x, a.y, h, i);
+  r.z = fe_mul(a.z, h);
+  return r;
+}
+// a + b for two Jacobian points (twelve multiplications and four squarings).
+fg_add :: (a: Fgej, b: Fgej) -> Fgej #effects(all) {
+  if a.infinity { return b; }
+  if b.infinity { return a; }
+  z22 := fe_sqr(b.z); z12 := fe_sqr(a.z);
+  u1 := fe_mul(a.x, z22); u2 := fe_mul(b.x, z12);
+  s1 := fe_mul(fe_mul(a.y, z22), b.z); s2 := fe_mul(fe_mul(b.y, z12), a.z);
+  h := fe_add(fe_negate(u1, 1), u2); // mutant: equivalent (a larger multiple of p is the same residue; the sum is 3)
+  i := fe_add(fe_negate(s2, 1), s1); // mutant: equivalent (a larger multiple of p is the same residue; the sum is 3)
+  if fe_is_zero_vartime(h) {
+    if fe_is_zero_vartime(i) { return fg_double(a); }
+    return fg_infinity();
+  }
+  r := fg_add_finish(u1, s1, h, i);
+  r.z = fe_mul(fe_mul(a.z, b.z), h);
+  return r;
+}
+// The affine point, with both coordinates below p. a must not be infinity.
+fg_to_affine_vartime :: (a: Fgej) -> Fge #effects(all) {
+  zi := fe_inverse_vartime(a.z); zi2 := fe_sqr(zi);
+  return Fge.{x=fe_normalize(fe_mul(a.x, zi2)),y=fe_normalize(fe_mul(fe_mul(a.y, zi2), zi))};
+}
+
+// ---- public keys
+// The point with this x and an even y (BIP-340's lift_x). ok is false when
+// x is not 32 bytes, is p or more, or is no point's x.
+fg_lift_x_vartime :: (bytes: [] u8) -> FgeResult #effects(all) {
+  x := fe_load_vartime(bytes);
+  if !x.ok { return FgeResult.{}; }
+  y := fe_sqrt_vartime(fe_add(fe_mul(fe_sqr(x.value), x.value), fe_small(7)));
+  if !y.ok { return FgeResult.{}; }
+  even := fe_normalize(y.value);
+  if fe_is_odd(even) { even = fe_normalize(fe_negate(even, 1)); } // mutant: equivalent (a larger multiple of p is the same residue)
+  return FgeResult.{value=Fge.{x=x.value,y=even},ok=true};
+}
+// A public key in SEC 1 form, as chapter 17's se_decode reads it: 33 bytes
+// (02 or 03, then x) or 65 bytes (04, then x and y, both below p, on the
+// curve). Anything else refuses.
+fg_decode_vartime :: (bytes: [] u8) -> FgeResult #effects(all) {
+  if bytes.count == 33 {
+    if bytes[0] != 2 && bytes[0] != 3 { return FgeResult.{}; }
+    r := fg_lift_x_vartime(bytes[1..<33]);
+    if r.ok && bytes[0] == 3 { r.value.y = fe_normalize(fe_negate(r.value.y, 1)); } // mutant: equivalent (a larger multiple of p is the same residue)
+    return r;
+  }
+  if bytes.count != 65 || bytes[0] != 4 { return FgeResult.{}; }
+  x := fe_load_vartime(bytes[1..<33]); y := fe_load_vartime(bytes[33..<65]);
+  if !x.ok || !y.ok { return FgeResult.{}; } // mutant: equivalent (a refused load is zero, and no point has x = 0 or y = 0)
+  if !fe_equal_vartime(fe_sqr(y.value), fe_add(fe_mul(fe_sqr(x.value), x.value), fe_small(7))) { return FgeResult.{}; }
+  return FgeResult.{value=Fge.{x=x.value,y=y.value},ok=true};
+}
+
+// ---- recoding
+// Bit `at` of k; zero from bit 256 up.
+fg_bit :: (k: ScScalar, at: int) -> int #effects(all) {
+  if at >= 256 { return 0; }
+  return cast(int) ((k.limbs[at / 32] >> cast(u32) (at % 32)) & 1);
+}
+// The width-w wNAF of k, which must be below 2^128; w is from 2 to 8. Each
+// nonzero digit is odd, below 2^(w-1) in absolute value, and followed by at
+// least w - 1 zeros. A window is read where the bit differs from the carry;
+// a window of 2^(w-1) or more becomes negative and carries one into the
+// next. Bits from 128 up are zero, so a carry lands at bit 128 at the latest.
+fg_wnaf_vartime :: (k: ScScalar, w: int) -> FgWnaf #effects(all) {
+  r: FgWnaf; carry := 0; bit := 0;
+  while bit < FG_BITS { // mutant: equivalent (bit 129 is zero like the carry by then, so nothing is written)
+    if fg_bit(k, bit) == carry { bit += 1; continue; }
+    word := carry;
+    for i: 0..<w { word += fg_bit(k, bit + i) << i; }
+    carry = (word >> (w - 1)) & 1;
+    r.digits[bit] = word - (carry << w);
+    bit += w;
+  }
+  return r;
+}
+fg_digit :: (digit: int) -> FgDigit #effects(all) {
+  if digit < 0 { return FgDigit.{index=(-digit - 1) / 2,negative=true}; }
+  return FgDigit.{index=(digit - 1) / 2};
+}
+
+// ---- the multiplication
+// The table entry for one signed digit d of a half: |d|·G, with x times β
+// for the λ half, negated when d and the half's sign differ.
+fg_g_entry :: (digit: int, negative: bool, lambda: bool) -> Fge #effects(all) {
+  d := fg_digit(digit); e := fg_g_point(d.index);
+  if lambda { e.x = fe_mul(e.x, fg_beta()); }
+  if d.negative != negative { e.y = fe_negate(e.y, 1); } // mutant: equivalent (a larger multiple of p is the same residue)
+  return e;
+}
+// The same for P's table of Jacobian odd multiples.
+fg_p_entry :: (table: [] Fgej, digit: int, negative: bool, lambda: bool) -> Fgej #effects(all) {
+  d := fg_digit(digit); e := table[d.index];
+  if lambda { e.x = fe_mul(e.x, fg_beta()); }
+  if d.negative != negative { e.y = fe_negate(e.y, 4); } // mutant: equivalent (a larger multiple of p is the same residue)
+  return e;
+}
+// P, 3P, ..., 15P.
+fg_odd_table :: (point: Fge) -> [8] Fgej #effects(all) {
+  table: [8] Fgej;
+  table[0] = fg_from_affine(point);
+  twice := fg_double(table[0]);
+  for i: 1..<8 { table[i] = fg_add(table[i-1], twice); }
+  return table;
+}
+fg_half_vartime :: (r: ScScalar, w: int) -> FgHalf #effects(all) {
+  h := glv_half_vartime(r);
+  return FgHalf.{wnaf=fg_wnaf_vartime(h.value, w),negative=h.negative};
+}
+// The sum of four terms on one chain of doublings (Strauss): g1 over G,
+// g2 over λG, p1 over the table's point and p2 over λ times it. Doubling
+// infinity, before the first digit, costs nothing.
+fg_strauss_vartime :: (g1: FgHalf, g2: FgHalf, p1: FgHalf, p2: FgHalf, table: [] Fgej) -> Fgej #effects(all) {
+  r := fg_infinity();
+  for round: 0..<FG_BITS {
+    bit := FG_BITS - 1 - round;
+    r = fg_double(r);
+    if g1.wnaf.digits[bit] != 0 { r = fg_add_affine(r, fg_g_entry(g1.wnaf.digits[bit], g1.negative, false)); }
+    if g2.wnaf.digits[bit] != 0 { r = fg_add_affine(r, fg_g_entry(g2.wnaf.digits[bit], g2.negative, true)); }
+    if p1.wnaf.digits[bit] != 0 { r = fg_add(r, fg_p_entry(table, p1.wnaf.digits[bit], p1.negative, false)); }
+    if p2.wnaf.digits[bit] != 0 { r = fg_add(r, fg_p_entry(table, p2.wnaf.digits[bit], p2.negative, true)); }
+  }
+  return r;
+}
+// a·G + b·P. Both scalars split as chapter 77 splits them, a = a1 + λ·a2
+// and b = b1 + λ·b2 with halves below 2^128. G's halves use the width-8
+// table of affine points, and λ·(x, y) = (β·x, y) gives the other two
+// tables.
+fg_ecmult_vartime :: (a: ScScalar, point: Fge, b: ScScalar) -> Fgej #effects(all) {
+  sa := glv_split_vartime(a); sb := glv_split_vartime(b);
+  table := fg_odd_table(point);
+  return fg_strauss_vartime(fg_half_vartime(sa.r1, FG_G_WINDOW), fg_half_vartime(sa.r2, FG_G_WINDOW),
+                            fg_half_vartime(sb.r1, FG_P_WINDOW), fg_half_vartime(sb.r2, FG_P_WINDOW), table[..]);
+}
+
+// ---- what the verifiers ask of the result
+// Whether x(R) mod n = r, for an r from 1 to n - 1, without the division:
+// x(R) = X/Z², so the test is X = x·Z² for x = r and, when r + n is below
+// p, for x = r + n. Infinity matches nothing.
+fg_x_matches_scalar_vartime :: (point: Fgej, r: ScScalar) -> bool #effects(all) {
+  if point.infinity { return false; }
+  bytes: [32] u8;
+  if !sc_store(r, bytes[..]) { return false; }
+  x := fe_load_vartime(bytes[..]).value;                       // r < n < p
+  z2 := fe_sqr(point.z);
+  if fe_equal_vartime(point.x, fe_mul(x, z2)) { return true; }
+  below := false;
+  for i: 0..<8 {
+    at := 7 - i;
+    if r.limbs[at] < fg_p_minus_n().limbs[at] { below = true; break; }
+    if r.limbs[at] > fg_p_minus_n().limbs[at] { break; }
+  }
+  if !below { return false; }
+  return fe_equal_vartime(point.x, fe_mul(fe_add(x, fg_order()), z2));
+}
+// Whether R is finite with an even y and x(R) = x, for an x below p
+// (BIP-340's last three checks).
+fg_matches_even_x_vartime :: (point: Fgej, x: Fe) -> bool #effects(all) {
+  if point.infinity { return false; }
+  affine := fg_to_affine_vartime(point);
+  return !fe_is_odd(affine.y) && fe_equal_vartime(affine.x, x);
+}

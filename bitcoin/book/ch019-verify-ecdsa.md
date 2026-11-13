@@ -104,14 +104,17 @@ the signature `(r, s)`, as SEC 1 section 4.1.4 specifies it:
 5. **The scalars.** Read `z` as a 256-bit integer and reduce it mod `n`.
    Compute `w = s^-1 mod n`, `u1 = z·w mod n` and `u2 = r·w mod n`.
 6. **The point.** `R = u1·G + u2·Q`, which `ecmult_vartime(u1, Q, u2)`
-   computes as one sum with a shared doubling chain. The verifier calls
-   chapter 77's `ecmult_glv_vartime`, which gives the same point with about
-   half the doublings.
+   computes as one sum with a shared doubling chain. Chapter 77's
+   `ecmult_glv_vartime` gives the same point with about half the doublings.
 7. **The comparison.** Refuse if `R` is infinity. Otherwise convert `R` to
    affine coordinates and accept exactly when `x(R) mod n = r`.
 
 Steps 3 to 5 are `ev_prepare_vartime`, and steps 6 and 7 are
-`ev_prepared_matches_vartime`:
+`ev_prepared_matches_vartime`. The entry runs the same steps on chapter
+77's fast path: it decodes the key with `fg_decode_vartime`, computes `R`
+with `fg_ecmult_vartime`, and compares without a division. A check in the
+file confirms that the entry decides as `ev_prepared_matches_vartime`
+does.
 
 <!-- source: coax/lib/crypto/ecdsa_verify.coax prepare -->
 ```jai
@@ -124,7 +127,7 @@ ev_prepare_vartime :: (hash: [] u8, point: SgPoint, signature: [] u8, low_s: boo
   if !scalars.ok { return result; }
   if low_s && ev_high_s_vartime(scalars.s) { return result; }
   z := sc_reduce_bytes(hash).value;                  // a hash at least n is reduced
-  w := sc_inverse(scalars.s).value;                  // s is nonzero, so w exists
+  w := sc_inverse_vartime(scalars.s).value;          // s is nonzero, so w exists
   return EvPrepared.{u1=sc_mul(z,w),u2=sc_mul(scalars.r,w),point=point,r=scalars.r,ready=true};
 }
 ```
@@ -156,9 +159,11 @@ The entries put the steps together:
 // low_s, an s above (n-1)/2 refuses, as BIP-146 and Wycheproof's Bitcoin
 // variant require; without it, both halves verify, as consensus allows.
 ecdsa_verify_vartime :: (hash: [] u8, public_key: [] u8, signature: [] u8, low_s: bool) -> bool #export_c #effects(all) {
-  key := se_decode(public_key);
+  key := fg_decode_vartime(public_key);
   if !key.ok { return false; }
-  return ev_prepared_matches_vartime(ev_prepare_vartime(hash, key.value, signature, low_s));
+  prepared := ev_prepare_vartime(hash, sg_generator(), signature, low_s);   // the point is not used
+  if !prepared.ready { return false; }
+  return fg_x_matches_scalar_vartime(fg_ecmult_vartime(prepared.u1, key.value, prepared.u2), prepared.r);
 }
 // The same for a strict DER signature (no sighash byte).
 ecdsa_verify_der_vartime :: (hash: [] u8, public_key: [] u8, der: [] u8, low_s: bool) -> bool #export_c #effects(all) {

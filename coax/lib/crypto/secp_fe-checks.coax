@@ -1,0 +1,255 @@
+// The checks of secp_fe.coax. The reference is secp_field.coax: every
+// 52-bit-limb result must equal what the 26-bit-limb field gives for the
+// same numbers, on seeded values, on every pair of limbs at the largest
+// admitted magnitude, and at the edges of p.
+// Checks: coax test coax/lib/crypto/secp_fe.coax --library
+#load "secp_field.coax";
+
+// 32 seeded bytes: splitmix64 on (seed, stream).
+fet_bytes :: (seed: int, stream: int) -> [32] u8 {
+  out: [32] u8; state := mul_wrap(cast(u64) (seed * 64 + stream + 1), 0x9E3779B97F4A7C15);
+  for i: 0..<4 {
+    state = add_wrap(state, 0x9E3779B97F4A7C15);
+    z := state; z = mul_wrap(z ^ (z >> 30), 0xBF58476D1CE4E5B9); z = mul_wrap(z ^ (z >> 27), 0x94D049BB133111EB); z = z ^ (z >> 31);
+    #assert cb_store_be64(out[..], 8 * i, z);
+  }
+  return out;
+}
+// A seeded value below p in both representations.
+FetPair :: struct { fast: Fe; reference: SecpField; }
+fet_pair :: (seed: int, stream: int) -> FetPair {
+  b := fet_bytes(seed, stream); b[0] &= 127;   // below 2^255, so below p
+  r := fe_load_vartime(b[..]);
+  #assert r.ok;
+  return FetPair.{fast=r.value,reference=sf_load(b[..]).value};
+}
+// The reference value of any limbs, reduced or not: each limb splits into
+// 26-bit digits, and 2^(52i) is digit 2i of the 26-bit form.
+fet_reference :: (f: Fe) -> SecpField {
+  sum: SecpField;
+  for i: 0..<5 {
+    digits: SecpField; place: SecpField; place.limb[2 * i] = 1;
+    digits.limb[0] = f.n[i] & SF_MASK26; digits.limb[1] = (f.n[i] >> 26) & SF_MASK26; digits.limb[2] = f.n[i] >> 52;
+    sum = sf_add(sum, sf_multiply(digits, place));
+  }
+  return sum;
+}
+fet_same :: (f: Fe, reference: SecpField) -> bool {
+  a: [32] u8; b: [32] u8;
+  #assert fe_store(f, a[..]) && sf_store(reference, b[..]);
+  return cb_ct_equal(a[..], b[..]) == CB_MAX64;
+}
+// The largest value of magnitude m.
+fet_max :: (m: int) -> Fe {
+  k := cast(u64) (2 * m);
+  return Fe.{n=[5] u64.[FE_M52 * k, FE_M52 * k, FE_M52 * k, FE_M52 * k, FE_M48 * k]};
+}
+// k·p, limb by limb.
+fet_p_times :: (k: u64) -> Fe { return Fe.{n=[5] u64.[FE_P0 * k, FE_M52 * k, FE_M52 * k, FE_M52 * k, FE_M48 * k]}; }
+fet_small :: (v: u64) -> Fe { r: Fe; r.n[0] = v; return r; }
+fet_small_reference :: (v: u64) -> SecpField { r: SecpField; r.limb[0] = v; return r; }
+
+#test "128-bit sums carry between the halves" #steps 2000000000 {
+  a := CoaxU64Product.{hi=1,lo=CB_MAX64}; b := CoaxU64Product.{hi=2,lo=1};
+  s := fw_add(a, b); #assert s.hi == 4 && s.lo == 0;
+  s = fw_add(b, a); #assert s.hi == 4 && s.lo == 0;
+  s = fw_add(CoaxU64Product.{hi=5,lo=7}, CoaxU64Product.{hi=1,lo=8}); #assert s.hi == 6 && s.lo == 15;
+  s = fw_add(CoaxU64Product.{hi=0,lo=CB_MAX64}, CoaxU64Product.{hi=0,lo=CB_MAX64}); #assert s.hi == 1 && s.lo == CB_MAX64 - 1;
+  s = fw_mac(CoaxU64Product.{hi=3,lo=CB_MAX64}, 4294967296, 4294967296); #assert s.hi == 4 && s.lo == CB_MAX64;
+  s = fw_mac(CoaxU64Product.{hi=3,lo=CB_MAX64}, 3, 5); #assert s.hi == 4 && s.lo == 14;
+  s = fw_mac(CoaxU64Product.{hi=3,lo=1}, CB_MAX64, 2); #assert s.hi == 4 && s.lo == CB_MAX64;
+  s = fw_shr52(CoaxU64Product.{hi=(cast(u64) 5 << 52) | 0xABC,lo=(cast(u64) 0x123 << 52) | 9});
+  #assert s.hi == 5 && s.lo == (cast(u64) 0xABC << 12) | 0x123;
+}
+#test "the constants are p's limbs and 2^256 and 2^260 mod p" #steps 2000000000 {
+  p := fet_p_times(1); zero: SecpField;
+  #assert sf_equal_mask(fet_reference(p), zero) == CB_MAX64;
+  top: Fe; top.n[4] = cast(u64) 1 << 48;                       // 2^256
+  #assert sf_equal_mask(fet_reference(top), fet_small_reference(FE_R1)) == CB_MAX64;
+  top.n[4] = cast(u64) 1 << 52;                                // 2^260
+  #assert sf_equal_mask(fet_reference(top), fet_small_reference(FE_R)) == CB_MAX64;
+  #assert fe_one().n[0] == 1 && fe_small(7).n[0] == 7;
+  for i: 1..<5 { #assert fe_one().n[i] == 0 && fe_small(7).n[i] == 0; }
+}
+#forall "seeded products, squares, sums and negations equal the reference" seed: 0..<96 #steps 2000000000 {
+  a := fet_pair(seed, 0); b := fet_pair(seed, 1);
+  #assert fet_same(a.fast, a.reference) && fet_same(b.fast, b.reference);
+  #assert fet_same(fe_mul(a.fast, b.fast), sf_multiply(a.reference, b.reference));
+  #assert fet_same(fe_sqr(a.fast), sf_square(a.reference));
+  #assert fet_same(fe_add(a.fast, b.fast), sf_add(a.reference, b.reference));
+  #assert fet_same(fe_negate(a.fast, 1), sf_negate(a.reference));
+  #assert fet_same(fe_scale(a.fast, 7), sf_multiply(a.reference, fet_small_reference(7)));
+  // The same through unreduced operands: (a + b)(a - b) = a² - b².
+  sum := fe_add(a.fast, b.fast); difference := fe_add(a.fast, fe_negate(b.fast, 1));
+  #assert fet_same(fe_mul(sum, difference), sf_subtract(sf_square(a.reference), sf_square(b.reference)));
+  #assert fet_same(fe_sqr(difference), sf_square(sf_subtract(a.reference, b.reference)));
+  #assert fe_equal_vartime(fe_mul(sum, difference), fe_add(fe_sqr(a.fast), fe_negate(fe_sqr(b.fast), 1)));
+  #assert !fe_equal_vartime(a.fast, b.fast) && fe_equal_vartime(a.fast, a.fast) && !fe_is_zero_vartime(a.fast);
+  #assert fe_is_odd(fe_normalize(a.fast)) == ((fet_bytes(seed, 0)[31] & 1) != 0);
+  w := fe_weak(fe_scale(sum, 9));
+  #assert fet_same(w, sf_multiply(sf_add(a.reference, b.reference), fet_small_reference(9)));
+  for i: 0..<4 { #assert w.n[i] <= FE_M52; }
+  #assert w.n[4] <= FE_M48 + 64;
+}
+#forall "the largest operands of each magnitude multiply and square exactly" m: 1..<9, k: 1..<9 #steps 2000000000 {
+  a := fet_max(m); b := fet_max(k);
+  product := fe_mul(a, b);
+  #assert fet_same(product, sf_multiply(fet_reference(a), fet_reference(b)));
+  #assert fet_same(fe_sqr(a), sf_square(fet_reference(a)));
+  // The result has magnitude 1.
+  for i: 0..<4 { #assert product.n[i] <= 2 * FE_M52; }
+  #assert product.n[4] <= FE_M48;
+}
+#forall "each pair of limbs at magnitude 8 lands in its column" i: 0..<5, j: 0..<5 #steps 2000000000 {
+  a: Fe; b: Fe; big := fet_max(8);
+  a.n[i] = big.n[i]; b.n[j] = big.n[j];
+  #assert fet_same(fe_mul(a, b), sf_multiply(fet_reference(a), fet_reference(b)));
+  #assert fet_same(fe_mul(a, big), sf_multiply(fet_reference(a), fet_reference(big)));
+  both := a; both.n[j] = big.n[j];
+  #assert fet_same(fe_sqr(both), sf_square(fet_reference(both)));
+}
+#forall "each bit multiplies and squares like the reference" bit: 0..<256, other: 0..<4 #steps 2000000000 {
+  a: Fe; a.n[bit / 52] = cast(u64) 1 << (bit % 52);
+  b := fet_pair(bit, other).fast;
+  if other == 0 { b = fet_max(7); }
+  if other == 1 { b = fe_negate(a, 1); }
+  #assert !fe_is_zero_vartime(a) && !fe_equal_vartime(a, Fe.{}) && !fe_equal_vartime(Fe.{}, a);
+  #assert fet_same(fe_mul(a, b), sf_multiply(fet_reference(a), fet_reference(b)));
+  #assert fet_same(fe_mul(b, a), sf_multiply(fet_reference(a), fet_reference(b)));
+  #assert fet_same(fe_sqr(fe_add(a, b)), sf_square(sf_add(fet_reference(a), fet_reference(b))));
+}
+#forall "a negation is exactly 2(m+1)·p less the limbs" m: 0..<9 #steps 2000000000 {
+  zero: Fe; k := cast(u64) (2 * (m + 1));
+  twice := fe_negate(zero, cast(u64) m); expected := fet_p_times(k);
+  for i: 0..<5 { #assert twice.n[i] == expected.n[i]; }
+  big := fet_max(m);
+  if m > 0 { back := fe_negate(big, cast(u64) m); for i: 0..<5 { #assert back.n[i] == expected.n[i] - big.n[i]; } }
+}
+#test "a value above 2^256 with different limbs loses p once" #steps 2000000000 {
+  a := Fe.{n=[5] u64.[5, 6, 7, 8, (cast(u64) 1 << 48) + 9]};
+  n := fe_normalize(a);
+  #assert n.n[0] == 5 + FE_R1 && n.n[1] == 6 && n.n[2] == 7 && n.n[3] == 8 && n.n[4] == 9;
+  // The carry of the subtraction crosses limbs 1 to 3 when they are full.
+  b := Fe.{n=[5] u64.[FE_M52, FE_M52, FE_M52, 8, (cast(u64) 1 << 48) + 9]};
+  n = fe_normalize(b);
+  #assert n.n[0] == FE_R1 - 1 && n.n[1] == 0 && n.n[2] == 0 && n.n[3] == 9 && n.n[4] == 9;
+  // Bit 256 set only by the first pass's carry: the second pass sees limbs 5, 6, 7, 8.
+  d := Fe.{n=[5] u64.[5, 6, 7, (cast(u64) 1 << 52) + 8, FE_M48]};
+  n = fe_normalize(d);
+  #assert n.n[0] == 5 + FE_R1 && n.n[1] == 6 && n.n[2] == 7 && n.n[3] == 8 && n.n[4] == 0;
+  c := Fe.{n=[5] u64.[FE_M52, FE_M52, 7, FE_M52, (cast(u64) 1 << 48) + 9]};
+  n = fe_normalize(c);
+  #assert n.n[0] == FE_R1 - 1 && n.n[1] == 0 && n.n[2] == 8 && n.n[3] == FE_M52 && n.n[4] == 9;
+}
+#forall "multiples of p are zero, and their neighbours are not" k: 1..<33 #steps 2000000000 {
+  kp := fet_p_times(cast(u64) k);
+  #assert fe_is_zero_vartime(kp);
+  n := fe_normalize(kp); for i: 0..<5 { #assert n.n[i] == 0; }
+  up := kp; up.n[0] += 1;
+  #assert !fe_is_zero_vartime(up) && fet_same(up, fet_small_reference(1));
+  down := kp; down.n[0] -= 1;
+  #assert !fe_is_zero_vartime(down) && fet_same(down, sf_negate(fet_small_reference(1)));
+  w := fe_weak(kp);
+  #assert fet_same(w, fet_small_reference(0));
+  for i: 0..<4 { #assert w.n[i] <= FE_M52; }
+  #assert w.n[4] <= FE_M48 + 1;
+}
+#forall "the largest value of each magnitude reduces exactly" m: 1..<33 #steps 2000000000 {
+  a := fet_max(m);
+  #assert fet_same(fe_normalize(a), fet_reference(a)) && fet_same(fe_weak(a), fet_reference(a));
+  #assert fe_is_zero_vartime(a) == false;
+  n := fe_normalize(a); bytes: [32] u8;
+  #assert fe_store(n, bytes[..]) && fe_load_vartime(bytes[..]).ok;   // below p
+}
+#test "values from p - 2 to p + 2 and around 2^256 normalize below p" #steps 2000000000 {
+  for offset: 0..<5 {
+    a := fet_p_times(1); a.n[0] = a.n[0] + cast(u64) offset - 2;
+    n := fe_normalize(a);
+    expected := ifx offset < 2 then FE_P0 + cast(u64) offset - 2 else cast(u64) offset - 2;
+    #assert n.n[0] == expected;
+    for i: 1..<4 { #assert n.n[i] == (ifx offset < 2 then FE_M52 else cast(u64) 0); }
+    #assert n.n[4] == (ifx offset < 2 then FE_M48 else cast(u64) 0);
+    #assert fe_is_zero_vartime(a) == (offset == 2);
+  }
+  // 2^256 - 1 = p + FE_R1 - 1, and 2^256 itself, with bit 48 of limb 4 set.
+  ones := Fe.{n=[5] u64.[FE_M52, FE_M52, FE_M52, FE_M52, FE_M48]};
+  n := fe_normalize(ones); #assert n.n[0] == FE_R1 - 1 && (n.n[1] | n.n[2] | n.n[3] | n.n[4]) == 0;
+  top: Fe; top.n[4] = cast(u64) 1 << 48;
+  n = fe_normalize(top); #assert n.n[0] == FE_R1 && (n.n[1] | n.n[2] | n.n[3] | n.n[4]) == 0;
+  // Limb 4 full and limbs 1 to 3 full, but limb 0 below p's: already below p.
+  low := fet_p_times(1); low.n[0] = 5;
+  n = fe_normalize(low); #assert n.n[0] == 5 && n.n[1] == FE_M52 && n.n[4] == FE_M48;
+  // One of limbs 1 to 3 short of full: below p whatever limb 0 is.
+  for i: 1..<4 {
+    short := ones; short.n[i] = FE_M52 - 1;
+    n = fe_normalize(short); #assert n.n[0] == FE_M52 && n.n[i] == FE_M52 - 1 && n.n[4] == FE_M48;
+  }
+  short := ones; short.n[4] = FE_M48 - 1;
+  n = fe_normalize(short); #assert n.n[0] == FE_M52 && n.n[4] == FE_M48 - 1;
+}
+#forall "bytes load and store exactly, bit by bit" bit: 0..<256 #steps 2000000000 {
+  bytes: [32] u8; bytes[31 - bit / 8] = cast(u8) (1 << (bit % 8));
+  r := fe_load_vartime(bytes[..]);
+  #assert r.ok;
+  for i: 0..<5 { #assert r.value.n[i] == (ifx i == bit / 52 then cast(u64) 1 << (bit % 52) else cast(u64) 0); }
+  out: [32] u8; for i: 0..<32 { out[i] = 255; }
+  #assert fe_store(r.value, out[..]);
+  for i: 0..<32 { #assert out[i] == bytes[i]; }
+  #assert fet_same(r.value, sf_load(bytes[..]).value);
+}
+#test "loading refuses p and above and wrong lengths; storing refuses wrong lengths" #steps 2000000000 {
+  bytes: [33] u8; minus := sf_negate(fet_small_reference(1));
+  #assert sf_store(minus, bytes[0..<32]);                      // p - 1
+  r := fe_load_vartime(bytes[0..<32]); #assert r.ok && fet_same(r.value, minus);
+  bytes[31] += 1;                                              // p
+  r = fe_load_vartime(bytes[0..<32]); #assert !r.ok;
+  for i: 0..<5 { #assert r.value.n[i] == 0; }
+  bytes[31] += 1; #assert !fe_load_vartime(bytes[0..<32]).ok;  // p + 1
+  for i: 0..<32 { bytes[i] = 255; } #assert !fe_load_vartime(bytes[0..<32]).ok;
+  bytes[31] = 0; #assert !fe_load_vartime(bytes[0..<32]).ok;   // limb 0 is above p's although the byte is small
+  bytes[27] = 254; bytes[30] = 252; bytes[31] = 46; #assert fe_load_vartime(bytes[0..<32]).ok;   // p - 1 again
+  bytes[30] = 255; bytes[31] = 255; #assert !fe_load_vartime(bytes[0..<32]).ok;   // limb 0 above p's, the rest full
+  bytes[27] = 255; bytes[20] = 254; #assert fe_load_vartime(bytes[0..<32]).ok;   // limb 1 short
+  bytes[20] = 255; bytes[14] = 254; #assert fe_load_vartime(bytes[0..<32]).ok;   // limb 2 short
+  bytes[14] = 255; bytes[7] = 254; #assert fe_load_vartime(bytes[0..<32]).ok;    // limb 3 short
+  bytes[7] = 255; bytes[0] = 254; #assert fe_load_vartime(bytes[0..<32]).ok;     // limb 4 short
+  #assert !fe_load_vartime(bytes[..]).ok && !fe_load_vartime(bytes[0..<31]).ok && !fe_load_vartime(bytes[0..<0]).ok;
+  for i: 0..<33 { bytes[i] = 165; }
+  #assert !fe_store(fe_one(), bytes[..]) && !fe_store(fe_one(), bytes[0..<31]);
+  for i: 0..<33 { #assert bytes[i] == 165; }
+}
+#forall "inverses and square roots equal the reference" seed: 0..<24 #steps 2000000000 {
+  a := fet_pair(seed, 2);
+  inverse := fe_inverse_vartime(a.fast);
+  #assert fet_same(inverse, sf_inverse(a.reference).value);
+  #assert fet_same(fe_mul(inverse, a.fast), fet_small_reference(1));
+  // The same from an unreduced operand of magnitude 8.
+  wide := fe_scale(a.fast, 8);
+  #assert fet_same(fe_mul(fe_inverse_vartime(wide), wide), fet_small_reference(1));
+  square := fe_sqr(a.fast);
+  root := fe_sqrt_vartime(square);
+  #assert root.ok && fet_same(fe_sqr(root.value), sf_square(a.reference));
+  #assert fe_equal_vartime(root.value, a.fast) || fe_equal_vartime(root.value, fe_negate(a.fast, 1));
+  // p = 3 (mod 4): -1 is not a square, so exactly one of a and -a has a root.
+  plain := fe_sqrt_vartime(a.fast); negated := fe_sqrt_vartime(fe_negate(a.fast, 1));
+  #assert plain.ok != negated.ok;
+  #assert plain.ok == sf_sqrt(a.reference).ok;
+  refused := ifx plain.ok then negated else plain;
+  for i: 0..<5 { #assert refused.value.n[i] == 0; }
+}
+#test "zero has no inverse and is its own square root; small known roots" #steps 2000000000 {
+  zero: Fe;
+  #assert fe_is_zero_vartime(fe_inverse_vartime(zero)) && fe_is_zero_vartime(fe_inverse_vartime(fet_p_times(1)));
+  root := fe_sqrt_vartime(zero); #assert root.ok && fe_is_zero_vartime(root.value);
+  root = fe_sqrt_vartime(fet_small(4)); #assert root.ok;
+  #assert fe_equal_vartime(root.value, fet_small(2)) || fe_equal_vartime(root.value, fe_negate(fet_small(2), 1));
+  #assert !fe_sqrt_vartime(fet_small(3)).ok;
+  #assert fe_equal_vartime(fe_inverse_vartime(fe_one()), fe_one());
+  #assert fe_equal_vartime(fe_sqr_n(fet_small(3), 0), fet_small(3)) && fe_equal_vartime(fe_sqr_n(fet_small(3), 2), fet_small(81));
+  // The chain's shared powers, against plain square-and-multiply.
+  c := fe_chain(fet_small(3)); power := fet_small(3);
+  #assert fe_equal_vartime(c.x2, fet_small(27));                 // 3^3
+  #assert fe_equal_vartime(c.x3, fet_small(2187));               // 3^7
+  for i: 1..<223 { power = fe_mul(fe_sqr(power), fet_small(3)); if i == 21 { #assert fe_equal_vartime(c.x22, power); } }
+  #assert fe_equal_vartime(c.x223, power);
+}

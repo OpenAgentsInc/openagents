@@ -9,7 +9,8 @@
 // Bitcoin script's BIP-66 rules (the sighash byte, the size bounds and the
 // history) are chapter 21's. This file reads exactly one DER signature and
 // refuses every encoding that is not the single canonical one.
-#load "secp_glv.coax";
+#load "secp_fast.coax";
+#load "secp_scalar_inverse.coax";
 #load "secp_encode.coax";
 
 EvScalars :: struct { r: ScScalar; s: ScScalar; ok: bool; }
@@ -117,6 +118,24 @@ EV_T_386_SIG :: "304402207fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f4
   #assert !ecdsa_verify_der_vartime(ww, ev_unhex(EV_T_386_KEY, k[..]), ev_unhex(EV_T_386_SIG, d[..]), true);
   #assert !ecdsa_verify_der_vartime(ww, ev_unhex(EV_T_346_KEY, k[..]), ev_unhex(EV_T_346_SIG, d[..])[0..<23], true);
 }
+#forall "the entry decides as the equation on the 26-bit field does" change: 0..<9 #steps 2000000000 #traversal 2000000000 {
+  k: [65] u8; h: [32] u8; s: [64] u8; d: [80] u8; low := change != 5;
+  key := ev_unhex(EV_T_KEY, k[..]); hash := ev_unhex(EV_T_HASH, h[..]); sig := ev_unhex(EV_T_SIG, s[..]);
+  if change == 1 { h[7] ^= 16; }
+  if change == 2 { s[9] ^= 1; }                                      // another r
+  if change == 3 { s[50] ^= 1; }                                     // another s
+  if change == 4 { k[64] ^= 1; }                                     // off the curve
+  if change == 5 || change == 6 { high := ev_unhex(EV_T_HIGH, s[32..<64]); }   // n - s, without and with the low-S rule
+  if change == 7 { k[0] = 2; key = k[0..<33]; }                      // the same key compressed
+  if change == 8 {                                                   // Wycheproof 346: x(R) = r + n
+    hash = ev_unhex(EV_T_W_HASH, h[..]); key = ev_unhex(EV_T_346_KEY, k[..]);
+    #assert ecdsa_der_read_vartime(ev_unhex(EV_T_346_SIG, d[..]), s[..]);
+  }
+  decoded := se_decode(key); reference := false;
+  if decoded.ok { reference = ev_prepared_matches_vartime(ev_prepare_vartime(hash, decoded.value, sig, low)); }
+  #assert ecdsa_verify_vartime(hash, key, sig, low) == reference;
+  #assert reference == (change == 0 || change == 5 || change == 7 || change == 8);
+}
 #test "a prepared record is refused for infinity and when not ready" #steps 1000000000 {
   h: [32] u8; s: [64] u8;
   hash := ev_unhex(EV_T_HASH, h[..]); sig := ev_unhex(EV_T_SIG, s[..]);
@@ -127,6 +146,9 @@ EV_T_386_SIG :: "304402207fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f4
   forged := prepared; forged.u1 = sc_add(prepared.u1, prepared.u2); forged.point = sg_infinity();
   #assert !ev_prepared_matches_vartime(forged);
   forged = prepared; forged.ready = false; #assert !ev_prepared_matches_vartime(forged);
+  // G - G is infinity, whose stored x is zero: r = 0 must not match it.
+  forged = prepared; forged.u1 = sc_small(1); forged.u2 = sc_negate(sc_small(1)); forged.r = ScScalar.{};
+  #assert !ev_prepared_matches_vartime(forged);
   #assert !ev_prepare_vartime(hash[0..<31], sg_generator(), sig, true).ready;
 }
 
@@ -160,7 +182,7 @@ ev_prepare_vartime :: (hash: [] u8, point: SgPoint, signature: [] u8, low_s: boo
   if !scalars.ok { return result; }
   if low_s && ev_high_s_vartime(scalars.s) { return result; }
   z := sc_reduce_bytes(hash).value;                  // a hash at least n is reduced
-  w := sc_inverse(scalars.s).value;                  // s is nonzero, so w exists
+  w := sc_inverse_vartime(scalars.s).value;          // s is nonzero, so w exists
   return EvPrepared.{u1=sc_mul(z,w),u2=sc_mul(scalars.r,w),point=point,r=scalars.r,ready=true};
 }
 // book:end prepare
@@ -188,9 +210,11 @@ ev_prepared_matches_vartime :: (prepared: EvPrepared) -> bool {
 // low_s, an s above (n-1)/2 refuses, as BIP-146 and Wycheproof's Bitcoin
 // variant require; without it, both halves verify, as consensus allows.
 ecdsa_verify_vartime :: (hash: [] u8, public_key: [] u8, signature: [] u8, low_s: bool) -> bool #export_c #effects(all) {
-  key := se_decode(public_key);
+  key := fg_decode_vartime(public_key);
   if !key.ok { return false; }
-  return ev_prepared_matches_vartime(ev_prepare_vartime(hash, key.value, signature, low_s));
+  prepared := ev_prepare_vartime(hash, sg_generator(), signature, low_s);   // the point is not used
+  if !prepared.ready { return false; }
+  return fg_x_matches_scalar_vartime(fg_ecmult_vartime(prepared.u1, key.value, prepared.u2), prepared.r);
 }
 // The same for a strict DER signature (no sighash byte).
 ecdsa_verify_der_vartime :: (hash: [] u8, public_key: [] u8, der: [] u8, low_s: bool) -> bool #export_c #effects(all) {

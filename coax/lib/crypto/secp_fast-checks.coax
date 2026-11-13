@@ -1,0 +1,277 @@
+// The checks of secp_fast.coax. The references are chapter 15's complete
+// group law (secp_group.coax), chapter 16's ecmult_vartime (secp_mult.coax)
+// and chapter 17's se_decode (secp_encode.coax), all on the 26-bit field:
+// every point the fast path produces must be the point they produce.
+// Checks: coax test coax/lib/crypto/secp_fast.coax --library
+#load "secp_fe-checks.coax";
+#load "secp_encode.coax";
+
+// A fast-path point as the reference's point.
+fgt_reference :: (a: Fgej) -> SgPoint {
+  if a.infinity { return sg_infinity(); }
+  affine := fg_to_affine_vartime(a); x: [32] u8; y: [32] u8;
+  #assert fe_store(affine.x, x[..]) && fe_store(affine.y, y[..]);
+  r: SgPoint; r.x = sf_load(x[..]).value; r.y = sf_load(y[..]).value; r.z.limb[0] = 1;
+  return r;
+}
+// A finite reference point as an affine fast-path point.
+fgt_affine :: (p: SgPoint) -> Fge {
+  affine := sg_to_affine_valid(p); x: [32] u8; y: [32] u8;
+  #assert affine.infinity == 0 && sf_store(affine.x, x[..]) && sf_store(affine.y, y[..]);
+  return Fge.{x=fe_load_vartime(x[..]).value,y=fe_load_vartime(y[..]).value};
+}
+// The same point with Z = c: (x·c², y·c³, c).
+fgt_scaled :: (a: Fge, c: Fe) -> Fgej {
+  c2 := fe_sqr(c);
+  return Fgej.{x=fe_mul(a.x, c2),y=fe_mul(fe_mul(a.y, c2), c),z=c};
+}
+// k·G from the reference, as the reference's point and, with a seeded Z, as
+// a fast-path point. k = 0 is infinity.
+FgtPoint :: struct { fast: Fgej; reference: SgPoint; }
+fgt_multiple :: (k: int, seed: int) -> FgtPoint {
+  r: FgtPoint; r.reference = sg_infinity();
+  for i: 0..<k { r.reference = sg_add_valid(r.reference, sg_generator()); }
+  if k == 0 { r.fast = fg_infinity(); return r; }
+  r.fast = fgt_scaled(fgt_affine(r.reference), fet_pair(seed, 3).fast);
+  return r;
+}
+fgt_same :: (a: Fgej, reference: SgPoint) -> bool { return sg_equal_mask(fgt_reference(a), reference) == CB_MAX64; }
+fgt_negate :: (a: Fgej) -> Fgej { r := a; r.y = fe_negate(a.y, 4); return r; }
+fgt_scalar :: (seed: int, stream: int) -> ScScalar { b := fet_bytes(seed, stream); return sc_reduce_bytes(b[..]).value; }
+// A seeded number below 2^128.
+fgt_half :: (seed: int, stream: int) -> ScScalar {
+  r := fgt_scalar(seed, stream);
+  for i: 4..<8 { r.limbs[i] = 0; }
+  return r;
+}
+// Whether a wNAF stands for k, which is below 2^128: the digits from the
+// top, doubling, in three 64-bit words that wrap (so mod 2^192).
+fgt_wnaf_is :: (w: FgWnaf, k: ScScalar) -> bool {
+  lo: u64; hi: u64; top: u64;
+  for round: 0..<FG_BITS {
+    d := w.digits[FG_BITS - 1 - round];
+    top = (top << 1) | (hi >> 63); hi = (hi << 1) | (lo >> 63); lo = lo << 1;
+    if d > 0 {
+      lo = add_wrap(lo, cast(u64) d);
+      if lo < cast(u64) d { hi = add_wrap(hi, 1); if hi == 0 { top = add_wrap(top, 1); } }
+    }
+    if d < 0 {
+      before := lo; lo = sub_wrap(lo, cast(u64) (-d));
+      if before < cast(u64) (-d) { if hi == 0 { top = sub_wrap(top, 1); } hi = sub_wrap(hi, 1); }
+    }
+  }
+  return top == 0 && lo == (cast(u64) k.limbs[0] | (cast(u64) k.limbs[1] << 32)) && hi == (cast(u64) k.limbs[2] | (cast(u64) k.limbs[3] << 32));
+}
+fgt_abs :: (d: int) -> int { return ifx d < 0 then -d else d; }
+
+#test "the table holds G's odd multiples, and the constants are β, n and p - n" #steps 2000000000 #traversal 2000000000 {
+  #assert FG_G_ENTRIES == 1 << (FG_G_WINDOW - 2) && FG_P_WINDOW == SM_P_WINDOW && FG_BITS == 129;
+  point := fg_from_affine(fg_g_point(0)); twice := fg_double(point);
+  expected := sg_generator(); step := sg_double_valid(expected);
+  for i: 0..<FG_G_ENTRIES {
+    affine := fg_to_affine_vartime(point);
+    for k: 0..<5 { #assert fg_g_point(i).x.n[k] == affine.x.n[k] && fg_g_point(i).y.n[k] == affine.y.n[k]; }
+    #assert fgt_same(fg_from_affine(fg_g_point(i)), expected);
+    point = fg_add(point, twice); expected = sg_add_valid(expected, step);
+  }
+  #assert fet_same(fg_beta(), GLV_BETA);
+  order: [32] u8; rest: [32] u8;
+  for i: 0..<8 { #assert cb_store_be32(order[..], 28 - 4 * i, SC_N.limbs[i]) && cb_store_be32(rest[..], 28 - 4 * i, fg_p_minus_n().limbs[i]); }
+  #assert fet_same(fg_order(), sf_load(order[..]).value);
+  for i: 0..<5 { #assert fg_order().n[i] == fe_load_vartime(order[..]).value.n[i]; }
+  #assert fe_is_zero_vartime(fe_add(fe_load_vartime(rest[..]).value, fg_order()));      // (p - n) + n = p
+}
+#forall "sums and doubles of small multiples equal the reference, with every special case" i: 0..<5, j: 0..<5 #steps 2000000000 #traversal 2000000000 {
+  a := fgt_multiple(i, 2 * i); b := fgt_multiple(j, 2 * j + 1);
+  sum := sg_add_valid(a.reference, b.reference);
+  difference := sg_add_valid(a.reference, sg_negate(b.reference).value);
+  #assert fgt_same(fg_add(a.fast, b.fast), sum) && fgt_same(fg_add(b.fast, a.fast), sum);
+  #assert fgt_same(fg_add(a.fast, fgt_negate(b.fast)), difference);
+  #assert fg_add(a.fast, fgt_negate(b.fast)).infinity == (i == j);
+  doubled := fg_double(a.fast);
+  #assert fgt_same(doubled, sg_double_valid(a.reference)) && doubled.infinity == (i == 0);
+  if j > 0 {
+    affine := fgt_affine(b.reference); opposite := affine; opposite.y = fe_negate(affine.y, 1);
+    mixed := fg_add_affine(a.fast, affine);
+    #assert fgt_same(mixed, sum) && !mixed.infinity;
+    #assert fgt_same(fg_add_affine(a.fast, opposite), difference);
+    #assert fg_add_affine(a.fast, opposite).infinity == (i == j);
+    // From a doubling's result, whose coordinates have the largest magnitudes.
+    #assert fgt_same(fg_add_affine(doubled, affine), sg_add_valid(sg_double_valid(a.reference), b.reference));
+    #assert fgt_same(fg_add(doubled, fg_double(b.fast)), sg_double_valid(sum));
+    #assert fgt_same(fg_double(doubled), sg_double_valid(sg_double_valid(a.reference)));
+    back := fg_to_affine_vartime(b.fast);
+    for k: 0..<5 { #assert back.x.n[k] == affine.x.n[k] && back.y.n[k] == affine.y.n[k]; }
+    lifted := fg_from_affine(affine);
+    #assert !lifted.infinity && fgt_same(lifted, b.reference) && fe_equal_vartime(lifted.z, fe_one());
+  }
+}
+#forall "a wNAF stands for its number, with odd, bounded, spaced digits" seed: 0..<24, w: 2..<9 #steps 2000000000 {
+  k := fgt_half(seed, 4);
+  if seed == 0 { k = ScScalar.{}; }
+  if seed == 1 { for i: 0..<4 { k.limbs[i] = 4294967295; } }
+  if seed == 2 { k = sc_small(1); }
+  if seed == 3 { k = ScScalar.{}; k.limbs[3] = 0x80000000; }
+  recoded := fg_wnaf_vartime(k, w);
+  #assert fgt_wnaf_is(recoded, k);
+  wrong := recoded; wrong.digits[seed] += 2; #assert !fgt_wnaf_is(wrong, k);
+  last := -9; top := 0;
+  for i: 0..<FG_BITS {
+    d := recoded.digits[i];
+    if d == 0 { continue; }
+    #assert fgt_abs(d) % 2 == 1 && fgt_abs(d) < (1 << (w - 1)) && i - last >= w;
+    last = i; top = i + 1;
+  }
+  if seed == 0 { #assert top == 0; }
+  if seed == 1 { #assert top == 129 && recoded.digits[0] == -1 && recoded.digits[128] == 1; }
+  if seed == 2 { #assert top == 1 && recoded.digits[0] == 1; }
+  if seed == 3 { #assert top == 128 && recoded.digits[127] == 1; }
+}
+#forall "each bit recodes to itself, and bits from 256 up read as zero" bit: 0..<128 #steps 2000000000 {
+  k: ScScalar; k.limbs[bit / 32] = cast(u32) 1 << cast(u32) (bit % 32);
+  recoded := fg_wnaf_vartime(k, 5);
+  for i: 0..<FG_BITS { #assert recoded.digits[i] == (ifx i == bit then 1 else 0); }
+  for at: 0..<300 { #assert fg_bit(k, at) == (ifx at == bit then 1 else 0); }
+  high: ScScalar; high.limbs[7] = 0x80000000;
+  #assert fg_bit(high, 255) == 1 && fg_bit(high, 256) == 0 && fg_bit(high, 254) == 0;
+}
+#forall "a·G + b·P equals chapter 16's on seeded inputs" seed: 0..<3 #steps 2000000000 #traversal 2000000000 {
+  a := fgt_scalar(seed, 5); b := fgt_scalar(seed, 6);
+  p := ecmult_vartime(sc_small(cast(u32) (seed + 2)), sg_infinity(), sc_small(0)).value;
+  #assert fgt_same(fg_ecmult_vartime(a, fgt_affine(p), b), ecmult_vartime(a, p, b).value);
+}
+#test "a·G + b·P at the edges: zero scalars, sums that cancel, λ and n - 1" #steps 2000000000 #traversal 2000000000 {
+  g := fg_g_point(0); zero: ScScalar; one := sc_small(1); minus := sc_negate(one);
+  #assert fg_ecmult_vartime(zero, g, zero).infinity;
+  #assert fgt_same(fg_ecmult_vartime(one, g, zero), sg_generator());
+  #assert fgt_same(fg_ecmult_vartime(zero, g, one), sg_generator());
+  #assert fgt_same(fg_ecmult_vartime(one, g, one), sg_double_valid(sg_generator()));
+  #assert fg_ecmult_vartime(one, g, minus).infinity && fg_ecmult_vartime(minus, g, one).infinity;
+  #assert fgt_same(fg_ecmult_vartime(minus, g, zero), sg_negate(sg_generator()).value);
+  a := fgt_scalar(1, 7);
+  #assert fg_ecmult_vartime(a, g, sc_negate(a)).infinity;
+  lambda_g := glv_lambda_point(sg_generator());
+  #assert fgt_same(fg_ecmult_vartime(GLV_LAMBDA, g, zero), lambda_g);
+  #assert fgt_same(fg_ecmult_vartime(zero, g, GLV_LAMBDA), lambda_g);
+  #assert fg_ecmult_vartime(GLV_LAMBDA, fgt_affine(lambda_g), minus).infinity;
+  #assert fgt_same(fg_ecmult_vartime(a, fgt_affine(lambda_g), GLV_LAMBDA), ecmult_vartime(a, lambda_g, GLV_LAMBDA).value);
+  for i: 0..<2 {
+    k := glv_unhex(GLV_NEAR_BOUNDS[9 * i]);
+    #assert fgt_same(fg_ecmult_vartime(k, fgt_affine(lambda_g), sc_negate(k)), ecmult_vartime(k, lambda_g, sc_negate(k)).value);
+  }
+}
+#test "a digit is an index and a sign; zero is not negative" #steps 2000000000 {
+  for i: 0..<64 {
+    plus := fg_digit(2 * i + 1); minus := fg_digit(-(2 * i + 1));
+    #assert plus.index == i && !plus.negative && minus.index == i && minus.negative;
+  }
+  #assert !fg_digit(0).negative && fg_digit(0).index == 0;
+}
+#forall "a digit at any place, the top one included, adds its term" term: 0..<4, place: 0..<3 #steps 2000000000 #traversal 2000000000 {
+  p := sg_add_valid(sg_double_valid(sg_generator()), sg_generator());      // 3G
+  table := fg_odd_table(fgt_affine(p)); halves: [4] FgHalf;
+  bit := ifx place == 0 then 128 else ifx place == 1 then 127 else 0;
+  halves[term].wnaf.digits[bit] = 3; halves[term].negative = place == 1;
+  k: ScScalar; k.limbs[bit / 32] = cast(u32) 1 << cast(u32) (bit % 32);    // 2^bit; 2^128 is limb 4
+  k = sc_mul(k, sc_small(3));
+  if place == 1 { k = sc_negate(k); }
+  if term == 1 || term == 3 { k = sc_mul(k, GLV_LAMBDA); }
+  expected := ifx term < 2 then ecmult_vartime(k, sg_infinity(), sc_small(0)).value else ecmult_vartime(sc_small(0), p, k).value;
+  #assert fgt_same(fg_strauss_vartime(halves[0], halves[1], halves[2], halves[3], table[..]), expected);
+  h := fg_half_vartime(sc_small(5), 4); #assert !h.negative && h.wnaf.digits[0] == 5;
+  h = fg_half_vartime(sc_negate(sc_small(5)), 4); #assert h.negative && h.wnaf.digits[0] == 5;
+  h = fg_half_vartime(sc_small(5), 3); #assert h.wnaf.digits[0] == -3 && h.wnaf.digits[3] == 1;
+}
+#test "P's table holds its odd multiples" #steps 2000000000 #traversal 2000000000 {
+  p := ecmult_vartime(sc_small(5), sg_infinity(), sc_small(0)).value;
+  table := fg_odd_table(fgt_affine(p)); expected := sm_odd_table_vartime(p);
+  for i: 0..<8 {
+    #assert fgt_same(table[i], expected[i]);
+    for negative: 0..<2 {
+      for sign: 0..<2 {
+        digit := ifx sign == 0 then 2 * i + 1 else -(2 * i + 1);
+        want := ifx (sign == 1) != (negative == 1) then sg_negate(expected[i]).value else expected[i];
+        #assert fgt_same(fg_p_entry(table[..], digit, negative == 1, false), want);
+        #assert fgt_same(fg_p_entry(table[..], digit, negative == 1, true), glv_lambda_point(want));
+      }
+    }
+  }
+  g := sg_generator(); odd := sm_odd_table_vartime(g);
+  for i: 0..<8 {
+    #assert fgt_same(fg_from_affine(fg_g_entry(2 * i + 1, false, false)), odd[i]);
+    #assert fgt_same(fg_from_affine(fg_g_entry(-(2 * i + 1), false, false)), sg_negate(odd[i]).value);
+    #assert fgt_same(fg_from_affine(fg_g_entry(2 * i + 1, true, false)), sg_negate(odd[i]).value);
+    #assert fgt_same(fg_from_affine(fg_g_entry(-(2 * i + 1), true, false)), odd[i]);
+    #assert fgt_same(fg_from_affine(fg_g_entry(2 * i + 1, false, true)), glv_lambda_point(odd[i]));
+    #assert fgt_same(fg_from_affine(fg_g_entry(-(2 * i + 1), false, true)), glv_lambda_point(sg_negate(odd[i]).value));
+  }
+  last := fg_g_entry(2 * FG_G_ENTRIES - 1, false, false);
+  for k: 0..<5 { #assert last.x.n[k] == fg_g_point(FG_G_ENTRIES - 1).x.n[k]; }
+}
+#forall "public keys decode as chapter 17 decodes them" x: 0..<12 #steps 2000000000 #traversal 2000000000 {
+  bytes: [65] u8; bytes[32] = cast(u8) x;
+  if x == 10 { for i: 1..<33 { bytes[i] = 255; } }                       // x above p
+  if x == 11 { minus: [32] u8; #assert sf_store(sf_negate(fet_small_reference(1)), minus[..]); for i: 0..<32 { bytes[1 + i] = minus[i]; } bytes[32] += 1; }   // x = p
+  lifted := fg_lift_x_vartime(bytes[1..<33]); reference := sg_lift_x_public(bytes[1..<33]);
+  #assert lifted.ok == reference.ok;
+  if lifted.ok {
+    #assert fgt_same(fg_from_affine(lifted.value), reference.value) && !fe_is_odd(lifted.value.y);
+    #assert fe_load_vartime(bytes[1..<33]).ok;
+  } else {
+    for k: 0..<5 { #assert lifted.value.x.n[k] == 0 && lifted.value.y.n[k] == 0; }
+  }
+  for prefix: 0..<8 {
+    bytes[0] = cast(u8) prefix;
+    key := fg_decode_vartime(bytes[0..<33]); expected := se_decode(bytes[0..<33]);
+    #assert key.ok == expected.ok && key.ok == (lifted.ok && (prefix == 2 || prefix == 3));
+    if key.ok {
+      #assert fgt_same(fg_from_affine(key.value), expected.value) && fe_is_odd(key.value.y) == (prefix == 3);
+      // The same key uncompressed, then with y, x or the prefix changed.
+      long: [65] u8; long[0] = 4;
+      #assert fe_store(key.value.x, long[1..<33]) && fe_store(key.value.y, long[33..<65]);
+      whole := fg_decode_vartime(long[..]);
+      #assert whole.ok && se_decode(long[..]).ok && fgt_same(fg_from_affine(whole.value), expected.value);
+      long[64] ^= 1; #assert !fg_decode_vartime(long[..]).ok && !se_decode(long[..]).ok; long[64] ^= 1;
+      long[32] ^= 1; #assert !fg_decode_vartime(long[..]).ok && !se_decode(long[..]).ok; long[32] ^= 1;
+      for other: 0..<8 { long[0] = cast(u8) other; #assert fg_decode_vartime(long[..]).ok == (other == 4); }
+      long[0] = 4;
+      for i: 0..<32 { long[33 + i] = 255; } #assert !fg_decode_vartime(long[..]).ok;        // y above p
+      #assert fe_store(key.value.y, long[33..<65]);
+      for i: 0..<32 { long[1 + i] = 255; } #assert !fg_decode_vartime(long[..]).ok;         // x above p
+      #assert !fg_decode_vartime(long[0..<64]).ok && !fg_decode_vartime(long[0..<34]).ok;
+    }
+  }
+  #assert !fg_decode_vartime(bytes[0..<32]).ok && !fg_decode_vartime(bytes[0..<1]).ok && !fg_decode_vartime(bytes[0..<0]).ok;
+  #assert !fg_lift_x_vartime(bytes[0..<33]).ok && !fg_lift_x_vartime(bytes[1..<32]).ok;
+}
+#forall "x(R) mod n = r is decided on X and Z alone" seed: 0..<6, form: 0..<9 #steps 2000000000 {
+  z := fet_pair(seed, 8).fast; z2 := fe_sqr(z);
+  r := sc_small(cast(u32) (seed + 5)); expected := true; shift := false;
+  if form == 1 { shift = true; }                                                    // x = r + n, below p
+  if form == 2 { r = fg_p_minus_n(); r.limbs[0] -= 1; shift = true; }                 // the last r with r + n below p
+  if form == 3 { r = fg_p_minus_n(); shift = true; expected = false; }                // r + n = p: no x
+  if form == 4 { r = fg_p_minus_n(); r.limbs[0] += 1; shift = true; expected = false; }   // r + n = p + 1 is not an x
+  if form == 5 { r = ScScalar.{}; r.limbs[7] = 1 + cast(u32) seed; shift = true; expected = false; }   // the top limb above, the rest below
+  if form == 6 { r = fg_p_minus_n(); r.limbs[3] -= 1; r.limbs[0] = 4294967295; shift = true; }    // high limb below, low limb above
+  if form == 7 { r = fg_p_minus_n(); r.limbs[4] = 0; r.limbs[3] = 4294967295; shift = true; }     // limb 4 below, limb 3 above
+  bytes: [32] u8; #assert sc_store(r, bytes[..]);
+  x := fe_load_vartime(bytes[..]).value;
+  if shift { x = fe_add(x, fg_order()); }
+  point := Fgej.{x=fe_mul(x, z2),y=fe_one(),z=z};
+  if form == 8 { point.x = fe_add(point.x, fe_one()); expected = false; }             // another x
+  #assert fg_x_matches_scalar_vartime(point, r) == expected;
+  point.x = fe_scale(fe_weak(point.x), 3); point.x = fe_add(point.x, fe_negate(fe_scale(fe_mul(x, z2), 2), 2));   // the same X, unreduced
+  #assert fg_x_matches_scalar_vartime(point, r) == expected;
+  point.infinity = true; #assert !fg_x_matches_scalar_vartime(point, r);
+  #assert !fg_x_matches_scalar_vartime(Fgej.{x=fe_mul(x, z2),y=fe_one(),z=z}, SC_N);    // r = n has no bytes
+}
+#forall "BIP-340's last checks: finite, even y, the same x" k: 1..<6 #steps 2000000000 {
+  p := fgt_multiple(k, k); affine := fg_to_affine_vartime(p.fast);
+  even := !fe_is_odd(affine.y);
+  #assert fg_matches_even_x_vartime(p.fast, affine.x) == even;
+  #assert fg_matches_even_x_vartime(fgt_negate(p.fast), affine.x) == !even;
+  other := fe_normalize(fe_add(affine.x, fe_one()));
+  #assert !fg_matches_even_x_vartime(p.fast, other) && !fg_matches_even_x_vartime(fgt_negate(p.fast), other);
+  gone := p.fast; gone.infinity = true;
+  #assert !fg_matches_even_x_vartime(gone, affine.x);
+}

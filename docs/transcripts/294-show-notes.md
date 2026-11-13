@@ -89,9 +89,10 @@ Say this part plainly. It earns trust with the technical crowd.
 > Coax doesn't have everything yet. Some things are missing, and we're going
 > to add them.
 
-- **Speed.** Our signature checks run about 45 times slower than
-  libsecp256k1, the library Bitcoin Core uses. We know why: how our field
-  arithmetic is written. That's fixable.
+- **Speed.** Our signature checks run about 2.1 times slower than
+  libsecp256k1, the library Bitcoin Core uses (measured 2026-11-13). They
+  were about 45 times slower when we recorded; the cause was how our field
+  arithmetic was written, and we rewrote it.
 - **No threads yet.** A node checks scripts in parallel. Coax will get
   parallel checks whose result can't depend on timing.
 - **Secrets.** Coax should know which values are secret keys and refuse to
@@ -172,9 +173,9 @@ End card: `openagents.com/worlds/bitcoin-lab` and
 - Settle what "earn Bitcoin" means (section 5).
 - "Maybe Ark": make sure you mean Ark, the layer-two protocol. None of the
   plans cover it yet, so present it as a maybe.
-- The numbers here (45 times slower, 425 of 425, 479,316 checks, 103
-  chapters) come from the analysis and the repo as of 2026-11-11. Check them
-  again if you record later.
+- The numbers here (425 of 425, 479,316 checks, 103 chapters) come from
+  the analysis and the repo as of 2026-11-11; the speed was measured again
+  on 2026-11-13. Check them again if you record later.
 
 ## Sources
 

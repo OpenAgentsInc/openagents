@@ -1,0 +1,231 @@
+// The secp256k1 field for public data, p = 2^256 - 2^32 - 977, in five
+// little-endian 52-bit limbs (the top limb has 48 bits). Sums and
+// differences are not reduced; each procedure states the magnitude it
+// accepts and returns. A value has magnitude m when limbs 0 to 3 are at
+// most 2m(2^52 - 1) and limb 4 is at most 2m(2^48 - 1). Multiplication and
+// squaring accept magnitude 8 and return magnitude 1.
+//
+// Everything here branches on its inputs: it is for verification and other
+// public data only. Secret data stays on secp_field.coax, whose ten 26-bit
+// limbs are also the reference these procedures are checked against
+// (secp_fe-checks.coax).
+#load "bytes.coax";
+#load "secp_fe-checks.coax" #test;
+#authority;
+FE_M52 :: cast(u64) 0xFFFFFFFFFFFFF;
+FE_M48 :: cast(u64) 0xFFFFFFFFFFFF;
+FE_P0 :: cast(u64) 0xFFFFEFFFFFC2F;   // the low limb of p; limbs 1 to 3 are FE_M52, limb 4 is FE_M48
+FE_R1 :: cast(u64) 0x1000003D1;       // 2^256 mod p
+FE_R :: cast(u64) 0x1000003D10;       // 2^260 mod p
+Fe :: struct { n: [5] u64; }
+FeResult :: struct { value: Fe; ok: bool; }
+// Small values. These and the other values of this path are procedures,
+// not constants: a constant's literal is evaluated in every compile that
+// loads the file and spends its compile-time steps, and several consumers
+// build close to that limit.
+fe_small :: (v: u64) -> Fe #effects(all) { r: Fe; r.n[0] = v; return r; }
+fe_one :: () -> Fe #effects(all) { return fe_small(1); }
+
+// ---- 128-bit sums, as mul_wide's two halves
+// a + b. No sum in this file reaches 2^128.
+fw_add :: (a: CoaxU64Product, b: CoaxU64Product) -> CoaxU64Product #effects(all) {
+  lo := add_wrap(a.lo, b.lo);
+  return CoaxU64Product.{hi=add_wrap(add_wrap(a.hi, b.hi), ifx lo < b.lo then cast(u64) 1 else 0),lo=lo};
+}
+// acc + x·y.
+fw_mac :: (acc: CoaxU64Product, x: u64, y: u64) -> CoaxU64Product #effects(all) { return fw_add(acc, mul_wide(x, y)); }
+// a >> 52.
+fw_shr52 :: (a: CoaxU64Product) -> CoaxU64Product #effects(all) {
+  return CoaxU64Product.{hi=a.hi >> 52,lo=(a.lo >> 52) | (a.hi << 12)};
+}
+
+// ---- multiplication
+// The nine columns t[k] = sum of a_i·b_j over i + j = k, reduced mod p to
+// magnitude 1. Each column must be below 2^115, which magnitude-8 operands
+// give: at most five products below 2^112.
+//
+// No carry runs the length of the number; each step moves every column's
+// overflow one place at once, so the steps of one limb do not wait for the
+// limb below. Column k + 5 stands at 2^(260 + 52k), and 2^260 = FE_R (mod
+// p). Its low 52 bits fold into column k and the rest into column k + 1,
+// so column k gains FE_R·m, where m is the low bits of column k + 5 plus
+// the high bits of column k + 4: below 2^62, and the product below 2^98.
+// Then each column's bits above 52 move up one limb. What column 4 holds
+// above bit 48 stands at 2^256 = FE_R1 (mod p) and goes to limbs 0 and 1.
+// The limbs are then below 2^64, and one more such step leaves limbs 0 to
+// 3 below 2^52 + 2^49 and limb 4 below 2^48 + 2^12.
+fe_reduce :: (t: [9] CoaxU64Product) -> Fe #effects(all) {
+  c0 := fw_mac(t[0], t[5].lo & FE_M52, FE_R);
+  c1 := fw_mac(t[1], (t[6].lo & FE_M52) + fw_shr52(t[5]).lo, FE_R);
+  c2 := fw_mac(t[2], (t[7].lo & FE_M52) + fw_shr52(t[6]).lo, FE_R);
+  c3 := fw_mac(t[3], (t[8].lo & FE_M52) + fw_shr52(t[7]).lo, FE_R);
+  c4 := fw_mac(t[4], fw_shr52(t[8]).lo, FE_R);
+  f := mul_wide((c4.lo >> 48) | (c4.hi << 16), FE_R1);         // (c4 >> 48)·FE_R1, below 2^101
+  f.hi = add_wrap(f.hi, mul_wrap(c4.hi >> 48, FE_R1));
+  r0 := (c0.lo & FE_M52) + (f.lo & FE_M52);
+  r1 := (c1.lo & FE_M52) + fw_shr52(c0).lo + fw_shr52(f).lo;
+  r2 := (c2.lo & FE_M52) + fw_shr52(c1).lo;
+  r3 := (c3.lo & FE_M52) + fw_shr52(c2).lo;
+  r4 := (c4.lo & FE_M48) + fw_shr52(c3).lo;
+  return Fe.{n=[5] u64.[(r0 & FE_M52) + (r4 >> 48) * FE_R1, (r1 & FE_M52) + (r0 >> 52), (r2 & FE_M52) + (r1 >> 52),
+                        (r3 & FE_M52) + (r2 >> 52), (r4 & FE_M48) + (r3 >> 52)]};
+}
+// a·b mod p. Both operands have magnitude at most 8; the result has
+// magnitude 1.
+fe_mul :: (a: Fe, b: Fe) -> Fe #effects(all) {
+  t: [9] CoaxU64Product;
+  t[0] = mul_wide(a.n[0], b.n[0]);
+  t[1] = fw_mac(mul_wide(a.n[0], b.n[1]), a.n[1], b.n[0]);
+  t[2] = fw_mac(fw_mac(mul_wide(a.n[0], b.n[2]), a.n[1], b.n[1]), a.n[2], b.n[0]);
+  t[3] = fw_mac(fw_mac(fw_mac(mul_wide(a.n[0], b.n[3]), a.n[1], b.n[2]), a.n[2], b.n[1]), a.n[3], b.n[0]);
+  t[4] = fw_mac(fw_mac(fw_mac(fw_mac(mul_wide(a.n[0], b.n[4]), a.n[1], b.n[3]), a.n[2], b.n[2]), a.n[3], b.n[1]), a.n[4], b.n[0]);
+  t[5] = fw_mac(fw_mac(fw_mac(mul_wide(a.n[1], b.n[4]), a.n[2], b.n[3]), a.n[3], b.n[2]), a.n[4], b.n[1]);
+  t[6] = fw_mac(fw_mac(mul_wide(a.n[2], b.n[4]), a.n[3], b.n[3]), a.n[4], b.n[2]);
+  t[7] = fw_mac(mul_wide(a.n[3], b.n[4]), a.n[4], b.n[3]);
+  t[8] = mul_wide(a.n[4], b.n[4]);
+  return fe_reduce(t);
+}
+// a² mod p, with each cross product taken once on a doubled limb. The
+// operand has magnitude at most 8; the result has magnitude 1.
+fe_sqr :: (a: Fe) -> Fe #effects(all) {
+  a0 := a.n[0] << 1; a1 := a.n[1] << 1; a2 := a.n[2] << 1; a3 := a.n[3] << 1;
+  t: [9] CoaxU64Product;
+  t[0] = mul_wide(a.n[0], a.n[0]);
+  t[1] = mul_wide(a0, a.n[1]);
+  t[2] = fw_mac(mul_wide(a0, a.n[2]), a.n[1], a.n[1]);
+  t[3] = fw_mac(mul_wide(a0, a.n[3]), a1, a.n[2]);
+  t[4] = fw_mac(fw_mac(mul_wide(a0, a.n[4]), a1, a.n[3]), a.n[2], a.n[2]);
+  t[5] = fw_mac(mul_wide(a1, a.n[4]), a2, a.n[3]);
+  t[6] = fw_mac(mul_wide(a2, a.n[4]), a.n[3], a.n[3]);
+  t[7] = mul_wide(a3, a.n[4]);
+  t[8] = mul_wide(a.n[4], a.n[4]);
+  return fe_reduce(t);
+}
+fe_sqr_n :: (a: Fe, count: int) -> Fe #effects(all) {
+  r := a;
+  for i: 0..<count { r = fe_sqr(r); }
+  return r;
+}
+
+// ---- sums
+// a + b, limb by limb. The magnitudes add.
+fe_add :: (a: Fe, b: Fe) -> Fe #effects(all) {
+  return Fe.{n=[5] u64.[a.n[0] + b.n[0], a.n[1] + b.n[1], a.n[2] + b.n[2], a.n[3] + b.n[3], a.n[4] + b.n[4]]};
+}
+// -a, as 2(m+1)·p - a limb by limb, for an a of magnitude at most m. The
+// result has magnitude m + 1.
+fe_negate :: (a: Fe, m: u64) -> Fe #effects(all) {
+  k := 2 * (m + 1);
+  return Fe.{n=[5] u64.[FE_P0 * k - a.n[0], FE_M52 * k - a.n[1], FE_M52 * k - a.n[2], FE_M52 * k - a.n[3], FE_M48 * k - a.n[4]]};
+}
+// k·a for a small k. The magnitude is multiplied by k.
+fe_scale :: (a: Fe, k: u64) -> Fe #effects(all) {
+  return Fe.{n=[5] u64.[a.n[0] * k, a.n[1] * k, a.n[2] * k, a.n[3] * k, a.n[4] * k]};
+}
+
+// ---- reduction
+// The same value with magnitude 1: what stands above bit 256 folds into
+// limb 0 as FE_R1 times it, and every limb is carried once. For any
+// magnitude up to 32.
+fe_weak :: (a: Fe) -> Fe #effects(all) {
+  r: Fe;
+  t := a.n[0] + (a.n[4] >> 48) * FE_R1; r.n[0] = t & FE_M52;
+  t = a.n[1] + (t >> 52); r.n[1] = t & FE_M52;
+  t = a.n[2] + (t >> 52); r.n[2] = t & FE_M52;
+  t = a.n[3] + (t >> 52); r.n[3] = t & FE_M52;
+  r.n[4] = (a.n[4] & FE_M48) + (t >> 52);
+  return r;
+}
+// The value below p, with every limb in range. After fe_weak the value is
+// below 2p, so p comes off at most once: adding FE_R1 and dropping bit 256
+// subtracts p. For any magnitude up to 32.
+fe_normalize :: (a: Fe) -> Fe #effects(all) {
+  r := fe_weak(a);
+  over := (r.n[4] >> 48) != 0;
+  if !over { over = r.n[4] == FE_M48 && (r.n[1] & r.n[2] & r.n[3]) == FE_M52 && r.n[0] >= FE_P0; }
+  if !over { return r; }
+  t := r.n[0] + FE_R1; r.n[0] = t & FE_M52;
+  t = r.n[1] + (t >> 52); r.n[1] = t & FE_M52;
+  t = r.n[2] + (t >> 52); r.n[2] = t & FE_M52;
+  t = r.n[3] + (t >> 52); r.n[3] = t & FE_M52;
+  r.n[4] = (r.n[4] + (t >> 52)) & FE_M48;
+  return r;
+}
+// Whether a is 0 mod p. For any magnitude up to 32.
+fe_is_zero_vartime :: (a: Fe) -> bool #effects(all) {
+  r := fe_normalize(a);
+  return (r.n[0] | r.n[1] | r.n[2] | r.n[3] | r.n[4]) == 0;
+}
+// Whether a = b mod p. a has magnitude at most 8 and b at most 23.
+fe_equal_vartime :: (a: Fe, b: Fe) -> bool #effects(all) {
+  return fe_is_zero_vartime(fe_add(fe_negate(a, 8), b)); // mutant: equivalent (9 also covers magnitude 8, and the residue is the same)
+}
+// Whether a normalized value is odd.
+fe_is_odd :: (a: Fe) -> bool #effects(all) { return (a.n[0] & 1) != 0; }
+
+// ---- bytes
+// 32 big-endian bytes as a field value. ok is false, and the value zero,
+// when there are not 32 bytes or the number is p or more.
+fe_load_vartime :: (bytes: [] u8) -> FeResult #effects(all) {
+  r: FeResult;
+  if bytes.count != 32 { return r; }
+  w0 := cb_load_be64(bytes, 24).value; w1 := cb_load_be64(bytes, 16).value;
+  w2 := cb_load_be64(bytes, 8).value; w3 := cb_load_be64(bytes, 0).value;
+  v := Fe.{n=[5] u64.[w0 & FE_M52, ((w0 >> 52) | (w1 << 12)) & FE_M52, ((w1 >> 40) | (w2 << 24)) & FE_M52,
+                      ((w2 >> 28) | (w3 << 36)) & FE_M52, w3 >> 16]};
+  if v.n[4] == FE_M48 && (v.n[1] & v.n[2] & v.n[3]) == FE_M52 && v.n[0] >= FE_P0 { return r; }
+  r.value = v; r.ok = true; return r;
+}
+// The value below p as 32 big-endian bytes. False, writing nothing, when
+// out is not 32 bytes. For any magnitude up to 32.
+fe_store :: (a: Fe, out: [] u8) -> bool #effects(all) {
+  if out.count != 32 { return false; }
+  r := fe_normalize(a);
+  stored := cb_store_be64(out, 24, r.n[0] | (r.n[1] << 52));
+  stored = cb_store_be64(out, 16, (r.n[1] >> 12) | (r.n[2] << 40));
+  stored = cb_store_be64(out, 8, (r.n[2] >> 24) | (r.n[3] << 28));
+  stored = cb_store_be64(out, 0, (r.n[3] >> 36) | (r.n[4] << 16));
+  return true;
+}
+
+// ---- inverse and square root
+// a^(2^223 - 1) and the powers the two exponents below share: x2 =
+// a^(2^2 - 1), x3, and x22 = a^(2^22 - 1). The operand has magnitude at most 8.
+FeChain :: struct { x2: Fe; x3: Fe; x22: Fe; x223: Fe; }
+fe_chain :: (a: Fe) -> FeChain #effects(all) {
+  c: FeChain;
+  c.x2 = fe_mul(fe_sqr(a), a);
+  c.x3 = fe_mul(fe_sqr(c.x2), a);
+  x6 := fe_mul(fe_sqr_n(c.x3, 3), c.x3);
+  x9 := fe_mul(fe_sqr_n(x6, 3), c.x3);
+  x11 := fe_mul(fe_sqr_n(x9, 2), c.x2);
+  c.x22 = fe_mul(fe_sqr_n(x11, 11), x11);
+  x44 := fe_mul(fe_sqr_n(c.x22, 22), c.x22);
+  x88 := fe_mul(fe_sqr_n(x44, 44), x44);
+  x176 := fe_mul(fe_sqr_n(x88, 88), x88);
+  x220 := fe_mul(fe_sqr_n(x176, 44), x44);
+  c.x223 = fe_mul(fe_sqr_n(x220, 3), c.x3);
+  return c;
+}
+// 1/a = a^(p-2), by Fermat; zero for a = 0. p - 2 is 223 ones, a zero, 22
+// ones, then 0000101101 in binary. The operand has magnitude at most 8;
+// the result has magnitude 1.
+fe_inverse_vartime :: (a: Fe) -> Fe #effects(all) {
+  c := fe_chain(a);
+  t := fe_mul(fe_sqr_n(c.x223, 23), c.x22);
+  t = fe_mul(fe_sqr_n(t, 5), a);
+  t = fe_mul(fe_sqr_n(t, 3), c.x2);
+  return fe_mul(fe_sqr_n(t, 2), a);
+}
+// A square root of a, a^((p+1)/4), when a has one: p = 3 (mod 4). ok is
+// false, and the value zero, when a is not a square. (p+1)/4 is 223 ones, a
+// zero, 22 ones, then 00001100 in binary. The operand has magnitude at most
+// 8; the root has magnitude 1 and either parity.
+fe_sqrt_vartime :: (a: Fe) -> FeResult #effects(all) {
+  c := fe_chain(a);
+  t := fe_mul(fe_sqr_n(c.x223, 23), c.x22);
+  t = fe_mul(fe_sqr_n(t, 6), c.x2);
+  root := fe_sqr_n(t, 2);
+  if !fe_equal_vartime(a, fe_sqr(root)) { return FeResult.{}; }
+  return FeResult.{value=root,ok=true};
+}

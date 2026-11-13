@@ -1,0 +1,74 @@
+// The checks of secp_scalar_inverse.coax. The reference is chapter 14's
+// sc_inverse and sc_mul: every inverse must equal the one Fermat's
+// exponentiation gives, and multiply back to 1.
+// Checks: coax test coax/lib/crypto/secp_scalar_inverse.coax --library
+
+// A seeded scalar: splitmix64 words, reduced mod n.
+swt_scalar :: (seed: int) -> ScScalar {
+  r: ScScalar; state := mul_wrap(cast(u64) (seed + 1), 0x9E3779B97F4A7C15);
+  for i: 0..<4 {
+    state = add_wrap(state, 0x9E3779B97F4A7C15);
+    z := state; z = mul_wrap(z ^ (z >> 30), 0xBF58476D1CE4E5B9); z = mul_wrap(z ^ (z >> 27), 0x94D049BB133111EB); z = z ^ (z >> 31);
+    r.limbs[2 * i] = cast,trunc(u32) z; r.limbs[2 * i + 1] = cast,trunc(u32) (z >> 32);
+  }
+  return sc_normalize(r);
+}
+#forall "seeded inverses multiply back to one and equal the reference" seed: 0..<40 #steps 2000000000 {
+  a := swt_scalar(seed);
+  if seed < 8 { a = ScScalar.{}; a.limbs[seed] = 1 + cast(u32) seed; }            // small, in each limb
+  if seed == 8 { a = sc_negate(sc_small(1)); }                                      // n - 1
+  if seed == 9 { a = sc_negate(sc_small(2)); }
+  if seed == 10 { a = sc_small(1); }
+  if seed == 11 { a = sc_small(2); }
+  if seed == 12 { for i: 0..<8 { a.limbs[i] = 4294967295; } }                       // 2^256 - 1, above n
+  if seed == 13 { a = SC_N; a.limbs[0] += 1; }                                      // n + 1
+  inverse := sc_inverse_vartime(a);
+  #assert inverse.ok && !sc_overflow(inverse.value);
+  #assert sc_equal(sc_mul(inverse.value, a), sc_small(1));
+  if seed % 4 == 0 { reference := sc_inverse(a); #assert reference.ok && sc_equal(reference.value, inverse.value); }
+  if seed == 10 || seed == 13 { #assert sc_equal(inverse.value, sc_small(1)); }
+  if seed == 8 { #assert sc_equal(inverse.value, a); }
+}
+#test "zero and n have no inverse" #steps 2000000000 {
+  r := sc_inverse_vartime(ScScalar.{}); #assert !r.ok && sc_is_zero(r.value);
+  r = sc_inverse_vartime(SC_N); #assert !r.ok && sc_is_zero(r.value);
+}
+#test "four-limb sums, differences and halves carry across every limb" #steps 2000000000 {
+  for i: 0..<8 { #assert SC_N.limbs[i] == sw_to_scalar(sw_n()).limbs[i]; }
+  ones := Sw.{n=[4] u64.[CB_MAX64, CB_MAX64, CB_MAX64, CB_MAX64]}; one: Sw; one.n[0] = 1; zero: Sw;
+  s := sw_add(ones, one); #assert s.carry == 1 && (s.value.n[0] | s.value.n[1] | s.value.n[2] | s.value.n[3]) == 0;
+  s = sw_add(one, ones); #assert s.carry == 1 && (s.value.n[0] | s.value.n[1] | s.value.n[2] | s.value.n[3]) == 0;
+  s = sw_add(ones, ones); #assert s.carry == 1 && s.value.n[0] == CB_MAX64 - 1 && s.value.n[1] == CB_MAX64 && s.value.n[3] == CB_MAX64;
+  s = sw_sub(zero, one); #assert s.carry == 1 && s.value.n[0] == CB_MAX64 && s.value.n[3] == CB_MAX64;
+  s = sw_sub(zero, ones); #assert s.carry == 1 && s.value.n[0] == 1 && (s.value.n[1] | s.value.n[2] | s.value.n[3]) == 0;
+  s = sw_sub(ones, ones); #assert s.carry == 0 && (s.value.n[0] | s.value.n[1] | s.value.n[2] | s.value.n[3]) == 0;
+  for i: 0..<4 {
+    a: Sw; a.n[i] = 1; b: Sw; b.n[i] = 2;
+    s = sw_add(a, b); #assert s.carry == 0 && s.value.n[i] == 3;
+    s = sw_sub(b, a); #assert s.carry == 0 && s.value.n[i] == 1;
+    s = sw_sub(a, b); #assert s.carry == 1 && s.value.n[i] == CB_MAX64;
+    for k: 0..<4 { if k > i { #assert s.value.n[k] == CB_MAX64; } if k < i { #assert s.value.n[k] == 0; } }
+    top: Sw; top.n[i] = cast(u64) 1 << 63;
+    s = sw_add(top, top); #assert s.carry == (ifx i == 3 then cast(u64) 1 else 0) && s.value.n[i] == 0;
+    if i < 3 { #assert s.value.n[i + 1] == 1; }
+    h := sw_half(b, 0); #assert h.n[i] == 1;
+    h = sw_half(a, 1); #assert h.n[3] == (cast(u64) 1 << 63) + (ifx i == 3 then cast(u64) 0 else 0);
+    if i > 0 { #assert h.n[i - 1] == cast(u64) 1 << 63 && h.n[i] == (ifx i == 3 then cast(u64) 1 << 63 else 0); }
+    back := sw_from_scalar(sw_to_scalar(top)); for k: 0..<4 { #assert back.n[k] == top.n[k]; }
+    low: Sw; low.n[i] = 0x100000002; back = sw_from_scalar(sw_to_scalar(low)); #assert back.n[i] == 0x100000002;
+    #assert sw_to_scalar(low).limbs[2 * i] == 2 && sw_to_scalar(low).limbs[2 * i + 1] == 1;
+    #assert sw_is_one(a) == (i == 0) && !sw_is_one(b) && !sw_is_one(zero);
+    mixed := one; mixed.n[i] |= cast(u64) 1 << 40; #assert !sw_is_one(mixed);
+  }
+}
+#forall "halving and subtracting mod n equal the reference" seed: 0..<24 #steps 2000000000 {
+  a := swt_scalar(seed); b := swt_scalar(seed + 100);
+  if seed == 0 { a = sc_negate(sc_small(1)); }                 // n - 1 is even, n - 2 odd
+  if seed == 1 { a = sc_negate(sc_small(2)); }
+  if seed == 2 { a = sc_small(1); }
+  if seed == 3 { b = a; }
+  half := sw_to_scalar(sw_half_mod(sw_from_scalar(a)));
+  #assert !sc_overflow(half) && sc_equal(sc_add(half, half), a);
+  #assert sc_equal(sw_to_scalar(sw_sub_mod(sw_from_scalar(a), sw_from_scalar(b))), sc_sub(a, b));
+  #assert sc_equal(sw_to_scalar(sw_sub_mod(sw_from_scalar(b), sw_from_scalar(a))), sc_sub(b, a));
+}

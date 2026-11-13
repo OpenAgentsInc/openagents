@@ -1,0 +1,8 @@
+// Entries for secp_bench.sh (issue #13450): the verifiers and signers whose
+// speed secp_bench.c compares with libsecp256k1. Tests only; nothing here is
+// a library entry.
+#run_steps 250000000;
+#load "../../lib/crypto/ecdsa_verify.coax";
+#load "../../lib/crypto/schnorr.coax";
+#load "../../lib/crypto/ecdsa_sign.coax";
+#load "../../lib/crypto/schnorr_sign.coax";

@@ -1,0 +1,83 @@
+// 1/a modulo the secp256k1 group order n for public scalars, by the binary
+// extended Euclidean algorithm (Hankerson, Menezes and Vanstone, algorithm
+// 2.22) on four 64-bit limbs. It gives the same value as chapter 14's
+// sc_inverse, which raises a to n - 2 with 512 Montgomery products, in a
+// few hundred shifts and subtractions.
+//
+// The loop's length and branches depend on a: it is for verification and
+// other public data only. Signing keeps sc_inverse.
+#load "secp_scalar.coax";
+#load "secp_scalar_inverse-checks.coax" #test;
+#authority;
+// A number below 2^256, least significant limb first.
+Sw :: struct { n: [4] u64; }
+SwCarry :: struct { value: Sw; carry: u64; }
+// The group order n. A procedure, not a constant, so that loading this file
+// spends none of a compile's compile-time steps.
+sw_n :: () -> Sw #effects(all) { return Sw.{n=[4] u64.[0xBFD25E8CD0364141, 0xBAAEDCE6AF48A03B, 0xFFFFFFFFFFFFFFFE, 0xFFFFFFFFFFFFFFFF]}; }
+
+sw_from_scalar :: (a: ScScalar) -> Sw #effects(all) {
+  r: Sw;
+  for i: 0..<4 { r.n[i] = cast(u64) a.limbs[2 * i] | (cast(u64) a.limbs[2 * i + 1] << 32); }
+  return r;
+}
+sw_to_scalar :: (a: Sw) -> ScScalar #effects(all) {
+  r: ScScalar;
+  for i: 0..<4 { r.limbs[2 * i] = cast,trunc(u32) a.n[i]; r.limbs[2 * i + 1] = cast,trunc(u32) (a.n[i] >> 32); }
+  return r;
+}
+// a + b, and the carry out of bit 255.
+sw_add :: (a: Sw, b: Sw) -> SwCarry #effects(all) {
+  r: SwCarry;
+  for i: 0..<4 {
+    t := add_wrap(a.n[i], b.n[i]); c := ifx t < b.n[i] then cast(u64) 1 else 0;
+    r.value.n[i] = add_wrap(t, r.carry);
+    r.carry = c + (ifx r.value.n[i] < t then cast(u64) 1 else 0);
+  }
+  return r;
+}
+// a - b mod 2^256, and the borrow: 1 when a is below b.
+sw_sub :: (a: Sw, b: Sw) -> SwCarry #effects(all) {
+  r: SwCarry;
+  for i: 0..<4 {
+    t := sub_wrap(a.n[i], b.n[i]); c := ifx a.n[i] < b.n[i] then cast(u64) 1 else 0;
+    r.value.n[i] = sub_wrap(t, r.carry);
+    r.carry = c + (ifx t < r.carry then cast(u64) 1 else 0);
+  }
+  return r;
+}
+// (a + top·2^256) / 2, for an even sum.
+sw_half :: (a: Sw, top: u64) -> Sw #effects(all) {
+  return Sw.{n=[4] u64.[(a.n[0] >> 1) | (a.n[1] << 63), (a.n[1] >> 1) | (a.n[2] << 63), (a.n[2] >> 1) | (a.n[3] << 63), (a.n[3] >> 1) | (top << 63)]};
+}
+// x/2 mod n for an x below n: x is halved when even, and x + n, which is
+// then even, when odd.
+sw_half_mod :: (x: Sw) -> Sw #effects(all) {
+  if (x.n[0] & 1) == 0 { return sw_half(x, 0); }
+  sum := sw_add(x, sw_n());
+  return sw_half(sum.value, sum.carry);
+}
+// x - y mod n, for x and y below n.
+sw_sub_mod :: (x: Sw, y: Sw) -> Sw #effects(all) {
+  d := sw_sub(x, y);
+  if d.carry == 0 { return d.value; }
+  return sw_add(d.value, sw_n()).value;
+}
+sw_is_one :: (a: Sw) -> bool #effects(all) { return a.n[0] == 1 && (a.n[1] | a.n[2] | a.n[3]) == 0; }
+// 1/a mod n. ok is false, and the value zero, for a = 0 mod n. Throughout,
+// x1·a = u and x2·a = v (mod n): halving u halves x1, and subtracting v
+// from u subtracts x2 from x1. gcd(a, n) = 1, so u or v reaches 1, and its
+// x is the inverse.
+sc_inverse_vartime :: (a: ScScalar) -> ScInverse #effects(all) {
+  reduced := sc_normalize(a);
+  if sc_is_zero(reduced) { return ScInverse.{}; }
+  u := sw_from_scalar(reduced); v := sw_n(); x1: Sw; x1.n[0] = 1; x2: Sw;
+  while !sw_is_one(u) && !sw_is_one(v) {
+    while (u.n[0] & 1) == 0 { u = sw_half(u, 0); x1 = sw_half_mod(x1); }
+    while (v.n[0] & 1) == 0 { v = sw_half(v, 0); x2 = sw_half_mod(x2); }
+    d := sw_sub(u, v);
+    if d.carry == 0 { u = d.value; x1 = sw_sub_mod(x1, x2); }
+    else { v = sw_sub(v, u).value; x2 = sw_sub_mod(x2, x1); }
+  }
+  return ScInverse.{value=sw_to_scalar(ifx sw_is_one(u) then x1 else x2),ok=true};
+}

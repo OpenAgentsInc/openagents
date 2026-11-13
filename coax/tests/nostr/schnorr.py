@@ -108,10 +108,10 @@ assert(!schnorr_verify_vartime(message,(coax_v_u8){p,31},sig));assert(!schnorr_v
  def test_actual_emitted_faults_are_detected_by_official_verification(self):
   source=(self.dir/'checked.c').read_text();faults={};a,b,body=body_of(source,'sv_challenge_vartime')
   missing,n=re.subn(r'l_status = coax_p_sha256_update_checked\([^;]*l_public_key[^;]*;', 'l_status = 0;',body,count=1);self.assertEqual(n,1);faults['missing_challenge_public_key']=source[:a]+missing+source[b:]
-  a,b,body=body_of(source,'sv_prepare_vartime');self.assertIn('sc_negate((l_challenge).value)',body);faults['wrong_challenge_sign']=source[:a]+body.replace('sc_negate((l_challenge).value)','(l_challenge).value',1)+source[b:]
-  a,b,body=body_of(source,'sv_affine_matches_vartime');self.assertEqual(body.count('UINT64_C(1)'),1);parity=body.replace('UINT64_C(1)','UINT64_C(0)',1)
+  a,b,body=body_of(source,'schnorr_verify_vartime');self.assertIn('sc_negate((l_challenge).value)',body);faults['wrong_challenge_sign']=source[:a]+body.replace('sc_negate((l_challenge).value)','(l_challenge).value',1)+source[b:]
+  a,b,body=body_of(source,'fg_matches_even_x_vartime');self.assertEqual(body.count('(!coax_p_fe_is_odd((l_affine).y))'),1);parity=body.replace('(!coax_p_fe_is_odd((l_affine).y))','1',1)
   faults['missing_even_y_check']=source[:a]+parity+source[b:]
-  a,b,body=body_of(source,'sv_prepare_nostr_vartime');self.assertIn('(l_nostr_id).count != INT64_C(32)',body);faults['nostr_length_bypass']=source[:a]+body.replace('(l_nostr_id).count != INT64_C(32)','0',1)+source[b:]
+  a,b,body=body_of(source,'nostr_verify_vartime');self.assertIn('(l_nostr_id).count != INT64_C(32)',body);faults['nostr_length_bypass']=source[:a]+body.replace('(l_nostr_id).count != INT64_C(32)','0',1)+source[b:]
   detected=[]
   for name,changed in faults.items():
    self.assertNotEqual(changed,source);path=self.dir/(name+'.c');path.write_text(changed);artifact=self.dir/(name+'.dylib');support.base.run('cc','-std=c11','-O2','-shared','-fPIC',path,'-lm','-o',artifact);lib=C.CDLL(str(artifact))

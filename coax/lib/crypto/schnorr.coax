@@ -1,7 +1,7 @@
 // Public BIP-340 verification. Variable-time throughout: never pass secrets.
 // Prepared records and mathematical helper results are internal data, NOT
 // verified authority. Only the complete byte-view entry performs verification.
-#load "secp_glv.coax";
+#load "secp_fast.coax";
 #load "sha256.coax";
 #load "../../tests/nostr/schnorr_checks.coax";
 #authority;
@@ -58,8 +58,37 @@ sv_prepared_matches_vartime :: (prepared: SvPrepared) -> bool #effects(all) {
   return sv_affine_matches_vartime(prepared.r,affine.value);
 }
 schnorr_verify_vartime :: (message: [] u8,public_key: [] u8,signature: [] u8) -> bool #export_c #effects(all) {
-  return sv_prepared_matches_vartime(sv_prepare_vartime(message,public_key,signature));
+  if !sv_lengths_vartime(message.count,public_key.count,signature.count) { return false; }
+  r := fe_load_vartime(signature[0..<32]); s := sc_load(signature[32..<64]);
+  if !r.ok { return false; }
+  if !s.ok { return false; }
+  point := fg_lift_x_vartime(public_key); if !point.ok { return false; }
+  challenge := sv_challenge_vartime(message,public_key,signature[0..<32]);
+  return challenge.ok && fg_matches_even_x_vartime(fg_ecmult_vartime(s.value,point.value,sc_negate(challenge.value)),r.value);
 }
 nostr_verify_vartime :: (nostr_id: [] u8,public_key: [] u8,signature: [] u8) -> bool #export_c #effects(all) {
-  return sv_prepared_matches_vartime(sv_prepare_nostr_vartime(nostr_id,public_key,signature));
+  if nostr_id.count != 32 { return false; }
+  return schnorr_verify_vartime(nostr_id,public_key,signature);
+}
+
+// ---- the entry against chapter 23's equation
+#forall "the entry decides as the equation on the 26-bit field does" change: 0..<10 #steps 2000000000 #traversal 2000000000 {
+  // BIP-340's vector 0 (secret key 3, message zero).
+  message: [32] u8;
+  key := [32] u8.[249,48,138,1,146,88,195,16,73,52,79,133,248,157,82,41,181,49,200,69,131,111,153,176,134,1,241,19,188,224,54,249];
+  sig := [64] u8.[233,7,131,31,128,132,141,16,105,165,55,27,64,36,16,54,75,223,28,95,131,7,176,8,76,85,241,206,45,202,130,21,37,246,106,74,133,234,139,113,228,130,167,79,56,45,44,229,235,238,232,253,178,23,47,71,125,244,144,13,49,5,54,192];
+  if change == 1 { message[7] ^= 16; }
+  if change == 2 { sig[9] ^= 1; }                                   // another r
+  if change == 3 { sig[50] ^= 1; }                                  // another s
+  if change == 4 { key[31] ^= 1; }                                  // another key, or none
+  if change == 5 { for i: 0..<32 { sig[i] = 255; } }                // r above p
+  if change == 6 { for i: 32..<64 { sig[i] = 255; } }               // s above n
+  if change == 7 { for i: 0..<32 { key[i] = 255; } }                // x above p
+  if change == 8 { for i: 0..<32 { key[i] = 0; } key[31] = 5; }     // x = 5 is no point's x
+  if change == 9 { for i: 32..<64 { sig[i] = 0; } }                 // s = 0
+  decided := schnorr_verify_vartime(message[..], key[..], sig[..]);
+  #assert decided == sv_prepared_matches_vartime(sv_prepare_vartime(message[..], key[..], sig[..]));
+  #assert decided == (change == 0) && nostr_verify_vartime(message[..], key[..], sig[..]) == decided;
+  #assert !schnorr_verify_vartime(message[..], key[..], sig[0..<63]) && !schnorr_verify_vartime(message[..], key[0..<31], sig[..]);
+  #assert !nostr_verify_vartime(message[0..<31], key[..], sig[..]);
 }

@@ -64,7 +64,9 @@ signature `sig = r || s`:
    `x(R) ≠ r`. Otherwise accept.
 
 Steps 1 to 4 are `sv_prepare_vartime`, and steps 5 and 6 are
-`sv_prepared_matches_vartime`. A prepared record with `ready` true means
+`sv_prepared_matches_vartime`. The entry, `schnorr_verify_vartime`, runs
+the same six steps on chapter 77's fast path, and a check in the file
+confirms that it decides as these two procedures do. A prepared record with `ready` true means
 only that preparation succeeded. It is not a verified signature, and only
 the two complete entry procedures may decide that a signature is valid.
 
