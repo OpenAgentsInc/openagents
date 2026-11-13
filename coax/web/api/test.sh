@@ -306,6 +306,9 @@ fi
 # machine has the Wasm toolchain and the job's own check passes its first case; else the API has no job and the
 # checks say the compile route's did not run. SCRIPT_JOB_READY tells the checks which.
 script_job=""
+# Serving (coax/web/serve.sh): the job is the one the caller names, so the editor's Scripts pane can build
+# (OA_SCRIPT_JOB=$PWD/coax/web/script-job.sh coax/web/serve.sh ...); with none named the API compiles nothing.
+if [[ $serve == 1 && -n "${OA_SCRIPT_JOB:-}" && -x "${OA_SCRIPT_JOB}" ]]; then script_job="$OA_SCRIPT_JOB"; fi
 if [[ $serve == 0 && -x "$cli_coax" ]] && { runs script_checks || runs script_cli_checks; } &&
    [[ -z "${API_TESTS_ONLY:-}" || ",$API_TESTS_ONLY," == *",script_checks.coax,"* || ",$API_TESTS_ONLY," == *",script_cli_checks.coax,"* ]]; then
   if (cd "$repo_root" && COAX="$cli_coax" coax/web/script-job.sh --warm) > /dev/null 2>&1 &&

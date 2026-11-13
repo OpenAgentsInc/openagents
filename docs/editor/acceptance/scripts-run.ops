@@ -1,0 +1,47 @@
+# The Scripts pane's acceptance run, for coax drive (docs/editor/acceptance/README.md, "Scripts"; #13467).
+# Start from an empty world on a dev server whose local API has the compile job:
+#   OA_SCRIPT_JOB=$PWD/coax/web/script-job.sh coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9644
+# Size 1280x800, query "edit&stage=5".
+clock +1500
+clock until page.f.rev >= 0 within 20000
+# start the game, so the raiders are in the mine; Escape lets go of the pointer so the panes take presses
+type - key Enter
+clock +800
+type - key Escape
+# no script runs yet: the foes walk their plans, and no script has been called
+clock until game.c.script_n == 0 within 2000
+clock until game.scalls == 0 within 2000
+# the Scripts pane: the world's server answered its script list, so the button is there
+tap scripts
+text scripts.limits
+text scripts.mine
+# build the starter (a raider's reaction) for the raiders; the compile job takes a few seconds of real time
+tap scripts.build
+clock +12000
+text scripts.built
+# run it: one cell edit of the scripts table, revision 1; the page fetches the module by its hash
+tap scripts.run
+clock until page.f.rev == 1 within 20000
+clock until game.c.script_n == 1 within 6000
+# the raiders are driven by the script: its calls rise, and none fails
+clock until game.scalls > 200 within 30000
+clock until game.sdiags == 0 within 1000
+text scripts.mine
+screenshot apps/openagents-web/build/scripts-run.png
+# change the source (give up a chase at 9 metres, not 15), build and run again, with no reload
+swap scripts.text GIVE_UP :: 15.0f32 => GIVE_UP :: 9.0f32
+tap scripts.build
+clock +12000
+tap scripts.run
+# the swap: the same row, a new hash, revision 2; play goes on and the calls keep rising with no failure
+clock until page.f.rev == 2 within 20000
+clock until game.c.script_n == 1 within 6000
+clock until game.scalls > 2000 within 60000
+clock until game.sdiags == 0 within 1000
+text scripts.mine
+swaps
+screenshot apps/openagents-web/build/scripts-swap.png
+# stop it: the row goes, revision 3, and the foes walk their plans again
+tap sstop.1
+clock until page.f.rev == 3 within 20000
+clock until game.c.script_n == 0 within 6000

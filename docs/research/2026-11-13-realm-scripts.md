@@ -236,6 +236,7 @@ Kept current as stages land (#13467). The contract as built is
 | The plan world and the scripted world play the same | proven natively | `coax/web/tool.sh metaverse/splice-bots/tools/script-play.coax` |
 | A fuzzer of the check, the interpreter, the host and the codecs | built | `metaverse-engine/tools/script-fuzz.coax` |
 | The interpreter against V8, on a compiled torture script | built | `metaverse-engine/tools/script-oracle.coax`, `metaverse-engine/tests/script-oracle.mjs`, `metaverse-engine/script/examples/torture.coax` |
+| The editor's Scripts pane: write, build, run, swap, publish with a yes, report; limits and live budgets on screen | built | `metaverse-engine/editor/shell-scripts.coax`, `docs/editor/2026-11-12-browser-editor.md` "Realm scripts", `docs/editor/acceptance/scripts-run.ops` |
 
 Where the build differs from the proposal:
 

@@ -571,6 +571,70 @@ in the agent menu, which starts on Haiku 5.5, and send the same prompt plus
   The drive's edit verbs stand in for the tools, so no model or Coder is
   needed ([the pane](shots/foes-pane-scripted.png)).
 
+### Realm scripts (#13467)
+
+A plan says where an actor walks, how far it sees and what it does on seeing
+you. A script is for what a plan cannot say: when it starts, when it gives up,
+when it strikes. The Scripts pane writes, builds, runs, swaps, publishes and
+reports one without touching the realm's code. The contract is
+[realm-script-v1.md](../protocol/realm-script-v1.md), the calls a script makes
+are [realm-script-api.md](../protocol/realm-script-api.md), and the server's
+side is [world-scripts-v1.md](../protocol/world-scripts-v1.md).
+
+The **Scripts** button is in the strip only where the world's server answers
+its script list. Today that is Splice.
+
+1. **Start from plans.** The pane's first line says so and links to the
+   Actors list. Use a script only for what a plan cannot say.
+2. **Read the limits.** The pane states them before you build anything
+   (table below).
+3. **Write.** Give the script a name (lowercase letters, digits and hyphens),
+   pick whom it drives (a kind such as Raiders, or one actor by its Actors
+   name) and edit the source. The field starts with a short raider script that
+   works. A script is one file and may load only `api.coax`. **Open** on a
+   row loads that script's source back into the field when the server keeps
+   it.
+4. **Build.** The server's compile job builds the source. The pane then shows
+   what the script is, read from the built module: when it acts, what it may
+   do, the calls it makes, its size and its state. A refusal shows the
+   compiler's own words and the line it names. Nothing running changes. A
+   server with no compile job has no Build button and says so.
+5. **Run it.** This writes the script's row (`ID|NAME|HASH|FOR` in the
+   `scripts` table) as one cell edit, so undo, the revision fence and the dev
+   and live lanes hold as for every edit. The page fetches the module by its
+   hash and runs it. The row then shows Running, its costliest call against
+   the call budget, its calls and its failed calls, a few times a second.
+6. **Swap.** Change the source, build and run again for the same ones. The
+   row keeps its place, the page swaps the module with no reload, and the
+   things it drives keep their state fields.
+7. **Stop.** Takes the row away as one edit. The actors walk their plans.
+8. **Publish.** A publish that adds a script, or lets one do more than the
+   live one, is refused once. The pane says what each script adds, and
+   **Publish with these** sends the same publish with your yes.
+9. **Report.** Someone logged in sends a short reason (plain letters, 160 at
+   most) about a script. A site admin reads it.
+
+| Limit | Value |
+| --- | ---: |
+| Scripts one world runs | 8 |
+| A built script | 64 KB |
+| A script's source | 64 KB |
+| Instructions one call may spend (past that the call is undone) | 20,000 |
+| Instructions all of a world's scripts may spend in a tick | 400,000 |
+| State kept for each thing a script drives | 256 bytes |
+| Failed calls in a row before a script is switched off | 3 |
+| Builds an author may ask for in a day | 100 |
+| Reports an account may send in a day | 20 |
+
+The pane is `metaverse-engine/editor/shell-scripts.coax`, with its checks in
+`shell-scripts-checks.coax`. The model's `scripts`, `sk` and `s` lines carry
+the rows ([editor-model-v1.md](../protocol/editor-model-v1.md)). On the dev
+server the local API compiles only when the server is started with the job
+named: `OA_SCRIPT_JOB=$PWD/coax/web/script-job.sh coax/web/serve.sh ...`.
+
+- **Scripted run:** `docs/editor/acceptance/scripts-run.ops` (README,
+  "Scripts").
+
 ## Gaps, and the issues that close them
 
 Existing issues this builds on:

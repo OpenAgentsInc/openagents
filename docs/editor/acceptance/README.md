@@ -161,6 +161,27 @@ page and send the prompt. Coder gives Claude Code's realm tools this
 server's origin (`CODER_REALM_ORIGIN`), so they edit the world the editor
 shows.
 
+## Scripts
+
+A pass through the Scripts pane (#13467). The local API compiles a script only
+when the server is started with the compile job named, so start the server
+like this, on a port of its own, from an empty world:
+
+```sh
+OA_SCRIPT_JOB=$PWD/coax/web/script-job.sh \
+  coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9644
+coax/web/tool.sh drive web apps/openagents-web /worlds/splice \
+  --query "edit&stage=5" --size 1280x800 --live http://127.0.0.1:9644 \
+  --ops docs/editor/acceptance/scripts-run.ops
+```
+
+It opens the pane, builds the starter script for the raiders, runs it (one
+revision), and waits until the script's calls rise with none failed. Then it
+changes one number in the source, builds and runs again with no reload (one
+more revision, the same row), checks that the calls keep rising, and stops the
+script. It leaves `scripts-run.png` and `scripts-swap.png` in
+`apps/openagents-web/build/`.
+
 ## What it checks
 
 | Step | What must hold |
