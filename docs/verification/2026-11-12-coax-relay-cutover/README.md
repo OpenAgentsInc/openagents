@@ -5,6 +5,12 @@ by chapter 103's runbook. Times are Chicago (CST, UTC−6) with Unix seconds
 where a command takes them. Production's database was never read: every
 export came from a backup restored into a throwaway Cloud SQL instance.
 
+**Update 2026-11-13:** The owner-approved Rust service, database and three
+cutover backups have been retired. [The retirement record](../2026-11-13-relay-followups/README.md#rust-fallback-retirement)
+has the final quiet-period check and deletion read-back. The table and Rust
+rollback procedure below describe cutover-day state. Current recovery uses
+the retained Coax binary, store generations and paired checkpoints.
+
 | | |
 | --- | --- |
 | Cutover | 15:43:15 (1794519795): Cloudflare record `560991ecfda6f8080d48a00198c64964`, `relay.openagents.com`, from CNAME `ghs.googlehosted.com` to A `34.45.121.213`, TTL 60, not proxied |

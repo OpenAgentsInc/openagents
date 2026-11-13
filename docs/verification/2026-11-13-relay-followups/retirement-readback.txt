@@ -1,0 +1,20 @@
+Final read-only database metadata after Rust service deletion:
+{
+  "checked_at": "2026-11-13T22:54:52.588257+00:00",
+  "events": 602125,
+  "last_received": "2026-11-12T21:47:46.065713+00:00",
+  "max_sequence": 780366,
+  "after_final_backup": 0
+}
+
+Deletion API read-back:
+{
+  "run": [],
+  "database": [],
+  "backups": [],
+  "instance": {
+    "name": "khala-sync-pg",
+    "state": "RUNNABLE"
+  },
+  "verified_at": "2026-11-13T22:57:57.555083+00:00"
+}

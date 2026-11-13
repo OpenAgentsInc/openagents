@@ -1239,14 +1239,15 @@ chat and are deployed with the existing relay identity. The Coax relay's
 public WSS/NIP-11 checks and eleven extensions pass. See
 [the rollout record](docs/verification/2026-11-13-relay-followups/README.md).
 
-Pending the owner's explicit yes by name, retain Cloud Run
-`openagents-nostr-relay` in `us-central1`, database `nostr_relay_v2` in
-Cloud SQL `khala-sync-pg`, and its three cutover backups `1794510495518`,
-`1794519112832`, `1794523583705`. A read-only metadata check at
-2026-11-13 22:14 UTC found the last received event at
-2026-11-12 21:47:46 UTC and no rows after the final cutover backup. Recheck
-before deleting. No retirement or backup deletion is authorized by the
-approval of the signing key and write checks.
+**Retirement approved 2026-11-13.** The owner answered “Approved” to the
+request naming Cloud Run `openagents-nostr-relay` in `us-central1`, database
+`nostr_relay_v2` in Cloud SQL `khala-sync-pg`, and cutover backups
+`1794510495518`, `1794519112832`, `1794523583705`. Retirement completed
+under #13382 at 2026-11-13 22:57 UTC; API read-back lists none of these
+resources. The shared `khala-sync-pg` instance remains RUNNABLE. A fresh read-only metadata query at 2026-11-13 22:53:40 UTC
+found 602,125 events, maximum sequence 780366, last received event
+2026-11-12 21:47:46.065713 UTC, and zero rows after the final cutover backup.
+The public Coax relay reports its existing identity and all eleven extensions.
 
 NIP-86/98 is wired and tested but needs an explicitly designated admin
 Nostr public key to be enabled in production. The former relay configured

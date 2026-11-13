@@ -1,8 +1,9 @@
 # Coax relay after the cutover (#13382)
 
 The owner approved file-backed relay custody and the Rust relay's private-kind
-write checks on 2026-11-13, answering “Approve both”. That approval does not
-retire the Rust fallback or delete its database/backups.
+write checks on 2026-11-13, answering “Approve both”. In a separate reply,
+the owner answered “Approved” to the named Rust service, database and
+cutover-backup retirement request. That retirement completed the same day.
 
 ## Behavior
 
@@ -77,11 +78,11 @@ days. Both use the existing owner notification channel
 `14067723742793378411` in project `openagentsgemini`. The checked-in JSON
 files under `nostr/relay/monitoring/` describe these resources.
 
-Keep Cloud Run `openagents-nostr-relay`, database `nostr_relay_v2` in
-`khala-sync-pg`, and backups `1794510495518`, `1794519112832`,
-`1794523583705` until the owner's explicit retirement decision by name.
-The old binary and previous compacted generation are separate rollback
-choices. Never pair a store with another generation's checkpoint.
+Cloud Run `openagents-nostr-relay`, database `nostr_relay_v2` and the three
+cutover backups were retired with owner approval on 2026-11-13, as recorded
+below. Recovery uses the retained Coax binary, store generations, data-disk
+snapshots and freshness-checkpoint copies. Never pair a store with another
+generation's checkpoint.
 
 ## Rust fallback quiet-period evidence
 
@@ -89,8 +90,38 @@ A read-only PostgreSQL metadata query at 2026-11-13 22:14:25 UTC found
 602,125 events, maximum ingest sequence 780366, and last `received_at`
 2026-11-12 21:47:46.065713 UTC. There were zero rows received after
 2026-11-12 22:46:23 UTC, the final cutover backup. No event payloads or
-credentials were printed. This is evidence for an owner retirement decision,
-not authorization to delete the fallback. Recheck before retirement.
+credentials were printed. This metadata check preceded the separate owner
+retirement approval and was repeated immediately before deletion.
+
+
+## Rust fallback retirement
+
+The owner answered “Approved” to the request explicitly naming Cloud Run
+`openagents-nostr-relay`, database `nostr_relay_v2` in `khala-sync-pg`, and
+cutover backups `1794510495518`, `1794519112832`, `1794523583705`.
+
+A metadata query at 22:53:40 UTC on 2026-11-13 found the same 602,125 events
+and sequence 780366. After deleting the Rust service, a second read-only
+query at 22:54:52 UTC again found last receipt at
+2026-11-12 21:47:46.065713 UTC and zero events received after the final
+cutover backup. There was no new delta to import.
+
+The Cloud SQL deletion API directed this application-owned database to its
+SQL owner. A catalog query confirmed owner/current user `khala_app` and
+zero remaining target-database sessions. `DROP DATABASE nostr_relay_v2`
+then succeeded through a connection to `postgres`. The three named backup
+runs were deleted individually through Cloud SQL.
+
+API read-back at 22:57:57 UTC lists no matching Cloud Run service, database
+or backup runs. The shared `khala-sync-pg` instance remains RUNNABLE. The
+Coax relay's public NIP-11 response still has its existing public identity
+and all eleven extensions; the service has zero automatic restarts, its
+checkpoint upload succeeds, and weekly compaction is active. The next
+scheduled run is 2026-11-15 09:10:19 UTC.
+
+See [the final metadata and deletion read-back](retirement-readback.txt).
+The earlier cutover record and chapter 103's Rust rollback steps describe
+historical state; current recovery uses the retained Coax generations.
 
 ## Verification
 

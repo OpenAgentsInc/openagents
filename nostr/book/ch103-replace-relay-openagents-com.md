@@ -740,9 +740,12 @@ steps above, the owner decided it in #13361:
   The other five are in the first 10 minutes and are explained (the Pylon's
   beacon before the mirror delivered it, and the run's own check note).
 - **Read-only (steps 14, 16).** The Rust relay has no read-only switch.
-  It stays writable at its Cloud Run address, and the writes it took in the
-  hour after the cutover (Cloud Run ends a WebSocket after 3,600 s) were
-  carried over with the same delta export.
+  It stayed writable at its Cloud Run address until the owner-approved
+  retirement on 2026-11-13. The writes it took in the hour after the cutover
+  (Cloud Run ends a WebSocket after 3,600 s) were carried over with the same
+  delta export. The [retirement record](../../docs/verification/2026-11-13-relay-followups/README.md#rust-fallback-retirement)
+  confirms the final quiet-period check, deletion of the Rust service,
+  database and three cutover backups, and the current Coax recovery path.
 - **Cutover (step 15).** One DNS record: relay.openagents.com from a CNAME
   to Cloud Run to an A record for the VM, at 15:43 Chicago. Public resolvers
   had it in 5 seconds.
