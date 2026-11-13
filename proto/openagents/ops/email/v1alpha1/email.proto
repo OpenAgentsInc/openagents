@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package openagents.ops.email.v1alpha1;
+
+// Email through the API on the wire (Protocol E11, GitHub #13250; profile
+// api-routes): what coax/web/api/email.c reads and answers on
+// POST /api/admin/email. One codec for what it writes,
+// coax/web/api/email-wire.coax; email.c calls it through
+// email-wire.generated.c and builds no body. The request is read in SQL
+// (email.begin, migration 0085), which also builds what the mail service is
+// sent (the mail service's own format, not ours). Goldens:
+// proto/verse/ops-routes-v1alpha1.json, checked by
+// coax/web/api/ops-wire-goldens.coax, which coax/web/api/test_jobs.py also runs
+// on every body a running API answered. A refusal is the API's ErrorReply
+// (openagents/api/v1alpha1/error.proto). json_name is the key on the wire.
+
+// One file sent with a message: a plain name and its bytes as base64.
+message Attachment {
+  optional string filename = 1 [json_name = "filename"];
+  optional string content = 2 [json_name = "content"];
+}
+
+// POST /api/admin/email: one message. `to` is one to fifty addresses; one
+// address may be sent as a bare string. `idempotency_key` (8 to 256
+// characters) names the message: the same key again sends nothing.
+// `unsubscribe` replaces the List-Unsubscribe header's value.
+message SendRequest {
+  repeated string to = 1 [json_name = "to"];
+  optional string subject = 2 [json_name = "subject"];
+  optional string text = 3 [json_name = "text"];
+  optional string html = 4 [json_name = "html"];
+  optional string idempotency_key = 5 [json_name = "idempotency_key"];
+  repeated Attachment attachments = 6 [json_name = "attachments"];
+  optional string unsubscribe = 7 [json_name = "unsubscribe"];
+}
+
+// 200: `state` is sent or already sent, `id` the mail service's id.
+message SendReply {
+  optional string state = 1 [json_name = "state"];
+  optional string id = 2 [json_name = "id"];
+}

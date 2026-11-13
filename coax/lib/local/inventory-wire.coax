@@ -1,0 +1,160 @@
+// The local inventories on the wire, one codec (compliance plan step C7, GitHub #13250;
+// proto/openagents/cli/local/v1/inventory.proto, profile cli-local; docs/protocol/local-inventory-v1.md):
+//   `openagents coder agents --json`, `coder agents --json`   Agents, the agents running on this computer
+//   `openagents models ls --json`, `models verify ... --json`  Models, the installed checkpoints
+// Each is one compact JSON object, every member written always, in the message's field order.
+// The writers: coax/lib/agent/observe/processes.coax (la_json) and apps/openagents-cli/models.coax.
+// The reader: the Metaverse Engine's setup (apps/aethyrforge-desktop/setup.coax). A reader refuses
+// a report whole when it is no object, its schema is another's or its list is not a list.
+// proto/coder/local-inventory-v1.json holds reports as the CLI printed them; coax/lib/local/local-goldens.coax
+// reads each through this file and writes it back for the same bytes.
+//   coax/bin/coax test coax/lib/local/inventory-wire.coax --library
+#load "../json/json.coax";
+
+INV_AGENTS_SCHEMA :: "openagents.coder.agents.v1";
+INV_MODELS_SCHEMA :: "openagents.models.v1";
+INV_AGENTS_MOST :: 128;     // agents in one report
+INV_MODELS_MOST :: 16;      // models in one report
+INV_WORD :: 64;             // an engine, a label, an id, a kind, a revision
+INV_PATH :: 2048;           // a model's folder
+
+// ---- Agents
+
+// {"schema":"openagents.coder.agents.v1","ok":B,"complete":B,"scope":"local_running_processes","agents":[
+inv_agents_open :: (o: [] Jo, complete: bool) {
+  jo_obj(o);
+  jo_key(o, "schema"); jo_str(o, INV_AGENTS_SCHEMA);
+  jo_key(o, "ok"); jo_bool(o, complete);
+  jo_key(o, "complete"); jo_bool(o, complete);
+  jo_key(o, "scope"); jo_str(o, "local_running_processes");
+  jo_key(o, "agents"); jo_arr(o);
+}
+// One running agent: {"engine":"codex","name":"Codex","pid":42,"parent_pid":12,"state":"running","attached":false}
+inv_agents_row :: (o: [] Jo, engine: string, name: string, pid: int, parent: int) {
+  jo_obj(o);
+  jo_key(o, "engine"); jo_str(o, engine);
+  jo_key(o, "name"); jo_str(o, name);
+  jo_key(o, "pid"); jo_int(o, pid);
+  jo_key(o, "parent_pid"); jo_int(o, parent);
+  jo_key(o, "state"); jo_str(o, "running");
+  jo_key(o, "attached"); jo_bool(o, false);
+  jo_end(o);
+}
+// ]}: the report's text, or "" when it did not fit.
+inv_agents_close :: (o: [] Jo) -> string { jo_end(o); jo_end(o); return ifx o[0].bad then "" else jo_text(o); }
+
+InvAgent :: struct { engine: [INV_WORD] u8; engine_n: int; name: [INV_WORD] u8; name_n: int; pid: int; parent: int; running: bool; attached: bool; }
+inv_agent_engine :: (a: [] InvAgent, i: int) -> string { return cast(string) a[i].engine[0..<a[i].engine_n]; }
+inv_agent_name :: (a: [] InvAgent, i: int) -> string { return cast(string) a[i].name[0..<a[i].name_n]; }
+// read: the text is an Agents report. ok and complete as it says them. n: its agents, in rows.
+InvAgents :: struct { read: bool; ok: bool; complete: bool; n: int; }
+inv_word :: (j: Jv, at: int, out: [] u8) -> int { n := jv_str(j, at, out); return ifx n < 0 then 0 else n; }
+// An Agents report into rows (at least INV_AGENTS_MOST of them, or its list is refused when longer).
+inv_read_agents :: (text: string, nodes: [] JvNode, rows: [] InvAgent) -> InvAgents {
+  d: [1] Jv;
+  if !jv_parse(d[..], text, nodes) || jv_kind(d[0], 0) != JV_OBJECT { return InvAgents.{}; }
+  j := d[0];
+  if jv_raw(j, jv_get(j, 0, "schema")) != INV_AGENTS_SCHEMA { return InvAgents.{}; }
+  list := jv_get(j, 0, "agents");
+  if jv_kind(j, list) != JV_ARRAY || jv_len(j, list) > INV_AGENTS_MOST || jv_len(j, list) > rows.count { return InvAgents.{}; }
+  r := InvAgents.{read = true, ok = jv_bool(j, jv_get(j, 0, "ok")), complete = jv_bool(j, jv_get(j, 0, "complete")), n = jv_len(j, list)};
+  for i: 0..<r.n {
+    row := jv_at(j, list, i);
+    rows[i] = InvAgent.{};
+    rows[i].engine_n = inv_word(j, jv_get(j, row, "engine"), rows[i].engine[..]);
+    rows[i].name_n = inv_word(j, jv_get(j, row, "name"), rows[i].name[..]);
+    rows[i].pid = jv_int(j, jv_get(j, row, "pid"), 0);
+    rows[i].parent = jv_int(j, jv_get(j, row, "parent_pid"), 0);
+    rows[i].running = jv_raw(j, jv_get(j, row, "state")) == "running";
+    rows[i].attached = jv_bool(j, jv_get(j, row, "attached"));
+  }
+  return r;
+}
+
+// ---- Models
+
+// {"schema":"openagents.models.v1","ok":B,"models":[
+inv_models_open :: (o: [] Jo, ok: bool) {
+  jo_obj(o);
+  jo_key(o, "schema"); jo_str(o, INV_MODELS_SCHEMA);
+  jo_key(o, "ok"); jo_bool(o, ok);
+  jo_key(o, "models"); jo_arr(o);
+}
+// One checkpoint; loaded is always false (an inventory loads no model).
+inv_models_row :: (o: [] Jo, id: string, kind: string, name: string, revision: string, path: string, present: bool, bytes: int, verified: bool) {
+  jo_obj(o);
+  jo_key(o, "id"); jo_str(o, id); jo_key(o, "kind"); jo_str(o, kind);
+  jo_key(o, "name"); jo_str(o, name); jo_key(o, "revision"); jo_str(o, revision);
+  jo_key(o, "path"); jo_str(o, path); jo_key(o, "present"); jo_bool(o, present);
+  jo_key(o, "bytes"); jo_int(o, bytes); jo_key(o, "verified"); jo_bool(o, verified);
+  jo_key(o, "loaded"); jo_bool(o, false);
+  jo_end(o);
+}
+inv_models_close :: (o: [] Jo) -> string { jo_end(o); jo_end(o); return ifx o[0].bad then "" else jo_text(o); }
+
+InvModel :: struct {
+  id: [INV_WORD] u8; id_n: int; kind: [INV_WORD] u8; kind_n: int; name: [INV_WORD] u8; name_n: int; revision: [INV_WORD] u8; revision_n: int;
+  path: [INV_PATH] u8; path_n: int; present: bool; bytes: int; verified: bool; loaded: bool;
+}
+inv_model_id :: (m: [] InvModel, i: int) -> string { return cast(string) m[i].id[0..<m[i].id_n]; }
+inv_model_kind :: (m: [] InvModel, i: int) -> string { return cast(string) m[i].kind[0..<m[i].kind_n]; }
+inv_model_name :: (m: [] InvModel, i: int) -> string { return cast(string) m[i].name[0..<m[i].name_n]; }
+inv_model_revision :: (m: [] InvModel, i: int) -> string { return cast(string) m[i].revision[0..<m[i].revision_n]; }
+inv_model_path :: (m: [] InvModel, i: int) -> string { return cast(string) m[i].path[0..<m[i].path_n]; }
+InvModels :: struct { read: bool; ok: bool; n: int; }
+// A Models report into rows; a list longer than rows is refused.
+inv_read_models :: (text: string, nodes: [] JvNode, rows: [] InvModel) -> InvModels {
+  d: [1] Jv;
+  if !jv_parse(d[..], text, nodes) || jv_kind(d[0], 0) != JV_OBJECT { return InvModels.{}; }
+  j := d[0];
+  if jv_raw(j, jv_get(j, 0, "schema")) != INV_MODELS_SCHEMA { return InvModels.{}; }
+  list := jv_get(j, 0, "models");
+  if jv_kind(j, list) != JV_ARRAY || jv_len(j, list) > INV_MODELS_MOST || jv_len(j, list) > rows.count { return InvModels.{}; }
+  r := InvModels.{read = true, ok = jv_bool(j, jv_get(j, 0, "ok")), n = jv_len(j, list)};
+  for i: 0..<r.n {
+    row := jv_at(j, list, i);
+    rows[i] = InvModel.{};
+    rows[i].id_n = inv_word(j, jv_get(j, row, "id"), rows[i].id[..]);
+    rows[i].kind_n = inv_word(j, jv_get(j, row, "kind"), rows[i].kind[..]);
+    rows[i].name_n = inv_word(j, jv_get(j, row, "name"), rows[i].name[..]);
+    rows[i].revision_n = inv_word(j, jv_get(j, row, "revision"), rows[i].revision[..]);
+    rows[i].path_n = inv_word(j, jv_get(j, row, "path"), rows[i].path[..]);
+    rows[i].present = jv_bool(j, jv_get(j, row, "present"));
+    rows[i].bytes = jv_int(j, jv_get(j, row, "bytes"), 0);
+    rows[i].verified = jv_bool(j, jv_get(j, row, "verified"));
+    rows[i].loaded = jv_bool(j, jv_get(j, row, "loaded"));
+  }
+  return r;
+}
+
+#test "an agents report is written and read back; another schema, a bare list and a long list are refused" {
+  store: [1024] u8; o: [1] Jo; nodes: [256] JvNode; rows: [4] InvAgent;
+  jo_start(o[..], store[..]); inv_agents_open(o[..], true); inv_agents_row(o[..], "codex", "Codex", 42, 12); inv_agents_row(o[..], "claude", "Claude Code", 7, 1);
+  text := inv_agents_close(o[..]);
+  #assert text == "{\"schema\":\"openagents.coder.agents.v1\",\"ok\":true,\"complete\":true,\"scope\":\"local_running_processes\",\"agents\":[{\"engine\":\"codex\",\"name\":\"Codex\",\"pid\":42,\"parent_pid\":12,\"state\":\"running\",\"attached\":false},{\"engine\":\"claude\",\"name\":\"Claude Code\",\"pid\":7,\"parent_pid\":1,\"state\":\"running\",\"attached\":false}]}";
+  r := inv_read_agents(text, nodes[..], rows[..]);
+  #assert r.read && r.ok && r.complete && r.n == 2 && inv_agent_engine(rows[..], 0) == "codex" && inv_agent_name(rows[..], 1) == "Claude Code";
+  #assert rows[0].pid == 42 && rows[0].parent == 12 && rows[0].running && !rows[0].attached && rows[1].pid == 7;
+  jo_start(o[..], store[..]); inv_agents_open(o[..], false);
+  r = inv_read_agents(inv_agents_close(o[..]), nodes[..], rows[..]);
+  #assert r.read && !r.ok && !r.complete && r.n == 0;
+  #assert !inv_read_agents("{\"schema\":\"openagents.models.v1\",\"ok\":true,\"complete\":true,\"agents\":[]}", nodes[..], rows[..]).read;
+  #assert !inv_read_agents("{\"schema\":\"openagents.coder.agents.v1\",\"ok\":true,\"complete\":true,\"agents\":{}}", nodes[..], rows[..]).read;
+  #assert !inv_read_agents("[]", nodes[..], rows[..]).read && !inv_read_agents("not json", nodes[..], rows[..]).read;
+  #assert !inv_read_agents(text, nodes[..], rows[0..<1]).read;
+  jo_start(o[..], store[0..<40]); inv_agents_open(o[..], true); #assert inv_agents_close(o[..]) == "";
+}
+#test "a models report is written and read back" {
+  store: [1024] u8; o: [1] Jo; nodes: [256] JvNode; rows: [4] InvModel;
+  jo_start(o[..], store[..]); inv_models_open(o[..], true);
+  inv_models_row(o[..], "parakeet", "audio", "Parakeet TDT v3", "541d", "/home/me/.openagents/models/parakeet", true, 9, true);
+  inv_models_row(o[..], "gpt-oss-20b", "text", "gpt-oss-20b", "6cee", "/m/g", false, 0, false);
+  text := inv_models_close(o[..]);
+  #assert text == "{\"schema\":\"openagents.models.v1\",\"ok\":true,\"models\":[{\"id\":\"parakeet\",\"kind\":\"audio\",\"name\":\"Parakeet TDT v3\",\"revision\":\"541d\",\"path\":\"/home/me/.openagents/models/parakeet\",\"present\":true,\"bytes\":9,\"verified\":true,\"loaded\":false},{\"id\":\"gpt-oss-20b\",\"kind\":\"text\",\"name\":\"gpt-oss-20b\",\"revision\":\"6cee\",\"path\":\"/m/g\",\"present\":false,\"bytes\":0,\"verified\":false,\"loaded\":false}]}";
+  r := inv_read_models(text, nodes[..], rows[..]);
+  #assert r.read && r.ok && r.n == 2 && inv_model_id(rows[..], 0) == "parakeet" && inv_model_kind(rows[..], 0) == "audio" && inv_model_name(rows[..], 0) == "Parakeet TDT v3";
+  #assert inv_model_revision(rows[..], 0) == "541d" && inv_model_path(rows[..], 0) == "/home/me/.openagents/models/parakeet" && rows[0].present && rows[0].bytes == 9 && rows[0].verified && !rows[0].loaded;
+  #assert inv_model_id(rows[..], 1) == "gpt-oss-20b" && !rows[1].present && rows[1].bytes == 0 && !rows[1].verified;
+  #assert !inv_read_models("{\"schema\":\"openagents.coder.agents.v1\",\"ok\":true,\"models\":[]}", nodes[..], rows[..]).read;
+  #assert !inv_read_models("{\"schema\":\"openagents.models.v1\",\"ok\":true}", nodes[..], rows[..]).read && !inv_read_models(text, nodes[..], rows[0..<1]).read;
+}

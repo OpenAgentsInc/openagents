@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package openagents.verse.packs.v1alpha1;
+
+// Private packs on the wire (Protocol E11, GitHub #13250; profile api-routes):
+// what coax/web/api/verse_packs.c answers POST /api/metaverse/packs/<name>
+// (and the same route under its first name, /api/verse/packs/<name>). One
+// codec, coax/lib/media/pack_session_wire.coax: verse_packs.c writes through
+// it (coax/web/api/packs-wire.coax, packs-wire.generated.c) and the native
+// host reads through it (metaverse-engine/host/private-pack.coax); the page
+// host reads the same members in the browser. GET .../fetch/<sid> answers the
+// session's bytes, not JSON. A refusal is the API's ErrorReply
+// (openagents/api/v1alpha1/error.proto). Goldens:
+// proto/verse/pack-session-v1alpha1.json. json_name is the key on the wire.
+
+// 200: one session for one pack. `url` is the path the bytes are fetched
+// from, once, within `expires` seconds. `key` (64 hex digits) and `iv` (32)
+// open them (AES-256-CTR); `sha256` is the plain pack's digest, `bytes` its
+// size and `size` the size of what is fetched.
+message PackSession {
+  optional string url = 1 [json_name = "url"];
+  optional string key = 2 [json_name = "key"];
+  optional string iv = 3 [json_name = "iv"];
+  optional string sha256 = 4 [json_name = "sha256"];
+  optional int64 bytes = 5 [json_name = "bytes"];
+  optional int64 size = 6 [json_name = "size"];
+  optional int32 expires = 7 [json_name = "expires"];
+}

@@ -2,23 +2,27 @@ syntax = "proto3";
 package openagents.cli.dictation.v1;
 
 // Local JSONL projection: docs/protocol/dictation-stream-v1.md.
-// Existing openagents.dictation.v1 final-only output retains its identity.
+// Existing openagents.dictation.v1 final-only output retains its identity
+// (event.proto). One codec for both, coax/lib/local/dictation-wire.coax
+// (profile cli-local); json_name is the key on the wire. A line carries the
+// first ten members always, then the ones its type adds, in the order the
+// doc lists them (final: text, exit, limited).
 message StreamEvent {
-  string schema = 1; // openagents.dictation.stream.v1
-  string type = 2; // status, partial, final, no_speech, cancelled, error
-  uint64 event = 3; // monotonically increasing publication index
-  uint64 ticket = 4; // current local capture ticket, zero before capture
-  uint64 sequence = 5; // number of model pushes submitted
-  uint64 samples = 6; // model samples submitted so far, mono 16 kHz
-  string profile = 7;
-  string model = 8;
-  string revision = 9;
-  string capture = 10;
-  optional string state = 11;
-  optional string text = 12;
-  optional int32 exit = 13;
-  optional string reason = 14;
-  optional string error = 15;
-  optional string message = 16;
-  optional bool limited = 17;
+  string schema = 1 [json_name = "schema"]; // openagents.dictation.stream.v1
+  string type = 2 [json_name = "type"]; // status, partial, final, no_speech, cancelled, error
+  uint64 event = 3 [json_name = "event"]; // monotonically increasing publication index
+  uint64 ticket = 4 [json_name = "ticket"]; // current local capture ticket, zero before capture
+  uint64 sequence = 5 [json_name = "sequence"]; // number of model pushes submitted
+  uint64 samples = 6 [json_name = "samples"]; // model samples submitted so far, mono 16 kHz
+  string profile = 7 [json_name = "profile"];
+  string model = 8 [json_name = "model"];
+  string revision = 9 [json_name = "revision"];
+  string capture = 10 [json_name = "capture"];
+  optional string state = 11 [json_name = "state"];
+  optional string text = 12 [json_name = "text"];
+  optional int32 exit = 13 [json_name = "exit"];
+  optional string reason = 14 [json_name = "reason"];
+  optional string error = 15 [json_name = "error"];
+  optional string message = 16 [json_name = "message"];
+  optional bool limited = 17 [json_name = "limited"];
 }

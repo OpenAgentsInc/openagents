@@ -7,6 +7,10 @@ not protobuf's JSON encoding: integer fields are bounded JSON numbers. The
 existing `openagents.dictation.v1` final-only output is unchanged. Default
 terminal-composer helpers still request the existing final-only mode.
 
+One codec writes and reads both schemas: `coax/lib/local/dictation-wire.coax`
+(the final-only events' fields are in `event.proto`). `proto/coder/dictation-v1.json`
+holds lines real runs printed, checked by `coax/lib/local/local-goldens.coax`.
+
 Every event carries `event` (starting at zero), `ticket` (zero before capture),
 `sequence` (model pushes submitted), `samples` (model audio submitted, at most
 960,000), `profile`, `model`, `revision` and `capture`. The current explicit

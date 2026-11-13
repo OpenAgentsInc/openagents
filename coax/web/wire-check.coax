@@ -415,7 +415,9 @@ wc_judge_text :: (d: Jv, allow: string, used: [] bool, run: WcRun, path: string,
       for q: 0..<seen_n { if seen[q] == id { again = true; } }
       if again { continue; }
       if seen_n < seen.count { seen[seen_n] = id; seen_n += 1; }
-      ok := row != -1 && wc_row_allows(d, row, path);
+      // a "keys" file holds the text under the id as a storage key and passes it unread: it may name
+      // the id as a whole string, never after a schema key (that would be a writer or a reader)
+      ok := row != -1 && (wc_row_allows(d, row, path) || (!h.keyed && wc_in_array(d, row, "keys", path)));
       listed := !ok && wc_excused(allow, used, "id", id, path);
       if run.list { print("%\t%\t%\n", id, path, ifx ok then "codec" else ifx listed then "allowlist" else ifx row == -1 then "UNREGISTERED" else "SECOND FILE"); }
       if ok || listed { continue; }
@@ -466,14 +468,17 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
   if owner == "creatures" { return wc_under(codec, "everglade/model/") || wc_under(codec, "everglade/server/"); }
   if owner == "items" { return wc_under(codec, "everglade/model/") || wc_under(codec, "metaverse-engine/session/ledger.coax"); }
   if owner == "quests" { return wc_under(codec, "everglade/model/"); }
-  if owner == "room-session" { return (wc_under(codec, "metaverse-engine/session/") && !wc_under(codec, "metaverse-engine/session/ledger.coax")) || wc_under(codec, "metaverse-engine/net/") || wc_under(codec, "coax/web/room/"); }
+  if owner == "room-session" { return (wc_under(codec, "metaverse-engine/session/") && !wc_under(codec, "metaverse-engine/session/ledger.coax")) || wc_under(codec, "metaverse-engine/net/") || wc_under(codec, "coax/web/room/")
+    // the session wire and the link input: the two files of everglade/shared/ the room and the page both load (#13346)
+    || codec == "everglade/shared/everglade-wire.coax" || codec == "everglade/shared/everglade-link-wire.coax"; }
   if owner == "realm-authoring" { return wc_under(codec, "metaverse-engine/editor/") || wc_under(codec, "apps/aethyrforge-desktop/") || wc_starts(codec, "apps/openagents-web/worldbuilder") || wc_under(codec, "coax/web/api/worldbuilder.c") || wc_under(codec, "coax/web/api/realms.c"); }
-  if owner == "identity" { return wc_starts(codec, "coax/web/api/auth"); }
-  if owner == "payments" { return wc_under(codec, "pay/") || wc_under(codec, "coax/lib/pay/") || wc_under(codec, "coax/lib/bitcoin/") || wc_under(codec, "coax/lib/lightning/") || wc_under(codec, "coax/lib/lnaddr/"); }
+  if owner == "identity" { return wc_starts(codec, "coax/web/api/auth") || codec == "coax/web/api/agent-wire.coax"; }   // the account's agents and devices (contexts.txt)
+  if owner == "payments" { return wc_under(codec, "pay/") || wc_under(codec, "coax/lib/pay/") || wc_under(codec, "coax/lib/bitcoin/") || wc_under(codec, "coax/lib/lightning/") || wc_under(codec, "coax/lib/lnaddr/")
+    || codec == "coax/lib/nostr/vault-wallet.coax"; }   // the wallet backup's codec stays below Nostr (docs/architecture/contexts.md)
   if owner == "coder" { return wc_under(codec, "coder/") || wc_under(codec, "coax/lib/agent/") || wc_under(codec, "coax/lib/microcoder/") || wc_under(codec, "coax/lib/gateway/") || wc_under(codec, "coax/lib/repo/") || wc_under(codec, "coax/web/repo/") || wc_under(codec, "coax/web/agent/"); }
   if owner == "chat" { return wc_under(codec, "components/zeron/") || wc_under(codec, "apps/openagents-web/chat.coax") || wc_under(codec, "coax/web/api/chat.c"); }
   if owner == "projects" { return wc_under(codec, "coax/web/api/private.c") || wc_under(codec, "coax/web/api/drops.c"); }
-  if owner == "nostr" { return wc_under(codec, "nostr/") || wc_under(codec, "coax/lib/nostr/"); }
+  if owner == "nostr" { return wc_under(codec, "nostr/") || (wc_under(codec, "coax/lib/nostr/") && codec != "coax/lib/nostr/vault-wallet.coax"); }
   if owner == "psionic" { return wc_under(codec, "psionic/") || wc_under(codec, "coax/lib/systemone/") || wc_under(codec, "coax/web/api/inference.c"); }
   if owner == "engine" { return wc_under(codec, "metaverse-engine/") && !wc_under(codec, "metaverse-engine/session/") && !wc_under(codec, "metaverse-engine/net/") && !wc_under(codec, "metaverse-engine/editor/"); }
   if owner == "realm-tools" { return wc_under(codec, "verse/tools/"); }
@@ -483,7 +488,7 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
       && !wc_under(codec, "coax/lib/repo/") && !wc_under(codec, "coax/web/repo/") && !wc_under(codec, "coax/web/agent/")
       && !wc_under(codec, "coax/lib/gateway/") && !wc_under(codec, "coax/lib/nostr/") && !wc_under(codec, "coax/lib/pay/")
       && !wc_under(codec, "coax/lib/bitcoin/") && !wc_under(codec, "coax/lib/lightning/") && !wc_under(codec, "coax/lib/lnaddr/")
-      && !wc_under(codec, "coax/lib/systemone/") && !wc_under(codec, "coax/web/room/") && !wc_starts(codec, "coax/web/api/auth")
+      && !wc_under(codec, "coax/lib/systemone/") && !wc_under(codec, "coax/web/room/") && !wc_starts(codec, "coax/web/api/auth") && codec != "coax/web/api/agent-wire.coax"
       && !wc_under(codec, "coax/web/api/worldbuilder.c") && !wc_under(codec, "coax/web/api/realms.c")
       && !wc_under(codec, "coax/web/api/chat.c") && !wc_under(codec, "coax/web/api/private.c") && !wc_under(codec, "coax/web/api/drops.c")
       && !wc_under(codec, "coax/web/api/inference.c") && !wc_under(codec, "coax/web/api/analytics.c")
@@ -849,7 +854,7 @@ tool_main :: () -> int #export_c #effects(all) {
 
 // A registry for the checks: a compliant shape with an API file and a room file, a family of
 // evidence records, a profile, a proto folder nothing imports, and a pending shape.
-WC_T_REG :: "{\"no_frames\":[\"coax/web/room/room-math.coax\"],\"shapes\":[{\"id\":\"a.log.v1\",\"kind\":\"proto\",\"owner\":\"coder\",\"schema\":\"proto/openagents/a/v1/a.proto#Log\",\"codec\":\"lib/a/log.coax\",\"check\":\"coax/bin/coax test lib/a/log.coax\",\"step\":\"S1\",\"tests\":[\"lib/a/oracle.py\"],\"sql\":[\"db/0001_a.sql\",\"db/notsql.coax\"],\"files\":[\"coax/web/api/a.c\",\"coax/web/room/room-a.coax\"]},{\"id\":\"ev.*\",\"kind\":\"local\",\"owner\":\"psionic\",\"codec\":\"tools/ev/\",\"step\":\"S1\"},{\"id\":\"prof-v1\",\"kind\":\"profile\",\"owner\":\"world\",\"schema\":\"proto/verse/prof-v1.json\",\"codec\":\"lib/p.coax\",\"check\":\"coax/web/tool.sh lib/p-profile.coax\",\"step\":\"S1\"},{\"id\":\"old\",\"kind\":\"proto\",\"owner\":\"protocol\",\"schema\":\"proto/openagents/old/\",\"status\":\"no-consumer\",\"step\":\"S1\"},{\"id\":\"b.v2\",\"kind\":\"proto\",\"owner\":\"coder\",\"schema\":\"proto/coder/b-v2.json\",\"codec\":\"lib/b.coax\",\"status\":\"pending\",\"step\":\"C1\"}]}";
+WC_T_REG :: "{\"no_frames\":[\"coax/web/room/room-math.coax\"],\"shapes\":[{\"id\":\"a.log.v1\",\"kind\":\"proto\",\"owner\":\"coder\",\"schema\":\"proto/openagents/a/v1/a.proto#Log\",\"codec\":\"lib/a/log.coax\",\"check\":\"coax/bin/coax test lib/a/log.coax\",\"step\":\"S1\",\"tests\":[\"lib/a/oracle.py\"],\"keys\":[\"web/host.js\"],\"sql\":[\"db/0001_a.sql\",\"db/notsql.coax\"],\"files\":[\"coax/web/api/a.c\",\"coax/web/room/room-a.coax\"]},{\"id\":\"ev.*\",\"kind\":\"local\",\"owner\":\"psionic\",\"codec\":\"tools/ev/\",\"step\":\"S1\"},{\"id\":\"prof-v1\",\"kind\":\"profile\",\"owner\":\"world\",\"schema\":\"proto/verse/prof-v1.json\",\"codec\":\"lib/p.coax\",\"check\":\"coax/web/tool.sh lib/p-profile.coax\",\"step\":\"S1\"},{\"id\":\"old\",\"kind\":\"proto\",\"owner\":\"protocol\",\"schema\":\"proto/openagents/old/\",\"status\":\"no-consumer\",\"step\":\"S1\"},{\"id\":\"b.v2\",\"kind\":\"proto\",\"owner\":\"coder\",\"schema\":\"proto/coder/b-v2.json\",\"codec\":\"lib/b.coax\",\"status\":\"pending\",\"step\":\"C1\"}]}";
 WC_T_MODULES :: "{\"profiles\":{\"one\":[\"openagents/a/v1/a.proto\"]}}";
 WC_T_QUIET :: WcRun.{quiet = true};
 
@@ -958,6 +963,10 @@ WC_T_QUIET :: WcRun.{quiet = true};
   line := "A_SCHEMA :: \"a.log.v1\";\n";
   #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "lib/a/log.coax", line) == 0;
   #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "lib/a/oracle.py", "S = 'a.log.v1'\n") == 0;
+  // a keys file may keep text under the id; it may not write or compare the id as a schema member
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "web/host.js", "localStorage.setItem(\"a.log.v1\", text);\n") == 0;
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "web/host.js", "const o = {schema: \"a.log.v1\"};\n") == 1;
+  #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "web/other.js", "localStorage.setItem(\"a.log.v1\", text);\n") == 1;
   #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "app/second.coax", line) == 1;
   // SQL the row lists may build it; other SQL may not, and "sql" lists only SQL
   #assert wc_judge_text(d, "", used[..], WC_T_QUIET, "db/0001_a.sql", "select jsonb_build_object('schema', 'a.log.v1');\n") == 0 && wc_judge_text(d, "", used[..], WC_T_QUIET, "db/0002_b.sql", "select jsonb_build_object('schema', 'a.log.v1');\n") == 1 && wc_judge_text(d, "", used[..], WC_T_QUIET, "db/notsql.coax", line) == 1;

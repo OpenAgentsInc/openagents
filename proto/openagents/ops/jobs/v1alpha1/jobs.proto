@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package openagents.ops.jobs.v1alpha1;
+
+// Scheduled jobs on the wire (Protocol E11, GitHub #13250; profile api-routes):
+// what coax/web/api/jobs.c answers POST /api/jobs/<job>. One codec,
+// coax/web/api/jobs-wire.coax; jobs.c calls it through jobs-wire.generated.c
+// and builds no body. Goldens: proto/verse/ops-routes-v1alpha1.json, checked by
+// coax/web/api/ops-wire-goldens.coax, which coax/web/api/test_jobs.py also runs
+// on every body a running API answered. A refusal is the API's ErrorReply
+// (openagents/api/v1alpha1/error.proto). json_name is the key on the wire.
+
+// 200 (ran, already ran) or 409 (a day another call holds) from
+// POST /api/jobs/<job>. `day` is the Chicago day, YYYY-MM-DD; a job that runs
+// on every call (service-watch) has none. `result` is the job's own object,
+// carried as it was written: Heartbeat, AuthSweep, or
+// openagents.ops.service.v1alpha1.WatchResult. A day that ran before answers
+// its stored result, which is jsonb's text (keys by length, then by bytes,
+// with ", " and ": " between items); a day with no result yet answers null.
+message JobRun {
+  optional string job = 1 [json_name = "job"];
+  optional string day = 2 [json_name = "day"];
+  optional string state = 3 [json_name = "state"];
+  optional bytes result = 4 [json_name = "result"];
+}
+
+// The heartbeat job's result: the day it ran for.
+message Heartbeat {
+  optional string day = 1 [json_name = "day"];
+}
+
+// The auth-sweep job's result: what it removed or aged that day.
+message AuthSweep {
+  optional string day = 1 [json_name = "day"];
+  optional int64 limits = 2 [json_name = "limits"];
+  optional int64 audit_aged = 3 [json_name = "audit_aged"];
+  optional int64 pending = 4 [json_name = "pending"];
+  optional int64 signatures = 5 [json_name = "signatures"];
+  optional int64 purged = 6 [json_name = "purged"];
+  optional int64 merge_asks = 7 [json_name = "merge_asks"];
+}

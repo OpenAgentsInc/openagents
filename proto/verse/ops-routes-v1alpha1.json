@@ -1,0 +1,201 @@
+{
+ "about": "Golden bodies of the email and jobs routes (Protocol E11, GitHub #13250): what coax/web/api/email.c answers on POST /api/admin/email and coax/web/api/jobs.c on POST /api/jobs/<job>, with the status each came with. `from` says where a body's bytes came from. api: a running API answered them in coax/web/api/test.sh (test_email.py and test_jobs.py with OPS_CAPTURE, on a build host, 2026-11-12), at the commit before the codecs, on a throwaway database with a fake mail service and a fake token check. caller: a request test_email.py sends. The same tests hand every body of every run to this check (--read-all). The refusals of /api/admin/email's sign-in gate (Log in first., Admins only.) are api.c's, answered before email.c is reached. A day that ran before answers its stored result as jsonb's text. No run answered an auth-sweep result: the job fails on the suite's database, so its result is held by jobs-wire.coax's own checks only. coax/web/api/ops-wire-goldens.coax holds each body's keys to its message and reads it through email-wire.coax or jobs-wire.coax and writes it back for the same bytes.",
+ "messages": {
+  "error": "openagents.api.v1alpha1.ErrorReply",
+  "email-reply": "openagents.ops.email.v1alpha1.SendReply",
+  "email-request": "openagents.ops.email.v1alpha1.SendRequest",
+  "job-run": "openagents.ops.jobs.v1alpha1.JobRun"
+ },
+ "goldens": [
+  {
+   "name": "error-0",
+   "kind": "error",
+   "from": "api",
+   "route": "POST /api/admin/email",
+   "status": 401,
+   "body": "{\"error\":\"Log in first.\"}"
+  },
+  {
+   "name": "error-1",
+   "kind": "error",
+   "from": "api",
+   "route": "POST /api/admin/email",
+   "status": 403,
+   "body": "{\"error\":\"Admins only.\"}"
+  },
+  {
+   "name": "email-reply-2",
+   "kind": "email-reply",
+   "from": "api",
+   "route": "POST /api/admin/email",
+   "status": 200,
+   "body": "{\"state\":\"sent\",\"id\":\"msg-1\"}"
+  },
+  {
+   "name": "email-reply-3",
+   "kind": "email-reply",
+   "from": "api",
+   "route": "POST /api/admin/email",
+   "status": 200,
+   "body": "{\"state\":\"already sent\",\"id\":\"msg-1\"}"
+  },
+  {
+   "name": "email-reply-4",
+   "kind": "email-reply",
+   "from": "api",
+   "route": "POST /api/admin/email",
+   "status": 200,
+   "body": "{\"state\":\"sent\",\"id\":\"msg-2\"}"
+  },
+  {
+   "name": "error-5",
+   "kind": "error",
+   "from": "api",
+   "route": "POST /api/admin/email",
+   "status": 502,
+   "body": "{\"error\":\"the mail service refused it (422)\"}"
+  },
+  {
+   "name": "email-reply-6",
+   "kind": "email-reply",
+   "from": "api",
+   "route": "POST /api/admin/email",
+   "status": 200,
+   "body": "{\"state\":\"sent\",\"id\":\"msg-3\"}"
+  },
+  {
+   "name": "error-7",
+   "kind": "error",
+   "from": "api",
+   "route": "POST /api/admin/email",
+   "status": 400,
+   "body": "{\"error\":\"to: not an address\"}"
+  },
+  {
+   "name": "error-8",
+   "kind": "error",
+   "from": "api",
+   "route": "POST /api/admin/email",
+   "status": 400,
+   "body": "{\"error\":\"text: a plain-text body is required\"}"
+  },
+  {
+   "name": "error-9",
+   "kind": "error",
+   "from": "api",
+   "route": "POST /api/admin/email",
+   "status": 400,
+   "body": "{\"error\":\"idempotency_key: 8 to 256 characters\"}"
+  },
+  {
+   "name": "error-10",
+   "kind": "error",
+   "from": "api",
+   "route": "POST /api/admin/email",
+   "status": 400,
+   "body": "{\"error\":\"to: not on this service's allowlist\"}"
+  },
+  {
+   "name": "error-11",
+   "kind": "error",
+   "from": "api",
+   "route": "POST /api/jobs/heartbeat",
+   "status": 401,
+   "body": "{\"error\":\"the scheduler or an admin only\"}"
+  },
+  {
+   "name": "job-run-12",
+   "kind": "job-run",
+   "from": "api",
+   "route": "POST /api/jobs/heartbeat",
+   "status": 200,
+   "body": "{\"job\":\"heartbeat\",\"day\":\"2026-11-12\",\"state\":\"ran\",\"result\":{\"day\":\"2026-11-12\"}}"
+  },
+  {
+   "name": "job-run-13",
+   "kind": "job-run",
+   "from": "api",
+   "route": "POST /api/jobs/heartbeat",
+   "status": 200,
+   "body": "{\"job\":\"heartbeat\",\"day\":\"2026-11-12\",\"state\":\"already ran\",\"result\":{\"day\": \"2026-11-12\"}}"
+  },
+  {
+   "name": "error-14",
+   "kind": "error",
+   "from": "api",
+   "route": "POST /api/jobs/heartbeat",
+   "status": 403,
+   "body": "{\"error\":\"only an admin runs a day by hand\"}"
+  },
+  {
+   "name": "error-15",
+   "kind": "error",
+   "from": "api",
+   "route": "POST /api/jobs/nothing",
+   "status": 404,
+   "body": "{\"error\":\"no such job\"}"
+  },
+  {
+   "name": "job-run-16",
+   "kind": "job-run",
+   "from": "api",
+   "route": "POST /api/jobs/heartbeat",
+   "status": 200,
+   "body": "{\"job\":\"heartbeat\",\"day\":\"2026-10-30\",\"state\":\"ran\",\"result\":{\"day\":\"2026-10-30\"}}"
+  },
+  {
+   "name": "error-17",
+   "kind": "error",
+   "from": "api",
+   "route": "POST /api/jobs/heartbeat",
+   "status": 400,
+   "body": "{\"error\":\"day: YYYY-MM-DD\"}"
+  },
+  {
+   "name": "job-run-18",
+   "kind": "job-run",
+   "from": "api",
+   "route": "POST /api/jobs/service-watch",
+   "status": 200,
+   "body": "{\"job\":\"service-watch\",\"state\":\"ran\",\"result\":{\"changes\":5,\"mailed\":5,\"sync\":{\"open\": 5, \"opened\": [{\"id\": 1, \"key\": \"checkpoint-failures:97\", \"todo\": \"the API's log for room-checkpoint; the database and oa-api's health\", \"title\": \"shard 97: a checkpoint post failed in the last 5 minutes\", \"opened_ms\": 1794546819231}, {\"id\": 2, \"key\": \"fenced:97\", \"todo\": \"a character playing on two shards: the directory's placement and the seat tickets' owners\", \"title\": \"shard 97: 3 or more checkpoints fenced in 10 minutes\", \"opened_ms\": 1794546819231}, {\"id\": 3, \"key\": \"silent:97\", \"todo\": \"coax/web/room/vm-deploy.sh status; restart the unit, or vm-deploy.sh switch run\", \"title\": \"shard 97: stopped reporting for 45 s\", \"opened_ms\": 1794546819231}, {\"id\": 4, \"key\": \"tick:97\", \"todo\": \"/admin/rooms: which workload grew; roll back the room (vm-deploy.sh rollback) if a release did it\", \"title\": \"shard 97: tick p95 over 10 ms twice in 2 minutes\", \"opened_ms\": 1794546819231}, {\"id\": 5, \"key\": \"unsaved:97\", \"todo\": \"the checkpoint store: oa-api's 5xx and the database; the room's checkpoint retries\", \"title\": \"shard 97: a checkpoint unsaved for 30 s: its player's encounter is held\", \"opened_ms\": 1794546819231}], \"resolved\": []}}}"
+  },
+  {
+   "name": "job-run-19",
+   "kind": "job-run",
+   "from": "api",
+   "route": "POST /api/jobs/service-watch",
+   "status": 200,
+   "body": "{\"job\":\"service-watch\",\"state\":\"ran\",\"result\":{\"changes\":0,\"mailed\":0,\"sync\":{\"open\": 5, \"opened\": [], \"resolved\": []}}}"
+  },
+  {
+   "name": "job-run-20",
+   "kind": "job-run",
+   "from": "api",
+   "route": "POST /api/jobs/service-watch",
+   "status": 200,
+   "body": "{\"job\":\"service-watch\",\"state\":\"ran\",\"result\":{\"changes\":5,\"mailed\":5,\"sync\":{\"open\": 0, \"opened\": [], \"resolved\": [{\"id\": 1, \"key\": \"checkpoint-failures:97\", \"todo\": \"the API's log for room-checkpoint; the database and oa-api's health\", \"title\": \"shard 97: a checkpoint post failed in the last 5 minutes\", \"opened_ms\": 1794546819231}, {\"id\": 2, \"key\": \"fenced:97\", \"todo\": \"a character playing on two shards: the directory's placement and the seat tickets' owners\", \"title\": \"shard 97: 3 or more checkpoints fenced in 10 minutes\", \"opened_ms\": 1794546819231}, {\"id\": 3, \"key\": \"silent:97\", \"todo\": \"coax/web/room/vm-deploy.sh status; restart the unit, or vm-deploy.sh switch run\", \"title\": \"shard 97: stopped reporting for 45 s\", \"opened_ms\": 1794546819231}, {\"id\": 4, \"key\": \"tick:97\", \"todo\": \"/admin/rooms: which workload grew; roll back the room (vm-deploy.sh rollback) if a release did it\", \"title\": \"shard 97: tick p95 over 10 ms twice in 2 minutes\", \"opened_ms\": 1794546819231}, {\"id\": 5, \"key\": \"unsaved:97\", \"todo\": \"the checkpoint store: oa-api's 5xx and the database; the room's checkpoint retries\", \"title\": \"shard 97: a checkpoint unsaved for 30 s: its player's encounter is held\", \"opened_ms\": 1794546819231}]}}}"
+  },
+  {
+   "name": "error-21",
+   "kind": "error",
+   "from": "api",
+   "route": "POST /api/jobs/auth-sweep",
+   "status": 500,
+   "body": "{\"error\":\"the job failed; its day can run again\"}"
+  },
+  {
+   "name": "email-request-one",
+   "kind": "email-request",
+   "from": "caller",
+   "route": "POST /api/admin/email",
+   "body": "{\"to\": \"owner@example.com\", \"subject\": \"Mail test, private subject\", \"text\": \"A private plain body\", \"html\": \"<p>A private html body</p>\", \"idempotency_key\": \"mail-test-0001\", \"attachments\": [{\"filename\": \"standup.pdf\", \"content\": \"JVBERi0xLjQKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZz4+ZW5kb2JqCnRyYWlsZXI8PC9Sb290IDEgMCBSPj4KJSVFT0YK\"}]}"
+  },
+  {
+   "name": "email-request-two",
+   "kind": "email-request",
+   "from": "caller",
+   "route": "POST /api/admin/email",
+   "body": "{\"to\": [\"owner@example.com\", \"stranger@example.org\"], \"subject\": \"Mail test, private subject\", \"text\": \"A private plain body\", \"html\": \"<p>A private html body</p>\", \"idempotency_key\": \"mail-test-0006\", \"attachments\": [{\"filename\": \"standup.pdf\", \"content\": \"JVBERi0xLjQKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZz4+ZW5kb2JqCnRyYWlsZXI8PC9Sb290IDEgMCBSPj4KJSVFT0YK\"}]}"
+  }
+ ]
+}

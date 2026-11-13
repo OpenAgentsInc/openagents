@@ -3,6 +3,7 @@
 // credentials or transcripts; a running process is not a grant to use it.
 #load "../../sys/fs.coax";
 #load "../../json/json.coax";
+#load "../../local/inventory-wire.coax";
 
 LA_MAX :: 128;
 LaAgent :: struct { pid: int; parent: int; engine: int; }
@@ -47,25 +48,11 @@ la_process_line :: (r: [] LaInventory, line: string) -> bool {
   if r[0].n >= LA_MAX { return false; }
   r[0].agents[r[0].n] = LaAgent.{pid = values[0], parent = values[1], engine = engine}; r[0].n += 1; return true;
 }
+// The inventory's JSON report, through its one codec (coax/lib/local/inventory-wire.coax).
 la_json :: (r: [] LaInventory, out: [] u8) -> string {
-  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
-  jo_key(o[..], "schema"); jo_str(o[..], "openagents.coder.agents.v1");
-  jo_key(o[..], "ok"); jo_bool(o[..], r[0].complete);
-  jo_key(o[..], "complete"); jo_bool(o[..], r[0].complete);
-  jo_key(o[..], "scope"); jo_str(o[..], "local_running_processes");
-  jo_key(o[..], "agents"); jo_arr(o[..]);
-  for i: 0..<r[0].n {
-    a := r[0].agents[i]; jo_obj(o[..]);
-    jo_key(o[..], "engine"); jo_str(o[..], LA_NAMES[a.engine]);
-    jo_key(o[..], "name"); jo_str(o[..], LA_LABELS[a.engine]);
-    jo_key(o[..], "pid"); jo_int(o[..], a.pid);
-    jo_key(o[..], "parent_pid"); jo_int(o[..], a.parent);
-    jo_key(o[..], "state"); jo_str(o[..], "running");
-    jo_key(o[..], "attached"); jo_bool(o[..], false);
-    jo_end(o[..]);
-  }
-  jo_end(o[..]); jo_end(o[..]);
-  return ifx o[0].bad then "" else jo_text(o[..]);
+  o: [1] Jo; jo_start(o[..], out); inv_agents_open(o[..], r[0].complete);
+  for i: 0..<r[0].n { a := r[0].agents[i]; inv_agents_row(o[..], LA_NAMES[a.engine], LA_LABELS[a.engine], a.pid, a.parent); }
+  return inv_agents_close(o[..]);
 }
 la_print :: (r: [] LaInventory, json: bool) -> int {
   if json { b: [65536] u8; text := la_json(r, b[..]); if text == "" { return 1; } print("%\n", text); }

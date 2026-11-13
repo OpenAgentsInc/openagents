@@ -1,0 +1,102 @@
+// Scheduled jobs on the wire, one codec (Protocol E11, GitHub #13250):
+// proto/openagents/ops/jobs/v1alpha1/jobs.proto (profile api-routes) names the members. jobs.c
+// calls the #export_c writers below through jobs-wire.generated.c (api-sources.sh, deploy.sh, the
+// Dockerfile) and builds no body of its own:
+//   jbw_run_write         200 or 409 from POST /api/jobs/<job>: the job, its day, its state, its result
+//   jbw_heartbeat_write   the heartbeat job's result
+//   jbw_sweep_write       the auth-sweep job's result
+//   jbw_error_write       a refusal or a failure (api-wire.coax, ErrorReply)
+// The bytes are the ones jobs.c wrote before this file: proto/verse/ops-routes-v1alpha1.json holds
+// what a running API answered and ops-wire-goldens.coax reads each through here and writes it
+// back. A result is JSON carried as it came (the job's own, or jsonb's text for a stored day). A
+// writer returns the body's length, or -1 when it does not fit or a value is not one it writes.
+//   coax/bin/coax test coax/web/api/jobs-wire.coax --library
+#load "api-wire.coax";
+
+JBW_WORD :: 64;   // a job's name, a day, a state
+
+jbw_error_write :: (text: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); aw_error(o[..], text); return aw_len(o[..]);
+}
+// A whole number as SQL prints it: digits, at most 19, with a leading minus allowed.
+jbw_number :: (s: string) -> bool #effects(all) {
+  from := ifx s.count > 0 && s[0] == '-' then 1 else 0;
+  if s.count - from < 1 || s.count - from > 19 { return false; }
+  for i: from..<s.count { if s[i] < '0' || s[i] > '9' { return false; } }
+  return true;
+}
+// {"day":"2026-11-12"}
+jbw_heartbeat_write :: (day: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"day\":"); jo_quoted(o[..], day); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"day":"D","limits":N,"audit_aged":N,"pending":N,"signatures":N,"purged":N,"merge_asks":N}: each
+// count as SQL printed it.
+jbw_sweep_write :: (day: string, limits: string, audit_aged: string, pending: string, signatures: string, purged: string, merge_asks: string, out: [] u8) -> int #export_c #effects(all) {
+  if !jbw_number(limits) || !jbw_number(audit_aged) || !jbw_number(pending) || !jbw_number(signatures) || !jbw_number(purged) || !jbw_number(merge_asks) { return -1; }
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"day\":"); jo_quoted(o[..], day);
+  jo_put(o[..], ",\"limits\":"); jo_put(o[..], limits); jo_put(o[..], ",\"audit_aged\":"); jo_put(o[..], audit_aged);
+  jo_put(o[..], ",\"pending\":"); jo_put(o[..], pending); jo_put(o[..], ",\"signatures\":"); jo_put(o[..], signatures);
+  jo_put(o[..], ",\"purged\":"); jo_put(o[..], purged); jo_put(o[..], ",\"merge_asks\":"); jo_put(o[..], merge_asks);
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+// {"job":"J","day":"D","state":"S","result":R}; day "": the job has no day and the member is left
+// out; result "": null.
+jbw_run_write :: (name: string, day: string, state: string, result: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"job\":"); jo_quoted(o[..], name);
+  if day.count > 0 { jo_put(o[..], ",\"day\":"); jo_quoted(o[..], day); }
+  jo_put(o[..], ",\"state\":"); jo_quoted(o[..], state);
+  jo_put(o[..], ",\"result\":"); jo_put(o[..], ifx result.count > 0 then result else "null");
+  jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+
+// A run read back: its words kept here, its result where it stands in the body ("" for null).
+JbwRun :: struct { name: [JBW_WORD] u8; name_n: int; day: [JBW_WORD] u8; day_n: int; state: [JBW_WORD] u8; state_n: int; result_from: int; result_to: int; }
+jbw_run_job :: (r: [] JbwRun) -> string #effects(all) { return cast(string) r[0].name[0..<r[0].name_n]; }
+jbw_run_day :: (r: [] JbwRun) -> string #effects(all) { return cast(string) r[0].day[0..<r[0].day_n]; }
+jbw_run_state :: (r: [] JbwRun) -> string #effects(all) { return cast(string) r[0].state[0..<r[0].state_n]; }
+jbw_run_result :: (r: [] JbwRun, body: string) -> string #effects(all) { return body[r[0].result_from..<r[0].result_to]; }
+// False when the body is no object, lacks a job or a state, or its result is neither an object nor null.
+jbw_read_run :: (body: string, nodes: [] JvNode, r: [] JbwRun) -> bool #effects(all) {
+  r[0] = JbwRun.{};
+  d: [1] Jv;
+  if !jv_parse(d[..], body, nodes) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  j := d[0];
+  jn := jv_str(j, jv_get(j, 0, "job"), r[0].name[..]); sn := jv_str(j, jv_get(j, 0, "state"), r[0].state[..]);
+  dn := 0; if jv_get(j, 0, "day") >= 0 { dn = jv_str(j, jv_get(j, 0, "day"), r[0].day[..]); }
+  res := jv_get(j, 0, "result"); kind := jv_kind(j, res);
+  if jn < 1 || sn < 1 || dn < 0 || (kind != JV_OBJECT && kind != JV_NULL) { r[0] = JbwRun.{}; return false; }
+  r[0].name_n = jn; r[0].state_n = sn; r[0].day_n = dn;
+  if kind == JV_OBJECT { r[0].result_from = j.nodes[res].from; r[0].result_to = j.nodes[res].to; }
+  return true;
+}
+
+#test "a run with and without a day, with a result and with none, reads back to the same bytes" {
+  b: [512] u8; nodes: [64] JvNode; r: [1] JbwRun; back: [512] u8;
+  n := jbw_heartbeat_write("2026-11-12", b[..]);
+  #assert cast(string) b[0..<n] == "{\"day\":\"2026-11-12\"}" && jbw_heartbeat_write("2026-11-12", b[0..<n - 1]) == -1;
+  n = jbw_sweep_write("2026-11-12", "3", "0", "12", "4", "0", "1", b[..]);
+  #assert cast(string) b[0..<n] == "{\"day\":\"2026-11-12\",\"limits\":3,\"audit_aged\":0,\"pending\":12,\"signatures\":4,\"purged\":0,\"merge_asks\":1}";
+  #assert jbw_sweep_write("2026-11-12", "3", "", "12", "4", "0", "1", b[..]) == -1 && jbw_sweep_write("2026-11-12", "3", "0", "1 2", "4", "0", "1", b[..]) == -1;
+  #assert jbw_sweep_write("d", "-1", "0", "0", "0", "0", "0", b[..]) > 0 && jbw_sweep_write("d", "-", "0", "0", "0", "0", "0", b[..]) == -1 && jbw_sweep_write("d", "12345678901234567890", "0", "0", "0", "0", "0", b[..]) == -1;
+  n = jbw_run_write("heartbeat", "2026-11-12", "ran", "{\"day\":\"2026-11-12\"}", b[..]);
+  body := cast(string) b[0..<n];
+  #assert body == "{\"job\":\"heartbeat\",\"day\":\"2026-11-12\",\"state\":\"ran\",\"result\":{\"day\":\"2026-11-12\"}}" && jbw_run_write("heartbeat", "2026-11-12", "ran", "{}", back[0..<20]) == -1;
+  #assert jbw_read_run(body, nodes[..], r[..]) && jbw_run_job(r[..]) == "heartbeat" && jbw_run_day(r[..]) == "2026-11-12" && jbw_run_state(r[..]) == "ran" && jbw_run_result(r[..], body) == "{\"day\":\"2026-11-12\"}";
+  m := jbw_run_write(jbw_run_job(r[..]), jbw_run_day(r[..]), jbw_run_state(r[..]), jbw_run_result(r[..], body), back[..]);
+  #assert cast(string) back[0..<m] == body;
+  n = jbw_run_write("service-watch", "", "ran", "{\"changes\":0}", b[..]);
+  body = cast(string) b[0..<n];
+  #assert body == "{\"job\":\"service-watch\",\"state\":\"ran\",\"result\":{\"changes\":0}}" && jbw_read_run(body, nodes[..], r[..]) && jbw_run_day(r[..]) == "";
+  n = jbw_run_write("heartbeat", "2026-11-12", "running", "", b[..]);
+  body = cast(string) b[0..<n];
+  #assert body == "{\"job\":\"heartbeat\",\"day\":\"2026-11-12\",\"state\":\"running\",\"result\":null}" && jbw_read_run(body, nodes[..], r[..]) && jbw_run_result(r[..], body) == "";
+  #assert !jbw_read_run("{\"job\":\"heartbeat\",\"state\":\"ran\",\"result\":7}", nodes[..], r[..]) && !jbw_read_run("{\"state\":\"ran\",\"result\":null}", nodes[..], r[..]) && !jbw_read_run("[]", nodes[..], r[..]);
+  n = jbw_error_write("no such job", b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"no such job\"}";
+}

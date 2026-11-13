@@ -24,6 +24,7 @@
 // of audio, so a parent process stops or cancels it as a person would.
 // The controller is its own C library unit (Verse's voice engine names would
 // collide with this program's); its policy constants are loaded here.
+#load "../../coax/lib/local/dictation-wire.coax";
 #load "../shared/dictation-policy.coax";
 #load "../shared/dictation-text.coax";
 #load "dictate-rules.coax";
@@ -94,19 +95,17 @@ dict_note :: (d: [] Dict, e: int, message: string) {
   d[0].message_n = n;
 }
 dict_set_error :: (d: [] Dict, e: int, message: string) -> int { dict_note(d, e, message); return DC_ERROR; }
-dict_json_head :: (r: [] Rep, kind: string) {
-  r[0].n = 0; r[0].bad = false;
-  rep_put(r, "{\"schema\":\"openagents.dictation.v1\",\"type\":"); rep_quoted(r, kind);
-}
-dict_json_str :: (r: [] Rep, key: string, v: string) { rep_byte(r, ','); rep_quoted(r, key); rep_byte(r, ':'); rep_quoted(r, v); }
-dict_json_int :: (r: [] Rep, key: string, v: int) { t: [24] u8; rep_byte(r, ','); rep_quoted(r, key); rep_byte(r, ':'); rep_put(r, int_text(v, t[..])); }
-dict_json_bool :: (r: [] Rep, key: string, v: bool) { rep_byte(r, ','); rep_quoted(r, key); rep_byte(r, ':'); rep_put(r, ifx v then "true" else "false"); }
+// One event line through the one codec (coax/lib/local/dictation-wire.coax), printed with its newline.
 // Each line leaves at once: a parent reading --events (Coder's terminal dictation) sees each state as it happens.
-dict_json_end :: (r: [] Rep) { rep_put(r, "}\n"); print("%", cast(string) r[0].buf[0..<r[0].n]); f := cxtool_out_flush(); }
+dict_event_out :: (e: DwEvent) {
+  b: [REP_BYTES] u8; line := dw_write(e, b[..]);
+  if line == "" { return; }
+  print("%\n", line); f := cxtool_out_flush();
+}
 
 // A status event: what the command is doing, never words heard.
 dict_status :: (d: [] Dict, state: string, human: string) {
-  if d[0].out == DC_OUT_EVENTS { r: [1] Rep; dict_json_head(r[..], "status"); dict_json_str(r[..], "state", state); dict_json_end(r[..]); }
+  if d[0].out == DC_OUT_EVENTS { dict_event_out(DwEvent.{type = "status", state = state}); }
   else if d[0].out == DC_OUT_TEXT && d[0].tty { tool_err("openagents: "); tool_errln(human); }
 }
 
@@ -126,25 +125,12 @@ dict_finish :: (d: [] Dict, result: int, transcript: string) -> int {
     else { tool_err("openagents: dictation "); tool_err(dc_error_name(d[0].error)); tool_err(" error: "); tool_errln(cast(string) d[0].message[0..<d[0].message_n]); }
     return code;
   }
-  r: [1] Rep;
   kind := ifx result == DC_FINAL then "final" else ifx result == DC_NO_SPEECH then "no_speech" else ifx result == DC_CANCELLED then "cancelled" else "error";
-  dict_json_head(r[..], kind);
-  if result == DC_FINAL { dict_json_str(r[..], "text", text); }
-  if result == DC_FINAL && (d[0].format == DC_CODE || d[0].terms > 0) { dict_json_str(r[..], "raw_text", raw); }
-  if result == DC_FINAL && d[0].format == DC_CODE { dict_json_str(r[..], "format", "code"); }
-  if result == DC_FINAL && d[0].terms > 0 { dict_json_int(r[..], "terms", d[0].terms); }
-  if result == DC_NO_SPEECH { dict_json_str(r[..], "reason", d[0].reason); }
-  if result == DC_ERROR { dict_json_str(r[..], "error", dc_error_name(d[0].error)); dict_json_str(r[..], "message", cast(string) d[0].message[0..<d[0].message_n]); }
-  dict_json_int(r[..], "exit", code);
-  if result == DC_FINAL || result == DC_NO_SPEECH {
-    dict_json_int(r[..], "samples", d[0].samples); dict_json_int(r[..], "audio_ms", d[0].samples / 16);
-    dict_json_int(r[..], "segments", d[0].segments); dict_json_bool(r[..], "limited", d[0].limited);
-  }
-  dict_json_str(r[..], "recognizer", recognizer);
-  dict_json_str(r[..], "model", "parakeet-tdt-0.6b-v3"); dict_json_str(r[..], "revision", "541d1f99c6b0c3cd0b11a95167540bb8edefd82b");
-  dict_json_str(r[..], "device", ifx d[0].gpu == 1 then "gpu" else "cpu");
-  dict_json_str(r[..], "capture", dc_capture_name(d[0].capture));
-  dict_json_end(r[..]);
+  dict_event_out(DwEvent.{type = kind, text = text, has_raw = d[0].format == DC_CODE || d[0].terms > 0, raw_text = raw, code = d[0].format == DC_CODE, terms = d[0].terms,
+    reason = d[0].reason, error = dc_error_name(d[0].error), message = cast(string) d[0].message[0..<d[0].message_n], exit = code,
+    samples = d[0].samples, audio_ms = d[0].samples / 16, segments = d[0].segments, limited = d[0].limited,
+    recognizer = recognizer, model = "parakeet-tdt-0.6b-v3", revision = "541d1f99c6b0c3cd0b11a95167540bb8edefd82b",
+    device = ifx d[0].gpu == 1 then "gpu" else "cpu", capture = dc_capture_name(d[0].capture)});
   return code;
 }
 

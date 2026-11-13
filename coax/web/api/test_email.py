@@ -40,6 +40,9 @@ threading.Thread(target=mail_fake.serve_forever, daemon=True).start()
 
 
 mail_last = {}
+# What the email and jobs routes answered in this run, for the codecs' check at the end of
+# test_jobs.py (Protocol E11, #13250): email-wire.coax and jobs-wire.coax.
+ops_seen = []
 
 
 def mail(message, keyfile=os.environ["ADMIN_KEY"]):
@@ -56,7 +59,9 @@ def mail(message, keyfile=os.environ["ADMIN_KEY"]):
                                 capture_output=True, text=True, check=True).stdout.strip()
         os.unlink(path)
         headers["Authorization"] = "Nostr " + signed
-    return call("POST", "/api/admin/email", body, headers)
+    got = call("POST", "/api/admin/email", body, headers)
+    ops_seen.append({"kind": "email-reply" if got[0] == 200 else "error", "route": "POST /api/admin/email", "status": got[0], "body": got[1].decode()})
+    return got
 
 
 pdf = b"%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"

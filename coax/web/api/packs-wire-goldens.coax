@@ -1,0 +1,86 @@
+// The private packs' goldens (Protocol E11, GitHub #13250): proto/verse/pack-session-v1alpha1.json
+// holds what a running API answered on POST /api/verse/packs/<name>, POST /api/metaverse/packs/<name>
+// and their fetch routes' refusals, byte for byte. For each body this check
+//   - holds its keys to the json_names of its message in proto/descriptors/api-routes.pb, each
+//     field once and in field order;
+//   - reads it through the codec (coax/lib/media/pack_session_wire.coax; a refusal through
+//     packs-wire.coax) and writes it again from what was read, for the same bytes.
+// coax/web/api/tests/verse_packs.coax does the second for every answer of a running API.
+//
+//   coax/web/tool.sh coax/web/api/packs-wire-goldens.coax [proto/verse/pack-session-v1alpha1.json]
+#import "Basic";
+#load "packs-wire.coax";
+#load "../../lib/proto/importer.coax";
+#load "../../lib/proto/golden-keys.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/fs.coax";
+
+PG_FIXTURE :: "proto/verse/pack-session-v1alpha1.json";
+PG_DESCRIPTOR :: "proto/descriptors/api-routes.pb";
+
+PgWork :: struct { nodes: [16384] JvNode; body_nodes: [256] JvNode; name: [256] u8; kind: [64] u8; body: [8192] u8; back: [8192] u8; words: [1024] u8; }
+// A body's faults against the descriptor and the codec: "" when it holds.
+pg_body :: (st: [] D_State, kind: string, body: string, w: [] PgWork) -> string {
+  full := ifx kind == "session" then ".openagents.verse.packs.v1alpha1.PackSession" else ifx kind == "error" then ".openagents.api.v1alpha1.ErrorReply" else "";
+  if full == "" { return "no such kind"; }
+  why := pk_text_keys(st, full, body, true, false, w[0].body_nodes[..]);
+  if why != "" { return why; }
+  n := -1;
+  if kind == "session" { n = pksw_rewrite(body, w[0].body_nodes[..], w[0].back[..]); }
+  else {
+    j: [1] Jv;
+    if !jv_parse(j[..], body, w[0].body_nodes[..]) { return "not JSON"; }
+    wn := jv_str(j[0], jv_get(j[0], 0, "error"), w[0].words[..]); if wn < 0 { return "a refusal with no words"; }
+    n = pkw_error_write(cast(string) w[0].words[0..<wn], w[0].back[..]);
+  }
+  if n < 0 || cast(string) w[0].back[0..<n] != body { return "read back and written through the codec, it is not the same bytes"; }
+  return "";
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  pb: [65536] u8;
+  pn := fs_read(PG_DESCRIPTOR, pb[..]);
+  if pn <= 0 { tool_errln("packs-wire-goldens: cannot read the descriptor"); return 2; }
+  g: [1] PkDescriptor;
+  err := pk_load(g[..], cast(string) pb[0..<pn]);
+  if err != "" { print("FAIL  descriptor: %\n", err); return 1; }
+  st := g[0].state[..];
+  w: [1] PgWork;
+  // the checks bite: a member missing, members out of order, uppercase hex, a url with no fetch/,
+  // a spaced refusal; and they take a session as the route writes it
+  k := "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+  good := "{\"url\":\"/api/verse/packs/fetch/00ff\",\"key\":\"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\",\"iv\":\"000102030405060708090a0b0c0d0e0f\",\"sha256\":\"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\",\"bytes\":56,\"size\":64,\"expires\":120}";
+  if pg_body(st, "session", good, w[..]) != "" ||
+     pg_body(st, "session", "{\"url\":\"/api/verse/packs/fetch/00ff\",\"key\":\"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\",\"iv\":\"000102030405060708090a0b0c0d0e0f\",\"sha256\":\"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\",\"bytes\":56,\"size\":64}", w[..]) == "" ||
+     pg_body(st, "session", "{\"key\":\"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\",\"url\":\"/api/verse/packs/fetch/00ff\",\"iv\":\"000102030405060708090a0b0c0d0e0f\",\"sha256\":\"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\",\"bytes\":56,\"size\":64,\"expires\":120}", w[..]) == "" ||
+     pg_body(st, "session", "{\"url\":\"/api/verse/packs/fetch/00ff\",\"key\":\"000102030405060708090A0B0C0D0E0F101112131415161718191a1b1c1d1e1f\",\"iv\":\"000102030405060708090a0b0c0d0e0f\",\"sha256\":\"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\",\"bytes\":56,\"size\":64,\"expires\":120}", w[..]) == "" ||
+     pg_body(st, "session", "{\"url\":\"/api/verse/packs/00ff\",\"key\":\"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\",\"iv\":\"000102030405060708090a0b0c0d0e0f\",\"sha256\":\"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\",\"bytes\":56,\"size\":64,\"expires\":120}", w[..]) == "" ||
+     pg_body(st, "error", "{\"error\": \"no such pack\"}", w[..]) == "" || pg_body(st, "error", "{\"error\":\"no such pack\"}", w[..]) != "" || k.count != 64 {
+    print("FAIL  the check takes a body it should refuse, or refuses one it should take\n"); return 1;
+  }
+  path := ifx loaded && args_count(args[..]) >= 1 then args_at(args[..], 0) else PG_FIXTURE;
+  buf: [262144] u8; j: [1] Jv;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { tool_errln("packs-wire-goldens: cannot read the fixture"); return 2; }
+  if !jv_parse(j[..], cast(string) buf[0..<n], w[0].nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("FAIL  cannot parse the fixture\n"); return 1; }
+  d := j[0]; goldens := jv_get(d, 0, "goldens");
+  if jv_kind(d, goldens) != JV_ARRAY || jv_len(d, goldens) == 0 { print("FAIL  no goldens\n"); return 1; }
+  bad := 0; sessions := 0; refusals := 0;
+  for i: 0..<jv_len(d, goldens) {
+    item := jv_at(d, goldens, i);
+    name := cast(string) w[0].name[0..<jv_str(d, jv_get(d, item, "name"), w[0].name[..])];
+    kind := cast(string) w[0].kind[0..<jv_str(d, jv_get(d, item, "kind"), w[0].kind[..])];
+    bn := jv_str(d, jv_get(d, item, "body"), w[0].body[..]);
+    if bn <= 0 { print("FAIL  % : no body\n", name); bad += 1; continue; }
+    body: [8192] u8; for q: 0..<bn { body[q] = w[0].body[q]; }
+    if kind == "session" { sessions += 1; } else { refusals += 1; }
+    why := pg_body(st, kind, cast(string) body[0..<bn], w[..]);
+    if why != "" { print("FAIL  % (%): %\n", name, kind, why); bad += 1; } else { print("ok    % (%)\n", name, kind); }
+  }
+  if sessions == 0 || refusals == 0 { print("FAIL  the fixture needs a session and a refusal\n"); bad += 1; }
+  print("%\n", ifx bad == 0 then "pack goldens hold" else "pack goldens fail");
+  return ifx bad == 0 then 0 else 1;
+}

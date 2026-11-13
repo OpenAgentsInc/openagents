@@ -1,0 +1,213 @@
+{
+ "about": "Dictation's event lines as the CLI printed them (compliance plan step C7, GitHub #13250; proto/openagents/cli/dictation/v1/event.proto and stream.proto, profile cli-local; docs/protocol/dictation-stream-v1.md). Every body is a line a real `openagents dictate` run printed: copied from the verification record `from` names (the CLI's own checks on Linux and macOS, with fixture audio and a PipeWire recorder), or printed on a build host by the CLI built at the commit before this codec, with recorded audio and the stand-in recognizer (`from` starts pool). The CLI built with the codec printed the same bytes for the same runs. One of each kind is kept: each type, each status state, each error and reason, each capture and device. coax/lib/local/local-goldens.coax holds each line's keys to its message, reads it through coax/lib/local/dictation-wire.coax and writes it back for the same bytes.",
+ "messages": {
+  "dictation": "openagents.cli.dictation.v1.Event",
+  "stream": "openagents.cli.dictation.v1.StreamEvent"
+ },
+ "goldens": [
+  {
+   "name": "v1-error-0",
+   "kind": "dictation",
+   "from": "docs/verification/dictate-cli-2026-11-02/check-linux-cpu.txt",
+   "body": "{\"schema\":\"openagents.dictation.v1\",\"type\":\"error\",\"error\":\"capture\",\"message\":\"the input stopped delivering audio\",\"exit\":1,\"recognizer\":\"parakeet\",\"model\":\"parakeet-tdt-0.6b-v3\",\"revision\":\"541d1f99c6b0c3cd0b11a95167540bb8edefd82b\",\"device\":\"cpu\",\"capture\":\"pipewire\"}"
+  },
+  {
+   "name": "v1-final-1",
+   "kind": "dictation",
+   "from": "docs/verification/dictate-cli-2026-11-02/check-linux-cpu.txt",
+   "body": "{\"schema\":\"openagents.dictation.v1\",\"type\":\"final\",\"text\":\"Wait, stop.\",\"exit\":0,\"samples\":44800,\"audio_ms\":2800,\"segments\":1,\"limited\":false,\"recognizer\":\"parakeet\",\"model\":\"parakeet-tdt-0.6b-v3\",\"revision\":\"541d1f99c6b0c3cd0b11a95167540bb8edefd82b\",\"device\":\"cpu\",\"capture\":\"fixture\"}"
+  },
+  {
+   "name": "stream-status-2",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/backpressure.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"status\",\"event\":0,\"ticket\":0,\"sequence\":0,\"samples\":0,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"fixture\",\"state\":\"loading_model\"}"
+  },
+  {
+   "name": "stream-status-3",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/backpressure.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"status\",\"event\":1,\"ticket\":0,\"sequence\":0,\"samples\":0,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"fixture\",\"state\":\"opening_input\"}"
+  },
+  {
+   "name": "stream-status-4",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/backpressure.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"status\",\"event\":2,\"ticket\":1,\"sequence\":0,\"samples\":0,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"fixture\",\"state\":\"listening\"}"
+  },
+  {
+   "name": "stream-partial-5",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/backpressure.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"partial\",\"event\":3,\"ticket\":1,\"sequence\":4,\"samples\":10240,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"fixture\",\"text\":\"I\"}"
+  },
+  {
+   "name": "stream-status-6",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/backpressure.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"status\",\"event\":13,\"ticket\":1,\"sequence\":23,\"samples\":58880,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"fixture\",\"state\":\"recognizing\"}"
+  },
+  {
+   "name": "stream-error-7",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/bad-model.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"error\",\"event\":1,\"ticket\":0,\"sequence\":0,\"samples\":0,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"fixture\",\"exit\":1,\"error\":\"model\",\"message\":\"incremental model identity refused\"}"
+  },
+  {
+   "name": "stream-cancelled-8",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/cancel-escape.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"cancelled\",\"event\":4,\"ticket\":1,\"sequence\":7,\"samples\":17920,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"fixture\",\"exit\":130}"
+  },
+  {
+   "name": "stream-status-9",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/cancel-finalizing.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"status\",\"event\":3,\"ticket\":1,\"sequence\":2,\"samples\":5120,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"fixture\",\"state\":\"finishing\"}"
+  },
+  {
+   "name": "stream-error-10",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/capture-format.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"error\",\"event\":3,\"ticket\":1,\"sequence\":0,\"samples\":0,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"fixture\",\"exit\":1,\"error\":\"format\",\"message\":\"the input's format, clock or capture failed\"}"
+  },
+  {
+   "name": "stream-final-11",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/enter-stop.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"final\",\"event\":8,\"ticket\":1,\"sequence\":11,\"samples\":23360,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"fixture\",\"text\":\"Wait, stop\",\"exit\":0,\"limited\":false}"
+  },
+  {
+   "name": "stream-error-12",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/missing-model.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"error\",\"event\":1,\"ticket\":0,\"sequence\":0,\"samples\":0,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"fixture\",\"exit\":6,\"error\":\"model_missing\",\"message\":\"the original streaming model is not installed: see psionic/docs/parakeet.md\"}"
+  },
+  {
+   "name": "stream-status-13",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/recorder.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"status\",\"event\":0,\"ticket\":0,\"sequence\":0,\"samples\":0,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"pipewire\",\"state\":\"loading_model\"}"
+  },
+  {
+   "name": "stream-status-14",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/recorder.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"status\",\"event\":1,\"ticket\":0,\"sequence\":0,\"samples\":0,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"pipewire\",\"state\":\"opening_input\"}"
+  },
+  {
+   "name": "stream-status-15",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/recorder.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"status\",\"event\":2,\"ticket\":1,\"sequence\":0,\"samples\":0,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"pipewire\",\"state\":\"listening\"}"
+  },
+  {
+   "name": "stream-partial-16",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/recorder.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"partial\",\"event\":3,\"ticket\":1,\"sequence\":4,\"samples\":10240,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"pipewire\",\"text\":\"I\"}"
+  },
+  {
+   "name": "stream-status-17",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/recorder.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"status\",\"event\":13,\"ticket\":1,\"sequence\":25,\"samples\":64000,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"pipewire\",\"state\":\"finishing\"}"
+  },
+  {
+   "name": "stream-status-18",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/recorder.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"status\",\"event\":14,\"ticket\":1,\"sequence\":26,\"samples\":66560,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"pipewire\",\"state\":\"recognizing\"}"
+  },
+  {
+   "name": "stream-final-19",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/recorder.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"final\",\"event\":15,\"ticket\":1,\"sequence\":28,\"samples\":67552,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"pipewire\",\"text\":\"I am convinced of what I say, said the Count\",\"exit\":0,\"limited\":false}"
+  },
+  {
+   "name": "stream-no_speech-20",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/silence.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"no_speech\",\"event\":4,\"ticket\":1,\"sequence\":1,\"samples\":2560,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"fixture\",\"exit\":9,\"reason\":\"silence\"}"
+  },
+  {
+   "name": "stream-status-21",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/cli/wait.stdout",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"status\",\"event\":2,\"ticket\":0,\"sequence\":0,\"samples\":0,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"fixture\",\"state\":\"ready\"}"
+  },
+  {
+   "name": "stream-error-22",
+   "kind": "stream",
+   "from": "docs/verification/dictate-stream-2026-11-03/recorder-setup-failure.log",
+   "body": "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"error\",\"event\":2,\"ticket\":0,\"sequence\":0,\"samples\":0,\"profile\":\"psionic-nemotron-streaming-en-v1\",\"model\":\"nemotron-speech-streaming-en-0.6b\",\"revision\":\"ebe59e5a817142986528bbbee5dba8db7b38ed50\",\"capture\":\"pipewire\",\"exit\":8,\"error\":\"program\",\"message\":\"pw-record\"}"
+  },
+  {
+   "name": "v1-final-23",
+   "kind": "dictation",
+   "from": "docs/verification/dictation-eval-2026-11-02/raw/dictate-check.txt",
+   "body": "{\"schema\":\"openagents.dictation.v1\",\"type\":\"final\",\"text\":\"Wait, stop.\",\"exit\":0,\"samples\":44800,\"audio_ms\":2800,\"segments\":1,\"limited\":false,\"recognizer\":\"parakeet\",\"model\":\"parakeet-tdt-0.6b-v3\",\"revision\":\"541d1f99c6b0c3cd0b11a95167540bb8edefd82b\",\"device\":\"gpu\",\"capture\":\"fixture\"}"
+  },
+  {
+   "name": "v1-error-24",
+   "kind": "dictation",
+   "from": "docs/verification/dictation-vocab-2026-11-03/raw/dictate-check.txt",
+   "body": "{\"schema\":\"openagents.dictation.v1\",\"type\":\"error\",\"error\":\"model\",\"message\":\"NVIDIA CUDA could not take the weights: allocate Parakeet device buffer: cuMemAlloc failed: CUDA error 2 (out of memory)\",\"exit\":1,\"recognizer\":\"parakeet\",\"model\":\"parakeet-tdt-0.6b-v3\",\"revision\":\"541d1f99c6b0c3cd0b11a95167540bb8edefd82b\",\"device\":\"gpu\",\"capture\":\"fixture\"}"
+  },
+  {
+   "name": "v1-events-status-25",
+   "kind": "dictation",
+   "from": "pool: `openagents dictate --capture fixture` on a build host (oa-build-3, 2026-11-12) at the commit before the codec, case events of apps/openagents-cli/tests/dictate-check.coax",
+   "body": "{\"schema\":\"openagents.dictation.v1\",\"type\":\"status\",\"state\":\"opening_input\"}"
+  },
+  {
+   "name": "v1-events-status-26",
+   "kind": "dictation",
+   "from": "pool: `openagents dictate --capture fixture` on a build host (oa-build-3, 2026-11-12) at the commit before the codec, case events of apps/openagents-cli/tests/dictate-check.coax",
+   "body": "{\"schema\":\"openagents.dictation.v1\",\"type\":\"status\",\"state\":\"listening\"}"
+  },
+  {
+   "name": "v1-events-status-27",
+   "kind": "dictation",
+   "from": "pool: `openagents dictate --capture fixture` on a build host (oa-build-3, 2026-11-12) at the commit before the codec, case events of apps/openagents-cli/tests/dictate-check.coax",
+   "body": "{\"schema\":\"openagents.dictation.v1\",\"type\":\"status\",\"state\":\"finishing\"}"
+  },
+  {
+   "name": "v1-events-status-28",
+   "kind": "dictation",
+   "from": "pool: `openagents dictate --capture fixture` on a build host (oa-build-3, 2026-11-12) at the commit before the codec, case events of apps/openagents-cli/tests/dictate-check.coax",
+   "body": "{\"schema\":\"openagents.dictation.v1\",\"type\":\"status\",\"state\":\"recognizing\"}"
+  },
+  {
+   "name": "v1-events-final-29",
+   "kind": "dictation",
+   "from": "pool: `openagents dictate --capture fixture` on a build host (oa-build-3, 2026-11-12) at the commit before the codec, case events of apps/openagents-cli/tests/dictate-check.coax",
+   "body": "{\"schema\":\"openagents.dictation.v1\",\"type\":\"final\",\"text\":\"Wait, stop.\",\"exit\":0,\"samples\":44800,\"audio_ms\":2800,\"segments\":1,\"limited\":false,\"recognizer\":\"fixture\",\"model\":\"parakeet-tdt-0.6b-v3\",\"revision\":\"541d1f99c6b0c3cd0b11a95167540bb8edefd82b\",\"device\":\"gpu\",\"capture\":\"fixture\"}"
+  },
+  {
+   "name": "v1-code-final-30",
+   "kind": "dictation",
+   "from": "pool: `openagents dictate --capture fixture` on a build host (oa-build-3, 2026-11-12) at the commit before the codec, case code of apps/openagents-cli/tests/dictate-check.coax",
+   "body": "{\"schema\":\"openagents.dictation.v1\",\"type\":\"final\",\"text\":\"Open voice.coax and press enter.\",\"raw_text\":\"Um, open voice dot coax and press enter.\",\"format\":\"code\",\"exit\":0,\"samples\":44800,\"audio_ms\":2800,\"segments\":1,\"limited\":false,\"recognizer\":\"fixture\",\"model\":\"parakeet-tdt-0.6b-v3\",\"revision\":\"541d1f99c6b0c3cd0b11a95167540bb8edefd82b\",\"device\":\"gpu\",\"capture\":\"fixture\"}"
+  },
+  {
+   "name": "v1-silence-no_speech-31",
+   "kind": "dictation",
+   "from": "pool: `openagents dictate --capture fixture` on a build host (oa-build-3, 2026-11-12) at the commit before the codec, case silence of apps/openagents-cli/tests/dictate-check.coax",
+   "body": "{\"schema\":\"openagents.dictation.v1\",\"type\":\"no_speech\",\"reason\":\"silence\",\"exit\":9,\"samples\":0,\"audio_ms\":0,\"segments\":0,\"limited\":false,\"recognizer\":\"fixture\",\"model\":\"parakeet-tdt-0.6b-v3\",\"revision\":\"541d1f99c6b0c3cd0b11a95167540bb8edefd82b\",\"device\":\"gpu\",\"capture\":\"fixture\"}"
+  },
+  {
+   "name": "v1-cancel-cancelled-32",
+   "kind": "dictation",
+   "from": "pool: `openagents dictate --capture fixture` on a build host (oa-build-3, 2026-11-12) at the commit before the codec, case cancel of apps/openagents-cli/tests/dictate-check.coax",
+   "body": "{\"schema\":\"openagents.dictation.v1\",\"type\":\"cancelled\",\"exit\":130,\"recognizer\":\"fixture\",\"model\":\"parakeet-tdt-0.6b-v3\",\"revision\":\"541d1f99c6b0c3cd0b11a95167540bb8edefd82b\",\"device\":\"gpu\",\"capture\":\"fixture\"}"
+  },
+  {
+   "name": "v1-nomodel-error-33",
+   "kind": "dictation",
+   "from": "pool: `openagents dictate --capture fixture` on a build host (oa-build-3, 2026-11-12) at the commit before the codec, case nomodel of apps/openagents-cli/tests/dictate-check.coax",
+   "body": "{\"schema\":\"openagents.dictation.v1\",\"type\":\"error\",\"error\":\"model_missing\",\"message\":\"the pinned Parakeet model is not installed: see psionic/docs/parakeet.md, or use --model-dir DIR\",\"exit\":6,\"recognizer\":\"parakeet\",\"model\":\"parakeet-tdt-0.6b-v3\",\"revision\":\"541d1f99c6b0c3cd0b11a95167540bb8edefd82b\",\"device\":\"gpu\",\"capture\":\"fixture\"}"
+  }
+ ]
+}

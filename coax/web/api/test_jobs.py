@@ -44,6 +44,8 @@ def job(path, token=None, admin=False):
         headers["Authorization"] = "Nostr " + subprocess.run([os.environ["SIGN"], "--key", os.environ["ADMIN_KEY"], "POST", API + path],
                                                              capture_output=True, text=True, check=True).stdout.strip()
     s, b, _ = call("POST", path, b"", headers)
+    if "ops_seen" in globals():
+        ops_seen.append({"kind": "job-run" if b.startswith(b'{"job"') else "error", "route": "POST " + path.split("?")[0], "status": s, "body": b.decode()})
     return s, (json.loads(b) if b.startswith(b"{") else b)
 
 
@@ -255,3 +257,21 @@ check("capacity-record: a body that is no record is refused", capacity_post("sha
       and capacity_post(night.replace("verdict holds", "verdict ok"))[0] == 400 and capacity_post(night + "more 1\n")[0] == 400)
 check("capacity: a POST is refused", call("POST", "/api/playtest/capacity", b"")[0] == 405)
 sql("DELETE FROM verse.capacity_records")
+
+# Every body email.c and jobs.c answered above is its codec's (Protocol E11, #13250): each one's keys
+# are its message's (proto/openagents/ops/email/v1alpha1/email.proto, .../jobs/v1alpha1/jobs.proto, and
+# the API's ErrorReply) and the codec reads it and writes it back for the same bytes
+# (ops-wire-goldens.coax --read-all). OPS_CAPTURE=FILE keeps what the routes answered.
+if "ops_seen" in globals():
+    job("/api/jobs/auth-sweep", "good.token")
+    if os.environ.get("OPS_CAPTURE"):
+        json.dump(ops_seen, open(os.environ["OPS_CAPTURE"], "w"), indent=1)
+    if os.path.exists(os.path.join(SV_REPO, "coax", "web", "api", "ops-wire-goldens.coax")):
+        f = tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w")
+        json.dump(ops_seen, f)
+        f.close()
+        r = subprocess.run([os.path.join(SV_REPO, "coax", "web", "tool.sh"), "coax/web/api/ops-wire-goldens.coax", "--read-all", f.name],
+                           cwd=SV_REPO, capture_output=True, text=True, timeout=1200)
+        os.unlink(f.name)
+        check("email and jobs: every body the routes answered (%d) is its codec's bytes and its proto's keys" % len(ops_seen),
+              r.returncode == 0 and len(ops_seen) >= 20, (r.stdout[-1500:], r.stderr[-500:]))

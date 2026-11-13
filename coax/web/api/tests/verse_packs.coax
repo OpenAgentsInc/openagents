@@ -7,6 +7,7 @@
 //   coax/web/tool.sh coax/web/api/tests/verse_packs.coax bucket PORT OBJECT SHA256 DIR   (the fake bucket)
 #load "api_harness.coax";
 #load "../../../lib/image/inflate.coax";
+#load "../packs-wire.coax";
 
 VP_MAX :: 1048576;
 
@@ -72,7 +73,27 @@ vp_session :: (t: [] Ap, name: string, ip: string) -> int {
   p: [1] Sb; sb(p[..], "/api/verse/packs/"); sb(p[..], name);
   x: [1] Sb; sb(x[..], "X-Forwarded-For: "); sb(x[..], ip); sb(x[..], ", 130.211.0.1");
   h := [1] string.[sb_text(x[..])];
-  return ap_call(t, "POST", sb_text(p[..]), "", h[..]);
+  st := ap_call(t, "POST", sb_text(p[..]), "", h[..]);
+  vp_wire(t, st);
+  return st;
+}
+// The answer just given is its codec's bytes (Protocol E11, #13250): a session reads through
+// coax/lib/media/pack_session_wire.coax and writes back the same, a refusal is the API's ErrorReply
+// as packs-wire.coax writes it. VERSE_PACK_CAPTURE=1 prints each answer (the fixture's bodies,
+// proto/verse/pack-session-v1alpha1.json).
+vp_wire :: (t: [] Ap, st: int) {
+  body: [4096] u8; bn := 0;
+  for c: ap_body(t) { if bn < body.count { body[bn] = c; bn += 1; } }
+  B := cast(string) body[0..<bn];
+  nodes: [64] JvNode; back: [4096] u8; n := -1;
+  if st == 200 { n = pksw_rewrite(B, nodes[..], back[..]); }
+  else {
+    d: [1] Jv; words: [512] u8;
+    if jv_parse(d[..], B, nodes[..]) && jv_len(d[0], 0) == 1 { wn := jv_str(d[0], jv_get(d[0], 0, "error"), words[..]); if wn >= 0 { n = pkw_error_write(cast(string) words[0..<wn], back[..]); } }
+  }
+  if n < 0 || cast(string) back[0..<n] != B { ap_check(t, "a packs answer is its codec's bytes", false, B); }
+  eb: [8] u8;
+  if proc_getenv("VERSE_PACK_CAPTURE", eb[..]) == "1" { print("CAPTURE % %\n", st, B); }
 }
 // a contains b's first 64 bytes somewhere.
 vp_holds :: (a: string, b: string) -> bool { return b.count >= 64 && ap_has(a, b[0..<64]); }
@@ -123,6 +144,9 @@ vp_checks :: (t: [] Ap, dir: string) {
   if got >= 0 { r := sha256_hash(opened[0..<got], od[..]); same = ap_lower_hex(od[..], ohex[..]) == sha && got == ap_member_int(S, "bytes", -2); }
   ap_check(t, "the session's key opens them to the pack, digest and all", same, "");
   ap_check(t, "a session's bytes come once", ap_call(t, "GET", url, "", none_of(t)) == 410, ap_body(t));
+  vp_wire(t, 410);
+  st = ap_call(t, "POST", url, "", none_of(t)); vp_wire(t, st);
+  st = ap_call(t, "GET", "/api/verse/packs/test-human", "", none_of(t)); vp_wire(t, st);
   ap_check(t, "an unknown session is gone", ap_call(t, "GET", "/api/verse/packs/fetch/00000000000000000000000000000000", "", none_of(t)) == 410
            && ap_call(t, "GET", "/api/verse/packs/fetch/x/../../y", "", none_of(t)) == 410, ap_body(t));
   ap_check(t, "an unknown pack is a 404", vp_session(t, "no-such", "203.0.113.7") == 404 && vp_session(t, "Bad_Name", "203.0.113.7") == 404, ap_body(t));
@@ -153,6 +177,7 @@ vp_checks :: (t: [] Ap, dir: string) {
   ap_check(t, "the first address's session names its bytes under /api/verse/packs/", ap_starts(url, "/api/verse/packs/fetch/"), url);
   mh := [1] string.["X-Forwarded-For: 203.0.113.20, 130.211.0.1"];
   st = ap_call(t, "POST", "/api/metaverse/packs/test-human", "", mh[..]);
+  vp_wire(t, st);
   ms: [8192] u8; msn := t[0].n; for i: 0..<msn { ms[i] = t[0].out[i]; }
   MS := cast(string) ms[0..<msn];
   mkb: [128] u8; mkey := ap_member(MS, "key", mkb[..]);

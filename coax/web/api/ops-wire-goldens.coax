@@ -1,0 +1,162 @@
+// The email and jobs routes' goldens (Protocol E11, GitHub #13250): proto/verse/ops-routes-v1alpha1.json
+// holds what a running API answered on POST /api/admin/email and POST /api/jobs/<job> (and the
+// requests the email route was sent), byte for byte. For each body this check
+//   - holds its keys to the json_names of its message in proto/descriptors/api-routes.pb;
+//   - reads it through its codec (email-wire.coax, jobs-wire.coax) and writes it again from what
+//     was read, for the same bytes; a job's own result is held to its message too (Heartbeat,
+//     AuthSweep, or the service watch's WatchResult), and written again when the job wrote it.
+// A request is held to its message's keys only: SQL reads it (email.begin).
+// With --read-all FILE it does the same for every body of a JSON list [{"kind","body"}, ...]:
+// coax/web/api/test_jobs.py hands it each body the two routes answered in the suite's run, so a
+// route and its codec cannot drift.
+//
+//   coax/web/tool.sh coax/web/api/ops-wire-goldens.coax [proto/verse/ops-routes-v1alpha1.json]
+//   coax/web/tool.sh coax/web/api/ops-wire-goldens.coax --read-all FILE
+#import "Basic";
+#load "jobs-wire.coax";
+#load "email-wire.coax";
+#load "../../lib/proto/importer.coax";
+#load "../../lib/proto/golden-keys.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/fs.coax";
+
+OG_FIXTURE :: "proto/verse/ops-routes-v1alpha1.json";
+OG_DESCRIPTOR :: "proto/descriptors/api-routes.pb";
+OG_BODY :: 262144;
+OG_N :: 4;
+OG_KINDS :: [OG_N] string.["error", "email-reply", "email-request", "job-run"];
+OG_MESSAGES :: [OG_N] string.[".openagents.api.v1alpha1.ErrorReply", ".openagents.ops.email.v1alpha1.SendReply",
+                              ".openagents.ops.email.v1alpha1.SendRequest", ".openagents.ops.jobs.v1alpha1.JobRun"];
+
+OgWork :: struct { nodes: [65536] JvNode; body_nodes: [8192] JvNode; sub_nodes: [8192] JvNode; name: [256] u8; kind: [64] u8; body: [OG_BODY] u8; back: [OG_BODY] u8; text: [4096] u8; }
+og_message :: (kind: string) -> string {
+  kinds := OG_KINDS; messages := OG_MESSAGES;
+  for k: 0..<OG_N { if kinds[k] == kind { return messages[k]; } }
+  return "";
+}
+og_spaced :: (s: string) -> bool {
+  for i: 0..<s.count - 1 { if s[i] == ':' && s[i + 1] == ' ' && i > 0 && s[i - 1] == '"' { return true; } }
+  return false;
+}
+// A job's own result against its message; written again through the codec when the job wrote it
+// (compact), not when the database stored it (jsonb's text).
+og_result :: (st: [] D_State, jname: string, result: string, w: [] OgWork) -> string {
+  if result == "" { return ""; }
+  full := ifx jname == "heartbeat" then ".openagents.ops.jobs.v1alpha1.Heartbeat" else ifx jname == "auth-sweep" then ".openagents.ops.jobs.v1alpha1.AuthSweep"
+     else ifx jname == "service-watch" then ".openagents.ops.service.v1alpha1.WatchResult" else "";
+  if full == "" { return "a job with no result message"; }
+  why := pk_text_keys(st, full, result, !og_spaced(result) && jname != "service-watch", false, w[0].sub_nodes[..]);
+  if why != "" { return why; }
+  if og_spaced(result) || jname == "service-watch" { return ""; }
+  j: [1] Jv; day: [64] u8;
+  if !jv_parse(j[..], result, w[0].sub_nodes[..]) { return "a result that is not JSON"; }
+  d := j[0];
+  dn := jv_str(d, jv_get(d, 0, "day"), day[..]); if dn < 0 { return "a result with no day"; }
+  n := -1; small: [512] u8;
+  if jname == "heartbeat" { n = jbw_heartbeat_write(cast(string) day[0..<dn], small[..]); }
+  else {
+    n = jbw_sweep_write(cast(string) day[0..<dn], jv_raw(d, jv_get(d, 0, "limits")), jv_raw(d, jv_get(d, 0, "audit_aged")), jv_raw(d, jv_get(d, 0, "pending")),
+                        jv_raw(d, jv_get(d, 0, "signatures")), jv_raw(d, jv_get(d, 0, "purged")), jv_raw(d, jv_get(d, 0, "merge_asks")), small[..]);
+  }
+  if n < 0 || cast(string) small[0..<n] != result { return "the job's result, written through the codec, is not the same bytes"; }
+  return "";
+}
+// A body's faults against the descriptor and its codec: "" when it holds.
+og_body :: (st: [] D_State, kind: string, body: string, w: [] OgWork) -> string {
+  if og_message(kind) == "" { return "no such kind"; }
+  exact := kind == "error" || kind == "email-reply";
+  why := pk_text_keys(st, og_message(kind), body, exact, false, w[0].body_nodes[..]);
+  if why != "" { return why; }
+  if kind == "email-request" { return ""; }
+  n := -1;
+  if kind == "error" {
+    j: [1] Jv;
+    if !jv_parse(j[..], body, w[0].body_nodes[..]) { return "not JSON"; }
+    tn := jv_str(j[0], jv_get(j[0], 0, "error"), w[0].text[..]); if tn < 0 { return "a refusal with no words"; }
+    n = jbw_error_write(cast(string) w[0].text[0..<tn], w[0].back[..]);
+    m := emw_error_write(cast(string) w[0].text[0..<tn], w[0].body[0..<0]);   // the email writer's own bound is its test's
+    if m != -1 { return "a writer wrote into no room"; }
+  } else if kind == "email-reply" {
+    r: [1] EmwReply;
+    if !emw_read_reply(body, w[0].body_nodes[..], r[..]) { return "the codec does not read it"; }
+    n = emw_reply_write(emw_reply_state(r[..]), emw_reply_id(r[..]), w[0].back[..]);
+  } else {
+    r: [1] JbwRun;
+    if !jbw_read_run(body, w[0].body_nodes[..], r[..]) { return "the codec does not read it"; }
+    n = jbw_run_write(jbw_run_job(r[..]), jbw_run_day(r[..]), jbw_run_state(r[..]), jbw_run_result(r[..], body), w[0].back[..]);
+    if n >= 0 && cast(string) w[0].back[0..<n] == body {
+      sub := og_result(st, jbw_run_job(r[..]), jbw_run_result(r[..], body), w);
+      if sub != "" { return sub; }
+    }
+  }
+  if n < 0 || cast(string) w[0].back[0..<n] != body { return "read back and written through the codec, it is not the same bytes"; }
+  return "";
+}
+// Every item of the list at `list` ({"name","kind","body"}): how many fail. need_all: each kind must appear.
+og_list :: (d: Jv, list: int, st: [] D_State, w: [] OgWork, need_all: bool, quiet_ok: bool) -> int {
+  if jv_kind(d, list) != JV_ARRAY || jv_len(d, list) == 0 { print("FAIL  no bodies\n"); return 1; }
+  kinds := OG_KINDS; seen: [OG_N] bool; bad := 0;
+  for i: 0..<jv_len(d, list) {
+    item := jv_at(d, list, i);
+    nn := jv_str(d, jv_get(d, item, "name"), w[0].name[..]);
+    name := ifx nn > 0 then cast(string) w[0].name[0..<nn] else "body";
+    kn := jv_str(d, jv_get(d, item, "kind"), w[0].kind[..]);
+    kind := ifx kn > 0 then cast(string) w[0].kind[0..<kn] else "";
+    bn := jv_str(d, jv_get(d, item, "body"), w[0].body[..]);
+    if bn <= 0 { print("FAIL  % #%: no body\n", name, i); bad += 1; continue; }
+    body: [OG_BODY] u8; for k: 0..<bn { body[k] = w[0].body[k]; }
+    for q: 0..<OG_N { if kinds[q] == kind { seen[q] = true; } }
+    why := og_body(st, kind, cast(string) body[0..<bn], w);
+    if why != "" { print("FAIL  % #% (%): %\n  %\n", name, i, kind, why, cast(string) body[0..<bn]); bad += 1; }
+    else if !quiet_ok { print("ok    % (%)\n", name, kind); }
+  }
+  if need_all { for q: 0..<OG_N { if !seen[q] { print("FAIL  kind % has no golden\n", kinds[q]); bad += 1; } } }
+  return bad;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  pb: [65536] u8;
+  pn := fs_read(OG_DESCRIPTOR, pb[..]);
+  if pn <= 0 { tool_errln("ops-wire-goldens: cannot read the descriptor"); return 2; }
+  g: [1] PkDescriptor;
+  err := pk_load(g[..], cast(string) pb[0..<pn]);
+  if err != "" { print("FAIL  descriptor: %\n", err); return 1; }
+  st := g[0].state[..];
+  w: [1] OgWork;
+  // the checks bite: a key the message lacks, a spaced refusal, a reply with its members turned
+  // round, a run with a result that is no object, a result key its job's message lacks, a job's
+  // result the codec writes otherwise; and they take what the routes answer
+  if og_body(st, "error", "{\"eror\":\"x\"}", w[..]) == "" || og_body(st, "error", "{\"error\": \"x\"}", w[..]) == "" ||
+     og_body(st, "email-reply", "{\"id\":\"msg-1\",\"state\":\"sent\"}", w[..]) == "" || og_body(st, "email-reply", "{\"state\":\"queued\",\"id\":\"msg-1\"}", w[..]) == "" ||
+     og_body(st, "email-request", "{\"to\":\"a@b.co\",\"topic\":\"x\"}", w[..]) == "" ||
+     og_body(st, "job-run", "{\"job\":\"heartbeat\",\"day\":\"2026-11-12\",\"state\":\"ran\",\"result\":7}", w[..]) == "" ||
+     og_body(st, "job-run", "{\"job\":\"heartbeat\",\"day\":\"2026-11-12\",\"state\":\"ran\",\"result\":{\"date\":\"2026-11-12\"}}", w[..]) == "" ||
+     og_body(st, "job-run", "{\"job\":\"heartbeat\",\"state\":\"ran\",\"day\":\"2026-11-12\",\"result\":{\"day\":\"2026-11-12\"}}", w[..]) == "" ||
+     og_body(st, "job-run", "{\"job\":\"auth-sweep\",\"day\":\"2026-11-12\",\"state\":\"ran\",\"result\":{\"day\":\"2026-11-12\",\"limits\":0,\"pending\":0,\"audit_aged\":0,\"signatures\":0,\"purged\":0,\"merge_asks\":0}}", w[..]) == "" ||
+     og_body(st, "job-run", "{\"job\":\"auth-sweep\",\"day\":\"2026-11-12\",\"state\":\"ran\",\"result\":{\"day\":\"2026-11-12\",\"limits\":0,\"audit_aged\":0,\"pending\":0,\"signatures\":0,\"purged\":0,\"merge_asks\":0}}", w[..]) != "" ||
+     og_body(st, "job-run", "{\"job\":\"heartbeat\",\"day\":\"2026-11-12\",\"state\":\"already ran\",\"result\":{\"day\": \"2026-11-12\"}}", w[..]) != "" ||
+     og_body(st, "job-run", "{\"job\":\"heartbeat\",\"day\":\"2026-11-12\",\"state\":\"running\",\"result\":null}", w[..]) != "" ||
+     og_body(st, "email-reply", "{\"state\":\"already sent\",\"id\":\"msg-1\"}", w[..]) != "" || og_body(st, "error", "{\"error\":\"no such job\"}", w[..]) != "" {
+    print("FAIL  the check takes a body it should refuse, or refuses one it should take\n"); return 1;
+  }
+  buf: [1048576] u8; j: [1] Jv;
+  if loaded && args_has(args[..], "--read-all") {
+    path := args_at(args[..], args_find(args[..], "--read-all") + 1);
+    n := fs_read(path, buf[..]);
+    if n <= 0 { tool_errln("usage: ops-wire-goldens --read-all FILE"); return 2; }
+    if !jv_parse(j[..], cast(string) buf[0..<n], w[0].nodes[..]) { print("FAIL  cannot parse the list\n"); return 1; }
+    bad := og_list(j[0], 0, st, w[..], false, true);
+    print("%: % bodies\n", ifx bad == 0 then "ok    the routes' bodies are their codecs'" else "FAIL  the routes' bodies", jv_len(j[0], 0));
+    return ifx bad == 0 then 0 else 1;
+  }
+  path := ifx loaded && args_count(args[..]) >= 1 then args_at(args[..], 0) else OG_FIXTURE;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { tool_errln("ops-wire-goldens: cannot read the fixture"); return 2; }
+  if !jv_parse(j[..], cast(string) buf[0..<n], w[0].nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("FAIL  cannot parse the fixture\n"); return 1; }
+  bad := og_list(j[0], jv_get(j[0], 0, "goldens"), st, w[..], true, false);
+  print("%\n", ifx bad == 0 then "ops goldens hold" else "ops goldens fail");
+  return ifx bad == 0 then 0 else 1;
+}

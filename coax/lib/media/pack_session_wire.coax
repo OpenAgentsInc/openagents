@@ -1,0 +1,88 @@
+// A private pack's session on the wire, one codec (Protocol E11, GitHub #13250;
+// proto/openagents/verse/packs/v1alpha1/packs.proto, profile api-routes): what
+// POST /api/metaverse/packs/<name> answers, {"url","key","iv","sha256","bytes","size","expires"}.
+// coax/web/api/verse_packs.c writes it through coax/web/api/packs-wire.coax, and the native host
+// reads it through here (metaverse-engine/host/private-pack.coax), which then holds the values to
+// its own bounds. proto/verse/pack-session-v1alpha1.json holds sessions as a running API answered
+// them; coax/web/api/packs-wire-goldens.coax reads each through this file and writes it back.
+//   coax/bin/coax test coax/lib/media/pack_session_wire.coax --library
+#load "../json/json.coax";
+
+PKSW_URL :: 4096;   // the path the bytes are fetched from
+PKSW_HEX :: 64;     // the key and the digest (64 hex digits), the iv (32)
+
+pksw_hex :: (s: string, n: int) -> bool {
+  if s.count != n { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+// {"url":"BASEfetch/SID","key":"..","iv":"..","sha256":"..","bytes":N,"size":N,"expires":N}: the
+// body's length, or -1 when it does not fit, a hex value is not lowercase hex of its length, or a
+// number is below 0.
+pksw_session_write :: (base: string, sid: string, key: string, iv: string, sha256: string, bytes: int, size: int, expires: int, out: [] u8) -> int {
+  if !pksw_hex(key, 64) || !pksw_hex(iv, 32) || !pksw_hex(sha256, 64) || bytes < 0 || size < 0 || expires < 0 { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_put(o[..], "{\"url\":\""); jo_escape_bytes(o[..], base); jo_put(o[..], "fetch/"); jo_escape_bytes(o[..], sid);
+  jo_put(o[..], "\",\"key\":"); jo_quoted(o[..], key); jo_put(o[..], ",\"iv\":"); jo_quoted(o[..], iv);
+  jo_put(o[..], ",\"sha256\":"); jo_quoted(o[..], sha256);
+  jo_put(o[..], ",\"bytes\":"); o[0].keyed = true; jo_int(o[..], bytes);
+  jo_put(o[..], ",\"size\":"); o[0].keyed = true; jo_int(o[..], size);
+  jo_put(o[..], ",\"expires\":"); o[0].keyed = true; jo_int(o[..], expires);
+  jo_put(o[..], "}");
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// A session read: its members as they were sent. bytes, size and expires are -1 when the member
+// is missing or no whole number.
+PkswSession :: struct {
+  ok: bool; bytes: int; size: int; expires: int;
+  url: [PKSW_URL] u8; url_n: int; key: [PKSW_HEX] u8; key_n: int; iv: [PKSW_HEX] u8; iv_n: int; sha256: [PKSW_HEX] u8; sha256_n: int;
+}
+pksw_url :: (s: [] PkswSession) -> string { return cast(string) s[0].url[0..<s[0].url_n]; }
+pksw_key :: (s: [] PkswSession) -> string { return cast(string) s[0].key[0..<s[0].key_n]; }
+pksw_iv :: (s: [] PkswSession) -> string { return cast(string) s[0].iv[0..<s[0].iv_n]; }
+pksw_sha256 :: (s: [] PkswSession) -> string { return cast(string) s[0].sha256[0..<s[0].sha256_n]; }
+// False when the text is no object or its url, key, iv or sha256 is no string that fits here.
+pksw_read_session :: (text: string, nodes: [] JvNode, s: [] PkswSession) -> bool {
+  s[0].ok = false; s[0].url_n = 0; s[0].key_n = 0; s[0].iv_n = 0; s[0].sha256_n = 0; s[0].bytes = -1; s[0].size = -1; s[0].expires = -1;
+  d: [1] Jv;
+  if !jv_parse(d[..], text, nodes) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  j := d[0];
+  un := jv_str(j, jv_get(j, 0, "url"), s[0].url[..]); kn := jv_str(j, jv_get(j, 0, "key"), s[0].key[..]);
+  vn := jv_str(j, jv_get(j, 0, "iv"), s[0].iv[..]); hn := jv_str(j, jv_get(j, 0, "sha256"), s[0].sha256[..]);
+  if un < 0 || kn < 0 || vn < 0 || hn < 0 { return false; }
+  s[0].url_n = un; s[0].key_n = kn; s[0].iv_n = vn; s[0].sha256_n = hn;
+  s[0].bytes = jv_int(j, jv_get(j, 0, "bytes"), -1); s[0].size = jv_int(j, jv_get(j, 0, "size"), -1); s[0].expires = jv_int(j, jv_get(j, 0, "expires"), -1);
+  s[0].ok = true;
+  return true;
+}
+
+// A session read and written again from what was read: the body's length in out, or -1 when the
+// codec does not read it or its url is not BASE "fetch/" SID. The golden check and the API's own
+// test hold a route's answer to this.
+pksw_rewrite :: (text: string, nodes: [] JvNode, out: [] u8) -> int {
+  s: [1] PkswSession;
+  if !pksw_read_session(text, nodes, s[..]) { return -1; }
+  url := pksw_url(s[..]); cut := -1;
+  for i: 0..<url.count - 5 { if url[i..<i + 6] == "fetch/" { cut = i; } }
+  if cut < 0 { return -1; }
+  return pksw_session_write(url[0..<cut], url[cut + 6..<url.count], pksw_key(s[..]), pksw_iv(s[..]), pksw_sha256(s[..]), s[0].bytes, s[0].size, s[0].expires, out);
+}
+
+#test "a session is written and read back; a value out of its form is refused" {
+  b: [1024] u8; nodes: [32] JvNode; s: [1] PkswSession;
+  key := "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"; iv := "000102030405060708090a0b0c0d0e0f";
+  sha := "aa0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1eff";
+  n := pksw_session_write("/api/metaverse/packs/", "0123456789abcdef0123456789abcdef", key, iv, sha, 56, 64, 120, b[..]);
+  body := cast(string) b[0..<n];
+  #assert body == "{\"url\":\"/api/metaverse/packs/fetch/0123456789abcdef0123456789abcdef\",\"key\":\"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\",\"iv\":\"000102030405060708090a0b0c0d0e0f\",\"sha256\":\"aa0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1eff\",\"bytes\":56,\"size\":64,\"expires\":120}";
+  #assert pksw_read_session(body, nodes[..], s[..]) && s[0].ok && pksw_url(s[..]) == "/api/metaverse/packs/fetch/0123456789abcdef0123456789abcdef" && pksw_key(s[..]) == key;
+  #assert pksw_iv(s[..]) == iv && pksw_sha256(s[..]) == sha && s[0].bytes == 56 && s[0].size == 64 && s[0].expires == 120;
+  back: [1024] u8; m := pksw_rewrite(body, nodes[..], back[..]);
+  #assert cast(string) back[0..<m] == body && pksw_rewrite("{\"url\":\"/\",\"key\":\"k\",\"iv\":\"i\",\"sha256\":\"h\"}", nodes[..], back[..]) == -1 && pksw_rewrite("[]", nodes[..], back[..]) == -1;
+  small: [64] u8;
+  #assert pksw_session_write("/p/", "s", key, iv, sha, 56, 64, 120, small[..]) == -1 && pksw_session_write("/p/", "s", key[0..<63], iv, sha, 1, 1, 1, b[..]) == -1;
+  #assert pksw_session_write("/p/", "s", key, "000102030405060708090A0B0C0D0E0F", sha, 1, 1, 1, b[..]) == -1 && pksw_session_write("/p/", "s", key, iv, sha[0..<62], 1, 1, 1, b[..]) == -1;
+  #assert pksw_session_write("/p/", "s", key, iv, sha, -1, 1, 1, b[..]) == -1 && pksw_session_write("/p/", "s", key, iv, sha, 1, -1, 1, b[..]) == -1 && pksw_session_write("/p/", "s", key, iv, sha, 1, 1, -1, b[..]) == -1;
+  #assert !pksw_read_session("[]", nodes[..], s[..]) && !pksw_read_session("{\"url\":false}", nodes[..], s[..]) && !s[0].ok;
+  #assert pksw_read_session("{\"url\":\"/\",\"key\":\"k\",\"iv\":\"i\",\"sha256\":\"h\"}", nodes[..], s[..]) && s[0].bytes == -1 && s[0].size == -1 && s[0].expires == -1;
+}

@@ -1,19 +1,13 @@
 // Shared local model inventory and explicit migration/verification. No inference,
 // microphone, download or provider connection is started by these commands.
 #load "model-identity.coax";
+#load "../../coax/lib/local/inventory-wire.coax";
 
 models_usage :: () {
   print("%\n", "Local models (shared by every OpenAgents app):");
   print("%\n", "  models ls [--json]                  installed checkpoints in ~/.openagents/models");
   print("%\n", "  models verify parakeet [--json]     check the pinned complete weight/tokenizer hashes");
   print("%\n", "  models migrate [--json]             move legacy model caches into ~/.openagents/models");
-}
-models_row :: (o: [] Jo, id: string, kind: string, name: string, revision: string, path: string, present: bool, bytes: int, verified: bool) {
-  jo_obj(o); jo_key(o, "id"); jo_str(o, id); jo_key(o, "kind"); jo_str(o, kind);
-  jo_key(o, "name"); jo_str(o, name); jo_key(o, "revision"); jo_str(o, revision);
-  jo_key(o, "path"); jo_str(o, path); jo_key(o, "present"); jo_bool(o, present);
-  jo_key(o, "bytes"); jo_int(o, bytes); jo_key(o, "verified"); jo_bool(o, verified);
-  jo_key(o, "loaded"); jo_bool(o, false); jo_end(o);
 }
 models_hash :: (path: string, out: [] u8) -> string {
   b: [1024] u8; err: [1024] u8;
@@ -34,15 +28,13 @@ models_inventory :: (verify: bool, json: bool) -> int {
   verified := false;
   if verify && present { a: [64] u8; b: [64] u8; verified = oa_pk_verified(bytes, models_hash(weights, a[..]), models_hash(tokenizer, b[..])); }
   gweights := fs_join(text, "model.safetensors", gw[..]); gp := fs_kind(gweights) == FS_FILE;
-  out: [16384] u8; o: [1] Jo; jo_start(o[..], out[..]); jo_obj(o[..]);
-  jo_key(o[..], "schema"); jo_str(o[..], "openagents.models.v1");
-  jo_key(o[..], "ok"); jo_bool(o[..], !verify || verified);
-  jo_key(o[..], "models"); jo_arr(o[..]);
-  models_row(o[..], "parakeet", "audio", "Parakeet TDT v3", "541d1f99c6b0c3cd0b11a95167540bb8edefd82b", voice, present, bytes, verified);
-  models_row(o[..], "gpt-oss-20b", "text", "gpt-oss-20b", "6cee5e81ee83917806bbde320786a8fb61efebee", text, gp, ifx gp then fs_size(gweights) else 0, false);
-  jo_end(o[..]); jo_end(o[..]);
-  if o[0].bad { return 1; }
-  if json { print("%\n", jo_text(o[..])); }
+  // the report through its one codec (coax/lib/local/inventory-wire.coax)
+  out: [16384] u8; o: [1] Jo; jo_start(o[..], out[..]); inv_models_open(o[..], !verify || verified);
+  inv_models_row(o[..], "parakeet", "audio", "Parakeet TDT v3", "541d1f99c6b0c3cd0b11a95167540bb8edefd82b", voice, present, bytes, verified);
+  inv_models_row(o[..], "gpt-oss-20b", "text", "gpt-oss-20b", "6cee5e81ee83917806bbde320786a8fb61efebee", text, gp, ifx gp then fs_size(gweights) else 0, false);
+  report := inv_models_close(o[..]);
+  if report == "" { return 1; }
+  if json { print("%\n", report); }
   else {
     print("Parakeet TDT v3  %  %\n", ifx verified then "verified" else ifx present then "installed (not loaded)" else "missing", voice);
     print("gpt-oss-20b     %  %\n", ifx gp then "installed (not loaded)" else "missing", text);

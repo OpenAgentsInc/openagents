@@ -1,0 +1,33 @@
+{
+ "about": "The local inventories as the CLI printed them (compliance plan step C7, GitHub #13250; proto/openagents/cli/local/v1/inventory.proto, profile cli-local; docs/protocol/local-inventory-v1.md). `from` says where a body's bytes came from: pool is a build host (oa-build-4, 2026-11-12,), where `coder/tui/coder.sh agents --json`, `openagents coder agents --json`, `openagents models ls --json` and `openagents models verify parakeet --json` printed them; that host has no model installed, so every model is absent and the verify fails. coax/lib/local/local-goldens.coax holds each body's keys to its message (each field once, in field order), reads it through coax/lib/local/inventory-wire.coax and writes it back for the same bytes.",
+ "messages": {
+  "agents": "openagents.cli.local.v1.Agents",
+  "models": "openagents.cli.local.v1.Models"
+ },
+ "goldens": [
+  {
+   "name": "agents-one",
+   "kind": "agents",
+   "from": "pool: coder/tui/coder.sh agents --json (the one agent is that Coder itself)",
+   "body": "{\"schema\":\"openagents.coder.agents.v1\",\"ok\":true,\"complete\":true,\"scope\":\"local_running_processes\",\"agents\":[{\"engine\":\"coder\",\"name\":\"Coder\",\"pid\":252866,\"parent_pid\":252862,\"state\":\"running\",\"attached\":false}]}"
+  },
+  {
+   "name": "agents-none",
+   "kind": "agents",
+   "from": "pool: openagents coder agents --json",
+   "body": "{\"schema\":\"openagents.coder.agents.v1\",\"ok\":true,\"complete\":true,\"scope\":\"local_running_processes\",\"agents\":[]}"
+  },
+  {
+   "name": "models-absent",
+   "kind": "models",
+   "from": "pool: openagents models ls --json",
+   "body": "{\"schema\":\"openagents.models.v1\",\"ok\":true,\"models\":[{\"id\":\"parakeet\",\"kind\":\"audio\",\"name\":\"Parakeet TDT v3\",\"revision\":\"541d1f99c6b0c3cd0b11a95167540bb8edefd82b\",\"path\":\"/home/coax/.openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99\",\"present\":false,\"bytes\":0,\"verified\":false,\"loaded\":false},{\"id\":\"gpt-oss-20b\",\"kind\":\"text\",\"name\":\"gpt-oss-20b\",\"revision\":\"6cee5e81ee83917806bbde320786a8fb61efebee\",\"path\":\"/home/coax/.openagents/models/gpt-oss/20b/6cee5e81ee83917806bbde320786a8fb61efebee/original\",\"present\":false,\"bytes\":0,\"verified\":false,\"loaded\":false}]}"
+  },
+  {
+   "name": "models-verify-failed",
+   "kind": "models",
+   "from": "pool: openagents models verify parakeet --json (exit 1)",
+   "body": "{\"schema\":\"openagents.models.v1\",\"ok\":false,\"models\":[{\"id\":\"parakeet\",\"kind\":\"audio\",\"name\":\"Parakeet TDT v3\",\"revision\":\"541d1f99c6b0c3cd0b11a95167540bb8edefd82b\",\"path\":\"/home/coax/.openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99\",\"present\":false,\"bytes\":0,\"verified\":false,\"loaded\":false},{\"id\":\"gpt-oss-20b\",\"kind\":\"text\",\"name\":\"gpt-oss-20b\",\"revision\":\"6cee5e81ee83917806bbde320786a8fb61efebee\",\"path\":\"/home/coax/.openagents/models/gpt-oss/20b/6cee5e81ee83917806bbde320786a8fb61efebee/original\",\"present\":false,\"bytes\":0,\"verified\":false,\"loaded\":false}]}"
+  }
+ ]
+}

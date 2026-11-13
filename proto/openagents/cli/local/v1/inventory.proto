@@ -2,35 +2,37 @@ syntax = "proto3";
 package openagents.cli.local.v1;
 
 // Read-only local JSON projections: docs/protocol/local-inventory-v1.md.
+// One codec, coax/lib/local/inventory-wire.coax (profile cli-local); json_name
+// is the key on the wire, and every member is always written, in field order.
 // Observing a process confers no attachment or permission to operate it.
 message Agent {
-  string engine = 1;
-  string name = 2;
-  uint64 pid = 3;
-  uint64 parent_pid = 4;
-  string state = 5; // running
-  bool attached = 6; // false in this inventory
+  string engine = 1 [json_name = "engine"];
+  string name = 2 [json_name = "name"];
+  uint64 pid = 3 [json_name = "pid"];
+  uint64 parent_pid = 4 [json_name = "parent_pid"];
+  string state = 5 [json_name = "state"]; // running
+  bool attached = 6 [json_name = "attached"]; // false in this inventory
 }
 message Agents {
-  string schema = 1; // openagents.coder.agents.v1
-  bool ok = 2;
-  bool complete = 3;
-  string scope = 4; // local_running_processes
-  repeated Agent agents = 5; // at most 128
+  string schema = 1 [json_name = "schema"]; // openagents.coder.agents.v1
+  bool ok = 2 [json_name = "ok"];
+  bool complete = 3 [json_name = "complete"];
+  string scope = 4 [json_name = "scope"]; // local_running_processes
+  repeated Agent agents = 5 [json_name = "agents"]; // at most 128
 }
 message Model {
-  string id = 1;
-  string kind = 2;
-  string name = 3;
-  string revision = 4;
-  string path = 5;
-  bool present = 6;
-  uint64 bytes = 7; // weight file bytes; zero when absent
-  bool verified = 8;
-  bool loaded = 9; // false: inventory does not load a model
+  string id = 1 [json_name = "id"];
+  string kind = 2 [json_name = "kind"];
+  string name = 3 [json_name = "name"];
+  string revision = 4 [json_name = "revision"];
+  string path = 5 [json_name = "path"];
+  bool present = 6 [json_name = "present"];
+  uint64 bytes = 7 [json_name = "bytes"]; // weight file bytes; zero when absent
+  bool verified = 8 [json_name = "verified"];
+  bool loaded = 9 [json_name = "loaded"]; // false: inventory does not load a model
 }
 message Models {
-  string schema = 1; // openagents.models.v1
-  bool ok = 2;
-  repeated Model models = 3;
+  string schema = 1 [json_name = "schema"]; // openagents.models.v1
+  bool ok = 2 [json_name = "ok"];
+  repeated Model models = 3 [json_name = "models"];
 }

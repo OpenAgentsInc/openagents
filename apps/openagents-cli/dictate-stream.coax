@@ -37,16 +37,13 @@ ds_event :: (d:[]Dict,f:[]DictFixture,s:[]DsCli,kind:string,value:string)->bool 
   rep_put(r[..],"openagents: ");rep_put(r[..],kind);if value!="" {rep_put(r[..],": ");rep_put(r[..],value);}rep_byte(r[..],'\n');
   return ds_write(d,f,s,2,cast(string)r[0].buf[0..<r[0].n],watch);
  }
- r:[1]Rep;rep_put(r[..],"{\"schema\":\"openagents.dictation.stream.v1\",\"type\":");rep_quoted(r[..],kind);
- dict_json_int(r[..],"event",s[0].event);dict_json_int(r[..],"ticket",s[0].flow.ticket);dict_json_int(r[..],"sequence",s[0].flow.sequence);dict_json_int(r[..],"samples",s[0].flow.sent);
- dict_json_str(r[..],"profile","psionic-nemotron-streaming-en-v1");dict_json_str(r[..],"model","nemotron-speech-streaming-en-0.6b");dict_json_str(r[..],"revision","ebe59e5a817142986528bbbee5dba8db7b38ed50");dict_json_str(r[..],"capture",dc_capture_name(d[0].capture));
- if kind=="status" {dict_json_str(r[..],"state",value);}
- if kind=="partial" || kind=="final" {dict_json_str(r[..],"text",value);}
- if kind=="final" {dict_json_int(r[..],"exit",0);dict_json_bool(r[..],"limited",d[0].limited);}
- if kind=="cancelled" {dict_json_int(r[..],"exit",130);}
- if kind=="no_speech" {dict_json_int(r[..],"exit",9);dict_json_str(r[..],"reason",value);}
- if kind=="error" {dict_json_int(r[..],"exit",dc_exit(DC_ERROR,d[0].error));dict_json_str(r[..],"error",dc_error_name(d[0].error));dict_json_str(r[..],"message",value);}
- rep_put(r[..],"}\n");if r[0].bad {s[0].output_bad=true;return false;}
+ // the event through the one codec (coax/lib/local/dictation-wire.coax), then its newline
+ e:=DwEvent.{stream=true,type=kind,event=s[0].event,ticket=s[0].flow.ticket,sequence=s[0].flow.sequence,samples=s[0].flow.sent,
+  profile="psionic-nemotron-streaming-en-v1",model="nemotron-speech-streaming-en-0.6b",revision="ebe59e5a817142986528bbbee5dba8db7b38ed50",capture=dc_capture_name(d[0].capture),
+  state=value,text=value,reason=value,message=value,limited=d[0].limited,error=dc_error_name(d[0].error),
+  exit=ifx kind=="cancelled" then 130 else ifx kind=="no_speech" then 9 else ifx kind=="error" then dc_exit(DC_ERROR,d[0].error) else 0};
+ r:[1]Rep;lb:[REP_BYTES]u8;line:=dw_write(e,lb[..]);if line=="" {s[0].output_bad=true;return false;}
+ rep_put(r[..],line);rep_byte(r[..],'\n');if r[0].bad {s[0].output_bad=true;return false;}
  if !ds_write(d,f,s,1,cast(string)r[0].buf[0..<r[0].n],watch) {return false;}s[0].event+=1;return true;
 }
 ds_status :: (d:[]Dict,f:[]DictFixture,s:[]DsCli,state:string)->bool {return ds_event(d,f,s,"status",state);}

@@ -17,6 +17,7 @@
 // here for its issuer, audience, caller and a verified email: a few calls a
 // day, so no key cache.
 #include "api.h"
+#include "jobs-wire.generated.h"
 
 #include <curl/curl.h>
 #include <stdio.h>
@@ -24,6 +25,23 @@
 #include <string.h>
 
 static const char *env_or(const char *name, const char *fallback) { const char *v = getenv(name); return v && *v ? v : fallback; }
+
+// Every body this file sends is written by jobs-wire.coax (jobs-wire.generated.c; Protocol E11,
+// #13250): a refusal (the API's ErrorReply), a run's answer, and the two jobs' own results.
+static coax_string cs(const char *s) { return (coax_string){s, (int64_t)strlen(s)}; }
+static void fail(int fd, int status, const char *why) {
+  char out[200];
+  int64_t n = jbw_error_write(cs(why), (coax_v_u8){(uint8_t *)out, sizeof out - 1});
+  out[n < 0 ? 0 : n] = 0; api_json(fd, status, out);
+}
+// A run's answer; day "" for a job with no day, result NULL for null.
+static void ran(int fd, int status, const char *name, const char *day, const char *state, const char *result) {
+  size_t cap = strlen(result ? result : "") + 512; char *out = malloc(cap);
+  if (!out) { fail(fd, 500, "out of memory"); return; }
+  int64_t n = jbw_run_write(cs(name), cs(day), cs(state), cs(result ? result : ""), (coax_v_u8){(uint8_t *)out, (int64_t)cap - 1});
+  if (n < 0) { free(out); fail(fd, 500, "out of memory"); return; }
+  out[n] = 0; api_json(fd, status, out); free(out);
+}
 
 typedef struct { char *data; size_t n; } buf;
 static size_t keep(char *p, size_t size, size_t count, void *u) {
@@ -71,7 +89,10 @@ static bool scheduler(const request *q, PGconn *db) {
 // failed job answers NULL and its day can run again.
 static char *job_heartbeat(PGconn *db, const char *day) {
   (void)db;
-  char *out = malloc(64); if (out) snprintf(out, 64, "{\"day\":\"%s\"}", day);
+  char *out = malloc(64); if (!out) return NULL;
+  int64_t n = jbw_heartbeat_write(cs(day), (coax_v_u8){(uint8_t *)out, 63});
+  if (n < 0) { free(out); return NULL; }
+  out[n] = 0;
   return out;
 }
 // Our own login's housekeeping (auth.c, #13202, #13203): old rate-limit windows, ended
@@ -83,9 +104,11 @@ static char *job_auth_sweep(PGconn *db, const char *day) {
                            // Accounts whose 30 days are up are purged to tombstones; ended merge asks go (#13214).
                            "coalesce(cardinality(auth.purge_due()), 0), auth.life_sweep()");
   char *out = NULL;
-  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && (out = malloc(260)))
-    snprintf(out, 260, "{\"day\":\"%s\",\"limits\":%s,\"audit_aged\":%s,\"pending\":%s,\"signatures\":%s,\"purged\":%s,\"merge_asks\":%s}", day,
-             PQgetvalue(r, 0, 0), PQgetvalue(r, 0, 1), PQgetvalue(r, 0, 2), PQgetvalue(r, 0, 3), PQgetvalue(r, 0, 4), PQgetvalue(r, 0, 5));
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && (out = malloc(260))) {
+    int64_t n = jbw_sweep_write(cs(day), cs(PQgetvalue(r, 0, 0)), cs(PQgetvalue(r, 0, 1)), cs(PQgetvalue(r, 0, 2)), cs(PQgetvalue(r, 0, 3)),
+                                cs(PQgetvalue(r, 0, 4)), cs(PQgetvalue(r, 0, 5)), (coax_v_u8){(uint8_t *)out, 259});
+    if (n < 0) { free(out); out = NULL; api_log("job auth-sweep: a count is not a number"); } else out[n] = 0;
+  }
   else api_log("job auth-sweep: %s", PQerrorMessage(db));
   PQclear(r);
   return out;
@@ -104,49 +127,45 @@ bool jobs_route(const request *q) {
   const char *name = q->path + 10;
   int which = -1;
   for (size_t i = 0; i < sizeof JOBS / sizeof JOBS[0]; i++) if (!strcmp(name, JOBS[i].name)) which = (int)i;
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST to run a job\"}"); return true; }
+  if (strcmp(q->method, "POST")) { fail(q->fd, 405, "POST to run a job"); return true; }
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { fail(q->fd, 503, "no database"); return true; }
   char who[65];
   bool by_admin = false;
   if (!scheduler(q, db)) {
-    if (admin_who(q, db, who)) { api_json(q->fd, 401, "{\"error\":\"the scheduler or an admin only\"}"); return true; }
+    if (admin_who(q, db, who)) { fail(q->fd, 401, "the scheduler or an admin only"); return true; }
     by_admin = true;
   }
   for (size_t i = 0; which < 0 && i < sizeof EVERY / sizeof EVERY[0]; i++) {
     if (strcmp(name, EVERY[i].name)) continue;
     char *result = EVERY[i].run(db, "");
-    if (!result) { api_log("job %s: failed", name); api_json(q->fd, 500, "{\"error\":\"the job failed\"}"); return true; }
-    size_t n = strlen(result) + 128; char *out = malloc(n);
-    if (out) { snprintf(out, n, "{\"job\":\"%s\",\"state\":\"ran\",\"result\":%s}", name, result); api_json(q->fd, 200, out); free(out); }
-    else api_json(q->fd, 500, "{\"error\":\"out of memory\"}");
+    if (!result) { api_log("job %s: failed", name); fail(q->fd, 500, "the job failed"); return true; }
+    ran(q->fd, 200, name, "", "ran", result);
     free(result);
     return true;
   }
-  if (which < 0) { api_json(q->fd, 404, "{\"error\":\"no such job\"}"); return true; }
+  if (which < 0) { fail(q->fd, 404, "no such job"); return true; }
   char day[16] = "", again[8] = "";
   api_query(q, "day", day, sizeof day);
   api_query(q, "again", again, sizeof again);
-  if ((*day || *again) && !by_admin) { api_json(q->fd, 403, "{\"error\":\"only an admin runs a day by hand\"}"); return true; }
+  if ((*day || *again) && !by_admin) { fail(q->fd, 403, "only an admin runs a day by hand"); return true; }
   // The Chicago day (today, or the admin's), and this job's claim on it.
   const char *v[3] = {name, day, !strcmp(again, "1") ? "t" : "f"};
   PGresult *r = PQexecParams(db, "SELECT x->>'state', x->>'day', x->>'result' FROM jobs.claim($1, nullif($2, ''), $3::boolean) x", 3, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); api_json(q->fd, 400, "{\"error\":\"day: YYYY-MM-DD\"}"); return true; }
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); fail(q->fd, 400, "day: YYYY-MM-DD"); return true; }
   char state[32], d[16];
   snprintf(state, sizeof state, "%s", PQgetvalue(r, 0, 0)); snprintf(d, sizeof d, "%s", PQgetvalue(r, 0, 1));
   if (strcmp(state, "run")) {
-    char out[1024]; snprintf(out, sizeof out, "{\"job\":\"%s\",\"day\":\"%s\",\"state\":\"%s\",\"result\":%s}", name, d, state, PQgetisnull(r, 0, 2) ? "null" : PQgetvalue(r, 0, 2));
-    PQclear(r); api_json(q->fd, strcmp(state, "already ran") ? 409 : 200, out); return true;
+    ran(q->fd, strcmp(state, "already ran") ? 409 : 200, name, d, state, PQgetisnull(r, 0, 2) ? NULL : PQgetvalue(r, 0, 2));
+    PQclear(r); return true;
   }
   PQclear(r);
   char *result = JOBS[which].run(db, d);
   const char *f[3] = {name, d, result};
   PQclear(PQexecParams(db, "SELECT jobs.finish($1, $2::date, $3::jsonb)", 3, NULL, f, NULL, NULL, 0));
   api_log("job %s %s: %s%s", name, d, result ? "ran" : "failed", by_admin ? " (by hand)" : "");
-  if (!result) { api_json(q->fd, 500, "{\"error\":\"the job failed; its day can run again\"}"); return true; }
-  size_t n = strlen(result) + 256; char *out = malloc(n);
-  if (out) { snprintf(out, n, "{\"job\":\"%s\",\"day\":\"%s\",\"state\":\"ran\",\"result\":%s}", name, d, result); api_json(q->fd, 200, out); free(out); }
-  else api_json(q->fd, 500, "{\"error\":\"out of memory\"}");
+  if (!result) { fail(q->fd, 500, "the job failed; its day can run again"); return true; }
+  ran(q->fd, 200, name, d, "ran", result);
   free(result);
   return true;
 }

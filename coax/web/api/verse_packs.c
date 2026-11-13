@@ -32,6 +32,7 @@
 // OA_VERSE_PACKS gives it inline (the tests); OA_VERSE_PACKS_SECRET names another secret;
 // OA_VERSE_PACKS_GCS another storage endpoint; OA_VERSE_PACKS_BUCKET another bucket.
 #include "api.h"
+#include "packs-wire.generated.h"
 #include <ctype.h>
 #include <curl/curl.h>
 #include <errno.h>
@@ -173,6 +174,15 @@ static void visitor(const request *q, char ip[128]) {
 }
 
 // The route a path is under: the packs' address, or the first one they had (kept: see the top). NULL for neither.
+// Every body this file sends as JSON is written by packs-wire.coax (packs-wire.generated.c; Protocol
+// E11, #13250): a refusal (the API's ErrorReply) and a session
+// (coax/lib/media/pack_session_wire.coax). A fetch answers the session's bytes.
+static coax_string cs(const char *s) { return (coax_string){s, (int64_t)strlen(s)}; }
+static void fail(int fd, int status, const char *why) {
+  char out[200];
+  int64_t n = pkw_error_write(cs(why), (coax_v_u8){(uint8_t *)out, sizeof out - 1});
+  out[n < 0 ? 0 : n] = 0; api_json(fd, status, out);
+}
 static const char *packs_base(const char *path) {
   static const char *const bases[] = {"/api/metaverse/packs/", "/api/verse/packs/"};
   for (size_t i = 0; i < sizeof bases / sizeof *bases; i++) if (!strncmp(path, bases[i], strlen(bases[i]))) return bases[i];
@@ -180,37 +190,38 @@ static const char *packs_base(const char *path) {
 }
 
 static void issue(const request *q, const char *name) {
-  if (!load()) { api_json(q->fd, 503, "{\"error\":\"packs unavailable\"}"); return; }
+  if (!load()) { fail(q->fd, 503, "packs unavailable"); return; }
   const pack_entry *p = name_ok(name) ? find(name) : NULL;
-  if (!p) { api_json(q->fd, 404, "{\"error\":\"no such pack\"}"); return; }
+  if (!p) { fail(q->fd, 404, "no such pack"); return; }
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return; }
+  if (!db) { fail(q->fd, 503, "no database"); return; }
   char ip[128], per_hour[24], daily[32], stored[24];
   visitor(q, ip);
   snprintf(per_hour, sizeof per_hour, "%d", atoi(env_or("OA_VERSE_PACK_PER_HOUR", "12")));
   snprintf(daily, sizeof daily, "%lld", (long long)(atof(env_or("OA_VERSE_PACK_DAILY_GB", "40")) * 1e9));
   snprintf(stored, sizeof stored, "%lld", p->stored);
   unsigned char raw[16]; char sid[33];
-  if (RAND_bytes(raw, sizeof raw) != 1) { api_json(q->fd, 503, "{\"error\":\"no randomness\"}"); return; }
+  if (RAND_bytes(raw, sizeof raw) != 1) { fail(q->fd, 503, "no randomness"); return; }
   tohex(raw, sizeof raw, sid);
   const char *v[6] = {sid, ip, name, stored, per_hour, daily};
   PGresult *r = PQexecParams(db, "SELECT verse.pack_issue($1, $2, $3, $4::bigint, $5::int, $6::bigint)", 6, NULL, v, NULL, NULL, 0);
   const char *said = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 ? PQgetvalue(r, 0, 0) : NULL;
-  if (!said) { api_log("verse packs: %s", PQerrorMessage(db)); PQclear(r); api_json(q->fd, 503, "{\"error\":\"no database\"}"); return; }
+  if (!said) { api_log("verse packs: %s", PQerrorMessage(db)); PQclear(r); fail(q->fd, 503, "no database"); return; }
   if (strcmp(said, "ok")) {
-    char json[200];
-    snprintf(json, sizeof json, "{\"error\":\"%s\"}", !strcmp(said, "hour") ? "too many for this address this hour" : "the day's pack budget is spent");
+    bool hour = !strcmp(said, "hour");
     PQclear(r);
-    api_json(q->fd, 429, json);
+    fail(q->fd, 429, hour ? "too many for this address this hour" : "the day's pack budget is spent");
     return;
   }
   PQclear(r);
   unsigned char key[32], iv[16]; char kh[65], ivh[33], json[700];
   session_key(sid, key, iv);
   tohex(key, 32, kh); tohex(iv, 16, ivh);
-  snprintf(json, sizeof json, "{\"url\":\"%sfetch/%s\",\"key\":\"%s\",\"iv\":\"%s\",\"sha256\":\"%s\",\"bytes\":%lld,\"size\":%lld,\"expires\":%d}",
-           packs_base(q->path), sid, kh, ivh, p->sha256, p->plain, p->stored, SESSION_SECONDS);
+  int64_t jn = pkw_session_write(cs(packs_base(q->path)), cs(sid), cs(kh), cs(ivh), cs(p->sha256), (int64_t)p->plain, (int64_t)p->stored, SESSION_SECONDS,
+                                 (coax_v_u8){(uint8_t *)json, sizeof json - 1});
   OPENSSL_cleanse(key, sizeof key); OPENSSL_cleanse(kh, sizeof kh);
+  if (jn < 0) { OPENSSL_cleanse(json, sizeof json); fail(q->fd, 503, "packs unavailable"); return; }
+  json[jn] = 0;
   api_json(q->fd, 200, json);
 }
 
@@ -282,7 +293,7 @@ static void stream_pack(int fd, const pack_entry *p, const char *sid) {
     if (rc != CURLE_OK && !s.started) api_log("verse packs: %s: %s (%ld)", p->name, curl_easy_strerror(rc), status);
     curl_slist_free_all(hd); curl_easy_cleanup(h);
   }
-  if (!s.started) api_json(fd, 502, "{\"error\":\"the pack could not be read\"}");
+  if (!s.started) fail(fd, 502, "the pack could not be read");
   else if (s.sent == p->stored && !s.broken) send_all(fd, "0\r\n\r\n", 5, &s.broken);
   else api_log("verse packs: %s cut off after %lld of %lld bytes", p->name, s.sent, p->stored);   // no final chunk: the page sees a broken body
   EVP_CIPHER_CTX_free(s.rest); EVP_CIPHER_CTX_free(s.session);
@@ -291,20 +302,20 @@ static void stream_pack(int fd, const pack_entry *p, const char *sid) {
 static void fetch(const request *q, const char *sid) {
   bool hex = strlen(sid) == 32;
   for (const char *c = sid; hex && *c; c++) hex = (*c >= '0' && *c <= '9') || (*c >= 'a' && *c <= 'f');
-  if (!hex) { api_json(q->fd, 410, "{\"error\":\"no such session\"}"); return; }
-  if (!load()) { api_json(q->fd, 503, "{\"error\":\"packs unavailable\"}"); return; }
+  if (!hex) { fail(q->fd, 410, "no such session"); return; }
+  if (!load()) { fail(q->fd, 503, "packs unavailable"); return; }
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return; }
+  if (!db) { fail(q->fd, 503, "no database"); return; }
   char secs[12]; snprintf(secs, sizeof secs, "%d", SESSION_SECONDS);
   const char *v[2] = {sid, secs};
   PGresult *r = PQexecParams(db, "SELECT verse.pack_fetch($1, $2::int)", 2, NULL, v, NULL, NULL, 0);
   const char *name = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0) ? PQgetvalue(r, 0, 0) : NULL;
   const pack_entry *p = name ? find(name) : NULL;
   PQclear(r);
-  if (!p) { api_json(q->fd, 410, "{\"error\":\"no such session\"}"); return; }
+  if (!p) { fail(q->fd, 410, "no such session"); return; }
   signal(SIGCHLD, SIG_IGN);   // children are never waited for
   pid_t pid = fork();
-  if (pid < 0) { api_json(q->fd, 503, "{\"error\":\"busy\"}"); return; }
+  if (pid < 0) { fail(q->fd, 503, "busy"); return; }
   if (pid == 0) { stream_pack(q->fd, p, sid); _exit(0); }
 }
 
@@ -313,11 +324,11 @@ bool verse_packs_route(const request *q) {
   if (!base) return false;
   const char *rest = q->path + strlen(base);
   if (!strncmp(rest, "fetch/", 6)) {
-    if (strcmp(q->method, "GET")) { api_json(q->fd, 405, "{\"error\":\"GET\"}"); return true; }
+    if (strcmp(q->method, "GET")) { fail(q->fd, 405, "GET"); return true; }
     fetch(q, rest + 6);
     return true;
   }
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST\"}"); return true; }
+  if (strcmp(q->method, "POST")) { fail(q->fd, 405, "POST"); return true; }
   issue(q, rest);
   return true;
 }

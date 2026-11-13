@@ -21,6 +21,7 @@
 // tools on, who you're talking to and their answer, and what's near, nearest first.
 // It needs Basic (sqrt, abs, print): the program that loads it imports it.
 #load "../net/cdp.coax";
+#load "../../../metaverse-engine/editor/spec.coax";   // the realm spec's one reader (contexts.txt: realm-seat may load realm-authoring)
 
 SEAT_SHOT :: 25165824;
 SEAT_NEAR :: 16;
@@ -285,17 +286,18 @@ seat_read_spec :: (s: [] Seat, c: [] Cdp) {
   out: [4096] u8;
   seat_spec_people(s, seat_js_str(c, seat_text(b[..]), out[..]));
 }
-// The spec's "character NAME|ROLE" lines into s, in order.
+// The spec's "character NAME|ROLE" lines into s, in order, read by the spec's one reader
+// (metaverse-engine/editor/spec.coax; a line with no name is passed over).
 seat_spec_people :: (s: [] Seat, text: string) {
-  s[0].spec_people = 0; i := 0;
-  while i < text.count && s[0].spec_people < SEAT_PEOPLE {
-    e := i; while e < text.count && text[e] != '\n' { e += 1; }
-    line := text[i..<e]; i = e + 1;
-    if !seat_starts(line, "character ") { continue; }
-    rest := line[10..<line.count]; cut := 0; while cut < rest.count && rest[cut] != '|' { cut += 1; }
+  s[0].spec_people = 0;
+  l := forge_spec_line(text, 0);
+  while l.kind != SPEC_END && s[0].spec_people < SEAT_PEOPLE {
+    who := ifx l.kind == SPEC_CHARACTER && l.flush then forge_spec_person(l) else ForgeSpecPerson.{};
+    l = forge_spec_line(text, l.next);
+    if !who.ok { continue; }
     p := s[0].spec_people;
-    n := 0; for k: 0..<cut { if n < 32 { s[0].names[p * 32 + n] = rest[k]; n += 1; } } s[0].name_n[p] = n;
-    m := 0; if cut + 1 < rest.count { for k: cut + 1..<rest.count { if m < 48 { s[0].roles[p * 48 + m] = rest[k]; m += 1; } } } s[0].role_n[p] = m;
+    n := 0; for k: 0..<who.name.count { if n < 32 { s[0].names[p * 32 + n] = who.name[k]; n += 1; } } s[0].name_n[p] = n;
+    m := 0; for k: 0..<who.role.count { if m < 48 { s[0].roles[p * 48 + m] = who.role[k]; m += 1; } } s[0].role_n[p] = m;
     s[0].spec_people = p + 1;
   }
 }

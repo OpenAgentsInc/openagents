@@ -3,6 +3,10 @@
 The source projection is
 [`inventory.proto`](../../proto/openagents/cli/local/v1/inventory.proto).
 These are bounded, read-only local CLI JSON reports consumed by desktop setup.
+One codec writes and reads both: `coax/lib/local/inventory-wire.coax`. The CLI
+writes through it and desktop setup reads through it. `proto/coder/local-inventory-v1.json`
+holds reports as the CLI printed them, and `coax/lib/local/local-goldens.coax`
+checks them against the codec and the schema.
 They start no agent, model, microphone, download or provider connection.
 
 `openagents coder agents --json` and `coder/tui/coder.sh agents --json` emit

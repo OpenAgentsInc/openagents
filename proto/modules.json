@@ -195,8 +195,16 @@
     ],
     "api-routes": [
       "openagents/api/v1alpha1/error.proto",
+      "openagents/ops/email/v1alpha1/email.proto",
+      "openagents/ops/jobs/v1alpha1/jobs.proto",
       "openagents/ops/service/v1alpha1/service.proto",
+      "openagents/verse/packs/v1alpha1/packs.proto",
       "openagents/verse/seat/v1alpha1/seat.proto"
+    ],
+    "cli-local": [
+      "openagents/cli/dictation/v1/event.proto",
+      "openagents/cli/dictation/v1/stream.proto",
+      "openagents/cli/local/v1/inventory.proto"
     ]
   },
   "profile_namespaces": {
@@ -353,9 +361,16 @@
     ],
     "api-routes": [
       "openagents.api.v1alpha1",
+      "openagents.ops.email.v1alpha1",
+      "openagents.ops.jobs.v1alpha1",
       "openagents.ops.service.v1alpha1",
       "openagents.options.v1alpha1",
+      "openagents.verse.packs.v1alpha1",
       "openagents.verse.seat.v1alpha1"
+    ],
+    "cli-local": [
+      "openagents.cli.dictation.v1",
+      "openagents.cli.local.v1"
     ]
   }
 }

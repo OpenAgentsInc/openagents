@@ -1,0 +1,204 @@
+// Dictation's event lines on the wire, one codec (compliance plan step C7, GitHub #13250;
+// proto/openagents/cli/dictation/v1/event.proto and stream.proto, profile cli-local):
+//   `openagents dictate --events|--json`            openagents.dictation.v1, one JSON object a line
+//   `openagents dictate --stream --events`          openagents.dictation.stream.v1 (docs/protocol/dictation-stream-v1.md)
+// The writers: apps/openagents-cli/dictate.coax and dictate-stream.coax. The reader: Coder's terminal
+// dictation (coder/tui/dictate.coax). A line carries only the members its type has, in the order
+// the two .proto files list them; a string is escaped as the CLI always wrote it (a quote and a
+// backslash behind a backslash, a byte under 32 as \u00XX). dw_write gives a line with no newline.
+// proto/coder/dictation-v1.json holds lines as the CLI printed them; coax/lib/local/local-goldens.coax
+// reads each through this file and writes it back for the same bytes.
+//   coax/bin/coax test coax/lib/local/dictation-wire.coax --library
+#load "../json/json.coax";
+
+DW_SCHEMA :: "openagents.dictation.v1";
+DW_STREAM_SCHEMA :: "openagents.dictation.stream.v1";
+DW_WORD :: 96;       // a type, a state, a reason, an error's name, a model, a revision, a capture
+DW_TEXT :: 8192;     // the words, and a failure's message
+
+// One event's values. stream: the line is a stream event. A member a type does not carry is not read.
+//   v1 status: state.  final: text, has_raw with raw_text, code (format "code"), terms (written when over 0).
+//      no_speech: reason.  error: error, message.  final and no_speech: samples, audio_ms, segments, limited.
+//      every result: exit, recognizer, model, revision, device, capture.
+//   stream, every event: event, ticket, sequence, samples, profile, model, revision, capture.
+//      status: state.  partial: text.  final: text, exit, limited.  cancelled: exit.
+//      no_speech: exit, reason.  error: exit, error, message.
+DwEvent :: struct {
+  stream: bool; type: string;
+  state: string; text: string; has_raw: bool; raw_text: string; code: bool; terms: int;
+  reason: string; error: string; message: string; exit: int;
+  samples: int; audio_ms: int; segments: int; limited: bool;
+  recognizer: string; model: string; revision: string; device: string; capture: string;
+  event: int; ticket: int; sequence: int; profile: string;
+}
+
+dw_quoted :: (o: [] Jo, s: string) {
+  hex := "0123456789abcdef";
+  jo_byte(o, '"');
+  for c: s {
+    if c == '"' || c == '\\' { jo_byte(o, '\\'); jo_byte(o, c); }
+    else if c < 32 { jo_put(o, "\\u00"); jo_byte(o, hex[cast(int) (c >> 4)]); jo_byte(o, hex[cast(int) (c & 15)]); }
+    else { jo_byte(o, c); }
+  }
+  jo_byte(o, '"');
+}
+dw_str :: (o: [] Jo, key: string, v: string) { jo_byte(o, ','); dw_quoted(o, key); jo_byte(o, ':'); dw_quoted(o, v); }
+dw_int :: (o: [] Jo, key: string, v: int) { jo_byte(o, ','); dw_quoted(o, key); jo_byte(o, ':'); jo_keyed_int(o, v); }
+dw_bool :: (o: [] Jo, key: string, v: bool) { jo_byte(o, ','); dw_quoted(o, key); jo_byte(o, ':'); jo_put(o, ifx v then "true" else "false"); }
+jo_keyed_int :: (o: [] Jo, v: int) { o[0].keyed = true; jo_int(o, v); }
+dw_type_ok :: (stream: bool, type: string) -> bool {
+  return type == "status" || type == "final" || type == "no_speech" || type == "cancelled" || type == "error" || (stream && type == "partial");
+}
+// The event's line into out, with no newline; "" when it does not fit or its type is not one the schema has.
+dw_write :: (e: DwEvent, out: [] u8) -> string {
+  if !dw_type_ok(e.stream, e.type) { return ""; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_put(o[..], "{\"schema\":"); dw_quoted(o[..], ifx e.stream then DW_STREAM_SCHEMA else DW_SCHEMA);
+  dw_str(o[..], "type", e.type);
+  final := e.type == "final"; none := e.type == "no_speech"; failed := e.type == "error";
+  if e.stream {
+    dw_int(o[..], "event", e.event); dw_int(o[..], "ticket", e.ticket); dw_int(o[..], "sequence", e.sequence); dw_int(o[..], "samples", e.samples);
+    dw_str(o[..], "profile", e.profile); dw_str(o[..], "model", e.model); dw_str(o[..], "revision", e.revision); dw_str(o[..], "capture", e.capture);
+    if e.type == "status" { dw_str(o[..], "state", e.state); }
+    if e.type == "partial" || final { dw_str(o[..], "text", e.text); }
+    if final { dw_int(o[..], "exit", e.exit); dw_bool(o[..], "limited", e.limited); }
+    if e.type == "cancelled" { dw_int(o[..], "exit", e.exit); }
+    if none { dw_int(o[..], "exit", e.exit); dw_str(o[..], "reason", e.reason); }
+    if failed { dw_int(o[..], "exit", e.exit); dw_str(o[..], "error", e.error); dw_str(o[..], "message", e.message); }
+  } else if e.type == "status" { dw_str(o[..], "state", e.state); }
+  else {
+    if final { dw_str(o[..], "text", e.text); }
+    if final && e.has_raw { dw_str(o[..], "raw_text", e.raw_text); }
+    if final && e.code { dw_str(o[..], "format", "code"); }
+    if final && e.terms > 0 { dw_int(o[..], "terms", e.terms); }
+    if none { dw_str(o[..], "reason", e.reason); }
+    if failed { dw_str(o[..], "error", e.error); dw_str(o[..], "message", e.message); }
+    dw_int(o[..], "exit", e.exit);
+    if final || none { dw_int(o[..], "samples", e.samples); dw_int(o[..], "audio_ms", e.audio_ms); dw_int(o[..], "segments", e.segments); dw_bool(o[..], "limited", e.limited); }
+    dw_str(o[..], "recognizer", e.recognizer); dw_str(o[..], "model", e.model); dw_str(o[..], "revision", e.revision);
+    dw_str(o[..], "device", e.device); dw_str(o[..], "capture", e.capture);
+  }
+  jo_byte(o[..], '}');
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+// A line read: its values, kept here. dw_view gives them as an event.
+DwLine :: struct {
+  stream: bool; has_raw: bool; code: bool; limited: bool;
+  cut: bool;          // the words, the raw words or the message did not fit here: the line's values are not whole
+  terms: int; exit: int; samples: int; audio_ms: int; segments: int; event: int; ticket: int; sequence: int;
+  type: [DW_WORD] u8; type_n: int; state: [DW_WORD] u8; state_n: int; reason: [DW_WORD] u8; reason_n: int; error: [DW_WORD] u8; error_n: int;
+  recognizer: [DW_WORD] u8; recognizer_n: int; model: [DW_WORD] u8; model_n: int; revision: [DW_WORD] u8; revision_n: int;
+  device: [DW_WORD] u8; device_n: int; capture: [DW_WORD] u8; capture_n: int; profile: [DW_WORD] u8; profile_n: int;
+  text: [DW_TEXT] u8; text_n: int; raw_text: [DW_TEXT] u8; raw_text_n: int; message: [DW_TEXT] u8; message_n: int;
+}
+dw_take :: (j: Jv, key: string, out: [] u8) -> int { n := jv_str(j, jv_get(j, 0, key), out); return ifx n < 0 then 0 else n; }
+dw_cut :: (j: Jv, key: string, out: [] u8) -> bool { at := jv_get(j, 0, key); return jv_kind(j, at) == JV_STRING && jv_str(j, at, out) < 0; }
+dw_type :: (l: [] DwLine) -> string { return cast(string) l[0].type[0..<l[0].type_n]; }
+dw_state :: (l: [] DwLine) -> string { return cast(string) l[0].state[0..<l[0].state_n]; }
+dw_text :: (l: [] DwLine) -> string { return cast(string) l[0].text[0..<l[0].text_n]; }
+dw_error :: (l: [] DwLine) -> string { return cast(string) l[0].error[0..<l[0].error_n]; }
+// One line (no newline needed) into l: false when it is no JSON object, its schema is neither of
+// the two, or its type is not one its schema has. exit is -1 when the line carries none.
+dw_read :: (line: string, nodes: [] JvNode, l: [] DwLine) -> bool {
+  d: [1] Jv;
+  l[0].type_n = 0; l[0].stream = false;
+  if !jv_parse(d[..], line, nodes) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  j := d[0];
+  schema := jv_raw(j, jv_get(j, 0, "schema"));
+  if schema != DW_SCHEMA && schema != DW_STREAM_SCHEMA { return false; }
+  l[0].stream = schema == DW_STREAM_SCHEMA;
+  l[0].type_n = dw_take(j, "type", l[0].type[..]);
+  if !dw_type_ok(l[0].stream, dw_type(l)) { l[0].type_n = 0; return false; }
+  l[0].state_n = dw_take(j, "state", l[0].state[..]); l[0].reason_n = dw_take(j, "reason", l[0].reason[..]); l[0].error_n = dw_take(j, "error", l[0].error[..]);
+  l[0].recognizer_n = dw_take(j, "recognizer", l[0].recognizer[..]); l[0].model_n = dw_take(j, "model", l[0].model[..]);
+  l[0].revision_n = dw_take(j, "revision", l[0].revision[..]); l[0].device_n = dw_take(j, "device", l[0].device[..]);
+  l[0].capture_n = dw_take(j, "capture", l[0].capture[..]); l[0].profile_n = dw_take(j, "profile", l[0].profile[..]);
+  l[0].text_n = dw_take(j, "text", l[0].text[..]); l[0].message_n = dw_take(j, "message", l[0].message[..]);
+  l[0].cut = dw_cut(j, "text", l[0].text[..]) || dw_cut(j, "raw_text", l[0].raw_text[..]) || dw_cut(j, "message", l[0].message[..]);
+  l[0].has_raw = jv_kind(j, jv_get(j, 0, "raw_text")) == JV_STRING; l[0].raw_text_n = dw_take(j, "raw_text", l[0].raw_text[..]);
+  l[0].code = jv_raw(j, jv_get(j, 0, "format")) == "code"; l[0].limited = jv_bool(j, jv_get(j, 0, "limited"));
+  l[0].terms = jv_int(j, jv_get(j, 0, "terms"), 0); l[0].exit = jv_int(j, jv_get(j, 0, "exit"), -1);
+  l[0].samples = jv_int(j, jv_get(j, 0, "samples"), 0); l[0].audio_ms = jv_int(j, jv_get(j, 0, "audio_ms"), 0); l[0].segments = jv_int(j, jv_get(j, 0, "segments"), 0);
+  l[0].event = jv_int(j, jv_get(j, 0, "event"), 0); l[0].ticket = jv_int(j, jv_get(j, 0, "ticket"), 0); l[0].sequence = jv_int(j, jv_get(j, 0, "sequence"), 0);
+  return true;
+}
+// The line as an event, its strings views into l.
+dw_view :: (l: [] DwLine) -> DwEvent {
+  return DwEvent.{stream = l[0].stream, type = dw_type(l), state = dw_state(l), text = dw_text(l), has_raw = l[0].has_raw,
+    raw_text = cast(string) l[0].raw_text[0..<l[0].raw_text_n], code = l[0].code, terms = l[0].terms,
+    reason = cast(string) l[0].reason[0..<l[0].reason_n], error = dw_error(l), message = cast(string) l[0].message[0..<l[0].message_n], exit = l[0].exit,
+    samples = l[0].samples, audio_ms = l[0].audio_ms, segments = l[0].segments, limited = l[0].limited,
+    recognizer = cast(string) l[0].recognizer[0..<l[0].recognizer_n], model = cast(string) l[0].model[0..<l[0].model_n],
+    revision = cast(string) l[0].revision[0..<l[0].revision_n], device = cast(string) l[0].device[0..<l[0].device_n],
+    capture = cast(string) l[0].capture[0..<l[0].capture_n], event = l[0].event, ticket = l[0].ticket, sequence = l[0].sequence,
+    profile = cast(string) l[0].profile[0..<l[0].profile_n]};
+}
+
+DwTest :: struct { nodes: [256] JvNode; l: [1] DwLine; out: [16384] u8; }
+dw_back :: (t: [] DwTest, line: string) -> bool {
+  if !dw_read(line, t[0].nodes[..], t[0].l[..]) { return false; }
+  return dw_write(dw_view(t[0].l[..]), t[0].out[..]) == line;
+}
+#test "each v1 event is written with its own members, and reads back to the same line" {
+  t: [1] DwTest; out: [4096] u8;
+  #assert dw_write(DwEvent.{type = "status", state = "listening"}, out[..]) == "{\"schema\":\"openagents.dictation.v1\",\"type\":\"status\",\"state\":\"listening\"}";
+  base := DwEvent.{recognizer = "parakeet", model = "parakeet-tdt-0.6b-v3", revision = "541d", device = "cpu", capture = "fixture"};
+  e := base; e.type = "final"; e.text = "Wait, \"stop\".\n"; e.samples = 44800; e.audio_ms = 2800; e.segments = 1;
+  line := dw_write(e, out[..]);
+  #assert line == "{\"schema\":\"openagents.dictation.v1\",\"type\":\"final\",\"text\":\"Wait, \\\"stop\\\".\\u000a\",\"exit\":0,\"samples\":44800,\"audio_ms\":2800,\"segments\":1,\"limited\":false,\"recognizer\":\"parakeet\",\"model\":\"parakeet-tdt-0.6b-v3\",\"revision\":\"541d\",\"device\":\"cpu\",\"capture\":\"fixture\"}";
+  #assert dw_back(t[..], line) && dw_text(t[0].l[..]) == "Wait, \"stop\".\n" && t[0].l[0].exit == 0 && !t[0].l[0].stream;
+  long: [DW_TEXT + 200] u8; ln := 0;
+  for c: "{\"schema\":\"openagents.dictation.v1\",\"type\":\"final\",\"text\":\"" { long[ln] = c; ln += 1; }
+  for k: 0..<DW_TEXT + 1 { long[ln] = 'a'; ln += 1; }
+  for c: "\",\"exit\":0}" { long[ln] = c; ln += 1; }
+  #assert dw_read(cast(string) long[0..<ln], t[0].nodes[..], t[0].l[..]) && t[0].l[0].cut && dw_read(line, t[0].nodes[..], t[0].l[..]) && !t[0].l[0].cut;
+  e.has_raw = true; e.raw_text = "wait stop"; e.code = true; e.terms = 2; e.limited = true;
+  line = dw_write(e, out[..]);
+  #assert line == "{\"schema\":\"openagents.dictation.v1\",\"type\":\"final\",\"text\":\"Wait, \\\"stop\\\".\\u000a\",\"raw_text\":\"wait stop\",\"format\":\"code\",\"terms\":2,\"exit\":0,\"samples\":44800,\"audio_ms\":2800,\"segments\":1,\"limited\":true,\"recognizer\":\"parakeet\",\"model\":\"parakeet-tdt-0.6b-v3\",\"revision\":\"541d\",\"device\":\"cpu\",\"capture\":\"fixture\"}";
+  #assert dw_back(t[..], line);
+  e = base; e.type = "no_speech"; e.reason = "silence"; e.exit = 9; e.samples = 16;  e.audio_ms = 1;
+  line = dw_write(e, out[..]);
+  #assert line == "{\"schema\":\"openagents.dictation.v1\",\"type\":\"no_speech\",\"reason\":\"silence\",\"exit\":9,\"samples\":16,\"audio_ms\":1,\"segments\":0,\"limited\":false,\"recognizer\":\"parakeet\",\"model\":\"parakeet-tdt-0.6b-v3\",\"revision\":\"541d\",\"device\":\"cpu\",\"capture\":\"fixture\"}";
+  #assert dw_back(t[..], line);
+  e = base; e.type = "cancelled"; e.exit = 130; line = dw_write(e, out[..]);
+  #assert line == "{\"schema\":\"openagents.dictation.v1\",\"type\":\"cancelled\",\"exit\":130,\"recognizer\":\"parakeet\",\"model\":\"parakeet-tdt-0.6b-v3\",\"revision\":\"541d\",\"device\":\"cpu\",\"capture\":\"fixture\"}";
+  #assert dw_back(t[..], line) && t[0].l[0].exit == 130;
+  e = base; e.type = "error"; e.error = "capture"; e.message = "the input stopped"; e.exit = 1; line = dw_write(e, out[..]);
+  #assert line == "{\"schema\":\"openagents.dictation.v1\",\"type\":\"error\",\"error\":\"capture\",\"message\":\"the input stopped\",\"exit\":1,\"recognizer\":\"parakeet\",\"model\":\"parakeet-tdt-0.6b-v3\",\"revision\":\"541d\",\"device\":\"cpu\",\"capture\":\"fixture\"}";
+  #assert dw_back(t[..], line) && dw_error(t[0].l[..]) == "capture";
+  e.type = "partial"; #assert dw_write(e, out[..]) == "";
+  e.type = "error"; #assert dw_write(e, out[0..<40]) == "";
+}
+#test "each stream event is written with its own members, and reads back to the same line" {
+  t: [1] DwTest; out: [4096] u8;
+  base := DwEvent.{stream = true, event = 3, ticket = 1, sequence = 7, samples = 17920, profile = "p-v1", model = "nemotron", revision = "ebe5", capture = "fixture"};
+  head := "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":";
+  e := base; e.type = "status"; e.state = "ready"; line := dw_write(e, out[..]);
+  #assert line == "{\"schema\":\"openagents.dictation.stream.v1\",\"type\":\"status\",\"event\":3,\"ticket\":1,\"sequence\":7,\"samples\":17920,\"profile\":\"p-v1\",\"model\":\"nemotron\",\"revision\":\"ebe5\",\"capture\":\"fixture\",\"state\":\"ready\"}";
+  #assert dw_back(t[..], line) && t[0].l[0].stream && dw_state(t[0].l[..]) == "ready" && t[0].l[0].exit == -1;
+  tail := ",\"event\":3,\"ticket\":1,\"sequence\":7,\"samples\":17920,\"profile\":\"p-v1\",\"model\":\"nemotron\",\"revision\":\"ebe5\",\"capture\":\"fixture\"";
+  want: [2048] u8;
+  e = base; e.type = "partial"; e.text = "I am"; line = dw_write(e, out[..]);
+  #assert line == dw_cat3(head, "\"partial\"", tail, ",\"text\":\"I am\"}", want[..]) && dw_back(t[..], line);
+  e = base; e.type = "final"; e.text = "I am"; e.limited = true; line = dw_write(e, out[..]);
+  #assert line == dw_cat3(head, "\"final\"", tail, ",\"text\":\"I am\",\"exit\":0,\"limited\":true}", want[..]) && dw_back(t[..], line);
+  e = base; e.type = "cancelled"; e.exit = 130; line = dw_write(e, out[..]);
+  #assert line == dw_cat3(head, "\"cancelled\"", tail, ",\"exit\":130}", want[..]) && dw_back(t[..], line);
+  e = base; e.type = "no_speech"; e.exit = 9; e.reason = "silence"; line = dw_write(e, out[..]);
+  #assert line == dw_cat3(head, "\"no_speech\"", tail, ",\"exit\":9,\"reason\":\"silence\"}", want[..]) && dw_back(t[..], line);
+  e = base; e.type = "error"; e.exit = 6; e.error = "model_missing"; e.message = "not installed"; line = dw_write(e, out[..]);
+  #assert line == dw_cat3(head, "\"error\"", tail, ",\"exit\":6,\"error\":\"model_missing\",\"message\":\"not installed\"}", want[..]) && dw_back(t[..], line);
+}
+#test "a line of another schema, another type or no object is refused" {
+  t: [1] DwTest;
+  #assert !dw_read("{\"schema\":\"openagents.models.v1\",\"type\":\"status\"}", t[0].nodes[..], t[0].l[..]);
+  #assert !dw_read("{\"schema\":\"openagents.dictation.v1\",\"type\":\"partial\",\"text\":\"x\"}", t[0].nodes[..], t[0].l[..]) && dw_type(t[0].l[..]) == "";
+  #assert !dw_read("{\"schema\":\"openagents.dictation.v1\"}", t[0].nodes[..], t[0].l[..]) && !dw_read("[1]", t[0].nodes[..], t[0].l[..]) && !dw_read("", t[0].nodes[..], t[0].l[..]);
+  #assert dw_read("{\"schema\":\"openagents.dictation.v1\",\"type\":\"status\",\"state\":\"ready\"}\n", t[0].nodes[..], t[0].l[..]) && dw_state(t[0].l[..]) == "ready";
+}
+dw_cat3 :: (a: string, b: string, c: string, d: string, out: [] u8) -> string {
+  n := 0;
+  for x: a { out[n] = x; n += 1; } for x: b { out[n] = x; n += 1; } for x: c { out[n] = x; n += 1; } for x: d { out[n] = x; n += 1; }
+  return cast(string) out[0..<n];
+}

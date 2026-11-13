@@ -1,0 +1,37 @@
+syntax = "proto3";
+package openagents.cli.dictation.v1;
+
+// `openagents dictate --events` and `--json`: one JSON object a line,
+// schema openagents.dictation.v1 (apps/openagents-cli/README.md, "dictate").
+// Coder's terminal dictation reads it. One codec,
+// coax/lib/local/dictation-wire.coax (profile cli-local); json_name is the key
+// on the wire. A line carries only the members its type has, in this order:
+//   status      schema type state
+//   final       schema type text [raw_text] [format] [terms] exit samples
+//               audio_ms segments limited recognizer model revision device capture
+//   no_speech   schema type reason exit samples audio_ms segments limited
+//               recognizer model revision device capture
+//   cancelled   schema type exit recognizer model revision device capture
+//   error       schema type error message exit recognizer model revision device capture
+message Event {
+  string schema = 1 [json_name = "schema"]; // openagents.dictation.v1
+  string type = 2 [json_name = "type"]; // status, final, no_speech, cancelled, error
+  optional string state = 3 [json_name = "state"]; // status: what the command is doing, never words heard
+  optional string text = 4 [json_name = "text"];
+  optional string raw_text = 5 [json_name = "raw_text"]; // the words before --format code or --terms changed them
+  optional string format = 6 [json_name = "format"]; // code
+  optional uint64 terms = 7 [json_name = "terms"]; // vocabulary terms applied
+  optional string reason = 8 [json_name = "reason"];
+  optional string error = 9 [json_name = "error"];
+  optional string message = 10 [json_name = "message"];
+  optional int32 exit = 11 [json_name = "exit"];
+  optional uint64 samples = 12 [json_name = "samples"]; // mono 16 kHz
+  optional uint64 audio_ms = 13 [json_name = "audio_ms"];
+  optional uint64 segments = 14 [json_name = "segments"];
+  optional bool limited = 15 [json_name = "limited"];
+  optional string recognizer = 16 [json_name = "recognizer"]; // parakeet, or fixture
+  optional string model = 17 [json_name = "model"];
+  optional string revision = 18 [json_name = "revision"];
+  optional string device = 19 [json_name = "device"]; // gpu or cpu
+  optional string capture = 20 [json_name = "capture"];
+}

@@ -1,6 +1,7 @@
 // Setup's state and bounded CLI-report readers. AppKit renders these values;
 // scanning the machine and moving files are explicit CLI/platform effects.
 #load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/local/inventory-wire.coax";
 
 ForgeSetup :: struct {
   completed: bool;
@@ -94,15 +95,16 @@ fsu_read :: (s: [] ForgeSetup, kind: int, text: string) -> bool #export_c #effec
     s[0].version_n = ifx n > 0 then n else 0;
     return s[0].cli;
   }
+  // the two inventories, through their one codec (coax/lib/local/inventory-wire.coax)
   if kind == 1 {
     s[0].agents = false; s[0].total = 0;
     for i: 0..<4 { s[0].counts[i] = 0; }
-    if jv_raw(v, jv_get(v, 0, "schema")) != "openagents.coder.agents.v1" || !jv_bool(v, jv_get(v, 0, "ok")) || !jv_bool(v, jv_get(v, 0, "complete")) { return false; }
-    rows := jv_get(v, 0, "agents"); if jv_kind(v, rows) != JV_ARRAY || jv_len(v, rows) > 128 { return false; }
-    for i: 0..<jv_len(v, rows) {
-      row := jv_at(v, rows, i);
-      if jv_raw(v, jv_get(v, row, "state")) != "running" || jv_int(v, jv_get(v, row, "pid"), 0) <= 0 { continue; }
-      engine := jv_raw(v, jv_get(v, row, "engine"));
+    rows: [INV_AGENTS_MOST] InvAgent;
+    got := inv_read_agents(text, nodes[..], rows[..]);
+    if !got.read || !got.ok || !got.complete { return false; }
+    for i: 0..<got.n {
+      if !rows[i].running || rows[i].pid <= 0 { continue; }
+      engine := inv_agent_engine(rows[..], i);
       for k: 0..<4 { if engine == FSU_IDS[k] { s[0].counts[k] += 1; s[0].total += 1; } }
     }
     if s[0].selected < 0 || s[0].counts[s[0].selected] == 0 {
@@ -114,16 +116,19 @@ fsu_read :: (s: [] ForgeSetup, kind: int, text: string) -> bool #export_c #effec
   }
   if kind == 2 {
     s[0].models = false; s[0].voice = false; s[0].verified = false; s[0].text_model = false;
-    if jv_raw(v, jv_get(v, 0, "schema")) != "openagents.models.v1" { return false; }
-    rows := jv_get(v, 0, "models"); if jv_kind(v, rows) != JV_ARRAY { return false; }
-    for i: 0..<jv_len(v, rows) {
-      row := jv_at(v, rows, i); id := jv_raw(v, jv_get(v, row, "id"));
+    rows: [INV_MODELS_MOST] InvModel;
+    got := inv_read_models(text, nodes[..], rows[..]);
+    if !got.read { return false; }
+    for i: 0..<got.n {
+      id := inv_model_id(rows[..], i);
       if id == "parakeet" {
-        s[0].voice = jv_bool(v, jv_get(v, row, "present"));
-        s[0].verified = s[0].voice && jv_bool(v, jv_get(v, row, "verified"));
-        n := jv_str(v, jv_get(v, row, "path"), s[0].voice_path[..]); s[0].voice_path_n = ifx n > 0 then n else 0;
+        s[0].voice = rows[i].present;
+        s[0].verified = s[0].voice && rows[i].verified;
+        path := inv_model_path(rows[..], i);
+        for k: 0..<path.count { s[0].voice_path[k] = path[k]; }
+        s[0].voice_path_n = path.count;
       }
-      if id == "gpt-oss-20b" { s[0].text_model = jv_bool(v, jv_get(v, row, "present")); }
+      if id == "gpt-oss-20b" { s[0].text_model = rows[i].present; }
     }
     s[0].models = true; return true;
   }

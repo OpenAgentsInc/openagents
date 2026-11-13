@@ -1,0 +1,65 @@
+{
+ "about": "Golden bodies of the private packs' routes (Protocol E11, GitHub #13250): what coax/web/api/verse_packs.c answers on POST /api/verse/packs/<name> (the same route as POST /api/metaverse/packs/<name>) and its refusals, with the status each came with. Every body was answered by a running API in coax/web/api/test.sh (tests/verse_packs.coax with VERSE_PACK_CAPTURE=1, on a build host, 2026-11-12), at the commit before the codec, on a throwaway database with a made-up pack; the keys are that run's session keys, under a master key the run made up. coax/web/api/packs-wire-goldens.coax holds each body's keys to its message (proto/openagents/verse/packs/v1alpha1/packs.proto PackSession, or the API's ErrorReply), reads it through coax/lib/media/pack_session_wire.coax and writes it back for the same bytes; tests/verse_packs.coax does the same for every answer of every run.",
+ "messages": {
+  "session": "openagents.verse.packs.v1alpha1.PackSession",
+  "error": "openagents.api.v1alpha1.ErrorReply"
+ },
+ "goldens": [
+  {
+   "name": "session-1",
+   "kind": "session",
+   "from": "api",
+   "status": 200,
+   "body": "{\"url\":\"/api/verse/packs/fetch/ec36a60553e9f7f0e6806692fd4db6bc\",\"key\":\"9fd66cb37419a056a8103faa5f40bb51ba6001ab436c496eda426383e13044d1\",\"iv\":\"7b02c307ed154eb30000000000000000\",\"sha256\":\"d378943e927bc3dcb37bb3990bdf0b9d874299aeabafb04886401da9cad8c996\",\"bytes\":300000,\"size\":300068,\"expires\":120}"
+  },
+  {
+   "name": "refused-1",
+   "kind": "error",
+   "from": "api",
+   "status": 410,
+   "body": "{\"error\":\"no such session\"}"
+  },
+  {
+   "name": "refused-2",
+   "kind": "error",
+   "from": "api",
+   "status": 405,
+   "body": "{\"error\":\"GET\"}"
+  },
+  {
+   "name": "refused-3",
+   "kind": "error",
+   "from": "api",
+   "status": 405,
+   "body": "{\"error\":\"POST\"}"
+  },
+  {
+   "name": "refused-4",
+   "kind": "error",
+   "from": "api",
+   "status": 404,
+   "body": "{\"error\":\"no such pack\"}"
+  },
+  {
+   "name": "session-2",
+   "kind": "session",
+   "from": "api",
+   "status": 200,
+   "body": "{\"url\":\"/api/verse/packs/fetch/bb9dbff7e778e3b379864918dd91fddc\",\"key\":\"791ba8a4f00a3acac4ab5fd0953e861853c9071f23213eb3797817cb2e0f034b\",\"iv\":\"c70761e0608ea40e0000000000000000\",\"sha256\":\"d378943e927bc3dcb37bb3990bdf0b9d874299aeabafb04886401da9cad8c996\",\"bytes\":300000,\"size\":300068,\"expires\":120}"
+  },
+  {
+   "name": "refused-6",
+   "kind": "error",
+   "from": "api",
+   "status": 429,
+   "body": "{\"error\":\"too many for this address this hour\"}"
+  },
+  {
+   "name": "refused-7",
+   "kind": "error",
+   "from": "api",
+   "status": 429,
+   "body": "{\"error\":\"the day's pack budget is spent\"}"
+  }
+ ]
+}

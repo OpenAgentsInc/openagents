@@ -1,0 +1,28 @@
+// What coax/web/api/verse_packs.c writes (Protocol E11, GitHub #13250): verse_packs.c calls the
+// #export_c writers below through packs-wire.generated.c (api-sources.sh, deploy.sh, the
+// Dockerfile) and builds no body of its own. The session is coax/lib/media/pack_session_wire.coax's
+// (proto/openagents/verse/packs/v1alpha1/packs.proto) and a refusal api-wire.coax's ErrorReply:
+//   pkw_error_write     a refusal or a failure
+//   pkw_session_write   200 from POST /api/metaverse/packs/<name> (and /api/verse/packs/<name>)
+// The bytes are the ones verse_packs.c wrote before this file: proto/verse/pack-session-v1alpha1.json
+// holds what a running API answered and packs-wire-goldens.coax reads each through the codec and
+// writes it back. A writer returns the body's length, or -1 when it does not fit.
+//   coax/bin/coax test coax/web/api/packs-wire.coax --library
+#load "api-wire.coax";
+#load "../../lib/media/pack_session_wire.coax";
+
+pkw_error_write :: (text: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] Jo; aw_at(o[..], out, 0); aw_error(o[..], text); return aw_len(o[..]);
+}
+pkw_session_write :: (base: string, sid: string, key: string, iv: string, sha256: string, bytes: int, size: int, expires: int, out: [] u8) -> int #export_c #effects(all) {
+  return pksw_session_write(base, sid, key, iv, sha256, bytes, size, expires, out);
+}
+
+#test "what verse_packs.c writes: a refusal and a session" {
+  b: [512] u8;
+  n := pkw_error_write("no such pack", b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"no such pack\"}" && pkw_error_write("no such pack", b[0..<n - 1]) == -1;
+  key := "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+  n = pkw_session_write("/api/verse/packs/", "ab", key, "000102030405060708090a0b0c0d0e0f", key, 56, 64, 120, b[..]);
+  #assert n > 0 && cast(string) b[0..<41] == "{\"url\":\"/api/verse/packs/fetch/ab\",\"key\":" && pkw_session_write("/api/verse/packs/", "ab", key, "00", key, 56, 64, 120, b[..]) == -1;
+}

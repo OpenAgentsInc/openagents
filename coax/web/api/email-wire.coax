@@ -1,0 +1,61 @@
+// Email through the API on the wire, one codec for what email.c writes (Protocol E11, GitHub
+// #13250): proto/openagents/ops/email/v1alpha1/email.proto (profile api-routes) names the members.
+// email.c calls the #export_c writers below through email-wire.generated.c (api-sources.sh,
+// deploy.sh, the Dockerfile) and builds no body of its own:
+//   emw_reply_write   200 from POST /api/admin/email: {"state":"sent","id":"..."}
+//   emw_error_write   a refusal or a failure (api-wire.coax, ErrorReply)
+// The request is read in SQL (email.begin). The bytes are the ones email.c wrote before this file:
+// proto/verse/ops-routes-v1alpha1.json holds what a running API answered and
+// ops-wire-goldens.coax reads each through here and writes it back. A writer returns the body's
+// length, or -1 when it does not fit.
+//   coax/bin/coax test coax/web/api/email-wire.coax --library
+#load "api-wire.coax";
+
+EMW_ERROR :: 298;   // a refusal's words, at most (email.c's buffer before this file)
+EMW_WORD :: 128;    // a state, the mail service's id
+
+// A refusal. Its words come from this file's callers and from the database (email.begin); a quote
+// and a backslash are dropped, not escaped, and words past EMW_ERROR bytes are cut, as email.c
+// always wrote them.
+emw_error_write :: (text: string, out: [] u8) -> int #export_c #effects(all) {
+  plain: [EMW_ERROR] u8; n := 0;
+  for c: text { if n < EMW_ERROR && c != '"' && c != '\\' { plain[n] = c; n += 1; } }
+  o: [1] Jo; aw_at(o[..], out, 0); aw_error(o[..], cast(string) plain[0..<n]); return aw_len(o[..]);
+}
+// {"state":"sent","id":"msg-1"}; state is sent or already sent.
+emw_reply_write :: (state: string, id: string, out: [] u8) -> int #export_c #effects(all) {
+  if state != "sent" && state != "already sent" { return -1; }
+  o: [1] Jo; aw_at(o[..], out, 0);
+  jo_put(o[..], "{\"state\":"); jo_quoted(o[..], state); jo_put(o[..], ",\"id\":"); jo_quoted(o[..], id); jo_put(o[..], "}");
+  return aw_len(o[..]);
+}
+EmwReply :: struct { state: [EMW_WORD] u8; state_n: int; id: [EMW_WORD] u8; id_n: int; }
+emw_reply_state :: (r: [] EmwReply) -> string #effects(all) { return cast(string) r[0].state[0..<r[0].state_n]; }
+emw_reply_id :: (r: [] EmwReply) -> string #effects(all) { return cast(string) r[0].id[0..<r[0].id_n]; }
+emw_read_reply :: (body: string, nodes: [] JvNode, r: [] EmwReply) -> bool #effects(all) {
+  r[0] = EmwReply.{};
+  d: [1] Jv;
+  if !jv_parse(d[..], body, nodes) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  sn := jv_str(d[0], jv_get(d[0], 0, "state"), r[0].state[..]); idn := jv_str(d[0], jv_get(d[0], 0, "id"), r[0].id[..]);
+  if sn < 1 || idn < 0 { return false; }
+  r[0].state_n = sn; r[0].id_n = idn;
+  return true;
+}
+
+#test "a reply reads back to the same bytes; a refusal's quotes and backslashes are dropped and long words cut" {
+  b: [512] u8; nodes: [16] JvNode; r: [1] EmwReply; back: [512] u8;
+  n := emw_reply_write("sent", "msg-1", b[..]);
+  body := cast(string) b[0..<n];
+  #assert body == "{\"state\":\"sent\",\"id\":\"msg-1\"}" && emw_reply_write("sent", "msg-1", b[0..<n - 1]) == -1 && emw_reply_write("queued", "msg-1", b[..]) == -1;
+  #assert emw_read_reply(body, nodes[..], r[..]) && emw_reply_state(r[..]) == "sent" && emw_reply_id(r[..]) == "msg-1";
+  m := emw_reply_write(emw_reply_state(r[..]), emw_reply_id(r[..]), back[..]);
+  #assert cast(string) back[0..<m] == body;
+  n = emw_reply_write("already sent", "", b[..]);
+  #assert cast(string) b[0..<n] == "{\"state\":\"already sent\",\"id\":\"\"}" && emw_read_reply(cast(string) b[0..<n], nodes[..], r[..]) && emw_reply_id(r[..]) == "";
+  #assert !emw_read_reply("{\"id\":\"msg-1\"}", nodes[..], r[..]) && !emw_read_reply("[]", nodes[..], r[..]);
+  n = emw_error_write("to: not on this service's \"allow\\list\"", b[..]);
+  #assert cast(string) b[0..<n] == "{\"error\":\"to: not on this service's allowlist\"}";
+  long: [400] u8; for i: 0..<400 { long[i] = 'a'; }
+  n = emw_error_write(cast(string) long[..], b[..]);
+  #assert n == EMW_ERROR + 12 && emw_error_write("x", b[0..<5]) == -1;
+}

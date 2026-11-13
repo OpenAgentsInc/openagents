@@ -16,6 +16,7 @@
 //   OA_RESEND_URL       Resend's endpoint (tests point it at a fake)
 //   OA_EMAIL_ALLOW      staging: the only addresses mail may go to
 #include "api.h"
+#include "email-wire.generated.h"
 
 #include <curl/curl.h>
 #include <stdio.h>
@@ -106,27 +107,29 @@ int email_send(PGconn *db, const char *message, char id[128], char *err, size_t 
   return 0;
 }
 
+// Every body this file sends is written by email-wire.coax (email-wire.generated.c; Protocol E11,
+// #13250): a refusal (the API's ErrorReply, its words with any quote or backslash dropped) or the
+// reply, {"state","id"}.
+static coax_string cs(const char *s) { return (coax_string){s, (int64_t)strlen(s)}; }
 static void answer(int fd, int status, const char *state, const char *id, const char *err) {
   char out[512];
-  if (err) {
-    char e[300]; size_t n = 0;
-    for (const char *p = err; *p && n < sizeof e - 2; p++) if (*p != '"' && *p != '\\') e[n++] = *p;
-    e[n] = 0;
-    snprintf(out, sizeof out, "{\"error\":\"%s\"}", e);
-  } else snprintf(out, sizeof out, "{\"state\":\"%s\",\"id\":\"%s\"}", state, id);
+  int64_t n = err ? emw_error_write(cs(err), (coax_v_u8){(uint8_t *)out, sizeof out - 1})
+                  : emw_reply_write(cs(state), cs(id), (coax_v_u8){(uint8_t *)out, sizeof out - 1});
+  if (n < 0) { status = 500; n = emw_error_write(cs("out of memory"), (coax_v_u8){(uint8_t *)out, sizeof out - 1}); }
+  out[n < 0 ? 0 : n] = 0;
   api_json(fd, status, out);
 }
 
 bool email_route(const request *q) {
   if (strcmp(q->path, "/api/admin/email")) return false;
-  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a message\"}"); return true; }
+  if (strcmp(q->method, "POST")) { answer(q->fd, 405, NULL, NULL, "POST a message"); return true; }
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { answer(q->fd, 503, NULL, NULL, "no database"); return true; }
   char who[65];
   int s = admin_who(q, db, who);
-  if (s) { api_json(q->fd, s, s == 403 ? "{\"error\":\"not an admin\"}" : "{\"error\":\"sign in\"}"); return true; }
+  if (s) { answer(q->fd, s, NULL, NULL, s == 403 ? "not an admin" : "sign in"); return true; }
   char *message = malloc(q->body_len + 1);
-  if (!message) { api_json(q->fd, 500, "{\"error\":\"out of memory\"}"); return true; }
+  if (!message) { answer(q->fd, 500, NULL, NULL, "out of memory"); return true; }
   memcpy(message, q->body, q->body_len); message[q->body_len] = 0;
   char id[128], err[300];
   int r = email_send(db, message, id, err, sizeof err);
