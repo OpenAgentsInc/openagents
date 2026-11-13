@@ -152,6 +152,104 @@ For the technical listener:
 > Jai is already in the models' training data, so they pick Coax up fast.
 > And when they get it wrong, the compiler tells them the fix.
 
+## How it compares, measured
+
+You'll be asked "is it faster than C, C++, Rust, Jai?" These are the
+numbers, measured on 2026-11-13 on the 18-core Mac, with `coax0` 0.52.0,
+Apple clang and rustc 1.94.1. The machine was busy with other builds (load
+10 to 20), so each number is the best of three or more runs. Treat them as
+ratios, not absolutes. The programs and the timing script are in
+[296/](296/) (`bench-gen.py`, `bench-time.py`).
+
+**The short answer to say out loud:**
+
+> Is it faster than C? No. It compiles to C, so the best it can do is tie,
+> and it nearly does: about 5 to 10 percent behind, with every safety check
+> still on. Faster than Rust at running? About the same. Faster than Rust
+> at telling you whether your code is right? Yes, about ten times.
+
+### How fast the program runs
+
+One program in three languages: 60 rounds of a prime sieve and a CRC-32
+over a million bytes, then a 2,000 by 1,000 Mandelbrot. All three print the
+same answer.
+
+| Build | Run time |
+| --- | --- |
+| C, `clang -O2` | 0.58 s |
+| C, `clang -O2 -ffp-contract=off` | 0.63 s |
+| **Coax, `--opt 2`, all checks on** | **0.63 s** |
+| Coax, `--release` (wrapping integers) | 0.63 s |
+| Rust, `rustc -O` | 0.71 s |
+| C, `clang -O0` | 1.37 s |
+| Rust, debug | 2.06 s |
+| Coax, default (checked, `-O0`) | 2.50 s |
+
+What to take from it:
+
+- **Checks are close to free here.** Coax with overflow and bounds checks
+  on runs as fast as Coax with wrapping integers.
+- **Coax ties C once C computes the same answer.** Plain `clang -O2` is 8%
+  faster because on this Mac it fuses a multiply and an add into one
+  instruction, and that changes the result: it counts 421,082 points inside
+  the set where Coax, Rust and C without fusing all count 421,080. Coax
+  gives up that speed so the answer is the same everywhere.
+- **The default Coax build is slow.** It's unoptimized and fully checked,
+  about four times slower than `--opt 2`. Say so.
+- **This is one small program.** It isn't our signature code, where we're
+  still about 45 times behind libsecp256k1.
+
+### How fast it compiles
+
+One generated file in each language: 3,000 small procedures with loops and
+arrays and 100 callers, about 30,000 lines, compiled to an object file.
+
+| Step | Coax | C | C++ | Rust |
+| --- | --- | --- | --- | --- |
+| Check only, no code generated | **0.11 s** | 0.09 s | 0.43 s | 1.1 to 1.4 s |
+| Debug build | 2.4 s | 0.40 s | 0.82 s | 2.2 s |
+| Optimized build | 13.1 s | 16.7 s | 14.0 s | 14.0 s |
+
+At ten times the size (304,000 lines), check only: Coax 0.94 s, C 0.84 s,
+C++ 1.5 s, Rust 11.7 s.
+
+What to take from it:
+
+- **Checking is where Coax wins.** About 300,000 lines a second, the same
+  as a C compiler parsing C, and about ten times faster than `rustc`
+  type-checking the same program. That's the loop an agent lives in: edit,
+  check, read the error.
+- **A full build is not faster than Rust on this test.** Coax writes C and
+  then waits for clang. Its debug C carries every check, so clang has more
+  to chew on (109,000 lines of C from 30,000 of Coax).
+- **Optimized builds are all the same**, because all four end in the same
+  LLVM optimizer.
+- **This test is kind to Rust.** It has no generics, no macros, no
+  dependencies and no linking, which is where our Rust builds actually went
+  slow. We can't measure the old Rust engine against the Coax one: the Rust
+  code is gone from the repo. So don't quote a number for "our Rust build
+  took X"; say it from memory as your own experience.
+
+Two real programs, checked from cold on the same day:
+
+| Program | Size | Parse and type-check | Then run every check it has | Total |
+| --- | --- | --- | --- | --- |
+| The `openagents` CLI | 298 files, 67,000 lines | 0.5 s | 6.6 s | 7.6 s |
+| Everglade's page | 217 files, 97,000 lines | 0.8 s | 20.4 s | 21.2 s |
+
+> Under a second to know the whole game type-checks. The rest of the time
+> is the compiler running the tests, which you'd have to run anyway.
+
+### Against each language, in one line each
+
+| Language | Where Coax is better | Where it's worse |
+| --- | --- | --- |
+| **C** | Overflow, bounds and bad casts stop with a line number; no headers or preprocessor; tests and compile-time code in the language | Never faster; a far smaller ecosystem; three weeks old |
+| **C++** | Small enough to read whole; one way to write things; checks 4 times faster on the test above | No classes, templates or libraries; if you need those, it's not for you |
+| **Rust** | Checks about 10 times faster; simpler to read and to generate; tests enforced by the compiler | No borrow checker, no memory-safety promise, no threads, no package manager |
+| **Jai** | It's open and you can use it today; errors with codes and fixes; `#authority` and mutation testing | Jai has its own fast backend, pointers, a context, macros and ten years of work. We can't measure it: its compiler isn't public |
+| **Zig, Odin** | Not measured. Don't compare on air. | |
+
 ## 5. What we built with it
 
 > A language is only real if you ship something in it. Here's what's in
@@ -286,6 +384,9 @@ Say this part plainly, as in 294 and 295.
 - **No package manager, and one module.**
 - **Speed.** Our signature check is about 45 times slower than
   libsecp256k1 (Episode 294).
+- **Builds aren't fast yet.** Checking is fast. A full debug build is no
+  faster than Rust's, because we go through a C compiler
+  ([measured above](#how-it-compares-measured)).
 - **The tests have limits.** A `#forall` covers the range you gave it and
   nothing else. And an agent that can edit the code can edit the tests.
   Chapter 23 is about exactly that.
