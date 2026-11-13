@@ -32,7 +32,9 @@ static void asks(uint32_t state) {
   int64_t f = coaxial_editor_fetching(at(state));
   if (f > 0) {
     // 1 a GET, 2 the head then the file; then a direct upload's steps: 3 the file named, 4 the file sent, 5 said to be done
-    if (f <= 2) dom_file_send((uint32_t)(uintptr_t)s->as_url.e, (uint32_t)s->as_url_n, (uint32_t)(uintptr_t)s->as_head.e, f == 2 ? (uint32_t)s->as_head_n : 0u);
+    // 6: the Scripts pane's source alone, as the body of a POST (#13467)
+    if (f == 6) dom_file_step((uint32_t)(uintptr_t)s->as_url.e, (uint32_t)s->as_url_n, (uint32_t)(uintptr_t)s->sc.src.e, (uint32_t)coaxial_editor_source(at(state)), 3u);
+    else if (f <= 2) dom_file_send((uint32_t)(uintptr_t)s->as_url.e, (uint32_t)s->as_url_n, (uint32_t)(uintptr_t)s->as_head.e, f == 2 ? (uint32_t)s->as_head_n : 0u);
     else dom_file_step((uint32_t)(uintptr_t)s->as_url.e, (uint32_t)s->as_url_n, (uint32_t)(uintptr_t)s->as_head.e, (uint32_t)s->as_head_n, (uint32_t)f - 2u);
     coaxial_editor_fetched(at(state));
   }

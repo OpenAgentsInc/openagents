@@ -14,6 +14,7 @@ esa_sent :: (h: [] EsTest, status: int, body: string) {
   coaxial_editor_event(s, ES_SENT, status, body.count);
   // the Files pane's list is asked next (shell-files.coax): this server has none
   if s[0].fl.flight == ES_FL_LIST { coaxial_editor_fetched(s); coaxial_editor_event(s, ES_SENT, 404, 0); }
+  ess_none(h);   // and then the Scripts pane's (shell-scripts.coax): none either
   es_test_frames(h, 1);
 }
 esa_file :: (h: [] EsTest, target: string, line: string) {

@@ -1001,8 +1001,9 @@ function viewer() {
   fetch("/api/auth/viewer", { credentials: "same-origin" })
     // read the body either way: an unread one never finishes loading
     .then((r) => r.text().then((t) => (r.ok ? t : "")), () => "")
-    .then((t) => { viewerAdmin = /(^|\n)A\|1(\n|$)/.test(t); send(VIEWER_KIND, t); editorOpen(); }, () => send(VIEWER_KIND, ""));
+    .then((t) => { viewerAdmin = /(^|\n)A\|1(\n|$)/.test(t); viewerIn = t.trim().length > 0; send(VIEWER_KIND, t); editorOpen(); }, () => send(VIEWER_KIND, ""));
 }
+let viewerIn = false;      // the viewer's lines were not empty: someone is logged in
 let viewerAdmin = false;   // the viewer's lines said A|1: an admin, who may edit a world (the server decides each write)
 const randomId = () => [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, "0")).join("");
 // `store` gives the storage: naming it can throw too, in a sandboxed page with no origin (a realm on
@@ -3817,7 +3818,23 @@ function editorStep() {
   if (!shell || !x?.coaxial_edit_model || editorIn || !arena) return;
   editorIn = true;
   try { editorCarry(shell, x); } finally { editorIn = false; }
+  if ((editorTicks & 15) === 0) editorStatus(shell);
   if ((editorTicks++ & 7) === 0) editorRoom();   // the panes may have changed size since the last look: a few times a second is enough
+}
+// The Scripts pane (#13467; metaverse-engine/editor/shell-scripts.coax). While it is open the shell asks for the
+// page's script status (its word 528, "scripts on"; "scripts off" when it shuts), and this host hands it what the
+// script module says (world.script-status.v1, the text coaxial.scripts() answers) a few times a second as event 13,
+// with no bytes while no script module runs. It reads none of it.
+let editorScripts = false, editorScriptsTold = null;
+function editorStatus(shell) {
+  if (!editorScripts) return;
+  const text = scriptHost ? globalThis.coaxial.scripts() : "";
+  if (text === editorScriptsTold) return;
+  editorScriptsTold = text;
+  const sx = shell.exports(), bytes = new TextEncoder().encode(text).subarray(0, sx.dom_inbox_cap());
+  new Uint8Array(shell.memory().buffer, sx.dom_inbox(shell.state()), bytes.length).set(bytes);
+  sx.dom_event(shell.state(), 13, 0, bytes.length);
+  shell.ask();
 }
 // A realm's scripts (#13467; docs/protocol/realm-script-v1.md). A realm that exports coaxial_script_wants
 // runs realm scripts: small modules its world's tables name by hash. They are not run by the browser's own
@@ -3990,6 +4007,8 @@ function editorCarry(shell, x) {
     sx.dom_event(shell.state(), 9, 0, name.length);
     shell.ask();
   }
+  // Someone is logged in (event 12): the shell then offers what only they may do (a report of a script, #13467).
+  if (viewerIn && !shell.viewerTold) { shell.viewerTold = true; shell.exports().dom_event(shell.state(), 12, 0, 0); shell.ask(); }
   const rev = x.coaxial_edit_rev(arena.state);
   if (rev !== editorRev || editorFor !== engine) {
     editorRev = rev; editorFor = engine;
@@ -4056,6 +4075,7 @@ function editorActs() {
     sx.dom_act_done(st);
     if (kind === 524) { agentWorld = body; agentTell(); }   // for the conversation in the foot, not the page
     else if (kind === 526) editorPack(new TextDecoder().decode(body));   // for this host: the world's pack by its hash
+    else if (kind === 528) { editorScripts = new TextDecoder().decode(body) === "scripts on"; editorScriptsTold = null; }   // for this host: whether the script status is wanted
     else send(kind, body);
   }
 }

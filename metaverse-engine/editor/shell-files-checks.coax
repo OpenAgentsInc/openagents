@@ -17,6 +17,7 @@ esf_event :: (h: [] EsTest, kind: int, target: string, status: int, body: string
   for c, i: body { s[0].inbox[i] = c; }
   slot := ifx target.count > 0 then dm_find(s[0].dom[..], target) else status;
   coaxial_editor_event(s, kind, slot, body.count);
+  ess_none(h);   // the Scripts pane's list is asked once the channel is free (shell-scripts.coax): this server has none
   es_test_frames(h, 1);
 }
 esf_sent :: (h: [] EsTest, status: int, body: string) { coaxial_editor_fetched(h[0].s[..]); esf_event(h, ES_SENT, "", status, body); }

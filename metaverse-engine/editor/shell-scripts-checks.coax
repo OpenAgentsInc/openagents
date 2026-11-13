@@ -1,0 +1,378 @@
+// The checks of the editor shell's Scripts pane (shell-scripts.coax; GitHub #13467). shell.coax loads
+// this file with `#load ... #test;`. The host is played here: the world's server's answers come as
+// ES_SENT, the page's script status as ES_STATUS.
+
+// The Scripts pane's list, when it is the ask that is out, answered as a server with no scripts answers it.
+ess_none :: (h: [] EsTest) {
+  s := h[0].s[..];
+  if s[0].sc.flight == ES_SC_LIST { coaxial_editor_fetched(s); coaxial_editor_event(s, ES_SENT, 404, 0); }
+}
+
+// The starter as the compile job builds it (coax/web/script.sh on the pane's ESC_STARTER): its manifest.
+ESS_HASH :: "eccf9c327c67229178fd52833fcba669fc8d58c6e7964d334e20b037638772c6";
+ESS_OLD :: "528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5";
+ESS_MF :: "{\"schema\":\"realm.script.v1\",\"name\":\"my-raider\",\"hash\":\"eccf9c327c67229178fd52833fcba669fc8d58c6e7964d334e20b037638772c6\",\"bytes\":1298,\"pages\":2,\"state\":{\"size\":4,\"slots\":256,\"fields\":[{\"name\":\"hits\",\"type\":\"s32\",\"at\":0,\"size\":4}]},\"handlers\":[\"on_tick\",\"on_hit\"],\"powers\":[\"read\",\"write\",\"engine\",\"trap\"],\"calls\":[\"sa_trap\",\"sa_x\",\"sa_z\",\"sa_speed\",\"sa_var\",\"sa_goal_x\",\"sa_goal_z\",\"sa_goal_speed\",\"sa_notice\",\"sa_plan_on\",\"sa_distance\",\"sa_world\",\"sa_move\",\"sa_set_var\",\"sa_strike\",\"sa_emit\"]}";
+EssTest :: struct { h: [1] EsTest; list: [8192] u8; no: [8192] u8; words: [1024] u8; }
+// The world's script list as its server answers it (store.coax writes it): with a compiler or without, keeping the starter's build (with its source) or nothing.
+ess_list :: (k: [] EssTest, world: string, compiler: bool, kept: bool, off: bool) -> string {
+  o := k[0].list[..];
+  n := ss_list_begin(o, world, ss_limits(compiler));
+  if kept { n = ss_list_add(o, n, ESS_MF, off, ifx off then "it ran away with the mine" else "", true, true); }
+  n = ss_list_end(o, n);
+  return cast(string) o[0..<n];
+}
+// A script refusal as the server writes it.
+ess_no :: (k: [] EssTest, code: int, words: string, limit: int, left_ms: int) -> string {
+  none: [1] SsAsk;
+  return ss_refusal_write(code, words, "", -1, limit, left_ms, none[0..<0], k[0].no[..]);
+}
+// A publish refused because scripts would do more: the starter's build grows by a handler, a power and two calls, and (two: true) a second script is new.
+ess_grows :: (k: [] EssTest, two: bool) -> string {
+  asks: [2] SsAsk;
+  asks[0].name_n = ct_copy(asks[0].name[..], "my-raider"); for c, i: ESS_HASH { asks[0].hash[i] = c; }
+  asks[0].grows = ScriptGrowth.{handlers = 1 << RH_HIT, powers = 4, calls = (1 << SA_STRIKE) | (1 << SA_EMIT)};
+  asks[1].name_n = ct_copy(asks[1].name[..], "scout"); for c, i: ESS_OLD { asks[1].hash[i] = c; } asks[1].fresh = true;
+  asks[1].grows = ScriptGrowth.{handlers = 1 << RH_TICK, powers = 3, calls = (1 << SA_X) | (1 << SA_MOVE)};
+  if !two { asks[0].fresh = true; asks[0].grows = ScriptGrowth.{handlers = 1 << RH_TICK, powers = 1, calls = 0}; }
+  return ss_refusal_write(SSC_GROWS, "these scripts are new or do more than the live ones: confirm each by its hash", "", -1, 0, 0, asks[0..<(ifx two then 2 else 1)], k[0].no[..]);
+}
+// The fixture world with its actors, the kinds a script may drive, and `rows` script rows: 1 the
+// starter's build for the raiders; 2 an older build for them; 3 the starter's for one robot too.
+ess_model :: (k: [] EssTest, rev: int, rows: int, refused: string) {
+  h := k[0].h[..]; s := h[0].s[..]; out := h[0].text[..];
+  cols: [WE_COLS] bool; cols[WEC_X] = true;
+  n := em_begin(out, "splice", 0, rev, 0, 0, 0);
+  n = em_cols(out, n, cols[..]);
+  n = em_kind(out, n, 1001, "Cargo crate");
+  n = em_actor(out, n, 1, "Raider 1");
+  n = em_actor(out, n, 6, "Imperial 1");
+  n = em_scripts(out, n, "scripts");
+  n = em_script_kind(out, n, 1, "Raiders");
+  n = em_script_kind(out, n, 2, "Imperial robots");
+  if rows == 1 || rows == 3 { n = em_script(out, n, 1, "my-raider", ESS_HASH, "kind 1"); }
+  if rows == 2 { n = em_script(out, n, 1, "splice-raider", ESS_OLD, "kind 1"); }
+  if rows == 3 { n = em_script(out, n, 2, "my-raider", ESS_HASH, "who 6"); }
+  if rows == 8 { for id: 1..<9 { target: [8] u8; j := ct_put(target[..], 0, "kind "); j = ct_put_int(target[..], j, id + 10); n = em_script(out, n, id, "filler", ESS_OLD, cast(string) target[0..<j]); } }
+  if refused.count > 0 { n = em_no(out, n, refused); }
+  for i: 0..<n { s[0].inbox[i] = out[i]; }
+  coaxial_editor_event(s, ES_MODEL, 0, n);
+}
+ess_sent :: (k: [] EssTest, status: int, body: string) {
+  h := k[0].h[..]; s := h[0].s[..];
+  for c, i: body { s[0].inbox[i] = c; }
+  coaxial_editor_fetched(s);
+  coaxial_editor_event(s, ES_SENT, status, body.count);
+  es_test_frames(h, 1);
+}
+ess_url :: (s: [] EdShell) -> string { return cast(string) s[0].as_url[0..<s[0].as_url_n]; }
+ess_head :: (s: [] EdShell) -> string { return cast(string) s[0].as_head[0..<s[0].as_head_n]; }
+ess_text :: (k: [] EssTest, id: string) -> string { t := k[0].h[0].s[0].tree[..]; i := tr_find(t, id); return ifx i < 0 then "" else tr_text_of(t, i); }
+ess_has :: (k: [] EssTest, id: string) -> bool { return tr_find(k[0].h[0].s[0].tree[..], id) > 0; }
+ess_press :: (k: [] EssTest, id: string) { es_test_press(k[0].h[..], id); }
+ess_type :: (k: [] EssTest, id: string, text: string) {
+  s := k[0].h[0].s[..];
+  for c, i: text { s[0].inbox[i] = c; }
+  coaxial_editor_event(s, ES_INPUT, dm_find(s[0].dom[..], id), text.count);
+  es_test_frames(k[0].h[..], 1);
+}
+// The waiting action when it is the host's word on the status ("" otherwise); it is taken.
+ess_watch :: (k: [] EssTest) -> string {
+  s := k[0].h[0].s[..]; o := k[0].words[..];
+  if coaxial_editor_act_kind(s) != ES_WATCH { return ""; }
+  n := coaxial_editor_act_len(s);
+  for i: 0..<n { o[i] = s[0].acts[0][i]; }
+  coaxial_editor_act_done(s);
+  return cast(string) o[0..<n];
+}
+// The shell with a world whose server has no assets and no attachments and answers its script list.
+ess_have :: (k: [] EssTest, rows: int, list: string) {
+  h := k[0].h[..]; s := h[0].s[..];
+  ess_model(k, 7, rows, "");
+  coaxial_editor_fetched(s); coaxial_editor_event(s, ES_SENT, 404, 0);   // the assets' list: none
+  coaxial_editor_fetched(s); coaxial_editor_event(s, ES_SENT, 404, 0);   // the attachments' list: none
+  ess_sent(k, 200, list);
+}
+// And the pane open: the list is asked for again as it opens, and the host is told the status is wanted.
+ess_open :: (k: [] EssTest, rows: int, list: string) {
+  ess_have(k, rows, list);
+  ess_press(k, "scripts");
+  ess_sent(k, 200, list);
+  _ := ess_watch(k);
+}
+// A cell edit that waits for the page, as the batch it is: whether it is one edit of the scripts table's row `id`, whole, with this text.
+ess_row_is :: (k: [] EssTest, rev: int, id: int, text: string) -> bool {
+  h := k[0].h[..];
+  if es_test_batch(h, rev) != WB_APPLY { return false; }
+  e := h[0].edits[0];
+  return e.op == WE_CELL && e.id == id && we_table_is(e, "scripts") && we_name_is(e, "*") && we_text_is(e, text);
+}
+ESS_STATUS :: "{\"schema\":\"world.script-status.v1\",\"ticks\":90,\"call_fuel\":20000,\"tick_fuel\":400000,\"tick_left\":398000,\"scripts\":[{\"at\":0,\"name\":\"my-raider\",\"hash\":\"eccf9c327c67229178fd52833fcba669fc8d58c6e7964d334e20b037638772c6\",\"off\":false,\"things\":5,\"calls\":1450,\"failures\":0,\"spent\":120000,\"peak\":5000,\"last\":\"\",\"handler\":\"\",\"line\":0,\"status\":\"\"}]}";
+ESS_FAILED :: "{\"schema\":\"world.script-status.v1\",\"ticks\":99,\"call_fuel\":20000,\"tick_fuel\":400000,\"tick_left\":1,\"scripts\":[{\"at\":0,\"name\":\"my-raider\",\"hash\":\"eccf9c327c67229178fd52833fcba669fc8d58c6e7964d334e20b037638772c6\",\"off\":true,\"things\":5,\"calls\":1453,\"failures\":3,\"spent\":180000,\"peak\":20000,\"last\":\"engine.diagnostic.script-over-budget.v1\",\"handler\":\"on_tick\",\"line\":14,\"status\":\"\"}]}";
+ess_status :: (k: [] EssTest, text: string) {
+  s := k[0].h[0].s[..];
+  for c, i: text { s[0].inbox[i] = c; }
+  coaxial_editor_event(s, ES_STATUS, 0, text.count);
+  es_test_frames(k[0].h[..], 1);
+}
+
+#test "scripts are there only where the world's server lists them: asked once the other lists are in, and a server that answers no list is asked nothing more" {
+  k: [1] EssTest; h := k[0].h[..]; s := h[0].s[..];
+  ess_model(k[..], 7, 0, "");
+  coaxial_editor_fetched(s); coaxial_editor_event(s, ES_SENT, 404, 0);
+  coaxial_editor_fetched(s); coaxial_editor_event(s, ES_SENT, 404, 0);
+  #assert s[0].sc.flight == ES_SC_LIST && coaxial_editor_fetching(s) == ES_HOW_GET && ess_url(s) == "/api/worlds/splice/scripts" && s[0].as_head_n == 0;
+  // a server with no such route, an answer that is not a list, another world's list: no scripts here
+  ess_sent(k[..], 404, "{\"error\":\"no such route\"}");
+  #assert !ess_has(k[..], "scripts") && !s[0].sc.have && coaxial_editor_fetching(s) == 0;
+  ess_model(k[..], 8, 0, ""); #assert coaxial_editor_fetching(s) == 0;   // asked once
+  s[0].sc.flight = ES_SC_LIST; ess_sent(k[..], 200, "{\"schema\":\"world.scripts.v1\",\"world\":\"splice\",\"scripts\":[]}"); #assert !ess_has(k[..], "scripts");
+  s[0].sc.flight = ES_SC_LIST; ess_sent(k[..], 200, ess_list(k[..], "other", true, false, false)); #assert !ess_has(k[..], "scripts") && coaxial_editor_fetching(s) == 0;
+  // with no list a publish is the page's to send, as before, and no press reaches the pane
+  es_test_press(h, "publish");
+  #assert es_test_batch(h, 8) == WB_PUBLISH_NOW && coaxial_editor_fetching(s) == 0 && !es_sc_click(s, "scripts") && !s[0].scripts;
+  coaxial_editor_act_done(s);
+  // this world's list: the button
+  s[0].sc.flight = ES_SC_LIST; ess_sent(k[..], 200, ess_list(k[..], "splice", true, false, false));
+  #assert s[0].sc.have && ess_text(k[..], "scripts.l") == "Scripts" && !ess_has(k[..], "scripts.pane") && s[0].sc.lim.scripts == 8 && s[0].sc.lim.compiler == 1 && s[0].sc.nst == 0;
+}
+
+#test "the pane says plans come first, states every limit before anything is built, and starts the field with a script that works; opened, the host is asked for the status, and shut, told it is not wanted" {
+  k: [1] EssTest; h := k[0].h[..]; s := h[0].s[..]; t := s[0].tree[..];
+  ess_have(k[..], 0, ess_list(k[..], "splice", true, false, false));
+  ess_press(k[..], "scripts");
+  #assert s[0].scripts && s[0].sc.flight == ES_SC_LIST && ess_watch(k[..]) == "scripts on";   // the list as it is now
+  ess_sent(k[..], 200, ess_list(k[..], "splice", true, false, false));
+  #assert ess_text(k[..], "scripts.l") == "Hide scripts" && ess_text(k[..], "scripts.pane.h") == "Scripts" && !ess_has(k[..], "one");
+  #assert ess_text(k[..], "scripts.plan") == "A plan says where someone walks, how far they see and what they do on seeing you, by time of day. A script is for what a plan cannot say." && ess_text(k[..], "scripts.plans") == "Set plans in the Actors list";
+  #assert ess_text(k[..], "scripts.lim.n.v") == "0 of 8 run in this world" && ess_text(k[..], "scripts.lim.size.v") == "64 KB built, 64 KB of source at most";
+  #assert ess_text(k[..], "scripts.lim.call.v") == "20,000 instructions at most; past that the call is undone" && ess_text(k[..], "scripts.lim.tick.v") == "400,000 instructions for all of a world's scripts";
+  #assert ess_text(k[..], "scripts.lim.state.v") == "256 bytes kept for each thing it drives" && ess_text(k[..], "scripts.lim.off.v") == "Switched off after 3 failed calls in a row" && ess_text(k[..], "scripts.lim.builds.v") == "100 a day";
+  #assert !ess_has(k[..], "scripts.lim.reports") && ess_text(k[..], "scripts.none") == "No script runs here. Everyone walks their plan.";
+  // the script being written: a name, whom it drives, the one rule of a source, the starter, Build and no Run yet
+  starter := ESC_STARTER;
+  #assert es_sc_name(s) == "my-raider" && ess_text(k[..], "sfor.l") == "Raiders" && ess_text(k[..], "scripts.rule") == "A script is one file. It may load only api.coax, the calls a script can make.";
+  #assert s[0].sc.src_n > 1500 && cast(string) s[0].sc.src[0..<starter[0].count] == starter[0] && !s[0].sc.fill && tr_attr_of(t, tr_find(t, "scripts.text"), AT_LANG) == "coax";
+  #assert ess_text(k[..], "scripts.build.l") == "Build" && !tr_has(t, tr_find(t, "scripts.build"), AT_DISABLED) && !ess_has(k[..], "scripts.run") && !ess_has(k[..], "scripts.built") && !ess_has(k[..], "scripts.nocompiler");
+  // whom: the realm's kinds, then its actors by their names
+  ess_press(k[..], "sfor");
+  #assert s[0].open == ES_OPEN_SFOR && ess_text(k[..], "sfor.2.t") == "Imperial robots" && ess_text(k[..], "sfor.1006.t") == "Imperial 1" && ess_text(k[..], "sfor.1006.m") == "This one alone" && tr_has(t, tr_find(t, "sfor.1"), AT_CURRENT);
+  ess_press(k[..], "sfor.1006");
+  #assert s[0].open == ES_OPEN_NONE && ess_text(k[..], "sfor.l") == "Imperial 1" && !s[0].sc.by_kind && s[0].sc.who == 6;
+  // every class in the pane is the skin's
+  sheet := cast(string) s[0].css[0..<mono_dock_css(s[0].css[..], mono_css(s[0].css[..]))];
+  seen := 0;
+  for i: 0..<t[0].n {
+    cls := tr_class(t, i);
+    for c: 0..<ct_parts(cls, ' ') {
+      word := ct_part(cls, ' ', c);
+      if word.count == 0 { continue; }
+      bare := ES_TEST_BARE;
+      #assert es_test_styled(sheet, word) || word == bare[0] || word == bare[1];
+      seen += 1;
+    }
+  }
+  #assert seen > 60 && es_test_styled(sheet, "code-in");
+  // the way to the Actors list shuts the pane; the host is told the status is no longer wanted
+  ess_press(k[..], "scripts.plans");
+  #assert !s[0].scripts && ess_has(k[..], "one") && ess_watch(k[..]) == "scripts off" && ess_text(k[..], "scripts.l") == "Scripts";
+  // another pane opened after it takes its place
+  ess_press(k[..], "scripts"); _ := ess_watch(k[..]);
+  s[0].as_have = true; s[0].assets = true; coaxial_editor_event(s, ES_STATUS, 0, 0);
+  #assert !s[0].scripts && ess_watch(k[..]) == "scripts off";
+}
+
+#test "a server that compiles no source: no Build button, and the pane says so" {
+  k: [1] EssTest; s := k[0].h[0].s[..];
+  ess_open(k[..], 0, ess_list(k[..], "splice", false, false, false));
+  #assert s[0].sc.lim.compiler == 0 && !ess_has(k[..], "scripts.build") && !ess_has(k[..], "scripts.run") && !ess_has(k[..], "scripts.lim.builds") && ess_text(k[..], "scripts.nocompiler") == "Compiling is not available on this server.";
+  es_sc_build(s);
+  #assert coaxial_editor_fetching(s) == 0 && s[0].sc.flight == ES_SC_NONE;
+}
+
+#test "Build sends the source to the compile job under the name typed; the answer is what the script is, read from its build, or the refusal's words" {
+  k: [1] EssTest; h := k[0].h[..]; s := h[0].s[..]; t := s[0].tree[..];
+  ess_open(k[..], 0, ess_list(k[..], "splice", true, false, false));
+  ess_press(k[..], "scripts.build");
+  #assert s[0].sc.flight == ES_SC_BUILD && coaxial_editor_fetching(s) == ES_HOW_POST && ess_url(s) == "/api/worlds/splice/scripts/compile?name=my-raider" && coaxial_editor_source(s) == s[0].sc.src_n && s[0].as_head_n == 0;
+  #assert ess_text(k[..], "scripts.state") == "Building" && tr_has(t, tr_find(t, "scripts.build"), AT_DISABLED);
+  ess_sent(k[..], 200, ESS_MF);
+  #assert s[0].sc.built && s[0].sc.flight == ES_SC_LIST;   // the server keeps the build now: its list is asked for again
+  ess_sent(k[..], 200, ess_list(k[..], "splice", true, true, false));
+  #assert s[0].sc.nst == 1 && ess_text(k[..], "scripts.built.h") == "my-raider" && ess_text(k[..], "scripts.run.l") == "Run it" && tr_has(t, tr_find(t, "scripts.build"), AT_DISABLED);
+  #assert ess_text(k[..], "scripts.built.may") == "It acts every tick, when it is hit. It may read the world around it; move and change its own thing; ask the engine to strike, speak or raise an event; stop a call of its own that fails a check.";
+  #assert ess_text(k[..], "scripts.built.calls.v") == "sa_x, sa_z, sa_speed, sa_var, sa_goal_x, sa_goal_z, sa_goal_speed, sa_notice, sa_plan_on, sa_distance, sa_world, sa_move, sa_set_var, sa_strike, sa_emit";
+  #assert ess_text(k[..], "scripts.built.size.v") == "1,298 of 65,536 bytes" && tr_attr_of(t, tr_find(t, "scripts.built.size.f"), AT_VARS) == "--p:0.020" && ess_text(k[..], "scripts.built.state.v") == "4 of 256 bytes for each thing";
+  // a change to the source is a change to what would be built: Run goes, Build comes back
+  ess_type(k[..], "scripts.text", "#script \"my-raider\";\n#load \"api.coax\";\n");
+  #assert !ess_has(k[..], "scripts.run") && !ess_has(k[..], "scripts.built") && !tr_has(t, tr_find(t, "scripts.build"), AT_DISABLED) && s[0].sc.src_n == 39;
+  // the compiler's words, as it wrote them, with the line it named
+  ess_press(k[..], "scripts.build");
+  ess_sent(k[..], 422, ess_no(k[..], SSC_SOURCE, "script.coax:3:1: error: a script has at least one handler", 0, 0));
+  #assert es_sc_line("my-raider.coax:14:3: error[E0303]: 'd' is already declared") == 14 && es_sc_line("the compile job ran past its time limit") == 0 && es_sc_line("a.coax:x") == 0;
+  #assert !s[0].sc.built && ess_text(k[..], "scripts.said.k") == "Not built" && ess_text(k[..], "scripts.said.t") == "The compiler refused the source at line 3. Nothing changed: what ran before still runs.";
+  #assert ess_text(k[..], "scripts.errors.pre") == "script.coax:3:1: error: a script has at least one handler";
+  ess_press(k[..], "scripts.errors.copy");
+  #assert coaxial_editor_clip_len(s) == 57;
+  // the words stay while the source is mended; any other refusal is said in the server's words
+  ess_type(k[..], "scripts.text", "x");
+  #assert ess_text(k[..], "scripts.said.k") == "Not built";
+  ess_press(k[..], "scripts.build");
+  ess_sent(k[..], 429, ess_no(k[..], SSC_RATE, "This world has built 100 scripts today, which is the most in a day. Try again in 3 hours.", 100, 10800000));
+  #assert ess_text(k[..], "scripts.said.k") == "Not done" && ess_text(k[..], "scripts.said.t") == "This world has built 100 scripts today, which is the most in a day. Try again in 3 hours." && !ess_has(k[..], "scripts.errors");
+  ess_press(k[..], "scripts.build");
+  ess_sent(k[..], 0, "");
+  #assert ess_text(k[..], "scripts.said.t") == "That did not build: the world's server did not answer.";
+  // a name that is not one, and a source past the limit, never leave the browser
+  ess_type(k[..], "scripts.name", "My Raider");
+  ess_press(k[..], "scripts.build");
+  #assert coaxial_editor_fetching(s) == 0 && ess_text(k[..], "scripts.said.t") == ESC_NAME_RULE;
+  ess_type(k[..], "scripts.name", " scout-2 ");
+  coaxial_editor_event(s, ES_INPUT, dm_find(s[0].dom[..], "scripts.text"), ESC_SOURCE + 1);
+  ess_press(k[..], "scripts.build");
+  #assert coaxial_editor_fetching(s) == 0 && ess_text(k[..], "scripts.said.t") == "The source is longer than a script's may be: 64 KB at most.";
+  ess_type(k[..], "scripts.text", "x");
+  ess_press(k[..], "scripts.build");
+  #assert ess_url(s) == "/api/worlds/splice/scripts/compile?name=scout-2";
+}
+
+#test "Run it writes the built script's row as one cell edit: a new place for new ones, the same place to swap; Stop takes the row away; a full world says so" {
+  k: [1] EssTest; h := k[0].h[..]; s := h[0].s[..];
+  ess_open(k[..], 0, ess_list(k[..], "splice", true, false, false));
+  ess_press(k[..], "scripts.build"); ess_sent(k[..], 200, ESS_MF); ess_sent(k[..], 200, ess_list(k[..], "splice", true, true, false));
+  ess_press(k[..], "scripts.run");
+  #assert ess_row_is(k[..], 7, 1, "1|my-raider|eccf9c327c67229178fd52833fcba669fc8d58c6e7964d334e20b037638772c6|kind 1") && s[0].nacts == 1;
+  coaxial_editor_act_done(s);
+  // the world takes it: the row is in the next model, with whom it drives in the realm's words
+  ess_model(k[..], 8, 1, ""); es_test_frames(h, 1);
+  #assert ess_text(k[..], "script.1.t") == "my-raider" && ess_text(k[..], "script.1.m") == "Drives Raiders" && ess_text(k[..], "scripts.lim.n.v") == "1 of 8 run in this world" && ess_text(k[..], "sopen.1") == "Open" && ess_text(k[..], "sstop.1") == "Stop";
+  // the same build for the same ones changes nothing, and says so; for one robot alone it takes the next place
+  ess_press(k[..], "scripts.run");
+  #assert s[0].nacts == 0 && ess_text(k[..], "scripts.said.t") == "That build already runs for them. Change the source and build again to swap it.";
+  ess_press(k[..], "sfor"); ess_press(k[..], "sfor.1006"); ess_press(k[..], "scripts.run");
+  #assert ess_row_is(k[..], 8, 2, "2|my-raider|eccf9c327c67229178fd52833fcba669fc8d58c6e7964d334e20b037638772c6|who 6");
+  coaxial_editor_act_done(s);
+  // over an older build for the same ones: the same row, so the page swaps the module and the things keep their state
+  ess_model(k[..], 9, 2, ""); es_test_frames(h, 1);
+  #assert ess_text(k[..], "script.1.t") == "splice-raider" && !ess_has(k[..], "sopen.1");   // the server keeps no source of that one
+  ess_press(k[..], "sfor"); ess_press(k[..], "sfor.1"); ess_press(k[..], "scripts.run");
+  #assert ess_row_is(k[..], 9, 1, "1|my-raider|eccf9c327c67229178fd52833fcba669fc8d58c6e7964d334e20b037638772c6|kind 1");
+  coaxial_editor_act_done(s);
+  // Stop: the row with no text
+  ess_press(k[..], "sstop.1");
+  #assert ess_row_is(k[..], 9, 1, "");
+  coaxial_editor_act_done(s);
+  // a world that runs as many as it may
+  ess_model(k[..], 10, 8, ""); es_test_frames(h, 1);
+  ess_press(k[..], "scripts.run");
+  #assert s[0].nacts == 0 && ess_text(k[..], "scripts.said.t") == "This world runs 8 scripts at most. Stop one first." && ess_text(k[..], "script.8.m") == "Drives Kind 18";
+  // what the world refuses is said where every refusal is
+  ess_model(k[..], 10, 1, "script 1: the world's server keeps no script of that hash"); es_test_frames(h, 1);
+  #assert ess_text(k[..], "refused.t") == "script 1: the world's server keeps no script of that hash";
+}
+
+#test "the page's status shows what each script spends: the costliest call against the call budget, calls and failed calls, a switched-off script and its last failure in words" {
+  k: [1] EssTest; h := k[0].h[..]; s := h[0].s[..]; t := s[0].tree[..];
+  ess_open(k[..], 1, ess_list(k[..], "splice", true, true, false));
+  #assert ess_text(k[..], "script.1.m") == "Drives Raiders" && !ess_has(k[..], "speak.1");   // no status yet: nothing is claimed
+  ess_status(k[..], ESS_STATUS);
+  #assert ess_text(k[..], "script.1.m") == "Drives Raiders · Running" && ess_text(k[..], "speak.1.n") == "Costliest call" && ess_text(k[..], "speak.1.v") == "5,000 of 20,000" && tr_attr_of(t, tr_find(t, "speak.1.f"), AT_VARS) == "--p:0.250";
+  #assert ess_text(k[..], "scalls.1.v") == "1,450, 0 failed, for 5 things" && !ess_has(k[..], "slast.1");
+  ess_status(k[..], ESS_FAILED);
+  #assert ess_text(k[..], "script.1.m") == "Drives Raiders · Switched off" && tr_attr_of(t, tr_find(t, "speak.1.f"), AT_VARS) == "--p:1" && ess_text(k[..], "scalls.1.v") == "1,453, 3 failed, for 5 things";
+  #assert ess_text(k[..], "slast.1") == "Last failure in on_tick, line 14. A handler call spent its instruction budget. The call was undone. Do less in one call, or spread the work over ticks.";
+  // a row the page runs another module for (the new one is on its way, or was refused), and a page with no script module
+  ess_model(k[..], 8, 2, ""); es_test_frames(h, 1);
+  #assert ess_text(k[..], "script.1.m") == "Drives Raiders · Not running" && !ess_has(k[..], "speak.1");
+  ess_status(k[..], "");
+  #assert ess_text(k[..], "script.1.m") == "Drives Raiders" && !s[0].sc.status_have;
+  // a script the world's server switched off, and why
+  ess_model(k[..], 9, 1, "");
+  s[0].sc.flight = ES_SC_LIST; ess_sent(k[..], 200, ess_list(k[..], "splice", true, true, true));
+  #assert ess_text(k[..], "script.1.m") == "Drives Raiders · Switched off" && ess_text(k[..], "swhy.1") == "The world's server switched it off: it ran away with the mine";
+}
+
+#test "Open loads a kept script's source back into the field with its name and whom it drives; a field that was typed in is not replaced by one press" {
+  k: [1] EssTest; h := k[0].h[..]; s := h[0].s[..];
+  ess_open(k[..], 3, ess_list(k[..], "splice", true, true, false));
+  ess_press(k[..], "sopen.2");
+  #assert s[0].sc.flight == ES_SC_OPEN && coaxial_editor_fetching(s) == ES_HOW_GET && ess_url(s) == "/api/worlds/splice/scripts/eccf9c327c67229178fd52833fcba669fc8d58c6e7964d334e20b037638772c6/source";
+  ess_sent(k[..], 200, "#script \"my-raider\";\n");
+  #assert s[0].sc.src_n == 21 && cast(string) s[0].sc.src[0..<21] == "#script \"my-raider\";\n" && es_sc_name(s) == "my-raider" && ess_text(k[..], "sfor.l") == "Imperial 1" && !s[0].sc.fill;
+  ess_type(k[..], "scripts.text", "#script \"mine\";\n");
+  ess_press(k[..], "sopen.1");
+  #assert coaxial_editor_fetching(s) == 0 && ess_text(k[..], "scripts.said.t") == "The field holds changes. Press Open again to replace them with this script's source.";
+  ess_press(k[..], "sopen.1");
+  #assert s[0].sc.flight == ES_SC_OPEN;
+  ess_sent(k[..], 404, "");
+  #assert ess_text(k[..], "scripts.said.t") == "That script's source did not open." && s[0].sc.src_n == 16;
+}
+
+#test "a publish of a world that runs scripts is the shell's to send; refused because a script would do more, the pane says what each adds and Publish with these sends it again with the yes" {
+  k: [1] EssTest; h := k[0].h[..]; s := h[0].s[..]; t := s[0].tree[..];
+  ess_have(k[..], 1, ess_list(k[..], "splice", true, true, false));
+  es_test_press(h, "publish");
+  #assert s[0].nacts == 0 && s[0].sc.flight == ES_SC_PUBLISH && coaxial_editor_fetching(s) == ES_HOW_SAY && ess_url(s) == "/api/worlds/splice";
+  #assert ess_head(s) == "{\"schema\":\"world.edit.v1\",\"rev\":7,\"do\":\"publish-now\",\"edits\":[]}";
+  ess_sent(k[..], 409, ess_grows(k[..], true));
+  // the question is the pane's: it opens, with what each script adds, in words
+  #assert s[0].scripts && s[0].sc.asks == 2 && ess_text(k[..], "scripts.grows.h") == "Publishing lets scripts do more" && !ess_has(k[..], "said");
+  #assert ess_text(k[..], "scripts.grow.0") == "my-raider would do more than the live one. It acts when it is hit. It may ask the engine to strike, speak or raise an event. New calls: sa_strike, sa_emit.";
+  #assert ess_text(k[..], "scripts.grow.1") == "scout is new to the live world. It acts every tick. It may read the world around it; move and change its own thing. New calls: sa_x, sa_move.";
+  #assert ess_text(k[..], "scripts.confirm.l") == "Publish with these" && ess_text(k[..], "scripts.leave") == "Not now";
+  _ := ess_watch(k[..]);
+  ess_press(k[..], "scripts.confirm");
+  #assert s[0].sc.flight == ES_SC_PUBLISH && coaxial_editor_fetching(s) == ES_HOW_SAY && ess_head(s) == "{\"schema\":\"world.edit.v1\",\"rev\":7,\"do\":\"publish-now\",\"edits\":[]}";
+  #assert ess_url(s) == "/api/worlds/splice?confirm=eccf9c327c67229178fd52833fcba669fc8d58c6e7964d334e20b037638772c6,528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5";
+  ess_sent(k[..], 200, "{\"schema\":\"world.state.v1\",\"id\":\"splice\"}");
+  #assert s[0].sc.asks == 0 && !ess_has(k[..], "scripts.grows") && ess_text(k[..], "scripts.said.k") == "Done" && ess_text(k[..], "scripts.said.t") == "Published. People in the world see it now.";
+  // Not now leaves the live world as it is; the choice of when is kept in what is sent
+  es_test_press(h, "when"); es_test_press(h, "when.1"); es_test_press(h, "publish");
+  #assert ess_head(s) == "{\"schema\":\"world.edit.v1\",\"rev\":7,\"do\":\"publish-next\",\"edits\":[]}";
+  ess_sent(k[..], 409, ess_grows(k[..], false));
+  #assert s[0].sc.asks == 1 && ess_text(k[..], "scripts.grow.0") == "my-raider is new to the live world. It acts every tick. It may read the world around it.";
+  ess_press(k[..], "scripts.leave");
+  #assert s[0].sc.asks == 0 && !ess_has(k[..], "scripts.grows") && coaxial_editor_fetching(s) == 0;
+  // any other refusal of a publish is said where every refusal is
+  es_test_press(h, "publish");
+  ess_sent(k[..], 409, "{\"error\":\"the world changed: this was made from revision 7 and it is at 9\"}");
+  #assert ess_text(k[..], "said.t") == "the world changed: this was made from revision 7 and it is at 9" && s[0].sc.asks == 0;
+  es_test_press(h, "publish");
+  ess_sent(k[..], 0, "");
+  #assert ess_text(k[..], "said.t") == "That did not publish: the world's server did not answer.";
+  // every class of the question is the skin's
+  sheet := cast(string) s[0].css[0..<mono_dock_css(s[0].css[..], mono_css(s[0].css[..]))];
+  for i: 0..<t[0].n {
+    cls := tr_class(t, i);
+    for c: 0..<ct_parts(cls, ' ') { word := ct_part(cls, ' ', c); bare := ES_TEST_BARE; #assert word.count == 0 || es_test_styled(sheet, word) || word == bare[0] || word == bare[1]; }
+  }
+}
+
+#test "Report is there only for someone logged in: a short reason goes to the report route, and the answer or the refusal is said" {
+  k: [1] EssTest; h := k[0].h[..]; s := h[0].s[..]; t := s[0].tree[..];
+  ess_open(k[..], 1, ess_list(k[..], "splice", true, true, false));
+  #assert !ess_has(k[..], "sreport.1") && !ess_has(k[..], "scripts.lim.reports") && !es_sc_click(s, "sreport.1");
+  coaxial_editor_event(s, ES_VIEWER, 0, 0); es_test_frames(h, 1);
+  #assert ess_text(k[..], "sreport.1") == "Report" && ess_text(k[..], "scripts.lim.reports.v") == "20 a day" && !ess_has(k[..], "scripts.reason");
+  ess_press(k[..], "sreport.1");
+  #assert ess_has(k[..], "scripts.reason") && tr_has(t, tr_find(t, "scripts.report.send"), AT_DISABLED);
+  ess_press(k[..], "scripts.report.send");
+  #assert coaxial_editor_fetching(s) == 0;
+  ess_type(k[..], "scripts.reason", " It strikes through walls. ");
+  #assert !tr_has(t, tr_find(t, "scripts.report.send"), AT_DISABLED);
+  ess_press(k[..], "scripts.report.send");
+  #assert s[0].sc.flight == ES_SC_REPORT && coaxial_editor_fetching(s) == ES_HOW_SAY && ess_url(s) == "/api/worlds/splice/scripts/eccf9c327c67229178fd52833fcba669fc8d58c6e7964d334e20b037638772c6/report";
+  #assert ess_head(s) == "It strikes through walls.";
+  // a reason is plain letters: a quote in it is not one, and nothing goes
+  ess_sent(k[..], 200, "{\"schema\":\"world.script.done.v1\"}"); ess_press(k[..], "sreport.1");
+  ess_type(k[..], "scripts.reason", "It says \"die\"");
+  #assert tr_has(t, tr_find(t, "scripts.report.send"), AT_DISABLED);
+  ess_type(k[..], "scripts.reason", "It strikes through walls.");
+  ess_press(k[..], "scripts.report.send");
+  ess_sent(k[..], 429, ess_no(k[..], SSC_RATE, "You have sent 20 reports today, which is the most in a day.", 20, 3600000));
+  #assert ess_text(k[..], "scripts.said.t") == "You have sent 20 reports today, which is the most in a day." && ess_has(k[..], "scripts.reason");
+  ess_press(k[..], "scripts.report.send");
+  ess_sent(k[..], 200, "{}");
+  #assert ess_text(k[..], "scripts.said.k") == "Done" && ess_text(k[..], "scripts.said.t") == "Your report is sent." && !ess_has(k[..], "scripts.reason") && s[0].sc.report == 0;
+  ess_press(k[..], "sreport.1"); ess_press(k[..], "scripts.report.leave");
+  #assert !ess_has(k[..], "scripts.reason");
+}

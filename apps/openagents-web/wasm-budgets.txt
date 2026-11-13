@@ -54,7 +54,11 @@ kit 125000
 # npc-plan.coax, and a new DO sent as its whole row with the route fitted): 184,926 bytes measured 2026-11-13 on a Mac; about 5% room.
 # With the Files pane (#13468: world.files.v1 read and written by file-wire.coax, the pane's list, search and edits, and the
 # kit's Markdown renderer for an opened note): 230,046 bytes measured 2026-11-13 on a Mac; about 5% room.
-editor-shell 242000
+# With the Scripts pane (#13467: the pane with its limits, rows, meters and the field; the script store's codec for the world's
+# script list, a manifest and a refusal, each read strictly; the page's script status; the words of every script diagnostic; the
+# API's table for a script's calls by name; and the starter script): 290,589 bytes measured 2026-11-13 on a Mac (the pane and
+# what it reads with are about 55,000 of them); about 5% room.
+editor-shell 305000
 agents 120000
 # Crew, character creation (#13462): the body, the wardrobe and the document (metaverse-engine/kit/crew-*.coax) on the cel lofts and
 # Anime Lab's uniforms: 161,360 bytes measured 2026-11-13 on a Mac release build; about 10% room.

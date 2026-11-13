@@ -1,0 +1,707 @@
+// The editor shell's Scripts pane (GitHub #13467; docs/research/2026-11-13-realm-scripts.md,
+// docs/protocol/realm-script-v1.md): a maker, or an agent driving the editor, writes a realm script,
+// builds it, runs it, swaps it, publishes it and reports one, without touching the realm's code.
+// shell.coax loads this file; the pane is kit components like the rest of the shell, and this file
+// names no colour, face or size.
+//
+// Plan data comes first: the pane says that a plan (the Actors list) decides where someone walks
+// and that a script is for what a plan cannot say, and it states every limit before anything is
+// built. The shell compiles nothing and runs nothing:
+//   - the world's server lists the scripts it keeps and its limits (world.scripts.v1); with no list,
+//     the shell has no Scripts button and asks that server nothing more;
+//   - Build sends the source to the server's compile job, and the answer is what the script is (its
+//     manifest) or a refusal in words;
+//   - Run it writes the script's row (ID|NAME|HASH|FOR, metaverse-engine/script/rows.coax) as a cell
+//     edit through the page's batch path, so undo, the revision fence and the dev and live lanes hold
+//     for a script as for every edit. The page's script module then fetches the module by its hash
+//     and swaps it in; the things it drives keep their state fields. Stop takes the row away;
+//   - the page's host hands the script module's status (world.script-status.v1) to the shell a few
+//     times a second while the pane is open: calls, failed calls, the costliest call against the
+//     call budget, and the last failure in words;
+//   - a publish the server refuses because a script would do more than the live one says what each
+//     script adds, and "Publish with these" sends the same publish with the confirmation.
+// Each ask goes by the host on the shell's one channel to the world's server (shell-assets.coax)
+// and comes back as one event.
+#load "../script/world.coax";   // the status's reader, the limits (frame.coax) and what a diagnostic means
+#load "../script/store.coax";   // what the world's server answers: its script list, a manifest, a refusal (docs/protocol/world-scripts-v1.md)
+
+ES_VIEWER :: 12;       // the host says the viewer is logged in: a report may be sent
+ES_STATUS :: 13;       // the page's script status (world.script-status.v1) in the inbox; none: no script module runs
+ES_WATCH :: 528;       // an action for the page's host, not the page: "scripts on" or "scripts off": whether the status is wanted
+ES_HOW_POST :: 6;      // how an ask goes (coaxial_editor_fetching): a POST of the source in the pane's field, alone
+ES_SC_NONE :: 0; ES_SC_LIST :: 1; ES_SC_BUILD :: 2; ES_SC_OPEN :: 3; ES_SC_REPORT :: 4; ES_SC_PUBLISH :: 5;
+ES_SC_SAID_NONE :: 0; ES_SC_SAID_DONE :: 1; ES_SC_SAID_NO :: 2; ES_SC_SAID_ERRORS :: 3;
+ES_OPEN_SFOR :: 14;
+ESC_SOURCE :: 65536;   // bytes of source the field holds (the server's own limit is in its list)
+ESC_STORED :: 64;      // scripts of a world's store the pane knows
+ESC_WORDS :: 4096;     // bytes of a refusal's or the compiler's words
+ESC_NAMES :: 512;      // bytes of a script's calls, as names
+ESC_ASK :: 640;        // bytes of what one script adds, in words
+ESC_WHY :: 160;        // bytes of a report's reason, and of why a script was switched off
+ESC_WHO :: 1000;       // a choice of whom a script drives: a kind's number, or this and an actor's
+ESC_HANDLER_WORDS :: [RS_HANDLERS] string.["every tick", "when something enters it", "when something leaves it", "when it notices something", "when it is hit", "when it is used", "when one of its timers ends"];
+ESC_POWER_WORDS :: [4] string.["read the world around it", "move and change its own thing", "ask the engine to strike, speak or raise an event", "stop a call of its own that fails a check"];
+ESC_NAME_RULE :: "A script's name is lowercase letters, digits and hyphens, a letter first, 48 at most.";
+ESC_BUSY :: "The last ask of the world's server is still on its way. Try again.";
+
+ESC_STARTER_LINES :: 43;
+ESC_STARTER :: [ESC_STARTER_LINES] string.[
+  "// A raider's reaction, as a script. Its plan (the Actors list) still says where it walks when calm,",
+  "// how far it sees and what it does on seeing someone. This says when it starts, gives up and strikes.",
+  "#script \"my-raider\";",
+  "#load \"api.coax\";",
+  "",
+  "PLAYER :: 1;                 // the player's id",
+  "GIVE_UP :: 15.0f32;          // metres past which a chase or a flight ends",
+  "REACH :: 0.95f32;            // metres within which it strikes",
+  "HEAT_SIGHT :: 0.07f32;       // metres further it sees for each point of heat",
+  "",
+  "Mind :: struct #persisted { hits: s32; }",
+  "",
+  "on_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) {",
+  "  if sa_var(me, 2) > 0.0 { return; }   // staggered: it is held still",
+  "  d := sa_distance(me, PLAYER);",
+  "  safe := sa_world(1) != 0.0; unseen := sa_world(2) != 0.0;",
+  "  hostile := sa_var(me, 0) != 0.0; flee := sa_var(me, 1) != 0.0;",
+  "  see := sa_notice(me);",
+  "  if see > 0.0 && !unseen && !hostile && !flee && !safe && d < see + sa_world(0) * HEAT_SIGHT {",
+  "    on := sa_plan_on(me);   // its plan: 0 chase, 1 call, 2 flee, 3 ignore",
+  "    if on == 2 { flee = true; } else { hostile = true; }",
+  "    if on == 1 { sa_emit(me, 1, 0.0); }   // call the others",
+  "  }",
+  "  if hostile && (safe || d > GIVE_UP || unseen) { hostile = false; }",
+  "  if flee && (d > GIVE_UP || unseen) { flee = false; }",
+  "  sa_set_var(me, 0, ifx hostile then 1.0f32 else 0.0f32);",
+  "  sa_set_var(me, 1, ifx flee then 1.0f32 else 0.0f32);",
+  "  if hostile {",
+  "    sa_move(me, sa_x(PLAYER), sa_z(PLAYER), sa_speed(me));",
+  "    if d < REACH { sa_strike(me, PLAYER); }",
+  "    return;",
+  "  }",
+  "  if flee {",
+  "    x := sa_x(me); z := sa_z(me); k := 6.0 / (ifx d > 0.1 then d else 0.1f32);",
+  "    sa_move(me, x + (x - sa_x(PLAYER)) * k, z + (z - sa_z(PLAYER)) * k, sa_speed(me));",
+  "    return;",
+  "  }",
+  "  sa_move(me, sa_goal_x(me), sa_goal_z(me), sa_goal_speed(me));   // calm: walk the plan",
+  "}",
+  "on_hit :: (me: u64, mind: [] Mind, other: u64, amount: f32) #export_c #effects(reads, writes, traps) {",
+  "  mind[0].hits += 1;",
+  "  sa_set_var(me, 0, 1.0);   // a struck raider fights",
+  "}"];
+
+// A script the world's server keeps, or the one just built: what its manifest says of it.
+EsStored :: struct {
+  name: [EM_SNAME] u8; name_n: int; hash: [64] u8;
+  bytes: int; state: int; handlers: int; powers: int;
+  calls: int;                               // the API calls it makes, a bit a row of the API's table
+  off: bool; source: bool;                  // the server switched it off; the server keeps its source
+  why: [ESC_WHY] u8; why_n: int;            // why it is off
+}
+EsScAsk :: struct { hash: [64] u8; words: [ESC_ASK] u8; words_n: int; }
+EsScFor :: struct { ok: bool; by_kind: bool; n: int; }
+EsScripts :: struct {
+  have: bool; asked: bool;                  // a list came (world.scripts.v1); it was asked for as the world now is
+  flight: int;                              // what the world's server was asked (ES_SC_*)
+  lim: SsLimits;
+  nst: int;
+  // the script being written
+  name: [EM_SNAME] u8; name_n: int;
+  by_kind: bool; who: int = -1;             // whom it drives (-1: not chosen: the realm's first kind)
+  src_n: int; src_edits: int; src_long: bool;
+  started: bool;                            // the field was given the starter
+  fill: bool;                               // the fields are due the name and the source
+  typed: bool; leave: int;                  // the field was typed in since it was last filled; the row whose Open was pressed while it was
+  built: bool; built_edits: int;            // a build came, for the source as it was after that many changes
+  calls_n: int;
+  note: int; words_n: int; at_line: int;    // what the pane says of the last ask (ES_SC_SAID_*), its words, and a source line (0: none)
+  status_have: bool; watching: bool;        // a status came; the host was told one is wanted
+  logged: bool;                             // the viewer is logged in
+  report: int; reason_n: int;               // the row a report is being written for (0: none), and its reason
+  asks: int; pub: int;                      // scripts a refused publish would let do more, and the publish it was
+  opening: int;                             // the row whose source is on its way
+  mf: EsStored;
+  reason: [ESC_WHY] u8;
+  calls: [ESC_NAMES] u8;
+  ask: [SH_SCRIPTS] EsScAsk;
+  status: [1] ScriptStatus;
+  st: [ESC_STORED] EsStored;
+  words: [ESC_WORDS] u8;
+  src: [ESC_SOURCE] u8;
+  nodes: [SS_LIST_NODES] JvNode;
+}
+
+// ---- words
+
+es_sc_say :: (s: [] EdShell, note: int, words: string) {
+  s[0].sc.note = note; s[0].sc.at_line = 0;
+  s[0].sc.words_n = em_copy(s[0].sc.words[..], words);
+}
+// A whole number with a comma between its thousands, into out at `at`.
+es_sc_num :: (out: [] u8, at: int, v: int) -> int {
+  d: [16] u8; k := ct_put_int(d[..], 0, v); n := at;
+  for i: 0..<k {
+    if i > 0 && (k - i) % 3 == 0 && d[i - 1] != '-' { n = ct_put(out, n, ","); }
+    n = ct_put(out, n, cast(string) d[i..<i + 1]);
+  }
+  return n;
+}
+// Whom a row drives, as the row says it ("kind K" or "who N").
+es_sc_for :: (target: string) -> EsScFor {
+  if !em_for_ok(target) { return EsScFor.{}; }
+  kind := target[0] == 'k';
+  return EsScFor.{ok = true, by_kind = kind, n = ct_num(target[(ifx kind then 5 else 4)..<target.count]).v};
+}
+es_sc_for_text :: (f: EsScFor, out: [] u8) -> string {
+  n := ct_put(out, 0, ifx f.by_kind then "kind " else "who "); n = ct_put_int(out, n, f.n);
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+// Whom that is in the realm's words: a kind's name, or an actor's as the Actors list has it.
+es_sc_whom :: (m: [] EdModel, f: EsScFor, out: [] u8) -> string {
+  if f.by_kind {
+    for k: 0..<m[0].nsk { if m[0].sk_id[k] == f.n { kn := m[0].sk_name[k]; return cast(string) out[0..<em_copy(out, cast(string) kn[0..<m[0].sk_name_n[k]])]; } }
+  } else {
+    a := em_actor_at(m, f.n);
+    if a >= 0 { an := m[0].a_name[a]; return cast(string) out[0..<em_copy(out, cast(string) an[0..<m[0].a_name_n[a]])]; }
+  }
+  n := ct_put(out, 0, ifx f.by_kind then "Kind " else "Actor "); n = ct_put_int(out, n, f.n);
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+// Whom the script being written drives: the one chosen, or the realm's first kind, or its first actor.
+es_sc_target :: (s: [] EdShell) -> EsScFor {
+  m := s[0].model[..];
+  if s[0].sc.who >= 0 { return EsScFor.{ok = true, by_kind = s[0].sc.by_kind, n = s[0].sc.who}; }
+  if m[0].nsk > 0 { return EsScFor.{ok = true, by_kind = true, n = m[0].sk_id[0]}; }
+  if m[0].na > 0 { return EsScFor.{ok = true, by_kind = false, n = m[0].a_id[0]}; }
+  return EsScFor.{};
+}
+es_sc_name :: (s: [] EdShell) -> string { return cast(string) s[0].sc.name[0..<s[0].sc.name_n]; }
+es_sc_row_hash :: (m: [] EdModel, k: int) -> string { return cast(string) m[0].s_hash[k][..]; }
+// The script the server keeps under this hash: its place in the list, or -1.
+es_sc_stored :: (s: [] EdShell, hash: string) -> int {
+  for k: 0..<s[0].sc.nst { h := s[0].sc.st[k].hash; if cast(string) h[..] == hash { return k; } }
+  return -1;
+}
+// The page's live word on the model's script row k: its place in the status, or -1 (no status, or
+// the page runs another module there: the row's is still on its way, or was refused).
+es_sc_live :: (s: [] EdShell, k: int) -> int {
+  m := s[0].model[..]; st := s[0].sc.status[..];
+  if !s[0].sc.status_have { return -1; }
+  for i: 0..<st[0].n { h := st[0].rows[i].hash; if st[0].rows[i].at == m[0].s_id[k] - 1 && cast(string) h[..] == es_sc_row_hash(m, k) { return i; } }
+  return -1;
+}
+// What a script may do, from its handlers and powers, into out at `at`: "It acts every tick and when
+// it is hit. It may read the world around it; ...".
+es_sc_may :: (out: [] u8, at: int, handlers: int, powers: int) -> int {
+  hw := ESC_HANDLER_WORDS; pw := ESC_POWER_WORDS; n := at; first := true;
+  for h: 0..<RS_HANDLERS {
+    if (handlers & (1 << h)) == 0 { continue; }
+    n = ct_put(out, n, ifx first then "It acts " else ", "); n = ct_put(out, n, hw[h]); first = false;
+  }
+  if !first { n = ct_put(out, n, ". "); }
+  first = true;
+  for p: 0..<4 {
+    if (powers & (1 << p)) == 0 { continue; }
+    n = ct_put(out, n, ifx first then "It may " else "; "); n = ct_put(out, n, pw[p]); first = false;
+  }
+  if !first { n = ct_put(out, n, "."); }
+  return n;
+}
+
+// ---- what the world's server says (metaverse-engine/script/store.coax is the codec)
+
+es_sc_kept :: (mf: ScriptManifest) -> EsStored {
+  e := EsStored.{name = mf.name, name_n = mf.name_n, hash = mf.hash, bytes = mf.bytes, state = mf.state, handlers = mf.handlers, powers = mf.powers, calls = mf.calls};
+  return e;
+}
+// The API calls of these bits, as "a, b, c" into out from `from` (a script's own trap aside); count[0]: how many.
+es_sc_calls :: (out: [] u8, from: int, bits: int, count: [] int) -> int {
+  n := from; count[0] = 0;
+  for c, r: SCRIPT_API {
+    if r == SA_TRAP || (bits & (1 << r)) == 0 { continue; }
+    if count[0] > 0 { n = ct_put(out, n, ", "); }
+    n = ct_put(out, n, c.name); count[0] += 1;
+  }
+  return n;
+}
+// The list of this world's scripts and its limits. False, and nothing changed, for anything else.
+es_sc_list_read :: (s: [] EdShell, body: string) -> bool {
+  d: [1] Jv; m := s[0].model[..]; w := m[0].world; world: [WE_WORLD + 16] u8; mf: [1] ScriptManifest; why: [SS_WHY] u8;
+  h := ss_list_read(d[..], body, s[0].sc.nodes[..], world[..]);
+  if !h.ok || cast(string) world[0..<h.world_n] != cast(string) w[0..<m[0].world_n] { return false; }
+  s[0].sc.lim = h.limits; s[0].sc.nst = 0;
+  for i: 0..<h.count {
+    if s[0].sc.nst >= ESC_STORED { break; }
+    got := ss_list_entry(d[..], i, mf[..], why[..]);
+    if !got.ok { continue; }
+    e := es_sc_kept(mf[0]);
+    e.off = got.off; e.source = got.source; e.why_n = em_copy(e.why[..], cast(string) why[0..<got.why_n]);
+    s[0].sc.st[s[0].sc.nst] = e; s[0].sc.nst += 1;
+  }
+  return true;
+}
+// A refusal: its words into the pane's words (words_n). True, and r filled, when it is a script
+// refusal (world.script.refusal.v1); else the words of a plain refusal, when it has any.
+es_sc_refusal :: (s: [] EdShell, body: string, r: [] SsRefusal) -> bool {
+  detail: [SS_DETAIL + 32] u8; s[0].sc.words_n = 0;
+  if ss_refusal_read(body, r, s[0].sc.words[..], detail[..], s[0].sc.nodes[..]) { s[0].sc.words_n = r[0].words_n; return true; }
+  plain := we_refusal_read(body, s[0].sc.words[..]);
+  s[0].sc.words_n = ifx plain.ok && plain.words_n > 0 then plain.words_n else 0;
+  return false;
+}
+// The source line the compiler's words name first ("NAME.coax:LINE:COLUMN: ..."), or 0.
+es_sc_line :: (words: string) -> int {
+  mark := ".coax:";
+  for i: 0..<words.count - mark.count {
+    if cast(string) words[i..<i + mark.count] != mark { continue; }
+    v := 0; k := i + mark.count;
+    while k < words.count && words[k] >= '0' && words[k] <= '9' && v < 100000 { v = v * 10 + cast(int) (words[k] - '0'); k += 1; }
+    if v > 0 && k < words.count && words[k] == ':' { return v; }
+  }
+  return 0;
+}
+// The pane says a refusal: the server's words, or `fallback` when it sent none.
+es_sc_refused :: (s: [] EdShell, fallback: string) {
+  if s[0].sc.words_n == 0 { es_sc_say(s, ES_SC_SAID_NO, fallback); return; }
+  s[0].sc.note = ES_SC_SAID_NO; s[0].sc.at_line = 0;
+}
+
+// ---- asks of the world's server
+
+// One ask on the shell's one channel to the world's server (shell-assets.coax): the world's address
+// then `tail`; `head` is what a POST carries (ES_HOW_SAY), and ES_HOW_POST carries the source. False
+// while another ask is out.
+es_sc_go :: (s: [] EdShell, flight: int, tail: string, how: int, head: string) -> bool {
+  m := s[0].model[..];
+  if s[0].as_flight != ES_AS_NONE || s[0].fl.flight != ES_FL_NONE || s[0].sc.flight != ES_SC_NONE || s[0].as_ask || !s[0].have || m[0].world_n == 0 { return false; }
+  if head.count > s[0].as_head.count || !es_as_at(s, tail) { return false; }
+  for c, k: head { s[0].as_head[k] = c; }
+  s[0].as_head_n = head.count;
+  s[0].as_how = how; s[0].sc.flight = flight; s[0].as_ask = true;
+  return true;
+}
+// The source the field starts with: a short script that works.
+es_sc_starter :: (s: [] EdShell) {
+  lines := ESC_STARTER; n := 0;
+  for line: lines { n = ct_put(s[0].sc.src[..], n, line); n = ct_put(s[0].sc.src[..], n, "\n"); }
+  s[0].sc.src_n = ifx n > ESC_SOURCE then 0 else n;
+  s[0].sc.name_n = em_copy(s[0].sc.name[..], "my-raider");
+  s[0].sc.started = true; s[0].sc.fill = true;
+}
+// Each event: the list is asked for once the world is known and again after a build or a row's
+// change; the pane gives way to one opened after it; and the host is told whether the status is wanted.
+es_sc_kick :: (s: [] EdShell) {
+  if s[0].have && !s[0].sc.asked && es_sc_go(s, ES_SC_LIST, "/scripts", ES_HOW_GET, "") { s[0].sc.asked = true; }
+  if s[0].scripts && ((s[0].assets && s[0].as_have) || (s[0].files && s[0].fl.have) || (s[0].code && s[0].nfiles > 0)) { s[0].scripts = false; }
+  want := s[0].scripts && s[0].sc.have;
+  if want != s[0].sc.watching && es_act(s, ES_WATCH, ifx want then "scripts on" else "scripts off") { s[0].sc.watching = want; }
+}
+// The status the host carried from the page's script module; none when no script module runs.
+es_sc_status :: (s: [] EdShell, length: int) {
+  n := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
+  s[0].sc.status_have = n > 0 && sw_status_read(cast(string) s[0].inbox[0..<n], s[0].sc.status[..]);
+}
+// Build: the source goes to the server's compile job under the name typed.
+es_sc_build :: (s: [] EdShell) {
+  l := s[0].sc.lim; tail: [EM_SNAME + 32] u8; line: [120] u8;
+  if l.compiler != 1 { return; }
+  if !em_sname_ok(es_sc_name(s)) { es_sc_say(s, ES_SC_SAID_NO, ESC_NAME_RULE); return; }
+  if s[0].sc.src_n == 0 && !s[0].sc.src_long { es_sc_say(s, ES_SC_SAID_NO, "There is no source to build."); return; }
+  most := ifx l.source_bytes > 0 && l.source_bytes < ESC_SOURCE then l.source_bytes else ESC_SOURCE;
+  if s[0].sc.src_long || s[0].sc.src_n > most {
+    n := ct_put(line[..], 0, "The source is longer than a script's may be: "); n = ct_put_int(line[..], n, pi_kb(most)); n = ct_put(line[..], n, " KB at most.");
+    es_sc_say(s, ES_SC_SAID_NO, cast(string) line[0..<n]);
+    return;
+  }
+  k := ct_put(tail[..], 0, "/scripts/compile?name="); k = ct_put(tail[..], k, es_sc_name(s));
+  if !es_sc_go(s, ES_SC_BUILD, cast(string) tail[0..<k], ES_HOW_POST, "") { es_sc_say(s, ES_SC_SAID_NO, ESC_BUSY); return; }
+  s[0].as_file = false;   // the host's POST lets go of a file that waited for the Assets pane
+  s[0].sc.built = false; s[0].sc.built_edits = s[0].sc.src_edits;
+  es_sc_say(s, ES_SC_SAID_NONE, "");
+}
+// A row's cells as one cell edit of the scripts table: `text` is "ID|NAME|HASH|FOR", or none to take the row away.
+es_sc_row :: (s: [] EdShell, id: int, text: string) -> bool {
+  m := s[0].model[..];
+  if m[0].stable_n == 0 { return false; }
+  e := WorldEdit.{ok = true, op = WE_CELL, id = id};
+  tb := m[0].stable;
+  e.table_n = ct_copy(e.table[..], cast(string) tb[0..<m[0].stable_n]);
+  e.name[0] = '*'; e.name_n = 1;
+  e.text_n = ct_copy(e.text[..], text);
+  es_batch(s, WB_APPLY, e);
+  return s[0].said_n == 0;
+}
+// Run it: the built script's row is written. A row for the same ones is changed (the page swaps the
+// module and the things keep their state); else the script takes the first free place.
+es_sc_run :: (s: [] EdShell) {
+  m := s[0].model[..]; l := s[0].sc.lim; target: [EM_SFOR] u8; row: [EM_SNAME + 96] u8; line: [120] u8;
+  if !s[0].sc.built || s[0].sc.built_edits != s[0].sc.src_edits { return; }
+  tg := es_sc_target(s); mf := s[0].sc.mf;
+  if !tg.ok { return; }
+  whom := es_sc_for_text(tg, target[..]); id := 0;
+  for k: 0..<m[0].ns {
+    sf := m[0].s_for[k];
+    if cast(string) sf[0..<m[0].s_for_n[k]] != whom { continue; }
+    id = m[0].s_id[k];
+    if es_sc_row_hash(m, k) == cast(string) mf.hash[..] { es_sc_say(s, ES_SC_SAID_NO, "That build already runs for them. Change the source and build again to swap it."); return; }
+  }
+  most := ifx l.scripts < EM_SCRIPTS then l.scripts else EM_SCRIPTS;
+  if id == 0 { for c: 1..<most + 1 { if id == 0 && em_script_at(m, c) < 0 { id = c; } } }
+  if id == 0 {
+    n := ct_put(line[..], 0, "This world runs "); n = ct_put_int(line[..], n, most); n = ct_put(line[..], n, " scripts at most. Stop one first.");
+    es_sc_say(s, ES_SC_SAID_NO, cast(string) line[0..<n]);
+    return;
+  }
+  n := ct_put_int(row[..], 0, id); n = ct_put(row[..], n, "|"); n = ct_put(row[..], n, cast(string) mf.name[0..<mf.name_n]); n = ct_put(row[..], n, "|");
+  n = ct_put(row[..], n, cast(string) mf.hash[..]); n = ct_put(row[..], n, "|"); n = ct_put(row[..], n, whom);
+  es_sc_say(s, ES_SC_SAID_NONE, "");
+  _ := es_sc_row(s, id, cast(string) row[0..<n]);
+}
+// Publish, for a world that runs scripts: the shell sends the batch itself, so that a refusal that
+// asks (a script would do more than the live one) can be shown and answered. `confirm`: with the yes
+// for the scripts the last refusal named. False when the publish is the page's to send, as before.
+es_sc_publish :: (s: [] EdShell, what: int, confirm: bool) -> bool {
+  m := s[0].model[..];
+  if !s[0].sc.have || m[0].ns == 0 || m[0].local { return false; }
+  none: [1] WorldEdit; body: [200] u8; tail: [SH_SCRIPTS * 65 + 16] u8; n := 0;
+  text := we_batch_write(m[0].rev, what, none[..], 0, body[..]);
+  if confirm {
+    n = ct_put(tail[..], 0, "?confirm=");
+    for k: 0..<s[0].sc.asks { h := s[0].sc.ask[k].hash; if k > 0 { n = ct_put(tail[..], n, ","); } n = ct_put(tail[..], n, cast(string) h[..]); }
+  }
+  s[0].said_n = 0;
+  if text.count == 0 || !es_sc_go(s, ES_SC_PUBLISH, cast(string) tail[0..<n], ES_HOW_SAY, text) { es_say(s, ESC_BUSY); return true; }
+  s[0].sc.pub = what;
+  return true;
+}
+// What a refused publish asks: each script that would do more, and what it adds, in words.
+es_sc_asks :: (s: [] EdShell, r: [] SsRefusal) {
+  count: [1] int; s[0].sc.asks = 0;
+  for i: 0..<r[0].asks_n {
+    a := r[0].asks[i]; o := s[0].sc.ask[i].words[..];
+    s[0].sc.ask[i].hash = a.hash;
+    n := ct_put(o, 0, cast(string) a.name[0..<a.name_n]);
+    n = ct_put(o, n, ifx a.fresh then " is new to the live world. " else " would do more than the live one. ");
+    n = es_sc_may(o, n, a.grows.handlers, a.grows.powers);
+    at := n;
+    n = ct_put(o, n, " New calls: "); n = es_sc_calls(o, n, a.grows.calls, count[..]); n = ct_put(o, n, ".");
+    if count[0] == 0 { n = at; }
+    s[0].sc.ask[i].words_n = ifx n > ESC_ASK then 0 else n;
+    s[0].sc.asks += 1;
+  }
+}
+// Open: a row's source, as the server keeps it, into the field. A field that was typed in is not
+// replaced by one press.
+es_sc_open :: (s: [] EdShell, row: int) {
+  m := s[0].model[..]; k := em_script_at(m, row); tail: [96] u8;
+  if k < 0 { return; }
+  if s[0].sc.typed && s[0].sc.leave != row {
+    s[0].sc.leave = row;
+    es_sc_say(s, ES_SC_SAID_NO, "The field holds changes. Press Open again to replace them with this script's source.");
+    return;
+  }
+  n := ct_put(tail[..], 0, "/scripts/"); n = ct_put(tail[..], n, es_sc_row_hash(m, k)); n = ct_put(tail[..], n, "/source");
+  if !es_sc_go(s, ES_SC_OPEN, cast(string) tail[0..<n], ES_HOW_GET, "") { es_sc_say(s, ES_SC_SAID_NO, ESC_BUSY); return; }
+  s[0].sc.opening = row;
+  es_sc_say(s, ES_SC_SAID_NONE, "");
+}
+// Send report: the reason typed, for the row's script.
+es_sc_report :: (s: [] EdShell) {
+  m := s[0].model[..]; k := em_script_at(m, s[0].sc.report); tail: [96] u8; body: [ESC_WHY] u8;
+  if k < 0 || !s[0].sc.logged || s[0].sc.reason_n == 0 { return; }
+  why := cast(string) body[0..<em_copy(body[..], cast(string) s[0].sc.reason[0..<s[0].sc.reason_n])];
+  n := ct_put(tail[..], 0, "/scripts/"); n = ct_put(tail[..], n, es_sc_row_hash(m, k)); n = ct_put(tail[..], n, "/report");
+  if !es_sc_go(s, ES_SC_REPORT, cast(string) tail[0..<n], ES_HOW_SAY, why) { es_sc_say(s, ES_SC_SAID_NO, ESC_BUSY); return; }
+  es_sc_say(s, ES_SC_SAID_NONE, "");
+}
+// The server's answer to the Scripts pane's ask.
+es_sc_sent :: (s: [] EdShell, status: int, length: int) {
+  flight := s[0].sc.flight; m := s[0].model[..];
+  s[0].sc.flight = ES_SC_NONE;
+  n := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
+  body := cast(string) s[0].inbox[0..<n];
+  no: [1] SsRefusal;
+  if flight == ES_SC_LIST {
+    // any answer but this world's list: no scripts here (a server with no such route). A list that came stays
+    if status == 200 && es_sc_list_read(s, body) { s[0].sc.have = true; }
+    return;
+  }
+  if flight == ES_SC_BUILD {
+    mf: [1] ScriptManifest; count: [1] int; end := n;
+    while end > 0 && (body[end - 1] == '\n' || body[end - 1] == ' ') { end -= 1; }
+    if status == 200 && sm_read(body[0..<end], mf[..]) {
+      s[0].sc.mf = es_sc_kept(mf[0]);
+      k := es_sc_calls(s[0].sc.calls[..], 0, mf[0].calls, count[..]);
+      s[0].sc.calls_n = ifx k > ESC_NAMES then 0 else k;
+      s[0].sc.built = true; s[0].sc.asked = false;   // the server keeps it now: the list is asked for again
+      es_sc_say(s, ES_SC_SAID_NONE, "");
+      return;
+    }
+    // the compiler's own words, as it wrote them, and the source line when it named one
+    if es_sc_refusal(s, body, no[..]) && no[0].code == SSC_SOURCE { s[0].sc.note = ES_SC_SAID_ERRORS; s[0].sc.at_line = es_sc_line(cast(string) s[0].sc.words[0..<s[0].sc.words_n]); return; }
+    es_sc_refused(s, "That did not build: the world's server did not answer.");
+    return;
+  }
+  if flight == ES_SC_OPEN {
+    k := em_script_at(m, s[0].sc.opening);
+    if status != 200 || n > ESC_SOURCE || k < 0 { es_sc_say(s, ES_SC_SAID_NO, "That script's source did not open."); return; }
+    for i: 0..<n { s[0].sc.src[i] = s[0].inbox[i]; }
+    s[0].sc.src_n = n; s[0].sc.src_long = false; s[0].sc.src_edits += 1; s[0].sc.built = false;
+    s[0].sc.fill = true; s[0].sc.typed = false; s[0].sc.leave = 0; s[0].sc.started = true;
+    sn := m[0].s_name[k]; sf := m[0].s_for[k];
+    s[0].sc.name_n = em_copy(s[0].sc.name[..], cast(string) sn[0..<m[0].s_name_n[k]]);
+    f := es_sc_for(cast(string) sf[0..<m[0].s_for_n[k]]);
+    if f.ok { s[0].sc.by_kind = f.by_kind; s[0].sc.who = f.n; }
+    es_sc_say(s, ES_SC_SAID_NONE, "");
+    return;
+  }
+  if flight == ES_SC_REPORT {
+    if status >= 200 && status < 300 { s[0].sc.report = 0; s[0].sc.reason_n = 0; es_sc_say(s, ES_SC_SAID_DONE, "Your report is sent."); return; }
+    _ := es_sc_refusal(s, body, no[..]);
+    es_sc_refused(s, "That report did not go: the world's server did not answer.");
+    return;
+  }
+  // a publish
+  if status >= 200 && status < 300 {
+    s[0].sc.asks = 0;
+    es_sc_say(s, ES_SC_SAID_DONE, ifx s[0].sc.pub == WB_PUBLISH_NEXT then "Published. People see it the next time they come in." else "Published. People in the world see it now.");
+    return;
+  }
+  if es_sc_refusal(s, body, no[..]) && no[0].code == SSC_GROWS {
+    es_sc_asks(s, no[..]);
+    if s[0].sc.asks > 0 {
+      // the question is the pane's to show
+      s[0].scripts = true; s[0].assets = false; s[0].files = false; s[0].code = false; s[0].sc.fill = true;
+      if !s[0].sc.started { es_sc_starter(s); }
+      es_sc_say(s, ES_SC_SAID_NONE, "");
+      return;
+    }
+  }
+  s[0].sc.asks = 0;
+  es_say(s, ifx s[0].sc.words_n > 0 then cast(string) s[0].sc.words[0..<s[0].sc.words_n] else "That did not publish: the world's server did not answer.");
+}
+
+// ---- presses and fields
+
+// A press in the Scripts pane, or on its button in the strip. Whether it was one.
+es_sc_click :: (s: [] EdShell, id: string) -> bool {
+  if !s[0].sc.have { return false; }
+  m := s[0].model[..];
+  if id == "scripts" {
+    s[0].scripts = !s[0].scripts;
+    if s[0].scripts {
+      s[0].assets = false; s[0].files = false; s[0].code = false;
+      if !s[0].sc.started { es_sc_starter(s); }
+      s[0].sc.fill = true; s[0].sc.asked = false;   // the list as it is now
+      if s[0].sc.note == ES_SC_SAID_DONE { es_sc_say(s, ES_SC_SAID_NONE, ""); }
+    }
+    return true;
+  }
+  if !s[0].scripts { return false; }
+  if id == "scripts.plans" { s[0].scripts = false; return true; }
+  if id == "scripts.build" { es_sc_build(s); return true; }
+  if id == "scripts.run" { es_sc_run(s); return true; }
+  if id == "scripts.confirm" { if s[0].sc.asks > 0 { _ := es_sc_publish(s, s[0].sc.pub, true); } return true; }
+  if id == "scripts.leave" { s[0].sc.asks = 0; return true; }
+  if id == "scripts.errors.copy" { for i: 0..<s[0].sc.words_n { s[0].clip[i] = s[0].sc.words[i]; } s[0].clip_n = s[0].sc.words_n; return true; }
+  if id == "scripts.report.send" { es_sc_report(s); return true; }
+  if id == "scripts.report.leave" { s[0].sc.report = 0; return true; }
+  who := es_index(id, "sfor.");
+  if who >= 0 {
+    known := false;
+    if who < ESC_WHO { for k: 0..<m[0].nsk { if m[0].sk_id[k] == who { known = true; } } } else { known = em_actor_at(m, who - ESC_WHO) >= 0; }
+    if known { s[0].sc.by_kind = who < ESC_WHO; s[0].sc.who = ifx who < ESC_WHO then who else who - ESC_WHO; }
+    return true;
+  }
+  row := es_index(id, "sopen.");
+  if row > 0 && em_script_at(m, row) >= 0 { es_sc_open(s, row); return true; }
+  row = es_index(id, "sstop.");
+  if row > 0 && em_script_at(m, row) >= 0 {
+    es_sc_say(s, ES_SC_SAID_NONE, "");
+    if s[0].sc.report == row { s[0].sc.report = 0; }
+    _ := es_sc_row(s, row, "");
+    return true;
+  }
+  row = es_index(id, "sreport.");
+  if row > 0 && em_script_at(m, row) >= 0 && s[0].sc.logged { s[0].sc.report = ifx s[0].sc.report == row then 0 else row; s[0].sc.reason_n = 0; return true; }
+  return false;
+}
+// What is typed in the pane's fields. Whether the field was one of them.
+es_sc_typed :: (s: [] EdShell, id: string, length: int) -> bool {
+  if id == "scripts.text" {
+    s[0].sc.src_edits += 1; s[0].sc.typed = true; s[0].sc.leave = 0;
+    if s[0].sc.note != ES_SC_SAID_ERRORS { es_sc_say(s, ES_SC_SAID_NONE, ""); }   // the compiler's words stay while they are mended
+    if length < 0 || length > ESC_SOURCE { s[0].sc.src_long = true; return true; }
+    for i: 0..<length { s[0].sc.src[i] = s[0].inbox[i]; }
+    s[0].sc.src_n = length; s[0].sc.src_long = false;
+    return true;
+  }
+  if id != "scripts.name" && id != "scripts.reason" { return false; }
+  lo := 0; hi := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
+  while lo < hi && (s[0].inbox[lo] == ' ' || s[0].inbox[lo] == '\n') { lo += 1; }
+  while hi > lo && (s[0].inbox[hi - 1] == ' ' || s[0].inbox[hi - 1] == '\n') { hi -= 1; }
+  typed := cast(string) s[0].inbox[lo..<hi];
+  if id == "scripts.name" {
+    // a build is of a name: another name is another script
+    s[0].sc.name_n = ifx typed.count > EM_SNAME then 0 else em_copy(s[0].sc.name[..], typed);
+    s[0].sc.src_edits += 1;
+    return true;
+  }
+  most := ifx s[0].sc.lim.why_bytes > 0 && s[0].sc.lim.why_bytes < ESC_WHY then s[0].sc.lim.why_bytes else ESC_WHY;
+  s[0].sc.reason_n = ifx typed.count > most || !ss_why_ok(typed) then 0 else em_copy(s[0].sc.reason[..], typed);
+  return true;
+}
+// The name's field holds the name: filled in the flush that makes it.
+es_sc_fill :: (s: [] EdShell, d: [] Dom) {
+  if s[0].sc.fill && s[0].scripts && s[0].sc.have { dm_value(d, "scripts.name", es_sc_name(s)); }
+}
+// The source's field holds the source: filled once the field is on the page, after the flush that
+// made it. `bytes`: the flush's; answers the bytes to apply now.
+es_sc_fill_after :: (s: [] EdShell, d: [] Dom, bytes: int) -> int {
+  if !s[0].sc.fill || !s[0].scripts || !s[0].sc.have || d[0].overflow { return bytes; }
+  with := dm_value_after(d, "scripts.text", cast(string) s[0].sc.src[0..<s[0].sc.src_n]);
+  if with >= 0 { s[0].sc.fill = false; }
+  return ifx with > 0 then with else bytes;
+}
+
+// ---- the pane
+
+es_sc_fact :: (s: [] EdShell, id: string, name: string, line: [] u8, n: int) {
+  f := k_fact(s[0].tree[..], id, name, ifx n > line.count then "" else cast(string) line[0..<n]);
+}
+// The Scripts pane: what the last ask did, a publish that waits for a yes, plans first, the limits,
+// this world's scripts with what each spends, and the script being written with what its build is.
+es_build_scripts :: (s: [] EdShell) {
+  t := s[0].tree[..]; u := s[0].ui[..]; m := s[0].model[..]; l := s[0].sc.lim; st := s[0].sc.status[..];
+  buf: [UI_ID] u8; line: [ESC_ASK + 240] u8; who: [EM_NAME] u8; n := 0;
+  pane := k_pane(t, u, "scripts.pane", DK_WIDE, "Scripts");
+  es_build_said(s);
+  words := cast(string) s[0].sc.words[0..<s[0].sc.words_n];
+  if s[0].sc.note == ES_SC_SAID_DONE { a := k_notice(t, u, "scripts.said", "Done", words); tr_close(t); }
+  if s[0].sc.note == ES_SC_SAID_NO { a := k_notice(t, u, "scripts.said", "Not done", words); tr_close(t); }
+  if s[0].sc.note == ES_SC_SAID_ERRORS {
+    n = ct_put(line[..], 0, "The compiler refused the source");
+    if s[0].sc.at_line > 0 { n = ct_put(line[..], n, " at line "); n = ct_put_int(line[..], n, s[0].sc.at_line); }
+    n = ct_put(line[..], n, ". Nothing changed: what ran before still runs.");
+    a := k_notice(t, u, "scripts.said", "Not built", cast(string) line[0..<n]);
+    c := k_code(t, u, "scripts.errors", "", words);
+    tr_close(t);
+  }
+  // a publish the server would not take without a yes
+  if s[0].sc.asks > 0 {
+    g := k_card(t, u, "scripts.grows", "Publishing lets scripts do more");
+    gm := k_meta(t, "scripts.grows.m", "A new version of a live script may do less without a question. Doing more needs your yes.");
+    for k: 0..<s[0].sc.asks { aw := s[0].sc.ask[k].words; r := k_meta(t, tr_join(buf[..], "scripts.grow.", k), cast(string) aw[0..<s[0].sc.ask[k].words_n]); }
+    row := tr_open(t, "scripts.grows.acts", TG_DIV, "rowf");
+    yes := k_button(t, u, "scripts.confirm", "Publish with these", ifx s[0].sc.flight == ES_SC_NONE then BS_PRIMARY else BS_DISABLED);
+    no := k_link(t, "scripts.leave", "Not now");
+    tr_close(t);
+    tr_close(t);
+  }
+  // plans first
+  first := k_meta(t, "scripts.plan", "A plan says where someone walks, how far they see and what they do on seeing you, by time of day. A script is for what a plan cannot say.");
+  if m[0].na > 0 { go := k_link(t, "scripts.plans", "Set plans in the Actors list"); }
+  // the limits, before anything is built
+  lim := k_card(t, u, "scripts.limits", "Limits");
+  n = ct_put_int(line[..], 0, m[0].ns); n = ct_put(line[..], n, " of "); n = ct_put_int(line[..], n, l.scripts); n = ct_put(line[..], n, " run in this world");
+  es_sc_fact(s, "scripts.lim.n", "Scripts", line[..], n);
+  n = ct_put_int(line[..], 0, pi_kb(l.module_bytes)); n = ct_put(line[..], n, " KB built");
+  if l.source_bytes > 0 { n = ct_put(line[..], n, ", "); n = ct_put_int(line[..], n, pi_kb(l.source_bytes)); n = ct_put(line[..], n, " KB of source"); }
+  n = ct_put(line[..], n, " at most");
+  es_sc_fact(s, "scripts.lim.size", "A script", line[..], n);
+  n = es_sc_num(line[..], 0, l.call_fuel); n = ct_put(line[..], n, " instructions at most; past that the call is undone");
+  es_sc_fact(s, "scripts.lim.call", "A call", line[..], n);
+  n = es_sc_num(line[..], 0, l.tick_fuel); n = ct_put(line[..], n, " instructions for all of a world's scripts");
+  es_sc_fact(s, "scripts.lim.tick", "A tick", line[..], n);
+  n = ct_put_int(line[..], 0, SH_STATE); n = ct_put(line[..], n, " bytes kept for each thing it drives");
+  es_sc_fact(s, "scripts.lim.state", "State", line[..], n);
+  n = ct_put(line[..], 0, "Switched off after "); n = ct_put_int(line[..], n, SH_STRIKES); n = ct_put(line[..], n, " failed calls in a row");
+  es_sc_fact(s, "scripts.lim.off", "Failures", line[..], n);
+  if l.compiler == 1 && l.compiles_a_day > 0 { n = ct_put_int(line[..], 0, l.compiles_a_day); n = ct_put(line[..], n, " a day"); es_sc_fact(s, "scripts.lim.builds", "Builds", line[..], n); }
+  if s[0].sc.logged && l.reports_a_day > 0 { n = ct_put_int(line[..], 0, l.reports_a_day); n = ct_put(line[..], n, " a day"); es_sc_fact(s, "scripts.lim.reports", "Reports", line[..], n); }
+  tr_close(t);
+  // this world's scripts, and what each spends
+  mine := k_card(t, u, "scripts.mine", "This world's scripts");
+  if m[0].ns == 0 { none := k_meta(t, "scripts.none", "No script runs here. Everyone walks their plan."); }
+  hn := RH_NAMES; means := SD_MEANS;
+  for k: 0..<m[0].ns {
+    id := m[0].s_id[k]; sn := m[0].s_name[k]; sf := m[0].s_for[k];
+    live := es_sc_live(s, k); kept := es_sc_stored(s, es_sc_row_hash(m, k));
+    off := kept >= 0 && s[0].sc.st[kept].off;
+    n = ct_put(line[..], 0, "Drives "); n = ct_put(line[..], n, es_sc_whom(m, es_sc_for(cast(string) sf[0..<m[0].s_for_n[k]]), who[..]));
+    state := ifx off then "Switched off" else ifx live >= 0 then (ifx st[0].rows[live].off then "Switched off" else "Running") else ifx s[0].sc.status_have then "Not running" else "";
+    if state.count > 0 { n = ct_put(line[..], n, " · "); n = ct_put(line[..], n, state); }
+    r := k_file(t, tr_join(buf[..], "script.", id), cast(string) sn[0..<m[0].s_name_n[k]], ifx n > line.count then "" else cast(string) line[0..<n]);
+    if off && s[0].sc.st[kept].why_n > 0 {
+      wy := s[0].sc.st[kept].why;
+      n = ct_put(line[..], 0, "The world's server switched it off: "); n = ct_put(line[..], n, cast(string) wy[0..<s[0].sc.st[kept].why_n]);
+      ow := k_meta(t, tr_join(buf[..], "swhy.", id), ifx n > line.count then "" else cast(string) line[0..<n]);
+    }
+    if live >= 0 {
+      row := st[0].rows[live];
+      n = es_sc_num(line[..], 0, row.peak); n = ct_put(line[..], n, " of "); n = es_sc_num(line[..], n, st[0].call_fuel);
+      mt := k_meter(t, tr_join(buf[..], "speak.", id), "Costliest call", ifx n > line.count then "" else cast(string) line[0..<n], cast(f32) row.peak / cast(f32) st[0].call_fuel);
+      n = es_sc_num(line[..], 0, row.calls); n = ct_put(line[..], n, ", "); n = es_sc_num(line[..], n, row.failures); n = ct_put(line[..], n, " failed, for ");
+      n = ct_put_int(line[..], n, row.things); n = ct_put(line[..], n, ifx row.things == 1 then " thing" else " things");
+      es_sc_fact(s, tr_join(buf[..], "scalls.", id), "Calls", line[..], n);
+      if row.last > 0 && row.last < SD_CODES {
+        n = ct_put(line[..], 0, "Last failure");
+        if row.handler >= 0 { n = ct_put(line[..], n, " in "); n = ct_put(line[..], n, hn[row.handler]); }
+        if row.line > 0 { n = ct_put(line[..], n, ", line "); n = ct_put_int(line[..], n, row.line); }
+        n = ct_put(line[..], n, ". "); n = ct_put(line[..], n, means[row.last]);
+        lf := k_meta(t, tr_join(buf[..], "slast.", id), ifx n > line.count then "" else cast(string) line[0..<n]);
+      }
+    }
+    acts := tr_open(t, tr_join(buf[..], "sacts.", id), TG_DIV, "rowf");
+    if kept >= 0 && s[0].sc.st[kept].source { op := k_link(t, tr_join(buf[..], "sopen.", id), "Open"); }
+    if s[0].sc.logged { rp := k_link(t, tr_join(buf[..], "sreport.", id), "Report"); }
+    sp := k_link(t, tr_join(buf[..], "sstop.", id), "Stop");
+    tr_close(t);
+    if s[0].sc.report == id && s[0].sc.logged {
+      rf := k_prop(t, u, "scripts.reason", "Reason", "What is wrong, in plain letters, 160 at most");
+      ra := tr_open(t, "scripts.report.acts", TG_DIV, "rowf");
+      rs := k_button(t, u, "scripts.report.send", "Send report", ifx s[0].sc.reason_n > 0 && s[0].sc.flight == ES_SC_NONE then BS_PLAIN else BS_DISABLED);
+      rl := k_link(t, "scripts.report.leave", "Cancel");
+      tr_close(t);
+    }
+  }
+  tr_close(t);
+  // the script being written
+  wr := k_card(t, u, "scripts.write", "Write a script");
+  nf := k_prop(t, u, "scripts.name", "Name", "my-raider");
+  tg := es_sc_target(s); open := s[0].open == ES_OPEN_SFOR;
+  k_select_begin(t, u, "sfor", ifx tg.ok then es_sc_whom(m, tg, who[..]) else "Nobody", "Whom the script drives", open);
+  if open {
+    for k: 0..<m[0].nsk { kn := m[0].sk_name[k]; r := k_row(t, u, tr_join(buf[..], "sfor.", m[0].sk_id[k]), cast(string) kn[0..<m[0].sk_name_n[k]], "Every one of them", tg.by_kind && tg.n == m[0].sk_id[k]); }
+    for k: 0..<m[0].na { an := m[0].a_name[k]; r := k_row(t, u, tr_join(buf[..], "sfor.", ESC_WHO + m[0].a_id[k]), cast(string) an[0..<m[0].a_name_n[k]], "This one alone", !tg.by_kind && tg.n == m[0].a_id[k]); }
+  }
+  k_select_end(t, open);
+  rule := k_meta(t, "scripts.rule", "A script is one file. It may load only api.coax, the calls a script can make.");
+  fld := k_code_field(t, u, "scripts.text", "coax", "The script's source");
+  current := s[0].sc.built && s[0].sc.built_edits == s[0].sc.src_edits;
+  if l.compiler == 1 {
+    ar := tr_open(t, "scripts.acts", TG_DIV, "rowf");
+    building := s[0].sc.flight == ES_SC_BUILD;
+    can := s[0].sc.flight == ES_SC_NONE && !current;
+    bb := k_button(t, u, "scripts.build", "Build", ifx can then BS_PRIMARY else BS_DISABLED);
+    if current && tg.ok { rb := k_button(t, u, "scripts.run", "Run it", BS_PRIMARY); }
+    if building { bs := tr_leaf(t, "scripts.state", TG_SPAN, "meta", "Building"); }
+    tr_close(t);
+  } else { nc := k_meta(t, "scripts.nocompiler", "Compiling is not available on this server."); }
+  tr_close(t);
+  // what the build is, read from the built module
+  if current {
+    mf := s[0].sc.mf;
+    bc := k_card(t, u, "scripts.built", cast(string) mf.name[0..<mf.name_n]);
+    n = es_sc_may(line[..], 0, mf.handlers, mf.powers);
+    bm := k_meta(t, "scripts.built.may", ifx n > line.count then "" else cast(string) line[0..<n]);
+    n = ct_put(line[..], 0, cast(string) s[0].sc.calls[0..<s[0].sc.calls_n]);
+    es_sc_fact(s, "scripts.built.calls", "Calls", line[..], n);
+    n = es_sc_num(line[..], 0, mf.bytes); n = ct_put(line[..], n, " of "); n = es_sc_num(line[..], n, l.module_bytes); n = ct_put(line[..], n, " bytes");
+    sz := k_meter(t, "scripts.built.size", "Size", ifx n > line.count then "" else cast(string) line[0..<n], cast(f32) mf.bytes / cast(f32) l.module_bytes);
+    n = ct_put_int(line[..], 0, mf.state); n = ct_put(line[..], n, " of "); n = ct_put_int(line[..], n, SH_STATE); n = ct_put(line[..], n, " bytes for each thing");
+    es_sc_fact(s, "scripts.built.state", "State", line[..], n);
+    tr_close(t);
+  }
+  k_pane_end(t);
+}

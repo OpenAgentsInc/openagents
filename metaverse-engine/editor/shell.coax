@@ -23,6 +23,7 @@
 #load "shell-assets.coax";                      // the Assets pane: the world's imports, a file dropped, its licence and the limits (#13420)
 #load "shell-actors.coax";                      // the actors: the time of day, the Actors list and the selected actor's plan (#13466)
 #load "shell-files.coax";                       // the Files pane: the world's and its project's attachments, never a player's (#13468)
+#load "shell-scripts.coax";                     // the Scripts pane: a realm script written, built, run, swapped, published and reported (#13467)
 
 ES_INBOX :: 200704;    // a model (EM_BYTES), a field's text, or a file of code as typed (RC_TEXT, and room to see that it is longer), from the host
 ES_CSS :: 24576;
@@ -120,6 +121,8 @@ EdShell :: struct {
   as_url: [WAS_URL] u8; as_head: [FW_HEAD] u8;   // shared by the Files pane (shell-files.coax), whose heads are longer
   files: bool;                           // the Files pane is open (#13468)
   fl: EsFiles;
+  scripts: bool;                         // the Scripts pane is open (#13467)
+  sc: EsScripts;
   as_hash: [64] u8; as_pack: [64] u8;    // the waiting file's SHA-256 as the server answered it, and the pack's hash the page was last told
   as_file_name: [WAS_FILE_NAME] u8;
   as_words: [EM_WORDS] u8;
@@ -453,7 +456,10 @@ es_build :: (s: [] EdShell) {
   filing := s[0].files && s[0].fl.have && !asseting;
   if s[0].fl.have { fb := k_button(t, u, "files", ifx filing then "Hide files" else "Files", BS_PLAIN); }
   // code: only where the dev server answered with the realm's files
-  coding := s[0].code && s[0].nfiles > 0 && !asseting && !filing;
+  // scripts: only where the world's server answered with its script list
+  scripting := s[0].scripts && s[0].sc.have && !asseting && !filing;
+  if s[0].sc.have { sb := k_button(t, u, "scripts", ifx scripting then "Hide scripts" else "Scripts", BS_PLAIN); }
+  coding := s[0].code && s[0].nfiles > 0 && !asseting && !filing && !scripting;
   if s[0].nfiles > 0 { cb := k_button(t, u, "code", ifx s[0].code then "Hide code" else "Code", BS_PLAIN); }
   w := m[0].world;
   n := ct_put(line[..], 0, cast(string) w[0..<m[0].world_n]);
@@ -494,7 +500,8 @@ es_build :: (s: [] EdShell) {
   if coding { es_build_code(s); }
   if asseting { es_build_assets(s); }
   if filing { es_build_files(s); }
-  if !coding && !asseting && !filing {
+  if scripting { es_build_scripts(s); }
+  if !coding && !asseting && !filing && !scripting {
   right := k_pane(t, u, "one", DK_RIGHT, "Selected");
   es_build_said(s);
   if s[0].ngroup > 0 {
@@ -619,10 +626,11 @@ es_click :: (s: [] EdShell, id: string) {
   m := s[0].model[..];
   // a select opens, or closes if it was the open one; any other press closes whichever is open
   was := s[0].open; s[0].open = ES_OPEN_NONE;
-  names := [13] string.["when", "kind", "tool", "grid", "add", "count", "file", "brush", "mat", "licence", "clock", "pdo", "pon"];
+  names := [14] string.["when", "kind", "tool", "grid", "add", "count", "file", "brush", "mat", "licence", "clock", "pdo", "pon", "sfor"];
   for name, k: names { if id == name { s[0].open = ifx was == k + 1 then ES_OPEN_NONE else k + 1; return; } }
   if es_as_click(s, id) { if s[0].assets { s[0].files = false; } return; }
   if es_fl_click(s, id) { return; }
+  if es_sc_click(s, id) { return; }
   if s[0].have && es_actors_click(s, id) { return; }
   if es_code_click(s, id) { if s[0].code { s[0].assets = false; s[0].files = false; } return; }
   if es_index(id, "when.") >= 0 && es_index(id, "when.") < 2 { s[0].when = es_index(id, "when."); return; }
@@ -703,7 +711,11 @@ es_click :: (s: [] EdShell, id: string) {
   }
   if id == "undo" && m[0].undo > 0 { es_batch(s, WB_UNDO, none); }
   else if id == "redo" && m[0].redo > 0 { es_batch(s, WB_REDO, none); }
-  else if id == "publish" && !m[0].local { es_batch(s, ifx s[0].when == 1 then WB_PUBLISH_NEXT else WB_PUBLISH_NOW, none); }
+  else if id == "publish" && !m[0].local {
+    // a world that runs scripts: the shell sends the publish, so a script that would do more can be asked about (shell-scripts.coax)
+    what := ifx s[0].when == 1 then WB_PUBLISH_NEXT else WB_PUBLISH_NOW;
+    if !es_sc_publish(s, what, false) { es_batch(s, what, none); }
+  }
   else if id == "remove" && em_entity_at(m, m[0].sel) >= 0 { es_batch(s, WB_APPLY, WorldEdit.{ok = true, op = WE_DESPAWN, id = m[0].sel}); }
   else if id == "deselect" { es_select(s, 0); }
   else if es_index(id, "thing.") > 0 { es_select(s, es_index(id, "thing.")); }
@@ -852,7 +864,7 @@ coaxial_editor_frame :: (s: [] EdShell, dt: f32, reduced: bool) -> int #export_c
       dm_value(d, tr_join(buf[..], "cell.", k), cast(string) val[0..<m[0].c_val_n[k]]);
     }
   }
-  if s[0].have { es_plan_fill(s, d); es_fl_fill(s, d); }
+  if s[0].have { es_plan_fill(s, d); es_fl_fill(s, d); es_sc_fill(s, d); }
   s[0].animating = s[0].ui[0].busy;
   s[0].dirty = false;
   bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
@@ -862,7 +874,8 @@ coaxial_editor_frame :: (s: [] EdShell, dt: f32, reduced: bool) -> int #export_c
     if with >= 0 { s[0].code_fill = false; }
     if with > 0 { bytes = with; }
   }
-  if d[0].overflow { dm_reset(d); s[0].dirty = true; s[0].shown_sel = -1; s[0].pshown = -2; s[0].code_fill = s[0].code && s[0].code_at >= 0; return -1; }
+  bytes = es_sc_fill_after(s, d, bytes);
+  if d[0].overflow { dm_reset(d); s[0].dirty = true; s[0].shown_sel = -1; s[0].pshown = -2; s[0].code_fill = s[0].code && s[0].code_at >= 0; s[0].sc.fill = s[0].scripts; return -1; }
   return bytes;
 }
 coaxial_editor_busy :: (s: [] EdShell) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating); }
@@ -872,6 +885,7 @@ coaxial_editor_event :: (s: [] EdShell, kind: int, slot: int, length: int) #expo
   s[0].dirty = true;
   es_event(s, kind, slot, length);
   es_fl_kick(s);   // the world's attachments, once the channel to its server is free (shell-files.coax)
+  es_sc_kick(s);   // the world's scripts, likewise; and whether the page's script status is wanted (shell-scripts.coax)
   // the conversation in the foot is told of the world as it now is, once the page has room for the word
   if s[0].agent_made && s[0].have && s[0].turn_due && es_turn(s) { s[0].turn_due = false; }
 }
@@ -883,12 +897,15 @@ es_event :: (s: [] EdShell, kind: int, slot: int, length: int) {
   if kind == ES_PIECE { es_code_piece(s, length); return; }
   if kind == ES_END { es_code_end(s, slot); return; }
   if kind == ES_FILE { if es_id_is(dm_slot_id(s[0].dom[..], slot), "files") { es_fl_file(s, length); } else { es_as_file(s, length); } return; }
-  if kind == ES_SENT { if s[0].fl.flight != ES_FL_NONE { es_fl_sent(s, slot, length); } else { es_as_sent(s, slot, length); } return; }
+  if kind == ES_SENT { if s[0].sc.flight != ES_SC_NONE { es_sc_sent(s, slot, length); } else if s[0].fl.flight != ES_FL_NONE { es_fl_sent(s, slot, length); } else { es_as_sent(s, slot, length); } return; }
+  if kind == ES_VIEWER { s[0].sc.logged = true; return; }
+  if kind == ES_STATUS { es_sc_status(s, length); return; }
   id := dm_slot_id(s[0].dom[..], slot);
   if id.count == 0 { return; }
   if kind == ES_CLICK { es_click(s, id); }
   if id == "code.text" { if kind == ES_INPUT { es_code_typed(s, length); } return; }
   if kind == ES_INPUT && es_id_is(id, "files.") && es_fl_typed(s, id, length) { return; }
+  if es_id_is(id, "scripts.") && (id == "scripts.text" || id == "scripts.name" || id == "scripts.reason") { if kind == ES_INPUT { _ := es_sc_typed(s, id, length); } return; }
   if kind == ES_SUBMIT && id == "files.url" { _ := es_fl_click(s, "files.link"); return; }
   if id == "tname" {
     if kind == ES_INPUT {
@@ -961,10 +978,11 @@ coaxial_editor_asking :: (s: [] EdShell) -> int #export_c #effects(all) { return
 coaxial_editor_asked :: (s: [] EdShell) #export_c #effects(all) { if s.count > 0 { s[0].code_ask = false; } }
 // The ask that waits to go to the world's server (shell-assets.coax; ES_HOW_*): 0 none, 1 a GET of the address at
 // as_url, 2 a POST there of the bytes at as_head followed by the waiting file's, 3 a POST of as_head followed by the
-// file's SHA-256 and a line end (the file stays), 4 a PUT of the file alone to as_url, 5 a POST of as_head alone;
-// fetched takes it away.
+// file's SHA-256 and a line end (the file stays), 4 a PUT of the file alone to as_url, 5 a POST of as_head alone,
+// 6 a POST of the Scripts pane's source alone (sc.src, coaxial_editor_source bytes of it); fetched takes it away.
 coaxial_editor_fetching :: (s: [] EdShell) -> int #export_c #effects(all) { return ifx s.count < 1 || !s[0].as_ask then 0 else s[0].as_how; }
 coaxial_editor_fetched :: (s: [] EdShell) #export_c #effects(all) { if s.count > 0 { s[0].as_ask = false; } }
+coaxial_editor_source :: (s: [] EdShell) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].sc.src_n else 0; }
 // What a Copy press put by for the clipboard: its bytes (at clip; 0: none); done takes it away.
 coaxial_editor_clip_len :: (s: [] EdShell) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].clip_n else 0; }
 coaxial_editor_clip_done :: (s: [] EdShell) #export_c #effects(all) { if s.count > 0 { s[0].clip_n = 0; } }
@@ -1755,3 +1773,4 @@ es_test_local :: (h: [] EsTest, listed: int, in_all: int) {
 #load "shell-assets-checks.coax" #test;   // the Assets pane (#13420)
 #load "shell-files-checks.coax" #test;    // the Files pane (#13468)
 #load "shell-actors-checks.coax" #test;   // the actors (#13466)
+#load "shell-scripts-checks.coax" #test;  // the Scripts pane (#13467)
