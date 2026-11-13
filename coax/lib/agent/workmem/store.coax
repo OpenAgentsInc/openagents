@@ -427,6 +427,13 @@ wm_fact :: (s: [] WmStore, e: WmEvid) -> WfEvidence {
 // May the run finish (finish.coax)? reasons[i].row is a requirement's row
 // for WF_REQ_*, a check's row for WF_CHECK_*.
 wm_may_finish :: (s: [] WmStore, reasons: [] WfReason) -> WfVerdict {
+  none: [1] WfFile;
+  return wm_may_finish_files(s, none[0..<0], reasons);
+}
+// The same, with what each file had when the run started and has now
+// (files[i] is the file row i; file.coax wmf_facts gathers them): a file the
+// run weakened is a reason too, and its reasons[i].row is the file's row.
+wm_may_finish_files :: (s: [] WmStore, files: [] WfFile, reasons: [] WfReason) -> WfVerdict {
   ev: [WM_EVID + WM_RUNS] WfEvidence; reqs: [WM_REQS] WfReq; checks: [WM_CHECKS] WfCheck; n := 0;
   for i: 0..<s[0].nreqs {
     q := s[0].reqs[i];
@@ -439,7 +446,7 @@ wm_may_finish :: (s: [] WmStore, reasons: [] WfReason) -> WfVerdict {
       if s[0].runs[k].check == s[0].checks[i].name { ev[n] = wm_fact(s, WmEvid.{kind = WF_RUN, id = k}); n += 1; checks[i].count += 1; }
     }
   }
-  return wf_may_finish(reqs[0..<s[0].nreqs], checks[0..<s[0].nchecks], ev[0..<n], wm_tree(s), reasons);
+  return wf_may_finish_files(reqs[0..<s[0].nreqs], checks[0..<s[0].nchecks], ev[0..<n], wm_tree(s), files, reasons);
 }
 
 // ------------------------------------------------------------------ the writer

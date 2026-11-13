@@ -22,6 +22,18 @@
 // With no requirement rows and no named checks there is nothing to prove and
 // the answer is yes (a plain question finishes in one step); a caller that
 // wants proof for every task adds the rows before it asks.
+//
+// A run may also not pass by weakening what judges it (#13445 step 4: "an
+// agent may not weaken a check, an #authority line or a compatibility
+// baseline to pass; such a change is flagged for a person"). For each file
+// the run changed the caller gives what the file had when the run started
+// and what it has now (WfFile), and the file is a reason when
+//   - it was a compatibility baseline (any change to one, or its removal);
+//   - it had an #authority line and has none now;
+//   - it has fewer checks (#test, #forall) than it had; or
+//   - it has fewer #assert than it had.
+// A file that is gone has no checks, no asserts and no line. This file does
+// not read files: file.coax counts (weak.coax) and gives the counts here.
 #authority;
 
 WF_OPEN :: 0; WF_DONE :: 1; WF_FAILED :: 2;                // a requirement's status
@@ -34,7 +46,12 @@ WF_REQ_UNPROVEN :: 3;      // marked done, and no evidence row holds on this tre
 WF_CHECK_NEVER :: 4;       // the check has no run
 WF_CHECK_FAILING :: 5;     // its latest run failed or timed out
 WF_CHECK_STALE :: 6;       // its latest run passed, on a tree that has changed since
-WF_BAD_ROWS :: 7;          // the facts do not fit together (a range outside its array, an unknown status)
+WF_BAD_ROWS :: 7;          // the facts do not fit together (a range outside its array, an unknown status, a count below zero)
+// Why a run may not finish; row is the file's index. The run weakened what judges it.
+WF_WEAK_BASELINE :: 8;     // a compatibility baseline was changed or removed
+WF_WEAK_AUTHORITY :: 9;    // the file's #authority line is gone
+WF_WEAK_CHECKS :: 10;      // the file has fewer checks than when the run started
+WF_WEAK_ASSERTS :: 11;     // the file has fewer #assert than when the run started
 
 // One evidence row, as the store has it. A run fills exit, timed_out and
 // tree; a finding fills verified and stale; a change fills kept (the file
@@ -44,6 +61,11 @@ WfEvidence :: struct { kind: int; exit: int; timed_out: bool; tree: [32] u8; ver
 WfReq :: struct { status: int; first: int; count: int; }
 // A check the task names and its runs in the order they ran, ev[first ..< first + count].
 WfCheck :: struct { first: int; count: int; }
+// A file as it was when the run started (was_) and as it is now. changed: its
+// content is not what it was then. baseline: it was a compatibility baseline
+// then. checks: its #test and #forall. A file the run did not change is never
+// a reason, whatever the counts say.
+WfFile :: struct { changed: bool; baseline: bool; was_authority: bool; authority: bool; was_checks: int; checks: int; was_asserts: int; asserts: int; }
 WfReason :: struct { why: int; row: int; }
 // ok: the run may finish. count: every reason found, also those that did not fit reasons.
 WfVerdict :: struct { ok: bool; count: int; }
@@ -250,6 +272,96 @@ wf_run_test :: (exit: int, timed_out: bool, tree: u8) -> WfEvidence #effects(all
   #assert v.count == expect;
 }
 
+#test "a weakened file: the truth table of one file" {
+  // unchanged: never a reason, even a baseline, even with counts that fell
+  #assert wf_file_why(WfFile.{}) == 0;
+  #assert wf_file_why(WfFile.{baseline = true}) == 0;
+  #assert wf_file_why(WfFile.{baseline = true, was_authority = true, was_checks = 3, was_asserts = 9}) == 0;
+  // changed with nothing lost
+  #assert wf_file_why(WfFile.{changed = true}) == 0;
+  #assert wf_file_why(WfFile.{changed = true, was_authority = true, authority = true, was_checks = 3, checks = 3, was_asserts = 9, asserts = 9}) == 0;
+  #assert wf_file_why(WfFile.{changed = true, authority = true, checks = 4, asserts = 10, was_checks = 3, was_asserts = 9}) == 0;     // gained all three
+  #assert wf_file_why(WfFile.{changed = true, was_checks = 0, checks = 1, was_asserts = 0, asserts = 1}) == 0;
+  // a compatibility baseline: any change
+  #assert wf_file_why(WfFile.{changed = true, baseline = true}) == WF_WEAK_BASELINE;
+  #assert wf_file_why(WfFile.{changed = true, baseline = true, authority = true, checks = 5, asserts = 5}) == WF_WEAK_BASELINE;
+  // the #authority line: gone is a reason; gained or kept is not
+  #assert wf_file_why(WfFile.{changed = true, was_authority = true}) == WF_WEAK_AUTHORITY;
+  #assert wf_file_why(WfFile.{changed = true, was_authority = true, checks = 2, was_checks = 1}) == WF_WEAK_AUTHORITY;
+  #assert wf_file_why(WfFile.{changed = true, authority = true}) == 0;
+  // checks: one fewer is a reason, also when asserts rose; the same or more is not
+  #assert wf_file_why(WfFile.{changed = true, was_checks = 3, checks = 2, was_asserts = 4, asserts = 9}) == WF_WEAK_CHECKS;
+  #assert wf_file_why(WfFile.{changed = true, was_checks = 1, checks = 0}) == WF_WEAK_CHECKS;
+  #assert wf_file_why(WfFile.{changed = true, was_checks = 3, checks = 3}) == 0 && wf_file_why(WfFile.{changed = true, was_checks = 3, checks = 4}) == 0;
+  // asserts: the same
+  #assert wf_file_why(WfFile.{changed = true, was_checks = 3, checks = 3, was_asserts = 4, asserts = 3}) == WF_WEAK_ASSERTS;
+  #assert wf_file_why(WfFile.{changed = true, was_asserts = 1, asserts = 0}) == WF_WEAK_ASSERTS;
+  #assert wf_file_why(WfFile.{changed = true, was_asserts = 4, asserts = 4}) == 0 && wf_file_why(WfFile.{changed = true, was_asserts = 4, asserts = 5}) == 0;
+  // one reason a file, the first of: baseline, #authority, checks, asserts
+  #assert wf_file_why(WfFile.{changed = true, baseline = true, was_authority = true, was_checks = 1, was_asserts = 1}) == WF_WEAK_BASELINE;
+  #assert wf_file_why(WfFile.{changed = true, was_authority = true, was_checks = 1, was_asserts = 1}) == WF_WEAK_AUTHORITY;
+  #assert wf_file_why(WfFile.{changed = true, was_checks = 1, was_asserts = 1}) == WF_WEAK_CHECKS;
+  // a file that is gone: everything it had is lost
+  #assert wf_file_why(WfFile.{changed = true, was_authority = true, was_checks = 6, was_asserts = 40}) == WF_WEAK_AUTHORITY;
+  // a count below zero is not a count, changed or not, each of the four
+  #assert wf_file_why(WfFile.{was_checks = -1}) == WF_BAD_ROWS && wf_file_why(WfFile.{checks = -1}) == WF_BAD_ROWS;
+  #assert wf_file_why(WfFile.{was_asserts = -1}) == WF_BAD_ROWS && wf_file_why(WfFile.{asserts = -1}) == WF_BAD_ROWS;
+  #assert wf_file_why(WfFile.{changed = true, baseline = true, checks = -1}) == WF_BAD_ROWS && wf_file_why(WfFile.{changed = true, was_checks = -2, checks = -1}) == WF_BAD_ROWS;
+  #assert wf_file_why(WfFile.{changed = true, was_asserts = -2, asserts = -1}) == WF_BAD_ROWS;
+  // which reasons are "weakened"
+  #assert wf_weakened(WF_WEAK_BASELINE) && wf_weakened(WF_WEAK_AUTHORITY) && wf_weakened(WF_WEAK_CHECKS) && wf_weakened(WF_WEAK_ASSERTS);
+  #assert !wf_weakened(WF_BAD_ROWS) && !wf_weakened(12) && !wf_weakened(0) && !wf_weakened(WF_CHECK_STALE) && !wf_weakened(WF_REQ_OPEN);
+}
+
+#test "files are judged after requirements and checks; every one is counted; none at all is the old rule" {
+  now := wf_tree_test(5);
+  ev: [1] WfEvidence; reqs: [1] WfReq; checks: [1] WfCheck; why: [8] WfReason; files: [4] WfFile;
+  ev[0] = wf_run_test(0, false, 5);
+  reqs[0] = WfReq.{status = WF_DONE, first = 0, count = 1};
+  checks[0] = WfCheck.{first = 0, count = 1};
+  files[1] = WfFile.{changed = true, was_checks = 2, checks = 1};
+  files[3] = WfFile.{changed = true, was_authority = true};
+  // everything else stands: the two files alone refuse, in order, with their rows
+  v := wf_may_finish_files(reqs[..], checks[..], ev[..], now, files[..], why[..]);
+  #assert !v.ok && v.count == 2 && why[0].why == WF_WEAK_CHECKS && why[0].row == 1 && why[1].why == WF_WEAK_AUTHORITY && why[1].row == 3;
+  // with no rows and no checks too: a run that proves nothing may still not weaken
+  v = wf_may_finish_files(reqs[0..<0], checks[0..<0], ev[0..<0], now, files[..], why[..]);
+  #assert !v.ok && v.count == 2 && why[0].row == 1;
+  // after the requirement's and the check's reasons
+  reqs[0].status = WF_OPEN; ev[0] = wf_run_test(1, false, 5);
+  v = wf_may_finish_files(reqs[..], checks[..], ev[..], now, files[..], why[..]);
+  #assert !v.ok && v.count == 4 && why[0].why == WF_REQ_OPEN && why[1].why == WF_CHECK_FAILING && why[2].why == WF_WEAK_CHECKS && why[3].why == WF_WEAK_AUTHORITY && why[3].row == 3;
+  // counted past the room, nothing written past it
+  v = wf_may_finish_files(reqs[..], checks[..], ev[..], now, files[..], why[0..<3]);
+  #assert v.count == 4;
+  // the files' range is the caller's: the last one left out, the first one alone
+  why[1] = WfReason.{why = 99, row = 99};
+  reqs[0].status = WF_DONE; ev[0] = wf_run_test(0, false, 5);
+  v = wf_may_finish_files(reqs[..], checks[..], ev[..], now, files[0..<3], why[..]);
+  #assert !v.ok && v.count == 1 && why[0].row == 1 && why[1].why == 99;
+  #assert wf_may_finish_files(reqs[..], checks[..], ev[..], now, files[0..<1], why[..]).ok;
+  #assert wf_may_finish_files(reqs[..], checks[..], ev[..], now, files[0..<0], why[..]).ok;
+  // wf_may_finish is the rule with no files
+  v = wf_may_finish(reqs[..], checks[..], ev[..], now, why[..]);
+  #assert v.ok && v.count == 0;
+  reqs[0].status = WF_FAILED;
+  v = wf_may_finish(reqs[..], checks[..], ev[..], now, why[..]);
+  #assert !v.ok && v.count == 1 && why[0].why == WF_REQ_FAILED;
+  // mended files allow
+  files[1].checks = 2; files[3].authority = true; reqs[0].status = WF_DONE;
+  #assert wf_may_finish_files(reqs[..], checks[..], ev[..], now, files[..], why[..]).ok;
+  files[0] = WfFile.{asserts = -1};
+  v = wf_may_finish_files(reqs[..], checks[..], ev[..], now, files[..], why[..]);
+  #assert !v.ok && v.count == 1 && why[0].why == WF_BAD_ROWS && why[0].row == 0;
+}
+
+#forall "a file is a reason exactly when the run changed it and it lost a check, an assert, its #authority line, or was a baseline" changed: bool, baseline: bool, was_a: bool, a: bool, was_c: 0..<3, c: 0..<3, was_s: 0..<3, s: 0..<3 {
+  why := wf_file_why(WfFile.{changed = changed, baseline = baseline, was_authority = was_a, authority = a, was_checks = was_c, checks = c, was_asserts = was_s, asserts = s});
+  lost := baseline || (was_a && !a) || c < was_c || s < was_s;
+  #assert (why != 0) == (changed && lost);
+  #assert why == 0 || wf_weakened(why);
+}
+
 wf_same_tree :: (a: [32] u8, b: [32] u8) -> bool #effects(all) {
   for i: 0..<32 { if a[i] != b[i] { return false; } }
   return true;
@@ -296,12 +408,35 @@ wf_note :: (reasons: [] WfReason, v: WfVerdict, why: int, row: int) -> WfVerdict
   return WfVerdict.{ok = false, count = v.count + 1};
 }
 
-// May the run finish? Every requirement and every check is judged, and each
+// 0 when the run did not weaken the file, else how it did.
+wf_file_why :: (f: WfFile) -> int #effects(all) {
+  if f.was_checks < 0 || f.checks < 0 || f.was_asserts < 0 || f.asserts < 0 { return WF_BAD_ROWS; }
+  if !f.changed { return 0; }
+  if f.baseline { return WF_WEAK_BASELINE; }
+  if f.was_authority && !f.authority { return WF_WEAK_AUTHORITY; }
+  if f.checks < f.was_checks { return WF_WEAK_CHECKS; }
+  if f.asserts < f.was_asserts { return WF_WEAK_ASSERTS; }
+  return 0;
+}
+
+// Is this reason one of "the run weakened what judges it"?
+wf_weakened :: (why: int) -> bool #effects(all) { return why >= WF_WEAK_BASELINE && why <= WF_WEAK_ASSERTS; }
+
+// May the run finish, by its requirements and checks alone (a caller with no
+// facts about files)? Every requirement and every check is judged, and each
 // one that does not stand is a reason: the first reasons.count of them are
 // written, all are counted.
 wf_may_finish :: (reqs: [] WfReq, checks: [] WfCheck, ev: [] WfEvidence, now: [32] u8, reasons: [] WfReason) -> WfVerdict #effects(all) {
   v := WfVerdict.{ok = true};
   for i: 0..<reqs.count { v = wf_note(reasons, v, wf_req_why(reqs[i], ev, now), i); }
   for i: 0..<checks.count { v = wf_note(reasons, v, wf_check_why(checks[i], ev, now), i); }
+  return v;
+}
+
+// May the run finish? The requirements and checks as above, then every file
+// the caller has facts about: a file the run weakened is a reason too.
+wf_may_finish_files :: (reqs: [] WfReq, checks: [] WfCheck, ev: [] WfEvidence, now: [32] u8, files: [] WfFile, reasons: [] WfReason) -> WfVerdict #effects(all) {
+  v := wf_may_finish(reqs, checks, ev, now, reasons);
+  for i: 0..<files.count { v = wf_note(reasons, v, wf_file_why(files[i]), i); }
   return v;
 }

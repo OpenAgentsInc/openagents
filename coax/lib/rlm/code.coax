@@ -31,7 +31,7 @@
 #load "../sys/tool.coax";
 #load "../json/json.coax";
 #load "../agent/intel/compiler.coax";
-#load "../agent/workmem/file.coax";
+#load "../agent/workmem/git.coax";
 
 RC_JSON_NOTE :: "How to reply: one JSON object with two string fields. \"code\" is the Python to run this turn, as plain code with no ``` fence (it is run as one repl block). \"final\" stays \"\" while you work. When the task is done and its checks pass, reply with \"code\": \"\" and your summary in \"final\". You can also finish inside code, in the same turn as the last check, by calling FINAL(summary) under an if that tests the check passed (r = sh(...), then if r[\"exit\"] == 0: FINAL(...) on the next lines); that saves a turn.\n\n";
 RC_SYSTEM :: "You are a coding agent. The repository you work on is in your environment, not in this conversation. You work in it by writing Python in ```repl blocks; each turn every block runs in order and you see only what it printed (at most {SHOWN} characters a block). Variables persist across turns. What you print fills your window, which is small; files and variables cost nothing. Print only the lines you need, and keep what you find in variables.\n\nThe REPL runs a subset of Python: None, bool, int (no floats), str, list, dict; f-strings; list comprehensions; a if c else b; assignment (also a, b = ... and x[i] = ...), += -=, if/elif/else, for, while, break, continue; print len str repr int bool abs list dict range enumerate zip sum min max sorted; the common str, list and dict methods. Not supported: def, lambda, class, try, with, return, import of anything, set, slices with a step. Write the steps inline.\n\nThe repository (paths are relative to its root):\n- files(prefix=\"\"): the tracked paths, as a list\n- read(path): a file's text; lines(path, a, b): lines a to b numbered; count_lines(path)\n- search(pattern, prefix=\"\", limit=40, regex=False): matching lines as \"path:line:text\" strings (git grep; a fixed string unless regex=True, then an extended regex)\n- edit(path, old, new): replaces old, which must be in the file exactly once; returns the changed lines numbered, or text starting \"edit failed:\" with the nearest lines numbered\n- replace_lines(path, a, b, text): replaces lines a to b with text (a = b + 1 inserts before line a); returns the new lines numbered\n- write(path, text): creates or replaces a whole file\n- sh(cmd, seconds=120): runs a shell command at the root; returns a dict with the keys \"exit\" (int), \"out\" (str, the whole output) and \"timed_out\" (bool)\n- outline(path): the file's top-level definitions (functions, types, constants, tests) with their line numbers: a cheap map of a file before you look at its lines\n- grep(pattern, text): the lines of text that match; chunk(text, size)\n- llm_query(prompt), llm_query_batched(prompts): a sub-model that sees only the prompt (about {SUBCHARS} characters at most) and answers with a str\n- rlm_query(brief), rlm_query_batched(briefs): {RLMQ}\n- FINAL(summary) ends the task; SHOW_VARS() names your variables\n\nWork this way: find the code with search, then look at the lines you need with lines. When several files need the same kind of look, have sub-models read whole files with llm_query_batched and answer focused questions or draft edits. Make changes with edit or replace_lines, in a loop when the same change applies to several places, and print their results. Run the checks the task names with sh and print only the failing lines (r['out'][-2000:] or grep). Before anything else, find out whether the work is already done: look at the commits and comments the task gives you, and at git log for the files it names. If it is already in the tree, run the check the task names once and FINAL(what you found, with the commits); do not keep verifying. Call FINAL(summary) only after those checks pass.{WORKER}";
@@ -79,6 +79,7 @@ RcEnv :: struct {
   // --memory: the run store and its counts; read_turn: the turn each read row was first read at, plus one
   memory: bool;
   wm: [1] Wmf;
+  wg: [1] WmGit;                 // the commit the run started at, for the files' baselines (workmem/git.coax)
   read_turn: [WM_READS] int;
   mem_reads: int; repeats: int; turn_reads: int; turn_repeats: int; notes: int; finish_refused: int;
   task: [1] WmTask;              // the task's backtick spans (workmem/task.coax)
@@ -465,7 +466,7 @@ RC_XINTEL :: 8;                  // the first of RC_XOPS are --intel's, the rest
 RC_XREPLACE :: 7;
 
 RC_INTEL_NOTE :: "\n\nThe Coax compiler answers questions about .coax files. Its answers are certain where a search is a guess, so ask it first:\n- defines(name): where name is declared: kind, file and lines\n- uses(name, file=\"\"): every place name is used, with the procedure or check it is written in; file says which declaration you mean when several files declare the name\n- show(name, file=\"\"): one declaration's lines numbered; its first line gives the file, the lines and their hash\n- exports(path): what a file declares\n- check(path): the file's diagnostics as a list of dicts with code, line, message and fix; an empty list is a clean file\n- explain(code): what a diagnostic code such as E0315 means\n- effects(path, proc=\"\"): what a procedure may do (foreign calls, traps, I/O), with a call path to each\n- replace(name, seen_hash, text, file=\"\"): replaces the whole declaration with text. seen_hash is the hash show(name) gave. If the declaration changed since you read it, nothing is written and you get its text and hash as they are now; else you get the new lines numbered, their hash and the file's diagnostics\nPrefer show(name) to lines for a declaration you can name, uses(name) to search for a symbol, and replace to edit when you rewrite a whole declaration. Call check(path) after every edit of a .coax file. When the compiler can't answer, the function returns text that starts \"no answer:\" and says why (check returns one dict with code \"no answer\"); use search and lines for that question. Each answer is bounded and says how many records it left out.";
-RC_MEMORY_NOTE :: "\n\nYou have a working memory. What you read, change and run is recorded in it as you go, with no action from you, and it outlives this conversation:\n- note(text, path=\"\", a=0, b=0): records a finding, with the lines of the file it is about; it stays current until that file changes\n- known(): what is still current: your findings, then the lines you have read\n- changed(): every edit so far and the lines it wrote\n- open_items(): what still stops FINAL\nWhen lines or show returns lines you already have at the file's current version, its first line says so: you are reading the same thing again. Call known() before you read again, and note what you learn when you learn it. A check the task names (a command it quotes in backticks) has passed only when its latest run exited 0 after your last edit. FINAL before that is refused and lists what is open.";
+RC_MEMORY_NOTE :: "\n\nYou have a working memory. What you read, change and run is recorded in it as you go, with no action from you, and it outlives this conversation:\n- note(text, path=\"\", a=0, b=0): records a finding, with the lines of the file it is about; it stays current until that file changes\n- known(): what is still current: your findings, then the lines you have read\n- changed(): every edit so far and the lines it wrote\n- open_items(): what still stops FINAL\nWhen lines or show returns lines you already have at the file's current version, its first line says so: you are reading the same thing again. Call known() before you read again, and note what you learn when you learn it. A check the task names (a command it quotes in backticks) has passed only when its latest run exited 0 after your last edit. FINAL before that is refused and lists what is open. FINAL is also refused when a file has fewer checks (#test, #forall) or fewer #assert than when the run started, has lost its #authority line, or is a compatibility baseline that changed: put it back, or say why in FINAL so that a person can decide.";
 
 RC_ANS :: 24000;                 // bytes of one compiler answer at most
 RC_VIEW :: 6000;                 // bytes of known(), changed() and open_items() at most
@@ -585,10 +586,18 @@ rc_wm_ran :: (env: [] RcEnv, cmd: string, s: RcSh, ms: int) {
   y := wmf_run(w, cmd, check, s.exit, s.timed_out, ms, s.out);
 }
 
-// What stops FINAL now, in env.view ("" when nothing does).
+// What stops FINAL now, in env.view ("" when nothing does): the task's checks, and the files the
+// run weakened since it started (their baselines from git, in a checkout).
 rc_open :: (env: [] RcEnv) -> string {
-  x := wmf_refresh(env[0].wm[..]);
-  return wm_view_open(env[0].wm[0].s[..], RC_VIEW, env[0].view[..]);
+  x := wmg_refresh(env[0].wm[..], env[0].wg[..]);
+  return wmf_view_open(env[0].wm[..], RC_VIEW, env[0].view[..]);
+}
+// Whether one of the reasons FINAL is refused for now is a file the run weakened.
+rc_weakened :: (env: [] RcEnv) -> bool {
+  why: [64] WfReason;
+  v := wmf_may_finish(env[0].wm[..], why[..]);
+  for i: 0..<ifx v.count < why.count then v.count else why.count { if wf_weakened(why[i].why) { return true; } }
+  return false;
 }
 
 rc_memory_fn :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, q: RcReq) -> RcResult {
@@ -790,8 +799,10 @@ rc_finish :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, v: [] RlmLevel, was: int
   open := rc_open(env);
   if open.count == 0 || env[0].finish_refused >= RC_REFUSALS { return; }
   at := r[0].nh;
-  ok := rs_put(r, "FINAL was refused (") && rs_put_int(r, env[0].finish_refused + 1) && rs_put(r, " of at most ") && rs_put_int(r, RC_REFUSALS) && rs_put(r, " refusals): a check the task names has not passed on the files as they are now.\n") && rs_put(r, open);
-  ok = ok && rs_put(r, "Run it again and call FINAL when it passes. If it can't pass, say why in FINAL.\n\n");
+  weak := rc_weakened(env);
+  ok := rs_put(r, "FINAL was refused (") && rs_put_int(r, env[0].finish_refused + 1) && rs_put(r, " of at most ") && rs_put_int(r, RC_REFUSALS);
+  ok = ok && rs_put(r, ifx weak then " refusals): the run weakened what checks its work.\n" else " refusals): a check the task names has not passed on the files as they are now.\n") && rs_put(r, open);
+  ok = ok && rs_put(r, ifx weak then "Put back what was removed, run the checks again and call FINAL. If it must stay removed, say why in FINAL: a person will decide.\n\n" else "Run it again and call FINAL when it passes. If it can't pass, say why in FINAL.\n\n");
   if !ok { r[0].nh = at; return; }
   head := rs_take(r, at);
   // after a block: this turn's reports and the next turn's note; after a reply with no code: the note
@@ -808,8 +819,8 @@ rc_finish :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, v: [] RlmLevel, was: int
 
 // The run's end for the working memory: what is still open (the report's unproven).
 rc_wm_close :: (env: [] RcEnv) {
-  x := wmf_refresh(env[0].wm[..]);
-  env[0].nunproven = wm_view_open(env[0].wm[0].s[..], RC_VIEW, env[0].unproven[..]).count;
+  x := wmg_refresh(env[0].wm[..], env[0].wg[..]);
+  env[0].nunproven = wmf_view_open(env[0].wm[..], RC_VIEW, env[0].unproven[..]).count;
 }
 
 // The flags' functions and prompt sections for a state rc_init made: intel (the compiler's
@@ -825,6 +836,7 @@ rc_extend :: (m: [] RcMem, intel: bool, coax: string, memory_dir: string) -> str
     if !wmf_open(e[0].wm[..], memory_dir, fs_base(memory_dir), e[0].cwd) { return "the memory's folder could not be made or opened (or its log is not a working memory's)"; }
     if e[0].wm[0].s[0].root != e[0].cwd { return "that memory is of another folder: give another --session or --memory-dir"; }
     e[0].memory = true;
+    started := wmg_start(e[0].wm[..], e[0].wg[..]);      // in a checkout: the commit the files' baselines are read from
   }
   r[0].env_more = m[0].more[0..<n];
   // each flag's section of the prompt goes before the worker's part
@@ -1305,6 +1317,7 @@ RC_T_CLOCK :: "cx_now :: () -> int #foreign #effects(foreign, clock);\nstamp :: 
 RC_T_PART :: "// a part: it names Shape and area but loads nothing, so it checks only inside main.coax\nedge :: (s: Shape) -> int {\n  return 2 * (s.w + s.h) + area(s) * 0;\n}\nflat :: (s: Shape) -> bool {\n  return s.h == 0;\n}\n";
 RC_T_MAIN :: "#load \"shapes.coax\";\n#load \"clock.coax\";\n#load \"part.coax\";\ntotal :: (a: Shape, b: Shape) -> int { return area(a) + area(b); }\ntimed :: (a: Shape) -> int { return area(a) + stamp(); }\nrun :: () -> int { return total(Shape.{w = 1, h = 2}, Shape.{w = 3, h = 4}) + edge(Shape.{w = 1, h = 1}); }\n";
 RC_T_BAD :: "#load \"shapes.coax\";\nwrong :: (s: Shape) -> int { x: string = area(s); return x; }\n";
+RC_T_RULE :: "#authority;\ncap :: (n: int) -> int { return ifx n > 9 then 9 else n; }\n#test \"cap\" { #assert cap(12) == 9 && cap(3) == 3; }\n";
 RC_T_TAGGED :: "safe :: (a: int, b: int) -> int { return add_checked(a, b) or_else 0; }\n";
 // a compiler that says its version, hangs on check and crashes on everything else
 RC_T_FAKE :: "#!/bin/sh\nif [ \"$1\" = version ]; then echo 'coax0 fake'; exit 0; fi\nif [ \"$1\" = check ]; then sleep 30; exit 0; fi\nkill -SEGV $$\n";
@@ -1327,11 +1340,12 @@ rc_selftest_more :: (profile: string, coax: string) -> int {
   cb: [4096] u8; cwd := fs_realpath(t, cb[..]);
   otb: [4096] u8; outside := fs_temp("rlm-code-more-out-", otb[..]);
   if cwd.count == 0 || outside.count == 0 { tool_errln("selftest: no temporary folder"); return 1; }
-  pb: [4096] u8; fkb: [4096] u8; m1b: [4096] u8; m2b: [4096] u8;
+  pb: [4096] u8; fkb: [4096] u8; m1b: [4096] u8; m2b: [4096] u8; m3b: [4096] u8; m4b: [4096] u8;
   fake := fs_join(outside, "fake-coax", fkb[..]); mem1 := fs_join(outside, "mem1", m1b[..]); mem2 := fs_join(outside, "mem2", m2b[..]);
+  mem3 := fs_join(outside, "mem3", m3b[..]); mem4 := fs_join(outside, "mem4", m4b[..]);
   ok := fs_write(fs_join(cwd, "shapes.coax", pb[..]), RC_T_SHAPES) && fs_write(fs_join(cwd, "clock.coax", pb[..]), RC_T_CLOCK) && fs_write(fs_join(cwd, "part.coax", pb[..]), RC_T_PART);
   ok = ok && fs_write(fs_join(cwd, "main.coax", pb[..]), RC_T_MAIN) && fs_write(fs_join(cwd, "bad.coax", pb[..]), RC_T_BAD) && fs_write(fs_join(cwd, "tagged.coax", pb[..]), RC_T_TAGGED);
-  ok = ok && fs_write(fs_join(cwd, "test.sh", pb[..]), "grep -q 'return s.h \\* s.w' shapes.coax && echo 'test ok'\n") && fs_write(fake, RC_T_FAKE);
+  ok = ok && fs_write(fs_join(cwd, "test.sh", pb[..]), "grep -q 'return s.h \\* s.w' shapes.coax && echo 'test ok'\n") && fs_write(fake, RC_T_FAKE) && fs_write(fs_join(cwd, "rule.coax", pb[..]), RC_T_RULE);
   if !ok { tool_errln("selftest: could not write the fixture"); return 1; }
   sb: [8192] u8; n := rp_put(sb[..], 0, "chmod +x "); n = rc_quote(sb[..], n, fake);
   n = rp_put(sb[..], n, " && git init -q && git add -A && git -c user.email=t@example.com -c user.name=t commit -qm fixture");
@@ -1448,6 +1462,25 @@ rc_selftest_more :: (profile: string, coax: string) -> int {
   line = rc_report(m, ln[..], lbuf[..], 1000);
   rc_expect_true(c[..], "the report line: finishes refused and the unproven check", rc_has(line, "\"finishes_refused\":2,") && rc_has(line, "\"unproven\":[\"check sh test.sh: check passed before the tree changed; run it again: sh test.sh\"]}") && !rc_has(line, "\"intel\""), line);
   print("%\n", line);
+  // the run may not weaken what checks it: a command deletes a #test in a file the run never read (its baseline is git's)
+  roots3 := [3] string.["```repl\nr = sh(\"sed -i '/#test/d' shapes.coax\")\nprint(r['exit'])\nFINAL('one')\n```", "FINAL(two)", "FINAL(three)"];
+  why = rc_scripted_more(m, RC_LIMITS, cwd, profile, roots3[..], false, "", mem3);
+  rc_drive(m[0].env[..], m[0].r[..], m[0].st[..], "Tidy shapes.coax.", false);
+  st = m[0].st[..]; env = m[0].env[..];
+  tr = cast(string) st[0].trace[0..<st[0].ntr];
+  rc_expect_true(c[..], "a run that deletes a #test with a shell command is refused FINAL, with the file and its checks then and now", why == "" && env[0].wg[0].on && !rc_has(rc_file(m, cwd, "shapes.coax"), "#test") && rc_said(st, "FINAL was refused (1 of at most 2 refusals): the run weakened what checks its work.\nOpen:\nfile shapes.coax: fewer checks (#test, #forall) than when the run started; put them back: 1 then, 0 now\nPut back what was removed, run the checks again and call FINAL. If it must stay removed, say why in FINAL: a person will decide.\n\nREPL output:\n0\n"), tr);
+  line = rc_report(m, ln[..], lbuf[..], 1000);
+  rc_expect_true(c[..], "after two refusals FINAL stands, and the report's unproven names the weakened file for a person", st[0].answer == "three" && env[0].finish_refused == 2 && rc_has(line, "\"finishes_refused\":2,") && rc_has(line, "\"unproven\":[\"file shapes.coax: fewer checks (#test, #forall) than when the run started; put them back: 1 then, 0 now\"]}"), line);
+  print("%\n", line);
+  // an edit removes an #authority line; put back, FINAL is accepted (and the file a run before this one weakened is not this run's)
+  roots4 := [2] string.["```repl\nt = read('rule.coax')\nprint(replace_lines('rule.coax', 1, 1, ''))\nFINAL('one')\n```", "```repl\nprint(write('rule.coax', t))\nFINAL('put back')\n```"];
+  why = rc_scripted_more(m, RC_LIMITS, cwd, profile, roots4[..], false, "", mem4);
+  rc_drive(m[0].env[..], m[0].r[..], m[0].st[..], "Tidy rule.coax.", false);
+  st = m[0].st[..]; env = m[0].env[..];
+  tr = cast(string) st[0].trace[0..<st[0].ntr];
+  rc_expect_true(c[..], "a run that removes an #authority line is refused FINAL", why == "" && rc_said(st, "FINAL was refused (1 of at most 2 refusals): the run weakened what checks its work.\nOpen:\nfile rule.coax: its #authority line is gone; put it back: a person must approve this change\nPut back what was removed"), tr);
+  line = rc_report(m, ln[..], lbuf[..], 1000);
+  rc_expect_true(c[..], "with the line put back FINAL is accepted and nothing is unproven", st[0].answer == "put back" && env[0].finish_refused == 1 && st[0].turns == 2 && rc_file(m, cwd, "rule.coax") == RC_T_RULE && rc_has(line, "\"unproven\":[]}"), line);
   why = rc_scripted_more(m, RC_LIMITS, outside, profile, none[0..<0], false, "", mem2);
   rc_expect(c[..], "a memory of another folder is refused", why, "that memory is of another folder: give another --session or --memory-dir");
 

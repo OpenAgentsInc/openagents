@@ -16,10 +16,20 @@
 // every file the store knows after something outside the store (a shell
 // command, a person) may have changed them.
 //
+// A file's baseline is its content when the run started (#13445 step 4: the
+// finish rule refuses a run that weakened a check, an #authority line or a
+// compatibility baseline). The loop gives it with wmf_baseline (git.coax
+// does, in a checkout); a file with none given has the content this process
+// first knew for it: what the folder had when it was opened, or the first
+// content given here. Baselines are this process's and are not in the log.
+// wmf_may_finish and wmf_view_open count each changed file then and now
+// (weak.coax) and ask the rule.
+//
 // Checked by `coax/web/tool.sh coax/lib/agent/workmem/workmem.coax selftest`
 // (foreign effects do not run under `coax test`).
 #load "view.coax";
 #load "task.coax";
+#load "weak.coax";
 #load "../../sys/fs.coax";
 #load "../../sys/openagents-paths.coax";
 
@@ -31,7 +41,10 @@ Wmf :: struct {
   line: [WM_LINE] u8;
   text: [WMF_TEXT + WM_LINE] u8;      // a text read back, or the log while it loads
   failed: bool;                       // a line was applied and could not be appended: the folder is behind the store
+  base: [WM_FILES] [32] u8;           // each file row's baseline: the hash of its content when the run started
+  base_set: [WM_FILES] u8;            // 0: none; WMF_BASE_FIRST: the first content this process knew; WMF_BASE_GIVEN: wmf_baseline's
 }
+WMF_BASE_FIRST :: 1; WMF_BASE_GIVEN :: 2;
 
 // ~/.openagents/coder/sessions/ID.workmem
 wmf_dir :: (home: string, session: string, out: [] u8) -> string {
@@ -52,7 +65,18 @@ wmf_text_path :: (w: [] Wmf, h: [32] u8, out: [] u8) -> string {
 // bad: the number (from 1) of a line the store refused, which stops the load.
 WmfLoad :: struct { lines: int; whole: int; bad: int; }
 wmf_load :: (w: [] Wmf, dir: string) -> WmfLoad {
+  r := wmf_load_log(w, dir);
+  // what the folder holds is where this run starts
+  for f: 0..<w[0].s[0].nfiles { if w[0].s[0].files[f].versions > 0 { wmf_base_first(w, f, w[0].s[0].files[f].hash); } }
+  return r;
+}
+wmf_base_first :: (w: [] Wmf, file: int, h: [32] u8) {
+  if file < 0 || file >= WM_FILES || w[0].base_set[file] != 0 { return; }
+  w[0].base[file] = h; w[0].base_set[file] = WMF_BASE_FIRST;
+}
+wmf_load_log :: (w: [] Wmf, dir: string) -> WmfLoad {
   w[0].s[0] = WmStore.{}; w[0].failed = false;
+  for f: 0..<WM_FILES { w[0].base_set[f] = 0; }
   n := ifx dir.count < FS_PATH_MAX then dir.count else 0;
   for i: 0..<n { w[0].dir_buf[i] = dir[i]; }
   w[0].dir = cast(string) w[0].dir_buf[0..<n];
@@ -114,9 +138,14 @@ wmf_text_get :: (w: [] Wmf, h: [32] u8, out: [] u8) -> int {
 wmf_observe :: (w: [] Wmf, path: string, text: string) -> WmPut {
   s := w[0].s[..];
   f := wm_file(s, path); h := wm_hash(text);
-  if f >= 0 && s[0].files[f].versions > 0 && wm_same(s[0].files[f].hash, h) && s[0].files[f].lines == wm_line_count(text) { return WmPut.{ok = true, id = f, file = f}; }
+  if f >= 0 && s[0].files[f].versions > 0 && wm_same(s[0].files[f].hash, h) && s[0].files[f].lines == wm_line_count(text) {
+    if w[0].base_set[f] == 0 { _ = wmf_text_put(w, text); wmf_base_first(w, f, h); }
+    return WmPut.{ok = true, id = f, file = f};
+  }
   _ = wmf_text_put(w, text);
-  return wmf_keep(w, wm_put_file(s, path, h, text.count, wm_line_count(text), w[0].line[..]));
+  p := wmf_keep(w, wm_put_file(s, path, h, text.count, wm_line_count(text), w[0].line[..]));
+  if p.ok { wmf_base_first(w, p.id, h); }
+  return p;
 }
 
 // Lines from..to of the file, whose whole content is text, went to the model
@@ -203,4 +232,81 @@ wmf_refresh :: (w: [] Wmf) -> WmfRefresh {
     if o.ok && s[0].files[f].versions != before { r.changed += 1; r.stale_reads += o.stale_reads; r.stale_findings += o.stale_findings; }
   }
   return r;
+}
+
+// ------------------------------------------------------------------ baselines and the weakened rule
+
+// The file's content in the workspace now, into w.text: its length (0 for a
+// file that is gone), or -1 when it can't be read (or is over WMF_TEXT).
+wmf_workspace :: (w: [] Wmf, path: string) -> int {
+  pb: [FS_PATH_MAX] u8; full := fs_join(w[0].s[0].root, path, pb[..]);
+  if full.count == 0 { return -1; }
+  if fs_kind(full) != FS_FILE { return 0; }
+  if fs_size(full) > WMF_TEXT { return -1; }
+  return fs_read(full, w[0].text[0..<WMF_TEXT]);
+}
+// The file's row, made from its content in the workspace when the store has not seen it; -1 when it can't be.
+wmf_row :: (w: [] Wmf, path: string) -> int {
+  s := w[0].s[..]; f := wm_file(s, path);
+  if f >= 0 && s[0].files[f].versions > 0 { return f; }
+  n := wmf_workspace(w, path);
+  if n < 0 { return -1; }
+  o := wmf_observe(w, path, cast(string) w[0].text[0..<n]);
+  return ifx o.ok then o.file else -1;
+}
+// The file's content when the run started was text ("" for a file that was
+// not there). A file the store has not seen is looked at in the workspace
+// first, so the store knows what it is now. False when that can't be done.
+wmf_baseline :: (w: [] Wmf, path: string, text: string) -> bool {
+  f := wmf_row(w, path);
+  if f < 0 || f >= WM_FILES { return false; }
+  w[0].base[f] = wmf_text_put(w, text); w[0].base_set[f] = WMF_BASE_GIVEN;
+  return true;
+}
+// The file's content in the workspace now is its baseline: for a loop that
+// calls this when the run starts.
+wmf_baseline_now :: (w: [] Wmf, path: string) -> bool {
+  f := wmf_row(w, path);
+  if f < 0 || f >= WM_FILES { return false; }
+  w[0].base[f] = w[0].s[0].files[f].hash; w[0].base_set[f] = WMF_BASE_GIVEN;
+  return true;
+}
+// Has the loop given this file's baseline (wmf_baseline, wmf_baseline_now)?
+wmf_has_baseline :: (w: [] Wmf, path: string) -> bool {
+  f := wm_file(w[0].s[..], path);
+  return f >= 0 && f < WM_FILES && w[0].base_set[f] == WMF_BASE_GIVEN;
+}
+
+// What each file had when the run started and has now, for the rule:
+// files[i] is file row i. A file whose content is its baseline's, or whose
+// baseline is not known, has no facts (WfFile.{}). Returns how many files
+// the run changed. Reads only the store's own texts.
+wmf_facts :: (w: [] Wmf, files: [] WfFile) -> int {
+  s := w[0].s[..]; changed := 0;
+  for f: 0..<files.count {
+    files[f] = WfFile.{};
+    if f >= s[0].nfiles || w[0].base_set[f] == 0 || wm_same(w[0].base[f], s[0].files[f].hash) { continue; }
+    n := wmf_text_get(w, w[0].base[f], w[0].text[0..<WMF_TEXT]);
+    if n < 0 { continue; }
+    was := wm_weak_of(s[0].files[f].path, cast(string) w[0].text[0..<n]);
+    n = wmf_text_get(w, s[0].files[f].hash, w[0].text[0..<WMF_TEXT]);
+    if n < 0 { continue; }
+    files[f] = wm_weak_fact(was, wm_weak_of(s[0].files[f].path, cast(string) w[0].text[0..<n]), true);
+    changed += 1;
+  }
+  return changed;
+}
+// May the run finish (finish.coax)? The requirements, the checks, and no
+// file weakened since its baseline. Call wmf_refresh (or git.coax
+// wmg_refresh) first. A weakened file's reason has the file's row.
+wmf_may_finish :: (w: [] Wmf, reasons: [] WfReason) -> WfVerdict {
+  files: [WM_FILES] WfFile;
+  n := wmf_facts(w, files[0..<w[0].s[0].nfiles]);
+  return wm_may_finish_files(w[0].s[..], files[0..<w[0].s[0].nfiles], reasons);
+}
+// What is open (view.coax wm_view_open), with the weakened files as lines too.
+wmf_view_open :: (w: [] Wmf, budget: int, out: [] u8) -> string {
+  files: [WM_FILES] WfFile;
+  n := wmf_facts(w, files[0..<w[0].s[0].nfiles]);
+  return wm_view_open_files(w[0].s[..], files[0..<w[0].s[0].nfiles], budget, out);
 }

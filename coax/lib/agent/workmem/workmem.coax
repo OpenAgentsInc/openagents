@@ -9,7 +9,7 @@
 //   coax/web/tool.sh coax/lib/agent/workmem/workmem.coax selftest
 //       a scratch tree, real files, a real command, the folder opened again: prints "workmem selftest: ok"
 #import "Basic";
-#load "file.coax";
+#load "git.coax";
 #load "../../sys/tool.coax";
 #load "../../sys/args.coax";
 #load "../../sys/proc.coax";
@@ -93,7 +93,7 @@ wr_replay :: (s: [] WmStore, trace: string, line: [] u8) -> WrReplay {
   return r;
 }
 
-WmTool :: struct { w: [1] Wmf; u: [1] Wmf; s: [1] WmStore; big: [16777216] u8; out: [1048576] u8; err: [65536] u8; pool: [262144] u8; np: int; }
+WmTool :: struct { w: [1] Wmf; u: [1] Wmf; g: [1] WmGit; s: [1] WmStore; big: [16777216] u8; out: [1048576] u8; err: [65536] u8; pool: [262144] u8; np: int; }
 
 wt_replay :: (m: [] WmTool, a: [] Args) -> int {
   if args_count(a) < 2 { tool_errln("usage: workmem replay TRACE..."); return 2; }
@@ -323,9 +323,74 @@ wt_selftest :: (m: [] WmTool) -> int {
   bad += wt_check(fs_append(logp, "{\"kind\":\"read\",\"pa") && wmf_open(w, dir, "", "") && s[0].seq == t[0].seq && fs_size(logp) == size, "a line a crash cut short is cut off, and the store opens");
   bad += wt_check(fs_append(logp, "{\"kind\":\"nope\"}\n") && !wmf_open(w, dir, "", ""), "a log with a line that is not this store's does not open");
   bad += wt_check(fs_remove(tmp), "the scratch tree removed");
+  bad += wt_selftest_weak(m);
   if bad == 0 { print("workmem selftest: ok\n"); return 0; }
   print("workmem selftest: % failed\n", bad);
   return 1;
+}
+// One command in a folder, for the fixture: its exit, or 127.
+wt_do :: (m: [] WmTool, cwd: string, command: string) -> int {
+  cmd: [8192] u8; n := json_raw(cmd[..], json_raw(cmd[..], json_raw(cmd[..], json_raw(cmd[..], 0, "cd '"), cwd), "' && "), command);
+  argv := [3] string.["sh", "-c", cast(string) cmd[0..<ifx n < 0 then 0 else n]];
+  r := proc_run(argv[..], 20000, m[0].out[..], m[0].err[..]);
+  return ifx r.started == 0 then r.status else 127;
+}
+WT_RULE :: "// a rule\n#authority;\ncap :: (n: int) -> int { return ifx n > 9 then 9 else n; }\n#test \"over\" { #assert cap(12) == 9; }\n#test \"under\" { #assert cap(3) == 3; #assert cap(9) == 9; }\n";
+WT_RULE_ONE :: "// a rule\n#authority;\ncap :: (n: int) -> int { return ifx n > 9 then 9 else n; }\n#test \"under\" { #assert cap(3) == 3; #assert cap(9) == 9; }\n";
+WT_RULE_BARE :: "// a rule\ncap :: (n: int) -> int { return ifx n > 9 then 9 else n; }\n#test \"over\" { #assert cap(12) == 9; }\n#test \"under\" { #assert cap(3) == 3; #assert cap(9) == 9; }\n";
+WT_RULE_THIN :: "// a rule\n#authority;\ncap :: (n: int) -> int { return ifx n > 9 then 9 else n; }\n#test \"over\" { #assert cap(12) == 9; }\n#test \"under\" { #assert cap(3) == 3; }\n";
+
+// The weakened rule on real files (#13445 step 4): outside a checkout, where
+// a file's baseline is the first content the store saw, and in one, where
+// git gives the baseline of a file the run never read.
+wt_selftest_weak :: (m: [] WmTool) -> int {
+  bad := 0; w := m[0].w[..]; s := w[0].s[..]; g := m[0].g[..]; why: [8] WfReason;
+  tb: [1024] u8; tmp := fs_temp("workmem-weak-", tb[..]);
+  rb: [1100] u8; root := fs_join(tmp, "tree", rb[..]);
+  db: [1100] u8; dir := fs_join(tmp, "store", db[..]);
+  d2: [1100] u8; dir2 := fs_join(tmp, "store2", d2[..]);
+  pa: [1200] u8; pb: [1200] u8;
+  rule := fs_join(root, "rule.coax", pa[..]);
+  bad += wt_check(tmp.count > 0 && fs_mkdir(root) && fs_write(rule, WT_RULE) && fs_write(fs_join(root, "wire.surface", pb[..]), "coax.compat.v1\n0\tWire\n") && fs_write(fs_join(root, "old.coax", pb[..]), "#test \"old\" { #assert 1 == 1; }\n") && fs_write(fs_join(root, "dirty.coax", pb[..]), "#test \"d\" { #assert 2 == 2; }\n"), "a scratch tree with a rule file, a compatibility baseline and two more");
+
+  // outside a checkout: the first content the store saw is the baseline
+  bad += wt_check(wmf_open(w, dir, "weak-1", root) && !wmg_start(w, g) && !g[0].on, "outside a git checkout there is no start commit");
+  bad += wt_check(wmf_read(w, "rule.coax", WT_RULE, 1, 5).ok && wmg_refresh(w, g).changed == 0 && wmf_may_finish(w, why[..]).ok && wmf_view_open(w, 4096, m[0].out[..]) == "", "a file read and not changed: may finish");
+  bad += wt_check(fs_write(rule, WT_RULE_ONE) && wmg_refresh(w, g).changed == 1, "a command deletes a #test behind the store, and a refresh sees the file changed");
+  v := wmf_may_finish(w, why[..]);
+  bad += wt_check(!v.ok && v.count == 1 && why[0].why == WF_WEAK_CHECKS && why[0].row == wm_file(s, "rule.coax") && wm_may_finish(s, why[..]).ok, "may not finish: the file has fewer checks (the rule with no files does not see it)");
+  bad += wt_check(wmf_view_open(w, 4096, m[0].out[..]) == "Open:\nfile rule.coax: fewer checks (#test, #forall) than when the run started; put them back: 2 then, 1 now\n", "what is open names the file, with its checks then and now");
+  bad += wt_check(wmf_change(w, "rule.coax", WT_RULE_ONE, WT_RULE_THIN).ok && fs_write(rule, WT_RULE_THIN), "the test is put back with one #assert fewer");
+  v = wmf_may_finish(w, why[..]);
+  bad += wt_check(!v.ok && v.count == 1 && why[0].why == WF_WEAK_ASSERTS && wmf_view_open(w, 4096, m[0].out[..]) == "Open:\nfile rule.coax: fewer #assert than when the run started; put them back: 3 then, 2 now\n", "may not finish: fewer #assert");
+  bad += wt_check(wmf_change(w, "rule.coax", WT_RULE_THIN, WT_RULE_BARE).ok && fs_write(rule, WT_RULE_BARE), "the asserts are back and the #authority line is edited out");
+  v = wmf_may_finish(w, why[..]);
+  bad += wt_check(!v.ok && v.count == 1 && why[0].why == WF_WEAK_AUTHORITY && wmf_view_open(w, 4096, m[0].out[..]) == "Open:\nfile rule.coax: its #authority line is gone; put it back: a person must approve this change\n", "may not finish: the #authority line is gone");
+  bad += wt_check(wmf_change(w, "rule.coax", WT_RULE_BARE, WT_RULE).ok && fs_write(rule, WT_RULE) && wmf_may_finish(w, why[..]).ok && wmf_view_open(w, 4096, m[0].out[..]) == "", "the file as it was: may finish");
+  bad += wt_check(wmf_baseline(w, "rule.coax", WT_RULE_ONE) && wmf_has_baseline(w, "rule.coax") && wmf_may_finish(w, why[..]).ok, "a baseline the loop gives replaces the first content seen: the file gained a check since");
+  bad += wt_check(wmf_baseline(w, "wire.surface", "coax.compat.v1\n0\tWire\n1\tGone\n") && !wmf_may_finish(w, why[..]).ok && why[0].why == WF_WEAK_BASELINE && wmf_view_open(w, 4096, m[0].out[..]) == "Open:\nfile wire.surface: a compatibility baseline was changed or removed; put it back as it was: a person must approve this change\n", "a file the store never saw, given a baseline that is not its content: a changed compatibility baseline");
+  // the folder opened again: the run starts from what it holds
+  u := m[0].u[..];
+  bad += wt_check(wmf_open(u, dir, "", "") && wmf_may_finish(u, why[..]).ok && fs_write(rule, WT_RULE_ONE) && wmf_refresh(u).changed == 1 && !wmf_may_finish(u, why[..]).ok && why[0].why == WF_WEAK_CHECKS, "opened again, the content the folder holds is the baseline of the new run");
+  bad += wt_check(fs_write(rule, WT_RULE), "the rule file as it was");
+
+  // in a checkout: git gives the baseline of files the run never read
+  bad += wt_check(wt_do(m, root, "git init -q && git add -A && git -c user.email=t@example.com -c user.name=t commit -qm fixture") == 0, "the tree becomes a git checkout with one commit");
+  bad += wt_check(fs_write(fs_join(root, "dirty.coax", pb[..]), "// its check was removed before the run\n"), "a file loses its check before the run starts");
+  bad += wt_check(wmf_open(w, dir2, "weak-2", root) && wmg_start(w, g) && g[0].on && g[0].start.count == 40 && g[0].given == 1 && wmf_has_baseline(w, "dirty.coax") && s[0].nfiles == 1, "the run starts: the commit, and the one file that already differs has its content now as its baseline");
+  bad += wt_check(wmg_refresh(w, g).changed == 0 && wmf_may_finish(w, why[..]).ok, "nothing changed since: may finish (what was removed before the run is not the run's)");
+  bad += wt_check(wt_do(m, root, "sed -i '/#authority/d' rule.coax && rm old.coax && echo extra >> wire.surface && printf '#test \"n\" { #assert 1 == 1; }\\n' > new.coax && echo more >> dirty.coax") == 0, "commands the store never hears of: an #authority line deleted, a file with a check removed, a baseline changed, a file added");
+  f := wmg_refresh(w, g);
+  v = wmf_may_finish(w, why[..]);
+  bad += wt_check(g[0].given == 4 && g[0].skipped == 0 && s[0].nfiles == 4 && !v.ok && v.count == 3, "a refresh takes the three files' baselines from the commit, and the rule refuses each");
+  open := wmf_view_open(w, 4096, m[0].out[..]);
+  bad += wt_check(open == "Open:\nfile old.coax: fewer checks (#test, #forall) than when the run started; put them back: 1 then, 0 now\nfile rule.coax: its #authority line is gone; put it back: a person must approve this change\nfile wire.surface: a compatibility baseline was changed or removed; put it back as it was: a person must approve this change\n", "what is open names the three, and not the new file or the one changed before the run");
+  if bad > 0 { print("%", open); }
+  n := wmf_text_get(w, w[0].base[ifx wm_file(s, "rule.coax") < 0 then 0 else wm_file(s, "rule.coax")], m[0].out[..]);
+  bad += wt_check(n == WT_RULE.count && cast(string) m[0].out[0..<ifx n < 0 then 0 else n] == WT_RULE, "a baseline from git is the commit's bytes");
+  bad += wt_check(wt_do(m, root, "git checkout -q -- rule.coax old.coax wire.surface") == 0 && wmg_refresh(w, g).changed == 3 && wmf_may_finish(w, why[..]).ok && g[0].given == 4, "the files put back: may finish, and no baseline is asked twice");
+  bad += wt_check(fs_remove(tmp), "the scratch tree removed");
+  return bad;
 }
 wm_recall_ok :: (u: [] Wmf, m: [] WmTool) -> bool { return wmf_recall(u, "a.txt", 1, 3, m[0].out[..]) == "one\ntwo\nthree\n"; }
 

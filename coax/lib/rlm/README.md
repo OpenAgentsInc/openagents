@@ -177,10 +177,18 @@ each `sh` as a run (the store looks at its files again first, so a file the comm
   before it: `Reads this turn: 3; repeats (lines you already had): 2.`
 - **The finish rule.** The task's commands are its spans in single backticks. An `sh` command is
   a run of the longest span that is the whole command, or that has a space and is part of it; the
-  check's row is made at its first run. The root's `FINAL` is refused, with `wm_view_open`'s lines,
-  while `wm_may_finish` says no: a check's latest run failed, or passed before a later edit. After
+  check's row is made at its first run. The root's `FINAL` is refused, with `wmf_view_open`'s lines,
+  while `wmf_may_finish` says no: a check's latest run failed, or passed before a later edit. After
   two refusals it is accepted, and the report's `unproven` lists what was open. A check the model
   never ran has no row and stops nothing; a worker's `FINAL` is its report and is not held.
+- **Weakened checks** (#13445 step 4). `FINAL` is refused the same way when a file has fewer checks
+  (`#test`, `#forall`) or fewer `#assert` than when the run started, has lost its `#authority`
+  line, or is a compatibility baseline that changed. The line names the file and its counts then
+  and now. In a git checkout a file's baseline is the commit the run started at (or, for a file
+  that already differed from it, its content at the start), so a file a shell command changed is
+  seen though the run never read it. After two refusals the answer stands and `unproven` has the
+  line: that is how the change reaches a person. The rule and what it can't see are in
+  `coax/lib/agent/workmem/README.md`.
 
 The report line gains `intel` (`asked`, `unanswered`, `stale_edits`, each function's calls) and
 `memory` (`dir`, `reads`, `repeat_reads`, `finishes_refused`, `checks`, `runs`, `changes`, each

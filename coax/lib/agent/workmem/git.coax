@@ -1,0 +1,124 @@
+// Baselines from git, for a loop that runs in a checkout (GitHub #13445 step
+// 4). The finish rule refuses a run that weakened a check, an #authority
+// line or a compatibility baseline, and to know that it needs each changed
+// file's content when the run started. The store only knows a file from the
+// first time the loop reads or writes it, and a shell command (`sed -i`) can
+// change a file the run never read. Git knows:
+//
+//   wmg_start(w, g)      when the run starts, after wmf_open: the commit the
+//                        workspace is at, and, for each file that already
+//                        differs from it, its content now as its baseline
+//   wmg_refresh(w, g)    before the rule is asked: every file `git diff
+//                        --name-status START` reports gets `git show
+//                        START:PATH` as its baseline (a file added since has
+//                        none: ""), then wmf_refresh looks at every file the
+//                        store knows
+//
+// then file.coax wmf_may_finish and wmf_view_open. Outside a checkout (or in
+// one with no commit yet) wmg_start says false, wmg_refresh is wmf_refresh,
+// and a file's baseline is the first content the store saw.
+//
+// Not seen: a file git does not track that a command changed before the
+// store saw it, a file over 4 MB, and a path git quotes (a quote, a
+// backslash or a control byte in its name); `skipped` counts the last two.
+// Git runs outside any sandbox, as the tool does, and only reads.
+//
+// Checked by `coax/web/tool.sh coax/lib/agent/workmem/workmem.coax selftest`.
+#load "file.coax";
+#load "../../sys/proc.coax";
+
+WMG_LIST :: 1048576;             // bytes of git's list of changed files
+WMG_MS :: 30000;                 // one git command's time, at most
+
+WmGit :: struct {
+  on: bool;                      // the workspace is in a checkout with a commit
+  start: string; startb: [64] u8;         // the commit the run started at
+  given: int; skipped: int;      // baselines given; files left out (over 4 MB, a quoted path, a file the store has no row left for)
+  list: [WMG_LIST] u8; text: [WMF_TEXT] u8; err: [4096] u8;
+  spec: [WM_PATH + 80] u8; tmp: [FS_PATH_MAX] u8;
+}
+
+// The workspace's commit, and the files that already differ from it. False
+// (and g.on false) when the workspace is not in a git checkout with a commit.
+wmg_start :: (w: [] Wmf, g: [] WmGit) -> bool {
+  g[0].on = false; g[0].start = ""; g[0].given = 0; g[0].skipped = 0;
+  root := w[0].s[0].root;
+  if root.count == 0 { return false; }
+  argv := [6] string.["git", "-C", root, "rev-parse", "--verify", "HEAD"];
+  r := proc_run(argv[..], WMG_MS, g[0].list[..], g[0].err[..]);
+  if r.started != 0 || r.status != 0 || r.timed_out || r.out_n < 40 { return false; }
+  for i: 0..<40 {
+    c := g[0].list[i];
+    if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; }
+    g[0].startb[i] = c;
+  }
+  g[0].start = cast(string) g[0].startb[0..<40];
+  g[0].on = true;
+  wmg_each(w, g, true);
+  return true;
+}
+
+// Gives the baselines of what git reports changed since the run started,
+// then looks at every file the store knows (wmf_refresh). Call it before
+// wmf_may_finish or wmf_view_open.
+wmg_refresh :: (w: [] Wmf, g: [] WmGit) -> WmfRefresh {
+  if g[0].on { wmg_each(w, g, false); }
+  return wmf_refresh(w);
+}
+
+// One line of `git diff --name-status`: the status letter and the path ("" for a line that is not one, or a quoted path).
+WmgLine :: struct { status: u8; path: string; }
+wmg_line :: (line: string) -> WmgLine {
+  if line.count < 3 || line[1] != 9 || line[2] == '"' || line.count - 2 > WM_PATH { return WmgLine.{}; }
+  return WmgLine.{status = line[0], path = cast(string) line[2..<line.count]};
+}
+
+#test "a line of git's name-status list: the letter, a tab, the path; a quoted path is left out" {
+  l := wmg_line("M\tcoax/lib/a.coax");
+  #assert l.status == 'M' && l.path == "coax/lib/a.coax";
+  l = wmg_line("D\ta b.txt");
+  #assert l.status == 'D' && l.path == "a b.txt";
+  #assert wmg_line("A\tx").path == "x" && wmg_line("M\t\"a\\tb\"").path == "" && wmg_line("").path == "" && wmg_line("M\t").path == "" && wmg_line("M a.txt").path == "";
+}
+
+// Every file that differs from the start commit. first (the run starts): its
+// content now is its baseline. Else (the run is asked to finish): a file
+// with no baseline given yet gets the commit's content.
+wmg_each :: (w: [] Wmf, g: [] WmGit, first: bool) {
+  root := w[0].s[0].root;
+  argv := [11] string.["git", "-C", root, "-c", "core.quotePath=false", "diff", "--name-status", "--no-renames", "--relative", g[0].start, "--"];
+  r := proc_run(argv[..], WMG_MS, g[0].list[..], g[0].err[..]);
+  if r.started != 0 || r.status != 0 || r.timed_out { return; }
+  if r.cut { g[0].skipped += 1; }
+  list := cast(string) g[0].list[0..<r.out_n];
+  i := 0;
+  while i < list.count {
+    e := i;
+    while e < list.count && list[e] != 10 { e += 1; }
+    l := wmg_line(cast(string) list[i..<e]);
+    if e > i && l.path.count == 0 { g[0].skipped += 1; }
+    i = e + 1;
+    if l.path.count == 0 { continue; }
+    if first { if wmf_baseline_now(w, l.path) { g[0].given += 1; } else { g[0].skipped += 1; } continue; }
+    if wmf_has_baseline(w, l.path) { continue; }
+    n := ifx l.status == 'A' then 0 else wmg_show(w, g, l.path);
+    if n < 0 || !wmf_baseline(w, l.path, cast(string) g[0].text[0..<n]) { g[0].skipped += 1; continue; }
+    g[0].given += 1;
+  }
+}
+
+// The file's content at the start commit, into g.text, byte for byte: its
+// length, or -1 (not in that commit, or over WMF_TEXT). `git show` has no
+// output file, so a shell sends it to one in the store's folder.
+wmg_show :: (w: [] Wmf, g: [] WmGit, path: string) -> int {
+  n := json_raw(g[0].spec[..], json_raw(g[0].spec[..], json_raw(g[0].spec[..], 0, g[0].start), ":./"), path);
+  tmp := fs_join(w[0].dir, "baseline.tmp", g[0].tmp[..]);
+  if n < 0 || tmp.count == 0 { return -1; }
+  argv := [7] string.["sh", "-c", "exec git -C \"$1\" show \"$2\" > \"$3\"", "sh", w[0].s[0].root, cast(string) g[0].spec[0..<n], tmp];
+  small: [256] u8;
+  r := proc_run(argv[..], WMG_MS, small[..], g[0].err[..]);
+  got := -1;
+  if r.started == 0 && r.status == 0 && !r.timed_out && fs_size(tmp) <= WMF_TEXT { got = fs_read(tmp, g[0].text[..]); }
+  gone := fs_remove(tmp);
+  return got;
+}

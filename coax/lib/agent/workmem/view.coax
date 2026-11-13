@@ -148,6 +148,33 @@ wv_t_fill :: (t: [] WmT) {
   #assert wm_may_finish(s, why[..]).ok;
 }
 
+#test "open, with files the run weakened: listed after the checks, with what each had then and has now" #steps 100000000 {
+  w: [1] WvT; t := w[0].t[..]; s := t[0].s[..]; out := t[0].line[..];
+  wv_t_fill(t);                                       // file rows: a.coax 0, b.coax 1, c.coax 2
+  files: [3] WfFile; why: [8] WfReason;
+  #assert wm_view_open_files(s, files[..], 4096, w[0].out[..]) == "" && wm_may_finish_files(s, files[..], why[..]).ok;
+  files[0] = WfFile.{changed = true, was_checks = 3, checks = 2};
+  files[2] = WfFile.{changed = true, was_authority = true};
+  v := wm_may_finish_files(s, files[..], why[..]);
+  #assert !v.ok && v.count == 2 && why[0].why == WF_WEAK_CHECKS && why[0].row == 0 && why[1].why == WF_WEAK_AUTHORITY && why[1].row == 2;
+  #assert wm_view_open_files(s, files[..], 4096, w[0].out[..]) == "Open:\nfile a.coax: fewer checks (#test, #forall) than when the run started; put them back: 3 then, 2 now\nfile c.coax: its #authority line is gone; put it back: a person must approve this change\n";
+  files[0] = WfFile.{changed = true, was_asserts = 9, asserts = 4};
+  files[2] = WfFile.{changed = true, baseline = true};
+  #assert wm_view_open_files(s, files[..], 4096, w[0].out[..]) == "Open:\nfile a.coax: fewer #assert than when the run started; put them back: 9 then, 4 now\nfile c.coax: a compatibility baseline was changed or removed; put it back as it was: a person must approve this change\n";
+  // after the checks' lines; the rule with no files sees only those
+  _ = wm_put_check(s, "unit", "coax test b.coax", out);
+  _ = wm_put_change(s, "b.coax", wm_hash("b"), wm_hash("b2"), 1, 1, 2, 1, out);
+  #assert wm_view_open_files(s, files[0..<1], 4096, w[0].out[..]) == "Open:\ncheck unit: check passed before the tree changed; run it again: coax test b.coax\nfile a.coax: fewer #assert than when the run started; put them back: 9 then, 4 now\n";
+  #assert wm_view_open(s, 4096, w[0].out[..]) == "Open:\ncheck unit: check passed before the tree changed; run it again: coax test b.coax\n";
+  v = wm_may_finish(s, why[..]);
+  #assert !v.ok && v.count == 1 && why[0].why == WF_CHECK_STALE;
+  // inside the budget, like the rest
+  #assert wm_view_open_files(s, files[..], 120, w[0].out[..]) == "Open:\ncheck unit: check passed before the tree changed; run it again: coax test b.coax\n[+2 more not shown]\n";
+  // a reason line with no facts at hand still names the file
+  k := wm_reason_line(s, WfReason.{why = WF_WEAK_CHECKS, row = 1}, w[0].out2[..]);
+  #assert cast(string) w[0].out2[0..<k] == "file b.coax: fewer checks (#test, #forall) than when the run started; put them back: a person must approve this change\n";
+}
+
 #test "a long text is cut inside its row, on a character" {
   w: [1] WvT; t := w[0].t[..]; s := t[0].s[..]; out := t[0].line[..];
   _ = wm_put_header(s, "r", "/w", out);
@@ -300,11 +327,32 @@ wm_why_text :: (why: int) -> string {
   if why == WF_CHECK_NEVER { return "check never ran"; }
   if why == WF_CHECK_FAILING { return "check's latest run failed"; }
   if why == WF_CHECK_STALE { return "check passed before the tree changed; run it again"; }
+  if why == WF_WEAK_BASELINE { return "a compatibility baseline was changed or removed; put it back as it was"; }
+  if why == WF_WEAK_AUTHORITY { return "its #authority line is gone; put it back"; }
+  if why == WF_WEAK_CHECKS { return "fewer checks (#test, #forall) than when the run started; put them back"; }
+  if why == WF_WEAK_ASSERTS { return "fewer #assert than when the run started; put them back"; }
   return "the record's rows do not fit together";
 }
 // One reason as a line: the row it is about, why, and the row's text.
 wm_reason_line :: (s: [] WmStore, r: WfReason, row: [] u8) -> int {
+  none: [1] WfFile;
+  return wm_reason_line_files(s, none[0..<0], r, row);
+}
+// The same, for a rule that was given files (wm_may_finish_files): a
+// weakened file's line names the file and what it had then and has now.
+wm_reason_line_files :: (s: [] WmStore, files: [] WfFile, r: WfReason, row: [] u8) -> int {
   n := 0; text := "";
+  if wf_weakened(r.why) {
+    n = json_raw(row, 0, "file ");
+    if r.row >= 0 && r.row < s[0].nfiles { n = json_raw(row, n, s[0].files[r.row].path); }
+    n = json_raw(row, n, ": "); n = json_raw(row, n, wm_why_text(r.why)); n = json_raw(row, n, ": ");
+    if (r.why == WF_WEAK_CHECKS || r.why == WF_WEAK_ASSERTS) && r.row >= 0 && r.row < files.count {
+      f := files[r.row];
+      n = json_write_int(row, n, ifx r.why == WF_WEAK_CHECKS then f.was_checks else f.was_asserts); n = json_raw(row, n, " then, ");
+      n = json_write_int(row, n, ifx r.why == WF_WEAK_CHECKS then f.checks else f.asserts); n = json_raw(row, n, " now");
+    } else { n = json_raw(row, n, "a person must approve this change"); }
+    return json_raw(row, n, "\n");
+  }
   if r.why == WF_CHECK_NEVER || r.why == WF_CHECK_FAILING || r.why == WF_CHECK_STALE {
     n = json_raw(row, json_raw(row, 0, "check "), s[0].checks[r.row].name); text = s[0].checks[r.row].command;
   } else {
@@ -317,17 +365,23 @@ wm_reason_line :: (s: [] WmStore, r: WfReason, row: [] u8) -> int {
 // What is open: each requirement and check that stops the run finishing
 // (finish.coax), in the record's order. Empty when the run may finish.
 wm_view_open :: (s: [] WmStore, budget: int, out: [] u8) -> string {
-  why: [WM_REQS + WM_CHECKS] WfReason; row: [WV_ROW] u8;
-  v := wm_may_finish(s, why[..]);
+  none: [1] WfFile;
+  return wm_view_open_files(s, none[0..<0], budget, out);
+}
+// The same, with the files' facts (file.coax wmf_facts; wmf_view_open does
+// both): the files the run weakened are listed after the checks.
+wm_view_open_files :: (s: [] WmStore, files: [] WfFile, budget: int, out: [] u8) -> string {
+  why: [WM_REQS + WM_CHECKS + WM_FILES] WfReason; row: [WV_ROW] u8;
+  v := wm_may_finish_files(s, files, why[..]);
   end := ifx budget < out.count then budget else out.count;
   if v.ok || end < 0 { return ""; }
   total := 6;
-  for i: 0..<v.count { k := wm_reason_line(s, why[i], row[..]); total += ifx k < 0 then 0 else k; }
+  for i: 0..<v.count { k := wm_reason_line_files(s, files, why[i], row[..]); total += ifx k < 0 then 0 else k; }
   room := end - 6 - (ifx total <= end then 0 else WV_TRAILER);
   if room < 0 { return ""; }
   n := json_raw(out[0..<end], 0, "Open:\n"); left := v.count;
   for i: 0..<v.count {
-    k := wm_reason_line(s, why[i], row[..]);
+    k := wm_reason_line_files(s, files, why[i], row[..]);
     if k < 0 || k > room { break; }
     n = json_raw(out[0..<end], n, cast(string) row[0..<k]); room -= k; left -= 1;
   }

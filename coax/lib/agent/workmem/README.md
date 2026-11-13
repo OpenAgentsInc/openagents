@@ -6,15 +6,18 @@ ran. Nothing is dropped. The loop shows the model the part that matters each
 step, and the run may finish only when the record proves the task is done.
 
 It is one library for both loops: Microcoder's JSON-action loop
-(`coax/lib/microcoder/`) and the RLM coder (`coax/lib/rlm/code.coax`). Neither
-is wired to it yet; see [Wiring](#wiring).
+(`coax/lib/microcoder/`) and the RLM coder (`coax/lib/rlm/code.coax`). See
+[Wiring](#wiring) for the calls a loop makes.
 
 | File | What | Effects |
 | --- | --- | --- |
 | `finish.coax` | The finish rule: may the run stop? | none (`#authority`) |
 | `store.coax` | The rows, the log's one writer and one reader, staleness, the tree digest | none |
 | `view.coax` | The views for the model, each inside a byte budget | none |
-| `file.coax` | The store's folder on disk: the log and the texts | `coax/lib/sys/fs.coax` |
+| `weak.coax` | A file's checks, asserts, `#authority` line and whether it is a compatibility baseline, counted from its text | none |
+| `task.coax` | The checks a task names: its commands in single backticks | none |
+| `file.coax` | The store's folder on disk: the log, the texts, each file's baseline | `coax/lib/sys/fs.coax` |
+| `git.coax` | Baselines from git, for a loop that runs in a checkout | `git`, through `coax/lib/sys/proc.coax` |
 | `workmem.coax` | The command line: `show`, `replay`, `profile`, `selftest` | files, one child process |
 
 ## What the store holds
@@ -56,12 +59,16 @@ still counts as changed; the check must run again.
 
 ## The finish rule
 
-`wm_may_finish(s, reasons)` gives `WfVerdict{ok, count}`. `ok` is true only when:
+`wmf_may_finish(w, reasons)` gives `WfVerdict{ok, count}`. `ok` is true only when:
 
 - every requirement is `done` and at least one of its evidence rows still
-  holds; and
+  holds;
 - every check the task names has run, and its latest run exited 0, inside its
-  time, on the tree as it is now.
+  time, on the tree as it is now; and
+- the run weakened no file that judges it (below).
+
+`wm_may_finish(s, reasons)` is the same rule without the third part, for a
+caller that has only the store.
 
 An evidence row holds when it is:
 
@@ -75,15 +82,71 @@ loop that wants proof for every task adds the rows first.
 
 Each reason has a code and a row: `WF_REQ_OPEN`, `WF_REQ_FAILED`,
 `WF_REQ_UNPROVEN` (the requirement's row), `WF_CHECK_NEVER`,
-`WF_CHECK_FAILING`, `WF_CHECK_STALE` (the check's row). `wm_view_open` writes
-them as lines for the model.
+`WF_CHECK_FAILING`, `WF_CHECK_STALE` (the check's row), and `WF_WEAK_BASELINE`,
+`WF_WEAK_AUTHORITY`, `WF_WEAK_CHECKS`, `WF_WEAK_ASSERTS` (the file's row;
+`wf_weakened(why)` is true for these four). `wmf_view_open` writes them as
+lines for the model; `wm_view_open` writes the first six.
 
-The rule is `finish.coax`, `#authority`, with zero surviving mutants. It holds
-no store: `store.coax` copies its rows into the rule's facts without judging
-them.
+The rule is `finish.coax`, `#authority`, with zero surviving mutants (118 of
+118 killed). It holds no store and reads no file: `store.coax` copies its rows
+into the rule's facts, and `file.coax` counts each file, without judging them.
 
-Not in the rule yet (#13445 step 4): refusing a run that weakened a check, an
-`#authority` line or a compatibility baseline.
+### A run may not weaken what judges it
+
+An agent may not weaken a check, an `#authority` line or a compatibility
+baseline to pass (#13445 step 4). For each file whose content is not what it
+was when the run started, the rule is given what the file had then and has
+now (`WfFile`). The file is a reason, one a file, the first of:
+
+| Reason | When |
+| --- | --- |
+| `WF_WEAK_BASELINE` | The file was a compatibility baseline. Any change to one, or its removal |
+| `WF_WEAK_AUTHORITY` | It had an `#authority` line and has none |
+| `WF_WEAK_CHECKS` | It has fewer checks (`#test`, `#forall`) than it had |
+| `WF_WEAK_ASSERTS` | It has fewer `#assert` than it had |
+
+A file that is gone has no checks, no asserts and no line, so deleting a file
+with checks is `WF_WEAK_CHECKS`. A file the run did not change is never a
+reason. Adding checks is not one either, and a new file has nothing to lose.
+
+The rule does not allow such a change on the model's word. A loop refuses the
+finish a set number of times and then reports the reason to a person. The RLM
+coder refuses twice, then accepts the answer with the line in its report's
+`unproven`.
+
+**What is counted** (`weak.coax`). The counts are of the file's text, in
+`.coax` files only: each `#test`, `#forall` and `#assert` written outside a
+comment, and a line that starts with `#authority`. A check that is commented
+out is one check fewer. A `#test` inside a string (a fixture) counts as one.
+Both sides are counted the same way, so only a difference matters. The
+compiler is not asked: it names a file's checks only by running them, and a
+baseline text is not a file on disk.
+
+**A compatibility baseline** is a surface file: what `coax compat --emit
+MODULE.coax` prints, kept so a later module can be compared against it
+(`coax compat OLD.surface NEW.coax --baseline BASE.surface`,
+[coax/checked-state.md](../../../checked-state.md)). It is known by its first
+line, `coax.compat.v1`, whatever its name. This tree has two:
+`coax/web/compat/everglade-wire.surface` and `character-checkpoint.surface`.
+
+**A file's baseline** is its content when the run started, not when the store
+first saw it: a shell command (`sed -i`) can change a file the run never
+read. Baselines belong to the process and are not in the log, so
+`openagents.workmem.v1` is unchanged.
+
+- In a git checkout, `git.coax` gives them. `wmg_start` records the commit
+  the workspace is at and, for each file that already differs from it, the
+  file's content now. `wmg_refresh` asks `git diff --name-status START` and
+  gives each file it reports the content `git show START:PATH` has (a file
+  added since has none).
+- Otherwise a file's baseline is the first content this process knew for it:
+  what the folder held when it was opened, or the first content the loop gave.
+- `wmf_baseline(w, path, text)` sets one directly.
+
+Not seen: a file git does not track that a command changed before the store
+saw it; a file over 4 MB; a path git quotes (a quote, a backslash or a control
+byte in its name). `WmGit.skipped` counts the last two. A check moved from one
+file to another is a reason for the file it left.
 
 ## The views
 
@@ -96,6 +159,7 @@ in bytes, and the same bytes for the same store.
 | `wm_view_findings`, `wm_view_reads` | Each of those sections alone |
 | `wm_view_changed(s, budget, out)` | Every edit and the lines it wrote |
 | `wm_view_open(s, budget, out)` | Each requirement and check that stops the run finishing, and why; empty when it may finish |
+| `wmf_view_open(w, budget, out)` | The same, then each file the run weakened, with what it had then and has now (`file.coax`) |
 | `wm_view_stale(s, file, budget, out)` | The reads and findings that are stale because that file changed |
 
 ```
@@ -181,12 +245,13 @@ coax/web/tool.sh coax/lib/agent/workmem/workmem.coax selftest
   bytes`) through a store and reports how many reads the store already had.
 - `profile` holds the codec to the fixture.
 - `selftest` runs the store on a scratch tree with real files and a real
-  command, opens the folder again, and prints `workmem selftest: ok`.
+  command, opens the folder again, then weakens files outside a checkout and
+  in one, and prints `workmem selftest: ok`.
 
 ## Checks
 
 ```sh
-coax/bin/coax test coax/lib/agent/workmem/workmem.coax    # every check of the five files
+coax/bin/coax test coax/lib/agent/workmem/workmem.coax    # every check of the eight files
 coax/bin/coax mutate coax/lib/agent/workmem/finish.coax   # the rule: zero survivors
 coax/web/tool.sh coax/lib/agent/workmem/workmem.coax selftest
 coax/web/tool.sh coax/lib/agent/workmem/workmem.coax profile proto/coder/workmem-v1.json
@@ -215,22 +280,32 @@ runs. It gives them to `file.coax`:
 
 | When the loop | It calls | And uses |
 | --- | --- | --- |
-| starts a run | `wmf_open(w, dir, run, root)`; `wmf_requirement`, `wmf_check` for the task's rows | |
+| starts a run | `wmf_open(w, dir, run, root)`, then `wmg_start(w, g)`; `wmf_requirement`, `wmf_check` for the task's rows | `wmg_start` is false outside a checkout, and nothing else changes |
 | reads a file or a range | `wmf_read(w, path, whole_text, from, to)` | `known`: the model already had these lines |
 | wants to show lines again | `wmf_recall(w, path, from, to, out)` | the lines from the store, with no read; `""` when they are not current |
 | applies an edit | `wmf_change(w, path, before_text, after_text)` | the row's `from` and `to`; `stale_reads`, `stale_findings`, `wm_view_stale` |
 | runs a command | `wmf_run(w, command, check, exit, timed_out, ms, output)`, then `wmf_refresh(w)` | the run row's number, for a verified finding or as evidence |
 | records a note | `wmf_finding_at(w, text, run, path, from, to)`; `run` is -1 for a guess | |
 | marks a requirement | `wmf_status(w, req, WF_DONE, evidence)` | |
-| builds a prompt | `wm_view_known`, `wm_view_changed`, `wm_view_open` | |
-| is asked to finish | `wmf_refresh(w)`, then `wm_may_finish(s, reasons)` | refuse with `wm_view_open` when `ok` is false |
+| builds a prompt | `wm_view_known`, `wm_view_changed`, `wmf_view_open` | |
+| is asked to finish | `wmg_refresh(w, g)`, then `wmf_may_finish(w, reasons)` | refuse with `wmf_view_open(w, budget, out)` when `ok` is false; `wf_weakened(reasons[i].why)` says a reason is a weakened file |
+| ends | `wmg_refresh(w, g)`, then `wmf_view_open(w, budget, out)` | what is still open goes in the run's report, for a person |
 
-`w` is a `[1] Wmf` (about 6 MB: keep it in the loop's memory struct, not on a
-small stack) and `s` is `w[0].s[..]`.
+`w` is a `[1] Wmf` (about 6 MB) and `g` is a `[1] WmGit` (about 5 MB): keep
+both in the loop's memory struct, not on a small stack. `s` is `w[0].s[..]`.
+`wmg_refresh` is `wmf_refresh` after the baselines, so it replaces that call
+before the rule is asked; after a shell command `wmf_refresh` is enough. A
+loop that loads `git.coax` gets `file.coax` with it.
 
-For Microcoder: the state rendered each step (`state.coax`) gains the three
-views, and `finished: true` is refused while `wm_may_finish` says no. For the
-RLM coder: `read` and `lines` call `wmf_read`, `edit`, `replace_lines` and
-`write` call `wmf_change`, `sh` calls `wmf_run`, and new environment functions
-(`note`, `known`, `open`, `require`, `done`) reach the findings, views and
-requirements.
+The weakened rule is these three calls: `wmg_start(w, g)` after `wmf_open`,
+`wmg_refresh(w, g)` before the rule is asked, and `wmf_may_finish` and
+`wmf_view_open` in place of `wm_may_finish` and `wm_view_open`. The old calls
+still work and give the rule without it.
+
+The RLM coder is wired (`coax/lib/rlm/README.md`, "Compiler questions and
+working memory"): `read`, `lines` and `show` call `wmf_read`; `edit`,
+`replace_lines`, `write` and `replace` call `wmf_change`; `sh` calls
+`wmf_run`; `note`, `known`, `changed` and `open_items` reach the findings
+and views; the root's `FINAL` meets `wmf_may_finish`.
+For Microcoder: the state rendered each step (`state.coax`) gains the views,
+and `finished: true` is refused while `wmf_may_finish` says no.
