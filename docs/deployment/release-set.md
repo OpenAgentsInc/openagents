@@ -46,6 +46,8 @@ production changes, when:
 | The release is a seeded bad build | `a seeded bad build: production never takes one` |
 | The live page's wire version is outside the range the release speaks | `NAME speaks wire A to B, and the page production serves speaks wire N` |
 | The release's wire range can't be read from staging's room | `could not be read` |
+| The release seats neither the live page's engine, rules and content pin nor a release before that is them (#13408) | `NAME runs engine E rules R content C and seats the release before's E R C, and the page production serves says engine E rules R content C` |
+| The release's pins, or the pins it seats before, can't be read from staging's room | `The pins NAME runs and seats could not be read` |
 
 The last two hold for every promotion, inside a release set or not. Rooms
 always speak the version before their own
@@ -84,7 +86,7 @@ stale lock never stops a deploy: the next deploy to staging removes it and
 says whose it was. To deploy under your own lock, pass `--lock TOKEN` or set
 `OA_STAGING_LOCK`.
 
-The rules are `rs_promote`, `rs_lock` and `rs_rooms_beside` in
+The rules are `rs_promote`, `rs_lock`, `rs_rooms_beside` and `rs_pins_beside` in
 `coax/web/release-set-policy.coax`. `coax/web/room/test-vm-deploy.sh` runs
 `vm-deploy.sh` and `api/deploy.sh` against a stand-in for the VM and checks
 each refusal.

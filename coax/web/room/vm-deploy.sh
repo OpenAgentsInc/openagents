@@ -455,15 +455,20 @@ deploy() {
 }
 link_name() { on_vm "[ -L /opt/oa-room/$1 ] && basename \"\$(readlink -f /opt/oa-room/$1)\" || true"; }
 is_bad() { [[ -n "$1" ]] && on_vm "grep -qxF '$1' /opt/oa-room/bad 2>/dev/null"; }
-# The release a promotion names, when production may take it (rs_promote, rs_rooms_beside): it is the
-# one staging runs now, staging is healthy, it is not a seeded bad build, and the live page's wire
-# version is inside the range it speaks.
+# The release a promotion names, when production may take it (rs_promote, rs_rooms_beside,
+# rs_pins_beside): it is the one staging runs now, staging is healthy, it is not a seeded bad build,
+# the live page's wire version is inside the range it speaks, and it seats the live page's engine,
+# rules and content pin, as its own build or as the release before's (#13408).
 promotable() {   # PINNED
   local pinned="${1:-}" name facts=()
   name="$(link_name staging)"
   [[ -z "$name" || "$name" =~ ^[A-Za-z0-9.+_-]+$ ]] || { echo "room-vm: staging's release has a name no release has: $name" >&2; exit 1; }
   # the stand-in's facts: what staging's room and the live page say
-  if [[ -n "$standin" ]]; then facts=(--rooms-wire "$(cat "$standin/rooms-wire" 2>/dev/null || echo 5-6)" --page-wire "$(cat "$standin/page-wire" 2>/dev/null || echo 5)"); fi
+  if [[ -n "$standin" ]]; then
+    facts=(--rooms-wire "$(cat "$standin/rooms-wire" 2>/dev/null || echo 5-6)" --page-wire "$(cat "$standin/page-wire" 2>/dev/null || echo 5)"
+           --rooms-pins "$(cat "$standin/rooms-pins" 2>/dev/null || echo 1,1,1)" --rooms-before "$(cat "$standin/rooms-before" 2>/dev/null || echo 1,1,1)"
+           --page-pins "$(cat "$standin/page-pins" 2>/dev/null || echo 1,1,1)")
+  fi
   gate promote-gate --release "$pinned" --staging-runs "$name" ${facts[@]+"${facts[@]}"} >&2 || {
     [[ -n "$pinned" || -z "$name" ]] || echo "room-vm: to promote what staging runs now, and only that: vm-deploy.sh deploy --release $name" >&2
     exit 1; }

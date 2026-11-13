@@ -120,6 +120,20 @@ this rule yet, and no seat is behind on either.
 
 ## The release tools
 
+- A promotion is held to the three pins as it is to the wire
+  (`release-set promote-gate`, which `vm-deploy.sh canary` and `deploy` ask;
+  the rule is `rs_pins_beside` in `coax/web/release-set-policy.coax`). It
+  reads staging's room report, both lines, and the pins of the page production
+  serves: that commit's `WIRE_ENGINE`, `WIRE_RULES` and `WIRE_CONTENT`, with
+  the revision in the first line of its `everglade.content`. Rooms that seat
+  the live page's build as their own or as the release before's are promoted.
+  Rooms that seat neither are refused, and so are rooms whose pins can't be
+  read. A live page whose pins can't be read is not held against them.
+  `coax/web/room/test-vm-deploy.sh` checks each case.
+- `release-set page-wire` (asked by `coax/web/release.sh` before a page goes
+  anywhere) holds the page's three pins too: every live shard read must seat
+  them.
+
 - `release-set ship` moves the page only onto shards that run the page's own
   build. It reads the page's content pin from the tables the page is built
   with (`rl_page_pins`).

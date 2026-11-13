@@ -36,16 +36,19 @@
 //     The three parts' builds, the shards' pins, and whether they are one set.
 //   coax/web/tool.sh release-set page-wire [--staging] [--was N] [--wire N]
 //     Whether this checkout's page may ship beside the rooms that run now (#13387): every live shard
-//     read must speak the page's wire version. coax/web/release.sh runs it before it puts a page
+//     read must speak the page's wire version and seat its engine, rules and content pin (as its own
+//     build or the release before's, #13408). coax/web/release.sh runs it before it puts a page
 //     anywhere. --was N: the version the page before it speaks, which decides when no shard can be
 //     read (the same version ships; another does not). --wire N asks about another version than this
 //     checkout's (a question only: release.sh never passes it). Exits 0 when the page may ship, 1
 //     when it may not (each shard that does not speak it is named, with both versions).
 //   coax/web/tool.sh release-set promote-gate --release NAME --staging-runs NAME [--rooms-wire A-B] [--page-wire N]
+//                                             [--rooms-pins E,R,C] [--rooms-before E,R,C] [--page-pins E,R,C]
 //   coax/web/tool.sh release-set lock-gate --held 0|1 --token T --mine T --now S --until S --same-host 0|1 --alive 0|1 [--holder NAME --taker NAME]
 //   coax/web/tool.sh release-set previous-gate --current NAME --next NAME --previous NAME [--repair] [--bad]
 //     The rules vm-deploy.sh asks (release-set-policy.coax): whether a promotion may go (exit 0 or 1,
-//     with why; the rooms' wire range and the live page's version are read unless given), a lock's
+//     with why; the rooms' wire range and pins, the pins of the release before they seat, and the live
+//     page's version and pins are read unless given: #13398, #13408), a lock's
 //     state (free, mine, stale, held, or yields: a soak's, which gives way to this taker), and what a promotion does to the rollback target (keep,
 //     replaced or none).
 // tool.sh: tls
@@ -210,6 +213,62 @@ rl_pins :: (text: string, p: [] RsPins) -> bool {
   #assert !rl_pins("shard=1\n", p[..]) && !rl_pins("build engine=4 rules=9\n", p[..]) && !rl_pins("build engine= rules=9 content=3\n", p[..]);
   // a report with no wire range, or half of one, is not read: its shard is not counted as speaking anything
   #assert !rl_pins("build engine=4 rules=9 content=3 schema=2\n", p[..]) && !rl_pins("build engine=4 rules=9 content=3 wire=5 schema=2\n", p[..]) && !rl_pins("build engine=4 rules=9 content=3 wire=5- schema=2\n", p[..]) && !rl_pins("build engine=4 rules=9 content=3 wire=-5\n", p[..]);
+}
+// The release before's pins a report says its room still seats: "seats-before engine=E rules=R
+// content=C" (#13408). A report with no such line is a room from before that rule: it seats its own
+// build alone, so `own` is the answer. A line that is there and can't be read is no reading.
+rl_before :: (text: string, own: RsPins, p: [] RsPins) -> bool {
+  l := rl_line(text, "seats-before", ' ');
+  if l.count == 0 { p[0] = RsPins.{engine = own.engine, rules = own.rules, content = own.content}; return true; }
+  v: [3] int; keys := [3] string.["engine=", "rules=", "content="];
+  for q: 0..<3 {
+    at := -1;
+    for i: 0..<l.count - keys[q].count + 1 { if at < 0 && l[i..<i + keys[q].count] == keys[q] && (i == 0 || l[i - 1] == ' ') { at = i + keys[q].count; } }
+    if at < 0 { return false; }
+    n := 0; any := false;
+    while at < l.count && l[at] >= '0' && l[at] <= '9' { n = n * 10 + cast(int) (l[at] - '0'); at += 1; any = true; }
+    if !any { return false; }
+    v[q] = n;
+  }
+  p[0] = RsPins.{engine = v[0], rules = v[1], content = v[2]};
+  return true;
+}
+// "E,R,C" as three whole numbers; false when it is not that.
+rl_triple :: (t: string, p: [] RsPins) -> bool {
+  at := 0; v: [3] int;
+  for q: 0..<3 {
+    any := false;
+    while at < t.count && t[at] >= '0' && t[at] <= '9' { v[q] = v[q] * 10 + cast(int) (t[at] - '0'); at += 1; any = true; }
+    if !any { return false; }
+    if q < 2 { if at >= t.count || t[at] != ',' { return false; } at += 1; }
+  }
+  if at != t.count { return false; }
+  p[0] = RsPins.{engine = v[0], rules = v[1], content = v[2]};
+  return true;
+}
+// The number after "NAME :: " in a line of constants ("WIRE_ENGINE :: 1; WIRE_RULES :: 1; ..."): 0
+// when the line names no such constant with a whole number and a semicolon.
+rl_named_const :: (line: string, name: string) -> int {
+  for i: 0..<line.count - name.count - 4 + 1 {
+    if line[i..<i + name.count] != name || line[i + name.count..<i + name.count + 4] != " :: " { continue; }
+    if i > 0 && line[i - 1] != ' ' { continue; }
+    n := 0; at := i + name.count + 4; any := false;
+    while at < line.count && line[at] >= '0' && line[at] <= '9' { n = n * 10 + cast(int) (line[at] - '0'); at += 1; any = true; }
+    return ifx any && at < line.count && line[at] == ';' then n else 0;
+  }
+  return 0;
+}
+#test "the release before's pins from a report, three pins from E,R,C, and a named constant from its line" {
+  own := RsPins.{engine = 4, rules = 9, content = 3, wire_lo = 5, wire_hi = 6}; p: [1] RsPins;
+  #assert rl_before("build engine=4 rules=9 content=3 wire=5-6 schema=2\nseats-before engine=3 rules=9 content=2\n", own, p[..]) && p[0].engine == 3 && p[0].rules == 9 && p[0].content == 2;
+  // no such line: the room's own build
+  #assert rl_before("build engine=4 rules=9 content=3 wire=5-6 schema=2\n", own, p[..]) && p[0].engine == 4 && p[0].rules == 9 && p[0].content == 3;
+  #assert !rl_before("seats-before engine=3 rules=9\n", own, p[..]) && !rl_before("seats-before engine= rules=9 content=2\n", own, p[..]) && !rl_before("seats-before xengine=3 rules=9 content=2\n", own, p[..]);
+  #assert rl_triple("1,1,2", p[..]) && p[0].engine == 1 && p[0].rules == 1 && p[0].content == 2 && rl_triple("10,2,1000003", p[..]) && p[0].engine == 10 && p[0].content == 1000003;
+  #assert !rl_triple("1,1", p[..]) && !rl_triple("1,1,", p[..]) && !rl_triple("1,1,2,3", p[..]) && !rl_triple("", p[..]) && !rl_triple("a,b,c", p[..]) && !rl_triple("1,1,2x", p[..]);
+  l := "WIRE_ENGINE :: 2; WIRE_RULES :: 13; WIRE_CONTENT :: 4;\n";
+  #assert rl_named_const(l, "WIRE_ENGINE") == 2 && rl_named_const(l, "WIRE_RULES") == 13 && rl_named_const(l, "WIRE_CONTENT") == 4 && rl_named_const(l, "WIRE_VERSION") == 0;
+  #assert rl_named_const("XWIRE_RULES :: 3;", "WIRE_RULES") == 0 && rl_named_const("WIRE_RULES :: ;", "WIRE_RULES") == 0 && rl_named_const("WIRE_RULES :: 3", "WIRE_RULES") == 0 && rl_named_const("", "WIRE_RULES") == 0;
 }
 // The rooms' releases as vm-deploy.sh releases prints them, into out.
 rl_releases :: (out: [] u8) -> string {
@@ -614,17 +673,30 @@ rl_page_wire :: (a: [] Args) -> int {
   if asked.count > 0 { page = sr_num(asked).v; if page <= 0 { tool_errln("release-set: --wire N, a wire version"); return 2; } }
   was := 0; before := args_value(a, "--was", "");
   if before.count > 0 { was = sr_num(before).v; if was < 0 { was = 0; } }
-  live := 0; speaking := 0; body: [32768] u8;
+  // --wire N asks about another wire version than this checkout's: its pins are not this checkout's, so they are not held
+  pp := rl_page_pins(); mine := RsPins.{engine = pp.engine, rules = pp.rules, content = pp.content}; pinned := asked.count == 0;
+  live := 0; speaking := 0; seating := 0; body: [32768] u8;
   for q: 1..<e.shards + 1 {
-    p: [1] RsPins; read := false;
+    p: [1] RsPins; read := false; report := "";
     for round: 0..<3 {
-      if rl_pins(rl_vitals(e, q, body[..]), p[..]) { read = true; break; }
+      report = rl_vitals(e, q, body[..]);
+      if rl_pins(report, p[..]) { read = true; break; }
       if round < 2 { proc_sleep(1000); }
     }
     if !read { continue; }
     live += 1;
     if rs_wire_speaks(page, p[0].wire_lo, p[0].wire_hi) { speaking += 1; }
     else { print("  wire: %'s shard % speaks wire % to %; the page speaks wire %\n", e.name, q, p[0].wire_lo, p[0].wire_hi, page); }
+    // its three pins (#13408): the shard seats the page's build as its own or as the release before's
+    sb: [1] RsPins; has := rl_before(report, p[0], sb[..]);
+    if !has { sb[0] = RsPins.{}; }
+    if !pinned { seating += 1; }
+    else if rs_pins_read(sb[0]) && rs_rooms_seat(p[0], sb[0], mine) { seating += 1; }
+    else { print("  pins: %'s shard % runs engine % rules % content % and seats the release before's % % %; the page says % % %\n", e.name, q, p[0].engine, p[0].rules, p[0].content, sb[0].engine, sb[0].rules, sb[0].content, mine.engine, mine.rules, mine.content); }
+  }
+  if live > 0 && !rs_pins_ship(seating, live) {
+    print("page-wire: REFUSED. The page says engine % rules % content % and % of %'s % live shard(s) seat that build. Their players would be told to reload and be refused again. Ship it with its rooms: coax/web/tool.sh release-set ship%\n", mine.engine, mine.rules, mine.content, seating, e.name, live, ifx e.staging then " --staging" else "");
+    return 1;
   }
   if rs_wire_ship(speaking, live, page, was) {
     if live > 0 { print("  wire: the page speaks wire %, and so do %'s % live shard(s)\n", page, e.name, live); }
@@ -639,11 +711,34 @@ rl_page_wire :: (a: [] Args) -> int {
 // ---- the rules vm-deploy.sh asks (#13398)
 // The wire version the page production serves speaks: its build from /status/, and that commit's
 // WIRE_VERSION. 0 when either can't be read.
-rl_live_page_wire :: () -> int {
+// The commit of the page production serves, from /status/ (40 characters), into `to`; "" unread.
+rl_live_build :: (to: [] u8) -> string {
   e := rl_env(false); body: [RL_OUT] u8;
   u: [1] Rl; rl_s(u[..], e.api); rl_s(u[..], "/status/");
-  page := rl_get(rl_text(u[..]), body[..]); build := ""; mark := "data-text=\"build ";
-  for i: 0..<page.count - mark.count - 40 { if page[i..<i + mark.count] == mark { build = page[i + mark.count..<i + mark.count + 40]; break; } }
+  page := rl_get(rl_text(u[..]), body[..]); mark := "data-text=\"build ";
+  for i: 0..<page.count - mark.count - 40 {
+    if page[i..<i + mark.count] == mark { for k: 0..<40 { to[k] = page[i + mark.count + k]; } return cast(string) to[0..<40]; }
+  }
+  return "";
+}
+// The three pins the page production serves says (#13408): its commit's WIRE_ENGINE, WIRE_RULES and
+// WIRE_CONTENT, and the revision of the content tables it was built with (the first line of that
+// commit's everglade/content/everglade.content; a commit with no tables says WIRE_CONTENT alone).
+// All zero when its build or its constants can't be read.
+rl_live_page_pins :: (build: string) -> RsPins {
+  if build.count != 40 { return RsPins.{}; }
+  out: [4096] u8; got: [1] int;
+  g := [7] string.["git", "grep", "-h", "^WIRE_ENGINE :: ", build, "--", "everglade/shared/everglade-wire.coax"];
+  if rl_run(g[..], 60, out[..], got[..]) != 0 { return RsPins.{}; }
+  l := cast(string) out[0..<got[0]];
+  eng := rl_named_const(l, "WIRE_ENGINE"); rules := rl_named_const(l, "WIRE_RULES"); content := rl_named_const(l, "WIRE_CONTENT");
+  if eng <= 0 || rules <= 0 || content <= 0 { return RsPins.{}; }
+  tb: [4096] u8; tg: [1] int; rev := 0;
+  t := [7] string.["git", "grep", "-h", "^aethyr.content.v1 ", build, "--", "everglade/content/everglade.content"];
+  if rl_run(t[..], 60, tb[..], tg[..]) == 0 { rev = pprev_doc_rev(cast(string) tb[0..<tg[0]]); }
+  return RsPins.{engine = eng, rules = rules, content = pprev_pin(content, rev)};
+}
+rl_live_page_wire :: (build: string) -> int {
   if build.count != 40 { return 0; }
   out: [4096] u8; got: [1] int;
   g := [7] string.["git", "grep", "-h", "^WIRE_VERSION :: ", build, "--", "everglade/shared/everglade-wire.coax"];
@@ -682,23 +777,44 @@ rl_promote_gate :: (a: [] Args) -> int {
     print("promote: REFUSED. %. Staging runs %; this promotion names %. Nothing in production changed\n", rs_p_word(why), ifx staging.count > 0 then staging else "nothing", ifx pinned.count > 0 then pinned else "no release");
     return 1;
   }
-  // the rooms' range: staging's unit runs the release
-  w: [2] int; given := args_value(a, "--rooms-wire", "");
+  // the rooms' range and pins: staging's unit runs the release
+  w: [2] int; own: [1] RsPins; before: [1] RsPins;
+  given := args_value(a, "--rooms-wire", ""); gp := args_value(a, "--rooms-pins", ""); gb := args_value(a, "--rooms-before", "");
   if given.count > 0 { if !rl_range(given, w[..]) { tool_errln("release-set: --rooms-wire A-B"); return 2; } }
-  else {
-    p: [1] RsPins; body: [32768] u8; read := false;
-    for round: 0..<3 { if rl_pins(rl_vitals(rl_env(true), 1, body[..]), p[..]) { read = true; break; } if round < 2 { proc_sleep(1000); } }
-    if read { w[0] = p[0].wire_lo; w[1] = p[0].wire_hi; }
+  if gp.count > 0 { if !rl_triple(gp, own[..]) { tool_errln("release-set: --rooms-pins E,R,C"); return 2; } }
+  if gb.count > 0 { if !rl_triple(gb, before[..]) { tool_errln("release-set: --rooms-before E,R,C"); return 2; } }
+  if given.count == 0 || gp.count == 0 || gb.count == 0 {
+    p: [1] RsPins; body: [32768] u8; read := false; report := "";
+    for round: 0..<3 { report = rl_vitals(rl_env(true), 1, body[..]); if rl_pins(report, p[..]) { read = true; break; } if round < 2 { proc_sleep(1000); } }
+    if read {
+      if given.count == 0 { w[0] = p[0].wire_lo; w[1] = p[0].wire_hi; }
+      if gp.count == 0 { own[0] = RsPins.{engine = p[0].engine, rules = p[0].rules, content = p[0].content}; }
+      if gb.count == 0 { sb: [1] RsPins; if rl_before(report, p[0], sb[..]) { before[0] = sb[0]; } }
+    }
   }
-  page := 0; pg := args_value(a, "--page-wire", "");
-  if pg.count > 0 { page = sr_num(pg).v; } else { page = rl_live_page_wire(); }
+  // the live page: its wire version and its three pins, from the commit production's page was built from
+  page := 0; pins: [1] RsPins; lb: [40] u8; live := "";
+  pg := args_value(a, "--page-wire", ""); pp := args_value(a, "--page-pins", "");
+  if pg.count == 0 || pp.count == 0 { live = rl_live_build(lb[..]); }
+  if pg.count > 0 { page = sr_num(pg).v; } else { page = rl_live_page_wire(live); }
+  if pp.count > 0 { if !rl_triple(pp, pins[..]) { tool_errln("release-set: --page-pins E,R,C"); return 2; } } else { pins[0] = rl_live_page_pins(live); }
   if !rs_rooms_beside(page, w[0], w[1]) {
     if w[0] <= 0 { print("promote: REFUSED. The wire versions % speaks could not be read from staging's room. Nothing in production changed\n", pinned); }
     else { print("promote: REFUSED. % speaks wire % to %, and the page production serves speaks wire %: every player on it would be refused. Release the version between first (docs/protocol/everglade-previous-wire.md). Nothing in production changed\n", pinned, w[0], w[1], page); }
     return 1;
   }
+  if !rs_pins_beside(pins[0], own[0], before[0]) {
+    if !rs_pins_read(own[0]) || !rs_pins_read(before[0]) { print("promote: REFUSED. The pins % runs and seats could not be read from staging's room. Nothing in production changed\n", pinned); }
+    else {
+      print("promote: REFUSED. % runs engine % rules % content % and seats the release before's % % %, and the page production serves says ", pinned, own[0].engine, own[0].rules, own[0].content, before[0].engine, before[0].rules, before[0].content);
+      print("engine % rules % content %: every player on it would be refused. Release the build between first (docs/protocol/everglade-previous-pins.md). Nothing in production changed\n", pins[0].engine, pins[0].rules, pins[0].content);
+    }
+    return 1;
+  }
   if page > 0 { print("promote: % is what staging runs; it speaks wire % to %, and the live page speaks %\n", pinned, w[0], w[1], page); }
   else { print("promote: % is what staging runs; it speaks wire % to %. The live page's version could not be read: not held against it\n", pinned, w[0], w[1]); }
+  if rs_pins_read(pins[0]) { print("promote: it seats engine % rules % content % (its own % % %), and the live page says % % %\n", before[0].engine, before[0].rules, before[0].content, own[0].engine, own[0].rules, own[0].content, pins[0].engine, pins[0].rules, pins[0].content); }
+  else { print("promote: it runs engine % rules % content %. The live page's pins could not be read: not held against it\n", own[0].engine, own[0].rules, own[0].content); }
   return 0;
 }
 rl_lock_gate :: (a: [] Args) -> int {

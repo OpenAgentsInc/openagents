@@ -12,6 +12,9 @@
 #   4. a seeded bad build is never promoted
 #   5. rooms whose wire range leaves out the live page's version are not promoted; an unread page
 #      is not held against them; rooms whose range can't be read are not promoted
+#   5b. the same for the three pins (#13408): rooms that seat neither the live page's build nor a
+#      release before that is it are not promoted; unread rooms' pins are not promoted; an unread
+#      page is not held against them
 #   6. the staging lock: while a release holds it, deploy --staging, rollback --staging and the
 #      API's deploy refuse anyone else and name the holder; the holder's token passes; a second
 #      taker is refused; only the holder's token releases it
@@ -109,9 +112,28 @@ expect "rooms whose wire range can't be read are not promoted" 1 $st "could not 
 echo 6-7 > "$vm/rooms-wire"; echo 0 > "$vm/page-wire"
 v canary 2 --release r5; st=$?
 expect "an unread live page is not held against a promotion" 0 $st "could not be read: not held against it"
+# ---- 5b. the rooms' three pins beside the live page (#13408); the wire is in range throughout
 echo 5-6 > "$vm/rooms-wire"; echo 5 > "$vm/page-wire"
+echo 1,1,3 > "$vm/rooms-pins"; echo 1,1,2 > "$vm/rooms-before"; echo 1,1,1 > "$vm/page-pins"
 v deploy --release r5; st=$?
-expect "rooms that speak the live page's version are promoted" 0 $st "speaks wire 5 to 6, and the live page speaks 5" "the rollback target is r3"
+expect "rooms two content revisions ahead of the live page are not promoted" 1 $st "REFUSED" "runs engine 1 rules 1 content 3" "seats the release before's 1 1 2" "says engine 1 rules 1 content 1"
+[[ "$(link current)" == r3 ]] && ok "production still runs r3" || bad "production took $(link current)"
+echo 2,2,2 > "$vm/rooms-pins"; echo 1,1,1 > "$vm/rooms-before"; echo 2,1,1 > "$vm/page-pins"
+v canary 3 --release r5; st=$?
+expect "a live page on a mix of the two builds is not seated: no canary either" 1 $st "REFUSED" "says engine 2 rules 1 content 1"
+echo 0,0,0 > "$vm/rooms-pins"; echo 1,1,1 > "$vm/rooms-before"; echo 1,1,1 > "$vm/page-pins"
+v deploy --release r5; st=$?
+expect "rooms whose pins can't be read are not promoted" 1 $st "pins r5 runs and seats could not be read"
+echo 1,2,2 > "$vm/rooms-pins"; echo 0,0,0 > "$vm/rooms-before"; echo 1,2,2 > "$vm/page-pins"
+v deploy --release r5; st=$?
+expect "rooms whose seats-before pins can't be read are not promoted" 1 $st "could not be read"
+echo 1,2,2 > "$vm/rooms-pins"; echo 1,1,1 > "$vm/rooms-before"; echo 0,0,0 > "$vm/page-pins"
+v canary 2 --release r5; st=$?
+expect "an unread live page's pins are not held against a promotion" 0 $st "pins could not be read: not held against it"
+echo 1,2,2 > "$vm/rooms-pins"; echo 1,1,1 > "$vm/rooms-before"; echo 1,1,1 > "$vm/page-pins"
+v deploy --release r5; st=$?
+expect "rooms that speak the live page's version and seat its build as the release before's are promoted" 0 $st "speaks wire 5 to 6, and the live page speaks 5" "it seats engine 1 rules 1 content 1 (its own 1 2 2), and the live page says 1 1 1" "the rollback target is r3"
+rm -f "$vm/rooms-pins" "$vm/rooms-before" "$vm/page-pins"
 
 # ---- 6. the staging lock
 sleep 300 & holder=$!

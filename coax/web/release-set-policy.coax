@@ -11,6 +11,10 @@
 //                 the same page. Every live shard read must speak the page's version. With no shard
 //                 read, the page ships only when its version is the one the page before it spoke:
 //                 that release changes nothing a room could refuse
+//   the pins beside  a promotion and a page are held to the three pins as they are to the wire
+//                 (#13408): rooms are promoted only when they seat the live page's engine, rules
+//                 and content pin, as their own build or as the release before's; a page ships
+//                 only beside shards that seat its three
 //   the canary    one shard takes the new room first, and is compared with the others (in
 //                 production: the shards still on the old release, over the same minutes; on
 //                 staging, which has one shard: the same shard just before, under the same bots).
@@ -127,6 +131,27 @@ RsPins :: struct { engine: int; rules: int; content: int; wire_lo: int; wire_hi:
   #assert rs_rooms_beside(1, 1, 2) && !rs_rooms_beside(1, 2, 3);
   // the rooms' range unread: not promoted
   #assert !rs_rooms_beside(5, 0, 0) && !rs_rooms_beside(5, -1, 6) && !rs_rooms_beside(0, 0, 0) && !rs_rooms_beside(0, 7, 6) && !rs_rooms_beside(5, 0, 6);
+}
+#test "rooms beside the live page: a promotion never leaves the page's three pins unseated (#13408)" {
+  own := RsPins.{engine = 4, rules = 9, content = 3}; before := RsPins.{engine = 3, rules = 9, content = 2};
+  // read: each pin is 1 or more
+  #assert rs_pins_read(RsPins.{engine = 1, rules = 1, content = 1}) && rs_pins_read(own);
+  #assert !rs_pins_read(RsPins.{engine = 0, rules = 1, content = 1}) && !rs_pins_read(RsPins.{engine = 1, rules = 0, content = 1}) && !rs_pins_read(RsPins.{engine = 1, rules = 1, content = 0}) && !rs_pins_read(RsPins.{});
+  #assert !rs_pins_read(RsPins.{engine = -1, rules = 4, content = 4});
+  // the same build: all three, whatever its wire range
+  #assert rs_pins_same(own, RsPins.{engine = 4, rules = 9, content = 3, wire_lo = 7, wire_hi = 8});
+  #assert !rs_pins_same(own, RsPins.{engine = 5, rules = 9, content = 3}) && !rs_pins_same(own, RsPins.{engine = 4, rules = 8, content = 3}) && !rs_pins_same(own, RsPins.{engine = 4, rules = 9, content = 2});
+  // the rooms seat their own build and the release before's, and no mix of the two
+  #assert rs_rooms_seat(own, before, own) && rs_rooms_seat(own, before, before);
+  #assert !rs_rooms_seat(own, before, RsPins.{engine = 3, rules = 9, content = 3}) && !rs_rooms_seat(own, before, RsPins.{engine = 4, rules = 9, content = 2}) && !rs_rooms_seat(own, before, RsPins.{engine = 2, rules = 9, content = 1});
+  // a promotion: the live page on either build keeps playing; on any other it would be refused
+  #assert rs_pins_beside(own, own, before) && rs_pins_beside(before, own, before) && rs_pins_beside(own, own, own);
+  #assert !rs_pins_beside(RsPins.{engine = 3, rules = 9, content = 3}, own, before) && !rs_pins_beside(RsPins.{engine = 2, rules = 8, content = 1}, own, before);
+  // the page's pins unread: nothing is known against the promotion
+  #assert rs_pins_beside(RsPins.{}, own, before) && rs_pins_beside(RsPins.{engine = 4, rules = 0, content = 3}, own, before);
+  // the rooms' pins unread, either build's: not promoted, whatever the page says
+  #assert !rs_pins_beside(own, RsPins.{}, before) && !rs_pins_beside(before, own, RsPins.{}) && !rs_pins_beside(RsPins.{}, RsPins.{}, before) && !rs_pins_beside(RsPins.{}, own, RsPins.{});
+  #assert !rs_pins_beside(before, RsPins.{engine = 4, rules = 9, content = 0}, before) && !rs_pins_beside(own, own, RsPins.{engine = 0, rules = 9, content = 2});
 }
 #test "one set: the rooms and the page on one commit, and the API on it or on a later commit that contains it (#13398)" {
   #assert rs_one_set(true, true, true, false) && rs_one_set(true, true, false, true);
@@ -350,6 +375,23 @@ rs_rooms_beside :: (page: int, lo: int, hi: int) -> bool #effects(all) {
   if lo <= 0 || hi < lo { return false; }
   if page <= 0 { return true; }
   return rs_wire_speaks(page, lo, hi);
+}
+// The three pins beside the wire (#13408, docs/protocol/everglade-previous-pins.md). A build's pins
+// are read when each is 1 or more: no build says 0.
+rs_pins_read :: (p: RsPins) -> bool #effects(all) { return p.engine >= 1 && p.rules >= 1 && p.content >= 1; }
+rs_pins_same :: (a: RsPins, b: RsPins) -> bool #effects(all) { return a.engine == b.engine && a.rules == b.rules && a.content == b.content; }
+// Whether rooms seat a page that says `page`: the rooms' own build (`own`), or the release before's
+// they still seat (`before`, their report's seats-before line). The three are matched together: a
+// mix of the two builds is no build that was released.
+rs_rooms_seat :: (own: RsPins, before: RsPins, page: RsPins) -> bool #effects(all) { return rs_pins_same(own, page) || rs_pins_same(before, page); }
+// Whether rooms may be promoted beside a live page by their pins, as rs_rooms_beside is for the
+// wire: rooms whose pins (either build's) are unread are not promoted; an unread page is nothing
+// against the promotion; otherwise the rooms must seat the page.
+rs_pins_beside :: (page: RsPins, own: RsPins, before: RsPins) -> bool #effects(all) {
+  if !rs_pins_read(own) { return false; }
+  if !rs_pins_read(before) { return false; }
+  if !rs_pins_read(page) { return true; }
+  return rs_rooms_seat(own, before, page);
 }
 // Whether the three parts are one set: the rooms and the page run one commit, and the API runs it
 // too, or a later commit that contains it (an API release keeps what the commits before it need).
