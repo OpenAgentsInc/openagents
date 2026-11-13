@@ -137,9 +137,8 @@ attach`, and one image ("City") by a headless drop on the pane
 (`coax drive ... "drop files.drop FILE"`). The pane showed the list with
 previews, and an image opened large and pinned. A real Gemini 3.8 Flash
 turn, asked the question above, opened `RaiderGarage.png`,
-`Raider garage inside.png` and the note, and described the garage from the
-art. It described a ring of salvage walls with numbered bunker bays outside,
-and a workshop inside with gantry cranes and mechs. It said the world has no
-things placed yet and proposed rovers, raiders, crates and dome houses as
-stand-ins. A second turn read a PDF and answered from its text.
+`Raider garage inside.png` and the note, described the garage outside and
+inside from the art, and proposed changes from the world's own kinds. A
+second turn read a PDF and answered from its text. The art is private, so
+what the answer said of it is not recorded here.
 
