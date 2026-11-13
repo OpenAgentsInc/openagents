@@ -1,10 +1,10 @@
-# `openagents.verse`: the Verse protocol specification and plan
+# `openagents.verse`: the Metaverse protocol specification and plan
 
 ## Post-reset scope and authority
 
 This is the defining protocol plan for **every OpenAgents surface**, including
-web, mobile, desktop, coding agents, cloud hosts, decisions, payments and Verse.
-**Coax is the implementation target. Verse is the engine and the
+web, mobile, desktop, coding agents, cloud hosts, decisions, payments and the OpenAgents Metaverse.
+**Coax is the implementation target. The Metaverse is the engine and the
 experience it runs; its worlds are realms.** Shared engine contracts stay under
 `openagents.engine.*`; world/product contracts stay under `openagents.verse.*`.
 
@@ -18,7 +18,7 @@ from the pre-reset revision recorded in `proto/recovery.json`.
 
 The root [protocol guide](../../proto/README.md) identifies what is actually
 restored and executable. New alpha files cover experimental options and the
-first Verse world/presence projection; they do not amend Nostr, REACH or realm
+first Metaverse realm/presence projection; they do not amend Nostr, REACH or realm
 transports. Coax's `#import_proto` and production decoders are not implemented.
 
 The [engine rename migration](../../proto/migrations/README.md) names old IDs, new
@@ -28,7 +28,7 @@ snapshots and original signed records retain their bytes. Only the typed
 asset-profile catalog migration is automated here; other contract, bridge
 and signature transitions require actual consumer gates.
 
-Status: **design and migration plan**, reconciled 2026-10-27. The root tree now includes alpha Verse common/presence foundations; other
+Status: **design and migration plan**, reconciled 2026-10-27. The root tree now includes alpha Metaverse common/presence foundations; other
 package sketches are planned. Existing engine, common, HOST, and
 REACH packages were previously shipped and remain the baseline in the master spec §2.6.
 Other `.proto` blocks are incomplete proposals. Their `.v1` names indicate
@@ -47,7 +47,7 @@ chapter does not redefine them. Accepted ADRs and NIP text remain authoritative;
 future design sketches do not amend them.
 
 This chapter is the specification and build plan for `openagents.verse`, the
-Protobuf namespace for everything 3D that OpenAgents makes: the Verse
+Protobuf namespace for everything 3D that OpenAgents makes: the Metaverse
 metaverse, its worlds, zones, realms and the galaxy; avatars, agents and
 townsfolk; presence, chat and social; the authoritative realm service;
 simulation, physics, combat and game rules; authored world documents and
@@ -90,7 +90,7 @@ agent from `proto/` and this document alone.
 
 ## 1. Why one namespace
 
-The Verse is currently spread over about forty wire formats. They come in
+The Metaverse is currently spread over about forty wire formats. They come in
 four families:
 
 - **Nostr events.** NIP-MV kinds `33300`, `33301`, `23300`, `23301` and
@@ -100,11 +100,11 @@ four families:
 - **Length-prefixed JSON on the chamber wire.** `verse-world::service`, wire
   version 34, carries realm login, commands, movement confirmations and
   spatial deltas.
-- **Ad-hoc JSON over HTTP and `postMessage`.** In Verse engine: the
+- **Ad-hoc JSON over HTTP and `postMessage`.** In the OpenAgents Metaverse Engine: the
   `verse.world.v1` world document, `/api/world`, `/api/planets`,
   `/api/change`, `/api/events`, `/api/presence` and `/api/npc/ask`, plus the
   iOS `legacy/save-bridge-v1`, `verseShell` and `verseWallet` bridges. In this
-  repository: the Verse tools host protocol (versions 1 to 8), `ritual.json`
+  repository: the Metaverse tools host protocol (versions 1 to 8), `ritual.json`
   and `chamber.json`.
 - **Named JSON documents.** `openagents.verse-world-tree.v1`,
   `openagents.verse-npc.v1`, `openagents.verse.private-asset.v1`,
@@ -116,12 +116,12 @@ Every one of these is reasonable on its own terms. Together they have three
 costs:
 
 1. **Each language writes its own reader.** Rust, C++, JavaScript, Swift,
-   Kotlin and Python each re-implement the same shapes. The Verse engine HTTP
+   Kotlin and Python each re-implement the same shapes. The Metaverse Engine HTTP
    presence route was inventoried with a 7-number look while `LookSpec` has 12;
    verify the current route before migrating it.
    Mismatches like that are what independent hand-written readers produce.
 2. **Nobody outside can build against us.** There is no single place an
-   outside developer can read "this is a Verse pose", "this is a world
+   outside developer can read "this is a Metaverse pose", "this is a world
    document" or "this is how you publish a realm".
 3. **Product truth outruns contract truth.** Realms, offers, townsfolk,
    rumors, shared bodies and the realm wire all ship without a schema that
@@ -153,7 +153,7 @@ limits:
 `crates/engine-proto` owns generation (protoc 29.3, Prost 0.13.5, Nanopb
 0.4.9.1, Python protobuf 5.29.3), validation, compatibility snapshots
 (`compatibility/*.descriptor.pb`), cross-language fixtures and the
-hash-pinned export bundle. Verse engine imports that bundle into
+hash-pinned export bundle. The Metaverse Engine imports that bundle into
 `third_party/openagents-engine-proto`, and Swift uses the C++ codec through a
 C ABI. The proto README sets the rules this document inherits:
 
@@ -167,9 +167,9 @@ C ABI. The proto README sets the rules this document inherits:
 - Nostr, Loro, signed bytes and provider protocols keep their own formats.
 
 The current implementation target is Coax in this repository. The engine is
-the Verse engine; the Verse (its realms) is the product/world layer. The scalar bootstrap and its
+the Metaverse Engine; the Metaverse (its realms) is the product/world layer. The scalar bootstrap and its
 [spec](../../coax/spec.md) do not yet implement aggregate types or protobuf
-decoders. Current root contracts and the Verse rename migration are listed
+decoders. Current root contracts and the Metaverse rename migration are listed
 in [the protocol guide](../../proto/README.md).
 
 Preserve native Metal, host-owned storage, the C ABI and GPU buffer layouts
@@ -177,13 +177,13 @@ while adopting Coax. Proto is the boundary schema, not the native frame layout.
 The old app/engine inventories below are pre-reset evidence. They are not
 claims that the deleted application crates have been restored.
 
-### 2.2 What the Verse uses that is not yet proto
+### 2.2 What the Metaverse uses that is not yet proto
 
 [§12](#12-migration-map-every-current-format-and-where-it-goes) lists every
 format with its destination. In short:
 
 - **Presence and social.** NIP-MV, world chat, rooms, private messages, Gym
-  notes, the NOSTR tab, Verse engine HTTP presence and chat.
+  notes, the NOSTR tab, the Metaverse Engine HTTP presence and chat.
 - **Authoritative play.** The chamber/realm wire (v34), login challenge,
   character roles, commands, movement, spatial deltas, transfers, parties,
   guilds, trades, persistence and checkpoints (`verse-chamber-owned-v24`),
@@ -194,7 +194,7 @@ format with its destination. In short:
     atmosphere and portals.
   - The world model: the world tree, `legacy/world-v1` and
     `legacy/command-v1`.
-  - Hosting and publishing: the Verse tools host protocol v1–v8, prop
+  - Hosting and publishing: the Metaverse tools host protocol v1–v8, prop
     worlds, publish, offers, edit log, world settings, realms, the galaxy
     and awards.
 - **Characters and agents.** Accounts, sessions, player keys, `LookSpec`,
@@ -225,7 +225,7 @@ changes need a separate reviewed amendment before implementation.
    role, grant, scope, expiry and revocation (SEC-001, INV-01).
 2. **Four data classes never share a writable field.** These are the
    *authored document*, *runtime state*, *presence* and *release identity*
-   (Verse INV-05). Every message declares its class (§6). Promoting runtime
+   (Metaverse INV-05). Every message declares its class (§6). Promoting runtime
    state into a document is an explicit capture or bake command, never a
    field copy.
 3. **Clients send intent, never results.** Commands carry intent and aim.
@@ -266,11 +266,11 @@ changes need a separate reviewed amendment before implementation.
 
 The master spec §4 owns the complete namespace catalog. Shipped shared refs
 and errors stay in `openagents.common.v1`; there is no parallel `type.v1`
-rewrite. Verse-specific geometry, world IDs, and profiles live in
+rewrite. Metaverse-specific geometry, world IDs, and profiles live in
 `openagents.verse.common`, and engine-neutral runtime contracts stay in
-`openagents.engine.v1`. Verse never becomes an engine dependency.
+`openagents.engine.v1`. The Metaverse never becomes an engine dependency.
 
-Verse can import shared common/options/engine types, the UI types it actually
+The Metaverse can import shared common/options/engine types, the UI types it actually
 uses, and selected pinned `nostr.*` mirrors. Other owners remain independent:
 XP awards, agent identity/control, evaluation, host authority, and payment
 settlement are referenced by their existing identities and verified at their
@@ -278,7 +278,7 @@ own boundaries. `verse.host` is a world/client bridge, not the native
 `openagents.host` authority. These two namespaces must not be conflated.
 
 Lightning Labs RPC modules keep upstream packages, bytes, include roots, and
-licenses. A Verse consumer imports payment views/refs, not LND RPC trees.
+licenses. A Metaverse consumer imports payment views/refs, not LND RPC trees.
 Consumer profiles select roots and transitive dependencies; a phone or Wasm
 bundle is not the whole protocol catalog. Optional private-record and webhook
 aggregation lives outside core common/API types and is selected only by the
@@ -391,7 +391,7 @@ Rules:
   forever.
 - **Stability labels.** Packages under `v1alpha1` can break between
   commits and are never imported by a durable store. They become `v1` only
-  through the §15 gate. Every new Verse representation starts at `v1alpha1`; stable source JSON
+  through the §15 gate. Every new Metaverse representation starts at `v1alpha1`; stable source JSON
   still needs field parity, consumer evidence, and the conformance gate.
 
 ## 6. Message classes, authority and unknown fields
@@ -437,12 +437,12 @@ uses an explicit `preserved` block a package declares.
 | Presence (poses, entity state) | Each publisher about its own keys; no validation | Unchanged. Marked `PRESENCE`; never accepted as proof of position by any authority |
 | Shared bodies (`verse-bare`, `verse-coast`) | Last toucher by stamp; a toy with no stakes | Unchanged. The profile declares `AUTHORITY_SERVERLESS_STAMPED`; any stakes need `AUTHORITY_HOSTED` |
 | Realm/chamber play | `verse-world` host, 30 Hz | Unchanged. `realm.v1` intents in, receipts and deltas out |
-| Verse multiplayer (designed) | 60 Hz authoritative tick, session pins release | `realm.v1` with `sim.v1` tick profile; release pinned in session open |
-| World documents | Verse engine server owner check (`may_own`); Verse tools project service | `authoring.v1` commands with revision fences; the project service is the only writer |
+| Metaverse multiplayer (designed) | 60 Hz authoritative tick, session pins release | `realm.v1` with `sim.v1` tick profile; release pinned in session open |
+| World documents | The Metaverse Engine server owner check (`may_own`); Metaverse tools project service | `authoring.v1` commands with revision fences; the project service is the only writer |
 | Publication | Owner POST; designed signed channel CAS | `publish.v1`; Published only after channel CAS (PUB-003) |
 | NPC routines and rumors | Pure functions of seed and clock; owner admits villagers | Unchanged; documents are owner-written, runtime is deterministic |
-| XP, awards | Referee key signs NIP-XP | Verse only reads; `quest.v1` mirrors references |
-| Payments | Wallet and settlement services | Verse only references; `economy.v1` is views and intents to the payment owner |
+| XP, awards | Referee key signs NIP-XP | The Metaverse only reads; `quest.v1` mirrors references |
+| Payments | Wallet and settlement services | The Metaverse only references; `economy.v1` is views and intents to the payment owner |
 | Agent Studio | Host owns all state; client is a view | `agent.v1` snapshots are `VIEW`; operations go through NIP-HOST grants |
 
 ## 7. Limits, canonical encodings and JSON
@@ -457,7 +457,7 @@ uses an explicit `preserved` block a package declares.
   hand-written `.options` files as the source of truth (§13.2). The
   generated `.options` are still checked in.
 - Global ceilings follow engine.v1: 16 MiB per message, 64 nesting levels,
-  250,000 visited values. Most Verse messages are far smaller, and each
+  250,000 visited values. Most Metaverse messages are far smaller, and each
   package states its own. For example, a pose frame fits under 4 KiB.
 - The limits that exist today are kept exactly. They are listed with each
   package in §10. Example: 16 entities per pose frame, 64 bodies per body
@@ -468,7 +468,7 @@ uses an explicit `preserved` block a package declares.
 
 - **Coordinates.** Use `openagents.engine.v1.CoordinateConvention`
   (`Y_UP_METERS_Z_FORWARD`), which NIP-MV shares: right-handed, +Y up,
-  meters, rest facing +Z. Verse tools's authored model states forward as
+  meters, rest facing +Z. The Metaverse tools's authored model states forward as
   −Z. That is a view convention of its editor, recorded per document as a
   convention enum, never inferred.
 - **Floating point.** Runtime poses use `float` (`engine.v1.Vec3`). Global
@@ -503,7 +503,7 @@ migration. If independent producers later need a new logical fingerprint,
 write a separate versioned format with field-specific semantics, explicit
 presence/default and floating-point rules, and cross-language vectors first.
 Standard deterministic protobuf output is insufficient for that purpose.
-No Verse implementation phase depends on a new canonical encoder.
+No Metaverse implementation phase depends on a new canonical encoder.
 
 ### 7.4 JSON
 
@@ -570,7 +570,7 @@ Rules:
   metadata, `nip53` live activities, `nip32` labels. External NIPs we pin get
   `nostr.block.<id>.v1`: `oa` owner attestation, `ae` engrams, `ap`
   personas. Pins come from `nostr/nips/manifest.json`.
-- The Verse uses these official NIPs: 01, 02 (planned buddies), 17, 24,
+- The Metaverse uses these official NIPs: 01, 02 (planned buddies), 17, 24,
   29, 32, 42, 44, 53, 59, 65, 67, 94, C7. It also uses external OA, AA, AE,
   AP, AM, IA, MP and RS. Those packages are built first (§16, phase V1).
 
@@ -623,7 +623,7 @@ production decoder is claimed. The larger catalog below remains the target.
 | --- | --- | --- | --- | --- |
 | `verse.common.v1` | Shared IDs, poses, cells, stamps, profile refs, content pins, refusals | (types) | NIP-MV, engine.v1, contracts.md | Designed |
 | `verse.world.v1` | World definitions, zone catalog, portals, arrivals, atmosphere refs, profile tuples, instances | Release, View | NIP-MV `33300`, `ZoneId`, `openagents.zones.v1`, `zone-rules.md` | Partial (implemented as JSON/Rust) |
-| `verse.doc.v1` | Authored world document: areas, doors, objects, NPC placements, voices, triggers, foliage, settings, realms | Document | `verse.world.v1` (Verse engine), `haunt.v1`, `legacy/world-v1` | Implemented as JSON |
+| `verse.doc.v1` | Authored world document: areas, doors, objects, NPC placements, voices, triggers, foliage, settings, realms | Document | `verse.world.v1` (the Metaverse Engine), `haunt.v1`, `legacy/world-v1` | Implemented as JSON |
 | `verse.authoring.v1` | Commands, operations, preconditions, revisions, house deltas, prefabs, structural building model, merges, presence of editors | Intent, Receipt, Document | `legacy/command-v1`, house delta, host `propose` ops, `collaboration.md` | Partial |
 | `verse.publish.v1` | Releases, channels, signature statements (mirrors), publication state, offers, edit log, world settings, ownership | Release, Intent, Receipt | `legacy/release-v1`, `legacy/channel-v1`, `legacy/signature-v1`, `/api/world`, `/api/change`, `/api/log` | Partial |
 | `verse.presence.v1` | NIP-MV bodies: entity state, pose frames, gestures, zone commands, shared bodies and snapshots, object states, looks | Presence | NIP-MV, `crates/verse-net/src/mv.rs`, `web/grid-session.js` | Implemented as JSON |
@@ -631,7 +631,7 @@ production decoder is claimed. The larger catalog below remains the target.
 | `verse.realm.v1` | Authoritative session wire: hello, login challenge, character select, commands, confirmations, spatial deltas, acks, transfers, instances, errors | Intent, Runtime, Receipt | `verse-world::service` wire 34, `chamber.json` | Implemented as JSON |
 | `verse.sim.v1` | Tick profiles, physics profiles, determinism scope, input replay, game replay, checkpoints index | Runtime, Release | `verse.input-replay.v1`, `verse.game-replay.v1`, `physics` crate, kernel ABI | Partial |
 | `verse.rules.v1` | Rules profiles, abilities, spells, effects, conditions, dice reveal, combat events, encounter phases | Release, Runtime | `combat-model.md`, `verse-world/src/content.rs` | Implemented in Rust |
-| `verse.character.v1` | Accounts (views), characters, roles, appearance (`LookSpec`, rigs, shades), outfits, equipment, inventory, progression, settings | Runtime, Document, View | Realm accounts, `LookSpec`, `verse-content` outfits, Verse engine players | Partial |
+| `verse.character.v1` | Accounts (views), characters, roles, appearance (`LookSpec`, rigs, shades), outfits, equipment, inventory, progression, settings | Runtime, Document, View | Realm accounts, `LookSpec`, `verse-content` outfits, the Metaverse Engine players | Partial |
 | `verse.npc.v1` | Townsfolk, towns, brains, routines, rumors, the town clock, dialogue lines, ask requests, knowledge | Document, Runtime, Intent | `openagents.verse-npc.v1`, `verse-town.v1`, `verse-rumor.v1`, `/api/npc/ask`, host v8 `talk` | Implemented as JSON |
 | `verse.place.v1` | World tree: districts, buildings, rooms, objects, standing points, affordances, object state, known subgraphs, place choice | Document, Presence | `openagents.verse-world-tree.v1` (`crates/world-tree`) | Implemented as JSON |
 | `verse.agent.v1` | Agents in the world: seats, stations, studio snapshots/updates, crew, workshop agent views, greetings, scans | View, Presence | `agent-studio.md`, `workshop-agent.md`, `crew.md` | Implemented (views) |
@@ -640,7 +640,7 @@ production decoder is claimed. The larger catalog below remains the target.
 | `verse.asset.v1` | Pack descriptors, catalogs, private assets, placements, source manifests, licenses, provenance, decode budgets, cache policy | Release, Document | VTP3, `openagents.verse.private-asset.v1`, source manifests, `asset-packs.js` | Implemented as JSON/binary |
 | `verse.presentation.v1` | Atmosphere, environment (`env`), grades, lighting profiles, quality tiers, device-profile refs, particles, art styles | Document, Release | `look{}`, `env`, zone atmosphere, `particles.md`, `legacy/device-profile-v1` | Implemented as JSON |
 | `verse.environment.v1` | Water and sea state, weather schedules, ice, destruction hierarchy and events, terrain edits | Runtime, Document | `water.md`, `coast.md`, `destructible-buildings.md` | Partial/Designed |
-| `verse.host.v1` | Client↔host bridges: Verse tools host ops (v1–v8 consolidated), mobile shell bridge, mobile game bridge, native save bridge, playables | Intent, Receipt, View | `metareal-host-protocol.md`, iOS `verseShell`/`legacy/save-bridge-v1`, `mobile-games.md` | Implemented as JSON |
+| `verse.host.v1` | Client↔host bridges: Metaverse tools host ops (v1–v8 consolidated), mobile shell bridge, mobile game bridge, native save bridge, playables | Intent, Receipt, View | `metareal-host-protocol.md`, iOS `verseShell`/`legacy/save-bridge-v1`, `mobile-games.md` | Implemented as JSON |
 | `verse.gym.v1` | Gym building views: board, run observations, recipes (refs), EVALS board rows, Gym notes | View | `gym.md`, `gym_evals.rs`, `gym_notes.rs` | Implemented (views) |
 | `verse.terminal.v1` | In-world screens bound to NIP-TERM terminals; layout; share views | Intent, View | `in-world-terminal.md` | Designed |
 | `verse.media.v1` | In-world voice/video placement (refs to LIVE), spatial audio zones, film takes, shots, cuts | View, Release | `film.md`, `crates/verse-film`, LIVE | Partial |
@@ -654,12 +654,12 @@ production decoder is claimed. The larger catalog below remains the target.
 
 These are proposed dependency cohorts. Compile the actual descriptors and
 check their imports before starting a cutover. The shared/core engine graph
-stays the one already shipped. The Verse graph must include every real edge,
+stays the one already shipped. The Metaverse graph must include every real edge,
 including data types mentioned inside a sketch:
 
-| Package | Verse prerequisites beyond common/engine |
+| Package | The Metaverse prerequisites beyond common/engine |
 | --- | --- |
-| `npc`, `presentation`, `presence`, `economy`, `quest`, `lab` | None for the initial primitives. Shared `ArtStyle` and `GrantRef` stay in Verse common; errors reuse global common. |
+| `npc`, `presentation`, `presence`, `economy`, `quest`, `lab` | None for the initial primitives. Shared `ArtStyle` and `GrantRef` stay in Metaverse common; errors reuse global common. |
 | `doc` | `npc`, `presentation` |
 | `authoring` | `doc` |
 | `asset` | `presentation` (catalog light templates); no reverse import from presentation to doc |
@@ -683,14 +683,14 @@ bytes retain a named/versioned realm contract and exact-byte identity so that
 sim does not import realm. A new dependency needs both this table and §16
 updated; prose claims of acyclicity are not a compiler check.
 
-### 9.3 What the Verse does not own, and only references
+### 9.3 What the Metaverse does not own, and only references
 
-| Concept | Owner | How Verse refers |
+| Concept | Owner | How the Metaverse refers |
 | --- | --- | --- |
 | XP awards, quests as NIP-XP records, trainer cards | `openagents.xp.v1` | `openagents.common.v1.EventRef` + projected `quest.v1.QuestView` |
 | Eval results, Gym leaderboards | `openagents.eval.v1` | `EventRef`; `gym.v1` rows are views |
 | Agent identity, definitions, sessions, control | `openagents.agent` | Pubkey + `EventRef` to `30187`; studio ops through NIP-HOST |
-| Payments, wallets, settlement | `openagents.payment` (Bitcoin, Lightning, Taproot Assets only) | Payment/settlement IDs and msat strings; never invoices or keys in Verse records |
+| Payments, wallets, settlement | `openagents.payment` (Bitcoin, Lightning, Taproot Assets only) | Payment/settlement IDs and msat strings; never invoices or keys in the Metaverse records |
 | Labor, work orders, deploy reports | `openagents.market` | `EventRef` for billboards and projections |
 | Host grants, REACH channels, vault | `openagents.host` | Grant IDs and epochs inside realm session open |
 | UI view tree | `openagents.ui.v1` | `host.v1` carries `ui.v1` views for world panels |
@@ -759,7 +759,7 @@ message AppearanceRef { optional uint32 seed = 1; LookSpec look = 2; }          
 Rules:
 
 - Errors preserve their source domain and code in the shipped common
-  refusal. Verse-specific codes (`stale_target`, `invalid_topology`,
+  refusal. Metaverse-specific codes (`stale_target`, `invalid_topology`,
   `rate_limited`, `storage_busy`, and others) use an explicit registry;
   they do not renumber or overwrite HOST/REACH/shared codes.
 - `common.v1.Cell` uses the world's declared cell size, default 64 m.
@@ -871,7 +871,7 @@ target for creator worlds.
 
 Purpose: one typed authored world document for every editable place,
 including the Haunted House, every realm, the Sandbox, personal worlds,
-hosted social zones and future creator worlds. It unifies Verse engine's
+hosted social zones and future creator worlds. It unifies the Metaverse Engine's
 `verse.world.v1` JSON, the frozen `haunt.v1` data, and the structural
 parts of `legacy/world-v1`. `DOCUMENT` class: strict and
 revision-carrying.
@@ -1019,7 +1019,7 @@ document.
 Purpose: the only way an authored document changes. Typed operations in a
 command envelope, with revision fences, preconditions, idempotency and
 receipts. This is the proto form of `legacy/command-v1` and the
-Verse engine house delta. It also covers the Verse tools host `propose`,
+Metaverse Engine house delta. It also covers the Metaverse tools host `propose`,
 `undo` and `redo` ops and the in-world edit mode.
 
 ```proto
@@ -1111,7 +1111,7 @@ Rules, carried from `contracts.md` and `collaboration.md`:
 
 Purpose: how a document becomes something others can visit, and how
 others propose changes to it. This covers release identity, channels,
-publication state, the Verse engine publish/offer/edit-log flow, world
+publication state, the Metaverse Engine publish/offer/edit-log flow, world
 settings and ownership.
 
 ```proto
@@ -1173,7 +1173,7 @@ message WorldOwnership { optional bool claimed = 1; optional bool you = 2; optio
 
 Rules:
 
-- **Only the channel CAS publishes.** In the full Verse tools flow,
+- **Only the channel CAS publishes.** In the full Metaverse tools flow,
   *Published* means the channel compare-and-swap succeeded (PUB-003).
   Uploading or signing is not enough.
 - **Channel references.** Clients persist `(sequence, ref digest, trust version)`
@@ -1347,13 +1347,13 @@ Rules:
   name tags within 60 m, at most 24 shown.
 
 Replaces: the hand-built tag logic in `verse-net::chat`,
-`web/grid-session.js`, Verse engine `/api/chat/<room>` (≤500 lines kept,
+`web/grid-session.js`, the Metaverse Engine `/api/chat/<room>` (≤500 lines kept,
 name ≤40, text ≤500), and the visits qualification's message shapes.
 
 ### 10.8 `openagents.verse.realm.v1`
 
-Purpose: the authoritative session wire between a Verse client and a world
-host. It covers the chamber over TLS and REACH today and Verse
+Purpose: the authoritative session wire between a Metaverse client and a world
+host. It covers the chamber over TLS and REACH today and Metaverse
 multiplayer next. This is the largest proto-native win: wire version 34 is
 length-prefixed JSON today, and proto makes it compact, typed and the same
 in every client.
@@ -1442,7 +1442,7 @@ Rules:
   `rate_limited`.
 - **Tick and scale.** Today: 30 Hz with four 120 Hz physics substeps, a
   64 m replication radius and up to 64 cooperative players per simulation.
-  Verse multiplayer declares 60 Hz through the tick profile. Neither
+  Metaverse multiplayer declares 60 Hz through the tick profile. Neither
   value is hard-coded in the schema.
 - **One wire version.** The proposed realm proto wire starts at `wire = 35` and carries
   every feature that versions 2 to 34 added (presentation, telegraphs,
@@ -1545,7 +1545,7 @@ Rules:
 
 ### 10.11 `openagents.verse.character.v1`
 
-Purpose: who you are in the Verse. This covers account and player views,
+Purpose: who you are in the Metaverse. This covers account and player views,
 characters (realm), appearance across all clients, outfits and equipment,
 inventory, progression and personal settings.
 
@@ -1694,7 +1694,7 @@ Rules:
 
 ### 10.14 `openagents.verse.agent.v1`
 
-Purpose: agents as residents of the Verse. This covers seats, stations,
+Purpose: agents as residents of the Metaverse. This covers seats, stations,
 Agent Studio views, crew, workshop agents, greetings and scans. Agent
 identity and control belong to `openagents.agent`, so these messages are
 the in-world projection.
@@ -1762,7 +1762,7 @@ message XpProjection { optional bytes trainer = 1; optional uint64 total = 2; op
 
 Rules:
 
-- The Verse never publishes XP. A referee signs NIP-XP, and the Verse
+- The Metaverse never publishes XP. A referee signs NIP-XP, and the Metaverse
   reads it. Level n+1 needs ceil(100·n^1.5) cumulative XP under
   `trainer-curve-v1`.
 - Playtest XP is never summed into the trainer level.
@@ -1770,7 +1770,7 @@ Rules:
   `QuestProgress` after migration). Realm quest state belongs to the
   realm authority.
 
-The designed time-and-quests model in Verse engine
+The designed time-and-quests model in the Metaverse Engine
 `docs/time-and-quests.md` (clock, events, schedules, items, rules,
 `/api/time`, `/api/state`) lands here as `quest.v1` `Rule` and `Schedule`
 messages when it is built. Those messages are reserved, not sketched,
@@ -1818,7 +1818,7 @@ Rules:
 
 ### 10.17 `openagents.verse.asset.v1`
 
-Purpose: describing every asset the Verse loads, without carrying asset
+Purpose: describing every asset the Metaverse loads, without carrying asset
 bytes. This covers pack descriptors, catalogs, sources and licenses,
 private assets and their placements, decode budgets and cache policy. It
 builds on `engine.v1.AssetManifest` and `ConsumerAssetProfile`.
@@ -1871,7 +1871,7 @@ message PrivateUrlReply { optional string url = 1; optional int64 expires_ms = 2
 Rules:
 
 - **Packs are data, never code.** A pack never carries scripts or shaders
-  ([NIP-MV loading rules](https://github.com/OpenAgentsInc/openagents/blob/853417f290e7cae1df18c081b89b0818432e60af/nips/openagents/NIP-MV.md), Verse INV-09).
+  ([NIP-MV loading rules](https://github.com/OpenAgentsInc/openagents/blob/853417f290e7cae1df18c081b89b0818432e60af/nips/openagents/NIP-MV.md), Metaverse INV-09).
 - **Clients enforce their own decode limits.** The publisher's
   `DecodeLimits` can only make a client stricter.
 - **Licensed and private bytes never go in Git or public records.**
@@ -1963,8 +1963,8 @@ Rules:
 
 ### 10.20 `openagents.verse.host.v1`
 
-Purpose: the bridges between a Verse surface and the thing that hosts it.
-This covers the Verse tools host protocol (one consolidated vocabulary
+Purpose: the bridges between a Metaverse surface and the thing that hosts it.
+This covers the Metaverse tools host protocol (one consolidated vocabulary
 replacing v1 to v8), the mobile shell bridge (iOS `verseShell` and
 `legacy/save-bridge-v1`, and Android equivalents), the mobile game bridge, and
 playables.
@@ -2087,7 +2087,7 @@ Rules:
 
 ### 10.24 `openagents.verse.telemetry.v1`
 
-Purpose: playtest measurement across the Verse. This covers events,
+Purpose: playtest measurement across the Metaverse. This covers events,
 sessions, funnels, survey prompts and answers, remark classifications,
 consent and automation marking. It is append-only and privacy-annotated.
 
@@ -2161,9 +2161,9 @@ Rules:
   Nothing else is ever added.
 - **Money movement is never automatic.** Every `present_*` operation
   opens a native review the person confirms. Keys and mnemonics never
-  appear in any Verse message.
+  appear in any Metaverse message.
 - **Payment state is owned elsewhere.** It is read from
-  `openagents.payment` through `payments_ref`. The Verse never derives
+  `openagents.payment` through `payments_ref`. The Metaverse never derives
   "paid" from its own records.
 
 ### 10.26 Games: `openagents.verse.game.<game>.v1`
@@ -2244,7 +2244,7 @@ may be served as:
 | `WorldService` | `world.v1` | `GetZoneCatalog`, `GetWorldDefinition`, `ListInstances` | `GET /v1/zones`, compiled catalogs |
 | `PublishService` | `publish.v1` | `GetPublished`, `Publish`, `Reset`, `SetOpen`, `GetOwnership`, `GetSettings`, `SetSettings`, `GetEditLog` | `/api/world/*`, `/api/log/*` |
 | `OfferService` | `publish.v1` | `Offer`, `Accept`, `Decline`, `ListMine` | `/api/change/*`, `/api/wallet` |
-| `AuthoringService` | `authoring.v1` | `Submit(Command) → CommandReceipt`, `GetRevision`, `WatchPresence` (stream) | Verse tools project service, host `propose` |
+| `AuthoringService` | `authoring.v1` | `Submit(Command) → CommandReceipt`, `GetRevision`, `WatchPresence` (stream) | Metaverse tools project service, host `propose` |
 | `GalaxyService` | `galaxy.v1` | `ListRealms(after)`, `GetRealm`, `CreateRealm`, `GetMine`, `SaveMine`, `Invite` | `/api/planets*`, `/api/award` |
 | `ProgressService` | `character.v1` | `GetProgress`, `PutProgress(AESV bytes, at)`, `Erase` | `/api/progress/*` |
 | `NpcService` | `npc.v1` | `Ask` | `/api/npc/ask` |
@@ -2261,7 +2261,7 @@ separate endpoint; test mixed old/new peers before cutover.
 
 The account and sign-in routes (`/api/auth/*`, `/api/me`, `/api/session`)
 belong to the account owner (`openagents.agent` or `openagents.host`), not
-the Verse. They are listed in §12 for completeness and get their schema in
+the Metaverse. They are listed in §12 for completeness and get their schema in
 that subtree.
 
 ## 12. Migration map: every current format and where it goes
@@ -2285,8 +2285,8 @@ we keep a reader for old records for as long as such records exist.
 | NIP-29 rooms, NIP-17 PMs | same | `social.v1.Room`, `nostr.nip29.v1`, `nostr.nip17.v1` | upstream NIPs |
 | Gym notes | `verse-gym/src/gym_notes.rs` | `social.v1.ChatLine.gym_note`, `gym.v1.GymNote` | kind 9 + NIP-32 label |
 | NOSTR tab (kind 1 read-only) | `verse` | `nostr.event.v1.Event` view | — |
-| HTTP presence `/api/presence/<room>` (7-number look) | Verse engine `tools/serve.py` | `presence.v1` via `PresenceService` with `character.v1.LookSpec` (12) | fixes the mismatch |
-| HTTP chat `/api/chat/<room>` | Verse engine | `social.v1.ChatLine` via a room service, or retire for NIP-C7 | last 500 lines |
+| HTTP presence `/api/presence/<room>` (7-number look) | The Metaverse Engine `tools/serve.py` | `presence.v1` via `PresenceService` with `character.v1.LookSpec` (12) | fixes the mismatch |
+| HTTP chat `/api/chat/<room>` | The Metaverse Engine | `social.v1.ChatLine` via a room service, or retire for NIP-C7 | last 500 lines |
 
 ### 12.2 Realm and simulation
 
@@ -2301,7 +2301,7 @@ we keep a reader for old records for as long as such records exist.
 | `StationState`, station journal | `space.v1` | reader |
 | `spacecraft.v1`, `assembly-plan.v1`, `cad-mass-feed.v1` | `space.v1` | reader |
 
-### 12.3 Worlds, documents, publishing (Verse engine first)
+### 12.3 Worlds, documents, publishing (the Metaverse Engine first)
 
 | Current | Becomes | Keeps |
 | --- | --- | --- |
@@ -2320,7 +2320,7 @@ we keep a reader for old records for as long as such records exist.
 | `/api/progress/*` (AESV in JSON) | `ProgressService` (AESV bytes) | AESV container unchanged |
 | `openagents.zones.v1` (`GET /v1/zones`) | `world.v1.ZoneCatalog` | JSON route as adapter |
 | `ZoneId` serialization, zone atmosphere, portals | `world.v1.ZoneEntry` | — |
-| Verse tools host protocol v1–v8 JSON schemas | `host.v1.HostEnvelope` (protocol 9) | frozen v1–v5 releases keep their SDKs |
+| Metaverse tools host protocol v1–v8 JSON schemas | `host.v1.HostEnvelope` (protocol 9) | frozen v1–v5 releases keep their SDKs |
 | `openagents.verse.playable.v1/.v2` | `host.v1.Playable` | reader |
 
 ### 12.4 Characters, NPCs, places, agents
@@ -2386,7 +2386,7 @@ come from `proto/modules.json`.
 
 ### 13.2 Coax consumers and bootstrap bridges
 
-Coax is the target for the Verse engine, its clients, hosts, tools and agent surfaces.
+Coax is the target for the Metaverse Engine, its clients, hosts, tools and agent surfaces.
 The root `metareal`, `verse` and `phone-agent` profiles select actual descriptor
 closures. The Coax bootstrap does not ingest them yet. Follow master P1 for
 aggregates, explicit presence/oneofs, bounded codecs and domain validation.
@@ -2464,7 +2464,7 @@ hold. That move freezes its descriptor.
    to the same verdict, and preserve exact original fixtures and existing identity rules. A semantic
    round trip is not an assertion that standard proto encodings are canonical.
 3. **Mapping tests** where the package mirrors JSON (NIP-MV, JCS,
-   Verse engine routes): every NIP example and every stored production
+   the Metaverse Engine routes): every NIP example and every stored production
    record sample maps both ways losslessly, or fails with a named reason.
 4. **A real consumer:** at least one shipped surface reads and writes the
    package in production, alongside the legacy reader where one exists.
@@ -2473,8 +2473,8 @@ hold. That move freezes its descriptor.
    the change.
 6. **Invariants:** if the package touches an invariant-bearing surface,
    the relevant `INVARIANTS.md` is updated in the same change with a
-   test. Candidates include Verse INV-01 to INV-13, the Kiki pin and
-   Verse engine's "Registered world saves preserve schema and iteration
+   test. Candidates include Metaverse INV-01 to INV-13, the Kiki pin and
+   the Metaverse Engine's "Registered world saves preserve schema and iteration
    order".
 7. **A formal model where it fits.** Shared-body stamp ordering, realm
    command fencing, channel CAS and transfer prepare/commit are bounded
@@ -2485,22 +2485,22 @@ hold. That move freezes its descriptor.
 ## 16. The build plan
 
 Follow the master spec P0–P8 prerequisites and consumer profiles. Existing
-engine/common/HOST/REACH contracts retain v1. New Verse representations begin
+engine/common/HOST/REACH contracts retain v1. New Metaverse representations begin
 as alpha and reach v1 only after §15, even when the source JSON protocol is
 stable. Land a package subset only when its imported descriptors and checked
 adapters are ready; do not create placeholders to satisfy a phase label.
 
 | Phase | Packages and prerequisites | Exit evidence |
 | --- | --- | --- |
-| **V0 — Baseline and selected tooling** | Master P0/P1: current engine/common/HOST/REACH baselines, selected-profile generator compatibility, proposed Verse common primitives and a selected Nostr envelope. | Existing outputs and bundle pins remain valid. Native Metal, C ABI, registered saves, and frozen Kiki behavior unchanged. |
-| **V1 — Presence consumer** | Verse presence plus only the Nostr/external mirrors its existing reader needs, after master P2 foundations. | Actual NIP-MV fixtures and bounded captured traffic round-trip through existing validation; a real Grid/mobile consumer works. Alpha until the gate; no automatic v1. |
+| **V0 — Baseline and selected tooling** | Master P0/P1: current engine/common/HOST/REACH baselines, selected-profile generator compatibility, proposed Metaverse common primitives and a selected Nostr envelope. | Existing outputs and bundle pins remain valid. Native Metal, C ABI, registered saves, and frozen Kiki behavior unchanged. |
+| **V1 — Presence consumer** | Metaverse presence plus only the Nostr/external mirrors its existing reader needs, after master P2 foundations. | Actual NIP-MV fixtures and bounded captured traffic round-trip through existing validation; a real Grid/mobile consumer works. Alpha until the gate; no automatic v1. |
 | **V2 — Document prerequisites and authoring** | Presentation primitives and NPC placement/card/line types first, then doc→authoring. Shared ArtStyle/ObjectLight ownership follows §9.2. | Stored house/realms/sandbox JSON and deltas convert losslessly with explicit old readers. Identity rules unchanged; frozen Kiki goldens remain valid. |
 | **V3 — Assets, worlds and zones** | Presentation→asset→world after their actual types exist. | Pinned pack/catalog/ZoneManifest admission, old asset profiles and loading limits preserved. No claim that the scene profile is implemented until the live proof passes. |
 | **V4 — Publish, galaxy and progress views** | Doc/authoring/world prerequisites from V2/V3; basic character/progress views where consumed. | Existing publishing, galaxy, realm setup, old JSON routes, and playtest flow work with checked adapters. No mandatory Connect deployment. |
 | **V5 — Simulation prerequisites** | World→sim→rules/environment primitives, doc→character, and quest state needed by realm. | Pinned execution profiles, current checkpoint/replay identities, and original readers preserved; native layouts stay native. |
 | **V6 — Realm wire** | V3/V5 prerequisites plus common grant references; supported HOST world authority remains the existing owner. | Explicit proposed wire 35 and dual-reader/bootstrap tests with JSON v34 peers; command fencing, actual replication fields, replay and soak evidence before cutover. |
 | **V7 — Remaining NPC/place and host bridges** | V2 placement types can expand into full NPC/place/quest views; full world host bridge after authoring/publish/character/NPC/economy prerequisites. | Deterministic town behavior and labeled dialogue; versioned bridge transition with old SDKs and native wallet reviews preserved. |
-| **V8 — Telemetry** | Selected event/survey records and existing consent/admission paths. | CSV/JSON export parity and automation marking. Core telemetry and Verse telemetry share mapping rules instead of competing definitions. |
+| **V8 — Telemetry** | Selected event/survey records and existing consent/admission paths. | CSV/JSON export parity and automation marking. Core telemetry and Metaverse telemetry share mapping rules instead of competing definitions. |
 | **V9 — Studio, Gym, terminal and media views** | Actual presence/social/host prerequisites and references to existing product owners. | Real studio/tool views and in-world reads; no host or payment authority inferred from a rendered view. |
 | **V10 — Games, space, labs and remaining environment** | Each game's actual doc/rules/sim/quest prerequisites. | Old saves/replays still read; per-profile run receipts and resets verified. No new language or GPU-layout serialization. |
 | **V11 — Full releases and channels** | Existing signed JCS release/channel models and V2/V4 authoring/publishing. | Exact original signature verification, CAS/fork/rollback fixtures, mixed old/new consumers. |
@@ -2518,22 +2518,22 @@ generic canonical encoder or rewrites checked domain logic as generated DTOs.
 | Risk | Mitigation |
 | --- | --- |
 | Proto mirrors drift from signed JSON (NIP-MV, JCS) | Mapping table is generated code with fixtures; signatures always verified against original bytes |
-| Too many packages too early; churn | All new Verse mirrors start as alpha; shipped core packages retain v1; add packages for actual consumers and pass the gate before freezing |
+| Too many packages too early; churn | All new the Metaverse mirrors start as alpha; shipped core packages retain v1; add packages for actual consumers and pass the gate before freezing |
 | Nanopb memory on Wasm and phones | Limits from options; `FT_CALLBACK` for large repeated fields, as `CompiledScene` already does |
 | Unknown-field loss on edit | Class rule: durable readers refuse; no reader silently rewrites a newer record |
 | Kiki frozen flow broken by migration | Kiki never imports new packages; its server routes keep their JSON adapters; goldens gate every server change |
 | Outsiders read "schema exists" as "feature works" | Every package and message carries the glossary's status label in its docs page; NIP-MV keeps its Designed/Implemented markers |
 | Proto JSON mistaken for canonical | §7.3/§7.4 rules; existing JCS identities and stored-byte digests remain unchanged |
-| Private data leaks through public schemas | Recursive carriage/redaction checks and private-asset rules; credentials stay in their owning authenticated flows, never Verse views |
-| Two engines (the Rust engine, the C++ Verse engine) diverge | Both consume the same export bundle and the same fixtures; cross-language tests in CI |
+| Private data leaks through public schemas | Recursive carriage/redaction checks and private-asset rules; credentials stay in their owning authenticated flows, never Metaverse views |
+| Two engines (the Rust engine, the C++ the Metaverse Engine) diverge | Both consume the same export bundle and the same fixtures; cross-language tests in CI |
 
 ## 18. Planned scope and constraints
 
 1. The 3D namespace is `openagents.verse`, with one package per domain,
    each `.vN`, under `proto/openagents/verse/<domain>/vN/`. Games are
    `openagents.verse.game.<game>.vN`.
-2. `openagents.engine.v1` remains the engine layer. Verse depends on it,
-   and it never depends on Verse.
+2. `openagents.engine.v1` remains the engine layer. The Metaverse depends on it,
+   and it never depends on the Metaverse.
 3. Shared primitives across all OpenAgents subtrees go in
    `openagents.common.v1`, and descriptor options in `openagents.options.v1`.
 4. Nostr mirrors live under `proto/nostr/` (`nostr.*` packages).
@@ -2546,8 +2546,8 @@ generic canonical encoder or rewrites checked domain logic as generated DTOs.
 7. Signed and content-addressed bytes keep their exact form. Proto
    mirrors or carries them, and never replaces them.
 8. Payment views retain existing msat strings or permitted payment references.
-   Accounting units retain their source meaning; Verse never owns settlement.
-9. Published packages keep their versions. New Verse mirrors start as alpha
+   Accounting units retain their source meaning; the Metaverse never owns settlement.
+9. Published packages keep their versions. New the Metaverse mirrors start as alpha
    and graduate only after field parity, a real consumer, and conformance.
 10. Existing transports keep their wire encodings. gRPC/Connect are optional
     new bindings; realm proto needs an explicit negotiated version and old reader.
@@ -2579,7 +2579,7 @@ until answered.
 
 **Glossary and NIPs.**
 
-- `docs/glossary.md`, in particular Verse, Voyager, and Nostr and shared
+- `docs/glossary.md`, in particular the Metaverse, Voyager, and Nostr and shared
   protocols
 - `nostr/nips/README.md`, `nostr/nips/manifest.json`
 - `nostr/nips/openagents/README.md` (kind registry) and
@@ -2587,7 +2587,7 @@ until answered.
 - `nostr/nips/openagents/NIP-MV.md`, NIP-XP, NIP-EVAL, NIP-PYLON, NIP-REACH,
   NIP-HOST, NIP-AGENT, NIP-LIVE, NIP-TERM
 
-**Verse documentation.** The Verse README, status and runtime contract:
+**Metaverse documentation.** The Metaverse README, status and runtime contract:
 
 - `docs/verse/README.md`, `status.md`, `runtime-contract.json`
 
@@ -2620,7 +2620,7 @@ Games and the engine:
 - `games/`
 - `engine/architecture.md`, `engine/roadmap.md`
 
-**Verse engine documentation.**
+**The Metaverse Engine documentation.**
 
 - `docs/metareal/engine/` (README, architecture, contracts and
   `contracts/*.schema.json`, world-model, runtime, runtime-abi,
@@ -2628,7 +2628,7 @@ Games and the engine:
   asset-compilation, game-systems, security, INVARIANTS)
 - `docs/metareal/ui-protocol.md`, `docs/metareal/merge.md`
 
-**Verse engine.**
+**The Metaverse Engine.**
 
 - README.md, INVARIANTS.md
 - `docs/save.md`, `docs/worlds.md`, `docs/triggers.md`, `docs/ai.md`,

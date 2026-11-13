@@ -2,7 +2,7 @@
 
 Status: plan, October 28. The Haunted House is live at /realms/haunted-house.
 This plan brings the demo's other worlds to openagents.com in Coax and builds
-Everglade. The tasks are in the Verse project under "Port the realms"
+Everglade. The tasks are in the Metaverse project under "Port the realms"
 (https://openagents.com/projects/verse).
 
 ## Order
@@ -93,7 +93,7 @@ Medieval Village and Fantasy Props.
 
 ## Engine work they lean on
 
-These are Verse engine tasks already in the queue:
+These are the OpenAgents Metaverse Engine tasks already in the queue:
 - Dead Gears lighting needs moonlight and the shadow work.
 - Everglade's forest needs terrain and paths.
 - Its cats need four-legged characters.

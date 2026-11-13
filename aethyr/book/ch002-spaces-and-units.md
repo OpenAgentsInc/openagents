@@ -15,7 +15,7 @@ reading a value in the wrong one of these spaces. For example, the Grid drew
 a figure's feet at floor height while the camera rose with the jump: the
 drawing and the camera read the position in different spaces.
 
-Aethyr gives each space its own type, so the compiler refuses code that mixes
+The OpenAgents Metaverse Engine gives each space its own type, so the compiler refuses code that mixes
 them.
 
 ## What this chapter teaches
@@ -179,7 +179,7 @@ terrain twice puts it 2.5 m too high. Drawing the next step instead loses
 the interpolation on all three axes.
 
 The existing realm boundary keeps its `Point` layout for C callers, but
-the conversion goes through Aethyr's distinct local and world types:
+the conversion goes through the Metaverse Engine's distinct local and world types:
 
 <!-- source: aethyr/core/points.coax feet -->
 ```jai

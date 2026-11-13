@@ -436,7 +436,7 @@ until chapters 80, 93 and 118 are done (the
   99.
 - **Running the Taproot script paths**: tapscript, chapter 44, and
   control blocks, chapter 45.
-- **The agent on Pylons and Verse OS**, with its keys on separate
+- **The agent on Pylons and Metaverse OS**, with its keys on separate
   machines: chapter 124.
 
 ## The example

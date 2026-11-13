@@ -1028,15 +1028,15 @@ carries ends. It admits only the host's Coder task store. A device holding
 (nearby approval, or a connect code redeemed on the relay), and again before
 its chat grant ends. A host that serves no chats refuses it as
 `unavailable`, and an older host as `malformed` or `unsupported`.
-`verse.private` carries `{world_key}`, the device's Verse world public key
+`verse.private` carries `{world_key}`, the device's Metaverse realm public key
 as 64 lowercase hex characters, and returns `verse_private`:
-`{placements}`, the owner's private Verse placements file
+`{placements}`, the owner's private Metaverse placements file
 (`openagents.verse.private-placements.v1`, at most 65,536 bytes) as the
-host's Verse home holds it, or `null` when it holds none
+host's Metaverse home holds it, or `null` when it holds none
 ([Private assets](../../../docs/verse/private-assets.md#phones)). The host
 notes the world key so its owner can grant it; the answer grants nothing,
 because only an asset's manifest names who may load its pack. A host
-without a Verse home refuses it as `unsupported`, and a placements file it
+without a Metaverse home refuses it as `unsupported`, and a placements file it
 can't read as `unavailable`. Like `thread.list`, its reply is not retained.
 `thread.list`, `thread.read`, and `thread.send` carry the host's chat
 threads to a device: the conversations with OpenAgents that the host keeps

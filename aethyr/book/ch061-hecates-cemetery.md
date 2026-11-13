@@ -4,11 +4,11 @@
 > its own private code at `/realms/hecates-cemetery`:
 > [villa.coax](../../apps/openagents-web/villa.coax) with `villa.wgsl`,
 > `villa-face.c` and the pet memorials served by `coax/web/api/villa.c`.
-> This chapter plans rebuilding it only from Aethyr's earlier chapters.
+> This chapter plans rebuilding it only from the OpenAgents Metaverse Engine's earlier chapters.
 > Nothing here runs yet.
 
 Hecate's Cemetery is the first expansion of Planetary Villa, Kiki's world on
-the Verse: a moonlit memorial garden you walk with a glowing white dog.
+the OpenAgents Metaverse: a moonlit memorial garden you walk with a glowing white dog.
 Tombstone plots line the garden paths among hedges, cypresses and a fountain,
 an open field lies through the east gate, and each tombstone can be a pet's
 memorial, with its photos, its story and notes from those who knew it.

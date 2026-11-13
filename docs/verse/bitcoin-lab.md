@@ -60,7 +60,7 @@ thumb draws its origin and displacement. The station bar, visible world
 labels, and keys 1–7 select the same station. N selects the next station.
 Selecting any UI action releases walking; the header and chapter panel
 also consume non-actionable touches. Tab/Enter and the host's screen-reader
-mirror use the same Aethyr UI actions. Escape leaves focus, then exits to
+mirror use the same Metaverse Engine UI actions. Escape leaves focus, then exits to
 Worlds. M or MAP toggles the chapter panel. Reduced motion preserves walking.
 
 The chapter panel browses all 125 chapters, including other stations, with
@@ -83,9 +83,9 @@ from visual-exercise availability. The primary station map is in
 verification chapters at Node. The generated table is the complete mapping.
 
 [`bitcoin-lab.coax`](../../apps/openagents-web/bitcoin-lab.coax) embeds the
-existing `verse/gridwalk.coax` session: Aethyr's walker, 1/64-second clock,
+existing `verse/gridwalk.coax` session: the OpenAgents Metaverse Engine's walker, 1/64-second clock,
 input buffer, thumbs, follow camera and replay record. It does not run a
-second movement loop. Aethyr's HUD stroke writer and UI tree supply drawing,
+second movement loop. The Metaverse Engine's HUD stroke writer and UI tree supply drawing,
 picking and focus. The GPU module uses the shared scene/depth pass for solid
 procedural meshes and the existing Filament stroke pass for labels and HUD.
 CPU Coax supplies homogeneous clip vertices from that same follow camera;

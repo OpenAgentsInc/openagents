@@ -49,7 +49,7 @@ Rules:
 
 Files:
 - `coax.json`: the language roadmap initiative.
-- `usage-audit.json`: concrete Verse/Psionic usage follow-ups. It uses
+- `usage-audit.json`: concrete Metaverse/Psionic usage follow-ups. It uses
   `openagents.project-work.v1` (`items` are already normalized work entries)
   and extends existing roadmap tasks through parent/blocker references. The
   dependency chain records implementation order; signed queue ranks still move

@@ -41,7 +41,7 @@ be someone else's.
 A plan for what this chapter ships once the draft is approved:
 
 - A hosted runner for runs and reruns, as a Coax binary on our build hosts.
-- A results board, trainer cards and Gym news, on the web and in the Verse.
+- A results board, trainer cards and Gym news, on the web and in the OpenAgents Metaverse.
 - The capstone: the repository map's adoption repeated end to end in Coax.
 
 It builds on what exists today:
@@ -70,7 +70,7 @@ Planned paths: `openagents/eval/gym/`.
 - **Old code at `coder-v1.0.0`, crates:** `gym`, `gym-bridge`, `gym-leaderboard`, `verse-gym`, `coderbench`, `eval-runner`
 - **NIPs:** [NIP-EVAL](../../nostr/nips/openagents/NIP-EVAL.md), [NIP-XP](../../nostr/nips/openagents/NIP-XP.md), [NIP-MV](../../nostr/nips/openagents/NIP-MV.md), [NIP-CJ](../../nostr/nips/openagents/NIP-CJ.md)
 - **Also:**
-  - *Test-Time Capabilities* (`git show coder-v1.0.0:docs/essays/2026-09-29-test-time-capabilities.md`), "Our collective: Coder, the Gym, and Verse"
+  - *Test-Time Capabilities* (`git show coder-v1.0.0:docs/essays/2026-09-29-test-time-capabilities.md`), "Our collective: Coder, the Gym, and the Metaverse"
 - **Promises covered** ([audit](../../docs/audits/2026-11-10-episode-289-port-audit.md#1-what-episode-289-promised)): P5, P6, P15
 
 ## Open questions for the owner

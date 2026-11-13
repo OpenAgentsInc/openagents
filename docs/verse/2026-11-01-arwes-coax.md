@@ -1,6 +1,6 @@
 # ARWES in Coax: inventory, adaptation and reuse
 
-Date: 2026-11-01. This extends the [Aethyr HUD library](2026-11-01-hud-library.md)
+Date: 2026-11-01. This extends the [Metaverse Engine HUD library](2026-11-01-hud-library.md)
 with source-based ports of ARWES's relevant visual and animation algorithms.
 The result is Coax product logic on the existing Grid/WebGPU systems. It is
 not an installed ARWES runtime or a TypeScript, React, CSS or DOM compatibility
@@ -227,7 +227,7 @@ sequence as upstream `Math.random()`.
 
 Text must still use real advance widths and fitted columns. The operation
 produces a display string; it does not rewrite a screen reader's source
-text or provide the semantic platform mirror planned in Aethyr chapter 15.
+text or provide the semantic platform mirror planned in Metaverse Engine chapter 15.
 
 ### Backgrounds and pointer light
 

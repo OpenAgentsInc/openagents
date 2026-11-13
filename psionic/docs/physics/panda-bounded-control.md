@@ -19,7 +19,7 @@ The next smallest honest compiler delivery is a refusal-first bounded-contract
 checker backed by resource/region/loop/frame facts, with a very small proven
 scalar consumer and explicit refusals for this controller. Acceptance of the
 controller follows only when its actual transitive obligations are closed.
-Full R14 also requires a Verse per-frame consumer; neither a scalar proof nor
+Full R14 also requires a Metaverse per-frame consumer; neither a scalar proof nor
 this Panda consumer alone completes that roadmap milestone.
 
 ## Existing evidence and the actual boundary
@@ -221,7 +221,7 @@ C emission makes ABI/host compiler lowering part of that evidence boundary.
    allocation, blocking, recursion, unbounded loops, unknown foreign calls,
    generic/callback/defer-only bad paths and scratch escape/aliasing. Admission
    changes whenever a transitive source or target fact changes.
-6. Add the required Verse per-frame kernel and target coverage before calling
+6. Add the required Metaverse per-frame kernel and target coverage before calling
    R14 delivered. Real-time scheduling/watchdogs remain distinct from bounded
    computation and from nominal simulation rates.
 

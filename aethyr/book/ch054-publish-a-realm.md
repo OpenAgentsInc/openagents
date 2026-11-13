@@ -401,7 +401,7 @@ The last three lines are the broken cases, each refused.
 ### The route, checked end to end
 
 `coax/web/tool.sh coax/web/api/tests/realm_walkthrough.coax` (`PGURL`, `PSQL`,
-`WORK`) runs Aethyrforge's route against PostgreSQL with every migration
+`WORK`) runs the OpenAgents Metaverse Engine's route against PostgreSQL with every migration
 applied, and works out again from the bytes every digest the server states:
 
 1. A release is staged (its five engine files, `/realms/built`), and

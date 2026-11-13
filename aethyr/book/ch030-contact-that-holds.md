@@ -42,7 +42,7 @@ on every primitive pair's distance `d`, with a line search that never steps
 past the first time of impact, guaranteeing no intersection
 ([Li et al., *Incremental Potential Contact*, SIGGRAPH 2020](https://doi.org/10.1145/3386569.3392425)).
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 Both are coupler profiles in chapter 17's matrix: `sap` for rigid–FEM in
 f64, `ipc` for FEM–FEM and shells with rigid obstacles, also f64. Both

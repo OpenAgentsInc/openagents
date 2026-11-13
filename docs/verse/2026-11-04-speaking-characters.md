@@ -22,7 +22,7 @@ The first output is the Cultist Raid promo with the mayor's two lines, from
 `verse/cast/cues/raid-promo.cues`.
 
 This spec covers how you make a video in which a character speaks a scripted line. The character is a
-MetaHuman rendered by Verse, with its voice made by text-to-speech and its lips synced to that voice.
+MetaHuman rendered by the OpenAgents Metaverse, with its voice made by text-to-speech and its lips synced to that voice.
 The first use is the Cultist Raid promo: Everglade's mayor appears in a portrait panel over the raid
 footage and says a line as the raiders reach the town. The same pipeline then serves any character,
 any line and any video. You write a cue sheet and run one command, and the same inputs always give
@@ -48,7 +48,7 @@ the same video.
    coax/web/tool.sh speak cues/raid-promo.cues ~/work/film-out/promo/raid-promo.mp4
    ```
 
-   The tool voices every line, works out the mouth shapes, renders each talking portrait in Verse,
+   The tool voices every line, works out the mouth shapes, renders each talking portrait in the Metaverse,
    and composites them over the video with their sound mixed in. A line you didn't change isn't
    voiced or rendered again, so changing one line takes about as long as that line.
 
@@ -66,7 +66,7 @@ times and to confirm that the voice said the line as written.
 | 1. Voice | line, voice, mood | WAV at 48 kHz, plus word and character times | text-to-speech API |
 | 2. Align | WAV, line | timed phonemes, then visemes | local, Coax |
 | 3. Perform | visemes, mood, audio level | a face and head track: controls per frame | local, Coax |
-| 4. Render | track, cast entry, pack | the portrait as frames, 60 fps | Verse page, headless |
+| 4. Render | track, cast entry, pack | the portrait as frames, 60 fps | Metaverse page, headless |
 | 5. Composite | video, portraits, WAVs, cues | final MP4 | local, ffmpeg |
 
 Every step caches its output under a key made from its inputs, with the tool's version in the key.

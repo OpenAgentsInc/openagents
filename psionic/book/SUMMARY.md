@@ -187,12 +187,12 @@
 - [145. Compress and reconstruct an image](ch145-compress-and-reconstruct-an-image.md) — partly implemented
 - [146. Noise, diffusion and flow](ch146-noise-diffusion-and-flow.md)
 
-**XIV. Motion for Verse**
+**XIV. Motion for Metaverse**
 
 - [147. Poses have conventions](ch147-poses-have-conventions.md)
 - [148. Motion tokens become poses](ch148-motion-tokens-become-poses.md) — partly implemented
 - [149. Execute MotionBricks](ch149-execute-motionbricks.md) — partly implemented
-- [150. Put generated motion in Verse](ch150-put-generated-motion-in-verse.md) — partly implemented
+- [150. Put generated motion in the Metaverse](ch150-put-generated-motion-in-verse.md) — partly implemented
 
 **XV. Audio becomes words, and words become audio**
 
@@ -324,4 +324,4 @@ hosting and inference across a mesh.
 Chapters 1–53, 55–82, 83, 84, 85, 86, 87, 88–102, 103–112, 114–121, 123, 124, 126–164, 165, 166, 167–197, 198, 199, 215–250, 253–255 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Every
 chapter has runnable code, in full or in part. The physics engine and spacecraft chapters
-are in the [Aethyr book](../../aethyr/book/README.md).
+are in the [Metaverse Engine book](../../aethyr/book/README.md).

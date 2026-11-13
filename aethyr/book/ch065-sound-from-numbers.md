@@ -8,7 +8,7 @@
 A realm needs sound that is the same every time it runs. A soundtrack that
 uses the C library's `sin` and `exp`, a floating-point mix, or a random
 generator seeded from the clock can give different samples on a native build
-and in the browser. Aethyr's synthesizer uses integers only, so the same
+and in the browser. The OpenAgents Metaverse Engine's synthesizer uses integers only, so the same
 score and seed give the same samples on every build and target.
 
 This chapter builds the parts that make one sound: phases and pitches,

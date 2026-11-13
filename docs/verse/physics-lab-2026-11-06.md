@@ -1,8 +1,8 @@
 # Physics Lab results, November 6, 2026
 
-The Physics Lab runs all six requested scenes through Aethyr, Rapier 3D
+The Physics Lab runs all six requested scenes through the OpenAgents Metaverse Engine, Rapier 3D
 and Jolt with one generated input table and one Coax metric observer.
-All six Aethyr repeats match every recorded physical-state byte. The
+All six the Metaverse Engine repeats match every recorded physical-state byte. The
 results expose unresolved physics and performance gaps; deterministic
 replay does not establish solver quality.
 
@@ -18,7 +18,7 @@ nice -n 15 env COAX_CHECK_JOBS=6 \
 
 The reference cache was built by the same runner's default preparation
 path during the stack rehearsal. The complete command then ran all three
-engines, repeated Aethyr and captured all six scenes in 65.5 seconds. Its
+engines, repeated the Metaverse Engine and captured all six scenes in 65.5 seconds. Its
 exit status was 0. No room/page code or Wasm budget changed.
 
 The host is an Intel Core i7-14700K with 28 logical CPUs. Every engine uses
@@ -28,7 +28,7 @@ left alone; captures used muted headless Chromium with SwiftShader.
 
 The [lab README](../../aethyr/lab/README.md) defines the scenes, profiles,
 precision, fixed step, timing interval, rest threshold and sampled overlap
-metric. Aethyr uses Coax 0.51.2; the Linux compiler SHA-256 is
+metric. The Metaverse Engine uses Coax 0.51.2; the Linux compiler SHA-256 is
 `088782b2838c3119eeb5b352f9ef36144d08171da8b910e1a0a79d93e401ee4e`.
 The source delivery is `38b687866f`, following the scene/record contract
 at `96c3957ffd`. Source hashes retain the measured files. The later public
@@ -42,22 +42,22 @@ file I/O, metrics and captures are excluded.
 
 | Scene | Engine | p50 | p95 | p99 |
 | --- | --- | ---: | ---: | ---: |
-| Fall 1,000 | Aethyr | 0.847 | 4.292 | 5.087 |
+| Fall 1,000 | Metaverse Engine | 0.847 | 4.292 | 5.087 |
 | Fall 1,000 | Rapier | 1.508 | 1.550 | 1.639 |
 | Fall 1,000 | Jolt | 0.498 | 0.722 | 0.788 |
-| Fall 10,000 | Aethyr | 9.017 | 39.391 | 51.680 |
+| Fall 10,000 | Metaverse Engine | 9.017 | 39.391 | 51.680 |
 | Fall 10,000 | Rapier | 21.201 | 21.621 | 22.776 |
 | Fall 10,000 | Jolt | 5.528 | 7.866 | 8.527 |
-| Fall 30,000 | Aethyr | 28.752 | 115.198 | 146.631 |
+| Fall 30,000 | Metaverse Engine | 28.752 | 115.198 | 146.631 |
 | Fall 30,000 | Rapier | 93.719 | 95.424 | 97.195 |
 | Fall 30,000 | Jolt | 19.155 | 26.041 | 27.604 |
-| Stack, 32 | Aethyr | 1.495 | 2.814 | 3.057 |
+| Stack, 32 | Metaverse Engine | 1.495 | 2.814 | 3.057 |
 | Stack, 32 | Rapier | 0.079 | 0.088 | 0.159 |
 | Stack, 32 | Jolt | 0.109 | 0.119 | 0.123 |
-| Pile, 128 | Aethyr | 20.507 | 22.528 | 23.220 |
+| Pile, 128 | Metaverse Engine | 20.507 | 22.528 | 23.220 |
 | Pile, 128 | Rapier | 0.271 | 0.707 | 1.694 |
 | Pile, 128 | Jolt | 0.419 | 1.617 | 1.848 |
-| Slope, 64 | Aethyr | 0.067 | 0.136 | 0.137 |
+| Slope, 64 | Metaverse Engine | 0.067 | 0.136 | 0.137 |
 | Slope, 64 | Rapier | 0.102 | 0.140 | 0.185 |
 | Slope, 64 | Jolt | 0.063 | 0.082 | 0.130 |
 
@@ -70,40 +70,40 @@ engine. Full energy/overlap/rest time series are in
 
 | Scene | Engine | Energy | Overlap | At rest |
 | --- | --- | ---: | ---: | ---: |
-| Fall 1,000 | Aethyr | 5,457.058 | 0.002000 | 0/1,000 |
+| Fall 1,000 | Metaverse Engine | 5,457.058 | 0.002000 | 0/1,000 |
 | Fall 1,000 | Rapier | 4,904.329 | 0.000092 | 1,000/1,000 |
 | Fall 1,000 | Jolt | 4,904.957 | 0.000247 | 1,000/1,000 |
-| Fall 10,000 | Aethyr | 54,786.774 | 0.002000 | 0/10,000 |
+| Fall 10,000 | Metaverse Engine | 54,786.774 | 0.002000 | 0/10,000 |
 | Fall 10,000 | Rapier | 49,043.290 | 0.000092 | 10,000/10,000 |
 | Fall 10,000 | Jolt | 49,049.546 | 0.000327 | 10,000/10,000 |
-| Fall 30,000 | Aethyr | 164,140.742 | 0.002000 | 0/30,000 |
+| Fall 30,000 | Metaverse Engine | 164,140.742 | 0.002000 | 0/30,000 |
 | Fall 30,000 | Rapier | 147,129.882 | 0.000092 | 30,000/30,000 |
 | Fall 30,000 | Jolt | 147,148.617 | 0.000327 | 30,000/30,000 |
-| Stack, 32 | Aethyr | 415.701 | 0.004006 | 0/32 |
+| Stack, 32 | Metaverse Engine | 415.701 | 0.004006 | 0/32 |
 | Stack, 32 | Rapier | 4,965.737 | 0.017184 | 32/32 |
 | Stack, 32 | Jolt | 4,991.797 | 0.010536 | 1/32 |
-| Pile, 128 | Aethyr | 1,254.984 | 0.003858 | 0/128 |
+| Pile, 128 | Metaverse Engine | 1,254.984 | 0.003858 | 0/128 |
 | Pile, 128 | Rapier | 1,049.831 | 0.001842 | 123/128 |
 | Pile, 128 | Jolt | 1,233.689 | 0.002306 | 128/128 |
-| Slope, 64 | Aethyr | −6,229.608 | 0.002000 | 0/64 |
+| Slope, 64 | Metaverse Engine | −6,229.608 | 0.002000 | 0/64 |
 | Slope, 64 | Rapier | −5,908.481 | 0.000084 | 0/64 |
 | Slope, 64 | Jolt | −5,921.260 | 0.000005 | 0/64 |
 
-Aethyr is **ahead of Rapier in falling-scene median step time** in these
+The Metaverse Engine is **ahead of Rapier in falling-scene median step time** in these
 profiles, and slightly ahead in slope p95. That does not mean comparable
 quality. It is **behind at falling-scene p95/p99**, behind Jolt on these
 falling timings, and much slower in the contacting stack and pile. At
-30,000 bodies, Aethyr's p95 is 115.198 ms versus Rapier's 95.424 ms and
-Jolt's 26.041 ms. The 128-box pile's Aethyr p95 is 22.528 ms versus 0.707
+30,000 bodies, the Metaverse Engine's p95 is 115.198 ms versus Rapier's 95.424 ms and
+Jolt's 26.041 ms. The 128-box pile's Metaverse Engine p95 is 22.528 ms versus 0.707
 ms and 1.617 ms.
 
-Aethyr is **wrong as a settling/stack solver in this composition**: none of
+The Metaverse Engine is **wrong as a settling/stack solver in this composition**: none of
 the falling boxes reach the common rest thresholds by three seconds,
 while both references settle all of them. Its 32-box stack collapses,
 retaining 415.701 J from 5,071.378 J initially; both references keep a
 standing stack with roughly 4,966–4,992 J. Jolt's stack still moves under
 the strict rest threshold, so it is not reported as fully settled.
-Aethyr's smaller final stack penetration follows collapse and is not a
+The Metaverse Engine's smaller final stack penetration follows collapse and is not a
 stack-quality win.
 
 The common pile starts with 0.585156 m overlap in all engines. Its maximum
@@ -112,12 +112,12 @@ Jolt also reach about 0.142–0.143 m sampled ground penetration during the
 falling impact at one second. The JSON retains those transient values;
 final penetration alone does not describe collision quality. No thresholds
 or solver tuning were changed to hide these results. This issue delivers
-the measuring lab, not a claim that Aethyr's solvers now match references.
+the measuring lab, not a claim that the Metaverse Engine's solvers now match references.
 
 ## Determinism and captures
 
-All seven samples of every body match between the first and second Aethyr
-run, excluding elapsed-time bytes. Aethyr's exact sample checksums are:
+All seven samples of every body match between the first and second Metaverse Engine
+run, excluding elapsed-time bytes. The Metaverse Engine's exact sample checksums are:
 
 | Scene | FNV-1a checksum |
 | --- | --- |
@@ -142,7 +142,7 @@ All six saved captures were visually inspected:
 
 ## Checks and retained failures
 
-The scene, Aethyr kernel and metric checks were written red first. The
+The scene, Metaverse Engine kernel and metric checks were written red first. The
 final full lab suite passes all 63 checks, including a conservative-sweep
 check against all negative SAT overlaps in its rotated fixture.
 The physical runner also rebuilds with that added test before the full

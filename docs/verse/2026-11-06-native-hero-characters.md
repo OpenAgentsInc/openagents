@@ -1,4 +1,4 @@
-# Native hero characters in Aethyr worlds
+# Native hero characters in Metaverse Engine worlds
 
 Echo now renders natively in Everglade through the shared character pass:
 one renderer, one frame and the world's depth buffer. The local recording
@@ -67,7 +67,7 @@ Three constraints shaped the original plan:
 
 ## Design
 
-### 1. One character runtime in Aethyr
+### 1. One character runtime in the Metaverse Engine
 
 Move the CPU side out of `verse/valley/` into `aethyr/character/` and make
 it work for any asset source:

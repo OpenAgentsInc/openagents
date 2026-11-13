@@ -11,7 +11,7 @@
 A material says how a surface answers light: its albedo, the texture layer
 it reads, the style that draws it, how strongly it asks for an outline, and
 what it emits. Realms differ in style (low poly, painterly, photoreal, flat,
-anime), not in having separate material systems. Aethyr keeps one record per
+anime), not in having separate material systems. The OpenAgents Metaverse Engine keeps one record per
 surface and one set of shading functions that read it.
 
 ## What this chapter teaches
@@ -341,7 +341,7 @@ adapter) checks the pages the move can reach against their goldens.
 - **Texture layers.** [verse/gpu/layers.coax](../../verse/gpu/layers.coax)
   decodes and mipmaps texture layers into the layout both GPU hosts upload.
   Admission checks a layer index against the realm's count; moving the
-  decoder and the asset packs' texture rules into Aethyr remains.
+  decoder and the asset packs' texture rules into the Metaverse Engine remains.
 - **GPU agreement per function.** Each shading function's CPU result equal
   to its WGSL and SPIR-V results over a grid of inputs is not recorded yet.
   Today the agreement is whole-frame: chapter 11's Grid profile.

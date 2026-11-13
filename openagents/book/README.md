@@ -21,7 +21,7 @@ Bitcoin.
 
 Most of that was built once, in a Rust tree that ended at the tag
 `coder-v1.0.0`. The repository was then reset to a small, checked core:
-Coax the language, Aethyr the engine and the Verse, one Nostr protocol,
+Coax the language, the OpenAgents Metaverse Engine the engine and the OpenAgents Metaverse, one Nostr protocol,
 Bitcoin and Lightning, and Psionic. This book rebuilds the whole of Episode
 289 on that core. It starts from nothing, a single loop around one model,
 and adds one idea per chapter until the whole thing stands.
@@ -56,7 +56,7 @@ foundations, and this book links to them and does not repeat them:
 | Events, relays and NIPs | [Nostr From Scratch](../../nostr/book/README.md) |
 | Keys, signatures, Lightning | [Bitcoin From Scratch](../../bitcoin/book/README.md) |
 | Models, decisions, serving, Pylons | [Psionic: ML From Scratch](../../psionic/book/README.md) |
-| The engine and realms | [Building Aethyr, World Engine](../../aethyr/book/README.md) |
+| The engine and realms | [Building the OpenAgents Metaverse Engine](../../aethyr/book/README.md) |
 | A whole game on the engine | [Building Everglade](../../everglade/book/README.md) |
 
 This book owns what none of them does: the composition (a front and its
@@ -76,7 +76,7 @@ Each part ends with something that runs.
 | VI. The market | 37–45 | Open the member list to everyone and pay the people who fill it: a registry, pinned installs, paid calls, receipts, payouts, identity and reputation. | Publish a plugin under your own key, have another person's agent use it in a paid call, and receive your share over Lightning. |
 | VII. The protocol is the agent | 46–53 | Show that every step so far is a record with one schema, carried as a signed event, as an API body or as binary frames. Then open the same system to partner apps and to people who host it themselves. | A second implementation that reads only the public events rebuilds an agent's member list and the evidence behind it; a partner app answers through the API; an agent acts under a grant its owner approved; a self-hosted instance installs a plugin from the public registry. |
 | VIII. Compute | 54–56 | Say where the models run: behind one gateway, on our own engine, and on machines that people lend for Bitcoin. | One request to the front is answered by a decision model running on a Pylon, and the Pylon's owner is paid for it. |
-| IX. The Verse | 57–60 | Put all of it in a world you can walk through: the same agent, your working agents, makers who are paid, and characters that decide. | Walk into a realm, see your agents working, buy something a maker listed, and watch a guard make a decision that a Pylon served and was paid for. |
+| IX. The Metaverse | 57–60 | Put all of it in a world you can walk through: the same agent, your working agents, makers who are paid, and characters that decide. | Walk into a realm, see your agents working, buy something a maker listed, and watch a guard make a decision that a Pylon served and was paid for. |
 | X. Everywhere | 61–64 | Ship it: every surface as a thin client, a host for the one platform we lack, one release pipeline, and a plain statement of what 1.0 means. | The same version, built by one pipeline, installed from one download page on every platform Episode 289 named. |
 
 ## What a chapter contains
@@ -217,9 +217,9 @@ plans.
 - [55. Models we serve](ch055-models-we-serve.md) — design draft
 - [56. Pylons](ch056-pylons.md) — design draft
 
-## IX. The Verse
+## IX. The Metaverse
 
-- [57. The Verse is a surface](ch057-the-verse-is-a-surface.md) — design draft
+- [57. The Metaverse is a surface](ch057-the-verse-is-a-surface.md) — design draft
 - [58. Agents you can meet](ch058-agents-you-can-meet.md) — design draft
 - [59. Realms and makers](ch059-realms-and-makers.md) — design draft
 - [60. A decision in the world](ch060-a-decision-in-the-world.md) — design draft

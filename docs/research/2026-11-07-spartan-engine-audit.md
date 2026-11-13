@@ -6,7 +6,7 @@ Date: 2026-11-07. Subject: [PanosK92/SpartanEngine](https://github.com/PanosK92/
 source, the shaders, `docs/`, `readme.md`, `plan.md`, the commit history and the engine's own agent
 notes (`tools/mcp/spartan_engine/AGENT_MEMORY*.md`). We did not build it.
 
-This audit compares Spartan with Aethyr/Verse on Coax and ranks what Everglade II should adopt.
+This audit compares Spartan with Metaverse Engine/Verse on Coax and ranks what Everglade II should adopt.
 Paths of the form `source/...` and `data/shaders/...` are in Spartan's repo. All other paths are
 in this repo. "Archive line N" means line N of Spartan's
 `tools/mcp/spartan_engine/AGENT_MEMORY_ARCHIVE.md`.
@@ -182,14 +182,14 @@ This is the part that matters most for Everglade II.
 
 ## Our engine today
 
-| Area | Aethyr/Verse | Where |
+| Area | Metaverse Engine/Verse | Where |
 | --- | --- | --- |
 | Shaders | Coax lowered to WGSL (`coax wgsl`) for the browser, and to SPIR-V and Metal for native hosts. Shared functions run on the CPU in `#test` blocks. | `coax/web/wgsl-module.coax`, `aethyr/gpu/wgsl.coax`, `verse/gpu/spirv.coax`, `verse/gpu/metal-pass.coax` |
 | Draws | The CPU picks visible pieces and sorts them into one instanced draw per kit piece and LOD: about 75 draws per frame. No compute pass and no indirect draws in the web pages. | `apps/openagents-web/everglade2.coax:626-670` |
 | Grass | Placed by the vertex shader from the cell hash, in four nested tiers fixed to the land (0.5/1/2/4 m cells out to 28/40/52/140 m). Each coarser tuft is one of the four finer tufts it covers. Past 16 m, tufts drop out by rank and the survivors widen. | `verse/everglade2/field.coax`, `apps/openagents-web/gpu/everglade2.coax:52-74` |
 | Trees | Three LODs at hard distances: whole to 36 m, crown cards to 70 m. Past 70 m only items with `q % 3 == 0` remain, scaled 1.3x. Past 160 m only `q % 6 == 0`, scaled 1.5x. | `verse/everglade2/plant.coax:21-23`, `apps/openagents-web/everglade2.coax:648-663` |
 | Understory | Each kit has a hard cutoff distance: pebbles and mushrooms 26 m, flowers 45 m, ferns 80 m, bushes 95 m. | `verse/everglade2/plant.coax:21-22` |
-| Shadows | One map 68 m across, centred on the player and snapped in world xz to 2 m steps. Its y follows the terrain height. Only pieces within 40 m cast, all at LOD 1. Aethyr has light-space texel-snapped cascades (`aethyr/render/cascades.coax`), but Everglade II doesn't use them. | `apps/openagents-web/everglade2.coax:28,562-564,648-652`, `apps/openagents-web/gpu/everglade2.coax:90-116` |
+| Shadows | One map 68 m across, centred on the player and snapped in world xz to 2 m steps. Its y follows the terrain height. Only pieces within 40 m cast, all at LOD 1. The OpenAgents Metaverse Engine has light-space texel-snapped cascades (`aethyr/render/cascades.coax`), but Everglade II doesn't use them. | `apps/openagents-web/everglade2.coax:28,562-564,648-652`, `apps/openagents-web/gpu/everglade2.coax:90-116` |
 | AA | No temporal AA. DPR 2. | |
 | Quality | A governor steps the resolution and costs down and up with hysteresis. | `aethyr/core/quality.coax` |
 | Measurement | `frametime.ts`: per-pass GPU timestamps in headless Chrome. `perf.ts`: p95 must stay at or under 17.5 ms and no frame may exceed 33 ms, at four Everglade v1 places. Everglade II: about 16 ms at the glade and 17 ms at the clearing, at 2400x1400. | `coax/web/frametime.ts`, `coax/web/perf.ts`, `docs/verse/everglade2.md` |

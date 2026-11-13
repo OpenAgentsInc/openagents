@@ -1,6 +1,6 @@
 # 5E MMO
 
-A Verse world at https://openagents.com/worlds/5e-mmo, not listed on the worlds page. It plays the shared SRD 5e rules engine as an MMO, in Everglade. You play one level 6 hero. Three AI casters fight beside you against waves of six Skeletons, on a grid of 5-foot squares laid over the grass in the city's south-east corner. Every figure is one of Everglade's people, with the same bodies and the same clips: idle, walk, cast, slash and die.
+A Metaverse realm at https://openagents.com/worlds/5e-mmo, not listed on the worlds page. It plays the shared SRD 5e rules engine as an MMO, in Everglade. You play one level 6 hero. Three AI casters fight beside you against waves of six Skeletons, on a grid of 5-foot squares laid over the grass in the city's south-east corner. Every figure is one of Everglade's people, with the same bodies and the same clips: idle, walk, cast, slash and die.
 
 ## Controls
 

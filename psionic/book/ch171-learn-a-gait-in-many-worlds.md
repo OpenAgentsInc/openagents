@@ -92,7 +92,7 @@ The [foundation fixtures](../fixtures/robotics/locomotion/README.md) retain inpu
 
 ### Next steps remain explicit
 
-Scalar distribution/log-density and ratio adapters are qualified below. The scalar actor/update and frozen LQR experiment appear below; its original misses and passing longer continuation are reported below. General neural actor/learned-critic training remains later work. Keep score-function policy gradients distinct from differentiating through the environment. A serial CPU return batch does not supply Aethyr's quadruped contacts, sensors, reset/RNG independence or device batching. Those foundations, the remaining gait/replay/transfer acceptance criteria and compiler R14/R20/R21/R23 remain later work.
+Scalar distribution/log-density and ratio adapters are qualified below. The scalar actor/update and frozen LQR experiment appear below; its original misses and passing longer continuation are reported below. General neural actor/learned-critic training remains later work. Keep score-function policy gradients distinct from differentiating through the environment. A serial CPU return batch does not supply the OpenAgents Metaverse Engine's quadruped contacts, sensors, reset/RNG independence or device batching. Those foundations, the remaining gait/replay/transfer acceptance criteria and compiler R14/R20/R21/R23 remain later work.
 
 ## A normalized scalar Gaussian policy primitive
 
@@ -308,12 +308,12 @@ parallel PPO for legged robots trains a walking policy in minutes on one GPU
 
 ## The planned learner in Psionic
 
-The planned environment is Aethyr chapter 31's batch of quadrupeds on randomized terrain,
-with Aethyr chapter 33's sensors and chapter 167's PD targets as the action
+The planned environment is Metaverse Engine chapter 31's batch of quadrupeds on randomized terrain,
+with Metaverse Engine chapter 33's sensors and chapter 167's PD targets as the action
 interface. The planned learner uses Psionic's own training stack (autodiff, the
 optimizer chapters) and reads observations without host copies (Coax R23).
 The full design requires every randomized parameter to be declared with its range and provenance (R20).
-Planned training runs are recordings in Aethyr chapter 36's sense: seed, scene, profile
+Planned training runs are recordings in Metaverse Engine chapter 36's sense: seed, scene, profile
 and learner configuration, so a policy names exactly how it was made.
 Real hardware remains a separate, authorized integration.
 
@@ -343,5 +343,5 @@ declared randomization.
 
 ## Dependencies
 
-Chapters Aethyr 31, 33, 35, Psionic 167 and Psionic's training chapters. From Coax:
+Chapters the Metaverse Engine 31, 33, 35, Psionic 167 and Psionic's training chapters. From Coax:
 R14, R20, R21, R23.

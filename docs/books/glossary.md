@@ -14,8 +14,8 @@ that already touches the file (#13267 to #13269, #13280).
 
 | Term | One meaning | Context | Conflicts |
 | --- | --- | --- | --- |
-| Aethyr | The engine | Engine | `proto/README.md` called the Verse the engine (fixed in #13312); `verse/` holds older engine files |
-| Verse | The set of realms on the open web that Aethyr runs | Realms | See Aethyr |
+| OpenAgents Metaverse Engine | The engine | Engine | Named Aethyr until 2026-11-12 ([the rename](../naming/2026-11-12-metaverse-rename.md)); `verse/` holds older engine files |
+| Metaverse | The set of realms on the open web that the Metaverse Engine runs | Realms | See Metaverse Engine |
 | Realm | One world: a document and a link | Authoring | |
 | Zone | A named area of one realm's world, loaded as cells | Everglade | Also a Wasm page (`everglade/features.coax:66-81`, rename to pages in #13268/#13280), the AAA audit's server unit, and a GCP zone |
 | Page | A Wasm module the browser loads | Web client | Called "zone" (`EfZone`) in `everglade/features.coax:66-81`; rename to pages when #13268/#13280 touch it |
@@ -51,7 +51,7 @@ that already touches the file (#13267 to #13269, #13280).
 | World event | A scheduled in-world happening, such as a raid | Everglade | `verse.room_events` and `room-events.coax` |
 | Session (login) | An authenticated browser or app session (`auth.sessions`) | Identity | Six SQL tables named `sessions` (`analytics`, `projects`, `drops`, `signin`, `auth`, plus `verse.pack_sessions`), plus `aethyr/session/` and `openagents.session.v1` |
 | Transcript log | Coder's JSONL log, id `openagents.session.v1` | Coder | Clashes with NIP-SESS (compliance plan C1) and login/room sessions |
-| Engine (Coder) | What runs a Coder task | Coder | Shares "engine" with Aethyr and SRD `rules/srd/engine.coax` |
+| Engine (Coder) | What runs a Coder task | Coder | Shares "engine" with the Metaverse Engine and SRD `rules/srd/engine.coax` |
 | Golem | A Coder agent session, shown in the Everglade desktop | Golemancy (ACL over Coder) | |
 | Everglade | The game. Today Everglade II | Everglade | Legacy v1 (`everglade.wasm`, until #13269), `everglade2`, `.e2`, `everglade-ii` (#13267–#13269), and web domain `everglade.world` |
 
@@ -64,9 +64,9 @@ that already touches the file (#13267 to #13269, #13280).
 | Coax | The language every book is written in. | Coax |
 | `coax0` | The bootstrap compiler. It emits C11, which also builds to WebAssembly, and shader functions for Metal and WGSL. | Coax 27 |
 | Coaxial | The Coax web framework that draws openagents.com and realm pages. | [coax/web.md](../../coax/web.md) |
-| Aethyr | The engine: the frame loop, the world, rendering, physics, rooms and the realm format. Named on 2026-10-31. | Aethyr |
-| Aethyrforge | The realm builder and world-creation tools on Aethyr. | Aethyr Parts VI and X |
-| The Verse | The world that Aethyr runs: a set of realms on the open web. The `verse/` directory holds engine and realm code from before the engine had its own name. | Aethyr Part VII |
+| Metaverse Engine | The engine: the frame loop, the world, rendering, physics, rooms and the realm format. Named on 2026-10-31. | Metaverse Engine |
+| Metaverse Engine | The realm builder and world-creation tools on the Metaverse Engine. | Metaverse Engine Parts VI and X |
+| The Metaverse | The world that the Metaverse Engine runs: a set of realms on the open web. The `verse/` directory holds engine and realm code from before the engine had its own name. | Metaverse Engine Part VII |
 | Psionic | The machine-learning library: tensors, model execution, serving and training. | Psionic |
 | Coder | The coding agent. It speaks as "I". | Coder |
 | OpenAgents | The general agent and the company. It speaks as "we". | Coder plan |
@@ -75,19 +75,19 @@ that already touches the file (#13267 to #13269, #13280).
 
 | Word | Meaning | Owner |
 | --- | --- | --- |
-| Realm | One world in the Verse. A realm is a document and a link. | Aethyr 51 |
-| The Grid | The bare shared world you walk into from the home page. | Aethyr 56 |
+| Realm | One world in the Metaverse. A realm is a document and a link. | The Metaverse Engine 51 |
+| The Grid | The bare shared world you walk into from the home page. | The Metaverse Engine 56 |
 | Zone | A named place inside a realm, such as the glade. | Everglade |
-| Room | One server-owned simulation that every seated player sees the same way. An Everglade room seats 16 players (`EG_SEATS`). | Aethyr 86 |
-| Seat | One player's place in a room. A signed ticket proves who sits in it. | Aethyr 88 |
-| Shard | One server process that hosts rooms. | Aethyr 101 |
-| Step | One fixed advance of simulation time. Drawing happens between steps. | Aethyr 1 |
-| Replay | Running recorded inputs again and getting the same state. | Aethyr 5 |
-| Deed | One action an actor asks to take: ask, act, present. | Aethyr 102 |
-| Bearing | How a body holds itself and what it may do, from its conditions. | Aethyr 102 |
+| Room | One server-owned simulation that every seated player sees the same way. An Everglade room seats 16 players (`EG_SEATS`). | The Metaverse Engine 86 |
+| Seat | One player's place in a room. A signed ticket proves who sits in it. | The Metaverse Engine 88 |
+| Shard | One server process that hosts rooms. | The Metaverse Engine 101 |
+| Step | One fixed advance of simulation time. Drawing happens between steps. | The Metaverse Engine 1 |
+| Replay | Running recorded inputs again and getting the same state. | The Metaverse Engine 5 |
+| Deed | One action an actor asks to take: ask, act, present. | The Metaverse Engine 102 |
+| Bearing | How a body holds itself and what it may do, from its conditions. | The Metaverse Engine 102 |
 | SRD | The D&D 5E System Reference Document 5.2.1, licensed CC BY 4.0. | Everglade Part V |
 | Maker | The person a realm's tips go to. | [docs/verse/makers.md](../verse/makers.md) |
-| Fork | Your own copy of a realm, with a record of where it came from. | Aethyr 55 |
+| Fork | Your own copy of a realm, with a record of where it came from. | The Metaverse Engine 55 |
 
 ## Models and agents
 

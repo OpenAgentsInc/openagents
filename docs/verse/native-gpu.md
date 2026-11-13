@@ -1,6 +1,6 @@
-# Native GPU Verse: Coax everything
+# Native GPU the Metaverse: Coax everything
 
-Decided by the owner on 2026-10-30: Verse becomes a native desktop app that
+Decided by the owner on 2026-10-30: the OpenAgents Metaverse becomes a native desktop app that
 draws on the GPU through Vulkan (Metal on Apple), and **Coax writes all of
 it**, including the shaders. No browser, no Wasm, no WGSL, and no outside
 shader toolchain (no glslang, naga, tint, Dawn or wgpu). The C host does
@@ -146,7 +146,7 @@ the checker) and grows the lowering:
 
 ## Tracking
 
-Every phase and native feature is a task in the Verse project
+Every phase and native feature is a task in the Metaverse project
 (https://openagents.com/projects/verse), seeded from
 `apps/openagents-web/projects/verse/work/native-gpu.json`.
 

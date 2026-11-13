@@ -31,7 +31,7 @@ credential values and redacts complete matches with the existing scrubber.
 Escaping happens after redaction. Secret discovery, tool consent and all
 existing session permissions are unchanged.
 
-Aethyrforge appends these chunks to its native transcript and to transparent
+The OpenAgents Metaverse Engine appends these chunks to its native transcript and to transparent
 left-side text while a turn is active. It neither focuses nor opens the
 composer in response to a chunk. Enter still opens the conversation on demand.
 

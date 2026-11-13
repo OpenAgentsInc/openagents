@@ -8,8 +8,8 @@
 > edits, chat, rooms, payments).
 
 This is the defining protocol plan for **every OpenAgents surface**, including
-web, mobile, desktop, coding agents, cloud hosts, decisions, payments and Verse.
-**Coax is the implementation target. Verse is the engine and the
+web, mobile, desktop, coding agents, cloud hosts, decisions, payments and the OpenAgents Metaverse.
+**Coax is the implementation target. The Metaverse is the engine and the
 experience it runs; its worlds are realms.** Shared engine contracts stay under
 `openagents.engine.*`; world/product contracts stay under `openagents.verse.*`.
 
@@ -23,7 +23,7 @@ from the pre-reset revision recorded in `proto/recovery.json`.
 
 The root [protocol guide](../../proto/README.md) identifies what is actually
 restored and executable. New alpha files cover experimental options and the
-first Verse world/presence projection, native home and the first 16 Nostr
+first Metaverse realm/presence projection, native home and the first 16 Nostr
 mirror schemas; they do not amend Nostr, REACH or realm
 transports. Coax has supported selected proto3 descriptor imports and
 bounded caller-buffer codecs since 0.4.0; [the importer contract](../../coax/proto.md)
@@ -73,7 +73,7 @@ This document defines **the OpenAgents Protocol**: one versioned, public set
 of Protobuf definitions for everything OpenAgents builds and intends to
 build. It covers:
 
-- every product: the web app, mobile, desktop, Coder, the Verse, Pylon,
+- every product: the web app, mobile, desktop, Coder, the Metaverse, Pylon,
   Forum, Gym, the Decisions API, OpenAgents Cloud and Computers, Labs and
   Agent Studio;
 - every agent concept: identity, sessions, control, context, policy,
@@ -127,7 +127,7 @@ chapter.
 | 26: money | [19](../../openagents/book/ch019-a-wallet.md), [20](../../openagents/book/ch020-spending-approval.md), [40](../../openagents/book/ch040-paid-calls.md), [41](../../openagents/book/ch041-metering-and-receipts.md), [42](../../openagents/book/ch042-payouts-to-authors.md), [45](../../openagents/book/ch045-markets-for-work.md) |
 | 27: Pylon and attestation | [56](../../openagents/book/ch056-pylons.md), [60](../../openagents/book/ch060-a-decision-in-the-world.md), [63](../../openagents/book/ch063-one-release-pipeline.md) |
 | 28: XP and deploy status | [34](../../openagents/book/ch034-credit.md), [63](../../openagents/book/ch063-one-release-pipeline.md) |
-| 29: Verse | [57](../../openagents/book/ch057-the-verse-is-a-surface.md), [59](../../openagents/book/ch059-realms-and-makers.md) |
+| 29: Metaverse | [57](../../openagents/book/ch057-the-verse-is-a-surface.md), [59](../../openagents/book/ch059-realms-and-makers.md) |
 | 33, 35 and 36: tooling, conformance and the plan | [52](../../openagents/book/ch052-the-compliance-rule.md) |
 | Sync, which has no section here yet ([docs/sync](../sync/README.md)) | [51](../../openagents/book/ch051-sync-across-devices.md) |
 
@@ -169,7 +169,7 @@ chapter.
 26. [Money: markets, labor, payments, ledgers, billing](#26-money-markets-labor-payments-ledgers-billing)
 27. [Pylon, attestation and sovereign agents](#27-pylon-attestation-and-sovereign-agents)
 28. [Community: XP, Forum, deploy status, referrals](#28-community-xp-forum-deploy-status-referrals)
-29. [Interface: UI view trees, engine, Verse](#29-interface-ui-view-trees-engine-verse)
+29. [Interface: UI view trees, engine, the Metaverse](#29-interface-ui-view-trees-engine-verse)
 30. [Telemetry, research records and evidence](#30-telemetry-research-records-and-evidence)
 
 **Part IV. Making it real**
@@ -253,8 +253,8 @@ Section 11.
 | Package | Where | Consumers | Status |
 | --- | --- | --- | --- |
 | `openagents.engine.v1` | `proto/openagents/engine/v1/` (scene, agent, hud, control, state, assets) | `crates/engine-proto` (Prost 0.13.5), Nanopb 0.4.9.1, Python protobuf 5.29.3, Swift via C ABI, `Verse engine` via the `openagents.engine-proto.bundle.v1` export | Implemented; descriptor snapshots in `compatibility/`; historical engine epic #113 closed |
-| `openagents.common.v1` | `proto/openagents/common/v1/refs.proto` | Rust phone SDK, Verse C++ codec, Swift through C ABI | Shipped; domain-qualified errors and original signed JSON |
-| `openagents.host.v1` | `proto/openagents/host/v1/host.proto` | `crates/phone-host`, Verse phone agent | Shipped; verified access, exact pending requests, task bindings and revision-bound cursors |
+| `openagents.common.v1` | `proto/openagents/common/v1/refs.proto` | Rust phone SDK, Metaverse C++ codec, Swift through C ABI | Shipped; domain-qualified errors and original signed JSON |
+| `openagents.host.v1` | `proto/openagents/host/v1/host.proto` | `crates/phone-host`, Metaverse phone agent | Shipped; verified access, exact pending requests, task bindings and revision-bound cursors |
 | `openagents.reach.v1` | `proto/openagents/reach/v1/reach.proto` | Same native phone path | Shipped; verified presence, hints and telemetry projections; existing channel wire unchanged |
 | `space.credential.provider.v2` | `crates/space-key-broker/proto/` | Space key broker | Implemented; outside the `openagents.` tree |
 | `lnrpc`, `taprpc`, `looprpc`, `litrpc`, … | `crates/lnd-sdk/proto/<project>/<tag>/` with `sources.json` | `crates/lnd-sdk` | Vendored byte-exact; 44 files |
@@ -333,12 +333,12 @@ evidence or research records that stay JSON.
 | TERM record streams | NIP-TERM, `coder-pty` | 10-byte header (tag u16, length u32, crc32c); ≤16 MiB per stream |
 | HOST invitation | NIP-HOST | `coder-host:` + base64url of packed bytes; ≤640 B |
 | Gym connect | NIP-EVAL | `gym-connect:` + base64url |
-| AESV world container | Verse | magic, version, layer, schema, world, payload, CRC32 |
-| Kernel ABI (`AFB1`), behavior bytecode (`AFBCv1`) | Verse tools | Fixed-stride binary |
+| AESV world container | Metaverse | magic, version, layer, schema, world, payload, CRC32 |
+| Kernel ABI (`AFB1`), behavior bytecode (`AFBCv1`) | Metaverse tools | Fixed-stride binary |
 | Loro updates and chat2 frames | `coder-sync` | Loro's own format plus framed JSON |
 | ATIF trajectories | Harbor ATIF-v1.8 | JSON, sorted-key digest rule |
 
-### 2.6 Recovery baseline, Coax and Verse
+### 2.6 Recovery baseline, Coax and the Metaverse
 
 The pre-reset source is OpenAgents `853417f290e7cae1df18c081b89b0818432e60af`,
 the parent of `0b401561a0` (Nuke). Recovery preserves the reconciled common,
@@ -368,8 +368,9 @@ and bounded native codecs tested on actual profiles. Domain adapters and
 production consumer parity remain unimplemented and must not be inferred from
 codec availability.
 
-Verse is the engine's current name (it was Metareal, and before that
-Aethyr). The owner approved ID migration as well as prose changes; the
+The engine is the OpenAgents Metaverse Engine and the world is the OpenAgents
+Metaverse (earlier names: Aethyr, Metareal, Verse; see
+[the rename](../naming/2026-11-12-metaverse-rename.md)). The owner approved ID migration as well as prose changes; the
 Metareal-era canonical IDs below keep their published spelling. `proto/migrations/metareal-v1.json` preserves old reader
 aliases and records new canonical IDs. Current asset profiles use
 `metareal-grid-v1` and `metareal-town-v1`; required assets and layouts are
@@ -615,7 +616,7 @@ proto/third_party/
   API core selects common types. New domain imports follow the actual
   prerequisite cohorts in §14.2; compiled descriptors must prove the graph
   acyclic before publication. Existing published imports stay compatible.
-- **Reference other owners; never embed them.** A Verse quest references an
+- **Reference other owners; never embed them.** A Metaverse quest references an
   XP award by `EventRef`. It does not embed `xp.v1.Award`. A labor order
   references a payment by `PaymentRef`. It does not embed the BOLT11
   invoice's decoded form. This keeps each owner free to version
@@ -875,7 +876,7 @@ it as a bounded `Meta` message (§9.11), not as a free map.
 | Pylon pools | The aggregator, recomputable from inputs | `pylon.v1` pools are `RECEIPT` with input digests |
 | XP | The referee key | `xp.v1` awards `RECEIPT`; clients only display |
 | Evaluation | The evaluator named in the report | `eval.v1` reports `EVIDENCE`; admissions `RECEIPT` |
-| Verse | Per Chapter V §6.3 | Unchanged |
+| Metaverse | Per Chapter V §6.3 | Unchanged |
 
 ## 7. Limits, numbers, canonical bytes and JSON
 
@@ -914,7 +915,7 @@ message that mirrors one:
   within 1e-6, as NIP-DEC requires.
 - **Time.** Wall-clock instants are `int64` with an explicit unit suffix.
   Nostr fields are seconds (`created_at`, `expires_at`, `issued_at` in
-  most NIPs). HTTP and Verse fields are milliseconds. A field never changes
+  most NIPs). HTTP and Metaverse fields are milliseconds. A field never changes
   unit; a new field is added instead. `google.protobuf.Timestamp` is not
   used, because Nanopb, the C ABI and the NIPs are simpler with integers.
 - **Durations** are `uint32` or `uint64` with `_ms` or `_s`.
@@ -1829,7 +1830,7 @@ build on; those packages are built first (phase P2, §36).
 | B7 | Blossom | `nipb7` | `BlobDescriptor`, `BlossomServerList` (10063), auth (24242) | ● |
 | BE | BLE transport ⚠ | `nipbe` deprecated | BLE frame layout | |
 | C0 | Code snippets | `nipc0` | `CodeSnippet` (1337) | |
-| C7 | Chats | `nipc7` | `Chat` (9) | ● (Verse chat) |
+| C7 | Chats | `nipc7` | `Chat` (9) | ● (Metaverse chat) |
 | CC | Geocaching | `nipcc` | geocache kinds | |
 | CD | Slash commands | `nipcd` | 31992 definitions, 10992 installed list; future typed slice | |
 | EE | MLS ⚠ | `nipee` deprecated | MLS key packages and messages; superseded by Marmot | |
@@ -1851,7 +1852,7 @@ entries are planned targets, not materialized schemas.
 | AE | Agent engrams | 30174 | `nostr.block.ae.v1alpha1` | ATIF, RUN, SESS |
 | AM | Agent turn metrics | 44200 | `nostr.block.am.v1alpha1` | ATIF, RUN |
 | AO | Agent observability | 24200 | `nostr.block.ao.v1alpha1` | ATIF, RUN, CTRL |
-| AP | Agent personas | 30175, 30178 | `nostr.block.ap.v1alpha1` | Verse |
+| AP | Agent personas | 30175, 30178 | `nostr.block.ap.v1alpha1` | Metaverse |
 | AR | Channel artifacts | 45010 | `nostr.block.ar.v1alpha1` | Config and work state |
 | CL | Channel identity and discovery | 39000–39002, 44100/44101 | `nostr.block.cl.v1alpha1` | System/config channels |
 | CW | Channel and thread windows | 39005–39007 | `nostr.block.cw.v1alpha1` | |
@@ -1860,7 +1861,7 @@ entries are planned targets, not materialized schemas.
 | FA | Federated identity adapter | HTTP | `nostr.block.fa.v1alpha1` | Private adapter contract |
 | FI | Federated identity | JWS and HTTP values | `nostr.block.fi.v1alpha1` | Unverified assertions; runtime policy remains separate |
 | GS | Git object signing | none (git envelope) | `nostr.block.gs.v1` (`GitSignature` envelope) | Coder |
-| IA | Identity archival | 9035/9036, 8002/8003, 13535 | `nostr.block.ia.v1alpha1` | Verse |
+| IA | Identity archival | 9035/9036, 8002/8003, 13535 | `nostr.block.ia.v1alpha1` | Metaverse |
 | MP | Multi-repo projects | 30621 | `nostr.block.mp.v1` | WS |
 | OA | Owner attestation | `auth` tag | `nostr.block.oa.v1alpha1` (`OwnerAttestation{owner, conditions, sig}`) | AGENT, PYLON, HOST |
 | PL | Push leases | 30350 | `nostr.block.pl.v1` | Coder host push leases |
@@ -2122,7 +2123,7 @@ Core packages do not import aggregate envelopes or product-service packages.
 | Environment, work, coordination, automation, live | Environment/work use workspace and context; coordination uses run/context; automation uses coordination/run/context; live uses capability/session/policy. |
 | Product and money packages | Land after their actual referenced types: accounts → credentials; payment references → payment → ledger/market → billing/labor/Pylon; cloud types → computers/compute; managed agents after agent/environment/API types. Include cross-domain fields shown in sketches, such as cloud credential custody. |
 | Full HOST operations and `coder.*` | Extend the shipped phone path only as each operation's session, terminal, workspace, cloud/computer or other prerequisite lands. No requirement to design all operations before shipping a task reader. |
-| Verse | Follow Chapter V's corrected prerequisites. Import shared/domain records only where declared; cross-owner product identities remain references. |
+| Metaverse | Follow Chapter V's corrected prerequisites. Import shared/domain records only where declared; cross-owner product identities remain references. |
 | Optional envelope/webhook aggregation | Imports the selected owning packages. Only carriage code imports it; foundational common/API packages never do. |
 
 Before replacing a hand-written wire DTO, generate it and compare a
@@ -3247,7 +3248,7 @@ endpoint 14) is a validator rule on `Admission`.
 **Purpose.** Gym: suites, boards, leaderboards and their index, results
 publications (kind 3195), grants and connections for running other
 people's agents, request and reply, recipes, eval rows. The Gym building
-in the Verse shows these as views (Chapter V `verse.gym.v1`).
+in the Metaverse shows these as views (Chapter V `verse.gym.v1`).
 
 **Sources.** NIP-EVAL Gym profile; 119 `openagents.gym.*` IDs; 24
 `openagents.recipe.*` IDs; `gym eval_row v3`; glossary Gym ids (109).
@@ -4363,12 +4364,12 @@ message CommissionTerms { optional string id = 1; optional uint32 basis_points =
 message CommissionAgreement { optional string terms = 1; T.Pubkey referrer = 2; optional int64 accepted_at = 3; }
 ```
 
-## 29. Interface: UI view trees, engine, Verse
+## 29. Interface: UI view trees, engine, the Metaverse
 
 ### 29.1 `openagents.ui.v1`
 
 **Purpose.** The shared view language that web, mobile, desktop, Coder
-Desktop and the Verse HUD render: the Verse view tree (`legacy/ui-v1`),
+Desktop and the Metaverse HUD render: the Metaverse view tree (`legacy/ui-v1`),
 Rust Native views, intents and activation, and token references
 (`oa-tokens`). Generative UI (the OpenUI adaptation) produces these
 trees.
@@ -4508,7 +4509,7 @@ message DocsEntry { optional string path = 1; optional string title = 2; T.Diges
 | Nostr relays | Public records, private 3188 envelopes, CJ and MV ephemeral jobs | NIP-01 JSON over WebSocket; content via the NIP JSON mapper |
 | HTTP/JSON | `api.openagents.com/v1`, webhooks, x402 HTTP binding | OpenAPI generated from proto (§33.3); `api.v1` envelope |
 | gRPC and Connect | Service-to-service inside OpenAgents, generated SDK clients, host and worker daemons | HTTP/2 gRPC, plus Connect for browsers (JSON or binary) |
-| Framed channels | REACH direct channels, TERM record streams, Verse realm sessions | Existing NIP-defined headers and body encodings, unchanged; binary proto only on an explicitly versioned new binding |
+| Framed channels | REACH direct channels, TERM record streams, Metaverse realm sessions | Existing NIP-defined headers and body encodings, unchanged; binary proto only on an explicitly versioned new binding |
 
 ### 31.2 Service catalog
 
@@ -4592,7 +4593,7 @@ inventory script replaces them with exact numbers in phase P1.
 | `coder` (216): `coder.host-*`, `coder.ssh-*`, `coder-package`, `coder.computers`, `coder.delegate-*` | `coder.*` packages (§25) |
 | `coder-one.*` (109) | `evidence.v1`, except `coder-one.policy.v1` → `coder.task.v1` |
 | `gym.*` (119), `recipe.*` (24) | `gym.v1` |
-| `verse.*` (102), `metareal.*`, the legacy Verse tools contracts, `haunt.*`, `icecream.*`, `space*` | Chapter V packages |
+| `verse.*` (102), `metareal.*`, the legacy Metaverse tools contracts, `haunt.*`, `icecream.*`, `space*` | Chapter V packages |
 | `sales*` (88) | `evidence.v1` until stable; candidate future `sales.v1` |
 | `delegation*` (53) | `evidence.v1`; study protocol records stay JSON |
 | `terminal*` (52) | `terminal.v1`; `native-terminal.*` qualification records → `evidence.v1` |
@@ -4708,7 +4709,7 @@ phone or renderer. The build profile is not the asset profile registry.
 | `metareal` | The six shared engine contracts, excluding vendor RPCs. |
 | `verse` | New alpha world/presence projection, engine geometry and alpha options. |
 
-The private alpha options and Verse projections are new design inputs. They
+The private alpha options and Metaverse projections are new design inputs. They
 are not the final v1 options vocabulary, a Nostr mirror or a replacement realm
 wire. Register and review extension numbers before stable publication.
 
@@ -4846,18 +4847,18 @@ a compiling graph: generate actual descriptors before starting a cutover.
 
 | Phase | Scope and prerequisites | Exit evidence |
 | --- | --- | --- |
-| **P0. Recover and namespace** | This recovery: root contracts, immutable baselines, source manifests, vendor modules, consumer profiles, engine rename migration and initial alpha Verse references. | Reproducible descriptors; all baseline/vendor hashes and migration tests pass. No old app workspace is resurrected. |
+| **P0. Recover and namespace** | This recovery: root contracts, immutable baselines, source manifests, vendor modules, consumer profiles, engine rename migration and initial alpha Metaverse references. | Reproducible descriptors; all baseline/vendor hashes and migration tests pass. No old app workspace is resurrected. |
 | **P1. Coax contract ingestion** | Widths/structs/byte views/C ABI and selected proto3 `#import_proto` now exist, including bounded presence/oneof/repeated codecs. Nostr/external native fixture tests and protoc interoperability pass. Checked domain adapters and live product parity remain open. | Real common/engine/HOST/REACH fixtures, exact retries/cursors/read-only intent and old readers; unsupported wire shapes fail explicitly. No placeholder types. |
 | **P2. Decision foundations** | Shared validation/options; selected Nostr envelope/mirrors; receipt and inference wire primitives before decision. | Fractional scores, string choices, structured rubrics, state restrictions and exact receipt refs round-trip through a real Coax/FM consumer. |
 | **P3. Runtime prerequisites** | Context→policy→capability→program; identity/attestation/skill; extension→eval; needed UI and payment reference primitives. | Compiled import graph, checked domain adapters and preserved admission/effect ownership. |
 | **P4. Execution and sessions** | Run/trace/exec/chat/session/control/workspace, then environment/work/coordination/automation/live after P2/P3 imports. | A real task, observed tool progress, result, cancellation and reconnect in the app; then actual sessions/terminals. Coax owns product logic. |
 | **P5. Products and money** | Accounts/credentials, cloud/computers, payments/ledger/markets/billing/Pylon and product services after their actual imports. | Versioned API/schema parity and real surface proofs. Preserve accounting units separately from payment execution rails. |
-| **P6. The Verse engine and its realms** | Chapter V's corrected V0–V12 dependency order. Small presence work can proceed after P1/P2; realm waits for world/sim/character/quest/environment. | Native Metal/C ABI and legacy reader parity; authenticated world authority; pinned saves/replication. New transport versions require negotiated dual readers. |
+| **P6. The Metaverse Engine and its realms** | Chapter V's corrected V0–V12 dependency order. Small presence work can proceed after P1/P2; realm waits for world/sim/character/quest/environment. | Native Metal/C ABI and legacy reader parity; authenticated world authority; pinned saves/replication. New transport versions require negotiated dual readers. |
 | **P7. Remaining mirrors** | Extend official/external Nostr and optimization coverage by actual consumer; unused designs remain alpha. | Source-pinned lossless mappings, independent conformance and complete catalog tracking, separate from feature status. |
 | **P8. Incremental publication** | Publish each passing profile's sources/descriptors/version manifest and Coax consumer artifacts. | Reproducible inputs and an independent client. Hosting remains an owner decision; no big-bang cutover. |
 
 P2 includes inference/receipt before decisions. P3 includes context/attestation
-and eval before P4 execution/chat. Verse common/presentation/asset/world and
+and eval before P4 execution/chat. Metaverse common/presentation/asset/world and
 simulation prerequisites precede the realm. Stable JSON does not automatically
 make a new protobuf representation stable. Existing signed/framed protocols
 retain their wire encodings until separately reviewed migrations pass.
@@ -4938,7 +4939,7 @@ retain their wire encodings until separately reviewed migrations pass.
 - `docs/glossary.md`
 - `docs/payments/agent-payments.md` (Bitcoin-only rule, 2026-10-09)
 - `docs/cloud/`, `docs/protocol/` (NIP coverage, ledgers, fixtures)
-- `docs/metareal/merge.md` (naming: Verse, Metareal tools, Metareal)
+- `docs/metareal/merge.md` (naming: the Metaverse, Metareal tools, Metareal)
 - `docs/verse/openagents-verse-protocol.md` (Chapter V)
 - `Verse source archive` `third_party/openagents-engine-proto`
 - Repository-wide inventory of `openagents.*.vN` identifiers, 2026-10-27

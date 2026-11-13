@@ -1,6 +1,6 @@
 # Hecate's Cemetery: licences
 
-Every model in Hecate's Cemetery is drawn in code from the Verse engine's own shapes (a box, a sphere, a cylinder, a cone and a ball), in `apps/openagents-web/villa.coax`, part of the OpenAgents repository. Nothing comes from an outside kit or model library.
+Every model in Hecate's Cemetery is drawn in code from the OpenAgents Metaverse Engine's own shapes (a box, a sphere, a cylinder, a cone and a ball), in `apps/openagents-web/villa.coax`, part of the OpenAgents repository. Nothing comes from an outside kit or model library.
 
 | Piece | Made from | Source | Licence |
 | --- | --- | --- | --- |

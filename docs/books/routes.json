@@ -101,7 +101,7 @@
     },
     {
       "id": "aethyr-core-replay",
-      "title": "Aethyr fixed steps, input and replay",
+      "title": "Metaverse Engine fixed steps, input and replay",
       "book": "aethyr",
       "scope": "Run CPU engine-core examples for fixed-step scheduling at four frame rates, one queued press consumed once, and a recorded walk replayed to the same digest with an identified planted divergence.",
       "limitations": [

@@ -1,6 +1,6 @@
 # Audio Lab
 
-A Verse page at https://openagents.com/worlds/audio-lab, not listed on the worlds page. It lists every Everglade sound by name and lets you hear each candidate for it, side by side.
+A Metaverse page at https://openagents.com/worlds/audio-lab, not listed on the worlds page. It lists every Everglade sound by name and lets you hear each candidate for it, side by side.
 
 ## Controls
 

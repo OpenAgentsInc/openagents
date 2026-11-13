@@ -16,7 +16,7 @@ nothing behind it. There is no Windows host.
 
 A host is the layer between Coax code and a platform. It opens a window, reads
 input, plays sound, talks to the graphics card, opens sockets and reads files.
-Aethyr defines what a host must provide, and has conformance checks that a
+The OpenAgents Metaverse Engine defines what a host must provide, and has conformance checks that a
 host must pass. The tree has hosts for the browser, for Apple's platforms and
 for Linux.
 
@@ -40,7 +40,7 @@ and the same realm draws the same frame.
 
 A plan for what this chapter ships once the draft is approved:
 
-- A Windows host for Aethyr and the platform layer: window, input, graphics,
+- A Windows host for the Metaverse Engine and the platform layer: window, input, graphics,
   sound, sockets and files.
 - The Pylon and the command line running on Windows first.
 - The host conformance run passing on Windows, with a frame that matches the

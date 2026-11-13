@@ -9,9 +9,9 @@
 > their own files (see [Still to do](#still-to-do)).
 
 A character on screen is a skeleton, a pose each frame and something drawn
-from it: a skinned mesh or a body of rounded bones. Every path in the Verse
+from it: a skinned mesh or a body of rounded bones. Every path in the OpenAgents Metaverse
 agrees on the essentials: local joint motion blended per joint, then chained
-from the root so bones keep their length. Aethyr makes the pose the shared
+from the root so bones keep their length. The OpenAgents Metaverse Engine makes the pose the shared
 value and the drawing a choice.
 
 ## What this chapter teaches

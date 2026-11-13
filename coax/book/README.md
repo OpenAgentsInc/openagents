@@ -3,7 +3,7 @@
 *A draft book, begun October 2026.*
 
 This is a book about Coax, the language OpenAgents uses for code that has
-to be fast and has to be right: the Verse engine and the world it runs, the
+to be fast and has to be right: the Metaverse Engine and the world it runs, the
 iPhone app's home screen and Grid, and the money rules in its bitcoin
 wallet. Coax descends from Jonathan Blow's Jai. It compiles to plain C you
 can read, it checks arithmetic and array bounds while you develop, and it
@@ -195,16 +195,16 @@ its own prerequisites and consumer are ready.
    17 only with named GPU resource, layout and artifact evidence. The shipped
    bounded generics, modules and borrow diagnostics remain the starting point.
 3. **Build physical-world facilities through the shared consumers.** Complete
-   chapters 29–37 in their dependency order, using the Verse world, Psionic's
+   chapters 29–37 in their dependency order, using the Metaverse realm, Psionic's
    Panda loop and the spacecraft scenario. Frames and clocks lead to bounded
    control, strict integrators and replay, then model import, stamps,
    supervision, faults and provenance. Chapters
    [38](ch38-a-simulated-robot.md) and [39](ch39-a-freighter-scenario.md)
    become worked capstones when those consumers meet their gates; the same
-   facilities support Aethyr's physics and space chapters.
+   facilities support the OpenAgents Metaverse Engine's physics and space chapters.
 4. **Give one solver the compute forms.** Complete chapters
    [40](ch40-logical-tensors.md)–[43](ch43-differentiating-kernels.md) through
-   Aethyr's solver state and Psionic's existing compute consumers: two layouts
+   the Metaverse Engine's solver state and Psionic's existing compute consumers: two layouts
    and batch sizes first, then measured compilation/cache budgets, graph and
    buffer ownership, and independently checked derivatives.
 5. **Finish the supported toolchain on measured evidence.** Chapter

@@ -1,6 +1,6 @@
 # Character chat, side by side with the demo
 
-Task `pt-chat-endpoint` (#b552) of the Verse project. Asked 2026-10-28 by claude-verse-3: the same five
+Task `pt-chat-endpoint` (#b552) of the Metaverse project. Asked 2026-10-28 by claude-verse-3: the same five
 questions, the same character payloads, to the live demo (`POST https://playtest.openagents.com/api/npc/ask`)
 and to the new endpoint on staging (`POST https://staging.openagents.com/api/playtest/npc/ask`,
 `coax/web/api/npc.c`).

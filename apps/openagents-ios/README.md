@@ -3,8 +3,8 @@
 A minimal native home, ported from the engine's native iOS app into **Coax**.
 It opens directly onto the monochrome animated graph, drifting dust and
 chamfered HUD bar. Touch nodes to light them; **Start** emits an actual
-`openagents.engine.v1.HudInvocation` and opens **the Grid**, the bare Verse
-world: ground lines out to 264 m and a wire figure standing in for your
+`openagents.engine.v1.HudInvocation` and opens **the Grid**, the bare Metaverse
+realm: ground lines out to 264 m and a wire figure standing in for your
 character. Drag on the left half to walk (push past the ring to run), drag on
 the right half to look, and tap the right half to jump.
 
@@ -216,7 +216,7 @@ device and frame-tail evidence remain open.
 | `../../verse/home.textproto` | Human-readable resource; `scripts/proto.sh generate` produces `Home.pb` |
 
 This is a port of the native engine home from source commit
-`69848ca` (the engine repository is identified in the existing Verse
+`69848ca` (the engine repository is identified in the existing Metaverse
 migration registry), not the retired OpenAgents web/mobile app. Only the
 home setup/graph/HUD ideas and the OFL Michroma font are carried over. Scene
 storage remains flat and bounded from the initial port; the newer Coax

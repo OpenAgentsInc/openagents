@@ -268,7 +268,7 @@ operator requirements, data studies and source-license qualifications.
 | XI. Data, tokenizers and optimization | 120–125 | Provenance, packing/resume, deterministic BPE training and exact AdamW/Muon updates. |
 | XII. nanochat and post-training | 126–141 | Exact forward/backward → pretraining → SFT/tools; separately specified continued pretraining, preferences, nanochat rollouts, decision post-training and Mammoth-to-Elephant distillation; training within a memory budget (116) and explicit LoRA adapters in 86. |
 | XIII. Vision and generative primitives | 142–146 | Image operations → Elephant/Mammoth image inputs → C-RADIO features → older Cosmos image tokenizer → tiny diffusion/flow model. |
-| XIV. Motion for Verse | 147–150 | Poses/codebooks → MotionBricks SOMA → explicit Verse animation integration. |
+| XIV. Motion for Metaverse | 147–150 | Poses/codebooks → MotionBricks SOMA → explicit Metaverse animation integration. |
 | XV. Speech | 151–155 | Audio/spectral features → FastConformer → Parakeet TDT transcription → streaming transcription in the voice engine → text-to-speech. |
 | XVI. Scientific ML | 156–161 | Spectral layers/Darcy FNO; geometry/DoMINO; optional independent FourCastNet3 weather branch; a scene learned from its views, ending in a small radiance field (159). |
 | XVII. More sequence architectures | 162–164 | Tiny state-space → Nano hybrid → Lightning, reusing the router from V. |
@@ -291,7 +291,7 @@ SIMD and allocators, and broader target qualification. The plan's
 distinguishes the existing boundaries from those remaining language features.
 
 The first NVIDIA application should be **semantic retrieval with Nemotron
-embeddings**. The preferred first major Verse ML demonstration is
+embeddings**. The preferred first major Metaverse ML demonstration is
 **MotionBricks-generated skeletal motion**. These follow the owner's urgent
 decision-model path. Small solver-generated physical learning can start
 immediately after autodiff, well before the large scientific checkpoints.
@@ -319,7 +319,7 @@ the broader model studies extend that map without changing signed issue IDs.
 | nanochat pipeline | Exact enabled forward/backward features, deterministic tokenizer training, data/resume and AdamW/Muon | Tiny complete pretraining → SFT → pinned on-policy reward recipe; stage-specific numerical, gradient and held-out gates. Chapters 120–136 and 139. |
 | Additional post-training | Shared training/evaluation; specific data/objective contracts | Continued pretraining, preference/reward/DPO, decision adaptation and Mammoth-to-Elephant distillation are separate studies. Chapters 137–138 and 140–141; decision adaptation and distillation do not wait for nanochat RL. |
 | Vision | Shared forward core and exact image/patch/convolution operators; autodiff for trained heads | C-RADIO feature/retrieval checks; separately qualify the older Cosmos tokenizer and tiny diffusion/flow. Chapters 142–146. Elephant/Mammoth image inputs are chapter 143's own exact encoder/preprocessing profile. |
-| Verse motion | Shared attention, required codec operators, rotations/skeleton/codebooks | Complete SOMA root/pose/decoder trajectory references before Verse integration. Chapters 147–150; speech and physics do not block it. |
+| Metaverse motion | Shared attention, required codec operators, rotations/skeleton/codebooks | Complete SOMA root/pose/decoder trajectory references before Metaverse integration. Chapters 147–150; speech and physics do not block it. |
 | Speech | Shared convolution/attention and exact spectral/audio features | Parakeet encoder/decoder references and WER/CER; streaming transcription and a separately selected text-to-speech model get measured latency budgets in the voice engine. Chapters 151–155. |
 | Scientific ML | Shared training/spectral core for Darcy; geometry operators for DoMINO; spherical operators for weather | Solver comparisons, bounded datasets, exact preprocessing and physical evaluation. Chapters 156–161; DoMINO and FourCastNet3 are independent specialties. |
 | New language architectures | Dense inference and exact recurrence; explicit router/expert execution for MoE | Tiny state transitions and expert choices, then complete Nano/Lightning checkpoint evidence. Chapters 162–164; optional Mini/Bolt retain distinct profiles. |

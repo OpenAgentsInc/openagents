@@ -1,11 +1,11 @@
-# Aethyr
+# The Metaverse Engine
 
-Aethyr is the engine every Verse realm runs on, written in Coax. This folder
+The OpenAgents Metaverse Engine is the engine every Metaverse realm runs on, written in Coax. This folder
 holds its core: a small set of primitives each realm uses instead of keeping
-its own copy (GitHub #12609). Aethyrforge, the realm builder and
-world-creation tools, is built on top of it. `verse/` keeps realm content.
+its own copy (GitHub #12609). The realm editor and the world-creation
+tools are part of it. `verse/` keeps realm content.
 
-The [Aethyr book](book/README.md) builds the engine from its smallest
+The [Metaverse Engine book](book/README.md) builds the engine from its smallest
 primitives, one checked piece per chapter. Each module below has a chapter,
 named by its task slug in the chapter's status block; fill the chapter in when
 the module lands.
@@ -22,7 +22,7 @@ qualification of every realm or the complete streaming chapter.
 
 The [Physics Lab](lab/README.md) measures the existing rigid/contact/SAT
 kernels beside pinned Rapier and Jolt references. It runs six shared seeded
-scenes on coderos-4080, with JSON metrics, deterministic Aethyr repeats and
+scenes on coderos-4080, with JSON metrics, deterministic the Metaverse Engine repeats and
 headless captures. Reference engines stay in its ignored lab cache.
 
 ## Layers
@@ -121,7 +121,7 @@ issue that will. A module nobody adopts by the end of the AAA program
 | `ai/steer-cells.coax` | A creature's tick on the navigation cells: the long way searched on the samples within 32 m, the steering service's window, and `nav_cells_keep` as the last word (`nav_cells_go`) |
 | `world/scatter.coax` | Scatter from a seed: things on a jittered grid of world cells, each cell's draws keyed by its layer, version and grid coordinates, kept clear of keep-outs (book chapter 80) |
 | `ai/stimulus.coax` | What a creature senses and knows: sight through `query_ray`, sound and touch as typed stimuli stamped by tick, and a bounded memory that forgets and counts what it refuses (book chapter 75) |
-| `ai/pilot.coax` | Bounded external actor actions as typed `Intent`s and `ReplayEvent` envelopes; the Verse OS WoW adapter consumes it, without claiming replay of WoW's simulation (book chapter 75) |
+| `ai/pilot.coax` | Bounded external actor actions as typed `Intent`s and `ReplayEvent` envelopes; the Metaverse OS WoW adapter consumes it, without claiming replay of WoW's simulation (book chapter 75) |
 | `talk/` | [Bounded native conversation profile](talk/README.md): authored fallback, UTF-8 request/reply admission, ticketed outcomes, tick deadlines and an owned answer record replayed without send intentions; realm and service adoption remain (book chapter 77) |
 | `character/` | [The character runtime](../docs/verse/engine-core.md#characters-aethyrcharacter): a world's pack table (an ECH1 rig and its EFC1 face, sizes under declared maximums) and one `Character` record each, spawned, placed, stepped on the fixed step (locomotion graph, a looped idle clip or a held body; face clips and an idle face cycle) and despawned; it writes the skinning palette, morph weights and capsules the GPU reads. `idle.coax` adds blinks, saccades and breathing. Valley Lab's Echo runs on it (`coax/bin/coax test aethyr/character/checks.coax`) |
 | `core/frame-report.coax` | A realm's frames, measured: frame statistics and the 60 FPS rule every realm is held to (`coax/web/realm-perf.coax` judges each case by it), and one frame's report by stage (book chapter 83) |

@@ -1,8 +1,8 @@
-# Aethyrforge: the realm creator (MVP spec)
+# The realm editor in the Metaverse Engine (MVP spec)
 
 Status: spec, 2026-11-02. The parts it builds on exist; the screen it describes does not yet.
 
-Aethyr is the engine. **Aethyrforge** is the realm creator: the place where anyone
+The realm editor is part of the OpenAgents Metaverse Engine: the place where anyone
 says what world they want, watches it appear, shapes it by voice, hand or agent,
 and publishes it with a link. This spec defines the public MVP: what is on screen,
 what it does, how the CLI and agents drive the same thing, and what has to be built.
@@ -14,11 +14,11 @@ spec, recorded headless at 1080p.
 
 ## The name
 
-**Aethyrforge, one word.** It was decided with the engine's name
-(docs/verse/engine-name.md); the code already uses it (`aethyr/forge/`, module
-`aethyr.forge.edit`); one word is one search result, one URL and one wordmark.
-On screen it is set in capitals, `AETHYRFORGE`, beside the power-symbol mark. In
-speech it is "Aethyr Forge", and that is fine.
+The realm editor has no name of its own. Creating and editing realms are
+features of the Metaverse Engine. Until 2026-11-12 it was called Aethyrforge
+([the rename](../naming/2026-11-12-metaverse-rename.md)); the code folder
+(`aethyr/forge/`) and the on-screen wordmark still carry that name until
+their stage of the rename lands.
 
 ## What exists today (survey)
 
@@ -50,7 +50,7 @@ PUBLISH gives you a link anyone can walk into.
 
 One route: **`openagents.com/forge`**. `/realms/new` redirects there. The canvas is
 the realm itself, full screen, always running; everything else is a panel over it,
-in the Verse's look (thin lines, plates, capitals; `verse.coax`).
+in the OpenAgents Metaverse's look (thin lines, plates, capitals; `verse.coax`).
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
@@ -72,7 +72,7 @@ in the Verse's look (thin lines, plates, capitals; `verse.coax`).
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **The canvas.** The realm, rendered by Aethyr, from the first second. Before any
+- **The canvas.** The realm, rendered by the Metaverse Engine, from the first second. Before any
   words it is an empty ground under a slow sky with a faint grid: the forge floor.
   While you build, the camera is the **forge camera**: a slow orbit at about 30
   degrees that frames whatever just changed, then settles back to the whole realm.
@@ -85,7 +85,7 @@ in the Verse's look (thin lines, plates, capitals; `verse.coax`).
   talks: no "thinking", no "working on it" (docs say no filler).
   Locally, HOLD TO TALK is recognized by Psionic's resident Parakeet through the voice
   host (`verse/voice-host --recognizer parakeet`; [setup and measurements](../voice/dev.md#parakeet-local-recognition)),
-  and each final transcript reaches the realm through Aethyr's event gate
+  and each final transcript reaches the realm through the Metaverse Engine's event gate
   ([`aethyr/audio/voice.coax`](../../aethyr/audio/voice.coax)): one answer per hold, none after a cancel.
 - **The feature rail (left).** The board, always visible: each feature a row with its
   check and its few words; a tap switches it and the realm changes at once. Under it,

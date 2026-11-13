@@ -41,7 +41,7 @@ so current placement is not independent remote failover.
 
 The public demo allows 12 admitted requests/minute and 120/day per identity,
 1,200/day globally, one active call per identity and four globally. Guest play
-has no SystemOne session merely because it has a Verse player ID. Use the
+has no SystemOne session merely because it has a Metaverse player ID. Use the
 existing same-origin HttpOnly session; 401, 429 and unavailable capacity are
 ordinary fallbacks. Do not mint identities to escape limits or forward cookies
 to a Pylon. New access/budget policy is separate explicit work.

@@ -69,7 +69,7 @@ An *implemented* chapter meets the promotion standard below for its stated
 scope. It does not establish full support for every feature of a cited NIP.
 For example, chapters 75–92 list protocol records and runtime paths they do
 not build. Chapters 101 and 102 compose offline examples; their label does
-not claim live Verse presence, wallet payment or a migrated hosted agent.
+not claim live Metaverse presence, wallet payment or a migrated hosted agent.
 The [completion route](COMPLETION.md) keeps those exits separate.
 
 The code is under `coax/lib/crypto/`, `coax/lib/nostr/` and `coax/lib/net/`,
@@ -93,7 +93,7 @@ keys. A client importing the shared event reader has not thereby adopted
 every NIP-01 feature. An empty list means no direct consumer is recorded;
 it does not rule out transitive use. The registry includes the API's Coax
 NIP-98 bridge, public homepage reader, CLI and Pylon paths. The complete
-agent exchange and Verse zaps remain offline examples. Chapter 97's runnable
+agent exchange and Metaverse zaps remain offline examples. Chapter 97's runnable
 report uses a pinned historical registry snapshot, rather than reading this
 current registry.
 
@@ -103,13 +103,13 @@ current registry.
 | `coax/web/project/landing-nostr.coax` | Public event verification, messages, filters, names and beacon checks | Complete relay history or trust in provider declarations |
 | `apps/openagents-cli/main.coax`, `relay.coax`, `api.coax` | Identity derivation, event signing, relay and NIP-98 requests | The hosted runner's migration and rollback |
 | `psionic/lib/pylon/run.coax` | NIP-42, signed events, NIP-44 and the Pylon queue | Production key custody and every deployment target |
-| `apps/openagents-ios/OpenAgents/Wallet/SparkHost.swift` | Chapter 101's existing wallet rules | NIP-MV presence, Verse zaps and Spark-backed Wallet Connect |
+| `apps/openagents-ios/OpenAgents/Wallet/SparkHost.swift` | Chapter 101's existing wallet rules | NIP-MV presence, Metaverse zaps and Spark-backed Wallet Connect |
 
 ### What remains
 
 Follow [Completion route](COMPLETION.md) in order: close recorded integration
 and pin debt, qualify consumer profiles on their actual targets, finish relay
-feature parity and production migration, connect the offline Verse and agent
+feature parity and production migration, connect the offline the OpenAgents Metaverse and agent
 examples to applications, and finish treasury signing and independent recovery.
 The route names each required result and the dependencies in the other books.
 
@@ -164,7 +164,7 @@ The first checks structure: chapter files and headings, the contents, local
 links, status markers, the chapter registry and the example inventory in
 [examples.json](examples.json). The second also runs every example in
 `nostr/examples/` in debug and release and compares its output and exit
-status. It is the same checker as the Psionic and Aethyr books'; build the
+status. It is the same checker as the Psionic and Metaverse Engine books'; build the
 compiler once with `coax/build.sh`.
 
 Coax listings, equations and short illustrative blocks use `jai` fences;
@@ -323,7 +323,7 @@ formal properties and a conformance report.
 
 ### Part VIII. Nostr in OpenAgents (chapters 98–104)
 
-Where projects, the website, Pylons, the Verse, the wallet and agents use the
+Where projects, the website, Pylons, the Metaverse, the wallet and agents use the
 stack, and the cutover of relay.openagents.com.
 
 | Chapter | Status | Result |
@@ -331,7 +331,7 @@ stack, and the cutover of relay.openagents.com.
 | [98. Projects on Nostr](ch098-projects-on-nostr.md) | Runnable: native C and wasm | OpenAgents' project pages fold NIP-34 repositories, issues and statuses and NIP-22 comments from the relay, verify each event in the browser, and replace a snapshot only with a complete bounded capture. |
 | [99. The website and sign-in](ch099-the-website-and-sign-in.md) | Runnable: native C and wasm | Logging in to openagents.com with a Nostr key: a NIP-98 signed challenge from a browser signer (NIP-07) or any other signer becomes a session, a signed request is its key's account at L2, and `openagents login` joins a computer's key to an account. |
 | [100. Pylons and the mesh](ch100-pylons-and-the-mesh.md) | Runnable: native C | Pylons authenticate to the relay with NIP-42, announce beacons, and answer sealed NIP-44 decision requests; the mesh opens encrypted channels with this book's primitives. |
-| [101. The Verse and the wallet](ch101-the-verse-and-the-wallet.md) | Runnable: native C | Two players' NIP-MV presence through a Coax relay within the latency budget, and one in-world zap from request to counted receipt, paid only when the Spark wallet's rules in `pay/wallet.coax` pass, with Wallet Connect as a second path; what runs in production today and what is only in this book. |
+| [101. The Metaverse and the wallet](ch101-the-verse-and-the-wallet.md) | Runnable: native C | Two players' NIP-MV presence through a Coax relay within the latency budget, and one in-world zap from request to counted receipt, paid only when the Spark wallet's rules in `pay/wallet.coax` pass, with Wallet Connect as a second path; what runs in production today and what is only in this book. |
 | [102. Agents on Nostr](ch102-agents-on-nostr.md) | Runnable: native C | One attested agent end to end, offline: NIP-42 and NIP-AA login, a NIP-MKT order, a sealed NIP-CJ job claimed once and journaled with NIP-RUN, the answer, and payment against a Lightning preimage; what runs in production today and what is only in this book. |
 | [103. Replace relay.openagents.com](ch103-replace-relay-openagents-com.md) | Runnable: native C | An export format, an import that verifies every id and signature again, event-set equality (a sorted-id digest, with Negentropy naming the difference), a shadow comparer, and the cutover and rollback runbook. The export, shadow period, DNS cutover and rollback rehearsal wait for the owner. |
 | [104. Agent treasuries and a network of keys](ch104-agent-treasuries-and-a-network-of-keys.md) | Partly implemented: native C | NIP-KEYS wallets, enrollments, independence declarations and signing requests read under closed schemas; a wallet admitted by recomputing its BIP-380 descriptor, applying composition rules 1 to 4 and verifying each enrollment's BIP-322 possession proof; P2WSH scripts from BIP-32 public derivation; a signer that recomputes every output, the change and the fee from a PSBT v0 and refuses a PSBT whose outputs differ from its request; nonce idempotency, recovery timelocks, retired wallets, the co-signer's delay and the hot ceiling; RFC 6979 ECDSA partial signatures over BIP-143 digests, the PSBT with them and the coordinator's 2-of-3 transaction; BIP-341 Taproot key-path digests and signatures; requests and receipts as 3188 artifacts over a Coax relay, with Bitcoin Core confirming the spend and recovering the coins from the descriptor in regtest and on a private signet. Open: the spend has not been broadcast on the public signet. `tr` wallets, PSBT v2 and miniscript spends are not built. |

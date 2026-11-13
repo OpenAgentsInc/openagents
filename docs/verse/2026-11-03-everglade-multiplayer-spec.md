@@ -20,9 +20,9 @@ module is deprecated (section 12).
 Related reading:
 
 - [docs/verse/everglade.md](everglade.md), the realm's design.
-- [Aethyr book chapter 49, rooms and presence](../../aethyr/book/ch049-rooms-and-presence.md)
+- [Metaverse Engine book chapter 49, rooms and presence](../../aethyr/book/ch049-rooms-and-presence.md)
   and [chapter 50, shared state over the network](../../aethyr/book/ch050-shared-state-over-the-network.md).
-- [The Verse protocol](openagents-verse-protocol.md), sections 6.3, 10.6
+- [The Metaverse protocol](openagents-verse-protocol.md), sections 6.3, 10.6
   (`presence.v1`), 10.8 (`realm.v1`) and 10.9 (`sim.v1`).
 - [The D&D campaign creator spec](../dnd/2026-11-03-dnd-campaign-creator-spec.md),
   "Persistent world (West Marches style)".
@@ -43,7 +43,7 @@ Related reading:
 12. Deprecating the old Everglade
 13. Build list and status
 14. Open questions for the owner
-15. Where the Aethyr book and the protocol are out of date
+15. Where the Metaverse Engine book and the protocol are out of date
 
 ## 1. Goals
 
@@ -195,7 +195,7 @@ see different results.
 | The flock that follows you | `aethyr/anim/flock.coax` | No |
 | Weather | `weather_facts`, `everglade.coax:3074`: seeded with `EG_WEATHER_SEED` and the page's `now` | Same only by construction, as the folk |
 | Time of day | `folk_clock`; the realm's `clock: cycle` | Same only by construction |
-| Admin edits (Aethyrforge, voice edits, placed things) | `everglade-forge.coax`, `everglade-edit.coax`, `verse/edit/edit.coax` | Published to `/api/playtest/world/<id>`. Other pages see them on reload; only an owner's page rereads the spec every second (`verse/edit/edit.coax:589`) |
+| Admin edits (the OpenAgents Metaverse Engine, voice edits, placed things) | `everglade-forge.coax`, `everglade-edit.coax`, `verse/edit/edit.coax` | Published to `/api/playtest/world/<id>`. Other pages see them on reload; only an owner's page rereads the spec every second (`verse/edit/edit.coax:589`) |
 | Dropped items | None exist in Everglade today | Not applicable |
 
 ## 3. Architecture
@@ -1051,7 +1051,7 @@ p95 0.7 ms (`/api/room/health`), on revision `oa-room-00012-qbp`.
 8. **R rebuild.** Anyone may rebuild the town under the 10 s and 30 s rules,
    or admins only?
 
-## 15. Where the Aethyr book and the protocol are out of date
+## 15. Where the Metaverse Engine book and the protocol are out of date
 
 The book is not rewritten here. These are the differences to fix when its
 chapters are next revised.
@@ -1069,7 +1069,7 @@ chapters are next revised.
   characters.
 - **Chapter 58, Everglade.** It says others are seen; it does not say that
   the townsfolk, the watch and destruction are each page's own.
-- **The Verse protocol, section 6.3.** It lists Verse multiplayer as a 60 Hz
+- **The Metaverse protocol, section 6.3.** It lists Metaverse multiplayer as a 60 Hz
   authoritative tick. This spec uses a 30 Hz server tick and 15 Hz
   state frames with interest; the tick profile in `sim.v1` should say so. Section 10.8's `realm.v1` remains the
   target wire; the text frames in section 3.6 are its bootstrap.

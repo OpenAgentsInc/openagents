@@ -4,7 +4,7 @@
 > own private code at `/realms/ice-cream-man`: the rules, run, camera and
 > house in [verse/icecream/](../../verse/icecream/play.coax) and the HUD in
 > [icecream.coax](../../apps/openagents-web/icecream.coax). This chapter plans
-> rebuilding it only from Aethyr's earlier chapters. Nothing here runs yet.
+> rebuilding it only from the OpenAgents Metaverse Engine's earlier chapters. Nothing here runs yet.
 
 Ice Cream Man is OpenAgents' seeded house game: a kid finds three keys and
 escapes a house the Ice Cream Man and his minions patrol. Its rules were
@@ -36,7 +36,7 @@ That makes it the realm where replay is not a feature but the oracle.
 - **House** ([chapters 6](ch006-entities-are-born-and-die.md)–[8](ch008-ground-and-collision.md)):
   the seed's rooms, doors, furniture and keys as entities and colliders; the
   same geometry the camera's sweep and the kid's movement query.
-- **Camera** ([chapter 10](ch010-the-camera-follows.md)): Aethyr's follow,
+- **Camera** ([chapter 10](ch010-the-camera-follows.md)): the Metaverse Engine's follow,
   stepped once a rules step, its target on a spring to the kid's head,
   pulled in short of walls, lintels, floor and ceiling (`follow_room`); drag
   to orbit, Shift Lock, V for first person.

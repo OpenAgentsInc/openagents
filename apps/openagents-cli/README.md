@@ -177,7 +177,7 @@ openagents models migrate --json        # move legacy caches; leave compatibilit
 App files live under `~/.openagents/`, with reusable checkpoints under
 `~/.openagents/models/` (`OPENAGENTS_MODEL_CACHE` overrides this model root).
 Parakeet, Whisper and original gpt-oss use it across the CLI, Coder, the voice
-host and Aethyrforge. Migration refuses different existing copies.
+host and the OpenAgents Metaverse Engine. Migration refuses different existing copies.
 `openagents.coder.agents.v1` lists executable name, PID, parent and running state;
 it reads no command arguments or transcripts. `attached:false` distinguishes a
 running process from an attached session. The standalone `coder agents --json`

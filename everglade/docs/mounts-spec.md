@@ -8,7 +8,7 @@ such as calling a dragon or whistling for your horse, it says so.
 
 Mounts are built in three layers, and no zone has mount code of its own:
 
-- **Engine (Aethyr).** The mount, the rider's seat, the gaits, mounting and
+- **Engine (the OpenAgents Metaverse Engine).** The mount, the rider's seat, the gaits, mounting and
   dismounting, steering and riding collision live in
   `aethyr/action/mount.coax`; the rider's astride pose lives in
   `aethyr/action/ride-pose.coax`. Any realm can use them.
@@ -187,7 +187,7 @@ there. Only how it moves is different.
 
 - **One flight module.** Flying mounts don't have flight code of their own.
   The engine's mount (`aethyr/action/mount.coax`, `mount_step_wings`) steps
-  Aethyr's shared winged flight (`aethyr/action/flight.coax`, `wing_step`),
+  the Metaverse Engine's shared winged flight (`aethyr/action/flight.coax`, `wing_step`),
   the same module the druid's dragon form uses. Takeoff, climbing, gliding,
   diving, banking and landing behave the same whether you are the dragon or
   ride one.

@@ -58,7 +58,7 @@ control_step :: (s: *RobotState, out: *Command) #bounded(stack=4096, scratch=ctr
 
 - The simulated robot's control step is `#bounded`; see
   [Psionic chapter 167](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/book/ch167-command-a-robot.md).
-- One Verse per-frame kernel is `#bounded`.
+- One Metaverse per-frame kernel is `#bounded`.
 
 Fixtures add allocation, blocking, recursion, an unbounded loop and an
 unknown foreign call one at a time, directly and through a generic helper or
@@ -98,4 +98,4 @@ different clock speed or a different build profile. Without that record, a
 - R3 scratch regions and allocators ([chapter 6](ch06-memory.md)).
 - R4 generics ([chapter 8](ch08-generics.md)) and R11 effect summaries.
 - Used by [chapter 35](ch35-sensors-and-actuators.md)'s supervisor and by
-  Aethyr [chapter 9](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch009-a-character-moves.md).
+  the OpenAgents Metaverse Engine [chapter 9](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch009-a-character-moves.md).

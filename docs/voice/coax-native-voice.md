@@ -8,14 +8,14 @@ media path and server on machines we operate. Speech recognition and
 speech synthesis use Google's models (owner decision, 2026-10-28). It covers two things people will do with their
 voice: talk to agents (the "just talk and see the right actions happen"
 mode from [episode 251](../transcripts/251.md)) and talk to each other in
-the Verse. It also covers a third, slower use: rendering spoken lines for
+the OpenAgents Metaverse. It also covers a third, slower use: rendering spoken lines for
 NPCs and films.
 
 We have built voice about twenty times since 2024. The
 [2026-10-21 voice audit](#reading-the-history) records what each attempt
 taught us. This proposal starts from those lessons and from the reset
 (`0b401561a0`), which removed every line of the Rust voice stack the audit
-recommended building on. What's left is Coax, Verse, the protocol, and
+recommended building on. What's left is Coax, the Metaverse, the protocol, and
 our own GCP project. That turns out to be a good place to start.
 
 ## What the owner has asked for
@@ -107,7 +107,7 @@ It doesn't yet have SIMD, jobs or threads, pointers, dynamic arrays, or
 `#foreign` imports that take views (`#foreign` is scalar-only). Those gaps
 decide where the line between Coax and the host falls.
 
-**Verse** already does the shape of spatial sound. `haunt.coax`
+**Metaverse** already does the shape of spatial sound. `haunt.coax`
 computes a bounded, symmetric gain and pan for each sound from the eye and
 heading (`hh_gain`, `hh_pan`, with a `#test` for exactly that), and the
 Swift host plays what Coax decided.
@@ -120,7 +120,7 @@ Swift host plays what Coax decided.
   It also defines consent records, media epochs that fence stale audio
   after a reconnect, and barge-in that records how far playback got. It
   leaves the media transport to adapters.
-- `openagents.verse.media.v1` (Verse §10.23): `SpatialAudioZone {volume,
+- `openagents.verse.media.v1` (the Metaverse §10.23): `SpatialAudioZone {volume,
   live_session, falloff_m}`. `verse.doc.v1` has up to 16 `Voice` entries
   for NPC lines, and authoring commands can come from `COMMAND_ORIGIN_VOICE`.
 - Private record range 1100 to 1199 is reserved for live plans, captures
@@ -171,7 +171,7 @@ Google's speech APIs.
 | Jitter buffer and packet-loss concealment | `voice.coax` | Deterministic, replayable from a packet trace |
 | Wire frames (audio, control, transcript, floor) | `voice-wire.coax` via `#import_proto` | No second hand-written codec, like the home |
 | Consent, input floors, speaking floors, media epochs | `voice-floor.coax`, `#authority` | It decides who may be heard, so it gets the wallet's rules: zero surviving mutants |
-| Who hears whom in the Verse; gain and pan | `voice-space.coax` | Grows out of `haunt.coax`'s `hh_gain`/`hh_pan` |
+| Who hears whom in the Metaverse; gain and pan | `voice-space.coax` | Grows out of `haunt.coax`'s `hh_gain`/`hh_pan` |
 | Metering speech minutes and characters, prices, free-tier limits | `voice-meter.coax`, `#authority` | It decides money |
 | Sockets, TLS | C host on the server, Swift on the phone | TLS ends at the load balancer, like `sync.openagents.com` |
 | Codec (Opus) | Host C, if we choose Opus (decision 5) | `#foreign` can't pass views yet, so the host encodes |
@@ -260,7 +260,7 @@ message Route { optional string turn = 1; optional string target = 2;
 
 The Coax side gets these as generated codecs through `#import_proto`, so
 `voice.coax` and the voice host share one definition, the way the home
-shares `HudInvocation`. A new character in the Verse is then just data: a
+shares `HudInvocation`. A new character in the Metaverse is then just data: a
 `VoiceProfile` in the world's catalog, a `Speaker` bound to its entity,
 and a `Route` to whatever brain answers for it.
 
@@ -293,10 +293,10 @@ conversation toggle's automatic silence ending. Action 7 `hold` selects
 and long pauses remain inside the held recording. Release closes the platform
 microphone immediately and drains queued worklet samples before TURN_END.
 Cancellation and the configured turn cap still apply. `on` retains automatic
-conversation for ordinary web clients; the local Aethyrforge host uses held
+conversation for ordinary web clients; the local Metaverse Engine host uses held
 capture. The C/Wasm addition changes no published wire message.
 
-### Talking to each other in the Verse
+### Talking to each other in the Metaverse
 
 Player voice needs no speech models at all, only moving audio between
 people. The voice host also runs a forwarder: each client sends one
@@ -373,7 +373,7 @@ Measurement comes first this time, and it lives in the repository:
 
 - **Speech grants no authority.** A transcript is a message to an agent.
   It is never a command the system executes because of how it sounded.
-  The Verse rule from October stays: spoken words select the same reviewed
+  The Metaverse rule from October stays: spoken words select the same reviewed
   controls as buttons.
 - **NIP-LIVE governs sessions.** A session is a `live.v1` plan with tracks,
   participants, consent and floors. Transport credentials are minted after

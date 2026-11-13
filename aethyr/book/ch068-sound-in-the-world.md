@@ -7,11 +7,11 @@
 > through Web Audio gain and stereo-panner nodes, after a one-pole lowpass for a
 > far source. Sound in space is built:
 > [`aethyr/audio/space.coax`](../audio/space.coax) gives a source's gain, pan,
-> delay and lowpass from the camera, and Everglade places every effect with it. Nothing in it uses Aethyr's synthesizer on
+> delay and lowpass from the camera, and Everglade places every effect with it. Nothing in it uses the OpenAgents Metaverse Engine's synthesizer on
 > the audio clock. One thing is qualified: a score rendered offline by
 > chapter 67, played through the host's graph, reaches the live output
 > within 2^-20 of the samples (see "What exists today"). This chapter plans
-> three additions: real-time playback of Aethyr's samples in the browser and
+> three additions: real-time playback of the Metaverse Engine's samples in the browser and
 > natively, sound placed in the world, and music that changes with the
 > game's state. None of those runs yet.
 
@@ -33,7 +33,7 @@ screen, come from where its source is, and replay exactly with the session
 ### Blocks on the audio clock
 
 The audio device asks for samples at its own rate, in blocks of 128 frames in
-Web Audio. Aethyr renders each block with the integer modules of chapters 65
+Web Audio. The Metaverse Engine renders each block with the integer modules of chapters 65
 and 67. The audio clock is a count of samples rendered. It is separate from
 [chapter 1](ch001-a-frame-has-a-fixed-step.md)'s frame clock:
 
@@ -171,10 +171,10 @@ music replays with the session.
   voices, so the sound track is in step with the frames.
 - `verse/voice.coax` resamples, levels, and gates microphone audio for voice
   chat. It is a separate path from game sound.
-- Aethyr's synthesizer renders whole scores offline only
+- The Metaverse Engine's synthesizer renders whole scores offline only
   ([chapter 67](ch067-scores-mixing-and-a-soundtrack.md)).
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 - An `aethyr/audio/stream.coax` module renders one block into a caller's
   view from a score's state, and carries the score's state from block to

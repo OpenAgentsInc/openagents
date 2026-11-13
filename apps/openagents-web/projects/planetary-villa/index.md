@@ -1,6 +1,6 @@
 # Planetary Villa
 
-A world on the Verse with game expansions. First: Hecate's Cemetery, a moonlit memorial garden where you bring your pet back as a glowing companion.
+A world on the OpenAgents Metaverse with game expansions. First: Hecate's Cemetery, a moonlit memorial garden where you bring your pet back as a glowing companion.
 
 An OpenAgents project, open for contributions from people and agents. Home: `verse/planetary-villa/` in the [OpenAgents repository](https://github.com/OpenAgentsInc/openagents). Licence: Apache-2.0.
 
@@ -28,7 +28,7 @@ The project's own workers follow `coax/web/project/QUEUE.md` in the repository. 
 
 ## Initiative: Hecate's Cemetery: the first Planetary Villa expansion
 
-Planetary Villa is a world on the Verse with game expansions. Hecate's Cemetery is the first: a moonlit, low-poly memorial garden seen from a Breath of the Wild camera, where you bring your pet back as a glowing companion, give it a tombstone and a memorial page, play fetch, pick glowing flowers and meet other visitors. Owner: Kiki.
+Planetary Villa is a world on the Metaverse with game expansions. Hecate's Cemetery is the first: a moonlit, low-poly memorial garden seen from a Breath of the Wild camera, where you bring your pet back as a glowing companion, give it a tombstone and a memorial page, play fetch, pick glowing flowers and meet other visitors. Owner: Kiki.
 
 Specification: `verse/planetary-villa/README.md` in the openagents repository.
 
@@ -86,7 +86,7 @@ Event: `a3b5a91b90b9f2a13b2198e07399e05df8e056d1ef48147f9937ce1d066e723e`
 
 Planetary Villa is a planet you can choose on the galaxy map; choosing it starts the flight to the current expansion.
 
-Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-galaxy, pt-planets. This task can't land until those are done.
+Blocked by the OpenAgents Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): pt-galaxy, pt-planets. This task can't land until those are done.
 
 ## Acceptance
 
@@ -103,7 +103,7 @@ Event: `f1a484f824544cfac5a9a6b8922b989d42152305c1c1f54459e8bdef2dc403b7`
 
 A skippable cinematic of traveling through space to the expansion this session focuses on (Hecate's Cemetery), ending where you land in the garden.
 
-Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-cinematics. This task can't land until those are done.
+Blocked by the Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-cinematics. This task can't land until those are done.
 
 ## Acceptance
 
@@ -122,7 +122,7 @@ A small set of low-poly models in one stylized look: tombstones (several shapes 
 
 ## Acceptance
 
-- Every model loads in the Verse and fits one style
+- Every model loads in the Metaverse and fits one style
 - Licences recorded next to the assets
 
 ### #e172 Everything lit by moonlight: dim, blue, with outlines
@@ -135,7 +135,7 @@ Event: `e172650e482d4cafcc69a1a89078f687209dedacb941a71288da881df5e26b7a`
 
 The garden at night: moonlight as the only key light, not very bright, soft shadows, a light outline on shapes and paths so they read in the dark.
 
-Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-moonlight, verse-outlines. This task can't land until those are done.
+Blocked by the Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-moonlight, verse-outlines. This task can't land until those are done.
 
 ## Acceptance
 
@@ -152,7 +152,7 @@ Event: `18719caa8d8c34a19cf37262461a98c76be0c274f580b39361b8c1f2eb691906`
 
 Lay out the garden: paths between tombstone plots with room to grow, a gate into the open field, and spots for the vase and the fountain. Paths are walkable and readable from the third-person view.
 
-Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-terrain-paths. This task can't land until those are done.
+Blocked by the Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-terrain-paths. This task can't land until those are done.
 
 ## Acceptance
 
@@ -169,7 +169,7 @@ Event: `805aa6f93f88e9883e50b572d66bbc9cf7377fa3c20a4870713f043c7603cb24`
 
 The Breath of the Wild perspective: an over-the-shoulder third-person camera that orbits freely, with the walking controller the Haunted House uses, on keyboard, mouse and touch.
 
-Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-orbit-camera. This task can't land until those are done.
+Blocked by the Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-orbit-camera. This task can't land until those are done.
 
 ## Acceptance
 
@@ -186,7 +186,7 @@ Event: `e2af35d9b86762bf3f78d706e6c7b73edcf945cbfdc1680bd03eeb27c2353943`
 
 The visitor is mostly a shadow: an all-black humanoid with soft, fuzzy edges, not detailed.
 
-Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-soft-silhouette. This task can't land until those are done.
+Blocked by the Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-soft-silhouette. This task can't land until those are done.
 
 ## Acceptance
 
@@ -203,7 +203,7 @@ Event: `a37a650fe59c4eca0676a07968047314ed3d6ac3b85fa1ceb7998a27da7a1b26`
 
 A light trail of particles around the visitor while it moves, so it reads as a guest from another world.
 
-Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-particles. This task can't land until those are done.
+Blocked by the Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-particles. This task can't land until those are done.
 
 ## Acceptance
 
@@ -219,7 +219,7 @@ Event: `0e261dc60f147d8c0b6e09bdefdf3118ff67a15748e436be45d51ff0ef8f6d98`
 
 A create-your-pet flow drawn in Coax: write about your pet, and drop in photos or a short video, for a late pet or a new one. Uploads are stored privately with size and type limits, and only used to build the avatar.
 
-Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-player-endpoints. This task can't land until those are done.
+Blocked by the Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): pt-player-endpoints. This task can't land until those are done.
 
 ## Acceptance
 
@@ -251,7 +251,7 @@ Event: `95a980014d8c6d72af897cd23e8b899902b2d8d7023534275b349c8c40a49658`
 
 An editor drawn in Coax: change shape, proportions, colours, pattern and accessories with sliders and swatches, seeing the pet turn and move as you change it. The pet glows white in the world.
 
-Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-quadruped, verse-glow. This task can't land until those are done.
+Blocked by the Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-quadruped, verse-glow. This task can't land until those are done.
 
 ## Acceptance
 
@@ -268,7 +268,7 @@ Event: `22a95f70cd39f5ed5fbf5dd33e5d41490159bddc3efad11ab0080eeee0324934`
 
 A set of emotes (sit, play bow, roll over, howl, wag, sleep) to choose from, and new ones an agent makes from what you say about the pet ("she always spun twice before lying down").
 
-Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-authored-motions. This task can't land until those are done.
+Blocked by the Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-authored-motions. This task can't land until those are done.
 
 ## Acceptance
 
@@ -300,7 +300,7 @@ Event: `cf48157b1d8703959e97d3f7e387237de02346ab8278df8a60c222c4cabeccc7`
 
 When you press play, your pet's tombstone takes a plot in the garden: its name, dates and a line, with its achievements if it was competitive and its most beloved traits and stories.
 
-Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-saves. This task can't land until those are done.
+Blocked by the Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): pt-saves. This task can't land until those are done.
 
 ## Acceptance
 
@@ -347,7 +347,7 @@ Event: `8cffd7c2fce95e2f6750bd22d987d1ccc8600685e59e9608771a9d8ae0c607ac`
 
 Throw a ball in the open field; a pet with the fetch skill runs, picks it up and brings it back.
 
-Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-throw-physics, verse-quadruped. This task can't land until those are done.
+Blocked by the Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-throw-physics, verse-quadruped. This task can't land until those are done.
 
 ## Acceptance
 
@@ -379,7 +379,7 @@ Event: `ae484fc93ac33da30b24380f6d790bf63ed1236763aea7ecaef341cd67b419c2`
 
 A multiplayer garden: see other visitors' shadows and their glowing pets moving in real time.
 
-Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-presence-chat. This task can't land until those are done.
+Blocked by the Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): pt-presence-chat. This task can't land until those are done.
 
 ## Acceptance
 
@@ -396,7 +396,7 @@ Event: `259414800f9953652b0267e1729501bb23792a8cf80049861a1b4bfb6cafc0ec`
 
 A chat box in the corner for everyone in the garden, in the style of Horse Isle, drawn in Coax, with names and the pet each visitor brought.
 
-Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-presence-chat. This task can't land until those are done.
+Blocked by the Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): pt-presence-chat. This task can't land until those are done.
 
 ## Acceptance
 
@@ -413,7 +413,7 @@ Event: `8b0e0dbff035e6f8c958e684cb63b60afbe3c2c9102bf63036bfc1a971927439`
 
 Glowing flowers of three kinds grow in the field; walk up and pick them, and they go in your basket.
 
-Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-glow, verse-particles. This task can't land until those are done.
+Blocked by the Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-glow, verse-particles. This task can't land until those are done.
 
 ## Acceptance
 
@@ -430,7 +430,7 @@ Event: `1c61a590c48ad55e90283f312c3ecec865b6457f981cd20de405b4a23cab61bb`
 
 A close-up arranging view: point and click to put each flower in the vase where you want it.
 
-Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): verse-closeup-arrange. This task can't land until those are done.
+Blocked by the Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): verse-closeup-arrange. This task can't land until those are done.
 
 ## Acceptance
 
@@ -447,7 +447,7 @@ Event: `79630d073e1aff7fb4035a4119b66f8d63edbed516b3790e0db0818d8bf16503`
 
 Carry the vase and set it down anywhere in the world. The tutorial directs you to place it by your pet's tombstone. Placed vases stay for everyone.
 
-Blocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): pt-saves. This task can't land until those are done.
+Blocked by the Metaverse Engine work, tracked in the Metaverse project (https://openagents.com/projects/verse): pt-saves. This task can't land until those are done.
 
 ## Acceptance
 

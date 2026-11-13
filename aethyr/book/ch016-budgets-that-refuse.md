@@ -78,7 +78,7 @@ profile does not promote the chapter's complete teaching status.
 
 A realm that draws more than its buffers hold has two bad options. It can
 clip quietly, so a lamp or a creature vanishes and nobody knows, or it can
-overrun a buffer. Aethyr takes a third: each realm declares what one frame
+overrun a buffer. The OpenAgents Metaverse Engine takes a third: each realm declares what one frame
 may use, a meter counts what each frame takes, and a frame that passes a
 limit fails the realm's tests.
 

@@ -1,10 +1,10 @@
-# Verse dark-wizard experiment, frozen before generation
+# Metaverse dark-wizard experiment, frozen before generation
 
 2026-11-02. Original GPT-OSS-20B at6cee5e81ee83917806bbde320786a8fb61efebee,
 existing gpt-oss-metal-f32-ff-v1, capacity2048, batch128, 160 emitted tokens.
 Private GPU copies, authenticated originals mapped read-only. Every question
 uses the same forced-final boundary. New character Veyr is an encounter
-prototype, not existing/canonical placed Verse content. Existing NPC brief
+prototype, not existing/canonical placed Metaverse content. Existing NPC brief
 fields name/role/knowledge/greet are sufficient; no service/schema change.
 
 18 cases in villain-dialogue.coax:6 creative development,8 creative held-out,

@@ -3,7 +3,7 @@
 The session log is one conversation on disk:
 `~/.openagents/coder/sessions/ID.jsonl` (under `$CODER_HOME` when it is set,
 else `$HOME`). Each line is one compact JSON object ended by `\n`. Coder's
-terminal and runs, `coder import`, the turn runner that Aethyrforge calls, the
+terminal and runs, `coder import`, the turn runner that the OpenAgents Metaverse Engine calls, the
 desktop app and the agent boards write and read it. `GET /api/chat/record`
 returns a `/chat` conversation in the same format.
 

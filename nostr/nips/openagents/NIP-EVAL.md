@@ -799,5 +799,5 @@ Revocation denies future reads and dispatches. It does not cancel an already
 admitted child or revoke previously disclosed ciphertext. Output stays in the
 private host store, outside ordinary board replies. No source scan, recipe
 execution, or publication occurs merely because a client starts, enters a scene,
-subscribes to Verse presence, or reconnects. The Verse Gym client activates its
+subscribes to Metaverse presence, or reconnects. The Metaverse Gym client activates its
 finite reads only inside the Gym and stops them on exit or suspension.

@@ -49,7 +49,7 @@ retain their existing prohibition on borrowed type arguments.
 Read-only access is not immutable backing, unique ownership, race freedom or
 an authorization grant. An existing writable alias may update the backing and
 readers observe those updates. The caller still excludes concurrent conflicting
-access. No new Aethyr job scheduler or resource-lifecycle policy is introduced.
+access. No new Metaverse Engine job scheduler or resource-lifecycle policy is introduced.
 
 The existing returned-borrow and retained-store analyses still apply to these
 views and their carriers. A read-only view of a local array or a by-value array

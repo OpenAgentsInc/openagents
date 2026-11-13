@@ -1,6 +1,6 @@
 # Invite
 
-An invite to make worlds on the Verse. Open the whole link you were sent
+An invite to make worlds on the OpenAgents Metaverse. Open the whole link you were sent
 (`/invite#code=...`): the page logs you in the way [/login](/login) does,
 with an account made on this device if you have none, and uses the code
 once. Then MAKE A WORLD opens [the world builder](/worlds/new).

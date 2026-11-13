@@ -546,7 +546,7 @@ gate N3, Core's second verdict covers the rest.
 ### 4.5 The cost of tooling
 
 - **Every prerequisite is compiler work** that competes with the language's
-  other consumers, Everglade and Verse:
+  other consumers, Everglade and the OpenAgents Metaverse:
   - P1 (threads), P3 (fuzz), P5 (secret types) and P7 (simulation host) in
     the audit;
   - most of §6 here.

@@ -1,6 +1,6 @@
 # Star Catcher
 
-A Verse realm at https://openagents.com/worlds/star-catcher: stars fall from a night sky and you catch them in a basket on the hill. Catch fifteen to win; let three reach the ground and the stars get away.
+A Metaverse realm at https://openagents.com/worlds/star-catcher: stars fall from a night sky and you catch them in a basket on the hill. Catch fifteen to win; let three reach the ground and the stars get away.
 
 ## How to play
 

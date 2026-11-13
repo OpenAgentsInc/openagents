@@ -144,7 +144,7 @@ is configurable, and the request body doesn't change.
 
 ### Local Elephant and desktop routing (2026-11-04)
 
-Aethyrforge now replaces its agent/model/effort dropdowns with this router.
+The OpenAgents Metaverse Engine now replaces its agent/model/effort dropdowns with this router.
 Shared `~/.openagents/coder/router.json`, with schema `coder.router.v1`, selects
 a System One `url` and explicit `remote` boolean. The desktop's default is
 keyless local Elephant at `http://127.0.0.1:8793/v1/systemone`; it reuses the

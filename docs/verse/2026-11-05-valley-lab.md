@@ -1,4 +1,4 @@
-# Valley Lab: build a valley from checked Aethyr primitives
+# Valley Lab: build a valley from checked Metaverse Engine primitives
 
 Status: active implementation roadmap, updated 2026-11-06. The initial
 walkable world, procedural asset/indexed baseline, bounded leaves, ownership
@@ -18,7 +18,7 @@ systems compose into a large, detailed, playable valley. The visual target
 is Valley of the Ancient: monumental sandstone, dense rock detail, an open
 desert basin, narrow passages, ancient structures, an animated traveller,
 and eventually a giant encounter. Build the world and its engine behavior
-from scratch in Coax, using shared Aethyr primitives. The local Unreal
+from scratch in Coax, using shared Metaverse Engine primitives. The local Unreal
 project is a reference for scale, composition and system decomposition.
 
 The first useful release is a walkable graybox plus a station holding one
@@ -486,7 +486,7 @@ existence does not mean its proposed system is ready to use.
 | Sky, effects, destruction, cinematics | Chapters 65–68 and 71–73, 78 identify the relevant branches. Several are drafts or realm-specific code awaiting shared modules. Qualify only what Valley actually adopts. |
 
 There is no identified shared Nanite-style virtualized geometry system in
-the inspected Aethyr sources. It is a new engine workstream. Existing
+the inspected Metaverse Engine sources. It is a new engine workstream. Existing
 fragment/vertex GPU paths do not establish the compute, writable storage,
 feedback or indirect submission capabilities that workstream may need.
 
@@ -526,7 +526,7 @@ The assembled scene calls the exact shared modules the stations exercise.
 ## Build the virtualized geometry system in visible steps
 
 Treat Nanite as the capability reference, not a binary format to copy or a
-claim of parity. Build an Aethyr cluster hierarchy and paged triangle path
+claim of parity. Build a Metaverse Engine cluster hierarchy and paged triangle path
 from ordinary authored meshes. No Unreal runtime, Nanite data or mesh-shader
 requirement is assumed. Keep skinned characters on a separately qualified
 path initially. Start with opaque static geometry; alpha and deformation
@@ -704,7 +704,7 @@ Browser checks use headless Chrome with audio muted, through the repository's
 relevant Coax suites, authority mutations, shader emission check and
 `coax/web/tool.sh tools-check` before pushing. Update the relevant book
 chapter, example inventory and registry only as each teaching profile becomes
-real; run the Aethyr book checker when those files change. Do not upgrade a
+real; run the Metaverse Engine book checker when those files change. Do not upgrade a
 draft's status on the strength of a roadmap.
 
 ## Landed: exact Unreal asset inventory and private scan baseline
@@ -726,7 +726,7 @@ differ from the scene artist's high-detail FBX. `L` selects the other source,
 
 Inventory, public catalogue matching, anonymous range downloading, glTF
 transforms, JPEG decoding and base-color sampling are Coax. Raw and derived
-licensed files remain under the shared private Aethyrforge cache, exposed to
+licensed files remain under the shared private Metaverse Engine cache, exposed to
 the local preview through an ignored asset directory. Only metadata, hashes,
 code and verification records are committed. The sampler bakes color at
 vertices; full PBR texture sampling remains a separate task. These scans use
@@ -774,7 +774,7 @@ against the exported SDK receipt; the maximum vertex pose error is below
 0.000001 m. Actual desktop/phone GPU checks cover both poses and five material
 views, reset and exact device-loss recovery.
 
-The 71 MB source pack remains in the shared private Aethyrforge cache and is
+The 71 MB source pack remains in the shared private Metaverse Engine cache and is
 exposed through the existing optional private-asset channel. Public builds do
 not require or upload it. Before any pack upload, the new optional pack gate
 v1 sends the browser-computed SHA-256 and byte count to a Coax authority module.
@@ -788,7 +788,7 @@ primitive frame/mesh budgets remain independent. It uses ordinary GPU triangle
 passes, not Nanite's runtime algorithms or the structured grid reducer.
 
 **Full Unreal image parity remains unqualified.** Exact source geometry,
-material maps and transforms are verified; Aethyr studio lighting, shadows
+material maps and transforms are verified; Metaverse Engine studio lighting, shadows
 and tone mapping are used for inspection. Matching terrain, surrounding
 components, the complete original material graph, sky/Lumen/exposure and an
 actual matched Unreal reference render remain separate fidelity work.
@@ -823,7 +823,7 @@ must retain the existing Valley body clips.
 2. Read Slay through the installed Unreal SDK. Identify the actual source
    sequence/frame, body and facial tracks, camera and orb transforms. Export
    all 20 face clips, target names and sparse position/normal deltas privately.
-3. Add bounded face-pack admission and shared Aethyr morph/curve playback.
+3. Add bounded face-pack admission and shared Metaverse Engine morph/curve playback.
    Apply morphs before skinning, layer facial bones by name, and test zero
    weights, bad indices, nonfinite deltas and unresolved bindings.
 4. Add a fixed source-shot view, preserving the actual hand/body pose and
@@ -839,7 +839,7 @@ The first implementation is now the parent P destination:
 adds 181 named morph targets (564,903 sparse position/normal deltas), 20
 24-fps facial clips, 125 mapped curves and 16 facial bones to the existing
 334-joint/24-body-clip Echo port. Morphs execute before skinning in shared
-Aethyr Coax shader code. Face-only layering retains a separate body pose;
+Metaverse Engine Coax shader code. Face-only layering retains a separate body pose;
 zero weights preserve the neutral path. All licensed payloads stay private.
 
 The fixed J view starts paused at TF0290 sequence frame 1125 (body sample
@@ -905,7 +905,7 @@ button, switches between walking and the existing isolated orbit inspection;
 **V** and **I** retain material diagnostics and instance isolation. **1** returns
 to the primitive stations.
 
-This uses Aethyr's existing `walk.coax` fixed 1/64-second capsule controller,
+This uses the OpenAgents Metaverse Engine's existing `walk.coax` fixed 1/64-second capsule controller,
 its declared Valley Lab collision profile and `follow_first_shot` camera.
 Source vertices, texture bytes and the two source matrices are unchanged.
 The metre-grid floor sits below the pair's conservative bounds. Two explicit
@@ -916,7 +916,7 @@ fixtures, not the original scene's terrain or its collision mesh. The view
 has no imported Echo avatar, slope-aware animation or vaulting yet. Full
 triangle collision and adjoining source terrain remain separate future stages.
 
-Short jump presses are queued through Aethyr's input primitive even when
+Short jump presses are queued through the Metaverse Engine's input primitive even when
 released before a frame. Blur releases held controls while retaining already queued presses, following
 the shared input contract;
 reset clears movement and restores the initial feet. Orbit freezes locomotion
@@ -942,7 +942,7 @@ face close-up. Shared touch sticks support concurrent movement and look.
 The source flat-ground profile uses 0.42 m capsule radius, 1.92 m height,
 1.47/4.27 m/s walk/run speeds, 5 m/s² acceleration, 10 m/s² braking,
 ground friction 4, braking factor 2 and zero air control. These are decoded
-SDK defaults, not proof of complete original gameplay. Aethyr owns paid
+SDK defaults, not proof of complete original gameplay. The Metaverse Engine owns paid
 64 Hz steps and conservative lab collisions; Space remains a lab jump,
 not the original ability-based vault.
 
@@ -975,9 +975,9 @@ configuration, asset inventory and serialized asset names/references. It does
 not execute the sample game or Blueprint graphs. References establish that a
 system is present; they do not qualify its runtime behavior or numeric tuning.
 
-| System | Evidence in this copy | Implication for Aethyr |
+| System | Evidence in this copy | Implication for Metaverse Engine |
 | --- | --- | --- |
-| Player character | `Content/AncientContent/Blueprints/Character/BP_EchoCharacter.uasset` references `/Script/ModularGameplayActors.ModularCharacter`, capsule, `CharacterMovementComponent`, `AddMovementInput`, `JumpZVelocity`, `MaxWalkSpeed`, camera, Motion Warping and vaulting. The plugin's `Public/ModularCharacter.h` derives from `ACharacter`. | Use the existing checked Aethyr capsule and camera as the movement foundation. The Blueprint is not an engine-independent controller to drop into Coax. Capsule dimensions, acceleration, jump speed and braking defaults have not yet been decoded. |
+| Player character | `Content/AncientContent/Blueprints/Character/BP_EchoCharacter.uasset` references `/Script/ModularGameplayActors.ModularCharacter`, capsule, `CharacterMovementComponent`, `AddMovementInput`, `JumpZVelocity`, `MaxWalkSpeed`, camera, Motion Warping and vaulting. The plugin's `Public/ModularCharacter.h` derives from `ACharacter`. | Use the existing checked Metaverse Engine capsule and camera as the movement foundation. The Blueprint is not an engine-independent controller to drop into Coax. Capsule dimensions, acceleration, jump speed and braking defaults have not yet been decoded. |
 | Input | `Config/DefaultInput.ini` selects Enhanced Input. `Input/IM_ThirdPersonControls_InputMapping` and move-forward/right, turn and look-up actions exist. `Source/AncientGame/Input/PlayerControlsComponent.cpp` installs/removes mapping contexts and delegates control setup to Blueprint. | Preserve semantic actions in Coax; translate bindings rather than shipping Unreal input components. |
 | Movement tuning and abilities | `Character/MovementAttributeSet.cpp` applies the Gameplay Ability System's `MoveSpeed` attribute to `CharacterMovementComponent::MaxWalkSpeed`. Echo has `Data/DT_EchoAttributeDefaults`, an ability-binding component, `Blueprints/Abilities/GA_Vault`, vaulting trigger/utilities and a `VaultOver` clip/montage. | Movement and animation are coupled to attributes and abilities. Port explicit locomotion states and traversal rules as separately checked systems. Exact defaults and Blueprint transition conditions still need a structured export. |
 | Camera | `Source/AncientGame/Camera/` contains a camera-mode stack, spring-arm modes and critically damped location/rotation interpolators. `SpringArm.cpp` sweeps a sphere against the camera channel to pull the camera out of obstacles. Third-person, vaulting-area, catwalk, spline and static-framing Blueprint modes exist. | Our shared follow camera covers the basic movement view. The original's authored camera modes and transitions need their own data and parity checks. |
@@ -988,7 +988,7 @@ system is present; they do not qualify its runtime behavior or numeric tuning.
 
 The practical next avatar slice is an isolated Echo station: export and verify
 one skeletal LOD plus idle, walk, jog and jump clips, show the bind pose and
-bone/weight diagnostics, then drive those clips with the same Aethyr walker
+bone/weight diagnostics, then drive those clips with the same Metaverse Engine walker
 used here. Record scale, bone count, influence limits, material cost and clip
 samples against the source before claiming equivalence. Add slope warping,
 vaulting, secondary motion and encounter abilities only after those checks.

@@ -2,7 +2,7 @@ History: finished cutover runbook (switched 2026-10-29); see [everglade/ARCHITEC
 
 # Switching playtest.openagents.com to openagents.com
 
-Task `pt-cutover-plan` (#2086) of the Verse project
+Task `pt-cutover-plan` (#2086) of the Metaverse project
 (https://openagents.com/projects/verse). Written 2026-10-28 by
 claude-verse-18. The switch was the owner's decision after the parity review
 (`pt-parity-review`).

@@ -1,6 +1,6 @@
 # The realm host
 
-Status: built, October 28 (rl-realm-host, rl-asset-packs, rl-realm-goldens). Every Verse realm on
+Status: built, October 28 (rl-realm-host, rl-asset-packs, rl-realm-goldens). Every Metaverse realm on
 openagents.com opens the same way, from one table. Ice Cream Man, Dead
 Gears and Everglade are built on it ([realms-port.md](realms-port.md)).
 
@@ -98,7 +98,7 @@ size budget, with every asset's licence recorded. The Haunted House keeps its
 separate files; Ice Cream Man, Dead Gears and Everglade use packs.
 
 - **Manifest**, `verse/packs/<realm>.json`: the pack's name and title, its
-  `budget` in bytes, the source scene (Aethyr's SCN4 `scene.bin`, packed from
+  `budget` in bytes, the source scene (the OpenAgents Metaverse Engine's SCN4 `scene.bin`, packed from
   the Quaternius kits) and texture layers, `texture_size` (layers are resized
   to it, 512 by default), the `licences` (name, licence, URL each), the
   `meshes` by name and the `sounds` (name, file, licence).

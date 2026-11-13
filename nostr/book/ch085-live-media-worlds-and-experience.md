@@ -1,6 +1,6 @@
 # 85. Live media, worlds and experience
 
-The Verse uses Nostr for presence in 3D worlds and for experience points.
+The OpenAgents Metaverse uses Nostr for presence in 3D worlds and for experience points.
 This chapter builds the two parts of that a client must get right before it
 draws anything or credits anyone: which pose frames a receiver admits, and
 in what order, and which awards a reader counts. It describes the
@@ -49,7 +49,7 @@ is described, not built.
   [coax/tests/nostr/xp_mv_vectors.py](../../coax/tests/nostr/xp_mv_vectors.py)
   writes.
 
-The Verse realms in `verse/` simulate and draw worlds (`player.coax`,
+The Metaverse realms in `verse/` simulate and draw worlds (`player.coax`,
 `space.coax`, `throw.coax`); none of them reads or writes NIP-MV events
 yet, so this chapter shares no code with them. The voice floors and media
 epochs NIP-LIVE describes have a local Coax form in

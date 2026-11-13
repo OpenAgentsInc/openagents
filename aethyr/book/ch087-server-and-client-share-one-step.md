@@ -96,7 +96,7 @@ The output is cut to its last lines; the first three checks pass too.
 
 ## What is left
 
-- More of the shared step and world adapters can move behind Aethyr
+- More of the shared step and world adapters can move behind Metaverse Engine
   interfaces (#12845). Keep native and worker observations separate from
   source-sharing claims.
 

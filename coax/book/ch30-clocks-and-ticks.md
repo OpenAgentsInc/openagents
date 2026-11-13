@@ -6,7 +6,7 @@
 > connections with a maximum age, tick schedules in a fixed order, the UTC,
 > TAI, TT and TDB scales over a pinned leap-second table, and time warp that
 > stops at every event. The `task @rate` syntax, compiler-enforced clock-read
-> effects (R11) and adoption by the robot and Verse loops are planned.
+> effects (R11) and adoption by the robot and the OpenAgents Metaverse loops are planned.
 
 A simulation reads several clocks. Simulation time can pause, scale or jump.
 Steady time only moves forward. Civil time follows a calendar and can be
@@ -253,9 +253,9 @@ that the compiler tracks and refuses in pure code is R11 work.
   max_age=4ms))`. Today a schedule is a `Rate_Task` array and a connection is
   a `Hold` value.
 - Clock reads as compiler-checked effects (R11).
-- Adoption: the simulated robot's physics and control steps and Verse's
+- Adoption: the simulated robot's physics and control steps and the Metaverse's
   fixed-step update driven from declared schedules
-  ([Aethyr chapter 1](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch001-a-frame-has-a-fixed-step.md)),
+  ([Metaverse Engine chapter 1](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch001-a-frame-has-a-fixed-step.md)),
   and recorded clock boundaries for replay
   ([chapter 33](ch33-replay-and-snapshots.md)).
 
@@ -264,7 +264,7 @@ that the compiler tracks and refuses in pure code is R11 work.
 - R12 durations ([chapter 29](ch29-units-and-frames.md)).
 - Typed errors ([chapter 7](ch07-errors.md)).
 - Generic structs with type parameters ([chapter 8](ch08-generics.md)).
-- Used by Aethyr chapters
+- Used by Metaverse Engine chapters
   [1](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch001-a-frame-has-a-fixed-step.md),
   [39](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch039-ephemerides-time-scales-and-frames.md)
   and [46](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch046-time-warp-that-stops-for-every-event.md).

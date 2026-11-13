@@ -248,7 +248,7 @@ The module's checks run as native code, as every unit's do
 which fivelab also runs, and the range's four.
 
 In the Mac app the world list's row for the Archery Range opens this realm
-natively, through Aethyr's page host, with its sound
+natively, through the OpenAgents Metaverse Engine's page host, with its sound
 ([app scenes spec](app-scenes-spec.md), section 4). The app builds the module
 as the site does (`verse/native/build.sh archery-range OUT` takes the module,
 its face and the libraries `build.sh` links it with) into

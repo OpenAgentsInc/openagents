@@ -1,4 +1,4 @@
-# Region recovery for Verse rooms
+# Region recovery for Metaverse rooms
 
 Status: design, model qualification and a local rehearsal (#12853). The room
 fleet runs in one region (`us-central1`) today, and nothing here changes that.

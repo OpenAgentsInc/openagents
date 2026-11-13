@@ -17,11 +17,11 @@ reading order and the [introduction](README.md) the result of each chapter.
 | III. Seeing it | 11–16 | One WGSL renderer with shaders written in Coax and checked against their CPU run; materials; light and shadow; animated figures; UI and the HUD; budgets that refuse. |
 | IV. Physics | 17–37 | A physics engine at rough parity with Genesis World 1.4.5: rigid and articulated bodies with contact, five material solvers and their coupling, batched worlds, gradients, sensors, observation pictures, assets, replay and measurement. |
 | V. Big worlds | 38–50 | Worlds streamed in cells around a floating origin; spacecraft and the solar system at stated fidelity; lightweight presence and lockstep for small games. |
-| VI. Making worlds | 51–55 | Aethyrforge: a realm as a typed document, edited in place, with imported assets, published as a frozen record and forked. |
-| VII. Realms | 56–64 | The Grid, made realms, Everglade, Dead Gears, Ice Cream Man, Hecate's Cemetery, Fairy Forest and the space games, each rebuilt only from earlier chapters; then every realm on Aethyr with no private copies left. |
+| VI. Making worlds | 51–55 | The OpenAgents Metaverse Engine: a realm as a typed document, edited in place, with imported assets, published as a frozen record and forked. |
+| VII. Realms | 56–64 | The Grid, made realms, Everglade, Dead Gears, Ice Cream Man, Hecate's Cemetery, Fairy Forest and the space games, each rebuilt only from earlier chapters; then every realm on the Metaverse Engine with no private copies left. |
 | VIII. Hearing it | 65–69 | Integer synthesis, a beat-grid sequencer, mixing with a reverb send, a master that never clips, WAV output and a rendered soundtrack; then real-time playback, sound placed in the world, and music that follows the game's state; then players' and agents' voices placed in the realm. |
-| IX. A living world | 70–78 | Water, sky and weather, particle effects, breakable kit pieces, wheeled vehicles, creatures that follow and watch, paths and crowds, characters who talk, and authored camera flights, each moved from `verse/` into one Aethyr module. |
-| X. Aethyrforge: generating worlds | 79–80 | A set piece chosen from a typed catalogue by a semantic selector, and terrain and scatter laid out from a seed. |
+| IX. A living world | 70–78 | Water, sky and weather, particle effects, breakable kit pieces, wheeled vehicles, creatures that follow and watch, paths and crowds, characters who talk, and authored camera flights, each moved from `verse/` into one Metaverse Engine module. |
+| X. Generating worlds | 79–80 | A set piece chosen from a typed catalogue by a semantic selector, and terrain and scatter laid out from a seed. |
 | XI. Shipping realms | 81–85 | Saves that survive schema changes, code changed while a realm runs, inspection and profiling of a running realm, one realm on every host, and accessibility and languages. |
 | XII. Many players | 86–101 | One headless server that owns the scene; shared step, rules and world; signed seats; intents and acknowledgements; prediction; one replication model with a budget and one interpolation buffer; effects as state; offline as a local server; combat rules under latency; interest without leaks; versions, deploys and reconnect; measurement; the drift proof; the Everglade room. |
 | XIII. Actions and conditions | 102 | One pipeline for every action (ask, act, present), one bearing that drives the pose, the input lock and the hotbar from a body's conditions, and a feel contract that a check enforces. |
@@ -55,7 +55,7 @@ consolidates the existing Coax shader and host paths in `verse/gpu/`.
 The registry currently has 14 implemented chapters, 53 partly implemented
 chapters and 34 design drafts. These counts
 describe teaching profiles, not a percentage of the engine completed. Existing
-realm code can already provide a feature whose shared Aethyr module is a draft.
+realm code can already provide a feature whose shared Metaverse Engine module is a draft.
 
 1. **Complete one playable route.** Chapter 11 qualifies the shared renderer
    and a recorded Grid CPU/WebGPU/Vulkan teaching profile. Build chapters
@@ -144,7 +144,7 @@ its first example. Read the integration checks before claiming the full goal.
 | Spacecraft and the solar system | Psionic chapters 107, 109, 234 and 242; the `verse/` space modules as the starting game layer; Coax R12–R20 forms as they ship | Ephemerides and frames 39 → propagation with stated error 40 → burns 41 → rendezvous 42; heat 43, ship interiors 44 and delayed sensors 45 in any order → event-stopped time warp 46 → impacts 47 → three fidelities, batched rollouts, surrogates and an admitted environment 48. |
 | Networking | 5 and 6 | Presence 49 → lockstep 50 for small games. |
 | Many players | 1, 3–7, 9, 10, 51 and 72 | Server 86 → shared step and world 87 → seats 88 → intents 89 → prediction 90 → the record 91 → budget 92 → interpolation 93 → effects 94 → offline host 95 → combat rules 96, interest 97, live operations 98 and measurement 99 in any order → proof 100 → the Everglade room 101. |
-| Aethyrforge | 3, 5, 6 and 16; renderer/UI for the editor; 37's measurement method for publication gates | Realm document 51 → editing 52 → assets 53 → publishing 54 → forks 55. Physics-scene mapping is an extension. |
+| Metaverse Engine | 3, 5, 6 and 16; renderer/UI for the editor; 37's measurement method for publication gates | Realm document 51 → editing 52 → assets 53 → publishing 54 → forks 55. Physics-scene mapping is an extension. |
 | Realms | The chapters each realm uses | 56–63 in any order once their chapters exist; 64 last. |
 | Sound | Coax only; 1, 2, 5 and 10 for playback in a realm | Oscillators and envelopes 65 → the beat grid 66 → scores and mixing 67 → playback, space and reaction 68 → voices 69 (also 49). |
 | A living world | 1–16 and the chapters each system uses (water and vehicles 18–22; effects 16 and 23 for contrast; creatures 7 and 45) | 70–78 in any order once their dependencies settle. |
@@ -167,12 +167,12 @@ These parts cover the systems in the
 [game-engine systems inventory](../../docs/research/game-engine-systems.md)
 that the realms already use but that no earlier chapter owns. Each one has a
 private copy in `verse/`, `coax/web/` or `apps/openagents-web/` today; each
-chapter plans one Aethyr module that replaces it.
+chapter plans one Metaverse Engine module that replaces it.
 
-- Part IX moves world systems into Aethyr: water, sky and weather, particle
+- Part IX moves world systems into the Metaverse Engine: water, sky and weather, particle
   effects, destruction, vehicles, creature behaviour, navigation, characters
   who talk, and authored cameras.
-- Part X adds Aethyrforge's generation tools on top of Part VI's realm
+- Part X adds the Metaverse Engine's generation tools on top of Part VI's realm
   document: set pieces from a typed catalogue, seeded terrain and scatter,
   and realms made as replies.
 - Part XI covers what a realm needs to ship: saves, live code changes,

@@ -106,6 +106,6 @@ The SDK check is opt-in and authenticates the frozen scene/reset/trace/ledger
 identities before loading the scene. Historical private artifact and dated
 receipt names retain their original chapter numbers. This work adds no
 steady-time deadline enforcement, inference cancellation, civil-time mapping,
-generic maximum sensor age, Verse migration, complete snapshot or compiler
+generic maximum sensor age, Metaverse migration, complete snapshot or compiler
 `#bounded` proof. Existing wall-latency statistics remain separate from the
 simulation clock.

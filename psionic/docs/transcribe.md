@@ -254,12 +254,12 @@ int psionic_stt_text(psionic_stt *s, const float *samples, int64_t n, const char
 - Replies use the offline tone: Psionic does speech to text only.
 - `verse/voice-host/test.sh --offline` runs three psionic cases headless
   when the model is cached: a committed fixture, a `say` clip naming
-  Psionic and the Verse, and talking over the reply.
+  Psionic and the OpenAgents Metaverse, and talking over the reply.
 
 The engine exports the same steps to Coax programs, all on views the host
 owns: `psionic_whisper_read`, `psionic_whisper_net`, `psionic_whisper_load`,
 `psionic_whisper_transcribe` and `psionic_whisper_format` in
-`psionic/lib/whisper/engine.coax`. Aethyr programs see them as Coax
+`psionic/lib/whisper/engine.coax`. Metaverse Engine programs see them as Coax
 procedures and do not call the C host.
 
 ## Targets and how we measure them
@@ -316,7 +316,7 @@ time includes loading the model:
 
 Fixtures are public domain or generated: whisper.cpp's `jfk.wav` (a
 public-domain speech, 11 s) and clips made with macOS `say` from a fixed
-script, including the names Psionic, Coax, Verse and Aethyr. WER uses the
+script, including the names Psionic, Coax, the Metaverse and the OpenAgents Metaverse Engine. WER uses the
 standard word edit distance after lowercasing and removing punctuation.
 
 ## Comparison harness

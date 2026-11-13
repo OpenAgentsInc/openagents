@@ -1,4 +1,4 @@
-# Verse Haunted House documents
+# Metaverse Haunted House documents
 
 `openagents.metareal.haunt.v1alpha1`, selected by the `haunt` descriptor
 profile, defines the native scene and its editable documents. This is a new

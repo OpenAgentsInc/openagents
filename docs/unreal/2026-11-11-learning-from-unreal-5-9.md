@@ -1,4 +1,4 @@
-# What Aethyr should learn from Unreal Engine 5.9
+# What the Metaverse Engine should learn from Unreal Engine 5.9
 
 Research note, 2026-11-11. Status: analysis only. Nothing here is implemented,
 and no issues are filed; the owner decides which proposals become issues.
@@ -9,7 +9,7 @@ and no issues are filed; the owner decides which proposals become issues.
 > <https://www.unrealengine.com/eula>). The EULA lets licensees read and
 > modify the engine to make Unreal-based products. It does not let us copy,
 > translate or port its code, shaders or data layouts into another engine.
-> Aethyr is another engine. So: we read UE 5.9 to learn what a system does
+> The OpenAgents Metaverse Engine is another engine. So: we read UE 5.9 to learn what a system does
 > and why. We write our own Coax from that description, preferably also
 > citing Epic's public talks and papers. We never paste, transliterate or
 > closely paraphrase a function, a shader, a constant table or a file
@@ -19,7 +19,7 @@ and no issues are filed; the owner decides which proposals become issues.
 Sources read for this note (all on `origin/main` unless named):
 
 - `docs/unreal/` (README, build-from-source, mcp-tools, ue6).
-- The Aethyr book (`aethyr/book/`, especially chapters 11, 13, 14, 38, 53,
+- The Metaverse Engine book (`aethyr/book/`, especially chapters 11, 13, 14, 38, 53,
   72, 80, 83, 84, 86–102 and Appendix A), `aethyr/README.md`,
   `aethyr/render/README.md` and the module tree.
 - The Verse (`docs/verse/`, especially the Solstice comparison, the lighting
@@ -81,7 +81,7 @@ lighting phases 3–5). Section 2 says what to take from each.
 
 ## 2. System by system
 
-Each entry: what Unreal does (with UE paths), what Aethyr has (with our
+Each entry: what Unreal does (with UE paths), what the Metaverse Engine has (with our
 paths), the gap, a verdict and why.
 
 Verdicts: **adapt the idea**, **adapt a simplified version**, **skip**, or
@@ -124,7 +124,7 @@ are shaded from the visibility buffer by bins (`NaniteShadeBinning.usf`).
 Pages stream on demand (`NaniteStreaming.usf`). The C++ side is
 `Source/Runtime/Renderer/Private/Nanite/`.
 
-**What Aethyr has.** A general cluster DAG builder learned from Solstice
+**What the Metaverse Engine has.** A general cluster DAG builder learned from Solstice
 (`aethyr/render/geometry/dag.coax`: 128-triangle clusters, groups of up to
 four, borders locked, half-edge collapses). Watertight page residency
 (`residency.coax`: a page installs only after its parents and leaves only
@@ -165,7 +165,7 @@ light (`LumenScreenProbeGather.cpp`), with a world radiance cache for far
 light (`LumenRadianceCache.cpp`), ReSTIR resampling (`LumenReSTIRGather.cpp`)
 and optional hardware tracing. Everything is temporal.
 
-**What Aethyr has.** No global illumination. A hemisphere ambient with a
+**What the Metaverse Engine has.** No global illumination. A hemisphere ambient with a
 split for indirect occlusion and sun visibility (`render/painterly.coax`,
 `paint_irradiance`), contact shading from normal and depth
 (`render/contact-shade.coax`), height haze and cloud shadows. Lighting
@@ -199,7 +199,7 @@ traces first, then world-space traces or hardware ray tracing:
 `MegaLightsRayTracing.cpp`), and denoises spatially and temporally
 (`MegaLightsDenoising.cpp`), guided by last frame's history.
 
-**What Aethyr has.** A bounded list of local lights (`render/light.coax`),
+**What the Metaverse Engine has.** A bounded list of local lights (`render/light.coax`),
 spell lights (`fx/spell-light.coax`) and the character pass's
 `SceneLights` (`render/scene-lights.coax`). Lighting phase 3 plans "shared
 local lights and scalable assignment".
@@ -227,7 +227,7 @@ need are rendered. Pages are cached across frames and invalidated when
 casters move (`VirtualShadowMapCacheManager.cpp`). Rendering many small
 pages cheaply depends on Nanite.
 
-**What Aethyr has.** Cached cascades in one depth atlas
+**What the Metaverse Engine has.** Cached cascades in one depth atlas
 (`aethyr/render/cascades.coax`, #13016). A tile redraws only when its
 snapped view changes. There's one 2048 map reaching 60 m, with PCF
 (`render/light.coax`, `render/shadow-filter.coax`).
@@ -254,7 +254,7 @@ lifetimes, aliases transient memory and places barriers. It also validates
 the graph (`RenderGraphValidation.h`) and traces it
 (`RenderGraphTrace.h`, viewed in `Plugins/RenderGraphInsights`).
 
-**What Aethyr has.** Admitted pass operations and resources
+**What the Metaverse Engine has.** Admitted pass operations and resources
 (`render/passes.coax`, `render/resources.coax`), atomic composition of the
 canonical graph (`render/runtime.coax`), a GPU resource ledger with slot,
 generation and epoch (`render/registry.coax`), and device-loss policy
@@ -286,7 +286,7 @@ in for unloaded cells, including destructible HLODs (`HLODDestruction.h`).
 Level streaming (`Engine/Classes/Engine/LevelStreaming.h`) is the older
 per-sublevel path.
 
-**What Aethyr has.** Cells with residency rings, hysteresis, fixed-tick
+**What the Metaverse Engine has.** Cells with residency rings, hysteresis, fixed-tick
 completion, sleeping bodies, stable IDs and floating origin
 (`aethyr/world/cells.coax`). Resource-cost manifests and admission
 (`world/resource-*.coax`). A bounded streaming corridor on browser and
@@ -325,7 +325,7 @@ LOD (`MassLOD`), representation switching between full actors, instanced
 meshes and nothing (`MassRepresentation`), and replication by client
 "bubbles" (`MassReplication/Public/MassClientBubbleHandler.h`).
 
-**What Aethyr has.** Entities with slot-and-generation handles, `EntityId`s
+**What the Metaverse Engine has.** Entities with slot-and-generation handles, `EntityId`s
 for saves and the network, and spawns and despawns applied at the step's
 flush (`aethyr/core/entity.coax`). Structure-of-arrays physics
 (`aethyr/physics/sim/rigid.coax`). Bounded actor profiles (`aethyr/actors/`).
@@ -366,7 +366,7 @@ and per-connection lists, so most decisions are shared. **Iris**
   `SphereWithOwnerBoostNetObjectPrioritizer.h`, `NetObjectCountLimiter.h`).
 - Object groups let several objects share a filter (`NetObjectGroupHandle.h`).
 
-**What Aethyr has.** Much of the same architecture, in Coax:
+**What the Metaverse Engine has.** Much of the same architecture, in Coax:
 - One row schema for every replicated entity, sent as deltas against the
   last acknowledged tick, with `LIFE` and `WARP` (chapter 91,
   `apps/openagents-web/everglade-wire.coax`).
@@ -414,7 +414,7 @@ effects. **Chaos networked physics**
 `Experimental/Chaos/Public/RewindData.h`) keeps input and state history for
 physics bodies and resimulates from a corrected frame.
 
-**What Aethyr has.**
+**What the Metaverse Engine has.**
 - Server and client share one step (chapter 87).
 - The page predicts its own movement, keeps 64 inputs, replays unacknowledged
   ones and eases corrections over 0.12 s (chapter 90).
@@ -462,7 +462,7 @@ On catch-up it removes its predicted copies without replaying "on applied"
 cues. The header calls these the "Undo", "Redo" and "Completeness"
 problems.
 
-**What Aethyr has.**
+**What the Metaverse Engine has.**
 - The action pipeline, ask, act, present (`aethyr/action/deed.coax`,
   `docs/verse/action-pipeline.md`).
 - Predicted casts with rollback by request number, a 1.5 s timeout and a
@@ -497,7 +497,7 @@ geometry collections for fracture, cloth and flesh
 resim caches (`EvolutionResimCache.h`) and the Chaos Visual Debugger
 (`Plugins/ChaosVD`), which records solver frames for playback.
 
-**What Aethyr has.**
+**What the Metaverse Engine has.**
 - Rigid bodies in f64 under three named integrators (`aethyr/physics/sim/rigid.coax`).
 - PBD, SPH, MPM and grid fluids (`aethyr/physics/sim/`).
 - Kinematic capsule collision (`collide.coax`).
@@ -534,7 +534,7 @@ a Physics Lab and space-game concern, not a launch one.
   corrective deformation from a simulation.
 - **MetaHuman** (`Plugins/MetaHuman/*`): character, animator and crowd.
 
-**What Aethyr has.**
+**What the Metaverse Engine has.**
 - A shared pose with per-joint blends and the palette (`aethyr/anim/pose.coax`).
 - Layers, masks, retargeting, faces, morphs and glTF/BVH import (`aethyr/anim/`).
 - A character runtime with the ECH1 locomotion graph of 24 fixed clips
@@ -574,7 +574,7 @@ Runtime generation is scheduled around streaming sources
 (`RuntimeGen/PCGRuntimeGenScheduler.h`), and kernels can run on the GPU
 (`Compute/PCGComputeKernel.h`). There are also shape grammars (`Grammar/`).
 
-**What Aethyr has.** Seeded scatter on a jittered grid. Each cell's draws
+**What the Metaverse Engine has.** Seeded scatter on a jittered grid. Each cell's draws
 are keyed by realm seed, layer ID, generator version and grid coordinates,
 with keep-outs as data, placed whole or refused (`aethyr/world/scatter.coax`,
 chapter 80). The architecture kit generates buildings and flora from
@@ -602,7 +602,7 @@ Recent versions add **stateless emitters**
 particle is a pure function of its spawn data and age, with no per-particle
 state carried between frames.
 
-**What Aethyr has.** Exactly that model. The puff record, budgets and 42
+**What the Metaverse Engine has.** Exactly that model. The puff record, budgets and 42
 recipes whose motion is a pure function of seed, index and age
 (`aethyr/fx/puff.coax`, `fx/abilities.coax`, chapter 72). GPU drawing
 (`fx/gpu-puff.coax`, `fx/gpu-quads.coax`).
@@ -636,7 +636,7 @@ confirms the choice.
   engine reads containers with Range requests and a service worker caches
   whole files (`Platforms/Wasm/Docs/Networking.md`).
 
-**What Aethyr has.**
+**What the Metaverse Engine has.**
 - Assets identified by the SHA-256 of their bytes, admitted whole or refused
   (`aethyr/core/assets.coax`).
 - Content-addressed shader packages (`render/build.coax`,
@@ -674,7 +674,7 @@ show CPU and GPU timing scopes, memory, network packets, render graphs
 scrub through. Network Prediction has its own trace (`-trace=np`), and
 ChaosVD records physics.
 
-**What Aethyr has.**
+**What the Metaverse Engine has.**
 - Frame statistics and the 60 FPS rule (`aethyr/core/frame-report.coax`).
 - Every realm measured in headless Chrome (`coax/web/realm-perf.coax`) and
   frame-time tooling (`coax/web/frametime.ts`, using `timestamp-query`).
@@ -709,7 +709,7 @@ components) is not in the 5.9 tree (`docs/unreal/ue6.md`). UE6 removes
 Actors, Blueprints and the C++ gameplay framework in favour of Verse,
 Scene Graph, MCP and Python.
 
-**What Aethyr has.** Coax: one language for gameplay, rendering (emitted
+**What the Metaverse Engine has.** Coax: one language for gameplay, rendering (emitted
 as WGSL and SPIR-V), tools and tests, with `#effects`, `#authority`,
 `#test`/`#forall` and mutation testing. Entities are `entity.coax` and
 realms are documents.
@@ -717,7 +717,7 @@ realms are documents.
 **Verdict: already better, and Epic is converging on our shape.** Effect
 specifiers match `#effects`. Failure contexts match our "whole or refused"
 results. UE6's move to entities and components with an AI-driven tool
-surface is where Aethyr already is. One thing to adopt: Verse treats
+surface is where the Metaverse Engine already is. One thing to adopt: Verse treats
 speculative execution as a language feature. We could make a
 `#transacts`-style check that a predicted step writes only to state the
 reconcile path can restore. That would extend 2.11's key mechanically.
@@ -735,8 +735,8 @@ subsystems and toolkits. In 5.9, an MCP server
 (`Plugins/Experimental/Toolsets`) expose editor functions to agents, with
 tool search (`docs/unreal/mcp-tools.md`).
 
-**What Aethyr has.**
-- Aethyrforge (`aethyr/forge/`) with typed, invertible edits and undo, redo
+**What the Metaverse Engine has.**
+- The Metaverse Engine (`aethyr/forge/`) with typed, invertible edits and undo, redo
   and replay.
 - `coax/web/tool.sh drive`, which answers from the engine and names targets
   by stable IDs (`tree`, `walk-to`, `use`, `state`).
@@ -783,7 +783,7 @@ agent context the way MCP tool search does.
 - **Agent skills shipped with the platform:** `Skills/web-deploy`,
   `web-perf-hillclimb` and `web-texture-sets`.
 
-**What Aethyr has.**
+**What the Metaverse Engine has.**
 - Web-first Coax compiled to small wasm modules per page or realm, with
   WGSL emitted from the same Coax as the CPU code.
 - Rooms reached directly over WebSocket or WebTransport, with no relay
@@ -819,7 +819,7 @@ in maps) runs unit and in-world tests. **Gauntlet**
 server and N clients, collect logs and performance reports, and judge pass
 or fail. `Plugins/NetcodeUnitTest` tests netcode at the packet level.
 
-**What Aethyr has.**
+**What the Metaverse Engine has.**
 - `#test`, `#forall` and mutation testing with zero survivors on
   `#authority` files.
 - Goldens (`coax/web/golden-frames.coax`).
@@ -843,9 +843,9 @@ sessions, and we have them. What we lack is the one command that proves
 
 ---
 
-## 3. Where Aethyr is already ahead or deliberately different
+## 3. Where the Metaverse Engine is already ahead or deliberately different
 
-| Area | Unreal 5.9 | Aethyr | Why ours suits us |
+| Area | Unreal 5.9 | Metaverse Engine | Why ours suits us |
 |---|---|---|---|
 | Language | C++ engine, Blueprints and Verse for gameplay, HLSL shaders, Python and MCP for tools; UE6 removes Blueprints and Actors to get to fewer | Coax for gameplay, shaders (WGSL and SPIR-V), tools and tests | One language agents learn once, with one checker |
 | Web | A native engine ported late: wasm64, 1–4 GB heap, a UDP relay, the mobile renderer, iOS not working | Web-first; small modules; native hosts share the same Coax | Players click a link; phones are a design target |
@@ -882,7 +882,7 @@ sessions, and we have them. What we lack is the one command that proves
   simpler and checkable in Coax.
 - **ML Deformer**, and any learned asset that would train on MetaHuman
   data. It conflicts with the owner's MetaHuman rule and costs too much.
-- **A monolithic GUI editor.** Aethyrforge and `drive` stay the primary
+- **A monolithic GUI editor.** The Metaverse Engine and `drive` stay the primary
   tools; any GUI is a Coax page over the same edits.
 - **Any of UE's code, shaders, constant tables, file formats or sample
   content.** See section 5.
@@ -898,7 +898,7 @@ code.**
   <https://www.unrealengine.com/eula>). It permits use and modification to
   build Unreal-based products. It doesn't permit moving engine code into
   another engine, and it limits distributing engine code to other
-  licensees. Aethyr is another engine, and this repository is public.
+  licensees. The Metaverse Engine is another engine, and this repository is public.
 - **What we may do:** read UE source to understand a technique; describe it
   in our own words (as this note does); implement it in Coax from that
   description and from Epic's public talks and papers; cite UE paths so
@@ -907,7 +907,7 @@ code.**
   by line into Coax; copy constant tables, packed bit layouts or file
   formats verbatim; feed UE source to a model as training data; ship Epic
   sample content (Lyra, the Valley of the Ancient sample, Epic's MetaHuman
-  assets) in Aethyr realms. `docs/verse/2026-11-05-valley-lab.md` already
+  assets) in Metaverse Engine realms. `docs/verse/2026-11-05-valley-lab.md` already
   says "Do not copy Epic sample" assets; that rule stands.
 - **Third-party code inside the UE tree** (Dawn, Tint, Emscripten) has its
   own permissive licences. If we want any of it, we take it from its

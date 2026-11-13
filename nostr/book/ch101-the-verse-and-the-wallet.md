@@ -1,8 +1,8 @@
-# 101. The Verse and the wallet
+# 101. The Metaverse and the wallet
 
-The Verse is where people meet: realms that players walk through together,
+The OpenAgents Metaverse is where people meet: realms that players walk through together,
 and a wallet that pays. This chapter composes an offline Nostr example for
-two proposed Verse features. Players see each other through NIP-MV pose frames
+two proposed Metaverse features. Players see each other through NIP-MV pose frames
 that a Coax relay carries, and one player zaps another in the world, with
 every payment decided by the Spark wallet's existing rules in
 `pay/wallet.coax`. It runs both once, offline, with test keys, fixture
@@ -13,14 +13,14 @@ which exist only in this book.
 The registry's `adopted_by` entry names `SparkHost.swift`, which directly
 calls the existing wallet rules. It records adoption of that component,
 not adoption of the offline NIP-MV, zap or Wallet Connect exchange. Live
-integration depends on [Aethyr's rooms and presence](../../aethyr/book/ch049-rooms-and-presence.md)
+integration depends on [the Metaverse Engine's rooms and presence](../../aethyr/book/ch049-rooms-and-presence.md)
 and the [application exits](COMPLETION.md#4-connect-the-offline-integrations-to-applications).
 
 ## What this chapter teaches
 
 - Presence: NIP-MV pose frames published to a Coax relay, sent to every
   subscription that asks for the world, and drawn a fixed delay behind, as
-  [Aethyr chapter 49](../../aethyr/book/ch049-rooms-and-presence.md) plans.
+  [Metaverse Engine chapter 49](../../aethyr/book/ch049-rooms-and-presence.md) plans.
 - The latency budget: when a move made on one screen is drawn on another,
   worked out on a fixed clock.
 - An in-world zap from the zap request to the counted receipt, with the
@@ -146,7 +146,7 @@ Each client posts a frame every `Δ = 250` ms and draws others `D = 2Δ =
 2. Ana moves at +1001, just after frame 1 left. Frame 2 carries the move
    with `t = +1250`; Ben gets it at +1330 and draws it at +1750.
 3. The move took `1750 - 1001 = 749` ms to appear on Ben's screen. The
-   bound from Aethyr chapter 49 is `Δ + 2 · 40 + D = 250 + 80 + 500 =
+   bound from Metaverse Engine chapter 49 is `Δ + 2 · 40 + D = 250 + 80 + 500 =
    830` ms, inside the one-second budget that `presence-pair.coax`
    enforces.
 
@@ -739,8 +739,8 @@ equivalent:
 
 ## What is not built yet
 
-- Aethyr's rooms and presence (`aethyr/net/room.coax` and
-  `aethyr/net/presence.coax`, Aethyr chapter 49), and any realm that
+- The OpenAgents Metaverse Engine's rooms and presence (`aethyr/net/room.coax` and
+  `aethyr/net/presence.coax`, Metaverse Engine chapter 49), and any realm that
   publishes or reads NIP-MV frames.
 - Presence measured over real sockets: the example's 40 ms hops are an
   assumption. `presence-pair.coax` measures the HTTP path today; it was
@@ -749,7 +749,7 @@ equivalent:
   LNURL payment, reading receipts, and `zap_check`'s rule moving into
   `pay/wallet.coax` with its own checks and mutation run.
 - A Spark-backed Wallet Connect service, and NWC in a realm.
-- Verse identities: players' profiles and follows (chapter 45) shown in a
+- Metaverse identities: players' profiles and follows (chapter 45) shown in a
   realm. The example uses bare test keys.
 
 ## Summary
@@ -766,7 +766,7 @@ equivalent:
   description hash agree, and the preimage proves the payment.
 - In production today the Spark wallet and its rules pay invoices and
   Lightning addresses, and presence runs over HTTP. NIP-MV presence, zaps
-  in the Verse and Wallet Connect exist only in this book.
+  in the Metaverse and Wallet Connect exist only in this book.
 
 ## Dependencies
 
@@ -774,7 +774,7 @@ equivalent:
   experience](ch085-live-media-worlds-and-experience.md)
 - [71. Lightning zaps and goals](ch071-lightning-zaps-and-goals.md)
 - [72. Wallet Connect](ch072-wallet-connect.md)
-- [Aethyr chapter 49, Rooms and
+- [Metaverse Engine chapter 49, Rooms and
   presence](../../aethyr/book/ch049-rooms-and-presence.md) is required for the
   later live room integration, not this chapter's qualified offline example.
 

@@ -58,7 +58,7 @@ page reads it every 2 s while a turn waits or runs, else every 30 s.
 `send {c, text, model}` makes a turn and wakes the runner; `model {c, model}`
 changes the model the next turn uses; `stop {c}` is the Stop button (or Escape); `key` and
 `key_remove` are the credential. Other `/api/chat/<room>` paths stay the
-Verse demo's room chat (`room.c`).
+OpenAgents Metaverse demo's room chat (`room.c`).
 
 ## Models and spend
 
@@ -98,7 +98,7 @@ runs goals; the page refuses `/goal` for the other agents.
 ## Theme
 
 Theme, beside Key, lists every skin from `/components` (`components/skin/all.coax`):
-Zeron (the default), Everglade, Verse and Terminal. The terminal skin is drawn in
+Zeron (the default), Everglade, the Metaverse and Terminal. The terminal skin is drawn in
 pixels by `components/skin/terminal-pixels.coax`. The page keeps the choice in this
 browser (`host.js` action 4, given back as message 4). Golden mode always draws Zeron.
 Checks: `apps/openagents-web/chat-frames.coax --only Theme` and

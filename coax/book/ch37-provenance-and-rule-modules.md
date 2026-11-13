@@ -77,5 +77,5 @@ declare exactly what it changes.
   ([chapter 29](ch29-units-and-frames.md)) and R16 recorded inventories
   ([chapter 33](ch33-replay-and-snapshots.md)).
 - R11 effect summaries, for rule modules.
-- Used by Aethyr
+- Used by the OpenAgents Metaverse Engine
   [chapter 48](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch048-one-world-at-three-fidelities.md).

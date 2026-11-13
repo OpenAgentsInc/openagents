@@ -1,6 +1,6 @@
 # Orbit League
 
-A Verse world at https://openagents.com/worlds/orbit-league: electric roadsters playing ball in a glass arena in orbit. You drive the blue car against a magenta bot; score more goals in five minutes. Every 90 seconds the station spins down and the arena goes zero-g for half a minute.
+A Metaverse realm at https://openagents.com/worlds/orbit-league: electric roadsters playing ball in a glass arena in orbit. You drive the blue car against a magenta bot; score more goals in five minutes. Every 90 seconds the station spins down and the arena goes zero-g for half a minute.
 
 ## How to play
 
@@ -13,7 +13,7 @@ A Verse world at https://openagents.com/worlds/orbit-league: electric roadsters 
 
 ## How it is made
 
-- The physics is the Verse engine's space primitives (`docs/verse/space.md`): `aethyr/physics/vehicle.coax` (wheels, suspension, grip, jumps), `aethyr/physics/contact.coax` (the ball against the cars, the walls and the goal frames), `aethyr/physics/gravity.coax` (the station's spin as a gravity field) and `aethyr/physics/thrust.coax` (the boost), on `aethyr/physics/rigid.coax`.
+- The physics is the OpenAgents Metaverse Engine's space primitives (`docs/verse/space.md`): `aethyr/physics/vehicle.coax` (wheels, suspension, grip, jumps), `aethyr/physics/contact.coax` (the ball against the cars, the walls and the goal frames), `aethyr/physics/gravity.coax` (the station's spin as a gravity field) and `aethyr/physics/thrust.coax` (the boost), on `aethyr/physics/rigid.coax`.
 - `apps/openagents-web/orbitleague-game.coax` is the game: the match, the bot, the physics and the room's wire, which the room server (`orbit/server/room.coax`) also runs. `apps/openagents-web/orbitleague.coax` is the page over it: the controls, the camera and the HUD. `orbitleague-face.c` binds it for the browser and `orbitleague.wgsl` traces the arena, the cars, the ball and the space round the station.
 - The cars' bodies are "Tesla Roadster 2.0" by Michael on Sketchfab (CC BY 4.0), thinned and traced from `assets/roadster.bin` (`verse/tools/mesh-bvh.coax`); the wheels, paint and decals are the game's. See [licences.md](licences.md).
 - The design is `docs/verse/game-ideas/orbit-league.md`. The page is written from `realms.json` by `coax/web/realms.ts`; the contract every world follows is `docs/verse/realm-host.md` in the OpenAgents repository.

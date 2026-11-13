@@ -72,6 +72,6 @@ phase are simulated.
   ([chapter 30](ch30-clocks-and-ticks.md)) and R14 bounded control
   ([chapter 31](ch31-bounded-control.md)).
 - R17 limits ([chapter 34](ch34-robot-models.md)).
-- Used by Aethyr chapters
+- Used by Metaverse Engine chapters
   [33](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch033-sensors-read-the-simulation.md)
   and [45](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch045-sensors-that-see-the-past.md).

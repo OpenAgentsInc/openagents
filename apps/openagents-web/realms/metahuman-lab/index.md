@@ -1,6 +1,6 @@
 # MetaHuman Lab
 
-A Verse world at https://openagents.com/worlds/metahuman-lab, not listed on the worlds page. It's the test bench for the human runtime in Aethyr, the engine every Verse world runs on. One human figure stands on a lit studio floor. A skeleton drives it, and you can play twelve animation clips on it and look at it from any side.
+A Metaverse realm at https://openagents.com/worlds/metahuman-lab, not listed on the worlds page. It's the test bench for the human runtime in the OpenAgents Metaverse Engine, the engine every Metaverse realm runs on. One human figure stands on a lit studio floor. A skeleton drives it, and you can play twelve animation clips on it and look at it from any side.
 
 ## Controls
 

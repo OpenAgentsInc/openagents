@@ -80,7 +80,7 @@ does not claim microphone/UI adoption or a change to the default voice host.
 
 ## A spoken request, as it runs
 
-Aethyrforge's forge bar is HOLD TO TALK. A press is a player control (a
+The OpenAgents Metaverse Engine's forge bar is HOLD TO TALK. A press is a player control (a
 `REPLAY_ACTIONS` event), so the realm asks its question (`replay_ask` on
 `REPLAY_MODEL`) at the step the press applies, live and in a replay alike. The
 voice host's final transcript for that hold is the answer: its bytes go into

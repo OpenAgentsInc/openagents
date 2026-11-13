@@ -7,7 +7,7 @@ Every asset in `fixture.pack` (1,267,160 bytes of its 1,500,000-byte budget) and
 - Quaternius Fantasy Props MegaKit: CC0 1.0 Universal, https://quaternius.com/
 - Quaternius Medieval Village MegaKit: CC0 1.0 Universal, https://quaternius.com/
 - Quaternius Stylized Nature MegaKit: CC0 1.0 Universal, https://quaternius.com/
-- Aethyr engine sounds (synthesized): CC0 1.0 Universal, https://creativecommons.org/publicdomain/zero/1.0/
+- The OpenAgents Metaverse Engine sounds (synthesized): CC0 1.0 Universal, https://creativecommons.org/publicdomain/zero/1.0/
 
 ## Assets
 
@@ -30,4 +30,4 @@ Every asset in `fixture.pack` (1,267,160 bytes of its 1,500,000-byte budget) and
 | texture 4 (layer32.png) | texture | Quaternius Stylized Nature MegaKit |
 | texture 5 (layer39.jpg) | texture | Quaternius Stylized Nature MegaKit |
 | texture 6 (layer35.png) | texture | Quaternius Stylized Nature MegaKit |
-| chime | sound | Aethyr engine sounds (synthesized) |
+| chime | sound | The Metaverse Engine sounds (synthesized) |

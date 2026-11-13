@@ -156,7 +156,7 @@ sort is stable, that every list follows the fixed order, that a full list
 keeps its true count, the refusals, and that sampled counts and masses
 match each shape's volume and density.
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 One particle store per scene: position, velocity, mass, a material ID and an
 entity ID, plus solver-specific fields owned by each solver. The sort and

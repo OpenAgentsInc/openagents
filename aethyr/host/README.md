@@ -1,4 +1,4 @@
-# Aethyr host contract v1
+# Metaverse Engine host contract v1
 
 `aethyr-host-v1` is the boundary between a Coax realm and its platform
 effects. WebGPU, Vulkan and Metal execute the same realm, input/session
@@ -295,7 +295,7 @@ retaining an unbounded callback/encoding queue. Current Linux observations
 and remaining integration scope are in [socket-linux.md](socket-linux.md).
 
 `local:/api/room/relay/everglade/local-1` chooses the same Coax room simulation: a browser
-Worker, or Aethyrforge's existing native room process on explicit development
+Worker, or the OpenAgents Metaverse Engine's existing native room process on explicit development
 IPv4 loopback. Ticketless native admission remains the authority in
 `native-local-policy.coax`; the host cannot broaden it.
 The producer's existing reconnect spelling appends exactly `?re=1` to that
@@ -369,7 +369,7 @@ actual complete allocation before reading a row or payload.
 A host never reads that header or table itself (GitHub #13304). The one
 reader is `pack_table` in [`pack-table.coax`](pack-table.coax), with
 `pack_stated` for a loader that holds only a pack's first 12 bytes. That file
-states the layout once; [`pack-table-face.coax`](pack-table-face.coax) is its C face. Aethyrforge's
+states the layout once; [`pack-table-face.coax`](pack-table-face.coax) is its C face. The Metaverse Engine's
 [`aethyr/forge/pack.coax`](../forge/pack.coax) loads it and adds the full
 admission, `pack_read` (order, catalog and licences), and the writer:
 
@@ -714,7 +714,7 @@ compiler/source joins, physical GPU comparisons, audio and native-window
 integration. The earlier November 5 records retain their failures and
 component scopes.
 
-Aethyrforge opens the native Metal world by default and offers one click,
+The Metaverse Engine opens the native Metal world by default and offers one click,
 **Check as Players See It**, to open the same world/build in the web host.
 `--world web` also selects that host. The preview uses the same saved document and room rules;
 no native-only game control, HUD or gameplay is permitted. Setup remains

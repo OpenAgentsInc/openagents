@@ -4,7 +4,7 @@ Status: C1 shell implemented and qualified, revised 2026-10-08. W1 through W11
 are closed. The coast remains split into C1 through C6; C1 reuses the
 shipped water renderer, spectrum, clipmap, shared clock, and spell code.
 
-The coast is a loaded zone where Verse's ocean is the main attraction: a
+The coast is a loaded zone where the OpenAgents Metaverse's ocean is the main attraction: a
 temperate bay with a sand beach and surf, sea cliffs, a harbor with
 rowboats, tide pools, a lighthouse, a reef and a wreck to dive, and islands
 offshore. Every water capability and rule it uses is specified in
@@ -451,7 +451,7 @@ Phones run Medium; a browser runs Medium on WebGPU and Low on WebGL2.
 The coast follows the water system's split between simulated and visual
 state ([The surface model and determinism](water.md#the-surface-model-and-determinism))
 and joins its own NIP-MV world, `verse-coast`, as Everglade joins
-`verse-everglade`. Verse has no authoritative host for a zone world today
+`verse-everglade`. The Metaverse has no authoritative host for a zone world today
 ([Networking](networking.md)), so the coast uses NIP-MV's serverless
 profiles and leaves an authority to a later hosted social profile.
 

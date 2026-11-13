@@ -6,7 +6,7 @@ from it.
 
 ## The world
 
-Planetary Villa is a world on the Verse with game expansions off it. You find it
+Planetary Villa is a world on the OpenAgents Metaverse with game expansions off it. You find it
 as a planet on the galaxy map. Choosing it plays a cinematic of traveling to the
 expansion this session focuses on.
 
@@ -16,7 +16,7 @@ expansion this session focuses on.
   Breath of the Wild*.
 - **Look:** a simple stylized, almost low-poly art style. Everything is lit by
   moonlight, so it's not very bright, with some outlines and garden paths.
-  Drawn in the Verse's flat style since October 30, Kiki's choice over
+  Drawn in the Metaverse's flat style since October 30, Kiki's choice over
   painterly (`docs/verse/art-styles.md`, "Flat").
 - **The moon:** it doesn't move in the sky. Its phase is the real moon's phase
   right now.
@@ -136,10 +136,10 @@ The roadmap is on the project page as tasks, grouped into milestones:
 - the flowers;
 - launch.
 
-Some mechanics need upgrades to the Verse engine. Each of those is a task in
-the Verse project (https://openagents.com/projects/verse, under "What Planetary
+Some mechanics need upgrades to the OpenAgents Metaverse Engine. Each of those is a task in
+the Metaverse project (https://openagents.com/projects/verse, under "What Planetary
 Villa needs from the engine"). The two tasks link to each other, and the
-Planetary Villa task waits on the Verse one.
+Planetary Villa task waits on the Metaverse one.
 
 ## Open questions for Kiki
 

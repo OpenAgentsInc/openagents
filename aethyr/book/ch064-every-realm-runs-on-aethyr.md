@@ -1,4 +1,4 @@
-# 64. Every realm runs on Aethyr
+# 64. Every realm runs on the Metaverse Engine
 
 > **Status: partly implemented.** Engine-core task: `ec-migrate` (#12609,
 > #12650). Every realm with fixed steps steps them on
@@ -20,7 +20,7 @@
 
 The book ends where the engine-core milestone does: the Grid, made realms,
 Everglade, Dead Gears, Ice Cream Man, Hecate's Cemetery, Fairy Forest and the
-space games all run on Aethyr's shared loop, spaces, input, queries and
+space games all run on the OpenAgents Metaverse Engine's shared loop, spaces, input, queries and
 camera, and their private copies are deleted. A realm is then its content,
 its rules and its look, and nothing else.
 
@@ -39,7 +39,7 @@ realm's own checks, its golden and the 60 FPS rule passing:
 
 1. Find the realm's private loop, camera follow, input path or ground
    logic.
-2. Replace it with the Aethyr module (chapters 1, 2, 4, 6, 7, 9 and 10),
+2. Replace it with the Metaverse Engine module (chapters 1, 2, 4, 6, 7, 9 and 10),
    keeping the realm's tuning as data.
 3. Check that it behaves the same at every frame rate, step by step. Where
    the old code was frame-rate dependent, the difference is the fix, and it

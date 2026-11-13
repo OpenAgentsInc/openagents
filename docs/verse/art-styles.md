@@ -1,11 +1,11 @@
-# Verse art styles
+# Metaverse art styles
 
 Status: specification, October 29. Nothing here is built yet; the work is the
-Verse project's "Art styles" initiative (`apps/openagents-web/projects/verse/work/art-styles.json`)
+OpenAgents Metaverse project's "Art styles" initiative (`apps/openagents-web/projects/verse/work/art-styles.json`)
 and Planetary Villa's "Hecate's Cemetery in painterly" milestone (closed: Hecate's
 Cemetery moved to flat).
 
-The owner's rule: every zone on the Verse is drawn in one of a few art
+The owner's rule: every zone on the Metaverse is drawn in one of a few art
 styles. For now there are five: **lowpoly**, **painterly**, **photoreal**
 (as close to photorealistic as we can get), **flat** (flat-shaded low
 poly in a realm's own few colours; built October 30, see [Flat](#flat)) and
@@ -1070,4 +1070,4 @@ saturation, grey.
    pack check.
 4. The phone tier and the style check in the release walk.
 5. Each realm adopts its style as the pieces land: Everglade painterly
-   (Verse project); Hecate's Cemetery and Fairy Forest flat (October 30).
+   (Metaverse project); Hecate's Cemetery and Fairy Forest flat (October 30).

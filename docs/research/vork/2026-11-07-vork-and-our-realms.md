@@ -358,4 +358,4 @@ Before comparing anything against vork:
 
 vork says all of this itself, which is to its credit. Chapter 37's rule
 (compile and startup count, same scene and same hardware or no comparison)
-is the standard any Aethyr film benchmark should meet.
+is the standard any Metaverse Engine film benchmark should meet.

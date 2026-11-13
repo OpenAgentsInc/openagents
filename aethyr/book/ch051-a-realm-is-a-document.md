@@ -3,14 +3,14 @@
 > **Status: partly implemented.** A made realm is a versioned JSON document
 > the server keeps (`aethyr.realm`, version 1, with a revision and a SHA-256
 > hash), and [aethyr/forge/doc.coax](../forge/doc.coax) reads it into
-> Aethyrforge's edit model: moves, turns, sizes and removals as entity
+> The OpenAgents Metaverse Engine's edit model: moves, turns, sizes and removals as entity
 > overrides, and the setup, tools, placed things, lore and quests as named
 > slots. The reader knows every version the server has written, moves an
 > older one forward, and refuses a newer, malformed or out-of-bounds
 > document whole, so a client keeps the last document it could read. The
 > example below runs natively in debug and release. Not built yet: the
 > catalogue as one Coax table that generates the SQL catalogue and the
-> planner's schema, a pure `layout` in Aethyr (the page still lays a realm
+> planner's schema, a pure `layout` in the Metaverse Engine (the page still lays a realm
 > out from its slug's seed in `myrealm.coax`), and `want` lines in the
 > document. See [Still to do](#still-to-do).
 
@@ -18,7 +18,7 @@ A realm someone makes is not code. It is a small record: the camera, the art
 style, the ground, the time of day, a list of features with bounded values,
 the tools visitors get and the things placed since. Everything a visitor sees
 must follow from that record and a seed, the same on every device. This part
-of the book is Aethyrforge, the tools that make and change such records; this
+of the book is the Metaverse Engine, the tools that make and change such records; this
 chapter defines the record and the reader every client uses.
 
 ## What this chapter teaches

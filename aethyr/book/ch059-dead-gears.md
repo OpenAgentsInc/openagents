@@ -4,7 +4,7 @@
 > private code at `/realms/dead-gears`: the rules in
 > [verse/deadgears/](../../verse/deadgears/rules.coax) and the page
 > [deadgears.coax](../../apps/openagents-web/deadgears.coax). This chapter
-> plans rebuilding it only from Aethyr's earlier chapters. Nothing here runs
+> plans rebuilding it only from the OpenAgents Metaverse Engine's earlier chapters. Nothing here runs
 > yet.
 
 Dead Gears is a ship survival game ported from aethyr-demo's
@@ -12,7 +12,7 @@ Dead Gears is a ship survival game ported from aethyr-demo's
 creatures, repair the reactor and keep the lamps lit as the deck's hour moves
 toward dusk. It is the realm with the most things moving at once: 200
 creatures in 2 ms a frame. Its small entity system was written for it and is
-where Aethyr's entities chapter comes from.
+where the Metaverse Engine's entities chapter comes from.
 
 ## What this chapter teaches
 
@@ -26,7 +26,7 @@ where Aethyr's entities chapter comes from.
 - **Entities** ([chapter 6](ch006-entities-are-born-and-die.md)):
   `ecs.coax`'s handles (a 20-bit slot and a 12-bit generation), deferred
   destroys flushed after the systems, component bits, ordered iteration.
-  These become Aethyr's entities, and Dead Gears keeps only its components.
+  These become the Metaverse Engine's entities, and Dead Gears keeps only its components.
 - **Time** ([chapter 1](ch001-a-frame-has-a-fixed-step.md)): `ecs_clock_frame`'s
   fixed 1/60 s steps with a cap for a stalled frame become the one loop.
 - **Collision and movement** ([chapters 7](ch007-ask-the-world-where-things-are.md),
@@ -57,7 +57,7 @@ deadgears_step :: (w: *DeadGears, a: Actions) {
 
 - [verse/deadgears/ecs.coax](../../verse/deadgears/ecs.coax): component
   masks over `aethyr/core/entity.coax`'s `EntityStore` (spawns join at the step's
-  flush, as everywhere in Aethyr), `ecs_clock_frame`, per-system `Stats`.
+  flush, as everywhere in the Metaverse Engine), `ecs_clock_frame`, per-system `Stats`.
   A rules check drives the same input through 30, 60, 120 and 144 FPS and
   uneven frames and finds the same fight at every fixed step.
 - [arena.coax](../../verse/deadgears/arena.coax) (the deck, swept spheres,
@@ -76,7 +76,7 @@ deadgears_step :: (w: *DeadGears, a: Actions) {
 
 ## What it builds
 
-- `rules.coax` and `arena.coax` keep the game, over Aethyr's entities
+- `rules.coax` and `arena.coax` keep the game, over the Metaverse Engine's entities
   (done), queries and loop.
 
 ## Acceptance checks and oracles

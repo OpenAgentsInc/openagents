@@ -1,6 +1,6 @@
 # NPC navigation and steering
 
-This page describes how a non-player character (NPC) moves after a target in Aethyr: a guard, a
+This page describes how a non-player character (NPC) moves after a target in the OpenAgents Metaverse Engine: a guard, a
 monster or a companion. The service lives in the engine, in
 [`aethyr/ai/steer.coax`](../../aethyr/ai/steer.coax). Zones wire it in; they don't write their own
 chase code. Issue: [#13074](https://github.com/OpenAgentsInc/openagents/issues/13074).

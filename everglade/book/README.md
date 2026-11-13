@@ -11,7 +11,7 @@ planned.
 - **What you build.** An MMORPG you play in a browser: a forest glade, a
   path, other players, SRD rules and action combat.
 - **What you need.** The [Coax book](../../coax/book/README.md)'s Parts
-  I–III. The [Aethyr book](../../aethyr/book/README.md)'s Parts I–III help,
+  I–III. The [Metaverse Engine book](../../aethyr/book/README.md)'s Parts I–III help,
   and each chapter links to the engine chapter it uses.
 - **A short path.** Chapters 1, 3, 4, 8, 12, 14 and 18 take you from one
   reference picture to a shared world with rules, in about two hours of
@@ -34,11 +34,11 @@ time, with these tools:
 
 - [Coax](../../coax/book/README.md), the language. You write everything in it:
   the land, the rules, the network code and the shaders it generates.
-- [Aethyr](../../aethyr/book/README.md), the world engine. Everglade uses its
+- [the Metaverse Engine](../../aethyr/book/README.md), the world engine. Everglade uses its
   frame loop, terrain, renderer, lighting, physics, animation and room server.
-- The Verse, where Everglade is one realm among many.
+- The OpenAgents Metaverse, where Everglade is one realm among many.
 
-The Aethyr book builds the engine. This book builds a game on it. Each chapter
+The Metaverse Engine book builds the engine. This book builds a game on it. Each chapter
 starts from a question a player asks, such as "Can I stand on that rock?" or
 "Why did the guard hit back?" It ends with the code that answers the question
 and the checks that keep the answer true.
@@ -73,7 +73,7 @@ and the checks that keep each rule true.
 
 ## How you build: text first, no editor
 
-Most people will make realms with Aethyrforge's tools and the Verse's maker
+Most people will make realms with the OpenAgents Metaverse Engine's tools and the Metaverse's maker
 flows. In this book, you build Everglade without them. Every tree, path, rule
 and light is a Coax function in a text file. You build it from the command line
 and verify it in a headless browser. You don't use a level editor or any other
@@ -87,7 +87,7 @@ The book works this way for two reasons:
   their guide.
 
 When a chapter does something a maker tool will do later, it links to that
-tool's chapter in the Aethyr book.
+tool's chapter in the Metaverse Engine book.
 
 ## Where Everglade came from
 
@@ -217,9 +217,9 @@ builds what it uses.
 
 | Everglade | Uses | From |
 | --- | --- | --- |
-| Parts I–III: the land, the light, movement | The frame loop, terrain, collision, the renderer and budgets | [Aethyr](../../aethyr/book/README.md) Parts I–III |
-| Part IV: other players | The room server, the shared step, signed seats, prediction and interest | Aethyr Part XII, chapters [86](../../aethyr/book/ch086-one-server-owns-the-scene.md) to [98](../../aethyr/book/ch098-versions-deploys-and-reconnect.md) |
-| Parts V and VII: rules and action combat | One pipeline for every action, and one bearing from a body's conditions | [Aethyr chapter 102](../../aethyr/book/ch102-ask-act-present.md) |
+| Parts I–III: the land, the light, movement | The frame loop, terrain, collision, the renderer and budgets | [the Metaverse Engine](../../aethyr/book/README.md) Parts I–III |
+| Part IV: other players | The room server, the shared step, signed seats, prediction and interest | Metaverse Engine Part XII, chapters [86](../../aethyr/book/ch086-one-server-owns-the-scene.md) to [98](../../aethyr/book/ch098-versions-deploys-and-reconnect.md) |
+| Parts V and VII: rules and action combat | One pipeline for every action, and one bearing from a body's conditions | [Metaverse Engine chapter 102](../../aethyr/book/ch102-ask-act-present.md) |
 | Part VI: the guard | A decision that arrives while play continues, and a guard that asks a Pylon | [Psionic chapters 28](../../psionic/book/ch028-a-decision-arrives-while-play-continues.md) to [32](../../psionic/book/ch032-a-guard-gives-directions.md) |
 | Signing in and your player key | Keys, signed events and HTTP auth | [Nostr chapters 21](../../nostr/book/ch021-events-ids-and-signatures.md) and [49](../../nostr/book/ch049-http-auth.md) |
 | Tips to a realm's maker | Lightning zaps and invoices | [Nostr chapter 71](../../nostr/book/ch071-lightning-zaps-and-goals.md), [Bitcoin chapter 114](../../bitcoin/book/ch114-invoices.md) |
@@ -244,7 +244,7 @@ not affiliated with or endorsed by Wizards of the Coast.
 
 ## How a chapter works
 
-Chapters follow the Aethyr book's rules:
+Chapters follow the Metaverse Engine book's rules:
 
 - A chapter starts as a design draft with a status marker. It becomes a
   teaching chapter when its code lands.
@@ -293,7 +293,7 @@ everglade/
 
 The line between the engine and the game:
 
-- **Stays in Aethyr:** anything another realm can reuse, such as
+- **Stays in the Metaverse Engine:** anything another realm can reuse, such as
   the bow system, NPC patrol and aggro, layered animation, the mouse-look
   camera, collision and terrain tiles.
 - **The SRD rules are neither:** they are their own context at root

@@ -4,7 +4,7 @@
 and replays its accepted forces. It is a small consumer of the requirements in
 [ROADMAP R16](../../../coax/ROADMAP.md#19-r16--deterministic-replay-and-snapshots),
 not completion of R13 typed clocks, R15 deterministic jobs/math or R16 robot
-and Verse replay. Chapter 109's solver and chapter 111's inverse-physics code and
+and Metaverse replay. Chapter 109's solver and chapter 111's inverse-physics code and
 records are unchanged.
 
 ```shell
@@ -64,7 +64,7 @@ those inputs or restore an external producer's generator/cursor.
 
 A snapshot is meaningful only at the declared completed-step boundary. There
 is no representation for an interrupted RK stage. Pure value updates allow
-rollback here; committed external effects, robot warmstarts, Verse resources,
+rollback here; committed external effects, robot warmstarts, Metaverse resources,
 policy caches, model RNG and transactional migration are separate work.
 
 The fixture captures after acceptance events at a logical boundary and before
@@ -187,7 +187,7 @@ The full evidence, real build hashes, FP context, trace/snapshot hashes and
 limits are in [the qualification receipt](../../fixtures/physics/oscillator-replay-qualification.json).
 No passing unchanged 109/111, model, mutation or native gate was repeated.
 
-R16 still needs the complete robot and Verse consumers, stable entity/state
+R16 still needs the complete robot and Metaverse consumers, stable entity/state
 identities, recorded typed clocks, qualified jobs/math, model/controller state,
 external effect commits and transactional rollback. This primitive supplies
 a small owned-solver checkpoint with a deliberately inspectable boundary.

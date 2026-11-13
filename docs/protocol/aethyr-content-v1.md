@@ -1,14 +1,14 @@
 # Content tables v1 (`aethyr.content.v1`)
 
 A game's data as versioned tables of rows, in one text document. A room loads
-the document at start, and Aethyrforge edits it. Tracked in GitHub #13294
+the document at start, and the OpenAgents Metaverse Engine edits it. Tracked in GitHub #13294
 (AAA P4.5).
 
 - Schema and fixtures: [`proto/aethyr/content-v1.json`](../../proto/aethyr/content-v1.json)
 - Codec and validator: `aethyr/content/tables.coax` (`#authority`)
 - Everglade's tables: `everglade/content/everglade.content`, bound by
   `everglade/model/content.coax` (`#authority`)
-- Editor: `aethyr/forge/content-edit.coax`, on Aethyrforge's edit log
+- Editor: `aethyr/forge/content-edit.coax`, on the Metaverse Engine's edit log
 
 ## The document
 
@@ -97,7 +97,7 @@ than the record holds (255).
 
 ## Edit the tables
 
-Each edit is one step on Aethyrforge's edit log, with undo and redo. The file is
+Each edit is one step on the Metaverse Engine's edit log, with undo and redo. The file is
 written at its next revision only when every table still holds its rules.
 
 ```sh

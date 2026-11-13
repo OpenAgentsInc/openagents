@@ -1,6 +1,6 @@
-# Sources of Aethyr's sounds
+# Sources of the Metaverse Engine's sounds
 
-Every sound Aethyr plays in a realm is listed here with its source and licence.
+Every sound the OpenAgents Metaverse Engine plays in a realm is listed here with its source and licence.
 Add a line when you add a sound.
 
 ## Everglade's effects (GitHub #12832)
@@ -82,7 +82,7 @@ COAX=coax/bin/coax coax/web/tool.sh aethyr/audio/sfx-tool.coax judge
 
 ## Everglade's synthesized effects (GitHub #12751)
 
-Source: synthesized by Aethyr from the recipes in
+Source: synthesized by the Metaverse Engine from the recipes in
 [`sfx.coax`](sfx.coax) (`sfx_recipe`), with the oscillators, noise, envelopes
 and filters of [`synth.coax`](synth.coax). No recording or sample library is
 used. The page renders them when its audio starts, so none is downloaded.
@@ -111,7 +111,7 @@ at 2.7 kHz, with none of a real step's 100 to 800 Hz body). Add `?sfx=synth` to 
 
 ## Everglade Experimental's synthesized effects
 
-Source: synthesized by Aethyr from the recipes in
+Source: synthesized by the Metaverse Engine from the recipes in
 [`experimental-sfx.coax`](experimental-sfx.coax) (`xsfx_recipe`), in the same layer format as
 [`sfx.coax`](sfx.coax) and with its renderer's level. Experimental plays them for the sounds
 Everglade's bank has no fitting file for; everything else it plays is the bank's picks above.
@@ -136,4 +136,4 @@ Licence: CC0 1.0 (made by OpenAgents for this repository).
 
 - The haunted house's `haunt-*.mp3` sounds: CC0, listed in
   `apps/openagents-ios/OpenAgents/Resources/Haunt-NOTICE.txt`.
-- Aethyr's `promo-epic` score ([`epic.coax`](epic.coax)): synthesized, CC0.
+- The Metaverse Engine's `promo-epic` score ([`epic.coax`](epic.coax)): synthesized, CC0.

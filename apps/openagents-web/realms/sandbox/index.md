@@ -1,6 +1,6 @@
 # Sandbox
 
-Open ground in the Verse that everyone builds on together, at https://openagents.com/worlds/sandbox. There is one Sandbox, shared: what anyone builds there is published, and everyone who comes sees it.
+Open ground in the OpenAgents Metaverse that everyone builds on together, at https://openagents.com/worlds/sandbox. There is one Sandbox, shared: what anyone builds there is published, and everyone who comes sees it.
 
 ## What is here
 

@@ -34,7 +34,7 @@ today and the folder it owns as the layout settles (#13270, DDD.6).
 | **Projects** | `coax/web/api/` (`private.c`, `drops.c`) | `coax/web/api/private.c`, `coax/web/api/drops.c`, SQL `projects.*`, `drops.*` | Supporting | Identity, Payments, `coax/lib/` | Private project pages and drops. |
 | **Nostr** | `nostr/`, `coax/lib/nostr/` | `coax/lib/nostr/`, `nostr/` | Generic | `coax/lib/` (crypto, net, TLS) | External protocol implementation and OpenAgents NIPs (`nostr/nips/`). |
 | **Psionic and inference** | `psionic/`, `coax/lib/systemone/`, `coax/web/api/inference.c` | Same, plus SQL `inference.*`, `mesh.*` | Core (separate product) | `coax/lib/`, Nostr (Pylon announcements), Protocol (`proto/`) | Tensors, decision models, `/v1/systemone`, Pylon and Mesh serving (`psionic/`). |
-| **Engine (Aethyr)** | `aethyr/` | `aethyr/` | Supporting kernel | `coax/lib/` only (strictly downward; zero loads into `verse/`, `everglade/`, `apps/` or `coax/web/` once #13270 burns down `aethyr/layer-allowlist.txt`) | Frame loop, ECS world, rendering, physics and deterministic replay shared by every realm. |
+| **Engine (the OpenAgents Metaverse Engine)** | `aethyr/` | `aethyr/` | Supporting kernel | `coax/lib/` only (strictly downward; zero loads into `verse/`, `everglade/`, `apps/` or `coax/web/` once #13270 burns down `aethyr/layer-allowlist.txt`) | Frame loop, ECS world, rendering, physics and deterministic replay shared by every realm. |
 | **Splice** | `splice/` (moved out of `apps/openagents-web/splice*`, #13404) | `splice/` (the game, its page frame, shaders, content tables and edit layer) | Supporting (a world on the engine) | Engine, Realm authoring (`aethyr/forge/edit.coax`, the edit log its layer is applied from), `coax/lib/` | An unlisted Metaverse Engine game at `/worlds/splice` and the first world with an edit layer: placed pieces are content rows, World entities and typed edits, checked so the run still plays. |
 | **Realm import tools** | `verse/tools/` | `verse/tools/` (the Valley, Kokiri, Slay and Ocarina importers and packers, moved out of `aethyr/tools/`, #13270) | Supporting | Engine, Realm authoring (`aethyr/forge/pack.coax`), `coax/lib/` | Offline tools that turn a realm's source assets into its packs. They own the `valley.*` and `kokiri.*` record families (`proto/registry.json`, owner `realm-tools`). Never shipped or loaded by a page. |
 | **Protocol (published language)** | `proto/` | `proto/` (`proto/registry.json`, `.proto` schemas, wire profiles) | Supporting (published language) | None (schemas and catalogue; codecs live in their owning contexts, DDD.5) | Canonical protobuf schemas and wire shape registry ([`proto/README.md`](../../proto/README.md)), gated by `coax/web/tool.sh wire-check`. |
@@ -43,7 +43,7 @@ today and the folder it owns as the layout settles (#13270, DDD.6).
 
 Three contexts are the product's core for the game and agent lines today:
 **Combat rules**, **Characters and progression**, and **Coder** (with
-**Psionic** as a separate core product line). **Engine (Aethyr)** is a
+**Psionic** as a separate core product line). **Engine (the Metaverse Engine)** is a
 supporting shared kernel, not the game's domain model.
 
 ## Context map
@@ -62,7 +62,7 @@ flowchart LR
     QUEST[Quests]
   end
   ROOM[Room session and replication]
-  ENGINE[Aethyr engine]
+  ENGINE[Metaverse Engine]
   AUTHOR[Realm authoring]
   AUTH[Identity and auth]
   PAY[Payments and wallet]
@@ -118,7 +118,7 @@ DDD relationship kinds used here:
 | **Characters <- Quests** | Quest stages live in the character record; a room advances them from its own events (`coax/web/room/room-items.coax`) | **Customer / supplier** | Server-owned quests (#13292) reference `CharacterId` and content IDs (#13286). |
 | **Identity and auth -> Game (Characters)** | `auth.accounts.verse_account` maps login accounts to `verse.accounts.id` (`0142_auth_accounts.sql`) | **Anticorruption layer (ACL)** (keep) | Keeps login authenticators and sessions (`auth.*`) decoupled from game accounts (`verse.*`). |
 | **Identity and auth -> Room session** | Seat ticket proves seat identity, while the client hello still supplies class and level | **Anticorruption layer (ACL)** | The signed seat ticket (#13248, #13259) carries identity plus the character context's class and level; the room never trusts the hello for rules facts. |
-| **Engine (Aethyr) -> World, Room and apps** | Shared code, but with 57 `aethyr-up` upward loads in `aethyr/layer-allowlist.txt` into `apps/openagents-web/` and `verse/` | **Shared kernel** (strictly downward) | `coax/web/tool.sh layer-check` (#13264) blocks new upward loads; #13270 removes the remaining allowlisted ones. |
+| **Engine (the Metaverse Engine) -> World, Room and apps** | Shared code, but with 57 `aethyr-up` upward loads in `aethyr/layer-allowlist.txt` into `apps/openagents-web/` and `verse/` | **Shared kernel** (strictly downward) | `coax/web/tool.sh layer-check` (#13264) blocks new upward loads; #13270 removes the remaining allowlisted ones. |
 | **Realm authoring -> World and zones** | Versioned realm document read by `aethyr/forge/doc.coax` and written through `aethyr/forge/edit.coax` (`realms.c` still holds separate SQL rules) | **Published language** | The versioned realm document (#13249) is the contract between authoring tools and world loaders. |
 | **Payments and wallet -> Nostr and callers** | Wallet logic in `pay/wallet.coax`, maker pay in `pay/makerpay-policy.coax`, LNURL in `coax/lib/lnaddr/` | **Open host service + published language** | One payments context folder, `pay/` (DDD.9, #13320), exposing an `#authority` policy API internally and LNURL / Nostr zaps externally. |
 | **Coder <- Psionic and third-party agents** | `proto/registry.json` holds 12 `external` rows (Claude Code, Codex, Cursor, ACP, MCP, LNURL, Nostr NIPs) alongside `coax/lib/gateway/` and `psionic.*` | **Anticorruption layer (ACL)** (keep and name) | Each `external` row's codec folder is the sole parser for that third-party format and outputs our own record types. |

@@ -17,7 +17,7 @@ in it shows you at a glance.
 Today's tree has the start of this. Golems are agents working on issues, each
 at a model tier chosen for its task, and the Golems board on the Mac shows
 each one with its latest message. The audit's last step is to take that into
-the Verse: agents you hire appear in the world, and their work shows live.
+the OpenAgents Metaverse: agents you hire appear in the world, and their work shows live.
 
 An agent in the world is a view of records this book already has. Its body
 stands for a session. What it is doing comes from its trajectory. Its state is
@@ -66,7 +66,7 @@ Planned paths: `openagents/agent/surfaces/golems.coax`.
 
 - **Episodes:**
   - [Episode 249, *Subagent UI Design*](../../docs/transcripts/249.md): named workers and causal cards
-  - [Episode 284, *Gamifying Coder*](../../docs/transcripts/284.md): roles, classes and a productive Verse
+  - [Episode 284, *Gamifying Coder*](../../docs/transcripts/284.md): roles, classes and a productive the Metaverse
   - [Episode 290, *Enter the Verse*](../../docs/transcripts/290.md): 0:30, commanding agents in a world
   - [Episode 116, *3D Multiplayer*](../../docs/transcripts/116.md): inspectable collaboration in 3D
   - [Episode 208, *Autopilot HUD*](../../docs/transcripts/208.md): an agent HUD

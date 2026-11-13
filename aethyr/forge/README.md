@@ -1,6 +1,6 @@
 # aethyr/forge
 
-Aethyrforge, the realm creator: the engine-side code that edits a realm document.
+The Metaverse Engine's realm editor: the engine-side code that edits a realm document.
 The product spec, what is on screen and what to build, is
 [docs/verse/aethyrforge.md](../../docs/verse/aethyrforge.md).
 

@@ -1,4 +1,4 @@
-# Coax Aethyr lighting implementation plan
+# Coax Metaverse Engine lighting implementation plan
 
 Date: 2026-11-08. Source baseline: `7fab57cd75`. Revised 2026-11-08 (owner
 direction: the Character Create glade is the look).
@@ -11,7 +11,7 @@ and the exit (#13067). Primitives: done. Everglade adoption: done. Browser quali
 Native qualification: not qualified (no native consumer reads the resolved record yet). Phase 2 has
 not started.
 
-Build one shared lighting system for Coax Aethyr, with Everglade as its first
+Build one shared lighting system for Coax the OpenAgents Metaverse Engine, with Everglade as its first
 complete production consumer. It must support authored environmental character,
 readable interiors, moving characters, many local lights, stable shadows, layered
 atmosphere, water and effects, and controlled final color. Shared code that the
@@ -42,7 +42,7 @@ What the glade is today, and what becomes the painterly default:
 | Octahedral normals with room for an indirect-light weight; normal/depth contact shading | `cg_normal_pack`, the glade's contact pass | Default contact/AO path (Phase 5) |
 | Painterly bands, rim, dab, cool shadow band | `verse/style-preset.coax` (`painterly_key`, `shadow_cool` 1.5) | Kept as the painterly material response; the glade defaults sit under it |
 
-Since #13060 these functions and numbers live in Aethyr: the numbers once, as
+Since #13060 these functions and numbers live in the Metaverse Engine: the numbers once, as
 `aethyr/world/environment.coax`'s `ENV_GLADE_*` (`env_glade_profile` is built from them), their
 evaluation in `aethyr/render/painterly.coax`, the transfer helpers in `aethyr/render/transfer.coax`,
 the normal packing and contact taps in `aethyr/render/contact-shade.coax`, and the exposed film
@@ -70,7 +70,7 @@ Rules for the default:
   the new look.
 - **One default, many consumers.** The glade's values live once in a shared
   painterly default profile. Character Create, Everglade II, Experimental,
-  `oneshot-glade`, made realms (`myrealm`, Aethyrforge's painterly default) and
+  `oneshot-glade`, made realms (`myrealm`, the Metaverse Engine's painterly default) and
   the v1 Everglade adapter all read it. No copy of the numbers in a realm.
 - **Other times and places derive from it.** Dusk, night, deep canopy, interiors
   and river mist are authored as bounded deltas on the glade profile in the same
@@ -164,7 +164,7 @@ environment resolver for key, ambient, sky, haze, cloud shadow and presentation.
 Character Create looks the same. This is the first delivery.
 
 0. Lift the glade first. Move `character-glade-light.coax`'s and
-   `character-glade.coax`'s lighting numbers and functions into shared Aethyr
+   `character-glade.coax`'s lighting numbers and functions into shared Metaverse Engine
    owners: the profile in `aethyr/world/environment.coax`, the evaluation in
    `aethyr/render/environment.coax`, and the presentation in `post.coax` or
    `filmic.coax`. Then make `verse/style-preset.coax`'s painterly preset point at
@@ -230,7 +230,7 @@ resolved record yet, and Phase 1 does not change them):
 | The fixture (`fixture.coax`, `gpu/fixture.coax`) | `verse/style.coax` presets at its own clock (`fixture.wgsl`, 71 vec4s) | the style-preset compatibility profile, once its shader reads the record |
 | One-shot's Table Display glade (`oneshot.coax`, `oneshot-table.coax`) | its own shader constants (`oneshot.wgsl`, 442 vec4s) | the painterly default, as 5E Lab |
 | Made realms that pick low poly or flat, or author a time of day or mist (`myrealm.coax`) | `verse_style_at` at the spec's time | a made realm's authored profile (painterly with nothing authored already gets the glade, #13066) |
-| The Aethyr examples (`aethyr/examples/light-a-frame.coax`, `shade-a-material.coax`) and `verse/experimental-terrain.coax` | their own constants or the style presets | book chapters: they read the record when the light chapter does |
+| The Metaverse Engine examples (`aethyr/examples/light-a-frame.coax`, `shade-a-material.coax`) and `verse/experimental-terrain.coax` | their own constants or the style presets | book chapters: they read the record when the light chapter does |
 
 ## Phase 2 — Shared surface inputs and a consistent linear pipeline
 

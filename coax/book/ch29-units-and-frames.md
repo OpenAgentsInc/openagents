@@ -136,7 +136,7 @@ with the message `affine operation is not admitted`.
 - `.x`, `.y` and `.z` are raw scalars. Assigning them asserts the unit and
   frame. The compiler doesn't check where the number came from.
 - Metal, CUDA, SPIR-V and WGSL output refuse spatial values (`E0836`).
-- The first consumer is the Verse space camera, `aethyr/cam/spacecam.coax`. Its
+- The first consumer is the Metaverse space camera, `aethyr/cam/spacecam.coax`. Its
   world point and floating origin are `f64` points, and the published camera
   signatures keep their raw layouts.
 
@@ -205,7 +205,7 @@ bad := apply_position(drum_to_ship, state_local.velocity); // refused
 
 The roadmap names three consumers. Their adoption today:
 
-- One Verse camera and world transform path. The space camera,
+- One Metaverse camera and world transform path. The space camera,
   `aethyr/cam/spacecam.coax`, uses `f64` points for its world point and floating
   origin. The rest of the camera transform is untyped.
 - The joint and pose values of the simulated robot in
@@ -241,7 +241,7 @@ for byte where no conversion is written.
 - Roadmap R4 (type parameters, [chapter 8](ch08-generics.md)) and R5
   (annotations and layout reflection, [chapter 13](ch13-data-layout.md)).
 - R11 effect summaries, for user operator overloads.
-- Used by Aethyr chapters
+- Used by Metaverse Engine chapters
   [2](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch002-spaces-and-units.md),
   [39](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch039-ephemerides-time-scales-and-frames.md)
   and [44](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch044-inside-a-turning-accelerating-ship.md).

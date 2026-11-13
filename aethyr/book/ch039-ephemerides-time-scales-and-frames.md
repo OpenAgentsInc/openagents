@@ -71,7 +71,7 @@ named query, so a caller cannot mix a geometric state with an apparent one.
 
 ## What runs today
 
-Time scales are Coax's, not Aethyr's: [`coax/lib/clock.coax`](../../coax/lib/clock.coax)
+Time scales are Coax's, not the OpenAgents Metaverse Engine's: [`coax/lib/clock.coax`](../../coax/lib/clock.coax)
 (Coax [chapter 30](../../coax/book/ch30-clocks-and-ticks.md))
 gives each scale its own instant type, `Instant(UTC)`, `Instant(TAI)`,
 `Instant(TT)` and `Instant(TDB)`, with `utc_to_tai` through a pinned
@@ -233,7 +233,7 @@ catch the missing `ω × r` term.
 
 ## Dependencies
 
-Aethyr [chapter 1](ch001-a-frame-has-a-fixed-step.md)'s clock and
+The Metaverse Engine [chapter 1](ch001-a-frame-has-a-fixed-step.md)'s clock and
 [chapter 2](ch002-spaces-and-units.md)'s typed spaces and units. From Coax:
 R12 units and frames, R13 typed clocks. It can start on plain f64 fields
 and move onto those forms as they ship.

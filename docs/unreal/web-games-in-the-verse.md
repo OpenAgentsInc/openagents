@@ -1,13 +1,13 @@
-# Web-built Unreal games in the Verse
+# Web-built Unreal games in the Metaverse
 
 Written 2026-11-11. This doc is a workflow and a plan. Nothing in it has been
 built yet. It is based on the UE 5.9 source (`Engine/Platforms/Wasm`, read
-only), the DesertBlow project and its build logs, and our own Verse code. The
+only), the DesertBlow project and its build logs, and our own Metaverse code. The
 proof-of-concept tasks in section 9 have not been filed as issues.
 
-Unreal games come into the Verse as **guest content**. They don't replace
-Aethyr, Coax or our renderer, and they never carry Draconia or any other
-MetaHuman. Our own worlds stay Verse realms.
+Unreal games come into the OpenAgents Metaverse as **guest content**. They don't replace
+the OpenAgents Metaverse Engine, Coax or our renderer, and they never carry Draconia or any other
+MetaHuman. Our own worlds stay Metaverse realms.
 
 ## Summary
 
@@ -54,7 +54,7 @@ MetaHuman. Our own worlds stay Verse realms.
 
 ## 1. What it means
 
-A **web-built Unreal game in the Verse** is a UE 5.9 project, packaged for the
+A **web-built Unreal game in the Metaverse** is a UE 5.9 project, packaged for the
 `Wasm` platform, that we host and that players reach the way they reach any
 world:
 
@@ -66,9 +66,9 @@ world:
 It runs on the web first. It runs in our apps only where their web view can
 run it (section 5).
 
-### How it differs from an Aethyr realm
+### How it differs from a Metaverse Engine realm
 
-| | Aethyr realm ([realm-host.md](../verse/realm-host.md)) | Unreal guest game |
+| | Metaverse Engine realm ([realm-host.md](../verse/realm-host.md)) | Unreal guest game |
 |---|---|---|
 | Code | Coax compiled to a small wasm module per realm, in our repo | The creator's C++ and Blueprints, compiled by UBT and emscripten 6.0.10, outside our repo |
 | Size | The fixture is 55 KB; packs have budgets of a few MB | About 70 MB on the first visit (DesertBlow, Development) |
@@ -88,10 +88,10 @@ run it (section 5).
 - You can accept a download of tens of MB, the mobile renderer, and no phone
   support for now.
 
-Choose an Aethyr realm when the world must open on a phone over a slow line,
+Choose a Metaverse Engine realm when the world must open on a phone over a slow line,
 live in our rooms with Everglade's players, run natively in our apps, or be
 built by our agents in Coax. That's every first-party world. Draconia and every MetaHuman
-scene render in the Verse, never in Unreal
+scene render in the Metaverse, never in Unreal
 ([metahuman-support.md](../verse/metahuman-support.md)).
 
 ## 2. The creator's workflow
@@ -209,7 +209,7 @@ A boot passes when the console prints `UE_RUN BOOT ready <ms>` and
 `webrun.py` runs Chrome headless before you use it. If it doesn't, use
 `shot.ts`. `file://` never works.
 
-### 2.5 Add a Verse manifest
+### 2.5 Add a Metaverse manifest
 
 Put `verse.json` next to the `.uproject`. It travels with every submission.
 
@@ -475,7 +475,7 @@ all guest budgets counts against the GCP cap in the weekly spend audit.
   the visitor's CPU is pulled, and its account loses the right to submit
   games.
 
-## 4. The Verse integration contract
+## 4. The Metaverse integration contract
 
 The bridge is one JavaScript file, `verse-bridge.js`, staged into the game
 through Epic's template override (`<Project>/Build/Wasm/Template/`). We
@@ -553,14 +553,14 @@ An Everglade character can appear in a UE game:
 - **Leaving the game.** `verse.gate("the-grid")` or `gate("<another slug>")`
   navigates the tab. The destination must be a listed world or one that the
   manifest names. Gates out of a game need no approval.
-- **Entering the game.** A gate into a game sits in an Aethyr world as a
+- **Entering the game.** A gate into a game sits in a Metaverse Engine world as a
   portal that opens `/worlds/<slug>`. Its owner must agree. The Grid's gates
   are ours, and we place them when we list the game.
 
 ### 4.5 Presence and friends
 
 `presence()` posts the player's state to `/api/guest/presence`, so friends in
-the Verse see "playing Desert Blow". `friends()` needs the `friends` scope and
+the Metaverse see "playing Desert Blow". `friends()` needs the `friends` scope and
 returns the pseudonymous ids (4.1) and display names of friends who also
 allowed this game. Nothing else is shared.
 
@@ -607,7 +607,7 @@ servers.
 
 | App | How it runs worlds | Can it run a UE wasm game? |
 |---|---|---|
-| Everglade for iOS, Android and Mac (`apps/everglade-mobile`, `apps/everglade-desktop`) | The **Aethyr PageHost** (`aethyr/host/apple/PageHost.m`): Coax realm libraries on Metal. There's no web view. | **No.** PageHost runs Coax realm modules, not emscripten pages. |
+| Everglade for iOS, Android and Mac (`apps/everglade-mobile`, `apps/everglade-desktop`) | The **Metaverse Engine PageHost** (`aethyr/host/apple/PageHost.m`): Coax realm libraries on Metal. There's no web view. | **No.** PageHost runs Coax realm modules, not emscripten pages. |
 | OpenAgents for iOS 26 (`apps/openagents-ios`) | A **WKWebView** that opens the Grid (`WebGridViewController.swift`) | Possibly. The guest page loads in a web view like any other page. |
 | OpenAgents for Mac | Would need a WKWebView | Possibly, with the same work |
 

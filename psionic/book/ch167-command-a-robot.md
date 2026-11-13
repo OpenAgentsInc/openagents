@@ -1252,7 +1252,7 @@ checking each edge for collision at a stated resolution
 The remaining control design calls for compiler-enforced Coax R14 bounded
 steps: fixed rate, bounded computation, saturating outputs with reported
 saturation. The position query above has an explicit iteration cap and typed
-nonconvergence, while compiler enforcement remains pending. The planner uses Aethyr chapter 20 and 21's queries for collision checks
+nonconvergence, while compiler enforcement remains pending. The planner uses Metaverse Engine chapter 20 and 21's queries for collision checks
 in a single-environment scene copy, seeded from the counter-based RNG so a
 plan is reproducible. A rest-to-rest timing query is available above;
 connecting certified edges, shortcutting and meeting declared tracking/recovery
@@ -1301,5 +1301,5 @@ and reproducible planning.
 The runnable profiles depend on the owned fixed Panda FK/grip Jacobian and
 sixteen-body gravity, checked small matrix algebra, native F64 and the initial
 typed quantity/point profile. The remaining control/planning design depends on
-Aethyr chapters 19 to 22 and 35, full frame transforms and compiler R14
+Metaverse Engine chapters 19 to 22 and 35, full frame transforms and compiler R14
 bounded control. Those requirements are not waived by fixed arrays.

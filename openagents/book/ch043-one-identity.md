@@ -7,7 +7,7 @@
 
 Authors, checkers and payers have appeared as "a key". This chapter makes that
 concrete: one identity that is yours on the web, in every app and in the
-Verse, with keys for your devices and your agents under it.
+OpenAgents Metaverse, with keys for your devices and your agents under it.
 
 ## Draft
 
@@ -55,7 +55,7 @@ computer.
 
 A plan for what this chapter ships once the draft is approved:
 
-- One account across the web, the apps and the Verse, with a Nostr key as a
+- One account across the web, the apps and the Metaverse, with a Nostr key as a
   first-class way in.
 - Device keys bound to hardware, and agent keys that act for you under a
   grant you can revoke.

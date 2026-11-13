@@ -1,6 +1,6 @@
 # Hecate's Cemetery
 
-The first expansion of Planetary Villa, Kiki's world on the Verse, at https://openagents.com/worlds/hecates-cemetery. Open it from the [worlds list](https://openagents.com/worlds) and a short flight carries you there: out through space to the planet, then down through the night to the cemetery's south gate. A key, a click or a tap skips it.
+The first expansion of Planetary Villa, Kiki's world on the OpenAgents Metaverse, at https://openagents.com/worlds/hecates-cemetery. Open it from the [worlds list](https://openagents.com/worlds) and a short flight carries you there: out through space to the planet, then down through the night to the cemetery's south gate. A key, a click or a tap skips it.
 
 - A memorial garden lit only by the moon, which stands still in the sky and shows the real moon's phase tonight.
 - Garden paths between 64 tombstone plots, hedges, cypresses, benches round a fountain, and a gate east into an open field.

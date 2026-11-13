@@ -33,7 +33,7 @@ in the deterministic profile. This rules out reductions that mix
 environments and makes the per-environment RNG stream a function of
 `(seed, b, episode)` only.
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 Coax R21's logical tensors are what make this cheap to write: solvers are
 written for one world and gain the batch dimension through the layout, not

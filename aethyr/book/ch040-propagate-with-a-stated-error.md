@@ -1,6 +1,6 @@
 # 40. Propagate with a stated error
 
-> **Status: unimplemented — design draft.** Aethyr already propagates two-body
+> **Status: unimplemented — design draft.** The OpenAgents Metaverse Engine already propagates two-body
 > Kepler orbits and hands ships between spheres of influence
 > (`orbit_propagate`, `orbit_dominant`, `orbit_soi_blend` in
 > [`aethyr/physics/orbit.coax`](../physics/orbit.coax)); this chapter plans

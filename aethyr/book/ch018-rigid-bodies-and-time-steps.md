@@ -174,7 +174,7 @@ halve the energy error by halving the step (all three profiles are first
 order), and match `aethyr/physics/rigid.coax`'s RK4 attitude to 10⁻⁶ after 1,000
 steps.
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 The solver owns arrays (structure of arrays, chapter 17): position,
 attitude, linear and angular velocity, inverse mass, body-frame inverse
@@ -183,11 +183,11 @@ every body, with no branches on body kind; static bodies have inverse mass
 zero. Each integrator is a named profile (`rigid-semi-implicit-f64-v1`,
 `rigid-implicit-gyro-f32-v1` and so on), so a recording says which one ran.
 
-Aethyr's module is the independent reference for the first profile. It uses
+The OpenAgents Metaverse Engine's module is the independent reference for the first profile. It uses
 RK4 for torque-free attitude and keeps a momentum ledger against named
-external terms; the Aethyr kernel is a separate implementation checked
+external terms; the Metaverse Engine kernel is a separate implementation checked
 against it, not a copy. Sleeping (a body at rest for a while is skipped) is
-kept from Aethyr but is a profile option, because it changes results and is
+kept from the Metaverse Engine but is a profile option, because it changes results and is
 incompatible with differentiation (chapter 32).
 
 f64 is the reference precision. Apple GPUs have no f64; the device profile

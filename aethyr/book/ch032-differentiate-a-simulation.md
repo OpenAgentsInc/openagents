@@ -40,7 +40,7 @@ Checkpointing every `√K` steps trades recomputation for memory; with a
 deterministic forward pass, recomputation is exact, which is what makes it
 safe ([Griewank and Walther, *Revolve*, 2000](https://doi.org/10.1145/347837.347846)).
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 Each solver kernel declares its gradient mode (Coax R24). Explicit rigid,
 MPM and explicit FEM get `exact` reverse kernels; the rigid constraint

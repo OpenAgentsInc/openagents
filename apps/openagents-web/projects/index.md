@@ -14,9 +14,9 @@ A systems language for real-time code. It compiles to C11, then to native code a
 - Last active: 10-28 15:21 CDT
 - Project event: kind 30621, `d` = `coax`, signed by `9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575`
 
-## Verse
+## Metaverse
 
-Worlds you walk into, built in Coax on the Verse engine: the Grid, the Haunted House and the playtest flow, on openagents.com.
+Realms you walk into, built in Coax on the OpenAgents Metaverse Engine: the Grid, the Haunted House and the playtest flow, on openagents.com.
 
 - Page: https://openagents.com/projects/verse/index.md
 - Contributions: open

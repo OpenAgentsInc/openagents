@@ -1,6 +1,6 @@
 History: see everglade/ARCHITECTURE.md.
 
-# Aethyr and Verse: MMO architecture gap analysis
+# The Metaverse Engine and the Metaverse: MMO architecture gap analysis
 
 Date: 2026-11-04. Source snapshot:
 [`3370a41ddc0c5e957c6eef4c548e5484d0b4966b`](https://github.com/OpenAgentsInc/openagents/tree/3370a41ddc0c5e957c6eef4c548e5484d0b4966b).
@@ -9,9 +9,9 @@ GitHub issue states were read on 2026-11-04, around 16:25 UTC; #12776,
 
 ## Assessment
 
-Aethyr has a substantial foundation for authoritative multiplayer: checked
+The OpenAgents Metaverse Engine has a substantial foundation for authoritative multiplayer: checked
 fixed-step movement, explicit input handling, replay primitives, entity
-lifetimes, collision queries, content identity and bounded rendering. Verse
+lifetimes, collision queries, content identity and bounded rendering. The OpenAgents Metaverse
 adds a working Everglade server, signed seats, instances, prediction,
 acknowledged delta replication, interpolation and operational measurements.
 The next useful milestone is a **reliable, recoverable 16-player instance**
@@ -46,7 +46,7 @@ and **P2** adds capabilities required by a broader persistent-MMO product.
 ## Evidence and interpretation
 
 The comparison uses [the MMO research](../research/mmo.md), all 101 entries
-in the [Aethyr chapter registry](../../aethyr/book/chapters.json), the
+in the [Metaverse Engine chapter registry](../../aethyr/book/chapters.json), the
 [book plan](../../aethyr/book/PLAN.md), chapter status and scope statements,
 and the existing [book appendix](../../aethyr/book/appendix-mmo-gap-analysis.md).
 The networking chapters 86–101 and the relevant core, world, Forge and
@@ -110,7 +110,7 @@ The diagram shows the remote path. Offline Everglade still executes a
 separate page simulation at the reviewed commit; the local-worker convergence
 is [#12784](https://github.com/OpenAgentsInc/openagents/issues/12784).
 
-### Core Aethyr strengths and limits
+### Core Metaverse Engine strengths and limits
 
 | Book area | Existing capability | MMO implication and remaining boundary |
 | --- | --- | --- |
@@ -171,7 +171,7 @@ Status here means **present** in an adopted path, **partial** where a
 material contract or integration remains, and **future** where the reviewed
 code does not provide the MMO capability. It is not a certification score.
 
-| Research area | Best-practice requirement | Aethyr/Verse assessment | Main gap or next proof |
+| Research area | Best-practice requirement | Metaverse Engine/Verse assessment | Main gap or next proof |
 | --- | --- | --- | --- |
 | 1–2: capacity and evidence | Define population, geography and interaction density separately; distinguish disclosures from inference. | Partial: useful measurements and bounded rooms; older status prose persists. | Publish a current workload/commit/host/latency capacity record and keep claims scoped. |
 | 3: system boundaries | Separate gameplay, placement/control, durable state and content delivery. | Present in the broad architecture: room host, API/directory, PostgreSQL and asset delivery. | Prove dependency outages stay local; avoid sharing authority just because services share infrastructure. |
@@ -589,7 +589,7 @@ compatibility tests. Keep recipient privacy explicit; an engine must not
 replicate every struct field by default. Let realms select timing,
 collision, fairness and durability profiles without copying the sender.
 
-The [Verse protocol](openagents-verse-protocol.md#108-openagentsverserealmv1)
+The [Metaverse protocol](openagents-verse-protocol.md#108-openagentsverserealmv1)
 contains a target `realm.v1` session contract, and the
 [multiplayer spec](2026-11-03-everglade-multiplayer-spec.md#36-frames)
 calls text frames a bootstrap mapping. The reviewed `proto/openagents/verse/`
@@ -690,7 +690,7 @@ without treating them as already assigned or implemented.
 | 2. Recoverable room | Implement #12792/#12793 and ownership fencing; define crash-loss and restore objectives. | Disconnect, old-socket, failed-save, lost-receipt and process-restart matrix; accepted state reconciles once under one owner. |
 | 3. Safe fleet lifecycle | Complete #12797/#12796/#12795; pin versions and ready capacity; proactive drain and staged rollout. | Launch burst plus active-room replacement, failed readiness and rollback; no split ownership, overbooking or silent friend separation. |
 | 4. Qualified current capacity | Finish #12778; reconcile v3 metrics; strengthen replication freshness and slow-client behavior; make gameplay drift fatal by default. | A recorded current-build 16-seat raid and fleet workload under specified hardware/networks meet latency, tick, bandwidth, recovery and phone-frame bounds. |
-| 5. Reusable Aethyr multiplayer | Extract the proven Coax contracts and adopt a second authoritative realm; reconcile book statuses and examples. | Two games use the same session/command/replication infrastructure without copied policy paths; host and protocol profiles have explicit checks. |
+| 5. Reusable Metaverse Engine multiplayer | Extract the proven Coax contracts and adopt a second authoritative realm; reconcile book statuses and examples. | Two games use the same session/command/replication infrastructure without copied policy paths; host and protocol profiles have explicit checks. |
 | 6. Persistent-MMO profile | Add durable world state, inventory/social domains and recoverable transfers as the product demands them. | Restore, ambiguous transactions and owner-cutover failure tests; declared region/recovery and value-consistency guarantees. |
 | 7. Larger dense encounters | Define the required same-location player/activity target early, then optimize measured hotspots or introduce new gameplay/ownership boundaries. | A realistic single-encounter capacity curve, including client presentation and documented overload behavior. |
 

@@ -1,6 +1,6 @@
 # Paper Mono
 
-Paper Mono v1.000 Medium, the face the previous engine's Verse HUD atlas drew
+Paper Mono v1.000 Medium, the face the previous engine's Metaverse HUD atlas drew
 its text in (`git show 0b401561a0^:crates/paper-mono`), from
 <https://github.com/paper-design/paper-mono>. Licensed under the SIL Open Font
 License 1.1 (`OFL.txt`); the file is unmodified.

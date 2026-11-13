@@ -197,7 +197,7 @@ ground under a micrometre and a microradian of jitter, which must report
 the same four features for 1,000 queries; and a 200 m/s ball against a
 1 cm plate.
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 **A dispatch table by shape pair.** Sphere, capsule, box, plane, convex hull,
 triangle mesh, heightfield and SDF. Pairs with closed forms use them
@@ -220,7 +220,7 @@ shapes negates the normal and leaves depth and points unchanged; ties in
 feature selection break by lowest feature ID. Every test is one routine used
 by the CPU and generated for devices, with the CPU f64 run as the reference.
 
-**Continuous collision.** Aethyr's swept sphere tests stay; a conservative
+**Continuous collision.** The OpenAgents Metaverse Engine's swept sphere tests stay; a conservative
 advancement time-of-impact for general convex pairs is added for small fast
 bodies, and is required by IPC in chapter 30.
 

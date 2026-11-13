@@ -166,7 +166,7 @@ coordinates. The game verifies the exact question, model/checkpoint and bounded
 distribution before offering an enum to this gate. It checks current guard and
 player eligibility before consuming it.
 
-Requests use the site's existing same-origin session. A Verse player ID alone
+Requests use the site's existing same-origin session. A Metaverse player ID alone
 does not authenticate a SystemOne call. Guest play, expired sessions, exhausted
 quota and unavailable providers leave the original game running. The first
 integration is opt-in and per-browser cosmetic behavior; it is not a replicated

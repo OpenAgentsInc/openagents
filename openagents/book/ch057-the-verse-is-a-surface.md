@@ -1,4 +1,4 @@
-# 57. The Verse is a surface
+# 57. The Metaverse is a surface
 
 > **Status: design draft, for the owner to edit.** This chapter is a plan.
 > It ships no code yet, and paths marked planned do not exist.
@@ -6,7 +6,7 @@
 ## Premise
 
 The agent has lived in chat windows. This chapter puts it in a world: the
-Verse is a real-time 3D place on the open web, and it is another surface of
+OpenAgents Metaverse is a real-time 3D place on the open web, and it is another surface of
 the same runtime, not a separate product.
 
 ## Draft
@@ -30,11 +30,11 @@ classes in [Episode 284](../../docs/transcripts/284.md). The argument is
 always that a game interface makes many agents, their work and their money
 easy to see.
 
-What changed is the engine. Aethyr is written in Coax, and it is built for the
+What changed is the engine. The OpenAgents Metaverse Engine is written in Coax, and it is built for the
 web first so that a realm is a link you can share. Its own book builds it, and
 Building Everglade builds a whole game on it.
 
-In this book the Verse is a surface in the sense of chapter 2. It links the
+In this book the Metaverse is a surface in the sense of chapter 2. It links the
 same runtime. The agent you talk to in the world is the one you talk to in
 chat, in the same conversation, with the same members, grants and wallet. A
 panel in the world and a page on the web show the same records.
@@ -43,7 +43,7 @@ panel in the world and a page on the web show the same records.
 
 A plan for what this chapter ships once the draft is approved:
 
-- The agent runtime linked into the Verse, with chat as a panel in the world.
+- The agent runtime linked into the Metaverse, with chat as a panel in the world.
 - World views of things this book built: the member list, the Gym board, and
   your wallet.
 - One conversation that continues between the world and any other surface.
@@ -76,12 +76,12 @@ Planned paths: `openagents/agent/surfaces/verse.coax`.
   - [Episode 116, *3D Multiplayer*](../../docs/transcripts/116.md): a multiplayer 3D workspace
   - [Episode 176, *Hand Tracking*](../../docs/transcripts/176.md)
   - [Episode 189, *Toward an Agentic MMORPG*](../../docs/transcripts/189.md): toward an MMORPG
-  - [Episode 240, *The Verse*](../../docs/transcripts/240.md)
+  - [Episode 240, *The Metaverse*](../../docs/transcripts/240.md)
   - [Episode 283, *Coder for Gamers?*](../../docs/transcripts/283.md): gamers as an audience
-  - [Episode 284, *Gamifying Coder*](../../docs/transcripts/284.md): a productive Verse
+  - [Episode 284, *Gamifying Coder*](../../docs/transcripts/284.md): a productive the Metaverse
 - **Old code at `coder-v1.0.0`, crates:** `verse`, `verse-core`, `verse-engine`, `verse-host`, `verse-net`, `verse-world`, `openagents-web`
 - **NIPs:** [NIP-MV](../../nostr/nips/openagents/NIP-MV.md), [NIP-AGENT](../../nostr/nips/openagents/NIP-AGENT.md)
 - **Also:**
-  - [Building Aethyr, World Engine](../../aethyr/book/README.md)
+  - [Building the OpenAgents Metaverse Engine](../../aethyr/book/README.md)
   - [Building Everglade](../../everglade/book/README.md)
 - **Promises covered** ([audit](../../docs/audits/2026-11-10-episode-289-port-audit.md#1-what-episode-289-promised)): P1, P13

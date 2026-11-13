@@ -1,6 +1,6 @@
 # 43. Heat has to go somewhere
 
-> **Status: unimplemented — design draft.** Aethyr's ships have no thermal
+> **Status: unimplemented — design draft.** The OpenAgents Metaverse Engine's ships have no thermal
 > state today: [`aethyr/physics/thrust.coax`](../physics/thrust.coax) burns a tank
 > and nothing heats. This chapter plans a lumped thermal network with
 > radiators, finite sinks and failures. Nothing here runs yet.

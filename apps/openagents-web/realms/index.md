@@ -1,6 +1,6 @@
 # Worlds
 
-Worlds on the Verse you play in the browser, newest first. The page sorts them by most recent, most visited, most played and A to Z; visits leave out our own team and automation.
+Worlds on the OpenAgents Metaverse you play in the browser, newest first. The page sorts them by most recent, most visited, most played and A to Z; visits leave out our own team and automation.
 
 - [Hecate's Cemetery](https://openagents.com/worlds/hecates-cemetery): A moonlit memorial garden you walk with your dog. Opened Oct 31, 2026.
 - [Orbit League](https://openagents.com/worlds/orbit-league): Rocket roadster ball in a glass arena in orbit. Opened Oct 30, 2026.
@@ -12,4 +12,4 @@ Worlds on the Verse you play in the browser, newest first. The page sorts them b
 - [Ice Cream Man](https://openagents.com/worlds/ice-cream-man): Find three keys and escape the house. Opened Oct 28, 2026.
 - [Haunted House](https://openagents.com/worlds/haunted-house): Nine haunts to find and doors to open. Opened Oct 28, 2026.
 
-Also: [the Verse](https://openagents.com/verse), [build your own world](https://openagents.com/worlds/new).
+Also: [the Metaverse](https://openagents.com/verse), [build your own world](https://openagents.com/worlds/new).

@@ -7,8 +7,8 @@ timing before a controller can use it.
 
 ## Start from the geometry we actually have
 
-Aethyr's general query, broad phase, narrow phase and robot import chapters
-remain design work. Existing F64 Verse contact primitives are useful references,
+The OpenAgents Metaverse Engine's general query, broad phase, narrow phase and robot import chapters
+remain design work. Existing F64 Metaverse contact primitives are useful references,
 but do not provide an owned robot collision pipeline. The renderer's mesh BVH
 thins and rescales geometry; it cannot establish collision containment.
 The owned fluid model’s inertia-equivalent boxes are also fluid approximations,

@@ -5,9 +5,9 @@ they can understand" (a snapshot from 2026-11-10 near commit `77e9d91cc`), his
 World DB write-up, his post looking for a cofounder, and his public GitHub
 ([rondorkerin](https://github.com/rondorkerin)).
 
-**Goal:** Valenfeld is playable in the Verse: reachable from the Grid, using
-Verse identity and characters, and linked to other worlds by gates. It comes
-in whatever engine it already runs on. Moving to Aethyr is an option for
+**Goal:** Valenfeld is playable in the OpenAgents Metaverse: reachable from the Grid, using
+Metaverse identity and characters, and linked to other worlds by gates. It comes
+in whatever engine it already runs on. Moving to the OpenAgents Metaverse Engine is an option for
 later, never a condition.
 
 ## What Valenfeld is
@@ -115,11 +115,11 @@ Metatransformer (metatransformer.com, `@metatransformr` on X). He has 56
 public repos, including agent tooling (`openclaw-cluster`, `corellm`),
 genetic-algorithm and robotics work, and gamestack.
 
-## How it comes into the Verse
+## How it comes into the Metaverse
 
 Three layers. Each one works without the next.
 
-### Layer 1: Valenfeld as a Verse world, in its own engine
+### Layer 1: Valenfeld as a Metaverse realm, in its own engine
 
 The path is guest content, as designed for Unreal in
 [web-games-in-the-verse.md](../unreal/web-games-in-the-verse.md). Godot fits
@@ -140,7 +140,7 @@ it better than Unreal:
 - **Characters.** The Quaternius humans and Fantasy Source wardrobe are CC0
   glTF, which Godot imports natively. The character pack's mapping from
   `aethyr.player.appearance.v1` to meshes works the same way. His game builds
-  your Verse character and runs it on its own animations.
+  your Metaverse character and runs it on its own animations.
 - **Co-op.** Browsers can't use noray's raw UDP. Godot's web build has
   `WebSocketMultiplayerPeer` and `WebRTCMultiplayerPeer`, so web co-op needs a
   signalling or relay server. We can host that next to our room servers. His
@@ -159,7 +159,7 @@ yet for `coax/web/guest/`, `verse.guest_games`, the guest bucket or the
 bridge. Valenfeld is the reason to build it, engine-neutral from the start
 instead of Unreal-first.
 
-### Layer 2: World DB in the Verse
+### Layer 2: World DB in the Metaverse
 
 World DB solves a problem we have. Our NPC chat (`verse.npc_request`,
 migration 0005) gives the model only a character's name, role, greeting and
@@ -179,22 +179,22 @@ what that prompt is missing:
 - **His checker, our checks.** His typed-reference and world-rule checks map
   onto Coax `#authority` checks over those messages. Our checks don't replace
   his; one runs his records through the other.
-- **Every Verse world gets it.** Everglade (the SRD MMO), made realms and
+- **Every Metaverse realm gets it.** Everglade (the SRD MMO), made realms and
   WorldBuilder could all keep their lore in the same records. A player's
   chat with an Everglade NPC would then work the way his characters do.
 
-### Layer 3: his places in Aethyr (optional)
+### Layer 3: his places in the Metaverse Engine (optional)
 
-Aethyr builds worlds with typed edit operations (`aethyr/forge/edit.coax`)
+The Metaverse Engine builds worlds with typed edit operations (`aethyr/forge/edit.coax`)
 and lets you place things by chat (WorldBuilder). It has nothing like
 `<Fort>`: a component that expands one intent into a coherent, checked place.
-If he wants Aethyr's renderer, netcode or character pipeline, the path is:
+If he wants the Metaverse Engine's renderer, netcode or character pipeline, the path is:
 
-- a compiler from his component tree, after expansion, into Aethyr zone data:
+- a compiler from his component tree, after expansion, into Metaverse Engine zone data:
   props, colliders and markers that keep their stable IDs. His JSX stays the
   source;
 - a first target of one place, Fort Greywatch or the Barrow, walkable on web,
-  Mac and iPhone with a Verse character, compared against his own build;
+  Mac and iPhone with a Metaverse character, compared against his own build;
 - WorldBuilder reusing the idea: "a royal fort near the town" expands through
   components instead of placing props one by one.
 
@@ -204,7 +204,7 @@ This comes only after layer 1, and only if he wants it.
 
 | He gets | We get |
 | --- | --- |
-| Players reach Valenfeld from the Grid and the Verse apps | A large, authored RPG in the Verse |
+| Players reach Valenfeld from the Grid and the Metaverse apps | A large, authored RPG in the Metaverse |
 | Accounts, characters, friends, presence and Bitcoin payments without building them | A reason to build the guest path, engine-neutral |
 | Hosting and a web co-op relay | World DB's model for lore, knowledge and offices, to ground NPCs in every world |
 | Our renderer, netcode and character pipeline, if he wants them | A component approach for WorldBuilder |
@@ -232,7 +232,7 @@ us.
 - Will he publish World DB's schema? Can our converter read his records, and
   under what licence?
 - Does co-op need to work in the browser, or only native?
-- Which of his places would he like to see in Aethyr first, if any?
+- Which of his places would he like to see in Metaverse Engine first, if any?
 
 ## The invite
 
@@ -240,7 +240,7 @@ us.
 > almost nobody does, and separating claims from knowledge is the sharpest
 > idea in it.
 >
-> We'd like Valenfeld in the Verse, in your engine as it is. The Verse is the
+> We'd like Valenfeld in the Metaverse, in your engine as it is. The Metaverse is the
 > set of worlds on openagents.com and our Mac and iPhone apps. Your web build
 > gets a world page and a gate from the Grid, and players bring their
 > accounts, characters and friends. We host it, and we write the engine

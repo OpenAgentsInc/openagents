@@ -30,11 +30,11 @@ The runner labels a selected result **partial**: other examples, native hosts
 and mutation gates have not thereby been run. With no arguments it keeps
 the full book gate.
 
-## A shared mutable sequence in Verse
+## A shared mutable sequence in the Metaverse
 
 The `coax.sequence` module exports `swap` and `reverse`. Their element type
 is a generic procedure parameter. They operate on the caller's mutable view
-and retain no descriptor. In the real code, Verse reverses digits while
+and retain no descriptor. In the real code, the OpenAgents Metaverse reverses digits while
 formatting a GPU-pass diagnostic; Psionic uses the same swap in HTTP buffer
 rotation. Those consumers keep their existing formatting and admission
 rules.
@@ -197,7 +197,7 @@ disjoint.
 Each `.coax` source has an exact `.out` fixture and authored checks. Native
 boundary tests additionally exercise the selected generated programs at
 `O0`/`O2` under ASan/UBSan. The shared sequence's own checks and mutation gate
-cover its stated operations; adoption records compare the affected Verse
+cover its stated operations; adoption records compare the affected the Metaverse
 and Psionic consumers. Reuse that evidence while those inputs remain
 unchanged.
 

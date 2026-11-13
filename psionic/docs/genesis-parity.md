@@ -18,9 +18,9 @@ The work splits along the existing boundary between the two projects.
   (R22), device graphs and zero-copy buffers (R23), and kernel derivatives
   (R24), on top of the physical-world foundations already planned (R12–R20).
   See [Coax roadmap](../../coax/ROADMAP.md) sections 24–27 and spec stage 11.
-- **Aethyr**, the engine realms run on, owns the physics engine: solvers,
+- **OpenAgents Metaverse Engine**, the engine realms run on, owns the physics engine: solvers,
   coupling, batching, sensors, rendering hooks, assets, replay and validation,
-  as Part IV of the [Aethyr book](../../aethyr/book/README.md) (chapters
+  as Part IV of the [Metaverse Engine book](../../aethyr/book/README.md) (chapters
   17–37). The game-layer rigid bodies and contacts already in `verse/` serve
   as independent references for those solvers and later consume them.
 - **Psionic** supplies the tensor programs, compute subset, transforms and
@@ -30,7 +30,7 @@ The work splits along the existing boundary between the two projects.
 
 ## Parity map
 
-| Genesis capability | Aethyr chapter (Psionic where marked) | Coax phase |
+| Genesis capability | Metaverse Engine chapter (Psionic where marked) | Coax phase |
 | --- | --- | --- |
 | Scene, entities (morph, material, surface), build/step lifecycle | [17](../../aethyr/book/ch017-a-scene-owns-the-state.md) | R5, R16, R20 |
 | Free rigid bodies, integrators (`approximate_implicitfast` and others) | [18](../../aethyr/book/ch018-rigid-bodies-and-time-steps.md) | R12, R15 |
@@ -63,14 +63,14 @@ The work splits along the existing boundary between the two projects.
 
 ## Order
 
-Rigid first: Aethyr chapters 17–22, then 31 (batching), 35 (assets) and 36
+Rigid first: Metaverse Engine chapters 17–22, then 31 (batching), 35 (assets) and 36
 (replay), with Psionic chapter 167 (control); together they replace MuJoCo as
 the simulator behind Psionic chapter 170. Then the particle and mesh solvers
 23–28 in any order after 23, coupling 29–30, gradients 32, sensors and
 observations 33–34, and 37 throughout.
 Coax R21 should land when the first batched solver exists, R22 when kernel
 counts make compile time visible, R23 when a contact solver loop or a
-policy's observation read is measured as the bottleneck, and R24 when Aethyr chapter
+policy's observation read is measured as the bottleneck, and R24 when Metaverse Engine chapter
 32 has a kernel whose hand-written reverse is the limiting factor.
 
 ## Where we deliberately differ

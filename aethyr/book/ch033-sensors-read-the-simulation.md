@@ -32,7 +32,7 @@ dropout. A tactile array samples contact pressure over a pad's surface from
 the contact solver's forces. Every reading has a sample time, a delay and a
 noise draw from a per-sensor counter-based stream.
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 Sensors are read-only stages after the physics in chapter 17's schedule
 and cannot write state (an effect restriction, R11). Each sensor has a

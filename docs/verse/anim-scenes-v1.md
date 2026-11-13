@@ -1,6 +1,6 @@
 # Animation scenes and cuts v1
 
-A5 plays admitted performances, scenes and edits in Verse. The realm has two
+A5 plays admitted performances, scenes and edits in the OpenAgents Metaverse. The realm has two
 stations: `#scene` uses the first scene camera, and `#cut` follows the edit.
 Both have a timeline, play/pause and frame stepping. **N** selects Scene;
 **X** selects Cut. Add `?card=1` to the hash to hide the controls for capture.

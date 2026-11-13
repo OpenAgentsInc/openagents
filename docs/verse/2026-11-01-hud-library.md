@@ -1,4 +1,4 @@
-# Aethyr HUD library: reference study and reusable demo
+# Metaverse Engine HUD library: reference study and reusable demo
 
 Date: 2026-11-01. Scope: the existing Grid visual language, the requested
 Expanse image collection, a callable Coax component library, and five local
@@ -39,7 +39,7 @@ or cards. These are authored style constants, not measured contrast ratios.
 
 The books set a larger destination than this demo:
 
-- [Aethyr 15: UI and the HUD](../../aethyr/book/ch015-ui-and-the-hud.md)
+- [the Metaverse Engine 15: UI and the HUD](../../aethyr/book/ch015-ui-and-the-hud.md)
   is partly implemented at the visual component foundation level. The new
   `HudBox`/`HudControl`, shared hit geometry, focus helper and typed display
   properties are that foundation. The full screen-space tree, safe areas,
@@ -47,12 +47,12 @@ The books set a larger destination than this demo:
   and complete keyboard/screen-reader acceptance journey remain a design
   draft. Eighteen drawing functions and a demo action array do not complete
   that larger contract.
-- [Aethyr 11: the renderer](../../aethyr/book/ch011-the-wgsl-renderer.md)
+- [the Metaverse Engine 11: the renderer](../../aethyr/book/ch011-the-wgsl-renderer.md)
   plans shared frame, pass and binding admission over the existing shader
   and native renderer paths, plus a qualified CPU reference. This library
   submits to the existing projects path. It does not implement the common
   admitted pass graph, a new GPU backend or full CPU/GPU raster parity.
-- [Aethyr 85: Everyone can play](../../aethyr/book/ch085-everyone-can-play.md)
+- [the Metaverse Engine 85: Everyone can play](../../aethyr/book/ch085-everyone-can-play.md)
   is a design draft for remapping, text scale, contrast, captions, stable
   text IDs, language support and reduced-motion behavior. The demo consumes
   the host's reduced-motion input and supplies keyboard controls and hidden
@@ -120,7 +120,7 @@ The miscellaneous collection includes stacked green traces and small arc gauges 
 
 Image 113 shows a SYSTEM MONITOR with several distinct views of related information: circuit connection diagrams, a deck-by-system cell matrix, a longitudinal outline with callouts, and dense status text. Image 114 has a left control/list region and a technical viewport containing several orthographic views of a mechanical assembly. Image 115 centers a radar-like disc with readouts; image 116 gives a large comms video region and status; image 118 combines a channel diagram, terminal text, outgoing/incoming message lists and a conspicuous incoming-message card.
 
-**Borrow:** coordinated instruments, status matrix, circuit diagram, technical schematic, message queue and comms card. Most useful for Aethyr: several views tied to the same selected entity/resource, rather than independent decorative widgets.
+**Borrow:** coordinated instruments, status matrix, circuit diagram, technical schematic, message queue and comms card. Most useful for the OpenAgents Metaverse Engine: several views tied to the same selected entity/resource, rather than independent decorative widgets.
 
 ### 7. Behemoth production art
 

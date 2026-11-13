@@ -1,6 +1,6 @@
 # 84. One realm on every host
 
-> **Status: partly implemented.** Aethyr has a versioned host contract and
+> **Status: partly implemented.** The OpenAgents Metaverse Engine has a versioned host contract and
 > shared lifecycle rules. Browser, Linux Vulkan and Mac Metal have scoped
 > verification records; full realm and service adoption remains separate.
 

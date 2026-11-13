@@ -8,8 +8,8 @@ needs the compiler, so if you'd rather start typing, skip to
 
 ## What Coax is for
 
-OpenAgents builds a 3D world called the Verse, and the engine that runs
-it carries the same name. On an iPhone, a frame of the Verse goes like this:
+OpenAgents builds a 3D world called the OpenAgents Metaverse, and the engine that runs
+it carries the same name. On an iPhone, a frame of the Metaverse goes like this:
 Swift owns the window and the Metal layer, a display link fires every
 frame, and Swift calls into the engine through a C interface. The engine
 updates the scene, builds draw data, and hands it back to a thin Metal

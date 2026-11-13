@@ -11,7 +11,7 @@ and docks. It runs on the `verse/` space modules, which Orbit League and
 Belt 2200 use today
 ([space primitives](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/space.md)),
 and it is the scenario behind
-[Aethyr chapters 39–48](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch039-ephemerides-time-scales-and-frames.md).
+[Metaverse Engine chapters 39–48](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch039-ephemerides-time-scales-and-frames.md).
 This chapter follows one run through each language facility it needs. It is
 a study profile, not flight qualification.
 
@@ -60,7 +60,7 @@ a study profile, not flight qualification.
 
 ## The consumer and the gate
 
-The consumer is the freighter run and the Verse space games. The gates come
+The consumer is the freighter run and the Metaverse space games. The gates come
 from the phases: a rotating-frame state round trip against the inertial
 result (R12); a UTC–TDB conversion compared with published values (R13); a
 Kepler orbit closed after many periods and an event located to tolerance
@@ -73,7 +73,7 @@ engineering profile (R20).
 
 - The phases above have shipped with these gates.
 - The chapter's examples run under `check-examples.sh`, with exact output.
-- Aethyr chapter 48's regression suite passes at engineering fidelity on the
+- Metaverse Engine chapter 48's regression suite passes at engineering fidelity on the
   same types.
 - Hypothetical propulsion stays in declared rule modules, never in the
   engineering profile.
@@ -84,5 +84,5 @@ engineering profile (R20).
   [32](ch32-strict-math-and-integrators.md), [33](ch33-replay-and-snapshots.md)
   and [35](ch35-sensors-and-actuators.md) to [37](ch37-provenance-and-rule-modules.md).
 - [Chapter 16](ch16-determinism.md) for strict profiles.
-- Aethyr chapters 39–48, and the
+- Metaverse Engine chapters 39–48, and the
   [physics and simulation design reference](https://github.com/OpenAgentsInc/openagents/blob/main/docs/research/expanse-physics-and-simulation-design-reference.md).

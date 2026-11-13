@@ -316,9 +316,9 @@ XP stays.
 
 - **`aethyr/save.coax`.** Move the container, the slots, the migrations and
   the refusal of newer schemas from `apps/openagents-web/save.coax` into
-  Aethyr, and have every realm (Fairy Forest's payload included) load its
+  the OpenAgents Metaverse Engine, and have every realm (Fairy Forest's payload included) load its
   saves through it.
-- **Declared save fields.** A realm marks the fields it saves and Aethyr
+- **Declared save fields.** A realm marks the fields it saves and the Metaverse Engine
   derives the payload from them in a fixed order, with a layout fingerprint
   per schema; entities in a save by chapter 6's durable IDs. Today each realm
   writes its payload by hand.

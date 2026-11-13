@@ -1,6 +1,6 @@
 # Anime Lab
 
-Direct an anime with your voice, at https://openagents.com/worlds/anime-lab. It is unlisted: the [worlds list](https://openagents.com/worlds) leaves it out, so you open it by its address. It is drawn in the Verse's anime style, its action variant (cel shading in two flat tones, coloured ink lines, a vivid dusk sky with towering flat-shaded clouds).
+Direct an anime with your voice, at https://openagents.com/worlds/anime-lab. It is unlisted: the [worlds list](https://openagents.com/worlds) leaves it out, so you open it by its address. It is drawn in the OpenAgents Metaverse's anime style, its action variant (cel shading in two flat tones, coloured ink lines, a vivid dusk sky with towering flat-shaded clouds).
 
 ## What it shows
 

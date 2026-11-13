@@ -206,7 +206,7 @@ boundary.
 `apps/openagents-ios/generate.sh` generates the app's Coax libraries,
 headers and Metal source before Xcode compiles the platform shell. Read the
 script in the current checkout for its complete module list; that list grows
-as engine modules move into Aethyr.
+as engine modules move into the OpenAgents Metaverse Engine.
 
 The generator rebuilds when compiler inputs are newer and checks release
 metadata before generation.

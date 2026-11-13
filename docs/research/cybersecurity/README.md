@@ -5,7 +5,7 @@ not a plan. Market claims below come from memory and need checking before
 anyone relies on them. Each section ends with open questions and searches to
 run.
 
-## Why this fits the Verse
+## Why this fits the Metaverse
 
 Episode 290 introduced realms as games. Realms can also be training grounds
 and test environments. Cybersecurity is a strong fit because the field
@@ -18,7 +18,7 @@ together:
 
 | Part | What it gives a security realm |
 | --- | --- |
-| Aethyr and the Verse | A spatial, multiplayer, web-first view of a network: hosts as buildings, traffic as movement, alerts as events you can see and watch. |
+| The OpenAgents Metaverse Engine and the OpenAgents Metaverse | A spatial, multiplayer, web-first view of a network: hosts as buildings, traffic as movement, alerts as events you can see and watch. |
 | Psionic, Pylons, and decision models | Local and pooled inference for adversary and defender agents, plus training and evaluation of those agents. |
 | Coder and the environment NIPs | Real sandboxes and real terminals bound to objects in the world (see [NIP-ENV](../../../nostr/nips/openagents/NIP-ENV.md) and [NIP-TERM](../../../nostr/nips/openagents/NIP-TERM.md)). |
 | Bitcoin wallets and Nostr | Payouts for challenge authors, bounties, signed scoreboards, and portable skill records (see [NIP-EVAL](../../../nostr/nips/openagents/NIP-EVAL.md), [NIP-XP](../../../nostr/nips/openagents/NIP-XP.md), and [NIP-ATT](../../../nostr/nips/openagents/NIP-ATT.md)). |
@@ -136,7 +136,7 @@ source".
 
 ### 6. Challenge authors who get paid
 
-The Verse plan already pays creators from paid usage. Applied to security:
+The Metaverse plan already pays creators from paid usage. Applied to security:
 anyone can build and fork a challenge realm, and the author earns when people
 play it, when a lab licenses it for evaluation, or when a team buys a private
 copy for an exercise. CTF authors today mostly work for free or for one event.

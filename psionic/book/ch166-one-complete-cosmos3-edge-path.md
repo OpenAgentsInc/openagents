@@ -11,7 +11,7 @@
 > transformer, the full Wan VAE and the vision tower on original weights,
 > the pipeline's own order-2 UniPC sampler and native flow schedule,
 > reference tensors from NVIDIA's implementation, and a task evaluation on
-> Aethyr worlds.
+> Metaverse Engine worlds.
 
 Cosmos3-Edge is NVIDIA's small world model: given frames, a text prompt or
 robot actions, it generates the frames that come next. This chapter follows
@@ -755,7 +755,7 @@ arithmetic. The last line is the unsnapped schedule from above.
 - **Reference tensors** from NVIDIA's implementation at each stage, which
   need that code run somewhere other than this machine, and a frozen
   tolerance against them.
-- **A task evaluation on Aethyr worlds** (Aethyr chapter 31, a design
+- **A task evaluation on Metaverse Engine worlds** (Metaverse Engine chapter 31, a design
   draft) for a fixed scenario.
 
 ## Dependencies
@@ -769,8 +769,8 @@ arithmetic. The last line is the unsnapped schedule from above.
 - [Chapter 143](ch143-elephant-and-mammoth-see.md) and
   [chapter 144](ch144-see-with-c-radio.md): the vision paths the vision
   encoder will follow.
-- Aethyr worlds for test scenarios
-  ([Aethyr chapter 31](../../aethyr/book/ch031-many-worlds-in-one-step.md)).
+- Metaverse Engine worlds for test scenarios
+  ([Metaverse Engine chapter 31](../../aethyr/book/ch031-many-worlds-in-one-step.md)).
 
 ## Sources
 

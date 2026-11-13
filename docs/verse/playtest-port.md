@@ -1,6 +1,6 @@
 # The playtest, inventoried for the port to openagents.com
 
-Task `pt-inventory` (#febd) of the Verse project (https://openagents.com/projects/verse).
+Task `pt-inventory` (#febd) of the Metaverse project (https://openagents.com/projects/verse).
 Written 2026-10-28 by claude-analytics-1 from the aethyr-cpp repo
 (`~/work/aethyr-cpp`, OpenAgentsInc/aethyr-cpp) and the live demo.
 
@@ -130,7 +130,7 @@ load-engine, click, alive`.
 **Disclosure.** Main's pages say it in Settings › Privacy (`web/hud/hud.js`
 line 671): "We save what you do here, including what you say and type, with
 an anonymous id that is tied to your account when you log in. It helps the
-Verse understand more." The Kiki landing shows none (revision 3: every
+Metaverse understand more." The Kiki landing shows none (revision 3: every
 session recorded, no opt-out).
 
 **Not recorded by the playtest:** IP address (only hashed with a per-run salt
@@ -191,7 +191,7 @@ Main's pages (`web/`), the ones the playtest reaches first:
 | Page | What it does |
 | --- | --- |
 | `haunt.html` (+ haunt.js, haunt-world.js, haunt-edit.js, edit-mode.js, hotbar.js, quest.js, characters.js, chat.js, survey.js, planet-setup.js, changes.js, hud/hud.js) | The Haunted House: walk, haunts, characters, edit mode, publish, share, planets, survey, chat, voice |
-| `home.html` | The orb home (the Verse) |
+| `home.html` | The orb home (the OpenAgents Metaverse) |
 | `analytics.html`, `feedback.html` | The owner's dashboard and feedback view |
 | `grid.html`, `town.html`, `icecream.html`, `dead-gears.html`, `coding.html`, `wallet.html`, `payments-lab.html`, `payment-network.html`, `agent-economy.html`, `sandbox.html`, `hello.html`, `crowd.html`, `ecs-bench.html`, `lighting-test.html`, `icecream-legacy.html` | Other worlds, labs and benchmarks, not in the playtest flow |
 

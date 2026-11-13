@@ -513,9 +513,9 @@ for the scope and limits of each gate.
 ## Shared protocol
 
 The [OpenAgents Protocol](../docs/protocol/openagents-protocol-spec.md) defines
-interchange for every OpenAgents surface, including Verse. Source schemas and
+interchange for every OpenAgents surface, including the OpenAgents Metaverse. Source schemas and
 selected-profile descriptors live in root [proto/](../proto/README.md), beside
-`coax/`. Verse is the engine name (formerly Metareal). The implemented
+`coax/`. The Metaverse is the engine name (formerly Metareal). The implemented
 [`#import_proto` importer](proto.md) consumes selected descriptor closures and
 generates typed Coax views, presence/oneof/repeated accessors and bounded
 caller-buffer codecs. It adds no parallel language-only schema.

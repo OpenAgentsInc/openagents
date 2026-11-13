@@ -173,7 +173,7 @@ timing, stance swap, feedback) as long as the SRD still decides each outcome.
 ## What Everglade has today
 
 - **Aim by facing.** Bolts go straight ahead with 5 degrees of assist; melee
-  hits within 45 degrees; a cone uses Aethyr's attention query
+  hits within 45 degrees; a cone uses the OpenAgents Metaverse Engine's attention query
   (`apps/openagents-web/experimental-combat.coax:397`,
   `apps/openagents-web/class-kit.coax:143-145`). Nothing is picked for you.
 - **The bow.** Hold the right button to draw, release to loose. A crosshair

@@ -1,6 +1,6 @@
 # Water Lab
 
-The water system's test scene at https://openagents.com/worlds/waterlab: a sea to the horizon breaking on a sloping beach, drawn in the painted water look. It shows the parts of Verse's water that have no home in Everglade yet. It is unlisted: the [worlds list](https://openagents.com/worlds) leaves it out, so you open it by its address.
+The water system's test scene at https://openagents.com/worlds/waterlab: a sea to the horizon breaking on a sloping beach, drawn in the painted water look. It shows the parts of the OpenAgents Metaverse's water that have no home in Everglade yet. It is unlisted: the [worlds list](https://openagents.com/worlds) leaves it out, so you open it by its address.
 
 ## What it shows
 

@@ -1,4 +1,4 @@
-# Aethyr to Unreal
+# The Metaverse Engine to Unreal
 
 The Unreal side of the exporter. The design is
 [docs/unreal/2026-11-12-aethyr-to-unreal-exporter-spec.md](../../../docs/unreal/2026-11-12-aethyr-to-unreal-exporter-spec.md).

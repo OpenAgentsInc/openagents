@@ -4,7 +4,7 @@ Status: v1 shipped in Everglade (`/worlds/everglade`) and Everglade 5E
 (`/worlds/everglade-5e`), 2026-11-03.
 
 Owner report: "Effortlessly get super laggy on the phone as soon as I destroy
-something." This spec says what a destroy costs, how a Verse world picks its
+something." This spec says what a destroy costs, how a Metaverse realm picks its
 graphics settings, and how it changes them while you play.
 
 ## What a destroy costs
@@ -186,7 +186,7 @@ length (2 s time constant) and a short one (0.25 s):
   climbs again from there. It goes back to 60 FPS once frames hold 60 for
   10 s.
 
-The Aethyrforge desktop shell overrides these defaults through `frame_hz` and
+The Metaverse Engine desktop shell overrides these defaults through `frame_hz` and
 `minimum_hz` page facts (2026-11-04): AUTO initially targets the native display
 rate, bounded to 60–240 Hz, and its fallback quality budget is 60 FPS. It never
 adopts the 30 FPS budget. Missing facts preserve the web/phone behavior above.
@@ -293,4 +293,4 @@ Two limits apply to headless runs on the Mac:
   in the chunks' hash instead.
 - Shadows, grass density and the animation rate of far figures as rungs,
   once each has a measured cost.
-- The other Verse worlds on the same module.
+- The other Metaverse realms on the same module.

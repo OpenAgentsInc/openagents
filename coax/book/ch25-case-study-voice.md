@@ -30,7 +30,7 @@ Swift hosts that stay thin because Coax decides.
 
 ## The problem
 
-OpenAgents has a 3D world, the Verse, where players walk around, NPCs have
+OpenAgents has a 3D world, the OpenAgents Metaverse, where players walk around, NPCs have
 lines, and agents can be talked to. It also has a phone app and a web app.
 The owner asked for voice that works the same way everywhere: tap one
 toggle, then just talk, and see the right things happen. No push-to-talk,
@@ -1905,7 +1905,7 @@ speech, which is gRPC-only, is the obvious next step, and real phones have
 to be measured before anyone can claim a number.
 
 Opus. Talking to agents uses raw 16 kHz PCM, by design. Player-to-player
-voice in the Verse needs a codec, because raw audio would cost about ten
+voice in the Metaverse needs a codec, because raw audio would cost about ten
 times as much network. The schema reserves `CODEC_OPUS`. As we saw, Coax
 can't call an encoder with sample buffers yet, so Opus will live in host
 C unless `#foreign` gains views first.
@@ -1913,7 +1913,7 @@ C unless `#foreign` gains views first.
 The forwarder. Players talking to each other need no speech models at
 all, only the host forwarding each speaker's stream to the listeners who
 should hear it. "Who hears whom" is meant to be a Coax decision in a
-`voice-space.coax` grown from Verse's haunt audio; neither the
+`voice-space.coax` grown from the Metaverse's haunt audio; neither the
 forwarder nor that file exists yet.
 
 Deployment. The original local runs did not qualify a production service.

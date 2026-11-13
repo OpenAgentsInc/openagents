@@ -18,7 +18,7 @@ input and WebGPU. The [homepage notes](new-land/README.md) name the focused chec
 `font.coax` is Filament ([coax/font.md](../../coax/font.md)); HTML/Markdown twins
 carry accessible text. Visible UI is drawn in Coax.
 
-`/verse` is the Verse playtest's way in (`verse.coax`, `verse-face.c`,
+`/verse` is the OpenAgents Metaverse playtest's way in (`verse.coax`, `verse-face.c`,
 `verse.wgsl`, `data-page` 0): the landing, where PLAYTEST NOW opens the
 Haunted House. Its panels are the Haunted House's wood-and-bronze plates, not
 the HUD bar. The app's page 1, the galaxy, runs only on the native host;
@@ -71,7 +71,7 @@ navigation, engineering, tactical and communications instruments. Its fixtures
 are synthetic. Build it with
 `coax/web/tool.sh apps/openagents-web/demos/hud/build.coax`; its focused dev
 server runs on port 8815. The [visual study](../../docs/verse/2026-11-01-hud-library.md)
-records the Expanse image analysis and the Aethyr/Coax book boundaries.
+records the Expanse image analysis and the Metaverse Engine/Coax book boundaries.
 The sixth tab adds [ARWES ports](../../docs/verse/2026-11-01-arwes-coax.md):
 nine frame families, 31 easing curves, lifecycle/text animation, backgrounds,
 pointer lighting, style/theme arithmetic and a silent cue model, with pinned

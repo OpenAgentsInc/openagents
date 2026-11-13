@@ -1,6 +1,6 @@
 # 44. Inside a turning, accelerating ship
 
-> **Status: unimplemented — design draft.** Aethyr already makes spin gravity:
+> **Status: unimplemented — design draft.** The OpenAgents Metaverse Engine already makes spin gravity:
 > a gravity field for a spinning drum with centrifugal down and Coriolis on
 > moving things (`gravity_drum`, `gravity_on`, `drum_spin_for` in
 > [`aethyr/physics/gravity.coax`](../physics/gravity.coax);

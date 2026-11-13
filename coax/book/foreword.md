@@ -5,7 +5,7 @@ engine will recognize. The code that runs every frame has to be fast, so
 it ends up in C or C++. But C++ is slow to build, hard to change safely,
 and keeps important facts out of sight: how big a struct really is, which
 thread touches which data, whether two builds of a simulation will give
-the same answer. The Verse engine
+the same answer. The OpenAgents Metaverse Engine
 went through Rust and then C++ before we decided to try something else.
 
 The something else draws heavily on Jonathan Blow's Jai, which showed

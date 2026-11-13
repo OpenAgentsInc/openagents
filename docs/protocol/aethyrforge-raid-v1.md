@@ -1,4 +1,4 @@
-# Local Aethyrforge cultist event v1
+# Local Metaverse Engine cultist event v1
 
 `GET/POST /api/playtest/forge/raid` is available only to the local desktop's
 development admin, with exactly one active Everglade room. Commands follow

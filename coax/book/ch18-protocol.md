@@ -1,7 +1,7 @@
 # 18. The protocol boundary
 
 OpenAgents surfaces talk to each other in a public protocol: protobuf
-messages for agents, payments, decisions, the HUD and the Verse, plus
+messages for agents, payments, decisions, the HUD and the OpenAgents Metaverse, plus
 Nostr events. The schemas for those messages are `.proto` files in the
 repository's root `proto/` folder, and they are the contract. Anything
 that reads or writes those messages, in any language, has to agree with

@@ -1,6 +1,6 @@
 # Hold the Stair
 
-A Verse world at https://openagents.com/worlds/hold-the-stair: a popping tower defense on the SRD 5e rules (System Reference Document 5.2.1, CC BY 4.0). Bubble-beasts climb the stair of a wizard's tower from the cellar door to the top; you hold it with a party of adventurers whose attacks roll real dice.
+A Metaverse realm at https://openagents.com/worlds/hold-the-stair: a popping tower defense on the SRD 5e rules (System Reference Document 5.2.1, CC BY 4.0). Bubble-beasts climb the stair of a wizard's tower from the cellar door to the top; you hold it with a party of adventurers whose attacks roll real dice.
 
 ## How to play
 

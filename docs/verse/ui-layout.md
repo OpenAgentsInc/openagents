@@ -1,4 +1,4 @@
-# Aethyr UI layout: widgets that take space
+# Metaverse Engine UI layout: widgets that take space
 
 Status: design (GitHub #13076, phase 2). This design isn't built yet. Work starts
 only after the fantasy HUD (`aethyr/ui/hud-style.coax`, `everglade/hud/`) lands on
@@ -36,7 +36,7 @@ its own space.
   what moves where on a phone held upright, a phone held sideways, a tablet and
   a desktop.
 - No allocation, no callbacks, and a fixed bound on work, as everywhere in
-  Aethyr. Laying out a full HUD costs less than 0.1 ms.
+  the OpenAgents Metaverse Engine. Laying out a full HUD costs less than 0.1 ms.
 
 These things are out of scope: styling and the look (the fantasy HUD agent owns
 them), text shaping beyond the font's advance widths, and animation. A widget

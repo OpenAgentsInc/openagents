@@ -257,14 +257,14 @@ up:
 | `index.md` and the hidden `<main>` text | The world's spells and rules, as text for agents, search engines and screen readers, with the attribution |
 | Voice | The voice host reads the same record ("Moonbeam, level 2, a 5-foot cylinder of light…") and casts by name |
 | Agents (CLI, MCP `realm_*` tools) | List, describe and cast by `id`; results come back as the engine's events |
-| Aethyrforge | The world's ruleset profile and looks, edited as data |
+| OpenAgents Metaverse Engine | The world's ruleset profile and looks, edited as data |
 
 ## How a world adds it
 
 - **A catalog world** (`realms.json`): `"ruleset": "srd5"` (already read by
   `coax/web/realms.ts` and passed to the page as `data-ruleset`), plus its
   ruleset profile at `apps/openagents-web/realms/<slug>/ruleset.txt`.
-- **A made world** (Aethyrforge, `openagents realm …`): the ruleset and its
+- **A made world** (the Metaverse Engine, `openagents realm …`): the ruleset and its
   profile are fields of the world's spec. A maker picks "SRD 5e" and the
   classes and spells to allow. Every SRD spell works with its default look,
   and an agent can set looks and tweaks through the same edit model.
@@ -329,7 +329,7 @@ for imported spell/list data. Source presence and executable coverage remain sep
    from the records.
 8. **Shared surfaces:** the spellbook page, cards, `index.md` text, voice
    casting by name, agent tools.
-9. **Made worlds:** the ruleset in Aethyrforge's spec and edit model, and a
+9. **Made worlds:** the ruleset in the Metaverse Engine's spec and edit model, and a
    maker's choices.
 
 ## Open questions for the owner

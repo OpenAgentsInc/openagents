@@ -57,9 +57,9 @@ scenarios and parameter provenance. Every device in it is simulated.
 9. **Provenance.** Give the calibrated gains and limits R20 records
    ([chapter 37](ch37-provenance-and-rule-modules.md)), so the run's report says
    which values were measured and which were chosen.
-10. **Moving to Aethyr's engine.** Swap MuJoCo for Aethyr's rigid and joint
+10. **Moving to the OpenAgents Metaverse Engine's engine.** Swap MuJoCo for the Metaverse Engine's rigid and joint
     solvers
-    ([Aethyr chapters 17–22](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch017-a-scene-owns-the-state.md))
+    ([Metaverse Engine chapters 17–22](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch017-a-scene-owns-the-state.md))
     and compare the two backends on frozen recordings, as the
     [Genesis parity plan](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/docs/genesis-parity.md)
     describes.
@@ -89,4 +89,4 @@ for stale, mismatched, over-limit, revoked, reordered and expired commands
 - Chapters [29](ch29-units-and-frames.md) to [37](ch37-provenance-and-rule-modules.md).
 - [Chapter 16](ch16-determinism.md) for strict profiles and
   [chapter 17](ch17-gpu.md) for the Metal path.
-- Psionic chapters 167–170 and Aethyr Part IV.
+- Psionic chapters 167–170 and Metaverse Engine Part IV.

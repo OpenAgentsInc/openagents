@@ -4,7 +4,7 @@
 > own private code at `/realms/fairy-forest`:
 > [fairy.coax](../../apps/openagents-web/fairy.coax) over
 > [verse/fairy-forest/](../../verse/fairy-forest/README.md). This chapter
-> plans rebuilding it only from Aethyr's earlier chapters. Nothing here runs
+> plans rebuilding it only from the OpenAgents Metaverse Engine's earlier chapters. Nothing here runs
 > yet.
 
 Fairy Forest is the realm players asked for when asked what game they would

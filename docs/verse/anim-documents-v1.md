@@ -89,7 +89,7 @@ Reader: `anim_rig_load` in `rig-document.coax`.
 
 A parent is −1 for a root or an earlier joint's index. This ordering rejects
 cycles before playback. Multiple roots are allowed, including groom chains.
-`mannequin` is one of Aethyr's 65 mannequin names, or `null` for an unmapped
+`mannequin` is one of the OpenAgents Metaverse Engine's 65 mannequin names, or `null` for an unmapped
 joint. `offset` is a quaternion applied by retargeting.
 
 A section's `format` is `skin8.v1`. Each vertex record is 96 bytes:
@@ -232,7 +232,7 @@ A light has 1–16 `{at, position, colour, intensity}` keys. Colour channels
 are 0–64 and intensity is 0–10,000. A camera has 2–16
 `{at, eye, look, cut, ease}` keys. `eye` and `look` must be at least 0.0001
 metres apart. `cut` is a
-boolean; `ease` is Aethyr's easing index 0–3. `fov` is 0.1–3 radians and
+boolean; `ease` is the Metaverse Engine's easing index 0–3. `fov` is 0.1–3 radians and
 `focus` is 0.01–1,000,000 metres.
 
 A sound cue has `name`, `kind` (`voice`, `music`, `effect`), `start`, `end`

@@ -1,4 +1,4 @@
-# Aethyrforge desktop (experimental)
+# Metaverse Engine desktop (experimental)
 
 The four-host Everglade performance matrix, immutable sixteen-bot siege,
 measurement scopes and one-command rerun are in
@@ -12,7 +12,7 @@ transport/counter diagnostic, not a qualified performance sample.
 On Linux the same build command produces a native desktop executable with
 Bitcoin Lab loaded. Nix supplies the C SDKs; it does not rebuild the system.
 The window runs the existing Bitcoin Lab Coax producer, its Coax-generated
-SPIR-V, Aethyr's native Vulkan pass host and the shared desktop Coder HUD.
+SPIR-V, the OpenAgents Metaverse Engine's native Vulkan pass host and the shared desktop Coder HUD.
 There is no browser, page server or JavaScript in the Linux runtime.
 
 ```sh
@@ -232,7 +232,7 @@ checks are recorded in
 The Coder HUD uses `aethyr/ui/draw.coax` for a compact, lightly tinted 88-point
 composer and shared layout. Floating messages use `aethyr/ui/feed.coax` and
 `feed-draw.coax`: Coax owns the bounded UTF-8 ring, wrapping, newest visible rows
-and five-second completion lifetime; Aethyr's font/stroke components emit their
+and five-second completion lifetime; the Metaverse Engine's font/stroke components emit their
 Metal vertices, drawn on the shared host's layer. The app supplies clock
 observations. The floating messages have no AppKit text view or deadline/hide task.
 AppKit still supplies editable input/IME and selectable conversation history. There

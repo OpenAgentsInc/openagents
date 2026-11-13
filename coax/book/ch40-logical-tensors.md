@@ -50,8 +50,8 @@ result.
 
 ## The consumer and the gate
 
-The consumer is the Aethyr physics engine's solver state
-([Aethyr Part IV](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch017-a-scene-owns-the-state.md)).
+The consumer is the Metaverse Engine physics engine's solver state
+([Metaverse Engine Part IV](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch017-a-scene-owns-the-state.md)).
 It declares its bodies, contacts and particles once. The gate:
 
 - The solvers run in two layouts and at batch sizes 1 and 1,024 with

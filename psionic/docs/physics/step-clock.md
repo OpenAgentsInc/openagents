@@ -111,6 +111,6 @@ changed/false proof metadata refuses. The example has a prewritten golden
 transcript, identical in both native modes.
 
 General rates/phases, civil mappings, actual steady-clock effects and watchdogs,
-inference cancellation, complete runtime snapshots, Verse migration, compiler
+inference cancellation, complete runtime snapshots, Metaverse migration, compiler
 R13 syntax and R14 `#bounded` remain pending. No genuine robot integration or
 real-time performance has been qualified by this runtime precursor.

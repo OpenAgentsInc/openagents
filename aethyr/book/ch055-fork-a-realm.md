@@ -4,7 +4,7 @@
 > the document at the revision forked (the published revision for anyone
 > but the owner) into a new realm at its own revision 1 that records
 > `forked_from {slug, rev}`, and pins it to its parent's engine
-> ([chapter 54](ch054-publish-a-realm.md)). Aethyrforge reads that
+> ([chapter 54](ch054-publish-a-realm.md)). The OpenAgents Metaverse Engine reads that
 > provenance ([aethyr/forge/doc.coax](../forge/doc.coax)); a fork's edits
 > are its own log in chapter 52's model, they leave the parent's document
 > byte-identical, and the parent's revision plus the fork's log replays to

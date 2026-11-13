@@ -68,7 +68,7 @@
 - [49. Rooms and presence](ch049-rooms-and-presence.md) — partly implemented
 - [50. Lockstep for small deterministic games](ch050-shared-state-over-the-network.md) — partly implemented
 
-**VI. Making worlds: Aethyrforge**
+**VI. Making worlds: OpenAgents Metaverse Engine**
 
 - [51. A realm is a document](ch051-a-realm-is-a-document.md) — partly implemented
 - [52. Edit a realm in place](ch052-edit-a-realm-in-place.md) — partly implemented
@@ -86,7 +86,7 @@
 - [61. Hecate's Cemetery](ch061-hecates-cemetery.md) — design draft
 - [62. Fairy Forest](ch062-fairy-forest.md) — design draft
 - [63. The space games](ch063-the-space-games.md) — design draft
-- [64. Every realm runs on Aethyr](ch064-every-realm-runs-on-aethyr.md) — partly implemented
+- [64. Every realm runs on the Metaverse Engine](ch064-every-realm-runs-on-aethyr.md) — partly implemented
 
 **VIII. Hearing it**
 
@@ -108,7 +108,7 @@
 - [77. People who talk back](ch077-people-who-talk-back.md) — partly implemented
 - [78. Cinematics and close-ups](ch078-cinematics-and-close-ups.md) — partly implemented
 
-**X. Aethyrforge: generating worlds**
+**X. Generating worlds**
 
 - [79. A piece from a sentence](ch079-a-piece-from-a-sentence.md) — design draft
 - [80. Terrain and scatter from a seed](ch080-terrain-and-scatter-from-a-seed.md) — partly implemented

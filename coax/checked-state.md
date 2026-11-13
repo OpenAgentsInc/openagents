@@ -25,7 +25,7 @@ stale or retired handle returns `none`. `store_get_live` asserts liveness and
 returns a view for code that already established it. Removal advances the
 generation. The last generation retires the slot instead of wrapping.
 
-Aethyr uses `Handle(Entity)` while preserving its ordered flush, stable
+The OpenAgents Metaverse Engine uses `Handle(Entity)` while preserving its ordered flush, stable
 `EntityId` column and existing 4,096-owner retirement limit. `entity_get` returns
 an optional entity value; components stay in the realm's columns. Dead Gears'
 callers also carry the typed handle. Saves and messages use stable IDs.

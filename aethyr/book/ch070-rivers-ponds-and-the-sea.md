@@ -5,8 +5,8 @@
 > [docs/verse/water.md](../../docs/verse/water.md) are done in
 > [`verse/water.coax`](../../verse/water.coax) and its sibling modules, and
 > Everglade and the water lab (`/realms/waterlab`) use them. No other realm
-> can load water through Aethyr. This chapter plans water as an Aethyr
-> module with the same formulas and checks. Aethyr now has the bounded
+> can load water through the OpenAgents Metaverse Engine. This chapter plans water as a Metaverse Engine
+> module with the same formulas and checks. The Metaverse Engine now has the bounded
 > gameplay volume/surface queries described below; the full wave, force,
 > rendering and realm-adoption chapter remains a design draft.
 
@@ -109,7 +109,7 @@ module that any realm declares, instead of code that belongs to Everglade.
 The chapter is done when:
 
 - Every `#test` in today's `verse/water*.coax` modules passes against the
-  Aethyr modules with the same tolerances.
+  Metaverse Engine modules with the same tolerances.
 - The gameplay surface is the same bit for bit on a phone client and a
   desktop client at every tick, and a late joiner folds to the same tick.
 - A body at rest on still water sleeps; waves or a current wake it.

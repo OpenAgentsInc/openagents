@@ -44,7 +44,7 @@ paths rather than repeating the complete model or mutation gates.
 
 The other seven follow-ups remain outside this pass: representative dictation
 quality and release latency (#12665), microphone CLI (#12667), terminal
-composer (#12668), Verse/Aethyr provider (#12669), vocabulary and formatting
+composer (#12668), Metaverse/Aethyr provider (#12669), vocabulary and formatting
 (#12670), Linux capture and inference (#12672), and genuine incremental ASR
 (#12673). Independent file windows are not cache-aware streaming. TDT emission
 positions are not acoustic word alignment.
@@ -70,7 +70,7 @@ tests were used for this pass.
 ## Subsequent status, 2026-11-03
 
 #12665, #12667, #12668, #12669, #12670 and #12672 are now closed: Linux
-evaluation/optimizations, microphone CLI, terminal insertion, Verse/Aethyr
+evaluation/optimizations, microphone CLI, terminal insertion, Metaverse/Aethyr
 recognition, CLI vocabulary/formatting and Linux CUDA support have landed.
 #12673 now has the separate Linux streaming qualification below. The [epic](https://github.com/OpenAgentsInc/openagents/issues/12614)
 has been reconciled with those issue states.
@@ -88,7 +88,7 @@ The separate [incremental checkpoint/profile](../../psionic/docs/parakeet.md#inc
 is implemented and qualified for #12673 on Linux CUDA: real incremental
 features, persistent FastConformer/RNNT state, partials, finalization and
 reset/cancel/order refusal. The explicit file-backed Coax consumer admits only
-one final through Aethyr's existing media/turn gate. Thirteen original-weight
+one final through the OpenAgents Metaverse Engine's existing media/turn gate. Thirteen original-weight
 cases and the bounded native API are recorded in the
 [incremental qualification](../verification/incremental-asr-2026-11-03/README.md).
 The Linux CLI now adopts it explicitly with `openagents dictate --stream`

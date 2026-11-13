@@ -1,6 +1,6 @@
 # 4. Ground you can stand on
 
-> **Status: partly implemented.** Everglade II's ground is a set of Aethyr
+> **Status: partly implemented.** Everglade II's ground is a set of Metaverse Engine
 > terrain tiles in [`verse/everglade2/ground.coax`](../../verse/everglade2/ground.coax),
 > built on [`aethyr/world/terrain-tile.coax`](../../aethyr/world/terrain-tile.coax)
 > (#12995, #13059). The code moves into `everglade/world/` later, so this

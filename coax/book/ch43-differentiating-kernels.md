@@ -40,13 +40,13 @@ compiles.
 5. **Gradient modes.** Each kernel declares `exact`, `custom` or `none`. A
    differentiable program that reaches a `none` kernel is refused, with the
    path to it. It is never given a zero gradient.
-6. **Gradients in a simulation.** How Aethyr's per-solver gradient modes
-   ([Aethyr chapter 32](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch032-differentiate-a-simulation.md))
+6. **Gradients in a simulation.** How the OpenAgents Metaverse Engine's per-solver gradient modes
+   ([Metaverse Engine chapter 32](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch032-differentiate-a-simulation.md))
    map to these declarations.
 
 ## The consumer and the gate
 
-The consumer is the Aethyr engine's differentiable rigid step and one
+The consumer is the Metaverse Engine's differentiable rigid step and one
 particle solver. The gate:
 
 - Both pass finite-difference and adjoint-consistency checks on fixed cases.

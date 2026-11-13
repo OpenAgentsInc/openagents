@@ -35,10 +35,10 @@ volume. Convex decomposition splits a non-convex mesh into convex hulls
 tetrahedralization fills a closed surface with quality tetrahedra
 ([Hu et al., TetWild, SIGGRAPH 2018](https://doi.org/10.1145/3197517.3201353)).
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 Coax R17's robot-model import is the language half: parsing into checked
-records with units and frames. Aethyr adds the physical checks above, mesh
+records with units and frames. The OpenAgents Metaverse Engine adds the physical checks above, mesh
 validation, decomposition and tetrahedralization, and writes a content-
 addressed scene asset that build (chapter 17) reads, so a run names the
 exact asset bytes it used. Each imported field records provenance (R20):

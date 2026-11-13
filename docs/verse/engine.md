@@ -1,13 +1,13 @@
-# Verse
+# The Metaverse
 
-Verse is OpenAgents' real-time engine (formerly named Metareal). The same
-name covers the world and experience it runs, the Verse, whose individual
+The OpenAgents Metaverse is OpenAgents' real-time engine (formerly named Metareal). The same
+name covers the world and experience it runs, the Metaverse, whose individual
 worlds are realms. Coax is the target implementation language for the engine and
 for OpenAgents' other surfaces; the current compiler is a scalar bootstrap.
 
 The defining interchange contract is the
 [OpenAgents Protocol](../protocol/openagents-protocol-spec.md), with
-[Verse's chapter](openagents-verse-protocol.md). The shared engine namespace
+[the Metaverse's chapter](openagents-verse-protocol.md). The shared engine namespace
 stays `openagents.engine.*`; world, simulation and product contracts use
 `openagents.verse.*`. A brand rename does not duplicate those namespaces.
 
@@ -41,5 +41,5 @@ actual Coax consumer parity is demonstrated; no whole-engine rewrite is
 claimed here.
 
 Characters: [MetaHuman support](metahuman-support.md) is the design for
-loading, animating and drawing private Epic MetaHuman characters in Aethyr,
+loading, animating and drawing private Epic MetaHuman characters in the OpenAgents Metaverse Engine,
 with a first plan for 5E Lab's figures.

@@ -1,6 +1,6 @@
 # Character Studio
 
-`/worlds/character-creator` is a live Aethyr wardrobe for the Quaternius humans,
+`/worlds/character-creator` is a live Metaverse Engine wardrobe for the Quaternius humans,
 and it is a place in Everglade II: Character Create's glade is where Everglade II
 begins (#13023). The page boots Everglade II itself (`everglade2`, its slot and
 pack) in the glade, in Character Create's mode: a studio camera on your
@@ -133,7 +133,7 @@ and `data-realm`, and only its address, its font and its first mode differ
 ## Save Player and use it in Everglade
 
 SAVE PLAYER explicitly commits the current character to this browser's active
-Aethyr player appearance. USE IN EVERGLADE saves the current choices and opens
+Metaverse Engine player appearance. USE IN EVERGLADE saves the current choices and opens
 Everglade only after storage confirms the exact saved record. Automatic draft
 saving remains separate: trying another outfit or pressing RESET does not
 replace the active player until explicitly saved. PLAYER SAVED confirms the

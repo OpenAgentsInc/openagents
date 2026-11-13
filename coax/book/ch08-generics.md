@@ -661,7 +661,7 @@ no generic parameters. Use a generic container of an ID, as above.
 
 For a hash table, hash `key.value` and compare full typed keys after selecting
 a bucket. A hash collision is not identity. Decoding an integer does not
-prove a handle is live or belongs to the current owner. Aethyr's entity and
+prove a handle is live or belongs to the current owner. The OpenAgents Metaverse Engine's entity and
 session libraries own those checks; language conformance does not complete
 an engine's liveness or persistence gate.
 

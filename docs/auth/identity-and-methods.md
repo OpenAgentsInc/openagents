@@ -48,7 +48,7 @@ stuffing defences and reset flows, and every method above is stronger or
 equal. If the owner ever wants them, Argon2id goes in first (see
 [build order](build-order.md#crypto-we-must-write-in-coax)).
 
-**Guests.** A visitor without an account plays the Verse and Everglade
+**Guests.** A visitor without an account plays the OpenAgents Metaverse and Everglade
 with a random player key (`X-Verse-Player`, stored as SHA-256). Logging in
 attaches the guest's player, characters and realms to the account once.
 A guest key is never an authenticator.
@@ -339,7 +339,7 @@ to be deleted, or an agent can't be merged.
 | Android | Same as iOS, plus NIP-55 signer apps | An Android Keystore device key (StrongBox when present); Credential Manager passkey | Same as iOS |
 | CLI (`openagents login`) | Prints a link and QR to `/login/device#code=...`; you approve in a logged-in browser | Its own Nostr key, linked as `cli:<machine>` | None: NIP-98 per request |
 | Agents | Made by the owner on `/settings/agents` or by `openagents agent create` | Grant shown and signed at L2 | NIP-98 per request, or `oa_key_` |
-| Everglade, Verse | Playable as a guest | Log in through any of the above | The page's session; rooms take signed seat tickets as today |
+| Everglade, Metaverse | Playable as a guest | Log in through any of the above | The page's session; rooms take signed seat tickets as today |
 
 **The mobile default is email, with Nostr beside it.** The owner chose
 email and Nostr to start, and no phone numbers at all (decisions D2 and

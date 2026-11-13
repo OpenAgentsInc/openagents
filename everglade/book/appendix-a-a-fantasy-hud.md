@@ -12,9 +12,9 @@
 This appendix answers the player's question: "Why does Everglade's screen look
 like a fantasy game and not a starship?"
 
-The Verse's HUD began as an instrument panel: grey and cyan glow lines, thin
+The OpenAgents Metaverse's HUD began as an instrument panel: grey and cyan glow lines, thin
 bars and cut corners. That suits a space realm. Everglade is a fantasy world, so
-it gets its own HUD style, FANTASY. The rest of the Verse keeps SCIFI and looks
+it gets its own HUD style, FANTASY. The rest of the Metaverse keeps SCIFI and looks
 exactly as before.
 
 ## What this appendix teaches

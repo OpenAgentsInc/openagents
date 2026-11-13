@@ -26,7 +26,7 @@ Compiler-owned formal unit products/quotients and their nominal interner are
 now qualified too. The [initial native point/vector profile](../../../coax/SPATIAL.md)
 adds affine roles, nominal frames and minimum coordinate precision, with a tiny
 F64 floating-origin camera consumer. Frame-chain/state transforms, angular
-roles and Panda API migration remain pending. Preserve Verse’s left-handed view conversion and
+roles and Panda API migration remain pending. Preserve the OpenAgents Metaverse’s left-handed view conversion and
 Panda’s distinct grip-site/EEF frames, arm radians and finger metres. Measure
 physical carriers and native code against the untyped baseline.
 2. Add R13 simulation/steady/civil clock distinctions and declared multirate
@@ -144,12 +144,12 @@ not infer wall-clock throughput from nominal simulation rates.
 ## Fit the expanded physics book without delaying the rigid path
 
 Main now places imitation, GR00T and this loop at chapters 168–170. The
-[Genesis parity plan](../genesis-parity.md) and Aethyr Part IV add the owned
-physics engine. The next robot backend follows Aethyr's rigid branch: scene 17,
+[Genesis parity plan](../genesis-parity.md) and Metaverse Engine Part IV add the owned
+physics engine. The next robot backend follows the OpenAgents Metaverse Engine's rigid branch: scene 17,
 bodies 18, articulation 19, broad/narrow contact 20–21 and contact solve 22;
 assets 35, batching 31, sensors 33, observation rendering 34 and world replay 36
-(Aethyr chapters), with Psionic chapter 167's control, supply the matching
-end-to-end path. The Aethyr chapter files remain design drafts; chapter167 now has the
+(Metaverse Engine chapters), with Psionic chapter 167's control, supply the matching
+end-to-end path. The Metaverse Engine chapter files remain design drafts; chapter167 now has the
 separate runnable position and joint-force query profiles. Their numbering is a teaching order; dependencies
 such as assets before rendered observations still determine implementation.
 

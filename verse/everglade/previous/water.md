@@ -14,12 +14,12 @@ tracked as GitHub issues on the
 [OpenAgents project board](../project-board.md). The coastal zone that builds
 on the ocean phases has its own specification, [The coast](coast.md).
 
-This document specifies the water system for the Verse engine: every
+This document specifies the water system for the OpenAgents Metaverse Engine: every
 capability of Three.js Water Pro, which the owner asked us to match, plus the
 capabilities a game world with rigid-body physics, spells, destruction, and
 multiplayer needs. Everything runs in our own renderers (`verse-pbr`'s
 physical renderer and the imported, or battle, renderer) and our own physics
-(`crates/physics`), on every platform Verse supports: desktop `wgpu`, the
+(`crates/physics`), on every platform the OpenAgents Metaverse supports: desktop `wgpu`, the
 browser through WebGPU or WebGL2 (`everglade-web`), and phones down to
 OpenGL ES 3.0.
 
@@ -27,7 +27,7 @@ OpenGL ES 3.0.
 
 - [Sources and ground rules](#sources-and-ground-rules)
 - [What Water Pro does](#what-water-pro-does)
-- [What Verse has today](#what-verse-has-today)
+- [What the Metaverse has today](#what-the-metaverse-has-today)
 - [Capabilities](#capabilities)
 - [Gameplay rules](#gameplay-rules)
 - [Architecture](#architecture)
@@ -159,7 +159,7 @@ language (TSL), with WebGL2 as an automatic fallback.
 | WebGPU features that WebGL lacks: spray; everything else has a WebGL path | `D/api/spray.html`, `D/changelog.html` |
 | Performance guidance: disable underwater work above water, keep masks simple, compile shaders before the first frame; no published frame-time numbers | Changelog and guides |
 
-## What Verse has today
+## What the Metaverse has today
 
 There is no water system. Measured at `e0e737a3b9`:
 
@@ -379,7 +379,7 @@ phase that implements a rule checks each SRD figure here against the SRD
   is a crossbow, a net, or a thrown weapon such as a javelin, spear,
   trident, or dart. Anything fully underwater has Resistance to Fire
   damage. The SRD gives spell attacks no underwater penalty, and neither
-  does Verse.
+  does the Metaverse.
 - **Falling into water (SRD 5.2.1).** A creature that falls into water uses
   its Reaction for a DC 15 Strength (Athletics) or Dexterity (Acrobatics)
   check, rolled behind the scenes; on a success the fall's damage is halved.
@@ -547,7 +547,7 @@ freeze (all ours):
 The four modes follow SRD 5.2.1. The cube is up to 30 m on a side, and
 switching modes ends the previous one.
 
-| Mode | SRD 5.2.1 | Verse |
+| Mode | SRD 5.2.1 | Metaverse |
 | --- | --- | --- |
 | Flood | Standing water in the area rises by up to 20 ft (6 m) until the spell ends or the mode changes. In a large body of water, a 20-foot wave instead crosses the area and crashes; Huge or smaller vehicles in its path are carried across, and each one it strikes has a 25 percent chance to capsize. | In a body smaller than the cube, the level inside the cube rises by the chosen amount, up to 6 m, and the outline grows to the terrain at the new level, clipped to the cube's faces, which draw as standing walls of water. When the mode ends, the water falls back over 6 s (ours). In a body larger than the cube, a solitary 6 m wave crosses the cube in 6 s (ours) and carries rowboats; the 25 percent capsize roll is behind the scenes. |
 | Part Water | A trench crosses the area with a wall of water to each side; when the mode ends, the trench refills over the next round. | The trench is 3 m wide (ours) along the caster's facing, the cube's length, down to the bed. Swimmers in its path move to the nearer wall (ours); bodies on the bed stay. It refills over 6 s. |
@@ -850,7 +850,7 @@ level changes, and dams are host events with a start tick and a duration.
 ### Simulation: CPU everywhere, GPU where it pays
 
 Phones on OpenGL ES 3.0 and WebGL2 have no compute shaders or storage
-buffers, and every Verse backend currently runs under WebGL2 limits, so the
+buffers, and every Metaverse backend currently runs under WebGL2 limits, so the
 baseline is CPU simulation plus texture uploads, which every tier supports:
 
 | Simulation | Where | Size | Per frame |

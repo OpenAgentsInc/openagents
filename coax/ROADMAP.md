@@ -16,7 +16,7 @@ parity with [Genesis World](../docs/research/genesis/genesis.md) needs from the
 language, and numbers every phase with a single integer;
 [section 34](#34-earlier-phase-labels) maps the earlier labels.
 
-The goal is a systems language in which OpenAgents and Verse can express
+The goal is a systems language in which OpenAgents and the OpenAgents Metaverse can express
 their computation, data, protocols, tools and build policy in Coax. Runtime
 costs, ownership and generated behavior must remain visible. Native adapters
 continue to own platform effects, storage, graphics resources and foreign SDKs.
@@ -50,7 +50,7 @@ slice as new work. The README's obsolete paynet prerequisite is already fixed.
 | GPU/platforms | Scalar Metal graphics, bounded CUDA/Metal compute, checked WGSL/SPIR-V graphics emission and existing native/Coaxial consumers | Shared typed GPU resource/layout contracts, further shader profiles and broader target/ABI/device qualification |
 | Builds/iteration | Single-shot C11 output, shell/Xcode integration, JSON diagnostics, original-source line/name maps, phase timings, evidence records and bounded native-check companions | Completed formatting/revision-bound authoring tools, capability-aware `build.coax`, general incremental caching, transactional reload and additional backends |
 | Simulation compute | Bounded CUDA/Metal compute kernels, Psionic's library-level CUDA graph replay and leased DLPack views | Logical shapes separate from physical layouts and placement, visible specialization, measured compile and startup budgets with a correct kernel cache, device graphs and device-side loops as language forms, zero-copy buffer imports with explicit transfers, and kernel differentiation with custom adjoints |
-| Physical-world data | Nominal/formal scalar quantities, derived units and binary-scale conversions; initial native-C affine points/vectors used by the space camera and Panda FK queries; existing Psionic robot and Verse space simulations still largely use plain numbers and documented conventions ([space primitives](../docs/verse/space.md)) | Full-state and rotating transforms, typed clocks with astronomical time scales, bounded control, strict integrator/event contracts, replay and snapshots, robot-model import, stamped sensors with light-time, supervised simulated actuators, fault scenarios, parameter provenance, fidelity profiles and typed rule modules |
+| Physical-world data | Nominal/formal scalar quantities, derived units and binary-scale conversions; initial native-C affine points/vectors used by the space camera and Panda FK queries; existing Psionic robot and Metaverse space simulations still largely use plain numbers and documented conventions ([space primitives](../docs/verse/space.md)) | Full-state and rotating transforms, typed clocks with astronomical time scales, bounded control, strict integrator/event contracts, replay and snapshots, robot-model import, stamped sensors with light-time, supervised simulated actuators, fault scenarios, parameter provenance, fidelity profiles and typed rule modules |
 
 The [source-unit evidence](../docs/verification/coax-source-units-2026-10-28.md)
 and [reflection evidence](../docs/verification/coax-layout-reflection-2026-10-28.md)
@@ -88,16 +88,16 @@ delivery and can run early as an experiment; resident compilation also does
 not require completed self-hosting, so R25–R27 may overlap once their own
 dependencies and trust boundaries are satisfied.
 
-The physical-world phases share three continuous consumers: one running Verse
-world; one small simulated robot, the closed loop of Psionic chapters
+The physical-world phases share three continuous consumers: one running Metaverse
+realm; one small simulated robot, the closed loop of Psionic chapters
 [168](../psionic/book/ch168-imitation-before-robotics-scale.md)–170 (see the [plan](../psionic/book/PLAN.md)), built on its deterministic and
 differentiable solvers (chapters 109 and 111); and one spacecraft scenario on
 the `verse/` space modules: a freighter that loads cargo, transfers to a moving
-destination, rides out a fault and docks, used by the Verse space games and by
-Aethyr Part V (chapters 39–48). Each of R12–R20 must improve one of them,
+destination, rides out a fault and docks, used by the Metaverse space games and by
+Metaverse Engine Part V (chapters 39–48). Each of R12–R20 must improve one of them,
 and a facility both the robot and the spacecraft need (frames, clocks,
 integrators, replay, stamps) is built once for both. R21–R24 have one more
-consumer, the Aethyr physics engine ([Aethyr book](../aethyr/book/README.md) Part IV, chapters 17–37,
+consumer, the Metaverse Engine physics engine ([Metaverse Engine book](../aethyr/book/README.md) Part IV, chapters 17–37,
 planned in psionic/docs/genesis-parity.md: rigid and articulated bodies, contact,
 particle and mesh materials, coupling and batched worlds), whose solvers are
 the first kernels to need layouts, budgets, device graphs and derivatives. These phases produce language, library and checking work for
@@ -557,7 +557,7 @@ Record generator identity/version, declaration inputs and emitted ranges.
 Missing semantics for pointers/units/ownership must be annotations or explicit
 adapters, never guessed from field type alone.
 
-**Consumer/gate:** replace a hand-maintained Verse registration or inspector
+**Consumer/gate:** replace a hand-maintained Metaverse registration or inspector
 table, rather than adding an unused language demo. Test collisions, reorder,
 rename, migration and cross-build identity. Inspect expanded code; reject bad
 generators and check independent native layouts. `#derive(proto)` can consume
@@ -746,7 +746,7 @@ is 16,384 m, f64 about 30.5 µm), and a local frame used for contacts or
 rendering is reached by an explicit, recorded origin change, as `verse/`'s
 floating-origin camera already does by hand.
 
-**Consumer/gate:** move one Verse camera/world transform path and the joint
+**Consumer/gate:** move one Metaverse camera/world transform path and the joint
 and pose values of the simulated robot (Psionic chapters 168–170) onto these
 types, then the spacecraft scenario's heliocentric, body-fixed, ship and
 drum-interior states (`aethyr/physics/orbit.coax`, `aethyr/physics/gravity.coax`). Fixtures cover point/vector algebra, refused frame and unit mixing,
@@ -783,7 +783,7 @@ a contact) caps the next step, so warping never moves an event. The clock owns
 this ordering rule; R15 adds event location on top of it.
 
 **Consumer/gate:** drive the simulated robot's physics and control steps at
-different rates, and Verse's fixed-step update, from declared schedules.
+different rates, and the Metaverse's fixed-step update, from declared schedules.
 Fixtures cover refused conversions between clock domains, simulated time
 paused and stepped while steady time advances, sample-and-hold reads, a read
 past its maximum age, and the exact task order over many ticks compared
@@ -807,7 +807,7 @@ it with native measurement. A bound that cannot be computed is a refusal, not
 an estimate. Bounded solver building blocks (iteration budgets, residuals and
 convergence status as results) are library work on top of this contract.
 
-**Consumer/gate:** make the simulated robot's control step and one Verse
+**Consumer/gate:** make the simulated robot's control step and one Metaverse
 per-frame kernel `#bounded`. Fixtures add allocation, blocking, recursion, an
 unbounded loop and an unknown foreign call one at a time, directly and through
 a generic helper or callback; each must be refused with its path. The computed
@@ -882,7 +882,7 @@ state) and observation (what each agent had received, R18, when it acted), so
 a debrief can ask what a controller knew when it issued a command.
 
 **Consumer/gate:** record and replay the simulated robot's closed loop,
-including the Psionic deterministic solver's state, and one Verse session.
+including the Psionic deterministic solver's state, and one Metaverse session.
 Restore from a mid-run snapshot and match the uninterrupted run. Replay the
 spacecraft scenario at two warp factors and get the same events and final
 state. Fixtures omit

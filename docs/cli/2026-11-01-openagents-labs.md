@@ -31,7 +31,7 @@ command line: "make this file from that document, the same way every time,
 and tell me what changed."
 
 We already have most of the engines in Coax: headless Chrome shots and
-clips, the deck builder, Ice Cream Man's rules and bot, Verse cameras and
+clips, the deck builder, Ice Cream Man's rules and bot, Metaverse cameras and
 cinematics, the Claude and Codex agent SDKs, and `openagents transcribe`.
 Today you reach them through `coax/web/tool.sh` with repository paths. The
 `labs` domain puts them behind one installed binary, with the CLI's
@@ -48,14 +48,14 @@ and a hosted `/v1/labs` API.
 
 | Lab | What it did | Inputs | Outputs | Repeatable operations |
 | --- | --- | --- | --- | --- |
-| Video Lab ("Film Lab"): `scripts/film/lab.py`, `cut.py`, `review.py`, `crates/video-lab`, `openagents lab` | Edited films and Verse scenes by talking; rendered previews in the chat | `cut.v1` (shots with source, in point, duration, crossfade, titles, music, voice, captions), `shot.v1`, `scene.v1`; review notes at a time | MP4 at preview, review and master quality; stills and strips; side-by-side compares; music; transcripts | `render`, `frame`, `compare`, `edit --patch`, `versions`, `notes`; `inspect` refused cuts inside an animation beat, missing sources, titles outside the safe area |
+| Video Lab ("Film Lab"): `scripts/film/lab.py`, `cut.py`, `review.py`, `crates/video-lab`, `openagents lab` | Edited films and Metaverse scenes by talking; rendered previews in the chat | `cut.v1` (shots with source, in point, duration, crossfade, titles, music, voice, captions), `shot.v1`, `scene.v1`; review notes at a time | MP4 at preview, review and master quality; stills and strips; side-by-side compares; music; transcripts | `render`, `frame`, `compare`, `edit --patch`, `versions`, `notes`; `inspect` refused cuts inside an animation beat, missing sources, titles outside the safe area |
 | Film engine: `openagents film` (`verse-film`) | Recorded a scene once as a message stream and drew it with any renderer | A take file | PNG frames, MP4 | `inspect`, `render`, `export`, `launch` |
 | Game Lab: `crates/game-lab`, `openagents game` | Changed Ice Cream Man's tuning by talking; a bot checked it was still winnable | `game.v1`: tuning numbers and words | Bot-run stats over 24 seeded houses; a playable link | `edit`, `open` (stats), `play`, `compare`, `notes` |
 | Agent Lab: `crates/agent-lab`, `docs/agent-lab/` | Created, tried and compared agents; replayed a recorded bad day as a suite | `agent-draft.v1`, `agent-suite.v1`, `agent-experiment.v1` | `agent-results.v1`: per case, checks passed, runs that did not finish, links to conversations | `replay list`, `replay task`, `replay score CASE reply.json`, trials on a fixed suite, compare two versions |
 | Design Lab: `crates/design-lab` | A board of every screen of every app, captured from code | A capture tour per app | PNGs with element trees, light and dark; a static board | `capture`, `serve`, `export DIR`, `spec` |
 | CAD Lab: `crates/cad`, `crates/cad-lab`, `openagents cad` | Built parts and assemblies on a Rust B-rep kernel | `part.v1`, `assembly.v1` | glTF, STEP, 3MF, STL, drawings, mass properties | rebuild, export |
 | Robot Lab: `crates/robot-*` | Robots in MuJoCo scenes, LeRobot data, policy runs | Robot, environment and experiment documents | Simulation runs, replays, policy scores | simulate, replay, compare |
-| Ship Lab: `crates/ship-lab` | Checked a spacecraft against mass, thrust and burn budgets | `spacecraft.v1` | Checks and a Verse zone file | check, export zone |
+| Ship Lab: `crates/ship-lab` | Checked a spacecraft against mass, thrust and burn budgets | `spacecraft.v1` | Checks and a Metaverse zone file | check, export zone |
 | Briefing Lab: `crates/briefing-lab` | A read-only issue briefing from a pinned commit | Repo, commit, issue | `briefing.json`, `briefing.md` | `index`, `preview` |
 
 The Labs README already ruled `briefing-lab`, `layertree-tee-lab` and
@@ -90,7 +90,7 @@ A function belongs when all of these hold:
 | A board of every page | **In**, for web pages only (`labs board`) | A list of URLs taken at two sizes and two themes is `shot` in a loop. The iOS, Android and desktop tours needed Xcode, emulators and app code; they stay with the apps |
 | Agent suites scored offline | **In**, later (`labs suite`) | Agent Lab's replay scoring started no process and touched no network. A suite file plus saved replies is pure and repeatable |
 | Agent trials on a suite | **Later**, with limits the user sets | `coax/lib/agent/claude` and `codex` can run a turn, but each case spends the user's model credit. It ships after `suite score`, with a cost cap flag the user sets |
-| Realm builder evals and the Aethyrforge journey | **Out** | `realm-layout-eval` and `forge-journey` are our release checks against staging. They stay in `coax/web/tool.sh` |
+| Realm builder evals and the Metaverse Engine journey | **Out** | `realm-layout-eval` and `forge-journey` are our release checks against staging. They stay in `coax/web/tool.sh` |
 | Design Lab's native app tours | **Out** | They need simulators and app source, so they are developer tooling inside `apps/` |
 | CAD Lab | **Out** | Its kernel was Rust (Truck) and is gone. It returns only with a Coax kernel |
 | Robot Lab | **Out** | MuJoCo, LeRobot and policy runs need GPUs and physical hosts |
@@ -193,7 +193,7 @@ scenes use their first camera; cuts follow the edit.
 
 Play uses a local server at `http://127.0.0.1:8800` (or
 `OPENAGENTS_ANIM_ORIGIN=http://127.0.0.1:PORT`), headless muted Chrome and
-Verse's actual WebGPU frames. It writes a new MP4 under `~/.openagents/`
+the OpenAgents Metaverse's actual WebGPU frames. It writes a new MP4 under `~/.openagents/`
 and retains frame hashes, PNGs, mixed audio and timing beside it. A5's
 capture profile is 960 × 540, the cut's frame rate, at most 60 seconds.
 Existing outputs are refused. Check writes one JSON object with continuity,

@@ -33,7 +33,7 @@ Coax R22 iteration cases: cold compile, warm load, scene rebuild, parameter
 change and structural change. Compile and startup time count as part of the
 engine, not excluded setup.
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 **Matrix.** One machine-readable file lists, for each solver, backend,
 coupler, gradient mode, renderer and precision, whether the combination is

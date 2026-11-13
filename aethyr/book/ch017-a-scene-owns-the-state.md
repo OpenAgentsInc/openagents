@@ -50,7 +50,7 @@ pieces. Because floating-point addition is not associative, the *order* of
 those pieces is part of the definition: two schedules that are equal in real
 arithmetic give different bits, so the schedule is recorded with the scene.
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 **Three descriptions per entity.** A *shape* gives geometry and initial pose
 (a primitive, a mesh, an imported robot from chapter 35). A *material*
@@ -87,7 +87,7 @@ sequence and the scene's digest are written into every recording (chapter
 stage of which substep.
 
 **Topology is fixed between builds.** Adding or removing bodies requires a
-rebuild in the first profile. A streaming world (an Aethyr realm adds and
+rebuild in the first profile. A streaming world (a Metaverse Engine realm adds and
 removes objects constantly) needs pooled capacity and handle generations; that is a
 later profile with its own checks, and the scene says which profile it was
 built under.

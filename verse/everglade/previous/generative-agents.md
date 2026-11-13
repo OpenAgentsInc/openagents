@@ -1,4 +1,4 @@
-# Generative agents in Verse
+# Generative agents in the Metaverse
 
 Status: implemented, October 7, 2026. The owner approved the plan, and
 [#10795](https://github.com/OpenAgentsInc/openagents/issues/10795) tracks it,
@@ -8,7 +8,7 @@ proposal builds on.
 
 This page adapts *Generative Agents: Interactive Simulacra of Human
 Behavior* (Park, O'Brien, Cai, Morris, Liang, and Bernstein, 2023,
-[arXiv:2304.03442](https://arxiv.org/abs/2304.03442)) to Verse's agents:
+[arXiv:2304.03442](https://arxiv.org/abs/2304.03442)) to the OpenAgents Metaverse's agents:
 Alice, the [workshop agent](workshop-agent.md); the
 [Agent Studio](agent-studio.md)'s seats; and townsfolk that
 [Everglade](everglade.md) doesn't have yet. It says what to take from the
@@ -673,7 +673,7 @@ spawning (E1); rumors, villager memory of the player, and dialogue (E2).
   the world tree, routes each walk with `perceive::route`, and draws each
   villager within 90 m as the pack's character in its tint, under a
   nameplate with its name, what it is doing, and `CHARACTER / ROLE`. The
-  Verse runtime ticks it with the town clock in Everglade, where the
+  Metaverse runtime ticks it with the town clock in Everglade, where the
   villagers walk their day; with the clock off they stand where 10:30 puts
   them. A walk takes the real time `WALK_SPEED` gives at the clock's pace
   when it starts.
@@ -710,7 +710,7 @@ spawning (E1); rumors, villager memory of the player, and dialogue (E2).
 - On the desktop, `F` next to a villager talks to it
   (`crates/verse/src/town_talk.rs`): the reply goes through the agent
   chat's door (`brain::Voice`), shows in a bubble over the villager's
-  nameplate, and the save lives in `PROFILE-townsfolk.json` in the Verse
+  nameplate, and the save lives in `PROFILE-townsfolk.json` in the Metaverse
   home. A machine with no door gets fixed lines. The web and phone builds
   have no talk path yet; the save type is plain data, so a later web path
   can keep it in memory. Nothing reports the player's quest step to a

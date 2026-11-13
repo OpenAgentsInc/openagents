@@ -163,7 +163,7 @@ NixOS configuration.
 
 ## Step 3: what C everywhere makes possible
 
-The kernel, the drivers' userspace interfaces, the desktop stack, Verse's
+The kernel, the drivers' userspace interfaces, the desktop stack, the OpenAgents Metaverse's
 host and Coax's output are all C. That shared ABI is the opening. These are
 bets, in the order I would try them.
 
@@ -189,11 +189,11 @@ to the default one automatically. This is small, testable and unusual.
 rasterizer over the realm's Coax light, at about 40 fps at 2560x1440. See
 `verse/kms/README.md`.
 
-Verse draws through Metal on Apple hardware. On Linux it could own the
+The Metaverse draws through Metal on Apple hardware. On Linux it could own the
 display directly through DRM/KMS and GBM, as a session with no compositor:
 boot, autologin, the engine on the screen, input from libinput. CoderOS
 already has the shape for this; `desktop.nix` chooses the session program
-per host. A kiosk-style Verse session is a smaller first step than a
+per host. A kiosk-style Metaverse session is a smaller first step than a
 Coax compositor, and it is also the path to a compositor: a compositor is an
 engine that draws other programs' buffers as textures.
 

@@ -1,6 +1,6 @@
 # Fairy Forest
 
-A Verse world, drawn flat, you walk in the browser at https://openagents.com/worlds/fairy-forest. It is a first version, unlisted: the [worlds list](https://openagents.com/worlds) leaves it out, so you open it by its address. The plan for the whole world is in `verse/fairy-forest/README.md`.
+A Metaverse realm, drawn flat, you walk in the browser at https://openagents.com/worlds/fairy-forest. It is a first version, unlisted: the [worlds list](https://openagents.com/worlds) leaves it out, so you open it by its address. The plan for the whole world is in `verse/fairy-forest/README.md`.
 
 ## The park
 

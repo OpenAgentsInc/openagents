@@ -27,12 +27,12 @@ it, because the engine is deterministic. A receipt is written (chapter 41).
 The Pylon's owner is paid (chapter 42). The realm's maker chose the guard's
 questions, and published them as part of the realm (chapter 59).
 
-This is why the Verse is in a book about agents. A world full of characters is
+This is why the OpenAgents Metaverse is in a book about agents. A world full of characters is
 a steady buyer of small decisions, and that demand is what a compute network
 has always lacked.
 
 The books already share a design for this scene, the capstone called "A
-guard's decision is paid for". It runs across Everglade, Aethyr, Psionic,
+guard's decision is paid for". It runs across Everglade, the OpenAgents Metaverse Engine, Psionic,
 Nostr and Bitcoin. This chapter is where it lands in the OpenAgents book, and
 it should run as one demonstration from end to end.
 

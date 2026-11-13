@@ -1,4 +1,4 @@
-# Experimental Verse character profiles
+# Experimental Metaverse character profiles
 
 [Veyr v2](veyr-v2.coax) is a dark-wizard dialogue prototype: the Ash Regent,
 a former royal astronomer who binds the dead against the Long Winter.
@@ -22,7 +22,7 @@ or a persistent conversation server. The experiment also tests original
 GPT-OSS-20B on Metal, including permanent weight edits and natural-channel
 planning; their outputs and failures remain available separately.
 
-`veyr-v2.json` has the existing Verse NPC brief's fields: name, role,
+`veyr-v2.json` has the existing Metaverse NPC brief's fields: name, role,
 knowledge, greet. The role stays short; knowledge embeds the voice and
 examples. It fits the current `verse.npc_request` limits of 60/120/4000/300
 characters without truncation. Regenerate it with:
@@ -31,7 +31,7 @@ characters without truncation. Regenerate it with:
 coax/web/tool.sh psionic/tools/villain-text.coax preset > verse/characters/veyr-v2.json
 ```
 
-The exact tested writer renderer is `vt_prompt`; an existing Verse cloud
+The exact tested writer renderer is `vt_prompt`; an existing Metaverse cloud
 route renders the brief differently and uses a different model; its shared
 warm/playful instruction also needs evaluation for an antagonist. The brief
 is content for integration, not evidence of live-route quality or activation.

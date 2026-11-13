@@ -1,4 +1,4 @@
-# Aethyr HUD laboratory
+# Metaverse Engine HUD laboratory
 
 A reusable Coax HUD library with a component catalog and Grid command,
 flight navigation, engineering and communications compositions. Its synthetic
@@ -78,7 +78,7 @@ coax/web/tool.sh apps/openagents-web/demos/hud/check.coax
 
 The host supplies reduced motion. The generated hidden text describes controls
 and scope; it does not claim the complete dynamic accessibility tree planned
-in Aethyr chapter 15.
+in Metaverse Engine chapter 15.
 
 Visual research starts with [The Expanse UI Design — HUDS+GUIS](https://www.hudsandguis.com/home/2021/theexpanse).
 The library extends the existing Grid frame, monochrome strokes and restrained

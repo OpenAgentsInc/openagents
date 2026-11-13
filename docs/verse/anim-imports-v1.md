@@ -10,7 +10,7 @@ clock for CSV. BVH declares its own rate and refuses `--rate`.
 
 Parsing, pose conversion, interpolation, skin quantization, admission and
 receipts are Coax. Blender and Unreal only read and export source data. They
-run headless, without audio. Verse renders all inspection frames.
+run headless, without audio. The OpenAgents Metaverse renders all inspection frames.
 
 ## Inputs and limits
 

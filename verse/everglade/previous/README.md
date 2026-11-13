@@ -1,6 +1,6 @@
 # The previous Everglade
 
-What the Rust Verse engine's Everglade was, copied unchanged from the
+What the Rust the OpenAgents Metaverse Engine's Everglade was, copied unchanged from the
 commit before it was removed (`0b401561a0^`, the "Nuke" of October 27,
 2026), as the reference for bringing today's Coax Everglade
 (`docs/verse/everglade.md`, `verse/everglade/plan.coax`) to parity with it.

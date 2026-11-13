@@ -1,6 +1,6 @@
 # Watchtower
 
-A Verse world at https://openagents.com/worlds/watchtower: a cyber defense range. A small company network stands on the Grid: a firewall, mail and web servers, three workstations, a file server, the directory (DC) and the vault. An intruder works its way in from the internet and heads for the vault. You read the sensor log, find it and evict it before it empties the vault, without taking so much offline that the business goes dark.
+A Metaverse realm at https://openagents.com/worlds/watchtower: a cyber defense range. A small company network stands on the Grid: a firewall, mail and web servers, three workstations, a file server, the directory (DC) and the vault. An intruder works its way in from the internet and heads for the vault. You read the sensor log, find it and evict it before it empties the vault, without taking so much offline that the business goes dark.
 
 Everything is simulated. No real systems or traffic are involved. The log lines are modelled on real log formats (logon events, DNS, SMB, Kerberos, process launches) so that reading them here carries over to a real security console.
 

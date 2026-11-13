@@ -442,7 +442,7 @@ does not select native by default or opt in the public web face. See
 
 The subsequent current Coax 0.52 qualification completes #12869's three-host
 boundary. Everglade's public face declares v1 on web, Vulkan and Metal;
-Aethyrforge's empty selector chooses native Metal. Explicit web selection
+the OpenAgents Metaverse Engine's empty selector chooses native Metal. Explicit web selection
 and the same menu preview remain available. Current source/provenance joins,
 GPU handoff, normal and fully instrumented Linux window integration, and
 the unchanged preview/audio/transport component receipts are recorded in
@@ -1583,7 +1583,7 @@ analytic sensitivities, optimizer/forecast calculations, exact transcript
 coverage and all 5,040 serialized state words are qualified separately in
 `psionic/fixtures/physics/inverse/qualification.json`.
 
-## Aethyr realms step on one fixed clock whatever the frame rate
+## Metaverse Engine realms step on one fixed clock whatever the frame rate
 
 A realm's simulation advances only in whole fixed steps from `aethyr/core/loop.coax`'s
 `FrameClock`, which keeps time in integer nanoseconds. A frame's time is refused
@@ -1622,7 +1622,7 @@ than once (Everglade's player, debris and river).
 Checks: `aethyr/core/loop.coax` ("a frame counts for its time, refused, clamped
 and dropped as the steps are"), `aethyr/move/walk.coax` ("a face's frame time is
 what the player's clock counts, and runs at most 8 steps"),
-`verse/deadgears/ecs.coax`, `verse/demolish.coax` ("the steps are Aethyr's
+`verse/deadgears/ecs.coax`, `verse/demolish.coax` ("the steps are the Metaverse Engine's
 clock's ..."), Hold the Stair ("frames run at most its budget's steps,
 fast-forward included"), and Orbit League's and Dead Gears' budget checks,
 which take each frame's steps.
@@ -1819,7 +1819,7 @@ patrols. `drift-placement.coax` bounds that open-road rectangle (11 mutants kill
 zero survivors). See `docs/verification/worker-12980-2026-11-07/`.
 
 
-Aethyrforge binds `local:` room sockets to its existing native room process,
+The Metaverse Engine binds `local:` room sockets to its existing native room process,
 using the same text frames. Browsers retain the Wasm Worker. Native ticketless
 admission requires development mode, an explicit IPv4 loopback bind and the
 exact `everglade/local-1` path, with one seat; ordinary room ticket checks
@@ -1936,7 +1936,7 @@ face data and SHS1 shot through a whole-package SHA and bounded structural
 admission. Invalid names, indices, nonfinite values, duplicate bindings or
 inconsistent extents cannot publish partial source data. CPU playback keeps
 only a checked runtime projection; sparse morph deltas stay in GPU storage.
-Shared Aethyr morph arithmetic runs before skinning. Facial bones overlay a
+Shared Metaverse Engine morph arithmetic runs before skinning. Facial bones overlay a
 fresh body pose each presentation, so repeated presentation cannot accumulate
 facial deformation. Exact zero weights retain the original vertex path.
 The v2 source shot additionally admits its unit world orb quaternion before
@@ -2036,7 +2036,7 @@ survivors, one equivalent at the cap's boundary) and the encoder's
 
 ## An asset is its content hash, and a pack is admitted whole or not at all
 
-An Aethyr asset's identity is the SHA-256 of its bytes (`aethyr/core/assets.coax`,
+A Metaverse Engine asset's identity is the SHA-256 of its bytes (`aethyr/core/assets.coax`,
 `#authority`), never its name or path. `asset_admit` hashes every entry of a
 pack before taking anything: an entry that doesn't hash to its table's id,
 new bytes past the registry's declared limit, or more new assets than free
@@ -4273,8 +4273,8 @@ scope does not establish a full-desktop build or R0 device readiness.
 ## One protocol for all OpenAgents surfaces
 
 Root `proto/` and the OpenAgents Protocol specification define interchange for
-all surfaces, including Verse. Coax is the product implementation target;
-Verse is the engine name (formerly Metareal). Profiles select imports from one source tree,
+all surfaces, including the OpenAgents Metaverse. Coax is the product implementation target;
+The engine is the Metaverse Engine (formerly Metareal, then Verse, then Aethyr). Profiles select imports from one source tree,
 not separate definitions per app, target or implementation language.
 
 Check: `scripts/proto.sh check` compiles actual roots and profile closures.
@@ -4750,7 +4750,7 @@ have distinct names and const element pointers; existing writable descriptor
 identities are unchanged. Device output is explicitly unqualified (E0951).
 The contract is `coax/readonly-views.md`; checks cover the parser/checker policy,
 native ABI and sanitizers, refusal fixtures, chapter 6 and the normalization
-table consumer. Engine scheduling and resource policy remain Aethyr's.
+table consumer. Engine scheduling and resource policy remain the Metaverse Engine's.
 
 ## Type checking is Coax with no native semantic fallback
 
@@ -4776,7 +4776,7 @@ complete compiler bridge sanitizers in `coax/tests/parser.py`, protoc
 interoperability and the actual iOS Home/Grid/animation tests from empty
 generated outputs.
 
-## Haunted House is a native Verse realm
+## Haunted House is a native Metaverse realm
 
 The Grid's lit arch at (-1.5, 0, 10) enters Haunted House by tapping its name
 or walking through it. Each world owns the window's full Metal surface; it
@@ -4860,7 +4860,7 @@ WebSocket binary message, encoded and decoded only by the generated Coax codec
   report cancel an open request and send nothing; any other key cancels it
   and then acts as usual. Nothing on this path calls the send path.
 
-Aethyrforge for Mac preflights OS microphone authorization in visible foreground
+The Metaverse Engine for Mac preflights OS microphone authorization in visible foreground
 setup, or at foreground launch for an existing setup receipt. Its
 `apps/aethyrforge-desktop/microphone.coax` authority requests only an undetermined
 grant, never from automated background checks or while another request is pending.
@@ -4892,7 +4892,7 @@ one previous voice-host log across launches.
 Coder dictation's `apps/shared/dictation-policy.coax` is `#authority`: it gates
 readiness/consent, 450 ms pre-roll, 300 ms minimum hold, 200 ms tail, a 60-second
 capture cap, silence and current-ticket final publication. `dictation.coax`
-reuses Verse's resampling/VAD and plans complete nonoverlapping Parakeet slices:
+reuses the Metaverse's resampling/VAD and plans complete nonoverlapping Parakeet slices:
 at most three, each cut in a pause before its limit (the quietest-boundary
 rule `verse/asr-cut.coax` shares with the voice host), with 300 ms of silence
 the host adds before a later slice and after an earlier one inside the model's
@@ -4995,7 +4995,7 @@ and driver/JIT allocations. A bounded transfer mode changes byte residency only.
 `incremental/voice.coax` (`#authority`) binds local tickets to existing voice
 media/turn identities (including initial media epoch zero). Partials are display
 only; one final is eligible for the current turn. The file-backed original-weight
-consumer uses the actual Aethyr question/answer gate, revokes tickets on
+consumer uses the actual Metaverse Engine question/answer gate, revokes tickets on
 barge-in/cancel and refuses late answers. It does not replace a default provider.
 
 Checks: 58/58 stream/model-admission mutants and 33/33 voice mutants killed;
@@ -6155,7 +6155,7 @@ handle refused at use, recovery after a lost device); natively,
 `verse/gpu/realm.sh local check` prints the ledger at the last frame and
 none live after close.
 
-## Aethyrforge pauses the world view after its first rendered frame
+## The Metaverse Engine pauses the world view after its first rendered frame
 
 `apps/aethyrforge-desktop/world-visibility.coax` admits the first real rendered
 frame even with setup open, then pauses the world's loop while setup/status
@@ -6170,7 +6170,7 @@ hide and resume.
 
 Setup and status paint through `components/zeron/gpui.coax` on the shared Mac
 host (`apps/shared/host/apple/ui-host.m`, with the CoreText atlas in `ct-atlas.m`;
-since 2026-11-11, GitHub #13156, Aethyrforge runs on that host as OpenAgents and
+since 2026-11-11, GitHub #13156, the Metaverse Engine runs on that host as OpenAgents and
 Everglade do). Coax owns labels, geometry, readiness and button rectangles, and
 `fgu_hit` decides which button a press and its release land on; the host's
 `UiApp.hit` hands every other point to the world view under the panel. The
@@ -6182,7 +6182,7 @@ row of an app's element table (`components/core/elements.coax`, read through
 view, with its stable id as the identifier, a role from the row's role, its label,
 the value and enabled state the app's optional `about ID` gives, and AXPress as the
 app's `tap ID`. Tab and Shift-Tab move focus through the rows that can be pressed or
-typed into; Space and Enter press the focused one. Aethyrforge's panel fills that
+typed into; Space and Enter press the focused one. The Metaverse Engine's panel fills that
 table in Coax (`chrome.coax` `fui_elements`: `setup.open`, `setup.refresh`,
 `setup.verify-voice`, `setup.folder`, `setup.microphone`, and the panel's status
 lines). A disabled button refuses AXPress, as it refuses a click.
@@ -6191,7 +6191,7 @@ one bordered quad in the components' vertex format, `UiApp.ring`'s colour or
 Zeron's accent) around the focused row only after a key moved focus; a pointer
 press or VoiceOver's own move hides it. A window no one sees (offscreen, `--hidden`,
 or a drive socket listening) never opens a panel or a menu: a file chooser waits
-for the driver's `choose PATH` or `cancel`, and an Aethyrforge `--shot` press
+for the driver's `choose PATH` or `cancel`, and a Metaverse Engine `--shot` press
 says what it would open instead of opening Finder, Settings or the world.
 `apps/shared/host/apple/a11y-check.sh` checks the window's tree, the ring and the
 chooser headlessly; the desktop goldens `focus-button`, `focus-composer` and
@@ -6236,7 +6236,7 @@ are explicitly identified and never counted as new trials. Scoring, finite
 worksheet success and chapter-241 independent qualification stay distinct.
 Evidence: `docs/verification/psionic-ch255-2026-11-02.md`.
 
-The later Verse-dialogue study uses the same boundary for 32 final-MLP
+The later Metaverse-dialogue study uses the same boundary for 32 final-MLP
 expert-bias windows, restoring the complete original bias tensor before
 each candidate upload. Its recorded dialogue and model-critic preferences
 grant no game-state authority or serving promotion. Fixed-prefix numerical
@@ -6340,7 +6340,7 @@ scale. The exact content gate and structural gate remain independent.
 
 Material import resolves original hash strings and texture aliases, preserves
 UV1 hair coverage, BNTX block height and component selectors. Special shader
-responses remain documented Aethyr approximations. The procedural forest is
+responses remain documented Metaverse Engine approximations. The procedural forest is
 replaced by original source scenery and ground. Original Phive physical and
 smooth stair geometry joins the dense rendered ground fallback in a conservative
 two-metre collision index. Each paid 1/64-second step resolves source grounding
@@ -6365,9 +6365,9 @@ or unresolved velocity. The source 30-fps assumption remains explicit; original
 controller physics and its transition graph have not been fully recovered.
 The child gameplay jump/backflip height, gravity-scale and backflip-speed values
 are pinned in `verse/ocarina/controller.coax`. Their ballistic launch mapping and
-absolute gravity remain explicit Aethyr adaptations. Backflip captures facing,
+absolute gravity remain explicit Metaverse Engine adaptations. Backflip captures facing,
 uses normal source collision, refuses airborne restarts and recovers after landing
-and the selected clip. Analog input retains magnitude above Aethyr's dead zone.
+and the selected clip. Analog input retains magnitude above the Metaverse Engine's dead zone.
 
 ## Animation performance sampling is bounded and starts from source each frame
 
@@ -6513,7 +6513,7 @@ Checks: room `room.coax` "seat class:", the two authority files' tests and
 `proto/verse/seat-ticket-v5.json`, the API's `room_checks.coax` "room-class:",
 and `everglade/client/net.coax` "your seat's class and level are the room's".
 The shared authoring catalog (`assets/registry/`) distinguishes stable logical
-lookup keys from immutable revision hashes and Aethyr's runtime byte identities.
+lookup keys from immutable revision hashes and the Metaverse Engine's runtime byte identities.
 Source snapshots retain their exact file inventories. Published derivative
 revisions retain exact parent revision pins. Generated Character Create tables
 resolve stable IDs; CC2 legacy slots are frozen compatibility keys and are never
@@ -6748,7 +6748,7 @@ and the bake's AO".
 
 ## Everglade II's ground is one admitted tile set, published whole (#13059)
 
-The walkable land in `/worlds/everglade2` is a set of Aethyr terrain tiles
+The walkable land in `/worlds/everglade2` is a set of Metaverse Engine terrain tiles
 (`verse/everglade2/ground.coax`): the glade and the path's tiles on one f64
 lattice, so a sample two tiles share is bit-identical in both. Neighbours of
 one spacing repeat their shared edge exactly, and a fine edge meeting a coarse

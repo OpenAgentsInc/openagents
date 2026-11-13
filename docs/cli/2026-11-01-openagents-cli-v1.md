@@ -11,7 +11,7 @@ exist unless a row says **new**.
 your OpenAgents account and work with what the account owns. It has one
 domain per area of the product, the same way the pre-Nuke CLI had `pylon`,
 `wallet` and `chat`. Version 1.0.0 ships with two domains: `account` and
-`realm`. The `realm` domain is Aethyrforge's programmatic surface. It lets
+`realm`. The `realm` domain is the OpenAgents Metaverse Engine's programmatic surface. It lets
 you, a script or a coding agent such as Claude Code make and edit realms
 without opening the page.
 
@@ -288,11 +288,11 @@ or removes a database admin (`access.admin_may`). A database admin cannot
 change the list, no request can remove a root admin (409), and every add and
 remove is a row in `access.admin_audit`.
 
-## The realm domain (Aethyrforge)
+## The realm domain (the Metaverse Engine)
 
 Every verb maps to one route under `/api/playtest/realms`. What each route
 does is in [realm-builder.md](../verse/realm-builder.md) and
-[realm-edit.md](../verse/realm-edit.md); the concepts are in the Aethyr book,
+[realm-edit.md](../verse/realm-edit.md); the concepts are in the Metaverse Engine book,
 chapters 51 to 55 and 82.
 
 ### Make a realm

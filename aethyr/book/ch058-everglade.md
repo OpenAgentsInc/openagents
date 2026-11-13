@@ -2,7 +2,7 @@
 
 > **Status: partly implemented.** Everglade runs at `/worlds/everglade` as
 > a client of the native room or the local worker. Chapter 101 describes
-> the room built in chapters 86–100. The realm uses shared Aethyr modules;
+> the room built in chapters 86–100. The realm uses shared Metaverse Engine modules;
 > extracting every private engine path remains work.
 
 Everglade combines the forest city, characters, the watch, quests, combat,
@@ -25,7 +25,7 @@ movement step in
 - [Chapters 99](ch099-watch-the-whole-action-path.md)–[101](ch101-the-everglade-room.md):
   measurement, drawn-state drift checks and room sizing.
 
-The room uses Aethyr's network profiles and session contracts for lifecycle,
+The room uses the OpenAgents Metaverse Engine's network profiles and session contracts for lifecycle,
 party visibility and travel. The item ledger in
 [`aethyr/session/ledger.coax`](../../aethyr/session/ledger.coax) checks
 idempotent item operations and owner fencing; its bounded model is not a

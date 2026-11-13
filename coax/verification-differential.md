@@ -435,7 +435,7 @@ each selected file with its outcome, and (with `--selection`) the lifted
 `--seed evaluator` reports the evaluator's first passing check as failing at
 its first assertion. Both produce counterexamples (the tests require it).
 
-On arm64 macOS with Apple clang 21, the selection of 18 files (10 Verse, 8
+On arm64 macOS with Apple clang 21, the selection of 18 files (10 the OpenAgents Metaverse, 8
 Psionic) ran 62 checks, all agreeing at `-O0` and `-O2`. This is the recorded
 selection result, not a qualification of every later source or compiler.
 

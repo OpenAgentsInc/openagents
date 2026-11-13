@@ -1,6 +1,6 @@
 # 48. One world at three fidelities
 
-> **Status: unimplemented — design draft.** Aethyr's space games today mix
+> **Status: unimplemented — design draft.** The OpenAgents Metaverse Engine's space games today mix
 > engineering and game rules in one state: a tank holds real propellant or a
 > boost meter (`thruster_budget` in [`aethyr/physics/thrust.coax`](../physics/thrust.coax)),
 > and the floating-origin camera (`spacecam_screen` in

@@ -21,7 +21,7 @@ killable, level one to three, but the super high level warlock should not be kil
 
 Related reading:
 
-- [Local Aethyrforge event control](../protocol/aethyrforge-raid-v1.md): the desktop
+- [Local Metaverse Engine event control](../protocol/aethyrforge-raid-v1.md): the desktop
   can trigger this siege immediately, double only the cult army, add a wave,
   set its fighter target or stop it. This local playtest profile uses up to 96
   shared creature places when available; the public event's 64-place limit and

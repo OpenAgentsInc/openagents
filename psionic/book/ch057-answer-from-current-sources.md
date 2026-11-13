@@ -7,7 +7,7 @@
 > [Coder chapter 6](../../coder/book/ch006-a-document-tries-to-become-the-system-prompt.md)'s prompt-injection attacks are not built yet.
 
 This chapter builds a documentation assistant over the Coax, Psionic and
-Aethyr books. It takes a question, retrieves passages with
+Metaverse Engine books. It takes a question, retrieves passages with
 [chapter 54](ch054-search-the-coax-book.md)'s retriever, reranks them with
 [chapter 56](ch056-rerank-the-candidates.md)'s reranker, and then does one
 of two things:

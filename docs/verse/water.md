@@ -1,4 +1,4 @@
-# Verse water
+# Metaverse water
 
 Water is being ported from the previous Rust engine to Coax in the phases
 of its specification, [verse/everglade/previous/water.md](../../verse/everglade/previous/water.md)

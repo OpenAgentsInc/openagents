@@ -1,6 +1,6 @@
-# Everglade and Aethyr architecture
+# Everglade and Metaverse Engine architecture
 
-Everglade is a real-time action MMORPG on the D&D 5E System Reference Document (SRD 5.2.1), written in Coax on the Aethyr engine. This page maps every system today and the target shape from the [AAA audit](../docs/audits/2026-11-11-everglade-aethyr-aaa-audit.md) (tracker `#13257`). Bounded contexts and service contracts across the monorepo live in [docs/architecture/contexts.md](../docs/architecture/contexts.md). Program decisions live in [docs/decisions/](../docs/decisions/).
+Everglade is a real-time action MMORPG on the D&D 5E System Reference Document (SRD 5.2.1), written in Coax on the OpenAgents Metaverse Engine. This page maps every system today and the target shape from the [AAA audit](../docs/audits/2026-11-11-everglade-aethyr-aaa-audit.md) (tracker `#13257`). Bounded contexts and service contracts across the monorepo live in [docs/architecture/contexts.md](../docs/architecture/contexts.md). Program decisions live in [docs/decisions/](../docs/decisions/).
 
 ```mermaid
 flowchart LR

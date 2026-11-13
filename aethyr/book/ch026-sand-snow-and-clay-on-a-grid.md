@@ -163,7 +163,7 @@ one whole step without gravity or walls to conserve momentum. A soft block
 set on the floor sags a few millimeters and springs back without sinking
 through, and a full particle store refuses one more particle.
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 A dense bounded grid first, with a sparse block grid later as a measured
 layout choice (R21) rather than a different solver. The scatter in P2G is

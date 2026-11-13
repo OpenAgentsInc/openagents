@@ -186,7 +186,7 @@ no cloth particle ends a step inside the sphere by more than the thickness,
 that a pinned particle never moves, and that an unconstrained particle
 falls exactly as semi-implicit Euler predicts.
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 Constraints are stored by kind in fixed arrays built from meshes (edges,
 dihedral pairs, tetrahedra). Gauss–Seidel on a GPU requires graph coloring

@@ -146,7 +146,7 @@ relay as the fallback
 | Integration | What exists | Required next result | Other book |
 | --- | --- | --- | --- |
 | Pylons and mesh, chapter 100 | Runtime NIP-42/NIP-44 exchange and checked beacons; test-key evidence | Consumer target and key-custody qualification; preserve provider, job and attempt binding | [Psionic 24](../../psionic/book/ch024-a-pylon-answers-decisions.md) and [25](../../psionic/book/ch025-the-api-fans-out.md) |
-| Verse and wallet, chapter 101 | Offline NIP-MV and zap composition; existing Spark wallet rules | Two real clients exchanging frames within a measured latency budget, then an app zap with actual wallet payment and counted receipt; Spark-backed NWC | [Aethyr 49](../../aethyr/book/ch049-rooms-and-presence.md) |
+| The OpenAgents Metaverse and wallet, chapter 101 | Offline NIP-MV and zap composition; existing Spark wallet rules | Two real clients exchanging frames within a measured latency budget, then an app zap with actual wallet payment and counted receipt; Spark-backed NWC | [the Metaverse Engine 49](../../aethyr/book/ch049-rooms-and-presence.md) |
 | Agents, chapter 102 | Offline attestation, sealed job, atomic claim, journal and supplied payment proof | Runtime NIP-AA admission; schema-checked CJ/LAB binding; signed market/journal carriage; real wallet payment; staged runner migration and rollback | Coax boundary qualification and the Psionic Pylon/mesh consumers |
 
 The chapter 101 example assumes 40 ms per hop; it does not measure sockets.

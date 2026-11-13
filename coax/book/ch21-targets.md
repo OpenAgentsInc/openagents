@@ -250,7 +250,7 @@ become a call into JavaScript. A browser target needs its own small
 runtime, with traps, printing and memory provided as explicit host
 imports. Coaxial's new `coax/web/wasm.sh` supplies upstream LLVM, a WASI
 sysroot and application-specific C faces; `host.js` supplies memory and
-WebGPU for the current site and Verse consumers. That application path
+WebGPU for the current site and Metaverse consumers. That application path
 does not make this bare invocation work or establish general target-aware
 layouts and browser source debugging. Its current scope and consumer
 evidence are recorded in `coax/web.md`.

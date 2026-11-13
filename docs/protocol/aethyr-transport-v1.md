@@ -1,4 +1,4 @@
-# Aethyr transport v1
+# Metaverse Engine transport v1
 
 The bytes a page and its room carry for each frame, on a WebSocket or on
 WebTransport. Profile:

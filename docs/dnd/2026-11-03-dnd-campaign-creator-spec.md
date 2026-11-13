@@ -1,4 +1,4 @@
-# The campaign creator: run a 5E campaign in the Verse
+# The campaign creator: run a 5E campaign in the Metaverse
 
 Status: specification, 2026-11-03. Nothing on this page is built yet except
 the pieces named in [What it builds on](#what-it-builds-on). The rules system
@@ -28,7 +28,7 @@ He then frames who would pay for it:
 
 Later in the talk, he names the base it stands on: "We've got DND, the SRD 5e
 rules already like partially implemented" [33:30]. He also describes AI
-NPCs that coordinate as "truly formidable enemies" [26:00], and a Verse
+NPCs that coordinate as "truly formidable enemies" [26:00], and a Metaverse
 marketplace where makers sell assets they build [08:30–09:30]. Marc's pitch,
 "Balloons Tower Defense, but it's D&D" [18:30], became Hold the Stair, the
 second world on the shared rules.
@@ -36,7 +36,7 @@ second world on the shared rules.
 So the product is this: a game master builds a campaign, and then runs it
 with friends at a real table or remotely. Dice, turns, character sheets and
 rules come from the SRD engine. Maps, art, sound and live 3D scenes come from
-the Verse.
+the OpenAgents Metaverse.
 
 ## Names: what you see
 
@@ -127,7 +127,7 @@ Campaign
   - A **battle map**: the 5-foot grid from 5E Lab, with walls, doors,
     difficult terrain, light and fog. You draw it with a brush, import an
     image and align the grid over it, or start from a template room.
-  - A **3D scene**: a realm made in Aethyrforge, or one of the existing
+  - A **3D scene**: a realm made in the OpenAgents Metaverse Engine, or one of the existing
     worlds (the glade from 5E Lab, Everglade's town and crypt). The scene
     carries the same 5-foot grid, so the battle map and the 3D scene are two
     views of one place, the way 5E Lab's V key switches 2D and 3D.
@@ -171,7 +171,7 @@ creatures on the grid and initiative ready to roll.
   [At the table](#improvised-npcs)).
 - **Figures:** each creature and NPC has a figure for the grid and the 3D
   scene. The default figures come from 5E Lab's class looks and the
-  creatures' default looks. Better ones can come from the Verse marketplace.
+  creatures' default looks. Better ones can come from the Metaverse marketplace.
 
 ### Loot, handouts, quests and clocks
 
@@ -275,7 +275,7 @@ device adds its own random contribution when it joins, so no one, the GM or
 the server, can pick the seed alone. Every roll draws the next numbers from
 the combined stream, in order. When the session ends, the seed is revealed,
 and anyone can replay every roll with **Check the dice** and see that it
-matches. The `DiceReveal` message in the Verse protocol already carries a
+matches. The `DiceReveal` message in the Metaverse protocol already carries a
 roll's expression, faces and total. Physical rolls are marked as entered by
 hand.
 
@@ -332,7 +332,7 @@ then the GM resolves them by hand with a **Roll attack** button.
   one player, who gets it on My Character and keeps it under **Handouts**.
   The Table Display shows it only if the GM sends it there.
 - **Music and ambience.** Each scene can have a track and an ambience
-  (rain, tavern, cave drips), from the Verse's sound modules (book
+  (rain, tavern, cave drips), from the Metaverse's sound modules (book
   ch065–ch068) or files you upload. The GM's mixer has a volume per layer,
   and a **Combat** button cross-fades to the scene's combat track. Remote
   players hear it in time with the table.
@@ -342,7 +342,7 @@ then the GM resolves them by hand with a **Roll attack** button.
 - **Pointers and pings.** Anyone can ping a square or a spot on the map so
   everyone sees where they mean.
 
-### Live 3D scenes in the Verse
+### Live 3D scenes in the Metaverse
 
 A scene's 3D view is a realm. The Table reuses what already runs:
 
@@ -351,7 +351,7 @@ A scene's 3D view is a realm. The Table reuses what already runs:
   the concentration line. The flat grid view for theatre-of-the-mind maps.
 - **Everglade's world:** a town, a crypt and guards. A campaign can set a
   session in Everglade or in a fork of it (book ch055) that the GM edits.
-- **Aethyrforge:** the GM says "a ruined watchtower on a sea cliff at
+- **The Metaverse Engine:** the GM says "a ruined watchtower on a sea cliff at
   dusk", watches it appear, and moves things by hand before the session.
 - **Walking in:** players can walk their characters around a scene between
   fights, as in 5E Lab's Player mode, and the GM can lock movement to turns
@@ -492,7 +492,7 @@ The workspace's agent rules apply:
   `/v1/decisions`, with Clef first. New code never calls a decision model
   directly.
 - **Writing** (an NPC's lines, a recap, a description) uses the model path
-  the rest of the Verse uses, Google first per our provider rules.
+  the rest of the Metaverse uses, Google first per our provider rules.
 - Every AI output carries the campaign's lines and veils as hard limits.
 
 ## Ways to play
@@ -646,7 +646,7 @@ Screen with the players joined.
   into the SRD lists, and owned by its maker. Starter adventures and
   templates are ours and original.
 - **Uploads:** the GM is responsible for the rights to art and music they
-  upload to a private campaign. Anything listed in the Verse marketplace
+  upload to a private campaign. Anything listed in the Metaverse marketplace
   needs a stated license.
 - **Safety tools:** the X-card and lines and veils are community tools with
   their own attribution practices; check and credit them on the Safety page
@@ -688,8 +688,8 @@ Each phase ships something a group can use, and leans on what exists.
 | **2. The Campaign Builder** | Campaigns, setting, regions, maps with fog, scenes, encounters with **Run it**, NPCs, loot, handouts, quests, clocks, house rules as switches, the Safety page | The ruleset profile (README step 5), the realm document model (ch051), saves (ch081) |
 | **3. Onboarding** | The first-run screens, invites, quick and guided character builds (classes first), session zero, connecting a display, the tour | Phases 1 and 2. Guided build grows as the SRD import adds species, backgrounds and feats (README step 2) |
 | **4. The copilot** | Prep drafts, rules lookups, improvised NPCs, recaps, clock suggestions, all as Accept and Decline cards | The semantic selector, embedding search over SRD records, `/v1/decisions` with Clef first, the characters endpoint (ch077), voice (ch069) |
-| **5. 3D scenes and sound** | Scenes in 3D from 5E Lab's glade, Everglade and Aethyrforge, dice in 3D, music and ambience per scene, spell looks | 5E Lab's renderer, Aethyrforge, sound (ch065–ch068), effects (ch072) |
-| **6. Verifiable dice and spectators** | The session seed with each player's contribution, **Check the dice**, watch links | The engine's deterministic dice, `DiceReveal` in the Verse protocol |
+| **5. 3D scenes and sound** | Scenes in 3D from 5E Lab's glade, Everglade and the Metaverse Engine, dice in 3D, music and ambience per scene, spell looks | 5E Lab's renderer, the Metaverse Engine, sound (ch065–ch068), effects (ch072) |
+| **6. Verifiable dice and spectators** | The session seed with each player's contribution, **Check the dice**, watch links | The engine's deterministic dice, `DiceReveal` in the Metaverse protocol |
 | **7. Solo play and the AI GM** | An AI GM through a seat, solo and one-shot modes | Seats (realm-seat.md), phase 4, monster decisions through `/v1/decisions` |
 | **8. Persistent worlds** | A West-Marches-style shared world on Everglade or a fork of it, expeditions players sign up for, characters that persist, action combat for live fights | Multiplayer realms (ch049–ch050), forks (ch055), the action-combat clock, persistent saves |
 | **9. Levels 7 to 20 and the full SRD** | Every class to level 20, every monster, item and spell | README steps 2 and 3, the golden rules tests |

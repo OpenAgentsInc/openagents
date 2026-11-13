@@ -35,7 +35,7 @@ none. Each deletion needs the owner's explicit yes, by name.
 It is the old Rust website plus the old account and inference gateway:
 
 - container `web`: `openagents-web`, an axum and maud site with about 640
-  routes: pages, docs, blog, chat, the Verse and games, labs, admin, and about
+  routes: pages, docs, blog, chat, the OpenAgents Metaverse and games, labs, admin, and about
   220 `/v1` API paths;
 - container `gateway`: `openagents-stack`, the account service (accounts,
   sessions, API keys, device sign-in, WorkOS and Nostr sign-in) and the
@@ -266,14 +266,14 @@ today. Since then openagents.com gets about 420 requests an hour.
 
 | Class | Requests | Notes |
 |---|---|---|
-| Owner (home network `2603:8080:e900:4359::/64`, `72.177.109.202`) | 53,585 | Verse studio, suggestions, smoke runs |
+| Owner (home network `2603:8080:e900:4359::/64`, `72.177.109.202`) | 53,585 | Metaverse studio, suggestions, smoke runs |
 | Scanners (`.env`, `.git`, `wp-*`, `.php`) | 29,837 | all 403/404 |
 | Bots, agents and tools (crawlers, curl, SDKs, non-browser user agents) | 37,971 | |
 | Other browsers | 49,467 | 5,711 IPs; 2,800 home views from 1,691 IPs |
 
 People who aren't the owner mostly reach the homepage and the docs. In 7 days
 the docs (`/docs*`) had 10,690 requests from 2,569 IPs, mostly crawlers. The
-"The Verse" iOS app (CFNetwork, one IP) called `/v1/device`, `/v1/threads`,
+"The Metaverse" iOS app (CFNetwork, one IP) called `/v1/device`, `/v1/threads`,
 `/v1/home` and `/v1/work`, about 1,500 times in total. That IP is probably a
 tester's build made from the deleted Rust mobile crate.
 
@@ -300,7 +300,7 @@ Traffic is 7 days from pull B unless it says per day.
 | `/login`, `/signup`, `/auth/*`, `/device`, `/v1/device/*` | 4,618 / 414 | **drop** (WorkOS, GitHub, device login) | Nostr key sign-in on the new stack, if any |
 | `/chat*`, `/app`, `/settings*`, `/environments*`, `/projects/*` | 2,546 / 515 / 269 / 256 | **drop** | none (one conversation lives in the apps) |
 | `/v1/projects/*` | 99 | **move** | project/Nostr API (`/v1/projects/coax/tasks`, claims) |
-| `/v1/verse/*`, `/verse`, `/new-lander/*`, `/games/*`, `/everglade/*`, `/gpui/*` | 40,564 / 2,829 / 1,161 | **drop** (owner only) or move to Verse hosting | `verse-assets` or the Coax world |
+| `/v1/verse/*`, `/verse`, `/new-lander/*`, `/games/*`, `/everglade/*`, `/gpui/*` | 40,564 / 2,829 / 1,161 | **drop** (owner only) or move to Metaverse hosting | `verse-assets` or the Coax world |
 | `/v1/foreman/*`, `/v1/agent-assignments`, `/v1/labs/*`, `/v1/history/*`, `/v1/work*`, `/v1/home/*`, `/computers/seen`, `/suggestions/*`, `/api/operator/*` | about 175,000 a day, owner tools | **drop**; switch the owner's tools off first | none, or the project/Nostr stack |
 | `/v1/account`, `/v1/keys`, `/v1/threads`, `/v1/computers`, `/v1/files`, `/v1/connections` | about 26,000 a day (via api.) plus about 700 | **drop**, after exporting accounts | none |
 | `/v1/chat/completions`, `/v1/responses`, `/v1/models`, `/api/v1/*`, `/api/v1/systemone`, `/v1/decisions` (gateway) | about 7,800 a day (decision-throughput, models) | **drop**, or move the decision path to its own service | Decisions API owner decides |
@@ -357,7 +357,7 @@ imports it.
 
 - **Current iOS app (`apps/openagents-ios`)**: calls nothing on openagents.com.
   It needs only the universal-links file if links stay.
-- **Older iOS builds ("The Verse")**: call `/v1/device`, `/v1/threads`,
+- **Older iOS builds ("The Metaverse")**: call `/v1/device`, `/v1/threads`,
   `/v1/home`, `/v1/zones` and `sync.openagents.com`. They break at cutover.
   Expire those TestFlight builds.
 - **Coder desktop (`coder-desktop`)**: only links to `/download` and `/docs`.
@@ -403,7 +403,7 @@ imports it.
 | URL map `openagents-url-map` | no HTTPS proxy in front | old redirects for auth., coder., fleet., sarah., components. |
 | URL map `coder-sync`, backends `coder-sync-vm`, `coder-sync-run`, NEG `coder-sync-run-neg` | no forwarding rule; Cloud Run `coder-sync` gone | sync leftovers |
 | NEGs whose Cloud Run service is gone | `openagents-neg` (openagents-monolith), `openagents-forge-git-neg`, `sarah-neg`, `simply-sarah-neg`, `pro-gateway-neg`, `effect-native-gallery-neg`, `oa-convex-backend-prod-neg`, `one-*-neg` | leftovers; not part of `coder` |
-| Cloud Run `verse-assets` | live, no min instances | Verse asset host, separate |
+| Cloud Run `verse-assets` | live, no min instances | Metaverse asset host, separate |
 | Cloud Run `aethyr-*` | live | separate project |
 
 ## Plan

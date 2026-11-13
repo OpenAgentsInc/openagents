@@ -122,7 +122,7 @@ order.
   actual desktop two-MiB qualification does not cover native rescue or all
   storage, deadline and memory profiles.
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 A world manifest lists its cells, each with a pack digest, bounds and
 neighbour links. The stream controller runs once per step on the

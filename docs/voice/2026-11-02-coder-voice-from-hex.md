@@ -5,7 +5,7 @@ Parakeet hold-to-talk dictation. The terminal UI, standalone dictation command,
 vocabulary features and streaming work below remain proposals.*
 
 The [implemented Mac path](coder-dictation.md) uses an explicit opt-in,
-⌘D/microphone hold and release, Verse's resampler/VAD, a resident Parakeet
+⌘D/microphone hold and release, the OpenAgents Metaverse's resampler/VAD, a resident Parakeet
 engine and guarded insertion into an unchanged composer. It never sends.
 The 450/300/200 ms timeline follows the pinned Hex source; the complete
 capture is capped at 60 seconds and split into bounded offline model calls.
@@ -49,7 +49,7 @@ This document does three things:
 1. It summarizes [Hex](https://github.com/anomalyco/hex), anomalyco's local
    hold-to-talk dictation app, and lists the ideas worth taking.
 2. It maps the voice we already have: Psionic's speech recognition, the
-   Verse voice engine, and the plans in
+   Metaverse voice engine, and the plans in
    [coax-native-voice.md](coax-native-voice.md).
 3. It proposes how to add voice input to Coder in the short term, in the
    terminal UI and in the Mac app, with phases and checks.
@@ -157,7 +157,7 @@ conversation decisions.
   input.
 
 Dictation never sends a message. Speech selects nothing and runs nothing;
-it only types into a draft. That keeps the rule from #12059 and the Verse:
+it only types into a draft. That keeps the rule from #12059 and the Metaverse:
 a transcript is text, never a command.
 
 ### How it works
@@ -353,7 +353,7 @@ a `Route` to the Coder session and the Mac app as one more client.
   script (the way `openagents transcribe corpus` makes its clips), plus a
   few of the owner's own recordings kept private like `cut.wav`:
   - sentences naming this repository's terms (`cd_submit`, `psionic-stt.h`,
-    `voice.coax`, `ZeronState`, Coax, Psionic, Verse);
+    `voice.coax`, `ZeronState`, Coax, Psionic, the Metaverse);
   - spoken symbols and casing ("snake case", "dot rs", "open paren");
   - look-alike distractors so the vocabulary bias is caught when it
     replaces ordinary words.

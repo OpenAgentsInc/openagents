@@ -186,8 +186,8 @@ This engine is the Parakeet foundation for
 [the Coder voice proposal](../../docs/voice/2026-11-02-coder-voice-from-hex.md).
 The [Mac dictation integration](../../docs/voice/coder-dictation.md) supplies
 opt-in capture, pre-roll/tail, bounded segmentation and guarded composer drafts.
-The [Verse voice host](../../docs/voice/dev.md#parakeet-local-recognition)
-(`--recognizer parakeet`) keeps one engine resident for Verse and Aethyr's
+The [Metaverse voice host](../../docs/voice/dev.md#parakeet-local-recognition)
+(`--recognizer parakeet`) keeps one engine resident for the OpenAgents Metaverse and the OpenAgents Metaverse Engine's
 hold to talk, with its own bounded segmentation and admission.
 Real streaming remains separate. This engine itself neither records a
 microphone nor executes a transcript.
@@ -249,9 +249,9 @@ immutable while mapped. Close releases the engine and its resources.
 
 The [Coax consumer](../examples/transcribe-incremental.coax) prints actual
 append-only partials from a public recording and admits one final through
-Aethyr's existing media-epoch/replay gate. Partials are display-only; barge-in
+the Metaverse Engine's existing media-epoch/replay gate. Partials are display-only; barge-in
 and cancellation revoke the native ticket and realm answer. This file-backed
-consumer opens no microphone. Mac/TUI dictation and the default Verse voice
+consumer opens no microphone. Mac/TUI dictation and the default Metaverse voice
 host retain their final-only paths; live microphone/UI partials and Metal
 streaming effects require explicit adoption and qualification.
 

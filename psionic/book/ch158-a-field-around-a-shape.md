@@ -29,12 +29,12 @@ layer has at most 16 input and 16 output channels.
 The samplers draw from the counter-based generator `cr_draw` in
 [`counter-rng.coax`](../lib/counter-rng.coax), the one
 [chapter 53](ch053-choosing-the-next-token.md) samples tokens with, so a seed
-fixes every point. The Aethyr engine's spatial
-queries ([Aethyr chapter 7](../../aethyr/book/ch007-ask-the-world-where-things-are.md),
+fixes every point. The OpenAgents Metaverse Engine's spatial
+queries ([Metaverse Engine chapter 7](../../aethyr/book/ch007-ask-the-world-where-things-are.md),
 [`query.coax`](../../aethyr/physics/query.coax)) answer related questions about
 boxes and capsules, but in binary32 world units and with first-hit rather
 than nearest-point semantics, so this chapter writes its own binary64
-geometry and uses Aethyr's design only as a model.
+geometry and uses the Metaverse Engine's design only as a model.
 
 ## Run it
 
@@ -1081,8 +1081,8 @@ winding number instead of comparing it with 0.5.
   the aggregation layers.
 - [Chapter 53](ch053-choosing-the-next-token.md): the counter-based
   generator the samplers draw from.
-- The Aethyr engine's spatial queries
-  ([Aethyr chapter 7](../../aethyr/book/ch007-ask-the-world-where-things-are.md))
+- The Metaverse Engine's spatial queries
+  ([Metaverse Engine chapter 7](../../aethyr/book/ch007-ask-the-world-where-things-are.md))
   as a related design.
 
 ## Sources

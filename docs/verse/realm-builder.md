@@ -1,7 +1,7 @@
-# Build your own realm (Aethyrforge)
+# Build your own realm
 
-Aethyrforge is the realm builder: it makes realms that run on Aethyr, the engine
-(docs/verse/engine-name.md).
+You create and edit realms in the OpenAgents Metaverse Engine, the engine they run on
+([the names](../naming/2026-11-12-metaverse-rename.md)).
 
 The step after the Haunted House. When the house's quest is done, BUILD YOUR OWN REALM
 (`realm.coax`, `BTN_OWN`) opens https://openagents.com/realms/new. The visitor says or types

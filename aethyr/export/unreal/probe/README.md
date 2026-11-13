@@ -4,9 +4,9 @@ Proves the two risks in
 [the exporter spec](../../../../docs/unreal/2026-11-12-aethyr-to-unreal-exporter-spec.md)
 before any exporter work (GitHub #13399):
 
-1. An Aethyr world's C compiles and runs inside an Unreal module, on Mac and
+1. An OpenAgents Metaverse Engine world's C compiles and runs inside an Unreal module, on Mac and
    on Unreal's 64-bit Wasm target, and writes the same bytes as the web build.
-2. Where Unreal's glTF import puts Aethyr's axes.
+2. Where Unreal's glTF import puts the Metaverse Engine's axes.
 
 ## Files
 

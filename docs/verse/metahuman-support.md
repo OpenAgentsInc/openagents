@@ -1,15 +1,15 @@
-# MetaHuman support in Aethyr
+# MetaHuman support in the Metaverse Engine
 
 Status: design report, 2026-11-02; packs shown to every visitor since
 2026-11-03. The first pieces are built: MetaHuman
 Lab and `aethyr/anim/mannequin.coax` (see [MetaHuman Lab](#metahuman-lab)). The
-rest is not built yet. It covers how Aethyr, the Coax engine that every Verse realm runs on, loads,
+rest is not built yet. It covers how the OpenAgents Metaverse Engine, the Coax engine that every Metaverse realm runs on, loads,
 animates and draws Epic MetaHuman characters. It also covers a first plan for
 5E Lab (`openagents.com/worlds/5e-lab`) to draw MetaHumans in place of its
 analytic capsule figures.
 
 The owner's direction: Unreal lets projects like ours use MetaHumans, so
-Aethyr gets full MetaHuman support. Verse renders the characters itself.
+the Metaverse Engine gets full MetaHuman support. The OpenAgents Metaverse renders the characters itself.
 Unreal is at most an offline export tool.
 
 ## Summary
@@ -18,7 +18,7 @@ Unreal is at most an offline export tool.
   engine as a private, offline pipeline for one character, Draconia.
   Unreal Engine 5.7/5.8 built the character headlessly. A C++ tool on Epic's
   MIT-licensed OpenRigLogic read the DNA files and posed the face. A Blender
-  importer mapped the meshes to Verse shading models. A Rust module rigged
+  importer mapped the meshes to Metaverse shading models. A Rust module rigged
   the body on MetaHuman's own skeleton. The face was posed per expression
   offline, never live, and the work never reached the web.
 - None of that code is in the tree now. The rules, the private bucket and
@@ -26,7 +26,7 @@ Unreal is at most an offline export tool.
   `openagentsgemini-verse-private-assets` and the Cloud Run service
   `verse-assets` are still live, and the exports are still on the owner's
   Mac under `~/work/film-out/draconia/metahuman/`.
-- Aethyr already has most of the body runtime. `aethyr/anim/skin.coax` plays
+- The Metaverse Engine already has most of the body runtime. `aethyr/anim/skin.coax` plays
   skinned clips with cross-fades. `verse/tools/people.py` rebinds parts onto
   a shared skeleton. Everglade's shader (`verse/everglade/gpu.coax`) skins
   vertices pulled from a storage buffer with four joints each. The
@@ -74,7 +74,7 @@ every phase below.
    works once, for 120 seconds, to the pack under a key of that session's
    own, with `Cache-Control: no-store`. No release, static path or file
    carries a pack. See [Sending packs to browsers](#sending-packs-to-browsers).
-4. **Verse renders them, not Unreal.** Unreal (5.7 or later, headless) is
+4. **The Metaverse renders them, not Unreal.** Unreal (5.7 or later, headless) is
    used only offline, to create, rig and export characters. No Unreal code
    ships, and the runtime never calls Unreal.
 5. **No Epic trademarks in our names.** OpenRigLogic's `TRADEMARKS.md`
@@ -97,7 +97,7 @@ every phase below.
 Open questions the owner must settle while logged in to Epic:
 
 1. **A custom engine.** The press describes use "in any game engine or DCC
-   application". Confirm that a custom engine (Aethyr, in Coax, on WebGPU)
+   application". Confirm that a custom engine (the Metaverse Engine, in Coax, on WebGPU)
    counts, not just named engines.
 2. **Sending packs to browsers. Settled: yes** (owner, 2026-11-03).
    MetaHumans are shown on production at openagents.com to every visitor;
@@ -259,7 +259,7 @@ All paths below are at `853417f290`, the Nuke's parent. Restore them with
 | `12e096eb26` | 2026-10-13 | `fit_face.py`: Creator's `fit_state_to_target_vertices` fits our own head into MetaHuman's identity space (1,397 coefficients). The fit is matched by UV and aligned to a median error of 1.4 mm. |
 | `ad3ff69d18` | 2026-10-14 | `draconia_rebuild.py`, run headless on a copy of the project: fit, skin, eyes, `request_auto_rigging(JOINTS_AND_BLEND_SHAPES)` (782 blend shapes, 870 joints), texture download, then DNA, DCC, geometry and material exports. Also `landmarks.py` (MetaHuman's face tracker as a metric), `skin_tone_probe.py` and `dna_dump --joints`. |
 | `3733ca7592` | 2026-10-14 | `presets_export.py` exports all 29 Creator presets headless. A scorer ranks them and a vertex blender mixes them. |
-| `9390a96864` | 2026-10-14 | `groom_export.py`: MetaHuman hair and brow cards with their atlases, carried onto the rigged head and shaded as Verse hair cards. |
+| `9390a96864` | 2026-10-14 | `groom_export.py`: MetaHuman hair and brow cards with their atlases, carried onto the rigged head and shaded as Metaverse hair cards. |
 | `9641a95e3a` | 2026-10-14 | Look refinements: painted brows under the cards, and an eye-relax control. |
 | `2afc6f87ac` | 2026-10-15 | `crates/verse-imported/src/imported/metahuman_rig.rs` (988 lines): body skinning on MetaHuman's own skeleton. Also `groom.rs` (strand LODs), `pack_cache.rs`, and the `metahuman_meteor_film` example. |
 
@@ -287,7 +287,7 @@ All paths below are at `853417f290`, the Nuke's parent. Restore them with
    deltas from the neutral pose (translation in cm, Euler degrees, scale 0
    meaning unchanged).
 4. **Import (Blender, headless).** `metahuman_import.py` gives each mesh a
-   Verse shading model through glTF extras: head `skin`, teeth `standard`,
+   Metaverse shading model through glTF extras: head `skin`, teeth `standard`,
    eyes `eye`, saliva and eyeEdge `cornea` (specular only), eyelashes
    `hair`. It drops eyeshell (its occlusion is baked into the eye) and
    cartilage.
@@ -307,7 +307,7 @@ All paths below are at `853417f290`, the Nuke's parent. Restore them with
 
 - A rigged MetaHuman posed through the MIT RigLogic: neutral, smile and
   speak.
-- MetaHuman skin, eye and teeth maps under Verse's own shading models, with
+- MetaHuman skin, eye and teeth maps under the Metaverse's own shading models, with
   a curvature-based skin LUT, dual specular, a refracting iris with a
   limbal ring, a cornea shell and a tear strip.
 - MetaHuman hair and brow cards, carried onto a fitted head.
@@ -317,8 +317,8 @@ All paths below are at `853417f290`, the Nuke's parent. Restore them with
 
 ### What was unfinished
 
-- **No live face rig in Verse.** Each expression was baked offline into its
-  own glb ("built per expression, not live in Verse"). Wrinkle and
+- **No live face rig in the Metaverse.** Each expression was baked offline into its
+  own glb ("built per expression, not live in the Metaverse"). Wrinkle and
   blood-flow maps were never driven.
 - **No clips on the MetaHuman.** It was posed, not animated. It was not on
   the Universal rig ("static, not on the Universal rig yet").
@@ -649,7 +649,7 @@ No phase commits an asset.
    Export two or three Creator presets and their grooms on the owner's Mac.
    **Gate:** the DNA reader's numbers match OpenRigLogic's on the owner's
    machine.
-3. **The first private MetaHuman in Verse.** The pack compiler, upload to
+3. **The first private MetaHuman in the Metaverse.** The pack compiler, upload to
    the bucket, the browser loader, and an owner-only reader key. One figure
    in 5E Lab, painterly, with body clips. Everyone else sees phase 1's
    figures.
@@ -682,7 +682,7 @@ It holds no MetaHuman asset and draws with none.
   figure round a circle so the gait keeps pace with the floor. G switches
   bodies, and K draws the skeleton over a glass body with the mannequin's
   joint names.
-- **The camera.** Aethyr's orbit (`aethyr/cam/shot.coax`) as 5E Lab uses it,
+- **The camera.** The Metaverse Engine's orbit (`aethyr/cam/shot.coax`) as 5E Lab uses it,
   with its shoulder offset taken back out so the view centres on the
   pivot: drag orbits, the wheel or a pinch zooms, Shift-drag or two fingers
   pan, and held W, A, S, D, Q and E fly the pivot with eased speed.

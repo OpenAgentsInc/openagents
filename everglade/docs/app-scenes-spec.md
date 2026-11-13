@@ -54,7 +54,7 @@ share.
 ## 3. How a host draws a world
 
 A host asks `eg_place` which place to draw behind the open world. Today that
-is always the temple, built from Aethyr's architecture kit and drawn by
+is always the temple, built from the OpenAgents Metaverse Engine's architecture kit and drawn by
 shaders emitted from Coax. A touch host asks `eg_claims` before it
 treats a touch as the movement stick, so the list and every button work
 under the left thumb.
@@ -154,7 +154,7 @@ butts, the Longbow, the tally at the top left, the horse and the dragon.
 
 ### Sound in the page host (built 2026-11-10)
 
-The realms' sound plays through the Apple audio host Aethyrforge already
+The realms' sound plays through the Apple audio host the Metaverse Engine already
 plays with, not a second one:
 
 - **The Coax.** `aethyr/host/native-audio.coax` (the PCM interpreter
@@ -162,13 +162,13 @@ plays with, not a second one:
   the WAV and Opus plans and the Everglade PCM assets), compiled to C into
   the app.
 - **The C wrappers.** `aethyr/host/apple/audio-host.h` and `audio-host.c`,
-  moved out of Aethyrforge's `MetalRealm.m`, which now includes them. The
+  moved out of the Metaverse Engine's `MetalRealm.m`, which now includes them. The
   page host answers the four calls a realm host owes the audio host: the
   sound bank, its storage, the sound packets (`mf_sound_commands`: each
   packet read once after every handoff, refused whole when it is outside the
   face's allocation) and the spatial probe (none).
 - **The Swift.** `aethyr/host/apple/PageAudio.swift` hands a page to
-  Aethyrforge's `ForgeMetalAudio` (`Sources/MetalAudio.swift`): the bank the
+  the Metaverse Engine's `ForgeMetalAudio` (`Sources/MetalAudio.swift`): the bank the
   realm renders (Experimental's synthesized sounds, the bow's among them),
   the site's sound files and PCM companions (`/realms/everglade/sfx/`,
   `pcm-v1/`, copied into the app), the first key or press as the gesture,
@@ -181,7 +181,7 @@ What the realms don't do yet:
 - **Your web character.** The app has no log in, so it starts from its own
   kept character, not the one your browser has.
 - **The catalog renderer.** The host draws with the page's own passes, as
-  the web's Everglade II does today. It is not a profile in Aethyr's render
+  the web's Everglade II does today. It is not a profile in the Metaverse Engine's render
   catalog (`aethyr/render/catalog.coax`), and the shared transport and
   lifecycle authorities (`aethyr/host/transport.coax`, `lifecycle.coax`)
   are not in its path. In the browser, declaring contract v1 also needs the

@@ -1,11 +1,11 @@
-# Desktop film rendering for Aethyr
+# Desktop film rendering for the Metaverse Engine
 
 Research note, 2026-11-07. Owner question: we want very high-quality
 renders of Everglade and other worlds to make movies. Can we, and should
 we, have a desktop rendering flow like vork's instead of doing everything
 in the browser, while reusing as much of the engine as possible?
 
-**Recommendation: yes. Build it as a `film` render profile on Aethyr's
+**Recommendation: yes. Build it as a `film` render profile on the OpenAgents Metaverse Engine's
 existing native Vulkan and Metal hosts, not as a separate renderer and not
 on vork.** It should first use what we already have (determinism,
 replayable sessions, Coax shaders emitted as SPIR-V and Metal, the
@@ -102,7 +102,7 @@ replays from the start or from a checkpoint to seek. We have it already.
 4. **Previews for the agent loop.** `vork render shot.json --profile
    std/previs --at 3 --set resolution=320x180 --out still.png` gives one
    small still at a chosen time. Animation Lab's directing loop (A7) and
-   Aethyrforge's edits could show the model such a frame after each change.
+   the Metaverse Engine's edits could show the model such a frame after each change.
 5. **Honest timing.** vork reports setup, warmup and first-compile time
    separately, marks unmeasured comparisons as "unmeasured, not wins", and
    labels projections as projections. Chapter 37's draft rule (compile and

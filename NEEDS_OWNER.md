@@ -80,7 +80,7 @@ keyboard focus for recovery; both authorizations end with this cancellation.
 No WoW trial, recovery, leveling or input handover remains an owner task.
 
 
-## Aethyrforge Coder HUD / Cursor installation (2026-11-04)
+## Metaverse Engine Coder HUD / Cursor installation (2026-11-04)
 
 - Basic chat is ready in the reopened app: Enter sends; agent/model/effort and
   working folder sit above the bottom input. Codex, Claude Code and Microcoder
@@ -90,7 +90,7 @@ No WoW trial, recovery, leveling or input handover remains an owner task.
   the installer shims also require the IDE. No credentials or third-party
   binaries were changed. The app reports the existing CLI failure in chat.
 
-## Aethyrforge microphone (2026-11-04)
+## Metaverse Engine microphone (2026-11-04)
 
 - [x] Owner approved the macOS microphone prompt and confirmed it in chat.
       A subsequent live TALK/V hold reached listening on local Parakeet and
@@ -292,7 +292,7 @@ walk Drop once (`bun coax/web/goldens.ts BASE --only drop`) and, if it
 differs, refresh `coax/web/goldens/drop.png` with `--update`. Mac-only:
 coderos-4080 can't run it.
 
-## Ice Cream Man's camera on Aethyr's follow: approve the look (#12609, 2026-11-02)
+## Ice Cream Man's camera on the Metaverse Engine's follow: approve the look (#12609, 2026-11-02)
 
 Ice Cream Man's boom camera now runs on `aethyr/cam/follow.coax`, one step per
 rules step. The same bot round (`#seed=4&bot`) was drawn before and after,
@@ -375,7 +375,7 @@ START YOUR AGENT, type `look left`, then CLOSE. Also `openagents realm look
 SLUG --pitch 20` on a first-person realm and `realm use SLUG build barrel` on
 one of yours with build on, with a real GPU and a page that draws.
 
-## Verse OS V7: build and boot the image on a second machine (2026-11-02)
+## Metaverse OS V7: build and boot the image on a second machine (2026-11-02)
 
 Update (2026-11-09): the image boots in QEMU and draws the boot sequence and
 the Grid on the VM's screen (software Vulkan copied to the display), 16 s
@@ -394,16 +394,16 @@ versions (`verseos.image.updateUrl`, now `https://openagents.com/verse-os/`),
 and whether `/home` may be encrypted with TPM2 alone or should ask for a
 passphrase.
 
-## Verse OS V5: let this machine serve as a Pylon when idle (2026-11-02)
+## Metaverse OS V5: let this machine serve as a Pylon when idle (2026-11-02)
 
 `verse-session --pylon` starts `openagents pylon start --model M` after ten
 minutes without input and stops it when you touch a key. It is off unless you
 pass `--pylon` (and `--pylon-source` with this checkout). Say whether
 coderos-4080 should, and with which model.
 
-## Verse OS V2: which Spark wallet runs on Linux (2026-11-02)
+## Metaverse OS V2: which Spark wallet runs on Linux (2026-11-02)
 
-Verse OS makes your Nostr identity in the Grid (docs/os/2026-11-02-verse-os.md,
+Metaverse OS makes your Nostr identity in the Grid (docs/os/2026-11-02-verse-os.md,
 "Status"), and Spark takes the same 12 words. But Breez's Spark SDK runs only
 inside the iOS app today (`Wallet/SparkHost.swift`). A wallet on the Linux
 session needs one of: Breez's Rust SDK through its C/UniFFI bindings linked
@@ -412,7 +412,7 @@ daemon on the machine that the session talks to over a socket, or waiting
 for a Coax Spark client. Say which; until then the boot line reads WALLET
 not set up.
 
-## Verse OS V0: the Verse on tty3 of coderos-4080 (2026-11-02)
+## Metaverse OS V0: the Metaverse on tty3 of coderos-4080 (2026-11-02)
 
 Update (2026-11-09): steps 1 and 2 are done. The realms are installed, and
 coderos-4080 runs the module on tty3 (coder `890e81be0`, switched, no package
@@ -435,7 +435,7 @@ changes the machine's configuration, so it waits for you:
    in again once (or reboot) before the session can read the keyboard.
 3. At the desk: Ctrl+Alt+F3. The Grid fills the screen. Escape held a second
    returns to tty1; Ctrl+Alt+F3 resumes. Say whether it should become tty1
-   (booting straight into the Verse), which is V0's last step.
+   (booting straight into the OpenAgents Metaverse), which is V0's last step.
 
 ## Every realm's 60 FPS report: which machine is the reference (2026-11-02, #12649)
 
@@ -516,7 +516,7 @@ which ones should become production defaults. Source, license and exact port
 boundaries: `docs/verse/2026-11-01-arwes-coax.md` and
 `aethyr/ui/arwes/SOURCES.md`. The full upstream MIT notice is retained.
 
-## Aethyr HUD component library: visual review (2026-11-01)
+## Metaverse Engine HUD component library: visual review (2026-11-01)
 
 Review the running local demo at `http://127.0.0.1:8815/` (the isolated
 `aethyr-hud-library` worktree). Keys 1–5 choose the component library, Grid,
@@ -554,7 +554,7 @@ Details: `docs/verification/2026-11-01-nostr-book-chapters-11-104.md`.
    Until you decide, the relay has no key, signs nothing, and refuses
    every 39000 to 39005 event. Say yes or no here; nothing is built until
    then.
-5. **Presence frames against the relay's rate limit (#12630).** Two Verse
+5. **Presence frames against the relay's rate limit (#12630).** Two Metaverse
    clients exchanged signed NIP-MV pose frames (kind 23300) through a local
    Coax relay with test keys: every frame arrived, in order, median 5 ms
    (`docs/verification/2026-11-03-nostr-consumers.md`). At 10 frames a
@@ -1086,7 +1086,7 @@ No physical microphone or permission check was performed.
       Parakeet**, then dictate about 30 s in one hold, in sentences. Check that no words
       are missing or doubled where the text was split.
 
-### Verse voice host: Parakeet recognition on the Mac (#12669)
+### Metaverse voice host: Parakeet recognition on the Mac (#12669)
 
 The Parakeet recognizer (`verse/voice-host --recognizer parakeet`) was built and
 qualified on coderos-4080 (Linux; first the CPU path, now CUDA by default, #12672).
@@ -1098,7 +1098,7 @@ The Mac was not available to the agent:
 - [ ] Run `coax/web/tool.sh verse/voice-host/parakeet-check.coax` there (Metal by
       default) and add its latency lines to
       [the record](docs/verification/verse-parakeet-2026-11-02/README.md).
-- [ ] Hold to talk with the real microphone in Aethyrforge once its forge bar
+- [ ] Hold to talk with the real microphone in the OpenAgents Metaverse Engine once its forge bar
       uses the local host; the checks use recorded fixtures only.
 
 ### Coder terminal: leading file paths

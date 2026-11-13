@@ -1,4 +1,4 @@
-# Apps roadmap: Linux first, one agent stack, shared code for Verse apps
+# Apps roadmap: Linux first, one agent stack, shared code for Metaverse apps
 
 Written 2026-11-10. Status: Step 0 is done, Step 1 opens (see its status), Steps 2 and 3 are in progress.
 Tracked in GitHub #13153.
@@ -14,7 +14,7 @@ app use the same agent code.
 | `apps/openagents-web` | Browser (WebGPU) | The main product. `/chat` is drawn with the shared Zeron components |
 | `apps/openagents-desktop` | Mac only | Chat with Claude Code, Codex, Psionic and the Lab. Swift host on AppKit and Metal |
 | `apps/aethyrforge-desktop` | Mac, Linux | The only app with a native Linux window (Wayland and Vulkan) |
-| `apps/everglade-desktop` | Mac only | Runs the web's realms natively through Aethyr's Metal page host |
+| `apps/everglade-desktop` | Mac only | Runs the web's realms natively through the OpenAgents Metaverse Engine's Metal page host |
 | `apps/everglade-mobile` | iOS, Android | Experimental |
 | `apps/openagents-ios` | iOS | Home, wallet, voice |
 | `apps/openagents-cli` | Mac, Linux | Active |
@@ -102,7 +102,7 @@ and `Sources/main.swift` supplied (both replaced by the shared Mac host on 2026-
 
 | The host's job | On the Mac | On Linux |
 | --- | --- | --- |
-| Window, keys, pointer | AppKit | Wayland, from `verse/gpu/vk-window.c` (Aethyrforge's Linux build uses it) |
+| Window, keys, pointer | AppKit | Wayland, from `verse/gpu/vk-window.c` (the Metaverse Engine's Linux build uses it) |
 | Drawing | `Zeron.metal` | Vulkan, with the shaders from `apps/openagents-web/gpu/chat.coax` (the Coax port `/chat` already uses) emitted as SPIR-V by `coax spirv` |
 | Glyph and icon atlas | CoreText and AppKit SVG | To decide: see the open question below |
 | Clipboard, IME, file picker | AppKit | Wayland data device and text input; `xdg-desktop-portal` for files |
@@ -122,7 +122,7 @@ Slices, each one opens and is checked before the next:
    dictation.
 
 The host is written once as shared code (`apps/shared/host/linux/`), not
-inside `openagents-desktop/`. Aethyrforge's Linux build moves onto it in
+inside `openagents-desktop/`. The Metaverse Engine's Linux build moves onto it in
 Step 3.
 
 Open question: the glyph atlas. The Mac host matches GPUI's CoreText
@@ -164,7 +164,7 @@ them reimplements them:
    `~/.openagents/`. Coder's JSONL is the starting point because three
    programs already read it.
 3. **Observation** (`agent/observe/`): one reader of Claude Code, Codex and
-   Coder transcripts, for the Golems board, Verse OS and anything else that
+   Coder transcripts, for the Golems board, Metaverse OS and anything else that
    shows who is working.
 
 Order of moves, one consumer at a time, each with its checks kept green:
@@ -173,7 +173,7 @@ Order of moves, one consumer at a time, each with its checks kept green:
    behaviour change; the desktop app is the first consumer.
 2. Coder's terminal moves onto them.
 3. Everglade's Next issue and Golemancy's rating move onto them.
-4. Aethyrforge's chat drops its Coder child for the shared engines.
+4. The Metaverse Engine's chat drops its Coder child for the shared engines.
 5. The three transcript readers become one.
 6. The server engines (`coax/web/agent/`) take the shared session record.
 
@@ -193,7 +193,7 @@ Status (2026-11-10, GitHub #13153):
 - **Built: move 1.** The desktop app's screen calls only `engine.coax`; its
   `zeron/claude.coax` keeps only how a session becomes rows; its store
   writes the shared log format and still reads its old files.
-- **Built: move 5.** The Golems board's reader and Verse OS find transcripts
+- **Built: move 5.** The Golems board's reader and Metaverse OS find transcripts
   through `observe/transcripts.coax`. `local-agents` never read transcripts
   (it lists processes); it moved beside the walker.
 - **Checked end to end on Linux** (`coderos-4080`, 2026-11-10): the Linux
@@ -274,7 +274,7 @@ Status (2026-11-10, GitHub #13153):
   from the record. Checked by building both as the Dockerfile does and
   running a turn against stand-ins before and after: the same wire lines
   for a plain answer and for a refused tool call. Not deployed.
-- **Move 4, first part built: what Aethyrforge's child does, as shared
+- **Move 4, first part built: what the Metaverse Engine's child does, as shared
   operations.** `coax/lib/agent/engine/route.coax` is the System One router
   (`agr_begin`, `agr_needs_grant`, `agr_ask`, `agr_pick`, `agr_json`; two
   steps so an owner keeps its consent ledger), `availability.coax` the
@@ -298,13 +298,13 @@ Status (2026-11-10, GitHub #13153):
   Moved beside it for it: the approval policy (`ceiling.coax`), Codex's
   catalog, Microcoder's observations and worker client, the line diff
   (`edit-lines.coax`). Coder's `coder run` and `fork` with `--stream-json`
-  run on it when nothing in them asks a person or a plugin; Aethyrforge's
+  run on it when nothing in them asks a person or a plugin; the Metaverse Engine's
   Linux chat runs every turn on it in its own process (`chat-run.coax`
   `fcr_*`; `chat-launch.coax` names the runner's options) and starts no
   Coder child. Checked before and after with stand-ins: Coder's 32 runs and
-  43 engine runs, and Aethyrforge's chat through two turns with echo, auto
+  43 engine runs, and the Metaverse Engine's chat through two turns with echo, auto
   to Claude Code, Codex and the Microcoder replay, and no eligible engine,
-  print and write the same. Aethyrforge's turns carry no remembered facts,
+  print and write the same. The Metaverse Engine's turns carry no remembered facts,
   offer Codex no Coder tools, send "$ " to the engine as text, and wait for
   System One on the frame.
 - **Not built or checked: the Mac's chat on the runner.** `Sources/chat.m`
@@ -330,17 +330,17 @@ Status (2026-11-10, GitHub #13153):
 Done when: a grep for the Claude or Codex SDK outside `coax/lib/agent/` finds
 only tests.
 
-## Step 3. Shared code for Verse apps
+## Step 3. Shared code for Metaverse apps
 
 1. **One host per platform.** Linux from Step 1; then Mac, iOS and Android
    moved onto the same contract, replacing the three Mac `main.swift` files
-   and the Android C host. A Verse app such as Everglade is then its Coax
+   and the Android C host. A Metaverse app such as Everglade is then its Coax
    plus a short list of what it needs from the host.
 2. **One component system.** Specified in
    [components/spec.md](../../components/spec.md): one set of components in
    `components/`, skins over them, and a library page at
    openagents.com/components. It replaces the three drawing stacks (the
-   Zeron components, Aethyr's HUD and Everglade's HUD) and the four Markdown
+   Zeron components, the Metaverse Engine's HUD and Everglade's HUD) and the four Markdown
    implementations.
 3. **`/chat` on the shared stack.** `/chat` already draws with the Zeron
    components. What it lacks next to the desktop app: sessions grouped by
@@ -376,10 +376,10 @@ Status (2026-11-11, GitHub #13156, on the owner's Mac):
   command buffer, then its encoder under the components, with a depth
   attachment), game input (`UiApp.button`, `motion`, `scroll`, `focus`,
   `modifier_keys`) and `ui_hold_pointer` for mouselook. The realms still
-  run on Aethyr's page host. `--shot` of the list, the Workshop, Everglade,
+  run on the Metaverse Engine's page host. `--shot` of the list, the Workshop, Everglade,
   the Archery Range and Experimental, and a driven range run, match the
   Swift host's to the pixel.
-- **Not built:** Aethyrforge still runs its own `main.swift` host. The Android
+- **Not built:** The Metaverse Engine still runs its own `main.swift` host. The Android
   window is built (2026-11-11): an app built as a NativeActivity hands the
   host its `android_app` (`apps/shared/host/android/ui-host-android.h`), and
   the host draws to the activity's `ANativeWindow` through `verse/gpu/vkp`

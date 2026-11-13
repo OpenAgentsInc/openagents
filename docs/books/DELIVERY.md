@@ -32,7 +32,7 @@ The other route IDs are `aethyr-core-replay`, `psionic-public-models` and
 prerequisites, output fixtures and remaining limitations. The Psionic route
 actually trains/resumes the existing tiny synthetic module; its MLP/CNN steps
 are dataset-free API examples. No route repeats the frozen MNIST experiments.
-The Aethyr route proves CPU scheduling/input/replay, and the Nostr client route
+The Metaverse Engine route proves CPU scheduling/input/replay, and the Nostr client route
 uses scripted transport bytes. Browser rendering and live relay transport need
 their own evidence.
 

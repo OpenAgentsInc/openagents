@@ -1,7 +1,7 @@
 # 1. A reference image
 
 > **Status: partly implemented.** The numbers this chapter takes from the
-> reference image are in Aethyr's shared glade profile
+> reference image are in the OpenAgents Metaverse Engine's shared glade profile
 > ([`aethyr/world/environment.coax`](../../aethyr/world/environment.coax),
 > `env_glade_profile`) and Everglade II's land
 > ([`verse/everglade2/forest.coax`](../../verse/everglade2/forest.coax)). The

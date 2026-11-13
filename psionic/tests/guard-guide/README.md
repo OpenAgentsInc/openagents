@@ -45,7 +45,7 @@ The shared tool runner invalidates cached binaries for imported Coax changes in
 `coax/`, `verse/`, `psionic/`, `apps/` and `proto/`. It also retains the entry
 file, native platform and compiler checks, including entry files outside the
 repository. A focused transitive-import smoke kept that external entry unchanged
-and observed 3 → 4 → 13 → 112 after isolated proto, Coax web and Verse edits.
+and observed 3 → 4 → 13 → 112 after isolated proto, Coax web and the OpenAgents Metaverse edits.
 
 The Coax CLI uses the shared `sys` argv/file effects. Required capture fields
 are `case`, `request_sha256`, `elapsed_ms`, `status` and `body`. The request hash

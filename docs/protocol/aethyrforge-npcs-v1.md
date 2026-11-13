@@ -1,4 +1,4 @@
-# Local Aethyrforge NPC commands v1
+# Local Metaverse Engine NPC commands v1
 
 The desktop scene tool adds `npcs` (read live NPCs), `npcs people` and
 `npcs buildings` (read target catalogues), and `npc 'JSON'` (apply a command).

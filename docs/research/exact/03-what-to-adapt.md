@@ -240,7 +240,7 @@ contract between page and host).
 - **Web.** `host.js` registers the tools through `document.modelContext`
   where the browser supports it.
 - **CLI.** The openagents CLI serves the same tools over MCP.
-- **Agents in the Verse.** A realm becomes something an agent can operate
+- **Agents in the OpenAgents Metaverse.** A realm becomes something an agent can operate
   through typed calls, not only through pixels. This fits our agent
   products directly.
 

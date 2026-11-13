@@ -34,7 +34,7 @@ blend further flattened the materials.
 - Atmosphere uses four midpoint samples of an exponential height density,
   Beer–Lambert transmittance, and an angular warm-forward/cool-sky source.
   Its near six metres are kept clear after comparison against the supplied
-  foreground. It replaces uniform distance-only warm fog. These are authored Aethyr
+  foreground. It replaces uniform distance-only warm fog. These are authored Metaverse Engine
   approximations, not decoded native volumetric fog or a GI solver.
 - Scene radiance, reconstruction and bloom remain linear in rgba16float.
   A peak-channel shoulder applies one RGB gain to preserve hue in highlights;
@@ -75,7 +75,7 @@ by Ore, with no claim of matching either game's native renderer exactly.
 
 The target was the Quaternius Stylized Nature MegaKit `Preview_1.jpg`: a warm golden sun, a
 golden hazy hill, grey mossy rocks, saturated foliage, soft bloom and an olive dirt path. The
-pass also used `docs/research/lighting/research.md` and the Aethyr book.
+pass also used `docs/research/lighting/research.md` and the Metaverse Engine book.
 
 Engine changes (`aethyr/render/`, so every scene can use them):
 
@@ -159,7 +159,7 @@ foreground plants beside the near rock use deeper red-orange tints. Comparison:
 
 The owner's direction: this glade is the most beautiful thing we render, and its lighting is the
 default for every painterly realm (lighting plan Phase 1 step 0, GitHub #13060). Its functions and
-numbers moved out of the app into Aethyr:
+numbers moved out of the app into the OpenAgents Metaverse Engine:
 
 | What | Now in |
 | --- | --- |

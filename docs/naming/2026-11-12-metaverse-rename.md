@@ -8,12 +8,18 @@
 | --- | --- | --- |
 | The Verse | OpenAgents Metaverse | the Metaverse |
 | Aethyr, Aethyr Engine, the Verse engine | OpenAgents Metaverse Engine | Metaverse Engine |
-| Aethyrforge | OpenAgents Forge | Forge |
+| Aethyrforge | (no name; part of the Metaverse Engine) | |
 | Verse worlds | Metaverse realms | realms |
 | Verse OS | Metaverse OS | |
 
 Coax, Psionic and Realms keep their names. "OpenAgents Engine" is not a
 name; don't use it.
+
+**There is no "Forge"** (owner, 2026-11-12, later the same day). Aethyrforge
+folds into the Metaverse Engine: creating and editing realms are features of
+the engine, not a separate product. Where the activity needs a word, use a
+plain verb ("create a realm", "edit") or a plain noun ("the realm editor"),
+never a brand.
 
 This document is the inventory and the plan. It lists what changes, what
 stays for compatibility, and when each compatibility name retires.
@@ -27,8 +33,8 @@ stays for compatibility, and when each compatibility name retires.
   rendering, networking and world-execution engine, built in Coax. The same
   engine runs robotics, scientific simulation and training environments;
   the name is its product identity, not a limit on what it does.
-- **OpenAgents Forge** is where people and agents create, edit, play, fork
-  and publish realms.
+- Creating, editing, playing, forking and publishing realms are features of
+  the Metaverse Engine. They have no product name of their own.
 - **Realms** are the individual worlds: Everglade, Fairy Forest, Dead Gears
   and the worlds users make.
 
@@ -38,7 +44,8 @@ stays for compatibility, and when each compatibility name retires.
   Metaverse".
 - Write "the OpenAgents Metaverse Engine" the first time, then "the
   Metaverse Engine". It takes "the", as "the Verse" did; "Aethyr" did not.
-- Write "OpenAgents Forge" the first time, then "Forge". It takes no "the".
+- Where Aethyrforge was named, write "the Metaverse Engine", or "the realm
+  editor" when the sentence is about the editing code or screen.
 - An individual destination is a realm.
 - Replace the names only. Don't restyle the copy around them.
 - Don't rewrite transcripts, dated reports, audits, handoffs, verification
@@ -79,9 +86,9 @@ service (a different, older product that keeps its name in history), the
 | Old path | New path | Notes |
 | --- | --- | --- |
 | `aethyr/` | `metaverse-engine/` | The engine, its book, tests and tools |
-| `aethyr/forge/` | `metaverse-engine/forge/` | Stays in the engine folder: `host/`, `world/`, `content/` and `tools/` load it, so a top-level folder would break the layer rule |
+| `aethyr/forge/` | `metaverse-engine/editor/` | Stays in the engine folder: `host/`, `world/`, `content/` and `tools/` load it |
 | `verse/` | `metaverse/` | The realms and their content |
-| `apps/aethyrforge-desktop/` | `apps/forge-desktop/` | The desktop app |
+| `apps/aethyrforge-desktop/` | `apps/metaverse-engine-desktop/` | The desktop app |
 | `docs/verse/` | `docs/metaverse/` | |
 | `apps/openagents-web/verse*`, `gpu/verse.*`, `carriers/verse.coax` | `metaverse*` | Page sources |
 | `apps/openagents-web/projects/verse/` | `projects/metaverse/` | Old URL redirects; see Routes |
@@ -118,7 +125,7 @@ scripted commit per prefix:
 | `aethyr_`, `AETHYR_`, `Aethyr` + capital | `engine_`, `ENGINE_`, `Engine` + capital | `aethyr_voice_step`, `AETHYR_RENDER_TYPED`, `AethyrHost` |
 | `#module "aethyr.…"` | `#module "engine.…"` | `aethyr.render.passes` |
 | `verse_`, `VERSE_`, `Verse` + capital | `metaverse_`, `METAVERSE_`, `Metaverse` + capital | `verse_style_luma`, `VERSE_PACK_DIR`, `VerseState` |
-| `aethyrforge_`, `AETHYRFORGE_` | `forge_`, `FORGE_` | `AETHYRFORGE_SCENE_TOOL` |
+| `aethyrforge_`, `AETHYRFORGE_`, `forge_` in `aethyr/forge/`, `#module "aethyr.forge.…"` | `editor_`, `EDITOR_`, `#module "engine.editor.…"` | `AETHYRFORGE_SCENE_TOOL`, `forge_save_body` |
 
 `engine` is already the context's name in `contexts.txt`, so `engine_` is
 the engine's symbol prefix. It is a prefix, not a product name.
@@ -137,7 +144,7 @@ condition that retires it.
 | Identifier | Where it lives | Why it stays | Retires when |
 | --- | --- | --- | --- |
 | `aethyr.content.v1` | `proto/registry.json`, content documents on disk and in rooms | Stored document header | Content tables v2 ships with a `metaverse.content.v2` header and reads v1 |
-| `aethyrforge.scene-command-v1`, `-v2`, `aethyrforge.scene-session.v1`, `aethyrforge.npcs.v1`, `aethyrforge.npc-command-v1`, `aethyrforge.raid-command-v1`, `aethyrforge.voice-coder.v1`, `aethyrforge.microphone-capture.v1` | `proto/aethyrforge/*.schema.json`, `https://openagents.com/proto/aethyrforge/…` `$id` URLs, saved scene sessions, agent tools | Published schemas; AGENTS.md: a published contract changes only with a new version | The next version of each schema is published as `forge.…` under `proto/forge/`; the old `$id` URL keeps serving for as long as a saved session of that version can be opened |
+| `aethyrforge.scene-command-v1`, `-v2`, `aethyrforge.scene-session.v1`, `aethyrforge.npcs.v1`, `aethyrforge.npc-command-v1`, `aethyrforge.raid-command-v1`, `aethyrforge.voice-coder.v1`, `aethyrforge.microphone-capture.v1` | `proto/aethyrforge/*.schema.json`, `https://openagents.com/proto/aethyrforge/…` `$id` URLs, saved scene sessions, agent tools | Published schemas; AGENTS.md: a published contract changes only with a new version | The next version of each schema is published as `metaverse.editor.…` under `proto/metaverse/`; the old `$id` URL keeps serving for as long as a saved session of that version can be opened |
 | `aethyr.player.appearance.v1` | Browser `localStorage`, `proto/aethyr/player-appearance-v1.json` | Players' saved looks | Appearance v2; the page reads v1 once and writes v2 |
 | `aethyr.physics-lab.v1` and the other `proto/aethyr/*.json` profiles | `proto/aethyr/` | Published profiles | Next version of each |
 | `aethyr-transport-v1`, `aethyr-projectile-v1` | `proto/registry.json` row IDs, `docs/protocol/aethyr-transport-v1.md` | Wire profile IDs that production rooms and pages agree on | The next transport or projectile version, registered as `metaverse-…` |
@@ -147,13 +154,45 @@ condition that retires it.
 | Postgres schema `verse` (`verse.item_outbox`, `verse.character_outbox`, …), 123 migrations | Production database | Renaming a schema needs a migration and a deploy in step with every query; migrations are history | A planned database change adds `metaverse` as the schema and leaves `verse` as views for one release. Not part of this rename |
 | `/verse`, `/verse/galaxy`, `/projects/verse`, `/verse-os/` | Published links, link previews, the sitemap | Saved links must keep working | Never removed: each becomes a permanent redirect to `/metaverse…` or `/projects/metaverse` |
 | `/api/playtest/…` | API | Not a Verse name; unchanged | |
-| `/forge`, `/realms/<slug>` | Published links | Already the right names; unchanged | |
-| `~/.openagents/aethyrforge/`, `~/.openagents/bin/aethyrforge-scene`, `~/.openagents/verse/` | Installed machines | Users' workspaces, setup state and private builds | Forge reads `~/.openagents/forge/` first and moves an old folder there on first start; the old path is dropped two releases later. `aethyrforge-scene` stays as a link to `forge-scene` for the same two releases |
-| `Aethyrforge.app`, bundle IDs `com.openagents.aethyrforge`, `com.openagents.aethyrforge.experimental`, `com.openagents.aethyr`, `com.openagents.verse` | Installed apps, macOS permissions (microphone), signing | A new bundle ID is a new app to macOS and loses granted permissions | The app's display name changes to "OpenAgents Forge" now. The bundle ID changes only with a signed release that moves the user's data and permissions |
+| `/forge` | Published links | A stable public link | Never removed: it stays as a permanent redirect to the realm creation page. No UI text says "Forge" |
+| `/realms/<slug>` | Published links | Already the right name; unchanged | |
+| `~/.openagents/aethyrforge/`, `~/.openagents/bin/aethyrforge-scene`, `~/.openagents/verse/` | Installed machines | Users' workspaces, setup state and private builds | The desktop app reads `~/.openagents/metaverse-engine/` first and moves an old folder there on first start; the old path is dropped two releases later. `aethyrforge-scene` stays as a link to `metaverse-scene` for the same two releases |
+| `Aethyrforge.app`, bundle IDs `com.openagents.aethyrforge`, `com.openagents.aethyrforge.experimental`, `com.openagents.aethyr`, `com.openagents.verse` | Installed apps, macOS permissions (microphone), signing | A new bundle ID is a new app to macOS and loses granted permissions | The app's display name changes to "OpenAgents Metaverse Engine" now. The bundle ID changes only with a signed release that moves the user's data and permissions |
 | `openagents-aethyrforge.service`, `verse.service`, the `services.verse*` NixOS options | Deployed NixOS machines | Unit names that running machines and deploy tooling address | The next OS image build renames the units and keeps the old names as aliases for one image |
 | `https://openagents.gitbook.io/building-aethyr-world-engine` | The published engine book | Published link | The space is renamed "Building the OpenAgents Metaverse Engine" and GitBook redirects the old slug. The publication file records both |
 | `https://github.com/OpenAgentsInc/openagents/blob/main/verse/SKILL.md` and other `blob/main/aethyr/…`, `blob/main/verse/…`, `blob/main/docs/verse/…` links | Agent discovery text, pages in production | GitHub does not redirect a moved file | Links in this repository change with the folder moves. Links outside it can't be fixed; `verse/SKILL.md` stays as a one-line pointer file until the pages that name it are redeployed |
 | Unreal class and module names (`AethyrProbe`, `AethyrBridge`, …) | Unreal project files | Saved assets point at them | A core redirect lands with the rename |
+
+## Root folders
+
+Owner rule, 2026-11-12: the repository root is for projects that have a
+book. Realms and other world code without a book go under the realms folder,
+`verse/` today and `metaverse/` after the move. Splice moves to
+`verse/splice/` under #13404 and comes along. This rename creates no new
+root folder without a book.
+
+Root folders with a book: `aethyr/` (becomes `metaverse-engine/`),
+`bitcoin/`, `coax/`, `coder/`, `everglade/`, `nostr/`, `openagents/`,
+`psionic/`.
+
+Root folders without a book, recorded for the owner to decide. None of them
+moves in this rename.
+
+| Folder | What it is | Looks out of place? |
+| --- | --- | --- |
+| `apps/` | The apps: web, iOS, CLI, desktop, Everglade's apps | No. Apps are products built from the projects |
+| `assets/` | The shared asset registry and the Metaverse's icons, fonts and models | No |
+| `bench/` | The voice benchmark (`bench/voice/`) | Maybe. It could sit under `psionic/`, which it measures |
+| `components/` | The one UI component system for every app | Maybe. It is a project with a spec and no book |
+| `docs/` | Documents | No |
+| `orbit/` | Orbit League's room code (`orbit/server/`) | Yes. It is a realm's code, so it belongs under the realms folder |
+| `os/` | Metaverse OS: the machine's programs and the NixOS modules | Maybe. A project with a spec and no book |
+| `pay/` | The payments context's money rules | Maybe. A bounded context with no book; the Bitcoin book covers its subject |
+| `plans/` | Plan documents | Yes. Plans are documents and fit under `docs/` |
+| `proto/` | Protocol schemas, descriptors and the wire registry | No |
+| `rules/` | The SRD 5.2.1 combat rules, used by Everglade and other worlds | Maybe. World code without a book; the Everglade book covers it |
+| `scripts/` | Repository scripts | No |
+| `tools/` | Two standalone Coax tools (`coax-nostr`, `coax-unicode`) | Maybe. They could sit under `coax/` and `nostr/` |
 
 ## Stages
 
@@ -166,7 +205,7 @@ condition that retires it.
    #13404.
 4. **Symbols and modules.** One scripted commit per prefix.
 5. **Routes and aliases.** `/metaverse`, `/projects/metaverse`,
-   `/api/metaverse/packs/`, `~/.openagents/forge/`, with the old forms
+   `/api/metaverse/packs/`, `~/.openagents/metaverse-engine/`, with the old forms
    redirecting or read as fallbacks, and tests for each.
 6. **Verification.** layer-check, wire-check, tools-check, the touched
    suites, page builds and a walk of saved links.

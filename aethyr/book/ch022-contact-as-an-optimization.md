@@ -1,6 +1,6 @@
 # 22. Contact as an optimization
 
-> **Status: unimplemented — design draft.** Aethyr resolves contacts by
+> **Status: unimplemented — design draft.** The OpenAgents Metaverse Engine resolves contacts by
 > sequential impulses ([`aethyr/physics/contact.coax`](../physics/contact.coax)).
 > This chapter plans the constraint solver an articulated robot needs:
 > contacts, joint limits and friction solved together as one convex
@@ -49,7 +49,7 @@ iterations; each iteration solves with the Hessian `M + Jᵀ D J` restricted to
 active rows, by Cholesky. Conjugate gradients avoids the factorization at
 the cost of more iterations.
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 The solver collects rows from chapter 21's manifolds and chapter 19's
 joint limits into fixed-capacity arrays per environment, in the canonical
@@ -65,7 +65,7 @@ body sleep in chapter 18 this is a profile option because it changes
 results and breaks gradients.
 
 Free bodies use the same solver with a free joint, so chapter 18's bodies
-and a robot share one contact path. Aethyr's sequential-impulse solver stays
+and a robot share one contact path. The Metaverse Engine's sequential-impulse solver stays
 as a separate reference and as the cheap profile for games.
 
 ## What it builds

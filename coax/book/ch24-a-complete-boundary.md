@@ -31,7 +31,7 @@ message HudInvocation {
 
 We do not change that schema. The book uses `world = "book"` and
 `action_id = "preview"` as a local convention. These names do not register
-an action in Verse. A decoded invocation is data, not permission to
+an action in the OpenAgents Metaverse. A decoded invocation is data, not permission to
 invoke a screen or run code.
 
 For the exercise, `revision` carries the request epoch. This is a local

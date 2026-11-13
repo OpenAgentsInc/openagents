@@ -14,10 +14,10 @@ world geometry. Two clients can show the same entities with different
 renderers. The optional [scene manifest profile](#scene-manifest-profile)
 below binds a reviewed scene and supported simulation profiles without
 shipping executable behavior in a pose event. That profile is **Designed**;
-the current Verse client uses a curated local zone catalog and does not yet
+the current Metaverse client uses a curated local zone catalog and does not yet
 discover or admit signed scene definitions.
 
-Test-time capabilities: [Gym notes](#gym-notes) share a trainer's published eval result in Verse, the last stage of the [capability flywheel](../../docs/essays/2026-09-29-test-time-capabilities.md#11-the-capability-flywheel) ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
+Test-time capabilities: [Gym notes](#gym-notes) share a trainer's published eval result in the Metaverse, the last stage of the [capability flywheel](../../docs/essays/2026-09-29-test-time-capabilities.md#11-the-capability-flywheel) ([mapping](../../docs/essays/2026-09-29-test-time-capabilities.md#how-the-protocol-carries-test-time-capabilities)).
 
 ## Terms
 
@@ -172,10 +172,10 @@ its own fields or exact, reviewed host profile IDs:
   authority. Pose frames alone do not authorize combat, editing, ownership,
   inventory transfer, or results accepted by another participant.
 
-Verse's earlier `verse.zone.v1` schema was intentionally narrower than a
+The OpenAgents Metaverse's earlier `verse.zone.v1` schema was intentionally narrower than a
 general authoring format. It had exactly `schema`, `world`, `ruleset`,
 `physics`, `asset_sha256`, and `asset_bytes`. It admitted one reviewed Ruins
-world, which Verse removed on 2026-10-05; no current zone uses the schema.
+world, which the Metaverse removed on 2026-10-05; no current zone uses the schema.
 Zone palettes, bounds, and arrivals are compiled host values. A local world
 name is not a published `33300` address, so this local
 catalog does not yet satisfy signed scene admission. A future authoring schema
@@ -220,7 +220,7 @@ separate from travel.
 inside reviewed packages. Its host component-set admission remains separate;
 a release signature does not permit an arbitrary executable rules engine.
 No new EXT component kind or scene execution right is allocated here. See
-[Verse zones](../../docs/verse/zones.md) for the implemented local slice and
+[Metaverse zones](../../docs/verse/zones.md) for the implemented local slice and
 [zone rules](../../docs/verse/zone-rules.md) for its limited encounter profile.
 
 ## Entity state — kind `33301`
@@ -282,7 +282,7 @@ every frame. openagents.com's `/verse` gets the tag from the person's app
 
 ### Object state
 
-A world whose places form a world tree (Verse's
+A world whose places form a world tree (the Metaverse's
 `openagents.verse-world-tree.v1`) derives the tree on every device from
 its pinned layout, so only what changes is shared. A world authority
 publishes a stateful object, such as a lamp, a door, a workstation, or a
@@ -363,7 +363,7 @@ Rules:
 
 ## Shared bodies
 
-**Status: Implemented** for the Verse bare world (`verse-bare`), body set
+**Status: Implemented** for the Metaverse bare world (`verse-bare`), body set
 `verse-bare.bodies.v1`. This profile allocates no new kinds. It lets
 participants move the same objects in one world, with no server, and
 keeps where those objects came to rest after everyone leaves.
@@ -372,7 +372,7 @@ keeps where those objects came to rest after everyone leaves.
 
 The world defines its shared bodies: their ids, shapes, masses, and home
 poses. A body set is named by an identifier of at most 64 bytes and fixed
-for that name; a changed catalog needs a new name. The Verse bare world's
+for that name; a changed catalog needs a new name. The Metaverse bare world's
 set is compiled into the client: `ball`, `cube-0` to `cube-15`, and
 `domino-0` to `domino-9`. Clients MUST ignore reports of ids outside their
 admitted set, and snapshots of another set.
@@ -393,17 +393,17 @@ without coordination.
 - **Last toucher.** When a client's own avatar touches a body it does not
   own, or a body it owns strikes one while moving, it claims that body:
   same epoch, `rev + 1`, its own pubkey. A client SHOULD NOT claim back a
-  body it lost within a short interval (Verse: 0.3 s), so two players
+  body it lost within a short interval (the Metaverse: 0.3 s), so two players
   leaning on one body do not exchange it at every step.
 - **Episodes.** An owner whose body wakes from rest raises its rev, so one
   stamp names one motion and its one rest pose.
 - **Yielding.** A client that receives a higher stamp for a body it owns
   stops reporting it and follows the new owner.
 - **Orphans.** A body still moving locally whose owner has reported
-  nothing about it for a while (Verse: 6 s) MAY be claimed by any client,
+  nothing about it for a while (the Metaverse: 6 s) MAY be claimed by any client,
   so a body left moving by a departed owner still comes to rest on record.
 - **Plausibility.** Receivers MUST discard reports outside the world's
-  bounds, or with speed or spin beyond the world's limits (Verse: 60 m/s
+  bounds, or with speed or spin beyond the world's limits (the Metaverse: 60 m/s
   and 60 rad/s).
 
 ### Reports
@@ -448,7 +448,7 @@ and `b` holds 0 to 64 rest poses:
 ```
 
 A client publishes its snapshot after a body it owns comes to rest, at a
-bounded rate (Verse: at most every ten seconds on mobile), and at once
+bounded rate (the Metaverse: at most every ten seconds on mobile), and at once
 after a reset. Bodies that nobody has moved are omitted. Because the relay
 keeps each publisher's latest snapshot, a client that joins later reads
 every snapshot for the world and keeps, per body, the rest pose with the
@@ -467,14 +467,14 @@ clients who join later through the relay. A client that receives any report
 or rest pose from a newer epoch first returns every body of an older epoch
 home.
 
-The Verse bare world resets from a fixed pillar: walking into it presses
+The Metaverse bare world resets from a fixed pillar: walking into it presses
 its button, at most once every five seconds.
 
 ### Event budget
 
 Reports ride in frames that the client sends anyway, so the profile adds
 only snapshots. A mobile client still publishes frames faster while it owns
-moving bodies. Verse mobile clients report every 1.5 seconds while they own
+moving bodies. Metaverse mobile clients report every 1.5 seconds while they own
 a moving body and cap every publication, frames and states together, at 54
 events in any minute, under a relay's 60-event default. A frame leaves four
 of those slots for durable states.
@@ -572,7 +572,7 @@ Verbs are zone-defined. The Lagrange 1 construction zone recognizes:
 | `stop` | none | Cancel the current flight target and hold position. |
 | `status` | none | Report the simulation snapshot as a `zone-ok` gesture. |
 
-The current Verse client does not yet accept zone commands; the
+The current Metaverse client does not yet accept zone commands; the
 `openagents zone` command sends them and runs the same simulation
 headlessly.
 
@@ -655,7 +655,7 @@ publication by the note's author and, for an answer, the quoted note is an
 opening note whose own result is its author's. It SHOULD show text it renders
 from the cited results rather than the note's content, which exists for plain
 NIP-C7 clients. A sender MUST NOT put anything in a note that its trainer
-has not already published, and SHOULD bound how often it speaks; Verse's
+has not already published, and SHOULD bound how often it speaks; the Metaverse's
 bounds are in `crates/verse-gym/src/gym_notes.rs`.
 
 ## Subscriptions

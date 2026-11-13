@@ -13,7 +13,7 @@
 
 Input arrives as events at any time: keys, mouse moves, touches, and pad
 axes. The simulation runs in fixed steps ([chapter 1](ch001-a-frame-has-a-fixed-step.md)).
-Between the two, Aethyr turns the events into a small set of typed actions:
+Between the two, the OpenAgents Metaverse Engine turns the events into a small set of typed actions:
 move, look, zoom, run, jump, and act. Each step reads one sample of these
 actions.
 
@@ -34,13 +34,13 @@ two.
 
 ## The method
 
-Aethyr handles three kinds of input:
+The Metaverse Engine handles three kinds of input:
 
 - **Levels:** the move axes and run. A step reads whatever is held when it
   runs.
-- **Presses:** jump and act. Aethyr counts each press when it happens. The
+- **Presses:** jump and act. The Metaverse Engine counts each press when it happens. The
   first step that samples after the press takes it, and no other step does.
-- **Amounts:** look and zoom. Aethyr adds them up between steps. The steps of
+- **Amounts:** look and zoom. The Metaverse Engine adds them up between steps. The steps of
   one frame split the total equally, so the total turn doesn't depend on the
   frame rate.
 
@@ -64,7 +64,7 @@ These constants and functions set the rules that every device follows:
   input.
 - An axis is clamped to [-1, 1].
 
-`InputAxis.mended` and `Intent.mended` count the values that Aethyr refused
+`InputAxis.mended` and `Intent.mended` count the values that the Metaverse Engine refused
 or clamped, so a device that sends bad values shows up in the counts.
 
 <!-- source: aethyr/core/input.coax rules -->
@@ -103,7 +103,7 @@ An `InputPress` counts presses and how many a step has taken:
   held counts as one press. Use it when the host only reports what is held.
 - `input_take` gives one waiting press to a step.
 
-At most `INPUT_MAX_WAITING` (4) presses wait. Aethyr counts any press past
+At most `INPUT_MAX_WAITING` (4) presses wait. The Metaverse Engine counts any press past
 that in `lost` and doesn't keep it. At 64 steps a second, five presses
 within one step's 15.6 ms don't happen in normal play.
 
@@ -190,7 +190,7 @@ An `InputBuffer` holds what the steps read: the levels last fed, the presses
 waiting, and the look and zoom not yet taken. `input_sample` returns one
 step's `Actions` and the updated buffer. If a realm samples more steps than
 it declared with `input_frame`, the extra sample takes all that is left, and
-Aethyr counts it in `untimed`.
+the Metaverse Engine counts it in `untimed`.
 
 `input_blur` handles a lost focus. It releases every level at once, and keeps
 the presses that were already made.

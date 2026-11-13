@@ -1,12 +1,12 @@
 # Haunted House
 
-A Verse world you walk through in the browser at https://openagents.com/worlds/haunted-house: a house at night with nine haunts to set off, characters to talk to, doors to open, and a quest, Make it yours.
+A Metaverse realm you walk through in the browser at https://openagents.com/worlds/haunted-house: a house at night with nine haunts to set off, characters to talk to, doors to open, and a quest, Make it yours.
 
 It is the same Coax code the OpenAgents iOS app runs, compiled to WebAssembly and drawn with WebGPU:
 
 - `verse/haunt.coax` plays the house: its rooms, objects, lights, people, the nine haunt zones and what they do, doors, conversations and sounds. The house itself is `Haunt.pb` (a protobuf document, `proto/haunt.proto`) with its geometry (`Haunt.vertices`, `Haunt.indices`) and twelve texture sheets.
 - `aethyr/move/player.coax` walks you through it, against its walls; `verse/grid.coax` reads a phone's thumbs.
-- `apps/openagents-web/realm.coax` draws the HUD and decides the controls; `realm-face.c` binds them for the browser as the iOS app's view controller does; `realm.wgsl` draws the house with the Verse engine's own light, fog and tone functions (`verse/haunt-light.coax`, `verse/light.coax`).
+- `apps/openagents-web/realm.coax` draws the HUD and decides the controls; `realm-face.c` binds them for the browser as the iOS app's view controller does; `realm.wgsl` draws the house with the OpenAgents Metaverse Engine's own light, fog and tone functions (`verse/haunt-light.coax`, `verse/light.coax`).
 
 ## Controls
 

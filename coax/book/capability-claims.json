@@ -178,7 +178,7 @@
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "7059f68c6eae940f87725197f1f237bf11083cd2ebb7b2e57b6bbd8b8a05a662"
+          "sha256": "3c7f84162a99cebf7f30fbd8a9298c65735bb404e087b6c9507e282243b05c65"
         },
         {
           "path": "psionic/book/examples.json",
@@ -263,7 +263,7 @@
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "7059f68c6eae940f87725197f1f237bf11083cd2ebb7b2e57b6bbd8b8a05a662"
+          "sha256": "3c7f84162a99cebf7f30fbd8a9298c65735bb404e087b6c9507e282243b05c65"
         },
         {
           "path": "psionic/book/examples.json",
@@ -287,7 +287,7 @@
       "id": "psionic.language.current",
       "document": "psionic/book/PLAN.md",
       "scope": "Current shared compiler and bounded Psionic consumers, including nominal/formal scalar units and initial concrete native-C affine point/vector types; full transforms, compiler clocks, other targets and full robot migrations remain separate. Reviewed after #12867: Metal graphics emission is a graphics path and does not qualify Psionic Metal or WebGPU compute beyond the bounded kernels named. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82's WGSL compute entries serve the engine's GPU cull only and qualify no Psionic browser compute; cdf2eedd13 adds checks only.",
-      "text_sha256": "5355a62aeec2932ae6bc961b475b423689af0e5bfdbf8545a1415730624bda68",
+      "text_sha256": "7f0dc4b94142d897dfcc449a061683ab4d7f60b5b7af9949835fee2462284f84",
       "features": [
         {
           "id": "generics.type-parameters",
@@ -353,11 +353,11 @@
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "e29ef1ca8d15bc7179fa7b594a9019cd81dc7a9cb71f7e28533bf4b6399b9416"
+          "sha256": "bcfe833cc44e936c830a391b853ab2865c634fa2bdf89500298d90c4443446ef"
         },
         {
           "path": "coax/QUANTITIES.md",
-          "sha256": "b9407cd2d32bc98457a5092cf5a8c7738333c167155d2387538242819005bbc6"
+          "sha256": "d0e75b1c9762022d13c3a5d3b24cd7db106d263aed4bfd094d6d1e372abbfb40"
         },
         {
           "path": "coax/lib/quantity.coax",
@@ -461,7 +461,7 @@
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "e29ef1ca8d15bc7179fa7b594a9019cd81dc7a9cb71f7e28533bf4b6399b9416"
+          "sha256": "bcfe833cc44e936c830a391b853ab2865c634fa2bdf89500298d90c4443446ef"
         },
         {
           "path": "verse/everglade/gpu.module",

@@ -48,7 +48,7 @@ Tracked areas with no row, and what each is (verified against the tree):
 | `coder/` | 143 | Coder, the coding agent: `book/` (*Coder: Coding Agents From Scratch*), `plugins/`, `tests/` and `tui/`. Check: `python3 psionic/tests/book.py --book coder`. |
 | `everglade/` | 34 | Everglade, the MMORPG on the D&D 5E SRD: `book/`, `docs/` (the Housewright, Golemancy and mounts specs), `world/`, `hud/` and `features.coax`. Most of its game code is still in `apps/openagents-web/` and `verse/`. Check: `coax/web/tool.sh everglade-parity`. |
 | `apps/openagents-desktop/` | 88 | The macOS desktop app in Coax, with `build.sh` and `check.sh`. Design: `docs/desktop/coax-desktop.md`. |
-| `apps/aethyrforge-desktop/` | 113 | Aethyrforge desktop (experimental): the native realm builder. It has its own `README.md`. |
+| `apps/aethyrforge-desktop/` | 113 | Metaverse Engine desktop (experimental): the native realm builder. It has its own `README.md`. |
 | `apps/shared/` | 50 | Coax shared between apps: dictation (`dictation*.coax`) and the Zeron UI library (`zeron/`). |
 | `tools/` | 133 | `coax-nostr/` (guard, fuzz and audit harnesses for the Nostr and cryptography libraries) and `coax-unicode/tables.py`. Not to be confused with `verse/tools/`. |
 | `bench/` | 2 | Recorded voice benchmark results (`bench/voice/`). |

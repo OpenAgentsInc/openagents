@@ -1,6 +1,6 @@
 # Grid Crowd
 
-A demo of the Verse engine at https://openagents.com/demos/grid-crowd?stage=crowd: 380 characters on the Grid at once: 260 players sprinting across it and into the Everglade gate, and 120 agents standing along the way and round the gate to watch them, while the camera starts high and wide and drifts down to the portal.
+A demo of the OpenAgents Metaverse Engine at https://openagents.com/demos/grid-crowd?stage=crowd: 380 characters on the Grid at once: 260 players sprinting across it and into the Everglade gate, and 120 agents standing along the way and round the gate to watch them, while the camera starts high and wide and drifts down to the portal.
 
 ## What is here
 

@@ -1,4 +1,4 @@
-# Components: one component system for every OpenAgents and Verse app (spec, draft)
+# Components: one component system for every OpenAgents and Metaverse app (spec, draft)
 
 Written 2026-11-10. Status: Phase 1 (the move), Phase 2 (the layers and
 the chat set on them) and Phase 3 (skins and the gallery) are done: the
@@ -15,13 +15,13 @@ today".
 
 One set of UI components, written once in Coax, used by every app: chat on
 openagents.com, OpenAgents for desktop, Everglade for desktop (the
-Golemancers' Workshop), Aethyrforge, Coder's terminal and the phone apps.
+Golemancers' Workshop), the OpenAgents Metaverse Engine, Coder's terminal and the phone apps.
 
 - A component is written once. Markdown is parsed in one file, text is
   wrapped in one file, a transcript is laid out in one file.
 - A component doesn't know where it is drawn. The same transcript draws on
   Metal, WebGPU, Vulkan or a terminal.
-- A component doesn't know how it looks. Zeron Dark, the Verse's instrument
+- A component doesn't know how it looks. Zeron Dark, the OpenAgents Metaverse's instrument
   look and Everglade's iron and gold are skins over the same component.
 
 ## Where it lives
@@ -225,7 +225,7 @@ defect, and a check finds it.
   with coverage by distance (the shader's segment kind) and a polygon as
   triangles cut by ear clipping (2026-11-11, for ARWES). Not drawn yet: an
   arc and an image (`gpu_draws` says so); they need a path in the shader.
-  The Mac apps (OpenAgents and Aethyrforge) build the emitted Metal; the
+  The Mac apps (OpenAgents and the Metaverse Engine) build the emitted Metal; the
   hand-written `Zeron.metal` is gone (2026-11-10, #13156), and the Mac
   goldens pass with it (at most 0.05% of pixels off, at glyph edges).
 - **`backend/dom.coax`** (decided 2026-11-11, not built): the element table
@@ -287,7 +287,7 @@ number, banner, talk window: `kit/hud.coax` (`hk_vital`, `hk_slot`,
 `hk_banner`, `hk_talk`), checked in every skin by `kit/hud-checks.coax`. They
 read the skin's `UiHud` roles (`skin/hud.coax`: the bar's fill, groove and
 trail, a slot's size, the medallion, the map ring, the banner; Everglade's and
-the Verse's are the realm HUD's FANTASY and SCIFI tokens, held equal by
+the Metaverse's are the realm HUD's FANTASY and SCIFI tokens, held equal by
 `gallery/skin-parity.coax`) and are laid out with flex. The page shows them in
 the `everglade` and `verse` skins (`gallery/hud-cards.coax`): press a slot,
 strike the wolf, answer Mira.
@@ -297,9 +297,9 @@ damage trail over time (`HudTrail`, `hud_trail_step`), a banner's fade
 (`hud_banner_alpha`) and the map ring's projection (`hud_map_project`).
 `aethyr/ui/hud-style.coax` loads it, so every realm's HUD uses the same code.
 
-The realms' drawing has not moved. Everglade's and the Verse's HUDs write the
+The realms' drawing has not moved. Everglade's and the Metaverse's HUDs write the
 realm pass's 12-float vertices (`hud_emit`, `aethyr/ui/draw.coax`'s strokes),
-set their words in the realm's own faces (Spectral and Cinzel, the Verse's
+set their words in the realm's own faces (Spectral and Cinzel, the Metaverse's
 Filament strokes), and draw pie sweeps, turned diamonds and soft rings that
 the component shader has no path for yet (an arc, a slanted line). Drawing a
 realm's HUD with these components would change its pictures, so each realm
@@ -357,11 +357,11 @@ phase with no implementer by its date is cut from this list, not left open.
 | 3. Skins and the gallery: picture goldens (`gallery/check.coax`) and a look in a browser | The apps agent on the owner's Mac (headless Chrome renders WebGPU there) | 2026-11-14 |
 | 4. Chat in Everglade for desktop | The apps agent on the owner's Mac, after the Workshop's host draws a component pass (moved to #13156) | 2026-11-17 |
 | 5. The terminal and the leftovers: Coder's terminal painting through `backend/terminal.coax`, one edit buffer, the HUD set | The apps agent on `coderos-4080` | Done 2026-11-11 |
-| Hosts: OpenAgents, Everglade and Aethyrforge on the shared Mac host, and the Android window (the hosts themselves draw and take pictures since 2026-11-11, #13156) | The apps agent on the owner's Mac | 2026-11-17 |
+| Hosts: OpenAgents, Everglade and the Metaverse Engine on the shared Mac host, and the Android window (the hosts themselves draw and take pictures since 2026-11-11, #13156) | The apps agent on the owner's Mac | 2026-11-17 |
 
 1. **Move.** Done 2026-11-10: `apps/shared/zeron/` is now `components/zeron/`,
    with no content change;
-   the web, the Mac app and Aethyrforge load it from there.
+   the web, the Mac app and Metaverse Engine load it from there.
 2. **Split Markdown first.** Started 2026-11-10. Done: the parser is
    `core/markdown.coax` and the highlighter's roles are `core/syntax.coax`,
    with no drawing code loaded; wrapping is `layout/text.coax` behind
@@ -411,7 +411,7 @@ phase with no implementer by its date is cut from this list, not left open.
    are `components/zeron/chrome.coax`'s display lists in the chat's skin,
    drawn by `gpu_draw`. `components-check` fails a size in `kit/` or the
    chat set. `components/zeron/frames-checks.coax` pins the transcript,
-   composer and menus in Zeron, Everglade and the Verse by hashing their
+   composer and menus in Zeron, Everglade and the Metaverse by hashing their
    prims (hashes taken before the move); they, chat's eight frames, the
    page's buttons, notice and key card (hashed before and after) and the
    Linux app's eight pictures (byte for byte) did not change.
@@ -509,7 +509,7 @@ phase with no implementer by its date is cut from this list, not left open.
      (`core/hud.coax`: the bar's fill and trail, the banner's fade, the
      map's projection), loaded by `aethyr/ui/hud-style.coax`. The drawing
      did not move: the realm pass writes 12-float strokes in the realms'
-     own fonts (Spectral, Cinzel, the Verse's Filament), which the
+     own fonts (Spectral, Cinzel, the Metaverse's Filament), which the
      component atlas does not hold, so their pictures would change.
    - ARWES on `/components` (the owner's request): the 25 ported specimens
      are painted once, as display lists (`aethyr/ui/arwes-paint.coax`),

@@ -45,7 +45,7 @@ below says which parts build it and how it earns trust.
 | XVI. Many signers | 100–103 | Multisig, MuSig2, FROST threshold signatures and adaptor signatures. |
 | XVII. Lightning | 104–115 | Lightning built in Coax on our node: messages, the Noise handshake, channels, onions, gossip, payments, invoices and offers. |
 | XVIII. Interop and verification | 116–120 | Test vector provenance, differential tests, Bitcoin Core's functional tests against our node, fuzzing and formal properties. |
-| XIX. Bitcoin in OpenAgents | 121–124 | Where OpenAgents uses the stack: our node on Pylons and Verse OS, one seed, agent treasuries and paid requests. |
+| XIX. Bitcoin in OpenAgents | 121–124 | Where OpenAgents uses the stack: our node on Pylons and Metaverse OS, one seed, agent treasuries and paid requests. |
 
 Each part uses only earlier parts, except where a chapter's dependencies say
 otherwise. Nostr From Scratch needs Parts I–V.
@@ -325,7 +325,7 @@ there is a need.
 | [121. One seed for Nostr and Bitcoin](ch121-one-seed-for-nostr-and-bitcoin.md) — implemented | 31, 33 | One BIP-39 phrase gives the Nostr key and the wallet keys, and restoring from the phrase gives the same addresses. | BIP-39, NIP-06 |
 | [122. Agent treasuries](ch122-agent-treasuries.md) — implemented | 94, 100, 101 | A 2-of-3 treasury spend is signed by independent key agents and broadcast on signet, and an independent wallet tool recovers the coins. | NIP-KEYS |
 | 123. Paying for requests — planned | 113, 114 | A request pays a BOLT 11 invoice, and the server releases its response only after settlement. | x402, BOLT 11 |
-| 124. Our node on Pylons and Verse OS — planned | 89, 93 | A Pylon and a Verse OS machine run the node from its Nix module and sync it, and OpenAgents' on-chain checks query it instead of a third-party chain source. | — |
+| 124. Our node on Pylons and Metaverse OS — planned | 89, 93 | A Pylon and a Metaverse OS machine run the node from its Nix module and sync it, and OpenAgents' on-chain checks query it instead of a third-party chain source. | — |
 
 ## Explorer extension: address index (chapter 125)
 

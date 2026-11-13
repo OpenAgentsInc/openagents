@@ -1,10 +1,10 @@
 # Valley Lab
 
-An unlisted Aethyr workbench at `/worlds/valley-lab`, written in Coax.
+An unlisted Metaverse Engine workbench at `/worlds/valley-lab`, written in Coax.
 Three stations build toward the full valley from independently checked pieces.
 
 - **1 WALK** (`#walk`): the sandstone basin, arch, steps and block traveller,
-  with Aethyr's fixed-step walker, capsule collision, camera and touch sticks.
+  with the OpenAgents Metaverse Engine's fixed-step walker, capsule collision, camera and touch sticks.
 - **2 ASSETS** (`#assets`): one original procedural rock, its provenance,
   licence, measured bounds, content hash, byte size and geometry counts.
 - **3 MESH** (`#geometry`): the same indexed asset, triangle edges and bounds.

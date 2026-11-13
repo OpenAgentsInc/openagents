@@ -20,7 +20,7 @@ Two failures recur:
 - A system destroys a thing while a loop walks the list. The list shifts,
   and the loop skips or repeats an element.
 
-Aethyr prevents both. Handles know their generation, and spawns and despawns
+The OpenAgents Metaverse Engine prevents both. Handles know their generation, and spawns and despawns
 wait until the end of the step.
 
 ## What this chapter teaches

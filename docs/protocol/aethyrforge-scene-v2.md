@@ -1,4 +1,4 @@
-# Local Aethyrforge scene commands v2
+# Local Metaverse Engine scene commands v2
 
 V2 retains every [v1 command](aethyrforge-scene-v1.md) and adds individual
 object resizing through the same `aethyrforge-scene apply JSON` command.

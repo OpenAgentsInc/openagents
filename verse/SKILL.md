@@ -1,9 +1,9 @@
 ---
 name: verse-realm
-description: Make a new Verse realm (a world at openagents.com/realms/<slug>) in the OpenAgents repository from a shallow clone, check it locally and open a pull request. Use when asked to build, add or remix a realm, a game or a world for the Verse.
+description: Make a new Metaverse realm (a world at openagents.com/realms/<slug>) in the OpenAgents repository from a shallow clone, check it locally and open a pull request. Use when asked to build, add or remix a realm, a game or a world for the OpenAgents Metaverse.
 ---
 
-# Make a Verse realm
+# Make a Metaverse realm
 
 A realm is a page at `https://openagents.com/realms/<slug>` that runs one
 Coax module, compiled to WebAssembly and drawn with WebGPU. You add four
@@ -77,7 +77,7 @@ realm can leave out.
   is `coax_t_Foo`, a view of it `coax_v_t_Foo`, and its declared defaults
   `coax_default_t_Foo`, which `coaxial_state_init` calls (the host calls it
   on every new state, so every face has it).
-- Step the game on Aethyr's one clock (`aethyr/core/loop.coax`), as the template's
+- Step the game on the OpenAgents Metaverse Engine's one clock (`aethyr/core/loop.coax`), as the template's
   `catch_run` does: fixed steps, a frame counted for at most its clamp, and
   never more than 8 steps a frame. Don't write your own accumulator.
 - `gpu/<module>.coax`: the shaders, in Coax: `<module>_bg_vs`/`_bg_fs` (a

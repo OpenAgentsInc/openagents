@@ -149,7 +149,7 @@ still under gravity, with the pressure difference over one metre equal to
 `exp(−2νt)` in amplitude, with less numerical viscosity on the finer grid,
 and the smoke to rise straight up in a symmetric box.
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 A bounded MAC grid with solid cells from rigid SDFs (chapter 21), CG with
 incomplete-Cholesky or multigrid as profiles, and residuals recorded per

@@ -28,7 +28,7 @@ Every book check in this repository starts by asserting that a ledger of
 reviewed "capability claims" is current. That ledger went stale on
 2026-11-08, so every book check has failed on `main` since then, on its
 first line. While it failed, real drift went unseen: 11 source listings in
-the Aethyr book, one registry entry and three Coax book excerpts no longer
+the Metaverse Engine book, one registry entry and three Coax book excerpts no longer
 matched their sources. Those were fixed by hand on 2026-11-09, but the cause
 remains. `psionic/check.sh`, the Psionic release gate, runs this check at
 line 876, so that gate cannot pass either.
@@ -47,7 +47,7 @@ Files:
   file's SHA-256 differs from the recorded one.
 - `coax/book/capability-claims.py`: the checker. `problems(root)` returns a
   list of error strings. It has no update mode.
-- `psionic/tests/book.py`: the book check for the Psionic, Aethyr, Nostr,
+- `psionic/tests/book.py`: the book check for the Psionic, the OpenAgents Metaverse Engine, Nostr,
   Coder and Bitcoin books.
 - `coax/book/check-structure.py`: the Coax book's check. It also runs the
   claims check.

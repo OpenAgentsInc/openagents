@@ -43,7 +43,7 @@ articulated inertias and costs `O(n)` instead of `O(n³)`
 A screw joint couples rotation and translation by a pitch `p`: one
 coordinate `θ`, motion subspace `[ŝ; p ŝ]`.
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 A model is a flat, topologically sorted array of links with parent indices,
 joint types, joint axes, link inertias and fixed transforms, imported from

@@ -44,7 +44,7 @@ About 70,000 lines of non-Coax code in tools and tests.
 | `tools/coax-nostr/*` (audits, fuzz, timing, guards) | 6,400 | Mostly port; oracle pieces stay (2). |
 | API tests (`coax/web/api/*.py`, 35 files) and deploy checks | 5,500 | Port: tests of our own C API, not oracles. |
 | Project CLI (`coax/web/project/*.ts`: publish, baked, tasks) | 3,500 | Port. |
-| Verse tools (`verse/tools/pack_*.py`, oracles, benches) | 3,400 | Packers port; `haunt_oracle.py` stays (2). |
+| Metaverse tools (`verse/tools/pack_*.py`, oracles, benches) | 3,400 | Packers port; `haunt_oracle.py` stays (2). |
 | Browser host (`coax/web/*.js`) | 3,000 | Stays (1), kept thin. |
 | Shell (`coax/web/*.sh`, `release.sh`, API deploy scripts) | 3,600 | Thin wrappers stay (5). `release.sh`, `deploy.sh`, `golden-check.sh` hold real logic: port. |
 | `scripts/` (nips, book publishing, Pylon model fetch) | 1,300 | Port. |
@@ -102,7 +102,7 @@ the same inputs, then deletes it in the same commit that switches callers.
 - 2026-11-02: the six TypeScript tools written after the rule are Coax:
   the room checks (`coax/web/room/relay-check.coax`, `load.coax`, over
   `net/relay_conn.coax`, so `wss://` too), the replay and struct-default
-  checks (`coax/web/replay-hosts.coax`, `state-defaults.coax`) and Verse's
+  checks (`coax/web/replay-hosts.coax`, `state-defaults.coax`) and the OpenAgents Metaverse's
   `verse/native/wasm-run.coax`. The three that run a page's wasm do it in
   headless Chrome through `coax/web/wasm-chrome.coax`; the page's side is
   `coax/web/wasm-host.js` (reason 1), which keeps files, instantiates, calls

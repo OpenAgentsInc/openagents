@@ -186,7 +186,7 @@ groups never appear, that a still scene costs sweep and prune no swaps, the
 Morton codes and the merge sort, and that both selective methods make fewer
 box tests than all pairs on a sparse scene.
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 All three methods produce the same thing: the set of candidate pairs
 `(i, j)` with `i < j`, sorted lexicographically. Sorting is part of the

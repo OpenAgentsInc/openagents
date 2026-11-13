@@ -14,7 +14,7 @@ Enforcement is still proposed.
 ## Why
 
 - **Agents write almost all Coax.** Coax is the implementation target for
-  every OpenAgents surface: Verse realms, the Aethyr engine, the Verse OS
+  every OpenAgents surface: Metaverse realms, the OpenAgents Metaverse Engine, the Metaverse OS
   session, the CLI, Psionic. Agents write most of it. A memory bug an agent
   writes is a bug nobody reviewed line by line.
 - **Finding bugs got cheap.** On 2026-11-04 OpenAI reported about 1,000
@@ -22,7 +22,7 @@ Enforcement is still proposed.
   Most were memory-safety bugs. Attackers can buy the same capability, and
   memory bugs are what it finds first.
 - **The isolation plan depends on it.** The
-  [Verse OS isolation proposal](../docs/os/2026-11-05-verse-os-isolation.md)
+  [Metaverse OS isolation proposal](../docs/os/2026-11-05-verse-os-isolation.md)
   puts the identity and wallet in a Coax signer and proposes Coax virtio
   device models. Both parse attacker-controlled bytes. "Small and checked"
   has to include "no memory corruption" for that plan to hold.
@@ -49,7 +49,7 @@ Enforcement is still proposed.
 | Allocation | Not implemented in Coax; native hosts own allocation. |
 | View lifetimes | Partial. E0383 rejects known local backing returned directly or retained in caller or static storage ([verification-return-borrows.md](verification-return-borrows.md), [verification-retained-stores.md](verification-retained-stores.md)). Recursive and unmodeled helper relations, regions and transfer lifetimes are open (R3). |
 | Views in records | Allowed and common (for example `EntityStore.gen: [] int` in `aethyr/core/entity.coax`). Their lifetime isn't tracked. |
-| Persistent references | `Handle(T)` and `Store(T)` check generation and retire exhausted slots. Aethyr and Everglade use typed lifetimes; saved state uses stable IDs. Store provenance and view regions remain caller obligations. |
+| Persistent references | `Handle(T)` and `Store(T)` check generation and retire exhausted slots. The Metaverse Engine and Everglade use typed lifetimes; saved state uses stable IDs. Store provenance and view regions remain caller obligations. |
 | Foreign calls | About 1,100 `#foreign` declarations in 184 files. Each is trusted. |
 | Concurrency | No jobs, atomics or race checking yet (§12). |
 | Effects | Procedure bounds are enforced, including transitive calls. Everglade's shared rules exclude clock, I/O and foreign effects. Native summaries remain trusted. See [checked-state.md](checked-state.md). |
@@ -316,7 +316,7 @@ Do all of these, in this order:
 ### Costs to plan for
 
 - **Speed.** Handle lookups and lost aliasing assumptions cost time in hot
-  loops. Measure on Aethyr's step and the realm frame before and after.
+  loops. Measure on the Metaverse Engine's step and the realm frame before and after.
   `#unsafe` opt-outs need a stated reason and show in the inventory, so they
   can't spread unseen.
 - **Roadmap.** Regions add proof obligations to every later feature

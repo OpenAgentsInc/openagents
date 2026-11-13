@@ -170,7 +170,7 @@ of magnitudes, the refusals, that a wall pushes a particle straight out,
 and that the lattice mass gives an interior particle exactly the rest
 density.
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 WCSPH is the first profile because it is explicit, simple and the easiest
 reference; DFSPH follows with iteration count and tolerance as profile

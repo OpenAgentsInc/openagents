@@ -1,17 +1,17 @@
-# Aethyr to Unreal exporter: specification
+# The Metaverse Engine to Unreal exporter: specification
 
 Specification, 2026-11-12. Status: proposed. Nothing here is built.
 
-We build games in Aethyr and export them to Unreal Engine (UE) 5.9. The first
+We build games in the OpenAgents Metaverse Engine and export them to Unreal Engine (UE) 5.9. The first
 game is Splice, as it stands on `main` (`splice/splice-game.coax`).
 This document defines the smallest exporter that turns that game into an
 Unreal project that plays the same run.
 
-Import from Unreal into Aethyr comes later. This spec keeps that door open
+Import from Unreal into the Metaverse Engine comes later. This spec keeps that door open
 and does not build it.
 
 Background: [the two-session audit](2026-11-12-splice-unreal-vs-aethyr-session-audit.md)
-shows why the game is authored in Aethyr.
+shows why the game is authored in the Metaverse Engine.
 
 ## 1. Decision
 
@@ -35,14 +35,14 @@ Why this is the minimum:
   `coaxial_pointer`, `coaxial_look_delta` (`splice/splice-face.c`).
   The browser host implements that interface. A second host inside Unreal
   implements the same one. No rule is rewritten, so the Unreal build cannot
-  drift from the Aethyr build.
+  drift from the Metaverse Engine build.
 - **The two other routes cost more and give less.**
 
 | Route | Cost | Problem |
 |---|---|---|
 | Port by hand | The Unreal session wrote 3,812 lines of Python and 15 Blueprints for one game | Two copies of every rule. They drifted within a day. |
 | Translate Coax rules to Blueprints | A compiler back end | Epic removes Blueprints and Actors in UE6 ([ue6.md](ue6.md)). The work has a two-year life. |
-| Host the compiled rules (this spec) | One plugin, written once, for every Aethyr game | Rules are not editable inside Unreal. See section 9. |
+| Host the compiled rules (this spec) | One plugin, written once, for every Metaverse Engine game | Rules are not editable inside Unreal. See section 9. |
 
 - **Content still becomes real Unreal assets.** The world is static meshes
   in a level, not a blob. A designer can replace an exported mesh, material
@@ -89,14 +89,14 @@ splice.aexport/
 
 ### 3.1 `manifest.json`
 
-Versioned (`"aexport": 1`). All positions are in Aethyr coordinates: metres,
+Versioned (`"aexport": 1`). All positions are in Metaverse Engine coordinates: metres,
 y up. It contains:
 
 - `game`: id, name, source commit, bundle hash.
 - `axes`: the mapping to Unreal units and axes, stated as a matrix. Measured
   in step 0 with Unreal's default glTF import: Unreal X = x, Unreal Y = z,
-  Unreal Z = y, and 1 m = 100 units. Aethyr is right-handed with y up, which
-  is glTF's own convention, so the file carries Aethyr's numbers unchanged
+  Unreal Z = y, and 1 m = 100 units. The Metaverse Engine is right-handed with y up, which
+  is glTF's own convention, so the file carries the Metaverse Engine's numbers unchanged
   and Unreal's importer does the flip. The Unreal session's hand mapping
   (X = −z, Y = x) is a different, also valid, choice and is not used.
 - `collision`: the boxes from `g_layout`, the deck and its ramps.
@@ -113,7 +113,7 @@ y up. It contains:
 ### 3.2 `world.glb`
 
 glTF 2.0 binary, because both sides already speak it. Unreal 5.9 imports it
-through Interchange (`Engine/Plugins/Interchange`), and Aethyr already reads
+through Interchange (`Engine/Plugins/Interchange`), and the Metaverse Engine already reads
 it (`aethyr/anim/gltf-access.coax`, `aethyr/anim/import-container.coax`).
 
 - One node per group. A group is one material class inside one 64 m grid
@@ -127,7 +127,7 @@ it (`aethyr/anim/gltf-access.coax`, `aethyr/anim/import-container.coax`).
   fallback.
 - No lights or cameras in the file. They move, so the rules own them.
 
-The exporter welds identical vertices and writes an index buffer. Aethyr
+The exporter welds identical vertices and writes an index buffer. The Metaverse Engine
 draws the same triangles without one.
 
 ### 3.3 `rules/`
@@ -153,7 +153,7 @@ A native Coax tool, per the tools rule (`coax/tools-in-coax.md`).
 | `aethyr/export/bundle.coax` | Writes the manifest and the folder. Generic. |
 | `splice/splice-export.coax` | The command. Loads the game, calls `g_reset` and `g_world`, lists placements and tuning. Per game. |
 | `aethyr/export/raster.coax` | Draws the reference shots in software. Generic. |
-| `aethyr/tools/unreal-export-check.coax` | Reads a bundle back with Aethyr's own glTF reader. |
+| `aethyr/tools/unreal-export-check.coax` | Reads a bundle back with the Metaverse Engine's own glTF reader. |
 | `aethyr/tools/unreal-import.coax` | Stages, builds and runs the Unreal import, and returns its verdict. |
 
 The per-game file sits beside the game because the engine may not load from
@@ -214,7 +214,7 @@ The importer follows the rules the audit paid for:
 ### 5.2 Bridge plugin
 
 A C++ plugin, `AethyrBridge`. Firm reason 6. It is written once and is the
-same for every Aethyr game.
+same for every Metaverse Engine game.
 
 It holds one actor, `AAethyrGame`, that is the host:
 
@@ -237,7 +237,7 @@ It holds one actor, `AAethyrGame`, that is the host:
 The plugin's materials are the one hand translation in the design:
 `M_AeCel`, `M_AeGlow`, `M_AeSky` and a depth-only ink pass. They are unlit
 and compute their own tone, so they work on Unreal's forward web tier,
-which has no normal buffer. Their target is the Aethyr shader's output, and
+which has no normal buffer. Their target is the Metaverse Engine shader's output, and
 section 8 defines how close they must be.
 
 The static world in the level is the exported meshes, not the store, so the
@@ -267,7 +267,7 @@ Re-export must not destroy a designer's work.
 
 In the first version the names are world groups and material classes. A
 designer can swap a canyon wall mesh or the glow material. Layout stays in
-Aethyr: moving a wall in Unreal does not move the rules' wall. The importer
+the Metaverse Engine: moving a wall in Unreal does not move the rules' wall. The importer
 reports any generated actor that was moved by hand.
 
 ## 8. Acceptance
@@ -283,7 +283,7 @@ Issues: step 0 is #13399, step 1 is #13400, step 2 is #13401, step 3 is
    target. Unreal's web build is 64-bit, and the Coax C has only been built
    for 32-bit Wasm. Call `coaxial_frame` once and compare the first frame's
    vertex bytes with the web build's.
-2. Export three marker cubes at known Aethyr positions, import them, and
+2. Export three marker cubes at known Metaverse Engine positions, import them, and
    read their Unreal positions and face winding. This fixes the axes in the
    manifest.
 
@@ -317,7 +317,7 @@ Facts from the run:
   vertices on the title screen. The game state is 1,984 bytes.
 - The Unreal Wasm package of the bare probe project took 442 seconds to
   build and is 289 MB on disk as a Development build.
-- Axes: three marker cubes at Aethyr (10, 0, 0), (0, 5, 0) and (0, 0, 20)
+- Axes: three marker cubes at the Metaverse Engine (10, 0, 0), (0, 5, 0) and (0, 0, 20)
   import at Unreal (1000, 0, 0), (0, 0, 500) and (0, 2000, 0). Their faces
   wind the same way as Unreal's own cube.
 - Not confirmed: vertex colour after import. Unreal's Python mesh API reads
@@ -331,7 +331,7 @@ Facts from the run:
 - The importer's counts match the manifest.
 - A second import changes nothing.
 - With stand-in lighting, six reference cameras render in the editor, and
-  each frame is compared with the Aethyr frame from the same camera. This
+  each frame is compared with the Metaverse Engine frame from the same camera. This
   step checks geometry and colour only: silhouette overlap of at least 98
   percent.
 
@@ -371,12 +371,12 @@ What changed from the plan:
 
 **Step 2. Hosted rules. This is the minimal exporter.**
 
-- The scripted run that passes in Aethyr (title to SCENE RESTORED, with the
+- The scripted run that passes in the Metaverse Engine (title to SCENE RESTORED, with the
   same key presses) passes in the Unreal editor, with the same state hash at
   each beat.
 - The same run passes in the packaged web build on both renderer tiers, in
   a real browser, with real key presses.
-- The six reference frames match the Aethyr frames within a set colour
+- The six reference frames match the Metaverse Engine frames within a set colour
   difference. The first run sets the number and it only tightens.
 - The interface frames (HUD, edit bay, both fail banners) match within the
   same measure.
@@ -399,7 +399,7 @@ What changed from the plan:
 | R2 | Updating a dynamic mesh every frame on the web tier | Unknown cost. Measured in step 2. Step 3 removes most of it. |
 | R3 | Look parity with a hand-written material | The Unreal session's first two shaders missed. Step 2's frame comparison is the guard. |
 | R4 | Overlay text drawn with Unreal fonts will not match glyph for glyph | Acceptable if the frame comparison passes. Otherwise the plugin draws from the same atlas layout. |
-| R5 | Rules are not editable in Unreal | By design. Rules are edited in Aethyr and re-exported in seconds. |
+| R5 | Rules are not editable in Unreal | By design. Rules are edited in the Metaverse Engine and re-exported in seconds. |
 
 Decided, 2026-11-12: the design brief's "Blueprints only" rule does not
 apply to this work. The bridge is a C++ plugin.
@@ -435,12 +435,12 @@ stands: ideas only, never Epic's code.
 Choices here that the import direction will use:
 
 - **glTF both ways.** Unreal 5.9 ships a glTF exporter plugin
-  (`Engine/Plugins/Enterprise/GLTFExporter`), and Aethyr reads glTF.
+  (`Engine/Plugins/Enterprise/GLTFExporter`), and the Metaverse Engine reads glTF.
 - **One manifest schema.** An import bundle is the same folder with the
   arrows reversed: meshes, collision, placements, tuning.
 - **Stable names.** Every exported thing has a name that survives a round
   trip, which is what the override table already needs.
-- **Existing work.** Aethyr already reads animation from an Unreal project
+- **Existing work.** The Metaverse Engine already reads animation from an Unreal project
   (`aethyr/anim/unreal-source.coax`, `aethyr/tools/anim-unreal-export.coax`).
   Level import should extend that tool and its file policy, not start
   again.

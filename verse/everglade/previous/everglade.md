@@ -26,10 +26,10 @@ earlier pinned observations. Everglade also runs in a browser through
 [`crates/everglade-web`](../../crates/everglade-web/README.md), without the
 studio.
 
-Everglade is a loaded Verse zone: a forest glade with a small timber-and-plaster
+Everglade is a loaded Metaverse zone: a forest glade with a small timber-and-plaster
 workshop where a person works with a team of coding agents. It is where the
 [Agent Studio](agent-studio.md) lives. AgentCraft showed the idea in a
-Minecraft studio; Everglade is the same workspace built in Verse Engine from
+Minecraft studio; Everglade is the same workspace built in Metaverse Engine from
 stylized CC0 kits, and its panels are the Zeron-derived interface the studio
 already specifies.
 
@@ -305,7 +305,7 @@ hotbar with both on keys 6 and 7.
 
 ### Dev destruction
 
-To test destruction in Everglade locally, build Verse with the
+To test destruction in Everglade locally, build the OpenAgents Metaverse with the
 `dev-destruction` Cargo feature and switch it on with `--dev-destruction`
 or `VERSE_DEV_DESTRUCTION=1`:
 
@@ -581,13 +581,13 @@ Placements are Rust data in a layout module, validated by tests: every
 placement names an admitted model, prop bounds become navigation blockers,
 every station has a reachable standing point, and no blocker covers a path.
 Text that the world draws, such as the Task Wall's cards and the monitors, is
-drawn by Verse on in-world boards, as the Gym draws its boards.
+drawn by the Metaverse on in-world boards, as the Gym draws its boards.
 
 ## The workspace
 
 Everglade is the Agent Studio's place in the world:
 
-- Seats are Verse agents that walk between the stations above, from the
+- Seats are Metaverse agents that walk between the stations above, from the
   studio snapshot and the shared activity classifier (`atif::activity`).
 - Selecting a station, or walking up to it and pressing the interact key, opens
   the matching Rust Native panel over the world through `verse::panels`:
@@ -606,7 +606,7 @@ Everglade is the Agent Studio's place in the world:
   the Coder host. The host walks the seats from the studio snapshot, and every
   viewer draws them where the host places them. A viewer's NIP-HOST `world`
   right admits walking only; panels need `observe`, `operate`, and `review`.
-  See [Verse networking](networking.md#plan), step 3.
+  See [Metaverse networking](networking.md#plan), step 3.
 
 ## Delivery
 

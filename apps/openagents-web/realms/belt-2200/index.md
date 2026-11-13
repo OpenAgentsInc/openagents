@@ -1,6 +1,6 @@
 # Belt 2200
 
-A Verse world at https://openagents.com/worlds/belt-2200: a hard sci-fi strategy game set in the solar system in the year 2200. The Sun, Mercury to Saturn, the Moon, Ceres, Vesta and a field of Belt rocks move on their real orbits. You run the Free Belt's Hearth Station at Ceres and three ships; the Terran Compact flies its own routes, and the Mars Union mines the Belt against you.
+A Metaverse realm at https://openagents.com/worlds/belt-2200: a hard sci-fi strategy game set in the solar system in the year 2200. The Sun, Mercury to Saturn, the Moon, Ceres, Vesta and a field of Belt rocks move on their real orbits. You run the Free Belt's Hearth Station at Ceres and three ships; the Terran Compact flies its own routes, and the Mars Union mines the Belt against you.
 
 ## How to play
 

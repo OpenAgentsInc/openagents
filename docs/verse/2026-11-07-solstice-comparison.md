@@ -1,4 +1,4 @@
-# Solstice and Aethyr: what to learn
+# Solstice and the Metaverse Engine: what to learn
 
 Status: research note, 2026-11-07. Nothing here is implemented yet.
 
@@ -8,7 +8,7 @@ in Chrome and Edge and follows Nanite and Lumen: a cluster LOD DAG built
 offline, GPU culling, voxel GI, and, as of this week, streaming on demand.
 It is about 26,000 lines across five crates and two apps. It is a renderer
 only, with static scenes and no gameplay, physics, network or characters.
-This note compares it with Aethyr and lists what we should take from it,
+This note compares it with the OpenAgents Metaverse Engine and lists what we should take from it,
 most valuable first. We take the ideas and write our own code in Coax. None
 of its code was run here.
 
@@ -28,9 +28,9 @@ The cove is 1.22 billion instanced triangles. On a desktop GPU a 60-second
 scripted flight averages 3.8 ms a frame, with a p95 of 5.7 ms and a worst
 frame of 8.5 ms.
 
-## Where Aethyr stands on the same axes
+## Where the Metaverse Engine stands on the same axes
 
-| Axis | Solstice | Aethyr today |
+| Axis | Solstice | The Metaverse Engine today |
 | --- | --- | --- |
 | Geometry LOD | A general DAG: 128-triangle clusters, group, simplify with the boundary locked, regroup every level | Valley Lab only (`aethyr/render/geometry/`): leaf clusters, ownership hierarchy and simplifiers for narrow shape classes (`parent`, `fan`, `star`, `grid-parent`). Shipped realms use a distance cutoff (`apps/openagents-web/everglade-lod.coax`) |
 | Cut selection | GPU compute traversal, under 1 px of projected error | CPU cuts (`cut.coax`), Valley Lab only |
@@ -43,7 +43,7 @@ frame of 8.5 ms.
 | Measurement | Scripted flyover: a frame-time CSV and one image a second; a throttled server for time to first image | `realm-perf.coax` (17 realms × 3 forms, a scripted walk, the 60 FPS rule). No network throttling, no time-to-first-image figure |
 | Checks | Watertight-cut tests, a randomized residency test, WGSL validated without a GPU, GPU tests that skip when there is no GPU | `#test`/`#forall`, `#authority` with zero mutants, goldens. This is stronger than theirs, and their ideas should land under our rules |
 
-Aethyr leads where Solstice has nothing: gameplay, physics, characters,
+The Metaverse Engine leads where Solstice has nothing: gameplay, physics, characters,
 replay, the network, voice, and checks that decide authority. Solstice leads
 on scale. It shows a browser can open a billion-triangle scene in 1.4 s, and
 it shows how.

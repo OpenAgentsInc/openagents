@@ -10,7 +10,7 @@
 Music is written in beats, and sound is played in samples. At 120 BPM and
 44,100 samples a second, a sixteenth note is 5,512.5 samples. A sequencer
 that adds 5,512 samples per step is 0.5 samples late on every second step,
-and a minute behind after enough bars. Aethyr's sequencer computes each
+and a minute behind after enough bars. The OpenAgents Metaverse Engine's sequencer computes each
 step's sample from the step's own tick, so the error never grows.
 
 ## What this chapter teaches

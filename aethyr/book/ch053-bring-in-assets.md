@@ -1,7 +1,7 @@
 # 53. Bring in assets
 
 > **Status: partly implemented.** A realm's asset pack (`VPK1`) is read
-> whole or refused by Aethyrforge's reader in Coax
+> whole or refused by the OpenAgents Metaverse Engine's reader in Coax
 > ([aethyr/forge/pack.coax](../forge/pack.coax), `#authority`). The reader
 > checks the pack's budget, its layout and a licence on every asset, and
 > admits the pack into a realm's assets by content
@@ -70,7 +70,7 @@ without parsing geometry.
 The header's and table's sizes and an entry's fields are the engine's, in
 [aethyr/host/pack-table.coax](../host/pack-table.coax), because every host
 reads a pack's table through that file (`pack_table`, GitHub #13304) and
-Aethyrforge loads it:
+the Metaverse Engine loads it:
 
 <!-- source: aethyr/host/pack-table.coax layout -->
 ```jai

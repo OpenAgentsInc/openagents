@@ -1,7 +1,7 @@
 # Ocarina Lab
 
 An unlisted owner-local source scene and character lab at `/worlds/ocarina-lab?pack`. It reuses
-Aethyr's paid fixed steps, walk trace, follow camera, collision and touch sticks,
+the OpenAgents Metaverse Engine's paid fixed steps, walk trace, follow camera, collision and touch sticks,
 and Animation Lab's inspection conventions. No Nintendo payload is in Git.
 
 The native source import, texture layout/channel conversion, material alias
@@ -32,7 +32,7 @@ base color. BNTX block-height and component selectors are preserved; normal XY
 comes from semantic RG after selection. The old flat white hair and scrambled
 coverage came from omitted aliases, UV1, and vertical GOB block height.
 
-The lighting is an Aethyr material translation. Skin scattering, anisotropic hair
+The lighting is a Metaverse Engine material translation. Skin scattering, anisotropic hair
 response and layered eyes are approximations; the outer corneal/eye-shadow meshes
 are suppressed in this opaque inspection renderer. This is not a reproduction of
 the game's full shader graph, physics or hair/cloth simulation. The current
@@ -262,7 +262,7 @@ It still does not decode native TerrainArc material blending.
 The original front/back flow-map meshes have identical positions. The back helper
 is suppressed instead of competing for the same depth values. Water now draws
 in a separate alpha pass after opaque geometry, with depth testing and no depth
-writes, using Aethyr's existing `coaxial_draw_blend_v1` profile 2. A separate shadow
+writes, using the Metaverse Engine's existing `coaxial_draw_blend_v1` profile 2. A separate shadow
 list excludes water. The original indices are stably partitioned into 10,218,582
 opaque and 15,729 water indices, preserving their total and all source triangles.
 
@@ -346,7 +346,7 @@ keyboard diagonals retain unit pace. This is a bounded improvement using the
 source's explicit magnitude state, not a recovered native analog response curve.
 
 The launch equation `sqrt(2*height*gravity)` and gravity baseline 16 m/s² remain
-Aethyr adaptations. Source action code, absolute gravity, event windows and ASB
+Metaverse Engine adaptations. Source action code, absolute gravity, event windows and ASB
 playback/transition rules remain unresolved. No gameplay roll is claimed: the
 current eight-clip profile has no roll clip. Full roll/state-graph integration
 needs a separately versioned clip profile and original roll events. The private

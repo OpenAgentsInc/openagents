@@ -3,8 +3,8 @@
 Everglade is an MMORPG built on the D&D 5E System Reference Document (SRD
 5.2.1). It follows the SRD's rules faithfully and adapts them for action
 combat: you aim, move and act in real time, and the SRD's rules decide the
-outcome. It runs on the Aethyr engine, is written in Coax and is a realm in
-the Verse.
+outcome. It runs on the OpenAgents Metaverse Engine, is written in Coax and is a realm in
+the OpenAgents Metaverse.
 
 Up to 16 players share a room. When a room is full, the next player joins
 another room. The number is `WIRE_SEATS` in

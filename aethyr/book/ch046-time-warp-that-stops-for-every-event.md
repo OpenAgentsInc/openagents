@@ -1,6 +1,6 @@
 # 46. Time warp that stops for every event
 
-> **Status: unimplemented — design draft.** Aethyr already catches a fast
+> **Status: unimplemented — design draft.** The OpenAgents Metaverse Engine already catches a fast
 > ball with swept tests (`sweep_sphere_plane`, `sweep_sphere_sphere` in
 > [`aethyr/physics/contact.coax`](../physics/contact.coax)) and runs Belt 2200 in
 > lockstep (`lock_tick`, `belt_hash` in

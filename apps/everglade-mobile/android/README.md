@@ -9,7 +9,7 @@ second. No real phone has run it.
 **The Android app isn't a game client yet.** It draws the Golemancers'
 Workshop and your character. It doesn't run Everglade, the Archery Range,
 Everglade Experimental or the Bitcoin Lab, which iOS and the Mac run through
-Aethyr's page host ([`aethyr/host/apple/`](../../../aethyr/host/apple/page-host.h)).
+the OpenAgents Metaverse Engine's page host ([`aethyr/host/apple/`](../../../aethyr/host/apple/page-host.h)).
 `host.c` isn't on that page-host contract: it has its own Vulkan passes for two
 scenes. To play Everglade on Android, use the web app. Bringing Android onto
 the contract is part of GitHub #13304. What it shares with the other hosts
@@ -51,7 +51,7 @@ source, emitted by `coax spirv` where iOS uses `coax metal`.
 ## What a phone must have
 
 - Android 11 or later (the picture decoder the app uses arrived then).
-- Vulkan 1.1 with 64-bit integers in shaders (`shaderInt64`), which Aethyr's
+- Vulkan 1.1 with 64-bit integers in shaders (`shaderInt64`), which the Metaverse Engine's
   emitted shaders use. The app stops with a message in the log when the GPU
   lacks it. Most recent phones have it; some older Mali GPUs don't.
 - arm64.

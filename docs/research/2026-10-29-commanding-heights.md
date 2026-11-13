@@ -147,7 +147,7 @@ In the essay, intelligence reaches people through "a software update", "a
 ping on her phone", and "notifications from the global messaging app." The
 final Height it names is "a population-scale installed base." For us:
 
-- The iOS app and Verse only matter as a Height if people open them every
+- The iOS app and the OpenAgents Metaverse only matter as a Height if people open them every
   day for things they already do, with money moving in the same place.
 - A clever demo is not that. The questions to measure are whether people
   come back every day and whether money moves in the app.

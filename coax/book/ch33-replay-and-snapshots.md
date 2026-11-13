@@ -53,7 +53,7 @@ snapshot holds, and how a replay reports the first place it diverges.
 - Record and replay the simulated robot's closed loop, including the
   Psionic deterministic solver's state
   ([Psionic chapter 170](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/book/ch170-close-the-simulated-control-loop.md)).
-- Record and replay one Verse session.
+- Record and replay one Metaverse session.
 - Restore from a mid-run snapshot and match the uninterrupted run.
 - Replay the spacecraft scenario at two warp factors and get the same events
   and final state.
@@ -74,6 +74,6 @@ snapshot holds, and how a replay reports the first place it diverges.
 - R5 stable identities ([chapter 13](ch13-data-layout.md)), R13 recorded
   clocks ([chapter 30](ch30-clocks-and-ticks.md)) and R15 strict profiles
   ([chapter 32](ch32-strict-math-and-integrators.md)).
-- Used by Aethyr chapters
+- Used by Metaverse Engine chapters
   [5](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch005-replay-a-session-exactly.md)
   and [36](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch036-record-and-replay-a-world.md).

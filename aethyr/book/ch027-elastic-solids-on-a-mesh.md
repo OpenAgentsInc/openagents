@@ -38,7 +38,7 @@ Explicit stepping needs `Δt` below the stiffest element's period; implicit
 stepping is unconditionally stable but each step is a Newton solve with
 projected (positive-definite) element Hessians.
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 Tetrahedral meshes come from chapter 35's tetrahedralization; rest
 matrices and volumes are computed at build. Energies are routines of `F`

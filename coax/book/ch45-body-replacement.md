@@ -41,7 +41,7 @@ containers. It has to show value before general state migration
 
 ## The consumer and the gate
 
-The consumer is a real controller or world change in a Verse realm on a Mac.
+The consumer is a real controller or world change in a Metaverse realm on a Mac.
 The gate:
 
 - Each refused case has a fixture that is refused with its reason.

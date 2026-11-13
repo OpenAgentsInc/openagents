@@ -4,9 +4,9 @@
 > today on their own code at `/realms/orbit-league` and `/realms/belt-2200`,
 > over the space primitives already in `verse/`
 > ([docs/verse/space.md](../../docs/verse/space.md)). This chapter plans
-> rebuilding both only from Aethyr's earlier chapters. Nothing here runs yet.
+> rebuilding both only from the OpenAgents Metaverse Engine's earlier chapters. Nothing here runs yet.
 
-Two games share the Verse's space layer. Orbit League is rocket roadsters
+Two games share the OpenAgents Metaverse's space layer. Orbit League is rocket roadsters
 playing ball in a glass arena in orbit, where the station spins down every
 90 seconds and gravity fades for half a minute, or the match moves into a
 spinning drum. Belt 2200 is hard science-fiction strategy on the real orbits
@@ -85,11 +85,11 @@ delta-v, propellant and time are computed, not invented.
 
 - Both games' rules and drawing over `aethyr/`'s physics and space
   chapters; `verse/`'s space modules kept as independent references until
-  Aethyr's own pass the same checks.
+  the Metaverse Engine's own pass the same checks.
 
 ## Acceptance checks and oracles
 
-- The checks listed in `space.md` pass against Aethyr's bodies, contacts,
+- The checks listed in `space.md` pass against the Metaverse Engine's bodies, contacts,
   gravity and thrust.
 - A ball at 200 m/s never passes a wall at any substep count.
 - Belt 2200's transfers, re-propagated by chapter 40, arrive within their

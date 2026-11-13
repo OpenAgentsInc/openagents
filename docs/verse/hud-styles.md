@@ -6,7 +6,7 @@ one HUD style and draws every HUD part through it.
 
 Two styles exist:
 
-- **SCIFI**: the Verse's instrument look. Grey and cyan glow lines, cut corners
+- **SCIFI**: the OpenAgents Metaverse's instrument look. Grey and cyan glow lines, cut corners
   and thin bars. Most realms use it, and its drawing code stays where it is:
   `verse/hud/frame.coax`, `aethyr/ui/draw.coax` and the Arwes frames in
   `aethyr/ui/arwes-*.coax`.

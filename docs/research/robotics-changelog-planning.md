@@ -14,7 +14,7 @@ I would give the three parts of your stack clear responsibilities:
 |---|---|
 | **Coax** | Types, ownership, borrowing, generics, effects, numeric semantics, target capabilities, and compilation. |
 | **Standard/runtime libraries** | Allocators, containers, mathematics, units, concurrency, clocks, serialization, and device resources. |
-| **Verse** | World storage, ECS, simulation scheduling, rendering, streaming, networking, animation, and live authoring. |
+| **Metaverse** | World storage, ECS, simulation scheduling, rendering, streaming, networking, animation, and live authoring. |
 | **Psionic** | Differentiation, tensors, optimization, learning, and batched simulation interfaces. |
 | **Integration packages** | Existing engines, physics libraries, ROS 2, robot models, hardware drivers, and platform SDKs. |
 

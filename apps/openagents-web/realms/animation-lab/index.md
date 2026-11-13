@@ -1,6 +1,6 @@
 # Animation Lab
 
-Animation Lab is an unlisted Verse realm at `/worlds/animation-lab`.
+Animation Lab is an unlisted Metaverse realm at `/worlds/animation-lab`.
 It opens on an original block mannequin on the existing 65-joint skeleton.
 Echo and the Slay face clips load from the owner's private animation bundle.
 
@@ -78,7 +78,7 @@ payloads and captures outside git.
 
 ## Rendering and limits
 
-Aethyr samples admitted tracks and applies eight-influence GPU skinning and
+Metaverse Engine samples admitted tracks and applies eight-influence GPU skinning and
 sparse morphs. This inspection stage uses neutral colours and weight heat,
 with a 64 MiB GPU mesh budget and a 64 MiB private document bundle budget.
 It does not reproduce a source material or source lighting. Ghosts are
@@ -94,7 +94,7 @@ group buttons remain shortcuts for all layers of the same kind.
 ## Scenes and films
 
 `openagents labs anim play FILE PRIVATE_DIR/film.mp4` renders a performance,
-scene or cut with headless muted Chrome and muxes audio after the Verse
+scene or cut with headless muted Chrome and muxes audio after the Metaverse
 frames. `openagents labs anim check FILE` reports continuity, face ranges,
 joint/capsule screening, planted-foot travel and determinism as JSON.
 JSON inputs use an adjacent `project.json`; an ALP1 bundle carries the whole

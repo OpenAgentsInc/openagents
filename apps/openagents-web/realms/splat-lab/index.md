@@ -1,6 +1,6 @@
 # Splat Lab
 
-A Verse world at https://openagents.com/worlds/splat-lab, not listed on the worlds page. It tests 3D Gaussian splats in the Verse's own WebGPU renderer. A splat is a soft, coloured, see-through blob with a direction and a stretch. Thousands of them, sorted from back to front and blended, can draw fire, smoke, spells or a captured place. The lab asks what splats could do for Everglade and the raid that burns it.
+A Metaverse realm at https://openagents.com/worlds/splat-lab, not listed on the worlds page. It tests 3D Gaussian splats in the OpenAgents Metaverse's own WebGPU renderer. A splat is a soft, coloured, see-through blob with a direction and a stretch. Thousands of them, sorted from back to front and blended, can draw fire, smoke, spells or a captured place. The lab asks what splats could do for Everglade and the raid that burns it.
 
 ## Scenes
 

@@ -55,7 +55,7 @@ Unreal's own editor exports the pack; there is no Rust `.uasset` reader.
 | [`scripts/unreal/medieval_town_ue.py`](../../scripts/unreal/medieval_town_ue.py) | Runs inside `UnrealEditor -run=pythonscript -unattended -nullrhi`: no window opens and nothing renders. Writes one `.glb` per static mesh (and a `.lod0.glb` where Unreal renders a reduced LOD0), every texture as PNG (EXR for floating-point sources), `materials.json`, and `maps/<map>.json` with every placed mesh and its transform. It never saves a package. |
 | [`scripts/unreal/medieval_town_archive.py`](../../scripts/unreal/medieval_town_archive.py) | Digests an export (`digests.json`), compares two exports file by file, and archives the vendor content and the digests in the private bucket under `vendor/medieval-town/`. |
 | [`scripts/unreal/medieval_town_catalog.py`](../../scripts/unreal/medieval_town_catalog.py) | Writes `catalog.json`, `layout.json`, and `catalog.md` beside the export. |
-| [`scripts/blender/medieval_kit.py`](../../scripts/blender/medieval_kit.py) | Rebuilds each material as Verse draws it (base color, tiling, tint) and renders a thumbnail per mesh. |
+| [`scripts/blender/medieval_kit.py`](../../scripts/blender/medieval_kit.py) | Rebuilds each material as the OpenAgents Metaverse draws it (base color, tiling, tint) and renders a thumbnail per mesh. |
 | [`scripts/unreal/medieval_town_contact_sheet.py`](../../scripts/unreal/medieval_town_contact_sheet.py) | Lays the thumbnails out as labeled contact sheets per category. |
 | [`scripts/blender/medieval_piece.py`](../../scripts/blender/medieval_piece.py) | Converts one piece into a private pack build (the proof). |
 | [`crates/verse-zone-everglade/examples/private_pack.rs`](../../crates/verse-zone-everglade/examples/private_pack.rs) | Compiles a private build into a `VTP3` pack locally, without uploading. |
@@ -327,7 +327,7 @@ pieces.
 
 ## Materials, textures, and LODs
 
-Verse samples base color only. Each kit material becomes one base-color
+Metaverse samples base color only. Each kit material becomes one base-color
 texture, its tiling, and a tint:
 
 - **Tints become vertex colors.** Many instances share one texture and
@@ -340,7 +340,7 @@ texture, its tiling, and a tint:
 - **Trim sheets stay sheets.** The wood, stone, and roof-top trims are
   already atlases.
 - **Layered masters reduce to their base layer.** The kit's blend masters
-  mix two layers by a height mask and vertex color; Verse takes the base
+  mix two layers by a height mask and vertex color; the Metaverse takes the base
   layer. P3 compares the two in captures and may bake the blend into the
   texture where it shows.
 - **Water** takes Everglade's own water, not a texture.
@@ -658,7 +658,7 @@ private-character path into an offscreen Everglade capture:
 `medieval_piece.py` baked each piece's tiled base colors into one 1024
 image and gave it a still one-joint rig with an idle clip, because the
 private path draws characters only today; the `private_pack` example
-compiled each into a `VTP3` pack under `Limits::PRIVATE`. A test Verse
+compiled each into a `VTP3` pack under `Limits::PRIVATE`. A test Metaverse
 home outside the repository placed them: a wall and a doorway side by
 side, the roof section four times (two pairs turned 180 degrees) to make
 a gabled house front, the stall, and the fountain, east of the approach.

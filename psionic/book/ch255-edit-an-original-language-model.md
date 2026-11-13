@@ -480,10 +480,10 @@ Qwen3.5 support, multiple original models and live shadow replacement remain
 open. This chapter implements and measures the bounded experiment, including
 its failures; it does not establish general weight-space programming ability.
 
-## Give a Verse villain a voice
+## Give a Metaverse villain a voice
 
 The next experiment asks a more practical question: can these tools make
-a compelling fantasy antagonist for the Verse? We created **Veyr, the Ash
+a compelling fantasy antagonist for the OpenAgents Metaverse? We created **Veyr, the Ash
 Regent**, a former royal astronomer who binds the dead to hold back the Long
 Winter. He has a defensible obsession, a concrete bargain and a dry voice.
 The Black Lantern anchors his magic; he cannot cross running water. These
@@ -502,7 +502,7 @@ coax/web/tool.sh psionic/tools/villain-text.coax ask "What frightens you when th
 This prints new dialogue, not a canned lookup. It uses the arrival encounter
 state and a fresh single-turn conversation; it is not a persistent NPC
 service. The [integration notes](../../verse/characters/README.md) explain
-the distinction between this tested renderer and an existing Verse route.
+the distinction between this tested renderer and an existing Metaverse route.
 No live realm or NPC service was changed, and no dialogue can transfer a
 quest item or heal a player. Those decisions belong to the game.
 

@@ -1,4 +1,4 @@
-# Shared Aethyr authoring registry
+# Shared Metaverse Engine authoring registry
 
 This is the portable, reviewable catalog for the complete Quaternius Fantasy
 Outfits, Medieval Village and Stylized Nature Source kits, plus the Fantasy
@@ -31,7 +31,7 @@ advertises seven monsters; those extra models are not in the Standard download.
 ## Identity and storage
 
 An authoring ID such as `quaternius/nature/birch-1` is a stable lookup key, not
-Aethyr's `AssetId`. Runtime asset identity remains SHA-256 of actual bytes,
+the OpenAgents Metaverse Engine's `AssetId`. Runtime asset identity remains SHA-256 of actual bytes,
 with the existing bounded, whole-pack admission in `aethyr/core/assets.coax`.
 
 * `packages/NAME.json` pins the exact source snapshot.
@@ -96,7 +96,7 @@ For Bestiary Standard, `registry.coax qal-glbs bestiary-dungeon
 refuse this package rather than mislabel its contents.
 
 GLBs are full-resolution **interchange artifacts**. They are not newly qualified
-Aethyr runtime assets. They can repeat textures across different GLBs. Identical
+Metaverse Engine runtime assets. They can repeat textures across different GLBs. Identical
 whole artifacts deduplicate by hash; image-level runtime packing remains the
 realm compiler's responsibility. Original textures, normal/ORM maps and Blender
 material graphs are preserved in their source snapshots, independent of a
@@ -311,7 +311,7 @@ it from its original provider, verify the actual terms and provenance, then
 register the locally held source and derived artifacts with immutable identities.
 For example, the index says Megascans are claimed through Fab, and does not
 contain those assets. The upstream optimizer is untrusted downloaded code; it is
-not run or installed by this adapter, and its output is not qualified for Aethyr.
+not run or installed by this adapter, and its output is not qualified for the Metaverse Engine.
 
 ### Selected 0 A.D. art
 

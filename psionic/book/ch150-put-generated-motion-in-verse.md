@@ -1,9 +1,9 @@
-# 150. Put generated motion in Verse
+# 150. Put generated motion in the Metaverse
 
 > **Status: partly implemented.** Motion that chapter 149's generator makes
-> toward a destination, on synthetic weights, is converted to the Verse
+> toward a destination, on synthetic weights, is converted to the OpenAgents Metaverse
 > character's convention, retargeted through an explicit joint map onto the
-> 65-joint skeleton of Verse's `Cast.bin`, written into a Cast's dance slot
+> 65-joint skeleton of the Metaverse's `Cast.bin`, written into a Cast's dance slot
 > and played by `verse/cast.coax`, fading in from the idle and out to the
 > walk. Still to do: motion from the real MotionBricks weights (chapter 149
 > runs only its codebook on them), a map for the whole body rather than one
@@ -12,28 +12,28 @@
 > as its own embodiment.
 
 [Chapter 149](ch149-execute-motionbricks.md) generates motion tokens and
-decodes them into a clip. This chapter hands that clip to a Verse
+decodes them into a clip. This chapter hands that clip to a Metaverse
 character. You name a destination; Psionic generates a clip toward it,
-converts it to what Verse expects, and writes it where Verse's character
+converts it to what the Metaverse expects, and writes it where the Metaverse's character
 system ([`verse/cast.coax`](../../verse/cast.coax)) plays clips from. The
 code is [`motion-verse.coax`](../lib/motion-verse.coax), in five steps:
 
-- **the target**: Verse's skeleton and its conventions, read from the real
+- **the target**: The Metaverse's skeleton and its conventions, read from the real
   `Cast.bin`;
-- **the joint map**: which generated joint drives which Verse joint, refused
+- **the joint map**: which generated joint drives which Metaverse joint, refused
   when a joint is left out, used twice, out of range or under the wrong
   parent;
 - **the handoff**: chapter 147's conversion and retargeting, then one
   skinning transform a joint a frame, in `Cast.bin`'s layout;
 - **the splice**: the transforms written into a Cast's dance slot, which
-  Verse plays and cross-fades with its other clips;
+  the Metaverse plays and cross-fades with its other clips;
 - **the checks on the result**: joint positions against chapter 147's
   forward kinematics, the continuity check of chapter 148, and a foot-contact
   check.
 
 Everything is binary64 until the rows are written as the F32 numbers
 `Cast.bin` stores (profile `cpu-f64-motion-verse-v1`). A handoff has at most
-32 frames and 65 joints, the most Verse's character has.
+32 frames and 65 joints, the most the Metaverse's character has.
 
 ## Run it
 
@@ -103,7 +103,7 @@ centimetres, 60 frames a second) arrives the same way.
 
 Chapter 149's small generator is set here to decode four joints: a pelvis,
 a hip 0.1 m to its side, a knee 0.4 m below and an ankle 0.42 m below that
-(`mv_leg`). It drives the Verse character's left leg: pelvis to the hips
+(`mv_leg`). It drives the Metaverse character's left leg: pelvis to the hips
 (1), hip to the thigh (55), knee to 56 and ankle to 57.
 
 <!-- source: psionic/lib/motion-verse.coax map -->
@@ -145,13 +145,13 @@ what lets a joint's local rotation carry over unchanged: the knee turns
 relative to the thigh in both skeletons. The root may map to any joint;
 here the hips, whose parent, the ground root, keeps its bind pose.
 
-Verse joints no source joint drives keep their bind pose relative to their
+Metaverse joints no source joint drives keep their bind pose relative to their
 parent. They are not left behind: they ride on their parents, so the right
 leg and the spine follow the hips. Because the bind pose is a T-pose, the
 arms stay straight out.
 
-The mapped part of the Verse skeleton becomes a chapter 147 skeleton
-(`mv_sub`): the source's four joints and parents, with Verse's bone offsets,
+The mapped part of the Metaverse skeleton becomes a chapter 147 skeleton
+(`mv_sub`): the source's four joints and parents, with the Metaverse's bone offsets,
 bind position minus parent bind position. By hand, from the fixture:
 
 | Bone | Offset (m) | Length (m) |
@@ -160,7 +160,7 @@ bind position minus parent bind position. By hand, from the fixture:
 | thigh to knee | (0, −0.429, 0) | 0.4290 |
 | knee to ankle | (0, −0.456, −0.051) | 0.4588 |
 
-The chain from the hips to the ankle is 1.0042 m on Verse's leg and
+The chain from the hips to the ankle is 1.0042 m on the Metaverse's leg and
 0.1 + 0.4 + 0.42 = 0.92 m on the source's.
 
 ## The handoff
@@ -234,16 +234,16 @@ Retargeting is chapter 147's `pose_retarget`: the local rotations stay and
 the root translation scales by the ratio of the two chains,
 r = 1.0042 / 0.92 = 1.0915, so a pelvis 0.9 m up becomes hips 0.982 m up.
 Retargeting by copying rotations assumes the two skeletons' bones point the
-same way at rest; here both legs hang straight down, the shin of Verse's
+same way at rest; here both legs hang straight down, the shin of the Metaverse's
 within 6.4°.
 
-Verse places the character at the walking controller's position every
+The Metaverse places the character at the walking controller's position every
 frame, so a clip that also moved the root over the ground would walk the
 character away from where the controller says it is. The handoff keeps the
 root's height, stands it over the hips' bind position, and keeps the ground
 travel it took out in `travel`, where the foot check below can add it back.
 
-Then every Verse joint is posed, parents first, and its row is
+Then every Metaverse joint is posed, parents first, and its row is
 q = R and t = P − R bind. A clip at rest shows what that means. With every
 rotation the identity and the pelvis 0.9 m up, the hips stand at
 0.9 × 1.0915 = 0.9823 m, and every joint from the hips down moves by the
@@ -370,7 +370,7 @@ mv_splice :: (b:[]u8,h:MvHandoff)->MvStatus {
 The splice writes into the dance slot because the dance is the clip
 `verse/cast.coax` plays on request (`verse_cast_dance`) while you stand,
 fading 0.18 s into it, and moving or jumping fades it back out. Nothing in
-Verse changes: the Cast is the same format, admitted by the same
+the Metaverse changes: the Cast is the same format, admitted by the same
 `verse_cast_open`, and only the slot's frames and its frame count differ.
 The splice refuses a Cast that is not admitted, a handoff of a different
 joint count, or more frames than the slot holds, and then writes nothing.
@@ -383,7 +383,7 @@ dance, and the least mesh and robot admission accepts. The dance slot holds
 ## The scene
 
 The [example](../examples/motion-verse.coax) runs the whole path: the map,
-a scene toward (0, 1) m, the checks on its result, the splice, and Verse
+a scene toward (0, 1) m, the checks on its result, the splice, and Metaverse
 playing it.
 
 <!-- source: psionic/examples/motion-verse.coax map -->
@@ -527,8 +527,8 @@ untrained root drifts about 0.81 m in 28 frames, 29 mm a frame at its
 worst, and the leg barely moves: the foot skates. That is what the check is
 for, and what trained weights have to fix.
 
-Verse plays the clip. At 1 s the dance is asked for and fades in from the
-idle. At 1.5 s Verse's own `verse_cast_pose` draws dance frame 15, and every
+The Metaverse plays the clip. At 1 s the dance is asked for and fades in from the
+idle. At 1.5 s the Metaverse's own `verse_cast_pose` draws dance frame 15, and every
 one of the 65 joints is within 10 µm of the handoff (the rows are F32). The
 hips are 0.908 m up in the idle and 0.982 m in the dance; halfway through
 the fade they are at 0.945 m, the average. Walking at 2 s fades the dance
@@ -536,7 +536,7 @@ out into the walk. The digest, FNV-1a over the dance's rows, is the same
 when the scene runs again.
 
 The two front views are a render check in text: each `#` is a joint of the
-palette Verse would hand the vertex shader, in 4 cm cells, the character's
+palette the Metaverse would hand the vertex shader, in 4 cm cells, the character's
 left on the right. In the dance frame the arms are in the bind T-pose,
 since the map drives one leg.
 
@@ -609,10 +609,10 @@ loading it also runs those of chapters 147 to 149 and of `verse/cast.coax`.
   each limit tested on the line.
 - **Forward kinematics.** 8 clips, half in the Z-up, centimetre, 60-frame
   convention, each joint turned about one of chapter 147's fixed axes:
-  every mapped Verse joint's position and rotation equal `pose_forward` on
+  every mapped the Metaverse joint's position and rotation equal `pose_forward` on
   the mapped skeleton within 10⁻⁹, and every other joint keeps its bone
   length and turns with its parent.
-- **Verse.** A splice writes x, y, z, w and the translation as `verse/cast.coax`
+- **The Metaverse.** A splice writes x, y, z, w and the translation as `verse/cast.coax`
   reads them; `verse_cast_pose` draws each dance frame within 10 µm of the
   handoff; the fade starts at the idle, ends at the dance, keeps each bone's
   length between the idle's and the dance's halfway, and fades out to the
@@ -640,7 +640,7 @@ checks name a variable `turn`.
   around the real skeleton, not into the shipped `Cast.bin`, and no frame of
   the web Grid shows it: the web Grid loads its Cast as a fixed asset and
   has no way to take a new clip, so the render check here is the joint
-  palette Verse computes.
+  palette the Metaverse computes.
 - **Wall-clock deadlines.** The deadline counts network passes. Holding a
   frame-time deadline needs the passes timed on the device.
 - **The Unitree G1** is a robot with its own skeleton, joint limits and
@@ -655,8 +655,8 @@ checks name a variable `turn`.
   retargeting and forward kinematics.
 - [Chapter 148](ch148-motion-tokens-become-poses.md): the continuity check.
 - [Chapter 149](ch149-execute-motionbricks.md): MotionBricks execution.
-- The Aethyr engine's figures and animation
-  ([Aethyr chapter 14](../../aethyr/book/ch014-figures-and-animation.md)).
+- The OpenAgents Metaverse Engine's figures and animation
+  ([Metaverse Engine chapter 14](../../aethyr/book/ch014-figures-and-animation.md)).
 - [`verse/cast.coax`](../../verse/cast.coax) and
   [`verse/tools/pack_cast.py`](../../verse/tools/pack_cast.py): the Cast
-  format and how Verse plays it.
+  format and how the Metaverse plays it.

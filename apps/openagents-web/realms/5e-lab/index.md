@@ -1,6 +1,6 @@
 # 5E Lab
 
-A Verse world at https://openagents.com/worlds/5e-lab, not listed on the worlds page. It's the test bench for the shared SRD 5e rules engine: two sides of 24, the Circle of Moss and the Ember Pact, each with two of every one of the twelve SRD 5e classes at level 6, fight each other while an army of 160 Skeletons (the Restless Dead) stands against both sides, on a grid of 5-foot squares, seen either in 3D in a painterly glade like Everglade's or as a bare flat grid. Every attack roll, saving throw, damage roll and death save comes from the engine, and the log shows each one.
+A Metaverse realm at https://openagents.com/worlds/5e-lab, not listed on the worlds page. It's the test bench for the shared SRD 5e rules engine: two sides of 24, the Circle of Moss and the Ember Pact, each with two of every one of the twelve SRD 5e classes at level 6, fight each other while an army of 160 Skeletons (the Restless Dead) stands against both sides, on a grid of 5-foot squares, seen either in 3D in a painterly glade like Everglade's or as a bare flat grid. Every attack roll, saving throw, damage roll and death save comes from the engine, and the log shows each one.
 
 ## Controls
 

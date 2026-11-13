@@ -11,10 +11,10 @@ apart, to start crumbling and leaning or whatever — whatever is needed and
 missing from the engine. Write a specification for that."
 
 This page records what the engine already has, specifies a design for
-destructible buildings in Verse, lists the gaps with effort estimates, and
+destructible buildings in the OpenAgents Metaverse, lists the gaps with effort estimates, and
 orders the work from a one-cottage demo to shared, persistent destruction.
 Everglade is the first target because its buildings are the only ones in
-Verse assembled from modular pieces.
+Metaverse assembled from modular pieces.
 
 ## Summary
 
@@ -120,7 +120,7 @@ voxels with 8³ chunks; projectiles and explosions push `CarveRequest`s,
 `carve_sphere` clears a sphere (Fireball carves 2 m), and
 `destructible_remesh_budgeted` greedy-meshes a bounded number of dirty chunks
 per tick. The debris the source computed was discarded (`let _out = …` in
-`systems/destructible.rs`), so no debris bodies exist. On the Verse side,
+`systems/destructible.rs`), so no debris bodies exist. On the Metaverse side,
 `Ruins::build_dynamic` re-emitted every ruin chunk as per-frame triangles
 with no caching and set `cache_far_shadows: false`. Nothing about the ruin
 was networked; [the parity audit](ruins-source-parity.md)

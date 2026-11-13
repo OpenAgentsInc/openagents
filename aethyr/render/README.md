@@ -1,4 +1,4 @@
-# Aethyr renderer
+# Metaverse Engine renderer
 
 Chapter 11 is implemented for its shared Grid CPU/WebGPU/Vulkan teaching
 profile. Broader producer, host and catalog qualification remains separate;
@@ -294,7 +294,7 @@ already consumes that function to prepare the cast's view matrix, then the
 [Metal renderer](../../apps/openagents-ios/OpenAgents/Platform/HomeRenderer.swift)
 binds it. The Haunted House controller also uses the function. This proves a
 direct shared **component** use, without qualifying a complete application or
-moving the hosts' pass construction into Aethyr. The browser Grid uses the `Render*` facade and its flat-stroke profile rather
+moving the hosts' pass construction into the OpenAgents Metaverse Engine. The browser Grid uses the `Render*` facade and its flat-stroke profile rather
 than this native projection adapter. Recorded adoption of either component
 does not qualify the other target or the complete playable route.
 

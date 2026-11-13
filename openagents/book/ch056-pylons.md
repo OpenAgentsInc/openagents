@@ -28,7 +28,7 @@ day, who would be both sellers and buyers. Gamers.
 Demand is different this time because the buyer is in this book. The front
 makes a decision on every turn of every conversation. Decision models are
 small, and they run fast on ordinary hardware. Every guard and shopkeeper in
-the Verse makes decisions too (chapter 60). That is a steady stream of small
+the OpenAgents Metaverse makes decisions too (chapter 60). That is a steady stream of small
 paid jobs.
 
 A Pylon announces what it can serve. The gateway sends it requests. The work
@@ -91,4 +91,4 @@ On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
    owner, or a market?
 2. How large a sample of results do we recompute, and what happens to a Pylon
    whose answers don't match?
-3. Beyond our own agent and the Verse, who is the first outside buyer?
+3. Beyond our own agent and the Metaverse, who is the first outside buyer?

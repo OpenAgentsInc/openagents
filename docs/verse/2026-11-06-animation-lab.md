@@ -7,12 +7,12 @@ Echo/Slay re-import qualification remains open in [#12983](https://github.com/Op
 
 Animation Lab is an unlisted realm and a set of `openagents labs` commands
 where you take any character's animation apart, change it and put it back
-together, then build scenes and cuts from it. Everything renders in Verse.
+together, then build scenes and cuts from it. Everything renders in the OpenAgents Metaverse.
 
 It generalizes three things we already do:
 
 - **Valley Lab's Echo work:** read a character and its clips from a source
-  project, keep the data in a private pack, play it on Aethyr and compare it
+  project, keep the data in a private pack, play it on the OpenAgents Metaverse Engine and compare it
   with the source. Today that's written for one character (Echo) and one
   source (Valley of the Ancient, then Slay's face clips).
 - **Anime Lab's director:** words become typed directions, checked against a
@@ -74,8 +74,8 @@ on them.
 4. **Sources stay private.** Licensed rigs, clips and faces live in private
    packs addressed by hash. Documents name packs by hash and role, never by
    their licensed content. Nothing licensed is committed or used for training.
-5. **Verse renders.** Unreal, Blender and other tools only read and export
-   source data. Every frame we show is drawn by Aethyr.
+5. **The Metaverse renders.** Unreal, Blender and other tools only read and export
+   source data. Every frame we show is drawn by the Metaverse Engine.
 6. **Checks you can see.** Foot sliding, joint limits, intersections and cut
    continuity are measured and shown on screen, with their limits stated.
 7. **Directions are typed.** Spoken or written directions go through a
@@ -467,7 +467,7 @@ performances, 32 voice cues and 64 draw commands. Canyon and image crossfades
 are refused. Hard cuts and incoming fades are implemented. The headless
 profile captures 960 × 540 at the edit rate, up to 60 seconds per invocation;
 this keeps capture and PCM memory bounded. Native audio is mixed from edit
-clocks, then muxed after the Verse frames have been captured. Live seeks are
+clocks, then muxed after the Metaverse frames have been captured. Live seeks are
 silent rather than restarting a cue at an incorrect offset.
 
 The Guardian is an internal blocking study. It uses the qualified Valley

@@ -1,6 +1,6 @@
 # One-Shot
 
-A Verse world at https://openagents.com/worlds/one-shot, not listed on the worlds page. A Game Master (GM) makes a short 5E adventure, runs it for friends from the GM Screen, and each player plays a hero on their own device. Every roll, attack and hit point comes from the shared SRD 5e rules engine. It is the first phase of the campaign creator in `docs/dnd/2026-11-03-dnd-campaign-creator-spec.md`.
+A Metaverse realm at https://openagents.com/worlds/one-shot, not listed on the worlds page. A Game Master (GM) makes a short 5E adventure, runs it for friends from the GM Screen, and each player plays a hero on their own device. Every roll, attack and hit point comes from the shared SRD 5e rules engine. It is the first phase of the campaign creator in `docs/dnd/2026-11-03-dnd-campaign-creator-spec.md`.
 
 ## Run a game as the GM
 

@@ -17,7 +17,7 @@ Several systems ask where things are in a realm:
 These are four queries over one set of shapes: ground, ray, overlap, and
 sweep. When each system writes its own version, the versions disagree. For
 example, a character stands on a ledge that the camera ignores, or a realm's
-copy of the step height drifts from the walker's. Aethyr gives each realm one
+copy of the step height drifts from the walker's. The OpenAgents Metaverse Engine gives each realm one
 set of colliders and one query module.
 
 ## What this chapter teaches

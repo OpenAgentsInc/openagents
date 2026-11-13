@@ -12,7 +12,7 @@ If a camera chases the last physics state, it moves in steps of 1/64 s while
 the screen refreshes at 60 or 120 Hz, and the character appears to shake.
 If it eases in the physics step and again every frame, it lags twice, by a
 different amount at each frame rate. If it resolves its own collisions in
-physics, it can change what happens. Aethyr's rule: the camera eases in one
+physics, it can change what happens. The OpenAgents Metaverse Engine's rule: the camera eases in one
 place, on the fixed step, with easing that is a closed form in the step's
 time; it asks the colliders for room and never changes them; and the frame
 draws it between the last two steps.

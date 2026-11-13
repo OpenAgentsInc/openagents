@@ -9,7 +9,7 @@ walks and doorways. The public pack drops from 12,303,751 to 10,636,202
 bytes (13.55 percent), with digest
 `a82df378ca7d06d9c755ae24076c89270d8a8097509c54a166d941da05f9de2f`.
 The queue's regeneration and consistency check pass. Both final suites
-pass on the landed pack: 256 zone-library tests and 46 Verse Everglade
+pass on the landed pack: 256 zone-library tests and 46 Metaverse Everglade
 tests. The scoped formatting check passes. The current world-tree snapshot
 and every standing-point route pass; P9 changes no world-tree IDs or
 places. No licensed asset files enter the repository.
@@ -279,7 +279,7 @@ Private generation remains frozen at `c17428fc30`. The public feature
 branch is rebased onto `2c6af8ad347f80b2e9f950445ee9adacd734db51`; it preserves
 the scene-lit particle changes and `NEEDS_OWNER.md`. Source
 `1d38e17a75ba88f77a585d628d49a46641325329` passes scoped formatting and the
-composed headless Verse consumer check in 13.71 seconds. Its Cargo JSON
+composed headless Metaverse consumer check in 13.71 seconds. Its Cargo JSON
 SHA-256 is `67fca990da0724378b691dfca0af630218596fe2626a6f48183285ffcf31fa68`.
 The strict checker option `VERSE_KIT_HOUSE_VERIFY=1` writes protected
 candidate pack bytes and `candidate.json` without changing the pin. Its
@@ -344,7 +344,7 @@ original exported `BP_residential_house_15`: 87 visible components and
 their original transforms and material overrides. The base-color conversion
 produces 12 materials and 19,633 triangles. The actual Rust merge preserves
 bounds, triangles, and every matching rendered pixel (maximum delta zero).
-These are exported Unreal demo inputs rendered by Verse, not Unreal-engine
+These are exported Unreal demo inputs rendered by the OpenAgents Metaverse, not Unreal-engine
 screenshots; the canonical-house composition gap described above remains.
 Applying the real kit grade changes 903,274 rendered channels while keeping
 the camera and geometry fixed.

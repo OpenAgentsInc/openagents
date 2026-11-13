@@ -710,7 +710,7 @@ psionic/build/incremental/psionic-incremental "$STREAMING_MODEL" \
 
 The [Coax example](../examples/transcribe-incremental.coax) feeds a public
 recording incrementally through the resident C API, prints real partials and
-offers exactly one final through Aethyr's existing question/answer replay
+offers exactly one final through the OpenAgents Metaverse Engine's existing question/answer replay
 gate. It checks cancellation, stale media/turns and late answers without
 opening a microphone. Library callers use
 [`psionic-incremental.h`](../platform/psionic-incremental.h); ordinary offline
@@ -753,7 +753,7 @@ physical microphone, Mac/Metal backend or composer/Verse partial UI claim.
 - The qualified original-weight backend is Linux CUDA. Metal effects and
   other hardware need their own native qualification.
 - The file-backed example exercises actual incremental recognition and
-  Aethyr final admission. The default Mac/TUI dictation and deployed Verse
+  Metaverse Engine final admission. The default Mac/TUI dictation and deployed Metaverse
   voice host retain their existing final-only paths; live microphone/UI
   partials need explicit adoption rather than a silent provider substitution.
 - The new model is English only. A multilingual checkpoint, vocabulary

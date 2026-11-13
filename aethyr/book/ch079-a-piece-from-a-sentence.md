@@ -5,7 +5,7 @@
 > ([`verse/setpiece.coax`](../../verse/setpiece.coax),
 > `POST /api/playtest/sandbox/piece` in
 > [`coax/web/api/npc.c`](../../coax/web/api/npc.c)) make one piece from one
-> sentence. Aethyrforge's board
+> sentence. The OpenAgents Metaverse Engine's board
 > ([realm-builder.md](../../docs/verse/realm-builder.md)) makes a whole realm
 > from a prompt, from the catalogue in migration `0048_realm_builder.sql`.
 > They keep separate catalogues and checks. This chapter plans one catalogue
@@ -41,7 +41,7 @@ builds that path.
    `lanterns` (count 4–16, default 8; colour; size), `grove` (count 3–20,
    default 9; kind round, pine, dead or mixed; size) and `pond` (size). The
    board's catalogue has about twenty features, from `land` to `village`
-   and `tool`. Aethyr keeps one catalogue table as data, read by the server
+   and `tool`. The Metaverse Engine keeps one catalogue table as data, read by the server
    schema, the board labels and the game.
 2. **The selector.** The server asks the model for one entry under a
    response schema whose enums are the catalogue's words. Status codes: 400

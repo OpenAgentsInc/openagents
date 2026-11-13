@@ -1,7 +1,7 @@
 # Game ideas from the recording
 
 Three games people on the October 30, 2026 recording asked for, written up as
-design documents for the Verse engine. Each one says what the game is, how it
+design documents for the OpenAgents Metaverse Engine. Each one says what the game is, how it
 plays, what it reuses from the realms we have already built (Ice Cream Man,
 Dead Gears, Everglade, Fairy Forest, the Grid), and what the engine still
 needs before it could ship.

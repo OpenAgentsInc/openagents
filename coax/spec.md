@@ -7,7 +7,7 @@ Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
 end in `.coax`; the executable is `coax`; a future build entry is `build.coax`.
 
-Coax is a systems language for Verse and OpenAgents' real-time code. Its
+Coax is a systems language for the OpenAgents Metaverse and OpenAgents' real-time code. Its
 purpose is to make data representation, compilation, allocation and engine
 metadata visible and programmable without obscuring runtime behavior.
 This is a Coax design, not a compatibility specification for another language.
@@ -466,7 +466,7 @@ are unchanged. Exported C callers explicitly construct the wrapper struct;
 foreign calls retain their existing scalar/view admission and need an
 explicit raw-integer adapter. The annotation adds no wire or durable format.
 
-Aethyr libraries retain namespaces, owner checks, slot bounds, liveness and
+Metaverse Engine libraries retain namespaces, owner checks, slot bounds, liveness and
 generation comparison. Deserializing `EntityId.{value = raw}` never proves
 that an entity exists. `EntityHandle` packs a slot and generation; `entity_alive` checks the
 canonical word, live slot and generation after reuse. `EntityId` is the
@@ -635,7 +635,7 @@ may remain as calls in debug
 builds; release erasure/inlining and aggregate ABI require measured evidence.
 This does not complete R12: frame-chain/state transforms, angular roles,
 coverage, clock-stamped realizations, precision-origin records and full real
-Verse/Panda consumers remain pending.
+Metaverse/Panda consumers remain pending.
 
 ### 7.2 Generics
 
@@ -1611,19 +1611,19 @@ not establish whole-program, SIMD or scheduler determinism.
 
 The [OpenAgents Protocol](../docs/protocol/openagents-protocol-spec.md) is the
 defining interchange specification for every OpenAgents surface, including
-Verse. Root [proto/](../proto/README.md) is its schema authoring source.
-**Coax is the implementation target for all those surfaces. Verse is the
+the Metaverse. Root [proto/](../proto/README.md) is its schema authoring source.
+**Coax is the implementation target for all those surfaces. The Metaverse is the
 engine and the world/experience it runs; its worlds are realms.**
 
-Shared engine contracts use `openagents.engine.*`; Verse world/product types
+Shared engine contracts use `openagents.engine.*`; Metaverse realm/product types
 use `openagents.verse.*`; other domains use their owning `openagents.*`
 packages. Vendor schemas retain upstream namespaces and compile in separate
 modules. Consumer profiles select roots plus actual imports rather than
 forking definitions per language or device.
 
 The recovered nine published schemas, Nanopb limits and nine immutable
-snapshots preserve their pre-reset identities. New alpha options and Verse
-world/presence projections are experimental inputs. Current descriptors are
+snapshots preserve their pre-reset identities. New alpha options and Metaverse
+realm/presence projections are experimental inputs. Current descriptors are
 in `proto/descriptors/`, generated and tested by `scripts/proto.sh`; the
 Coax compiler now ingests selected proto3 closures through `#import_proto`.
 Version 0.10.0 implements descriptor parsing, validation and source generation in
@@ -1697,7 +1697,7 @@ publication mask. A quad interpreter is a separate declared execution profile.
 Rich reflection2 observes checked entry resource shapes, strides and stages,
 vertex attributes, fragment targets/depth and numerical/control requirements.
 The original three-field binding payload remains available to legacy tooling.
-Reflection observes a program; Aethyr separately admits it against a declared
+Reflection observes a program; the OpenAgents Metaverse Engine separately admits it against a declared
 pipeline and enabled host capabilities before creating GPU effects.
 
 Validate offsets, strides, alignment and upload lengths for each pipeline.
@@ -2315,14 +2315,14 @@ engine remains unmeasured.
 | 0 — Bootstrap semantics | Current lexer/parser/checker/C emitter; documented scalar grammar and behavior. | Existing pass/fail fixtures, checked formats and overflow behavior preserved. |
 | 1 — Compile-time scalar slice | Implemented: global constants, `#run`, `#assert`, `type_name`, `check`; bounded typed-AST evaluation. In 0.5.0, checks: `#test`, `#forall`, `#authority`, `coax test` and `coax mutate`. | Forward dependencies, cycles, limits, capture/I/O rejection, debug/release errors, inspectable literal output and standalone native execution. |
 | 2 — Data and C boundary | Implemented in 0.3.0: structs/defaults, enums, fixed arrays/views, half-open `for`, `defer`, `ifx`, checked casts, ordered runtime operands, `#export_c` with generated headers and layout assertions. `#foreign` imports C symbols taking scalars and borrowed numeric views (0.38.0). Not yet: importing C headers. | Field/layout vectors and a pulse kernel matching a C reference byte for byte (`examples/pulse`) exist. The reduced native iOS home runs its scene, HUD and resource admission in Coax over that scalar ABI. R0 now compares the actual pose against a pinned native evaluator and records kernel/Metal-frame timings. The follow-up pose rewrite passes the proposed median budget; device/tail, full-loop and independent review gates remain open. |
-| 3 — Metadata and generation | Started in 0.12.0: schema-1 CPU type/field/enum layout queries and ordinary metadata values, with bounded lowering. Stable declaration IDs, derived operations and hygienic typed code remain next. | Runnable compile-time inspector table; Verse derives its shipped Haunted House vertex stride, layer offset and scalar admission table; independent C layout and invalid-query tests. General registries, provenance-aware derived code and alternate targets remain gated. |
+| 3 — Metadata and generation | Started in 0.12.0: schema-1 CPU type/field/enum layout queries and ordinary metadata values, with bounded lowering. Stable declaration IDs, derived operations and hygienic typed code remain next. | Runnable compile-time inspector table; the Metaverse derives its shipped Haunted House vertex stride, layer offset and scalar admission table; independent C layout and invalid-query tests. General registries, provenance-aware derived code and alternate targets remain gated. |
 | 4 — Build workspaces and tools | Dependency scheduler, capability model, input manifests and staged compiler events; then plugins and `build.coax`. | One real asset/registry workflow; reproducible inputs and cache invalidation; generated CMake/Xcode manifests match before replacement. |
 | 5 — Effects and deterministic jobs | Region/alias model, allocator/effect summaries, strict math and scheduler integration. | Real subsystem replay at 1/2/4/8 workers; incompatible effects and aliases rejected. |
 | 6 — Protocol expansion and GPU experiments | Stable metadata/layouts and previous native ABI proof. Existing protocol adapters remain until parity. | Extend the first selected-profile codec into more domains; prove a Metal pipeline separately and compare generated shaders before choosing a compiler backend. |
 | 7 — Browser vertical slice | wasm32 runtime/host ABI and separate shader bridge. | Geometry, memory growth, async resources, input, rendering and debug path in an actual browser. |
 | 8 — Resident compiler and reload | Dependency cache, stable code IDs, safe points and transactional state migration. | Mac-host edit/reload retains state and resources, rolls back failures and has measured latency. No device code-loading bypass. |
 | 9 — Additional backends | Earlier workflows demonstrate value; C backend remains a reference. | Native debug/optimized backends pass the same conformance and target suites and improve a measured workload. |
-| 10 — Physical-world foundations | Units and coordinate frames (including full-state and rotating transforms), typed clocks with astronomical time scales and multirate ticks, bounded control, deterministic integrators and event location, deterministic replay and snapshots, robot-model import, stamped sensors (with light-time) and supervised simulated actuators, fault scenarios, parameter provenance, fidelity profiles and typed rule modules; built on effects, generics and strict profiles. | A small simulated robot, a Verse world and a spacecraft scenario run on checked frames, clocks and bounded control steps, replay exactly within a named profile and survive recorded fault scenarios; every scenario parameter states its provenance and every departure from ordinary physics is a declared rule module. Real hardware is a separately authorized integration. |
+| 10 — Physical-world foundations | Units and coordinate frames (including full-state and rotating transforms), typed clocks with astronomical time scales and multirate ticks, bounded control, deterministic integrators and event location, deterministic replay and snapshots, robot-model import, stamped sensors (with light-time) and supervised simulated actuators, fault scenarios, parameter provenance, fidelity profiles and typed rule modules; built on effects, generics and strict profiles. | A small simulated robot, a Metaverse realm and a spacecraft scenario run on checked frames, clocks and bounded control steps, replay exactly within a named profile and survive recorded fault scenarios; every scenario parameter states its provenance and every departure from ordinary physics is a declared rule module. Real hardware is a separately authorized integration. |
 | 11 — Simulation compute | Logical tensor shapes (static, bounded and dynamic dimensions) separate from physical layout, placement and ownership; visible specialization keys; compile and startup budgets with a content-keyed kernel cache; captured device launch sequences and device-side bounded loops with a host-driven fallback of the same meaning; zero-copy buffer imports with stated ownership and synchronization, transfers as explicit effects; forward- and reverse-mode derivatives of admitted kernels with custom adjoints and declared gradient modes; built on generics, layouts, GPU interfaces, effects and strict profiles. | The Psionic physics engine's solvers run unchanged over a batch dimension and in two layouts with identical results under a strict profile; the five iteration cases (cold compile, warm load, scene rebuild, parameter change, structural change) meet their budgets; a replayed solver graph equals its unrolled launches; observations reach a policy with zero recorded copies; kernel derivatives pass finite-difference and adjoint-consistency checks, and differentiating through a kernel without a gradient mode is refused. Planned; no syntax is accepted yet. |
 
 Stop after stage 2 if the subsystem is harder to maintain or less reliable

@@ -208,7 +208,7 @@ explicitly.
     starts clean.
   - The 450 ms pre-roll, the `--seconds` stop, and the 60 s cap's three exact
     segments.
-- **Voice host and Aethyr's gate**
+- **Voice host and the OpenAgents Metaverse Engine's gate**
   ([voice-host-parakeet-check.txt](e2e/voice-host-parakeet-check.txt)): every
   case passes on CUDA, the new default.
   - The four fixtures come back exactly, 76–121 ms after the end of the turn

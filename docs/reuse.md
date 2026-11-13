@@ -13,7 +13,7 @@ never inside one page.
 
 Why: a hand-rolled copy is missing what the shared one already got right.
 WorldBuilder's chat box was hand-rolled and lost Cmd+A, Cmd+C and Cmd+V; its
-undo was hand-rolled and had no redo, while Aethyrforge's edit log had both.
+undo was hand-rolled and had no redo, while the OpenAgents Metaverse Engine's edit log had both.
 
 ## Where to look
 
@@ -29,18 +29,18 @@ undo was hand-rolled and had no redo, while Aethyrforge's edit log had both.
 | Measuring and wrapping text, fonts | Layout | `components/layout/` |
 | A game HUD: bars, hotbar, windows, numbers | The HUD sets | `components/kit/hud.coax`, `everglade/hud/`, `verse/hud.coax` |
 | Drawing UI on the GPU or in a terminal | Backends | `components/backend/` |
-| Editing a world: typed edits, undo and redo, revision-checked saves | Aethyrforge's edit log | `aethyr/forge/edit.coax`, `aethyr/forge/doc.coax` |
-| Publishing or packing a realm | Aethyrforge | `aethyr/forge/publish.coax`, `aethyr/forge/pack.coax` |
+| Editing a world: typed edits, undo and redo, revision-checked saves | The Metaverse Engine's edit log | `aethyr/forge/edit.coax`, `aethyr/forge/doc.coax` |
+| Publishing or packing a realm | Metaverse Engine | `aethyr/forge/publish.coax`, `aethyr/forge/pack.coax` |
 | The player character, walking, WASD, jump, touch stick | The Everglade zone controller | `everglade/zone.coax`, `everglade/zone-touch.coax`, `aethyr/move/walk.coax`, `aethyr/move/player.coax` |
-| A follow, orbit or free camera | Aethyr's cameras | `aethyr/cam/follow.coax`, `aethyr/physics/orbit.coax`, `aethyr/cam/camera.coax`, `aethyr/cam/` |
-| Characters, rigs, faces, poses, materials | Aethyr's character | `aethyr/character/`, `aethyr/character/character-appearance.coax` |
-| Ground, terrain, heights, ground rays | Aethyr's terrain | `aethyr/world/terrain.coax`, `aethyr/world/terrain-tile.coax`, `aethyr/physics/ground-query.coax` |
-| Collision, contact, queries | Aethyr | `aethyr/physics/collide.coax`, `aethyr/physics/contact.coax`, `aethyr/physics/query.coax` |
-| Scattering things, grass, props | Aethyr | `aethyr/world/scatter.coax`, `aethyr/render/` |
-| Rendering, lighting, shadows, quality tiers | Aethyr's renderer and governor | `aethyr/render/`, `aethyr/core/quality.coax`, `aethyr/core/frame-pacing.coax` |
-| Multiplayer: transport, replication, prediction, rewind | Aethyr's netcode | `aethyr/net/` |
-| Steering and pathfinding | Aethyr: the steering service, and the navigation cells built from colliders ([how](verse/navigation.md)) | `aethyr/ai/`, `aethyr/world/nav/`, `everglade/shared/nav.coax` |
-| A world in cells: which cells load, simulate and draw round the players | Aethyr's cell controller, and Everglade's manifest ([how](verse/one-world.md)) | `aethyr/world/cells.coax`, `everglade/world/zone.coax` |
+| A follow, orbit or free camera | The Metaverse Engine's cameras | `aethyr/cam/follow.coax`, `aethyr/physics/orbit.coax`, `aethyr/cam/camera.coax`, `aethyr/cam/` |
+| Characters, rigs, faces, poses, materials | The Metaverse Engine's character | `aethyr/character/`, `aethyr/character/character-appearance.coax` |
+| Ground, terrain, heights, ground rays | The Metaverse Engine's terrain | `aethyr/world/terrain.coax`, `aethyr/world/terrain-tile.coax`, `aethyr/physics/ground-query.coax` |
+| Collision, contact, queries | Metaverse Engine | `aethyr/physics/collide.coax`, `aethyr/physics/contact.coax`, `aethyr/physics/query.coax` |
+| Scattering things, grass, props | Metaverse Engine | `aethyr/world/scatter.coax`, `aethyr/render/` |
+| Rendering, lighting, shadows, quality tiers | The Metaverse Engine's renderer and governor | `aethyr/render/`, `aethyr/core/quality.coax`, `aethyr/core/frame-pacing.coax` |
+| Multiplayer: transport, replication, prediction, rewind | The Metaverse Engine's netcode | `aethyr/net/` |
+| Steering and pathfinding | The Metaverse Engine: the steering service, and the navigation cells built from colliders ([how](verse/navigation.md)) | `aethyr/ai/`, `aethyr/world/nav/`, `everglade/shared/nav.coax` |
+| A world in cells: which cells load, simulate and draw round the players | The Metaverse Engine's cell controller, and Everglade's manifest ([how](verse/one-world.md)) | `aethyr/world/cells.coax`, `everglade/world/zone.coax` |
 | The Grid | The Grid and its session | `verse/grid.coax`, `verse/gridwalk.coax` |
 | 3D models | The asset registry | `assets/registry/` (read its README) |
 | Hashes, signatures, encryption | Coax crypto | `coax/lib/crypto/` |

@@ -1,13 +1,13 @@
-# Aethyrforge as the conductor: one app for building, playing and editing Everglade
+# The Metaverse Engine as the conductor: one app for building, playing and editing Everglade
 
 Status: audit and spec, 2026-11-04. Desktop only. Builds on
-[Aethyrforge for Mac](2026-11-04-aethyrforge-desktop.md), whose shell, local
+[the Metaverse Engine for Mac](2026-11-04-aethyrforge-desktop.md), whose shell, local
 room and setup pane exist today (d1f14ec560, 5c93c7523d).
 
 Today Everglade is built, tested and played by up to eight agents and one owner
 on one Mac, with nothing in charge. Each agent has its own worktree, its own
 builds, its own servers and its own idea of when to test. The owner plays in a
-browser tab served by a ninth process tree. This doc proposes that Aethyrforge
+browser tab served by a ninth process tree. This doc proposes that the OpenAgents Metaverse Engine
 becomes the one place that decides what gets built, in what order, on which
 cores, and what the owner is playing. Agents become workers it schedules, not
 peers that compete.
@@ -34,7 +34,7 @@ Each one is a coordination failure that one owning process would prevent.
 | 9 | The owner was told an issue was closed while the game still played badly. | Checks tested state, not what a player sees, and nothing required the owner to have played it. | "Ready to try" is a state the owner accepts in the running world, not a closed issue. |
 | 10 | Status messages from eight agents arrived as interrupts, most of them "still waiting". | No shared view of what is running. | One status panel in the app. Agents report there, not to the chat. |
 
-Aethyrforge itself showed two of the same patterns when the owner opened it:
+The Metaverse Engine itself showed two of the same patterns when the owner opened it:
 
 - Everglade originally kept simulating and rendering behind the setup pane.
   #12865 now pauses it after the first real frame; setup/status use the shared
@@ -51,7 +51,7 @@ Hashing Parakeet on launch was already removed: launch calls
 
 ## The idea
 
-Aethyrforge owns four things that today nobody owns:
+The Metaverse Engine owns four things that today nobody owns:
 
 1. **The build graph:** what's built, when, and on how many cores.
 2. **The owner's world:** the room and page the owner is in, which never
@@ -132,7 +132,7 @@ frame time is.
 ## 2. The owner's world
 
 The owner always has exactly one world open: their local Everglade room, in
-Aethyrforge's window. The app owns its processes, and three rules hold:
+the Metaverse Engine's window. The app owns its processes, and three rules hold:
 
 1. **It never restarts under the owner.** A new room build is started beside
    the old one, the old room hands over its state, and the page reconnects with
@@ -317,7 +317,7 @@ right away. Later steps assume #12784 (offline as a one-seat room) has landed.
 
 1. **The scheduler, for builds only.**
    - It runs `openagents build` for the room, the Everglade page and the
-     Aethyrforge bundle, as units, on a core budget with the owner's reserve.
+     Metaverse Engine bundle, as units, on a core budget with the owner's reserve.
    - It extends the shared cache to the room's objects.
    - Build steps that write tracked files move out, starting with the
      project-page bake.
@@ -346,7 +346,7 @@ right away. Later steps assume #12784 (offline as a one-seat room) has landed.
 
 ## Open questions
 
-- **Who runs the scheduler when Aethyrforge is closed?** A small launchd agent
+- **Who runs the scheduler when the Metaverse Engine is closed?** A small launchd agent
   that the app talks to is simplest: agents can still build with the app shut,
   and the app attaches to it when it opens.
 - **How much preemption is safe?** Preempting between units is simple. Stopping

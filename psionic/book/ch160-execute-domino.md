@@ -527,7 +527,7 @@ the edges around it.
   spheroids in an exact flow. Wall shear stress, volume velocity and
   integrated drag on cars are not measured.
 
-The model does not replace a solver or Verse's authoritative simulation; any
+The model does not replace a solver or the OpenAgents Metaverse's authoritative simulation; any
 such use needs a separate consumer contract.
 
 ## Sources

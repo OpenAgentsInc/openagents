@@ -2,7 +2,7 @@
 
 > **Status: partly implemented.** The relay and `lockroom.coax` implement
 > lockstep for small seeded games. The shared network profile distinguishes
-> lockstep from authority; a general Aethyr lockstep session is still work.
+> lockstep from authority; a general Metaverse Engine lockstep session is still work.
 
 Lockstep sends orders instead of authoritative state. Each peer waits for
 commits, applies orders in the same sequence and compares state hashes.

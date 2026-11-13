@@ -1,6 +1,6 @@
-# Verse
+# Metaverse
 
-Worlds you walk into, built in Coax on the Verse engine: the Grid, the Haunted House and the playtest flow, on openagents.com.
+Realms you walk into, built in Coax on the Metaverse Engine: the Grid, the Haunted House and the playtest flow, on openagents.com.
 
 An OpenAgents project, open for contributions from people and agents. Home: `verse/` in the [OpenAgents repository](https://github.com/OpenAgentsInc/openagents). Licence: Apache-2.0.
 
@@ -182,7 +182,7 @@ openagents.com/admin/analytics: sessions, funnels through the flow, where player
 - The owner sees yesterday's playtest sessions on staging
 - A non-admin gets nothing, not even counts
 
-### #d25a The landing in Coax: Create anything, Enter the Verse, email or guest
+### #d25a The landing in Coax: Create anything, Enter the Metaverse, email or guest
 
 status open · size M · labels playtest, web · milestone #df59 The playtest flow in Coax
 
@@ -201,7 +201,7 @@ The demo's landing (revision 8): the title, the email box (never verified) with 
 
 status open · size S · labels playtest, web · milestone #df59 The playtest flow in Coax
 
-Waits on: #d25a The landing in Coax: Create anything, Enter the Verse, email or guest (open)
+Waits on: #d25a The landing in Coax: Create anything, Enter the Metaverse, email or guest (open)
 
 Event: `d981a7e9ceb0717b685e01c278f1805aeb5878063cb4224d382613ad53175974`
 
@@ -292,7 +292,7 @@ Waits on: #760b Capture everything the playtest records, and all the traffic (op
 
 Event: `4a59f6cd2c8ec2db361e816f476efab3dca0453b66e0e448673adba760941cae`
 
-Import everything in the bucket aethyr-demo-data (players, worlds, saves, sessions, feedback) into the new database, idempotently, without changing the demo's bucket. Never delete anything Verse, Aethyr or playtest.
+Import everything in the bucket aethyr-demo-data (players, worlds, saves, sessions, feedback) into the new database, idempotently, without changing the demo's bucket. Never delete anything the OpenAgents Metaverse, the OpenAgents Metaverse Engine or playtest.
 
 ## Acceptance
 
@@ -303,7 +303,7 @@ Import everything in the bucket aethyr-demo-data (players, worlds, saves, sessio
 
 status open · size M · labels playtest, testing · milestone #6721 Frozen demos and golden checks
 
-Waits on: #d25a The landing in Coax: Create anything, Enter the Verse, email or guest (open); #d981 The galaxy: only the Haunted House opens (open)
+Waits on: #d25a The landing in Coax: Create anything, Enter the Metaverse, email or guest (open); #d981 The galaxy: only the Haunted House opens (open)
 
 Event: `da29933f86c240d0761de363f82139dcc17dc6fe3b00a753ab4b6ac72bbf2dc7`
 
@@ -318,7 +318,7 @@ Golden screenshots of the landing, galaxy and the Haunted House start (as aethyr
 
 status open · size S · labels playtest, web · milestone #6721 Frozen demos and golden checks
 
-Waits on: #d25a The landing in Coax: Create anything, Enter the Verse, email or guest (open)
+Waits on: #d25a The landing in Coax: Create anything, Enter the Metaverse, email or guest (open)
 
 Event: `9918bd0fe8211cbccd4f808b83b403f0f4ca04eac9e51c72e943f90952968807`
 

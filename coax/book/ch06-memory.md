@@ -62,7 +62,7 @@ glob.coax:1:1: error[E0212]: global variables are not supported by coax0 yet
 ```
 
 That sounds limiting, and it is. It's also why the real Coax code in
-Verse looks the way it does: state goes in and comes out of procedures as
+the OpenAgents Metaverse looks the way it does: state goes in and comes out of procedures as
 values (`Player` in, `Player` out), and anything large, like a mesh or an
 animation file, is owned by the native side and passed in as a view.
 
@@ -627,7 +627,7 @@ the view `squares` writes through is valid the whole time. The first line of
 `squares` checks the size once and refuses a view that's too small instead
 of writing part of the answer and trapping halfway.
 
-This is the most common shape of procedure in the Verse code. The camera
+This is the most common shape of procedure in the Metaverse code. The camera
 in `verse/grid.coax` writes a 4x4 matrix for the native renderer like
 this:
 
@@ -920,7 +920,7 @@ Zero is absent. Recycling advances the generation; exhaustion retires the slot.
 `store_get` returns an optional view, so a stale reference gives `none`.
 `store_get_live` asserts liveness for code that established it first.
 
-Aethyr's entities use `Handle(Entity)` and expose `entity_get` for optional
+The OpenAgents Metaverse Engine's entities use `Handle(Entity)` and expose `entity_get` for optional
 lookup. Everglade's seats, casts, fire owners and shout speakers retain the
 same lifetime rule. A reconnect keeps a character's reference; a replacement
 cannot inherit it. Store backing and its views still need a caller-owned

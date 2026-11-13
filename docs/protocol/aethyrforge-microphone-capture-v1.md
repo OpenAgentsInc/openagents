@@ -1,4 +1,4 @@
-# Aethyrforge microphone capture IPC v1
+# Metaverse Engine microphone capture IPC v1
 
 The [schema](../../proto/coder/microphone-capture-v1.schema.json) defines the
 private page-to-native `forgeVoiceCapture` request/reply bridge. Only the current

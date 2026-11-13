@@ -542,7 +542,7 @@ planned `@gpu`/`shader` declaration forms remain separate work.
 Next we'll look at the other boundary Coax code crosses constantly: the
 protocol messages OpenAgents sends and receives.
 
-## A CPU layout consumer in Verse
+## A CPU layout consumer in the Metaverse
 
 The actual app's Haunted House buffer gate loads `verse/haunt-layout.coax`.
 It describes the existing packed vertex as fixed arrays of f32, u8 and u32,

@@ -466,7 +466,7 @@ psionic/check.sh --only physics/replay-native
 
 The first command is the portable Coax unit gate; the second explicitly runs
 the qualified Darwin-arm64 native profile. This component owns one smooth
-plant only. It does not snapshot the robot, policy, external producer or Verse,
+plant only. It does not snapshot the robot, policy, external producer or the OpenAgents Metaverse,
 and supplies no typed-clock, compiler-bounded or cross-architecture guarantee.
 
 ## Give the owned plant a clock and a schedule

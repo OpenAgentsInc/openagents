@@ -410,5 +410,5 @@ A model in which the goal has no route stops the agent before it moves.
 - **Held-out maps.** Results are on three fixed maps and their seeds, not on
   a suite of held-out maps and parameters with completion rates.
 - **Deterministic moves only.** No slipping, no noise in observations.
-- **A Verse character** that navigates and recovers needs its own consumer
+- **A Metaverse character** that navigates and recovers needs its own consumer
   contract.

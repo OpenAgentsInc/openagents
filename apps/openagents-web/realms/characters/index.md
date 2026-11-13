@@ -1,6 +1,6 @@
 # Characters
 
-A Verse world at https://openagents.com/worlds/characters that shows the engine's characters: figures built from a few dozen rounded bones, posed and moved by the engine and drawn in a night garden.
+A Metaverse realm at https://openagents.com/worlds/characters that shows the engine's characters: figures built from a few dozen rounded bones, posed and moved by the engine and drawn in a night garden.
 
 - Two shadow visitors: soft silhouettes, black all through, their edges a fuzzy fringe that thins into the night, lit by nothing but a rim of moonlight.
 - A guest drawn lit, in its coat's colours, to compare.

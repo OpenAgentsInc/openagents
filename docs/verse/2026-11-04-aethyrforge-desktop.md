@@ -1,21 +1,21 @@
-# Aethyrforge for Mac: local editing by voice (experimental spec)
+# The Metaverse Engine for Mac: local editing by voice (experimental spec)
 
 Status: experimental desktop shell, local setup, routed Coder HUD, object/NPC scene tools and cultist event controls implemented, 2026-11-04.
 The local Everglade editor, shared storage, CLI inventory, microphone capture
 and local Parakeet transcription work; the local edit model below remains planned. Nothing
 here ships to customers or TestFlight until the owner asks.
 
-Aethyrforge for Mac is a desktop app that opens your Everglade on your own Mac and
+The OpenAgents Metaverse Engine for Mac is a desktop app that opens your Everglade on your own Mac and
 lets you change it by talking. Speech recognition, the model that turns words into
 edits, the room and the world document all run locally. Optional Coder chat uses
 the selected agent's normal provider connection and existing CLI login. World
 publication remains a separate explicit action.
 
-It builds on the web Aethyrforge (docs/verse/aethyrforge.md), the local room
+It builds on the web realm editor (docs/verse/aethyrforge.md), the local room
 (`coax/web/room/local.coax`, `room-dev.coax`), local Parakeet (#12667, #12669), and
 gpt-oss-20b on Metal (docs/verification/psionic-gptoss-metal-2026-10-29.md).
 
-Where it goes next: [Aethyrforge as the conductor](2026-11-04-aethyrforge-conductor.md)
+Where it goes next: [the Metaverse Engine as the conductor](2026-11-04-aethyrforge-conductor.md)
 makes this app the one place that schedules builds and tests, keeps the owner's
 world current without restarting it, owns agents' workspaces and the lane that
 lands changes, and routes world edits, tuning and code changes.
@@ -33,7 +33,7 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   The desktop supplies its display rate to Coax's AUTO quality governor with a
   60 FPS fallback budget, replacing the web/phone 30 FPS fallback for this app.
   Everglade's Coax GPU admission rule bounds the legacy host to two unfinished
-  frames; skipped callbacks retain elapsed simulation time. The native Aethyr
+  frames; skipped callbacks retain elapsed simulation time. The native Metaverse Engine
   HUD reuses its vertex array. The optional `--frame-profile PATH` records actual
   visible WKWebView timings, with Coax summarizing the observations. Results and
   scope are in [the performance verification](../verification/aethyrforge-frame-pacing-2026-11-04.md).
@@ -187,7 +187,7 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   edits, durable undo log, remote PUBLISH/REVERT, bots and raid controls are not
   wired into this shell yet.
 - Basic coding-agent chat uses the same `openagents coder` as the TUI. The
-  compact Aethyr composer is 88 points high with a faint tint; there is no
+  compact Metaverse Engine composer is 88 points high with a faint tint; there is no
   full-window frame or label. Coder is hidden until Enter or Cmd+L opens it.
   Native Return/keypad Enter replaces region chat and consumes the complete
   press, including held-key repeats and release. Automatic routing status and
@@ -198,7 +198,7 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   only reply text floats on the left while a run is active, without a background,
   heading, controls or mouse interception. Completed replies stay for five
   seconds, then hide; Enter restores the full conversation. The floating feed
-  is an Aethyr component (`aethyr/ui/feed.coax`, `feed-draw.coax`): Coax owns
+  is a Metaverse Engine component (`aethyr/ui/feed.coax`, `feed-draw.coax`): Coax owns
   its buffer, UTF-8 retention, text wrapping and lifetime, and emits shared
   font/stroke vertices for Metal. Swift observes time and submits buffers;
   floating text has no AppKit text view or Swift deadline state. Input/IME

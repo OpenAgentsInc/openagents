@@ -8,7 +8,7 @@ publication cannot replace a successful receipt.
 | --- | --- |
 | Coax | Not recorded; no real publication performed for the runner change. |
 | Psionic | Not recorded; no real publication performed for the runner change. |
-| Aethyr | Not recorded; no real publication performed for the runner change. |
+| OpenAgents Metaverse Engine | Not recorded; no real publication performed for the runner change. |
 | Nostr | Not recorded; no real publication performed for the runner change. |
 | Coder | [`coder.json`](coder.json): first publication, from commit `7ba66df968`. |
 | Bitcoin | [`bitcoin.json`](bitcoin.json): latest publication, from commit `c466f49635` (chapters 5–7); first from `329da2c61e`. |

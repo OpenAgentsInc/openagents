@@ -268,7 +268,7 @@ you told them and what you did for them).
 ## Making the world: panes
 
 The designer's notes, October 29. They hold for building any world on the
-Verse, and Fairy Forest is where they are tried first.
+OpenAgents Metaverse, and Fairy Forest is where they are tried first.
 
 - **No wall of tools.** Edit mode does not open on every pane at once. The
   agent brings up the pane that fits what you are working on, and

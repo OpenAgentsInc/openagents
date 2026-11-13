@@ -1,6 +1,6 @@
 # Physics Lab
 
-Run the six seeded scenes through Aethyr, Rapier and Jolt on coderos-4080:
+Run the six seeded scenes through the OpenAgents Metaverse Engine, Rapier and Jolt on coderos-4080:
 
 ```sh
 nice -n 15 env COAX_CHECK_JOBS=6 \
@@ -9,9 +9,9 @@ nice -n 15 env COAX_CHECK_JOBS=6 \
 
 Run this command from an isolated OpenAgents worktree on coderos-4080.
 It builds the pinned reference SDKs in `aethyr/lab/.cache/`, runs each
-engine sequentially, repeats Aethyr, prints the timing and physics table,
+engine sequentially, repeats the Metaverse Engine, prints the timing and physics table,
 and writes `aethyr/lab/.cache/results/results.json`. Each scene directory
-contains its input, three engine records, Aethyr's repeat, `compare.html`
+contains its input, three engine records, the Metaverse Engine's repeat, `compare.html`
 and a muted, headless `compare.png`.
 
 The first build needs Git, Cargo, Nix and network access. Cargo's committed
@@ -39,7 +39,7 @@ can isolate a slower solver. The recorded six-scene run took 65.5 seconds.
 ## Shared inputs
 
 The [v1 record contract](../../proto/aethyr/physics-lab-v1.json) precedes the
-runners. `physics-scene.coax` generates one dense body table, using Aethyr's
+runners. `physics-scene.coax` generates one dense body table, using the Metaverse Engine's
 seed/stream/counter random draws. All adapters read the same file. The
 observer requires every byte of each engine's initial state to match that
 table before publishing a result.
@@ -64,7 +64,7 @@ for a body about to fall. The slope is steep enough to slide at friction
 
 ## Solver profiles and limits
 
-Aethyr composes the existing `rigid_step`, `contact_box_plane`,
+The Metaverse Engine composes the existing `rigid_step`, `contact_box_plane`,
 `contact_resolve` and box SAT kernels. Its lab-owned merge-sorted sweep
 uses conservative circumscribed-box bounds and caller-owned arrays for
 30,000 bodies and one million candidate pairs. Pair-capacity exhaustion
@@ -101,7 +101,7 @@ rather than claiming bitwise cross-engine parity.
 Step timings surround engine advance only, using a monotonic nanosecond
 clock. File I/O, snapshots, metrics and drawing are outside the interval.
 The nearest-rank p50/p95/p99 cover all 180 advances, including the first;
-there is no hidden warm-up. Aethyr's tool uses the normal native tool
+there is no hidden warm-up. The Metaverse Engine's tool uses the normal native tool
 compiler flags (`-O2`, contraction off, no fast math); Cargo release uses
 its release profile and Jolt uses `-O3` with contraction off and its
 upstream AVX2 flags. These are measured native release profiles, not a
@@ -116,7 +116,7 @@ metric capacity exhaustion fail the run. JSON decimals retain six places.
 
 The 64-bit FNV-1a state checksum covers every exact sample step and all
 positions, rotations, linear velocities and world angular velocities, in
-stable body ID order. Timing bytes are excluded. The second Aethyr run
+stable body ID order. Timing bytes are excluded. The second Metaverse Engine run
 must match **every sample byte**, not just the digest. Cross-engine digest
 differences are expected.
 
@@ -128,7 +128,7 @@ states that limit. Metrics and checksums still include every body.
 
 The [2026-11-06 results](../../docs/verse/physics-lab-2026-11-06.md) include
 all eighteen rows, energy samples, checksums, captures, failure receipts
-and source/build identities. They show a repeatable Aethyr result alongside
+and source/build identities. They show a repeatable Metaverse Engine result alongside
 substantial settling, stack and performance gaps.
 
 ```sh

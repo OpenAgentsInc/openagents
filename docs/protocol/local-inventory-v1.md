@@ -32,5 +32,5 @@ it and the existing `OPENAGENTS_PARAKEET_MODEL` override selects that exact mode
 `models migrate` moves legacy Parakeet, Whisper and original gpt-oss directories
 into that root and leaves compatibility symlinks. Existing different copies
 refuse; already-identical paths are idempotent. Files are never overwritten.
-Weights stay outside Git. Aethyrforge saves preferences in its own
+Weights stay outside Git. The OpenAgents Metaverse Engine saves preferences in its own
 `~/.openagents/aethyrforge/setup.json`, separate from these inventories.

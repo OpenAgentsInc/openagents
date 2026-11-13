@@ -1,15 +1,15 @@
 # Completing the four books
 
 > **Scope.** This plan was written on 2026-11-01 for four books: Coax,
-> Psionic, Aethyr and Nostr. Bitcoin, Coder and Everglade have their own
+> Psionic, the OpenAgents Metaverse Engine and Nostr. Bitcoin, Coder and Everglade have their own
 > plans in their book folders and are not covered here. For all seven
 > books, start at [the OpenAgents books](README.md). As of 2026-11-09 the
-> priority is the books the releases depend on: Aethyr Parts I–III, VI, XII
+> priority is the books the releases depend on: Metaverse Engine Parts I–III, VI, XII
 > and XIII, and Everglade.
 
 Reconciled against `main` on 2026-11-01, starting at `6f4c722640`. This is the
 shared delivery sequence for [Coax](../../coax/book/README.md),
-[Psionic](../../psionic/book/README.md), [Aethyr](../../aethyr/book/README.md) and
+[Psionic](../../psionic/book/README.md), [the Metaverse Engine](../../aethyr/book/README.md) and
 [Nostr](../../nostr/book/README.md). The [reader paths](paths.md) give smaller
 routes through capabilities that already run. Each book's chapter registry
 remains authoritative for its current teaching profiles.
@@ -35,7 +35,7 @@ tracks; the CNN work does not wait for all compiler or relay work to finish.
 | Delivered bounded route: [Coax outcomes and request ownership, #12625](https://github.com/OpenAgentsInc/openagents/issues/12625) | Initial R2 native LP64 language, real file cleanup, B2 helper composition and generation-fenced typed System One/Lab ownership are integrated. The [closure record](../verification/coax-12625-closure-2026-11-02/README.md) binds focused checks, canonical compiler fixedpoints and matching-image analysis cost under the unchanged budget. | The original 130 cache/origin survivors are closed; final `CB_query` kills 371/371, authored baseline passes 1,256/1,256, all native/fixedpoint gates pass, and actual compiler cost is 1,036,428/1,048,576. The [closure handoff](handoff-2026-11-02-12625-closed.md) records the completed route. Whole-desktop E0381, normal full-release/cache and R0 physical/reviewer/page-golden gates remain separate; no general linear ownership is claimed. |
 | P1: [Psionic public models, #12626](https://github.com/OpenAgentsInc/openagents/issues/12626) | Connect convolution to IR/autodiff/modules; train and reload a frozen CNN; add residual-model and unfamiliar-consumer acceptance; publish operator/backend limits. A same-shape residual block and frozen CPU trial now pass; independent artifact-reader checks are recorded, with fresh training still open. | Ordinary models use reusable APIs, with independent gradients, held-out quality and saved artifacts. The tiny CNN is a step toward ResNet/CIFAR, not that project's completion. |
 | P2: [Useful single-GPU training, #12627](https://github.com/OpenAgentsInc/openagents/issues/12627) | Cooperative backward and resident whole-step state, precision/overflow/resume, then a frozen 10–50M decoder with independent baseline. | Quality, tokens/s, memory and startup are measured together on the 4080. Distributed scaling follows this useful baseline. |
-| P1: [Aethyr shared rendering and playable route, #12628](https://github.com/OpenAgentsInc/openagents/issues/12628) | Common frame/pass/binding admission; migrate the Grid, then catalogue subsystems; qualify independent render profiles and resource refusals. | One playable route uses shared engine contracts on its declared native/browser targets; remaining private paths stay visible. |
+| P1: [Metaverse Engine shared rendering and playable route, #12628](https://github.com/OpenAgentsInc/openagents/issues/12628) | Common frame/pass/binding admission; migrate the Grid, then catalogue subsystems; qualify independent render profiles and resource refusals. | One playable route uses shared engine contracts on its declared native/browser targets; remaining private paths stay visible. |
 | P2: [Reproducible Forge artifacts, #12629](https://github.com/OpenAgentsInc/openagents/issues/12629) | Common invertible edits, stale-revision refusal, pinned document/engine/assets, reload, migration and isolated forks. | A later engine release cannot silently change a published world's pinned artifact. |
 | P1: [Nostr live consumers and evidence debt, #12630](https://github.com/OpenAgentsInc/openagents/issues/12630) | Close recorded pin/regression/settlement decisions, qualify complete signer/storage/transport profiles, migrate remaining actual consumers and connect applications individually. | Real consumer evidence covers its actual target and key boundary; offline traces and test keys retain their narrower claims. |
 | P1: [Production relay qualification, #12631](https://github.com/OpenAgentsInc/openagents/issues/12631) | Freeze required parity, qualify durable import/restart and production budgets, refresh differentials, shadow traffic and rehearse rollback. | Every production exit is evidenced before a separate owner-operated cutover. |
@@ -77,7 +77,7 @@ revision but still plays it with the current engine, which is the concrete
 artifact gap for #12629. Nostr's frozen conformance example must not be relabeled
 as a current operational report.
 
-Later branches still matter: Aethyr rigid/articulated worlds and simulator
+Later branches still matter: Metaverse Engine rigid/articulated worlds and simulator
 interfaces, Psionic import/fine-tune/serve and real Pylon game decisions, and
 Nostr treasury signing/recovery. They keep their existing prerequisites and
 owner actions below. Advance them through actual consumers rather than
@@ -117,7 +117,7 @@ depend on its future consumer. A forward reading reference is allowed.
 | --- | --- | --- |
 | 1. Finish the current-language route | 5–10, 13–14, 16–20, 24–28 | Results/error handling, supported generic forms, memory/borrow boundaries, effects and target contracts have worked examples and diagnostics matching the compiler. Current limitations are visible before the reader uses a feature. |
 | 2. Close the remaining ownership and development-loop gaps | 6, 14–16, 19–20 and roadmap R0 | A real fallible asynchronous consumer demonstrates buffer lifetime, cancellation and cleanup; compiler analysis has measured headroom; physical-device and development-loop gates retain their own evidence. |
-| 3. Deliver physical-world language through consumers | 29–39 | Frames, clocks, bounded steps, integrators, replay, model import and supervision are used by an Aethyr world and a Psionic control path, with refused misuse and independent checks. |
+| 3. Deliver physical-world language through consumers | 29–39 | Frames, clocks, bounded steps, integrators, replay, model import and supervision are used by a Metaverse Engine world and a Psionic control path, with refused misuse and independent checks. |
 | 4. Deliver simulation compute through a real solver | 40–43 | Layouts, compilation budgets, captured execution, buffer ownership and kernel derivatives serve a measured workload instead of parallel, unused abstractions. |
 | 5. Finish the remaining toolchain and distribution route | 44–47 | A clean-machine real-application bootstrap, supported artifacts and reload/inspection behavior pass their declared gates. |
 
@@ -138,7 +138,7 @@ profile. The
 | 2. Make single-GPU training useful | 115–116, 125–131 | A larger small decoder trains with measured quality, throughput and memory, cooperative backward kernels, mixed precision and a reproducible independent baseline. The existing tiny GPU run remains valid even though it is slower than the CPU. |
 | 3. Import, adapt and serve | 8, 79, 140, 172–181, 220–221 | A published model is imported, fine-tuned, saved, reloaded and served through real admission, cancellation, batching/cache and failure paths; toy/simulated serving results are not substituted. |
 | 4. Prove a low-pressure game use | 24–32, 215–225, 239–241 | A Pylon consumer preserves local play on timeout/cancel, measures quality and latency against a strong local rule, and enables remote-selected behavior only after its own usefulness gate. Existing Directions remains local-first with optional shadow calls. |
-| 5. Expand robotics and distribution from real consumers | 132–135, 167–171; Aethyr 17–37 | Neural actor/critic training uses a pinned real physical environment; batched contact/reset/sensor/replay behavior is checked before gait claims. Distributed training uses actual devices/interconnects and demonstrates failure recovery. |
+| 5. Expand robotics and distribution from real consumers | 132–135, 167–171; the Metaverse Engine 17–37 | Neural actor/critic training uses a pinned real physical environment; batched contact/reset/sensor/replay behavior is checked before gait claims. Distributed training uses actual devices/interconnects and demonstrates failure recovery. |
 
 The first bounded CPU MNIST MLP consumer is now measured in
 [chapter 118](../../psionic/book/ch118-one-trainer-for-every-model.md): public
@@ -161,7 +161,7 @@ profiles; none alone satisfies those projects. Additional model architectures,
 NVIDIA breadth, mesh inference and agent-harness chapters remain independent
 branches with their written prerequisites and acceptance criteria.
 
-## Aethyr: a complete playable engine route
+## The Metaverse Engine: a complete playable engine route
 
 | Order | Existing chapters | Completion gate |
 | --- | --- | --- |
@@ -189,7 +189,7 @@ complete realm adoption still need their own exits.
 | 1. Close integration and evidence debt | 47, 52, 86, 97–104 | Live settlement uses the checked expiry rule; the changed NIP pin is reviewed; affected website and relay regressions have current evidence; current consumers and frozen teaching snapshots are labeled accurately. |
 | 2. Qualify complete consumer profiles | 1–36, 97–100 | Intended native/browser signing, verification, encrypted storage and transport profiles have matching source/target evidence and explicit secret-handling boundaries. Remaining runner/unlock migrations are completed without inferring them from API verification. |
 | 3. Finish the relay migration | 37–45, 103 | Required protocol wiring, production-sized persistence/tombstones, restart/import equality, shadow observations and rollback are qualified before the owner-operated cutover. Configurable host allocation alone does not prove production capacity. |
-| 4. Connect integrated applications | 75–102; Aethyr 49; Psionic 24–32 | Rooms/presence, wallet interactions, Pylons and agent execution run through real transports and consumers. Assumed hop delays and offline payment traces remain teaching examples. |
+| 4. Connect integrated applications | 75–102; the Metaverse Engine 49; Psionic 24–32 | Rooms/presence, wallet interactions, Pylons and agent execution run through real transports and consumers. Assumed hop delays and offline payment traces remain teaching examples. |
 | 5. Complete the treasury milestone | 104 | Actual signing, possession/recovery, relay carriage and independent signet recovery satisfy the chapter's remaining gates. |
 
 Recent relay index/delete/rate/COUNT/search/protection/proof-of-work wiring,

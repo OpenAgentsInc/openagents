@@ -1,6 +1,6 @@
 # 42. Reach a moving target
 
-> **Status: unimplemented — design draft.** Aethyr already plans impulsive
+> **Status: unimplemented — design draft.** The OpenAgents Metaverse Engine already plans impulsive
 > transfers: Lambert by universal variables, Hohmann, and a planner over
 > flight times (`orbit_lambert`, `orbit_hohmann`, `orbit_transfer`,
 > `orbit_plan` in [`aethyr/physics/orbit.coax`](../physics/orbit.coax)). This

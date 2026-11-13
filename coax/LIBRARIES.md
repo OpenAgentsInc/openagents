@@ -1,6 +1,6 @@
 # Selected Coax library contracts
 
-Start here when reusing code in `coax/lib/`, Verse or Psionic. This index
+Start here when reusing code in `coax/lib/`, the OpenAgents Metaverse or Psionic. This index
 covers the entry points below and their current limits. Other names in those
 source files remain implementation details; this is a curated set of
 contracts, not a package registry or a promise that every internal module is
@@ -15,8 +15,8 @@ and [network notes](lib/net/README.md) describe the larger systems.
 
 | Selected entry | Current use and boundary | Native link inputs |
 | --- | --- | --- |
-| [`coax.sequence`](lib/sequence.coax): `swap`, `reverse` | Small generic procedures over caller-owned mutable views; used by Verse's pass formatting and Psionic's HTTP buffer rotation | Generated C; no platform shim |
-| [`coax.bounded`](lib/bounded.coax): `Bounded`, `bounded_push`, `bounded_pop`, `bounded_get`, `bounded_set`, `bounded_clear`, `bounded_view`, `bounded_full` | Fixed-capacity storage with explicit refusal, in caller-owned storage; used by Psionic's model registry and Verse's fairy-forest blooms | Generated C; no platform shim |
+| [`coax.sequence`](lib/sequence.coax): `swap`, `reverse` | Small generic procedures over caller-owned mutable views; used by the Metaverse's pass formatting and Psionic's HTTP buffer rotation | Generated C; no platform shim |
+| [`coax.bounded`](lib/bounded.coax): `Bounded`, `bounded_push`, `bounded_pop`, `bounded_get`, `bounded_set`, `bounded_clear`, `bounded_view`, `bounded_full` | Fixed-capacity storage with explicit refusal, in caller-owned storage; used by Psionic's model registry and the Metaverse's fairy-forest blooms | Generated C; no platform shim |
 | [`verse.hud`](../verse/hud.coax): the listed module exports | Shared CPU HUD geometry, used by native and Coaxial consumers | Generated C and the host's ordinary C/math libraries; no HUD-specific shim |
 | [URI syntax](lib/net/uri.coax) and [WebSocket framing](lib/net/ws.coax): `uri_parse`, `ws_frame_write`, `ws_frame_read` | Pure bounded protocol pieces; transport and authentication are separate consumers | Generated C; WebSocket's loaded SHA-1 source is included; no socket/TLS shim for these functions |
 | [Tool JSON](lib/json/json.coax): selected `jv_*` reads and `jo_*` writes | Caller-owned node tree and output buffer, used by Coax tools | Generated C; no platform shim |
@@ -81,9 +81,9 @@ procedure allocates a heap buffer or changes a caller's resource policy.
 An empty `reverse` is valid. Invalid `swap` indices trigger ordinary Coax
 bounds traps; they are not an expected-error return channel.
 
-Actual adoption is in [Verse's pass formatter](../verse/gpu/everglade-pass.coax)
+Actual adoption is in [the Metaverse's pass formatter](../verse/gpu/everglade-pass.coax)
 and [Psionic's serving engine](../psionic/lib/serve-engine.coax). The
-[Verse recipe](book/examples/ch26_verse.coax) also uses the alias directly.
+[Metaverse recipe](book/examples/ch26_verse.coax) also uses the alias directly.
 These are synchronous storage operations, not general ownership or lifetime
 checking.
 

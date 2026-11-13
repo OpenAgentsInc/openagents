@@ -1,6 +1,6 @@
 # Setting up a project, and creating a realm from a drop
 
-How a project such as Coax, Verse or Planetary Villa comes to exist on
+How a project such as Coax, the OpenAgents Metaverse or Planetary Villa comes to exist on
 openagents.com/projects. Part 1 is the checklist for doing it by hand, as we do
 while bootstrapping, and it serves as the template for future project setups.
 Part 2 is where this is going: drop in your assets, images and documents, and
@@ -14,7 +14,7 @@ moves onto the website, it comes out of Part 1.
 | 1 | Pick the slug, name, owner and visibility (public, unlisted or private) | — | The slug is lowercase with dashes (`planetary-villa`) and never changes. A private project follows a separate path, at the end of this table |
 | 2 | Make the project's key | `~/work/.secrets/openagents-project-<slug>.key` | 32 random bytes as hex, chmod 600, never printed or committed. The publisher signs everything with it |
 | 3 | Write `project.json` | `apps/openagents-web/projects/<slug>/project.json` | slug, name, one-line description, relay, repo, path (the repo folder whose commits the page draws), contributions, licence, pubkey (the key's public key), owner. Copy `projects/verse/project.json` |
-| 4 | Write the design document | `<path>/README.md` (for example `verse/planetary-villa/README.md`) | The owner's own words, with open questions for them. Agents build from it. A project's folder goes under the area it belongs to (a Verse world under `verse/`), never at the repository root |
+| 4 | Write the design document | `<path>/README.md` (for example `verse/planetary-villa/README.md`) | The owner's own words, with open questions for them. Agents build from it. A project's folder goes under the area it belongs to (a Metaverse realm under `verse/`), never at the repository root |
 | 5 | Write the roadmap as a work seed | `projects/<slug>/work/<initiative>.json` | Schema in `projects/coax/work/README.md`: one initiative, milestones, tasks with acceptance checks, sizes, files, `blocked_by`. Every mechanic in the design doc is a task |
 | 6 | Link work another project must do first | both projects' work seeds | The waiting task lists `needs: ["<project>:<slug>"]` and says so in its body. The other project's task says who needs it. See below |
 | 7 | Publish to Nostr | `openagents project publish --project <slug>` | Publishes the project (kind 30621), its issues (1621) and their order (30623). Use `--dry-run` first |
@@ -33,10 +33,10 @@ outside this repository.
 ### Work one project waits on from another
 
 When a task needs something another project builds (Planetary Villa needs
-moonlight, particles and four-legged characters from the Verse engine):
+moonlight, particles and four-legged characters from the OpenAgents Metaverse Engine):
 
 - **Make the work in the project that owns it.** For engine upgrades, that
-  is the Verse project's `verse-engine` initiative. Reuse an existing task
+  is the Metaverse project's `verse-engine` initiative. Reuse an existing task
   when one already covers it, such as the playtest's saves or presence.
 - **The waiting task names it** in `needs` (`"verse:verse-particles"`), is
   labelled `needs-verse`, and its body says it can't land until that's done.
@@ -63,7 +63,7 @@ The aim is to manage everything on the website.
    - the roadmap as milestones and tasks with acceptance checks;
    - the asset inventory: what was dropped, its licence and what still has to
      be made;
-   - every engine upgrade the design needs, as linked tasks in the Verse
+   - every engine upgrade the design needs, as linked tasks in the Metaverse
      project;
    - a first realm: the drop's assets placed in an empty realm, so there is
      something to walk around on day one. Built: on PUBLISH every dropped
@@ -88,5 +88,5 @@ The aim is to manage everything on the website.
    (`coax/web/api/drops.c`, `0041_project_grow.sql`). A project made by hand
    hands the site its key once with `openagents project adopt <slug>`.
 
-The steps to build Part 2 are tasks in the Verse project under "Realm
+The steps to build Part 2 are tasks in the Metaverse project under "Realm
 creation from a drop" (https://openagents.com/projects/verse).

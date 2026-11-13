@@ -4,7 +4,7 @@
 2026-10-15. Beacons are v1; a model group's beacons are v2, 2026-10-20. Declared
 deadlines (`pylon.deadline.v1`), 2026-10-21. **Partly implemented**:
 see [Implementation status](#implementation-status). The [shared contracts](contracts.md) are
-normative. The [Verse compute vision and spec](../../../docs/compute/verse-compute.md)
+normative. The [Metaverse compute vision and spec](../../../docs/compute/verse-compute.md)
 is the design this profile serves.
 
 This NIP lets a compute provider say in public that a machine is online and
@@ -24,7 +24,7 @@ Three records carry it:
 - A **pool aggregate** (`30201`): an aggregator's totals over one time
   window, with the digests of the exact beacon and receipt sets it counted.
 
-A world such as Verse draws pylons and pools only from these verified
+A world such as the OpenAgents Metaverse draws pylons and pools only from these verified
 records ([World projection](#world-projection)). Nothing in this profile
 grants access, admits a job, reserves capacity, moves money, or proves that
 a computation was correct. A beacon is a claim. A receipt is a buyer's
@@ -602,7 +602,7 @@ A reader refuses:
 
 ## Implementation status
 
-Phase P1 of the [Verse compute plan](../../../docs/compute/verse-compute.md#phased-plan),
+Phase P1 of the [Metaverse compute plan](../../../docs/compute/verse-compute.md#phased-plan),
 for free work (2026-10-07):
 
 - `crates/nostr` (`nostr::pylon`) builds and verifies beacons, receipts,
@@ -611,7 +611,7 @@ for free work (2026-10-07):
 - `crates/pylon` publishes beacons, serves `cj-conversation` jobs, buys
   and publishes receipts, and publishes aggregates (`openagents pylon`).
 - `crates/world-tree` holds the `pylon` and `wellspring` object states,
-  which `crates/verse-net` carries in `33301` object states, and Verse's
+  which `crates/verse-net` carries in `33301` object states, and the Metaverse's
   Everglade draws the Pylon Field and the Wellspring from a
   `ComputeSource` (`zones::everglade::compute`, P0, #10920): today this
   computer's lease table, with no events.

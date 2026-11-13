@@ -18,15 +18,15 @@
 
 - [OpenAgents iOS app](https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents-ios/README.md): how the app
   builds and calls the Coax files in `verse/`.
-- [Verse](https://github.com/OpenAgentsInc/openagents/tree/main/docs/verse/engine.md): engine scope and native paths.
+- [the Metaverse](https://github.com/OpenAgentsInc/openagents/tree/main/docs/verse/engine.md): engine scope and native paths.
 
 ## Protocol
 
 - [OpenAgents Protocol](https://github.com/OpenAgentsInc/openagents/tree/main/docs/protocol/openagents-protocol-spec.md): the
-  defining contract for every OpenAgents surface, including Verse.
+  defining contract for every OpenAgents surface, including the OpenAgents Metaverse.
 - [Root schemas](https://github.com/OpenAgentsInc/openagents/tree/main/proto/README.md): actual sources, namespaces, modules,
   descriptors, compatibility snapshots and executable checks.
-- [Verse chapter](https://github.com/OpenAgentsInc/openagents/tree/main/docs/verse/openagents-verse-protocol.md): world and
+- [Metaverse chapter](https://github.com/OpenAgentsInc/openagents/tree/main/docs/verse/openagents-verse-protocol.md): world and
   product protocol catalog and dependency order.
 - [Recovery provenance](https://github.com/OpenAgentsInc/openagents/tree/main/proto/recovery.json): pre-reset source revision
   and exact source/snapshot/vendor hashes.

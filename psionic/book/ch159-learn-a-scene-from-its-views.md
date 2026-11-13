@@ -4,7 +4,7 @@
 > ground-truth scene with exact hits, and a radiance field on a voxel grid
 > fitted to rendered views run on the CPU. The coordinate networks (an MLP
 > fitting an image, then a signed-distance field) and training views from
-> the Aethyr renderer are not built yet.
+> the Metaverse Engine renderer are not built yet.
 
 A radiance field describes a scene as two functions of position: how much
 light a point absorbs (its density, σ) and what colour it gives off. A camera
@@ -977,10 +977,10 @@ check that a later stage would repeat still shows when it is skipped.
   from positions with a frequency encoding. None of that is built; the field
   here is a stored grid. The renderer and its gradient are what an MLP field
   would plug into.
-- **No Aethyr renderer.** The training views are rendered by this chapter's
-  own volume renderer from analytic shapes, not by the Aethyr renderer
-  ([Aethyr chapter 11](../../aethyr/book/ch011-the-wgsl-renderer.md)) from a
-  Verse scene, so they have no lighting, textures or hard surfaces.
+- **No Metaverse Engine renderer.** The training views are rendered by this chapter's
+  own volume renderer from analytic shapes, not by the Metaverse Engine renderer
+  ([Metaverse Engine chapter 11](../../aethyr/book/ch011-the-wgsl-renderer.md)) from a
+  Metaverse scene, so they have no lighting, textures or hard surfaces.
 - **No view dependence.** Colour depends on position only, not on the
   direction a ray arrives from, so shiny surfaces cannot be represented.
 - **Fixed samples.** Samples are evenly spaced, the same on every ray; there
@@ -1002,8 +1002,8 @@ check that a later stage would repeat still shows when it is skipped.
   draws ray batches.
 - [Chapter 106](ch106-differentiate-any-tensor-program.md): reverse-mode
   differentiation, which this chapter writes by hand for now.
-- The Aethyr renderer
-  ([Aethyr chapter 11](../../aethyr/book/ch011-the-wgsl-renderer.md)) for
+- The Metaverse Engine renderer
+  ([Metaverse Engine chapter 11](../../aethyr/book/ch011-the-wgsl-renderer.md)) for
   future training views.
 
 ## Sources

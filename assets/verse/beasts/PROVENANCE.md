@@ -26,7 +26,7 @@ from any kit. License: CC0 1.0 ([license.txt](license.txt)). Registered as the i
 - Review stills: `docs/verification/druid-demo-2026-11-09/dragon-model-front.png`, `-side.png` and
   `-below.png`.
 
-History: first made on 2026-10-05 for the Rust Verse's Grove (commit `c8d1ba99fc`, 1,924
+History: first made on 2026-10-05 for the Rust the OpenAgents Metaverse's Grove (commit `c8d1ba99fc`, 1,924
 triangles, eight clips), removed with the Rust code in the Nuke (`0b401561a0`), restored on
 2026-11-09 and rebuilt the same day with the head, limbs, wings, back plates, saddle and mount clips
 above.

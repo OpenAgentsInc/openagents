@@ -948,7 +948,7 @@ and C emitter handle the resulting structs, arrays and bounds checks.
 
 `tests/reflection.py` compares padding, array stride and offsets against
 independently authored C declarations under ASan/UBSan. The parser and checker
-include authority checks and mutation gates for the new paths. Verse's
+include authority checks and mutation gates for the new paths. The OpenAgents Metaverse's
 Haunted House buffer admission derives its stride and scalar table through
 these queries. Metal's packed vertex declaration is still an explicit
 platform boundary, not a second reflection target.

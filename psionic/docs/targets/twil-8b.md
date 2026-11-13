@@ -4,7 +4,7 @@ webAI released TwIL-8B on 2026-11-04 as open weights
 ([model card](https://huggingface.co/webAI-Official/TwIL-8B)). This note
 says what the model is, what its claims mean, whether we can use it, and
 what Psionic needs to run it. The owner asked about it as a local model for
-Aethyrforge.
+the OpenAgents Metaverse Engine.
 
 ## Summary
 
@@ -13,7 +13,7 @@ Aethyrforge.
   decoder block with grouped-query attention and SwiGLU, and Metal hosts.
 - **The license:** the weights are under the **webAI Non-Commercial
   License 1.0**, "non-commercial research and educational purposes only".
-  We can't ship it in Aethyrforge, serve it on Pylon, or use it in paid
+  We can't ship it in the Metaverse Engine, serve it on Pylon, or use it in paid
   work without a license from webAI, and even a product evaluation may
   need their okay (see License notes).
 - **The plan:** build the Granite path in Psionic. The base model is
@@ -55,15 +55,15 @@ LiveCodeBench, IFBench and HMMT Nov 2025. The card itself is more careful:
   variant only; there's no safety or preference tuning beyond Granite's.
 - **Long reasoning:** about 19,500 output tokens per AIME 2026 problem.
   That's fewer than Qwen3.5-9B, but far too many for an interactive edit.
-  For Aethyrforge it would run with thinking off or `low_effort`, and the
+  For the Metaverse Engine it would run with thinking off or `low_effort`, and the
   benchmarks don't measure that.
 
 None of this is our measurement. Treat it as a claim until our own eval
 runs.
 
-## Fit for Aethyrforge
+## Fit for the Metaverse Engine
 
-Aethyrforge's planned local interpreter is gpt-oss-20b
+The Metaverse Engine's planned local interpreter is gpt-oss-20b
 (`apps/aethyrforge-desktop/README.md`). The interpreter turns a spoken
 request into a typed edit: world data, tuning or code
 (`docs/verse/2026-11-04-aethyrforge-conductor.md`).
@@ -82,7 +82,7 @@ typed edit is a short answer, so the deciding numbers are accuracy on our
 edit tasks and time to the first useful token, not contest scores.
 
 KV cache: 40 layers × 8 heads × 128 × 2 (K and V) × 2 bytes = 160 KiB per
-token in f16. A 32k context is 5 GiB; the full 131k is 20 GiB. Aethyrforge
+token in f16. A 32k context is 5 GiB; the full 131k is 20 GiB. The Metaverse Engine
 should cap its context at 16k–32k.
 
 ## What Psionic needs
@@ -117,7 +117,7 @@ What's missing, in order:
    `granite`, as `psionic/docs/llama-cpp.md` describes: token IDs, per-layer
    activations within tolerance, full-vocabulary logits and greedy
    continuation, then decode speed on the same Mac.
-6. **The Aethyrforge eval.** Our typed-edit set, with thinking off and with
+6. **The Metaverse Engine eval.** Our typed-edit set, with thinking off and with
    `low_effort`, against gpt-oss-20b: accuracy, time to first token and
    tokens per second.
 

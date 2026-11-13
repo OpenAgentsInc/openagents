@@ -783,5 +783,5 @@ include `entity_digest`; that is a later integration, not a prerequisite for
 recording this session. From Coax: R15 strict math and R16 deterministic
 replay and snapshots ([Coax roadmap](../../coax/ROADMAP.md)), and
 determinism ([Coax chapter 16](../../coax/book/ch16-determinism.md)).
-`aethyr/core/math.coax` does in Aethyr what R15's strict profile will do in the
+`aethyr/core/math.coax` does in the OpenAgents Metaverse Engine what R15's strict profile will do in the
 compiler.

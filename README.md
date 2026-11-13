@@ -16,17 +16,23 @@ pieces this needs:
 - web, desktop and mobile apps.
 
 That research and infrastructure is now coming together into product
-releases anchored by **the Verse**: a real-time 3D world on the open web.
+releases anchored by **the OpenAgents Metaverse**: an open metaverse where
+people and AI agents create, inhabit and transform persistent worlds.
 In it you walk among the projects we're building, play and make realms,
 put agents to work, and pay or get paid in Bitcoin
 ([Episode 290: Enter the Verse](docs/transcripts/290.md)).
+
+The OpenAgents Metaverse Engine powers those worlds. Built in Coax, it
+combines real-time simulation, rendering, multiplayer networking and
+AI-driven world creation. The same engine runs robotics, scientific
+simulation and training environments.
 
 The repository was reset on 2026-10-27 to a small, checked core that every
 release builds on:
 
 - **Coax**, the language;
-- **Aethyr**, the real-time engine, written in it, and the **Verse**, the
-  world it runs;
+- the **OpenAgents Metaverse Engine**, the real-time engine, written in it;
+- the **OpenAgents Metaverse**, the world it runs, made of realms;
 - **one protocol** that every OpenAgents surface speaks;
 - **openagents.com**, drawn in Coax in the browser;
 - **native desktop and iOS apps**.
@@ -41,8 +47,8 @@ the argument the books share, the order to read them in and a
   the language.
 - [**Psionic: ML From Scratch**](https://openagents.gitbook.io/psionic-ml-from-scratch):
   the machine-learning and execution engine, built in Coax.
-- [**Building Aethyr, World Engine**](https://openagents.gitbook.io/building-aethyr-world-engine):
-  the game engine that runs the Verse's realms, built in Coax.
+- [**Building the OpenAgents Metaverse Engine**](https://openagents.gitbook.io/building-aethyr-world-engine):
+  the game engine that runs the Metaverse's realms, built in Coax.
 - [**Bitcoin From Scratch**](https://openagents.gitbook.io/bitcoin-from-scratch):
   Bitcoin and Lightning in Coax, from SHA-256 and secp256k1 to transactions,
   script, Taproot, the network, wallets and Lightning channels.
@@ -55,7 +61,7 @@ the argument the books share, the order to read them in and a
 
 In progress: [**Building Everglade**](everglade/book/README.md), an MMORPG
 on the D&D 5E SRD with action combat and rooms of up to 16 players, built
-from scratch on Aethyr in Coax.
+from scratch on the Metaverse Engine in Coax.
 Chapters 1 to 18 are drafted; none is complete yet.
 
 For a short core path in each book, and routes you can run from a terminal
@@ -79,24 +85,24 @@ small model or sign and verify a Nostr event), see
     exist today.
   - The [selected library contracts](coax/LIBRARIES.md) and
     [offline recipes](coax/book/ch26-library-recipes.md) show how to reuse
-    bounded Coax, Verse and Psionic APIs.
-- **Verse** ([`verse/`](verse/)) holds the first engine and realm code. The home scene, its
+    bounded Coax, the Metaverse and Psionic APIs.
+- **Metaverse** ([`verse/`](verse/)) holds the first engine and realm code. The home scene, its
   graph, its HUD and its resource admission are Coax (`home.coax`), and so is
   its shader math (`light.coax`). Start opens the Grid (`grid.coax`), where
   you walk (`player.coax`) as an animated character among patrolling robots
   (`cast.coax`). A thin C and Swift layer owns storage and
   the GPU. The same name covers the world and experience the engine runs:
-  the Verse, made of realms
-  ([Verse protocol](docs/verse/openagents-verse-protocol.md),
+  the Metaverse, made of realms
+  ([Metaverse protocol](docs/verse/openagents-verse-protocol.md),
   [engine notes](docs/verse/engine.md)). It is web-first, so a realm is a
   link you can drop anywhere, and it is moving onto native GPUs too
-  ([native GPU plan](docs/verse/native-gpu.md)). The engine is **Aethyr**
+  ([native GPU plan](docs/verse/native-gpu.md)). The engine is the **OpenAgents Metaverse Engine**
   ([`aethyr/`](aethyr/)); its [book](aethyr/book/README.md) builds it from
   its smallest primitives, one checked piece per chapter.
 - **The OpenAgents Protocol**
   ([spec](docs/protocol/openagents-protocol-spec.md), schemas in
   [`proto/`](proto/README.md)) defines the interchange for web, mobile,
-  desktop, agents, cloud hosts, payments and Verse.
+  desktop, agents, cloud hosts, payments and the Metaverse.
   - Published contracts keep their identity.
   - New schemas are alpha.
   - Coax reads selected descriptors with `#import_proto` and generates bounded
@@ -125,7 +131,7 @@ small model or sign and verify a Nostr event), see
     - Orbit League, Belt 2200 and Hold the Stair, pitched by the audience
       of Episode 290 ([design documents](docs/verse/game-ideas/README.md)).
   - [`/realms/new`](https://openagents.com/realms/new) makes a realm from
-    what you say or type ([Aethyrforge, the realm builder](docs/verse/realm-builder.md)), and
+    what you say or type ([the realm builder](docs/verse/realm-builder.md)), and
     you edit it by voice ([realm edit](docs/verse/realm-edit.md)). FORK
     makes your own copy of any realm with your own rules
     ([fork](docs/verse/realm-fork.md)).
@@ -143,7 +149,7 @@ small model or sign and verify a Nostr event), see
     ([protocol](docs/protocol/2026-10-28-projects.md),
     [how to work the queue](coax/web/project/QUEUE.md)).
     [`/projects/verse`](https://openagents.com/projects/verse/index.md) tracks the
-    Verse engine and realms.
+    Metaverse Engine and realms.
   - Each page has an `index.md` beside it for agents.
   - Releases go through `coax/web/release.sh`: a clean build of
     `origin/main-green` (the newest commit that passed the full check) goes
@@ -152,7 +158,7 @@ small model or sign and verify a Nostr event), see
     with automatic rollback.
 - **The iOS app** ([`apps/openagents-ios/`](apps/openagents-ios/README.md))
   is a minimal native home: the animated graph and HUD, running in Coax.
-  Start opens the Grid, the bare Verse world, to walk around in. It
+  Start opens the Grid, the bare Metaverse realm, to walk around in. It
   ships to the owner's TestFlight group as `com.openagents.app`.
 
 - **Pylons** sell spare compute on gaming computers for Bitcoin. A Pylon

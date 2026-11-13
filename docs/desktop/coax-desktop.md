@@ -654,7 +654,7 @@ visible is drawn by Coax.
 The [dictation guide](../voice/coder-dictation.md) describes Coder's local
 Parakeet path: opt in from the OpenAgents menu, hold ⌘D or the microphone,
 release and review the composer draft. It never sends. Coax owns consent,
-focus/timing, Verse resampling/VAD, segmentation and stale-result/insertion
+focus/timing, Metaverse resampling/VAD, segmentation and stale-result/insertion
 rules; the native host supplies microphone and worker effects. Recorded-audio,
 policy, sanitizer and offscreen evidence is linked from the guide. Actual
 microphone permission/hardware checks remain in `NEEDS_OWNER.md`.

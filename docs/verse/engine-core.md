@@ -1,4 +1,4 @@
-# Aethyr engine core
+# The Metaverse Engine core
 
 The primitives every realm shares, in [`aethyr/`](../../aethyr/README.md)
 (GitHub #12609, the verse project's milestone "Engine core"). Each has its own

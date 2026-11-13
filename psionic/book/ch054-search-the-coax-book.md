@@ -1,7 +1,7 @@
 # 54. Search the Coax book
 
 This chapter builds search over the three books in this repository: Coax,
-Psionic and Aethyr. A query returns ranked passages. Each result shows the
+Psionic and the OpenAgents Metaverse Engine. A query returns ranked passages. Each result shows the
 passage text, its book, chapter file and heading path, the commit that last
 changed the chapter, and the chapter's status. A result from a design draft or
 a planned chapter is marked as not shipped.
@@ -169,7 +169,7 @@ The status comes from the chapter file. The rule is in `rank.coax`, because a
 wrong label presents unbuilt work as shipped:
 
 - `PLAN.md` is planned work.
-- A chapter whose third line is the Psionic and Aethyr draft marker,
+- A chapter whose third line is the Psionic and Metaverse Engine draft marker,
   `> **Status: unimplemented — design draft.**`, is a design draft.
 - A chapter whose third line is the Coax book's note
   `> Note: This feature is planned and not available` is planned.

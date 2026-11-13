@@ -307,7 +307,7 @@ The [oscillator replay precursor](docs/physics/oscillator-replay.md) restores
 a completed physical step plus accepted future forces under explicit same-build
 identities. Portable Coax checks are in the physics gate; the qualified native
 profile is an explicit `--only physics/replay-native` selection. Robot/policy/
-Verse snapshots and cross-target deterministic jobs remain separate work.
+Metaverse snapshots and cross-target deterministic jobs remain separate work.
 
 The [owned-plant sensitivity bridge](docs/physics/oscillator-functions.md)
 checks a fixed-context RK4 state/action Jacobian, control-cost curvature and
@@ -330,7 +330,7 @@ their original provenance. `psionic/check.sh --only robotics/panda-clock` runs
 the portable changed-code gate, with explicit SDK prefixes documented separately.
 
 The [initial Coax point/vector profile](../coax/SPATIAL.md) checks affine roles,
-nominal frame/unit identity and minimum precision on native C. A small Verse
+nominal frame/unit identity and minimum precision on native C. A small Metaverse
 floating-origin camera boundary now subtracts typed F64 world points, while
 preserving its raw public API. This is a foundation for robot geometry; full
 frame transforms and Panda pose migration remain pending.

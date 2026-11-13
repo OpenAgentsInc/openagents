@@ -46,7 +46,7 @@ Whisper and Psionic's Parakeet. On Linux it uses an existing `coax/bin/coax`,
 takes libcurl and OpenSSL from the system or from Nix, and builds without
 Whisper (which does not build there yet); Parakeet runs on CUDA (an NVIDIA
 GPU) or, when named, the CPU. The client
-also links Aethyr's spoken-request gate (`aethyr/audio/voice.coax`). `#authority`
+also links the OpenAgents Metaverse Engine's spoken-request gate (`aethyr/audio/voice.coax`). `#authority`
 files run their checks inside `coax c`, so a failing check stops the build.
 Outputs go to `verse/voice-host/build/` (ignored by git).
 
@@ -125,8 +125,8 @@ when one provider does both, as before, and `RECOGNIZER+SYNTHESIZER`
 otherwise (`parakeet+local`). `--synthesizer parakeet` is refused at start.
 
 The agent's instruction comes from `Hello.route` through one table,
-`ROUTES` in `speech.c`. Its rows: `haunted-house` (the house's VOICE), `everglade` (its voice edits), `guide` (the Agent orb on the /verse landing, the playtest's guide: what the playtest, the Verse and the Haunted House are for), and `foreman`: the Foreman, an
-agent standing by the start of the Grid in OpenAgents' Verse (a
+`ROUTES` in `speech.c`. Its rows: `haunted-house` (the house's VOICE), `everglade` (its voice edits), `guide` (the Agent orb on the /verse landing, the playtest's guide: what the playtest, the OpenAgents Metaverse and the Haunted House are for), and `foreman`: the Foreman, an
+agent standing by the start of the Grid in OpenAgents' the Metaverse (a
 world built in Coax), who speaks at most 30 words of plain spoken English,
 says what it doesn't know instead of inventing projects or facts, and uses
 the conversation so far. A Hello with a route that has no row gets
@@ -303,7 +303,7 @@ bytes, run threads and call the engine:
   engine's audio, features and text; the weights stay.
 
 To a realm, a final transcript is the answer to the hold that asked for it:
-[`aethyr/audio/voice.coax`](../../aethyr/audio/voice.coax) passes it through Aethyr's event
+[`aethyr/audio/voice.coax`](../../aethyr/audio/voice.coax) passes it through the Metaverse Engine's event
 gate (once, only in its epoch, and replayable). `voice-client --hold --aethyr`
 does what a realm does, and `aethyr/examples/hold-to-talk.coax` shows the gate
 alone. Measured on coderos-4080 with CUDA (RTX 4080): the transcript arrives

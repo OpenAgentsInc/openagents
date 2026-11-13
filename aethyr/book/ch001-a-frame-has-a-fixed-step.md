@@ -10,7 +10,7 @@ A display shows frames at its own rate: 60 frames a second on most phones,
 when it wakes up. If a simulation advances by each frame's time, a jump
 reaches a different height at each frame rate.
 
-Aethyr keeps two clocks apart:
+The OpenAgents Metaverse Engine keeps two clocks apart:
 
 - The simulation advances only in fixed steps.
 - Drawing shows a point between the last two steps.
@@ -480,7 +480,7 @@ Before this module, each realm kept its own accumulator:
 - Ice Cream Man's rules
   ([verse/icecream/play.coax](../../verse/icecream/play.coax)): f32, 1/30 s,
   0.1 s, at most four steps, and the whole backlog thrown away at the cap.
-- The Verse landing's orbs
+- The OpenAgents Metaverse landing's orbs
   ([apps/openagents-web/verse.coax](../../apps/openagents-web/verse.coax)):
   f32, 1/60 s, at most 0.1 s owed.
 - The floats on Everglade's river
@@ -511,7 +511,7 @@ No frame runs more steps than a realm's budget of 8
 | Hold the Stair | 1/60 s | 0.1 s of play times the speed | 8 (it was 64) |
 | The realm template and Watchtower | 1/60 s | 0.1 s | 6 (it was 16) |
 | Ice Cream Man's rules | 1/30 s | 0.1 s | 4 |
-| The Verse landing's orbs | 1/60 s | 0.1 s | 6 |
+| The Metaverse landing's orbs | 1/60 s | 0.1 s | 6 |
 | Everglade's floats and Fairy Forest's pads | 1/120 s | 0.25 s | 8 |
 | Belt 2200's battle | 0.1 s of battle | 0.1 s of play times the rate | 8 (it was 48) |
 

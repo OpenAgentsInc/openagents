@@ -1,6 +1,6 @@
 # 34. Pictures for policies
 
-> **Status: unimplemented — design draft.** Aethyr renders worlds in the
+> **Status: unimplemented — design draft.** The OpenAgents Metaverse Engine renders worlds in the
 > browser with WebGPU; nothing yet renders camera observations for a policy
 > in batch. Nothing here runs yet.
 
@@ -38,13 +38,13 @@ views, as Madrona's batch renderer does
 ([Shacklett et al., *An Extensible, Data-Oriented Architecture for
 High-Performance, Many-World Simulation*, SIGGRAPH 2023](https://doi.org/10.1145/3592427)).
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 Two renderer profiles. The *observation* profile is a batched rasterizer in
 Coax-generated shaders (WGSL for WebGPU, MSL for Metal, and CUDA compute),
 producing RGB, depth, segmentation and normal tensors straight into device
 memory a policy reads without a copy (Coax R23). The *presentation* profile
-is Aethyr's renderer, which reads the same state for people to watch.
+is the Metaverse Engine's renderer, which reads the same state for people to watch.
 Neither may write state. Image randomization specs are data with
 provenance like physics randomization (chapter 31). Ray-traced realism is a
 later profile, measured for whether it changes policy transfer before it is
@@ -74,7 +74,7 @@ batch renderer and Nyx, a Vulkan ray tracer that outputs RGB only
 ([rendering](https://genesis-world.readthedocs.io/en/latest/user_guide/getting_started/visualization.html),
 [release notes](https://github.com/Genesis-Embodied-AI/genesis-world/releases)).
 We plan one batched observation rasterizer we own, on our own targets
-including the browser, and reuse Aethyr for presentation instead of adopting
+including the browser, and reuse the Metaverse Engine for presentation instead of adopting
 external renderers.
 
 ## Dependencies

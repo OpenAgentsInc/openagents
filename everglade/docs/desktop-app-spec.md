@@ -19,10 +19,10 @@ cloud with a far city's lamps in its gaps.
   ([spec](app-scenes-spec.md)): Everglade itself, the Workshop, the
   [Archery Range](archery-range-spec.md) and Experimental all run in it.
 - **Everglade itself.** The Everglade row opens the web's realm natively:
-  Character Create, then the run into the glade, in the site's room. Aethyr's
+  Character Create, then the run into the glade, in the site's room. The OpenAgents Metaverse Engine's
   page host for Metal ([`aethyr/host/apple/`](../../aethyr/host/apple/page-host.h))
   runs the realm's own Coax and shaders; there is no web view. Its sound
-  plays through the Apple audio host Aethyrforge uses. [What is built and what is left](app-scenes-spec.md#4-bringing-the-webs-worlds-into-the-apps).
+  plays through the Apple audio host the Metaverse Engine uses. [What is built and what is left](app-scenes-spec.md#4-bringing-the-webs-worlds-into-the-apps).
 - **Experimental and the Archery Range too.** Their rows open the web's
   `fivelab` realm the same way, through the same page host: the classes,
   the monsters, the Longbow, the horse and the red dragon, and the range's
@@ -31,7 +31,7 @@ cloud with a far city's lamps in its gaps.
   is the same Workshop as an iOS app, `com.openagents.everglade`, with touch
   controls and no Next issue panel, and as an Android app on a Vulkan host.
   Both run in their emulators; no real phone has run either.
-- **Built from parts.** Every piece is a reusable part from Aethyr's
+- **Built from parts.** Every piece is a reusable part from the Metaverse Engine's
   architecture kit ([`aethyr/arch/`](../../aethyr/arch/README.md)), written in
   Coax: a fluted Doric column, a plinth, a turned baluster, rails, an
   entablature, a brazier and its flame, a band of light, and the shapes under
@@ -39,7 +39,7 @@ cloud with a far city's lamps in its gaps.
   many times: one column mesh serves all sixteen outer columns.
   [`everglade/workshop/temple.coax`](../workshop/temple.coax) puts the temple
   together from them; the golem is a statue made from the same shapes.
-- **Drawn by Aethyr shaders.** [`everglade/workshop/gpu/temple.coax`](../workshop/gpu/temple.coax)
+- **Drawn by Metaverse Engine shaders.** [`everglade/workshop/gpu/temple.coax`](../workshop/gpu/temple.coax)
   is the sky, the scene and the lights, written in Coax and emitted for Metal
   by `coax metal` at build time. The same source can be emitted for WebGPU and
   Vulkan. The host uploads the mesh, the records and the draws once and issues
@@ -127,11 +127,11 @@ What it isn't yet:
 - **Your own character.** You wear the default. The look you made in
   Character Create is saved by the web, and the app has no log in to fetch it.
 - **The `aethyr-host-v1` realm host** of section 3. The temple's parts and
-  shaders are Aethyr's and portable, but a small AppKit and Metal host still
-  binds and draws them by hand. The temple is not yet a profile in Aethyr's
+  shaders are the Metaverse Engine's and portable, but a small AppKit and Metal host still
+  binds and draws them by hand. The temple is not yet a profile in the Metaverse Engine's
   render catalog (`aethyr/render/catalog.coax`), so the web and the Vulkan
   host can't draw it until it is one.
-- **Your model in Aethyr's own shader.** The model is still drawn by
+- **Your model in the Metaverse Engine's own shader.** The model is still drawn by
   `Model.metal`, a hand copy of the web's vertex math. It casts no shadow and
   is not in the floor's mirror.
 - **A room, a golem to wake, or a title screen.**
@@ -579,7 +579,7 @@ workshop/golems/<id>/
 - **Build tools are Coax** (`coax/tools-in-coax.md`):
   `apps/everglade-desktop/build.coax`, one entry point,
   `apps/everglade-desktop/build.sh [--open]`, on every system.
-- **Mac and Linux build on themselves**, as the Aethyrforge desktop does.
+- **Mac and Linux build on themselves**, as the Metaverse Engine desktop does.
 - **Windows builds by cross-compiling** the generated C on the Linux build
   host with clang and lld against the MinGW-w64 runtime. The result is a
   plain `.exe` that needs no runtime installed. A native build on Windows uses
@@ -706,7 +706,7 @@ Everglade II fixes (#13104, #13117, #13129, #13130). State carry on reload
   only.
 - **Voice.** No dictation and no spoken golems.
 - **The envoy bridge** to an OpenAgents account, payments and Nostr.
-- **Editing the Workshop.** Aethyrforge stays the editing tool.
+- **Editing the Workshop.** The Metaverse Engine stays the editing tool.
 - **Phones and the web.** A Workshop on the web needs agents that run
   somewhere other than your machine. That is a different design.
 
@@ -736,7 +736,7 @@ walker finds and `coax/lib/agent/observe/antigravity.coax` reads. Their cards sa
 `antigravity` for the place, agy's own title for the conversation, the model its request
 chose, and working, waiting (yours), stuck or idle from the same records a Claude card is
 read from; a `REPORT:` line is their report. agy reports no cost, so theirs shows none.
-Verse OS lists them as `agent=antigravity|antigravity|STATE|MINUTES`. Agents on the agent
+Metaverse OS lists them as `agent=antigravity|antigravity|STATE|MINUTES`. Agents on the agent
 machines show too (2026-11-11, #13227): Claude Code sessions and Antigravity conversations on
 `coderos-4080`, or the machines `GOLEMS_HOSTS` names (space-separated; `none` for none). Their
 cards say `on coderos-4080` after the model. N agents are at work

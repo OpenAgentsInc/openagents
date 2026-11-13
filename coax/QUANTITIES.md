@@ -113,7 +113,7 @@ Device and schema1 quantity reflection refusals continue.
 Grid now computes its fog interpolation quotient before projecting `.value`.
 The two affected C functions match their M1 versions exactly; the changed
 fog path passes 130 focused cases. This remains a scalar precursor to the full
-Verse transform and simulated-Panda joint/pose consumer gate.
+Metaverse transform and simulated-Panda joint/pose consumer gate.
 
 The [focused derived-unit record](../docs/verification/coax-quantity-derived-2026-10-31.json)
 retains all 698 checks and kills 942/942 mutants across sixteen exact changed
@@ -160,7 +160,7 @@ responsibility.
 
 `.value` explicitly projects the raw representation. Constructing
 `Quantity.{value=raw}` asserts the source-level unit of that number; it does
-not inspect a sensor, SDK or file to establish that claim. The current Verse precursor
+not inspect a sensor, SDK or file to establish that claim. The current Metaverse precursor
 uses typed quantity division, then projects its dimensionless `UnitOne`
 result at this boundary.
 
@@ -183,12 +183,12 @@ or real-time qualification follows from the C evidence.
 
 ## Consumer and evidence
 
-[Verse's Grid](../verse/grid.coax) now types the three metre-valued inputs of
+[the Metaverse's Grid](../verse/grid.coax) now types the three metre-valued inputs of
 `smooth`, used by the fog calculation. Its subtraction uses the built-in
 quantity operators; `.value` makes the dimensionless ratio boundary explicit.
 This is a scalar precursor. The Grid's `Vec3` values and camera/world frames
 are still untagged, and the Panda joints, velocities and poses have not been
-migrated. It does not satisfy R12's full Verse transform and simulated-robot
+migrated. It does not satisfy R12's full Metaverse transform and simulated-robot
 consumer gate.
 
 The focused evidence is:

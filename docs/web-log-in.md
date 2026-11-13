@@ -92,7 +92,7 @@ only the public key and the signatures.
    pubkey.
    - The NIP-98 event's freshness window and replay rules are the existing
      ones in `private.c`. An event id is accepted once.
-   - The Verse player key is moved to the new account by the rule `poll`
+   - The Metaverse player key is moved to the new account by the rule `poll`
      already uses (`0022_signin_verse_player.sql`).
 4. After the cookie is set, the key stays only in the tab's Coax memory, for
    actions that need a signature. It's cleared on logout or when the tab
@@ -163,7 +163,7 @@ doesn't keep it or log it.
   - a replayed event, a wrong `u`, a wrong payload hash or a stale timestamp
     gets 401;
   - the rate limit gives 429;
-  - the Verse player moves to the new account;
+  - the Metaverse player moves to the new account;
   - a linked key opens the same account.
 - **The page, in headless Chrome:** a CDP virtual authenticator with PRF
   support (`WebAuthn.addVirtualAuthenticator`, `hasPrf: true`) creates an

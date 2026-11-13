@@ -1,6 +1,6 @@
 # Service levels and alerts
 
-This page sets three service levels for the Verse rooms, explains how each one
+This page sets three service levels for the Metaverse rooms, explains how each one
 is measured, and lists every alert with its runbook line (#13297). The policy
 lives in `coax/web/api/service-policy.coax`. When a target here changes, change
 it there in the same commit.

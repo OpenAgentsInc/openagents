@@ -285,7 +285,7 @@ line, each with a `type`:
 | `type` | What it holds |
 | --- | --- |
 | `export` | The header: `format` (`openagents.export.v1`), `account`, `made_ms`, `docs` (this section) |
-| `account` | The account row: kind, created, Verse account, display name, freeze and deletion times |
+| `account` | The account row: kind, created, Metaverse account, display name, freeze and deletion times |
 | `email` | Each email address, opened from its seal for this file only |
 | `agents` | Your agents as their proto message, `openagents.account.v1alpha1.AgentList` (`proto/openagents/account/v1alpha1/agents.proto`), base64 |
 | `row` | Every other row that points at you, by `auth.life_columns`: keys (public parts), sessions (no tokens), grants, realms, characters, saves, chats, payments and credit history, with its `table` |

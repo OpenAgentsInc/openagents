@@ -78,7 +78,7 @@ Planned paths: `openagents/registry/realms.coax`.
 - **Old code at `coder-v1.0.0`, crates:** `verse-content`, `verse-bake`, `verse-zone-everglade`, `world-tree`, `game-lab`
 - **NIPs:** [NIP-MV](../../nostr/nips/openagents/NIP-MV.md), [NIP-REG](../../nostr/nips/openagents/NIP-REG.md), [NIP-EXT](../../nostr/nips/openagents/NIP-EXT.md), [NIP-X402](../../nostr/nips/openagents/NIP-X402.md)
 - **Also:**
-  - Building Aethyr's part on makers, and the capstone "A maker is paid" in [the books' index](../../docs/books/README.md#capstones), not drafted yet
+  - Building the OpenAgents Metaverse Engine's part on makers, and the capstone "A maker is paid" in [the books' index](../../docs/books/README.md#capstones), not drafted yet
 - **Promises covered** ([audit](../../docs/audits/2026-11-10-episode-289-port-audit.md#1-what-episode-289-promised)): P10, P11
 
 ## Open questions for the owner

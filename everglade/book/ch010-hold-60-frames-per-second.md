@@ -4,7 +4,7 @@
 > [`everglade/client/client.coax`](../client/client.coax),
 > [`everglade/client/cull.coax`](../client/cull.coax)
 > and [`everglade/client/gpu/everglade2-cull.coax`](../client/gpu/everglade2-cull.coax).
-> The graphics governor is Aethyr's [`aethyr/core/quality.coax`](../../aethyr/core/quality.coax).
+> The graphics governor is the OpenAgents Metaverse Engine's [`aethyr/core/quality.coax`](../../aethyr/core/quality.coax).
 > This chapter names functions and has no source listings yet.
 
 This chapter answers the player's question: "Why is it smooth?"
@@ -180,7 +180,7 @@ In `aethyr/core/quality.coax`:
 - `#test "quality: the rung AUTO settles at is kept for the next visit, for its
   class and its ladder only"`.
 
-[Aethyr chapter 16](../../aethyr/book/ch016-budgets-that-refuse.md) builds the
+[Metaverse Engine chapter 16](../../aethyr/book/ch016-budgets-that-refuse.md) builds the
 budgets that refuse work a frame can't pay for.
 
 ## Mistakes

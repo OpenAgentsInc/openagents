@@ -1,6 +1,6 @@
 # Space primitives
 
-The engine pieces every space game in the Verse shares. They are Coax
+The engine pieces every space game in the OpenAgents Metaverse shares. They are Coax
 modules under `verse/`, in f64, each with its own checks
 (`coax/bin/coax test --library verse/<module>.coax --steps 2000000000`).
 A game's own module keeps only its rules and its drawing and loads these.

@@ -46,7 +46,7 @@ through MKT. Nothing implements it yet.
 
 [NIP-PYLON](NIP-PYLON.md) has beacon, service receipt, pool, checker, text-job,
 and decision-job implementations in `crates/nostr` and `crates/pylon`, with
-Verse consumers. Receipt, aggregate, and policy v2 keep payment proofs private
+Metaverse consumers. Receipt, aggregate, and policy v2 keep payment proofs private
 and count paid claims only from explicitly trusted issuers. Live-wallet
 qualification and additional projection/relay roles remain unfinished.
 
@@ -261,7 +261,7 @@ In short, which NIP is for what:
 | Validate externally | [EVAL](NIP-EVAL.md), [OPT](NIP-OPT.md) | `validates` results on a second suite of the same distribution, independent by signer and chronology; `transfer` results on another distribution; OPT's confirmation phase. |
 | Credit | [XP](NIP-XP.md) | The `eval-check` (paid for the rerun, confirming or disputing) and `eval-adopt` rules. |
 | Adopt | [EVAL](NIP-EVAL.md), [POL](NIP-POL.md), [EXT](NIP-EXT.md) | `openagents.eval-admission.v1` citing validations, a marginal report, regression, reliability, authority, and stakes; a `coder-defaults` release; operator authority. |
-| Share | [MV](NIP-MV.md), [CJ](NIP-CJ.md) | Gym notes in Verse; chat cards and offers. |
+| Share | [MV](NIP-MV.md), [CJ](NIP-CJ.md) | Gym notes in the OpenAgents Metaverse; chat cards and offers. |
 
 Three gaps are stated rather than filled: the delegate door's own failover
 has no wire record; a judgment's time and cost have a designed record
@@ -318,7 +318,7 @@ a synthetic vault run with a verified Google-attested HPKE endpoint.
 | [NIP-SOV](NIP-SOV.md) | Partially implemented successor to historical SA: durable agent identity, a bounded local lifecycle (`openagents sov`), NIP-46 remote custody and guardian quorum admission ([`sov-custody`](../../../crates/sov-custody/README.md)), fenced two-host transfer and recovery ([`sov-lifecycle`](../../../crates/sov-lifecycle/README.md)), and the treasury binding over existing ledger/wallet/X402 owners ([`sov-treasury`](../../../crates/sov-treasury/README.md)); real-money qualification and broader market participation remain. | Shared `3188`; existing AUTO/CAP/CJ/COORD/RUN contracts; no new kinds. |
 | [NIP-KEYS](NIP-KEYS.md) | Design draft, unimplemented: collaborative on-chain bitcoin custody. Wallet descriptors agreed across independently operated key agents, key enrollment with possession proofs and independence declarations, PSBT signing requests and receipts, timelocked recovery and liveness, rotation sweeps, an ATT co-signer that enforces SOV treasury limits, a hot/cold treasury split, and MKT key-agency terms. | Shared `3188`; no new kinds. |
 | [NIP-ATIF](NIP-ATIF.md) | Implemented public/private carriage of ATIF agent trajectories: exact-byte and ATIF-rule step digests, owner-encrypted private carriage, public declarations with ordered chunks, and links to Coder tasks, RUN runs, delegated sub-agents, and continued segments. Maps external AO/AM/AE onto ATIF steps. | `3198`, `3199`; private manifests and chunks on shared `3188`. |
-| [NIP-MV](NIP-MV.md) | Shared 3D worlds: ephemeral pose frames and gestures, durable entity state, world definitions, and cell-scoped subscriptions. Its optional runtime-loaded scene manifest and rules profile are Designed; Verse's curated local zones are not general world discovery. Standalone: it depends on no other contract here. | `23300`, `23301`, `23302`, `33300`, `33301`. |
+| [NIP-MV](NIP-MV.md) | Shared 3D worlds: ephemeral pose frames and gestures, durable entity state, world definitions, and cell-scoped subscriptions. Its optional runtime-loaded scene manifest and rules profile are Designed; the Metaverse's curated local zones are not general world discovery. Standalone: it depends on no other contract here. | `23300`, `23301`, `23302`, `33300`, `33301`. |
 | [NIP-PYLON](NIP-PYLON.md) | Partially implemented compute pylons and pools: a provider's opt-in public beacon with coarse class and free slots, buyer-signed service receipts with digests and proof-free seller/broker payment acknowledgments, recomputable pool aggregates, NIP-32 check verdicts, and the rules a world follows to draw them. | `30200`, `30201`, `3201`; NIP-32 `1985` labels. |
 | [NIP-ATT](NIP-ATT.md) | Confidential Space implementation of attested workloads, plus fixture-tested client verification of raw TDX, SEV-SNP and NRAS GPU evidence (`att-platforms`) HPKE carriage with per-chunk sealed output (`att-seal`), and Rekor, rebuild, approval-set and sealed-receipt verification (`att-release`); other roles remain designed: public releases with measurements, sources, rebuilds, and Rekor entries; release heads with notice delays and rollback refusal; attested endpoint keys bound into TEE evidence; evidence-computed levels (`open`, `hardened`, `tee`, `tee-cloud`); sealed CJ/DEC jobs with ciphertext-digest receipts. | `3202`, `3203`, `30202`, `30203`; sealed jobs on CJ/DEC. |
 | [NIP-DEPLOY](NIP-DEPLOY.md) | Implemented public deploy status: a signed event for each phase of a staging or production build and deploy, and a lane head for each environment, from one announcer key. The Grid's build billboard reads them. | `3205`, `30205`. |

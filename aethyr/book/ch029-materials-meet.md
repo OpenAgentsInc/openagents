@@ -34,13 +34,13 @@ torque. For SPH, boundary particles carry the body's velocity (chapter 24)
 and their pressure forces sum to the body's force. The scheme is stable when
 `Δt` resolves the stiffest interface; the step report says when it does not.
 
-## The design in Aethyr
+## The design in the Metaverse Engine
 
 The coupler is a stage in chapter 17's schedule with `prepare` (collect
 interface points from each solver) and `exchange` (apply equal and opposite
 impulses). Each pair of solvers has its own routine; pairs without one are
 refused at build. The order in which pairs exchange is fixed and recorded.
-A momentum ledger (the same idea as Aethyr's) sums every impulse the coupler
+A momentum ledger (the same idea as the OpenAgents Metaverse Engine's) sums every impulse the coupler
 applies; its total must be zero.
 
 ## What it builds

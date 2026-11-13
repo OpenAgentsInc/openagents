@@ -23,7 +23,7 @@ device has been checked by hand.
 
 ## The web's realms on iOS
 
-The four realms run through Aethyr's page host
+The four realms run through the OpenAgents Metaverse Engine's page host
 ([`aethyr/host/apple/`](../../aethyr/host/apple/page-host.h)), the same host
 and the same table of rows
 ([`Realms.swift`](../everglade-desktop/Sources/Realms.swift)) as the Mac app
@@ -52,7 +52,7 @@ What is the phone's own is in [`ios/Sources/Pages.swift`](ios/Sources/Pages.swif
   go of the pack's bytes once they are on the GPU. Measured in the simulator
   with `footprint`: Experimental and the range hold 466 MB (719 MB at the
   peak, while the 286 MB pack is inflated); Everglade holds 195 MB.
-- **Sound** is the Mac app's: Aethyr's Apple audio host
+- **Sound** is the Mac app's: the Metaverse Engine's Apple audio host
   (`aethyr/host/apple/PageAudio.swift`). It mixes with what is playing and
   the ring switch silences it. In a shot it is rendered, never played: the
   range's run said the bow's draw and release, the arrow's flight and hit,

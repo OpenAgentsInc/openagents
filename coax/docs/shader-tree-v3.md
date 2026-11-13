@@ -52,4 +52,4 @@ Storage stride is its checked element byte size. Stages are1 vertex,2 fragment,
 operations and bit1 fine operations; control bit0 observes legacy kill and bit1
 helper conversion. The resource names and native slots describe this entry
 pair, not a global slot assignment across passes. A logical uniform binding's
-declared byte view remains part of Aethyr's separately admitted binding plan.
+declared byte view remains part of the OpenAgents Metaverse Engine's separately admitted binding plan.

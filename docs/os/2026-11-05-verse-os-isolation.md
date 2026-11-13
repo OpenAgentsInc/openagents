@@ -1,10 +1,10 @@
-# Verse OS isolation (proposal, draft)
+# Metaverse OS isolation (proposal, draft)
 
 Written 2026-11-05. Status: proposal. Nothing here is built. It extends
 [2026-11-02-verse-os.md](2026-11-02-verse-os.md) and the bets in
 [2026-10-30-coderos-and-coax-audit.md](2026-10-30-coderos-and-coax-audit.md).
 
-This doc proposes how Verse OS keeps your identity, your wallet and your
+This doc proposes how Metaverse OS keeps your identity, your wallet and your
 machine safe when agents and other people's jobs run on it. It ends with
 suggested issues, in order.
 
@@ -33,9 +33,9 @@ Code an agent writes and runs is untrusted. An agent that can be
 prompt-injected is an adversary inside the machine. A Pylon job is someone
 else's work running on your hardware.
 
-## Where Verse OS stands today
+## Where Metaverse OS stands today
 
-Verse OS, as specified, puts everything of value in one trust domain:
+Metaverse OS, as specified, puts everything of value in one trust domain:
 
 - One kernel, one user. The `pilot` account runs the session, the panels
   (any Linux program on the desk), the agents (V4's T key starts Claude
@@ -56,7 +56,7 @@ identity and the money. Isolation has to come before V2's wallet ships.
 
 ## Principles
 
-These add to the six in the Verse OS spec.
+These add to the six in the Metaverse OS spec.
 
 1. **One machine, many trust domains.** The session is where trust is
    granted, not one big domain everything shares.
@@ -209,7 +209,7 @@ Two things block it today:
 
 ## Suggested issues
 
-In order. Each one ends on a check run on our own machines, as the Verse OS
+In order. Each one ends on a check run on our own machines, as the Metaverse OS
 milestones do.
 
 | # | Title | Scope | Done when |

@@ -34,7 +34,7 @@ ga_request :: (out:[]u8,o:GaObservation)->int #effects(all) {
 ```
 
 The caller uses the existing same-origin `/api/v1/systemone` edge and HttpOnly
-session. A Verse player key is not sent as authentication. A guest's 401 and an
+session. A Metaverse player key is not sent as authentication. A guest's 401 and an
 account's 429 disable guard attempts for that visit. A missing provider, bad
 body or exhausted browser slot leaves ordinary play running.
 

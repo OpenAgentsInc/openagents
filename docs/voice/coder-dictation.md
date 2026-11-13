@@ -44,7 +44,7 @@ unsupported input format or inference failure is shown by the composer.
 ## What the implementation guarantees
 
 Coax owns consent, focus admission, tickets, the timeline, PCM conversion,
-Verse's resampler and speech/level measurements, segment bounds and text
+the OpenAgents Metaverse's resampler and speech/level measurements, segment bounds and text
 joining. Swift handles AppKit events, microphone permission/capture and worker
 scheduling. Psionic owns recognition, with its Metal encoder and exact
 row-parallel CPU decoder. Audio never enters a hosted provider, an audio file,
@@ -54,7 +54,7 @@ The timeline keeps up to 450 ms before the press, ignores holds shorter than
 300 ms, includes up to 200 ms after release and caps the complete captured clip
 at 60 seconds. A level gate and at least 160 ms of speech must pass before
 inference. Empty ASR text is also “No speech detected.” The controller reuses
-Verse's Coax resampling at exactly 16, 24, 44.1 and 48 kHz; the host transports
+the Metaverse's Coax resampling at exactly 16, 24, 44.1 and 48 kHz; the host transports
 channel zero of the selected input (planar or interleaved float32, 1–32
 channels). Other rates, including fractional near-matches, refuse explicitly.
 Device/configuration changes stop capture, clear old audio and invalidate the

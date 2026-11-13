@@ -1,6 +1,6 @@
 # Ice Cream Man
 
-A Verse world at https://openagents.com/worlds/ice-cream-man: the Ice Cream Man's house, built in the browser from a seed, and the game played in it. Find the three check-out keys, then hold Use at the front door to escape before he scoops you.
+A Metaverse realm at https://openagents.com/worlds/ice-cream-man: the Ice Cream Man's house, built in the browser from a seed, and the game played in it. Find the three check-out keys, then hold Use at the front door to escape before he scoops you.
 
 ## How to play
 

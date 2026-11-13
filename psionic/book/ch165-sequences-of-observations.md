@@ -7,8 +7,8 @@
 > fitted by least squares and measured on held-out scenes one step ahead and
 > in open-loop rollouts against gates frozen before the fit, and the codec
 > and scheduler contracts, run on chapters 145 and 146. Observations taken
-> from Aethyr worlds (batched worlds, sensors, rendered pictures and replay,
-> Aethyr chapters 31, 33, 34 and 36, all design drafts) are not connected
+> from Metaverse Engine worlds (batched worlds, sensors, rendered pictures and replay,
+> Metaverse Engine chapters 31, 33, 34 and 36, all design drafts) are not connected
 > yet.
 
 A world model predicts what a scene looks like next from what it looked
@@ -870,8 +870,8 @@ and release:
 
 ## What this chapter does not do
 
-- It does not take observations from Aethyr. The plan draws worlds from the
-  Aethyr book: many worlds stepped together (Aethyr
+- It does not take observations from the OpenAgents Metaverse Engine. The plan draws worlds from the
+  Metaverse Engine book: many worlds stepped together (the Metaverse Engine
   [chapter 31](../../aethyr/book/ch031-many-worlds-in-one-step.md)),
   sensors ([33](../../aethyr/book/ch033-sensors-read-the-simulation.md)),
   pictures rendered for policies
@@ -899,4 +899,4 @@ and release:
 ## Sources
 
 - [Chapter plan](PLAN.md), Part XVIII.
-- [Aethyr book](../../aethyr/book/README.md).
+- [Metaverse Engine book](../../aethyr/book/README.md).

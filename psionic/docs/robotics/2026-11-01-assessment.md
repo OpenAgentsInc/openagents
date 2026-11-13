@@ -77,7 +77,7 @@ are retained as nonfinal and have no learning effects.
 2. **A real quadruped contract and environment.** Pin one original robot,
    asset terms, joint order, floating-base convention, limits/motors,
    reset distribution and observation/action meanings. Qualify source-bound
-   proprioception and PD mapping. Aethyr chapters 31, 33 and 35 remain
+   proprioception and PD mapping. Metaverse Engine chapters 31, 33 and 35 remain
    design drafts with no batch/sensor/import implementations; Panda
    receipts cannot supply those missing quadruped capabilities. An SDK
    evaluation lane and an owned-solver lane must retain explicit identities

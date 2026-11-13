@@ -513,7 +513,7 @@ TLS stays a host library: it encrypts sockets to third-party HTTPS and
 gate runs A once on our own hardware and records the UTXO hashes. That run
 is the evidence that makes B and C safe: the assumevalid block and the
 snapshot hash we ship are ones **our own node** computed and Core confirmed.
-For Pylons and Verse OS machines, C is the default, with background
+For Pylons and Metaverse OS machines, C is the default, with background
 validation on. A node on a snapshot whose background validation hasn't
 finished labels itself so, and decides no treasury spend.
 
@@ -559,7 +559,7 @@ store of decision 9.
 | C. By role | Each machine pays for what it does. |
 
 **Recommendation: C.** One or two archive nodes run the indexer, the
-explorer and BIP-157 serving. Pylons and Verse OS machines prune, keep
+explorer and BIP-157 serving. Pylons and Metaverse OS machines prune, keep
 filters for their own wallets, and take old blocks from our archive nodes
 or any peer when a rescan needs them, checking each against its header.
 

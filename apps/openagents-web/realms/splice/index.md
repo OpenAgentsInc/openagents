@@ -1,9 +1,8 @@
 # Splice
 
-An unlisted Aethyr world at `/worlds/splice`, written in Coax: a short game about a robot
+An unlisted Metaverse Engine world at `/worlds/splice`, written in Coax: a short game about a robot
 smuggler. Scavenge banned robot parts, splice them in the rover's hidden edit bay, and restore a
-scene the Emperor erased. It is our own take on the Splice vertical slice, built on the Aethyr
-engine instead of Unreal.
+scene the Emperor erased. It is our own take on the Splice vertical slice, built on the OpenAgents Metaverse Engine instead of Unreal.
 
 ## The run
 

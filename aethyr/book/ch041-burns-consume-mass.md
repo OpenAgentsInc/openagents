@@ -1,6 +1,6 @@
 # 41. Burns consume mass
 
-> **Status: unimplemented — design draft.** Aethyr's thrusters already burn
+> **Status: unimplemented — design draft.** The OpenAgents Metaverse Engine's thrusters already burn
 > tanks with Tsiolkovsky delta-v (`thrust_apply`, `delta_v`, `fuel_for` in
 > [`aethyr/physics/thrust.coax`](../physics/thrust.coax); `orbit_burn_step` in
 > [`aethyr/physics/orbit.coax`](../physics/orbit.coax)); this chapter plans

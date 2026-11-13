@@ -13,7 +13,7 @@
 
 Light is where realms look most different and are most alike underneath:
 one key light (the sun or the moon), a sky and ground ambient, a shadow map
-around the player, a little contact darkening and distance haze. Aethyr
+around the player, a little contact darkening and distance haze. The OpenAgents Metaverse Engine
 computes these from the realm's clock and hands every material the same
 numbers.
 

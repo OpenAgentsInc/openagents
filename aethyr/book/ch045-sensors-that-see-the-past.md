@@ -1,6 +1,6 @@
 # 45. Sensors that see the past
 
-> **Status: unimplemented — design draft.** In Aethyr's space games today
+> **Status: unimplemented — design draft.** In the OpenAgents Metaverse Engine's space games today
 > every ship and AI reads authoritative positions directly (Belt 2200's
 > tactical layer, `tac_nearest_enemy` and `tac_lead` in
 > [`apps/openagents-web/belt-tactical.coax`](../../apps/openagents-web/belt-tactical.coax)).

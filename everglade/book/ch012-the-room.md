@@ -37,7 +37,7 @@ room.
 | --- | --- | --- |
 | The room's world | Everglade II's land, path, woods, colliders and pace. The room picks it by the room code `everglade2-N`. | `eg_e2_code` in `room-everglade.coax`; `world2_prepare`, `world2_place`, `world2_step` in `room-world.c` |
 | The shared step | Where you may stand, the trunk and rock colliders, and the pace. The page and the room both load it. | `everglade/shared/move.coax` |
-| Joining | The page asks the API for a seat ticket for the realm `everglade2`. The API places you in an instance on a shard. The socket opens with the ticket. | `everglade/client/net.coax`; [Aethyr chapter 88](../../aethyr/book/ch088-a-seat-joins-with-a-signed-ticket.md) |
+| Joining | The page asks the API for a seat ticket for the realm `everglade2`. The API places you in an instance on a shard. The socket opens with the ticket. | `everglade/client/net.coax`; [Metaverse Engine chapter 88](../../aethyr/book/ch088-a-seat-joins-with-a-signed-ticket.md) |
 | The hello | The page sends its build and a hello with your Character Create record and your name. | `everglade/client/net.coax` |
 | Your own movement | The page steps you at the room's rate, 30 steps a second, and sends each step's input. When the room's answer differs, the page re-runs your inputs from the room's position. | `everglade/client/net.coax`, `everglade2-face.c` |
 | The other players | The room's rows go into a ring. The page draws each player a jitter buffer behind. | `aethyr/net/interp.coax` (the buffer), `everglade/client/net-core.coax` (Everglade's entity) |
@@ -57,18 +57,18 @@ ROOM 5`. When every room is full, the page says
 
 Anything a page sends, a player can change. So the room owns every fact that
 matters to another player: where you stand, whether your cast happened and
-who it hit. [Aethyr chapter 86](../../aethyr/book/ch086-one-server-owns-the-scene.md)
+who it hit. [Metaverse Engine chapter 86](../../aethyr/book/ch086-one-server-owns-the-scene.md)
 builds that server.
 
 If the page waited for the room before it moved you, every key press would
 lag by a round trip. So the page moves you at once and sends the input. This
 is safe because the page and the room run the same step on the same
-colliders ([Aethyr chapter 87](../../aethyr/book/ch087-server-and-client-share-one-step.md)).
+colliders ([Metaverse Engine chapter 87](../../aethyr/book/ch087-server-and-client-share-one-step.md)).
 Most of the time, the room reaches the answer the page already drew.
 
 When they disagree, the room wins. The page takes the room's position, runs
 your later inputs again and draws the result
-([Aethyr chapter 90](../../aethyr/book/ch090-predict-your-own-movement.md)).
+([Metaverse Engine chapter 90](../../aethyr/book/ch090-predict-your-own-movement.md)).
 
 ### Join before the run ends
 
@@ -88,7 +88,7 @@ for a seat. If no seat comes, you walk on alone, and the page keeps trying.
 The room's rows arrive unevenly. If the page drew each row as it arrived, the
 other players would stutter. The page keeps a short buffer and draws each
 player where they were a moment ago, between two rows it already has
-([Aethyr chapter 93](../../aethyr/book/ch093-one-interpolation-buffer.md)).
+([Metaverse Engine chapter 93](../../aethyr/book/ch093-one-interpolation-buffer.md)).
 A cast that the room sends carries the room's time. The page plays it when
 the drawn picture reaches that time, from where that player is drawn.
 
@@ -97,7 +97,7 @@ the drawn picture reaches that time, from where that player is drawn.
 A page can't draw a player 400 m away through the woods, so the room doesn't
 send them. A player comes into your view within 110 m and leaves it past
 130 m. The gap between the two distances stops a player at the edge from
-flickering in and out ([Aethyr chapter 97](../../aethyr/book/ch097-interest-without-leaks.md)).
+flickering in and out ([Metaverse Engine chapter 97](../../aethyr/book/ch097-interest-without-leaks.md)).
 
 ## A worked example: three players leave the glade
 

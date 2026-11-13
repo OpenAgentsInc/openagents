@@ -49,10 +49,10 @@ programs instead of library conventions. [Chapter 17](ch17-gpu.md) and
 
 ## The consumer and the gate
 
-The consumers are Aethyr's contact solver
-([Aethyr chapter 22](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch022-contact-as-an-optimization.md))
+The consumers are the OpenAgents Metaverse Engine's contact solver
+([Metaverse Engine chapter 22](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch022-contact-as-an-optimization.md))
 and a policy reading observations
-([Aethyr chapter 34](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch034-pictures-for-policies.md)).
+([Metaverse Engine chapter 34](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch034-pictures-for-policies.md)).
 The gate:
 
 - The solver's iterations replayed as one device program equal the unrolled

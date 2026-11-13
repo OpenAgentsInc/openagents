@@ -396,7 +396,7 @@ elements it points at can, so `all[i] = moved(all[i], dt)` writes into
 positions after two steps. Use this style when you have many values to
 update, or when the values are too large to copy back and forth cheaply.
 
-> Note: The procedures in the native Verse home use the first style
+> Note: The procedures in the native Metaverse home use the first style
 > almost everywhere. `aethyr/move/player.coax` advances the player with
 > `verse_player_advance_among :: (p: Player, frame: f32, ...) -> Player`,
 > and the host keeps the returned `Player`. A procedure that hands back the
@@ -1103,7 +1103,7 @@ when reflection generates the encoder, a person still has to decide what
 some fields mean. A field that refers to another entity might be saved as an
 entity ID, as an asset reference, or not at all; the type alone can't say.
 
-The Verse cast loader is a real example of the other direction. It
+The Metaverse cast loader is a real example of the other direction. It
 reads a binary asset file into Coax structs one field at a time, at offsets
 the file format defines, with a little-endian helper:
 

@@ -18,7 +18,7 @@ The Rust `coder-compositor` on tty1 drives both since `~/coder` commits
 across) and `10ca12924` (`/etc/coderos/screens.json`: the order the screens
 stand in and each one's quarter turn; the card that draws opens first, so
 its monitor is the main screen). The Coax compositor on tty2 does none of
-this, and it is the one Verse OS keeps.
+this, and it is the one Metaverse OS keeps.
 
 ## Where `os/compositor.coax` stands
 
@@ -82,7 +82,7 @@ this, and it is the one Verse OS keeps.
 4. **Nix.** The tty2 session passes the screens file and names the main
    card by a stable path (`/dev/dri/by-path/...`, not `card2`, whose number
    can change between boots). Move the `screens` option into
-   `os/nix/modules`, since CoderOS becomes Verse OS; until then
+   `os/nix/modules`, since CoderOS becomes Metaverse OS; until then
    `coderos.desktop.screens` in `~/coder` writes the file both compositors
    read.
 
@@ -91,7 +91,7 @@ this, and it is the one Verse OS keeps.
    run on tty2 with a test window on each monitor, read by the owner.
 
 6. **Later: monitors arriving and leaving** while the compositor runs (a
-   DRM uevent, or a connector poll on a timer), and **the Verse session**:
+   DRM uevent, or a connector poll on a timer), and **the Metaverse session**:
    `verse/gpu/vk-display.c` takes the same rules, turns the picture in the
    display plane when `VkDisplayPlaneCapabilitiesKHR` supports the
    transform and in the shader when it does not, and draws on the 4080 with

@@ -75,7 +75,7 @@ its "What we build" section, and the spec should link back to the chapter.
 | 1 | The HTTP envelope every API route answers with: errors, pages, idempotency | `openagents.api.v1` (spec section 10) |
 | 2 | Auth: sessions, devices, agent keys, the audit log | `openagents.identity.v1` and `openagents.account.v1` (spec section 15), starting as `v1alpha1` |
 | 3 | Sync frames and records | `openagents.sync.v1alpha1`, new ([docs/sync/](../sync/README.md)) |
-| 4 | WorldBuilder's and Aethyrforge's edit operations | `openagents.verse` / `engine` world edits, sharing `aethyr/forge/edit.coax`'s operations |
+| 4 | WorldBuilder's and the OpenAgents Metaverse Engine's edit operations | `openagents.verse` / `engine` world edits, sharing `aethyr/forge/edit.coax`'s operations |
 | 5 | **Chat**: conversations, turns, runner events, the session record | `openagents.chat.v1` and `openagents.session.v1` (spec section 17); chat already writes `openagents.session.v1` JSON lines, which become its first generated mapper |
 | 6 | The room servers' messages | `openagents.verse` session and presence; the Everglade wire profiles already use generated codecs and are the pattern |
 | 7 | Lightning Addresses, payments and receipts | `openagents.payment.v1` (spec section 26), NIP-57 zaps through the Nostr mirrors |

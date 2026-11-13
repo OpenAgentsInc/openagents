@@ -20,7 +20,7 @@ Checked with `curl` against openagents.com and the staged site (67 pages).
 
 How they were made: realm pages are written by `coax/web/realms.ts` from
 `realms.json` (`title`, `description`, `alt`, and `card` when there's a
-hand-made one, else the Verse picture). Every other page was hand-written HTML
+hand-made one, else the Metaverse picture). Every other page was hand-written HTML
 with whatever tags its author added, and no check looked at them.
 
 ## What happens now
@@ -80,7 +80,7 @@ tag above:
 - **line**: the one the player wrote on the builder's board (tap the line
   under the name) or later (`POST /api/playtest/realms/<slug>/describe`), else
   one written from what is in it ("A forest at night with 20 dead trees and a
-  flock of bats, where Old Mott lives. A realm built on the Verse."). Every
+  flock of bats, where Old Mott lives. A realm built on the OpenAgents Metaverse."). Every
   player word is escaped.
 - **image**: its own card, `/realms/<slug>/card.jpg?v=<when>`. When its owner
   opens it (right after MAKE IT), the page (`coax/web/card.js`, through the

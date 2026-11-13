@@ -3,7 +3,7 @@
 How a realm keeps a player's progress. Profile:
 [`realm-save-aesv-v1.json`](../../proto/verse/realm-save-aesv-v1.json).
 Codec: `apps/openagents-web/save.coax`, which every realm page loads. The
-Aethyr book's [chapter 81](../../aethyr/book/ch081-save-and-come-back.md)
+OpenAgents Metaverse Engine book's [chapter 81](../../aethyr/book/ch081-save-and-come-back.md)
 explains the design.
 
 ## The container

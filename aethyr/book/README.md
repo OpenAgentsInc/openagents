@@ -1,9 +1,9 @@
-# Building Aethyr, World Engine
+# Building the OpenAgents Metaverse Engine
 
-Aethyr is the engine the Verse's realms run on: the frame loop, spaces and
+The OpenAgents Metaverse Engine is the engine the OpenAgents Metaverse's realms run on: the frame loop, spaces and
 units, state, input, replay, entities, queries, the camera, the renderer,
-physics, streaming, networking and the realm format. Aethyrforge is its realm
-builder and world-creation tools. Both are written in
+physics, streaming, networking, the realm format, and the tools that create
+and edit realms. It is written in
 [Coax](../../coax/book/README.md); the model engine beside them is
 [Psionic](../../psionic/book/README.md). The name and its history are in
 [engine-name.md](../../docs/verse/engine-name.md).
@@ -13,7 +13,7 @@ primitive, one clock and one fixed step. Each chapter adds one working piece
 with its own checks and builds only on earlier chapters, until Part VII
 rebuilds every realm from them. Part VIII adds sound; it needs only Part I
 and can be read at any point after it. Parts IX–XI plan the rest of a game engine:
-water, weather, effects, creatures and other world systems; Aethyrforge's
+water, weather, effects, creatures and other world systems; the Metaverse Engine's
 generation tools; and what a realm needs to ship. Part XII builds a multiplayer
 engine, from one headless server to the full Everglade room. Part XIII builds
 the action pipeline that every class and monster uses: ask, act, present. You need the Coax language (its book's
@@ -52,7 +52,7 @@ replaces), the method and design, what it builds in `aethyr/`, its acceptance
 checks and oracles, and its dependencies. It has no source-linked listings or
 examples; sketches in it are illustrative only.
 
-Chapters 1–7, 10, 16 and 64 each belong to one Aethyr engine-core task
+Chapters 1–7, 10, 16 and 64 each belong to one Metaverse Engine engine-core task
 (GitHub #12609). The task's slug, such as `ec-loop`, is in the chapter's status
 block, and the chapter is filled in as that module lands. A completed chapter
 drops the marker and shows its code the way the Psionic book does: listings
@@ -78,7 +78,7 @@ it or every backend is supported. For example, chapter 8 qualifies native
 kinematic contacts, not the rigid solver planned in Part IV. Chapters 65–67
 render offline audio; chapter 68 still owns live playback. Existing realm
 features and the native shader port can be working while their consolidation
-into shared Aethyr teaching modules remains a draft.
+into shared Metaverse Engine teaching modules remains a draft.
 
 ## Promoting a draft to a teaching chapter
 
@@ -107,7 +107,7 @@ plain arithmetic.
 For a route through the four books, see
 [Paths through the books](../../docs/books/paths.md). The
 [completion plan](../../docs/books/completion.md) coordinates their shared
-milestones; Aethyr's [completion milestones](PLAN.md#completion-milestones)
+milestones; the Metaverse Engine's [completion milestones](PLAN.md#completion-milestones)
 separate the playable-realm, Forge and advanced simulation goals.
 
 ## Writing style
@@ -147,13 +147,13 @@ commands use `shell`.
 The physics engine (Part IV) and the spacecraft and solar-system chapters
 (Part V, chapters 39–48) were first planned in the Psionic book, as its Parts
 XVIII and XX, and moved here on 2026-10-31. The Psionic book now points here
-from the chapters that use them: robot control and policies run in Aethyr's
+from the chapters that use them: robot control and policies run in the Metaverse Engine's
 batched, differentiable worlds. The [move table](tools/move-from-psionic.tsv)
 maps every old Psionic number to its new home, and
 [the script](tools/move-from-psionic.py) that applied it rewrote the
 references in both books and the docs that cite them.
 
-| Psionic chapter | Aethyr chapter |
+| Psionic chapter | Metaverse Engine chapter |
 | --- | --- |
 | 165–185 (Part XVIII, a physics engine) | 17–37 (Part IV) |
 | 193–202 (Part XX, spacecraft and the solar system) | 39–48 (Part V) |
@@ -217,7 +217,7 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | [31. Many worlds in one step](ch031-many-worlds-in-one-step.md) | Unimplemented: design draft | A batch dimension over every solver, per-environment parameters and randomization with provenance, isolated resets, counter-based seeds; batch invariance checked bit for bit; aggregate and per-environment rates reported together. |
 | [32. Differentiate a simulation](ch032-differentiate-a-simulation.md) | Unimplemented: design draft | Reverse mode over steps with exact checkpointed recomputation; adjoints of implicit steps reusing the forward factorization; per-solver gradient modes enforced at build and compile time. |
 | [33. Sensors read the simulation](ch033-sensors-read-the-simulation.md) | Unimplemented: design draft | Joint, IMU, force/torque, contact, tactile, lidar and depth sensors as read-only stages with rates, delays, noise and R18 stamps. |
-| [34. Pictures for policies](ch034-pictures-for-policies.md) | Unimplemented: design draft | A batched observation rasterizer (RGB, depth, segmentation, normals) into device tensors read without copies; Verse stays the presentation renderer; image randomization. |
+| [34. Pictures for policies](ch034-pictures-for-policies.md) | Unimplemented: design draft | A batched observation rasterizer (RGB, depth, segmentation, normals) into device tensors read without copies; the Metaverse stays the presentation renderer; image randomization. |
 | [35. Bring in robots and meshes](ch035-bring-in-robots-and-meshes.md) | Unimplemented: design draft | URDF, MJCF and mesh import with inertia and watertightness validation, convex decomposition and tetrahedralization, content-addressed assets and per-field provenance. |
 | [36. Record and replay a world](ch036-record-and-replay-a-world.md) | Unimplemented: design draft | Recordings with scene, profile, compiler and seed identities; recomputation replay checked against recorded digests, bisection to the first divergent step and stage. |
 | [37. Measure the engine honestly](ch037-measure-the-engine-honestly.md) | Unimplemented: design draft | The compatibility matrix as data, the acceptance suite per backend and profile, fixed benchmark scenes, and claims that always include per-environment rates and compile and startup times. |
@@ -240,7 +240,7 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | [49. Rooms and presence](ch049-rooms-and-presence.md) | Partly implemented: native room and browser client overview | Overview of current code and its remaining scope; follow the linked implementation chapters. |
 | [50. Lockstep for small deterministic games](ch050-shared-state-over-the-network.md) | Partly implemented: native relay and browser lockstep overview | Overview of current code and its remaining scope; follow the linked implementation chapters. |
 
-### VI. Making worlds: Aethyrforge
+### VI. Making worlds
 
 | Chapter | Status | Result |
 | --- | --- | --- |
@@ -255,14 +255,14 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | Chapter | Status | Result |
 | --- | --- | --- |
 | [56. The Grid](ch056-the-grid.md) | Partly implemented: native C and Wasm (the Grid's session on the engine core) | The Grid rebuilt from the foundation chapters: a world-space floor that looks the same from any position, a smooth jump, feet at the physics height, and live people from the room. |
-| [57. Made realms](ch057-made-realms.md) | Unimplemented: design draft | One made-realm player of chapter 51's document, with composition aimed at a first visit, four cameras over one controller, budgets, and dropped-model realms, all on Aethyr. |
+| [57. Made realms](ch057-made-realms.md) | Unimplemented: design draft | One made-realm player of chapter 51's document, with composition aimed at a first visit, four cameras over one controller, budgets, and dropped-model realms, all on the Metaverse Engine. |
 | [58. Everglade](ch058-everglade.md) | Partly implemented: native room and browser worker overview | Overview of current code and its remaining scope; follow the linked implementation chapters. |
-| [59. Dead Gears](ch059-dead-gears.md) | Unimplemented: design draft | The ship survival game on Aethyr's entities and loop (its ECS becomes chapter 6's design), with every ported demo check passing and 200 creatures held to 2 ms a frame. |
-| [60. Ice Cream Man](ch060-ice-cream-man.md) | Unimplemented: design draft | The seeded house game on Aethyr's loop, actions, replay and follow camera, with every recorded Rust trace still replaying fingerprint for fingerprint. |
+| [59. Dead Gears](ch059-dead-gears.md) | Unimplemented: design draft | The ship survival game on the Metaverse Engine's entities and loop (its ECS becomes chapter 6's design), with every ported demo check passing and 200 creatures held to 2 ms a frame. |
+| [60. Ice Cream Man](ch060-ice-cream-man.md) | Unimplemented: design draft | The seeded house game on the Metaverse Engine's loop, actions, replay and follow camera, with every recorded Rust trace still replaying fingerprint for fingerprint. |
 | [61. Hecate's Cemetery](ch061-hecates-cemetery.md) | Unimplemented: design draft | The moonlit memorial garden rebuilt: the arrival flight handing the camera over smoothly, a dog that follows by the paths, the moon in its real phase, and scanned pet memorials. |
 | [62. Fairy Forest](ch062-fairy-forest.md) | Unimplemented: design draft | The bloom-and-roots story on saved state, with flight moved from the face into the shared controller, so a full session replays and flies the same at any frame rate. |
-| [63. The space games](ch063-the-space-games.md) | Unimplemented: design draft | Orbit League and Belt 2200 on Aethyr's physics and spacecraft chapters, with `space.md`'s checks, transfers within their stated error and lockstep games that replay to the same hashes. |
-| [64. Every realm runs on Aethyr](ch064-every-realm-runs-on-aethyr.md) | Partly implemented: native C (every realm's shared modules from its #load closure; one walker in seven realms) (`ec-migrate`) | The `ec-migrate` plan: an inventory of each realm's private copies, a migration order, a check that no private loop, camera, input path or ground logic comes back, and goldens and 60 FPS held throughout. |
+| [63. The space games](ch063-the-space-games.md) | Unimplemented: design draft | Orbit League and Belt 2200 on the Metaverse Engine's physics and spacecraft chapters, with `space.md`'s checks, transfers within their stated error and lockstep games that replay to the same hashes. |
+| [64. Every realm runs on the Metaverse Engine](ch064-every-realm-runs-on-aethyr.md) | Partly implemented: native C (every realm's shared modules from its #load closure; one walker in seven realms) (`ec-migrate`) | The `ec-migrate` plan: an inventory of each realm's private copies, a migration order, a check that no private loop, camera, input path or ground logic comes back, and goldens and 60 FPS held throughout. |
 
 ### VIII. Hearing it
 
@@ -282,17 +282,17 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | [71. Sky, weather and the time of day](ch071-sky-weather-and-the-time-of-day.md) | Partly implemented: bounded declared day/phase facts; sky/weather renderer remains draft | One day clock (`real`, `cycle` or `fixed:T`) drives the sun, the moon's real phase, palettes, the starfield, a seeded weather schedule and ground wetness, so every visitor and replay sees the same sky. |
 | [72. Effects made of particles](ch072-effects-made-of-particles.md) | Partly implemented: browser WebGPU (puffs; stateless emitters remain a design draft) | Event puffs from seventeen recipes, a pure function of seed, index and age, under declared budgets (96 live causes, 2,400 puffs a frame) and drawn on a traced page in 5E Lab; the stateless emitters (embers, dust, fireflies) and fire and smoke are not built yet, kept separate from chapter 23's simulated particles. |
 | [73. Things that break](ch073-things-that-break.md) | Unimplemented: design draft | `verse/demolish.coax` on Part IV's bodies and contact: Voronoi fracture into 2–24 chunks, a support graph that topples pieces, budgets for chunks and loose pieces, regrowth, and the destructible-wall integration test. |
-| [74. Wheels on the ground](ch074-wheels-on-the-ground.md) | Unimplemented: design draft | Orbit League's raycast vehicle on Aethyr's queries and rigid bodies: spring-damper suspension, tyres inside the friction circle, steering that fades with speed, game rules declared as rules, and a recorded match that replays to the same digests. |
+| [74. Wheels on the ground](ch074-wheels-on-the-ground.md) | Unimplemented: design draft | Orbit League's raycast vehicle on the Metaverse Engine's queries and rigid bodies: spring-damper suspension, tyres inside the friction circle, steering that fades with speed, game rules declared as rules, and a recorded match that replays to the same digests. |
 | [75. Creatures that follow and watch](ch075-creatures-that-follow-and-watch.md) | Partly implemented: bounded compiled actor profile 1, native C and Wasm; legacy realm adapters remain | Creatures sense, decide and act at a fixed step from typed sight and hearing stimuli kept apart from truth; the flock becomes a general follow, the watch's state machines and seeded dice replay, and a remote decision model picks only from a fixed enum. |
 | [76. Find a way through](ch076-find-a-way-through.md) | Partly implemented: bounded grid navigation and actor request fences, native C and Wasm; graph and avoidance adapters remain | Walking grids with no corner cutting and Dijkstra flow fields with a fixed tie-break, bounded by cost and settled cells, with typed results naming the nearest reachable cell, checked cell by cell against a brute-force oracle and equal bit for bit to Dead Gears' fields; graph routing, avoidance and remaining realm adapters retain separate work. |
 | [77. People who talk back](ch077-people-who-talk-back.md) | Partly implemented: native CPU (Darwin arm64; bounded dialogue and request/reply replay) | Required authored fallback, bounded UTF-8 JSON, request identity fences, tick deadlines and an admitted in-memory answer record; exact native debug/release fixtures replay with no send intentions. Realm/server adoption, durable external-event integration, persistent memory and voice remain. |
 | [78. Cinematics and close-ups](ch078-cinematics-and-close-ups.md) | Partly implemented: native CPU camera take; Wasm flight and close-up adoption | Typed flights and close-ups share the quintic blend; Hecate and Garden adopt them. Actual arrival and every-frame skip checks run at 30/60/144 FPS; a native camera take replays five commands and staged captures receive sidecars. Saved realm replay to browser pixels remains. |
 
-### X. Aethyrforge: generating worlds
+### X. Generating worlds
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| [79. A piece from a sentence](ch079-a-piece-from-a-sentence.md) | Unimplemented: design draft | One catalogue and one typed selector for the Sandbox's set pieces and Aethyrforge's board: the answer is checked against the catalogue on the server and in the game, laid out from a seed as one undo step, and every asked thing is kept. |
+| [79. A piece from a sentence](ch079-a-piece-from-a-sentence.md) | Unimplemented: design draft | One catalogue and one typed selector for the Sandbox's set pieces and the Metaverse Engine's board: the answer is checked against the catalogue on the server and in the game, laid out from a seed as one undo step, and every asked thing is kept. |
 | [80. Terrain and scatter from a seed](ch080-terrain-and-scatter-from-a-seed.md) | Partly implemented: native C and Wasm (keyed scatter over the built ground) | Heightfields equal to the drawn surface, levelled paths and flats, jittered scatter with exclusion zones, and one counter-based random stream per feature, so content is the same in any streaming load order. |
 
 ### XI. Shipping realms

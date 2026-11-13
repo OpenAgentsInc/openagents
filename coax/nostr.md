@@ -3,7 +3,7 @@
 Plan, initially reconciled 2026-10-28 against remote main `1357c44a52`;
 consumer inventory reconciled 2026-11-01 against `6f4c722640`. The implementation
 is incremental: the target is one reusable Coax stack for web, iOS, native tools
-and Verse. This document is not a claim that the target already exists.
+and the OpenAgents Metaverse. This document is not a claim that the target already exists.
 
 The executable work breakdown is
 [`apps/openagents-web/projects/coax/work/nostr.json`](../apps/openagents-web/projects/coax/work/nostr.json).
@@ -103,7 +103,7 @@ library (AGENTS.md); browsers keep their own transports.
 
 `coax/lib/crypto/` knows nothing about Nostr. `coax/lib/nostr/` contains pure
 bounded codecs, event handling and protocol state machines. Domain adapters load
-selected root `proto/` profiles. Web, iOS, native tools and Verse reuse those
+selected root `proto/` profiles. Web, iOS, native tools and Metaverse reuse those
 sources. Host languages perform effects: entropy, sockets/TLS, Keychain, storage,
 clipboard, camera/QR acquisition and GPU/input bindings.
 

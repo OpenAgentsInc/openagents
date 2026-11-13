@@ -1,6 +1,6 @@
 # 14. Ability scores, proficiency and the d20
 
-> **Status: partly implemented.** The core roll is in Aethyr's shared SRD rules,
+> **Status: partly implemented.** The core roll is in the OpenAgents Metaverse Engine's shared SRD rules,
 > [`rules/srd/engine.coax`](../../rules/srd/engine.coax)
 > (`rs_roll`, `rs_d20`, `rs_edge`, `rs_mod`, `rs_proficiency`), with checks in
 > [`rules/srd/ability-check-math.coax`](../../rules/srd/ability-check-math.coax)

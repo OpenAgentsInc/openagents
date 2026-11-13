@@ -4,9 +4,9 @@ Status: **the first slice runs (2026-10-28): the openagents.com splash on a
 Coax engine in WebGPU, with `coax serve` hot reload. The rest is a proposal.**
 Owner decisions are recorded under [Decisions](#decisions-2026-10-28).
 
-This document specifies how openagents.com moves onto Coax and Verse: the
+This document specifies how openagents.com moves onto Coax and the OpenAgents Metaverse: the
 site takes over a full-window GPU canvas, shows the Grid and the rest of
-Verse in the browser, loads fast, and is developed with edit-to-screen
+the Metaverse in the browser, loads fast, and is developed with edit-to-screen
 times measured in milliseconds rather than seconds. It sits beside the
 [implementation roadmap](ROADMAP.md): the framework is the real consumer for
 the roadmap's wasm32 feasibility test (R1), its GPU and browser proof (R9–R10)
@@ -127,7 +127,7 @@ Facts this proposal starts from, checked 2026-10-28:
 - **Toolchain:** Apple clang 21 has no wasm32 target, so the browser build
   uses upstream LLVM 23.1.4 (clang, wasm-ld) with wasi-libc, installed from
   Homebrew on 2026-10-28.
-- **Precedent:** before the reset, Aethyrforge (`git show 0b401561a0^:apps/aethyr/`)
+- **Precedent:** before the reset, the OpenAgents Metaverse Engine (`git show 0b401561a0^:apps/aethyr/`)
   rendered a town through WebGPU from a worker with C/Wasm kernels. Its
   measured record
   (`docs/aethyr/engine/research/c-medieval-town-results-2026-10-23.md` in
@@ -163,7 +163,7 @@ Facts this proposal starts from, checked 2026-10-28:
 
 ### Client
 
-- **Engine code** is the existing Verse Coax, compiled to C11 by
+- **Engine code** is the existing Metaverse Coax, compiled to C11 by
   `coax lib`, then to wasm32 by clang with `-ffreestanding`, no libc beyond
   what the generated C needs, no fast math and no floating-point contraction.
   The browser and iOS builds compile the same Coax sources; only the host
@@ -242,7 +242,7 @@ regression is `coax/web/tool.sh serve-build-check` after building `serve.sh`.
 | Layout change (a state struct changed) | Same as logic, but the layout fingerprint differs: the subsystem migrates if a migration is declared, otherwise resets just that subsystem | under 500 ms, state kept where declared |
 
 The budgets come from measurements, not hope: about 10 ms for `coax c`, about
-90 ms for clang on the Grid, the Aethyrforge 57 ms leaf rebuild, plus
+90 ms for clang on the Grid, the Metaverse Engine 57 ms leaf rebuild, plus
 transfer and `WebAssembly.instantiate` on localhost. They are targets to
 verify in phase W1, not claims.
 
@@ -310,7 +310,7 @@ the job:
 Everything else, including menus, panels, the hotbar and captions, is drawn
 by Coax in the HUD.
 
-## The Verse feature path in the browser
+## The Metaverse feature path in the browser
 
 What the browser needs, in the order the Grid uses it:
 
@@ -384,7 +384,7 @@ document's; the roadmap milestones they feed are named.
 - **W5. Switch openagents.com.** After parity on the routes that matter
   (open question 7), point openagents.com at it with the old revision kept
   for rollback.
-- **W6. More Verse.** Voice in the browser, then the Haunted House, the
+- **W6. More the Metaverse.** Voice in the browser, then the Haunted House, the
   wallet and the rest, each as its own slice.
 
 Roadmap R10's full gate (the same pinned workload on native Metal and in a
@@ -393,10 +393,10 @@ asks for. This framework doesn't claim it earlier.
 
 ## Naming
 
-The engine is Verse and the language is Coax. The framework is the part
-that puts Verse on the web and runs the site around it. A separate name
+The engine is the Metaverse and the language is Coax. The framework is the part
+that puts the Metaverse on the web and runs the site around it. A separate name
 is worth having only if it's a thing people build with (the site, and later
-other people's worlds). If not, call it "Verse for the web" and skip the
+other people's worlds). If not, call it "the Metaverse for the web" and skip the
 name.
 
 The name is **Coaxial** (owner's direction, 2026-10-28): the cable's full

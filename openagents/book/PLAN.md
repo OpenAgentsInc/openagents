@@ -48,8 +48,8 @@ because the premise is wider than Episode 289 alone:
 - **Compute** (Part VIII) is new. The audit's port map says to port Pylons
   and computers "as members and as a compute market", and Episode 290
   relaunches Pylons.
-- **The Verse** (Part IX) is new as a part. It is the audit's step 10,
-  "agents in the Verse", and it is where the foundation meets the agent.
+- **The OpenAgents Metaverse** (Part IX) is new as a part. It is the audit's step 10,
+  "agents in the Metaverse", and it is where the foundation meets the agent.
 
 "Everywhere" (Part X) keeps the surfaces, the Windows host, the release
 pipeline and the meaning of 1.0.
@@ -143,7 +143,7 @@ Steps on different layers can run at the same time.
 | 7. The registry and payouts | Publish, install, adopt, paid calls, receipts, payouts, identity, reputation, jobs | 37–45 | P10, P11, P14 |
 | 8. The API and self-host | The protocol table, the schema rule and its check, the API, a partner sample, the self-host bundle | 46–49, 52, 53 | P12, P13 |
 | 9. 1.0 everywhere | Thin clients, the Windows host, the release pipeline, the 1.0 checklist | 61–64 | P16 |
-| 10. Agents in the Verse | The Verse as a surface, agents you can meet, makers paid, a paid decision in the world | 57–60 | P1, P4, P11 |
+| 10. Agents in the Metaverse | The Metaverse as a surface, agents you can meet, makers paid, a paid decision in the world | 57–60 | P1, P4, P11 |
 
 Four groups have no step of their own in the audit:
 
@@ -170,7 +170,7 @@ Four groups have no step of their own in the audit:
 | VI. The market | 37–45 | Open the member list to everyone and pay the people who fill it: a registry, pinned installs, paid calls, receipts, payouts, identity and reputation. | Publish a plugin under your own key, have another person's agent use it in a paid call, and receive your share over Lightning. |
 | VII. The protocol is the agent | 46–53 | Show that every step so far is a record with one schema, carried as a signed event, as an API body or as binary frames. Then open the same system to partner apps and to people who host it themselves. | A second implementation that reads only the public events rebuilds an agent's member list and the evidence behind it; a partner app answers through the API; an agent acts under a grant its owner approved; a self-hosted instance installs a plugin from the public registry. |
 | VIII. Compute | 54–56 | Say where the models run: behind one gateway, on our own engine, and on machines that people lend for Bitcoin. | One request to the front is answered by a decision model running on a Pylon, and the Pylon's owner is paid for it. |
-| IX. The Verse | 57–60 | Put all of it in a world you can walk through: the same agent, your working agents, makers who are paid, and characters that decide. | Walk into a realm, see your agents working, buy something a maker listed, and watch a guard make a decision that a Pylon served and was paid for. |
+| IX. The Metaverse | 57–60 | Put all of it in a world you can walk through: the same agent, your working agents, makers who are paid, and characters that decide. | Walk into a realm, see your agents working, buy something a maker listed, and watch a guard make a decision that a Pylon served and was paid for. |
 | X. Everywhere | 61–64 | Ship it: every surface as a thin client, a host for the one platform we lack, one release pipeline, and a plain statement of what 1.0 means. | The same version, built by one pipeline, installed from one download page on every platform Episode 289 named. |
 
 ## The port map
@@ -193,8 +193,8 @@ write.
 | Protocol | The Nostr carriage is done in `coax/lib/nostr`; keep the NIPs current. The schemas are in `proto/`, most of them still sketches | 46, 47, 49, 52 |
 | Compute | Psionic and the gateway are done; port Pylons and computers | 21, 54–56 |
 | Apps | Rebuild as thin clients in `apps/` | 2, 61–63 |
-| Verse and game | Done and ahead in Aethyr and Everglade | 57–60 |
-| Labs | Fold into Aethyr labs where wanted; the owner picks | none |
+| The Metaverse and game | Done and ahead in the OpenAgents Metaverse Engine and Everglade | 57–60 |
+| Labs | Fold into Metaverse Engine labs where wanted; the owner picks | none |
 | Small web toys | Drop unless the owner names one | none |
 | Infra | Auth is rebuilt as our own login in `coax/web/api` (chapter 50), not ported. Port keys, vault and push | 13, 43, 48, 50, 53 |
 
@@ -289,7 +289,7 @@ repeat three of them. The chapters raise 80 questions in all:
 | [55](ch055-models-we-serve.md) | Which models does 1.0 serve on our own hardware, and which stay hosted? |
 | [56](ch056-pylons.md) | What does a Pylon earn per decision, and who sets it: us, the Pylon's owner, or a market? |
 | [56](ch056-pylons.md) | How large a sample of results do we recompute, and what happens to a Pylon whose answers don't match? |
-| [56](ch056-pylons.md) | Beyond our own agent and the Verse, who is the first outside buyer? |
+| [56](ch056-pylons.md) | Beyond our own agent and the Metaverse, who is the first outside buyer? |
 | [58](ch058-agents-you-can-meet.md) | Do agents appear in shared public realms by default, or only in your own space until you choose to show them? |
 | [59](ch059-realms-and-makers.md) | Is the maker's share the same as a plugin author's, and what does a fork's maker owe the original's? |
 | [59](ch059-realms-and-makers.md) | Who curates the featured list, and by what written rule? |

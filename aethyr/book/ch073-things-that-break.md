@@ -5,7 +5,7 @@
 > kit pieces with hit points fracture, topple, fall on each other, sleep as
 > rubble and grow back. It ports the previous Rust engine's demolition
 > ([destructible-buildings.md](../../verse/everglade/previous/destructible-buildings.md))
-> and runs only in Everglade. This chapter plans destruction as an Aethyr
+> and runs only in Everglade. This chapter plans destruction as a Metaverse Engine
 > module over Part IV's rigid bodies and contact. Nothing in `aethyr/` runs
 > yet.
 
@@ -47,7 +47,7 @@ they have to agree on identity, timing, authority and lifetime.
 5. **Physics.** Bodies step at a fixed 60 Hz (`DEMO_HZ`, at most 6 steps a
    frame) with box contacts by impulses at the corners (restitution 0.12,
    friction 0.7). A chunk slow and held for 0.6 s sleeps as rubble until a
-   blow, a blast or the loss of its support wakes it. In Aethyr these come
+   blow, a blast or the loss of its support wakes it. In the OpenAgents Metaverse Engine these come
    from [chapters 18–22](ch018-rigid-bodies-and-time-steps.md) instead of a
    private solver.
 6. **Budgets.** At most 260 chunks on a desktop and half on a phone
@@ -91,7 +91,7 @@ The chapter is done when:
 
 - The same blows from the same seed give the same rubble, bit for bit, on
   one build profile.
-- Every `#test` in today's `verse/demolish.coax` passes against the Aethyr
+- Every `#test` in today's `verse/demolish.coax` passes against the Metaverse Engine
   modules.
 - The destructible-wall test passes: one wall breaks, and collision, the
   standing surfaces, effects, sound, replicated state and the saved realm

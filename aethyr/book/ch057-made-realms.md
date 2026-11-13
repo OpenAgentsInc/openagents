@@ -5,7 +5,7 @@
 > plays any realm made at `/realms/new`, and
 > [droprealm.coax](../../apps/openagents-web/droprealm.coax) a project's first
 > realm from its dropped models. This chapter plans rebuilding both as one
-> player of chapter 51's document over Aethyr's chapters. Nothing here runs
+> player of chapter 51's document over the OpenAgents Metaverse Engine's chapters. Nothing here runs
 > yet.
 
 A made realm has no code of its own. One module reads its document and lays

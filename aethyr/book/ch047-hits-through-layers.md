@@ -1,6 +1,6 @@
 # 47. Hits through layers
 
-> **Status: unimplemented — design draft.** Aethyr's space combat today
+> **Status: unimplemented — design draft.** The OpenAgents Metaverse Engine's space combat today
 > subtracts hull points (`tac_hurt` in
 > [`apps/openagents-web/belt-tactical.coax`](../../apps/openagents-web/belt-tactical.coax)).
 > This chapter plans hypervelocity hits as calibrated penetration through a

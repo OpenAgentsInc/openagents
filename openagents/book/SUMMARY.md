@@ -84,9 +84,9 @@
 - [55. Models we serve](ch055-models-we-serve.md) — design draft
 - [56. Pylons](ch056-pylons.md) — design draft
 
-## IX. The Verse
+## IX. The Metaverse
 
-- [57. The Verse is a surface](ch057-the-verse-is-a-surface.md) — design draft
+- [57. The Metaverse is a surface](ch057-the-verse-is-a-surface.md) — design draft
 - [58. Agents you can meet](ch058-agents-you-can-meet.md) — design draft
 - [59. Realms and makers](ch059-realms-and-makers.md) — design draft
 - [60. A decision in the world](ch060-a-decision-in-the-world.md) — design draft

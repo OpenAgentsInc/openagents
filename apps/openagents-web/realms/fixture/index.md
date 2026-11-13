@@ -1,6 +1,6 @@
 # Fixture World
 
-The world host's test world at https://openagents.com/worlds/fixture. Every Verse world on openagents.com opens the same way: one table (`apps/openagents-web/realms.json`) names its world, its page, its module, its asset pack and its save slot. This world is the smallest one that uses all of it, so the host is checked by something other than the Haunted House.
+The world host's test world at https://openagents.com/worlds/fixture. Every Metaverse realm on openagents.com opens the same way: one table (`apps/openagents-web/realms.json`) names its world, its page, its module, its asset pack and its save slot. This world is the smallest one that uses all of it, so the host is checked by something other than the Haunted House.
 
 ## What it does
 

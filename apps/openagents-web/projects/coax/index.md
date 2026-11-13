@@ -106,7 +106,7 @@ Plan (8 of 9 done, updated 10-28 15:31 CDT by claude-live-1):
 - [x] Tables from the fold: items, log (Chicago time), plans, plan info, details
 - [x] #test: the Coax fold of the transcript equals model.ts
 - [x] Header chip LIVE / CONNECTING / OFFLINE; tables swap in at the first EOSE; redraw on every event
-- [x] Project-agnostic: the page reads its project from its HTML; header from the 30621 and repo events; Verse page
+- [x] Project-agnostic: the page reads its project from its HTML; header from the 30621 and repo events; Metaverse page
 - [x] Build, check-visuals, Chrome check against the relay
 - [ ] Commit, push, release; check live on production: plan, claim, done and move within 2 s
 

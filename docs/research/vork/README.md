@@ -1,4 +1,4 @@
-# vork: what it teaches Aethyr
+# vork: what it teaches the Metaverse Engine
 
 Research notes, 2026-11-07. Read from a shallow clone of
 [voyager-so/vork](https://github.com/voyager-so/vork) at `44188ba` (release
@@ -13,7 +13,7 @@ rendered on one NVIDIA L4.
 
 | Document | What it covers |
 | --- | --- |
-| [Desktop film rendering for Aethyr](2026-11-07-desktop-film-renderer.md) | Whether and how to add an offline "film" render path to Aethyr's native hosts for Everglade, Animation Lab and Character Create movies, reusing the engine rather than adopting vork |
+| [Desktop film rendering for the Metaverse Engine](2026-11-07-desktop-film-renderer.md) | Whether and how to add an offline "film" render path to the OpenAgents Metaverse Engine's native hosts for Everglade, Animation Lab and Character Create movies, reusing the engine rather than adopting vork |
 | [vork against Animation Lab, Everglade and Character Create](2026-11-07-vork-and-our-realms.md) | Feature-by-feature: what vork has, what each of our three surfaces has today, and what is worth taking |
 
 ## The short answer
@@ -22,7 +22,7 @@ Owner decision, 2026-11-07: film mode is approved (see the film note's
 *Decisions* section).
 
 
-- **Build a desktop film renderer, but as a profile of Aethyr, not a second
+- **Build a desktop film renderer, but as a profile of the Metaverse Engine, not a second
   engine.** All 16 realms already run natively on Vulkan (G0–G6,
   `docs/verse/native-gpu.md`), the Mac Metal host runs Everglade at 120 Hz,
   and `verse/gpu/vk-realm.c --headless` already writes float frames. Every

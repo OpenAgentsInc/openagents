@@ -1,4 +1,4 @@
-# Local Aethyrforge scene commands v1
+# Local Metaverse Engine scene commands v1
 
 `aethyrforge-scene show` reads the running desktop's local Everglade document
 and catalogue. `aethyrforge-scene apply JSON` accepts the

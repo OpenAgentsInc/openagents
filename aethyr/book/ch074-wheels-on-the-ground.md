@@ -6,7 +6,7 @@
 > four suspension rays, tyres inside the friction circle, sticky wheels,
 > jumps and dodges, against a list of planes. It is a game-layer module
 > that only Orbit League loads. This chapter plans a vehicle controller on
-> Aethyr's rigid bodies and queries. Nothing in `aethyr/` runs yet.
+> The OpenAgents Metaverse Engine's rigid bodies and queries. Nothing in `aethyr/` runs yet.
 
 A wheeled vehicle is a rigid body with a few rays and a tyre model. It
 doesn't need a full articulated wheel model to feel right in a game. It
@@ -33,7 +33,7 @@ and the same replay, so a car race replays exactly.
    (`vehicle_roadster`).
 2. **Suspension rays.** Each step, each wheel casts down the chassis's own
    −Y. A wheel that reaches a surface pushes along that surface's normal
-   with a spring and damper. In Aethyr the cast is
+   with a spring and damper. In the Metaverse Engine the cast is
    [chapter 7](ch007-ask-the-world-where-things-are.md)'s raycast, not a
    private list of planes.
 3. **Tyres.** Drive or brake acts along the wheel and grip acts against
@@ -74,7 +74,7 @@ and the same replay, so a car race replays exactly.
 ## What it builds
 
 - `aethyr/vehicle/wheel.coax`: suspension rays, tyres and the friction
-  circle over Aethyr's queries and rigid bodies.
+  circle over the Metaverse Engine's queries and rigid bodies.
 - `aethyr/vehicle/control.coax`: steering, handbrake, stick, air control,
   jumps and dodges as declared game rules.
 
@@ -82,7 +82,7 @@ and the same replay, so a car race replays exactly.
 
 The chapter is done when:
 
-- Every `#test` in today's `aethyr/physics/vehicle.coax` passes against the Aethyr
+- Every `#test` in today's `aethyr/physics/vehicle.coax` passes against the Metaverse Engine
   modules.
 - A car on a heightfield ground and on a box arena takes its wheel contacts
   from the shared query module, with the same answers the character gets.

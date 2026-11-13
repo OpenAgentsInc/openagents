@@ -1,6 +1,6 @@
 # verse-kms: a realm on the display hardware
 
-`verse-kms` runs a Verse realm straight on a Linux screen: no compositor, no
+`verse-kms` runs a Metaverse realm straight on a Linux screen: no compositor, no
 browser, no GPU API. It takes the display with DRM/KMS dumb buffers, reads
 the keyboard from evdev, and rasterizes on every CPU core. The realm's Coax
 steps the game and writes its strokes, exactly as it does on the site; the

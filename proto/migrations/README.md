@@ -1,8 +1,8 @@
 # Engine name migration
 
-The engine is named **Verse**. It was named Metareal (and before that Aethyr),
-and this registry records the Aethyr-to-Metareal ID migration. New prose and
-examples use Verse. The registry's canonical v1 IDs (`metareal-grid-v1`,
+The engine is named **Metaverse**. It was named Metareal (and before that the OpenAgents Metaverse Engine),
+and this registry records the Metaverse Engine-to-Metareal ID migration. New prose and
+examples use the OpenAgents Metaverse. The registry's canonical v1 IDs (`metareal-grid-v1`,
 `metareal-town-v1`, `metareal.record`, `metarealSave`,
 `METAREAL-SIGNATURE-V2`, `openagents.metareal.*`) keep their published
 spelling: renaming them again needs a new registry version with old readers,

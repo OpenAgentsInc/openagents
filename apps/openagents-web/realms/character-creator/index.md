@@ -1,6 +1,6 @@
 # Character Studio
 
-Create a Quaternius human in Aethyr. Changes appear immediately on the animated figure.
+Create a Quaternius human in the OpenAgents Metaverse Engine. Changes appear immediately on the animated figure.
 
 - Choose Male or Female and a Peasant, Ranger, Wizard or Noble outfit.
 - Choose a colorway, cloth dye, skin tone, hair color and eye color (Brown, Blue, Green, Amber, Gray or Violet).
@@ -9,7 +9,7 @@ Create a Quaternius human in Aethyr. Changes appear immediately on the animated 
 - Preview idle, walk, run and cast. Drag to turn and tilt; scroll to zoom. Left-drag rotates; right-drag pans. On touch screens, tap DRAG: ROTATE / DRAG: PAN to switch; RESET centers the camera. Tab selects a control, arrows change it, Space changes animation.
 - RESET restores the studio look. SURPRISE ME changes appearance. The browser keeps this studio's state in its own save slot.
 
-Art: Quaternius Modular Character Outfits - Fantasy Source, Universal Base Characters and Universal Animation Library, CC0 1.0 Universal. The renderer and animation playback are Aethyr's existing people pipeline. No WoW artwork or code is used.
+Art: Quaternius Modular Character Outfits - Fantasy Source, Universal Base Characters and Universal Animation Library, CC0 1.0 Universal. The renderer and animation playback are the Metaverse Engine's existing people pipeline. No WoW artwork or code is used.
 
 The preview stands in a 3D Nature glade: a winding path, pale rock formations,
 green woodland, autumn birches, flowers and mushrooms beneath a cyan sky.

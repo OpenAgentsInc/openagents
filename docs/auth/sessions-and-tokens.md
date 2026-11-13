@@ -18,7 +18,7 @@ one API, so self-contained tokens would only buy us revocation delays.
 | iOS, Mac, Android apps | `oa_at_` access token + `oa_rt_` refresh token, refresh bound to a device key | Access 1 hour; refresh 90 days idle | Each refresh is single use and returns a new one |
 | CLI, tools, agents with keys | NIP-98 per request | No session | — |
 | Agents with API keys | `oa_key_` | Until the grant expires | Owner rotates |
-| Rooms (Everglade, Verse) | Signed seat ticket from the API | Minutes | Re-minted on join |
+| Rooms (Everglade, the OpenAgents Metaverse) | Signed seat ticket from the API | Minutes | Re-minted on join |
 
 ### Native: refresh tokens bound to a device key
 

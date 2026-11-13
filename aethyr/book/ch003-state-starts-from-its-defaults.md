@@ -13,7 +13,7 @@ hours. Its state declared `spin_g: f64 = 1.0`. The native build applied that
 default, but the browser read `0`, because WebAssembly memory starts as
 zeros.
 
-This chapter shows how Aethyr constructs a realm's state the same way on
+This chapter shows how the OpenAgents Metaverse Engine constructs a realm's state the same way on
 every host before the first step.
 
 ## What this chapter teaches
