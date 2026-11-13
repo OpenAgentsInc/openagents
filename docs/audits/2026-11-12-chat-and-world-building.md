@@ -242,9 +242,9 @@ program (#13257) has already built most of what this needs. The section
 "Checked against the AAA program" below says which issue each part follows.
 
 - **Splice gets its own folder and context first.** Its code moves from
-  `apps/openagents-web/splice*` to `splice/`, as Everglade's moved to
+  `apps/openagents-web/splice*` to `verse/splice/` (realms without a book live under `verse/`), as Everglade's moved to
   `everglade/` (P1.2, #13268). It also gets a row in `contexts.txt`
-  (`splice folders: splice/ may load: engine realm-authoring toolchain`), so
+  (`splice folders: verse/splice/ may load: engine realm-authoring toolchain`), so
   `layer-check` (P0.7, DDD.6) judges it. The page stays at `/worlds/splice`.
 - **The catalogue and the landmarks are content, not code** (P4.5, #13294).
   Splice gets an `aethyr.content.v1` document, read and validated by
@@ -443,7 +443,7 @@ applies to the plan, and what changed because of it.
 | AAA or DDD issue | State | What it asks | In this plan |
 |---|---|---|---|
 | P0.7 layer-check, DDD.6 contexts | Closed | No upward loads; each context loads only what `contexts.txt` allows | **Changed.** The chat never loads a world module; the pane is the world's own page, and the card is a proto shape. Splice gets a context. `place.coax` loads nothing from `apps/` |
-| P1.2 game code leaves `apps/openagents-web` | Open | One game module in its own folder | **Changed.** Splice moves to `splice/` before its edit layer lands |
+| P1.2 game code leaves `apps/openagents-web` | Open | One game module in its own folder | **Changed.** Splice moves to `verse/splice/` before its edit layer lands |
 | P1.4 Aethyr layers | Open | Engine code sits in its layer folders | `place.coax` is realm-authoring (`aethyr/forge/`); kit pieces stay in `aethyr/kit/` |
 | P1.6 every engine module has a consumer | Closed | No unused modules | `place.coax` has two consumers on the day it lands; WorldBuilder's copy is deleted |
 | P2.1 Aethyr World | Closed | Every entity lives in one World with columns, systems and a spatial index | **Changed.** Placed pieces are World entities, not draw calls added to `g_world` |

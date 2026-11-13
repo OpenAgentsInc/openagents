@@ -67,10 +67,10 @@ presets: dawn, day, dusk and night.
 
 ## Source
 
-- `splice/splice-game.coax`: the game: tuning, world, rules, interface, and tests
+- `verse/splice/splice-game.coax`: the game: tuning, world, rules, interface, and tests
   that play the whole run.
-- `splice/splice.coax`: the page's frame, and the still scenes below.
-- `splice/gpu/splice.coax`: Anime Lab's shaders plus Splice's own overlay pass
+- `verse/splice/splice.coax`: the page's frame, and the still scenes below.
+- `verse/splice/gpu/splice.coax`: Anime Lab's shaders plus Splice's own overlay pass
   (ink on paper needs source-over blending).
 - `aethyr/kit/machines.coax`, `aethyr/kit/land.coax`, `aethyr/render/cel-mesh.coax`: the engine's
   cel kits and mesh writers.

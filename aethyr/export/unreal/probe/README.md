@@ -13,7 +13,7 @@ before any exporter work (GitHub #13399):
 | File | What it is |
 |---|---|
 | `../aethyr_host.h` | The host interface with real pointers |
-| `../../../../splice/splice-ue-face.c` | Splice's face for that interface |
+| `../../../../verse/splice/splice-ue-face.c` | Splice's face for that interface |
 | `frame-dump.c` | Runs a fixed 34-frame script and prints one hash line per chunk a host reads |
 | `AethyrProbe/` | A bare Unreal project whose one module compiles the world's C and runs the script at start |
 | `import_axes.py` | Imports the axis fixture in the Unreal editor and prints where the cubes land |
@@ -28,17 +28,17 @@ repo first (to `$T`): Unreal writes build output beside the project.
 
 ```sh
 # 1. The world's C, as the web build emits it
-coax/bin/coax c splice/splice.coax --library --build-profile release --header $S/splice.h > $S/splice.c
+coax/bin/coax c verse/splice/splice.coax --library --build-profile release --header $S/splice.h > $S/splice.c
 coax/bin/coax c apps/openagents-web/animelab-style.coax --library --build-profile release --header $S/Animelab-style.h > $S/animelab-style.c
 
 # 2. Native reference lines
 clang -std=c11 -O1 -ffp-contract=off -fno-fast-math -w -I $S -I aethyr/export/unreal \
-  $S/splice.c $S/animelab-style.c splice/splice-ue-face.c \
+  $S/splice.c $S/animelab-style.c verse/splice/splice-ue-face.c \
   aethyr/export/unreal/probe/frame-dump.c -o $S/dump && $S/dump > $S/native.txt
 
 # 3. Inside Unreal, Mac
 mkdir -p $T/Source/AethyrProbe/Private/World
-cp $S/splice.[ch] $S/animelab-style.c $S/Animelab-style.h splice/splice-ue-face.c \
+cp $S/splice.[ch] $S/animelab-style.c $S/Animelab-style.h verse/splice/splice-ue-face.c \
   aethyr/export/unreal/aethyr_host.h aethyr/export/unreal/probe/frame-dump.c $T/Source/AethyrProbe/Private/World/
 (cd $UE && ./Engine/Build/BatchFiles/RunUBT.sh AethyrProbeEditor Mac Development -project=$T/AethyrProbe.uproject -NoHotReload)
 $UE/Engine/Binaries/Mac/UnrealEditor-Cmd $T/AethyrProbe.uproject -run=pythonscript -script="print(1)" -nullrhi -unattended -stdout | grep AETHYR_PROBE
