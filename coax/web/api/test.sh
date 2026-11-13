@@ -9,8 +9,17 @@
 #                           service, left running for the dev server at ORIGIN to send /api/ to
 #                           (coax/web/serve.sh APP --listen HOST:PORT --api API_PORT), with no checks run.
 #                           It prints the service's port and a link that logs a throwaway admin in.
-#                           OA_SERVE_INFERENCE_TOKEN, when set, is a Google access token: /api/v1/inference
-#                           and /api/chat/complete then ask Vertex itself, not the checks' fake model.
+#                           The build is the local serve mode's (-DOA_LOCAL_SERVE, never the image's): a
+#                           request from this machine with no login is the throwaway admin's, so the page needs
+#                           no login step (auth.c local_admin). /api/v1/inference and /api/chat/complete ask
+#                           Gemini on Vertex with a token kept fresh in a 0600 file: the service account's
+#                           gcloud config (OA_SERVE_GCLOUD_CONFIG, else ../.secrets/gcloud-sa-config beside the
+#                           main checkout) when there is one, else your own gcloud login. With neither they ask
+#                           openagents.com's /api/v1/inference, signed by your `openagents` login (profile
+#                           OA_SERVE_PROFILE, default "default"; the CLI is OA_SERVE_CLI, else
+#                           ~/.openagents/bin/openagents). OA_SERVE_MODEL=openagents skips Google;
+#                           OA_SERVE_INFERENCE_TOKEN, a Google access token, is used as it is, not refreshed.
+#                           OA_SERVE_PORT_FILE: the API's port is written there once it answers (serve.sh).
 #                           Everything is gone when it is stopped.
 # On macOS it takes Apple's clang and Homebrew's postgresql@16, secp256k1 and
 # openssl@3; on a Linux build host the system's clang (else gcc, or CC),
@@ -88,7 +97,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_rollout_test.py"
 PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_snapshot_test.py"
 lap "the policy, NIP-98 and deploy checks"
 fi
-work="$(mktemp -d)"; trap 'kill ${api_pid:-} ${notice_relay_pid:-} ${runner_pid:-} ${ports_pid:-} 2>/dev/null || true; "$pgbin/pg_ctl" -D "$work/db" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
+work="$(mktemp -d)"; trap 'kill ${api_pid:-} ${notice_relay_pid:-} ${runner_pid:-} ${ports_pid:-} ${token_pid:-} 2>/dev/null || true; "$pgbin/pg_ctl" -D "$work/db" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
 # The binary's C files and Coax units are api-sources.sh's, the one list every local build reads (#13380).
 source "$here/api-sources.sh"
 api_sources "$here" "$work" "$cli_coax"
@@ -102,7 +111,10 @@ done
 fi
 # OA_LNADDR_TEST_FETCH: this build's Lightning Address fetches go to the fake services on SPARK_PORT
 # (test_makers_tips.py); the image is built without it and fetches only public https hosts.
-"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -DOA_LNADDR_TEST_FETCH -fsanitize=address,undefined \
+# --serve: the local serve mode (OA_LOCAL_SERVE: the local admin, the model's token file and fallback); the
+# checks' build and the image never have it, and test_zchat.py checks that this build refuses the local admin.
+local_serve=(); [[ $serve == 0 ]] || local_serve=(-DOA_LOCAL_SERVE)
+"$cc" -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -DOA_LNADDR_TEST_FETCH ${local_serve[@]+"${local_serve[@]}"} -fsanitize=address,undefined \
   -I"$work" ${pq_inc[@]+"${pq_inc[@]}"} ${secp_inc[@]+"${secp_inc[@]}"} ${ssl_inc[@]+"${ssl_inc[@]}"} \
   -o "$work/api" "${API_SOURCES[@]}" \
   ${pq_lib[@]+"${pq_lib[@]}"} -lpq ${secp_lib[@]+"${secp_lib[@]}"} -lsecp256k1 ${ssl_lib[@]+"${ssl_lib[@]}"} -lssl -lcrypto -lcurl -lz -lm
@@ -219,12 +231,56 @@ export OA_VERSE_PACK_PER_HOUR=3   # by its old name on purpose: the API still re
 export ANIME_PORT
 # The checks ask a fake model on INFER_PORT, five requests a day. Serving a page with a token, the model is Vertex's.
 infer_url="http://127.0.0.1:$INFER_PORT/chat/completions" infer_token=test-token infer_daily=5 api_origin="http://127.0.0.1:$api_port"
+# OA_LOCAL_ADMIN names the admin a request from this machine with no login is, in the local serve mode only;
+# the checks set it too, so test_zchat.py shows a build without OA_LOCAL_SERVE refuses it all the same.
+export OA_LOCAL_ADMIN="$OA_ADMIN_PUBKEYS"
+local_model=()
 if [[ $serve == 1 ]]; then
   api_origin="$serve_origin"
+  infer_url="https://aiplatform.us.rep.googleapis.com/v1/projects/openagentsgemini/locations/us/endpoints/openapi/chat/completions"
+  infer_token="" infer_daily=500
+  # The model's Google token, kept fresh in a 0600 file the API reads on every call (never on a command line).
+  token_file="$work/google.token"; (umask 077; : > "$token_file")
+  common="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)"
+  sa_config="${OA_SERVE_GCLOUD_CONFIG:-$(dirname "$(dirname "$common")")/.secrets/gcloud-sa-config}"
+  gcloud_bin="$(command -v gcloud || true)"
+  google_token() {   # a token into the file, or false; an old token is kept until it is 50 minutes old
+    local t
+    if [[ -n "$gcloud_bin" ]]; then
+      if [[ -d "$sa_config" ]]; then t="$(CLOUDSDK_CONFIG="$sa_config" "$gcloud_bin" auth print-access-token 2>/dev/null </dev/null || true)"
+      else t="$("$gcloud_bin" auth print-access-token 2>/dev/null </dev/null || true)"; fi
+    fi
+    if [[ "$t" =~ ^[A-Za-z0-9._-]{20,}$ ]]; then (umask 077; printf '%s\n' "$t" > "$token_file.new") && mv "$token_file.new" "$token_file"; return 0; fi
+    [[ -n "$(find "$token_file" -mmin +50 2>/dev/null)" ]] && : > "$token_file"
+    return 1
+  }
   if [[ -n "${OA_SERVE_INFERENCE_TOKEN:-}" ]]; then
-    infer_url="https://aiplatform.us.rep.googleapis.com/v1/projects/openagentsgemini/locations/us/endpoints/openapi/chat/completions"
-    infer_token="$OA_SERVE_INFERENCE_TOKEN" infer_daily=500
+    (umask 077; printf '%s\n' "$OA_SERVE_INFERENCE_TOKEN" > "$token_file")
+    model_says="Gemini on Vertex, with the token in OA_SERVE_INFERENCE_TOKEN (not refreshed: it lasts an hour)"
+  elif [[ "${OA_SERVE_MODEL:-}" != openagents ]] && google_token; then
+    if [[ -d "$sa_config" ]]; then model_says="Gemini on Vertex, with the service account's token ($sa_config), refreshed every 40 minutes"
+    else model_says="Gemini on Vertex, with your gcloud login's token, refreshed every 40 minutes"; fi
   fi
+  if [[ -z "${OA_SERVE_INFERENCE_TOKEN:-}" && "${OA_SERVE_MODEL:-}" != openagents ]]; then
+    # Every minute: a token again when it is 40 minutes old, or when there is none (a gcloud login since).
+    ( while sleep 60; do
+        [[ -s "$token_file" && -z "$(find "$token_file" -mmin +40 2>/dev/null)" ]] || google_token || true
+      done ) & token_pid=$!
+  fi
+  # With no Google token: openagents.com's inference route, signed by this computer's `openagents` login.
+  cli="${OA_SERVE_CLI:-$HOME/.openagents/bin/openagents}"
+  [[ -x "$cli" ]] || cli="$(dirname "$common")/apps/openagents-cli/build/openagents"
+  remote="${OA_SERVE_REMOTE_API:-https://openagents.com}/api/v1/inference"
+  profile="${OA_SERVE_PROFILE:-default}"
+  if [[ -x "$cli" ]]; then local_model=(OA_INFERENCE_SIGNER="$cli" OA_INFERENCE_SIGNER_PROFILE="$profile" OA_INFERENCE_REMOTE_URL="$remote"); fi
+  if [[ -z "${model_says:-}" ]]; then
+    if [[ -x "$cli" ]] && "$cli" --profile "$profile" nostr show >/dev/null 2>&1; then
+      model_says="openagents.com's, on your openagents login (profile $profile): no Google login here"
+    else
+      model_says="none: no gcloud login and no openagents login here. Run gcloud auth login (or openagents login); the next turn uses it"
+    fi
+  fi
+  local_model+=(OA_INFERENCE_TOKEN_FILE="$token_file")
 fi
 OA_CHAT_RUNNER_URL="http://127.0.0.1:$CHAT_PORT" OA_CHAT_DAILY_USD=1 \
 OA_AGENT_PROJECTS=agent-proj OA_AGENT_WAKE_URL="http://127.0.0.1:$WAKE_PORT/wake" OA_AGENT_WAKE_TOKEN=test-wake \
@@ -241,7 +297,7 @@ OA_TOKENINFO_URL="http://127.0.0.1:$TOKENINFO_PORT/tokeninfo" OA_JOBS_CALLER=job
 OA_NPC_URL="http://127.0.0.1:$NPC_PORT/model" OA_NPC_TOKEN=test-token OA_NPC_DAILY_CAP=5 OA_NPC_KEY_10M=3 OA_NPC_ADDR_10M=5 OA_NPC_RUNNING=3 OA_NPC_RUNNING_KEY=1 OA_PIECE_URL="http://127.0.0.1:$PIECE_PORT/model" OA_PIECE_DAILY_CAP=40 OA_EDIT_URL="http://127.0.0.1:$PIECE_PORT/edit-model" OA_EDIT_TIMEOUT_MS=1500 OA_BUILDER_URL="http://127.0.0.1:$BUILDER_PORT/model" OA_BUILDER_TIMEOUT_MS=1200 OA_BUILDER_PER_DAY=6 \
 OA_ANIME_URL="http://127.0.0.1:$ANIME_PORT/model" OA_ANIME_TIMEOUT_MS=500 \
   OA_BUILD_SHA=1111111111111111111111111111111111111111 OA_RELEASE_ID=123e4567-e89b-42d3-a456-426614174000 K_SERVICE=oa-api-staging K_REVISION=oa-api-staging-00002-new \
-  OA_ROOM_CHECKPOINTS=1 OA_API_ORIGIN="$api_origin" "$work/api" --listen 127.0.0.1:$api_port --migrations "$here/migrations" 2>"$work/api.log" & api_pid=$!
+  OA_ROOM_CHECKPOINTS=1 OA_API_ORIGIN="$api_origin" env ${local_model[@]+"${local_model[@]}"} "$work/api" --listen 127.0.0.1:$api_port --migrations "$here/migrations" 2>"$work/api.log" & api_pid=$!
 # The API listens once its migrations are in, and on a busy host they take longer than any fixed wait
 # (5 s was not enough, #13376): wait for its answer for as long as its process lives. Ten minutes with
 # the process there and no answer is a hung API, and the run says so.
@@ -289,11 +345,16 @@ if [[ $serve == 1 ]]; then
   else
     echo "serve: no claude on PATH, so /chat's Claude turns have no runner"
   fi
+  # The local admin: a request from this machine with no login is the admin's (auth.c local_admin).
+  admin_now="$(curl -s -o /dev/null -w '%{http_code}' -m 5 -H "Host: 127.0.0.1:$api_port" "http://127.0.0.1:$api_port/api/chat/account" || true)"
+  [[ "$admin_now" == 200 ]] || { echo "test.sh: the local admin isn't working (/api/chat/account answered $admin_now)" >&2; cat "$work/api.log" >&2; exit 1; }
   login="$("$SIGN" --key "$ADMIN_KEY" GET "$api_origin/api/admin/login")"
   echo "serve: the API is on 127.0.0.1:$api_port (its log: $work/api.log)"
-  echo "serve: run the dev server with --api $api_port"
-  echo "serve: admin login, good for 60 seconds: $api_origin/api/admin/login?auth=$(python3 -I -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$login")&next=chat"
-  echo "serve: a new link later: auth=\$($SIGN --key $ADMIN_KEY GET $api_origin/api/admin/login), then open $api_origin/api/admin/login?auth=<that, URL-encoded>&next=chat"
+  [[ -n "${OA_SERVE_PORT_FILE:-}" ]] || echo "serve: run the dev server with --api $api_port"
+  echo "serve: on this computer you are its admin: no login step"
+  echo "serve: the model: $model_says"
+  echo "serve: from another computer, an admin login good for 60 seconds: $api_origin/api/admin/login?auth=$(python3 -I -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$login")&next=chat"
+  [[ -z "${OA_SERVE_PORT_FILE:-}" ]] || printf '%s\n' "$api_port" > "$OA_SERVE_PORT_FILE"
   wait "$api_pid"
   exit 0
 fi

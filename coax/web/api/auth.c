@@ -671,6 +671,9 @@ static bool from_session(PGconn *db, const char *sha, bool web, const char *toke
   return true;
 }
 
+#ifdef OA_LOCAL_SERVE
+static bool local_admin(const request *q, PGconn *db, auth_principal *p);
+#endif
 // Resolves the request's one credential. false with *status (400 two credentials, 401 a bad
 // credential) when it answered nothing yet but must be refused.
 static bool resolve(const request *q, PGconn *db, auth_principal *p, int *status) {
@@ -740,11 +743,19 @@ static bool resolve(const request *q, PGconn *db, auth_principal *p, int *status
       api_header(q, "X-Verse-Player", p->player, sizeof p->player);
       return true;
     }
+#ifdef OA_LOCAL_SERVE
+    // On the local serve mode an unknown cookie is another local API's login on this host (cookies don't
+    // keep to a port): it is left alone, and the request is the local admin's as with no cookie.
+    if (local_admin(q, db, p)) return true;
+#endif
     // A stale or unknown cookie is nobody, and is cleared.
     memset(p, 0, sizeof *p);
     api_header(q, "X-Verse-Player", p->player, sizeof p->player);
     if (!set_cookie[0]) cookie_header(set_cookie, sizeof set_cookie, SESSION_COOKIE, "", 0);
   }
+#ifdef OA_LOCAL_SERVE
+  if (!has_cookie && !has_auth && local_admin(q, db, p)) return true;
+#endif
   p->kind = p->player[0] ? AP_KIND_GUEST : AP_NOBODY;
   return true;
 }
@@ -1489,6 +1500,61 @@ bool auth_login_key_redirect(const request *q, PGconn *db, const char *pk, const
   api_respond(q->fd, 303, "text/plain", headers, "", 0);
   return true;
 }
+
+#ifdef OA_LOCAL_SERVE
+// ---------------------------------------------------------------- the local admin (#13463)
+// Only in the local serve mode: test.sh --serve builds with -DOA_LOCAL_SERVE and sets OA_LOCAL_ADMIN to
+// its throwaway admin's key; the image (Dockerfile, deploy.sh) never defines it, and the checks' build
+// refuses a request with no credential though OA_LOCAL_ADMIN is set (test_zchat.py). A request with no
+// credential is that admin's when it comes to this machine from this machine: the peer is loopback,
+// the Host is a loopback name, no proxy put an X-Forwarded-For on it, and the browser didn't say it
+// came from another site. It runs on one L2 web session of its own, made on first use and again when
+// it ends, so every route's own rules (and Origin checks) hold as for a person logged in.
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+static char local_digest[65];
+static bool loopback_peer(int fd) {
+  struct sockaddr_storage a; socklen_t n = sizeof a;
+  if (getpeername(fd, (struct sockaddr *)&a, &n)) return false;
+  if (a.ss_family == AF_INET) return (ntohl(((struct sockaddr_in *)&a)->sin_addr.s_addr) >> 24) == 127;
+  if (a.ss_family == AF_INET6) return IN6_IS_ADDR_LOOPBACK(&((struct sockaddr_in6 *)&a)->sin6_addr) != 0;
+  return false;
+}
+static bool loopback_host(const request *q) {
+  char h[256];
+  if (!api_header(q, "Host", h, sizeof h)) return false;
+  static const char *const names[] = {"127.0.0.1", "localhost", "[::1]", NULL};
+  for (const char *const *n = names; *n; n++) {
+    size_t k = strlen(*n);
+    if (!strncmp(h, *n, k) && (h[k] == 0 || h[k] == ':')) return true;
+  }
+  return false;
+}
+static bool local_admin(const request *q, PGconn *db, auth_principal *p) {
+  const char *pk = getenv("OA_LOCAL_ADMIN");
+  char xff[8], site[32];
+  if (!pk || strlen(pk) != 64 || !admin_is(pk)) return false;
+  if (api_header(q, "X-Forwarded-For", xff, sizeof xff) || !loopback_peer(q->fd) || !loopback_host(q)) return false;
+  if (api_header(q, "Sec-Fetch-Site", site, sizeof site) && strcmp(site, "same-origin") && strcmp(site, "none")) return false;
+  char keep[sizeof set_cookie]; memcpy(keep, set_cookie, sizeof keep);
+  for (int round = 0; round < 2; round++) {
+    if (local_digest[0] && from_session(db, local_digest, true, NULL, p)) { memcpy(set_cookie, keep, sizeof keep); return true; }
+    memcpy(set_cookie, keep, sizeof keep);   // an ended local session clears no cookie of the browser's
+    char acct[40], kid[24], tok[160], dig[65]; bool made = false;
+    if (!key_account(db, pk, "admin", acct, kid, &made) || !new_token("oas_", tok, sizeof tok, dig)) return false;
+    const char *s[8] = {dig, acct, "nostr", kid, "L2", "web", "This computer (the local API)", NULL};
+    PGresult *r = PQexecParams(db, "SELECT auth.session_new($1, $2, $3, $4::bigint, $5, $6, $7, $8)", 8, NULL, s, NULL, NULL, 0);
+    bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0);
+    PQclear(r);
+    memset(tok, 0, sizeof tok);
+    if (!ok) return false;
+    memcpy(local_digest, dig, sizeof local_digest);
+    api_log("auth: the local admin's session made");
+  }
+  return false;
+}
+#endif
 
 // ---------------------------------------------------------------- the routes
 bool auth_api_route(const request *q) {

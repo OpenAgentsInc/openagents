@@ -514,6 +514,13 @@ s, b = cpage("GET", "account")
 check("chat account: an admin with no saved credential reads claude null, and no key", s == 200 and json.loads(b) == {"claude": None}, (s, b[:160]))
 s, b = cpage("GET", "account", cookie=False)
 check("chat account: no session is 401", s == 401, (s, b[:120]))
+# The local admin (auth.c local_admin, #13463) is the local serve mode's only: this build has no OA_LOCAL_SERVE,
+# so a request from this machine with no login, no proxy and a loopback Host is nobody, though test.sh sets
+# OA_LOCAL_ADMIN to the admin's key as test.sh --serve does.
+for _path, _raw in (("/api/chat/account", None), ("/api/chat/complete", json.dumps(_ask).encode())):
+    s, b, _ = call("GET" if _raw is None else "POST", _path, _raw, {"Content-Type": "application/json"} if _raw else {})
+    check(f"local admin: a build without OA_LOCAL_SERVE refuses a loopback request with no login ({_path}), though OA_LOCAL_ADMIN is set",
+          os.environ.get("OA_LOCAL_ADMIN") == ADMIN_PUB and s == 401, (s, b[:120]))
 s, b = cpage("GET", "turn", query="?t=abc")
 check("chat turn: t must be a number", s == 400, (s, b[:120]))
 s, b = cpage("GET", "turn", query="?t=999999999")

@@ -425,7 +425,8 @@ static void proxy_api(client *c) {
   inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
   if (fd < 0 || connect(fd, (struct sockaddr *)&a, sizeof a)) {
     if (fd >= 0) close(fd);
-    respond(c->fd, 502, "Bad Gateway", "application/json", "{\"error\":\"the local API is not running\"}", 40); drop(c); return;
+    static const char down[] = "{\"error\":\"The local API isn't running. Stop this dev server and start it again with coax/web/serve.sh apps/openagents-web, which starts the API.\"}";
+    respond(c->fd, 502, "Bad Gateway", "application/json", down, sizeof down - 1); drop(c); return;
   }
   send_all(fd, c->buf, c->n);
   if (is_upgrade(c)) { tunnel(c->fd, fd); close(fd); drop(c); return; }
@@ -665,6 +666,11 @@ static void handle_request(client *c) {
   if (!static_mode && !realm_request && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/worlds/", 12)) { worlds_local(c, method, url); return; }
   if (!static_mode && !realm_request && !strcmp(method, "POST") && !strcmp(url, "/coaxial/code")) { code_local(c); return; }
   if (api_port && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/", 5)) { proxy_api(c); return; }
+  // No API behind this server (--api not given, or --static): the chat and the editor's agent say what to run (#13463).
+  if (!api_port && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/chat/", 10)) {
+    static const char none[] = "{\"error\":\"This dev server has no API behind it, so we can't reach a model. Start it with coax/web/serve.sh apps/openagents-web, which starts the API.\"}";
+    respond(c->fd, 503, "Service Unavailable", "application/json", none, sizeof none - 1); drop(c); return;
+  }
   if (local_port && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/local/", 7)) { proxy_local(c, url); return; }
   if (sscanf(c->buf, "%7s %1023s", method, url) != 2 || strcmp(method, "GET")) {
     respond(c->fd, 405, "Method Not Allowed", "text/plain", "GET only\n", 9); drop(c); return;

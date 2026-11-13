@@ -46,6 +46,7 @@
 #include "api.h"
 #include "nostr.h"
 #include <curl/curl.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -89,6 +90,18 @@ static size_t keep(buf *b, const char *data, size_t k) {
 }
 static size_t take(char *data, size_t size, size_t n, void *user) { return keep(user, data, size * n); }
 static bool token(char *out, size_t cap) {
+#ifdef OA_LOCAL_SERVE
+  // The local serve mode's token (#13463): test.sh --serve keeps a fresh one in this file (0600),
+  // from the service account's gcloud config or the developer's own gcloud login; empty when neither.
+  const char *file = getenv("OA_INFERENCE_TOKEN_FILE");
+  if (file && *file) {
+    FILE *f = fopen(file, "r");
+    out[0] = 0;
+    if (f) { if (!fgets(out, (int)cap, f)) out[0] = 0; fclose(f); }
+    out[strcspn(out, "\r\n")] = 0;
+    return out[0] != 0;
+  }
+#endif
   const char *given = getenv("OA_INFERENCE_TOKEN");
   if (given && *given) { snprintf(out, cap, "%s", given); return true; }
   CURL *h = curl_easy_init();
@@ -310,7 +323,8 @@ static bool credit_route(const request *q) {
 
 // The relay: Vertex's status line once its first bytes come, then its bytes
 // as they come; everything also kept (to 4 MB) for the usage at the end.
-typedef struct { int fd; CURL *h; bool stream, started, gone; buf all; } relay_t;
+// hold (the local serve mode): an answer that isn't a 200 is kept, not relayed (held), and answered in words.
+typedef struct { int fd; CURL *h; bool stream, started, gone, hold, held; buf all; } relay_t;
 static bool send_all(int fd, const char *p, size_t n) {
   while (n) { ssize_t k = write(fd, p, n); if (k <= 0) return false; p += k; n -= (size_t)k; }
   return true;
@@ -325,7 +339,11 @@ static void start(relay_t *r, long status) {
 }
 static size_t relay(char *data, size_t size, size_t n, void *user) {
   relay_t *r = user; size_t k = size * n;
-  if (!r->started) { long status = 0; curl_easy_getinfo(r->h, CURLINFO_RESPONSE_CODE, &status); start(r, status ? status : 502); }
+  if (!r->started && !r->held) {
+    long status = 0; curl_easy_getinfo(r->h, CURLINFO_RESPONSE_CODE, &status);
+    if (r->hold && status != 200) r->held = true; else start(r, status ? status : 502);
+  }
+  if (r->held) { if (r->all.n < (1u << 16)) keep(&r->all, data, k); return k; }
   if (!r->gone && !send_all(r->fd, data, k)) r->gone = true;   // the caller left: stop asking Vertex
   if (r->all.n < (4u << 20)) keep(&r->all, data, k);
   return r->gone ? 0 : k;
@@ -342,26 +360,111 @@ static int last_int(const char *text, const char *name) {
   return v;
 }
 
-// In the child: asks Vertex, relays its answer, keeps the call.
-static void answer(int fd, const char *who, const char *model, const char *request, bool stream, bool free_key) {
+#ifdef OA_LOCAL_SERVE
+// ---- the local serve mode's model (#13463), never in the image: Vertex on the token file's token, else
+// our deployed API's /api/v1/inference signed NIP-98 by the developer's `openagents` login (the CLI signs:
+// OA_INFERENCE_SIGNER is its binary, OA_INFERENCE_SIGNER_PROFILE its profile), so no key is pasted
+// anywhere. A failure is answered in words that say why and what to run, not as the model's own body.
+#include <spawn.h>
+#include <sys/wait.h>
+extern char **environ;
+// "Nostr <base64>" for POST url with body, from the CLI, into out; false when it can't sign.
+static bool local_sign(const char *url, const char *body, char *out, size_t cap) {
+  const char *cli = getenv("OA_INFERENCE_SIGNER"), *profile = env_or("OA_INFERENCE_SIGNER_PROFILE", "default");
+  if (!cli || !*cli) return false;
+  char path[] = "/tmp/oa-local-sign-XXXXXX";
+  int bf = mkstemp(path);
+  if (bf < 0) return false;
+  bool wrote = send_all(bf, body, strlen(body));
+  close(bf);
+  int p[2];
+  if (!wrote || pipe(p)) { unlink(path); return false; }
+  posix_spawn_file_actions_t fa;
+  posix_spawn_file_actions_init(&fa);
+  posix_spawn_file_actions_adddup2(&fa, p[1], 1);
+  posix_spawn_file_actions_addclose(&fa, p[0]);
+  posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+  char *argv[] = {(char *)cli, "--profile", (char *)profile, "nostr", "auth", (char *)url, "--method", "POST", "--body", path, NULL};
+  pid_t pid;
+  signal(SIGCHLD, SIG_DFL);   // this child waits for its own
+  int spawned = posix_spawn(&pid, cli, &fa, NULL, argv, environ);
+  posix_spawn_file_actions_destroy(&fa);
+  close(p[1]);
+  size_t n = 0; ssize_t k;
+  while (spawned == 0 && n + 1 < cap && (k = read(p[0], out + n, cap - 1 - n)) > 0) n += (size_t)k;
+  close(p[0]);
+  out[n] = 0;
+  int st = 0;
+  bool ok = spawned == 0 && waitpid(pid, &st, 0) == pid && WIFEXITED(st) && WEXITSTATUS(st) == 0;
+  unlink(path);
+  out[strcspn(out, "\r\n")] = 0;
+  return ok && !strncmp(out, "Nostr ", 6);
+}
+// The words for a failed call: via is 'g' (Vertex), 'o' (our deployed API) or 0 (no model at all).
+static const char *local_words(char via, long status) {
+  if (via == 'g') {
+    if (status == 401 || status == 403) return "Google turned down this computer's model token. Run gcloud auth login, then send it again.";
+    if (status == 429) return "Google is limiting the model just now. Wait a minute, then send it again.";
+    if (status == 0) return "We couldn't reach Google for the model. Check this computer's connection, then send it again.";
+    return "The model didn't answer. Send it again; the local API's log (api.log, named when it started) says why.";
+  }
+  if (via == 'o') {
+    if (status == -1) return "We couldn't sign the request with your openagents login. Run openagents login, then send it again.";
+    if (status == 401) return "openagents.com didn't accept this computer's openagents login. Run openagents login, then send it again.";
+    if (status == 402 || status == 403) return "openagents.com doesn't let this account use the model from a dev server. Run gcloud auth login to use your own Google login instead.";
+    if (status == 429) return "openagents.com is limiting this account's model use just now. Wait a minute, then send it again.";
+    if (status == 0) return "We couldn't reach openagents.com for the model. Check this computer's connection, then send it again.";
+    return "openagents.com's model didn't answer. Send it again.";
+  }
+  return "We can't reach a model from this dev server: this computer has no gcloud login and no openagents login. "
+         "Run gcloud auth login (or openagents login), then send it again.";
+}
+static void local_refuse(int fd, int status, const char *words) {
+  char out[600]; snprintf(out, sizeof out, "{\"error\":\"%s\"}", words);
+  api_json(fd, status, out);
+}
+#endif
+
+// In the child: asks Vertex, relays its answer, keeps the call. original: the asker's own body (the local
+// serve mode sends it on to our deployed API, which reads the model's name, not Vertex's).
+static void answer(int fd, const char *who, const char *model, const char *request, const char *original, bool stream, bool free_key) {
   relay_t r = {.fd = fd, .stream = stream};
-  char tok[4096], auth[4200];
+  char tok[12000], auth[12100];
   long status = 0;
   double t0 = api_now_ms();
-  if (token(tok, sizeof tok)) {
+  const char *url = env_or("OA_INFERENCE_URL", VERTEX_CHAT), *send = request;
+  bool have = token(tok, sizeof tok);
+  snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
+  (void)original;
+#ifdef OA_LOCAL_SERVE
+  char via = have ? 'g' : 0;
+  const char *remote = getenv("OA_INFERENCE_REMOTE_URL");
+  if (!have && remote && *remote && getenv("OA_INFERENCE_SIGNER")) {
+    via = 'o'; url = remote; send = original;
+    have = local_sign(remote, original, tok, sizeof tok);
+    snprintf(auth, sizeof auth, "Authorization: %s", tok);
+    if (!have) { local_refuse(fd, 502, local_words('o', -1)); r.started = true; }
+  }
+  if (!have && !via) { local_refuse(fd, 503, local_words(0, 0)); r.started = true; }
+  r.hold = true;
+#endif
+  if (have) {
     r.h = curl_easy_init();
-    snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
     struct curl_slist *hd = curl_slist_append(curl_slist_append(NULL, auth), "Content-Type: application/json");
-    curl_easy_setopt(r.h, CURLOPT_URL, env_or("OA_INFERENCE_URL", VERTEX_CHAT));
+    curl_easy_setopt(r.h, CURLOPT_URL, url);
     curl_easy_setopt(r.h, CURLOPT_HTTPHEADER, hd);
-    curl_easy_setopt(r.h, CURLOPT_POSTFIELDS, request);
+    curl_easy_setopt(r.h, CURLOPT_POSTFIELDS, send);
     curl_easy_setopt(r.h, CURLOPT_WRITEFUNCTION, relay);
     curl_easy_setopt(r.h, CURLOPT_WRITEDATA, &r);
     curl_easy_setopt(r.h, CURLOPT_TIMEOUT, 300L);
-    if (curl_easy_perform(r.h) == CURLE_OK || r.started) curl_easy_getinfo(r.h, CURLINFO_RESPONSE_CODE, &status);
+    if (curl_easy_perform(r.h) == CURLE_OK || r.started || r.held) curl_easy_getinfo(r.h, CURLINFO_RESPONSE_CODE, &status);
     curl_slist_free_all(hd); curl_easy_cleanup(r.h);
-    memset(tok, 0, sizeof tok); memset(auth, 0, sizeof auth);
   } else api_log("inference: no token");
+  memset(tok, 0, sizeof tok); memset(auth, 0, sizeof auth);
+#ifdef OA_LOCAL_SERVE
+  if (!r.started && via) local_refuse(fd, status == 401 || status == 403 || status == 0 ? 502 : (int)status, local_words(via, status));
+  r.started = true;
+#endif
   if (!r.started) api_json(fd, 502, "{\"error\":\"the model was not reached\"}");
   char http[16], in[16], out[16], taken[16];
   snprintf(http, sizeof http, "%ld", status);
@@ -415,23 +518,22 @@ bool inference_ask(const request *q, const char *pubkey, bool free_key) {
   PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, x->>'model', x->>'stream', "
                                  "(x - 'status' || CASE WHEN x ? 'credit' THEN jsonb_build_object('credit', $6::text) ELSE '{}' END)::text "
                                  "FROM inference.request($1, $2, $3::int, $4::bigint, $5::bool) x", 6, NULL, v, NULL, NULL, 0);
-  free(body);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     api_log("inference: %s", PQerrorMessage(db));
-    PQclear(r);
+    PQclear(r); free(body);
     api_json(q->fd, 500, "{\"error\":\"not asked\"}");
     return true;
   }
   int status = atoi(PQgetvalue(r, 0, 0));
   if (status == 402) {   // no credit: where to buy it
     char out[600]; snprintf(out, sizeof out, "%s", PQgetvalue(r, 0, 5));
-    PQclear(r);
+    PQclear(r); free(body);
     api_json(q->fd, 402, out);
     return true;
   }
   if (status != 200) {
     char out[200]; snprintf(out, sizeof out, "{\"error\":\"%s\"}", PQgetvalue(r, 0, 1));
-    PQclear(r);
+    PQclear(r); free(body);
     api_json(q->fd, status, out);
     return true;
   }
@@ -441,10 +543,10 @@ bool inference_ask(const request *q, const char *pubkey, bool free_key) {
   signal(SIGCHLD, SIG_IGN);   // children are never waited for
   pid_t pid = fork();
   if (pid == 0) {             // the child answers; the parent's database connection is never touched here
-    answer(q->fd, pubkey, model, request, stream, free_key);
+    answer(q->fd, pubkey, model, request, body, stream, free_key);
     _exit(0);
   }
   if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
-  free(request); free(model);
+  free(request); free(model); free(body);
   return true;   // the parent closes its copy of the connection
 }

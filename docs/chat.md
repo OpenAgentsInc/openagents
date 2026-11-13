@@ -8,10 +8,33 @@ so far, streamed, through `POST /api/chat/complete`: a Chat Completions
 request handed to the inference route's own ask (`inference.c`
 `inference_ask`: Gemini on Vertex, its caps and its metering) for the admin
 the cookie names. No agent is behind it yet, and nothing is stored.
-To run it on this Mac with real answers: `OA_SERVE_INFERENCE_TOKEN=$(gcloud
-auth print-access-token) coax/web/api/test.sh --serve http://127.0.0.1:PORT`,
-then `coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:PORT --api
-API_PORT`, and open the login link it prints (the token lasts an hour). Everything below describes the page before
+To run it on your own computer with real answers, run one command:
+
+```sh
+coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:PORT
+```
+
+With no `--api`, `serve.sh` first starts the local API (`coax/web/api/test.sh
+--serve`: its own Postgres, gone when you stop the server) and then serves the
+pages with `--api` pointing at it (#13463). You need no login: in this local
+serve mode a request from this computer with no login is the API's admin
+(`auth.c` `local_admin`, built only with `-DOA_LOCAL_SERVE`, which the image
+never has). The model is Gemini on Vertex, Google first, on a token the API
+reads from a 0600 file that `test.sh` refreshes every 40 minutes:
+
+- With the service account's gcloud config on the machine
+  (`~/work/.secrets/gcloud-sa-config`, or `OA_SERVE_GCLOUD_CONFIG`), its token.
+- Else your own `gcloud` login's token. If Google later turns it down, the
+  page says to run `gcloud auth login`; the next turn picks the new login up
+  within a minute.
+- With neither, each turn goes to openagents.com's `/api/v1/inference`,
+  signed by your `openagents` login (`openagents login`; the profile is
+  `OA_SERVE_PROFILE`, default `default`), so no key is pasted anywhere. That
+  route is free for an admin's key; another key needs credit.
+
+`OA_SERVE_MODEL=openagents` skips Google, `OA_SERVE_NO_API=1` serves the pages
+without an API, and `--api PORT` uses an API you started yourself. When no
+model can be reached the page says why and what to run. Everything below describes the page before
 it, which is now at `/chat-gpu` (`chat.coax`, `chat-gpu/index.html`) and still
 talks to the same API. In production `/chat-gpu` reaches the site only after
 `coax/web/api/lb.sh` has been run with its new path rule.
@@ -80,6 +103,20 @@ When the page is served with `--local PORT` and `coder mcp --http PORT` runs
 on the same machine, the page also lists Coder's sessions and this folder's
 Claude Code conversations in a sidebar. Its Agent menu adds Claude Code,
 Codex, Antigravity and Microcoder, which run through Coder on that machine.
+
+The one command above starts Coder's local side for you
+(`coder/tui/coder.sh mcp --http 0` from the same checkout, with
+`BROWSER=/usr/bin/true` so no agent opens a browser sign-in) and passes its
+port as `--local` (#13465). `OA_SERVE_NO_CODER=1` leaves it out.
+
+Settings has a This machine card. It says whether Coder answers and, for each
+agent, whether it is ready or why not: Claude Code needs `claude` on your PATH
+and a login (`claude` once in a terminal, or `ANTHROPIC_API_KEY`), Codex needs
+`codex login`. Coder reports this at `GET /local/agents`. When Coder doesn't
+answer, the card gives the start command. Its Turn off button hides the local
+agents in this browser (the page keeps the choice in localStorage); Turn on
+brings them back. The Agent menu lists only the agents that are ready, so a
+row never fails when you pick it.
 
 A Claude Code conversation open in a terminal window is listed under
 Running, from the file each `claude` keeps in `~/.claude/sessions/`; a busy
