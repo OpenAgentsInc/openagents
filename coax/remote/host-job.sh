@@ -130,7 +130,10 @@ fi
   # later job's suites would load it as if it were this commit's: project-frames.coax failed
   # on slots whose table predated cdc62f911a's METAVERSE_* names and passed on fresh ones
   # (#13488). Without it they skip those suites, as on any fresh tree; a build makes it again.
-  rm -f "$tree/apps/openagents-web/projects/baked.coax"
+  # The same for the built CLI: coax/web/api/test_world_files.py drives it when it is there, and
+  # one left by an older commit's job answered "unknown realm command" to `realm attach`. A job
+  # that needs it builds it (apps/openagents-cli/build.sh --cli, from the tools' cache by its inputs).
+  rm -f "$tree/apps/openagents-web/projects/baked.coax" "$tree/apps/openagents-cli/build/openagents"
   git for-each-ref --format='%(refname)' refs/oa-remote/ | grep -v "/$commit\$" | xargs -r -n 50 git update-ref -d 2> /dev/null
   exit 0
 ) 8> ~/oa/.oa-remote.lock || infra "could not check out $commit on $(hostname)"
