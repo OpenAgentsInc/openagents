@@ -5,7 +5,7 @@
 
 #load "zeron.coax";
 #load "everglade.coax";
-#load "verse.coax";
+#load "metaverse.coax";
 #load "terminal.coax";
 #load "terminal-pixels.coax";   // the terminal's look on a pixel target
 

@@ -1,8 +1,8 @@
 # Firm reason: 6 (Blender's bpy evaluates the dragon's rig and its glTF animations; it has no C API).
-"""Bake Shapechange's dragon (assets/verse/beasts/dragon.gltf, CC0) into portable frame records.
+"""Bake Shapechange's dragon (assets/metaverse/beasts/dragon.gltf, CC0) into portable frame records.
 
     Blender -b --factory-startup --disable-autoexec --python metaverse/tools/assets/dragon_bake.py -- \
-        assets/verse/beasts/dragon.gltf OUT_DIR
+        assets/metaverse/beasts/dragon.gltf OUT_DIR
 
 The clips and their frame counts are everglade/dragon-clips.coax's (DR_CLIP_NAME, DR_FRAMES,
 DR_LOOPS), read from that file so the two never disagree. A loop's frame i is i/n of the way round

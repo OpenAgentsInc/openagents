@@ -5,7 +5,7 @@
 // components/gallery/skin-parity.coax holds the two equal until the HUD
 // draws from this file (components/spec.md Phase 5, GitHub #13153).
 // Its faces are the slots of the atlas it is drawn with (see everglade.coax).
-//   coax/bin/coax test components/skin/verse.coax
+//   coax/bin/coax test components/skin/metaverse.coax
 
 #load "zeron.coax";
 

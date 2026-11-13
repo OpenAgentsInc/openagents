@@ -2,7 +2,7 @@
 
 These icons come from [game-icons.net](https://game-icons.net), as white SVGs
 on a transparent background, the same files the previous engine's hotbars
-drew (`git show 0b401561a0^:assets/verse/icons/game-icons/CREDITS.md`). They
+drew (`git show 0b401561a0^:assets/metaverse/icons/game-icons/CREDITS.md`). They
 are licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/);
 `license.txt` is the archive's license file. The files are unmodified.
 `metaverse/tools/everglade_hotbar.coax` rasterizes and tints them for Everglade's

@@ -38,7 +38,7 @@ above.
   --python scripts/blender/dragon.py -- [OUT_DIR] [--stills DIR]
 ```
 
-It writes `OUT_DIR/dragon.gltf` and `dragon.bin` (default `assets/verse/beasts`), prints one
+It writes `OUT_DIR/dragon.gltf` and `dragon.bin` (default `assets/metaverse/beasts`), prints one
 `MODEL` line, and with `--stills` renders the three review stills into DIR. The committed files are
 this script's output under Blender 5.2.2.
 

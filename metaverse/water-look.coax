@@ -15,7 +15,7 @@
 // - Presets: how a body looks, with absorption from Jerlov's water types
 //   (Marine Optics, 1976), K_d at 650, 550 and 450 nm for red, green and
 //   blue; the in-scatter colour, foam, roughness and shore band are the old
-//   engine's tuning, copied from assets/verse/water/presets/*.toml.
+//   engine's tuning, copied from assets/metaverse/water/presets/*.toml.
 // - Detail: sixteen short waves that bend the normal and never move the
 //   surface (Water::set_detail), and the tier's control vector.
 // - The bake: a grid of nodes over a body (rest position, level, depth at

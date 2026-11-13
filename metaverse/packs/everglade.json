@@ -268,7 +268,7 @@
     "variants": {
       "T_Peasant_BaseColor.png": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Textures/Peasant/T_Peasant_2_BaseColor.png",
       "T_Ranger_BaseColor.png": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Textures/Ranger/T_Ranger_3_BaseColor.png",
-      "T_Cult_Robe_BaseColor.png": "assets/verse/cult-robe/T_Cult_Robe_2_BaseColor.png"
+      "T_Cult_Robe_BaseColor.png": "assets/metaverse/cult-robe/T_Cult_Robe_2_BaseColor.png"
     },
     "parts": [
       {
@@ -436,25 +436,25 @@
         "name": "cult-robe",
         "body": "male",
         "licence": "openagents-custom-models",
-        "file": "assets/verse/cult-robe/cult-robe.gltf"
+        "file": "assets/metaverse/cult-robe/cult-robe.gltf"
       },
       {
         "name": "cult-robe-far",
         "body": "male",
         "licence": "openagents-custom-models",
-        "file": "assets/verse/cult-robe/cult-robe-far.gltf"
+        "file": "assets/metaverse/cult-robe/cult-robe-far.gltf"
       },
       {
         "name": "darian-robe",
         "body": "male",
         "licence": "openagents-custom-models",
-        "file": "assets/verse/cult-robe/darian-robe.gltf"
+        "file": "assets/metaverse/cult-robe/darian-robe.gltf"
       },
       {
         "name": "darian-robe-far",
         "body": "male",
         "licence": "openagents-custom-models",
-        "file": "assets/verse/cult-robe/darian-robe-far.gltf"
+        "file": "assets/metaverse/cult-robe/darian-robe-far.gltf"
       },
       {
         "name": "male-hands",
@@ -471,7 +471,7 @@
   },
   "hud": {
     "about": "The spell bar's icons (metaverse/tools/everglade_hotbar.coax), served beside the pack under /realms/everglade/hotbar/, not in it",
-    "licence": {"name": "game-icons.net", "licence": "CC BY 3.0", "url": "https://game-icons.net", "credits": "assets/verse/icons/game-icons/CREDITS.md"},
+    "licence": {"name": "game-icons.net", "licence": "CC BY 3.0", "url": "https://game-icons.net", "credits": "assets/metaverse/icons/game-icons/CREDITS.md"},
     "assets": [
       {"name": "Meteor Swarm", "file": "lorc/meteor-impact.svg", "author": "Lorc"},
       {"name": "Thunderbolt", "file": "lorc/lightning-frequency.svg", "author": "Lorc"},

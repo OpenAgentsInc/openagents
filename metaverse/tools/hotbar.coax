@@ -17,8 +17,8 @@
 #load "../../coax/lib/image/jpeg_enc.coax";
 #load "../../coax/lib/text/ttf.coax";
 
-HB_FONT :: "assets/verse/fonts/paper-mono/PaperMono-Medium.ttf";
-HB_ICONS :: "assets/verse/icons/game-icons";
+HB_FONT :: "assets/metaverse/fonts/paper-mono/PaperMono-Medium.ttf";
+HB_ICONS :: "assets/metaverse/icons/game-icons";
 HB_PADDING :: 0.12;                 // icons.rs PADDING
 HB_SIZES :: [4] int.[48, 72, 96, 128];
 HB_SCALES :: [3] int.[1, 2, 3];

@@ -5,7 +5,7 @@ Firm reason: 6 (Blender's bpy models, rigs, animates and exports it; it has no C
 Run headless:
     Blender -b --factory-startup --python scripts/blender/dragon.py -- [OUT_DIR] [--stills DIR] [--preview DIR [--views V,...]]
 
-Writes `dragon.gltf` and `dragon.bin` (default folder `assets/verse/beasts`): a stylized
+Writes `dragon.gltf` and `dragon.bin` (default folder `assets/metaverse/beasts`): a stylized
 low-poly young red dragon in the Quaternius look, a Reference model built
 from primitives with no source asset, under 4,000 triangles. `--stills DIR`
 renders the review stills (dragon-model-front.png, -side.png, -below.png);

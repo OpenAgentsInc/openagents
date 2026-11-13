@@ -1,5 +1,5 @@
 // A druid's shapeshifting and a dragon's actions as puffs (book chapter 72), ported from the grove
-// demo's particle effects (assets/verse/fx/effects/grove_*.toml at c8d1ba99fc) into recipes under
+// demo's particle effects (assets/metaverse/fx/effects/grove_*.toml at c8d1ba99fc) into recipes under
 // the same rule as the rest: a puff's place, size and light are a pure function of the cause's
 // seed, the puff's number and the cause's age. puff.coax loads this file; FXR_RUNE on are here.
 //   FXR_RUNE           a rune circle glowing on the ground round `to`, `reach` metres, glyphs turning

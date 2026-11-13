@@ -17,7 +17,7 @@
 //
 // The druid's bar, the Warlock's (wl-*) and Character Create's classes' slot 1 (cl-*, #13024).
 //
-// It needs rsvg-convert. The icons' credits are in assets/verse/icons/game-icons/CREDITS.md, and
+// It needs rsvg-convert. The icons' credits are in assets/metaverse/icons/game-icons/CREDITS.md, and
 // the realm's licences page lists them.
 //
 // It replaced everglade_hotbar.py (#12859). On the same inputs it writes the same files and the

@@ -17,7 +17,7 @@
 //
 // A spell's card is its SRD 5.2.1 text (rules/srd/spells.coax), cut to its first
 // sentences; a feature's is the SRD 5.2.1 feature's own sentence. The icons' credits are in
-// assets/verse/icons/game-icons/CREDITS.md.
+// assets/metaverse/icons/game-icons/CREDITS.md.
 //
 // It replaced fivemmo_hotbar.py (#12859): the same files and table on the same inputs, the icons
 // byte for byte, the cards' and tabs' text drawn without the font's hinting (everglade_hotbar.coax

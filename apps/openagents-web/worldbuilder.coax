@@ -18,7 +18,7 @@
 #load "../../components/core/edit.coax";
 #load "../../components/kit/controls.coax";
 #load "../../components/layout/flex.coax";
-#load "../../components/skin/verse.coax";
+#load "../../components/skin/metaverse.coax";
 #load "../../components/backend/gpu.coax";
 #load "textkeys.coax";
 #load "worldbuilder-plan.coax";
@@ -933,7 +933,7 @@ scene :: (s: [] WorldBuilder) {
 worldbuilder_draw_count :: (s: [] WorldBuilder) -> int #export_c #effects(all) { return ifx s[0].cat_ready then s[0].draw_n else 0; }
 worldbuilder_store_bytes :: (s: [] WorldBuilder) -> int #export_c #effects(all) { return s[0].inst_n * INSTANCE_FLOATS * 4; }
 
-// ---- the HUD: components/kit/controls.coax in the Verse skin (components/skin/verse.coax)
+// ---- the HUD: components/kit/controls.coax in the Verse skin (components/skin/metaverse.coax)
 
 // "$1.25"
 put_dollars :: (b: [] u8, at: int, micros: int) -> int {

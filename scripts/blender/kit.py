@@ -29,7 +29,7 @@ def args():
 
 def out_path(name):
     """Where a script writes model `name`: its argument when that names a
-    `.glb`, else `<argument or assets/verse/generated>/<name>.glb`."""
+    `.glb`, else `<argument or assets/metaverse/generated>/<name>.glb`."""
     a = args()
     if a and a[0].endswith(".glb"):
         return a[0]

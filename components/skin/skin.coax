@@ -6,7 +6,7 @@
 //
 // The skins are values of one struct, UiSkin, made by zeron_skin
 // (skin/zeron.coax: Zeron Dark), everglade_skin (skin/everglade.coax: iron
-// and gold), metaverse_skin (skin/verse.coax: the Verse's instrument look) and
+// and gold), metaverse_skin (skin/metaverse.coax: the Verse's instrument look) and
 // terminal_skin (skin/terminal.coax: cells). ui_skin (skin/all.coax) picks
 // one by id. Sizes are in the target's units: logical pixels on a pixel
 // target, cells in a terminal.

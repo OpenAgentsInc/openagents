@@ -419,7 +419,7 @@ phase with no implementer by its date is cut from this list, not left open.
    colour roles, type roles, spacing, Markdown's measures, and the frames
    `uiskin_panel`, `uiskin_control`, `uiskin_slot`, `uiskin_bar`), with
    `zeron.coax` (from the constants that were in the components, which now
-   live there), `everglade.coax` and `verse.coax` (the HUD's FANTASY and
+   live there), `everglade.coax` and `metaverse.coax` (the HUD's FANTASY and
    SCIFI colours; `gallery/skin-parity.coax` holds them equal to
    `metaverse-engine/ui/hud-style.coax`) and `terminal.coax` (cells). The pixel skins
    share the atlas's faces (Geist): a skin's own typefaces need its fonts in

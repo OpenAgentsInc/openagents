@@ -4,7 +4,7 @@ Blender from code only, so the same command makes the same files.
 
     blender -b --factory-startup --python metaverse/tools/humans/cult_robe.py -- [--out DIR] [--render DIR]
 
-It writes, into --out (default assets/verse/cult-robe/), a glTF per robe, skinned to the Quaternius
+It writes, into --out (default assets/metaverse/cult-robe/), a glTF per robe, skinned to the Quaternius
 Modular Character Outfits' male skeleton (the people rig's male body, metaverse/tools/people.py):
 
   cult-robe.gltf        a Cultist's robe: a deep hood over the head, a cowl on the shoulders, bell
