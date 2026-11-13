@@ -1,0 +1,495 @@
+// The command line of the compiler questions (compiler.coax; GitHub #13445): ask one from a shell,
+// run the native check, or time every question.
+//   coax/web/tool.sh coax/lib/agent/intel/intel.coax defines NAME [--root DIR]
+//   ... uses NAME [--file FILE] | exports FILE | show NAME [--file FILE] | show FILE:A-B | check FILE
+//   ... explain CODE | vocab NAME | effects FILE [PROC] | depends FILE | loaders FILE
+//   ... replace NAME [--file FILE] --seen HASH (--text TEXT | --text-file PATH) [--check FILE]
+//   ... replace FILE:A-B --seen HASH (--text TEXT | --text-file PATH) [--check FILE]
+//   ... selftest [--repo DIR]     builds a scratch tree and asks every question; with --repo (or
+//                                 run inside the checkout), real files too, read-only
+//   ... measure [--repo DIR]      times every question on real files: cold, warm, warm with no
+//                                 resident compiler
+// Options: --root DIR (default: the working directory), --coax PATH, --entries N (compiler
+// entries a question may ask, default 12), --most N (records printed, default 200), --bytes N
+// (text printed, default 65536), --run-steps N. Files are relative to the root. Exit 0 when the
+// question was answered (check: and the file is clean; replace: and it was applied), 1 otherwise.
+#import "Basic";
+#load "compiler.coax";
+#load "../../sys/tool.coax";
+
+IT_TEXT :: 1048576;
+IT_DECLS :: 2048; IT_USES :: 8192; IT_DIAGS :: 512; IT_EFFECTS :: 4096; IT_FILES :: 1024;
+
+It :: struct {
+  s: [1] Ix;
+  text: [IT_TEXT] u8; text2: [IT_TEXT] u8;
+  decls: [IT_DECLS] IxDecl; defs: [16] IxDecl; uses: [IT_USES] IxUse; diags: [IT_DIAGS] IxDiag; effects: [IT_EFFECTS] IxEffect; files: [IT_FILES] string;
+  new_text: [MC_EDIT_BYTES] u8;
+  dir: [FS_PATH_MAX] u8; pa: [FS_PATH_MAX] u8; pb: [FS_PATH_MAX] u8; envb: [4] [FS_PATH_MAX] u8;
+  bad: int;
+}
+
+it_show :: (t: [] It, n: int) { print("%", ix_text_end(t[0].text[..], n)); }
+it_usage :: () -> int {
+  tool_errln("usage: intel defines NAME | uses NAME | exports FILE | show NAME [--file FILE] | show FILE:A-B | check FILE");
+  tool_errln("       intel explain CODE | vocab NAME | effects FILE [PROC] | depends FILE | loaders FILE");
+  tool_errln("       intel replace NAME|FILE:A-B --seen HASH (--text TEXT | --text-file PATH) [--file FILE] [--check FILE]");
+  tool_errln("       intel selftest [--repo DIR] | measure [--repo DIR]");
+  tool_errln("options: --root DIR --coax PATH --entries N --most N --bytes N --run-steps N");
+  return 2;
+}
+it_files_text :: (files: [] string, out: [] u8, at: int) -> int {
+  n := at;
+  for f: files { n = rp_put(out, n, f); n = rp_put(out, n, "\n"); }
+  return n;
+}
+it_shown :: (t: [] It, r: IxShown, out: [] u8) -> int {
+  n := ix_head(out, 0, t[0].s[0].version, IxAnswer.{ok = r.ok, why = r.why, ms = r.ms});
+  if r.ok {
+    if r.decl.name.count > 0 { n = rp_put(out, n, r.decl.kind); n = rp_put(out, n, " "); n = rp_put(out, n, r.decl.name); n = rp_put(out, n, "  "); }
+    n = rp_put(out, n, r.file); n = rp_put(out, n, ":"); n = rp_put_int(out, n, r.from); n = rp_put(out, n, "-"); n = rp_put_int(out, n, r.to);
+    n = rp_put(out, n, "\nhash "); n = rp_put(out, n, r.hash); n = rp_put(out, n, "\nfile "); n = rp_put(out, n, r.file_hash); n = rp_put(out, n, "\n");
+  }
+  n = rp_put(out, n, r.text);
+  if r.cut { n = rp_put(out, n, "[cut before line "); n = rp_put_int(out, n, r.next); n = rp_put(out, n, "]\n"); }
+  return n;
+}
+it_replaced :: (t: [] It, r: IxReplaced, diags: [] IxDiag, out: [] u8) -> int {
+  n := ix_head(out, 0, t[0].s[0].version, IxAnswer.{ok = r.ok, why = r.why, ms = r.ms, entries = r.checked.entries});
+  if r.file.count > 0 {
+    n = rp_put(out, n, ifx r.ok then "replaced " else (ifx r.stale then "stale " else "not replaced ")); n = rp_put(out, n, r.file); n = rp_put(out, n, ":"); n = rp_put_int(out, n, r.from); n = rp_put(out, n, "-"); n = rp_put_int(out, n, r.to);
+    n = rp_put(out, n, "\nhash "); n = rp_put(out, n, r.hash); n = rp_put(out, n, "\nfile "); n = rp_put(out, n, r.file_hash); n = rp_put(out, n, "\n");
+  }
+  n = rp_put(out, n, r.text);
+  if r.ok {
+    n = rp_put(out, n, ifx r.checked.ok && r.checked.status == 0 then "check: clean\n" else "check:\n");
+    if !r.checked.ok { n = rp_put(out, n, r.checked.why); n = rp_put(out, n, "\n"); }
+    n = ix_diags_text(diags[0..<r.checked.n], out, n);
+  }
+  return n;
+}
+
+it_ask :: (t: [] It, a: [] Args) -> int {
+  s := t[0].s[..];
+  cmd := args_at(a, 0); x := args_at(a, 1); y := args_at(a, 2);
+  if y.count > 1 && y[0] == '-' && y[1] == '-' { y = ""; }
+  most := args_whole(args_value(a, "--most", "200")); bytes := args_whole(args_value(a, "--bytes", "65536"));
+  if most < 0 || bytes < 256 || bytes > IT_TEXT { tool_errln("intel: --most is a count and --bytes is 256 to 1048576"); return 2; }
+  out := t[0].text[0..<bytes];
+  if cmd == "defines" {
+    r := ix_defines(s, x, t[0].decls[0..<ifx most < IT_DECLS then most else IT_DECLS]);
+    n := ix_head(out, 0, s[0].version, r);
+    it_show(t, ix_decls_text(t[0].decls[0..<r.n], out, n));
+    return ifx r.ok then 0 else 1;
+  }
+  if cmd == "uses" {
+    r := ix_uses_of(s, x, args_value(a, "--file", ""), t[0].defs[..], t[0].uses[0..<ifx most < IT_USES then most else IT_USES]);
+    n := ix_head(out, 0, s[0].version, r);
+    n = ix_decls_text(t[0].defs[0..<r.defs], out, n);
+    it_show(t, ix_uses_text(t[0].uses[0..<r.n], r.defs > 1, out, n));
+    return ifx r.ok then 0 else 1;
+  }
+  if cmd == "exports" {
+    r := ix_exports(s, x, t[0].decls[0..<ifx most < IT_DECLS then most else IT_DECLS]);
+    n := ix_head(out, 0, s[0].version, r);
+    it_show(t, ix_decls_text(t[0].decls[0..<r.n], out, n));
+    return ifx r.ok then 0 else 1;
+  }
+  if cmd == "show" {
+    spec := mc_view_spec(x);
+    r := ifx spec.ranged then ix_show_lines(s, spec.path, spec.from, spec.to, t[0].text2[0..<bytes]) else ix_show(s, x, args_value(a, "--file", ""), t[0].text2[0..<bytes]);
+    it_show(t, it_shown(t, r, out));
+    return ifx r.ok then 0 else 1;
+  }
+  if cmd == "check" {
+    r := ix_check(s, x, t[0].diags[0..<ifx most < IT_DIAGS then most else IT_DIAGS]);
+    n := ix_head(out, 0, s[0].version, r);
+    if r.ok && r.status == 0 && r.total == 0 { n = rp_put(out, n, "clean\n"); }
+    it_show(t, ix_diags_text(t[0].diags[0..<r.n], out, n));
+    return ifx r.ok && r.status == 0 then 0 else 1;
+  }
+  if cmd == "explain" || cmd == "vocab" {
+    r := ifx cmd == "explain" then ix_explain(s, x, t[0].text2[0..<bytes]) else ix_vocab(s, x, t[0].text2[0..<bytes]);
+    n := ix_head(out, 0, s[0].version, IxAnswer.{ok = r.ok, why = r.why, ms = r.ms});
+    it_show(t, rp_put(out, n, r.text));
+    return ifx r.ok then 0 else 1;
+  }
+  if cmd == "effects" {
+    r := ix_effects_of(s, x, y, t[0].effects[0..<ifx most < IT_EFFECTS then most else IT_EFFECTS]);
+    n := ix_head(out, 0, s[0].version, r);
+    it_show(t, ix_effects_text(t[0].effects[0..<r.n], out, n));
+    return ifx r.ok then 0 else 1;
+  }
+  if cmd == "depends" {
+    r := ix_depends_on(s, x, t[0].decls[0..<ifx most < IT_DECLS then most else IT_DECLS]);
+    n := ix_head(out, 0, s[0].version, r);
+    it_show(t, ix_decls_text(t[0].decls[0..<r.n], out, n));
+    if !r.ok { return 1; }
+    l := ix_loads(s, x, t[0].files[0..<ifx most < IT_FILES then most else IT_FILES]);
+    n = rp_put(out, 0, "its program's other files:\n");
+    it_show(t, it_files_text(t[0].files[0..<l.n], out, n));
+    return ifx l.ok then 0 else 1;
+  }
+  if cmd == "loaders" {
+    r := ix_loaders(s, x, t[0].files[0..<ifx most < IT_FILES then most else IT_FILES]);
+    n := ix_head(out, 0, s[0].version, r);
+    it_show(t, it_files_text(t[0].files[0..<r.n], out, n));
+    return ifx r.ok then 0 else 1;
+  }
+  if cmd == "replace" {
+    e := IxEdit.{seen = args_value(a, "--seen", ""), check = args_value(a, "--check", "")};
+    spec := mc_view_spec(x);
+    if spec.ranged { e.file = spec.path; e.from = spec.from; e.to = spec.to; } else { e.name = x; e.file = args_value(a, "--file", ""); }
+    e.text = args_value(a, "--text", "");
+    if args_has(a, "--text-file") {
+      k := fs_read(args_value(a, "--text-file", ""), t[0].new_text[..]);
+      if k < 0 { tool_errln("intel: cannot read the --text-file (or it is over 512 KB)"); return 2; }
+      e.text = cast(string) t[0].new_text[0..<k];
+    }
+    r := ix_replace(s, e, t[0].text2[0..<bytes], t[0].diags[0..<ifx most < IT_DIAGS then most else IT_DIAGS]);
+    it_show(t, it_replaced(t, r, t[0].diags[..], out));
+    return ifx r.ok then 0 else 1;
+  }
+  return it_usage();
+}
+
+// ---- the native check ----
+
+it_check :: (t: [] It, ok: bool, what: string) {
+  if ok { print("  ok   %\n", what); return; }
+  print("  FAIL %\n", what);
+  t[0].bad += 1;
+}
+it_write :: (t: [] It, name: string, text: string) -> bool { return fs_write(fs_join(cast(string) t[0].dir[0..<FS_PATH_MAX], name, t[0].pa[..]), text); }
+it_has :: (text: string, needle: string) -> bool { return mc_find_all(text, needle).count > 0; }
+it_decl :: (decls: [] IxDecl, name: string) -> int {
+  for x, i: decls { if x.name == name { return i; } }
+  return -1;
+}
+it_decl_in :: (decls: [] IxDecl, file: string) -> int {
+  for x, i: decls { if x.file == file { return i; } }
+  return -1;
+}
+it_uses_in :: (uses: [] IxUse, file: string) -> int {
+  n := 0;
+  for x: uses { if x.file == file { n += 1; } }
+  return n;
+}
+it_effect :: (effects: [] IxEffect, proc: string, kind: string) -> int {
+  for x, i: effects { if x.proc == proc && x.kind == kind { return i; } }
+  return -1;
+}
+it_file :: (files: [] string, name: string) -> bool {
+  for f: files { if f == name { return true; } }
+  return false;
+}
+
+IT_SHAPES :: "// shapes\nShape :: struct { w: int; h: int; }\nUNIT :: 1;\narea :: (s: Shape) -> int { return s.w * s.h; }\n#test \"area of a unit square\" { #assert area(Shape.{w = UNIT, h = UNIT}) == 1; }\n";
+IT_CLOCK :: "cx_now :: () -> int #foreign #effects(foreign, clock);\nstamp :: () -> int { return cx_now() + 1; }\n";
+IT_PART :: "// a part: it names Shape and area but loads nothing, so it checks only inside main.coax\nedge :: (s: Shape) -> int {\n  return 2 * (s.w + s.h) + area(s) * 0;\n}\nflat :: (s: Shape) -> bool {\n  return s.h == 0;\n}\n";
+IT_MAIN :: "#load \"shapes.coax\";\n#load \"clock.coax\";\n#load \"part.coax\";\ntotal :: (a: Shape, b: Shape) -> int { return area(a) + area(b); }\ntimed :: (a: Shape) -> int { return area(a) + stamp(); }\nrun :: () -> int { return total(Shape.{w = 1, h = 2}, Shape.{w = 3, h = 4}) + edge(Shape.{w = 1, h = 1}); }\n";
+IT_BAD :: "#load \"shapes.coax\";\nwrong :: (s: Shape) -> int { x: string = area(s); return x; }\n";
+IT_AREA_3 :: "area :: (s: Shape) -> int {\n  return s.h * s.w;\n}";
+
+it_scratch :: (t: [] It, coax: string) {
+  s := t[0].s[..];
+  dir := fs_temp("coax-intel-", t[0].dir[..]);
+  it_check(t, dir.count > 0, "a scratch tree");
+  if dir.count == 0 { return; }
+  for i: dir.count..<FS_PATH_MAX { t[0].dir[i] = 0; }
+  made := fs_write(fs_join(dir, "shapes.coax", t[0].pa[..]), IT_SHAPES) && fs_write(fs_join(dir, "clock.coax", t[0].pa[..]), IT_CLOCK) && fs_write(fs_join(dir, "part.coax", t[0].pa[..]), IT_PART);
+  made = made && fs_write(fs_join(dir, "main.coax", t[0].pa[..]), IT_MAIN) && fs_write(fs_join(dir, "bad.coax", t[0].pa[..]), IT_BAD);
+  it_check(t, made && ix_open(s, dir, coax) && s[0].version.count > 4 && !s[0].git, "five files that load each other; the compiler says its version");
+  print("       compiler: %\n", s[0].version);
+  hb: [IX_HASH] u8;
+  shapes_hash := ix_hash(IT_SHAPES, hb[..]);
+
+  // defines
+  a := ix_defines(s, "area", t[0].decls[..]);
+  d := t[0].decls[0];
+  it_check(t, a.ok && a.n == 1 && a.total == 1 && d.kind == "proc" && d.name == "area" && d.file == "shapes.coax" && d.line == 4 && d.end_line == 4 && d.exported && d.hash == shapes_hash && a.entries >= 1 && a.ms >= 0, "defines: kind, file, lines, exported and the file's hash");
+  a = ix_defines(s, "edge", t[0].decls[..]);
+  d = t[0].decls[0];
+  it_check(t, a.ok && a.n == 1 && d.file == "part.coax" && d.line == 2 && d.end_line == 4 && a.entries == 2, "defines: a file that does not check alone answers through the unit that loads it");
+  a = ix_defines(s, "nosuch", t[0].decls[..]);
+  it_check(t, a.ok && a.n == 0 && a.why.count > 0 && a.entries == 0, "defines: a name nothing declares");
+  a = ix_defines(s, "--json", t[0].decls[..]);
+  it_check(t, !a.ok && a.why.count > 0, "defines: not a name");
+
+  // uses: total twice and timed in main.coax, the check in shapes.coax, edge in part.coax; bad.coax names it and cannot be checked
+  a = ix_uses_of(s, "area", "", t[0].defs[..], t[0].uses[..]);
+  it_check(t, a.ok && a.n == 5 && a.defs == 1 && it_uses_in(t[0].uses[0..<a.n], "main.coax") == 3 && it_uses_in(t[0].uses[0..<a.n], "shapes.coax") == 1 && it_uses_in(t[0].uses[0..<a.n], "part.coax") == 1, "uses: a definition used in three files, each place once");
+  it_check(t, t[0].defs[0].file == "shapes.coax" && t[0].defs[0].line == 4 && a.unchecked == 1, "uses: the declaration they resolve to; the file with an error is counted as not checked");
+  u := 0;
+  for x, i: t[0].uses[0..<a.n] { if x.file == "shapes.coax" { u = i; } }
+  it_check(t, t[0].uses[u].from == "#test \"area of a unit square\"" && t[0].uses[u].line == 5 && t[0].uses[u].column == 41 && t[0].uses[u].hash == shapes_hash && t[0].uses[u].to_file == "shapes.coax" && t[0].uses[u].to_line == 4, "uses: what each is written in, its line and column, the file's hash, the declaration it resolves to");
+  it_check(t, ix_uses_of(s, "area", "shapes.coax", t[0].defs[..], t[0].uses[..]).n == 5 && ix_uses_of(s, "area", "main.coax", t[0].defs[..], t[0].uses[..]).n == 0, "uses: of the declaration in one file only");
+  a = ix_uses_of(s, "area", "", t[0].defs[..], t[0].uses[0..<2]);
+  it_check(t, a.ok && a.n == 2 && a.total == 5 && a.cut, "uses: bounded by the caller's array");
+
+  // exports
+  a = ix_exports(s, "shapes.coax", t[0].decls[..]);
+  it_check(t, a.ok && a.n == 3 && it_decl(t[0].decls[0..<a.n], "Shape") == 0 && t[0].decls[0].kind == "struct" && it_decl(t[0].decls[0..<a.n], "UNIT") == 1 && it_decl(t[0].decls[0..<a.n], "area") == 2 && a.why.count == 0, "exports: what a file declares");
+  a = ix_exports(s, "part.coax", t[0].decls[..]);
+  it_check(t, a.ok && a.n == 2 && t[0].decls[0].name == "edge" && t[0].decls[0].line == 2 && t[0].decls[0].end_line == 4 && t[0].decls[1].name == "flat" && it_has(a.why, "does not check alone"), "exports: a part's declarations through its loader, and a note saying so");
+  a = ix_exports(s, "../x.coax", t[0].decls[..]);
+  it_check(t, !a.ok, "exports: a file outside the root is refused");
+
+  // show
+  r := ix_show(s, "area", "", t[0].text[..]);
+  line4 := "area :: (s: Shape) -> int { return s.w * s.h; }\n";
+  it_check(t, r.ok && r.file == "shapes.coax" && r.from == 4 && r.to == 4 && r.text == "     4\tarea :: (s: Shape) -> int { return s.w * s.h; }\n" && r.hash == ix_hash(line4, hb[..]), "show: one declaration's text, numbered, and the hash of exactly that text");
+  it_check(t, r.file_hash == ix_hash(IT_SHAPES, hb[..]) && r.decl.kind == "proc" && r.found == 1, "show: the file's hash and the declaration");
+  r = ix_show(s, "edge", "", t[0].text[..]);
+  it_check(t, r.ok && r.from == 2 && r.to == 4 && r.text == "     2\tedge :: (s: Shape) -> int {\n     3\t  return 2 * (s.w + s.h) + area(s) * 0;\n     4\t}\n", "show: a declaration of several lines");
+  r = ix_show(s, "edge", "", t[0].text[0..<40]);
+  it_check(t, r.ok && r.cut && r.next == 3 && r.text == "     2\tedge :: (s: Shape) -> int {\n", "show: bounded by the caller's buffer, and it says where it stopped");
+  r = ix_show_lines(s, "main.coax", 1, 3, t[0].text[..]);
+  it_check(t, r.ok && r.text == "     1\t#load \"shapes.coax\";\n     2\t#load \"clock.coax\";\n     3\t#load \"part.coax\";\n" && !ix_show_lines(s, "main.coax", 7, 9, t[0].text[..]).ok, "show: lines of a file");
+
+  // check
+  a = ix_check(s, "bad.coax", t[0].diags[..]);
+  g := t[0].diags[0];
+  it_check(t, a.ok && a.status != 0 && a.n == 2 && g.severity == "error" && g.code == "E0325" && g.file == "bad.coax" && g.line == 2 && g.column == 42 && g.length == 4 && g.offset == 62 && it_has(g.message, "initialized with int") && t[0].diags[1].code == "E0330", "check: a type error as records (code, severity, file, span, message)");
+  a = ix_check(s, "main.coax", t[0].diags[..]);
+  it_check(t, a.ok && a.status == 0 && a.n == 0, "check: a clean file");
+  a = ix_check(s, "bad.coax", t[0].diags[0..<1]);
+  it_check(t, a.ok && a.n == 1 && a.total == 2 && a.cut, "check: bounded by the caller's array");
+  it_check(t, !ix_check(s, "nope.coax", t[0].diags[..]).ok, "check: no such file");
+
+  // explain, vocab
+  x := ix_explain(s, "E0325", t[0].text[..]);
+  it_check(t, x.ok && it_has(x.text, "E0325") && it_has(x.text, "initializer") && !ix_explain(s, "--all", t[0].text[..]).ok, "explain: what a code means");
+  x = ix_explain(s, "E0325", t[0].text[0..<40]);
+  it_check(t, x.ok && x.cut && x.text.count == 40, "explain: bounded by the caller's buffer");
+  x = ix_vocab(s, "area", t[0].text[..]);
+  it_check(t, !x.ok && x.why.count > 0, "vocab: outside an openagents checkout the compiler declines, and the answer says why");
+
+  // effects
+  a = ix_effects_of(s, "main.coax", "timed", t[0].effects[..]);
+  f := it_effect(t[0].effects[0..<a.n], "timed", "foreign_call");
+  it_check(t, a.ok && f >= 0 && t[0].effects[ifx f < 0 then 0 else f].path == "timed -> stamp (clock.coax:2) -> cx_now (clock.coax:1)" && t[0].effects[ifx f < 0 then 0 else f].file == "clock.coax", "effects: a procedure's effect and the path that reaches it");
+  a = ix_effects_of(s, "main.coax", "total", t[0].effects[..]);
+  it_check(t, a.ok && a.n > 0 && it_effect(t[0].effects[0..<a.n], "total", "foreign_call") < 0, "effects: a procedure that reaches no foreign call");
+  a = ix_effects_of(s, "main.coax", "", t[0].effects[..]);
+  it_check(t, a.ok && it_effect(t[0].effects[0..<a.n], "timed", "foreign_call") >= 0 && it_effect(t[0].effects[0..<a.n], "total", "may_trap") >= 0 && it_effect(t[0].effects[0..<a.n], "stamp", "foreign_call") < 0, "effects: every procedure the file declares, and none of another file's");
+
+  // depends
+  a = ix_depends_on(s, "main.coax", t[0].decls[..]);
+  it_check(t, a.ok && a.n == 4 && it_decl(t[0].decls[0..<a.n], "Shape") >= 0 && it_decl(t[0].decls[0..<a.n], "area") >= 0 && it_decl(t[0].decls[0..<a.n], "stamp") >= 0 && it_decl(t[0].decls[0..<a.n], "edge") >= 0 && it_decl(t[0].decls[0..<a.n], "cx_now") < 0, "depends: the declarations in other files that a file's own code refers to");
+  k := it_decl(t[0].decls[0..<a.n], "stamp");
+  it_check(t, k >= 0 && t[0].decls[ifx k < 0 then 0 else k].file == "clock.coax" && t[0].decls[ifx k < 0 then 0 else k].line == 2 && t[0].decls[ifx k < 0 then 0 else k].hash == ix_hash(IT_CLOCK, hb[..]), "depends: each with its file, line and the file's hash");
+  a = ix_loads(s, "main.coax", t[0].files[..]);
+  it_check(t, a.ok && a.n == 3 && it_file(t[0].files[0..<a.n], "shapes.coax") && it_file(t[0].files[0..<a.n], "clock.coax") && it_file(t[0].files[0..<a.n], "part.coax"), "depends: the files of its program");
+  a = ix_loaders(s, "shapes.coax", t[0].files[..]);
+  it_check(t, a.ok && a.n == 1 && t[0].files[0] == "main.coax" && a.unchecked == 1, "loaders: the files that load a file, confirmed by the compiler; one that does not check is counted");
+
+  // replace
+  shown := ix_show(s, "area", "", t[0].text[..]);
+  seen: [IX_HASH] u8;
+  for c, i: shown.hash { seen[i] = c; }
+  e := IxEdit.{name = "area", seen = "000000000000", text = IT_AREA_3};
+  p := ix_replace(s, e, t[0].text[..], t[0].diags[..]);
+  n := fs_read(fs_join(dir, "shapes.coax", t[0].pa[..]), t[0].text2[..]);
+  it_check(t, !p.ok && p.stale && p.text == "     4\tarea :: (s: Shape) -> int { return s.w * s.h; }\n" && p.hash == cast(string) seen[..] && cast(string) t[0].text2[0..<n] == IT_SHAPES, "replace: a hash that is not the text's is refused, with the text as it is now, and nothing changes");
+  e.seen = cast(string) seen[0..<12];
+  p = ix_replace(s, e, t[0].text[..], t[0].diags[..]);
+  it_check(t, p.ok && !p.stale && p.file == "shapes.coax" && p.from == 4 && p.to == 6 && p.text == "     4\tarea :: (s: Shape) -> int {\n     5\t  return s.h * s.w;\n     6\t}\n" && p.hash == ix_hash("area :: (s: Shape) -> int {\n  return s.h * s.w;\n}\n", hb[..]), "replace: by name with the hash that was read; the new lines numbered and their hash");
+  it_check(t, p.checked.ok && p.checked.status == 0 && p.checked.n == 0 && p.file_hash.count == IX_HASH && p.ms >= 0, "replace: the file's check comes back with it, clean");
+  p = ix_replace(s, e, t[0].text[..], t[0].diags[..]);
+  it_check(t, !p.ok && p.stale && p.from == 4 && p.to == 6 && it_has(p.text, "     5\t  return s.h * s.w;\n"), "replace: the same edit again is stale, and shows what is there");
+  r = ix_show(s, "area", "", t[0].text[..]);
+  it_check(t, r.ok && r.from == 4 && r.to == 6 && r.hash == ix_hash("area :: (s: Shape) -> int {\n  return s.h * s.w;\n}\n", hb[..]), "show after the edit: the compiler sees the new declaration");
+  for c, i: r.hash { seen[i] = c; }
+  e = IxEdit.{name = "area", seen = cast(string) seen[..], text = "area :: (s: Shape) -> int { return s.w * \"h\"; }\n", check = "main.coax"};
+  p = ix_replace(s, e, t[0].text[..], t[0].diags[..]);
+  it_check(t, p.ok && p.from == 4 && p.to == 4 && p.checked.ok && p.checked.status != 0 && p.checked.n >= 1 && t[0].diags[0].file == "shapes.coax" && t[0].diags[0].line == 4 && t[0].diags[0].severity == "error", "replace: an edit that breaks the type check is applied and comes back with the diagnostic, checked through main.coax");
+  // by lines: line 7 of part.coax is "}", as line 4 is
+  r = ix_show_lines(s, "part.coax", 6, 7, t[0].text[..]);
+  for c, i: r.hash { seen[i] = c; }
+  e = IxEdit.{file = "part.coax", from = 6, to = 7, seen = cast(string) seen[..], text = "  return s.h == 0 || s.w == 0;\n}"};
+  p = ix_replace(s, e, t[0].text[..], t[0].diags[..]);
+  n = fs_read(fs_join(dir, "part.coax", t[0].pa[..]), t[0].text2[..]);
+  it_check(t, p.ok && p.from == 6 && p.to == 7 && it_has(cast(string) t[0].text2[0..<n], "flat :: (s: Shape) -> bool {\n  return s.h == 0 || s.w == 0;\n}\n") && it_has(cast(string) t[0].text2[0..<n], "area(s) * 0;\n}\nflat"), "replace: lines of a file, by the hash of those lines");
+  r = ix_show_lines(s, "part.coax", 7, 7, t[0].text[..]);
+  for c, i: r.hash { seen[i] = c; }
+  e = IxEdit.{file = "part.coax", from = 7, to = 7, seen = cast(string) seen[..], text = "}  // flat"};
+  p = ix_replace(s, e, t[0].text[..], t[0].diags[..]);
+  n = fs_read(fs_join(dir, "part.coax", t[0].pa[..]), t[0].text2[..]);
+  it_check(t, p.ok && it_has(cast(string) t[0].text2[0..<n], "area(s) * 0;\n}\nflat") && it_has(cast(string) t[0].text2[0..<n], "s.w == 0;\n}  // flat\n") && p.text == "     7\t}  // flat\n", "replace: a line whose text is in the file twice changes only where it was named");
+  for c, i: p.file_hash { seen[i] = c; }
+  e = IxEdit.{file = "part.coax", from = 5, to = 7, seen = cast(string) seen[..], text = ""};
+  p = ix_replace(s, e, t[0].text[..], t[0].diags[..]);
+  n = fs_read(fs_join(dir, "part.coax", t[0].pa[..]), t[0].text2[..]);
+  it_check(t, p.ok && p.to == 4 && p.text == "" && !it_has(cast(string) t[0].text2[0..<n], "flat") && rp_lines(cast(string) t[0].text2[0..<n]) == 4, "replace: the file's hash works as what was seen, and an empty text removes the lines");
+  s[0].profile = "read-only";
+  r = ix_show_lines(s, "clock.coax", 2, 2, t[0].text[..]);
+  for c, i: r.hash { seen[i] = c; }
+  p = ix_replace(s, IxEdit.{file = "clock.coax", from = 2, to = 2, seen = cast(string) seen[..], text = "stamp :: () -> int { return 0; }"}, t[0].text[..], t[0].diags[..]);
+  n = fs_read(fs_join(dir, "clock.coax", t[0].pa[..]), t[0].text2[..]);
+  it_check(t, !p.ok && !p.stale && it_has(p.why, "may not change files") && cast(string) t[0].text2[0..<n] == IT_CLOCK, "replace: a read-only run changes nothing");
+  it_check(t, fs_remove(dir), "the scratch tree is removed");
+}
+
+// Real files of this repository, read-only.
+it_real :: (t: [] It, repo: string, coax: string) {
+  s := t[0].s[..];
+  it_check(t, ix_open(s, repo, coax) && s[0].git, "the repository opens, and git searches it");
+  s[0].entries = 40;
+  a := ix_defines(s, "rp_put", t[0].decls[..]);
+  print("       defines rp_put: % ms, % compiler runs\n", a.ms, a.entries);
+  k := it_decl_in(t[0].decls[0..<a.n], "coax/lib/repo/lines.coax");
+  it_check(t, a.ok && a.n >= 1 && k >= 0 && t[0].decls[ifx k < 0 then 0 else k].kind == "proc" && t[0].decls[ifx k < 0 then 0 else k].line == 6 && t[0].decls[ifx k < 0 then 0 else k].end_line == 10 && t[0].decls[ifx k < 0 then 0 else k].hash.count == IX_HASH, "defines rp_put: coax/lib/repo/lines.coax:6-10, among every program's declaration of that name");
+  a = ix_uses_of(s, "rp_put", "coax/lib/repo/lines.coax", t[0].defs[..], t[0].uses[..]);
+  print("       uses rp_put (of lines.coax's): % places, % ms, % compiler runs, % files not checked\n", a.n, a.ms, a.entries, a.unchecked);
+  other := 0;
+  for u: t[0].uses[0..<a.n] { if u.to_file != "coax/lib/repo/lines.coax" || u.to_line != 6 { other += 1; } }
+  it_check(t, a.ok && a.n > 20 && a.defs == 1 && other == 0 && it_uses_in(t[0].uses[0..<a.n], "coax/lib/microcoder/tools.coax") >= 1 && it_uses_in(t[0].uses[0..<a.n], "coax/lib/repo/lines.coax") == 2 && t[0].defs[0].file == "coax/lib/repo/lines.coax", "uses rp_put: in lines.coax's own check and in Microcoder's tools, and none of another program's rp_put");
+  a = ix_exports(s, "coax/lib/repo/lines.coax", t[0].decls[..]);
+  it_check(t, a.ok && it_decl(t[0].decls[0..<a.n], "rp_numbered") >= 0 && it_decl(t[0].decls[0..<a.n], "RpCut") >= 0, "exports coax/lib/repo/lines.coax: rp_numbered and RpCut among them");
+  r := ix_show(s, "mc_edit_file", "", t[0].text[..]);
+  print("       show mc_edit_file: lines %-%, % ms\n", r.from, r.to, r.ms);
+  it_check(t, r.ok && r.file == "coax/lib/microcoder/tools.coax" && it_has(r.text, "\tmc_edit_file :: (cwd: string, e: McEdit, profile: string, b: [] McToolBuffers) -> McEditResult {\n") && r.hash.count == IX_HASH && r.to > r.from + 20, "show mc_edit_file: its text from coax/lib/microcoder/tools.coax");
+  a = ix_check(s, "coax/lib/repo/lines.coax", t[0].diags[..]);
+  it_check(t, a.ok && a.status == 0 && a.n == 0, "check coax/lib/repo/lines.coax: clean");
+  a = ix_effects_of(s, "coax/lib/microcoder/tools.coax", "mc_edit_file", t[0].effects[..]);
+  f := it_effect(t[0].effects[0..<a.n], "mc_edit_file", "foreign_call");
+  if f >= 0 { print("       effects mc_edit_file: foreign_call by %\n", t[0].effects[f].path); }
+  it_check(t, a.ok && f >= 0 && it_has(t[0].effects[ifx f < 0 then 0 else f].path, "mc_edit_file -> "), "effects mc_edit_file: a foreign call and the path to it");
+  a = ix_effects_of(s, "coax/lib/repo/lines.coax", "rp_lines", t[0].effects[..]);
+  it_check(t, a.ok && it_effect(t[0].effects[0..<a.n], "rp_lines", "foreign_call") < 0, "effects rp_lines: no foreign call");
+  a = ix_depends_on(s, "coax/lib/microcoder/tools.coax", t[0].decls[..]);
+  k = it_decl(t[0].decls[0..<a.n], "rp_numbered");
+  it_check(t, a.ok && k >= 0 && t[0].decls[ifx k < 0 then 0 else k].file == "coax/lib/repo/lines.coax" && it_decl(t[0].decls[0..<a.n], "fs_write") >= 0, "depends coax/lib/microcoder/tools.coax: rp_numbered and fs_write among them");
+  a = ix_loaders(s, "coax/lib/repo/lines.coax", t[0].files[..]);
+  it_check(t, a.ok && it_file(t[0].files[0..<a.n], "coax/lib/microcoder/tools.coax") && it_file(t[0].files[0..<a.n], "coax/lib/repo/text.coax") && !it_file(t[0].files[0..<a.n], "coax/lib/repo/repo.coax"), "loaders coax/lib/repo/lines.coax: the files that load it directly (Microcoder's tools, the indexed repos' text)");
+  x := ix_vocab(s, "rp_put", t[0].text[..]);
+  it_check(t, x.ok && it_has(x.text, "rp_put"), "vocab rp_put");
+  x = ix_explain(s, "E0225", t[0].text[..]);
+  it_check(t, x.ok && it_has(x.text, "E0225"), "explain E0225");
+}
+
+it_repo :: (t: [] It, a: [] Args) -> string {
+  repo := args_value(a, "--repo", "");
+  if repo.count == 0 { repo = fs_cwd(t[0].pb[..]); }
+  if !fs_exists(fs_join(repo, "coax/lib/repo/lines.coax", t[0].pa[..])) { return ""; }
+  return repo;
+}
+
+// ---- timings ----
+
+IT_Q :: 15;
+it_question :: (t: [] It, i: int) -> string {
+  if i == 0 { return "defines rp_put"; }
+  if i == 1 { return "defines mc_edit_file"; }
+  if i == 2 { return "uses rp_put"; }
+  if i == 3 { return "uses mc_edit_file"; }
+  if i == 4 { return "exports microcoder/tools.coax"; }
+  if i == 5 { return "show mc_edit_file"; }
+  if i == 6 { return "check repo/lines.coax"; }
+  if i == 7 { return "check microcoder/tools.coax"; }
+  if i == 8 { return "check rlm/code.coax"; }
+  if i == 9 { return "explain E0325"; }
+  if i == 10 { return "vocab rp_put"; }
+  if i == 11 { return "effects tools.coax mc_edit_file"; }
+  if i == 12 { return "depends microcoder/tools.coax"; }
+  if i == 13 { return "depends rlm/code.coax"; }
+  return "loaders repo/lines.coax";
+}
+ItTimed :: struct { ok: bool; ms: int; runs: int; n: int; }
+it_time :: (t: [] It, i: int) -> ItTimed {
+  s := t[0].s[..];
+  tools := "coax/lib/microcoder/tools.coax"; lines := "coax/lib/repo/lines.coax"; code := "coax/lib/rlm/code.coax";
+  a: IxAnswer;
+  if i == 0 { a = ix_defines(s, "rp_put", t[0].decls[..]); }
+  if i == 1 { a = ix_defines(s, "mc_edit_file", t[0].decls[..]); }
+  if i == 2 { a = ix_uses_of(s, "rp_put", lines, t[0].defs[..], t[0].uses[..]); }
+  if i == 3 { a = ix_uses_of(s, "mc_edit_file", "", t[0].defs[..], t[0].uses[..]); }
+  if i == 4 { a = ix_exports(s, tools, t[0].decls[..]); }
+  if i == 5 { r := ix_show(s, "mc_edit_file", "", t[0].text[..]); return ItTimed.{ok = r.ok, ms = r.ms, runs = s[0].runs, n = r.to - r.from + 1}; }
+  if i == 6 { a = ix_check(s, lines, t[0].diags[..]); }
+  if i == 7 { a = ix_check(s, tools, t[0].diags[..]); }
+  if i == 8 { a = ix_check(s, code, t[0].diags[..]); }
+  if i == 9 { r := ix_explain(s, "E0325", t[0].text[..]); return ItTimed.{ok = r.ok, ms = r.ms, runs = 1, n = 1}; }
+  if i == 10 { r := ix_vocab(s, "rp_put", t[0].text[..]); return ItTimed.{ok = r.ok, ms = r.ms, runs = 1, n = 1}; }
+  if i == 11 { a = ix_effects_of(s, tools, "mc_edit_file", t[0].effects[..]); }
+  if i == 12 { a = ix_depends_on(s, tools, t[0].decls[..]); }
+  if i == 13 { a = ix_depends_on(s, code, t[0].decls[..]); }
+  if i == 14 { a = ix_loaders(s, lines, t[0].files[..]); }
+  return ItTimed.{ok = a.ok, ms = a.ms, runs = a.entries, n = a.n};
+}
+it_env :: (t: [] It, i: int, name: string, value: string) -> bool {
+  n := rp_put(t[0].envb[i][..], 0, name); n = rp_put(t[0].envb[i][..], n, "="); n = rp_put(t[0].envb[i][..], n, value);
+  return ix_env(t[0].s[..], cast(string) t[0].envb[i][0..<n]);
+}
+// Every question on real files, three times: cold (a new resident compiler, empty query and check
+// caches, all in a scratch folder so no one else's are touched), warm (asked again), and warm
+// with no resident compiler (COAX_SERVE=0). Then an edit and its check on a copy of lines.coax.
+it_measure :: (t: [] It, repo: string, coax: string) -> int {
+  s := t[0].s[..];
+  dir := fs_temp("coax-intel-time-", t[0].dir[..]);
+  if dir.count == 0 || !ix_open(s, repo, coax) { tool_errln("intel: measure needs the repository and a scratch folder"); return 1; }
+  s[0].entries = 40;
+  ok := it_env(t, 0, "COAX_QUERY_CACHE", fs_join(dir, "query", t[0].pa[..])) && it_env(t, 1, "COAX_CHECK_CACHE", fs_join(dir, "check", t[0].pa[..])) && it_env(t, 2, "COAX_SERVE_DIR", fs_join(dir, "serve", t[0].pa[..]));
+  ms: [3] [IT_Q] int; runs: [IT_Q] int; count: [IT_Q] int; fine := ok;
+  for pass: 0..<3 {
+    if pass == 2 { fine = fine && it_env(t, 3, "COAX_SERVE", "0"); }
+    for i: 0..<IT_Q {
+      r := it_time(t, i);
+      ms[pass][i] = r.ms; runs[i] = r.runs; count[i] = r.n;
+      if !r.ok { fine = false; print("no answer: %\n", it_question(t, i)); }
+    }
+  }
+  print("compiler: %\n", s[0].version);
+  print("| Question | Compiler runs | Records | Cold (ms) | Warm (ms) | Warm, no resident compiler (ms) |\n| --- | ---: | ---: | ---: | ---: | ---: |\n");
+  for i: 0..<IT_Q { print("| % | % | % | % | % | % |\n", it_question(t, i), runs[i], count[i], ms[0][i], ms[1][i], ms[2][i]); }
+  // the scratch resident compiler is stopped; an edit and its check on a copy
+  s[0].nenv = 3;
+  stop := [3] string.[s[0].coax, "serve", "stop"];
+  stopped := ix_run(s, stop[..], true);
+  copy := fs_join(dir, "tree", t[0].pa[..]);
+  k := fs_read(fs_join(repo, "coax/lib/repo/lines.coax", t[0].pb[..]), t[0].text2[..]);
+  if k > 0 && fs_mkdir(copy) && fs_write(fs_join(copy, "lines.coax", t[0].pb[..]), cast(string) t[0].text2[0..<k]) && ix_open(s, copy, s[0].coax) {
+    shown := ix_show(s, "rp_lines", "", t[0].text[..]);
+    seen: [IX_HASH] u8;
+    for c, i: shown.hash { seen[i] = c; }
+    k = fs_read(fs_join(copy, "lines.coax", t[0].pb[..]), t[0].text2[..]);
+    sp := ix_span(cast(string) t[0].text2[0..<k], shown.from, shown.to);
+    n := rp_put(t[0].new_text[..], 0, "// counted again\n");
+    if sp.ok { n = rp_put(t[0].new_text[..], n, cast(string) t[0].text2[sp.at..<sp.end]); }
+    p := ix_replace(s, IxEdit.{name = "rp_lines", seen = cast(string) seen[..], text = cast(string) t[0].new_text[0..<n]}, t[0].text[..], t[0].diags[..]);
+    print("\nshow rp_lines in a copy of lines.coax: % ms; replace it (find it, edit, check the file): % ms, the check alone % ms, clean: %\n", shown.ms, p.ms, p.checked.ms, p.ok && p.checked.status == 0);
+    fine = fine && shown.ok && p.ok;
+  } else { fine = false; }
+  gone := fs_remove(dir);
+  return ifx fine then 0 else 1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { return it_usage(); }
+  t: [1] It;
+  cmd := args_at(a[..], 0);
+  coax := args_value(a[..], "--coax", "");
+  if cmd == "selftest" {
+    repo := it_repo(t[..], a[..]);
+    if coax.count == 0 && repo.count > 0 { coax = fs_join(repo, "coax/bin/coax", t[0].pb[..]); }
+    it_scratch(t[..], coax);
+    if repo.count > 0 { it_real(t[..], repo, coax); } else { print("  (no repository given: the real files were not asked about)\n"); }
+    if t[0].bad == 0 { print("intel selftest: ok\n"); return 0; }
+    print("intel selftest: % failed\n", t[0].bad);
+    return 1;
+  }
+  if cmd == "measure" {
+    repo := it_repo(t[..], a[..]);
+    if repo.count == 0 { tool_errln("intel: measure runs in the openagents checkout, or with --repo DIR"); return 2; }
+    return it_measure(t[..], repo, coax);
+  }
+  if args_count(a[..]) < 2 { return it_usage(); }
+  root := args_value(a[..], "--root", ".");
+  if !ix_open(t[0].s[..], root, coax) { tool_errln("intel: the root is not a directory, or the compiler did not answer `coax version` (--coax PATH names it)"); return 2; }
+  t[0].s[0].entries = args_whole(args_value(a[..], "--entries", "12"));
+  t[0].s[0].run_steps = args_whole(args_value(a[..], "--run-steps", "0"));
+  if t[0].s[0].entries < 1 || t[0].s[0].run_steps < 0 { tool_errln("intel: --entries is 1 or more, --run-steps a count"); return 2; }
+  return it_ask(t[..], a[..]);
+}

@@ -1,0 +1,806 @@
+// Questions for the Coax compiler, for coding agents (GitHub #13445 steps 1 to 3 and proposal 1,
+// part of #13444): where a name is defined, who uses it, what a file exports, one declaration's text,
+// a file's diagnostics, what a diagnostic code or a name means, a procedure's effects, what a file
+// depends on, and an edit that names the hash of what the caller read.
+//
+// Every fact is the compiler's: this file runs `coax query`, `coax check`, `coax deps`,
+// `coax explain` and `coax vocab` and reads their JSON (answers.coax). It holds no parser and no
+// index. check and deps run in the resident compiler (`coax serve`) because the compiler sends
+// them there itself; query keeps its own index under ~/.cache/coax-query.
+//
+// `coax query FILE ...` needs an entry file, and an agent often has only a name. Finding the entry
+// is this file's job:
+//   defines  a text search (git grep, or grep outside a repository) lists the files with a line
+//            that starts "NAME :" (else the files that name it); each is asked as its own entry.
+//   uses     the files that name NAME as a word are the candidates. Each one no earlier run
+//            covered is asked as an entry; `coax deps` of that entry says which other candidates
+//            its program holds, and those are not asked again.
+//   a file that does not check alone (it needs names from the unit that loads it) is asked through
+//   the files with a `#load` whose path, from their own folder, is that file.
+// The search only chooses which files to hand the compiler; no answer comes from it. A run asks at
+// most Ix.entries entries; the answer counts the candidate files it did not reach (unchecked).
+//
+//   s: [1] Ix;                                  // about 50 MB: keep one for a run, never copy it
+//   if ix_open(s[..], "/path/to/repo", "") {    // "": ROOT/coax/bin/coax, else $COAX, else coax on PATH
+//     decls: [8] IxDecl; a := ix_defines(s[..], "rp_put", decls[..]);       // a.n records, a.ms
+//     text: [8192] u8; shown := ix_show(s[..], "rp_put", "", text[..]);      // shown.text, shown.hash
+//     diags: [16] IxDiag;
+//     done := ix_replace(s[..], IxEdit.{name = "rp_put", seen = shown.hash, text = "..."}, text[..], diags[..]);
+//   }
+// The records of an answer (their strings) last until the next question on the same Ix. Output is
+// bounded by the arrays and buffers the caller passes. Every answer says how long it took (ms), and
+// Ix.version is the compiler that gave it.
+//
+// The effects are coax/platform/process-native.c and store-file-native.c, so `coax test` reaches
+// only the pure parts; `coax/web/tool.sh coax/lib/agent/intel/intel.coax selftest` builds a tree
+// and asks every question.
+//   coax/bin/coax test coax/lib/agent/intel/compiler.coax --only unique
+
+#load "answers.coax";
+#load "../../sys/fs.coax";
+#load "../../sys/proc.coax";
+#load "../../microcoder/tools.coax";
+
+IX_RAW :: 8388608;               // bytes of one compiler answer kept
+IX_NODES :: 262144;              // JSON values in one compiler answer
+IX_LINE_NODES :: 2048;           // and in one diagnostic
+IX_POOL :: 1048576;              // bytes of an answer's strings
+IX_FILE :: 4194304;              // a file read to show or to hash
+IX_CAND :: 1024;                 // files a text search may hand on
+IX_LOADERS :: 32;                // files tried as the unit that loads a file
+IX_HASHES :: 256;                // file hashes remembered within one question
+IX_ARGS :: 24;
+IX_ENTRIES :: 12;                // compiler entries one question asks, unless the caller says
+IX_MS :: 120000;                 // one compiler run's time at most, unless the caller says
+
+IX_WORD :: 0; IX_DEF :: 1; IX_LOAD :: 2;
+
+Ix :: struct {
+  root: string;                  // the tree's root, absolute; files are named relative to it
+  coax: string;                  // the compiler
+  version: string;               // `coax version`: "coax0 0.52.0"
+  profile: string;               // "read-only" refuses edits (mc_edit_file)
+  run_steps: int;                // --run-steps for every compiler run (0: the compiler's own)
+  timeout_ms: int;
+  entries: int;
+  env: [4] string; nenv: int;    // "NAME=value" set for every child (COAX_QUERY_CACHE=..., COAX_SERVE=0)
+  git: bool;                     // the root is in a git work tree: search with git grep
+  // work
+  rootb: [FS_PATH_MAX] u8; coaxb: [FS_PATH_MAX] u8; versionb: [64] u8; stepsb: [24] u8;
+  pathb: [FS_PATH_MAX] u8; path2: [FS_PATH_MAX] u8; patb: [512] u8;
+  raw: [IX_RAW] u8; err: [65536] u8;
+  nodes: [IX_NODES] JvNode; line_nodes: [IX_LINE_NODES] JvNode; d: [1] Jv;
+  poolb: [IX_POOL] u8; p: [1] IxPool;
+  file: [IX_FILE] u8;
+  edit: [MC_EDIT_BYTES] u8;
+  tb: [1] McToolBuffers;
+  cand: [IX_CAND] string; ncand: int; covered: [IX_CAND] bool;
+  load: [IX_LOADERS] string;
+  hfile: [IX_HASHES] string; hhash: [IX_HASHES] string; nh: int;
+  t0: int; runs: int;
+}
+
+IxRun :: struct { started: bool; status: int = -1; timed_out: bool; n: int; cut: bool; ne: int; }
+// Runs argv in the root to its end or the timeout. stdout lines into s.raw, a newline after each;
+// the end of stderr into s.err (merge: stderr joins stdout instead).
+ix_run :: (s: [] Ix, argv: [] string, merge: bool) -> IxRun {
+  r: IxRun;
+  h := proc_new();
+  if h < 0 { return r; }
+  ok := argv.count > 0;
+  for a: argv { ok = ok && proc_arg(h, a); }
+  ok = ok && proc_cwd(h, s[0].root);
+  for i: 0..<s[0].nenv { ok = ok && proc_env(h, s[0].env[i]); }
+  if merge { ok = ok && proc_err_to_out(h); }
+  if !ok || proc_start(h) != 0 { gone := proc_release(h); return r; }
+  r.started = true;
+  shut := proc_close_stdin(h);
+  deadline := proc_deadline(s[0].timeout_ms, proc_now_ms());
+  while true {
+    k := proc_line(h, proc_left(deadline, proc_now_ms()), s[0].raw[r.n..<IX_RAW]);
+    if k == PROC_EOF || k == PROC_ERROR { break; }
+    if k == PROC_TIMEOUT { r.timed_out = true; break; }
+    if k == PROC_TOO_LONG { r.cut = true; continue; }
+    r.n += k;
+    if r.n < IX_RAW { s[0].raw[r.n] = '\n'; r.n += 1; } else { r.cut = true; }
+  }
+  if r.timed_out { killed := proc_kill(h, PROC_SIGKILL); }
+  r.status = proc_wait(h, ifx r.timed_out then 2000 else proc_left(deadline, proc_now_ms()));
+  if r.status == PROC_RUNNING { r.timed_out = true; killed := proc_kill(h, PROC_SIGKILL); r.status = proc_wait(h, 2000); }
+  r.ne = proc_stderr(h, s[0].err[..]).count;
+  done := proc_release(h);
+  return r;
+}
+
+ix_copy :: (out: [] u8, text: string) -> string {
+  if text.count > out.count { return ""; }
+  for c, i: text { out[i] = c; }
+  return cast(string) out[0..<text.count];
+}
+ix_first_line :: (text: string) -> string {
+  i := 0;
+  while i < text.count && (text[i] == '\n' || text[i] == ' ') { i += 1; }
+  e := i;
+  while e < text.count && text[e] != '\n' { e += 1; }
+  return cast(string) text[i..<e];
+}
+
+// Opens a tree: its root (a directory), the compiler ("": ROOT/coax/bin/coax, else $COAX, else
+// `coax` on PATH), the compiler's version and whether git can search the tree. False when the
+// root is no directory or the compiler does not answer `coax version`.
+ix_open :: (s: [] Ix, root: string, coax: string) -> bool {
+  r := fs_realpath(root, s[0].rootb[..]);
+  if r.count == 0 || fs_kind(r) != FS_DIR { return false; }
+  s[0].root = r;
+  s[0].profile = "danger-full-access"; s[0].timeout_ms = IX_MS; s[0].entries = IX_ENTRIES; s[0].run_steps = 0;
+  c := ix_copy(s[0].coaxb[..], coax);
+  if c.count == 0 {
+    c = fs_join(r, "coax/bin/coax", s[0].coaxb[..]);
+    if !fs_exists(c) { c = proc_getenv("COAX", s[0].coaxb[..]); }
+    if c.count == 0 { c = "coax"; }
+  }
+  s[0].coax = c;
+  ix_begin(s);
+  ask := [2] string.[c, "version"];
+  v := ix_run(s, ask[..], false);
+  if !v.started || v.status != 0 { return false; }
+  s[0].version = ix_copy(s[0].versionb[..], ix_first_line(cast(string) s[0].raw[0..<v.n]));
+  inside := [3] string.["git", "rev-parse", "--is-inside-work-tree"];
+  g := ix_run(s, inside[..], false);
+  s[0].git = g.started && g.status == 0 && ix_first_line(cast(string) s[0].raw[0..<g.n]) == "true";
+  return s[0].version.count > 0;
+}
+// Sets "NAME=value" for every child from now on (at most four).
+ix_env :: (s: [] Ix, entry: string) -> bool {
+  if s[0].nenv >= s[0].env.count { return false; }
+  s[0].env[s[0].nenv] = entry; s[0].nenv += 1;
+  return true;
+}
+
+ix_begin :: (s: [] Ix) {
+  s[0].p[0].b = s[0].poolb[..]; s[0].p[0].n = 0; s[0].p[0].full = false;
+  s[0].nh = 0; s[0].runs = 0; s[0].t0 = proc_now_ms();
+}
+ix_end :: (s: [] Ix, a: IxAnswer) -> IxAnswer {
+  r := a;
+  r.ms = proc_now_ms() - s[0].t0; r.entries = s[0].runs;
+  if s[0].p[0].full || r.n < r.total { r.cut = true; }
+  return r;
+}
+ix_fail :: (s: [] Ix, why: string) -> IxAnswer { return ix_end(s, IxAnswer.{why = why}); }
+
+// A file as the caller named it (relative to the root, or absolute under it), relative; "" when
+// it is outside the root.
+ix_file :: (s: [] Ix, file: string) -> string {
+  if file.count == 0 || file.count > 1024 || !mc_path_inside(s[0].root, file) { return ""; }
+  return ix_keep(s[0].p[..], ix_rel(s[0].root, file));
+}
+ix_abs :: (s: [] Ix, rel: string) -> string { return fs_join(s[0].root, rel, s[0].pathb[..]); }
+
+// Why the compiler gave no answer: its first diagnostic ("E0325 bad.coax:2:42: message", and how
+// many more), else the first line it printed to stderr.
+ix_why :: (s: [] Ix, err: string) -> string {
+  first := IxDiag.{}; more := 0;
+  i := 0;
+  while i < err.count {
+    e := i;
+    while e < err.count && err[e] != '\n' { e += 1; }
+    mark := s[0].p[0].n;
+    x := ix_diag(cast(string) err[i..<e], s[0].root, s[0].line_nodes[..], s[0].p[..]);
+    if x.severity == "error" { if first.severity.count == 0 { first = x; } else { more += 1; s[0].p[0].n = mark; } }
+    else { s[0].p[0].n = mark; }
+    i = e + 1;
+  }
+  if first.severity.count == 0 {
+    line := ix_first_line(err);
+    return ix_keep(s[0].p[..], ifx line.count > 0 then (ifx line.count > 400 then cast(string) line[0..<400] else line) else "the compiler failed and said nothing");
+  }
+  start := s[0].p[0].n;
+  ix_more(s[0].p[..], first.code); ix_more(s[0].p[..], " "); ix_more(s[0].p[..], first.file); ix_more(s[0].p[..], ":"); ix_more_int(s[0].p[..], first.line);
+  ix_more(s[0].p[..], ":"); ix_more_int(s[0].p[..], first.column); ix_more(s[0].p[..], ": "); ix_more(s[0].p[..], first.message);
+  if more > 0 { ix_more(s[0].p[..], " (and "); ix_more_int(s[0].p[..], more); ix_more(s[0].p[..], " more)"); }
+  return ix_since(s[0].p[..], start);
+}
+
+IxAsk :: struct { ok: bool; status: int; json: string; why: string; }
+// One compiler run: args after the compiler's path. ok: it exited 0 and printed a JSON answer,
+// now in json (in s.raw until the next run).
+ix_ask :: (s: [] Ix, args: [] string) -> IxAsk {
+  argv: [IX_ARGS] string; n := 1;
+  argv[0] = s[0].coax;
+  for a: args { if n < IX_ARGS - 4 { argv[n] = a; n += 1; } }
+  argv[n] = "--diagnostics"; argv[n + 1] = "json"; n += 2;
+  if s[0].run_steps > 0 {
+    k := rp_put_int(s[0].stepsb[..], 0, s[0].run_steps);
+    argv[n] = "--run-steps"; argv[n + 1] = cast(string) s[0].stepsb[0..<k]; n += 2;
+  }
+  r := ix_run(s, argv[0..<n], false);
+  s[0].runs += 1;
+  a := IxAsk.{status = r.status};
+  if !r.started { a.why = "the compiler could not start"; return a; }
+  if r.timed_out { a.why = "the compiler ran past its time"; return a; }
+  if r.cut { a.why = "the compiler's answer is over the 8 MB kept"; return a; }
+  text := cast(string) s[0].raw[0..<r.n];
+  i := 0;
+  while i < text.count {
+    e := i;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    if e > i && text[i] == '{' { a.json = cast(string) text[i..<e]; break; }
+    i = e + 1;
+  }
+  if r.status == 0 && a.json.count > 0 { a.ok = true; return a; }
+  a.why = ix_why(s, cast(string) s[0].err[0..<r.ne]);
+  return a;
+}
+ix_parse :: (s: [] Ix, json: string) -> bool { return jv_parse(s[0].d[..], json, s[0].nodes[..]); }
+
+// `coax query ENTRY defines NAME | uses NAME | exports --json`.
+ix_query :: (s: [] Ix, entry: string, form: string, name: string) -> IxAsk {
+  args := [5] string.["query", ix_abs(s, entry), form, name, "--json"];
+  if name.count == 0 { args[3] = "--json"; return ix_ask(s, args[0..<4]); }
+  return ix_ask(s, args[..]);
+}
+// `coax deps ENTRY [FLAG]`.
+ix_deps :: (s: [] Ix, entry: string, flag: string) -> IxAsk {
+  args := [3] string.["deps", ix_abs(s, entry), flag];
+  return ix_ask(s, args[0..<ifx flag.count > 0 then 3 else 2]);
+}
+
+// The .coax files under the root that a text search finds, relative, into out; how many there
+// were. IX_WORD: files with name as a word. IX_DEF: files with a line that starts "name :" (a
+// top-level declaration's spelling). IX_LOAD: files with a `#load "...name"` of that file name. git grep in a repository (tracked and new files, not ignored ones), grep -r outside one.
+ix_grep :: (s: [] Ix, mode: int, name: string, out: [] string) -> int {
+  n := ix_grep_run(s, mode, name);
+  text := cast(string) s[0].raw[0..<n];
+  total := 0; i := 0;
+  while i < text.count {
+    e := i;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    if e > i {
+      if total < out.count { out[total] = ix_keep(s[0].p[..], ix_rel(s[0].root, cast(string) text[i..<e])); }
+      total += 1;
+    }
+    i = e + 1;
+  }
+  return total;
+}
+// The search itself: its output's bytes, in s.raw. IX_LOAD prints `PATH:#load "REL"` lines, the
+// others file names.
+ix_grep_run :: (s: [] Ix, mode: int, name: string) -> int {
+  argv: [IX_ARGS] string; n := 0;
+  with_git := [5] string.["git", "grep", "-l", "-I", "--untracked"];
+  plain := [5] string.["grep", "-r", "-l", "-I", "--include=*.coax"];
+  for i: 0..<5 { argv[n] = ifx s[0].git then with_git[i] else plain[i]; n += 1; }
+  k := 0;
+  if mode == IX_WORD { argv[n] = "-w"; argv[n + 1] = "-F"; n += 2; k = rp_put(s[0].patb[..], 0, name); }
+  if mode == IX_DEF { argv[n] = "-E"; n += 1; k = rp_put(s[0].patb[..], 0, "^"); k = rp_put(s[0].patb[..], k, name); k = rp_put(s[0].patb[..], k, "[[:space:]]*:"); }
+  if mode == IX_LOAD {
+    argv[2] = "-o"; argv[n] = "-E"; n += 1; k = rp_put(s[0].patb[..], 0, "#load \"([^\"]*/)?");
+    for c: name {
+      word := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '/';
+      if !word && k < 500 { s[0].patb[k] = '\\'; k += 1; }
+      if k < 500 { s[0].patb[k] = c; k += 1; }
+    }
+    k = rp_put(s[0].patb[..], k, "\"");
+  }
+  argv[n] = "-e"; argv[n + 1] = cast(string) s[0].patb[0..<k]; n += 2;
+  if s[0].git { argv[n] = "--"; argv[n + 1] = "*.coax"; n += 2; } else { argv[n] = "."; n += 1; }
+  r := ix_run(s, argv[0..<n], false);
+  return ifx r.started then r.n else 0;
+}
+// The files with a `#load` whose path, from the loading file's folder, is rel: into s.load, how
+// many (IX_LOADERS at most). A text match: the caller asks the compiler through each.
+ix_loaders_near :: (s: [] Ix, rel: string) -> int {
+  k := ix_grep_run(s, IX_LOAD, fs_base(rel));
+  text := cast(string) s[0].raw[0..<k];
+  n := 0; i := 0;
+  while i < text.count && n < IX_LOADERS {
+    e := i;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    l := ix_load_line(cast(string) text[i..<e], s[0].path2[..]);
+    if l.file == rel && l.by != rel && (n == 0 || s[0].load[n - 1] != l.by) { s[0].load[n] = ix_keep(s[0].p[..], l.by); n += 1; }
+    i = e + 1;
+  }
+  return n;
+}
+
+// The SHA-256 of a file under the root, in hex; "" when it cannot be read (or is over 4 MB).
+ix_file_hash :: (s: [] Ix, rel: string) -> string {
+  for i: 0..<s[0].nh { if s[0].hfile[i] == rel { return s[0].hhash[i]; } }
+  k := fs_read(fs_join(s[0].root, rel, s[0].path2[..]), s[0].file[..]);
+  if k < 0 { return ""; }
+  hb: [IX_HASH] u8;
+  h := ix_keep(s[0].p[..], ix_hash(cast(string) s[0].file[0..<k], hb[..]));
+  if s[0].nh < IX_HASHES { s[0].hfile[s[0].nh] = rel; s[0].hhash[s[0].nh] = h; s[0].nh += 1; }
+  return h;
+}
+
+ix_defines_do :: (s: [] Ix, name: string, out: [] IxDecl) -> IxAnswer {
+  a: IxAnswer;
+  if !ix_ident(name) { a.why = "not a name: letters, digits and '_'"; return a; }
+  found := ix_grep(s, IX_DEF, name, s[0].cand[..]);
+  if found == 0 { found = ix_grep(s, IX_WORD, name, s[0].cand[..]); }
+  s[0].ncand = ifx found > IX_CAND then IX_CAND else found;
+  a.unchecked = found - s[0].ncand;
+  have: IxAdded; tried := 0; answered := false; why := "";
+  for i: 0..<s[0].ncand {
+    c := s[0].cand[i];
+    known := false;
+    for j: 0..<have.n { if out[j].file == c { known = true; } }
+    if known { continue; }
+    if tried >= s[0].entries { a.unchecked += 1; continue; }
+    tried += 1;
+    q := ix_query(s, c, "defines", name);
+    if !q.ok {
+      // the file does not check alone: ask through the units that load it
+      if why.count == 0 { why = q.why; }
+      near := ix_loaders_near(s, c);
+      for j: 0..<near {
+        if q.ok || tried >= s[0].entries { break; }
+        tried += 1;
+        q = ix_query(s, s[0].load[j], "defines", name);
+      }
+    }
+    if q.ok && ix_parse(s, q.json) { answered = true; have = ix_decls(s[0].d[0], "definitions", s[0].root, s[0].p[..], out, have); }
+  }
+  for i: 0..<have.n { out[i].hash = ix_file_hash(s, out[i].file); }
+  a.n = have.n; a.total = have.total;
+  a.ok = answered || s[0].ncand == 0;
+  if !a.ok { a.why = why; }
+  else if have.total == 0 { a.why = ifx s[0].ncand == 0 then "no .coax file under the root names it" else "no declaration has this name"; }
+  return a;
+}
+// Where NAME is declared, in every program under the root that declares it: kind, file, lines,
+// exported, and the file's hash.
+ix_defines :: (s: [] Ix, name: string, out: [] IxDecl) -> IxAnswer {
+  ix_begin(s);
+  return ix_end(s, ix_defines_do(s, name, out));
+}
+
+// Every place NAME is written and resolves to a declaration of that name, in the files under the
+// root that name it; the declarations they resolve to in defs (a.defs of them). Separate programs
+// may each declare the name: `only` (a file, or "") keeps the uses of the declaration in that file,
+// and each use says which it resolves to (to_file, to_line). unchecked counts files that name it
+// which no compiler run covered: raise Ix.entries, or they do not check even through a loader.
+ix_uses_of :: (s: [] Ix, name: string, only: string, defs: [] IxDecl, out: [] IxUse) -> IxAnswer {
+  ix_begin(s);
+  a: IxAnswer;
+  if !ix_ident(name) { return ix_fail(s, "not a name: letters, digits and '_'"); }
+  want := ifx only.count > 0 then ix_file(s, only) else "";
+  if only.count > 0 && want.count == 0 { return ix_fail(s, "the file is outside the root"); }
+  found := ix_grep(s, IX_WORD, name, s[0].cand[..]);
+  s[0].ncand = ifx found > IX_CAND then IX_CAND else found;
+  for i: 0..<s[0].ncand { s[0].covered[i] = false; }
+  hd: IxAdded; hu: IxAdded; tried := 0; answered := false; why := "";
+  for i: 0..<s[0].ncand {
+    if s[0].covered[i] || tried >= s[0].entries { continue; }
+    entry := s[0].cand[i]; tried += 1;
+    q := ix_query(s, entry, "uses", name);
+    if !q.ok {
+      if why.count == 0 { why = q.why; }
+      near := ix_loaders_near(s, entry);
+      for j: 0..<near {
+        if q.ok || tried >= s[0].entries { break; }
+        tried += 1;
+        q = ix_query(s, s[0].load[j], "uses", name);
+        if q.ok { entry = s[0].load[j]; }
+      }
+    }
+    if !q.ok || !ix_parse(s, q.json) { continue; }
+    answered = true;
+    mine := want.count == 0;
+    first := ix_first(s[0].d[0], jv_get(s[0].d[0], 0, "definitions"));
+    if !mine && first >= 0 && s[0].d[0].nodes[first].next < 0 {
+      mark := s[0].p[0].n;
+      mine = ix_decl(s[0].d[0], first, s[0].root, s[0].p[..]).file == want;
+      s[0].p[0].n = mark;
+    }
+    if mine { hd = ix_decls(s[0].d[0], "definitions", s[0].root, s[0].p[..], defs, hd); }
+    hu = ix_uses(s[0].d[0], s[0].root, want, s[0].p[..], out, hu);
+    if entry == s[0].cand[i] { s[0].covered[i] = true; }
+    // the entry's program holds other candidates: they are answered too
+    left := false;
+    for j: 0..<s[0].ncand { if !s[0].covered[j] { left = true; } }
+    if left {
+      dq := ix_deps(s, entry, "");
+      if dq.ok && ix_parse(s, dq.json) {
+        for j: 0..<s[0].ncand {
+          if !s[0].covered[j] && ix_sources_have(s[0].d[0], fs_join(s[0].root, s[0].cand[j], s[0].path2[..])) { s[0].covered[j] = true; }
+        }
+      }
+    }
+  }
+  a.unchecked = found - s[0].ncand;
+  for i: 0..<s[0].ncand { if !s[0].covered[i] { a.unchecked += 1; } }
+  for i: 0..<hd.n { defs[i].hash = ix_file_hash(s, defs[i].file); }
+  for i: 0..<hu.n { out[i].hash = ix_file_hash(s, out[i].file); }
+  a.n = hu.n; a.total = hu.total; a.defs = hd.n;
+  a.ok = answered || s[0].ncand == 0;
+  if !a.ok { a.why = why; }
+  else if s[0].ncand == 0 { a.why = "no .coax file under the root names it"; }
+  else if hd.total == 0 { a.why = ifx want.count > 0 then "no declaration has this name in that file" else "no declaration has this name"; }
+  r := ix_end(s, a);
+  if hd.n < hd.total { r.cut = true; }
+  return r;
+}
+
+// What a file declares: `coax query FILE exports`. A file that does not check alone answers
+// through a unit that loads it (`coax deps LOADER --declarations`): then `exported` is not known
+// and the answer's why says so.
+ix_exports :: (s: [] Ix, file: string, out: [] IxDecl) -> IxAnswer {
+  ix_begin(s);
+  rel := ix_file(s, file);
+  if rel.count == 0 { return ix_fail(s, "the file is outside the root"); }
+  if !fs_exists(ix_abs(s, rel)) { return ix_fail(s, "no such file"); }
+  a: IxAnswer; have: IxAdded;
+  q := ix_query(s, rel, "exports", "");
+  if q.ok && ix_parse(s, q.json) {
+    have = ix_decls(s[0].d[0], "exports", s[0].root, s[0].p[..], out, have);
+    a.ok = true;
+  } else {
+    a.why = q.why;
+    near := ix_loaders_near(s, rel);
+    unit := fs_join(s[0].root, rel, s[0].path2[..]);
+    for j: 0..<near {
+      if a.ok || j >= s[0].entries { break; }
+      dq := ix_deps(s, s[0].load[j], "--declarations");
+      if dq.ok && ix_parse(s, dq.json) {
+        have = ix_declared(s[0].d[0], unit, s[0].root, s[0].p[..], out);
+        if have.total > 0 {
+          a.ok = true;
+          start := s[0].p[0].n;
+          ix_more(s[0].p[..], "the file does not check alone ("); ix_more(s[0].p[..], q.why); ix_more(s[0].p[..], "); these are its declarations in "); ix_more(s[0].p[..], s[0].load[j]);
+          ix_more(s[0].p[..], ", and whether each is exported is not known");
+          a.why = ix_since(s[0].p[..], start);
+        }
+      }
+    }
+  }
+  for i: 0..<have.n { out[i].hash = ix_file_hash(s, out[i].file); }
+  a.n = have.n; a.total = have.total;
+  return ix_end(s, a);
+}
+
+ix_check_do :: (s: [] Ix, rel: string, out: [] IxDiag) -> IxAnswer {
+  a: IxAnswer;
+  argv: [8] string; n := 5;
+  argv[0] = s[0].coax; argv[1] = "check"; argv[2] = ix_abs(s, rel); argv[3] = "--diagnostics"; argv[4] = "json";
+  if s[0].run_steps > 0 {
+    k := rp_put_int(s[0].stepsb[..], 0, s[0].run_steps);
+    argv[n] = "--run-steps"; argv[n + 1] = cast(string) s[0].stepsb[0..<k]; n += 2;
+  }
+  r := ix_run(s, argv[0..<n], true);
+  s[0].runs += 1;
+  if !r.started { a.why = "the compiler could not start"; return a; }
+  if r.timed_out { a.why = "the compiler ran past its time"; return a; }
+  a.status = r.status;
+  text := cast(string) s[0].raw[0..<r.n];
+  i := 0;
+  while i < text.count {
+    e := i;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    mark := s[0].p[0].n;
+    x := ix_diag(cast(string) text[i..<e], s[0].root, s[0].line_nodes[..], s[0].p[..]);
+    if x.severity.count > 0 {
+      a.total += 1;
+      if a.n < out.count { out[a.n] = x; a.n += 1; } else { s[0].p[0].n = mark; }
+    } else { s[0].p[0].n = mark; }
+    i = e + 1;
+  }
+  a.ok = r.status == 0 || a.total > 0;
+  if !a.ok { a.why = ix_keep(s[0].p[..], ix_first_line(text)); }
+  return a;
+}
+// A file's diagnostics, as records: `coax check FILE --diagnostics json`. status 0 and no
+// records is a clean file. The file is checked as its own entry.
+ix_check :: (s: [] Ix, file: string, out: [] IxDiag) -> IxAnswer {
+  ix_begin(s);
+  rel := ix_file(s, file);
+  if rel.count == 0 { return ix_fail(s, "the file is outside the root"); }
+  if !fs_exists(ix_abs(s, rel)) { return ix_fail(s, "no such file"); }
+  return ix_end(s, ix_check_do(s, rel, out));
+}
+
+// What a program printed, bounded.
+IxText :: struct { ok: bool; why: string; text: string; cut: bool; ms: int; }
+ix_say :: (s: [] Ix, word: string, what: string, out: [] u8) -> IxText {
+  ix_begin(s);
+  argv := [3] string.[s[0].coax, word, what];
+  r := ix_run(s, argv[..], true);
+  t := IxText.{ms = proc_now_ms() - s[0].t0};
+  if !r.started || r.timed_out { t.why = "the compiler could not start, or ran past its time"; return t; }
+  n := ifx r.n < out.count then r.n else out.count;
+  for i: 0..<n { out[i] = s[0].raw[i]; }
+  t.cut = r.n > out.count;
+  t.text = ifx t.cut then ix_text_end(out, n) else cast(string) out[0..<n];
+  t.ok = r.status == 0;
+  if !t.ok { t.why = ix_keep(s[0].p[..], ix_first_line(cast(string) s[0].raw[0..<r.n])); }
+  return t;
+}
+// What a diagnostic code means: `coax explain CODE`.
+ix_explain :: (s: [] Ix, code: string, out: [] u8) -> IxText {
+  if !ix_code(code) { return IxText.{why = "not a diagnostic code: E or W and digits"}; }
+  return ix_say(s, "explain", code, out);
+}
+// What a name is: `coax vocab NAME` (a library procedure, type, keyword, error code or another
+// language's spelling). The compiler answers only inside an openagents checkout.
+ix_vocab :: (s: [] Ix, name: string, out: [] u8) -> IxText {
+  if name.count == 0 || name.count > 100 || name[0] == '-' { return IxText.{why = "not a name"}; }
+  for c: name { if c == 0 || c == '\n' { return IxText.{why = "not a name"}; } }
+  return ix_say(s, "vocab", name, out);
+}
+
+// A procedure's may-effects, each with one path that reaches it: `coax deps FILE --effects
+// --proc NAME`. With proc "", every procedure the file itself declares. The compiler's kinds are
+// conservative: a procedure with checked arithmetic reports may_trap, host_io and unknown_effects.
+ix_effects_of :: (s: [] Ix, file: string, proc: string, out: [] IxEffect) -> IxAnswer {
+  ix_begin(s);
+  rel := ix_file(s, file);
+  if rel.count == 0 { return ix_fail(s, "the file is outside the root"); }
+  if proc.count > 0 && !ix_ident(proc) { return ix_fail(s, "not a procedure's name"); }
+  args := [5] string.["deps", ix_abs(s, rel), "--effects", "--proc", proc];
+  q := ix_ask(s, args[0..<ifx proc.count > 0 then 5 else 3]);
+  if !q.ok { return ix_fail(s, q.why); }
+  if !ix_parse(s, q.json) { return ix_fail(s, "the compiler's answer has more JSON values than are kept"); }
+  got := ix_effects(s[0].d[0], proc, fs_join(s[0].root, rel, s[0].path2[..]), s[0].root, s[0].p[..], out);
+  return ix_end(s, IxAnswer.{ok = true, n = got.n, total = got.total});
+}
+
+// The declarations in other files that this file's own code refers to: `coax deps FILE
+// --declarations`.
+ix_depends_on :: (s: [] Ix, file: string, out: [] IxDecl) -> IxAnswer {
+  ix_begin(s);
+  rel := ix_file(s, file);
+  if rel.count == 0 { return ix_fail(s, "the file is outside the root"); }
+  q := ix_deps(s, rel, "--declarations");
+  if !q.ok { return ix_fail(s, q.why); }
+  if !ix_parse(s, q.json) { return ix_fail(s, "the compiler's answer has more JSON values than are kept"); }
+  got := ix_depends(s[0].d[0], fs_join(s[0].root, rel, s[0].path2[..]), s[0].root, s[0].p[..], out);
+  for i: 0..<got.n { out[i].hash = ix_file_hash(s, out[i].file); }
+  return ix_end(s, IxAnswer.{ok = true, n = got.n, total = got.total});
+}
+// Every file the file's program is made of (itself not listed): `coax deps FILE`.
+ix_loads :: (s: [] Ix, file: string, out: [] string) -> IxAnswer {
+  ix_begin(s);
+  rel := ix_file(s, file);
+  if rel.count == 0 { return ix_fail(s, "the file is outside the root"); }
+  q := ix_deps(s, rel, "");
+  if !q.ok { return ix_fail(s, q.why); }
+  if !ix_parse(s, q.json) { return ix_fail(s, "the compiler's answer has more JSON values than are kept"); }
+  a := IxAnswer.{ok = true};
+  e := ix_first(s[0].d[0], jv_get(s[0].d[0], 0, "sources"));
+  while e >= 0 {
+    mark := s[0].p[0].n;
+    f := ix_rel(s[0].root, ix_keep_jv(s[0].p[..], s[0].d[0], e));
+    if f == rel { s[0].p[0].n = mark; }
+    else {
+      a.total += 1;
+      if a.n < out.count { out[a.n] = f; a.n += 1; } else { s[0].p[0].n = mark; }
+    }
+    e = s[0].d[0].nodes[e].next;
+  }
+  return ix_end(s, a);
+}
+// The files whose program holds this file: those whose text loads a file of its name, each
+// confirmed by `coax deps`. Direct loaders only; ask again about one to go further up.
+ix_loaders :: (s: [] Ix, file: string, out: [] string) -> IxAnswer {
+  ix_begin(s);
+  rel := ix_file(s, file);
+  if rel.count == 0 { return ix_fail(s, "the file is outside the root"); }
+  a := IxAnswer.{ok = true};
+  near := ix_loaders_near(s, rel);
+  unit := fs_join(s[0].root, rel, s[0].path2[..]);
+  for j: 0..<near {
+    if j >= s[0].entries { a.unchecked += 1; continue; }
+    q := ix_deps(s, s[0].load[j], "");
+    if q.ok && ix_parse(s, q.json) {
+      if ix_sources_have(s[0].d[0], unit) {
+        a.total += 1;
+        if a.n < out.count { out[a.n] = s[0].load[j]; a.n += 1; }
+      }
+    } else { a.unchecked += 1; }
+  }
+  return ix_end(s, a);
+}
+
+// A declaration, or lines of a file, as read: numbered text, the hash of exactly those lines
+// (what an edit names as seen) and the file's hash.
+IxShown :: struct {
+  ok: bool; why: string;
+  decl: IxDecl;                  // show by name: the declaration
+  file: string; from: int; to: int;
+  text: string;                  // the lines, numbered (rp_numbered); with found > 1, the declarations to choose from
+  cut: bool; next: int;          // the text stopped before line next
+  hash: string;                  // SHA-256 of lines from..to, newlines included
+  file_hash: string;
+  found: int;                    // show by name: how many declarations have the name
+  ms: int;
+}
+ix_show_do :: (s: [] Ix, rel: string, from: int, to: int, out: [] u8) -> IxShown {
+  r := IxShown.{file = rel, from = from, to = to};
+  k := fs_read(ix_abs(s, rel), s[0].file[..]);
+  if k < 0 { r.why = "no such file (or it is over 4 MB)"; return r; }
+  text := cast(string) s[0].file[0..<k];
+  sp := ix_span(text, from, to);
+  if !sp.ok { r.why = "the file has no such lines"; return r; }
+  hb: [IX_HASH] u8;
+  r.hash = ix_keep(s[0].p[..], ix_hash(cast(string) text[sp.at..<sp.end], hb[..]));
+  r.file_hash = ix_keep(s[0].p[..], ix_hash(text, hb[..]));
+  c := rp_numbered(text, from, to, out, 0, out.count);
+  r.text = cast(string) out[0..<c.n]; r.cut = c.cut; r.next = c.next;
+  r.ok = true;
+  return r;
+}
+ix_shown_end :: (s: [] Ix, r: IxShown) -> IxShown {
+  x := r;
+  x.ms = proc_now_ms() - s[0].t0;
+  return x;
+}
+// Picks the one declaration named name (in file, when given) from a defines answer.
+IxPick :: struct { at: int; count: int; }
+ix_pick :: (decls: [] IxDecl, file: string) -> IxPick {
+  r := IxPick.{at = -1};
+  for x, i: decls {
+    if file.count == 0 || x.file == file { if r.at < 0 { r.at = i; } r.count += 1; }
+  }
+  return r;
+}
+// One declaration's text by name (proposal 1's `coax show NAME`, from `defines` and the file).
+// file narrows it when several programs under the root declare the name ("" otherwise).
+ix_show :: (s: [] Ix, name: string, file: string, out: [] u8) -> IxShown {
+  ix_begin(s);
+  decls: [16] IxDecl;
+  a := ix_defines_do(s, name, decls[..]);
+  want := ifx file.count > 0 then ix_file(s, file) else "";
+  pick := ix_pick(decls[0..<a.n], want);
+  r := IxShown.{found = pick.count};
+  if pick.count == 0 { r.why = ifx a.why.count > 0 then a.why else "no declaration has this name in that file"; return ix_shown_end(s, r); }
+  if pick.count > 1 {
+    r.why = "more than one declaration has this name: say which file";
+    r.text = cast(string) out[0..<ix_decls_text(decls[0..<a.n], out, 0)];
+    return ix_shown_end(s, r);
+  }
+  x := decls[pick.at];
+  r = ix_show_do(s, x.file, x.line, x.end_line, out);
+  r.decl = x; r.found = 1;
+  return ix_shown_end(s, r);
+}
+// Lines from..to of a file, the same way.
+ix_show_lines :: (s: [] Ix, file: string, from: int, to: int, out: [] u8) -> IxShown {
+  ix_begin(s);
+  rel := ix_file(s, file);
+  if rel.count == 0 { return ix_shown_end(s, IxShown.{why = "the file is outside the root"}); }
+  return ix_shown_end(s, ix_show_do(s, rel, from, to, out));
+}
+
+// The smallest run of whole lines around sp whose text is in `text` exactly once (the exact edit
+// replaces a text that is unique in its file); sp itself when it already is.
+ix_unique :: (text: string, sp: IxSpan) -> IxSpan {
+  u := sp;
+  while true {
+    f := mc_find_all(text, cast(string) text[u.at..<u.end]);
+    if f.count == 1 { u.ok = true; return u; }
+    grew := false;
+    if u.at > 0 {
+      i := u.at - 1;
+      while i > 0 && text[i - 1] != '\n' { i -= 1; }
+      u.at = i; grew = true;
+    }
+    if u.end < text.count {
+      e := u.end;
+      while e < text.count && text[e] != '\n' { e += 1; }
+      if e < text.count { e += 1; }
+      u.end = e; grew = true;
+    }
+    if !grew { u.ok = false; return u; }
+  }
+  return u;
+}
+#test "a span that repeats grows by whole lines until its text is unique in the file" {
+  t := "a {\n}\nb {\n  x;\n}\nc {\n}\n";
+  // line 5 is "}" and so are lines 2 and 7
+  sp := ix_span(t, 5, 5);
+  u := ix_unique(t, sp);
+  #assert u.ok && cast(string) t[u.at..<u.end] == "  x;\n}\nc {\n";
+  sp = ix_span(t, 4, 4);
+  u = ix_unique(t, sp);
+  #assert u.ok && u.at == sp.at && u.end == sp.end;
+  same := "x\nx\nx\n";
+  u = ix_unique(same, ix_span(same, 2, 2));
+  #assert u.ok && u.at == 0 && u.end == same.count;
+  last := "y\nz\ny";
+  u = ix_unique(last, ix_span(last, 3, 3));
+  #assert u.ok && cast(string) last[u.at..<u.end] == "z\ny";
+}
+
+// An edit tied to what the caller read (GitHub #13445 step 3 and proposal 1's `replace NAME`).
+IxEdit :: struct {
+  name: string;                  // the declaration to replace; or "" and
+  file: string; from: int; to: int;   // lines from..to of a file (with a name: the file that declares it, or "")
+  seen: string;                  // the hash the caller read: IxShown.hash or .file_hash (12 hex digits or more)
+  text: string;                  // the new text of those lines ("" removes them); a missing last newline is added
+  check: string;                 // the file to check afterwards ("": the edited file)
+}
+IxReplaced :: struct {
+  ok: bool;                      // the file was changed
+  stale: bool;                   // refused: the text is not what the caller saw; text and hash are as it is now
+  why: string;
+  file: string; from: int; to: int;   // the lines the new text has now (to < from: it was removed)
+  text: string;                  // those lines, numbered
+  cut: bool;
+  hash: string; file_hash: string;
+  checked: IxAnswer;             // the check after the edit; its records in the caller's array
+  ms: int;
+}
+ix_replaced_end :: (s: [] Ix, r: IxReplaced) -> IxReplaced {
+  x := r;
+  x.ms = proc_now_ms() - s[0].t0;
+  return x;
+}
+// Replaces a declaration (by name) or lines of a file with e.text, when e.seen is still the hash
+// of that text (or of the whole file). A stale edit changes nothing and returns the text as it is
+// now with its hash. The edit is the exact edit Microcoder makes (mc_edit_file); an applied one
+// returns the new lines numbered, their hash, the file's hash and the file's check.
+ix_replace :: (s: [] Ix, e: IxEdit, out: [] u8, diags: [] IxDiag) -> IxReplaced {
+  ix_begin(s);
+  r: IxReplaced;
+  rel := ""; from := e.from; to := e.to;
+  if e.name.count > 0 {
+    decls: [16] IxDecl;
+    a := ix_defines_do(s, e.name, decls[..]);
+    pick := ix_pick(decls[0..<a.n], ifx e.file.count > 0 then ix_file(s, e.file) else "");
+    if pick.count == 0 { r.why = ifx a.why.count > 0 then a.why else "no declaration has this name in that file"; return ix_replaced_end(s, r); }
+    if pick.count > 1 { r.why = "more than one declaration has this name: say which file"; return ix_replaced_end(s, r); }
+    rel = decls[pick.at].file; from = decls[pick.at].line; to = decls[pick.at].end_line;
+  } else {
+    rel = ix_file(s, e.file);
+    if rel.count == 0 { r.why = "the file is outside the root"; return ix_replaced_end(s, r); }
+  }
+  r.file = rel; r.from = from; r.to = to;
+  k := fs_read(ix_abs(s, rel), s[0].file[..]);
+  if k < 0 { r.why = "no such file (or it is over 4 MB)"; return ix_replaced_end(s, r); }
+  text := cast(string) s[0].file[0..<k];
+  sp := ix_span(text, from, to);
+  if !sp.ok { r.why = "the file has no such lines"; return ix_replaced_end(s, r); }
+  hb: [IX_HASH] u8;
+  r.hash = ix_keep(s[0].p[..], ix_hash(cast(string) text[sp.at..<sp.end], hb[..]));
+  r.file_hash = ix_keep(s[0].p[..], ix_hash(text, hb[..]));
+  if !ix_hash_is(e.seen, r.hash) && !ix_hash_is(e.seen, r.file_hash) {
+    r.stale = true;
+    r.why = "the text is not what was read (its hash differs): nothing was changed; this is the text now";
+    c := rp_numbered(text, from, to, out, 0, out.count);
+    r.text = cast(string) out[0..<c.n]; r.cut = c.cut;
+    return ix_replaced_end(s, r);
+  }
+  // the old text, widened until it is unique in the file, and the new text with the same lines around it
+  u := ix_unique(text, sp);
+  if !u.ok { r.why = "the lines could not be told apart from others in the file"; return ix_replaced_end(s, r); }
+  n := rp_put(s[0].edit[..], 0, cast(string) text[u.at..<sp.at]);
+  n = rp_put(s[0].edit[..], n, e.text);
+  if e.text.count > 0 && e.text[e.text.count - 1] != '\n' { n = rp_put(s[0].edit[..], n, "\n"); }
+  n = rp_put(s[0].edit[..], n, cast(string) text[sp.end..<u.end]);
+  if n >= MC_EDIT_BYTES { r.why = "the new text is over 512 KB"; return ix_replaced_end(s, r); }
+  // an empty old text means "write the whole file" to the exact edit, so a file emptied this way is written so
+  res := mc_edit_file(s[0].root, McEdit.{path = rel, old = cast(string) text[u.at..<u.end], text = cast(string) s[0].edit[0..<n]}, s[0].profile, s[0].tb[..]);
+  if !res.ok { r.why = ix_keep(s[0].p[..], res.why); return ix_replaced_end(s, r); }
+  s[0].nh = 0;
+  lines := rp_lines(e.text);
+  r.ok = true; r.to = from + lines - 1; r.text = ""; r.hash = "";
+  k = fs_read(ix_abs(s, rel), s[0].file[..]);
+  if k >= 0 {
+    now := cast(string) s[0].file[0..<k];
+    r.file_hash = ix_keep(s[0].p[..], ix_hash(now, hb[..]));
+    sp = ix_span(now, from, r.to);
+    if sp.ok {
+      r.hash = ix_keep(s[0].p[..], ix_hash(cast(string) now[sp.at..<sp.end], hb[..]));
+      c := rp_numbered(now, from, r.to, out, 0, out.count);
+      r.text = cast(string) out[0..<c.n]; r.cut = c.cut;
+    }
+  }
+  after := ifx e.check.count > 0 then ix_file(s, e.check) else rel;
+  if after.count == 0 { after = rel; }
+  before := proc_now_ms();
+  r.checked = ix_check_do(s, after, diags);
+  r.checked.ms = proc_now_ms() - before; r.checked.entries = 1;
+  return ix_replaced_end(s, r);
+}

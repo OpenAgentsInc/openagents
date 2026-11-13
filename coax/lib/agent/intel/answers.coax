@@ -1,0 +1,627 @@
+// What the Coax compiler answers, as records an agent can use (GitHub #13445, part of #13444):
+// the compiler's own JSON (`coax query --json`: coax.query.v1; `coax check --diagnostics json`:
+// coax.diagnostic.v1; `coax deps --effects`: coax.effects.v1; `coax deps --declarations`:
+// coax.declarations.v1) read into typed records with paths relative to the root, the hash a caller
+// names when it edits what it read, and each answer as bounded text. No effects here: compiler.coax
+// runs the compiler, and intel.coax is the command-line tool. Nothing in this file parses Coax;
+// every fact comes from the compiler.
+//   coax/bin/coax test coax/lib/agent/intel/answers.coax
+
+#load "../../json/json.coax";
+#load "../../repo/lines.coax";
+#load "../../crypto/sha256-kernel.coax";
+
+IX_HASH :: 64;                   // a SHA-256 in hex
+IX_SEEN_LEAST :: 12;             // hex digits of a hash a caller must name at least
+
+// A declaration: what `defines` and `exports` answer, and what a file depends on.
+// hash is the SHA-256 of the whole file the declaration is in, as it was when asked.
+IxDecl :: struct {
+  kind: string;                  // proc, struct, const, enum, ...
+  name: string;
+  file: string;                  // relative to the root
+  line: int; end_line: int; column: int;
+  exported: bool; generated: bool;
+  hash: string;
+}
+// A use of a name: where it is written, and the procedure, struct, constant or check it is written in.
+IxUse :: struct {
+  file: string; line: int; column: int;
+  from: string;                  // "proc total", "#test \"area of a unit square\""
+  kind: string;                  // what is used: proc, struct, const, ...
+  generated: bool;
+  hash: string;                  // of the file the use is in
+  to_file: string; to_line: int; // the declaration it resolves to ("" and 0: the program asked declares the name twice)
+}
+// One coax.diagnostic.v1 record. notes and fixes are text, a line each.
+IxDiag :: struct {
+  severity: string; code: string; message: string;
+  file: string; line: int; column: int; offset: int; length: int;
+  notes: string; fixes: string;
+}
+// One may-effect of a procedure and one path that reaches it.
+IxEffect :: struct {
+  proc: string;
+  kind: string;                  // foreign_call, host_io, may_trap, borrowed_write, ...
+  file: string; line: int; column: int;   // where the effect is
+  path: string;                  // "timed -> stamp (clock.coax:2) -> cx_now (clock.coax:1)"
+}
+// How a question went. Every answer carries one.
+IxAnswer :: struct {
+  ok: bool;                      // the compiler answered
+  why: string;                   // when !ok: why, in words; when ok: a note, or ""
+  n: int;                        // records written
+  defs: int;                     // uses: declarations written beside them
+  total: int;                    // records there were (n < total: the caller's array was full)
+  cut: bool;                     // records or text were left out
+  status: int;                   // the compiler's exit status (check: 0 is a clean file)
+  entries: int;                  // compiler runs it took
+  unchecked: int;                // files that name it which no run covered (the entries limit)
+  ms: int;                       // how long it took
+}
+
+// Strings of the records, in a caller's bytes. full: one did not fit and was dropped.
+IxPool :: struct { b: [] u8; n: int; full: bool; }
+
+ix_keep :: (p: [] IxPool, s: string) -> string {
+  if p[0].n + s.count > p[0].b.count { p[0].full = true; return ""; }
+  at := p[0].n;
+  for c, i: s { p[0].b[at + i] = c; }
+  p[0].n = at + s.count;
+  return cast(string) p[0].b[at..<at + s.count];
+}
+// Appends to the string being built at the pool's end (ix_since returns it).
+ix_more :: (p: [] IxPool, s: string) {
+  if p[0].n + s.count > p[0].b.count { p[0].full = true; return; }
+  for c, i: s { p[0].b[p[0].n + i] = c; }
+  p[0].n += s.count;
+}
+ix_more_int :: (p: [] IxPool, v: int) {
+  num: [24] u8; k := rp_put_int(num[..], 0, v);
+  ix_more(p, cast(string) num[0..<k]);
+}
+ix_since :: (p: [] IxPool, at: int) -> string { return cast(string) p[0].b[at..<p[0].n]; }
+// A JSON string's value (unescaped), kept; "" for anything else.
+ix_keep_jv :: (p: [] IxPool, d: Jv, at: int) -> string {
+  if jv_kind(d, at) != JV_STRING { return ""; }
+  start := p[0].n;
+  k := jv_str(d, at, p[0].b[start..<p[0].b.count]);
+  if k < 0 { p[0].full = true; return ""; }
+  p[0].n = start + k;
+  return cast(string) p[0].b[start..<start + k];
+}
+
+// path without the root in front of it; path itself when it is not under the root.
+ix_rel :: (root: string, path: string) -> string {
+  r := root;
+  while r.count > 1 && r[r.count - 1] == '/' { r = cast(string) r[0..<r.count - 1]; }
+  if path.count > r.count + 1 && cast(string) path[0..<r.count] == r && path[r.count] == '/' { return cast(string) path[r.count + 1..<path.count]; }
+  if path.count > 2 && path[0] == '.' && path[1] == '/' { return cast(string) path[2..<path.count]; }
+  return path;
+}
+// dir/rel as one path from the root, its "." and ".." parts resolved, into out (how a `#load` in a
+// file of dir names another file); "" when it climbs above the root or does not fit.
+ix_path_join :: (dir: string, rel: string, out: [] u8) -> string {
+  n := 0;
+  if dir != "." && dir.count <= out.count { for c, i: dir { out[i] = c; } n = dir.count; }
+  while n > 0 && out[n - 1] == '/' { n -= 1; }
+  i := 0;
+  while i <= rel.count {
+    e := i;
+    while e < rel.count && rel[e] != '/' { e += 1; }
+    part := cast(string) rel[i..<e];
+    if part == ".." {
+      if n == 0 { return ""; }
+      while n > 0 && out[n - 1] != '/' { n -= 1; }
+      if n > 0 { n -= 1; }
+    } else if part.count > 0 && part != "." {
+      if n + 1 + part.count > out.count { return ""; }
+      if n > 0 { out[n] = '/'; n += 1; }
+      for c, k: part { out[n + k] = c; }
+      n += part.count;
+    }
+    i = e + 1;
+  }
+  return cast(string) out[0..<n];
+}
+// What a text search's line `PATH:#load "REL"` says: the file that loads, and the file it names
+// (from the root). Both "" when the line is not one.
+IxLoad :: struct { by: string; file: string; }
+ix_load_line :: (line: string, out: [] u8) -> IxLoad {
+  colon := 0;
+  while colon < line.count && line[colon] != ':' { colon += 1; }
+  q := colon;
+  while q < line.count && line[q] != '"' { q += 1; }
+  e := line.count - 1;
+  while e > q && line[e] != '"' { e -= 1; }
+  if colon == 0 || e <= q + 1 { return IxLoad.{}; }
+  by := cast(string) line[0..<colon];
+  if by.count > 2 && by[0] == '.' && by[1] == '/' { by = cast(string) by[2..<by.count]; }
+  slash := by.count - 1;
+  while slash >= 0 && by[slash] != '/' { slash -= 1; }
+  return IxLoad.{by = by, file = ix_path_join(ifx slash < 0 then "." else cast(string) by[0..<slash], cast(string) line[q + 1..<e], out)};
+}
+// A name the compiler can be asked about: letters, digits and '_', not starting with a digit.
+ix_ident :: (name: string) -> bool {
+  if name.count == 0 || name.count > 200 { return false; }
+  for c, i: name {
+    letter := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+    if !letter && !(i > 0 && c >= '0' && c <= '9') { return false; }
+  }
+  return true;
+}
+// A diagnostic code: E or W and digits.
+ix_code :: (code: string) -> bool {
+  if code.count < 2 || code.count > 8 || (code[0] != 'E' && code[0] != 'W') { return false; }
+  for i: 1..<code.count { if code[i] < '0' || code[i] > '9' { return false; } }
+  return true;
+}
+
+// The SHA-256 of text in hex, into out (64 bytes); "" when out is smaller.
+ix_hash :: (text: string, out: [] u8) -> string {
+  if out.count < IX_HASH || !S_hex(S_hash(text), out) { return ""; }
+  return cast(string) out[0..<IX_HASH];
+}
+// Whether the hash a caller saw is this one: all of it, or its first 12 hex digits or more.
+ix_hash_is :: (seen: string, hash: string) -> bool {
+  if seen.count < IX_SEEN_LEAST || seen.count > hash.count || hash.count != IX_HASH { return false; }
+  return cast(string) hash[0..<seen.count] == seen;
+}
+
+// Lines from..to of text (from 1, both included) as bytes at..<end, the last line's newline included.
+IxSpan :: struct { ok: bool; at: int; end: int; }
+ix_span :: (text: string, from: int, to: int) -> IxSpan {
+  if from < 1 || to < from { return IxSpan.{}; }
+  line := 1; i := 0; r := IxSpan.{at = -1};
+  while i < text.count {
+    if line == from { r.at = i; }
+    e := i;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    if e < text.count { e += 1; }
+    if line == to { r.end = e; r.ok = r.at >= 0; return r; }
+    line += 1; i = e;
+  }
+  return IxSpan.{};
+}
+
+ix_int :: (d: Jv, at: int, key: string) -> int { return jv_int(d, jv_get(d, at, key), 0); }
+// An array's first element, or -1 (no elements, or not an array).
+ix_first :: (d: Jv, at: int) -> int { return ifx jv_kind(d, at) == JV_ARRAY then d.nodes[at].first else -1; }
+
+// A declaration of coax.query.v1 (file, end_line) or coax.declarations.v1 (unit, span.end_line).
+ix_decl :: (d: Jv, at: int, root: string, p: [] IxPool) -> IxDecl {
+  r: IxDecl;
+  r.kind = ix_keep_jv(p, d, jv_get(d, at, "kind"));
+  r.name = ix_keep_jv(p, d, jv_get(d, at, "name"));
+  f := jv_get(d, at, "file");
+  if f < 0 { f = jv_get(d, at, "unit"); }
+  r.file = ix_rel(root, ix_keep_jv(p, d, f));
+  r.line = ix_int(d, at, "line"); r.column = ix_int(d, at, "column");
+  r.end_line = ix_int(d, at, "end_line");
+  span := jv_get(d, at, "span");
+  if span >= 0 { r.end_line = ix_int(d, span, "end_line"); }
+  if r.end_line < r.line { r.end_line = r.line; }
+  r.exported = jv_bool(d, jv_get(d, at, "exported")); r.generated = jv_bool(d, jv_get(d, at, "generated"));
+  return r;
+}
+ix_use :: (d: Jv, at: int, root: string, p: [] IxPool) -> IxUse {
+  r: IxUse;
+  r.file = ix_rel(root, ix_keep_jv(p, d, jv_get(d, at, "file")));
+  r.line = ix_int(d, at, "line"); r.column = ix_int(d, at, "column");
+  r.from = ix_keep_jv(p, d, jv_get(d, at, "from"));
+  r.kind = ix_keep_jv(p, d, jv_get(d, at, "kind"));
+  r.generated = jv_bool(d, jv_get(d, at, "generated"));
+  return r;
+}
+// The declarations under key of a parsed answer, added to out from n when not there already
+// (the same file and line). Returns the new count; total counts those that did not fit as well.
+IxAdded :: struct { n: int; total: int; }
+ix_decls :: (d: Jv, key: string, root: string, p: [] IxPool, out: [] IxDecl, have: IxAdded) -> IxAdded {
+  r := have;
+  list := jv_get(d, 0, key);
+  if jv_kind(d, list) != JV_ARRAY { return r; }
+  e := d.nodes[list].first;
+  while e >= 0 {
+    mark := p[0].n;
+    x := ix_decl(d, e, root, p);
+    dup := false;
+    for i: 0..<r.n { if out[i].line == x.line && out[i].file == x.file && out[i].name == x.name { dup = true; } }
+    if dup { p[0].n = mark; }
+    else {
+      r.total += 1;
+      if r.n < out.count { out[r.n] = x; r.n += 1; } else { p[0].n = mark; }
+    }
+    e = d.nodes[e].next;
+  }
+  return r;
+}
+// The uses of a parsed `uses` answer, added to out when not there already. Each resolves to the
+// answer's one definition; `only`, when not "", keeps the uses of the declaration in that file.
+ix_uses :: (d: Jv, root: string, only: string, p: [] IxPool, out: [] IxUse, have: IxAdded) -> IxAdded {
+  r := have;
+  to: IxDecl;
+  defs := jv_get(d, 0, "definitions");
+  if jv_len(d, defs) == 1 { to = ix_decl(d, ix_first(d, defs), root, p); }
+  if only.count > 0 && to.file != only { return r; }
+  list := jv_get(d, 0, "uses");
+  if jv_kind(d, list) != JV_ARRAY { return r; }
+  e := d.nodes[list].first;
+  while e >= 0 {
+    mark := p[0].n;
+    x := ix_use(d, e, root, p);
+    x.to_file = to.file; x.to_line = to.line;
+    dup := false;
+    for i: 0..<r.n { if out[i].line == x.line && out[i].column == x.column && out[i].file == x.file { dup = true; } }
+    if dup { p[0].n = mark; }
+    else {
+      r.total += 1;
+      if r.n < out.count { out[r.n] = x; r.n += 1; } else { p[0].n = mark; }
+    }
+    e = d.nodes[e].next;
+  }
+  return r;
+}
+
+ix_where :: (p: [] IxPool, d: Jv, span: int, root: string) {
+  mark := p[0].n;
+  f := ix_rel(root, ix_keep_jv(p, d, jv_get(d, span, "file")));
+  p[0].n = mark;
+  ix_more(p, f); ix_more(p, ":"); ix_more_int(p, ix_int(d, span, "line")); ix_more(p, ":"); ix_more_int(p, ix_int(d, span, "column"));
+}
+// One line of `--diagnostics json` output as a record; code "" when the line is not one.
+ix_diag :: (line: string, root: string, nodes: [] JvNode, p: [] IxPool) -> IxDiag {
+  r: IxDiag;
+  dd: [1] Jv;
+  if line.count < 2 || line[0] != '{' || !jv_parse(dd[..], line, nodes) { return r; }
+  d := dd[0];
+  if !jv_raw_eq(jv_raw(d, jv_get(d, 0, "schema")), "coax.diagnostic.v1") { return r; }
+  r.severity = ix_keep_jv(p, d, jv_get(d, 0, "severity"));
+  r.code = ix_keep_jv(p, d, jv_get(d, 0, "code"));
+  r.message = ix_keep_jv(p, d, jv_get(d, 0, "message"));
+  span := jv_get(d, 0, "span");
+  if jv_kind(d, span) == JV_OBJECT {
+    r.file = ix_rel(root, ix_keep_jv(p, d, jv_get(d, span, "file")));
+    r.line = ix_int(d, span, "line"); r.column = ix_int(d, span, "column");
+    r.offset = ix_int(d, span, "offset"); r.length = ix_int(d, span, "length");
+  }
+  // notes: "message (file:line:column)", a line each
+  start := p[0].n;
+  e := ix_first(d, jv_get(d, 0, "notes"));
+  while e >= 0 {
+    if p[0].n > start { ix_more(p, "\n"); }
+    m := ix_keep_jv(p, d, jv_get(d, e, "message"));
+    ns := jv_get(d, e, "span");
+    if jv_kind(d, ns) == JV_OBJECT { ix_more(p, " ("); ix_where(p, d, ns, root); ix_more(p, ")"); }
+    e = d.nodes[e].next;
+  }
+  r.notes = ix_since(p, start);
+  // fixes: "message", then each edit as " [file:line:column, N bytes -> "replacement"]"
+  start = p[0].n;
+  e = ix_first(d, jv_get(d, 0, "fixes"));
+  while e >= 0 {
+    if p[0].n > start { ix_more(p, "\n"); }
+    m := ix_keep_jv(p, d, jv_get(d, e, "message"));
+    ed := ix_first(d, jv_get(d, e, "edits"));
+    while ed >= 0 {
+      es := jv_get(d, ed, "span");
+      ix_more(p, " [");
+      if jv_kind(d, es) == JV_OBJECT { ix_where(p, d, es, root); ix_more(p, ", "); ix_more_int(p, ix_int(d, es, "length")); ix_more(p, " bytes -> "); }
+      ix_more(p, "\""); rep := ix_keep_jv(p, d, jv_get(d, ed, "replacement")); ix_more(p, "\"]");
+      ed = d.nodes[ed].next;
+    }
+    e = d.nodes[e].next;
+  }
+  r.fixes = ix_since(p, start);
+  return r;
+}
+
+// The effects of a parsed coax.effects.v1 answer: of the procedure named proc, or, with proc "",
+// of every procedure declared in the file `unit` (an absolute path, as the compiler names it).
+// One record per effect kind and procedure, with the compiler's witness path.
+ix_effects :: (d: Jv, proc: string, unit: string, root: string, p: [] IxPool, out: [] IxEffect) -> IxAdded {
+  r: IxAdded;
+  list := jv_get(d, 0, "procedures");
+  if jv_kind(d, list) != JV_ARRAY { return r; }
+  pr := d.nodes[list].first;
+  while pr >= 0 {
+    name := jv_raw(d, jv_get(d, pr, "name"));
+    decl := jv_get(d, pr, "declaration");
+    mine := ifx proc.count > 0 then name == proc else jv_raw_eq(jv_raw(d, jv_get(d, decl, "unit")), unit);
+    effects := jv_get(d, pr, "effects");
+    e := ifx mine && jv_kind(d, effects) == JV_ARRAY then d.nodes[effects].first else -1;
+    while e >= 0 {
+      r.total += 1;
+      if r.n < out.count {
+        x: IxEffect;
+        x.proc = ix_keep(p, name);
+        x.kind = ix_keep_jv(p, d, jv_get(d, e, "kind"));
+        site := jv_get(d, e, "site");
+        x.file = ix_rel(root, ix_keep_jv(p, d, jv_get(d, site, "unit")));
+        x.line = ix_int(d, site, "line"); x.column = ix_int(d, site, "column");
+        start := p[0].n;
+        path := jv_get(d, e, "path");
+        step := ifx jv_kind(d, path) == JV_ARRAY then d.nodes[path].first else -1;
+        first := true;
+        while step >= 0 {
+          if !first { ix_more(p, " -> "); }
+          ix_more(p, jv_raw(d, jv_get(d, step, "name")));
+          if !first {
+            sd := jv_get(d, step, "declaration");
+            mark := p[0].n;
+            f := ix_rel(root, ix_keep_jv(p, d, jv_get(d, sd, "unit")));
+            p[0].n = mark;
+            ix_more(p, " ("); ix_more(p, f); ix_more(p, ":"); ix_more_int(p, ix_int(d, sd, "line")); ix_more(p, ")");
+          }
+          first = false;
+          step = d.nodes[step].next;
+        }
+        x.path = ix_since(p, start);
+        out[r.n] = x; r.n += 1;
+      }
+      e = d.nodes[e].next;
+    }
+    pr = d.nodes[pr].next;
+  }
+  return r;
+}
+
+// What the file `unit` (absolute, as the compiler names it) depends on, from a parsed
+// coax.declarations.v1 answer: each declaration in another file that the file's own code refers to.
+ix_depends :: (d: Jv, unit: string, root: string, p: [] IxPool, out: [] IxDecl) -> IxAdded {
+  r: IxAdded;
+  decls := jv_get(d, 0, "declarations"); refs := jv_get(d, 0, "references");
+  if jv_kind(d, decls) != JV_ARRAY || jv_kind(d, refs) != JV_ARRAY { return r; }
+  e := d.nodes[decls].first;
+  while e >= 0 {
+    if !jv_raw_eq(jv_raw(d, jv_get(d, e, "unit")), unit) {
+      name := jv_raw(d, jv_get(d, e, "name")); kind := jv_raw(d, jv_get(d, e, "kind"));
+      used := false;
+      f := d.nodes[refs].first;
+      while f >= 0 && !used {
+        if jv_raw(d, jv_get(d, f, "name")) == name && jv_raw(d, jv_get(d, f, "kind")) == kind && jv_raw_eq(jv_raw(d, jv_get(d, f, "unit")), unit) { used = true; }
+        f = d.nodes[f].next;
+      }
+      if used {
+        r.total += 1;
+        if r.n < out.count { out[r.n] = ix_decl(d, e, root, p); r.n += 1; }
+      }
+    }
+    e = d.nodes[e].next;
+  }
+  return r;
+}
+// The declarations of the file `unit` in a parsed coax.declarations.v1 answer (for a file that
+// does not check alone: its own declarations, read from a unit that loads it).
+ix_declared :: (d: Jv, unit: string, root: string, p: [] IxPool, out: [] IxDecl) -> IxAdded {
+  r: IxAdded;
+  decls := jv_get(d, 0, "declarations");
+  if jv_kind(d, decls) != JV_ARRAY { return r; }
+  e := d.nodes[decls].first;
+  while e >= 0 {
+    if jv_raw_eq(jv_raw(d, jv_get(d, e, "unit")), unit) {
+      r.total += 1;
+      if r.n < out.count { out[r.n] = ix_decl(d, e, root, p); r.n += 1; }
+    }
+    e = d.nodes[e].next;
+  }
+  return r;
+}
+// Whether a parsed `coax deps` answer lists the file `unit` among its sources.
+ix_sources_have :: (d: Jv, unit: string) -> bool {
+  list := jv_get(d, 0, "sources");
+  if jv_kind(d, list) != JV_ARRAY { return false; }
+  e := d.nodes[list].first;
+  while e >= 0 {
+    if jv_raw_eq(jv_raw(d, e), unit) { return true; }
+    e = d.nodes[e].next;
+  }
+  return false;
+}
+
+// ---- answers as text, bounded by out ----
+
+// "[coax0 0.52.0, 231 ms, 2 compiler runs]" and what was left out, a line.
+ix_head :: (out: [] u8, at: int, version: string, a: IxAnswer) -> int {
+  n := rp_put(out, at, "["); n = rp_put(out, n, version); n = rp_put(out, n, ", "); n = rp_put_int(out, n, a.ms); n = rp_put(out, n, " ms");
+  if a.entries > 0 { n = rp_put(out, n, ", "); n = rp_put_int(out, n, a.entries); n = rp_put(out, n, ifx a.entries == 1 then " compiler run" else " compiler runs"); }
+  if a.n < a.total { n = rp_put(out, n, ", "); n = rp_put_int(out, n, a.n); n = rp_put(out, n, " of "); n = rp_put_int(out, n, a.total); n = rp_put(out, n, " shown"); }
+  if a.unchecked > 0 { n = rp_put(out, n, ", "); n = rp_put_int(out, n, a.unchecked); n = rp_put(out, n, " files that name it not checked"); }
+  n = rp_put(out, n, "]\n");
+  if a.why.count > 0 { n = rp_put(out, n, ifx a.ok then "note: " else "no answer: "); n = rp_put(out, n, a.why); n = rp_put(out, n, "\n"); }
+  return n;
+}
+ix_short :: (hash: string) -> string { return ifx hash.count > 16 then cast(string) hash[0..<16] else hash; }
+// "proc area  shapes.coax:4-4  exported  file 9f297d0e69d1dc0f"
+ix_decls_text :: (decls: [] IxDecl, out: [] u8, at: int) -> int {
+  n := at;
+  for x: decls {
+    n = rp_put(out, n, x.kind); n = rp_put(out, n, " "); n = rp_put(out, n, x.name); n = rp_put(out, n, "  "); n = rp_put(out, n, x.file); n = rp_put(out, n, ":");
+    n = rp_put_int(out, n, x.line); n = rp_put(out, n, "-"); n = rp_put_int(out, n, x.end_line);
+    if x.exported { n = rp_put(out, n, "  exported"); }
+    if x.generated { n = rp_put(out, n, "  generated"); }
+    if x.hash.count > 0 { n = rp_put(out, n, "  file "); n = rp_put(out, n, ix_short(x.hash)); }
+    n = rp_put(out, n, "\n");
+  }
+  return n;
+}
+// "main.coax:3:47  in proc total  file a1ce10147cee1fa1"; with `to`, also "  to shapes.coax:4" (which
+// declaration, when the name has several).
+ix_uses_text :: (uses: [] IxUse, to: bool, out: [] u8, at: int) -> int {
+  n := at;
+  for x: uses {
+    n = rp_put(out, n, x.file); n = rp_put(out, n, ":"); n = rp_put_int(out, n, x.line); n = rp_put(out, n, ":"); n = rp_put_int(out, n, x.column);
+    n = rp_put(out, n, "  in "); n = rp_put(out, n, x.from);
+    if x.generated { n = rp_put(out, n, "  generated"); }
+    if x.hash.count > 0 { n = rp_put(out, n, "  file "); n = rp_put(out, n, ix_short(x.hash)); }
+    if to && x.to_file.count > 0 { n = rp_put(out, n, "  to "); n = rp_put(out, n, x.to_file); n = rp_put(out, n, ":"); n = rp_put_int(out, n, x.to_line); }
+    n = rp_put(out, n, "\n");
+  }
+  return n;
+}
+ix_indented :: (out: [] u8, at: int, label: string, text: string) -> int {
+  n := at; i := 0;
+  while i < text.count {
+    e := i;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    n = rp_put(out, n, "  "); n = rp_put(out, n, label); n = rp_put(out, n, cast(string) text[i..<e]); n = rp_put(out, n, "\n");
+    i = e + 1;
+  }
+  return n;
+}
+// "error E0325 bad.coax:2:42 (4 bytes): 'x' is string but is initialized with int", then its notes and fixes.
+ix_diags_text :: (diags: [] IxDiag, out: [] u8, at: int) -> int {
+  n := at;
+  for x: diags {
+    n = rp_put(out, n, x.severity); n = rp_put(out, n, " "); n = rp_put(out, n, x.code);
+    if x.file.count > 0 {
+      n = rp_put(out, n, " "); n = rp_put(out, n, x.file); n = rp_put(out, n, ":"); n = rp_put_int(out, n, x.line); n = rp_put(out, n, ":"); n = rp_put_int(out, n, x.column);
+      n = rp_put(out, n, " ("); n = rp_put_int(out, n, x.length); n = rp_put(out, n, ifx x.length == 1 then " byte)" else " bytes)");
+    }
+    n = rp_put(out, n, ": "); n = rp_put(out, n, x.message); n = rp_put(out, n, "\n");
+    n = ix_indented(out, n, "note: ", x.notes);
+    n = ix_indented(out, n, "fix: ", x.fixes);
+  }
+  return n;
+}
+// "timed: foreign_call at clock.coax:1:1 by timed -> stamp (clock.coax:2) -> cx_now (clock.coax:1)"
+ix_effects_text :: (effects: [] IxEffect, out: [] u8, at: int) -> int {
+  n := at;
+  for x: effects {
+    n = rp_put(out, n, x.proc); n = rp_put(out, n, ": "); n = rp_put(out, n, x.kind); n = rp_put(out, n, " at "); n = rp_put(out, n, x.file); n = rp_put(out, n, ":");
+    n = rp_put_int(out, n, x.line); n = rp_put(out, n, ":"); n = rp_put_int(out, n, x.column); n = rp_put(out, n, " by "); n = rp_put(out, n, x.path); n = rp_put(out, n, "\n");
+  }
+  return n;
+}
+// Ends a text that may have filled out: when it did, its last line says so.
+ix_text_end :: (out: [] u8, n: int) -> string {
+  mark := "\n[cut: ask with more room]\n";
+  if n < out.count || out.count < mark.count { return cast(string) out[0..<n]; }
+  for c, i: mark { out[out.count - mark.count + i] = c; }
+  return cast(string) out[0..<out.count];
+}
+
+#test "paths lose the root; names and codes the compiler can be asked about" {
+  #assert ix_rel("/r/x", "/r/x/a/b.coax") == "a/b.coax" && ix_rel("/r/x/", "/r/x/a.coax") == "a.coax" && ix_rel("/r/x", "/r/xy/a.coax") == "/r/xy/a.coax";
+  #assert ix_rel("/r", "b.coax") == "b.coax" && ix_rel("/r", "./b.coax") == "b.coax" && ix_rel("/r", "/r") == "/r";
+  #assert ix_ident("rp_put") && ix_ident("_x9") && ix_ident("Shape") && !ix_ident("") && !ix_ident("9x") && !ix_ident("a-b") && !ix_ident("a b") && !ix_ident("--json") && !ix_ident("a.b");
+  #assert ix_code("E0325") && ix_code("W1") && !ix_code("E") && !ix_code("X0325") && !ix_code("E03x5") && !ix_code("--all");
+}
+#test "a #load names a file from the folder of the file it is written in" {
+  out: [32] u8;
+  #assert ix_path_join("coax/lib/microcoder", "../repo/lines.coax", out[..]) == "coax/lib/repo/lines.coax" && ix_path_join(".", "lines.coax", out[..]) == "lines.coax";
+  #assert ix_path_join("a/b", "./c/../d.coax", out[..]) == "a/b/d.coax" && ix_path_join("a", "../../x.coax", out[..]) == "" && ix_path_join("a", "../x.coax", out[..]) == "x.coax";
+  #assert ix_path_join("a/b/", "c.coax", out[..]) == "a/b/c.coax" && ix_path_join("aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbb.coax", out[..]) == "";
+  l := ix_load_line("coax/lib/microcoder/tools.coax:#load \"../repo/lines.coax\"", out[..]);
+  #assert l.by == "coax/lib/microcoder/tools.coax" && l.file == "coax/lib/repo/lines.coax";
+  l = ix_load_line("./main.coax:#load \"shapes.coax\"", out[..]);
+  #assert l.by == "main.coax" && l.file == "shapes.coax";
+  l = ix_load_line("everglade/zone.coax:#load \"hud/lines.coax\"", out[..]);
+  #assert l.file == "everglade/hud/lines.coax" && ix_load_line("no load here", out[..]).by == "" && ix_load_line("a.coax:#load \"\"", out[..]).by == "";
+}
+#test "a span is whole lines, and its hash is what an edit names" {
+  t := "one\ntwo\nthree";
+  s := ix_span(t, 2, 2);
+  #assert s.ok && cast(string) t[s.at..<s.end] == "two\n";
+  s = ix_span(t, 2, 3);
+  #assert s.ok && cast(string) t[s.at..<s.end] == "two\nthree";
+  s = ix_span(t, 1, 3);
+  #assert s.ok && s.at == 0 && s.end == t.count;
+  #assert !ix_span(t, 0, 1).ok && !ix_span(t, 3, 2).ok && !ix_span(t, 2, 4).ok && !ix_span(t, 4, 4).ok && !ix_span("", 1, 1).ok;
+  h: [64] u8; small: [10] u8;
+  #assert ix_hash("abc", h[..]) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" && ix_hash("abc", small[..]) == "";
+  full := "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+  #assert ix_hash_is(full, full) && ix_hash_is("ba7816bf8f01", full) && !ix_hash_is("ba7816bf8f0", full) && !ix_hash_is("ba7816bf8f02", full) && !ix_hash_is("", full);
+  #assert !ix_hash_is(full, "ba7816bf8f01") && ix_short(full) == "ba7816bf8f01cfea" && ix_short("ab") == "ab";
+}
+#test "a pool keeps strings until it is full" {
+  b: [8] u8; p: [1] IxPool; p[0].b = b[..];
+  #assert ix_keep(p[..], "abc") == "abc" && ix_keep(p[..], "defgh") == "defgh" && !p[0].full;
+  #assert ix_keep(p[..], "x") == "" && p[0].full && cast(string) b[..] == "abcdefgh";
+  p[0].n = 0; p[0].full = false;
+  ix_more(p[..], "n="); ix_more_int(p[..], -42);
+  #assert ix_since(p[..], 0) == "n=-42";
+  ix_more(p[..], "toolong");
+  #assert p[0].full && ix_since(p[..], 0) == "n=-42";
+}
+#test "coax.query.v1: definitions and uses, relative, once each, bounded" {
+  t := "{\"schema\":\"coax.query.v1\",\"query\":\"uses\",\"name\":\"area\",\"definitions\":[{\"kind\":\"proc\",\"name\":\"area\",\"id\":null,\"module\":null,\"file\":\"/r/shapes.coax\",\"line\":4,\"column\":1,\"end_line\":6,\"generated\":false,\"exported\":true}],\"uses\":[{\"file\":\"/r/main.coax\",\"line\":3,\"column\":47,\"from\":\"proc total\",\"kind\":\"proc\",\"to\":null,\"generated\":false},{\"file\":\"/r/shapes.coax\",\"line\":5,\"column\":41,\"from\":\"#test \\\"area of a unit square\\\"\",\"kind\":\"proc\",\"to\":null,\"generated\":false}]}";
+  nodes: [128] JvNode; d: [1] Jv; b: [512] u8; p: [1] IxPool; p[0].b = b[..];
+  #assert jv_parse(d[..], t, nodes[..]);
+  decls: [2] IxDecl; uses: [2] IxUse;
+  a := ix_decls(d[0], "definitions", "/r", p[..], decls[..], IxAdded.{});
+  #assert a.n == 1 && a.total == 1 && decls[0].kind == "proc" && decls[0].name == "area" && decls[0].file == "shapes.coax";
+  #assert decls[0].line == 4 && decls[0].end_line == 6 && decls[0].column == 1 && decls[0].exported && !decls[0].generated;
+  // the same answer again adds nothing
+  a = ix_decls(d[0], "definitions", "/r", p[..], decls[..], a);
+  #assert a.n == 1 && a.total == 1 && ix_decls(d[0], "exports", "/r", p[..], decls[..], a).n == 1;
+  u := ix_uses(d[0], "/r", "", p[..], uses[..], IxAdded.{});
+  #assert u.n == 2 && uses[0].file == "main.coax" && uses[0].line == 3 && uses[0].column == 47 && uses[0].from == "proc total" && uses[0].kind == "proc";
+  #assert uses[0].to_file == "shapes.coax" && uses[0].to_line == 4;
+  #assert uses[1].from == "#test \"area of a unit square\"" && ix_uses(d[0], "/r", "", p[..], uses[..], u).total == 2;
+  // only the uses of the declaration in one file
+  #assert ix_uses(d[0], "/r", "shapes.coax", p[..], uses[..], IxAdded.{}).n == 2 && ix_uses(d[0], "/r", "other.coax", p[..], uses[..], IxAdded.{}).total == 0;
+  // an array too small counts what it could not hold
+  u = ix_uses(d[0], "/r", "", p[..], uses[0..<1], IxAdded.{});
+  #assert u.n == 1 && u.total == 2 && !p[0].full;
+  out: [300] u8;
+  decls[0].hash = "9f297d0e69d1dc0f00dbdb9eb27e24bf159797fc408ac6a9a0b16e8a1a65b47e";
+  n := ix_decls_text(decls[0..<1], out[..], 0);
+  #assert cast(string) out[0..<n] == "proc area  shapes.coax:4-6  exported  file 9f297d0e69d1dc0f\n";
+  n = ix_uses_text(uses[0..<1], false, out[..], 0);
+  #assert cast(string) out[0..<n] == "main.coax:3:47  in proc total\n";
+  n = ix_uses_text(uses[0..<1], true, out[..], 0);
+  #assert cast(string) out[0..<n] == "main.coax:3:47  in proc total  to shapes.coax:4\n";
+}
+#test "coax.diagnostic.v1: a record with its span, notes and fixes" {
+  nodes: [128] JvNode; b: [1024] u8; p: [1] IxPool; p[0].b = b[..];
+  x := ix_diag("{\"schema\":\"coax.diagnostic.v1\",\"severity\":\"error\",\"code\":\"E0325\",\"message\":\"'x' is string but is initialized with int\",\"span\":{\"file\":\"/r/bad.coax\",\"line\":2,\"column\":42,\"offset\":62,\"length\":4},\"notes\":[],\"fixes\":[]}", "/r", nodes[..], p[..]);
+  #assert x.severity == "error" && x.code == "E0325" && x.message == "'x' is string but is initialized with int" && x.file == "bad.coax";
+  #assert x.line == 2 && x.column == 42 && x.offset == 62 && x.length == 4 && x.notes == "" && x.fixes == "";
+  y := ix_diag("{\"schema\":\"coax.diagnostic.v1\",\"severity\":\"error\",\"code\":\"E0201\",\"message\":\"expected ';'\",\"span\":{\"file\":\"/r/a.coax\",\"line\":1,\"column\":9,\"offset\":8,\"length\":0},\"notes\":[{\"message\":\"in #test \\\"t\\\"\",\"span\":{\"file\":\"/r/a.coax\",\"line\":1,\"column\":1,\"offset\":0,\"length\":5}},{\"message\":\"x = 3\",\"span\":null}],\"fixes\":[{\"message\":\"add ';'\",\"edits\":[{\"span\":{\"file\":\"/r/a.coax\",\"line\":1,\"column\":9,\"offset\":8,\"length\":0},\"replacement\":\";\"}]},{\"message\":\"main :: () { ... }\",\"edits\":[]}]}", "/r", nodes[..], p[..]);
+  #assert y.code == "E0201" && y.notes == "in #test \"t\" (a.coax:1:1)\nx = 3" && y.fixes == "add ';' [a.coax:1:9, 0 bytes -> \";\"]\nmain :: () { ... }";
+  #assert ix_diag("1 error", "/r", nodes[..], p[..]).code == "" && ix_diag("{\"schema\":\"coax.query.v1\"}", "/r", nodes[..], p[..]).code == "" && ix_diag("{broken", "/r", nodes[..], p[..]).code == "";
+  out: [400] u8; both := [2] IxDiag.[x, y];
+  n := ix_diags_text(both[..], out[..], 0);
+  #assert cast(string) out[0..<n] == "error E0325 bad.coax:2:42 (4 bytes): 'x' is string but is initialized with int\nerror E0201 a.coax:1:9 (0 bytes): expected ';'\n  note: in #test \"t\" (a.coax:1:1)\n  note: x = 3\n  fix: add ';' [a.coax:1:9, 0 bytes -> \";\"]\n  fix: main :: () { ... }\n";
+}
+#test "coax.effects.v1: an effect and the path that reaches it" {
+  t := "{\"schema\":\"coax.effects.v1\",\"procedures\":[{\"id\":0,\"name\":\"total\",\"declaration\":{\"unit\":\"/r/main.coax\",\"line\":3,\"column\":1},\"effects\":[{\"kind\":\"may_trap\",\"site\":{\"unit\":\"/r/main.coax\",\"line\":3,\"column\":55},\"path\":[{\"procedure\":0,\"name\":\"total\",\"declaration\":{\"unit\":\"/r/main.coax\",\"line\":3,\"column\":1}}]}]},{\"id\":1,\"name\":\"timed\",\"declaration\":{\"unit\":\"/r/main.coax\",\"line\":4,\"column\":1},\"effects\":[{\"kind\":\"foreign_call\",\"site\":{\"unit\":\"/r/clock.coax\",\"line\":1,\"column\":1},\"path\":[{\"procedure\":1,\"name\":\"timed\",\"declaration\":{\"unit\":\"/r/main.coax\",\"line\":4,\"column\":1}},{\"procedure\":5,\"name\":\"stamp\",\"declaration\":{\"unit\":\"/r/clock.coax\",\"line\":2,\"column\":1},\"call\":{\"unit\":\"/r/main.coax\",\"line\":4,\"column\":47}},{\"procedure\":4,\"name\":\"cx_now\",\"declaration\":{\"unit\":\"/r/clock.coax\",\"line\":1,\"column\":1}}]}]},{\"id\":5,\"name\":\"stamp\",\"declaration\":{\"unit\":\"/r/clock.coax\",\"line\":2,\"column\":1},\"effects\":[]}]}";
+  nodes: [256] JvNode; d: [1] Jv; b: [512] u8; p: [1] IxPool; p[0].b = b[..];
+  #assert jv_parse(d[..], t, nodes[..]);
+  out: [4] IxEffect;
+  a := ix_effects(d[0], "timed", "", "/r", p[..], out[..]);
+  #assert a.n == 1 && a.total == 1 && out[0].proc == "timed" && out[0].kind == "foreign_call" && out[0].file == "clock.coax" && out[0].line == 1;
+  #assert out[0].path == "timed -> stamp (clock.coax:2) -> cx_now (clock.coax:1)";
+  text: [200] u8;
+  n := ix_effects_text(out[0..<1], text[..], 0);
+  #assert cast(string) text[0..<n] == "timed: foreign_call at clock.coax:1:1 by timed -> stamp (clock.coax:2) -> cx_now (clock.coax:1)\n";
+  // every procedure of one file
+  a = ix_effects(d[0], "", "/r/main.coax", "/r", p[..], out[..]);
+  #assert a.n == 2 && out[0].proc == "total" && out[0].kind == "may_trap" && out[0].path == "total" && out[1].proc == "timed";
+  #assert ix_effects(d[0], "nope", "", "/r", p[..], out[..]).total == 0 && ix_effects(d[0], "", "/r/main.coax", "/r", p[..], out[0..<1]).total == 2;
+}
+#test "coax.declarations.v1: what a file depends on, and what it declares" {
+  t := "{\"schema\":\"coax.declarations.v1\",\"declarations\":[{\"kind\":\"struct\",\"name\":\"Shape\",\"id\":null,\"unit\":\"/r/shapes.coax\",\"line\":2,\"generated\":false,\"span\":{\"start\":10,\"end\":45,\"start_line\":2,\"end_line\":3,\"sha256\":\"61\"}},{\"kind\":\"const\",\"name\":\"UNIT\",\"id\":null,\"unit\":\"/r/shapes.coax\",\"line\":4,\"generated\":false,\"span\":{\"start_line\":4,\"end_line\":4}},{\"kind\":\"proc\",\"name\":\"total\",\"id\":null,\"unit\":\"/r/main.coax\",\"line\":3,\"generated\":false,\"span\":{\"start_line\":3,\"end_line\":3}},{\"kind\":\"proc\",\"name\":\"area\",\"id\":null,\"unit\":\"/r/shapes.coax\",\"line\":5,\"generated\":false,\"span\":{\"start_line\":5,\"end_line\":5}}],\"references\":[{\"from\":null,\"to\":null,\"kind\":\"struct\",\"name\":\"Shape\",\"unit\":\"/r/main.coax\",\"line\":3},{\"from\":null,\"to\":null,\"kind\":\"proc\",\"name\":\"area\",\"unit\":\"/r/main.coax\",\"line\":3},{\"from\":null,\"to\":null,\"kind\":\"proc\",\"name\":\"area\",\"unit\":\"/r/main.coax\",\"line\":3},{\"from\":null,\"to\":null,\"kind\":\"const\",\"name\":\"UNIT\",\"unit\":\"/r/shapes.coax\",\"line\":6}]}";
+  nodes: [256] JvNode; d: [1] Jv; b: [512] u8; p: [1] IxPool; p[0].b = b[..];
+  #assert jv_parse(d[..], t, nodes[..]);
+  out: [4] IxDecl;
+  a := ix_depends(d[0], "/r/main.coax", "/r", p[..], out[..]);
+  #assert a.n == 2 && a.total == 2 && out[0].name == "Shape" && out[0].kind == "struct" && out[0].file == "shapes.coax" && out[0].line == 2 && out[0].end_line == 3 && out[1].name == "area";
+  #assert ix_depends(d[0], "/r/shapes.coax", "/r", p[..], out[..]).total == 0 && ix_depends(d[0], "/r/main.coax", "/r", p[..], out[0..<1]).total == 2;
+  a = ix_declared(d[0], "/r/shapes.coax", "/r", p[..], out[..]);
+  #assert a.n == 3 && out[0].name == "Shape" && out[2].name == "area" && ix_declared(d[0], "/r/main.coax", "/r", p[..], out[..]).n == 1;
+  s := "{\"sources\":[\"/r/main.coax\",\"/r/shapes.coax\"],\"descriptors\":[]}";
+  #assert jv_parse(d[..], s, nodes[..]) && ix_sources_have(d[0], "/r/shapes.coax") && !ix_sources_have(d[0], "/r/clock.coax");
+}
+#test "an answer's first line: the compiler, the time, and what was left out" {
+  out: [200] u8;
+  n := ix_head(out[..], 0, "coax0 0.52.0", IxAnswer.{ok = true, n = 2, total = 2, entries = 1, ms = 231});
+  #assert cast(string) out[0..<n] == "[coax0 0.52.0, 231 ms, 1 compiler run]\n";
+  n = ix_head(out[..], 0, "coax0 0.52.0", IxAnswer.{ok = true, n = 2, total = 9, entries = 3, unchecked = 4, ms = 7});
+  #assert cast(string) out[0..<n] == "[coax0 0.52.0, 7 ms, 3 compiler runs, 2 of 9 shown, 4 files that name it not checked]\n";
+  n = ix_head(out[..], 0, "coax0 0.52.0", IxAnswer.{why = "no such file", ms = 1});
+  #assert cast(string) out[0..<n] == "[coax0 0.52.0, 1 ms]\nno answer: no such file\n";
+  small: [40] u8;
+  n = rp_put(small[..], 0, "0123456789012345678901234567890123456789");
+  #assert ix_text_end(small[..], n) == "0123456789012\n[cut: ask with more room]\n" && ix_text_end(small[..], 5) == "01234";
+}

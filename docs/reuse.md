@@ -57,6 +57,7 @@ undo was hand-rolled and had no redo, while the OpenAgents Metaverse Engine's ed
 | A decision (classify, route, rank) | The Decisions API | `coax/lib/systemone/` |
 | Agents: engines, transcripts, tiers | Coax agent | `coax/lib/agent/` |
 | A question over a context far bigger than one prompt (a long file, a folder): the model programs over the context in a safe Python subset and calls sub-models on pieces | Recursive Language Models | `coax/lib/rlm/` (read its README) |
+| A fact about Coax code for an agent: where a name is declared, who uses it, what a file declares or depends on, a declaration's text, a file's diagnostics as records, a procedure's effects, and an edit that names the hash of what was read | The compiler questions (they run `coax query`, `check` and `deps`; never a second parser, index or grep-and-guess) | `coax/lib/agent/intel/` (read its README) |
 | A coding agent whose repository stays out of the prompt: the model reads, searches, edits and runs commands in a workspace through the RLM's environment | RLM code | `coax/lib/rlm/code.coax` (README "RLM code") |
 | A coding agent's memory of a run: what it read (so the same lines are never fetched twice), findings with their sources, edits, command runs, the task's requirements, what an edit made stale, and whether the run may finish | The run store and its finish rule | `coax/lib/agent/workmem/` (read its README) |
 | Tensors, autodiff, training, inference | Psionic | `psionic/lib/` (read `psionic/README.md` and its book) |
