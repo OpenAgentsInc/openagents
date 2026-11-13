@@ -3,11 +3,13 @@
 //   - "serves" is the codec's WPREV_SERVES and the session's WIRE_MIN, "under" its WPREV_UNDER and
 //     WIRE_VERSION, and WIRE_MIN is one below WIRE_VERSION: a wire raised without the version before
 //     it rewritten here fails;
-//   - each frame's format is the codec's; each "frames" entry's values, in the format's order, are
-//     written by the codec to exactly its text and read back from it; every "malformed" text is refused;
-//   - each "said_as" entry of this wire is written as its old frame, and "withheld" names the row
-//     kinds and entries a seat on the old wire is not sent.
-//   coax/web/tool.sh coax/web/room/wire-prev-profile.coax proto/verse/everglade-wire-prev-v5.json
+//   - each "said_as" entry of this wire is written as its old frame, each "said_the_same" entry is left
+//     as it is, and "withheld" names the row kinds a seat on the old wire is not sent;
+//   - each "heard_as" frame of the old page is read as the E (use) it is on this wire, which this
+//     wire's own reader takes, and every "malformed" frame is refused;
+//   - "frames" names the old frames' own profiles, which coax/web/room/familiar-profile.coax holds to
+//     the same codec.
+//   coax/web/tool.sh coax/web/room/wire-prev-profile.coax proto/verse/everglade-wire-prev-v6.json
 #import "Basic";
 #load "../../../everglade/server/wire-prev-wire.coax";
 #load "../../lib/json/json.coax";
@@ -16,84 +18,11 @@
 
 WQ_FILE :: 32768;
 WQ_NONE :: -999999999;
-WQ_FRAMES :: [4] string.["guard", "guard_hit", "monsters", "monster_event"];
-WQ_FORMATS :: [4] string.["g2 TICK LIFE STATE X Z YAW HP MAX SWING FOE", "g3 TICK KIND SEAT AMOUNT",
-  "h2 TICK COUNT [M LIFE KIND STATE X Z YAW HP MAX ACT ACT_TICK FOE]...", "h3 TICK KIND M SEAT AMOUNT [FX FZ TX TZ FLY_MS]"];
-WQ_GUARD :: [10] string.["TICK", "LIFE", "STATE", "X", "Z", "YAW", "HP", "MAX", "SWING", "FOE"];
-WQ_HIT :: [4] string.["TICK", "KIND", "SEAT", "AMOUNT"];
-WQ_EVENT :: [10] string.["TICK", "KIND", "M", "SEAT", "AMOUNT", "FX", "FZ", "TX", "TZ", "FLY_MS"];
+// The old wire's own frame profiles, which coax/web/room/familiar-profile.coax holds to this codec's functions.
+WQ_FRAMES :: [9] string.["everglade-familiar-v1", "everglade-find-familiar-v1", "everglade-familiar-lifecycle-v1", "everglade-familiar-step-v1",
+  "everglade-familiar-cure-v1", "everglade-familiar-senses-v1", "everglade-familiar-state-v1", "everglade-healers-kit-v1", "everglade2-familiar-v2"];
 
 wq_str :: (d: Jv, at: int, out: [] u8) -> string { n := jv_str(d, at, out); return ifx n >= 0 then cast(string) out[0..<n] else ""; }
-// An object's whole numbers, keyed by names in order: how many it had, -1 when a key or value is not right.
-wq_vals :: (d: Jv, o: int, names: [] const string, v: [] int) -> int {
-  if jv_kind(d, o) != JV_OBJECT || jv_len(d, o) > names.count { return -1; }
-  for i: 0..<jv_len(d, o) {
-    m := jv_at(d, o, i);
-    if jv_key(d, m) != names[i] { return -1; }
-    v[i] = jv_int(d, m, WQ_NONE);
-    if v[i] == WQ_NONE { return -1; }
-  }
-  return jv_len(d, o);
-}
-// One "frames" entry: its values written by the codec to its text, and read back from it.
-wq_frame :: (d: Jv, row: int) -> bool {
-  tb: [2][2048] u8; out: [1700] u8; v: [12] int;
-  frame := wq_str(d, jv_get(d, row, "frame"), tb[0][..]);
-  text := wq_str(d, jv_get(d, row, "text"), tb[1][..]);
-  vals := jv_get(d, row, "values");
-  if text == "" { return false; }
-  if frame == "guard" {
-    if wq_vals(d, vals, WQ_GUARD[..], v[..]) != 10 { return false; }
-    g := WprevGuard.{life = v[1], state = v[2], x = v[3], z = v[4], yaw = v[5], hp = v[6], max = v[7], swing = v[8], foe = v[9]};
-    body: [128] u8; bn := wprev_guard_put_body(body[..], 0, g);
-    n := wprev_guard_put(out[..], v[0], cast(string) body[0..<bn]);
-    r := wprev_guard_read(text);
-    return cast(string) out[0..<n] == text && r.ok && r.tick == v[0] && r.life == v[1] && r.state == v[2] && r.x == v[3] && r.z == v[4] && r.yaw == v[5] && r.hp == v[6] && r.max == v[7] && r.swing == v[8] && r.foe == v[9];
-  }
-  if frame == "guard_hit" {
-    if wq_vals(d, vals, WQ_HIT[..], v[..]) != 4 { return false; }
-    e: [128] u8; en := egc_guard_hit_put(e[..], EgcGuardHit.{tick = v[0], kind = v[1], seat = v[2], amount = v[3]});
-    n := wprev_entry_put(out[..], cast(string) e[0..<en]);
-    r := wprev_guard_hit_read(text);
-    return cast(string) out[0..<n] == text && r.ok && r.tick == v[0] && r.kind == v[1] && r.seat == v[2] && r.amount == v[3];
-  }
-  if frame == "monster_event" {
-    k := wq_vals(d, vals, WQ_EVENT[..], v[..]);
-    if k != (ifx v[1] == EGC_MON_LOOSED then 10 else 5) { return false; }
-    e: [160] u8; en := egc_mon_hit_put(e[..], EgcMonHit.{tick = v[0], kind = v[1], m = v[2], seat = v[3], amount = v[4], fx = v[5], fz = v[6], tx = v[7], tz = v[8], fly = v[9]});
-    n := wprev_entry_put(out[..], cast(string) e[0..<en]);
-    r := wprev_mon_hit_read(text);
-    return cast(string) out[0..<n] == text && r.ok && r.tick == v[0] && r.kind == v[1] && r.m == v[2] && r.seat == v[3] && r.amount == v[4] && r.fx == v[5] && r.fz == v[6] && r.tx == v[7] && r.tz == v[8] && r.fly == v[9];
-  }
-  if frame == "monsters" {
-    tick := jv_int(d, jv_get(d, vals, "TICK"), WQ_NONE); count := jv_int(d, jv_get(d, vals, "COUNT"), WQ_NONE); rows := jv_get(d, vals, "ROWS");
-    if jv_len(d, vals) != 3 || tick == WQ_NONE || jv_kind(d, rows) != JV_ARRAY || jv_len(d, rows) != count || count > EGC_MONS { return false; }
-    rb: [1600] u8; rn := 0; want: [EGC_MONS] WprevMon;
-    for i: 0..<count {
-      one := jv_at(d, rows, i);
-      if jv_kind(d, one) != JV_ARRAY || jv_len(d, one) != 12 { return false; }
-      for q: 0..<12 { v[q] = jv_int(d, jv_at(d, one, q), WQ_NONE); if v[q] == WQ_NONE { return false; } }
-      want[i] = WprevMon.{m = v[0], life = v[1], kind = v[2], state = v[3], x = v[4], z = v[5], yaw = v[6], hp = v[7], max = v[8], act = v[9], act_tick = v[10], foe = v[11]};
-      rn = wprev_mon_put_row(rb[..], rn, want[i]);
-    }
-    n := wprev_mon_put(out[..], tick, count, cast(string) rb[0..<rn]);
-    r := wprev_mon_read(text);
-    if cast(string) out[0..<n] != text || !r.ok || r.tick != tick || r.count != count { return false; }
-    for i: 0..<count {
-      a := r.row[i]; b := want[i];
-      if a.m != b.m || a.life != b.life || a.kind != b.kind || a.state != b.state || a.x != b.x || a.z != b.z || a.yaw != b.yaw || a.hp != b.hp || a.max != b.max || a.act != b.act || a.act_tick != b.act_tick || a.foe != b.foe { return false; }
-    }
-    return true;
-  }
-  return false;
-}
-wq_refused :: (frame: string, t: string) -> bool {
-  if frame == "guard" { return !wprev_guard_read(t).ok; }
-  if frame == "guard_hit" { return !wprev_guard_hit_read(t).ok; }
-  if frame == "monsters" { return !wprev_mon_read(t).ok; }
-  if frame == "monster_event" { return !wprev_mon_hit_read(t).ok; }
-  return false;
-}
 // A profile's versions against the codec's and the session's: 0 holds, else which rule fails.
 wq_versions :: (serves: int, under: int) -> int {
   if WIRE_MIN != WIRE_VERSION - 1 { return 1; }
@@ -126,36 +55,45 @@ wq_check :: (d: Jv, path: string) -> bool {
   cb: [200] u8; cn := wire_put(cb[..], wire_put(cb[..], 0, "coax/web/tool.sh coax/web/room/wire-prev-profile.coax "), file);
   if wq_str(d, jv_get(d, 0, "check"), tb[1][..]) != cast(string) cb[0..<cn] { print("check: not this program\n"); return false; }
   if wq_str(d, jv_get(d, 0, "codec"), tb[1][..]) != "everglade/server/wire-prev-wire.coax" { print("codec\n"); return false; }
-  if wq_str(d, jv_get(d, 0, "page"), tb[1][..]).count < 10 { print("page: the commit of the page this wire is written for\n"); return false; }
-  for i: 0..<WQ_FRAMES.count { if wq_str(d, jv_get(d, 0, WQ_FRAMES[i]), tb[1][..]) != WQ_FORMATS[i] { print("format: %\n", WQ_FRAMES[i]); return false; } }
-  if jv_int(d, jv_get(d, 0, "max_monsters"), -1) != EGC_MONS || jv_int(d, jv_get(d, 0, "max_seats"), -1) != EGC_SEATS { print("max_monsters, max_seats\n"); return false; }
-  // what a seat on the old wire is not sent
+  if wq_str(d, jv_get(d, 0, "base_session"), tb[1][..]) != "everglade-session-v7" { print("base_session\n"); return false; }
+  // what a seat on the old wire is not sent: every familiar's row, and no entry (each is said as its old frame)
   wh := jv_get(d, 0, "withheld"); kinds := jv_get(d, wh, "row_kinds"); ents := jv_get(d, wh, "entries");
-  if jv_len(d, kinds) != 2 || jv_int(d, jv_at(d, kinds, 0), -1) != WK_MONSTER || jv_int(d, jv_at(d, kinds, 1), -1) != WK_GUARD { print("withheld.row_kinds\n"); return false; }
-  if jv_len(d, ents) != 2 || wq_str(d, jv_at(d, ents, 0), tb[1][..]) != EGC_GUARD_E || wq_str(d, jv_at(d, ents, 1), tb[2][..]) != EGC_MON_E { print("withheld.entries\n"); return false; }
-  // each entry of this wire, as the old frame it is said as
-  said := jv_get(d, 0, "said_as");
-  if jv_kind(d, said) != JV_ARRAY || jv_len(d, said) < 2 { print("said_as\n"); return false; }
+  if jv_len(d, kinds) != 1 || jv_int(d, jv_at(d, kinds, 0), -1) != WK_FAMILIAR { print("withheld.row_kinds\n"); return false; }
+  if jv_kind(d, ents) != JV_ARRAY || jv_len(d, ents) != 0 { print("withheld.entries\n"); return false; }
+  // each entry of this wire, as the old frame it is said as: every order of e fam, e fam-cast and e kit
+  said := jv_get(d, 0, "said_as"); heads: [7] bool; names := [7] string.["m1", "m3", "m4", "m5", "m6", "m7", "u1"];
+  if jv_kind(d, said) != JV_ARRAY || jv_len(d, said) < 7 { print("said_as\n"); return false; }
   for i: 0..<jv_len(d, said) {
     out: [200] u8; e := wq_str(d, jv_get(d, jv_at(d, said, i), "entry"), tb[1][..]); f := wq_str(d, jv_get(d, jv_at(d, said, i), "frame"), tb[2][..]);
     m := wprev_entry_put(out[..], e);
-    if m == 0 || cast(string) out[0..<m] != f { print("said_as %: %\n", i, e); return false; }
+    if m == 0 || cast(string) out[0..<m] != f || !egf_kept(e) { print("said_as %: %\n", i, e); return false; }
+    for q: 0..<7 { if wire_is(f, names[q]) { heads[q] = true; } }
   }
-  frames := jv_get(d, 0, "frames");
-  if jv_kind(d, frames) != JV_ARRAY { return false; }
-  for f: WQ_FRAMES {
-    seen := false;
-    for i: 0..<jv_len(d, frames) { if wq_str(d, jv_get(d, jv_at(d, frames, i), "frame"), tb[1][..]) == f { seen = true; } }
-    if !seen { print("frames: none for %\n", f); return false; }
+  for q: 0..<7 { if !heads[q] { print("said_as: none said as %\n", names[q]); return false; } }
+  same := jv_get(d, 0, "said_the_same");
+  if jv_kind(d, same) != JV_ARRAY || jv_len(d, same) < 3 { print("said_the_same\n"); return false; }
+  for i: 0..<jv_len(d, same) { out: [200] u8; e := wq_str(d, jv_at(d, same, i), tb[1][..]); if wprev_entry_put(out[..], e) != 0 { print("said_the_same %: %\n", i, e); return false; } }
+  // each frame the old page says, as the E (use) it is on this wire: all six familiar requests and the kit's
+  heard := jv_get(d, 0, "heard_as"); kinds_seen: [7] bool;
+  if jv_kind(d, heard) != JV_ARRAY || jv_len(d, heard) < 7 { print("heard_as\n"); return false; }
+  for i: 0..<jv_len(d, heard) {
+    out: [200] u8; f := wq_str(d, jv_get(d, jv_at(d, heard, i), "frame"), tb[1][..]); u := wq_str(d, jv_get(d, jv_at(d, heard, i), "use"), tb[2][..]);
+    w := wprev_use_read(f);
+    m := wire_put_use(out[..], 0, w);
+    if w.kind < WE_FAM_SUMMON || w.kind > WE_KIT || cast(string) out[0..<m] != u { print("heard_as %: %\n", i, f); return false; }
+    kinds_seen[w.kind - WE_FAM_SUMMON] = true;
+    // and this wire's own reader takes that use as a request
+    if w.kind == WE_KIT { if egf_kit_read(w) != w.seq { print("heard_as %: not the kit's ask\n", i); return false; } }
+    else if !egf_use_read(w, WPREV_FEY).ok { print("heard_as %: not a familiar's request\n", i); return false; }
   }
-  for i: 0..<jv_len(d, frames) { if !wq_frame(d, jv_at(d, frames, i)) { print("frame %\n", i); return false; } }
+  for q: 0..<7 { if !kinds_seen[q] { print("heard_as: no frame for E kind %\n", WE_FAM_SUMMON + q); return false; } }
   bad := jv_get(d, 0, "malformed");
-  if jv_kind(d, bad) != JV_OBJECT || jv_len(d, bad) != WQ_FRAMES.count { print("malformed: one list a frame\n"); return false; }
-  for f: WQ_FRAMES {
-    list := jv_get(d, bad, f);
-    if jv_kind(d, list) != JV_ARRAY || jv_len(d, list) < 3 { print("malformed: %\n", f); return false; }
-    for i: 0..<jv_len(d, list) { tx: [512] u8; t := wq_str(d, jv_at(d, list, i), tx[..]); if !wq_refused(f, t) { print("malformed % taken: %\n", f, t); return false; } }
-  }
+  if jv_kind(d, bad) != JV_ARRAY || jv_len(d, bad) < 6 { print("malformed\n"); return false; }
+  for i: 0..<jv_len(d, bad) { t := wq_str(d, jv_at(d, bad, i), tb[1][..]); if wprev_use_read(t).kind != 0 { print("malformed % taken: %\n", i, t); return false; } }
+  // the old frames' own profiles, by name: each is held to this codec by familiar-profile.coax
+  frames := jv_get(d, 0, "frames");
+  if jv_kind(d, frames) != JV_ARRAY || jv_len(d, frames) != WQ_FRAMES.count { print("frames\n"); return false; }
+  for i: 0..<WQ_FRAMES.count { if wq_str(d, jv_at(d, frames, i), tb[1][..]) != WQ_FRAMES[i] { print("frames %\n", i); return false; } }
   return true;
 }
 

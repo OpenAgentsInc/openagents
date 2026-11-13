@@ -1,7 +1,7 @@
 {
   "identity": "everglade-familiar-lifecycle-v1",
   "check": "coax/web/tool.sh coax/web/room/familiar-profile.coax proto/verse/everglade-familiar-lifecycle-v1.json",
-  "base_session": "everglade-session-v6",
+  "base_session": "everglade-session-v7",
   "scope": "Everglade II only",
   "request": "M4 SEQ ORDER",
   "success": "m4 SEQ ORDER",

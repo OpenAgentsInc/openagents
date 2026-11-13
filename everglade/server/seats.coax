@@ -158,8 +158,7 @@ eg_hold :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   v[0].eg[k].seat[s].ends_n = 0;
   if v[0].eg[k].seat[s].familiar.active>0 && v[0].eg[k].rules[0].b[0].c[EGB_SEAT+s].rite==SP_FIND_FAMILIAR { rs_rite_fail(v[0].eg[k].rules[0].b[..],EGB_SEAT+s," (disconnected)"); }
   v[0].eg[k].seat[s].familiar=E2Familiar.{};
-  v[0].eg[k].seat[s].familiar_hash=0;
-  v[0].eg[k].seat[s].familiar_sense_sent=0;
+  v[0].eg[k].seat[s].prev=WprevSeat.{};   // (what the previous wire's writers kept for it: its next page hears the familiars' list afresh)
   ck_capture(v, k, s_id); rv_note_seat(v, k, s_id); v[0].vit.flush = true;
   v[0].st.held += 1;
 }
@@ -233,6 +232,12 @@ eg_event_to :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool,
   v[0].eg[k].ev_at[e] = a; v[0].eg[k].ev_len[e] = text.count; v[0].eg[k].ev_x[e] = x; v[0].eg[k].ev_z[e] = z; v[0].eg[k].ev_all[e] = all; v[0].eg[k].ev_to[e] = who;
   v[0].eg[k].ev_bytes += text.count; v[0].eg[k].ev_n = e + 1;
 }
+// An event for seat s alone, wherever it stands: the room's answer to what its page asked (a familiar's
+// order done, a Healer's Kit used: everglade/server/familiar-wire.coax, #13276). Aimed at the seat, so
+// it has the outcomes' room, is outside the cue budget and rides the reliable class; placed where no
+// seat is near, so nobody else hears it.
+EG_NOWHERE :: 1.0e9;
+eg_event_only :: (v: [] RmServer, k: int, text: string, s: int) { eg_event_to(v, k, text, EG_NOWHERE, EG_NOWHERE, false, s); }
 
 
 // ---- a seat's class and level are the server's (#13259, metaverse-engine/session/seat-class.coax)

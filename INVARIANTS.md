@@ -7580,7 +7580,7 @@ grace rejoin keeps the creature, rest and cast history and tells the new socket
 the current state; the new page must be seen still again before it changes the
 rest. Pre-v5 `L` rest requests are refused in Everglade II rooms. Evidence:
 `everglade/server/rest.coax` checks and
-`docs/protocol/everglade-session-v6.md`.
+`docs/protocol/everglade-session-v7.md`.
 
 ## An Everglade II seat plays at the level its hello names, and the room says its bar
 

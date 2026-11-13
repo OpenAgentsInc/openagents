@@ -3,8 +3,8 @@
 Issue: [#13398](https://github.com/OpenAgentsInc/openagents/issues/13398).
 Code: `everglade/server/wire-prev.coax` (the rule and the room's hooks),
 `everglade/server/wire-prev-wire.coax` (the old frames' one codec).
-Profile: `proto/verse/everglade-wire-prev-v5.json`, checked by
-`coax/web/tool.sh coax/web/room/wire-prev-profile.coax proto/verse/everglade-wire-prev-v5.json`.
+Profile: `proto/verse/everglade-wire-prev-v6.json`, checked by
+`coax/web/tool.sh coax/web/room/wire-prev-profile.coax proto/verse/everglade-wire-prev-v6.json`.
 
 ## The rule
 
@@ -73,20 +73,41 @@ planned at wire 7 does for `M1` to `M7` and `U1`) keeps the old reader behind
 | `everglade-wire-profile.coax` | The session profile's `min` is not `WIRE_MIN` |
 | `coax/remote/check.sh e2 PROD`, the line `e2 prev-wire` | Production's own protocol bots, run from production's tree, are refused by this commit's room, or seat fewer, or fight no monster where production's room let them. The after-landing check runs it on every head of `main` |
 
-## Wire 5 under wire 6
+## Wire 6 under wire 7
 
-Wire 6 (#13276) made Everglade II's monsters and guard replicated rows
-(`WK_MONSTER`, `WK_GUARD`) and their blows `e mon` and `e guard` entries of
-`D`. A wire 5 page (production's `01bdb405f0`) reads four frames beside `D`
-instead. A wire 6 room sends them to a wire 5 seat, and sends that seat no
-monster or guard row and no `e mon` or `e guard` entry.
+Wire 7 (#13276, #13245) made Everglade II's familiars replicated rows
+(`WK_FAMILIAR`), their requests and the Healer's Kit's `E` (use) kinds, and
+the room's answers `e` entries of `D` told to the asker
+([the familiar words](everglade-familiar-v2.md)). A wire 6 page reads and
+writes frames of their own instead. A wire 7 room speaks them to a wire 6
+seat, and sends that seat no familiar's row.
 
-| Frame | Fields | Sent |
-| --- | --- | --- |
-| `g2` | `TICK LIFE STATE X Z YAW HP MAX SWING FOE` | The guard: each tick he changes, else once a second. `X Z` in mm, `YAW` in thousandths of a radian |
-| `g3` | `TICK KIND SEAT AMOUNT` | A blow: the `e guard` entry's fields |
-| `h2` | `TICK COUNT [M LIFE KIND STATE X Z YAW HP MAX ACT ACT_TICK FOE]...` | The monsters within 120 m: each tick they change, else once a second. `X Z` in cm |
-| `h3` | `TICK KIND M SEAT AMOUNT [FX FZ TX TZ FLY_MS]` | A monster's event: the `e mon` entry's fields |
+| Hook | Wire 6 |
+| --- | --- |
+| `wprev_pick` | Every `WK_FAMILIAR` row is withheld |
+| `wprev_entry` | `e fam SEQ ORDER FORM` is said as `m1 SEQ FORM` (order 0), `m4 SEQ ORDER` (1 to 3), `m5 SEQ`, `m6 SEQ` or `m7 SEQ`. `e fam-cast SEQ STATUS` is said as `m3 SEQ STATUS`. `e kit SEQ LEFT` is said as `u1 SEQ LEFT` |
+| `wprev_after` | `m2 TICK COUNT [OWNER FORM X Z HP MAX]...`, the familiars the seat may see, and `m8 MODE`, whose senses it has: each on a change, else once a second |
+| `wprev_heard` | `M1`, `M3` to `M7` and `U1` are read as the `E` kinds they are on wire 7 (9 to 15), and reach the same asks |
 
-Wire 5 has no page-to-room frame that wire 6 lacks, so `wprev_heard` takes
-none.
+The rules behind a request are the same on either wire. One rule differs in
+what a seat is sent: `m2` keeps a familiar from a page its owner blocks as
+well as from a page that blocks its owner, and a row follows the row layer's
+one rule (who sees a familiar is who sees its owner).
+
+The old frames keep their own profiles
+(`proto/verse/everglade-familiar*-v1.json`, `everglade-find-familiar-v1.json`
+and `everglade-healers-kit-v1.json`), which
+`coax/web/room/familiar-profile.coax` holds to `wire-prev-wire.coax`.
+`everglade-wire-prev-v6.json` pins how each wire 7 entry is said to a wire 6
+seat and how each wire 6 request is read.
+
+When the wire rises to 8, delete with these writers: the frames' nine
+profiles and docs, `everglade/server/kit-wire.coax`, the old cases of
+`familiar-profile.coax`, the `m2` and `u1` routes in `RM_WT_ROUTES`, and the
+room checks in `everglade/server/familiar.coax` that say `H 6`.
+
+## Wire 5 under wire 6 (ended)
+
+Wire 6 made the monsters and the path guard rows. A wire 6 room sent a wire
+5 seat `g2`, `g3`, `h2` and `h3` in their place. Those writers ended when
+the wire rose to 7.

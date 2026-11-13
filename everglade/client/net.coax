@@ -21,7 +21,7 @@
 #load "../../metaverse-engine/net/stats.coax";   // the netcode readout's counts (?net, #13157)
 #load "../../metaverse-engine/net/transport.coax";   // WebSocket or WebTransport under one interface (#13176)
 #load "../server/creature-wire.coax";   // what the guard and the monsters did (e guard, e mon), the room's codec (#13246, #13276)
-#load "../server/kit-wire.coax";   // the Healer's Kit's frames, the room's codec (#13245)
+#load "../server/familiar-wire.coax";   // a familiar's requests and answers and the Healer's Kit's, the room's codec (#13276, #13245)
 #load "../../metaverse-engine/net/relay-wire.coax";   // the relay's own frames: y and the clock's ping and pong (#13245)
 
 E2N_OFF :: 0; E2N_OPENING :: 1; E2N_OPEN :: 2; E2N_DOWN :: 3;
@@ -62,14 +62,12 @@ E2nMon :: struct { t: int; life: int; kind: int; state: int = 4; x: f32; z: f32;
 E2nMonHit :: struct { live: bool; t: int; kind: int; m: int; seat: int; amount: int; fx: f32; fz: f32; tx: f32; tz: f32; fly: f32; }
 E2N_MON_STATE :: 255;   // a monster's state in its ring's flags; its act under way is above it (E2N_MON_ACT)
 E2N_MON_ACT :: 8;
-// A familiar is an entity of the page's one list too (#13277): its owner's seat in owner, its form in
-// p1, drawn from the engine's interpolation buffer (metaverse-engine/net/interp.coax) as every other entity is.
-// The room tells them in m2 (everglade/server/familiar.coax) until they are rows (#13276), so their
-// ids and their kind are the page's own for now: no row has them.
-E2N_FAMILIARS :: 16;
-E2N_FAM_EID :: 970200;          // owner seat S's familiar: WIRE_ID_MADE + E2N_FAM_EID + S
-E2N_ENT_FAMILIAR :: 1015;       // such an entity's kind in ents: no row's kind
-E2N_FAM_JUMP :: 4.0;            // metres: farther than this in one word is a recall or a new summons, never drawn between
+// A familiar is its row (everglade-wire.coax WK_FAMILIAR, #13276): an entity of the page's one list,
+// its owner's seat in owner (a TGT code), its form in p1, whose senses its owner has in its ring's
+// flags, drawn from the engine's interpolation buffer (metaverse-engine/net/interp.coax) as every other entity
+// is (#13277). What you ask of yours is an E kind and the room's answer an e entry
+// (everglade/server/familiar-wire.coax).
+E2N_FAMILIARS :: WIRE_SEATS;
 E2nFamiliar :: struct { live:bool; form:int; x:f32; z:f32; hp:int; max:int; }
 E2Net :: struct {
   want: bool;                   // a room: the page facts named a host and this is not a staged shot
@@ -136,10 +134,9 @@ E2Net :: struct {
   cast_said: string; cast_said_at: int; // bounded local feedback from the latest request
   cast_seq: int;                // your last cast's number (the room's r SEQ names it)
   acts: [1] NetLedger;          // your casts and rests that wait for the room: pressed, then confirmed, refused or timed out (metaverse-engine/net/predict.coax)
-  familiar_tick:int=-1;
   guard_hits: [E2N_GUARD_HITS] E2nGuardHit;
   mon_hits: [E2N_MON_HITS] E2nMonHit;
-  familiar_seq:int=4000000; familiar_at:int=-100000; familiar_ok:bool; familiar_form:int; familiar_slot:int; familiar_spirit:int=RS_FAMILIAR_FEY; familiar_cast:int; familiar_order:int; familiar_heal_cue:bool; familiar_sense:int;
+  familiar_seq:int=4000000; familiar_at:int=-100000; familiar_ok:bool; familiar_form:int; familiar_slot:int; familiar_spirit:int=RS_FAMILIAR_FEY; familiar_cast:int; familiar_order:int; familiar_heal_cue:bool;
   aid_seq: int = 3000000; aid_left: int = -1; aid_at: int = -100000; aid_ok: bool;
   // your rest as the room's rules hold it (z SEQ CODE DICE, everglade/server/rest.coax): known
   // only once this socket's room has said it; your last rest request's number and when it was refused
@@ -569,47 +566,6 @@ e2n_record :: (n: [] E2Net, t: string) {
   if t.count < 1 { return; }
   if net_conn_note(n[0].link[..], t) { return; }   // the room's word on a WebTransport link (?net)
   if t.count > 2 && t[1] == ' ' && (t[0] == 'a' || t[0] == 'd') { e2n_shot_word(n, t); return; }   // an arrow loosed or ended
-  if wire_is(t,"m2") { e2n_familiar_snapshot(n,t); return; }
-  if wire_is(t,"m8") {
-    rd:=[1]WireRd.[wire_rd(t,2)];
-    mode:=wire_num(t,rd[..]);
-    if rd[0].ok && !wire_more(t,rd[..]) && e2n_open(n) && mode>=0 && mode<=2 { n[0].familiar_sense=mode; }
-    return;
-  }
-  step:=wire_is(t,"m5"); heal:=wire_is(t,"m6"); sense:=wire_is(t,"m7");
-  if step || heal || sense || wire_is(t,"m4") {
-    rd:=[1]WireRd.[wire_rd(t,2)];
-    seq:=wire_num(t,rd[..]); order:=ifx sense then 6 else ifx heal then 5 else ifx step then 4 else wire_num(t,rd[..]);
-    if rd[0].ok && !wire_more(t,rd[..]) && e2n_open(n) && seq==n[0].familiar_seq && order>0 && (step || heal || sense || order<=3) && order==n[0].familiar_order {
-      n[0].familiar_ok=true; n[0].familiar_at=n[0].mono;
-      if heal { n[0].familiar_heal_cue=true; }
-    }
-    return;
-  }
-  if wire_is(t,"m3") {
-    rd:=[1]WireRd.[wire_rd(t,2)];
-    seq:=wire_num(t,rd[..]); status:=wire_num(t,rd[..]);
-    if rd[0].ok && !wire_more(t,rd[..]) && e2n_open(n) && n[0].klass==FB_CL_WIZARD &&
-      n[0].familiar_order==0 && seq==n[0].familiar_seq && seq>4000000 && status>=1 && status<=3 {
-      n[0].familiar_cast=status; n[0].familiar_at=n[0].mono;
-    }
-    return;
-  }
-  if wire_is(t,"m1") {
-    rd:=[1]WireRd.[wire_rd(t,2)];
-    seq:=wire_num(t,rd[..]); form:=wire_num(t,rd[..]);
-    if rd[0].ok && !wire_more(t,rd[..]) && e2n_open(n) && n[0].familiar_order==0 && seq==n[0].familiar_seq && seq>4000000 && form>=0 && form<RS_FAMILIAR_FORMS.count {
-      n[0].familiar_ok=true; n[0].familiar_at=n[0].mono;
-    }
-    return;
-  }
-  if wire_is(t,"u1") {
-    used:=egk_used_read(t);
-    if used.ok && e2n_open(n) && used.seq==n[0].aid_seq && used.seq>3000000 {
-      n[0].aid_left=used.left; n[0].aid_ok=true; n[0].aid_at=n[0].mono;
-    }
-    return;
-  }
   r: [1] WireRd; r[0] = wire_rd(t, 1);
   if !r[0].ok { return; }
   c := t[0];
@@ -672,8 +628,7 @@ e2n_record :: (n: [] E2Net, t: string) {
     wire_mirror_end(n[0].mir[..], d);
     if (d.f & 1) != 0 && (d.f & 2) == 0 {
       // a whole snapshot: whoever it doesn't hold has gone
-      // (a familiar is not a row yet: m2's whole list says which are gone, e2n_familiar_snapshot)
-      for e: 0..<E2N_ENTS { if n[0].ents[e].live && n[0].ents[e].kind != E2N_ENT_FAMILIAR && n[0].ents[e].seen != d.tick { n[0].ents[e].live = false; } }
+      for e: 0..<E2N_ENTS { if n[0].ents[e].live && n[0].ents[e].seen != d.tick { n[0].ents[e].live = false; } }
     }
     return;
   }
@@ -765,6 +720,7 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
   }
   if c == 'e' && wire_is(t, EGC_MON_E) { e2n_mon_hit(n, t); return; }
   if c == 'e' && wire_is(t, EGC_GUARD_E) { e2n_guard_hit(n, t); return; }
+  if c == 'e' && egf_kept(t) { e2n_familiar_answer(n, t); return; }
   if c == 'e' && wire_is(t, "e cast") {
     r[0] = wire_rd(t, 6);
     ce := wire_read_cast_e(t, r[..]);
@@ -799,8 +755,11 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
 // state into the engine's ring (metaverse-engine/net/interp.coax). A new LIFE or a WARP starts its ring again,
 // so nothing is drawn between the last life and this one.
 e2n_row :: (n: [] E2Net, w: WireS, d: WireD) {
-  creature := w.kind == WK_MONSTER || w.kind == WK_GUARD;
+  creature := w.kind == WK_MONSTER || w.kind == WK_GUARD || w.kind == WK_FAMILIAR;
   if w.id < 0 || (w.kind != WK_PLAYER && !creature) { return; }
+  // a familiar's row is its owner's seat's, of a form the rules have, alive, with senses the wire names
+  if w.kind == WK_FAMILIAR && (w.owner < WIRE_TGT_SEAT || w.owner >= WIRE_TGT_SEAT + E2N_FAMILIARS || w.id != WIRE_ID_MADE + WIRE_FAM_EID + w.owner - WIRE_TGT_SEAT ||
+                               w.p1 < 0 || w.p1 >= RS_FAMILIAR_FORMS.count || w.hp <= 0 || w.max < w.hp || w.g < E2_SENSE_OWNER || w.g > E2_SENSE_SIGHT_HEARING) { return; }
   if w.kind == WK_MONSTER && (w.id != WIRE_ID_MADE + WIRE_MON_EID + w.p1 || w.p1 < 0 || w.p1 >= E2N_MONS) { return; }
   if w.kind == WK_GUARD && w.id != WIRE_ID_MADE + WIRE_GUARD_EID { return; }
   k := e2n_ent(n, w.id, true);
@@ -987,7 +946,7 @@ e2n_class :: (n: [] E2Net) -> int { return ifx n[0].klass >= 0 && n[0].klass < F
 e2n_set_class :: (n: [] E2Net, c: int, level: int) {
   l := xk_level(level);
   if c < 0 || c >= FB_CL_N || (c == n[0].klass && l == n[0].level) { return; }
-  n[0].klass = c; n[0].level = l; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000; n[0].familiar_at=-100000; n[0].familiar_cast=0; n[0].familiar_order=0; n[0].familiar_sense=0;   // the room says the new bar's
+  n[0].klass = c; n[0].level = l; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000; n[0].familiar_at=-100000; n[0].familiar_cast=0; n[0].familiar_order=0;   // the room says the new bar's
   if e2n_open(n) { n[0].hello_due = true; n[0].change_due = true; }
 }
 // A cast (C SEQ SLOT AX AY AZ -1): the slot (class-kit.coax xk_slot) at the point it aims at. False
@@ -1056,8 +1015,7 @@ e2n_aid :: (n:[] E2Net)->bool {
   if !e2n_open(n) || n[0].aid_left==0 { return false; }
   n[0].aid_seq=add_sat(n[0].aid_seq,1);
   n[0].aid_at=-100000;
-  count:=egk_ask_put(n[0].out[..],n[0].aid_seq);
-  e2n_send(n,count);
+  e2n_send(n,wire_put_use(n[0].out[..],0,egf_kit_use(n[0].aid_seq)));
   return true;
 }
 e2n_aid_message :: (n:[] E2Net)->string {
@@ -1069,69 +1027,112 @@ e2n_aid_message :: (n:[] E2Net)->string {
 e2n_clear_familiars :: (n:[]E2Net) {
   for h:0..<E2N_GUARD_HITS { n[0].guard_hits[h].live=false; }
   for h:0..<E2N_MON_HITS { n[0].mon_hits[h].live=false; }
-  n[0].familiar_tick=-1; n[0].familiar_cast=0; n[0].familiar_order=0; n[0].familiar_heal_cue=false; n[0].familiar_sense=0;
-  for e:0..<E2N_ENTS { if n[0].ents[e].kind==E2N_ENT_FAMILIAR { n[0].ents[e].live=false; } }
+  n[0].familiar_cast=0; n[0].familiar_order=0; n[0].familiar_heal_cue=false;
 }
-e2n_familiar_snapshot :: (n:[]E2Net,t:string) {
+// The room's answer to what you asked of your familiar or the Healer's Kit (everglade/server/familiar-wire.coax:
+// e fam, e fam-cast, e kit): taken once, for the request it names, as the frames before wire 7 were.
+e2n_familiar_answer :: (n:[]E2Net,t:string) {
   if !e2n_open(n) { return; }
-  rd:=[1]WireRd.[wire_rd(t,2)];
-  tick:=wire_num(t,rd[..]); count:=wire_num(t,rd[..]);
-  if !rd[0].ok || tick<0 || tick<=n[0].familiar_tick || count<0 || count>E2N_FAMILIARS { return; }
-  rows:[E2N_FAMILIARS]E2nFamiliar; prior:=-1;
-  for q:0..<count {
-    s:=wire_num(t,rd[..]); form:=wire_num(t,rd[..]);
-    x:=wire_num(t,rd[..]); z:=wire_num(t,rd[..]);
-    hp:=wire_num(t,rd[..]); max:=wire_num(t,rd[..]);
-    if !rd[0].ok || s<=prior || s>=E2N_FAMILIARS || form<0 || form>=RS_FAMILIAR_FORMS.count || hp<=0 || max<hp ||
-      x < -200000 || x > 200000 || z < -650000 || z > 200000 { return; }
-    rows[s]=E2nFamiliar.{live=true,form=form,x=f32(x)/1000,z=f32(z)/1000,hp=hp,max=max};
-    prior=s;
+  d:=egf_done_read(t);
+  if d.ok {
+    if d.seq!=n[0].familiar_seq || d.seq<=4000000 || d.order!=n[0].familiar_order { return; }
+    n[0].familiar_ok=true; n[0].familiar_at=n[0].mono;
+    if d.order==E2_FAMILIAR_CURE { n[0].familiar_heal_cue=true; }
+    return;
   }
-  if wire_more(t,rd[..]) { return; }
-  n[0].familiar_tick=tick;
-  // the whole list, taken whole: each familiar's place into its entity's ring at the tick the room
-  // names, and one the list leaves out is gone
-  at:=e2n_tick_t(n,tick);
-  for s:0..<E2N_FAMILIARS {
-    eid:=WIRE_ID_MADE+E2N_FAM_EID+s;
-    if !rows[s].live { k:=e2n_ent(n,eid,false); if k>=0 { n[0].ents[k].live=false; } continue; }
-    k:=e2n_ent(n,eid,true);
-    if k<0 { continue; }
-    en:=n[0].ents[k..<k+1];
-    if en[0].ring_n>0 {
-      last:=en[0].ring[en[0].ring_n-1]; dx:=rows[s].x-last.x; dz:=rows[s].z-last.z;
-      if dx*dx+dz*dz>f32(E2N_FAM_JUMP*E2N_FAM_JUMP) || last.t>at { en[0].ring_n=0; en[0].born=at; }
-    }
-    en[0].kind=E2N_ENT_FAMILIAR; en[0].owner=s; en[0].p1=rows[s].form; en[0].hp=rows[s].hp; en[0].max=rows[s].max; en[0].seen=tick;
-    net_push_row(en,NetState.{t=at,x=rows[s].x,z=rows[s].z},n[0].hz);
-    if en[0].ring_n==1 { en[0].shown=en[0].ring[0]; }
+  c:=egf_cast_read(t);
+  if c.ok {
+    if n[0].klass==FB_CL_WIZARD && n[0].familiar_order==0 && c.seq==n[0].familiar_seq && c.seq>4000000 { n[0].familiar_cast=c.status; n[0].familiar_at=n[0].mono; }
+    return;
   }
+  k:=egf_kit_used(t);
+  if k.ok && k.seq==n[0].aid_seq && k.seq>3000000 { n[0].aid_left=k.left; n[0].aid_ok=true; n[0].aid_at=n[0].mono; }
 }
 // Owner seat s's familiar as drawn at the page's moment of the room (rt): from the engine's buffer.
 e2n_familiar_of :: (n:[]E2Net,s:int)->E2nFamiliar {
-  k:=ifx s>=0 && s<E2N_FAMILIARS then e2n_ent(n,WIRE_ID_MADE+E2N_FAM_EID+s,false) else -1;
-  if k<0 || n[0].ents[k].ring_n==0 || n[0].ents[k].kind!=E2N_ENT_FAMILIAR { return E2nFamiliar.{}; }
+  k:=ifx s>=0 && s<E2N_FAMILIARS then e2n_ent(n,WIRE_ID_MADE+WIRE_FAM_EID+s,false) else -1;
+  if k<0 || n[0].ents[k].ring_n==0 || n[0].ents[k].kind!=WK_FAMILIAR { return E2nFamiliar.{}; }
   en:=n[0].ents[k..<k+1]; p:=net_state_at(en,n[0].rt);
   return E2nFamiliar.{live=true,form=en[0].p1,x=p.x,z=p.z,hp=en[0].hp,max=en[0].max};
 }
-#test "a familiar is drawn from the engine's buffer: a step is blended at its moment, a recall never is, and one the list leaves out is gone (#13277)" {
-  n:[1]E2Net; n[0].state=E2N_OPEN; n[0].sock=1; n[0].seat=0; n[0].hz=30; n[0].worlds=1; n[0].w_tick=0; n[0].w_t=0;
-  #assert !e2n_familiar_of(n[..],2).live && !e2n_familiar_of(n[..],-1).live && !e2n_familiar_of(n[..],E2N_FAMILIARS).live;
-  e2n_record(n[..],"m2 30 1 2 8 4000 -6000 3 5");
+// Whose senses you have, as your familiar's row last said (E2_SENSE_*): your own with no familiar out.
+e2n_familiar_sense :: (n:[]E2Net)->int {
+  k:=ifx n[0].seat>=0 && n[0].seat<E2N_FAMILIARS && e2n_open(n) then e2n_ent(n,WIRE_ID_MADE+WIRE_FAM_EID+n[0].seat,false) else -1;
+  if k<0 || n[0].ents[k].ring_n==0 || n[0].ents[k].kind!=WK_FAMILIAR { return E2_SENSE_OWNER; }
+  return n[0].ents[k].ring[n[0].ents[k].ring_n-1].f;
+}
+#test "a familiar is its row: drawn from the engine's buffer, a step at its tick, a recall never blended, gone with its x; a bad row is no familiar (#13276, #13277)" {
+  n:[1]E2Net; n[0].state=E2N_OPEN; n[0].sock=1; n[0].seat=2; n[0].hz=30; n[0].worlds=1; n[0].w_tick=0; n[0].w_t=0;
+  fid:=WIRE_ID_MADE+WIRE_FAM_EID+2; own:=WIRE_TGT_SEAT+2;
+  #assert !e2n_familiar_of(n[..],2).live && !e2n_familiar_of(n[..],-1).live && !e2n_familiar_of(n[..],E2N_FAMILIARS).live && e2n_familiar_sense(n[..])==E2_SENSE_OWNER;
+  e2n_test_row(n[..],30,WireS.{id=fid,kind=WK_FAMILIAR,x=4,z=-6,hp=3,max=5,owner=own,p1=8,life=1});
   f:=e2n_familiar_of(n[..],2); #assert f.live && f.form==8 && f.x==4 && f.z== -6 && f.hp==3 && f.max==5;
   // it stood a second, then stepped a square: the step takes the tick it was told at, not the second between
-  e2n_record(n[..],"m2 60 1 2 8 5500 -6000 3 5");
+  e2n_test_row(n[..],60,WireS.{id=fid,kind=WK_FAMILIAR,x=5.5,z=-6,hp=3,max=5,owner=own,p1=8,life=1});
   n[0].rt=1500; #assert e2n_familiar_of(n[..],2).x==4;
   n[0].rt=1983; a:=e2n_familiar_of(n[..],2); #assert a.x>4.5 && a.x<5.0;
   n[0].rt=2000; #assert e2n_familiar_of(n[..],2).x==5.5;
-  // a recall to somewhere else is no walk: nothing is drawn between
-  e2n_record(n[..],"m2 90 1 2 8 5500 -40000 2 5");
-  n[0].rt=2990; b:=e2n_familiar_of(n[..],2); #assert b.z== -40 && b.hp==2;
-  // a whole snapshot of the rows leaves it be (it is no row yet); the next list without it takes it away
-  e2n_record(n[..],"D 91 0 1 0 "); #assert e2n_familiar_of(n[..],2).live;
-  e2n_record(n[..],"m2 92 0"); #assert !e2n_familiar_of(n[..],2).live;
-  e2n_record(n[..],"m2 93 1 2 8 5500 -40000 2 5"); #assert e2n_familiar_of(n[..],2).live;
+  // whose senses you have ride its row; another's familiar's are not yours
+  e2n_test_row(n[..],61,WireS.{id=fid,kind=WK_FAMILIAR,x=5.5,z=-6,g=E2_SENSE_SIGHT_HEARING,hp=3,max=5,owner=own,p1=8,life=1});
+  #assert e2n_familiar_sense(n[..])==E2_SENSE_SIGHT_HEARING;
+  e2n_test_row(n[..],61,WireS.{id=fid+1,kind=WK_FAMILIAR,x=9,z=9,g=E2_SENSE_SIGHT,hp=1,max=1,owner=own+1,p1=0,life=1});
+  #assert e2n_familiar_of(n[..],3).live && e2n_familiar_sense(n[..])==E2_SENSE_SIGHT_HEARING;
+  e2n_test_row(n[..],62,WireS.{id=fid,kind=WK_FAMILIAR,x=5.5,z=-6,g=E2_SENSE_OWNER,hp=2,max=5,owner=own,p1=8,life=1});
+  #assert e2n_familiar_sense(n[..])==E2_SENSE_OWNER && e2n_familiar_of(n[..],2).hp==2;
+  // a recall (a new life of its row) is no walk: nothing is drawn between
+  e2n_test_row(n[..],90,WireS.{id=fid,kind=WK_FAMILIAR,x=5.5,z=-40,hp=2,max=5,owner=own,p1=8,life=2});
+  n[0].rt=2990; #assert e2n_familiar_of(n[..],2).z== -40;
+  // a row that is not a familiar's is none: another seat's id, a form the rules have none of, no Hit Points, senses past the wire's
+  e2n_test_row(n[..],91,WireS.{id=fid+5,kind=WK_FAMILIAR,x=1,z=1,hp=1,max=1,owner=own+4,p1=0,life=1});
+  e2n_test_row(n[..],91,WireS.{id=fid+6,kind=WK_FAMILIAR,x=1,z=1,hp=1,max=1,owner=own+6,p1=RS_FAMILIAR_FORMS.count,life=1});
+  e2n_test_row(n[..],91,WireS.{id=fid+7,kind=WK_FAMILIAR,x=1,z=1,hp=0,max=1,owner=own+7,p1=0,life=1});
+  e2n_test_row(n[..],91,WireS.{id=fid+8,kind=WK_FAMILIAR,x=1,z=1,g=3,hp=1,max=1,owner=own+8,p1=0,life=1});
+  e2n_test_row(n[..],91,WireS.{id=WIRE_ID_MADE+WIRE_FAM_EID+E2N_FAMILIARS,kind=WK_FAMILIAR,x=1,z=1,hp=1,max=1,owner=WIRE_TGT_SEAT+E2N_FAMILIARS,p1=0,life=1});
+  for q:6..<11 { #assert !e2n_familiar_of(n[..],q).live; }
+  #assert e2n_ent(n[..],WIRE_ID_MADE+WIRE_FAM_EID+E2N_FAMILIARS,false)<0;
+  // its x takes it away; a whole snapshot without it too; a lost room, all
+  e2n_record(n[..],"D 92 0 0 0 x 1170202"); #assert fid==1170202 && !e2n_familiar_of(n[..],2).live && e2n_familiar_of(n[..],3).live;
+  e2n_record(n[..],"D 93 0 1 0 "); #assert !e2n_familiar_of(n[..],3).live;
+  e2n_test_row(n[..],94,WireS.{id=fid,kind=WK_FAMILIAR,x=5.5,z=-40,hp=2,max=5,owner=own,p1=8,life=3});
+  #assert e2n_familiar_of(n[..],2).live;
   e2n_down(n[..]); #assert !e2n_familiar_of(n[..],2).live;
+}
+// The last frame the page put on its pipe to the room.
+e2n_test_sent :: (n:[]E2Net)->string { p:=n[0].pipe[0..<1]; last:=p[0].n-1; return cast(string)p[0].buf[p[0].from[last]..<p[0].from[last]+p[0].len[last]]; }
+#test "your familiar's and kit's requests are E kinds, and the room's answers e entries taken once for the request they name (#13276, #13245)" {
+  n:[1]E2Net; n[0].state=E2N_OPEN; n[0].sock=1; n[0].seat=0; n[0].mono=100; n[0].klass=FB_CL_DRUID; n[0].level=2;
+  n[0].familiar_form=8; n[0].familiar_slot=1;
+  #assert e2n_familiar(n[..]) && e2n_test_sent(n[..])=="E 4000001 9 108";
+  // an answer for another request, another order, or malformed, is not yours
+  e2n_record(n[..],"D 5 0 4 0 e fam 4000000 0 8"); #assert e2n_familiar_message(n[..])=="";
+  e2n_record(n[..],"D 5 0 4 0 e fam 4000001 1 0"); #assert e2n_familiar_message(n[..])=="";
+  e2n_record(n[..],"D 5 0 4 0 e fam 4000001 0 100"); #assert e2n_familiar_message(n[..])=="";
+  e2n_record(n[..],"D 5 0 4 0 e fam 4000001 0 8"); #assert e2n_familiar_message(n[..])=="COMPANION SUMMONED";
+  #assert e2n_familiar_order(n[..],2) && e2n_test_sent(n[..])=="E 4000002 11 2";
+  e2n_record(n[..],"D 6 0 4 0 e fam 4000002 2 0"); #assert e2n_familiar_message(n[..])=="FAMILIAR RECALLED";
+  #assert e2n_familiar_order(n[..],4) && e2n_test_sent(n[..])=="E 4000003 12 0";
+  e2n_record(n[..],"D 6 0 4 0 e fam 4000003 4 0"); #assert e2n_familiar_message(n[..])=="FAMILIAR MOVED";
+  #assert e2n_familiar_order(n[..],6) && e2n_test_sent(n[..])=="E 4000004 14 0";
+  e2n_record(n[..],"r 4000004 familiar"); #assert e2n_familiar_message(n[..])=="FAMILIAR COMMAND REFUSED";
+  #assert e2n_familiar_heal(n[..],3) && e2n_test_sent(n[..])=="E 4000005 13 3" && !n[0].familiar_heal_cue;
+  e2n_record(n[..],"D 7 0 4 0 e fam 4000005 5 0"); #assert n[0].familiar_heal_cue && e2n_familiar_message(n[..])=="FAMILIAR DELIVERED CURE WOUNDS";
+  #assert !e2n_familiar_order(n[..],5) && !e2n_familiar_order(n[..],0) && !e2n_familiar_order(n[..],7);
+  // the kit
+  #assert e2n_aid(n[..]) && e2n_test_sent(n[..])=="E 3000001 15 0";
+  e2n_record(n[..],"D 8 0 4 0 e kit 3000000 9"); #assert n[0].aid_left== -1;
+  e2n_record(n[..],"D 8 0 4 0 e kit 3000001 10"); #assert n[0].aid_left== -1;
+  e2n_record(n[..],"D 8 0 4 0 e kit 3000001 9"); #assert n[0].aid_left==9 && e2n_aid_message(n[..])=="ALLY STABILIZED";
+  // the Wizard's: the spirit in the ID, the cast's steps as they come
+  n[0].klass=FB_CL_WIZARD; n[0].familiar_spirit=2; n[0].familiar_slot=0;
+  #assert e2n_familiar(n[..]) && e2n_test_sent(n[..])=="E 4000006 10 20008" && e2n_familiar_message(n[..])=="ASKING TO CAST";
+  e2n_record(n[..],"D 9 0 4 0 e fam-cast 4000006 1"); #assert e2n_familiar_message(n[..])=="CASTING FIND FAMILIAR" && !e2n_familiar(n[..]);
+  e2n_record(n[..],"D 9 0 4 0 e fam-cast 4000005 3"); #assert e2n_familiar_message(n[..])=="CASTING FIND FAMILIAR";
+  e2n_record(n[..],"D 9 0 4 0 e fam-cast 4000006 4"); #assert e2n_familiar_message(n[..])=="CASTING FIND FAMILIAR";
+  e2n_record(n[..],"D 9 0 4 0 e fam-cast 4000006 2"); #assert e2n_familiar_message(n[..])=="FAMILIAR SUMMONED";
+  // a wire 6 room's frames are no longer read
+  n[0].familiar_cast=0; n[0].aid_left= -1;
+  e2n_record(n[..],"m3 4000006 1"); e2n_record(n[..],"u1 3000001 9"); e2n_record(n[..],"m2 9 1 0 8 1000 1000 1 1");
+  #assert n[0].familiar_cast==0 && n[0].aid_left== -1 && !e2n_familiar_of(n[..],0).live;
 }
 // A blow at or by the guard (creature-wire.coax e guard).
 e2n_guard_hit :: (n:[]E2Net,t:string) {
@@ -1247,12 +1248,8 @@ e2n_familiar :: (n:[]E2Net)->bool {
   n[0].familiar_order=0;
   n[0].familiar_cast=ifx wizard then 4 else 0;
   n[0].familiar_at=ifx wizard then n[0].mono else -100000;
-  out:=n[0].out[..];
-  count:=wire_int(out,wire_put(out,0,ifx wizard then "M3" else "M1"),n[0].familiar_seq);
-  count=wire_int(out,count,n[0].familiar_form);
-  count=wire_int(out,count,n[0].familiar_slot);
-  if wizard { count=wire_int(out,count,n[0].familiar_spirit); }
-  e2n_send(n,count);
+  ask:=E2FamiliarAsk.{seq=n[0].familiar_seq,wizard=wizard,choice=n[0].familiar_form,slot=n[0].familiar_slot,spirit=ifx wizard then n[0].familiar_spirit else 0};
+  e2n_send(n,wire_put_use(n[0].out[..],0,egf_use_of(ask)));
   return true;
 }
 e2n_familiar_order :: (n:[]E2Net,order:int)->bool {
@@ -1260,24 +1257,20 @@ e2n_familiar_order :: (n:[]E2Net,order:int)->bool {
     (n[0].familiar_cast==4 && n[0].mono-n[0].familiar_at<4000) { return false; }
   n[0].familiar_seq=add_sat(n[0].familiar_seq,1);
   n[0].familiar_order=order; n[0].familiar_at=-100000; n[0].familiar_cast=0;
-  out:=n[0].out[..];
-  count:=wire_int(out,wire_put(out,0,ifx order==6 then "M7" else ifx order==4 then "M5" else "M4"),n[0].familiar_seq);
-  if order<4 { count=wire_int(out,count,order); }
-  e2n_send(n,count);
+  ask:=E2FamiliarAsk.{seq=n[0].familiar_seq,lifecycle=true,step=order==E2_FAMILIAR_STEP,sense=order==E2_FAMILIAR_SENSES,choice=order};
+  e2n_send(n,wire_put_use(n[0].out[..],0,egf_use_of(ask)));
   return true;
 }
 e2n_familiar_heal :: (n:[]E2Net,target:int)->bool {
   if !e2n_open(n) || n[0].klass!=FB_CL_DRUID || n[0].level<2 || target<0 || target>=E2N_FAMILIARS { return false; }
   n[0].familiar_seq=add_sat(n[0].familiar_seq,1);
   n[0].familiar_order=5; n[0].familiar_at=-100000; n[0].familiar_cast=0;
-  out:=n[0].out[..];
-  count:=wire_int(out,wire_put(out,0,"M6"),n[0].familiar_seq);
-  e2n_send(n,wire_int(out,count,target));
+  e2n_send(n,wire_put_use(n[0].out[..],0,egf_use_of(E2FamiliarAsk.{seq=n[0].familiar_seq,lifecycle=true,touch=true,choice=target})));
   return true;
 }
 e2n_familiar_view :: (n:[]E2Net)->E2nFamiliar {
   own:=n[0].seat;
-  if n[0].familiar_sense>0 && e2n_open(n) { return e2n_familiar_of(n,own); }
+  if e2n_familiar_sense(n)>E2_SENSE_OWNER { return e2n_familiar_of(n,own); }
   return E2nFamiliar.{};
 }
 e2n_familiar_message :: (n:[]E2Net)->string {

@@ -29,6 +29,11 @@ eg_im_table :: (v: [] RmServer, k: int) {
         b := (row * WIRE_SLOTS + on) * WIRE_SF;
         if h[0].id[row * WIRE_SLOTS + on] != 0 && (cast(int) h[0].f[b + WS_COND] & IM_WIRE_COND_INVISIBLE) != 0 { flags = IM_HIDDEN; }
       }
+    } else if kind == WK_FAMILIAR {
+      // a familiar rides on its owner's seat and stands where it is: its owner hears it however far, and
+      // whoever blocks its owner never does (#13276)
+      on := cast(int) h[0].f[a + WS_OWNER] - WIRE_TGT_SEAT;
+      if on >= 0 && on < EG_SEATS { of = on; }
     } else if kind == WK_DOORS || forest_public(kind) {
       flags = IM_ROOM;   // doors and physical forest state stay shared, regardless of their starter
     } else if (kind == WK_ZONE || kind == WK_STONE || kind == WK_TENTACLES || kind == WK_THORNS || kind == WK_LINE) && cast(int) h[0].f[a + WS_OWNER] < 0 {

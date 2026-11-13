@@ -1,7 +1,7 @@
 {
   "identity": "everglade2-combat-v2",
   "check": "coax/web/tool.sh coax/web/room/combat-profile.coax proto/verse/everglade2-combat-v2.json",
-  "base_session": "everglade-session-v6",
+  "base_session": "everglade-session-v7",
   "scope": "Everglade II: what the path guard and the monsters did (e entries of D), and the arrows over the room",
   "docs": ["docs/protocol/everglade-guard-monsters-v2.md", "docs/protocol/everglade-projectiles-v1.md"],
   "codecs": {"guard_hit monster_event": "everglade/server/creature-wire.coax", "loose shot shot_end": "metaverse-engine/net/projectile.coax"},

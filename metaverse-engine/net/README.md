@@ -83,7 +83,12 @@ channel is its own stream, so a resend in one never holds up another.
   beside what Everglade II's guard and monsters did, the `e guard` and
   `e mon` entries of `D`
   ([doc](../../docs/protocol/everglade-guard-monsters-v2.md)); where they
-  stand is their rows' (session v6). Their checks,
+  stand is their rows' (session v6).
+  [`everglade2-familiar-v2.json`](../../proto/verse/everglade2-familiar-v2.json)
+  pins a familiar's requests and the Healer's Kit's as `E` kinds and the
+  room's answers as the `e fam`, `e fam-cast` and `e kit` entries of `D`
+  ([doc](../../docs/protocol/everglade-familiar-v2.md)); a familiar itself
+  is a row (session v7). Their checks,
   `coax/web/room/transport-profile.coax` and `combat-profile.coax`, run the
   codecs. [`room-relay-v1.json`](../../proto/verse/room-relay-v1.json) pins
   the relay room's own frames (`y j l m` and the clock's ping and pong,
@@ -109,10 +114,10 @@ Everglade II's guard and monsters are rows (#13276): each is a `NetEnt` of
 the page's one list, drawn from the engine's ring, with its state and its
 act riding the ring so each shows at the moment the room names.
 
-Everglade II's familiars are entities of that list too (#13277): the page
-puts each place the room tells into the familiar's ring and draws it from
-there, so a step is blended at its tick and a recall is never drawn as a
-walk. The room still tells them in `m2` until they are rows (#13276).
+Everglade II's familiars are rows too (#13276, #13277): each is a `NetEnt`
+of that list, drawn from the engine's ring, so a step is blended at its
+tick and a recall (a new life of its row) is never drawn as a walk. Whose
+senses its owner has rides the ring's flags.
 
 Not adopted yet: Orbit League's page draws each complete snapshot as it
 comes and predicts nothing.

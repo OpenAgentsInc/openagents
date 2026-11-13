@@ -1,7 +1,7 @@
 // Hold Everglade II's combat profile (proto/verse/everglade2-combat-v2.json, #13246, #13276) to the
 // codecs both the room and the page load: everglade/server/creature-wire.coax for what the path guard
 // and the monsters did (the D frame's e guard and e mon entries), and metaverse-engine/net/projectile.coax for
-// the arrows (F, a, d). Where the guard and the monsters stand is their rows' (everglade-session-v6).
+// the arrows (F, a, d). Where the guard and the monsters stand is their rows' (everglade-session-v7).
 // A frame's format ("guard_hit": "e guard TICK KIND ...") names its fields in the codec's order; each
 // "frames" entry's values name those fields in that order; the codec's writer gives exactly its text
 // from them, and its reader gives them back from the text; every "malformed" text is refused by the
@@ -152,7 +152,7 @@ cp_refused :: (frame: string, t: string) -> bool {
 cp_check :: (d: Jv, path: string) -> bool {
   tb: [2][512] u8;
   identity := cp_str(d, jv_get(d, 0, "identity"), tb[0][..]);
-  if identity != "everglade2-combat-v2" || cp_str(d, jv_get(d, 0, "base_session"), tb[1][..]) != "everglade-session-v6" { return false; }
+  if identity != "everglade2-combat-v2" || cp_str(d, jv_get(d, 0, "base_session"), tb[1][..]) != "everglade-session-v7" { return false; }
   file := CP_PATH;
   if path.count < file.count || path[path.count - file.count..<path.count] != file { print("identity: not the file's name\n"); return false; }
   if cp_str(d, jv_get(d, 0, "check"), tb[1][..]) != "coax/web/tool.sh coax/web/room/combat-profile.coax proto/verse/everglade2-combat-v2.json" { print("check: not this program\n"); return false; }

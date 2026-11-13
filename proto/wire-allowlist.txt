@@ -40,7 +40,6 @@ id aethyr.player.appearance.v1 coax/web/host.js  # the page host keeps the text 
 shape seat-ticket  # v2 and v3: written by C snprintf in player.c and by tk_sign in room-ticket.coax; E5 (#13248). v5 is not here: one codec, metaverse-engine/session/seat-ticket.coax (registry row seat-ticket-v5, #13260)
 shape resume-envelope-v4  # signed, shared, exported to C; E5 adds fixtures (#13248)
 room coax/web/room/room-relay.coax  # the rooms list JSON (rm_rooms), which the API builds in SQL too (verse.room_list); E8, wave 2, with rooms.c. Its frames are relay-wire.coax's since E2 (#13250)
-shape everglade2-familiar-page-codec  # the page writes M1 M3-M7 and reads m1-m8 with its own code in everglade/client/net.coax; the room's codec (everglade/server/familiar.coax) is the one the profiles check; on hold for #13276, which deletes the familiar frames, else E2 (#13245)
 room coax/web/room/room-ticket.coax  # parses and signs seat tickets v2 and v3; E5 (#13248); v5 it reads through metaverse-engine/session/seat-ticket.coax (#13260)
 room coax/web/room/room-vitals.coax  # the vitals report and its receipt; E8, wave 2 (#13250)
 room coax/web/room/room-directory.coax  # the directory report; E8, wave 2 (#13250)
@@ -76,7 +75,7 @@ route coax/web/api/private.c  # private projects: hand-built bodies; the api.v1 
 route coax/web/api/villa.c  # the villa: hand-built bodies; the api.v1 envelope (#13250)
 
 # Codecs outside their owning context's folders (#13316).
-codec everglade-session-v6 everglade/shared/everglade-wire.coax  # room-session codec in everglade/shared/, the folder the room and the page both load (#13316, #13346)
+codec everglade-session-v7 everglade/shared/everglade-wire.coax  # room-session codec in everglade/shared/, the folder the room and the page both load (#13316, #13346)
 codec everglade-link-input-v1 everglade/shared/everglade-link-wire.coax  # room-session codec in everglade/shared/, the folder the room and the page both load (#13316, #13346)
 codec realm-save-aesv-v1 apps/openagents-web/save.coax  # engine codec still lives in apps/openagents-web/; the Aethyr book's chapter 81 plans its move to metaverse-engine/save.coax (#13250)
 codec orbit-session-v2 apps/openagents-web/orbit-session.coax  # room-session codec still lives in apps/openagents-web/ (#13316)

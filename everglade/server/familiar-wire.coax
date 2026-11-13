@@ -1,0 +1,176 @@
+// Everglade II's familiar and Healer's Kit words since wire 7 (#13276, #13245). A familiar itself is a
+// row (everglade-wire.coax WK_FAMILIAR). What a player asks is an E (use) frame of a kind below, and
+// what the room answers is an e entry of the D frame, told to the asker alone. The one codec both
+// sides load: the page writes the requests and reads the answers (everglade/client/net.coax); the room
+// reads the requests and writes the answers (familiar.coax, aid.coax). Profile
+// proto/verse/everglade2-familiar-v2.json, doc docs/protocol/everglade-familiar-v2.md; its check runs
+// these functions:
+//   coax/web/tool.sh coax/web/room/familiar-profile.coax proto/verse/everglade2-familiar-v2.json
+// Whole numbers a space apart (everglade-wire.coax wire_int).
+//   E SEQ 9 ID            summon a companion (the Druid's Wild Companion): ID = FORM + 100 * SLOT
+//   E SEQ 10 ID           begin the Wizard's Find Familiar: ID = FORM + 100 * SLOT + 10000 * SPIRIT (SLOT 0 the ritual)
+//   E SEQ 11 ORDER        pocket (1), recall (2) or release (3) your familiar
+//   E SEQ 12 0            step it one square the way you face
+//   E SEQ 13 SEAT         have it deliver Cure Wounds to that seat's player
+//   E SEQ 14 0            borrow its senses
+//   E SEQ 15 0            use the Healer's Kit on the nearest dying ally
+//   e fam SEQ ORDER FORM  request SEQ was done: ORDER 0 a summons (FORM the form summoned), 1 to 3 the
+//                         lifecycle's, 4 the step, 5 the cure, 6 the senses (FORM 0 for each of those)
+//   e fam-cast SEQ STATUS the Wizard's cast SEQ: 1 begun, 2 complete, 3 ended without payment
+//   e kit SEQ LEFT        the kit was used: the ask's SEQ and the kit's uses left
+//   r SEQ familiar, r SEQ kit   it was not (everglade-wire.coax wire_put_refused)
+// SEQ rises with each ask, above 0. FORM is an index into the SRD's familiar forms, SPIRIT its kind
+// (rules/srd: the room checks both against its rules; this file only their room in an ID).
+// A reader takes a word whole or not at all (ok false): a field missing, extra or out of range.
+//   coax/bin/coax test everglade/server/familiar-wire.coax
+#load "../shared/everglade-wire.coax";
+
+// A request's order: 0 a summons, 1 to 3 the lifecycle's, then step, cure and senses.
+E2_FAMILIAR_POCKET :: 1; E2_FAMILIAR_RECALL :: 2; E2_FAMILIAR_RELEASE :: 3;
+E2_FAMILIAR_STEP :: 4; E2_FAMILIAR_CURE :: 5; E2_FAMILIAR_SENSES :: 6;
+// e fam-cast's status, and a familiar's row's G: whose senses its owner has.
+E2_WIZARD_CASTING :: 1; E2_WIZARD_COMPLETE :: 2; E2_WIZARD_INTERRUPTED :: 3;
+E2_SENSE_OWNER :: 0; E2_SENSE_SIGHT :: 1; E2_SENSE_SIGHT_HEARING :: 2;
+// The refusals' reasons: r SEQ familiar, r SEQ kit.
+E2_FAMILIAR_REFUSED :: "familiar";
+EGF_KIT_REFUSED :: "kit";
+EGF_FORMS :: 100;       // a FORM is below this, and a SLOT (the packing's room; the rules' own bounds are the room's to check)
+EGF_SPIRITS :: 10;      // a SPIRIT is below this
+EGF_SEATS :: 64;        // a SEAT is below this
+EGF_LEFT_MOST :: 9;     // a new kit has ten uses (the SRD's): after one, LEFT is from 0 to this
+EGF_DONE_E :: "e fam"; EGF_CAST_E :: "e fam-cast"; EGF_KIT_E :: "e kit";
+
+// A request as read: ok false when it is no familiar request or a field is missing, extra or bad.
+// choice is a summons' FORM, the lifecycle's ORDER and the cure's SEAT; slot and spirit a summons'.
+E2FamiliarAsk :: struct { ok:bool; wizard:bool; lifecycle:bool; touch:bool; step:bool; sense:bool; seq:int; choice:int; slot:int; spirit:int; }
+EgfDone :: struct { ok: bool; seq: int; order: int; form: int; }
+EgfCast :: struct { ok: bool; seq: int; status: int; }
+EgfKit :: struct { ok: bool; seq: int; left: int; }
+
+// ---- E: the requests
+// The E frame's fields for a request (ok false: none, the ask has no such frame).
+egf_use_of :: (a: E2FamiliarAsk) -> WireUse {
+  if a.sense { return WireUse.{seq = a.seq, kind = WE_FAM_SENSES, id = 0}; }
+  if a.step { return WireUse.{seq = a.seq, kind = WE_FAM_STEP, id = 0}; }
+  if a.touch { return WireUse.{seq = a.seq, kind = WE_FAM_CURE, id = a.choice}; }
+  if a.lifecycle { return WireUse.{seq = a.seq, kind = WE_FAM_ORDER, id = a.choice}; }
+  if a.wizard { return WireUse.{seq = a.seq, kind = WE_FAM_RITE, id = a.choice + EGF_FORMS * a.slot + EGF_FORMS * EGF_FORMS * a.spirit}; }
+  return WireUse.{seq = a.seq, kind = WE_FAM_SUMMON, id = a.choice + EGF_FORMS * a.slot};
+}
+// A use as a familiar request. spirit is given for a companion's summons, which names none.
+egf_use_read :: (u: WireUse, companion_spirit: int) -> E2FamiliarAsk {
+  a: E2FamiliarAsk; a.seq = u.seq; a.spirit = companion_spirit;
+  if u.seq <= 0 || u.id < 0 { return E2FamiliarAsk.{}; }
+  if u.kind == WE_FAM_SUMMON {
+    if u.id >= EGF_FORMS * EGF_FORMS { return E2FamiliarAsk.{}; }
+    a.choice = u.id % EGF_FORMS; a.slot = u.id / EGF_FORMS;
+  } else if u.kind == WE_FAM_RITE {
+    if u.id >= EGF_FORMS * EGF_FORMS * EGF_SPIRITS { return E2FamiliarAsk.{}; }
+    a.wizard = true; a.choice = u.id % EGF_FORMS; a.slot = (u.id / EGF_FORMS) % EGF_FORMS; a.spirit = u.id / (EGF_FORMS * EGF_FORMS);
+  } else if u.kind == WE_FAM_ORDER {
+    if u.id < E2_FAMILIAR_POCKET || u.id > E2_FAMILIAR_RELEASE { return E2FamiliarAsk.{}; }
+    a.lifecycle = true; a.choice = u.id;
+  } else if u.kind == WE_FAM_STEP {
+    if u.id != 0 { return E2FamiliarAsk.{}; }
+    a.lifecycle = true; a.step = true; a.choice = E2_FAMILIAR_STEP;
+  } else if u.kind == WE_FAM_CURE {
+    if u.id >= EGF_SEATS { return E2FamiliarAsk.{}; }
+    a.lifecycle = true; a.touch = true; a.choice = u.id;
+  } else if u.kind == WE_FAM_SENSES {
+    if u.id != 0 { return E2FamiliarAsk.{}; }
+    a.lifecycle = true; a.sense = true; a.choice = E2_FAMILIAR_SENSES;
+  } else { return E2FamiliarAsk.{}; }
+  a.ok = true;
+  return a;
+}
+// The kit's ask, and its sequence as read (0: the use is no well-formed kit ask).
+egf_kit_use :: (seq: int) -> WireUse { return WireUse.{seq = seq, kind = WE_KIT, id = 0}; }
+egf_kit_read :: (u: WireUse) -> int { return ifx u.kind == WE_KIT && u.id == 0 && u.seq > 0 then u.seq else 0; }
+
+// ---- e: the answers
+// Whether an e entry is one of these: told to its asker alone, on the reliable class.
+egf_kept :: (t: string) -> bool { return wire_is(t, EGF_DONE_E) || wire_is(t, EGF_CAST_E) || wire_is(t, EGF_KIT_E); }
+egf_done_put :: (out: [] u8, d: EgfDone) -> int { return wire_int(out, wire_int(out, wire_int(out, wire_put(out, 0, EGF_DONE_E), d.seq), d.order), d.form); }
+egf_done_read :: (t: string) -> EgfDone {
+  if !wire_is(t, EGF_DONE_E) { return EgfDone.{}; }
+  rd := [1] WireRd.[wire_rd(t, EGF_DONE_E.count)];
+  d: EgfDone;
+  d.seq = wire_num(t, rd[..]); d.order = wire_num(t, rd[..]); d.form = wire_num(t, rd[..]);
+  d.ok = rd[0].ok && !wire_more(t, rd[..]) && d.seq > 0 && d.order >= 0 && d.order <= E2_FAMILIAR_SENSES && d.form >= 0 && d.form < EGF_FORMS && (d.order == 0 || d.form == 0);
+  return d;
+}
+egf_cast_put :: (out: [] u8, c: EgfCast) -> int { return wire_int(out, wire_int(out, wire_put(out, 0, EGF_CAST_E), c.seq), c.status); }
+egf_cast_read :: (t: string) -> EgfCast {
+  if !wire_is(t, EGF_CAST_E) { return EgfCast.{}; }
+  rd := [1] WireRd.[wire_rd(t, EGF_CAST_E.count)];
+  c: EgfCast;
+  c.seq = wire_num(t, rd[..]); c.status = wire_num(t, rd[..]);
+  c.ok = rd[0].ok && !wire_more(t, rd[..]) && c.seq > 0 && c.status >= E2_WIZARD_CASTING && c.status <= E2_WIZARD_INTERRUPTED;
+  return c;
+}
+egf_kit_put :: (out: [] u8, k: EgfKit) -> int { return wire_int(out, wire_int(out, wire_put(out, 0, EGF_KIT_E), k.seq), k.left); }
+egf_kit_used :: (t: string) -> EgfKit {
+  if !wire_is(t, EGF_KIT_E) { return EgfKit.{}; }
+  rd := [1] WireRd.[wire_rd(t, EGF_KIT_E.count)];
+  k: EgfKit;
+  k.seq = wire_num(t, rd[..]); k.left = wire_num(t, rd[..]);
+  k.ok = rd[0].ok && !wire_more(t, rd[..]) && k.seq > 0 && k.left >= 0 && k.left <= EGF_LEFT_MOST;
+  return k;
+}
+
+#test "familiar wire: each request packs into an E and reads back, and a bad one is refused whole" {
+  b: [64] u8;
+  // a companion's summons: form 8, slot 2; the spirit is the reader's to give
+  u := egf_use_of(E2FamiliarAsk.{seq = 4000001, choice = 8, slot = 2});
+  n := wire_put_use(b[..], 0, u);
+  #assert cast(string) b[0..<n] == "E 4000001 9 208";
+  a := egf_use_read(u, 1); #assert a.ok && !a.wizard && !a.lifecycle && a.seq == 4000001 && a.choice == 8 && a.slot == 2 && a.spirit == 1;
+  // the Wizard's: form 8, the ritual (slot 0) or a slot, the spirit named
+  u = egf_use_of(E2FamiliarAsk.{seq = 7, wizard = true, choice = 8, slot = 1, spirit = 3});
+  #assert u.kind == WE_FAM_RITE && u.id == 30108;
+  a = egf_use_read(u, 1); #assert a.ok && a.wizard && !a.lifecycle && a.choice == 8 && a.slot == 1 && a.spirit == 3;
+  a = egf_use_read(WireUse.{seq = 7, kind = WE_FAM_RITE, id = 20008}, 1); #assert a.ok && a.slot == 0 && a.spirit == 2 && a.choice == 8;
+  // the lifecycle's three, the step, the cure and the senses
+  for order: E2_FAMILIAR_POCKET..<E2_FAMILIAR_RELEASE + 1 {
+    u = egf_use_of(E2FamiliarAsk.{seq = 9, lifecycle = true, choice = order});
+    a = egf_use_read(u, 1); #assert u.kind == WE_FAM_ORDER && u.id == order && a.ok && a.lifecycle && !a.step && !a.touch && !a.sense && a.choice == order;
+  }
+  u = egf_use_of(E2FamiliarAsk.{seq = 9, lifecycle = true, step = true, choice = E2_FAMILIAR_STEP});
+  a = egf_use_read(u, 1); #assert u.kind == WE_FAM_STEP && u.id == 0 && a.ok && a.lifecycle && a.step && !a.touch && !a.sense && a.choice == E2_FAMILIAR_STEP;
+  u = egf_use_of(E2FamiliarAsk.{seq = 9, lifecycle = true, touch = true, choice = 15});
+  a = egf_use_read(u, 1); #assert u.kind == WE_FAM_CURE && u.id == 15 && a.ok && a.lifecycle && a.touch && !a.step && a.choice == 15;
+  u = egf_use_of(E2FamiliarAsk.{seq = 9, lifecycle = true, sense = true, choice = E2_FAMILIAR_SENSES});
+  a = egf_use_read(u, 1); #assert u.kind == WE_FAM_SENSES && u.id == 0 && a.ok && a.lifecycle && a.sense && !a.step && !a.touch && a.choice == E2_FAMILIAR_SENSES;
+  // refused whole: no sequence, an ID out of its kind's room, a kind that is none of these
+  bad := [14] WireUse.[WireUse.{seq = 0, kind = WE_FAM_SUMMON, id = 8}, WireUse.{seq = -1, kind = WE_FAM_SUMMON, id = 8}, WireUse.{seq = 1, kind = WE_FAM_SUMMON, id = -1},
+    WireUse.{seq = 1, kind = WE_FAM_SUMMON, id = 10000}, WireUse.{seq = 1, kind = WE_FAM_RITE, id = 100000}, WireUse.{seq = 1, kind = WE_FAM_ORDER, id = 0},
+    WireUse.{seq = 1, kind = WE_FAM_ORDER, id = 4}, WireUse.{seq = 1, kind = WE_FAM_STEP, id = 1}, WireUse.{seq = 1, kind = WE_FAM_CURE, id = 64},
+    WireUse.{seq = 1, kind = WE_FAM_SENSES, id = 1}, WireUse.{seq = 1, kind = WE_KIT, id = 0}, WireUse.{seq = 1, kind = WE_BARE, id = 0}, WireUse.{seq = 1, kind = WE_END, id = 0}, WireUse.{seq = 1, kind = 16, id = 0}];
+  for x: bad { #assert !egf_use_read(x, 1).ok; }
+  #assert egf_use_read(WireUse.{seq = 1, kind = WE_FAM_SUMMON, id = 9999}, 1).ok && egf_use_read(WireUse.{seq = 1, kind = WE_FAM_RITE, id = 99999}, 1).ok && egf_use_read(WireUse.{seq = 1, kind = WE_FAM_CURE, id = 63}, 1).ok;
+  // the kit's ask
+  n = wire_put_use(b[..], 0, egf_kit_use(3000001));
+  #assert cast(string) b[0..<n] == "E 3000001 15 0" && egf_kit_read(egf_kit_use(3000001)) == 3000001;
+  #assert egf_kit_read(WireUse.{seq = 0, kind = WE_KIT, id = 0}) == 0 && egf_kit_read(WireUse.{seq = 5, kind = WE_KIT, id = 1}) == 0 && egf_kit_read(WireUse.{seq = 5, kind = WE_FAM_SENSES, id = 0}) == 0 && egf_kit_read(WireUse.{seq = -5, kind = WE_KIT, id = 0}) == 0;
+}
+#test "familiar wire: each answer written reads back, and a bad one is refused whole" {
+  b: [64] u8;
+  n := egf_done_put(b[..], EgfDone.{seq = 4000001, order = 0, form = 8});
+  #assert cast(string) b[0..<n] == "e fam 4000001 0 8";
+  d := egf_done_read("e fam 4000001 0 8"); #assert d.ok && d.seq == 4000001 && d.order == 0 && d.form == 8;
+  d = egf_done_read("e fam 3 6 0"); #assert d.ok && d.order == E2_FAMILIAR_SENSES && d.form == 0 && d.seq == 3;
+  #assert egf_done_read("e fam 3 0 0").ok && egf_done_read("e fam 3 0 99").ok;
+  for bad: [10] string.["e fam", "e fam 3", "e fam 3 1", "e fam 0 1 0", "e fam 3 7 0", "e fam 3 -1 0", "e fam 3 0 100", "e fam 3 2 5", "e fam 3 1 0 0", "e fam-cast 3 1"] { #assert !egf_done_read(bad).ok; }
+  n = egf_cast_put(b[..], EgfCast.{seq = 4000002, status = E2_WIZARD_COMPLETE});
+  #assert cast(string) b[0..<n] == "e fam-cast 4000002 2";
+  c := egf_cast_read("e fam-cast 4000002 2"); #assert c.ok && c.seq == 4000002 && c.status == 2;
+  #assert egf_cast_read("e fam-cast 1 1").ok && egf_cast_read("e fam-cast 1 3").ok;
+  for bad: [7] string.["e fam-cast", "e fam-cast 1", "e fam-cast 0 1", "e fam-cast 1 0", "e fam-cast 1 4", "e fam-cast 1 2 3", "e fam 1 2 0"] { #assert !egf_cast_read(bad).ok; }
+  n = egf_kit_put(b[..], EgfKit.{seq = 3000001, left = 9});
+  #assert cast(string) b[0..<n] == "e kit 3000001 9";
+  k := egf_kit_used("e kit 3000001 9"); #assert k.ok && k.seq == 3000001 && k.left == 9;
+  #assert egf_kit_used("e kit 7 0").ok;
+  for bad: [7] string.["e kit", "e kit 7", "e kit 7 10", "e kit 7 -1", "e kit 0 3", "e kit 7 3 1", "e kits 7 3"] { #assert !egf_kit_used(bad).ok; }
+  // told to the asker alone, on the reliable class; no other entry is one of these
+  #assert egf_kept("e fam 3 0 8") && egf_kept("e fam-cast 3 1") && egf_kept("e kit 7 3") && !egf_kept("e family 1") && !egf_kept("e mon 90 2 3 -1 4") && !egf_kept("e kitten 1") && !egf_kept("e fam-casting 1 1");
+}

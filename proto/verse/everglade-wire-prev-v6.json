@@ -1,0 +1,38 @@
+{
+  "identity": "everglade-wire-prev-v6",
+  "check": "coax/web/tool.sh coax/web/room/wire-prev-profile.coax proto/verse/everglade-wire-prev-v6.json",
+  "serves": 6,
+  "under": 7,
+  "base_session": "everglade-session-v7",
+  "scope": "What a room on wire 7 writes a seat whose hello said wire 6, and reads from it, in place of what wire 7 changed: Everglade II's familiars and Healer's Kit as the frames a wire 6 page reads and writes. Kept for one release (#13398).",
+  "docs": ["docs/protocol/everglade-previous-wire.md", "docs/protocol/everglade-familiar-v2.md"],
+  "codec": "everglade/server/wire-prev-wire.coax",
+  "withheld": {"row_kinds": [15], "entries": []},
+  "beside_d": {"m2": "TICK COUNT [OWNER FORM X Z HP MAX]...: the familiars the seat may see, on a change, else once a second", "m8": "MODE: whose senses the seat has (this wire's familiar row's G), on a change, else once a second"},
+  "said_as": [
+    {"entry": "e fam 4000001 0 8", "frame": "m1 4000001 8"},
+    {"entry": "e fam 9 1 0", "frame": "m4 9 1"},
+    {"entry": "e fam 9 2 0", "frame": "m4 9 2"},
+    {"entry": "e fam 9 3 0", "frame": "m4 9 3"},
+    {"entry": "e fam 10 4 0", "frame": "m5 10"},
+    {"entry": "e fam 11 5 0", "frame": "m6 11"},
+    {"entry": "e fam 12 6 0", "frame": "m7 12"},
+    {"entry": "e fam-cast 7 1", "frame": "m3 7 1"},
+    {"entry": "e fam-cast 7 3", "frame": "m3 7 3"},
+    {"entry": "e kit 3000001 9", "frame": "u1 3000001 9"}
+  ],
+  "said_the_same": ["e hit 1001 2003 7 3", "e mon 90 2 3 -1 4", "e guard 90 1 2 5", "e cast 1 3 0 0 0 7", "e fam 3 7 0", "e kit 7 10"],
+  "heard_as": [
+    {"frame": "M1 4000001 8 2", "use": "E 4000001 9 208"},
+    {"frame": "M3 7 8 1 3", "use": "E 7 10 30108"},
+    {"frame": "M3 7 8 0 2", "use": "E 7 10 20008"},
+    {"frame": "M4 9 1", "use": "E 9 11 1"},
+    {"frame": "M4 9 3", "use": "E 9 11 3"},
+    {"frame": "M5 10", "use": "E 10 12 0"},
+    {"frame": "M6 11 15", "use": "E 11 13 15"},
+    {"frame": "M7 12", "use": "E 12 14 0"},
+    {"frame": "U1 3000001", "use": "E 3000001 15 0"}
+  ],
+  "malformed": ["M1", "M1 0 8 0", "M2 1 1", "M4 9", "M5 10 1", "M7 x", "U1 0", "U1 1 2", "E 1 9 8"],
+  "frames": ["everglade-familiar-v1", "everglade-find-familiar-v1", "everglade-familiar-lifecycle-v1", "everglade-familiar-step-v1", "everglade-familiar-cure-v1", "everglade-familiar-senses-v1", "everglade-familiar-state-v1", "everglade-healers-kit-v1", "everglade2-familiar-v2"]
+}

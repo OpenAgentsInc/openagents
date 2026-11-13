@@ -27,17 +27,16 @@
 //   wprev_heard     input.coax eg_heard      a frame the old page says that this wire no longer has
 //   RM_WT_ROUTES    room-wt.coax             the old frames' WebTransport channels
 //
-// Wire 5 under wire 6 (#13276 made Everglade II's monsters and guard rows, and their blows e entries
-// of D). A wire 5 page (production's 01bdb405f0) reads them as four frames beside D, with the codec
-// here, which is that commit's everglade/server/creature-wire.coax:
-//   g2 TICK LIFE STATE X Z YAW HP MAX SWING FOE     the guard, each tick he changes, else once a second
-//   g3 TICK KIND SEAT AMOUNT                        a blow (e guard's fields)
-//   h2 TICK COUNT [M LIFE KIND STATE X Z YAW HP MAX ACT ACT_TICK FOE]...   the monsters in view
-//   h3 TICK KIND M SEAT AMOUNT [FX FZ TX TZ FLY_MS] a monster's event (e mon's fields)
-// The guard's X Z are mm and his YAW thousandths of a radian; a monster's X Z are cm.
-// A wire 5 seat is sent no WK_MONSTER or WK_GUARD row and no e mon or e guard entry.
-// Wire 5 has no page frame that wire 6 lacks, so wprev_heard takes none.
-// The frames' one codec is wire-prev-wire.coax.
+// Wire 6 under wire 7 (#13276 made Everglade II's familiars rows, their requests and the Healer's
+// Kit's E kinds, and the room's answers e entries of D told to the asker). A wire 6 page reads and
+// writes frames of their own instead, with the codec in wire-prev-wire.coax:
+//   withheld     every WK_FAMILIAR row (wprev_pick)
+//   said as      e fam as m1 m4 m5 m6 or m7 by its order, e fam-cast as m3, e kit as u1 (wprev_entry)
+//   beside D     m2, the familiars the seat may see, and m8, whose senses it has: each on a change,
+//                else once a second (wprev_after)
+//   heard        M1 M3 M4 M5 M6 M7 and U1, each the E kind it is on this wire (wprev_heard)
+// The rules behind a request are the same on either wire: the old frames reach the same asks
+// (familiar.coax e2_familiar_asked, aid.coax e2_aid_asked).
 //   coax/bin/coax test coax/web/room/room.coax --only "previous wire"
 #load "wire-prev-wire.coax";
 
@@ -48,11 +47,10 @@ wprev_seat :: (v: [] RmServer, k: int, s: int) -> bool {
 
 
 // ---- the hooks
-// The rows the old page has no reader for: a wire 5 seat is sent no monster's row and not the guard's.
+// The rows the old page has no reader for: a wire 6 seat is sent no familiar's row.
 wprev_pick :: (v: [] RmServer, k: int, s: int, pick: [] f32) {
   if !wprev_seat(v, k, s) { return; }
-  for m: 0..<WIRE_MONS { pick[EG_SLOT_MON + m] = -1; }
-  pick[EG_SLOT_GUARD] = -1;
+  for q: 0..<EG_SEATS { pick[EG_SLOT_FAM + q] = -1; }
 }
 // A D entry for seat s: true when the old wire said it as a frame of its own, which is queued now, so
 // the entry stays out of the seat's D.
@@ -64,51 +62,52 @@ wprev_entry :: (v: [] RmServer, k: int, s: int, entry: string) -> bool {
   rl_queue(v, v[0].eg[k].relay, v[0].eg[k].seat[s].conn, -1, cast(string) out[0..<n], "");
   return true;
 }
-// The frames the old wire had beside D, after seat s's state went: the guard and the monsters in view.
+// The frames the old wire had beside D, after seat s's state went: the familiars it may see, and whose senses it has.
 wprev_after :: (v: [] RmServer, k: int, s: int) {
   if !wprev_seat(v, k, s) { return; }
-  wprev_guard_snapshot(v, k, s); wprev_monsters_snapshot(v, k, s);
+  wprev_familiar_snapshot(v, k, s); wprev_sense_state(v, k, s);
 }
-// A frame seat s's page said: true when it is one only the old wire has, taken here. Wire 5 has none.
+// A frame seat s's page said: true when it is one only the old wire has, taken here as the ask it is.
 wprev_heard :: (v: [] RmServer, k: int, s: int, text: string) -> bool {
-  return false;
+  if !wprev_seat(v, k, s) || text.count < 2 || (text[0] != 'M' && text[0] != 'U') { return false; }
+  if text[0] == 'M' { e2_familiar_asked(v, k, SeatId.{value = s}, e2_familiar_read(text)); }
+  else { e2_aid_asked(v, k, SeatId.{value = s}, egk_ask_read(text)); }
+  return true;
 }
 
-// The guard's state to seat s: each tick he changes, and once a second when he doesn't.
-wprev_guard_snapshot :: (v: [] RmServer, k: int, s: int) {
-  room := v[0].eg[k..<k + 1]; g := room[0].guard[0]; st := room[0].seat[s..<s + 1];
-  hp := 0; max := 0;
-  if g.q >= 0 { hp = room[0].rules[0].b[0].c[EGB_BEAST0 + g.q].hp; max = room[0].rules[0].b[0].c[EGB_BEAST0 + g.q].hp_max; }
-  row: [128] u8;
-  n := wprev_guard_put_body(row[..], 0, WprevGuard.{life = g.life, state = g.state, x = cast(int) floor(g.x * 1000 + 0.5), z = cast(int) floor(g.z * 1000 + 0.5),
-    yaw = cast(int) floor(e2g_wrap(g.yaw) * 1000 + 0.5), hp = hp, max = max, swing = g.swing_tick, foe = g.foe});
-  hash := eg_hash(cast(string) row[0..<n]);
-  if st[0].prev.guard_hash == hash && room[0].tick - st[0].prev.guard_sent < EG_HZ { return; }
-  st[0].prev.guard_hash = hash; st[0].prev.guard_sent = room[0].tick;
-  out: [192] u8;
-  m := wprev_guard_put(out[..], room[0].tick, cast(string) row[0..<n]);
-  rl_queue(v, room[0].relay, st[0].conn, -1, cast(string) out[0..<m], "");
+// Whose senses seat s has, as m8: on a change, and each second.
+wprev_sense_state :: (v: [] RmServer, k: int, s: int) {
+  room := v[0].eg[k..<k + 1]; st := room[0].seat[s..<s + 1];
+  mode := e2_familiar_sense_mode(v, k, s);
+  if mode == st[0].prev.sense_sent && room[0].tick % EG_HZ != 0 { return; }
+  st[0].prev.sense_sent = mode;
+  out: [32] u8;
+  n := e2_familiar_put_sense(out[..], mode);
+  rl_queue(v, room[0].relay, st[0].conn, -1, cast(string) out[0..<n], "");
 }
-// The monsters within EG_VIEW m of seat s: each tick they change, and once a second when they don't.
-wprev_monsters_snapshot :: (v: [] RmServer, k: int, s: int) {
-  room := v[0].eg[k..<k + 1]; st := room[0].seat[s..<s + 1]; ms := room[0].monsters[..];
-  row: [1600] u8; n := 0; count := 0;
-  for m: 0..<E2M_N {
-    mo := ms[0].mon[m];
-    if mo.state == E2M_GONE || e2mo_dist(st[0].pose.x, st[0].pose.z, mo.x, mo.z) > f32(EG_VIEW) { continue; }
-    hp := 0; max := 1;
-    if mo.q >= 0 && mo.state != E2M_DEAD { i := EGB_BEAST0 + mo.q; hp = room[0].rules[0].b[0].c[i].hp; max = room[0].rules[0].b[0].c[i].hp_max; }
-    n = wprev_mon_put_row(row[..], n, WprevMon.{m = m, life = mo.life, kind = mo.kind, state = mo.state,
-      x = cast(int) floor(mo.x * 100 + 0.5), z = cast(int) floor(mo.z * 100 + 0.5), yaw = cast(int) floor(e2mo_wrap(mo.yaw) * 1000 + 0.5), hp = hp, max = max,
-      act = mo.act, act_tick = ifx mo.act != 0 then mo.act_t else (ifx mo.state == E2M_DEAD then mo.down_t else 0), foe = mo.foe});
+// The familiars seat s may see, whole, as m2: on a change, and each second (a refresh covers an output
+// queue that dropped a changed list while the seat was behind). The old wire kept a familiar from a
+// page its owner blocks, as well as from a page that blocks its owner.
+wprev_familiar_snapshot :: (v: [] RmServer, k: int, s: int) {
+  room := v[0].eg[k..<k + 1]; rules := room[0].rules[..]; b := rules[0].b[..];
+  if !rules[0].familiar_ready { return; }
+  st := room[0].seat[s..<s + 1];
+  rows: [960] u8; size := 0; count := 0;
+  for owner: 0..<EG_SEATS {
+    if !room[0].seat[owner].live || !room[0].seat[owner].placed { continue; }
+    if im_blocked(room[0].im[..], s, owner) || im_blocked(room[0].im[..], owner, s) { continue; }
+    f := rules[0].familiar[owner].me; c := b[0].c[f..<f + 1];
+    form := e2_familiar_form(c[0].familiar_form);
+    if c[0].dead || c[0].hp <= 0 || form < 0 { continue; }
+    size = e2_familiar_put_row(rows[..], size, owner, form, int(egb_cell_m(c[0].x) * 1000), int(egb_cell_z(rules, c[0].y) * 1000), c[0].hp, c[0].hp_max);
     count += 1;
   }
-  hash := eg_hash(cast(string) row[0..<n]) + count * 7919;
-  if st[0].prev.monster_hash == hash && room[0].tick - st[0].prev.monster_sent < EG_HZ { return; }
-  st[0].prev.monster_hash = hash; st[0].prev.monster_sent = room[0].tick;
-  out: [1700] u8;
-  q := wprev_mon_put(out[..], room[0].tick, count, cast(string) row[0..<n]);
-  rl_queue(v, room[0].relay, st[0].conn, -1, cast(string) out[0..<q], "");
+  hash := eg_hash(cast(string) rows[0..<size]);
+  if st[0].prev.familiar_hash == hash && room[0].tick - st[0].prev.familiar_sent < EG_HZ { return; }
+  st[0].prev.familiar_hash = hash; st[0].prev.familiar_sent = room[0].tick;
+  out: [1024] u8;
+  n := e2_familiar_put_rows(out[..], room[0].tick, count, cast(string) rows[0..<size]);
+  rl_queue(v, room[0].relay, st[0].conn, -1, cast(string) out[0..<n], "");
 }
 
 // ---- checks
@@ -161,88 +160,67 @@ wpt_at :: (v: [] RmServer, k: int, s: int, x: f32, z: f32) { v[0].eg[k].seat[s].
   w: [1] RmServer; k2 := wpt_room(w[..], "pair-e2-prev-old", WIRE_MIN - 1, WIRE_VERSION + 1); #assert k2 >= 0;
   #assert w[0].conns[0].kicked && w[0].conns[1].kicked && w[0].eg[k2].stale_n == 2 && w[0].eg[k2].seat[0].wire == 0 && !wprev_seat(w[..], k2, 0);
 }
-#test "previous wire: a wire 5 seat by a fighting pack hears the monsters and the guard as g2 h2 h3, and no row or entry of them; a wire 6 seat beside it hears rows and entries, and none of the old frames" #steps 12000000000 #traversal 1073741824 {
-  v: [1] RmServer; k := wpt_room(v[..], "pair-e2-prev-pack", WIRE_MIN, WIRE_VERSION); #assert k >= 0;
-  box: [1] EgInbox;
-  for q: 0..<3 { rc_test_tick(v[..], k, true); }
-  b := v[0].eg[k].rules[0].b[..];
-  for s: 0..<2 { b[0].c[EGB_SEAT + s].hp = 5000; b[0].c[EGB_SEAT + s].hp_max = 5000; }
-  mo := v[0].eg[k].monsters[0].mon[0];
-  // both by the first pack, on the road 8 m from it: the pack comes and bites
-  pz := mo.z - 8; px := e2_road_x(pz);
-  e2mo_rouse(v[..], k, mo.group, 0);
+#test "previous wire: a wire 6 seat asks in M and U1 and hears m frames, m2, m8 and u1, and no familiar's row or e entry of them; a wire 7 seat beside it hears the row and none of the old frames" #steps 12000000000 #traversal 1073741824 {
+  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  path := "GET /api/room/relay/everglade/pair-e2-prev-familiar HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..], 0, path) == 0 && rm_join(v[..], 1, path) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-druid-2 0 -");
+  rm_heard(v[..], 1, "H 7 ranger.0.0.0 srd-fighter 0 -");
+  for q: 0..<3 { eg_test_tick(v[..], k); }
+  #assert wprev_seat(v[..], k, 0) && !wprev_seat(v[..], k, 1) && WIRE_MIN == 6;
+  room := v[0].eg[k..<k + 1]; r := room[0].rules[..]; b := r[0].b[..]; f := rs_familiar_of(b, 0);
+  fid := WIRE_ID_MADE + WIRE_FAM_EID; box: [1] EgInbox;
+  egb_step(r, b[0].c[0].turn_at + 100000);
   eg_test_drain(v[..], box[..]);
-  old_g2 := false; old_h2 := false; old_h3 := false; new_e := false; rows_ok := false;
-  for q: 0..<EG_HZ * 10 {
-    wpt_at(v[..], k, 0, px, pz); wpt_at(v[..], k, 1, px + 1, pz);
-    rc_test_tick(v[..], k, true);
-    eg_test_drain(v[..], box[..]);
-    a := eg_test_of(box[..], 0); n := eg_test_of(box[..], 1);
-    // the old seat: the four frames, each read by the old page's reader; never a creature's entry
-    #assert !wpt_entry(a, "e mon ") && !wpt_entry(a, "e guard ");
-    f := wpt_frame(a, "g2"); if f.count > 0 { g := wprev_guard_read(f); #assert g.ok && g.tick == v[0].eg[k].tick && g.max > 0; old_g2 = true; }
-    f = wpt_frame(a, "h2");
-    if f.count > 0 {
-      m := wprev_mon_read(f); #assert m.ok && m.tick == v[0].eg[k].tick && m.count > 0;
-      // each row is the room's monster now: where it stands, its state and its Hit Points
-      for i: 0..<m.count {
-        r := m.row[i]; o := v[0].eg[k].monsters[0].mon[r.m];
-        #assert r.state == o.state && r.kind == o.kind && r.life == o.life && r.x == cast(int) floor(o.x * 100 + 0.5) && r.z == cast(int) floor(o.z * 100 + 0.5) && r.foe == o.foe;
-        if o.q >= 0 && o.state != E2M_DEAD { #assert r.hp == b[0].c[EGB_BEAST0 + o.q].hp && r.max == b[0].c[EGB_BEAST0 + o.q].hp_max; }
-      }
-      old_h2 = true;
-    }
-    f = wpt_frame(a, "h3"); if f.count > 0 { #assert wprev_mon_hit_read(f).ok; old_h3 = true; }
-    // the new seat: entries and rows, none of the old frames
-    #assert wpt_frame(n, "g2").count == 0 && wpt_frame(n, "h2").count == 0 && wpt_frame(n, "h3").count == 0 && wpt_frame(n, "g3").count == 0;
-    if wpt_entry(n, "e mon ") { new_e = true; }
-    if eg_test_ent(box[..], 1, WIRE_ID_MADE + WIRE_MON_EID).kind == WK_MONSTER { rows_ok = true; }
-    // no monster's row and not the guard's ever reaches the old page
-    for m: 0..<WIRE_MONS { #assert eg_test_ent(box[..], 0, WIRE_ID_MADE + WIRE_MON_EID + m).id < 0; }
-    #assert eg_test_ent(box[..], 0, WIRE_ID_MADE + WIRE_GUARD_EID).id < 0;
-  }
-  #assert old_g2; #assert old_h2; #assert old_h3; #assert new_e; #assert rows_ok;
-  // and both pages heard their state: each acknowledged a tick
-  #assert box[0].m[0].heard > 0 && box[0].m[1].heard > 0;
-}
-#test "previous wire: the guard's blows reach a wire 5 seat as g3, and his state as g2 with it as his foe" #steps 12000000000 #traversal 1073741824 {
-  v: [1] RmServer; k := wpt_room(v[..], "pair-e2-prev-guard", WIRE_MIN, WIRE_VERSION); #assert k >= 0;
-  box: [1] EgInbox;
-  g := v[0].eg[k].guard[..]; r := v[0].eg[k].rules[..]; b := r[0].b[..];
-  for s: 0..<2 { b[0].c[EGB_SEAT + s].hp = 900; b[0].c[EGB_SEAT + s].hp_max = 900; }
-  for q: 0..<EG_HZ { wpt_at(v[..], k, 0, g[0].x + 0.9, g[0].z); wpt_at(v[..], k, 1, g[0].x + 40, g[0].z); eg_test_tick(v[..], k); }
-  // the old seat strikes him: he turns on it
-  e2_guard_struck(v[..], k, 0, b[0].c[EGB_BEAST0 + g[0].q].hp + 1);
-  eg_test_drain(v[..], box[..]);
-  blow := false; foe := false; entry := false;
-  for q: 0..<EG_HZ * 10 {
-    wpt_at(v[..], k, 0, g[0].x + 0.9, g[0].z); wpt_at(v[..], k, 1, g[0].x + 40, g[0].z);
-    eg_test_tick(v[..], k);
-    eg_test_drain(v[..], box[..]);
-    a := eg_test_of(box[..], 0); n := eg_test_of(box[..], 1);
-    #assert !wpt_entry(a, "e guard ") && wpt_frame(n, "g3").count == 0 && wpt_frame(n, "g2").count == 0;
-    f := wpt_frame(a, "g3"); if f.count > 0 { h := wprev_guard_hit_read(f); #assert h.ok; if h.seat == 0 { blow = true; } }
-    f = wpt_frame(a, "g2"); if f.count > 0 { s := wprev_guard_read(f); #assert s.ok; if s.foe == 0 && s.state == E2G_FIGHTING { foe = true; } }
-    if wpt_entry(n, "e guard ") { entry = true; }
-  }
-  #assert blow && foe && entry;
+  // its summons, as the old M1: the same ask, answered as the old m1, its familiar told in m2
+  rm_heard(v[..], 0, "M1 2 8 0"); #assert room[0].seat[0].familiar.pending == 2;
+  rc_test_tick(v[..], k, true); eg_test_drain(v[..], box[..]);
+  #assert rs_up(b[0].c[f]) && b[0].c[f].familiar_form == MON_OWL;
+  mine := eg_test_of(box[..], 0);
+  #assert wpt_frame(mine, "m1") == "m1 2 8" && wpt_frame(mine, "m2").count > 0 && !wpt_entry(mine, "e fam") && eg_test_ent(box[..], 0, fid).id == -1;
+  m2 := wpt_frame(mine, "m2"); rd := [1] WireRd.[wire_rd(m2, 2)];
+  tick := wire_num(m2, rd[..]); count := wire_num(m2, rd[..]); owner := wire_num(m2, rd[..]); form := wire_num(m2, rd[..]); x := wire_num(m2, rd[..]); z := wire_num(m2, rd[..]); hp := wire_num(m2, rd[..]); max := wire_num(m2, rd[..]);
+  #assert rd[0].ok && !wire_more(m2, rd[..]) && tick == room[0].tick && count == 1 && owner == 0 && form == 8 && hp == b[0].c[f].hp && max == b[0].c[f].hp_max;
+  #assert x == int(egb_cell_m(b[0].c[f].x) * 1000) && z == int(egb_cell_z(r, b[0].c[f].y) * 1000);
+  // the wire 7 seat beside it: the row, and no old frame
+  peer := eg_test_of(box[..], 1);
+  #assert eg_test_ent(box[..], 1, fid).id == fid && wpt_frame(peer, "m2").count == 0 && wpt_frame(peer, "m1").count == 0 && wpt_frame(peer, "m8").count == 0;
+  // its senses, asked as M7: answered m7, and the mode told as m8
+  rm_heard(v[..], 0, "M7 3"); rc_test_tick(v[..], k, true); eg_test_drain(v[..], box[..]);
+  mine = eg_test_of(box[..], 0);
+  #assert rs_familiar_observer(b, 0) == f && wpt_frame(mine, "m7") == "m7 3" && wpt_frame(mine, "m8") == "m8 2";
+  // a refusal is the session's r on either wire; an M from the wire 7 seat is no frame of its wire
+  rm_heard(v[..], 0, "M4 4 9"); eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 0), "r 4 familiar");
+  last := room[0].seat[1].familiar.last;
+  rm_heard(v[..], 1, "M1 9 8 0"); rm_heard(v[..], 1, "U1 3000001");
+  #assert room[0].seat[1].familiar.last == last && room[0].seat[1].familiar.pending == 0 && room[0].seat[1].aid.last == 0;
+  // the kit, asked as U1: the same ask
+  rm_heard(v[..], 0, "U1 3000001"); #assert room[0].seat[0].aid.pending == 3000001;
 }
 #test "previous wire: the hooks leave a seat of this room's own version alone" #steps 4000000000 #traversal 1073741824 {
   v: [1] RmServer; k := wpt_room(v[..], "pair-e2-prev-own", WIRE_VERSION, WIRE_VERSION); #assert k >= 0;
   pick: [WIRE_SLOTS] f32; for q: 0..<WIRE_SLOTS { pick[q] = 1; }
   wprev_pick(v[..], k, 0, pick[..]);
   for q: 0..<WIRE_SLOTS { #assert pick[q] == 1; }
-  #assert !wprev_entry(v[..], k, 0, "e mon 90 2 3 -1 4") && !wprev_heard(v[..], k, 0, "I 1 0 0 0 0 0 0 0");
+  #assert !wprev_entry(v[..], k, 0, "e fam 3 0 8") && !wprev_heard(v[..], k, 0, "I 1 0 0 0 0 0 0 0") && !wprev_heard(v[..], k, 0, "M5 3") && !wprev_heard(v[..], k, 0, "U1 3");
   out: [16384] u8; _ := rl_heard_by(v[..], 0, out[..]);
   wprev_after(v[..], k, 0);
   #assert rl_heard_by(v[..], 0, out[..]).count == 0;
-  // and a seat on the version before: its monster and guard rows are withheld and no other
+  // and a seat on the version before: every familiar's row is withheld and no other
   v[0].eg[k].seat[0].wire = WIRE_MIN;
   wprev_pick(v[..], k, 0, pick[..]);
-  for q: 0..<WIRE_SLOTS { #assert (pick[q] < 0) == (q >= EG_SLOT_MON && q <= EG_SLOT_GUARD); }
-  #assert wprev_entry(v[..], k, 0, "e mon 90 2 3 -1 4") && !wprev_entry(v[..], k, 0, "e hit 1001 2003 7 3");
-  #assert rl_heard_by(v[..], 0, out[..]) == "h3 90 2 3 -1 4";
+  for q: 0..<WIRE_SLOTS { #assert (pick[q] < 0) == (q >= EG_SLOT_FAM && q < EG_SLOT_FAM + EG_SEATS); }
+  #assert wprev_entry(v[..], k, 0, "e fam 3 0 8") && !wprev_entry(v[..], k, 0, "e hit 1001 2003 7 3") && !wprev_entry(v[..], k, 0, "e mon 90 2 3 -1 4");
+  #assert rl_heard_by(v[..], 0, out[..]) == "m1 3 8";
+  #assert wprev_heard(v[..], k, 0, "M5 3") && wprev_heard(v[..], k, 0, "U1 3") && !wprev_heard(v[..], k, 0, "I 1 0 0 0 0 0 0 0") && !wprev_heard(v[..], k, 0, "E 1 9 8");
+  v[0].eg[k].seat[0].prev = WprevSeat.{familiar_hash = -1, sense_sent = -1};   // (it has heard neither yet)
   wprev_after(v[..], k, 0);
   heard := rl_heard_by(v[..], 0, out[..]);
-  #assert wpt_frame(heard, "g2").count > 0 && wpt_frame(heard, "h2").count > 0;
+  #assert wpt_frame(heard, "m2").count > 0 && wpt_frame(heard, "m8") == "m8 0";
+  // and nothing again the tick after, with nothing changed
+  v[0].eg[k].tick += 1; if v[0].eg[k].tick % EG_HZ == 0 { v[0].eg[k].tick += 1; }
+  wprev_after(v[..], k, 0);
+  #assert rl_heard_by(v[..], 0, out[..]).count == 0;
 }

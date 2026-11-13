@@ -72,7 +72,7 @@ e2k_on :: (s: [] E2) -> bool { return s[0].placed && !e2c_creating(s) && s[0].ca
 e2k_cue :: (s: [] E2, name: string, gain: f32, x: f32, z: f32, rate: f32) {
   if name.count == 0 { return; }
   f:=e2n_familiar_view(s[0].net[..]);
-  borrowed:=f.live && s[0].net[0].familiar_sense==2;
+  borrowed:=f.live && e2n_familiar_sense(s[0].net[..])==E2_SENSE_SIGHT_HEARING;
   dx:=x-(ifx borrowed then f.x else s[0].you_x);
   dz:=z-(ifx borrowed then f.z else s[0].you_z);
   d:=sqrt(dx*dx+dz*dz);

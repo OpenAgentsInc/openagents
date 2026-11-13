@@ -12,8 +12,6 @@ eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := se
   if (c == 'I' || c == 'J' || c == 'C' || c == 'F' || c == 'E' || c == 'L' || c == 'Z' || c == 'U' || c == 'M' || c == 'R' || c == 'T' || c == 'V') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
   if wprev_heard(v, k, seat, text) { return; }   // a frame only the previous wire has (wire-prev.coax, #13398)
   if c == 'X' { e2_admin_heard(v, k, seat_id, text); return; }   // admin mode: a local room's only (everglade/server/admin.coax)
-  if c=='M' { e2_familiar_ask(v,k,seat_id,text); return; }
-  if c == 'U' { e2_aid_ask(v,k,seat_id,text); return; }
   if c == 'T' { eg_heard_travel(v, k, seat_id, text); return; }
   if c == 'I' || (c=='J' && wire_is(text,"J1")) { eg_heard_input(v, k, seat_id, text); return; }
   if c == 'F' { e2_arrow_heard(v, k, seat_id, text); return; }   // an arrow's launch, before its Attack's C (everglade/server/arrows.coax)
@@ -49,6 +47,9 @@ eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := se
       if !heard { eg_refuse(v, k, seat_id, u.seq, "no"); }
       return;
     }
+    // a familiar's request and the Healer's Kit's (familiar-wire.coax, #13276, #13245): the same asks a wire 6 page's M and U frames make
+    if u.kind >= WE_FAM_SUMMON && u.kind <= WE_FAM_SENSES { e2_familiar_use(v, k, seat_id, u); return; }
+    if u.kind == WE_KIT { e2_aid_asked(v, k, seat_id, egf_kit_read(u)); return; }
     if u.kind != WE_END { eg_refuse(v, k, seat_id, u.seq, "unbuilt"); return; }
     // an end takes its place among the seat's inputs, as a cast does (rc_ready): with inputs sent
     // before it still queued, it waits for them (eg_ends_due), and the inputs after it wait for it

@@ -1,7 +1,7 @@
 # Everglade II guard and monsters v2
 
 The path guard and the monsters are rows of the
-[Everglade session v6](everglade-session-v6.md) wire (kinds 14 and 13).
+[Everglade session](everglade-session-v7.md) wire (kinds 14 and 13, since v6).
 This profile pins what each did, or had done to it: two entries of the `D`
 frame. Profile:
 [`everglade2-combat-v2.json`](../../proto/verse/everglade2-combat-v2.json).

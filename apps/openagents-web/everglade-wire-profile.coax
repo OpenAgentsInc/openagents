@@ -1,4 +1,4 @@
-// The Everglade session profile's field-level check (#12844): proto/verse/everglade-session-v6.json
+// The Everglade session profile's field-level check (#12844): proto/verse/everglade-session-v7.json
 // names each text-wire message, its fields in order, a canonical value for each and the exact frame
 // those values make. This program holds the codec (everglade-wire.coax) to that file:
 //   - the profile's version, oldest version and pins are the codec's WIRE_VERSION, WIRE_MIN and WIRE_PINS;
@@ -17,7 +17,7 @@
 //     of the row, or of the ticket.
 // The file is the independent expected result: its frames are written by hand, not by this codec.
 // Prints a line per message and "profile holds" (exit 0), or what differs and "profile fails" (exit 1).
-//   coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v6.json
+//   coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v7.json
 #run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #import "Basic";
 #load "../../everglade/shared/everglade-wire.coax";
@@ -302,15 +302,17 @@ tool_main :: () -> int #export_c #effects(all) {
   // the creature kinds (#13276): each kind's number, ids, count and row fields are the codec's table
   cr := jv_get(d, 0, "creatures");
   cr_ok := wp_fields_mask(d, jv_get(d, cr, "pose"), jv_get(d, jv_get(d, 0, "row"), "fields")) == WIRE_POSE;
-  for q: 0..<2 {
-    k := jv_get(d, cr, ifx q == 0 then "monster" else "guard");
-    kind := ifx q == 0 then WK_MONSTER else WK_GUARD;
-    cr_ok = cr_ok && wp_key(d, k, "kind") == kind && wp_key(d, k, "entity_base") == WIRE_ID_MADE + (ifx q == 0 then WIRE_MON_EID else WIRE_GUARD_EID)
-      && wp_key(d, k, "count") == (ifx q == 0 then WIRE_MONS else 1)
+  cr_names := [3] string.["monster", "guard", "familiar"]; cr_kinds := [3] int.[WK_MONSTER, WK_GUARD, WK_FAMILIAR];
+  cr_ids := [3] int.[WIRE_MON_EID, WIRE_GUARD_EID, WIRE_FAM_EID]; cr_counts := [3] int.[WIRE_MONS, 1, WIRE_SEATS];
+  for q: 0..<3 {
+    k := jv_get(d, cr, cr_names[q]);
+    kind := cr_kinds[q];
+    cr_ok = cr_ok && wp_key(d, k, "kind") == kind && wp_key(d, k, "entity_base") == WIRE_ID_MADE + cr_ids[q]
+      && wp_key(d, k, "count") == cr_counts[q]
       && (wp_fields_mask(d, jv_get(d, k, "fields"), jv_get(d, jv_get(d, 0, "row"), "fields")) | WIRE_POSE) == wire_kind_fields(kind)
       && (wp_fields_mask(d, jv_get(d, k, "fields"), jv_get(d, jv_get(d, 0, "row"), "fields")) & WIRE_POSE) == 0;
   }
-  print("%  creature kinds: a monster's and the guard's number, ids and row fields\n", ifx cr_ok then "ok  " else "FAIL");
+  print("%  creature kinds: a monster's, the guard's and a familiar's number, ids and row fields\n", ifx cr_ok then "ok  " else "FAIL");
   if !cr_ok { bad += 1; }
   fixture := jv_get(d, forest, "bridge_fixture_milli"); ranges := jv_get(d, forest, "bridge_ranges"); whole := jv_get(d, forest, "bridge_whole");
   fb: [FOREST_FLOATS] f32;

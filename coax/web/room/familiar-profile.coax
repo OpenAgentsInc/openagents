@@ -1,6 +1,6 @@
 // Hold Everglade II's familiar and Healer's Kit profiles (proto/verse/everglade-familiar*-v1.json,
 // everglade-find-familiar-v1.json and everglade-healers-kit-v1.json; #13244) to the room's codec for
-// them, the functions its handlers call: everglade/server/familiar.coax (e2_familiar_read and the
+// them, the functions its handlers call: everglade/server/wire-prev-wire.coax (e2_familiar_read and the
 // e2_familiar_put_* writers) and, for the kit, everglade/server/kit-wire.coax, the one codec the room
 // (aid.coax) and the page (everglade/client/net.coax) both load: egk_ask_put and egk_ask_read for U1,
 // egk_used_put and egk_used_read for u1, each frame written and read back (#13245). A profile's format
@@ -9,8 +9,11 @@
 // reply's values written by the room give exactly its text; every "malformed" request is refused by the
 // room's reader (the kit's "malformed_accepted" by the page's); and the enumerations (forms, spirits,
 // orders, status, modes, max_rows, the kit's max_left) are the room's.
-// The page (everglade/client/net.coax) still writes and reads the familiar frames with its own
-// code: #13276's row replication deletes them, or E2 (#13245) moves them.
+// Those are the wire 6 frames, which the room still speaks to a wire 6 page behind the previous wire's hooks
+// (everglade/server/wire-prev.coax; their codec moved to wire-prev-wire.coax and kit-wire.coax, #13398).
+// Since wire 7 (#13276, #13245) the profile is proto/verse/everglade2-familiar-v2.json and the codec
+// everglade/server/familiar-wire.coax, the one file the room and the page both load: a familiar's row
+// kind, each request as an E kind and each answer as an e entry (fp_v2).
 //   coax/web/tool.sh coax/web/room/familiar-profile.coax proto/verse/everglade-familiar-v1.json
 #import "Basic";
 #run_steps 250000000;   // secp256k1's tables: the room loads the seat ticket's v5 check
@@ -149,10 +152,114 @@ fp_frame :: (d: Jv, row: int, kit: bool) -> bool {
   return n == text.count && cast(string) out[0..<n] == text;
 }
 
+// A named whole number of object `key`, FP_NONE when it has none.
+fp_named :: (d: Jv, key: string, name: string) -> int { return jv_int(d, jv_get(d, jv_get(d, 0, key), name), FP_NONE); }
+// The wire 7 profile against familiar-wire.coax: the row kind, the E kinds, the orders, spirits,
+// statuses and modes; each request's text read as its ask and written back; each answer written and
+// read back; each malformed request and answer refused by every reader.
+fp_v2 :: (d: Jv) -> bool {
+  tb: [3][512] u8;
+  row := jv_get(d, 0, "row"); fields := jv_get(d, row, "fields");
+  mask := 0;
+  names := [5] string.["g", "hp", "max", "owner", "p1"]; bits := [5] int.[WS_G, WS_HP, WS_MAX, WS_OWNER, WS_P1];
+  if jv_kind(d, fields) != JV_ARRAY || jv_len(d, fields) != names.count { print("row.fields\n"); return false; }
+  for i: 0..<names.count { if fp_str(d, jv_at(d, fields, i), tb[0][..]) != names[i] { print("row.fields %\n", i); return false; } mask = mask | (1 << bits[i]); }
+  if (mask | WIRE_POSE) != wire_kind_fields(WK_FAMILIAR) || jv_int(d, jv_get(d, row, "kind"), FP_NONE) != WK_FAMILIAR ||
+    jv_int(d, jv_get(d, row, "entity_base"), FP_NONE) != WIRE_ID_MADE + WIRE_FAM_EID || jv_int(d, jv_get(d, row, "count"), FP_NONE) != EG_SEATS || EG_SEATS != WIRE_SEATS { print("row\n"); return false; }
+  use_names := [7] string.["summon", "rite", "order", "step", "cure", "senses", "kit"];
+  use_kinds := [7] int.[WE_FAM_SUMMON, WE_FAM_RITE, WE_FAM_ORDER, WE_FAM_STEP, WE_FAM_CURE, WE_FAM_SENSES, WE_KIT];
+  if jv_len(d, jv_get(d, 0, "uses")) != use_names.count || jv_len(d, jv_get(d, 0, "id")) != use_names.count { print("uses\n"); return false; }
+  for i: 0..<use_names.count { if fp_named(d, "uses", use_names[i]) != use_kinds[i] || jv_get(d, jv_get(d, 0, "id"), use_names[i]) < 0 { print("uses %\n", use_names[i]); return false; } }
+  order_names := [7] string.["summon", "pocket", "recall", "release", "step", "cure", "senses"];
+  order_values := [7] int.[0, E2_FAMILIAR_POCKET, E2_FAMILIAR_RECALL, E2_FAMILIAR_RELEASE, E2_FAMILIAR_STEP, E2_FAMILIAR_CURE, E2_FAMILIAR_SENSES];
+  if jv_len(d, jv_get(d, 0, "orders")) != order_names.count { print("orders\n"); return false; }
+  for i: 0..<order_names.count { if fp_named(d, "orders", order_names[i]) != order_values[i] { print("orders %\n", order_names[i]); return false; } }
+  if !fp_enum(d, "status", [3] string.["casting", "complete", "interrupted"], [3] int.[E2_WIZARD_CASTING, E2_WIZARD_COMPLETE, E2_WIZARD_INTERRUPTED]) { print("status\n"); return false; }
+  if !fp_enum(d, "spirits", [3] string.["fey", "celestial", "fiend"], [3] int.[RS_FAMILIAR_FEY, RS_FAMILIAR_CELESTIAL, RS_FAMILIAR_FIEND]) { print("spirits\n"); return false; }
+  if !fp_enum(d, "modes", [3] string.["owner", "sight", "sight_and_hearing"], [3] int.[E2_SENSE_OWNER, E2_SENSE_SIGHT, E2_SENSE_SIGHT_HEARING]) { print("modes\n"); return false; }
+  if jv_int(d, jv_get(d, 0, "forms"), -1) != RS_FAMILIAR_FORMS.count || RS_FAMILIAR_FORMS.count > EGF_FORMS || RS_FAMILIAR_FIEND >= EGF_SPIRITS || EG_SEATS > EGF_SEATS { print("forms\n"); return false; }
+  if jv_int(d, jv_get(d, 0, "max_left"), -1) != EGF_LEFT_MOST || EGF_LEFT_MOST != EGK_LEFT_MOST { print("max_left\n"); return false; }
+  // the formats are the codec's words
+  if fp_str(d, jv_get(d, 0, "request"), tb[0][..]) != "E SEQ KIND ID" || fp_str(d, jv_get(d, 0, "done"), tb[1][..]) != "e fam SEQ ORDER FORM" ||
+    fp_str(d, jv_get(d, 0, "cast"), tb[2][..]) != "e fam-cast SEQ STATUS" { print("formats\n"); return false; }
+  if fp_str(d, jv_get(d, 0, "kit"), tb[0][..]) != "e kit SEQ LEFT" || fp_str(d, jv_get(d, 0, "refusal"), tb[1][..]) != "r SEQ familiar" ||
+    fp_str(d, jv_get(d, 0, "kit_refusal"), tb[2][..]) != "r SEQ kit" || E2_FAMILIAR_REFUSED != "familiar" || EGF_KIT_REFUSED != EGK_REFUSED { print("formats\n"); return false; }
+  out: [256] u8;
+  // each request: the text is an E the room reads as that ask, and the ask written is that text
+  reqs := jv_get(d, 0, "requests"); seen: [6] bool;
+  if jv_kind(d, reqs) != JV_ARRAY || jv_len(d, reqs) < 6 { print("requests\n"); return false; }
+  for i: 0..<jv_len(d, reqs) {
+    r := jv_at(d, reqs, i);
+    text := fp_str(d, jv_get(d, r, "text"), tb[0][..]); use := fp_str(d, jv_get(d, r, "use"), tb[1][..]);
+    rd := [1] WireRd.[wire_rd(text, 1)];
+    u := wire_read_use(text, rd[..]);
+    a := egf_use_read(u, RS_FAMILIAR_FEY);
+    which := -1; for q: 0..<6 { if use == use_names[q] { which = q; } }
+    if which < 0 || !wire_is(text, "E") || !rd[0].ok || wire_fields(text) != 4 || !a.ok || u.kind != use_kinds[which] { print("request %: %\n", i, text); return false; }
+    seen[which] = true;
+    if a.seq != jv_int(d, jv_get(d, r, "seq"), FP_NONE) || a.choice != jv_int(d, jv_get(d, r, "choice"), FP_NONE) || a.slot != jv_int(d, jv_get(d, r, "slot"), FP_NONE) ||
+      a.spirit != jv_int(d, jv_get(d, r, "spirit"), FP_NONE) { print("request %: its values\n", i); return false; }
+    if a.wizard != (which == 1) || a.lifecycle != (which >= 2) || a.step != (which == 3) || a.touch != (which == 4) || a.sense != (which == 5) { print("request %: its kind\n", i); return false; }
+    n := wire_put_use(out[..], 0, egf_use_of(a));
+    if cast(string) out[0..<n] != text || egf_kit_read(u) != 0 { print("request %: written %\n", i, cast(string) out[0..<n]); return false; }
+  }
+  for q: 0..<6 { if !seen[q] { print("requests: none for %\n", use_names[q]); return false; } }
+  kits := jv_get(d, 0, "kit_requests");
+  if jv_kind(d, kits) != JV_ARRAY || jv_len(d, kits) < 1 { print("kit_requests\n"); return false; }
+  for i: 0..<jv_len(d, kits) {
+    r := jv_at(d, kits, i);
+    text := fp_str(d, jv_get(d, r, "text"), tb[0][..]);
+    rd := [1] WireRd.[wire_rd(text, 1)];
+    u := wire_read_use(text, rd[..]);
+    seq := egf_kit_read(u);
+    n := wire_put_use(out[..], 0, egf_kit_use(seq));
+    if !wire_is(text, "E") || !rd[0].ok || wire_fields(text) != 4 || seq <= 0 || seq != jv_int(d, jv_get(d, r, "seq"), FP_NONE) || cast(string) out[0..<n] != text || egf_use_read(u, RS_FAMILIAR_FEY).ok { print("kit request %: %\n", i, text); return false; }
+  }
+  // each answer: written from its values it is the text, and the text reads back as them; kept, each
+  answers := jv_get(d, 0, "answers"); kinds: [3] bool;
+  if jv_kind(d, answers) != JV_ARRAY || jv_len(d, answers) < 3 { print("answers\n"); return false; }
+  for i: 0..<jv_len(d, answers) {
+    r := jv_at(d, answers, i);
+    entry := fp_str(d, jv_get(d, r, "entry"), tb[0][..]); text := fp_str(d, jv_get(d, r, "text"), tb[1][..]);
+    seq := jv_int(d, jv_get(d, r, "seq"), FP_NONE); a := jv_int(d, jv_get(d, r, "a"), FP_NONE); b := jv_int(d, jv_get(d, r, "b"), FP_NONE);
+    n := -1; back := false;
+    if entry == "done" { kinds[0] = true; n = egf_done_put(out[..], EgfDone.{seq = seq, order = a, form = b}); g := egf_done_read(text); back = g.ok && g.seq == seq && g.order == a && g.form == b && !egf_cast_read(text).ok && !egf_kit_used(text).ok; }
+    if entry == "cast" { kinds[1] = true; n = egf_cast_put(out[..], EgfCast.{seq = seq, status = a}); g := egf_cast_read(text); back = g.ok && g.seq == seq && g.status == a && b == 0 && !egf_done_read(text).ok && !egf_kit_used(text).ok; }
+    if entry == "kit" { kinds[2] = true; n = egf_kit_put(out[..], EgfKit.{seq = seq, left = a}); g := egf_kit_used(text); back = g.ok && g.seq == seq && g.left == a && b == 0 && !egf_done_read(text).ok && !egf_cast_read(text).ok; }
+    if n < 0 || cast(string) out[0..<n] != text || !back || !egf_kept(text) || wire_outcome(text) || egc_kept(text) { print("answer %: %\n", i, text); return false; }
+  }
+  if !kinds[0] || !kinds[1] || !kinds[2] { print("answers: an entry has none\n"); return false; }
+  // the refusals are the session's r, with these reasons
+  refusals := jv_get(d, 0, "refusals");
+  if jv_kind(d, refusals) != JV_ARRAY || jv_len(d, refusals) != 2 { print("refusals\n"); return false; }
+  for i: 0..<2 {
+    r := jv_at(d, refusals, i);
+    text := fp_str(d, jv_get(d, r, "text"), tb[0][..]); reason := fp_str(d, jv_get(d, r, "reason"), tb[1][..]);
+    n := wire_put_refused(out[..], 0, jv_int(d, jv_get(d, r, "seq"), FP_NONE), reason);
+    if reason != (ifx i == 0 then E2_FAMILIAR_REFUSED else EGF_KIT_REFUSED) || cast(string) out[0..<n] != text { print("refusal %: %\n", i, text); return false; }
+  }
+  // what is malformed is refused whole: a request by both readers, an answer by all three
+  bad := jv_get(d, 0, "malformed_requests");
+  if jv_kind(d, bad) != JV_ARRAY || jv_len(d, bad) < 6 { print("malformed_requests\n"); return false; }
+  for i: 0..<jv_len(d, bad) {
+    t := fp_str(d, jv_at(d, bad, i), tb[0][..]);
+    rd := [1] WireRd.[wire_rd(t, 1)];
+    u := wire_read_use(t, rd[..]);
+    if !wire_is(t, "E") || (rd[0].ok && wire_fields(t) == 4 && (egf_use_read(u, RS_FAMILIAR_FEY).ok || egf_kit_read(u) != 0)) { print("malformed request %: %\n", i, t); return false; }
+  }
+  worse := jv_get(d, 0, "malformed_answers");
+  if jv_kind(d, worse) != JV_ARRAY || jv_len(d, worse) < 6 { print("malformed_answers\n"); return false; }
+  for i: 0..<jv_len(d, worse) {
+    t := fp_str(d, jv_at(d, worse, i), tb[0][..]);
+    if egf_done_read(t).ok || egf_cast_read(t).ok || egf_kit_used(t).ok { print("malformed answer %: %\n", i, t); return false; }
+  }
+  return true;
+}
+
 fp_check :: (d: Jv, path: string) -> bool {
   tb: [2][512] u8;
   identity := fp_str(d, jv_get(d, 0, "identity"), tb[0][..]);
-  if identity == "" || fp_str(d, jv_get(d, 0, "base_session"), tb[1][..]) != "everglade-session-v6" { return false; }
+  if identity == "" || fp_str(d, jv_get(d, 0, "base_session"), tb[1][..]) != "everglade-session-v7" { return false; }
   want: [512] u8;
   wn := wire_put(want[..], wire_put(want[..], wire_put(want[..], 0, "proto/verse/"), identity), ".json");
   file := cast(string) want[0..<wn];
@@ -161,6 +268,7 @@ fp_check :: (d: Jv, path: string) -> bool {
   cn := wire_put(command[..], wire_put(command[..], 0, "coax/web/tool.sh coax/web/room/familiar-profile.coax "), file);
   if fp_str(d, jv_get(d, 0, "check"), tb[1][..]) != cast(string) command[0..<cn] { print("check: not %\n", cast(string) command[0..<cn]); return false; }
   kit := identity == "everglade-healers-kit-v1";
+  if identity == "everglade2-familiar-v2" { return fp_v2(d); }
 
   // The enumerations each profile names are the room's constants.
   if identity == "everglade-familiar-v1" {
@@ -225,7 +333,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: familiar-profile PROFILE.json"); return 2; }
   path := args_at(a[..], 0);
   text: [FP_FILE] u8; n := fs_read(path, text[..]);
-  nodes: [1024] JvNode; d: [1] Jv;
+  nodes: [2048] JvNode; d: [1] Jv;
   if n <= 0 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("familiar-profile: cannot parse JSON"); return 2; }
   if !fp_check(d[0], path) { print("%: profile fails\n", path); return 1; }
   print("%: profile holds\n", path);

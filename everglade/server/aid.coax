@@ -8,17 +8,17 @@ E2Aid :: struct {
   clear: bool;
 }
 
-// The kit's frames go through their codec, kit-wire.coax (proto/verse/everglade-healers-kit-v1.json):
-// the page writes U1 and reads u1 with the same file (#13245).
-#load "kit-wire.coax";
+// The kit's ask is an E kind and its answer an e entry (familiar-wire.coax, #13245): one codec, the page's too.
+// The previous wire's U1 and u1 are wire-prev-wire.coax's (kit-wire.coax), for one release.
 
-e2_aid_ask :: (v:[] RmServer,k:int,id:SeatId,text:string) {
-  seq:=egk_ask_read(text);
+// A page's E of the kit's kind, by its sequence (familiar-wire.coax egf_kit_read). A page on the previous wire
+// says the same ask as U1, read behind wprev_heard (wire-prev.coax).
+e2_aid_asked :: (v:[] RmServer,k:int,id:SeatId,seq:int) {
   if seq<=0 { return; }
   aid:=v[0].eg[k].seat[id.value].aid;
   if seq<=aid.last { return; }
   aid.last=seq;
-  if aid.pending>0 { eg_refuse(v,k,id,seq,EGK_REFUSED); }
+  if aid.pending>0 { eg_refuse(v,k,id,seq,EGF_KIT_REFUSED); }
   else { aid.pending=seq; }
   v[0].eg[k].seat[id.value].aid=aid;
 }
@@ -89,9 +89,8 @@ e2_aid_commit :: (v:[] RmServer,k:int) {
       ok=rs_healers_kit(b,EGB_SEAT+s,EGB_SEAT+aid.target,true);
       fb_seat_out(b,turn);
     }
-    if !ok { eg_refuse(v,k,id,aid.pending,EGK_REFUSED); continue; }
+    if !ok { eg_refuse(v,k,id,aid.pending,EGF_KIT_REFUSED); continue; }
     out:[64]u8;
-    n:=egk_used_put(out[..],aid.pending,b[0].c[EGB_SEAT+s].healer_kit);
-    rl_queue(v,room[0].relay,st[0].conn,-1,cast(string)out[0..<n],"");
+    eg_event_only(v,k,cast(string)out[0..<egf_kit_put(out[..],EgfKit.{seq=aid.pending,left=b[0].c[EGB_SEAT+s].healer_kit})],s);   // an e entry told to the asker alone
   }
 }

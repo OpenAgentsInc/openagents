@@ -103,6 +103,8 @@ EG_SLOT_BOAT :: EG_SLOT_DOORS - EG_BOATS;
 EG_SLOT_TREE :: EG_SLOT_DOORS + 1;    // separate sparse forest records, zero unused (256 with 16 seats)
 // Everglade II's monsters and guard, after the forest's records (#13276): a row each (WK_MONSTER, WK_GUARD)
 EG_SLOT_MON :: EG_SLOT_TREE + WIRE_TREES; EG_SLOT_GUARD :: EG_SLOT_MON + WIRE_MONS;
+// and each seat's familiar after them (WK_FAMILIAR, #13276): its owner's seat past EG_SLOT_FAM
+EG_SLOT_FAM :: EG_SLOT_GUARD + 1;
 EG_DOORS_ID :: WIRE_DOORS_EID;    // its id: WIRE_ID_MADE + EG_DOORS_ID
 EG_FX_ID :: 950000;              // a watch effect's id: WIRE_ID_MADE + EG_FX_ID + SS * WE_WATCH + cause
 
@@ -139,7 +141,6 @@ EgSeat :: struct {
   aid: E2Aid;
   familiar:E2Familiar;
   stock: [RS_MATERIAL_STOCK] RsMaterialStock;   // the reagents its casts left (everglade/shared/reagent-stock.coax)
-  familiar_hash:int; familiar_sent:int; familiar_sense_sent:int;
   // Everglade II rest (everglade/server/rest.coax): the inputs the room last stepped, what that step showed of
   // the body (seen: an actual step since it was placed; settled: grounded, still, keys released) and
   // the rest state the page last heard (z; -1 none since this socket)

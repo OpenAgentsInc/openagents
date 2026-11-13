@@ -1,8 +1,10 @@
 # Everglade session profile v6
 
+Status: superseded by [v7](everglade-session-v7.md) (`WIRE_VERSION` is 7; `proto/verse/everglade-session-v6.json` became `everglade-session-v7.json` in #13276). A version 7 room still seats a version 6 page for one release (`WIRE_MIN` is 6, #13398).
+
 Version 6 makes Everglade II's monsters and path guard rows of the existing
 entity replication path (#13276). Its machine-readable contract is
-[`everglade-session-v6.json`](../../proto/verse/everglade-session-v6.json).
+`proto/verse/everglade-session-v6.json` (now [`everglade-session-v7.json`](../../proto/verse/everglade-session-v7.json)).
 [Version 5](everglade-session-v5.md) added the room's forest state. All
 existing message fields and units keep their meanings.
 
@@ -66,7 +68,7 @@ spreads tree fire or advances tree damage locally.
 ## Check
 
 ```sh
-coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v6.json
+coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v7.json
 ```
 
 The independently written tree fixture checks every forest field through

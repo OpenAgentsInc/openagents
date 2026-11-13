@@ -1,7 +1,7 @@
 {
   "identity": "everglade-familiar-v1",
   "check": "coax/web/tool.sh coax/web/room/familiar-profile.coax proto/verse/everglade-familiar-v1.json",
-  "base_session": "everglade-session-v6",
+  "base_session": "everglade-session-v7",
   "scope": "Everglade II only",
   "request": "M1 SEQ FORM SLOT",
   "accepted": "m1 SEQ FORM",

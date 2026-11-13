@@ -1996,7 +1996,7 @@ e2_familiars_draw :: (s:[]E2,at:E2Drawn)->E2Drawn {
   d:=at; net:=s[0].net[..]; c:=s[0].creator[..];
   for i:0..<E2N_FAMILIARS {
     f:=e2n_familiar_of(net,i);
-    if !f.live || (i==net[0].seat && net[0].familiar_sense>0) || d.rec>=E2_RECORDS || d.n>=E2_DRAWS { continue; }
+    if !f.live || (i==net[0].seat && e2n_familiar_sense(net)>E2_SENSE_OWNER) || d.rec>=E2_RECORDS || d.n>=E2_DRAWS { continue; }
     count:=c[0].familiar_count[f.form];
     if count<=0 { continue; }
     yaw:=ifx i==net[0].seat then s[0].you_face else e2n_remote_seat(net,i).yaw;
@@ -2657,9 +2657,9 @@ e2k_tap_pet :: (s: [] E2, a: int) -> bool {
   #assert e2k_side_open(s[..],EG_SIDE_KIT);   // your portrait, then the kit's row in its menu
   #assert n[0].pipe[0].n==sent+1 && n[0].aid_left==-1;
   p:=n[0].pipe[0]; last:=p.n-1;
-  #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="U1 3000001";
-  e2n_record(n,"u1 3000000 8"); #assert n[0].aid_left==-1;
-  e2n_record(n,"u1 3000001 9"); #assert n[0].aid_left==9 && e2n_aid_message(n)=="ALLY STABILIZED";
+  #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="E 3000001 15 0";
+  e2n_record(n,"D 2 0 4 0 e kit 3000000 8"); #assert n[0].aid_left==-1;
+  e2n_record(n,"D 2 0 4 0 e kit 3000001 9"); #assert n[0].aid_left==9 && e2n_aid_message(n)=="ALLY STABILIZED";
   #assert e2n_aid(n);
   e2n_record(n,"r 3000002 kit"); #assert n[0].aid_left==9 && e2n_aid_message(n)=="CAN'T USE HEALER'S KIT";
   e2n_down(n); #assert n[0].aid_left==-1 && e2n_aid_message(n)=="";
@@ -2676,30 +2676,28 @@ e2k_tap_pet :: (s: [] E2, a: int) -> bool {
   e2n_record(n,cast(string)frame[0..<count]);
   #assert e2k_tap_pet(s[..],EG_DO_FORM); #assert e2k_tap_pet(s[..],EG_DO_PAY); #assert e2k_tap_pet(s[..],EG_DO_SUMMON);
   p:=n[0].pipe[0]; last:=p.n-1;
-  #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M1 4000001 1 1";
-  e2n_record(n,"m1 4000000 1"); #assert e2n_familiar_message(n)=="";
-  e2n_record(n,"m1 4000001 1"); #assert e2n_familiar_message(n)=="COMPANION SUMMONED";
+  #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="E 4000001 9 101";
+  e2n_record(n,"D 2 0 4 0 e fam 4000000 0 1"); #assert e2n_familiar_message(n)=="";
+  e2n_record(n,"D 2 0 4 0 e fam 4000001 0 1"); #assert e2n_familiar_message(n)=="COMPANION SUMMONED";
 }
 
-#test "Everglade II familiar snapshots replace visible rows and reject malformed or stale updates" #steps 1000000000 {
+#test "Everglade II familiars are the rows the room sends: one gone with its x leaves the others, and its plate goes with it" #steps 1000000000 {
   s:[1]E2; e2_test_cast_state(s[..],FB_CL_DRUID);
-  n:=s[0].net[..];
-  e2n_record(n,"m2 4 2 0 8 1500 -2000 1 1 2 0 -4000 5500 2 2");
+  n:=s[0].net[..]; fid:=WIRE_ID_MADE+WIRE_FAM_EID; own:=WIRE_TGT_SEAT;
+  e2n_test_row(n,4,WireS.{id=fid,kind=WK_FAMILIAR,x=1.5,z=-2,hp=1,max=1,owner=own,p1=8,life=1});
+  e2n_test_row(n,4,WireS.{id=fid+2,kind=WK_FAMILIAR,x=-4,z=5.5,hp=2,max=2,owner=own+2,p1=0,life=1});
   #assert e2n_familiar_of(n,0).live && e2n_familiar_of(n,0).form==8 && e2n_familiar_of(n,0).x==1.5;
   #assert e2n_familiar_of(n,2).live && e2n_familiar_of(n,2).z==5.5;
-  e2n_record(n,"m2 5 2 0 8 1500 -2000 1 1 0 0 -4000 5500 2 2");
-  e2n_record(n,"m2 3 0");
-  #assert n[0].familiar_tick==4 && e2n_familiar_of(n,2).live;
-  e2n_record(n,"m2 5 1 2 0 -4000 5500 2 2");
-  #assert !e2n_familiar_of(n,0).live && e2n_familiar_of(n,2).live;
+  e2n_record(n,"D 5 0 0 0 x 1170200");
+  #assert fid==1170200 && !e2n_familiar_of(n,0).live && e2n_familiar_of(n,2).live;
   s[0].k=1; s[0].width=1280; s[0].height=720; s[0].focal=900;
   s[0].eye=[3]f32.[-4,e2_height(-4,13.5)+2,13.5];
   s[0].fwd=[3]f32.[0,0,-1]; s[0].right=[3]f32.[1,0,0]; s[0].up=[3]f32.[0,1,0];
   out:[8192 * E2_VERTEX_FLOATS]f32;
   #assert e2_heads(s[..],out[..],0)>0;
-  e2n_record(n,"m2 6 0");
+  e2n_record(n,"D 6 0 0 0 x 1170202");
   #assert !e2n_familiar_of(n,2).live && e2_heads(s[..],out[..],0)==0;
-  e2n_record(n,"m2 7 1 2 0 -4000 -470000 2 2");
+  e2n_test_row(n,7,WireS.{id=fid+2,kind=WK_FAMILIAR,x=-4,z=-470,hp=2,max=2,owner=own+2,p1=0,life=2});
   #assert e2n_familiar_of(n,2).live && e2n_familiar_of(n,2).z== -470;
 }
 
@@ -2713,11 +2711,11 @@ e2k_tap_pet :: (s: [] E2, a: int) -> bool {
   e2n_record(n,cast(string)frame[0..<count]);
   #assert e2k_tap_pet(s[..],EG_DO_SPIRIT); #assert e2k_tap_pet(s[..],EG_DO_PAY); #assert e2k_tap_pet(s[..],EG_DO_FORM); #assert e2k_tap_pet(s[..],EG_DO_SUMMON);
   p:=n[0].pipe[0]; last:=p.n-1;
-  #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M3 4000001 1 1 2";
-  e2n_record(n,"m3 4000001 1"); #assert e2n_familiar_message(n)=="CASTING FIND FAMILIAR";
+  #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="E 4000001 10 20101";
+  e2n_record(n,"D 2 0 4 0 e fam-cast 4000001 1"); #assert e2n_familiar_message(n)=="CASTING FIND FAMILIAR";
   #assert !e2n_familiar(n);
-  e2n_record(n,"m3 4000000 3"); #assert e2n_familiar_message(n)=="CASTING FIND FAMILIAR";
-  e2n_record(n,"m3 4000001 2"); #assert e2n_familiar_message(n)=="FAMILIAR SUMMONED";
+  e2n_record(n,"D 2 0 4 0 e fam-cast 4000000 3"); #assert e2n_familiar_message(n)=="CASTING FIND FAMILIAR";
+  e2n_record(n,"D 2 0 4 0 e fam-cast 4000001 2"); #assert e2n_familiar_message(n)=="FAMILIAR SUMMONED";
 }
 
 #test "Everglade II familiar lifecycle buttons send requests and display room results" #steps 1000000000 {
@@ -2730,20 +2728,20 @@ e2k_tap_pet :: (s: [] E2, a: int) -> bool {
   e2n_record(n,cast(string)frame[0..<count]);
   #assert e2k_tap_pet(s[..],EG_DO_ORDER+2);
   p:=n[0].pipe[0]; last:=p.n-1;
-  #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M4 4000001 2";
-  e2n_record(n,"m4 4000000 2");
-  e2n_record(n,"m4 4000001 3");
+  #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="E 4000001 11 2";
+  e2n_record(n,"D 2 0 4 0 e fam 4000000 2 0");
+  e2n_record(n,"D 2 0 4 0 e fam 4000001 3 0");
   #assert e2n_familiar_message(n)=="";
-  e2n_record(n,"m4 4000001 2");
+  e2n_record(n,"D 2 0 4 0 e fam 4000001 2 0");
   #assert e2n_familiar_message(n)=="FAMILIAR RECALLED";
   #assert e2n_familiar_order(n,3);
   e2n_record(n,"r 4000002 familiar");
   #assert e2n_familiar_message(n)=="FAMILIAR COMMAND REFUSED";
   #assert e2k_tap_pet(s[..],EG_DO_ORDER+4);
   q:=n[0].pipe[0]; step:=q.n-1;
-  #assert cast(string)q.buf[q.from[step]..<q.from[step]+q.len[step]]=="M5 4000003";
-  e2n_record(n,"m4 4000003 4"); #assert e2n_familiar_message(n)=="";
-  e2n_record(n,"m5 4000003"); #assert e2n_familiar_message(n)=="FAMILIAR MOVED";
+  #assert cast(string)q.buf[q.from[step]..<q.from[step]+q.len[step]]=="E 4000003 12 0";
+  e2n_record(n,"D 2 0 4 0 e fam 4000003 1 0"); #assert e2n_familiar_message(n)=="";
+  e2n_record(n,"D 2 0 4 0 e fam 4000003 4 0"); #assert e2n_familiar_message(n)=="FAMILIAR MOVED";
 }
 
 #test "Everglade II familiar Cure requests a wounded nearby seat and waits for the room" #steps 1000000000 {
@@ -2755,13 +2753,12 @@ e2k_tap_pet :: (s: [] E2, a: int) -> bool {
   count:=wire_put_d(frame[..],0,WireD.{tick=1,f=1});
   count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
   e2n_record(n,cast(string)frame[0..<count]);
-  fam:[96]u8; fam_n:=wire_int(fam[..],wire_int(fam[..],wire_put(fam[..],0,"m2 1 1 1 0"),cast(int)(s[0].you_x*1000)),cast(int)(s[0].you_z*1000));
-  e2n_record(n,cast(string)fam[0..<wire_put(fam[..],fam_n," 1 1")]);
+  e2n_test_row(n,1,WireS.{id=WIRE_ID_MADE+WIRE_FAM_EID+1,kind=WK_FAMILIAR,x=s[0].you_x,z=s[0].you_z,hp=1,max=1,owner=WIRE_TGT_SEAT+1,p1=0,life=1});
   #assert e2k_tap_pet(s[..],EG_DO_CURE);
   p:=n[0].pipe[0]; last:=p.n-1;
-  #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M6 4000001 1";
+  #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="E 4000001 13 1";
   #assert !n[0].familiar_heal_cue;
-  e2n_record(n,"m6 4000001");
+  e2n_record(n,"D 2 0 4 0 e fam 4000001 5 0");
   #assert n[0].familiar_heal_cue && e2n_familiar_message(n)=="FAMILIAR DELIVERED CURE WOUNDS";
 }
 
@@ -2773,21 +2770,22 @@ e2k_tap_pet :: (s: [] E2, a: int) -> bool {
   count:=wire_put_d(frame[..],0,WireD.{tick=1,f=1});
   count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
   e2n_record(n,cast(string)frame[0..<count]);
-  e2n_record(n,"m2 1 1 1 8 4000 -6000 1 1");
+  fam:=WireS.{id=WIRE_ID_MADE+WIRE_FAM_EID+1,kind=WK_FAMILIAR,x=4,z=-6,hp=1,max=1,owner=WIRE_TGT_SEAT+1,p1=8,life=1};
+  e2n_test_row(n,1,fam);
   #assert e2k_tap_pet(s[..],EG_DO_ORDER+6);
   p:=n[0].pipe[0]; last:=p.n-1;
-  #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M7 4000001";
+  #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="E 4000001 14 0";
   base:=figs.cam_shot(s[0].view,s[0].orbit,s[0].eye_pitch,s[0].press);
-  e2n_record(n,"m7 4000001");
+  e2n_record(n,"D 2 0 4 0 e fam 4000001 6 0");
   #assert !e2n_familiar_view(n).live && e2n_familiar_message(n)=="BORROWED FAMILIAR SENSES";
-  e2n_record(n,"m8 2");
+  fam.g=E2_SENSE_SIGHT_HEARING; e2n_test_row(n,2,fam);
   view:=e2_familiar_shot(s[..],base);
-  #assert view.eye.x==4 && view.eye.z== -6 && n[0].familiar_sense==2;
-  e2n_record(n,"m8 9");
-  #assert n[0].familiar_sense==2;
-  e2n_record(n,"m8 1");
-  #assert e2_familiar_shot(s[..],base).eye.x==4 && n[0].familiar_sense==1;
-  e2n_record(n,"m8 0");
+  #assert view.eye.x==4 && view.eye.z== -6 && e2n_familiar_sense(n)==2;
+  fam.g=9; e2n_test_row(n,3,fam);   // senses the wire has none of: no row of a familiar
+  #assert e2n_familiar_sense(n)==2;
+  fam.g=E2_SENSE_SIGHT; e2n_test_row(n,4,fam);
+  #assert e2_familiar_shot(s[..],base).eye.x==4 && e2n_familiar_sense(n)==1;
+  fam.g=E2_SENSE_OWNER; e2n_test_row(n,5,fam);
   #assert e2_familiar_shot(s[..],base).eye.x==base.eye.x && !e2n_familiar_view(n).live;
 }
 
@@ -2795,13 +2793,15 @@ e2k_tap_pet :: (s: [] E2, a: int) -> bool {
   s:[1]E2; e2_test_cast_state(s[..],FB_CL_WIZARD);
   cc.catalog(s[0].creator[..],"C glade/environment 9 12 250 100 8 0\nC glade/familiar8 50 240 248 120 0 0\n");
   n:=s[0].net[..];
-  e2n_record(n,"m2 1 1 1 8 4000 -470000 1 1");
+  fam:=WireS.{id=WIRE_ID_MADE+WIRE_FAM_EID+1,kind=WK_FAMILIAR,x=4,z=-470,hp=1,max=1,owner=WIRE_TGT_SEAT+1,p1=8,life=1};
+  e2n_test_row(n,1,fam);
   d:=e2_familiars_draw(s[..],E2Drawn.{});
   #assert d.n==1 && d.sn==1 && d.rec==1 && s[0].draws[0]==50 && s[0].draws[1]==240;
   #assert s[0].records[0]==4 && s[0].records[2]== -470 && s[0].records[7]==120 && s[0].records[15]==18;
-  e2n_record(n,"m8 2");
+  fam.g=E2_SENSE_SIGHT_HEARING; e2n_test_row(n,2,fam);   // seen through its eyes, it is not drawn
   #assert e2_familiars_draw(s[..],E2Drawn.{}).n==0;
-  e2n_record(n,"m8 0");
-  e2n_record(n,"m2 2 0");
+  fam.g=E2_SENSE_OWNER; e2n_test_row(n,3,fam);
+  #assert e2_familiars_draw(s[..],E2Drawn.{}).n==1;
+  e2n_record(n,"D 4 0 0 0 x 1170201");
   #assert e2_familiars_draw(s[..],E2Drawn.{}).n==0;
 }

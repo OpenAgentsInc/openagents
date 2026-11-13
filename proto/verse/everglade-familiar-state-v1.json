@@ -1,7 +1,7 @@
 {
   "identity": "everglade-familiar-state-v1",
   "check": "coax/web/tool.sh coax/web/room/familiar-profile.coax proto/verse/everglade-familiar-state-v1.json",
-  "base_session": "everglade-session-v6",
+  "base_session": "everglade-session-v7",
   "form_index": "everglade-familiar-v1",
   "scope": "Everglade II only",
   "snapshot": "m2 TICK COUNT [OWNER FORM X Z HP MAX]...",
