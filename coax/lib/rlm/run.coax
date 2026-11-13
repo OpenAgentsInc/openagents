@@ -121,6 +121,13 @@ rlm_tr :: (st: [] RlmState, s: string) {
     if st[0].ntr < st[0].trace.count { st[0].trace[st[0].ntr] = c; st[0].ntr += 1; }
   }
 }
+rlm_tr_int2 :: (st: [] RlmState, v: int) {
+  d: [24] u8; n := 0; x := v; if x < 0 { x = 0; }
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); n += 1; x /= 10; }
+  o: [24] u8; for i: 0..<n { o[i] = d[n - 1 - i]; }
+  rlm_tr(st, cast(string) o[0..<n]);
+}
 rlm_tr_int :: (r: [] Rs, st: [] RlmState, v: int) {
   at := r[0].nh;
   if rs_put_int(r, v) { rlm_tr(st, rs_take(r, at)); }
@@ -146,6 +153,7 @@ rlm_count :: (st: [] RlmState, role: int, slot: int) {
   s := st[0].model[0].slots[slot];
   st[0].spent.calls += 1;
   if role == RLM_ROOT { st[0].root_calls += 1; } else { st[0].sub_calls += 1; }
+  if role == RLM_ROOT && s.usage.ok { rlm_tr(st, "--- call: input "); rlm_tr_int2(st, s.usage.input_tokens); rlm_tr(st, " cached "); rlm_tr_int2(st, s.usage.cached_tokens); rlm_tr(st, " output "); rlm_tr_int2(st, s.usage.output_tokens); rlm_tr(st, " ms "); rlm_tr_int2(st, s.ms); rlm_tr(st, "\n"); }
   if s.usage.ok { st[0].in_tokens += s.usage.input_tokens; st[0].out_tokens += s.usage.output_tokens; }
   usd := ifx s.usage.card_usd_micros > 0 then s.usage.card_usd_micros else 0;
   st[0].spent.usd_micros += usd;
@@ -412,11 +420,33 @@ rlm_first :: (r: [] Rs, st: [] RlmState, question: string, depth: int) -> string
 rlm_report :: (r: [] Rs, st: [] RlmState, k: int, many: bool, out_base: int) -> bool {
   shown := cast(string) r[0].out[out_base..<r[0].no];
   lim := st[0].limits.max_shown;
-  if shown.count > lim { shown = cast(string) shown[0..<lim]; }
   ok := rs_put(r, "REPL output");
   if many { ok = ok && rs_put(r, " (block ") && rs_put_int(r, k + 1) && rs_put(r, ")"); }
-  ok = ok && rs_put(r, ":\n") && rs_put(r, shown);
-  if r[0].out_total > shown.count { ok = ok && rs_put(r, "\n... [") && rs_put_int(r, r[0].out_total - shown.count) && rs_put(r, " more characters not shown]"); }
+  ok = ok && rs_put(r, ":\n");
+  // A turn over the limit is shared among its print calls, each cut with a note of what it lost: the model
+  // then sees the start of everything it asked for. (Cut at the first lim characters, it saw only the first
+  // prints and asked for the rest again turn after turn: #13444, the run on #13435.)
+  np := 0; for i: 0..<r[0].nmarks { if r[0].marks[i] >= out_base { np += 1; } }
+  if shown.count > lim && np >= 2 {
+    share := lim / np; if share < 400 { share = 400; }
+    first := r[0].nmarks - np;
+    // what the short prints leave over goes to the long ones
+    short := 0; long := 0;
+    for i: 0..<np { a := r[0].marks[first + i]; b := ifx i + 1 < np then r[0].marks[first + i + 1] else r[0].no; if b - a <= share { short += b - a; } else { long += 1; } }
+    if long > 0 && lim > short { share = (lim - short) / long; if share < 400 { share = 400; } }
+    for i: 0..<np {
+      a := r[0].marks[first + i]; b := ifx i + 1 < np then r[0].marks[first + i + 1] else r[0].no;
+      if b - a <= share { ok = ok && rs_put(r, cast(string) r[0].out[a..<b]); }
+      else {
+        ok = ok && rs_put(r, cast(string) r[0].out[a..<a + share]) && rs_put(r, "\n... [print ") && rs_put_int(r, i + 1) && rs_put(r, " of ") && rs_put_int(r, np) && rs_put(r, " cut: ") && rs_put_int(r, b - a - share) && rs_put(r, " of its ") && rs_put_int(r, b - a) && rs_put(r, " characters not shown; ask for less at a time]\n");
+      }
+    }
+    if r[0].out_total > shown.count { ok = ok && rs_put(r, "... [") && rs_put_int(r, r[0].out_total - shown.count) && rs_put(r, " more characters were printed than the turn can hold]\n"); }
+  } else {
+    if shown.count > lim { shown = cast(string) shown[0..<lim]; }
+    ok = ok && rs_put(r, shown);
+    if r[0].out_total > shown.count { ok = ok && rs_put(r, "\n... [") && rs_put_int(r, r[0].out_total - shown.count) && rs_put(r, " more characters not shown]"); }
+  }
   if rs_bad(r) { st[0].block_errors += 1; ok = ok && rs_put(r, "\nError: ") && rs_put(r, r[0].err); }
   if r[0].out_total == 0 && !rs_bad(r) { ok = ok && rs_put(r, "(no output)"); }
   return ok && rs_put(r, "\n\n");
@@ -563,7 +593,7 @@ rlm_step_block :: (r: [] Rs, st: [] RlmState, v: [] RlmLevel) {
     v[0].phase = L_CALL;
     return;
   }
-  r[0].no = v[0].out_base; r[0].out_total = 0; r[0].err = ""; r[0].line = 1;
+  r[0].no = v[0].out_base; r[0].out_total = 0; r[0].err = ""; r[0].line = 1; r[0].nmarks = 0;
   v[0].first = rs_parse(r, b.code);
   if v[0].first < 0 { rlm_block_done(r, st, v); return; }
   v[0].snap = rlm_snap_take(r, st);
@@ -574,7 +604,7 @@ rlm_step_block :: (r: [] Rs, st: [] RlmState, v: [] RlmLevel) {
 }
 
 rlm_step_pass :: (r: [] Rs, st: [] RlmState, v: [] RlmLevel) {
-  r[0].no = v[0].out_base; r[0].out_total = 0;
+  r[0].no = v[0].out_base; r[0].out_total = 0; r[0].nmarks = 0;
   rs_pass(r, v[0].first);
   if !r[0].suspended {
     rlm_snap_drop(st, v[0].snap);
@@ -747,6 +777,27 @@ rlm_test_block :: (r: [] Rs, st: [] RlmState, src: string) {
     rlm_step(r, st);
   }
   st[0].nlev = 0;
+}
+
+#test "a turn over the limit is shared among its prints, each long one cut with a note; a short one is whole" {
+  mem: [1] RlmTestMem; r: [1] Rs; none := mem[0].none[0..<0];
+  out := rlm_test_eval(mem[..], r[..], "", "print('A' * 900)\nprint('short')\nprint('C' * 900)", none);
+  #assert out.count == 1808;
+  st := mem[0].st[..];
+  st[0].limits.max_shown = 600;
+  at := r[0].nh;
+  #assert rlm_report(r[..], st, 0, false, 0);
+  rep := rs_take(r[..], at);
+  #assert rs_count_sub(rep, "short\n") == 1;
+  #assert rs_count_sub(rep, "[print 1 of 3 cut: ") == 1 && rs_count_sub(rep, "[print 3 of 3 cut: ") == 1 && rs_count_sub(rep, "[print 2 of 3") == 0;
+  #assert rs_count_sub(rep, "AAAA") > 0 && rs_count_sub(rep, "CCCC") > 0;
+  #assert rep.count < 1300;
+  // one print over the limit is cut as before
+  out = rlm_test_eval(mem[..], r[..], "", "print('B' * 900)", none);
+  st[0].limits.max_shown = 600;
+  at = r[0].nh;
+  #assert rlm_report(r[..], st, 0, false, 0);
+  #assert rs_count_sub(rs_take(r[..], at), "more characters not shown]") == 1;
 }
 
 #test "the environment runs fixed programs: values, strings, lists, dicts, loops and f-strings" {

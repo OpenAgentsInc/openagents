@@ -87,6 +87,7 @@ Rs :: struct {
   nodes: [] RsNode; nn: int;
   names: [] string; vals: [] RsVal; nv: int; frame: int;
   out: [] u8; no: int; out_total: int;
+  marks: [RS_MARKS] int; nmarks: int;   // where each print call's text starts in out (run.coax shares a cut turn among them)
   steps: int; max_steps: int = 1000000;
   err: string;
   line: int;
@@ -274,6 +275,7 @@ rs_text :: (r: [] Rs, v: RsVal, repr: bool) -> string {
   return rs_take(r, at);
 }
 
+RS_MARKS :: 96;
 // What the block prints, kept up to out's size; out_total counts all of it.
 rs_print :: (r: [] Rs, s: string) {
   for c: s { if r[0].no < r[0].out.count { r[0].out[r[0].no] = c; r[0].no += 1; } }
@@ -1745,6 +1747,7 @@ rs_method :: (r: [] Rs, o: RsVal, name: string, a: RsArgs) -> RsVal {
 
 rs_builtin :: (r: [] Rs, name: string, a: RsArgs) -> RsVal {
   if name == "print" {
+    if r[0].nmarks < RS_MARKS { r[0].marks[r[0].nmarks] = r[0].no; r[0].nmarks += 1; }
     for i: 0..<a.n { if i > 0 { rs_print(r, " "); } rs_print(r, rs_text(r, a.v[i], false)); }
     e := rs_kw(a, "end");
     if e >= 0 && a.kw[e].kind == RS_STR { rs_print(r, a.kw[e].s); } else { rs_print(r, "\n"); }
