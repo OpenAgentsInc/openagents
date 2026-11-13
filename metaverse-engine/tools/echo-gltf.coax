@@ -1,4 +1,8 @@
 // Shared read-only glTF accessor SDK output adapter for the Coax Echo packers.
+// A part: the packers load it. It loads what it reads so it checks alone (#13270).
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/text/ph_num.coax";
 EpJson :: struct {text:[8388608]u8;nodes:[524288]JvNode;d:[1]Jv;binary:[4096]u8;binary_n:int;}
 EpAcc :: struct {count:int;components:int;component:int;bytes:int;normalized:bool;}
 ep_path :: (root:string,name:string,b:[]u8)->string {return fs_join(root,name,b);}

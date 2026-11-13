@@ -14,7 +14,8 @@
 //   aethyr-up     a file under metaverse-engine/ or rules/ (the SRD rules, out of the engine since #13270) loads from verse/, apps/, everglade/ or coax/web/
 //   everglade-up  a file under everglade/ loads from apps/
 //   tests         a file under metaverse-engine/, rules/, everglade/, coax/web/api/, coax/web/room/ or pay/ loads a file in a tests/ or
-//                 test/ folder with a plain #load; `#load "FILE" #test;` is how a module loads its checks (#13383)
+//                 test/ folder, or a checks file beside it (X-checks.E, checks.E, test_X, test-X, X_test.E, X-test.E), with a
+//                 plain #load; `#load "FILE" #test;` is how a module loads its checks (#13383)
 //   context       a file in context A loads a file in context B (A != B) not in A's "may load" list in contexts.txt (#13317)
 //   model-effects a model file listed in metaverse-engine/model-files.txt declares #effects(all) (#13314)
 // And one gate with no allowlist (#13267 step 7, #13346): the room server's load closure (every file
@@ -23,10 +24,12 @@
 // frozen from everglade/server/legacy/v1.sh's pin; Everglade II's room is everglade/server/ and the
 // shared code both sides load is everglade/shared/.
 // Support code is a test, check, tool, example or book file, which may load what it exercises:
-//   a path with a folder named tests, test, tools, examples, book, fixtures or lab;
+//   a path with a folder named tests, test, tools, examples, book, fixtures, fuzz or lab;
 //   a file named test_X, test-X, check-X, check.E, checks.E, X_test.E, X-test.E, X-check.E,
 //   X-checks.E or X_check.E (the names wire-check also treats as tests, and the check-X programs);
 //   a file that defines `tool_main ::` (a program run by coax/web/tool.sh, not a module).
+// A module whose name only looks like a check's (the SRD's ability checks) is in LC_NAMED_MODULES:
+// it is product code, judged like any module and loaded plainly.
 // A load whose path is absolute is outside the tree and not judged.
 //
 // metaverse-engine/layer-allowlist.txt names the loads that break a rule today, one per line:
@@ -204,16 +207,26 @@ lc_room_v1 :: (loads: string, root: string, run: LcRun) -> int {
 
 // ---- support code and the rules
 
-// Whether path is support code by its name: a test, check, tool, example, book or lab folder, or
+// Modules whose file name looks like a check's. The name alone would make each support code, which
+// no rule judges, and a plain load of it a load of checks. They are product code. Prefer a name that
+// does not look like a check; add one here only when the domain gives the name.
+LC_NAMED_MODULES :: [3] string.["rules/srd/ability-checks.coax", "rules/srd/check-training.coax", "metaverse-engine/anim/scene-check.coax"];
+lc_named_module :: (path: string) -> bool {
+  mods := LC_NAMED_MODULES;
+  for m: mods { if m == path { return true; } }
+  return false;
+}
+// Whether path is support code by its name: a test, check, tool, example, book, fuzz or lab folder, or
 // a test or check file name.
 lc_support_path :: (path: string) -> bool {
+  if lc_named_module(path) { return false; }
   i := 0;
   while i < path.count {
     j := i;
     while j < path.count && path[j] != '/' { j += 1; }
     seg := cast(string) path[i..<j];
     if j < path.count {
-      if seg == "tests" || seg == "test" || seg == "tools" || seg == "examples" || seg == "book" || seg == "fixtures" || seg == "lab" { return true; }
+      if seg == "tests" || seg == "test" || seg == "tools" || seg == "examples" || seg == "book" || seg == "fixtures" || seg == "fuzz" || seg == "lab" { return true; }
     } else {
       if lc_starts(seg, "test_") || lc_starts(seg, "test-") || lc_starts(seg, "check-") || lc_starts(seg, "check.") || lc_starts(seg, "checks.") { return true; }
       marks := [5] string.["_test.", "-test.", "-check.", "-checks.", "_check."];
@@ -236,6 +249,17 @@ lc_listed :: (list: string, path: string) -> bool {
 }
 // Whether path is support code: by its name, or a program (tools lists the files that define tool_main).
 lc_support :: (path: string, tools: string) -> bool { return lc_support_path(path) || lc_listed(tools, path); }
+// Whether path is a checks file by its name, wherever it sits: X-checks.E, checks.E, test_X, test-X,
+// X_test.E or X-test.E. A module loads one with `#load "FILE" #test;` (#13383). The check-X programs
+// and X-check diagnostics are not checks files: a tool that wraps one loads it plainly.
+lc_checks_file :: (path: string) -> bool {
+  if lc_named_module(path) { return false; }
+  cut := path.count;
+  while cut > 0 && path[cut - 1] != '/' { cut -= 1; }
+  seg := cast(string) path[cut..<path.count];
+  if lc_starts(seg, "test_") || lc_starts(seg, "test-") || lc_starts(seg, "checks.") { return true; }
+  return lc_has(seg, "_test.") || lc_has(seg, "-test.") || lc_has(seg, "-checks.");
+}
 // Whether a path has a folder named tests or test.
 lc_in_tests :: (path: string) -> bool {
   i := 0;
@@ -326,7 +350,7 @@ lc_context_allows :: (m: LcCtxMap, a: int, b: int) -> bool {
 lc_rule :: (from: string, to: string) -> int {
   if (lc_starts(from, "metaverse-engine/") || lc_starts(from, "rules/")) && (lc_starts(to, "verse/") || lc_starts(to, "apps/") || lc_starts(to, "everglade/") || lc_starts(to, "coax/web/")) { return LC_UP_AETHYR; }
   if lc_starts(from, "everglade/") && lc_starts(to, "apps/") { return LC_UP_EVERGLADE; }
-  if (lc_starts(from, "metaverse-engine/") || lc_starts(from, "rules/") || lc_starts(from, "everglade/") || lc_starts(from, "coax/web/api/") || lc_starts(from, "coax/web/room/") || lc_starts(from, "pay/")) && lc_in_tests(to) { return LC_TESTS; }
+  if (lc_starts(from, "metaverse-engine/") || lc_starts(from, "rules/") || lc_starts(from, "everglade/") || lc_starts(from, "coax/web/api/") || lc_starts(from, "coax/web/room/") || lc_starts(from, "pay/")) && (lc_in_tests(to) || lc_checks_file(to)) { return LC_TESTS; }
   return 0;
 }
 // Including contexts.txt: fixed rules take precedence; otherwise cross-context disallowed loads return LC_CONTEXT.
@@ -485,7 +509,7 @@ lc_judge_with_contexts :: (loads: string, tools: string, allow: string, ctxs: Lc
     if to.count == 0 { continue; }
     rule := lc_rule_ctx(l.from, to, ctxs, fc[..], tc[..]);
     // A check load is how a module names its checks: no compile emits them (#13383). A plain
-    // load of a file in a tests folder ships it.
+    // load of a file in a tests folder, or of a checks file beside the module, ships it.
     if l.checks && rule == LC_TESTS { continue; }
     if rule == 0 { continue; }
     // a file that loads the same path twice is one load
@@ -499,7 +523,7 @@ lc_judge_with_contexts :: (loads: string, tools: string, allow: string, ctxs: Lc
     if run.quiet { continue; }
     if rule == LC_UP_AETHYR { print("FAIL aethyr-up: %:% loads %. metaverse-engine/ is the engine: it loads nothing from verse/, apps/, everglade/ or coax/web/. Fix: move what it needs down into metaverse-engine/, or have the caller pass it in (%).\n", l.from, l.line, to, LC_HOW); }
     else if rule == LC_UP_EVERGLADE { print("FAIL everglade-up: %:% loads %. everglade/ is the game: it loads nothing from apps/. Fix: move what it needs into everglade/ or metaverse-engine/ (%).\n", l.from, l.line, to, LC_HOW); }
-    else if rule == LC_TESTS { print("FAIL tests: %:% loads %, which is in a tests folder, with a plain #load, and % is not a test, check or tool. Fix: load a module's own checks with #load \"FILE\" #test; and move what product code needs out of the checks file into a module (%).\n", l.from, l.line, to, l.from, LC_HOW); }
+    else if rule == LC_TESTS { print("FAIL tests: %:% loads %, a tests-folder or checks file, with a plain #load, and % is not a test, check or tool. Fix: load a module's own checks with #load \"FILE\" #test; and move what product code needs out of the checks file into a module (%).\n", l.from, l.line, to, l.from, LC_HOW); }
     else { print("FAIL context: %:% (%) loads % (%), which %'s line in % does not allow. Fix: move the dependency behind an allowed context or published contract (%).\n", l.from, l.line, ctxs.ctxs[fc[0]].slug, to, ctxs.ctxs[tc[0]].slug, ctxs.ctxs[fc[0]].slug, LC_CONTEXTS, LC_HOW); }
   }
   return bad;
@@ -851,6 +875,28 @@ LC_T_ALLOW :: "# seed\naethyr-up metaverse-engine/net/latency.coax -> everglade/
   // the other trees are not judged here
   #assert lc_rule("rules/srd/a-probes.coax", "verse/experimental-hostiles.coax") == LC_UP_AETHYR && lc_rule("rules/srd/a.coax", "metaverse-engine/tests/x.coax") == LC_TESTS && lc_rule("rules/srd/a.coax", "metaverse-engine/core/math.coax") == 0;
   #assert lc_rule("verse/a.coax", "apps/b.coax") == 0 && lc_rule("coax/lib/a.coax", "coax/lib/tests/b.coax") == 0;
+}
+#test "a checks file beside its module: a plain load fails, a check load passes, and a module that is only named like one is product code" {
+  #assert lc_checks_file("metaverse-engine/anim/bundle-checks.coax") && lc_checks_file("everglade/server/checks.coax") && lc_checks_file("pay/test_wallet.coax") && lc_checks_file("pay/test-wallet.coax") && lc_checks_file("a_test.coax") && lc_checks_file("rules/srd/a-test.coax");
+  // programs and diagnostics are not checks files, and neither is a name that only contains the word
+  #assert !lc_checks_file("metaverse-engine/host/check-browser.coax") && !lc_checks_file("metaverse-engine/anim/pose-check.coax") && !lc_checks_file("metaverse-engine/a_check.coax") && !lc_checks_file("metaverse-engine/render/checker.coax") && !lc_checks_file("metaverse-engine/checks/a.coax") && !lc_checks_file("metaverse-engine/mychecks.coax") && !lc_checks_file("metaverse-engine/latest.coax");
+  #assert lc_rule("metaverse-engine/anim/bundle.coax", "metaverse-engine/anim/bundle-checks.coax") == LC_TESTS && lc_rule("coax/web/api/a-policy.coax", "coax/web/api/a-checks.coax") == LC_TESTS && lc_rule("pay/wallet.coax", "pay/checks.coax") == LC_TESTS;
+  #assert lc_rule("verse/a.coax", "verse/a-checks.coax") == 0 && lc_rule("metaverse-engine/host/x-tool.coax", "metaverse-engine/host/check-x.coax") == 0;
+  used: [4] bool;
+  f: [LC_RULES] int;
+  #assert lc_judge("everglade/server/room-everglade.coax:9:#load \"room-checks.coax\";\n", "", "", used[..], LC_T_QUIET, f[..]) == 1 && f[LC_TESTS] == 1;
+  g: [LC_RULES] int;
+  #assert lc_judge("everglade/server/room-everglade.coax:9:#load \"room-checks.coax\" #test;\n", "", "", used[..], LC_T_QUIET, g[..]) == 0 && g[LC_TESTS] == 0;
+  // a fuzzer is support code: it loads the room's checks plainly
+  h: [LC_RULES] int;
+  #assert lc_support_path("coax/web/room/fuzz/wire-fuzz.coax") && lc_judge("coax/web/room/fuzz/wire-fuzz.coax:4:#load \"../../../../everglade/server/room-checks.coax\";\n", "", "", used[..], LC_T_QUIET, h[..]) == 0;
+  // the SRD's ability checks are a module: loaded plainly, and judged like one
+  #assert lc_named_module("rules/srd/ability-checks.coax") && !lc_named_module("rules/srd/ability-checks.coax.bak") && !lc_named_module("rules/srd/dice-checks.coax");
+  #assert !lc_checks_file("rules/srd/ability-checks.coax") && !lc_support_path("rules/srd/ability-checks.coax") && !lc_support_path("rules/srd/check-training.coax") && !lc_support_path("metaverse-engine/anim/scene-check.coax") && lc_support_path("rules/srd/dice-checks.coax");
+  k: [LC_RULES] int;
+  #assert lc_judge("rules/srd/battle.coax:5:#load \"ability-checks.coax\";\n", "", "", used[..], LC_T_QUIET, k[..]) == 0;
+  m: [LC_RULES] int;
+  #assert lc_judge("rules/srd/ability-checks.coax:5:#load \"../../everglade/model/content.coax\";\nrules/srd/dice-checks.coax:5:#load \"../../everglade/model/content.coax\";\n", "", "", used[..], LC_T_QUIET, m[..]) == 1 && m[LC_UP_AETHYR] == 1;
 }
 #test "a check load of a file in a tests folder passes; a plain one fails" {
   #assert lc_parse("a.coax:1:#load \"b.coax\" #test;").checks && lc_parse("a.coax:1:#load \"b.coax\"  #test ;").checks;

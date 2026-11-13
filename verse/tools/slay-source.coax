@@ -1,4 +1,9 @@
 // Shared Coax conversion of read-only Slay SDK output.
+// A part: the Slay packers load it. It loads what it reads so it checks alone (#13270).
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/text/ph_num.coax";
+#load "../../metaverse-engine/tools/echo-gltf.coax";
 SfName :: struct {bytes:[64]u8;n:int;}
 sf_lower :: (c:u8)->u8 {return ifx c>='A' && c<='Z' then c+32 else c;}
 sf_name :: (name:string)->SfName {out:=SfName.{};#assert name.count>0 && name.count<64;out.n=name.count;for c,k:name {out.bytes[k]=sf_lower(c);}return out;}
