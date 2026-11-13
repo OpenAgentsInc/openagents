@@ -701,7 +701,7 @@ CliCommand :: struct { domain: string = "realm"; verb: string; effect: string; a
 // The seat rows (route "seat") drive one realm open in headless Chrome on this computer, as a
 // visitor (apps/openagents-cli/realm-play.coax, docs/metaverse/realm-seat.md).
 REALM_COMMANDS :: [65] CliCommand.[
-  CliCommand.{verb="list",effect="read",approval="none",method="GET",route="/mine",help="your realms",label="List your realms",many="List your realms"},
+  CliCommand.{verb="list",effect="read",approval="none",method="GET",route="/mine",help="your realms, and the worlds you may edit as the side lists them",label="List your realms",many="List your realms"},
   CliCommand.{verb="show",effect="read",approval="none",method="GET",route="",arguments="slug",usage="SLUG",help="the realm's spec and page",label="Show realm {slug}",many="Show realms"},
   CliCommand.{verb="new",effect="spend",approval="owner",method="POST",route="/plan",arguments="newwords",flags="--from:id|--style:style|--time:time|--camera:camera|--ground:ground",usage="\"WORDS\" [--style S] [--time T] [--camera C] [--ground G] | --from PLAN",help="plan words and make a private realm; --from PLAN makes an existing plan",label="Make a realm[: {words}]",many="Make realms"},
   CliCommand.{verb="visibility",effect="publish",approval="owner",method="POST",route="/visibility",arguments="slug|visibility",flags="--rev:id",usage="SLUG private|unlisted|public [--rev N]",help="who sees it",label="Make {slug} {visibility}",many="Set who sees realms"},
@@ -1441,7 +1441,7 @@ cli_setup_ok :: (field: string, v: string) -> bool #effects(all) {
 #test "help lines read like the other domains' and show no catalogue syntax" {
   out: [512] u8;
   #assert rc_help_line(REALM_COMMANDS[rc_find("move")],out[..]) == "  realm move SLUG ENTITY X Z [--rev N]    move a thing (FEATURE:N, such as trees:3) to X Z metres; one save [write; the owner]";
-  #assert rc_help_line(REALM_COMMANDS[rc_find("list")],out[..]) == "  realm list                              your realms [read]";
+  #assert rc_help_line(REALM_COMMANDS[rc_find("list")],out[..]) == "  realm list                              your realms, and the worlds you may edit as the side lists them [read]";
   #assert rc_help_line(REALM_COMMANDS[rc_find("new")],out[..]) == "  realm new \"WORDS\" [--style S] [--time T] [--camera C] [--ground G] | --from PLAN  plan words and make a private realm; --from PLAN makes an existing plan [spend; the owner]";
   #assert rc_help_line(REALM_COMMANDS[rc_find("move")],out[0..<20]) == "";
   long := CliCommand.{verb="a-verb-long-enough-to-pass-the-column-x",effect="read",usage="X",help="h"};

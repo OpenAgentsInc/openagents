@@ -402,19 +402,77 @@ realm_rows :: (text: string, out: [] u8) -> int #effects(all) {
   return n;
 }
 
+// A server on this computer: http://127.0.0.1[:PORT] or http://localhost[:PORT].
+realm_local_origin :: (o: string) -> bool {
+  for h: [2] string.["http://127.0.0.1", "http://localhost"] {
+    if o.count >= h.count && o[0..<h.count] == h && (o.count == h.count || o[h.count] == ':') { return true; }
+  }
+  return false;
+}
+#test "a dev server's origin is this computer's" {
+  #assert realm_local_origin("http://127.0.0.1:9538") && realm_local_origin("http://localhost") && realm_local_origin("http://127.0.0.1");
+  #assert !realm_local_origin("https://openagents.com") && !realm_local_origin("http://127.0.0.10:1") && !realm_local_origin("http://localhost.example.com");
+}
+
 realm_list :: (a: [] Args, r: [] Rep, profile: string) -> int {
   out: [API_OUT] u8;
   res := api_call(a, profile, "GET", ifx r[0].json then "/api/playtest/realms/mine" else "/api/playtest/realms/mine?as=lines", "", out[..]);
   body := cast(string) out[0..<res.n];
   if res.error == HTTP_OK && res.status == 404 { return fail(r, EXIT_FAIL, "this server has no list of your realms yet (GET /api/playtest/realms/mine)"); }
   if !api_ok(res) { return api_fail(r, res, body); }
+  // With no key a deployed site can't tell whose realms to list and answers none: say so, never an empty list.
+  // A dev server on this computer (http://127.0.0.1) takes an unsigned request as its own login (auth.c local_admin).
+  if !res.keyed && !realm_local_origin(cast(string) res.origin[0..<res.origin_n]) {
+    return fail(r, EXIT_AUTH, "not logged in on this profile, so no server knows whose realms to list: run `openagents login` (or pass --profile)");
+  }
   if !r[0].json {
     rows: [API_OUT] u8; n := realm_rows(body, rows[..]);
     if n < 0 { return fail(r, EXIT_FAIL, "your realms do not fit the answer buffer"); }
-    print("%", cast(string) rows[0..<n]); return EXIT_OK;
+    print("%", cast(string) rows[0..<n]);
+    // the worlds you may edit, as the site's side lists them under Worlds (GET /api/worlds: "world ID NAME" lines)
+    wo: [API_OUT] u8;
+    wr := api_call(a, profile, "GET", "/api/worlds", "", wo[..]);
+    if api_ok(wr) && wr.n > 0 { print("%\n", "worlds you may edit:"); print("%", cast(string) wo[0..<wr.n]); }
+    return EXIT_OK;
   }
   if !rep_object(r, body) { return fail(r, EXIT_FAIL, "the server's answer isn't JSON"); }
+  // and "worlds": the worlds you may edit, the list the site's side shows under Worlds (GET /api/worlds), so an
+  // agent asked "what worlds do I have" answers what the page shows (#13493)
+  wo: [API_OUT] u8; wj: [API_OUT] u8;
+  wr := api_call(a, profile, "GET", "/api/worlds", "", wo[..]);
+  if api_ok(wr) {
+    wn := realm_worlds_json(cast(string) wo[0..<wr.n], wj[..]);
+    if wn > 0 { rep_raw(r, "worlds", cast(string) wj[0..<wn]); }
+  }
   return rep_done(r, EXIT_OK);
+}
+// GET /api/worlds' lines, "world ID NAME", as a JSON array of {"id", "name"}: its length, or -1 when out is short.
+realm_worlds_json :: (lines: string, out: [] u8) -> int {
+  n := copy("[", out); if n < 0 { return -1; }
+  count := 0; at := 0;
+  for end: 0..<lines.count + 1 {
+    if end < lines.count && lines[end] != '\n' { continue; }
+    l := lines[at..<end]; at = end + 1;
+    if l.count < 7 || l[0..<6] != "world " { continue; }
+    sp := 6; while sp < l.count && l[sp] != ' ' { sp += 1; }
+    id := l[6..<sp]; name := ifx sp < l.count then l[sp + 1..<l.count] else id;
+    if id.count == 0 { continue; }
+    parts := [5] string.[ifx count > 0 then ",{\"id\":" else "{\"id\":", "", ",\"name\":", "", "}"];
+    for k: 0..<5 {
+      m := ifx k == 1 then ar_json_str(id, out[n..<out.count]) else ifx k == 3 then ar_json_str(name, out[n..<out.count]) else copy(parts[k], out[n..<out.count]);
+      if m < 0 { return -1; }
+      n += m;
+    }
+    count += 1;
+  }
+  m := copy("]", out[n..<out.count]); if m < 0 { return -1; }
+  return n + m;
+}
+#test "the side's worlds as JSON" {
+  b: [200] u8;
+  n := realm_worlds_json("world splice-bots Splice Bots\nworld a-b a \"q\"\n", b[..]);
+  #assert n > 0 && cast(string) b[0..<n] == "[{\"id\":\"splice-bots\",\"name\":\"Splice Bots\"},{\"id\":\"a-b\",\"name\":\"a \\\"q\\\"\"}]";
+  #assert cast(string) b[0..<realm_worlds_json("", b[..])] == "[]" && realm_worlds_json("world x y\n", b[0..<5]) == -1;
 }
 
 realm_show :: (a: [] Args, r: [] Rep, profile: string) -> int {

@@ -491,7 +491,7 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
   // each tool's description ends with what it does and who must agree (#13435)
   #assert acct_has(s, "\"name\":\"realm_world\"") && acct_has(s, "\"name\":\"realm_world_place\"") && acct_has(s, "\"name\":\"realm_world_undo\"") && acct_has(s, "\"name\":\"realm_world_why\"") && acct_has(s, "\"name\":\"realm_world_publish\"");
   #assert acct_has(s, "\"required\":[\"slug\",\"kind\",\"x\",\"z\"]") && acct_has(s, "\"x\":{\"type\":\"integer\",\"minimum\":-10000000,\"maximum\":10000000}") && acct_has(s, "\"when\":{\"type\":\"string\",\"enum\":[\"now\",\"next\"]}");
-  #assert acct_has(s, "\"column\":{\"type\":\"string\",\"enum\":[\"x\",\"y\",\"z\",\"yaw\"") && acct_has(s, "one save [write; the owner]\"") && acct_has(s, "delete a board row [destructive; asks first: --yes]\"") && acct_has(s, "your realms [read]\"");
+  #assert acct_has(s, "\"column\":{\"type\":\"string\",\"enum\":[\"x\",\"y\",\"z\",\"yaw\"") && acct_has(s, "one save [write; the owner]\"") && acct_has(s, "delete a board row [destructive; asks first: --yes]\"") && acct_has(s, "your realms, and the worlds you may edit as the side lists them [read]\"");
   #assert acct_has(s, "\"dry_run\":{\"type\":\"boolean\"}") && acct_has(s, "\"key\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":64}");
   #assert acct_has(s, "\"annotations\":{\"destructiveHint\":true}") && acct_has(s, "\"annotations\":{\"readOnlyHint\":true}");
   #assert acct_has(s, "\"x\":{\"type\":\"number\",\"minimum\":-40,\"maximum\":40}");

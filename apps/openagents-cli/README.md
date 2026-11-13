@@ -278,7 +278,7 @@ the events are [docs/protocol/2026-10-28-projects.md](../../docs/protocol/2026-1
 ## Realms
 
 ```sh
-openagents realm list                              # your realms: SLUG VISIBILITY REV PUBLISHED NAME columns (--json: the API's objects)
+openagents realm list                              # your realms: SLUG VISIBILITY REV PUBLISHED NAME columns, then the worlds you may edit as the side lists them (--json: {realms, worlds})
 openagents realm show SLUG                         # its spec lines and its page
 openagents realm new "a koi garden at dusk"        # plan it from words and make it, private
 openagents realm new "WORDS" --style flat --time night --camera top --ground snow   # fix the setup; the rest is the model's pick
