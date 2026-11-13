@@ -66,7 +66,9 @@ if [[ "$(uname -s)" == Darwin ]]; then
 else
   # PGDG's postgresql-16 (Debian 12 ships 15), else the newest installed.
   pgbin=/usr/lib/postgresql/16/bin
-  [[ -x "$pgbin/initdb" ]] || pgbin="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -n 1)"
+  [[ -x "$pgbin/initdb" ]] || pgbin="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -n 1 || true)"
+  # Elsewhere (NixOS, a Nix shell): the Postgres on the PATH.
+  [[ -x "$pgbin/initdb" ]] || { on_path="$(command -v initdb 2>/dev/null || true)"; [[ -z "$on_path" ]] || pgbin="$(dirname "$on_path")"; }
   [[ -x "$pgbin/initdb" ]] || { echo "test.sh: no Postgres server (initdb) in /usr/lib/postgresql; coax/remote/host-startup.sh installs postgresql-16" >&2; exit 1; }
   cc="${CC:-}"; [[ -n "$cc" ]] || { command -v clang > /dev/null && cc=clang || cc=gcc; }
   pq_inc=(-I"$(pg_config --includedir 2>/dev/null || echo /usr/include/postgresql)"); pq_lib=()
