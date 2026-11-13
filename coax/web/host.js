@@ -3832,7 +3832,7 @@ function paneOpen() {
   const name = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_pane(arena.state), x.coaxial_pane_len(arena.state)));
   if (!/^[a-z][a-z0-9-]{0,31}$/.test(name)) return;   // none yet (the page has not read its address), or none asked for
   paneApp = name; paneAsked = true;
-  const root = document.createElement("div"); // a page's pane
+  const root = document.createElement("div"); // page pane
   root.id = "coaxial-pane"; root.dataset.coaxialDock = "";
   document.body.appendChild(root);
   import(`/coaxial/dom-host.js?app=${paneApp}&root=${root.id}`).catch((error) => { console.error(error); document.documentElement.dataset.coaxialError = String(error); });
