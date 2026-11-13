@@ -139,11 +139,14 @@ LdRelay :: struct {
 }
 ld_why :: (c: [] LdRelay, s: string) -> bool { n := copy(s, c[0].why[..]); c[0].why_n = ifx n < 0 then 0 else n; return false; }
 ld_relay_why :: (c: [] LdRelay) -> string { return cast(string) c[0].why[0..<c[0].why_n]; }
+LD_OPEN_TRIES :: 3;   // opens of one relay connection before the capture gives up
 ld_open :: (c: [] LdRelay, url: string) -> bool {
   if !((url.count > 6 && url[0..<6] == "wss://") || (url.count > 5 && url[0..<5] == "ws://")) { return ld_why(c, "relay URL must be ws:// or wss://"); }
   c[0].observed = 0; c[0].bytes = 0;
-  c[0].open = relay_conn_open(c[0].conn[..], url);
-  return c[0].open || ld_why(c, "public relay unavailable");
+  // The relay sometimes holds a connection's opening handshake past relay_conn's 5 s (seen from the
+  // build hosts on 2026-11-13, #13488), so a refused open is tried again before the capture stops.
+  for attempt: 0..<LD_OPEN_TRIES { c[0].open = relay_conn_open(c[0].conn[..], url); if c[0].open { return true; } }
+  return ld_why(c, "public relay unavailable");
 }
 ld_close :: (c: [] LdRelay) {
   if c[0].open { ok := relay_conn_close(c[0].conn[..], WS_CLOSE_NORMAL); }

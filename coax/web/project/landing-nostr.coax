@@ -12,7 +12,7 @@
   #assert lr_page_end(-1,10,1,false,1,1)==10;
   #assert lr_page_end(10,10,2,false,2,2)== -2;
   #assert lr_page_end(10,10,1,false,2,2)==9;
-  #assert lr_page_end(10,10,1,false,2,1)== -2;
+  #assert lr_page_end(10,10,1,false,2,1)==9;   // one event, read again at its second: a relay with no "finish"
   #assert lr_page_end(0,0,1,false,2,2)== -1;
   #assert lr_page_end(10,11,1,false,2,2)== -2;
   #assert lr_page_end(-1,0,0,false,2,2)== -1;
@@ -73,10 +73,16 @@ LrQuery :: struct {
   filter:[8192]u8;filter_n:int;serial:int;pages:int;until:int=-1;
   count:int;oldest:int=-1;peak:int;state:int;seen:int;ids:[LR_EVENTS*32]u8;
 }
+// Where the next page starts, as apps/openagents-cli/project-rules.coax's pr_page reads a relay:
+// -1 the end (an empty page or the relay's NIP-67 "finish"), -2 refused. until is inclusive, so a
+// page that ends at the same second again moves one second back when it held that second's one
+// event, and is refused when it held more (a cohort the relay may have cut). A relay with no
+// "finish" (relay.openagents.com since the Coax relay, #13361) ends a lone event's read with
+// such a page and then an empty one. peak (the largest page) is kept for the caller's record.
 lr_page_end :: (until:int,oldest:int,count:int,finished:bool,pages:int,peak:int)->int #effects(all) {
   if finished || count==0 {return -1;}
   if oldest<0 || (until>=0 && oldest>until) || pages>=100 {return -2;}
-  if oldest==until {if count>1 || peak<2 {return -2;}return ifx oldest==0 then -1 else oldest-1;}
+  if oldest==until {if count>1 {return -2;}return ifx oldest==0 then -1 else oldest-1;}
   return oldest;
 }
 lr_newer :: (generation:int,observed:int,held_generation:int,held_observed:int)->bool #export_c #effects(all) {
