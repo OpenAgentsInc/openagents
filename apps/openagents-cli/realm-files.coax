@@ -40,10 +40,13 @@ rf_print :: (r: [] Rep, w: [] RfWork) -> int {
     rep_str(r, "files", fw_write(l, w[0].scratch[..]));
     return rep_done(r, EXIT_OK);
   }
+  // after a write: what it did, and the line of the attachment it did it to (none for a detach); else the whole list
+  did := ifx l[0].did > 0 then fw_find(l, cast(string) l[0].did_id[..]) else -1;
   if l[0].did > 0 { print("% %\n", FW_DID[l[0].did], cast(string) l[0].did_id[..]); }
   if l[0].bytes < 1048576 { print("% attachment(s) in the project, % KB", l[0].count, (l[0].bytes + 1023) / 1024); } else { print("% attachment(s) in the project, % MB", l[0].count, fw_mb(l[0].bytes)); }
   print(" of % MB; % files at most, % MB a file\n", fw_mb(FW_TOTAL_MAX), FW_FILES_MAX, fw_mb(FW_FILE_MAX));
   for i: 0..<l[0].n {
+    if l[0].did > 0 && i != did { continue; }
     f := l[0].f[i];
     print("% % % %", fw_id_of(l, i), FW_SCOPES[f.scope], FW_KINDS[f.kind], fw_name_of(l, i));
     if f.kind == FW_LINK_KIND { print(" <%>", fw_url_of(l, i)); } else { print(" (% KB)", (f.bytes + 1023) / 1024); }
