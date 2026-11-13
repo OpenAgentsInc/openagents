@@ -49,6 +49,8 @@ class Snapshot(unittest.TestCase):
   (repo/'coax/bin').mkdir(parents=True);(repo/'coax/build.sh').write_text('#!/bin/sh\nexit 0\n');(repo/'coax/build.sh').chmod(0o755)
   (repo/'coax/bin/coax').write_text('#!/bin/sh\nwhile [ $# -gt 0 ]; do [ "$1" = --header ] && { printf "/* h */\\n" > "$2"; }; shift; done\nprintf "/* c */\\n"\n');(repo/'coax/bin/coax').chmod(0o755)
   for m in ('nip98','mesh-policy','caller-policy'):(api/(m+'.coax')).write_text('fixture\n')
+  # deploy.sh asks for staging's lock first (coax/web/room/vm-deploy.sh lock check, #13398): a stand-in that says staging is free.
+  room=repo/'coax/web/room';room.mkdir(parents=True);(room/'vm-deploy.sh').write_text('#!/bin/sh\n[ "$1 $2" = "lock check" ] || exit 64\nexit 0\n');(room/'vm-deploy.sh').chmod(0o755)
   for f,body in {'fixture.c':'committed source\n','fixture.h':'committed header\n','Dockerfile':'committed Dockerfile\n','admins.conf':'','migrations/fixture.sql':'committed migration\n','test.sh':'#!/bin/sh\nset -eu\ntest "$(git -C "$(dirname "$0")" rev-parse HEAD)" = "$FIXTURE_COMMIT"\nprintf tested > "$FIXTURE_ROOT/tested"\n'}.items():
    p=api/f;p.write_text(body)
   (api/'test.sh').chmod(0o755)

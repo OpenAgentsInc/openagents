@@ -82,10 +82,32 @@ cat > "$work/bin/curl" <<'MOCK'
 touch "$DEPLOY_FIXTURE_CURL"
 printf '{"ok":true}\n'
 MOCK
-chmod +x "$work/api/test.sh" "$work/bin/git" "$work/bin/gcloud" "$work/bin/curl"
+# deploy.sh asks for staging's lock first (coax/web/room/vm-deploy.sh lock check, #13398): a stand-in
+# beside the fixture's api folder, which records the ask and answers as DEPLOY_FIXTURE_LOCK says
+mkdir -p "$work/room"
+cat > "$work/room/vm-deploy.sh" <<'MOCK'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$DEPLOY_FIXTURE_LOCK_LOG"
+[[ "${DEPLOY_FIXTURE_LOCK:-free}" == free ]] || { echo 'room-vm: REFUSED. Staging is held by release-set fixture.1' >&2; exit 1; }
+MOCK
+chmod +x "$work/api/test.sh" "$work/bin/git" "$work/bin/gcloud" "$work/bin/curl" "$work/room/vm-deploy.sh"
+# a release holds staging: the deploy stops before it builds or asks the cloud for anything
 status=0
 PATH="$work/bin:$PATH" DEPLOY_FIXTURE_REPO="$work" DEPLOY_FIXTURE_API="$work/api" DEPLOY_FIXTURE_LOG="$work/calls" DEPLOY_FIXTURE_CURL="$work/curl-called" \
-  bash "$work/api/deploy.sh" >"$work/callsite.log" 2>&1 || status=$?
+  DEPLOY_FIXTURE_LOCK=held DEPLOY_FIXTURE_LOCK_LOG="$work/lock-calls" OA_STAGING_LOCK="" OA_ROOM_VM_STANDIN="" bash "$work/api/deploy.sh" >"$work/held.log" 2>&1 || status=$?
+[[ "$status" == 1 ]] || { echo "a deploy under another release's lock returned $status" >&2; exit 1; }
+grep -q 'api: REFUSED' "$work/held.log" && grep -q 'release-set fixture.1' "$work/held.log" || { echo 'the refusal did not name the holder' >&2; exit 1; }
+[[ ! -e "$work/calls" ]] || { echo 'a deploy under the lock reached the cloud' >&2; exit 1; }
+grep -qx 'lock check' "$work/lock-calls" || { echo 'the lock was not asked' >&2; exit 1; }
+# the release's own deploy passes its token on
+status=0; : > "$work/lock-calls"
+PATH="$work/bin:$PATH" DEPLOY_FIXTURE_REPO="$work" DEPLOY_FIXTURE_API="$work/api" DEPLOY_FIXTURE_LOG="$work/calls" DEPLOY_FIXTURE_CURL="$work/curl-called" \
+  DEPLOY_FIXTURE_LOCK=held DEPLOY_FIXTURE_LOCK_LOG="$work/lock-calls" OA_STAGING_LOCK="" OA_ROOM_VM_STANDIN="" bash "$work/api/deploy.sh" --lock abc123 --staging >/dev/null 2>&1 || status=$?
+grep -qx 'lock check --lock abc123' "$work/lock-calls" || { echo "the release's token was not passed to the lock" >&2; exit 1; }
+[[ ! -e "$work/calls" ]] || { echo 'a refused deploy reached the cloud' >&2; exit 1; }
+status=0
+PATH="$work/bin:$PATH" DEPLOY_FIXTURE_REPO="$work" DEPLOY_FIXTURE_API="$work/api" DEPLOY_FIXTURE_LOG="$work/calls" DEPLOY_FIXTURE_CURL="$work/curl-called" \
+  DEPLOY_FIXTURE_LOCK=free DEPLOY_FIXTURE_LOCK_LOG="$work/lock-calls" OA_STAGING_LOCK="" OA_ROOM_VM_STANDIN="" bash "$work/api/deploy.sh" >"$work/callsite.log" 2>&1 || status=$?
 [[ "$status" != 0 ]] || { echo 'failed staging deploy returned success' >&2; exit 1; }
 grep -q '^run deploy oa-api-staging ' "$work/calls" || { echo 'fixture did not reach staging deploy' >&2; exit 1; }
 grep -q 'simulated deployment failure' "$work/callsite.log"
