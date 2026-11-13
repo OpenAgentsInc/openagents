@@ -49,3 +49,9 @@ RECOVERY.
   passkeys, and every other login ends.
 
 You can ask for recovery 3 times a week. Every limit is listed at [/docs/limits](/docs/limits).
+
+## Freeze
+
+If a notice tells you about a change you didn't make, choose FREEZE. It opens
+[/settings/data](/settings/data/index.md), where FREEZE MY ACCOUNT ends every login and cancels
+any recovery.

@@ -4,8 +4,9 @@
 //
 // What it shows: the ways in (emails, keys, passkeys, the recovery code), adding a key or a
 // passkey, naming a passkey, removing a way in, a new recovery code (shown once), the delayed
-// recovery (ask, its end time, cancel, finish with a new key) and the security notices the
-// account was sent.
+// recovery (ask, its end time, cancel, finish with a new key), the security notices the
+// account was sent, and FREEZE, which goes to /settings/data where the account is frozen (the
+// apps open this page from a notice's push, #13233).
 //
 // The re-auth prompt: any change the API refuses with "step_up" (L2, or L2 within 5 minutes)
 // opens CONFIRM IT'S YOU: use a passkey on the account (WebAuthn, key.js), sign with a key on it
@@ -50,7 +51,9 @@ SH_SIGN :: 7; SH_FIELD :: 8; SH_USE :: 9; SH_BACK :: 10; SH_COPY :: 11; SH_DONE 
 SH_ROW :: 15;   // SH_ROW + 2 * SC_WAYS
 // Passkeys: CONFIRM IT'S YOU's USE A PASSKEY, ADD A PASSKEY, the name being typed, SAVE, CANCEL,
 // and each row's RENAME (SH_PK_ROW + i) and REMOVE (SH_PK_DEL + i).
-SH_PASSKEY :: 31; SH_ADD_PK :: 32; SH_PK_FIELD :: 33; SH_PK_SAVE :: 34; SH_PK_CANCEL :: 35; SH_PK_ROW :: 36; SH_PK_DEL :: 56; SH_HITS :: 76;
+SH_PASSKEY :: 31; SH_ADD_PK :: 32; SH_PK_FIELD :: 33; SH_PK_SAVE :: 34; SH_PK_CANCEL :: 35; SH_PK_ROW :: 36; SH_PK_DEL :: 56;
+SH_FREEZE :: 76;   // to /settings/data, where the account is frozen: what a notice that wasn't you asks for (#13233)
+SH_HITS :: 77;
 
 ScWay :: struct { id: int; text: [80] u8; n: int; }
 ScNote :: struct { at: int; what: [24] u8; n: int; }
@@ -549,6 +552,7 @@ sc_press :: (s: [] Sc, h: int) {
   if h < 0 { return; }
   if h == SH_HOME { sc_go(s, "/"); return; }
   if h == SH_LIMITS { sc_go(s, "/docs/limits"); return; }
+  if h == SH_FREEZE { sc_go(s, "/settings/data"); return; }
   if h == SH_LOGIN { sc_go(s, "/login?next=%2Fsettings%2Fsecurity"); return; }
   sc := s[0].screen;
   if sc == SC_STEP {
@@ -623,6 +627,7 @@ sc_order :: (s: [] Sc, out: [] int) -> int {
     if s[0].rec == 2 { out[n] = SH_FINISH; n += 1; }
     if s[0].limited && s[0].rec != 1 && s[0].rec != 2 { out[n] = SH_ASK; n += 1; }
     out[n] = SH_LIMITS; n += 1;
+    out[n] = SH_FREEZE; n += 1;
   }
   if sc == SC_STEP {
     if s[0].by_passkey { out[n] = SH_PASSKEY; n += 1; }
@@ -685,7 +690,8 @@ sc_layout :: (s: [] Sc) {
       y += 12;
     }
     y += 26 + cast(f32) (ifx s[0].nn == 0 then 1 else s[0].nn) * 24 + 12;   // NOTICES
-    s[0].hits[SH_LIMITS] = Box.{x0 = x0, y0 = y, x1 = x0 + 64, y1 = y + 28}; y += 28 + 14;
+    s[0].hits[SH_LIMITS] = Box.{x0 = x0, y0 = y, x1 = x0 + 64, y1 = y + 28}; y += 28;
+    s[0].hits[SH_FREEZE] = Box.{x0 = x0, y0 = y, x1 = x0 + 64, y1 = y + 28}; y += 28 + 14;
   }
   if sc == SC_STEP {
     y += sc_tall(SC_STEP_WORDS, w, SC_PARA) + 12;
@@ -836,6 +842,9 @@ sc_body :: (s: [] Sc, out: [] f32, at: int, p: Pen, still: bool) -> int {
     l := s[0].hits[SH_LIMITS]; hot := sc_hover(s, SH_LIMITS);
     v = put(out, v, "LIMITS", l.x0 * d, (l.y0 + 18) * d, 6.4 * d, ink(p, ifx hot then INK_BLUE else INK_DIM));
     v = put_fit(out, v, "Recovery asks and code tries", (l.x0 + 70) * d, (l.y0 + 18) * d, 7.0 * d, lg_text(p, INK_FAINT), (w - 70) * d);
+    f := s[0].hits[SH_FREEZE]; fhot := sc_hover(s, SH_FREEZE);
+    v = put(out, v, "FREEZE", f.x0 * d, (f.y0 + 18) * d, 6.4 * d, ink(p, ifx fhot then INK_BLUE else INK_DIM));
+    v = put_fit(out, v, "End every login and stop any recovery", (f.x0 + 70) * d, (f.y0 + 18) * d, 7.0 * d, lg_text(p, INK_FAINT), (w - 70) * d);
   }
   if sc == SC_STEP {
     v = lg_para(out, v, SC_STEP_WORDS, x, y, w, SC_PARA, lg_text(p, INK_PALE), d, below[..]); y = below[0] + 12;
@@ -1127,6 +1136,16 @@ SC_T_CH :: "challenge AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8\nrp_id openage
   #assert t[0].screen == SC_STEP && t[0].todo == DO_ADD_PK;
   // a notice of a copied passkey is named
   #assert sc_notice_said("passkey.clone") == "A passkey may have been copied" && sc_notice_said("link.passkey") == "A passkey was added" && sc_notice_said("x") == "A security notice";
+}
+#test "security: FREEZE goes to the page that freezes the account" {
+  cb: [2048] u8;
+  s: [1] Sc; sc_new(s[..]); s[0].w = 1280.0f32; s[0].h = 800.0f32;
+  sc_reply(s[..], 1, sc_cat(cb[..], "200\n", SC_T_WAYS)); sc_reply(s[..], 2, "200\n");
+  #assert sc_shown(s[..], SH_FREEZE) && sc_shown(s[..], SH_LIMITS);
+  l := s[0].hits[SH_LIMITS]; f := s[0].hits[SH_FREEZE];
+  #assert f.x1 > f.x0 && f.y0 >= l.y1;
+  sc_press(s[..], SH_FREEZE);
+  #assert s[0].action == SC_ACT_GO && sc_out(s[..]) == "/settings/data";
 }
 #test "security: the first Tab with nothing focused lands on the first control and walks the whole order" {
   cb: [2048] u8;
