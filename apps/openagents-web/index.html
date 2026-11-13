@@ -51,6 +51,7 @@ try {
 } catch {}
 if (inside) {
   document.documentElement.classList.add("inside");
+  document.getElementById("coaxial")?.remove();   // no engine draws here (and window.coaxial would name the canvas)
   const root = document.createElement("div"); root.id = "home-root"; document.body.appendChild(root);
   const shell = document.createElement("script"); shell.type = "module"; shell.src = "/coaxial/dom-host.js";
   shell.dataset.app = "chat-web"; shell.dataset.root = "home-root";
