@@ -32,12 +32,24 @@ legacy selection.
 
 ## Commands and accepted state
 
-`I SEQ THROTTLE STEER FLAGS PAINT CLOCK HEARD` supplies the latest controls.
+`I SEQ THROTTLE STEER FLAGS PAINT CLOCK HEARD` supplies one tick's controls.
 The room ignores repeated or older sequence numbers and acknowledges only
 controls actually consumed by its world step. The match clock, collision,
-fuel, goals and car transforms remain server state. The page displays the
-authoritative snapshots; it does not submit a transform as evidence.
+fuel, goals and car transforms remain server state. The page does not submit
+a transform as evidence.
 After one second without fresh controls, the room releases them.
+
+The room steps a seat's controls one a tick, in the order sent (#13277). Up
+to four wait; more than two waiting at a tick lose the oldest, so controls
+are never more than two ticks late; with none waiting, the last one holds.
+`ACK` names the control the tick was stepped with.
+
+The page steps its own car with the same step as it sends each control,
+keeps the controls by `SEQ`, and when a snapshot's `ACK` and row differ from
+where its steps had the car after that control, starts again from the row
+and steps the controls after it (`metaverse-engine/net/predict.coax`). It
+draws the ball and the other cars from their snapshots a jitter buffer
+behind (`metaverse-engine/net/interp.coax`). No field was added to the wire.
 
 Records use space-separated decimal whole numbers. Inputs are at most 256
 bytes; complete server frames are at most 2,048 bytes. A sequence is positive

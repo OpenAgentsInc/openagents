@@ -53,7 +53,7 @@ oq_save :: (c:[]Cdp,out:string,suffix:string) {
   path:[2048]u8;o:[1]Jo; // paths are bounded arguments, never shell text
   n:=0;for t:[3]string.[out,"/",suffix] {for ch:t {if n<path.count {path[n]=ch;n+=1;}}}
   buf:[524288]u8;
-  t:=oq_text(c,"JSON.stringify({sent:__oq.sent,received:__oq.received,errors:__oq.errors,probe:[0,1,2,3,4,5,6,7,8,100,110,111,112,113,120,121,122,123].map(x=>[x,coaxial.fieldProbe(x)])},null,2)",buf[..]);
+  t:=oq_text(c,"JSON.stringify({sent:__oq.sent,received:__oq.received,errors:__oq.errors,probe:[0,1,2,3,4,5,6,7,8,10,11,12,13,100,110,111,112,113,120,121,122,123,211,212,213,221,222,223].map(x=>[x,coaxial.fieldProbe(x)])},null,2)",buf[..]);
   _:=fs_write(cast(string)path[0..<n],t);
 }
 oq_run :: (a:[]Cdp,b:[]Cdp,url:string,out:string,quick:bool)->bool {
@@ -69,7 +69,15 @@ oq_run :: (a:[]Cdp,b:[]Cdp,url:string,out:string,quick:bool)->bool {
   players:=ifx quick then 4 else 2;
   if !before.ok || !other.ok || before.h[1]==other.h[1] || before.h[11]!=players || other.h[11]!=players {tool_errln("Orbit: admitted seats or quick bots missing");return false;}
   row:=(before.h[1]+1)*ORB_FIELDS;x:=cast(int)before.v[row];z:=cast(int)before.v[row+2];
-  if !oq_key(a,true) {return false;}proc_sleep(2500);released:=oq_key(a,false);if !released {return false;}
+  if !oq_key(a,true) {return false;}proc_sleep(1500);
+  // While it drives, the page steps its own car (#13277): controls wait for the room, and the car is
+  // drawn ahead of the room's last word on it.
+  pv:=cdp_evaluate(a,"[coaxial.fieldProbe(10),coaxial.fieldProbe(111),coaxial.fieldProbe(113),coaxial.fieldProbe(211),coaxial.fieldProbe(213)]");
+  if pv<0 {return false;}pd:=cdp_doc(a);
+  waits:=jv_int(pd,jv_at(pd,pv,0),-1);
+  ahead:=abs(f64(jv_int(pd,jv_at(pd,pv,3),0)-jv_int(pd,jv_at(pd,pv,1),0)))+abs(f64(jv_int(pd,jv_at(pd,pv,4),0)-jv_int(pd,jv_at(pd,pv,2),0)));
+  if waits<1 || ahead<50 {tool_errln("Orbit: the page did not step its own car ahead of the room's word");return false;}
+  proc_sleep(1000);released:=oq_key(a,false);if !released {return false;}
   after:=oq_last(a);
   if !after.ok || after.h[3]<=before.h[3] || !oq_moved(x,z,cast(int)after.v[row],cast(int)after.v[row+2]) {tool_errln("Orbit: real controls did not move the server car");return false;}
   if quick {
@@ -102,6 +110,7 @@ oq_run :: (a:[]Cdp,b:[]Cdp,url:string,out:string,quick:bool)->bool {
     tool_errln("Orbit: displayed pose differs from its accepted server snapshot");return false;
   }
   print("Orbit pages: common tick %, seats %/%, consumed ACK %, displayed tick %, pose %,%\n",shared.h[0],shared.h[1],matching.h[1],forged.h[3],seen,px,pz);
+  print("Orbit prediction: % controls waited, drawn % mm ahead, % re-runs moved the car, the farthest % mm, the others drawn % ms behind\n",waits,cast(int)ahead,oq_int(a,"coaxial.fieldProbe(11)"),oq_int(a,"coaxial.fieldProbe(12)"),oq_int(a,"coaxial.fieldProbe(13)"));
   oq_save(a,out,"a.json");oq_save(b,out,"b.json");
   cdp_close(b);proc_sleep(500);
   departed:=oq_last(a);if !departed.ok {return false;}

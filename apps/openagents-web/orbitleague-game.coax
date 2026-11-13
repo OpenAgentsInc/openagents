@@ -16,6 +16,8 @@
 #load "../../verse/sphere.coax";
 #load "../../metaverse-engine/core/loop.coax";   // Aethyr's one clock: fixed 120 Hz steps
 #load "orbit-snapshot.coax";
+#load "../../metaverse-engine/net/predict.coax";   // your car's controls by number, for the re-run (#13277)
+#load "../../metaverse-engine/net/interp.coax";    // the ball and the other cars a jitter buffer behind; your corrections eased
 
 PLATES :: 16;
 TRAIL_N :: 8;
@@ -104,6 +106,7 @@ ROOM_NAME :: 32;
 ROOM_PLAYERS :: 4;
 LAG_FRAMES :: 48;        // ?lag=MS: frames held each way (48 at 60 Hz: up to 800 ms)
 LAG_BYTES :: 2048;        // the v2 profile's complete bounded snapshot
+ORB_RING :: 24;          // snapshots kept of each other body on the v2 profile: 400 ms at 60 Hz, past the jitter buffer's ceiling (NET_HIGH)
 PREDICT_MAX :: 72;       // the ball is replayed at most this many steps (0.6 s)
 HIST :: 128;             // your car's last steps, for the replay
 SMOOTH :: 0.12;          // a correction fades over about this many seconds
@@ -199,6 +202,20 @@ OrbitLeague :: struct {
   net_t: f64; rtt: f64; ball_err: D3;
   you_hist: [HIST] RigidBody; hist_n: int;
   oth_prev: RigidBody; oth_last: RigidBody; oth_at: f64; oth_gap: f64 = 1.0 / 60.0; oth_n: int;
+  // ol-predict (#13277), the v2 profile: your car is stepped on the page with the room's own step
+  // (physics_step_masked), its controls kept by number until the room says it stepped them
+  // (metaverse-engine/net/predict.coax); the ball and the other cars are drawn a jitter buffer
+  // behind from their snapshots (metaverse-engine/net/interp.coax). bodies[] is what is drawn.
+  pred: [1] NetPredict; fix: [1] NetCorrect;
+  you: RigidBody;                               // where your steps have your car
+  word: [BODIES] RigidBody; word_fuel: f64;     // the newest snapshot's bodies (yours: the room's word on you) and your fuel
+  pred_at: [NET_PREDICT_HIST] int;              // each kept control's number, and your car as its steps left it:
+  pred_body: [NET_PREDICT_HIST] RigidBody; pred_car: [NET_PREDICT_HIST] VehicleState;
+  pred_fuel: [NET_PREDICT_HIST] f64; pred_stuck: [NET_PREDICT_HIST] f64;
+  rerun: bool;                                  // a re-run's steps: no sparks, no shake, no pad taken twice
+  reruns: int #counter; fix_mm: int;            // re-runs that moved you, and the farthest one, mm
+  rings: [BODIES * ORB_RING] NetState; ring_n: [BODIES] int;   // each other body's last snapshots, its turn in ax, az, age
+  jit: NetJitter; jit_ticks: int; jit_tick0: int; jit_t0: int; jit_last: int; jit_delay: int; jit_lag: f32;
   lag: f64; in_q: [LAG_FRAMES][LAG_BYTES] u8; in_len: [LAG_FRAMES] int; in_due: [LAG_FRAMES] f64; in_head: int; in_n: int;
   lag_oq: [LAG_FRAMES][256] u8; lag_olen: [LAG_FRAMES] int; lag_odue: [LAG_FRAMES] f64; lag_ohead: int; lag_on: int;
   cam_up: [3] f32;            // the camera's up, eased (the drum turns it)
@@ -216,6 +233,12 @@ OrbitLeague :: struct {
   pads_taken: int;
   track: [1] Track;
   stage: int;                 // a staged moment (?stage=NAME) running: STAGE_*
+}
+
+// A v2 control's whole numbers as the drive the step takes: the room's and the page's one reading
+// (orbit/server/room.coax olr_auth_tick, orbitleague.coax's prediction).
+orb_drive :: (throttle: int, steer: int, flags: int) -> Drive {
+  return Drive.{input = VehicleInput.{throttle = f64(throttle) / 1000, steer = f64(steer) / 1000, handbrake = (flags & 1) != 0, jump = (flags & 2) != 0}, boost = (flags & 4) != 0};
 }
 
 // ---- the arena
@@ -969,6 +992,7 @@ rnd :: (s: [] OrbitLeague) -> f64 {
 // n sparks from `at`, flying out at up to `speed` on top of `push`: white,
 // or some in a team's colour (team -1: all white).
 burst :: (s: [] OrbitLeague, at: D3, push: D3, speed: f64, n: int, team: int, life: f64, size: f64) {
+  if s[0].rerun { return; }   // a re-run of steps already drawn (ol-predict)
   for i: 0..<n {
     z := rnd(s) * 2.0 - 1.0; a := rnd(s) * TAU_D; r := sqrt(fmax(0.0, 1.0 - z * z));
     sp: Spark;

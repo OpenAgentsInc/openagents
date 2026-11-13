@@ -24,14 +24,21 @@ OLR_PATH :: "/api/room/orbit-league/";
 OLR_PATH_V2 :: "/api/room/orbit-league-v2/";
 QUICK_WAIT :: 10.0;      // a quick match waits this long for players, then bots take the empty seats
 
-// The v2 profile's per-room state: each seat's generation, admission, latest control and receipts.
+// A seat's controls wait their turn (#13277): the room steps one a tick, in the order they were
+// sent, so a page that steps each control it sends (orbitleague.coax's prediction) and the room
+// step the same ones. ORB_QUEUE are held; more than ORB_QUEUE_KEEP waiting at a tick (a burst after
+// a stall) lose the oldest, so a seat's controls are never more than that many ticks late. With
+// none waiting the last one holds, until it is stale (ORB_INPUT_STALE_MS).
+ORB_QUEUE :: 4; ORB_QUEUE_KEEP :: 2;
+// The v2 profile's per-room state: each seat's generation, admission, controls and receipts.
 // Admission, command, field and receipt decisions are the checked contracts in orbit-session.coax
 // and metaverse-engine/net. Physics is the game's shared step.
 OrbAuthority :: struct {
   enabled:bool;initialized:bool;
   generation:[ROOM_PLAYERS]SeatGeneration;
   admitted:[ROOM_PLAYERS]bool;refusal:[ROOM_PLAYERS]int;
-  input:[ROOM_PLAYERS]OrbInput;heard_ms:[ROOM_PLAYERS]int;
+  input:[ROOM_PLAYERS]OrbInput;heard_ms:[ROOM_PLAYERS]int;   // the control each seat's car is stepped with
+  queue:[ROOM_PLAYERS*ORB_QUEUE]OrbInput;queued:[ROOM_PLAYERS]int;   // those that wait, oldest first
   ack:[ROOM_PLAYERS]int;echo:[ROOM_PLAYERS]int;heard:[ROOM_PLAYERS]int;
   refused:int #counter;accepted:int #counter;snapshots:int #counter;
 }
@@ -262,7 +269,7 @@ olr_auth_join :: (v:[]RmServer,r:int,seat:int,conn:int)->bool {
   v[0].games.orbit.generation=next;v[0].conns[conn].gen=next;
   m:=v[0].games.orbit.rooms[r..<r+1];a:=m[0].auth[..];
   a[0].generation[seat]=next;a[0].admitted[seat]=false;a[0].refusal[seat]=0;
-  a[0].input[seat]=OrbInput.{};a[0].ack[seat]=0;a[0].echo[seat]=-1;a[0].heard[seat]=0;
+  a[0].input[seat]=OrbInput.{};a[0].ack[seat]=0;a[0].echo[seat]=-1;a[0].heard[seat]=0;a[0].queued[seat]=0;
   m[0].s[0].bodies[seat+1]=m[0].cars[seat];
   m[0].s[0].cars[seat]=VehicleState.{};
   m[0].s[0].tanks[seat]=tank(BOOST_START,100,false);
@@ -274,18 +281,33 @@ olr_auth_heard :: (v:[]RmServer,conn:int,text:string) {
   if text.count>0 && text[0]=='H' {
     why:=orb_admit(text,a[0].initialized);a[0].refusal[c.seat]=why;
     a[0].admitted[c.seat]=why==CP_OK;
-    if why!=CP_OK {a[0].refused=add_sat(a[0].refused,1);a[0].input[c.seat]=OrbInput.{};}
+    if why!=CP_OK {a[0].refused=add_sat(a[0].refused,1);a[0].input[c.seat]=OrbInput.{};a[0].queued[c.seat]=0;}
     return;
   }
   i:=orb_input(text);
   if i.ok && a[0].admitted[c.seat] && net_replica_ack_allowed(i.heard,a[0].heard[c.seat],m[0].tick,32) {
     a[0].heard[c.seat]=i.heard;
   }
-  if !orb_input_takes(a[0].admitted[c.seat],a[0].generation[c.seat],c.gen,i,a[0].ack[c.seat],a[0].input[c.seat].seq) {
+  base:=c.seat*ORB_QUEUE;n:=a[0].queued[c.seat];
+  newest:=ifx n>0 then a[0].queue[base+n-1].seq else a[0].input[c.seat].seq;
+  if !orb_input_takes(a[0].admitted[c.seat],a[0].generation[c.seat],c.gen,i,a[0].ack[c.seat],newest) {
     a[0].refused=add_sat(a[0].refused,1);return;
   }
-  a[0].input[c.seat]=i;a[0].heard_ms[c.seat]=v[0].mono_ms;
+  if n==ORB_QUEUE {olr_auth_drop(a,c.seat);n-=1;}
+  a[0].queue[base+n]=i;a[0].queued[c.seat]=n+1;a[0].heard_ms[c.seat]=v[0].mono_ms;
   m[0].paint[c.seat]=i.paint;
+}
+// A seat's oldest waiting control goes unstepped.
+olr_auth_drop :: (a:[]OrbAuthority,seat:int) {
+  base:=seat*ORB_QUEUE;
+  for q:1..<a[0].queued[seat] {a[0].queue[base+q-1]=a[0].queue[base+q];}
+  a[0].queued[seat]-=1;
+}
+// This tick's control for a seat: the oldest that waits, or the last one again.
+olr_auth_next :: (a:[]OrbAuthority,seat:int) {
+  while a[0].queued[seat]>ORB_QUEUE_KEEP {olr_auth_drop(a,seat);}
+  if a[0].queued[seat]==0 {return;}
+  a[0].input[seat]=a[0].queue[seat*ORB_QUEUE];olr_auth_drop(a,seat);
 }
 olr_active :: (v:[]RmServer,r:int,active:[]bool,human:[]bool)->int {
   for q:0..<ROOM_PLAYERS {active[q]=false;human[q]=false;}
@@ -308,6 +330,7 @@ olr_auth_tick :: (v:[]RmServer,r:int) {
   if m[0].quick>0 {for c:0..<m[0].quick {if !human[c] {active[c]=true;}}}
   if !net_world_steps(a[0].initialized,m[0].live,players==0) || !net_session_saved(orb_realm().beat.durable,false,0) {return;}
   m[0].s[0].cars_n=CARS;
+  for c:0..<CARS {if active[c] && human[c] {olr_auth_next(a,c);}}
   for step:0..<orb_realm().beat.substeps {
     if m[0].s[0].kicks!=m[0].bot_kicks {
       m[0].bot_kicks=m[0].s[0].kicks;none:[CARS]bool;
@@ -319,8 +342,7 @@ olr_auth_tick :: (v:[]RmServer,r:int) {
       if !human[c] {drives[c]=bot_drive(m[0].s[..],c);continue;}
       i:=a[0].input[c];
       if orb_controls_active(i,a[0].heard_ms[c],v[0].mono_ms) {
-        drives[c]=Drive.{input=VehicleInput.{throttle=f64(i.throttle)/1000,steer=f64(i.steer)/1000,
-          handbrake=(i.flags&1)!=0,jump=(i.flags&2)!=0},boost=(i.flags&4)!=0};
+        drives[c]=orb_drive(i.throttle,i.steer,i.flags);
       }
     }
     if room_step_begin(m[0].s[..],players) {physics_step_masked(m[0].s[..],drives,active);room_step_end(m[0].s[..]);}

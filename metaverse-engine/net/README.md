@@ -119,8 +119,25 @@ of that list, drawn from the engine's ring, so a step is blended at its
 tick and a recall (a new life of its row) is never drawn as a walk. Whose
 senses its owner has rides the ring's flags.
 
-Not adopted yet: Orbit League's page draws each complete snapshot as it
-comes and predicts nothing.
+Orbit League's v2 page is the second realm on both modules (#13277,
+`apps/openagents-web/orbitleague.coax`, "ol-predict"):
+
+| What | How Orbit League does it |
+| --- | --- |
+| Its step | The game's one step, `physics_step_masked`, for your car alone: the room's two substeps a control |
+| An input's words | `THROTTLE STEER FLAGS`, the whole numbers the wire carries, read back by `orb_drive` on both sides |
+| The room's word on you | The snapshot's row for your seat and its `ACK` (`word[YOU]`, `word_fuel`) |
+| What a re-run restores that no snapshot carries | Your car's wheel and jump state, as your own steps left it after the acknowledged control (`pred_car`) |
+| When a re-run runs | Only when the snapshot is more than 2 cm, 0.1 m/s or 1 fuel from where your steps had you after that control |
+| The others | The ball and the other cars are `NetState` rings read with `net_ring_at`, the jitter buffer's delay behind; a body's turn rides the realm's three scalars and is blended with `net_ring_span` |
+
+The room steps a seat's controls one a tick in the order sent
+(`orbit/server/room.coax`, `ORB_QUEUE`), so the page and the room step the
+same ones. Your car collides with the ball where it is drawn; car against
+car is the room's alone, and shows as a correction.
+
+Not proved from a headless run: how it feels. Qualify it with two real
+pages (`coax/web/tool.sh orbit-qualification URL OUT_DIR`) and by hand.
 
 ### The drift check
 

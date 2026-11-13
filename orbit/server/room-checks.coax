@@ -43,8 +43,11 @@
     rm_heard(v[..],0,cast(string)input_buf[0..<count]);
   }
   #assert v[0].games.orbit.rooms[r].auth[0].ack[0]==1 && v[0].games.orbit.rooms[r].cars[0].pos.z==place.z;
-  rm_tick(v[..]);#assert v[0].games.orbit.rooms[r].auth[0].ack[0]==1001 && v[0].games.orbit.rooms[r].auth[0].accepted==2;
+  // a thousand controls buy one tick's steps: the newest ORB_QUEUE wait, a tick keeps ORB_QUEUE_KEEP and steps one
+  #assert v[0].games.orbit.rooms[r].auth[0].queued[0]==ORB_QUEUE;
+  rm_tick(v[..]);#assert v[0].games.orbit.rooms[r].auth[0].ack[0]==1000 && v[0].games.orbit.rooms[r].auth[0].accepted==2;
   #assert d3_dist(v[0].games.orbit.rooms[r].cars[0].pos,place)<2;
+  rm_tick(v[..]);#assert v[0].games.orbit.rooms[r].auth[0].ack[0]==1001 && v[0].games.orbit.rooms[r].auth[0].queued[0]==0;
   rm_heard(v[..],0,"I 2 -1000 0 0 3 20 0");#assert v[0].games.orbit.rooms[r].auth[0].input[0].throttle==1000;
   // The same room name on the frozen profile has a separate world and retains its reported body.
   #assert rm_join(v[..],1,"GET /api/room/orbit-league/qualified HTTP/1.1\r\n\r\n")==0;
@@ -54,6 +57,26 @@
   #assert rm_join(v[..],2,"GET /api/room/orbit-league-v2/qualified HTTP/1.1\r\n\r\n")==1;
   rm_heard(v[..],2,"H 2 1 2 1");n=rm_state(v[..],2);
   #assert cast(string)v[0].out[0..<n]=="R 2";
+}
+
+#test "Orbit v2 (#13277): a seat's controls are stepped one a tick in the order sent, and the last holds when none waits" #steps 2000000000 {
+  v:[1]RmServer;rm_init(v[..]);rm_clock(v[..],0,1762190000000);
+  #assert rm_join(v[..],0,"GET /api/room/orbit-league-v2/queued HTTP/1.1\r\n\r\n")==0;
+  r:=v[0].conns[0].room;rm_heard(v[..],0,"H 2 1 1 1");
+  v[0].games.orbit.rooms[r].s[0].phase=PHASE_PLAY;
+  // two arrive in one tick (a late packet and the next): each has its tick
+  rm_heard(v[..],0,"I 1 1000 0 0 0 10 0");rm_heard(v[..],0,"I 2 -1000 500 0 0 20 0");
+  #assert v[0].games.orbit.rooms[r].auth[0].queued[0]==2 && v[0].games.orbit.rooms[r].auth[0].ack[0]==0;
+  rm_tick(v[..]);
+  #assert v[0].games.orbit.rooms[r].auth[0].ack[0]==1 && v[0].games.orbit.rooms[r].auth[0].input[0].throttle==1000 && v[0].games.orbit.rooms[r].auth[0].echo[0]==10;
+  rm_tick(v[..]);
+  #assert v[0].games.orbit.rooms[r].auth[0].ack[0]==2 && v[0].games.orbit.rooms[r].auth[0].input[0].steer==500 && v[0].games.orbit.rooms[r].auth[0].echo[0]==20;
+  // none waits: the last one holds, and nothing new is acknowledged
+  rm_tick(v[..]);
+  #assert v[0].games.orbit.rooms[r].auth[0].ack[0]==2 && v[0].games.orbit.rooms[r].auth[0].input[0].seq==2 && v[0].games.orbit.rooms[r].auth[0].queued[0]==0;
+  // an older or repeated number is refused while newer ones wait
+  rm_heard(v[..],0,"I 5 0 0 0 0 30 0");rm_heard(v[..],0,"I 4 0 0 0 0 30 0");rm_heard(v[..],0,"I 5 0 0 0 0 30 0");
+  #assert v[0].games.orbit.rooms[r].auth[0].queued[0]==1 && v[0].games.orbit.rooms[r].auth[0].refused==2;
 }
 
 #test "a room's path names it; anything else is no room" {
