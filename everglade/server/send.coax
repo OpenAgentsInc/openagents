@@ -225,11 +225,16 @@ eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   st[0].link_used += st[0].rep[0].bytes; st[0].link_drop += st[0].rep[0].left;
   v[0].st.link_cuts += ifx st[0].link.congested then 1 else 0;
   observed_seat:=k*EG_SEATS+s;v[0].st.rows_last[observed_seat]=0;v[0].st.left_last[observed_seat]=st[0].rep[0].left;v[0].st.rows_deferred+=st[0].rep[0].left;
-  for q: 0..<wire_entries(cast(string) rows[0..<n], 0) {
-    en := wire_entry(cast(string) rows[0..<n], 0, q);
+  // each entry once, in one pass over the bytes (wire_entry from the start for each was the square of them, #13278)
+  rt := cast(string) rows[0..<n]; ri := 0;
+  while ri < rt.count && rt[ri] == ' ' { ri += 1; }
+  while ri < rt.count || (ri == rt.count && ri > 0 && rt[ri - 1] == ';') {
+    re := ri; while re < rt.count && rt[re] != ';' { re += 1; }
+    en := rt[ri..<re];
     if en.count>1&&((en[0]=='s'&&en[1]==' ')||en[0]=='S'){v[0].st.rows+=1;v[0].st.row_bytes+=en.count;v[0].st.rows_last[observed_seat]+=1;}
     if en.count > 0 { eg_out_entry(o[..], v, k, s_id, f, en); }
     if en.count > 1 && en[0] == 'x' && en[1] == ' ' { v[0].st.life_b += en.count + 1; }
+    ri = re + 1;
   }
   for q: 0..<rm[0].hist[0].slots { if st[0].rep[0].gone[q] != 0 && st[0].rep[0].gone_t[q] == 0 { v[0].st.life_wait += 1; } }   // x's past WIRE_LIFE_BUDGET
   // who each seat is and its WANTED level: on change, and again WIRE_RESEND ticks on until a tick that

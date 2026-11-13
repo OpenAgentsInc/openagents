@@ -1359,6 +1359,9 @@ wire_seat_frame_look :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:[]
   ordered := !st[0].datagrams;
   for q: 0..<h[0].slots {
     id1 := cast(int) h[0].id[row * WIRE_ZSLOTS + q];
+    // a slot that holds nothing and that this seat holds, was sent and is owed nothing of: nothing to do
+    // (most of a zone's 780 slots for most of its 150 seats, #13278)
+    if id1 == 0 && st[0].held[q] == 0 && st[0].sent[q] == 0 && st[0].gone[q] == 0 && st[0].gone2[q] == 0 { st[0].since[q] = 0; continue; }
     if id1!=0 || st[0].held[q]!=0 {st[0].wanted[q]=ifx q<fields.count then fields[q] else 0;}
     dx := h[0].x[q] - px; dz := h[0].z[q] - pz; d2 := dx * dx + dz * dz;
     pk := ifx q < pick.count then pick[q] else -1.0f32;
