@@ -1,0 +1,40 @@
+// The question after a crash (GitHub #13379; docs/deployment/crash-reports.md), on a host that draws
+// its own (the Android app: it has no system alert to raise). The host says a crash log waits
+// (sc_crash_ask); the list shows the question in place of its rows, once; the answer is the host's to
+// take (sc_crash_take) and keep. Nothing leaves the device before a yes. The iPhone and Mac apps
+// ask with the system's alert (apps/shared/host/apple/CrashReports.swift), with these words.
+CA_NONE :: 0; CA_SEND :: 1; CA_DONT :: 2;        // the answer
+CA_B_NONE :: -1; CA_B_SEND :: 0; CA_B_DONT :: 1; // the buttons
+CA_TITLE :: "Everglade quit unexpectedly";
+CA_WORDS :: "Send the crash log to OpenAgents? It says which version you have and where the app stopped. It holds no account and nothing you typed.";
+CaAsk :: struct { asking: bool; press: int = CA_B_NONE; answer: int; }
+
+ca_box :: (s: []Scenes, which: int) -> HudBox {
+  return HudBox.{x = sc_left(s), y = s[0].safe_top + 250 + 64 * cast(f32) which, width = ac_width(s), height = 50};
+}
+ca_at :: (s: []Scenes, x: f32, y: f32) -> int {
+  for b: 0..<2 { if ac_in(ca_box(s, b), x, y) { return b; } }
+  return CA_B_NONE;
+}
+// A press: phase 0 down, 2 up. While the question is up on the list every press is its own, so no
+// row under it opens a world.
+ca_pointer :: (s: []Scenes, c: [] CaAsk, x: f32, y: f32, phase: int) -> bool {
+  if !c[0].asking || s[0].scene != SC_LIST { return false; }
+  at := ca_at(s, x, y);
+  if phase == 0 { c[0].press = at; return true; }
+  was := c[0].press;
+  if phase == 2 {
+    c[0].press = CA_B_NONE;
+    if was != CA_B_NONE && was == at { c[0].answer = ifx at == CA_B_SEND then CA_SEND else CA_DONT; c[0].asking = false; }
+  }
+  return true;
+}
+// The question, in place of the list's rows.
+ca_card :: (s: []Scenes, c: [] CaAsk, out: []f32, at: int, d: f32) -> int {
+  pen := HdPen.{d = d, cyan = true, top = 0, bottom = s[0].height, sans = false};
+  left := sc_left(s); top := s[0].safe_top;
+  n := eg_text(out, at, CA_TITLE, left + 1, top + 94, 18, d, EG_TITLE, EG_MID);
+  n = ac_lines(out, n, CA_WORDS, left, top + 150, ac_width(s), d);
+  n = ac_button(out, n, ca_box(s, CA_B_SEND), pen, "Send", d, true);
+  return ac_button(out, n, ca_box(s, CA_B_DONT), pen, "Don't Send", d, true);
+}

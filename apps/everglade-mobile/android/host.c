@@ -24,6 +24,7 @@
 #include <time.h>
 #include "../../shared/host/android/device-key.h"
 #include "../../shared/host/android/app-login.h"
+#include "../../shared/host/android/crash-reports.h"
 #define VK_USE_PLATFORM_ANDROID_KHR
 #include <vulkan/vulkan.h>
 #include "face.h"
@@ -672,8 +673,18 @@ static void login_poll(void) {
   if (want != keyboard_up) { keyboard_up = want; keyboard(want); }
 }
 
+// The question after a crash (#13379, apps/shared/host/android/crash-reports.c): the reporter says
+// a crash log waits, the list asks once (apps/everglade-desktop/crash-ask.coax), and the answer goes back.
+static int crash_asked;
+static void crash_poll(void) {
+  if (!crash_asked && oa_crash_asking()) { crash_asked = 1; eg_crash_ask(g.state); }
+  int32_t word = eg_crash_take(g.state);
+  if (word != 0) oa_crash_answer(word == 1);
+}
+
 static void frame(void) {
   login_poll();
+  crash_poll();
   double t = now(); float dt = (float)(t - g.last); g.last = t;
   if (dt > 0.1f) dt = 0.1f;
   if (g.jump_up > 0 && t >= g.jump_up) { g.jump_up = 0; eg_key(g.state, 32, 0); }
@@ -892,6 +903,11 @@ void android_main(struct android_app *app) {
     char origin[PROP_VALUE_MAX] = "";
     if (__system_property_get("debug.oa.origin", origin) <= 0 || strncmp(origin, "https://", 8) != 0) snprintf(origin, sizeof origin, "%s", "https://openagents.com");
     if (oa_app_login_start(app->activity->vm, app->activity->internalDataPath, origin)) eg_login_offer(g.state);
+    // Crash logs (#13379): the last launches' native crashes, asked about once and sent to the same origin.
+    oa_crash_start(app->activity->vm, app->activity->clazz, app->activity->internalDataPath, origin, "libeverglade.so");
+    // A crash on purpose, for the proof: `adb shell setprop debug.oa.crash 1`, open the app (it
+    // stops), `setprop debug.oa.crash 0`, and open it again: it asks, and Send posts the log.
+    { char v[PROP_VALUE_MAX] = ""; if (__system_property_get("debug.oa.crash", v) > 0 && v[0] == '1') oa_crash_force(); }
   }
   g.last = now();
   int opened = 0, loaded = 0, frames = 0; double since = now();

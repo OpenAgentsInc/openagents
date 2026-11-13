@@ -64,6 +64,11 @@ int32_t eg_login_open(void *state);
 int32_t eg_login_char(void *state, int32_t ch);
 int32_t eg_login_take(void *state, char *out, int32_t cap, int32_t *n);
 void eg_login_show(void *state, int32_t login_state, int32_t busy, const char *words, const char *who);
+// The question after a crash, on a host that draws its own (the Android app, #13379; crash-ask.coax).
+// eg_crash_ask: a crash log waits for the person's word; the list asks, once. eg_crash_take: the
+// answer, once: 1 send, 2 don't send, 0 none yet.
+void eg_crash_ask(void *state);
+int32_t eg_crash_take(void *state);
 
 // Your model (model.coax, model-face.c): the web's player model from Everglade II's pack.
 void *egm_new(void);

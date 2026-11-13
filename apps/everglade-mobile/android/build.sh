@@ -3,6 +3,9 @@
 # Builds Everglade for Android (apps/everglade-mobile/README.md): the same Coax as the desktop and
 # iOS apps (the scene, your model, the temple's parts and Metaverse Engine shaders) with the Vulkan host.
 #   apps/everglade-mobile/android/build.sh           builds build/android/everglade.apk (arm64-v8a)
+#   apps/everglade-mobile/android/build.sh --symbols builds, then keeps the library with its symbols by
+#                                                    its build ID (coax/web/symbols.sh android): do
+#                                                    this for every build that leaves this machine
 #   apps/everglade-mobile/android/build.sh --open    builds, then installs and opens it on the
 #                                                    device or emulator adb sees (starting an emulator
 #                                                    named "everglade_api35", made if there is none)
@@ -23,7 +26,9 @@ llvm="$(echo "$ndk"/toolchains/llvm/prebuilt/*)"
 glslc="$(echo "$ndk"/shader-tools/*/glslc)"
 work="$here/../build/android"
 rm -rf "$work/apk"; mkdir -p "$work/c" "$work/apk/lib/arm64-v8a" "$work/apk/assets"
-cc=("$llvm/bin/aarch64-linux-android30-clang" -std=c11 -O2 -fPIC -ffp-contract=off -fno-fast-math -w -I"$work/c" -I"$desk" -I"$ndk/sources/android/native_app_glue")
+# -g: debug lines for the kept, unstripped library, which resolves a crash report's frames (#13379); the
+# library in the package is stripped.
+cc=("$llvm/bin/aarch64-linux-android30-clang" -std=c11 -O2 -g -fPIC -ffp-contract=off -fno-fast-math -w -I"$work/c" -I"$desk" -I"$ndk/sources/android/native_app_glue")
 # The worlds alone (scenes.coax: the list, the Workshop; no Next issue panel: a
 # phone has no agent), your model, and the two places' parts.
 "$coax" c "$desk/scenes.coax" --library --header "$work/c/workshop.h" > "$work/c/workshop.c"
@@ -47,11 +52,20 @@ for face in face model-face place-face; do "${cc[@]}" -c "$desk/$face.c" -o "$wo
 "${cc[@]}" -c "$work/c/app-login-unit.c" -o "$work/c/app-login-unit.o"
 # Its Coax shares library code with the scene's; only alu_* is its own, the rest stays inside it.
 "$llvm/bin/llvm-objcopy" --wildcard --keep-global-symbol='alu_*' "$work/c/app-login-unit.o"; objects+=("$work/c/app-login-unit.o")
-for piece in device-key app-login; do "${cc[@]}" -c "$repo/apps/shared/host/android/$piece.c" -o "$work/c/$piece.o"; objects+=("$work/c/$piece.o"); done
+# Crash logs (#13379): the dump's text is Coax (crash-dump.coax, its own unit as the login's is), and
+# crash-reports.c reads the system's exit records, asks once and posts.
+"$coax" c "$repo/apps/shared/host/android/crash-dump.coax" --library --header "$work/c/crash-dump.h" > "$work/c/crash-dump.c"
+"${cc[@]}" -c "$work/c/crash-dump.c" -o "$work/c/crash-dump.o"
+"$llvm/bin/llvm-objcopy" --wildcard --keep-global-symbol='acd_*' "$work/c/crash-dump.o"; objects+=("$work/c/crash-dump.o")
+for piece in https device-key app-login crash-reports; do "${cc[@]}" -c "$repo/apps/shared/host/android/$piece.c" -o "$work/c/$piece.o"; objects+=("$work/c/$piece.o"); done
 "${cc[@]}" -c "$ndk/sources/android/native_app_glue/android_native_app_glue.c" -o "$work/c/glue.o"
 # The glue's entry point is only named in the manifest, so the linker is told to keep it.
 "${cc[@]}" -shared -u ANativeActivity_onCreate "$work/c/host.o" "$work/c/glue.o" "${objects[@]}" \
-  -landroid -llog -lvulkan -ljnigraphics -lm -o "$work/apk/lib/arm64-v8a/libeverglade.so"
+  -Wl,--build-id=sha1 -landroid -llog -lvulkan -ljnigraphics -lm -o "$work/apk/lib/arm64-v8a/libeverglade.so"
+# The library with its symbols and lines stays here, named by its build ID: a crash report's `build`
+# line names it, and coax/web/symbols.sh keeps it (--symbols below) and resolves frames with it.
+build_id="$("$llvm/bin/llvm-readelf" -n "$work/apk/lib/arm64-v8a/libeverglade.so" | awk '/Build ID:/ { print $3; exit }')"
+mkdir -p "$work/symbols"; cp "$work/apk/lib/arm64-v8a/libeverglade.so" "$work/symbols/libeverglade.$build_id.so"
 "$llvm/bin/llvm-strip" --strip-unneeded "$work/apk/lib/arm64-v8a/libeverglade.so"
 # The shaders: the Metaverse Engine's for the temple, emitted from Coax, and the strokes and your model's.
 for pair in sky scene light; do
@@ -78,8 +92,10 @@ key="$HOME/.android/debug.keystore"
 [[ -f "$key" ]] || { mkdir -p "$HOME/.android"; keytool -genkeypair -keystore "$key" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" >/dev/null 2>&1; }
 "$tools/apksigner" sign --ks "$key" --ks-pass pass:android --key-pass pass:android --out "$work/everglade.apk" "$work/aligned.apk" 2>/dev/null
 rm -f "$work/unsigned.apk" "$work/aligned.apk" "$work/everglade.apk.idsig"
-echo "built $work/everglade.apk"
-if [[ "${1:-}" == --open ]]; then
+echo "built $work/everglade.apk (libeverglade.so build $build_id; its symbols: $work/symbols/libeverglade.$build_id.so)"
+# --symbols: keep this build's library with its symbols in the symbols bucket, by its build ID (#13379).
+for arg in "$@"; do if [[ "$arg" == --symbols ]]; then READELF="$llvm/bin/llvm-readelf" "$repo/coax/web/symbols.sh" android "$work/symbols/libeverglade.$build_id.so"; fi; done
+if [[ " $* " == *" --open "* ]]; then
   adb="$sdk/platform-tools/adb"
   # A device or emulator that is already up, else the app's own emulator.
   if ! "$adb" devices | awk 'NR > 1 && $2 == "device"' | grep -q .; then

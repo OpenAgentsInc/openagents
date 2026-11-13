@@ -175,7 +175,91 @@ Limits, stated so no one assumes more:
   development build is not known.
 - A Mac check that launches the app sets `OA_CRASH_REPORTS_OFF=1`, so the
   question can't stop it. `--shot` runs never start the reporter.
-- Android (`ApplicationExitInfo`) is not built.
+
+## The Android app
+
+The Android app sends the same dump to the same route (#13379). Code:
+`apps/shared/host/android/crash-reports.c` (the effects),
+`apps/shared/host/android/crash-dump.coax` (the dump's text) and
+`apps/everglade-desktop/crash-ask.coax` (the question).
+
+1. Android keeps a record of how each of the app's processes ended
+   (`ApplicationExitInfo`). For a native crash it also keeps the tombstone, a
+   protobuf with the signal and every thread's frames (Android 12 and later).
+2. On each launch the app reads the records newer than the last crash it
+   handled. It takes native crashes only (`REASON_CRASH_NATIVE`). The app has
+   no Java of its own, and a frozen app is not a crash.
+3. Coax makes the dump from the tombstone: `app android`, the signal in
+   Linux's numbering, the abort message, and the crashed thread's frames. Each
+   frame is its library's GNU build ID, its offset in the library, and the
+   library's file name. On Android 11 there is no tombstone, so the dump has
+   the signal and the record's own words and no frames.
+4. The first crash raises one question, "Everglade quit unexpectedly", with
+   Send and Don't Send. The app draws it on its list of worlds, because an
+   app with no Java can't raise a system dialog. The answer is kept in the
+   app's files (`crash-consent`). Nothing leaves before a yes. A no also drops
+   the logs, and the app never asks again.
+5. A yes posts each dump to `POST /api/playtest/app-crash`. A crash is sent
+   once: `crash-seen` holds the time of the newest one handled. When the
+   server gives no answer, 429 or a 5xx, the crash waits for the next launch.
+   One launch sends four crashes at most, under the route's six a minute.
+
+The report is crash report v3, as an Apple app's is. Two lines differ:
+
+| Line | An Android app's |
+| --- | --- |
+| `app` | `android` |
+| `build` | The GNU build ID of the app's own library (`libeverglade.so`), 40 hex digits. It names the library kept with its symbols. |
+
+Resolve a frame in the app's own library with the report's `build` line and
+the hex after `+0x`:
+
+```sh
+coax/web/symbols.sh android-frame 3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f40 285b8
+# oa_crash_force at apps/shared/host/android/crash-reports.c:226
+```
+
+`apps/everglade-mobile/android/build.sh` links the library with a build ID
+and debug lines, keeps the library as linked in
+`apps/everglade-mobile/build/android/symbols/libeverglade.BUILDID.so`, and
+strips the copy that goes in the package. `build.sh --symbols` uploads the
+kept library (`coax/web/symbols.sh android LIB.so`). Do that for every build
+that leaves the machine. With `SYMBOLS_DIR` set to that folder,
+`android-frame` reads the library from disk and needs no bucket.
+
+Force a crash on a development build:
+
+```sh
+adb shell setprop debug.oa.crash 1    # open the app: it stops (a write through a null pointer)
+adb shell setprop debug.oa.crash 0    # open it again: it asks; Send posts the log
+adb logcat -s oa-crash                # "crash log 1 of 1: status 200"
+```
+
+A development build posts to another origin with
+`adb shell setprop debug.oa.origin https://staging.openagents.com`.
+
+Checks:
+
+| Check | What it holds |
+| --- | --- |
+| `coax/bin/coax test apps/shared/host/android/crash-dump.coax --library` | A tombstone written field by field makes the profile's dump. A broken or missing tombstone leaves what could be read. |
+| `apps/shared/host/android/crash-reports-check.sh` | The app's C, run in a desktop JVM against stand-ins for the Android classes and a local listener: asked once, nothing sent before a yes, a no sends nothing, each crash sent once, an unanswered post waits. Needs a JDK. |
+| `coax/web/tool.sh coax/web/room/crash-profile.coax proto/verse/crash-report-v3.json` | The profile's Android dump makes its report through the codec. |
+| `coax/bin/coax test apps/everglade-desktop/scenes.coax --library` | The question takes one press and gives one answer. |
+
+Limits:
+
+- Not seen on a device or an emulator. The check's Android classes are
+  stand-ins, and its tombstone is written from AOSP's `tombstone.proto`
+  field numbers, not captured from a crash. The proof is an owner step in
+  `NEEDS_OWNER.md`.
+- The Android app builds on a Mac only (its build draws the font atlas with
+  CoreText) and needs an NDK. `coderos-4080` has an emulator and no NDK or
+  build tools, so no Android build has run with this code.
+- The question shows on the list of worlds. A person in a world sees it when
+  they go back to the list.
+- Offsets change with each build, as an Apple app's do: one bug in two builds
+  is two buckets until someone resolves the frames.
 
 ## Alerts
 
@@ -227,6 +311,7 @@ API and GitHub.
 | A page module's function names | `build/NAME.HASH.wasm.syms` on the site | While that release is live |
 | The same names | `gs://openagentsgemini-oa-symbols/wasm/NAME.HASH.wasm.syms.gz` | 180 days |
 | An app build's dSYM | `gs://openagentsgemini-oa-symbols/app/UUID.dSYM.zip` | 180 days |
+| An Android build's library, not stripped | `gs://openagentsgemini-oa-symbols/app/android/BUILDID.so.gz` | 180 days |
 
 `vm-deploy.sh deploy --staging` uploads the room's debug file, and
 `deploy.sh` uploads each release's page names. Neither can stop a deploy.

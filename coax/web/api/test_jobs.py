@@ -231,6 +231,20 @@ got = {k["bucket"]: k for k in json.loads(b).get("buckets", [])} if s == 200 els
 check("crashes: an app's bucket with its report: v3, the app binary's UUID as its build, each frame a binary and its offset",
       got.get(app_bucket, {}).get("source") == "app" and got[app_bucket]["build"] == "70b89f2716343580a69557cdb41d7743" and got[app_bucket]["release"] == "1.4 (212)"
       and got[app_bucket]["newest"].startswith("crash 3\n") and "f libswiftCore.dylib +0x1b24\nf OpenAgents +0x285b8\n" in got[app_bucket]["newest"], b)
+# The Android app (#13379): the same route and the same v3 report. Its signal is Linux's (7 is SIGBUS), and
+# its build line is the GNU build ID of the app's own library.
+android_dump = ("appdump 1\nt %d\napp android\nos Android 15 (API 35)\nversion 0.1.0\nbuildno 1\nexe libeverglade.so\nsignal 7\nreason SIGBUS BUS_ADRALN\n"
+                "a 9C6F0D1E2A3B4C5D6E7F8091A2B3C4D5E6F70812 73184 libc.so\na 3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f40 165304 libeverglade.so\n"
+                "a 3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f40 4096 libeverglade.so\n") % now_ms
+android_bucket = _hashlib.md5(b"app SIGBUS|libeverglade.so+0x285b8|libeverglade.so+0x1000").hexdigest()
+s, b, _ = app_post(android_dump.encode())
+check("app-crash: the Android app's dump is kept as its report in the bucket of its signature", s == 200 and json.loads(b) == {"kept": True, "bucket": android_bucket}, (s, b))
+s, b, _ = call("GET", "/api/playtest/crashes")
+got = {k["bucket"]: k for k in json.loads(b).get("buckets", [])} if s == 200 else {}
+check("crashes: an Android app's bucket: v3, its library's build ID as its build, Linux's signal 7 as SIGBUS",
+      got.get(android_bucket, {}).get("source") == "app" and got[android_bucket]["build"] == "3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f40" and got[android_bucket]["release"] == "0.1.0 (1)"
+      and got[android_bucket]["newest"].startswith("crash 3\n") and "\napp android\n" in got[android_bucket]["newest"] and "\nkind SIGBUS\n" in got[android_bucket]["newest"]
+      and "f libc.so +0x11de0\nf libeverglade.so +0x285b8\n" in got[android_bucket]["newest"], b)
 check("app-crash: one address posts 6 a minute", 429 in [app_post(b"junk %d\n" % i)[0] for i in range(14)])
 sql("UPDATE verse.crash_buckets SET last_ms = last_ms - 3600000, live_ms = live_ms - 3600000")
 s, b = job("/api/jobs/service-watch", "good.token")

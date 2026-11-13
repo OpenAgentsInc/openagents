@@ -49,3 +49,5 @@ int32_t eg_login_take(void *state, char *out, int32_t cap, int32_t *n) {
 void eg_login_show(void *state, int32_t login_state, int32_t busy, const char *words, const char *who) {
   sc_login_show(at(state), login_state, busy != 0, (coax_string){words, (int64_t)strlen(words)}, (coax_string){who, (int64_t)strlen(who)});
 }
+void eg_crash_ask(void *state) { sc_crash_ask(at(state)); }
+int32_t eg_crash_take(void *state) { return (int32_t)sc_crash_take(at(state)); }

@@ -12,11 +12,12 @@
 //   source room|page|app
 //   shard N                  room: the shard, 1 to 99
 //   page NAME                page: the module
-//   app ios|mac              app: which app
+//   app ios|mac|android      app: which app
 //   os TEXT                  app: the system's version
 //   release NAME             the room's release, the page's module file, or the app's "VERSION (BUILD)"
 //   build HEX                room: the binary's build ID, which names its symbols; app: the UUID of the
-//                            app's own binary (32 hex digits, which names its dSYM), 0 when no frame is in it
+//                            app's own binary (32 hex digits, which names its dSYM), or on Android its GNU
+//                            build ID (8 to 64 hex digits, which names its kept library); 0 when no frame is in it
 //   kind WHAT                the signal's name (SIGSEGV, SIGABRT...), or "trap" for a page
 //   at HEX                   room: the address the signal names
 //   trap TEXT                a Coax trap's own line, "PATH:LINE: WHAT"
@@ -35,11 +36,14 @@
 //   dump 1 / t MS / signal N / addr HEX / build HEX / release NAME / shard N / err TEXT /
 //   a HEXOFFSET or "a -" a frame / tick MS US PLAYERS
 //
-// An app's dump (apps/shared/host/apple/CrashReports.swift writes it from MetricKit's crash diagnostic and
-// posts it to POST /api/playtest/app-crash; crash_app_report makes the report from it):
-//   appdump 1 / t MS / app ios|mac / os TEXT / version TEXT / buildno TEXT / exe NAME (the app's own
-//   binary) / signal N / exception N / reason TEXT / a UUID OFFSET BINARY (a frame, innermost first: the
-//   binary's UUID with or without dashes in either case, the offset in decimal, the binary's name)
+// An app's dump (apps/shared/host/apple/CrashReports.swift writes it from MetricKit's crash diagnostic,
+// apps/shared/host/android/crash-dump.coax from the tombstone ApplicationExitInfo keeps; each posts it
+// to POST /api/playtest/app-crash; crash_app_report makes the report from it):
+//   appdump 1 / t MS / app ios|mac|android / os TEXT / version TEXT / buildno TEXT / exe NAME (the app's
+//   own binary) / signal N (the system's own numbering: Apple's, or Linux's on Android) / exception N /
+//   reason TEXT / a UUID OFFSET BINARY (a frame, innermost first: the binary's UUID with or without
+//   dashes in either case, or on Android its build ID in hex or 0 for none; the offset in decimal; the
+//   binary's name)
 #load "room-write.coax";   // rw_put and rw_int
 
 CR_BODY :: 8192;      // a report at most
@@ -293,7 +297,7 @@ crash_report_check :: (body: string) -> int #export_c #effects(all) {
     else if cr_is(l, "at") { bit = 32; if app || !cr_hex(cr_val(l, "at"), 16) { return -1; } }
     else if cr_is(l, "trap") { bit = 64; if app { return -1; } }
     else if cr_is(l, "msg") { bit = 128; }
-    else if cr_is(l, "app") { bit = 512; if !app || (cr_val(l, "app") != "ios" && cr_val(l, "app") != "mac") { return -1; } }
+    else if cr_is(l, "app") { bit = 512; if !app || !cr_app_known(cr_val(l, "app")) { return -1; } }
     else if cr_is(l, "os") { bit = 1024; if !app { return -1; } }
     else if cr_is(l, "f") {
       frames += 1;
@@ -355,6 +359,32 @@ cr_signal_apple :: (n: int) -> string #effects(all) {
   if n == 12 { return "SIGSYS"; }
   return "SIGNAL";
 }
+// Linux's signal numbers, an Android app's (SIGBUS is 7 and SIGSYS 31).
+cr_signal_linux :: (n: int) -> string #effects(all) {
+  if n == 4 { return "SIGILL"; }
+  if n == 5 { return "SIGTRAP"; }
+  if n == 6 { return "SIGABRT"; }
+  if n == 7 { return "SIGBUS"; }
+  if n == 8 { return "SIGFPE"; }
+  if n == 9 { return "SIGKILL"; }
+  if n == 11 { return "SIGSEGV"; }
+  if n == 31 { return "SIGSYS"; }
+  return "SIGNAL";
+}
+// The apps that send a dump.
+cr_app_known :: (app: string) -> bool #effects(all) { return app == "ios" || app == "mac" || app == "android"; }
+// An Android library's GNU build ID, 8 to 64 hex digits (either case read), in lowercase into out at n.
+// -1 when s is not one.
+cr_put_build_id :: (out: [] u8, n: int, s: string) -> int #effects(all) {
+  if n < 0 || s.count < 8 || s.count > 64 || n + s.count > out.count { return -1; }
+  for i: 0..<s.count {
+    c := s[i];
+    if c >= 'A' && c <= 'F' { c = c - 'A' + 'a'; }
+    if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return -1; }
+    out[n + i] = c;
+  }
+  return n + s.count;
+}
 // v in lowercase hex into out at n, no leading zeros. -1 when v is negative or it does not fit.
 cr_put_hex :: (out: [] u8, n: int, v: int) -> int #effects(all) {
   if n < 0 || v < 0 { return -1; }
@@ -409,16 +439,17 @@ crash_app_report :: (dump: string, out: [] u8) -> string #export_c #effects(all)
   at: [1] int;
   if dump.count > 4 * CR_BODY || cr_line(dump, at[..]) != "appdump 1" { return ""; }
   t := cr_dump(dump, "t"); app := cr_dump(dump, "app"); exe := cr_dump(dump, "exe");
-  if cr_num(t) < 0 || (app != "ios" && app != "mac") { return ""; }
+  if cr_num(t) < 0 || !cr_app_known(app) { return ""; }
+  android := app == "android";
   signal := cr_num(cr_dump(dump, "signal"));
-  kind := ifx signal >= 1 && signal <= 64 then cr_signal_apple(signal) else ifx cr_num(cr_dump(dump, "exception")) >= 0 then "EXC" else "crash";
+  kind := ifx signal >= 1 && signal <= 64 then (ifx android then cr_signal_linux(signal) else cr_signal_apple(signal)) else ifx cr_num(cr_dump(dump, "exception")) >= 0 then "EXC" else "crash";
   n := rw_put(out, 0, "crash 3\n");
   n = cr_kv(out, n, "t", t); n = rw_put(out, n, "source app\n"); n = cr_kv(out, n, "app", app);
   if cr_dump(dump, "os") != "" { n = cr_kv(out, n, "os", cr_dump(dump, "os")); }
   n = rw_put(out, n, "release "); n = cr_text(out, n, ifx cr_dump(dump, "version") == "" then "?" else cr_dump(dump, "version"), 80, false);
   if cr_dump(dump, "buildno") != "" { n = rw_put(out, n, " ("); n = cr_text(out, n, cr_dump(dump, "buildno"), 40, false); n = rw_put(out, n, ")"); }
   n = rw_put(out, n, "\nbuild ");
-  // the build: the UUID of the first frame in the app's own binary
+  // the build: the UUID (on Android the build ID) of the first frame in the app's own binary
   p: [1] int; p[0] = at[0]; cuts: [2] int; uuid := "";
   while p[0] < dump.count && uuid == "" {
     l := cr_line(dump, p[..]);
@@ -426,7 +457,7 @@ crash_app_report :: (dump: string, out: [] u8) -> string #export_c #effects(all)
     v := cr_val(l, "a");
     if exe != "" && v[cuts[1] + 1..<v.count] == exe { uuid = v[0..<cuts[0]]; }
   }
-  b := cr_put_uuid(out, n, uuid);
+  b := ifx android then cr_put_build_id(out, n, uuid) else cr_put_uuid(out, n, uuid);
   n = ifx b < 0 then rw_put(out, n, "0") else b;
   n = rw_put(out, n, "\n");
   n = cr_kv(out, n, "kind", kind);
@@ -584,7 +615,7 @@ CR_T_APP :: "crash 3\nt 1762990000000\nsource app\napp ios\nos iPhone OS 18.1 (2
   #assert r == "crash 3\nt 7\nsource app\napp ios\nrelease ?\nbuild 0\nkind crash\nmsg why not\nsig crash|why?not\n";
   // not a dump, no app, another app, no time, too small
   #assert crash_app_report("", o[..]) == "" && crash_app_report("appdump 2\nt 7\napp mac\n", o[..]) == "" && crash_app_report("dump 1\nt 7\napp mac\n", o[..]) == "";
-  #assert crash_app_report("appdump 1\nt 7\n", o[..]) == "" && crash_app_report("appdump 1\nt 7\napp android\n", o[..]) == "" && crash_app_report("appdump 1\nt x\napp mac\n", o[..]) == "";
+  #assert crash_app_report("appdump 1\nt 7\n", o[..]) == "" && crash_app_report("appdump 1\nt 7\napp windows\n", o[..]) == "" && crash_app_report("appdump 1\nt x\napp mac\n", o[..]) == "";
   #assert crash_app_report("appdump 1\nt 7\napp mac\n", o[0..<40]) == "";
   // frames are capped
   d: [4096] u8; n := rw_put(d[..], 0, "appdump 1\nt 5\napp ios\nexe E\n");
@@ -611,7 +642,7 @@ CR_T_APP :: "crash 3\nt 1762990000000\nsource app\napp ios\nos iPhone OS 18.1 (2
     "crash 2\nt 1\nsource app\napp ios\nbuild 0\nkind K\nsig K|?\n",
     "crash 3\nt 1\nsource app\nbuild 0\nkind K\nsig K|?\n",                             // no app
     "crash 3\nt 1\nsource app\napp ios\nkind K\nsig K|?\n",                             // no build
-    "crash 3\nt 1\nsource app\napp android\nbuild 0\nkind K\nsig K|?\n",
+    "crash 3\nt 1\nsource app\napp windows\nbuild 0\nkind K\nsig K|?\n",
     "crash 3\nt 1\nsource app\napp ios\nbuild 0\nkind K\nf OpenAgents\nsig K|?\n",     // a frame with no offset
     "crash 3\nt 1\nsource app\napp ios\nbuild 0\nkind K\nf a b +0x1\nsig K|?\n",
     "crash 3\nt 1\nsource app\napp ios\nbuild 0\nkind K\npage p\nsig K|?\n",
@@ -650,4 +681,28 @@ CR_T_APP :: "crash 3\nt 1762990000000\nsource app\napp ios\nos iPhone OS 18.1 (2
   #assert cr_num("") == -1 && cr_num("1234567890123456789") == -1 && cr_num("123456789012345678") == 123456789012345678;
   #assert !cr_hex("", 4) && !cr_hex("abcde", 4) && cr_hex("abcd", 4) && !cr_hex("ABCD", 4);
   #assert cr_noise("?") && cr_noise("abort") && cr_noise("coax_trap") && cr_noise("__restore_rt") && !cr_noise("rm_tick") && !cr_noise("coax") && !cr_noise("_x");
+}
+#test "crash report v3: an Android app's dump makes its report: Linux's signal numbers, and the library's build ID names its symbols (#13379)" {
+  o: [CR_BODY] u8; f: [256] u8;
+  dump := "appdump 1\nt 1763000000000\napp android\nos Android 15 (API 35)\nversion 0.1.0\nbuildno 1\nexe libeverglade.so\nsignal 7\nreason SIGBUS BUS_ADRALN\na 9C6F0D1E2A3B4C5D6E7F8091A2B3C4D5E6F70812 73184 libc.so\na 3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f40 165304 libeverglade.so\na 3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f40 4096 libeverglade.so\na 0 24 [anon:dalvik]\n";
+  r := crash_app_report(dump, o[..]);
+  #assert r == "crash 3\nt 1763000000000\nsource app\napp android\nos Android 15 (API 35)\nrelease 0.1.0 (1)\nbuild 3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f40\nkind SIGBUS\nmsg SIGBUS BUS_ADRALN\nf libc.so +0x11de0\nf libeverglade.so +0x285b8\nf libeverglade.so +0x1000\nf [anon:dalvik] +0x18\nsig SIGBUS|libeverglade.so+0x285b8|libeverglade.so+0x1000\n";
+  #assert crash_report_check(r) == 0 && crash_report_field(r, "app", f[..]) == "android" && crash_report_field(r, "build", f[..]) == "3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f40";
+  // signal 7 is SIGBUS on Android and nothing on an iPhone; 10 the other way; 31 is Linux's SIGSYS
+  #assert cr_signal_linux(7) == "SIGBUS" && cr_signal_apple(7) == "SIGNAL" && cr_signal_linux(10) == "SIGNAL" && cr_signal_apple(10) == "SIGBUS" && cr_signal_linux(31) == "SIGSYS" && cr_signal_linux(11) == "SIGSEGV" && cr_signal_linux(6) == "SIGABRT";
+  #assert cr_signal_linux(4) == "SIGILL" && cr_signal_linux(5) == "SIGTRAP" && cr_signal_linux(8) == "SIGFPE" && cr_signal_linux(9) == "SIGKILL" && cr_signal_linux(12) == "SIGNAL";
+  r = crash_app_report("appdump 1\nt 7\napp android\nexe libeverglade.so\nsignal 10\n", o[..]); #assert crash_report_field(r, "kind", f[..]) == "SIGNAL";
+  // a library with no build ID (0), one too short, or one that is not hex: build 0, and the frames stay
+  r = crash_app_report("appdump 1\nt 7\napp android\nexe l.so\nsignal 11\na 0 16 l.so\n", o[..]);
+  #assert r == "crash 3\nt 7\nsource app\napp android\nrelease ?\nbuild 0\nkind SIGSEGV\nf l.so +0x10\nsig SIGSEGV|l.so+0x10\n" && crash_report_check(r) == 0;
+  r = crash_app_report("appdump 1\nt 7\napp android\nexe l.so\na 3f2a1b0 16 l.so\n", o[..]); #assert crash_report_field(r, "build", f[..]) == "0";
+  r = crash_app_report("appdump 1\nt 7\napp android\nexe l.so\na 3f2a1b0g 16 l.so\n", o[..]); #assert crash_report_field(r, "build", f[..]) == "0";
+  // an Apple UUID with dashes is no Android build ID, and a 40-digit build ID is no Apple UUID
+  r = crash_app_report("appdump 1\nt 7\napp android\nexe l.so\na 70B89F27-1634-3580-A695-57CDB41D7743 16 l.so\n", o[..]); #assert crash_report_field(r, "build", f[..]) == "0";
+  r = crash_app_report("appdump 1\nt 7\napp ios\nexe l\na 3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f40 16 l\n", o[..]); #assert crash_report_field(r, "build", f[..]) == "0";
+  u: [64] u8;
+  #assert cr_put_build_id(u[..], 0, "3F2A1B0C") == 8 && cast(string) u[0..<8] == "3f2a1b0c" && cr_put_build_id(u[..], 60, "3f2a1b0c") == -1 && cr_put_build_id(u[..], -1, "3f2a1b0c") == -1;
+  #assert cr_put_build_id(u[..], 0, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") == 64 && cr_app_known("android") && cr_app_known("ios") && cr_app_known("mac") && !cr_app_known("") && !cr_app_known("page");
+  // the check takes an Android app's report, and still no other app's
+  #assert crash_report_check("crash 3\nt 1\nsource app\napp android\nbuild 0\nkind K\nsig K|?\n") == 0 && crash_report_check("crash 3\nt 1\nsource app\napp windows\nbuild 0\nkind K\nsig K|?\n") == -1;
 }

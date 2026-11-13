@@ -4,23 +4,23 @@
   "spec": "docs/deployment/crash-reports.md",
   "codec": "coax/web/room/room-crash.coax",
   "check": "coax/web/tool.sh coax/web/room/crash-profile.coax proto/verse/crash-report-v3.json",
-  "note": "Crash report v3 (#13379) is a native app's report: the iPhone and Mac apps' crashes as MetricKit hands them over on a later launch. The app posts a dump (below) to POST /api/playtest/app-crash, and the API makes the report from it with the codec and keeps it by bucket like every other report. Its frames carry no names: a frame is the binary and the frame's offset in it, `f BINARY +0xOFFSET`, and the `build` line is the UUID of the app's own binary, which names the dSYM that resolves its frames (coax/web/symbols.sh app-frame). The signature is the kind and the three innermost frames in the app's own binary, each BINARY+0xOFFSET (the three innermost of any binary when none is the app's). Offsets change with every build, so one bug in two builds lands in two buckets. A room's report stays v1 and a page's v2; `source app` is only ever v3.",
+  "note": "Crash report v3 (#13379) is a native app's report: the iPhone and Mac apps' crashes as MetricKit hands them over on a later launch. The app posts a dump (below) to POST /api/playtest/app-crash, and the API makes the report from it with the codec and keeps it by bucket like every other report. Its frames carry no names: a frame is the binary and the frame's offset in it, `f BINARY +0xOFFSET`, and the `build` line is the UUID of the app's own binary, which names the dSYM that resolves its frames (coax/web/symbols.sh app-frame). The signature is the kind and the three innermost frames in the app's own binary, each BINARY+0xOFFSET (the three innermost of any binary when none is the app's). Offsets change with every build, so one bug in two builds lands in two buckets. A room's report stays v1 and a page's v2; `source app` is only ever v3. The Android app (#13379) sends the same dump from the tombstone the system keeps of a native crash (ApplicationExitInfo, apps/shared/host/android/crash-reports.c and crash-dump.coax): `app android`, the signal in Linux's numbering, and each frame's binary named by its GNU build ID in place of a UUID. Its `build` line is the build ID of the app's own library, which names the unstripped library kept for it (coax/web/symbols.sh android, android-frame). That widened `app` and `build` without a new version: every report made before it is still a v3 report, and the one codec on the server makes every report.",
   "dump": {
     "first": "appdump 1",
     "lines": [
       {
         "key": "t",
-        "value": "the end of the day MetricKit reported the crash in, Unix ms",
+        "value": "the end of the day MetricKit reported the crash in, Unix ms; on Android when the process died",
         "when": "always"
       },
       {
         "key": "app",
-        "value": "ios or mac",
+        "value": "ios, mac or android",
         "when": "always"
       },
       {
         "key": "os",
-        "value": "the system's version as MetricKit names it",
+        "value": "the system's version as MetricKit names it; on Android \"Android RELEASE (API LEVEL)\"",
         "when": "when given"
       },
       {
@@ -40,7 +40,7 @@
       },
       {
         "key": "signal",
-        "value": "the signal's number (Apple's numbering)",
+        "value": "the signal's number, in the system's own numbering (Apple's; Linux's on Android)",
         "when": "when given"
       },
       {
@@ -55,7 +55,7 @@
       },
       {
         "key": "a",
-        "value": "UUID OFFSET BINARY: a frame of the crashed thread, innermost first; the binary's UUID (dashes and either case allowed), the offset into the binary in decimal, the binary's name",
+        "value": "UUID OFFSET BINARY: a frame of the crashed thread, innermost first; the binary's UUID (dashes and either case allowed), the offset into the binary in decimal, the binary's name; on Android the first word is the binary's GNU build ID in hex (8 to 64 digits), or 0 when it has none",
         "when": "each frame"
       }
     ]
@@ -78,7 +78,7 @@
     },
     {
       "key": "app",
-      "value": "ios or mac",
+      "value": "ios, mac or android",
       "when": "always"
     },
     {
@@ -93,7 +93,7 @@
     },
     {
       "key": "build",
-      "value": "the UUID of the app's own binary, 32 lowercase hex digits; 0 when no frame is in it",
+      "value": "the UUID of the app's own binary, 32 lowercase hex digits; on Android the GNU build ID of the app's own library, 8 to 64 lowercase hex digits; 0 when no frame is in it",
       "when": "always"
     },
     {
@@ -137,6 +137,12 @@
       "dump": "appdump 1\nt 7\napp mac\nos macOS 15.1 (24B83)\nversion 0.3\nexe OpenAgents\nexception 1\na 0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9 255 libsystem_kernel.dylib\n",
       "report": "crash 3\nt 7\nsource app\napp mac\nos macOS 15.1 (24B83)\nrelease 0.3\nbuild 0\nkind EXC\nf libsystem_kernel.dylib +0xff\nsig EXC|libsystem_kernel.dylib+0xff\n",
       "sig": "EXC|libsystem_kernel.dylib+0xff"
+    },
+    {
+      "why": "a bus error in the Android app: Linux's signal 7, frames named by build ID, one in a mapping with none",
+      "dump": "appdump 1\nt 1763000000000\napp android\nos Android 15 (API 35)\nversion 0.1.0\nbuildno 1\nexe libeverglade.so\nsignal 7\nreason SIGBUS BUS_ADRALN\na 9C6F0D1E2A3B4C5D6E7F8091A2B3C4D5E6F70812 73184 libc.so\na 3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f40 165304 libeverglade.so\na 3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f40 4096 libeverglade.so\na 0 24 [anon:dalvik]\n",
+      "report": "crash 3\nt 1763000000000\nsource app\napp android\nos Android 15 (API 35)\nrelease 0.1.0 (1)\nbuild 3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f40\nkind SIGBUS\nmsg SIGBUS BUS_ADRALN\nf libc.so +0x11de0\nf libeverglade.so +0x285b8\nf libeverglade.so +0x1000\nf [anon:dalvik] +0x18\nsig SIGBUS|libeverglade.so+0x285b8|libeverglade.so+0x1000\n",
+      "sig": "SIGBUS|libeverglade.so+0x285b8|libeverglade.so+0x1000"
     }
   ],
   "refused": [
@@ -158,7 +164,7 @@
     },
     {
       "why": "an app we don't have",
-      "body": "crash 3\nt 1\nsource app\napp android\nbuild 0\nkind K\nsig K|?\n"
+      "body": "crash 3\nt 1\nsource app\napp windows\nbuild 0\nkind K\nsig K|?\n"
     },
     {
       "why": "a frame with no offset",

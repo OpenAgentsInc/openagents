@@ -1,0 +1,228 @@
+// The Android app's crash dump (GitHub #13379; docs/deployment/crash-reports.md). Android keeps a record
+// of how each of an app's processes ended (ApplicationExitInfo), and for a native crash a tombstone: a
+// protobuf (AOSP system/core/debuggerd/proto/tombstone.proto) with the signal and every thread's frames.
+// This makes the dump from it: the lines `appdump 1` describes in proto/verse/crash-report-v3.json, with
+// `app android`. crash-reports.c reads the record on the next launch, asks the person once, and posts
+// the dump to POST /api/playtest/app-crash. The API makes the crash report from it with the one codec
+// (coax/web/room/room-crash.coax crash_app_report): what a report is, its signature and its bucket are
+// decided there, not here.
+//
+// A dump holds the app's version and build, the system's version, the signal, the abort message, and
+// the crashed thread's frames as a library's name, its build ID and an offset. It holds no account, no
+// device name, no memory and nothing typed or said.
+//
+// The tombstone's fields this reads (numbers from tombstone.proto):
+//   Tombstone       6 tid, 10 signal_info (Signal), 14 abort_message, 16 threads (map: 1 the thread's id, 2 Thread)
+//   Signal          1 number, 2 name, 4 code_name
+//   Thread          4 current_backtrace (BacktraceFrame, innermost first)
+//   BacktraceFrame  1 rel_pc, 6 file_name, 8 build_id
+//   coax/bin/coax test apps/shared/host/android/crash-dump.coax --library
+//   coax/bin/coax c apps/shared/host/android/crash-dump.coax --library --header crash-dump.h
+#load "../../../../coax/lib/proto/wire.coax";
+
+ACD_MAX :: 16000;       // bytes a dump holds at most: the route takes 16 KB (coax/web/api/rooms.c APP_CRASH_MAX)
+ACD_FRAMES :: 64;       // frames a dump holds at most
+ACD_TEXT :: 200;        // bytes of one line's text
+ACD_CRASH_NATIVE :: 5;  // ApplicationExitInfo.REASON_CRASH_NATIVE
+
+// Whether an exit of this reason is a crash the app reports: a native crash. The app has no Java of
+// its own, and a frozen app (an ANR) is not a crash.
+acd_reports :: (reason: int) -> bool #export_c #effects(all) { return reason == ACD_CRASH_NATIVE; }
+
+// s into out at n; -1 when it does not fit or n is -1.
+acd_put :: (out: [] u8, n: int, s: string) -> int #effects(all) {
+  if n < 0 || n + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[n + i] = s[i]; }
+  return n + s.count;
+}
+// s as one line's text: at most ACD_TEXT bytes, each byte outside printable ASCII as a space.
+acd_put_text :: (out: [] u8, n: int, s: string) -> int #effects(all) {
+  m := ifx s.count > ACD_TEXT then ACD_TEXT else s.count;
+  if n < 0 || n + m > out.count { return -1; }
+  for i: 0..<m { c := s[i]; out[n + i] = ifx c < 32 || c > 126 then cast(u8) ' ' else c; }
+  return n + m;
+}
+// v in decimal (0 for a negative).
+acd_put_num :: (out: [] u8, n: int, v: u64) -> int #effects(all) {
+  d: [20] u8; k := 0; x := v;
+  while true { d[k] = cast(u8)(48 + cast(int)(x % 10)); k += 1; x = x / 10; if x == 0 { break; } }
+  if n < 0 || n + k > out.count { return -1; }
+  for i: 0..<k { out[n + i] = d[k - 1 - i]; }
+  return n + k;
+}
+// "KEY TEXT\n" when text is not empty.
+acd_line :: (out: [] u8, n: int, key: string, text: string) -> int #effects(all) {
+  if text.count == 0 { return n; }
+  m := acd_put(out, n, key); m = acd_put(out, m, " "); m = acd_put_text(out, m, text);
+  return acd_put(out, m, "\n");
+}
+// A path's last part: a library's name ("/data/app/x/lib/arm64/libeverglade.so" is "libeverglade.so").
+acd_base :: (path: string) -> string #effects(all) {
+  from := 0;
+  for i: 0..<path.count { if path[i] == '/' { from = i + 1; } }
+  return path[from..<path.count];
+}
+// Whether s is a build ID as the codec takes one: 8 to 64 hex digits.
+acd_build_id :: (s: string) -> bool #effects(all) {
+  if s.count < 8 || s.count > 64 { return false; }
+  for i: 0..<s.count { c := s[i]; if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) { return false; } }
+  return true;
+}
+// The first field `number` of message m that is of wire type wt (0 a number, 2 bytes); done when there is none.
+acd_field :: (m: [] u8, number: u32, wt: u8) -> PB_Field #effects(all) {
+  pos := 0;
+  while true {
+    f := PB_scan(m, pos);
+    if f.error != 0 || f.done { return PB_Field.{done = true}; }
+    if f.number == number && f.wt == wt { return f; }
+    pos = f.next;
+  }
+  return PB_Field.{done = true};
+}
+acd_str :: (m: [] u8, number: u32) -> string #effects(all) { f := acd_field(m, number, 2); return ifx f.done then "" else cast(string) f.payload; }
+acd_num :: (m: [] u8, number: u32) -> u64 #effects(all) { f := acd_field(m, number, 0); return ifx f.done then 0 else f.raw; }
+
+// One frame's line, "a BUILDID OFFSET BINARY\n": 0 for a library with no build ID, ? for one with no name.
+acd_frame :: (out: [] u8, n: int, frame: [] u8) -> int #effects(all) {
+  id := acd_str(frame, 8); name := acd_base(acd_str(frame, 6));
+  m := acd_put(out, n, "a "); m = acd_put(out, m, ifx acd_build_id(id) then id else "0"); m = acd_put(out, m, " ");
+  m = acd_put_num(out, m, acd_num(frame, 1)); m = acd_put(out, m, " ");
+  m = ifx name.count == 0 then acd_put(out, m, "?") else acd_put_text(out, m, name);
+  return acd_put(out, m, "\n");
+}
+// The dump of one native crash into out: its length, or 0 when out is too small for its head.
+//   tomb     the tombstone's bytes (ApplicationExitInfo.getTraceInputStream), empty when the system kept none
+//   t_ms     when the process died (getTimestamp)
+//   status   the signal that ended it, as the exit record has it (getStatus): used when the tombstone has none
+//   why      the exit record's own words (getDescription): the reason when the tombstone has none
+//   os       "Android 15 (API 35)"; version and buildno: the package's versionName and versionCode
+//   exe      the app's own library ("libeverglade.so"): the codec's signature is the frames in it
+acd_dump :: (tomb: [] u8, t_ms: int, status: int, why: string, os: string, version: string, buildno: string, exe: string, out: [] u8) -> int #export_c #effects(all) {
+  cap := ifx out.count > ACD_MAX then ACD_MAX else out.count; o := out[0..<cap];
+  n := acd_put(o, 0, "appdump 1\nt "); n = acd_put_num(o, n, ifx t_ms < 0 then 0 else cast(u64) t_ms); n = acd_put(o, n, "\napp android\n");
+  n = acd_line(o, n, "os", os); n = acd_line(o, n, "version", version); n = acd_line(o, n, "buildno", buildno); n = acd_line(o, n, "exe", exe);
+  sig := acd_field(tomb, 10, 2); signal: u64 = 0; name := ""; code := "";
+  if !sig.done { signal = acd_num(sig.payload, 1); name = acd_str(sig.payload, 2); code = acd_str(sig.payload, 4); }
+  if (signal == 0 || signal > 64) && status > 0 && status <= 64 { signal = cast(u64) status; }
+  if signal > 0 && signal <= 64 { n = acd_put(o, n, "signal "); n = acd_put_num(o, n, signal); n = acd_put(o, n, "\n"); }
+  // the reason: the signal's name and code and the abort message; the exit record's words when there is none
+  abort := acd_str(tomb, 14); r: [ACD_TEXT + 8] u8; rn := 0;
+  if name.count > 0 { rn = acd_put_text(r[..], rn, name); }
+  if rn >= 0 && code.count > 0 { if rn > 0 { rn = acd_put(r[..], rn, " "); } rn = acd_put_text(r[..], rn, code); }
+  if rn >= 0 && abort.count > 0 { if rn > 0 { rn = acd_put(r[..], rn, ": "); } rn = acd_put_text(r[0..<ACD_TEXT], rn, abort[0..<(ifx abort.count > ACD_TEXT - rn then ACD_TEXT - rn else abort.count)]); }
+  n = acd_line(o, n, "reason", ifx rn > 0 then cast(string) r[0..<rn] else why);
+  if n < 0 { return 0; }
+  // the crashed thread's frames, innermost first: as many as fit
+  tid := acd_num(tomb, 6); pos := 0; frames := 0;
+  while frames < ACD_FRAMES {
+    f := PB_scan(tomb, pos);
+    if f.error != 0 || f.done { break; }
+    pos = f.next;
+    if f.number != 16 || f.wt != 2 || acd_num(f.payload, 1) != tid { continue; }
+    thread := acd_field(f.payload, 2, 2);
+    if thread.done { break; }
+    at := 0;
+    while frames < ACD_FRAMES {
+      b := PB_scan(thread.payload, at);
+      if b.error != 0 || b.done { break; }
+      at = b.next;
+      if b.number != 4 || b.wt != 2 { continue; }
+      m := acd_frame(o, n, b.payload);
+      if m < 0 { return n; }   // full: what fitted is the dump
+      n = m; frames += 1;
+    }
+    break;
+  }
+  return n;
+}
+
+// ---- checks: a tombstone written field by field, as debuggerd's protobuf has them
+acdt_var :: (out: [] u8, n: int, v: u64) -> int #effects(all) {
+  m := n; x := v;
+  while x >= 128 { out[m] = cast(u8)((x & 127) | 128); m += 1; x = x >> 7; }
+  out[m] = cast(u8) x; return m + 1;
+}
+acdt_num :: (out: [] u8, n: int, number: int, v: u64) -> int #effects(all) { m := acdt_var(out, n, cast(u64)(number * 8)); return acdt_var(out, m, v); }
+acdt_bytes :: (out: [] u8, n: int, number: int, b: [] u8) -> int #effects(all) {
+  m := acdt_var(out, n, cast(u64)(number * 8 + 2)); m = acdt_var(out, m, cast(u64) b.count);
+  for i: 0..<b.count { out[m + i] = b[i]; }
+  return m + b.count;
+}
+acdt_str :: (out: [] u8, n: int, number: int, s: string) -> int #effects(all) {
+  m := acdt_var(out, n, cast(u64)(number * 8 + 2)); m = acdt_var(out, m, cast(u64) s.count);
+  for i: 0..<s.count { out[m + i] = s[i]; }
+  return m + s.count;
+}
+acdt_frame :: (out: [] u8, n: int, rel_pc: u64, file: string, id: string) -> int #effects(all) {
+  f: [256] u8; m := acdt_num(f[..], 0, 1, rel_pc); m = acdt_num(f[..], m, 2, 0x7a00001000 + rel_pc); m = acdt_str(f[..], m, 4, "fn"); m = acdt_str(f[..], m, 6, file); m = acdt_str(f[..], m, 8, id);
+  return acdt_bytes(out, n, 4, f[0..<m]);
+}
+// A tombstone: a SIGSEGV on thread 4242 with three frames, beside thread 4243 with one of its own.
+acdt_tombstone :: (out: [] u8) -> int #effects(all) {
+  n := acdt_str(out, 0, 2, "google/sdk/emu:15/AB1/1:user/release-keys"); n = acdt_num(out, n, 5, 4200); n = acdt_num(out, n, 6, 4242);
+  s: [64] u8; m := acdt_num(s[..], 0, 1, 11); m = acdt_str(s[..], m, 2, "SIGSEGV"); m = acdt_num(s[..], m, 3, 1); m = acdt_str(s[..], m, 4, "SEGV_MAPERR"); m = acdt_num(s[..], m, 9, 16);
+  n = acdt_bytes(out, n, 10, s[0..<m]);
+  // another thread first: its frame is not the crash's
+  t: [1024] u8; e: [1100] u8;
+  m = acdt_num(t[..], 0, 1, 4243); m = acdt_str(t[..], m, 2, "RenderThread"); m = acdt_frame(t[..], m, 7777, "/apex/com.android.runtime/lib64/bionic/libc.so", "9c6f0d1e2a3b4c5d6e7f8091a2b3c4d5e6f70812");
+  k := acdt_num(e[..], 0, 1, 4243); k = acdt_bytes(e[..], k, 2, t[0..<m]); n = acdt_bytes(out, n, 16, e[0..<k]);
+  m = acdt_num(t[..], 0, 1, 4242); m = acdt_str(t[..], m, 2, "main");
+  m = acdt_frame(t[..], m, 73184, "/apex/com.android.runtime/lib64/bionic/libc.so", "9C6F0D1E2A3B4C5D6E7F8091A2B3C4D5E6F70812");
+  m = acdt_frame(t[..], m, 165304, "/data/app/~~x==/com.openagents.everglade-y==/lib/arm64/libeverglade.so", "3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f40");
+  m = acdt_frame(t[..], m, 4096, "/data/app/~~x==/com.openagents.everglade-y==/lib/arm64/libeverglade.so", "3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f40");
+  m = acdt_frame(t[..], m, 24, "", "");
+  k = acdt_num(e[..], 0, 1, 4242); k = acdt_bytes(e[..], k, 2, t[0..<m]); n = acdt_bytes(out, n, 16, e[0..<k]);
+  return n;
+}
+ACDT_DUMP :: "appdump 1\nt 1763000000000\napp android\nos Android 15 (API 35)\nversion 0.1.0\nbuildno 1\nexe libeverglade.so\nsignal 11\nreason SIGSEGV SEGV_MAPERR\na 9C6F0D1E2A3B4C5D6E7F8091A2B3C4D5E6F70812 73184 libc.so\na 3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f40 165304 libeverglade.so\na 3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f40 4096 libeverglade.so\na 0 24 ?\n";
+#test "android crash dump: a tombstone's signal and its crashed thread's frames are the dump the profile describes (#13379)" {
+  tb: [4096] u8; tn := acdt_tombstone(tb[..]); o: [ACD_MAX] u8;
+  n := acd_dump(tb[0..<tn], 1763000000000, 11, "crash", "Android 15 (API 35)", "0.1.0", "1", "libeverglade.so", o[..]);
+  #assert cast(string) o[0..<n] == ACDT_DUMP;
+  // only a native crash is reported
+  #assert acd_reports(5) && !acd_reports(4) && !acd_reports(6) && !acd_reports(0) && !acd_reports(10);
+  // an abort: its message follows the signal's name; a long one is cut to the line's most
+  a: [4096] u8; s: [64] u8; m := acdt_num(s[..], 0, 1, 6); m = acdt_str(s[..], m, 2, "SIGABRT");
+  an := acdt_num(a[..], 0, 6, 9); an = acdt_bytes(a[..], an, 10, s[0..<m]); an = acdt_str(a[..], an, 14, "Everglade: no memory\nfor the scene.");
+  n = acd_dump(a[0..<an], 5, 6, "", "", "", "", "libeverglade.so", o[..]);
+  #assert cast(string) o[0..<n] == "appdump 1\nt 5\napp android\nexe libeverglade.so\nsignal 6\nreason SIGABRT: Everglade: no memory for the scene.\n";
+  long: [400] u8; for i: 0..<400 { long[i] = 'x'; }
+  an = acdt_num(a[..], 0, 6, 9); an = acdt_bytes(a[..], an, 10, s[0..<m]); an = acdt_bytes(a[..], an, 14, long[..]);
+  n = acd_dump(a[0..<an], 5, 6, "", "", "", "", "", o[..]);
+  #assert n == 26 + 9 + 7 + ACD_TEXT + 1 && o[n - 1] == '\n' && o[n - 2] == 'x' && cast(string) o[0..<46] == "appdump 1\nt 5\napp android\nsignal 6\nreason SIGA";
+}
+#test "android crash dump: no tombstone leaves the exit record's signal and words; a broken one leaves what read" {
+  o: [ACD_MAX] u8; none: [1] u8;
+  n := acd_dump(none[0..<0], 9, 11, "Native crash", "Android 11 (API 30)", "0.1.0", "1", "libeverglade.so", o[..]);
+  #assert cast(string) o[0..<n] == "appdump 1\nt 9\napp android\nos Android 11 (API 30)\nversion 0.1.0\nbuildno 1\nexe libeverglade.so\nsignal 11\nreason Native crash\n";
+  // no signal either way, a status that is no signal, a time before 1970
+  n = acd_dump(none[0..<0], -4, 0, "", "", "", "", "", o[..]); #assert cast(string) o[0..<n] == "appdump 1\nt 0\napp android\n";
+  n = acd_dump(none[0..<0], 1, 65, "", "", "", "", "", o[..]); #assert cast(string) o[0..<n] == "appdump 1\nt 1\napp android\n";
+  n = acd_dump(none[0..<0], 1, 64, "a\tb", "", "", "", "", o[..]); #assert cast(string) o[0..<n] == "appdump 1\nt 1\napp android\nsignal 64\nreason a b\n";
+  // cut short in the middle of the threads: the head and the signal still read
+  tb: [4096] u8; tn := acdt_tombstone(tb[..]);
+  n = acd_dump(tb[0..<tn - 9], 1, 11, "", "", "", "", "", o[..]);
+  #assert cast(string) o[0..<n] == "appdump 1\nt 1\napp android\nsignal 11\nreason SIGSEGV SEGV_MAPERR\n";
+  // a crashed thread that is not in the map: no frames
+  tb[acdt_str(tb[..], 0, 2, "google/sdk/emu:15/AB1/1:user/release-keys") + 5] = 0x22;   // tid 4242 becomes 4370, which no thread is
+  n = acd_dump(tb[0..<tn], 1, 11, "", "", "", "", "", o[..]);
+  #assert cast(string) o[0..<n] == "appdump 1\nt 1\napp android\nsignal 11\nreason SIGSEGV SEGV_MAPERR\n";
+  // an output too small for the head is no dump; one that fits the head and one frame holds that much
+  #assert acd_dump(none[0..<0], 1, 11, "w", "", "", "", "", o[0..<20]) == 0;
+  tn = acdt_tombstone(tb[..]);
+  n = acd_dump(tb[0..<tn], 1, 11, "", "", "", "", "", o[0..<120]);
+  #assert cast(string) o[0..<n] == "appdump 1\nt 1\napp android\nsignal 11\nreason SIGSEGV SEGV_MAPERR\na 9C6F0D1E2A3B4C5D6E7F8091A2B3C4D5E6F70812 73184 libc.so\n";
+}
+#test "android crash dump: at most ACD_FRAMES frames and ACD_MAX bytes; names, numbers and build IDs" {
+  t: [16384] u8; m := acdt_num(t[..], 0, 1, 7);
+  for i: 0..<ACD_FRAMES + 6 { m = acdt_frame(t[..], m, cast(u64)(i + 1), "/system/lib64/libc.so", "0011223344556677"); }
+  tb: [20000] u8; e: [17000] u8; k := acdt_num(e[..], 0, 1, 7); k = acdt_bytes(e[..], k, 2, t[0..<m]);
+  tn := acdt_num(tb[..], 0, 6, 7); tn = acdt_bytes(tb[..], tn, 16, e[0..<k]);
+  o: [ACD_MAX + 64] u8; n := acd_dump(tb[0..<tn], 1, 0, "", "", "", "", "", o[..]);
+  lines := 0; for i: 0..<n { if o[i] == '\n' { lines += 1; } }
+  #assert lines == 3 + ACD_FRAMES && n <= ACD_MAX && o[n - 1] == '\n';
+  #assert acd_base("/a/b/libx.so") == "libx.so" && acd_base("libx.so") == "libx.so" && acd_base("/a/") == "" && acd_base("") == "";
+  #assert acd_build_id("0011223344556677") && acd_build_id("00112233") && !acd_build_id("0011223") && !acd_build_id("0011223g") && acd_build_id("ABCDEF01") && !acd_build_id("");
+  b: [24] u8; #assert acd_put_num(b[..], 0, 0) == 1 && b[0] == '0' && acd_put_num(b[..], 0, 18446744073709551615) == 20 && cast(string) b[0..<20] == "18446744073709551615" && acd_put_num(b[..], 5, 18446744073709551615) == -1 && acd_put_num(b[..], -1, 1) == -1;
+  #assert acd_put(b[..], 22, "abc") == -1 && acd_put(b[..], 21, "abc") == 24 && acd_put(b[..], -1, "") == -1 && acd_line(b[..], 3, "k", "") == 3 && acd_line(b[..], 0, "k", "v") == 4 && cast(string) b[0..<4] == "k v\n";
+}

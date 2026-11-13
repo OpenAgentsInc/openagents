@@ -11,6 +11,8 @@
 #   room/releases/NAME            that release's build ID
 #   app/UUID.dSYM.zip             a native app binary's dSYM, named by the binary's UUID in lowercase hex
 #                                 with no dashes: the `build` line of an app's crash report (#13379)
+#   app/android/BUILDID.so.gz     the Android app's library with its symbols and lines (not stripped), named
+#                                 by its GNU build ID: the `build` line of an Android crash report (#13379)
 #
 #   coax/web/symbols.sh bucket                    make the bucket and its 180-day rule (idempotent)
 #   coax/web/symbols.sh pages SITE_DIR            keep every *.wasm.syms under a staged site (deploy.sh)
@@ -24,6 +26,15 @@
 #   coax/web/symbols.sh app-frame UUID OFFSET...  an app frame's function, file and line: UUID is the
 #                                                 report's build line, OFFSET the hex after "+0x" of a
 #                                                 frame in the app's own binary (a Mac with Xcode)
+#   coax/web/symbols.sh android LIB.so...         keep an Android build's libraries, not stripped, one object
+#                                                 a build ID (apps/everglade-mobile/android/build.sh --symbols)
+#   coax/web/symbols.sh android-frame BUILDID OFFSET...
+#                                                 an Android frame's function, file and line: BUILDID is the
+#                                                 report's build line, OFFSET the hex after "+0x" of a frame
+#                                                 in the app's own library. With SYMBOLS_DIR set, the library
+#                                                 is read from SYMBOLS_DIR/NAME.BUILDID.so, not the bucket.
+#   READELF and ADDR2LINE name the tools (default llvm-readelf or readelf, llvm-addr2line or addr2line):
+#   the NDK's are under toolchains/llvm/prebuilt/*/bin.
 set -euo pipefail
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
 project=openagentsgemini region=us-central1 bucket="gs://openagentsgemini-oa-symbols"
@@ -96,5 +107,35 @@ case "${1:-}" in
       [[ "${off#0x}" =~ ^[0-9a-f]{1,16}$ ]] || { echo "symbols: an offset in hex: $off" >&2; exit 2; }
       xcrun atos ${arch:+-arch "$arch"} -o "$dwarf" -offset "0x${off#0x}"
     done ;;
-  *) sed -n '2,27p' "$0" >&2; exit 2 ;;
+  android)
+    shift; (( $# > 0 )) || { echo "usage: symbols.sh android LIB.so..." >&2; exit 2; }
+    readelf="${READELF:-$(command -v llvm-readelf || command -v readelf || true)}"
+    [[ -n "$readelf" ]] || { echo "symbols: no readelf (set READELF to the NDK's llvm-readelf)" >&2; exit 1; }
+    work="$(mktemp -d)"; trap 'rm -rf "${work:?}"' EXIT
+    for lib in "$@"; do
+      id="$("$readelf" -n "$lib" | awk '/Build ID:/ { print $3; exit }')"
+      [[ "$id" =~ ^[0-9a-f]{8,64}$ ]] || { echo "symbols: $lib has no build ID (link with -Wl,--build-id=sha1)" >&2; exit 1; }
+      "$readelf" -S "$lib" | grep -q '\.debug_info' || { echo "symbols: $lib is stripped: keep the library as linked, before llvm-strip" >&2; exit 1; }
+      gzip -9 -n -c "$lib" > "$work/$id.so.gz"
+      gs cp "$work/$id.so.gz" "$bucket/app/android/$id.so.gz" >/dev/null 2>&1
+      rm -f "$work/$id.so.gz"
+      echo "symbols: $(basename "$lib") kept as $bucket/app/android/$id.so.gz"
+    done ;;
+  android-frame)
+    id="${2:?usage: symbols.sh android-frame BUILDID OFFSET...}"; shift 2
+    [[ "$id" =~ ^[0-9a-f]{8,64}$ ]] || { echo "symbols: the report's build line, a build ID in hex" >&2; exit 2; }
+    addr2line="${ADDR2LINE:-$(command -v llvm-addr2line || command -v addr2line || true)}"
+    [[ -n "$addr2line" ]] || { echo "symbols: no addr2line (set ADDR2LINE to the NDK's llvm-addr2line)" >&2; exit 1; }
+    work="$(mktemp -d)"; trap 'rm -rf "${work:?}"' EXIT
+    lib="$(find "${SYMBOLS_DIR:-/nonexistent}" -maxdepth 1 -name "*.$id.so" -type f 2>/dev/null | head -1)"
+    if [[ -z "$lib" ]]; then
+      gs cp "$bucket/app/android/$id.so.gz" "$work/l.so.gz" >/dev/null 2>&1 || { echo "symbols: no library kept for build $id" >&2; exit 1; }
+      gunzip "$work/l.so.gz"; lib="$work/l.so"
+    fi
+    # A frame's offset is its address in the library as linked (the tombstone's rel_pc).
+    for off in "$@"; do
+      [[ "${off#0x}" =~ ^[0-9a-f]{1,16}$ ]] || { echo "symbols: an offset in hex: $off" >&2; exit 2; }
+      "$addr2line" -f -C -i -p -e "$lib" "0x${off#0x}"
+    done ;;
+  *) sed -n '2,37p' "$0" >&2; exit 2 ;;
 esac
