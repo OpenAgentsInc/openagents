@@ -47,7 +47,7 @@ rs_cast_object :: (b: [] RsBattle, i: int, sp: int, o: [] RsObject) -> bool {
   if beams == 1 { dice *= rs_cantrip_tier(me.level); }
   ac := rs_object_ac(o[0].material);
   bonus := rs_spell_attack(me);
-  edge := rs_edge(ifx me.innate_until > b[0].clock then 1 else 0, ifx rs_has(me, RS_BLINDED) then 1 else 0);
+  edge := rs_edge(ifx rs_aura_on(me, EF_INNATE, b[0].clock) then 1 else 0, ifx rs_has(me, RS_BLINDED) then 1 else 0);
   agony := ifx me.agonizing == sp && sp != SP_FLAME_HURL then rs_mod(me.score[RS_CHA]) else 0;
   for beam: 0..<beams {
     if o[0].destroyed { break; }

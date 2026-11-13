@@ -169,6 +169,9 @@ EF_AID :: 25; // Aid (p. 107): cond is the current and maximum Hit Point increas
 EF_GUIDANCE :: 26; // Guidance (p. 138): cond is the selected skill
 EF_PROTECTION :: 27; // Protection from Evil and Good (p. 157)
 EF_SENSE :: 22; // Divine Sense (p. 54), on the Paladin: Celestials, Fiends and Undead within 60 feet known
+// Auras that were a field of their own on every creature (#13285, ability-record.coax): Sacred Weapon
+// (p. 56) and Innate Sorcery (p. 65) on their user, Starry Wisp's Dim Light (p. 165) on its target
+EF_SACRED :: 28; EF_INNATE :: 29; EF_GLOW :: 30;
 
 // The classes a creature can be built as (-1 for a stat block).
 RS_DRUID :: 0; RS_WIZARD :: 1; RS_WARLOCK :: 2; RS_BARBARIAN :: 3; RS_MONK :: 4; RS_MONSTER :: 5;
@@ -206,7 +209,10 @@ W_SPEAR :: 10; W_RITUAL_SICKLE :: 11; W_PACT_BLADE :: 12; W_HEAVY_CROSSBOW :: 13
 W_KNIGHT_CROSSBOW :: 15; W_PRIEST_MACE :: 16; W_RADIANT_FLAME :: 17; W_ARCANE_BURST :: 18;
 // mastery properties (p. 90-91)
 M_NONE :: 0; M_CLEAVE :: 1; M_GRAZE :: 2; M_SAP :: 3; M_VEX :: 4; M_SLOW :: 5; M_NICK :: 6;
-RS_EFFECTS :: 6;
+// Lasting effects a creature can bear at once: one from each seat of a raid (16, everglade/server/
+// battle.coax EGB_SEATS; #13285). Each one more costs 62,208 compile-time value slots in the room's
+// checks, which stand at 98% of the compiler's limit (E0400) with 16: raise that limit before this.
+RS_EFFECTS :: 16;
 // until: the tick it ends at. turn_end: 0 for an effect the clock alone ends; else 1 + the creature
 // whose turn's end at tick `until` ends it ("until the end of your next turn": it holds through that
 // turn's end and is gone before any later turn, however long a world's frame is; command-halt.coax
@@ -258,7 +264,6 @@ RsCreature :: struct {
   flame_until: int;         // Produce Flame in hand until (0: none)
   outlined_until: int;      // Faerie Fire: attacks against it have Advantage, it can't be Invisible
   outlined_by: int;         // whose spell (a creature index)
-  wisp_until: int;          // Starry Wisp's Dim Light
   restrained_by: int;       // the zone that restrains it (-1 none)
   // Warlock features: the cantrips Agonizing Blast and Repelling Blast were chosen for (-1 none),
   // the Fiend's Dark One's Blessing, and Hex ready to move to a new creature after its target
@@ -334,13 +339,13 @@ RsCreature :: struct {
   guard_slot: int; guard_turn: int = -1;   // Spirit Guardians: the slot it was cast with; the turn this creature last saved against one (-1 none yet)
   aura: bool; steed: bool;          // Aura of Protection; Faithful Steed (Find Steed, a summoning this engine doesn't model)
   metabolism: bool; slow_fall: bool; stunning: bool; stun_ready: bool; empowered: bool; halved_until: int;
-  // Paladin: Sacred Weapon (Channel Divinity) until; Ranger: the Hunter's Colossus Slayer
-  sacred_until: int; colossus: bool;
+  // Ranger: the Hunter's Colossus Slayer (the Paladin's Sacred Weapon is the Aura EF_SACRED)
+  colossus: bool;
   // Rogue: Sneak Attack dice (d6s), Cunning Action, Steady Aim
   sneak_dice: int; cunning: bool; steady_aim: bool;
-  // Sorcerer: Innate Sorcery until, the Metamagic it knows; Wizard and Sorcerer: Shield; the
+  // Sorcerer: the Metamagic it knows (Innate Sorcery is the Aura EF_INNATE); Wizard and Sorcerer: Shield; the
   // Evoker's Potent Cantrip; the Circle of the Land's Land's Aid
-  innate_until: int; quickened: bool; seeking: bool; shield_spell: bool; shield_active: bool;
+  quickened: bool; seeking: bool; shield_spell: bool; shield_active: bool;
   potent: bool; lands_aid: bool;
   slowed_until: int;        // the Slow mastery: 10 feet less Speed until then
   // the declared action timing profile: when the next spent slot of each level, Rage or

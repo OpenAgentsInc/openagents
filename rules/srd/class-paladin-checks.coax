@@ -69,7 +69,7 @@
   b: [1] RsBattle; cf_field(b[..], rs_paladin("Ulf", 0, 3), 17);
   #assert !rs_attack(b[..], 0, 1, false, -1) || b[0].c[1].hp == 200;   // 10 + 5 misses AC 17
   rs_fresh(b[..], 0);
-  #assert rs_sacred_weapon(b[..], 0) && b[0].c[0].uses[RS_USE_CHANNEL] == 1 && b[0].c[0].sacred_until == b[0].clock + rs_secs(600);
+  #assert rs_sacred_weapon(b[..], 0) && b[0].c[0].uses[RS_USE_CHANNEL] == 1 && rs_aura_on(b[0].c[0], EF_SACRED, b[0].clock + rs_secs(600) - 1) && !rs_aura_on(b[0].c[0], EF_SACRED, b[0].clock + rs_secs(600));
   #assert rs_attack(b[..], 0, 1, false, -1) && b[0].c[1].hp < 200;   // 10 + 5 + 2 hits
   two: [1] RsBattle; cf_field(two[..], rs_paladin("Ulf", 0, 2), 10); #assert !rs_sacred_weapon(two[..], 0);
 }

@@ -62,8 +62,8 @@
     b[0].c[1].ac = kc_ac(b[..],hit == 1); b[0].c[1].cond |= RS_INVISIBLE;
     #assert rs_cast(b[..],0,SP_STARRY_WISP,0,0,0,1);
     #assert 200 - b[0].c[1].hp == (ifx hit == 1 then 4 else 0);
-    #assert (b[0].c[1].wisp_until > b[0].clock) == (hit == 1) && rs_has(b[0].c[1],RS_INVISIBLE) == (hit == 0);
-    if hit == 1 { #assert b[0].c[1].wisp_until == b[0].c[0].turn_at + rs_beat(b[..]); }
+    #assert rs_aura_on(b[0].c[1], EF_GLOW, b[0].clock) == (hit == 1) && rs_has(b[0].c[1],RS_INVISIBLE) == (hit == 0);
+    if hit == 1 { until := b[0].c[0].turn_at + rs_beat(b[..]); #assert rs_aura_on(b[0].c[1], EF_GLOW, until - 1) && !rs_aura_on(b[0].c[1], EF_GLOW, until); }
   }
   b: [1] RsBattle; kc_case(b[..],rs_druid("Druid",0,5),SP_STARRY_WISP,10,10); b[0].c[1].ac = 1;
   #assert rs_cast(b[..],0,SP_STARRY_WISP,0,0,0,1) && b[0].c[1].hp == 192;   // 2d8 at level 5

@@ -12,6 +12,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 //   coax/bin/coax test --library rules/srd/battle.coax
 #load "spells.coax";
+#load "ability-record.coax";
 #load "prone-movement.coax";
 #load "timing-profile.coax";
 #load "component-reaction.coax";
@@ -536,7 +537,7 @@ rs_is_smite :: (s: RsSpell) -> bool {
   return false;
 }
 // A creature's spell save DC now: Innate Sorcery adds 1 while it lasts.
-rs_dc :: (b: [] RsBattle, i: int) -> int { return rs_spell_dc(b[0].c[i]) + (ifx b[0].c[i].innate_until > b[0].clock then 1 else 0); }
+rs_dc :: (b: [] RsBattle, i: int) -> int { return rs_spell_dc(b[0].c[i]) + (ifx rs_aura_on(b[0].c[i], EF_INNATE, b[0].clock) then 1 else 0); }
 // Armor Class now: Shield's +5 until the start of its next turn, Shield of Faith's +2.
 rs_ac :: (b: [] RsBattle, j: int) -> int { return b[0].c[j].ac + rs_shield_bonus(b[0].c[j].shield_active) + (ifx rs_effect(b[0].c[j], EF_FAITH) then 2 else 0); }
 // Whether creature i can cast spell sp with a slot of level `slot` now (0 for a cantrip, or for the
@@ -994,7 +995,7 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
       melee := st.a == 1;
       edge := rs_attack_edge_from(b,i,j,melee,false,origin);
       // Innate Sorcery: Advantage on the attack rolls of its spells (any Disadvantage cancels it)
-      if b[0].c[i].innate_until > b[0].clock { edge = ifx edge < 0 then 0 else 1; }
+      if rs_aura_on(b[0].c[i], EF_INNATE, b[0].clock) { edge = ifx edge < 0 then 0 else 1; }
       bonus := rs_spell_attack(b[0].c[i]);
       r := rs_roll_attack_from(b,i,j,edge,bonus,20,true,origin);
       crit = r.crit;
@@ -1174,7 +1175,7 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
       rs_add_name(l[..], b, i); rs_add_text(l[..], "'s hits, Disadvantage on "); rs_add_text(l[..], RS_ABBR[st.a]); rs_add_text(l[..], " checks");
       rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
     } else if st.kind == RS_S_GLOW {
-      b[0].c[j].wisp_until = b[0].c[i].turn_at + rs_beat(b);
+      _ := rs_put_effect(b, j, RsEffect.{kind = EF_GLOW, by = i, spell = sp, until = b[0].c[i].turn_at + rs_beat(b), save = -1});
       b[0].c[j].cond = rs_clear(b[0].c[j].cond, RS_INVISIBLE);
     } else if st.kind == RS_S_EXPOSE {
       _ := rs_put_effect(b, j, RsEffect.{kind = EF_EXPOSED, by = i, spell = sp, until = rs_next_turn_tick(b, i), turn_end = i + 1, save = -1, dc = 0});
@@ -1624,7 +1625,7 @@ rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: R
   if far < 0 { edge = rs_edge(ifx edge > 0 then 1 else 0, 1 + (ifx edge < 0 then 1 else 0)); }
   bonus := printed_bonus;
   // Sacred Weapon: its Charisma modifier (at least +1) on the attack rolls of a melee weapon
-  sacred := rs_strike_sacred(melee,w,me.sacred_until > b[0].clock);
+  sacred := rs_strike_sacred(melee,w,rs_aura_on(me, EF_SACRED, b[0].clock));
   if sacred { bonus += rs_max(rs_mod(me.score[RS_CHA]), 1); }
   // Improved Critical: weapons and Unarmed Strikes score a Critical Hit on 20 - crit_range or higher
   r := rs_roll_attack(b, i, j, edge, bonus, 20 - me.crit_range, false);
@@ -2165,9 +2166,8 @@ rs_lay_on_hands :: (b: [] RsBattle, i: int, j: int, amount: int) -> bool {
 // minutes its Charisma modifier on its melee weapon's attack rolls, and Radiant damage if it likes.
 rs_sacred_weapon :: (b: [] RsBattle, i: int) -> bool {
   if !rs_action_free(b, i) || b[0].c[i].klass != RS_PALADIN || b[0].c[i].level < 3 || b[0].c[i].uses[RS_USE_CHANNEL] <= 0 { return false; }
-  if b[0].c[i].sacred_until > b[0].clock { return false; }
+  if rs_aura_on(b[0].c[i], EF_SACRED, b[0].clock) || !rs_aura_grant(b, i, EF_SACRED) { return false; }
   b[0].c[i].uses[RS_USE_CHANNEL] -= 1;
-  b[0].c[i].sacred_until = b[0].clock + rs_secs(600);
   rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_SACRED_WEAPON, " raises a Sacred Weapon: +Cha to hit, Radiant on a hit");
   return true;
 }
@@ -2189,9 +2189,8 @@ rs_steady_aim :: (b: [] RsBattle, i: int) -> bool {
 // Innate Sorcery (p. 65-66): a Bonus Action, for 1 minute: +1 to its spell save DC and Advantage on
 // its spell attack rolls.
 rs_innate_sorcery :: (b: [] RsBattle, i: int) -> bool {
-  if !rs_bonus_free(b, i) || b[0].c[i].uses[RS_USE_INNATE] <= 0 || b[0].c[i].innate_until > b[0].clock { return false; }
+  if !rs_bonus_free(b, i) || b[0].c[i].uses[RS_USE_INNATE] <= 0 || rs_aura_on(b[0].c[i], EF_INNATE, b[0].clock) || !rs_aura_grant(b, i, EF_INNATE) { return false; }
   b[0].turn.bonus = true; b[0].c[i].uses[RS_USE_INNATE] -= 1;
-  b[0].c[i].innate_until = b[0].clock + rs_secs(60);
   rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_INNATE_SORCERY, " unleashes Innate Sorcery");
   return true;
 }

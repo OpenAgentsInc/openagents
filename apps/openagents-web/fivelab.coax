@@ -416,8 +416,8 @@ fx_marks :: (s: [] Lab, i: int) -> int {
   f := cd_icons(b[0].c[i].cond);
   if b[0].c[i].conc >= 0 { f = f | FXS_CONCENTRATING; }
   if b[0].c[i].raging { f = f | FXS_RAGING; }
-  if b[0].c[i].sacred_until > now { f = f | FXS_SACRED; }
-  if b[0].c[i].innate_until > now { f = f | FXS_INNATE; }
+  if rs_aura_on(b[0].c[i], EF_SACRED, now) { f = f | FXS_SACRED; }
+  if rs_aura_on(b[0].c[i], EF_INNATE, now) { f = f | FXS_INNATE; }
   if b[0].c[i].flame_until > now { f = f | FXS_FLAME; }
   if b[0].c[i].dark_blessing && b[0].c[i].temp > 0 { f = f | FXS_FIEND; }
   return f;
@@ -2150,7 +2150,7 @@ draw_tokens :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
       fx := x + r * 0.95; fy := y - r * 0.85;
       n = seg(out, n, fx, fy + 3 * k, fx + sin(t * 9) * 1.5 * k, fy - 5 * k, 3 * k, 0.9, fl);
     }
-    if cr[0].wisp_until > b[0].clock { n = ring(out, n, x, y, r * 0.2, 2 * k, 0.9, spell_rgb(SP_STARRY_WISP)); }
+    if rs_aura_on(cr[0], EF_GLOW, b[0].clock) { n = ring(out, n, x, y, r * 0.2, 2 * k, 0.9, spell_rgb(SP_STARRY_WISP)); }
     // the name, and the hit points
     cap := lo(hi(c * 0.15, 8 * k), 14 * k);
     nm := cast(string) b[0].c[i].name[0..<b[0].c[i].name_n];
@@ -2405,9 +2405,9 @@ lab_panel_view :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
       if rs_effect(cr, EF_EXPOSED) { m = put(l[..], m, "  LIT"); }
       if cr.slowed_until > b[0].clock { m = put(l[..], m, "  SLOWED"); }
       if cr.inspired > 0 { m = put(l[..], m, "  INSPIRED"); }
-      if cr.innate_until > b[0].clock { m = put(l[..], m, "  INNATE SORCERY"); }
+      if rs_aura_on(cr, EF_INNATE, b[0].clock) { m = put(l[..], m, "  INNATE SORCERY"); }
       if cr.shield_active { m = put(l[..], m, "  SHIELD"); }
-      if cr.sacred_until > b[0].clock { m = put(l[..], m, "  SACRED WEAPON"); }
+      if rs_aura_on(cr, EF_SACRED, b[0].clock) { m = put(l[..], m, "  SACRED WEAPON"); }
       if cr.raging { m = put(l[..], m, "  RAGING"); }
       if cr.reckless_until > b[0].clock { m = put(l[..], m, "  RECKLESS"); }
       if cr.dodging { m = put(l[..], m, "  DODGING"); }

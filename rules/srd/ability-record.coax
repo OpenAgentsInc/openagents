@@ -1,0 +1,433 @@
+// The Ability and Aura records (GitHub #13285, docs/dnd/everglade-combat-profile.md).
+//
+// An Ability is what a creature can choose to do: a spell, or a class feature. Its record says, as
+// data, what of the turn it takes (an Action, a Bonus Action, a Reaction), what it costs and from
+// which pool, how it is aimed, its range and area, whether it can harm, and the Aura it leaves. A
+// spell's row is read from its spell record (spells.coax, more.coax); a feature's row is in the
+// table below. Its effect program is the spell record's steps, or the feature's own procedure in
+// the rules (class-features.coax); the record is what a world, a hotbar and a profile read, so
+// none of them carries a second table of costs or timings.
+//
+// An Aura is what lasts on a creature: an RsEffect in its list (engine.coax). Its record says, by
+// kind, where its conditions come from, how it stacks, what ends it besides the clock, and how
+// long a feature's lasts.
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+//   coax/bin/coax test --library rules/srd/ability-record-checks.coax
+#authority;
+
+// What an ability is. The numbers are the hotbar's (everglade/shared/fivebar.coax FB_*, which are
+// these) and are on the wire through the content registry: never renumber one.
+RS_AB_ATTACK :: 0; RS_AB_DASH :: 1; RS_AB_SPELL :: 2; RS_AB_RECKLESS :: 3; RS_AB_RAGE :: 4; RS_AB_FLURRY :: 5;
+RS_AB_PATIENT :: 6; RS_AB_WIND :: 7; RS_AB_WHOLE :: 8; RS_AB_SECOND :: 9; RS_AB_SURGE :: 10; RS_AB_LAY :: 11;
+RS_AB_SACRED :: 12; RS_AB_CDASH :: 13; RS_AB_AIM :: 14; RS_AB_INNATE :: 15; RS_AB_INSPIRE :: 16; RS_AB_TURN :: 17;
+RS_AB_PRESERVE :: 18; RS_AB_LANDS :: 19; RS_AB_RESURGE :: 20; RS_AB_WORLD :: 21; RS_AB_WILD :: 22; RS_AB_HIDE :: 23;
+RS_AB_GRAPPLE :: 24; RS_AB_SHOVE :: 25; RS_AB_READY :: 26; RS_AB_SKILL :: 27; RS_AB_RITUAL :: 28;
+RS_AB_SHOOT :: 30; RS_AB_SHAPECHANGE :: 31; RS_AB_BREATH :: 32; RS_AB_TAIL :: 33; RS_AB_BUFFET :: 34; RS_AB_ROAR :: 35;
+RS_ABILITIES :: 36;
+
+// What of the turn it takes, bits: Flurry of Blows as a hotbar plays it is the Attack and the Bonus
+// Action's strikes.
+RS_ACT_NONE :: 0; RS_ACT_ACTION :: 1; RS_ACT_BONUS :: 2; RS_ACT_REACTION :: 4;
+// What it costs: a spell slot of at least `amount`'s level; `amount` from the limited-use pool
+// `pool` (RS_USE_*); a Focus Point; a Rage.
+RS_COST_NONE :: 0; RS_COST_SLOT :: 1; RS_COST_USE :: 2; RS_COST_FOCUS :: 3; RS_COST_RAGE :: 4;
+// How it is aimed: at yourself, at one creature, at a point, at a friend.
+RS_AIM_SELF :: 0; RS_AIM_CREATURE :: 1; RS_AIM_POINT :: 2; RS_AIM_ALLY :: 3;
+
+RsAbility :: struct {
+  ok: bool;                 // a kind the table has
+  kind: int; spell: int;    // RS_AB_*; the spell record of an RS_AB_SPELL or RS_AB_RITUAL, else -1
+  act: int;                 // RS_ACT_* bits
+  gives: int;               // RS_ACT_* bits it gives back (Action Surge: an Action)
+  cost: int; pool: int; amount: int;
+  cast_s: int;              // seconds of casting beyond the turn's part (a Ritual's ten minutes), 0 none
+  recharge: int;            // ticks before the same ability again in a real-time world, beyond its part of the turn (0 none)
+  aim: int; range_ft: int;  // range_ft: 0 yourself, 5 touch or reach
+  area: int; area_ft: int;  // RS_A_* and its size, for an ability with an area
+  harm: bool;               // it can harm: an attack roll, a save or damage
+  aura: int;                // the EF_* it leaves (0 none)
+}
+
+// A feature's row: what of the turn, what it gives back, its cost, its aim and reach, harm, its Aura.
+rs_ab_row :: (kind: int, act: int, gives: int, cost: int, pool: int, aim: int, range_ft: int, harm: bool, aura: int) -> RsAbility #effects(all) {
+  return RsAbility.{ok = true, kind = kind, spell = -1, act = act, gives = gives, cost = cost, pool = pool,
+                    amount = ifx cost == RS_COST_NONE then 0 else 1, aim = aim, range_ft = range_ft, harm = harm, aura = aura};
+}
+// The class features and common actions (SRD 5.2.1; the page is the feature's).
+rs_feature_ability :: (kind: int) -> RsAbility #effects(all) {
+  if kind == RS_AB_ATTACK { return rs_ab_row(kind, RS_ACT_ACTION, 0, RS_COST_NONE, 0, RS_AIM_CREATURE, 5, true, 0); }          // the Attack action (p. 177)
+  if kind == RS_AB_SHOOT { return rs_ab_row(kind, RS_ACT_ACTION, 0, RS_COST_NONE, 0, RS_AIM_CREATURE, 600, true, 0); }         // with a ranged weapon: its long range bounds it
+  if kind == RS_AB_RECKLESS { return rs_ab_row(kind, RS_ACT_ACTION, 0, RS_COST_NONE, 0, RS_AIM_CREATURE, 5, true, 0); }        // Reckless Attack (p. 30)
+  if kind == RS_AB_DASH { return rs_ab_row(kind, RS_ACT_ACTION, 0, RS_COST_NONE, 0, RS_AIM_SELF, 0, false, 0); }               // Dash (p. 180)
+  if kind == RS_AB_RAGE { return rs_ab_row(kind, RS_ACT_BONUS, 0, RS_COST_RAGE, 0, RS_AIM_SELF, 0, false, 0); }    // Rage (p. 29)
+  if kind == RS_AB_FLURRY { return rs_ab_row(kind, RS_ACT_ACTION | RS_ACT_BONUS, 0, RS_COST_FOCUS, 0, RS_AIM_CREATURE, 5, true, 0); }   // Flurry of Blows (p. 49), after the Attack
+  if kind == RS_AB_PATIENT { return rs_ab_row(kind, RS_ACT_BONUS, 0, RS_COST_FOCUS, 0, RS_AIM_SELF, 0, false, 0); }  // Patient Defense (p. 49)
+  if kind == RS_AB_WIND { return rs_ab_row(kind, RS_ACT_BONUS, 0, RS_COST_FOCUS, 0, RS_AIM_SELF, 0, false, 0); }     // Step of the Wind (p. 50)
+  if kind == RS_AB_WHOLE { return rs_ab_row(kind, RS_ACT_BONUS, 0, RS_COST_USE, RS_USE_WHOLE, RS_AIM_SELF, 0, false, 0); }     // Wholeness of Body (p. 52)
+  if kind == RS_AB_SECOND { return rs_ab_row(kind, RS_ACT_BONUS, 0, RS_COST_USE, RS_USE_WIND, RS_AIM_SELF, 0, false, 0); }     // Second Wind (p. 46)
+  if kind == RS_AB_SURGE { return rs_ab_row(kind, RS_ACT_NONE, RS_ACT_ACTION, RS_COST_USE, RS_USE_SURGE, RS_AIM_SELF, 0, false, 0); }   // Action Surge (p. 48)
+  if kind == RS_AB_LAY { return rs_ab_row(kind, RS_ACT_BONUS, 0, RS_COST_USE, RS_USE_LAY, RS_AIM_ALLY, 5, false, 0); }         // Lay On Hands (p. 53)
+  if kind == RS_AB_SACRED { return rs_ab_row(kind, RS_ACT_NONE, 0, RS_COST_USE, RS_USE_CHANNEL, RS_AIM_SELF, 0, false, EF_SACRED); }   // Sacred Weapon (p. 56), with the Attack action
+  if kind == RS_AB_CDASH { return rs_ab_row(kind, RS_ACT_BONUS, 0, RS_COST_NONE, 0, RS_AIM_SELF, 0, false, 0); }                // Cunning Action's Dash (p. 62)
+  if kind == RS_AB_AIM { return rs_ab_row(kind, RS_ACT_BONUS, 0, RS_COST_NONE, 0, RS_AIM_SELF, 0, false, 0); }                  // Steady Aim (p. 62)
+  if kind == RS_AB_INNATE { return rs_ab_row(kind, RS_ACT_BONUS, 0, RS_COST_USE, RS_USE_INNATE, RS_AIM_SELF, 0, false, EF_INNATE); }   // Innate Sorcery (p. 65)
+  if kind == RS_AB_INSPIRE { return rs_ab_row(kind, RS_ACT_BONUS, 0, RS_COST_USE, RS_USE_INSPIRE, RS_AIM_ALLY, 60, false, 0); }  // Bardic Inspiration (p. 32)
+  if kind == RS_AB_TURN { return rs_ab_row(kind, RS_ACT_ACTION, 0, RS_COST_USE, RS_USE_CHANNEL, RS_AIM_SELF, 30, true, EF_TURNED); }   // Turn Undead (p. 38)
+  if kind == RS_AB_PRESERVE { return rs_ab_row(kind, RS_ACT_ACTION, 0, RS_COST_USE, RS_USE_CHANNEL, RS_AIM_SELF, 30, false, 0); }  // Preserve Life (p. 40)
+  if kind == RS_AB_LANDS { return rs_ab_row(kind, RS_ACT_ACTION, 0, RS_COST_USE, RS_USE_WILD, RS_AIM_POINT, 60, true, 0); }     // Land's Aid (p. 44)
+  if kind == RS_AB_RESURGE { return rs_ab_row(kind, RS_ACT_NONE, 0, RS_COST_NONE, 0, RS_AIM_SELF, 0, false, 0); }    // Wild Resurgence (p. 43): a slot for a use, or a use for a slot
+  if kind == RS_AB_WILD { return rs_ab_row(kind, RS_ACT_BONUS, 0, RS_COST_USE, RS_USE_WILD, RS_AIM_SELF, 0, false, 0); }       // Wild Shape (p. 42)
+  if kind == RS_AB_WORLD { return rs_ab_row(kind, RS_ACT_NONE, 0, RS_COST_NONE, 0, RS_AIM_SELF, 0, false, 0); }      // a world's own entry: no rules
+  if kind == RS_AB_HIDE { return rs_ab_row(kind, RS_ACT_ACTION, 0, RS_COST_NONE, 0, RS_AIM_SELF, 0, false, 0); }                 // Hide (p. 183)
+  if kind == RS_AB_GRAPPLE { return rs_ab_row(kind, RS_ACT_ACTION, 0, RS_COST_NONE, 0, RS_AIM_CREATURE, 5, true, 0); }           // an Unarmed Strike's Grapple (p. 190)
+  if kind == RS_AB_SHOVE { return rs_ab_row(kind, RS_ACT_ACTION, 0, RS_COST_NONE, 0, RS_AIM_CREATURE, 5, true, 0); }             // an Unarmed Strike's Shove (p. 190)
+  if kind == RS_AB_READY { return rs_ab_row(kind, RS_ACT_ACTION, 0, RS_COST_NONE, 0, RS_AIM_SELF, 0, false, EF_READY); }         // Ready (p. 186)
+  if kind == RS_AB_SKILL { return rs_ab_row(kind, RS_ACT_ACTION, 0, RS_COST_NONE, 0, RS_AIM_CREATURE, 0, false, 0); }            // Search, Study, Influence (p. 176)
+  if kind == RS_AB_BREATH { return rs_ab_row(kind, RS_ACT_ACTION, 0, RS_COST_NONE, 0, RS_AIM_POINT, 60, true, 0); }              // Fire Breath (Adult Red Dragon): Recharge 5-6, the rules roll it
+  if kind == RS_AB_TAIL { return rs_ab_row(kind, RS_ACT_ACTION, 0, RS_COST_NONE, 0, RS_AIM_SELF, 15, true, 0); }
+  if kind == RS_AB_BUFFET { return rs_ab_row(kind, RS_ACT_ACTION, 0, RS_COST_NONE, 0, RS_AIM_SELF, 15, true, 0); }
+  if kind == RS_AB_ROAR { return rs_ab_row(kind, RS_ACT_ACTION, 0, RS_COST_NONE, 0, RS_AIM_SELF, 120, true, EF_COND); }
+  return RsAbility.{kind = kind, spell = -1};
+}
+// A spell's steps that harm: an attack roll, a save, or damage.
+rs_spell_harms :: (s: RsSpell) -> bool #effects(all) {
+  for k: 0..<s.step_n {
+    if s.steps[k].kind == RS_S_ATTACK || s.steps[k].kind == RS_S_SAVE || s.steps[k].kind == RS_S_DAMAGE { return true; }
+  }
+  return false;
+}
+// The Aura a spell's steps leave (the first that leaves one), 0 none.
+rs_spell_aura :: (s: RsSpell) -> int #effects(all) {
+  for k: 0..<s.step_n {
+    st := s.steps[k];
+    if st.kind == RS_S_CONDITION || st.kind == RS_S_TIMED { return EF_COND; }
+    if st.kind == RS_S_ENFEEBLE { return EF_ENFEEBLED; }
+    if st.kind == RS_S_NOHEAL { return EF_NOHEAL; }
+    if st.kind == RS_S_HEX { return EF_HEX; }
+    if st.kind == RS_S_MARK { return EF_MARK; }
+    if st.kind == RS_S_EXPOSE { return EF_EXPOSED; }
+    if st.kind == RS_S_MOCK { return EF_WEAK; }
+    if st.kind == RS_S_DAZE { return EF_DAZED; }
+    if st.kind == RS_S_BOON { return st.a; }
+    if st.kind == RS_S_HALT { return EF_HALT_PENDING; }
+    if st.kind == RS_S_AID { return EF_AID; }
+    if st.kind == RS_S_GLOW { return EF_GLOW; }
+  }
+  return 0;
+}
+// A spell's row, from its record: its casting time is its part of the turn, its level its slot.
+rs_spell_ability :: (sp: int) -> RsAbility #effects(all) {
+  s := rs_spell(sp);
+  a := RsAbility.{ok = true, kind = RS_AB_SPELL, spell = sp};
+  a.act = ifx s.cast_time == RS_T_BONUS then RS_ACT_BONUS else ifx s.cast_time == RS_T_REACTION then RS_ACT_REACTION else RS_ACT_ACTION;
+  if s.level > 0 { a.cost = RS_COST_SLOT; a.amount = s.level; }
+  a.area = s.area; a.area_ft = s.area_ft; a.range_ft = s.range_ft;
+  a.harm = rs_spell_harms(s);
+  a.aim = ifx s.area != RS_A_NONE then RS_AIM_POINT else ifx s.range_ft == 0 then RS_AIM_SELF else ifx a.harm then RS_AIM_CREATURE else RS_AIM_ALLY;
+  a.aura = rs_spell_aura(s);
+  return a;
+}
+// Whether sp has a spell record: the SRD's executable ones, or a house rule's (house.coax).
+rs_spell_recorded :: (sp: int) -> bool #effects(all) { return (sp >= 0 && sp < RS_MORE_END) || (sp >= RS_HOUSE && sp < RS_HOUSE_END); }
+RS_RITUAL_S :: 600;   // a Ritual takes 10 minutes longer (p. 104)
+// The record of ability (kind, sp): sp is the spell of an RS_AB_SPELL or an RS_AB_RITUAL, unread otherwise.
+rs_ability :: (kind: int, sp: int) -> RsAbility #effects(all) {
+  if kind == RS_AB_SPELL || kind == RS_AB_RITUAL || kind == RS_AB_SHAPECHANGE {
+    spell := ifx kind == RS_AB_SHAPECHANGE then SP_SHAPECHANGE else sp;
+    if !rs_spell_recorded(spell) { return RsAbility.{kind = kind, spell = -1}; }
+    a := rs_spell_ability(spell);
+    a.kind = kind;
+    // a Ritual spends no slot and takes ten minutes longer
+    if kind == RS_AB_RITUAL { a.cost = RS_COST_NONE; a.amount = 0; a.cast_s = RS_RITUAL_S; }
+    return a;
+  }
+  return rs_feature_ability(kind);
+}
+
+// What an ability's cost leaves its creature to count: slots at the lowest level that can pay, uses,
+// Focus or Rages (-1: it costs nothing).
+rs_ability_left :: (c: RsCreature, a: RsAbility) -> int #effects(all) {
+  if a.cost == RS_COST_SLOT {
+    for l: rs_max(a.amount, 1)..<10 { if c.slots[l] > 0 { return c.slots[l]; } }
+    return 0;
+  }
+  if a.cost == RS_COST_USE { return c.uses[a.pool]; }
+  if a.cost == RS_COST_FOCUS { return c.focus; }
+  if a.cost == RS_COST_RAGE { return c.rages; }
+  return -1;
+}
+// Whether the creature can pay it now.
+rs_ability_paid :: (c: RsCreature, a: RsAbility) -> bool #effects(all) {
+  left := rs_ability_left(c, a);
+  return left < 0 || left >= rs_max(a.amount, 1) || (a.cost == RS_COST_SLOT && left > 0);
+}
+
+// ---- Auras
+
+// How an Aura stacks. EACH: every source's record stands, and what reads it asks whether any does,
+// so two of one name never add (SRD 5.2.1 p. 105, Combining Spell Effects). RENEW: a source has one;
+// the same source's again keeps the one record, ending at the later time.
+RS_STACK_EACH :: 0; RS_STACK_RENEW :: 1;
+// What ends it besides its clock, bits: damage to its bearer; the save it repeats; its caster's
+// Concentration; its owner's turn (RsEffect.turn_end); its bearer becoming Incapacitated.
+RS_END_DAMAGE :: 1; RS_END_SAVE :: 2; RS_END_CONC :: 4; RS_END_TURN :: 8; RS_END_INCAPACITATED :: 16;
+// Where its conditions come from: none; the record's own `cond` mask; the fixed mask `cond`.
+RS_AU_NO_COND :: 0; RS_AU_OWN_COND :: 1; RS_AU_FIXED_COND :: 2;
+RsAura :: struct {
+  kind: int;
+  conds: int; cond: int;   // RS_AU_*_COND, and the fixed mask
+  stack: int;              // RS_STACK_*
+  ends: int;               // RS_END_* bits
+  secs: int;               // a feature's own duration in seconds (0: its spell's, its turn's or its event's)
+}
+rs_au_row :: (kind: int, conds: int, cond: int, stack: int, ends: int, secs: int) -> RsAura #effects(all) {
+  return RsAura.{kind = kind, conds = conds, cond = cond, stack = stack, ends = ends, secs = secs};
+}
+// The Aura record of an effect kind (EF_*).
+rs_aura_record :: (kind: int) -> RsAura #effects(all) {
+  if kind == EF_COND { return rs_au_row(kind, RS_AU_OWN_COND, 0, RS_STACK_EACH, RS_END_SAVE | RS_END_CONC | RS_END_TURN, 0); }
+  if kind == EF_TURNED { return rs_au_row(kind, RS_AU_OWN_COND, 0, RS_STACK_EACH, RS_END_DAMAGE, 60); }
+  if kind == EF_DAZED { return rs_au_row(kind, RS_AU_OWN_COND, 0, RS_STACK_EACH, RS_END_DAMAGE | RS_END_CONC, 0); }
+  if kind == EF_ZONE_RESTRAIN { return rs_au_row(kind, RS_AU_FIXED_COND, RS_RESTRAINED, RS_STACK_RENEW, RS_END_SAVE | RS_END_CONC, 0); }
+  if kind == EF_REST_SLEEP { return rs_au_row(kind, RS_AU_FIXED_COND, RS_UNCONSCIOUS, RS_STACK_EACH, RS_END_DAMAGE, 0); }
+  if kind == EF_KNOCKOUT { return rs_au_row(kind, RS_AU_FIXED_COND, RS_UNCONSCIOUS, RS_STACK_EACH, 0, 0); }
+  if kind == EF_ENFEEBLED { return rs_au_row(kind, RS_AU_NO_COND, 0, RS_STACK_EACH, RS_END_SAVE | RS_END_CONC, 0); }
+  if kind == EF_HEX || kind == EF_MARK || kind == EF_BLESS || kind == EF_BANE || kind == EF_FAITH || kind == EF_PROTECTION || kind == EF_GUIDANCE {
+    return rs_au_row(kind, RS_AU_NO_COND, 0, RS_STACK_EACH, RS_END_CONC, 0);
+  }
+  if kind == EF_WEAK || kind == EF_NOHEAL || kind == EF_EXPOSED || kind == EF_VEX || kind == EF_HALT || kind == EF_HALT_PENDING {
+    return rs_au_row(kind, RS_AU_NO_COND, 0, RS_STACK_EACH, RS_END_TURN, 0);
+  }
+  if kind == EF_SENSE { return rs_au_row(kind, RS_AU_NO_COND, 0, RS_STACK_RENEW, RS_END_INCAPACITATED, 600); }
+  if kind == EF_SACRED { return rs_au_row(kind, RS_AU_NO_COND, 0, RS_STACK_RENEW, 0, 600); }       // Sacred Weapon (p. 56): 10 minutes
+  if kind == EF_INNATE { return rs_au_row(kind, RS_AU_NO_COND, 0, RS_STACK_RENEW, 0, 60); }        // Innate Sorcery (p. 65): 1 minute
+  if kind == EF_GLOW { return rs_au_row(kind, RS_AU_NO_COND, 0, RS_STACK_RENEW, 0, 0); }   // Starry Wisp's Dim Light (p. 165): its caster's next turn's end, as a tick
+  return rs_au_row(kind, RS_AU_NO_COND, 0, RS_STACK_EACH, 0, 0);
+}
+// The conditions an effect record imposes on its bearer.
+rs_aura_conditions :: (e: RsEffect) -> int #effects(all) {
+  a := rs_aura_record(e.kind);
+  if a.conds == RS_AU_OWN_COND { return e.cond; }
+  if a.conds == RS_AU_FIXED_COND { return a.cond; }
+  return 0;
+}
+// The record of the same Aura from the same source that e would renew (-1: none, or its kind takes
+// a record a source each time).
+rs_aura_renews :: (c: RsCreature, e: RsEffect) -> int #effects(all) {
+  if rs_aura_record(e.kind).stack != RS_STACK_RENEW { return -1; }
+  for k: 0..<RS_EFFECTS {
+    o := c.eff[k];
+    if o.kind == e.kind && o.cond == e.cond && o.by == e.by && o.spell == e.spell { return k; }
+  }
+  return -1;
+}
+// Whether creature c bears Aura `kind` now, and from `by` (rs_aura_by).
+rs_aura_on :: (c: RsCreature, kind: int, now: int) -> bool #effects(all) {
+  for k: 0..<RS_EFFECTS { if c.eff[k].kind == kind && c.eff[k].until > now { return true; } }
+  return false;
+}
+// Put a feature's Aura on its user for its record's seconds. False, and nothing changed, when its
+// list is full.
+rs_aura_grant :: (b: [] RsBattle, i: int, kind: int) -> bool #effects(all) {
+  return rs_put_effect(b, i, RsEffect.{kind = kind, by = i, spell = -1, until = b[0].clock + rs_secs(rs_aura_record(kind).secs), save = -1});
+}
+
+// ---- checks
+
+// The feature rows, written out a second time by kind (0 to 35; 29 has no ability): what of the turn,
+// what it gives, cost, pool, aim, reach in feet, harm, Aura.
+RS_AB_T_ACT :: [36] int.[1, 1, 0, 1, 2, 3, 2, 2, 2, 2, 0, 2, 0, 2, 2, 2, 2, 1, 1, 1, 0, 0, 2, 1, 1, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1];
+RS_AB_T_GIVES :: [36] int.[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+RS_AB_T_COST :: [36] int.[0, 0, 0, 0, 4, 3, 3, 3, 2, 2, 2, 2, 2, 0, 0, 2, 2, 2, 2, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+RS_AB_T_POOL :: [36] int.[0, 0, 0, 0, 0, 0, 0, 0, 9, 2, 3, 8, 0, 0, 0, 6, 1, 0, 0, 7, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+RS_AB_T_AIM :: [36] int.[1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 3, 0, 0, 2, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 2, 0, 0, 0];
+RS_AB_T_FT :: [36] int.[5, 0, 0, 5, 0, 5, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 60, 30, 30, 60, 0, 0, 0, 0, 5, 5, 0, 0, 0, 0, 600, 0, 60, 15, 15, 120];
+RS_AB_T_HARM :: [36] int.[1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1];
+RS_AB_T_AURA :: [36] int.[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 29, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 23, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+#test "every feature's Ability record is its row: part of the turn, cost and pool, aim and reach, harm and Aura" {
+  for k: 0..<RS_ABILITIES {
+    if k == RS_AB_SPELL || k == RS_AB_RITUAL || k == RS_AB_SHAPECHANGE { continue; }
+    a := rs_ability(k, -1);
+    #assert a.ok == (k != 29) && a.kind == k && a.spell == -1;
+    if k == 29 { #assert a.act == 0 && a.cost == 0 && !a.harm; continue; }
+    #assert a.act == RS_AB_T_ACT[k] && a.gives == RS_AB_T_GIVES[k] && a.cost == RS_AB_T_COST[k] && a.pool == RS_AB_T_POOL[k];
+    #assert a.amount == (ifx RS_AB_T_COST[k] == 0 then 0 else 1) && a.cast_s == 0 && a.recharge == 0;
+    #assert a.aim == RS_AB_T_AIM[k] && a.range_ft == RS_AB_T_FT[k] && a.harm == (RS_AB_T_HARM[k] == 1) && a.aura == RS_AB_T_AURA[k];
+    #assert a.area == RS_A_NONE && a.area_ft == 0;
+  }
+  #assert !rs_ability(-1, -1).ok && !rs_ability(RS_ABILITIES, -1).ok && rs_ability(RS_ABILITIES, -1).spell == -1;
+  #assert RS_ACT_ACTION == 1 && RS_ACT_BONUS == 2 && RS_ACT_REACTION == 4 && RS_COST_SLOT == 1 && RS_COST_USE == 2 && RS_COST_FOCUS == 3 && RS_COST_RAGE == 4;
+  #assert RS_AIM_SELF == 0 && RS_AIM_CREATURE == 1 && RS_AIM_POINT == 2 && RS_AIM_ALLY == 3 && EF_SACRED == 28 && EF_INNATE == 29 && EF_TURNED == 6 && EF_READY == 23 && EF_COND == 1;
+  #assert RS_USE_WHOLE == 9 && RS_USE_WIND == 2 && RS_USE_SURGE == 3 && RS_USE_LAY == 8 && RS_USE_INNATE == 6 && RS_USE_INSPIRE == 1 && RS_USE_WILD == 7 && RS_USE_CHANNEL == 0;
+}
+#test "a spell's Ability record is read from its spell record" {
+  bolt := rs_ability(RS_AB_SPELL, SP_FIRE_BOLT);
+  #assert rs_spell_ability(SP_FIRE_BOLT).kind == RS_AB_SPELL && rs_spell_ability(SP_FIRE_BOLT).spell == SP_FIRE_BOLT && rs_spell_ability(SP_FIRE_BOLT).ok;
+  #assert bolt.ok && bolt.kind == RS_AB_SPELL && bolt.spell == SP_FIRE_BOLT && bolt.act == RS_ACT_ACTION && bolt.cost == RS_COST_NONE && bolt.amount == 0;
+  #assert bolt.aim == RS_AIM_CREATURE && bolt.range_ft == 120 && bolt.area == RS_A_NONE && bolt.area_ft == 0 && bolt.harm && bolt.aura == 0 && bolt.cast_s == 0;
+  word := rs_ability(RS_AB_SPELL, SP_HEALING_WORD);
+  #assert word.act == RS_ACT_BONUS && word.cost == RS_COST_SLOT && word.amount == 1 && word.aim == RS_AIM_ALLY && word.range_ft == 60 && !word.harm;
+  ball := rs_ability(RS_AB_SPELL, SP_FIREBALL);
+  #assert ball.act == RS_ACT_ACTION && ball.cost == RS_COST_SLOT && ball.amount == 3 && ball.aim == RS_AIM_POINT && ball.range_ft == 150 && ball.area == RS_A_SPHERE && ball.area_ft == 20 && ball.harm;
+  shield := rs_ability(RS_AB_SPELL, SP_SHIELD);
+  #assert shield.act == RS_ACT_REACTION && shield.aim == RS_AIM_SELF && shield.range_ft == 0 && shield.amount == 1 && !shield.harm;
+  wave := rs_ability(RS_AB_SPELL, SP_THUNDERWAVE);
+  #assert wave.aim == RS_AIM_POINT && wave.range_ft == 0 && wave.area == RS_A_CUBE_SELF && wave.area_ft == 15;
+  life := rs_ability(RS_AB_SPELL, SP_FALSE_LIFE);
+  #assert life.aim == RS_AIM_SELF && !life.harm && life.act == RS_ACT_ACTION;
+  hex := rs_ability(RS_AB_SPELL, SP_HEX);
+  #assert hex.act == RS_ACT_BONUS && hex.aura == EF_HEX && hex.aim == RS_AIM_ALLY && !hex.harm;
+  #assert rs_ability(RS_AB_SPELL, SP_STARRY_WISP).aura == EF_GLOW && rs_ability(RS_AB_SPELL, SP_STARRY_WISP).harm;
+  // a Ritual: the same spell with no slot and ten minutes more; Shapechange is its own kind over its spell
+  rite := rs_ability(RS_AB_RITUAL, SP_FALSE_LIFE);
+  #assert rite.ok && rite.kind == RS_AB_RITUAL && rite.spell == SP_FALSE_LIFE && rite.cost == RS_COST_NONE && rite.amount == 0 && rite.cast_s == 600;
+  #assert rs_ability(RS_AB_SPELL, SP_FALSE_LIFE).cost == RS_COST_SLOT && rs_ability(RS_AB_SPELL, SP_FALSE_LIFE).cast_s == 0;
+  shape := rs_ability(RS_AB_SHAPECHANGE, -1);
+  #assert shape.ok && shape.kind == RS_AB_SHAPECHANGE && shape.spell == SP_SHAPECHANGE && shape.cost == RS_COST_SLOT && shape.amount == 9 && shape.cast_s == 0;
+  // no spell there: no record
+  #assert !rs_ability(RS_AB_SPELL, -1).ok && !rs_ability(RS_AB_SPELL, RS_MORE_END).ok && rs_ability(RS_AB_SPELL, RS_MORE_END - 1).ok && rs_ability(RS_AB_SPELL, 0).ok;
+  for sp: -3..<110 { #assert rs_spell_recorded(sp) == ((sp >= 0 && sp <= 89) || (sp >= 100 && sp <= 103)) && rs_ability(RS_AB_SPELL, sp).ok == rs_spell_recorded(sp); }
+  #assert RS_MORE_END == 90 && RS_HOUSE == 100 && RS_HOUSE_END == 104 && rs_ability(RS_AB_SPELL, SP_THUNDERBOLT).range_ft == RS_HOUSE_RANGE;
+  #assert rs_ability(RS_AB_SPELL, -1).kind == RS_AB_SPELL && rs_ability(RS_AB_SPELL, -1).spell == -1 && !rs_ability(RS_AB_RITUAL, -1).ok;
+}
+#test "a spell harms by an attack roll, a save or damage, and its Aura is its first step that leaves one" {
+  s: RsSpell;
+  #assert !rs_spell_harms(s) && rs_spell_aura(s) == 0;
+  kinds := [3] int.[RS_S_ATTACK, RS_S_SAVE, RS_S_DAMAGE];
+  for q: 0..<3 {
+    h: RsSpell; h.steps[0] = rs_step(RS_S_HEAL, 1, 8, 1, 0); h.steps[1] = rs_step(kinds[q], 0, 0, 0, 0);
+    h.step_n = 1; #assert !rs_spell_harms(h);
+    h.step_n = 2; #assert rs_spell_harms(h);
+    h.steps[0] = rs_step(kinds[q], 0, 0, 0, 0); h.step_n = 1; #assert rs_spell_harms(h);
+  }
+  for k: 0..<40 {
+    h: RsSpell; h.steps[0] = rs_step(k, 0, 0, 0, 0); h.step_n = 1;
+    #assert rs_spell_harms(h) == (k == RS_S_ATTACK || k == RS_S_SAVE || k == RS_S_DAMAGE);
+    want := 0;
+    if k == RS_S_CONDITION || k == RS_S_TIMED { want = EF_COND; }
+    else if k == RS_S_ENFEEBLE { want = EF_ENFEEBLED; }
+    else if k == RS_S_NOHEAL { want = EF_NOHEAL; }
+    else if k == RS_S_HEX { want = EF_HEX; }
+    else if k == RS_S_MARK { want = EF_MARK; }
+    else if k == RS_S_EXPOSE { want = EF_EXPOSED; }
+    else if k == RS_S_MOCK { want = EF_WEAK; }
+    else if k == RS_S_DAZE { want = EF_DAZED; }
+    else if k == RS_S_HALT { want = EF_HALT_PENDING; }
+    else if k == RS_S_AID { want = EF_AID; }
+    else if k == RS_S_GLOW { want = EF_GLOW; }
+    #assert rs_spell_aura(h) == want;
+    h.step_n = 0; #assert rs_spell_aura(h) == 0;
+  }
+  #assert RS_S_CONDITION == 5 && RS_S_TIMED == 14 && RS_S_ENFEEBLE == 15 && RS_S_NOHEAL == 13 && RS_S_HEX == 17 && RS_S_MARK == 21;
+  #assert RS_S_EXPOSE == 18 && RS_S_MOCK == 19 && RS_S_DAZE == 23 && RS_S_HALT == 29 && RS_S_AID == 31 && RS_S_GLOW == 9 && RS_S_BOON == 27;
+  #assert EF_ENFEEBLED == 2 && EF_NOHEAL == 4 && EF_HEX == 5 && EF_MARK == 7 && EF_EXPOSED == 8 && EF_WEAK == 3 && EF_DAZED == 10 && EF_HALT_PENDING == 17 && EF_AID == 25 && EF_GLOW == 30;
+  // a boon's Aura is the step's own; the first step that leaves one decides
+  boon: RsSpell; boon.steps[0] = rs_step(RS_S_SAVE, 0, 0, 0, 0); boon.steps[1] = rs_step(RS_S_BOON, EF_BANE, 0, 0, 0); boon.steps[2] = rs_step(RS_S_HEX, 0, 0, 0, 0); boon.step_n = 3;
+  #assert rs_spell_aura(boon) == EF_BANE;
+  boon.steps[1] = rs_step(RS_S_BOON, EF_FAITH, 0, 0, 0); #assert rs_spell_aura(boon) == EF_FAITH;
+  boon.step_n = 1; #assert rs_spell_aura(boon) == 0;
+}
+#test "what a cost leaves to count, and whether it can be paid" {
+  c: RsCreature;
+  free := rs_ability(RS_AB_ATTACK, -1);
+  #assert rs_ability_left(c, free) == -1 && rs_ability_paid(c, free);
+  // a slot: the lowest level that can pay, at or above the spell's
+  ball := rs_ability(RS_AB_SPELL, SP_FIREBALL);
+  #assert rs_ability_left(c, ball) == 0 && !rs_ability_paid(c, ball);
+  c.slots[2] = 4; #assert rs_ability_left(c, ball) == 0 && !rs_ability_paid(c, ball);
+  c.slots[9] = 1; #assert rs_ability_left(c, ball) == 1 && rs_ability_paid(c, ball);
+  c.slots[4] = 2; #assert rs_ability_left(c, ball) == 2;
+  c.slots[3] = 5; #assert rs_ability_left(c, ball) == 5 && rs_ability_paid(c, ball);
+  // a 9th-level spell is paid by one 9th-level slot, though its level is more than its count
+  nine := rs_ability(RS_AB_SHAPECHANGE, -1);
+  #assert rs_ability_left(c, nine) == 1 && rs_ability_paid(c, nine);
+  c.slots[9] = 0; #assert rs_ability_left(c, nine) == 0 && !rs_ability_paid(c, nine);
+  // a slot's level never reads below 1 (a record with no level)
+  odd := RsAbility.{cost = RS_COST_SLOT, amount = 0}; c.slots[0] = 7; c.slots[1] = 0;
+  #assert rs_ability_left(c, odd) == 4;
+  c.slots[1] = 3; #assert rs_ability_left(c, odd) == 3;
+  // uses, Focus and Rages: their own pools
+  wind := rs_ability(RS_AB_SECOND, -1);
+  #assert rs_ability_left(c, wind) == 0 && !rs_ability_paid(c, wind);
+  c.uses[RS_USE_WIND] = 1; #assert rs_ability_left(c, wind) == 1 && rs_ability_paid(c, wind);
+  c.uses[RS_USE_SURGE] = 3; #assert rs_ability_left(c, wind) == 1 && rs_ability_left(c, rs_ability(RS_AB_SURGE, -1)) == 3;
+  flurry := rs_ability(RS_AB_FLURRY, -1);
+  #assert rs_ability_left(c, flurry) == 0 && !rs_ability_paid(c, flurry);
+  c.focus = 2; #assert rs_ability_left(c, flurry) == 2 && rs_ability_paid(c, flurry);
+  rage := rs_ability(RS_AB_RAGE, -1);
+  #assert rs_ability_left(c, rage) == 0 && !rs_ability_paid(c, rage);
+  c.rages = 1; #assert rs_ability_left(c, rage) == 1 && rs_ability_paid(c, rage) && rs_ability_left(c, flurry) == 2;
+  // a cost of more than one: paid only by that many
+  two := RsAbility.{cost = RS_COST_USE, pool = RS_USE_LAY, amount = 2};
+  c.uses[RS_USE_LAY] = 1; #assert !rs_ability_paid(c, two);
+  c.uses[RS_USE_LAY] = 2; #assert rs_ability_paid(c, two);
+  #assert rs_ability_paid(c, RsAbility.{cost = RS_COST_USE, pool = RS_USE_LAY, amount = 0});
+  c.uses[RS_USE_LAY] = 0; #assert !rs_ability_paid(c, RsAbility.{cost = RS_COST_USE, pool = RS_USE_LAY, amount = 0});
+}
+// The Aura rows a second time, by kind (0 to 31): conditions' source, fixed mask, stacking, what ends it, seconds.
+RS_AU_T_CONDS :: [32] int.[0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+RS_AU_T_COND :: [32] int.[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4096, 0, 0, 0, 16384, 16384, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+RS_AU_T_STACK :: [32] int.[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0];
+RS_AU_T_ENDS :: [32] int.[0, 14, 6, 8, 8, 4, 1, 4, 8, 8, 5, 4, 4, 4, 0, 8, 6, 8, 0, 0, 1, 0, 16, 0, 0, 0, 4, 4, 0, 0, 0, 0];
+RS_AU_T_SECS :: [32] int.[0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 600, 0, 0, 0, 0, 0, 600, 60, 0, 0];
+#test "every Aura's record is its row: where its conditions come from, how it stacks, what ends it, how long a feature's lasts" {
+  for k: -1..<32 {
+    a := rs_aura_record(k);
+    #assert a.kind == k;
+    if k < 0 { #assert a.conds == 0 && a.cond == 0 && a.stack == 0 && a.ends == 0 && a.secs == 0; continue; }
+    #assert a.conds == RS_AU_T_CONDS[k] && a.cond == RS_AU_T_COND[k] && a.stack == RS_AU_T_STACK[k] && a.ends == RS_AU_T_ENDS[k] && a.secs == RS_AU_T_SECS[k];
+  }
+  #assert RS_END_DAMAGE == 1 && RS_END_SAVE == 2 && RS_END_CONC == 4 && RS_END_TURN == 8 && RS_END_INCAPACITATED == 16;
+  #assert RS_RESTRAINED == 4096 && RS_UNCONSCIOUS == 16384 && EF_ZONE_RESTRAIN == 16 && EF_REST_SLEEP == 20 && EF_KNOCKOUT == 21 && EF_SENSE == 22;
+  #assert EF_BLESS == 11 && EF_BANE == 12 && EF_FAITH == 13 && EF_PROTECTION == 27 && EF_GUIDANCE == 26 && EF_VEX == 9 && EF_HALT == 15;
+}
+#test "an effect's conditions are its Aura's: its own mask, a fixed mask, or none" {
+  for k: 0..<32 {
+    e := RsEffect.{kind = k, cond = RS_CHARMED | RS_PRONE};
+    want := ifx RS_AU_T_CONDS[k] == 1 then RS_CHARMED | RS_PRONE else ifx RS_AU_T_CONDS[k] == 2 then RS_AU_T_COND[k] else 0;
+    #assert rs_aura_conditions(e) == want && rs_effect_conditions(e) == want;
+  }
+}
+#test "an Aura a source has one of renews its record; any other takes a record a source each time" {
+  c: [1] RsCreature;
+  first := RsEffect.{kind = EF_SACRED, by = 3, spell = -1, until = 100};
+  #assert rs_aura_renews(c[0], first) == -1 && rs_effect_add(c[..], first) && rs_aura_renews(c[0], first) == 0;
+  // the same again: one record, to the later end, never an earlier one
+  #assert rs_effect_add(c[..], RsEffect.{kind = EF_SACRED, by = 3, spell = -1, until = 250}) && c[0].eff[0].until == 250 && c[0].eff[1].kind == EF_NONE;
+  #assert rs_effect_add(c[..], RsEffect.{kind = EF_SACRED, by = 3, spell = -1, until = 90}) && c[0].eff[0].until == 250 && c[0].eff[1].kind == EF_NONE;
+  // another source, spell or mask is another record
+  #assert rs_aura_renews(c[0], RsEffect.{kind = EF_SACRED, by = 4, spell = -1}) == -1 && rs_aura_renews(c[0], RsEffect.{kind = EF_SACRED, by = 3, spell = 2}) == -1;
+  #assert rs_aura_renews(c[0], RsEffect.{kind = EF_SACRED, by = 3, spell = -1, cond = 1}) == -1 && rs_aura_renews(c[0], RsEffect.{kind = EF_INNATE, by = 3, spell = -1}) == -1;
+  #assert rs_effect_add(c[..], RsEffect.{kind = EF_SACRED, by = 4, spell = -1, until = 10}) && c[0].eff[1].by == 4 && rs_aura_renews(c[0], RsEffect.{kind = EF_SACRED, by = 4, spell = -1}) == 1;
+  // Hex: a record a source each time, the same source's too
+  hex := RsEffect.{kind = EF_HEX, by = 3, spell = SP_HEX, until = 50};
+  #assert rs_effect_add(c[..], hex) && rs_effect_add(c[..], hex) && c[0].eff[2].kind == EF_HEX && c[0].eff[3].kind == EF_HEX && rs_aura_renews(c[0], hex) == -1;
+  // the last record of a full list renews too
+  d: [1] RsCreature;
+  for k: 0..<RS_EFFECTS - 1 { #assert rs_effect_add(d[..], RsEffect.{kind = EF_HEX, by = k, spell = SP_HEX, until = 5}); }
+  #assert rs_effect_add(d[..], RsEffect.{kind = EF_GLOW, by = 1, spell = SP_STARRY_WISP, until = 7}) && rs_aura_renews(d[0], RsEffect.{kind = EF_GLOW, by = 1, spell = SP_STARRY_WISP}) == RS_EFFECTS - 1;
+  #assert rs_effect_add(d[..], RsEffect.{kind = EF_GLOW, by = 1, spell = SP_STARRY_WISP, until = 9}) && d[0].eff[RS_EFFECTS - 1].until == 9;
+  #assert !rs_effect_add(d[..], RsEffect.{kind = EF_GLOW, by = 2, spell = SP_STARRY_WISP, until = 9});
+  #assert RS_EFFECTS == 16;
+}
+#test "an Aura is borne until its tick, and a feature's is granted for its record's seconds" {
+  b: [1] RsBattle; b[0].w = 8; b[0].h = 8;
+  i := rs_add(b[..], rs_paladin("Oriel", 0, 3), 1, 1);
+  b[0].clock = rs_secs(5);
+  #assert !rs_aura_on(b[0].c[i], EF_SACRED, b[0].clock) && rs_aura_grant(b[..], i, EF_SACRED);
+  e := b[0].c[i].eff[0];
+  #assert e.kind == EF_SACRED && e.by == i && e.spell == -1 && e.until == rs_secs(605) && e.save == -1 && e.turn_end == 0;
+  #assert rs_aura_on(b[0].c[i], EF_SACRED, rs_secs(605) - 1) && !rs_aura_on(b[0].c[i], EF_SACRED, rs_secs(605)) && !rs_aura_on(b[0].c[i], EF_INNATE, 0);
+  #assert rs_aura_grant(b[..], i, EF_INNATE) && b[0].c[i].eff[1].until == rs_secs(65) && rs_aura_on(b[0].c[i], EF_INNATE, rs_secs(64));
+  // the clock drops it at its tick
+  rs_tick_ticks(b[..], rs_secs(60)); #assert b[0].c[i].eff[1].kind == EF_NONE && b[0].c[i].eff[0].kind == EF_SACRED;
+  // a full list refuses, and nothing changes
+  for k: 0..<RS_EFFECTS { b[0].c[i].eff[k] = RsEffect.{kind = EF_HEX, by = k, spell = SP_HEX, until = RS_NO_END}; }
+  #assert !rs_aura_grant(b[..], i, EF_SACRED) && !rs_aura_on(b[0].c[i], EF_SACRED, 0);
+  // the last record counts
+  b[0].c[i].eff[RS_EFFECTS - 1] = RsEffect.{kind = EF_INNATE, until = 9}; #assert rs_aura_on(b[0].c[i], EF_INNATE, 8);
+}

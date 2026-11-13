@@ -589,7 +589,7 @@ ri_test_heard :: (v: [] RmServer, k: int, text: string) -> bool {
   ri_test_drain(v[..], st[..]); #assert rm_items_pending(v[..]) == 0 && v[0].itm.refused == 3 && ri_test_items(st[..], 1) == 1;
   #assert ledger_reconcile(st[0].l[..], st[0].l[0].out_n);
 }
-#test "items: a character that leaves keeps its place until its operations have left; the outbox refuses when full" #steps 4000000000 {
+#test "items: a character that leaves keeps its place until its operations have left; the outbox refuses when full" #steps 4000000000 #traversal 1073741824 {
   v: [1] RmServer; st: [1] RiStore; ri_test_init(v[..], 1762190000000);
   c := ri_open(v[..], 0, 3, "p-a", 7); ri_test_drain(v[..], st[..]);
   #assert ri_push(v[..], 0, RI_LOOT, LOP_GRANT, 0, 1, CharClaim.{});
