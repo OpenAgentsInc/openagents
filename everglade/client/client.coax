@@ -27,6 +27,7 @@
 #load "wild.coax";   // the glade's cat (everglade/creatures/cat.coax), and ?stage=cat
 #load "npc.coax";    // Pansopher, the Golemancy trainer, and his talk (everglade/world/pansopher.coax)
 #load "bench.coax";  // the Golemancer's Workbench beside him and its window (everglade/world/golem-bench.coax)
+#load "speakers.coax";   // the Warden and the other speakers of the content tables, where their spawns are (#13381)
 #load "bag.coax";    // your coin, quests and bag as the room holds them, worded from the content tables (#13381)
 #load "../world/plant.coax";
 #load "../world/field.coax";
@@ -151,6 +152,7 @@ E2 :: struct {
   adm: [1] E2Admin;                              // admin mode (everglade/client/admin.coax): set and read in dev builds only
   monsters: [1] E2MonLooks;                      // the wolves and goblins as drawn (everglade/client/creatures.coax)
   wild: [1] E2Wild;                              // the glade's cat (everglade/client/wild.coax)
+  speakers: [1] E2Speakers;                      // the content tables' speakers: the Warden (everglade/client/speakers.coax)
   npc: [1] E2Npc;                                // Pansopher and his talk (everglade/client/npc.coax)
   bench: [1] E2Bench;                            // the Golemancer's Workbench (everglade/client/bench.coax)
   bag: [1] E2Bag;                                // your coin, quests and bag, and the content tables that word them (everglade/client/bag.coax)
@@ -1163,7 +1165,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   e2_chase_step(s, step);
   e2c_arrive_step(s, step);
   e2w_step(s, step);
-  e2p_step(s, step); e2b_step(s);
+  e2p_step(s, step); e2b_step(s); e2sp_step(s, step);
   #if BUILD_DEBUG { e2i_dev(s, s[0].own_dev); }
   e2i_step(s);
   chase := figs.cam_shoulder_shot(figs.cam_shot(s[0].view, s[0].orbit, s[0].eye_pitch, s[0].press), s[0].ml[0].shown);
@@ -1652,6 +1654,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   d = e2_familiars_draw(s,d);
   d = e2w_draw(s, d);               // the glade's cat (everglade/client/wild.coax)
   d = e2p_draw(s, d, bdt);          // Pansopher (everglade/client/npc.coax)
+  d = e2sp_draw(s, d, bdt);         // the Warden and the tables' other speakers (everglade/client/speakers.coax)
   d = e2b_draw(s, d);               // his workbench (everglade/client/bench.coax)
   d = e2_remotes_draw(s, d, bdt);   // the others in the room (everglade/client/net.coax)
   d = e2gd_draw(s, d, bdt);          // the path's guard (everglade/client/guard.coax)
@@ -1793,6 +1796,7 @@ e2_net_step :: (s: [] E2, mono: int) #export_c #effects(all) {
     for i: 0..<s[0].player_key_n { s[0].outbox[i] = s[0].player_key[i]; }
     s[0].out_n = s[0].player_key_n; s[0].action = E2_ACT_PLAYER; s[0].player_key_n = 0;
   }
+  _ := e2c_unclassed(s);   // /play, a kept look, no class kept by the API: Character Create before the hello (#13268)
   n[0].joined = !s[0].cz[0].on || s[0].cz[0].walking;
   e2n_where(n, s[0].you_x, s[0].you_z, s[0].you_face);   // for a hello after a lost room (#13057)
   if n[0].joined { e2_net_look(s); }   // the record as it stands: a change in the studio is said again
@@ -2117,7 +2121,7 @@ e2_heads :: (s: [] E2, out: [] f32, at: int) -> int {
     if !cc.hud_plate_in_reach(view, row.x, foot + 0.65, row.z, cc.HUD_PLATE_FAR) || !e2_sight_shows(s, row.x, foot, row.z, 0.6) { continue; }
     cc.hud_plates_push(p, row.x, foot + 0.65, row.z, rs_monster_block(RS_FAMILIAR_FORMS[row.form]).name, f32(row.hp) / f32(row.max), false, false, 1);
   }
-  e2mn_plate_add(s, p, view); e2gd_plate_add(s, p, view); e2p_plate_add(s, p, view);
+  e2mn_plate_add(s, p, view); e2gd_plate_add(s, p, view); e2p_plate_add(s, p, view); e2sp_plate_add(s, p, view);
   return cc.eg_plates(out, at, p, view, s[0].k, 0);
 }
 #test "two names in the same place in the picture: the farther one moves up clear of the nearer" {

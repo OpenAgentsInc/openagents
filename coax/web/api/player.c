@@ -612,12 +612,14 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   /* the ticket, every byte of it metaverse-engine/session/seat-ticket.coax's (ticket-sign-unit.c). HP, XP, WANTED and the
      owner generation ride in its HP field (the WANTED level the room saved, #12794: the room seats it wanted). */
   char ticket[4097];
+  bool unclassed = false;
   if (v5) {
     /* v5: shard 0 (no directory) is shard 1's, as a v2 ticket is */
     /* the character's class, kept once (0160), and the level its XP gives, at least the realm's starting
        level (OA_ROOM_START_LEVEL, 1 to 6, default 1: the server's, never the page's): the room seats it so (#13259) */
     char ext[40] = "-";
     if (!stk_class_ext_c(kept_class, xp, start, ext, sizeof ext)) snprintf(ext, sizeof ext, "-");
+    unclassed = strncmp(ext, "c=", 2) != 0;   /* no class kept for this character yet: the page opens Character Create before its hello (#13268) */
     if (!stk_write_c(v5_key, pid, acct, name, room, seat_shard, expires, hp, xp, wanted, owner_gen, ext, resume == 1 ? 2 : 1, saved, ticket, sizeof ticket)) {
       api_json(q->fd, resume == 1 ? 503 : 500, resume == 1 ? "{\"error\":\"character recovery unavailable\"}" : "{\"error\":\"no ticket\"}"); return;
     }
@@ -636,6 +638,7 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   if (xp > 0) ST_ADD(",\"xp\":%d", xp);
   if (look[0]) ST_ADD(",\"look\":\"%s\"", look);
   if (klass[0]) ST_ADD(",\"class\":\"%s\"", klass);
+  if (unclassed) ST_ADD(",\"unclassed\":true");
   if (shard > 0) ST_ADD(",\"room\":\"%s\",\"shard\":%d%s", room, shard, full ? ",\"full\":true" : "");
   /* the shard's own endpoint when it names one (a room VM, #13179): the page opens it in place of the
      load balancer's /api/room/sK/ */

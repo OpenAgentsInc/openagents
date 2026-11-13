@@ -76,6 +76,7 @@ E2Net :: struct {
   code: [NET_CODE] u8; code_n: int;   // the instance: the directory's, a check's (?room=) or none (the realm asks)
   local_relay: bool;            // ?relay=ws://localhost:PORT: a room server on this machine
   ticket: [NET_TICKET] u8; ticket_n: int; ticket_asked: bool;
+  unclassed: bool;              // the ticket's answer says the API keeps no class for this character yet (#13268): /play opens Character Create before the hello
   pid: [NET_ID] u8; pid_n: int; account: bool;
   look: [NET_LOOK] u8; look_n: int;   // your Character Create record (CC3), the hello's look
   name: [NET_NAME] u8; name_n: int;   // your name, as the ticket's answer says it
@@ -300,6 +301,7 @@ e2n_ticket :: (n: [] E2Net, answer: string) {
   tk := net_json_field(answer, "ticket");
   if tk.count == 0 || tk.count > NET_TICKET { e2n_down(n); return; }
   n[0].ticket_n = net_copy(n[0].ticket[..], tk);
+  n[0].unclassed = net_json_field(answer, "unclassed") == "true";
   // the instance the ticket is for (the directory's, or the API's numbered instance of a check's room:
   // pair-e2-x becomes pair-e2-x-1), on its shard when the answer names one
   room := net_json_field(answer, "room"); shard := net_number(net_json_field(answer, "shard"));

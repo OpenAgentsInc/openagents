@@ -87,6 +87,25 @@ e2c_clamp :: (v: f32, a: f32, b: f32) -> f32 { if v < a { return a; } if v > b {
 e2c_ease :: (v: f32) -> f32 { t := e2c_clamp(v, 0, 1); return t * t * (3 - 2 * t); }
 e2c_mix :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
 
+// Character Create opens: the studio in the glade, your kept look on, a class to pick.
+e2c_open :: (s: [] E2) {
+  c := s[0].cz[..]; cr := s[0].creator[..];
+  c[0].on = true; s[0].start_z = 0; s[0].autowalk = false;
+  cc.ensure(cr);
+  if cr[0].klass < 0 || cr[0].klass >= E2C_CLASSES { cr[0].klass = E2C_DRUID; }
+  if cr[0].profile_ok { c[0].ok = true; c[0].saved_rev = cr[0].profile_revision; }
+}
+// /play with a look kept in this browser and a character the API keeps no class for (a player who
+// pressed SAVE PLAYER and never USE IN EVERGLADE; its seat ticket's answer says so, #13268): Character
+// Create first, so the class is one you picked and never the hello's default. The ticket is let go: the
+// run out of the studio asks for a fresh one. True when it opened.
+e2c_unclassed :: (s: [] E2) -> bool {
+  n := s[0].net[..];
+  if !s[0].play || !n[0].unclassed || n[0].ticket_n == 0 || s[0].cz[0].on || s[0].creator[0].klass >= 0 || e2n_open(n) { return false; }
+  n[0].ticket_n = 0; n[0].unclassed = false;
+  e2c_open(s);
+  return true;
+}
 // The page's facts: at Character Create you start in the glade, the wardrobe yours.
 e2c_facts :: (s: [] E2, t: string) {
   play := e2c_play_page(t);
@@ -95,10 +114,7 @@ e2c_facts :: (s: [] E2, t: string) {
   // everglade.world/play: a character already kept in this browser (message 16, before the facts)
   // goes straight into the world; none yet, Character Create here first
   if play && cr[0].profile_ok { return; }
-  c[0].on = true; s[0].start_z = 0; s[0].autowalk = false;
-  cc.ensure(cr);
-  if cr[0].klass < 0 || cr[0].klass >= E2C_CLASSES { cr[0].klass = E2C_DRUID; }
-  if cr[0].profile_ok { c[0].ok = true; c[0].saved_rev = cr[0].profile_revision; }
+  e2c_open(s);
   if e2c_fact_has(t, "via=portal") && c[0].arrive_t < 0 { c[0].arriving = true; }
   ms := e2c_fact_int(t, "now=");
   if ms >= 0 { c[0].wall = f32(ms % E2C_PORTAL_WALL) / 1000; c[0].wall_clock = s[0].clock; c[0].clocked = true; }
@@ -384,6 +400,27 @@ e2c_action :: (s: [] E2) {
   #assert t[0].creator[0].profile_ok && t[0].creator[0].female && t[0].creator[0].eye_color == 3 && t[0].creator[0].klass == -1 && t[0].creator[0].level == 1;
   e2c_action(s[..]);
   #assert s[0].action == E2C_ADDRESS && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/everglade2";
+}
+#test "/play with a kept look and no class kept by the API opens Character Create before any hello; with a class kept it goes straight in (#13268)" #steps 1000000000 {
+  // a look kept in this browser: /play goes straight to the world, and asks for a seat
+  s: [1] E2; e2_message(s[..], E2_HOST_PAGE, "url=/worlds/character-creator\n"); e2c_change(s[..], 0, 1);
+  b: [E2C_RECORD] u8; s[0].creator[0].klass = -1; n := cc.save(s[0].creator[0], b[..]); #assert n == E2C_KEEP;
+  t: [1] E2; e2_message(t[..], 16, cast(string) b[0..<n]); e2_message(t[..], E2_HOST_PAGE, "url=https://everglade.world/play\n");
+  #assert t[0].play && !t[0].cz[0].on && t[0].creator[0].klass == -1 && !e2c_unclassed(t[..]);
+  // the API keeps a class: the ticket's answer does not say unclassed, and nothing opens
+  e2n_ticket(t[0].net[..], "200\n{\"ticket\":\"t.1\",\"room\":\"everglade2-3\"}");
+  #assert t[0].net[0].ticket_n == 3 && !t[0].net[0].unclassed && !e2c_unclassed(t[..]) && !t[0].cz[0].on;
+  // it keeps none: Character Create opens, the ticket is let go, and no socket opens while you pick
+  e2n_ticket(t[0].net[..], "200\n{\"ticket\":\"t.2\",\"room\":\"everglade2-3\",\"unclassed\":true}");
+  #assert t[0].net[0].unclassed && e2c_unclassed(t[..]) && e2c_creating(t[..]) && t[0].net[0].ticket_n == 0 && t[0].creator[0].klass == E2C_DRUID && t[0].cz[0].ok;
+  e2_net_step(t[..], 1000); #assert !t[0].net[0].joined && !t[0].net[0].ticket_asked;
+  // a class picked: the next ticket's answer opens nothing again
+  e2c_change(t[..], E2C_CLASS, 1); pick := t[0].creator[0].klass; #assert pick != E2C_DRUID;
+  e2n_ticket(t[0].net[..], "200\n{\"ticket\":\"t.3\",\"room\":\"everglade2-3\",\"unclassed\":true}");
+  t[0].cz[0].walking = true; #assert !e2c_unclassed(t[..]) && t[0].net[0].ticket_n == 3 && t[0].creator[0].klass == pick;
+  // on any other page, or once seated, nothing opens
+  u: [1] E2; e2_message(u[..], 16, cast(string) b[0..<n]); e2_message(u[..], E2_HOST_PAGE, "url=/worlds/everglade2\n");
+  e2n_ticket(u[0].net[..], "200\n{\"ticket\":\"t.4\",\"room\":\"everglade2-3\",\"unclassed\":true}"); #assert !e2c_unclassed(u[..]) && !u[0].cz[0].on;
 }
 #test "create: an older record with a class after the look still restores on Everglade II's page" #steps 1000000000 {
   s: [1] E2; e2_message(s[..], E2_HOST_PAGE, "url=/worlds/character-creator\n");

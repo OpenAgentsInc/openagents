@@ -402,7 +402,7 @@ e2i_test_say :: (s: [] E2, what: int, a: int, b: int, c: int) {
   e2i_test_say(s[..], WO_COIN, 0, 0, 0);
   // far from the Glade's middle: no prompt; at it: the Warden's, who offers "Thin the pack"
   s[0].you_x = 0; s[0].you_z = -40; e2p_step(s[..], 0.016); e2b_step(s[..]); e2i_step(s[..]); #assert s[0].bag[0].near == 0;
-  s[0].you_x = 6; s[0].you_z = 6; e2p_step(s[..], 0.016); e2b_step(s[..]); e2i_step(s[..]);
+  s[0].you_x = 6; s[0].you_z = -5; e2p_step(s[..], 0.016); e2b_step(s[..]); e2i_step(s[..]);
   #assert !s[0].npc[0].near && !s[0].bench[0].near && s[0].bag[0].near == 1;
   pb: [96] u8; #assert e2i_prompt_text(s[..], 1, pb[..]) == "E  Talk to Warden";
   out: [32768 * E2_VERTEX_FLOATS] f32; #assert e2i_overlay(s[..], out[..], 0) > 0;
