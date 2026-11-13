@@ -38,8 +38,8 @@ cast_colour :: () -> CastMono { return CastMono.{}; }
 cast_mono :: (c: KitTint) -> CastMono { return CastMono.{on = true, c = c}; }
 ca_pen :: (p: [] Pen, obj: int, mat: int, c: KitTint, m: CastMono) { if m.on { kit_pen(p, obj, ifx mat == MAT_GLOW then MAT_GLOW else MAT_FLAT, m.c); } else { kit_pen(p, obj, mat, c); } }
 
-// The Smuggler: thin legs, an orange coat under a cream mantle, a teal scarf with a tail, goggles,
-// and a tall pointed hat that leans back. A film reel rides on the pack; the right hand holds the
+// The Smuggler: thin legs, an orange coat under a cream mantle, a teal scarf with its tail blown out behind, goggles,
+// and a tall pointed hat that leans back. A film reel sits flat on the pack; the right hand holds the
 // stun baton, its tip cyan. `stride` (radians) swings legs and arms. 2.3 m to the hat's tip at s 1.
 // Uses objects obj to obj + 9.
 cast_smuggler :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, stride: f32, m: CastMono) {
@@ -63,7 +63,7 @@ cast_smuggler :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, stride: f3
   tube(buf, p, kit_at(f, 0, 0.64 * s, 0), 0.07 * s, 0.415 * s, 0.345 * s, 0.405 * s, 0.335 * s, 12, false);
   ca_pen(p, obj + 4, MAT_CLOTH, CAST_TEAL(), m);   // the scarf and its tail
   ca_egg(buf, p, f, s, 0, 1.57, 0.01, 0.19, 0.08, 0.19, 10);
-  ca_limb(buf, p, f, s, 0.08, 1.56, -0.14, 0.20, 1.18, -0.42 - abs(sw) * 0.5, 0.06, 0.035, 5);
+  ca_limb(buf, p, f, s, 0.10, 1.60, -0.13, 0.46, 1.66 + abs(sw) * 0.2, -0.52, 0.055, 0.03, 5);
   ca_pen(p, obj + 5, MAT_SKIN, CAST_SKIN(), m);   // head and hands
   ca_egg(buf, p, f, s, 0, 1.73, 0.01, 0.155, 0.17, 0.16, 10);
   ball(buf, p, fp(f, -0.38 * s, 0.94 * s, sw * 0.6 * s), 0.06 * s, 6);
@@ -73,14 +73,14 @@ cast_smuggler :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, stride: f3
   ca_limb(buf, p, f, s, 0.07, 1.75, 0.11, 0.07, 1.75, 0.185, 0.058, 0.058, 8);
   ca_box(buf, p, f, s, 0, 1.75, 0.05, 0.165, 0.025, 0.12);
   ca_limb(buf, p, f, s, 0.36, 0.97, 0.22 - sw * 0.4, 0.36, 1.06, 0.80 - sw * 0.4, 0.028, 0.022, 6);
-  ca_limb(buf, p, f, s, -0.055, 1.50, -0.40, 0.055, 1.50, -0.40, 0.19, 0.19, 12);
+  ca_limb(buf, p, f, s, 0, 1.18, -0.41, 0, 1.18, -0.455, 0.17, 0.17, 14);
   ca_pen(p, obj + 7, MAT_GLOW, CAST_AMBER(), m);   // the lenses
   ball(buf, p, fp(f, -0.07 * s, 1.75 * s, 0.19 * s), 0.036 * s, 6);
   ball(buf, p, fp(f, 0.07 * s, 1.75 * s, 0.19 * s), 0.036 * s, 6);
   ca_pen(p, obj + 8, MAT_CLOTH, CAST_SHADE(), m);   // the pack, its bedroll and the reel's hub
-  ca_box(buf, p, f, s, 0, 1.16, -0.30, 0.20, 0.24, 0.11);
-  ca_limb(buf, p, f, s, -0.25, 0.90, -0.32, 0.25, 0.90, -0.32, 0.085, 0.085, 8);
-  ca_limb(buf, p, f, s, -0.065, 1.50, -0.40, 0.065, 1.50, -0.40, 0.07, 0.07, 8);
+  ca_box(buf, p, f, s, 0, 1.18, -0.31, 0.20, 0.22, 0.10);
+  ca_limb(buf, p, f, s, -0.25, 0.86, -0.42, 0.25, 0.86, -0.42, 0.085, 0.085, 8);
+  ca_limb(buf, p, f, s, 0, 1.18, -0.455, 0, 1.18, -0.475, 0.06, 0.06, 8);
   ca_pen(p, obj + 9, MAT_GLOW, CAST_CYAN(), m);   // the baton's tip
   ball(buf, p, fp(f, 0.36 * s, 1.07 * s, (0.83 - sw * 0.4) * s), 0.055 * s, 8);
 }
