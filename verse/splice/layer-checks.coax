@@ -52,7 +52,7 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
   g := [1] SpGame.[SpGame.{}];
   lc_mine(g[..]);
   w := sl_world(g[..]);
-  before := w.grid.n[SPATIAL_VISITS];
+  before := w.grid.n[SPATIAL_VISITS];   // the index counts every entity a question looks at
   g[0].px = -3.9; g[0].pz = -6; g_collide(g[..]);
   #assert w.grid.n[SPATIAL_VISITS] - before <= 24 && world_count(w) > 90 && g[0].ws[0].crowded == 0;
 }

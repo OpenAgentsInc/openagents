@@ -1,0 +1,120 @@
+// The checks of Splice's walk replay, its fixture layer and its kept-clear zones (walk.coax,
+// layer-fixture.coax; GitHub #13404). splice-game.coax loads this file with `#load ... #test;`.
+
+#test "with nothing placed the walk goes the run's whole way, village to banned bot" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}]; k: [1] SwWalker; o: [120] u8;
+  v := sw_replay(g[..], k[..]);
+  #assert v.why == SW_OK && sw_why(g[..], v, o[..]) == "ok";
+  #assert g[0].rubble_gone && g[0].wall_gone && dist2(g[0].px, g[0].pz, 0, -67.5) <= SW_ARRIVE;
+}
+
+// The game with an empty layer and the player out of the way of any edit (on the edit bay's stage).
+wc_blank :: (g: [] SpGame) { g_reset(g); sl_clear(g); g[0].px = g[0].at.bay_x; g[0].pz = g[0].at.bay_z; }
+wc_zone_row :: (g: [] SpGame, id: int) -> int {
+  for r: 0..<g[0].c[0].kept_n { if g[0].c[0].kept[r].id == id { return r; } }
+  return -1;
+}
+
+#test "the fixture layer: every piece passes the check and stands within a metre of its kept-clear zone" {
+  g := [1] SpGame.[SpGame.{}];
+  wc_blank(g[..]);
+  #assert sl_fixture(g[..]) == SL_FIXTURE_N && g[0].layer[0].st[0].n == SL_FIXTURE_N;
+  c := g[0].c[..];
+  // every kept-clear zone has its piece, but the boss chamber (ID 29), which only rock is beside
+  for r: 0..<c[0].kept_n {
+    rows := 0;
+    for i: 0..<SL_FIXTURE_N { if SL_FIXTURE[i * 5] == c[0].kept[r].id { rows += 1; } }
+    #assert rows == (ifx c[0].kept[r].id == 29 then 0 else 1);
+  }
+  for i: 0..<SL_FIXTURE_N {
+    o := i * 5; zr := wc_zone_row(g[..], SL_FIXTURE[o]);
+    #assert zr >= 0;
+    zn := c[0].kept[zr];
+    f := sl_foot(g[..], sc_piece(c, SL_FIXTURE[o + 1]), sc_m(SL_FIXTURE[o + 2]), sc_m(SL_FIXTURE[o + 3]), sl_rad(SL_FIXTURE[o + 4]));
+    gap := sl_seg_box(f, zn.x, zn.z, zn.hx, zn.hz) - f.r - zn.r;
+    #assert gap >= 0 && gap <= 1.0;
+  }
+  #assert sl_all_ok(g[..]).why == SL_OK;
+}
+#test "the whole run plays with the fixture layer in, a piece beside every kept-clear zone" #steps 400000000 {
+  g := [1] SpGame.[SpGame.{}];
+  wc_blank(g[..]);
+  #assert sl_fixture(g[..]) == SL_FIXTURE_N;
+  #assert g_play_run(g[..]) == 0;
+  #assert g[0].layer[0].st[0].n == SL_FIXTURE_N && world_count(sl_world(g[..])) > 90 + SL_FIXTURE_N;
+}
+#test "the walk goes the run's whole way with the fixture layer in" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}]; k: [1] SwWalker;
+  wc_blank(g[..]);
+  #assert sl_fixture(g[..]) == SL_FIXTURE_N;
+  #assert sw_replay(g[..], k[..]).why == SW_OK;
+}
+// A piece the walker can go round is not a refusal: the walk finds the way.
+#test "the walk goes round pieces that leave room: two rovers in the mine's mouth, 1.2 m by each wall" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}]; k: [1] SwWalker;
+  wc_blank(g[..]);
+  #assert sl_place(g[..], 102, -260, -600, 0).ok && sl_place(g[..], 102, 260, -600, 0).ok;
+  #assert sw_replay_legs(g[..], k[..], 8, 18).why == SW_OK;
+}
+
+// The mutant check. A blocker for each kept-clear zone: [zone, piece, x, z, turn, the leg the walk
+// starts at, the leg it must stop at, and why]. With the tables whole the check refuses it and names the zone. With that one zone
+// taken out of the tables the check lets it in, and then the walk replay refuses the layer.
+WC_BLOCKERS :: 29;
+WC_BLOCK :: [WC_BLOCKERS * 8] int.[
+  1, 117, 17500, -7800, 0, 0, 1, SW_START,
+  2, 116, 17500, -6700, 0, 0, 2, SW_WAY,
+  3, 117, 16703, 10500, 0, 0, 3, SW_LANE,
+  4, 117, 18700, 9500, 0, 4, 6, SW_WAY,
+  5, 117, 0, 900, 0, 8, 9, SW_START,
+  6, 117, 280, 350, 0, 8, 14, SW_WAY,
+  7, 117, 260, 650, 0, 8, 15, SW_WAY,
+  8, 117, -600, -1400, 0, 8, 10, SW_WAY,
+  9, 117, 600, -1300, 0, 8, 11, SW_WAY,
+  10, 117, 500, -2000, 0, 8, 12, SW_WAY,
+  11, 117, 0, -1700, 0, 8, 13, SW_WAY,
+  12, 117, 0, -600, 0, 8, 16, SW_LANE,
+  13, 117, 0, -2600, 0, 8, 16, SW_LANE,
+  14, 104, 0, -3760, 0, 8, 18, SW_WAY,
+  15, 116, -1600, -4300, 90, 8, 20, SW_WAY,
+  16, 117, -2900, -4200, 0, 8, 21, SW_WAY,
+  17, 116, -2550, -5100, 0, 8, 22, SW_WAY,
+  18, 117, -1900, -6000, 0, 8, 23, SW_WAY,
+  19, 116, -3200, -5750, 90, 8, 24, SW_WAY,
+  20, 117, -4050, -5950, 0, 8, 25, SW_WAY,
+  21, 117, -950, -5700, 0, 8, 29, SW_WAY,
+  22, 116, 950, -5850, 90, 8, 30, SW_WAY,
+  23, 117, 1300, -5100, 0, 8, 31, SW_WAY,
+  24, 116, 950, -4350, 90, 8, 36, SW_WAY,
+  25, 116, 1600, -5100, 90, 8, 32, SW_WAY,
+  26, 117, 2700, -4600, 0, 8, 33, SW_WAY,
+  27, 117, 0, -5700, 0, 8, 38, SW_LANE,
+  28, 117, 260, -6200, 0, 8, 39, SW_GATE,
+  29, 117, 0, -6750, 0, 8, 41, SW_WAY];
+#test "the mutant check: with any one kept-clear zone gone, the walk replay refuses what that zone kept out" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}]; k: [1] SwWalker;
+  g_reset(g[..]);
+  #assert g[0].c[0].kept_n == WC_BLOCKERS;
+  for i: 0..<WC_BLOCKERS {
+    o := i * 8;
+    wc_blank(g[..]);
+    row := wc_zone_row(g[..], WC_BLOCK[o]);
+    #assert row == i;
+    // the tables whole: the check refuses the blocker, and it is this zone it names
+    v := sl_place(g[..], WC_BLOCK[o + 1], WC_BLOCK[o + 2], WC_BLOCK[o + 3], WC_BLOCK[o + 4]).v;
+    #assert v.why == SL_KEPT && v.which == row;
+    // the zone gone: the check lets it in, and the walk can't be made
+    sc_drop_kept(g[0].c[..], row);
+    #assert sl_place(g[..], WC_BLOCK[o + 1], WC_BLOCK[o + 2], WC_BLOCK[o + 3], WC_BLOCK[o + 4]).ok;
+    w := sw_replay_legs(g[..], k[..], WC_BLOCK[o + 5], SW_LEGS);
+    #assert w.why == WC_BLOCK[o + 7] && w.leg == WC_BLOCK[o + 6];
+    // and with the piece taken away again, the same legs are walked
+    #assert sl_undo(g[..]).ok && sw_replay_legs(g[..], k[..], WC_BLOCK[o + 5], WC_BLOCK[o + 6] + 1).why == SW_OK;
+    if i == 2 { o1: [120] u8; #assert sw_why(g[..], w, o1[..]) == "something stands on the rail line"; }
+    if i == 14 { o2: [120] u8; #assert sw_why(g[..], w, o2[..]) == "the run can't be walked: the way to 'Bar door' is blocked"; }
+    if i == 27 { o3: [120] u8; #assert sw_why(g[..], w, o3[..]) == "something stands in 'Boss wall', which the Digger opens"; }
+    // the tables are read again for the next zone
+    g[0].c[0].ok = false; g_reset(g[..]);
+    #assert g[0].c[0].kept_n == WC_BLOCKERS;
+  }
+}
