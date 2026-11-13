@@ -2,13 +2,13 @@
 # coax/web/tool.sh layer-check reads this file. It only shrinks: take a line out when its
 # load goes. A new line fails unless it ends with a reason and an issue number
 # ("# why (#1234)"), and a line that excuses nothing now fails. Lines:
-#   aethyr-up FROM -> TO      an engine or rules file loads from metaverse/, apps/, everglade/ or coax/web/
+#   engine-up FROM -> TO      an engine or rules file loads from metaverse/, apps/, everglade/ or coax/web/
 #   everglade-up FROM -> TO   a game file loads from apps/
 #   tests FROM -> TO          an engine, game, API or room file that is not support code loads a tests/ file with a
 #                             plain #load; a module loads its checks with #load "FILE" #test; (#13383).
 #                             None is listed and none may be added.
 #   context FROM -> TO        a file in one bounded context loads another not in its contexts.txt "may load" list
-# Seeded when the check landed: aethyr-up 57, everglade-up 7, tests 126.
+# Seeded when the check landed: engine-up 57, everglade-up 7, tests 126.
 
 # The engine loads from a realm, a page or the game
 

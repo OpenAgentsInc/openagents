@@ -109,14 +109,14 @@ emit_page bitcoin-lab-walk charactercreator charactercreator bitcoin-lab-fx qfx
 # block build read whole, a block layer's levels, the format this GPU takes and the frame plan's records.
 # PageHost.m is built on the core over it (metaverse-engine/host/core/host-core.h); Engine.swift finds a pack's
 # entries through the reader (pack-table.h, which includes the face under its old name).
-"$coax" c "$repo/metaverse-engine/host/core/core-face.coax" --library --header "$work/c/aethyr-core-face.h" > "$work/c/aethyr-core-face.c"
+"$coax" c "$repo/metaverse-engine/host/core/core-face.coax" --library --header "$work/c/engine-core-face.h" > "$work/c/engine-core-face.c"
 # (Its SHA-256 helpers are also native-audio's: this unit keeps its own names for them.)
-"${cc[@]}" -w -DS_hash=engine_core_S_hash -DS_hex=engine_core_S_hex -c "$work/c/aethyr-core-face.c" -o "$work/c/aethyr-core-face.o"
-printf '#include "aethyr-core-face.h"\n' > "$work/c/aethyr-pack-table.h"
+"${cc[@]}" -w -DS_hash=engine_core_S_hash -DS_hex=engine_core_S_hex -c "$work/c/engine-core-face.c" -o "$work/c/engine-core-face.o"
+printf '#include "engine-core-face.h"\n' > "$work/c/engine-pack-table.h"
 xcrun -sdk "$sdk" clang -target "$target" -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -I"$work/c" -c "$repo/metaverse-engine/host/apple/PageHost.m" -o "$work/c/page-host.o"
 # A phone's tier for the pack's layers is Coax's (metaverse-engine/render/texture-format.coax tf_side), which
 # the core's face carries.
-printf '#include "aethyr-core-face.h"\n' > "$work/c/texture-format.h"
+printf '#include "engine-core-face.h"\n' > "$work/c/texture-format.h"
 # The realms' sound, as on the Mac: the Metaverse Engine's Apple audio host (metaverse-engine/host/apple/audio-host.h,
 # PageAudio.swift and the desktop app's MetalAudio.swift) over the shared Coax audio authorities,
 # native-audio.coax as C, and the site's sound files a page names with their PCM companions.
@@ -130,7 +130,7 @@ cp -R "$repo/apps/openagents-web/realms/everglade/hotbar" "$repo/apps/openagents
 cp -R "$repo/apps/openagents-web/realms/5e-mmo/hotbar" "$app/web/realms/5e-mmo/"
 printf '#include "%s"\n#import "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n' "$desk/face.h" "$repo/metaverse-engine/host/apple/page-host.h" "$work/c/texture-format.h" "$repo/metaverse-engine/host/apple/audio-host.h" "$repo/metaverse-engine/host/pack-table.h" > "$work/c/bridge.h"
 xcrun -sdk "$sdk" swiftc -target "$target" -O -Xcc -I"$work/c" -import-objc-header "$work/c/bridge.h" "$here"/ios/Sources/*.swift "$desk/Sources/Engine.swift" "$desk/Sources/Faces.swift" "$desk/Sources/Realms.swift" "$repo/metaverse-engine/host/apple/PageAudio.swift" "$repo/apps/metaverse-engine-desktop/Sources/MetalAudio.swift" \
-  "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/model.o" "$work/c/temple.o" "$work/c/face.o" "$work/c/model-face.o" "$work/c/place-face.o" "$work/c/page-host.o" "$work/c/aethyr-core-face.o" \
+  "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/model.o" "$work/c/temple.o" "$work/c/face.o" "$work/c/model-face.o" "$work/c/place-face.o" "$work/c/page-host.o" "$work/c/engine-core-face.o" \
   -framework UIKit -framework Metal -framework MetalKit -framework QuartzCore -framework CoreText -framework ImageIO -framework CoreGraphics -framework CoreMotion -framework AVFoundation -lm -lz \
   -Xlinker -export_dynamic -Xlinker -rpath -Xlinker @executable_path/Frameworks -o "$app/Everglade"
 cp "$here/ios/Info.plist" "$app/Info.plist"

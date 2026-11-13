@@ -33,7 +33,7 @@ fgl_build :: (a:[]Args)->int {
   }
   here:=af_path(p[..],root,"apps/metaverse-engine-desktop");work:=af_path(p[..],here,"build/native-linux");spec:=af_path(p[..],work,"spec");wl:=af_path(p[..],work,"wl");
   if !fs_mkdir(spec) || !fs_mkdir(wl) {return 1;}out:[16777216]u8;
-  print("Building native Aethyrforge: Bitcoin Lab and its chat, Wayland + Vulkan…\n");
+  print("Building the native Metaverse Engine app: Bitcoin Lab and its chat, Wayland + Vulkan…\n");
   api_build:=[2]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"bitcoin/lab/build.coax")];if !fgn_cmd(api_build[..],deadline) {return 1;}
   fetch_build:=[4]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"bitcoin/lab/fetch.coax"),"--help",""];
   // Compile through tool.sh without a request. Argument refusal is expected;
@@ -94,16 +94,16 @@ fgl_build :: (a:[]Args)->int {
   mode:=[3]string.["chmod","755",temporary];if !fgn_cmd(mode[..],deadline) || !fs_rename(temporary,launcher) {return 1;}
   unitdir:=af_path(p[..],home,".config/systemd/user");desktopdir:=af_path(p[..],home,".local/share/applications");
   if !fs_mkdir(unitdir) || !fs_mkdir(desktopdir) {return 1;}
-  unit:[65536]u8;u:[1]Jo;jo_start(u[..],unit[..]);jo_put(u[..],"[Unit]\nDescription=Aethyrforge native desktop — Bitcoin Lab\n[Service]\nType=simple\nKillMode=control-group\nTimeoutStopSec=10\nEnvironmentFile=-%h/.openagents/aethyrforge/lab.env\nExecStart=");jo_str(u[..],launcher);jo_put(u[..],"\n");
+  unit:[65536]u8;u:[1]Jo;jo_start(u[..],unit[..]);jo_put(u[..],"[Unit]\nDescription=Metaverse Engine native desktop — Bitcoin Lab\n[Service]\nType=simple\nKillMode=control-group\nTimeoutStopSec=10\nEnvironmentFile=-%h/.openagents/aethyrforge/lab.env\nExecStart=");jo_str(u[..],launcher);jo_put(u[..],"\n");
   for key:[3]string.["WAYLAND_DISPLAY","XDG_RUNTIME_DIR","PATH"] {
     valuebuf:[8192]u8;value:=proc_getenv(key,valuebuf[..]);if value=="" {continue;}
     pair:[16384]u8;q:[1]Jo;jo_start(q[..],pair[..]);jo_put(q[..],key);jo_put(q[..],"=");jo_put(q[..],value);jo_put(u[..],"Environment=");jo_str(u[..],jo_text(q[..]));jo_put(u[..],"\n");
   }
   if fs_kind("/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json")==FS_FILE {jo_put(u[..],"Environment=VK_DRIVER_FILES=/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json\n");}
   if u[0].bad || !fs_write(af_path(p[..],unitdir,"openagents-aethyrforge.service"),jo_text(u[..])) {return 1;}
-  if !fs_write(af_path(p[..],desktopdir,"openagents-aethyrforge.desktop"),"[Desktop Entry]\nType=Application\nName=Aethyrforge\nComment=Native Bitcoin Lab and its agent chat\nExec=systemctl --user start openagents-aethyrforge.service\nTerminal=false\nCategories=Development;\n") {return 1;}
+  if !fs_write(af_path(p[..],desktopdir,"openagents-aethyrforge.desktop"),"[Desktop Entry]\nType=Application\nName=Metaverse Engine\nComment=Native Bitcoin Lab and its agent chat\nExec=systemctl --user start openagents-aethyrforge.service\nTerminal=false\nCategories=Development;\n") {return 1;}
   reload:=[3]string.["systemctl","--user","daemon-reload"];if !fgn_cmd(reload[..],deadline) {return 1;}
-  print("Installed native Wayland/Vulkan Aethyrforge at %\n",launcher);
+  print("Installed the native Wayland/Vulkan Metaverse Engine app at %\n",launcher);
   if args_count(a)==2 {
     run:=[4]string.["systemctl","--user","start","openagents-aethyrforge.service"];if !fgn_cmd(run[..],deadline) {return 1;}
   }

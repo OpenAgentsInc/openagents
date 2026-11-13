@@ -405,7 +405,7 @@ lists are meant to shrink, so their sizes are counted on every run
 | `components-to-move` | `CC_TO_MOVE` in `coax/web/components-check.coax` |
 | `wire-allowlist` | the lines of `proto/wire-allowlist.txt` (`wire-check`) |
 | `tools-port` | the lines of `coax/tools-port.txt` (`tools-check`) |
-| `layer-aethyr-up`, `layer-everglade-up`, `layer-tests` | the lines of `metaverse-engine/layer-allowlist.txt` per rule (`layer-check`) |
+| `layer-engine-up`, `layer-everglade-up`, `layer-tests` | the lines of `metaverse-engine/layer-allowlist.txt` per rule (`layer-check`) |
 
 As of 2026-11-11 22:00 on `main`: 117, 4, 22, 143, 1,238, 57, 7 and 126.
 

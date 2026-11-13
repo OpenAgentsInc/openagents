@@ -23,7 +23,7 @@ fcr_start :: (s: [] EditorChatRun, text: string, parent: string, cwd: string, co
   if !s[0].attached { tr_buffers(r, s[0].chat[..]); s[0].attached = true; }
   tr_reset(r); r[0].log[0].live = fc_run_live();
   s[0].n = 0; s[0].at = 0;
-  tr_owner(r, cwd, "0.1.0", "openagents-aethyrforge", "Aethyrforge");
+  tr_owner(r, cwd, "0.1.0", "openagents-aethyrforge", "Metaverse Engine");
   r[0].engine = fc_run_engine(engine); r[0].model_engine = r[0].engine; r[0].api_key = tr_api_key();
   if parent.count > 0 {
     file: [4194304] u8; id: [128] u8; text_p := tr_session_file(parent, file[..], id[..]);
@@ -44,7 +44,7 @@ fcr_poll :: (s: [] EditorChatRun) -> bool #export_c #effects(all) {
   if !s[0].turn { return false; }
   r := s[0].run[..];
   if r[0].ask { tr_answer(r, fc_run_allow()); }
-  if r[0].tool { tr_tool_answer(r, "Aethyrforge offers no tools of its own.", false); }
+  if r[0].tool { tr_tool_answer(r, "The Metaverse Engine offers no tools of its own.", false); }
   changed := tr_poll(r);
   if sw_lost(r[0].log) { tr_close(r); r[0].running = false; }
   if s[0].at > 0 {          // read lines go; the rest move to the front

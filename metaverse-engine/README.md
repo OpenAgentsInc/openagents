@@ -40,7 +40,7 @@ file name (`checks.coax`, `X-checks.coax`, `check-X.coax`, `X_test.coax`),
 or a program that defines `tool_main`.
 
 `coax/web/tool.sh layer-check` checks this in a few seconds, with no build.
-It prints the count of loads for each rule (`aethyr-up`, `everglade-up`,
+It prints the count of loads for each rule (`engine-up`, `everglade-up`,
 `tests`). [`layer-allowlist.txt`](layer-allowlist.txt) lists the loads that
 broke a rule when the check landed, one `RULE FROM -> TO` line each. The list
 only shrinks. A new line fails unless it ends with a reason and an issue

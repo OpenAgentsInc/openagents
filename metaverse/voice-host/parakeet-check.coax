@@ -4,7 +4,7 @@
 // CASE runs one group only: fixtures, long, silence, cancel or realm.
 // Build first with metaverse/voice-host/build.sh. It starts build/voice-host with
 // --recognizer parakeet --synthesizer local --agent echo on a free port, then
-// runs build/voice-client --hold --aethyr for each case and checks the exact
+// runs build/voice-client --hold --engine for each case and checks the exact
 // transcript, what the realm's gate accepted or refused, and what the host
 // says it did with each recognition. Every case is one held turn (hold to talk):
 //   the four committed fixtures, each exactly;
@@ -178,7 +178,7 @@ tool_main :: () -> int #export_c #effects(all) {
   files := [4] string.[hello, red, garden, wait];
   texts := [4] string.[HELLO, RED, GARDEN, WAIT];
   for k: 0..<ifx only == "" || only == "fixtures" then 4 else 0 {
-    argv := [11] string.[clientbin, "--url", url, "--hold", "--aethyr", "--timeout", "600", "--exact", texts[k], "--quiet", files[k]];
+    argv := [11] string.[clientbin, "--url", url, "--hold", "--engine", "--timeout", "600", "--exact", texts[k], "--quiet", files[k]];
     out := client(argv[..], r[..], h);
     host := proc_stderr(h, hb[..]);
     failures += check(contains(out, "exact match") && contains(out, "aethyr offer t1 request=1 epoch=0 ACCEPTED")
@@ -188,7 +188,7 @@ tool_main :: () -> int #export_c #effects(all) {
 
   // 2. Over one model call: two bounded windows, the words of all four clips.
   if only == "" || only == "long" {
-    argv := [11] string.[clientbin, "--url", url, "--hold", "--aethyr", "--timeout", "800", "--exact", LONG, "--quiet", long];
+    argv := [11] string.[clientbin, "--url", url, "--hold", "--engine", "--timeout", "800", "--exact", LONG, "--quiet", long];
     out := client(argv[..], r[..], h);
     host := proc_stderr(h, hb[..]);
     fin := last_line(out, "exact ");
@@ -201,7 +201,7 @@ tool_main :: () -> int #export_c #effects(all) {
 
   // 3. Silence: no speech, without a model call; the realm hears that nobody spoke.
   if only == "" || only == "silence" {
-    argv := [9] string.[clientbin, "--url", url, "--hold", "--aethyr", "--timeout", "120", "--quiet", quiet];
+    argv := [9] string.[clientbin, "--url", url, "--hold", "--engine", "--timeout", "120", "--quiet", quiet];
     out := client(argv[..], r[..], h);
     host := proc_stderr(h, hb[..]);
     failures += check(contains(host, "t1 no speech without a model call") && contains(out, "kind=NO_SPEECH") && contains(out, "replay=matched"),
@@ -212,7 +212,7 @@ tool_main :: () -> int #export_c #effects(all) {
   modes := [2] string.["cancel", "barge"];
   verdicts := [2] string.["t1 parakeet cancelled", "t1 parakeet stale"];
   for m: 0..<ifx only == "" || only == "cancel" then 2 else 0 {
-    argv := [15] string.[clientbin, "--url", url, "--hold", "--aethyr", "--timeout", "600", "--after-end", modes[m],
+    argv := [15] string.[clientbin, "--url", url, "--hold", "--engine", "--timeout", "600", "--after-end", modes[m],
                          "--then", wait, "--exact", WAIT, "--quiet", hello];
     out := client(argv[..], r[..], h);
     host := proc_stderr(h, hb[..]);
@@ -224,7 +224,7 @@ tool_main :: () -> int #export_c #effects(all) {
 
   // 5. The realm cancelled on its own: the host delivers, the Metaverse Engine's gate refuses it as stale.
   if only == "" || only == "realm" {
-    argv := [17] string.[clientbin, "--url", url, "--hold", "--aethyr", "--timeout", "600", "--after-end", "realm",
+    argv := [17] string.[clientbin, "--url", url, "--hold", "--engine", "--timeout", "600", "--after-end", "realm",
                          "--then", wait, "--exact", WAIT, "--turns", "2", "--quiet", hello];
     out := client(argv[..], r[..], h);
     failures += check(contains(out, "aethyr offer t1 request=1 epoch=0 STALE") && contains(out, "aethyr offer t2 request=2 epoch=1 ACCEPTED")

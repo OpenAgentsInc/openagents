@@ -1,7 +1,7 @@
 // The host core's Coax face (GitHub #13304): everything the one C host core
 // (metaverse-engine/host/core/host-core.c) decides nothing about and asks the engine for, under C
 // names. A native host's build compiles this file once,
-//   coax/bin/coax c metaverse-engine/host/core/core-face.coax --library --header aethyr-core-face.h > aethyr-core-face.c
+//   coax/bin/coax c metaverse-engine/host/core/core-face.coax --library --header engine-core-face.h > engine-core-face.c
 // and host-core.c with it. It carries:
 //   the pack's table and its world cells       ../pack-table-face.coax (engine_pack_table, engine_pack_cell)
 //   a range-addressable pack read whole        ../page-stream.coax (page-pack.coax's ppk_manifest, ppk_read_all)

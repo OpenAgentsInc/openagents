@@ -9,8 +9,8 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../../.." && pwd)"
 out="${1:?usage: platforms.sh SCRATCH}"; mkdir -p "$out"; out="$(cd "$out" && pwd)"
 "$repo/coax/web/tool.sh" "$here/conformance.coax" write "$out" > /dev/null
-"${COAX:-$repo/coax/bin/coax}" c "$here/core-face.coax" --library --header "$out/aethyr-core-face.h" > "$out/aethyr-core-face.c"
-flags=(-std=gnu11 -O1 -w -DCOAXIAL_NATIVE_ADDRESS -I"$out" -I"$repo" "$here/conformance.c" "$out/aethyr-core-face.c" -lm)
+"${COAX:-$repo/coax/bin/coax}" c "$here/core-face.coax" --library --header "$out/engine-core-face.h" > "$out/engine-core-face.c"
+flags=(-std=gnu11 -O1 -w -DCOAXIAL_NATIVE_ADDRESS -I"$out" -I"$repo" "$here/conformance.c" "$out/engine-core-face.c" -lm)
 /usr/bin/clang "${flags[@]}" -o "$out/conformance-mac"
 "$out/conformance-mac" "$out" | diff - "$out/expected.txt" > "$out/mac.diff"
 echo "ok mac: built, run, and what it printed is what the engine says"

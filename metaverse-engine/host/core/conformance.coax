@@ -186,7 +186,7 @@ hc_shared :: (text: string, cells: bool, out: [] HcText) {
 // Build the driver with cc (flag "" or -DCOAXIAL_NATIVE_ADDRESS), run it on dir and compare.
 hc_native :: (root: string, dir: string, flag: string, name: string, wanted: string) -> int {
   t: [1] HcText; out: [1] HcText; err: [65536] u8;
-  script := "set -e; cc=${CC:-cc}; \"$1/coax/bin/coax\" c \"$1/metaverse-engine/host/core/core-face.coax\" --library --header \"$2/aethyr-core-face.h\" > \"$2/aethyr-core-face.c\"; $cc -std=gnu11 -O1 -w $3 -I\"$2\" -I\"$1\" \"$1/metaverse-engine/host/core/conformance.c\" \"$2/aethyr-core-face.c\" -lm -o \"$2/$4\"";
+  script := "set -e; cc=${CC:-cc}; \"$1/coax/bin/coax\" c \"$1/metaverse-engine/host/core/core-face.coax\" --library --header \"$2/engine-core-face.h\" > \"$2/engine-core-face.c\"; $cc -std=gnu11 -O1 -w $3 -I\"$2\" -I\"$1\" \"$1/metaverse-engine/host/core/conformance.c\" \"$2/engine-core-face.c\" -lm -o \"$2/$4\"";
   build := [7] string.["bash", "-c", script, "conformance", root, dir, flag];
   argv: [8] string; for a, k: build { argv[k] = a; } argv[7] = name;
   r := proc_run(argv[..], 600000, out[0].bytes[..], err[..]);

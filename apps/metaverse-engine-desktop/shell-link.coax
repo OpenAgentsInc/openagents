@@ -1,5 +1,5 @@
 // Firm reason: 5 (the compiler and linker lines; what the shell is, is in Sources/).
-// How the Mac shell is compiled and linked, for both builds that make it (aethyrforge-build.coax
+// How the Mac shell is compiled and linked, for both builds that make it (app-build.coax
 // and metal-shell.coax; GitHub #13156). The Metaverse Engine runs on the shared Mac host
 // (apps/shared/host/apple/ui-host.m): the app is Objective-C (Sources/app.m, chat.m, checks.m),
 // and the native realm's runtime (MetalWorld, MetalNetwork, MetalAudio) stays Swift, reaching the

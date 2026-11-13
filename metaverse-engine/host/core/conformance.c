@@ -3,13 +3,13 @@
 // handed, and prints what the core did. It judges nothing: conformance.coax wrote DIR/expected.txt
 // from the engine's own modules and compares. Every platform builds this one file over the same
 // core (Linux and the Mac with cc, the iPhone simulator and Android with their SDKs' clang):
-//   cc -std=gnu11 -I BUILD -I ROOT ROOT/metaverse-engine/host/core/conformance.c BUILD/aethyr-core-face.c -lm -o conformance
+//   cc -std=gnu11 -I BUILD -I ROOT ROOT/metaverse-engine/host/core/conformance.c BUILD/engine-core-face.c -lm -o conformance
 //   ./conformance DIR
 // It is built with and without -DCOAXIAL_NATIVE_ADDRESS: a face address is an offset into the
 // arena below either way, so both address widths run on any machine.
 #include <stdio.h>
 #include <stdlib.h>
-#include "aethyr-core-face.h"
+#include "engine-core-face.h"
 #define ENGINE_PACK_TABLE_PROVIDED
 #define ENGINE_CORE_FACE
 #include "metaverse-engine/host/core/host-core.h"

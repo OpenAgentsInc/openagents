@@ -305,7 +305,7 @@ voicehost :: (dir: string) -> bool {
   for k: 0..<4 {
     fb: [1] Text; t_add(fb[..], "metaverse/voice-host/fixtures/"); t_add(fb[..], names[k]); t_add(fb[..], ".wav");
     for rep: 0..<10 {
-      argv := [11] string.["metaverse/voice-host/build/voice-client", "--url", t_str(url[..]), "--hold", "--aethyr", "--timeout", "600", "--exact", texts[k], "--quiet", t_str(fb[..])];
+      argv := [11] string.["metaverse/voice-host/build/voice-client", "--url", t_str(url[..]), "--hold", "--engine", "--timeout", "600", "--exact", texts[k], "--quiet", t_str(fb[..])];
       out: [262144] u8; err: [65536] u8;
       r := proc_run(argv[..], 120000, out[..], err[..]);
       o := cast(string) out[0..<r.out_n];

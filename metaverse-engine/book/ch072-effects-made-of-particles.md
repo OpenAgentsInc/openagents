@@ -56,8 +56,8 @@ and capped by a budget.
 
 1. **Emitters as data.** An emitter is 16 floats:
    `x y z radius  r g b flicker  kind count size speed  seed 0 0 0`
-   (`VERSE_EMITTER_FLOATS`). A frame has at most 24 emitters
-   (`VERSE_EMITTERS`) of at most 64 particles each (`VERSE_PARTICLES_PER`).
+   (`METAVERSE_EMITTER_FLOATS`). A frame has at most 24 emitters
+   (`METAVERSE_EMITTERS`) of at most 64 particles each (`METAVERSE_PARTICLES_PER`).
    `metaverse_emitter_put` clamps the count and refuses an emitter that doesn't
    fit.
 2. **Stateless motion.** `metaverse_particle_hash(seed, i, k)` gives a number in

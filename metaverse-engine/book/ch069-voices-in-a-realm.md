@@ -163,7 +163,7 @@ replay of 6 steps matched: true
 ```
 
 The same gate runs on live recognition: `metaverse/voice-host/build/voice-client
---hold --aethyr` holds recorded audio as one turn, offers each final transcript
+--hold --engine` holds recorded audio as one turn, offers each final transcript
 from the voice host (`--recognizer parakeet`) to the gate and replays the
 record at the end ([record](../../docs/verification/verse-parakeet-2026-11-02/README.md)).
 

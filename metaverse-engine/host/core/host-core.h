@@ -13,11 +13,11 @@
 // delivery, messages) needs only the pack reader's face. The parts marked [face] need the core's
 // own face, metaverse-engine/host/core/core-face.coax as C; a host that has compiled it defines
 // ENGINE_CORE_FACE and includes its header first:
-//   coax/bin/coax c metaverse-engine/host/core/core-face.coax --library --header aethyr-core-face.h > aethyr-core-face.c
-//   #include "aethyr-core-face.h"
+//   coax/bin/coax c metaverse-engine/host/core/core-face.coax --library --header engine-core-face.h > engine-core-face.c
+//   #include "engine-core-face.h"
 //   #define ENGINE_CORE_FACE
 //   #include "metaverse-engine/host/core/host-core.h"
-// The core face carries the pack reader's exports too, so that host compiles no aethyr-pack-table.c.
+// The core face carries the pack reader's exports too, so that host compiles no engine-pack-table.c.
 //
 // Every function is static: a host that includes this file links nothing more than its face.
 // The conformance suite (conformance.coax and conformance.c beside this file) runs these same

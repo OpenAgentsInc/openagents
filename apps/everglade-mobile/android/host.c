@@ -27,9 +27,9 @@
 #define VK_USE_PLATFORM_ANDROID_KHR
 #include <vulkan/vulkan.h>
 #include "face.h"
-// The one C host core (#13304) over its face, which the build compiles (aethyr-core-face.c): the
+// The one C host core (#13304) over its face, which the build compiles (engine-core-face.c): the
 // pack's entries by kind, the block build this GPU takes, read whole, and a block layer's levels.
-#include "aethyr-core-face.h"
+#include "engine-core-face.h"
 #define ENGINE_PACK_TABLE_PROVIDED
 #define ENGINE_CORE_FACE
 #include "../../../metaverse-engine/host/core/host-core.h"

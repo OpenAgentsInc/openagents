@@ -62,7 +62,7 @@ stdenv.mkDerivation {
        for o in *.o; do [ $o = wayland-text.o ] || nm -g --defined-only --format=just-symbols $o; done | sort -u > shared.syms
        nm -g --defined-only --format=just-symbols wayland-text.o | sort -u | comm -12 - shared.syms > local.syms
        objcopy --localize-symbols=local.syms wayland-text.o
-       gcc $flags "''${link[@]}" -DAETHYR_WAYLAND_INPUT_V1 -DAETHYR_WAYLAND_TEXT_V1 -Ikms -I../wl $(pkg-config --cflags libdrm wayland-client xkbcommon) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o $math \
+       gcc $flags "''${link[@]}" -DENGINE_WAYLAND_INPUT_V1 -DENGINE_WAYLAND_TEXT_V1 -Ikms -I../wl $(pkg-config --cflags libdrm wayland-client xkbcommon) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o $math \
          $(pkg-config --libs libdrm wayland-client openssl xkbcommon) -lpthread -lvulkan -lm -o vk-realm
        cp ../net .)
     done

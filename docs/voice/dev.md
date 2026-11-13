@@ -304,7 +304,7 @@ bytes, run threads and call the engine:
 
 To a realm, a final transcript is the answer to the hold that asked for it:
 [`metaverse-engine/audio/voice.coax`](../../metaverse-engine/audio/voice.coax) passes it through the Metaverse Engine's event
-gate (once, only in its epoch, and replayable). `voice-client --hold --aethyr`
+gate (once, only in its epoch, and replayable). `voice-client --hold --engine`
 does what a realm does, and `metaverse-engine/examples/hold-to-talk.coax` shows the gate
 alone. Measured on coderos-4080 with CUDA (RTX 4080): the transcript arrives
 76 to 121 ms after the end of a 2.4 to 6.5 s turn, and 297 ms after a 21.5 s

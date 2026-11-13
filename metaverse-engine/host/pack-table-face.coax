@@ -4,7 +4,7 @@
 // pack-table.coax (through metaverse-engine/editor/pack.coax): only a host's reader unit loads this one.
 //   the browser: metaverse-engine/host/pack-carrier.coax loads it into the pack reactor (coax/web/pack-face.c)
 //   a C, Objective-C or Swift host: its build compiles this file,
-//     coax/bin/coax c metaverse-engine/host/pack-table-face.coax --library --header aethyr-pack-table.h > aethyr-pack-table.c
+//     coax/bin/coax c metaverse-engine/host/pack-table-face.coax --library --header engine-pack-table.h > engine-pack-table.c
 //   and the host includes metaverse-engine/host/pack-table.h, which wraps that header.
 //   coax/bin/coax test metaverse-engine/host/pack-table-face.coax --library
 #module "metaverse.engine.host.pack_table_face";

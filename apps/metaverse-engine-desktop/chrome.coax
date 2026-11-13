@@ -111,7 +111,7 @@ fui_about :: (c:[]EditorChrome,s:[]EditorSetup,button:int,out:[]u8)->int #export
   c:[1]EditorChrome;s:[1]EditorSetup;e:[1]Elements;
   fui_elements(c[..],s[..],1280,800,e[..]);
   for button:1..<6 {i:=el_find(e[..],FUI_IDS[button]);b:=fui_box(button,1280,800);#assert i>=0 && e[0].rows[i].role==EL_BUTTON && e[0].rows[i].x==b.x && e[0].rows[i].w==b.w && fui_element(FUI_IDS[button])==button;}
-  #assert el_label(e[..],el_find(e[..],"setup.open"))=="Open Everglade" && el_label(e[..],el_find(e[..],"setup.title"))=="Set up Aethyrforge";
+  #assert el_label(e[..],el_find(e[..],"setup.open"))=="Open Everglade" && el_label(e[..],el_find(e[..],"setup.title"))=="Set up the Metaverse Engine";
   #assert fui_element("setup.nothing")==0 && fui_element("")==0;
   out:[512]u8;n:=fui_about(c[..],s[..],1,out[..]);#assert cast(string)out[0..<n]=="enabled 0\n";
   n=fui_about(c[..],s[..],3,out[..]);#assert cast(string)out[0..<n]=="enabled 0\nvalue Checking local models…\n";
@@ -127,7 +127,7 @@ fui_draw :: (c:[]EditorChrome,s:[]EditorSetup,out:[]f32,width:f32,height:f32,d:f
   n:=paint_quad(out,0,d,0,0,w,h,0,0,hex(0,0.28),hex(0,0));
   n=paint_shadow(out,n,d,p.x,p.y,p.w,p.h,16,0,8,16,0,hex(0,0.4));
   n=paint_quad(out,n,d,p.x,p.y,p.w,p.h,16,1,hex(0x171b23,0.98),hex(0x405362,1));
-  n=fui_text(c,out,n,d,3,"AETHYRFORGE",x,y+24,span);
+  n=fui_text(c,out,n,d,3,"METAVERSE ENGINE",x,y+24,span);
   n=fui_text(c,out,n,d,2,ifx c[0].status then "Local status" else fsu_text(s,0),x,y+52,span);
   n=fui_text(c,out,n,d,0,fsu_text(s,1),x,y+94,span);
   n=paint_quad(out,n,d,x,y+132,span,1,0,0,hex(0x405362,1),hex(0,0));

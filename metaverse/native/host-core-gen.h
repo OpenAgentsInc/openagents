@@ -16,11 +16,11 @@
 // delivery, messages) needs only the pack reader's face. The parts marked [face] need the core's
 // own face, metaverse-engine/host/core/core-face.coax as C; a host that has compiled it defines
 // ENGINE_CORE_FACE and includes its header first:
-//   coax/bin/coax c metaverse-engine/host/core/core-face.coax --library --header aethyr-core-face.h > aethyr-core-face.c
-//   #include "aethyr-core-face.h"
+//   coax/bin/coax c metaverse-engine/host/core/core-face.coax --library --header engine-core-face.h > engine-core-face.c
+//   #include "engine-core-face.h"
 //   #define ENGINE_CORE_FACE
 //   #include "metaverse-engine/host/core/host-core.h"
-// The core face carries the pack reader's exports too, so that host compiles no aethyr-pack-table.c.
+// The core face carries the pack reader's exports too, so that host compiles no engine-pack-table.c.
 //
 // Every function is static: a host that includes this file links nothing more than its face.
 // The conformance suite (conformance.coax and conformance.c beside this file) runs these same
@@ -35,7 +35,7 @@
 // Firm reason: 5 (a thin wrapper with no logic: C spellings over the Coax pack reader's face).
 // The one pack reader for a C, Objective-C or Swift host (GitHub #13304). The reader is Coax:
 // pack_table in metaverse-engine/host/pack-table.coax, whose C face the host's build compiles as
-//   coax c metaverse-engine/host/pack-table-face.coax --library --header aethyr-pack-table.h > aethyr-pack-table.c
+//   coax c metaverse-engine/host/pack-table-face.coax --library --header engine-pack-table.h > engine-pack-table.c
 // A host hands it the pack's bytes and gets each entry's kind, place and length, every extent
 // already checked against the pack's size. No host reads the header or the table itself.
 #ifndef ENGINE_PACK_TABLE_H
@@ -43,9 +43,9 @@
 #include <stddef.h>
 #include <stdint.h>
 // A host whose unit already holds the face's C (metaverse/native/realm-host.c includes the committed
-// pack-table-gen.h; a host on the host core includes aethyr-core-face.h) defines this first.
+// pack-table-gen.h; a host on the host core includes engine-core-face.h) defines this first.
 #ifndef ENGINE_PACK_TABLE_PROVIDED
-#include "aethyr-pack-table.h"
+#include "engine-pack-table.h"
 #endif
 
 // The kinds a host sorts entries by (metaverse-engine/host/pack-table.coax PACK_CATALOG to PACK_CELLS).

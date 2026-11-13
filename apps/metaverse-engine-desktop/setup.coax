@@ -164,7 +164,7 @@ fsu_text :: (s: [] EditorSetup, field: int) -> string {
     return ifx s[0].microphone==1 || s[0].microphone==2 then "Microphone blocked in macOS Settings" else "Microphone status unavailable";
   }
   if field==15 {return ifx fsu_status(s[..],3)==2 then "Open Settings" else ifx s[0].microphone==3 then "Allowed" else "Allow microphone";}
-  if field == 0 { return "Set up Aethyrforge"; }
+  if field == 0 { return "Set up the Metaverse Engine"; }
   if field == 1 { return "Local tools. Shared models. Your world."; }
   if field == 2 { return ifx s[0].cli then cast(string) s[0].version[0..<s[0].version_n] else "CLI unavailable"; }
   if field == 3 { return "Parakeet TDT v3"; }

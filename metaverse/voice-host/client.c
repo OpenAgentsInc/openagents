@@ -6,7 +6,7 @@
 // bar does) instead of letting the engine find turns; --then FILE holds a
 // second turn after it, and --after-end cancel|barge|realm cancels the first
 // turn's recognition (on the host, by a barge-in's new epoch, or only in the
-// realm). --aethyr passes each final transcript through the Metaverse Engine's event gate
+// realm). --engine passes each final transcript through the Metaverse Engine's event gate
 // (metaverse-engine/audio/voice.coax), as a realm does, and replays the record at the end.
 #include "../platform/voice.h"
 #include "EngineVoice.h"
@@ -86,7 +86,7 @@ static void usage(void) {
           "usage: voice-client [--url ws://127.0.0.1:8787/] [--observe] [--out reply.wav] [--expect TEXT]\n"
           "                    [--barge FILE.wav] [--turns N] [--timeout SECONDS] [--rate-out HZ]\n"
           "                    [--profile ID] [--speaker ID] [--decide-gain DB] [--quiet] [--exact TEXT]\n"
-          "                    [--hold [--then FILE.wav] [--after-end cancel|barge|realm]] [--aethyr] FILE.wav\n");
+          "                    [--hold [--then FILE.wav] [--after-end cancel|barge|realm]] [--engine] FILE.wav\n");
 }
 
 typedef struct {
@@ -137,7 +137,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--then") && v) { then_wav = v; i++; }
     else if (!strcmp(a, "--after-end") && v) { after_end = v; i++; }
     else if (!strcmp(a, "--exact") && v) { exact = v; i++; }
-    else if (!strcmp(a, "--aethyr")) {
+    else if (!strcmp(a, "--engine") || !strcmp(a, "--aethyr")) {   // --aethyr: the flag's name before #13405
       realm = calloc(1, (size_t)engine_voice_size());
       if (!realm) return 2;
       engine_voice_init(RV(), 12669);

@@ -231,7 +231,7 @@ static void editor_async(dispatch_block_t block) { dispatch_async(dispatch_get_g
 - (void)openWindow {
   BOOL hidden = self.smoke;
   UiApp app = {0};
-  app.title = "Aethyrforge"; app.app_id = "com.openagents.aethyrforge";
+  app.title = "Metaverse Engine"; app.app_id = "com.openagents.aethyrforge";
   app.width = 1280; app.height = 800; app.max_vertices = EDITOR_MAX_VERTICES;
   NSString *shader = [self.resources URLByAppendingPathComponent:@"Component.metal"].path;
   app.shader = shader.fileSystemRepresentation;
@@ -242,17 +242,17 @@ static void editor_async(dispatch_block_t block) { dispatch_async(dispatch_get_g
   BOOL bench = self.benchmarkReportURL != nil;
   app.min_width = 900; app.min_height = bench ? 500 : 740;
   self.host = ui_open(&app, 0);
-  if (!self.host) { fprintf(stderr, "Aethyrforge: the window did not open\n"); exit(1); }
+  if (!self.host) { fprintf(stderr, "Metaverse Engine: the window did not open\n"); exit(1); }
   self.window = (__bridge NSWindow *)ui_window(self.host);
   NSString *test = [self arg:@"--test-window-title"];
-  self.window.title = test ? [test stringByAppendingString:@" · Aethyrforge"] : @"Aethyrforge";
+  self.window.title = test ? [test stringByAppendingString:@" · Metaverse Engine"] : @"Metaverse Engine";
   self.window.subtitle = @"Everglade · Local edits · Experimental";
   if (bench) [self.window setContentSize:NSMakeSize(1280, 720)];
   [self.window center];
   UiLayer layer = {(__bridge void *)self, 0, cb_prepare, cb_encode, cb_changed};
   ui_layer(self.host, &layer);
   static const UiMenuItem menus[] = {
-    {"Aethyrforge", "Quit Aethyrforge", "q", 8, C_QUIT, NULL},
+    {"Metaverse Engine", "Quit Metaverse Engine", "q", 8, C_QUIT, NULL},
     {"Edit", "Cut", "x", 8, -1, "cut:"}, {"Edit", "Copy", "c", 8, -1, "copy:"}, {"Edit", "Paste", "v", 8, -1, "paste:"}, {"Edit", "Select All", "a", 8, -1, "selectAll:"},
     {"View", "Reload Everglade", "r", 8, C_RELOAD, NULL}, {"View", "Check as Players See It", "", 0, C_PREVIEW, NULL},
     {"View", "Setup…", ",", 8, C_SETUP, NULL}, {"View", "Status…", "i", 8, C_STATUS, NULL},
@@ -630,7 +630,7 @@ static int cb_changed(void *u) {
     NSError *e = nil;
     if (![fm createDirectoryAtURL:self.dataURL withIntermediateDirectories:YES attributes:nil error:&e]) editor_throw(e.localizedDescription);
     _lockFD = open([self.dataURL URLByAppendingPathComponent:@".lock"].path.fileSystemRepresentation, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
-    if (_lockFD < 0 || flock(_lockFD, LOCK_EX | LOCK_NB) != 0) editor_throw(@"This local world is already open in Aethyrforge.");
+    if (_lockFD < 0 || flock(_lockFD, LOCK_EX | LOCK_NB) != 0) editor_throw(@"This local world is already open in the Metaverse Engine.");
     for (NSString *name in @[ @"world-everglade.json", @"room-control.txt" ]) {
       NSURL *destination = [self.dataURL URLByAppendingPathComponent:name];
       if (![fm fileExistsAtPath:destination.path] && ![fm copyItemAtURL:[self.resources URLByAppendingPathComponent:[@"seed/" stringByAppendingString:name]] toURL:destination error:&e]) editor_throw(e.localizedDescription);
@@ -822,11 +822,11 @@ static int cb_changed(void *u) {
   NSString *what = self.setupProfileURL ? @"setup profile" : self.offlineReportURL ? @"offline check" : @"benchmark";
   if (report) {
     [[message dataUsingEncoding:NSUTF8StringEncoding] writeToURL:[report URLByAppendingPathExtension:@"error"] atomically:YES];
-    fprintf(stderr, "Aethyrforge %s: %s\n", what.UTF8String, message.UTF8String); exit(1);
+    fprintf(stderr, "Metaverse Engine %s: %s\n", what.UTF8String, message.UTF8String); exit(1);
   }
   if (self.smoke) {
     if (self.report) [[[@"FAILED: " stringByAppendingString:message] dataUsingEncoding:NSUTF8StringEncoding] writeToURL:self.report atomically:YES];
-    fprintf(stderr, "Aethyrforge: %s\n", message.UTF8String); exit(1);
+    fprintf(stderr, "Metaverse Engine: %s\n", message.UTF8String); exit(1);
   }
 }
 - (void)restartStartup {
@@ -1038,7 +1038,7 @@ static int cb_changed(void *u) {
   }
   BOOL fixture = [self has:@"--voice-smoke"] || [self has:@"--voice-warm-smoke"];
   if (![body[@"kind"] isEqual:@"prepare"] || (self.smoke && !fixture) || !(fixture || self.voiceAvailable) || !(fixture || [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio] == AVAuthorizationStatusAuthorized)) {
-    reply(nil, @"Voice stopped. Return to Aethyrforge and hold TALK again."); return;
+    reply(nil, @"Voice stopped. Return to the Metaverse Engine and hold TALK again."); return;
   }
   _voiceCaptureEpoch++; _voiceCaptureRequest = capture;
   int epoch = _voiceCaptureEpoch;
@@ -1253,7 +1253,7 @@ static int cb_changed(void *u) {
     @catch (NSException *x) { if (!self.stopping) { NSString *m = x.reason; [self main:^{ [self fail:m]; }]; } }
   });
 }
-- (void)webViewWebContentProcessDidTerminate:(WKWebView *)w { (void)w; [self fail:@"The world view stopped. Quit and reopen Aethyrforge."]; }
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)w { (void)w; [self fail:@"The world view stopped. Quit and reopen the Metaverse Engine."]; }
 - (void)webView:(WKWebView *)w requestMediaCapturePermissionForOrigin:(WKSecurityOrigin *)origin initiatedByFrame:(WKFrameInfo *)frame type:(WKMediaCaptureType)type decisionHandler:(void (^)(WKPermissionDecision))decide {
   (void)w;
   [self traceVoice:[NSString stringWithFormat:@"microphone request: main=%@ local=%@ key=%@ setup=%@ authorization=%ld", frame.mainFrame ? @"true" : @"false",
@@ -1279,7 +1279,7 @@ static int cb_changed(void *u) {
   self.resources = NSBundle.mainBundle.resourceURL;
   NSString *shot = [self arg:@"--shot"];
   if (shot) return [self shot:shot];
-  if (self.worldBackend < 0) { fprintf(stderr, "Aethyrforge: --world requires web or metal.\n"); return 2; }
+  if (self.worldBackend < 0) { fprintf(stderr, "Metaverse Engine: --world requires web or metal.\n"); return 2; }
   signal(SIGTERM, SIG_IGN);
   _termination = dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL, SIGTERM, 0, dispatch_get_main_queue());
   dispatch_source_set_event_handler(_termination, ^{ [self terminate]; });
@@ -1324,7 +1324,7 @@ static int cb_changed(void *u) {
       [self.chat appendMessage:@"Aethyr draws this message and owns its five-second lifetime.\nCurrent folder: ~/.openagents/aethyrforge/workspace\n"];
     } else self.chat.composerOpen = YES;
   }
-  if (![self shotOf:[NSURL fileURLWithPath:path] width:(uint32_t)(w * d) height:(uint32_t)(h * d) dpr:d]) { fprintf(stderr, "Aethyrforge: the picture was not written\n"); return 1; }
+  if (![self shotOf:[NSURL fileURLWithPath:path] width:(uint32_t)(w * d) height:(uint32_t)(h * d) dpr:d]) { fprintf(stderr, "Metaverse Engine: the picture was not written\n"); return 1; }
   // --do "OP ; OP": coax drive's operations on the picture's host (tree, tap ID, about ID, and the host's ax,
   // ax-press ID, ax-key KEY), each answer printed; --drive SOCKET: then whatever coax drive asks, until quit.
   NSString *script = [self arg:@"--do"], *socket = [self arg:@"--drive"];
@@ -1337,7 +1337,7 @@ static int cb_changed(void *u) {
       int k = ui_drive(_shot, one.UTF8String, answer, (int)sizeof answer);
       if (k > 0) printf("%.*s%s", k, answer, answer[k - 1] == '\n' ? "" : "\n");
     }
-    if (socket && !ui_drive_listen(_shot, socket.fileSystemRepresentation)) { fprintf(stderr, "Aethyrforge: could not listen on %s\n", socket.UTF8String); return 1; }
+    if (socket && !ui_drive_listen(_shot, socket.fileSystemRepresentation)) { fprintf(stderr, "Metaverse Engine: could not listen on %s\n", socket.UTF8String); return 1; }
     if (socket) ui_drive_serve(_shot);
     self.host = NULL;
   }
@@ -1357,6 +1357,6 @@ int main(int argc, char **argv) {
     for (int i = 0; i < argc; i++) [args addObject:@(argv[i])];
     app.args = args;
     @try { return [app run]; }
-    @catch (NSException *x) { fprintf(stderr, "Aethyrforge: %s\n", x.reason.UTF8String); return 1; }
+    @catch (NSException *x) { fprintf(stderr, "Metaverse Engine: %s\n", x.reason.UTF8String); return 1; }
   }
 }

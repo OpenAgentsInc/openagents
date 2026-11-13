@@ -75,7 +75,7 @@ tool_main :: ()->int #export_c #effects(all) {
   if session=="" {session=(ifx proc_getenv("METAVERSE_ENGINE_SCENE_SESSION",env[..])!="" then proc_getenv("METAVERSE_ENGINE_SCENE_SESSION",env[..]) else proc_getenv("AETHYRFORGE_SCENE_SESSION",env[..]));}
   if session=="" {home:[4096]u8;session=fs_join(proc_getenv("HOME",home[..]),".openagents/aethyrforge/scene-session.json",path[..]);}
   data:[65536]u8;n:=fs_read(session,data[..]);s:[1]EditorSceneSession;
-  if n<0 || !fs_session(cast(string)data[0..<n],proc_now_ms(),s[..]) {return scene_error("No fresh local Aethyrforge scene session. Open the desktop app.");}
+  if n<0 || !fs_session(cast(string)data[0..<n],proc_now_ms(),s[..]) {return scene_error("No fresh local Metaverse Engine scene session. Open the desktop app.");}
   api:=cast(string)s[0].api[0..<s[0].n];extra:=args_at(a[..],1);if extra=="--session" {extra="";}
   if verb=="raid" {return scene_raid(api,extra);}
   if verb=="npcs" || verb=="npc" {return scene_npcs(api,verb,extra);}
@@ -92,7 +92,7 @@ tool_main :: ()->int #export_c #effects(all) {
     resizing=true;p=fsr_plan(e[0],resize[0],version);
   }else{return scene_error("Invalid scene command. Use place, move(group), remove(group), or resize(index,version,size_percent OR scale_percent). Read show for the object's current index and version.");}
   if !p.ok {return scene_error("No objects changed: the complete edit would collide, exceed size/capacity bounds, use an unsupported stack, or name a missing object/group. Read show and reconsider the edit.");}
-  body:[16384]u8;bn:=eg_edits_body(p.edits,"Aethyrforge scene command",body[..]);
+  body:[16384]u8;bn:=eg_edits_body(p.edits,"Metaverse Engine scene command",body[..]);
   if bn==0 {return scene_error("The world document is too large.");}
   bn-=1;bn=raw_put(body[..],bn,",\"base\":");bn=eg_put_int(body[..],bn,version);bn=raw_put(body[..],bn,"}");
   r=scene_request(api,"POST",cast(string)body[0..<bn],data[..]);

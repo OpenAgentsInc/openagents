@@ -31,7 +31,7 @@ int32_t coaxial_action(uint32_t p){fgn_selection_save(view(p));return at(p)->lab
 uint32_t coaxial_outbox(uint32_t p){return (uint32_t)(uintptr_t)at(p)->lab.e[0].outbox.e;}
 uint32_t coaxial_outbox_len(uint32_t p){return at(p)->lab.e[0].out_n;}
 void coaxial_action_done(uint32_t p){at(p)->lab.e[0].action=0;at(p)->lab.e[0].out_n=0;}
-const char *coaxial_window_title(void){return "Aethyrforge · Bitcoin Lab";}
+const char *coaxial_window_title(void){return "Metaverse Engine · Bitcoin Lab";}
 const char *coaxial_window_app_id(void){return "com.openagents.aethyrforge";}
 int coaxial_should_close(uint32_t p){return at(p)->quit;}
 void coaxial_close(uint32_t p){fgn_close(view(p));}

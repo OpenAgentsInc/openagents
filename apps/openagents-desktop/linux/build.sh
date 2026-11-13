@@ -43,7 +43,7 @@ objcopy --keep-global-symbol=coaxial_lab_nip98 "$work/c/lab-sign.o"
 # the app's unit and Parakeet's both export Coax's SHA-256 (S_hash, S_hex): the app's copy gets names of its own
 cc "${cflags[@]}" -DS_hash=oa_zeron_S_hash -DS_hex=oa_zeron_S_hex -c "$work/c/zeron.c" -o "$work/c/zeron.o"
 # shellcheck disable=SC2046
-cc "${cflags[@]}" -DAETHYR_WAYLAND_INPUT_V1 -DAETHYR_WAYLAND_TEXT_V1 \
+cc "${cflags[@]}" -DENGINE_WAYLAND_INPUT_V1 -DENGINE_WAYLAND_TEXT_V1 \
   "$here/main.c" "$here/chat.c" "$here/stubs.c" "$here/dictation-host.c" "$app/dictation-face.c" "$repo/apps/openagents-cli/dictate-native.c" "$work/c/dictation.c" "$app/zeron-face.c" "$repo/apps/shared/host/linux/ui-host.c" "$repo/apps/shared/host/linux/portal.c" "$work/c/zeron.o" "$work/c/lab-sign.o" "$work/c/wayland-input.c" "$work/c/wayland-text.c" \
   "$repo/metaverse/gpu/vkc.c" "$repo/metaverse/gpu/vks.c" "$repo/metaverse/gpu/vkp.c" "$repo/coax/platform/process-native.c" "$repo/coax/platform/store-file-native.c" \
   "$work/wl/xdg-shell-protocol.c" "$work/wl/xdg-decoration-unstable-v1-protocol.c" "$work/wl/text-input-unstable-v3-protocol.c" \

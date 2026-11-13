@@ -18,13 +18,13 @@ af_path :: (p: [] AfPaths, root: string, name: string) -> string {
 }
 af_run :: (argv: [] string, out: [] u8, deadline: int) -> int {
   left := deadline - proc_now_ms();
-  if left <= 0 { tool_errln("Aethyrforge build reached its fourteen-minute limit; resume the remaining build step."); return -1; }
+  if left <= 0 { tool_errln("The Metaverse Engine build reached its fourteen-minute limit; resume the remaining build step."); return -1; }
   err: [65536] u8;
   env: [] string;
   r := proc_run_bytes(argv, env, left, out, err[..]);
   if r.started != 0 || r.status != 0 || r.timed_out || r.cut {
     tool_errln(cast(string) out[0..<r.out_n]); tool_errln(cast(string) err[0..<r.err_n]);
-    tool_errln("Aethyrforge build step failed or exceeded its time/output limit."); return -1;
+    tool_errln("A Metaverse Engine build step failed or exceeded its time/output limit."); return -1;
   }
   return r.out_n;
 }
@@ -196,7 +196,7 @@ tool_main :: () -> int #export_c #effects(all) {
   packs_wasm:=af_path(p[..],root,"apps/openagents-web/build/host-packs.wasm");
   if fs_mtime_ns(packs_wasm)<packs_stamp{print("Building shared browser pack reader…\n");cmd:=[4]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"coax/web/build-packs.coax"),root,packs_wasm];if af_run(cmd[..],out[..],deadline)<0{return 1;}}
   if !af_native(root,here,work,coax,out[..],deadline) {return 1;}
-  print("Building Aethyrforge's AppKit shell…\n");
+  print("Building the Metaverse Engine's AppKit shell…\n");
   serve := af_path(p[..], res, "serve");
   // serve.c's HTTP ranges are Coax (coax/web/http-range.coax), compiled beside it as coax/web/serve.sh does.
   range_h := af_path(p[..], work, "http-range.h"); range_c := af_path(p[..], work, "http-range.c");

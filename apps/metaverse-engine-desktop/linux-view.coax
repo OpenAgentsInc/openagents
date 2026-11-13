@@ -110,7 +110,7 @@ fgl_frame :: (s:[]EditorLinux,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32)->int #
   if s[0].opened {
     n=fc_draw(out,s[0].w,s[0].h,d,s[0].busy);
     n=hd_feed(out,n,s[0].history[..],fc_box(1,s[0].w,s[0].h),p);
-    n=hd_text_fit(out,n,"AETHYRFORGE / BITCOIN LAB",28,s[0].h-106,13,s[0].w-56,p,2);
+    n=hd_text_fit(out,n,"METAVERSE ENGINE / BITCOIN LAB",28,s[0].h-106,13,s[0].w-56,p,2);
     n=hd_text_fit(out,n,cast(string)s[0].status[0..<s[0].sn],28,s[0].h-80,10,s[0].w-550,p,1);
     n=hd_text_fit(out,n,cast(string)s[0].workspace[0..<s[0].wn],28,s[0].h-122,10,s[0].w-56,p,1);
     start:=0;if s[0].dn>120 {start=s[0].dn-120;while start<s[0].dn && (s[0].draft[start]&192)==128 {start+=1;}}

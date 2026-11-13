@@ -107,10 +107,10 @@ emit_page bitcoin-lab-walk charactercreator charactercreator bitcoin-lab-fx qfx
 # block build read whole, a block layer's levels, the format this GPU takes and the frame plan's records.
 # PageHost.m is built on the core over it (metaverse-engine/host/core/host-core.h); Engine.swift finds a pack's
 # entries through the reader (pack-table.h, which includes the face under its old name).
-"$coax" c "$repo/metaverse-engine/host/core/core-face.coax" --library --header "$work/c/aethyr-core-face.h" > "$work/c/aethyr-core-face.c"
+"$coax" c "$repo/metaverse-engine/host/core/core-face.coax" --library --header "$work/c/engine-core-face.h" > "$work/c/engine-core-face.c"
 # (Its SHA-256 helpers are also native-audio's: this unit keeps its own names for them.)
-/usr/bin/clang "${cflags[@]}" -w -DS_hash=engine_core_S_hash -DS_hex=engine_core_S_hex -c "$work/c/aethyr-core-face.c" -o "$work/c/aethyr-core-face.o"
-printf '#include "aethyr-core-face.h"\n' > "$work/c/aethyr-pack-table.h"
+/usr/bin/clang "${cflags[@]}" -w -DS_hash=engine_core_S_hash -DS_hex=engine_core_S_hex -c "$work/c/engine-core-face.c" -o "$work/c/engine-core-face.o"
+printf '#include "engine-core-face.h"\n' > "$work/c/engine-pack-table.h"
 /usr/bin/clang -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -I"$work/c" -c "$repo/metaverse-engine/host/apple/PageHost.m" -o "$work/c/page-host.o"
 # The realms' sound: the Metaverse Engine's Apple audio host (metaverse-engine/host/apple/audio-host.h, PageAudio.swift and
 # the desktop app's MetalAudio.swift) over the shared Coax audio authorities, native-audio.coax as C,
@@ -158,7 +158,7 @@ done
 rm -rf "$app/Contents/Resources/chat"; mkdir -p "$app/Contents/Resources/chat"
 cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$repo/components/zeron/NOTICE" "$app/Contents/Resources/chat/"
 printf '#include "%s"\n#import "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n' "$here/face.h" "$repo/metaverse-engine/host/apple/page-host.h" "$repo/metaverse-engine/host/apple/audio-host.h" "$repo/apps/shared/host/apple/ui-host-apple.h" "$oa/linux/chat.h" "$repo/metaverse-engine/host/pack-table.h" > "$work/c/bridge.h"
-xcrun -sdk macosx swiftc -O -Xcc -I"$work/c" -import-objc-header "$work/c/bridge.h" "$here"/Sources/*.swift "$repo/metaverse-engine/host/apple/PageAudio.swift" "$repo/apps/metaverse-engine-desktop/Sources/MetalAudio.swift" "$work/c/ui-host.o" "$work/c/page-host.o" "$work/c/aethyr-core-face.o" "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/next-face.o" "$work/c/temple.o" "$work/c/place-face.o" "$work/c/process.o" "$work/c/chat"/{zeron,lab-sign,chat,dictation-none,zeron-face,store-file-native,ct-atlas}.o \
+xcrun -sdk macosx swiftc -O -Xcc -I"$work/c" -import-objc-header "$work/c/bridge.h" "$here"/Sources/*.swift "$repo/metaverse-engine/host/apple/PageAudio.swift" "$repo/apps/metaverse-engine-desktop/Sources/MetalAudio.swift" "$work/c/ui-host.o" "$work/c/page-host.o" "$work/c/engine-core-face.o" "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/next-face.o" "$work/c/temple.o" "$work/c/place-face.o" "$work/c/process.o" "$work/c/chat"/{zeron,lab-sign,chat,dictation-none,zeron-face,store-file-native,ct-atlas}.o \
   -framework AppKit -framework Metal -framework MetalKit -framework QuartzCore -framework ImageIO -framework CoreGraphics -framework CoreText -framework AVFoundation -framework UniformTypeIdentifiers -lm -lz \
   -Xlinker -export_dynamic -Xlinker -stack_size -Xlinker 0x20000000 -o "$app/Contents/MacOS/Everglade"
 # The context program: built as any Coax tool is (tool.sh keeps the executable by the compiler's

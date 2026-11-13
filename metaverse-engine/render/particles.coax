@@ -7,24 +7,24 @@
 // The Haunted House's (realm-face.c): embers off the nearest flickering
 // flames, dust in the room you stand in, fireflies over the yard, the
 // courtyard and the garden when you are near them.
-VERSE_EMITTER_FLOATS :: 16;
-VERSE_EMITTERS :: 24;
-VERSE_PARTICLES_PER :: 64;
+METAVERSE_EMITTER_FLOATS :: 16;
+METAVERSE_EMITTERS :: 24;
+METAVERSE_PARTICLES_PER :: 64;
 METAVERSE_LAMP_FLOATS :: 8;
 METAVERSE_AREA_FLOATS :: 6;
 pe_lo :: (a:f32,b:f32)->f32 { if a<b { return a; } return b; }
 pe_hi :: (a:f32,b:f32)->f32 { if a>b { return a; } return b; }
 
-metaverse_emitter_cap :: ()->int #export_c #effects(all) { return VERSE_EMITTERS; }
-metaverse_particles_per :: ()->int #export_c #effects(all) { return VERSE_PARTICLES_PER; }
+metaverse_emitter_cap :: ()->int #export_c #effects(all) { return METAVERSE_EMITTERS; }
+metaverse_particles_per :: ()->int #export_c #effects(all) { return METAVERSE_PARTICLES_PER; }
 
 // Writes emitter k (if it fits); the count is clamped to the per-emitter bound.
 metaverse_emitter_put :: (out:[]f32,k:int,x:f32,y:f32,z:f32,radius:f32,r:f32,g:f32,b:f32,flicker:f32,kind:f32,count:f32,size:f32,speed:f32,seed:f32)->bool #export_c #effects(all) {
-  if k<0 || k>=VERSE_EMITTERS || out.count<(k+1)*VERSE_EMITTER_FLOATS { return false; }
-  o:=k*VERSE_EMITTER_FLOATS;
+  if k<0 || k>=METAVERSE_EMITTERS || out.count<(k+1)*METAVERSE_EMITTER_FLOATS { return false; }
+  o:=k*METAVERSE_EMITTER_FLOATS;
   out[o]=x;out[o+1]=y;out[o+2]=z;out[o+3]=radius;
   out[o+4]=r;out[o+5]=g;out[o+6]=b;out[o+7]=flicker;
-  out[o+8]=kind;out[o+9]=pe_lo(pe_hi(count,0.0f32),cast(f32)VERSE_PARTICLES_PER);out[o+10]=size;out[o+11]=speed;
+  out[o+8]=kind;out[o+9]=pe_lo(pe_hi(count,0.0f32),cast(f32)METAVERSE_PARTICLES_PER);out[o+10]=size;out[o+11]=speed;
   out[o+12]=seed;out[o+13]=0.0f32;out[o+14]=0.0f32;out[o+15]=0.0f32;
   return true;
 }
@@ -58,7 +58,7 @@ metaverse_particles_haunt :: (lamps:[]f32,lamp_n:int,areas:[]f32,area_n:int,ex:f
   }
   // Embers off the nearest flickering flames, nearest first.
   taken:[64]bool;
-  for pass:0..<VERSE_EMITTERS {
+  for pass:0..<METAVERSE_EMITTERS {
     best:=-1;bd:=30.0f32*30.0f32;
     for i:0..<ln {
       if i>=64 || taken[i] { continue; }
@@ -102,7 +102,7 @@ metaverse_particles_haunt :: (lamps:[]f32,lamp_n:int,areas:[]f32,area_n:int,ex:f
   lamps:[512]f32;for i:0..<64 { lamps[i*8]=cast(f32)(i%8);lamps[i*8+2]=cast(f32)(i/8);lamps[i*8+7]=0.5f32; }
   areas:[6]f32;
   out:[384]f32;
-  #assert metaverse_particles_haunt(lamps[..],64,areas[..],0,3.0f32,0.0f32,3.0f32,out[..])==VERSE_EMITTERS;
+  #assert metaverse_particles_haunt(lamps[..],64,areas[..],0,3.0f32,0.0f32,3.0f32,out[..])==METAVERSE_EMITTERS;
   small:[40]f32;
   #assert metaverse_particles_haunt(lamps[..],64,areas[..],0,3.0f32,0.0f32,3.0f32,small[..])==2;
 }

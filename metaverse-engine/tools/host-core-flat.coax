@@ -30,11 +30,11 @@ hcf_include :: (line: string) -> string #effects(all) {
 }
 #test "an include line names its file; a comment, a system header or a broken line names none" {
   #assert hcf_include("#include \"../pack-table.h\"") == "../pack-table.h" && hcf_include("#include \"a\"") == "a";
-  #assert hcf_include("#include <stdint.h>") == "" && hcf_include("//   #include \"aethyr-core-face.h\"") == "" && hcf_include("#include \"\"") == "";
+  #assert hcf_include("#include <stdint.h>") == "" && hcf_include("//   #include \"engine-core-face.h\"") == "" && hcf_include("#include \"\"") == "";
   #assert hcf_include("#include \"a.h\" // why") == "" && hcf_include("#include \"a") == "" && hcf_include("") == "" && hcf_include("#include \"a\"b\"") == "";
 }
 // path's text into out, each line that includes a file beside it replaced by that file's text. A
-// file that isn't in the tree (the pack reader's built face, aethyr-pack-table.h) keeps its line.
+// file that isn't in the tree (the pack reader's built face, engine-pack-table.h) keeps its line.
 hcf_file :: (root: string, path: string, out: [] u8, o: [] HcfOut, depth: int) #effects(all) {
   text: [HCF_MAX] u8; full: [FS_PATH_MAX] u8; next: [FS_PATH_MAX] u8;
   n := fs_read(fs_join(root, path, full[..]), text[..]);

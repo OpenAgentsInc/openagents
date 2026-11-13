@@ -16,14 +16,14 @@
 #include <zlib.h>
 #include "audio-host.h"
 // The one C host core (metaverse-engine/host/core/host-core.h, GitHub #13304) over its Coax face,
-// which the app's build compiles (aethyr-core-face.c): the pack's entries, their delivery to the
+// which the app's build compiles (engine-core-face.c): the pack's entries, their delivery to the
 // face, a paged block build read whole, and a block layer's levels. This file keeps Metal, the
 // window's input and the network.
 #ifndef COAXIAL_NATIVE_ADDRESS
 #define COAXIAL_NATIVE_ADDRESS 1
 #endif
 #include <TargetConditionals.h>
-#include "aethyr-core-face.h"
+#include "engine-core-face.h"
 #define ENGINE_PACK_TABLE_PROVIDED
 #define ENGINE_CORE_FACE
 #include "../core/host-core.h"
