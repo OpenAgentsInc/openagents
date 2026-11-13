@@ -378,8 +378,8 @@ wa_checks :: (t: [] Ap, w: [] Wc, a: [] Wa, other: string) {
   box := pit_box(3, 1, 0.5, 1, 0.25, a[0].glb[..]);
   // ---- reading: anyone reads the list and the pack; the list for writing is an admin's
   st := wa_call(t, "", "GET", WA_PATH, "");
-  ap_check(t, "assets: a world that has imported nothing lists its limits and licences, and has no pack", st == 200 && was_read(l, ap_body(t)) && !l[0].packed && l[0].n == 0 && l[0].file == 524288 && l[0].budget == 1048576 && l[0].licences == 3
-           && ap_call(t, "GET", "/api/worlds/splice-bots/assets/pack", "", t[0].no[0..<0]) == 404 && wa_words(t, w) == "this world has imported nothing" && ap_call(t, "GET", "/api/worlds/nope/assets", "", t[0].no[0..<0]) == 404, ap_body(t));
+  ap_check(t, "assets: a world that has imported nothing lists its limits and licences, and its pack is empty", st == 200 && was_read(l, ap_body(t)) && !l[0].packed && l[0].n == 0 && l[0].file == 524288 && l[0].budget == 1048576 && l[0].licences == 3
+           && ap_call(t, "GET", "/api/worlds/splice-bots/assets/pack", "", t[0].no[0..<0]) == 200 && t[0].n == 0 && ap_call(t, "GET", "/api/worlds/nope/assets", "", t[0].no[0..<0]) == 404, ap_body(t));
   st = wa_call(t, "", "GET", "/api/worlds/splice-bots/assets?lane=dev&write=1", "");
   none := st == 401 && wa_words(t, w) == "log in";
   st = wa_call(t, other, "GET", "/api/worlds/splice-bots/assets?lane=dev&write=1", "");
@@ -445,7 +445,7 @@ wa_checks :: (t: [] Ap, w: [] Wc, a: [] Wa, other: string) {
   dev_list := st == 200 && was_read(l, ap_body(t)) && l[0].n == 1 && !l[0].did && cast(string) l[0].hash[..] == cast(string) first[..];
   st = wa_call(t, "", "GET", WA_PATH, "");
   ap_check(t, "assets: dev's pack is its bytes by lane and by hash; live has none until a publish", dev_pack && by_hash && no_hash && dev_list && st == 200 && was_read(l, ap_body(t)) && !l[0].packed
-           && ap_call(t, "GET", "/api/worlds/splice-bots/assets/pack", "", t[0].no[0..<0]) == 404, ap_body(t));
+           && ap_call(t, "GET", "/api/worlds/splice-bots/assets/pack", "", t[0].no[0..<0]) == 200 && t[0].n == 0, ap_body(t));
   // the same file again: the bucket has it, nothing is sent, and the import replaces the mesh
   before := wa_opened(a, lg[..]).count;
   st = wa_open(t, a, t[0].admin_key, 1, "rock.glb", box);

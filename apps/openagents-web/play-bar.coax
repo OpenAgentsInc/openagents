@@ -1,0 +1,104 @@
+// A game page's own bar: the one button a plain play page (/worlds/ID, no ?edit) has over its canvas, Fullscreen.
+// It is the editor's Fullscreen (metaverse-engine/editor/shell.coax, action 529) for a page with no editor: any
+// engine page gets it from the shared host (coax/web/host.js, playBarOpen), whatever world it runs.
+//
+// It has no look of its own. Its one node is the kit's (components/kit/frames.coax k_fullscreen) in the mono skin.
+// It asks the host for fullscreen (action 529, "fullscreen on" or "fullscreen off"); the host tells it when the
+// browser goes in or out of it, Esc included (event 15, slot 1 for in).
+#load "../../components/kit/frames.coax";
+#load "../../components/backend/dom.coax";
+
+PB_INBOX :: 64;
+PB_CSS :: 28672;
+PB_ACT :: 32;
+PB_CLICK :: 1; PB_FULLSCREEN :: 15;
+PB_FULL :: 529;   // the host's action: the game's canvas on the whole screen ("fullscreen on"), or back
+
+PlayBar :: struct {
+  ready: bool; time: f32; dirty: bool; animating: bool;
+  full: bool;                           // the browser shows the game on the whole screen
+  act: [PB_ACT] u8; act_n: int; act_kind: int;
+  inbox: [PB_INBOX] u8;
+  sets: [MF_COUNT] AfSettings;
+  css: [PB_CSS] u8;
+  ui: [1] Ui;
+  tree: [1] Tree;
+  dom: [1] Dom;
+}
+
+pb_build :: (s: [] PlayBar) {
+  t := s[0].tree[..];
+  tr_begin(t);
+  _ := k_fullscreen(t, "full", s[0].full);
+}
+
+coaxial_playbar_frame :: (s: [] PlayBar, dt: f32, reduced: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  if !s[0].ready {
+    _ := mono_frames(s[0].sets[..]);
+    s[0].ready = true; s[0].dirty = true;
+  }
+  step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].time += step;
+  if !s[0].dirty && !s[0].animating { return 0; }
+  d := s[0].dom[..];
+  if !d[0].styled {
+    n := mono_css(s[0].css[..]);
+    dm_style(d, cast(string) s[0].css[0..<n]);
+  }
+  ui_begin(s[0].ui[..], s[0].time, reduced);
+  pb_build(s);
+  ui_end(s[0].ui[..]);
+  s[0].animating = s[0].ui[0].busy;
+  s[0].dirty = false;
+  bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
+  if d[0].overflow { dm_reset(d); s[0].dirty = true; return -1; }
+  return bytes;
+}
+coaxial_playbar_busy :: (s: [] PlayBar) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating); }
+// A press (1) on the node in this slot; or the host's word that the browser went in or out of fullscreen (15).
+coaxial_playbar_event :: (s: [] PlayBar, kind: int, slot: int, length: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].dirty = true;
+  if kind == PB_FULLSCREEN { s[0].full = slot == 1; return; }
+  if kind != PB_CLICK || dm_slot_id(s[0].dom[..], slot) != "full" { return; }
+  words := ifx s[0].full then "fullscreen off" else "fullscreen on";
+  for i: 0..<words.count { s[0].act[i] = words[i]; }
+  s[0].act_n = words.count; s[0].act_kind = PB_FULL;
+}
+coaxial_playbar_size :: (s: [] PlayBar, slot: int, w: f32, h: f32) #export_c #effects(all) {
+  if s.count > 0 && dm_size(s[0].dom[..], slot, w, h) { s[0].dirty = true; }
+}
+coaxial_playbar_inbox_cap :: () -> int #export_c #effects(all) { return PB_INBOX; }
+// The action that waits for the host: its kind (0: none) and its bytes; done takes it away.
+coaxial_playbar_act_kind :: (s: [] PlayBar) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].act_kind else 0; }
+coaxial_playbar_act_len :: (s: [] PlayBar) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].act_n else 0; }
+coaxial_playbar_act_done :: (s: [] PlayBar) #export_c #effects(all) { if s.count > 0 { s[0].act_kind = 0; s[0].act_n = 0; } }
+
+// ---------------------------------------------------------------- checks
+
+PbTest :: struct { s: [1] PlayBar; }
+
+#test "the bar is the kit's one Fullscreen button; a press asks the host, and the host's word flips it" {
+  h: [1] PbTest;
+  s := h[0].s[..];
+  #assert coaxial_playbar_frame(s, 0.016, true) > 0;
+  t := s[0].tree[..];
+  b := tr_find(t, "full");
+  #assert b >= 0 && t[0].nodes[b].tag == TG_BUTTON && tr_class(t, b) == "ib" && tr_attr_of(t, b, AT_STATE) == "full";
+  #assert tr_attr_of(t, b, AT_LABEL) == "Fullscreen";
+  coaxial_playbar_event(s, PB_CLICK, dm_find(s[0].dom[..], "full"), 0);
+  #assert coaxial_playbar_act_kind(s) == PB_FULL && cast(string) s[0].act[0..<coaxial_playbar_act_len(s)] == "fullscreen on";
+  coaxial_playbar_act_done(s);
+  #assert coaxial_playbar_act_kind(s) == 0;
+  coaxial_playbar_event(s, PB_FULLSCREEN, 1, 0);
+  _ = coaxial_playbar_frame(s, 0.016, true);
+  #assert tr_attr_of(t, tr_find(t, "full"), AT_LABEL) == "Leave fullscreen (Esc)";
+  coaxial_playbar_event(s, PB_CLICK, dm_find(s[0].dom[..], "full"), 0);
+  #assert cast(string) s[0].act[0..<coaxial_playbar_act_len(s)] == "fullscreen off";
+  // its one rule is the skin's: the button stands at the top right
+  css := cast(string) s[0].css[..];
+  found := false;
+  for i: 0..<css.count - 20 { if cast(string) css[i..<i + 20] == ".ib[data-state=full]" { found = true; } }
+  #assert found;
+}

@@ -21,7 +21,7 @@ MF_COUNT :: 11;
 // ARWES's kinds (frames.coax af_frame_settings): 0 underline, 1 lines, 2 corners, 3 octagon, 5 nefrex, 7 header.
 // The product's mark (the power symbol), drawn in the colour of the text round it: the side's head shows it.
 MONO_MARK :: "/mark.svg#i";
-MONO_KINDS :: [11] int.[3, 2, 0, 1, 7, 0, 2, 5, 3, 3, 3];
+MONO_KINDS :: [11] int.[3, 2, 0, 1, 7, 3, 2, 5, 3, 3, 3];   // a field is the one underline: a row and every button are boxed
 mono_kind :: (role: int) -> int { kinds := MONO_KINDS; return ifx role >= 0 && role < MF_COUNT then kinds[role] else 2; }
 mono_frames :: (out: [] AfSettings) -> int {
   if out.count < MF_COUNT { return 0; }
@@ -112,10 +112,11 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, ".btn[data-state=primary]:hover{--frame-bg:#e0e0e0;--frame-line:#e0e0e0;--frame-deco:#e0e0e0}");
   n = mc(out, n, ".btn[disabled]{color:var(--ink-faint);cursor:default;--frame-bg:transparent;--frame-line:var(--line-dim);--frame-deco:var(--line-dim)}");
   n = mc(out, n, ".btn[disabled] .fr-line{stroke-dasharray:3 3}");
-  // a quiet text button
-  n = mc(out, n, ".lk{appearance:none;border:0;background:none;color:var(--ink-muted);font:500 11px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;cursor:pointer;padding:6px 8px}");
-  n = mc(out, n, ".lk:hover,.lk:focus-visible{color:#fff;outline:none}");
-  n = mc(out, n, "a.lk{text-decoration:none;align-self:flex-start}");
+  // a quiet button: Button's octagon, smaller and dimmer. No button or link-button is ever underlined
+  n = mc(out, n, ".lk{appearance:none;border:0;background:none;color:var(--ink-muted);font:500 10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;cursor:pointer;padding:7px 11px;");
+  n = mc(out, n, "display:inline-flex;align-items:center;text-decoration:none;transition:color .15s;--frame-bg:transparent;--frame-line:var(--line-dim);--frame-deco:var(--line)}");
+  n = mc(out, n, ".lk:hover,.lk:focus-visible{color:#fff;outline:none;--frame-bg:var(--raised);--frame-line:var(--line-bright)}");
+  n = mc(out, n, "a.lk{align-self:flex-start}button,a.btn,a.lk{text-decoration:none}");
   // an icon, and a button that is only an icon
   n = mc(out, n, ".ic{display:block;width:16px;height:16px;flex:none}");
   n = mc(out, n, ".ib{appearance:none;border:0;background:none;color:var(--ink-faint);width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:color .15s,background .15s}");
@@ -123,8 +124,8 @@ mono_css :: (out: [] u8) -> int {
   // a select: what is chosen and a chevron, and its menu over it
   n = mc(out, n, ".anchor{position:relative;display:flex}");
   n = mc(out, n, ".sel{appearance:none;border:0;background:none;color:var(--ink-muted);font:500 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;");
-  n = mc(out, n, "height:28px;padding:0 8px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;transition:color .15s,background .15s}");
-  n = mc(out, n, ".sel:hover,.sel:focus-visible,.sel[aria-expanded=true]{color:#fff;background:var(--raised);outline:none}.sel .ic{width:12px;height:12px}");
+  n = mc(out, n, "height:28px;padding:0 10px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;transition:color .15s;--frame-bg:transparent;--frame-line:var(--line-dim);--frame-deco:var(--line)}");
+  n = mc(out, n, ".sel:hover,.sel:focus-visible,.sel[aria-expanded=true]{color:#fff;outline:none;--frame-bg:var(--raised);--frame-line:var(--line-bright)}.sel .ic{width:12px;height:12px}");
   n = mc(out, n, ".menu.pop{position:absolute;bottom:calc(100% + 10px);left:0;z-index:5;width:320px;max-width:calc(100vw - 48px)}");
   n = mc(out, n, ".menu>.meta{padding:8px 12px;text-transform:none;letter-spacing:0;font:12px/1.5 var(--sans)}.menu .row .meta{text-transform:none;letter-spacing:0;font:12px/1.4 var(--sans)}");
   // settings: cards of rows
@@ -221,6 +222,7 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, ".side .row[aria-current=true]{color:#fff;background:var(--raised);--frame-bg:transparent;--frame-line:transparent;--frame-deco:transparent}");
   n = mc(out, n, ".sec>.side{position:relative;z-index:auto;height:460px;border:1px solid var(--line-dim);view-transition-name:none}");
   n = mc(out, n, ".ib[data-state=side]{position:fixed;left:10px;top:10px;z-index:4;view-transition-name:side}");
+  n = mc(out, n, ".ib[data-state=full]{position:fixed;right:10px;top:10px;z-index:4}");
   // a place: an icon beside its name, a link
   n = mc(out, n, ".row-i{flex-direction:row;align-items:center;gap:10px;text-decoration:none;box-sizing:border-box}.row.row-i>.ic{position:static;width:16px;height:16px;margin:0;color:inherit;animation:none}.row-i:hover,.row-i:focus-visible{color:#fff;outline:none}");
   // a fold (k_fold): a heading of the side that opens and shuts its rows, a chevron at its end and a + beside it
@@ -366,7 +368,12 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, ".dock-over{position:fixed;inset:0;z-index:20;height:auto;padding:8px;pointer-events:none}.dock-over>*{pointer-events:auto}");
   n = mc(out, n, ".pane{min-width:0;min-height:0;display:flex;flex-direction:column;gap:12px;padding:14px 12px;--frame-line:var(--line-dim);--frame-deco:var(--line)}");
   n = mc(out, n, ".pane-b{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:12px;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}");
-  n = mc(out, n, ".pane-t{grid-column:1/-1;padding:8px 12px}.pane-t>.pane-b{flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;overflow:visible}");
+  // the strip is one row: its controls keep their size, closer set than elsewhere, and only its words (the meta at its
+  // end) give way, cut short, so the strip never wraps and never moves what is under it. A narrow window wraps it
+  n = mc(out, n, ".pane-t{grid-column:1/-1;padding:8px 12px}.pane-t>.pane-b{flex-direction:row;flex-wrap:nowrap;align-items:center;gap:6px;overflow:visible}");
+  n = mc(out, n, ".pane-t>.pane-b>*{flex:none}.pane-t .btn{padding:9px 9px;letter-spacing:.1em;white-space:nowrap}.pane-t .sel{white-space:nowrap;padding:0 7px;letter-spacing:.1em}");
+  n = mc(out, n, ".pane-t .anchor[data-state=end]>.menu.pop{left:auto;right:0}");
+  n = mc(out, n, ".pane-t>.pane-b>.meta{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pane-t>.pane-b>.meta~.meta{margin-left:0}");
   // a side pane is as tall as what it holds, to the dock's height, so what is under the dock shows below it
   n = mc(out, n, ".pane-l{grid-column:1;grid-row:2}.pane-r{grid-column:3;grid-row:2}.pane-l,.pane-r{align-self:start;max-height:100%}");
   // a wide right pane (a file of code): the dock's right column is as wide as it needs
@@ -413,7 +420,7 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, ".pane .menu.pop:has(>.row:nth-of-type(25)){grid-template-columns:repeat(3,minmax(0,1fr));width:min(820px,calc(100vw - 48px))}");
   // over a scene, the panes are its frame: a side pane stands the whole height, and each pane is solid, so the scene is the part between them
   n = mc(out, n, ".dock-over>.pane{background:var(--ground)}@media (min-width:761px){.dock-over>.pane-l,.dock-over>.pane-r{align-self:stretch}}");
-  n = mc(out, n, "@media (max-width:760px){.dock,.dock:has(.pane-w){grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.pane-l,.pane-r{max-height:38vh;align-self:start}.pane-r{grid-column:2}.pane-w{grid-column:1/-1}}");
+  n = mc(out, n, "@media (max-width:760px){.pane-t>.pane-b{flex-wrap:wrap}.dock,.dock:has(.pane-w){grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.pane-l,.pane-r{max-height:38vh;align-self:start}.pane-r{grid-column:2}.pane-w{grid-column:1/-1}}");
   // the strip's menus lie over the side panes; on a narrow window a menu opens under its select across the strip, so all of it is on the screen (#13422)
   n = mc(out, n, ".pane-t{z-index:2}@media (max-width:760px){.pane-t .anchor{position:static;display:block}.pane-t .menu.pop{top:auto;left:8px;right:8px;margin-top:6px}}");
   // under a finger a prop's field is a whole target too (#13448)

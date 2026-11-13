@@ -77,6 +77,9 @@ agents 120000
 crew 188000
 # ... and its pane, the creation steps in the frames set (crew-pane.coax): 119,391 bytes measured the same way; about 10% room.
 crew-pane 132000
+# A plain play page's bar (play-bar.coax): the kit's Fullscreen button, the mono skin's stylesheet and the browser backend:
+# 85,120 bytes measured 2026-11-13 on a build host; about 10% room.
+play-bar 94000
 # The page's script module (script-host.coax, #13467): the module check, the interpreter, the host and the loader. 79,438 bytes measured with the script list's codec (Mac, clang 23); about 10% room.
 script-host 88000
 # the shared host ABI every renderer carrier exports kept growing on 11-05 (#12869): 81,594 measured at 882146be65; about 5% room (#12922)

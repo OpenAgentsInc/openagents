@@ -209,10 +209,10 @@ KwTest :: struct { t: [1] Tree; u: [1] Ui; }
   #assert tr_attr_of(t, r, AT_STATE) == "refused" && tr_text_of(t, tr_find(t, "c.2.s")) == "Refused" && tr_text_of(t, tr_find(t, "c.2.t")) == "2s" && tr_find(t, "c.2.g") < 0;
   #assert tr_text_of(t, tr_find(t, "c.2.why")) == "Refused: in the kept-clear zone 'Scanner gate'" && tr_text_of(t, tr_find(t, "c.2.in")) == "{\"slug\":\"splice\"}";
   shown := tr_text_of(t, tr_find(t, "c.2.out"));
-  #assert kw_lines(shown) == KW_CLIP_LINES && tr_text_of(t, tr_find(t, "c.2.all")) == "Show all 40 lines" && tr_find(t, "c.2.copy") > 0 && tr_text_of(t, tr_find(t, "c.2.outk")) == "Came back";
+  #assert kw_lines(shown) == KW_CLIP_LINES && tr_text_of(t, tr_find(t, "c.2.all.l")) == "Show all 40 lines" && tr_find(t, "c.2.copy") > 0 && tr_text_of(t, tr_find(t, "c.2.outk")) == "Came back";
   tr_begin(t);
   r = k_work_row(t, u, "c.2", IC_EDIT_PENCIL, "Place a thing", "", KW_DONE, "", -1, true, "", out, true);
-  #assert tr_text_of(t, tr_find(t, "c.2.out")) == out && tr_text_of(t, tr_find(t, "c.2.all")) == "Show less" && tr_find(t, "c.2.ink") < 0 && tr_find(t, "c.2.why") < 0;
+  #assert tr_text_of(t, tr_find(t, "c.2.out")) == out && tr_text_of(t, tr_find(t, "c.2.all.l")) == "Show less" && tr_find(t, "c.2.ink") < 0 && tr_find(t, "c.2.why") < 0;
   tr_begin(t);
   r = k_work_row(t, u, "c.3", IC_EYE, "Read the world splice", "", KW_DONE, "", -1, true, "", "short", false);
   #assert tr_find(t, "c.3.all") < 0 && tr_find(t, "c.3.copy") > 0 && t[0].depth == 0 && t[0].lost == 0;

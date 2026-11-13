@@ -35,6 +35,7 @@ ES_DRAFT :: 16;        // bytes typed into a number's field
 ES_CLICK :: 1; ES_INPUT :: 2; ES_SUBMIT :: 3; ES_MODEL :: 6;
 ES_AGENT :: 7;         // the page was opened for the agent (?edit=agent): the foot is open from the start
 ES_PLANNED :: 8;       // a hosted turn's plan (world.plan.v1), in the inbox: its steps become one batch of edits
+ES_FULLSCREEN :: 15;   // the host says the game's canvas went fullscreen (slot 1) or left it (slot 0), by the button or by Esc
 ES_HELD :: 14;         // the page is held in the app shell, beside the site's side (docs/app-shell.md): no column for the side here
 // Code (E12, #13421). The page's host says the dev server serves this page (ES_CODE_HERE, the page's module in
 // the inbox); a deployed page's host never does, and the shell then has no Code button and no Code pane.
@@ -46,6 +47,7 @@ ES_NOTE_NONE :: 0; ES_NOTE_SAVED :: 1; ES_NOTE_ERRORS :: 2; ES_NOTE_NO :: 3;
 ES_TURN :: 524;        // an action for the conversation in the foot, not the page: the world as a turn is told it (world.turn.v1)
 ES_BATCH :: 520;       // an action: a world.edit.v1 batch for the page to send
 ES_SELECT :: 521;      // an action: the ID of the thing to select, 0 for none
+ES_FULL :: 529;        // an action for the page's host, not the page: "fullscreen on" or "fullscreen off" (the game's canvas)
 ES_VIEW :: 522;        // an action for the viewport's tools, as words (viewport.coax vp_act): "tool move", "grid 50", "fly on", "run pause", "step", "sim on"
 // The viewport's tools (viewport.coax VT_*), as a person reads them, and what each does.
 ES_TOOLS :: 5;
@@ -55,6 +57,7 @@ ES_TOOL_NOTE :: [ES_TOOLS] string.["Walk the world as a player", "Tap a thing to
 ES_GRIDS :: 4;
 ES_GRID :: [ES_GRIDS] string.["10 cm", "25 cm", "50 cm", "1 m"];
 ES_GRID_CM :: [ES_GRIDS] int.[10, 25, 50, 100];
+ES_OPEN_MORE :: 15;   // the strip's More (es_build_more); 11 to 14 are shell-actors.coax's and shell-scripts.coax's
 ES_OPEN_NONE :: 0; ES_OPEN_WHEN :: 1; ES_OPEN_KIND :: 2; ES_OPEN_TOOL :: 3; ES_OPEN_GRID :: 4; ES_OPEN_ADD :: 5; ES_OPEN_COUNT :: 6; ES_OPEN_FILE :: 7; ES_OPEN_BRUSH :: 8; ES_OPEN_MAT :: 9; ES_OPEN_LICENCE :: 10;
 // The land's brush (E13, #13422), for a world that says its land takes `terrain` edits (the model's `land` line):
 // the tool after the others, the brush's kinds as a person reads them (world-edit.coax WE_BRUSH), and the steps
@@ -128,6 +131,7 @@ EdShell :: struct {
   scripts: bool;                         // the Scripts pane is open (#13467)
   sc: EsScripts;
   revs: bool;                            // the Revisions list is open (#13485)
+  full: bool;                            // the host says the game's canvas is fullscreen
   rv: EsRevs;
   as_hash: [64] u8; as_pack: [64] u8;    // the waiting file's SHA-256 as the server answered it, and the pack's hash the page was last told
   as_file_name: [WAS_FILE_NAME] u8;
@@ -366,6 +370,28 @@ es_code_typed :: (s: [] EdShell, length: int) {
   s[0].code_n = length; s[0].code_long = false;
 }
 
+// More: the strip's menu of what is used less. Each row's id is the press it stands for ("step", "sim", "files",
+// "scripts", "code", "bar.revs"), its title what it does, and the line under it what it opens; a pane that is open is
+// the current row, and its title says Hide. Rows that the world's server did not answer for are not in it.
+ES_MORE_NOTE :: [6] string.["Run the world one tick, paused", "Run the actors as if no one were there", "Files attached to this world and its project",
+  "This world's realm scripts: write, build, run, stop and publish them", "The realm's source files, to read and change", "The world's recent steps, newest first"];
+es_build_more :: (s: [] EdShell, plain: bool, filing: bool, scripting: bool, coding: bool) {
+  t := s[0].tree[..]; u := s[0].ui[..]; notes := ES_MORE_NOTE;
+  open := s[0].open == ES_OPEN_MORE;
+  k_select_begin(t, u, "more", "More", "Step, simulate, and the world's files, scripts, code and revisions", open);
+  if open {
+    if !plain {
+      r0 := k_row(t, u, "step", "Step", notes[0], false);
+      r1 := k_row(t, u, "sim", ifx s[0].sim then "Stop simulating" else "Simulate", notes[1], s[0].sim);
+    }
+    if s[0].fl.have { r2 := k_row(t, u, "files", ifx filing then "Hide files" else "Files", notes[2], filing); }
+    if s[0].sc.have { r3 := k_row(t, u, "scripts", ifx scripting then "Hide scripts" else "Scripts", notes[3], scripting); }
+    if s[0].nfiles > 0 { r4 := k_row(t, u, "code", ifx s[0].code then "Hide code" else "Code", notes[4], coding); }
+    if s[0].rv.have { r5 := k_row(t, u, "bar.revs", ifx s[0].revs then "Hide revisions" else "Revisions", notes[5], s[0].revs); }
+  }
+  k_select_end(t, open);
+  tr_attr(t, tr_find(t, "more.anchor"), AT_STATE, "end");   // near the strip's right end: its menu opens leftward
+}
 es_build :: (s: [] EdShell) {
   t := s[0].tree[..]; u := s[0].ui[..]; m := s[0].model[..];
   buf: [UI_ID] u8; buf2: [UI_ID] u8; name: [EM_NAME] u8; line: [EM_WORDS] u8;
@@ -456,27 +482,24 @@ es_build :: (s: [] EdShell) {
   es_build_clock(s);
   fly := k_button(t, u, "fly", ifx s[0].fly then "Stop flying" else "Fly", BS_PLAIN);
   run := k_button(t, u, "run", ifx s[0].paused then "Play" else "Pause", BS_PLAIN);
-  step := k_button(t, u, "step", "Step", BS_PLAIN);
-  sim := k_button(t, u, "sim", ifx s[0].sim then "Stop simulating" else "Simulate", BS_PLAIN);
   }
   agent := k_button(t, u, "agent", ifx s[0].agent then "Hide agent" else "Agent", BS_PLAIN);
   // assets: only where the world's server answered with its list. Closed, its button still takes a dropped file
   asseting := s[0].assets && s[0].as_have;
   if s[0].as_have { ab := k_button(t, u, "assets", ifx s[0].assets then "Hide assets" else "Assets", BS_PLAIN); if !s[0].assets { tr_attr(t, ab, AT_DROP, ""); } }
-  // files: only where the world's server answered with its attachments (a member, or the dev server)
   filing := s[0].files && s[0].fl.have && !asseting;
-  if s[0].fl.have { fb := k_button(t, u, "files", ifx filing then "Hide files" else "Files", BS_PLAIN); }
-  // code: only where the dev server answered with the realm's files
-  // scripts: only where the world's server answered with its script list
   scripting := s[0].scripts && s[0].sc.have && !asseting && !filing;
-  if s[0].sc.have { sb := k_button(t, u, "scripts", ifx scripting then "Hide scripts" else "Scripts", BS_PLAIN); }
   coding := s[0].code && s[0].nfiles > 0 && !asseting && !filing && !scripting;
-  if s[0].nfiles > 0 { cb := k_button(t, u, "code", ifx s[0].code then "Hide code" else "Code", BS_PLAIN); }
+  // the strip is one row at any desktop width: what is used less (stepping, simulating, and the side panes the world's
+  // server answered for) is in More, each a row that says what it opens; an open pane's row is the current one
+  es_build_more(s, plain, filing, scripting, coding);
+  full := k_button(t, u, "full", ifx s[0].full then "Leave fullscreen" else "Fullscreen", BS_PLAIN);
+  tr_attr(t, full, AT_TITLE, ifx s[0].full then "Leave fullscreen (Esc)" else "Show the game on the whole screen; Esc leaves");
   w := m[0].world;
   n := ct_put(line[..], 0, cast(string) w[0..<m[0].world_n]);
   for k: 0..<n { if line[k] == '-' { line[k] = ' '; } }   // the world's ID read as words: splice-bots is "splice bots" (#13486)
   n = ct_put(line[..], n, " · revision "); n = ct_put_int(line[..], n, m[0].rev);
-  es_rv_build_bar(s, cast(string) line[0..<n]);   // a button that opens the Revisions list, and what the newest step changed (shell-revs.coax)
+  es_rv_build_bar(s, cast(string) line[0..<n]);   // the world and its revision as words, and what the newest step changed (shell-revs.coax)
   k_pane_end(t);
   revising := s[0].revs && s[0].rv.have && !coding && !asseting && !filing && !scripting;
 
@@ -645,7 +668,7 @@ es_click :: (s: [] EdShell, id: string) {
   m := s[0].model[..];
   // a select opens, or closes if it was the open one; any other press closes whichever is open
   was := s[0].open; s[0].open = ES_OPEN_NONE;
-  names := [14] string.["when", "kind", "tool", "grid", "add", "count", "file", "brush", "mat", "licence", "clock", "pdo", "pon", "sfor"];
+  names := [15] string.["when", "kind", "tool", "grid", "add", "count", "file", "brush", "mat", "licence", "clock", "pdo", "pon", "sfor", "more"];
   for name, k: names { if id == name { s[0].open = ifx was == k + 1 then ES_OPEN_NONE else k + 1; return; } }
   if es_rv_click(s, id) { return; }
   if s[0].have && es_lists_click(s, id) { return; }
@@ -710,6 +733,8 @@ es_click :: (s: [] EdShell, id: string) {
   if id == "run" { s[0].paused = !s[0].paused; _ := es_act(s, ES_VIEW, ifx s[0].paused then "run pause" else "run play"); return; }
   if id == "step" { s[0].paused = true; _ := es_act(s, ES_VIEW, "step"); return; }
   if id == "sim" { s[0].sim = !s[0].sim; _ := es_act(s, ES_VIEW, ifx s[0].sim then "sim on" else "sim off"); return; }
+  // fullscreen is the host's to ask of the browser (coax/web/host.js); it tells the shell when it changes (event ES_FULLSCREEN)
+  if id == "full" { _ := es_act(s, ES_FULL, ifx s[0].full then "fullscreen off" else "fullscreen on"); return; }
   if !s[0].have { return; }
   // a new thing of the kind picked, at the point last tapped
   add := es_index(id, "add.");
@@ -914,6 +939,7 @@ coaxial_editor_event :: (s: [] EdShell, kind: int, slot: int, length: int) #expo
 es_event :: (s: [] EdShell, kind: int, slot: int, length: int) {
   if kind == ES_MODEL { es_model(s, length); return; }
   if kind == ES_HELD { s[0].held = true; s[0].dirty = true; return; }
+  if kind == ES_FULLSCREEN { s[0].full = slot == 1; return; }
   if kind == ES_AGENT { s[0].agent = true; s[0].agent_made = true; s[0].turn_due = true; return; }
   if kind == ES_PLANNED { es_plan(s, length); return; }
   if kind == ES_CODE_HERE { es_code_here(s, length); return; }
@@ -1260,7 +1286,24 @@ es_test_view :: (h: [] EsTest, out: [] u8) -> string {
   coaxial_editor_act_done(s);
   return cast(string) out[0..<n];
 }
-es_test_press :: (h: [] EsTest, id: string) { s := h[0].s[..]; coaxial_editor_event(s, ES_CLICK, dm_find(s[0].dom[..], id), 0); es_test_frames(h, 1); }
+es_test_press :: (h: [] EsTest, id: string) {
+  s := h[0].s[..];
+  // a row of the strip's More is pressed as a person does: More first, when the menu is shut
+  if dm_find(s[0].dom[..], id) < 0 && dm_find(s[0].dom[..], "more") >= 0 && s[0].open != ES_OPEN_MORE {
+    coaxial_editor_event(s, ES_CLICK, dm_find(s[0].dom[..], "more"), 0); es_test_frames(h, 1);
+  }
+  coaxial_editor_event(s, ES_CLICK, dm_find(s[0].dom[..], id), 0); es_test_frames(h, 1);
+}
+// Whether row `id` of the strip's More says `words`: More opened to read it, then shut as it was.
+es_test_more :: (h: [] EsTest, id: string, words: string) -> bool {
+  s := h[0].s[..]; t := s[0].tree[..]; ida: [UI_ID] u8;
+  was := s[0].open == ES_OPEN_MORE;
+  if !was { coaxial_editor_event(s, ES_CLICK, dm_find(s[0].dom[..], "more"), 0); es_test_frames(h, 1); }
+  i := tr_find(t, tr_cat(ida[..], id, ".t"));
+  said := i >= 0 && tr_text_of(t, i) == words;
+  if !was { coaxial_editor_event(s, ES_CLICK, dm_find(s[0].dom[..], "more"), 0); es_test_frames(h, 1); }
+  return said;
+}
 // The fixture world with a point tapped on the ground.
 es_test_here :: (h: [] EsTest) {
   s := h[0].s[..]; out := h[0].text[..];
@@ -1304,7 +1347,7 @@ es_test_here :: (h: [] EsTest) {
   es_test_press(h[..], "step");
   #assert es_test_view(h[..], w[..]) == "step" && s[0].paused && tr_text_of(t, tr_find(t, "run.l")) == "Play";
   es_test_press(h[..], "sim");
-  #assert es_test_view(h[..], w[..]) == "sim on" && tr_text_of(t, tr_find(t, "sim.l")) == "Stop simulating";
+  #assert es_test_view(h[..], w[..]) == "sim on" && es_test_more(h[..], "sim", "Stop simulating");
   es_test_press(h[..], "sim");
   #assert es_test_view(h[..], w[..]) == "sim off" && s[0].nacts == 0;
   // one select is open at a time
@@ -1604,9 +1647,9 @@ es_test_ask :: (h: [] EsTest) -> string {
   h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; d := s[0].dom[..];
   es_test_code(h[..]);
   es_test_frames(h[..], 1);
-  #assert s[0].nfiles == 3 && tr_text_of(t, tr_find(t, "code.l")) == "Code" && tr_find(t, "code.pane") < 0 && tr_find(t, "one") > 0;
+  #assert s[0].nfiles == 3 && es_test_more(h[..], "code", "Code") && tr_find(t, "code.pane") < 0 && tr_find(t, "one") > 0;
   es_test_press(h[..], "code");
-  #assert tr_text_of(t, tr_find(t, "code.l")) == "Hide code" && tr_class(t, tr_find(t, "code.pane")) == "pane pane-r pane-w" && tr_find(t, "one") < 0;
+  #assert es_test_more(h[..], "code", "Hide code") && tr_class(t, tr_find(t, "code.pane")) == "pane pane-r pane-w" && tr_find(t, "one") < 0;
   #assert tr_text_of(t, tr_find(t, "file.l")) == "Pick a file" && tr_find(t, "code.none") > 0 && tr_find(t, "code.text") < 0 && tr_find(t, "code.save") < 0;
   es_test_press(h[..], "file");
   #assert s[0].open == ES_OPEN_FILE && tr_text_of(t, tr_find(t, "file.0.t")) == "gpu/splice-bots.coax" && tr_text_of(t, tr_find(t, "file.2.t")) == "walk.coax" && tr_text_of(t, tr_find(t, "file.1.m")) == "Too long to open here";
@@ -1667,6 +1710,7 @@ es_test_ask :: (h: [] EsTest) -> string {
   // Hide code puts the pane away and brings the selected thing's back; opened again the field is filled again
   es_test_press(h[..], "code");
   #assert tr_find(t, "code.pane") < 0 && tr_find(t, "one") > 0;
+  es_test_press(h[..], "more");   // Code is a row of the strip's More
   coaxial_editor_event(s, ES_CLICK, dm_find(d, "code"), 0);
   n = coaxial_editor_frame(s, 0.016, true);
   #assert tr_find(t, "code.text") > 0 && dm_test_count(d, n, DC_VALUE) == 1 && cast(string) s[0].code_text[0..<s[0].code_n] == "x :: 4;\n";

@@ -133,7 +133,7 @@ ess_status :: (k: [] EssTest, text: string) {
   coaxial_editor_act_done(s);
   // this world's list: the button
   s[0].sc.flight = ES_SC_LIST; ess_sent(k[..], 200, ess_list(k[..], "splice", true, false, false));
-  #assert s[0].sc.have && ess_text(k[..], "scripts.l") == "Scripts" && !ess_has(k[..], "scripts.pane") && s[0].sc.lim.scripts == 8 && s[0].sc.lim.compiler == 1 && s[0].sc.nst == 0;
+  #assert s[0].sc.have && es_test_more(k[0].h[..], "scripts", "Scripts") && !ess_has(k[..], "scripts.pane") && s[0].sc.lim.scripts == 8 && s[0].sc.lim.compiler == 1 && s[0].sc.nst == 0;
 }
 
 #test "the pane says plans come first, states every limit before anything is built, and starts the field with a script that works; opened, the host is asked for the status, and shut, told it is not wanted" {
@@ -142,8 +142,8 @@ ess_status :: (k: [] EssTest, text: string) {
   ess_press(k[..], "scripts");
   #assert s[0].scripts && s[0].sc.flight == ES_SC_LIST && ess_watch(k[..]) == "scripts on";   // the list as it is now
   ess_sent(k[..], 200, ess_list(k[..], "splice", true, false, false));
-  #assert ess_text(k[..], "scripts.l") == "Hide scripts" && ess_text(k[..], "scripts.pane.h") == "Scripts" && !ess_has(k[..], "one");
-  #assert ess_text(k[..], "scripts.plan") == "A plan says where someone walks, how far they see and what they do on seeing you, by time of day. A script is for what a plan cannot say." && ess_text(k[..], "scripts.plans") == "Set plans in the Actors list";
+  #assert es_test_more(k[0].h[..], "scripts", "Hide scripts") && ess_text(k[..], "scripts.pane.h") == "Scripts" && !ess_has(k[..], "one");
+  #assert ess_text(k[..], "scripts.plan") == "A plan says where someone walks, how far they see and what they do on seeing you, by time of day. A script is for what a plan cannot say." && ess_text(k[..], "scripts.plans.l") == "Set plans in the Actors list";
   #assert ess_text(k[..], "scripts.lim.n.v") == "0 of 8 run in this world" && ess_text(k[..], "scripts.lim.size.v") == "64 KB built, 64 KB of source at most";
   #assert ess_text(k[..], "scripts.lim.call.v") == "20,000 instructions at most; past that the call is undone" && ess_text(k[..], "scripts.lim.tick.v") == "400,000 instructions for all of a world's scripts";
   #assert ess_text(k[..], "scripts.lim.state.v") == "256 bytes kept for each thing it drives" && ess_text(k[..], "scripts.lim.off.v") == "Switched off after 3 failed calls in a row" && ess_text(k[..], "scripts.lim.builds.v") == "100 a day";
@@ -174,7 +174,7 @@ ess_status :: (k: [] EssTest, text: string) {
   #assert seen > 60 && es_test_styled(sheet, "code-in");
   // the way to the Actors list shuts the pane; the host is told the status is no longer wanted
   ess_press(k[..], "scripts.plans");
-  #assert !s[0].scripts && ess_has(k[..], "one") && ess_watch(k[..]) == "scripts off" && ess_text(k[..], "scripts.l") == "Scripts";
+  #assert !s[0].scripts && ess_has(k[..], "one") && ess_watch(k[..]) == "scripts off" && es_test_more(k[0].h[..], "scripts", "Scripts");
   // another pane opened after it takes its place
   ess_press(k[..], "scripts"); _ := ess_watch(k[..]);
   s[0].as_have = true; s[0].assets = true; coaxial_editor_event(s, ES_STATUS, 0, 0);
@@ -244,7 +244,7 @@ ess_status :: (k: [] EssTest, text: string) {
   coaxial_editor_act_done(s);
   // the world takes it: the row is in the next model, with whom it drives in the realm's words
   ess_model(k[..], 8, 1, ""); es_test_frames(h, 1);
-  #assert ess_text(k[..], "script.1.t") == "my-raider" && ess_text(k[..], "script.1.m") == "Drives Raiders" && ess_text(k[..], "scripts.lim.n.v") == "1 of 8 run in this world" && ess_text(k[..], "sopen.1") == "Open" && ess_text(k[..], "sstop.1") == "Stop";
+  #assert ess_text(k[..], "script.1.t") == "my-raider" && ess_text(k[..], "script.1.m") == "Drives Raiders" && ess_text(k[..], "scripts.lim.n.v") == "1 of 8 run in this world" && ess_text(k[..], "sopen.1.l") == "Open" && ess_text(k[..], "sstop.1.l") == "Stop";
   // the same build for the same ones changes nothing, and says so; for one robot alone it takes the next place
   ess_press(k[..], "scripts.run");
   #assert s[0].nacts == 0 && ess_text(k[..], "scripts.said.t") == "That build already runs for them. Change the source and build again to swap it.";
@@ -318,7 +318,7 @@ ess_status :: (k: [] EssTest, text: string) {
   #assert s[0].scripts && s[0].sc.asks == 2 && ess_text(k[..], "scripts.grows.h") == "Publishing lets scripts do more" && !ess_has(k[..], "said");
   #assert ess_text(k[..], "scripts.grow.0") == "my-raider would do more than the live one. It acts when it is hit. It may ask the engine to strike, speak or raise an event. New calls: sa_strike, sa_emit.";
   #assert ess_text(k[..], "scripts.grow.1") == "scout is new to the live world. It acts every tick. It may read the world around it; move and change its own thing. New calls: sa_x, sa_move.";
-  #assert ess_text(k[..], "scripts.confirm.l") == "Publish with these" && ess_text(k[..], "scripts.leave") == "Not now";
+  #assert ess_text(k[..], "scripts.confirm.l") == "Publish with these" && ess_text(k[..], "scripts.leave.l") == "Not now";
   _ := ess_watch(k[..]);
   ess_press(k[..], "scripts.confirm");
   #assert s[0].sc.flight == ES_SC_PUBLISH && coaxial_editor_fetching(s) == ES_HOW_SAY && ess_head(s) == "{\"schema\":\"world.edit.v1\",\"rev\":7,\"do\":\"publish-now\",\"edits\":[]}";
@@ -352,7 +352,7 @@ ess_status :: (k: [] EssTest, text: string) {
   ess_open(k[..], 1, ess_list(k[..], "splice", true, true, false));
   #assert !ess_has(k[..], "sreport.1") && !ess_has(k[..], "scripts.lim.reports") && !es_sc_click(s, "sreport.1");
   coaxial_editor_event(s, ES_VIEWER, 0, 0); es_test_frames(h, 1);
-  #assert ess_text(k[..], "sreport.1") == "Report" && ess_text(k[..], "scripts.lim.reports.v") == "20 a day" && !ess_has(k[..], "scripts.reason");
+  #assert ess_text(k[..], "sreport.1.l") == "Report" && ess_text(k[..], "scripts.lim.reports.v") == "20 a day" && !ess_has(k[..], "scripts.reason");
   ess_press(k[..], "sreport.1");
   #assert ess_has(k[..], "scripts.reason") && tr_has(t, tr_find(t, "scripts.report.send"), AT_DISABLED);
   ess_press(k[..], "scripts.report.send");

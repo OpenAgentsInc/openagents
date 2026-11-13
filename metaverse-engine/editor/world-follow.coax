@@ -99,6 +99,9 @@ wf_step :: (f: [] WorldFollow, dt: f32) {
       f[0].late_n -= 1;
     }
     f[0].late[f[0].late_n] = f[0].flying; f[0].late_id[f[0].late_n] = f[0].host_id; f[0].late_n += 1;
+    // a write is never sent twice: the second would be refused as stale (409) once the first stands. Its batch goes,
+    // and the page reads the document again, which says whether it stood
+    if f[0].flying == WFQ_POST { f[0].body_n = 0; wf_reopen(f); }
     f[0].flying = WFQ_NONE; f[0].host_id = -1;
   }
   if f[0].want != WFQ_NONE { return; }
@@ -188,7 +191,9 @@ wf_posted :: (f: [] WorldFollow, a: WfAnswer) {
   if a.status == 200 { f[0].nudged = true; return; }
   r := we_refusal_read(a.body, f[0].refused[..]);
   f[0].refused_status = a.status; f[0].refused_n = ifx r.ok then r.words_n else 0; f[0].refused_edit = r.edit;
-  if a.status == 409 { f[0].nudged = true; }   // stale: the events the page has not taken explain it
+  // stale: the page's revision is not the lane's. Events it has not taken may explain it, but so may a lane that is
+  // behind the page (a dev server started again with other worlds), which events never mend: the document is read again
+  if a.status == 409 { wf_reopen(f); }
 }
 wf_refused :: (f: [] WorldFollow) -> string { return cast(string) f[0].refused[0..<f[0].refused_n]; }
 // The k-th line of an events answer ("" past the last).
@@ -332,7 +337,17 @@ wf_line :: (body: string, k: int) -> string { return ct_part(body, '\n', k); }
   #assert wf_refused(f[..]) == "in the kept-clear zone 'Scanner gate'" && f[0].refused_edit == 1;
   #assert wf_post(f[..], store[..], WE_UNDO_FIXTURE);
   wf_step(f[..], 0.016); wf_sent(f[..], 2); a = wf_answer(f[..], 2, "409\n{\"error\":\"stale\"}"); wf_posted(f[..], a);
-  #assert f[0].nudged && f[0].refused_status == 409;
+  #assert f[0].refetch && f[0].reopened == 1 && f[0].refused_status == 409;
+  wf_step(f[..], 0.016); #assert f[0].want == WFQ_DOC;   // the document again, which says where the lane stands
+  wf_sent(f[..], 3); a = wf_answer(f[..], 3, "200\n{}"); wf_loaded(f[..], WorldState.{rev = 3, dev = 3});
+  // a write with no answer in ten seconds is not sent again (a second would be stale once the first stands): the
+  // document is read again instead, and the first's answer is still taken if it comes while nothing else is out
+  #assert wf_post(f[..], store[..], WE_UNDO_FIXTURE);
+  wf_step(f[..], 0.016); wf_sent(f[..], 4); #assert f[0].flying == WFQ_POST;
+  wf_step(f[..], WF_RETRY * 5);
+  #assert f[0].body_n == 0 && f[0].refetch && f[0].late_n == 1 && f[0].late[0] == WFQ_POST;
+  wf_step(f[..], 0.016); #assert f[0].want == WFQ_DOC && wf_body(f[..], store[..]) == "";
+  #assert wf_post(f[..], store[..], WE_UNDO_FIXTURE);   // the page may write again at once
   // a live page never writes
   #assert wf_open(f[..], "splice", WL_LIVE, pins);
   wf_step(f[..], 0.016); wf_sent(f[..], 0); a = wf_answer(f[..], 0, "200\n{}"); wf_loaded(f[..], WorldState.{rev = 1, live = 1});

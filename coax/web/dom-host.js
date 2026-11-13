@@ -85,6 +85,7 @@ function apply(at, length) {
     if (op === 1) {                                  // make
       const slot = u16(), tag = str(), el = tag === "svg" || tag === "use" ? document.createElementNS(SVG, tag) : document.createElement(tag);
       el.id = str(); el.dataset.slot = slot; els[slot] = el;
+      if (tag === "iframe") el.allow = "fullscreen";   // a held page of this site (k_held) may put its game on the whole screen
     } else if (op === 2) {                           // remove
       const slot = u16(), el = els[slot];
       if (el) { for (const f of el.querySelectorAll("[data-frame]")) unframe(f); unframe(el); el.remove(); }

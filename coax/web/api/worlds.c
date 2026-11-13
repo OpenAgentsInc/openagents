@@ -20,7 +20,7 @@
 //                                                caller reads to aim an edit
 //   GET  /api/worlds/<id>/assets[?lane=dev]      the world's imported assets and the limits (world.assets.v1): live's, or
 //        &write=1                                dev's as they are edited. write=1: answered only to someone who may import
-//   GET  /api/worlds/<id>/assets/pack[?lane=dev] the lane's import pack, a VPK1 file (404: it has imported nothing)
+//   GET  /api/worlds/<id>/assets/pack[?lane=dev] the lane's import pack, a VPK1 file (none, 200: it has imported nothing)
 //        ?live=SHA256                            the world's pack of that hash, whatever lane names it: what a tab asks for
 //                                                after it is told of a new pack
 //   POST /api/worlds/<id>/assets                 a file named before it is sent (world.asset.upload.v1): checked by name, size
@@ -660,8 +660,10 @@ static void asset_pack(const request *q, PGconn *db, const char *id) {
   const char *hash = by_hash ? live : asset_lane(q, &w);
   size_t n = 0;
   char *pack = *hash ? pack_read(db, id, hash, &n) : NULL;
-  if (!pack || !n) refuse(q->fd, 404, cs("this world has imported nothing"), -1);
-  else api_respond(q->fd, 200, "application/octet-stream", NULL, pack, n);
+  // a lane that has imported nothing has an empty pack (every page of the world asks for it: no error); a hash that
+  // names no pack is one
+  if ((!pack || !n) && by_hash) refuse(q->fd, 404, cs("no pack has that hash"), -1);
+  else api_respond(q->fd, 200, "application/octet-stream", NULL, pack ? pack : "", pack ? n : 0);
   free(pack); row_free(&w);
 }
 // The bucket's part takes a second or more and this service answers one request at a time: a child does it, with a

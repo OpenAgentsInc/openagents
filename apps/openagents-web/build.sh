@@ -366,6 +366,9 @@ crew=$!
 # ... and its pane, the creation steps beside the scene: the frames set in the mono skin, drawn by the browser (crew-pane.coax, coax/web/dom-host.js).
 timed crew-pane "$here/../../coax/web/wasm.sh" "$here/crew-pane.coax" "$here/crew-pane-face.c" "$here/build/crew-pane.wasm" &
 crew_pane=$!
+# A game page's own bar: the Fullscreen button over a plain play page's canvas, in the frames set (play-bar.coax; coax/web/host.js opens it).
+timed play-bar "$here/../../coax/web/wasm.sh" "$here/play-bar.coax" "$here/play-bar-face.c" "$here/build/play-bar.wasm" &
+play_bar=$!
 # The page's script module: a world's realm scripts, interpreted beside the realm's engine (script-host.coax, coax/web/host.js "A realm's scripts", #13467).
 timed script-host "$here/../../coax/web/wasm.sh" "$here/script-host.coax" "$here/script-host-face.c" "$here/build/script-host.wasm" &
 script_host=$!
@@ -618,6 +621,7 @@ wait "$animelab"
 wait "$splice"
 wait "$crew"
 wait "$crew_pane"
+wait "$play_bar"
 wait "$script_host"
 wait "$changelog"
 

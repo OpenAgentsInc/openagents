@@ -157,7 +157,7 @@ wg_build :: (s: [] WebPage) {
   tr_close(t);
   tr_close(t);
 
-  sec = wg_section(t, "rows", "Row", "A conversation in the list. The current one is bright over an underline.");
+  sec = wg_section(t, "rows", "Row", "A conversation in the list. The current one is bright and boxed.");
   list := tr_open(t, "list", TG_NAV, "list");
   tr_attr(t, list, AT_LABEL, "Chats");
   titles := WG_ROWS; metas := WG_ROW_META;

@@ -17,10 +17,12 @@
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
 
-ESC_FILES :: [18] string.[
+ESC_FILES :: [20] string.[
   "apps/openagents-web/site-side.coax",       // the site's side: its rules only; its look is the kit's (#13471)
   "apps/openagents-web/crew-pane.coax",       // Crew's pane has no look of its own either (#13462)
   "apps/openagents-web/crew-pane-face.c",
+  "apps/openagents-web/play-bar.coax",        // a play page's Fullscreen: the kit's button and nothing else
+  "apps/openagents-web/play-bar-face.c",
   "apps/openagents-web/worldbuilder/worldbuilder-world.coax",
   "metaverse-engine/editor/shell.coax",
   "metaverse-engine/editor/shell-assets.coax",

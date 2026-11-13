@@ -136,12 +136,21 @@ k_icon_button :: (t: [] Tree, id: string, icon: int, label: string) -> int {
   tr_close(t);
   return i;
 }
-// Link: a quiet text button, with no frame (Copy in a code block's strip).
-k_link :: (t: [] Tree, id: string, label: string) -> int { return tr_leaf(t, id, TG_BUTTON, "lk", label); }
+// Link: a quiet button, smaller than Button and in a dimmer ink, in the same octagon (no button is ever a word over an
+// underline). Its label is a node of its own, `id`.l, beside the frame.
+k_link :: (t: [] Tree, id: string, label: string) -> int { return k_quiet(t, id, TG_BUTTON, label); }
 // Go: a quiet link to another page, in the look of Link (a world's card: Open the editor).
 k_go :: (t: [] Tree, id: string, label: string, href: string) -> int {
-  i := tr_leaf(t, id, TG_A, "lk", label);
+  i := k_quiet(t, id, TG_A, label);
   tr_attr(t, i, AT_HREF, href);
+  return i;
+}
+k_quiet :: (t: [] Tree, id: string, tag: int, label: string) -> int {
+  ida: [UI_ID] u8;
+  i := tr_open(t, id, tag, "lk");
+  tr_frame(t, i, mono_kind(MF_BUTTON), MF_BUTTON, 1);
+  l := tr_leaf(t, tr_cat(ida[..], id, ".l"), TG_SPAN, "btn-l", label);
+  tr_close(t);
   return i;
 }
 // Field: one or more lines of typing over an underline.
@@ -198,6 +207,7 @@ k_select_begin :: (t: [] Tree, u: [] Ui, id: string, label: string, what: string
   ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8;
   a := tr_open(t, tr_cat(ida[..], id, ".anchor"), TG_DIV, "anchor");
   b := tr_open(t, id, TG_BUTTON, "sel");
+  tr_frame(t, b, mono_kind(MF_BUTTON), MF_BUTTON, 1);   // boxed as every button is (its label and mark are nodes of their own)
   tr_attr(t, b, AT_EXPANDED, ifx open then "true" else "false"); tr_attr(t, b, AT_TITLE, what);
   l := tr_leaf(t, tr_cat(idb[..], id, ".l"), TG_SPAN, "sel-l", label);
   g := k_icon(t, tr_cat(idc[..], id, ".ic"), ifx open then IC_CHEVRON_UP else IC_CHEVRON_DOWN);
@@ -438,7 +448,7 @@ k_notice :: (t: [] Tree, u: [] Ui, id: string, kind: string, text: string) -> in
   b := tr_leaf(t, tr_cat(idb[..], id, ".t"), TG_P, "notice-t", text);
   return i;
 }
-// Row: a conversation in a list or a choice in a menu. The current one has an underline.
+// Row: a conversation in a list or a choice in a menu. The current one is boxed, as a button is, never underlined.
 k_row :: (t: [] Tree, u: [] Ui, id: string, title: string, meta: string, current: bool) -> int { return k_row_busy(t, u, id, title, meta, current, false); }
 // The same, with a turning mark at its right while what the row names is at work.
 k_row_busy :: (t: [] Tree, u: [] Ui, id: string, title: string, meta: string, current: bool, busy: bool) -> int {
@@ -578,13 +588,19 @@ k_side_open :: (t: [] Tree, id: string, label: string) -> int {
   tr_attr(t, i, AT_STATE, "side");
   return i;
 }
+// Fullscreen: a button at the top right of a game's page that puts its canvas on the whole screen, and (on) takes it back.
+k_fullscreen :: (t: [] Tree, id: string, on: bool) -> int {
+  i := k_icon_button(t, id, ifx on then IC_COLLAPSE else IC_EXPAND, ifx on then "Leave fullscreen (Esc)" else "Fullscreen");
+  tr_attr(t, i, AT_STATE, "full");
+  return i;
+}
 // Drop: a place a file is dropped on, or picked from: a press opens the browser's picker, which
 // offers the kinds `accept` names (".glb,.png"). It says what to do and, under it, what it takes.
 // The host tells the page a file's name and size, and the page says what becomes of it
 // (coax/web/dom-host.js, "Files"). While `busy` a file is on its way and it takes no other.
 k_drop :: (t: [] Tree, u: [] Ui, id: string, title: string, note: string, accept: string, busy: bool) -> int {
   ida: [UI_ID] u8; idb: [UI_ID] u8;
-  i := k_frame(t, u, id, TG_BUTTON, "drop", MF_FIELD);
+  i := k_frame(t, u, id, TG_BUTTON, "drop", MF_BUTTON);   // boxed, dashed (the skin): a button, never an underline
   if busy { tr_attr(t, i, AT_STATE, "busy"); tr_attr(t, i, AT_DISABLED, ""); } else { tr_attr(t, i, AT_DROP, accept); }
   a := tr_leaf(t, tr_cat(ida[..], id, ".t"), TG_SPAN, "row-t", title);
   if note.count > 0 { b := tr_leaf(t, tr_cat(idb[..], id, ".m"), TG_SPAN, "meta", note); }
@@ -861,4 +877,8 @@ DkDropTest :: struct { t: [1] Tree; u: [1] Ui; }
   o := k_side_open(t, "side.show", "Show the side");
   #assert tr_find(t, "who.out") < 0 && tr_text_of(t, tr_find(t, "who.go.t")) == "Log in" && tr_attr_of(t, tr_find(t, "who.go"), AT_HREF) == "/login";
   #assert tr_attr_of(t, o, AT_LABEL) == "Show the side" && tr_attr_of(t, o, AT_STATE) == "side";
+  fs := k_fullscreen(t, "full", false);
+  #assert tr_attr_of(t, fs, AT_LABEL) == "Fullscreen" && tr_attr_of(t, fs, AT_STATE) == "full" && t[0].nodes[fs].tag == TG_BUTTON;
+  fs2 := k_fullscreen(t, "full2", true);
+  #assert tr_attr_of(t, fs2, AT_LABEL) == "Leave fullscreen (Esc)";
 }

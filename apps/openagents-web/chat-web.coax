@@ -2441,7 +2441,7 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
   id := tr_join(ida[..], "m.", s[0].total - 1);
   #assert tr_text_of(t, tr_find(t, tr_cat(idb[..], id, ".h"))) == "Splice" && tr_text_of(t, tr_find(t, tr_cat(idb[..], id, ".facts"))) == "13 things · revision 8";
   go := tr_find(t, tr_cat(idb[..], id, ".open"));
-  #assert t[0].nodes[go].tag == TG_A && tr_attr_of(t, go, AT_HREF) == "/worlds/splice?edit=agent" && tr_text_of(t, go) == "Open the editor";
+  #assert t[0].nodes[go].tag == TG_A && tr_attr_of(t, go, AT_HREF) == "/worlds/splice?edit=agent" && tr_text_of(t, tr_find(t, tr_cat(idb[..], id, ".open.l"))) == "Open the editor";
   // an answer that is not a card shows nothing
   s[0].card_due_n = cw_put(s[0].card_due[..], 0, "splice");
   for i: 0..<40 { b = coaxial_chatweb_frame(s, 0.1, true); if coaxial_chatweb_asking(s) { if cw_test_door(s) == "/api/worlds/splice/card" { break; } cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/sessions" then CW_T_SESSIONS else CW_T_CLAUDE); } }

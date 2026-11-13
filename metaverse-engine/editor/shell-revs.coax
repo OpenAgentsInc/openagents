@@ -57,15 +57,13 @@ es_rv_click :: (s: [] EdShell, id: string) -> bool {
   if s[0].revs { s[0].assets = false; s[0].files = false; s[0].scripts = false; s[0].code = false; }
   return true;
 }
-// The bar's revision: a button that opens the Revisions list once the world's events are read, with
-// what the newest step changed beside it; until then, the words alone. The button has its own id
-// (bar.revs): a node keeps its tag on the page, so the words' span could never become a button.
+// The bar's revision: the world and its revision as words, and once the world's events are read, what the newest
+// step changed beside it. It is a label, never a button.
 es_rv_build_bar :: (s: [] EdShell, words: string) {
-  t := s[0].tree[..]; u := s[0].ui[..];
-  if !s[0].rv.have { rev := tr_leaf(t, "bar.rev", TG_SPAN, "meta", words); return; }
-  b := k_button(t, u, "bar.revs", words, BS_PLAIN);
-  tr_attr(t, b, AT_TITLE, "The world's recent steps");
-  tr_attr(t, b, AT_PRESSED, ifx s[0].revs then "true" else "false");
+  t := s[0].tree[..];
+  // a label, never a button: the Revisions list opens from the strip's More (shell.coax es_build_more)
+  rev := tr_leaf(t, "bar.rev", TG_SPAN, "meta", words);
+  if !s[0].rv.have { return; }
   out: [WCH_LINE] u8;
   brief := wch_brief(s[0].rv.c[..], s[0].model[..], out[..]);
   if brief.count > 0 { ch := tr_leaf(t, "bar.changes", TG_SPAN, "meta", brief); }

@@ -7,7 +7,7 @@
 //
 //   coax/web/tool.sh metaverse/splice-bots/tools/asset-local.coax DIR METHOD URL [BODY_FILE]
 //   GET  /api/worlds/splice-bots/assets          the world's assets and the limits (world.assets.v1)
-//   GET  /api/worlds/splice-bots/assets/pack     the import pack's bytes (404: it has imported nothing)
+//   GET  /api/worlds/splice-bots/assets/pack     the import pack's bytes (none, 200: it has imported nothing)
 //   POST /api/worlds/splice-bots/assets          an import (world.asset.import.v1: a line, then the
 //                                           file's bytes): the list again, with what it did
 // It prints the status, a newline, and the answer's bytes, and exits 0 when it answered. A
@@ -47,7 +47,7 @@ tool_main :: () -> int #export_c #effects(all) {
   ww := [1] WwWork.[WwWork.{}]; moved := world_dir_move(ww[..], dir, id);   // the files the world kept under its old ID
   old := as_pack(dir, id, w[0].old[..]);
   if method == "GET" && tail == "/assets/pack" {
-    if old.count == 0 { return al_refuse(w[..], 404, "this world has imported nothing"); }
+    // a world that has imported nothing has an empty pack: every page asks for it, so it is no error
     return al_say(200, old);
   }
   if method == "GET" {

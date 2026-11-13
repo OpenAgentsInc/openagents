@@ -28,6 +28,7 @@ esf_open :: (h: [] EsTest) {
   es_test_model(h, 0, 7, 3, "");
   coaxial_editor_fetched(s); esf_event(h, ES_SENT, "", 404, "{\"error\":\"no assets here\"}");   // the assets' list: none
   #assert s[0].fl.flight == ES_FL_LIST && esf_url(s) == "/api/worlds/splice/files" && s[0].as_how == ES_HOW_GET;
+  es_test_press(h, "more");   // the strip's More, open before the next asks start (Files is a row of it)
   esf_sent(h, 200, ESF_LIST);
   es_test_press(h, "files");
   #assert s[0].fl.flight == ES_FL_LIST;   // asked again as it opens
@@ -48,7 +49,7 @@ esf_open :: (h: [] EsTest) {
 #test "the pane: the limits, two groups with previews, a search by name, note or tag" {
   h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
   esf_open(h[..]);
-  #assert tr_find(t, "files.pane") > 0 && tr_find(t, "one") < 0 && tr_text_of(t, tr_find(t, "files.l")) == "Hide files";
+  #assert tr_find(t, "files.pane") > 0 && tr_find(t, "one") < 0 && es_test_more(h[..], "files", "Hide files");
   lim := tr_text_of(t, tr_find(t, "files.limits"));
   #assert esf_at(lim, "3 of 200 attachments, 2 KB of 1024 MB") >= 0 && esf_at(lim, "25 MB at most") >= 0 && esf_at(lim, "never reach a player") >= 0;
   #assert tr_text_of(t, tr_find(t, "files.g.0.h")) == "This world" && tr_text_of(t, tr_find(t, "files.g.1.h")) == "The project";

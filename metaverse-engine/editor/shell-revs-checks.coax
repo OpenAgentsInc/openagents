@@ -44,8 +44,8 @@ esr_events :: (out: [] u8) -> string {
   esr_answer(h[..], 200, esr_events(ev[..]));
   _ := coaxial_editor_frame(s, 0.016, true);
   #assert s[0].rv.have && s[0].rv.flight == ES_RV_NONE && coaxial_editor_fetching(s) == 0;   // the same revision is not read again
-  #assert tr_text_of(t, tr_find(t, "bar.revs.l")) == "splice · revision 7" && tr_text_of(t, tr_find(t, "bar.changes")) == "2 moved";
-  #assert tr_attr_of(t, tr_find(t, "bar.revs"), AT_PRESSED) == "false" && tr_find(t, "revs.pane") < 0;
+  #assert tr_text_of(t, tr_find(t, "bar.rev")) == "splice · revision 7" && tr_text_of(t, tr_find(t, "bar.changes")) == "2 moved";
+  #assert tr_find(t, "bar.revs") < 0 && es_test_more(h[..], "bar.revs", "Revisions") && tr_find(t, "revs.pane") < 0;   // a label; the list opens from More
   // a new revision is read again, from the revision WCH_EVENTS below it
   es_test_model(h[..], 0, 250, 3, "");
   _ := coaxial_editor_frame(s, 0.016, true);
@@ -62,16 +62,15 @@ esr_events :: (out: [] u8) -> string {
   _ := coaxial_editor_frame(s, 0.016, true);
   esr_answer(h[..], 200, esr_events(ev[..]));
   es_test_frames(h[..], 1);
-  coaxial_editor_event(s, ES_CLICK, dm_find(d, "bar.revs"), 0);
-  es_test_frames(h[..], 1);
-  #assert s[0].revs && tr_find(t, "revs.pane") > 0 && tr_find(t, "one") < 0 && tr_attr_of(t, tr_find(t, "bar.revs"), AT_PRESSED) == "true";
+  es_test_press(h[..], "bar.revs");
+  #assert s[0].revs && tr_find(t, "revs.pane") > 0 && tr_find(t, "one") < 0 && es_test_more(h[..], "bar.revs", "Hide revisions");
   #assert tr_text_of(t, tr_find(t, "revs.6.h")) == "Revisions 6 to 7" && tr_text_of(t, tr_find(t, "revs.6.0.n")) == "Moved" && tr_text_of(t, tr_find(t, "revs.6.0.v")) == "Cargo crate, Parked rover";
   #assert tr_text_of(t, tr_find(t, "revs.1.h")) == "Revisions 1 to 5" && tr_text_of(t, tr_find(t, "revs.1.0.n")) == "Added" && tr_text_of(t, tr_find(t, "revs.1.0.v")) == "Cargo crate ×5";
   #assert tr_find(t, "revs.6") < tr_find(t, "revs.1") && tr_find(t, "revs.more") < 0 && tr_find(t, "revs.none") < 0;
   // pressed again, it closes; opened again, another pane's button puts it away
-  coaxial_editor_event(s, ES_CLICK, dm_find(d, "bar.revs"), 0); es_test_frames(h[..], 1);
+  es_test_press(h[..], "bar.revs");
   #assert !s[0].revs && tr_find(t, "revs.pane") < 0 && tr_find(t, "one") > 0;
-  coaxial_editor_event(s, ES_CLICK, dm_find(d, "bar.revs"), 0); es_test_frames(h[..], 1);
+  es_test_press(h[..], "bar.revs");
   #assert s[0].revs && tr_find(t, "revs.pane") > 0;
   _ := es_rv_click(s, "files"); s[0].dirty = true;   // as a press on the Files button (none in this world) would
   es_test_frames(h[..], 1);
@@ -85,8 +84,8 @@ esr_events :: (out: [] u8) -> string {
   #assert esr_url(s) == "/api/worlds/splice/events?lane=dev&after=0";
   esr_answer(h[..], 200, "");
   es_test_frames(h[..], 1);
-  #assert s[0].rv.have && tr_find(t, "bar.revs.l") > 0 && tr_find(t, "bar.changes") < 0;
-  coaxial_editor_event(s, ES_CLICK, dm_find(d, "bar.revs"), 0); es_test_frames(h[..], 1);
+  #assert s[0].rv.have && es_test_more(h[..], "bar.revs", "Revisions") && tr_find(t, "bar.changes") < 0;
+  es_test_press(h[..], "bar.revs");
   #assert tr_text_of(t, tr_find(t, "revs.none")) == "Nothing is edited yet.";
   // kept on this device: no server, no read, and the revision is words
   k: [1] EsTest; ks := k[0].s[..]; out := k[0].text[..];

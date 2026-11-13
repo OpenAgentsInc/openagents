@@ -20,7 +20,7 @@ coax/web/tool.sh metaverse-engine/tools/assets-profile.coax proto/world/assets-v
 | Route | The dev server | The API |
 | --- | --- | --- |
 | `GET /api/worlds/ID/assets` | The list | The list: live's, or dev's with `?lane=dev`. With `&write=1` it is answered only to someone who may import, and anyone else gets the refusal a write gets (`401` or `403`) |
-| `GET /api/worlds/ID/assets/pack` | The world's import pack, a VPK1 file. `404` when the world has imported nothing | The same, for live, or for dev with `?lane=dev`. `?live=SHA256` answers the world's pack of that hash, whatever lane names it: what a tab asks for after it is told of a new pack |
+| `GET /api/worlds/ID/assets/pack` | The world's import pack, a VPK1 file. Empty (`200`, no bytes) when the world has imported nothing, since every page of the world asks for it; `404` for a `?live=` hash that names no pack | The same, for live, or for dev with `?lane=dev`. `?live=SHA256` answers the world's pack of that hash, whatever lane names it: what a tab asks for after it is told of a new pack |
 | `POST /api/worlds/ID/assets` | An import. The body is `world.asset.import.v1`. The answer is the list with a `did` line, or `422` with `{"error":WORDS}` | A file named before it is sent. The body is a `world.asset.upload.v1` ask. The answer says where the bytes go, or `422` with `{"error":WORDS}` |
 | `POST /api/worlds/ID/assets/done` | None | The same ask again, after the file is sent. The answer is the list with a `did` line, or `422` with `{"error":WORDS}` |
 

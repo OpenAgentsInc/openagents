@@ -646,6 +646,7 @@ async function loadEngine(bytes, generation) {
   globalThis.coaxial.ready = true;loadMark("engine-ready");
   if (x.coaxial_message) send(PAGE_KIND, pageFacts());
   editorOpen();
+  playBarOpen();
   // A page opening in place under another (zone-host.js) is out of sight until it is shown: its app
   // hears so (message 601), then 602 with the wall clock (now=) when the page is handed over.
   if (x.coaxial_message && (() => { try { return window.top !== window && window.frameElement?.dataset.zone === "1"; } catch { return false; } })()) send(HIDDEN_KIND);
@@ -4059,7 +4060,8 @@ function editorRoom() {
   for (const pane of document.querySelectorAll("[data-coaxial-dock] .pane, [data-coaxial-dock] .dock-s")) {
     const r = pane.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) continue;
-    if (r.width > w * 0.4) { if (r.top + r.height / 2 < h / 2) y0 = Math.max(y0, r.bottom); else y1 = Math.min(y1, r.top); }
+    // a strip lies across and is short; a wide side pane (the Scripts or Code pane) is tall, and is a side
+    if (r.width > w * 0.4 && r.height < h * 0.5) { if (r.top + r.height / 2 < h / 2) y0 = Math.max(y0, r.bottom); else y1 = Math.min(y1, r.top); }
     else if (r.left + r.width / 2 < w / 2) x0 = Math.max(x0, r.right);
     else x1 = Math.min(x1, r.left);
   }
@@ -4079,6 +4081,48 @@ function editorRoom() {
   document.documentElement.dataset.coaxialEditFrame = frame;
   // a page that asks is told its room: all of the canvas now, in the canvas's own pixels
   if (engine?.exports.coaxial_edit_room_v1) send(525, `0 0 ${x1 - x0} ${y1 - y0}`);
+}
+// Fullscreen (the editor's Fullscreen, action 529; a play page's own bar, play-bar.coax): the canvas's container on the
+// whole screen through the browser's Fullscreen API, and back. The panes and the bar are in it too, so the same button
+// leaves; Esc leaves as well. Either way each is told (event 15, slot 1 for in) and the canvas is framed again.
+function fullscreen(on) {
+  const box = canvas.parentElement || document.documentElement;
+  if (on && !document.fullscreenElement) box.requestFullscreen?.({ navigationUI: "hide" }).catch((e) => console.warn(`fullscreen: ${e.message}`));
+  else if (!on && document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+}
+document.addEventListener("fullscreenchange", () => {
+  const on = !!document.fullscreenElement;
+  for (const name of [EDITOR, PLAY_BAR]) {
+    const m = globalThis.coaxialDoms?.[name];
+    if (m) { m.exports().dom_event(m.state(), 15, on ? 1 : 0, 0); m.ask(); }
+  }
+  editorRoomTold = ""; editorRoom();
+});
+// A plain play page's bar (/worlds/ID with no ?edit; apps/openagents-web/play-bar.coax): the kit's Fullscreen button
+// over the canvas, for every engine page under /worlds/, whatever world it runs. A page with a pane of its own (Crew)
+// or the editor's shell has the window, and a page opening out of sight under another (a zone) has none.
+const PLAY_BAR = "play-bar";
+let playBarAsked = false;
+function playBarOpen() {
+  if (playBarAsked || !engine || !location.pathname.startsWith("/worlds/") || new URLSearchParams(location.search).has("edit")) return;
+  if (engine.exports.coaxial_pane || window.frameElement?.dataset?.zone === "1") return;
+  playBarAsked = true;
+  const root = document.createElement("div"); // the play page's bar
+  root.id = "coaxial-play"; root.dataset.coaxialDock = "";
+  document.body.appendChild(root);
+  // the module names itself once its Wasm is in, after the import settles: its presses are taken from then on
+  const hook = () => { const bar = globalThis.coaxialDoms?.[PLAY_BAR]; if (bar) bar.after ||= playBarActs; else requestAnimationFrame(hook); };
+  import(`/coaxial/dom-host.js?app=${PLAY_BAR}&root=${root.id}`).then(hook).catch((error) => { console.error(error); });
+}
+function playBarActs() {
+  const bar = globalThis.coaxialDoms?.[PLAY_BAR];
+  if (!bar) return;
+  const bx = bar.exports(), st = bar.state();
+  for (let kind; (kind = bx.dom_act_kind(st)); ) {
+    const body = new TextDecoder().decode(new Uint8Array(bar.memory().buffer, bx.dom_act(st), bx.dom_act_len(st)).slice());
+    bx.dom_act_done(st);
+    if (kind === 529) fullscreen(body === "fullscreen on");
+  }
 }
 // The space between a pane and the scene's frame: the dock's own gap.
 function editorGap() {
@@ -4106,6 +4150,7 @@ function editorActs() {
     if (kind === 524) { agentWorld = body; agentTell(); }   // for the conversation in the foot, not the page
     else if (kind === 526) editorPack(new TextDecoder().decode(body));   // for this host: the world's pack by its hash
     else if (kind === 528) { editorScripts = new TextDecoder().decode(body) === "scripts on"; editorScriptsTold = null; }   // for this host: whether the script status is wanted
+    else if (kind === 529) fullscreen(new TextDecoder().decode(body) === "fullscreen on");   // for this host: the game's canvas on the whole screen
     else send(kind, body);
   }
 }

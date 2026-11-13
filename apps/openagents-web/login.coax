@@ -658,7 +658,7 @@ lg_layout :: (s: [] Lg) {
     else if s[0].others { y += lg_tall(LG_NO_KEY, w, 7.8) + 8; }
     if lg_phone_ok(s) { s[0].hits[H_PHONE] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 12; }
     else if s[0].others { y += lg_tall(LG_ON_PHONE, w, 7.8) + 8; }
-    if s[0].others { y += 8; s[0].hits[H_LIMITS] = Box.{x0 = x0, y0 = y, x1 = x0 + 64, y1 = y + 28}; y += 28 + 14; } else { y += 14; }
+    if s[0].others { y += 8; s[0].hits[H_LIMITS] = Box.{x0 = x0, y0 = y, x1 = x0 + 88, y1 = y + 32}; y += 32 + 14; } else { y += 14; }
   }
   if sc == LG_CODE {
     s[0].hits[H_FIELD] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 8;
@@ -667,7 +667,7 @@ lg_layout :: (s: [] Lg) {
     half := (x1 - x0 - 12) * 0.5;
     s[0].hits[H_RESEND] = Box.{x0 = x0, y0 = y, x1 = x0 + half, y1 = y + 40};
     s[0].hits[H_OTHER] = Box.{x0 = x1 - half, y0 = y, x1 = x1, y1 = y + 40}; y += 40 + 16;
-    if s[0].others { s[0].hits[H_LIMITS] = Box.{x0 = x0, y0 = y, x1 = x0 + 64, y1 = y + 28}; y += 28 + 14; }
+    if s[0].others { s[0].hits[H_LIMITS] = Box.{x0 = x0, y0 = y, x1 = x0 + 88, y1 = y + 32}; y += 32 + 14; }
   }
   if sc == LG_IN {
     y = lg_err_at(s, y + 4, w) + 8;
@@ -884,10 +884,10 @@ lg_body :: (s: [] Lg, out: [] f32, at: int, p: Pen, still: bool) -> int {
   // The refusal, whole, as the API said it (a limit's says when it lifts).
   if s[0].error_n > 0 { v = lg_para(out, v, cast(string) s[0].error[0..<s[0].error_n], x, s[0].err_y, w, LG_ERR, lg_red(p), d, below[..]); }
   if lg_shown(s, H_LIMITS) {
-    l := s[0].hits[H_LIMITS]; hot := lg_hover(s, H_LIMITS);
-    v = put(out, v, "LIMITS", l.x0 * d, (l.y0 + 18) * d, 6.4 * d, ink(p, ifx hot then INK_BLUE else INK_DIM));
-    v = rule(out, v, l.x0 * d, (l.y0 + 22) * d, (l.x0 + text_width("LIMITS", 6.4, ink(p, INK_DIM))) * d, (l.y0 + 22) * d, ink(p, ifx hot then INK_BLUE else INK_DIM), 0.5);
-    v = put_fit(out, v, "Codes, tries and waits", (l.x0 + 70) * d, (l.y0 + 18) * d, 7.0 * d, lg_text(p, INK_FAINT), (w - 70) * d);
+    l := s[0].hits[H_LIMITS];
+    // a button like the others, boxed: never a word over an underline
+    v = lg_button(s, out, v, p, H_LIMITS, "LIMITS", false);
+    v = put_fit(out, v, "Codes, tries and waits", (l.x1 + 12) * d, (l.y0 + 20) * d, 7.0 * d, lg_text(p, INK_FAINT), (w - (l.x1 - l.x0) - 12) * d);
   }
   return v;
 }
