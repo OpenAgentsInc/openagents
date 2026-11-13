@@ -19,6 +19,13 @@
 // that came out otherwise is dropped, counted, and never built again, and no creature moves on its
 // cell. The store holds NAV_PAGES pages and never gives one up: Everglade's cells all fit.
 //
+// The native host builds every page before it serves (rm_e2_nav_prebuild, room-host.c warm_rooms,
+// #13403): the land is the same in every room, so the work is the server's, once, and no tick does
+// it. Built a slice a tick, a new room's first seconds each cost 128 blocks more: the paired room
+// check read a tick p95 of 3.8 to 4.6 ms with two players against production's 0.3 to 0.4. The
+// slices stay for a host that has not built them (the browser's local room, which has no start
+// to build in).
+//
 // A check's room (eg_test_clock sets v[0].nav[0].whole) builds a page whole in the tick it is
 // needed and builds nothing ahead, so a check that puts a player down and ticks sees a creature
 // move that tick, and a check with no creature on the move builds nothing. A host's room never does.
@@ -152,14 +159,37 @@ e2nv_build_slice :: (v: [] RmServer) -> bool {
 }
 // The build ends: its page stays in the server's store when it is the manifest's (its digest the
 // cell's), and goes when it isn't or the planting didn't fit; such a cell is not built again.
-// Counted in room k's numbers, whose tick ended it.
-e2nv_build_end :: (v: [] RmServer, k: int) {
+// Counted in the server's numbers; true when the page is kept.
+e2nv_build_finish :: (v: [] RmServer) -> bool {
   sh := v[0].nav[..]; b := sh[0].build[..];
   i := cell_find(sh[0].world[..], b[0].cx, b[0].cz);
   ok := !b[0].failed && i >= 0 && i < E2Z_CELLS && nav_cells_digest(sh[0].pages[..], b[0].page) == sh[0].world[0].manifest[i].digest;
-  if ok { sh[0].built += 1; e2nv_count(v, k, E2NV_ADMITTED); }
-  else { dropped := nav_cells_drop(sh[0].pages[..], b[0].cx, b[0].cz); e2nv_count(v, k, E2NV_REFUSED); if i >= 0 && i < E2Z_CELLS { sh[0].bad[i] = true; } }
+  if ok { sh[0].built += 1; sh[0].totals[E2NV_ADMITTED] += 1; }
+  else { dropped := nav_cells_drop(sh[0].pages[..], b[0].cx, b[0].cz); sh[0].totals[E2NV_REFUSED] += 1; if i >= 0 && i < E2Z_CELLS { sh[0].bad[i] = true; } }
   b[0].on = false; b[0].page = -1;
+  return ok;
+}
+// The same, counted in room k's numbers too, whose tick ended it.
+e2nv_build_end :: (v: [] RmServer, k: int) {
+  ok := e2nv_build_finish(v);
+  v[0].eg[k].nav[0].counts[ifx ok then E2NV_ADMITTED else E2NV_REFUSED] += 1;
+}
+// Every manifest cell's page, whole, now: the host's, once its planting is in (rm_e2_land) and
+// before it serves, so no room's tick builds one and no creature waits on one. The pages the server
+// holds after it; -1 with no planting (nothing built: the ticks' slices build them as before).
+rm_e2_nav_prebuild :: (v: [] RmServer) -> int #export_c #effects(all) {
+  sh := v[0].nav[..];
+  if !e2nv_has_land(v) { return -1; }
+  if !sh[0].ready { e2z_manifest(sh[0].world[..]); sh[0].ready = true; }
+  if sh[0].build[0].on { while !e2nv_build_slice(v) { } kept := e2nv_build_finish(v); }   // one a tick began
+  sh[0].next = -1;
+  for i: 0..<E2Z_CELLS {
+    if sh[0].bad[i] || e2nv_ready(v, i) { continue; }
+    if !e2nv_build_start(v, sh[0].world[0].manifest[i].cx, sh[0].world[0].manifest[i].cz) { continue; }
+    while !e2nv_build_slice(v) { }
+    kept := e2nv_build_finish(v);
+  }
+  return sh[0].built;
 }
 // The server's finished page for cell (cx, cz), or -1 (none yet, or still being built).
 e2nv_built :: (v: [] RmServer, cx: int, cz: int) -> int {

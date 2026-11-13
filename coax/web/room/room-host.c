@@ -374,6 +374,12 @@ static void warm_rooms(void) {
   if(rooms_warmed)return;
   int64_t preparing=now_us();
   rooms_warmed=world_ready();
+  /* every navigation page now, off the tick (everglade/server/nav.coax rm_e2_nav_prebuild, #13403):
+     built a slice a tick, a new room's first seconds each cost about 4 ms more */
+  if(rooms_warmed){
+    rm_e2_land(view(), (coax_v_t_E2MoveGround){(coax_t_E2MoveGround *)world2_ground(), 1});
+    printf("room: %lld navigation pages built before the first tick\n",(long long)rm_e2_nav_prebuild(view()));
+  }
   rooms_warm_us=now_us()-preparing;
 }
 #include "room-wt.c"   /* WebTransport sessions as conns (#13176) */

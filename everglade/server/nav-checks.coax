@@ -66,6 +66,33 @@ e2nt_ticks :: (v: [] RmServer, k: int, x: f32, z: f32, n: int) { for q: 0..<n { 
   e2_nav_tick(v[..], k);
   #assert sh[0].build[0].on && cell_find(sh[0].world[..], sh[0].build[0].cx, sh[0].build[0].cz) == wanted && sh[0].next == -1;
 }
+#test "e2 nav: a host that builds every page before it serves leaves its rooms' ticks none to build" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-nav-prebuilt"); #assert k >= 0;
+  nv := v[0].eg[k].nav[..];
+  v[0].nav[0] = E2NavShared.{}; e2_nav_start(v[..], k);
+  sh := v[0].nav[..];
+  // no planting handed over: nothing is built, and the ticks' slices are as before
+  #assert rm_e2_nav_prebuild(v[..]) == -1 && sh[0].built == 0;
+  e2_nav_tick(v[..], k); e2_nav_tick(v[..], k);
+  #assert sh[0].build[0].on && sh[0].built == 0;
+  // the host's planting: every cell's page whole, the one a tick had begun too, each kept at the manifest's digest
+  g: [1] E2MoveGround; e2mg_plant(g[..]); rm_e2_land(v[..], g[..]);
+  #assert rm_e2_nav_prebuild(v[..]) == E2Z_CELLS && sh[0].built == E2Z_CELLS && !sh[0].build[0].on && sh[0].next == -1;
+  #assert sh[0].totals[E2NV_ADMITTED] == E2Z_CELLS && sh[0].totals[E2NV_REFUSED] == 0 && nv[0].counts[E2NV_ADMITTED] == 0;
+  cells := E2Z_CELL;
+  for i: 0..<E2Z_CELLS {
+    p := nav_cells_page(sh[0].pages[..], cells[i].cx, cells[i].cz);
+    #assert p >= 0 && e2nv_ready(v[..], i) && nav_cells_digest(sh[0].pages[..], p) == cells[i].digest;
+  }
+  // a room's ticks build nothing more, and a creature's pages are in when it first needs them
+  for q: 0..<40 { e2_nav_tick(v[..], k); #assert !sh[0].build[0].on; }
+  #assert sh[0].built == E2Z_CELLS && e2nv_need(v[..], k, 20, 20) && sh[0].next == -1;
+  // asked again, it builds none again; a cell whose page came out wrong is not tried again
+  #assert rm_e2_nav_prebuild(v[..]) == E2Z_CELLS && sh[0].totals[E2NV_ADMITTED] == E2Z_CELLS;
+  v[0].nav[0] = E2NavShared.{}; sh[0].ready = true; e2z_manifest(sh[0].world[..]); sh[0].world[0].manifest[3].digest += 1;
+  #assert rm_e2_nav_prebuild(v[..]) == E2Z_CELLS - 1 && sh[0].bad[3] && sh[0].totals[E2NV_REFUSED] == 1 && !e2nv_ready(v[..], 3);
+  #assert rm_e2_nav_prebuild(v[..]) == E2Z_CELLS - 1 && sh[0].totals[E2NV_REFUSED] == 1;
+}
 #test "e2 nav: every monster's home is ground a creature stands on, and one whose cell sleeps is home and whole" #steps 4000000000 #traversal 1073741824 {
   v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-nav-homes"); #assert k >= 0;
   ms := v[0].eg[k].monsters[..]; nv := v[0].eg[k].nav[..]; b := v[0].eg[k].rules[0].b[..];
