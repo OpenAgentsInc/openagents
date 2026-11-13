@@ -227,9 +227,9 @@ is one optional source of edits, not the only one.
    placed, the kit catalogue, and the zones it may not build in.
 3. The agent calls `world_apply splice` with three place edits anchored on
    those landmarks.
-4. Splice open in the chat's world pane (and in any other tab) writes its world
-   again within a second. The rover, crabs and turbine appear, drawn in the
-   same cel and ink style, with colliders that match what you see.
+4. Splice, open in the chat's world pane and in any other tab, picks up the
+   new revision within a second. The rover, crabs and turbine appear, drawn in
+   the same cel and ink style, with colliders that match what you see.
 5. The person walks there and finds them. The run still plays to SCENE
    RESTORED, because the checker refuses any edit that blocks it.
 6. "Undo the turbine" goes back one edit. Nothing in `splice-game.coax`
@@ -237,50 +237,78 @@ is one optional source of edits, not the only one.
 
 ### Slice 0: Splice's edit layer
 
-New work in Splice and the engine. The rule is "never hand-roll", so most of it
-reuses what exists.
+New work in Splice and the engine. The rule is "never hand-roll", and the AAA
+program (#13257) has already built most of what this needs. The section
+"Checked against the AAA program" below says which issue each part follows.
 
-- **A kit catalogue** (`aethyr/kit/catalog.coax`, engine-wide so other cel
-  worlds get it).
-  - One row a placeable piece: its name (`rover`, `crab-bot`, `turbine`,
-    `palm`, `dome-house`, `crate`, `arch`…), the kit function, default tints
-    from Splice's palette, and a footprint box measured from the triangles
-    the piece writes.
-  - A `#test` checks every footprint against the triangles, so the colliders
-    match the visible geometry (the "no invisible blockers" rule).
-- **Named landmarks.** Splice's place constants become a table of named
-  anchors with a zone (village, rail, mine) and a radius. The table is read by
-  the planner and the agent, and the constants keep their values.
-- **Kept-clear zones.** Splice states the zones the run needs:
-  - the scanner gate and its corridor, and the rail line's track;
-  - the pickups and their reach, the rubble, the boss wall and the boss
-    chamber;
-  - the catwalk ramps, the rover's and the crate's use range, and the
+- **Splice gets its own folder and context first.** Its code moves from
+  `apps/openagents-web/splice*` to `splice/`, as Everglade's moved to
+  `everglade/` (P1.2, #13268). It also gets a row in `contexts.txt`
+  (`splice folders: splice/ may load: engine realm-authoring toolchain`), so
+  `layer-check` (P0.7, DDD.6) judges it. The page stays at `/worlds/splice`.
+- **The catalogue and the landmarks are content, not code** (P4.5, #13294).
+  Splice gets an `aethyr.content.v1` document, read and validated by
+  `aethyr/content/tables.coax` and edited in Aethyrforge's table editor
+  (`aethyr/forge/content-edit.coax`). It has three tables:
+  - `pieces`: one row a placeable piece (rover, crab-bot, turbine, palm, dome
+    house, crate, arch…). Each row holds a stable content ID (P3.3, #13286),
+    its display name, the kit piece it draws, its tints from Splice's palette,
+    and its footprint.
+  - `landmarks`: the rover, stash crate, checkpoint post, dance floor, dome
+    village, rail marker and so on. Each is a `cm` place with a radius. The
+    constants in `splice-game.coax` are read from this table instead.
+  - `kept_clear`: the places the run needs: the scanner gate and its
+    corridor, the rail track, every pickup's reach, the rubble, the boss wall
+    and chamber, the catwalk ramps, the rover's and crate's use range, and the
     checkpoint post.
-  An edit that puts a footprint in one is refused with the zone's name, as
-  `verse/everglade/edits.coax` refuses edits in Everglade.
-- **Drawing and colliding the layer.**
-  - `g_world` draws each placed piece after the designed world. Each kind
-    gets its own pen object id in a range the designed world doesn't use.
-  - `g_layout` adds one wall a piece from its footprint. `WALLS` grows to
-    make room, and the page shows the cap.
-  - A placed machine stands still; it's scenery, not an enemy.
-- **The run still plays.** A new `#test` plays the whole run with a full edit
-  layer: a fixture with a piece next to every kept-clear zone. The check that
-  runs on save replays the same walk from the start to the boss chamber with
-  the proposed layer, and refuses the edit if the walk stops.
+  Edits and saves name pieces by content ID; names are for people and agents
+  to read.
+- **The kit pieces stay engine code** in `aethyr/kit/`. A row names which kit
+  piece to draw. A `#test` measures every piece's triangles and checks its
+  row's footprint against them, so colliders match what you see ("no
+  invisible blockers").
+- **Placed pieces are entities in Aethyr's World** (P2.1, #13274,
+  `aethyr/core/world.coax`): a transform, a kind (the content ID) and a
+  collider. Collision goes through the World's spatial index
+  (`aethyr/core/spatial.coax`) and the shared physics queries, not through a
+  longer wall list.
+  - Splice's 44 hand-written walls (`g_layout`, scanned linearly by
+    `g_push`) move into the same collider set as part of this slice. That
+    follows G6 step 6 and P2.6 (#13279): one broadphase behind the queries,
+    and no linear scans.
+  - A placed machine is scenery: it has no AI and no hit points.
+- **Drawn as a retained scene** (P6.1, #13303): each piece kind's cel mesh is
+  written once and kept on the GPU, and the layer draws instances with their
+  transforms. An edit changes instances; it doesn't rewrite the designed
+  world's buffer. If Splice's host can't draw cel instances yet, that support
+  is built here, as Splice's part of P6.1, and not worked around ("no
+  shortcut phases").
+- **Deterministic and replayable.** The layer is applied in revision order
+  from the edit log (`aethyr/forge/edit.coax`). `world_digest` covers it, so a
+  replay with the same edits gives the same digest a step at a time (book
+  chapter 5).
+- **The run still plays.**
+  - A `#test` plays the whole run with a full layer: a fixture with a piece
+    next to every kept-clear zone.
+  - Each save replays the walk from the start to the boss chamber against the
+    proposed layer, using the protocol bots and agent clock that already exist
+    (P5.2, #13296; `coax drive`, `clock until`), not a separate walker. It
+    refuses the edit if the walk stops.
+  - A mutant check removes each kept-clear zone in turn and expects the walk
+    replay to refuse.
 
 ### Slice 0b: one placement planner
 
 - WorldBuilder's planner already works out where things go: an anchor, a side
   as the camera sees it, footprints kept apart, and a seeded spread. Today it
   assumes WorldBuilder's pack catalogue (`WbCat`).
-- Move the placement part into the engine (`aethyr/forge/place.coax`), with a
-  catalogue interface that both the Quaternius pack and the kit catalogue
-  fill. WorldBuilder and Splice then call one planner, per "no one-off zone
-  code".
-- Splice uses its landmarks as named anchors (`A_NAMED`) and its kept-clear
-  zones as places the planner never spreads into.
+- Move the placement part to `aethyr/forge/place.coax`, in the
+  realm-authoring context, with a catalogue interface that the Quaternius pack
+  and Splice's `pieces` table both fill. It loads nothing from `apps/` (P1.4,
+  #13270). It has two consumers from the day it lands (P1.6, #13272), and
+  WorldBuilder's copy is deleted in the same change.
+- Splice's `landmarks` are its named anchors (`A_NAMED`), and its
+  `kept_clear` zones are places the planner never spreads into.
 
 ### Slice 1: a world has an id and a document
 
@@ -298,8 +326,16 @@ reuses what exists.
   shared or opened by an agent.
 - **The server checks with the page's code:** it carries edits out by running
   the shared planner and the world's own checker as a native tool, so the
-  server and the page cannot disagree. The rule is `#authority`, and
-  `INVARIANTS.md` gains a line for it.
+  server and the page cannot disagree. The route's rules live in
+  `coax/web/api/world-policy.coax`, `#authority` and mutation-tested (DDD.10,
+  #13321), and `INVARIANTS.md` gains a line for them. The client is never
+  trusted for placement (P0's rule: the server decides).
+- **Each saved edit is a domain event:** a `proto/registry.json` row of kind
+  `event` owned by realm-authoring (DDD.5, DDD.8), written with the outbox
+  rule, so the page, the CLI and later a room all read one stream.
+- **The migration** takes the next free number, and the unique-number check
+  passes (P5.7, #13301). It ships in the one ordered release (P5.5, #13299),
+  run by the coordinator.
 - **Splice is the first world with an id:** `splice`, made once by migration.
   Only an admin may write it: the owner's own Coder (with the agent token) or
   an admin session in the hosted chat. Everyone who opens `/worlds/splice`
@@ -344,7 +380,8 @@ reuses what exists.
   a ring of light, it rises out of the ground"). That spec's arrival table is
   shared engine work, not WorldBuilder-only code.
 - This also makes two tabs, or a person and an agent, work on one world.
-- In Splice, a new revision writes the world buffer and the walls again. The
+- In Splice, a new revision spawns and despawns the layer's entities at the
+  World's flush, and adds or removes their instances and colliders. The
   player's position, inventory, Heat and the run's state are kept, and a piece
   is never placed on the player: the checker treats the player's spot as a
   kept-clear zone for that edit.
@@ -356,9 +393,17 @@ reuses what exists.
   OPEN. The hosted chat and the local agents use the same card.
 - **A world pane.** OPEN puts the world beside the conversation, and you keep
   talking to the same agent.
-  - The pane loads the world's own module only when it opens: Splice's page
+  - The pane is the world's own page in a frame beside the chat: Splice's page
     for `splice`, WorldBuilder and its 12.2 MB pack for a WorldBuilder world.
-    `/chat`'s own budget (chat-web, 168,000 bytes) doesn't grow.
+    The chat's code never loads a world module. In `contexts.txt`, chat may
+    load only coder, identity, protocol and toolchain, so `layer-check` would
+    refuse that load anyway. `/chat`'s own budget (chat-web, 168,000 bytes)
+    doesn't grow.
+  - The card is built from a protocol shape (`proto/world/card-v1`: id, name,
+    revision, thing count, a frame's URL), which chat is allowed to load.
+  - The page and the pane talk only through `postMessage`, with typed
+    messages from the same proto: "here" from a tap, and the revision now
+    shown.
   - A local runner's pane opens the dev server's world (`127.0.0.1:9471`) so
     the owner can watch an agent work against a local build first.
   - On a phone the pane is a tab above the composer.
@@ -387,11 +432,48 @@ reuses what exists.
   object layer as its canvas. That one screen then appears in `/chat`'s pane,
   in Aethyrforge desktop's window and at `/forge`.
 
+## Checked against the AAA program
+
+The AAA audit (`2026-11-11-everglade-aethyr-aaa-audit.md`) and its tracker
+(#13257, issues #13258-#13306 and #13346) set the rules for engine and game
+work. On 2026-11-12, 31 of those 50 issues are closed and 19 are open. The DDD
+tracker (#13311) adds the context rules. This is how each relevant one
+applies to the plan, and what changed because of it.
+
+| AAA or DDD issue | State | What it asks | In this plan |
+|---|---|---|---|
+| P0.7 layer-check, DDD.6 contexts | Closed | No upward loads; each context loads only what `contexts.txt` allows | **Changed.** The chat never loads a world module; the pane is the world's own page, and the card is a proto shape. Splice gets a context. `place.coax` loads nothing from `apps/` |
+| P1.2 game code leaves `apps/openagents-web` | Open | One game module in its own folder | **Changed.** Splice moves to `splice/` before its edit layer lands |
+| P1.4 Aethyr layers | Open | Engine code sits in its layer folders | `place.coax` is realm-authoring (`aethyr/forge/`); kit pieces stay in `aethyr/kit/` |
+| P1.6 every engine module has a consumer | Closed | No unused modules | `place.coax` has two consumers on the day it lands; WorldBuilder's copy is deleted |
+| P2.1 Aethyr World | Closed | Every entity lives in one World with columns, systems and a spatial index | **Changed.** Placed pieces are World entities, not draw calls added to `g_world` |
+| P2.6 a broadphase behind the queries | Open | No linear collision scans | **Changed.** Pieces and Splice's 44 walls collide through the spatial index; `WALLS` doesn't grow |
+| P2.7 one world of cells | Open | Cells, tiles and paged packs | Not needed for Splice's size. Edits carry world coordinates, so a layer splits by cell when Splice becomes cells |
+| P3.3 stable content IDs | Closed | IDs on the wire and in saves | **Changed.** Edits and saves name pieces by content ID, not by name |
+| P4.5 content tables, edited in Aethyrforge | Closed | Content is validated data that designers edit without a programmer | **Changed.** The catalogue, landmarks and kept-clear zones are `aethyr.content.v1` tables, not Coax constants |
+| P5.2 protocol bots | Closed | Bots drive the game headless | The walk replay on save uses the existing bots and agent clock |
+| P5.5 one release; P5.7 migration numbers | Closed | Ordered release behind a canary; unique migration numbers | The world document's migration and API ship that way, run by the coordinator |
+| P6.1 retained scene | Open | Meshes stay on the GPU; transforms are sent | **Changed.** The layer is per-kind meshes drawn as instances; an edit doesn't rewrite the world buffer |
+| DDD.5, DDD.8 registry rows and domain events | Closed | Every wire shape names its owning context; events are registry rows with the outbox rule | A saved edit is an `event` row owned by realm-authoring |
+| DDD.10 rules in `*-policy.coax` | Closed | API rules in Coax policy files | `world-policy.coax`, `#authority`, mutation-tested |
+| Determinism and replay (graded A) | Kept | Same inputs give the same digest | The layer is applied in revision order and `world_digest` covers it |
+| P0 server trust (P0.1-P0.4) | Closed | The server decides; the client is never trusted | The server runs the checker; writes need an admin or the owner's agent key |
+
+What doesn't apply: Splice has no room yet, so the room-only items (P2.2-P2.5,
+P2.9, P3.6, P5.1, P5.3) don't constrain the first demo. If Splice gets a room,
+its layer loads with the room's content at start (P4.5's rule), and a new
+revision reaches players as a content revision.
+
+What this costs: slice 0 grows from medium to large. Moving Splice's walls
+into the spatial index and drawing a retained instanced layer are real engine
+adoption, not just a list of extra things to draw. The AAA rule "build the
+real thing directly, no stopgap" makes that the right trade.
+
 ## Order and size
 
 | Slice | Delivers | Size |
 |---|---|---|
-| 0 | Splice's edit layer: kit catalogue, landmarks, kept-clear zones, drawing, walls, the run test with a full layer | Medium, all in Coax with `#test`s, no deploy |
+| 0 | Splice's folder and context; its content tables (pieces, landmarks, kept-clear); layer entities in the World with colliders in the spatial index; its 44 walls moved there too; retained instanced drawing; the run test and walk replay | Large, all in Coax with `#test`s, no deploy |
 | 0b | One placement planner in `aethyr/forge/place.coax` | Small to medium |
 | 1 | World id and document, fenced edits; `splice` first, admin writes | API + migration: medium |
 | 2 | `proto/world/edit-v1` and the codec | Small |
