@@ -734,6 +734,7 @@ e2_pointer :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int) -> bool
   if e2_quality_pointer(s, x, y, phase, id) { return true; }   // the GFX control
   if !s[0].cz[0].menu && e2i_pointer(s, x, y, phase) { return true; }   // the bag's button, window and the talk's prompt
   if !s[0].cz[0].menu && e2b_pointer(s, x, y, phase) { return true; }   // the workbench's prompt and window
+  if !s[0].cz[0].menu && e2rv_pointer(s, x, y, phase) { return true; }   // riding's prompt: the phone's MOUNT, DISMOUNT and LAND button
   if !s[0].cz[0].menu && e2p_pointer(s, x, y, phase) { return true; }   // Pansopher's prompt and answers
   #if BUILD_DEBUG { if e2a_pointer(s, x, y, phase) { return true; } }
   if e2c_pointer(s, x, y, phase, id) { return true; }
@@ -1351,7 +1352,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
 }
 // The HUD's strokes, in the order they are drawn over the world (the overlap check, apps/openagents-web/hud-overlap-everglade2.coax, draws the same).
 e2_overlay :: (s: [] E2, out: [] f32, dt: f32) -> int {
-  return e2i_overlay(s, out, e2b_overlay(s, out, e2p_overlay(s, out, e2_net_readout(s, out, e2_light_readout(s, out, e2_fps(s, out, e2_world_view(s, out, e2_reticle(s, out, e2_heads(s, out, e2mn_wedge(s, out, e2_floats_draw(s, out, e2k_area_marks(s, out, e2k_down_line(s, out, e2k_bar_draw(s, out, e2_vignette(s, out, e2c_draw(s, out)))))))))), dt))))));
+  return e2i_overlay(s, out, e2rv_overlay(s, out, e2b_overlay(s, out, e2p_overlay(s, out, e2_net_readout(s, out, e2_light_readout(s, out, e2_fps(s, out, e2_world_view(s, out, e2_reticle(s, out, e2_heads(s, out, e2mn_wedge(s, out, e2_floats_draw(s, out, e2k_area_marks(s, out, e2k_down_line(s, out, e2k_bar_draw(s, out, e2_vignette(s, out, e2c_draw(s, out)))))))))), dt)))))));
 }
 
 // ---- the light (lighting plan Phase 1, #13066): every lit input the passes read is the camera's

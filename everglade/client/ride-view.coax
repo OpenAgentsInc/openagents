@@ -59,6 +59,43 @@ e2rv_key :: (s: [] E2, key: int) -> bool {
   return true;
 }
 
+// ---- the prompt, and the phone's button
+// What E (or X) would do now: mount the mount in reach, get down, or bring a flier down.
+E2RV_NONE :: 0; E2RV_MOUNT :: 1; E2RV_DOWN :: 2; E2RV_LAND :: 3;
+e2rv_offer :: (s: [] E2) -> int {
+  n := s[0].net[..];
+  if !e2n_open(n) { return E2RV_NONE; }
+  r := n[0].ride[..]; mine := e2rp_mine(r, n[0].seat);
+  if mine >= 0 {
+    h := r[0].m[0].m[mine];
+    if h.state != MOUNT_RIDDEN { return E2RV_NONE; }
+    return ifx mount_aloft(h) then E2RV_LAND else E2RV_DOWN;
+  }
+  k := e2rp_nearest(r, s[0].you_x, s[0].you_z);
+  return ifx k >= 0 && e2rv_ready(s, r[0].m[0].kind[k]) then E2RV_MOUNT else E2RV_NONE;
+}
+// Its words: on a keyboard "E  Mount", on a phone the MOUNT button (everglade/mounts.coax
+// eg_mount_prompt, the zones' words); a phone has no X, so in the air its button says LAND.
+e2rv_prompt_text :: (s: [] E2) -> string {
+  o := e2rv_offer(s);
+  if o == E2RV_NONE { return ""; }
+  touch := s[0].ml[0].touch;
+  if o == E2RV_LAND && touch { return "LAND"; }
+  return egm.eg_mount_prompt(s[0].rv[0].eg[0], s[0].you_x, s[0].you_z, s[0].clock, touch);
+}
+// A press on it is the key.
+e2rv_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
+  if phase != 0 { return false; }
+  t := e2rv_prompt_text(s);
+  if t.count == 0 || !e2p_inside(eg_prompt_box(t, s[0].width, s[0].height, s[0].k), x, y) { return false; }
+  return e2rv_key(s, ifx e2rv_offer(s) == E2RV_LAND then 'x' else 'e');
+}
+e2rv_overlay :: (s: [] E2, out: [] f32, at: int) -> int {
+  t := e2rv_prompt_text(s);
+  if t.count == 0 { return at; }
+  return eg_prompt(drv_trace(s[0].drive[..]), "ride", "mount", out, at, eg_prompt_box(t, s[0].width, s[0].height, s[0].k), t, s[0].k);
+}
+
 // ---- the mounts as drawn
 // This frame's view of every mount: yours as predicted, another's where its row's ring puts it now,
 // its gait by the ground it covered. A flier's feet are over the land under it.
@@ -169,8 +206,12 @@ e2rv_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
     c = wire_int(cat[..], c, 300 + f * 60); c = wire_put(cat[..], c, " 60 247 100 0 0\n");
   }
   e2rv_catalog(s[..], cast(string) cat[0..<c]); #assert e2rv_ready(s[..], MK_HORSE) && !e2rv_ready(s[..], MK_DRAGON);
-  // far from it E is not riding's; beside it E mounts: the ask goes out and the page's horse is yours at once
-  s[0].you_x = 40; #assert !e2rv_key(s[..], 'e'); s[0].you_x = 10.2;
+  // far from it E is not riding's and there is no prompt; beside it the prompt says how to mount, and a phone's is a button
+  s[0].you_x = 40; #assert !e2rv_key(s[..], 'e') && e2rv_offer(s[..]) == E2RV_NONE && e2rv_prompt_text(s[..]) == ""; s[0].you_x = 10.2;
+  s[0].width = 1280; s[0].height = 720; s[0].k = 1;
+  #assert e2rv_offer(s[..]) == E2RV_MOUNT && e2rv_prompt_text(s[..]) == "E  Mount";
+  s[0].ml[0].touch = true; #assert e2rv_prompt_text(s[..]) == "MOUNT"; s[0].ml[0].touch = false;
+  po: [4096] f32; #assert e2rv_overlay(s[..], po[..], 0) > 0 && !e2rv_pointer(s[..], 2, 2, 0) && n[0].pipe[0].n == 0;
   #assert !e2rv_key(s[..], 'x') && e2rv_key(s[..], 'E') && n[0].pipe[0].n == 1 && s[0].rv[0].presses == 1;
   sent := e2n_test_sent(n); #assert sent.count > 9 && sent[0..<2] == "E " && sent[sent.count - 5..<sent.count] == " 20 0";
   #assert e2rp_mine(n[0].ride[..], 2) == 0 && n[0].ride[0].m[0].m[0].state == MOUNT_MOUNTING;
@@ -188,9 +229,13 @@ e2rv_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
   e2_chase_step(s[..], 0.016); #assert s[0].orbit.want == want + f32(egm.EG_RIDE_CAM_BACK);
   // another seat rides nothing: drawn where its row has it
   r := e2rv_remote(s[..], E2Remote.{ok = true, seat = 5, x = 1, y = 0, z = 2}); #assert r.x == 1 && r.y == 0;
-  // E again: the ask to get down, and the page begins it
+  // in the saddle the prompt is to get down; a press on a phone's DISMOUNT button is E: the ask to get down, and the page begins it
   n[0].ride[0].m[0].m[0].speed = 0;
   pipe_drained(n[0].pipe[..]);   // the face drained the socket's commands
-  #assert e2rv_key(s[..], 'e') && n[0].pipe[0].n == 1 && n[0].ride[0].m[0].m[0].state == MOUNT_DISMOUNTING;
+  #assert e2rv_offer(s[..]) == E2RV_DOWN && e2rv_prompt_text(s[..]) == "E  Dismount";
+  s[0].ml[0].touch = true; #assert e2rv_prompt_text(s[..]) == "DISMOUNT";
+  box := eg_prompt_box("DISMOUNT", 1280, 720, 1);
+  #assert e2rv_pointer(s[..], (box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2, 0) && n[0].pipe[0].n == 1 && n[0].ride[0].m[0].m[0].state == MOUNT_DISMOUNTING;
+  #assert e2rv_offer(s[..]) == E2RV_NONE && e2rv_prompt_text(s[..]) == "";
   sent = e2n_test_sent(n); #assert sent[sent.count - 5..<sent.count] == " 21 0";
 }
