@@ -1,0 +1,80 @@
+// Checks of the page's script loader (loader.coax).
+SlkWork :: struct { l: [1] ScriptLoader; w: [1] ScriptWorld; b: [2048] u8; list: [8192] u8; url: [256] u8; text: [SM_TEXT] u8; want: [1024] u8; }
+// A module, its hash and the list a server would answer for it (off or not): the lengths of the three.
+SlkMade :: struct { ok: bool; n: int; ln: int; wn: int; }
+slk_setup :: (k: [] SlkWork, hash: [] u8, off: bool) -> SlkMade {
+  rows := [2] int.[SA_X, SA_MOVE]; echo := WB_ECHO;
+  tick := [13] u8.[32, 0, 32, 0, 16, 0, 32, 2, 32, 2, 16, 1, 11];
+  n := wb_module(k[0].b[..], rows[..], tick[..], 0, echo[..]);
+  s: [1] ScriptSlot;
+  if sh_load_fresh(s[..], k[0].b[0..<n]) != 0 { return SlkMade.{}; }
+  mf := sm_of(s[..], "mover", ScriptLayout.{});
+  line := sm_write(mf, k[0].text[..]);
+  for c, i: mf.hash { hash[i] = c; }
+  ln := 0; head := "{\"schema\":\"world.scripts.v1\",\"world\":\"splice\",\"limits\":{},\"scripts\":[{\"manifest\":";
+  for c: head { k[0].list[ln] = c; ln += 1; }
+  for c: line { k[0].list[ln] = c; ln += 1; }
+  tail := ifx off then ",\"off\":true,\"why\":\"reported\",\"source\":false}]}" else ",\"off\":false,\"why\":\"\",\"source\":false}]}";
+  for c: tail { k[0].list[ln] = c; ln += 1; }
+  // The wants: the list's address and place 3.
+  wn := 0; addr := "/api/worlds/splice/scripts\n3 ";
+  for c: addr { k[0].want[wn] = c; wn += 1; }
+  for i: 0..<64 { k[0].want[wn] = hash[i]; wn += 1; }
+  k[0].want[wn] = '\n'; wn += 1;
+  return SlkMade.{ok = true, n = n, ln = ln, wn = wn};
+}
+#test "a wanted script is listed, fetched by its hash, checked against it and loaded; then nothing is needed" #steps 900000000 {
+  k: [1] SlkWork; hash: [64] u8;
+  made := slk_setup(k[..], hash[..], false);
+  wn := made.wn; n := made.n; ln := made.ln;
+  #assert made.ok && sl_want(k[0].l[..], k[0].w[..], cast(string) k[0].want[0..<wn]);
+  #assert sl_need(k[0].l[..], k[0].url[..]) == "/api/worlds/splice/scripts" && k[0].l[0].asking == SL_LISTING;
+  sl_got(k[0].l[..], k[0].w[..], 200, k[0].list[0..<ln]);
+  #assert k[0].l[0].listed && k[0].l[0].want[3].known && !k[0].l[0].want[3].done && cast(string) k[0].l[0].want[3].name[0..<k[0].l[0].want[3].name_n] == "mover";
+  url := sl_need(k[0].l[..], k[0].url[..]);
+  #assert url.count == 26 + 1 + 64 && url[0..<27] == "/api/worlds/splice/scripts/" && url[27..<91] == cast(string) hash[..] && k[0].l[0].asking == SL_MODULE && k[0].l[0].at == 3;
+  sl_got(k[0].l[..], k[0].w[..], 200, k[0].b[0..<n]);
+  #assert k[0].l[0].want[3].done && k[0].l[0].want[3].why == SL_OK && k[0].w[0].slots[3].loaded && sl_need(k[0].l[..], k[0].url[..]) == "" && k[0].l[0].fetches == 2;
+  // The same wants again change nothing and fetch nothing.
+  #assert sl_want(k[0].l[..], k[0].w[..], cast(string) k[0].want[0..<wn]) && sl_need(k[0].l[..], k[0].url[..]) == "" && k[0].w[0].slots[3].loaded;
+  // No wants: the place stops.
+  #assert sl_want(k[0].l[..], k[0].w[..], "/api/worlds/splice/scripts\n") && !k[0].w[0].slots[3].loaded && sl_need(k[0].l[..], k[0].url[..]) == "";
+  #assert sl_want(k[0].l[..], k[0].w[..], "") && sl_need(k[0].l[..], k[0].url[..]) == "";
+}
+#test "bytes that are not the hash's, a script that is off, one that is not stored and a list that does not read are not loaded" #steps 900000000 {
+  k: [1] SlkWork; hash: [64] u8;
+  made := slk_setup(k[..], hash[..], false);
+  wn := made.wn; n := made.n; ln := made.ln;
+  ok := sl_want(k[0].l[..], k[0].w[..], cast(string) k[0].want[0..<wn]);
+  url := sl_need(k[0].l[..], k[0].url[..]); sl_got(k[0].l[..], k[0].w[..], 200, k[0].list[0..<ln]);
+  url = sl_need(k[0].l[..], k[0].url[..]);
+  k[0].b[n - 1] = k[0].b[n - 1] ^ 1;   // one bit of the module: not the hash's bytes
+  sl_got(k[0].l[..], k[0].w[..], 200, k[0].b[0..<n]);
+  #assert k[0].l[0].want[3].done && k[0].l[0].want[3].why == SL_NO_BYTES && !k[0].w[0].slots[3].loaded && sl_need(k[0].l[..], k[0].url[..]) == "";
+  // Switched off in the list: never fetched.
+  k[0].l[0] = ScriptLoader.{};
+  made = slk_setup(k[..], hash[..], true); ln = made.ln;
+  ok = sl_want(k[0].l[..], k[0].w[..], cast(string) k[0].want[0..<wn]);
+  url = sl_need(k[0].l[..], k[0].url[..]); sl_got(k[0].l[..], k[0].w[..], 200, k[0].list[0..<ln]);
+  #assert k[0].l[0].want[3].why == SL_OFF && sl_need(k[0].l[..], k[0].url[..]) == "" && SL_WHY[SL_OFF] == "switched-off";
+  // Not in the list.
+  k[0].l[0] = ScriptLoader.{};
+  ok = sl_want(k[0].l[..], k[0].w[..], cast(string) k[0].want[0..<wn]);
+  url = sl_need(k[0].l[..], k[0].url[..]);
+  empty := "{\"schema\":\"world.scripts.v1\",\"world\":\"splice\",\"limits\":{},\"scripts\":[]}"; eb: [128] u8; en := 0;
+  for c: empty { eb[en] = c; en += 1; }
+  sl_got(k[0].l[..], k[0].w[..], 200, eb[0..<en]);
+  #assert k[0].l[0].want[3].why == SL_NOT_LISTED && sl_need(k[0].l[..], k[0].url[..]) == "";
+  // A list that is not one, and a failed fetch.
+  k[0].l[0] = ScriptLoader.{};
+  ok = sl_want(k[0].l[..], k[0].w[..], cast(string) k[0].want[0..<wn]);
+  url = sl_need(k[0].l[..], k[0].url[..]); sl_got(k[0].l[..], k[0].w[..], 404, eb[0..<en]);
+  #assert k[0].l[0].want[3].why == SL_BAD_LIST && sl_need(k[0].l[..], k[0].url[..]) == "";
+}
+#test "wants that are not wants change nothing" {
+  l: [1] ScriptLoader; w: [1] ScriptWorld;
+  bad := [6] string.["api/worlds/x\n", "/a", "/a\n8 0000000000000000000000000000000000000000000000000000000000000000\n", "/a\n0 000000000000000000000000000000000000000000000000000000000000000g\n",
+                     "/a\n0 0000000000000000000000000000000000000000000000000000000000000000", "/a\n0 0000000000000000000000000000000000000000000000000000000000000000\n0 0000000000000000000000000000000000000000000000000000000000000000\n"];
+  for text: bad { #assert !sl_want(l[..], w[..], text) && l[0].url_n == 0; }
+  #assert sl_want(l[..], w[..], "/a\n0 0000000000000000000000000000000000000000000000000000000000000000\n") && l[0].want[0].wanted && l[0].url_n == 2;
+}

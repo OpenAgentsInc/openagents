@@ -58,6 +58,15 @@ EXPORT("coaxial_edit_model") uint32_t coaxial_edit_model(uint32_t state) { retur
 EXPORT("coaxial_edit_model_len") uint32_t coaxial_edit_model_len(uint32_t state) { return (uint32_t)splice_edit_model(at(state)).count; }
 EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(uint32_t state, int32_t field) { return (int32_t)splice_world_fact(at(state), field); }
 
+// Realm scripts (#13467): the scripts the tables name, the frame out and the result in. The host
+// (coax/web/host.js, "A realm's scripts") copies the frame to the page's script module and the result
+// back into the inbox.
+static uint8_t script_frame[32768];
+EXPORT("coaxial_script_wants") uint32_t coaxial_script_wants(uint32_t state) { return (uint32_t)(uintptr_t)splice_script_wants(at(state)).data; }
+EXPORT("coaxial_script_wants_len") uint32_t coaxial_script_wants_len(uint32_t state) { return (uint32_t)splice_script_wants(at(state)).count; }
+EXPORT("coaxial_script_frame") uint32_t coaxial_script_frame(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)script_frame; }
+EXPORT("coaxial_script_frame_len") uint32_t coaxial_script_frame_len(uint32_t state) { return (uint32_t)splice_script_frame(at(state), (coax_v_u8){script_frame, sizeof script_frame}); }
+
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float width, float height, float dpr, float dt, uint32_t still) {
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_splice_max_vertices() * coaxial_splice_vertex_floats()};
@@ -128,6 +137,10 @@ EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inb
 // A driver's command (coax drive, kind 700) is answered in the state; the host reads the answer here.
 EXPORT("coaxial_drive_out") uint32_t coaxial_drive_out(uint32_t state) { return (uint32_t)(uintptr_t)splice_drive_out(at(state)).data; }
 EXPORT("coaxial_drive_out_len") uint32_t coaxial_drive_out_len(uint32_t state) { return (uint32_t)splice_drive_out(at(state)).count; }
+EXPORT("coaxial_script_result") uint32_t coaxial_script_result(uint32_t state, uint32_t length) {
+  if (length > sizeof inbox) return 0;
+  return splice_script_result(at(state), (coax_v_u8){inbox, (int64_t)length}) ? 1u : 0u;
+}
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) length = sizeof inbox;
   splice_message(at(state), kind, (coax_string){(const char *)inbox, (int64_t)length});

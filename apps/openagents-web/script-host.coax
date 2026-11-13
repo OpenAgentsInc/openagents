@@ -1,0 +1,40 @@
+// The page's script module (GitHub #13467, docs/protocol/realm-script-v1.md): a world's realm scripts,
+// run in a module of their own beside the realm's engine. The realm keeps no interpreter: each frame the
+// page's host (coax/web/host.js, "A realm's scripts") copies the realm's frame bytes here, runs one tick
+// and copies the result back; when the realm's tables name other scripts it carries the fetches this
+// asks for. A room links the same host natively and runs the same bytes
+// (metaverse-engine/script/world.coax), so a script costs the same instructions in both.
+// Its C face is script-host-face.c.
+#load "../../metaverse-engine/script/loader.coax";
+
+ScriptPage :: struct { w: [1] ScriptWorld; l: [1] ScriptLoader; }
+
+// The realm's wants (loader.coax): false for text that is not wants.
+coaxial_scripts_want :: (p: [] ScriptPage, text: string) -> bool #export_c #effects(all) {
+  return p.count > 0 && sl_want(p[0].l[..], p[0].w[..], text);
+}
+// The next address to fetch, into out: its length, 0 for nothing.
+coaxial_scripts_need :: (p: [] ScriptPage, out: [] u8) -> int #export_c #effects(all) {
+  if p.count == 0 { return 0; }
+  return sl_need(p[0].l[..], out).count;
+}
+coaxial_scripts_got :: (p: [] ScriptPage, status: int, body: [] u8) #export_c #effects(all) {
+  if p.count > 0 { sl_got(p[0].l[..], p[0].w[..], status, body); }
+}
+// One tick: a frame's bytes in, the result's bytes into out. The result's length, 0 when nothing ran.
+coaxial_scripts_tick :: (p: [] ScriptPage, frame: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  if p.count == 0 { return 0; }
+  n := sw_tick(p[0].w[..], frame, out);
+  return ifx n > 0 then n else 0;
+}
+// The status (world.script-status.v1) into out: its length.
+coaxial_scripts_status :: (p: [] ScriptPage, out: [] u8) -> int #export_c #effects(all) {
+  if p.count == 0 { return 0; }
+  return sw_status(p[0].w[..], out).count;
+}
+// A module handed over directly (the editor's script pane trying a build before it is a row): into
+// place `at` under a name, with its state fields. The host's code (0: running).
+coaxial_scripts_try :: (p: [] ScriptPage, at: int, name: string, bytes: [] u8, fields: string) -> int #export_c #effects(all) {
+  if p.count == 0 { return -1; }
+  return sw_load(p[0].w[..], at, name, bytes, fields);
+}

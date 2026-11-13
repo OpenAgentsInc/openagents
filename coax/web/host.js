@@ -3192,7 +3192,7 @@ function draw(now) {
     const engineStart = traceRow ? performance.now() : 0;
     n = engine.exports.coaxial_frame(trap ? -16 : arena.state, arena.vertices, arena.uniforms, w, h, dpr, dt, still ? 1 : 0);
     if (traceRow) {traceRow[1] = performance.now() - engineStart;for(let i=0;i<3;i++)traceRow[11+i]=engine.exports.coaxial_frame_parts?.(arena.state,i)||0;}
-    editorStep(); paneStep();
+    editorStep(); paneStep(); scriptStep();
     if (gpu.gpuiOn) gpuiFrame(dpr);
   } catch (e) { trapped(e); return; }
   if (gpu.renderer) {
@@ -3819,6 +3819,72 @@ function editorStep() {
   try { editorCarry(shell, x); } finally { editorIn = false; }
   if ((editorTicks++ & 7) === 0) editorRoom();   // the panes may have changed size since the last look: a few times a second is enough
 }
+// A realm's scripts (#13467; docs/protocol/realm-script-v1.md). A realm that exports coaxial_script_wants
+// runs realm scripts: small modules its world's tables name by hash. They are not run by the browser's own
+// WebAssembly engine: the page's script module (apps/openagents-web/script-host.coax) interprets them with an
+// instruction budget and a rollback, as a room does. This host only carries bytes, once a frame after the
+// realm's step: the realm's frame (script.frame.v1) to the script module, the result (script.result.v1)
+// back; and when the realm's wants change, the fetches the script module asks for (the world's script list
+// and each module by its hash). It judges nothing, and a realm with no script rows loads no module.
+let scriptHost = null, scriptAsked = false, scriptWant = "", scriptPumping = false, scriptFor = null;
+async function scriptOpen() {
+  try {
+    const response = await fetch("/build/script-host.wasm", { cache: location.hostname === "127.0.0.1" || location.hostname === "localhost" ? "no-store" : "default" });
+    const module = await WebAssembly.compile(await response.arrayBuffer());
+    const mem = new WebAssembly.Memory({ initial: 64, maximum: 1024 });
+    const imports = { env: { memory: mem } };
+    for (const imp of WebAssembly.Module.imports(module)) {
+      if (imp.kind === "function") (imports[imp.module] ||= {})[imp.name] ||= imp.name === "proc_exit" ? (code) => { throw new Error(`script-host exited (${code})`); } : () => 0;
+    }
+    const x = (await WebAssembly.instantiate(module, imports)).exports;
+    x._initialize?.();
+    const size = x.coaxial_state_size();
+    const state = Math.ceil(Math.max(x.__heap_base?.value ?? 0, mem.buffer.byteLength) / 65536) * 65536;
+    mem.grow(Math.ceil((size + 64) / 65536));
+    x.coaxial_state_init(state);
+    scriptHost = { x, mem, state };
+    (globalThis.coaxial ||= {}).scripts = () => new TextDecoder().decode(new Uint8Array(mem.buffer, x.scripts_out(), x.scripts_status(state)));
+  } catch (e) { console.warn("scripts: the script module did not load; the realm's things walk their plans", e); }
+}
+// The fetches the script module asks for, one at a time, until it asks for nothing.
+async function scriptPump() {
+  if (scriptPumping || !scriptHost) return;
+  scriptPumping = true;
+  try {
+    for (;;) {
+      const { x, mem, state } = scriptHost, n = x.scripts_need(state);
+      if (!n) break;
+      const url = new TextDecoder().decode(new Uint8Array(mem.buffer, x.scripts_out(), n));
+      let status = 0, body = new Uint8Array(0);
+      try { const r = await fetch(url, { credentials: "same-origin" }); status = r.status; body = new Uint8Array(await r.arrayBuffer()); } catch { status = 0; }
+      if (body.length > x.scripts_in_cap()) { status = 0; body = new Uint8Array(0); }
+      new Uint8Array(mem.buffer, x.scripts_in(), body.length).set(body);
+      x.scripts_got(state, status, body.length);
+    }
+  } finally { scriptPumping = false; }
+}
+function scriptStep() {
+  const x = engine?.exports;
+  if (!x?.coaxial_script_wants || !arena) return;
+  const wn = x.coaxial_script_wants_len(arena.state);
+  if (!scriptHost) { if (wn && !scriptAsked) { scriptAsked = true; scriptOpen(); } return; }
+  const sx = scriptHost.x, st = scriptHost.state;
+  const want = wn ? new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_script_wants(arena.state), wn)) : "";
+  if (want !== scriptWant || scriptFor !== engine) {
+    scriptWant = want; scriptFor = engine;
+    const bytes = new TextEncoder().encode(want);
+    if (bytes.length <= sx.scripts_in_cap()) { new Uint8Array(scriptHost.mem.buffer, sx.scripts_in(), bytes.length).set(bytes); sx.scripts_want(st, bytes.length); }
+  }
+  if (!scriptPumping && sx.scripts_need(st)) scriptPump();   // scripts_need only looks: the pump asks again before each fetch
+  const fn = x.coaxial_script_frame_len(arena.state);
+  if (!fn) return;
+  new Uint8Array(scriptHost.mem.buffer, sx.scripts_in(), fn).set(new Uint8Array(memory.buffer, x.coaxial_script_frame(arena.state), fn));
+  const rn = sx.scripts_tick(st, fn);
+  if (!rn || rn > x.coaxial_inbox_cap()) return;
+  new Uint8Array(memory.buffer, x.coaxial_inbox(arena.state), rn).set(new Uint8Array(scriptHost.mem.buffer, sx.scripts_out(), rn));
+  x.coaxial_script_result(arena.state, rn);
+}
+
 // A page's own pane (Crew's creation steps, #13462): a module of the page's own that the browser draws beside the
 // canvas (dom-host.js), for a page whose controls are the frames set and not its HUD. The page names the module
 // (coaxial_pane, coaxial_pane_len) and tells it what it holds (coaxial_pane_rev, coaxial_pane_model, event 6); the

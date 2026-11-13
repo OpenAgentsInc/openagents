@@ -44,6 +44,9 @@ Splice :: struct {
   imports_n: int;             // bytes of the world's import pack the face keeps (splice_imports); imports_refused: packs that did not read
   imports_refused: int;
   tables_seen: int;           // the page's count of table changes it has drawn (world.coax SpwPage.tables_gen)
+  // realm scripts (scripts.coax, #13467): the frame the page hands its script module each step, the result it
+  // hands back, the last step's time and the scripts the tables name, as the script loader reads them
+  sf: [1] ScriptFrame; sr: [1] ScriptRun; sdt: f32; swants: [640] u8;
   foes_seen: int = -1;        // the same count, and the editor's clock, the foes last started from their plans at (#13466)
   clock_seen: int = -2;
   drive: [1] Drive;           // the agent driver's lists and its last answer (metaverse-engine/agent/drive.coax)
@@ -545,7 +548,8 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
         g[0].view = g[0].c[0].clock; g_foes(g);
       }
     }
-    g_step(g, vp_run_dt(vp, step));
+    s[0].sdt = vp_run_dt(vp, step);
+    g_step(g, s[0].sdt);
     view = g_camera(g); key = g_key_light(g); flash = g[0].flash;
     seen := VpView.{ex = view.eye.x, ey = view.eye.y, ez = view.eye.z, ax = view.at.x, ay = view.at.y, az = view.at.z, fov = view.fov, w = width, h = height};
     if vp[0].fly {
@@ -617,6 +621,32 @@ splice_pointer :: (s: [] Splice, x: f32, y: f32, phase: int) -> bool #export_c #
   return g_pointer(s[0].game[..], x, y, phase);
 }
 
+// ---- realm scripts (#13467; scripts.coax; coax/web/host.js "A realm's scripts")
+SPLICE_SCRIPTS_URL :: "/api/worlds/splice/scripts";
+// The scripts the world's tables name, as the page's script loader reads them
+// (metaverse-engine/script/loader.coax): the list's address, then "AT HASH" a row. "" when it names none.
+splice_script_wants :: (s: [] Splice) -> string #export_c #effects(all) {
+  if s.count == 0 || s[0].gallery || s[0].game[0].c[0].script_n == 0 { return ""; }
+  n := ct_put(s[0].swants[..], 0, SPLICE_SCRIPTS_URL); n = ct_put(s[0].swants[..], n, "\n");
+  for r: 0..<s[0].game[0].c[0].script_n {
+    row := s[0].game[0].c[0].scripts[r];
+    n = ct_put_int(s[0].swants[..], n, row.slot); n = ct_put(s[0].swants[..], n, " "); n = ct_put(s[0].swants[..], n, cast(string) row.hash[..]); n = ct_put(s[0].swants[..], n, "\n");
+  }
+  return ifx n > s[0].swants.count then "" else cast(string) s[0].swants[0..<n];
+}
+// The frame for the step just taken (script.frame.v1) into out: its length, 0 when no script would run.
+splice_script_frame :: (s: [] Splice, out: [] u8) -> int #export_c #effects(all) {
+  if s.count == 0 || s[0].gallery || !s[0].started || s[0].game[0].c[0].script_n == 0 { return 0; }
+  sps_frame(s[0].game[..], s[0].sf[..], s[0].sdt);
+  n := sf_write(s[0].sf[..], out);
+  return ifx n > 0 then n else 0;
+}
+// A tick's result (script.result.v1): what each script said for the next step. False for bytes that are not one.
+splice_script_result :: (s: [] Splice, bytes: [] u8) -> bool #export_c #effects(all) {
+  if s.count == 0 || !sr_read(bytes, s[0].sr[..]) { return false; }
+  sps_apply(s[0].game[..], s[0].sr[..]);
+  return true;
+}
 coaxial_splice_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
 coaxial_splice_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
 coaxial_splice_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
