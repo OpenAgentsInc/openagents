@@ -1,0 +1,83 @@
+// The page side of `coax drive hit X Y` and `taps`, checked in a real browser (GitHub #13433): a
+// fixture page with a button, a dialog whose scrim lies over it and steals its clicks, a close
+// button under 44 px, two targets that overlap, a link in a line of words and a field. Headless
+// Chrome answers drive-dom.coax's scripts, and each answer is compared with what the fixture is.
+//   coax/web/tool.sh drive-hit-check
+#import "Basic";
+#load "resident.coax";
+#load "drive-dom.coax";
+
+// 800 px wide; everything stands in the top 420 px, inside a headless window's page. `send` is the button a person means to press; `scrim` covers the whole window above it.
+HC_PAGE :: "<!doctype html><html><head><style>body{margin:0;font:16px sans-serif}button,a,input{position:absolute;margin:0;padding:0;border:0}#send{left:100px;top:100px;width:120px;height:48px}#scrim{position:fixed;left:0;top:0;width:800px;height:200px;background:rgba(0,0,0,.4)}#close{left:700px;top:20px;width:24px;height:24px}#help{left:400px;top:260px;width:100px;height:60px}#more{left:480px;top:290px;width:100px;height:60px}#name{left:100px;top:360px;width:200px;height:50px}#ghost{left:600px;top:360px;width:60px;height:60px;pointer-events:none}p{position:absolute;left:100px;top:220px;margin:0}</style></head><body><button id=\"send\">Send</button><input id=\"name\" aria-label=\"Name\"><button id=\"help\">Help</button><button id=\"more\">More</button><p>Read <a id=\"audit\" href=\"#a\" style=\"position:static\">the audit</a> first.</p><div id=\"ghost\">x</div><div id=\"scrim\"><button id=\"close\">x</button></div></body></html>";
+
+hc_has :: (s: string, part: string) -> bool { return dd_has(s, part); }
+hc_fail :: (what: string, got: string) -> bool { print("FAIL %:\n%\n", what, got); return false; }
+// Evaluates a script: its text into buf.
+hc_eval :: (c: [] Cdp, js: string, buf: [] u8) -> string {
+  n := media_value(c, js, buf);
+  return ifx n >= 0 then cast(string) buf[0..<n] else "";
+}
+hc_hit :: (c: [] Cdp, x: int, y: int, buf: [] u8, out: [] u8) -> string {
+  js: [16384] u8; page: [8192] u8;
+  pn := dd_put(page[..], 0, hc_eval(c, dd_hit_js(x, y, js[..]), buf));
+  return dd_hit_answer(x, y, cast(string) page[0..<pn], "", out);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  c: [1] Cdp;
+  if !cdp_launch(c[..], 800, 600, "coax-drive-hit-") { tool_err("drive-hit-check: "); tool_errln(cdp_error(c[..])); return 2; }
+  q: [8192] u8; k: [1] Jo;
+  // the fixture is the main frame's whole document
+  buf: [65536] u8; out: [8192] u8; js: [16384] u8; ok := true;
+  tree := cdp_call(c[..], "Page.getFrameTree", "{}", CDP_CALL_MS);
+  fb: [128] u8; frame := "";
+  if tree >= 0 { d := cdp_doc(c[..]); fn := jv_str(d, jv_path(d, tree, "frameTree.frame.id"), fb[..]); if fn > 0 { frame = cast(string) fb[0..<fn]; } }
+  if frame.count == 0 { tool_errln("drive-hit-check: no main frame"); cdp_close(c[..]); return 2; }
+  jo_start(k[..], q[..]); jo_obj(k[..]); jo_key(k[..], "frameId"); jo_str(k[..], frame); jo_key(k[..], "html"); jo_str(k[..], HC_PAGE); jo_end(k[..]);
+  if cdp_call(c[..], "Page.setDocumentContent", jo_text(k[..]), CDP_CALL_MS) < 0 { tool_err("drive-hit-check: "); tool_errln(cdp_error(c[..])); cdp_close(c[..]); return 2; }
+  if hc_eval(c[..], "String(!!document.getElementById('scrim') && innerWidth)", buf[..]) != "800" { tool_errln("drive-hit-check: the fixture page did not load at 800 px wide"); cdp_close(c[..]); return 2; }
+
+  // the scrim steals the click meant for Send: the scrim receives it, and Send is named as covered
+  a := hc_hit(c[..], 160, 124, buf[..], out[..]);
+  if a != "hit 160 124: scrim div \"x\" at 0 0 size 800x200\ncovered: send button \"Send\" at 100 100 size 120x48\n" { ok = hc_fail("a tap on Send lands on the scrim, and Send is covered", a); }
+  // the scrim's own button receives its tap; the scrim that holds it is not named as covered or under
+  a = hc_hit(c[..], 710, 30, buf[..], out[..]);
+  if a != "hit 710 30: close button \"x\" at 700 20 size 24x24\n" { ok = hc_fail("the scrim's close button takes its own tap", a); }
+  // below the scrim: a field takes its tap; where two buttons overlap the later one does and the earlier is covered
+  a = hc_hit(c[..], 150, 380, buf[..], out[..]);
+  if a != "hit 150 380: name input \"Name\" at 100 360 size 200x50\n" { ok = hc_fail("a field takes its own tap", a); }
+  a = hc_hit(c[..], 490, 300, buf[..], out[..]);
+  if a != "hit 490 300: more button \"More\" at 480 290 size 100x60\ncovered: help button \"Help\" at 400 260 size 100x60\n" { ok = hc_fail("the later of two overlapping buttons takes the tap; the earlier is covered", a); }
+  // a link's words are the link's; an element that takes no pointer is passed through; empty ground is nothing
+  a = hc_hit(c[..], 150, 228, buf[..], out[..]);
+  if !hc_has(a, ": audit a \"the audit\" at ") { ok = hc_fail("a tap on a link's words is the link's", a); }
+  a = hc_hit(c[..], 630, 390, buf[..], out[..]);
+  if a != "hit 630 390: nothing on the page (the point is outside the window, or only the page's ground is there)\n" { ok = hc_fail("pointer-events: none is passed through to the ground", a); }
+  a = hc_hit(c[..], 5000, 5000, buf[..], out[..]);
+  if !hc_has(a, "nothing on the page") { ok = hc_fail("a point outside the window is nothing", a); }
+
+  // the audit: Send covered by the scrim, Close under 44 px, Help and More overlap; the link in a line of words is not small
+  t := hc_eval(c[..], dd_taps_js(js[..]), buf[..]);
+  want := [5] string.["covered send by scrim\n", "small close 24x24\n", "overlap help and more\n", "taps: 6 targets, 1 under 44 px, 1 covered, 1 overlaps; 1 links in a line of words not judged small\n", "covered help by more\n"];
+  for i: 0..<4 { if !hc_has(t, want[i]) { ok = hc_fail(want[i], t); } }
+  if hc_has(t, "small audit") || hc_has(t, "small send") || hc_has(t, "covered close") || hc_has(t, "covered more") { ok = hc_fail("only the fixture's own faults are found", t); }
+  // Help's middle (450, 290) is its own: More starts at 480
+  if hc_has(t, want[4]) { ok = hc_fail("a button whose middle is clear is not covered", t); }
+
+  // the tree lists the targets with their ids, and a target is its middle
+  tr := hc_eval(c[..], dd_tree_js(js[..]), buf[..]);
+  if !hc_has(tr, "send button \"Send\" at 100 100 size 120x48\n") || !hc_has(tr, "close button \"x\" at 700 20 size 24x24\n") || !hc_has(tr, "name input \"Name\"") { ok = hc_fail("the tree lists the tap targets", tr); }
+  if hc_eval(c[..], dd_target_js("send", js[..]), buf[..]) != "160 124" { ok = hc_fail("a target is the element's middle", "send"); }
+  if !hc_has(hc_eval(c[..], dd_target_js("nope", js[..]), buf[..]), "no element with that id") { ok = hc_fail("an unknown id says so", "nope"); }
+
+  // with the scrim gone, Send takes its own tap and nothing is covered
+  if hc_eval(c[..], "(() => { document.getElementById('scrim').remove(); return 'gone'; })()", buf[..]) != "gone" { ok = hc_fail("the scrim is taken away", "it wasn't"); }
+  a = hc_hit(c[..], 160, 124, buf[..], out[..]);
+  if a != "hit 160 124: send button \"Send\" at 100 100 size 120x48\n" { ok = hc_fail("without the scrim Send takes its own tap", a); }
+  t = hc_eval(c[..], dd_taps_js(js[..]), buf[..]);
+  if !hc_has(t, "taps: 5 targets, 0 under 44 px, 0 covered, 1 overlaps") { ok = hc_fail("without the scrim nothing is covered or small", t); }
+
+  cdp_close(c[..]);
+  print("drive-hit-check: % (headless Chrome, a fixture page: an overlay that steals a click, a small target, two that overlap)\n", ifx ok then "pass" else "FAILED");
+  return ifx ok then 0 else 1;
+}

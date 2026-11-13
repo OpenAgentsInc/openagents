@@ -1,0 +1,134 @@
+// What a tap lands on in a page the browser draws (GitHub #13433): the chat, the settings pages and
+// the editor's shell are built from one set of components (components/kit/frames.coax) and drawn
+// as elements (coax/web/dom-host.js), so the browser's own hit test is the truth there. coax drive
+// (drive.coax) evaluates these scripts in the page; each answers a text. They read the page and
+// change nothing.
+//
+// A tap target is what a person can press: a button, a link, a field, a tab, anything with a
+// button's role or a tab stop (DD_TARGETS). A tap on a button's words is the button's.
+//   coax/web/tool.sh drive-hit-check      (headless Chrome on a fixture page: an overlay that steals clicks)
+//   coax/bin/coax test coax/web/drive-dom.coax --library
+
+DD_TAP :: 44;    // CSS px: the least a tap target may be either way (metaverse-engine/ui/trace.coax UIT_TAP)
+
+// The scripts share these: T, the selector of tap targets; name, an element's id (or the nearest
+// one above it and its tag); line, "ID ROLE \"LABEL\" at X Y size WxH" as the engine's tree prints a widget.
+DD_LIB :: "const T = 'button,a[href],input:not([type=hidden]),textarea,select,summary,[role=button],[role=link],[role=tab],[role=menuitem],[role=option],[role=checkbox],[role=switch],[tabindex]:not([tabindex=\"-1\"]),[contenteditable=\"\"],[contenteditable=true]'; const name = (e) => { if (e.id) return e.id; const up = e.parentElement && e.parentElement.closest('[id]'); return (up ? up.id + '>' : '') + e.tagName.toLowerCase(); }; const line = (e) => { const r = e.getBoundingClientRect(); const label = (e.getAttribute('aria-label') || e.value || e.textContent || '').trim().replace(/\\s+/g, ' ').replace(/\"/g, \"'\").slice(0, 40); return name(e) + ' ' + (e.getAttribute('role') || e.tagName.toLowerCase()) + ' \"' + label + '\" at ' + Math.round(r.left) + ' ' + Math.round(r.top) + ' size ' + Math.round(r.width) + 'x' + Math.round(r.height); }; ";
+
+// hit: the first character says who decides: 'C' a canvas is on top (the engine's HUD decides: ask
+// it), 'c' an element is on top and a canvas lies under it, '-' no canvas there. Then the answer:
+//   ID ROLE "LABEL" at X Y size WxH            what receives the tap
+//   covered: ...                               a tap target under it that the tap doesn't reach
+//   over: ...                                  something else under it that isn't what holds it
+DD_HIT_HEAD :: "(() => { ";
+DD_HIT_TAIL :: "; const all = document.elementsFromPoint(X, Y).filter((e) => e !== document.documentElement && e !== document.body); if (!all.length) return '-nothing on the page (the point is outside the window, or only the page\\'s ground is there)\\n'; const top = all[0], got = top.closest(T) || top; const canvas = all.find((e) => e.tagName === 'CANVAS'); let out = (top.tagName === 'CANVAS' ? 'C' : canvas ? 'c' : '-') + line(got) + '\\n', more = 0; for (const e of all) { if (e === got || got.contains(e) || e.contains(got)) continue; const t = e.closest(T); if (t && t !== e && all.includes(t)) continue; if (more >= 12) { more++; continue; } more++; out += (e.matches(T) ? 'covered: ' : 'over: ') + line(e) + '\\n'; } if (more > 12) out += '(and ' + (more - 12) + ' more under it)\\n'; return out; })()";
+
+// taps: every tap target that shows, audited. A finding a line, then the count:
+//   small ID WxH               under DD_TAP CSS px either way
+//   covered ID by ID2          a tap at its middle lands on ID2 (an overlay that steals the click)
+//   overlap ID and ID2         two targets share area and neither holds the other
+// A link inside a line of words is not judged small (it is as tall as its line); a target whose
+// middle is off the window is not judged covered (it is scrolled away).
+DD_TAPS_HEAD :: "(() => { ";
+DD_TAPS_TAIL :: "; const shows = (e) => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && !e.disabled; }; const els = [...document.querySelectorAll(T)].filter(shows); let small = 0, covered = 0, overlaps = 0, off = 0, inline = 0; const lines = []; const say = (t) => { if (lines.length < 64) lines.push(t); }; const boxes = []; for (const e of els) { const r = e.getBoundingClientRect(); const cx = r.left + r.width / 2, cy = r.top + r.height / 2; const on = cx >= 0 && cy >= 0 && cx < innerWidth && cy < innerHeight; if (getComputedStyle(e).display === 'inline') inline++; else if (r.width < TAP - 1 || r.height < TAP - 1) { small++; say('small ' + name(e) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)); } if (!on) { off++; continue; } boxes.push([e, r]); const top = document.elementFromPoint(cx, cy); if (top && top !== e && !e.contains(top)) { covered++; say('covered ' + name(e) + ' by ' + name(top.closest(T) || top)); } } for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) { const [a, ra] = boxes[i], [b, rb] = boxes[j]; if (a.contains(b) || b.contains(a)) continue; const w = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left), h = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top); if (w > 1 && h > 1) { overlaps++; say('overlap ' + name(a) + ' and ' + name(b)); } } const found = small + covered + overlaps; return lines.map((t) => t + '\\n').join('') + 'taps: ' + els.length + ' targets, ' + small + ' under ' + TAP + ' px, ' + covered + ' covered, ' + overlaps + ' overlaps' + (found > lines.length ? ' (the first ' + lines.length + ' listed)' : '') + (inline ? '; ' + inline + ' links in a line of words not judged small' : '') + (off ? '; ' + off + ' off the window not judged covered' : '') + '\\n'; })()";
+
+// tree: the tap targets that show, a line each, as the engine's tree prints its widgets.
+DD_TREE_HEAD :: "(() => { ";
+DD_TREE_TAIL :: "; const els = [...document.querySelectorAll(T)].filter((e) => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; }); return els.length ? els.slice(0, 400).map((e) => line(e) + '\\n').join('') + (els.length > 400 ? '(and ' + (els.length - 400) + ' more)\\n' : '') : '(no tap targets show on this page)\\n'; })()";
+
+// target: the middle of the element with this id, "x y", or why there is none.
+DD_TARGET_HEAD :: "(() => { const e = document.getElementById(";
+DD_TARGET_TAIL :: "); if (!e) return 'no element with that id on the page (tree lists them)'; const r = e.getBoundingClientRect(); if (!(r.width > 0 && r.height > 0)) return 'that element does not show'; return Math.round(r.left + r.width / 2) + ' ' + Math.round(r.top + r.height / 2); })()";
+
+// Whether the page is one the browser draws (dom-host.js), with no engine driver of its own.
+DD_IS_DOM :: "(() => globalThis.coaxial?.drive ? 'engine' : document.querySelector('script[data-app][src*=\"dom-host\"]') ? 'dom' : 'plain')()";
+
+dd_put :: (out: [] u8, at: int, t: string) -> int { n := at; for c: t { if n < out.count { out[n] = c; n += 1; } } return n; }
+dd_int :: (out: [] u8, at: int, v: int) -> int {
+  n := at; x := v;
+  if x < 0 { n = dd_put(out, n, "-"); x = -x; }
+  d: [20] u8; c := 0;
+  while true { d[c] = cast(u8) ('0' + x % 10); c += 1; x /= 10; if x == 0 { break; } }
+  while c > 0 { c -= 1; if n < out.count { out[n] = d[c]; n += 1; } }
+  return n;
+}
+// The hit script for a point, CSS px.
+dd_hit_js :: (x: int, y: int, out: [] u8) -> string {
+  n := dd_put(out, 0, DD_HIT_HEAD); n = dd_put(out, n, DD_LIB);
+  n = dd_put(out, n, "const X = "); n = dd_int(out, n, x); n = dd_put(out, n, ", Y = "); n = dd_int(out, n, y);
+  n = dd_put(out, n, DD_HIT_TAIL);
+  return cast(string) out[0..<n];
+}
+dd_taps_js :: (out: [] u8) -> string {
+  n := dd_put(out, 0, DD_TAPS_HEAD); n = dd_put(out, n, DD_LIB);
+  n = dd_put(out, n, "const TAP = "); n = dd_int(out, n, DD_TAP);
+  n = dd_put(out, n, DD_TAPS_TAIL);
+  return cast(string) out[0..<n];
+}
+dd_tree_js :: (out: [] u8) -> string {
+  n := dd_put(out, 0, DD_TREE_HEAD); n = dd_put(out, n, DD_LIB); n = dd_put(out, n, "const Z = 0");
+  n = dd_put(out, n, DD_TREE_TAIL);
+  return cast(string) out[0..<n];
+}
+// The target script for an id: quoted as a JavaScript string (an id with a quote or a backslash is refused: "").
+dd_target_js :: (id: string, out: [] u8) -> string {
+  if id.count == 0 || id.count > 200 { return ""; }
+  for c: id { if c == '"' || c == '\\' || c < 32 { return ""; } }
+  n := dd_put(out, 0, DD_TARGET_HEAD); n = dd_put(out, n, "\""); n = dd_put(out, n, id); n = dd_put(out, n, "\"");
+  n = dd_put(out, n, DD_TARGET_TAIL);
+  return cast(string) out[0..<n];
+}
+// A whole number of CSS px from a word: -1 when it isn't one (0 to 99999).
+dd_px :: (w: string) -> int {
+  if w.count == 0 || w.count > 5 { return -1; }
+  v := 0;
+  for c: w { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+// The `hit` answer from the page's part (its first character the mark) and the engine's ("" when it
+// has no driver): "hit X Y: " and the lines. A canvas on top hands the answer to the engine's HUD;
+// an element over a canvas is the receiver, and what the HUD has there is named under it.
+dd_hit_answer :: (x: int, y: int, page: string, engine: string, out: [] u8) -> string {
+  head: [48] u8; hn := dd_put(head[..], 0, "hit "); hn = dd_int(head[..], hn, x); hn = dd_put(head[..], hn, " "); hn = dd_int(head[..], hn, y); hn = dd_put(head[..], hn, ": ");
+  h := cast(string) head[0..<hn];
+  mark: u8 = ifx page.count > 0 then page[0] else '-';
+  body := ifx page.count > 0 then page[1..<page.count] else "the page gave no answer\n";
+  // the engine's own answer starts with the same head: keep what follows it
+  rest := engine;
+  if engine.count >= h.count && engine[0..<h.count] == h { rest = engine[h.count..<engine.count]; }
+  if mark == 'C' && engine.count > 0 { n := dd_put(out, 0, h); n = dd_put(out, n, rest); return cast(string) out[0..<n]; }
+  n := dd_put(out, 0, h); n = dd_put(out, n, body);
+  if mark == 'c' && engine.count > 0 { n = dd_put(out, n, "under it, in the canvas: "); n = dd_put(out, n, rest); }
+  return cast(string) out[0..<n];
+}
+
+dd_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+#test "the scripts carry the point, the tap size and the id, and refuse an id that would break out of its quotes" {
+  b: [8192] u8;
+  js := dd_hit_js(120, 300, b[..]);
+  #assert js.count > DD_LIB.count && js.count < b.count;
+  #assert dd_has(js, "const X = 120, Y = 300; const all = document.elementsFromPoint(X, Y)") && dd_has(js, "const T = 'button,a[href]");
+  t := dd_taps_js(b[..]);
+  #assert dd_has(t, "const TAP = 44; const shows") && t.count < b.count;
+  #assert dd_has(dd_tree_js(b[..]), "document.querySelectorAll(T)");
+  #assert dd_has(dd_target_js("send", b[..]), "document.getElementById(\"send\"); if (!e)");
+  #assert dd_target_js("", b[..]) == "" && dd_target_js("a\"b", b[..]) == "" && dd_target_js("a\\b", b[..]) == "" && dd_target_js("a\nb", b[..]) == "";
+  #assert dd_px("0") == 0 && dd_px("1280") == 1280 && dd_px("-1") == -1 && dd_px("") == -1 && dd_px("123456") == -1 && dd_px("1.5") == -1;
+}
+#test "who answers a hit: the page's element, the engine's HUD under a canvas, or both" {
+  o: [1024] u8;
+  // no canvas: the page's lines
+  #assert dd_hit_answer(10, 20, "-send button \"Send\" at 0 0 size 80x44\n", "", o[..]) == "hit 10 20: send button \"Send\" at 0 0 size 80x44\n";
+  // a canvas on top and an engine: the HUD's answer, its head not said twice
+  #assert dd_hit_answer(10, 20, "Ccoaxial canvas \"\" at 0 0 size 1280x720\n", "hit 10 20: bar.fire-bolt button \"Fire Bolt\" at 0 0 size 50x50\n", o[..]) == "hit 10 20: bar.fire-bolt button \"Fire Bolt\" at 0 0 size 50x50\n";
+  // a canvas on top and no engine driver: the canvas is the answer
+  #assert dd_hit_answer(10, 20, "Ccoaxial canvas \"\" at 0 0 size 1280x720\n", "", o[..]) == "hit 10 20: coaxial canvas \"\" at 0 0 size 1280x720\n";
+  // an element over the canvas steals the tap from the HUD: both are named
+  #assert dd_hit_answer(10, 20, "cnotice div \"Update\" at 0 0 size 400x60\nover: coaxial canvas \"\" at 0 0 size 1280x720\n", "hit 10 20: bar.fire-bolt button \"Fire Bolt\" at 0 0 size 50x50\n", o[..])
+    == "hit 10 20: notice div \"Update\" at 0 0 size 400x60\nover: coaxial canvas \"\" at 0 0 size 1280x720\nunder it, in the canvas: bar.fire-bolt button \"Fire Bolt\" at 0 0 size 50x50\n";
+  #assert dd_hit_answer(1, 2, "", "", o[..]) == "hit 1 2: the page gave no answer\n";
+}

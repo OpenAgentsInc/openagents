@@ -54,7 +54,6 @@ Drive :: struct {
 // Which way to go this frame: a unit direction on the ground (x, z), and whether to press now.
 DrvSteer :: struct { go: bool; dx: f32; dz: f32; press: bool; dist: f32 = -1; }
 
-
 // ---- text
 drv_put_s :: (out: [] u8, at: int, t: string) -> int { return uit_text_put(out, at, t); }
 drv_put_i :: (out: [] u8, at: int, v: int) -> int { return uit_int(out, at, v); }
@@ -245,6 +244,132 @@ drv_target :: (d: [] Drive, id: string) -> string {
   if drv_find(d, id) >= 0 { return drv_say3(d, "no widget: ", id, " is in the world; use walk-to, face or use ... on it"); }
   return drv_say3(d, "no widget: no ", id, " in the tree");
 }
+// One widget's line: `bar.fire-bolt button "Fire Bolt" at 96 280 size 48x48`, CSS px.
+drv_widget_line :: (d: [] Drive, i: int, out: [] u8, at: int) -> int {
+  t := d[0].trace[..]; r := t[0].rects[i];
+  n := drv_hud_id(t, i, out, at); n = drv_put_s(out, n, " "); n = drv_put_s(out, n, drv_uit_kind(r.kind));
+  n = drv_put_s(out, n, " \""); n = drv_put_s(out, n, cast(string) r.name[0..<r.name_n]); n = drv_put_s(out, n, "\"");
+  n = drv_rect(out, n, r, d[0].view.k);
+  if r.debug { n = drv_put_s(out, n, " (developer)"); }
+  return n;
+}
+DRV_HIT_MAX :: 16;    // widgets one `hit` names at a point
+// `hit X Y` (CSS px; GitHub #13433): what receives a tap at the point, what it is drawn over, and the
+// buttons there that the tap doesn't reach.
+//   hit 120 300: bar.fire-bolt button "Fire Bolt" at 96 280 size 48x48
+//   over: bar.frame panel "frame" at 80 270 size 400x70
+//   covered: shop.buy button "Buy" at 100 290 size 60x44
+// `over` is what lies under the receiver and isn't a button of its own; `covered` is a button under
+// it that is not the receiver: a tap meant for it lands on the receiver instead.
+drv_hit :: (d: [] Drive, x: int, y: int) -> string {
+  out := d[0].out[..]; t := d[0].trace[..]; k := d[0].view.k;
+  n := drv_put_s(out, 0, "hit "); n = drv_put_i(out, n, x); n = drv_put_s(out, n, " "); n = drv_put_i(out, n, y); n = drv_put_s(out, n, ": ");
+  at: [DRV_HIT_MAX] int;
+  // the middle of the CSS pixel, in device px
+  m := uit_at(t, (cast(f32) x + 0.5) * k, (cast(f32) y + 0.5) * k, at[..]);
+  if m == 0 { return drv_say(d, drv_put_s(out, n, "nothing in the HUD (the world takes the tap)\n")); }
+  got := uit_taker(t, at[0]);
+  n = drv_widget_line(d, got, out, n); n = drv_put_s(out, n, "\n");
+  shown := ifx m < DRV_HIT_MAX then m else DRV_HIT_MAX;
+  for j: 0..<shown {
+    i := at[j];
+    if i == got || uit_holds(t, got, i) { continue; }      // the receiver, and what it holds (its words)
+    // a covered button's words are named by the button, once
+    tk := uit_taker(t, i); listed := false;
+    if tk != i { for q: 0..<shown { if at[q] == tk { listed = true; } } }
+    if listed { continue; }
+    covered := t[0].rects[i].kind == UIT_BUTTON && !uit_holds(t, i, got);
+    n = drv_put_s(out, n, ifx covered then "covered: " else "over: "); n = drv_widget_line(d, i, out, n); n = drv_put_s(out, n, "\n");
+  }
+  if m > shown { n = drv_put_s(out, n, "(and "); n = drv_put_i(out, n, m - shown); n = drv_put_s(out, n, " more under it)\n"); }
+  return drv_say(d, n);
+}
+DRV_TAPS_MAX :: 64;   // findings one `taps` lists
+// `taps` (GitHub #13433): the HUD's tap targets audited, a finding a line, then the count.
+//   small ID WxH               a button under UIT_TAP CSS px either way (a thumb misses it)
+//   covered ID by ID2          a tap at the button's middle lands on ID2, drawn over it
+//   overlap ID and ID2         two widgets share area and neither holds the other (uit_check)
+// A developer's tool (uit_debug) is left out.
+drv_taps :: (d: [] Drive) -> string {
+  out := d[0].out[..]; t := d[0].trace[..]; k := d[0].view.k;
+  n := 0; buttons := 0; small := 0; covered := 0; overlaps := 0; lines := 0;
+  slack := UIT_SLACK * k; tap := UIT_TAP * k;
+  for i: 0..<t[0].n {
+    r := t[0].rects[i];
+    if r.kind != UIT_BUTTON || r.debug || uit_empty(r) { continue; }
+    buttons += 1;
+    if r.x1 - r.x0 < tap - slack || r.y1 - r.y0 < tap - slack {
+      small += 1;
+      if lines < DRV_TAPS_MAX {
+        lines += 1;
+        n = drv_put_s(out, n, "small "); n = drv_hud_id(t, i, out, n); n = drv_put_s(out, n, " ");
+        n = drv_put_i(out, n, drv_css(r.x1 - r.x0, k)); n = drv_put_s(out, n, "x"); n = drv_put_i(out, n, drv_css(r.y1 - r.y0, k)); n = drv_put_s(out, n, "\n");
+      }
+    }
+    by := uit_covered_by(t, i);
+    if by != UIT_NONE && !t[0].rects[by].debug && !uit_holds(t, i, by) {
+      covered += 1;
+      if lines < DRV_TAPS_MAX {
+        lines += 1;
+        n = drv_put_s(out, n, "covered "); n = drv_hud_id(t, i, out, n); n = drv_put_s(out, n, " by "); n = drv_hud_id(t, by, out, n); n = drv_put_s(out, n, "\n");
+      }
+    }
+  }
+  f: [DRV_TAPS_MAX] UitFinding;
+  found := uit_check(t, d[0].view, f[..]);
+  for j: 0..<(ifx found < f.count then found else f.count) {
+    if f[j].what != UIT_OVERLAP || uit_debug_finding(t, f[j]) { continue; }
+    overlaps += 1;
+    if lines < DRV_TAPS_MAX {
+      lines += 1;
+      n = drv_put_s(out, n, "overlap "); n = drv_hud_id(t, f[j].a, out, n); n = drv_put_s(out, n, " and "); n = drv_hud_id(t, f[j].b, out, n); n = drv_put_s(out, n, "\n");
+    }
+  }
+  n = drv_put_s(out, n, "taps: "); n = drv_put_i(out, n, buttons); n = drv_put_s(out, n, " buttons, "); n = drv_put_i(out, n, small); n = drv_put_s(out, n, " under ");
+  n = drv_put_i(out, n, cast(int) UIT_TAP); n = drv_put_s(out, n, " px, "); n = drv_put_i(out, n, covered); n = drv_put_s(out, n, " covered, "); n = drv_put_i(out, n, overlaps); n = drv_put_s(out, n, " overlaps");
+  if small + covered + overlaps > lines { n = drv_put_s(out, n, " (the first "); n = drv_put_i(out, n, lines); n = drv_put_s(out, n, " listed)"); }
+  return drv_say(d, drv_put_s(out, n, "\n"));
+}
+// A whole number of CSS px from a word: -1 when it isn't one (0 to 99999).
+drv_px :: (w: string) -> int {
+  if w.count == 0 || w.count > 5 { return -1; }
+  v := 0;
+  for c: w { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+#test "hit names what receives a tap and what it covers; taps lists small, covered and overlapping buttons" {
+  d: [1] Drive; d[0].on = true; drv_frame(d[..], 800, 400, 2, false);
+  t := drv_trace(d[..]);
+  uit_part(t, "bar"); p := uit_put(t, UIT_NONE, UIT_PANEL, 0, 0, 400, 200, "frame");
+  b := uit_put(t, p, UIT_BUTTON, 20, 20, 120, 120, "Fire Bolt"); uit_add(t, b, UIT_TEXT, 30, 60, 110, 80, "Fire Bolt");
+  uit_add(t, p, UIT_BUTTON, 140, 20, 240, 120, "Shield");
+  // on the button's words: the button receives; the panel is under it
+  #assert drv_hit(d[..], 20, 35) == "hit 20 35: bar.fire-bolt button \"Fire Bolt\" at 10 10 size 50x50\nover: bar.frame panel \"frame\" at 0 0 size 200x100\n";
+  #assert drv_hit(d[..], 150, 80) == "hit 150 80: bar.frame panel \"frame\" at 0 0 size 200x100\n";
+  #assert drv_hit(d[..], 300, 150) == "hit 300 150: nothing in the HUD (the world takes the tap)\n" && drv_said(d[..]) == "hit 300 150: nothing in the HUD (the world takes the tap)\n";
+  #assert drv_taps(d[..]) == "taps: 2 buttons, 0 under 44 px, 0 covered, 0 overlaps\n";
+  // an overlay drawn over the bar steals the click: the scrim receives, and the button is covered
+  uit_part(t, "dialog"); o := uit_put(t, UIT_NONE, UIT_PANEL, 0, 0, 800, 400, "scrim");
+  #assert drv_hit(d[..], 20, 35) == "hit 20 35: dialog.scrim panel \"scrim\" at 0 0 size 400x200\ncovered: bar.fire-bolt button \"Fire Bolt\" at 10 10 size 50x50\nover: bar.frame panel \"frame\" at 0 0 size 200x100\n";
+  // a small button on the scrim, and one that overlaps it
+  uit_add(t, o, UIT_BUTTON, 600, 20, 660, 80, "Close"); uit_add(t, o, UIT_BUTTON, 640, 40, 760, 160, "Help");
+  taps := drv_taps(d[..]);
+  #assert cp_has(taps, "covered bar.fire-bolt by dialog.scrim\n") && cp_has(taps, "covered bar.shield by dialog.scrim\n") && cp_has(taps, "small dialog.close 30x30\n") && cp_has(taps, "overlap dialog.close and dialog.help\n");
+  #assert cp_has(taps, "overlap bar.frame and dialog.scrim\n") && cp_has(taps, "taps: 4 buttons, 1 under 44 px, 2 covered, 2 overlaps\n") && !cp_has(taps, "small dialog.help") && !cp_has(taps, "covered dialog.");
+  // a tap on the two overlapping buttons' shared area: the later one receives, the earlier is covered
+  #assert cp_has(drv_hit(d[..], 325, 30), "hit 325 30: dialog.help button \"Help\" at 320 20 size 60x60\ncovered: dialog.close button \"Close\" at 300 10 size 30x30\nover: dialog.scrim panel");
+  // a developer's tool is named in a hit and left out of the audit
+  uit_debug(t); uit_add(t, UIT_NONE, UIT_BUTTON, 700, 300, 720, 320, "fps");
+  #assert cp_has(drv_hit(d[..], 355, 155), "button \"fps\" at 350 150 size 10x10 (developer)\n") && cp_has(drv_taps(d[..]), "taps: 4 buttons, 1 under 44 px");
+  // through the command, with its faults
+  #assert drv_command(d[..], "hit 300 150", 0) == "hit 300 150: dialog.scrim panel \"scrim\" at 0 0 size 400x200\n" && cp_has(drv_command(d[..], "taps", 0), "taps: 4 buttons");
+  #assert drv_command(d[..], "hit", 0) == "hit takes a point in CSS px: hit X Y" && drv_command(d[..], "hit 1", 0) == "hit takes a point in CSS px: hit X Y" && drv_command(d[..], "hit a 1", 0) == "hit takes a point in CSS px: hit X Y" && drv_command(d[..], "hit 1 -2", 0) == "hit takes a point in CSS px: hit X Y";
+  #assert drv_px("0") == 0 && drv_px("99999") == 99999 && drv_px("100000") == -1 && drv_px("") == -1 && drv_px("1.5") == -1;
+  // more findings than are listed: all counted
+  e: [1] Drive; e[0].on = true; drv_frame(e[..], 4000, 4000, 1, false);
+  for i: 0..<70 { uit_add(drv_trace(e[..]), UIT_NONE, UIT_BUTTON, cast(f32) i * 50, 0, cast(f32) i * 50 + 20, 20, "x"); }
+  #assert cp_has(drv_taps(e[..]), "taps: 70 buttons, 70 under 44 px, 0 covered, 0 overlaps (the first 64 listed)\n");
+}
 #test "the tree lists you, the rest in the realm's order, then the HUD with ids" {
   d: [1] Drive; d[0].on = true; drv_frame(d[..], 400, 200, 2, false);
   drv_add(d[..], DRV_PLAYER, "you", -1, "Ash", 1, 0, -1, 10, 12, false);
@@ -358,6 +483,12 @@ drv_command :: (d: [] Drive, text: string, now: f32) -> string {
   if op == "status" { return drv_status(d); }
   if op == "quiet" { return drv_quiet(d); }
   if op == "target" { return drv_target(d, drv_word(text, 1)); }
+  if op == "taps" { return drv_taps(d); }
+  if op == "hit" {
+    x := drv_px(drv_word(text, 1)); y := drv_px(drv_word(text, 2));
+    if x < 0 || y < 0 { return drv_say3(d, "hit takes a point in CSS px: hit X Y", "", ""); }
+    return drv_hit(d, x, y);
+  }
   if op == "stop" { d[0].op = DRV_NONE; drv_end(d, DRV_IDLE, "stopped", "", ""); return drv_status(d); }
   kind := DRV_NONE; id := drv_word(text, 1); ability := "";
   if op == "walk-to" { kind = DRV_WALK; }
@@ -367,7 +498,7 @@ drv_command :: (d: [] Drive, text: string, now: f32) -> string {
     kind = DRV_USE; ability = drv_word(text, 1); id = drv_word(text, 3);
     if drv_word(text, 2) != "on" || ability.count == 0 || id.count == 0 { return drv_say3(d, "use takes an ability and a target: use ABILITY on ID", "", ""); }
   }
-  if kind == DRV_NONE { return drv_say3(d, "unknown operation '", op, "'; operations: tree, layout, target ID, status, walk-to ID, face ID, use ABILITY on ID, mount ID, stop"); }
+  if kind == DRV_NONE { return drv_say3(d, "unknown operation '", op, "'; operations: tree, layout, target ID, hit X Y, taps, status, walk-to ID, face ID, use ABILITY on ID, mount ID, stop"); }
   if id.count == 0 { return drv_say3(d, op, " takes an id from the tree", ""); }
   if drv_find(d, id) < 0 {
     out := d[0].out[..];
@@ -415,7 +546,7 @@ drv_no_ability :: (d: [] Drive, names: string) { drv_end(d, DRV_FAILED, "no slot
 
 #test "commands start world operations and answer at once" {
   d: [1] Drive;
-  #assert drv_command(d[..], "dance", 0) == "unknown operation 'dance'; operations: tree, layout, target ID, status, walk-to ID, face ID, use ABILITY on ID, mount ID, stop" && d[0].on;
+  #assert drv_command(d[..], "dance", 0) == "unknown operation 'dance'; operations: tree, layout, target ID, hit X Y, taps, status, walk-to ID, face ID, use ABILITY on ID, mount ID, stop" && d[0].on;
   #assert cp_has(drv_said(d[..]), "'dance'; operations");
   drv_frame(d[..], 100, 100, 1, false);
   drv_add(d[..], DRV_PLAYER, "you", -1, "Ash", 0, 0, 0, 10, 12, false);

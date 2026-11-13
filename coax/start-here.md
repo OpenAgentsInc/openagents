@@ -70,10 +70,17 @@ coax/web/tool.sh drive web apps/openagents-web /worlds/everglade-ii \
 The arguments are the host (`web`), the app directory, the page path, and
 then the operations.
 
+A page the browser draws (the chat at `/chat`, `/components`, the editor's
+shell: the frames set through `coax/web/dom-host.js`) has no world. There the
+driver reads the page's elements, by their ids, and takes `tree`, `hit`,
+`taps`, `tap`, `type`, `screenshot`, `logs` and `prefer`.
+
 | Operation | What it does |
 | --- | --- |
 | `tree` | Lists what is on screen and in the world, with stable ids, roles, labels and rectangles: HUD widgets, the player, monsters, characters, mounts and placed objects (`goblin-3`, `guard`, `horse-white`, `door-north`) |
 | `screenshot FILE` | Writes a PNG of the page |
+| `hit X Y` | Names what receives a tap at a point (CSS px), what it is drawn over, and any tap target there that it covers: an overlay that steals a click shows as `covered:`. A page's elements answer by the browser's own hit test; where a canvas is on top, the HUD answers |
+| `taps` | Audits every tap target: `small` (under 44 px either way), `covered` (a tap at its middle lands on something else) and `overlap`. It works on a realm's HUD and on pages the browser draws (the chat, the editor's shell) |
 | `tap ID` | Taps the centre of the node with that id |
 | `type ID TEXT` | Types text into a field |
 | `why ID` | Says why a thing isn't seen, reached or working: the first failed link of state, spawned, view, drawn, asset, collider and system, with the field, the expected and actual values, and whether a retry can help. `why caps` lists the limits the engine applied. The codes are in `proto/verse/engine-diagnostics-v1.json`. Splice answers it first (`you`, `piece-N`, `foe-N`, `rubble`, `boss-wall`) |

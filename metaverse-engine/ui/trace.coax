@@ -139,6 +139,76 @@ uit_clash :: (t: [] UitTrace, a: int, b: int, slack: f32) -> bool {
   if uit_empty(t[0].rects[a]) || uit_empty(t[0].rects[b]) || !uit_meet(t[0].rects[a], t[0].rects[b], slack) { return false; }
   return !uit_holds(t, a, b) && !uit_holds(t, b, a);
 }
+// ---- what a tap lands on (GitHub #13433)
+// The widgets at point (x, y), device px, the one drawn last first: a later widget is drawn over an
+// earlier one, so it is the one a tap meets. Into `out` (the first out.count of them); how many there are.
+uit_at :: (t: [] UitTrace, x: f32, y: f32, out: [] int) -> int {
+  if t.count == 0 { return 0; }
+  n := 0;
+  for k: 0..<t[0].n {
+    i := t[0].n - 1 - k; r := t[0].rects[i];
+    if uit_empty(r) || x < r.x0 || x >= r.x1 || y < r.y0 || y >= r.y1 { continue; }
+    if n < out.count { out[n] = i; }
+    n += 1;
+  }
+  return n;
+}
+// What takes a tap that lands on widget i: the nearest button that is i or holds it (a button's
+// words are the button's), else i itself.
+uit_taker :: (t: [] UitTrace, i: int) -> int {
+  at := i;
+  for step: 0..<UIT_MAX {
+    if at == UIT_NONE { return i; }
+    if t[0].rects[at].kind == UIT_BUTTON { return at; }
+    at = t[0].rects[at].parent;
+  }
+  return i;
+}
+// What receives a tap at (x, y): the taker of the topmost widget there, or UIT_NONE (the world).
+uit_receives :: (t: [] UitTrace, x: f32, y: f32) -> int {
+  top: [1] int;
+  if uit_at(t, x, y, top[..]) == 0 { return UIT_NONE; }
+  return uit_taker(t, top[0]);
+}
+// The widget that takes the tap meant for button i's middle when it isn't i: something drawn over
+// it (an overlay that steals the click). UIT_NONE when i takes its own tap.
+uit_covered_by :: (t: [] UitTrace, i: int) -> int {
+  r := t[0].rects[i];
+  if uit_empty(r) { return UIT_NONE; }
+  got := uit_receives(t, (r.x0 + r.x1) * 0.5, (r.y0 + r.y1) * 0.5);
+  return ifx got == i || got == UIT_NONE then UIT_NONE else got;
+}
+#test "a tap lands on the widget drawn last; a button's words are the button's; an overlay steals the click" {
+  t: [1] UitTrace; at: [8] int;
+  uit_part(t[..], "bar");
+  p := uit_put(t[..], UIT_NONE, UIT_PANEL, 0, 0, 200, 100, "frame");
+  b := uit_put(t[..], p, UIT_BUTTON, 10, 10, 60, 60, "Fire Bolt");
+  w := uit_put(t[..], b, UIT_TEXT, 14, 30, 56, 40, "Fire Bolt");
+  c := uit_put(t[..], p, UIT_BUTTON, 70, 10, 120, 60, "Shield");
+  // on the words: the words, the button, the panel, topmost first; the button takes the tap
+  #assert uit_at(t[..], 20, 35, at[..]) == 3 && at[0] == w && at[1] == b && at[2] == p && uit_receives(t[..], 20, 35) == b;
+  #assert uit_at(t[..], 12, 12, at[..]) == 2 && at[0] == b && uit_receives(t[..], 12, 12) == b;
+  // the panel alone takes a tap on its own ground; past every widget nothing does
+  #assert uit_receives(t[..], 150, 80) == p && uit_receives(t[..], 300, 80) == UIT_NONE && uit_at(t[..], 300, 80, at[..]) == 0;
+  // edges: the left and top are in, the right and bottom are out
+  #assert uit_receives(t[..], 10, 10) == b && uit_receives(t[..], 60, 10) == p && uit_receives(t[..], 10, 60) == p;
+  #assert uit_covered_by(t[..], b) == UIT_NONE && uit_covered_by(t[..], c) == UIT_NONE;
+  // a dialog's scrim drawn over the bar takes every tap meant for the bar's buttons
+  uit_part(t[..], "dialog");
+  o := uit_put(t[..], UIT_NONE, UIT_PANEL, 0, 0, 200, 100, "scrim");
+  #assert uit_receives(t[..], 20, 35) == o && uit_covered_by(t[..], b) == o && uit_covered_by(t[..], c) == o && uit_at(t[..], 20, 35, at[..]) == 4 && at[0] == o;
+  // its own button, drawn after it, is not covered
+  k := uit_put(t[..], o, UIT_BUTTON, 80, 30, 130, 80, "Close");
+  #assert uit_covered_by(t[..], k) == UIT_NONE && uit_covered_by(t[..], c) == k && uit_taker(t[..], o) == o && uit_taker(t[..], w) == b;
+  // more at a point than the caller has room for: all counted, the first kept
+  one: [1] int;
+  #assert uit_at(t[..], 100, 40, one[..]) == 4 && one[0] == k;
+  // an empty widget is nowhere; no trace attached answers nothing
+  e := uit_put(t[..], UIT_NONE, UIT_BUTTON, 150, 80, 150, 90, "gone");
+  #assert uit_covered_by(t[..], e) == UIT_NONE && uit_receives(t[..], 150, 85) == o;
+  none: [1] UitTrace;
+  #assert uit_at(none[0..<0], 1, 1, at[..]) == 0 && uit_receives(none[0..<0], 1, 1) == UIT_NONE;
+}
 // Whether a finding involves a developer's tool.
 uit_debug_finding :: (t: [] UitTrace, g: UitFinding) -> bool {
   return (g.a != UIT_NONE && t[0].rects[g.a].debug) || (g.b != UIT_NONE && t[0].rects[g.b].debug);

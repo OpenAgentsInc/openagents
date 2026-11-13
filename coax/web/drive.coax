@@ -13,6 +13,11 @@
 //   state [PATH]                  a field of the realm's state, read through the build's layout
 //                                 (build/.drive/APP.layout): `state you_x`, `state net.mon_hits[3].amount`;
 //                                 alone, the state's top-level fields
+//   hit X Y                       what receives a tap at a point (CSS px), what it is drawn over and the tap targets
+//                                 there that it covers: the browser's own hit test for a page's elements, the HUD's
+//                                 layout trace where a canvas is on top (metaverse-engine/agent/drive.coax, #13433)
+//   taps                          every tap target audited: under 44 px either way, covered by something drawn over
+//                                 it (an overlay that steals the click), or overlapping another
 //   tap ID                        a click at the centre of HUD widget ID
 //   type ID TEXT | type ID key NAME   tap ID, then the text (or one key: Enter, Escape, 1, w ...);
 //                                 ID - types into the page as it is
@@ -36,6 +41,9 @@
 // page and its offline room (coax/web/room-worker.js) step together, and the session is pinned to the
 // seed, epoch, locale and time zone of metaverse-engine/agent/pin.coax. --real-time opens the page as a player's
 // (no agent clock: `clock +MS` waits, settle and until refuse).
+// A page the browser draws (the chat, the settings pages, the editor's shell: components/kit/frames.coax
+// through coax/web/dom-host.js) has no engine driver: there the driver reads the page's elements
+// (drive-dom.coax) and takes tree, hit, taps, tap, type, screenshot, logs and prefer.
 // The native hosts (apps/shared/host/drive.c, GitHub #13156) answer the same way on a Unix socket: an
 // app started with --drive SOCKET (OpenAgents, Everglade's Workshop chat) takes
 //   coax/web/tool.sh drive native SOCKET [--within MS] OP...
@@ -45,6 +53,7 @@
 // printing the command that rebuilds it.
 #import "Basic";
 #load "resident.coax";
+#load "drive-dom.coax";
 #load "../lib/crypto/sha256_workspace.coax";
 #load "../../metaverse-engine/agent/pin.coax";
 
@@ -390,6 +399,7 @@ dv_app_of :: (html: string) -> string {
 DvS :: struct {
   c: [1] Cdp; serve: int = -1; port: int; within: int = 30000;
   agent: bool = true;   // the agent clock (false: --real-time)
+  dom: bool;            // a page the browser draws (coax/web/dom-host.js): no engine driver, no world, no agent clock
   lay: [DV_FILE] u8; lay_n: int; root: [128] u8; root_n: int;
   value: [1048576] u8;
 }
@@ -577,6 +587,35 @@ dv_clock :: (s: [] DvS, op: string, out: [] Dv) -> bool {
 dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
   out[0].n = 0;
   w0 := dv_word(op, 0);
+  if w0 == "hit" {
+    // what receives a tap at a point (#13433): the browser's own hit test, and the engine's HUD where a canvas is on top
+    x := dd_px(dv_word(op, 1)); y := dd_px(dv_word(op, 2));
+    if x < 0 || y < 0 || dv_word(op, 3).count > 0 { dv_s(out, "hit takes a point in CSS px: hit X Y"); return false; }
+    js: [16384] u8; pb: [16384] u8; eb: [16384] u8; ob: [32768] u8;
+    pn := dd_put(pb[..], 0, dv_eval(s, dd_hit_js(x, y, js[..])));
+    page := cast(string) pb[0..<pn]; en := 0;
+    if !s[0].dom && pn > 0 && (pb[0] == 'C' || pb[0] == 'c') {
+      e := dv_send(s, op);
+      if dv_starts(e, "hit ") { en = dd_put(eb[..], 0, e); }
+    }
+    dv_s(out, dd_hit_answer(x, y, page, cast(string) eb[0..<en], ob[..])); return true;
+  }
+  if w0 == "taps" {
+    // every tap target audited: under 44 px, covered by something drawn over it, overlapping another
+    js: [16384] u8; pb: [32768] u8;
+    pn := dd_put(pb[..], 0, dv_eval(s, dd_taps_js(js[..])));
+    page := cast(string) pb[0..<pn];
+    if s[0].dom { dv_s(out, ifx pn > 0 then page else "the page gave no answer"); return true; }
+    hud := dv_send(s, op);
+    if pn == 0 || dv_starts(page, "taps: 0 targets") { dv_s(out, hud); return true; }
+    dv_s(out, "the page's elements:\n"); dv_s(out, page); dv_s(out, "the HUD:\n"); dv_s(out, hud); return true;
+  }
+  if s[0].dom {
+    if w0 == "tree" || w0 == "layout" { js: [16384] u8; dv_s(out, dv_eval(s, dd_tree_js(js[..]))); return true; }
+    if w0 != "tap" && w0 != "type" && w0 != "screenshot" && w0 != "logs" && w0 != "prefer" {
+      dv_s(out, "this page is drawn by the browser and has no world: it takes tree, hit X Y, taps, tap ID, type ID TEXT, screenshot, logs and prefer"); return false;
+    }
+  }
   if w0 == "tree" || w0 == "layout" || w0 == "status" || w0 == "target" || w0 == "why" { dv_s(out, dv_send(s, op)); return true; }
   if w0 == "walk-to" || w0 == "face" || w0 == "use" || w0 == "mount" || w0 == "stop" {
     first := dv_send(s, op);
@@ -596,7 +635,8 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
     id := dv_word(op, 1);
     if id.count == 0 { dv_s(out, w0); dv_s(out, " takes an id from the tree"); return false; }
     if id != "-" {
-      jb: [256] u8; at := dv_send(s, dv_cat2("target ", id, jb[..]));
+      jb: [256] u8; tj: [2048] u8;
+      at := ifx s[0].dom then dv_eval(s, dd_target_js(id, tj[..])) else dv_send(s, dv_cat2("target ", id, jb[..]));
       x := dv_int(dv_word(at, 0)); y := dv_int(dv_word(at, 1));
       if x < 0 || y < 0 || dv_word(at, 2).count > 0 { dv_s(out, at); return false; }
       if !dv_mouse(s, "mouseMoved", x, y) || !dv_mouse(s, "mousePressed", x, y) || !dv_mouse(s, "mouseReleased", x, y) { dv_s(out, "the click failed: "); dv_s(out, cdp_error(s[0].c[..])); return false; }
@@ -640,7 +680,7 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
     }
     dv_s(out, "prefer takes color-scheme dark|light, reduced-motion reduce|no-preference or size WxH"); return false;
   }
-  dv_s(out, "unknown operation '"); dv_s(out, w0); dv_s(out, "': tree, layout, state, why, tap, type, walk-to, face, use, mount, stop, status, clock, screenshot, logs, prefer, perf");
+  dv_s(out, "unknown operation '"); dv_s(out, w0); dv_s(out, "': tree, layout, state, why, hit, taps, tap, type, walk-to, face, use, mount, stop, status, clock, screenshot, logs, prefer, perf");
   return false;
 }
 dv_cat2 :: (a: string, b: string, t: [] u8) -> string {
@@ -854,7 +894,14 @@ dv_open :: (s: [] DvS, path: string, query: string, wh: ArgsSize) -> int {
   }
   // The realm lists nothing until a driver speaks: speak once, then let a few frames list the world.
   first := dv_send(s, "status");
-  if first != "none: idle" { tool_err("drive: "); tool_errln(first); return 1; }
+  if first != "none: idle" {
+    // a page the browser draws (the chat, the editor's shell: components/kit/frames.coax through dom-host.js)
+    // has no engine driver; the driver reads its elements instead (#13433)
+    if dv_eval(s, DD_IS_DOM) != "dom" { tool_err("drive: "); tool_errln(first); return 1; }
+    s[0].dom = true; s[0].agent = false;
+    print("drive: % ready in % ms: a page the browser draws; it takes tree, hit X Y, taps, tap ID, type ID TEXT, screenshot, logs and prefer (no world, no agent clock)\n", dv_text(u[..]), proc_now_ms() - start);
+    return 0;
+  }
   if s[0].agent && dv_now(s) < 0 { tool_errln("drive: the page has no agent clock (its host is older than this driver, or isn't served from 127.0.0.1); --real-time drives it without one"); return 1; }
   dv_pass(s, DV_FIRST_MS);
   print("drive: % ready in % ms (WebGPU adapter: %)\n", dv_text(u[..]), proc_now_ms() - start, cdp_adapter(c, s[0].value[..]));
