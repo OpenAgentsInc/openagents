@@ -201,6 +201,7 @@ spw_why :: (g: [] SpGame, r: SpwEdit, out: [] u8) -> string {
 SPW_KINDS :: "pieces";   // the table a placed piece's kind is a row of
 SPW_PLANS :: "plans";   // the table the foes' plans are rows of (#13466)
 SPW_CLOCK :: "clock";   // the table whose row 1 is the editor's time of day
+SPW_SCRIPTS :: "scripts";   // the table the world's realm scripts are rows of (#13467)
 SPW_TEMPLATES :: "templates";   // the table a saved group of pieces is a row of (place.coax pl_template_*)
 SPW_TABLES :: 16384;   // bytes the content tables' document may take (the shipped one is about 4,000)
 SPE_CELL :: 25;      // no such table, row or column, or a value the column does not take
@@ -558,6 +559,7 @@ spw_model :: (g: [] SpGame, p: [] SpwPage) -> string {
     }
   }
   n = spw_model_plans(g, p, tables, out, n);
+  n = spw_model_scripts(g, out, n);
   if p[0].here { n = em_here(out, n, p[0].here_x, p[0].here_z); }
   if f[0].refused_n > 0 { n = em_no(out, n, wf_refused(f)); }
   p[0].model_n = ifx n > out.count then 0 else n;
@@ -580,6 +582,21 @@ spw_model_plans :: (g: [] SpGame, p: [] SpwPage, tables: string, out: [] u8, at:
     n = em_plan(out, n, ct_num(ct_part(line, '|', 1)).v, ct_part(line, '|', 2), ct_part(line, '|', 3), ct_num(ct_part(line, '|', 5)).v, ct_num(ct_part(line, '|', 6)).v, ct_part(line, '|', 7), ct_part(line, '|', 4));
   }
   if p[0].actor > 0 { n = em_asel(out, n, p[0].actor); }
+  return n;
+}
+// The world's realm scripts for the shell (#13467): the scripts table, the two kinds a script may drive, as a
+// person reads them, and each row as the tables hold it.
+spw_model_scripts :: (g: [] SpGame, out: [] u8, at: int) -> int {
+  c := g[0].c[..]; target: [12] u8;
+  n := em_scripts(out, at, SPW_SCRIPTS);
+  n = em_script_kind(out, n, SPS_KIND_RAIDER, "Raiders");
+  n = em_script_kind(out, n, SPS_KIND_IMPERIAL, "Imperial robots");
+  for r: 0..<c[0].script_n {
+    row := c[0].scripts[r];
+    if !row.ok { continue; }
+    k := ct_put(target[..], 0, ifx row.by_kind then "kind " else "who "); k = ct_put_int(target[..], k, row.n);
+    n = em_script(out, n, row.slot + 1, cast(string) row.name[0..<row.name_n], cast(string) row.hash[..], cast(string) target[0..<k]);
+  }
   return n;
 }
 // The shell selects a foe by its number (1 to FOES; 0 or any other: none). The game draws its route

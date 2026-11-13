@@ -35,6 +35,9 @@ The model is lines of text, in this order.
 | `a ID NAME` | An NPC with plans: its number in the realm and its name. |
 | `p ID WHEN DO SPEED NOTICE ON ROUTE` | NPC ID's plan at that time of day: what it does (`stand`, `dance`, `sleep`, `guard`, `patrol`, `wander`, `follow`), its speed in centimetres a second, how far it notices in centimetres, what it does on noticing (`chase`, `call`, `flee`, `ignore`) and its route (`X Z, X Z`, `X Z R` for wander, or `foe N` for follow). These are the plan row's cells in order. |
 | `as ID` | The selected NPC. The page draws its route and its notice range. Left out: none. |
+| `scripts NAME` | The world runs realm scripts (#13467, [realm-script-v1.md](realm-script-v1.md)): the content table whose rows name them. The shell's Scripts pane then runs, changes and stops a script by a cell edit of that table. |
+| `sk KIND NAME` | A kind of thing a script may drive: the realm's number for it (a row's `kind K`) and its name, as a person reads it. |
+| `s ID NAME HASH FOR` | A script row: its place (1 to 8), its name, its module's SHA-256 and whom it drives (`kind K`, or `who N` for the NPC with that number). These are the row's cells in order (`metaverse-engine/script/rows.coax`). |
 | `here X Z` | The last point tapped on the ground, in whole centimetres. Left out until a point is tapped. The shell places a new thing there. |
 | `no WORDS` | The last refusal, in words. The shell shows it as a notice. |
 
@@ -57,6 +60,9 @@ but the ones the writer writes: it writes what it read and compares.
 | NPCs with plans | 16 |
 | Plans | 64 |
 | Bytes in a route | 160 |
+| Script rows | 8 |
+| Kinds a script may drive | 8 |
+| Bytes in a script's name | 48 |
 | Bytes in a model | 65,536 |
 
 ## What the shell sends back

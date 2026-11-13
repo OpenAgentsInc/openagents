@@ -52,6 +52,13 @@ emp_check :: (profile_json: string, w: [] EmpWork) -> bool {
   if aw.count == 0 || !em_read(m, aw, w[0].scratch[..]) || em_write(m, w[0].out[..]) != aw { return false; }
   ck := m[0].clock;
   if jv_int(d, jv_get(d, act, "actors"), -1) != m[0].na || jv_int(d, jv_get(d, act, "plans"), -1) != m[0].np || jv_int(d, jv_get(d, act, "selected"), -1) != m[0].asel || emp_str(d, jv_get(d, act, "clock"), nb[..]) != cast(string) ck[0..<m[0].clock_n] { return false; }
+  // realm scripts (#13467)
+  if jv_int(d, jv_get(d, lim, "scripts"), 0) != EM_SCRIPTS || jv_int(d, jv_get(d, lim, "script_kinds"), 0) != EM_SKINDS || jv_int(d, jv_get(d, lim, "script_name_bytes"), 0) != EM_SNAME { return false; }
+  scr := jv_get(d, 0, "scripts");
+  sw := emp_str(d, jv_get(d, scr, "wire"), w[0].wire[..]);
+  if sw.count == 0 || !em_read(m, sw, w[0].scratch[..]) || em_write(m, w[0].out[..]) != sw { return false; }
+  stb := m[0].stable;
+  if jv_int(d, jv_get(d, scr, "kinds"), -1) != m[0].nsk || jv_int(d, jv_get(d, scr, "rows"), -1) != m[0].ns || emp_str(d, jv_get(d, scr, "table"), nb[..]) != cast(string) stb[0..<m[0].stable_n] { return false; }
   empty := emp_str(d, jv_get(d, jv_get(d, 0, "empty"), "wire"), w[0].wire[..]);
   if empty.count == 0 || !em_read(m, empty, w[0].scratch[..]) || m[0].ne != 0 || m[0].lane != 1 { return false; }
   rej := jv_get(d, 0, "rejected");

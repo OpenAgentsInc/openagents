@@ -439,6 +439,24 @@ spt_cell :: (out: [] u8, rev: int, table: string, row: int, col: string, value: 
   #assert spt_round(x[..], 1.1, spt_events(x[..], bad, 5)) == WFQ_EVENTS && f[0].rev == 4 && f[0].reopened == 1;
 }
 
+#test "Splice's world: a script row is a cell edit, told to the shell with the kinds a script may drive; a row with no text takes it away, and a row that does not read is refused in words (#13467)" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SpwTest.[SpwTest.{}]; g := t[0].g[..]; x := t[0].x[..]; k := [1] SptCell.[SptCell.{}]; body: [WE_BATCH_BODY] u8; p := [1] SpwPage.[SpwPage.{}];
+  empty := spw_empty(g, x[0].k[..], t[0].doc[..]);
+  q := [1] SptShell.[SptShell.{}]; m := q[0].m[..];
+  #assert em_read(m, spw_model(g, p[..]), q[0].scratch[..]) && m[0].ns == 0 && m[0].nsk == 2 && m[0].sk_id[0] == SPS_KIND_RAIDER && cast(string) m[0].stable[0..<m[0].stable_n] == "scripts";
+  b := spw_batch(g, x, empty, spt_cell(body[..], 0, "scripts", 1, "*", "1|my-raider|528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5|kind 1"), true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  #assert b.status == SPB_OK && g[0].c[0].script_n == 1 && g[0].c[0].scripts[0].by_kind && sps_script(g, 0) == 0 && sps_script(g, FOES - 1) == -1;
+  p[0].tables_gen += 1;
+  #assert em_read(m, spw_model(g, p[..]), q[0].scratch[..]) && m[0].ns == 1 && m[0].s_id[0] == 1 && cast(string) m[0].s_name[0][0..<m[0].s_name_n[0]] == "my-raider" && cast(string) m[0].s_for[0][0..<m[0].s_for_n[0]] == "kind 1";
+  one := cast(string) k[0].two[0..<ct_copy(k[0].two[..], cast(string) t[0].next[0..<b.doc])];
+  // a hash that is not one is refused, naming the row
+  b = spw_batch(g, x, one, spt_cell(body[..], 1, "scripts", 2, "*", "2|scout|528d|who 9"), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
+  #assert b.status == SPB_REFUSED && spt_why(t[..], b) == "script 2: a script's HASH is its module's SHA-256: 64 lowercase hex digits" && g[0].c[0].script_n == 1;
+  // the row with no text: the script stops, and the foes walk their plans
+  b = spw_batch(g, x, one, spt_cell(body[..], 1, "scripts", 1, "*", ""), true, t[0].next[..], t[0].did[..], t[0].back[..], t[0].why[..]);
+  #assert b.status == SPB_OK && g[0].c[0].script_n == 0 && sps_script(g, 0) == -1;
+}
+
 #test "the planner's catalogue from the pieces table, several of a kind planned from the tapped point as one batch, and a template: saved as a row, told to the shell, placed and taken back as one step" #steps 4000000000 #traversal 2000000000 {
   x := [1] SptPage.[SptPage.{}]; g := x[0].g[..]; t := x[0].t[..]; p := x[0].p[..]; f := p[0].f[..];
   k := [1] SptCell.[SptCell.{}]; body: [WE_BATCH_BODY] u8; vw := [1] SptView.[SptView.{}]; e: [WE_BATCH] WorldEdit;

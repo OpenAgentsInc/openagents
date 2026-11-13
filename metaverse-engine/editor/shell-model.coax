@@ -32,6 +32,11 @@
 //   a ID NAME                           an NPC whose plans the world keeps: its number in the realm and its name
 //   p ID WHEN DO SPEED NOTICE ON ROUTE  its plan at that time of day (npc-plan.coax: the row's cells, in that order)
 //   as ID                               the selected NPC (left out: none)
+//   scripts NAME                        the content table the world's realm scripts are rows of (#13467,
+//                                       metaverse-engine/script/rows.coax): a script is run, changed and stopped by a cell edit of it
+//   sk KIND NAME                        a kind of thing a script may drive: the realm's number for it (a row's "kind K") and its name
+//   s ID NAME HASH FOR                  a script row: its place (1 and up), its name, its module's SHA-256 and whom it
+//                                       drives ("kind K", or "who N": the NPC with that number)
 //   here X Z                            the last point tapped on the ground, whole centimetres (E8, #13417);
 //                                       left out until a point is tapped
 //   no WORDS                            the last refusal, in words
@@ -56,6 +61,10 @@ EM_BYTES :: 65536;     // bytes a model may take
 EM_ACTORS :: 16;       // NPCs with plans
 EM_PLANS :: 64;        // their plans
 EM_ROUTE :: 160;       // bytes in a plan's route (npc-plan.coax NPL_ROUTE)
+EM_SCRIPTS :: 8;       // script rows (metaverse-engine/script/frame.coax SH_SCRIPTS)
+EM_SKINDS :: 8;        // kinds a script may drive
+EM_SNAME :: 48;        // bytes in a script's name (rows.coax SRW_NAME)
+EM_SFOR :: 12;         // bytes in whom a script drives
 
 EdModel :: struct {
   ok: bool;
@@ -80,6 +89,10 @@ EdModel :: struct {
   p_when: [EM_PLANS] [WE_NAME] u8; p_when_n: [EM_PLANS] int; p_do: [EM_PLANS] [WE_NAME] u8; p_do_n: [EM_PLANS] int; p_on: [EM_PLANS] [WE_NAME] u8; p_on_n: [EM_PLANS] int;
   p_route: [EM_PLANS] [EM_ROUTE] u8; p_route_n: [EM_PLANS] int;
   asel: int;
+  // realm scripts (#13467): the scripts table, the kinds a script may drive, and the rows
+  stable: [WE_NAME] u8; stable_n: int;
+  nsk: int; sk_id: [EM_SKINDS] int; sk_name: [EM_SKINDS] [EM_NAME] u8; sk_name_n: [EM_SKINDS] int;
+  ns: int; s_id: [EM_SCRIPTS] int; s_name: [EM_SCRIPTS] [EM_SNAME] u8; s_name_n: [EM_SCRIPTS] int; s_hash: [EM_SCRIPTS] [64] u8; s_for: [EM_SCRIPTS] [EM_SFOR] u8; s_for_n: [EM_SCRIPTS] int;
   here: bool; here_x: int; here_z: int;
   no: [EM_WORDS] u8; no_n: int;
 }
@@ -197,6 +210,44 @@ em_asel :: (out: [] u8, at: int, id: int) -> int {
   n := ct_put(out, at, "as "); n = ct_put_int(out, n, id);
   return ct_put(out, n, "\n");
 }
+em_scripts :: (out: [] u8, at: int, name: string) -> int {
+  if !ct_name_ok(name) { return out.count + 1; }
+  n := ct_put(out, at, "scripts "); n = ct_put(out, n, name);
+  return ct_put(out, n, "\n");
+}
+em_script_kind :: (out: [] u8, at: int, kind: int, name: string) -> int {
+  if kind < 0 || kind > 255 || !em_text_ok(name, EM_NAME) { return out.count + 1; }
+  n := ct_put(out, at, "sk "); n = ct_put_int(out, n, kind); n = ct_put(out, n, " "); n = ct_put(out, n, name);
+  return ct_put(out, n, "\n");
+}
+// Whom a script drives, as its row says it: "kind K" (0 to 255) or "who N" (1 to 99), written one way.
+em_for_ok :: (target: string) -> bool {
+  lead := ifx target.count > 5 && cast(string) target[0..<5] == "kind " then 5 else ifx target.count > 4 && cast(string) target[0..<4] == "who " then 4 else 0;
+  if lead == 0 || target.count > EM_SFOR { return false; }
+  v := ct_num(target[lead..<target.count]);
+  if !v.ok || target[lead] == '-' || (target.count > lead + 1 && target[lead] == '0') { return false; }
+  return ifx lead == 5 then v.v <= 255 else v.v >= 1 && v.v <= 99;
+}
+// A script's name: lowercase letters, digits and hyphens, a letter first (rows.coax srw_name_ok).
+em_sname_ok :: (name: string) -> bool {
+  if name.count < 1 || name.count > EM_SNAME { return false; }
+  for c, i: name {
+    lower := c >= 'a' && c <= 'z';
+    if !lower && (i == 0 || !((c >= '0' && c <= '9') || c == '-')) { return false; }
+  }
+  return true;
+}
+em_hash_ok :: (hash: string) -> bool {
+  if hash.count != 64 { return false; }
+  for c: hash { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+em_script :: (out: [] u8, at: int, id: int, name: string, hash: string, target: string) -> int {
+  if id < 1 || id > EM_SCRIPTS || !em_sname_ok(name) || !em_hash_ok(hash) || !em_for_ok(target) { return out.count + 1; }
+  n := ct_put(out, at, "s "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put(out, n, name); n = ct_put(out, n, " "); n = ct_put(out, n, hash);
+  n = ct_put(out, n, " "); n = ct_put(out, n, target);
+  return ct_put(out, n, "\n");
+}
 em_here :: (out: [] u8, at: int, x: int, z: int) -> int {
   if x < -WE_REACH || x > WE_REACH || z < -WE_REACH || z > WE_REACH { return out.count + 1; }
   n := ct_put(out, at, "here "); n = ct_put_int(out, n, x); n = ct_put(out, n, " "); n = ct_put_int(out, n, z);
@@ -231,6 +282,9 @@ em_write :: (m: [] EdModel, out: [] u8) -> string {
                 cast(string) m[0].p_on[k][0..<m[0].p_on_n[k]], cast(string) m[0].p_route[k][0..<m[0].p_route_n[k]]);
   }
   if m[0].asel > 0 { n = em_asel(out, n, m[0].asel); }
+  if m[0].stable_n > 0 { n = em_scripts(out, n, cast(string) m[0].stable[0..<m[0].stable_n]); }
+  for k: 0..<m[0].nsk { n = em_script_kind(out, n, m[0].sk_id[k], cast(string) m[0].sk_name[k][0..<m[0].sk_name_n[k]]); }
+  for k: 0..<m[0].ns { n = em_script(out, n, m[0].s_id[k], cast(string) m[0].s_name[k][0..<m[0].s_name_n[k]], cast(string) m[0].s_hash[k][..], cast(string) m[0].s_for[k][0..<m[0].s_for_n[k]]); }
   if m[0].here { n = em_here(out, n, m[0].here_x, m[0].here_z); }
   if m[0].no_n > 0 { n = em_no(out, n, cast(string) m[0].no[0..<m[0].no_n]); }
   if n > out.count { return ""; }
@@ -255,6 +309,7 @@ em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
   m[0].ok = false; m[0].nk = 0; m[0].ne = 0; m[0].nc = 0; m[0].no_n = 0; m[0].world_n = 0; m[0].here = false; m[0].table_n = 0; m[0].ttable_n = 0; m[0].nt = 0;
   m[0].all = false; m[0].local = false; m[0].land = false; m[0].nm = 0; m[0].kinds_all = 0;
   m[0].ptable_n = 0; m[0].ctable_n = 0; m[0].clock_n = 0; m[0].na = 0; m[0].np = 0; m[0].asel = 0;
+  m[0].stable_n = 0; m[0].nsk = 0; m[0].ns = 0;
   for k: 0..<WE_COLS { m[0].cols[k] = false; }
   if text.count < EM_SCHEMA.count || text.count > EM_BYTES { return false; }
   lines := ct_parts(text, '\n');
@@ -330,6 +385,18 @@ em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
       m[0].np += 1;
     } else if word == "as" {
       m[0].asel = ct_num(ct_part(line, ' ', 1)).v;
+    } else if word == "scripts" {
+      m[0].stable_n = em_copy(m[0].stable[..], em_rest(line, 1));
+    } else if word == "sk" && m[0].nsk < EM_SKINDS {
+      k := m[0].nsk;
+      m[0].sk_id[k] = ct_num(ct_part(line, ' ', 1)).v; m[0].sk_name_n[k] = em_copy(m[0].sk_name[k][..], em_rest(line, 2));
+      m[0].nsk += 1;
+    } else if word == "s" && m[0].ns < EM_SCRIPTS {
+      k := m[0].ns; hash := ct_part(line, ' ', 3);
+      m[0].s_id[k] = ct_num(ct_part(line, ' ', 1)).v; m[0].s_name_n[k] = em_copy(m[0].s_name[k][..], ct_part(line, ' ', 2));
+      for j: 0..<64 { m[0].s_hash[k][j] = ifx j < hash.count then hash[j] else cast(u8) ' '; }
+      m[0].s_for_n[k] = em_copy(m[0].s_for[k][..], em_rest(line, 4));
+      m[0].ns += 1;
     } else if word == "here" {
       m[0].here = true; m[0].here_x = ct_num(ct_part(line, ' ', 1)).v; m[0].here_z = ct_num(ct_part(line, ' ', 2)).v;
     } else if word == "no" {
@@ -354,6 +421,11 @@ em_actor_at :: (m: [] EdModel, id: int) -> int {
 // NPC `id`'s plan at time of day `when`: its place in the model, or -1.
 em_plan_at :: (m: [] EdModel, id: int, when: string) -> int {
   for k: 0..<m[0].np { if m[0].p_id[k] == id && cast(string) m[0].p_when[k][0..<m[0].p_when_n[k]] == when { return k; } }
+  return -1;
+}
+// The script row with this ID: its place in the model, or -1.
+em_script_at :: (m: [] EdModel, id: int) -> int {
+  for k: 0..<m[0].ns { if m[0].s_id[k] == id { return k; } }
   return -1;
 }
 // The entity with this ID: its place in the model, or -1.
@@ -490,4 +562,35 @@ em_test_actors :: (out: [] u8) -> string {
   #assert em_plan(o, 0, 1, "dusk", "patrol", -1, 0, "chase", "0 0, 1 1") > EM_BYTES && em_plan(o, 0, 1, "dusk", "patrol", 1, 0, "chase", "") > EM_BYTES && em_plan(o, 0, 0, "dusk", "patrol", 1, 0, "chase", "0 0") > EM_BYTES;
   #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nas 0\n", h[0].scratch[..]) && !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\np 1 dusk patrol\n", h[0].scratch[..]);
   #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nclock clock\n", h[0].scratch[..]);
+}
+
+// A model with realm scripts (#13467): the fixture proto/world/model-v1.json holds as "scripts".
+EM_TEST_HASH :: "528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5";
+em_test_scripts :: (out: [] u8) -> string {
+  none: [WE_COLS] bool;
+  n := em_begin(out, "splice", 0, 5, 1, 0, 0);
+  n = em_cols(out, n, none[..]);
+  n = em_actor(out, n, 9, "Imperial 4");
+  n = em_scripts(out, n, "scripts");
+  n = em_script_kind(out, n, 1, "Raiders");
+  n = em_script_kind(out, n, 2, "Imperial robots");
+  n = em_script(out, n, 1, "splice-raider", EM_TEST_HASH, "kind 1");
+  n = em_script(out, n, 3, "scout", EM_TEST_HASH, "who 9");
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+#test "realm scripts: the table, the kinds a script may drive and the rows read as written" {
+  h: [1] EmTest; m := h[0].m[..];
+  text := em_test_scripts(h[0].out[..]);
+  #assert em_read(m, text, h[0].scratch[..]) && m[0].ns == 2 && m[0].nsk == 2;
+  st := m[0].stable; kn := m[0].sk_name[1]; sn := m[0].s_name[1]; sf := m[0].s_for[1]; sh := m[0].s_hash[0];
+  #assert cast(string) st[0..<m[0].stable_n] == "scripts" && m[0].sk_id[1] == 2 && cast(string) kn[0..<m[0].sk_name_n[1]] == "Imperial robots";
+  #assert m[0].s_id[1] == 3 && cast(string) sn[0..<m[0].s_name_n[1]] == "scout" && cast(string) sf[0..<m[0].s_for_n[1]] == "who 9" && cast(string) sh[..] == EM_TEST_HASH;
+  #assert em_script_at(m, 3) == 1 && em_script_at(m, 2) == -1;
+  // what is not one is not written or read
+  o := h[0].out[..];
+  #assert em_scripts(o, 0, "Scripts") > EM_BYTES && em_script_kind(o, 0, 256, "x") > EM_BYTES && em_script_kind(o, 0, 1, "") > EM_BYTES;
+  #assert em_script(o, 0, 0, "a", EM_TEST_HASH, "kind 1") > EM_BYTES && em_script(o, 0, 9, "a", EM_TEST_HASH, "kind 1") > EM_BYTES && em_script(o, 0, 1, "A", EM_TEST_HASH, "kind 1") > EM_BYTES;
+  #assert em_script(o, 0, 1, "a", "528d", "kind 1") > EM_BYTES && em_script(o, 0, 1, "a", EM_TEST_HASH, "kind 256") > EM_BYTES && em_script(o, 0, 1, "a", EM_TEST_HASH, "who 0") > EM_BYTES;
+  #assert em_script(o, 0, 1, "a", EM_TEST_HASH, "who 01") > EM_BYTES && em_script(o, 0, 1, "a", EM_TEST_HASH, "all") > EM_BYTES && em_for_ok("kind 0") && em_for_ok("who 99") && !em_for_ok("who 100");
+  #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\ns 1 a 528d kind 1\n", h[0].scratch[..]) && !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nsk 1\n", h[0].scratch[..]);
 }

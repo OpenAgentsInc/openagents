@@ -19,7 +19,10 @@
     "materials": 16,
     "actors": 16,
     "plans": 64,
-    "route_bytes": 160
+    "route_bytes": 160,
+    "scripts": 8,
+    "script_kinds": 8,
+    "script_name_bytes": 48
   },
   "lines": [
     "editor.model.v1 WORLD LANE REV UNDO REDO SELECTED",
@@ -41,6 +44,9 @@
     "a ID NAME",
     "p ID WHEN DO SPEED NOTICE ON ROUTE",
     "as ID",
+    "scripts NAME",
+    "sk KIND NAME",
+    "s ID NAME HASH FOR",
     "here X Z",
     "no WORDS"
   ],
@@ -82,7 +88,9 @@
     "editor.model.v1 splice dev 0 0 0 0\ncols\nland 0 5\n",
     "editor.model.v1 splice dev 0 0 0 0\ncols\nkinds 0\n",
     "editor.model.v1 splice dev 0 0 0 0\ncols\nas 0\n",
-    "editor.model.v1 splice dev 0 0 0 0\ncols\np 1 dusk patrol\n"
+    "editor.model.v1 splice dev 0 0 0 0\ncols\np 1 dusk patrol\n",
+    "editor.model.v1 splice dev 0 0 0 0\ncols\ns 1 a 528d kind 1\n",
+    "editor.model.v1 splice dev 0 0 0 0\ncols\ns 9 a 528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5 kind 1\n"
   ],
   "local": {
     "wire": "editor.model.v1 create-world dev 12 3 1 0\ncols x z yaw kind\nk 786 Cottage (house)\ne 1 786 350 0 -1200 90 150\nall 1203 4096\nkinds 788\nlocal\nland 100 4000\nm 1 Grass\nm 3 Sand\nm 0 Bare grid\nhere 420 -75\n",
@@ -105,5 +113,12 @@
     "plans": 2,
     "clock": "dusk",
     "selected": 6
+  },
+  "scripts": {
+    "about": "Realm scripts (#13467): the scripts table, the two kinds a script may drive, and two rows, one for a kind and one for an NPC",
+    "wire": "editor.model.v1 splice dev 5 1 0 0\ncols\na 9 Imperial 4\nscripts scripts\nsk 1 Raiders\nsk 2 Imperial robots\ns 1 splice-raider 528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5 kind 1\ns 3 scout 528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5 who 9\n",
+    "kinds": 2,
+    "rows": 2,
+    "table": "scripts"
   }
 }
