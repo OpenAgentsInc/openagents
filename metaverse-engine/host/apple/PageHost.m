@@ -394,7 +394,7 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
 // The pack's layers as one array of GPU blocks (GitHub #13305): a block build's layers
 // (metaverse-engine/render/block-layer.coax) go up as they are, every level of every layer, with no
 // decode, no resize and no mips made here. nil when this GPU has no such format.
-- (id<MTLTexture>)blockLayers:(const EngineCorePack *)pack first:(const EngineCoreLayer *)first {
+static id<MTLTexture> phBlockLayers(id<MTLDevice> device, const EngineCorePack *pack, const EngineCoreLayer *first) {
  MTLPixelFormat format = MTLPixelFormatInvalid;
  if (!strcmp(first->tag, "astc4")) format = MTLPixelFormatASTC_4x4_sRGB;
  else if (!strcmp(first->tag, "astc6")) format = MTLPixelFormatASTC_6x6_sRGB;
@@ -568,14 +568,16 @@ static void phMessage(A state, int32_t kind, uint32_t n) { AEPageHost *h = phCur
 static int phHasBuild(void *user, const char *tag) {
  return [[NSFileManager defaultManager] fileExistsAtPath:[NSString stringWithFormat:@"%@.%s.vpk3", (__bridge NSString *)user, tag]] ? 1 : 0;
 }
-- (NSString *)loadPack {
- // The block build this GPU takes, when the app has one beside the pack (NAME.TAG.vpk3, written by
- // metaverse-engine/tools/block-pack.coax): Coax picks the format (texture-format.coax tf_pick) from
- // what the device has and which builds stand there. AETHYR_BLOCKS=0 loads the pack itself, to compare.
- packBytes = nil;
+// A pack's image for this device: the block build its GPU takes, when one stands beside the pack
+// (NAME.TAG.vpk3, written by metaverse-engine/tools/block-pack.coax), read whole with every page
+// checked; else the pack itself, inflated when it is the site's gzipped file (NAME.pack.gz), as
+// host.js does. Coax picks the format (texture-format.coax tf_pick) from what the device has and
+// which builds stand there. AETHYR_BLOCKS=0 loads the pack itself, to compare.
+static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
+ NSData *packBytes = nil;
  const char *blocksOff = getenv("AETHYR_BLOCKS");
- if ([config.pack hasSuffix:@".pack"] && !(blocksOff && !strcmp(blocksOff, "0"))) {
-  NSString *base = [config.pack stringByDeletingPathExtension]; char tag[8];
+ if ([path hasSuffix:@".pack"] && !(blocksOff && !strcmp(blocksOff, "0"))) {
+  NSString *base = [path stringByDeletingPathExtension]; char tag[8];
   BOOL bc = NO, phone = NO;
 #if TARGET_OS_OSX
   bc = device.supportsBCTextureCompression;
@@ -592,9 +594,19 @@ static int phHasBuild(void *user, const char *tag) {
    phLog(@"pack: the %s block build %@", tag, packBytes ? @"is read whole, every page checked" : @"is refused; the pack itself is loaded");
   }
  }
- if (!packBytes) packBytes = [NSData dataWithContentsOfFile:config.pack options:NSDataReadingMappedIfSafe error:nil];
- // A pack the site serves gzipped (NAME.pack.gz) is inflated whole first, as host.js does.
+ if (!packBytes) packBytes = [NSData dataWithContentsOfFile:path options:NSDataReadingMappedIfSafe error:nil];
  if (packBytes.length > 18 && ((const uint8_t *)packBytes.bytes)[0] == 0x1f && ((const uint8_t *)packBytes.bytes)[1] == 0x8b) packBytes = phInflate(packBytes);
+ return packBytes;
+}
+// For a host that draws a pack itself (the Workshop's model, apps/everglade-desktop/Sources/Engine.swift).
++ (NSData *)packImage:(NSString *)path device:(id<MTLDevice>)device { return phPackImage(path, device); }
++ (id<MTLTexture>)blockLayers:(NSData *)image device:(id<MTLDevice>)device {
+ EngineCorePack pack; EngineCoreLayer first;
+ if (!image || !engine_core_pack(&pack, image.bytes, image.length) || !engine_core_blocks(&pack, &first)) return nil;
+ return phBlockLayers(device, &pack, &first);
+}
+- (NSString *)loadPack {
+ packBytes = phPackImage(config.pack, device);
  const uint8_t *b = packBytes.bytes; size_t n = packBytes.length;
  // The host core sorts the pack's entries through the one pack reader (metaverse-engine/host/pack-table.coax
  // pack_table): every extent is checked against the whole file before a byte of it is read here.
@@ -621,7 +633,7 @@ static int phHasBuild(void *user, const char *tag) {
  int dataSide = 512;
  if (config.layerSide) { int s = config.layerSide(side), ds = config.layerSide(dataSide); if (s > 0 && s < side) side = s; if (ds > 0 && ds < dataSide) dataSide = ds; }
  EngineCoreLayer first;
- sheets = engine_core_blocks(&pack, &first) ? [self blockLayers:&pack first:&first] : nil;
+ sheets = engine_core_blocks(&pack, &first) ? phBlockLayers(device, &pack, &first) : nil;
  BOOL blocks = sheets != nil;
  if (!sheets) sheets = [self layers:colour side:side data:NO];
  if (!sheets) return @"the realm's pack has a picture this Mac can't read";

@@ -379,7 +379,7 @@ admission, `pack_read` (order, catalog and licences), and the writer:
 | iOS and the Mac (`apple/PageHost.m`, `apps/everglade-desktop/Sources/Engine.swift`) | [`pack-table.h`](pack-table.h) over the unit the app's build compiles from `pack-table-face.coax` |
 | Android (`apps/everglade-mobile/android/host.c`) | `pack-table.h`, the same way |
 | Coax tools (`coax/web/room/room-catalog.coax`, `metaverse/native/wasm-run.coax`) | `#load` of `pack-table.coax` |
-| Linux (`metaverse/native/realm-host.c`) | `metaverse/native/pack-table-gen.h`, the face's emitted C (below) |
+| Linux (`metaverse/native/realm-host.c`) | `metaverse/native/pack-table-gen.h`, the face's emitted C, under the host core's one header `host-core-gen.h` (below) |
 
 The Linux realm host (`metaverse/native/realm-host.c`) includes
 `metaverse/native/pack-table-gen.h`: the C the compiler writes for
@@ -391,6 +391,16 @@ the repository root:
 
 ```sh
 coax/bin/coax c metaverse-engine/host/pack-table-face.coax --library > metaverse/native/pack-table-gen.h
+```
+
+Beside it, `metaverse/native/host-core-gen.h` is the host core (below) as one header: `core/host-core.h`
+with `pack-table.h`, `frame-plan.h` and `core/frame-plan-walk.h` written in where it includes them.
+Three of those builds copy the realm host's files to another folder, where a path into
+`metaverse-engine/` leads nowhere, so the realm host includes this one file. The same check's
+`host-core-c` step fails when it is stale. After a change to any of those four headers:
+
+```sh
+coax/web/tool.sh metaverse-engine/tools/host-core-flat.coax "$PWD"
 ```
 
 ### The host core
@@ -409,8 +419,12 @@ does between a page's face and its platform, written once over the engine's Coax
 
 A host compiles the core's face once (`core/core-face.coax`, as C) and includes the header. The
 Mac and iPhone page host (`apple/PageHost.m`) is built on it; the Android app's host uses it for
-the pack. The Linux realm host (`metaverse/native/realm-host.c`) still has its own copy of the
-pack sort and the delivery: moving it needs the face's C in the nine builds that compile it.
+the pack. The Linux realm host (`metaverse/native/realm-host.c`) takes the core's base, which needs
+only the pack reader's face: `rh_pack` is `engine_core_pack`, `rh_deliver` is `engine_core_deliver`
+and `rh_send` is `engine_core_send`, through `host-core-gen.h` (above). The Workshop's model
+(`apps/everglade-desktop/Sources/Engine.swift`) asks the page host for its pack image and block
+layers (`AEPageHost packImage:device:` and `blockLayers:device:`), so it uploads the same block
+build the realms do.
 
 A pack's rig entry (kind 7, #13306) is delivered through two optional exports, so the numbered
 assets don't move: `coaxial_rig_v1(state, bytes)` gives where the face wants the rig's bytes, and
@@ -424,6 +438,10 @@ platform builds over the same core.
 coax/web/tool.sh metaverse-engine/host/core/conformance.coax check "$PWD" /tmp/host-core --web   # this machine, both address widths, and the browser's pack module
 metaverse-engine/host/core/platforms.sh /tmp/host-core-platforms   # the Mac, the iPhone simulator, the iPhone and Android
 ```
+
+`platforms.sh` runs the Android program too when `adb` sees a device or an emulator (an emulator
+with no window: `"$ANDROID_HOME/emulator/emulator" -avd NAME -no-window -no-audio -no-boot-anim -read-only`).
+The Linux run is the first command, on a build host (`coax/remote/check.sh reports`, step `host-core`).
 
 ### The frame plan
 

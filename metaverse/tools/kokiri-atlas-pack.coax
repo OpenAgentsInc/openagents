@@ -1,13 +1,14 @@
 // Static scene texture derivatives. Character IDs1..60 retain original meaning.
 // tool.sh: stack-gib 2
 #load "ocarina-texture-core.coax";
+#load "ocarina-material-format.coax";
 #load "../../coax/lib/json/json.coax";
 #test "Kokiri atlas encoding preserves missing and character layers across tile and page boundaries" {
  #assert kap_id(0,80)==0 && kap_id(1,80)==1 && kap_id(60,80)==60;
  #assert kap_id(61,80)==0x0301003d && kap_id(69,80)==0x0309003d && kap_id(70,80)==0x0301003e;
 }
 #test "Kokiri atlas remapping changes only all ten sampler words and physical count" {
- b:[288]u8;b[0]='O';b[1]='C';b[2]='M';b[3]='1';scan_put(b[..],4,1);scan_put(b[..],8,1);scan_put(b[..],12,80);
+ b:[288]u8;ocm_head_put(b[..],1,80);
  for field:0..<64 {scan_put(b[..],32+field*4,61);}
  kap_materials(b[..],80);
  #assert scan_u32(b[..],12)==63;
@@ -21,9 +22,9 @@
 }
 kap_id :: (id:int,layers:int)->u32 {#assert layers>=60 && layers<=2048 && id>=0 && id<=layers;if id<=60 {return cast(u32)id;}logical:=id-61;physical:=60+logical/9;tile:=logical%9;return (cast(u32)3<<24)|(cast(u32)(tile+1)<<16)|cast(u32)(physical+1);}
 kap_materials :: (b:[]u8,layers:int) {
- #assert b.count>=32 && cast(string)b[0..<4]=="OCM1" && scan_u32(b,4)==1 && cast(int)scan_u32(b,12)==layers;count:=cast(int)scan_u32(b,8);#assert count>0 && count<=1024 && b.count==32+count*256;
+ h:=ocm_read(b);#assert h.ok && h.layers==layers;count:=h.count;
  for row:0..<count {for field:0..<64 {if field<8 || field==60 || field==61 {at:=32+row*256+field*4;scan_put(b,at,kap_id(cast(int)scan_u32(b,at),layers));}}}
- scan_put(b,12,cast(u32)(60+(layers-60+8)/9));
+ ocm_head_put(b,count,60+(layers-60+8)/9);
 }
 kap_clamp :: (x:int,limit:int)->int {return ifx x<0 then 0 else ifx x>=limit then limit-1 else x;}
 kap_paste :: (atlas:[]u8,rgba:[]u8,side:int,cell:int,pad:int,inner:int,tile:int) {

@@ -108,7 +108,7 @@ final class WorkshopView: MTKView, MTKViewDelegate, UIKeyInput {
     let fsd = MTLSamplerDescriptor(); fsd.minFilter = .linear; fsd.magFilter = .linear; fsd.mipFilter = .linear
     faceSampler = device.makeSamplerState(descriptor: fsd)!
     Model.deep = { deep.run($0) }
-    guard let url = Bundle.main.url(forResource: "everglade2", withExtension: "pack"), let pack = Pack(url),
+    guard let url = Bundle.main.url(forResource: "everglade2", withExtension: "pack"), let pack = Pack(url, device: device),
           let m = Model(device: device, library: lib, color: colorPixelFormat, pack: pack) else { fatalError("Everglade: the app's everglade2.pack is missing or doesn't hold the player's parts. Rebuild with apps/everglade-mobile/build.sh.") }
     model = m
     eg_pad(state, 0, 0)   // a touch screen: the scene shows the touch hint

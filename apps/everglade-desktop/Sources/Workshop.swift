@@ -151,7 +151,7 @@ final class Workshop {
     let fsd = MTLSamplerDescriptor(); fsd.minFilter = .linear; fsd.magFilter = .linear; fsd.mipFilter = .linear
     faceSampler = device.makeSamplerState(descriptor: fsd)!
     // Your model, from the pack in the app. Without it there is no you to draw, so say so and stop.
-    guard let url = Bundle.main.url(forResource: "everglade2", withExtension: "pack"), let pack = Pack(url),
+    guard let url = Bundle.main.url(forResource: "everglade2", withExtension: "pack"), let pack = Pack(url, device: device),
           let m = Model(device: device, library: lib, color: format, pack: pack) else {
       FileHandle.standardError.write(Data("Everglade: the app's everglade2.pack is missing or doesn't hold the player's parts. Rebuild with apps/everglade-desktop/build.sh.\n".utf8))
       exit(1)

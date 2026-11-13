@@ -1,0 +1,63 @@
+// A stored format's profile against a fixture (GitHub #13304): the part every profile check
+// shares, whatever the codec. A profile is a JSON file that pins one fixture's exact bytes (or
+// words) and the damage its reader must refuse. A check tool builds the fixture through its
+// codec's writer, and holds the profile to it with these:
+//   fp_fixture    the fixture built is the profile's, byte for byte, and starts with its magic
+//   fp_refusals   how many refusals the profile names (a check asks for three at least)
+//   fp_refuse     damages the fixture as refusal i says; the tool's reader must then refuse it
+// The engine's formats: metaverse-engine/tools/format-profile.coax. A realm tool's own format
+// brings its own tool (metaverse/tools/ocarina-material-profile.coax), since the engine loads no realm tool.
+#load "../../coax/lib/json/json.coax";
+
+FP_MAX :: 8192;       // a fixture's bytes at most
+FpFixture :: struct { bytes: [FP_MAX] u8; n: int; words: [256] int; wn: int; }
+
+fp_str :: (d: Jv, at: int, out: [] u8) -> string { n := jv_str(d, at, out); return ifx n >= 0 then cast(string) out[0..<n] else ""; }
+fp_digit :: (c: u8) -> int { return ifx c >= '0' && c <= '9' then cast(int) (c - '0') else ifx c >= 'a' && c <= 'f' then cast(int) (c - 'a') + 10 else -1; }
+fp_unhex :: (s: string, out: [] u8) -> int {
+  if (s.count & 1) != 0 || s.count / 2 > out.count { return -1; }
+  for i: 0..<s.count / 2 { hi := fp_digit(s[2 * i]); lo := fp_digit(s[2 * i + 1]); if hi < 0 || lo < 0 { return -1; } out[i] = cast,trunc(u8) ((hi << 4) | lo); }
+  return s.count / 2;
+}
+// The profile's fixture is the one built in f, and starts with the profile's magic: "", or what doesn't hold.
+fp_fixture :: (d: Jv, f: [] FpFixture) -> string {
+  t: [256] u8; h: [FP_MAX * 2 + 16] u8; raw: [FP_MAX] u8;
+  fx := jv_get(d, 0, "fixture"); magic := fp_str(d, jv_get(d, 0, "magic"), t[..]);
+  if magic.count != 4 { return "its magic is not four characters"; }
+  if f[0].wn > 0 {
+    ws := jv_get(d, fx, "words");
+    if jv_len(d, ws) != f[0].wn { return "its fixture is not the words the codec writes (their count)"; }
+    for i: 0..<f[0].wn { if jv_int(d, jv_at(d, ws, i), -1) != f[0].words[i] { return "its fixture is not the words the codec writes"; } }
+    // a word format's magic is one number, which the profile states beside the name the codec gives it
+    if f[0].words[0] != jv_int(d, jv_get(d, 0, "magic_word"), -1) { return "its fixture doesn't start with its magic"; }
+    return "";
+  }
+  n := fp_unhex(fp_str(d, jv_get(d, fx, "hex"), h[..]), raw[..]);
+  if n != f[0].n || jv_int(d, jv_get(d, fx, "bytes"), -1) != n || cast(string) raw[0..<n] != cast(string) f[0].bytes[0..<n] { return "its fixture is not the bytes the codec writes"; }
+  if cast(string) raw[0..<4] != magic { return "its fixture doesn't start with its magic"; }
+  return "";
+}
+fp_refusals :: (d: Jv) -> int { return jv_len(d, jv_get(d, 0, "refused")); }
+// Refusal i applied to the fixture in f, a byte or word set to a value or the fixture cut short:
+// "", or why the profile's row is not a damage at all.
+fp_refuse :: (d: Jv, i: int, f: [] FpFixture) -> string {
+  row := jv_at(d, jv_get(d, 0, "refused"), i); words := f[0].wn > 0;
+  cut := jv_int(d, jv_get(d, row, "cut"), -1); at := jv_int(d, jv_get(d, row, "at"), -1); value := jv_int(d, jv_get(d, row, "value"), -1);
+  total := ifx words then f[0].wn else f[0].n;
+  if cut >= 0 {
+    if cut >= total { return "a refusal cuts past the fixture's end"; }
+    if words { f[0].wn = cut; } else { f[0].n = cut; }
+    return "";
+  }
+  if at < 0 || at >= total || value < 0 { return "a refusal names no byte of the fixture"; }
+  if words { if f[0].words[at] == value { return "a refusal changes nothing"; } f[0].words[at] = value; }
+  else { if value > 255 || cast(int) f[0].bytes[at] == value { return "a refusal changes nothing"; } f[0].bytes[at] = cast,trunc(u8) value; }
+  return "";
+}
+// The fixture as a new profile states it: its words, or its byte count and hex.
+fp_print :: (f: [] FpFixture) {
+  if f[0].wn > 0 { for i: 0..<f[0].wn { if i > 0 { print(", "); } print("%", f[0].words[i]); } print("\n"); return; }
+  digits := "0123456789abcdef"; hex: [FP_MAX * 2] u8;
+  for i: 0..<f[0].n { hex[2 * i] = digits[cast(int) f[0].bytes[i] >> 4]; hex[2 * i + 1] = digits[cast(int) f[0].bytes[i] & 15]; }
+  print("% %\n", f[0].n, cast(string) hex[0..<2 * f[0].n]);
+}

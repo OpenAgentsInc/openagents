@@ -52,4 +52,3 @@ codec aethyr.icecream.mesh-bands.controls.v1 metaverse/icecream/check-mesh-band-
 codec aethyr.icecream.mesh-bands.native.v1 metaverse/icecream/check_mesh_bands.py  # engine codec still lives in metaverse/icecream/ (#13316)
 codec aethyr.icecream.mesh.checks.v1 metaverse/icecream/check-mesh-band-tooling.coax  # engine codec still lives in metaverse/icecream/ (#13316)
 codec everglade.native-benchmark.v1 metaverse/gpu/vk-realm.c  # engine codec still lives in metaverse/gpu/ (#13316)
-shape ocarina-material-pack-ocm1  # E1: a four-character format listed with its one codec; its profile and check are owed (#13304)

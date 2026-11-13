@@ -7,6 +7,7 @@
 #load "../../coax/lib/text/base64.coax";
 #load "../../metaverse-engine/editor/pack.coax";
 #load "../ocarina/motion.coax";
+#load "ocarina-material-format.coax";
 #test "Link raid pack keeps each source influence without narrowing joint indices" {
  b:[128]u8;scan_put(b[..],36,308|(17<<16));b[52]=190;b[53]=65;
  #assert (scan_u32(b[..],36)&65535)==308 && (scan_u32(b[..],36)>>16)==17 && cast(int)b[52]+cast(int)b[53]==255;
@@ -19,7 +20,7 @@ tool_main :: ()->int #export_c #effects(all) {
  cp:=cast(int)scan_u32(base[..],36);cn:=cast(int)scan_u32(base[..],40);vp:=cast(int)scan_u32(base[..],84);vn:=cast(int)scan_u32(base[..],88);ip:=cast(int)scan_u32(base[..],132);in:=cast(int)scan_u32(base[..],136);#assert vn%4==0;
  for k:0..<vn {vertices[k]=base[vp+k];}for k:0..<in {indices[k]=base[ip+k];}
  v:=fs_read(fs_join(args_at(a[..],1),"link.vertices",path[..]),vertices[vn+32..<vertices.count]);ix:=fs_read(fs_join(args_at(a[..],1),"link.indices",path[..]),indices[in..<indices.count]);rn:=fs_read(fs_join(args_at(a[..],1),"link.rig",path[..]),rig[..]);#assert v==110515*128 && ix==218334*4 && rn>0 && scan_u32(rig[..],0)==0x324c434f;
- #assert fs_read(fs_join(args_at(a[..],2),"link.materials",path[..]),mat[..])==6432;ln:=fs_read(fs_join(args_at(a[..],2),"link.textures",path[..]),list[..]);#assert ln>0;names:[60]string;start:=0;ni:=0;for k:0..<ln {if list[k]=='\n' {#assert ni<60;names[ni]=cast(string)list[start..<k];ni+=1;start=k+1;}}#assert ni==60;
+ #assert fs_read(fs_join(args_at(a[..],2),"link.materials",path[..]),mat[..])==6432 && ocm_read(mat[..]).ok;ln:=fs_read(fs_join(args_at(a[..],2),"link.textures",path[..]),list[..]);#assert ln>0;names:[60]string;start:=0;ni:=0;for k:0..<ln {if list[k]=='\n' {#assert ni<60;names[ni]=cast(string)list[start..<k];ni+=1;start=k+1;}}#assert ni==60;
  // Header precedes the unchanged original vertex records. Materials follow them.
  layers:=entries-3;#assert layers==38;sourceLicence:=6;
  scan_put(vertices[..],vn,cast(u32)((vn+32)/4));scan_put(vertices[..],vn+4,cast(u32)((vn+32+v+32)/4));

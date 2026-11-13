@@ -35,6 +35,7 @@ typedef struct {
   struct RhAudioDevice *audio_device;
   int64_t audio_status,audio_command;
   int (*clipboard)(void *user,const char *text,size_t length);void *clipboard_user;int action_refused;char *location_hash;size_t location_hash_bytes;
+  void *core;   // the pack as the host core has it (host-core-gen.h EngineCorePack), or NULL
 } RealmHost;
 
 // Face addresses and the matching address of one of our measured allocations.
@@ -47,9 +48,10 @@ void rh_open(RealmHost *h, int golden);
 int rh_pack(RealmHost *h, const char *path);
 // The first entry of a kind, or NULL.
 const RhEntry *rh_entry(const RealmHost *h, int kind);
-// Gives the realm its assets, in the browser's order: the pack's four parts
-// (catalog, vertices, indices, layers) as assets 0 to 3, then `extra` more
-// (a page's other assets, such as its particles), each `extra_sizes[i]` bytes.
+// Gives the realm its assets, in the browser's order, through the one host core
+// (engine_core_deliver): the pack's four parts (catalog, vertices, indices, layers) as assets 0 to
+// 3, its rig when the face asks for one, then `extra` more (a page's other assets, such as its
+// particles), each `extra_sizes[i]` bytes.
 void rh_deliver(RealmHost *h, int extra, const uint32_t *extra_sizes);
 // A message into the realm's inbox (cut at its capacity).
 void rh_send(RealmHost *h, int kind, const char *text, size_t length);

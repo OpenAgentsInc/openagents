@@ -22,11 +22,15 @@ func faceAtlas(_ device: MTLDevice) -> MTLTexture? {
 
 // Everglade II's pack: a catalog, the vertices, the indices and the texture layers. The host only
 // finds the entries, through the one pack reader (metaverse-engine/host/pack-table.coax pack_table, by
-// metaverse-engine/host/pack-table.h); model.coax reads the catalog.
+// metaverse-engine/host/pack-table.h); model.coax reads the catalog. The image is the page host's
+// choice for this GPU (AEPageHost packImage): the block build beside the pack when there is one,
+// so the layers go up as GPU blocks, else the pack itself, whose layers are pictures to decode.
 struct Pack {
+  var image = Data()
   var catalog = Data(), vertices = Data(), indices = Data(), layers: [Data] = []
-  init?(_ url: URL) {
-    guard let d = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
+  init?(_ url: URL, device: MTLDevice) {
+    guard let d = AEPageHost.packImage(url.path, device: device) else { return nil }
+    image = d
     let table = UnsafeMutablePointer<EnginePack>.allocate(capacity: 1)
     table.initialize(to: EnginePack())
     defer { table.deinitialize(count: 1); table.deallocate() }
@@ -194,6 +198,8 @@ final class Model {
     Model.deep { baked = egm_bake(st, b.contents().assumingMemoryBound(to: Float.self)) }
     guard baked == 1 else { return nil }
     vertices = v; indices = i; bake = b; records = r
+    // A block build's layers go up as they are: no decode, no resize, and its own mip chains.
+    if let blocks = AEPageHost.blockLayers(pack.image, device: device) { sheets = blocks } else {
     // Every layer drawn to one size, so they stack as one array; the pack's are 512 a side at most.
     let side = Model.sheet
     let td = MTLTextureDescriptor()
@@ -219,6 +225,7 @@ final class Model {
       blit.generateMipmaps(for: t); blit.endEncoding(); cmd.commit(); cmd.waitUntilCompleted()
     }
     sheets = t
+    }
     let d = MTLRenderPipelineDescriptor()
     d.vertexFunction = library.makeFunction(name: "model_vs"); d.fragmentFunction = library.makeFunction(name: "model_fs")
     d.colorAttachments[0].pixelFormat = color; d.depthAttachmentPixelFormat = .depth32Float

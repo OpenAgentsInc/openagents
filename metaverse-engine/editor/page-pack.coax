@@ -48,7 +48,10 @@ PpkLoad :: struct { m: PpkManifest; arrived: [PPK_PAGES] bool; held: int; roots_
 
 ppk_id_read :: (p: string, at: int) -> AssetId #effects(all) {
   id := AssetId.{};
-  for w: 0..<8 { v: u32 = 0; for b: 0..<4 { v = (v << 8) | cast(u32) p[at + w * 4 + b]; } id.words[w] = v; }
+  for w: 0..<8 {
+    a := at + w * 4;
+    id.words[w] = (cast(u32) p[a] << 24) | (cast(u32) p[a + 1] << 16) | (cast(u32) p[a + 2] << 8) | cast(u32) p[a + 3];
+  }
   return id;
 }
 ppk_id_put :: (out: [] u8, at: int, id: AssetId) #effects(all) {
@@ -69,7 +72,7 @@ ppk_need :: (head: string) -> int #effects(all) {
 // the format is checked; false, with why, at the first that doesn't hold, and out[0] then holds nothing.
 ppk_manifest :: (p: string, out: [] PpkManifest) -> bool #effects(all) {
   need := ppk_need(p);
-  if need < 0 || p.count < need { return ppk_why(out, "not a VPK3 header"); }
+  if need == -1 || p.count < need { return ppk_why(out, "not a VPK3 header"); }
   m: [1] PpkManifest;
   m[0].file_bytes = pack_u32(p, 8); m[0].image_bytes = pack_u32(p, 12); m[0].pages = pack_u32(p, 16);
   m[0].manifest_bytes = m[0].pages * PPK_RECORD;
@@ -83,7 +86,8 @@ ppk_manifest :: (p: string, out: [] PpkManifest) -> bool #effects(all) {
       codec = cast(int) p[r + 16], root = p[r + 17] == PPK_ROOT, entry = pack_u32(p, r + 20), id = ppk_id_read(p, r + 32)};
     if p[r + 17] > PPK_ROOT || p[r + 18] != 0 || p[r + 19] != 0 || pack_u32(p, r + 24) != 0 || pack_u32(p, r + 28) != 0 { return ppk_why(out, "a malformed page record"); }
     if g.stored_at != stored_at || g.image_at != image_at { return ppk_why(out, "a page out of place"); }
-    if g.decoded < 1 || g.decoded > PPK_PAGE_MAX || g.stored < 1 { return ppk_why(out, "a page of the wrong size"); }
+    // No page is empty: one stored byte at least, and the codec's rule below gives decoded >= stored.
+    if g.decoded > PPK_PAGE_MAX || g.stored < 1 { return ppk_why(out, "a page of the wrong size"); }
     if (g.codec == PPK_STORED && g.stored != g.decoded) || (g.codec == PPK_DEFLATE && g.stored >= g.decoded) || g.codec > PPK_DEFLATE { return ppk_why(out, "a page of the wrong size"); }
     if k == 0 && !g.root { return ppk_why(out, "the first page isn't a root"); }
     if g.root { m[0].roots += 1; }
@@ -99,7 +103,8 @@ ppk_open :: (out: [] PpkLoad, m: PpkManifest) -> bool #effects(all) {
 }
 // Page k's decoded bytes arrived: taken when they are the size and content its record names, once.
 ppk_admit :: (l: [] PpkLoad, k: int, decoded: string) -> bool #effects(all) {
-  if !l[0].m.ok || k < 0 || k >= l[0].m.pages || l[0].arrived[k] { l[0].refused += 1; return false; }
+  // A load that isn't open has no pages, so every k is out of range.
+  if k < 0 || k >= l[0].m.pages || l[0].arrived[k] { l[0].refused += 1; return false; }
   g := l[0].m.page[k];
   if decoded.count != g.decoded || !asset_same(asset_id(decoded), g.id) { l[0].refused += 1; return false; }
   l[0].arrived[k] = true; l[0].held += 1; if g.root { l[0].roots_held += 1; }
@@ -110,6 +115,7 @@ ppk_complete :: (l: PpkLoad) -> bool #effects(all) { return l.m.ok && l.held == 
 // Whether every page holding image[at..<at + n] has arrived (an empty range has).
 ppk_ready :: (l: PpkLoad, at: int, n: int) -> bool #effects(all) {
   if !l.m.ok || at < 0 || n < 0 || at + n > l.m.image_bytes { return false; }
+  if n == 0 { return true; }
   for k: 0..<l.m.pages {
     g := l.m.page[k];
     if g.image_at < at + n && at < g.image_at + g.decoded && !l.arrived[k] { return false; }
@@ -121,6 +127,7 @@ ppk_ready :: (l: PpkLoad, at: int, n: int) -> bool #effects(all) {
 // small for them. What a host fetches for a range a cell's line names (metaverse-engine/host/pack-cells.coax).
 ppk_cover :: (l: PpkLoad, at: int, n: int, out: [] int) -> int #effects(all) {
   if !l.m.ok || at < 0 || n < 0 || at + n > l.m.image_bytes { return -1; }
+  if n == 0 { return 0; }
   c := 0;
   for k: 0..<l.m.pages {
     g := l.m.page[k];
@@ -132,10 +139,13 @@ ppk_cover :: (l: PpkLoad, at: int, n: int, out: [] int) -> int #effects(all) {
 }
 // The next page to fetch: roots first, then in order. -1: none left. `busy` marks pages in flight.
 ppk_next :: (l: PpkLoad, busy: [] bool) -> int #effects(all) {
-  for pass: 0..<2 {
-    for k: 0..<l.m.pages { if !l.arrived[k] && !busy[k] && (l.m.page[k].root || pass == 1) { return k; } }
+  later := -1;
+  for k: 0..<l.m.pages {
+    if l.arrived[k] || busy[k] { continue; }
+    if l.m.page[k].root { return k; }
+    if later == -1 { later = k; }
   }
-  return -1;
+  return later;
 }
 
 // ---- writing
@@ -144,46 +154,46 @@ ppk_next :: (l: PpkLoad, busy: [] bool) -> int #effects(all) {
 // to the next's, cut every page_size bytes. Roots are every entry except those whose kind is in
 // `deferred` (bit 1 << kind). Only the table's layout is read here (up to PACK_READ_MAX entries,
 // whatever the magic says): the assembled image is admitted by its own reader. Its page count, or
-// -1 when the image's table isn't one, or the pages don't fit.
+// -1 when the image's table isn't one (an entry must start at or after the table's end, and
+// after the entry before it), or the pages don't fit.
 ppk_plan :: (image: string, page_size: int, deferred: int, starts: [] int, roots: [] bool, entries: [] int) -> int #effects(all) {
-  if page_size < 1 || page_size > PPK_PAGE_MAX || image.count < PACK_HEADER || !pack_magic_ok(image[0..<4]) || pack_u32(image, 8) != image.count { return -1; }
+  if page_size < 1 || page_size > PPK_PAGE_MAX || image.count < PACK_HEADER + PACK_ENTRY || !pack_magic_ok(image[0..<4]) || pack_u32(image, 8) != image.count { return -1; }
   count := pack_u32(image, 4);
-  if count < 1 || count > PACK_READ_MAX || pack_u32(image, 16) != PACK_HEADER || PACK_HEADER + count * PACK_ENTRY > image.count { return -1; }
-  n := 0; last := PACK_HEADER + count * PACK_ENTRY;
+  n := 0; table := PACK_HEADER + count * PACK_ENTRY;
+  if count < 1 || count > PACK_READ_MAX || pack_u32(image, 16) != PACK_HEADER || table > image.count { return -1; }
   for e: 0..<count {
     t := PACK_HEADER + e * PACK_ENTRY;
     from := ifx e == 0 then 0 else pack_u32(image, t + 4);
     to := ifx e + 1 < count then pack_u32(image, t + PACK_ENTRY + 4) else image.count;
-    if (e > 0 && from < last) || to <= from || to > image.count { return -1; }
-    last = to;
+    // An entry that ends past the image starts the next one there, and the last ends at the image's end.
+    if (e > 0 && from < table) || to <= from { return -1; }
     kind := cast(int) image[t]; root := e == 0 || kind > 30 || ((deferred >> kind) & 1) == 0;
     at := from;
     while at < to {
       if n == starts.count { return -1; }
       starts[n] = at; roots[n] = root; entries[n] = ifx e == 0 then PPK_HEAD_ENTRY else e; n += 1;
-      at += ifx to - at > page_size then page_size else to - at;
+      at += page_size;
     }
   }
   return n;
 }
 
 // Write image as a VPK3 file, cut at starts (ascending, the first 0), each page deflated when
-// that is smaller. The bytes written, or -1 when out (or scratch, for one deflated page) is too
-// small or the cuts are not pages this format can hold.
+// that is smaller (a page scratch can't hold deflated is stored). The bytes written, or -1 when
+// out is too small or the cuts are not pages this format can hold.
 ppk_write :: (image: string, starts: [] int, roots: [] bool, entries: [] int, out: [] u8, scratch: [] u8, w: [] DeflateWork) -> int #effects(all) {
   pages := starts.count;
-  if pages < 1 || pages > PPK_PAGES || starts[0] != 0 || !roots[0] || image.count < 1 { return -1; }
+  if pages < 1 || pages > PPK_PAGES || starts[0] != 0 || !roots[0] { return -1; }   // an empty image has no page: refused below
   head := PPK_HEADER + pages * PPK_RECORD;
-  if out.count < head { return -1; }
   at := head;
   for k: 0..<pages {
     from := starts[k]; to := ifx k + 1 < pages then starts[k + 1] else image.count;
     if to <= from || to - from > PPK_PAGE_MAX { return -1; }
     src := image[from..<to];
     z := deflate_raw(src, scratch, w);
-    codec := ifx z > 0 && z < to - from then PPK_DEFLATE else PPK_STORED;
+    codec := ifx z != -1 && z < to - from then PPK_DEFLATE else PPK_STORED;
     stored := ifx codec == PPK_DEFLATE then z else to - from;
-    if at + stored > out.count { return -1; }
+    if at + stored > out.count { return -1; }   // the head too: a page is at least one byte
     for j: 0..<stored { out[at + j] = ifx codec == PPK_DEFLATE then scratch[j] else src[j]; }
     r := PPK_HEADER + k * PPK_RECORD;
     pack_put32(out, r, at); pack_put32(out, r + 4, stored); pack_put32(out, r + 8, from); pack_put32(out, r + 12, to - from);
@@ -204,7 +214,9 @@ ppk_write :: (image: string, starts: [] int, roots: [] bool, entries: [] int, ou
 ppk_read_all :: (file: [] u8, image: [] u8, l: [] PpkLoad) -> int #effects(all) {
   m: [1] PpkManifest;
   p := cast(string) file;
-  if !ppk_manifest(p, m[..]) || p.count != m[0].file_bytes || image.count < m[0].image_bytes || !ppk_open(l, m[0]) { return -1; }
+  l[0] = PpkLoad.{};
+  if !ppk_manifest(p, m[..]) || p.count != m[0].file_bytes || image.count < m[0].image_bytes { return -1; }
+  l[0].m = m[0];
   for k: 0..<m[0].pages {
     g := m[0].page[k]; dst := image[g.image_at..<g.image_at + g.decoded];
     src := file[g.stored_at..<g.stored_at + g.stored];
@@ -218,12 +230,9 @@ ppk_read_all :: (file: [] u8, image: [] u8, l: [] PpkLoad) -> int #effects(all) 
 
 // ---- checks
 
-ppk_test_image :: (out: [] u8) -> string #effects(all) {
-  // pack.coax's 512-byte test pack with a 300-byte vertex entry of runs: compressible pages.
-  return pack_test(600, out);
-}
+// The image in most checks is pack.coax's 512-byte test pack (pack_test).
 #test "a pack written as pages reads back as the same image, root pages first" #steps 400000000 {
-  b: [512] u8; image := ppk_test_image(b[..]);
+  b: [512] u8; image := pack_test(600, b[..]);
   starts: [16] int; roots: [16] bool; entries: [16] int;
   n := ppk_plan(image, 64, 1 << PACK_SOUND, starts[..], roots[..], entries[..]);
   #assert n > 5 && starts[0] == 0 && roots[0] && entries[0] == PPK_HEAD_ENTRY && !roots[n - 1] && entries[n - 1] == 4;
@@ -243,7 +252,7 @@ ppk_test_image :: (out: [] u8) -> string #effects(all) {
   #assert ppk_ready(o[0], 0, last.image_at) && !ppk_ready(o[0], last.image_at, 1) && !ppk_ready(o[0], 0, 513);
 }
 #test "a range's cover is the pages it touches that have not arrived, in order" #steps 400000000 {
-  b: [512] u8; image := ppk_test_image(b[..]);
+  b: [512] u8; image := pack_test(600, b[..]);
   starts: [16] int; roots: [16] bool; entries: [16] int; n := ppk_plan(image, 64, 0, starts[..], roots[..], entries[..]);
   w: [1] DeflateWork; file: [4096] u8; scratch: [2048] u8;
   size := ppk_write(image, starts[0..<n], roots[0..<n], entries[0..<n], file[..], scratch[..], w[..]);
@@ -270,7 +279,7 @@ ppk_test_image :: (out: [] u8) -> string #effects(all) {
   #assert ppk_cover(l[0], p2.image_at, p2.decoded + p3.decoded + p4.decoded, out[0..<2]) == 2;
 }
 #test "pages are refused for the wrong bytes, the wrong size, twice, or out of range" #steps 400000000 {
-  b: [512] u8; image := ppk_test_image(b[..]);
+  b: [512] u8; image := pack_test(600, b[..]);
   starts: [16] int; roots: [16] bool; entries: [16] int; n := ppk_plan(image, 128, 0, starts[..], roots[..], entries[..]);
   w: [1] DeflateWork; out: [4096] u8; scratch: [2048] u8;
   size := ppk_write(image, starts[0..<n], roots[0..<n], entries[0..<n], out[..], scratch[..], w[..]);
@@ -285,7 +294,7 @@ ppk_test_image :: (out: [] u8) -> string #effects(all) {
   #assert !ppk_open(l[..], PpkManifest.{});
 }
 #test "every byte of the header and manifest that the format fixes is checked" #steps 1500000000 {
-  b: [512] u8; image := ppk_test_image(b[..]);
+  b: [512] u8; image := pack_test(600, b[..]);
   starts: [16] int; roots: [16] bool; entries: [16] int; n := ppk_plan(image, 128, 1 << PACK_LAYER, starts[..], roots[..], entries[..]);
   w: [1] DeflateWork; out: [4096] u8; scratch: [2048] u8;
   size := ppk_write(image, starts[0..<n], roots[0..<n], entries[0..<n], out[..], scratch[..], w[..]);
@@ -308,7 +317,7 @@ ppk_test_image :: (out: [] u8) -> string #effects(all) {
   #assert ppk_need(cast(string) out[0..<95]) == -1;
 }
 #test "the plan refuses what isn't a pack, a bad page size and too many pages" {
-  b: [512] u8; image := ppk_test_image(b[..]); starts: [4] int; roots: [4] bool; entries: [4] int;
+  b: [512] u8; image := pack_test(600, b[..]); starts: [4] int; roots: [4] bool; entries: [4] int;
   big: [16] int; broot: [16] bool; bent: [16] int;
   #assert ppk_plan(image, 512, 0, big[..], broot[..], bent[..]) == 5 && ppk_plan(image, 512, 0, starts[..], roots[..], entries[..]) == -1;
   #assert ppk_plan(image, 0, 0, big[..], broot[..], bent[..]) == -1 && ppk_plan(image, PPK_PAGE_MAX + 1, 0, big[..], broot[..], bent[..]) == -1;
@@ -322,4 +331,269 @@ ppk_test_image :: (out: [] u8) -> string #effects(all) {
   starts[0] = 0; roots[0] = false; #assert ppk_write(image, starts[0..<1], roots[0..<1], entries[0..<1], out[..], scratch[..], w[..]) == -1;
   roots[0] = true; #assert ppk_write(image, starts[0..<1], roots[0..<1], entries[0..<1], out[0..<200], scratch[..], w[..]) == -1;
   #assert ppk_write(image, starts[0..<1], roots[0..<1], entries[0..<1], out[..], scratch[..], w[..]) > 0;
+}
+
+// A hand-made file head for the checks below: `pages` records, each of `decoded` bytes stored as
+// they are, every one a root, in place one after the other; then the header. ppk_test_seal writes
+// the manifest's digest again after a check has changed a record.
+ppk_test_seal :: (out: [] u8, pages: int) -> string #effects(all) {
+  head := PPK_HEADER + pages * PPK_RECORD;
+  ppk_id_put(out, 32, asset_id(cast(string) out[PPK_HEADER..<head]));
+  return cast(string) out[0..<head];
+}
+ppk_test_head :: (out: [] u8, pages: int, decoded: int) -> string #effects(all) {
+  head := PPK_HEADER + pages * PPK_RECORD;
+  for k: 28..<head { out[k] = 0; }   // the header's last word, both ids, and every record
+  for k: 0..<pages {
+    r := PPK_HEADER + k * PPK_RECORD;
+    pack_put32(out, r, head + k * decoded); pack_put32(out, r + 4, decoded); pack_put32(out, r + 8, k * decoded); pack_put32(out, r + 12, decoded);
+    out[r + 17] = PPK_ROOT;
+  }
+  for c, k: PPK_MAGIC { out[k] = c; }
+  pack_put32(out, 4, 1); pack_put32(out, 8, head + pages * decoded); pack_put32(out, 12, pages * decoded); pack_put32(out, 16, pages);
+  pack_put32(out, 20, PPK_HEADER); pack_put32(out, 24, pages * PPK_RECORD);
+  return ppk_test_seal(out, pages);
+}
+// Two pages; the second is `stored` bytes in the file for `decoded` of the image under `codec`,
+// with `flag` as its byte 17. Whether the manifest is taken, and its roots (-1 when refused).
+ppk_test_second :: (stored: int, decoded: int, codec: int, flag: int) -> int #effects(all) {
+  b: [300] u8; p := ppk_test_head(b[..], 2, 8); r := PPK_HEADER + PPK_RECORD;
+  pack_put32(b[..], r + 4, stored); pack_put32(b[..], r + 12, decoded); b[r + 16] = cast,trunc(u8) codec; b[r + 17] = cast,trunc(u8) flag;
+  pack_put32(b[..], 8, p.count + 8 + stored); pack_put32(b[..], 12, 8 + decoded);
+  m: [1] PpkManifest;
+  if !ppk_manifest(ppk_test_seal(b[..], 2), m[..]) { return -1; }
+  return m[0].roots;
+}
+#test "a page's sizes, codec and root flag at their bounds" #steps 400000000 {
+  // stored as it is: the two sizes are one
+  #assert ppk_test_second(1, 1, PPK_STORED, 1) == 2 && ppk_test_second(8, 8, PPK_STORED, 0) == 1;
+  #assert ppk_test_second(5, 7, PPK_STORED, 1) == -1 && ppk_test_second(7, 5, PPK_STORED, 1) == -1;
+  // no page is empty
+  #assert ppk_test_second(0, 0, PPK_STORED, 1) == -1 && ppk_test_second(0, 5, PPK_DEFLATE, 1) == -1;
+  // deflated: smaller than what it decodes to
+  #assert ppk_test_second(1, 2, PPK_DEFLATE, 1) == 2 && ppk_test_second(6, 7, PPK_DEFLATE, 1) == 2;
+  #assert ppk_test_second(7, 7, PPK_DEFLATE, 1) == -1 && ppk_test_second(8, 7, PPK_DEFLATE, 1) == -1;
+  // no third codec, whatever its sizes
+  #assert ppk_test_second(7, 7, 2, 1) == -1 && ppk_test_second(6, 7, 2, 1) == -1 && ppk_test_second(7, 7, 255, 1) == -1;
+  // byte 17 is 0 or 1
+  #assert ppk_test_second(8, 8, PPK_STORED, 2) == -1 && ppk_test_second(8, 8, PPK_STORED, 3) == -1;
+  // the largest page, and one byte more
+  #assert ppk_test_second(PPK_PAGE_MAX, PPK_PAGE_MAX, PPK_STORED, 1) == 2 && ppk_test_second(PPK_PAGE_MAX + 1, PPK_PAGE_MAX + 1, PPK_STORED, 1) == -1;
+  #assert ppk_test_second(1, PPK_PAGE_MAX, PPK_DEFLATE, 1) == 2 && ppk_test_second(1, PPK_PAGE_MAX + 1, PPK_DEFLATE, 1) == -1;
+}
+#test "the manifest's fields are read as written: every page's place, sizes, entry and id" #steps 400000000 {
+  b: [300] u8; p := ppk_test_head(b[..], 3, 8); r := PPK_HEADER + 2 * PPK_RECORD;
+  pack_put32(b[..], r + 4, 5); b[r + 16] = PPK_DEFLATE; b[r + 17] = 0; pack_put32(b[..], r + 20, 0x04030201);
+  for k: 0..<32 { b[r + 32 + k] = cast,trunc(u8) (k + 1); b[64 + k] = cast,trunc(u8) (200 - k); }
+  pack_put32(b[..], 8, p.count + 21);
+  m: [1] PpkManifest; #assert ppk_manifest(ppk_test_seal(b[..], 3), m[..]);
+  #assert m[0].ok && m[0].why == "" && m[0].file_bytes == p.count + 21 && m[0].image_bytes == 24 && m[0].pages == 3 && m[0].manifest_bytes == 192 && m[0].roots == 2;
+  g := m[0].page[2];
+  #assert g.stored_at == p.count + 16 && g.stored == 5 && g.image_at == 16 && g.decoded == 8 && g.codec == PPK_DEFLATE && !g.root && g.entry == 0x04030201;
+  #assert g.id.words[0] == 0x01020304 && g.id.words[1] == 0x05060708 && g.id.words[7] == 0x1d1e1f20;
+  #assert m[0].image_id.words[0] == 0xc8c7c6c5 && m[0].image_id.words[7] == 0xacabaaa9;
+  #assert m[0].page[0].root && m[0].page[0].entry == 0 && m[0].page[1].image_at == 8 && m[0].page[1].stored_at == p.count + 8;
+  #assert asset_same(m[0].manifest_id, asset_id(p[PPK_HEADER..<p.count]));
+  back: [64] u8; for k: 0..<64 { back[k] = 0xff; } ppk_id_put(back[..], 8, g.id);
+  for k: 0..<32 { #assert cast(int) back[8 + k] == k + 1; } #assert back[7] == 0xff && back[40] == 0xff;
+  // refused, and why; nothing is left in out
+  why: [1] PpkManifest;
+  #assert !ppk_manifest(p[0..<PPK_HEADER], why[..]) && why[0].why == "not a VPK3 header" && why[0].pages == 0;
+  b[28] = 1; #assert !ppk_manifest(cast(string) b[0..<p.count], why[..]) && why[0].why == "a malformed header"; b[28] = 0;
+  b[r] ^= 1; #assert !ppk_manifest(cast(string) b[0..<p.count], why[..]) && why[0].why == "the manifest isn't the one its header names";
+  #assert !ppk_manifest(ppk_test_seal(b[..], 3), why[..]) && why[0].why == "a page out of place"; b[r] ^= 1;
+  b[r + 8] ^= 1; #assert !ppk_manifest(ppk_test_seal(b[..], 3), why[..]) && why[0].why == "a page out of place"; b[r + 8] ^= 1;
+  b[r + 16] = 2; #assert !ppk_manifest(ppk_test_seal(b[..], 3), why[..]) && why[0].why == "a page of the wrong size"; b[r + 16] = PPK_DEFLATE;
+  b[r + 4] = 0; #assert !ppk_manifest(ppk_test_seal(b[..], 3), why[..]) && why[0].why == "a page of the wrong size"; b[r + 4] = 5;
+  b[r + 18] = 1; #assert !ppk_manifest(ppk_test_seal(b[..], 3), why[..]) && why[0].why == "a malformed page record"; b[r + 18] = 0;
+  b[PPK_HEADER + 17] = 0; #assert !ppk_manifest(ppk_test_seal(b[..], 3), why[..]) && why[0].why == "the first page isn't a root"; b[PPK_HEADER + 17] = 1;
+  b[12] = 25; #assert !ppk_manifest(ppk_test_seal(b[..], 3), why[..]) && why[0].why == "pages that don't cover the image or the file"; b[12] = 24;
+  b[8] ^= 1; #assert !ppk_manifest(ppk_test_seal(b[..], 3), why[..]) && why[0].why == "pages that don't cover the image or the file"; b[8] ^= 1;
+  #assert ppk_manifest(ppk_test_seal(b[..], 3), why[..]) && why[0].ok;
+}
+#test "a pack has 1 to 1024 pages, and its header says where the manifest is" #steps 2000000000 {
+  b: [70000] u8; m: [1] PpkManifest;
+  for k: 0..<70000 { b[k] = 0xff; }   // the checks' hand-made heads don't need a clean buffer
+  p := ppk_test_head(b[..], PPK_PAGES, 1);
+  #assert ppk_need(p) == PPK_HEADER + PPK_PAGES * PPK_RECORD && ppk_manifest(p, m[..]) && m[0].pages == PPK_PAGES && m[0].roots == PPK_PAGES && m[0].page[PPK_PAGES - 1].image_at == PPK_PAGES - 1;
+  p = ppk_test_head(b[..], PPK_PAGES + 1, 1);
+  #assert ppk_need(p) == -1 && !ppk_manifest(p, m[..]);
+  p = ppk_test_head(b[..], 1, 1);
+  #assert ppk_need(p) == PPK_HEADER + PPK_RECORD && ppk_manifest(p, m[..]) && m[0].pages == 1 && m[0].image_bytes == 1;
+  #assert ppk_need(p[0..<PPK_HEADER]) == PPK_HEADER + PPK_RECORD && ppk_need(p[0..<PPK_HEADER - 1]) == -1;
+  pack_put32(b[..], 16, 0); pack_put32(b[..], 24, 0); #assert ppk_need(cast(string) b[0..<200]) == -1; pack_put32(b[..], 16, 1); pack_put32(b[..], 24, PPK_RECORD);
+  for v: 0..<4 { pack_put32(b[..], 4, v); #assert (ppk_need(p) != -1) == (v == 1); } pack_put32(b[..], 4, 1);
+  pack_put32(b[..], 20, PPK_HEADER + 1); #assert ppk_need(p) == -1; pack_put32(b[..], 20, PPK_HEADER - 1); #assert ppk_need(p) == -1; pack_put32(b[..], 20, PPK_HEADER);
+  pack_put32(b[..], 24, PPK_RECORD + 1); #assert ppk_need(p) == -1; pack_put32(b[..], 24, PPK_RECORD - 1); #assert ppk_need(p) == -1; pack_put32(b[..], 24, PPK_RECORD);
+  b[3] = 0x32; #assert ppk_need(p) == -1; b[3] = 0x33; #assert ppk_need(p) == PPK_HEADER + PPK_RECORD;
+}
+// A table of `count` entries of one byte each after it, as ppk_plan reads one: only its layout.
+ppk_test_table :: (out: [] u8, count: int) -> string #effects(all) {
+  table := PACK_HEADER + count * PACK_ENTRY;
+  for c, k: PACK_MAGIC { out[k] = c; }
+  pack_put32(out, 4, count); pack_put32(out, 8, table + count - 1); pack_put32(out, 16, PACK_HEADER);
+  // entry 0's page is the head: it runs from 0 to entry 1's start, whatever its own row says
+  for e: 1..<count { out[PACK_HEADER + e * PACK_ENTRY] = PACK_LAYER; pack_put32(out, PACK_HEADER + e * PACK_ENTRY + 4, table + e - 1); }
+  return cast(string) out[0..<table + count - 1];
+}
+#test "the plan reads a table's layout: where an entry may start, how many entries, which are roots" #steps 400000000 {
+  starts: [200] int; roots: [200] bool; entries: [200] int;
+  // a header and one entry is the smallest image; cut at every byte it is 80 pages
+  one: [200] u8; p := ppk_test_table(one[..], 1);
+  #assert p.count == PACK_HEADER + PACK_ENTRY && ppk_plan(p, 64, 0, starts[..], roots[..], entries[..]) == 2 && starts[0] == 0 && starts[1] == 64 && roots[1] && entries[1] == PPK_HEAD_ENTRY;
+  #assert ppk_plan(p, 1, 0, starts[..], roots[..], entries[..]) == 80 && starts[79] == 79;
+  #assert ppk_plan(p, 80, 0, starts[..], roots[..], entries[..]) == 1 && ppk_plan(p, 79, 0, starts[..], roots[..], entries[..]) == 2 && starts[1] == 79;
+  #assert ppk_plan(p, PPK_PAGE_MAX, 0, starts[..], roots[..], entries[..]) == 1;
+  #assert ppk_plan(p[0..<79], 64, 0, starts[..], roots[..], entries[..]) == -1 && ppk_plan(p[0..<3], 64, 0, starts[..], roots[..], entries[..]) == -1 && ppk_plan("", 64, 0, starts[..], roots[..], entries[..]) == -1;
+  pack_put32(one[..], 8, 81); #assert ppk_plan(p, 64, 0, starts[..], roots[..], entries[..]) == -1;
+  pack_put32(one[..], 8, 79); #assert ppk_plan(p, 64, 0, starts[..], roots[..], entries[..]) == -1; pack_put32(one[..], 8, 80);
+  one[3] = 0x33; #assert ppk_plan(p, 64, 0, starts[..], roots[..], entries[..]) == -1; one[3] = 0x32; #assert ppk_plan(p, 64, 0, starts[..], roots[..], entries[..]) == 2; one[3] = 0x31;
+  pack_put32(one[..], 16, PACK_HEADER + 1); #assert ppk_plan(p, 64, 0, starts[..], roots[..], entries[..]) == -1;
+  pack_put32(one[..], 16, PACK_HEADER - 1); #assert ppk_plan(p, 64, 0, starts[..], roots[..], entries[..]) == -1; pack_put32(one[..], 16, PACK_HEADER);
+  // a second entry the image has no room for is never read
+  pack_put32(one[..], 4, 2); #assert ppk_plan(p, 64, 0, starts[..], roots[..], entries[..]) == -1; pack_put32(one[..], 4, 1); #assert ppk_plan(p, 64, 0, starts[..], roots[..], entries[..]) == 2;
+  // three entries: the head's page ends where entry 1 starts, which is at the table's end or after
+  three: [300] u8; q := ppk_test_table(three[..], 3); table := PACK_HEADER + 3 * PACK_ENTRY;
+  #assert q.count == table + 2 && ppk_plan(q, 1000, 0, starts[..], roots[..], entries[..]) == 3 && starts[1] == table && starts[2] == table + 1 && entries[0] == PPK_HEAD_ENTRY && entries[1] == 1 && entries[2] == 2;
+  pack_put32(three[..], PACK_HEADER + PACK_ENTRY + 4, table - 1);
+  #assert ppk_plan(q, 1000, 0, starts[..], roots[..], entries[..]) == -1;   // entry 1 starts inside the table
+  pack_put32(three[..], PACK_HEADER + PACK_ENTRY + 4, 100); #assert ppk_plan(q, 1000, 0, starts[..], roots[..], entries[..]) == -1;
+  pack_put32(three[..], PACK_HEADER + PACK_ENTRY + 4, table);
+  // an entry that starts where the one before it does, before it, or past the image's end
+  pack_put32(three[..], PACK_HEADER + 2 * PACK_ENTRY + 4, table); #assert ppk_plan(q, 1000, 0, starts[..], roots[..], entries[..]) == -1;
+  pack_put32(three[..], PACK_HEADER + 2 * PACK_ENTRY + 4, table - 1); #assert ppk_plan(q, 1000, 0, starts[..], roots[..], entries[..]) == -1;
+  pack_put32(three[..], PACK_HEADER + 2 * PACK_ENTRY + 4, table + 2); #assert ppk_plan(q, 1000, 0, starts[..], roots[..], entries[..]) == -1;
+  pack_put32(three[..], PACK_HEADER + 2 * PACK_ENTRY + 4, table + 3); #assert ppk_plan(q, 1000, 0, starts[..], roots[..], entries[..]) == -1;
+  pack_put32(three[..], PACK_HEADER + 2 * PACK_ENTRY + 4, table + 1); #assert ppk_plan(q, 1000, 0, starts[..], roots[..], entries[..]) == 3;
+  // roots: the head always; an entry unless its kind is deferred; kinds past 30 have no bit
+  #assert ppk_plan(q, 1000, (1 << PACK_LAYER) | (1 << PACK_CATALOG), starts[..], roots[..], entries[..]) == 3 && roots[0] && !roots[1] && !roots[2];
+  three[PACK_HEADER] = PACK_CATALOG; three[PACK_HEADER + PACK_ENTRY] = 30; three[PACK_HEADER + 2 * PACK_ENTRY] = 31;
+  #assert ppk_plan(q, 1000, (1 << 30) | (1 << 31) | (1 << PACK_CATALOG), starts[..], roots[..], entries[..]) == 3 && roots[0] && !roots[1] && roots[2];
+  #assert ppk_plan(q, 1000, 1 << 29, starts[..], roots[..], entries[..]) == 3 && roots[1];
+  three[PACK_HEADER + PACK_ENTRY] = 0; #assert ppk_plan(q, 1000, 1, starts[..], roots[..], entries[..]) == 3 && !roots[1] && ppk_plan(q, 1000, 2, starts[..], roots[..], entries[..]) == 3 && roots[1];
+  // the most entries a table has, and one more
+  big: [7000] u8; g := ppk_test_table(big[..], PACK_READ_MAX);
+  #assert ppk_plan(g, 100000, 0, starts[..], roots[..], entries[..]) == PACK_READ_MAX && entries[PACK_READ_MAX - 1] == PACK_READ_MAX - 1 && starts[PACK_READ_MAX - 1] == g.count - 1;
+  #assert ppk_plan(g, 100000, 0, starts[0..<PACK_READ_MAX - 1], roots[..], entries[..]) == -1;
+  g = ppk_test_table(big[..], PACK_READ_MAX + 1); #assert ppk_plan(g, 100000, 0, starts[..], roots[..], entries[..]) == -1;
+  // a count the image has no room for
+  g = ppk_test_table(big[..], 3); pack_put32(big[..], 4, 4); #assert ppk_plan(g, 1000, 0, starts[..], roots[..], entries[..]) == -1;
+}
+#test "the writer: its page limits, a full buffer, a scratch too small, and bytes it must clear" #steps 2000000000 {
+  w: [1] DeflateWork; scratch: [4096] u8; out: [70000] u8; back: [2048] u8; l: [1] PpkLoad;
+  starts: [1100] int; roots: [1100] bool; entries: [1100] int; image: [1100] u8;
+  for k: 0..<1100 { starts[k] = k; roots[k] = (k % 3) == 0; entries[k] = k * 7; image[k] = cast,trunc(u8) (k * 31); }
+  // 1024 pages of one byte, and one more; none at all
+  size := ppk_write(cast(string) image[0..<PPK_PAGES], starts[0..<PPK_PAGES], roots[..], entries[..], out[..], scratch[..], w[..]);
+  #assert size == PPK_HEADER + PPK_PAGES * PPK_RECORD + PPK_PAGES;
+  #assert ppk_read_all(out[0..<size], back[..], l[..]) == PPK_PAGES && l[0].m.roots == 342 && l[0].m.page[1022].entry == 1022 * 7 && !l[0].m.page[1022].root && l[0].m.page[1023].root && l[0].m.page[1023].codec == PPK_STORED;
+  for k: 0..<PPK_PAGES { #assert back[k] == image[k]; }
+  #assert !ppk_admit(l[..], PPK_PAGES, "") && l[0].refused == 1;   // one past the last page a pack can have
+  #assert ppk_write(cast(string) image[0..<PPK_PAGES + 1], starts[0..<PPK_PAGES + 1], roots[..], entries[..], out[..], scratch[..], w[..]) == -1;
+  #assert ppk_write(cast(string) image[0..<8], starts[0..<0], roots[..], entries[..], out[..], scratch[..], w[..]) == -1;
+  #assert ppk_write("", starts[0..<1], roots[..], entries[..], out[..], scratch[..], w[..]) == -1;
+  // cuts that don't rise, or pass the image's end
+  starts[1] = 0; #assert ppk_write(cast(string) image[0..<8], starts[0..<2], roots[..], entries[..], out[..], scratch[..], w[..]) == -1;
+  starts[1] = 8; #assert ppk_write(cast(string) image[0..<8], starts[0..<2], roots[..], entries[..], out[..], scratch[..], w[..]) == -1;
+  starts[1] = 7; #assert ppk_write(cast(string) image[0..<8], starts[0..<2], roots[..], entries[..], out[..], scratch[..], w[..]) == PPK_HEADER + 2 * PPK_RECORD + 8;
+  starts[1] = 1;
+  // every byte the format fixes is written, into a buffer that held something else; the buffer may be exactly the file
+  runs: [600] u8; x := 12345; for k: 0..<600 { x = (x * 1103515245 + 12345) & 0x7fffffff; runs[k] = ifx k < 300 then 118 else cast,trunc(u8) (x >> 16); }   // 300 of one byte, which deflate, then bytes that don't
+  starts[1] = 300;
+  for k: 0..<70000 { out[k] = 0xff; }
+  size = ppk_write(cast(string) runs[..], starts[0..<2], roots[..], entries[..], out[..], scratch[..], w[..]);
+  #assert size > 0 && out[size] == 0xff && ppk_read_all(out[0..<size], back[..], l[..]) == 600 && l[0].m.page[0].codec == PPK_DEFLATE && l[0].m.page[1].codec == PPK_STORED && l[0].m.page[0].stored < 300 && l[0].m.page[1].stored == 300;
+  for k: 0..<600 { #assert back[k] == runs[k]; }
+  #assert l[0].m.page[0].root && !l[0].m.page[1].root && l[0].m.page[0].entry == 0 && l[0].m.page[1].entry == 7 && l[0].m.page[1].image_at == 300 && l[0].m.file_bytes == size;
+  exact: [2048] u8; for k: 0..<2048 { exact[k] = 0xff; }
+  #assert ppk_write(cast(string) runs[..], starts[0..<2], roots[..], entries[..], exact[0..<size], scratch[..], w[..]) == size;
+  for k: 0..<size { #assert exact[k] == out[k]; }
+  #assert ppk_write(cast(string) runs[..], starts[0..<2], roots[..], entries[..], exact[0..<size - 1], scratch[..], w[..]) == -1;
+  #assert ppk_write(cast(string) runs[..], starts[0..<2], roots[..], entries[..], exact[0..<PPK_HEADER + 2 * PPK_RECORD], scratch[..], w[..]) == -1;
+  // a page scratch can't hold deflated is stored
+  size = ppk_write(cast(string) runs[..], starts[0..<2], roots[..], entries[..], out[..], scratch[0..<1], w[..]);
+  #assert size == PPK_HEADER + 2 * PPK_RECORD + 600 && ppk_read_all(out[0..<size], back[..], l[..]) == 600 && l[0].m.page[0].codec == PPK_STORED;
+  // deflated to exactly its own size, a page is stored: 14 of one byte deflate to 14
+  #assert deflate_raw(cast(string) runs[0..<14], scratch[..], w[..]) == 14;
+  size = ppk_write(cast(string) runs[0..<14], starts[0..<1], roots[..], entries[..], out[..], scratch[..], w[..]);
+  #assert size == PPK_HEADER + PPK_RECORD + 14 && ppk_read_all(out[0..<size], back[..], l[..]) == 14 && l[0].m.page[0].codec == PPK_STORED;
+  #assert deflate_raw(cast(string) runs[0..<20], scratch[..], w[..]) == 15;
+  size = ppk_write(cast(string) runs[0..<20], starts[0..<1], roots[..], entries[..], out[..], scratch[..], w[..]);
+  #assert size == PPK_HEADER + PPK_RECORD + 15 && ppk_read_all(out[0..<size], back[..], l[..]) == 20 && l[0].m.page[0].codec == PPK_DEFLATE;
+}
+#test "the writer cuts a page of 1,048,576 bytes and not one of a byte more" #steps 4000000000 {
+  w: [1] DeflateWork; scratch: [8192] u8; out: [16384] u8; image: [1048577] u8;
+  starts: [1] int; roots := [1] bool.[true]; entries: [1] int;
+  for k: 0..<1048577 { image[k] = 118; }
+  #assert ppk_write(cast(string) image[..], starts[..], roots[..], entries[..], out[..], scratch[..], w[..]) == -1;
+  size := ppk_write(cast(string) image[0..<PPK_PAGE_MAX], starts[..], roots[..], entries[..], out[..], scratch[..], w[..]);
+  m: [1] PpkManifest; #assert size > 0 && ppk_manifest(cast(string) out[0..<size], m[..]) && m[0].page[0].decoded == PPK_PAGE_MAX && m[0].page[0].codec == PPK_DEFLATE;
+  // the limit is a page's own length, wherever the page starts
+  two := [2] int.[0, 1]; both := [2] bool.[true, true]; named: [2] int;
+  size = ppk_write(cast(string) image[..], two[..], both[..], named[..], out[..], scratch[..], w[..]);
+  #assert size > 0 && ppk_manifest(cast(string) out[0..<size], m[..]) && m[0].pages == 2 && m[0].page[1].decoded == PPK_PAGE_MAX && m[0].page[1].image_at == 1;
+}
+#test "a whole file read back: its length, the image's room, each page's bytes and the image's digest" #steps 400000000 {
+  w: [1] DeflateWork; scratch: [4096] u8; out: [4096] u8; back: [700] u8; l: [1] PpkLoad;
+  image: [600] u8; x := 12345; for k: 0..<600 { x = (x * 1103515245 + 12345) & 0x7fffffff; image[k] = ifx k < 300 then 118 else cast,trunc(u8) (x >> 16); }   // 300 of one byte, which deflate, then bytes that don't
+  starts := [2] int.[0, 300]; roots := [2] bool.[true, true]; entries: [2] int;
+  size := ppk_write(cast(string) image[..], starts[..], roots[..], entries[..], out[..], scratch[..], w[..]);
+  #assert ppk_read_all(out[0..<size], back[..], l[..]) == 600 && ppk_complete(l[0]) && l[0].held == 2;
+  #assert ppk_read_all(out[0..<size], back[0..<600], l[..]) == 600 && ppk_read_all(out[0..<size], back[0..<599], l[..]) == -1 && !l[0].m.ok;
+  #assert ppk_read_all(out[0..<size + 1], back[..], l[..]) == -1 && ppk_read_all(out[0..<PPK_HEADER + 2 * PPK_RECORD], back[..], l[..]) == -1 && !l[0].m.ok && l[0].held == 0;
+  // a damaged stored page, a damaged deflate stream, a wrong image digest
+  g0 := l[0].m.page[0];
+  #assert ppk_read_all(out[0..<size], back[..], l[..]) == 600; g0 = l[0].m.page[0]; g1 := l[0].m.page[1];
+  out[g1.stored_at + 5] ^= 1; #assert ppk_read_all(out[0..<size], back[..], l[..]) == -1 && l[0].held == 1 && l[0].refused == 1; out[g1.stored_at + 5] ^= 1;
+  for at: 0..<g0.stored { out[g0.stored_at + at] ^= 0x10; #assert ppk_read_all(out[0..<size], back[..], l[..]) == -1 && l[0].held == 0; out[g0.stored_at + at] ^= 0x10; }
+  out[70] ^= 1; #assert ppk_read_all(out[0..<size], back[..], l[..]) == -1 && l[0].held == 2; out[70] ^= 1;
+  #assert ppk_read_all(out[0..<size], back[..], l[..]) == 600;
+  // a stream that ends early over bytes that happen to be right is still refused: 100 of one
+  // byte then 100 zeros, with the page's stream holding only the first 100
+  half: [200] u8; for k: 0..<100 { half[k] = 118; }
+  z := deflate_raw(cast(string) half[0..<100], scratch[..], w[..]);
+  f: [400] u8; p := ppk_test_head(f[..], 1, 200); pack_put32(f[..], PPK_HEADER + 4, z); f[PPK_HEADER + 16] = PPK_DEFLATE;
+  ppk_id_put(f[..], PPK_HEADER + 32, asset_id(cast(string) half[..])); ppk_id_put(f[..], 64, asset_id(cast(string) half[..])); pack_put32(f[..], 8, p.count + z);
+  for k: 0..<z { f[p.count + k] = scratch[k]; }
+  p = ppk_test_seal(f[..], 1); zero: [200] u8;
+  #assert inflate(f[p.count..<p.count + z], zero[..]) == 100 && cast(string) zero[..] == cast(string) half[..];
+  for k: 0..<200 { zero[k] = 0; }
+  #assert ppk_read_all(f[0..<p.count + z], zero[..], l[..]) == -1 && l[0].held == 0 && l[0].m.ok;
+}
+#test "what is ready and what a range needs, at a page's edges and the image's" #steps 400000000 {
+  b: [700] u8; p := ppk_test_head(b[..], 4, 8); m: [1] PpkManifest; #assert ppk_manifest(p, m[..]);
+  image: [32] u8; for k: 0..<4 { ppk_id_put(b[..], PPK_HEADER + k * PPK_RECORD + 32, asset_id(cast(string) image[0..<8])); }
+  b[PPK_HEADER + 2 * PPK_RECORD + 17] = 0;
+  #assert ppk_manifest(ppk_test_seal(b[..], 4), m[..]) && m[0].roots == 3;
+  l: [1] PpkLoad; out: [8] int; busy: [4] bool;
+  // nothing open: nothing is ready, not even an empty range
+  #assert !ppk_ready(l[0], 0, 0) && ppk_cover(l[0], 0, 0, out[..]) == -1 && !ppk_roots_ready(l[0]) && !ppk_complete(l[0]) && ppk_next(l[0], busy[..]) == -1;
+  #assert !ppk_admit(l[..], 0, cast(string) image[0..<8]) && l[0].refused == 1;
+  #assert ppk_open(l[..], m[0]) && l[0].refused == 0 && l[0].held == 0;
+  // an empty range is ready anywhere in the image, its end too, and nowhere else
+  #assert ppk_ready(l[0], 0, 0) && ppk_ready(l[0], 5, 0) && ppk_ready(l[0], 32, 0) && !ppk_ready(l[0], 33, 0) && !ppk_ready(l[0], -1, 0);
+  #assert ppk_cover(l[0], 0, 0, out[..]) == 0 && ppk_cover(l[0], 5, 0, out[..]) == 0 && ppk_cover(l[0], 32, 0, out[..]) == 0 && ppk_cover(l[0], 33, 0, out[..]) == -1 && ppk_cover(l[0], -1, 0, out[..]) == -1;
+  #assert ppk_cover(l[0], 5, 0, out[0..<0]) == 0 && ppk_cover(l[0], 5, 1, out[0..<0]) == -1;
+  #assert !ppk_ready(l[0], 0, 1) && !ppk_ready(l[0], 31, 1) && !ppk_ready(l[0], 32, 1) && ppk_cover(l[0], 31, 1, out[..]) == 1 && out[0] == 3 && ppk_cover(l[0], 32, 1, out[..]) == -1 && ppk_cover(l[0], 0, 32, out[..]) == 4 && ppk_cover(l[0], 0, 33, out[..]) == -1;
+  // roots first, then the rest; a page in flight is passed over
+  #assert ppk_next(l[0], busy[..]) == 0; busy[0] = true; #assert ppk_next(l[0], busy[..]) == 1; busy[1] = true; busy[3] = true; #assert ppk_next(l[0], busy[..]) == 2;
+  busy[2] = true; #assert ppk_next(l[0], busy[..]) == -1; busy[3] = false; #assert ppk_next(l[0], busy[..]) == 3; busy[2] = false; #assert ppk_next(l[0], busy[..]) == 3;
+  for k: 0..<4 { busy[k] = false; }
+  // every page but page 1 arrives
+  #assert ppk_admit(l[..], 0, cast(string) image[0..<8]) && ppk_admit(l[..], 2, cast(string) image[0..<8]) && !ppk_roots_ready(l[0]) && ppk_admit(l[..], 3, cast(string) image[0..<8]);
+  #assert l[0].held == 3 && l[0].roots_held == 2 && !ppk_roots_ready(l[0]) && !ppk_complete(l[0]) && ppk_next(l[0], busy[..]) == 1;
+  #assert ppk_ready(l[0], 0, 8) && ppk_ready(l[0], 7, 1) && !ppk_ready(l[0], 7, 2) && !ppk_ready(l[0], 8, 1) && !ppk_ready(l[0], 15, 1) && ppk_ready(l[0], 16, 1) && !ppk_ready(l[0], 15, 2) && ppk_ready(l[0], 16, 16) && !ppk_ready(l[0], 0, 32);
+  #assert ppk_ready(l[0], 12, 0) && !ppk_ready(l[0], 16, 17) && !ppk_ready(l[0], 17, 16) && !ppk_ready(l[0], 20, -1) && !ppk_ready(l[0], -1, 2);
+  #assert ppk_cover(l[0], 0, 8, out[..]) == 0 && ppk_cover(l[0], 7, 2, out[..]) == 1 && out[0] == 1 && ppk_cover(l[0], 15, 1, out[..]) == 1 && ppk_cover(l[0], 16, 1, out[..]) == 0 && ppk_cover(l[0], 16, 16, out[..]) == 0 && ppk_cover(l[0], 0, 32, out[..]) == 1;
+  #assert ppk_cover(l[0], 20, -1, out[..]) == -1 && ppk_cover(l[0], -1, 2, out[..]) == -1 && ppk_cover(l[0], 16, 17, out[..]) == -1;
+  // the last one
+  #assert ppk_admit(l[..], 1, cast(string) image[0..<8]) && ppk_roots_ready(l[0]) && ppk_complete(l[0]) && ppk_next(l[0], busy[..]) == -1 && ppk_ready(l[0], 0, 32) && !ppk_ready(l[0], 0, 33) && !ppk_ready(l[0], 20, -1) && !ppk_ready(l[0], -1, 2) && !ppk_ready(l[0], 32, 1) && !ppk_ready(l[0], 33, 0);
+  #assert ppk_cover(l[0], 0, 32, out[..]) == 0 && l[0].refused == 0;
+  // a page that is no root waits for the roots, wherever it stands: here page 1
+  b[PPK_HEADER + PPK_RECORD + 17] = 0; #assert ppk_manifest(ppk_test_seal(b[..], 4), m[..]) && m[0].roots == 2 && ppk_open(l[..], m[0]);
+  #assert ppk_next(l[0], busy[..]) == 0; busy[0] = true; #assert ppk_next(l[0], busy[..]) == 3; busy[3] = true; #assert ppk_next(l[0], busy[..]) == 1; busy[1] = true; #assert ppk_next(l[0], busy[..]) == 2;
+  busy[2] = true; #assert ppk_next(l[0], busy[..]) == -1; for k: 0..<4 { busy[k] = false; }
+  b[PPK_HEADER + PPK_RECORD + 17] = 1; #assert ppk_manifest(ppk_test_seal(b[..], 4), m[..]) && m[0].roots == 3;
+  // roots held without every page: page 2 is no root
+  #assert ppk_open(l[..], m[0]) && ppk_admit(l[..], 0, cast(string) image[0..<8]) && ppk_admit(l[..], 1, cast(string) image[0..<8]) && ppk_admit(l[..], 3, cast(string) image[0..<8]) && ppk_roots_ready(l[0]) && !ppk_complete(l[0]) && ppk_next(l[0], busy[..]) == 2;
 }

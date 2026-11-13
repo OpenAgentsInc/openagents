@@ -32,6 +32,13 @@
 @end
 
 @interface AEPageHost : NSObject
+// For a host that draws a pack itself (the Workshop's model). A pack's image for this device: the
+// block build its GPU takes when one stands beside the pack (NAME.bc7.vpk3 or NAME.astc4.vpk3,
+// read whole with every page checked), else the pack itself. nil when the file can't be read.
++ (NSData *)packImage:(NSString *)path device:(id<MTLDevice>)device;
+// That image's colour layers as one texture array of GPU blocks with their mip chains, uploaded as
+// they are. nil when its layers are pictures for a decoder, or this GPU has no such format.
++ (id<MTLTexture>)blockLayers:(NSData *)image device:(id<MTLDevice>)device;
 // nil when the page can't open; `why` then says what is missing.
 + (instancetype)open:(AEPageConfig *)config device:(id<MTLDevice>)device queue:(id<MTLCommandQueue>)queue why:(NSString **)why;
 // One frame of a view `points` in size at `scale` pixels a point. Returns the picture, drawn by

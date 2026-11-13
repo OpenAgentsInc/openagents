@@ -1,0 +1,62 @@
+// OCM1: the Ocarina import's material records, the file a pipeline step hands the next as
+// link.materials or scene.materials (GitHub #13304). This file is the format's one writer and one
+// reader; its profile is proto/verse/ocarina-material-pack-ocm1.json, held to it by
+// ocarina-material-profile.coax. Little endian:
+//   header, 32 bytes: "OCM1", version 1, the record count (1 to 1024), the texture layer count
+//     (1 to 2048: the layers the records' sampler words number from 1; 0 in a word is no texture),
+//     then 16 zero bytes
+//   records, 256 bytes each (64 words), to the file's end: words 0 to 7 the sampler layers, 16 the
+//     material's kind, 17 its render mode, 18 and 19 its alpha cut and roughness, 20 to 59 its
+//     colours, texture matrices and scalars, 60 and 61 two more sampler layers, 62 a terrain flag
+// The reader checks the header and that the records end the file. What a record's words mean is
+// each tool's own (ocarina-material-pack.coax writes them; the kokiri tools add and remap them).
+//   coax/bin/coax test metaverse/tools/ocarina-material-format.coax --library
+#load "../../metaverse-engine/core/binary-words.coax";
+
+OCM_MAGIC :: 0x314d434f;   // "OCM1"
+OCM_VERSION :: 1;
+OCM_HEADER :: 32;
+OCM_RECORD :: 256;
+OCM_RECORDS :: 1024;
+OCM_LAYERS :: 2048;
+
+OcmHead :: struct { ok: bool; count: int; layers: int; }
+
+// The bytes a file of `count` records is.
+ocm_bytes :: (count: int) -> int #effects(all) { return OCM_HEADER + count * OCM_RECORD; }
+// Where record `row` starts.
+ocm_record :: (row: int) -> int #effects(all) { return OCM_HEADER + row * OCM_RECORD; }
+// Writes the header over out[0..<32]: the records after it are the caller's.
+ocm_head_put :: (out: [] u8, count: int, layers: int) #effects(all) {
+  for k: 0..<OCM_HEADER { out[k] = 0; }
+  scan_put(out, 0, OCM_MAGIC); scan_put(out, 4, OCM_VERSION); scan_put(out, 8, cast(u32) count); scan_put(out, 12, cast(u32) layers);
+}
+// Reads a whole file: its record and layer counts, or ok false when it is not an OCM1 file.
+ocm_read :: (b: [] u8) -> OcmHead #effects(all) {
+  if b.count < OCM_HEADER || scan_u32(b, 0) != OCM_MAGIC || scan_u32(b, 4) != OCM_VERSION { return OcmHead.{}; }
+  count := cast(int) scan_u32(b, 8); layers := cast(int) scan_u32(b, 12);
+  if count < 1 || count > OCM_RECORDS || layers < 1 || layers > OCM_LAYERS || b.count != ocm_bytes(count) { return OcmHead.{}; }
+  for k: 16..<OCM_HEADER { if b[k] != 0 { return OcmHead.{}; } }
+  return OcmHead.{ok = true, count = count, layers = layers};
+}
+
+#test "a header written is the header read; the records must end the file" {
+  b: [800] u8; for k: 0..<800 { b[k] = 0xff; }
+  ocm_head_put(b[..], 3, 60);
+  #assert cast(string) b[0..<4] == "OCM1" && b[32] == 0xff && ocm_bytes(3) == 800 && ocm_record(2) == 544;
+  h := ocm_read(b[..]); #assert h.ok && h.count == 3 && h.layers == 60;
+  #assert !ocm_read(b[0..<799]).ok && !ocm_read(b[0..<544]).ok && !ocm_read(b[0..<31]).ok && !ocm_read(b[0..<0]).ok;
+  ocm_head_put(b[..], 2, 60); #assert !ocm_read(b[..]).ok && ocm_read(b[0..<544]).ok;
+}
+#test "the counts' bounds, the version, the magic and the header's zero bytes" {
+  b: [32 + 1025 * 256] u8;
+  ocm_head_put(b[..], 1, 1); #assert ocm_read(b[0..<ocm_bytes(1)]).ok;
+  ocm_head_put(b[..], 0, 1); #assert !ocm_read(b[0..<OCM_HEADER]).ok;
+  ocm_head_put(b[..], OCM_RECORDS, OCM_LAYERS); #assert ocm_read(b[0..<ocm_bytes(OCM_RECORDS)]).ok && ocm_read(b[0..<ocm_bytes(OCM_RECORDS)]).layers == OCM_LAYERS;
+  ocm_head_put(b[..], OCM_RECORDS + 1, 1); #assert !ocm_read(b[..]).ok;
+  ocm_head_put(b[..], 1, 0); #assert !ocm_read(b[0..<ocm_bytes(1)]).ok;
+  ocm_head_put(b[..], 1, OCM_LAYERS + 1); #assert !ocm_read(b[0..<ocm_bytes(1)]).ok;
+  ocm_head_put(b[..], 1, 5);
+  for at: 0..<OCM_HEADER { if at >= 12 && at < 16 { continue; } b[at] ^= 2; #assert !ocm_read(b[0..<ocm_bytes(1)]).ok; b[at] ^= 2; }
+  #assert ocm_read(b[0..<ocm_bytes(1)]).ok;
+}

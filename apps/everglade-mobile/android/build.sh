@@ -32,9 +32,12 @@ cc=("$llvm/bin/aarch64-linux-android30-clang" -std=c11 -O2 -fPIC -ffp-contract=o
 objects=()
 for unit in workshop model temple; do "${cc[@]}" -c "$work/c/$unit.c" -o "$work/c/$unit.o"; objects+=("$work/c/$unit.o"); done
 for face in face model-face place-face; do "${cc[@]}" -c "$desk/$face.c" -o "$work/c/$face.o"; objects+=("$work/c/$face.o"); done
-# The one pack reader (metaverse-engine/host/pack-table.coax's pack_table, #13304) as C: host.c finds the pack's entries through it.
-"$coax" c "$repo/metaverse-engine/host/pack-table-face.coax" --library --header "$work/c/aethyr-pack-table.h" > "$work/c/aethyr-pack-table.c"
-"${cc[@]}" -c "$work/c/aethyr-pack-table.c" -o "$work/c/aethyr-pack-table.o"; objects+=("$work/c/aethyr-pack-table.o")
+# The host core's face (metaverse-engine/host/core/core-face.coax, #13304) as C: the one pack reader, a paged
+# block build read whole, a block layer's levels and the format pick. host.c is built on the core
+# over it (metaverse-engine/host/core/host-core.h). Its Coax shares library code with the scene's
+# units, so its two colliding helpers are renamed, as the Mac's build does.
+"$coax" c "$repo/metaverse-engine/host/core/core-face.coax" --library --header "$work/c/aethyr-core-face.h" > "$work/c/aethyr-core-face.c"
+"${cc[@]}" -DS_hash=engine_core_S_hash -DS_hex=engine_core_S_hex -c "$work/c/aethyr-core-face.c" -o "$work/c/aethyr-core-face.o"; objects+=("$work/c/aethyr-core-face.o")
 "${cc[@]}" -c "$here/host.c" -o "$work/c/host.o"
 # Your account (#13229): the login's flow and NIP-98 signing (app-login-unit.coax, its own unit:
 # secp256k1's tables take long to build), app-login.c's HTTPS, Keystore and files, and the
@@ -59,6 +62,12 @@ for stage in strokes.vert strokes.frag model.vert model.frag; do "$glslc" -O "$h
 xcrun -sdk macosx swiftc -O "$here/bake-faces/main.swift" "$desk/Sources/Faces.swift" -o "$work/bake-faces"
 "$work/bake-faces" "$repo/apps/openagents-web/realms/everglade2/assets/fonts" "$work/apk/assets/faces.bin"
 cp "$repo/apps/openagents-web/realms/everglade2/assets/everglade2.pack" "$work/apk/assets/everglade2.pack"
+# The pack's ASTC build (metaverse-engine/tools/block-pack.coax, #13304), kept by the pack's hash: a
+# GPU with ASTC uploads its layers as they are; one without takes the pack's pictures.
+blocks="$work/blocks/everglade2-$(shasum -a 256 "$repo/apps/openagents-web/realms/everglade2/assets/everglade2.pack" | cut -c1-16).astc4.vpk3"
+mkdir -p "$work/blocks"
+[[ -f "$blocks" ]] || "$repo/coax/web/tool.sh" "$repo/metaverse-engine/tools/block-pack.coax" "$repo/apps/openagents-web/realms/everglade2/assets/everglade2.pack" "$blocks" --format astc4 >/dev/null
+cp "$blocks" "$work/apk/assets/everglade2.astc4.vpk3"
 # The package: the manifest, then the library and the files (stored, not squeezed, so the app maps them).
 "$tools/aapt2" compile --dir "$here/res" -o "$work/res.zip"
 "$tools/aapt2" link -o "$work/unsigned.apk" -I "$platform" "$work/res.zip" --manifest "$here/AndroidManifest.xml" --min-sdk-version 30 --target-sdk-version 35

@@ -1,0 +1,65 @@
+// OCM1 against its profile (GitHub #13304): proto/verse/ocarina-material-pack-ocm1.json pins one
+// fixture's exact bytes and the damage the reader must refuse. This tool builds the same fixture
+// through the format's writer (ocarina-material-format.coax) and holds the profile to it with the
+// engine's shared profile check (metaverse-engine/tools/format-profile-lib.coax).
+//   coax/web/tool.sh metaverse/tools/ocarina-material-profile.coax proto/verse/ocarina-material-pack-ocm1.json
+//   coax/web/tool.sh metaverse/tools/ocarina-material-profile.coax write     (the fixture as hex, for the profile)
+// Exit 1 when the profile doesn't hold.
+#import "Basic";
+#load "ocarina-material-format.coax";
+#load "../../metaverse-engine/tools/format-profile-lib.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+
+OMP_ID :: "ocarina-material-pack-ocm1";
+
+// Two records over three texture layers: a masked cloth material with three samplers, an alpha
+// cut of 0.5 and a roughness of 0.7; and a terrain material with one sampler and a second map.
+omp_build :: (f: [] FpFixture) -> bool {
+  f[0].wn = 0; f[0].n = ocm_bytes(2);
+  b := f[0].bytes[0..<f[0].n];
+  for k: 0..<b.count { b[k] = 0; }
+  ocm_head_put(b, 2, 3);
+  r := ocm_record(0);
+  scan_put(b, r, 1); scan_put(b, r + 4, 2); scan_put(b, r + 8, 3); scan_put(b, r + 16 * 4, 7); scan_put(b, r + 17 * 4, 1);
+  scan_put(b, r + 18 * 4, f32_bits(0.5)); scan_put(b, r + 19 * 4, f32_bits(0.7));
+  r = ocm_record(1);
+  scan_put(b, r, 3); scan_put(b, r + 16 * 4, 9); scan_put(b, r + 19 * 4, f32_bits(0.9)); scan_put(b, r + 60 * 4, 2); scan_put(b, r + 62 * 4, 1);
+  return true;
+}
+omp_admits :: (f: [] FpFixture) -> bool { h := ocm_read(f[0].bytes[0..<f[0].n]); return h.ok && h.count == 2 && h.layers == 3; }
+#test "the fixture is two records the reader admits, and one byte less is not" {
+  f: [1] FpFixture; #assert omp_build(f[..]) && f[0].n == 544 && omp_admits(f[..]);
+  f[0].n = 543; #assert !omp_admits(f[..]);
+}
+omp_check :: (d: Jv, f: [] FpFixture) -> string {
+  t: [256] u8;
+  if fp_str(d, jv_get(d, 0, "identity"), t[..]) != OMP_ID { return "its identity is not this format's"; }
+  if !omp_build(f) { return "the codec's writer gave no fixture"; }
+  why := fp_fixture(d, f);
+  if why != "" { return why; }
+  if !omp_admits(f) { return "the codec's reader refuses its fixture"; }
+  if fp_refusals(d) < 3 { return "it names fewer than three refusals"; }
+  for i: 0..<fp_refusals(d) {
+    if !omp_build(f) { return "the codec's writer gave no fixture"; }
+    why = fp_refuse(d, i, f);
+    if why != "" { return why; }
+    if omp_admits(f) { return "the codec's reader admits a fixture the profile says it refuses"; }
+  }
+  return "";
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: ocarina-material-profile PROFILE.json | write"); return 2; }
+  f: [1] FpFixture;
+  if args_at(a[..], 0) == "write" { if !omp_build(f[..]) { return 2; } fp_print(f[..]); return 0; }
+  path := args_at(a[..], 0);
+  text: [65536] u8; n := fs_read(path, text[..]);
+  nodes: [2048] JvNode; d: [1] Jv;
+  if n <= 0 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { print("FAIL %: cannot parse the profile\n", path); return 1; }
+  why := omp_check(d[0], f[..]);
+  if why != "" { print("FAIL %: %\n", path, why); return 1; }
+  print("%: profile holds\n", path);
+  return 0;
+}

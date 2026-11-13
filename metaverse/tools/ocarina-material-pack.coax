@@ -20,5 +20,5 @@ tool_main :: ()->int #export_c #effects(all) {
   scan_put(out[..],base+60*4,cast(u32)mp_layer(names[..],ab,mp_texture(b,e,m,"_mt0")));print("FMAT % type=% mode=%\n",name,kind,mode_name);
  }
  for i:0..<names[0].count {name:=cast(string)names[0].text[i][0..<names[0].n[i]];file:[256]u8;for c,k:name {file[k]=c;}for c,k:".png" {file[name.count+k]=c;}filename:=cast(string)file[0..<name.count+4];#assert fs_exists(fs_join(args_at(a[..],3),filename,path[..]));for c:filename {list[listed]=c;listed+=1;}list[listed]='\n';listed+=1;}
- scan_put(out[..],0,0x314d434f);scan_put(out[..],4,1);scan_put(out[..],8,cast(u32)count);scan_put(out[..],12,cast(u32)names[0].count);dest:=args_at(a[..],4);#assert fs_write(fs_join(dest,"link.materials",path[..]),cast(string)out[0..<32+count*256]);#assert fs_write(fs_join(dest,"link.textures",path[..]),cast(string)list[0..<listed]);print("Ocarina materials=% image_layers=%\n",count,names[0].count);return 0;
+ ocm_head_put(out[..],count,names[0].count);#assert ocm_read(out[0..<ocm_bytes(count)]).ok;dest:=args_at(a[..],4);#assert fs_write(fs_join(dest,"link.materials",path[..]),cast(string)out[0..<32+count*256]);#assert fs_write(fs_join(dest,"link.textures",path[..]),cast(string)list[0..<listed]);print("Ocarina materials=% image_layers=%\n",count,names[0].count);return 0;
 }

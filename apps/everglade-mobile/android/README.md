@@ -12,10 +12,21 @@ Everglade Experimental or the Bitcoin Lab, which iOS and the Mac run through
 the OpenAgents Metaverse Engine's page host ([`metaverse-engine/host/apple/`](../../../metaverse-engine/host/apple/page-host.h)).
 `host.c` isn't on that page-host contract: it has its own Vulkan passes for two
 scenes. To play Everglade on Android, use the web app. Bringing Android onto
-the contract is part of GitHub #13304. What it shares with the other hosts
-today is the pack reader: `host.c` finds the pack's entries through
-[`metaverse-engine/host/pack-table.h`](../../../metaverse-engine/host/pack-table.h), the same
-Coax reader (`metaverse-engine/editor/pack.coax`) the browser, iOS and the Mac use.
+the contract is a later step (GitHub #13304 gave every host one core; the page
+host's passes on Vulkan are not written). What it shares with the other hosts
+today is the one C host core ([`metaverse-engine/host/core/host-core.h`](../../../metaverse-engine/host/core/host-core.h)):
+the pack's entries by kind through the one Coax pack reader, the choice of the
+pack's block build, and its layers' levels.
+
+**Textures.** The app carries the pack's ASTC 4x4 build (`everglade2.astc4.vpk3`,
+written by `metaverse-engine/tools/block-pack.coax`). A GPU that samples ASTC
+(`textureCompressionASTC_LDR`) gets the layers as they are, every mip level,
+with no decode; the log says `layers: 67 as astc4 at 512, 10 levels`. A GPU
+without ASTC takes the pack's own pictures, decoded to RGBA8 as before. The
+emulator shows this only on the host's GPU (`-gpu host`): its software GPU
+lacks the 64-bit shader integers the app needs. The host core's conformance
+program runs on any emulator or device `adb` sees
+(`metaverse-engine/host/core/platforms.sh`).
 
 ## Run it
 

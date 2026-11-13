@@ -33,7 +33,7 @@ engine_core_block :: (layer: string) -> BlockLayer #export_c #effects(all) { ret
 // The feature bits tf_pick reads, from what a device's GPU has.
 engine_core_features :: (bc: bool, astc: bool) -> int #export_c #effects(all) { return (ifx bc then TF_BC else 0) | (ifx astc then TF_ASTC else 0); }
 #test "a paged file states its image; anything else is a pack to read as it is" {
-  ib: [600] u8; image := ppk_test_image(ib[..]);
+  ib: [600] u8; image := pack_test(600, ib[..]);
   starts: [PPK_PAGES] int; roots: [PPK_PAGES] bool; entries: [PPK_PAGES] int; w: [1] DeflateWork;
   pages := ppk_plan(image, 128, 0, starts[..], roots[..], entries[..]);
   #assert pages > 1;

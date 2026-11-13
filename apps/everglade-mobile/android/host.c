@@ -27,7 +27,12 @@
 #define VK_USE_PLATFORM_ANDROID_KHR
 #include <vulkan/vulkan.h>
 #include "face.h"
-#include "../../../metaverse-engine/host/core/host-core.h"   // the one C host core (#13304): the pack's entries by kind, over the one pack reader
+// The one C host core (#13304) over its face, which the build compiles (aethyr-core-face.c): the
+// pack's entries by kind, the block build this GPU takes, read whole, and a block layer's levels.
+#include "aethyr-core-face.h"
+#define ENGINE_PACK_TABLE_PROVIDED
+#define ENGINE_CORE_FACE
+#include "../../../metaverse-engine/host/core/host-core.h"
 
 #define SAY(...) __android_log_print(ANDROID_LOG_INFO, "everglade", __VA_ARGS__)
 // Without one of the app's own parts there is nothing to show, so say which and stop.
@@ -79,6 +84,7 @@ static struct {
   int32_t stick, look, pinch; float stick_x, stick_y, look_moved, pinch_span;
   // Vulkan.
   VkInstance instance; VkPhysicalDevice gpu; VkDevice device; uint32_t family; VkQueue queue;
+  int astc;   // this GPU samples ASTC blocks (textureCompressionASTC_LDR)
   VkPhysicalDeviceMemoryProperties memory;
   VkCommandPool pool; VkCommandBuffer cmd; VkFence fence; VkSemaphore acquired, drawn;
   VkSurfaceKHR surface; VkSwapchainKHR swapchain; VkFormat format; VkExtent2D extent;
@@ -99,6 +105,13 @@ static double now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
 
 // ---- The app's files ----
 
+// Whether the app carries the pack's block build of a format (everglade2.TAG.vpk3).
+static int asset_build(void *user, const char *tag) {
+  (void)user; char name[48]; snprintf(name, sizeof name, "everglade2.%s.vpk3", tag);
+  AAsset *a = AAssetManager_open(g.app->activity->assetManager, name, AASSET_MODE_UNKNOWN);
+  if (a) AAsset_close(a);
+  return a != NULL;
+}
 static const uint8_t *asset(const char *name, size_t *length) {
   AAsset *a = AAssetManager_open(g.app->activity->assetManager, name, AASSET_MODE_BUFFER);
   if (!a) STOP("Everglade: the app's %s is missing. Rebuild with apps/everglade-mobile/android/build.sh.", name);
@@ -266,7 +279,9 @@ static void gpu_open(void) {
   float priority = 1;
   VkDeviceQueueCreateInfo qi = { .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, .queueFamilyIndex = g.family, .queueCount = 1, .pQueuePriorities = &priority };
   const char *dext[] = { "VK_KHR_swapchain" };
-  VkPhysicalDeviceFeatures want = { .shaderInt64 = VK_TRUE };
+  // ASTC blocks, when this GPU samples them: the pack's layers then go up with no decode.
+  g.astc = has.textureCompressionASTC_LDR == VK_TRUE;
+  VkPhysicalDeviceFeatures want = { .shaderInt64 = VK_TRUE, .textureCompressionASTC_LDR = g.astc ? VK_TRUE : VK_FALSE };
   VkDeviceCreateInfo di = { .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, .queueCreateInfoCount = 1, .pQueueCreateInfos = &qi, .enabledExtensionCount = 1, .ppEnabledExtensionNames = dext, .pEnabledFeatures = &want };
   VK(vkCreateDevice(g.gpu, &di, NULL, &g.device));
   vkGetDeviceQueue(g.device, g.family, 0, &g.queue);
@@ -352,7 +367,19 @@ static void model_open(void) {
   // Everglade II's pack: a catalog, the vertices, the indices and the layers, found by the one pack
   // reader (metaverse-engine/host/pack-table.coax pack_table), sorted by kind by the host core
   // (metaverse-engine/host/core/host-core.h).
-  size_t n; const uint8_t *d = asset("everglade2.pack", &n);
+  // The block build this GPU takes, when the app carries one: Coax picks the format
+  // (texture-format.coax tf_pick) and the core reads the paged file whole, every page checked.
+  size_t n = 0; const uint8_t *d = NULL; char tag[8] = "";
+  engine_core_format(0, g.astc, 1, asset_build, NULL, tag);
+  if (tag[0]) {
+    char name[48]; snprintf(name, sizeof name, "everglade2.%s.vpk3", tag);
+    size_t fn; const uint8_t *file = asset(name, &fn);
+    int64_t want = engine_core_image_bytes(file, fn);
+    uint8_t *image = want > 0 ? malloc((size_t)want) : NULL;   // kept: the pack's entries point into it
+    if (image && engine_core_image(file, fn, image, (size_t)want)) { d = image; n = (size_t)want; } else free(image);
+    SAY("pack: the %s block build %s", tag, d ? "is read whole, every page checked" : "is refused; the pack itself is loaded");
+  }
+  if (!d) d = asset("everglade2.pack", &n);
   const char *bad = "Everglade: the app's everglade2.pack is damaged or doesn't hold the player's parts. Rebuild with apps/everglade-mobile/android/build.sh.";
   static EngineCorePack pack;
   if (!engine_core_pack(&pack, d, n)) STOP("%s", bad);
@@ -372,7 +399,39 @@ static void model_open(void) {
   g.u_model = buffer(96, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
   deep(model_bake, &o);
   if (o.baked != 1) STOP("%s", bad);
-  // Every layer drawn to one size, so they stack as one array; the pack's are 512 a side at most.
+  // A block build's layers go up as they are: every level of every layer, no decode and no blit.
+  EngineCoreLayer first;
+  VkFormat blocks = !engine_core_blocks(&pack, &first) ? VK_FORMAT_UNDEFINED
+    : !strcmp(first.tag, "astc4") ? VK_FORMAT_ASTC_4x4_SRGB_BLOCK : !strcmp(first.tag, "astc6") ? VK_FORMAT_ASTC_6x6_SRGB_BLOCK : VK_FORMAT_UNDEFINED;
+  if (blocks != VK_FORMAT_UNDEFINED && g.astc) {
+    uint32_t levels = (uint32_t)first.shape.levels, copies_n = layer_count * levels, c = 0; VkDeviceSize total = 0;
+    for (uint32_t l = 0; l < layer_count; l++) {
+      EngineCoreLayer layer = engine_core_layer(&pack, pack.colour[l]);
+      for (int level = 0; ; level++) { size_t bytes; int w, h, across, down; if (!engine_core_level(&layer, level, &bytes, &w, &h, &across, &down)) break; total += bytes; }
+    }
+    Buf staging = buffer(total, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+    VkBufferImageCopy *copies = calloc(copies_n, sizeof *copies); VkDeviceSize at = 0;
+    for (uint32_t l = 0; l < layer_count; l++) {
+      EngineCoreLayer layer = engine_core_layer(&pack, pack.colour[l]);
+      for (int level = 0; c < copies_n; level++) {
+        size_t bytes; int w, h, across, down; const uint8_t *b = engine_core_level(&layer, level, &bytes, &w, &h, &across, &down);
+        if (!b) break;
+        memcpy((uint8_t *)staging.map + at, b, bytes);
+        copies[c++] = (VkBufferImageCopy){ .bufferOffset = at, .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, (uint32_t)level, l, 1 }, .imageExtent = { (uint32_t)w, (uint32_t)h, 1 } };
+        at += bytes;
+      }
+    }
+    g.sheets = image(blocks, (uint32_t)first.shape.width, (uint32_t)first.shape.height, layer_count, levels, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+    once_begin();
+    layout(g.sheets.image, 0, levels, layer_count, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    vkCmdCopyBufferToImage(g.cmd, staging.buffer, g.sheets.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, c, copies);
+    layout(g.sheets.image, 0, levels, layer_count, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    once_end();
+    drop_buffer(&staging); free(copies);
+    SAY("layers: %u as %s at %d, %u levels", layer_count, first.tag, (int)first.shape.width, levels);
+    return;
+  }
+  // The pack itself: every layer a picture, drawn to one size so they stack as one array (512 a side at most).
   const uint32_t side = 512, mips = 10; const size_t each = (size_t)side * side * 4;
   Buf staging = buffer(each * layer_count, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
   VkDeviceSize offsets[80]; uint32_t widths[1] = { side }, heights[1] = { side };

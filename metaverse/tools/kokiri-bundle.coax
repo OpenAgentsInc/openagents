@@ -5,6 +5,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../metaverse-engine/render/geometry/scan.coax";
+#load "ocarina-material-format.coax";
 #test "Kokiri static GPU packing preserves positions UVs IDs and signed normals" {
  a:[128]u8;b:[64]u8;scan_write_point(a[..],0,v3(-45,116,-9));scan_write_point(a[..],12,v3(-1,0,1));scan_put(a[..],24,f32_bits(0.125));scan_put(a[..],32,7);scan_put(a[..],72,f32_bits(-1));scan_put(a[..],76,0xff123456);kb_vertex(a[..],0,b[..],0,25,false,0);#assert scan_point(b[..],0).y==116 && scan_float(b[..],16)==0.125 && scan_u32(b[..],32)==32 && scan_u32(b[..],40)==0xff123456 && (scan_u32(b[..],36)>>30)==3;#assert kb_snorm(-1)==513 && kb_snorm(1)==511 && kb_snorm(0)==0;
 }
@@ -26,7 +27,7 @@ tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || (args_count(a[..])!=7 && args_count(a[..])!=8) {return 2;}foliage:=args_count(a[..])==8;character:=args_at(a[..],0);scene:=args_at(a[..],1);ground:=args_at(a[..],2);atlas:=args_at(a[..],3);character_png:=args_at(a[..],4);
  out:[805306368]u8;gpu:[268435456]u8;data:[100663296]u8;catalog:[100663296]u8;source:[536870912]u8;path:[4096]u8;list:[65536]u8;names:[256]string;
  ln:=fs_read(fs_join(atlas,"scene.textures",path[..]),list[..]);#assert ln>0;begin:=0;layers:=0;for i:0..<ln {if list[i]=='\n' {#assert layers<256;names[layers]=cast(string)list[begin..<i];layers+=1;begin=i+1;}}#assert begin==ln && layers>=60;
- mn:=fs_read(fs_join(atlas,"scene.materials",path[..]),data[..]);#assert mn>32 && scan_u32(data[..],0)==0x314d434f;materials:=cast(int)scan_u32(data[..],8);#assert materials>25 && materials<2047 && mn==32+materials*256;ground_material:= -1;for i:0..<materials {if scan_u32(data[..],32+i*256+64)==9 {ground_material=i;}}#assert ground_material>=25;for k:0..<materials*256 {gpu[256+k]=data[32+k];}
+ mn:=fs_read(fs_join(atlas,"scene.materials",path[..]),data[..]);#assert mn>32;head:=ocm_read(data[0..<mn]);#assert head.ok;materials:=head.count;#assert materials>25;ground_material:= -1;for i:0..<materials {if scan_u32(data[..],32+i*256+64)==9 {ground_material=i;}}#assert ground_material>=25;for k:0..<materials*256 {gpu[256+k]=data[32+k];}
  prefix:=131072*4;link_vertices:=110515;size:=fs_read(fs_join(character,"link.vertices",path[..]),gpu[prefix..<prefix+link_vertices*128]);#assert size==link_vertices*128;static_base:=prefix+size;cursor:=static_base;static_count:=0;
  for part:0..<(ifx foliage then 3 else 2) {dir:=ifx part==0 then scene else ifx part==1 then ground else args_at(a[..],7);file:=ifx part==0 then "scene.vertices" else ifx part==1 then "mesh.vertices" else "foliage.vertices";n:=fs_read(fs_join(dir,file,path[..]),source[..]);#assert n>0 && n%128==0;#assert n/128*64<=gpu.count-cursor;for i:0..<n/128 {if part==2 {for k:0..<64 {gpu[cursor+i*64+k]=source[i*128+k];}}else {kb_vertex(source[..],i*128,gpu[..],cursor+i*64,25,part==1,ground_material);}}cursor+=n/2;static_count+=n/128;}
  scan_put(gpu[..],0,0x3156434f);scan_put(gpu[..],4,2);scan_put(gpu[..],8,cast(u32)link_vertices);scan_put(gpu[..],16,cast(u32)(prefix/4));scan_put(gpu[..],20,64);scan_put(gpu[..],24,64);scan_put(gpu[..],28,cast(u32)materials);scan_put(gpu[..],32,218334);scan_put(gpu[..],36,cast(u32)(static_base/4));scan_put(gpu[..],40,16);scan_put(gpu[..],44,cast(u32)static_count);scan_put(gpu[..],48,1);

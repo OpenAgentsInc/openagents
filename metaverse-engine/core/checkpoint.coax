@@ -31,7 +31,11 @@
 #load "replay.coax";
 
 // book:begin checkpoint-format
-CHECKPOINT_MAGIC :: 1095126833;   // "ACK1"
+// The format's name is ACK1. Its magic is this number: 0x41464F31, whose bytes spell "AFO1", not
+// "ACK1" (0x41434B31), a slip made when the format was first written (#12848). Every checkpoint
+// stored since holds this word and a reader compares the word, so the number is the format and
+// stays; the name is only what the documents call it (proto/aethyr/checkpoint-ack1.json, #13304).
+CHECKPOINT_MAGIC :: 1095126833;
 CHECKPOINT_SCHEMA :: 1;           // this format; a change to it is a new number
 CHECKPOINT_EVERY :: 640;          // steps between checkpoints a realm takes: 10 s at 64 a second
 CK_HEADER :: 12;                  // words before the channels

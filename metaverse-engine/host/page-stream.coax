@@ -19,6 +19,9 @@ HOST_PAGED_HEAD :: PPK_HEADER + PPK_PAGES * PPK_RECORD;
   #assert hpg_page(l[0], n, 0) == -1 && hpg_page(l[0], 0, 9) == -1 && hpg_page(l[0], 0, 5) == 1 && hpg_page(l[0], n - 1, 5) == 0;
   arena: [512] u8;
   #assert !hpg_stream(l[0], cast(string) arena[..]).done;
+  // the whole image in place is still no stream until its roots are admitted
+  whole: [512] u8; for c, k: image { whole[k] = c; }
+  #assert !hpg_stream(l[0], cast(string) whole[..]).done && !hpg_stream(l[0], cast(string) whole[..]).valid;
   for k: 0..<n - 1 {
     at := hpg_page(l[0], k, 2); d := hpg_page(l[0], k, 3);
     #assert !hpg_admit(l[..], k, cast(string) arena[0..<511]);
@@ -36,10 +39,57 @@ HOST_PAGED_HEAD :: PPK_HEADER + PPK_PAGES * PPK_RECORD;
   #assert hpk_stream_pack(cast(string) arena[..], s, plan, false, out[..]) && out[0].count == 5;
   bad := arena; bad[0] = 0; #assert !hpg_stream(l[0], cast(string) bad[..]).done;
 }
+#test "a head is opened only for an image the pack reactor can hold; a refused one leaves nothing open" #steps 2000000000 {
+  b: [5000] u8; l: [1] PpkLoad;
+  // the image's bounds: a pack header at least, the reactor's arena at most
+  #assert hpg_open(l[..], ppk_test_head(b[..], 1, PACK_HEADER)) && l[0].m.ok && l[0].m.image_bytes == PACK_HEADER;
+  #assert !hpg_open(l[..], ppk_test_head(b[..], 1, PACK_HEADER - 1)) && !l[0].m.ok && l[0].m.pages == 0 && l[0].m.image_bytes == 0;
+  #assert hpg_open(l[..], ppk_test_head(b[..], 64, PPK_PAGE_MAX)) && l[0].m.image_bytes == HOST_PACK_BYTES && l[0].m.pages == 64;
+  #assert !hpg_open(l[..], ppk_test_head(b[..], 65, PPK_PAGE_MAX)) && !l[0].m.ok && l[0].m.pages == 0;
+  p := ppk_test_head(b[..], 64, PPK_PAGE_MAX); r := PPK_HEADER + 63 * PPK_RECORD;
+  pack_put32(b[..], r + 4, 1); pack_put32(b[..], r + 12, PPK_PAGE_MAX); b[r + 16] = PPK_DEFLATE; pack_put32(b[..], 8, p.count + 63 * PPK_PAGE_MAX + 1);
+  #assert hpg_open(l[..], ppk_test_seal(b[..], 64));
+  // one byte past the arena: 64 full pages and a page of one byte
+  big: [5000] u8; q := ppk_test_head(big[..], 65, PPK_PAGE_MAX); r = PPK_HEADER + 64 * PPK_RECORD;
+  pack_put32(big[..], r + 4, 1); pack_put32(big[..], r + 12, 1); pack_put32(big[..], 8, q.count + HOST_PACK_BYTES + 1); pack_put32(big[..], 12, HOST_PACK_BYTES + 1);
+  m: [1] PpkManifest; #assert ppk_manifest(ppk_test_seal(big[..], 65), m[..]) && m[0].image_bytes == HOST_PACK_BYTES + 1 && !hpg_open(l[..], q) && !l[0].m.ok;
+  // a head that isn't one clears what was open
+  #assert hpg_open(l[..], ppk_test_head(b[..], 3, 16)) && l[0].m.pages == 3;
+  l[0].held = 2; l[0].refused = 5; l[0].arrived[1] = true;
+  #assert !hpg_open(l[..], cast(string) b[0..<PPK_HEADER + 3 * PPK_RECORD - 1]) && !l[0].m.ok && l[0].m.pages == 0 && l[0].held == 0 && l[0].refused == 0 && !l[0].arrived[1];
+  l[0].held = 2; l[0].refused = 5; l[0].arrived[1] = true;
+  #assert hpg_open(l[..], ppk_test_head(b[..], 3, 16)) && l[0].held == 0 && l[0].refused == 0 && !l[0].arrived[1];
+}
+#test "a page's fields and the pack's, by number; what is asked of nothing open" #steps 400000000 {
+  b: [700] u8; p := ppk_test_head(b[..], 3, 16); r := PPK_HEADER + 2 * PPK_RECORD; l: [1] PpkLoad;
+  #assert hpg_page(l[0], -1, 0) == -1 && hpg_page(l[0], 0, 0) == -1 && hpg_page(l[0], -1, 1) == -1;
+  pack_put32(b[..], r + 4, 5); b[r + 16] = PPK_DEFLATE; b[r + 17] = 0; pack_put32(b[..], 8, p.count + 37);
+  #assert hpg_open(l[..], ppk_test_seal(b[..], 3));
+  #assert hpg_page(l[0], -1, 0) == 3 && hpg_page(l[0], -1, 1) == 48 && hpg_page(l[0], -1, 2) == p.count + 37 && hpg_page(l[0], -1, 3) == 2 && hpg_page(l[0], -1, 4) == -1 && hpg_page(l[0], -1, -1) == -1;
+  #assert hpg_page(l[0], 2, 0) == p.count + 32 && hpg_page(l[0], 2, 1) == 5 && hpg_page(l[0], 2, 2) == 32 && hpg_page(l[0], 2, 3) == 16 && hpg_page(l[0], 2, 4) == PPK_DEFLATE && hpg_page(l[0], 2, 5) == 0;
+  #assert hpg_page(l[0], 2, 6) == -1 && hpg_page(l[0], 2, -1) == -1 && hpg_page(l[0], 1, 4) == PPK_STORED && hpg_page(l[0], 1, 5) == 1 && hpg_page(l[0], 1, 2) == 16;
+  #assert hpg_page(l[0], 3, 0) == -1 && hpg_page(l[0], -2, 0) == -1 && hpg_page(l[0], 0, 0) == p.count && hpg_page(l[0], 0, 2) == 0;
+  // pages are admitted in the arena: the whole arena, a page that is there, and nothing when nothing is open
+  arena: [49] u8; id := asset_id(cast(string) arena[0..<16]);
+  for k: 0..<3 { ppk_id_put(b[..], PPK_HEADER + k * PPK_RECORD + 32, id); }
+  cover: [4] int; none: [1] PpkLoad; #assert !hpg_admit(none[..], 0, "") && none[0].refused == 1 && !hpg_admit(none[..], -1, "") && none[0].refused == 2 && none[0].held == 0;
+  #assert !hpg_stream(none[0], "").done && !hpg_ready(none[0], 0, 0) && hpg_cover(none[0], 0, 0, cover[..]) == -1;
+  #assert hpg_open(l[..], ppk_test_seal(b[..], 3));
+  #assert !hpg_admit(l[..], 0, cast(string) arena[0..<47]) && !hpg_admit(l[..], 0, cast(string) arena[..]) && !hpg_admit(l[..], -1, cast(string) arena[0..<48]) && !hpg_admit(l[..], 3, cast(string) arena[0..<48]) && l[0].refused == 4;
+  arena[40] = 1; #assert !hpg_admit(l[..], 2, cast(string) arena[0..<48]) && l[0].refused == 5 && hpg_admit(l[..], 1, cast(string) arena[0..<48]) && hpg_admit(l[..], 0, cast(string) arena[0..<48]) && l[0].held == 2;
+  // the most pages a pack has: one past the last is refused, not read
+  most: [70000] u8; one: [1024] u8; full: [1] PpkLoad;
+  #assert hpg_open(full[..], ppk_test_head(most[..], PPK_PAGES, 1)) && !hpg_admit(full[..], PPK_PAGES, cast(string) one[..]) && full[0].refused == 1 && !hpg_admit(full[..], PPK_PAGES - 1, cast(string) one[..]) && full[0].refused == 2;
+  // both roots are held: the image may be read as a stream, but only as the whole arena
+  #assert hpg_ready(l[0], 0, 32) && !hpg_ready(l[0], 0, 33) && l[0].roots_held == 2;
+  #assert !hpg_stream(l[0], cast(string) arena[..]).done && !hpg_stream(l[0], cast(string) arena[0..<47]).done;
+}
 
 hpg_open :: (l: [] PpkLoad, head: string) -> bool #export_c #effects(all) {
   m: [1] PpkManifest;
-  if !ppk_manifest(head, m[..]) || m[0].image_bytes > HOST_PACK_BYTES || m[0].image_bytes < PACK_HEADER { l[0] = PpkLoad.{}; return false; }
+  l[0] = PpkLoad.{};
+  if !ppk_manifest(head, m[..]) { return false; }
+  if m[0].image_bytes > HOST_PACK_BYTES || m[0].image_bytes < PACK_HEADER { return false; }
   return ppk_open(l, m[0]);
 }
 // Field f of page k: 0 stored offset, 1 stored bytes, 2 image offset, 3 decoded bytes, 4 codec,
@@ -52,7 +102,8 @@ hpg_page :: (l: PpkLoad, k: int, f: int) -> int #export_c #effects(all) {
 }
 // Page k's bytes are in place in image (the whole arena): held when they are its record's.
 hpg_admit :: (l: [] PpkLoad, k: int, image: string) -> bool #export_c #effects(all) {
-  if !l[0].m.ok || image.count != l[0].m.image_bytes || k < 0 || k >= l[0].m.pages { l[0].refused += 1; return false; }
+  // A load that isn't open has no pages, so every k is out of range.
+  if image.count != l[0].m.image_bytes || k < 0 || k >= l[0].m.pages { l[0].refused += 1; return false; }
   g := l[0].m.page[k];
   return ppk_admit(l, k, image[g.image_at..<g.image_at + g.decoded]);
 }
@@ -64,6 +115,6 @@ hpg_cover :: (l: PpkLoad, at: int, n: int, out: [] int) -> int #export_c #effect
 hpg_stream :: (l: PpkLoad, image: string) -> HostPackStream #export_c #effects(all) {
   if !ppk_roots_ready(l) || image.count != l.m.image_bytes { return HostPackStream.{}; }
   s := [1] HostPackStream.[hpk_stream_open(image.count, false)];
-  if !hpk_stream_offer(s[..], image[0..<12], image.count).accepted || !hpk_stream_finish(s[..]) { return HostPackStream.{}; }
+  if !hpk_stream_offer(s[..], image, image.count).accepted || !hpk_stream_finish(s[..]) { return HostPackStream.{}; }
   return s[0];
 }

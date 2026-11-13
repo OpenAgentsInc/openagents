@@ -2,6 +2,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "ocarina-bfres.coax";
+#load "ocarina-material-format.coax";
 MpNames :: struct {text:[2048][160]u8;n:[2048]int;count:int;}
 mp_u64 :: (b:[]u8,p:int)->u64 {return cast(u64)ob_word(b,p)|(cast(u64)ob_word(b,p+4)<<32);}
 mp_name :: (b:[]u8,p:int,e:[]u8)->string {id:=mp_u64(b,p);if id==0 {return "";}ids:=ob_ptr(e,0xb8);dic:=ob_ptr(e,0xc0);for i:0..<ob_int(e,dic+4) {if mp_u64(e,ids+i*8)==id {return ob_name(e,dic+32+i*16);}}return ob_name(b,p);}

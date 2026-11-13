@@ -5,11 +5,11 @@
   "carried_by": "the engine's checkpoint envelope: a session's counters, its channels and a state payload (FST1), as whole numbers a host stores",
   "magic": "ACK1",
   "magic_word": 1095126833,
-  "magic_note": "the codec names the format ACK1; the stored word is 1095126833, whose four bytes spell AFO1, and it is the number that is the format",
+  "magic_note": "ACK1 is the format's name. Its magic is the number 1095126833 (0x41464F31), whose four bytes spell AFO1: a slip made when the format was first written (#12848). Stored checkpoints hold that word and readers compare the word, so the number is the format and does not change; a reader must not expect the bytes of the name",
   "byte_order": "little endian",
   "unit": "words (whole numbers; a host stores each as it stores an int)",
   "header_words": 12,
-  "header": "magic 1095126833 (\"ACK1\"), schema 1, the engine, content, rules and profile pins, the owner, the tick, the session's seed, the constructed state's digest, the record's cursor, the state's word count",
+  "header": "magic 1095126833 (see magic_note), schema 1, the engine, content, rules and profile pins, the owner, the tick, the session's seed, the constructed state's digest, the record's cursor, the state's word count",
   "body": "one row of four words a source (epoch, last, asked, answered), three sources; then the state's words; then one word folding every word before it (FNV-1a, 32 bits a half word)",
   "rules": [
     "a checkpoint shorter than its counts is torn",

@@ -1,0 +1,74 @@
+// The one C host core as one header (GitHub #13304): metaverse-engine/host/core/host-core.h with the
+// headers it includes written in where it includes them. The Linux realm host
+// (metaverse/native/realm-host.c) includes it as host-core-gen.h, committed beside it, because nine
+// builds compile realm-host.c, most take no Coax step, and three copy its folder's files elsewhere,
+// where a path into metaverse-engine/ would lead nowhere. `coax/remote/check.sh reports` (step
+// pack-reader-c) fails when the committed file isn't what this writes.
+//   coax/web/tool.sh metaverse-engine/tools/host-core-flat.coax REPO            (write metaverse/native/host-core-gen.h)
+//   coax/web/tool.sh metaverse-engine/tools/host-core-flat.coax REPO --check    (exit 1 when it is stale)
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+
+HCF_FROM :: "metaverse-engine/host/core/host-core.h";
+HCF_TO :: "metaverse/native/host-core-gen.h";
+HCF_MAX :: 1048576;
+HCF_DEPTH :: 8;
+HcfOut :: struct { n: int; bad: bool; }
+
+hcf_put :: (out: [] u8, o: [] HcfOut, s: string) #effects(all) {
+  for c: s { if o[0].n == out.count { o[0].bad = true; return; } out[o[0].n] = c; o[0].n += 1; }
+}
+// The name a line includes, when the whole line is `#include "NAME"`; else "".
+hcf_include :: (line: string) -> string #effects(all) {
+  lead := "#include \"";
+  if line.count < lead.count + 2 || line[0..<lead.count] != lead || line[line.count - 1] != '"' { return ""; }
+  name := line[lead.count..<line.count - 1];
+  for c: name { if c == '"' { return ""; } }
+  return name;
+}
+#test "an include line names its file; a comment, a system header or a broken line names none" {
+  #assert hcf_include("#include \"../pack-table.h\"") == "../pack-table.h" && hcf_include("#include \"a\"") == "a";
+  #assert hcf_include("#include <stdint.h>") == "" && hcf_include("//   #include \"aethyr-core-face.h\"") == "" && hcf_include("#include \"\"") == "";
+  #assert hcf_include("#include \"a.h\" // why") == "" && hcf_include("#include \"a") == "" && hcf_include("") == "" && hcf_include("#include \"a\"b\"") == "";
+}
+// path's text into out, each line that includes a file beside it replaced by that file's text. A
+// file that isn't in the tree (the pack reader's built face, aethyr-pack-table.h) keeps its line.
+hcf_file :: (root: string, path: string, out: [] u8, o: [] HcfOut, depth: int) #effects(all) {
+  text: [HCF_MAX] u8; full: [FS_PATH_MAX] u8; next: [FS_PATH_MAX] u8;
+  n := fs_read(fs_join(root, path, full[..]), text[..]);
+  if n < 0 || depth > HCF_DEPTH { o[0].bad = true; return; }
+  at := 0;
+  while at < n {
+    end := at; while end < n && text[end] != '\n' { end += 1; }
+    line := cast(string) text[at..<end];
+    name := hcf_include(line);
+    child := ifx name == "" then "" else fs_join(fs_dir(path), name, next[..]);
+    if child != "" && fs_exists(fs_join(root, child, full[..])) {
+      hcf_put(out, o, "// ---- "); hcf_put(out, o, child); hcf_put(out, o, "\n");
+      hcf_file(root, child, out, o, depth + 1);
+      hcf_put(out, o, "// ---- "); hcf_put(out, o, path); hcf_put(out, o, ", on\n");
+    } else { hcf_put(out, o, line); hcf_put(out, o, "\n"); }
+    at = end + 1;
+  }
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: host-core-flat REPO [--check]"); return 2; }
+  root := args_at(a[..], 0);
+  out: [HCF_MAX] u8; o: [1] HcfOut;
+  hcf_put(out[..], o[..], "// Written by metaverse-engine/tools/host-core-flat.coax from metaverse-engine/host/core/host-core.h and\n// the headers it includes. Don't edit it: change those, then from the repository root run\n//   coax/web/tool.sh metaverse-engine/tools/host-core-flat.coax \"$PWD\"\n");
+  hcf_file(root, HCF_FROM, out[..], o[..], 0);
+  if o[0].bad { tool_errln("host-core-flat: can't read the host core's headers"); return 1; }
+  want := cast(string) out[0..<o[0].n];
+  to: [FS_PATH_MAX] u8; dest := fs_join(root, HCF_TO, to[..]);
+  have: [HCF_MAX] u8; n := fs_read(dest, have[..]);
+  same := n == want.count && cast(string) have[0..<(ifx n < 0 then 0 else n)] == want;
+  if args_has(a[..], "--check") {
+    if !same { print("% is not what metaverse-engine/tools/host-core-flat.coax writes from the host core's headers. From the repository root: coax/web/tool.sh metaverse-engine/tools/host-core-flat.coax \"$PWD\", then commit it.\n", HCF_TO); return 1; }
+    return 0;
+  }
+  if !same && !fs_write(dest, want) { tool_errln("host-core-flat: can't write the header"); return 1; }
+  return 0;
+}

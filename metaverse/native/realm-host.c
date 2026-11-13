@@ -26,6 +26,12 @@
 #define engine_pack_table rh_aethyr_pack_table
 #define engine_pack_head_max rh_aethyr_pack_head_max
 #include "pack-table-gen.h"
+// The one C host core (metaverse-engine/host/core/host-core.h, GitHub #13304): the pack by kind,
+// delivery in the browser's order, and messages. host-core-gen.h is that header with the headers
+// it includes written in (metaverse-engine/tools/host-core-flat.coax), committed here for the same
+// reason and checked by the same step. This host has no core face, so it takes the base only.
+#define ENGINE_PACK_TABLE_PROVIDED
+#include "host-core-gen.h"
 
 extern char **environ;
 static int golden_mode;
@@ -127,6 +133,27 @@ void rh_open(RealmHost *h, int golden) {
 
 static uint32_t le32(const uint8_t *p) { return p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24; }
 
+// The face as the host core calls it. A span is this host's to give: a contract-v1 face must have
+// measured the destination (coaxial_host_copy_span); an older face is trusted for its address.
+static RealmHost *rh_core_host;
+static void *rh_core_span(void *user, EngineAddr at, uint32_t capacity, uint32_t n) {
+  (void)user;
+  if (!at) return NULL;
+  if (coaxial_host_contract_version && coaxial_host_contract_version() == 1 && (!coaxial_host_copy_span || !coaxial_host_copy_span(at, capacity, n, rh_address_limit()))) return NULL;
+  return rh_ptr(at);
+}
+static void rh_core_message(EngineAddr state, int32_t kind, uint32_t bytes) {
+  coaxial_message(state, kind, bytes);
+  rh_after(rh_core_host, 0);
+}
+extern cx_face_addr coaxial_rig_v1(cx_face_addr, uint32_t) __attribute__((weak));
+extern void coaxial_rig_ready_v1(cx_face_addr, uint32_t) __attribute__((weak));
+static EngineCoreFace rh_core_face(RealmHost *h) {
+  rh_core_host = h;
+  return (EngineCoreFace){coaxial_asset, coaxial_asset_capacity, coaxial_asset_ready, coaxial_inbox, coaxial_inbox_cap, rh_core_message,
+    coaxial_rig_v1, coaxial_rig_ready_v1, NULL, rh_core_span, NULL};
+}
+
 int rh_pack(RealmHost *h, const char *path) {
   if (!strcmp(path, "-")) return 0;   // a realm with no pack (its page names none)
   FILE *f = fopen(path, "rb");
@@ -138,60 +165,47 @@ int rh_pack(RealmHost *h, const char *path) {
   if (!h->pack || fread(h->pack, 1, (size_t)n, f) != (size_t)n) { fclose(f); fprintf(stderr, "realm-host: cannot read %s\n", path); return 1; }
   fclose(f);
   h->pack_size = (size_t)n;
-  // The pack's entries, from the one pack reader: every extent is checked against the length
-  // before a byte of an entry is read.
-  const uint8_t *b = h->pack;
-  static coax_t_PackTable table;
-  if (!engine_pack_table((coax_string){(const char *)b, (int64_t)h->pack_size}, (int64_t)h->pack_size, (coax_v_t_PackTable){&table, 1})) {
-    fprintf(stderr, "realm-host: %s: %.*s\n", path, (int)table.why.count, table.why.data); return 1;
+  // The pack's entries by kind, from the host core over the one pack reader: every extent is
+  // checked against the length before a byte of an entry is read.
+  EngineCorePack *core = calloc(1, sizeof *core);
+  if (!core || !engine_core_pack(core, h->pack, h->pack_size)) {
+    size_t wn = 0; const char *why = core ? engine_pack_why(&core->table, &wn) : "";
+    fprintf(stderr, "realm-host: %s: %.*s\n", path, (int)wn, why); free(core); return 1;
   }
-  uint32_t count = (uint32_t)table.count;
-  h->entries = calloc(count ? count : 1, sizeof *h->entries);
-  for (uint32_t k = 0; k < count; k++) {
-    coax_t_PackEntry row = table.entries.e[k];
+  h->core = core;
+  int count = engine_pack_count(&core->table);
+  h->entries = calloc(count ? (size_t)count : 1, sizeof *h->entries);
+  for (int k = 0; k < count; k++) {
     RhEntry *e = &h->entries[k];
-    e->kind = (uint8_t)row.kind;
-    memcpy(e->name, row.name.data, (size_t)row.name.count);
-    e->bytes = b + row.at;
-    e->length = (uint32_t)row.n;
-    if (e->kind == RH_LAYER) h->layers++;
+    size_t bytes, name; const char *named = engine_pack_name(&core->table, k, &name);
+    e->kind = (uint8_t)engine_pack_kind(&core->table, k);
+    memcpy(e->name, named, name < sizeof e->name ? name : sizeof e->name - 1);
+    e->bytes = engine_core_entry(core, k, &bytes);
+    e->length = (uint32_t)bytes;
   }
-  h->entry_count = (int)count;
+  h->entry_count = count;
+  h->layers = core->colours;
   return 0;
 }
 
+// The first entry of a kind, as the host core sorted them.
 const RhEntry *rh_entry(const RealmHost *h, int kind) {
-  for (int i = 0; i < h->entry_count; i++) if (h->entries[i].kind == kind) return &h->entries[i];
-  return NULL;
+  const EngineCorePack *core = h->core;
+  if (!core) return NULL;
+  int k = kind == RH_CATALOG ? core->catalog : kind == RH_VERTICES ? core->vertices : kind == RH_INDICES ? core->indices
+        : kind == RH_LAYER ? (core->colours ? core->colour[0] : -1) : kind == RH_SOUND ? (core->sounds ? core->sound[0] : -1)
+        : kind == ENGINE_PACK_DATA ? (core->datas ? core->data[0] : -1) : kind == ENGINE_PACK_RIG ? core->rig : -1;
+  return k < 0 ? NULL : &h->entries[k];
 }
 
 void rh_deliver(RealmHost *h, int extra, const uint32_t *extra_sizes) {
-  if (!h->pack) {
-    // no pack: the page's assets are the only ones, from 0 (host.js lists them so)
-    for (int i = 0; i < extra; i++) coaxial_asset_ready(h->state, i, extra_sizes[i]);
-    return;
-  }
-  char loaded[64];
-  int n = snprintf(loaded, sizeof loaded, "%zu %zu", h->pack_size, h->pack_size);
-  rh_send(h, RH_PACK_KIND, loaded, (size_t)n);
-  const RhEntry *catalog = rh_entry(h, RH_CATALOG), *vertices = rh_entry(h, RH_VERTICES), *indices = rh_entry(h, RH_INDICES);
-  uint32_t sizes[4] = {catalog ? catalog->length : 0, vertices ? vertices->length : 0, indices ? indices->length : 0, (uint32_t)h->layers};
-  if (catalog) {
-    cx_face_addr at = coaxial_asset(h->state, 0, catalog->length);
-    int contract = coaxial_host_contract_version && coaxial_host_contract_version() == 1;
-    if (contract && (!coaxial_host_copy_span || !coaxial_host_copy_span(at, coaxial_asset_capacity(h->state,0),catalog->length,rh_address_limit()))) sizes[0] = 0;
-    else if (at) memcpy(rh_ptr(at), catalog->bytes, catalog->length);
-  }
-  for (int i = 0; i < 4; i++) coaxial_asset_ready(h->state, i, sizes[i]);
-  for (int i = 0; i < extra; i++) coaxial_asset_ready(h->state, 4 + i, extra_sizes[i]);
+  EngineCoreFace face = rh_core_face(h);
+  engine_core_deliver(h->core, &face, h->state, ENGINE_CORE_GEOMETRY | ENGINE_CORE_LAYERS, extra, extra_sizes);
 }
 
 void rh_send(RealmHost *h, int kind, const char *text, size_t length) {
-  uint32_t cap = coaxial_inbox_cap();
-  if (length > cap) length = cap;
-  if(length)memcpy(rh_ptr(coaxial_inbox(h->state)), text, length);
-  coaxial_message(h->state, kind, (uint32_t)length);
-  rh_after(h, 0);
+  EngineCoreFace face = rh_core_face(h);
+  engine_core_send(&face, h->state, kind, text, length);
 }
 
 void rh_refuse(RealmHost *h){h->action_refused=1;}
@@ -342,7 +356,7 @@ void rh_close(RealmHost *h) {
   rh_audio_close(h);
   munmap(h->arena, h->arena_size);
   free(h->entries);
-  free(h->pack);free(h->location_hash);h->location_hash=NULL;h->location_hash_bytes=0;
+  free(h->pack);free(h->core);free(h->location_hash);h->location_hash=NULL;h->location_hash_bytes=0;
 }
 
 // ---- the network and what the realm keeps (rh_net_open)
