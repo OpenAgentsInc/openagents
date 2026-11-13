@@ -1,0 +1,75 @@
+// How you move, Minecraft's way: hold a sneak key to go slower and be noticed from nearer, and go
+// very fast while a sprint key is held or after a double tap of forward (until forward lets go).
+// Nothing here moves you: a realm keeps a Stance, gives it its keys as they come (stance_sneak,
+// stance_hold, stance_forward) and its time (stance_tick), then scales its own walk by stance_pace,
+// picks its fast speed (a hoverboard's very fast, a sprint) by stance_fast, and asks how far others
+// notice you with stance_noticed. Splice Bots (metaverse/splice-bots/director.coax) keeps one.
+//   coax/bin/coax test metaverse-engine/move/stance.coax --library
+#module "metaverse.engine.stance";
+
+STANCE_TAP :: 0.3f32;          // seconds: forward pressed again within this of the last press is a double tap
+STANCE_SNEAK_PACE :: 0.45f32;  // the share of your walk you keep while sneaking
+STANCE_SNEAK_SEEN :: 0.5f32;   // the share of how far others notice you that sneaking keeps
+STANCE_NEVER :: 1000.0f32;     // seconds since a press, before the first one
+
+Stance :: struct {
+  sneak: bool;                 // the sneak key is held (Left Shift)
+  hold: bool;                  // the sprint key is held (Ctrl)
+  fwd: bool;                   // forward is held
+  tapped: bool;                // forward was double-tapped: fast until it lets go
+  since: f32 = STANCE_NEVER;   // seconds since forward last went down
+}
+
+stance_sneak :: (s: Stance, down: bool) -> Stance { n := s; n.sneak = down; return n; }
+stance_hold :: (s: Stance, down: bool) -> Stance { n := s; n.hold = down; return n; }
+// Forward going down or up. A key's repeats while it is held are not presses.
+stance_forward :: (s: Stance, down: bool) -> Stance {
+  n := s;
+  if down && !s.fwd { n.tapped = s.since <= STANCE_TAP; n.since = 0; }
+  if !down { n.tapped = false; }
+  n.fwd = down;
+  return n;
+}
+stance_tick :: (s: Stance, dt: f32) -> Stance { n := s; if n.since < STANCE_NEVER { n.since += dt; } return n; }
+// Very fast: the sprint key held, or forward double-tapped and still held. Never while sneaking.
+stance_fast :: (s: Stance) -> bool { return !s.sneak && (s.hold || (s.tapped && s.fwd)); }
+// The share of your walk's speed you move at.
+stance_pace :: (s: Stance) -> f32 { return ifx s.sneak then STANCE_SNEAK_PACE else 1.0f32; }
+// How far others notice you, in metres: `base` grown by `more` (what you carry, your Heat), and
+// shrunk while you sneak. Never below zero.
+stance_noticed :: (s: Stance, base: f32, more: f32) -> f32 {
+  r := base + more;
+  if s.sneak { r *= STANCE_SNEAK_SEEN; }
+  return ifx r > 0 then r else 0.0f32;
+}
+
+#test "sneaking is slower and is noticed from half as far; it never goes fast" {
+  s: Stance;
+  #assert stance_pace(s) == 1 && stance_noticed(s, 5, 3) == 8 && !stance_fast(s);
+  s = stance_sneak(s, true);
+  #assert stance_pace(s) == STANCE_SNEAK_PACE && stance_noticed(s, 5, 3) == 4;
+  s = stance_hold(s, true);
+  #assert !stance_fast(s);
+  s = stance_sneak(s, false);
+  #assert stance_fast(s) && stance_noticed(s, 5, 3) == 8;
+  s = stance_hold(s, false);
+  #assert !stance_fast(s) && stance_noticed(s, -9, 3) == 0;
+}
+#test "a double tap of forward is fast until forward lets go; a slow second press and key repeats are not" {
+  s: Stance;
+  s = stance_forward(s, true);
+  #assert !stance_fast(s);                         // the first press ever
+  s = stance_tick(s, 0.1); s = stance_forward(s, false);
+  s = stance_tick(s, 0.1); s = stance_forward(s, true);
+  #assert stance_fast(s);                          // the second within STANCE_TAP
+  s = stance_tick(s, 2); s = stance_forward(s, true);
+  #assert stance_fast(s);                          // a key repeat while held keeps it
+  s = stance_forward(s, false);
+  #assert !stance_fast(s);                         // let go: back to casual
+  s = stance_tick(s, 0.5); s = stance_forward(s, true);
+  #assert !stance_fast(s);                         // too slow for a double tap
+  s = stance_tick(s, 0.2); s = stance_forward(s, false); s = stance_tick(s, 0.05); s = stance_forward(s, true);
+  #assert stance_fast(s);
+  s = stance_sneak(s, true);
+  #assert !stance_fast(s);                         // sneaking takes it away
+}

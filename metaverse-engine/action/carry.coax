@@ -1,0 +1,83 @@
+// What you carry, Minecraft's way: a grid of a fixed number of slots, an item a slot, items of one
+// kind stacked in a slot up to that kind's stack. When no slot takes a new item, it isn't carried:
+// you make room by dropping one. Banned items are counted (carry_banned), so a realm can say how much
+// it makes you stand out. The grid's cells are laid out in rows of `cols` (carry_cell) and a press is
+// found in them (carry_hit), so a realm draws them in its own style.
+//
+// A realm may keep its own record of what you have and list it into a Carry each time it asks (the
+// order it lists in is the slots' order). Splice Bots does (metaverse/splice-bots/director.coax).
+//   coax/bin/coax test metaverse-engine/action/carry.coax --library
+#module "metaverse.engine.action.carry";
+
+CARRY_MAX :: 36;   // slots a grid holds at most (four rows of nine)
+
+CarryItem :: struct { kind: int; count: int; banned: bool; }
+Carry :: struct {
+  items: [CARRY_MAX] CarryItem; n: int;   // the slots in use, in order
+  room: int = 9;                          // slots: CARRY_MAX at most
+}
+carry_make :: (room: int) -> Carry { c: Carry; c.room = ifx room < 0 then 0 else ifx room > CARRY_MAX then CARRY_MAX else room; return c; }
+// The slot holding `kind` that still has space under `stack`, or -1.
+carry_stack_at :: (c: Carry, kind: int, stack: int) -> int {
+  for i: 0..<c.n { if c.items[i].kind == kind && c.items[i].count < stack { return i; } }
+  return -1;
+}
+// Whether one more of `kind` (stacking to `stack`) would be carried.
+carry_fits :: (c: Carry, kind: int, stack: int) -> bool { return carry_stack_at(c, kind, stack) >= 0 || c.n < c.room; }
+// One more of `kind`: onto its stack, else into the next free slot. False when there is no room.
+carry_put :: (c: [] Carry, kind: int, banned: bool, stack: int) -> bool {
+  at := carry_stack_at(c[0], kind, stack);
+  if at >= 0 { c[0].items[at].count += 1; return true; }
+  if c[0].n >= c[0].room { return false; }
+  c[0].items[c[0].n] = CarryItem.{kind = kind, count = 1, banned = banned}; c[0].n += 1;
+  return true;
+}
+// Takes the whole slot `i` out (the slots after it move up). Its item, or a count of 0.
+carry_drop :: (c: [] Carry, i: int) -> CarryItem {
+  if i < 0 || i >= c[0].n { return CarryItem.{kind = -1}; }
+  out := c[0].items[i];
+  for j: i..<c[0].n - 1 { c[0].items[j] = c[0].items[j + 1]; }
+  c[0].n -= 1; c[0].items[c[0].n] = CarryItem.{};
+  return out;
+}
+carry_free :: (c: Carry) -> int { return c.room - c.n; }
+// Banned items carried, each one of a stack counted.
+carry_banned :: (c: Carry) -> int { n := 0; for i: 0..<c.n { if c.items[i].banned { n += c.items[i].count; } } return n; }
+
+// ---- the grid: rows of `cols` cells of `size` with `gap` between, its top left at (x0, y0)
+CarryCell :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+carry_cell :: (i: int, cols: int, x0: f32, y0: f32, size: f32, gap: f32) -> CarryCell {
+  c := ifx cols < 1 then 1 else cols;
+  x := x0 + cast(f32) (i % c) * (size + gap); y := y0 + cast(f32) (i / c) * (size + gap);
+  return CarryCell.{x0 = x, y0 = y, x1 = x + size, y1 = y + size};
+}
+// The cell under (x, y) of a grid of `room` cells, or -1 (a gap is no cell).
+carry_hit :: (room: int, cols: int, x0: f32, y0: f32, size: f32, gap: f32, x: f32, y: f32) -> int {
+  for i: 0..<room { b := carry_cell(i, cols, x0, y0, size, gap); if x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1 { return i; } }
+  return -1;
+}
+
+#test "items fill slots in order, stack to their stack, and a full grid refuses a new one" {
+  c := [1] Carry.[carry_make(3)];
+  #assert carry_put(c[..], 7, false, 4) && carry_put(c[..], 7, false, 4) && c[0].n == 1 && c[0].items[0].count == 2;
+  #assert carry_put(c[..], 2, true, 1) && carry_put(c[..], 3, false, 1) && c[0].n == 3 && carry_free(c[0]) == 0;
+  #assert !carry_fits(c[0], 4, 1) && !carry_put(c[..], 4, false, 1) && c[0].n == 3;
+  #assert carry_fits(c[0], 7, 4) && carry_put(c[..], 7, false, 4) && c[0].items[0].count == 3;   // its stack still has space
+  #assert carry_put(c[..], 7, false, 4) && !carry_put(c[..], 7, false, 4);                      // and now it is full too
+  #assert carry_banned(c[0]) == 1;
+  #assert carry_make(99).room == CARRY_MAX && carry_make(-2).room == 0;
+}
+#test "dropping a slot frees it and the ones after move up" {
+  c := [1] Carry.[carry_make(3)];
+  _ := carry_put(c[..], 1, false, 1); _ = carry_put(c[..], 2, true, 1); _ = carry_put(c[..], 3, false, 1);
+  d := carry_drop(c[..], 1);
+  #assert d.kind == 2 && d.banned && d.count == 1 && c[0].n == 2 && c[0].items[1].kind == 3 && carry_banned(c[0]) == 0;
+  #assert carry_drop(c[..], 5).kind == -1 && c[0].n == 2;
+  #assert carry_put(c[..], 4, false, 1) && c[0].items[2].kind == 4;
+}
+#test "the grid's cells are in rows of cols, and a press finds its cell" {
+  b := carry_cell(4, 3, 10, 20, 50, 5);
+  #assert b.x0 == 65 && b.y0 == 75 && b.x1 == 115 && b.y1 == 125;
+  #assert carry_hit(6, 3, 10, 20, 50, 5, 70, 80) == 4 && carry_hit(6, 3, 10, 20, 50, 5, 62, 80) == -1;   // in a gap
+  #assert carry_hit(6, 3, 10, 20, 50, 5, 70, 200) == -1;   // under the last row
+}

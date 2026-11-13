@@ -1,0 +1,46 @@
+// A machine's health: points out of a most, a bar's share of it, and powering down at zero. A
+// powered-down machine does nothing until it is charged back up, a share of its most a second, at a
+// charger (a realm says when it stands at one); it powers up again only full. A realm keeps a
+// Vitals a body and draws vitals_share as its bar. Splice Bots' Digger keeps one
+// (metaverse/splice-bots/director.coax).
+//   coax/bin/coax test metaverse-engine/action/vitals.coax --library
+#module "metaverse.engine.action.vitals";
+
+Vitals :: struct { hp: f32 = 10; most: f32 = 10; down: bool; }
+vitals_make :: (most: f32) -> Vitals { m := ifx most > 0 then most else 1.0f32; return Vitals.{hp = m, most = m}; }
+vitals_share :: (v: Vitals) -> f32 { s := v.hp / (ifx v.most > 0 then v.most else 1.0f32); return ifx s < 0 then 0.0f32 else ifx s > 1 then 1.0f32 else s; }
+// A hit of `points`: at zero it powers down. A powered-down machine takes no more.
+vitals_hit :: (v: Vitals, points: f32) -> Vitals {
+  n := v;
+  if n.down || points <= 0 { return n; }
+  n.hp -= points;
+  if n.hp <= 0 { n.hp = 0; n.down = true; }
+  return n;
+}
+// `dt` seconds at a charger that fills `rate` of its most a second: full again, it powers up.
+vitals_charge :: (v: Vitals, rate: f32, dt: f32) -> Vitals {
+  n := v;
+  if dt <= 0 || rate <= 0 { return n; }
+  n.hp += n.most * rate * dt;
+  if n.hp >= n.most { n.hp = n.most; n.down = false; }
+  return n;
+}
+
+#test "hits take points, zero powers it down, and a powered-down machine takes no more" {
+  v := vitals_make(10);
+  v = vitals_hit(v, 4);
+  #assert v.hp == 6 && !v.down && vitals_share(v) == 0.6;
+  v = vitals_hit(v, 0); #assert v.hp == 6;
+  v = vitals_hit(v, 9);
+  #assert v.hp == 0 && v.down && vitals_share(v) == 0;
+  v = vitals_hit(v, 3); #assert v.hp == 0 && v.down;
+  #assert vitals_make(-1).most == 1;
+}
+#test "a charger fills it back up, and it powers up only when full" {
+  v := vitals_hit(vitals_make(10), 10);
+  v = vitals_charge(v, 0.25, 2);
+  #assert v.hp == 5 && v.down;
+  v = vitals_charge(v, 0.25, 0); #assert v.hp == 5;
+  v = vitals_charge(v, 0.25, 3);
+  #assert v.hp == 10 && !v.down && vitals_share(v) == 1;
+}
