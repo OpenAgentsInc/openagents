@@ -9,19 +9,19 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
-if [[ ! -x "$here/build/serve" || "$here/serve.c" -nt "$here/build/serve" || "$here/http-range.coax" -nt "$here/build/serve" || "$here/site-routes.coax" -nt "$here/build/serve" || "$here/realm-origin.coax" -nt "$here/build/serve" || "$here/../../metaverse-engine/editor/code-wire.coax" -nt "$here/build/serve" || "$here/../lib/crypto/sha256-kernel.coax" -nt "$here/build/serve" || "$here/../bin/coax" -nt "$here/build/serve" ]]; then
+# serve.c's Coax parts are listed once, in serve-parts.sh (#13447): the dev
+# server, the production image and its check build the same files.
+stale=0
+[[ -x "$here/build/serve" && ! "$here/serve.c" -nt "$here/build/serve" && ! "$here/serve-parts.sh" -nt "$here/build/serve" && ! "$here/../bin/coax" -nt "$here/build/serve" ]] || stale=1
+while IFS= read -r src; do [[ ! "$src" -nt "$here/build/serve" ]] || stale=1; done < <("$here/serve-parts.sh" --sources)
+if [[ $stale == 1 ]]; then
   # The Mac's system clang; elsewhere the host C compiler (gcc unless CC says).
   if [[ "$(uname -s)" == Darwin ]]; then cc=(/usr/bin/clang -D_DARWIN_C_SOURCE); else cc=("${CC:-gcc}" -D_DEFAULT_SOURCE); fi
+  part_c=()
+  while IFS= read -r f; do part_c+=("$f"); done < <(COAX="$here/../bin/coax" "$here/serve-parts.sh" "$here/build")
+  (( ${#part_c[@]} )) || { echo "serve: serve-parts.sh wrote no parts" >&2; exit 1; }
   # Always fortified, as Nix's compiler builds it: a buffer glibc's checks refuse fails at once, everywhere.
-  "$here/../bin/coax" c "$here/http-range.coax" --library --header "$here/build/http-range.h" > "$here/build/http-range.c"
-  "$here/../bin/coax" c "$here/site-routes.coax" --library --header "$here/build/site-routes.h" > "$here/build/site-routes.c"
-  # The realm origin's rules (#13432): which addresses it answers and the headers that sandbox them.
-  "$here/../bin/coax" c "$here/realm-origin.coax" --library --header "$here/build/realm-origin.h" > "$here/build/realm-origin.c"
-  # A realm's code from the browser, on the dev server only (#13421): the one codec and the rule for a path.
-  "$here/../bin/coax" c "$here/../../metaverse-engine/editor/code-wire.coax" --library --header "$here/build/code-wire.h" > "$here/build/code-wire.c"
-  # A changed pack or texture is told by its SHA-256 (#13410).
-  "$here/../bin/coax" c "$here/../lib/crypto/sha256-kernel.coax" --library --header "$here/build/sha256-kernel.h" > "$here/build/sha256-kernel.c"
-  "${cc[@]}" -std=c11 -O2 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2 -Wall -Wextra -I"$here/build" -o "$here/build/serve" "$here/serve.c" "$here/build/http-range.c" "$here/build/site-routes.c" "$here/build/realm-origin.c" "$here/build/code-wire.c" "$here/build/sha256-kernel.c" "$here/../../metaverse/voice-host/ws.c" -lm
+  "${cc[@]}" -std=c11 -O2 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2 -Wall -Wextra -I"$here/build" -o "$here/build/serve" "$here/serve.c" "${part_c[@]}" "$here/../../metaverse/voice-host/ws.c" -lm
 fi
 want_api=0
 if [[ "$(cd "${1:-.}" 2>/dev/null && pwd -P)" == "$(cd "$here/../../apps/openagents-web" && pwd -P)" && -z "${OA_SERVE_NO_API:-}" ]]; then

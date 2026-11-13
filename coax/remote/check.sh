@@ -27,7 +27,7 @@
 #   coax/remote/check.sh modules I/N      the I-th of N parts of the web build's modules
 #                                         (wasm.sh alone, as build.sh runs each)
 #   coax/remote/check.sh module NAME      one module of the web build (a bisect)
-#   coax/remote/check.sh reports          tools-check, test-remote.sh, test-after.sh, test-vm-deploy.sh, everglade-parity, wire-check, layer-check,
+#   coax/remote/check.sh reports          tools-check, test-remote.sh, test-after.sh, test-vm-deploy.sh, the serve image's compile, everglade-parity, wire-check, layer-check,
 #                                         the native apps' realms (metaverse/native/app-realms.coax, #13389),
 #                                         packs paged by cell (metaverse-engine/host/check-pack-cells.coax, #13304),
 #                                         the apps' packs admitted (metaverse-engine/tools/pack-seal.coax --check, #13304),
@@ -254,6 +254,7 @@ reports() {
   step remote-cleanup coax/remote/test-remote.sh || status=1
   step after-gates coax/remote/test-after.sh || status=1
   step release-rules coax/web/room/test-vm-deploy.sh || status=1   # a promotion pins its build; a release holds staging (#13398)
+  step serve-image coax/web/serve-parts.sh --check || status=1   # the production serve image's Dockerfile compiles serve.c with every part (#13447)
   step everglade-parity coax/web/tool.sh everglade-parity || status=1
   # Splice's page is built with its content tables' own bytes (#13404)
   step splice-content coax/web/tool.sh metaverse/splice/tools/content-check.coax metaverse/splice/content/splice.content --check || status=1
@@ -522,6 +523,8 @@ reports_since() {
   fi
   if grep -qv '\.md$' "$out/changed"; then
     step tools-check coax/web/tool.sh tools-check || status=1
+    # the production serve image compiles: a few seconds, and a part's loads can be anywhere (#13447)
+    step serve-image coax/web/serve-parts.sh --check || status=1
     step everglade-parity coax/web/tool.sh everglade-parity || status=1
     step splice-content coax/web/tool.sh metaverse/splice/tools/content-check.coax metaverse/splice/content/splice.content --check || status=1
     step everglade-content coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content || status=1   # and the kept tables before (#13408)
