@@ -47,13 +47,18 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   // everglade/server/creatures.coax): the shared rules' strike
   // an area that can harm names no one: it is cast at the aimed point, and whoever stands in it is struck
   area := e2r_area(xk_rules(r[0].klass[seat]-EGB_CL0,e.ab));
-  gfoe := ifx revive || area || egb_helps(e.ab) then -1 else e2_guard_target(v, k, wc.ax, wc.az);
-  foe := ifx gfoe >= 0 || revive || area || egb_helps(e.ab) then gfoe else e2_monster_target(v, k, wc.ax, wc.az);
+  // judged at the moment its page drew (#13289): who the aim names, and where every other body
+  // stands for the rules' reach and shapes, are as they stood then; the caster is where it is now
+  vt := e2_cast_view_tick(v, k, wc.view);
+  gfoe := ifx revive || area || egb_helps(e.ab) then -1 else e2_guard_target_at(v, k, wc.ax, wc.az, vt);
+  foe := ifx gfoe >= 0 || revive || area || egb_helps(e.ab) then gfoe else e2_monster_target_at(v, k, wc.ax, wc.az, vt);
   foe_hp := ifx foe >= 0 then r[0].b[0].c[foe].hp else 0;
   before: [EGB_BEASTS] int; for q: 0..<EGB_BEASTS { before[q] = r[0].b[0].c[egb0(v, k) + q].hp; }
   helps := egb_helps(e.ab); was: [EG_ZONE_SEATS] int; if helps { for o: 0..<eg_cap(v, k) { was[o] = r[0].b[0].c[EGB_SEAT + o].hp; } }
+  hold: [1] E2CastHold; e2_cast_hold(v, k, seat, vt, hold[..]);
   done:=ifx revive then e2r_request(r[0].b[..],r[0].seat[seat..<seat+1],r[0].klass[seat]-EGB_CL0,wc.slot,null,eg_e2_corpse(v,k,seat),open)
     else e2r_press(r[0].b[..],r[0].seat[seat..<seat+1],r[0].klass[seat]-EGB_CL0,wc.slot,egb_sq(wc.ax),egb_z_cell(r,wc.az),foe,open);
+  e2_cast_release(v, k, hold[..]);
   if !done { eg_refuse(v,k,seat_id,wc.seq,cr_word(CR_NO)); return; }
   if gfoe >= 0 { e2_guard_struck(v, k, seat, foe_hp); }
   else if foe >= 0 { e2_monster_struck(v, k, seat, foe, foe_hp); }
@@ -70,6 +75,49 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   b: [128] u8;
   n := wire_put_cast_e(b[..], 0, WireCastE.{ss = seat, slot = wc.slot, ax = wc.ax, ay = wc.ay, az = wc.az, seed = 1 + (v[0].eg[k].seed + t * 31 + seat * 977 + wc.slot * 7) % 999983});
   eg_event(v, k, cast(string) b[0..<n], me.x, me.z, false);
+}
+// ---- lag compensation for melee and spells (#13289, docs/verse/2026-11-03-everglade-multiplayer-spec.md 3.9)
+// A page casts at what it draws: its own body now, everyone else a jitter buffer's delay ago. Its C
+// says the moment it was drawing the others at (VIEW, the number an arrow's F says), and the room
+// judges the cast there, inside the arrows' bound (metaverse-engine/net/rewind.coax: NET_REWIND_AGE_MS
+// back at most, never ahead). A C with no VIEW is judged now.
+// The tick a cast whose page drew at `view_ms` is judged at.
+e2_cast_view_tick :: (v: [] RmServer, k: int, view_ms: int) -> int {
+  t := v[0].eg[k].tick;
+  if view_ms <= 0 { return t; }
+  now_ms := t * 1000 / EG_HZ;
+  back := net_rewind(now_ms, net_loose_view(now_ms, view_ms), 0);
+  return t - net_rewind_ticks(back.age_ms, EG_HZ);
+}
+// The rules' squares of every other body that stood at tick `at`, set to where it stood then for one
+// press and put back after it (e2_cast_release). A body that is down now is not held: it cannot be
+// hit. A body the past does not hold standing then stays where it is.
+E2CastHold :: struct { n: int; who: [E2AR_BODIES + EG_ZONE_SEATS] int; x: [E2AR_BODIES + EG_ZONE_SEATS] int; y: [E2AR_BODIES + EG_ZONE_SEATS] int; }
+e2_cast_hold :: (v: [] RmServer, k: int, seat: int, at: int, h: [] E2CastHold) {
+  h[0].n = 0;
+  a := e2a_room(v, k); t := v[0].eg[k].tick;
+  a[0].cast_back = t - at;
+  if at >= t { return; }
+  a[0].casts_back += 1;
+  r := v[0].eg[k].rules[..];
+  for b: 0..<E2AR_BODIES + eg_cap(v, k) {
+    i := -1;
+    if b < E2AR_BODIES { i = e2a_creature(v, k, b); }
+    else {
+      s := b - E2A_SEAT0;
+      if s != seat && v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].placed { i = EGB_SEAT + s; }
+    }
+    if i < 0 { continue; }
+    p := net_past_at(a[0].past[..], b, at, 0);
+    if !p.up { continue; }
+    n := h[0].n; h[0].who[n] = i; h[0].x[n] = r[0].b[0].c[i].x; h[0].y[n] = r[0].b[0].c[i].y; h[0].n = n + 1;
+    r[0].b[0].c[i].x = egb_sq(p.x); r[0].b[0].c[i].y = egb_z_cell(r, p.z);
+  }
+}
+e2_cast_release :: (v: [] RmServer, k: int, h: [] E2CastHold) {
+  r := v[0].eg[k].rules[..];
+  for q: 0..<h[0].n { r[0].b[0].c[h[0].who[q]].x = h[0].x[q]; r[0].b[0].c[h[0].who[q]].y = h[0].y[q]; }
+  h[0].n = 0;
 }
 // An area's cast is done: every guard or monster it harmed (its Hit Points fell below `before`) was struck
 // by seat s, as one a single cast named is (everglade/server/guard.coax, creatures.coax).

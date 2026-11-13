@@ -329,7 +329,7 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat 
   r: [1] WireRd; r[0] = wire_rd(text, 1);
   wc := wire_read_cast(text, r[..]);
   nf := eg_fields(text);
-  if !r[0].ok || (nf != 7 && nf != 8) { return; }   // (a mode last, or none)
+  if !r[0].ok || nf < 7 || nf > 9 { return; }   // (a mode, then the page's view; or neither)
   eg_e2_cast(v, k, seat_id, wc); return;   // Everglade II: shared rules under its harmless social profile
 }
 // L SEQ: a Long Rest. Out of combat only (progress.coax ev_rest_ok); then the seat

@@ -78,6 +78,17 @@ The room advances tree motion and fire once per world step. A page in a room
 only interpolates the room's tree transforms and draws their fire. It never
 spreads tree fire or advances tree damage locally.
 
+## A cast's view (#13289)
+
+`C SEQ SLOT AX AY AZ TGT [MODE [VIEW]]`. `VIEW` is the moment of the room's
+world the page was drawing the others at, in ms of the room's ticks, as an
+arrow's `F` says it ([`everglade-projectiles-v1.md`](everglade-projectiles-v1.md)).
+The room judges the cast there: who the aim names and where every other body
+stands for the rules' reach, no more than 250 ms back and never ahead. A `C`
+with no `VIEW` is judged at the present, so a wire 6 page is unchanged. When
+`VIEW` is sent, `MODE` is sent too (0 none). The fairness rule is section
+6.1.1 of the multiplayer specification.
+
 ## Check
 
 ```sh

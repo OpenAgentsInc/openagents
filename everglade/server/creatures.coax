@@ -565,12 +565,16 @@ e2_monsters_after :: (v: [] RmServer, k: int) {
 // ---- the players' harm
 // A seat's cast at a monster: the creature it harms, when aimed within E2M_AIM m of one standing and not
 // on its way home (-1 none).
-e2_monster_target :: (v: [] RmServer, k: int, ax: f32, az: f32) -> int {
+e2_monster_target :: (v: [] RmServer, k: int, ax: f32, az: f32) -> int { return e2_monster_target_at(v, k, ax, az, v[0].eg[k].tick); }
+// The same, with each monster where it stood at tick `at` (the caster's page's view, #13289): one
+// that stands now, by where it was drawn.
+e2_monster_target_at :: (v: [] RmServer, k: int, ax: f32, az: f32, at: int) -> int {
   ms := e2mo_room(v, k); best := f32(E2M_AIM); got := -1;
   for m: 0..<E2M_N {
     mo := ms[0].mon[m];
     if !e2mo_up(v, k, m) || mo.state == E2M_RETURN { continue; }
-    d := e2mo_dist(ax, az, mo.x, mo.z);
+    was := e2a_stood(v, k, m, at, mo.x, mo.z);
+    d := e2mo_dist(ax, az, was[0], was[1]);
     if d <= best { best = d; got = egb0(v, k) + mo.q; }
   }
   return got;

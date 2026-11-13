@@ -959,7 +959,8 @@ e2n_cast :: (n: [] E2Net, slot: int, ax: f32, ay: f32, az: f32) -> bool {
   n[0].cast_seq = n[0].pred[0].seq + 1000000 + n[0].cast_sent;   // apart from the inputs' numbers
   n[0].cast_sent += 1; n[0].cast_slot = slot;
   _ := net_action_press(n[0].acts[..], E2N_ACT_CAST, n[0].cast_seq, n[0].mono);
-  e2n_send(n, wire_put_cast(n[0].out[..], 0, WireCast.{seq = n[0].cast_seq, slot = slot, ax = ax, ay = ay, az = az}));
+  // with the moment this page draws the others at, so the room judges the cast against what you saw (#13289)
+  e2n_send(n, wire_put_cast(n[0].out[..], 0, WireCast.{seq = n[0].cast_seq, slot = slot, ax = ax, ay = ay, az = az, view = e2n_view_ms(n)}));
   return true;
 }
 // The number the next cast's request will carry (e2n_cast), for what is said just before it under

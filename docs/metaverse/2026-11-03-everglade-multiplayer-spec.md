@@ -387,8 +387,10 @@ I SEQ MX MZ YAW B           input, one per client frame step at 30 Hz while any 
                             5 Hz: MX MZ the move in world axes (-100 to 100, already turned by the
                             camera), YAW your facing (centirad), B buttons (1 run, 2 jump, 4 dive,
                             8 swim up, 16 sit/stand). SEQ counts up by one an input.
-C SEQ SLOT AX AY AZ TGT     cast bar slot SLOT at the aim (cm); TGT -1 none, 0 to 999 a townsperson or
-                            guard (watch actor index), 1000 + SS a seat, 2000 + EID a creature
+C SEQ SLOT AX AY AZ TGT [MODE [VIEW]]
+                            cast bar slot SLOT at the aim (cm); TGT -1 none, 0 to 999 a townsperson or
+                            guard (watch actor index), 1000 + SS a seat, 2000 + EID a creature; MODE the
+                            spell's mode (0 none); VIEW the moment the page drew the others at (6.1.1)
 E SEQ KIND ID               interact: KIND 1 talk to townsperson ID, 2 a door, 3 a boat, 4 a quest board
 R SEQ                       ask for the rebuild
 t MS                        a clock ping
@@ -630,6 +632,46 @@ the outcome as `e cast`, `e hit`, `e heal` and `e die` events and the new HP in
 `p`, `f` and `c` entries. Every page shows the same numbers over the same
 heads. The rules' "nothing is held back" choice stays: every slot can always
 be cast (no spell slots or actions run out).
+
+### 6.1.1 Lag compensation and who wins (#13289)
+
+A page draws its own player now and everyone else a jitter buffer's delay
+ago. So what you swing at, cast at or loose at is where it was a moment
+before. The room judges the act where your page drew it, within bounds.
+
+- **What is kept.** Each tick the room writes down where every body that can
+  be hit stands: every monster, the guard and every placed player
+  (`metaverse-engine/net/projectile.coax` `NetPast`, 24 ticks).
+- **What the page says.** A cast's `C` and an arrow's `F` carry `VIEW`, the
+  moment of the room's world the page was drawing the others at. A `C`
+  with no `VIEW` is judged at the present.
+- **The bound.** The room reads the others no more than 250 ms back
+  (`NET_REWIND_AGE_MS`), and never ahead of now. A page that claims more is
+  taken at the bound. A slow or lying page cannot reach further into the past.
+- **What is judged there.** Who the aim names, and where every other body
+  stands for the rules' reach and for an area's shape. The caster is where it
+  is now: its range and its line of sight start from its present place.
+
+The fairness rule, when two pages both see a hit:
+
+1. **The room's order decides.** Acts are applied in the order the room hears
+   them. Each is judged against the others where its own page drew them.
+2. **The past is read, never rewritten.** A hit judged in the past lands now.
+   Nothing the target did since is undone, and no Hit Points are restored.
+3. **A body that is down now cannot be hit**, wherever a page drew it. If two
+   players strike the same wolf and the first blow kills it, the second finds
+   no wolf.
+4. **Two that strike each other both land** when each was in the other's
+   reach on the striker's own screen, in the order heard. If the first blow
+   kills, the second is refused: the dead do not act.
+5. **Ties favour the one who acted.** Inside the bound, the attacker's screen
+   is believed over the target's. A target can be hit up to 250 ms after it
+   stepped out of reach on its own screen. That is the cost of every player
+   hitting what they see.
+
+Checked in the room's suite: a swing at a wolf where its page drew it lands
+though the wolf has since left reach; at 120 ms and 2% loss it reaches the
+wolf in 95 of 100 trials at least; a forged `F` is refused field by field.
 
 ### 6.2 Spell visuals
 

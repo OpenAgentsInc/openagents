@@ -20,6 +20,9 @@
 //                                  30 Hz, idle ones too: the keys and the stick (-100 to 100, along the
 //                                  camera), the camera's yaw in 0.1 mrad (WIRE_FINE), B bits (1 run, 2 jump, 4 dive); HEARD the
 //                                  last state tick the page heard whole (WireMirror), 0 none
+//   C SEQ SLOT AX AY AZ TGT [MODE [VIEW]]  MODE the spell's mode (0 none); VIEW the moment the page drew the
+//                                  others at, ms of the room's ticks as an arrow's F says it: the room judges
+//                                  the cast there, inside lag compensation's bound (#13289)
 //   C SEQ SLOT AX AY AZ TGT        a cast: the bar slot, the aim, the target (-1 none; 0-999 a watch actor,
 //                                  1000 + SS a seat, 2000 + EID a creature)
 //   E SEQ KIND ID                  interact: KIND 1 talk to townsperson ID, 2 a door, 3 a boat, 4 a quest
@@ -211,7 +214,7 @@ WE_FAM_SUMMON :: 9; WE_FAM_RITE :: 10; WE_FAM_ORDER :: 11; WE_FAM_STEP :: 12; WE
 WE_SAY :: 6; WE_WEAR :: 7; WE_BARE :: 8;   // Everglade II (#13291, #13292): talk to dialogue ID (the content tables'), wear item ID, empty equipment slot ID
 
 WireIn :: struct #persisted { seq: int; kx: int; ky: int; px: int; py: int; theta: f32; b: int; heard: int; }   // theta goes in WIRE_FINE units (0.1 mrad)
-WireCast :: struct #persisted { seq: int; slot: int; ax: f32; ay: f32; az: f32; tgt: int = -1; mode: int; }   // mode: the spell's (wire_mode), 0 sent as nothing
+WireCast :: struct #persisted { seq: int; slot: int; ax: f32; ay: f32; az: f32; tgt: int = -1; mode: int; view: int; }   // mode: the spell's (wire_mode), 0 sent as nothing unless a view follows; view: the moment the page drew the others at (#13289), 0 sent as nothing
 WireUse :: struct #persisted { seq: int; kind: int; id: int; }
 // The borrowed codec boundary remains available to existing callers. Active
 // page/room hellos use WireHelloValue, which owns every byte of its fields.
@@ -295,7 +298,8 @@ wire_put_cast :: (out: [] u8, at: int, c: WireCast) -> int {
   n := wire_put(out, at, "C");
   n = wire_int(out, n, c.seq); n = wire_int(out, n, c.slot);
   n = wire_m(out, n, c.ax); n = wire_m(out, n, c.ay); n = wire_m(out, n, c.az); n = wire_int(out, n, c.tgt);
-  if c.mode != 0 { n = wire_int(out, n, c.mode); }
+  if c.mode != 0 || c.view > 0 { n = wire_int(out, n, c.mode); }
+  if c.view > 0 { n = wire_int(out, n, c.view % 1000000000); }
   return n;
 }
 wire_put_use :: (out: [] u8, at: int, u: WireUse) -> int {
@@ -694,6 +698,7 @@ wire_read_cast :: (t: string, r: [] WireRd) -> WireCast {
   c.seq = wire_num(t, r); c.slot = wire_num(t, r);
   c.ax = wire_f(t, r); c.ay = wire_f(t, r); c.az = wire_f(t, r); c.tgt = wire_num(t, r);
   if wire_more(t, r) { c.mode = wire_num(t, r); }
+  if wire_more(t, r) { c.view = wire_num(t, r); if c.view < 0 { r[0].ok = false; } }
   return c;
 }
 wire_read_use :: (t: string, r: [] WireRd) -> WireUse {

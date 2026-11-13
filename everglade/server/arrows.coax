@@ -28,6 +28,7 @@ E2Arrows :: struct {
   epoch: int;                             // the tick the arrows' clock counts from (set when the first of a flight is loosed; below 0 in a young room)
   next: int;                              // the last id given
   loosed: int; hits: int; misses: int; stuck: int; gone: int; rewound_ms: int;   // what the checks read
+  cast_back: int; casts_back: int;        // ticks back the last cast was judged, and casts judged back at all (#13289)
   near: [1] E2ArNear;                     // the trunks and rocks round where an arrow last asked (#13166)
 }
 // The planting every Everglade II room steps its seats among (room-world.c's, handed over by
@@ -53,13 +54,24 @@ e2_arrow_heard :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   if !l.ok { return; }
   v[0].eg[k].seat[seat].loose = l;
 }
-// This tick's bodies written down: every monster that stands, and the guard.
+// This tick's bodies written down: every monster that stands, the guard, and every placed player
+// (#13289: every body that can be hit is in the past, so a cast is judged where its page drew them).
+E2A_SEAT0 :: E2AR_BODIES;   // seat s's body in the past: after the creatures'
 e2a_remember :: (v: [] RmServer, k: int) {
   a := e2a_room(v, k); t := v[0].eg[k].tick; ms := e2mo_room(v, k);
   net_past_begin(a[0].past[..], t);
-  for m: 0..<E2M_N { mo := ms[0].mon[m]; if e2mo_up(v, k, m) { net_past_put(a[0].past[..], m, mo.x, mo.z); } }
-  g := v[0].eg[k].guard[0];
-  if g.q >= 0 && g.state != E2G_DOWN && g.state != E2G_NONE { net_past_put(a[0].past[..], E2AR_GUARD, g.x, g.z); }
+  for m: 0..<E2M_N { if e2mo_up(v, k, m) { net_past_put(a[0].past[..], m, ms[0].mon[m].x, ms[0].mon[m].z); } }
+  g := v[0].eg[k].guard[..];
+  if g[0].q >= 0 && g[0].state != E2G_DOWN && g[0].state != E2G_NONE { net_past_put(a[0].past[..], E2AR_GUARD, g[0].x, g[0].z); }
+  for s: 0..<eg_cap(v, k) {
+    if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].placed { net_past_put(a[0].past[..], E2A_SEAT0 + s, v[0].eg[k].seat[s].pose.x, v[0].eg[k].seat[s].pose.z); }
+  }
+}
+// Where body b stood at tick `at` when the past holds it standing then, else where it is now (x, z).
+e2a_stood :: (v: [] RmServer, k: int, b: int, at: int, x: f32, z: f32) -> [2] f32 {
+  if at >= v[0].eg[k].tick { return [2] f32.[x, z]; }
+  p := net_past_at(e2a_room(v, k)[0].past[..], b, at, 0);
+  return ifx p.up then [2] f32.[p.x, p.z] else [2] f32.[x, z];
 }
 // The bodies as they stood at `tick` (from the past; a tick it doesn't hold: none).
 e2a_bodies :: (v: [] RmServer, k: int, tick: int, out: [] arch.ArcheryBody) -> int {
@@ -285,6 +297,143 @@ e2at_shoot :: (v: [] RmServer, k: int, seq: int, to: [3] f32, view_tick: int) {
   #assert a[0].loosed == 4 && a[0].rewound_ms == 0;
   w: bow.Arrow; for i: 0..<bow.ARROWS { if a[0].tag[i].id == 4 { w = a[0].ar[0].arrows[0].a[i]; } }
   #assert e2ar_launch_ok(w.from, 0, -40);
+}
+
+#test "e2 arrows: a forged launch is refused whole, field by field, and one refused keeps nothing for its Attack (#13289)" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2at_room(v[..], "pair-e2-forged"); #assert k >= 0;
+  a := v[0].eg[k].arrows[..]; out: [262144] u8;
+  for q: 0..<6 { e2mt_tick(v[..], k); }
+  // F SEQ FX FY FZ TX TY TZ STRENGTH VIEW, each field past its bound in turn, then too few and too many
+  bad := [12] string.[
+    "F 0 0 1450 -40000 0 0 -60000 800 1",              // no number
+    "F -4 0 1450 -40000 0 0 -60000 800 1",
+    "F 7 2000001 1450 -40000 0 0 -60000 800 1",        // a hand out of the world, each axis
+    "F 7 0 -2000001 -40000 0 0 -60000 800 1",
+    "F 7 0 1450 2000001 0 0 -60000 800 1",
+    "F 7 0 1450 -40000 -2000001 0 -60000 800 1",       // an aim out of the world, each axis
+    "F 7 0 1450 -40000 0 2000001 -60000 800 1",
+    "F 7 0 1450 -40000 0 0 -2000001 800 1",
+    "F 7 0 1450 -40000 0 0 -60000 1001 1",             // more than a full draw, and less than none
+    "F 7 0 1450 -40000 0 0 -60000 -1 1",
+    "F 7 0 1450 -40000 0 0 -60000 800 -5",             // a view before time
+    "F 7 0 1450 -40000 0 0 -60000 800"];               // a field short
+  for q: 0..<bad.count { rm_heard(v[..], 0, bad[q]); #assert !v[0].eg[k].seat[0].loose.ok; }
+  rm_heard(v[..], 0, "F 7 0 1450 -40000 0 0 -60000 800 1 9"); #assert !v[0].eg[k].seat[0].loose.ok;   // a field over
+  rm_heard(v[..], 0, "F 7 0 x -40000 0 0 -60000 800 1"); #assert !v[0].eg[k].seat[0].loose.ok;       // not a number
+  // the Attack that follows is the cast it was before arrows: no arrow is loosed
+  b: [96] u8; n := wire_put_cast(b[..], 0, WireCast.{seq = 7, slot = e2at_attack(), ax = 0, ay = 1, az = -45});
+  rm_heard(v[..], 0, cast(string) b[0..<n]);
+  #assert a[0].loosed == 0 && !eg_test_has(e2rt_heard(v[..], 0, out[..]), "a ");
+  // one inside every bound is kept; aimed at the hand itself (no line to fly) it still flies, with a speed that is a number
+  v[0].eg[k].tick += XP_BEAT; e2a_remember(v[..], k);
+  me := v[0].eg[k].seat[0].pose; hand := e2ar_hand(me.x, me.z, [3] f32.[0, 0, -60]);
+  fb: [160] u8; fn := net_loose_write(NetLoose.{seq = 8, from = hand, to = hand, strength = 1, view_ms = v[0].eg[k].tick * 1000 / EG_HZ}, fb[..]);
+  rm_heard(v[..], 0, cast(string) fb[0..<fn]); #assert v[0].eg[k].seat[0].loose.ok;
+  n = wire_put_cast(b[..], 0, WireCast.{seq = 8, slot = e2at_attack(), ax = 0, ay = 1, az = -45}); rm_heard(v[..], 0, cast(string) b[0..<n]);
+  #assert a[0].loosed == 1;
+  w: bow.Arrow; for i: 0..<bow.ARROWS { if a[0].tag[i].id == 1 { w = a[0].ar[0].arrows[0].a[i]; } }
+  #assert w.vel[0] == w.vel[0] && w.vel[1] == w.vel[1] && w.vel[2] == w.vel[2] && abs(w.vel[1]) < 100;
+}
+// A check's Fighter's Attack on the wire (class-kit.coax xk_bar).
+e2ct_attack :: () -> int {
+  bar: [XC_SLOTS] FbAb; n := xk_bar(FB_CL_FIGHTER, bar[..]);
+  for i: 0..<n { if bar[i].kind == FB_ATTACK { return xk_wire(FB_CL_FIGHTER, bar[i]); } }
+  return -1;
+}
+e2ct_swing :: (v: [] RmServer, seq: int, ax: f32, az: f32, view_tick: int) {
+  b: [96] u8; n := wire_put_cast(b[..], 0, WireCast.{seq = seq, slot = e2ct_attack(), ax = ax, ay = 1, az = az, view = ifx view_tick > 0 then view_tick * 1000 / EG_HZ else 0});
+  rm_heard(v, 0, cast(string) b[0..<n]);
+}
+#test "e2 casts: a swing is judged where its page drew the wolf, inside the arrows' bound; with no view, or at a wolf that is down now, it is judged now (#13289)" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-swing"); #assert k >= 0;
+  a := v[0].eg[k].arrows[..]; ms := v[0].eg[k].monsters[..]; r := v[0].eg[k].rules[..]; b := r[0].b[..]; out: [262144] u8;
+  for q: 0..<6 { e2mt_tick(v[..], k); }
+  v[0].eg[k].tick += 600;
+  e2mt_at(v[..], k, 0, -42);
+  // a wolf stands one square down the path from the Fighter; every Attack hits and none kills
+  m := 0; mo := ms[0].mon[m..<m + 1]; foe := egb0(v[..], k) + mo[0].q; wz := -42 - f32(EGB_SQ);
+  b[0].c[foe].ac = 1; b[0].c[foe].hp = 500; b[0].c[foe].hp_max = 500;
+  for q: 0..<8 {
+    mo[0].x = 0; mo[0].z = wz; mo[0].state = E2M_IDLE; mo[0].foe = -1;
+    b[0].c[foe].x = egb_sq(0); b[0].c[foe].y = egb_z_cell(r, wz);
+    e2a_remember(v[..], k); v[0].eg[k].tick += 1;
+  }
+  // for the room's last two ticks it is 9 m aside: out of a sword's reach now
+  for q: 0..<2 { mo[0].x = 9; b[0].c[foe].x = egb_sq(9); e2a_remember(v[..], k); v[0].eg[k].tick += 1; }
+  v[0].eg[k].tick -= 1;
+  t := v[0].eg[k].tick; _ := e2rt_heard(v[..], 0, out[..]);
+  // every placed player is in the past too, the swinger among them
+  seat_was := net_past_at(a[0].past[..], E2A_SEAT0, t, 0);
+  #assert seat_was.up && seat_was.x == 0 && seat_was.z == -42 && E2A_SEAT0 + EG_ZONE_SEATS <= NET_PAST_BODIES;
+  #assert e2_monster_target(v[..], k, 0, wz) == -1 && e2_monster_target_at(v[..], k, 0, wz, t - 5) == foe;
+  // its page, drawing five ticks back, swung at it on the path: the swing lands, and the wolf is where it is now after
+  e2ct_swing(v[..], 1000001, 0, wz, t - 5);
+  #assert a[0].cast_back == 5 && a[0].casts_back == 1 && b[0].c[foe].hp < 500 && !eg_test_has(e2rt_heard(v[..], 0, out[..]), "r 1000001");
+  #assert b[0].c[foe].x == egb_sq(9) && b[0].c[foe].y == egb_z_cell(r, wz) && b[0].c[EGB_SEAT].x == egb_sq(0);
+  // the same swing with no view is judged now: no wolf is there
+  v[0].eg[k].tick += XP_BEAT; e2a_remember(v[..], k); hp := b[0].c[foe].hp;
+  e2ct_swing(v[..], 1000002, 0, wz, 0);
+  #assert a[0].cast_back == 0 && a[0].casts_back == 1 && b[0].c[foe].hp == hp;
+  // a view from far in the past is taken at the bound, where the wolf was already aside; one from the future is now
+  v[0].eg[k].tick += XP_BEAT; e2a_remember(v[..], k);
+  e2ct_swing(v[..], 1000003, 0, wz, v[0].eg[k].tick - 300);
+  #assert a[0].cast_back == net_rewind_ticks(NET_REWIND_AGE_MS, EG_HZ) && b[0].c[foe].hp == hp;
+  v[0].eg[k].tick += XP_BEAT; e2a_remember(v[..], k);
+  e2ct_swing(v[..], 1000004, 0, wz, v[0].eg[k].tick + 90);
+  #assert a[0].cast_back == 0 && b[0].c[foe].hp == hp;
+  // a wolf that is down now cannot be hit, wherever its page drew it
+  for q: 0..<8 { mo[0].x = 0; b[0].c[foe].x = egb_sq(0); v[0].eg[k].tick += 1; e2a_remember(v[..], k); }
+  b[0].c[foe].hp = 0; b[0].c[foe].dead = true;
+  #assert e2_monster_target_at(v[..], k, 0, wz, v[0].eg[k].tick - 3) == -1;
+  e2ct_swing(v[..], 1000005, 0, wz, v[0].eg[k].tick - 3);
+  #assert b[0].c[foe].hp == 0 && b[0].c[foe].x == egb_sq(0);
+}
+
+// One trial of the latency check below: a wolf runs across the Fighter's front at 8 m/s; the page draws it
+// `lag` ticks back and swings the tick it sees it in the square in front; the swing reaches the room `up` ticks
+// later. Whether the room's swing reached the wolf (the wolf has the swinger down as one who struck at it, hit or miss).
+e2ct_trial :: (v: [] RmServer, k: int, seq: int, start: f32, lag: int, up: int, view: bool, out: [] u8) -> bool {
+  _ := e2rt_heard(v, 0, out);   // the seat's socket reads what the room said (a refusal waits in the relay's queue)
+  a := v[0].eg[k].arrows[..]; ms := v[0].eg[k].monsters[..]; r := v[0].eg[k].rules[..]; b := r[0].b[..];
+  mo := ms[0].mon[0..<1]; foe := egb0(v, k) + mo[0].q; wz := -42 - f32(EGB_SQ);
+  v[0].eg[k].tick += XP_BEAT + NET_REWIND_TICKS;
+  rm_clock(v, v[0].eg[k].tick * 1000 / EG_HZ, 1762190000000 + v[0].eg[k].tick * 1000 / EG_HZ);   // the room's clock goes on with its ticks (the relay's rate limit reads it)
+  xs: [48] f32; seen := -1;
+  for q: 0..<48 {
+    x := start + f32(q) * 8.0 / f32(EG_HZ); xs[q] = x;
+    mo[0].x = x; mo[0].z = wz; mo[0].state = E2M_IDLE; mo[0].foe = -1; slot_set_clear(mo[0].hurt_by[..]);
+    b[0].c[foe].x = egb_sq(x); b[0].c[foe].y = egb_z_cell(r, wz); b[0].c[foe].hp = 500; b[0].c[foe].dead = false;
+    v[0].eg[k].tick += 1; e2a_remember(v, k);
+    // the page's picture this tick is the wolf `lag` ticks ago
+    if seen < 0 && q >= lag && egb_sq(xs[q - lag]) == egb_sq(0) { seen = q; }
+    if seen >= 0 && q == seen + up {
+      e2ct_swing(v, seq, xs[seen - lag], wz, ifx view then v[0].eg[k].tick - up - lag else 0);
+      return slot_set_has(mo[0].hurt_by[..], 0);
+    }
+  }
+  return false;
+}
+#test "e2 casts: at 120 ms and 2% loss a swing that lands on the swinger's screen reaches the wolf in the room in 95 of 100 trials at least; judged at the present it does not (#13289)" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-trials"); #assert k >= 0;
+  ms := v[0].eg[k].monsters[..]; b := v[0].eg[k].rules[0].b[..];
+  for q: 0..<6 { e2mt_tick(v[..], k); }
+  v[0].eg[k].tick += 600;
+  e2mt_at(v[..], k, 0, -42);
+  b[0].c[egb0(v[..], k) + ms[0].mon[0].q].ac = 1; b[0].c[egb0(v[..], k) + ms[0].mon[0].q].hp_max = 500;
+  // 120 ms round trip: 60 ms up (2 ticks); the others drawn a jitter buffer behind (100 ms and the
+  // 60 ms down: 5 ticks). 2% of swings lose their packet and come a resend later (8 ticks more).
+  out: [262144] u8;
+  landed := 0; now := 0; trials := 100; seed := 12345;
+  for i: 0..<trials {
+    seed = (seed * 1103515 + 12345) % 2147483;
+    start := -2.5f32 - f32(seed % 1000) / 1000 * f32(EGB_SQ);     // where on a square's width the run starts
+    late := ifx i % 50 == 49 then 8 else 0;
+    if e2ct_trial(v[..], k, 2000000 + 2 * i, start, 5, 2 + late, true, out[..]) { landed += 1; }       // (a seat's requests are numbered upward)
+    if e2ct_trial(v[..], k, 2000001 + 2 * i, start, 5, 2 + late, false, out[..]) { now += 1; }
+  }
+  #assert landed * 100 >= trials * 95;
+  // judged at the present the wolf has run on: the same swings reach it in fewer than half the trials
+  #assert now * 100 < trials * 50;
 }
 
 // An arrow's word (a, d: metaverse-engine/net/projectile.coax) to every placed seat within EG_VIEW m of (x, z).

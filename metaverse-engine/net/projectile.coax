@@ -100,13 +100,14 @@ net_shot_end_read :: (t: string) -> NetShotEnd {
 
 // ---- the bodies' past: where each of a realm's bodies stood at each of the last NET_REWIND_TICKS
 // ticks, so a flight stepped for a past moment meets them where the archer's page drew them.
-NET_PAST_BODIES :: 16;
+NET_PAST_BODIES :: 256;     // a zone's creatures and its seats (#13289: every body that can be hit)
 NetPastRow :: struct { tick: int = -1; up: [NET_PAST_BODIES] bool; x: [NET_PAST_BODIES] f32; z: [NET_PAST_BODIES] f32; }
 NetPast :: struct { row: [NET_REWIND_TICKS] NetPastRow; newest: int = -1; kept: int; }
 // The tick's row begun (every body down until net_past_put says where it stands).
 net_past_begin :: (p: [] NetPast, tick: int) {
   if tick <= p[0].newest { return; }
-  p[0].row[tick % NET_REWIND_TICKS] = NetPastRow.{tick = tick};
+  r := p[0].row[tick % NET_REWIND_TICKS..<tick % NET_REWIND_TICKS + 1];
+  r[0].tick = tick; for b: 0..<NET_PAST_BODIES { r[0].up[b] = false; }
   // a gap (a paused room) leaves no rows between: what was kept before it is let go
   if p[0].newest >= 0 && tick != p[0].newest + 1 { p[0].kept = 0; }
   p[0].newest = tick; if p[0].kept < NET_REWIND_TICKS { p[0].kept += 1; }

@@ -132,7 +132,7 @@ wp_write :: (head: string, f: WpVals, out: [] u8) -> int {
   if head == "P" { return wire_put_pins(out, 0, WirePins.{engine = wp_int(f.v[0]), rules = wp_int(f.v[1]), content = wp_int(f.v[2])}); }
   if head == "H" { return wire_put_hello(out, 0, WireHello.{version = wp_int(f.v[0]), look = f.v[1], kind = f.v[2], flags = wp_int(f.v[3]), name = f.v[4]}); }
   if head == "I" { return wire_put_in(out, 0, WireIn.{seq = wp_int(f.v[0]), kx = wp_int(f.v[1]), ky = wp_int(f.v[2]), px = wp_int(f.v[3]), py = wp_int(f.v[4]), theta = f32(wp_int(f.v[5])) / f32(WIRE_FINE), b = wp_int(f.v[6]), heard = wp_int(f.v[7])}); }
-  if head == "C" { return wire_put_cast(out, 0, WireCast.{seq = wp_int(f.v[0]), slot = wp_int(f.v[1]), ax = f32(wp_int(f.v[2])) / 100, ay = f32(wp_int(f.v[3])) / 100, az = f32(wp_int(f.v[4])) / 100, tgt = wp_int(f.v[5]), mode = ifx f.n > 6 then wp_int(f.v[6]) else 0}); }
+  if head == "C" { return wire_put_cast(out, 0, WireCast.{seq = wp_int(f.v[0]), slot = wp_int(f.v[1]), ax = f32(wp_int(f.v[2])) / 100, ay = f32(wp_int(f.v[3])) / 100, az = f32(wp_int(f.v[4])) / 100, tgt = wp_int(f.v[5]), mode = ifx f.n > 6 then wp_int(f.v[6]) else 0, view = ifx f.n > 7 then wp_int(f.v[7]) else 0}); }
   if head == "E" { return wire_put_use(out, 0, WireUse.{seq = wp_int(f.v[0]), kind = wp_int(f.v[1]), id = wp_int(f.v[2])}); }
   if head == "R" { return wire_put_rebuild(out, 0, wp_int(f.v[0])); }
   if head == "L" { return wire_put_rest(out, 0, wp_int(f.v[0])); }
@@ -203,7 +203,7 @@ wp_read :: (head: string, t: string, got: [] WpVals, num: [] u8) -> bool {
   if head == "P" { p := wire_read_pins(t, r[..]); wp_n(got, num, at[..], p.engine); wp_n(got, num, at[..], p.rules); wp_n(got, num, at[..], p.content); }
   else if head == "H" { h := wire_read_hello(t, r[..]); wp_n(got, num, at[..], h.version); wp_s(got, h.look); wp_s(got, h.kind); wp_n(got, num, at[..], h.flags); wp_s(got, h.name); }
   else if head == "I" { x := wire_read_in(t, r[..]); wp_n(got, num, at[..], x.seq); wp_n(got, num, at[..], x.kx); wp_n(got, num, at[..], x.ky); wp_n(got, num, at[..], x.px); wp_n(got, num, at[..], x.py); wp_n(got, num, at[..], wire_fine(x.theta)); wp_n(got, num, at[..], x.b); wp_n(got, num, at[..], x.heard); }
-  else if head == "C" { c := wire_read_cast(t, r[..]); wp_n(got, num, at[..], c.seq); wp_n(got, num, at[..], c.slot); wp_n(got, num, at[..], wire_cm(c.ax)); wp_n(got, num, at[..], wire_cm(c.ay)); wp_n(got, num, at[..], wire_cm(c.az)); wp_n(got, num, at[..], c.tgt); if c.mode != 0 { wp_n(got, num, at[..], c.mode); } }
+  else if head == "C" { c := wire_read_cast(t, r[..]); wp_n(got, num, at[..], c.seq); wp_n(got, num, at[..], c.slot); wp_n(got, num, at[..], wire_cm(c.ax)); wp_n(got, num, at[..], wire_cm(c.ay)); wp_n(got, num, at[..], wire_cm(c.az)); wp_n(got, num, at[..], c.tgt); if c.mode != 0 || c.view > 0 { wp_n(got, num, at[..], c.mode); } if c.view > 0 { wp_n(got, num, at[..], c.view); } }
   else if head == "E" { u := wire_read_use(t, r[..]); wp_n(got, num, at[..], u.seq); wp_n(got, num, at[..], u.kind); wp_n(got, num, at[..], u.id); }
   else if head == "W" { w := wire_read_world(t, r[..]); wp_n(got, num, at[..], w.tick); wp_n(got, num, at[..], w.hz); wp_n(got, num, at[..], w.seed); wp_n(got, num, at[..], w.day); wp_n(got, num, at[..], w.weather); wp_n(got, num, at[..], w.budget); }
   else if head == "D" { d := wire_read_d(t, r[..]); wp_n(got, num, at[..], d.tick); wp_n(got, num, at[..], d.ack); wp_n(got, num, at[..], d.f); wp_n(got, num, at[..], d.part); }

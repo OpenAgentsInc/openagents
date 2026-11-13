@@ -28,6 +28,7 @@
     {"dir": "page", "head": "I", "read": true, "fields": ["seq", "kx", "ky", "px", "py", "theta_fine", "b", "heard"], "values": [7, 0, 100, -50, 0, 15708, 1, 42], "text": "I 7 0 100 -50 0 15708 1 42"},
     {"dir": "page", "head": "C", "read": true, "fields": ["seq", "slot", "ax_cm", "ay_cm", "az_cm", "tgt"], "values": [3, 1, 1250, -20, 300, 1005], "text": "C 3 1 1250 -20 300 1005"},
     {"dir": "page", "head": "C", "read": true, "fields": ["seq", "slot", "ax_cm", "ay_cm", "az_cm", "tgt", "mode"], "values": [4, 2, 0, 0, -100, -1, 2], "text": "C 4 2 0 0 -100 -1 2"},
+    {"dir": "page", "head": "C", "read": true, "fields": ["seq", "slot", "ax_cm", "ay_cm", "az_cm", "tgt", "mode", "view_ms"], "values": [5, 1, 1250, -20, 300, -1, 0, 123456], "text": "C 5 1 1250 -20 300 -1 0 123456"},
     {"dir": "page", "head": "E", "read": true, "fields": ["seq", "kind", "id"], "values": [4, 2, 17], "text": "E 4 2 17"},
     {"dir": "page", "head": "R", "fields": ["seq"], "values": [5], "text": "R 5"},
     {"dir": "page", "head": "L", "read": true, "fields": ["seq"], "values": [6], "text": "L 6"},

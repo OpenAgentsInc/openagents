@@ -361,10 +361,13 @@ e2g_blows :: (v: [] RmServer, k: int, i: int) {
   if n > 0 { g[0].blows = n; }
 }
 // A seat's cast at the guard: the creature it harms, when it is aimed within E2G_AIM m of him (-1 none).
-e2_guard_target :: (v: [] RmServer, k: int, ax: f32, az: f32) -> int {
+e2_guard_target :: (v: [] RmServer, k: int, ax: f32, az: f32) -> int { return e2_guard_target_at(v, k, ax, az, v[0].eg[k].tick); }
+// The same, with the guard where he stood at tick `at` (the caster's page's view, #13289).
+e2_guard_target_at :: (v: [] RmServer, k: int, ax: f32, az: f32, at: int) -> int {
   g := v[0].eg[k].guard[0];
   if g.q < 0 || g.state == E2G_DOWN { return -1; }
-  dx := ax - g.x; dz := az - g.z;
+  was := e2a_stood(v, k, E2AR_GUARD, at, g.x, g.z);
+  dx := ax - was[0]; dz := az - was[1];
   return ifx dx * dx + dz * dz <= f32(E2G_AIM * E2G_AIM) then egb0(v, k) + g.q else -1;
 }
 // Seat s harmed him (or tried): he turns on them; a cast that took no Hit Points is told as a miss.
