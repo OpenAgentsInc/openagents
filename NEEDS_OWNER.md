@@ -3,7 +3,8 @@
 ## Coax Native starter on TestFlight (2026-11-13)
 
 Install OpenAgents 1.0.0 build **1068** from the existing Owner TestFlight
-group when processing finishes. It replaces the earlier world/wallet/voice
+group. Apple reports VALID / IN_BETA_TESTING and group assignment is verified.
+It replaces the earlier world/wallet/voice
 interface with the Coax Native starter; existing Keychain records remain.
 Allow the signed update prompt, tap **Apply update**, and check that
 **Updates are live.** appears. Tap **Try the starter**, leave the app in the

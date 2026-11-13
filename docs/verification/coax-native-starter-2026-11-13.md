@@ -16,7 +16,10 @@ description. Login/chat screens remain subsequent application work.
 - Native implementation `3cf386e1ba`, release metadata correction `12171c7480`.
 - Apple accepted the corrected upload, delivery
   `24dfd3cf-0fe9-45c4-a139-fa26e12e8ce1`, with no errors. Processing and internal
-  group assignment are separate from upload acceptance.
+  group assignment are separate from upload acceptance. App Store Connect
+  subsequently reported **VALID**, internal state **IN_BETA_TESTING**.
+  The release notes were set and assignment to the existing **Owner** internal
+  TestFlight group was verified through the group's builds collection.
 - The first upload was refused for an omitted iPad orientation. All four
   orientations were added; it did not produce a usable TestFlight build.
 - Archive, IPA, runtime config and symbols are retained outside the repository
@@ -57,7 +60,14 @@ The simulator executable's SHA-256 before and after was identical:
 The tested package's SHA-256 was
 `a5ebcfc70ccc735fa841b7bc7276b0acaad78a513fd348b34a8395023f92d5a3`.
 The public HTTPS envelope matched the locally signed envelope byte for byte.
+The pinned Cloud Run fallback returned the same envelope byte for byte.
 The test result is retained at `/tmp/coax-native-live-ota.xcresult` on the Mac.
+
+The same packaged Wasm also ran in the shared headless Chrome driver on a
+390×844 web viewport. A rendered button tap produced counter `1`; the
+driver returned the new heading and description with no native bridge.
+This is a browser starter smoke check, not the book's full two-host app
+acceptance case. Its picture is retained at `/tmp/coax-native-web-starter.png`.
 
 ## Infrastructure and remaining acceptance
 
