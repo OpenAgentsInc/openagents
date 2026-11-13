@@ -1,0 +1,256 @@
+// battle-attack.coax's own checks (GitHub #13287): each procedure against its own numbers, so a
+// changed operator, constant or line there fails one. battle.coax loads this with `#test`.
+//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-attack.coax
+
+#test "attack: Shield needs its feature and a caster able to cast it; it takes the lowest slot it has, tells its line, and Protective Magic is no slot of a stat block's turn" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 10; b[0].who = -1;
+  w := rs_add(b[..], rs_wizard("Mordra", 1, 3), 4, 4);
+  was := b[0].c[w];
+  #assert rs_one(b[..], w).count == 1 && was.ac == 15 && was.slots[1] > 0 && was.slots[2] > 0 && was.npc == RS_NPC_NONE;
+  // without the feature it is refused, and nothing is spent
+  b[0].c[w].feats = rs_feature_put(b[0].c[w].feats, RS_FT_SHIELD_SPELL, false);
+  #assert !rs_shield(b[..], w) && b[0].c[w].slots[1] == was.slots[1] && !rs_effect(b[0].c[w], EF_SHIELD) && !b[0].c[w].reacted;
+  b[0].c[w] = was;
+  // a Shield already up has its place in a full list (no other state has)
+  rs_shield_begin(b[0].c[w..<w+1]);
+  for k: 0..<RS_EFFECTS - 1 { b[0].c[w].eff[k] = RsEffect.{kind = EF_BLESS, by = w, spell = SP_BLESS, until = rs_secs(600), save = -1}; }
+  #assert rs_state_room(b[0].c[w], EF_SHIELD) && !rs_state_room(b[0].c[w], EF_ADDLED) && rs_shield(b[..], w);
+  b[0].c[w] = was;
+  // its lowest slot it has: with no 1st-level slot left, its one 2nd-level slot
+  b[0].c[w].slots[1] = 0; b[0].c[w].slots[2] = 1; seq := b[0].book[0].seq;
+  #assert rs_shield(b[..], w) && b[0].c[w].slots[2] == 0 && b[0].c[w].reacted && rs_effect(b[0].c[w], EF_SHIELD) && b[0].book[0].seq == seq + 1;
+  ev := rs_recent(b[0].book[0], 0);
+  #assert ev.kind == RS_EV_CAST && ev.spell.value == SP_SHIELD && ev.by.value == w && ev.to.value == w && ev.amount == 2 && ev.damage == 0 && ev.feat == RS_FT_NONE;
+  #assert cast(string) ev.text[0..<ev.text_n] == "Mordra casts Shield (2nd-level slot): AC 20";
+  b[0].c[w] = was;
+  // with no slot at all it is refused
+  for l: 1..<10 { b[0].c[w].slots[l] = 0; }
+  #assert !rs_shield(b[..], w) && !rs_effect(b[0].c[w], EF_SHIELD) && !b[0].c[w].reacted;
+  b[0].c[w] = was;
+  // it is Shield's components it needs (Verbal and Somatic), not another spell's material
+  b[0].c[w].component_pouch = false; b[0].c[w].focus_held = false; b[0].c[w].focus_worn = false;
+  #assert rs_cast_components_ready(b[0].c[w], SP_SHIELD) && !rs_cast_components_ready(b[0].c[w], SP_FIREBALL) && rs_shield(b[..], w) && b[0].c[w].slots[1] == was.slots[1] - 1;
+  b[0].c[w] = was;
+  // on its own turn after a slot spent, a caster has no second slot; a stat block's Protective Magic is none
+  b[0].who = w; b[0].turn = RsTurn.{slot_spent = true};
+  #assert !rs_shield(b[..], w) && !rs_effect(b[0].c[w], EF_SHIELD) && b[0].c[w].slots[1] == was.slots[1];
+  m := rs_add(b[..], rs_mage("Mage", 1), 6, 4);
+  mage := b[0].c[m];
+  #assert mage.npc == RS_NPC_MAGE && mage.slots[1] == 3;
+  b[0].who = m; b[0].turn = RsTurn.{slot_spent = true};
+  #assert rs_shield(b[..], m) && b[0].c[m].slots[1] == 2 && rs_effect(b[0].c[m], EF_SHIELD);
+  // and it is only that: with its three spent, a stat block never pays with a higher slot
+  b[0].c[m] = mage; b[0].c[m].slots[1] = 0; b[0].who = -1; b[0].turn = RsTurn.{};
+  #assert mage.slots[4] > 0 && !rs_shield(b[..], m) && b[0].c[m].slots[4] == mage.slots[4];
+}
+
+#test "attack: Cutting Words is a foe Bard's, with its Reaction and a use left, when its die can turn the hit, within 60 feet" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 8; b[0].dice[0].fixed = true; b[0].who = -1;
+  a := rs_add(b[..], rs_fighter("Garr", 0, 3), 1, 3);
+  k := rs_add(b[..], rs_bard("Lark", 1, 3), 13, 3);   // 60 feet off
+  was := b[0].c[k];
+  #assert rs_feet_to(b[..], k, a) == 60 && was.rank[RS_RK_INSPIRATION_DIE] == 6 && was.uses[RS_USE_INSPIRE] == 3 && rs_has_feature(was, RS_FT_CUTTING_WORDS) && was.rank[RS_RK_CRIT_RANGE] == 0;
+  // each bar alone: its own side's roll, its Reaction spent, unable to act, no use left
+  b[0].c[k].team = 0; #assert rs_cutting_words(b[..], a, 0) == 0 && !b[0].c[k].reacted; b[0].c[k] = was;
+  b[0].c[k].reacted = true; #assert rs_cutting_words(b[..], a, 0) == 0 && b[0].c[k].uses[RS_USE_INSPIRE] == 3; b[0].c[k] = was;
+  b[0].c[k].cond = RS_STUNNED; #assert rs_cutting_words(b[..], a, 0) == 0 && !b[0].c[k].reacted; b[0].c[k] = was;
+  b[0].c[k].uses[RS_USE_INSPIRE] = 0; #assert rs_cutting_words(b[..], a, 0) == 0 && !b[0].c[k].reacted; b[0].c[k] = was;
+  // the die can't turn a hit by its own size or more; one square past 60 feet is too far
+  #assert rs_cutting_words(b[..], a, 6) == 0 && rs_cutting_words(b[..], a, 7) == 0 && !b[0].c[k].reacted && b[0].c[k].uses[RS_USE_INSPIRE] == 3;
+  rs_place(b[..], k, 14, 3); #assert rs_feet_to(b[..], k, a) == 65 && rs_cutting_words(b[..], a, 0) == 0 && !b[0].c[k].reacted; rs_place(b[..], k, 13, 3);
+  // its last use, at 60 feet, by one less than its die: half the die with fixed dice, told as its own event
+  b[0].c[k].uses[RS_USE_INSPIRE] = 1; seq := b[0].book[0].seq;
+  #assert rs_cutting_words(b[..], a, 5) == 3 && b[0].c[k].reacted && b[0].c[k].uses[RS_USE_INSPIRE] == 0 && b[0].book[0].seq == seq + 1;
+  ev := rs_recent(b[0].book[0], 0);
+  #assert ev.kind == RS_EV_CONDITION && ev.spell.value == -1 && ev.by.value == k && ev.to.value == a && ev.amount == 3 && ev.damage == 0 && ev.feat == RS_FT_CUTTING_WORDS;
+  #assert cast(string) ev.text[0..<ev.text_n] == "Lark mocks Garr with Cutting Words: -3";
+  // one without the feature never does, whatever it holds
+  b[0].c[k] = was; b[0].c[k].feats = rs_feature_put(b[0].c[k].feats, RS_FT_CUTTING_WORDS, false);
+  #assert rs_cutting_words(b[..], a, 0) == 0 && !b[0].c[k].reacted;
+}
+
+#test "attack: Dark One's Own Luck adds a d10 to a failed roll it can save, a use each time; a held Bardic Inspiration die is rolled once on a failure" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].who = -1;
+  w := rs_add(b[..], rs_warlock("Vex", 0, 6, SP_ELDRITCH_BLAST), 1, 3);
+  #assert rs_has_feature(b[0].c[w], RS_FT_OWN_LUCK) && b[0].c[w].uses[RS_USE_LUCK] == 4;
+  // not on a roll that made it; not when ten more still fails
+  #assert rs_own_luck(b[..], w, 15, 15) == 0 && rs_own_luck(b[..], w, 4, 15) == 0 && b[0].c[w].uses[RS_USE_LUCK] == 4 && b[0].book[0].seq == 0;
+  // with none left, never; with one left, and exactly ten short, it rolls: the d10 the dice give next
+  b[0].c[w].uses[RS_USE_LUCK] = 0; #assert rs_own_luck(b[..], w, 14, 15) == 0;
+  differs := false;
+  for seed: 1..<25 {
+    b[0].c[w].uses[RS_USE_LUCK] = 1; b[0].dice[0].state = cast(u64) seed * 977;
+    beside: [1] RsDice; beside[0] = b[0].dice[0]; want := rs_roll(beside[..], 10);
+    other: [1] RsDice; other[0] = b[0].dice[0]; if rs_roll(other[..], 11) != want { differs = true; }
+    seq := b[0].book[0].seq;
+    #assert rs_own_luck(b[..], w, 5, 15) == want && b[0].c[w].uses[RS_USE_LUCK] == 0 && b[0].book[0].seq == seq + 1;
+    ev := rs_recent(b[0].book[0], 0);
+    #assert ev.kind == RS_EV_CONDITION && ev.spell.value == -1 && ev.by.value == w && ev.to.value == w && ev.amount == want && ev.damage == 0 && ev.feat == RS_FT_OWN_LUCK;
+    l: [1] RsLine; rs_add_text(l[..], "Vex: Dark One's Own Luck, +"); rs_add_int(l[..], want);
+    #assert cast(string) ev.text[0..<ev.text_n] == cast(string) l[0].buf[0..<l[0].n];
+  }
+  #assert differs;   // the seeds tell a d10 from a d11
+  b[0].c[w].feats = rs_feature_put(b[0].c[w].feats, RS_FT_OWN_LUCK, false); b[0].c[w].uses[RS_USE_LUCK] = 1;
+  #assert rs_own_luck(b[..], w, 14, 15) == 0 && b[0].c[w].uses[RS_USE_LUCK] == 1;
+  // a held die: none held, or a roll that made it, adds nothing and keeps it
+  b[0].dice[0].fixed = true;
+  #assert rs_inspired_roll(b[..], w, 5, 15) == 0;
+  b[0].c[w].eff = rs_state_value_put(b[0].c[w].eff, EF_INSPIRED, 6);
+  #assert rs_inspired_roll(b[..], w, 15, 15) == 0 && rs_state_value(b[0].c[w], EF_INSPIRED) == 6;
+  #assert rs_inspired_roll(b[..], w, 14, 15) == 3 && rs_state_value(b[0].c[w], EF_INSPIRED) == 0;
+  // the smallest die there could be is still a die
+  b[0].c[w].eff = rs_state_value_put(b[0].c[w].eff, EF_INSPIRED, 1);
+  #assert rs_inspired_roll(b[..], w, 14, 15) == 1 && rs_state_value(b[0].c[w], EF_INSPIRED) == 0;
+}
+
+// What rs_roll_attack_from must give, worked out beside it from the same dice: Seeking Spell's
+// reroll, the Critical Hit, the total, a held Bardic Inspiration die on a miss, a foe Bard's Cutting
+// Words on a hit, and the target's Shield on a hit by less than 5.
+AtkWant :: struct { roll: int; seek: bool; crit: bool; total: int; hit: bool; insp: int; cut: int; shield: bool; ac: int; }
+atk_want :: (d: [] RsDice, spell: bool, seeking: bool, sorcery: int, crit_min: int, bonus: int, exhaustion: int, ac: int, held: int, bard_die: int, shields: bool) -> AtkWant {
+  r: AtkWant; r.ac = ac;
+  r.roll = rs_roll(d, 20);
+  if spell && seeking && sorcery > 0 && r.roll < crit_min && (r.roll == 1 || r.roll + bonus - exhaustion < ac) { r.seek = true; r.roll = rs_roll(d, 20); }
+  r.crit = r.roll >= crit_min;
+  r.total = r.roll + bonus - exhaustion;
+  r.hit = r.roll != 1 && (r.crit || r.total >= ac);
+  if !r.hit && r.roll != 1 && held > 0 && r.total < ac { r.insp = rs_roll(d, held); r.total += r.insp; r.hit = r.total >= ac; }
+  if r.hit && !r.crit && bard_die > 0 && r.total - ac < bard_die { r.cut = rs_roll(d, bard_die); r.total -= r.cut; r.hit = r.total >= ac; }
+  if r.hit && !r.crit && r.total < ac + 5 && shields { r.shield = true; r.hit = false; r.ac += 5; }
+  return r;
+}
+#test "attack: one attack roll: Seeking Spell rerolls a spell's miss for a Sorcery Point, Exhaustion comes off, a 1 misses, the total meets the AC or a Critical Hit lands" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].who = -1;
+  i := rs_add(b[..], rs_sorcerer("Sera", 0, 3), 1, 3);
+  j := rs_add(b[..], rs_fighter("Garr", 1, 3), 3, 3);
+  b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_SHIELD_SPELL, false);
+  b[0].c[j].ac = 15; base := b[0].c[i];
+  seeks := 0; ones := 0; crits := 0; equal := 0; rerolled_low := 0;
+  for seed: 1..<61 { for cfg: 0..<48 {
+    spell := cfg % 2 == 1; seeking := (cfg / 2) % 2 == 1; sorcery := (cfg / 4) % 3; crit_min := ifx (cfg / 12) % 2 == 1 then 19 else 20; exhaustion := (cfg / 24) % 2;
+    bonus := 3 + seed % 4;
+    b[0].c[i] = base; b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_SEEKING, seeking); b[0].c[i].uses[RS_USE_SORCERY] = sorcery; b[0].c[i].exhaustion = exhaustion;
+    b[0].dice[0] = RsDice.{state = cast(u64) seed * 7919 + cast(u64) cfg};
+    beside: [1] RsDice; beside[0] = b[0].dice[0];
+    want := atk_want(beside[..], spell, seeking, sorcery, crit_min, bonus, 2 * exhaustion, 15, 0, 0, false);
+    r := rs_roll_attack(b[..], i, j, 0, bonus, crit_min, spell);
+    #assert r.roll == want.roll && r.seek == want.seek && r.crit == want.crit && r.total == want.total && r.hit == want.hit && r.ac == 15 && r.exhaustion == 2 * exhaustion;
+    #assert r.insp == 0 && r.cut == 0 && !r.shield && r.boon == 0 && r.edge == 0 && b[0].c[i].uses[RS_USE_SORCERY] == sorcery - (ifx want.seek then 1 else 0);
+    #assert b[0].dice[0].state == beside[0].state;   // and no die more
+    if want.seek { seeks += 1; } if want.roll == 1 { ones += 1; } if want.crit { crits += 1; } if want.total == 15 && !want.crit && want.roll != 1 { equal += 1; }
+    if want.seek && sorcery == 1 { rerolled_low += 1; }
+  } }
+  #assert seeks > 20 && ones > 20 && crits > 20 && equal > 20 && rerolled_low > 5;   // every branch is met
+}
+#test "attack: a miss adds a held Bardic Inspiration die, a foe Bard cuts a hit, and Shield turns a hit by less than 5" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].who = -1;
+  i := rs_add(b[..], rs_fighter("Garr", 0, 3), 1, 3);
+  j := rs_add(b[..], rs_wizard("Mordra", 1, 3), 3, 3);
+  k := rs_add(b[..], rs_bard("Lark", 1, 3), 5, 3);
+  b[0].c[j].ac = 12; wizard := b[0].c[j]; bard := b[0].c[k]; garr := b[0].c[i];
+  insps := 0; cuts := 0; shields := 0; turned := 0; edge5 := 0; missed_shield := 0;
+  for seed: 1..<81 { for cfg: 0..<8 {
+    held := ifx cfg % 2 == 1 then 6 else 0; cutting := (cfg / 2) % 2 == 1; shielding := (cfg / 4) % 2 == 1;
+    bonus := seed % 9;
+    b[0].c[i] = garr; b[0].c[j] = wizard; b[0].c[k] = bard;
+    if held > 0 { b[0].c[i].eff = rs_state_value_put(b[0].c[i].eff, EF_INSPIRED, held); }
+    if !cutting { b[0].c[k].reacted = true; }
+    if !shielding { b[0].c[j].reacted = true; }
+    b[0].dice[0] = RsDice.{state = cast(u64) seed * 104729 + cast(u64) cfg};
+    beside: [1] RsDice; beside[0] = b[0].dice[0];
+    want := atk_want(beside[..], false, false, 0, 20, bonus, 0, 12, held, ifx cutting then 6 else 0, shielding);
+    r := rs_roll_attack(b[..], i, j, 0, bonus, 20, false);
+    #assert r.roll == want.roll && r.crit == want.crit && r.total == want.total && r.hit == want.hit && r.insp == want.insp && r.cut == want.cut && r.shield == want.shield && r.ac == want.ac;
+    #assert b[0].dice[0].state == beside[0].state;
+    #assert (rs_state_value(b[0].c[i], EF_INSPIRED) == 0) == (held == 0 || want.insp > 0);
+    #assert b[0].c[k].uses[RS_USE_INSPIRE] == bard.uses[RS_USE_INSPIRE] - (ifx want.cut > 0 then 1 else 0);
+    #assert b[0].c[j].slots[1] == wizard.slots[1] - (ifx want.shield then 1 else 0) && rs_effect(b[0].c[j], EF_SHIELD) == want.shield;
+    if want.insp > 0 { insps += 1; } if want.cut > 0 { cuts += 1; if !want.hit { turned += 1; } } if want.shield { shields += 1; }
+    if shielding && !want.crit && want.roll != 1 && want.total == 17 && !want.shield { edge5 += 1; }
+    if shielding && !want.hit && !want.shield { missed_shield += 1; }
+  } }
+  #assert insps > 20 && cuts > 20 && turned > 5 && shields > 20 && edge5 > 0 && missed_shield > 20;
+}
+
+#test "attack: the roll's line names what changed the roll, and nothing that did not" {
+  l: [1] RsLine;
+  rs_add_roll(l[..], RsAttackRoll.{roll = 12, total = 17, ac = 15}, 5);
+  #assert cast(string) l[0].buf[0..<l[0].n] == "12 + 5 = 17 vs AC 15";
+  l[0] = rs_line(); rs_add_roll(l[..], RsAttackRoll.{roll = 12, edge = 1, total = 17, ac = 15}, 5);
+  #assert cast(string) l[0].buf[0..<l[0].n] == "12 (Advantage) + 5 = 17 vs AC 15";
+  l[0] = rs_line(); rs_add_roll(l[..], RsAttackRoll.{roll = 12, edge = -1, total = 17, ac = 15}, 5);
+  #assert cast(string) l[0].buf[0..<l[0].n] == "12 (Disadvantage) + 5 = 17 vs AC 15";
+  l[0] = rs_line(); rs_add_roll(l[..], RsAttackRoll.{roll = 7, seek = true, exhaustion = 1, boon = 1, total = 12, ac = 20}, 5);
+  #assert cast(string) l[0].buf[0..<l[0].n] == "7 (Seeking Spell) + 5 - 1 Exhaustion + 1 Bless = 12 vs AC 20";
+  l[0] = rs_line(); rs_add_roll(l[..], RsAttackRoll.{roll = 7, insp = 1, cut = 1, total = 12, ac = 20, shield = true, parry = true}, 5);
+  #assert cast(string) l[0].buf[0..<l[0].n] == "7 + 5 + 1 Inspiration - 1 Cutting Words = 12 vs AC 20 (Shield) (Parry)";
+  l[0] = rs_line(); rs_add_roll(l[..], RsAttackRoll.{roll = 7, total = 12, ac = 20, shield = true}, 5);
+  #assert cast(string) l[0].buf[0..<l[0].n] == "7 + 5 = 12 vs AC 20 (Shield)";
+  l[0] = rs_line(); rs_add_roll(l[..], RsAttackRoll.{roll = 9, boon = -1, total = 13, ac = 13}, 5);
+  #assert cast(string) l[0].buf[0..<l[0].n] == "9 + 5 - 1 Bane = 13 vs AC 13";
+  l[0] = rs_line(); rs_add_roll(l[..], RsAttackRoll.{roll = 9, boon = -3, total = 11, ac = 13, parry = true}, 5);
+  #assert cast(string) l[0].buf[0..<l[0].n] == "9 + 5 - 3 Bane = 11 vs AC 13 (Parry)";
+}
+
+#test "attack: Advantage and Disadvantage on an attack roll, each source alone" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].who = -1;
+  i := rs_add(b[..], rs_fighter("Garr", 0, 3), 1, 3);
+  j := rs_add(b[..], rs_fighter("Holt", 1, 3), 2, 3);
+  garr := b[0].c[i]; holt := b[0].c[j];
+  #assert rs_attack_edge(b[..], i, j, true, true) == 0;
+  // an outlined target; a Prone one within 5 feet; its own Reckless Attack, on a Strength attack only
+  _ := rs_put_effect(b[..], j, RsEffect.{kind = EF_OUTLINED, by = i, spell = SP_FAERIE_FIRE, until = rs_secs(60), save = -1});
+  #assert rs_attack_edge(b[..], i, j, true, true) == 1;
+  b[0].c[j] = holt; b[0].c[j].cond = RS_PRONE;
+  #assert rs_attack_edge(b[..], i, j, true, true) == 1;
+  b[0].c[j] = holt;
+  _ := rs_put_effect(b[..], i, RsEffect.{kind = EF_RECKLESS, by = i, spell = -1, until = rs_secs(60), save = -1});
+  #assert rs_attack_edge(b[..], i, j, true, true) == 1 && rs_attack_edge(b[..], i, j, true, false) == 0;
+  b[0].c[i] = garr;
+  // Guiding Bolt's light on the target is spent by the roll it helps
+  _ := rs_put_effect(b[..], j, RsEffect.{kind = EF_EXPOSED, by = i, spell = SP_GUIDING_BOLT, until = rs_secs(60), save = -1});
+  #assert rs_attack_edge(b[..], i, j, true, true) == 1 && !rs_effect(b[0].c[j], EF_EXPOSED) && rs_attack_edge(b[..], i, j, true, true) == 0;
+  // Prone itself: Disadvantage; and a Prone target from more than 5 feet, where a Blinded one that stands is only easier to hit
+  b[0].c[i].cond = RS_PRONE;
+  #assert rs_attack_edge(b[..], i, j, true, true) == -1;
+  b[0].c[i] = garr; rs_place(b[..], j, 8, 3);
+  b[0].c[j].cond = RS_PRONE; #assert rs_attack_edge(b[..], i, j, false, false) == -1;
+  b[0].c[j].cond = RS_BLINDED; #assert rs_attack_edge(b[..], i, j, false, false) == 1;
+  b[0].c[j] = holt; rs_place(b[..], j, 2, 3);
+  // Frightened, with nothing said of what it fears
+  b[0].c[i].cond = RS_FRIGHTENED;
+  #assert rs_attack_edge(b[..], i, j, true, true) == -1;
+  b[0].c[i] = garr;
+  // the Dodge action on the target: Disadvantage, unless the attacker stands where it can't be seen
+  b[0].c[j].eff = rs_state_put(b[0].c[j].eff, EF_DODGE, true);
+  #assert rs_dodge_live(b[..], j) && rs_attack_edge(b[..], i, j, true, true) == -1;
+  #assert rs_terrain_put(b[..], TR_HEAVY, 1, 3, 1, 3) && rs_obscured(b[..], i) == 2;
+  #assert rs_attack_edge(b[..], i, j, true, true) == 1;   // unseen by its target, and the Dodge is no help against it
+}
+
+#test "attack: Advantage and Disadvantage on a saving throw, every source by its ability" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 10; b[0].h = 8; b[0].who = -1;
+  j := rs_add(b[..], rs_fighter("Holt", 1, 3), 2, 3);
+  holt := b[0].c[j];
+  #assert rs_save_edge(b[..], j, RS_WIS) == 0 && rs_save_edge_with(b[..], j, RS_WIS, 0) == 0 && rs_save_edge_with(b[..], j, RS_WIS, 1) == -1;
+  for ability: 0..<6 { for cfg: 0..<1024 {
+    extra := cfg % 3; more := (cfg / 3) % 3; restrained := (cfg / 9) % 2 == 1; enfeebled := (cfg / 18) % 2 == 1; raging := (cfg / 36) % 2 == 1;
+    danger := (cfg / 72) % 2 == 1; state := (cfg / 144) % 4; dodging := (cfg / 576) % 2 == 1;
+    if cfg >= 1152 { continue; }
+    b[0].c[j] = holt;
+    cond := 0;
+    if restrained { cond |= RS_RESTRAINED; }
+    if state == 1 { cond |= RS_BLINDED; } if state == 2 { cond |= RS_INCAPACITATED; } if state == 3 { cond |= RS_STUNNED; }
+    b[0].c[j].cond = cond;
+    b[0].c[j].feats = rs_feature_put(b[0].c[j].feats, RS_FT_DANGER_SENSE, danger);
+    if enfeebled { b[0].c[j].eff[0] = RsEffect.{kind = EF_ENFEEBLED, by = j, spell = SP_RAY_OF_ENFEEBLEMENT, until = rs_secs(60), save = -1}; }
+    if raging { b[0].c[j].eff = rs_state_put(b[0].c[j].eff, EF_RAGE, true); }
+    if dodging { b[0].c[j].eff = rs_state_put(b[0].c[j].eff, EF_DODGE, true); }
+    live := dodging && state < 2 && !restrained;   // Dodge holds while it can act and move (dodge.coax)
+    down := extra > 0 || (ability == RS_DEX && restrained) || (ability == RS_STR && enfeebled);
+    up := more > 0 || (ability == RS_STR && raging) || (ability == RS_DEX && danger && state < 2) || (ability == RS_DEX && live);
+    want := ifx up == down then 0 else (ifx up then 1 else -1);
+    #assert rs_save_edge_from(b[..], j, ability, more, extra) == want;
+  } }
+  #assert rs_edge_of(true, false) == 1 && rs_edge_of(false, true) == -1 && rs_edge_of(true, true) == 0 && rs_edge_of(false, false) == 0;
+}

@@ -1,0 +1,426 @@
+// battle-features.coax's own checks (GitHub #13285, #13287): each need and each step of the feature
+// program against its own numbers, the driver, and the three steps that are one feature's own.
+// battle.coax loads this with `#test`.
+//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-features.coax
+
+bf_need :: (b: [] RsBattle, i: int, u: [] RsUse, kind: int, a: int, b2: int) -> bool { return rs_feat_need(b, i, u, RsFeatStep.{kind = kind, a = a, b = b2}); }
+bf_do :: (b: [] RsBattle, i: int, u: [] RsUse, kind: int, a: int, b2: int, c: int, t: string) -> bool { return rs_feat_do(b, i, u, RsFeatStep.{kind = kind, a = a, b = b2, c = c, t = t}); }
+bf_text :: (b: [] RsBattle, back: int, want: string) -> bool { ev := rs_recent(b[0].book[0], back); return cast(string) ev.text[0..<ev.text_n] == want; }
+
+#test "features: each need of the program, at its edge" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 8; b[0].who = -1;
+  i := rs_add(b[..], rs_fighter("Garr", 0, 3), 1, 3);
+  j := rs_add(b[..], rs_fighter("Holt", 0, 3), 2, 3);
+  garr := b[0].c[i]; holt := b[0].c[j];
+  u: [1] RsUse; u[0].j = j;
+  // its turn; able to act; its Bonus Action and its Action free; its Action spent
+  #assert !bf_need(b[..], i, u[..], RS_FS_N_TURN, 0, 0) && !bf_need(b[..], i, u[..], RS_FS_N_BONUS, 0, 0) && !bf_need(b[..], i, u[..], RS_FS_N_ACTION, 0, 0);
+  b[0].who = i; b[0].turn = RsTurn.{};
+  #assert bf_need(b[..], i, u[..], RS_FS_N_TURN, 0, 0) && bf_need(b[..], i, u[..], RS_FS_N_ACT, 0, 0) && bf_need(b[..], i, u[..], RS_FS_N_BONUS, 0, 0) && bf_need(b[..], i, u[..], RS_FS_N_ACTION, 0, 0);
+  #assert !bf_need(b[..], i, u[..], RS_FS_N_ACTED, 0, 0);
+  b[0].turn.bonus = true; #assert !bf_need(b[..], i, u[..], RS_FS_N_BONUS, 0, 0) && bf_need(b[..], i, u[..], RS_FS_N_ACTION, 0, 0);
+  b[0].turn = RsTurn.{action = true}; #assert bf_need(b[..], i, u[..], RS_FS_N_BONUS, 0, 0) && !bf_need(b[..], i, u[..], RS_FS_N_ACTION, 0, 0) && bf_need(b[..], i, u[..], RS_FS_N_ACTED, 0, 0);
+  b[0].turn = RsTurn.{}; b[0].c[i].cond = RS_STUNNED;
+  #assert !bf_need(b[..], i, u[..], RS_FS_N_ACT, 0, 0) && !bf_need(b[..], i, u[..], RS_FS_N_BONUS, 0, 0) && !bf_need(b[..], i, u[..], RS_FS_N_ACTION, 0, 0) && bf_need(b[..], i, u[..], RS_FS_N_TURN, 0, 0);
+  b[0].c[i] = garr;
+  // a feature known; a rank above 0
+  #assert !bf_need(b[..], i, u[..], RS_FS_N_FEAT, RS_FT_FONT, 0);
+  b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_FONT, true);
+  #assert bf_need(b[..], i, u[..], RS_FS_N_FEAT, RS_FT_FONT, 0) && !bf_need(b[..], i, u[..], RS_FS_N_FEAT, RS_FT_FONT + 1, 0);
+  b[0].c[i].rank[RS_RK_INSPIRATION_DIE] = 0; #assert !bf_need(b[..], i, u[..], RS_FS_N_RANK, RS_RK_INSPIRATION_DIE, 0);
+  b[0].c[i].rank[RS_RK_INSPIRATION_DIE] = 1; #assert bf_need(b[..], i, u[..], RS_FS_N_RANK, RS_RK_INSPIRATION_DIE, 0);
+  // a use in a pool; a pool below its maximum; a pool empty
+  b[0].c[i].uses[RS_USE_WILD] = 0; b[0].c[i].uses_max[RS_USE_WILD] = 1;
+  #assert !bf_need(b[..], i, u[..], RS_FS_N_USE, RS_USE_WILD, 0) && bf_need(b[..], i, u[..], RS_FS_N_POOL_ROOM, RS_USE_WILD, 0) && bf_need(b[..], i, u[..], RS_FS_N_POOL_NONE, RS_USE_WILD, 0);
+  b[0].c[i].uses[RS_USE_WILD] = 1;
+  #assert bf_need(b[..], i, u[..], RS_FS_N_USE, RS_USE_WILD, 0) && !bf_need(b[..], i, u[..], RS_FS_N_POOL_ROOM, RS_USE_WILD, 0) && !bf_need(b[..], i, u[..], RS_FS_N_POOL_NONE, RS_USE_WILD, 0);
+  b[0].c[i].uses[RS_USE_WILD] = 2; #assert !bf_need(b[..], i, u[..], RS_FS_N_POOL_ROOM, RS_USE_WILD, 0);
+  // a spell slot: its lowest level with one left
+  for l: 0..<10 { b[0].c[i].slots[l] = 0; }
+  #assert rs_lowest_slot(b[0].c[i]) == 0 && !bf_need(b[..], i, u[..], RS_FS_N_SLOT, 0, 0);
+  b[0].c[i].slots[0] = 3; #assert rs_lowest_slot(b[0].c[i]) == 0;   // place 0 is no slot
+  b[0].c[i].slots[9] = 1; #assert rs_lowest_slot(b[0].c[i]) == 9 && bf_need(b[..], i, u[..], RS_FS_N_SLOT, 0, 0);
+  b[0].c[i].slots[3] = 1; #assert rs_lowest_slot(b[0].c[i]) == 3;
+  b[0].c[i].slots[1] = 1; #assert rs_lowest_slot(b[0].c[i]) == 1;
+  b[0].c[i] = garr;
+  // below its Hit Point maximum; able to regain Hit Points
+  #assert !bf_need(b[..], i, u[..], RS_FS_N_HURT, 0, 0) && bf_need(b[..], i, u[..], RS_FS_N_HEALS, 0, 0);
+  b[0].c[i].hp = garr.hp_max - 1; #assert bf_need(b[..], i, u[..], RS_FS_N_HURT, 0, 0);
+  b[0].c[i].eff[0] = RsEffect.{kind = EF_NOHEAL, by = j, spell = SP_CHILL_TOUCH, until = rs_secs(6), save = -1};
+  #assert !bf_need(b[..], i, u[..], RS_FS_N_HEALS, 0, 0);
+  b[0].c[i] = garr;
+  // not moved this turn; a note clear; not done this turn
+  #assert bf_need(b[..], i, u[..], RS_FS_N_STILL, 0, 0) && bf_need(b[..], i, u[..], RS_FS_N_FRESH, RS_NT_RESURGED, 0) && bf_need(b[..], i, u[..], RS_FS_N_ONCE, 0, 0);
+  b[0].turn.moved = true; b[0].turn.resurged = true; b[0].c[i].note[RS_NT_RESURGED] = 1;
+  #assert !bf_need(b[..], i, u[..], RS_FS_N_STILL, 0, 0) && !bf_need(b[..], i, u[..], RS_FS_N_FRESH, RS_NT_RESURGED, 0) && !bf_need(b[..], i, u[..], RS_FS_N_ONCE, 0, 0);
+  #assert bf_need(b[..], i, u[..], RS_FS_N_FRESH, RS_NT_STUN, 0);
+  b[0].turn = RsTurn.{}; b[0].c[i] = garr;
+  // an Aura not on it now (one that has run out is not on it)
+  b[0].clock = rs_secs(10);
+  #assert bf_need(b[..], i, u[..], RS_FS_N_NO_AURA, EF_SACRED, 0);
+  b[0].c[i].eff[0] = RsEffect.{kind = EF_SACRED, by = i, spell = -1, until = rs_secs(10), save = -1};
+  #assert bf_need(b[..], i, u[..], RS_FS_N_NO_AURA, EF_SACRED, 0);
+  b[0].c[i].eff[0].until = rs_secs(10) + 1;
+  #assert !bf_need(b[..], i, u[..], RS_FS_N_NO_AURA, EF_SACRED, 0) && bf_need(b[..], i, u[..], RS_FS_N_NO_AURA, EF_INNATE, 0);
+  b[0].clock = 0; b[0].c[i] = garr;
+  // a state Aura not on it, with a place for it
+  #assert bf_need(b[..], i, u[..], RS_FS_N_NO_STATE, EF_RAGE, 0);
+  b[0].c[i].eff = rs_state_put(b[0].c[i].eff, EF_RAGE, true);
+  #assert !bf_need(b[..], i, u[..], RS_FS_N_NO_STATE, EF_RAGE, 0) && bf_need(b[..], i, u[..], RS_FS_N_NO_STATE, EF_DODGE, 0);
+  b[0].c[i] = garr;
+  for k: 0..<RS_EFFECTS { b[0].c[i].eff[k] = RsEffect.{kind = EF_BLESS, by = j, spell = SP_BLESS, until = rs_secs(60), save = -1}; }
+  #assert !bf_need(b[..], i, u[..], RS_FS_N_NO_STATE, EF_RAGE, 0);
+  b[0].c[i] = garr;
+  // a class at a level
+  #assert bf_need(b[..], i, u[..], RS_FS_N_CLASS, RS_FIGHTER, 3) && !bf_need(b[..], i, u[..], RS_FS_N_CLASS, RS_FIGHTER, 4) && bf_need(b[..], i, u[..], RS_FS_N_CLASS, RS_FIGHTER, 2) && !bf_need(b[..], i, u[..], RS_FS_N_CLASS, RS_PALADIN, 3);
+  // a point within so many feet
+  u[0].x = 13; u[0].y = 3; #assert bf_need(b[..], i, u[..], RS_FS_N_POINT, 60, 0) && !bf_need(b[..], i, u[..], RS_FS_N_POINT, 55, 0);
+  u[0].x = 14; #assert !bf_need(b[..], i, u[..], RS_FS_N_POINT, 60, 0);
+  // an unknown need never holds
+  #assert !bf_need(b[..], i, u[..], 0, 0, 0) && !bf_need(b[..], i, u[..], 39, 0, 0);
+}
+
+#test "features: another creature to hold a die, and a creature to give Hit Points" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 8; b[0].who = -1;
+  i := rs_add(b[..], rs_fighter("Garr", 0, 3), 1, 3);
+  j := rs_add(b[..], rs_fighter("Holt", 0, 3), 13, 3);   // 60 feet off
+  holt := b[0].c[j];
+  b[0].c[b[0].n] = holt; b[0].c[b[0].n].x = 2; b[0].c[b[0].n].hp = 1;   // past the battle's count: a record that looks alive, hurt and near
+  u: [1] RsUse;
+  // another creature, up, within reach, with a place for the die and none held
+  u[0].j = j; #assert bf_need(b[..], i, u[..], RS_FS_N_OTHER, 60, EF_INSPIRED);
+  u[0].j = -1; #assert !bf_need(b[..], i, u[..], RS_FS_N_OTHER, 60, EF_INSPIRED);
+  u[0].j = b[0].n; #assert !bf_need(b[..], i, u[..], RS_FS_N_OTHER, 60, EF_INSPIRED);
+  u[0].j = i; #assert !bf_need(b[..], i, u[..], RS_FS_N_OTHER, 60, EF_INSPIRED);
+  u[0].j = j;
+  b[0].c[j].hp = 0; #assert !bf_need(b[..], i, u[..], RS_FS_N_OTHER, 60, EF_INSPIRED); b[0].c[j] = holt;
+  #assert !bf_need(b[..], i, u[..], RS_FS_N_OTHER, 55, EF_INSPIRED);
+  b[0].c[j].eff = rs_state_value_put(b[0].c[j].eff, EF_INSPIRED, 1); #assert !bf_need(b[..], i, u[..], RS_FS_N_OTHER, 60, EF_INSPIRED); b[0].c[j] = holt;
+  for k: 0..<RS_EFFECTS { b[0].c[j].eff[k] = RsEffect.{kind = EF_BLESS, by = i, spell = SP_BLESS, until = rs_secs(60), save = -1}; }
+  #assert !bf_need(b[..], i, u[..], RS_FS_N_OTHER, 60, EF_INSPIRED); b[0].c[j] = holt;
+  // a creature in reach that can be healed, and what it is given: the least of the amount asked, the pool and what it lacks
+  rs_place(b[..], j, 2, 3); b[0].c[i].uses[RS_USE_LAY] = 15; b[0].c[j].hp = holt.hp_max - 8; hurt := b[0].c[j];
+  u[0] = RsUse.{j = j, amount = 5}; #assert bf_need(b[..], i, u[..], RS_FS_N_GIVE, RS_USE_LAY, 5) && u[0].give == 5;
+  u[0] = RsUse.{j = j, amount = 10}; #assert bf_need(b[..], i, u[..], RS_FS_N_GIVE, RS_USE_LAY, 5) && u[0].give == 8;
+  b[0].c[i].uses[RS_USE_LAY] = 3; u[0] = RsUse.{j = j, amount = 10}; #assert bf_need(b[..], i, u[..], RS_FS_N_GIVE, RS_USE_LAY, 5) && u[0].give == 3;
+  b[0].c[i].uses[RS_USE_LAY] = 15;
+  u[0] = RsUse.{j = j, amount = 0}; #assert !bf_need(b[..], i, u[..], RS_FS_N_GIVE, RS_USE_LAY, 5);
+  b[0].c[j].hp = holt.hp_max; u[0] = RsUse.{j = j, amount = 5}; #assert !bf_need(b[..], i, u[..], RS_FS_N_GIVE, RS_USE_LAY, 5);
+  b[0].c[j].hp = holt.hp_max - 1; u[0] = RsUse.{j = j, amount = 5}; #assert bf_need(b[..], i, u[..], RS_FS_N_GIVE, RS_USE_LAY, 5) && u[0].give == 1;
+  b[0].c[j] = hurt;
+  u[0] = RsUse.{j = -1, amount = 5}; #assert !bf_need(b[..], i, u[..], RS_FS_N_GIVE, RS_USE_LAY, 5);
+  u[0] = RsUse.{j = b[0].n, amount = 5}; #assert !bf_need(b[..], i, u[..], RS_FS_N_GIVE, RS_USE_LAY, 5);
+  u[0] = RsUse.{j = i, amount = 5}; b[0].c[i].hp -= 2; #assert bf_need(b[..], i, u[..], RS_FS_N_GIVE, RS_USE_LAY, 5) && u[0].give == 2;   // itself too
+  u[0] = RsUse.{j = j, amount = 5};
+  b[0].c[j].dead = true; #assert !bf_need(b[..], i, u[..], RS_FS_N_GIVE, RS_USE_LAY, 5); b[0].c[j] = hurt;
+  b[0].c[j].eff[0] = RsEffect.{kind = EF_NOHEAL, by = i, spell = SP_CHILL_TOUCH, until = rs_secs(6), save = -1};
+  #assert !bf_need(b[..], i, u[..], RS_FS_N_GIVE, RS_USE_LAY, 5); b[0].c[j] = hurt;
+  rs_place(b[..], j, 3, 3); #assert !bf_need(b[..], i, u[..], RS_FS_N_GIVE, RS_USE_LAY, 5) && bf_need(b[..], i, u[..], RS_FS_N_GIVE, RS_USE_LAY, 10);
+}
+
+#test "features: each step of the program does its one thing" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 8; b[0].who = -1; b[0].dice[0].fixed = true;
+  i := rs_add(b[..], rs_monk("Kira", 0, 3), 1, 3);
+  j := rs_add(b[..], rs_fighter("Holt", 0, 3), 2, 3);
+  b[0].who = i; b[0].turn = RsTurn.{};
+  kira := b[0].c[i]; holt := b[0].c[j];
+  u: [1] RsUse; u[0].j = j;
+  // the turn's parts
+  #assert bf_do(b[..], i, u[..], RS_FS_BONUS, 0, 0, 0, "") && b[0].turn.bonus && !b[0].turn.action;
+  #assert bf_do(b[..], i, u[..], RS_FS_ACTION, 0, 0, 0, "") && b[0].turn.action;
+  #assert bf_do(b[..], i, u[..], RS_FS_SURGE, 0, 0, 0, "") && !b[0].turn.action && b[0].turn.bonus;
+  #assert bf_do(b[..], i, u[..], RS_FS_ONCE, 0, 0, 0, "") && b[0].turn.resurged;
+  b[0].turn = RsTurn.{};
+  // pools, slots and notes
+  b[0].c[i].uses[RS_USE_WILD] = 4; u[0].give = 3;
+  #assert bf_do(b[..], i, u[..], RS_FS_SPEND, RS_USE_WILD, 0, 0, "") && b[0].c[i].uses[RS_USE_WILD] == 3;
+  #assert bf_do(b[..], i, u[..], RS_FS_SPEND_GIVE, RS_USE_WILD, 0, 0, "") && b[0].c[i].uses[RS_USE_WILD] == 0;
+  #assert bf_do(b[..], i, u[..], RS_FS_POOL_ADD, RS_USE_WILD, 0, 0, "") && bf_do(b[..], i, u[..], RS_FS_POOL_ADD, RS_USE_WILD, 0, 0, "") && b[0].c[i].uses[RS_USE_WILD] == 2;
+  #assert bf_do(b[..], i, u[..], RS_FS_POOL_ONE, RS_USE_WILD, 0, 0, "") && b[0].c[i].uses[RS_USE_WILD] == 1;
+  for l: 0..<10 { b[0].c[i].slots[l] = 0; }
+  b[0].c[i].slots[2] = 2; b[0].c[i].slots[4] = 1;
+  #assert bf_do(b[..], i, u[..], RS_FS_SLOT_SPEND, 0, 0, 0, "") && b[0].c[i].slots[2] == 1 && b[0].c[i].slots[4] == 1;
+  #assert bf_do(b[..], i, u[..], RS_FS_SLOT_ADD, 1, 0, 0, "") && b[0].c[i].slots[1] == 1 && b[0].c[i].slots[2] == 1;
+  #assert bf_do(b[..], i, u[..], RS_FS_NOTE, RS_NT_RESURGED, 0, 0, "") && b[0].c[i].note[RS_NT_RESURGED] == 1 && b[0].c[i].note[RS_NT_STUN] == 0;
+  b[0].c[i] = kira; u[0] = RsUse.{j = j};
+  // its line: to itself, to its target with what it gives, to no one; and the feature it told
+  seq := b[0].book[0].seq;
+  #assert bf_do(b[..], i, u[..], RS_FS_SAY, RS_EV_CAST, RS_TO_SELF, RS_FT_SECOND_WIND, " takes a Second Wind") && u[0].feat == RS_FT_SECOND_WIND && b[0].book[0].seq == seq + 1;
+  ev := rs_recent(b[0].book[0], 0);
+  #assert ev.kind == RS_EV_CAST && ev.spell.value == -1 && ev.by.value == i && ev.to.value == i && ev.amount == 0 && ev.damage == 0 && ev.feat == RS_FT_SECOND_WIND && bf_text(b[..], 0, "Kira takes a Second Wind");
+  u[0].give = 4;
+  #assert bf_do(b[..], i, u[..], RS_FS_SAY, RS_EV_CONDITION, RS_TO_TARGET, RS_FT_LAY_ON_HANDS, " lays on hands") && u[0].feat == RS_FT_LAY_ON_HANDS;
+  ev = rs_recent(b[0].book[0], 0);
+  #assert ev.kind == RS_EV_CONDITION && ev.by.value == i && ev.to.value == j && ev.amount == 4 && ev.feat == RS_FT_LAY_ON_HANDS && bf_text(b[..], 0, "Kira lays on hands");
+  #assert bf_do(b[..], i, u[..], RS_FS_SAY, RS_EV_CAST, RS_TO_NONE, RS_FT_NONE, " calls") && u[0].feat == RS_FT_NONE;
+  ev = rs_recent(b[0].book[0], 0);
+  #assert ev.by.value == i && ev.to.value == -1 && ev.feat == RS_FT_NONE && bf_text(b[..], 0, "Kira calls");
+  u[0] = RsUse.{j = j, feat = RS_FT_WHOLENESS};
+  // healing itself: dice of a size, or its Martial Arts die; its level more, or its Wisdom modifier more and 1 at least
+  b[0].c[i].hp = 1; b[0].c[i].hp_max = 100;
+  #assert bf_do(b[..], i, u[..], RS_FS_HEAL, 2, 10, RS_PLUS_LEVEL, "Second Wind") && b[0].c[i].hp == 1 + 5 + 5 + 3;
+  ev = rs_recent(b[0].book[0], 0);
+  #assert ev.kind == RS_EV_HEAL && ev.by.value == i && ev.to.value == i && ev.amount == 13 && ev.feat == RS_FT_WHOLENESS && bf_text(b[..], 0, "  Kira regains 13 Hit Points from Second Wind");
+  b[0].c[i].hp = 1; #assert kira.rank[RS_RK_MARTIAL_DIE] == 6 && rs_mod(kira.score[RS_WIS]) == 2;
+  #assert bf_do(b[..], i, u[..], RS_FS_HEAL, 1, 0, RS_PLUS_WIS, "Wholeness of Body") && b[0].c[i].hp == 1 + 3 + 2;
+  b[0].c[i].hp = 1; b[0].c[i].score[RS_WIS] = 1;   // a modifier of -5: 1 at least
+  #assert bf_do(b[..], i, u[..], RS_FS_HEAL, 1, 0, RS_PLUS_WIS, "Wholeness of Body") && b[0].c[i].hp == 2;
+  b[0].c[i].hp = 1; b[0].c[i].score[RS_WIS] = 30;   // and with neither, the dice alone
+  #assert bf_do(b[..], i, u[..], RS_FS_HEAL, 1, 8, 0, "a draught") && b[0].c[i].hp == 5;
+  b[0].c[i] = kira;
+  // healing its target what it gives
+  b[0].c[j].hp = holt.hp_max - 9; u[0] = RsUse.{j = j, give = 7, feat = RS_FT_LAY_ON_HANDS};
+  #assert bf_do(b[..], i, u[..], RS_FS_HEAL_GIVE, 0, 0, 0, "Lay On Hands") && b[0].c[j].hp == holt.hp_max - 2;
+  ev = rs_recent(b[0].book[0], 0);
+  #assert ev.kind == RS_EV_HEAL && ev.by.value == i && ev.to.value == j && ev.amount == 7 && ev.feat == RS_FT_LAY_ON_HANDS && bf_text(b[..], 0, "  Holt regains 7 Hit Points from Lay On Hands");
+  b[0].c[j] = holt;
+  // half its Speed more, with the feature and not anchored
+  b[0].turn = RsTurn.{move_left = 2}; #assert kira.speed == 40;
+  #assert bf_do(b[..], i, u[..], RS_FS_SHIFT, RS_FT_TACTICAL_SHIFT, 0, 0, "") && b[0].turn.move_left == 2;
+  b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_TACTICAL_SHIFT, true);
+  #assert bf_do(b[..], i, u[..], RS_FS_SHIFT, RS_FT_TACTICAL_SHIFT, 0, 0, "") && b[0].turn.move_left == 2 + 4;
+  b[0].turn.anchored = true; #assert bf_do(b[..], i, u[..], RS_FS_SHIFT, RS_FT_TACTICAL_SHIFT, 0, 0, "") && b[0].turn.move_left == 6;
+  b[0].turn = RsTurn.{}; b[0].c[i] = kira;
+  // an Aura on itself, for its record's time; refused with no place
+  b[0].clock = rs_secs(3);
+  #assert bf_do(b[..], i, u[..], RS_FS_AURA, EF_INNATE, 0, 0, "") && rs_aura_on(b[0].c[i], EF_INNATE, b[0].clock) && b[0].c[i].eff[0].by == i && b[0].c[i].eff[0].until == rs_secs(3 + 60);
+  for k: 0..<RS_EFFECTS { b[0].c[i].eff[k] = RsEffect.{kind = EF_BLESS, by = j, spell = SP_BLESS, until = rs_secs(60), save = -1}; }
+  #assert !bf_do(b[..], i, u[..], RS_FS_AURA, EF_SACRED, 0, 0, "") && !rs_effect(b[0].c[i], EF_SACRED);
+  b[0].clock = 0; b[0].c[i] = kira;
+  // a state Aura on, with its bit
+  #assert bf_do(b[..], i, u[..], RS_FS_STATE, EF_RAGE, RS_RAGE_KEPT, 0, "") && rs_effect(b[0].c[i], EF_RAGE) && rs_state_has(b[0].c[i], EF_RAGE, RS_RAGE_KEPT) && !rs_state_has(b[0].c[i], EF_RAGE, RS_RAGE_STRUCK);
+  b[0].c[i] = kira;
+  // its Concentration ended, with its words
+  b[0].c[i].conc = SP_BLESS; b[0].c[i].conc_until = rs_secs(60);
+  #assert bf_do(b[..], i, u[..], RS_FS_END_CONC, 0, 0, 0, " (Rage)") && b[0].c[i].conc == -1 && bf_text(b[..], 0, "Kira's Bless ends (Rage)");
+  b[0].c[i] = kira;
+  // Charmed and Frightened ended, with the feature: a condition's record or a turning's, not another's
+  b[0].c[i].eff[0] = RsEffect.{kind = EF_COND, cond = RS_CHARMED, by = j, spell = SP_HYPNOTIC_PATTERN, until = rs_secs(60), save = -1};
+  b[0].c[i].eff[1] = RsEffect.{kind = EF_TURNED, cond = RS_FRIGHTENED | RS_INCAPACITATED, by = j, spell = -1, until = rs_secs(60), save = -1};
+  b[0].c[i].eff[2] = RsEffect.{kind = EF_COND, cond = RS_POISONED, by = j, spell = SP_RAY_OF_SICKNESS, until = rs_secs(60), save = -1};
+  b[0].c[i].eff[3] = RsEffect.{kind = EF_BLESS, cond = RS_CHARMED, by = j, spell = SP_BLESS, until = rs_secs(60), save = -1};
+  #assert bf_do(b[..], i, u[..], RS_FS_UNCHARM, RS_FT_MINDLESS_RAGE, 0, 0, "") && rs_effect(b[0].c[i], EF_TURNED) && b[0].c[i].eff[0].kind == EF_COND;
+  b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_MINDLESS_RAGE, true);
+  #assert bf_do(b[..], i, u[..], RS_FS_UNCHARM, RS_FT_MINDLESS_RAGE, 0, 0, "");
+  conds := 0; kept := 0;
+  for e: b[0].c[i].eff { if e.kind == EF_COND { conds += 1; kept = e.cond; } }
+  #assert !rs_effect(b[0].c[i], EF_TURNED) && conds == 1 && kept == RS_POISONED && rs_effect(b[0].c[i], EF_BLESS);
+  b[0].c[i] = kira;
+  // Steady Aim's turn: aimed, Speed 0 until it ends
+  b[0].turn = RsTurn.{move_left = 6, move_feet = 3};
+  #assert bf_do(b[..], i, u[..], RS_FS_AIM, 0, 0, 0, "") && b[0].turn.aimed && b[0].turn.anchored && b[0].turn.move_left == 0 && b[0].turn.move_feet == 0 && !b[0].turn.bonus;
+  // (and a Dodge it had taken ends: it can't move)
+  b[0].turn = RsTurn.{}; b[0].c[i].eff = rs_state_put(b[0].c[i].eff, EF_DODGE, true);
+  #assert bf_do(b[..], i, u[..], RS_FS_AIM, 0, 0, 0, "") && !rs_effect(b[0].c[i], EF_DODGE);
+  b[0].turn = RsTurn.{}; b[0].c[i] = kira;
+  // the Bard's die on its target, and the line that names it
+  b[0].c[i].rank[RS_RK_INSPIRATION_DIE] = 8; u[0] = RsUse.{j = j};
+  #assert bf_do(b[..], i, u[..], RS_FS_INSPIRE, EF_INSPIRED, RS_RK_INSPIRATION_DIE, RS_FT_INSPIRATION, "") && rs_state_value(b[0].c[j], EF_INSPIRED) == 8 && rs_state_value(b[0].c[i], EF_INSPIRED) == 0;
+  ev = rs_recent(b[0].book[0], 0);
+  #assert ev.kind == RS_EV_CONDITION && ev.spell.value == -1 && ev.by.value == i && ev.to.value == j && ev.amount == 0 && ev.damage == 0 && ev.feat == RS_FT_INSPIRATION && bf_text(b[..], 0, "Kira inspires Holt: a Bardic Inspiration d8");
+  // a kind that is no step does nothing, and is no refusal
+  b[0].c[i] = kira; b[0].c[j] = holt; seq = b[0].book[0].seq;
+  #assert bf_do(b[..], i, u[..], 64, 0, 0, 0, "") && bf_do(b[..], i, u[..], 39, 0, 0, 0, "") && b[0].book[0].seq == seq && !b[0].turn.bonus && !b[0].turn.action;
+}
+
+#test "features: a use runs its row: every need first, nothing spent on a refusal, then its steps in order" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 8; b[0].who = -1; b[0].dice[0].fixed = true;
+  i := rs_add(b[..], rs_fighter("Garr", 0, 3), 1, 3);
+  s := rs_add(b[..], rs_sorcerer("Sera", 0, 3), 3, 3);
+  garr := b[0].c[i]; sera := b[0].c[s];
+  // no such row
+  b[0].who = i; b[0].turn = RsTurn.{};
+  #assert !rs_feature_use(b[..], i, RS_AB_ATTACK, RsUse.{}) && !rs_feature_use(b[..], i, -1, RsUse.{}) && !rs_feature_use(b[..], i, 99, RsUse.{}) && b[0].book[0].seq == 0;
+  // a need that fails after others hold: nothing spent, nothing told
+  #assert !rs_second_wind(b[..], i) && !b[0].turn.bonus && b[0].c[i].uses[RS_USE_WIND] == garr.uses[RS_USE_WIND] && b[0].book[0].seq == 0;   // unhurt
+  b[0].c[i].hp = 5;
+  #assert rs_second_wind(b[..], i) && b[0].turn.bonus && b[0].c[i].uses[RS_USE_WIND] == garr.uses[RS_USE_WIND] - 1 && b[0].c[i].hp == 5 + 5 + 3 && b[0].book[0].seq == 2;
+  #assert bf_text(b[..], 1, "Garr takes a Second Wind") && bf_text(b[..], 0, "  Garr regains 8 Hit Points from Second Wind") && rs_recent(b[0].book[0], 0).feat == RS_FT_SECOND_WIND;
+  // a step that refuses stands before any spending: Innate Sorcery with no place for its Aura
+  b[0].who = s; b[0].turn = RsTurn.{};
+  for k: 0..<RS_EFFECTS { b[0].c[s].eff[k] = RsEffect.{kind = EF_BLESS, by = i, spell = SP_BLESS, until = rs_secs(60), save = -1}; }
+  seq := b[0].book[0].seq;
+  #assert !rs_innate_sorcery(b[..], s) && !b[0].turn.bonus && b[0].c[s].uses[RS_USE_INNATE] == sera.uses[RS_USE_INNATE] && b[0].book[0].seq == seq;
+  b[0].c[s] = sera;
+  #assert rs_innate_sorcery(b[..], s) && b[0].turn.bonus && b[0].c[s].uses[RS_USE_INNATE] == sera.uses[RS_USE_INNATE] - 1 && rs_aura_on(b[0].c[s], EF_INNATE, b[0].clock) && bf_text(b[..], 0, "Sera unleashes Innate Sorcery");
+  // and once on it, not again
+  b[0].turn = RsTurn.{}; #assert !rs_innate_sorcery(b[..], s) && !b[0].turn.bonus;
+}
+
+#test "features: the helpers: who turned whom, a free part of a turn, a quiet feature, a feature's healing" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 8; b[0].who = -1;
+  c := rs_add(b[..], rs_cleric("Bram", 0, 3), 1, 3);
+  z := rs_add(b[..], rs_skeleton("Bones", 2), 3, 3);
+  y := rs_add(b[..], rs_skeleton("Rattle", 2), 4, 3);
+  #assert rs_has_feature(b[0].c[c], RS_FT_TURN_UNDEAD) && rs_turned_by(b[0].c[z]) == -1;
+  b[0].c[z].eff[RS_EFFECTS - 1] = RsEffect.{kind = EF_TURNED, cond = RS_FRIGHTENED | RS_INCAPACITATED, by = c, spell = -1, until = rs_secs(60), save = -1};
+  b[0].c[y].eff[0] = RsEffect.{kind = EF_TURNED, cond = RS_FRIGHTENED | RS_INCAPACITATED, by = y, spell = -1, until = rs_secs(60), save = -1};   // another's
+  b[0].c[y].eff[1] = RsEffect.{kind = EF_COND, cond = RS_FRIGHTENED, by = c, spell = -1, until = rs_secs(60), save = -1};                        // the Cleric's, but no turning
+  #assert rs_turned_by(b[0].c[z]) == c && rs_turned_by(b[0].c[y]) == y;
+  // one without the feature lets no one go; the Cleric lets go only whom it turned
+  rs_release_turned(b[..], z); #assert rs_effect(b[0].c[z], EF_TURNED);
+  b[0].c[z].feats = rs_feature_put(b[0].c[z].feats, RS_FT_TURN_UNDEAD, true);
+  rs_release_turned(b[..], z); #assert rs_effect(b[0].c[z], EF_TURNED) && rs_effect(b[0].c[y], EF_TURNED);
+  rs_release_turned(b[..], c);
+  #assert !rs_effect(b[0].c[z], EF_TURNED) && rs_effect(b[0].c[y], EF_TURNED) && rs_effect(b[0].c[y], EF_COND);
+  // a free part of its turn
+  #assert !rs_bonus_free(b[..], c) && !rs_action_free(b[..], c);
+  b[0].who = c; b[0].turn = RsTurn.{};
+  #assert rs_bonus_free(b[..], c) && rs_action_free(b[..], c) && !rs_bonus_free(b[..], z) && !rs_action_free(b[..], z);
+  b[0].turn.bonus = true; #assert !rs_bonus_free(b[..], c) && rs_action_free(b[..], c);
+  b[0].turn = RsTurn.{action = true}; #assert rs_bonus_free(b[..], c) && !rs_action_free(b[..], c);
+  b[0].turn = RsTurn.{}; b[0].c[c].cond = RS_PARALYZED; #assert !rs_bonus_free(b[..], c) && !rs_action_free(b[..], c); b[0].c[c].cond = 0;
+  // a feature told with no line, and one told with none of its own
+  seq := b[0].book[0].seq;
+  rs_quiet_ft(b[..], c, RS_FT_CUNNING_DASH);
+  ev := rs_recent(b[0].book[0], 0);
+  #assert b[0].book[0].seq == seq + 1 && ev.kind == RS_EV_FEAT && ev.spell.value == -1 && ev.by.value == c && ev.to.value == c && ev.amount == 0 && ev.damage == 0 && ev.feat == RS_FT_CUNNING_DASH && ev.text_n == 0;
+  rs_say(b[..], RS_EV_TEXT, c, z, 7, " waits");
+  ev = rs_recent(b[0].book[0], 0);
+  #assert ev.kind == RS_EV_TEXT && ev.spell.value == -1 && ev.by.value == c && ev.to.value == z && ev.amount == 7 && ev.damage == 0 && ev.feat == RS_FT_NONE && bf_text(b[..], 0, "Bram waits");
+  // healing from a feature: what was regained, told; one at 0 Hit Points wakes, unless something else keeps it out
+  b[0].c[c].hp = b[0].c[c].hp_max - 3;
+  #assert rs_feature_heal(b[..], c, c, 10, "a draught", RS_FT_PRESERVE_LIFE) == 3 && b[0].c[c].hp == b[0].c[c].hp_max;
+  ev = rs_recent(b[0].book[0], 0);
+  #assert ev.kind == RS_EV_HEAL && ev.spell.value == -1 && ev.by.value == c && ev.to.value == c && ev.amount == 3 && ev.damage == 0 && ev.feat == RS_FT_PRESERVE_LIFE && bf_text(b[..], 0, "  Bram regains 3 Hit Points from a draught");
+  f := rs_add(b[..], rs_fighter("Garr", 0, 3), 2, 3);
+  b[0].c[f].hp = 0; b[0].c[f].cond = RS_UNCONSCIOUS | RS_PRONE;
+  #assert rs_feature_heal(b[..], c, f, 4, "a draught", RS_FT_NONE) == 4 && b[0].c[f].hp == 4 && !rs_has(b[0].c[f], RS_UNCONSCIOUS) && bf_text(b[..], 0, "  Garr regains 4 Hit Points from a draught and wakes");
+  #assert rs_recent(b[0].book[0], 0).to.value == f && rs_recent(b[0].book[0], 0).by.value == c;
+  // already up, it is not said to wake
+  #assert rs_feature_heal(b[..], c, f, 1, "a draught", RS_FT_NONE) == 1 && bf_text(b[..], 0, "  Garr regains 1 Hit Points from a draught");
+  // the Dash action and Cunning Action's are their modes of the one Dash (dash.coax)
+  b[0].who = f; b[0].turn = RsTurn.{};
+  #assert !rs_cunning_dash(b[..], f) && !b[0].turn.bonus && rs_dash(b[..], f) && b[0].turn.action && !b[0].turn.bonus && b[0].turn.dash_n == 1 && !rs_dash(b[..], f);
+  b[0].c[f].feats = rs_feature_put(b[0].c[f].feats, RS_FT_CUNNING_ACTION, true);
+  #assert rs_cunning_dash(b[..], f) && b[0].turn.bonus && b[0].turn.dash_n == 2;
+}
+
+#test "features: Turn Undead's room, its saves and Sear Undead; Preserve Life's shares; Land's Aid's dice by level" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 12; b[0].who = -1; b[0].dice[0].fixed = true;
+  c := rs_add(b[..], rs_cleric("Bram", 0, 6), 10, 3);
+  near := rs_add(b[..], rs_skeleton("Bones", 2), 16, 3);    // 30 feet
+  far := rs_add(b[..], rs_skeleton("Rattle", 2), 17, 3);    // 35 feet
+  own := rs_add(b[..], rs_skeleton("Thrall", 0), 11, 3);    // its own side's
+  live := rs_add(b[..], rs_fighter("Holt", 2, 3), 12, 3);   // a foe that is not Undead
+  b[0].c[c].feats = rs_feature_put(b[0].c[c].feats, RS_FT_SEAR_UNDEAD, false);   // (a level 6 Cleric's; it has its own part below)
+  bram := b[0].c[c]; bones := b[0].c[near];
+  u: [1] RsUse;
+  #assert rs_feet_to(b[..], c, near) == 30 && rs_feet_to(b[..], c, far) == 35 && b[0].c[near].undead && !b[0].c[live].undead;
+  // its room: an Undead foe in reach it would turn must have a place for the turning
+  #assert bf_need(b[..], c, u[..], RS_FS_N_TURNABLE, 30, 0);
+  for k: 0..<RS_EFFECTS { b[0].c[far].eff[k] = RsEffect.{kind = EF_BLESS, by = far, spell = SP_BLESS, until = rs_secs(60), save = -1}; b[0].c[own].eff[k] = b[0].c[far].eff[k]; b[0].c[live].eff[k] = b[0].c[far].eff[k]; }
+  #assert bf_need(b[..], c, u[..], RS_FS_N_TURNABLE, 30, 0) && !bf_need(b[..], c, u[..], RS_FS_N_TURNABLE, 35, 0);   // the full one is out of reach; its own side's and the living don't count
+  for k: 0..<RS_EFFECTS { b[0].c[near].eff[k] = b[0].c[far].eff[k]; }
+  #assert !bf_need(b[..], c, u[..], RS_FS_N_TURNABLE, 30, 0);
+  b[0].c[near].eff[RS_EFFECTS - 1] = RsEffect.{};   // one place is enough
+  #assert bf_need(b[..], c, u[..], RS_FS_N_TURNABLE, 30, 0);
+  b[0].c[near] = bones; for k: 0..<RS_EFFECTS { b[0].c[near].eff[k] = b[0].c[far].eff[k]; }
+  b[0].c[near].hp = 0; #assert bf_need(b[..], c, u[..], RS_FS_N_TURNABLE, 30, 0);                                   // one that is down is not turned
+  b[0].c[near].hp = bones.hp; b[0].c[near].immune_cond = RS_FRIGHTENED; #assert bf_need(b[..], c, u[..], RS_FS_N_TURNABLE, 30, 0);   // nor one it can't frighten
+  b[0].c[near] = bones; b[0].c[far] = bones; b[0].c[far].x = 17; b[0].c[own] = bones; b[0].c[own].team = 0; b[0].c[own].x = 11; b[0].c[live].eff[0] = RsEffect.{};
+  // the step: each Undead foe within reach saves on Wisdom against its DC; a failure is turned for a minute, by it
+  b[0].c[near].score[RS_WIS] = 1; b[0].clock = rs_secs(2);
+  seq := b[0].book[0].seq; dc := rs_dc(b[..], c);
+  rs_turn_undead_step(b[..], c, 30);
+  #assert rs_turned_by(b[0].c[near]) == c && !rs_effect(b[0].c[far], EF_TURNED) && !rs_effect(b[0].c[own], EF_TURNED) && !rs_effect(b[0].c[live], EF_TURNED);
+  #assert rs_has(b[0].c[near], RS_FRIGHTENED) && rs_has(b[0].c[near], RS_INCAPACITATED) && b[0].c[near].hp == bones.hp && b[0].book[0].seq == seq + 1;
+  turned := RsEffect.{};
+  for k: 0..<RS_EFFECTS { if b[0].c[near].eff[k].kind == EF_TURNED { turned = b[0].c[near].eff[k]; } }
+  #assert turned.by == c && turned.spell == -1 && turned.until == rs_secs(2 + 60) && turned.save == -1 && turned.dc == 0 && turned.cond == (RS_FRIGHTENED | RS_INCAPACITATED);
+  ev := rs_recent(b[0].book[0], 0);
+  total := 10 + rs_save_bonus(b[0].c[near], RS_WIS);
+  l: [1] RsLine; rs_add_text(l[..], "  Bones WIS save "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc); rs_add_text(l[..], ": turned, Frightened and Incapacitated");
+  #assert total < dc && ev.kind == RS_EV_CONDITION && ev.spell.value == -1 && ev.by.value == c && ev.to.value == near && ev.amount == total && ev.damage == 0 && bf_text(b[..], 0, cast(string) l[0].buf[0..<l[0].n]);
+  // a success is told as a save, and turns no one
+  b[0].c[near] = bones; b[0].c[near].score[RS_WIS] = 30;
+  rs_turn_undead_step(b[..], c, 30);
+  ev = rs_recent(b[0].book[0], 0); total = 10 + rs_save_bonus(b[0].c[near], RS_WIS);
+  l[0] = rs_line(); rs_add_text(l[..], "  Bones WIS save "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc); rs_add_text(l[..], ": success");
+  #assert total >= dc && !rs_effect(b[0].c[near], EF_TURNED) && ev.kind == RS_EV_SAVE && ev.amount == total && ev.to.value == near && bf_text(b[..], 0, cast(string) l[0].buf[0..<l[0].n]);
+  // Sear Undead: Wisdom-modifier d8s (one at least), rolled once, Radiant on each that fails, before the turning
+  b[0].c[near] = bones; b[0].c[near].score[RS_WIS] = 1; b[0].c[near].hp = 100; b[0].c[near].hp_max = 100;
+  b[0].c[c].feats = rs_feature_put(b[0].c[c].feats, RS_FT_SEAR_UNDEAD, true);
+  mod := rs_mod(b[0].c[c].score[RS_WIS]); #assert mod >= 2;
+  seq = b[0].book[0].seq;
+  rs_turn_undead_step(b[..], c, 30);
+  #assert b[0].c[near].hp == 100 - 4 * mod && rs_turned_by(b[0].c[near]) == c && b[0].book[0].seq >= seq + 2;
+  for e: 0..<(b[0].book[0].seq - seq) { if rs_recent(b[0].book[0], e).kind == RS_EV_DAMAGE { ev = rs_recent(b[0].book[0], e); } }
+  l[0] = rs_line(); rs_add_text(l[..], "  Bones takes "); rs_add_int(l[..], 4 * mod); rs_add_text(l[..], " Radiant (Sear Undead)");
+  #assert ev.kind == RS_EV_DAMAGE && ev.spell.value == -1 && ev.by.value == c && ev.to.value == near && ev.amount == 4 * mod && ev.damage == RS_RADIANT && cast(string) ev.text[0..<ev.text_n] == cast(string) l[0].buf[0..<l[0].n];
+  // with a Wisdom modifier below 1 it is one d8; one the searing kills is not turned
+  b[0].c[near] = bones; b[0].c[near].score[RS_WIS] = 1; b[0].c[near].hp = 4; b[0].c[c].score[RS_WIS] = 8;
+  rs_turn_undead_step(b[..], c, 30);
+  #assert b[0].c[near].hp == 0 && !rs_effect(b[0].c[near], EF_TURNED);
+  b[0].c[c] = bram; b[0].c[near] = bones;
+
+  // Preserve Life: a Bloodied friend in reach (below half), able to regain Hit Points
+  p := rs_add(b[..], rs_fighter("Garr", 0, 3), 16, 3);   // 30 feet
+  q := rs_add(b[..], rs_fighter("Wren", 0, 3), 10, 4);
+  garr := b[0].c[p];
+  #assert garr.hp_max == 28 && !bf_need(b[..], c, u[..], RS_FS_N_BLOODIED, 30, 0);
+  b[0].c[p].hp = 14; #assert !bf_need(b[..], c, u[..], RS_FS_N_BLOODIED, 30, 0);                // at half: not Bloodied
+  b[0].c[p].hp = 13; #assert bf_need(b[..], c, u[..], RS_FS_N_BLOODIED, 30, 0) && !bf_need(b[..], c, u[..], RS_FS_N_BLOODIED, 25, 0);
+  b[0].c[p].team = 2; #assert !bf_need(b[..], c, u[..], RS_FS_N_BLOODIED, 30, 0); b[0].c[p].team = 0;
+  b[0].c[p].dead = true; #assert !bf_need(b[..], c, u[..], RS_FS_N_BLOODIED, 30, 0); b[0].c[p].dead = false;
+  b[0].c[p].eff[0] = RsEffect.{kind = EF_NOHEAL, by = near, spell = SP_CHILL_TOUCH, until = rs_secs(6), save = -1};
+  #assert !bf_need(b[..], c, u[..], RS_FS_N_BLOODIED, 30, 0); b[0].c[p].eff[0] = RsEffect.{};
+  // the step: five times its level, the most hurt first, none above half
+  b[0].c[p].hp = 6; b[0].c[q].hp = 3; b[0].c[c].hp = bram.hp_max;
+  seq = b[0].book[0].seq;
+  rs_preserve_life_step(b[..], c, 30);
+  #assert bram.level == 6 && b[0].c[q].hp == 14 && b[0].c[p].hp == 14 && b[0].c[c].hp == bram.hp_max && b[0].book[0].seq == seq + 2;   // 11 and 8 of the 30
+  #assert bf_text(b[..], 1, "  Wren regains 11 Hit Points from Preserve Life") && bf_text(b[..], 0, "  Garr regains 8 Hit Points from Preserve Life") && rs_recent(b[0].book[0], 0).feat == RS_FT_PRESERVE_LIFE;
+  // a pool that runs out stops at the most hurt; out of reach, another side's, the dead and the unhealable get none
+  b[0].c[c].level = 1; b[0].c[p].hp = 2; b[0].c[q].hp = 6;
+  rs_preserve_life_step(b[..], c, 30);
+  #assert b[0].c[p].hp == 7 && b[0].c[q].hp == 6;
+  b[0].c[c].level = 6; b[0].c[p].hp = 2; b[0].c[q].hp = 14;
+  rs_preserve_life_step(b[..], c, 25); #assert b[0].c[p].hp == 2;
+  b[0].c[p].team = 2; rs_preserve_life_step(b[..], c, 30); #assert b[0].c[p].hp == 2; b[0].c[p].team = 0;
+  b[0].c[p].eff[0] = RsEffect.{kind = EF_NOHEAL, by = near, spell = SP_CHILL_TOUCH, until = rs_secs(6), save = -1};
+  rs_preserve_life_step(b[..], c, 30); #assert b[0].c[p].hp == 2; b[0].c[p].eff[0] = RsEffect.{};
+  // itself too, when it is the one Bloodied
+  b[0].c[p].hp = 14; b[0].c[c].hp = 1; rs_preserve_life_step(b[..], c, 30); #assert b[0].c[c].hp == bram.hp_max / 2;
+  b[0].c[c] = bram; b[0].c[p] = garr;
+
+  // Land's Aid: 2d6 to level 9, 3d6 from 10, 4d6 from 14; foes in the sphere save on Constitution, half on a success
+  d := rs_add(b[..], rs_druid("Ivy", 0, 6), 20, 8);
+  foe := rs_add(b[..], rs_fighter("Vark", 2, 3), 24, 8);     // on the point
+  edge := rs_add(b[..], rs_fighter("Mott", 2, 3), 26, 8);    // 10 feet from it
+  out := rs_add(b[..], rs_fighter("Pell", 2, 3), 27, 8);     // 15 feet
+  pal := rs_add(b[..], rs_fighter("Reed", 0, 3), 24, 9);     // a friend in it
+  ivy := b[0].c[d]; vark := b[0].c[foe];
+  for lv: [5] int.[9, 10, 13, 14, 20] {
+    n6 := ifx lv >= 14 then 4 else ifx lv >= 10 then 3 else 2;
+    b[0].c[d] = ivy; b[0].c[d].level = lv;
+    b[0].c[foe] = vark; b[0].c[foe].score[RS_CON] = 1; b[0].c[edge] = vark; b[0].c[edge].x = 26; b[0].c[edge].score[RS_CON] = 30; b[0].c[out] = vark; b[0].c[out].x = 27;
+    b[0].c[pal].hp = 1; b[0].c[pal].hp_max = 100;
+    u[0] = RsUse.{j = pal, x = 24, y = 8};
+    seq = b[0].book[0].seq;
+    rs_lands_aid_step(b[..], d, u[..]);
+    #assert b[0].c[foe].hp == vark.hp - 3 * n6 && b[0].c[edge].hp == vark.hp - 3 * n6 / 2 && b[0].c[out].hp == vark.hp && b[0].c[pal].hp == 1 + 3 * n6 && b[0].c[d].hp == ivy.hp;
+    #assert b[0].book[0].seq == seq + 4;
+    zone := rs_recent(b[0].book[0], 3);
+    #assert zone.kind == RS_EV_ZONE && zone.spell.value == -1 && zone.by.value == d && zone.to.value == -1 && zone.feat == RS_FT_LANDS_AID && zone.x == 22 && zone.y == 6 && zone.amount == 5 && zone.at == b[0].clock;
+    hurt := rs_recent(b[0].book[0], 2);
+    #assert hurt.kind == RS_EV_DAMAGE && hurt.spell.value == -1 && hurt.by.value == d && hurt.to.value == foe && hurt.amount == 3 * n6 && hurt.damage == RS_NECROTIC;
+    #assert rs_recent(b[0].book[0], 0).feat == RS_FT_LANDS_AID && rs_recent(b[0].book[0], 0).to.value == pal;
+  }
+  ldc := rs_dc(b[..], d);
+  l[0] = rs_line(); rs_add_text(l[..], "  Vark CON save "); rs_add_int(l[..], 10 + rs_save_bonus(b[0].c[edge], RS_CON)); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], ldc); rs_add_text(l[..], ": half, 6 Necrotic");
+  #assert bf_text(b[..], 1, cast(string) l[0].buf[0..<l[0].n]) && bf_text(b[..], 0, "  Reed regains 12 Hit Points from Land's Aid");   // (the one at the edge is a copy of Vark)
+  b[0].c[foe] = vark; b[0].c[foe].score[RS_CON] = 1;
+  rs_lands_aid_step(b[..], d, u[..]);
+  l[0] = rs_line(); rs_add_text(l[..], "  Vark CON save "); rs_add_int(l[..], 10 + rs_save_bonus(b[0].c[foe], RS_CON)); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], ldc); rs_add_text(l[..], ": 12 Necrotic");
+  #assert bf_text(b[..], 2, cast(string) l[0].buf[0..<l[0].n]);
+  // no one to heal; one out of the sphere; the dead; a number that is no creature
+  b[0].c[pal].hp = 1;
+  u[0] = RsUse.{j = -1, x = 24, y = 8}; rs_lands_aid_step(b[..], d, u[..]); #assert b[0].c[pal].hp == 1;
+  u[0] = RsUse.{j = b[0].n, x = 24, y = 8}; b[0].c[b[0].n] = b[0].c[pal]; rs_lands_aid_step(b[..], d, u[..]); #assert b[0].c[b[0].n].hp == 1;
+  u[0] = RsUse.{j = pal, x = 24, y = 8}; b[0].c[pal].dead = true; rs_lands_aid_step(b[..], d, u[..]); #assert b[0].c[pal].hp == 1; b[0].c[pal].dead = false;
+  rs_place(b[..], pal, 24, 11); rs_lands_aid_step(b[..], d, u[..]); #assert b[0].c[pal].hp == 1;
+  rs_place(b[..], pal, 24, 10); rs_lands_aid_step(b[..], d, u[..]); #assert b[0].c[pal].hp == 13;   // 10 feet: in it
+  // a foe that is down takes none
+  b[0].c[foe] = vark; b[0].c[foe].hp = 0; rs_lands_aid_step(b[..], d, u[..]); #assert b[0].c[foe].hp == 0;
+}

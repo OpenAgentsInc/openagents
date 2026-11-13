@@ -1802,6 +1802,9 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
   rs_tick(b[..], 0.2);
   #assert !rs_effect(b[0].c[g2], EF_HALT) && rs_can_act(b[0].c[g2]);
 }
+#load "battle-attack-checks.coax" #test;   // battle-attack.coax's own checks (#13287)
+#load "battle-features-checks.coax" #test;   // battle-features.coax's own checks (#13285, #13287)
+
 // ---- the feature program (#13285): rs_feature's rows, written out a second time, and rs_feature_use
 rs_fs_is :: (f: RsFeature, k: int, kind: int, a: int, b: int, c: int, t: string) -> bool { st := f.st[k]; return k < f.n && st.kind == kind && st.a == a && st.b == b && st.c == c && st.t == t; }
 #test "features: every row holds its steps in order, each with its numbers and its line; no other kind has a row" {

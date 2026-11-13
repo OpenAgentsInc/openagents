@@ -81,6 +81,13 @@ rs_prone_stand :: (c: [] RsCreature, turn: [] RsTurn, speed: int, current: bool)
   c[0].cond = rs_clear(c[0].cond,RS_PRONE);
   return true;
 }
+// Whether a creature has the Prone condition, and no other asked for with it.
+rs_is_prone :: (c: RsCreature) -> bool #effects(all) { return rs_has(c, RS_PRONE); }
+#test "Prone is its own condition: no other one reads as it" {
+  for bit: 0..<16 { c: RsCreature; c.cond = 1 << bit; #assert rs_is_prone(c) == ((1 << bit) == RS_PRONE); }
+  none: RsCreature; #assert !rs_is_prone(none);
+  both: RsCreature; both.cond = RS_PRONE | RS_BLINDED; #assert rs_is_prone(both);
+}
 rs_prone_ups :: (target: bool, feet: int) -> int #effects(all) { return ifx target && feet <= 5 then 1 else 0; }
 rs_prone_downs :: (own: bool, target: bool, feet: int) -> int #effects(all) {
   return (ifx own then 1 else 0) + (ifx target && feet > 5 then 1 else 0);
