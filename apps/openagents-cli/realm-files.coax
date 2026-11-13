@@ -112,6 +112,8 @@ rf_attach :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RfWork
     got := fs_read_at(source, at, w[0].body[k..<k + n]);
     if got != n { return fail(r, EXIT_FAIL, "FILE changed while it was sent"); }
     res := api_call(a, profile, "POST", rf_path(slug, "", "", w[0].path[..]), cast(string) w[0].body[0..<k + n], w[0].out[..]);
+    // the API takes a file by direct upload: it says so to the first part
+    if at == 0 && res.error == HTTP_OK && res.status == 415 { return rf_upload(a, r, profile, slug, w, source, scope, size, name, note, tags, hash); }
     if !api_ok(res) { return api_fail(r, res, cast(string) w[0].out[0..<res.n]); }
     answer := cast(string) w[0].out[0..<res.n];
     at += n;
@@ -124,6 +126,41 @@ rf_attach :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RfWork
     return rf_print(r, w);
   }
   return EXIT_FAIL;
+}
+// A file by direct upload (the API): named by its SHA-256, its bytes PUT to the address answered in
+// parts of 256 KiB (the bucket's resumable upload takes multiples of that), then the same ask to
+// .../files/done, which reads the stored object back and answers the list.
+RF_PUT :: 262144;
+rf_upload :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RfWork, source: string, scope: int, size: int, name: string, note: string, tags: string, hash: string) -> int {
+  ask := fw_upload_head(w[0].head[..], scope, size, name, note, tags, hash);
+  if ask.count == 0 { return fail(r, EXIT_USAGE, "the name, note or tags do not fit a request's head"); }
+  res := api_call(a, profile, "POST", rf_path(slug, "", "", w[0].path[..]), ask, w[0].out[..]);
+  if !api_ok(res) { return api_fail(r, res, cast(string) w[0].out[0..<res.n]); }
+  u := fw_uploaded_read(cast(string) w[0].out[0..<res.n]);
+  if !u.ok || u.bytes != size || cast(string) u.hash[..] != hash { return fail(r, EXIT_FAIL, "the server's answer to the upload is not world.file.upload.v1 for this file"); }
+  if u.how == FW_PUT {
+    url := cast(string) u.url[0..<u.url_n];
+    at := 0;
+    while at < size {
+      n := ifx size - at < RF_PUT then size - at else RF_PUT;
+      if fs_read_at(source, at, w[0].body[0..<n]) != n { return fail(r, EXIT_FAIL, "FILE changed while it was sent"); }
+      range: [96] u8;
+      k := forge_put(range[..], 0, "Content-Range: bytes "); k = fw_put_int(range[..], k, at); k = forge_put(range[..], k, "-");
+      k = fw_put_int(range[..], k, at + n - 1); k = forge_put(range[..], k, "/"); k = fw_put_int(range[..], k, size);
+      hs: [1] string; hs[0] = cast(string) range[0..<k];
+      hw: [1] HttpWork; got: [4096] u8;
+      p := http_do(hw[..], "PUT", url, hs[..], cast(string) w[0].body[0..<n], CLI_HTTP_MS, 0, got[..]);
+      at += n;
+      done := at >= size;
+      if p.error != HTTP_OK || (done && (p.code < 200 || p.code >= 300)) || (!done && p.code != 308 && p.code != 200) {
+        return fail(r, EXIT_FAIL, "the file did not reach storage: attach it again");
+      }
+    }
+  }
+  res = api_call(a, profile, "POST", rf_path(slug, "/done", "", w[0].path[..]), ask, w[0].out[..]);
+  if !api_ok(res) { return api_fail(r, res, cast(string) w[0].out[0..<res.n]); }
+  if !fw_read(w[0].l[..], cast(string) w[0].out[0..<res.n], w[0].scratch[..]) { return fail(r, EXIT_FAIL, "the answer is not a world.files.v1 list"); }
+  return rf_print(r, w);
 }
 // An attachment's bytes, read in parts: printed (a text document, with no OUT) or saved to OUT.
 rf_read :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RfWork) -> int {

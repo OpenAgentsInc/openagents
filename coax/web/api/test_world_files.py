@@ -8,7 +8,7 @@
 import hashlib, http.server, json, os, subprocess, threading, urllib.parse, urllib.request
 
 WF_GCS = "http://127.0.0.1:" + os.environ["GCS_PORT"]
-wf_bucket = {"objects": {}, "sessions": {}}
+wf_bucket = {"objects": {}, "sessions": {}, "parts": {}}
 
 
 class WfBucket(http.server.BaseHTTPRequestHandler):
@@ -41,6 +41,19 @@ class WfBucket(http.server.BaseHTTPRequestHandler):
         data = self.rfile.read(int(self.headers.get("Content-Length", "0")))
         if not name:
             return self.answer(404)
+        # a resumable upload in parts: "Content-Range: bytes A-B/TOTAL", answered 308 until the last
+        r = self.headers.get("Content-Range", "")
+        if r.startswith("bytes ") and "-" in r:
+            first, total = int(r[6:].split("-")[0]), int(r.rsplit("/", 1)[1])
+            held = wf_bucket["parts"].get(name, b"")
+            if first != len(held):
+                return self.answer(400)
+            held += data
+            if len(held) < total:
+                wf_bucket["parts"][name] = held
+                return self.answer(308, headers={"Range": f"bytes=0-{len(held) - 1}"})
+            wf_bucket["parts"].pop(name, None)
+            data = held
         wf_bucket["objects"][name] = data
         self.answer(200, b"{}")
 
@@ -173,6 +186,22 @@ status, body, _ = wf_call("POST", L, f"world.file.detach.v1 {fid}\n".encode(), k
 check("files: a detach removes it and its stored file", status == 200 and body.decode().endswith(f"did detached {fid}\n") and fid not in body.decode().split("did")[0]
       and f"test/attachments/{h}" not in wf_bucket["objects"], body)
 check("files: the link stays", lid in wf_call("GET", L, keyfile=admin)[1].decode())
+
+# The realm command, on the API: the first part is told to go by direct upload, so it names the file,
+# PUTs it in parts of 256 KiB and says it is done. Run when the CLI is built (apps/openagents-cli/build.sh --cli).
+cli = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "apps", "openagents-cli", "build", "openagents")
+if os.path.exists(cli):
+    doc = tempfile.NamedTemporaryFile(delete=False, suffix=".md")
+    doc.write(b"# Garage notes\n" + b"The raiders keep their rovers under one roof.\n" * 14000)
+    doc.close()
+    env = dict(os.environ, OPENAGENTS_NSEC=open(member).read().strip(), BROWSER="/usr/bin/true")
+    run = subprocess.run([cli, "realm", "attach", "splice", doc.name, "--scope", "project", "--name", "garage.md", "--origin", API],
+                         capture_output=True, text=True, env=env, timeout=120)
+    listed = wf_call("GET", L, keyfile=member)[1].decode()
+    big = hashlib.sha256(open(doc.name, "rb").read()).hexdigest()
+    check("files: the attach command sends a file by direct upload in parts", run.returncode == 0 and " project document " in listed
+          and "garage.md" in listed and wf_bucket["objects"].get(f"test/attachments/{big}") == open(doc.name, "rb").read(), (run.stdout, run.stderr))
+    os.unlink(doc.name)
 
 # Attachments are private and never reach a player or a pack (INVARIANTS.md).
 check("files: attaching changed no pack and no world document",
