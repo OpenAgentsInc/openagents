@@ -1,5 +1,20 @@
 # Owner actions
 
+## Existing Bitcoin balance in Coax Native (2026-11-13)
+
+Install OpenAgents 1.0.0 **1069** from Owner TestFlight once it is processed.
+Open **More → Bitcoin balance**, wait for Spark, and check the sats against
+the balance you saw in the earlier app. Try **Refresh balance** and close
+the side panel. This reads the same saved mainnet wallet; the balance is
+not fetched until you open that panel. It exposes no payment or seed-writing
+actions. If unavailable, retain the visible message; do not restore or
+replace the seed to troubleshoot this view.
+
+The simulator checked the UI using an explicit fixture, and the pinned SDK
+synced an empty throwaway wallet with background work/automatic claims off.
+The owner's real balance has not been read by the development tests; its
+on-phone display is the remaining acceptance check. No book chapter changes.
+
 ## Coax Native starter on TestFlight (2026-11-13)
 
 Install OpenAgents 1.0.0 build **1068** from the existing Owner TestFlight

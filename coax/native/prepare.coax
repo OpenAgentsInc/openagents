@@ -13,7 +13,9 @@ tool_main :: () -> int #export_c #effects(all) {
   jo_put(o[..],"<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist version=\"1.0\"><dict><key>runtime</key><string>");jo_put(o[..],cast(string)r[..]);
   jo_put(o[..],"</string><key>publicKey</key><string>");jo_put(o[..],cast(string)key[0..<nk]);
   jo_put(o[..],"</string><key>updatesEnabled</key>");jo_put(o[..],ifx updates then "<true/>" else "<false/>");
-  jo_put(o[..],"<key>endpoints</key><array><string>https://updates.openagents.com</string><string>https://oa-updates-157437760789.us-central1.run.app</string></array></dict></plist>");
+  jo_put(o[..],"<key>endpoints</key><array><string>https://updates.openagents.com/runtimes/");jo_put(o[..],cast(string)r[..]);
+  jo_put(o[..],"</string><string>https://oa-updates-157437760789.us-central1.run.app/runtimes/");jo_put(o[..],cast(string)r[..]);
+  jo_put(o[..],"</string></array></dict></plist>");
   if !fs_write("apps/openagents-ios/Native.plist",jo_text(o[..])) { return 1; }
   names:=[8]string.["coax/native/starter/index.html","coax/native/starter/native.js","coax/web/dom-host.js","coax/web/shell.js","components/zeron/fonts/Geist.ttf","components/zeron/fonts/Geist-Medium.ttf","components/zeron/fonts/Geist-SemiBold.ttf","components/zeron/fonts/GeistMono.ttf"];
   targets:=[8]string.["index.html","native.js","coaxial/dom-host.js","coaxial/shell.js","build/zeron/Geist.ttf","build/zeron/Geist-Medium.ttf","build/zeron/Geist-SemiBold.ttf","build/zeron/GeistMono.ttf"];

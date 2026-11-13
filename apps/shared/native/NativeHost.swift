@@ -49,6 +49,7 @@ import AuthenticationServices
     var services = 0
     var health: Task<Void,Never>?
     var passkey: NativePasskey?
+    private let wallet=SparkHost()
     init(updates:NativeUpdates) { self.updates=updates; super.init(nibName:nil,bundle:nil) }
     required init?(coder:NSCoder) { fatalError() }
     override func viewDidLoad() { super.viewDidLoad(); view.backgroundColor = .black; load() }
@@ -103,6 +104,20 @@ import AuthenticationServices
             let text=try await updates.check()
             if updates.pending != nil || updates.read("pending.cnu") != nil { offerActivation() }
             return ["message":text]
+        case "wallet.balance":
+            let observation:SparkHost.Observation
+            #if DEBUG
+            // Simulator UI fixture only. No seed is created or read by this path.
+            if UserDefaults.standard.bool(forKey:"OAAutomation"),let fixture=UserDefaults.standard.string(forKey:"OABalanceFixture") {
+                observation=fixture=="missing" ? .init(status:2):.init(status:1,sats:UInt64(fixture) ?? UInt64.max)
+            } else {observation=await wallet.balance()}
+            #else
+            observation=await wallet.balance()
+            #endif
+            var out=[UInt8](repeating:0,count:256)
+            let n=out.withUnsafeMutableBufferPointer {wb_encode(observation.status,observation.sats,coax_v_u8(data:$0.baseAddress,count:Int64($0.count)))}
+            guard n>0 else {throw NativeFailure.refused("Balance unavailable")}
+            return ["record":String(decoding:out.prefix(Int(n)),as:UTF8.self)]
         case "auth.state": return ["loggedIn":AppAuth.shared.loggedIn]
         case "auth.emailStart": return ["pending":try await AppAuth.shared.emailStart(b["email"] as? String ?? "")]
         case "auth.emailVerify": _ = try await AppAuth.shared.emailVerify(code:b["code"] as? String ?? "",pending:b["pending"] as? String ?? ""); return ["loggedIn":true]

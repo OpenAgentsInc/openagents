@@ -11,6 +11,20 @@ earlier Metal world, wallet and voice screens are excluded from this target;
 their Keychain namespaces are retained. Their implementation notes are in
 [README-legacy.md](README-legacy.md).
 
+Build 1069 restores only the existing Spark Bitcoin balance under **More →
+Bitcoin balance**. Its separate `extras/` Coax module is not part of the
+book. It reads the same Keychain entropy, English BIP-39 mapping, default
+mainnet account and `Application Support/spark-mainnet` SDK directory as
+the former wallet. The pinned Swift SDK is 0.27.2. Its server configuration
+disables background services/optimizers and automatic deposit claims;
+the adapter explicitly syncs and reads `balanceSats`, then disconnects.
+There are no payment, receive, restore or seed-writing bridge operations.
+Missing, locked, corrupt and unavailable are distinct from a zero balance.
+
+The independent extras module and starter reuse the same components and
+browser ABI. A future app update may remove the extras surface without a
+native rebuild. The seed and recovery words stay in Swift/SDK memory.
+
 ## Build and check
 
 `apps/openagents-ios/build.sh` generates on a remote build host and builds

@@ -1,0 +1,8 @@
+More → Bitcoin balance: read the existing wallet's Bitcoin balance in sats.
+
+Uses the same saved wallet as earlier OpenAgents builds. This view is
+read-only: there are no send, receive, restore or wallet creation actions.
+Missing, locked or unavailable wallet data is shown explicitly, never as a
+zero balance. Refresh retries the balance lookup.
+
+The Coax Native starter, login services and signed Updates remain available.

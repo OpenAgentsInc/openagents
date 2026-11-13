@@ -13,8 +13,9 @@ globalThis.fetch = async (url, options = {}) => {
   }
   return nativeFetch(url, options);
 };
-addEventListener("coaxial-dom-ready", () => {
-  const dom = globalThis.coaxialDom;
+addEventListener("coaxial-dom-ready", event => {
+  if (event.detail?.app !== "app") return;
+  const dom = event.detail.host;
   if (!dom) return;
   const note = value => dom.send(20, 0, String(value));
   dom.after = () => {

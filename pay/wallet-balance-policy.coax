@@ -1,0 +1,24 @@
+// Read-only SDK observations. Missing, locked and failed are never zero sats.
+#load "wallet.coax";
+#authority;
+#test "only a successful Bitcoin supply-bounded balance is displayable" {
+  #assert wb_value(1,0)==0 && wb_value(1,1)==1;
+  #assert wb_value(1,cast(u64)MAX_SAT)==MAX_SAT;
+  #assert wb_value(1,cast(u64)(MAX_SAT+1)) == -1;
+  #assert wb_value(1,cast,trunc(u64)(-1)) == -1;
+  for status:-1..<7 {if status!=1 {#assert wb_value(status,123)== -1;}}
+}
+#test "SDK statuses stay explicit and malformed success becomes unavailable" {
+  for status:0..<6 {#assert wb_status(status,0)==status;}
+  #assert wb_status(-1,0)==5 && wb_status(6,0)==5;
+  #assert wb_status(1,cast(u64)(MAX_SAT+1))==5;
+  #assert wb_status(1,cast(u64)MAX_SAT)==1;
+}
+wb_value :: (status:int,sats:u64)->int #export_c #effects(all) {
+  if status!=1 || sats>cast(u64)MAX_SAT {return -1;}return cast(int)sats;
+}
+wb_status :: (status:int,sats:u64)->int #export_c #effects(all) {
+  if status==1 {return ifx wb_value(status,sats)<0 then 5 else 1;}
+  if status==0 || status==2 || status==3 || status==4 {return status;}
+  return 5;
+}

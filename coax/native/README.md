@@ -55,8 +55,10 @@ HTTP is restricted by installed Coax policy to `/api/chat/*` and
 `/api/auth/account` on openagents.com, GET/POST, 64 KiB request and 1 MiB
 response. The browser glue redirects relative `/api/` fetches through it.
 Chat can use the existing send/state/turn polling API. Streaming transport,
-wallets, notifications and arbitrary new native SDKs are not exposed by this
-profile. Login/chat UI and state can be added entirely in Coax OTA within
+wallet payments, notifications and arbitrary new native SDKs are not exposed by this
+profile. The OpenAgents-only build 1069 adds a read-only `wallet.balance`
+service for its separate Extras module; it is not book functionality.
+Login/chat UI and state can be added entirely in Coax OTA within
 these services; that full application is subsequent book work (#13512).
 
 ## Publish an update
@@ -78,7 +80,7 @@ coax/web/tool.sh coax/native/package.coax apps/openagents-ios/Starter \
 coax/web/tool.sh coax/native/publish.coax apps/openagents-ios/Starter \
   /tmp/native-release/manifest.json /tmp/native-release/latest.cnu \
   "$HOME/.openagents/native-updates/keys/openagents-ios.key" \
-  gs://openagentsgemini-native-updates
+  "gs://openagentsgemini-native-updates/runtimes/$(cat apps/openagents-ios/Generated/runtime.txt)"
 ```
 
 Choose a fresh, increasing generation. The publisher checks file hashes,
@@ -114,6 +116,10 @@ TLS certificate. The fallback works while that certificate is pending.
 The deployed service's dedicated identity `native-updates-reader` has only
 bucket object-viewer access. Its reproducible revision is pinned by image
 digest in [cloud-run.yaml](cloud-run.yaml).
+Build 1069 and later use `/runtimes/<fingerprint>/latest.cnu` and that
+directory's `objects/`. The original build 1068 keeps the root feed, so a
+new native capability cannot replace its compatible update with one it
+cannot run.
 
 This replaces the historical `oa-updates` deployment from `4954eb2fc0`,
 without executing or restoring its old JavaScript server. Broader rollout,

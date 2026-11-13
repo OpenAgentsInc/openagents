@@ -11,6 +11,10 @@ settings:
     TARGETED_DEVICE_FAMILY: "1,2"
     CODE_SIGN_STYLE: Automatic
     CLANG_ENABLE_MODULES: YES
+packages:
+  BreezSdkSpark:
+    url: https://github.com/breez/breez-sdk-spark-swift.git
+    exactVersion: 0.27.2
 targets:
   OpenAgents:
     type: application
@@ -25,6 +29,14 @@ targets:
       - OpenAgents/Platform/AppAnalytics.swift
       - OpenAgents/Platform/NostrSign.c
       - OpenAgents/Assets.xcassets
+      - OpenAgents/Wallet/SparkHost.swift
+      - OpenAgents/Wallet/WalletKeychain.swift
+      - OpenAgents/Wallet/BIP39.swift
+      - OpenAgents/Wallet/BreezKey.swift
+      - path: OpenAgents/Resources/bip39-english.txt
+        buildPhase: resources
+      - path: Generated/WalletBalance.c
+        compilerFlags: "-Wno-unused-function -Wno-unused-variable"
       - path: Generated/NativePolicy.c
         compilerFlags: "-Wno-unused-function -Wno-unused-variable"
       - path: Generated/NativeWire.c
@@ -42,12 +54,15 @@ targets:
         buildPhase: resources
       - path: Native.plist
         buildPhase: resources
+    dependencies:
+      - package: BreezSdkSpark
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app
         PRODUCT_NAME: OpenAgents
         MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1068"
+        CURRENT_PROJECT_VERSION: "1069"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) COAX_NATIVE_BALANCE"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: OpenAgents/Info.plist
@@ -91,9 +106,10 @@ schemes:
         OpenAgents: all
     test:
       targets:
-        - OpenAgentsTests
+        - name: OpenAgentsTests
+          selectedTests: [NativePackageTests, SparkBalanceTests]
         - name: OpenAgentsUITests
-          selectedTests: [StarterUITests/testEmbeddedCoaxModuleRunsOfflineAndChangesSharedState]
+          selectedTests: [StarterUITests/testEmbeddedCoaxModuleRunsOfflineAndChangesSharedState, BalanceUITests]
   CoaxNativeLive:
     build:
       targets:
@@ -102,3 +118,11 @@ schemes:
       targets:
         - name: OpenAgentsUITests
           selectedTests: [StarterUITests/testLiveSignedCoaxUpdateChangesInstalledApp]
+  CoaxNativeBalanceLive:
+    build:
+      targets:
+        OpenAgents: all
+    test:
+      targets:
+        - name: OpenAgentsTests
+          selectedTests: [SparkBalanceLiveTests]

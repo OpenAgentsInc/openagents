@@ -10,20 +10,29 @@
 		03AF362E64D9222AA06F0E40 /* NativePolicy.c in Sources */ = {isa = PBXBuildFile; fileRef = DCD62FA8D277D57B999CBF47 /* NativePolicy.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 		081BC189AB524F65D78C03E4 /* AppAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABE3F6DB32D91F73A83323E9 /* AppAnalytics.swift */; };
 		1F3972F80AD727788C1649CC /* NostrSign.c in Sources */ = {isa = PBXBuildFile; fileRef = 0B12460F6D71E6EC127D760A /* NostrSign.c */; };
+		2423078B067528A80731C519 /* BIP39.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BAFA692F7A2D8501CD6985F /* BIP39.swift */; };
+		2CC0D955E1B50A311219BE38 /* SparkHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F41D56BF7ED365348CE324E /* SparkHost.swift */; };
 		370177B40FC83B533F660A4C /* NostrKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0083B1697095508B0B534B8B /* NostrKey.swift */; };
 		3EEE9F6858832B4BED499CC2 /* NativeWire.c in Sources */ = {isa = PBXBuildFile; fileRef = 5DE15337BAC2E10225C3C1CB /* NativeWire.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 		43A5D1535C05B29C381D5FFF /* NativeUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 303E971BCD43D4E6656E4CA6 /* NativeUpdates.swift */; };
 		43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 776F82566A59AA4CF6654437 /* Assets.xcassets */; };
+		444324321690C6F700CD79A2 /* SparkBalanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD6C5DA61B10FDC9F445E9BF /* SparkBalanceTests.swift */; };
+		47402381B8C043A601D16232 /* BalanceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ED6598EDE69B5D065A7D102 /* BalanceUITests.swift */; };
+		5EF5B3C074C0073B2BDA8D7C /* BreezSdkSpark in Frameworks */ = {isa = PBXBuildFile; productRef = 6A07344B6842FB168B7EEED5 /* BreezSdkSpark */; };
 		5FCD0C43CB70DA62BB5DE214 /* precomputed_ecmult.c in Sources */ = {isa = PBXBuildFile; fileRef = FA482D60928E6CCB2F0BDDA5 /* precomputed_ecmult.c */; settings = {COMPILER_FLAGS = "-DECMULT_WINDOW_SIZE=8"; }; };
 		6367A5818F65ABDE05883A8E /* precomputed_ecmult_gen.c in Sources */ = {isa = PBXBuildFile; fileRef = BCFF9E80B2B385BCA6700E60 /* precomputed_ecmult_gen.c */; settings = {COMPILER_FLAGS = "-DECMULT_WINDOW_SIZE=8"; }; };
 		647B0F6C417120E15A1A68A3 /* StarterUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88DAD8B0C2CFFD99B8FB4D20 /* StarterUITests.swift */; };
 		658B4C2F5F7EABC4715EB1E4 /* Native.plist in Resources */ = {isa = PBXBuildFile; fileRef = DA6976CE4AA8C31947C48C5D /* Native.plist */; };
 		6E5DC168044EA02417ED816B /* StarterApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C3236A8315C98ABF86224CB /* StarterApp.swift */; };
 		6EBCAD7693B6953906E65EA1 /* AppAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0AAC9508FA4369A9715A69 /* AppAuth.swift */; };
+		8E4F97485AF1AF831DCB39E9 /* bip39-english.txt in Resources */ = {isa = PBXBuildFile; fileRef = 131BDA8ADB97609206195533 /* bip39-english.txt */; };
+		9B9E8E3B6C3F29DF2B6A3CCB /* WalletKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE5C04823E6E6E322FD7E33C /* WalletKeychain.swift */; };
 		9EDFF85EEFA09C5E405F0C99 /* Starter in Resources */ = {isa = PBXBuildFile; fileRef = 312A9EE9333FE46FFAED3D6F /* Starter */; };
 		A82532704621FA268D0CA249 /* secp256k1.c in Sources */ = {isa = PBXBuildFile; fileRef = 29CE2F09F9A0B3457456014E /* secp256k1.c */; settings = {COMPILER_FLAGS = "-DENABLE_MODULE_EXTRAKEYS=1 -DENABLE_MODULE_SCHNORRSIG=1 -DECMULT_WINDOW_SIZE=8"; }; };
+		AAFF31B0E8810A7429EE6DA8 /* BreezKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9B32CD7EF30EADCBFE18124 /* BreezKey.swift */; };
 		B90F7595EC11FE241CB77910 /* NativeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C83152B91DFEEF873AAD56 /* NativeHost.swift */; };
 		C0B0BC79860337C450B78A5D /* PhoneSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9399FC48E429A1D3E4E5FAB5 /* PhoneSignIn.swift */; };
+		D038A28C391888C7188F57E5 /* WalletBalance.c in Sources */ = {isa = PBXBuildFile; fileRef = BE3E54671A8869C147608A21 /* WalletBalance.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 		D3B1BBC9420E21741699D348 /* DeviceKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */; };
 		DACD4EFCA7D115FAA1A3D126 /* NativePackageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */; };
 		F63C92AB22EF7A80B98AB547 /* PhoneSignin.c in Sources */ = {isa = PBXBuildFile; fileRef = 1EB43B9790841620D29A9F92 /* PhoneSignin.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
@@ -50,12 +59,16 @@
 		0083B1697095508B0B534B8B /* NostrKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrKey.swift; sourceTree = "<group>"; };
 		01C83152B91DFEEF873AAD56 /* NativeHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHost.swift; sourceTree = "<group>"; };
 		0B12460F6D71E6EC127D760A /* NostrSign.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NostrSign.c; sourceTree = "<group>"; };
+		0ED6598EDE69B5D065A7D102 /* BalanceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceUITests.swift; sourceTree = "<group>"; };
+		131BDA8ADB97609206195533 /* bip39-english.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "bip39-english.txt"; sourceTree = "<group>"; };
 		1EB43B9790841620D29A9F92 /* PhoneSignin.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = PhoneSignin.c; sourceTree = "<group>"; };
 		285CD8F8F9EFEFB6BCC6933D /* OpenAgentsTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OpenAgentsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		29CE2F09F9A0B3457456014E /* secp256k1.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = secp256k1.c; sourceTree = "<group>"; };
+		2BAFA692F7A2D8501CD6985F /* BIP39.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BIP39.swift; sourceTree = "<group>"; };
 		2C3236A8315C98ABF86224CB /* StarterApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarterApp.swift; sourceTree = "<group>"; };
 		303E971BCD43D4E6656E4CA6 /* NativeUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeUpdates.swift; sourceTree = "<group>"; };
 		312A9EE9333FE46FFAED3D6F /* Starter */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Starter; sourceTree = SOURCE_ROOT; };
+		3F41D56BF7ED365348CE324E /* SparkHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkHost.swift; sourceTree = "<group>"; };
 		5DE15337BAC2E10225C3C1CB /* NativeWire.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativeWire.c; sourceTree = "<group>"; };
 		7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePackageTests.swift; sourceTree = "<group>"; };
 		776F82566A59AA4CF6654437 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -66,11 +79,26 @@
 		9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
 		ABE3F6DB32D91F73A83323E9 /* AppAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAnalytics.swift; sourceTree = "<group>"; };
 		BCFF9E80B2B385BCA6700E60 /* precomputed_ecmult_gen.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = precomputed_ecmult_gen.c; sourceTree = "<group>"; };
+		BE3E54671A8869C147608A21 /* WalletBalance.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = WalletBalance.c; sourceTree = "<group>"; };
+		BE5C04823E6E6E322FD7E33C /* WalletKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletKeychain.swift; sourceTree = "<group>"; };
 		BF0AAC9508FA4369A9715A69 /* AppAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAuth.swift; sourceTree = "<group>"; };
 		DA6976CE4AA8C31947C48C5D /* Native.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Native.plist; sourceTree = "<group>"; };
 		DCD62FA8D277D57B999CBF47 /* NativePolicy.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativePolicy.c; sourceTree = "<group>"; };
+		E9B32CD7EF30EADCBFE18124 /* BreezKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreezKey.swift; sourceTree = "<group>"; };
 		FA482D60928E6CCB2F0BDDA5 /* precomputed_ecmult.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = precomputed_ecmult.c; sourceTree = "<group>"; };
+		FD6C5DA61B10FDC9F445E9BF /* SparkBalanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkBalanceTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		EAD68FE7753AB46CBC2F55C3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5EF5B3C074C0073B2BDA8D7C /* BreezSdkSpark in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		45BCF8879F8A49E40240BBF7 /* SignIn */ = {
@@ -89,6 +117,7 @@
 				DCD62FA8D277D57B999CBF47 /* NativePolicy.c */,
 				5DE15337BAC2E10225C3C1CB /* NativeWire.c */,
 				1EB43B9790841620D29A9F92 /* PhoneSignin.c */,
+				BE3E54671A8869C147608A21 /* WalletBalance.c */,
 			);
 			path = Generated;
 			sourceTree = "<group>";
@@ -107,6 +136,7 @@
 			isa = PBXGroup;
 			children = (
 				7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */,
+				FD6C5DA61B10FDC9F445E9BF /* SparkBalanceTests.swift */,
 			);
 			path = StarterTests;
 			sourceTree = "<group>";
@@ -132,6 +162,18 @@
 			path = Vendor/secp256k1/src;
 			sourceTree = "<group>";
 		};
+		980C20719E4EAD0DDDFF2531 /* Wallet */ = {
+			isa = PBXGroup;
+			children = (
+				2BAFA692F7A2D8501CD6985F /* BIP39.swift */,
+				E9B32CD7EF30EADCBFE18124 /* BreezKey.swift */,
+				3F41D56BF7ED365348CE324E /* SparkHost.swift */,
+				BE5C04823E6E6E322FD7E33C /* WalletKeychain.swift */,
+			);
+			name = Wallet;
+			path = OpenAgents/Wallet;
+			sourceTree = "<group>";
+		};
 		A399D11B8F0035506E68EDB0 /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -140,6 +182,15 @@
 				910026A6E3B72DD866AF23FD /* OpenAgentsUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A897E627F1493C3BC04958D1 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				131BDA8ADB97609206195533 /* bip39-english.txt */,
+			);
+			name = Resources;
+			path = OpenAgents/Resources;
 			sourceTree = "<group>";
 		};
 		ABD48D4B1B28A57624675E53 /* native */ = {
@@ -155,6 +206,7 @@
 		C9674C796927111E3430D894 /* StarterUITests */ = {
 			isa = PBXGroup;
 			children = (
+				0ED6598EDE69B5D065A7D102 /* BalanceUITests.swift */,
 				88DAD8B0C2CFFD99B8FB4D20 /* StarterUITests.swift */,
 			);
 			path = StarterUITests;
@@ -179,10 +231,12 @@
 				ABD48D4B1B28A57624675E53 /* native */,
 				EBA77022E6429671290CDE34 /* OpenAgents */,
 				882357AF20ADF9EB870C07F6 /* Platform */,
+				A897E627F1493C3BC04958D1 /* Resources */,
 				45BCF8879F8A49E40240BBF7 /* SignIn */,
 				8A366ADC38979696589B7858 /* src */,
 				71A2ECE12A4F32216053EEC0 /* StarterTests */,
 				C9674C796927111E3430D894 /* StarterUITests */,
+				980C20719E4EAD0DDDFF2531 /* Wallet */,
 				A399D11B8F0035506E68EDB0 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -196,6 +250,7 @@
 			buildPhases = (
 				3021F9601449A7901737DC0B /* Sources */,
 				9EB07DEE9BD5341EBD04A0A2 /* Resources */,
+				EAD68FE7753AB46CBC2F55C3 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -203,6 +258,7 @@
 			);
 			name = OpenAgents;
 			packageProductDependencies = (
+				6A07344B6842FB168B7EEED5 /* BreezSdkSpark */,
 			);
 			productName = OpenAgents;
 			productReference = 8229C5D27BC40A99010E48D9 /* OpenAgents.app */;
@@ -277,6 +333,9 @@
 			);
 			mainGroup = FBEEA9C0EAC50ADFE9507F40;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C7203DC7EB9877FDCF25971A /* XCRemoteSwiftPackageReference "breez-sdk-spark-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A399D11B8F0035506E68EDB0 /* Products */;
 			projectDirPath = "";
@@ -297,6 +356,7 @@
 				43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */,
 				658B4C2F5F7EABC4715EB1E4 /* Native.plist in Resources */,
 				9EDFF85EEFA09C5E405F0C99 /* Starter in Resources */,
+				8E4F97485AF1AF831DCB39E9 /* bip39-english.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -309,6 +369,8 @@
 			files = (
 				081BC189AB524F65D78C03E4 /* AppAnalytics.swift in Sources */,
 				6EBCAD7693B6953906E65EA1 /* AppAuth.swift in Sources */,
+				2423078B067528A80731C519 /* BIP39.swift in Sources */,
+				AAFF31B0E8810A7429EE6DA8 /* BreezKey.swift in Sources */,
 				D3B1BBC9420E21741699D348 /* DeviceKey.swift in Sources */,
 				B90F7595EC11FE241CB77910 /* NativeHost.swift in Sources */,
 				03AF362E64D9222AA06F0E40 /* NativePolicy.c in Sources */,
@@ -318,7 +380,10 @@
 				1F3972F80AD727788C1649CC /* NostrSign.c in Sources */,
 				C0B0BC79860337C450B78A5D /* PhoneSignIn.swift in Sources */,
 				F63C92AB22EF7A80B98AB547 /* PhoneSignin.c in Sources */,
+				2CC0D955E1B50A311219BE38 /* SparkHost.swift in Sources */,
 				6E5DC168044EA02417ED816B /* StarterApp.swift in Sources */,
+				D038A28C391888C7188F57E5 /* WalletBalance.c in Sources */,
+				9B9E8E3B6C3F29DF2B6A3CCB /* WalletKeychain.swift in Sources */,
 				5FCD0C43CB70DA62BB5DE214 /* precomputed_ecmult.c in Sources */,
 				6367A5818F65ABDE05883A8E /* precomputed_ecmult_gen.c in Sources */,
 				A82532704621FA268D0CA249 /* secp256k1.c in Sources */,
@@ -329,6 +394,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				47402381B8C043A601D16232 /* BalanceUITests.swift in Sources */,
 				647B0F6C417120E15A1A68A3 /* StarterUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -338,6 +404,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				DACD4EFCA7D115FAA1A3D126 /* NativePackageTests.swift in Sources */,
+				444324321690C6F700CD79A2 /* SparkBalanceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -363,7 +430,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1068;
+				CURRENT_PROJECT_VERSION = 1069;
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -387,6 +454,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.app;
 				PRODUCT_NAME = OpenAgents;
 				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) COAX_NATIVE_BALANCE";
 				SWIFT_OBJC_BRIDGING_HEADER = NativeBridge.h;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -491,7 +559,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1068;
+				CURRENT_PROJECT_VERSION = 1069;
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -515,6 +583,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.app;
 				PRODUCT_NAME = OpenAgents;
 				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) COAX_NATIVE_BALANCE";
 				SWIFT_OBJC_BRIDGING_HEADER = NativeBridge.h;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -660,6 +729,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C7203DC7EB9877FDCF25971A /* XCRemoteSwiftPackageReference "breez-sdk-spark-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/breez/breez-sdk-spark-swift.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.27.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		6A07344B6842FB168B7EEED5 /* BreezSdkSpark */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C7203DC7EB9877FDCF25971A /* XCRemoteSwiftPackageReference "breez-sdk-spark-swift" */;
+			productName = BreezSdkSpark;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = D73FDB66A38EC188DC701EB0 /* Project object */;
 }

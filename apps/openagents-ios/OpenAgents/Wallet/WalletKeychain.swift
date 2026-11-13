@@ -23,6 +23,7 @@ enum WalletKeychain {
 
     /// Keeps a restored seed (16 or 32 bytes of BIP-39 entropy) when the Keychain holds none.
     /// false when one is already stored (it is left alone) or the Keychain refused.
+    #if !COAX_NATIVE_BALANCE
     static func addSeed(_ entropy: Data) -> Bool {
         guard entropy.count == 16 || entropy.count == 32 else { return false }
         let item: [String: Any] = [
@@ -35,6 +36,7 @@ enum WalletKeychain {
         ]
         return SecItemAdd(item as CFDictionary, nil) == errSecSuccess   // errSecDuplicateItem: a seed is there already
     }
+    #endif
 
     static func readSeed() -> Read {
         let query: [String: Any] = [

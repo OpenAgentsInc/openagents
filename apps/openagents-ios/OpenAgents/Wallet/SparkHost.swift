@@ -1,6 +1,43 @@
 import Foundation
 import BreezSdkSpark
 
+#if COAX_NATIVE_BALANCE
+/// Only a seed read, network sync and a Bitcoin balance read are linked into
+/// the starter. Concurrent views share one request; SDK errors never escape.
+actor SparkHost {
+    struct Observation: Equatable {var status:Int64;var sats:UInt64=0}
+    typealias Reader = @Sendable (Data) async throws -> UInt64
+    private let seed: @Sendable () -> WalletKeychain.Read
+    private let reader:Reader
+    private var pending:Task<Observation,Never>?
+    init(seed:@escaping @Sendable ()->WalletKeychain.Read = {WalletKeychain.readSeed()},reader:@escaping Reader = {try await SparkHost.readBalance($0)}) {self.seed=seed;self.reader=reader}
+    func balance() async -> Observation {
+        if let pending {return await pending.value}
+        let request=Task {await self.read()};pending=request;defer {pending=nil};return await request.value
+    }
+    private func read() async -> Observation {
+        switch seed() {
+        case .notFound:return Observation(status:2)
+        case .unreadable:return Observation(status:4)
+        case .unavailable(let code):return Observation(status:code==errSecInteractionNotAllowed ? 3:5)
+        case .found(let entropy):
+            do {return Observation(status:1,sats:try await reader(entropy))}
+            catch {return Observation(status:5)}
+        }
+    }
+    static func readBalance(_ entropy:Data) async throws -> UInt64 {
+        guard let words=BIP39.englishWords(),let mnemonic=BIP39.mnemonic(entropy:entropy,words:words) else {throw BalanceError.unavailable}
+        let sdk=try await SparkConnection.open(mnemonic:mnemonic,folder:"spark-mainnet",readOnly:true)
+        do {
+            _ = try await sdk.syncWallet(request:SyncWalletRequest())
+            let sats=try await sdk.getInfo(request:GetInfoRequest(ensureSynced:false)).balanceSats
+            try? await sdk.disconnect();return sats
+        } catch {try? await sdk.disconnect();throw BalanceError.unavailable}
+    }
+    private enum BalanceError:Error {case unavailable}
+}
+#else
+
 /// The person's Spark wallet on Bitcoin mainnet, opened from the existing
 /// Keychain seed the same way the earlier app opened it: the entropy's
 /// English BIP-39 words, no passphrase, Breez's default mainnet account.
@@ -164,20 +201,7 @@ actor SparkHost {
 
     private func open(mnemonic: String, folder: String) async throws -> BreezSdk {
         if let sdk { return sdk }
-        var config = defaultConfig(network: .mainnet)
-        config.apiKey = breezApiKey
-        // Encrypted multi-device sync to Breez's server stays off.
-        config.realTimeSyncServerUrl = nil
-        // As before: claim on-chain deposits at maturity for up to the
-        // network's recommended rate plus 1 sat/vB.
-        config.maxDepositClaimFee = MaxFee(onchain: .networkRecommended(leewaySatPerVbyte: 1))
-        let directory = try FileManager.default
-            .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-            .appendingPathComponent(folder, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let builder = SdkBuilder(config: config, seed: .mnemonic(mnemonic: mnemonic, passphrase: nil))
-        await builder.withDefaultStorage(storageDir: directory.path)
-        let sdk = try await builder.build()
+        let sdk = try await SparkConnection.open(mnemonic:mnemonic,folder:folder,readOnly:false)
         self.sdk = sdk
         listener = await sdk.addEventListener(listener: Relay(host: self))
         return sdk
@@ -613,5 +637,27 @@ actor SparkHost {
         default: break
         }
         return a
+    }
+}
+#endif
+
+/// Shared account derivation, API key and storage path for the old wallet
+/// and the Coax Native adapter. Read-only disables *all* background services.
+enum SparkConnection {
+    static func configuration(readOnly:Bool)->Config {
+        var config=readOnly ? defaultServerConfig(network:.mainnet):defaultConfig(network:.mainnet)
+        config.apiKey=breezApiKey;config.realTimeSyncServerUrl=nil
+        config.maxDepositClaimFee=readOnly ? nil:MaxFee(onchain:.networkRecommended(leewaySatPerVbyte:1))
+        return config
+    }
+    static func directory(folder:String) throws -> URL {
+        try FileManager.default.url(for:.applicationSupportDirectory,in:.userDomainMask,appropriateFor:nil,create:true).appendingPathComponent(folder,isDirectory:true)
+    }
+    static func open(mnemonic:String,folder:String,readOnly:Bool) async throws -> BreezSdk {
+        let directory=try directory(folder:folder)
+        try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
+        let builder=SdkBuilder(config:configuration(readOnly:readOnly),seed:.mnemonic(mnemonic:mnemonic,passphrase:nil))
+        await builder.withDefaultStorage(storageDir:directory.path)
+        return try await builder.build()
     }
 }

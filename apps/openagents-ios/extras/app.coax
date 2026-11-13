@@ -1,0 +1,63 @@
+// OpenAgents-only extras. This module is not part of the book's starter.
+#load "../../../components/kit/frames.coax";
+#load "../../../components/backend/dom.coax";
+#load "../../../pay/wallet-balance-wire.coax";
+Starter :: struct {ready:bool;dirty:bool=true;time:f32;menu:int;loading:bool;balance:[1]WalletBalance;action:int;tree:[1]Tree;dom:[1]Dom;ui:[1]Ui;sets:[MF_COUNT]AfSettings;css:[24576]u8;inbox:[8192]u8;}
+#test "the wallet is opt in, only reads a balance and closes independently" {
+  s:[1]Starter;#assert s[0].action==0 && s[0].menu==0;
+  ex_action(s[..],1);#assert s[0].menu==1 && s[0].action==0;
+  ex_action(s[..],2);#assert s[0].menu==2 && s[0].action==1 && s[0].loading;
+  st_done(s[..]);ex_action(s[..],3);#assert s[0].action==0;
+  s[0].loading=false;ex_action(s[..],3);#assert s[0].action==1;
+  ex_action(s[..],4);#assert s[0].menu==0;
+}
+ex_action :: (s:[]Starter,action:int) {
+  if action==1 {s[0].menu=1;}
+  if action==2 || (action==3 && !s[0].loading) {s[0].menu=2;s[0].loading=true;s[0].action=1;}
+  if action==4 {s[0].menu=0;}
+  s[0].dirty=true;
+}
+st_done :: (s:[]Starter) #export_c #effects(all) {s[0].action=0;}
+st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
+  if !s[0].ready {s[0].ready=true;n:=mono_frames(s[0].sets[..]);}
+  if dt>0 && dt<1 {s[0].time+=dt;}
+  if !s[0].dirty && !s[0].ui[0].busy {return 0;}
+  t:=s[0].tree[..];u:=s[0].ui[..];d:=s[0].dom[..];
+  if !d[0].styled {
+    n:=mono_css(s[0].css[..]);n=mc(s[0].css[..],n,".nextras-more{position:fixed;right:16px;top:calc(env(safe-area-inset-top) + 12px);z-index:15}.nextras-shade{position:fixed;inset:0;background:#0009;z-index:19}.nextras-panel{position:fixed;right:0;top:0;bottom:0;width:min(340px,100%);padding:calc(env(safe-area-inset-top) + 24px) 20px 24px;box-sizing:border-box;background:#0b0b0d;border-left:1px solid #444;z-index:20;overflow:auto;display:flex;flex-direction:column;gap:24px}.nextras-panel>*{margin:0}.nextras-panel .amount{font-size:36px}.nextras-panel p{color:var(--ink-muted)}");
+    dm_style(d,cast(string)s[0].css[0..<n]);
+  }
+  ui_begin(u,s[0].time,reduced);tr_begin(t);
+  x:=tr_open(t,"extras.more-wrap",TG_DIV,"nextras-more");x=k_button(t,u,"extras.more","More",BS_PLAIN);tr_close(t);
+  if s[0].menu>0 {
+    x=tr_open(t,"extras.shade",TG_DIV,"nextras-shade");tr_close(t);
+    x=tr_open(t,"extras.panel",TG_SECTION,"nextras-panel");tr_attr(t,x,AT_ROLE,"dialog");tr_attr(t,x,AT_LABEL,"Extras");
+    x=k_button(t,u,"extras.close","Close",BS_PLAIN);
+    if s[0].menu==1 {x=k_text(t,u,"extras.title",TG_H2,"","Extras");x=k_button(t,u,"extras.bitcoin","Bitcoin balance",BS_PLAIN);}
+    else {
+      x=k_text(t,u,"wallet.title",TG_H2,"","Bitcoin balance");
+      x=k_text(t,u,"wallet.readonly",TG_P,"","Read-only · Spark mainnet");
+      if s[0].loading {x=k_text(t,u,"wallet.loading",TG_P,"","Refreshing balance…");}
+      else if s[0].balance[0].status==1 {
+        amount:[64]u8;o:[1]Jo;jo_start(o[..],amount[..]);jo_int(o[..],s[0].balance[0].sats);jo_put(o[..]," sats");
+        x=k_text(t,u,"wallet.amount",TG_P,"amount",jo_text(o[..]));
+      } else {
+        code:=s[0].balance[0].status;
+        text:=ifx code==2 then "No existing wallet was found on this phone." else ifx code==3 then "Unlock this phone, then refresh." else ifx code==4 then "The saved wallet could not be read. It has been left unchanged." else "Balance unavailable. Check your connection and refresh.";
+        x=k_text(t,u,"wallet.unavailable",TG_P,"",text);
+      }
+      if !s[0].loading {x=k_button(t,u,"wallet.refresh","Refresh balance",BS_PLAIN);}
+    }
+    tr_close(t);
+  }
+  ui_end(u);s[0].dirty=false;return dm_flush(d,t,s[0].sets[..]);
+}
+st_event :: (s:[]Starter,kind:int,slot:int,n:int) #export_c #effects(all) {
+  if kind==1 {
+    i:= -1;for k:0..<s[0].tree[0].n {if s[0].dom[0].of[k]==slot {i=k;break;}}
+    id:=tr_id(s[0].tree[..],i);
+    ex_action(s,ifx id=="extras.more" then 1 else ifx id=="extras.bitcoin" then 2 else ifx id=="wallet.refresh" then 3 else ifx id=="extras.close" then 4 else 0);
+  }
+  if kind==21 && n>=0 && n<=8192 {s[0].balance[0]=wb_decode(cast(string)s[0].inbox[0..<n]);s[0].loading=false;s[0].dirty=true;}
+}
+st_size :: (s:[]Starter,slot:int,w:f32,h:f32) #export_c #effects(all) {if dm_size(s[0].dom[..],slot,w,h) {s[0].dirty=true;}}

@@ -4446,6 +4446,28 @@ There is no claim of a full engine migration or general protobuf compiler.
 
 ## The iOS wallet seed is read, never written; sends go through Coax
 
+The Coax Native replacement (build 1069) exposes only `wallet.balance`, in
+the OpenAgents-only `apps/openagents-ios/extras/` side module. The same
+`WalletKeychain.readSeed`, BIP-39 word list, default mainnet account and
+`Application Support/spark-mainnet` directory are reused. `SparkHost.swift`
+still owns every SDK import; `SparkConnection` shares the connection setup
+with the previous wallet. `COAX_NATIVE_BALANCE` excludes all previous payment
+methods and the seed-add method from the starter target. The SDK server
+preset has background services and optimizers disabled, real-time sync off
+and no automatic deposit claim fee. The adapter explicitly syncs, reads
+`balanceSats` and disconnects. It neither creates a seed nor exposes keys,
+words, wallet identity or SDK error text to Coax/JS. Missing, locked,
+unreadable and unavailable never become a zero balance.
+
+`pay/wallet-balance-policy.coax` admits only a successful supply-bounded
+Bitcoin observation; its 27 root mutants are killed. The one bridge codec
+is `pay/wallet-balance-wire.coax` (`openagents.wallet.balance.v1`). Native
+unit/UI checks cover the side menu, missing-vs-zero and SDK configuration;
+an opt-in mainnet check uses fresh in-memory test entropy and a separate
+temporary SDK directory, never the owner's seed or money. This is not book
+functionality. The following payment notes describe the excluded earlier
+wallet implementation.
+
 `apps/openagents-ios/OpenAgents/Wallet/` opens the person's existing Spark
 wallet from the Keychain item the earlier apps wrote (generic password,
 service `com.openagents.app.spark`, account `seed-v1`, 16 or 32 bytes of

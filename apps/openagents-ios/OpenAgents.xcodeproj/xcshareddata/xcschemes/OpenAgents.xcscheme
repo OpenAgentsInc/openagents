@@ -41,7 +41,8 @@
       <Testables>
          <TestableReference
             skipped = "NO"
-            parallelizable = "NO">
+            parallelizable = "NO"
+            useTestSelectionWhitelist = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "FAB980B9658225CB7383114B"
@@ -49,6 +50,14 @@
                BlueprintName = "OpenAgentsTests"
                ReferencedContainer = "container:OpenAgents.xcodeproj">
             </BuildableReference>
+            <SelectedTests>
+               <Test
+                  Identifier = "NativePackageTests">
+               </Test>
+               <Test
+                  Identifier = "SparkBalanceTests">
+               </Test>
+            </SelectedTests>
          </TestableReference>
          <TestableReference
             skipped = "NO"
@@ -64,6 +73,9 @@
             <SelectedTests>
                <Test
                   Identifier = "StarterUITests/testEmbeddedCoaxModuleRunsOfflineAndChangesSharedState">
+               </Test>
+               <Test
+                  Identifier = "BalanceUITests">
                </Test>
             </SelectedTests>
          </TestableReference>

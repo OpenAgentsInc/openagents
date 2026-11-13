@@ -249,9 +249,10 @@ su_loads :: (text: string, path: string, a: [] SuArena, loads: [] string, from: 
 #test "Coax Native installed policy and starter are checked suites" {
   #assert su_in("coax/native/updates-policy.coax") && su_in("coax/native/starter/app.coax");
   #assert !su_in("coax/native/.scratch/app.coax");
+  #assert su_in("pay/wallet-balance-policy.coax") && su_in("apps/openagents-ios/extras/app.coax");
 }
 su_in :: (path: string) -> bool {
-  roots := [8] string.["apps/openagents-web/", "metaverse/", "metaverse-engine/", "everglade/", "rules/", "coax/web/", "coax/lib/", "coax/native/"];
+  roots := [10] string.["apps/openagents-web/", "metaverse/", "metaverse-engine/", "everglade/", "rules/", "coax/web/", "coax/lib/", "coax/native/", "pay/", "apps/openagents-ios/extras/"];
   for r: roots { if su_starts(path, 0, r) { return !su_contains(path, "/."); } }
   return false;
 }

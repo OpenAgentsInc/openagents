@@ -1,0 +1,32 @@
+// The one public balance codec. No seed, wallet identity or SDK error text.
+#load "wallet-balance-policy.coax";
+#load "../coax/lib/json/json.coax";
+WB_SCHEMA :: "openagents.wallet.balance.v1";
+WalletBalance :: struct {status:int=5;sats:int= -1;}
+#test "the balance record has exact bytes and errors never expose an amount" {
+  out:[256]u8;n:=wb_encode(1,12345,out[..]);
+  #assert cast(string)out[0..<n]=="{\"schema\":\"openagents.wallet.balance.v1\",\"status\":1,\"sats\":12345}";
+  b:=wb_decode(cast(string)out[0..<n]);#assert b.status==1 && b.sats==12345;
+  n=wb_encode(2,999,out[..]);b=wb_decode(cast(string)out[0..<n]);#assert b.status==2 && b.sats== -1;
+  n=wb_encode(1,0,out[..]);b=wb_decode(cast(string)out[0..<n]);#assert b.status==1 && b.sats==0;
+  #assert wb_decode("{}").status==5;
+  #assert wb_decode("{\"schema\":\"openagents.wallet.balance.v1\",\"status\":1,\"sats\":-1}").status==5;
+}
+wb_encode :: (status:int,sats:u64,out:[]u8)->int #export_c #effects(all) {
+  code:=wb_status(status,sats);amount:=wb_value(code,sats);
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);
+  jo_key(o[..],"schema");jo_str(o[..],WB_SCHEMA);
+  jo_key(o[..],"status");jo_int(o[..],code);
+  jo_key(o[..],"sats");jo_int(o[..],amount);jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+wb_decode :: (raw:string)->WalletBalance {
+  bad:WalletBalance;nodes:[16]JvNode;d:[1]Jv;
+  if !jv_parse(d[..],raw,nodes[..]) {return bad;}v:=d[0];
+  if jv_kind(v,0)!=JV_OBJECT || jv_len(v,0)!=3 || jv_raw(v,jv_get(v,0,"schema"))!=WB_SCHEMA {return bad;}
+  code:=jv_int(v,jv_get(v,0,"status"),-1);sats:=jv_int(v,jv_get(v,0,"sats"),-2);
+  if code<0 || code>5 {return bad;}
+  if code==1 {if sats<0 || sats>MAX_SAT {return bad;}}
+  else {if sats!= -1 {return bad;}}
+  return WalletBalance.{status=code,sats=sats};
+}
