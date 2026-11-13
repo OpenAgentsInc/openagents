@@ -115,6 +115,17 @@ server's devices list says so. Logging out forgets the key. See
 [docs/auth](../../docs/auth/sessions-and-tokens.md#native-refresh-tokens-bound-to-a-device-key)
 and [/settings/devices](https://openagents.com/settings/devices).
 
+Security notices reach the phone as push (#13233): once someone is logged in,
+the app asks Apple for its push token and gives it to the server
+(`AppAuth.pushTarget`, `NoticePush` in `OpenAgents/App.swift`). Tapping a
+notice opens the Security screen (`SecurityViewController`; also Log in ▸
+Security), which shows the newest notices and a waiting recovery, and has
+Cancel recovery and Freeze account. The app asks whether notices may show
+only after the server has taken the token. A test run never registers. The
+`aps-environment` entitlement needs Push Notifications on the bundle id:
+`tools/app_store.py profile` turns it on and makes a new profile when a
+release needs one.
+
 ## The wallet's backup and daily limit
 
 The wallet's seed is sealed on the phone and we store only the ciphertext

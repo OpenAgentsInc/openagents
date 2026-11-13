@@ -24,8 +24,9 @@ bool coaxial_account_key_ok(coax_v_u8 key);
 void oa_account_start(void (*changed)(void));
 void oa_account_login(void);    /* the Log In sheets: an email code, or this Mac's key */
 void oa_account_logout(void);
+void oa_account_security(void);   /* the Security sheet: notices, a waiting recovery (Cancel Recovery) and Freeze (#13233) */
 int32_t oa_account_logged_in(void);
 /* "Log In…", or "Logged in as a•••@example.com": its length, written NUL-ended into out. */
 int32_t oa_account_title(char *out, int32_t cap);
-/* coax drive's `account state | key | logout | refresh`, without a sheet: the answer's length. */
+/* coax drive's `account state | key | logout | refresh | security`, without a sheet: the answer's length. */
 int32_t oa_account_drive(const char *request, char *out, int32_t cap);

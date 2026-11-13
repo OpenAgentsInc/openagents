@@ -268,4 +268,81 @@ final class AppAuthTests: XCTestCase {
         XCTAssertNil(AppAuth.unb64url("")); XCTAssertEqual(AppAuth.unb64url("-_8"), Data([0xfb, 0xff]))
         XCTAssertEqual(PasskeyAsk.words(ASAuthorizationError(.canceled)), "No passkey was used. Try again.")
     }
+
+    // MARK: security notices as push (#13233)
+
+    func testThePushTargetIsApplesTokenAsHexWithThisLogin() async throws {
+        let server = Server(), store = Memory()
+        let auth = make(server, store)
+        try await auth.pushTarget(Data([0x00, 0xa1, 0xff]))   // nobody logged in: nothing is asked
+        XCTAssertTrue(server.asked.isEmpty)
+        store.tokens = .init(access: "oa_at_A1", refresh: "oa_rt_R1", accessUntil: now.addingTimeInterval(3000), account: "acct_a")
+        server.answers["/api/auth/devices/push"] = [(200, "{\"state\":\"on\",\"device\":4}"), (403, "{\"error\":\"This login isn't tied to a device, so it can't get notices. Log in again in the app.\"}")]
+        try await auth.pushTarget(Data([0x00, 0xa1, 0xff]))
+        XCTAssertEqual(server.asked.last?.auth, "Bearer oa_at_A1")
+        XCTAssertEqual(server.asked.last?.body, "{\"service\":\"\(AppAuth.pushService)\",\"token\":\"00a1ff\"}")
+        XCTAssertEqual(AppAuth.pushService, "apns_sandbox")   // the tests are a development build
+        do { try await auth.pushTarget(Data([1])); XCTFail("refused") }
+        catch { XCTAssertEqual(error.localizedDescription, "This login isn't tied to a device, so it can't get notices. Log in again in the app.") }
+        XCTAssertNotNil(store.tokens)   // a refusal leaves the login alone
+    }
+
+    func testANoticeOpensTheSecurityScreenAndNothingElse() {
+        XCTAssertTrue(AppAuth.noticeOpens(["aps": ["alert": ["title": "t", "body": "b"]], "oa": ["notice": 12, "what": "recovery.start", "open": "/settings/security"]]))
+        XCTAssertFalse(AppAuth.noticeOpens(["oa": ["open": "/settings/wallet"]]))
+        XCTAssertFalse(AppAuth.noticeOpens(["oa": ["open": "https://example.com/settings/security"]]))
+        XCTAssertFalse(AppAuth.noticeOpens(["open": "/settings/security"]))
+        XCTAssertFalse(AppAuth.noticeOpens(["oa": "/settings/security"]))
+        XCTAssertFalse(AppAuth.noticeOpens([:]))
+    }
+
+    func testALoginSaysSoOnceAndARefreshDoesNot() async throws {
+        let server = Server(), store = Memory()
+        let auth = make(server, store, at: now)
+        let seen = expectation(forNotification: AppAuth.didLogIn, object: auth)
+        server.answers["/api/auth/email/verify"] = [(200, "{\"access_token\":\"oa_at_A1\",\"refresh_token\":\"oa_rt_R1\",\"expires_in\":3600,\"account\":\"acct_a\"}")]
+        try await auth.emailVerify(code: "123456", pending: "p")
+        await fulfillment(of: [seen], timeout: 2)
+        let again = expectation(forNotification: AppAuth.didLogIn, object: auth); again.isInverted = true
+        store.tokens?.accessUntil = now   // stale: the next request refreshes
+        server.answers["/api/auth/refresh"] = [(200, pair(2))]
+        _ = try await auth.authorize(request())
+        await fulfillment(of: [again], timeout: 0.3)
+    }
+
+    func testTheSecurityScreenReadsARecoveryCancelsItAndFreezes() async throws {
+        let server = Server(), store = Memory(), keyStore = KeyMemory()
+        store.tokens = .init(access: "oa_at_A1", refresh: "oa_rt_R1", accessUntil: now.addingTimeInterval(3000), account: "acct_a")
+        let auth = make(server, store, device: keys(keyStore))
+        server.answers["/api/auth/recovery"] = [(200, "{\"state\":\"pending\",\"asked_ms\":1800000000000,\"ready_ms\":1800259200000,\"wait_hours\":72}")]
+        server.answers["/api/auth/notices"] = [(200, "{\"notices\":[{\"at_ms\":1800000000000,\"what\":\"recovery.start\",\"words\":\"Someone asked to recover it.\",\"sent\":{\"email\":1,\"push\":1}}]}")]
+        let s = try await auth.security()
+        XCTAssertEqual(s, AppAuth.Security(recovery: "pending", readyMs: 1_800_259_200_000, notices: [.init(atMs: 1_800_000_000_000, what: "recovery.start", words: "Someone asked to recover it.")]))
+        XCTAssertTrue(s.recoveryOpen)
+        let utc = TimeZone(identifier: "America/Chicago")!
+        XCTAssertEqual(s.recoveryWords(zone: utc), "A recovery of this account is waiting. After Jan 18, 2:00 AM CST a new key can replace every key and passkey on it.")
+        XCTAssertEqual(s.noticeWords(zone: utc), "Jan 15, 2:00 AM\nSomeone asked to recover it.")
+        let none = AppAuth.Security(recovery: "cancelled", readyMs: 0, notices: [])
+        XCTAssertFalse(none.recoveryOpen)
+        XCTAssertEqual(none.recoveryWords(zone: utc), "No recovery is waiting.")
+        XCTAssertEqual(none.noticeWords(zone: utc), "None yet. We send one for every change to how you log in.")
+        let ready = AppAuth.Security(recovery: "ready", readyMs: 1, notices: [])
+        XCTAssertTrue(ready.recoveryOpen)
+        XCTAssertEqual(ready.recoveryWords(zone: utc), "A recovery of this account is ready to finish: a new key can replace every key and passkey on it.")
+
+        server.answers["/api/auth/recovery/cancel"] = [(200, "{\"state\":\"cancelled\"}")]
+        try await auth.cancelRecovery()
+        XCTAssertEqual(server.asked.last?.path, "/api/auth/recovery/cancel")
+        XCTAssertEqual(server.asked.last?.auth, "Bearer oa_at_A1")
+        XCTAssertEqual(server.asked.last?.body, "{}")
+        XCTAssertNotNil(store.tokens)
+
+        // a freeze the server refuses leaves the login; one it takes ends it here too
+        server.answers["/api/auth/freeze"] = [(403, "{\"error\":\"Only a person can do this, not an agent.\"}"), (200, "{\"state\":\"frozen\"}")]
+        do { try await auth.freeze(); XCTFail("refused") } catch { XCTAssertEqual(error.localizedDescription, "Only a person can do this, not an agent.") }
+        XCTAssertNotNil(store.tokens)
+        try await auth.freeze()
+        XCTAssertEqual(server.asked.last?.body, "{}")
+        XCTAssertNil(store.tokens)
+    }
 }

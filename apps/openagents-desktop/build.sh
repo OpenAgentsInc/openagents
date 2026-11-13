@@ -45,7 +45,7 @@ done
   "$repo/apps/openagents-cli/dictate-native.c" "$repo/coax/platform/process-native.c" "$repo/coax/platform/store-file-native.c" \
   "$work/c/zeron.o" "$work/c/lab-sign.o" "$work/c/account.o" "${objc[@]}" "$repo/psionic/build/parakeet/libpsionic-parakeet.a" \
   -framework AppKit -framework Metal -framework QuartzCore -framework CoreText -framework ImageIO -framework UniformTypeIdentifiers \
-  -framework AVFoundation -framework CoreAudio -framework AudioToolbox -framework Foundation -framework CryptoKit -framework Security \
+  -framework AVFoundation -framework CoreAudio -framework AudioToolbox -framework Foundation -framework CryptoKit -framework Security -framework UserNotifications \
   -L"$swiftlib" -Wl,-rpath,/usr/lib/swift -lpthread -lm -o "$app/Contents/MacOS/OpenAgents.new"
 mv "$app/Contents/MacOS/OpenAgents.new" "$app/Contents/MacOS/OpenAgents"
 cp "$here/Info.plist" "$app/Contents/Info.plist"

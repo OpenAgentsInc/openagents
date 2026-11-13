@@ -84,9 +84,26 @@ def bundle_id():
     return match[0]["id"]
 
 
+def push_capability():
+    """Turns on Push Notifications for the bundle id when it is off (the app's aps-environment
+    entitlement: security notices as push, #13233). True when this call turned it on."""
+    caps = get(f"/v1/bundleIds/{bundle_id()}/bundleIdCapabilities")["data"]
+    if any(c["attributes"].get("capabilityType") == "PUSH_NOTIFICATIONS" for c in caps):
+        return False
+    call("POST", "/v1/bundleIdCapabilities", {"data": {"type": "bundleIdCapabilities", "attributes": {"capabilityType": "PUSH_NOTIFICATIONS"},
+                                                 "relationships": {"bundleId": {"data": {"type": "bundleIds", "id": bundle_id()}}}}})
+    return True
+
+
 def profile(cert, name, out):
+    added = push_capability()
     existing = get("/v1/profiles", **{"filter[name]": name})["data"]
     live = [p for p in existing if p["attributes"]["profileState"] == "ACTIVE"]
+    if added or not live:
+        # A profile made before the capability doesn't carry it: it goes, and a new one is made.
+        for p in existing:
+            call("DELETE", f"/v1/profiles/{p['id']}")
+        live = []
     if live:
         content = live[0]["attributes"]["profileContent"]
     else:

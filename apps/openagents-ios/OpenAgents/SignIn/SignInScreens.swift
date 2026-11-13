@@ -54,7 +54,12 @@ final class SignInViewController: WalletForm {
         let ways = HudPanel([HudHeading("Log in on a computer"), about, scan, paste, note])
         ways.column.setCustomSpacing(18, after: about)
         let key = HudPanel([HudHeading("Your key"), npub, copy, keyNote])
-        let stack = Look.stack([head, account.panel, ways, key], spacing: 20)
+        // Security: the account's notices, a waiting recovery and Freeze (what a notice's push opens).
+        let security = HudButton("Security", "signin.security")
+        security.addAction(UIAction { [weak self] _ in self?.navigationController?.pushViewController(SecurityViewController(), animated: true) }, for: .touchUpInside)
+        let secure = HudPanel([HudHeading("Security"), security])
+        secure.isHidden = !AppAuth.shared.loggedIn
+        let stack = Look.stack([head, account.panel, secure, ways, key], spacing: 20)
         stack.setCustomSpacing(28, after: head)
         column.addArrangedSubview(stack)
         do { npub.text = try PhoneSignIn.npub() } catch { npub.text = error.localizedDescription }
@@ -69,6 +74,82 @@ final class SignInViewController: WalletForm {
         if !SignInRouter.open(text, from: self) {
             note.text = "That isn't an openagents.com login code or project link."
         } else { note.text = "" }
+    }
+}
+
+/// Security (#13233): what a security notice's push opens, and "Security" on the Log in screen.
+/// It shows the account's newest notices and a waiting recovery, and this login can cancel the
+/// recovery or freeze the account (`AppAuth.security`, `cancelRecovery`, `freeze`).
+final class SecurityViewController: WalletForm {
+    private let auth: AppAuth
+    private let recovery = Look.label("", .preferredFont(forTextStyle: .body), Hud.light)
+    private let cancel = HudButton("Cancel recovery", "security.cancel", main: true)
+    private let notices = Look.label("", .preferredFont(forTextStyle: .footnote), Hud.light)
+    private let freeze = HudButton("Freeze account", "security.freeze")
+    private let result = Look.label("", .preferredFont(forTextStyle: .body), Hud.light)
+    init(auth: AppAuth = .shared) { self.auth = auth; super.init(nibName: nil, bundle: nil) }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = "Security"
+        let close = HudButton("Done", "security.close")
+        close.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside)
+        recovery.accessibilityIdentifier = "security.recovery"
+        notices.accessibilityIdentifier = "security.notices"
+        result.accessibilityIdentifier = "security.result"
+        cancel.isHidden = true
+        cancel.addAction(UIAction { [weak self] _ in self?.cancelRecovery() }, for: .touchUpInside)
+        freeze.addAction(UIAction { [weak self] _ in self?.askFreeze() }, for: .touchUpInside)
+        let frozen = Look.label("Freezing ends every login on the account, this one too, and cancels any recovery.", .preferredFont(forTextStyle: .footnote), Hud.mid)
+        let stack = Look.stack([HudMasthead(title: "Security", close: close),
+                                HudPanel([HudHeading("Recovery"), recovery, cancel, result], spacing: 14),
+                                HudPanel([HudHeading("Notices"), notices]),
+                                HudPanel([HudHeading("Freeze"), frozen, freeze])], spacing: 20)
+        column.addArrangedSubview(stack)
+        load()
+    }
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: false)
+    }
+
+    private func load() {
+        Task { @MainActor in
+            do {
+                let s = try await auth.security()
+                recovery.text = s.recoveryWords()
+                cancel.isHidden = !s.recoveryOpen
+                notices.text = s.noticeWords()
+            } catch { recovery.text = error.localizedDescription }
+        }
+    }
+    private func cancelRecovery() {
+        busy(cancel) { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.auth.cancelRecovery()
+                self.result.text = AppAuth.recoveryCancelledWords
+            } catch { self.result.text = error.localizedDescription }
+            self.load()
+        }
+    }
+    private func askFreeze() {
+        let ask = UIAlertController(title: AppAuth.freezeAskTitle, message: AppAuth.freezeAskWords, preferredStyle: .alert)
+        ask.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        ask.addAction(UIAlertAction(title: "Freeze", style: .destructive) { [weak self] _ in self?.freezeNow() })
+        present(ask, animated: true)
+    }
+    private func freezeNow() {
+        busy(freeze) { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.auth.freeze()
+                self.cancel.isHidden = true; self.freeze.isHidden = true
+                self.recovery.text = AppAuth.frozenWords
+                self.result.text = ""
+            } catch { self.result.text = error.localizedDescription }
+        }
     }
 }
 

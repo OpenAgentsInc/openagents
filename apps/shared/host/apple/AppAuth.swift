@@ -23,6 +23,12 @@ import Security
 /// carries `OA-Device-Proof`, the key's signature over the request, the time and the refresh
 /// token's hash. A refresh token copied off the phone is useless without the key. One key lasts
 /// one login: logging out, or the server ending the login, forgets it.
+///
+/// Security notices (#13233, docs/auth "Notify"): the app gives the server the push token Apple
+/// gave this install (`pushTarget`), and the account's security notices then reach this device as
+/// push. A notice's push opens the app's Security screen (`noticeOpens`), which reads what
+/// happened (`security`) and can cancel a recovery or freeze the account with this login
+/// (`cancelRecovery`, `freeze`). The push carries no link or token; the login is the proof.
 final class AppAuth: @unchecked Sendable {
     #if os(iOS)
     static let shared = AppAuth()
@@ -255,6 +261,89 @@ final class AppAuth: @unchecked Sendable {
         let access = try await authorize(URLRequest(url: url)).value(forHTTPHeaderField: "Authorization") ?? ""
         _ = try await said { try await self.post("/api/auth/unlink", raw: "{\"id\":\(id.int64Value),\"kind\":\"nostr\"}", authorization: access) }
     }
+    // MARK: security notices (#13233)
+
+    /// Posted when a login completes (not a refresh), so the app can give its push target.
+    static let didLogIn = Notification.Name("OAAppAuthDidLogIn")
+    /// Which of Apple's push services this build's token is for: a development build's token is
+    /// only good on Apple's sandbox (coax/web/api/auth-device-policy.coax, dk_push_service).
+    #if DEBUG
+    static let pushService = "apns_sandbox"
+    #else
+    static let pushService = "apns"
+    #endif
+    /// Apple's device token as the server keeps it: lower-case hex.
+    static func pushToken(_ token: Data) -> String { token.map { String(format: "%02x", $0) }.joined() }
+    /// Gives the server this install's push token, so the account's security notices reach this
+    /// device (POST /api/auth/devices/push). Does nothing when nobody is logged in. The server
+    /// refuses a login that isn't tied to this device's key, and a limited one.
+    func pushTarget(_ token: Data) async throws {
+        guard loggedIn else { return }
+        _ = try await said { try await self.authed("/api/auth/devices/push", ["service": AppAuth.pushService, "token": AppAuth.pushToken(token)]) }
+    }
+    /// The page a notice's push names (proto/auth/push-notice-v1.json, oa.open). The app opens its
+    /// Security screen for that and nothing else, whatever a push says.
+    static let noticePage = "/settings/security"
+    static func noticeOpens(_ userInfo: [AnyHashable: Any]) -> Bool {
+        ((userInfo["oa"] as? [String: Any])?["open"] as? String) == noticePage
+    }
+    /// One security notice the account was sent: when, its kind and its words.
+    struct Notice: Equatable { let atMs: Int64; let what: String; let words: String }
+    /// What the Security screen shows: the delayed recovery's state (none, pending, ready,
+    /// cancelled, done), when it is ready, and the newest notices.
+    struct Security: Equatable {
+        let recovery: String; let readyMs: Int64; let notices: [Notice]
+        /// A recovery is waiting, so it can be cancelled.
+        var recoveryOpen: Bool { recovery == "pending" || recovery == "ready" }
+        /// What the Security screen says about the recovery, with its time in the device's zone.
+        func recoveryWords(zone: TimeZone = .current) -> String {
+            guard recoveryOpen else { return "No recovery is waiting." }
+            if recovery == "ready" { return "A recovery of this account is ready to finish: a new key can replace every key and passkey on it." }
+            let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = zone; f.dateFormat = "MMM d, h:mm a zzz"
+            return "A recovery of this account is waiting. After \(f.string(from: Date(timeIntervalSince1970: Double(readyMs) / 1000))) a new key can replace every key and passkey on it."
+        }
+        /// The newest notices (at most `most`), one a paragraph: when, then its words.
+        func noticeWords(most: Int = 5, zone: TimeZone = .current) -> String {
+            guard !notices.isEmpty else { return "None yet. We send one for every change to how you log in." }
+            let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = zone; f.dateFormat = "MMM d, h:mm a"
+            return notices.prefix(most).map { f.string(from: Date(timeIntervalSince1970: Double($0.atMs) / 1000)) + "\n" + $0.words }.joined(separator: "\n\n")
+        }
+    }
+    /// The Security screen's words, the same on the iPhone and the Mac.
+    static let recoveryCancelledWords = "The recovery was cancelled. Nothing changed on the account."
+    static let freezeAskTitle = "Freeze this account?"
+    static let freezeAskWords = "Every login on it ends, this one too, and any recovery is cancelled."
+    static let frozenWords = "Your account is frozen: every login on it ended, and any recovery is cancelled. Log in with your key to unfreeze it."
+    func security() async throws -> Security {
+        let r = try await get("/api/auth/recovery")
+        let n = try await get("/api/auth/notices")
+        let notices = (n["notices"] as? [[String: Any]] ?? []).prefix(10).map {
+            Notice(atMs: ($0["at_ms"] as? NSNumber)?.int64Value ?? 0, what: $0["what"] as? String ?? "", words: $0["words"] as? String ?? "")
+        }
+        return Security(recovery: r["state"] as? String ?? "none", readyMs: (r["ready_ms"] as? NSNumber)?.int64Value ?? 0, notices: Array(notices))
+    }
+    /// Cancels the account's waiting recovery with this login (any login of the account may).
+    func cancelRecovery() async throws {
+        _ = try await said { try await self.authed("/api/auth/recovery/cancel", [:]) }
+    }
+    /// "This wasn't me": freezes the account. Every login ends, this one too, so the app forgets it.
+    func freeze() async throws {
+        _ = try await said { try await self.authed("/api/auth/freeze", [:]) }
+        store.clear()
+        device?.forget()
+    }
+    /// A GET with this login's access token: the answer's object.
+    private func get(_ path: String) async throws -> [String: Any] {
+        guard let url = URL(string: origin + path) else { throw Failure.unreachable }
+        let r = try await authorize(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 20))
+        let data: Data, status: Int
+        do { (data, status) = try await send(r) } catch { throw Failure.unreachable }
+        guard (200..<300).contains(status), let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw Failure.said(AppAuth.errorWords(data) ?? (status == 401 ? "Log in again." : "That didn't work. Try again."))
+        }
+        return o
+    }
+
     /// A POST with this login's access token (renewed first when it is stale).
     private func authed(_ path: String, _ json: [String: String]) async throws -> [String: Any] {
         let access: String
@@ -389,6 +478,7 @@ final class AppAuth: @unchecked Sendable {
                        account: (answer["account"] as? String) ?? account ?? tokens?.account ?? "",
                        deviceBound: (answer["device_bound"] as? Bool) == true ? true : bound)
         store.save(t)
+        if account == nil { NotificationCenter.default.post(name: AppAuth.didLogIn, object: self) }   // a login, not a refresh
         return t
     }
 

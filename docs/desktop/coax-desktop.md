@@ -608,8 +608,17 @@ staging. The pieces are `Account.swift` (the sheets and the key file),
 `account-mac.h`. Checks: `apps/openagents-desktop/tests/account-check.sh
 [--live https://staging.openagents.com]` (a fake API, then a real one: a key
 login, a refresh with the device key's proof, a reused refresh token ending
-the login), and coax drive's `account state | key | refresh | logout` on a
-running app.
+the login), and coax drive's `account state | key | refresh | logout |
+security` on a running app.
+
+OpenAgents ▸ Security… (#13233) shows the account's newest security notices
+and a waiting recovery, with Cancel Recovery and Freeze Account…, on the
+same `AppAuth` calls as the iPhone app's Security screen. The app also asks
+Apple for a push token after a login (`MacAccount.registerForPush`) so
+notices can reach the Mac as push, and a clicked notice opens that sheet.
+Apple gives a token only to a build signed with the push entitlement; a
+development build is signed ad hoc and gets none (#13388).
+`OPENAGENTS_PUSH=0` turns the request off.
 
 ## Milestones
 

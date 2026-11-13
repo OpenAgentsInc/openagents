@@ -1,7 +1,8 @@
-// Firm reason: 6 (a Swift-only SDK: AppKit's sheets, CryptoKit and the Secure Enclave through AppAuth.swift and DeviceKey.swift)
+// Firm reason: 6 (a Swift-only SDK: AppKit's sheets, CryptoKit, UserNotifications and the Secure Enclave through AppAuth.swift and DeviceKey.swift)
 import AppKit
 import CryptoKit
 import Foundation
+import UserNotifications
 
 /// The Mac app's account login (#13229, docs/auth/identity-and-methods.md "Per-platform flows"):
 /// OpenAgents ▸ Log In… asks for an email and the code we send, or logs in with this Mac's key.
@@ -145,6 +146,7 @@ final class MacAccount: @unchecked Sendable {
             setShown(a.emails.first ?? "")
         }
         tell()
+        await registerForPush()
     }
     private func setShown(_ s: String) { lock.lock(); shown = s; known = true; lock.unlock() }
     func forgetShown() { lock.lock(); shown = ""; known = false; lock.unlock() }
@@ -238,6 +240,80 @@ final class MacAccount: @unchecked Sendable {
     }
 }
 
+// MARK: security notices (#13233)
+
+extension MacAccount {
+    /// What the Security sheet says (pure, for the check): the recovery, then the newest notices.
+    static func securityWords(_ s: AppAuth.Security, zone: TimeZone = .current) -> String {
+        s.recoveryWords(zone: zone) + "\n\nNotices\n" + s.noticeWords(most: 3, zone: zone)
+    }
+
+    /// OpenAgents ▸ Security…, and what a security notice's push opens: the account's newest
+    /// notices and a waiting recovery, which this login can cancel, and Freeze.
+    @MainActor func showSecurity() async {
+        guard loggedIn else { return await showLogin() }
+        let s: AppAuth.Security
+        do { s = try await auth.security() } catch { say(error); return }
+        let alert = NSAlert()
+        alert.messageText = "Security"
+        alert.informativeText = MacAccount.securityWords(s)
+        let choices = (s.recoveryOpen ? ["Cancel Recovery"] : []) + ["Freeze Account…", "Close"]
+        for c in choices { alert.addButton(withTitle: c) }
+        let picked = alert.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        guard picked >= 0, picked < choices.count else { return }
+        switch choices[picked] {
+        case "Cancel Recovery":
+            do { try await auth.cancelRecovery(); note(AppAuth.recoveryCancelledWords) } catch { say(error) }
+        case "Freeze Account…":
+            let ask = NSAlert()
+            ask.messageText = AppAuth.freezeAskTitle
+            ask.informativeText = AppAuth.freezeAskWords
+            ask.addButton(withTitle: "Freeze")
+            ask.addButton(withTitle: "Cancel")
+            guard ask.runModal() == .alertFirstButtonReturn else { return }
+            do { try await auth.freeze(); forgetShown(); tell(); note(AppAuth.frozenWords) } catch { say(error) }
+        default: return
+        }
+    }
+    @MainActor private func note(_ words: String) {
+        let alert = NSAlert()
+        alert.messageText = words
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    /// Asks Apple for this install's push token when someone is logged in, so the account's
+    /// security notices reach this Mac. Apple gives a token only to a build signed with the push
+    /// entitlement; a development build is signed ad hoc, gets none, and nothing is asked or shown.
+    /// OPENAGENTS_PUSH=0 turns it off.
+    @MainActor func registerForPush() {
+        guard loggedIn, Bundle.main.bundleIdentifier != nil, ProcessInfo.processInfo.environment["OPENAGENTS_PUSH"] != "0", let app = NSApp else { return }
+        if app.delegate == nil { app.delegate = MacPush.shared }
+        guard app.delegate === MacPush.shared else { return }
+        UNUserNotificationCenter.current().delegate = MacPush.shared
+        app.registerForRemoteNotifications()
+    }
+}
+
+/// The Mac app's side of Apple's push service: the token goes to the server
+/// (`AppAuth.pushTarget`), and a clicked notice opens the Security sheet.
+final class MacPush: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+    static let shared = MacPush()
+    func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Task {
+            // Once the server keeps the token for this Mac, macOS asks (once) whether notices may show.
+            do { try await MacAccount.shared.auth.pushTarget(deviceToken) } catch { return }
+            _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+        }
+    }
+    func application(_ application: NSApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {}
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions { [.banner, .list, .sound] }
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        guard AppAuth.noticeOpens(response.notification.request.content.userInfo) else { return }
+        await MacAccount.shared.showSecurity()
+    }
+}
+
 // MARK: main.c's calls (account-mac.h)
 
 @_cdecl("oa_account_start")
@@ -254,6 +330,11 @@ func oa_account_login() {
 @_cdecl("oa_account_logout")
 func oa_account_logout() {
     Task.detached { await MacAccount.shared.logout() }
+}
+
+@_cdecl("oa_account_security")
+func oa_account_security() {
+    Task { @MainActor in await MacAccount.shared.showSecurity() }
 }
 
 @_cdecl("oa_account_logged_in")
@@ -277,6 +358,7 @@ private func copyOut(_ s: String, _ out: UnsafeMutablePointer<CChar>?, _ cap: In
 ///   account key       log in with this Mac's key (made first when there is none)
 ///   account refresh   mark the access token stale, then ask who is logged in (a refresh, with its proof)
 ///   account logout    log out
+///   account security  what the Security sheet says: the recovery, then the newest notices
 @_cdecl("oa_account_drive")
 func oa_account_drive(_ request: UnsafePointer<CChar>?, _ out: UnsafeMutablePointer<CChar>?, _ cap: Int32) -> Int32 {
     let op = request.map { String(cString: $0) } ?? ""
@@ -294,8 +376,9 @@ func oa_account_drive(_ request: UnsafePointer<CChar>?, _ out: UnsafeMutablePoin
                 t.accessUntil = Date(timeIntervalSince1970: 0); me.store.save(t)
                 await me.look()
             case "logout": await me.logout()
+            case "security": said.set("account: security\n" + MacAccount.securityWords(try await me.auth.security()) + "\n")
             case "state": break
-            default: said.set("account: state | key | refresh | logout\n")
+            default: said.set("account: state | key | refresh | logout | security\n")
             }
         } catch { said.set("account: \((error as? LocalizedError)?.errorDescription ?? "\(error)")\n") }
         done.signal()

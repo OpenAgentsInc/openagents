@@ -35,11 +35,11 @@
 // ---- the Mac's menu bar (Zeron's crates/ui/src/app_menus.rs for what this app has), as the former Sources/main.swift had it
 
 enum { C_DICTATION = 1, C_DICTATION_INPUT, C_NEW, C_NEW_IN_FOLDER, C_CLOSE_TAB, C_UNDO, C_REDO, C_CUT, C_COPY, C_PASTE, C_SELECT_ALL,
-       C_SIDEBAR, C_QUIT, C_CLOSE_WINDOW, C_LOGIN, C_LOGOUT, C_INPUTS = 100 };
+       C_SIDEBAR, C_QUIT, C_CLOSE_WINDOW, C_LOGIN, C_LOGOUT, C_SECURITY, C_INPUTS = 100 };
 static UiMenuItem menus[] = {
   {"OpenAgents", "About OpenAgents", "", 0, -1, "orderFrontStandardAboutPanel:"}, {"OpenAgents", NULL, NULL, 0, -1, NULL},
   // Log In… reads "Logged in as a•••@example.com" while logged in (account_changed)
-  {"OpenAgents", "Log In…", "", 0, C_LOGIN, NULL}, {"OpenAgents", "Log Out", "", 0, C_LOGOUT, NULL}, {"OpenAgents", NULL, NULL, 0, -1, NULL},
+  {"OpenAgents", "Log In…", "", 0, C_LOGIN, NULL}, {"OpenAgents", "Security…", "", 0, C_SECURITY, NULL}, {"OpenAgents", "Log Out", "", 0, C_LOGOUT, NULL}, {"OpenAgents", NULL, NULL, 0, -1, NULL},
   {"OpenAgents", "Enable Local Dictation — Parakeet", "", 0, C_DICTATION, NULL},
   {"OpenAgents", "Dictation Input…", "", 0, C_DICTATION_INPUT, NULL},
   {"OpenAgents", "Hold ⌘D or microphone · on-device draft only", "", 0, -1, NULL}, {"OpenAgents", NULL, NULL, 0, -1, NULL},
@@ -96,6 +96,7 @@ static void on_command(void *user, int id) {
     case C_SIDEBAR: dsk_toggle(a->desk); break;
     case C_LOGIN: oa_account_login(); break;
     case C_LOGOUT: oa_account_logout(); break;
+    case C_SECURITY: oa_account_security(); break;   // notices, a waiting recovery and Freeze (#13233)
     case C_QUIT: case C_CLOSE_WINDOW: a->quit = 1; break;
     default:
       if (id >= C_INPUTS && id <= C_INPUTS + ninputs) {
@@ -115,7 +116,7 @@ static int on_command_state(void *user, int id) {
     case C_COPY: return zr_selected_count(state) > 0;
     case C_CUT: return zr_can_cut(state) != 0;
     case C_LOGIN: return !oa_account_logged_in();
-    case C_LOGOUT: return oa_account_logged_in();
+    case C_LOGOUT: case C_SECURITY: return oa_account_logged_in();
     default: return 1;
   }
 }
@@ -179,7 +180,7 @@ static int on_drive(void *user, const char *request, char *out, int cap) {
     }
     return n;
   }
-  if (!strcmp(line, "account")) return oa_account_drive(arg, out, cap);   // state | key | refresh | logout (Account.swift)
+  if (!strcmp(line, "account")) return oa_account_drive(arg, out, cap);   // state | key | refresh | logout | security (Account.swift)
   if (!strcmp(line, "clip")) { ui_copy(a->host, arg, strlen(arg)); return 0; }   // the picture's own pasteboard
   if (!strcmp(line, "mark")) {   // marked text, its caret at its end (UTF-16 units)
     int units = 0;

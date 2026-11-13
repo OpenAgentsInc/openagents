@@ -102,9 +102,39 @@ func offline(_ dir: URL) async {
     let verify = fake.asked.last { $0.url?.path == "/api/auth/email/verify" }
     guard me.title == "Logged in as a•••@example.com", String(decoding: verify?.httpBody ?? Data(), as: UTF8.self) == "{\"code\":\"482913\",\"pending\":\"p1\"}",
           verify?.value(forHTTPHeaderField: "OA-Device-Platform") == "mac" else { fail("the email login") }
+    // Security (#13233): the sheet's words from the recovery and the notices; this login cancels
+    // the recovery; and the push target is Apple's token as hex.
+    fake.answers["/api/auth/recovery"] = [(200, "{\"state\":\"pending\",\"ready_ms\":1800259200000}")]
+    fake.answers["/api/auth/notices"] = [(200, "{\"notices\":[{\"at_ms\":1800000000000,\"what\":\"recovery.start\",\"words\":\"Someone asked to recover it.\"}]}")]
+    guard let sec = try? await me.auth.security(), sec.recoveryOpen,
+          MacAccount.securityWords(sec, zone: TimeZone(identifier: "America/Chicago")!) ==
+            "A recovery of this account is waiting. After Jan 18, 2:00 AM CST a new key can replace every key and passkey on it.\n\nNotices\nJan 15, 2:00 AM\nSomeone asked to recover it."
+    else { fail("the Security sheet's words") }
+    fake.answers["/api/auth/recovery/cancel"] = [(200, "{\"state\":\"cancelled\"}")]
+    do { try await me.auth.cancelRecovery() } catch { fail("cancel recovery: \(error)") }
+    let cancel = fake.asked.last { $0.url?.path == "/api/auth/recovery/cancel" }
+    guard cancel?.value(forHTTPHeaderField: "Authorization") == "Bearer oa_at_B1" else { fail("the recovery wasn't cancelled with this login") }
+    fake.answers["/api/auth/devices/push"] = [(200, "{\"state\":\"on\",\"device\":1}")]
+    do { try await me.auth.pushTarget(Data([0xab, 0x01])) } catch { fail("push target: \(error)") }
+    let push = fake.asked.last { $0.url?.path == "/api/auth/devices/push" }
+    guard String(decoding: push?.httpBody ?? Data(), as: UTF8.self) == "{\"service\":\"\(AppAuth.pushService)\",\"token\":\"ab01\"}" else { fail("the push target's body") }
+    // a notice's push opens the Security sheet for its own page and nothing else
+    guard AppAuth.noticeOpens(["aps": ["alert": ["title": "t", "body": "b"]], "oa": ["notice": 12, "what": "recovery.start", "open": "/settings/security"]]),
+          !AppAuth.noticeOpens(["oa": ["open": "/settings/wallet"]]), !AppAuth.noticeOpens(["oa": ["open": "https://example.com/settings/security"]]),
+          !AppAuth.noticeOpens(["open": "/settings/security"]), !AppAuth.noticeOpens([:]) else { fail("what a notice's push opens") }
+    // Freeze: a refusal leaves the login; a freeze ends it here too (the tokens and the device key go)
+    fake.answers["/api/auth/freeze"] = [(403, "{\"error\":\"Only a person can do this, not an agent.\"}"), (200, "{\"state\":\"frozen\"}")]
+    do { try await me.auth.freeze(); fail("a refused freeze passed") }
+    catch { guard error.localizedDescription == "Only a person can do this, not an agent.", me.loggedIn else { fail("a refused freeze: \(error.localizedDescription)") } }
+    do { try await me.auth.freeze() } catch { fail("freeze: \(error)") }
+    guard !me.loggedIn, !FileManager.default.fileExists(atPath: tokens.path) else { fail("a freeze left the login") }
+    // log in again for the logout below
+    fake.answers["/api/auth/email/start"] = [(200, "{\"state\":\"sent\",\"pending\":\"p2\"}")]
+    fake.answers["/api/auth/email/verify"] = [(200, "{\"account\":\"acct_b\",\"access_token\":\"oa_at_B2\",\"refresh_token\":\"oa_rt_B2\",\"expires_in\":3600,\"device_bound\":true}")]
+    guard let again = try? await me.auth.emailStart("ada@example.com"), (try? await me.auth.emailVerify(code: "482913", pending: again)) != nil, me.loggedIn else { fail("the login after a freeze") }
     fake.answers["/api/auth/logout"] = [(200, "{}")]
     await me.logout()
-    print("account-check: offline ok (key file, NIP-98, key login, email code, title, tokens 0600, logout)")
+    print("account-check: offline ok (key file, NIP-98, key login, email code, title, tokens 0600, security, push target, freeze, logout)")
 }
 
 func live(_ dir: URL, origin: String) async {

@@ -26,7 +26,7 @@ for name in home player grid cast camera wallet haunt hud benchmarks; do
   base="$(printf '%s' "${name:0:1}" | tr a-z A-Z)${name:1}"
   debug_flags=()
   if [[ "${CONFIGURATION:-Debug}" == Debug ]]; then debug_flags+=(--debug-info --source-map "$out/$base.map.json"); fi
-  src=verse; case "$name" in player|camera) src=aethyr ;; wallet) src=pay ;; esac   # the engine modules (#12609); the wallet's rules are the Payments context's (#13320)
+  src=verse; case "$name" in player) src=aethyr/move ;; camera) src=aethyr/cam ;; wallet) src=pay ;; esac   # the engine modules (#12609); the wallet's rules are the Payments context's (#13320)
   "$compiler" c "$src/$name.coax" --library --header "$out/$base.h" "${debug_flags[@]}" > "$out/$base.c.tmp"
   mv "$out/$base.c.tmp" "$out/$base.c"
 done
