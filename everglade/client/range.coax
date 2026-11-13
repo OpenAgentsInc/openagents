@@ -1,0 +1,220 @@
+// The Archery Range, a scene of Everglade II's own client (#13507), as Character Create is
+// (create.coax). /worlds/archery-range opens Everglade II's world at the range: on the city's
+// clearing east of the path (everglade/range/layout.coax), behind its shooting line, facing
+// downrange. Nothing of it is a world of its own: you walk, ride and shoot as anywhere in Everglade,
+// and the room flies every arrow (everglade/server/arrows.coax). What the range adds:
+//   its butts, sky faces, posts and chalk, one mesh in the pack (C glade/range, metaverse/tools/assets/
+//   character_glade_pack.coax --append-range-e2), drawn with one record where it stands;
+//   its seven faces as your arrows' targets (everglade/shared/archery.coax e2ar_range_targets), so
+//   the crosshair rests on a face and your arrow sticks in it the frame it reaches it, as the room's;
+//   its tally, the room's (range-wire.coax e range): each of your arrows on the range, kept by the
+//   same rule the room keeps it (rg_record), shown in a panel while you stand on the range's ground,
+//   with RESET (E kind 23); a face's points rise over it as a number.
+// Loaded into everglade/client/client.coax, so it shares its E2.
+//   coax/bin/coax test --library everglade/client/client.coax --only "archery range"
+
+E2RG_PATHS :: [4] string.["/worlds/archery-range", "/worlds/archery-range/", "/realms/archery-range/", "/realms/archery-range/index.html"];
+E2RG_FAR :: 260.0;        // m: the range's mesh is drawn from within this of its middle
+E2RG_NEAR :: 8.0;         // m round the range's ground its tally shows
+E2RG_WIDE :: 262.0;       // the tally's panel: its width, a row's height and its margin (px at k 1)
+E2RG_ROW :: 17.0;
+E2RG_PAD :: 10.0;
+E2RG_TOP :: 150.0;        // its top: under your portrait and its bars
+E2RG_RECORD_KIND :: 18;   // the horse's record (everglade/mounts.coax eg_horse_record): Everglade II's own vertex colours
+E2RG_FLOAT :: 40;         // a face's points rise as source 40 + its face (the monsters' are 2 + M)
+E2RG_BAND_NAME :: [RG_BANDS] string.["TO 15 M", "TO 25 M", "TO 40 M", "TO 60 M", "PAST 60 M"];
+E2RG_MODE_NAME :: [RG_MODES] string.["ON FOOT", "FROM HORSEBACK", "FROM DRAGONBACK"];
+
+E2Range :: struct {
+  on: bool;                          // this page opened at the range
+  first: int; count: int; word: int; // the pack's glade/range mesh (C glade/range): its indices and its vertex base
+  drawn: int;                        // frames it was drawn
+  floated: int;                      // the room's answers whose points have risen
+  box: cc.Box; reset: cc.Box;        // the tally's panel and its RESET button (x1 <= x0: not drawn)
+  presses: int;                      // RESET pressed
+}
+
+e2rg_page :: (t: string) -> bool { for p: E2RG_PATHS { if cc.page_path(t, p) { return true; } } return false; }
+// The page's facts: at the range you start behind its line, facing downrange, in the room; the
+// room is told where you stand as it is told a kept place (e2_place_take).
+e2rg_facts :: (s: [] E2, t: string) {
+  if !e2rg_page(t) || s[0].cz[0].on { return; }
+  r := s[0].rg[..]; r[0].on = true;
+  at := rg_arrive();
+  s[0].start_x = at[0]; s[0].start_z = at[1]; s[0].start_face = f32(RG_ARRIVE_FACE); s[0].start_kept = true; s[0].autowalk = false;
+  s[0].net[0].sat_before = true;
+}
+// The pack's catalog: "C glade/range FIRST COUNT SOURCE WORD 0 0".
+e2rg_catalog :: (s: [] E2, text: string) {
+  r := s[0].rg[..]; r[0].count = 0;
+  at := 0; head := "C glade/range ";
+  while at < text.count {
+    e := at; while e < text.count && text[e] != '\n' { e += 1; }
+    row := text[at..<e]; at = e + 1;
+    if row.count <= head.count || row[0..<head.count] != head { continue; }
+    w := head.count; first := figs.bd_whole_at(row, w); w = figs.bd_word_end(row, w) + 1;
+    count := figs.bd_whole_at(row, w); w = figs.bd_word_end(row, w) + 1;
+    w = figs.bd_word_end(row, w) + 1;   // its source
+    word := figs.bd_whole_at(row, w);
+    if first >= 0 && count > 0 && word >= 0 { r[0].first = first; r[0].count = count; r[0].word = word; }
+  }
+}
+// Whether (x, z) is where the tally shows.
+e2rg_near :: (x: f32, z: f32) -> bool { return rg_on_ground(x, z, f32(E2RG_NEAR)); }
+// The range's mesh, one record at the land's origin: its vertices stand where they are in the world.
+e2rg_draw :: (s: [] E2, at: E2Drawn) -> E2Drawn {
+  r := s[0].rg[..]; d := at;
+  if r[0].count <= 0 || d.rec >= E2_RECORDS || d.n >= E2_DRAWS - 1 { return d; }
+  dx := f32(RG_AT_X) - s[0].eye[0]; dz := f32(RG_AT_Z) - 35 - s[0].eye[2];
+  if dx * dx + dz * dz > f32(E2RG_FAR) * f32(E2RG_FAR) { return d; }
+  o := d.rec * 24; for i: 0..<24 { s[0].records[o + i] = 0; }
+  s[0].records[o + 7] = f32(r[0].word); s[0].records[o + 8] = 0; s[0].records[o + 9] = 1; s[0].records[o + 15] = f32(E2RG_RECORD_KIND);
+  d.n = e2_draw(s[0].draws[..], d.n, r[0].first, r[0].count, d.rec, 1); d.sn = e2_draw(s[0].shadow[..], d.sn, r[0].first, r[0].count, d.rec, 1);
+  d.rec += 1; r[0].drawn += 1;
+  return d;
+}
+// Each face an object the driver names (range-face-0 to range-face-6), where its gold is.
+e2rg_drive :: (s: [] E2, d: [] Drive) {
+  t := s[0].bows[0].ar[0].targets[0];
+  for i: 0..<t.n { f := t.face[i]; drv_add(d, DRV_OBJECT, "range-face", i, "Archery Range face", f.x, f.y, f.z, -1, -1, false); }
+}
+// Your arrows' targets: the range's faces, set once (the room's are the same).
+e2rg_targets :: (s: [] E2) { a := s[0].bows[0].ar[..]; if a[0].targets[0].n == 0 { e2ar_range_targets(a); } }
+// The room's word on each of your arrows on the range: a face's points rise over it.
+e2rg_step :: (s: [] E2) {
+  r := s[0].rg[..]; n := s[0].net[..];
+  if n[0].range_heard <= r[0].floated { return; }
+  r[0].floated = n[0].range_heard;
+  a := n[0].range_last;
+  if !a.ok || a.id == 0 || a.face < 0 || a.points <= 0 { return; }
+  e2rg_targets(s); f := s[0].bows[0].ar[0].targets[0].face[a.face];
+  _ := fl.floats_amount(s[0].floats[..], E2RG_FLOAT + a.face, f.x, f.y + f.radius + 0.3, f.z, s[0].clock, fl.FLOAT_MARK, a.points >= 9, a.points);
+}
+// RESET: the room clears your tally (E kind 23), and tells you so.
+e2rg_reset :: (s: [] E2) -> bool {
+  n := s[0].net[..];
+  if !e2n_open(n) { return false; }
+  n[0].range_sent += 1;
+  e2n_send(n, wire_put_use(n[0].out[..], 0, egr_reset_ask(n[0].pred[0].seq + 7000000 + n[0].range_sent)));
+  s[0].rg[0].presses += 1;
+  return true;
+}
+e2rg_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
+  b := s[0].rg[0].reset;
+  if phase != 0 || !(b.x1 > b.x0) || x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1 { return false; }
+  return e2rg_reset(s);
+}
+
+// ---- the tally's panel
+e2rg_line :: (b: [] u8, t: RgTally) -> int {
+  n := rs_put(b, 0, "ARROWS "); n = rs_put_int(b, n, t.shots); n = rs_put(b, n, "   HITS "); n = rs_put_int(b, n, t.hits);
+  n = rs_put(b, n, "   "); n = rs_put_int(b, n, rg_accuracy(t)); n = rs_put(b, n, "%   "); n = rs_put_int(b, n, t.points); n = rs_put(b, n, " PTS");
+  return n;
+}
+e2rg_row :: (b: [] u8, t: RgTally) -> int {
+  n := rs_put_int(b, 0, t.hits); n = rs_put(b, n, " / "); n = rs_put_int(b, n, t.shots); n = rs_put(b, n, "   "); n = rs_put_int(b, n, rg_accuracy(t));
+  n = rs_put(b, n, "%   "); n = rs_put_int(b, n, t.points); n = rs_put(b, n, " PTS");
+  return n;
+}
+// How you shoot now: on foot, or from the saddle of the mount you ride.
+e2rg_mode :: (s: [] E2) -> int {
+  n := s[0].net[..]; m := e2rp_mine(n[0].ride[..], n[0].seat);
+  if m < 0 { return RG_FOOT; }
+  return ifx n[0].ride[0].m[0].kind[m] == MK_DRAGON then RG_DRAGON else RG_HORSE;
+}
+// The rows the panel shows: the title, the two lines over all, the way you shoot now and its line, a
+// row for each band you have shot in that way, the last arrow, and RESET.
+e2rg_rows :: (sc: RgScore, mode: int) -> int {
+  n := 6;
+  for b: 0..<RG_BANDS { if rg_sum(sc, mode, b).shots > 0 { n += 1; } }
+  if sc.last_points >= 0 { n += 1; }
+  return n;
+}
+e2rg_panel :: (sc: RgScore, mode: int, k: f32) -> cc.Box {
+  return cc.Box.{x0 = 12 * k, y0 = f32(E2RG_TOP) * k, x1 = (12 + f32(E2RG_WIDE)) * k, y1 = (f32(E2RG_TOP) + f32(e2rg_rows(sc, mode)) * f32(E2RG_ROW) + 2 * f32(E2RG_PAD) + 8) * k};
+}
+e2rg_overlay :: (s: [] E2, out: [] f32, at: int) -> int {
+  r := s[0].rg[..]; r[0].box = cc.Box.{}; r[0].reset = cc.Box.{};
+  if !s[0].placed || e2c_creating(s) || !e2rg_near(s[0].you_x, s[0].you_z) { return at; }
+  sc := s[0].net[0].range[0]; mode := e2rg_mode(s); k := s[0].k; now := f32(s[0].net[0].mono) / 1000;   // the tally's clock (net.coax)
+  t := cc.eg_tokens(); l: [1] cc.HudList; ws: [1] cc.HudWords; ui := drv_trace(s[0].drive[..]);
+  box := e2rg_panel(sc, mode, k); r[0].box = box;
+  cc.hud_panel(l[..], t, cc.hud_box(box.x0, box.y0, box.x1, box.y1), k);
+  ws[0].ui = ui; pane := cc.uit_put(ui, cc.UIT_NONE, cc.UIT_PANEL, box.x0, box.y0, box.x1, box.y1, "ARCHERY RANGE"); ws[0].parent = pane;
+  left := box.x0 + f32(E2RG_PAD) * k; y := box.y0 + (f32(E2RG_PAD) + 11) * k; row := f32(E2RG_ROW) * k; b: [96] u8;
+  cc.hud_word(ws[..], "ARCHERY RANGE", left, y, 10 * k, cc.HUD_TEXT_TITLE, false); y += row;
+  all := rg_sum(sc, -1, -1);
+  m := e2rg_line(b[..], all); cc.hud_word(ws[..], cast(string) b[0..<m], left, y, 8.5 * k, cc.HUD_TEXT_NUMBER, false); y += row;
+  m = rs_put(b[..], 0, "RUN "); m = rs_put_int(b[..], m, sc.run); m = rs_put(b[..], m, "   BEST "); m = rs_put_int(b[..], m, sc.best_run); m = rs_put(b[..], m, "   GOLDS "); m = rs_put_int(b[..], m, all.golds);
+  avg := rg_average_tenths(all); m = rs_put(b[..], m, "   AVG "); m = rs_put_int(b[..], m, avg / 10); m = rs_put(b[..], m, "."); m = rs_put_int(b[..], m, avg % 10);
+  cc.hud_word(ws[..], cast(string) b[0..<m], left, y, 8.5 * k, cc.HUD_TEXT_NUMBER, false); y += row * 1.25;
+  cc.hud_word(ws[..], E2RG_MODE_NAME[mode], left, y, 9 * k, cc.HUD_TEXT_TITLE, false); y += row;
+  m = e2rg_line(b[..], rg_sum(sc, mode, -1)); cc.hud_word(ws[..], cast(string) b[0..<m], left, y, 8.5 * k, cc.HUD_TEXT_NUMBER, false); y += row;
+  for band: 0..<RG_BANDS {
+    bt := rg_sum(sc, mode, band); if bt.shots == 0 { continue; }
+    cc.hud_word(ws[..], E2RG_BAND_NAME[band], left, y, 8 * k, cc.HUD_TEXT_LABEL, false);
+    m = e2rg_row(b[..], bt); cc.hud_word(ws[..], cast(string) b[0..<m], left + 78 * k, y, 8.5 * k, cc.HUD_TEXT_NUMBER, false); y += row;
+  }
+  if sc.last_points >= 0 {
+    m = rs_put(b[..], 0, ifx sc.last_points > 0 then "LAST ARROW  " else "LAST ARROW  MISS");
+    if sc.last_points > 0 { m = rs_put_int(b[..], m, sc.last_points); }
+    m = rs_put(b[..], m, "  AT "); m = rs_put_int(b[..], m, cast(int) (sc.last_distance + 0.5)); m = rs_put(b[..], m, " M");
+    cc.hud_word_ink(ws[..], cast(string) b[0..<m], left, y - row * 0.1, 8.5 * k, cc.HUD_TEXT_LABEL, false, now - sc.last_at < 2.5 && sc.last_points >= 9, cc.hud_rgba(0.45, 0.95, 0.5, 1));
+    y += row;
+  }
+  // RESET: the tally cleared by the room (a finger's size on a phone)
+  tall := ifx s[0].ml[0].touch then 44 * k else 20 * k;
+  rb := cc.Box.{x0 = left, y0 = y - 4 * k, x1 = left + 84 * k, y1 = y - 4 * k + tall}; r[0].reset = rb;
+  if rb.y1 + f32(E2RG_PAD) * k > box.y1 { box.y1 = rb.y1 + f32(E2RG_PAD) * k; r[0].box = box; }
+  cc.hud_button(l[..], t, cc.hud_box(rb.x0, rb.y0, rb.x1, rb.y1), k, false);
+  ws[0].parent = cc.uit_put(ui, pane, cc.UIT_BUTTON, rb.x0, rb.y0, rb.x1, rb.y1, "RESET");
+  cc.hud_word(ws[..], "RESET", (rb.x0 + rb.x1) * 0.5, (rb.y0 + rb.y1) * 0.5 + 4.5 * k, 9 * k, cc.HUD_TEXT_TITLE, true);
+  return cc.hud_draw(out, at, l[..], ws[..], 1, k);
+}
+
+// ---- checks
+#test "archery range: /worlds/archery-range opens Everglade II at the range, behind its line facing downrange, in the room" #steps 400000000 {
+  #assert e2rg_page("url=https://openagents.com/worlds/archery-range\n") && e2rg_page("url=http://127.0.0.1:9431/worlds/archery-range/?x=1\n") && !e2rg_page("url=https://openagents.com/worlds/everglade2\n");
+  s: [1] E2; e2_message(s[..], E2_HOST_PAGE, "url=https://openagents.com/worlds/archery-range\nrelay=wss://openagents.com/api/room/relay\n");
+  #assert s[0].rg[0].on && !s[0].staged && s[0].start_kept && s[0].net[0].sat_before && !s[0].cz[0].on;
+  #assert e2_start(s[..]); a := rg_arrive();
+  #assert s[0].you_x == a[0] && s[0].you_z == a[1] && s[0].you_face == f32(RG_ARRIVE_FACE) && e2rg_near(s[0].you_x, s[0].you_z) && e2_may_stand(s[0].you_x, s[0].you_z);
+  // everglade2 itself is not the range: it starts in the glade
+  g: [1] E2; e2_message(g[..], E2_HOST_PAGE, "url=https://openagents.com/worlds/everglade2\n"); #assert !g[0].rg[0].on && e2_start(g[..]) && g[0].you_z == 0;
+}
+#test "archery range: the pack's range is drawn where it stands, and each face is your arrows' target and a driver's object" #steps 400000000 {
+  s: [1] E2; e2rg_catalog(s[..], "C glade/environment 9 12 250 100 8 0\nC glade/range 3486247 8922 5 8972832 0 0\n");
+  #assert s[0].rg[0].first == 3486247 && s[0].rg[0].count == 8922 && s[0].rg[0].word == 8972832;
+  s[0].eye = [3] f32.[f32(RG_AT_X), 2, f32(RG_AT_Z) + 10];
+  d := e2rg_draw(s[..], E2Drawn.{rec = 3, n = 2, sn = 1});
+  #assert d.rec == 4 && d.n == 3 && d.sn == 2 && s[0].records[3 * 24 + 15] == f32(E2RG_RECORD_KIND) && s[0].records[3 * 24 + 7] == 8972832 && s[0].records[3 * 24 + 9] == 1;
+  s[0].eye = [3] f32.[0, 2, 400]; #assert e2rg_draw(s[..], E2Drawn.{}).rec == 0;   // far off: not drawn
+  e2rg_targets(s[..]); t := s[0].bows[0].ar[0].targets[0];
+  #assert t.n == RG_TARGETS && abs(t.face[2].y - e2_height(rg_piece_at(2)[0], rg_piece_at(2)[1]) - RG_FACE_Y) < 0.001;
+  dr: [1] Drive; dr[0].on = true; e2rg_drive(s[..], dr[..]); #assert dr[0].n == RG_TARGETS && drv_find(dr[..], "range-face-6") == 6;
+}
+#test "archery range: the room's word on each arrow is your tally, kept by its rule; a face's points rise over it, and RESET asks the room" #steps 800000000 {
+  s: [1] E2; n := s[0].net[..]; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].seat = 2;
+  s[0].placed = true; a := rg_arrive(); s[0].you_x = a[0]; s[0].you_z = a[1]; s[0].width = 1280; s[0].height = 720; s[0].k = 1;
+  d := WireD.{}; e2n_entry(n, "e range 4 0 1310 9 0", d); e2n_entry(n, "e range 5 0 2200 0 -1", d); e2n_entry(n, "e range 6 9 1 1 1", d);
+  sc := n[0].range[0]; all := rg_sum(sc, -1, -1);
+  #assert n[0].range_heard == 2 && all.shots == 2 && all.hits == 1 && all.points == 9 && all.golds == 1 && sc.last_points == 0 && rg_sum(sc, RG_FOOT, 0).shots == 1;
+  // the 9 rose over face 0 once, the miss none
+  n[0].range_heard = 1; n[0].range_last = egr_read("e range 4 0 1310 9 0"); e2rg_step(s[..]);
+  #assert s[0].floats[0].shown == 1 && s[0].rg[0].floated == 1; e2rg_step(s[..]); #assert s[0].floats[0].shown == 1;
+  // the panel, on the range's ground only, with its RESET
+  out: [16384 * 4] f32; #assert e2rg_overlay(s[..], out[..], 0) > 0 && s[0].rg[0].reset.x1 > s[0].rg[0].reset.x0 && s[0].rg[0].box.y1 > s[0].rg[0].reset.y1;
+  rb := s[0].rg[0].reset;
+  #assert e2rg_pointer(s[..], (rb.x0 + rb.x1) / 2, (rb.y0 + rb.y1) / 2, 0) && s[0].rg[0].presses == 1;
+  sent := e2n_test_sent(n); #assert sent.count > 6 && sent[0..<2] == "E " && sent[sent.count - 5..<sent.count] == " 23 0";
+  e2n_entry(n, "e range 0 0 0 0 -1", d); #assert rg_sum(n[0].range[0], -1, -1).shots == 0;
+  s[0].you_x = 0; s[0].you_z = 0; #assert e2rg_overlay(s[..], out[..], 0) == 0 && !(s[0].rg[0].reset.x1 > s[0].rg[0].reset.x0);
+}
+#test "archery range: your arrow from the line into a face's gold sticks in it the frame it reaches it, and the crosshair rests on it" #steps 2000000000 {
+  s: [1] E2; e2rg_targets(s[..]); a := rg_arrive(); s[0].you_x = a[0]; s[0].you_z = a[1]; s[0].you_y = e2_height(a[0], a[1]);
+  f := s[0].bows[0].ar[0].targets[0].face[1];
+  from := eg_bow_hand(s[0].you_x, s[0].you_y, s[0].you_z, 3.14159265);
+  _ := arch.archer_loose(s[0].bows[0].ar[..], NET_SHOT_MINE, from, [3] f32.[f.x, f.y + 0.2, f.z], 1, -1, 0);
+  for q: 0..<90 { s[0].clock += 1.0 / 30; e2bw_step(s[..]); }
+  #assert s[0].bows[0].ar[0].marks == 1 && s[0].bows[0].net[0].landed == 1;
+}

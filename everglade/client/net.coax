@@ -22,6 +22,7 @@
 #load "../../metaverse-engine/net/transport.coax";   // WebSocket or WebTransport under one interface (#13176)
 #load "../server/creature-wire.coax";   // what the guard and the monsters did (e guard, e mon), the room's codec (#13246, #13276)
 #load "ride.coax";   // riding: the page's mounts, yours predicted, and its asks (#13268)
+#load "../server/range-wire.coax";   // the Archery Range's tally: the room's word on each of your arrows there (#13507)
 #load "../server/familiar-wire.coax";   // a familiar's requests and answers and the Healer's Kit's, the room's codec (#13276, #13245)
 #load "../../metaverse-engine/net/relay-wire.coax";   // the relay's own frames: y and the clock's ping and pong (#13245)
 
@@ -98,6 +99,7 @@ E2Net :: struct {
   fix: NetFix;            // the room's word on you: your row's fields after input pred.acked
   fix_tick: int;          // the room's tick that word was written at (a mount's transitions count from it: ride.coax)
   ride: [1] E2Ride;       // the zone's mounts: yours predicted, the others' their rows (ride.coax, #13268)
+  range: [1] RgScore; range_heard: int; range_last: EgrArrow; range_sent: int;   // the Archery Range's tally as the room tells it (range-wire.coax, #13507)
   off: [1] NetCorrect;    // where you are drawn less where the re-runs put you, eased out (metaverse-engine/net/interp.coax)
   hello_due: bool;
   change_due: bool;             // your class or look changed while seated: the room is told (V), for it holds a ticket's later hellos
@@ -746,6 +748,11 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
   if c == 'e' && wire_is(t, EGC_GUARD_E) { e2n_guard_hit(n, t); return; }
   if c == 'e' && egf_kept(t) { e2n_familiar_answer(n, t); return; }
   if c == 'e' && egm_kept(t) { _ := e2rp_answer(n[0].ride[..], t); return; }   // the room's answer to a riding ask
+  if c == 'e' && egr_kept(t) {   // the room's word on an arrow of yours on the Archery Range: your tally by its rule
+    a := egr_read(t); if !a.ok { return; }
+    egr_take(n[0].range[..], a, f32(n[0].mono) / 1000); n[0].range_heard += 1; n[0].range_last = a;
+    return;
+  }
   if c == 'e' && wire_is(t, "e cast") {
     r[0] = wire_rd(t, 6);
     ce := wire_read_cast_e(t, r[..]);

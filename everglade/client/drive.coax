@@ -23,7 +23,7 @@ e2d_frame :: (s: [] E2) {
   }
   g := e2n_guard_at(n, n[0].rt);
   if g.state != E2GD_NONE && g.life > 0 { drv_add(d, DRV_NPC, "guard", -1, "Guard", g.x, s[0].you_y, g.z, g.hp, g.max, g.state == E2GD_DOWN); }
-  e2p_drive(s, d); e2b_drive(s, d); e2sp_drive(s, d);
+  e2p_drive(s, d); e2b_drive(s, d); e2sp_drive(s, d); e2rg_drive(s, d);
   // the zone's mounts, by the room's own numbers (the page's copy: yours predicted, the others' as heard)
   rd := n[0].ride[..];
   for k: 0..<rd[0].m[0].n {

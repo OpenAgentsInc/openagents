@@ -44,7 +44,7 @@ e2bw_bodies :: (s: [] E2, out: [] arch.ArcheryBody) -> int {
 // Where the crosshair rests: the first monster or ground the camera's middle line meets past you,
 // within the Longbow's look, else a set way along it (everglade/zone-bow.coax xc_bow_point).
 e2bw_point :: (s: [] E2) -> arch.ArcheryAim {
-  m: [1] arch.SightMarch;
+  m: [1] arch.SightMarch; e2rg_targets(s);   // the Archery Range's faces (range.coax)
   m[0] = arch.sight_begin(arch.archery_sight(s[0].eye, s[0].fwd, s[0].you_x, s[0].you_z), f32(EG_BOW_LOOK));
   land := e2bw_land(s); near := s[0].bows[0].near[..];
   while arch.sight_next(m[..]) { m[0].solid = e2ar_solid(land, near, m[0].p[0], m[0].p[1], m[0].p[2]); }
@@ -84,6 +84,7 @@ e2bw_struck :: (s: [] E2, at: [3] f32) {
 // The frame's arrows: the room's words the picture has reached, every arrow's flight against this
 // zone's ground, yours against the bodies you see, and the ones that are done let go.
 e2bw_step :: (s: [] E2) {
+  e2rg_targets(s); e2rg_step(s);   // the Archery Range's faces, and the room's word on your arrows there (range.coax)
   b := s[0].bows[..]; n := s[0].net[..]; now := s[0].clock; a := b[0].ar[..]; sh := b[0].net[..]; p := a[0].arrows[..];
   // the room's words: yours at once (this page is already ahead of them), another's when the
   // picture reaches the moment it names
@@ -109,6 +110,7 @@ e2bw_step :: (s: [] E2) {
     // yours reached a body as this page draws it: it ends there now, and the room's word says the harm
     if l.kind == arch.LAND_BODY { arch.archery_body(a, f[0], l, true); c := bodies[0]; for k: 0..<nb { if bodies[k].id == l.body { c = bodies[k]; } } e2bw_struck(s, c.at); sh[0].landed += 1; continue; }
     if l.kind == arch.LAND_STUCK { e2bw_landed(s, l.at, l.grass); sh[0].landed += 1; }
+    if l.kind == arch.LAND_MARK { e2bw_landed(s, l.at, false); sh[0].landed += 1; }   // in an Archery Range face: the room's word scores it
   }
   for i: 0..<bow.ARROWS { if p[0].a[i].state != bow.ARROW_FREE && net_shots_shown(sh, i, now) <= 0 { p[0].a[i] = bow.Arrow.{}; } }
   arch.archery_tidy(a, now);
