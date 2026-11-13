@@ -19,7 +19,7 @@ E2AR_HAND_LOW :: 0.4; E2AR_HAND_HIGH :: 4.5;   // m over the land a launch may b
 // the walker's own (everglade/shared/move.coax e2m_world), from the planting the page draws and the room
 // steps by, so where an arrow stops is where a trunk or rock is drawn, on the page and in the room alike.
 // The planting: the page's (everglade/client/client.coax) or the room's (E2MoveGround).
-E2ArLand :: struct { items: [] f32; kinds: [] u8; first: [] int; planted: bool; }   // E2ArLand.{}: none planted (the glade's own and the camp's only)
+E2ArLand :: struct { items: [] f32; kinds: [] u8; first: [] int; planted: bool; still: [] E2Still; }   // still: the room's kept standing things (move.coax E2Still), none on a page   // E2ArLand.{}: none planted (the glade's own and the camp's only)
 // The trunks and rocks round where an arrow last asked, kept while it stays within E2AR_NEAR of there.
 E2ArNear :: struct { bodies: [E2_NEAR_BODIES * 7] f32; hulls: [E2_HULL_ROOM] f32; nb: int; nh: int; x: f32; z: f32; ok: bool; }
 E2AR_NEAR :: 1.0;    // m: under the reach a rock's hull is taken from (E2_HULL_REACH) and a trunk's (5 m)
@@ -28,7 +28,7 @@ E2AR_AIR :: 0; E2AR_GROUND :: 1; E2AR_WOOD :: 2;   // what a point is in (e2ar_i
 e2ar_land :: (items: [] f32, kinds: [] u8, first: [] int, planted: bool) -> E2ArLand { return E2ArLand.{items = items, kinds = kinds, first = first, planted = planted}; }
 e2ar_near :: (land: E2ArLand, n: [] E2ArNear, x: f32, z: f32) {
   if n[0].ok && abs(x - n[0].x) <= f32(E2AR_NEAR) && abs(z - n[0].z) <= f32(E2AR_NEAR) { return; }
-  w := e2m_world(land.items, land.kinds, land.first, land.planted, n[0].bodies[..], n[0].hulls[..], x, z);
+  w := e2m_world_still(land.still, land.items, land.kinds, land.first, land.planted, n[0].bodies[..], n[0].hulls[..], x, z);
   n[0].nb = w.bodies; n[0].nh = w.hulls; n[0].x = x; n[0].z = z; n[0].ok = true;
 }
 // What the point (x, y, z) is in: the ground, a trunk or rock (or a camp prop), or the air.

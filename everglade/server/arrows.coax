@@ -36,7 +36,9 @@ E2Arrows :: struct {
 e2a_land :: (v: [] RmServer) -> E2ArLand {
   g := v[0].e2land;
   if g.count == 0 || !g[0].done { return E2ArLand.{}; }
-  return e2ar_land(g[0].items[..], g[0].kinds[..], g[0].first[..], true);
+  land := e2ar_land(g[0].items[..], g[0].kinds[..], g[0].first[..], true);
+  land.still = g[0].still[..];   // the land's standing things, kept (everglade/shared/move.coax E2Still, #13384)
+  return land;
 }
 // room-world.c's planting (world2_prepare), which the seats' steps walk among: the arrows' too.
 rm_e2_land :: (v: [] RmServer, g: [] E2MoveGround) #export_c #effects(all) { v[0].e2land = g; }
