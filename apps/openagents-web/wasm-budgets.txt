@@ -189,7 +189,8 @@ everglade2 1260000
 fivemmo 1830000
 # the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 182,826 before, 194,755 after; about 5% room
 fixture 210000
-garden 300000
+# The walker moves on the broadphase and notes each push's reach (collide_move with Colliders.near, #13279): 302,932 bytes.
+garden 307000
 gridcrowd 60000
 icecream 510000
 memorial 60000
@@ -265,7 +266,8 @@ valleylab 160000
 # TF0290's orb Rect Light, the face view's turned hero rig and the orb hand's shadow capsules: 96,601 bytes.
 # The depth-of-field lens uniforms and the spell orbit camera (M): 101,258 bytes.
 # Rock hulls in aethyr walk/collide/query (7afe501d33): 104,986 bytes; about 5% room
-valleycanyon 110000
+# The walker moves on the broadphase and notes each push's reach (collide_move with Colliders.near, #13279): 113,000 bytes.
+valleycanyon 117000
 # The character pass's runtime beside a world (Echo's idle body and face, pack admission, the SceneLights block): 41,715 bytes.
 # Her idle life (metaverse-engine/character/idle.coax: blinks, glances, breath) and her placement from the world's stage (#12987): 47,788 bytes.
 # Her motion when a world moves her (#12996): the locomotion graph at the world's pace, TF0290's shot
@@ -275,7 +277,8 @@ character-host 64000
 # Valley's bounded source-page admission, source LOD selection and index-bank ABI add ~4 KiB.
 # Keep the shared canyon code's Slay replay control and face-view hero lighting.
 # Spatial source companions, bounded tree admission and independent exact-range cuts add ~4.3 KiB.
-valleyworld 152000
+# The walker moves on the broadphase and notes each push's reach (collide_move with Colliders.near, #13279): 153,290 bytes.
+valleyworld 157000
 # #12921: buffered V2 frame input adds checked per-step control state.
 # Linux measured garden 286741, villa 524872, fairy 660104, realm 517429 bytes; about 5% room.
 # Optional socket-owned room timing and clock intervals; 21,910 release bytes.
