@@ -1,6 +1,6 @@
 # Enter the Metaverse
 
-The way into the Metaverse playtest at https://openagents.com/verse: A HAUNTED HOUSE PLAYTEST, ENTER THE VERSE, one line, "Explore our haunted house. Can you make it scarier?", and **PLAYTEST NOW**, which opens the Haunted House directly, [/worlds/haunted-house](https://openagents.com/worlds/haunted-house). Every world is listed at [/worlds](https://openagents.com/worlds). Nothing is asked.
+The way into the Metaverse playtest at https://openagents.com/verse: A HAUNTED HOUSE PLAYTEST, ENTER THE METAVERSE, one line, "Explore our haunted house. Can you make it scarier?", and **PLAYTEST NOW**, which opens the Haunted House directly, [/worlds/haunted-house](https://openagents.com/worlds/haunted-house). Every world is listed at [/worlds](https://openagents.com/worlds). Nothing is asked.
 
 In the house there is one camera, behind you, and only your name, the minimap, a voice button and the hotbar on screen: take a thing from the hotbar and click or tap where it goes ([the world's page](../realms/haunted-house/index.md) has the controls).
 
