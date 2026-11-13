@@ -235,6 +235,10 @@ at run time (a budget reached, a pack refused) is a code too.
 - **One set.** Agents (`coax drive why`), the editor's inspector, alerts
   (#13297) and crash buckets (#13379) name these codes, not free text.
 
+A realm operation's refusal carries a code too: `realm-authoring.diagnostic.stale-revision.v1`
+and seven more, in [`world/result-v1.json`](world/result-v1.json), with one
+codec, `metaverse-engine/editor/op-result.coax` ([the result shape](../docs/protocol/realm-result-v1.md)).
+
 The codes are in [`verse/engine-diagnostics-v1.json`](verse/engine-diagnostics-v1.json),
 with one codec, `metaverse-engine/agent/why.coax`. Check them with
 `coax/web/tool.sh metaverse-engine/tools/why-profile.coax proto/verse/engine-diagnostics-v1.json`.

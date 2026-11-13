@@ -47,7 +47,7 @@ keeps its state.
 | Picking | **Partial.** `query_ray` exists; every editor picks its own way (Everglade by 56 px screen distance) | `metaverse-engine/physics/query.coax` |
 | Gizmos, outliner, inspector, fly camera, snapping, asset browser, play/simulate | **Missing** | — |
 | In-world editors | **Four, separate.** Everglade admin EDIT, the realm edit layer and agent pane, WorldBuilder (with a terrain brush, browser save only), Splice's layer (fixture only) | `everglade-edit.coax`, `metaverse/edit/`, `worldbuilder*.coax`, `metaverse/splice/layer*.coax` |
-| Programmatic building | **Partial.** `openagents realm` has 37 verbs and MCP `realm_*` tools. No `world_*` tools, and no world document with an id | `apps/openagents-cli/` |
+| Programmatic building | **Exists for worlds with an ID (E6, #13415).** The edit verbs are rows of `REALM_COMMANDS`: `realm world`, `world-place`, `world-move` and the rest, each also a `realm_*` MCP tool and a `coax drive` verb. There is no second `world_*` family. Every row has an effect and an approval rule, and answers one result shape | `apps/openagents-cli/commands.coax`, `realm-world.coax`, `metaverse-engine/editor/op-result.coax`, `coax/web/drive.coax` |
 | Code changes from a browser | **Missing.** Coax compiles to C, then clang builds Wasm on a machine with the toolchain. A paired Coder has one; a browser doesn't | `coax/web/wasm.sh` |
 | Agents in `/chat` | **Exists.** Claude Code, Codex, Antigravity and Microcoder through the local Coder | `apps/openagents-web/chat-web.coax`, `coder/tui/mcp_http.coax` |
 | UI components | **Exist.** The frames set (frame, text, button, field, select, card, row, header, menu, notice, composer, tool call, code block), skinned by `mono.coax`, drawn by the browser through `dom.coax`: real text, Find, selection and screen readers | `components/kit/frames.coax`, `components/skin/mono.coax`, `components/backend/dom.coax` |
@@ -146,8 +146,11 @@ not a flat folder scan.
 
 ### Programmatic building
 
-- **CLI and MCP:** `openagents world new|show|apply|undo|redo|shot|open|save`
-  and the `world_*` MCP tools. Coder gets them by default.
+- **CLI and MCP:** rows of `REALM_COMMANDS`, the table the other realm
+  commands come from: `openagents realm world`, `world-place`, `world-apply`,
+  `world-undo` and the rest, each also a `realm_*` MCP tool
+  ([the list](../protocol/world-edit-v1.md)). Coder gets them by default.
+  There is no second `world_*` family (2026-11-13).
   - `show` answers entities, content rows, landmarks, kept-clear zones, the
     player's position and "here".
   - `apply` answers the new revision, a frame and any refusal.

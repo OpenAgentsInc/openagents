@@ -1,0 +1,59 @@
+// Checks proto/world/result-v1.json against metaverse-engine/editor/op-result.coax, the one codec of
+// a realm operation's result and the one list of its codes (GitHub #13436): every state's pinned
+// bytes read as that state and write back the same; every code has the module's number, id, name
+// and retry; each rejected body does not read; the profile names itself, its version and this check.
+// Usage: coax/web/tool.sh metaverse-engine/tools/op-result-profile.coax proto/world/result-v1.json
+#import "Basic";
+#load "../editor/op-result.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+ORP_CHECK :: "coax/web/tool.sh metaverse-engine/tools/op-result-profile.coax proto/world/result-v1.json";
+orp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+orp_check :: (profile_json: string) -> bool {
+  nodes: [512] JvNode; da: [1] Jv;
+  if !jv_parse(da[..], profile_json, nodes[..]) { return false; }
+  d := da[0];
+  nb: [128] u8; cb: [256] u8; wb: [OR_BODY + 64] u8; ob: [OR_BODY] u8; rd := [1] OpRead.[OpRead.{}];
+  if orp_str(d, jv_get(d, 0, "profile"), nb[..]) != "realm-result-v1" || jv_int(d, jv_get(d, 0, "version"), 0) != 1 || orp_str(d, jv_get(d, 0, "check"), cb[..]) != ORP_CHECK { return false; }
+  if orp_str(d, jv_get(d, 0, "schema"), nb[..]) != OR_SCHEMA { return false; }
+  states := jv_get(d, 0, "states"); levels := jv_get(d, 0, "levels");
+  if jv_len(d, states) != OR_STATES || jv_len(d, levels) != 4 { return false; }
+  for i: 0..<OR_STATES { if orp_str(d, jv_at(d, states, i), nb[..]) != OR_STATE[i] { return false; } }
+  for i: 0..<4 { if orp_str(d, jv_at(d, levels, i), nb[..]) != OR_LEVEL[i] { return false; } }
+  codes := jv_get(d, 0, "codes");
+  if jv_kind(d, codes) != JV_ARRAY || jv_len(d, codes) != ORC_CODES - 1 { return false; }
+  for i: 0..<ORC_CODES - 1 {
+    c := jv_at(d, codes, i); n := i + 1;
+    if jv_int(d, jv_get(d, c, "number"), 0) != n || orp_str(d, jv_get(d, c, "id"), cb[..]) != or_code_id(n) || orp_str(d, jv_get(d, c, "name"), nb[..]) != or_code_name(n) { return false; }
+    if jv_bool(d, jv_get(d, c, "retry")) != or_code_retry(n) || jv_kind(d, jv_get(d, c, "means")) != JV_STRING { return false; }
+  }
+  results := jv_get(d, 0, "results");
+  if jv_kind(d, results) != JV_ARRAY || jv_len(d, results) != OR_STATES { return false; }
+  for i: 0..<OR_STATES {
+    wire := orp_str(d, jv_get(d, jv_at(d, results, i), "wire"), wb[..]);
+    r := or_read(wire, rd[..]);
+    if wire.count == 0 || !r.ok || r.state != i || or_write(r, or_words(rd[..]), ob[..]) != wire { return false; }
+  }
+  rej := jv_get(d, 0, "rejected");
+  if jv_kind(d, rej) != JV_ARRAY || jv_len(d, rej) < 6 { return false; }
+  for i: 0..<jv_len(d, rej) {
+    n := jv_str(d, jv_at(d, rej, i), wb[..]);
+    if n < 0 || or_read(cast(string) wb[0..<n], rd[..]).ok { return false; }
+  }
+  return true;
+}
+#test "result profile tool refuses a profile that is not one" { #assert !orp_check("{}") && !orp_check("bad"); }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: op-result-profile FILE.json"); return 2; }
+  raw: [65536] u8; n := fs_read(args_at(a[..], 0), raw[..]);
+  if n <= 0 { tool_errln("op-result-profile: cannot read JSON"); return 2; }
+  if !orp_check(cast(string) raw[0..<n]) { print("realm-result-v1: profile fails\n"); return 1; }
+  print("realm-result-v1: profile holds\n");
+  return 0;
+}

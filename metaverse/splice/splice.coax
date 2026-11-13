@@ -370,7 +370,8 @@ splice_req_flags :: (s: [] Splice) -> int #export_c #effects(all) { return wf_fl
 splice_req_sent :: (s: [] Splice, id: int) #export_c #effects(all) { wf_sent(s[0].page[0].f[..], id); }
 // A fact of the page's place in the world, for a host's checks (coaxial.fieldProbe): 0 the revision
 // it stands at (-1: no document yet), 1 outside edits carried out, 2 placed pieces, 3 pieces rising
-// in, 4 the follower's status (world-follow.coax WFS_*), 5 documents read, 6 requests sent; from 100,
+// in, 4 the follower's status (world-follow.coax WFS_*), 5 documents read, 6 requests sent, 7 and 8
+// where you stand (x and z, centimetres); from 100,
 // a fact of the run (splice_fact k - 100).
 splice_world_fact :: (s: [] Splice, k: int) -> int #export_c #effects(all) {
   if s.count < 1 { return -1; }
@@ -379,6 +380,7 @@ splice_world_fact :: (s: [] Splice, k: int) -> int #export_c #effects(all) {
   if k == 0 { return ifx s[0].follow == 2 then f[0].rev else -1; }
   if k == 1 { return f[0].taken; } if k == 2 { return l[0].st[0].n; } if k == 3 { return l[0].rise_n; }
   if k == 4 { return f[0].status; } if k == 5 { return s[0].page[0].loads; } if k == 6 { return f[0].sent; }
+  if k == 7 { return we_cm(s[0].game[0].px); } if k == 8 { return we_cm(s[0].game[0].pz); }
   return -1;
 }
 splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all) {

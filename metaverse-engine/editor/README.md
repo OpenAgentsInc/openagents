@@ -36,6 +36,9 @@ The product spec, what is on screen and what to build, is
 - `world-doc.coax`: a World saved and loaded whole (`world.doc.v1`): `world_save` and
   `world_load`, deterministic, with a digest check. [docs/protocol/world-doc-v1.md](../../docs/protocol/world-doc-v1.md).
   `coax/bin/coax test metaverse-engine/editor/world-doc.coax --library`
+- `op-result.coax`: one result for every realm operation (`realm.result.v1`) and its refusal
+  codes. [docs/protocol/realm-result-v1.md](../../docs/protocol/realm-result-v1.md).
+  `coax/bin/coax test metaverse-engine/editor/op-result.coax --library`
 - `world-follow.coax`: a page's place in a world: the lane it joined, the revision it stands at
   and its one request at a time. It reads the document once, then takes the lane's events in
   order. The realm carries each out on its own World.

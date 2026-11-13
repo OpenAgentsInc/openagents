@@ -147,3 +147,47 @@ coax/web/tool.sh world-tabs http://127.0.0.1:9538
 
 It places a piece from one tab and from outside any page, undoes one, and
 requires the other tab to show each inside a second with its run as it was.
+
+## From the command line, MCP and `coax drive`
+
+The verbs are rows of `REALM_COMMANDS` (`apps/openagents-cli/commands.coax`),
+the table the other realm commands come from. The CLI command, the `realm_*`
+MCP tool and the `coax drive` verb of each row are that one row. There is no
+second `world_*` family.
+
+| Command | MCP tool | `coax drive` | What it does |
+| --- | --- | --- | --- |
+| `realm world ID` | `realm_world` | `world` | The revision and build, the placed things by number, the content tables (pieces, landmarks, kept-clear zones) and the reference page |
+| `realm world-place ID KIND X Z [--yaw DEG]` | `realm_world_place` | `place KIND X Z` | Places a thing. KIND is a content ID |
+| `realm world-move ID N X Z` | `realm_world_move` | `move N X Z` | Moves thing N |
+| `realm world-turn ID N DEG` | `realm_world_turn` | `turn N DEG` | Turns it |
+| `realm world-set ID N COLUMN VALUE` | `realm_world_set` | `set N COLUMN VALUE` | Sets a column |
+| `realm world-remove ID N` | `realm_world_remove` | `remove N` | Removes it |
+| `realm world-undo ID`, `world-redo ID` | `realm_world_undo`, `realm_world_redo` | `undo`, `redo` | Walks the world's undo log |
+| `realm world-original ID` | `realm_world_original` | `original` | Removes every placed thing |
+| `realm world-apply ID FILE.jsonl` | `realm_world_apply` | `apply FILE.jsonl` | Edits as JSON lines, one batch |
+| `realm world-publish ID now\|next --yes` | `realm_world_publish` | `publish now --yes` | Makes dev live |
+| `realm world-why ID THING` | `realm_world_why` | `why ID` | Why a thing isn't seen, reached or working |
+| `realm world-open ID` | `realm_world_open` | | The address of the page that edits it |
+
+Places are whole centimetres. Each write answers
+[one result](realm-result-v1.md): the new revision, or the refusal in words.
+`--shot OUT.png` adds a frame of the page at the edit's revision.
+`--dry-run` carries the batch out in a copy and saves nothing.
+
+Not built: `new`. A world gets its ID from a migration today (Splice). Making
+one from the command line comes with WorldBuilder's worlds (E13, #13422).
+
+### An agent edits and checks in one session
+
+```sh
+coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9538 --build true
+coax/web/tool.sh drive web apps/openagents-web /worlds/splice --query edit --live http://127.0.0.1:9538 \
+  "world" "place 113 17720 -7060" "where" "why piece-0" "screenshot out.png"
+```
+
+With `--live` the driver uses the dev server that is running, so the page is
+the one that reloads when code, shaders or content change. An edit is sent for
+the revision the page stands at: a page that shows another revision is
+refused, never edited. The driver waits until the page stands at the new
+revision and says so.

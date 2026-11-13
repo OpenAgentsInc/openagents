@@ -26,6 +26,7 @@ McpCfg :: struct { read_only: bool; profile: string; origin: string; exe: string
 mcp_offered :: (c: CliCommand, read_only: bool) -> bool {
   if !read_only { return true; }
   // a seat changes nothing on the server, except a character's chat and a visitor's build proposal
+  if c.route == "world" { return c.effect == "read"; }   // a world's rows say what they do (#13435)
   return c.method == "GET" || c.verb == "shot" || (c.route == "seat" && c.verb != "say" && c.verb != "use");
 }
 // The property a positional argument becomes: metres are x then z.
@@ -35,6 +36,8 @@ mcp_arg_name :: (kind: string, index_of_kind: int) -> string {
   if kind == "onoff" { return "on"; }
   if kind == "lore" { return "text"; }
   if kind == "shotfile" { return "out"; }
+  if kind == "cm" { return ifx index_of_kind == 0 then "x" else "z"; }   // a world's place, centimetres
+  if kind == "target" { return "target"; }
   return kind;
 }
 // The property a flag becomes: --as-me is as_me.
@@ -58,7 +61,7 @@ mcp_schema_kind :: (o: [] Jo, kind: string) {
   jo_obj(o);
   b := rc_bound(kind);
   if kind == "bool" { jo_key(o, "type"); jo_str(o, "boolean"); }
-  else if kind == "id" || kind == "waitms" {
+  else if kind == "id" || kind == "waitms" || kind == "cm" || kind == "value" || kind == "kind" {
     jo_key(o, "type"); jo_str(o, "integer"); jo_key(o, "minimum"); jo_int(o, b.min); jo_key(o, "maximum"); jo_int(o, b.max);
   } else if kind == "seconds" {
     jo_key(o, "type"); jo_str(o, "integer"); jo_key(o, "minimum"); jo_int(o, b.min); jo_key(o, "maximum"); jo_int(o, b.max);
@@ -68,6 +71,12 @@ mcp_schema_kind :: (o: [] Jo, kind: string) {
     jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "enum"); jo_arr(o); for t: CLI_SEAT_THINGS { jo_str(o, t); } jo_end(o);
   } else if kind == "metres" || kind == "yaw" || kind == "turn" || kind == "pitch" {
     jo_key(o, "type"); jo_str(o, "number"); jo_key(o, "minimum"); jo_int(o, b.min); jo_key(o, "maximum"); jo_int(o, b.max);
+  } else if kind == "column" {
+    jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "enum"); jo_arr(o); for t: CLI_WORLD_COLUMNS { jo_str(o, t); } jo_end(o);
+  } else if kind == "when" {
+    jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "enum"); jo_arr(o); jo_str(o, "now"); jo_str(o, "next"); jo_end(o);
+  } else if kind == "lane" {
+    jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "enum"); jo_arr(o); jo_str(o, "dev"); jo_str(o, "live"); jo_end(o);
   } else if kind == "onoff" {
     jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "enum"); jo_arr(o); jo_str(o, "on"); jo_str(o, "off"); jo_end(o);
   } else if kind == "visibility" {
@@ -88,19 +97,30 @@ mcp_optional_at :: (c: CliCommand, at: int, count: int) -> bool {
   if at >= count - c.optional { return true; }
   return (c.verb == "new" && at == 0) || ((c.verb == "ask" || c.verb == "go") && at == 1);
 }
+// A row's flags with the two every row that is not a read takes: --dry-run and --key (commands.coax rc_flag_kind, #13436).
+mcp_flags :: (c: CliCommand, out: [] u8) -> string {
+  n := copy(c.flags, out);
+  if c.effect == "read" || n < 0 { return c.flags; }
+  m := copy(ifx n > 0 then "|--dry-run:bool|--key:key" else "--dry-run:bool|--key:key", out[n..<out.count]);
+  return ifx m < 0 then c.flags else cast(string) out[0..<n + m];
+}
 mcp_tool :: (o: [] Jo, c: CliCommand) {
-  nm: [64] u8; fl: [64] u8;
+  nm: [64] u8; fl: [64] u8; mfb: [400] u8;
   jo_obj(o);
   jo_key(o, "name"); jo_str(o, mcp_tool_name(c.verb, nm[..]));
-  jo_key(o, "description"); jo_str(o, c.help);
+  // the row's help, then its effect and approval (commands.coax rc_effect_note, #13435)
+  db: [1024] u8; eb: [64] u8;
+  dn := copy(c.help, db[..]); note := rc_effect_note(c, eb[..]);
+  for ch: note { if dn < db.count { db[dn] = ch; dn += 1; } }
+  jo_key(o, "description"); jo_str(o, cast(string) db[0..<dn]);
   jo_key(o, "inputSchema"); jo_obj(o);
   jo_key(o, "type"); jo_str(o, "object");
   jo_key(o, "properties"); jo_obj(o);
   count := 0; while cli_field(c.arguments, count) != "" { count += 1; }
   for i: 0..<count { kind := cli_field(c.arguments, i); jo_key(o, mcp_arg_name(kind, mcp_kind_index(c, i))); mcp_schema_kind(o, kind); }
   i := 0;
-  while cli_field(c.flags, i) != "" {
-    f := cli_field(c.flags, i); colon := 0;
+  while cli_field(mcp_flags(c, mfb[..]), i) != "" {
+    f := cli_field(mcp_flags(c, mfb[..]), i); colon := 0;
     while colon < f.count && f[colon] != ':' { colon += 1; }
     jo_key(o, mcp_flag_name(f[0..<colon], fl[..]));
     mcp_schema_kind(o, ifx colon < f.count then f[colon+1..<f.count] else "bool");
@@ -112,7 +132,12 @@ mcp_tool :: (o: [] Jo, c: CliCommand) {
   jo_end(o);
   jo_key(o, "additionalProperties"); jo_bool(o, false);
   jo_end(o);
-  if c.method == "GET" { jo_key(o, "annotations"); jo_obj(o); jo_key(o, "readOnlyHint"); jo_bool(o, true); jo_end(o); }
+  // the hints an MCP client reads, from the row's effect: a read changes nothing, and what can't be undone says so
+  if c.effect == "read" || c.effect == "destructive" {
+    jo_key(o, "annotations"); jo_obj(o);
+    if c.effect == "read" { jo_key(o, "readOnlyHint"); jo_bool(o, true); } else { jo_key(o, "destructiveHint"); jo_bool(o, true); }
+    jo_end(o);
+  }
   jo_end(o);
 }
 mcp_find_tool :: (name: string) -> int {
@@ -142,7 +167,7 @@ mcp_word :: (v: [] McpArgv, d: Jv, at: int) -> bool {
 // Builds `EXE realm VERB POSITIONALS... FLAGS... --json [--profile P] [--origin O]`.
 // shot_out is used for shot's file when the call names none.
 mcp_argv :: (v: [] McpArgv, cfg: McpCfg, c: CliCommand, d: Jv, args: int, shot_out: string) {
-  nm: [64] u8;
+  nm: [64] u8; mfb: [400] u8;
   v[0].n = 0; v[0].used = 0; v[0].err = "";
   if args >= 0 && jv_kind(d, args) != JV_OBJECT { v[0].err = "arguments must be an object"; return; }
   // every given key must be one of the tool's properties
@@ -151,8 +176,8 @@ mcp_argv :: (v: [] McpArgv, cfg: McpCfg, c: CliCommand, d: Jv, args: int, shot_o
     key := jv_key(d, m); known := false;
     ai := 0; while cli_field(c.arguments, ai) != "" { if mcp_arg_name(cli_field(c.arguments, ai), mcp_kind_index(c, ai)) == key { known = true; } ai += 1; }
     fi := 0;
-    while cli_field(c.flags, fi) != "" {
-      f := cli_field(c.flags, fi); colon := 0; while colon < f.count && f[colon] != ':' { colon += 1; }
+    while cli_field(mcp_flags(c, mfb[..]), fi) != "" {
+      f := cli_field(mcp_flags(c, mfb[..]), fi); colon := 0; while colon < f.count && f[colon] != ':' { colon += 1; }
       if mcp_flag_name(f[0..<colon], nm[..]) == key { known = true; }
       fi += 1;
     }
@@ -189,6 +214,12 @@ mcp_argv :: (v: [] McpArgv, cfg: McpCfg, c: CliCommand, d: Jv, args: int, shot_o
     }
     mcp_push(v, flag);
     if !mcp_word(v, d, at) { return; }
+  }
+  // the two every row that is not a read takes (commands.coax rc_flag_kind)
+  if c.effect != "read" {
+    dry := jv_get(d, args, "dry_run"); key := jv_get(d, args, "key");
+    if dry >= 0 { if jv_kind(d, dry) != JV_TRUE && jv_kind(d, dry) != JV_FALSE { v[0].err = "a flag has the wrong type"; return; } if jv_bool(d, dry) { mcp_push(v, "--dry-run"); } }
+    if key >= 0 { mcp_push(v, "--key"); if !mcp_word(v, d, key) { return; } }
   }
   mcp_push(v, "--json");
   if cfg.profile != "" { mcp_push(v, "--profile"); mcp_push(v, cfg.profile); }
@@ -332,6 +363,13 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
   out: [262144] u8; cfg := McpCfg.{exe="openagents"};
   s := mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", cfg, out[..], false);
   #assert acct_has(s, "\"name\":\"realm_ask_delete\"") && acct_has(s, "\"name\":\"realm_apply\"");
+  // the rows that edit a world with an ID are tools like the rest (#13415): places in whole centimetres, and
+  // each tool's description ends with what it does and who must agree (#13435)
+  #assert acct_has(s, "\"name\":\"realm_world\"") && acct_has(s, "\"name\":\"realm_world_place\"") && acct_has(s, "\"name\":\"realm_world_undo\"") && acct_has(s, "\"name\":\"realm_world_why\"") && acct_has(s, "\"name\":\"realm_world_publish\"");
+  #assert acct_has(s, "\"required\":[\"slug\",\"kind\",\"x\",\"z\"]") && acct_has(s, "\"x\":{\"type\":\"integer\",\"minimum\":-10000000,\"maximum\":10000000}") && acct_has(s, "\"when\":{\"type\":\"string\",\"enum\":[\"now\",\"next\"]}");
+  #assert acct_has(s, "\"column\":{\"type\":\"string\",\"enum\":[\"x\",\"y\",\"z\",\"yaw\"") && acct_has(s, "one save [write; the owner]\"") && acct_has(s, "delete a board row [destructive; asks first: --yes]\"") && acct_has(s, "your realms [read]\"");
+  #assert acct_has(s, "\"dry_run\":{\"type\":\"boolean\"}") && acct_has(s, "\"key\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":64}");
+  #assert acct_has(s, "\"annotations\":{\"destructiveHint\":true}") && acct_has(s, "\"annotations\":{\"readOnlyHint\":true}");
   #assert acct_has(s, "\"x\":{\"type\":\"number\",\"minimum\":-40,\"maximum\":40}");
   #assert acct_has(s, "\"required\":[\"slug\",\"entity\",\"x\",\"z\"]");
   #assert acct_has(s, "\"on\":{\"type\":\"string\",\"enum\":[\"on\",\"off\"]}");
@@ -339,8 +377,8 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
   // the seat's rows: degrees and seconds as numbers, tools and things as their words, go's target optional
   #assert acct_has(s, "\"turn\":{\"type\":\"number\",\"minimum\":-180,\"maximum\":180}") && acct_has(s, "\"max\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":30}");
   #assert acct_has(s, "\"tool\":{\"type\":\"string\",\"enum\":[\"jump\",\"map\",\"build\"]}") && acct_has(s, "\"enum\":[\"crate\",\"barrel\",\"tree\",\"rock\",\"plant\",\"lantern\",\"fence\",\"chest\"]");
-  #assert acct_has(s, "\"name\":\"realm_go\"") && acct_has(s, "\"x\":{\"type\":\"number\",\"minimum\":-40,\"maximum\":40},\"z\":{\"type\":\"number\",\"minimum\":-40,\"maximum\":40},\"max\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":30}},\"required\":[\"slug\"]");
-  #assert acct_has(s, "\"words\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":400}},\"required\":[\"slug\",\"words\"]");
+  #assert acct_has(s, "\"name\":\"realm_go\"") && acct_has(s, "\"x\":{\"type\":\"number\",\"minimum\":-40,\"maximum\":40},\"z\":{\"type\":\"number\",\"minimum\":-40,\"maximum\":40},\"max\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":30},\"dry_run\":{\"type\":\"boolean\"},\"key\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":64}},\"required\":[\"slug\"]");
+  #assert acct_has(s, "\"words\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":400},\"dry_run\":{\"type\":\"boolean\"},\"key\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":64}},\"required\":[\"slug\",\"words\"]");
   #assert acct_has(s, "\"required\":[\"slug\",\"tool\"]");
   cfg.read_only = true;
   s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", cfg, out[..], false);

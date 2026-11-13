@@ -1,0 +1,119 @@
+{
+ "profile": "realm-result-v1",
+ "version": 1,
+ "title": "One result for every realm operation v1 (realm.result.v1)",
+ "check": "coax/web/tool.sh metaverse-engine/tools/op-result-profile.coax proto/world/result-v1.json",
+ "spec": "docs/protocol/realm-result-v1.md",
+ "schema": "realm.result.v1",
+ "about": "What the CLI, the realm_* MCP tools, coax drive and the editor's agent strip answer after an operation (GitHub #13436): done with the new revision, running with a job, needs approval, a dry run with its level, refused with a diagnostic code and whether a retry can help, or unknown when no answer came. Every result names the realm, the revision, the build and the page it touched (#13437). metaverse-engine/editor/op-result.coax writes and reads it and is the one list of the codes.",
+ "states": [
+  "done",
+  "running",
+  "needs-approval",
+  "dry-run",
+  "refused",
+  "unknown"
+ ],
+ "levels": [
+  "schema",
+  "world",
+  "change",
+  "copy"
+ ],
+ "rule": "A code's number and retry are never changed, and a number is never used again.",
+ "codes": [
+  {
+   "number": 1,
+   "id": "realm-authoring.diagnostic.stale-revision.v1",
+   "name": "stale-revision",
+   "retry": true,
+   "means": "Made from another revision than the realm's. Read the realm again, then repeat."
+  },
+  {
+   "number": 2,
+   "id": "realm-authoring.diagnostic.edit-refused.v1",
+   "name": "edit-refused",
+   "retry": false,
+   "means": "The realm's own check refused an edit. The words name the rule or the zone."
+  },
+  {
+   "number": 3,
+   "id": "realm-authoring.diagnostic.not-permitted.v1",
+   "name": "not-permitted",
+   "retry": false,
+   "means": "The caller may not do this to this realm."
+  },
+  {
+   "number": 4,
+   "id": "realm-authoring.diagnostic.not-found.v1",
+   "name": "not-found",
+   "retry": false,
+   "means": "No realm, entity or step has this name."
+  },
+  {
+   "number": 5,
+   "id": "realm-authoring.diagnostic.bad-request.v1",
+   "name": "bad-request",
+   "retry": false,
+   "means": "The arguments are not a request this operation takes."
+  },
+  {
+   "number": 6,
+   "id": "realm-authoring.diagnostic.nothing-to-do.v1",
+   "name": "nothing-to-do",
+   "retry": false,
+   "means": "There was nothing to do: nothing to undo, nothing new to publish."
+  },
+  {
+   "number": 7,
+   "id": "realm-authoring.diagnostic.no-answer.v1",
+   "name": "no-answer",
+   "retry": true,
+   "means": "The request was sent and no answer came. It may have been saved: read the realm's revision before repeating it."
+  },
+  {
+   "number": 8,
+   "id": "realm-authoring.diagnostic.operation-failed.v1",
+   "name": "operation-failed",
+   "retry": true,
+   "means": "The server or the tool failed. Nothing was saved."
+  }
+ ],
+ "results": [
+  {
+   "state": "done",
+   "wire": "{\"schema\":\"realm.result.v1\",\"state\":\"done\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\"}"
+  },
+  {
+   "state": "running",
+   "wire": "{\"schema\":\"realm.result.v1\",\"state\":\"running\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\",\"job\":\"job-7\"}"
+  },
+  {
+   "state": "needs-approval",
+   "wire": "{\"schema\":\"realm.result.v1\",\"state\":\"needs-approval\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\",\"approval\":\"confirm\"}"
+  },
+  {
+   "state": "dry-run",
+   "wire": "{\"schema\":\"realm.result.v1\",\"state\":\"dry-run\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\",\"level\":\"copy\"}"
+  },
+  {
+   "state": "refused",
+   "wire": "{\"schema\":\"realm.result.v1\",\"state\":\"refused\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\",\"code\":\"realm-authoring.diagnostic.edit-refused.v1\",\"retry\":false,\"words\":\"in the kept-clear zone 'Scanner gate'\",\"edit\":1}"
+  },
+  {
+   "state": "unknown",
+   "wire": "{\"schema\":\"realm.result.v1\",\"state\":\"unknown\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\",\"code\":\"realm-authoring.diagnostic.no-answer.v1\",\"retry\":true,\"words\":\"no answer came\"}"
+  }
+ ],
+ "rejected": [
+  "",
+  "{}",
+  "{\"schema\":\"realm.result.v1\",\"state\":\"done\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\"",
+  " {\"schema\":\"realm.result.v1\",\"state\":\"done\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\"}",
+  "{\"schema\":\"realm.result.v2\",\"state\":\"done\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\"}",
+  "{\"schema\":\"realm.result.v1\",\"state\":\"finished\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\"}",
+  "{\"schema\":\"realm.result.v1\",\"state\":\"dry-run\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\",\"level\":\"deep\"}",
+  "{\"schema\":\"realm.result.v1\",\"state\":\"refused\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\",\"code\":\"realm-authoring.diagnostic.edit-refused.v1\",\"retry\":true,\"words\":\"in the kept-clear zone 'Scanner gate'\",\"edit\":1}",
+  "{\"schema\":\"realm.result.v1\",\"state\":\"unknown\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\",\"code\":\"realm-authoring.diagnostic.stale-revision.v1\",\"retry\":true,\"words\":\"no answer came\"}"
+ ]
+}

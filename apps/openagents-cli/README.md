@@ -328,6 +328,20 @@ save and undo step. Other batch operations run separately. The first refusal
 stops the batch and reports `applied`, the failing line and the known revision.
 A batch is not atomic.
 
+Every row says its effect and who must agree (`[write; the owner]`), and the
+help and the MCP tool's description print it. A two-step row (`publish`,
+`ask-delete`, `row-delete`, `world-publish`) does nothing without `--yes`.
+Every command that is not a read takes `--dry-run` and `--key K`
+([the result shape](../../docs/protocol/realm-result-v1.md)).
+
+A world with an ID (Splice is the first) is edited by the `world` rows:
+`realm world ID`, `world-place`, `world-move`, `world-turn`, `world-set`,
+`world-remove`, `world-undo`, `world-redo`, `world-original`, `world-apply`,
+`world-publish`, `world-why` and `world-open`
+([the list](../../docs/protocol/world-edit-v1.md)). Places are whole
+centimetres. A `world-apply` batch is atomic: all its edits are saved or none.
+`--origin http://127.0.0.1:PORT` sends them to `coax serve`.
+
 New edit routes require migration 0102 and the `edit-v1` server family;
 older servers refuse them before effects, including in rolling deployments.
 Side-table edits (lore, quests and asks) consume revisions for ordering;

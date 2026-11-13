@@ -1,8 +1,12 @@
 // coax drive (GitHub #13095; docs/research/exact/03-what-to-adapt.md): an agent drives a realm by
 // ids, one operation an argument, in one live session of headless Chrome (no window, muted).
-//   coax/web/tool.sh drive web APP_DIR PATH [--query Q] [--size WxH] [--port N] [--within MS] [--real-time] OP...
+//   coax/web/tool.sh drive web APP_DIR PATH [--query Q] [--size WxH] [--port N] [--live ORIGIN] [--within MS] [--real-time] OP...
 //   coax/web/tool.sh drive web apps/openagents-web /worlds/everglade2 tree "walk-to guard" \
 //     "use 1 on goblin-5" "clock +2000" "state you_x" "screenshot out.png"
+// With --live ORIGIN (http://127.0.0.1:PORT) it drives the dev server that is already running there
+// (coax/web/serve.sh APP_DIR --listen 127.0.0.1:PORT) instead of serving a copy: the page is the one
+// that reloads when code, shaders or content change, and the world's routes answer, so an agent edits
+// and checks the result in one session.
 // It serves APP_DIR as it is built (coax/web/serve.sh --static, on a free port above 9000), opens
 // PATH, waits for the first scene, then runs each operation in order and prints its answer:
 //   tree | layout                 the world's entities by id, then the HUD's widgets (metaverse-engine/agent/drive.coax)
@@ -32,6 +36,16 @@
 //   clock until PATH [OP VALUE] [within MS]
 //                                 steps until the state's field compares so (OP: == != < > <= >=; with no
 //                                 OP, until it isn't 0 or false), at most MS (--within); it fails if not
+//   world | place KIND X Z | move N X Z | turn N DEG | set N COLUMN VALUE | remove N | undo | redo | original
+//   apply FILE.jsonl | publish now|next --yes
+//                                 an edit to the world the page shows (--live): each is the realm command of the
+//                                 same name (`openagents realm world-place ...`, a row of REALM_COMMANDS in
+//                                 apps/openagents-cli/commands.coax), sent for the revision the page stands at, so a
+//                                 page showing another revision is refused, never edited. It answers the result
+//                                 (realm.result.v1: done with the new revision, or the refusal in words), waits
+//                                 until the page stands at that revision, and names what it touched: the realm,
+//                                 the revision, the build and the page. `world` lists the world (#13415, #13437)
+//   where                         where the player stands, in centimetres
 //   screenshot OUT.png            the page as it is
 //   logs                          the page's console and errors since the last `logs`
 //   prefer color-scheme dark|light | prefer reduced-motion reduce|no-preference | prefer size WxH
@@ -399,6 +413,8 @@ dv_app_of :: (html: string) -> string {
 DvS :: struct {
   c: [1] Cdp; serve: int = -1; port: int; within: int = 30000;
   agent: bool = true;   // the agent clock (false: --real-time)
+  live: bool;           // --live: the dev server at `origin`, already running; the world's routes answer there
+  origin: [64] u8; origin_n: int; world: [40] u8; world_n: int; cli: [1200] u8; cli_n: int;
   dom: bool;            // a page the browser draws (coax/web/dom-host.js): no engine driver, no world, no agent clock
   lay: [DV_FILE] u8; lay_n: int; root: [128] u8; root_n: int;
   value: [1048576] u8;
@@ -617,6 +633,12 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
     }
   }
   if w0 == "tree" || w0 == "layout" || w0 == "status" || w0 == "target" || w0 == "why" { dv_s(out, dv_send(s, op)); return true; }
+  if dv_world_verb(w0) { return dv_world(s, op, out); }
+  if w0 == "where" {
+    x := dv_int_signed(dv_eval(s, "String(globalThis.coaxial?.fieldProbe?.(7) ?? -1000000000)")); z := dv_int_signed(dv_eval(s, "String(globalThis.coaxial?.fieldProbe?.(8) ?? -1000000000)"));
+    if x <= -1000000000 { dv_s(out, "this page does not say where the player stands"); return false; }
+    dv_s(out, "player "); dv_i(out, x); dv_s(out, " "); dv_i(out, z); dv_s(out, " (centimetres)"); return true;
+  }
   if w0 == "walk-to" || w0 == "face" || w0 == "use" || w0 == "mount" || w0 == "stop" {
     first := dv_send(s, op);
     if !dv_has(first, ": going") { dv_s(out, first); return true; }
@@ -662,7 +684,14 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
     if path.count == 0 { dv_s(out, "screenshot takes a file: screenshot out.png"); return false; }
     png: [MEDIA_PNG] u8; n := cdp_screenshot(s[0].c[..], png[..]);
     if n < 0 || !fs_write(path, cast(string) png[0..<n]) { dv_s(out, "no screenshot: "); dv_s(out, cdp_error(s[0].c[..])); return false; }
-    dv_s(out, path); return true;
+    dv_s(out, path);
+    // a picture names what it is of (#13437): the world and the revision the page stands at, the camera, and the GPU
+    rev := dv_int_signed(dv_eval(s, "String(globalThis.coaxial?.fieldProbe?.(0) ?? -1)"));
+    if s[0].world_n > 0 && rev >= 0 {
+      dv_s(out, "\nof /worlds/"); dv_s(out, cast(string) s[0].world[0..<s[0].world_n]); dv_s(out, " rev "); dv_i(out, rev);
+      dv_s(out, "; the page's own camera; headless Chrome, WebGPU adapter: "); ab: [256] u8; dv_s(out, cdp_adapter(s[0].c[..], ab[..]));
+    }
+    return true;
   }
   if w0 == "logs" {
     v := dv_eval(s, "(globalThis.__driveLogs || []).splice(0).join('\\n')");
@@ -682,6 +711,53 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
   }
   dv_s(out, "unknown operation '"); dv_s(out, w0); dv_s(out, "': tree, layout, state, why, hit, taps, tap, type, walk-to, face, use, mount, stop, status, clock, screenshot, logs, prefer, perf");
   return false;
+}
+// ---- a world's edits (GitHub #13415): the realm commands, sent for the revision the page shows
+DV_WORLD_VERBS :: [11] string.["world", "place", "move", "turn", "set", "remove", "undo", "redo", "original", "apply", "publish"];
+dv_world_verb :: (w: string) -> bool { for v: DV_WORLD_VERBS { if v == w { return true; } } return false; }
+dv_int_signed :: (s: string) -> int { return ifx s.count > 1 && s[0] == '-' then -dv_int(s[1..<s.count]) else dv_int(s); }
+#test "a world's verbs are the realm command's rows, by their last word" {
+  #assert dv_world_verb("place") && dv_world_verb("undo") && dv_world_verb("world") && !dv_world_verb("tree") && !dv_world_verb("") && !dv_world_verb("world-place");
+  #assert dv_int_signed("-7060") == -7060 && dv_int_signed("17720") == 17720;
+}
+// A member of a one-line JSON object as its raw text ("" when absent): the CLI's --json answer.
+dv_member :: (text: string, key: string, nodes: [] JvNode) -> string {
+  d: [1] Jv;
+  if !jv_parse(d[..], text, nodes) { return ""; }
+  return jv_raw(d[0], jv_get(d[0], 0, key));
+}
+dv_world :: (s: [] DvS, op: string, out: [] Dv) -> bool {
+  w0 := dv_word(op, 0);
+  if !s[0].live { dv_s(out, "an edit needs the dev server, where the world's routes answer: start it (coax/web/serve.sh APP_DIR --listen 127.0.0.1:PORT) and add --live http://127.0.0.1:PORT"); return false; }
+  if s[0].world_n == 0 { dv_s(out, "this page shows no world with an ID (a world's page is /worlds/ID)"); return false; }
+  world := cast(string) s[0].world[0..<s[0].world_n];
+  rev := dv_int_signed(dv_eval(s, "String(globalThis.coaxial?.fieldProbe?.(0) ?? -1)"));
+  if rev < 0 { dv_s(out, "the page does not stand at a revision of its world yet: open it with --query edit, then `clock +500`"); return false; }
+  // the realm command of the same name, for the revision the page shows
+  argv: [24] string; n := 0; vb: [32] u8; rb: [24] u8;
+  verb := dv_cat2(ifx w0 == "world" then "world" else "world-", ifx w0 == "world" then "" else w0, vb[..]);
+  argv[0] = cast(string) s[0].cli[0..<s[0].cli_n]; argv[1] = "realm"; argv[2] = verb; argv[3] = world; n = 4;
+  k := 1;
+  while dv_word(op, k).count > 0 && n < argv.count - 6 { argv[n] = dv_word(op, k); n += 1; k += 1; }
+  if w0 != "world" && rev > 0 { rt: [1] Dv; dv_i(rt[..], rev); for c, i: dv_text(rt[..]) { rb[i] = c; } argv[n] = "--rev"; argv[n + 1] = cast(string) rb[0..<rt[0].n]; n += 2; }
+  argv[n] = "--origin"; argv[n + 1] = cast(string) s[0].origin[0..<s[0].origin_n]; n += 2;
+  if w0 != "world" { argv[n] = "--json"; n += 1; }
+  ans: [1048576] u8; err: [8192] u8;
+  ran := proc_run(argv[0..<n], 60000, ans[..], err[..]);
+  if ran.status < 0 || ran.timed_out { dv_s(out, "the realm command did not run: build it (apps/openagents-cli/build.sh)"); return false; }
+  text := cast(string) ans[0..<ran.out_n];
+  if w0 == "world" { dv_s(out, text); if ran.status != 0 { dv_s(out, cast(string) err[0..<ran.err_n]); } return ran.status == 0; }
+  nodes: [4096] JvNode;
+  result := dv_member(text, "result", nodes[..]); state := dv_member(text, "state", nodes[..]); to := dv_int(dv_member(text, "rev", nodes[..]));
+  if result.count == 0 { dv_s(out, "the realm command gave no result: "); dv_s(out, text); dv_s(out, cast(string) err[0..<ran.err_n]); return false; }
+  dv_s(out, result);
+  if state != "done" { return state == "dry-run"; }
+  // the page takes the edit as an event: step until it stands at the new revision
+  waited := 0; at := rev;
+  while at < to && waited < s[0].within { dv_pass(s, 50); waited += 50; at = dv_int_signed(dv_eval(s, "String(globalThis.coaxial?.fieldProbe?.(0) ?? -1)")); }
+  dv_s(out, "\npage /worlds/"); dv_s(out, world); dv_s(out, " realm "); dv_s(out, world); dv_s(out, " rev "); dv_i(out, at);
+  dv_s(out, ifx at >= to then " (the page stands at the edit's revision" else " (the page has not reached the edit's revision"); dv_s(out, " after "); dv_i(out, waited); dv_s(out, " ms)");
+  return at >= to;
 }
 dv_cat2 :: (a: string, b: string, t: [] u8) -> string {
   n := 0;
@@ -775,7 +851,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   if !args_load(a[..]) || args_count(a[..]) < 3 || args_at(a[..], 0) != "web" { return dv_usage(); }
   app_dir := args_at(a[..], 1); path := args_at(a[..], 2);
-  query := ""; size := "1280x800"; port := -1; within := 30000; agent := true;
+  query := ""; size := "1280x800"; port := -1; within := 30000; agent := true; live := "";
   ops: [64] string; n_ops := 0;
   i := 3;
   while i < args_count(a[..]) {
@@ -785,6 +861,7 @@ tool_main :: () -> int #export_c #effects(all) {
       if x == "--query" { query = v; } else if x == "--size" { size = v; } else if x == "--port" { port = dv_int(v); } else { within = dv_int(v); }
       i += 2; continue;
     }
+    if x == "--live" && i + 1 < args_count(a[..]) { live = args_at(a[..], i + 1); i += 2; continue; }
     if x == "--real-time" { agent = false; i += 1; continue; }
     if n_ops >= ops.count { tool_errln("drive: at most 64 operations a run"); return 2; }
     ops[n_ops] = x; n_ops += 1; i += 1;
@@ -816,6 +893,19 @@ tool_main :: () -> int #export_c #effects(all) {
   if changed.count > 0 { tool_err("drive: refused: build/"); tool_err(app); tool_err(".wasm is older than its sources ("); tool_err(changed); tool_errln(" changed). Rebuild:"); tool_errln(rebuild); return 1; }
   t[0].n = 0; dv_s(t[..], root); dv_s(t[..], "/"); dv_s(t[..], app_dir); dv_s(t[..], "/build/.drive/"); dv_s(t[..], app); dv_s(t[..], ".layout");
   s[0].lay_n = fs_read(dv_text(t[..]), s[0].lay[..]);
+  // the world the page shows, and the realm command an edit is sent with
+  if dv_starts(path, "/worlds/") { wid := path[8..<path.count]; if wid.count <= s[0].world.count { for c, k: wid { s[0].world[k] = c; } s[0].world_n = wid.count; } }
+  ct2: [1] Dv; dv_s(ct2[..], root); dv_s(ct2[..], "/apps/openagents-cli/build/openagents");
+  for c, k: dv_text(ct2[..]) { if k < s[0].cli.count { s[0].cli[k] = c; } } s[0].cli_n = ct2[0].n;
+  if live.count > 0 {
+    // --live: the dev server already running at ORIGIN; nothing is started or stopped here
+    head := "http://127.0.0.1:";
+    lp := ifx dv_starts(live, head) then dv_int(live[head.count..<live.count]) else -1;
+    if lp <= 0 || live.count > s[0].origin.count { tool_errln("drive: --live is the dev server's origin, http://127.0.0.1:PORT"); return 2; }
+    for c, k: live { s[0].origin[k] = c; } s[0].origin_n = live.count;
+    s[0].live = true; s[0].port = lp;
+    return dv_session(s[..], path, query, wh, ops[0..<n_ops]);
+  }
   // serve the app as built, on a free port above 9000
   serve_sh: [1] Dv; dv_s(serve_sh[..], root); dv_s(serve_sh[..], "/coax/web/serve.sh");
   appd: [1] Dv; dv_s(appd[..], root); dv_s(appd[..], "/"); dv_s(appd[..], app_dir);

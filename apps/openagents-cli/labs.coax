@@ -282,6 +282,12 @@ lb_shot_one :: (r: [] Rep, ch: [] DkChrome, j: LbShotJob, value: [] u8, why: [] 
 labs_shot :: (a: [] Args, r: [] Rep, profile: string) -> int { return labs_shot_as(a, r, profile, ""); }
 // A shot; player (realm shot --as-me) the seat's own player the page plays with.
 labs_shot_as :: (a: [] Args, r: [] Rep, profile: string, player: string) -> int {
+  code := labs_shot_fill(a, r, profile, player);
+  return ifx code == EXIT_OK then rep_done(r, EXIT_OK) else code;
+}
+// The shot taken and its facts put in the report, which the caller ends (rep_done): a realm command
+// that takes a frame with its answer adds its own facts first (realm-world.coax).
+labs_shot_fill :: (a: [] Args, r: [] Rep, profile: string, player: string) -> int {
   target := positional(a, 2); out := positional(a, 3);
   if target == "" || out == "" { return fail(r, EXIT_USAGE, "labs shot URL OUT.png [--size WxH|--phone] [--wait MS] [--eval JS] [--dark] [--fresh]"); }
   if player == "" && args_has(a, "--as-me") { return fail(r, EXIT_USAGE, LB_AS_ME); }
@@ -305,7 +311,7 @@ labs_shot_as :: (a: [] Args, r: [] Rep, profile: string, player: string) -> int 
   if done.value_n >= 0 { rep_str(r, "eval", cast(string) value[0..<done.value_n]); }
   rep_bool(r, "cached", done.cached);
   rep_str(r, "label", lb_label_path(out, lp[..]));
-  return rep_done(r, EXIT_OK);
+  return EXIT_OK;
 }
 // The text up to the first zero byte.
 lb_cstr :: (b: [] u8) -> string { n := 0; while n < b.count && b[n] != 0 { n += 1; } return cast(string) b[0..<n]; }
@@ -340,6 +346,11 @@ labs_realm_shot :: (a: [] Args, r: [] Rep, profile: string) -> int {
     if s.count > 1 && s[0] == '-' && s[1] == '-' { ok = ok && args_add(b[..], s); if takes_value(s) && i + 1 < args_count(a) { ok = ok && args_add(b[..], args_at(a, i + 1)); } }
   }
   if !ok { if as_me { t := seat_tell(a, profile, g[0].id, "close"); } return fail(r, EXIT_USAGE, "arguments too long"); }
+  // the picture names what it is of (#13437): the realm, the revision its spec stood at, the page,
+  // the camera and the GPU. A shot here is always headless Chrome's
+  rep_str(r, "shot_realm", slug);
+  if api_ok(seen) { sv := cli_count(forge_spec_value(cast(string) sb[0..<seen.n], "rev"), 1, 999999999); if sv >= 1 { rep_int(r, "shot_rev", sv); } }
+  rep_str(r, "shot_page", cast(string) path[0..<n]); rep_str(r, "shot_camera", "the page's own"); rep_str(r, "shot_gpu", "headless");
   code := labs_shot_as(b[..], r, profile, player);
   if as_me { t := seat_tell(a, profile, g[0].id, "close"); }
   return code;

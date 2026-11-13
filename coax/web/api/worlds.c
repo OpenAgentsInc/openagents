@@ -9,7 +9,12 @@
 //                                                edits, undo, redo, original, publish-now or
 //                                                publish-next. 409 on a stale revision; 422 with
 //                                                the refusal in words when an edit may not stand
+//        ?dry=1                                  the batch is carried out whole in a throwaway copy of
+//                                                the world and nothing is saved: the answer is the
+//                                                state as it stands with the batch as it would be taken
 //   GET  /api/worlds/<id>/events?lane=L&after=N  the lane's saved events after revision N, a line each
+//   GET  /api/worlds/<id>/content                the realm's content tables (aethyr.content.v1): what a
+//                                                caller reads to aim an edit
 //
 // This file moves facts in and answers out. The rules are Coax: who may write, the revision
 // fence, the undo log and the dev and live rule are world-policy.coax's (#authority); whether an
@@ -250,6 +255,15 @@ static void world_post(const request *q, PGconn *db, const char *id) {
     goto done;
   }
   out_doc[n[0]] = 0; did[n[1]] = 0; inv[n[2]] = 0;
+  char dry[4] = "";
+  if (api_query(q, "dry", dry, sizeof dry) && dry[0] == '1') {
+    // a dry run: the world's own code carried it out in a copy; nothing is saved (#13436)
+    rollback(db);
+    long long here[4] = {0, 0, 0, 0};
+    kind_pins(w.kind, here);
+    answer_state(q, id, (int)wr_lane(cs("dev")), w.dev_rev, here, &w, w.dev_rev, w.live_rev, w.done, w.steps, "", 0, did, (size_t)n[1]);
+    goto done;
+  }
   {
     long long rev = w.dev_rev + n[4], done = wr_done(what, w.done), steps = wr_steps(what, w.done, w.steps), now = (long long)api_now_ms();
     char rev_s[24], done_s[24], steps_s[24], at_s[24];
@@ -282,6 +296,14 @@ done:
   free(text); free(doc); free(out_doc); free(did); free(inv); row_free(&w);
 }
 
+static void world_content(const request *q, const char *id) {
+  char *out = malloc(WORLD_DOC);
+  int64_t n = out && !strcmp(id, "splice") && wr_loads(cs(id)) ? splice_world_content((coax_v_u8){(uint8_t *)out, WORLD_DOC}) : -1;
+  if (n < 0) refuse_verdict(q->fd, wr_read(false, 0, 0));
+  else api_respond(q->fd, 200, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", out, (size_t)n);
+  free(out);
+}
+
 bool worlds_route(const request *q) {
   static const char root[] = "/api/worlds/";
   size_t rl = sizeof root - 1;
@@ -291,7 +313,9 @@ bool worlds_route(const request *q) {
   while (rest[k] && rest[k] != '/' && k < sizeof id - 1) { id[k] = rest[k]; k++; }
   id[k] = 0;
   const char *tail = rest + k;
-  if ((!get && !post) || !wr_world_ok(cs(id)) || (*tail && strcmp(tail, "/events")) || (*tail && !get)) { refuse(q->fd, 404, cs("not found"), -1); return true; }
+  bool content = !strcmp(tail, "/content");
+  if ((!get && !post) || !wr_world_ok(cs(id)) || (*tail && strcmp(tail, "/events") && !content) || (*tail && !get)) { refuse(q->fd, 404, cs("not found"), -1); return true; }
+  if (content) { world_content(q, id); return true; }
   PGconn *db = api_db();
   if (!db) { refuse(q->fd, 503, cs("no database"), -1); return true; }
   if (*tail) world_events(q, db, id);

@@ -8,6 +8,7 @@
 #load "../../metaverse-engine/editor/made.coax";   // a made or forked realm's answer and a fork's body (made.proto): one codec
 #load "../../metaverse-engine/editor/record.coax";   // mine, visibility, publish and the publish record (record.proto): one codec
 #load "../../coax/lib/text/base64.coax";
+#load "realm-world.coax";   // the rows that edit a world with an ID, and the one result every operation answers
 
 REALM_DOC_MAX :: 368640;
 REALM_DOC_BODY :: 524288;
@@ -308,6 +309,9 @@ realm_usage :: () {
   print("%\n", "Realms (openagents.com/realms):");
   line: [512] u8;
   for c: REALM_COMMANDS { print("%\n", rc_help_line(c, line[..])); }
+  print("%\n", "  Each line ends with what the command does and who must agree: [read], [write; the owner], [destructive; asks first: --yes].");
+  print("%\n", "  A command that is not a read also takes --dry-run (nothing is sent or saved; the answer says how far the check went)");
+  print("%\n", "  and --key K (a repeat with the same key answers the first result and sends nothing).");
   ops: [1024] u8;
   print("%\n", "  realm apply's FILE: one JSON object a line, {\"op\":OP, ...its fields}; a revision goes in --rev, not a line:");
   print("%\n", "    {\"op\":\"move\",\"entity\":\"trees:3\",\"x\":4.5,\"z\":-2}   {\"op\":\"rotate\",\"entity\":\"trees:3\",\"yaw\":90}   {\"op\":\"switch\",\"row\":\"water\",\"on\":false}");
@@ -543,9 +547,95 @@ realm_fork :: (a: [] Args, r: [] Rep, profile: string) -> int {
   return rep_done(r, EXIT_OK);
 }
 
+// A key's kept result: ~/.openagents/cli/results/KEY, the exit code and the result (realm.result.v1)
+// of the first write sent with that --key. A write repeated with the key answers that result again
+// and sends nothing (#13436). A dry run, a wait for approval and an unknown outcome are not kept:
+// nothing was decided, and the key may be used again.
+realm_key_file :: (key: string, out: [] u8) -> string {
+  c: [1024] u8; d: [1100] u8;
+  dir := fs_join(cli_dir(c[..]), "results", d[..]);
+  if dir == "" || !rc_value("key",key) { return ""; }
+  made := fs_mkdir(cli_dir(c[..])) || true;
+  made = fs_mkdir(dir) || true;
+  return fs_join(dir, key, out);
+}
+realm_key_keep :: (key: string, res: OpResult, result: string) {
+  f: [1200] u8; b: [OR_BODY + 4] u8;
+  code := rw_exit(res);
+  if key.count == 0 || (res.state != OR_DONE && res.state != OR_REFUSED) || result.count + 2 > b.count { return; }
+  path := realm_key_file(key, f[..]);
+  if path == "" { return; }
+  b[0] = cast(u8) ('0' + code); b[1] = '\n';
+  for i: 0..<result.count { b[2 + i] = result[i]; }
+  ok := fs_write(path, cast(string) b[0..<result.count + 2]);
+}
+// The kept result of `key` answered again: its exit code, or -1 when none is kept.
+realm_key_again :: (r: [] Rep, key: string) -> int {
+  f: [1200] u8; b: [OR_BODY + 4] u8; rd := [1] OpRead.[OpRead.{}]; line: [OR_BODY] u8;
+  path := realm_key_file(key, f[..]);
+  n := ifx path == "" then -1 else fs_read(path, b[..]);
+  if n < 3 || b[1] != '\n' || b[0] < '0' || b[0] > '9' { return -1; }
+  text := cast(string) b[2..<n];
+  res := or_read(text, rd[..]);
+  if !res.ok { return -1; }
+  code := cast(int) (b[0] - '0');
+  if r[0].json {
+    rep_raw(r, "result", text); rep_str(r, "state", OR_STATE[res.state]); rep_int(r, "rev", res.rev); rep_bool(r, "repeat", true);
+    return rep_done(r, code);
+  }
+  print("% (the first result of this key; nothing was sent again)\n", or_line(res, or_words(rd[..]), line[..]));
+  return code;
+}
+// The result an older row's exit code is, for a row that has not moved onto the world document yet.
+realm_result_of_exit :: (code: int) -> OpResult #effects(all) {
+  if code == EXIT_OK { return OpResult.{ok = true, state = OR_DONE}; }
+  if code == EXIT_SLOW { return OpResult.{ok = true, state = OR_UNKNOWN, code = ORC_NO_ANSWER, retry = true}; }
+  c := ifx code == EXIT_CONFLICT then ORC_STALE else (ifx code == EXIT_AUTH || code == EXIT_FORBIDDEN then ORC_NOT_PERMITTED else (ifx code == EXIT_NOT_FOUND then ORC_NOT_FOUND else (ifx code == EXIT_USAGE then ORC_BAD_REQUEST else ORC_FAILED)));
+  return OpResult.{ok = true, state = OR_REFUSED, code = c, retry = or_code_retry(c)};
+}
+#test "an older row's exit code is a result" {
+  #assert realm_result_of_exit(EXIT_OK).state == OR_DONE && realm_result_of_exit(EXIT_SLOW).state == OR_UNKNOWN && realm_result_of_exit(EXIT_SLOW).retry;
+  #assert realm_result_of_exit(EXIT_CONFLICT).code == ORC_STALE && realm_result_of_exit(EXIT_CONFLICT).retry && realm_result_of_exit(EXIT_AUTH).code == ORC_NOT_PERMITTED && realm_result_of_exit(EXIT_FORBIDDEN).code == ORC_NOT_PERMITTED;
+  #assert realm_result_of_exit(EXIT_NOT_FOUND).code == ORC_NOT_FOUND && realm_result_of_exit(EXIT_USAGE).code == ORC_BAD_REQUEST && realm_result_of_exit(EXIT_FAIL).code == ORC_FAILED && realm_result_of_exit(EXIT_FAIL).state == OR_REFUSED;
+  for code: 0..<8 { r := realm_result_of_exit(code); #assert rw_exit(r) == (ifx code == EXIT_AUTH then EXIT_FORBIDDEN else code) || code == EXIT_MISSING; }
+}
+
 realm_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
   why := rc_validate(a,verb);
   if why != "" { return fail(r,EXIT_USAGE,why); }
+  c := REALM_COMMANDS[rc_find(verb)];
+  // One result shape for what every row does before it is sent (op-result.coax, #13436): a two-step
+  // row without --yes does nothing and says it needs approval (#13435); --dry-run on a row that has
+  // no deeper check says the arguments are a well-formed request, and sends nothing.
+  slug := ifx cli_field(c.arguments,0) == "slug" then positional(a,2) else "";
+  words := OpWords.{verb = verb, realm = slug, effect = c.effect, key = rc_option(a,verb,"--key","")};
+  if rc_needs_yes(c) && !rc_has(a,verb,"--yes") {
+    words.approval = c.approval;
+    w := [1] RwWork.[RwWork.{}];
+    return rw_answer(r, w[..], OpResult.{state = OR_NEEDS_APPROVAL}, words);
+  }
+  if c.route != "world" && c.effect != "read" && args_has(a,"--dry-run") {
+    w := [1] RwWork.[RwWork.{}];
+    return rw_answer(r, w[..], OpResult.{state = OR_DRY_RUN, level = ORL_SCHEMA}, words);
+  }
+  // a keyed write that was answered before is answered the same again, and nothing is sent
+  keyed := words.key.count > 0 && c.effect != "read";
+  if keyed {
+    again := realm_key_again(r, words.key);
+    if again >= 0 { return again; }
+  }
+  if c.route == "world" { return rw_main(a, r, profile, verb); }
+  code := realm_run(a, r, profile, verb);
+  if keyed {
+    w := [1] RwWork.[RwWork.{}];
+    res := realm_result_of_exit(code);
+    if res.state == OR_REFUSED { words.words = "the command was refused: its own answer said why"; }
+    realm_key_keep(words.key, res, or_write(res, words, w[0].result[..]));
+  }
+  return code;
+}
+// The rows that have not moved onto the world document: each still answers in its own words.
+realm_run :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
   if verb == "list" { return realm_list(a, r, profile); }
   if verb == "shot" { return labs_realm_shot(a, r, profile); }
   if verb == "show" { return realm_show(a, r, profile); }

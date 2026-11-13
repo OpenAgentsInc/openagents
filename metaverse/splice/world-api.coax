@@ -20,6 +20,12 @@ splice_world_pins :: (out: [] int) -> bool #export_c #effects(all) {
   out[0] = p.engine; out[1] = p.rules; out[2] = p.content; out[3] = p.wire;
   return true;
 }
+// Splice's content tables (aethyr.content.v1) into out: their length, or -1. What a caller reads
+// to aim an edit: the pieces by content ID, the landmarks, the kept-clear zones and the areas.
+splice_world_content :: (out: [] u8) -> int #export_c #effects(all) {
+  n := ct_put(out, 0, SC_SHIPPED);
+  return ifx n > out.count then -1 else n;
+}
 // A batch carried out on a document (world.coax spw_batch): its status (SPB_*). n takes six
 // numbers: the bytes of the new document, of the batch as taken and of its inverse, of the words
 // of a refusal, how many edits were taken, and which edit was refused (-1: none).
@@ -49,6 +55,8 @@ splice_world_words :: (status: int) -> string #export_c #effects(all) {
 
 #test "the API's Splice: the empty document, the pins, and a batch through the exported calls" #steps 4000000000 #traversal 2000000000 {
   t := [1] SpwTest.[SpwTest.{}]; n: [6] int; pins: [4] int;
+  cn := splice_world_content(t[0].third[..]); cd: [1] ContentDoc;
+  #assert cn > 0 && ct_read(cd[..], cast(string) t[0].third[0..<cn]) && ct_table(cd[..], "pieces") >= 0 && ct_table(cd[..], "landmarks") >= 0 && ct_table(cd[..], "kept_clear") >= 0 && splice_world_content(t[0].third[0..<64]) == -1;
   e := splice_world_empty(t[0].doc[..]);
   #assert e > 0 && splice_world_empty(t[0].doc[0..<64]) == -1 && splice_world_pins(pins[..]) && pins[0] == SPW_ENGINE && pins[1] == SPW_RULES && pins[2] >= 1 && pins[3] == SPW_WIRE && !splice_world_pins(pins[0..<3]);
   empty := cast(string) t[0].doc[0..<e];

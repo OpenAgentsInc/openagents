@@ -420,7 +420,7 @@ cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool #effects(all) {
 #load "../../coax/lib/sys/args.coax";
 
 #test "the realm catalogue covers reads and revisioned writes with unique verbs" {
-  #assert REALM_COMMANDS.count == 37;
+  #assert REALM_COMMANDS.count == 50;
   for i: 0..<REALM_COMMANDS.count {
     c := REALM_COMMANDS[i];
     #assert c.domain == "realm" && c.verb.count > 0 && c.help.count > 0;
@@ -493,13 +493,14 @@ cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool #effects(all) {
     }
     #assert rc_flag_kind(c,"--json") == "bool" && rc_flag_kind(c,"--profile") == "who" && rc_flag_kind(c,"--origin") == "file";
     #assert rc_flag_kind(c,"--unknown") == "";
+    #assert (rc_flag_kind(c,"--dry-run") == "bool") == (c.effect != "read") && (rc_flag_kind(c,"--key") == "key") == (c.effect != "read");
   }
   #assert rc_bound("").min == 0 && rc_bound("").max == 0;
   #assert rc_flag_kind(REALM_COMMANDS[rc_find("undo")],"--rev:id") == "";
 }
 
 #test "realm routes and methods match the published command contract" {
-  routes := [37] string.["/mine","","/plan","/visibility","/publish","/fork","shot","/doc","/asks","/proposals","/panes","/switch","/revise","/asks","/asks/:id/delete","/asks/:id/done","/rows/:row/delete","/save","/save","/save","/save","/place","/settings","/lore","/quest","/proposals/:id/accept","/proposals/:id/decline","/undo","/redo","batch","seat","seat","seat","seat","seat","seat","seat"];
+  routes := [50] string.["/mine","","/plan","/visibility","/publish","/fork","shot","/doc","/asks","/proposals","/panes","/switch","/revise","/asks","/asks/:id/delete","/asks/:id/done","/rows/:row/delete","/save","/save","/save","/save","/place","/settings","/lore","/quest","/proposals/:id/accept","/proposals/:id/decline","/undo","/redo","batch","seat","seat","seat","seat","seat","seat","seat","world","world","world","world","world","world","world","world","world","world","world","world","world"];
   for i: 0..<REALM_COMMANDS.count {
     #assert REALM_COMMANDS[i].route == routes[i];
     method := ifx i == 6 || i >= 29 then "LOCAL" else ifx i == 0 || i == 1 || (i >= 7 && i <= 10) then "GET" else "POST";
@@ -655,47 +656,99 @@ cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool #effects(all) {
   #assert rc_validate(c[..],"shot") != "";
 }
 
-CliCommand :: struct { domain: string = "realm"; verb: string; method: string; route: string; arguments: string; optional: int; flags: string; usage: string; help: string; }
+// Every row says what kind of effect its command has and who must agree to it (GitHub #13435;
+// docs/research/summer-what-to-adapt.md S1). The CLI's help and the MCP tool's description say
+// both, from the row (rc_effect_note), so a caller knows before it calls.
+//   effect    read (changes nothing), write (changes the realm, and undo takes it back), publish
+//             (changes what visitors see), player-facing (other people see or hear it), spend
+//             (a model is paid for) or destructive (it can't be undone)
+//   approval  none; owner (the realm's owner or an admin, which the server checks); or confirm:
+//             two steps. Without --yes the command does nothing and answers that it needs
+//             approval; with --yes it runs (rc_needs_yes)
+RC_EFFECTS :: [6] string.["read", "write", "publish", "player-facing", "spend", "destructive"];
+RC_APPROVALS :: [3] string.["none", "owner", "confirm"];
+rc_effect_ok :: (e: string) -> bool #effects(all) { for x: RC_EFFECTS { if x == e { return true; } } return false; }
+rc_approval_ok :: (a: string) -> bool #effects(all) { for x: RC_APPROVALS { if x == a { return true; } } return false; }
+// Whether the row is two-step: it runs only with --yes.
+rc_needs_yes :: (c: CliCommand) -> bool #effects(all) { return c.approval == "confirm"; }
+// What a row's effect and approval add to its help: " [write; the owner]", " [destructive; asks first: --yes]", " [read]".
+rc_effect_note :: (c: CliCommand, out: [] u8) -> string #effects(all) {
+  n := forge_put(out,0," ["); n = forge_put(out,n,c.effect);
+  if c.approval == "owner" { n = forge_put(out,n,"; the owner"); }
+  if c.approval == "confirm" { n = forge_put(out,n,"; asks first: --yes"); }
+  n = forge_put(out,n,"]");
+  return ifx n == -1 then "" else cast(string) out[0..<n];
+}
+#test "every row says its effect and its approval: no write goes unapproved, and what can't be undone is two-step" {
+  nb: [64] u8;
+  for c: REALM_COMMANDS {
+    #assert rc_effect_ok(c.effect) && rc_approval_ok(c.approval);
+    #assert (c.effect == "read") == (c.approval == "none");                    // every row that is not a read has a rule
+    if c.effect == "destructive" { #assert rc_needs_yes(c); }                  // what can't be undone is two-step
+    #assert rc_needs_yes(c) == (rc_flag_kind(c,"--yes") == "bool");            // and only a two-step row takes --yes
+    if c.method == "GET" { #assert c.effect == "read"; }
+    #assert rc_effect_note(c,nb[..]).count > 5;
+  }
+  #assert !rc_effect_ok("") && !rc_effect_ok("Write") && !rc_effect_ok("owner") && !rc_approval_ok("") && !rc_approval_ok("write") && rc_effect_ok("player-facing") && rc_effect_ok("destructive") && rc_approval_ok("confirm");
+  #assert rc_effect_note(REALM_COMMANDS[rc_find("move")],nb[..]) == " [write; the owner]" && rc_effect_note(REALM_COMMANDS[rc_find("list")],nb[..]) == " [read]";
+  #assert rc_effect_note(REALM_COMMANDS[rc_find("row-delete")],nb[..]) == " [destructive; asks first: --yes]" && rc_effect_note(REALM_COMMANDS[rc_find("publish")],nb[..]) == " [publish; asks first: --yes]";
+  #assert rc_effect_note(REALM_COMMANDS[rc_find("move")],nb[0..<10]) == "" && rc_needs_yes(REALM_COMMANDS[rc_find("ask-delete")]) && !rc_needs_yes(REALM_COMMANDS[rc_find("remove")]);
+  #assert REALM_COMMANDS[rc_find("new")].effect == "spend" && REALM_COMMANDS[rc_find("say")].effect == "player-facing" && REALM_COMMANDS[rc_find("visibility")].effect == "publish";
+}
+CliCommand :: struct { domain: string = "realm"; verb: string; effect: string; approval: string; method: string; route: string; arguments: string; optional: int; flags: string; usage: string; help: string; }
 // The seat rows (route "seat") drive one realm open in headless Chrome on this computer, as a
 // visitor (apps/openagents-cli/realm-play.coax, docs/metaverse/realm-seat.md).
-REALM_COMMANDS :: [37] CliCommand.[
-  CliCommand.{verb="list",method="GET",route="/mine",help="your realms"},
-  CliCommand.{verb="show",method="GET",route="",arguments="slug",usage="SLUG",help="the realm's spec and page"},
-  CliCommand.{verb="new",method="POST",route="/plan",arguments="newwords",flags="--from:id|--style:style|--time:time|--camera:camera|--ground:ground",usage="\"WORDS\" [--style S] [--time T] [--camera C] [--ground G] | --from PLAN",help="plan words and make a private realm; --from PLAN makes an existing plan"},
-  CliCommand.{verb="visibility",method="POST",route="/visibility",arguments="slug|visibility",flags="--rev:id",usage="SLUG private|unlisted|public [--rev N]",help="who sees it"},
-  CliCommand.{verb="publish",method="POST",route="/publish",arguments="slug",flags="--rev:id|--listed:bool|--yes:bool",usage="SLUG [--rev N] [--listed] [--yes]",help="publish the named revision"},
-  CliCommand.{verb="fork",method="POST",route="/fork",arguments="slug",flags="--name:who",usage="SLUG [--name NAME]",help="a private copy that you own"},
-  CliCommand.{verb="shot",method="LOCAL",route="shot",arguments="slug|shotfile",optional=1,flags="--size:size|--phone:bool|--square:bool|--vertical:bool|--wait:waitms|--eval:script|--dark:bool|--fresh:bool|--as-me:bool",usage="SLUG [OUT.png] [--size WxH|--phone|--square|--vertical] [--wait MS] [--eval JS] [--dark] [--fresh] [--as-me]",help="a visitor's PNG in muted headless Chrome, once its scene is drawn; OUT defaults to SLUG.png"},
-  CliCommand.{verb="doc",method="GET",route="/doc",arguments="slug",usage="SLUG",help="the versioned document and SHA-256"},
-  CliCommand.{verb="asks",method="GET",route="/asks",arguments="slug",usage="SLUG",help="the feature asks"},
-  CliCommand.{verb="proposals",method="GET",route="/proposals",arguments="slug",usage="SLUG",help="visitors' proposals"},
-  CliCommand.{verb="panes",method="GET",route="/panes",arguments="slug",usage="SLUG",help="lore and quests"},
-  CliCommand.{verb="switch",method="POST",route="/switch",arguments="slug|row|onoff",flags="--rev:id",usage="SLUG ROW on|off [--rev N]",help="turn a row on or off"},
-  CliCommand.{verb="revise",method="POST",route="/revise",arguments="slug|words",flags="--rev:id",usage="SLUG \"WORDS\" [--rev N]",help="ask the planner to revise the board"},
-  CliCommand.{verb="ask",method="POST",route="/asks",arguments="slug|words",flags="--rev:id|--doc:file",usage="SLUG \"WORDS\" | SLUG --doc FILE [--rev N]",help="add words, or a design document, to the feature list"},
-  CliCommand.{verb="ask-delete",method="POST",route="/asks/:id/delete",arguments="slug|id",flags="--rev:id",usage="SLUG ID [--rev N]",help="delete an ask"},
-  CliCommand.{verb="ask-done",method="POST",route="/asks/:id/done",arguments="slug|id",flags="--rev:id|--commit:commit",usage="SLUG ID --commit HASH [--rev N]",help="an admin marks pushed code done"},
-  CliCommand.{verb="row-delete",method="POST",route="/rows/:row/delete",arguments="slug|row",flags="--rev:id",usage="SLUG ROW [--rev N]",help="delete a board row"},
-  CliCommand.{verb="move",method="POST",route="/save",arguments="slug|entity|metres|metres",flags="--rev:id",usage="SLUG ENTITY X Z [--rev N]",help="move a thing (FEATURE:N, such as trees:3) to X Z metres; one save"},
-  CliCommand.{verb="rotate",method="POST",route="/save",arguments="slug|entity|yaw",flags="--rev:id",usage="SLUG ENTITY DEGREES [--rev N]",help="turn a thing DEGREES from its laid-out way (0 puts it back); one save"},
-  CliCommand.{verb="resize",method="POST",route="/save",arguments="slug|entity|percent",flags="--rev:id",usage="SLUG ENTITY PERCENT [--rev N]",help="size a thing to PERCENT (25 to 400) of its laid-out size; one save"},
-  CliCommand.{verb="remove",method="POST",route="/save",arguments="slug|entity",flags="--rev:id",usage="SLUG ENTITY [--rev N]",help="take a thing away (undo brings it back); one save"},
-  CliCommand.{verb="place",method="POST",route="/place",arguments="slug|row|metres|metres",flags="--rev:id|--yaw:yaw",usage="SLUG THING X Z [--yaw DEG] [--rev N]",help="place a thing at X Z metres"},
-  CliCommand.{verb="settings",method="POST",route="/settings",arguments="slug",flags="--rev:id|--tools:tools",usage="SLUG --tools build,fly,jump,map,talk,voice [--rev N]",help="the tools visitors get"},
-  CliCommand.{verb="lore",method="POST",route="/lore",arguments="slug|who|lore",flags="--rev:id",usage="SLUG WHO \"TEXT\" [--rev N]",help="set WHO's lore; \"\" forgets it"},
-  CliCommand.{verb="quest",method="POST",route="/quest",arguments="slug|who",flags="--rev:id|--ask:ask|--step:step|--reward:step",usage="SLUG GIVER --ask \"TEXT\" [--step \"TEXT\"]... [--reward \"TEXT\"] [--rev N]",help="set a giver's quest, up to three steps"},
-  CliCommand.{verb="accept",method="POST",route="/proposals/:id/accept",arguments="slug|id",flags="--rev:id",usage="SLUG ID [--rev N]",help="accept a visitor's proposal"},
-  CliCommand.{verb="decline",method="POST",route="/proposals/:id/decline",arguments="slug|id",flags="--rev:id",usage="SLUG ID [--rev N]",help="decline a visitor's proposal"},
-  CliCommand.{verb="undo",method="POST",route="/undo",arguments="slug",flags="--rev:id",usage="SLUG [--rev N]",help="take back the newest step (its own edits only) as a new revision"},
-  CliCommand.{verb="redo",method="POST",route="/redo",arguments="slug",flags="--rev:id",usage="SLUG [--rev N]",help="apply the step last undone again, as a new revision"},
-  CliCommand.{verb="apply",method="LOCAL",route="batch",arguments="slug|file",flags="--rev:id",usage="SLUG FILE.jsonl [--rev N]",help="run JSON-line edits in order (below); consecutive moves share one save"},
-  CliCommand.{verb="play",method="LOCAL",route="seat",arguments="slug",flags="--phone:bool|--hosted:bool",usage="SLUG [--phone] [--hosted]",help="sit in the realm as your account (headless Chrome here, or the server's with --hosted) and say what you see; others see an agent; the seat stays open for look, go, say, use and bye, and closes after 10 idle minutes"},
-  CliCommand.{verb="look",method="LOCAL",route="seat",arguments="slug",flags="--turn:turn|--pitch:pitch|--shot:shotfile",usage="SLUG [--turn DEG] [--pitch DEG] [--shot OUT.png]",help="turn right (negative: left) up to 180 degrees; --pitch looks up or down in first person; --shot keeps a picture of the view"},
-  CliCommand.{verb="go",method="LOCAL",route="seat",arguments="slug|target",flags="--x:metres|--z:metres|--max:seconds",usage="SLUG TARGET | SLUG --x X --z Z [--max S]",help="walk to a character's name, a kind (house, centre, ...), character:N, entity:N, or X Z metres, until 2 m away, blocked, or --max seconds (10; at most 30)"},
-  CliCommand.{verb="say",method="LOCAL",route="seat",arguments="slug|line",usage="SLUG \"WORDS\"",help="talk to the character within 3.5 m and wait for the answer"},
-  CliCommand.{verb="use",method="LOCAL",route="seat",arguments="slug|tool|thing",optional=1,usage="SLUG jump|map|build [THING]",help="use a tool the realm has on; build THING (crate, barrel, tree, rock, plant, lantern, fence, chest) asks the owner to place it in front of you"},
-  CliCommand.{verb="bye",method="LOCAL",route="seat",arguments="slug",usage="SLUG",help="end the talk"},
-  CliCommand.{verb="leave",method="LOCAL",route="seat",arguments="slug",usage="SLUG",help="close the seat and its browser"}
+REALM_COMMANDS :: [50] CliCommand.[
+  CliCommand.{verb="list",effect="read",approval="none",method="GET",route="/mine",help="your realms"},
+  CliCommand.{verb="show",effect="read",approval="none",method="GET",route="",arguments="slug",usage="SLUG",help="the realm's spec and page"},
+  CliCommand.{verb="new",effect="spend",approval="owner",method="POST",route="/plan",arguments="newwords",flags="--from:id|--style:style|--time:time|--camera:camera|--ground:ground",usage="\"WORDS\" [--style S] [--time T] [--camera C] [--ground G] | --from PLAN",help="plan words and make a private realm; --from PLAN makes an existing plan"},
+  CliCommand.{verb="visibility",effect="publish",approval="owner",method="POST",route="/visibility",arguments="slug|visibility",flags="--rev:id",usage="SLUG private|unlisted|public [--rev N]",help="who sees it"},
+  CliCommand.{verb="publish",effect="publish",approval="confirm",method="POST",route="/publish",arguments="slug",flags="--rev:id|--listed:bool|--yes:bool",usage="SLUG [--rev N] [--listed] [--yes]",help="publish the named revision"},
+  CliCommand.{verb="fork",effect="write",approval="owner",method="POST",route="/fork",arguments="slug",flags="--name:who",usage="SLUG [--name NAME]",help="a private copy that you own"},
+  CliCommand.{verb="shot",effect="read",approval="none",method="LOCAL",route="shot",arguments="slug|shotfile",optional=1,flags="--size:size|--phone:bool|--square:bool|--vertical:bool|--wait:waitms|--eval:script|--dark:bool|--fresh:bool|--as-me:bool",usage="SLUG [OUT.png] [--size WxH|--phone|--square|--vertical] [--wait MS] [--eval JS] [--dark] [--fresh] [--as-me]",help="a visitor's PNG in muted headless Chrome, once its scene is drawn; OUT defaults to SLUG.png"},
+  CliCommand.{verb="doc",effect="read",approval="none",method="GET",route="/doc",arguments="slug",usage="SLUG",help="the versioned document and SHA-256"},
+  CliCommand.{verb="asks",effect="read",approval="none",method="GET",route="/asks",arguments="slug",usage="SLUG",help="the feature asks"},
+  CliCommand.{verb="proposals",effect="read",approval="none",method="GET",route="/proposals",arguments="slug",usage="SLUG",help="visitors' proposals"},
+  CliCommand.{verb="panes",effect="read",approval="none",method="GET",route="/panes",arguments="slug",usage="SLUG",help="lore and quests"},
+  CliCommand.{verb="switch",effect="write",approval="owner",method="POST",route="/switch",arguments="slug|row|onoff",flags="--rev:id",usage="SLUG ROW on|off [--rev N]",help="turn a row on or off"},
+  CliCommand.{verb="revise",effect="spend",approval="owner",method="POST",route="/revise",arguments="slug|words",flags="--rev:id",usage="SLUG \"WORDS\" [--rev N]",help="ask the planner to revise the board"},
+  CliCommand.{verb="ask",effect="spend",approval="owner",method="POST",route="/asks",arguments="slug|words",flags="--rev:id|--doc:file",usage="SLUG \"WORDS\" | SLUG --doc FILE [--rev N]",help="add words, or a design document, to the feature list"},
+  CliCommand.{verb="ask-delete",effect="destructive",approval="confirm",method="POST",route="/asks/:id/delete",arguments="slug|id",flags="--rev:id|--yes:bool",usage="SLUG ID [--rev N] [--yes]",help="delete an ask"},
+  CliCommand.{verb="ask-done",effect="spend",approval="owner",method="POST",route="/asks/:id/done",arguments="slug|id",flags="--rev:id|--commit:commit",usage="SLUG ID --commit HASH [--rev N]",help="an admin marks pushed code done"},
+  CliCommand.{verb="row-delete",effect="destructive",approval="confirm",method="POST",route="/rows/:row/delete",arguments="slug|row",flags="--rev:id|--yes:bool",usage="SLUG ROW [--rev N] [--yes]",help="delete a board row"},
+  CliCommand.{verb="move",effect="write",approval="owner",method="POST",route="/save",arguments="slug|entity|metres|metres",flags="--rev:id",usage="SLUG ENTITY X Z [--rev N]",help="move a thing (FEATURE:N, such as trees:3) to X Z metres; one save"},
+  CliCommand.{verb="rotate",effect="write",approval="owner",method="POST",route="/save",arguments="slug|entity|yaw",flags="--rev:id",usage="SLUG ENTITY DEGREES [--rev N]",help="turn a thing DEGREES from its laid-out way (0 puts it back); one save"},
+  CliCommand.{verb="resize",effect="write",approval="owner",method="POST",route="/save",arguments="slug|entity|percent",flags="--rev:id",usage="SLUG ENTITY PERCENT [--rev N]",help="size a thing to PERCENT (25 to 400) of its laid-out size; one save"},
+  CliCommand.{verb="remove",effect="write",approval="owner",method="POST",route="/save",arguments="slug|entity",flags="--rev:id",usage="SLUG ENTITY [--rev N]",help="take a thing away (undo brings it back); one save"},
+  CliCommand.{verb="place",effect="write",approval="owner",method="POST",route="/place",arguments="slug|row|metres|metres",flags="--rev:id|--yaw:yaw",usage="SLUG THING X Z [--yaw DEG] [--rev N]",help="place a thing at X Z metres"},
+  CliCommand.{verb="settings",effect="write",approval="owner",method="POST",route="/settings",arguments="slug",flags="--rev:id|--tools:tools",usage="SLUG --tools build,fly,jump,map,talk,voice [--rev N]",help="the tools visitors get"},
+  CliCommand.{verb="lore",effect="write",approval="owner",method="POST",route="/lore",arguments="slug|who|lore",flags="--rev:id",usage="SLUG WHO \"TEXT\" [--rev N]",help="set WHO's lore; \"\" forgets it"},
+  CliCommand.{verb="quest",effect="write",approval="owner",method="POST",route="/quest",arguments="slug|who",flags="--rev:id|--ask:ask|--step:step|--reward:step",usage="SLUG GIVER --ask \"TEXT\" [--step \"TEXT\"]... [--reward \"TEXT\"] [--rev N]",help="set a giver's quest, up to three steps"},
+  CliCommand.{verb="accept",effect="write",approval="owner",method="POST",route="/proposals/:id/accept",arguments="slug|id",flags="--rev:id",usage="SLUG ID [--rev N]",help="accept a visitor's proposal"},
+  CliCommand.{verb="decline",effect="write",approval="owner",method="POST",route="/proposals/:id/decline",arguments="slug|id",flags="--rev:id",usage="SLUG ID [--rev N]",help="decline a visitor's proposal"},
+  CliCommand.{verb="undo",effect="write",approval="owner",method="POST",route="/undo",arguments="slug",flags="--rev:id",usage="SLUG [--rev N]",help="take back the newest step (its own edits only) as a new revision"},
+  CliCommand.{verb="redo",effect="write",approval="owner",method="POST",route="/redo",arguments="slug",flags="--rev:id",usage="SLUG [--rev N]",help="apply the step last undone again, as a new revision"},
+  CliCommand.{verb="apply",effect="write",approval="owner",method="LOCAL",route="batch",arguments="slug|file",flags="--rev:id",usage="SLUG FILE.jsonl [--rev N]",help="run JSON-line edits in order (below); consecutive moves share one save"},
+  CliCommand.{verb="play",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug",flags="--phone:bool|--hosted:bool",usage="SLUG [--phone] [--hosted]",help="sit in the realm as your account (headless Chrome here, or the server's with --hosted) and say what you see; others see an agent; the seat stays open for look, go, say, use and bye, and closes after 10 idle minutes"},
+  CliCommand.{verb="look",effect="read",approval="none",method="LOCAL",route="seat",arguments="slug",flags="--turn:turn|--pitch:pitch|--shot:shotfile",usage="SLUG [--turn DEG] [--pitch DEG] [--shot OUT.png]",help="turn right (negative: left) up to 180 degrees; --pitch looks up or down in first person; --shot keeps a picture of the view"},
+  CliCommand.{verb="go",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug|target",flags="--x:metres|--z:metres|--max:seconds",usage="SLUG TARGET | SLUG --x X --z Z [--max S]",help="walk to a character's name, a kind (house, centre, ...), character:N, entity:N, or X Z metres, until 2 m away, blocked, or --max seconds (10; at most 30)"},
+  CliCommand.{verb="say",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug|line",usage="SLUG \"WORDS\"",help="talk to the character within 3.5 m and wait for the answer"},
+  CliCommand.{verb="use",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug|tool|thing",optional=1,usage="SLUG jump|map|build [THING]",help="use a tool the realm has on; build THING (crate, barrel, tree, rock, plant, lantern, fence, chest) asks the owner to place it in front of you"},
+  CliCommand.{verb="bye",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug",usage="SLUG",help="end the talk"},
+  CliCommand.{verb="leave",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug",usage="SLUG",help="close the seat and its browser"},
+  CliCommand.{verb="world",effect="read",approval="none",method="LOCAL",route="world",arguments="slug",flags="--lane:lane",usage="ID [--lane dev|live]",help="a world with an ID, as you need it to aim an edit: its revision and build, its placed things by number, its content tables (pieces, landmarks, kept-clear zones) and its reference page"},
+  CliCommand.{verb="world-place",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|kind|cm|cm",flags="--yaw:yaw|--rev:id|--shot:shotfile",usage="ID KIND X Z [--yaw DEG] [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="place a thing of content ID KIND at X Z centimetres; the answer has its number, the new revision, and any refusal in words"},
+  CliCommand.{verb="world-move",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|id|cm|cm",flags="--rev:id|--shot:shotfile",usage="ID N X Z [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="move placed thing N to X Z centimetres"},
+  CliCommand.{verb="world-turn",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|id|yaw",flags="--rev:id|--shot:shotfile",usage="ID N DEGREES [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="turn placed thing N to DEGREES"},
+  CliCommand.{verb="world-set",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|id|column|value",flags="--rev:id|--shot:shotfile",usage="ID N COLUMN VALUE [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="set a column of thing N: x, y, z in centimetres, yaw in degrees, or another column the world takes"},
+  CliCommand.{verb="world-remove",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|id",flags="--rev:id|--shot:shotfile",usage="ID N [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="remove placed thing N (world-undo brings it back)"},
+  CliCommand.{verb="world-undo",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug",flags="--rev:id|--shot:shotfile",usage="ID [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="take back the newest step that stands, whoever made it"},
+  CliCommand.{verb="world-redo",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug",flags="--rev:id|--shot:shotfile",usage="ID [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="take the step last undone again"},
+  CliCommand.{verb="world-original",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug",flags="--rev:id|--shot:shotfile",usage="ID [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="remove every placed thing: the designed world again (world-undo brings them back)"},
+  CliCommand.{verb="world-apply",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|file",flags="--rev:id|--shot:shotfile",usage="ID FILE.jsonl [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="apply world.edit.v1 edits, a JSON object a line, as one batch: all are saved or none"},
+  CliCommand.{verb="world-publish",effect="publish",approval="confirm",method="LOCAL",route="world",arguments="slug|when",flags="--rev:id|--yes:bool",usage="ID now|next [--rev N] [--key K] [--yes]",help="make the dev revision live: for open sessions now, or from each person's next session"},
+  CliCommand.{verb="world-why",effect="read",approval="none",method="LOCAL",route="world",arguments="slug|target",usage="ID THING",help="why a thing (you, piece-N, ...) is not seen, reached or working: the first link that failed, from the world's page"},
+  CliCommand.{verb="world-open",effect="read",approval="none",method="LOCAL",route="world",arguments="slug",usage="ID",help="the address of the page that edits the world"}
 ];
 
 rc_find :: (verb: string) -> int #effects(all) { for i: 0..<REALM_COMMANDS.count { if REALM_COMMANDS[i].verb == verb { return i; } } return -1; }
@@ -735,6 +788,12 @@ rc_bound :: (kind: string) -> CliBound #effects(all) {
   if kind == "line" { return CliBound.{min=1,max=400}; }
   if kind == "tool" { return CliBound.{min=3,max=5}; }
   if kind == "thing" { return CliBound.{min=4,max=7}; }
+  if kind == "cm" || kind == "value" { return CliBound.{min=-10000000,max=10000000}; }
+  if kind == "kind" { return CliBound.{min=1,max=999999999}; }
+  if kind == "column" { return CliBound.{min=1,max=6}; }
+  if kind == "when" { return CliBound.{min=3,max=4}; }
+  if kind == "lane" { return CliBound.{min=3,max=4}; }
+  if kind == "key" { return CliBound.{min=1,max=64}; }
   return CliBound.{};
 }
 rc_value :: (kind: string, value: string) -> bool #effects(all) {
@@ -768,11 +827,44 @@ rc_value :: (kind: string, value: string) -> bool #effects(all) {
   if kind == "seconds" { return cli_count(value,1,30) >= 1; }
   if kind == "tool" { return value == "jump" || value == "map" || value == "build"; }
   if kind == "thing" { for t: CLI_SEAT_THINGS { if t == value { return true; } } return false; }
+  // a world's edits (realm-world.coax): whole centimetres, a content ID, a column of the World, a lane, when a publish lands, a caller's key
+  if kind == "cm" || kind == "value" {
+    neg := cli_prefix(value,"-");
+    return cli_count(ifx neg then value[1..<value.count] else value,0,10000000) >= 0;
+  }
+  if kind == "kind" { return cli_count(value,1,999999999) >= 1; }
+  if kind == "column" { for c: CLI_WORLD_COLUMNS { if c == value { return true; } } return false; }
+  if kind == "when" { return value == "now" || value == "next"; }
+  if kind == "lane" { return value == "dev" || value == "live"; }
+  if kind == "key" {
+    if value.count < 1 || value.count > 64 { return false; }
+    for c: value { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; } }
+    return true;
+  }
   if kind == "target" { for c: value { if c < 32 || c == 127 { return false; } } }
   b := rc_bound(kind);
   return b.max > 0 && value.count >= b.min && value.count <= b.max;
 }
 
+// The World's columns a world-set names (metaverse-engine/editor/world-edit.coax WE_COL; realm-world.coax checks they agree).
+CLI_WORLD_COLUMNS :: [13] string.["x", "y", "z", "yaw", "vx", "vy", "vz", "radius", "height", "hp", "hp_max", "kind", "row"];
+#test "a world's argument kinds admit only what the wire carries" {
+  #assert rc_value("cm","0") && rc_value("cm","-10000000") && rc_value("cm","10000000") && !rc_value("cm","10000001") && !rc_value("cm","1.5") && !rc_value("cm","") && !rc_value("cm","-") && !rc_value("cm","+1");
+  #assert rc_value("value","-45") && !rc_value("value","x") && rc_value("kind","113") && !rc_value("kind","0") && !rc_value("kind","rover") && !rc_value("kind","1000000000");
+  #assert rc_value("column","x") && rc_value("column","hp_max") && rc_value("column","row") && !rc_value("column","mass") && !rc_value("column","") && !rc_value("column","X");
+  #assert rc_value("when","now") && rc_value("when","next") && !rc_value("when","later") && !rc_value("when","") && rc_value("lane","dev") && rc_value("lane","live") && !rc_value("lane","side") && !rc_value("lane","");
+  #assert rc_value("kind","1") && rc_value("kind","999999999") && rc_value("key","k") && rc_value("key","azAZ09") && rc_value("key","a") && rc_value("key","z") && rc_value("key","A") && rc_value("key","Z") && rc_value("key","0") && rc_value("key","9");
+  for bad: [8] string.["{","[",":","`","@","/","~"," "] { #assert !rc_value("key",bad); }
+  #assert rc_value("key","k-1") && rc_value("key","A_b.9") && !rc_value("key","") && !rc_value("key","a b") && !rc_value("key","a/b");
+  long: [65] u8; for i: 0..<65 { long[i] = 'k'; }
+  #assert rc_value("key",cast(string) long[0..<64]) && !rc_value("key",cast(string) long[..]);
+  for k: [7] string.["cm","value","kind","column","when","lane","key"] { #assert rc_bound(k).max > 0 && rc_why(k) != rc_why("") && rc_why(k).count > 10; }
+  #assert rc_bound("cm").min == -10000000 && rc_bound("cm").max == 10000000 && rc_bound("value").min == -10000000 && rc_bound("kind").min == 1 && rc_bound("kind").max == 999999999;
+  #assert rc_bound("column").min == 1 && rc_bound("column").max == 6 && rc_bound("when").min == 3 && rc_bound("when").max == 4 && rc_bound("lane").min == 3 && rc_bound("lane").max == 4 && rc_bound("key").min == 1 && rc_bound("key").max == 64;
+  for c: CLI_WORLD_COLUMNS { #assert c.count >= rc_bound("column").min && c.count <= rc_bound("column").max; }
+  // every world row is one route, and names what it does
+  for c: REALM_COMMANDS { if c.route == "world" { #assert c.method == "LOCAL" && cli_field(c.arguments,0) == "slug" && (c.verb == "world" || cli_prefix(c.verb,"world-")); } }
+}
 // What a visitor's build pane offers (myrealm.coax THING_NAMES; realm-play.coax checks they agree).
 CLI_SEAT_THINGS :: [8] string.["crate", "barrel", "tree", "rock", "plant", "lantern", "fence", "chest"];
 // Degrees: an optional minus, up to three digits, at most two decimals, within max either way.
@@ -833,6 +925,10 @@ rc_flag_kind :: (c: CliCommand, flag: string) -> string #effects(all) {
   if flag == "--json" { return "bool"; }
   if flag == "--profile" { return "who"; }
   if flag == "--origin" { return "file"; }
+  // every row that is not a read takes --dry-run (nothing is sent or saved) and --key K (a repeat
+  // with the same key answers the first result): op-result.coax, #13436
+  if flag == "--dry-run" && c.effect != "read" { return "bool"; }
+  if flag == "--key" && c.effect != "read" { return "key"; }
   i := 0;
   while cli_field(c.flags,i) != "" {
     f := cli_field(c.flags,i);
@@ -1000,6 +1096,13 @@ rc_why :: (kind: string) -> string #effects(all) {
   if kind == "line" { return "WORDS to a character are 1 to 400 bytes"; }
   if kind == "tool" { return "the tool is jump, map or build"; }
   if kind == "thing" { return "THING is crate, barrel, tree, rock, plant, lantern, fence or chest"; }
+  if kind == "cm" { return "X and Z are whole centimetres from -10000000 to 10000000, such as 17720 or -7060"; }
+  if kind == "value" { return "VALUE is a whole number from -10000000 to 10000000: centimetres for x, y and z, degrees for yaw"; }
+  if kind == "kind" { return "KIND is a content ID, a whole number from 1 (realm world ID lists the pieces)"; }
+  if kind == "column" { return "COLUMN is one of x, y, z, yaw, vx, vy, vz, radius, height, hp, hp_max, kind and row"; }
+  if kind == "when" { return "say when the update reaches people: now or next"; }
+  if kind == "lane" { return "--lane is dev or live"; }
+  if kind == "key" { return "--key K is 1 to 64 of letters, digits, -, _ and ."; }
   return "an argument is outside its bounds (openagents help)";
 }
 
@@ -1041,15 +1144,15 @@ cli_setup_ok :: (field: string, v: string) -> bool #effects(all) {
 // One help line: "  realm VERB USAGE", its help from column 42 (or two spaces after a longer one).
 #test "help lines read like the other domains' and show no catalogue syntax" {
   out: [512] u8;
-  #assert rc_help_line(REALM_COMMANDS[rc_find("move")],out[..]) == "  realm move SLUG ENTITY X Z [--rev N]    move a thing (FEATURE:N, such as trees:3) to X Z metres; one save";
-  #assert rc_help_line(REALM_COMMANDS[rc_find("list")],out[..]) == "  realm list                              your realms";
-  #assert rc_help_line(REALM_COMMANDS[rc_find("new")],out[..]) == "  realm new \"WORDS\" [--style S] [--time T] [--camera C] [--ground G] | --from PLAN  plan words and make a private realm; --from PLAN makes an existing plan";
+  #assert rc_help_line(REALM_COMMANDS[rc_find("move")],out[..]) == "  realm move SLUG ENTITY X Z [--rev N]    move a thing (FEATURE:N, such as trees:3) to X Z metres; one save [write; the owner]";
+  #assert rc_help_line(REALM_COMMANDS[rc_find("list")],out[..]) == "  realm list                              your realms [read]";
+  #assert rc_help_line(REALM_COMMANDS[rc_find("new")],out[..]) == "  realm new \"WORDS\" [--style S] [--time T] [--camera C] [--ground G] | --from PLAN  plan words and make a private realm; --from PLAN makes an existing plan [spend; the owner]";
   #assert rc_help_line(REALM_COMMANDS[rc_find("move")],out[0..<20]) == "";
-  long := CliCommand.{verb="a-verb-long-enough-to-pass-the-column-x",usage="X",help="h"};
-  #assert rc_help_line(long,out[..]) == "  realm a-verb-long-enough-to-pass-the-column-x X  h";
-  long.usage = ""; #assert rc_help_line(long,out[..]) == "  realm a-verb-long-enough-to-pass-the-column-x  h";
-  long.verb = "a-verb-exactly-to-the-column-xxx"; #assert rc_help_line(long,out[..]) == "  realm a-verb-exactly-to-the-column-xxx  h";
-  long.verb = "a-verb-exactly-to-the-column-xx"; #assert rc_help_line(long,out[..]) == "  realm a-verb-exactly-to-the-column-xx   h";
+  long := CliCommand.{verb="a-verb-long-enough-to-pass-the-column-x",effect="read",usage="X",help="h"};
+  #assert rc_help_line(long,out[..]) == "  realm a-verb-long-enough-to-pass-the-column-x X  h [read]";
+  long.usage = ""; #assert rc_help_line(long,out[..]) == "  realm a-verb-long-enough-to-pass-the-column-x  h [read]";
+  long.verb = "a-verb-exactly-to-the-column-xxx"; #assert rc_help_line(long,out[..]) == "  realm a-verb-exactly-to-the-column-xxx  h [read]";
+  long.verb = "a-verb-exactly-to-the-column-xx"; #assert rc_help_line(long,out[..]) == "  realm a-verb-exactly-to-the-column-xx   h [read]";
   #assert rc_contains("ab","ab") && rc_contains("ab","a") && rc_contains("ab","b") && rc_contains("ab","") && !rc_contains("a","ab") && !rc_contains("ab","ba");
   #assert rc_word("ab cd",0) == "ab" && rc_word("ab cd",1) == "cd" && rc_word("a  b",1) == "b" && rc_word(" a",0) == "a" && rc_word("a",1) == "" && rc_word("",0) == "";
   for c: REALM_COMMANDS {
@@ -1093,7 +1196,8 @@ rc_help_line :: (c: CliCommand, out: [] u8) -> string #effects(all) {
   if c.usage.count > 0 { n = forge_put(out,n," "); n = forge_put(out,n,c.usage); }
   w := n;
   while w < 40 { n = forge_put(out,n," "); w += 1; }
-  n = forge_put(out,n,"  "); n = forge_put(out,n,c.help);
+  nb: [64] u8;
+  n = forge_put(out,n,"  "); n = forge_put(out,n,c.help); n = forge_put(out,n,rc_effect_note(c,nb[..]));
   return ifx n == -1 then "" else cast(string) out[0..<n];
 }
 

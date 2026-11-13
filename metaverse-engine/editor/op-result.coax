@@ -1,0 +1,238 @@
+// One result shape for every realm operation (GitHub #13436; docs/research/summer-what-to-adapt.md
+// S2; docs/protocol/realm-result-v1.md): what the CLI, the MCP tools, `coax drive` and the editor's
+// agent strip all answer after an operation, so a caller reads one thing. This file is its one
+// codec (proto/world/result-v1.json holds the bytes) and the one list of an operation's refusal
+// codes, which are diagnostic codes (proto/README.md "Diagnostic codes").
+//
+//   {"schema":"realm.result.v1","state":STATE,"verb":VERB,"realm":ID,"effect":EFFECT,"rev":N,
+//    "build":[E,R,C,W],"page":PATH,"key":KEY, ...}
+// Every result names what it touched (#13437): the realm, the revision it stands at after the
+// operation (0: not known), the pins of the build that reads it, and the page that shows it.
+// `key` is the caller's idempotency key ("" when it gave none). Then, by state:
+//   done            nothing more: the operation was saved, and `rev` is the new revision
+//   running         "job":ID                       it goes on; ask again with the job's ID
+//   needs-approval  "approval":RULE                nothing was done: repeat it with --yes
+//   dry-run         "level":LEVEL                  nothing was saved. LEVEL says how far the check went:
+//                     schema  the arguments are a well-formed request
+//                     world   checked against the world as it stands now
+//                     change  the change was worked out, and is in the answer
+//                     copy    it was carried out whole in a throwaway copy of the world
+//   refused         "code":ID,"retry":BOOL,"words":WORDS,"edit":I    nothing was saved. ID is a
+//                     diagnostic code below; retry: whether doing it again can help; WORDS say why,
+//                     naming the rule or the zone; I is the edit of a batch that was refused (-1: none)
+//   unknown         "code":ID,"retry":true,"words":WORDS   the request was sent and no answer came:
+//                     it may have been saved. Read the realm's revision before repeating it
+// A reader refuses any bytes but the ones the writer writes.
+//   coax/bin/coax test metaverse-engine/editor/op-result.coax --library
+#load "../../coax/lib/json/json.coax";
+#load "world-edit.coax";
+
+OR_SCHEMA :: "realm.result.v1";
+OR_DONE :: 0; OR_RUNNING :: 1; OR_NEEDS_APPROVAL :: 2; OR_DRY_RUN :: 3; OR_REFUSED :: 4; OR_UNKNOWN :: 5;
+OR_STATES :: 6;
+OR_STATE :: [OR_STATES] string.["done", "running", "needs-approval", "dry-run", "refused", "unknown"];
+ORL_SCHEMA :: 0; ORL_WORLD :: 1; ORL_CHANGE :: 2; ORL_COPY :: 3;
+OR_LEVEL :: [4] string.["schema", "world", "change", "copy"];
+
+// The codes a refusal or an unknown outcome carries. A number is never changed or used again.
+ORC_NONE :: 0;
+ORC_STALE :: 1;          // made from another revision than the realm's: read it again, then repeat
+ORC_EDIT_REFUSED :: 2;   // the realm's own check refused an edit; the words name the rule or the zone
+ORC_NOT_PERMITTED :: 3;  // the caller may not do this to this realm
+ORC_NOT_FOUND :: 4;      // no realm, entity or step has this name
+ORC_BAD_REQUEST :: 5;    // the arguments are not a request this operation takes
+ORC_NOTHING :: 6;        // there was nothing to do: nothing to undo, nothing new to publish
+ORC_NO_ANSWER :: 7;      // the request was sent and no answer came
+ORC_FAILED :: 8;         // the server or the tool failed; nothing was saved
+ORC_CODES :: 9;
+OR_CODE_NAME :: [ORC_CODES] string.["", "stale-revision", "edit-refused", "not-permitted", "not-found", "bad-request", "nothing-to-do", "no-answer", "operation-failed"];
+OR_CODE_ID :: [ORC_CODES] string.["", "realm-authoring.diagnostic.stale-revision.v1", "realm-authoring.diagnostic.edit-refused.v1", "realm-authoring.diagnostic.not-permitted.v1",
+  "realm-authoring.diagnostic.not-found.v1", "realm-authoring.diagnostic.bad-request.v1", "realm-authoring.diagnostic.nothing-to-do.v1",
+  "realm-authoring.diagnostic.no-answer.v1", "realm-authoring.diagnostic.operation-failed.v1"];
+OR_CODE_RETRY :: [ORC_CODES] bool.[false, true, false, false, false, false, false, true, true];
+or_code_id :: (code: int) -> string { return ifx code > ORC_NONE && code < ORC_CODES then OR_CODE_ID[code] else ""; }
+or_code_name :: (code: int) -> string { return ifx code > ORC_NONE && code < ORC_CODES then OR_CODE_NAME[code] else ""; }
+or_code_retry :: (code: int) -> bool { return code > ORC_NONE && code < ORC_CODES && OR_CODE_RETRY[code]; }
+or_code_of :: (id: string) -> int { for c: 1..<ORC_CODES { if OR_CODE_ID[c] == id { return c; } } return ORC_NONE; }
+// The code an HTTP status of a realm's routes means (200: none).
+or_code_of_status :: (status: int) -> int {
+  if status == 200 { return ORC_NONE; }
+  if status == 409 { return ORC_STALE; }
+  if status == 401 || status == 403 { return ORC_NOT_PERMITTED; }
+  if status == 404 { return ORC_NOT_FOUND; }
+  if status == 400 || status == 413 { return ORC_BAD_REQUEST; }
+  if status == 422 { return ORC_EDIT_REFUSED; }
+  if status == 0 { return ORC_NO_ANSWER; }
+  return ORC_FAILED;
+}
+
+OR_VERB :: 24; OR_REALM :: 48; OR_PAGE :: 96; OR_KEY :: 64; OR_WORDS :: 240; OR_JOB :: 48; OR_EFFECT :: 16;
+OR_BODY :: 1024;   // the longest result, in bytes
+// A result. Words are kept as text of the caller's: or_write takes them beside the numbers.
+OpResult :: struct { ok: bool; state: int; rev: int; build: [4] int; level: int; code: int; retry: bool; edit: int = -1; }
+// What a result says in words, each bounded.
+OpWords :: struct { verb: string; realm: string; effect: string; page: string; key: string; task: string; approval: string; words: string; }
+
+or_word_ok :: (s: string, max: int) -> bool {
+  if s.count > max { return false; }
+  for b: s { if b < 32 || b == 127 { return false; } }
+  return true;
+}
+// The key a caller may give: 1 to OR_KEY of letters, digits, '-', '_' and '.'.
+or_key_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > OR_KEY { return false; }
+  for b: s { if !((b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '-' || b == '_' || b == '.') { return false; } }
+  return true;
+}
+// The result's bytes into out; "" for what is none (a state or a level that is none, a refusal
+// with no code, words too long) or when out is too small.
+or_write :: (r: OpResult, w: OpWords, out: [] u8) -> string {
+  if r.state < 0 || r.state >= OR_STATES || !we_in(r.rev, 0, WE_ID_MAX) { return ""; }
+  if w.verb.count == 0 || !or_word_ok(w.verb, OR_VERB) || w.realm.count > OR_REALM || !or_word_ok(w.realm, OR_REALM) || !or_word_ok(w.effect, OR_EFFECT) || !or_word_ok(w.page, OR_PAGE) { return ""; }
+  if w.key.count > 0 && !or_key_ok(w.key) { return ""; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "schema"); jo_str(o[..], OR_SCHEMA);
+  jo_key(o[..], "state"); jo_str(o[..], OR_STATE[r.state]);
+  jo_key(o[..], "verb"); jo_str(o[..], w.verb); jo_key(o[..], "realm"); jo_str(o[..], w.realm); jo_key(o[..], "effect"); jo_str(o[..], w.effect);
+  we_int(o[..], "rev", r.rev);
+  jo_key(o[..], "build"); jo_arr(o[..]); for k: 0..<4 { if !we_in(r.build[k], 0, WE_ID_MAX) { return ""; } jo_int(o[..], r.build[k]); } jo_end(o[..]);
+  jo_key(o[..], "page"); jo_str(o[..], w.page); jo_key(o[..], "key"); jo_str(o[..], w.key);
+  if r.state == OR_RUNNING { if w.task.count == 0 || !or_word_ok(w.task, OR_JOB) { return ""; } jo_key(o[..], "job"); jo_str(o[..], w.task); }
+  if r.state == OR_NEEDS_APPROVAL { if w.approval.count == 0 || !or_word_ok(w.approval, OR_EFFECT) { return ""; } jo_key(o[..], "approval"); jo_str(o[..], w.approval); }
+  if r.state == OR_DRY_RUN { if r.level < ORL_SCHEMA || r.level > ORL_COPY { return ""; } jo_key(o[..], "level"); jo_str(o[..], OR_LEVEL[r.level]); }
+  if r.state == OR_REFUSED || r.state == OR_UNKNOWN {
+    if r.code <= ORC_NONE || r.code >= ORC_CODES || !or_word_ok(w.words, OR_WORDS) || r.retry != or_code_retry(r.code) { return ""; }
+    if r.state == OR_UNKNOWN && r.code != ORC_NO_ANSWER { return ""; }
+    jo_key(o[..], "code"); jo_str(o[..], OR_CODE_ID[r.code]); jo_key(o[..], "retry"); jo_bool(o[..], r.retry);
+    jo_key(o[..], "words"); jo_str(o[..], w.words);
+    if r.state == OR_REFUSED { if r.edit < -1 || r.edit > WE_BATCH { return ""; } we_int(o[..], "edit", r.edit); }
+  }
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+// Room to read a result's words into.
+OpRead :: struct { verb: [OR_VERB] u8; realm: [OR_REALM] u8; effect: [OR_EFFECT] u8; page: [OR_PAGE] u8; key: [OR_KEY] u8; task: [OR_JOB] u8; approval: [OR_EFFECT] u8; words: [OR_WORDS] u8;
+                   verb_n: int; realm_n: int; effect_n: int; page_n: int; key_n: int; task_n: int; approval_n: int; words_n: int; scratch: [OR_BODY] u8; }
+or_into :: (d: Jv, at: int, out: [] u8) -> int { n := jv_str(d, at, out); return ifx n < 0 then 0 else n; }
+// The words a read result holds.
+or_words :: (b: [] OpRead) -> OpWords {
+  return OpWords.{verb = cast(string) b[0].verb[0..<b[0].verb_n], realm = cast(string) b[0].realm[0..<b[0].realm_n], effect = cast(string) b[0].effect[0..<b[0].effect_n],
+                  page = cast(string) b[0].page[0..<b[0].page_n], key = cast(string) b[0].key[0..<b[0].key_n], task = cast(string) b[0].task[0..<b[0].task_n],
+                  approval = cast(string) b[0].approval[0..<b[0].approval_n], words = cast(string) b[0].words[0..<b[0].words_n]};
+}
+// The result in text, its words into b; not ok for anything but a result in its one form.
+or_read :: (text: string, b: [] OpRead) -> OpResult {
+  r := OpResult.{};
+  if text.count == 0 || text.count > OR_BODY { return r; }
+  nodes: [40] JvNode; da: [1] Jv;
+  if !jv_parse(da[..], text, nodes[..]) { return r; }
+  d := da[0];
+  if !jv_raw_eq(jv_raw(d, jv_get(d, 0, "schema")), OR_SCHEMA) { return r; }
+  wb: [64] u8; states := OR_STATE; levels := OR_LEVEL;
+  r.state = we_index(states[..], we_word(d, jv_get(d, 0, "state"), wb[..]));
+  r.rev = jv_int(d, jv_get(d, 0, "rev"), -1);
+  pins := jv_get(d, 0, "build");
+  for k: 0..<4 { r.build[k] = jv_int(d, jv_at(d, pins, k), -1); }
+  r.level = we_index(levels[..], we_word(d, jv_get(d, 0, "level"), wb[..]));
+  r.code = or_code_of(we_word(d, jv_get(d, 0, "code"), wb[..]));
+  r.retry = jv_bool(d, jv_get(d, 0, "retry"));
+  r.edit = jv_int(d, jv_get(d, 0, "edit"), -1);
+  b[0].verb_n = or_into(d, jv_get(d, 0, "verb"), b[0].verb[..]); b[0].realm_n = or_into(d, jv_get(d, 0, "realm"), b[0].realm[..]);
+  b[0].effect_n = or_into(d, jv_get(d, 0, "effect"), b[0].effect[..]); b[0].page_n = or_into(d, jv_get(d, 0, "page"), b[0].page[..]);
+  b[0].key_n = or_into(d, jv_get(d, 0, "key"), b[0].key[..]); b[0].task_n = or_into(d, jv_get(d, 0, "job"), b[0].task[..]);
+  b[0].approval_n = or_into(d, jv_get(d, 0, "approval"), b[0].approval[..]); b[0].words_n = or_into(d, jv_get(d, 0, "words"), b[0].words[..]);
+  made := or_write(r, or_words(b), b[0].scratch[..]);
+  r.ok = made.count > 0 && made == text;
+  return r;
+}
+// A result for an HTTP status of a realm's routes: done on 200, else refused (or unknown when no
+// answer came) with the status's code. rev: the revision after it (0: not known).
+or_of_status :: (status: int, rev: int) -> OpResult {
+  code := or_code_of_status(status);
+  if code == ORC_NONE { return OpResult.{ok = true, state = OR_DONE, rev = rev}; }
+  return OpResult.{ok = true, state = ifx code == ORC_NO_ANSWER then OR_UNKNOWN else OR_REFUSED, rev = rev, code = code, retry = or_code_retry(code)};
+}
+// One line a person reads, into out: "done: rev 5", "refused (stale-revision; retry can help): WORDS".
+or_line :: (r: OpResult, w: OpWords, out: [] u8) -> string {
+  n := ct_put(out, 0, OR_STATE[ifx r.state >= 0 && r.state < OR_STATES then r.state else OR_UNKNOWN]);
+  if r.state == OR_DONE { n = ct_put(out, n, ": rev "); n = ct_put_int(out, n, r.rev); }
+  if r.state == OR_RUNNING { n = ct_put(out, n, ": job "); n = ct_put(out, n, w.task); }
+  if r.state == OR_NEEDS_APPROVAL { n = ct_put(out, n, ": nothing was done. Repeat it with --yes"); }
+  if r.state == OR_DRY_RUN {
+    levels := [4] string.["the arguments are a well-formed request", "checked against the world as it stands", "the change was worked out", "carried out whole in a throwaway copy"];
+    n = ct_put(out, n, ": nothing was saved; "); n = ct_put(out, n, levels[ifx r.level >= 0 && r.level <= ORL_COPY then r.level else 0]);
+  }
+  if r.state == OR_REFUSED || r.state == OR_UNKNOWN {
+    n = ct_put(out, n, " ("); n = ct_put(out, n, or_code_name(r.code)); n = ct_put(out, n, ifx r.retry then "; a retry can help" else "; a retry won't help"); n = ct_put(out, n, "): "); n = ct_put(out, n, w.words);
+  }
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+
+#test "result: every state writes its pinned bytes and reads back the same result" {
+  o: [OR_BODY] u8; b := [1] OpRead.[OpRead.{}]; fx := OR_FIXTURE;
+  w := OpWords.{verb = "place", realm = "splice", effect = "write", page = "/worlds/splice", key = "k-1"};
+  r := OpResult.{state = OR_DONE, rev = 5}; r.build[0] = 1; r.build[1] = 1; r.build[2] = 2; r.build[3] = 1;
+  #assert or_write(r, w, o[..]) == fx[OR_DONE];
+  r.state = OR_RUNNING; w.task = "job-7"; #assert or_write(r, w, o[..]) == fx[OR_RUNNING];
+  r.state = OR_NEEDS_APPROVAL; w.approval = "confirm"; #assert or_write(r, w, o[..]) == fx[OR_NEEDS_APPROVAL];
+  r.state = OR_DRY_RUN; r.level = ORL_COPY; #assert or_write(r, w, o[..]) == fx[OR_DRY_RUN];
+  r.state = OR_REFUSED; r.code = ORC_EDIT_REFUSED; r.retry = false; r.edit = 1; w.words = "in the kept-clear zone 'Scanner gate'"; #assert or_write(r, w, o[..]) == fx[OR_REFUSED];
+  r.state = OR_UNKNOWN; r.code = ORC_NO_ANSWER; r.retry = true; w.words = "no answer came"; #assert or_write(r, w, o[..]) == fx[OR_UNKNOWN];
+  for s: 0..<OR_STATES {
+    g := or_read(fx[s], b[..]);
+    #assert g.ok && g.state == s && g.rev == 5 && g.build[2] == 2 && or_words(b[..]).verb == "place" && or_words(b[..]).realm == "splice" && or_words(b[..]).key == "k-1" && or_write(g, or_words(b[..]), o[..]) == fx[s];
+  }
+  g := or_read(fx[OR_REFUSED], b[..]); #assert g.code == ORC_EDIT_REFUSED && !g.retry && g.edit == 1 && or_words(b[..]).words == "in the kept-clear zone 'Scanner gate'";
+  g = or_read(fx[OR_DRY_RUN], b[..]); #assert g.level == ORL_COPY;
+  g = or_read(fx[OR_UNKNOWN], b[..]); #assert g.code == ORC_NO_ANSWER && g.retry;
+}
+#test "result: a reader refuses what is not a result in its one form, and a writer what is none" {
+  o: [OR_BODY] u8; p: [OR_BODY + 64] u8; b := [1] OpRead.[OpRead.{}]; fx := OR_FIXTURE;
+  #assert !or_read("", b[..]).ok && !or_read("{}", b[..]).ok && !or_read(sc_edit_swap(fx[0], "realm.result.v1", "realm.result.v2", p[..]), b[..]).ok && !or_read(sc_edit_swap(fx[0], "\"done\"", "\"finished\"", p[..]), b[..]).ok;
+  #assert !or_read(sc_edit_swap(fx[0], "\"rev\":5", "\"rev\":-1", p[..]), b[..]).ok && !or_read(sc_edit_swap(fx[0], "[1,1,2,1]", "[1,1,2]", p[..]), b[..]).ok && !or_read(sc_edit_swap(fx[0], "{", " {", p[..]), b[..]).ok;
+  #assert !or_read(sc_edit_swap(fx[OR_DRY_RUN], "\"copy\"", "\"deep\"", p[..]), b[..]).ok && !or_read(sc_edit_swap(fx[OR_REFUSED], "edit-refused.v1", "edit-refused.v2", p[..]), b[..]).ok;
+  #assert !or_read(sc_edit_swap(fx[OR_REFUSED], "\"retry\":false", "\"retry\":true", p[..]), b[..]).ok && !or_read(sc_edit_swap(fx[OR_UNKNOWN], "no-answer", "stale-revision", p[..]), b[..]).ok && !or_read(sc_edit_swap(fx[0], "\"k-1\"", "\"k 1\"", p[..]), b[..]).ok;
+  w := OpWords.{verb = "place", realm = "splice", effect = "write", page = "/worlds/splice"};
+  r := OpResult.{state = OR_DONE, rev = 5};
+  #assert or_write(r, w, o[..]).count > 0 && or_write(r, w, o[0..<40]) == "";
+  bad := r; bad.state = 6; #assert or_write(bad, w, o[..]) == ""; bad.state = -1; #assert or_write(bad, w, o[..]) == "";
+  bad = r; bad.rev = -1; #assert or_write(bad, w, o[..]) == "";
+  bad = r; bad.build[1] = -1; #assert or_write(bad, w, o[..]) == "";
+  bad = r; bad.state = OR_REFUSED; #assert or_write(bad, w, o[..]) == ""; bad.code = ORC_STALE; #assert or_write(bad, w, o[..]) == ""; bad.retry = true; #assert or_write(bad, w, o[..]).count > 0;
+  bad.edit = -2; #assert or_write(bad, w, o[..]) == "";
+  bad = r; bad.state = OR_UNKNOWN; bad.code = ORC_STALE; bad.retry = true; #assert or_write(bad, w, o[..]) == "";
+  bad = r; bad.state = OR_DRY_RUN; bad.level = 4; #assert or_write(bad, w, o[..]) == "";
+  bad = r; bad.state = OR_RUNNING; #assert or_write(bad, w, o[..]) == ""; bad.state = OR_NEEDS_APPROVAL; #assert or_write(bad, w, o[..]) == "";
+  v := w; v.verb = ""; #assert or_write(r, v, o[..]) == "";
+  v = w; v.key = "a b"; #assert or_write(r, v, o[..]) == "";
+  #assert or_key_ok("k-1") && or_key_ok("A_b.9") && !or_key_ok("") && !or_key_ok("a b") && !or_key_ok("a/b");
+}
+#test "result: codes have ids, names and a retry rule; a route's status is a code; a line says it in words" {
+  o: [400] u8;
+  for c: 1..<ORC_CODES {
+    #assert or_code_of(or_code_id(c)) == c && or_code_name(c).count > 0;
+    for k: 1..<c { #assert or_code_id(k) != or_code_id(c) && or_code_name(k) != or_code_name(c); }
+  }
+  #assert or_code_id(0) == "" && or_code_id(ORC_CODES) == "" && or_code_name(-1) == "" && or_code_of("") == ORC_NONE && or_code_of("x") == ORC_NONE && !or_code_retry(0) && !or_code_retry(ORC_CODES);
+  #assert or_code_retry(ORC_STALE) && or_code_retry(ORC_NO_ANSWER) && or_code_retry(ORC_FAILED) && !or_code_retry(ORC_EDIT_REFUSED) && !or_code_retry(ORC_NOT_PERMITTED) && !or_code_retry(ORC_NOT_FOUND) && !or_code_retry(ORC_BAD_REQUEST) && !or_code_retry(ORC_NOTHING);
+  status := [10] int.[200, 409, 401, 403, 404, 400, 413, 422, 0, 500];
+  code := [10] int.[ORC_NONE, ORC_STALE, ORC_NOT_PERMITTED, ORC_NOT_PERMITTED, ORC_NOT_FOUND, ORC_BAD_REQUEST, ORC_BAD_REQUEST, ORC_EDIT_REFUSED, ORC_NO_ANSWER, ORC_FAILED];
+  for i: 0..<10 { #assert or_code_of_status(status[i]) == code[i]; }
+  d := or_of_status(200, 7); #assert d.state == OR_DONE && d.rev == 7 && d.code == ORC_NONE;
+  s := or_of_status(409, 6); #assert s.state == OR_REFUSED && s.code == ORC_STALE && s.retry && s.rev == 6;
+  u := or_of_status(0, 0); #assert u.state == OR_UNKNOWN && u.code == ORC_NO_ANSWER && u.retry;
+  e := or_of_status(422, 6); #assert e.state == OR_REFUSED && e.code == ORC_EDIT_REFUSED && !e.retry;
+  w := OpWords.{verb = "place", realm = "splice", words = "in the kept-clear zone 'Scanner gate'", task = "job-7"};
+  #assert or_line(d, w, o[..]) == "done: rev 7" && or_line(e, w, o[..]) == "refused (edit-refused; a retry won't help): in the kept-clear zone 'Scanner gate'";
+  #assert or_line(s, w, o[..]) == "refused (stale-revision; a retry can help): in the kept-clear zone 'Scanner gate'" && or_line(u, w, o[..]) == "unknown (no-answer; a retry can help): in the kept-clear zone 'Scanner gate'";
+  #assert or_line(OpResult.{state = OR_NEEDS_APPROVAL}, w, o[..]) == "needs-approval: nothing was done. Repeat it with --yes" && or_line(OpResult.{state = OR_RUNNING}, w, o[..]) == "running: job job-7";
+  #assert or_line(OpResult.{state = OR_DRY_RUN, level = ORL_COPY}, w, o[..]) == "dry-run: nothing was saved; carried out whole in a throwaway copy" && or_line(OpResult.{state = OR_DRY_RUN, level = ORL_SCHEMA}, w, o[..]) == "dry-run: nothing was saved; the arguments are a well-formed request";
+  #assert or_line(d, w, o[0..<4]) == "";
+}
+OR_FIXTURE :: [OR_STATES] string.[
+  "{\"schema\":\"realm.result.v1\",\"state\":\"done\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\"}",
+  "{\"schema\":\"realm.result.v1\",\"state\":\"running\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\",\"job\":\"job-7\"}",
+  "{\"schema\":\"realm.result.v1\",\"state\":\"needs-approval\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\",\"approval\":\"confirm\"}",
+  "{\"schema\":\"realm.result.v1\",\"state\":\"dry-run\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\",\"level\":\"copy\"}",
+  "{\"schema\":\"realm.result.v1\",\"state\":\"refused\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\",\"code\":\"realm-authoring.diagnostic.edit-refused.v1\",\"retry\":false,\"words\":\"in the kept-clear zone 'Scanner gate'\",\"edit\":1}",
+  "{\"schema\":\"realm.result.v1\",\"state\":\"unknown\",\"verb\":\"place\",\"realm\":\"splice\",\"effect\":\"write\",\"rev\":5,\"build\":[1,1,2,1],\"page\":\"/worlds/splice\",\"key\":\"k-1\",\"code\":\"realm-authoring.diagnostic.no-answer.v1\",\"retry\":true,\"words\":\"no answer came\"}"];

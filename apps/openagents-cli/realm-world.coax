@@ -1,0 +1,339 @@
+// The realm commands that edit a world with an ID (GitHub #13415, the browser editor's E6;
+// docs/protocol/world-edit-v1.md). They are rows of REALM_COMMANDS like every other realm command
+// (route "world"), so the CLI, the realm_* MCP tools and `coax drive` all take them from one table.
+// Each turns its bounded arguments into world.edit.v1 (metaverse-engine/editor/world-edit.coax),
+// sends it to /api/worlds/ID made from the revision it read, and answers one result
+// (metaverse-engine/editor/op-result.coax, realm.result.v1): done with the new revision, a dry run
+// with its level, or a refusal in words with its code.
+//   realm world ID                       the world as an agent needs it to aim an edit
+//   realm world-place ID KIND X Z        a spawn; KIND is a content ID from `realm world`
+//   realm world-move ID N X Z, world-turn ID N DEG, world-set ID N COLUMN VALUE, world-remove ID N
+//   realm world-undo ID, world-redo ID, world-original ID
+//   realm world-apply ID FILE            edits as JSON lines, one batch: all are saved or none
+//   realm world-publish ID now|next --yes
+//   realm world-why ID THING             why a thing isn't seen, reached or working (the page's own answer)
+//   realm world-open ID                  the page that edits it
+// Places are whole centimetres, as the wire carries them. --origin http://127.0.0.1:PORT sends
+// them to `coax serve`, which answers the same routes on this computer.
+#load "../../metaverse-engine/editor/op-result.coax";
+
+RW_ANSWER :: 400000;     // a state with its document
+RW_LINES :: 65536;       // an apply file
+RwWork :: struct {
+  out: [RW_ANSWER] u8; doc: [RW_ANSWER] u8; did: [WE_BATCH_BODY] u8; scratch: [RW_ANSWER] u8;
+  body: [WE_BATCH_BODY] u8; content: [CT_BODY] u8; file: [RW_LINES] u8; e: [WE_BATCH] WorldEdit;
+  path: [256] u8; page: [128] u8; result: [OR_BODY] u8; words: [OR_WORDS] u8; line: [OR_BODY] u8;
+  st: WorldState;
+}
+rw_path :: (slug: string, tail: string, out: [] u8) -> string {
+  n := forge_put(out,0,"/api/worlds/"); n = forge_put(out,n,slug); n = forge_put(out,n,tail);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+rw_page :: (slug: string, out: [] u8) -> string {
+  n := forge_put(out,0,"/worlds/"); n = forge_put(out,n,slug);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+// The exit code a result is: done and a dry run are 0.
+rw_exit :: (r: OpResult) -> int #effects(all) {
+  if r.state == OR_DONE || r.state == OR_DRY_RUN || r.state == OR_RUNNING { return EXIT_OK; }
+  if r.state == OR_NEEDS_APPROVAL { return EXIT_USAGE; }
+  if r.state == OR_UNKNOWN { return EXIT_SLOW; }
+  if r.code == ORC_STALE { return EXIT_CONFLICT; }
+  if r.code == ORC_NOT_PERMITTED { return EXIT_FORBIDDEN; }
+  if r.code == ORC_NOT_FOUND { return EXIT_NOT_FOUND; }
+  if r.code == ORC_BAD_REQUEST { return EXIT_USAGE; }
+  return EXIT_FAIL;
+}
+#test "a result's exit code: saved and dry are 0; each refusal has its own" {
+  #assert rw_exit(OpResult.{state = OR_DONE}) == EXIT_OK && rw_exit(OpResult.{state = OR_DRY_RUN}) == EXIT_OK && rw_exit(OpResult.{state = OR_RUNNING}) == EXIT_OK;
+  #assert rw_exit(OpResult.{state = OR_NEEDS_APPROVAL}) == EXIT_USAGE && rw_exit(OpResult.{state = OR_UNKNOWN, code = ORC_NO_ANSWER}) == EXIT_SLOW;
+  #assert rw_exit(or_of_status(409, 0)) == EXIT_CONFLICT && rw_exit(or_of_status(403, 0)) == EXIT_FORBIDDEN && rw_exit(or_of_status(401, 0)) == EXIT_FORBIDDEN && rw_exit(or_of_status(404, 0)) == EXIT_NOT_FOUND;
+  #assert rw_exit(or_of_status(400, 0)) == EXIT_USAGE && rw_exit(or_of_status(422, 0)) == EXIT_FAIL && rw_exit(or_of_status(500, 0)) == EXIT_FAIL && rw_exit(or_of_status(0, 0)) == EXIT_SLOW && rw_exit(or_of_status(200, 3)) == EXIT_OK;
+}
+// The result, printed: with --json the report's "result" member (and "rev", "state"); else one line.
+rw_answer :: (r: [] Rep, w: [] RwWork, res: OpResult, words: OpWords) -> int {
+  made := or_write(res, words, w[0].result[..]);
+  if made.count == 0 { return fail(r, EXIT_FAIL, "the result does not fit its shape"); }
+  realm_key_keep(words.key, res, made);
+  if r[0].json {
+    rep_raw(r, "result", made); rep_str(r, "state", OR_STATE[res.state]); rep_int(r, "rev", res.rev);
+    if res.state == OR_REFUSED || res.state == OR_UNKNOWN { rep_str(r, "error", words.words); }
+    return rep_done(r, rw_exit(res));
+  }
+  line := or_line(res, words, w[0].line[..]);
+  if rw_exit(res) == EXIT_OK { print("%\n", line); } else { tool_err("openagents: "); tool_errln(line); }
+  return rw_exit(res);
+}
+// The lane's state (and its document, in w.doc): the route's answer, read through the codec.
+rw_state :: (a: [] Args, profile: string, slug: string, lane: string, w: [] RwWork) -> ApiAnswer {
+  tail: [32] u8; n := forge_put(tail[..],0,"?lane="); n = forge_put(tail[..],n,lane);
+  res := api_call(a, profile, "GET", rw_path(slug, cast(string) tail[0..<n], w[0].path[..]), "", w[0].out[..]);
+  w[0].st = WorldState.{};
+  if api_ok(res) { w[0].st = we_state_read(cast(string) w[0].out[0..<res.n], w[0].doc[..], w[0].did[..], w[0].scratch[..]); }
+  return res;
+}
+// A whole number of centimetres as typed ("17720", "-7060"); WE_REACH + 1 when it is none.
+rw_cm :: (s: string) -> int #effects(all) {
+  neg := s.count > 0 && s[0] == '-';
+  v := cli_count(ifx neg then s[1..<s.count] else s, 0, WE_REACH);
+  if v < 0 { return WE_REACH + 1; }
+  return ifx neg then -v else v;
+}
+#test "centimetres are whole numbers within the reach" {
+  #assert rw_cm("0") == 0 && rw_cm("17720") == 17720 && rw_cm("-7060") == -7060 && rw_cm("10000000") == 10000000 && rw_cm("-10000000") == -10000000;
+  #assert rw_cm("10000001") == WE_REACH + 1 && rw_cm("") == WE_REACH + 1 && rw_cm("-") == WE_REACH + 1 && rw_cm("1.5") == WE_REACH + 1 && rw_cm("x") == WE_REACH + 1;
+}
+// The edits a world verb's arguments are, into e: how many, or -1 for arguments that are none.
+// world-apply's come from its file (rw_file_edits).
+rw_edits :: (a: [] Args, verb: string, e: [] WorldEdit) -> int {
+  p3 := positional(a, 3); p4 := positional(a, 4); p5 := positional(a, 5);
+  id := cli_count(p3, 1, WE_ID_MAX);
+  if verb == "world-place" {
+    yaw := forge_turn(args_whole_signed(rc_option(a, verb, "--yaw", "0")));
+    e[0] = WorldEdit.{op = WE_SPAWN, id = 0, kind = id, x = rw_cm(p4), z = rw_cm(p5), yaw = yaw, scale = 100};
+  } else if verb == "world-move" { e[0] = WorldEdit.{op = WE_MOVE, id = id, x = rw_cm(p4), z = rw_cm(p5)}; }
+  else if verb == "world-turn" { e[0] = WorldEdit.{op = WE_ROTATE, id = id, yaw = forge_turn(args_whole_signed(p4))}; }
+  else if verb == "world-set" { e[0] = WorldEdit.{op = WE_SET, id = id, col = we_col(p4), v = rw_cm(p5)}; }
+  else if verb == "world-remove" { e[0] = WorldEdit.{op = WE_DESPAWN, id = id}; }
+  else { return 0; }
+  return ifx we_valid(e[0]) then 1 else -1;
+}
+// A whole number with an optional minus ("-45"); 0 for what is none (the row's kind refused that already).
+args_whole_signed :: (s: string) -> int #effects(all) {
+  neg := s.count > 0 && s[0] == '-';
+  v := cli_count(ifx neg then s[1..<s.count] else s, 0, 999999999);
+  if v < 0 { return 0; }
+  return ifx neg then -v else v;
+}
+#test "a world verb's arguments are one edit of the wire" {
+  a: [1] Args; e: [2] WorldEdit; o: [WE_LINE] u8;
+  for s: [8] string.["realm","world-place","splice","113","17720","-7060","--yaw","270"] { #assert args_add(a[..],s); }
+  #assert rw_edits(a[..],"world-place",e[..]) == 1 && we_write(e[0],o[..]) == "{\"op\":\"spawn\",\"id\":0,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":-90,\"scale\":100}";
+  a[0] = Args.{}; for s: [6] string.["realm","world-move","splice","2","300","120"] { #assert args_add(a[..],s); }
+  #assert rw_edits(a[..],"world-move",e[..]) == 1 && we_write(e[0],o[..]) == "{\"op\":\"move\",\"id\":2,\"x\":300,\"y\":0,\"z\":120}";
+  a[0] = Args.{}; for s: [5] string.["realm","world-turn","splice","2","-45"] { #assert args_add(a[..],s); }
+  #assert rw_edits(a[..],"world-turn",e[..]) == 1 && we_write(e[0],o[..]) == "{\"op\":\"rotate\",\"id\":2,\"yaw\":-45}";
+  a[0] = Args.{}; for s: [6] string.["realm","world-set","splice","2","x","310"] { #assert args_add(a[..],s); }
+  #assert rw_edits(a[..],"world-set",e[..]) == 1 && we_write(e[0],o[..]) == "{\"op\":\"set\",\"id\":2,\"col\":\"x\",\"v\":310}";
+  a[0] = Args.{}; for s: [4] string.["realm","world-remove","splice","2"] { #assert args_add(a[..],s); }
+  #assert rw_edits(a[..],"world-remove",e[..]) == 1 && we_write(e[0],o[..]) == "{\"op\":\"despawn\",\"id\":2}";
+  #assert rw_edits(a[..],"world-undo",e[..]) == 0;
+  a[0] = Args.{}; for s: [6] string.["realm","world-set","splice","2","mass","310"] { #assert args_add(a[..],s); }
+  #assert rw_edits(a[..],"world-set",e[..]) == -1;
+  #assert args_whole_signed("-45") == -45 && args_whole_signed("90") == 90 && args_whole_signed("") == 0 && args_whole_signed("x") == 0;
+}
+// A file's edits, one JSON object a line (blank lines pass), into e: how many, or minus the line
+// that is no edit.
+rw_file_edits :: (text: string, e: [] WorldEdit) -> int #effects(all) {
+  n := 0; line := 0;
+  for k: 0..<ct_parts(text, '\n') {
+    row := ct_part(text, '\n', k); line += 1;
+    if row.count > 0 && row[row.count - 1] == '\r' { row = row[0..<row.count - 1]; }
+    if row.count == 0 { continue; }
+    if n >= e.count { return -line; }
+    e[n] = we_read(row);
+    if !e[n].ok { return -line; }
+    n += 1;
+  }
+  return n;
+}
+#test "an apply file is edits a line; the line that is none is named" {
+  e: [3] WorldEdit;
+  #assert rw_file_edits("{\"op\":\"despawn\",\"id\":2}\n\n{\"op\":\"rotate\",\"id\":1,\"yaw\":90}\r\n", e[..]) == 2 && e[1].yaw == 90;
+  #assert rw_file_edits("{\"op\":\"despawn\",\"id\":2}\n{\"op\":\"fly\"}\n", e[..]) == -2 && rw_file_edits("", e[..]) == 0 && rw_file_edits("x", e[..]) == -1;
+  #assert rw_file_edits("{\"op\":\"despawn\",\"id\":1}\n{\"op\":\"despawn\",\"id\":2}\n{\"op\":\"despawn\",\"id\":3}\n{\"op\":\"despawn\",\"id\":4}\n", e[..]) == -4;
+}
+// What a world verb does to the batch: apply its edits, or undo, redo, original, publish.
+rw_what :: (verb: string, when: string) -> int #effects(all) {
+  if verb == "world-undo" { return WB_UNDO; }
+  if verb == "world-redo" { return WB_REDO; }
+  if verb == "world-original" { return WB_ORIGINAL; }
+  if verb == "world-publish" { return ifx when == "next" then WB_PUBLISH_NEXT else WB_PUBLISH_NOW; }
+  return WB_APPLY;
+}
+#test "what each world verb asks of the batch" {
+  #assert rw_what("world-undo","") == WB_UNDO && rw_what("world-redo","") == WB_REDO && rw_what("world-original","") == WB_ORIGINAL && rw_what("world-place","") == WB_APPLY && rw_what("world-apply","") == WB_APPLY;
+  #assert rw_what("world-publish","now") == WB_PUBLISH_NOW && rw_what("world-publish","next") == WB_PUBLISH_NEXT;
+}
+
+// A frame of the world's page after an edit (--shot OUT.png): the page is opened on its dev lane
+// and the picture is taken once it stands at revision `rev`, so the frame is the edit's. The report
+// says what the picture is of: the realm, the revision, the page, the camera and the GPU (#13437).
+rw_shot :: (a: [] Args, r: [] Rep, profile: string, slug: string, out: string, rev: int, w: [] RwWork) -> bool {
+  b: [1] Args; js: [400] u8; pg: [160] u8;
+  n := forge_put(js[..],0,"new Promise(done => { const t0 = Date.now(); const look = () => { const at = coaxial.fieldProbe ? coaxial.fieldProbe(0) : -1; if (at >= ");
+  n = forge_put_int(js[..],n,rev); n = forge_put(js[..],n," || Date.now() - t0 > 8000) setTimeout(() => done(String(at)), 900); else setTimeout(look, 50); }; look(); })");
+  pn := forge_put(pg[..],0,rw_page(slug, w[0].page[..])); pn = forge_put(pg[..],pn,"?edit");
+  if n < 0 || pn < 0 { return false; }
+  ok := args_add(b[..],"labs") && args_add(b[..],"shot") && args_add(b[..],cast(string) pg[0..<pn]) && args_add(b[..],out) && args_add(b[..],"--eval") && args_add(b[..],cast(string) js[0..<n]) && args_add(b[..],"--fresh");
+  if args_has(a,"--origin") { ok = ok && args_add(b[..],"--origin") && args_add(b[..],args_value(a,"--origin","")); }
+  if !ok { return false; }
+  // the shot's own report is read here, not printed: its lines are `key value`
+  q := [1] Rep.[Rep.{}];
+  if labs_shot_fill(b[..], q[..], profile, "") != EXIT_OK { return false; }
+  at := -1; text := cast(string) q[0].buf[0..<q[0].n];
+  for k: 0..<ct_parts(text, '\n') { row := ct_part(text, '\n', k); if ct_part(row, ' ', 0) == "eval" { at = wd_field_int(row, 1); } }
+  // the picture names what it is of (#13437): the realm, the revision the page stood at, the page, the camera and the GPU
+  rep_str(r, "shot", out); rep_str(r, "shot_realm", slug); rep_int(r, "shot_rev", at); rep_str(r, "shot_page", cast(string) pg[0..<pn]);
+  rep_str(r, "shot_camera", "the page's own"); rep_str(r, "shot_gpu", "headless");
+  if at != rev { rep_str(r, "shot_note", "the page did not reach the edit's revision in time: the picture is of the revision named"); }
+  return true;
+}
+
+// realm world ID: the world as an agent needs it to aim an edit.
+rw_show :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RwWork) -> int {
+  lane := rc_option(a, "world", "--lane", "dev");
+  res := rw_state(a, profile, slug, lane, w);
+  if !api_ok(res) { return api_fail(r, res, cast(string) w[0].out[0..<res.n]); }
+  st := w[0].st;
+  if !st.ok { return fail(r, EXIT_FAIL, "the world's answer is not a world.state.v1"); }
+  doc := cast(string) w[0].doc[0..<st.doc_n];
+  cres := api_call(a, profile, "GET", rw_path(slug, "/content", w[0].path[..]), "", w[0].content[..]);
+  content := ifx api_ok(cres) then cast(string) w[0].content[0..<cres.n] else "";
+  pb: [160] u8; lb: [200] u8; bb: [64] u8;
+  bn := 0; for k: 0..<4 { if k > 0 { bn = forge_put(bb[..],bn,"."); } bn = forge_put_int(bb[..],bn,st.build[k]); }
+  ln := forge_put(lb[..],0,rw_page(slug, pb[..])); ln = forge_put(lb[..],ln,"/llms.txt");
+  rep_str(r, "world", slug); rep_str(r, "lane", lane); rep_int(r, "rev", st.rev); rep_int(r, "dev", st.dev); rep_int(r, "live", st.live);
+  rep_str(r, "build", cast(string) bb[0..<bn]); rep_int(r, "undo", st.undo); rep_int(r, "redo", st.redo);
+  rep_str(r, "page", rw_page(slug, pb[..])); rep_str(r, "reference", cast(string) lb[0..<ln]);
+  if r[0].json { rep_str(r, "doc", doc); rep_str(r, "content", content); return rep_done(r, EXIT_OK); }
+  code := rep_done(r, EXIT_OK);
+  // the placed things: the document's entities whose kind is a content ID (100 and up), by number
+  print("placed (N KIND X Z YAW, centimetres and degrees; KIND is a row of the pieces table):\n");
+  placed := 0;
+  for k: 0..<ct_parts(doc, '\n') {
+    row := ct_part(doc, '\n', k);
+    if ct_part(row, ' ', 0) != "e" || ct_parts(row, ' ') < 19 { continue; }
+    kind := wd_field_int(row, 17); item := wd_field_int(row, 18);
+    if kind < 100 || (wd_field_int(row, 4) & 1) == 0 { continue; }
+    print("  % % % % %\n", item + 1, kind, wd_field_cm(row, 6), wd_field_cm(row, 8), wd_field_deg(row, 9));
+    placed += 1;
+  }
+  if placed == 0 { print("  none\n"); }
+  if content.count > 0 { print("content tables (aethyr.content.v1: pieces, landmarks, kept_clear, areas; places in centimetres):\n%", content); }
+  print("player and here: a page knows them. `coax/web/tool.sh drive web APP /worlds/% --live ORIGIN where` asks the open page.\n", slug);
+  return code;
+}
+// A field of a document's entity line as a whole number, or as an f32 column's bits turned into
+// centimetres or degrees.
+wd_field_int :: (row: string, k: int) -> int #effects(all) {
+  s := ct_part(row, ' ', k); neg := s.count > 0 && s[0] == '-';
+  v := cli_count(ifx neg then s[1..<s.count] else s, 0, 999999999999999999);
+  return ifx v < 0 then 0 else (ifx neg then -v else v);
+}
+wd_field_f :: (row: string, k: int) -> f32 #effects(all) {
+  s := ct_part(row, ' ', k); v := 0;
+  if s.count != 8 { return 0; }
+  for b: s { d := ifx b >= '0' && b <= '9' then cast(int) (b - '0') else (ifx b >= 'a' && b <= 'f' then cast(int) (b - 'a') + 10 else 0); v = v * 16 + d; }
+  return f32_from_bits(cast(u32) v);
+}
+wd_field_cm :: (row: string, k: int) -> int #effects(all) { return we_cm(wd_field_f(row, k)); }
+wd_field_deg :: (row: string, k: int) -> int #effects(all) { return we_deg(wd_field_f(row, k)); }
+#test "a document's entity line gives a placed thing's number, kind, place and turn" {
+  row := "e 102 0 103 1 27 43314000 00000000 c28d3333 bfc90fdb 00000000 00000000 00000000 3f99999a 40000000 0 0 113 1 0 0 0 0 1";
+  #assert wd_field_int(row, 17) == 113 && wd_field_int(row, 18) == 1 && wd_field_int(row, 4) == 1 && wd_field_cm(row, 6) == 17725 && wd_field_cm(row, 8) == -7060 && wd_field_deg(row, 9) == -90;
+  #assert wd_field_int("e -5", 1) == -5 && wd_field_int("e x", 1) == 0 && wd_field_f("e 12", 1) == 0;
+}
+
+// A world verb that writes: the batch made from the revision read (or --rev N), sent, and its one result.
+rw_write :: (a: [] Args, r: [] Rep, profile: string, verb: string, slug: string, w: [] RwWork) -> int {
+  c := REALM_COMMANDS[rc_find(verb)];
+  words := OpWords.{verb = verb, realm = slug, effect = c.effect, page = rw_page(slug, w[0].page[..]), key = rc_option(a, verb, "--key", "")};
+  n := rw_edits(a, verb, w[0].e[..]);
+  if verb == "world-apply" {
+    file := positional(a, 3);
+    fn := fs_read(file, w[0].file[..]);
+    if fn <= 0 { return fail(r, EXIT_USAGE, "FILE is edits as JSON lines, at most 64 KiB (realm help)"); }
+    n = rw_file_edits(cast(string) w[0].file[0..<fn], w[0].e[..]);
+    if n < 0 {
+      wn := forge_put(w[0].words[..],0,"line "); wn = forge_put_int(w[0].words[..],wn,-n); wn = forge_put(w[0].words[..],wn," is not a world.edit.v1 edit");
+      words.words = cast(string) w[0].words[0..<ifx wn < 0 then 0 else wn];
+      return rw_answer(r, w, OpResult.{state = OR_REFUSED, code = ORC_BAD_REQUEST, edit = -n - 1}, words);
+    }
+    if n == 0 { words.words = "the file holds no edit"; return rw_answer(r, w, OpResult.{state = OR_REFUSED, code = ORC_BAD_REQUEST}, words); }
+  }
+  if n < 0 { words.words = "the arguments are not an edit this world's wire carries (realm help)"; return rw_answer(r, w, OpResult.{state = OR_REFUSED, code = ORC_BAD_REQUEST}, words); }
+  // the revision the batch is made from: --rev N, or the world's as read now
+  res := rw_state(a, profile, slug, "dev", w);
+  if !api_ok(res) || !w[0].st.ok {
+    words.words = api_why(cast(string) w[0].out[0..<res.n], w[0].words[..]);
+    return rw_answer(r, w, or_of_status(ifx res.error == HTTP_OK then (ifx res.status == 200 then 500 else res.status) else 0, 0), words);
+  }
+  st := w[0].st; base := st.rev;
+  if rc_has(a, verb, "--rev") { base = cli_count(rc_option(a, verb, "--rev", ""), 1, 999999999); if base < 0 { base = 0; } }
+  what := rw_what(verb, positional(a, 3));
+  body := we_batch_write(base, what, w[0].e[..], ifx what == WB_APPLY then n else 0, w[0].body[..]);
+  if body.count == 0 { words.words = "the edits do not fit one batch (64 at most)"; return rw_answer(r, w, OpResult.{state = OR_REFUSED, code = ORC_BAD_REQUEST}, words); }
+  dry := rc_has(a, verb, "--dry-run");
+  post := api_call(a, profile, "POST", rw_path(slug, ifx dry then "?dry=1" else "", w[0].path[..]), body, w[0].out[..]);
+  answer := cast(string) w[0].out[0..<post.n];
+  out := or_of_status(ifx post.error == HTTP_OK then post.status else 0, st.rev);
+  for k: 0..<4 { out.build[k] = st.build[k]; }
+  if out.state == OR_DONE {
+    done := we_state_read(answer, w[0].doc[..], w[0].did[..], w[0].scratch[..]);
+    if !done.ok { out = or_of_status(500, st.rev); words.words = "the world's answer is not a world.state.v1"; }
+    else {
+      out.rev = ifx wr_is_publish(what) then st.rev else done.rev;
+      for k: 0..<4 { out.build[k] = done.build[k]; }
+      if dry { out.state = OR_DRY_RUN; out.level = ORL_COPY; out.rev = st.rev; }
+      if r[0].json && done.did_n > 0 { rep_raw(r, "did", cast(string) w[0].did[0..<done.did_n]); }
+      if wr_is_publish(what) { rep_int(r, "live", done.rev); }
+    }
+  } else if out.state == OR_REFUSED {
+    refusal := we_refusal_read(answer, w[0].words[..]);
+    words.words = ifx refusal.ok then cast(string) w[0].words[0..<refusal.words_n] else api_why(answer, w[0].words[..]);
+    out.edit = refusal.edit;
+    if out.code == ORC_EDIT_REFUSED && (words.words == "nothing to undo" || words.words == "nothing to redo" || words.words == "nothing to change" || words.words == "live is already this revision") { out.code = ORC_NOTHING; out.retry = false; }
+  } else { words.words = "the request was sent and no answer came: it may have been saved. Read the world (realm world) before you repeat it"; }
+  shot := rc_option(a, verb, "--shot", "");
+  if shot.count > 0 && out.state == OR_DONE && !rw_shot(a, r, profile, slug, shot, out.rev, w) { rep_str(r, "shot_error", "the frame could not be taken (labs doctor says what is missing)"); }
+  return rw_answer(r, w, out, words);
+}
+wr_is_publish :: (what: int) -> bool #effects(all) { return what == WB_PUBLISH_NOW || what == WB_PUBLISH_NEXT; }
+
+// realm world-why ID THING: the page's own answer (metaverse-engine/agent/why.coax), asked of the
+// world's page in headless Chrome.
+rw_why :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RwWork) -> int {
+  thing := positional(a, 3);
+  b: [1] Args; js: [300] u8; pg: [160] u8; tmp: [1100] u8; td: [1024] u8; name: [48] u8;
+  // a placed thing's number, as `realm world` lists it, is the page's piece one below it
+  number := cli_count(thing, 1, 999999999);
+  if number >= 1 { tn := forge_put(name[..],0,"piece-"); tn = forge_put_int(name[..],tn,number - 1); thing = cast(string) name[0..<tn]; }
+  for c: thing { if c == '\'' || c == '\\' || c < 32 { return fail(r, EXIT_USAGE, "THING is a placed thing's number, or a name the page knows: you, foe-N, rubble, boss-wall, caps"); } }
+  n := forge_put(js[..],0,"new Promise(done => setTimeout(() => done(coaxial.drive.send('why "); n = forge_put(js[..],n,thing); n = forge_put(js[..],n,"') || 'the page has no driver'), 1200))");
+  pn := forge_put(pg[..],0,rw_page(slug, w[0].page[..])); pn = forge_put(pg[..],pn,"?edit");
+  dir := fs_temp("world-why", td[..]);
+  png := fs_join(dir, "why.png", tmp[..]);
+  if n < 0 || pn < 0 || png == "" { return fail(r, EXIT_FAIL, "the question does not fit"); }
+  ok := args_add(b[..],"labs") && args_add(b[..],"shot") && args_add(b[..],cast(string) pg[0..<pn]) && args_add(b[..],png) && args_add(b[..],"--eval") && args_add(b[..],cast(string) js[0..<n]) && args_add(b[..],"--fresh");
+  if args_has(a,"--origin") { ok = ok && args_add(b[..],"--origin") && args_add(b[..],args_value(a,"--origin","")); }
+  if !ok { return fail(r, EXIT_USAGE, "arguments too long"); }
+  // the shot's own report is read here: the answer is its eval, from "eval " to the line "cached"
+  q := [1] Rep.[Rep.{}];
+  code := labs_shot_fill(b[..], q[..], profile, "");
+  gone := fs_remove(png) && fs_remove(dir);
+  if code != EXIT_OK { return code; }
+  text := cast(string) q[0].buf[0..<q[0].n]; from := -1; to := text.count;
+  for i: 0..<text.count { if from < 0 && i + 5 <= text.count && text[i..<i + 5] == "eval " && (i == 0 || text[i - 1] == '\n') { from = i + 5; } }
+  for i: 0..<text.count { if from >= 0 && i > from && i + 8 <= text.count && text[i..<i + 8] == "\ncached " { to = i; break; } }
+  answer := ifx from < 0 then "the page gave no answer" else text[from..<to];
+  if r[0].json { rep_str(r, "world", slug); rep_str(r, "thing", thing); rep_str(r, "why", answer); return rep_done(r, EXIT_OK); }
+  print("%\n", answer);
+  return EXIT_OK;
+}
+
+rw_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  slug := positional(a, 2);
+  if !we_world_ok(slug) { return fail(r, EXIT_USAGE, "ID is a world's: a lowercase letter, then a-z, 0-9 and -, 32 at most"); }
+  w := [1] RwWork.[RwWork.{}];
+  if verb == "world" { return rw_show(a, r, profile, slug, w[..]); }
+  if verb == "world-why" { return rw_why(a, r, profile, slug, w[..]); }
+  if verb == "world-open" {
+    ob: [300] u8; ub: [500] u8;
+    n := forge_put(ub[..],0,acct_origin(a, profile, ob[..])); n = forge_put(ub[..],n,rw_page(slug, w[0].page[..])); n = forge_put(ub[..],n,"?edit");
+    if n < 0 { return fail(r, EXIT_USAGE, "--origin is too long"); }
+    rep_str(r, "world", slug); rep_str(r, "edit", cast(string) ub[0..<n]);
+    return rep_done(r, EXIT_OK);
+  }
+  return rw_write(a, r, profile, verb, slug, w[..]);
+}
