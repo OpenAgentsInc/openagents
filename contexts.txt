@@ -20,6 +20,7 @@ projects folders: coax/web/api/private.c coax/web/api/drops.c may load: identity
 nostr folders: nostr/ coax/lib/nostr/ may load: toolchain
 psionic folders: psionic/ coax/lib/systemone/ coax/web/api/inference.c may load: nostr protocol toolchain
 engine folders: aethyr/ may load: toolchain
+splice folders: splice/ may load: engine realm-authoring toolchain
 realm-tools folders: verse/tools/ may load: engine realm-authoring nostr toolchain
 protocol folders: proto/ may load:
 toolchain folders: coax/ may load:

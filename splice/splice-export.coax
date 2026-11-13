@@ -3,13 +3,13 @@
 // (collision boxes, placements, tuning, key codes, reference shots). It runs the game's own
 // layout and world code and re-describes nothing. Same source, same bytes; it refuses a folder
 // that exists. Run from the repository root:
-//   coax/web/tool.sh apps/openagents-web/splice-export.coax NEW_DIR
+//   coax/web/tool.sh splice/splice-export.coax NEW_DIR
 // The tuning and placement lists below name the game's constants one by one: a constant added
 // to splice-game.coax is not exported until it is listed here.
 #import "Basic";
-#load "../../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/tool.coax";
 #load "splice-game.coax";
-#load "../../aethyr/export/bundle.coax";
+#load "../aethyr/export/bundle.coax";
 
 ceil :: (x: f64) -> f64 #foreign #effects(all);   // libm's, for the PNG writer (coax/lib/image/pillow.coax)
 
@@ -61,7 +61,7 @@ tool_main :: () -> int #export_c #effects(all) {
   json: [1048576] u8; o: [1] Jo; jo_start(o[..], json[..]); j := o[..];
   jo_obj(j);
   ex_int(j, "aexport", EX_VERSION);
-  jo_key(j, "game"); jo_obj(j); ex_str(j, "id", "splice"); ex_str(j, "name", "Splice"); ex_str(j, "source", "apps/openagents-web/splice-game.coax"); jo_end(j);
+  jo_key(j, "game"); jo_obj(j); ex_str(j, "id", "splice"); ex_str(j, "name", "Splice"); ex_str(j, "source", "splice/splice-game.coax"); jo_end(j);
   // Aethyr: metres, right-handed, y up (glTF's own convention). Measured with Unreal 5.9's default
   // glTF import (GitHub #13399): Unreal X = x, Y = z, Z = y, centimetres.
   jo_key(j, "axes"); jo_obj(j); ex_str(j, "aethyr", "metres, right-handed, y up"); ex_str(j, "unreal_x", "x"); ex_str(j, "unreal_y", "z"); ex_str(j, "unreal_z", "y"); ex_num(j, "unreal_units_per_metre", 100); jo_end(j);

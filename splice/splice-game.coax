@@ -8,8 +8,8 @@
 // ink on cream paper, orange for danger, blue for banned tech, Michroma and IBM Plex Mono). The
 // engine draws it: the cel kits (aethyr/kit/), the cel mesh writers and Anime Lab's uniform
 // layout, style and shader.
-#load "animelab.coax";
-#load "../../aethyr/kit/land.coax";
+#load "../apps/openagents-web/animelab.coax";
+#load "../aethyr/kit/land.coax";
 
 // ---- Tuning (the document's DA_Tuning): every number the run is balanced with
 T_WALK :: 5.6f32; T_TURN :: 2.5f32; T_LOOK :: 0.0032f32; T_RADIUS :: 0.45f32;

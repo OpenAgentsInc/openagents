@@ -6,9 +6,9 @@
 // layout and camera rows (animelab.coax), its style block (animelab-style.coax) and its shader
 // (gpu/splice.coax loads gpu/animelab.coax). This page only stages scenes: each picks pieces from
 // the kits, their colours, a camera, a key light and an anime variant and clock (its look).
-//   coax/bin/coax test apps/openagents-web/splice.coax
-#load "animelab.coax";
-#load "../../aethyr/kit/land.coax";
+//   coax/bin/coax test splice/splice.coax
+#load "../apps/openagents-web/animelab.coax";
+#load "../aethyr/kit/land.coax";
 #load "splice-game.coax";
 
 SP_WORLD_WORDS :: 150000;

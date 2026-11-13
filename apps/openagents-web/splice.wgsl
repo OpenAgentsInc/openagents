@@ -1,4 +1,4 @@
-// ---- generated: apps/openagents-web/gpu/splice.coax (the module) by coax wgsl; do not edit
+// ---- generated: splice/gpu/splice.coax (the module) by coax wgsl; do not edit
 struct coax_t9 {
   x: vec4f,
 }

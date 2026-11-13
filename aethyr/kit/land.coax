@@ -2,7 +2,7 @@
 // domed houses, banners and a moon, built with the cel mesh writers (aethyr/render/cel-mesh.coax)
 // in the colours they are handed. Scattered pieces take a seed, so the same scene writes the same
 // triangles. Nothing here draws or decides; it only writes. Splice
-// (apps/openagents-web/splice.coax) stages them.
+// (splice/splice.coax) stages them.
 //   coax/bin/coax test --library aethyr/kit/land.coax
 #load "machines.coax";
 

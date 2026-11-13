@@ -3,7 +3,7 @@
 Specification, 2026-11-12. Status: proposed. Nothing here is built.
 
 We build games in Aethyr and export them to Unreal Engine (UE) 5.9. The first
-game is Splice, as it stands on `main` (`apps/openagents-web/splice-game.coax`).
+game is Splice, as it stands on `main` (`splice/splice-game.coax`).
 This document defines the smallest exporter that turns that game into an
 Unreal project that plays the same run.
 
@@ -32,7 +32,7 @@ Why this is the minimum:
 
 - **The boundary already exists.** A world on the web is a Coax module behind
   a host interface: `coaxial_frame`, `coaxial_store`, `coaxial_key`,
-  `coaxial_pointer`, `coaxial_look_delta` (`apps/openagents-web/splice-face.c`).
+  `coaxial_pointer`, `coaxial_look_delta` (`splice/splice-face.c`).
   The browser host implements that interface. A second host inside Unreal
   implements the same one. No rule is rewritten, so the Unreal build cannot
   drift from the Aethyr build.
@@ -139,7 +139,7 @@ draws the same triangles without one.
 - `aethyr_host.h` (`aethyr/export/unreal/aethyr_host.h`) declares the host
   interface with real pointers. The web face passes pointers as 32-bit
   integers, which is wrong for a 64-bit target, so the bundle carries its
-  own face, `apps/openagents-web/splice-ue-face.c`.
+  own face, `splice/splice-ue-face.c`.
 - Unreal's build tool compiles these files inside the bridge plugin for each
   platform. There is no prebuilt library to keep in step.
 
@@ -151,7 +151,7 @@ A native Coax tool, per the tools rule (`coax/tools-in-coax.md`).
 |---|---|
 | `aethyr/export/glb-write.coax` | Writes glTF binary from cel vertices. Generic. |
 | `aethyr/export/bundle.coax` | Writes the manifest and the folder. Generic. |
-| `apps/openagents-web/splice-export.coax` | The command. Loads the game, calls `g_reset` and `g_world`, lists placements and tuning. Per game. |
+| `splice/splice-export.coax` | The command. Loads the game, calls `g_reset` and `g_world`, lists placements and tuning. Per game. |
 | `aethyr/export/raster.coax` | Draws the reference shots in software. Generic. |
 | `aethyr/tools/unreal-export-check.coax` | Reads a bundle back with Aethyr's own glTF reader. |
 | `aethyr/tools/unreal-import.coax` | Stages, builds and runs the Unreal import, and returns its verdict. |
@@ -160,7 +160,7 @@ The per-game file sits beside the game because the engine may not load from
 `apps/` (`aethyr/layer-allowlist.txt`).
 
 ```
-coax/web/tool.sh apps/openagents-web/splice-export.coax OUT_DIR
+coax/web/tool.sh splice/splice-export.coax OUT_DIR
 ```
 
 Rules for the tool:
@@ -308,7 +308,7 @@ the uniform block, the world store and the live store.
 Facts from the run:
 
 - The Coax C needed no change. The only new code is a face with real
-  pointers (`apps/openagents-web/splice-ue-face.c`) behind
+  pointers (`splice/splice-ue-face.c`) behind
   `aethyr/export/unreal/aethyr_host.h`.
 - Unreal's build settings turn `-Wunreachable-code-aggressive` into an
   error, and the generated C trips it. The module that compiles the rules
@@ -359,7 +359,7 @@ What changed from the plan:
 - **The tuning and placement lists live in `splice-export.coax`**, not in new
   tables inside the game file. A constant added to the game is not exported
   until it is listed there.
-- **The command is `apps/openagents-web/splice-export.coax`**, beside the
+- **The command is `splice/splice-export.coax`**, beside the
   game, because the engine may not load from `apps/`.
 - **Collision is `AethyrCollisionBox` actors**, a box component set to block
   everything, not brush volumes.

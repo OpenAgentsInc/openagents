@@ -7,8 +7,8 @@
 // keeps the brighter colour). Splice's interface is ink on cream paper, so its overlay writes
 // straight alpha and the page asks the host for source-over blending (coaxial_fx_alpha_v1):
 // a stroke is a solid shape with no glow, and text takes its ink's colour in one of two faces.
-#load "animelab.coax";
-#load "../../../aethyr/render/graybox.coax";
+#load "../../apps/openagents-web/gpu/animelab.coax";
+#load "../../aethyr/render/graybox.coax";
 
 // Graybox (the G key; splice.coax sets a speed below zero): grays, with orange, yellow and cyan kept.
 // The meshes are already gray (Pen.graybox); this takes the sky, the tinted light and the interface.
