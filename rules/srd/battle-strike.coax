@@ -59,8 +59,10 @@ rs_sneak_ally :: (b: [] RsBattle, i: int, j: int) -> bool {
 // damage (Cleave's second attack). Along the way: Improved Critical, Sacred Weapon, Sneak Attack,
 // Colossus Slayer, the Berserker's Frenzy, Deflect Attacks, the Graze, Sap, Vex and Slow masteries,
 // Hex and Hunter's Mark. True on a hit.
+// Room for what one attack at j alone can leave (strike-admission.coax).
+rs_strike_fits :: (b: [] RsBattle, i: int, j: int, w: int) -> bool { return rs_strikes_fit(b,i,j,w,1,false); }
 rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
-  if !rs_strikes_fit(b,i,j,w,1,false) { return false; }
+  if !rs_strike_fits(b,i,j,w) { return false; }
   c := b[0].c[i];
   return rs_strike_resolved(b,i,j,w,bare,rs_weapon(w),rs_weapon_attack(c,w),rs_attack_ability(c,w),rs_mod(c.score[rs_attack_ability(c,w)]));
 }
@@ -386,7 +388,7 @@ rs_bonus_strike :: (b: [] RsBattle, i: int, j: int) -> bool {
   if b[0].who != i || b[0].turn.bonus || !rs_can_act(b[0].c[i]) || b[0].c[i].rank[RS_RK_MARTIAL_DIE] <= 0 { return false; }
   if j < 0 || j >= b[0].n || b[0].c[j].dead || !rs_beside_ft(rs_feet_to(b, i, j)) { return false; }
   unarmed := W_UNARMED;
-  if !rs_strikes_fit(b,i,j,unarmed,1,false) { return false; }
+  if !rs_strike_fits(b,i,j,unarmed) { return false; }
   b[0].turn.bonus = true;
   _ := rs_strike(b, i, j, unarmed, false);
   return true;
@@ -432,11 +434,12 @@ rs_flurry :: (b: [] RsBattle, i: int, j: int, how: int) -> bool {
   if b[0].who != i || b[0].turn.bonus || !rs_can_act(b[0].c[i]) || b[0].c[i].uses[RS_USE_FOCUS] <= 0 { return false; }
   if j < 0 || j >= b[0].n || b[0].c[j].dead || !rs_beside_ft(rs_feet_to(b, i, j)) { return false; }
   unarmed := W_UNARMED;
-  if !rs_strikes_fit(b,i,j,unarmed,2,false) { return false; }
+  blows := 2;
+  if !rs_strikes_fit(b,i,j,unarmed,blows,false) { return false; }
   b[0].turn.bonus = true; b[0].c[i].uses[RS_USE_FOCUS] -= 1;
   l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " spends a Focus Point on Flurry of Blows");
   rs_tell_ft(b, RS_EV_CONDITION, -1, i, i, 0, 0, RS_FT_FLURRY, l[..]);
-  for k: 0..<2 {
+  for k: 0..<blows {
     if b[0].c[j].dead || !rs_beside_ft(rs_feet_to(b, i, j)) { break; }
     if rs_strike(b, i, j, unarmed, false) { rs_open_hand(b, i, j, how); }
   }

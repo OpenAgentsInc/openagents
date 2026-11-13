@@ -68,7 +68,7 @@ SkSeen :: struct {
   deflect: int; cut_zero: int; cut_one: int; dodge: int; dodge_one: int; dodge_zero: int; dodge_down: int; immune: int; vulnerable: int; resisted: int; resisted_one: int;
   plus: int; plus_dice_only: int; plus_flat_only: int; plus_one_die: int; plus_flat_one: int; plus_dead: int; plus_note: int; rider: int; rider_dead: int; curse: int; cunning: int; stun: int;
   sap: int; vex: int; vex_zero: int; vex_one: int; slow: int; slow_zero: int; slow_one: int; left_one: int; left_zero: int; redirect: int; redirect_pass: int; redirect_fail: int; redirect_eq: int; redirect_one_use: int;
-  redirect_cut_one: int; redirect_no_cut: int; redirect_kill: int; ko: int; ko_far: int; kill: int; seek: int; hidden: int; crit_down: int; unarmed: int; rested: int;
+  redirect_cut_one: int; redirect_near: int; redirect_no_cut: int; redirect_kill: int; ko: int; ko_far: int; kill: int; seek: int; hidden: int; crit_down: int; unarmed: int; rested: int;
 }
 sk_mastery :: (m: [] RsBattle, i: int, w: int, kind: int) -> bool {
   bit := 1; for n: 0..<kind { bit = bit * 2; }
@@ -304,6 +304,7 @@ sk_resolved :: (m: [] RsBattle, seen: [] SkSeen, a: SkArgs) -> bool {
     }
   }
   if !deflected && amount == 0 && m[0].c[j].uses[RS_USE_FOCUS] >= 1 && rs_up(m[0].c[j]) && rs_up(m[0].c[i]) { seen[0].redirect_no_cut += 1; }
+  if cut >= 1 && amount == cut + 1 && m[0].c[j].uses[RS_USE_FOCUS] >= 1 && rs_up(m[0].c[j]) && rs_up(m[0].c[i]) { seen[0].redirect_near += 1; }
   if cut >= 1 && amount <= cut && m[0].c[j].uses[RS_USE_FOCUS] >= 1 && rs_up(m[0].c[j]) && rs_up(m[0].c[i]) {
     seen[0].redirect += 1; if amount == cut { seen[0].redirect_eq += 1; } if m[0].c[j].uses[RS_USE_FOCUS] == 1 { seen[0].redirect_one_use += 1; } if cut == 1 { seen[0].redirect_cut_one += 1; }
     m[0].c[j].uses[RS_USE_FOCUS] -= 1;
@@ -441,7 +442,7 @@ sk_stage :: (b: [] RsBattle, p: [] RsDice) -> SkArgs {
   #assert s.radiant > 5 && s.radiant_same > 50 && s.force > 5 && s.force_same > 20 && s.deflect > 50 && s.cut_zero > 2 && s.cut_one > 2 && s.dodge > 50 && s.dodge_one > 3 && s.dodge_zero > 3 && s.dodge_down > 3;
   #assert s.immune > 20 && s.vulnerable > 20 && s.resisted > 20 && s.resisted_one > 2 && s.plus > 200 && s.plus_dice_only > 50 && s.plus_flat_only > 50 && s.plus_one_die > 20 && s.plus_flat_one > 20 && s.plus_dead > 20 && s.plus_note > 20;
   #assert s.rider > 20 && s.rider_dead > 3 && s.curse > 50 && s.cunning > 10 && s.stun > 10 && s.sap > 20 && s.vex > 10 && s.vex_zero > 0 && s.vex_one > 0 && s.slow > 5 && s.slow_zero > 0 && s.slow_one >= 0 && s.left_one > 20 && s.left_zero > 20;
-  #assert s.redirect > 5 && s.redirect_pass > 1 && s.redirect_fail > 1 && s.redirect_eq > 0 && s.redirect_one_use > 1 && s.redirect_cut_one >= 0 && s.redirect_no_cut > 0 && s.redirect_kill >= 0;
+  #assert s.redirect > 5 && s.redirect_pass > 1 && s.redirect_fail > 1 && s.redirect_eq > 0 && s.redirect_one_use > 1 && s.redirect_cut_one > 0 && s.redirect_no_cut > 0 && s.redirect_near > 0 && s.redirect_kill >= 0;
   #assert s.ko > 100 && s.ko_far > 5 && s.kill > 100 && s.seek > 20 && s.hidden > 100 && s.crit_down > 5 && s.unarmed > 200 && s.rested > 200;
 }
 
@@ -464,10 +465,13 @@ sk_scene :: (b: [] RsBattle, p: [] RsDice) -> SkScene {
   actor := ifx cls == 0 then rs_fighter("Garr", team, lvl) else ifx cls == 1 then rs_barbarian("Garr", team, lvl) else ifx cls == 2 then rs_monk("Garr", team, lvl) else rs_rogue("Garr", team, lvl);
   tgt := ifx sk_one(p, 2) then rs_monk("Holt", 1 - team, 3) else rs_fighter("Holt", 1 - team, 3);
   spot := sk_of(p, 11);
-  if sk_one(p, 3) { s.j = rs_add(b, tgt, SK_SPOT_X[spot], SK_SPOT_Y[spot]); s.i = rs_add(b, actor, 5, 3); }
-  else { s.i = rs_add(b, actor, 5, 3); s.j = rs_add(b, tgt, SK_SPOT_X[spot], SK_SPOT_Y[spot]); }
   kx := [4] int.[5, 6, 4, 8]; ky := [4] int.[4, 4, 3, 3]; kat := sk_of(p, 4);
-  s.k = rs_add(b, rs_fighter("Kell", ifx sk_one(p, 3) then team else 1 - team, 3), kx[kat], ky[kat]);
+  third := rs_fighter("Kell", ifx sk_one(p, 3) then team else 1 - team, 3);
+  order := sk_of(p, 4);   // any of the three may be first in the battle
+  if order == 0 { s.k = rs_add(b, third, kx[kat], ky[kat]); }
+  if order == 1 { s.j = rs_add(b, tgt, SK_SPOT_X[spot], SK_SPOT_Y[spot]); s.i = rs_add(b, actor, 5, 3); }
+  else { s.i = rs_add(b, actor, 5, 3); s.j = rs_add(b, tgt, SK_SPOT_X[spot], SK_SPOT_Y[spot]); }
+  if order != 0 { s.k = rs_add(b, third, kx[kat], ky[kat]); }
   fx := [3] int.[4, 4, 12]; fy := [3] int.[2, 4, 3]; fat := sk_of(p, 3);
   s.f = rs_add(b, rs_paladin("Pell", ifx sk_one(p, 2) then team else 1 - team, 6), fx[fat], fy[fat]);
   ghost := rs_fighter("Ghost", 1 - team, 3); ghost.x = 6; ghost.y = 2; ghost.turn_at = 4242;
@@ -744,7 +748,7 @@ sk_whom :: (p: [] RsDice, n: int, s: SkScene) -> int {
   }
   a := seen[0];
   #assert plain > 100 && a.yes > 300 && a.other_turn > 100 && a.spent > 100 && a.unable > 100 && a.wild > 50 && a.shape > 50 && a.below > 50 && a.past > 50 && a.dead > 30 && a.self > 50;
-  #assert a.far > 100 && a.near > 30 && a.charmed > 5 && a.unfit > 5 && a.reckless > 5 && a.reckless_no >= 0 && a.cleave > 5 && a.cleave_past >= 0 && a.cleave_far > 0 && a.extra > 50 && a.extra_beside > 5 && a.extra_none > 5;
+  #assert a.far > 100 && a.near > 30 && a.charmed > 5 && a.unfit > 5 && a.reckless > 5 && a.reckless_no >= 0 && a.cleave > 5 && a.cleave_past > 0 && a.cleave_far > 0 && a.extra > 50 && a.extra_beside > 5 && a.extra_none > 5;
 }
 #test "strike: shooting: a ranged weapon in hand, a living target within its long range, and Extra Attack while it stands, worked out twice" #steps 4000000000 {
   b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
@@ -1065,4 +1069,48 @@ sk_curse_damage :: (m: [] RsBattle, seen: [] SkRiders, i: int, j: int, crit: boo
     #assert sk_differ(b[..], m[..]) == 0;
   }
   #assert took > 20 && refused > 500 && dashed > 100 && stayed > 500;
+}
+
+#test "strike: the riders' room: one attack's for a strike, each of the action's attacks' and a neighbor's for the Attack action, the target's alone for a shot or a Bonus Action strike" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].clock = rs_secs(100);
+  a := rs_add(b[..], rs_fighter("Garr", 0, 3), 1, 3);
+  g := rs_add(b[..], rs_fighter("Holt", 1, 3), 2, 3);
+  k := rs_add(b[..], rs_fighter("Kell", 1, 3), 1, 4);
+  b[0].c[g].ac = 100; b[0].c[k].ac = 100; b[0].c[a].rank[RS_RK_CRIT_RANGE] = 0;
+  garr := b[0].c[a]; holt := b[0].c[g]; kell := b[0].c[k];
+  #assert rs_effect_free(garr) == RS_EFFECTS && rs_feet_to(b[..], a, k) == 5 && rs_feet_to(b[..], a, g) == 5;
+  // Vex leaves a record on the attacker for each attack: one free place is room for a strike, none is not
+  b[0].c[a].masteries = 1 << M_VEX;
+  sk_fill(b[..], a, 1); b[0].who = a; b[0].turn = RsTurn.{};
+  #assert rs_effect_free(b[0].c[a]) == 1 && rs_strike_fits(b[..], a, g, W_SHORTSWORD) && !rs_strike(b[..], a, g, W_SHORTSWORD, false) && b[0].turn.struck;
+  sk_fill(b[..], a, 0); b[0].turn = RsTurn.{};
+  #assert !rs_strike_fits(b[..], a, g, W_SHORTSWORD) && !rs_strike(b[..], a, g, W_SHORTSWORD, false) && !b[0].turn.struck;
+  // the Attack action with Extra Attack needs two places, and a shot the same
+  b[0].c[a] = garr; b[0].c[a].masteries = 1 << M_VEX; b[0].c[a].weapon = W_SHORTSWORD; b[0].c[a].ranged = W_SHORTBOW; b[0].c[a].rank[RS_RK_EXTRA_ATTACK] = 1;
+  vexer := b[0].c[a];
+  sk_fill(b[..], a, 1); b[0].turn = RsTurn.{};
+  #assert !rs_attack(b[..], a, g, false, -1) && !b[0].turn.action && !rs_shoot(b[..], a, g) && !b[0].turn.action && !b[0].turn.struck;
+  b[0].c[a] = vexer; sk_fill(b[..], a, 2);
+  #assert rs_attack(b[..], a, g, false, -1) && b[0].turn.action && b[0].turn.struck;
+  b[0].c[a] = vexer; sk_fill(b[..], a, 2); b[0].turn = RsTurn.{};
+  #assert rs_shoot(b[..], a, g) && b[0].turn.action && b[0].turn.struck;
+  // Sap leaves a record on whoever is hit: a strike and a shot ask the target alone, the Attack action a neighbor it may turn to
+  b[0].c[a] = garr; b[0].c[a].masteries = (1 << M_SAP) | (1 << M_SLOW); b[0].c[a].weapon = W_MACE; b[0].c[a].ranged = W_LONGBOW; b[0].c[a].rank[RS_RK_EXTRA_ATTACK] = 1;
+  sapper := b[0].c[a];
+  sk_fill(b[..], k, 1); b[0].turn = RsTurn.{};
+  #assert rs_effect_free(b[0].c[k]) == 1 && rs_strike_fits(b[..], a, g, W_MACE) && !rs_attack(b[..], a, g, false, -1) && !b[0].turn.action;
+  b[0].c[k] = kell; sk_fill(b[..], k, 2);
+  #assert rs_attack(b[..], a, g, false, -1) && b[0].turn.action;
+  b[0].c[a] = sapper; b[0].c[g] = holt; b[0].c[k] = kell; sk_fill(b[..], k, 0); b[0].turn = RsTurn.{};
+  #assert rs_strike_fits(b[..], a, g, W_LONGBOW) && !rs_strike_fits(b[..], a, k, W_LONGBOW) && rs_shoot(b[..], a, g) && b[0].turn.action;
+  // a Stunning Strike ready: two places on the target; a Bonus Action strike and a Flurry ask the target alone
+  b[0].c[a] = garr; b[0].c[g] = holt; b[0].c[k] = kell;
+  b[0].c[a].rank[RS_RK_MARTIAL_DIE] = 6; b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_STUNNING_STRIKE, true); b[0].c[a].note[RS_NT_STUN] = 1; b[0].c[a].uses[RS_USE_FOCUS] = 2;
+  monk := b[0].c[a];
+  sk_fill(b[..], k, 1); sk_fill(b[..], g, 1); b[0].turn = RsTurn.{};
+  #assert !rs_bonus_strike(b[..], a, g) && !b[0].turn.bonus && !rs_flurry(b[..], a, g, OH_ADDLE) && !b[0].turn.bonus && b[0].c[a].uses[RS_USE_FOCUS] == 2;
+  b[0].c[g] = holt; sk_fill(b[..], g, 2);
+  #assert rs_bonus_strike(b[..], a, g) && b[0].turn.bonus && b[0].turn.struck;
+  b[0].c[a] = monk; b[0].c[g] = holt; sk_fill(b[..], g, 2); b[0].turn = RsTurn.{};
+  #assert rs_flurry(b[..], a, g, OH_ADDLE) && b[0].turn.bonus && b[0].c[a].uses[RS_USE_FOCUS] == 1;
 }
