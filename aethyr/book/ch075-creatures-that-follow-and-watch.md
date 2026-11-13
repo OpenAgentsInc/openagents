@@ -38,7 +38,7 @@ than from the true state, and replay exactly.
 A creature's `Senses` are its sight range, its eye height above its feet, its
 touch reach and how many ticks it remembers a stimulus. The defaults are the
 Everglade watch's (`WATCH_SIGHT`, 34 m, and `WATCH_EYE`, 1.6 m, in
-`verse/everglade/watch.coax`). A tick is one step of
+`everglade/legacy/v1/watch.coax`). A tick is one step of
 [aethyr/core/loop.coax](../core/loop.coax), 1/64 s, so the default `forget`
 of 128 ticks is 2 s. Every stimulus says what kind it is, whom it is of (the
 realm's entity number), where, and on which tick:
@@ -412,7 +412,7 @@ would change Everglade's companion, so it is left as it is (see below).
 ## Still to do
 
 - **Realms on the module.** Everglade's watch
-  (`verse/everglade/watch.coax`: `watch_sees`, `WATCH_HEAR`, the wanted
+  (`everglade/legacy/v1/watch.coax`: `watch_sees`, `WATCH_HEAR`, the wanted
   state) and its guards still sense in their own code. Moving them changes
   Everglade, which the owner is changing now.
 - **The flock on the fixed step.** `aethyr/anim/flock.coax` on loop.coax's ticks,
@@ -445,7 +445,7 @@ would change Everglade's companion, so it is left as it is (see below).
 - [aethyr/anim/flock.coax](../anim/flock.coax): the following flock, used by
   Everglade's bird companion (`eg-companion`) and the made-realm `flock`
   feature.
-- [verse/everglade/watch.coax](../../verse/everglade/watch.coax): the town
+- [everglade/legacy/v1/watch.coax](../../everglade/legacy/v1/watch.coax): the town
   watch, crimes, sight and hearing, wanted state and SRD 5.2.1 guards.
 - [everglade/npc/guard-decision.coax](../../everglade/npc/guard-decision.coax)
   and [guard-types.coax](../../everglade/npc/guard-types.coax): the

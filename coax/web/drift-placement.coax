@@ -1,9 +1,9 @@
 // The paired gravity cast stands beyond the gate lintel, with both loose
 // stable props safely inside its field, rather than grazing their centers.
-// Every place is reckoned from Everglade's named points (verse/everglade/points.coax,
+// Every place is reckoned from Everglade's named points (everglade/legacy/v1/points.coax,
 // #13078): the South Gate's gap and the raid's front, never coordinates of the check's own.
 #authority;
-#load "../../verse/everglade/points.coax";
+#load "../../everglade/legacy/v1/points.coax";
 
 // The drift's places on the map, mm: the South Gate's gap (gx, gz) and the raid front's hold (front_z).
 DrMap :: struct { gx: int; gz: int; front_z: int; }

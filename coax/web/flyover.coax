@@ -12,7 +12,7 @@
 // at 1440x900, dpr 1. The path (default coax/web/flyover/SLUG.txt) is one key a line,
 //   SECONDS  EYE_X EYE_Y EYE_Z  AT_X AT_Y AT_Z
 // and either point may start with @NAME, a named point of the realm's map (aethyr/world/points.coax;
-// everglade's are verse/everglade/points.coax): its three numbers are then metres from that point,
+// everglade's are everglade/legacy/v1/points.coax): its three numbers are then metres from that point,
 //   12  @gate-south -6 6 4   @commons 10 3 20
 // so a gate or place the map moves takes the flight with it (#13078). A name the map lacks refuses
 // the path, naming it. '#' starts a comment. aethyr/cam/flyover.coax checks it (2 to 16 keys, the first at 0, times rising)
@@ -45,7 +45,7 @@
 #load "../../aethyr/core/frame-report.coax";   // FrameStats, frame_stats, frame_holds, frame_fps10
 #load "../../aethyr/cam/flyover.coax";        // fly_parse: the path's rules, the page's own
 #load "map-points.coax";                   // a key's @NAME, read from the realm's map (#13078)
-#load "../../verse/everglade/points.coax";
+#load "../../everglade/legacy/v1/points.coax";
 
 FO_FRAMES :: 16384;            // frames timed in one flight (4.5 minutes at 60 FPS)
 FO_SLOW :: 33000;              // Solstice's count: frames over this many microseconds
@@ -336,7 +336,7 @@ tool_main :: () -> int #export_c #effects(all) {
   path_file := args_value(a[..], "--path", fo_text(default_path[..]));
   file: [65536] u8; fn := fs_read(path_file, file[..]);
   if fn < 0 { tool_err("flyover: cannot read the path "); tool_errln(path_file); tool_errln(usage); return 2; }
-  // a key's @NAME from the realm's map: Everglade's (verse/everglade/points.coax); a realm without one has no names
+  // a key's @NAME from the realm's map: Everglade's (everglade/legacy/v1/points.coax); a realm without one has no names
   map_names := EG_POINT_NAME; map_at := EG_POINT_AT; everglade := slug == "everglade";
   zone := ifx everglade then EG_POINTS_ZONE else slug; path_text := cast(string) file[0..<fn];
   zone_names := ifx everglade then map_names[..] else map_names[0..<0]; zone_at := ifx everglade then map_at[..] else map_at[0..<0];

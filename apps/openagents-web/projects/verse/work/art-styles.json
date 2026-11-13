@@ -587,7 +587,7 @@
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade-face.c",
         "apps/openagents-web/everglade.wgsl",
-        "verse/everglade/plan.coax"
+        "everglade/legacy/v1/plan.coax"
       ],
       "acceptance": [
         "The style check passes at `?clock=0.5` and `0.75`; at `0` no more than 2% near black",
@@ -623,7 +623,7 @@
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade-face.c",
         "apps/openagents-web/everglade.wgsl",
-        "verse/everglade/plan.coax",
+        "everglade/legacy/v1/plan.coax",
         "aethyr/world/terrain.coax"
       ],
       "acceptance": [
@@ -653,7 +653,7 @@
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade-face.c",
         "apps/openagents-web/everglade.wgsl",
-        "verse/everglade/plan.coax"
+        "everglade/legacy/v1/plan.coax"
       ],
       "acceptance": [
         "The style check's fine-detail and band measures pass in the deep wood and the glade",
@@ -683,10 +683,10 @@
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade-face.c",
         "apps/openagents-web/everglade.wgsl",
-        "verse/everglade/river.coax"
+        "everglade/legacy/v1/river.coax"
       ],
       "acceptance": [
-        "verse/everglade/river.coax's checks and the water checks pass",
+        "everglade/legacy/v1/river.coax's checks and the water checks pass",
         "The river at the crossing reads as colour bands with sparkles (shot in a note)",
         "Desktop and phone shots of the road in, the commons, the river crossing and the deep wood in a note, with the side-by-side sheet once the style check exists"
       ],
@@ -711,7 +711,7 @@
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade-face.c",
         "apps/openagents-web/everglade.wgsl",
-        "verse/everglade/people.coax",
+        "everglade/legacy/v1/people.coax",
         "verse/packs/everglade.json",
         "verse/tools/pack_realm.py"
       ],
@@ -743,7 +743,7 @@
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade-face.c",
         "apps/openagents-web/everglade.wgsl",
-        "verse/everglade/plan.coax",
+        "everglade/legacy/v1/plan.coax",
         "verse/packs/everglade.json"
       ],
       "acceptance": [

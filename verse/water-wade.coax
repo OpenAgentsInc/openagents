@@ -1,7 +1,7 @@
 // Who wades and who swims (the old W3's medium.rs, SRD 5.2.1): the rules
 // you and Everglade's people both go by in the river and the ponds. Your
-// swimmer is verse/everglade/river.coax; the people's walks are
-// verse/everglade/routines.coax. Pure functions, no state.
+// swimmer is everglade/legacy/v1/river.coax; the people's walks are
+// everglade/legacy/v1/routines.coax. Pure functions, no state.
 //   coax/bin/coax test --library verse/water-wade.coax
 
 WADE_DEPTH :: 0.4;        // deeper than this you wade

@@ -2,7 +2,7 @@
 // docs/verse/native-gpu.md). A frame comes from the browser's wasm
 // (verse/native/wasm-run.coax: the pack, page facts, golden mode, clock 0, 90
 // frames): its uniforms, stores and draw list, with the pack's vertices,
-// indices and layer images. Everglade's Coax (verse/everglade/gpu.coax) and
+// indices and layer images. Everglade's Coax (apps/openagents-web/gpu/everglade-v1/gpu.coax) and
 // verse/style.coax get one integer hash for their sin hashes (verse/gpu/int-hash.coax:
 // sin of large arguments is each GPU's own); the browser draws the module `coax wgsl`
 // writes from that Coax (G6), and `coax spirv` lowers the pass's entries from the same.
@@ -89,7 +89,7 @@ run :: (host: string, p: EpPass, work: string, live: bool, keep: string, native:
   if !fs_mkdir(frame_dir) { tool_errln("everglade-pass: cannot make a directory"); return 1; }
   wasm := fs_join(work, "everglade.wasm", b[1][..]);
   build := [8] string.["coax/web/wasm.sh", "apps/openagents-web/everglade.coax", "apps/openagents-web/everglade-face.c", wasm,
-    "everglade/shared/everglade-step.coax", "verse/grid.coax", "verse/everglade/river.coax", "everglade/npc/guard-guide-policy.coax"];
+    "everglade/shared/everglade-step.coax", "verse/grid.coax", "everglade/legacy/v1/river.coax", "everglade/npc/guard-guide-policy.coax"];
   if prepared.count>0 {if !copy(prepared,wasm){return 1;}}else {if step("the wasm", build[..], o[..]) < 0 { return 1; }}
   base := [15] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "coax/web/tool.sh", "verse/native/wasm-run.coax", wasm, "--pack", EP_PACK, "--facts", "verse/native/everglade.facts",
     "--extra", "9000", "--size", "320x180", "--dump", frame_dir];
@@ -102,7 +102,7 @@ run :: (host: string, p: EpPass, work: string, live: bool, keep: string, native:
   if step("the frame", frame[0..<fn], o[..]) < 0 { return 1; }
   if emit.count > 0 {
     // the live shaders' spec and modules for a host that draws every frame (verse/gpu/vk-realm.c)
-    if !check(host, p, work, frame_dir, "emit", "apps/openagents-web/everglade.wgsl", "verse/everglade/gpu.coax", "apps/openagents-web/everglade-fx.wgsl", "everglade/client/gpu/gpu-fx.coax", "", "", true, false) { return 1; }
+    if !check(host, p, work, frame_dir, "emit", "apps/openagents-web/everglade.wgsl", "apps/openagents-web/gpu/everglade-v1/gpu.coax", "apps/openagents-web/everglade-fx.wgsl", "everglade/client/gpu/gpu-fx.coax", "", "", true, false) { return 1; }
     ed: [1024] u8;
     cp := [4] string.["cp", "-R", cat(fs_join(work, "emit", b[2][..]), "/.", ed[..]), emit];
     if !fs_mkdir(emit) && fs_kind(emit) <= 0 { tool_errln("everglade-pass: cannot make the --emit directory"); return 1; }
@@ -119,7 +119,7 @@ run :: (host: string, p: EpPass, work: string, live: bool, keep: string, native:
   ok := check(host, p, work, frame_dir, "int", fs_join(int_dir, "everglade.wgsl", i1[..]), fs_join(int_dir, "gpu.coax", i4[..]), fs_join(int_dir, "everglade-fx.wgsl", i3[..]), fs_join(int_dir, "gpu-fx.coax", i2[..]), p.allow, keep, native, true);
   if live {
     print("everglade-pass: %, the live sin hashes (reported only)\n", p.name);
-    lr := check(host, p, work, frame_dir, "live", "apps/openagents-web/everglade.wgsl", "verse/everglade/gpu.coax", "apps/openagents-web/everglade-fx.wgsl", "everglade/client/gpu/gpu-fx.coax", "9999999", "", native, true);
+    lr := check(host, p, work, frame_dir, "live", "apps/openagents-web/everglade.wgsl", "apps/openagents-web/gpu/everglade-v1/gpu.coax", "apps/openagents-web/everglade-fx.wgsl", "everglade/client/gpu/gpu-fx.coax", "9999999", "", native, true);
   }
   return ifx ok then 0 else 1;
 }

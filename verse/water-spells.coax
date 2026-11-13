@@ -22,7 +22,7 @@
 #load "rules/srd5.coax";
 
 WATER_CONDUCT :: 6.0;     // m: the 20 ft a bolt reaches through water
-// Where a creature is (verse/everglade/river.coax's media): out of the water, wading, swimming,
+// Where a creature is (everglade/legacy/v1/river.coax's media): out of the water, wading, swimming,
 // diving (fully under), seated in a boat.
 WS_OUT :: 0; WS_WADING :: 1; WS_SWIMMING :: 2; WS_DIVING :: 3; WS_BOAT :: 4;
 // What a conducted bolt did to a creature.

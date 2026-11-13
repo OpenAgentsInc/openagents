@@ -33,7 +33,7 @@
 #load "raid-identity.coax";
 #load "../../lib/sys/fs.coax";
 #load "capacity-client.coax";
-#load "../../../verse/everglade/points.coax";   // the South Gate and the muster, by name (#13078)
+#load "../../../everglade/legacy/v1/points.coax";   // the South Gate and the muster, by name (#13078)
 #load "../map-points.coax";
 
 RC_MAX :: 16;
@@ -62,7 +62,7 @@ rc_proxy_port::(base:int,seat:int)->int{if seat<0||seat>=RC_MAX||base<0||base>65
 rc_max :: (a: int, b: int) -> int { return ifx a > b then a else b; }
 rc_min :: (a: int, b: int) -> int { return ifx a < b then a else b; }
 RC_SEEN :: 128;
-// Where the seats go, from Everglade's map (verse/everglade/points.coax, #13078): the commons' north
+// Where the seats go, from Everglade's map (everglade/legacy/v1/points.coax, #13078): the commons' north
 // side they muster on (raid-muster) and the palisade's South Gate they walk out through (gate-south,
 // plan.coax EG_GATE, 6 m wide). The tool asks for both before it opens a seat.
 RC_MAP_POINTS :: [2] string.["raid-muster", "gate-south"];

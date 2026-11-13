@@ -363,7 +363,7 @@ the costs a search lowers.
   `OFF_PATH` (2.2) metres on a path; `verse_route_next` picks the next point
   from where a follower stands, and `verse_route_points` lists the whole
   route for a guide line. Everglade's streets (`EG_NODE_XZ`, `EG_LINK_AB`,
-  `EG_PATH_HALF` 1.5 m) and its townsfolk (`verse/everglade/routines.coax`)
+  `EG_PATH_HALF` 1.5 m) and its townsfolk (`everglade/legacy/v1/routines.coax`)
   have their own. A shared `aethyr/world/nav/graph.coax` with typed results and
   the same tie-break is not built.
 - **Following and avoidance.** `verse_follower_step_among` walks at
@@ -398,8 +398,8 @@ the costs a search lowers.
   Gears' own walking grid (`NAV_CELL` 0.5 m, 64 × 76 cells, `NAV_CLEAR`
   0.38 m) and its three flow fields: to you, to where the support engineer
   heads, and to the reactor.
-- [verse/everglade/plan.coax](../../verse/everglade/plan.coax),
-  [routines.coax](../../verse/everglade/routines.coax) and
+- [everglade/legacy/v1/plan.coax](../../everglade/legacy/v1/plan.coax),
+  [routines.coax](../../everglade/legacy/v1/routines.coax) and
   [guide-route.coax](../../everglade/npc/guide-route.coax): Everglade's
   street graph, daily walks at `FOLK_WALK` (1.2 m/s), and the route a
   guard's directions describe.

@@ -1,5 +1,5 @@
 // Everglade, openagents.com/worlds/everglade: the forest city as a grey-box
-// blockout you walk, in a forest of kit trees. The layout is verse/everglade/plan.coax's (the plan in
+// blockout you walk, in a forest of kit trees. The layout is everglade/legacy/v1/plan.coax's (the plan in
 // words is docs/verse/everglade.md): the palisade and its four gates, the
 // commons with its fountain and quest board, the market, the inn, the guild
 // halls, the temple and the observatory, the stables on the road in, the
@@ -27,13 +27,13 @@
 // can, by voice (everglade-voice.coax): what they place is published over
 // the plan for everyone.
 //
-// Its people (eg-people, verse/everglade/people.coax) stand at the plan's
+// Its people (eg-people, everglade/legacy/v1/people.coax) stand at the plan's
 // spots. Walk up to one and press E (or tap TALK) to talk: you type, they
 // answer as themselves through the character chat, and they remember you
 // (the server keeps what you told each of them, per player). The face sends
 // the question this file writes (everglade_ask) and hands back the answer.
 //
-// The quest board on the commons (eg-quests, verse/everglade/quests.coax):
+// The quest board on the commons (eg-quests, everglade/legacy/v1/quests.coax):
 // E (or the button) at it shows the three quests, takes one and hands it
 // in; the step you are on shows under the title, with a mark over where it
 // sends you. The stages are kept in this browser for its player (action 4,
@@ -44,7 +44,7 @@
 // where it stands, as in the Garden; the ground is aethyr/world/terrain.coax's.
 // You are the old Everglade's player, the Universal male Ranger of the old
 // Rust Verse engine's last pinned pack: its mesh and textures come in the
-// realm's pack, its skeleton and clips are verse/everglade/ranger.coax
+// realm's pack, its skeleton and clips are everglade/legacy/v1/ranger.coax
 // (both written by verse/tools/pack_realm.py), and aethyr/anim/skin.coax plays
 // the clip the controller's state picks (idle, walk, run, jump), as the old
 // engine did. Its joints' skinning matrices go to the GPU each frame (store
@@ -61,15 +61,15 @@
 #load "everglade-link.coax";
 #load "../../coax/web/analytics.coax";
 #load "../../aethyr/cam/camera.coax";
-#load "../../verse/everglade/plan.coax";
-#load "../../verse/everglade/people.coax";
-#load "../../verse/everglade/quests.coax";
+#load "../../everglade/legacy/v1/plan.coax";
+#load "../../everglade/legacy/v1/people.coax";
+#load "../../everglade/legacy/v1/quests.coax";
 #load "../../aethyr/anim/flock.coax";
-#load "../../verse/everglade/ranger.coax";
+#load "../../everglade/legacy/v1/ranger.coax";
 #load "../../verse/valley/echo-orbit.coax";
-#load "../../verse/everglade/folk.coax";
-#load "../../verse/everglade/rumours.coax";
-#load "../../verse/everglade/watch.coax";
+#load "../../everglade/legacy/v1/folk.coax";
+#load "../../everglade/legacy/v1/rumours.coax";
+#load "../../everglade/legacy/v1/watch.coax";
 #load "../../aethyr/world/water-weather.coax";
 #load "everglade-voice.coax";
 #load "everglade-place.coax";
@@ -124,7 +124,7 @@ U_PATH_INFO :: U_PATH + PATHS * 4;
 U_SQUARE :: U_PATH_INFO + 4;
 U_PLATE :: U_SQUARE + SQUARES * 4;
 // Then the river's block (everglade.wgsl WaterU), which the face has
-// verse/everglade/river.coax write after the frame: verse/water-look.coax
+// everglade/legacy/v1/river.coax write after the frame: verse/water-look.coax
 // WATER_FLOATS of them.
 U_WATER :: U_PLATE + PLATES * 8;
 WATER_FLOATS :: 324;
@@ -144,7 +144,7 @@ U_LIGHTS :: U_LIGHT_INFO + 4;
 U_WEATHER :: U_LIGHTS + LIGHTS * 8;   // 3 rows: rain, wind x, wind z, lightning; wet, puddles, cloud, fog; rise (m), flow gain, the bridge deck's top (m), the buildings among the solids (weather_frame; the rain's cover)
 // The ponds (plan.coax EG_POND): x, z, rim radius and level each (everglade.wgsl pond_vertex).
 U_PONDS :: U_WEATHER + 12;
-// The water's wakes, particles and the weir's sheet (W6, verse/everglade/river.coax everglade_river_fx
+// The water's wakes, particles and the weir's sheet (W6, everglade/legacy/v1/river.coax everglade_river_fx
 // writes them after the frame): the weir (2 rows), the rowboats' hulls (3), the wakes' trails (16) and
 // the particles (64, 2 rows each); river.coax FX_ROWS. everglade.wgsl U.fx.
 FX_ROWS :: 149;
@@ -212,7 +212,7 @@ FOUNTAIN_POOL :: 0.62;
 FOUNTAIN_INSTANCES :: 32;
 // and the ponds', after the fountain's: 8 wedges each (everglade.wgsl pond_vertex)
 POND_INSTANCES :: EG_PONDS * 8;
-// Then the city's people (verse/everglade/folk.coax): each part of the pack's
+// Then the city's people (everglade/legacy/v1/folk.coax): each part of the pack's
 // a run of PEOPLE_SHOWN instances, one for each person shown wearing it.
 PEOPLE_SHOWN :: 10;       // people drawn at once at most, the nearest in view
 PEOPLE_SHOWN_PHONE :: 6;
@@ -407,7 +407,7 @@ Everglade :: struct {
   look_yaw: f32; look_pitch: f32;
   wheel: f32;
   key_x: f32; key_y: f32; run: bool; jump: bool; dive: bool;
-  // you in the river (the face passes verse/everglade/river.coax's Swim on):
+  // you in the river (the face passes everglade/legacy/v1/river.coax's Swim on):
   // your medium, how high your feet are in the water, your breath's share
   // and Exhaustion from going without it; the river's draw and its floats
   water: int; swim_feet: f32; breath: f32; gasps: int;
@@ -486,7 +486,7 @@ Everglade :: struct {
   field: [4] f32;
   prompt: [64] u8; prompt_n: int; head: [64] u8; head_n: int;
   outbox: [OUTBOX] u8; out_n: int; action: int;
-  // the quests (eg-quests, verse/everglade/quests.coax): a stage each, which one the HUD
+  // the quests (eg-quests, everglade/legacy/v1/quests.coax): a stage each, which one the HUD
   // follows, the board and what's saved
   stages: [EG_QUESTS] int; focus: int;
   near_board: bool; board: bool; pick: int; thanks: int;
@@ -586,7 +586,7 @@ ground_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return verse_terrain_hei
 // Where you stand: the ground, the bridge's deck over the river, or ice on the water (everglade-frost.coax).
 walk_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return hi(everglade_walk_height_out(s[0].heights[..], s[0].deck, sp_deck_out_at(s, x, z), x, z), fr_floor(s, x, z)); }
 
-// The face's river (verse/everglade/river.coax), each frame before
+// The face's river (everglade/legacy/v1/river.coax), each frame before
 // everglade_frame: your medium, your feet's height in the water, your
 // breath's share and Exhaustion from going without it; its draw (vertices
 // a patch and patches, none until it is built) and its floats.
@@ -731,7 +731,7 @@ everglade_start :: (s: [] Everglade) {
   sky_store(s);   // the sky each place sees, once the town and the woods stand (everglade-sky.coax)
 }
 
-// The rigs' clips (verse/everglade/ranger.coax, people-rig.coax), loaded at the first pose. Only drawing
+// The rigs' clips (everglade/legacy/v1/ranger.coax, people-rig.coax), loaded at the first pose. Only drawing
 // poses anyone, so the room's Everglade, which draws nothing, carries none of their tables (about
 // 240 KB of the room worker's module, coax/web/room/worker.coax).
 eg_rigs_load :: (s: [] Everglade) {
@@ -1761,7 +1761,7 @@ board_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool 
   return true;
 }
 
-// Where person i stands now (their day moves them: verse/everglade/routines.coax), on the flat.
+// Where person i stands now (their day moves them: everglade/legacy/v1/routines.coax), on the flat.
 folk_at :: (s: [] Everglade, i: int) -> Point { return v3(s[0].folk[i].x, 0, s[0].folk[i].z); }
 
 // The nearest person within TALK_NEAR of you, or -1.
@@ -1820,7 +1820,7 @@ end_talk :: (s: [] Everglade) { if s[0].talk >= 0 { _ := net_talk(s, -1); } s[0]
 quest_note :: (s: [] Everglade) -> string {
   q := s[0].talk_quest;
   note := ifx q < 0 || q >= EG_QUESTS then "" else EG_QUEST_NOTE[q];
-  // and the talk going round town they have heard by now (verse/everglade/rumours.coax), on the shared clock
+  // and the talk going round town they have heard by now (everglade/legacy/v1/rumours.coax), on the shared clock
   c := folk_clock(s, false);
   day := cast(int) (c.world / f64(c.length));
   n := rumour_note(s[0].talk, day, c.day, note, s[0].heard[..]);
@@ -2021,7 +2021,7 @@ city :: (s: [] Everglade, u: [] f32) {
   for i: 1..<EG_PROPS {
     k := i * EG_BOX;
     x0 := EG_PROP[k]; z0 := EG_PROP[k + 1]; x1 := EG_PROP[k + 2]; z1 := EG_PROP[k + 3]; h := EG_PROP[k + 4];
-    if i >= EG_RIVER { continue; }   // the river is the water's (verse/everglade/river.coax), drawn last
+    if i >= EG_RIVER { continue; }   // the river is the water's (everglade/legacy/v1/river.coax), drawn last
     if i == EG_BOARD { notice_board(s, x0, z0, x1, z1, h); continue; }
     if i >= EG_STALL && i < EG_WAYSTONE { continue; }   // the kit's stalls (build_town)
     if i <= EG_CRYPT && s[0].pack_ready { continue; }   // the waystone and the pillars are the kit's stone (landmarks), the crypt its brick (crypt)
@@ -2943,9 +2943,9 @@ forest :: (s: [] Everglade, u: [] f32, eye: Point) {
   }
 }
 
-// The city's characters, where their day has them (verse/everglade/routines.coax):
+// The city's characters, where their day has them (everglade/legacy/v1/routines.coax):
 // walking between work and home on the town's clock, indoors at night. The people are
-// skinned characters (verse/everglade/folk.coax): every one lives each frame
+// skinned characters (everglade/legacy/v1/folk.coax): every one lives each frame
 // (walks, turns to you, glances, shifts, nods, talks), and the nearest in view,
 // PEOPLE_SHOWN at most, are posed and drawn, a part an instance. The cats
 // are small and round.

@@ -98,7 +98,7 @@ test("refuses a painterly realm whose WGSL has no style block", () => {
   writeFileSync(join(site, "everglade.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   expect(check(() => {}, { site, styleBlock: true })).not.toThrow()
   // or a whole module from Coax, the style its own functions
-  writeFileSync(join(site, `${module}.wgsl`), `// ---- generated: verse/everglade/gpu.coax (the module) by coax wgsl; do not edit\n${STYLE_MODULE}tone(p_c: f32) -> f32 {\n  return p_c;\n}\n`)
+  writeFileSync(join(site, `${module}.wgsl`), `// ---- generated: apps/openagents-web/gpu/everglade-v1/gpu.coax (the module) by coax wgsl; do not edit\n${STYLE_MODULE}tone(p_c: f32) -> f32 {\n  return p_c;\n}\n`)
   expect(check(() => {}, { site, styleBlock: true })).not.toThrow()
   // or a module whose Coax source loads the presets, though it calls none of them
   const root = mkdtempSync(join(tmpdir(), "realms-root-"))

@@ -12,7 +12,7 @@
 // refusal or a malformed one leaves every guard pressing on: today's escalation.
 // A rehearsal (the page's "+captain" hash, for clips) answers each request locally with
 // CAP_STAGED through the same decoder; nothing leaves the page.
-#load "../../coax/lib/nostr/json.coax";
+#load "../../../coax/lib/nostr/json.coax";
 #load "watch.coax";
 
 CAP_URL :: "/api/v1/systemone";

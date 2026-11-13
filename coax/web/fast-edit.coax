@@ -87,7 +87,7 @@ ft_prepare :: (dir: string) -> int {
   for c:FE_CONSTANTS {s:=fe_named(helper_source,c);if !s.ok {tool_errln("fast-edit: helper is not a complete declaration");return 2;}ft_add(prefix[..],helper_source[s.begin..<s.end]);ft_add(prefix[..],"\n");}
   // Both product load graphs, plus their compiler, seal the session's inputs.
   list:[1048576]u8;inputs:[4194304]u8;used:=0;file:[FE_FILE]u8;path:[1]FeText;hash:[64]u8;
-  for root:[8]string.["coax/web/room/room.coax","apps/openagents-web/everglade.coax","everglade/shared/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","everglade/npc/guard-guide-policy.coax","apps/openagents-web/carriers/everglade5e.coax","coax/web/fast-edit.coax"] {
+  for root:[8]string.["coax/web/room/room.coax","apps/openagents-web/everglade.coax","everglade/shared/everglade-step.coax","verse/grid.coax","everglade/legacy/v1/river.coax","everglade/npc/guard-guide-policy.coax","apps/openagents-web/carriers/everglade5e.coax","coax/web/fast-edit.coax"] {
     argv:=[4]string.["coax/web/tool.sh","wasm-size","sources",root];
     list[0]=0;out:[1048576]u8;err:[4096]u8;r:=proc_run(argv[..],780000,out[..],err[..]);
     if r.status!=0 || r.cut {tool_errln("fast-edit: cannot enumerate complete source graph");return 1;}

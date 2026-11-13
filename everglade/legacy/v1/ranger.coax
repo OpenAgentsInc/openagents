@@ -6,7 +6,7 @@
 // for a clip on the clock) and, per joint, its translation and rotation keys (first, count)
 // into the key lists: time then the value. Scale is 1 everywhere (within 1e-5). aethyr/anim/skin.coax plays it.
 
-#load "../../aethyr/anim/skin.coax";
+#load "../../../aethyr/anim/skin.coax";
 
 RANGER_JOINTS :: 75;
 RANGER_CLIPS :: 8;

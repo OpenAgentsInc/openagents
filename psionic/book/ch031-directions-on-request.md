@@ -21,7 +21,7 @@ and enables no default or ambient model behavior.
 ## Start with something the game knows
 
 Everglade already has three authored journeys. The
-[quest definitions](../../verse/everglade/quests.coax) send a traveller through
+[quest definitions](../../everglade/legacy/v1/quests.coax) send a traveller through
 the East Gate toward the Deep Wood and waystone, along the North Trail to the
 ruins, or through the West Gate to the river crossing. Each returns to the
 quest board on the commons. The current HUD objective provides a bounded

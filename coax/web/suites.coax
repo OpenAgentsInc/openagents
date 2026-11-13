@@ -280,7 +280,7 @@ su_web_input :: (path: string, faces: bool) -> bool {
   #assert su_norm("verse", "./edit/edit.coax", b[..]) == "verse/edit/edit.coax";
   #assert su_norm("apps/openagents-web", "font.coax", b[..]) == "apps/openagents-web/font.coax";
   #assert su_norm("verse", "../../x.coax", b[..]) == "";
-  #assert su_base("verse/everglade/plan.coax") == "plan.coax" && su_dir("verse/everglade/plan.coax") == "verse/everglade";
+  #assert su_base("everglade/legacy/v1/plan.coax") == "plan.coax" && su_dir("everglade/legacy/v1/plan.coax") == "everglade/legacy/v1";
 }
 #test "a suite has a #test or #forall at a line's start; a word that only begins so does not count" {
   #assert su_has_tests("x :: 1;\n#test \"a\" { }\n") && su_has_tests("  #forall a: 0..<3 { }");

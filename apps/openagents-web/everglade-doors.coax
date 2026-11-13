@@ -208,7 +208,7 @@ door_bodies :: (s: [] Everglade, out: [] f32, at: int, x: f32, z: f32) -> int {
   return n;
 }
 
-// ---- the town's gates (#12794): shut while anyone in town is WANTED GATES_AT or more (verse/everglade/
+// ---- the town's gates (#12794): shut while anyone in town is WANTED GATES_AT or more (everglade/legacy/v1/
 // watch.coax LADDER). In a room the room says so (its doors row's FORM, net_gates); offline your own
 // level does (watch_frame). Shut, a gate's gap is three capsules across it at knee, chest and head
 // height, in your way as a door's leaf is (everglade_bodies_near), and a leaf of timber stands in it.

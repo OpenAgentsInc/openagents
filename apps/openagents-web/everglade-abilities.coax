@@ -609,7 +609,7 @@ ab_after_step :: (s: [] Everglade) {
   }
 }
 // The townsfolk stop at the panels: each standing pair is a fence on the watch's ground
-// (verse/everglade/watch.coax watch_fences: no one stands in one, and the chase and the walk back go
+// (everglade/legacy/v1/watch.coax watch_fences: no one stands in one, and the chase and the walk back go
 // round its nearer end), and so is each thing an admin placed (everglade/world/edits.coax
 // eg_edit_fences: the box you can't walk through, as soon as it stands). One on their day whose way
 // runs into a fence steps off their day where they were and walks back to it round the fence (WM_BACK);

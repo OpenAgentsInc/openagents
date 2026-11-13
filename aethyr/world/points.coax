@@ -7,7 +7,7 @@
 //
 // A zone's map data holds two arrays, its names and MAP_POINT_FLOATS numbers a name, and a lookup
 // of its own that passes them here with the zone's label (its name and the file the points live in):
-//   verse/everglade/points.coax eg_point, everglade/world/points.coax e2_point,
+//   everglade/legacy/v1/points.coax eg_point, everglade/world/points.coax e2_point,
 //   verse/experimental-points.coax exp_point.
 // A name the zone doesn't have comes back not found, never as a place: a tool refuses it loudly
 // (coax/web/map-points.coax map_need), a check asserts .found. The inventory of what each check

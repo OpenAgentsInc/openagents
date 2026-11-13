@@ -134,7 +134,7 @@ model (ours is a superset), and glTF-clip-only animation.
 
 ### Today
 
-From `docs/verse/everglade.md`, `verse/everglade/gpu.coax` and
+From `docs/verse/everglade.md`, `apps/openagents-web/gpu/everglade-v1/gpu.coax` and
 `gpu-fx.coax`, and the art audit in `docs/verse/art-styles.md`.
 
 - **Look.** A painterly style: three toon bands, a cool shadow band,

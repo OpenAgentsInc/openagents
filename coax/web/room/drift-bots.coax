@@ -17,7 +17,7 @@
 #load "room-socket.coax";
 #load "../drift-snapshot.coax";
 #load "../../lib/sys/fs.coax";
-#load "../../../verse/everglade/points.coax";   // the empty south road, by name (#13078)
+#load "../../../everglade/legacy/v1/points.coax";   // the empty south road, by name (#13078)
 #load "../map-points.coax";
 
 DB_MAX :: 8;

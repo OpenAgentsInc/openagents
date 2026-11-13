@@ -28,7 +28,7 @@ Unreal is at most an offline export tool.
   Mac under `~/work/film-out/draconia/metahuman/`.
 - The Metaverse Engine already has most of the body runtime. `aethyr/anim/skin.coax` plays
   skinned clips with cross-fades. `verse/tools/people.py` rebinds parts onto
-  a shared skeleton. Everglade's shader (`verse/everglade/gpu.coax`) skins
+  a shared skeleton. Everglade's shader (`apps/openagents-web/gpu/everglade-v1/gpu.coax`) skins
   vertices pulled from a storage buffer with four joints each. The
   Quaternius skeleton it uses has the same Unreal mannequin joint names as
   the MetaHuman body (`pelvis`, `thigh_l`, `calf_l` and so on).
@@ -337,7 +337,7 @@ All paths below are at `853417f290`, the Nuke's parent. Restore them with
 | --- | --- | --- |
 | Skinned clip playback | `aethyr/anim/skin.coax`: 96 joints, rest pose and inverse binds, translation lerp and rotation slerp, a 0.22 s smoothstep cross-fade, gaits that advance with distance, and palettes written as three rows of four | The body animation core. Its joint limit has to rise, and it needs layers. |
 | Part rebinding and clips | `verse/tools/people.py`, `everglade/scene/people-rig.coax`: Quaternius CC0 parts rebound onto 65-joint male and female skeletons, with 12 clips (idle, walk, talk, nod, fold, lantern, spell, slash, run, die, knock, cower) | This is the retarget method. The joint names match the MetaHuman body's main skeleton, so the clips retarget by name. |
-| GPU skinning | `verse/everglade/gpu.coax`: a 24-byte vertex pulled from a storage buffer, four joints and weights, per-person pose blocks with tint rows after the joints | The vertex path for crowds |
+| GPU skinning | `apps/openagents-web/gpu/everglade-v1/gpu.coax`: a 24-byte vertex pulled from a storage buffer, four joints and weights, per-person pose blocks with tint rows after the joints | The vertex path for crowds |
 | Pack format | `verse/tools/pack_realm.py` (VPK1): `C` lines for skinned characters, licence per entry, budget, style checks | Extend it for a human pack, or write a sibling compiler |
 | Asset identity | `aethyr/core/assets.coax`: content-addressed packs admitted whole or refused | A private pack is admitted by digest |
 | Frame budgets | `aethyr/core/budget.coax` | Every LOD and crowd decision is checked against it |

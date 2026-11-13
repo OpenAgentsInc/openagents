@@ -20,7 +20,7 @@
 #load "everglade5e-beasts.coax";   // what a spell summons, the room's rules too: Finger of Death's Zombies
 
 E5R_BEAT :: 1.5; E5R_RECHARGE :: 9.0;
-E5R_FOLK :: 47;            // Everglade's people who can be hurt (verse/everglade/watch.coax WATCH_ACTORS: 28 spots, 6 new watch, 13 responders)
+E5R_FOLK :: 47;            // Everglade's people who can be hurt (everglade/legacy/v1/watch.coax WATCH_ACTORS: 28 spots, 6 new watch, 13 responders)
 E5R_OTHERS :: 15;          // the others in the room (room.coax ROOM_OTHERS)
 E5R_BEASTS :: 8;           // your Zombies at once (everglade5e-beasts.coax), creatures after the others
 E5R_ME :: 0;

@@ -910,7 +910,7 @@ two places it bends are brightness (painterly never goes muddy) and outlines
 
 `/realms/everglade`: `apps/openagents-web/everglade.coax` (with
 `everglade-edit`, `everglade-voice`), `everglade-face.c`, `everglade.wgsl`,
-`verse/everglade/*` (plan, people, quests, ranger, river), the pack
+`everglade/legacy/v1/*` (plan, people, quests, ranger, river), the pack
 `verse/packs/everglade.json` (Quaternius Stylized Nature, Medieval Village
 and Fantasy Props kits; `texture_size` 512; 6.0 MB of a 6.75 MB budget), and
 the river on `verse/water.coax` and `verse/water-look.coax` (W2). Shots

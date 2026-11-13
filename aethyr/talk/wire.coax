@@ -3,7 +3,7 @@
 // proto/openagents/verse/npc/v1alpha1/ask.proto (openagents.verse.npc.v1alpha1). Fixtures:
 // proto/verse/npc-ask-v1.json, checked through this file by wire-goldens.coax and posted to the
 // API by coax/web/api/test_npc.py. Every page that talks to a character writes its question and
-// reads the answer here: Everglade (verse/everglade/people.coax), Fairy Forest
+// reads the answer here: Everglade (everglade/legacy/v1/people.coax), Fairy Forest
 // (verse/fairy-forest/talk.coax), the Haunted House and made realms (apps/openagents-web/realm.coax,
 // myrealm.coax).
 //   coax/bin/coax test aethyr/talk/wire.coax --library

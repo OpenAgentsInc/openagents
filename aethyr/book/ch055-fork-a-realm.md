@@ -241,7 +241,7 @@ doesn't list with `400`. The FORK pane is drawn in Coax
 its own `#test`s); the page facts carry the rules first (`rules=night,waves`,
 `fork=<slug>` from `coax/web/host.js`), then the fork's board decides.
 `waves` reuses the watch's own escalation
-([verse/everglade/watch.coax](../../verse/everglade/watch.coax)). A made
+([everglade/legacy/v1/watch.coax](../../everglade/legacy/v1/watch.coax)). A made
 realm forks without rules.
 
 ## Still to do

@@ -6,12 +6,12 @@
 // glade's geometry stays in its own local frame in the pack
 // (verse/tools/assets/character_glade_pack.coax, zone mode); this file is the one
 // place that says where that frame lies in the world. The page, the room server's
-// world, the shaders (verse/everglade/gpu-glade.coax) and the pack tool read it.
+// world, the shaders (apps/openagents-web/gpu/everglade-v1/gpu-glade.coax) and the pack tool read it.
 //
 // Glade local (x, z) lies at world (EZ_GX - x, EZ_GZ - z), its heights EZ_OY lower:
 // the glade's -z (the road toward its old gate) is Everglade's +z (north, to the gate).
-//   coax/bin/coax test --library verse/everglade/glade-zone.coax
-#load "../character-glade.coax";
+//   coax/bin/coax test --library everglade/legacy/v1/glade-zone.coax
+#load "../../../verse/character-glade.coax";
 
 EZ_GX :: 3.2;       // world x of the glade's local x 0 (its road at the cut runs near x 3: world x 0)
 EZ_GZ :: -206.5;    // world z of the glade's clearing (local z 0)

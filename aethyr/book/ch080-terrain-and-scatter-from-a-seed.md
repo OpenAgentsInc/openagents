@@ -450,7 +450,7 @@ The vegetation module's 92 root mutants and the sky module's 54 are killed.
   keep-outs.
 - [aethyr/core/rand.coax](../core/rand.coax): the counter-based draw, with
   its Python oracle.
-- [verse/everglade/plan.coax](../../verse/everglade/plan.coax): Everglade's
+- [everglade/legacy/v1/plan.coax](../../everglade/legacy/v1/plan.coax): Everglade's
   ground, bounds, streets and clearings.
 - [apps/openagents-web/everglade.coax](../../apps/openagents-web/everglade.coax):
   Everglade's forest scatter (`TREE_SPACING`, 4.2 m).

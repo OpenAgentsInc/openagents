@@ -21,7 +21,7 @@ switches; Everglade's:
 | Rule | What Everglade does |
 | --- | --- |
 | `night` | Always night: the clock held at midnight |
-| `waves` | Hostile waves: the town watch sent in from the gate nearest you after 20 s and every 45 s, a WANTED level higher each time (the watch's own escalation, `verse/everglade/watch.coax`) |
+| `waves` | Hostile waves: the town watch sent in from the gate nearest you after 20 s and every 45 s, a WANTED level higher each time (the watch's own escalation, `everglade/legacy/v1/watch.coax`) |
 | `nodestroy` | No destruction: spells break nothing (every piece's hit points held above any blow; whatever came down stands back up) |
 | `lowgrav` | Low gravity: a third of the fall (the face gives the rest back while you're in the air) |
 

@@ -55,7 +55,7 @@
 #load "../../aethyr/session/lifecycle.coax";   // each host's room tick budget (#12856)
 #load "../../aethyr/net/record.coax";
 #load "drift-hold.coax";
-#load "drift-placement.coax";   // with Everglade's named points (verse/everglade/points.coax, #13078)
+#load "drift-placement.coax";   // with Everglade's named points (everglade/legacy/v1/points.coax, #13078)
 #load "map-points.coax";
 #load "../../aethyr/render/tests/qualification-files.coax";
 getpriority :: (which:s32,who:u32)->s32 #foreign #effects(all);
@@ -1359,7 +1359,7 @@ dr_raid_kit_ready :: (c: [] Cdp, whole: int) -> bool {
   tool_errln("everglade-drift: the raid never established a LEVEL 1 kit before combat"); return false;
 }
 // The room page's walk from its arrival on the commons (the map's spawn, 0, -16 on 11-09) to the open
-// road outside the South Gate (the map's gate-south, verse/everglade/points.coax, #13078). Until e0631669b3 you arrived on the road south of the gate (0, -84), inside the front's band;
+// road outside the South Gate (the map's gate-south, everglade/legacy/v1/points.coax, #13078). Until e0631669b3 you arrived on the road south of the gate (0, -84), inside the front's band;
 // since then the commons is 40 m and more from the line, out of Starry Wisp's 18 m, so a page that
 // holds at the spawn never hurts a raider (#13070). Round the fountain to the left as the paired
 // session's route (dr_script) does, then down the road, steered into the gate's opening by the page's
@@ -1640,7 +1640,7 @@ tool_main :: () -> int #export_c #effects(all) {
   dir := args_value(a[..], "--out", btext(db[..]));
   _ := fs_mkdir("coax/web/build/everglade-drift"); _ = fs_mkdir(dir);
   inputs:[1]RtqInputs;
-  for file:[16]string.["coax/web/drift-placement.coax","verse/everglade/points.coax","aethyr/world/points.coax","coax/web/map-points.coax","coax/web/room/worker.coax","coax/web/drift-snapshot.coax","coax/web/room/drift-bots.coax","coax/web/room/net-proxy.coax","coax/web/room/bin/room","apps/openagents-web/build/everglade5e.wasm","apps/openagents-web/build/everglade-room.wasm","coax/web/host.js","coax/web/room-worker.js","coax/web/everglade-drift.js","coax/web/everglade-drift.coax","coax/web/drift-hold.coax"] {
+  for file:[16]string.["coax/web/drift-placement.coax","everglade/legacy/v1/points.coax","aethyr/world/points.coax","coax/web/map-points.coax","coax/web/room/worker.coax","coax/web/drift-snapshot.coax","coax/web/room/drift-bots.coax","coax/web/room/net-proxy.coax","coax/web/room/bin/room","apps/openagents-web/build/everglade5e.wasm","apps/openagents-web/build/everglade-room.wasm","coax/web/host.js","coax/web/room-worker.js","coax/web/everglade-drift.js","coax/web/everglade-drift.coax","coax/web/drift-hold.coax"] {
     if !rtq_input_add(inputs[..],file) {tool_errln("Cannot fence the actual drift inputs.");return 1;}
   }
   self:[4096]u8;self_n:=cxproc_self_path(self[..]);

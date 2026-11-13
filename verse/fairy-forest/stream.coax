@@ -3,7 +3,7 @@
 // Catmull-Rom spline through its control points, wide where the pond is),
 // at one level, drawn by fairy.wgsl from the baked nodes in the painted
 // water preset (art-styles.md section 12). It is its own library, as
-// verse/everglade/river.coax is (this file started as a copy of it): the
+// everglade/legacy/v1/river.coax is (this file started as a copy of it): the
 // realm's face (apps/openagents-web/fairy-face.c) passes values between it,
 // the page and the controller. The page carves the bed; this file bakes the
 // nodes over it, says what water you are in, floats lily pads on the pond

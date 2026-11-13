@@ -88,7 +88,7 @@ module that any realm declares, instead of code that belongs to Everglade.
 - [verse/water.coax](../../verse/water.coax) and
   [aethyr/physics/rigid.coax](../physics/rigid.coax): the W1 physics, with all
   fifteen of the old tests as `#test` checks.
-- [verse/everglade/river.coax](../../verse/everglade/river.coax): Everglade's
+- [everglade/legacy/v1/river.coax](../../everglade/legacy/v1/river.coax): Everglade's
   4 m river, its current round the bridge piles, and its rowboats.
 - [aethyr/world/water-weather.coax](../world/water-weather.coax) and
   [verse/water-spells.coax](../../verse/water-spells.coax): rising water in

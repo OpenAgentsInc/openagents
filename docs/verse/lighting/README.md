@@ -26,7 +26,7 @@ the glade; authored profiles are deltas from it, never a fresh start.
 
 "Everglade" in this plan means **Everglade II** (`/worlds/everglade2`,
 `everglade/client/`, `everglade/world/`), which is becoming
-Everglade. Version one (`verse/everglade/gpu.coax`) is frozen: it gets the
+Everglade. Version one (`apps/openagents-web/gpu/everglade-v1/gpu.coax`) is frozen: it gets the
 painterly default through a compatibility adapter at the end, not new work.
 
 What the glade is today, and what becomes the painterly default:
@@ -89,7 +89,7 @@ The existing system supplies useful parts that should be composed and migrated:
 | `aethyr/render/light.coax` | Key direction, two-color hemisphere ambient, snapped shadow space, haze and a bounded 16-light CPU list | Realms still construct lighting and shadow space; the CPU list is not the live realm light path |
 | `verse/style-preset.coax` | Four time keys, sun/moon choice, style uniforms and clock modes | No general spatial environment profile resolver or irregular time tracks |
 | `aethyr/render/sky.coax`, `vegetation.coax`, `shadow-filter.coax`, `post.coax` | Shared sky/cloud, vegetation, PCF offsets, tone, bloom and shaft arithmetic | Pass ownership and several material/color contracts remain consumer-specific |
-| `verse/everglade/gpu.coax` | Real geometry shadows, baked sky visibility, lamp/spell lighting, room warmth, weather, water and post | One key shadow map; at most 16 lamp entries evaluated directly; lighting remains embedded in the realm shader |
+| `apps/openagents-web/gpu/everglade-v1/gpu.coax` | Real geometry shadows, baked sky visibility, lamp/spell lighting, room warmth, weather, water and post | One key shadow map; at most 16 lamp entries evaluated directly; lighting remains embedded in the realm shader |
 | `aethyr/render/scene-lights.coax`, `character.coax` | Detailed characters use world lighting, shadows and post; up to eight selected point lights | Character and world light admission/evaluation are different paths |
 | Character Create's private glade renderer | Explicit linear HDR, separated direct/indirect terms, height atmosphere and normal/depth contact shading | Private implementation and qualification, not a shared realm capability |
 | Shared render package, graph and resource ledger | Typed resources, bindings, passes, ownership and recovery contracts | New lighting resources and passes must enter these contracts explicitly |
@@ -115,7 +115,7 @@ appropriate rather than introducing parallel implementations.
 | `aethyr/render/light-grid.coax`, `shadow.coax`, `occlusion.coax` | Light selection, shadow planning and indirect visibility |
 | `aethyr/render/fog.coax`, `fog-volume.coax` | Analytic atmosphere, volume injection, scattering, integration and history |
 | Existing `sky.coax`, `post.coax` and shared water hooks | Sky appearance, grading/presentation and consistent water integration |
-| `verse/everglade/` | Authored profiles, placements and gameplay light/effect sources; consumes shared evaluation |
+| `everglade/world/`, and v1's `everglade/legacy/v1/` | Authored profiles, placements and gameplay light/effect sources; consumes shared evaluation |
 
 Coax owns product arithmetic, scheduling decisions, admission and all new tools.
 Hosts execute platform GPU operations and report measured capabilities. Required
@@ -225,7 +225,7 @@ resolved record yet, and Phase 1 does not change them):
 
 | Consumer | Where its light comes from now | Adoption |
 | --- | --- | --- |
-| Everglade v1 (`/worlds/everglade`, `apps/openagents-web/everglade.coax`, `verse/everglade/gpu.coax`, `gpu-glade.coax`, `glade-zone.coax`) | its own frozen key, ambient, weather and lamp path (`everglade.wgsl`, 633 vec4s) | an adapter in a later phase; v1 stays frozen |
+| Everglade v1 (`/worlds/everglade`, `apps/openagents-web/everglade.coax`, `apps/openagents-web/gpu/everglade-v1/gpu.coax`, `gpu-glade.coax`, `glade-zone.coax`) | its own frozen key, ambient, weather and lamp path (`everglade.wgsl`, 633 vec4s) | an adapter in a later phase; v1 stays frozen |
 | Everglade 5E (`everglade5e.coax`) | Everglade v1's shader (`everglade5e.wgsl`) | with v1's adapter |
 | The fixture (`fixture.coax`, `gpu/fixture.coax`) | `verse/style.coax` presets at its own clock (`fixture.wgsl`, 71 vec4s) | the style-preset compatibility profile, once its shader reads the record |
 | One-shot's Table Display glade (`oneshot.coax`, `oneshot-table.coax`) | its own shader constants (`oneshot.wgsl`, 442 vec4s) | the painterly default, as 5E Lab |

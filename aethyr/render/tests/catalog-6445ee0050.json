@@ -1896,7 +1896,7 @@
     },
     {
       "pass_id": "background",
-      "source": "verse/everglade/gpu.coax",
+      "source": "apps/openagents-web/gpu/everglade-v1/gpu.coax",
       "vertex": "eg_bg_vs",
       "fragment": "eg_bg_fs",
       "wgsl_vertex": "bg_vs",
@@ -1915,7 +1915,7 @@
     },
     {
       "pass_id": "shadow",
-      "source": "verse/everglade/gpu.coax",
+      "source": "apps/openagents-web/gpu/everglade-v1/gpu.coax",
       "vertex": "eg_shadow_vs",
       "fragment": "eg_shadow_fs",
       "wgsl_vertex": "shadow_vs",
@@ -1982,7 +1982,7 @@
     },
     {
       "pass_id": "grass",
-      "source": "verse/everglade/gpu.coax",
+      "source": "apps/openagents-web/gpu/everglade-v1/gpu.coax",
       "vertex": "eg_grass_vs",
       "fragment": "eg_grass_fs",
       "wgsl_vertex": "grass_vs",
@@ -2033,7 +2033,7 @@
     },
     {
       "pass_id": "scene",
-      "source": "verse/everglade/gpu.coax",
+      "source": "apps/openagents-web/gpu/everglade-v1/gpu.coax",
       "vertex": "eg_scene_vs",
       "fragment": "eg_scene_fs",
       "wgsl_vertex": "scene_vs",
@@ -2124,7 +2124,7 @@
     },
     {
       "pass_id": "water_transmit",
-      "source": "verse/everglade/gpu.coax",
+      "source": "apps/openagents-web/gpu/everglade-v1/gpu.coax",
       "vertex": "eg_water_vs",
       "fragment": "eg_water_transmit_fs",
       "wgsl_vertex": "water_vs",
@@ -2183,7 +2183,7 @@
     },
     {
       "pass_id": "water_emit",
-      "source": "verse/everglade/gpu.coax",
+      "source": "apps/openagents-web/gpu/everglade-v1/gpu.coax",
       "vertex": "eg_water_vs",
       "fragment": "eg_water_emit_fs",
       "wgsl_vertex": "water_vs",
@@ -2250,7 +2250,7 @@
     },
     {
       "pass_id": "bloom",
-      "source": "verse/everglade/gpu.coax",
+      "source": "apps/openagents-web/gpu/everglade-v1/gpu.coax",
       "vertex": "eg_bg_vs",
       "fragment": "eg_bloom_fs",
       "wgsl_vertex": "bg_vs",
@@ -2285,7 +2285,7 @@
     },
     {
       "pass_id": "post",
-      "source": "verse/everglade/gpu.coax",
+      "source": "apps/openagents-web/gpu/everglade-v1/gpu.coax",
       "vertex": "eg_bg_vs",
       "fragment": "eg_post_fs",
       "wgsl_vertex": "bg_vs",
@@ -2344,7 +2344,7 @@
     },
     {
       "pass_id": "hud",
-      "source": "verse/everglade/gpu.coax",
+      "source": "apps/openagents-web/gpu/everglade-v1/gpu.coax",
       "vertex": "eg_fx_vs",
       "fragment": "eg_fx_fs",
       "wgsl_vertex": "fx_vs",
@@ -3747,12 +3747,12 @@
     "apps/openagents-web/gpu/newland.bindings": "824a117e99b975e5bf5d3a784e15c401c504cd07cf7f9aca07536b78b3a027c1",
     "apps/openagents-web/newland.wgsl": "c1341a360fb2d6062cc22d1575bda9321187a26879cc7d40005afb5362d1547e",
     "apps/openagents-web/newland-face.c": "abceffafb8dc8cde6274a0405de8b41cf25abb61f84641ca85bda62fa564b380",
-    "verse/everglade/gpu.coax": "1ee5486e07d851e2bc29c6d95afa5f0996550b75849c6a31f0b8adf2bec6d184",
-    "verse/everglade/gpu.module": "bfab57518f3f98254fd11f702534d385bdf296c6f00e0bde642633190f001db3",
-    "verse/everglade/gpu.bindings": "6d8dbfed3d1dfd5e6b0afbafca5423dbf85005ed69bf1d98bda42cf07f6f1530",
+    "apps/openagents-web/gpu/everglade-v1/gpu.coax": "1ee5486e07d851e2bc29c6d95afa5f0996550b75849c6a31f0b8adf2bec6d184",
+    "apps/openagents-web/gpu/everglade-v1/gpu.module": "bfab57518f3f98254fd11f702534d385bdf296c6f00e0bde642633190f001db3",
+    "apps/openagents-web/gpu/everglade-v1/gpu.bindings": "6d8dbfed3d1dfd5e6b0afbafca5423dbf85005ed69bf1d98bda42cf07f6f1530",
     "everglade/client/gpu/gpu-fx.coax": "fbdf179aa591086eb1a612e7cfd22d0b56c6b0bd083d4698d7ce52a6be199333",
-    "verse/everglade/gpu-fx.module": "8b176923d0c7d685c688920904f352f30869d67424e965ef882cc8ab5d6649e9",
-    "verse/everglade/gpu-fx.bindings": "b17ceaef68bf999a2f891390fb5a915b12c1ea682cd310b0db8a3844a86b367a",
+    "apps/openagents-web/gpu/everglade-v1/gpu-fx.module": "8b176923d0c7d685c688920904f352f30869d67424e965ef882cc8ab5d6649e9",
+    "apps/openagents-web/gpu/everglade-v1/gpu-fx.bindings": "b17ceaef68bf999a2f891390fb5a915b12c1ea682cd310b0db8a3844a86b367a",
     "apps/openagents-web/everglade.wgsl": "12dce0734ca3be0cecdc41039961c4863444e9a5c57df6849ab2fe4996319be6",
     "apps/openagents-web/everglade-face.c": "1efd153e71ed0044f77aa3dfa8c9259e30633ea79a5813a582a71f2c13b01380",
     "apps/openagents-web/gpu/fairy.coax": "8477580041d4bf30f8eb114c7b00ee78bc920eb6bba501948297b8b5746797ff",

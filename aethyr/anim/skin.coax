@@ -1,7 +1,7 @@
 // A skinned character's clips, played as the old Rust Verse engine played
 // them (before the Nuke, 0b401561a0^: crates/verse-engine/src/animation.rs
 // and Everglade's crates/verse-zone-everglade/src/zones/everglade/player.rs).
-// Everglade's player, the old engine's Ranger (verse/everglade/ranger.coax,
+// Everglade's player, the old engine's Ranger (everglade/legacy/v1/ranger.coax,
 // written by verse/tools/pack_realm.py), is the first to use it.
 //
 // A rig is a skeleton, parents first, each joint's rest translation and

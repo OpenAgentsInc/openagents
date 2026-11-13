@@ -1,7 +1,7 @@
 // The actual Everglade NPC controller consumes the planner's objects through
 // the same fence builder used by the live page and authoritative room.
 #load "scene-resize.coax";
-#load "../../verse/everglade/watch.coax";
+#load "../../everglade/legacy/v1/watch.coax";
 
 #test "resizing the middle crate updates its real NPC fence and bodies stay outside the enlarged footprint" #steps 400000000 {
   p:=fs_plan(EgEdits.{},ForgeSceneCommand.{op=FS_PLACE,item=0,count=3,located=true,x=600,z=-1050},0,0);#assert p.ok;

@@ -72,7 +72,7 @@ psionic.gpu.current: evidence changed; review psionic/book/SUMMARY.md
 psionic.language.current: evidence changed; review coax/lib/compiler/wgsl.coax
 coax.wgsl.current: evidence changed; review coax/lib/compiler/wgsl.coax
 coax.wgsl.current: evidence changed; review coax/src/shader.cpp
-coax.wgsl.current: evidence changed; review verse/everglade/gpu.bindings
+coax.wgsl.current: evidence changed; review apps/openagents-web/gpu/everglade-v1/gpu.bindings
 ```
 
 When each evidence file was last reviewed, and what changed since:
@@ -82,7 +82,7 @@ When each evidence file was last reviewed, and what changed since:
 | `psionic/book/SUMMARY.md` | `psionic.execution.current`, `psionic.gpu.current` | `9c280f5f8b` | `11da31e23c` | 51 lines added |
 | `coax/lib/compiler/wgsl.coax` | `coax.wgsl.current`, `psionic.language.current` | `09101c58f9` | `6adbb76c82`, `cdf2eedd13` | 115 added, 12 removed |
 | `coax/src/shader.cpp` | `coax.wgsl.current` | `4fa20ba31b` | `6adbb76c82` | 15 added, 11 removed |
-| `verse/everglade/gpu.bindings` | `coax.wgsl.current` | `8b76a0b0f3` | `c50fcbbf15`, `4c7669373d` | 5 added, 3 removed |
+| `apps/openagents-web/gpu/everglade-v1/gpu.bindings` | `coax.wgsl.current` | `8b76a0b0f3` | `c50fcbbf15`, `4c7669373d` | 5 added, 3 removed |
 
 What is already known about these changes:
 
@@ -101,7 +101,7 @@ A separate bounded graphics path is implemented:
 writes a WGSL module from ordinary checked Coax procedures. Its admitted
 subset includes vectors, records, graphics entry wrappers and resource
 bindings; unsupported entry shapes, bindings and layouts are refused.
-Everglade's main graphics module is generated from `verse/everglade/gpu.coax`
+Everglade's main graphics module is generated from `apps/openagents-web/gpu/everglade-v1/gpu.coax`
 with `gpu.module` and `gpu.bindings`, and its particle module from
 `gpu-fx.coax` with `gpu-fx.module` and `gpu-fx.bindings`. Other realm shaders
 still have their separately documented paths. This does not implement the
@@ -159,7 +159,7 @@ minute.
   `psionic/docs/roadmap.md`. If a claim's prose is wrong, that is a STOP
   condition, not an edit.
 - `coax/lib/compiler/wgsl.coax`, `coax/src/shader.cpp`,
-  `verse/everglade/gpu.bindings`, `psionic/book/SUMMARY.md`. You read them;
+  `apps/openagents-web/gpu/everglade-v1/gpu.bindings`, `psionic/book/SUMMARY.md`. You read them;
   you do not change them.
 - `coax/book/capability-claims.py` and `coax/book/check-structure.py`.
 
@@ -182,7 +182,7 @@ For each row of the table above, read the change:
 git diff 9c280f5f8b..HEAD -- psionic/book/SUMMARY.md
 git diff 09101c58f9..HEAD -- coax/lib/compiler/wgsl.coax
 git diff 4fa20ba31b..HEAD -- coax/src/shader.cpp
-git diff 8b76a0b0f3..HEAD -- verse/everglade/gpu.bindings
+git diff 8b76a0b0f3..HEAD -- apps/openagents-web/gpu/everglade-v1/gpu.bindings
 ```
 
 Then read the claim's prose block and its `scope` string. Answer one question

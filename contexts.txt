@@ -3,6 +3,9 @@
 # proto/README.md "Owning contexts").
 # A file belongs to the context whose prefix is longest; files in no context are not judged.
 # everglade/server/legacy/ is the one allowed path from Everglade into v1 code (#13269).
+# everglade/legacy/v1/ is v1 Everglade's town (plan, people, watch, river...), in no context. The edit codec
+# (everglade/world/edits.coax) and the guide's route (everglade/npc/guide-route.coax) still read it; it is
+# deleted with v1 after P2 (#13269). No new load into it.
 
 combat-rules folders: rules/srd/ may load: engine toolchain
 characters folders: everglade/model/ coax/web/api/character-policy.coax may load: combat-rules items engine protocol toolchain

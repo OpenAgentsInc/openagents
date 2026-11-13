@@ -1,4 +1,4 @@
-# Everglade's bindings for `coax wgsl verse/everglade/gpu.coax` (coax/web/wgsl-module.coax):
+# Everglade's bindings for `coax wgsl apps/openagents-web/gpu/everglade-v1/gpu.coax` (coax/web/wgsl-module.coax):
 # NAME GROUP BINDING, and `uniform COUNT` for a []f32 read as a uniform block of COUNT vec4fs.
 # They are coax/web/host.js's layouts: group 0 the frame's uniforms and the sans atlas (Character Create's labels); group 1 the scene (or
 # the bloom's or the post's inputs, each pass its own); group 2 the shadow map; group 3

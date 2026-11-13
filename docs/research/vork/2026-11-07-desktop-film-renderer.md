@@ -206,7 +206,7 @@ the scale of G1 or G2. F4 and F5 should wait until a film needs them.
 | --- | --- |
 | `aethyr/core/loop.coax`, `replay.coax`, `rand.coax` | Exact replay at film time; sample streams |
 | Realm Coax and its stages (`?stage=`, `?raid=preview&cine=1`) | Unchanged scene content |
-| `verse/everglade/gpu.coax`, `gpu-fx.coax`, `aethyr/render/character.coax`, `apps/openagents-web/gpu/*.coax` | The same shading functions, with film visibility inputs |
+| `apps/openagents-web/gpu/everglade-v1/gpu.coax`, `gpu-fx.coax`, `aethyr/render/character.coax`, `apps/openagents-web/gpu/*.coax` | The same shading functions, with film visibility inputs |
 | `coax spirv`, `coax metal`, `verse/gpu/vk-*.c` | The native pipeline and host, extended |
 | `aethyr/render/passes.coax`, `catalog.coax` | The pass graph as data; the film profile selects extra passes |
 | `aethyr/render/reference-*.coax` | CPU oracles for each new pass |

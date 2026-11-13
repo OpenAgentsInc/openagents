@@ -6,7 +6,7 @@
 //   coax/web/tool.sh coax/web/wgsl-module.coax FILE.coax OUT.wgsl OPTIONS     (from the repo root)
 // OPTIONS is a file of `--vertices A,B --fragments C,D --bindings F [--strip P]`, apart by
 // spaces or lines, so the page's build and its checks lower the same entries
-// (verse/everglade/gpu.module). OUT is written only when the module changes.
+// (apps/openagents-web/gpu/everglade-v1/gpu.module). OUT is written only when the module changes.
 //   coax/web/tool.sh coax/web/wgsl-module.coax --site            every page's module (wm_site)
 // The committed .wgsl files are what the dev server, the GPU passes and the golden checks
 // read without a build, so they must be what their Coax writes. --check, after either form,
@@ -20,8 +20,9 @@
 
 WM_PAGE :: 4194304;
 WM_TIMEOUT_MS :: 300000;   // each coax wgsl (wm_module)
-// Every page's module, as apps/openagents-web/build.sh writes them: Everglade's two from
-// verse/everglade/, then each NAME.coax with NAME.module in a folder of WM_GPU (the web
+// Every page's module, as apps/openagents-web/build.sh writes them: v1 Everglade's two (its
+// passes and .module files in apps/openagents-web/gpu/everglade-v1/, the puffs' source in
+// everglade/client/gpu/gpu-fx.coax), then each NAME.coax with NAME.module in a folder of WM_GPU (the web
 // app's, then the game's scene and client: everglade/scene/gpu/, everglade/client/gpu/) to
 // apps/openagents-web/NAME.wgsl. gpu/nip.coax is the NIP pages' (nip01.wgsl, generated
 // and ignored), which build.sh writes itself.
@@ -52,8 +53,8 @@ wm_stale :: (into: string) {
 // Every page's module: written, or with check compared; 1 when one failed or is stale.
 wm_site :: (check: bool) -> int {
   t: WmTally;
-  t = wm_tally(t, wm_module("verse/everglade/gpu.coax", "apps/openagents-web/everglade.wgsl", "verse/everglade/gpu.module", check), "apps/openagents-web/everglade.wgsl");
-  t = wm_tally(t, wm_module("everglade/client/gpu/gpu-fx.coax", "apps/openagents-web/everglade-fx.wgsl", "verse/everglade/gpu-fx.module", check), "apps/openagents-web/everglade-fx.wgsl");
+  t = wm_tally(t, wm_module("apps/openagents-web/gpu/everglade-v1/gpu.coax", "apps/openagents-web/everglade.wgsl", "apps/openagents-web/gpu/everglade-v1/gpu.module", check), "apps/openagents-web/everglade.wgsl");
+  t = wm_tally(t, wm_module("everglade/client/gpu/gpu-fx.coax", "apps/openagents-web/everglade-fx.wgsl", "apps/openagents-web/gpu/everglade-v1/gpu-fx.module", check), "apps/openagents-web/everglade-fx.wgsl");
   for g: 0..<WM_GPU.count {
     gpu := WM_GPU[g];
     l: [1] FsList;

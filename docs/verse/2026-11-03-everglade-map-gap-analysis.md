@@ -46,12 +46,12 @@ The previous map:
 
 The current city:
 
-- `verse/everglade/plan.coax`: the layout. Metres, +z north, **+x west**,
+- `everglade/legacy/v1/plan.coax`: the layout. Metres, +z north, **+x west**,
   the fountain at the origin (`plan.coax:7-9`).
 - `docs/verse/everglade.md`: the plan in words; `docs/verse/everglade-map.svg`
-  is drawn from `plan.coax` by `verse/everglade/map.py`.
+  is drawn from `plan.coax` by `everglade/legacy/v1/map.py`.
 - `apps/openagents-web/realms/everglade/index.md`: the player-facing page.
-- `verse/everglade/river.coax`, `people.coax`, `quests.coax`.
+- `everglade/legacy/v1/river.coax`, `people.coax`, `quests.coax`.
 - Headless screenshots of the live city (`#above`, `#commons`), taken
   November 3, 2026 and not kept in git.
 
@@ -299,7 +299,7 @@ the south, 4 m between banks and 6 m of water, 2.2 m deep, with a weir at
 z = −30 and a plunge pool (`plan.coax:314-329`), a bridge
 (`EG_BRIDGE`, `plan.coax:111`) and a glade to wade in (`EG_GLADE`,
 `plan.coax:528`). Ducks, lily pads and rowboats at three ponds float on
-the water system (`verse/everglade/river.coax:25-44`).
+the water system (`everglade/legacy/v1/river.coax:25-44`).
 
 ### Coast
 
@@ -396,12 +396,12 @@ plan and the realm; **L** a week or more, new buildings or systems;
 - Quest places past the walls: the deep wood's waystone, the ruins' three
   pillars, the crypt and the river crossing (`EG_PROP`,
   `plan.coax:100-103`; `EG_PLACE_NAME`, `plan.coax:149-152`).
-- The quest board on the commons and the quests (`verse/everglade/quests.coax`).
+- The quest board on the commons and the quests (`everglade/legacy/v1/quests.coax`).
 - A long river you wade, swim and dive in, with a weir, a bridge, ducks,
   lily pads and rowboats (`plan.coax:314-329`;
-  `verse/everglade/river.coax`).
+  `everglade/legacy/v1/river.coax`).
 - Twenty-two named people and cats who talk and remember you
-  (`EG_SPOT`, `plan.coax:162-189`; `verse/everglade/people.coax`).
+  (`EG_SPOT`, `plan.coax:162-189`; `everglade/legacy/v1/people.coax`).
 - Hills inside and round the town (`aethyr/world/terrain.coax`).
 - The 5e spell bar, destruction and the watch
   (`docs/verse/everglade.md:574-799`), and admin edit mode
@@ -414,8 +414,8 @@ fountain, observatory and market stalls and drops the workshop and the
 Agent Studio", `docs/verse/everglade.md:20-23`). The steps below bring the
 map's form and places to it in the medieval kits. They keep the palisade
 and the quest places unless the owner decides to open the city. Each step
-ends with `coax/bin/coax test --library verse/everglade/plan.coax` and
-`python3 verse/everglade/map.py docs/verse/everglade-map.svg`.
+ends with `coax/bin/coax test --library everglade/legacy/v1/plan.coax` and
+`python3 everglade/legacy/v1/map.py docs/verse/everglade-map.svg`.
 
 1. **Grow the world (XL).** Raise the ground and the walk bound so a
    300 m town fits with woods round it: `EG_CELLS`, `EG_EDGE`, `EG_BOUND`,
@@ -425,7 +425,7 @@ ends with `coax/bin/coax test --library verse/everglade/plan.coax` and
    `EG_RIVER_X` and `EG_RIVER_COL` (`plan.coax:314-320`) and the quest
    places, clearings and spots out with the edge. Touches `plan.coax`,
    `apps/openagents-web/everglade.coax` (forest planting and
-   `plant_thicket`), `verse/everglade/river.coax`, `map.py`,
+   `plant_thicket`), `everglade/legacy/v1/river.coax`, `map.py`,
    `docs/verse/everglade.md` (Scale, Walking times). Check the frame rate on
    a phone before going on.
 2. **Re-lay the roads (M).** Replace the four-street grid with the
@@ -442,12 +442,12 @@ ends with `coax/bin/coax test --library verse/everglade/plan.coax` and
    community gardens. Touches `EG_SQUARE`, `EG_POND`, `EG_POND_OPEN`,
    `EG_PROP` (`plan.coax:94-111`, `206-252`); the tree planting in
    `apps/openagents-web/everglade.coax` (trees inside the walls for the
-   first time); the boat moorings in `verse/everglade/river.coax`.
+   first time); the boat moorings in `everglade/legacy/v1/river.coax`.
 4. **Bring Glade Run through town (L).** Replace or add to the straight
    river with a stream from the Commons, under the loop and a footbridge
    on Brownstone Row, to Thinking Pond in the south-west. Touches
    `everglade_carve_river` and the river constants (`plan.coax:306-390`),
-   `verse/everglade/river.coax` (a curved river body), `EG_BRIDGE`, and the
+   `everglade/legacy/v1/river.coax` (a curved river body), `EG_BRIDGE`, and the
    water docs (`docs/verse/water.md`).
 5. **Place the district landmarks (L).** One building each, as walk-in
    boxes: Market Hall (Main Street), the Music Hall (Lantern Quarter, the
@@ -459,7 +459,7 @@ ends with `coax/bin/coax test --library verse/everglade/plan.coax` and
    districts: the market and store to Main Street, the inn to the Lantern
    Quarter, the smithy to the Foundry. Touches `EG_BUILDING`, `EG_DOOR`,
    `EG_BUILDING_NAME`, `EG_INTERIOR`, `EG_ROOM_ID` (`plan.coax:58-89`),
-   `EG_SPOT` (`plan.coax:162-189`), `verse/everglade/people.coax`.
+   `EG_SPOT` (`plan.coax:162-189`), `everglade/legacy/v1/people.coax`.
 6. **Raise Observatory Hill (M).** A raised flat with a slope, the
    observatory on top, in the south-east past the Knowledge District, with
    the Long Meadow below it. Touches the flats (`EG_SQUARE`,

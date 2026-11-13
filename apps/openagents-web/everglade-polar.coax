@@ -1,5 +1,5 @@
 // The bar's last four (the old Grove's polar spells; the watch's casters cast the same at you,
-// verse/everglade/watch.coax), loaded by everglade-spells.coax after everglade-storm.coax, whose st_*
+// everglade/legacy/v1/watch.coax), loaded by everglade-spells.coax after everglade-storm.coax, whose st_*
 // hand these on (SRD 5.2.1: DC 15, spell attack +7, a caster of level 9 for a cantrip's dice):
 //
 //  A- RAY OF FROST  (cantrip) Click someone within 60 feet: a spell attack, 2d8 cold on a hit (the dice

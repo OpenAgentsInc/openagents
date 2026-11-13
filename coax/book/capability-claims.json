@@ -353,7 +353,7 @@
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "7f942ff594987299b602a3d84765cdfc6a7548dfa346ab787c44437868b536cb"
+          "sha256": "1744cfa81be537d8402bb42a7c797eefcfaa00c51229943bcacd73aa0507f628"
         },
         {
           "path": "coax/QUANTITIES.md",
@@ -443,7 +443,7 @@
       "id": "coax.wgsl.current",
       "document": "coax/book/ch17-gpu.md",
       "scope": "Bounded direct WGSL graphics emission and the named Everglade source consumer; planned shader syntax, general layouts and Psionic browser compute remain separate. Reviewed after #12867: `coax metal --vertex/--fragment` adds a separate Metal graphics writer over the same checked tree; the WGSL path and its refusals are unchanged. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82 adds bounded `coax wgsl --computes` entries with `atomic` storage bindings for the engine's GPU cluster cull (aethyr/render/geometry/cull.coax); Psionic browser compute remains separate. cdf2eedd13 adds checks only; 4c7669373d and c50fcbbf15 change Everglade's bindings for one zone and sun-shadow atlas tiles.",
-      "text_sha256": "dc825e0eb306e3779a73f999e9e4cdaca1ae204a5c92b15f7ad241f83d9e9d28",
+      "text_sha256": "4a593a91eb143f061fb948f11119f1e6f62a1e1629db334786aeb190920e94eb",
       "features": [
         {
           "id": "target.browser",
@@ -461,22 +461,22 @@
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "7f942ff594987299b602a3d84765cdfc6a7548dfa346ab787c44437868b536cb"
+          "sha256": "1744cfa81be537d8402bb42a7c797eefcfaa00c51229943bcacd73aa0507f628"
         },
         {
-          "path": "verse/everglade/gpu.module",
-          "sha256": "bfab57518f3f98254fd11f702534d385bdf296c6f00e0bde642633190f001db3"
+          "path": "apps/openagents-web/gpu/everglade-v1/gpu.module",
+          "sha256": "478119a40ece1399f0358a406adafd8d4bd142fc08c35e4c9c4bc115bf173be3"
         },
         {
-          "path": "verse/everglade/gpu.bindings",
-          "sha256": "d823b242b1159e264b3408e674c5e42a63b9cb62a730a7e6c578006921beabe2"
+          "path": "apps/openagents-web/gpu/everglade-v1/gpu.bindings",
+          "sha256": "38c6760b6b3b2ed57ff5314ac22d72615cb6f24e490da893ea67e749490670a4"
         },
         {
-          "path": "verse/everglade/gpu-fx.module",
-          "sha256": "8b176923d0c7d685c688920904f352f30869d67424e965ef882cc8ab5d6649e9"
+          "path": "apps/openagents-web/gpu/everglade-v1/gpu-fx.module",
+          "sha256": "eadad4d703d6b3d3cbdb37e45714aa5088890914c389904d2305bfb4b3ef5357"
         },
         {
-          "path": "verse/everglade/gpu-fx.bindings",
+          "path": "apps/openagents-web/gpu/everglade-v1/gpu-fx.bindings",
           "sha256": "97fb7e15731691b2ef4a6c72328a25c57b7ae9b2fb7f75a25ebf8e53134b7b08"
         }
       ]

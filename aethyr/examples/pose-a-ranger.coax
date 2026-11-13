@@ -2,7 +2,7 @@
 // sequence at 60 frames a second. Each frame's skinning palette goes into one digest, recorded
 // before the pose pipeline moved into aethyr/anim/pose.coax, and every bone's length in the
 // posed skeleton is compared with its length in the clip being played.
-#load "../../verse/everglade/ranger.coax";
+#load "../../everglade/legacy/v1/ranger.coax";
 #load "../anim/motion.coax";
 #import "Basic";
 

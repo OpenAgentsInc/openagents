@@ -619,7 +619,7 @@
       "files": [
         "verse/tools/pack_realm.py",
         "verse/packs/everglade.json",
-        "verse/everglade/",
+        "everglade/legacy/v1/",
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade.wgsl",
         "apps/openagents-web/everglade-face.c",
@@ -675,7 +675,7 @@
       "body": "The owner: \"I am the owner of Everglade, so why do I not have edit mode here? Whenever a user is an admin, they need to have edit mode.\" An admin (a key in coax/web/api/admins.conf, logged in at /login or signing NIP-98) gets the Haunted House's edit mode in Everglade: B or EDIT, a hotbar of things to place, the picked thing's row (LEFT RIGHT AWAY NEAR TURN BIGGER SMALLER DELETE), UNDO, REDO, DONE, and ORIGINAL to go back to the designed city. The edits are the realm's published world on the server (/api/playtest/world/everglade), checked there: only an admin writes them; everyone sees them, nobody else gets edit mode. Each edit is held to the plan (not in a wall, the woods or out of the world) and DONE walks the city again (plan.coax reachability) and warns the admin of anything blocked. Then every other realm without edit mode, or a recorded reason it has none.\n\nPlan: `docs/verse/everglade.md`.",
       "files": [
         "apps/openagents-web/",
-        "verse/everglade/",
+        "everglade/legacy/v1/",
         "coax/web/api/",
         "docs/verse/"
       ],
@@ -1154,7 +1154,7 @@
       "body": "Every humanoid NPC a skinned Universal Base Character in a dyed Fantasy outfit (Peasant or Ranger), with a head, hair and retargeted UAL clips (idle, walk, talk, nod and three stances), keeping their names, roles, talk and life: weight shifts, glances, turning to face you within 4 m, nods. Parts and textures shared so the pack stays near budget. Cats: a real model once a kit has one.",
       "files": [
         "verse/tools/people.py",
-        "verse/everglade/folk.coax",
+        "everglade/legacy/v1/folk.coax",
         "everglade/scene/people-rig.coax",
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade.wgsl",
@@ -1181,7 +1181,7 @@
       ],
       "body": "In the after-vega shot the ASTRONOMER label floats over empty grass, away from Vega. Labels track the person's head as they walk and turn.",
       "files": [
-        "verse/everglade/folk.coax",
+        "everglade/legacy/v1/folk.coax",
         "apps/openagents-web/everglade.coax"
       ],
       "acceptance": [
@@ -1200,7 +1200,7 @@
       ],
       "body": "Cats are still placeholder shapes. Use aethyr-cpp's static Custom_Cat as a stand-in now; swap in an animated cat when the owner adds a Quaternius animals pack (NEEDS_OWNER).",
       "files": [
-        "verse/everglade/folk.coax",
+        "everglade/legacy/v1/folk.coax",
         "apps/openagents-web/everglade.coax"
       ],
       "acceptance": [
@@ -1219,7 +1219,7 @@
       ],
       "body": "They wear dyed peasant or ranger clothes; robes are in the Source tier of Modular Character Outfits - Fantasy (NEEDS_OWNER). Fit them when the pack is in ~/Downloads.",
       "files": [
-        "verse/everglade/folk.coax",
+        "everglade/legacy/v1/folk.coax",
         "apps/openagents-web/everglade.coax"
       ],
       "acceptance": [
@@ -1238,7 +1238,7 @@
       ],
       "body": "The dye tints his metal pauldron red.",
       "files": [
-        "verse/everglade/folk.coax",
+        "everglade/legacy/v1/folk.coax",
         "apps/openagents-web/everglade.coax"
       ],
       "acceptance": [
@@ -1425,7 +1425,7 @@
       ],
       "body": "A town watch of 12 (the six patrols and six new guards on beats) in crimson with sword and shield. A spell on a building or a person is a crime: guards who see or hear it turn on you (WANTED), run you down and fight by the SRD (verse/rules/srd5-combat.coax). Townsfolk flee, cower or fight back, can be knocked down or killed; R and the dawn stand them up. You have SRD HP, can die (YOU DIED) and come back at the Road In. Per page, still in goldens. Docs: docs/verse/everglade.md, The watch.",
       "files": [
-        "verse/everglade/watch.coax",
+        "everglade/legacy/v1/watch.coax",
         "verse/rules/srd5-combat.coax",
         "apps/openagents-web/everglade-watch.coax",
         "apps/openagents-web/everglade.coax"

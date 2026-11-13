@@ -45,7 +45,7 @@ describe the delivered implementation and its measured limits.
 | Post pass (depth of field, skin blur) | `vc_post_fs`, run by `coax/web/host.js` | Generic host feature; any page with a `post_fs` gets it |
 | Pack | `~/.openagents/verse/private-build/web/valley-slay.pack`, pinned by `verse/valley/canyon-pack-policy.coax` | 1,023,634,576 bytes, owner-local. Its 35 mipmapped 4K RGBA8 layers reserve about 3.13 GB of GPU memory |
 | Groom | Valley pack | 118,339 curves, drawn as strands at a share set by the head's size on screen |
-| Everglade's characters | `verse/everglade/gpu.coax` (3,597 lines), `aethyr/anim/skin.coax` | CC0 Quaternius people, skinned from a storage buffer with four joints each, painterly shading |
+| Everglade's characters | `apps/openagents-web/gpu/everglade-v1/gpu.coax` (3,597 lines), `aethyr/anim/skin.coax` | CC0 Quaternius people, skinned from a storage buffer with four joints each, painterly shading |
 | Everglade's budgets | `apps/openagents-web/wasm-budgets.txt` | 2,000,446 of 2,150,000 wasm bytes used; 60 FPS rule from `aethyr/core/frame-report.coax` |
 
 Three constraints shaped the original plan:

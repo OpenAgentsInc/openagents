@@ -373,7 +373,7 @@ rt_route :: (x: f32, z: f32, tx: f32, tz: f32, cx: f32, cz: f32, r: f32, o: [] f
 
 // ---- the town in the way (#12747)
 
-// Every footprint a raider can't pass, as the players can't (verse/everglade/plan.coax
+// Every footprint a raider can't pass, as the players can't (everglade/legacy/v1/plan.coax
 // everglade_solids, which the room server doesn't load: everglade-raid-town.coax's check holds
 // them alike): min x, min z, max x, max z. The
 // palisade's walls and gate towers first (RT_WALLS: a breach opens them), then the buildings whole

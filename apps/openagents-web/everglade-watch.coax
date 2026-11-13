@@ -1,5 +1,5 @@
 // Everglade's town watch on the page (eg-watch), loaded by everglade.coax:
-// verse/everglade/watch.coax's rules (who sees a crime, the chase, the
+// everglade/legacy/v1/watch.coax's rules (who sees a crime, the chase, the
 // SRD blows, your death) put to the realm's people, spells and HUD.
 //
 //   - people() reads each one's day, hands it to the watch, steps the watch
@@ -1019,7 +1019,7 @@ everglade_room_crime :: (s: [] Everglade, by: int, x: f32, z: f32) -> int #expor
 }
 // Person i as a page hears them (wire f, EG_ROOM_VIEW_FLOATS): X Z YAW CLIP MODE HP SHOWN, then a caster's
 // spell as it winds up: CASTING its seconds into it (-1 none), KIND (MS_*), FOE the seat it is for; then RANK (a responder's RANK_* + 1,
-// the stars' roster: verse/everglade/watch.coax LADDER; 0 the town's own) and MAX, their most Hit Points. On
+// the stars' roster: everglade/legacy/v1/watch.coax LADDER; 0 the town's own) and MAX, their most Hit Points. On
 // their day CLIP is 1 walking, 0 standing; off it, the watch's clip. SHOWN 0: indoors, taken away or not called in.
 everglade_room_view :: (s: [] Everglade, i: int, out: [] f32) -> bool #export_c #effects(all) {
   if !s[0].wv.started || i < 0 || i >= WATCH_ACTORS || out.count < EG_ROOM_VIEW_FLOATS { return false; }

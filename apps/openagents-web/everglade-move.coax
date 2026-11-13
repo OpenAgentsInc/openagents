@@ -18,7 +18,7 @@
 EG_MOVE_BODIES :: 48;      // the city's bodies round you at most (the fountain, the piles, the Walls of Stone, trunks, rocks)
 EG_MOVE_HULLS :: 3;        // rowboats' hulls, 7 floats each
 
-// The world where you stand. The river's word (its own unit, verse/everglade/river.coax) comes in:
+// The world where you stand. The river's word (its own unit, everglade/legacy/v1/river.coax) comes in:
 // your water's medium, pace and current, the rowboat's seat (aboard), and the hulls round you. The
 // bodies (the city's, then the hulls) are left in s[0].move_bodies.
 everglade_move_world :: (s: [] Everglade, x: f32, y: f32, z: f32, medium: int, pace: f32, flow_x: f32, flow_z: f32,

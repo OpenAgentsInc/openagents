@@ -1,5 +1,5 @@
 // Character Create, in Everglade's own world (#13018). /worlds/character-creator opens Everglade
-// at the glade's clearing south of the South Gate (verse/everglade/glade-zone.coax), in this mode:
+// at the glade's clearing south of the South Gate (everglade/legacy/v1/glade-zone.coax), in this mode:
 // a studio camera on your character, the wardrobe down the left, and your keys and pointer on the
 // wardrobe rather than on the walk. What you pick is your character in the world as you pick it
 // (s[0].avatar, aethyr/character/character-appearance.coax), drawn by Everglade's renderer in Everglade's

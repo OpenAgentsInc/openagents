@@ -1,6 +1,6 @@
 // The raid's footprints are the town's (#12747): everglade-raid-tactics.coax keeps its own copy of
 // what stands in the way (RT_BOX), as the room server doesn't load the plan; this check holds it
-// to verse/everglade/plan.coax and the trunks everglade.coax plants.
+// to everglade/legacy/v1/plan.coax and the trunks everglade.coax plants.
 //   coax test apps/openagents-web/everglade-raid-town.coax --only "raid paths"
 #load "everglade.coax";
 #load "everglade-raid-tactics.coax";

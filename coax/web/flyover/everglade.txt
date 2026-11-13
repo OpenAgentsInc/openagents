@@ -1,7 +1,7 @@
 # Everglade's flyover (coax/web/flyover.coax, GitHub #13017): one line a key,
 #   seconds   eye x y z   looked-at x y z   (metres, world space; +z is north)
 # Each point is metres from a named point of Everglade's map (@NAME,
-# verse/everglade/points.coax, #13078), so a gate or place that moves takes the
+# everglade/legacy/v1/points.coax, #13078), so a gate or place that moves takes the
 # flight with it. On 11-09 the gate-south is (0, -56), the commons (0, 0), the
 # market (34, 0), the river (93, -12), the guilds (-37, 0) and the deep-wood
 # (-150, 25): the flight is the one #13017 keyed in world numbers.

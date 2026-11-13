@@ -76,7 +76,7 @@ Body :: struct {
   prev_pos: Vec3;
   prev_face: f32;
   // Your speed's share, set by the realm: 1 on land, 0.5 wading or swimming
-  // (verse/everglade/river.coax pace_of). WALK and RUN themselves never change.
+  // (everglade/legacy/v1/river.coax pace_of). WALK and RUN themselves never change.
   pace: f32 = 1;
   grip: f32 = 1;       // the share of your feet's grip on the ground (a realm's ice: everglade-frost.coax); less slides you
   sliding: bool;       // on a floor too steep to stand on, sliding down it

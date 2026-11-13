@@ -65,7 +65,7 @@ messages.
    drawn and felt inside its area and never changes the schedule.
 8. **Routines on the clock.** People's days are rows of time of day, place
    and route, so where they are is a pure function of the clock
-   ([`verse/everglade/routines.coax`](../../verse/everglade/routines.coax)).
+   ([`everglade/legacy/v1/routines.coax`](../../everglade/legacy/v1/routines.coax)).
 9. **Pinning.** `?weather=clear|overcast|fog|rain|storm` pins the weather; a
    still page keeps a calm sky unless pinned, so goldens don't change with
    the schedule.

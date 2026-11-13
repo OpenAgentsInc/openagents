@@ -11,7 +11,7 @@
   "asks": [
     {
       "name": "Everglade: Marta, the conversation so far",
-      "source": "verse/everglade/people.coax eg_ask_body (its #test, a newline in the player's line sent as a space)",
+      "source": "everglade/legacy/v1/people.coax eg_ask_body (its #test, a newline in the player's line sent as a space)",
       "values": {
         "npc": "marta",
         "world": "everglade",
@@ -33,7 +33,7 @@
     },
     {
       "name": "Everglade: Brother Anselm, a quest's note as the scene",
-      "source": "verse/everglade/people.coax eg_ask_body_note (its #test)",
+      "source": "everglade/legacy/v1/people.coax eg_ask_body_note (its #test)",
       "values": {
         "npc": "brother-anselm",
         "world": "everglade",
@@ -56,7 +56,7 @@
     },
     {
       "name": "Everglade: a question in other scripts",
-      "source": "verse/everglade/people.coax eg_ask_body: UTF-8 is sent as it is",
+      "source": "everglade/legacy/v1/people.coax eg_ask_body: UTF-8 is sent as it is",
       "values": {
         "npc": "marta",
         "world": "everglade",

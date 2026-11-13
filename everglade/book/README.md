@@ -267,7 +267,9 @@ Everglade's code is currently spread across the repository:
 
 | What | Where it is now |
 | --- | --- |
-| The land, planting, ground and light | `everglade/world/` |
+| The land, planting, ground and light, and the edit codec | `everglade/world/` |
+| The guard and guide AI and the people's words | `everglade/npc/` |
+| v1 Everglade's town and GPU passes, frozen and deleted after P2 (#13269) | `everglade/legacy/v1/`, `apps/openagents-web/gpu/everglade-v1/` |
 | The client: the page's units, casting, the room's client and Character Create in the world | `everglade/client/` |
 | What the client and the room both load: movement, the class kits, the casts' rules, the wire | `everglade/shared/` |
 | The room's rules | `everglade/server/` |

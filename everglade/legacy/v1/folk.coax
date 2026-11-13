@@ -9,7 +9,7 @@
 // are drawn apart, as cats.
 //
 // How they live, folk_step, each at their own times from their own seed:
-//   - they go about their day (verse/everglade/routines.coax): where the
+//   - they go about their day (everglade/legacy/v1/routines.coax): where the
 //     town's clock puts them, walking between their work and their home;
 //     talking to someone stops them (and anyone walking stops for you in
 //     their way), and once you let them go they hurry a little to catch
@@ -23,10 +23,10 @@
 //     back to their own way when you leave (past FOLK_FACE_OFF);
 //   - when you start talking to them they nod, and while their answer is
 //     fresh they talk with their hands.
-//   coax/bin/coax test --library verse/everglade/folk.coax --steps 2000000000
+//   coax/bin/coax test --library everglade/legacy/v1/folk.coax --steps 2000000000
 
 #load "plan.coax";
-#load "../../everglade/scene/people-rig.coax";
+#load "../../scene/people-rig.coax";
 #load "routines.coax";
 
 // The pack's parts, in PEOPLE_PART_NAME's order.

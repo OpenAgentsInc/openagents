@@ -180,11 +180,11 @@ see different results.
 | State | Where | Shared today? |
 | --- | --- | --- |
 | Your position, yaw, gait | `aethyr/move/player.coax`, `everglade-face.c` | Yes, 1 Hz, as a cone figure |
-| Your animation clip (idle, walk, run, jump, swing) | `figure`, `everglade.coax:2954`; clips in `verse/everglade/ranger.coax:14` | No |
-| Townsfolk positions and routines | `verse/everglade/folk.coax`, `routines.coax`; `folk_clock`, `everglade.coax:2707` | Same only by construction: a pure function of the seed and the page's `now`. Clock skew between machines shows as different spots |
+| Your animation clip (idle, walk, run, jump, swing) | `figure`, `everglade.coax:2954`; clips in `everglade/legacy/v1/ranger.coax:14` | No |
+| Townsfolk positions and routines | `everglade/legacy/v1/folk.coax`, `routines.coax`; `folk_clock`, `everglade.coax:2707` | Same only by construction: a pure function of the seed and the page's `now`. Clock skew between machines shows as different spots |
 | Townsfolk HP, knock-downs, deaths, frogs | `everglade-watch.coax`, `everglade-abilities.coax`, `everglade-circle.coax` | No |
-| The watch, the chase, WANTED | `everglade-watch.coax`, `verse/everglade/watch.coax`; [everglade.md](everglade.md) line 789: "Hostility is your page's alone" | No |
-| Guard captain and guide decisions | `everglade-guard-ai.coax`, `everglade-guide.coax`, `verse/everglade/captain.coax` | No |
+| The watch, the chase, WANTED | `everglade-watch.coax`, `everglade/legacy/v1/watch.coax`; [everglade.md](everglade.md) line 789: "Hostility is your page's alone" | No |
+| Guard captain and guide decisions | `everglade-guard-ai.coax`, `everglade-guide.coax`, `everglade/legacy/v1/captain.coax` | No |
 | Your HP, conditions, casts (5E) | `everglade5e.coax`, `everglade5e-rules.coax` | HP, conditions and the cast's name every 2.5 s as hidden chat lines |
 | Spell flights and blasts (meteor, bolt, orb) | `SpMeteor`, `SpBlast`, `SpBolt`, `everglade-spells.coax:140-151` | No |
 | Lingering zones (frost patches, storms, fire) | `everglade-frost.coax:65-73`, `everglade-storm.coax:47`, `everglade-fire.coax` | No |
@@ -218,7 +218,7 @@ host election or host migration.
   - the SRD 5e rules unit `everglade5e-rules.coax` (generalized from one
     caster to the room's 16 seats);
   - **Everglade's headless world step**, extracted from `everglade.coax`
-    and its modules (`verse/everglade/folk.coax`, `watch.coax`,
+    and its modules (`everglade/legacy/v1/folk.coax`, `watch.coax`,
     `everglade-watch.coax`, `everglade-guard-ai.coax`, `everglade-spells.coax`,
     `everglade-abilities.coax`, `everglade-circle.coax`, the storm, frost,
     tide, fire, rubble and doors modules) into a library with no drawing:
@@ -572,7 +572,7 @@ are stamped with it.
 
 - Remote players are drawn as **the same skinned Ranger you play**
   (`player/male-ranger` in the realm's pack, 75 joints, 8 clips:
-  `verse/everglade/ranger.coax:11-14`), not shapes.
+  `everglade/legacy/v1/ranger.coax:11-14`), not shapes.
 - How: the Ranger draw (`RANGER_DRAW`, `everglade.coax:254`) gets instances
   for the nearest remote players, and store 2 (the palette) gets one block of
   joint matrices per instance (`RANGER_JOINTS * 12` floats each). Each
@@ -664,9 +664,9 @@ by the owner's decision.
 ### 6.4 Townsfolk and the town watch
 
 - One town per room, on the server: each townsperson's routine
-  (`verse/everglade/folk.coax`) and each guard's beat run against all of the
+  (`everglade/legacy/v1/folk.coax`) and each guard's beat run against all of the
   room's players instead of one `you`.
-- **WANTED is per player.** The server's watch (`verse/everglade/watch.coax`
+- **WANTED is per player.** The server's watch (`everglade/legacy/v1/watch.coax`
   rules) keeps a crime level for each seat's player. Guards who see your
   crime chase you, and everyone sees them chase you. Another player is not
   chased for your crime, and the guards do not attack bystanders.

@@ -39,7 +39,7 @@ everglade_room_sight :: (s: [] Everglade, fx: f32, fy: f32, fz: f32, ax: f32, ay
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
-  // the house at x -22 to -6, z -44 to -30 (verse/everglade/plan.coax EG_BUILDING 0)
+  // the house at x -22 to -6, z -44 to -30 (everglade/legacy/v1/plan.coax EG_BUILDING 0)
   z := -37.0f32;
   west := v3(-30, ground_at(g[..], -30, z), z);
   east := v3(2, ground_at(g[..], 2, z), z);

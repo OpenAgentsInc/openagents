@@ -6,11 +6,11 @@
 // on an earlier visit, it can recall. The cats talk too, as cats would.
 // The question's body is written here, through the NPC ask's codec (aethyr/talk/wire.coax):
 // eg_ask_body.
-//   coax/bin/coax test --library verse/everglade/people.coax --steps 2000000000   (plan.coax's open-ground check ~714M)
+//   coax/bin/coax test --library everglade/legacy/v1/people.coax --steps 2000000000   (plan.coax's open-ground check ~714M)
 
 #load "plan.coax";
-#load "../../everglade/npc/people-words.coax";   // who they are, as words (the server reads the same)
-#load "../../aethyr/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
+#load "../../npc/people-words.coax";   // who they are, as words (the server reads the same)
+#load "../../../aethyr/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
 
 eg_is_cat :: (i: int) -> bool { return i >= 0 && i < EG_SPOTS && EG_SPOT_CAT[i]; }
 eg_role :: (i: int) -> string { return ifx eg_is_cat(i) then EG_CAT_ROLE else EG_ROLE[i]; }

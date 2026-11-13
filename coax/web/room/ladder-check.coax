@@ -6,7 +6,7 @@
 //             saved it (room-vitals.coax rv_join): the carry-over of #12872;
 //   rejoin L PID    player PID, who left this room server WANTED L, joins again on a ticket that
 //             brings nothing back: the server's own note of it (rv_join) must.
-// Then it stands. The level's roster (verse/everglade/watch.coax LADDER) must come in on the server,
+// Then it stands. The level's roster (everglade/legacy/v1/watch.coax LADDER) must come in on the server,
 // show on the other page as responders (their rows' FORM: rank + 1; 1 a Guard, 2 the Veteran, 4 the
 // Knight, 5 the Priest, 8 a Scout), and fight: the outlaw's Hit Points drop. At WANTED 4 and over the
 // doors row's FORM says the gates are shut on both pages; under 4 it says they are open.
@@ -18,7 +18,7 @@
 
 LC_IDS :: 64;
 LC_RANKS :: 8;   // watch.coax RANKS
-// LADDER (verse/everglade/watch.coax): each level's roster by rank (Guard, Veteran, Mage, Knight,
+// LADDER (everglade/legacy/v1/watch.coax): each level's roster by rank (Guard, Veteran, Mage, Knight,
 // Priest, Archmage, Gladiator, Scout)
 LC_LADDER :: [48] int.[
   0, 0, 0, 0, 0, 0, 0, 0,

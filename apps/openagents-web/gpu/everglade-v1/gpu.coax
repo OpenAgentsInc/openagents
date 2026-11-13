@@ -1,13 +1,13 @@
-#load "../../apps/openagents-web/gpu/ocarina-material.coax";
+#load "../ocarina-material.coax";
 // Everglade's shaders, the source of everglade.wgsl (G6): build.sh writes that module from this
 // with coax/web/wgsl-module.coax (gpu.module, gpu.bindings), and coax spirv lowers it for the
 // GPU. It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../aethyr/render/sampling.coax";
-#load "../../aethyr/render/noise.coax";
-#load "../../aethyr/gpu/wgsl.coax";
-#load "../style.coax";
+#load "../../../../aethyr/render/sampling.coax";
+#load "../../../../aethyr/render/noise.coax";
+#load "../../../../aethyr/gpu/wgsl.coax";
+#load "../../../../verse/style.coax";
 #load "gpu-glade.coax";   // the glade south of the South Gate (#13018)
-#load "../../aethyr/render/filmic.coax";
+#load "../../../../aethyr/render/filmic.coax";
 
 // Everglade's three passes: the sky, the scene (with the river's water in
 // two blended halves after it) and the HUD. Every number
@@ -55,7 +55,7 @@
 // each lamp: x, y, z, reach; r, g, b, strength
 // rain, wind x, wind z, lightning; wet, puddles, cloud, fog; rise (m), flow gain, deck top (m), buildings in solid (everglade.coax weather_frame)
 // the ponds: x, z, rim radius, level (everglade.coax U_PONDS; pond_vertex)
-// W6 (verse/everglade/river.coax everglade_river_fx): the weir's sheet (west, east, z, on; the level
+// W6 (everglade/legacy/v1/river.coax everglade_river_fx): the weir's sheet (west, east, z, on; the level
 // above, below, the water's speed over the sill), the rowboats' hulls (x, z, yaw, on), the wakes'
 // trails (2 movers, 8 points each: x, z, when, speed; the newest first), then 64 particles (x, y, z,
 // size; kind, alpha, age's share)
@@ -750,7 +750,7 @@ eg_place :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
       }
     } else if _sw3==6 {
       if ((m.colour.z>1.5f32)&&(m.colour.z<2.5f32)) {
-        // One of the city's people (verse/everglade/folk.coax, colour.z 2): a part's 24-byte vertex
+        // One of the city's people (everglade/legacy/v1/folk.coax, colour.z 2): a part's 24-byte vertex
         // (verse/tools/people.py vertex), skinned by up to four joints of its person's block of
         // the pose, which starts at row colour.y; after the joints, their skin tone and the
         // outfit's colourway, their hair, and their dye.
@@ -1329,7 +1329,7 @@ eg_shade_shadows_at :: (p:V2,y:f32,level:bool,u:[]f32)->f32 {
 eg_shade_shadows :: (p:V2,u:[]f32)->f32 {
   return eg_shade_shadows_at(p,0.0f32,false,u);
 }
-// A person's cloth takes their dye (verse/everglade/folk.coax FOLK_DYE): rule 1 (dye.w 2 plus the
+// A person's cloth takes their dye (everglade/legacy/v1/folk.coax FOLK_DYE): rule 1 (dye.w 2 plus the
 // share) the pale cloth, pale and unsaturated texels, as the peasant's shirts; rule 2 (dye.w 4 plus
 // the share) the green cloth, texels green over red and blue, as the ranger's tunic. A dyed texel is the dye
 // at the texel's own lightness against the cloth's usual, so folds and seams stay.
@@ -2423,7 +2423,7 @@ eg_fountain_fall :: (k:u32,jet:bool,v:f32,u:[]f32)->EgFall {
   f.radius=mix(0.075f32,0.05f32,v);
   return f;
 }
-// ---- the ponds (verse/everglade/plan.coax EG_POND; docs/verse/water.md, W3): still water at each one's
+// ---- the ponds (everglade/legacy/v1/plan.coax EG_POND; docs/verse/water.md, W3): still water at each one's
 // level over its carved bowl, 8 wedges an instance of rings and sectors out to 0.3 m past its rim; a
 // quad whose corners all stand on dry ground is not drawn. Part 6, in the painted look.
 EG_POND_PART :: cast(u32)6;
@@ -2636,7 +2636,7 @@ eg_fountain_fall_shade :: (i:EgWaterOut,part:u32,u:[]f32,shadow_map:TexDepth,sha
   o.transmit=wg_make_f3_f(1.0f32-alpha);
   return o;
 }
-// ---- W6: the weir's falling sheet and the water's particles (verse/everglade/river.coax)
+// ---- W6: the weir's falling sheet and the water's particles (everglade/legacy/v1/river.coax)
 EG_WEIR_PART :: cast(u32)7;
 EG_FX_PART :: cast(u32)8;
 // The sheet over the weir's sill: across the water's width, falling as thrown water does from the level

@@ -161,7 +161,7 @@ everglade2_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]Fiv
 // a ring further out, each snapped to its own texels in the light's space and drawn again only once
 // the eye walks past its step. The header says how many and which is drawn this frame; each tile has
 // its rect in the atlas, its rows across, up and in depth, its filter and its edge. As Everglade's
-// (verse/everglade/gpu.coax eg_casc_*).
+// (apps/openagents-web/gpu/everglade-v1/gpu.coax eg_casc_*).
 E2_U_CASCADE :: 104;
 e2_casc :: (u:[]f32,k:int,row:int)->V4 {return wg_at4(u,E2_U_CASCADE+4+k*24+row*4);}
 // A point's place in tile k: across and up -1 to 1, its depth 0 toward the light to 1.

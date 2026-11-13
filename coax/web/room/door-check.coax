@@ -6,10 +6,10 @@
 // "fails" and 1.
 #run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
-#load "../../../verse/everglade/points.coax";   // the inn's door and the South Gate, by name (#13078)
+#load "../../../everglade/legacy/v1/points.coax";   // the inn's door and the South Gate, by name (#13078)
 #load "../map-points.coax";
 
-// Where it stands, from Everglade's map (verse/everglade/points.coax, #13078): the inn's door spot
+// Where it stands, from Everglade's map (everglade/legacy/v1/points.coax, #13078): the inn's door spot
 // (inn-door: everglade-doors.coax door_spot, (-4.59, -37) on 11-09), 4.5 m on from it along its
 // facing, 3 m past its doorway, inside, and the road 12 m in from the South Gate's gap (gate-south),
 // the way the walk came in from the old spawn on the road (0, -84) and still goes.

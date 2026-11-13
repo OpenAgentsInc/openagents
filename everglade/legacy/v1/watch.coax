@@ -37,14 +37,14 @@
 // visitor's fight never troubles another's town. A still page (a golden)
 // has no crime and holds everyone at their posts. Everything here is fixed
 // pools; the dice are seeded (srd5.coax), so a fight replays exactly.
-//   coax/bin/coax test --library verse/everglade/watch.coax --steps 2000000000
+//   coax/bin/coax test --library everglade/legacy/v1/watch.coax --steps 2000000000
 
 #load "plan.coax";
 #load "routines.coax";
-#load "../../everglade/scene/people-rig.coax";
-#load "../rules/srd5-combat.coax";
-#load "../../aethyr/physics/stand.coax";
-#load "../../everglade/shared/everglade-handles.coax";
+#load "../../scene/people-rig.coax";
+#load "../../../verse/rules/srd5-combat.coax";
+#load "../../../aethyr/physics/stand.coax";
+#load "../../shared/everglade-handles.coax";
 
 WATCH_NEW :: 6;                        // the watch past the two gate guards
 WATCH_REIN :: 13;                      // the heat's responders at most at once: WANTED 5's roster (LADDER)
@@ -295,7 +295,7 @@ Actor :: struct {
   heal_to: int;                   // a priest's: who the healing is for
   temp: int;                      // Temporary Hit Points (a beast's shape: Polymorph), lost first
   blind: bool;                    // Blinded (Sunbeam, Sunburst): their attack rolls at you have Disadvantage
-  role: int; role_t: f32;         // the captain's plan for a hunting guard (ROLE_*, verse/everglade/captain.coax) and how long it holds
+  role: int; role_t: f32;         // the captain's plan for a hunting guard (ROLE_*, everglade/legacy/v1/captain.coax) and how long it holds
   foe: int;                       // the player (Watch.yous) they hunt, or last were alarmed by
   born: int #counter;             // whole lives; exhausted actors retire instead of wrapping
 }
@@ -1566,7 +1566,7 @@ watch_stand_down :: (w: [] Watch) {
 }
 
 // ---- the captain's roles (eg-guards-coordinate). The plan, which guard takes which role, is a
-// typed decision (verse/everglade/captain.coax); how each one moves in it is this game code. With
+// typed decision (everglade/legacy/v1/captain.coax); how each one moves in it is this game code. With
 // no plan every guard presses (ROLE_PRESS): the watch as it always was.
 ROLE_PRESS :: 0;       // straight at you (or under you), as before
 ROLE_FLANK_L :: 1;     // round to your left side, then in

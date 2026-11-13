@@ -21,10 +21,10 @@
 // short and clear of every solid and the woods. It takes the real seconds
 // FOLK_WALK gives, at half pace in the water (verse/water-wade.coax: the
 // player's rules), so a walk home is a minute or two of the 48-minute day.
-//   coax/bin/coax test --library verse/everglade/routines.coax --steps 2000000000
+//   coax/bin/coax test --library everglade/legacy/v1/routines.coax --steps 2000000000
 
 #load "plan.coax";
-#load "../water-wade.coax";
+#load "../../../verse/water-wade.coax";
 
 FOLK_WALK :: 1.2;         // m/s a person walks
 FOLK_ROWS :: 4;           // rows of a day at most

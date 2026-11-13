@@ -25,7 +25,7 @@
 // named person, or a whole group ("these crates": eg_remove_pick).
 //   coax/bin/coax test --library everglade/world/edits.coax --steps 3000000000
 
-#load "../../verse/everglade/people.coax";
+#load "../legacy/v1/people.coax";
 
 // The catalogue (eg-voice-verbs): every thing an admin may place, by its
 // index. The server's selector names them the same way, in the same order
@@ -97,7 +97,7 @@ eg_edit_blocks :: (t: EgThing) -> bool {
   k := eg_edit_kind(t.kind);
   return t.lift <= 0.05 && EG_EDIT_SORT[k] != EG_SORT_PATCH && EG_EDIT_HALF[k * 3 + 2] * t.size >= 0.3;
 }
-// The placed things in the townsfolk's way as fences (verse/everglade/watch.coax watch_fences: a
+// The placed things in the townsfolk's way as fences (everglade/legacy/v1/watch.coax watch_fences: a
 // segment ax, az, bx, bz and its half thickness), after the n in f: each along its long side and as
 // thick as its short one, so the fence holds the whole of its box. Returns the count with them.
 eg_edit_fences :: (e: EgEdits, f: [] f32, n: int) -> int {
@@ -479,7 +479,7 @@ eg_one :: (t: EgThing) -> EgEdits { e: EgEdits; e.things[0] = t; e.n = 1; return
   #assert eg_edit_fault(e, 1) == EG_FAULT_NONE;
 }
 
-// How far (x, z) is from the fence at k in f (0 inside it), as verse/everglade/watch.coax watch_fence_gap.
+// How far (x, z) is from the fence at k in f (0 inside it), as everglade/legacy/v1/watch.coax watch_fence_gap.
 eg_test_fence_gap :: (f: [] f32, k: int, x: f32, z: f32) -> f32 {
   ex := f[k * 5 + 2] - f[k * 5]; ez := f[k * 5 + 3] - f[k * 5 + 1];
   l2 := hi(ex * ex + ez * ez, 0.0001);

@@ -74,7 +74,7 @@ history = [{"from": "npc", "text": "Come in out of the woods."}, {"from": "playe
            {"from": "npc", "text": "Only me."}]
 
 # ---- the four pages' shapes, each answered as the character we know
-# Everglade (verse/everglade/people.coax eg_ask_body_note): the id, the world, the visit, a quest's scene
+# Everglade (everglade/legacy/v1/people.coax eg_ask_body_note): the id, the world, the visit, a quest's scene
 status, a, _ = ask({"npc": "marta", "world": "everglade", "visit": "v0", "scene": "They came about the \"lost\" cat.",
                     "history": history, "question": "Where is the cellar key?"}, wren["key"], wren_addr)
 check("an Everglade question is answered in character", status == 200 and a == {"text": "Mortimer, at your service. The house keeps its own counsel.", "model": "gemini-3.8-flash"}, a)

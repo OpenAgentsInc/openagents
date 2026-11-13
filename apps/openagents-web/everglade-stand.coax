@@ -11,7 +11,7 @@
 // (everglade_floors_near, over the ground you walk on, as its walls are);
 // the people's feet stand on what they came down on (ab_perch:
 // everglade-abilities.coax), and a body thrown by a blast lands on it
-// (verse/everglade/watch.coax tumble_stepped, the floors round it: eg_watch_floors).
+// (everglade/legacy/v1/watch.coax tumble_stepped, the floors round it: eg_watch_floors).
 //   coax/bin/coax test apps/openagents-web/everglade.coax --only stand --steps 2000000000
 
 EG_STAND_PAD :: 0.15;       // how far past a floor's edge a body's middle may be (player.coax FLOOR_PAD)
@@ -102,7 +102,7 @@ eg_piece_top :: (m: int) -> int {
   return DEMO_TOP_BOX;
 }
 // The floors round every body in flight (a person a blast threw, your own fallen body), in the
-// world, for the watch's tumble (verse/everglade/watch.coax watch_floor_y): how many.
+// world, for the watch's tumble (everglade/legacy/v1/watch.coax watch_floor_y): how many.
 EG_TUMBLE_REACH :: 5.0;
 eg_watch_floors :: (s: [] Everglade, w: [] Watch) -> int {
   n := 0;

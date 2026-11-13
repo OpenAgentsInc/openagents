@@ -11,7 +11,7 @@
 #load "room-socket.coax";
 #load "../../lib/sys/fs.coax";
 #load "../../lib/net/http.coax";
-#load "../../../verse/everglade/points.coax";   // the South Gate the casts aim at, by name (#13078)
+#load "../../../everglade/legacy/v1/points.coax";   // the South Gate the casts aim at, by name (#13078)
 #load "../map-points.coax";
 // The casts' aims, from Everglade's map: the South Gate's wall (gate-south, z -56 on 11-09), and the road
 // BC_ROAD_OUT m out past it (z -84 on 11-09, the old spawn the workload was taken at).

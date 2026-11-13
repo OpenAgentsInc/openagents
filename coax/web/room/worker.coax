@@ -51,7 +51,7 @@ wk_root :: (self: string) -> string { r := self; for i: 0..<5 { r = fs_dir(r); }
 wk_name :: (u: string) -> string { b := fs_base(u); return ifx b.count > 5 && b[b.count - 5..<b.count] == ".coax" then b[0..<b.count - 5] else b; }
 #test "paths" {
   #assert wk_root("/w/oa/coax/web/build/tools/worker-ab") == "/w/oa";
-  #assert wk_name("verse/everglade/river.coax") == "river" && wk_name("x") == "x";
+  #assert wk_name("everglade/legacy/v1/river.coax") == "river" && wk_name("x") == "x";
 }
 
 HEX :: "0123456789abcdef";

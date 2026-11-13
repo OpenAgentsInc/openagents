@@ -374,4 +374,4 @@ remains and needs a person or agent to review compiler changes: the
 capability claims `coax.wgsl.current` and `psionic.language.current` in
 `coax/book/capability-claims.json` report changed evidence
 (`coax/lib/compiler/wgsl.coax`, `coax/src/shader.cpp` and
-`verse/everglade/gpu.bindings`).
+`apps/openagents-web/gpu/everglade-v1/gpu.bindings`).

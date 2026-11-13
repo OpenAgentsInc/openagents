@@ -308,7 +308,7 @@ rp_draw :: (s: [] Everglade, dt: f32) {
     rp_person_at(s, q, o.npc, o.x, o.z, o.yaw, o.speed, o.lit, o.dead_t, dt);
   }
 }
-// What one of the cult wears on the Quaternius male body (verse/everglade/folk.coax PART_*): the Blender
+// What one of the cult wears on the Quaternius male body (everglade/legacy/v1/folk.coax PART_*): the Blender
 // robe (verse/tools/humans/cult_robe.py; Darian's his own), its far copy past RP_FAR, the hands and
 // the head; the robe dyed by kind (RP_DYE), gold-trimmed by RP_GOLD.
 rp_parts :: (npc: int, far: bool, out: [] int) -> int {

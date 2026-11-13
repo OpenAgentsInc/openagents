@@ -124,11 +124,11 @@ The old W3 put ponds, a weir and rowboats in an older Everglade. Today's
 Everglade has one 4 m river along x = 88, crossed by the river trail's
 bridge, so W3 is that river (docs/verse/everglade.md, "The river"):
 
-- `verse/everglade/plan.coax` carves its bed: a level that falls south and
+- `everglade/legacy/v1/plan.coax` carves its bed: a level that falls south and
   stays 0.2 m under the lowest ground beside it, a V 2.2 m deep at the
   middle, and banks that climb one in one to the ground (a ravine in the
   south woods). The bridge's deck spans the cut; you walk over it.
-- [`verse/everglade/river.coax`](../../verse/everglade/river.coax) is one
+- [`everglade/legacy/v1/river.coax`](../../everglade/legacy/v1/river.coax) is one
   W1 river body on that level profile with a current from
   `water_flow_river` round the bridge's two piles, a gentle wind sea, and
   the nodes the shader draws (13 across, 209 along; the bed's depth and
@@ -152,7 +152,7 @@ bridge, so W3 is that river (docs/verse/everglade.md, "The river"):
   plan's reachability and slope checks say so.
 
 - Ponds: four, carved into the woods and opened as clearings
-  (`verse/everglade/plan.coax` `EG_POND`): the Lantern Pond (-77, -11),
+  (`everglade/legacy/v1/plan.coax` `EG_POND`): the Lantern Pond (-77, -11),
   6 m in radius and 3 m deep; the Reed Pond (14, -90), 5 m and
   1.6 m; the Thinking Pond (28, 73), 5.5 m and 2.5 m; the Fern Pond
   (-79, 21), 5 m and 2 m. Each one's level sits 0.25 m under the lowest
@@ -355,7 +355,7 @@ build before and after differ by less than the run-to-run noise (6.3 to 6.6
 ms either way).
 
 ```sh
-coax/bin/coax test --library verse/everglade/river.coax --steps 2000000000
+coax/bin/coax test --library everglade/legacy/v1/river.coax --steps 2000000000
 coax/bin/coax test --library verse/demolish.coax --steps 2000000000
 ```
 
@@ -479,7 +479,7 @@ underwater module as numbers the shaders mirror, with its tests:
   submerged listener hears through, checked by its gain: 1 at 0 Hz, -3 dB at 450 Hz and under 0.012 at 4.5 kHz.
   Nothing plays it, and no test plays sound.
 
-**Everglade.** `verse/everglade/river.coax` writes the eye's height over the
+**Everglade.** `everglade/legacy/v1/river.coax` writes the eye's height over the
 river into `W_CONTROL.w`. `water_under_view` in `everglade.wgsl` then fogs
 every scene pixel and the sky under that line, with motes and, on a desktop,
 shafts. Caustics (`water_caustics`) already light the submerged bed.

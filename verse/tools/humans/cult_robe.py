@@ -19,7 +19,7 @@ Modular Character Outfits' male skeleton (the people rig's male body, verse/tool
                         the texture they share, and its other colourway (gold trim and sigil)
 
 The robes are one material, MI_Cult_Robe (people.py kind "pale"): its pale cloth takes the
-person's dye (verse/everglade/gpu.coax eg_person_dye, rule 1), so one robe is a Cultist's crimson,
+person's dye (apps/openagents-web/gpu/everglade-v1/gpu.coax eg_person_dye, rule 1), so one robe is a Cultist's crimson,
 a Fanatic's darker crimson or a Warlock's purple, and Darian's black; the trim, rope, leather,
 horn, gilt and the dark inside are dark or saturated, so the dye leaves them. The variant layer
 (T_Cult_Robe_2) has gold trim and a gold sigil: the Fanatics' and Darian's.

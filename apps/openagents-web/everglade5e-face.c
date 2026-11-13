@@ -31,7 +31,7 @@
 // server's selector (POST /api/playtest/realm/everglade/edit) and the new
 // list is published (POST /api/playtest/world/everglade); the server checks
 // both are an admin's.
-// verse/everglade/river.coax is the river (River.h): built once from the
+// everglade/legacy/v1/river.coax is the river (River.h): built once from the
 // page's carved ground, each frame it says what water you are in, whose
 // pace, jump, current and breath the face passes to the controller and the
 // page, steps the ducks and lily pads, and writes the river's uniform block
@@ -115,7 +115,7 @@ __attribute__((import_module("env"), import_name("coaxial_now_ms"))) extern int6
 __attribute__((import_module("env"), import_name("coaxial_http_bounded"))) extern int32_t guard_http(cx_face_addr,uint32_t,cx_face_addr,uint32_t,uint32_t,int64_t);
 __attribute__((import_module("env"), import_name("coaxial_http_cancel"))) extern int32_t guard_cancel(int32_t);
 static void room_out(cx_face_addr state, float dt);
-// the guard captain's plan (verse/everglade/captain.coax): one request at most, Coax decides when
+// the guard captain's plan (everglade/legacy/v1/captain.coax): one request at most, Coax decides when
 static void captain_out(cx_face_addr state);
 static int32_t captain_id = -1;
 static int64_t captain_sequence;

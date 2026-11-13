@@ -29,16 +29,16 @@ the Agent Studio (they can come later as one building).
 
 ![Everglade's plan](everglade-map.svg)
 
-One source holds the layout: [`verse/everglade/plan.coax`](../../verse/everglade/plan.coax).
+One source holds the layout: [`everglade/legacy/v1/plan.coax`](../../everglade/legacy/v1/plan.coax).
 The realm draws it, its checks walk it, and
-[`verse/everglade/map.py`](../../verse/everglade/map.py) draws the map above
+[`everglade/legacy/v1/map.py`](../../everglade/legacy/v1/map.py) draws the map above
 and the walking times below from the same numbers. Change the city there,
 then run the checks and the map:
 
 ```sh
-coax/bin/coax test --library verse/everglade/plan.coax --steps 200000000
-python3 verse/everglade/map.py docs/verse/everglade-map.svg
-python3 verse/everglade/map.py --times
+coax/bin/coax test --library everglade/legacy/v1/plan.coax --steps 200000000
+python3 everglade/legacy/v1/map.py docs/verse/everglade-map.svg
+python3 everglade/legacy/v1/map.py --times
 ```
 
 ## Scale
@@ -122,7 +122,7 @@ The trails' ends moved out with the edge: the deep wood's waystone to
 ## Walking times
 
 At a walk (3.5 m/s), by the streets, then straight to the door
-(`python3 verse/everglade/map.py --times`). Running takes under half as long.
+(`python3 everglade/legacy/v1/map.py --times`). Running takes under half as long.
 
 | Place | From the South Gate | From the fountain |
 | --- | --- | --- |
@@ -179,7 +179,7 @@ Every spot is checked to be in the open and reachable on foot.
 
 ## The people (eg-people)
 
-`verse/everglade/people.coax` names whoever stands at each spot and gives
+`everglade/legacy/v1/people.coax` names whoever stands at each spot and gives
 them a role, a greeting and what everyone in the city knows of it; the cats
 are cats, who talk as cats would. Walk up to one (2.8 m) and press E, or tap
 TALK: you type, and the question goes to the site's character chat
@@ -193,7 +193,7 @@ player said reaches another, and each character remembers only its own
 conversations. A browser without a player key is given one when it first
 talks.
 
-They keep a day (`verse/everglade/routines.coax`, after the routines in
+They keep a day (`everglade/legacy/v1/routines.coax`, after the routines in
 `previous/generative-agents.md`, without the planning): each has rows of
 "at this time of day, go here", and walks the road graph at 1.2 m/s between
 them with the walk clip, no physics. Shopkeepers open their stalls in the
@@ -233,7 +233,7 @@ behind walls and behind a nearer person's name.
 Every person is a Quaternius Universal Base Character (male or female) in
 one of the Fantasy outfits, `Peasant` or `Ranger` (with its second and third
 colourways), with or without the Ranger's hood, a head and one of six
-hairstyles; `verse/everglade/folk.coax` picks each person's parts, skin,
+hairstyles; `everglade/legacy/v1/folk.coax` picks each person's parts, skin,
 hair colour, outfit dye and stance (`FOLK_*`, by spot). The 14 parts are
 packed once (`"people"` in the manifest, built by `verse/tools/people.py`)
 and every person shares them: a part is drawn once per frame for everyone
@@ -261,7 +261,7 @@ has an animated cat, so they don't move until one arrives.
 
 ## The quests (eg-quests)
 
-The quests are data an agent can write, in `verse/everglade/quests.coax`: a
+The quests are data an agent can write, in `everglade/legacy/v1/quests.coax`: a
 title, what the board says of it, and up to three steps, each one of three
 kinds: GO (reach one of the plan's places, within 12 m), TALK (talk to one of
 the plan's people) and RETURN (hand it in at the quest board, or to Oswin the
@@ -340,7 +340,7 @@ than 6.5 m from the flock. Each bird keeps its last ten places (one every
 as grey boxes at full size, built on the realm host
 ([realm-host.md](realm-host.md)):
 
-- `verse/everglade/plan.coax`: the layout and its checks.
+- `everglade/legacy/v1/plan.coax`: the layout and its checks.
 - `apps/openagents-web/everglade.coax`, `everglade-face.c`, `everglade.wgsl`:
   the realm. It draws the ground and streets (`aethyr/world/terrain.coax`), the
   palisade, every building as a box with a gable roof, the props, the
@@ -385,7 +385,7 @@ clips are exactly the old ones:
 
 `verse/tools/pack_realm.py` (manifest `"character"`) copies it into the pack
 (32 bytes a vertex: position, normal and layer, uv, four joints and
-weights) and writes its rig to `verse/everglade/ranger.coax`. `aethyr/anim/skin.coax`
+weights) and writes its rig to `everglade/legacy/v1/ranger.coax`. `aethyr/anim/skin.coax`
 plays it as the old engine did (`Motion::of`, `ClipPlayer`): standing below
 0.1 m/s idles, below 5 m/s walks, faster runs, off the ground jumps; a
 change of clip blends over 0.22 s from the pose it left; a gait advances by
@@ -571,7 +571,7 @@ and W6's ripples), drawn by its shader and read by the swimmer:
   and 0.25 m at its banks 2 m out, climbing one in one to the ground (in
   the south woods, a ravine). The bridge (8 m long, on two piles in the
   stream) spans the cut at the trail's height.
-- **Its water:** `verse/everglade/river.coax`, a W1 river along x = 88 from
+- **Its water:** `everglade/legacy/v1/river.coax`, a W1 river along x = 88 from
   the north edge to the south, 6 m wide, on that level, with a 0.45 m/s
   current southward round the bridge's piles and a light chop. The ground
   under it shades as silt, darker the deeper.
@@ -715,7 +715,7 @@ never wrecked.
 
 Under the SRD ruleset the town has a watch: the six patrol characters plus
 six new guards walking beats (Inn Street, the commons, the market, Guild
-Row to the West Gate, the East Gate, the North Gate lane; verse/everglade/watch.coax).
+Row to the West Gate, the East Gate, the North Gate lane; everglade/legacy/v1/watch.coax).
 They wear the ranger kit's leathers dyed crimson and carry the Fantasy
 Props bronze sword and wooden shield (sheathed and on the back on their
 beat, in hand when they hunt you); the kits have no plate armour.
@@ -829,7 +829,7 @@ gets no nearer its spot for 1.5 s presses on. No answer, a late, refused or
 malformed one, a 401/429 (no more this visit) or a new hunt leaves every
 guard pressing: the escalation above, unchanged. Clips never ask; the
 `#PLACE+float+captain` hash stages a hunt with you levitating and rehearses
-the plan in the page. Code: `verse/everglade/captain.coax` (request,
+the plan in the page. Code: `everglade/legacy/v1/captain.coax` (request,
 decoder, lifecycle, checks), `watch.coax` (`watch_role_goal`,
 `watch_calling`), `everglade-guard-ai.coax` and the face's `captain_out`.
 
@@ -863,7 +863,7 @@ and publishes them again. Edit mode and voice edits share one list, one
 undo and one redo. A removed person is a `p SPOT` line in the list; a
 quest whose giver is gone (Moss, Corin, Old Tam) is off the quest board,
 and one under way can't be handed in until they're back
-(`verse/everglade/quests.coax` eg_quest_open).
+(`everglade/legacy/v1/quests.coax` eg_quest_open).
 
 ## Voice edits (admins only, eg-edit)
 
@@ -993,7 +993,7 @@ tile is drawn only when its view changes:
 - At most one tile is drawn a frame. A tile waits out its period between draws: 1, 3, 6 and 12
   frames on a desktop, 1 and 6 on a phone. Everglade has movers (people, the Ranger), so its
   nearest tile is drawn every frame, with a quarter of the old map's texels.
-- The shader (`verse/everglade/gpu.coax` `eg_casc_lit`) reads the finest drawn tile that holds
+- The shader (`apps/openagents-web/gpu/everglade-v1/gpu.coax` `eg_casc_lit`) reads the finest drawn tile that holds
   the point with its filter. The filter keeps the old map's penumbra in metres, and the bias and
   normal offset grow with a tile's texel. The ink-and-band look is unchanged.
 - Character Create is Everglade's own page started at the glade (#13018), so it uses these
@@ -1068,7 +1068,7 @@ is Everglade's own page started there in Character Create's mode
 clock: you walk from the creator's clearing up the road, through the gate and into
 the Commons with your own keys, and nothing loads on the way.
 
-- **Where:** `verse/everglade/glade-zone.coax` puts the glade's local frame at world
+- **Where:** `everglade/legacy/v1/glade-zone.coax` puts the glade's local frame at world
   x = 3.2 - x, z = -206.5 - z, 1.25 m under the fountain: turned half round, its
   clearing about 150 m down the road from the gate (x 3.2, z -206.5), its road
   through the back ridge meeting the town's road at x 0. Everglade's heightfield ends
@@ -1083,7 +1083,7 @@ the Commons with your own keys, and nothing loads on the way.
   glade). The glade is the shapes' first four object slots (`everglade-glade.coax`):
   its static mesh, drawn within 300 m, and three grass kinds instanced by seed, all
   of them nearer than 55 m from the seeds' middle and none past 85 m (a phone a
-  third). `verse/everglade/gpu-glade.coax` decodes the glade's vertices and lights
+  third). `apps/openagents-web/gpu/everglade-v1/gpu-glade.coax` decodes the glade's vertices and lights
   them with Everglade's `eg_paint` (sun, clock, haze) and the glade's foliage
   back-scatter. The glade casts shadows; its grass does not (the host's shadow list,
   `coaxial_shadow_draws_v1`).

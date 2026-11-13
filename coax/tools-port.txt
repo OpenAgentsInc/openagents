@@ -736,7 +736,6 @@ verse/benchmarks/run.py
 verse/deadgears/bench.sh
 verse/deadgears/page-bench.sh
 verse/deadgears/test.sh
-verse/everglade/map.py
 verse/icecream/test-browser.sh
 verse/icecream/test-mesh.sh
 verse/icecream/test.sh

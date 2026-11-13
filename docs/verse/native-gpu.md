@@ -115,7 +115,7 @@ the checker) and grows the lowering:
   frame of the web build: the same pack, page facts, clock and golden mode,
   and the same frame through `verse/native` (realm-host), so both draw the
   same scene. `coax/web/wgsl-coax.coax` translates the WGSL to Coax
-  (`verse/everglade/gpu.coax`, `gpu-fx.coax`; `aethyr/gpu/wgsl.coax` is
+  (`apps/openagents-web/gpu/everglade-v1/gpu.coax`, `gpu-fx.coax`; `aethyr/gpu/wgsl.coax` is
   WGSL's vocabulary). Since G6 both are the source, and the web build's
   `everglade.wgsl` and `everglade-fx.wgsl` are written from them. `verse/gpu/everglade-pass.coax
   HOST PASS` checks a pass. The live shaders hash with
@@ -391,10 +391,10 @@ tasks (native-gpu.json) come after the port.
   with no binding, a layout WGSL does not keep, a value an i32 cannot
   hold). `lib/compiler/wgsl.coax` stays `#authority` and gated: 22 checks,
   1,982 mutants, 0 survived, 35 marked equivalent with their reasons.
-  Everglade is the first page drawn from it: `verse/everglade/gpu.coax`
+  Everglade is the first page drawn from it: `apps/openagents-web/gpu/everglade-v1/gpu.coax`
   (with `#flat` marks) and `gpu.bindings` are the source, build.sh writes
   `everglade.wgsl` with `coax/web/wgsl-module.coax` (options in
-  `verse/everglade/gpu.module`), and the hand-written WGSL is gone. The
+  `apps/openagents-web/gpu/everglade-v1/gpu.module`), and the hand-written WGSL is gone. The
   pass check lowers the same Coax to SPIR-V (`int-hash` now swaps the hash
   in the Coax and writes the module from it), so the browser and the 4080
   draw from one file. The particles follow: `everglade/client/gpu/gpu-fx.coax`

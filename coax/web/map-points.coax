@@ -29,6 +29,6 @@ map_need_all :: (zone: string, names: [] string, at: [] f32, want: [] string) ->
 #test "a missing point's refusal names the point, its zone and where to add it" {
   b: [1024] u8;
   names := [1] string.["spawn"]; at := [4] f32.[0, 0, -16, 0];
-  p := map_point("Everglade (verse/everglade/points.coax)", names[..], at[..], "raid-front");
-  #assert map_missing_line(p, b[..]) == "map point \"raid-front\" is missing from Everglade (verse/everglade/points.coax)'s map data: name it in that file, never in the check";
+  p := map_point("Everglade (everglade/legacy/v1/points.coax)", names[..], at[..], "raid-front");
+  #assert map_missing_line(p, b[..]) == "map point \"raid-front\" is missing from Everglade (everglade/legacy/v1/points.coax)'s map data: name it in that file, never in the check";
 }

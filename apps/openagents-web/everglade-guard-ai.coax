@@ -1,7 +1,7 @@
 // Opt-in shadow consumer: proposals are counted, never rendered or applied.
 #load "../../everglade/npc/guard-types.coax";
-#load "../../verse/everglade/captain.coax";
-// The guard captain's plan (verse/everglade/captain.coax) is asked while you are wanted; its state
+#load "../../everglade/legacy/v1/captain.coax";
+// The guard captain's plan (everglade/legacy/v1/captain.coax) is asked while you are wanted; its state
 // is the face's (as the ambient session is). The "+captain" hash rehearses it locally (for clips),
 // "+float" starts you levitating.
 EgGuardAi :: struct {input:GaInput;url:[2048]u8;url_n:int;generation:int=1;hidden:bool;focused:bool;

@@ -2,7 +2,7 @@
 // 5.3). Everyone else in the room is drawn from the server's player entities (everglade-net.coax,
 // #12706: each seat's state a jitter buffer behind the server's clock, its velocity and flags, the
 // look, class and FLAGS of its hello), read into a RemoteBody each (remote_bodies), as what they are:
-//   - the skinned Ranger you play (verse/everglade/ranger.coax), on the same skinning and clip
+//   - the skinned Ranger you play (everglade/legacy/v1/ranger.coax), on the same skinning and clip
 //     blending as yours (aethyr/anim/skin.coax skin_advance: a change of clip blends over SKIN_FADE), the
 //     clip picked as yours is (figure: idle, walk, run or jump by speed and air), the gait from their
 //     interpolated speed so a walk never skates; the swing as their spell goes off, as yours does as
@@ -25,7 +25,7 @@
 // pack's far mesh, the same vertices and a fifth of the triangles (verse/tools/pack_realm.py far_mesh),
 // their own draw (RANGER_FAR_DRAW, objects at REMOTE_FAR_AT). Each object points the shader at its own
 // block of joint matrices in store 2 (colour.z REMOTE_MARK, colour.y the block's first row) and at its
-// look's two rows (the kind word over 256; verse/everglade/gpu.coax). Posing by distance: a body nearer
+// look's two rows (the kind word over 256; apps/openagents-web/gpu/everglade-v1/gpu.coax). Posing by distance: a body nearer
 // than REMOTE_FULL is posed every frame, to REMOTE_MID every second frame, beyond that every
 // REMOTE_FAR_EVERY-th, each with the time it owes, so its clips and their blends keep their pace
 // however seldom it is sampled; the bodies' turns are staggered so the work spreads over frames.
@@ -41,7 +41,7 @@ REMOTE_MID :: 35.0;            // m: nearer, every second frame
 REMOTE_FAR_EVERY :: 4;         // farther: one frame in this many
 REMOTE_MARK :: 3.0;            // colour.z of another player's Ranger (yours 1, a person 2)
 REMOTE_BOAT_SINK :: 0.42;      // m a rower sits below the deck (figure)
-REMOTE_BOAT_SEAT :: -0.55;     // a rower's feet under the boat's middle (verse/everglade/river.coax BOAT_SEAT)
+REMOTE_BOAT_SEAT :: -0.55;     // a rower's feet under the boat's middle (everglade/legacy/v1/river.coax BOAT_SEAT)
 REMOTE_BLOCK :: RANGER_JOINTS * 12;
 REMOTE_LOOK_ROWS :: 2;         // skin tone and the Ranger's first layer; the cloak's and leather's dyes, how shown
 REMOTE_PAL_AT :: RANGER_JOINTS * 12 + PEOPLE_SHOWN * PERSON_ROWS * 4;
@@ -72,7 +72,7 @@ STAFF_NEAR :: 18.0;                          // m: nearer, the whole staff; fart
 // The roots' points up the head and out from its middle, from the split (0) to the curled tips (4).
 STAFF_ROOT_UP :: [5] f32.[0, 0.06, 0.16, 0.28, 0.35];
 STAFF_ROOT_OUT :: [5] f32.[0, 0.06, 0.092, 0.08, 0.026];
-// The Ranger's joints the gear hangs from (verse/everglade/ranger.coax RANGER_PARENT): the spine's
+// The Ranger's joints the gear hangs from (everglade/legacy/v1/ranger.coax RANGER_PARENT): the spine's
 // middle and its top, the chest, and the two clavicles (+x the left, facing +z).
 RANGER_SPINE :: 15; RANGER_CHEST :: 18; RANGER_NECK :: 21; RANGER_CLAVICLE_L :: 27; RANGER_CLAVICLE_R :: 28;
 // The cloth dyes a look picks (DYE and TRIM; linear rgb at the cloth's usual lightness). 0 is none:

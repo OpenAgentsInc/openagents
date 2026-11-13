@@ -22,7 +22,7 @@
 #load "../../coax/lib/quantity.coax" as terrain_units;
 
 // rim_from and rim shape the bowl's edge: a city wider than a garden
-// moves it out and eases it (verse/everglade/plan.coax).
+// moves it out and eases it (everglade/legacy/v1/plan.coax).
 // rows, when set, makes the ground a rectangle: n cells west to east and
 // rows south to north ((n + 1) * (rows + 1) heights, still by rows from the
 // south); 0 keeps it square.

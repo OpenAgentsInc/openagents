@@ -36,10 +36,10 @@ CT_FLOOR_MS :: 500;
 // small edit to a realm file, checked again with that cache. The file is put
 // back straight after.
 CT_EDIT_APP :: "apps/openagents-web/everglade.coax";
-CT_EDIT_FILE :: "verse/everglade/folk.coax";
+CT_EDIT_FILE :: "everglade/legacy/v1/folk.coax";
 CT_EDIT_FROM :: "FOLK_LOOK :: 7.0;";
 CT_EDIT_TO :: "FOLK_LOOK :: 7.5;";
-CT_EDIT_NAME :: "verse/everglade/folk.coax: FOLK_LOOK :: 7.0 -> 7.5, checked with the cache the cold run filled";
+CT_EDIT_NAME :: "everglade/legacy/v1/folk.coax: FOLK_LOOK :: 7.0 -> 7.5, checked with the cache the cold run filled";
 CT_EDIT_MAX :: 1048576;
 
 // One app's times in milliseconds (-1: the phase did not run), and how many

@@ -254,7 +254,7 @@ DemoWorld :: struct {
   // each group's base, top and width (its footprint's least side), and whether it is a tower that tips
   group_y0: [DEMO_GROUPS] f32; group_y1: [DEMO_GROUPS] f32; group_w: [DEMO_GROUPS] f32; tower: [DEMO_GROUPS] bool;
   // the towers, each a slot (a few longer than the groups: [256] and [257] int are types the river's
-  // library (verse/everglade/river.coax) names too, and two headers can't both define one)
+  // library (everglade/legacy/v1/river.coax) names too, and two headers can't both define one)
   tower_slot: [DEMO_GROUPS + 3] int; tower_g: [DEMO_TOWERS] int; tower_n: int;
   // a blast in progress (demo_blast_begin): where, how far, how fast it throws, and the wall's face (0 on the ground)
   blast_on: bool; blast_at: Point; blast_radius: f32; blast_speed: f32; blast_face: Point;

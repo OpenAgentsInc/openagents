@@ -73,7 +73,7 @@ for i in range(verts):
     if kind==6:
         u,v=struct.unpack_from('<2H',vb,at+16); bark_v.append(v/65535*64-32)
     pos.append(xyz)
-# The zone's pack (VPK2, verse/everglade/glade-zone.coax) has a wider, coarser ground and no sky.
+# The zone's pack (VPK2, everglade/legacy/v1/glade-zone.coax) has a wider, coarser ground and no sky.
 zone=raw[:4]==b'VPK2'
 ground_indices=135000 if experimental else (141*92 if zone else 100*100)*6
 for i in range(0,ground_indices,3):

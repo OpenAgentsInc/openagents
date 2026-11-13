@@ -1,5 +1,5 @@
 // Everglade's river on the water system (phase W3 of docs/verse/water.md,
-// adapted to today's Everglade): the 4 m river verse/everglade/plan.coax
+// adapted to today's Everglade): the 4 m river everglade/legacy/v1/plan.coax
 // carves along x = 88 from the north edge of the world to the south, one
 // verse/water.coax river body with the level profile the plan's carve
 // follows and a current from water_flow_river round the bridge's piles,
@@ -26,7 +26,7 @@
 //   water_apply's buoyancy and drag; a duck paddles back to its stretch of
 //   the glade against the current, a lily pad is held by its stem.
 //
-// - The four ponds (verse/everglade/plan.coax EG_POND): W1 pond bodies at a
+// - The four ponds (everglade/legacy/v1/plan.coax EG_POND): W1 pond bodies at a
 //   still level over the bowls the plan carves, in the same set as the
 //   river, so wading, swimming, diving and breath hold in them too.
 //
@@ -47,13 +47,13 @@
 //   steam and crown splashes the spells raise (everglade_river_splash).
 //   A fixed pool of FX particles, the oldest replaced; nothing allocates.
 //
-// The townsfolk wade and swim by the same rules (verse/water-wade.coax, verse/everglade/routines.coax).
+// The townsfolk wade and swim by the same rules (verse/water-wade.coax, everglade/legacy/v1/routines.coax).
 // Not yet: the underwater combat rules.
-//   coax/bin/coax test --library verse/everglade/river.coax --steps 2000000000
+//   coax/bin/coax test --library everglade/legacy/v1/river.coax --steps 2000000000
 
-#load "../water-look.coax";
-#load "../water-wade.coax";
-#load "../../aethyr/core/loop.coax";   // the floats' fixed steps: the Metaverse Engine's one clock (aethyr/book ch001)
+#load "../../../verse/water-look.coax";
+#load "../../../verse/water-wade.coax";
+#load "../../../aethyr/core/loop.coax";   // the floats' fixed steps: the Metaverse Engine's one clock (aethyr/book ch001)
 
 RIVER_X :: 88.0;          // the plan's river runs along x = 88 (EG_RIVER_X)
 RIVER_NORTH :: 176.0;     // from the north edge of the ground, flowing south

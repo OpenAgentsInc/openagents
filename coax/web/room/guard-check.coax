@@ -2,7 +2,7 @@
 // bolt (slot 1) until the room says it is WANTED (w), then stands where it is. The server's watch
 // must come for it and land real blows: its own Hit Points, as the room replicates them (its s row),
 // drop below where they started, and it is downed (0) within SECONDS (default 45). The guards' blows are rolled on the server against the player's AC
-// (verse/everglade/watch.coax watch_roll_at_you) and dealt by the room's rules (room-host.c
+// (everglade/legacy/v1/watch.coax watch_roll_at_you) and dealt by the room's rules (room-host.c
 // everglade_town rm_eg_hurt, room-casts.coax rc_tick_first).
 //   coax/web/tool.sh coax/web/room/guard-check.coax ws://127.0.0.1:PORT [SECONDS] [ROOM N] [HOLD]
 // ROOM N plays in room pair-guard-N (a page opened with ?room=pair-guard-N watches it: the combat

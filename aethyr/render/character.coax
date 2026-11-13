@@ -381,7 +381,7 @@ ch_haze :: (u:[]f32,c:V3,world:V3,v:V3)->V3 {
 // blend; aux.g her distance over the aux scale, so the post pass's far softening leaves her sharp.
 ChLit :: struct {light:V4;aux:V4;}
 // The world's colour look (aethyr/render/scene-lights.coax 194..195). A painterly world's people keep
-// their albedo's saturation through its grey ambient (verse/everglade/gpu.coax: 0.7 of it); she keeps
+// their albedo's saturation through its grey ambient (apps/openagents-web/gpu/everglade-v1/gpu.coax: 0.7 of it); she keeps
 // the same share, and her photographed albedo takes the world's gain. Zeros leave her as authored.
 ch_saturation :: (c:V3)->f32 {hi:=fmax(c.x,fmax(c.y,c.z));return (hi-fmin(c.x,fmin(c.y,c.z)))/fmax(hi,0.0001f32);}
 ch_saturate :: (c:V3,gain:f32)->V3 {

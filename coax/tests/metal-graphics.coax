@@ -22,7 +22,7 @@ tool_main :: ()->int #export_c #effects(all) {
   compiler:=args_at(a[..],0);dir:=args_at(a[..],1);if !fs_mkdir(dir){return 1;}out:[65536]u8;err:[65536]u8;
   for pair:MG_PAIRS {
     p:[4][4096]u8;base:=fs_join(dir,mg_base(pair.f),p[0][..]);metal:=mg_suffix(base,".metal",p[1][..]);bindings:=mg_suffix(base,".metal.bindings",p[2][..]);air:=mg_suffix(base,".air",p[3][..]);
-    gen:=[9]string.[compiler,"metal",ifx pair.file=="" then "verse/everglade/gpu.coax" else pair.file,"--vertex",pair.v,"--fragment",pair.f,"-o",metal];
+    gen:=[9]string.[compiler,"metal",ifx pair.file=="" then "apps/openagents-web/gpu/everglade-v1/gpu.coax" else pair.file,"--vertex",pair.v,"--fragment",pair.f,"-o",metal];
     r:=proc_run(gen[..],60000,out[..],err[..]);if r.status!=0||r.cut||!fs_write(bindings,cast(string)err[0..<r.err_n]){tool_errln(cast(string)err[0..<r.err_n]);return 1;}
     if args_count(a[..])==4 {
       old_path:[4096]u8;old_base:[4096]u8;old_buf:[1048576]u8;new_buf:[1048576]u8;

@@ -49,10 +49,10 @@ tool_main :: () -> int #export_c #effects(all) {
   if ih_current_page("everglade") {
     if !fs_mkdir(out) && fs_kind(out)<=0 {tool_errln("int-hash: cannot make OUT_DIR");return 1;}
     if !ih_live_source(out,"verse/style.coax","verse/","style.coax")
-       || !ih_live_source(out,"verse/everglade/gpu.coax","verse/everglade/","gpu.coax")
-       || !ih_live_source(out,"everglade/client/gpu/gpu-fx.coax","verse/everglade/","gpu-fx.coax") {return 1;}
-    if !ih_live_emit(out,"gpu.coax","everglade.wgsl","verse/everglade/gpu.module")
-       || !ih_live_emit(out,"gpu-fx.coax","everglade-fx.wgsl","verse/everglade/gpu-fx.module") {return 1;}
+       || !ih_live_source(out,"apps/openagents-web/gpu/everglade-v1/gpu.coax","apps/openagents-web/gpu/everglade-v1/","gpu.coax")
+       || !ih_live_source(out,"everglade/client/gpu/gpu-fx.coax","everglade/client/gpu/","gpu-fx.coax") {return 1;}
+    if !ih_live_emit(out,"gpu.coax","everglade.wgsl","apps/openagents-web/gpu/everglade-v1/gpu.module")
+       || !ih_live_emit(out,"gpu-fx.coax","everglade-fx.wgsl","apps/openagents-web/gpu/everglade-v1/gpu-fx.module") {return 1;}
     print("int-hash: live source copy % (no hash or wave substitution)\n",out);return 0;
   }
   src: [IH_FILE] u8; dst: [IH_FILE] u8; tmp: [IH_FILE] u8; p: [1024] u8;
@@ -64,31 +64,35 @@ tool_main :: () -> int #export_c #effects(all) {
   if style.count == 0 { tool_errln("int-hash: verse/style.coax does not have verse_style_hash"); return 1; }
   if !fs_write(fs_join(out, "style.coax", p[..]), style) { tool_errln("int-hash: cannot write style.coax"); return 1; }
   // Everglade's three, then the particles' one; their loads this copy's style and the library where it is
-  if !ih_module(out, "gpu.coax", "everglade.wgsl", 3) || !ih_module(out, "gpu-fx.coax", "everglade-fx.wgsl", 1) { return 1; }
+  if !ih_module(out, IH_V1_GPU, "../../../../", "gpu.coax", "everglade.wgsl", 3) || !ih_module(out, "everglade/client/gpu", "../../../", "gpu-fx.coax", "everglade-fx.wgsl", 1) { return 1; }
   print("int-hash: % (gpu.coax, gpu-fx.coax, style.coax, everglade.wgsl, everglade-fx.wgsl)\n", out);
   return 0;
 }
 
-// verse/everglade/NAME with its `times` sin hashes the integer hash, as OUT/NAME, and the module
-// coax wgsl writes from it (verse/everglade/NAME's .module beside it) as OUT/WGSL.
-ih_module :: (out: string, name: string, wgsl: string, times: int) -> bool {
+// v1 Everglade's passes and their .module files (apps/openagents-web/gpu/everglade-v1/); the puffs'
+// source, gpu-fx.coax, is the client's (everglade/client/gpu/).
+IH_V1_GPU :: "apps/openagents-web/gpu/everglade-v1";
+// DIR/NAME (`up` is the path from DIR to the repository root) with its `times` sin hashes the integer
+// hash, as OUT/NAME, and the module coax wgsl writes from it (IH_V1_GPU's NAME .module) as OUT/WGSL.
+ih_module :: (out: string, dir: string, up: string, name: string, wgsl: string, times: int) -> bool {
   src: [IH_FILE] u8; dst: [IH_FILE] u8; tmp: [IH_FILE] u8; p: [1024] u8; sp: [1024] u8;
-  n := fs_read(fs_join("verse/everglade", name, sp[..]), src[..]);
-  if n < 0 { tool_err("int-hash: no verse/everglade/"); tool_errln(name); return false; }
+  n := fs_read(fs_join(dir, name, sp[..]), src[..]);
+  if n < 0 { tool_err("int-hash: no "); tool_err(dir); tool_err("/"); tool_errln(name); return false; }
   body: [1024] u8;
   r := ih_cat3(" x:=p.x;y:=p.y;\n", IH_STYLE_INT, "", body[..]);
   text := ih_replace(cast(string) src[0..<n], IH_COAX_SIN, r, dst[..], times);
   if text.count == 0 { tool_err("int-hash: the sin hashes are not where they were in "); tool_errln(name); return false; }
   cb: [1024] u8; lb: [2048] u8;
   lib := ih_cat3("#load \"", fs_cwd(cb[..]), "/aethyr/gpu/wgsl.coax\";", lb[..]);
-  text = ih_replace(text, "#load \"../../aethyr/gpu/wgsl.coax\";", lib, tmp[..], 1);
-  if text.count > 0 { text = ih_replace(text, "#load \"../style.coax\";", "#load \"style.coax\";", dst[..], 1); }
+  wl: [256] u8; sl: [256] u8;
+  text = ih_replace(text, ih_cat3("#load \"", up, "aethyr/gpu/wgsl.coax\";", wl[..]), lib, tmp[..], 1);
+  if text.count > 0 { text = ih_replace(text, ih_cat3("#load \"", up, "verse/style.coax\";", sl[..]), "#load \"style.coax\";", dst[..], 1); }
   if text.count == 0 { tool_err("int-hash: the loads are not where they were in "); tool_errln(name); return false; }
   gpu := fs_join(out, name, p[..]);
   if !fs_write(gpu, text) { tool_err("int-hash: cannot write "); tool_errln(gpu); return false; }
   wb: [1024] u8; mb: [1024] u8; mn: [256] u8; o: [65536] u8; e: [65536] u8;
   base := name[0..<name.count - 5];
-  opts := fs_join("verse/everglade", ih_cat3(base, ".module", "", mn[..]), mb[..]);
+  opts := fs_join(IH_V1_GPU, ih_cat3(base, ".module", "", mn[..]), mb[..]);
   mod := [5] string.["coax/web/tool.sh", "coax/web/wgsl-module.coax", gpu, fs_join(out, wgsl, wb[..]), opts];
   pr := proc_run(mod[..], 600000, o[..], e[..]);
   if pr.started != 0 || pr.status != 0 || pr.timed_out { tool_err(cast(string) e[0..<pr.err_n]); tool_err("int-hash: the module failed for "); tool_errln(name); return false; }
