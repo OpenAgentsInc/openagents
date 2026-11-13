@@ -8008,14 +8008,24 @@ Worlds with an ID (#13412; `docs/protocol/world-edit-v1.md`, `world-doc-v1.md`,
   and its check of every placed thing, and saves the tables in the
   transaction that saves the document (Splice: `spw_cell`). The tables keep
   the revision their build shipped with: a cell edit never changes a pin.
+- An agent's turn changes a world only through that same write (#13418;
+  `docs/protocol/world-turn-v1.md`). A hosted turn in the editor answers a
+  typed plan whose steps are the hosted world tools
+  (`coax/lib/agent/world/turn.coax`, `WT_TOOL`); the editor shell makes it one
+  `world.edit.v1` batch from the revision the plan names and the page sends
+  it as the person's own. The conversation writes no world and reaches no
+  world route but a card's read. Which tools a turn uses is the model's
+  answer under the schema; no code matches words in a message.
 - A session never takes a live revision whose pins (engine, rules, content,
   wire) are not its own. An update that changes a pin starts with the next
   session, and live keeps the revision before it for one release
   (`metaverse-engine/editor/world-live.coax`, `#authority`).
 
 Checks: `coax/bin/coax test metaverse/splice/splice-game.coax --only "Splice's world"`,
-`coax/web/api/tests/world_checks.coax`, and `coax mutate` on the two
-`#authority` files.
+`coax/web/api/tests/world_checks.coax`, `coax mutate` on the two
+`#authority` files, and for an agent's turn the checks of `turn.coax`,
+`metaverse-engine/editor/shell.coax` ("a hosted turn's plan") and
+`apps/openagents-web/chat-web.coax` ("in the editor").
 
 ## A seam inside level ground is never a wall
 

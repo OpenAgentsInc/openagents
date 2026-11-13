@@ -11,7 +11,8 @@
 // Everyone on this computer is the admin: the dev server listens on 127.0.0.1 only.
 //
 //   coax/web/tool.sh metaverse/splice/tools/world-local.coax DIR METHOD URL [BODY_FILE]
-// POST ...?dry=1 carries the batch out and saves nothing; GET .../content[?lane=dev] answers the lane's content tables.
+// POST ...?dry=1 carries the batch out and saves nothing; GET .../content[?lane=dev] answers the lane's content tables;
+// GET .../card answers the world's card (world.card.v1).
 // It prints the status, a newline, and the answer's bytes (the routes' own: world.state.v1, a
 // refusal, or event lines), and exits 0 when it answered.
 // tool.sh: run-steps 250000000
@@ -180,7 +181,7 @@ tool_main :: () -> int #export_c #effects(all) {
   rest := url[root.count..<url.count];
   path := ct_part(rest, '?', 0); query := ifx ct_parts(rest, '?') > 1 then rest[path.count + 1..<rest.count] else "";
   id := ct_part(path, '/', 0); tail := ifx ct_parts(path, '/') > 1 then path[id.count..<path.count] else "";
-  if id != SPW_ID || (tail != "" && tail != "/events" && tail != "/content") || (method != "GET" && method != "POST") || (tail != "" && method != "GET") { return wl_refuse(t[..], 404, wr_words(WR_NO_WORLD), -1); }
+  if id != SPW_ID || (tail != "" && tail != "/events" && tail != "/content" && tail != "/card") || (method != "GET" && method != "POST") || (tail != "" && method != "GET") { return wl_refuse(t[..], 404, wr_words(WR_NO_WORLD), -1); }
   t[0].id_n = ct_copy(t[0].id[..], id);
   if tail == "/content" {
     // the lane's own tables once a cell was edited (dev: as they are edited; else as published), else the build's
@@ -190,6 +191,14 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   ok := fs_mkdir(dir);
   wl_row_read(t[..]);
+  if tail == "/card" {
+    // the world as a conversation shows it: the dev revision and how many things its document holds
+    doc := wl_doc(t[..], ".dev");
+    things := splice_world_things(doc, wl_tables(t[..], ".dev.tables"));
+    cn := ifx things < 0 then -1 else wr_card(wl_id(t[..]), t[0].row[R_DEV], things, splice_world_name(), t[0].events[..]);
+    if cn < 0 { return wl_refuse(t[..], 404, wr_words(WR_NO_WORLD), -1); }
+    return wl_say(200, cast(string) t[0].events[0..<cn]);
+  }
   if tail == "/events" { return wl_events(t[..], query); }
   if method == "GET" { return wl_get(t[..], query); }
   n := ifx args_count(a[..]) == 4 then fs_read(args_at(a[..], 3), t[0].body[..]) else 0;

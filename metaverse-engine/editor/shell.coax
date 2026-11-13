@@ -18,6 +18,7 @@
 #load "../../components/backend/dom.coax";
 #load "shell-model.coax";
 #load "place.coax";
+#load "../../coax/lib/agent/world/turn.coax";   // what the agent's turn is told, and a hosted turn's plan
 
 ES_INBOX :: 65536;     // a model, or a field's text, from the host (EM_BYTES)
 ES_CSS :: 24576;
@@ -26,6 +27,8 @@ ES_ACTS :: 4;          // actions that wait for the page
 ES_DRAFT :: 16;        // bytes typed into a number's field
 ES_CLICK :: 1; ES_INPUT :: 2; ES_SUBMIT :: 3; ES_MODEL :: 6;
 ES_AGENT :: 7;         // the page was opened for the agent (?edit=agent): the foot is open from the start
+ES_PLANNED :: 8;       // a hosted turn's plan (world.plan.v1), in the inbox: its steps become one batch of edits
+ES_TURN :: 524;        // an action for the conversation in the foot, not the page: the world as a turn is told it (world.turn.v1)
 ES_BATCH :: 520;       // an action: a world.edit.v1 batch for the page to send
 ES_SELECT :: 521;      // an action: the ID of the thing to select, 0 for none
 ES_VIEW :: 522;        // an action for the viewport's tools, as words (viewport.coax vp_act): "tool move", "grid 50", "fly on", "run pause", "step", "sim on"
@@ -59,6 +62,7 @@ EdShell :: struct {
   group: [PL_PARTS] int; ngroup: int;    // the things gathered to save as a template, by ID
   tname: [EM_NAME] u8; tname_n: int;     // the name typed for it
   agent: bool; agent_made: bool;         // the foot with the chat's conversation is open; it was opened once (it is then kept, put away)
+  turn_due: bool;                        // the conversation has not been told of the world as it now is
   said: [EM_WORDS] u8; said_n: int;      // the shell's own word about what was typed, until the next action
   draft: [WE_COLS] [ES_DRAFT] u8; draft_n: [WE_COLS] int;
   cell: [EM_CELLS] [EM_VALUE] u8; cell_n: [EM_CELLS] int;   // what is typed into a content cell's field, by the cell's place in the model
@@ -338,7 +342,7 @@ es_click :: (s: [] EdShell, id: string) {
     _ := es_act(s, ES_VIEW, cast(string) words[0..<n]);
     return;
   }
-  if id == "agent" { s[0].agent = !s[0].agent; s[0].agent_made = true; return; }
+  if id == "agent" { s[0].agent = !s[0].agent; if !s[0].agent_made { s[0].turn_due = true; } s[0].agent_made = true; return; }
   if es_index(id, "count.") >= 0 && es_index(id, "count.") < ES_COUNTS { s[0].count = es_index(id, "count."); return; }
   // the group: a row's control gathers its thing or lets it go
   gid := es_group_id(id);
@@ -419,11 +423,56 @@ es_submit_cell :: (s: [] EdShell, k: int) {
   es_batch(s, WB_APPLY, e);
 }
 // The model the page sent is in the inbox.
+// The world as the conversation's next turn is told it: the selection, the point last tapped, the
+// kinds and as many things as fit one action, the rest counted. False while the page is still busy.
+es_turn :: (s: [] EdShell) -> bool {
+  m := s[0].model[..];
+  out: [ES_ACT] u8; room := out[0..<ES_ACT - 24];
+  n := wt_begin(room, cast(string) m[0].world[0..<m[0].world_n], m[0].lane == 1, m[0].rev, ifx em_entity_at(m, m[0].sel) >= 0 then m[0].sel else 0);
+  if m[0].here { n = wt_here(room, n, m[0].here_x, m[0].here_z); }
+  for k: 0..<m[0].nk { if k < WT_KINDS { n = wt_kind(room, n, m[0].kind_id[k], cast(string) m[0].kind_name[k][0..<m[0].kind_n[k]]); } }
+  if n < 0 { return true; }   // a world whose kinds alone do not fit is not told: the turn goes without it
+  listed := 0;
+  for k: 0..<m[0].ne {
+    if listed >= WT_THINGS { break; }
+    yaw := m[0].e_yaw[k];
+    next := wt_thing(room, n, m[0].e_id[k], m[0].e_kind[k], m[0].e_x[k], m[0].e_z[k], ifx yaw < -179 || yaw > 180 then 0 else yaw);
+    if next < 0 { break; }
+    n = next; listed += 1;
+  }
+  if listed < m[0].ne { n = wt_more(out[..], n, m[0].ne - listed); }
+  return n < 0 || es_act(s, ES_TURN, cast(string) out[0..<n]);
+}
+// A hosted turn's plan: its steps as one batch of edits made from the model's revision, so one undo
+// takes the turn back and the server's rules answer it as they answer a person's edit.
+es_plan :: (s: [] EdShell, length: int) {
+  m := s[0].model[..];
+  n := ifx length < 0 then 0 else ifx length > WP_BYTES then 0 else length;
+  plan: [1] WorldPlan; scratch: [WP_BYTES] u8;
+  if !s[0].have || !wp_read(plan[..], cast(string) s[0].inbox[0..<n], scratch[..]) { es_say(s, "The agent's change could not be read."); return; }
+  if wp_word(plan[..]) != cast(string) m[0].world[0..<m[0].world_n] || plan[0].rev != m[0].rev { es_say(s, "The world changed while the agent worked. Ask it again."); return; }
+  none: WorldEdit;
+  if plan[0].steps[0].tool == WT_UNDO { es_batch(s, WB_UNDO, none); return; }
+  if plan[0].steps[0].tool == WT_REDO { es_batch(s, WB_REDO, none); return; }
+  edits: [WP_STEPS] WorldEdit;
+  for k: 0..<plan[0].n {
+    st := plan[0].steps[k];
+    at := em_entity_at(m, st.id);
+    if st.tool != WT_PLACE && at < 0 { es_say(s, "The agent named a thing that is no longer here. Ask it again."); return; }
+    if st.tool == WT_PLACE { edits[k] = WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = st.kind, x = st.x, z = st.z, yaw = st.yaw}; }
+    else if st.tool == WT_MOVE { edits[k] = WorldEdit.{ok = true, op = WE_MOVE, id = st.id, x = st.x, y = m[0].e_y[at], z = st.z}; }
+    else if st.tool == WT_TURN { edits[k] = WorldEdit.{ok = true, op = WE_ROTATE, id = st.id, yaw = st.yaw}; }
+    else if st.tool == WT_SIZE { edits[k] = WorldEdit.{ok = true, op = WE_SCALE, id = st.id, scale = st.percent}; }
+    else { edits[k] = WorldEdit.{ok = true, op = WE_DESPAWN, id = st.id}; }
+    if !we_valid(edits[k]) { es_say(s, "The agent asked for a change this world does not take."); return; }
+  }
+  es_batch_of(s, WB_APPLY, edits[..], plan[0].n);
+}
 es_model :: (s: [] EdShell, length: int) {
   n := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
   // bytes that are not a model close the lists: the shell shows nothing it was not told
   if !em_read(s[0].model[..], cast(string) s[0].inbox[0..<n], s[0].scratch[..]) { s[0].have = false; return; }
-  s[0].have = true;
+  s[0].have = true; s[0].turn_due = true;
   // a gathered thing that is no longer in the world leaves the group
   kept := 0;
   for k: 0..<s[0].ngroup { if em_entity_at(s[0].model[..], s[0].group[k]) >= 0 { s[0].group[kept] = s[0].group[k]; kept += 1; } }
@@ -481,8 +530,14 @@ coaxial_editor_busy :: (s: [] EdShell) -> bool #export_c #effects(all) { return 
 coaxial_editor_event :: (s: [] EdShell, kind: int, slot: int, length: int) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].dirty = true;
+  es_event(s, kind, slot, length);
+  // the conversation in the foot is told of the world as it now is, once the page has room for the word
+  if s[0].agent_made && s[0].have && s[0].turn_due && es_turn(s) { s[0].turn_due = false; }
+}
+es_event :: (s: [] EdShell, kind: int, slot: int, length: int) {
   if kind == ES_MODEL { es_model(s, length); return; }
-  if kind == ES_AGENT { s[0].agent = true; s[0].agent_made = true; return; }
+  if kind == ES_AGENT { s[0].agent = true; s[0].agent_made = true; s[0].turn_due = true; return; }
+  if kind == ES_PLANNED { es_plan(s, length); return; }
   id := dm_slot_id(s[0].dom[..], slot);
   if id.count == 0 { return; }
   if kind == ES_CLICK { es_click(s, id); }
@@ -850,7 +905,7 @@ es_test_here :: (h: [] EsTest) {
   #assert tr_class(t, tr_find(t, "agent.pane")) == "pane pane-bm" && !tr_has(t, tr_find(t, "agent.pane"), AT_HIDDEN) && tr_class(t, tr_find(t, "agent.slot")) == "slot" && tr_text_of(t, tr_find(t, "agent.l")) == "Hide agent";
   slot := dm_find(s[0].dom[..], "agent.slot");
   es_test_press(h[..], "agent");
-  #assert tr_has(t, tr_find(t, "agent.pane"), AT_HIDDEN) && dm_find(s[0].dom[..], "agent.slot") == slot && s[0].nacts == 0;
+  #assert tr_has(t, tr_find(t, "agent.pane"), AT_HIDDEN) && dm_find(s[0].dom[..], "agent.slot") == slot && s[0].nacts == 1 && coaxial_editor_act_kind(s) == ES_TURN;   // the page is asked nothing; the conversation was told the world
   es_test_press(h[..], "agent");
   #assert !tr_has(t, tr_find(t, "agent.pane"), AT_HIDDEN) && dm_find(s[0].dom[..], "agent.slot") == slot;
   // a page opened for the agent has the foot open from the start
@@ -998,4 +1053,49 @@ es_test_templates :: (h: [] EsTest, rev: int, things: int) {
   es_test_press(h[..], "count"); es_test_press(h[..], "count.0");
   es_test_press(h[..], "add"); es_test_press(h[..], "add.1002");
   #assert es_test_batch(h[..], 9) == WB_APPLY && h[0].edits[0].op == WE_SPAWN && h[0].edits[0].kind == 1002 && h[0].edits[0].x == 420;
+}
+
+#test "the conversation in the foot is told the world once the foot was opened: the selection, the point tapped, the kinds and the things; again when the world changes" {
+  h: [1] EsTest; s := h[0].s[..]; turn: [1] WorldTurn; scratch: [WT_BYTES] u8;
+  es_test_model(h[..], 2, 7, 0, "");
+  es_test_frames(h[..], 1);
+  #assert s[0].nacts == 0;   // no foot yet: nobody to tell
+  es_test_press(h[..], "agent");
+  #assert coaxial_editor_act_kind(s) == ES_TURN;
+  a := s[0].acts[0];
+  #assert cast(string) a[0..<coaxial_editor_act_len(s)] == "world.turn.v1 splice dev 7 2\nk 1001 Cargo crate\nk 1002 Parked rover\ne 1 1001 350 -1200 90\ne 2 1002 -40 600 -179\n";
+  #assert wt_read(turn[..], cast(string) a[0..<coaxial_editor_act_len(s)], scratch[..]);
+  coaxial_editor_act_done(s);
+  es_test_model(h[..], 1, 8, 1, "");
+  #assert coaxial_editor_act_kind(s) == ES_TURN;
+  b := s[0].acts[0];
+  #assert wt_read(turn[..], cast(string) b[0..<coaxial_editor_act_len(s)], scratch[..]) && turn[0].rev == 8 && turn[0].sel == 1;
+  coaxial_editor_act_done(s);
+  #assert s[0].nacts == 0;
+}
+es_test_plan :: (h: [] EsTest, plan: string) {
+  s := h[0].s[..];
+  for i: 0..<plan.count { s[0].inbox[i] = plan[i]; }
+  coaxial_editor_event(s, ES_PLANNED, 0, plan.count);
+}
+#test "a hosted turn's plan becomes one batch of edits from the model's revision; a plan for another revision, or naming a thing that is gone, is said and not sent" {
+  h: [1] EsTest; s := h[0].s[..];
+  es_test_model(h[..], 2, 7, 0, "");
+  es_test_plan(h[..], "world.plan.v1 splice 7\nplace 1001 420 -75 90\nmove 2 100 -200\nturn 1 -45\nsize 2 150\nremove 1\n");
+  #assert es_test_batch(h[..], 7) == WB_APPLY;
+  a := s[0].acts[0];
+  b := we_batch_read(cast(string) a[0..<coaxial_editor_act_len(s)], h[0].edits[..]);
+  #assert b.ok && b.n == 5 && h[0].edits[0].op == WE_SPAWN && h[0].edits[0].kind == 1001 && h[0].edits[0].x == 420 && h[0].edits[0].z == -75 && h[0].edits[0].yaw == 90;
+  #assert h[0].edits[1].op == WE_MOVE && h[0].edits[1].id == 2 && h[0].edits[1].x == 100 && h[0].edits[1].y == 12 && h[0].edits[1].z == -200;
+  #assert h[0].edits[2].op == WE_ROTATE && h[0].edits[2].yaw == -45 && h[0].edits[3].op == WE_SCALE && h[0].edits[3].scale == 150 && h[0].edits[4].op == WE_DESPAWN && h[0].edits[4].id == 1;
+  coaxial_editor_act_done(s);
+  es_test_plan(h[..], "world.plan.v1 splice 7\nundo\n");
+  #assert es_test_batch(h[..], 7) == WB_UNDO;
+  coaxial_editor_act_done(s);
+  es_test_plan(h[..], "world.plan.v1 splice 6\nremove 1\n");
+  #assert s[0].nacts == 0 && cast(string) s[0].said[0..<s[0].said_n] == "The world changed while the agent worked. Ask it again.";
+  es_test_plan(h[..], "world.plan.v1 splice 7\nremove 9\n");
+  #assert s[0].nacts == 0 && cast(string) s[0].said[0..<s[0].said_n] == "The agent named a thing that is no longer here. Ask it again.";
+  es_test_plan(h[..], "not a plan");
+  #assert s[0].nacts == 0 && cast(string) s[0].said[0..<s[0].said_n] == "The agent's change could not be read.";
 }

@@ -11,7 +11,7 @@
 //                         joins the revision its build reads: metaverse-engine/editor/world-live.coax's
 //                         rule, named here for C with plain numbers
 //   the bytes             metaverse-engine/editor/world-edit.coax's: a batch's head and edits, an
-//                         event, a state, a refusal
+//                         event, a state, a refusal; a card's are coax/lib/agent/world/turn.coax's
 // Whether an edit may stand is the world's own Coax (Splice: metaverse/splice/world-api.coax).
 //   coax/bin/coax test coax/web/api/world-policy.coax --library
 //   coax/bin/coax mutate coax/web/api/world-policy.coax --library --root-only
@@ -19,6 +19,7 @@
 #load "../../../metaverse-engine/editor/world-live.coax";
 #load "../../../metaverse-engine/editor/world-edit.coax";
 #load "../../../metaverse-engine/editor/authority.coax";
+#load "../../lib/agent/world/turn.coax";   // a world's card (world.card.v1)
 
 WR_OK :: 0;
 WR_CROSS :: 1;       // a write from another site's page
@@ -189,6 +190,19 @@ wr_state :: (world: string, lane: int, rev: int, engine: int, rules: int, conten
 wr_refusal :: (words: string, edit: int, out: [] u8) -> int #export_c #effects(all) {
   made := we_refusal_write(words, edit, out);
   return ifx made.count == 0 then -1 else made.count;
+}
+// A world's card, as a conversation shows it (GET /api/worlds/ID/card, GitHub #13418): the lane's
+// revision, how many things it holds and the world's name, in the card's own bytes. -1 when the
+// facts are not a card's.
+wr_card :: (world: string, rev: int, things: int, name: string, out: [] u8) -> int #export_c #effects(all) {
+  return wc_write(out, world, rev, things, name, "");
+}
+
+#test "world routes: a card is the codec's bytes, and facts that are not a card's make none" {
+  out: [WC_BYTES] u8;
+  n := wr_card("splice", 8, 13, "Splice", out[..]);
+  #assert n == 38 && cast(string) out[0..<n] == "world.card.v1 splice 8 13\nname Splice\n";
+  #assert wr_card("Splice", 8, 13, "Splice", out[..]) == -1 && wr_card("splice", -1, 13, "Splice", out[..]) == -1 && wr_card("splice", 8, -1, "Splice", out[..]) == -1 && wr_card("splice", 8, 13, "", out[..]) == -1 && wr_card("splice", 8, 13, "Splice", out[0..<20]) == -1;
 }
 
 #test "world routes: only an admin writes, from this site, a batch made from the world's revision" {

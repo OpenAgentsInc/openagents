@@ -113,6 +113,7 @@ mono_css :: (out: [] u8) -> int {
   // a quiet text button
   n = mc(out, n, ".lk{appearance:none;border:0;background:none;color:var(--ink-muted);font:500 11px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;cursor:pointer;padding:6px 8px}");
   n = mc(out, n, ".lk:hover,.lk:focus-visible{color:#fff;outline:none}");
+  n = mc(out, n, "a.lk{text-decoration:none;align-self:flex-start}");
   // an icon, and a button that is only an icon
   n = mc(out, n, ".ic{display:block;width:16px;height:16px;flex:none}");
   n = mc(out, n, ".ib{appearance:none;border:0;background:none;color:var(--ink-faint);width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:color .15s,background .15s}");

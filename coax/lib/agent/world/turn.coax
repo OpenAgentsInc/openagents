@@ -1,0 +1,506 @@
+// What an agent's turn knows of the world a person has open, the hosted world tools, and the
+// card a conversation shows for a world (GitHub #13418, the browser editor's E9;
+// docs/editor/2026-11-12-browser-editor.md, docs/protocol/world-turn-v1.md). This file is the
+// one codec of three shapes (proto/world/turn-v1.json and card-v1.json hold the bytes):
+//
+// world.turn.v1, what the editor tells the conversation in its foot, sent with each turn:
+//   world.turn.v1 WORLD LANE REV SELECTED   the world's ID, its lane (dev or live), the lane's
+//                                           revision, the selected thing's ID (0: none)
+//   here X Z                                the point last tapped, whole centimetres; left out until one is
+//   k KIND NAME                             a kind a thing can be: its content ID and its name
+//   e ID KIND X Z YAW                       a thing: its ID, its kind, where it stands in whole
+//                                           centimetres, its turn in whole degrees
+//   more N                                  things the world holds that are not listed; left out for none
+//
+// world.plan.v1, what a hosted turn asks the editor to do, a step a line, carried out as one
+// batch of world.edit.v1 edits the page sends as its own (so the server's rules answer):
+//   world.plan.v1 WORLD REV                 the world and the revision the plan was made from
+//   place KIND X Z YAW                      a new thing of a kind
+//   move ID X Z                             a thing to a place
+//   turn ID YAW                             a thing to a heading
+//   size ID PERCENT                         a thing to a size
+//   remove ID                               a thing taken away
+//   undo, redo                              the last step back, or again (a plan of only that)
+//
+// world.card.v1, a world as a conversation shows it:
+//   world.card.v1 WORLD REV THINGS          the world's ID, its revision and how many things it holds
+//   name NAME                               its name
+//   frame URL                               a picture of it; left out for none
+//
+// The hosted world tools are the rows of WT_TOOL. Which of them a turn uses, or that it uses
+// none, is the model's typed answer under the schema wp_schema writes from those rows: a route
+// (talk or edit) and steps whose tool is one of the rows. Nothing here matches words.
+// Every number is whole. A reader refuses any bytes but the ones its writer writes.
+//   coax/bin/coax test coax/lib/agent/world/turn.coax --library
+#load "../../nostr/json.coax";
+#load "../../json/json.coax";
+
+WT_SCHEMA :: "world.turn.v1";
+WP_SCHEMA :: "world.plan.v1";
+WC_SCHEMA :: "world.card.v1";
+WT_WORLD :: 32;        // bytes in a world's ID
+WT_NAME :: 40;         // bytes in a kind's or a world's name
+WT_KINDS :: 64;        // kinds a turn lists
+WT_THINGS :: 128;      // things a turn lists; the rest are counted in `more`
+WT_BYTES :: 12288;     // bytes a turn may take
+WT_REACH :: 10000000;  // centimetres either way a place may be
+WT_ID_MAX :: 2147483647;
+WP_STEPS :: 16;        // steps in one plan
+WP_BYTES :: 1024;      // bytes a plan may take
+WP_SAY :: 2000;        // bytes of what a hosted turn says
+WP_REPLY :: 8192;      // bytes of the model's answer read
+WP_PROMPT :: 16384;    // bytes of the instructions a hosted world turn is asked with
+WC_URL :: 200;         // bytes in a card's picture's address
+WC_BYTES :: 400;       // bytes a card may take
+
+// The hosted world tools: the word a step names, and what it does, as the model is told.
+WT_PLACE :: 0; WT_MOVE :: 1; WT_TURN :: 2; WT_SIZE :: 3; WT_REMOVE :: 4; WT_UNDO :: 5; WT_REDO :: 6;
+WT_TOOLS :: 7;
+WT_TOOL :: [WT_TOOLS] string.["place", "move", "turn", "size", "remove", "undo", "redo"];
+WT_TOOL_NOTE :: [WT_TOOLS] string.[
+  "a new thing: kind is a kind's ID from the list, x and z where it stands in centimetres, yaw its heading in degrees",
+  "a thing to a new place: id is the thing's ID, x and z the place in centimetres",
+  "a thing to a heading: id is the thing's ID, yaw the heading in degrees, -179 to 180",
+  "a thing to a size: id is the thing's ID, percent its size, 100 as it was made",
+  "a thing taken out of the world: id is the thing's ID",
+  "the last change taken back; it must be the only step",
+  "the last change taken back, made again; it must be the only step"];
+
+WorldTurn :: struct {
+  ok: bool;
+  world: [WT_WORLD] u8; world_n: int;
+  live: bool; rev: int; sel: int;
+  here: bool; here_x: int; here_z: int;
+  nk: int; kind_id: [WT_KINDS] int; kind_name: [WT_KINDS] [WT_NAME] u8; kind_n: [WT_KINDS] int;
+  nt: int; t_id: [WT_THINGS] int; t_kind: [WT_THINGS] int; t_x: [WT_THINGS] int; t_z: [WT_THINGS] int; t_yaw: [WT_THINGS] int;
+  more: int;
+}
+WorldStep :: struct { tool: int; kind: int; id: int; x: int; z: int; yaw: int; percent: int = 100; }
+WorldPlan :: struct {
+  ok: bool;
+  edit: bool;                            // the turn changes the world; else it only talks
+  world: [WT_WORLD] u8; world_n: int; rev: int;
+  n: int; steps: [WP_STEPS] WorldStep;
+  say: [WP_SAY] u8; say_n: int;
+}
+WorldCard :: struct {
+  ok: bool;
+  world: [WT_WORLD] u8; world_n: int; rev: int; things: int;
+  name: [WT_NAME] u8; name_n: int;
+  frame: [WC_URL] u8; frame_n: int;
+}
+WtNum :: struct { ok: bool; v: int; }
+
+// ---- words on a line
+
+wt_world_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > WT_WORLD || s[0] < 'a' || s[0] > 'z' { return false; }
+  for b: s { if !((b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '-') { return false; } }
+  return true;
+}
+// One line of printable bytes, with no space at either end.
+wt_text_ok :: (s: string, most: int) -> bool {
+  if s.count < 1 || s.count > most || s[0] == ' ' || s[s.count - 1] == ' ' { return false; }
+  for b: s { if b < 32 || b == 127 { return false; } }
+  return true;
+}
+wt_part :: (line: string, sep: u8, k: int) -> string {
+  a := 0; n := 0;
+  for i: 0..<line.count + 1 {
+    if i < line.count && line[i] != sep { continue; }
+    if n == k { return line[a..<i]; }
+    n += 1; a = i + 1;
+  }
+  return "";
+}
+wt_parts :: (line: string, sep: u8) -> int {
+  n := 1;
+  for b: line { if b == sep { n += 1; } }
+  return n;
+}
+// What follows the first k words of a line.
+wt_rest :: (line: string, k: int) -> string {
+  n := 0;
+  for i: 0..<line.count { if line[i] == ' ' { n += 1; if n == k { return line[i + 1..<line.count]; } } }
+  return "";
+}
+wt_num :: (s: string) -> WtNum {
+  r: WtNum;
+  if s.count == 0 || s.count > 11 { return r; }
+  a := ifx s[0] == '-' then 1 else 0;
+  if s.count == a { return r; }
+  v := 0;
+  for i: a..<s.count { if s[i] < '0' || s[i] > '9' { return r; } v = v * 10 + cast(int) (s[i] - '0'); }
+  if v > WT_ID_MAX { return r; }
+  return WtNum.{ok = true, v = ifx a == 1 then -v else v};
+}
+wt_copy :: (dst: [] u8, s: string) -> int {
+  if s.count > dst.count { return 0; }
+  for i: 0..<s.count { dst[i] = s[i]; }
+  return s.count;
+}
+wt_place_ok :: (x: int, z: int) -> bool { return x >= -WT_REACH && x <= WT_REACH && z >= -WT_REACH && z <= WT_REACH; }
+wt_yaw_ok :: (yaw: int) -> bool { return yaw >= -179 && yaw <= 180; }
+wt_word :: (t: [] WorldTurn) -> string { return cast(string) t[0].world[0..<t[0].world_n]; }
+// A kind's name, or "" when the turn does not list it.
+wt_kind_name :: (t: [] WorldTurn, kind: int) -> string {
+  for k: 0..<t[0].nk { if t[0].kind_id[k] == kind { return cast(string) t[0].kind_name[k][0..<t[0].kind_n[k]]; } }
+  return "";
+}
+// A thing's place in the turn's list, or -1.
+wt_thing_at :: (t: [] WorldTurn, id: int) -> int {
+  for k: 0..<t[0].nt { if t[0].t_id[k] == id { return k; } }
+  return -1;
+}
+
+// ---- the turn's writer, a line at a time (n: bytes written so far; -1 when it does not fit)
+
+wt_begin :: (out: [] u8, world: string, live: bool, rev: int, sel: int) -> int {
+  if !wt_world_ok(world) || rev < 0 || sel < 0 { return -1; }
+  n := json_raw(out, 0, WT_SCHEMA); n = json_raw(out, n, " "); n = json_raw(out, n, world);
+  n = json_raw(out, n, ifx live then " live " else " dev "); n = json_write_int(out, n, rev);
+  n = json_raw(out, n, " "); n = json_write_int(out, n, sel);
+  return json_raw(out, n, "\n");
+}
+wt_here :: (out: [] u8, at: int, x: int, z: int) -> int {
+  if !wt_place_ok(x, z) { return -1; }
+  n := json_raw(out, at, "here "); n = json_write_int(out, n, x); n = json_raw(out, n, " "); n = json_write_int(out, n, z);
+  return json_raw(out, n, "\n");
+}
+wt_kind :: (out: [] u8, at: int, id: int, name: string) -> int {
+  if id < 0 || !wt_text_ok(name, WT_NAME) { return -1; }
+  n := json_raw(out, at, "k "); n = json_write_int(out, n, id); n = json_raw(out, n, " "); n = json_raw(out, n, name);
+  return json_raw(out, n, "\n");
+}
+wt_thing :: (out: [] u8, at: int, id: int, kind: int, x: int, z: int, yaw: int) -> int {
+  if id < 1 || kind < 0 || !wt_place_ok(x, z) || !wt_yaw_ok(yaw) { return -1; }
+  n := json_raw(out, at, "e "); n = json_write_int(out, n, id);
+  n = json_raw(out, n, " "); n = json_write_int(out, n, kind);
+  n = json_raw(out, n, " "); n = json_write_int(out, n, x);
+  n = json_raw(out, n, " "); n = json_write_int(out, n, z);
+  n = json_raw(out, n, " "); n = json_write_int(out, n, yaw);
+  return json_raw(out, n, "\n");
+}
+wt_more :: (out: [] u8, at: int, count: int) -> int {
+  if count < 1 { return -1; }
+  n := json_raw(out, at, "more "); n = json_write_int(out, n, count);
+  return json_raw(out, n, "\n");
+}
+// The whole turn as its bytes, or "" when it does not fit.
+wt_write :: (t: [] WorldTurn, out: [] u8) -> string {
+  n := wt_begin(out, wt_word(t), t[0].live, t[0].rev, t[0].sel);
+  if t[0].here { n = wt_here(out, n, t[0].here_x, t[0].here_z); }
+  for k: 0..<t[0].nk { n = wt_kind(out, n, t[0].kind_id[k], cast(string) t[0].kind_name[k][0..<t[0].kind_n[k]]); }
+  for k: 0..<t[0].nt { n = wt_thing(out, n, t[0].t_id[k], t[0].t_kind[k], t[0].t_x[k], t[0].t_z[k], t[0].t_yaw[k]); }
+  if t[0].more > 0 { n = wt_more(out, n, t[0].more); }
+  return ifx n < 0 || n > WT_BYTES then "" else cast(string) out[0..<n];
+}
+// Reads a turn. False for any bytes wt_write would not write.
+wt_read :: (t: [] WorldTurn, text: string, scratch: [] u8) -> bool {
+  t[0].ok = false; t[0].world_n = 0; t[0].nk = 0; t[0].nt = 0; t[0].more = 0; t[0].here = false; t[0].sel = 0; t[0].rev = 0;
+  if text.count < WT_SCHEMA.count || text.count > WT_BYTES { return false; }
+  head := wt_part(text, '\n', 0);
+  if wt_part(head, ' ', 0) != WT_SCHEMA || wt_parts(head, ' ') != 5 { return false; }
+  t[0].world_n = wt_copy(t[0].world[..], wt_part(head, ' ', 1));
+  t[0].live = wt_part(head, ' ', 2) == "live";
+  t[0].rev = wt_num(wt_part(head, ' ', 3)).v; t[0].sel = wt_num(wt_part(head, ' ', 4)).v;
+  lines := wt_parts(text, '\n');
+  for i: 1..<lines {
+    line := wt_part(text, '\n', i);
+    word := wt_part(line, ' ', 0);
+    if word == "here" { t[0].here = true; t[0].here_x = wt_num(wt_part(line, ' ', 1)).v; t[0].here_z = wt_num(wt_part(line, ' ', 2)).v; }
+    else if word == "k" && t[0].nk < WT_KINDS {
+      k := t[0].nk;
+      t[0].kind_id[k] = wt_num(wt_part(line, ' ', 1)).v;
+      t[0].kind_n[k] = wt_copy(t[0].kind_name[k][..], wt_rest(line, 2));
+      t[0].nk += 1;
+    } else if word == "e" && t[0].nt < WT_THINGS {
+      k := t[0].nt;
+      t[0].t_id[k] = wt_num(wt_part(line, ' ', 1)).v; t[0].t_kind[k] = wt_num(wt_part(line, ' ', 2)).v;
+      t[0].t_x[k] = wt_num(wt_part(line, ' ', 3)).v; t[0].t_z[k] = wt_num(wt_part(line, ' ', 4)).v; t[0].t_yaw[k] = wt_num(wt_part(line, ' ', 5)).v;
+      t[0].nt += 1;
+    } else if word == "more" { t[0].more = wt_num(wt_part(line, ' ', 1)).v; }
+    else if line.count > 0 || i + 1 < lines { return false; }
+  }
+  t[0].ok = wt_write(t, scratch) == text;
+  return t[0].ok;
+}
+
+// The turn in words, put after the person's message for an agent that is told in its message (an
+// agent on the person's own computer, or the hosted agent): the world, the selection and the point
+// last tapped.
+WT_WORDS :: 600;
+wt_words :: (t: [] WorldTurn, out: [] u8) -> string {
+  n := json_raw(out, 0, "[The editor is open on the world "); n = json_raw(out, n, wt_word(t));
+  n = json_raw(out, n, ifx t[0].live then ", live lane, revision " else ", dev lane, revision "); n = json_write_int(out, n, t[0].rev);
+  n = json_raw(out, n, ".");
+  at := wt_thing_at(t, t[0].sel);
+  if at >= 0 {
+    n = json_raw(out, n, " Selected: thing "); n = json_write_int(out, n, t[0].sel);
+    name := wt_kind_name(t, t[0].t_kind[at]);
+    if name.count > 0 { n = json_raw(out, n, ", "); n = json_raw(out, n, name); }
+    n = json_raw(out, n, ", at x "); n = json_write_int(out, n, t[0].t_x[at]); n = json_raw(out, n, " z "); n = json_write_int(out, n, t[0].t_z[at]);
+    n = json_raw(out, n, " cm.");
+  } else { n = json_raw(out, n, " Nothing is selected."); }
+  if t[0].here {
+    n = json_raw(out, n, " Here, the point last tapped: x "); n = json_write_int(out, n, t[0].here_x);
+    n = json_raw(out, n, " z "); n = json_write_int(out, n, t[0].here_z); n = json_raw(out, n, " cm.");
+  }
+  n = json_raw(out, n, " Read and change it with the realm world tools.]");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+// ---- the plan
+
+wp_word :: (p: [] WorldPlan) -> string { return cast(string) p[0].world[0..<p[0].world_n]; }
+wp_step_ok :: (s: WorldStep) -> bool {
+  if s.tool < 0 || s.tool >= WT_TOOLS { return false; }
+  if s.tool == WT_PLACE { return s.kind >= 0 && wt_place_ok(s.x, s.z) && wt_yaw_ok(s.yaw); }
+  if s.tool == WT_UNDO || s.tool == WT_REDO { return true; }
+  if s.id < 1 { return false; }
+  if s.tool == WT_MOVE { return wt_place_ok(s.x, s.z); }
+  if s.tool == WT_TURN { return wt_yaw_ok(s.yaw); }
+  if s.tool == WT_SIZE { return s.percent >= 5 && s.percent <= 2000; }
+  return true;
+}
+// Whether the steps make a plan: one to WP_STEPS of them, each one whole, and an undo or a redo alone.
+wp_steps_ok :: (p: [] WorldPlan) -> bool {
+  if p[0].n < 1 || p[0].n > WP_STEPS { return false; }
+  for k: 0..<p[0].n {
+    if !wp_step_ok(p[0].steps[k]) { return false; }
+    if (p[0].steps[k].tool == WT_UNDO || p[0].steps[k].tool == WT_REDO) && p[0].n != 1 { return false; }
+  }
+  return true;
+}
+wp_step_write :: (out: [] u8, at: int, s: WorldStep) -> int {
+  tools := WT_TOOL;
+  n := json_raw(out, at, tools[s.tool]);
+  if s.tool == WT_PLACE { n = json_raw(out, n, " "); n = json_write_int(out, n, s.kind); }
+  else if s.tool != WT_UNDO && s.tool != WT_REDO { n = json_raw(out, n, " "); n = json_write_int(out, n, s.id); }
+  if s.tool == WT_PLACE || s.tool == WT_MOVE { n = json_raw(out, n, " "); n = json_write_int(out, n, s.x); n = json_raw(out, n, " "); n = json_write_int(out, n, s.z); }
+  if s.tool == WT_PLACE || s.tool == WT_TURN { n = json_raw(out, n, " "); n = json_write_int(out, n, s.yaw); }
+  if s.tool == WT_SIZE { n = json_raw(out, n, " "); n = json_write_int(out, n, s.percent); }
+  return n;
+}
+// The plan as its bytes, or "" when it is not one.
+wp_write :: (p: [] WorldPlan, out: [] u8) -> string {
+  if !wt_world_ok(wp_word(p)) || p[0].rev < 0 || !wp_steps_ok(p) { return ""; }
+  n := json_raw(out, 0, WP_SCHEMA); n = json_raw(out, n, " "); n = json_raw(out, n, wp_word(p));
+  n = json_raw(out, n, " "); n = json_write_int(out, n, p[0].rev); n = json_raw(out, n, "\n");
+  for k: 0..<p[0].n { n = wp_step_write(out, n, p[0].steps[k]); n = json_raw(out, n, "\n"); }
+  return ifx n < 0 || n > WP_BYTES then "" else cast(string) out[0..<n];
+}
+// Reads a plan's bytes. False for any bytes wp_write would not write.
+wp_read :: (p: [] WorldPlan, text: string, scratch: [] u8) -> bool {
+  p[0].ok = false; p[0].n = 0; p[0].world_n = 0; p[0].edit = true; p[0].say_n = 0;
+  if text.count < WP_SCHEMA.count || text.count > WP_BYTES { return false; }
+  head := wt_part(text, '\n', 0);
+  if wt_part(head, ' ', 0) != WP_SCHEMA || wt_parts(head, ' ') != 3 { return false; }
+  p[0].world_n = wt_copy(p[0].world[..], wt_part(head, ' ', 1));
+  p[0].rev = wt_num(wt_part(head, ' ', 2)).v;
+  lines := wt_parts(text, '\n'); tools := WT_TOOL;
+  for i: 1..<lines {
+    line := wt_part(text, '\n', i);
+    if line.count == 0 && i + 1 == lines { break; }
+    if p[0].n >= WP_STEPS { return false; }
+    s: WorldStep; s.tool = -1;
+    for k: 0..<WT_TOOLS { if wt_part(line, ' ', 0) == tools[k] { s.tool = k; } }
+    a := wt_num(wt_part(line, ' ', 1)).v; b := wt_num(wt_part(line, ' ', 2)).v; c := wt_num(wt_part(line, ' ', 3)).v; e := wt_num(wt_part(line, ' ', 4)).v;
+    if s.tool == WT_PLACE { s.kind = a; s.x = b; s.z = c; s.yaw = e; }
+    else if s.tool == WT_MOVE { s.id = a; s.x = b; s.z = c; }
+    else if s.tool == WT_TURN { s.id = a; s.yaw = b; }
+    else if s.tool == WT_SIZE { s.id = a; s.percent = b; }
+    else if s.tool == WT_REMOVE { s.id = a; }
+    else if s.tool < 0 { return false; }
+    p[0].steps[p[0].n] = s; p[0].n += 1;
+  }
+  p[0].ok = wp_write(p, scratch) == text;
+  return p[0].ok;
+}
+// A step as a line of the conversation: what the turn did, in words, with the kind's name where the turn knows it.
+WP_LINE :: 120;
+wp_line :: (s: WorldStep, t: [] WorldTurn, out: [] u8) -> string {
+  n := 0;
+  if s.tool == WT_PLACE {
+    name := wt_kind_name(t, s.kind);
+    n = json_raw(out, 0, "Place "); n = json_raw(out, n, ifx name.count > 0 then name else "a thing");
+    n = json_raw(out, n, " at "); n = json_write_int(out, n, s.x); n = json_raw(out, n, ", "); n = json_write_int(out, n, s.z);
+  } else if s.tool == WT_UNDO { n = json_raw(out, 0, "Undo the last change"); }
+  else if s.tool == WT_REDO { n = json_raw(out, 0, "Redo the last change"); }
+  else {
+    verbs := [WT_TOOLS] string.["", "Move ", "Turn ", "Size ", "Remove ", "", ""];
+    at := wt_thing_at(t, s.id);
+    name := ifx at >= 0 then wt_kind_name(t, t[0].t_kind[at]) else "";
+    n = json_raw(out, 0, verbs[s.tool]); n = json_raw(out, n, ifx name.count > 0 then name else "thing");
+    n = json_raw(out, n, " "); n = json_write_int(out, n, s.id);
+    if s.tool == WT_MOVE { n = json_raw(out, n, " to "); n = json_write_int(out, n, s.x); n = json_raw(out, n, ", "); n = json_write_int(out, n, s.z); }
+    if s.tool == WT_TURN { n = json_raw(out, n, " to "); n = json_write_int(out, n, s.yaw); n = json_raw(out, n, " degrees"); }
+    if s.tool == WT_SIZE { n = json_raw(out, n, " to "); n = json_write_int(out, n, s.percent); n = json_raw(out, n, " percent"); }
+  }
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// The schema a hosted world turn answers under: the route, what to say, and steps whose tool is a
+// row of WT_TOOL. A step names every field; the ones its tool does not use are 0.
+wp_schema :: (out: [] u8) -> string {
+  tools := WT_TOOL;
+  n := json_raw(out, 0, "{\"type\":\"object\",\"properties\":{\"route\":{\"type\":\"string\",\"enum\":[\"talk\",\"edit\"]},\"say\":{\"type\":\"string\"},\"steps\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"tool\":{\"type\":\"string\",\"enum\":[");
+  for k: 0..<WT_TOOLS { if k > 0 { n = json_raw(out, n, ","); } n = json_write_string(out, n, tools[k]); }
+  n = json_raw(out, n, "]}");
+  fields := [6] string.["kind", "id", "x", "z", "yaw", "percent"];
+  for f: fields { n = json_raw(out, n, ",\""); n = json_raw(out, n, f); n = json_raw(out, n, "\":{\"type\":\"integer\"}"); }
+  n = json_raw(out, n, "},\"required\":[\"tool\",\"kind\",\"id\",\"x\",\"z\",\"yaw\",\"percent\"],\"additionalProperties\":false}}},\"required\":[\"route\",\"say\",\"steps\"],\"additionalProperties\":false}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+// What a hosted world turn is told: who it is, the tools (from their rows) and the world as the turn has it.
+wp_system :: (t: [] WorldTurn, scratch: [] u8, out: [] u8) -> string {
+  tools := WT_TOOL; notes := WT_TOOL_NOTE;
+  n := json_raw(out, 0, "You are OpenAgents, in the editor of a world a person has open. Speak as \"we\". Answer with a route, what to say, and steps.\nroute \"talk\": the person asks or talks and nothing in the world changes; steps is empty and say is the answer, in Markdown where it helps.\nroute \"edit\": the person wants the world changed; steps are the changes in order, at most 16, and say is one short sentence of what was done.\nA step's tool is one of:\n");
+  for k: 0..<WT_TOOLS { n = json_raw(out, n, "- "); n = json_raw(out, n, tools[k]); n = json_raw(out, n, ": "); n = json_raw(out, n, notes[k]); n = json_raw(out, n, "\n"); }
+  n = json_raw(out, n, "A field a tool does not use is 0. Use only kinds and thing IDs from the lists below. \"Here\" and \"this\" mean the point last tapped and the selected thing. Places are centimetres; x runs east and z south. If the request cannot be done with these tools, route \"talk\" and say why.\nThe world now (k is a kind: ID and name; e is a thing: ID, kind, x, z, heading; the first line ends with the selected thing's ID, 0 for none):\n");
+  n = json_raw(out, n, wt_write(t, scratch));
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+WP_NODES :: 16 + WP_STEPS * 16;
+// Reads the model's answer into a plan for the turn's world. False when it is not an answer under
+// the schema, or a step names a kind or a thing the turn does not list: then say holds why.
+wp_reply :: (p: [] WorldPlan, t: [] WorldTurn, reply: string) -> bool #effects(all) {
+  p[0].ok = false; p[0].edit = false; p[0].n = 0; p[0].say_n = 0;
+  p[0].world_n = wt_copy(p[0].world[..], wt_word(t)); p[0].rev = t[0].rev;
+  nodes: [WP_NODES] JvNode; da: [1] Jv; word: [16] u8;
+  if reply.count > WP_REPLY || !jv_parse(da[..], reply, nodes[..]) { return false; }
+  d := da[0];
+  rn := jv_str(d, jv_get(d, 0, "route"), word[..]);
+  sn := jv_str(d, jv_get(d, 0, "say"), p[0].say[..]);
+  steps := jv_get(d, 0, "steps");
+  if rn < 0 || sn < 0 || jv_kind(d, steps) != JV_ARRAY { return false; }
+  p[0].say_n = sn;
+  route := cast(string) word[0..<rn];
+  if route == "talk" { p[0].ok = sn > 0; return p[0].ok; }
+  if route != "edit" || jv_len(d, steps) < 1 || jv_len(d, steps) > WP_STEPS { return false; }
+  tools := WT_TOOL;
+  for i: 0..<jv_len(d, steps) {
+    at := jv_at(d, steps, i);
+    tn := jv_str(d, jv_get(d, at, "tool"), word[..]);
+    s: WorldStep; s.tool = -1;
+    for k: 0..<WT_TOOLS { if tn > 0 && cast(string) word[0..<tn] == tools[k] { s.tool = k; } }
+    s.kind = jv_int(d, jv_get(d, at, "kind"), -1); s.id = jv_int(d, jv_get(d, at, "id"), -1);
+    s.x = jv_int(d, jv_get(d, at, "x"), WT_REACH + 1); s.z = jv_int(d, jv_get(d, at, "z"), WT_REACH + 1);
+    s.yaw = jv_int(d, jv_get(d, at, "yaw"), 999); s.percent = jv_int(d, jv_get(d, at, "percent"), 0);
+    if s.tool < 0 { return false; }
+    while s.yaw > 180 && s.yaw <= 540 { s.yaw -= 360; }
+    if s.tool == WT_PLACE && wt_kind_name(t, s.kind).count == 0 { p[0].say_n = wt_copy(p[0].say[..], "That did not go: the plan named a kind this world does not have."); return false; }
+    if s.tool != WT_PLACE && s.tool != WT_UNDO && s.tool != WT_REDO && wt_thing_at(t, s.id) < 0 { p[0].say_n = wt_copy(p[0].say[..], "That did not go: the plan named a thing that is not in this world."); return false; }
+    p[0].steps[p[0].n] = s; p[0].n += 1;
+  }
+  p[0].edit = true;
+  p[0].ok = wp_steps_ok(p);
+  return p[0].ok;
+}
+
+// ---- the card
+
+wc_write :: (out: [] u8, world: string, rev: int, things: int, name: string, frame: string) -> int #effects(all) {
+  if !wt_world_ok(world) || rev < 0 || things < 0 || !wt_text_ok(name, WT_NAME) { return -1; }
+  n := json_raw(out, 0, WC_SCHEMA); n = json_raw(out, n, " "); n = json_raw(out, n, world);
+  n = json_raw(out, n, " "); n = json_write_int(out, n, rev); n = json_raw(out, n, " "); n = json_write_int(out, n, things);
+  n = json_raw(out, n, "\nname "); n = json_raw(out, n, name); n = json_raw(out, n, "\n");
+  if frame.count > 0 {
+    if !wt_text_ok(frame, WC_URL) || wt_parts(frame, ' ') != 1 || frame[0] != '/' { return -1; }
+    n = json_raw(out, n, "frame "); n = json_raw(out, n, frame); n = json_raw(out, n, "\n");
+  }
+  return ifx n > WC_BYTES then -1 else n;
+}
+wc_read :: (c: [] WorldCard, text: string, scratch: [] u8) -> bool {
+  c[0].ok = false; c[0].world_n = 0; c[0].name_n = 0; c[0].frame_n = 0;
+  if text.count < WC_SCHEMA.count || text.count > WC_BYTES { return false; }
+  head := wt_part(text, '\n', 0);
+  if wt_part(head, ' ', 0) != WC_SCHEMA || wt_parts(head, ' ') != 4 { return false; }
+  c[0].world_n = wt_copy(c[0].world[..], wt_part(head, ' ', 1));
+  c[0].rev = wt_num(wt_part(head, ' ', 2)).v; c[0].things = wt_num(wt_part(head, ' ', 3)).v;
+  lines := wt_parts(text, '\n');
+  for i: 1..<lines {
+    line := wt_part(text, '\n', i);
+    if wt_part(line, ' ', 0) == "name" { c[0].name_n = wt_copy(c[0].name[..], wt_rest(line, 1)); }
+    else if wt_part(line, ' ', 0) == "frame" { c[0].frame_n = wt_copy(c[0].frame[..], wt_rest(line, 1)); }
+    else if line.count > 0 || i + 1 < lines { return false; }
+  }
+  w := c[0].world; nm := c[0].name; fr := c[0].frame;
+  n := wc_write(scratch, cast(string) w[0..<c[0].world_n], c[0].rev, c[0].things, cast(string) nm[0..<c[0].name_n], cast(string) fr[0..<c[0].frame_n]);
+  c[0].ok = n > 0 && cast(string) scratch[0..<n] == text;
+  return c[0].ok;
+}
+
+// ---------------------------------------------------------------- checks
+
+WtTest :: struct { t: [1] WorldTurn; p: [1] WorldPlan; c: [1] WorldCard; a: [WT_BYTES] u8; b: [WP_PROMPT] u8; s: [WT_BYTES] u8; }
+WT_TEST_TURN :: "world.turn.v1 splice dev 7 2\nhere 420 -75\nk 1001 Cargo crate\nk 1002 Parked rover\ne 1 1001 350 -1200 90\ne 2 1002 -40 600 -179\nmore 3\n";
+
+#test "a turn reads as it was written, and nothing else reads" {
+  h: [1] WtTest; t := h[0].t[..];
+  #assert wt_read(t, WT_TEST_TURN, h[0].s[..]) && wt_word(t) == "splice" && !t[0].live && t[0].rev == 7 && t[0].sel == 2;
+  #assert t[0].here && t[0].here_x == 420 && t[0].here_z == -75 && t[0].nk == 2 && t[0].nt == 2 && t[0].more == 3;
+  #assert wt_kind_name(t, 1002) == "Parked rover" && wt_kind_name(t, 9) == "" && wt_thing_at(t, 2) == 1 && wt_thing_at(t, 3) == -1;
+  #assert wt_write(t, h[0].a[..]) == WT_TEST_TURN;
+  #assert wt_read(t, "world.turn.v1 splice live 0 0\n", h[0].s[..]) && t[0].live && t[0].nt == 0 && !t[0].here;
+  bad := [9] string.["", "world.turn.v2 splice dev 0 0\n", "world.turn.v1 Splice dev 0 0\n", "world.turn.v1 splice dev 0 0\n\n", "world.turn.v1 splice test 0 0\n",
+    "world.turn.v1 splice dev 0 0\ne 01 5 0 0 0\n", "world.turn.v1 splice dev 0 0\nx what\n", "world.turn.v1 splice dev 0 0\nhere 1\n", "world.turn.v1 splice dev 0 0\ne 1 5 0 0 999\n"];
+  for b: bad { #assert !wt_read(t, b, h[0].s[..]); }
+}
+#test "the turn in words names the selection and the point tapped" {
+  h: [1] WtTest; t := h[0].t[..];
+  #assert wt_read(t, WT_TEST_TURN, h[0].s[..]);
+  #assert wt_words(t, h[0].a[..]) == "[The editor is open on the world splice, dev lane, revision 7. Selected: thing 2, Parked rover, at x -40 z 600 cm. Here, the point last tapped: x 420 z -75 cm. Read and change it with the realm world tools.]";
+  #assert wt_read(t, "world.turn.v1 splice live 3 0\n", h[0].s[..]);
+  #assert wt_words(t, h[0].a[..]) == "[The editor is open on the world splice, live lane, revision 3. Nothing is selected. Read and change it with the realm world tools.]";
+}
+WP_TEST_PLAN :: "world.plan.v1 splice 7\nplace 1001 420 -75 90\nmove 2 100 -200\nturn 1 -45\nsize 2 150\nremove 1\n";
+#test "a plan reads as it was written; an undo stands alone" {
+  h: [1] WtTest; p := h[0].p[..];
+  #assert wp_read(p, WP_TEST_PLAN, h[0].s[..]) && p[0].n == 5 && wp_word(p) == "splice" && p[0].rev == 7;
+  #assert p[0].steps[0].tool == WT_PLACE && p[0].steps[0].kind == 1001 && p[0].steps[0].x == 420 && p[0].steps[0].z == -75 && p[0].steps[0].yaw == 90;
+  #assert p[0].steps[3].tool == WT_SIZE && p[0].steps[3].id == 2 && p[0].steps[3].percent == 150 && p[0].steps[4].tool == WT_REMOVE;
+  #assert wp_write(p, h[0].a[..]) == WP_TEST_PLAN;
+  #assert wp_read(p, "world.plan.v1 splice 7\nundo\n", h[0].s[..]) && p[0].steps[0].tool == WT_UNDO;
+  bad := [8] string.["", "world.plan.v1 splice 7\n", "world.plan.v1 splice 7\nundo\nredo\n", "world.plan.v1 splice 7\nfly 1\n", "world.plan.v1 splice 7\nmove 0 1 1\n",
+    "world.plan.v1 splice 7\nsize 2 1\n", "world.plan.v1 splice 7\nplace 1001 420 -75 90 extra\n", "world.plan.v2 splice 7\nundo\n"];
+  for b: bad { #assert !wp_read(p, b, h[0].s[..]); }
+}
+#test "the model's answer becomes a plan only when it keeps to the schema and to the world" {
+  h: [1] WtTest; t := h[0].t[..]; p := h[0].p[..];
+  #assert wt_read(t, WT_TEST_TURN, h[0].s[..]);
+  #assert wp_reply(p, t, "{\"route\":\"talk\",\"say\":\"Two things stand here.\",\"steps\":[]}") && !p[0].edit && p[0].n == 0 && cast(string) p[0].say[0..<p[0].say_n] == "Two things stand here.";
+  #assert wp_reply(p, t, "{\"route\":\"edit\",\"say\":\"We put a crate here.\",\"steps\":[{\"tool\":\"place\",\"kind\":1001,\"id\":0,\"x\":420,\"z\":-75,\"yaw\":270,\"percent\":0},{\"tool\":\"remove\",\"kind\":0,\"id\":2,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}");
+  #assert p[0].edit && p[0].n == 2 && p[0].steps[0].yaw == -90 && p[0].rev == 7 && wp_word(p) == "splice";
+  #assert wp_write(p, h[0].a[..]) == "world.plan.v1 splice 7\nplace 1001 420 -75 -90\nremove 2\n";
+  #assert wp_line(p[0].steps[0], t, h[0].a[..]) == "Place Cargo crate at 420, -75" && wp_line(p[0].steps[1], t, h[0].a[..]) == "Remove Parked rover 2";
+  // a kind or a thing the world does not have, a tool that is not a row, a route that is not one, an edit with no steps
+  #assert !wp_reply(p, t, "{\"route\":\"edit\",\"say\":\"x\",\"steps\":[{\"tool\":\"place\",\"kind\":5,\"id\":0,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}") && p[0].say_n > 20;
+  #assert !wp_reply(p, t, "{\"route\":\"edit\",\"say\":\"x\",\"steps\":[{\"tool\":\"remove\",\"kind\":0,\"id\":9,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}");
+  #assert !wp_reply(p, t, "{\"route\":\"edit\",\"say\":\"x\",\"steps\":[{\"tool\":\"paint\",\"kind\":0,\"id\":1,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}");
+  #assert !wp_reply(p, t, "{\"route\":\"build\",\"say\":\"x\",\"steps\":[]}") && !wp_reply(p, t, "{\"route\":\"edit\",\"say\":\"x\",\"steps\":[]}") && !wp_reply(p, t, "nothing");
+  #assert !wp_reply(p, t, "{\"route\":\"talk\",\"say\":\"\",\"steps\":[]}");
+}
+#test "the schema names every tool's row, and the instructions carry the tools and the world" {
+  h: [1] WtTest; t := h[0].t[..];
+  #assert wt_read(t, WT_TEST_TURN, h[0].s[..]);
+  schema := wp_schema(h[0].a[..]);
+  nodes: [128] JvNode; da: [1] Jv;
+  #assert schema.count > 0 && jv_parse(da[..], schema, nodes[..]);
+  tools := jv_path(da[0], 0, "properties.steps.items.properties.tool.enum");
+  #assert jv_len(da[0], tools) == WT_TOOLS;
+  names := WT_TOOL; word: [16] u8;
+  for k: 0..<WT_TOOLS { n := jv_str(da[0], jv_at(da[0], tools, k), word[..]); #assert cast(string) word[0..<n] == names[k]; }
+  sys := wp_system(t, h[0].s[..], h[0].b[..]);
+  #assert sys.count > WT_TEST_TURN.count && cast(string) sys[sys.count - WT_TEST_TURN.count..<sys.count] == WT_TEST_TURN;
+}
+#test "a card reads as it was written" {
+  h: [1] WtTest; c := h[0].c[..];
+  n := wc_write(h[0].a[..], "splice", 7, 12, "Splice", "/worlds/splice/card.png");
+  #assert n > 0 && cast(string) h[0].a[0..<n] == "world.card.v1 splice 7 12\nname Splice\nframe /worlds/splice/card.png\n";
+  #assert wc_read(c, cast(string) h[0].a[0..<n], h[0].s[..]) && c[0].rev == 7 && c[0].things == 12 && c[0].name_n == 6 && c[0].frame_n == 23;
+  n = wc_write(h[0].a[..], "splice", 0, 0, "Splice", "");
+  #assert cast(string) h[0].a[0..<n] == "world.card.v1 splice 0 0\nname Splice\n" && wc_read(c, cast(string) h[0].a[0..<n], h[0].s[..]) && c[0].frame_n == 0;
+  #assert wc_write(h[0].a[..], "Splice", 0, 0, "Splice", "") == -1 && wc_write(h[0].a[..], "splice", 0, 0, "", "") == -1 && wc_write(h[0].a[..], "splice", 0, 0, "Splice", "https://x.example/a.png") == -1;
+  bad := [5] string.["", "world.card.v1 splice 7\nname Splice\n", "world.card.v2 splice 7 1\nname Splice\n", "world.card.v1 splice 7 1\n", "world.card.v1 splice 7 1\nname Splice\nmore\n"];
+  for b: bad { #assert !wc_read(c, b, h[0].s[..]); }
+}

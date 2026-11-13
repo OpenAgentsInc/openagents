@@ -137,6 +137,12 @@ k_icon_button :: (t: [] Tree, id: string, icon: int, label: string) -> int {
 }
 // Link: a quiet text button, with no frame (Copy in a code block's strip).
 k_link :: (t: [] Tree, id: string, label: string) -> int { return tr_leaf(t, id, TG_BUTTON, "lk", label); }
+// Go: a quiet link to another page, in the look of Link (a world's card: Open the editor).
+k_go :: (t: [] Tree, id: string, label: string, href: string) -> int {
+  i := tr_leaf(t, id, TG_A, "lk", label);
+  tr_attr(t, i, AT_HREF, href);
+  return i;
+}
 // Field: one or more lines of typing over an underline.
 k_field :: (t: [] Tree, u: [] Ui, id: string, placeholder: string, label: string) -> int {
   ida: [UI_ID] u8;

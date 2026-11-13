@@ -13,6 +13,7 @@ Every component, working:
 - **Notice**: an error, or a request for approval with Allow and Deny.
 - **Row**: a conversation in a list. The current one is bright over an underline.
 - **Menu**: rows in a panel.
+- **World card**: a world as a conversation shows it: its name, what it holds, and a link that opens its editor.
 - **Dock**: panes round something that still shows: a strip of actions, a list, the picked thing's fields and facts, and a foot. The editor that `?edit` opens over a world is built from it.
 - **Header and text**: the title types in.
 

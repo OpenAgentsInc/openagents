@@ -205,7 +205,7 @@ function streamOpen(urlAt, urlLen, bodyAt, bodyLen) {
         ask();
       }
     } catch { if (live()) status = 0; }
-    if (live()) { stream = null; x.dom_event(state, 5, status, 0); ask(); }
+    if (live()) { stream = null; x.dom_event(state, 5, status, 0); ask(); own.after?.(); }   // an answer may leave an action for the page that opened this module
   })();
 }
 

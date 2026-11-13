@@ -149,8 +149,22 @@ not a flat folder scan.
   host, so it is the same conversation, components and agents as `/chat`.
   `?edit=agent` opens the editor with the foot open. A local agent's edits
   through the realm commands show in the open editor as any outside edit does.
-  Not built yet: the selection and "here" sent with each turn, the hosted
-  turn's world tools and selector, and the world card on `/chat`.
+  The rest ([the shapes](../protocol/world-turn-v1.md)):
+  - Each turn carries the world, the selection and "here". The shell tells
+    the conversation (`world.turn.v1`) whenever they change. An agent that
+    works by itself is told in words after your message.
+  - A Gemini turn in the editor is a hosted world turn: one model call under
+    a schema whose steps are the hosted world tools (place, move, turn, size,
+    remove, undo, redo). The model's typed answer chooses talk or edit and
+    the tools; no code matches words. The steps go to the shell as a plan and
+    leave the page as one `world.edit.v1` batch, so the server's rules answer
+    it and one undo takes the turn back.
+  - On `/chat`, an agent's `realm_world` tool brings the world's card
+    (`world.card.v1`, `GET /api/worlds/ID/card`): its name, what it holds and
+    a link that opens the editor with the conversation in its foot.
+
+  Not built: world tools for the hosted agent on a Claude account (its runner
+  has no realm commands), and a picture on the card.
 - **Viewport tools:**
   - picking through `query_ray` against the World's spatial index;
   - move, rotate and scale gizmos that snap to a grid;

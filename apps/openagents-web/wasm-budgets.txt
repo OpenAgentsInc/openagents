@@ -29,8 +29,10 @@ characters 100000
 chat 260000
 # /chat on the frames set drawn by the browser (chat-web.coax, components/backend/dom.coax): 98,103 bytes measured 2026-11-11 on a Linux build host;
 # 138,805 after real answers, the model menu and Settings (21121a7788); 157,736 after the agents on this machine
-# (Coder's sessions and Claude Code's conversations in a sidebar, live ones marked, /goal, named models: #13332); about 6% room.
-chat-web 168000
+# (Coder's sessions and Claude Code's conversations in a sidebar, live ones marked, /goal, named models: #13332);
+# 187,421 with the editor's world on each turn, a hosted turn's typed plan of world tools and a world's card (the
+# world.turn.v1, world.plan.v1 and world.card.v1 codec and the JSON reader its plan needs: #13418); about 5% room.
+chat-web 198000
 # /nostr-chat, Nostr from scratch as a scripted chat on the same components (nostr-chat.coax): the frames set and the
 # library's signing, relay, NIP-44 and NIP-59 code it runs in the page: 309,585 bytes measured 2026-11-12 on a Linux build host;
 # 375,115 as a workbench with a stage beside the transcript (components/kit/stage.coax, six staged steps and their stylesheet); about 6% room.

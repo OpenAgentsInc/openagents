@@ -13,6 +13,8 @@
 //                                                the world and nothing is saved: the answer is the
 //                                                state as it stands with the batch as it would be taken
 //   GET  /api/worlds/<id>/events?lane=L&after=N  the lane's saved events after revision N, a line each
+//   GET  /api/worlds/<id>/card                   the world as a conversation shows it (world.card.v1): its name, the dev
+//                                                revision and how many things it holds
 //   GET  /api/worlds/<id>/content[?lane=dev]     the world's content tables (aethyr.content.v1): its own once a cell
 //                                                was edited (dev: as they are edited; else as published), else the build's: what a
 //                                                caller reads to aim an edit
@@ -322,6 +324,23 @@ static void world_content(const request *q, PGconn *db, const char *id) {
   free(out);
 }
 
+// The world's card: the dev lane's revision and how many things its document holds, counted by the
+// world's own code, in the card's bytes (world-policy.coax wr_card).
+static void world_card(const request *q, PGconn *db, const char *id) {
+  char out[400];
+  world_row w;
+  int64_t n = -1;
+  if (!strcmp(id, "splice") && wr_loads(cs(id)) && row_read(db, id, false, &w)) {
+    size_t dn = 0;
+    char *doc = doc_of("splice", w.exists ? w.dev_doc : "", &dn);
+    int64_t things = doc ? splice_world_things(csn(doc, dn), cs(w.exists && w.dev_tables ? w.dev_tables : "")) : -1;
+    if (things >= 0) n = wr_card(cs(id), w.exists ? w.dev_rev : 0, things, splice_world_name(), (coax_v_u8){(uint8_t *)out, sizeof out});
+    free(doc); row_free(&w);
+  }
+  if (n < 0) refuse_verdict(q->fd, wr_read(false, 0, 0));
+  else api_respond(q->fd, 200, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", out, (size_t)n);
+}
+
 bool worlds_route(const request *q) {
   static const char root[] = "/api/worlds/";
   size_t rl = sizeof root - 1;
@@ -331,11 +350,12 @@ bool worlds_route(const request *q) {
   while (rest[k] && rest[k] != '/' && k < sizeof id - 1) { id[k] = rest[k]; k++; }
   id[k] = 0;
   const char *tail = rest + k;
-  bool content = !strcmp(tail, "/content");
-  if ((!get && !post) || !wr_world_ok(cs(id)) || (*tail && strcmp(tail, "/events") && !content) || (*tail && !get)) { refuse(q->fd, 404, cs("not found"), -1); return true; }
+  bool content = !strcmp(tail, "/content"), card = !strcmp(tail, "/card");
+  if ((!get && !post) || !wr_world_ok(cs(id)) || (*tail && strcmp(tail, "/events") && !content && !card) || (*tail && !get)) { refuse(q->fd, 404, cs("not found"), -1); return true; }
   PGconn *db = api_db();
   if (!db) { refuse(q->fd, 503, cs("no database"), -1); return true; }
   if (content) world_content(q, db, id);
+  else if (card) world_card(q, db, id);
   else if (*tail) world_events(q, db, id);
   else if (get) world_get(q, db, id);
   else world_post(q, db, id);

@@ -131,6 +131,13 @@ wg_build :: (s: [] WebPage) {
   tr_close(t);
   tr_close(t);
 
+  sec = wg_section(t, "cards", "World card", "A world as a conversation shows it: its name, what it holds, and a link that opens its editor.");
+  wc := k_card(t, u, "card.world", "Splice");
+  wm := k_meta(t, "card.world.facts", "12 things · revision 7");
+  wo := k_go(t, "card.world.open", "Open the editor", "/worlds/splice?edit=agent");
+  tr_close(t);
+  tr_close(t);
+
   sec = wg_section(t, "docks", "Dock", "Panes round something that still shows: a strip of actions, a list, the picked thing's fields and facts, and a foot. The editor that ?edit opens over a world is built from it.");
   dock := k_dock(t, "dock", false);
   strip := k_pane(t, u, "dock.bar", DK_TOP, "");

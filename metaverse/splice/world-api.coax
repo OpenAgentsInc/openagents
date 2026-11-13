@@ -52,6 +52,22 @@ splice_world_tables :: (tables: string, out: [] u8) -> int #export_c #effects(al
   if !spw_tables_open(g[..], ct[..], tables) || tables.count > out.count { return -1; }
   return ct_copy(out, tables);
 }
+// The world as a conversation's card names it (world.card.v1, GitHub #13418): its name, and how many
+// things a document holds with the world's own tables ("": the ones the build shipped with). -1
+// for a document or tables this build does not read.
+splice_world_name :: () -> string #export_c #effects(all) { return "Splice"; }
+splice_world_things :: (doc: string, tables: string) -> int #export_c #effects(all) {
+  if tables.count > SPW_TABLES { return -1; }
+  g := [1] SpGame.[SpGame.{}]; x := [1] SpwWork.[SpwWork.{}];
+  g_reset(g[..]);
+  x[0].ct[0].text_n = ct_copy(x[0].ct[0].text[..], tables);
+  if tables.count > 0 && !spw_tables_open(g[..], x[0].ct[..], tables) { return -1; }
+  if spw_pieces(g[..], x[0].k[..], doc) != SPW_OK { return -1; }
+  w := slw_world(x[0].k[0].ws[..]);
+  count := 0;
+  for s: 0..<world_high(w) { if world_at(w, s) != ENTITY_NONE && world_i(w, WI_KIND, s) >= SK_PIECE { count += 1; } }
+  return count;
+}
 // What the API answers for a status: 200 saved; 400 no batch; 409 stale; 422 refused, with words;
 // 500 the stored document did not open or an answer did not fit.
 splice_world_status :: (status: int) -> int #export_c #effects(all) {
@@ -79,6 +95,7 @@ splice_world_words :: (status: int) -> string #export_c #effects(all) {
   s := splice_world_batch(empty, "", SPT_TWO, true, t[0].next[..], tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
   #assert s == SPB_OK && n[0] > 0 && n[1] > 0 && n[2] > 0 && n[3] == 0 && n[4] == 2 && n[5] == -1 && n[6] == 0;
   two := n[0];
+  #assert splice_world_name() == "Splice" && splice_world_things(empty, "") == 0 && splice_world_things(cast(string) t[0].next[0..<two], "") == 2 && splice_world_things("not a document", "") == -1 && splice_world_things(empty, "not tables") == -1;
   s = splice_world_batch(cast(string) t[0].next[0..<two], "", sc_edit_swap(SPT_TWO, "\"rev\":0", "\"rev\":2", t[0].back[..]), true, t[0].third[..], tb[..], t[0].did[..], t[0].inv[..], t[0].why[..], n[..]);
   #assert s == SPB_REFUSED && n[0] == 0 && n[5] == 0 && cast(string) t[0].why[0..<n[3]] == "inside the placed piece 0";
   // a cell edit answers the world's tables as they now are; given back, they are the ones the next batch and a page read

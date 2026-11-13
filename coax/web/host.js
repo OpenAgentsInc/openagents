@@ -3823,8 +3823,38 @@ function agentOpen() {
   agentAsked = true;
   import(`/coaxial/dom-host.js?app=${AGENT}&root=${AGENT_SLOT}`).catch((error) => { console.error(error); });
 }
+// What the shell last told the conversation of the world (world.turn.v1), and the two ways bytes go between
+// them (E9, #13418): the shell's word of the world to the conversation, so each turn carries the selection and
+// "here"; and a hosted turn's plan (world.plan.v1) from the conversation to the shell, which makes it a batch
+// of edits the page sends as its own. This host reads neither.
+let agentWorld = null, agentTold = null;
+function agentTell() {
+  const chat = globalThis.coaxialDoms?.[AGENT];
+  if (!chat || !agentWorld || agentTold === agentWorld) return;
+  chat.after ||= agentActs;
+  const cx = chat.exports(), most = Math.min(agentWorld.length, cx.dom_inbox_cap());
+  new Uint8Array(chat.memory().buffer, cx.dom_inbox(chat.state()), most).set(agentWorld.subarray(0, most));
+  cx.dom_event(chat.state(), 8, 0, most);
+  agentTold = agentWorld;
+  chat.ask();
+}
+function agentActs() {
+  const chat = globalThis.coaxialDoms?.[AGENT], shell = globalThis.coaxialDoms?.[EDITOR];
+  if (!chat || !shell) return;
+  const cx = chat.exports(), cs = chat.state();
+  for (let kind; (kind = cx.dom_act_kind(cs)); ) {
+    const body = new Uint8Array(chat.memory().buffer, cx.dom_act(cs), cx.dom_act_len(cs)).slice();
+    cx.dom_act_done(cs);
+    if (kind !== 8) continue;
+    const sx = shell.exports(), most = Math.min(body.length, sx.dom_inbox_cap());
+    new Uint8Array(shell.memory().buffer, sx.dom_inbox(shell.state()), most).set(body.subarray(0, most));
+    sx.dom_event(shell.state(), 8, 0, most);
+    shell.ask();
+    editorActs();
+  }
+}
 function editorCarry(shell, x) {
-  agentOpen();
+  agentOpen(); agentTell();
   shell.after ||= () => { editorActs(); agentOpen(); after(false); };
   shell.still = agentMode;
   // ?edit=agent: the page was opened for the agent (a world's card on /chat), so the foot is open from the start
@@ -3847,7 +3877,8 @@ function editorActs() {
   for (let kind; (kind = sx.dom_act_kind(st)); ) {
     const body = new Uint8Array(shell.memory().buffer, sx.dom_act(st), sx.dom_act_len(st)).slice();
     sx.dom_act_done(st);
-    send(kind, body);
+    if (kind === 524) { agentWorld = body; agentTell(); }   // for the conversation in the foot, not the page
+    else send(kind, body);
   }
 }
 

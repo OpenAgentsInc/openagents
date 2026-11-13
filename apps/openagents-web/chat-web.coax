@@ -50,6 +50,7 @@
 #load "../../coax/lib/gateway/types.coax";   // the request and the stream's events
 #load "../../coax/lib/gateway/chat.coax";    // Chat Completions: the request's body, a chunk
 #load "../../coax/lib/gateway/sse.coax";     // server-sent events
+#load "../../coax/lib/agent/world/turn.coax"; // the world the editor has open, a hosted turn's plan for it, a world's card
 
 CW_INBOX :: 16384;     // a field's text, or a piece of the answer's stream, from the host
 CW_DRAFT :: 16384;     // a message's most, in bytes: what is typed past it is not taken
@@ -69,7 +70,7 @@ CW_TOOL_MOST :: 4000;  // one run of tool calls, at most
 CW_KEY :: 400;         // a pasted key's most
 CW_TOOLS :: 2048;      // the running turn's tools, as lines
 CW_META :: 64;         // the line under an answer
-CW_YOU :: 0; CW_AGENT :: 1; CW_TOOL :: 2;   // a message is the person's, an answer, or a run of tool calls (a line each)
+CW_YOU :: 0; CW_AGENT :: 1; CW_TOOL :: 2; CW_CARD :: 3;   // a message is the person's, an answer, a run of tool calls (a line each), or a world's card (world.card.v1)
 CW_CHAT :: 0; CW_SETTINGS :: 1;
 // The models, Gemini's first: a Claude one is offered only while a Claude account is connected.
 // The models: Google's, Claude's on the connected account (the hosted agent), and the agents on this
@@ -101,6 +102,9 @@ CW_LM_IDS :: [20] string.["claude-opus-5-5", "claude-fable-5-2", "claude-sonnet-
   "gemini-3.8-flash", "gemini-4-argon", "gemini-4-carbon", "", "",   "gemini-3.8-flash", "gemini-4-argon", "gemini-4-carbon", "", ""];
 CF_NONE :: 0; CF_ACCOUNT :: 1; CF_KEY :: 2; CF_UNKEY :: 3; CF_COMPLETE :: 4; CF_SEND :: 5; CF_TURN :: 6; CF_STOP :: 7;
 CF_LIST :: 8; CF_LOG :: 9; CF_RUN :: 10; CF_LSEND :: 11; CF_LSTOP :: 12; CF_CLAUDE :: 13; CF_IMPORT :: 14;
+CF_PLAN :: 15;          // a hosted turn in the editor: the model's typed answer, talk or a plan of world tools (turn.coax wp_schema)
+CF_CARD :: 16;          // a world's card, read from the world's own route
+CW_PLAN_ASK :: 24576;   // bytes of the conversation sent with a turn in the editor (the world goes with it)
 CW_CL :: 8;            // Claude Code conversations listed beside the chat
 CW_CL_EVERY :: 5.0;    // seconds between reads of them
 CW_LOCAL_WAIT :: 12.0; // seconds a request to Coder on this machine may go unanswered before it is given up, so one that hangs can't stop the page
@@ -114,6 +118,10 @@ CW_SYSTEM :: "You are OpenAgents, answering in the chat on openagents.com. Speak
 // What the host sends (coax/web/dom-host.js): a press, a field's text, Enter in a field,
 // a piece of the answer's stream (the inbox holds it), and the stream's end (the slot is its HTTP status, 0 for none).
 CW_CLICK :: 1; CW_INPUT :: 2; CW_SUBMIT :: 3; CW_PIECE :: 4; CW_END :: 5;
+// From the page this conversation sits in, when that is the editor (coax/web/host.js): the world it has open, as a
+// world.turn.v1 in the inbox. Every turn after carries it.
+CW_WORLD :: 8;
+CW_PLANNED :: 8;       // an action for the page that opened this conversation: a world.plan.v1 for its editor
 
 ChatWeb :: struct {
   ready: bool; time: f32; dirty: bool; animating: bool;
@@ -165,6 +173,10 @@ ChatWeb :: struct {
   log_miss: int;                     // reads in a row that found no log
   list_at: f32; log_at: f32;
   scratch: [CW_RESP] u8;
+  world: [1] WorldTurn;              // the world the editor round this conversation has open, as last told; none on /chat
+  wwire: [WT_BYTES] u8; wwire_n: int;   // its bytes, as they go with a turn
+  planned: [WP_BYTES] u8; planned_n: int;   // a hosted turn's plan, until the page has taken it to its editor
+  card_due: [WT_WORLD] u8; card_due_n: int;   // a world an agent's tool named: its card is read when the page is free
   live: bool;                        // the last message is an answer still coming
   status: int;                       // the stream's HTTP status once a piece has come
   cut: bool;                         // the answer passed CW_ANSWER: the rest was not kept
@@ -356,6 +368,18 @@ cw_transcript :: (s: [] ChatWeb) {
     id := tr_join(buf[..], "m.", number);
     text := cw_text(s, k);
     if s[0].who[k] == CW_YOU { m := k_user(t, u, id, text); continue; }
+    if s[0].who[k] == CW_CARD {
+      card: [1] WorldCard; scratch: [WC_BYTES] u8; idg: [UI_ID] u8; idh: [UI_ID] u8; href: [WT_WORLD + 32] u8; facts: [64] u8; num: [24] u8;
+      if !wc_read(card[..], text, scratch[..]) { continue; }
+      c := k_card(t, u, id, cast(string) card[0].name[0..<card[0].name_n]);
+      fn := cw_put(facts[..], 0, tr_join(num[..], "", card[0].things)); fn = cw_put(facts[..], fn, ifx card[0].things == 1 then " thing · revision " else " things · revision ");
+      fn = cw_put(facts[..], fn, tr_join(num[..], "", card[0].rev));
+      fm := k_meta(t, tr_cat(idg[..], id, ".facts"), cast(string) facts[0..<fn]);
+      hn := cw_put(href[..], 0, "/worlds/"); hn = cw_put(href[..], hn, cast(string) card[0].world[0..<card[0].world_n]); hn = cw_put(href[..], hn, "?edit=agent");
+      go := k_go(t, tr_cat(idh[..], id, ".open"), "Open the editor", cast(string) href[0..<hn]);
+      tr_close(t);
+      continue;
+    }
     if s[0].who[k] == CW_TOOL {
       // a run of tool calls, a line each
       box := tr_open(t, id, TG_DIV, "tools");
@@ -418,6 +442,19 @@ cw_build :: (s: [] ChatWeb) {
   if s[0].local == 1 { cw_side(s); }
   if s[0].view == CW_SETTINGS { cw_settings_card(s); }
   else if s[0].count > 0 || s[0].lrun || s[0].error_n > 0 { cw_transcript(s); }   // an error shows in a new chat too
+  if s[0].wwire_n > 0 && s[0].view == CW_CHAT {
+    // in the editor: what "this" and "here" mean to the agent now
+    w := s[0].world[..]; seen: [160] u8; num: [24] u8;
+    at := wt_thing_at(w, w[0].sel);
+    n := cw_put(seen[..], 0, "The agent sees this world");
+    if at >= 0 {
+      name := wt_kind_name(w, w[0].t_kind[at]);
+      n = cw_put(seen[..], n, ", \"this\" is "); n = cw_put(seen[..], n, ifx name.count > 0 then name else "thing"); n = cw_put(seen[..], n, " "); n = cw_put(seen[..], n, tr_join(num[..], "", w[0].sel));
+    }
+    if w[0].here { n = cw_put(seen[..], n, ifx at >= 0 then " and \"here\" is the spot you tapped" else ", and \"here\" is the spot you tapped"); }
+    n = cw_put(seen[..], n, ".");
+    sm := k_meta(t, "world.seen", cast(string) seen[0..<n]);
+  }
   f := k_composer_begin(t, u, "composer", "Ask anything");
   tr_attr(t, f, AT_FOCUS, "");
   gear := k_icon_button(t, "settings", IC_SETTINGS, ifx s[0].view == CW_SETTINGS then "Back to the chat" else "Settings");
@@ -603,7 +640,15 @@ cw_log_read :: (s: [] ChatWeb, body: string) {
       if s[0].echo { s[0].echo = false; } else { cw_add(s, cl_str(ar[..], line, "text"), CW_YOU, 0); }
       s[0].lrun = true;
     } else if kind == "session" { s[0].lrun = true; }
-    else if kind == "tool" { cw_tool(s, cl_str(ar[..], line, "label")); }
+    else if kind == "tool" {
+      cw_tool(s, cl_str(ar[..], line, "label"));
+      // a realm world tool names its world (the tool's own argument): its card follows the run, on a page with no editor round it
+      if s[0].wwire_n == 0 && cw_world_tool(cl_str(ar[..], line, "name")) {
+        slug := cl_str(ar[..], line, "input.slug");
+        if slug.count == 0 { slug = cl_str(ar[..], cl_str(ar[..], line, "input"), "slug"); }
+        if wt_world_ok(slug) { s[0].card_due_n = cw_put(s[0].card_due[..], 0, slug); }
+      }
+    }
     else if kind == "diff" {
       edit: [CW_TOOL_LINE] u8;
       n := cw_put(edit[..], 0, "Edit "); n = cw_put(edit[..], n, cl_str(ar[..], line, "path"));
@@ -622,10 +667,22 @@ cw_log_read :: (s: [] ChatWeb, body: string) {
     }
   }
 }
+// A message as an agent that works by itself is told it (one on this machine, or the hosted agent). In the
+// editor the world, the selection and the point last tapped follow the person's words; on /chat it is the words.
+cw_told :: (s: [] ChatWeb, typed: string, out: [] u8) -> string {
+  n := cw_put(out, 0, typed);
+  if s[0].wwire_n > 0 {
+    words: [WT_WORDS] u8;
+    n = cw_put(out, n, "\n\n"); n = cw_put(out, n, wt_words(s[0].world[..], words[..]));
+  }
+  return cast(string) out[0..<n];
+}
 // A message for an agent on this machine: a new Coder session, or the shown session's next turn.
-cw_local_send :: (s: [] ChatWeb, model: int, text: string) -> bool {
+cw_local_send :: (s: [] ChatWeb, model: int, typed: string) -> bool {
   ids := CW_MODEL_IDS;
   body: [CW_REQUEST] u8;
+  told: [CW_DRAFT + WT_WORDS + 2] u8;
+  text := cw_told(s, typed, told[..]);
   if s[0].sel_n > 0 {
     n := json_raw(body[..], 0, "{\"id\":"); n = json_write_string(body[..], n, cw_sel(s));
     n = json_raw(body[..], n, ",\"message\":"); n = json_write_string(body[..], n, text); n = json_raw(body[..], n, "}");
@@ -649,16 +706,25 @@ cw_index :: (id: string, part: string) -> int {
 // A Gemini message: the request for the conversation as it stands, the newest messages that fit CW_ASK,
 // oldest of them first, to the inference door.
 cw_complete :: (s: [] ChatWeb, model: int) -> bool {
+  in_world := s[0].wwire_n > 0;
   first := s[0].count; bytes := 0;
-  while first > 0 && bytes + s[0].len[first - 1] <= CW_ASK { first -= 1; bytes += s[0].len[first]; }
+  while first > 0 && bytes + s[0].len[first - 1] <= (ifx in_world then CW_PLAN_ASK else CW_ASK) { first -= 1; bytes += s[0].len[first]; }
   if first == s[0].count && s[0].count > 0 { first = s[0].count - 1; }   // the message itself always goes
   messages: [CW_MESSAGES] GwMessage; n := 0;
   for k: first..<s[0].count {
-    if s[0].len[k] == 0 || s[0].who[k] == CW_TOOL { continue; }   // an answer that never came, or tool calls
+    if s[0].len[k] == 0 || s[0].who[k] == CW_TOOL || s[0].who[k] == CW_CARD { continue; }   // an answer that never came, tool calls, or a card
     messages[n] = GwMessage.{role = ifx s[0].who[k] == CW_AGENT then "assistant" else "user", text = cw_text(s, k)};
     n += 1;
   }
   ids := CW_MODEL_IDS; names := CW_MODEL_NAMES;
+  if in_world {
+    // a turn in the editor: the model answers under the world tools' schema, talk or a plan (turn.coax). Which
+    // it is, and which tools, is its typed answer; the answer comes whole.
+    prompt: [WP_PROMPT] u8; scratch: [WT_BYTES] u8; schema: [1024] u8; body: [CW_REQUEST] u8;
+    req := GwRequest.{model = ids[model], system = wp_system(s[0].world[..], scratch[..], prompt[..]), messages = messages[0..<n], schema = wp_schema(schema[..]), schema_name = "world_turn", effort = "low", stream = false};
+    bn := gw_chat_body(req, 0, body[..]);
+    return bn > 0 && req.system.count > 0 && req.schema.count > 0 && cw_go(s, CF_PLAN, "/api/chat/complete", cast(string) body[0..<bn]);
+  }
   system: [1024] u8;
   sn := cw_put(system[..], 0, CW_SYSTEM);
   sn = cw_put(system[..], sn, names[model]); sn = cw_put(system[..], sn, " ("); sn = cw_put(system[..], sn, ids[model]);
@@ -671,10 +737,10 @@ cw_complete :: (s: [] ChatWeb, model: int) -> bool {
 // A Claude message: a turn of the hosted agent, in this visit's conversation there (a new one the first time).
 cw_turn_send :: (s: [] ChatWeb, model: int, text: string) -> bool {
   ids := CW_MODEL_IDS;
-  body: [CW_REQUEST] u8; num: [24] u8;
+  body: [CW_REQUEST] u8; num: [24] u8; told: [CW_DRAFT + WT_WORDS + 2] u8;
   n := json_raw(body[..], 0, "{");
   if s[0].conv > 0 { n = json_raw(body[..], n, "\"c\":\""); n = json_raw(body[..], n, tr_join(num[..], "", s[0].conv)); n = json_raw(body[..], n, "\","); }
-  n = json_raw(body[..], n, "\"text\":"); n = json_write_string(body[..], n, text);
+  n = json_raw(body[..], n, "\"text\":"); n = json_write_string(body[..], n, cw_told(s, text, told[..]));
   n = json_raw(body[..], n, ",\"model\":"); n = json_write_string(body[..], n, ids[model]);
   n = json_raw(body[..], n, "}");
   return cw_go(s, CF_SEND, "/api/chat/send", cast(string) body[0..<n]);
@@ -723,7 +789,7 @@ cw_send :: (s: [] ChatWeb) {
 // and ends when the runner says it has.
 cw_stop :: (s: [] ChatWeb) {
   if !s[0].live || s[0].stopping { return; }
-  if s[0].flight == CF_COMPLETE {
+  if s[0].flight == CF_COMPLETE || s[0].flight == CF_PLAN {
     s[0].stop = true; s[0].ask = false; s[0].flight = CF_NONE;
     s[0].live = false;
     return;
@@ -828,6 +894,46 @@ cw_turn_read :: (s: [] ChatWeb, body: string) {
   if s[0].cut { cw_say(s, "The answer was longer than this page keeps, so its end is missing."); }
   s[0].live = false; s[0].stopping = false; s[0].turn = 0; s[0].working_n = 0; s[0].tools_n = 0;
 }
+// A hosted turn's typed answer, in the editor: talk is the answer; an edit's steps show as the tools they are,
+// go to the editor as a plan, and what it says is the answer. The editor sends the edits as the person's own, so
+// the world's rules answer them there, in words.
+cw_plan_read :: (s: [] ChatWeb, body: string) {
+  scratch: [CW_ANSWER] u8; ar: [1] ClArena; ar[0].buf = scratch[..];
+  ev: [8] GwEvent; plan: [1] WorldPlan;
+  n := gw_chat_whole(ar[..], body, ev[..]);
+  reply := "";
+  for k: 0..<n {
+    if ev[k].kind == GW_EV_TEXT { reply = ev[k].text; }
+    else if ev[k].kind == GW_EV_REFUSED { cw_say(s, ifx ev[k].reason.count > 0 then ev[k].reason else "The model stopped before it finished."); return; }
+  }
+  if !wp_reply(plan[..], s[0].world[..], reply) {
+    cw_say(s, ifx plan[0].say_n > 0 && plan[0].say_n < CW_ERROR then cast(string) plan[0].say[0..<plan[0].say_n] else "The model's answer could not be read. Send it again.");
+    return;
+  }
+  if plan[0].edit {
+    if s[0].planned_n > 0 { cw_say(s, "The editor is still taking the last change. Send it again."); return; }
+    s[0].planned_n = wp_write(plan[..], s[0].planned[..]).count;
+    if s[0].planned_n == 0 { cw_say(s, "The model's answer could not be read. Send it again."); return; }
+    // the steps go above the answer, as a run of tool calls
+    k := s[0].count - 1; meta := s[0].meta[k]; meta_n := s[0].meta_n[k];
+    s[0].count = k; s[0].total -= 1; s[0].pool_n = s[0].at[k];
+    line: [WP_LINE] u8;
+    for i: 0..<plan[0].n { cw_tool(s, wp_line(plan[0].steps[i], s[0].world[..], line[..])); }
+    cw_add(s, "", CW_AGENT, CW_ANSWER);
+    k = s[0].count - 1; s[0].meta[k] = meta; s[0].meta_n[k] = meta_n;
+  }
+  s[0].live = true;
+  cw_more(s, cast(string) plan[0].say[0..<plan[0].say_n]);
+  s[0].live = false;
+}
+// A tool of the realm world family, by its own name ("realm_world", "realm_world_place", with or without the
+// prefix an agent gives a server's tools): the typed name the session's log carries, not words in a message.
+cw_world_tool :: (name: string) -> bool {
+  at := 0;
+  for i: 0..<name.count { if i + 1 < name.count && name[i] == '_' && name[i + 1] == '_' { at = i + 2; } }
+  tail := cast(string) name[at..<name.count];
+  return tail == "realm_world" || (tail.count > 12 && cast(string) tail[0..<12] == "realm_world_");
+}
 // A request's end.
 cw_end :: (s: [] ChatWeb, status: int) {
   kind := s[0].flight;
@@ -851,6 +957,19 @@ cw_end :: (s: [] ChatWeb, status: int) {
     if status != 200 { cw_fail(s, status); }
     else if s[0].cut { cw_say(s, "The answer was longer than this page keeps, so its end is missing."); }
     else if !got && s[0].error_n == 0 { cw_say(s, "The model sent no answer."); }
+  } else if kind == CF_PLAN {
+    if !s[0].live { return; }
+    s[0].live = false;
+    if status != 200 { cw_fail(s, status); return; }
+    cw_plan_read(s, body);
+  } else if kind == CF_CARD {
+    // a card that can't be read is not shown: the agent's own words still say what it did
+    card: [1] WorldCard; scratch: [WC_BYTES] u8;
+    if status == 200 && wc_read(card[..], body, scratch[..]) {
+      k := s[0].count - 1;
+      if k >= 0 && s[0].who[k] == CW_CARD { s[0].count = k; s[0].total -= 1; s[0].pool_n = s[0].at[k]; }   // the card it follows is the same world, a moment older
+      cw_add(s, body, CW_CARD, 0);
+    }
   } else if kind == CF_SEND {
     if status != 200 { cw_fail(s, status); return; }
     c := cl_int(body, "c"); turn := cl_int(body, "turn");
@@ -906,7 +1025,7 @@ cw_end :: (s: [] ChatWeb, status: int) {
 }
 // What a frame sends for a Claude turn at work: Stop once, then a read each CW_POLL seconds.
 cw_tick :: (s: [] ChatWeb) {
-  if s[0].flight >= CF_LIST && s[0].time - s[0].flight_at > CW_LOCAL_WAIT {
+  if s[0].flight >= CF_LIST && s[0].flight <= CF_IMPORT && s[0].time - s[0].flight_at > CW_LOCAL_WAIT {
     // Coder didn't answer: the request is ended, and what it was for is asked again in its turn
     if s[0].flight == CF_LOG || s[0].flight == CF_IMPORT { s[0].log_due = s[0].sel_n > 0; }
     if s[0].flight == CF_RUN || s[0].flight == CF_LSEND { s[0].lrun = false; s[0].echo = false; cw_say(s, "Coder on this computer didn't answer. Send it again."); }
@@ -914,6 +1033,12 @@ cw_tick :: (s: [] ChatWeb) {
     return;
   }
   if s[0].flight != CF_NONE { return; }
+  if s[0].card_due_n > 0 && !s[0].live {
+    url: [96] u8;
+    n := cw_put(url[..], 0, "/api/worlds/"); n = cw_put(url[..], n, cast(string) s[0].card_due[0..<s[0].card_due_n]); n = cw_put(url[..], n, "/card");
+    if cw_go(s, CF_CARD, cast(string) url[0..<n], "") { s[0].card_due_n = 0; }
+    return;
+  }
   if s[0].local == 1 && !s[0].live {
     // Coder on this machine: Stop once, the shown session's log while it runs, and the sessions now and then
     url: [96] u8; num: [24] u8;
@@ -1008,6 +1133,14 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     s[0].dirty = true; return;
   }
   if kind == CW_END { cw_end(s, slot); s[0].dirty = true; return; }
+  if kind == CW_WORLD {
+    // bytes that are not a turn mean no world: the next turn goes without one
+    n := ifx length < 0 || length > WT_BYTES then 0 else length;
+    scratch: [WT_BYTES] u8;
+    for i: 0..<n { s[0].wwire[i] = s[0].inbox[i]; }
+    s[0].wwire_n = ifx wt_read(s[0].world[..], cast(string) s[0].wwire[0..<n], scratch[..]) then n else 0;
+    s[0].dirty = true; return;
+  }
   id := dm_slot_id(s[0].dom[..], slot);
   if kind == CW_INPUT && id == "composer" {
     n := ifx length < 0 then 0 else ifx length > CW_DRAFT then CW_DRAFT else length;
@@ -1110,6 +1243,11 @@ coaxial_chatweb_asked :: (s: [] ChatWeb) #export_c #effects(all) {
   if s[0].flight != CF_COMPLETE { for i: 0..<s[0].request_n { s[0].request[i] = 0; } s[0].request_n = 0; }
   s[0].ask = false;
 }
+// An action for the page that opened this conversation (dom-host's dom_act): its kind (0: none), its bytes at
+// `planned`, and its taking.
+coaxial_chatweb_act_kind :: (s: [] ChatWeb) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].planned_n > 0 then CW_PLANNED else 0; }
+coaxial_chatweb_act_len :: (s: [] ChatWeb) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].planned_n else 0; }
+coaxial_chatweb_act_done :: (s: [] ChatWeb) #export_c #effects(all) { if s.count > 0 { s[0].planned_n = 0; } }
 // Whether the host is to end the stream, read once.
 coaxial_chatweb_stop :: (s: [] ChatWeb) -> bool #export_c #effects(all) {
   if s.count < 1 || !s[0].stop { return false; }
@@ -1689,4 +1827,117 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   cw_test_enter(s, "composer");
   if cw_test_door(s) != "/local/run" { cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/claude" then CW_T_CLAUDE else CW_T_SESSIONS); }
   #assert cw_test_body(s) == "{\"task\":\"go\",\"engine\":\"claude\",\"model\":\"claude-fable-5-2\"}";
+}
+
+// ---- in the editor (E9, #13418): the world goes with each turn, and a hosted turn may plan
+
+CW_T_WORLD :: "world.turn.v1 splice dev 7 2\nhere 420 -75\nk 1001 Cargo crate\nk 1002 Parked rover\ne 1 1001 350 -1200 90\ne 2 1002 -40 600 -179\n";
+cw_test_world :: (s: [] ChatWeb, wire: string) {
+  for i: 0..<wire.count { s[0].inbox[i] = wire[i]; }
+  coaxial_chatweb_event(s, CW_WORLD, 0, wire.count);
+}
+#test "the editor tells the conversation its world, and bytes that are not a world mean none" {
+  h: [1] CwTest; s := h[0].s[..];
+  cw_test_open(s, "{\"claude\":null}");
+  #assert s[0].wwire_n == 0;
+  cw_test_world(s, CW_T_WORLD);
+  #assert s[0].wwire_n == CW_T_WORLD.count && s[0].world[0].sel == 2 && s[0].world[0].here && s[0].world[0].nt == 2;
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_text_of(s[0].tree[..], tr_find(s[0].tree[..], "world.seen")) == "The agent sees this world, \"this\" is Parked rover 2 and \"here\" is the spot you tapped.";
+  cw_test_world(s, "world.turn.v1 splice dev 7 0\n");
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_text_of(s[0].tree[..], tr_find(s[0].tree[..], "world.seen")) == "The agent sees this world.";
+  cw_test_world(s, "no world");
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert s[0].wwire_n == 0 && tr_find(s[0].tree[..], "world.seen") < 0;
+}
+#test "in the editor a message to an agent on this machine is followed by the world, the selection and the point tapped; the transcript shows what was typed" {
+  ts: [1] CwTest; s := ts[0].s[..];
+  cw_test_local(s, CW_T_SESSIONS);
+  cw_test_world(s, CW_T_WORLD);
+  s[0].model = 7;
+  cw_test_type(s, "composer", "move this here");
+  cw_test_enter(s, "composer");
+  #assert cw_test_door(s) == "/local/run" && cw_test_has(cw_test_body(s), "{\"task\":\"move this here\\n\\n[The editor is open on the world splice, dev lane, revision 7. Selected: thing 2, Parked rover, at x -40 z 600 cm. Here, the point last tapped: x 420 z -75 cm.");
+  #assert s[0].count == 1 && cw_text(s, 0) == "move this here";
+}
+#test "in the editor a hosted agent's turn is told the world after the message" {
+  h: [1] CwTest; s := h[0].s[..];
+  cw_test_open(s, "{\"claude\":{\"kind\":\"oauth\",\"last4\":\"wxyz\",\"expired\":false}}");
+  cw_test_world(s, "world.turn.v1 splice live 3 0\n");
+  s[0].model = 5;
+  cw_test_type(s, "composer", "what is here?");
+  cw_test_enter(s, "composer");
+  #assert cw_test_door(s) == "/api/chat/send" && cw_test_body(s) == "{\"text\":\"what is here?\\n\\n[The editor is open on the world splice, live lane, revision 3. Nothing is selected. Read and change it with the realm world tools.]\",\"model\":\"claude-opus-5-5\"}";
+  #assert cw_text(s, 0) == "what is here?";
+}
+cw_test_planned :: (s: [] ChatWeb, content: string) {
+  body: [4096] u8;
+  n := json_raw(body[..], 0, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":"); n = json_write_string(body[..], n, content);
+  n = json_raw(body[..], n, "},\"finish_reason\":\"stop\"}]}");
+  cw_test_answer(s, 200, cast(string) body[0..<n]);
+}
+#test "in the editor a Gemini turn answers under the world tools' schema: talk is the answer; an edit shows its steps, hands the editor a plan and says what it did" {
+  h: [1] CwTest; s := h[0].s[..];
+  cw_test_open(s, "{\"claude\":null}");
+  cw_test_world(s, CW_T_WORLD);
+  cw_test_type(s, "composer", "what stands here?");
+  cw_test_enter(s, "composer");
+  body := cw_test_body(s);
+  #assert s[0].flight == CF_PLAN && cw_test_door(s) == "/api/chat/complete" && s[0].live;
+  #assert cw_test_has(body, "\"json_schema\":{\"name\":\"world_turn\"") && cw_test_has(body, "\"enum\":[\"place\",\"move\",\"turn\",\"size\",\"remove\",\"undo\",\"redo\"]") && cw_test_has(body, "\"stream\":false");
+  #assert cw_test_has(body, "- place: a new thing") && cw_test_has(body, "world.turn.v1 splice dev 7 2\\nhere 420 -75\\nk 1001 Cargo crate") && cw_test_has(body, "what stands here?");
+  cw_test_planned(s, "{\"route\":\"talk\",\"say\":\"A crate and a rover.\",\"steps\":[]}");
+  #assert !s[0].live && s[0].count == 2 && cw_text(s, 1) == "A crate and a rover." && coaxial_chatweb_act_kind(s) == 0 && s[0].error_n == 0;
+  cw_test_type(s, "composer", "put a crate here and take the rover away");
+  cw_test_enter(s, "composer");
+  cw_test_planned(s, "{\"route\":\"edit\",\"say\":\"We put a crate there and took the rover away.\",\"steps\":[{\"tool\":\"place\",\"kind\":1001,\"id\":0,\"x\":420,\"z\":-75,\"yaw\":0,\"percent\":0},{\"tool\":\"remove\",\"kind\":0,\"id\":2,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}");
+  #assert !s[0].live && s[0].count == 5 && s[0].who[3] == CW_TOOL && cw_text(s, 3) == "Place Cargo crate at 420, -75\nRemove Parked rover 2";
+  #assert s[0].who[4] == CW_AGENT && cw_text(s, 4) == "We put a crate there and took the rover away." && cast(string) s[0].meta[4][0..<s[0].meta_n[4]] == "Gemini 3.8 Flash";
+  #assert coaxial_chatweb_act_kind(s) == CW_PLANNED && cast(string) s[0].planned[0..<coaxial_chatweb_act_len(s)] == "world.plan.v1 splice 7\nplace 1001 420 -75 0\nremove 2\n";
+  coaxial_chatweb_act_done(s);
+  #assert coaxial_chatweb_act_kind(s) == 0;
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert tr_text_of(t, tr_find(t, "m.3.t.1")) == "Remove Parked rover 2";
+  // a plan that names a thing the world does not have is said, and nothing goes to the editor
+  cw_test_type(s, "composer", "remove the tower");
+  cw_test_enter(s, "composer");
+  cw_test_planned(s, "{\"route\":\"edit\",\"say\":\"Done.\",\"steps\":[{\"tool\":\"remove\",\"kind\":0,\"id\":9,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}");
+  #assert !s[0].live && coaxial_chatweb_act_kind(s) == 0 && cw_test_has(cast(string) s[0].error[0..<s[0].error_n], "a thing that is not in this world");
+}
+#test "on /chat an agent's realm world tool brings the world's card after its run: the name, what it holds and a link to its editor" {
+  ts: [1] CwTest; s := ts[0].s[..];
+  #assert cw_world_tool("realm_world") && cw_world_tool("mcp__coder__realm_world_place") && !cw_world_tool("realm_worlds") && !cw_world_tool("realm_publish") && !cw_world_tool("");
+  cw_test_local(s, CW_T_SESSIONS);
+  s[0].model = 7;
+  cw_test_type(s, "composer", "add a crate to splice");
+  cw_test_enter(s, "composer");
+  cw_test_answer(s, 200, "20261112-050000-001\n");
+  b := coaxial_chatweb_frame(s, 0.016, true);
+  for i: 0..<14 {
+    if coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/log?id=20261112-050000-001&after=0" { break; }
+    if coaxial_chatweb_asking(s) { cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/sessions" then CW_T_SESSIONS else CW_T_CLAUDE); }
+    b = coaxial_chatweb_frame(s, 0.1, true);
+  }
+  #assert cw_test_door(s) == "/local/log?id=20261112-050000-001&after=0";
+  cw_test_answer(s, 200, "{\"next\":300,\"size\":300}\n{\"kind\":\"user\",\"text\":\"add a crate to splice\"}\n{\"kind\":\"tool\",\"label\":\"realm_world_place(splice)\",\"name\":\"mcp__coder__realm_world_place\",\"input\":{\"slug\":\"splice\",\"kind\":1001}}\n{\"kind\":\"reply\",\"text\":\"Placed.\"}\n{\"kind\":\"end\",\"ending\":\"finished\",\"ms\":5,\"steps\":2}\n");
+  #assert cast(string) s[0].card_due[0..<s[0].card_due_n] == "splice";
+  b = coaxial_chatweb_frame(s, 0.016, true);
+  #assert coaxial_chatweb_asking(s) && cw_test_door(s) == "/api/worlds/splice/card" && coaxial_chatweb_ask(s) == 0;
+  cw_test_answer(s, 200, "world.card.v1 splice 8 13\nname Splice\n");
+  k := s[0].count - 1;
+  #assert s[0].who[k] == CW_CARD && s[0].card_due_n == 0;
+  b = coaxial_chatweb_frame(s, 0.016, true);
+  t := s[0].tree[..]; ida: [UI_ID] u8; idb: [UI_ID] u8;
+  id := tr_join(ida[..], "m.", s[0].total - 1);
+  #assert tr_text_of(t, tr_find(t, tr_cat(idb[..], id, ".h"))) == "Splice" && tr_text_of(t, tr_find(t, tr_cat(idb[..], id, ".facts"))) == "13 things · revision 8";
+  go := tr_find(t, tr_cat(idb[..], id, ".open"));
+  #assert t[0].nodes[go].tag == TG_A && tr_attr_of(t, go, AT_HREF) == "/worlds/splice?edit=agent" && tr_text_of(t, go) == "Open the editor";
+  // an answer that is not a card shows nothing
+  s[0].card_due_n = cw_put(s[0].card_due[..], 0, "splice");
+  for i: 0..<40 { b = coaxial_chatweb_frame(s, 0.1, true); if coaxial_chatweb_asking(s) { if cw_test_door(s) == "/api/worlds/splice/card" { break; } cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/sessions" then CW_T_SESSIONS else CW_T_CLAUDE); } }
+  count := s[0].count;
+  cw_test_answer(s, 404, "{\"error\":\"not found\"}");
+  #assert s[0].count == count;
 }

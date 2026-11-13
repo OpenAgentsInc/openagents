@@ -1,0 +1,102 @@
+// Checks proto/world/turn-v1.json and proto/world/card-v1.json against turn.coax, the one codec
+// of what a turn knows of a world, a hosted turn's plan and a world's card (GitHub #13418): each
+// pinned body reads as what the profile says of it and writes back the same bytes; each rejected
+// body does not; the model's pinned answer becomes the pinned plan; the limits and the tools are
+// the module's; the profile names itself, its version and this check.
+// Usage: coax/web/tool.sh coax/lib/agent/world/turn-profile.coax proto/world/turn-v1.json
+//        coax/web/tool.sh coax/lib/agent/world/turn-profile.coax proto/world/card-v1.json
+#import "Basic";
+#load "turn.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/fs.coax";
+
+WTP_CHECK :: "coax/web/tool.sh coax/lib/agent/world/turn-profile.coax proto/world/";
+WtpWork :: struct { t: [1] WorldTurn; p: [1] WorldPlan; c: [1] WorldCard; wire: [WT_BYTES] u8; out: [WT_BYTES] u8; scratch: [WT_BYTES] u8; words: [WT_BYTES] u8; nodes: [1024] JvNode; }
+wtp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+wtp_lim :: (d: Jv, name: string) -> int { return jv_int(d, jv_get(d, jv_get(d, 0, "limits"), name), -1); }
+// Every body of a list is refused by the reader `which` names: 0 a turn, 1 a plan, 2 a card, 3 a model's answer.
+wtp_rejects :: (d: Jv, list: int, which: int, w: [] WtpWork) -> bool {
+  if jv_kind(d, list) != JV_ARRAY || jv_len(d, list) < 5 { return false; }
+  for i: 0..<jv_len(d, list) {
+    n := jv_str(d, jv_at(d, list, i), w[0].wire[..]);
+    if n < 0 { return false; }
+    body := cast(string) w[0].wire[0..<n];
+    if which == 0 && wt_read(w[0].t[..], body, w[0].scratch[..]) { return false; }
+    if which == 1 && wp_read(w[0].p[..], body, w[0].scratch[..]) { return false; }
+    if which == 2 && wc_read(w[0].c[..], body, w[0].scratch[..]) { return false; }
+    if which == 3 && wp_reply(w[0].p[..], w[0].t[..], body) { return false; }
+  }
+  return true;
+}
+wtp_turn :: (d: Jv, w: [] WtpWork) -> bool {
+  t := w[0].t[..]; p := w[0].p[..]; nb: [128] u8;
+  if wtp_str(d, jv_get(d, 0, "schema"), nb[..]) != WT_SCHEMA { return false; }
+  if wtp_lim(d, "world_bytes") != WT_WORLD || wtp_lim(d, "name_bytes") != WT_NAME || wtp_lim(d, "kinds") != WT_KINDS || wtp_lim(d, "things") != WT_THINGS || wtp_lim(d, "bytes") != WT_BYTES { return false; }
+  if wtp_lim(d, "plan_steps") != WP_STEPS || wtp_lim(d, "plan_bytes") != WP_BYTES || wtp_lim(d, "say_bytes") != WP_SAY { return false; }
+  if !wtp_rejects(d, jv_get(d, 0, "rejected"), 0, w) { return false; }
+  empty := wtp_str(d, jv_get(d, jv_get(d, 0, "empty"), "wire"), w[0].wire[..]);
+  if empty.count == 0 || !wt_read(t, empty, w[0].scratch[..]) || !t[0].live || t[0].nt != 0 { return false; }
+  one := jv_get(d, 0, "turn");
+  wire := wtp_str(d, jv_get(d, one, "wire"), w[0].wire[..]);
+  if wire.count == 0 || !wt_read(t, wire, w[0].scratch[..]) || wt_write(t, w[0].out[..]) != wire { return false; }
+  if wtp_str(d, jv_get(d, one, "world"), nb[..]) != wt_word(t) || (wtp_str(d, jv_get(d, one, "lane"), nb[..]) == "live") != t[0].live { return false; }
+  if jv_int(d, jv_get(d, one, "rev"), -1) != t[0].rev || jv_int(d, jv_get(d, one, "selected"), -1) != t[0].sel || jv_int(d, jv_get(d, one, "kinds"), -1) != t[0].nk { return false; }
+  if jv_int(d, jv_get(d, one, "things"), -1) != t[0].nt || jv_int(d, jv_get(d, one, "more"), -1) != t[0].more { return false; }
+  here := jv_get(d, one, "here");
+  if !t[0].here || jv_int(d, jv_at(d, here, 0), 0) != t[0].here_x || jv_int(d, jv_at(d, here, 1), 0) != t[0].here_z { return false; }
+  if wtp_str(d, jv_get(d, one, "words"), w[0].words[..]) != wt_words(t, w[0].out[..]) { return false; }
+  // the plan: its tools are the module's rows, its bytes read and write back, the model's answer becomes it
+  plan := jv_get(d, 0, "plan"); tools := jv_get(d, plan, "tools"); names := WT_TOOL;
+  if wtp_str(d, jv_get(d, plan, "schema"), nb[..]) != WP_SCHEMA || jv_len(d, tools) != WT_TOOLS { return false; }
+  for k: 0..<WT_TOOLS { if wtp_str(d, jv_at(d, tools, k), nb[..]) != names[k] { return false; } }
+  pw := wtp_str(d, jv_get(d, plan, "wire"), w[0].wire[..]);
+  if pw.count == 0 || !wp_read(p, pw, w[0].scratch[..]) || wp_write(p, w[0].out[..]) != pw || jv_int(d, jv_get(d, plan, "steps"), -1) != p[0].n { return false; }
+  reply := wtp_str(d, jv_get(d, plan, "reply"), w[0].wire[..]);
+  if !wp_reply(p, t, reply) || !p[0].edit || wp_write(p, w[0].out[..]) != wtp_str(d, jv_get(d, plan, "reply_wire"), w[0].words[..]) { return false; }
+  talk := wtp_str(d, jv_get(d, plan, "talk"), w[0].wire[..]);
+  if !wp_reply(p, t, talk) || p[0].edit || p[0].say_n == 0 { return false; }
+  return wtp_rejects(d, jv_get(d, plan, "rejected"), 1, w) && wtp_rejects(d, jv_get(d, plan, "rejected_replies"), 3, w);
+}
+wtp_card :: (d: Jv, w: [] WtpWork) -> bool {
+  c := w[0].c[..]; nb: [256] u8;
+  if wtp_str(d, jv_get(d, 0, "schema"), nb[..]) != WC_SCHEMA { return false; }
+  if wtp_lim(d, "world_bytes") != WT_WORLD || wtp_lim(d, "name_bytes") != WT_NAME || wtp_lim(d, "url_bytes") != WC_URL || wtp_lim(d, "bytes") != WC_BYTES { return false; }
+  one := jv_get(d, 0, "card");
+  wire := wtp_str(d, jv_get(d, one, "wire"), w[0].wire[..]);
+  if wire.count == 0 || !wc_read(c, wire, w[0].scratch[..]) { return false; }
+  if wtp_str(d, jv_get(d, one, "world"), nb[..]) != cast(string) c[0].world[0..<c[0].world_n] || wtp_str(d, jv_get(d, one, "name"), nb[..]) != cast(string) c[0].name[0..<c[0].name_n] { return false; }
+  if wtp_str(d, jv_get(d, one, "frame"), nb[..]) != cast(string) c[0].frame[0..<c[0].frame_n] || jv_int(d, jv_get(d, one, "rev"), -1) != c[0].rev || jv_int(d, jv_get(d, one, "things"), -1) != c[0].things { return false; }
+  n := wc_write(w[0].out[..], cast(string) c[0].world[0..<c[0].world_n], c[0].rev, c[0].things, cast(string) c[0].name[0..<c[0].name_n], cast(string) c[0].frame[0..<c[0].frame_n]);
+  if n < 0 || cast(string) w[0].out[0..<n] != wire { return false; }
+  bare := wtp_str(d, jv_get(d, jv_get(d, 0, "bare"), "wire"), w[0].wire[..]);
+  if bare.count == 0 || !wc_read(c, bare, w[0].scratch[..]) || c[0].frame_n != 0 { return false; }
+  return wtp_rejects(d, jv_get(d, 0, "rejected"), 2, w);
+}
+// 1 a turn profile that holds, 2 a card profile that holds, 0 neither.
+wtp_check :: (profile_json: string, w: [] WtpWork) -> int #effects(all) {
+  da: [1] Jv; nb: [128] u8; cb: [256] u8; want: [256] u8;
+  if !jv_parse(da[..], profile_json, w[0].nodes[..]) { return 0; }
+  d := da[0];
+  name := wtp_str(d, jv_get(d, 0, "profile"), nb[..]);
+  file := ifx name == "world-turn-v1" then "turn-v1.json" else ifx name == "world-card-v1" then "card-v1.json" else "";
+  n := json_raw(want[..], 0, WTP_CHECK); n = json_raw(want[..], n, file);
+  if file.count == 0 || n < 0 || jv_int(d, jv_get(d, 0, "version"), 0) != 1 || wtp_str(d, jv_get(d, 0, "check"), cb[..]) != cast(string) want[0..<n] { return 0; }
+  if name == "world-turn-v1" { return ifx wtp_turn(d, w) then 1 else 0; }
+  return ifx wtp_card(d, w) then 2 else 0;
+}
+#test "turn profile tool refuses a profile that is not one" { w: [1] WtpWork; #assert wtp_check("{}", w[..]) == 0 && wtp_check("bad", w[..]) == 0; }
+
+WtpMain :: struct { w: [1] WtpWork; raw: [65536] u8; }
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; h: [1] WtpMain;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: turn-profile FILE.json"); return 2; }
+  n := fs_read(args_at(a[..], 0), h[0].raw[..]);
+  if n <= 0 { tool_errln("turn-profile: cannot read JSON"); return 2; }
+  v := wtp_check(cast(string) h[0].raw[0..<n], h[0].w[..]);
+  if v == 0 { print("world turn and card: profile fails\n"); return 1; }
+  if v == 1 { print("world-turn-v1: profile holds\n"); } else { print("world-card-v1: profile holds\n"); }
+  return 0;
+}

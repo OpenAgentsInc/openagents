@@ -1,0 +1,100 @@
+{
+ "profile": "world-turn-v1",
+ "version": 1,
+ "title": "What a turn knows of the world in the editor, and a hosted turn's plan v1 (world.turn.v1, world.plan.v1)",
+ "check": "coax/web/tool.sh coax/lib/agent/world/turn-profile.coax proto/world/turn-v1.json",
+ "spec": "docs/protocol/world-turn-v1.md",
+ "schema": "world.turn.v1",
+ "about": "What the editor tells the conversation in its foot, sent with each turn (GitHub #13418): the world, its lane and revision, the selected thing, the point last tapped, the kinds and the things. And world.plan.v1: what a hosted turn asks the editor to do, a step a line, each step one of the hosted world tools. The editor shell writes the turn and reads the plan; the chat page reads the turn and writes the plan. Neither leaves the page.",
+ "limits": {
+  "world_bytes": 32,
+  "name_bytes": 40,
+  "kinds": 64,
+  "things": 128,
+  "bytes": 12288,
+  "plan_steps": 16,
+  "plan_bytes": 1024,
+  "say_bytes": 2000
+ },
+ "lines": [
+  "world.turn.v1 WORLD LANE REV SELECTED",
+  "here X Z",
+  "k KIND NAME",
+  "e ID KIND X Z YAW",
+  "more N"
+ ],
+ "turn": {
+  "wire": "world.turn.v1 splice dev 7 2\nhere 420 -75\nk 1001 Cargo crate\nk 1002 Parked rover\ne 1 1001 350 -1200 90\ne 2 1002 -40 600 -179\nmore 3\n",
+  "world": "splice",
+  "lane": "dev",
+  "rev": 7,
+  "selected": 2,
+  "kinds": 2,
+  "things": 2,
+  "more": 3,
+  "here": [
+   420,
+   -75
+  ],
+  "words": "[The editor is open on the world splice, dev lane, revision 7. Selected: thing 2, Parked rover, at x -40 z 600 cm. Here, the point last tapped: x 420 z -75 cm. Read and change it with the realm world tools.]"
+ },
+ "empty": {
+  "wire": "world.turn.v1 splice live 0 0\n"
+ },
+ "rejected": [
+  "",
+  "world.turn.v2 splice dev 0 0\n",
+  "world.turn.v1 Splice dev 0 0\n",
+  "world.turn.v1 splice dev 0 0\n\n",
+  "world.turn.v1 splice test 0 0\n",
+  "world.turn.v1 splice dev 0 0\ne 01 5 0 0 0\n",
+  "world.turn.v1 splice dev 0 0\nx what\n",
+  "world.turn.v1 splice dev 0 0\nhere 1\n",
+  "world.turn.v1 splice dev 0 0\ne 1 5 0 0 999\n"
+ ],
+ "plan": {
+  "schema": "world.plan.v1",
+  "lines": [
+   "world.plan.v1 WORLD REV",
+   "place KIND X Z YAW",
+   "move ID X Z",
+   "turn ID YAW",
+   "size ID PERCENT",
+   "remove ID",
+   "undo",
+   "redo"
+  ],
+  "tools": [
+   "place",
+   "move",
+   "turn",
+   "size",
+   "remove",
+   "undo",
+   "redo"
+  ],
+  "wire": "world.plan.v1 splice 7\nplace 1001 420 -75 90\nmove 2 100 -200\nturn 1 -45\nsize 2 150\nremove 1\n",
+  "steps": 5,
+  "reply": "{\"route\":\"edit\",\"say\":\"We put a crate here.\",\"steps\":[{\"tool\":\"place\",\"kind\":1001,\"id\":0,\"x\":420,\"z\":-75,\"yaw\":270,\"percent\":0},{\"tool\":\"remove\",\"kind\":0,\"id\":2,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}",
+  "reply_wire": "world.plan.v1 splice 7\nplace 1001 420 -75 -90\nremove 2\n",
+  "talk": "{\"route\":\"talk\",\"say\":\"Two things stand here.\",\"steps\":[]}",
+  "rejected": [
+   "",
+   "world.plan.v1 splice 7\n",
+   "world.plan.v1 splice 7\nundo\nredo\n",
+   "world.plan.v1 splice 7\nfly 1\n",
+   "world.plan.v1 splice 7\nmove 0 1 1\n",
+   "world.plan.v1 splice 7\nsize 2 1\n",
+   "world.plan.v1 splice 7\nplace 1001 420 -75 90 extra\n",
+   "world.plan.v2 splice 7\nundo\n"
+  ],
+  "rejected_replies": [
+   "nothing",
+   "{\"route\":\"build\",\"say\":\"x\",\"steps\":[]}",
+   "{\"route\":\"edit\",\"say\":\"x\",\"steps\":[]}",
+   "{\"route\":\"edit\",\"say\":\"x\",\"steps\":[{\"tool\":\"paint\",\"kind\":0,\"id\":1,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}",
+   "{\"route\":\"edit\",\"say\":\"x\",\"steps\":[{\"tool\":\"remove\",\"kind\":0,\"id\":9,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}",
+   "{\"route\":\"edit\",\"say\":\"x\",\"steps\":[{\"tool\":\"place\",\"kind\":5,\"id\":0,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}"
+  ]
+ }
+}

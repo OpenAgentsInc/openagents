@@ -1,0 +1,39 @@
+{
+ "profile": "world-card-v1",
+ "version": 1,
+ "title": "A world as a conversation shows it v1 (world.card.v1)",
+ "check": "coax/web/tool.sh coax/lib/agent/world/turn-profile.coax proto/world/card-v1.json",
+ "spec": "docs/protocol/world-turn-v1.md",
+ "schema": "world.card.v1",
+ "about": "A world's card (GitHub #13418): its ID, the dev lane's revision, how many things it holds, its name and, when it has one, a picture's address on this site. GET /api/worlds/ID/card answers it; the chat page shows it after an agent's realm world tool, with a link that opens the world's editor.",
+ "limits": {
+  "world_bytes": 32,
+  "name_bytes": 40,
+  "url_bytes": 200,
+  "bytes": 400
+ },
+ "lines": [
+  "world.card.v1 WORLD REV THINGS",
+  "name NAME",
+  "frame URL"
+ ],
+ "card": {
+  "wire": "world.card.v1 splice 7 12\nname Splice\nframe /worlds/splice/card.png\n",
+  "world": "splice",
+  "rev": 7,
+  "things": 12,
+  "name": "Splice",
+  "frame": "/worlds/splice/card.png"
+ },
+ "bare": {
+  "wire": "world.card.v1 splice 0 0\nname Splice\n"
+ },
+ "rejected": [
+  "",
+  "world.card.v1 splice 7\nname Splice\n",
+  "world.card.v2 splice 7 1\nname Splice\n",
+  "world.card.v1 splice 7 1\n",
+  "world.card.v1 splice 7 1\nname Splice\nmore\n",
+  "world.card.v1 splice 7 1\nname Splice\nframe https://x.example/a.png\n"
+ ]
+}
