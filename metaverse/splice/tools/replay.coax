@@ -1,0 +1,52 @@
+// Outcome replay of a recorded run of the world `splice` (GitHub #13438;
+// docs/metaverse/outcome-replay.md): the steps `coax serve` kept for the world
+// (APP/build/.worlds/splice.step.N.did, each a world.edit.v1 batch as it was taken) are replayed
+// into a fresh World, and the four outcomes are checked apart: the live World, the saved
+// document, errors, and probes. Then each check is run against its broken variant, which must
+// fail it: a check that can't fail proves nothing.
+//   coax/web/tool.sh metaverse/splice/tools/replay.coax APP/build/.worlds/splice [--steps N]
+// It prints a line a check and exits 0 when the run holds and every broken variant fails its check.
+// tool.sh: run-steps 250000000
+#import "Basic";
+#load "../splice-game.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+
+RP_STEPS :: 256;
+RpRun :: struct { text: [RP_STEPS * 4096] u8; at: [RP_STEPS] int; n: [RP_STEPS] int; batches: [RP_STEPS] string; count: int; probes: [(2 * SL_ITEMS + 2) * SPR_PROBE] int; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: replay APP/build/.worlds/splice [--steps N]"); return 2; }
+  base := args_at(a[..], 0);
+  limit := ifx args_has(a[..], "--steps") then args_whole(args_value(a[..], "--steps", "")) else RP_STEPS;
+  r := [1] RpRun.[RpRun.{}]; used := 0; path: [1200] u8;
+  for k: 0..<RP_STEPS {
+    if k >= limit { break; }
+    n := ct_put(path[..], 0, base); n = ct_put(path[..], n, ".step."); n = ct_put_int(path[..], n, k); n = ct_put(path[..], n, ".did");
+    if n > path.count { break; }
+    got := fs_read(cast(string) path[0..<n], r[0].text[used..<r[0].text.count]);
+    if got <= 0 { break; }
+    r[0].at[k] = used; r[0].n[k] = got; used += got; r[0].count = k + 1;
+  }
+  if r[0].count == 0 { tool_errln("replay: no recorded steps there (a world's steps are APP/build/.worlds/ID.step.N.did, kept by coax serve)"); return 2; }
+  for k: 0..<r[0].count { r[0].batches[k] = cast(string) r[0].text[r[0].at[k]..<r[0].at[k] + r[0].n[k]]; }
+  t := [1] SprWork.[SprWork.{}]; o: [400] u8; none: [1] int;
+  first := spr_replay(t[..], r[0].batches[0..<r[0].count], none[0..<0], SB_NONE);
+  pn := spr_probes_of(t[0].want[..], r[0].probes[..]);
+  run := spr_replay(t[..], r[0].batches[0..<r[0].count], r[0].probes[0..<pn], SB_NONE);
+  print("replayed % steps: % things, head %\n%", r[0].count, run.pieces, run.head, spr_report(run, o[..]));
+  holds := spr_holds(first) && spr_holds(run);
+  // the checks of the checks
+  names := [4] string.["a page that missed the last edit", "a saved document one step behind", "a refused batch", "a thing with no collider"];
+  which := [4] int.[OC_LIVE, OC_SAVED, OC_ERRORS, OC_PROBES];
+  for b: 0..<4 {
+    if b == 3 && run.pieces == 0 { print("broken variant: % skipped (the run leaves nothing placed)\n", names[b]); continue; }
+    v := spr_replay(t[..], r[0].batches[0..<r[0].count], r[0].probes[0..<pn], b + 1);
+    caught := !v.ok[which[b]];
+    print("broken variant: % % the % check\n", names[b], ifx caught then "fails" else "PASSES", OC_NAMES[which[b]]);
+    holds = holds && caught;
+  }
+  print("%\n", ifx holds then "holds" else "fails");
+  return ifx holds then 0 else 1;
+}

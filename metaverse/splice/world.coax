@@ -142,8 +142,10 @@ spw_edit :: (g: [] SpGame, e: WorldEdit, sure: bool) -> SpwEdit {
       did.id = r.id + 1; did.y = we_cm(g[0].layer[0].items[sl_item(g, r.id)].y);
       return SpwEdit.{ok = true, id = r.id + 1, did = did, inv = WorldEdit.{ok = true, op = WE_DESPAWN, id = r.id + 1}};
     }
-    // a piece brought back under its number (an undo of its removal): a number once given, now free
-    if e.id > g[0].layer[0].st[0].next_id || sl_item(g, e.id - 1) >= 0 { return spw_no(SPE_ID); }
+    // a piece under a number: one brought back (an undo of its removal: a number once given, now
+    // free), or the very next number the world would give (a recorded batch taken again from the
+    // start). Never a number further on, and never one that is taken
+    if e.id > g[0].layer[0].st[0].next_id + 1 || sl_item(g, e.id - 1) >= 0 { return spw_no(SPE_ID); }
     if g[0].layer[0].st[0].n >= SL_ITEMS { return spw_no(SL_FULL); }
     v := sl_check(g, e.kind, sc_m(e.x), sc_m(e.z), sl_rad(e.yaw), -1);
     if v.why != SL_OK { return SpwEdit.{why = v.why, v = v}; }

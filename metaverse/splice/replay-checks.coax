@@ -1,0 +1,77 @@
+// The checks of Splice's outcome replay (replay.coax; GitHub #13438). splice-game.coax loads this
+// file with `#load ... #test;`. The recorded run is the first one made against the world `splice`:
+// a palm by the scanner gate and a small crate by the rover's door, the crate moved and turned, a
+// crab-bot put in the lounge, the palm removed, and the removal undone.
+SPR_RUN :: [5] string.[
+  "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100},{\"op\":\"spawn\",\"id\":0,\"kind\":117,\"x\":280,\"y\":0,\"z\":150,\"yaw\":0,\"scale\":100}]}",
+  "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"move\",\"id\":2,\"x\":300,\"y\":0,\"z\":120},{\"op\":\"rotate\",\"id\":2,\"yaw\":45}]}",
+  "{\"schema\":\"world.edit.v1\",\"rev\":4,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":103,\"x\":2330,\"y\":0,\"z\":-4900,\"yaw\":-60,\"scale\":100}]}",
+  "{\"schema\":\"world.edit.v1\",\"rev\":5,\"do\":\"apply\",\"edits\":[{\"op\":\"despawn\",\"id\":1}]}",
+  "{\"schema\":\"world.edit.v1\",\"rev\":6,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":1,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100}]}"];
+// What the run was for: three things stand, each stops a body where it stands, the gate's own
+// floor stays free, and the run can still be walked.
+SPR_PROBES :: [9 * SPR_PROBE] int.[
+  PR_COUNT, 3, 0, 0,
+  PR_STANDS, 1, 113, 0,   PR_STANDS, 2, 117, 0,   PR_STANDS, 3, 103, 0,
+  PR_BLOCKS, 17720, -7060, 0,   PR_BLOCKS, 300, 120, 0,   PR_BLOCKS, 2330, -4900, 0,
+  PR_FREE, 17500, -6700, 0,
+  PR_WALKS, 0, 0, 0];
+
+#test "outcome replay: the recorded run holds on all four checks: the live World, the saved document, no errors, the probes" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; o: [400] u8; run := SPR_RUN; probes := SPR_PROBES;
+  r := spr_replay(t[..], run[..], probes[..], SB_NONE);
+  #assert spr_holds(r) && r.ok[OC_LIVE] && r.ok[OC_SAVED] && r.ok[OC_ERRORS] && r.ok[OC_PROBES] && r.pieces == 3 && r.head == 7 && r.why == WHY_OK;
+  #assert spr_report(r, o[..]) == "live: holds\nsaved: holds\nerrors: holds\nprobes: holds\n";
+}
+#test "outcome replay: each check fails its own broken variant, and only that one tells the others apart" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; o: [400] u8; run := SPR_RUN; probes := SPR_PROBES;
+  // the page missed the last edit: the live World is wrong, the saved document is right
+  r := spr_replay(t[..], run[..], probes[..], SB_LIVE);
+  #assert !r.ok[OC_LIVE] && r.ok[OC_SAVED] && r.ok[OC_ERRORS] && !spr_holds(r) && r.at[OC_LIVE] == 4;
+  // the saved document is one batch behind: the page is right, the document is wrong
+  r = spr_replay(t[..], run[..], probes[..], SB_SAVED);
+  #assert r.ok[OC_LIVE] && !r.ok[OC_SAVED] && r.ok[OC_ERRORS] && r.ok[OC_PROBES] && !spr_holds(r);
+  // a batch was refused: the run did not go as recorded, though what was saved is whole
+  r = spr_replay(t[..], run[..], probes[..], SB_ERRORS);
+  #assert r.ok[OC_LIVE] && r.ok[OC_SAVED] && !r.ok[OC_ERRORS] && r.at[OC_ERRORS] == 5 && !spr_holds(r);
+  // a thing lost its collider: state and document are right, and the probe says which link broke
+  r = spr_replay(t[..], run[..], probes[..], SB_PROBES);
+  #assert r.ok[OC_LIVE] && r.ok[OC_SAVED] && r.ok[OC_ERRORS] && !r.ok[OC_PROBES] && r.at[OC_PROBES] == 1 && r.why == WHY_COLLIDER_MISSING && !spr_holds(r);
+  #assert spr_report(r, o[..]) == "live: holds\nsaved: holds\nerrors: holds\nprobes: fails at probe 1 (engine.diagnostic.collider-missing.v1)\n";
+}
+#test "outcome replay: a probe the run does not meet fails, each kind by its own link" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; run := SPR_RUN;
+  wrong := [6] int.[PR_COUNT, 4, PR_STANDS, 9, PR_STANDS, 2];
+  third := [6] int.[0, 0, 113, 0, 113, 0];
+  code := [3] int.[WHY_NOT_IN_STATE, WHY_NOT_IN_STATE, WHY_NOT_IN_STATE];
+  for i: 0..<3 {
+    p := [SPR_PROBE] int.[wrong[i * 2], wrong[i * 2 + 1], third[i * 2], 0];
+    r := spr_replay(t[..], run[..], p[..], SB_NONE);
+    #assert r.ok[OC_LIVE] && r.ok[OC_SAVED] && r.ok[OC_ERRORS] && !r.ok[OC_PROBES] && r.at[OC_PROBES] == 0 && r.why == code[i];
+  }
+  free := [SPR_PROBE] int.[PR_FREE, 17720, -7060, 0];   // a body can't stand where the palm is
+  #assert !spr_replay(t[..], run[..], free[..], SB_NONE).ok[OC_PROBES];
+  open_ground := [SPR_PROBE] int.[PR_BLOCKS, 17500, -6700, 0];   // nothing stands in the gate
+  r := spr_replay(t[..], run[..], open_ground[..], SB_NONE);
+  #assert !r.ok[OC_PROBES] && r.why == WHY_COLLIDER_MISSING;
+  none: [1] int;
+  #assert spr_holds(spr_replay(t[..], run[0..<0], none[0..<0], SB_NONE)) && spr_why(t[0].live[..], 99) == WHY_NOT_IN_STATE;
+}
+#test "outcome replay: a run recorded without probes earns its own: every thing it leaves stands and stops a body, and the run walks" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; run := SPR_RUN; none: [1] int; p: [(2 * SL_ITEMS + 2) * SPR_PROBE] int;
+  first := spr_replay(t[..], run[..], none[0..<0], SB_NONE);
+  n := spr_probes_of(t[0].want[..], p[..]);
+  #assert spr_holds(first) && n == 8 * SPR_PROBE && p[0] == PR_COUNT && p[1] == 3 && p[4] == PR_STANDS && p[5] == 1 && p[6] == 113 && p[8] == PR_BLOCKS && p[9] == 17720 && p[10] == -7060 && p[n - 4] == PR_WALKS;
+  #assert spr_holds(spr_replay(t[..], run[..], p[0..<n], SB_NONE)) && !spr_replay(t[..], run[..], p[0..<n], SB_PROBES).ok[OC_PROBES] && spr_probes_of(t[0].want[..], p[0..<8]) == 0;
+}
+#test "outcome replay: a run as the server kept it (every spawn numbered) replays from the start" #steps 4000000000 #traversal 2000000000 {
+  t := [1] SprWork.[SprWork.{}]; none: [1] int;
+  kept := [2] string.[
+    "{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":1,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100},{\"op\":\"spawn\",\"id\":2,\"kind\":117,\"x\":280,\"y\":0,\"z\":150,\"yaw\":0,\"scale\":100}]}",
+    "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"move\",\"id\":2,\"x\":300,\"y\":0,\"z\":120}]}"];
+  r := spr_replay(t[..], kept[..], none[0..<0], SB_NONE);
+  #assert spr_holds(r) && r.pieces == 2 && r.head == 3;
+  // a number further on than the next was never given: refused
+  far := [1] string.["{\"schema\":\"world.edit.v1\",\"rev\":0,\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":3,\"kind\":113,\"x\":17720,\"y\":0,\"z\":-7060,\"yaw\":0,\"scale\":100}]}"];
+  #assert !spr_replay(t[..], far[..], none[0..<0], SB_NONE).ok[OC_ERRORS];
+}
