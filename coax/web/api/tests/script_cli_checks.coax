@@ -88,7 +88,7 @@ sc_checks :: (t: [] Ap, c: [] Sc, compiles: bool) {
   ap_check(t, "cli scripts: world-scripts lists it, on and with no source", st == 0 && sc_get(c, "count") == "1" && ap_has(sc_get(c, "scripts"), ha) && ap_has(sc_get(c, "scripts"), "\"off\":false,\"why\":\"\",\"source\":false"), sc_text(c));
   cut := [6] string.["realm", "world-script-put", "splice-bots", bad, "--name", "pacer"];
   st = sc_cli(t, c, cut[..]);
-  ap_check(t, "cli scripts: a module the check refuses fails with the refusal's words, code and byte, and nothing more is stored", st > 0 && !sc_ok(c) && sc_get(c, "status") == "422" && sc_get(c, "code") == "engine.diagnostic.script-refused-module.v1" && ap_has(sc_get(c, "error"), " at byte ") && ap_sql(t, "SELECT count(*) FROM verse.world_scripts", q[..]) == "1", sc_text(c));
+  ap_check(t, "cli scripts: a module the check refuses fails with the refusal's words, code and byte, and nothing more is stored", st > 0 && !sc_ok(c) && sc_get(c, "status") == "422" && sc_get(c, "code") == "engine.diagnostic.script-refused-module.v1" && ap_has(sc_get(c, "error"), " at byte ") && ap_sql(t, "SELECT count(*) FROM verse.world_scripts WHERE world = 'splice-bots'", q[..]) == "1", sc_text(c));
   st = sc_cli(t, c, put[0..<6]);
   ap_check(t, "cli scripts: storing the same bytes again answers the same manifest", st == 0 && sc_get(c, "hash") == ha, sc_text(c));
   // ---- running it: a row of the world's scripts table, through the world's edit route
@@ -120,7 +120,7 @@ sc_checks :: (t: [] Ap, c: [] Sc, compiles: bool) {
     ap_check(t, "cli scripts: world-script-compile on a server with no compile job fails with the code no-compiler (this machine has no Wasm toolchain)", st > 0 && sc_get(c, "code") == "engine.diagnostic.script-no-compiler.v1", sc_text(c));
     return;
   }
-  ap_check(t, "cli scripts: world-script-compile compiles the source on the server, stores it and answers its manifest", st == 0 && sc_ok(c) && sc_get(c, "stored") == "pacer" && sc_get(c, "handlers") == "on_tick, on_hit" && ap_sql(t, "SELECT count(*) FROM verse.world_scripts WHERE source IS NOT NULL", q[..]) == "1", sc_text(c));
+  ap_check(t, "cli scripts: world-script-compile compiles the source on the server, stores it and answers its manifest", st == 0 && sc_ok(c) && sc_get(c, "stored") == "pacer" && sc_get(c, "handlers") == "on_tick, on_hit" && ap_sql(t, "SELECT count(*) FROM verse.world_scripts WHERE world = 'splice-bots' AND source IS NOT NULL", q[..]) == "1", sc_text(c));
 }
 sb_text_of3 :: (s: [] Sb, a: string, b: string, c: string) -> string { sb_clear(s); sb(s, a); sb(s, b); sb(s, c); return sb_text(s); }
 
