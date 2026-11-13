@@ -6,6 +6,10 @@
 // It serves APP_DIR as it is built (coax/web/serve.sh --static, on a free port above 9000), opens
 // PATH, waits for the first scene, then runs each operation in order and prints its answer:
 //   tree | layout                 the world's entities by id, then the HUD's widgets (metaverse-engine/agent/drive.coax)
+//   why ID | why caps             why ID isn't seen, reached or working: the first link that failed of state, spawned,
+//                                 view, drawn, asset, collider, system, with the field, what was expected and found, and
+//                                 whether a retry can help (metaverse-engine/agent/why.coax, #13429); `why caps`
+//                                 lists the limits the engine applied this run. Splice answers it first
 //   state [PATH]                  a field of the realm's state, read through the build's layout
 //                                 (build/.drive/APP.layout): `state you_x`, `state net.mon_hits[3].amount`;
 //                                 alone, the state's top-level fields
@@ -573,7 +577,7 @@ dv_clock :: (s: [] DvS, op: string, out: [] Dv) -> bool {
 dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
   out[0].n = 0;
   w0 := dv_word(op, 0);
-  if w0 == "tree" || w0 == "layout" || w0 == "status" || w0 == "target" { dv_s(out, dv_send(s, op)); return true; }
+  if w0 == "tree" || w0 == "layout" || w0 == "status" || w0 == "target" || w0 == "why" { dv_s(out, dv_send(s, op)); return true; }
   if w0 == "walk-to" || w0 == "face" || w0 == "use" || w0 == "mount" || w0 == "stop" {
     first := dv_send(s, op);
     if !dv_has(first, ": going") { dv_s(out, first); return true; }
@@ -636,7 +640,7 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
     }
     dv_s(out, "prefer takes color-scheme dark|light, reduced-motion reduce|no-preference or size WxH"); return false;
   }
-  dv_s(out, "unknown operation '"); dv_s(out, w0); dv_s(out, "': tree, layout, state, tap, type, walk-to, face, use, mount, stop, status, clock, screenshot, logs, prefer, perf");
+  dv_s(out, "unknown operation '"); dv_s(out, w0); dv_s(out, "': tree, layout, state, why, tap, type, walk-to, face, use, mount, stop, status, clock, screenshot, logs, prefer, perf");
   return false;
 }
 dv_cat2 :: (a: string, b: string, t: [] u8) -> string {

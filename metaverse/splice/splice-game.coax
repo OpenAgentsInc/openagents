@@ -18,6 +18,8 @@
 #load "layer-checks.coax" #test;   // the colliders' and the layer's checks
 #load "walk-checks.coax" #test;    // the walk replay's, the fixture layer's and the kept-clear zones' checks
 #load "splice-cast.coax";
+#load "why.coax";                  // the answers to `why ID` (metaverse-engine/agent/why.coax, #13429)
+#load "why-checks.coax" #test;
 
 // ---- Tuning (the document's DA_Tuning): every number the run is balanced with
 T_WALK :: 5.6f32; T_TURN :: 2.5f32; T_LOOK :: 0.0032f32; T_RADIUS :: 0.45f32;

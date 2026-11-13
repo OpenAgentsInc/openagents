@@ -1,0 +1,206 @@
+{
+  "profile": "engine-diagnostics-v1",
+  "version": 1,
+  "title": "Metaverse Engine diagnostics v1",
+  "check": "coax/web/tool.sh metaverse-engine/tools/why-profile.coax proto/verse/engine-diagnostics-v1.json",
+  "spec": "proto/README.md#diagnostic-codes",
+  "chain": [
+    "state",
+    "spawned",
+    "view",
+    "drawn",
+    "asset",
+    "collider",
+    "system"
+  ],
+  "rule": "A number is never changed and never used again. A changed meaning is a new id (.v2) with a new number.",
+  "codes": [
+    {
+      "number": 1,
+      "id": "engine.diagnostic.not-in-state.v1",
+      "name": "not-in-state",
+      "link": "state",
+      "retry": false,
+      "means": "Nothing in the realm's state or content has this id. Fix the id, or author the thing."
+    },
+    {
+      "number": 2,
+      "id": "engine.diagnostic.spawn-pending.v1",
+      "name": "spawn-pending",
+      "link": "spawned",
+      "retry": true,
+      "means": "It is in the state, and the world builds it at its next commit. Ask again after a frame."
+    },
+    {
+      "number": 3,
+      "id": "engine.diagnostic.spawn-refused.v1",
+      "name": "spawn-refused",
+      "link": "spawned",
+      "retry": false,
+      "means": "The world had no free slot for it. Remove something or raise the world's capacity."
+    },
+    {
+      "number": 4,
+      "id": "engine.diagnostic.despawned.v1",
+      "name": "despawned",
+      "link": "spawned",
+      "retry": false,
+      "means": "It was in the world and was removed: defeated, opened or deleted. It comes back only by a reset or an edit."
+    },
+    {
+      "number": 5,
+      "id": "engine.diagnostic.not-in-view.v1",
+      "name": "not-in-view",
+      "link": "view",
+      "retry": false,
+      "means": "It stands outside what the camera sees. Move or turn the camera."
+    },
+    {
+      "number": 6,
+      "id": "engine.diagnostic.draw-pending.v1",
+      "name": "draw-pending",
+      "link": "drawn",
+      "retry": true,
+      "means": "Its draw rows are older than the state. The next frame writes them."
+    },
+    {
+      "number": 7,
+      "id": "engine.diagnostic.draw-dropped.v1",
+      "name": "draw-dropped",
+      "link": "drawn",
+      "retry": false,
+      "means": "The draw list or its store was full, and it was left out. Draw fewer things or raise the limit."
+    },
+    {
+      "number": 8,
+      "id": "engine.diagnostic.draw-hidden.v1",
+      "name": "draw-hidden",
+      "link": "drawn",
+      "retry": false,
+      "means": "The realm or its host hides it now: a mode that doesn't show it, or a host that draws this kind itself."
+    },
+    {
+      "number": 9,
+      "id": "engine.diagnostic.asset-loading.v1",
+      "name": "asset-loading",
+      "link": "asset",
+      "retry": true,
+      "means": "Its mesh, texture or pack is still arriving."
+    },
+    {
+      "number": 10,
+      "id": "engine.diagnostic.asset-failed.v1",
+      "name": "asset-failed",
+      "link": "asset",
+      "retry": false,
+      "means": "Its asset was fetched and refused, or the fetch failed."
+    },
+    {
+      "number": 11,
+      "id": "engine.diagnostic.asset-missing.v1",
+      "name": "asset-missing",
+      "link": "asset",
+      "retry": false,
+      "means": "Its kind names no asset."
+    },
+    {
+      "number": 12,
+      "id": "engine.diagnostic.collider-missing.v1",
+      "name": "collider-missing",
+      "link": "collider",
+      "retry": false,
+      "means": "It should block or be touched, and has no collider."
+    },
+    {
+      "number": 13,
+      "id": "engine.diagnostic.collider-open.v1",
+      "name": "collider-open",
+      "link": "collider",
+      "retry": false,
+      "means": "It has a collider that doesn't block now."
+    },
+    {
+      "number": 14,
+      "id": "engine.diagnostic.system-pending.v1",
+      "name": "system-pending",
+      "link": "system",
+      "retry": true,
+      "means": "The system that moves it hasn't run since it spawned."
+    },
+    {
+      "number": 15,
+      "id": "engine.diagnostic.system-paused.v1",
+      "name": "system-paused",
+      "link": "system",
+      "retry": false,
+      "means": "The system that moves it is stopped: a mode, a pause or a budget."
+    },
+    {
+      "number": 16,
+      "id": "engine.diagnostic.budget-hit.v1",
+      "name": "budget-hit",
+      "link": "runtime",
+      "retry": false,
+      "means": "A budget was reached and work was dropped. The line names the limit and how much was dropped."
+    },
+    {
+      "number": 17,
+      "id": "engine.diagnostic.pack-refused.v1",
+      "name": "pack-refused",
+      "link": "runtime",
+      "retry": false,
+      "means": "A pack was read and refused."
+    }
+  ],
+  "answers": [
+    {
+      "id": "piece-3",
+      "passed": [
+        "state",
+        "spawned",
+        "view"
+      ],
+      "skipped": [],
+      "code": "draw-dropped",
+      "field": "draws.count",
+      "expected": "at most 34",
+      "actual": "35",
+      "text": "why piece-3: draw-dropped\ncode: engine.diagnostic.draw-dropped.v1\nlink: drawn (4 of 7)\nfield: draws.count\nexpected: at most 34\nactual: 35\nretry: no\npassed: state spawned view\n"
+    },
+    {
+      "id": "foe-1",
+      "passed": [
+        "state",
+        "spawned",
+        "drawn"
+      ],
+      "skipped": [
+        "view"
+      ],
+      "code": "asset-loading",
+      "field": "pack.bytes",
+      "expected": "all of 4096",
+      "actual": "1024",
+      "text": "why foe-1: asset-loading\ncode: engine.diagnostic.asset-loading.v1\nlink: asset (5 of 7)\nfield: pack.bytes\nexpected: all of 4096\nactual: 1024\nretry: yes\npassed: state spawned drawn\nnot applicable: view\n"
+    },
+    {
+      "id": "you",
+      "passed": [
+        "state",
+        "spawned",
+        "view",
+        "drawn",
+        "collider",
+        "system"
+      ],
+      "skipped": [
+        "asset"
+      ],
+      "code": "",
+      "field": "",
+      "expected": "",
+      "actual": "",
+      "text": "why you: ok\npassed: state spawned view drawn collider system\nnot applicable: asset\n"
+    }
+  ]
+}

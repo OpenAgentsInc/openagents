@@ -1,0 +1,292 @@
+// The Metaverse Engine's typed diagnostics (GitHub #13429; docs/research/spawn-what-to-adapt.md, N1): a
+// realm answers `why ID` with the first link that failed in the chain
+//
+//   state -> spawned -> view -> drawn -> asset -> collider -> system
+//
+// "It is in the state but not drawn" and "its system is paused" are different faults with different
+// fixes, and an agent that can't see the page can't tell them apart from a picture. The answer
+// names the code, the field that decided, what the engine expected there and what it found, and
+// whether asking again later can help.
+//
+// A realm walks the chain for one id: why_begin, then for each link in order why_pass, why_skip
+// (the link doesn't apply: scenery has no system) or why_fail. Only the first failure is kept; a
+// link after it is not judged. why_answer writes the text `coax drive why ID` prints
+// (coax/web/drive.coax), and the same text is what `world why`, the editor's inspector and an
+// edit's result show.
+//
+// Runtime caps the engine applied (a budget reached and work dropped, a system stopped, a pack
+// refused) go out on the same channel: `why caps` lists them, a line each from why_cap.
+//
+// The codes are the protocol's: each is a row of proto/registry.json (kind "diagnostic") and of
+// proto/verse/engine-diagnostics-v1.json, which holds its number, link and retry. A number is
+// never changed and never used again; a changed meaning is a new id (.v2). This file is their one
+// codec. Check both against each other:
+//   coax/web/tool.sh metaverse-engine/tools/why-profile.coax proto/verse/engine-diagnostics-v1.json
+//   coax/bin/coax test metaverse-engine/agent/why.coax --library
+#load "drive.coax";
+
+// The links, in the order they are judged.
+WHY_STATE :: 0; WHY_SPAWNED :: 1; WHY_VIEW :: 2; WHY_DRAWN :: 3; WHY_ASSET :: 4; WHY_COLLIDER :: 5; WHY_SYSTEM :: 6; WHY_CHAIN :: 7;
+WHY_RUNTIME :: 7;   // not a link of the chain: a cap the engine applied at run time
+WHY_LINKS :: [8] string.["state", "spawned", "view", "drawn", "asset", "collider", "system", "runtime"];
+
+// The codes. 0 is no fault.
+WHY_OK :: 0;
+WHY_NOT_IN_STATE :: 1;        // nothing in the realm's state or content has this id
+WHY_SPAWN_PENDING :: 2;       // it is in the state; the world builds it at its next commit
+WHY_SPAWN_REFUSED :: 3;       // the world had no free slot for it
+WHY_DESPAWNED :: 4;           // it was in the world and was removed: defeated, opened or deleted
+WHY_NOT_IN_VIEW :: 5;         // it stands outside what the camera sees
+WHY_DRAW_PENDING :: 6;        // its draw rows are older than the state; the next frame writes them
+WHY_DRAW_DROPPED :: 7;        // the draw list or its store was full, and it was left out
+WHY_DRAW_HIDDEN :: 8;         // the realm or its host hides it now
+WHY_ASSET_LOADING :: 9;       // its mesh, texture or pack is still arriving
+WHY_ASSET_FAILED :: 10;       // its asset was fetched and refused, or the fetch failed
+WHY_ASSET_MISSING :: 11;      // its kind names no asset
+WHY_COLLIDER_MISSING :: 12;   // it should block or be touched, and has no collider
+WHY_COLLIDER_OPEN :: 13;      // it has a collider that doesn't block now
+WHY_SYSTEM_PENDING :: 14;     // the system that moves it hasn't run since it spawned
+WHY_SYSTEM_PAUSED :: 15;      // the system that moves it is stopped
+WHY_BUDGET_HIT :: 16;         // a budget was reached and work was dropped
+WHY_PACK_REFUSED :: 17;       // a pack was read and refused
+WHY_CODES :: 18;
+
+WHY_NAMES :: [18] string.["ok", "not-in-state", "spawn-pending", "spawn-refused", "despawned", "not-in-view", "draw-pending", "draw-dropped",
+  "draw-hidden", "asset-loading", "asset-failed", "asset-missing", "collider-missing", "collider-open", "system-pending", "system-paused",
+  "budget-hit", "pack-refused"];
+// The ids proto/registry.json lists, by code ("" for ok, which is not a diagnostic).
+WHY_IDS :: [18] string.["", "engine.diagnostic.not-in-state.v1", "engine.diagnostic.spawn-pending.v1", "engine.diagnostic.spawn-refused.v1",
+  "engine.diagnostic.despawned.v1", "engine.diagnostic.not-in-view.v1", "engine.diagnostic.draw-pending.v1", "engine.diagnostic.draw-dropped.v1",
+  "engine.diagnostic.draw-hidden.v1", "engine.diagnostic.asset-loading.v1", "engine.diagnostic.asset-failed.v1", "engine.diagnostic.asset-missing.v1",
+  "engine.diagnostic.collider-missing.v1", "engine.diagnostic.collider-open.v1", "engine.diagnostic.system-pending.v1", "engine.diagnostic.system-paused.v1",
+  "engine.diagnostic.budget-hit.v1", "engine.diagnostic.pack-refused.v1"];
+WHY_LINK_OF :: [18] int.[-1, WHY_STATE, WHY_SPAWNED, WHY_SPAWNED, WHY_SPAWNED, WHY_VIEW, WHY_DRAWN, WHY_DRAWN, WHY_DRAWN,
+  WHY_ASSET, WHY_ASSET, WHY_ASSET, WHY_COLLIDER, WHY_COLLIDER, WHY_SYSTEM, WHY_SYSTEM, WHY_RUNTIME, WHY_RUNTIME];
+// Whether asking again later can give another answer with nothing changed by the asker: the engine is
+// still getting there (a commit, a frame, a fetch). The others need an edit, a move or a larger budget.
+WHY_RETRY :: [18] bool.[false, false, true, false, false, false, true, false, false,
+  true, false, false, false, false, true, false, false, false];
+
+why_known :: (code: int) -> bool { return code > WHY_OK && code < WHY_CODES; }
+why_name :: (code: int) -> string { return ifx code >= 0 && code < WHY_CODES then WHY_NAMES[code] else ""; }
+why_id :: (code: int) -> string { return ifx why_known(code) then WHY_IDS[code] else ""; }
+why_link :: (code: int) -> int { return ifx why_known(code) then WHY_LINK_OF[code] else -1; }
+why_retry :: (code: int) -> bool { return why_known(code) && WHY_RETRY[code]; }
+why_link_name :: (link: int) -> string { return ifx link >= 0 && link <= WHY_RUNTIME then WHY_LINKS[link] else ""; }
+// The code with this name or id, or -1.
+why_code :: (name: string) -> int {
+  for c: 1..<WHY_CODES { if WHY_NAMES[c] == name || WHY_IDS[c] == name { return c; } }
+  return -1;
+}
+
+WHY_ID :: 32;        // bytes of an id
+WHY_TEXT :: 96;      // bytes of a field's name, and of what was expected or found
+WHY_OUT :: 1024;     // bytes of one answer
+
+// One walk of the chain for one id.
+Why :: struct {
+  id: [WHY_ID] u8; id_n: int;
+  code: int;                 // the first failure, or WHY_OK
+  passed: int; skipped: int; // a bit a link
+  bad_order: bool;           // a link was judged before an earlier one, or twice, or the code isn't of the chain
+  field: [WHY_TEXT] u8; field_n: int;
+  expected: [WHY_TEXT] u8; expected_n: int;
+  actual: [WHY_TEXT] u8; actual_n: int;
+  next: int;                 // the next link to judge
+}
+
+why_begin :: (w: [] Why, id: string) {
+  w[0].id_n = drv_put_s(w[0].id[..], 0, id);
+  w[0].code = WHY_OK; w[0].passed = 0; w[0].skipped = 0; w[0].bad_order = false; w[0].next = 0;
+  w[0].field_n = 0; w[0].expected_n = 0; w[0].actual_n = 0;
+}
+why_failed :: (w: [] Why) -> bool { return w[0].code != WHY_OK; }
+// Takes a link in turn: false when the walk already failed (nothing more is judged) or the link is out of order.
+why_take :: (w: [] Why, link: int) -> bool {
+  if w[0].code != WHY_OK { return false; }
+  if link < w[0].next || link >= WHY_CHAIN { w[0].bad_order = true; return false; }
+  w[0].next = link + 1;
+  return true;
+}
+why_pass :: (w: [] Why, link: int) { if why_take(w, link) { w[0].passed |= 1 << link; } }
+why_skip :: (w: [] Why, link: int) { if why_take(w, link) { w[0].skipped |= 1 << link; } }
+// The walk fails at this code's link: the field that decided, what was expected there and what was found.
+why_fail :: (w: [] Why, code: int, field: string, expected: string, actual: string) {
+  link := why_link(code);
+  if link < 0 || link >= WHY_CHAIN { w[0].bad_order = true; return; }
+  if !why_take(w, link) { return; }
+  w[0].code = code;
+  w[0].field_n = drv_put_s(w[0].field[..], 0, field);
+  w[0].expected_n = drv_put_s(w[0].expected[..], 0, expected);
+  w[0].actual_n = drv_put_s(w[0].actual[..], 0, actual);
+}
+// A link judged by one fact: passes when ok, else fails with the code.
+why_judge :: (w: [] Why, link: int, ok: bool, code: int, field: string, expected: string, actual: string) {
+  if ok { why_pass(w, link); } else { why_fail(w, code, field, expected, actual); }
+}
+// The same with whole numbers: "WORD LIMIT" expected (WORD: "at most", "at least", ""), VALUE found.
+why_fail_i :: (w: [] Why, code: int, field: string, word: string, limit: int, value: int) {
+  e: [WHY_TEXT] u8; a: [WHY_TEXT] u8;
+  en := drv_put_s(e[..], 0, word); if en > 0 { en = drv_put_s(e[..], en, " "); } en = drv_put_i(e[..], en, limit);
+  an := drv_put_i(a[..], 0, value);
+  why_fail(w, code, field, cast(string) e[0..<en], cast(string) a[0..<an]);
+}
+// And with metres, one decimal.
+why_fail_m :: (w: [] Why, code: int, field: string, word: string, limit: f32, value: f32) {
+  e: [WHY_TEXT] u8; a: [WHY_TEXT] u8;
+  en := drv_put_s(e[..], 0, word); if en > 0 { en = drv_put_s(e[..], en, " "); } en = drv_put_f(e[..], en, limit); en = drv_put_s(e[..], en, " m");
+  an := drv_put_f(a[..], 0, value); an = drv_put_s(a[..], an, " m");
+  why_fail(w, code, field, cast(string) e[0..<en], cast(string) a[0..<an]);
+}
+why_links_put :: (out: [] u8, at: int, label: string, mask: int) -> int {
+  if mask == 0 { return at; }
+  n := drv_put_s(out, at, label);
+  for l: 0..<WHY_CHAIN { if (mask & (1 << l)) != 0 { n = drv_put_s(out, n, " "); n = drv_put_s(out, n, WHY_LINKS[l]); } }
+  return drv_put_s(out, n, "\n");
+}
+// The answer as text, a fact a line. A walk that judged links out of order says so rather than
+// answering wrongly; a walk that stopped before the chain's end without a failure names where.
+why_answer :: (w: [] Why, out: [] u8) -> string {
+  n := drv_put_s(out, 0, "why "); n = drv_put_s(out, n, cast(string) w[0].id[0..<w[0].id_n]); n = drv_put_s(out, n, ": ");
+  if w[0].bad_order { n = drv_put_s(out, n, "unanswered\nfault: the realm judged the chain's links out of order\n"); return cast(string) out[0..<n]; }
+  if w[0].code == WHY_OK {
+    n = drv_put_s(out, n, ifx w[0].next >= WHY_CHAIN then "ok\n" else "ok so far\n");
+    n = why_links_put(out, n, "passed:", w[0].passed);
+    n = why_links_put(out, n, "not applicable:", w[0].skipped);
+    if w[0].next < WHY_CHAIN { n = drv_put_s(out, n, "not judged from: "); n = drv_put_s(out, n, WHY_LINKS[w[0].next]); n = drv_put_s(out, n, "\n"); }
+    return cast(string) out[0..<n];
+  }
+  c := w[0].code; link := why_link(c);
+  n = drv_put_s(out, n, why_name(c)); n = drv_put_s(out, n, "\n");
+  n = drv_put_s(out, n, "code: "); n = drv_put_s(out, n, why_id(c)); n = drv_put_s(out, n, "\n");
+  n = drv_put_s(out, n, "link: "); n = drv_put_s(out, n, WHY_LINKS[link]); n = drv_put_s(out, n, " ("); n = drv_put_i(out, n, link + 1); n = drv_put_s(out, n, " of "); n = drv_put_i(out, n, WHY_CHAIN); n = drv_put_s(out, n, ")\n");
+  n = drv_put_s(out, n, "field: "); n = drv_put_s(out, n, cast(string) w[0].field[0..<w[0].field_n]); n = drv_put_s(out, n, "\n");
+  n = drv_put_s(out, n, "expected: "); n = drv_put_s(out, n, cast(string) w[0].expected[0..<w[0].expected_n]); n = drv_put_s(out, n, "\n");
+  n = drv_put_s(out, n, "actual: "); n = drv_put_s(out, n, cast(string) w[0].actual[0..<w[0].actual_n]); n = drv_put_s(out, n, "\n");
+  n = drv_put_s(out, n, "retry: "); n = drv_put_s(out, n, ifx why_retry(c) then "yes" else "no"); n = drv_put_s(out, n, "\n");
+  n = why_links_put(out, n, "passed:", w[0].passed);
+  n = why_links_put(out, n, "not applicable:", w[0].skipped);
+  return cast(string) out[0..<n];
+}
+
+// ---- runtime caps, on the same channel
+
+// One cap the engine applied, as a line: "CODE FIELD limit LIMIT dropped DROPPED (ID)". A cap that dropped
+// nothing writes nothing. `at` is where the line starts; where the next starts.
+why_cap :: (out: [] u8, at: int, code: int, field: string, limit: int, dropped: int) -> int {
+  if dropped <= 0 || why_link(code) != WHY_RUNTIME { return at; }
+  n := drv_put_s(out, at, why_name(code)); n = drv_put_s(out, n, " "); n = drv_put_s(out, n, field);
+  n = drv_put_s(out, n, " limit "); n = drv_put_i(out, n, limit); n = drv_put_s(out, n, " dropped "); n = drv_put_i(out, n, dropped);
+  n = drv_put_s(out, n, " ("); n = drv_put_s(out, n, why_id(code)); return drv_put_s(out, n, ")\n");
+}
+// A stopped system, as a line: "system-paused FIELD expected EXPECTED actual ACTUAL (ID)".
+why_paused :: (out: [] u8, at: int, field: string, expected: string, actual: string) -> int {
+  n := drv_put_s(out, at, why_name(WHY_SYSTEM_PAUSED)); n = drv_put_s(out, n, " "); n = drv_put_s(out, n, field);
+  n = drv_put_s(out, n, " expected "); n = drv_put_s(out, n, expected); n = drv_put_s(out, n, " actual "); n = drv_put_s(out, n, actual);
+  n = drv_put_s(out, n, " ("); n = drv_put_s(out, n, why_id(WHY_SYSTEM_PAUSED)); return drv_put_s(out, n, ")\n");
+}
+// The caps' answer: `lines` is what why_cap and why_paused wrote from byte `from` of out to byte `to`.
+// The header goes before them: "caps: none" or "caps: N".
+why_caps_answer :: (out: [] u8, from: int, to: int, head: [] u8) -> string {
+  rows := 0; for i: from..<to { if out[i] == '\n' { rows += 1; } }
+  n := drv_put_s(head, 0, "caps: ");
+  if rows == 0 { n = drv_put_s(head, n, "none"); } else { n = drv_put_i(head, n, rows); }
+  n = drv_put_s(head, n, "\n");
+  for i: from..<to { if n < head.count { head[n] = out[i]; n += 1; } }
+  return cast(string) head[0..<n];
+}
+
+// The id a `why` command asks about: "why piece-3" is "piece-3", "why" alone is "" and "why caps" is "caps".
+// Not a why command: "-".
+why_asks :: (text: string) -> string {
+  if drv_word(text, 0) != "why" { return "-"; }
+  return drv_word(text, 1);
+}
+
+#test "the codes: every one has a name, an id, a link and a retry; none repeats" {
+  for c: 1..<WHY_CODES {
+    #assert why_name(c).count > 0 && why_id(c).count > 0 && why_link(c) >= 0 && why_link(c) <= WHY_RUNTIME;
+    // the id carries the name: engine.diagnostic.NAME.v1
+    id := why_id(c); head := "engine.diagnostic."; name := why_name(c);
+    #assert id.count == head.count + name.count + 3 && id[0..<head.count] == head && id[head.count..<head.count + name.count] == name && id[id.count - 3..<id.count] == ".v1";
+    #assert why_code(name) == c && why_code(id) == c;
+    for o: c + 1..<WHY_CODES { #assert WHY_NAMES[o] != name; }
+    // links never go backwards as the numbers rise: the table reads in chain order
+    if c > 1 { #assert why_link(c) >= why_link(c - 1); }
+  }
+  #assert why_name(WHY_OK) == "ok" && why_id(WHY_OK) == "" && why_link(WHY_OK) == -1 && !why_retry(WHY_OK) && !why_known(WHY_OK);
+  #assert why_name(-1) == "" && why_name(WHY_CODES) == "" && why_id(WHY_CODES) == "" && why_link(-1) == -1 && !why_retry(WHY_CODES) && why_code("nope") == -1 && why_code("") == -1;
+  #assert why_link_name(WHY_STATE) == "state" && why_link_name(WHY_RUNTIME) == "runtime" && why_link_name(8) == "" && why_link_name(-1) == "";
+  // what can be asked again: the engine is still getting there
+  #assert !why_retry(WHY_DESPAWNED) && why_retry(WHY_SPAWN_PENDING) && why_retry(WHY_DRAW_PENDING) && why_retry(WHY_ASSET_LOADING) && why_retry(WHY_SYSTEM_PENDING);
+  #assert !why_retry(WHY_NOT_IN_STATE) && !why_retry(WHY_SPAWN_REFUSED) && !why_retry(WHY_NOT_IN_VIEW) && !why_retry(WHY_DRAW_DROPPED) && !why_retry(WHY_ASSET_FAILED) && !why_retry(WHY_SYSTEM_PAUSED) && !why_retry(WHY_BUDGET_HIT);
+}
+#test "the first failed link is the answer, and nothing after it is judged" {
+  w: [1] Why; out: [WHY_OUT] u8;
+  why_begin(w[..], "piece-3");
+  why_pass(w[..], WHY_STATE); why_pass(w[..], WHY_SPAWNED); why_pass(w[..], WHY_VIEW);
+  why_fail_i(w[..], WHY_DRAW_DROPPED, "draws.count", "at most", 34, 35);
+  why_fail(w[..], WHY_ASSET_MISSING, "pieces.kit", "a mesh", "none");   // later links don't replace it
+  why_pass(w[..], WHY_COLLIDER);
+  #assert why_failed(w[..]) && w[0].code == WHY_DRAW_DROPPED;
+  #assert why_answer(w[..], out[..]) == "why piece-3: draw-dropped\ncode: engine.diagnostic.draw-dropped.v1\nlink: drawn (4 of 7)\nfield: draws.count\nexpected: at most 34\nactual: 35\nretry: no\npassed: state spawned view\n";
+}
+#test "a whole chain is ok; a link that doesn't apply is named; a walk cut short says where" {
+  w: [1] Why; out: [WHY_OUT] u8;
+  why_begin(w[..], "you");
+  for l: 0..<WHY_CHAIN { if l == WHY_ASSET { why_skip(w[..], l); } else { why_pass(w[..], l); } }
+  #assert !why_failed(w[..]) && why_answer(w[..], out[..]) == "why you: ok\npassed: state spawned view drawn collider system\nnot applicable: asset\n";
+  why_begin(w[..], "boss");
+  why_pass(w[..], WHY_STATE); why_pass(w[..], WHY_SPAWNED);
+  #assert why_answer(w[..], out[..]) == "why boss: ok so far\npassed: state spawned\nnot judged from: view\n";
+  // the first link fails: nothing passed
+  why_begin(w[..], "piece-9");
+  why_judge(w[..], WHY_STATE, false, WHY_NOT_IN_STATE, "layer.items", "an item with id 9", "none");
+  #assert why_answer(w[..], out[..]) == "why piece-9: not-in-state\ncode: engine.diagnostic.not-in-state.v1\nlink: state (1 of 7)\nfield: layer.items\nexpected: an item with id 9\nactual: none\nretry: no\n";
+  why_begin(w[..], "piece-9");
+  why_judge(w[..], WHY_STATE, true, WHY_NOT_IN_STATE, "", "", "");
+  why_fail_m(w[..], WHY_NOT_IN_VIEW, "camera.distance", "at most", 60, 81.25);
+  #assert why_answer(w[..], out[..]) == "why piece-9: not-in-view\ncode: engine.diagnostic.not-in-view.v1\nlink: view (3 of 7)\nfield: camera.distance\nexpected: at most 60.0 m\nactual: 81.3 m\nretry: no\npassed: state\n";
+  // a skipped link before the failure is named too, and a retry says yes
+  why_begin(w[..], "foe-1");
+  why_pass(w[..], WHY_STATE); why_pass(w[..], WHY_SPAWNED); why_skip(w[..], WHY_VIEW); why_pass(w[..], WHY_DRAWN);
+  why_fail(w[..], WHY_ASSET_LOADING, "pack.bytes", "all of 4096", "1024");
+  #assert why_answer(w[..], out[..]) == "why foe-1: asset-loading\ncode: engine.diagnostic.asset-loading.v1\nlink: asset (5 of 7)\nfield: pack.bytes\nexpected: all of 4096\nactual: 1024\nretry: yes\npassed: state spawned drawn\nnot applicable: view\n";
+}
+#test "links judged out of order, twice, or with a runtime code are refused, not answered wrongly" {
+  w: [1] Why; out: [WHY_OUT] u8;
+  why_begin(w[..], "a"); why_pass(w[..], WHY_VIEW); why_pass(w[..], WHY_STATE);
+  #assert w[0].bad_order && why_answer(w[..], out[..]) == "why a: unanswered\nfault: the realm judged the chain's links out of order\n";
+  why_begin(w[..], "a"); why_pass(w[..], WHY_STATE); why_pass(w[..], WHY_STATE);
+  #assert w[0].bad_order;
+  why_begin(w[..], "a"); why_fail(w[..], WHY_BUDGET_HIT, "x", "y", "z");
+  #assert w[0].bad_order && !why_failed(w[..]);
+  why_begin(w[..], "a"); why_fail(w[..], WHY_OK, "x", "y", "z");
+  #assert w[0].bad_order;
+  why_begin(w[..], "a"); why_pass(w[..], WHY_CHAIN);
+  #assert w[0].bad_order;
+  why_begin(w[..], "a"); why_skip(w[..], -1);
+  #assert w[0].bad_order;
+  // a new walk starts clean, and a failure after a failure is not an order fault
+  why_begin(w[..], "b"); why_fail(w[..], WHY_NOT_IN_STATE, "f", "e", "a"); why_pass(w[..], WHY_STATE);
+  #assert !w[0].bad_order && w[0].code == WHY_NOT_IN_STATE && w[0].passed == 0;
+  // an id longer than its room is cut, never written past
+  why_begin(w[..], "0123456789012345678901234567890123456789");
+  #assert w[0].id_n == WHY_ID;
+}
+#test "runtime caps: a line for each that dropped something; none says none" {
+  buf: [512] u8; head: [600] u8;
+  n := why_cap(buf[..], 0, WHY_BUDGET_HIT, "world.slots", 256, 3);
+  #assert cast(string) buf[0..<n] == "budget-hit world.slots limit 256 dropped 3 (engine.diagnostic.budget-hit.v1)\n";
+  m := why_cap(buf[..], n, WHY_BUDGET_HIT, "layer.items", 64, 0);
+  #assert m == n;                                                          // nothing dropped: no line
+  #assert why_cap(buf[..], n, WHY_DRAW_DROPPED, "x", 1, 1) == n && why_cap(buf[..], n, WHY_BUDGET_HIT, "x", 1, -1) == n;   // not a runtime code; a negative count
+  m = why_cap(buf[..], n, WHY_PACK_REFUSED, "pack.budget", 1048576, 1);
+  m = why_paused(buf[..], m, "frame.still", "stepping", "held");
+  #assert why_caps_answer(buf[..], 0, m, head[..]) == "caps: 3\nbudget-hit world.slots limit 256 dropped 3 (engine.diagnostic.budget-hit.v1)\npack-refused pack.budget limit 1048576 dropped 1 (engine.diagnostic.pack-refused.v1)\nsystem-paused frame.still expected stepping actual held (engine.diagnostic.system-paused.v1)\n";
+  #assert why_caps_answer(buf[..], 0, 0, head[..]) == "caps: none\n" && why_caps_answer(buf[..], n, m, head[..]).count == 8 + m - n;
+}
+#test "which commands are a why" {
+  #assert why_asks("why piece-3") == "piece-3" && why_asks("why") == "" && why_asks("why caps") == "caps" && why_asks("  why   you  ") == "you";
+  #assert why_asks("tree") == "-" && why_asks("whyever x") == "-" && why_asks("") == "-";
+}

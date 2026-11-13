@@ -1,0 +1,170 @@
+// The checks of Splice's `why` answers (why.coax; GitHub #13429): each link of the chain fails
+// where the game's state says it should, and names the field that decided.
+// splice-game.coax loads this file with `#load "why-checks.coax" #test;`.
+
+// The mine with one placed piece, drawn once: the game, its layer's draw and the page's facts.
+yc_scene :: (g: [] SpGame, d: [] SpLayerDraw, pieces: [] u32, places: [] u32) -> int {
+  lc_mine(g);
+  id := -1;
+  // the first spot of the mine that takes a crate
+  for k: 0..<200 {
+    e := sl_place(g, g[0].c[0].pieces[0].id, cast(int) (g[0].px * 100) + 300 + k * 50, cast(int) (g[0].pz * 100) - 600, 0);
+    if e.ok { id = e.id; break; }
+  }
+  sd_meshes(d, g, pieces); sd_places(d, g, places);
+  return id;
+}
+yc_has :: (text: string, part: string) -> bool { return cp_has(text, part); }
+// Looks at a point from 8 m south of it, so it is in the frame whatever the walk's camera does.
+yc_look :: (g: [] SpGame, x: f32, z: f32) { g[0].px = x; g[0].pz = z + 2; g[0].yaw = PI; g[0].pitch = 0; }
+
+#test "why: a placed piece that is drawn is ok, and scenery has no system" {
+  g := [1] SpGame.[SpGame.{}]; d: [1] SpLayerDraw; pieces: [SD_PIECE_WORDS] u32; places: [SD_PLACE_WORDS] u32; out: [WHY_OUT] u8; cmd: [32] u8; pg: SyPage;
+  id := yc_scene(g[..], d[..], pieces[..], places[..]);
+  #assert id >= 0;
+  item := g[0].layer[0].items[sl_item(g[..], id)];
+  yc_look(g[..], item.x, item.z);
+  ask := sy_text_i(cmd[..], "why piece-", id, "");
+  a := sy_why(g[..], d[..], pg, ask, out[..]);
+  #assert yc_has(a, ": ok\n") && yc_has(a, "passed: state spawned view drawn asset collider\n") && yc_has(a, "not applicable: system\n");
+}
+#test "why: each link of a placed piece's chain fails at its own field" {
+  g := [1] SpGame.[SpGame.{}]; d: [1] SpLayerDraw; pieces: [SD_PIECE_WORDS] u32; places: [SD_PLACE_WORDS] u32; out: [WHY_OUT] u8; cmd: [32] u8; pg: SyPage;
+  id := yc_scene(g[..], d[..], pieces[..], places[..]);
+  at := sl_item(g[..], id); item := g[0].layer[0].items[at];
+  yc_look(g[..], item.x, item.z);
+  ask := sy_text_i(cmd[..], "why piece-", id, "");
+  // state: no such item; an item whose kind the pieces table lacks
+  a := sy_why(g[..], d[..], pg, "why piece-999", out[..]);
+  #assert yc_has(a, ": not-in-state\n") && yc_has(a, "field: layer.items\n") && yc_has(a, "expected: an item with id 999\n") && yc_has(a, "actual: none (1 items)\n") && yc_has(a, "retry: no\n");
+  g[0].layer[0].items[at].mesh = 31999;
+  a = sy_why(g[..], d[..], pg, ask, out[..]);
+  #assert yc_has(a, ": not-in-state\n") && yc_has(a, "field: content.pieces\n") && yc_has(a, "expected: a row with id 31999\n");
+  g[0].layer[0].items[at].mesh = item.mesh;
+  // spawned: the World is a revision behind (retry); the World has no entity for it
+  g[0].layer[0].rev += 1;
+  a = sy_why(g[..], d[..], pg, ask, out[..]);
+  #assert yc_has(a, ": spawn-pending\n") && yc_has(a, "field: layer.built\n") && yc_has(a, "retry: yes\n") && yc_has(a, "passed: state\n");
+  g[0].layer[0].rev -= 1;
+  s := sy_slot(g[..], item.mesh, item.id);
+  #assert s >= 0;
+  g[0].ws[0].i[WI_ROW * SL_CAP + s] = -7; g[0].ws[0].refused = 2;
+  a = sy_why(g[..], d[..], pg, ask, out[..]);
+  #assert yc_has(a, ": spawn-refused\n") && yc_has(a, "field: world.slots\n") && yc_has(a, "expected: at most 256\n") && yc_has(a, "actual: 258\n");
+  g[0].ws[0].i[WI_ROW * SL_CAP + s] = item.id; g[0].ws[0].refused = 0;
+  // view: the camera looks the other way
+  g[0].yaw = PI; g[0].pz = item.z - 30;
+  a = sy_why(g[..], d[..], pg, ask, out[..]);
+  #assert yc_has(a, ": not-in-view\n") && yc_has(a, "link: view (3 of 7)\n") && yc_has(a, "passed: state spawned\n");
+  yc_look(g[..], item.x, item.z);
+  // drawn: the rows are older than the layer (retry); the place store had no room; the draw list had none
+  d[0].place_rev -= 1;
+  a = sy_why(g[..], d[..], pg, ask, out[..]);
+  #assert yc_has(a, ": draw-pending\n") && yc_has(a, "field: draw.place_rev\n") && yc_has(a, "retry: yes\n");
+  d[0].place_rev += 1;
+  rows := d[0].rows[0]; d[0].rows[0] = 0;
+  a = sy_why(g[..], d[..], pg, ask, out[..]);
+  #assert yc_has(a, ": draw-dropped\n") && yc_has(a, "field: draw.place_rows\n") && yc_has(a, "expected: at most 64\n");
+  d[0].rows[0] = rows;
+  small := pg; small.draws_cap = 8;
+  a = sy_why(g[..], d[..], small, ask, out[..]);
+  #assert yc_has(a, ": draw-dropped\n") && yc_has(a, "field: draw.records\n") && yc_has(a, "expected: at most 2\n") && yc_has(a, "actual: 3\n");
+  // asset: the meshes not written yet (retry); a kind with no vertices; the piece store full
+  d[0].meshed = false;
+  a = sy_why(g[..], d[..], pg, ask, out[..]);
+  #assert yc_has(a, ": asset-loading\n") && yc_has(a, "retry: yes\n") && yc_has(a, "passed: state spawned view drawn\n");
+  d[0].meshed = true; count := d[0].count[0]; d[0].count[0] = 0;
+  a = sy_why(g[..], d[..], pg, ask, out[..]);
+  #assert yc_has(a, ": asset-missing\n") && yc_has(a, "field: content.pieces.kit\n");
+  d[0].over = true;
+  a = sy_why(g[..], d[..], pg, ask, out[..]);
+  #assert yc_has(a, ": asset-failed\n") && yc_has(a, "field: draw.mesh_n\n");
+  d[0].over = false; d[0].count[0] = count;
+  // collider: a shape with no radius
+  ex := g[0].ws[0].ex[s]; g[0].ws[0].ex[s] = 0;
+  a = sy_why(g[..], d[..], pg, ask, out[..]);
+  #assert yc_has(a, ": collider-missing\n") && yc_has(a, "passed: state spawned view drawn asset\n");
+  g[0].ws[0].ex[s] = ex;
+  a = sy_why(g[..], d[..], pg, ask, out[..]);
+  #assert yc_has(a, ": ok\n");
+}
+#test "why: you, a foe and the rubble: modes, a beaten foe, an opened gate, a held frame" {
+  g := [1] SpGame.[SpGame.{}]; d: [1] SpLayerDraw; out: [WHY_OUT] u8; pg: SyPage;
+  lc_mine(g[..]);
+  a := sy_why(g[..], d[..], pg, "why you", out[..]);
+  #assert a == "why you: ok\npassed: state spawned view drawn collider system\nnot applicable: asset\n";
+  // a held frame stops the step; the edit bay hides the smuggler
+  held := pg; held.held = true;
+  a = sy_why(g[..], d[..], held, "why you", out[..]);
+  #assert yc_has(a, ": system-paused\n") && yc_has(a, "field: frame.step\n") && yc_has(a, "retry: no\n");
+  // (the bay's camera is moved to where you stand, so the view link passes and the mode decides)
+  mode := g[0].mode; g[0].mode = M_BAY; bay_x := g[0].at.bay_x; bay_z := g[0].at.bay_z; g[0].at.bay_x = g[0].px; g[0].at.bay_z = g[0].pz;
+  a = sy_why(g[..], d[..], pg, "why you", out[..]);
+  #assert yc_has(a, ": draw-hidden\n") && yc_has(a, "field: game.mode\n") && yc_has(a, "expected: play\n") && yc_has(a, "actual: bay\n");
+  // with the bay where it is, you are out of its camera's frame, and that is the first link to fail
+  g[0].at.bay_x = bay_x; g[0].at.bay_z = bay_z;
+  a = sy_why(g[..], d[..], pg, "why you", out[..]);
+  #assert yc_has(a, ": not-in-view\n") && yc_has(a, "passed: state spawned\n");
+  g[0].mode = mode; g[0].hide[TK_SMUGGLER] = true;
+  a = sy_why(g[..], d[..], pg, "why you", out[..]);
+  #assert yc_has(a, ": draw-hidden\n") && yc_has(a, "field: game.hide\n");
+  g[0].hide[TK_SMUGGLER] = false;
+  full := pg; full.live_over = true;
+  a = sy_why(g[..], d[..], full, "why you", out[..]);
+  #assert yc_has(a, ": draw-dropped\n") && yc_has(a, "field: live.vertices\n");
+  // a foe: out of range, beaten, and alive
+  a = sy_why(g[..], d[..], pg, "why foe-9", out[..]);
+  #assert yc_has(a, ": not-in-state\n") && yc_has(a, "expected: a foe from 0 to 8\n");
+  yc_look(g[..], g[0].fx[0], g[0].fz[0]);
+  a = sy_why(g[..], d[..], pg, "why foe-0", out[..]);
+  #assert yc_has(a, ": ok\n") && yc_has(a, "passed: state spawned view drawn collider system\n");
+  g[0].fhp[0] = 0;
+  a = sy_why(g[..], d[..], pg, "why foe-0", out[..]);
+  #assert yc_has(a, ": despawned\n") && yc_has(a, "field: game.fhp\n") && yc_has(a, "passed: state\n");
+  // the rubble: there and blocking, then opened
+  yc_look(g[..], 0, g[0].at.rubble_z);
+  a = sy_why(g[..], d[..], pg, "why rubble", out[..]);
+  #assert yc_has(a, ": ok\n") && yc_has(a, "not applicable: asset system\n");
+  g[0].rubble_gone = true;
+  a = sy_why(g[..], d[..], pg, "why rubble", out[..]);
+  #assert yc_has(a, ": draw-hidden\n") && yc_has(a, "field: game.rubble_gone\n");
+  // a still scene is not the game; an id nothing has
+  still := pg; still.gallery = true;
+  a = sy_why(g[..], d[..], still, "why you", out[..]);
+  #assert yc_has(a, ": not-in-state\n") && yc_has(a, "field: page.scene\n");
+  a = sy_why(g[..], d[..], pg, "why goblin-3", out[..]);
+  #assert yc_has(a, ": not-in-state\n") && yc_has(a, "actual: goblin-3\n");
+  #assert sy_why(g[..], d[..], pg, "why", out[..]) == "why takes an id: you, piece-N, foe-N, rubble, boss-wall, or caps\n";
+  #assert yc_has(sy_why(g[..], d[..], pg, "tree", out[..]), "unknown operation");
+}
+#test "why caps: nothing dropped says none; a full World, a crowded question and a held frame are a line each" {
+  g := [1] SpGame.[SpGame.{}]; d: [1] SpLayerDraw; out: [WHY_OUT] u8; pg: SyPage;
+  lc_mine(g[..]);
+  #assert sy_why(g[..], d[..], pg, "why caps", out[..]) == "caps: none\n";
+  g[0].ws[0].refused = 3; g[0].ws[0].crowded = 2;
+  held := pg; held.held = true; held.live_over = true;
+  a := sy_why(g[..], d[..], held, "why caps", out[..]);
+  #assert yc_has(a, "caps: 4\n") && yc_has(a, "budget-hit world.slots limit 256 dropped 3 (engine.diagnostic.budget-hit.v1)\n") && yc_has(a, "budget-hit world.near limit 64 dropped 2 ");
+  #assert yc_has(a, "budget-hit live.vertices limit 150000 dropped 1 ") && yc_has(a, "system-paused frame.step expected above 0 s actual 0 s: the page holds this frame still (engine.diagnostic.system-paused.v1)\n");
+  #assert sy_number("piece-12", "piece-") == 12 && sy_number("piece-", "piece-") == -1 && sy_number("piece-1x", "piece-") == -1 && sy_number("foe-3", "piece-") == -1 && sy_number("piece-1234567", "piece-") == -1;
+}
+#test "why: the driver's tree lists the ids `why` takes; a world operation is refused by name; the tree's own cap is a line" {
+  g := [1] SpGame.[SpGame.{}]; d: [1] SpLayerDraw; v: [1] Drive; pg: SyPage; pieces: [SD_PIECE_WORDS] u32; places: [SD_PLACE_WORDS] u32; cmd: [32] u8;
+  id := yc_scene(g[..], d[..], pieces[..], places[..]);
+  #assert sy_drive(g[..], d[..], pg, v[..], "status", 0) == "none: idle" && sy_drive(g[..], d[..], pg, v[..], "quiet", 0) == "quiet";
+  drv_frame(v[..], 1280, 720, 1, false); sy_list(g[..], v[..]);
+  tree := sy_drive(g[..], d[..], pg, v[..], "tree", 0);
+  #assert yc_has(tree, "you ") && yc_has(tree, "foe-0 ") && yc_has(tree, "foe-8 ") && yc_has(tree, "rubble ") && yc_has(tree, "boss-wall ") && yc_has(tree, sy_text_i(cmd[..], "piece-", id, " "));
+  #assert drv_find(v[..], "you") == 0 && drv_find(v[..], "foe-9") < 0;
+  g[0].fhp[3] = 0; g[0].rubble_gone = true;
+  drv_frame(v[..], 1280, 720, 1, false); sy_list(g[..], v[..]);
+  #assert drv_find(v[..], "foe-3") < 0 && drv_find(v[..], "rubble") < 0 && drv_find(v[..], "foe-4") > 0;
+  #assert yc_has(sy_drive(g[..], d[..], pg, v[..], "walk-to foe-4", 0), "Splice takes no world operations from a driver yet (walk-to)") && v[0].status != DRV_GOING;
+  #assert sy_drive(g[..], d[..], pg, v[..], "why you", 0) == drv_said(v[..]) && yc_has(drv_said(v[..]), "why you: ");
+  #assert sy_drive(g[..], d[..], pg, v[..], "why caps", 0) == "caps: none\n";
+  v[0].lost = 5; g[0].ws[0].refused = 1;
+  #assert sy_drive(g[..], d[..], pg, v[..], "why caps", 0) == "caps: 2\nbudget-hit world.slots limit 256 dropped 1 (engine.diagnostic.budget-hit.v1)\nbudget-hit tree.entities limit 128 dropped 5 (engine.diagnostic.budget-hit.v1)\n";
+  // no driver has spoken: nothing is listed
+  q: [1] Drive; drv_frame(q[..], 1280, 720, 1, false); sy_list(g[..], q[..]);
+  #assert q[0].n == 0;
+}

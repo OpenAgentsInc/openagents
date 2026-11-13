@@ -119,7 +119,7 @@ Row fields:
 | Field | Meaning |
 | --- | --- |
 | `id` | The schema id on the wire (`NAME.vN`), or a short name for a shape with no id. An id that ends in `*` is a family: every id that starts that way |
-| `kind` | `proto` (a `.proto` message), `profile` (a JSON profile), `event` (a [domain event](#domain-events)), `external` (a third party's format; we write no schema for it, and its `codec` folder is an anticorruption layer—the only place that parses the format, translating it into our own record type) or `local` (one program writes and reads it) |
+| `kind` | `proto` (a `.proto` message), `profile` (a JSON profile), `event` (a [domain event](#domain-events)), `diagnostic` (a [diagnostic code](#diagnostic-codes)), `external` (a third party's format; we write no schema for it, and its `codec` folder is an anticorruption layer—the only place that parses the format, translating it into our own record type) or `local` (one program writes and reads it) |
 | `owner` | The bounded context that owns the shape and may change it ([`docs/architecture/contexts.md`](../docs/architecture/contexts.md)); one of the context slugs below. Its `codec` must live inside the owner's folders |
 | `schema` | The `.proto` file, with `#Message` when you name one, or the profile file |
 | `codec` | The one file that may write the id. A folder (ending in `/`) for a family or a third party's adapter |
@@ -213,6 +213,50 @@ only when its sequence is the next one (`ev_take`).
 
 An event's id begins with its owning context's slug (`items`, `characters`),
 not with the game's name.
+
+## Diagnostic codes
+
+A diagnostic code is a `registry.json` row with `"kind": "diagnostic"`, an
+`owner` context slug, a `schema`, a `check` and one `codec` file (#13429). An
+engine answers `why ID` with one: the first link that failed in the chain
+state, spawned, view, drawn, asset, collider, system. A cap the engine applied
+at run time (a budget reached, a pack refused) is a code too.
+
+- **Name.** `<owner>.diagnostic.<name>.v<N>`, such as
+  `engine.diagnostic.draw-dropped.v1`. `<name>` is a lowercase
+  `[a-z][a-z0-9-]*` word.
+- **Evolution.** A code's number, link and retry are never changed, and a
+  number is never used again. A changed meaning is a new id (`.v2`) with a new
+  number.
+- **Payload.** An answer carries the code, the field that decided, the
+  expected and actual values, and whether a retry can help. It carries no
+  advice in prose: the tool that shows it words the fix.
+- **One set.** Agents (`coax drive why`), the editor's inspector, alerts
+  (#13297) and crash buckets (#13379) name these codes, not free text.
+
+The codes are in [`verse/engine-diagnostics-v1.json`](verse/engine-diagnostics-v1.json),
+with one codec, `metaverse-engine/agent/why.coax`. Check them with
+`coax/web/tool.sh metaverse-engine/tools/why-profile.coax proto/verse/engine-diagnostics-v1.json`.
+
+| Number | Code | Link | Retry | Means |
+| --- | --- | --- | --- | --- |
+| 1 | `not-in-state` | state | no | Nothing in the realm's state or content has this id. Fix the id, or author the thing. |
+| 2 | `spawn-pending` | spawned | yes | It is in the state, and the world builds it at its next commit. Ask again after a frame. |
+| 3 | `spawn-refused` | spawned | no | The world had no free slot for it. Remove something or raise the world's capacity. |
+| 4 | `despawned` | spawned | no | It was in the world and was removed: defeated, opened or deleted. It comes back only by a reset or an edit. |
+| 5 | `not-in-view` | view | no | It stands outside what the camera sees. Move or turn the camera. |
+| 6 | `draw-pending` | drawn | yes | Its draw rows are older than the state. The next frame writes them. |
+| 7 | `draw-dropped` | drawn | no | The draw list or its store was full, and it was left out. Draw fewer things or raise the limit. |
+| 8 | `draw-hidden` | drawn | no | The realm or its host hides it now: a mode that doesn't show it, or a host that draws this kind itself. |
+| 9 | `asset-loading` | asset | yes | Its mesh, texture or pack is still arriving. |
+| 10 | `asset-failed` | asset | no | Its asset was fetched and refused, or the fetch failed. |
+| 11 | `asset-missing` | asset | no | Its kind names no asset. |
+| 12 | `collider-missing` | collider | no | It should block or be touched, and has no collider. |
+| 13 | `collider-open` | collider | no | It has a collider that doesn't block now. |
+| 14 | `system-pending` | system | yes | The system that moves it hasn't run since it spawned. |
+| 15 | `system-paused` | system | no | The system that moves it is stopped: a mode, a pause or a budget. |
+| 16 | `budget-hit` | runtime | no | A budget was reached and work was dropped. The line names the limit and how much was dropped. |
+| 17 | `pack-refused` | runtime | no | A pack was read and refused. |
 
 ## Check and generate
 

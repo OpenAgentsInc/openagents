@@ -1,0 +1,93 @@
+// Checks proto/verse/engine-diagnostics-v1.json against metaverse-engine/agent/why.coax, the diagnostic
+// codes' one codec (#13429): the profile names itself, its version and this check; its chain is the
+// module's links in order; every code of the module is a row with the same number, id, name, link
+// and retry, and the profile has no row the module lacks; each pinned answer is what why_answer
+// writes for its walk, byte for byte.
+// Usage: coax/web/tool.sh metaverse-engine/tools/why-profile.coax proto/verse/engine-diagnostics-v1.json
+#import "Basic";
+#load "../agent/why.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+WHP_CHECK :: "coax/web/tool.sh metaverse-engine/tools/why-profile.coax proto/verse/engine-diagnostics-v1.json";
+
+whp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+whp_link :: (name: string) -> int {
+  for l: 0..<WHY_CHAIN { if WHY_LINKS[l] == name { return l; } }
+  return -1;
+}
+// Walks the chain as an answer row says: its passed and skipped links, then its failure. "" when a link is unknown.
+whp_walk :: (d: Jv, row: int, out: [] u8) -> string #effects(all) {
+  ib: [64] u8; cb: [64] u8; fb: [128] u8; eb: [128] u8; ab: [128] u8; lb: [32] u8;
+  w: [1] Why;
+  why_begin(w[..], whp_str(d, jv_get(d, row, "id"), ib[..]));
+  passed := jv_get(d, row, "passed"); skipped := jv_get(d, row, "skipped");
+  if jv_kind(d, passed) != JV_ARRAY || jv_kind(d, skipped) != JV_ARRAY { return ""; }
+  for l: 0..<WHY_CHAIN {
+    name := WHY_LINKS[l];
+    for i: 0..<jv_len(d, passed) { if whp_str(d, jv_at(d, passed, i), lb[..]) == name { why_pass(w[..], l); } }
+    for i: 0..<jv_len(d, skipped) { if whp_str(d, jv_at(d, skipped, i), lb[..]) == name { why_skip(w[..], l); } }
+  }
+  for i: 0..<jv_len(d, passed) { if whp_link(whp_str(d, jv_at(d, passed, i), lb[..])) < 0 { return ""; } }
+  for i: 0..<jv_len(d, skipped) { if whp_link(whp_str(d, jv_at(d, skipped, i), lb[..])) < 0 { return ""; } }
+  code := whp_str(d, jv_get(d, row, "code"), cb[..]);
+  if code.count > 0 {
+    c := why_code(code);
+    if c < 0 { return ""; }
+    why_fail(w[..], c, whp_str(d, jv_get(d, row, "field"), fb[..]), whp_str(d, jv_get(d, row, "expected"), eb[..]), whp_str(d, jv_get(d, row, "actual"), ab[..]));
+  }
+  return why_answer(w[..], out);
+}
+// "" when the profile holds; else what is wrong.
+whp_fault :: (profile_json: string) -> string #effects(all) {
+  nodes: [2048] JvNode; da: [1] Jv;
+  if !jv_parse(da[..], profile_json, nodes[..]) { return "is not JSON"; }
+  d := da[0];
+  nb: [128] u8; cb: [256] u8; ib: [96] u8; sb: [64] u8; lb: [32] u8; tb: [WHY_OUT] u8; ob: [WHY_OUT] u8;
+  if whp_str(d, jv_get(d, 0, "profile"), nb[..]) != "engine-diagnostics-v1" || jv_int(d, jv_get(d, 0, "version"), 0) != 1 { return "does not name itself engine-diagnostics-v1, version 1"; }
+  if whp_str(d, jv_get(d, 0, "check"), cb[..]) != WHP_CHECK { return "does not name this check"; }
+  chain := jv_get(d, 0, "chain");
+  if jv_kind(d, chain) != JV_ARRAY || jv_len(d, chain) != WHY_CHAIN { return "has a chain that is not the module's seven links"; }
+  for l: 0..<WHY_CHAIN { if whp_str(d, jv_at(d, chain, l), lb[..]) != WHY_LINKS[l] { return "has a chain in another order than the module's"; } }
+  codes := jv_get(d, 0, "codes");
+  if jv_kind(d, codes) != JV_ARRAY { return "has no codes"; }
+  if jv_len(d, codes) != WHY_CODES - 1 { return "has more or fewer codes than the module"; }
+  for c: 1..<WHY_CODES {
+    row := jv_at(d, codes, c - 1);
+    if jv_int(d, jv_get(d, row, "number"), -1) != c { return "has a code whose number is not its place (a number is never changed and never used again)"; }
+    if whp_str(d, jv_get(d, row, "id"), ib[..]) != why_id(c) || whp_str(d, jv_get(d, row, "name"), sb[..]) != why_name(c) { return "has a code whose id or name is not the module's"; }
+    if whp_str(d, jv_get(d, row, "link"), lb[..]) != why_link_name(why_link(c)) { return "has a code on another link than the module's"; }
+    retry := jv_get(d, row, "retry");
+    if (jv_kind(d, retry) == JV_TRUE) != why_retry(c) || (jv_kind(d, retry) != JV_TRUE && jv_kind(d, retry) != JV_FALSE) { return "has a code whose retry is not the module's"; }
+    if whp_str(d, jv_get(d, row, "means"), cb[..]).count < 12 { return "has a code that does not say what it means"; }
+  }
+  answers := jv_get(d, 0, "answers");
+  if jv_kind(d, answers) != JV_ARRAY || jv_len(d, answers) < 3 { return "pins fewer than three answers"; }
+  for i: 0..<jv_len(d, answers) {
+    row := jv_at(d, answers, i);
+    text := whp_str(d, jv_get(d, row, "text"), tb[..]);
+    if text.count == 0 || whp_walk(d, row, ob[..]) != text { return "pins an answer the module writes otherwise"; }
+  }
+  return "";
+}
+#test "the profile tool refuses what is not the profile" {
+  #assert whp_fault("{}").count > 0 && whp_fault("bad") == "is not JSON";
+  #assert whp_fault("{\"profile\":\"engine-diagnostics-v1\",\"version\":1,\"check\":\"x\"}") == "does not name this check";
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) != 1 { tool_errln("usage: coax/web/tool.sh metaverse-engine/tools/why-profile.coax proto/verse/engine-diagnostics-v1.json"); return 2; }
+  path := args_at(args[..], 0);
+  buf: [262144] u8;
+  n := fs_read(path, buf[..]);
+  if n < 0 { print("why-profile: can't read %\n", path); return 2; }
+  fault := whp_fault(cast(string) buf[0..<n]);
+  if fault.count > 0 { print("why-profile: % %\n", path, fault); return 1; }
+  print("why-profile: % holds: % codes on % links, as metaverse-engine/agent/why.coax has them\n", path, WHY_CODES - 1, WHY_CHAIN + 1);
+  return 0;
+}

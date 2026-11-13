@@ -534,12 +534,27 @@ wc_event_id_fault :: (id: string, owner: string) -> string {
   }
   return "";
 }
+// Fault in a diagnostic row's id (<owner>.diagnostic.<name>.v<N>; proto/README.md "Diagnostic codes", #13429), or "".
+wc_diagnostic_id_fault :: (id: string, owner: string) -> string {
+  bad := "is a diagnostic whose id does not match <owner>.diagnostic.<name>.v<N>";
+  head: [96] u8; hn := 0;
+  for c: owner { if hn < head.count { head[hn] = c; hn += 1; } }
+  for c: ".diagnostic." { if hn < head.count { head[hn] = c; hn += 1; } }
+  if !wc_starts(id, cast(string) head[0..<hn]) { return bad; }
+  dot := -1;
+  for i: hn..<id.count { if id[i] == '.' { if dot >= 0 { return bad; } dot = i; } }
+  if dot < 0 || !wc_slug_word(cast(string) id[hn..<dot]) { return bad; }
+  ver := cast(string) id[dot + 1..<id.count];
+  if ver.count < 2 || ver[0] != 'v' || ver[1] < '1' || ver[1] > '9' { return bad; }
+  for i: 2..<ver.count { if !wc_digit(ver[i]) { return bad; } }
+  return "";
+}
 // One row's own faults, as a sentence ("" when it has none). Files are not looked up here.
 wc_row_fault :: (d: Jv, row: int) -> string {
   id := wc_field(d, row, "id"); kind := wc_field(d, row, "kind"); status := wc_field(d, row, "status"); owner := wc_field(d, row, "owner");
   codec := wc_field(d, row, "codec"); schema := wc_field(d, row, "schema");
   if id.count == 0 { return "has no id"; }
-  if kind != "proto" && kind != "profile" && kind != "external" && kind != "local" && kind != "event" { return "has a kind that is not proto, profile, external, local or event"; }
+  if kind != "proto" && kind != "profile" && kind != "external" && kind != "local" && kind != "event" && kind != "diagnostic" { return "has a kind that is not proto, profile, external, local, event or diagnostic"; }
   if owner.count == 0 { return "has no owner (a bounded context slug from proto/README.md)"; }
   if !wc_known_owner(owner) { return "has an unknown owner (see the context slugs in proto/README.md)"; }
   if kind == "event" {
@@ -547,6 +562,12 @@ wc_row_fault :: (d: Jv, row: int) -> string {
     if ef.count > 0 { return ef; }
     if schema.count == 0 { return "is an event with no schema"; }
     if codec.count == 0 || wc_ends(codec, "/") { return "is an event without one codec file"; }
+  }
+  if kind == "diagnostic" {
+    df := wc_diagnostic_id_fault(id, owner);
+    if df.count > 0 { return df; }
+    if schema.count == 0 || wc_field(d, row, "check").count == 0 { return "is a diagnostic with no schema or no check"; }
+    if codec.count == 0 || wc_ends(codec, "/") { return "is a diagnostic without one codec file"; }
   }
   if wc_field(d, row, "step").count == 0 && kind != "event" { return "has no step"; }
   if status.count > 0 && status != "no-consumer" && status != "pending" { return "has a status that is not \"no-consumer\" or \"pending\""; }
@@ -1046,6 +1067,15 @@ WC_T_QUIET :: WcRun.{quiet = true};
   // lines that are not one of the seven kinds
   #assert wc_judge_allow(d, "shape b.v2\nfile a.c\n", used[..], WC_T_QUIET) == 1 && wc_judge_allow(d, "shape b.v2\nid a.v1\n", used[..], WC_T_QUIET) == 1 && wc_judge_allow(d, "shape b.v2\ncodec a.v1\n", used[..], WC_T_QUIET) == 1 && wc_judge_allow(d, "shape b.v2\nroute a.c b.c\n", used[..], WC_T_QUIET) == 1 && wc_judge_allow(d, "shape b.v2\nroute\n", used[..], WC_T_QUIET) == 1;
   #assert wc_word("id a b", 0) == "id" && wc_word("id a b", 2) == "b" && wc_word("id a b", 3) == "";
+}
+#test "diagnostic codes: a good row passes; a bad id, another context's id, no schema, no check or a folder codec fails" {
+  nodes: [128] JvNode; r: [1] Jv; used: [4] bool;
+  good := "{\"shapes\":[{\"id\":\"engine.diagnostic.not-in-state.v1\",\"kind\":\"diagnostic\",\"owner\":\"engine\",\"schema\":\"proto/verse/engine-diagnostics-v1.json\",\"codec\":\"metaverse-engine/agent/why.coax\",\"check\":\"c\",\"step\":\"new\"},{\"id\":\"engine.diagnostic.draw-dropped.v12\",\"kind\":\"diagnostic\",\"owner\":\"engine\",\"schema\":\"proto/verse/engine-diagnostics-v1.json\",\"codec\":\"metaverse-engine/agent/why.coax\",\"check\":\"c\",\"step\":\"new\"}]}";
+  #assert jv_parse(r[..], good, nodes[..]) && wc_judge_owners(r[0], "", used[..], WC_T_QUIET) == 0;
+  bad := "[{\"id\":\"engine.diagnostic.not-in-state\",\"kind\":\"diagnostic\",\"owner\":\"engine\",\"schema\":\"proto/verse/engine-diagnostics-v1.json\",\"codec\":\"metaverse-engine/agent/why.coax\",\"check\":\"c\",\"step\":\"new\"},{\"id\":\"engine.diagnostic.Not_In.v1\",\"kind\":\"diagnostic\",\"owner\":\"engine\",\"schema\":\"proto/verse/engine-diagnostics-v1.json\",\"codec\":\"metaverse-engine/agent/why.coax\",\"check\":\"c\",\"step\":\"new\"},{\"id\":\"engine.diagnostic.a.b.v1\",\"kind\":\"diagnostic\",\"owner\":\"engine\",\"schema\":\"proto/verse/engine-diagnostics-v1.json\",\"codec\":\"metaverse-engine/agent/why.coax\",\"check\":\"c\",\"step\":\"new\"},{\"id\":\"engine.diagnostic.x.v0\",\"kind\":\"diagnostic\",\"owner\":\"engine\",\"schema\":\"proto/verse/engine-diagnostics-v1.json\",\"codec\":\"metaverse-engine/agent/why.coax\",\"check\":\"c\",\"step\":\"new\"},{\"id\":\"engine.diagnostic.x.v1a\",\"kind\":\"diagnostic\",\"owner\":\"engine\",\"schema\":\"proto/verse/engine-diagnostics-v1.json\",\"codec\":\"metaverse-engine/agent/why.coax\",\"check\":\"c\",\"step\":\"new\"},{\"id\":\"world.diagnostic.x.v1\",\"kind\":\"diagnostic\",\"owner\":\"engine\",\"schema\":\"proto/verse/engine-diagnostics-v1.json\",\"codec\":\"metaverse-engine/agent/why.coax\",\"check\":\"c\",\"step\":\"new\"},{\"id\":\"engine.event.x.v1\",\"kind\":\"diagnostic\",\"owner\":\"engine\",\"schema\":\"proto/verse/engine-diagnostics-v1.json\",\"codec\":\"metaverse-engine/agent/why.coax\",\"check\":\"c\",\"step\":\"new\"},{\"id\":\"engine.diagnostic..v1\",\"kind\":\"diagnostic\",\"owner\":\"engine\",\"schema\":\"proto/verse/engine-diagnostics-v1.json\",\"codec\":\"metaverse-engine/agent/why.coax\",\"check\":\"c\",\"step\":\"new\"},{\"id\":\"engine.diagnostic.x.v1\",\"kind\":\"diagnostic\",\"owner\":\"engine\",\"codec\":\"metaverse-engine/agent/why.coax\",\"check\":\"c\",\"step\":\"new\"},{\"id\":\"engine.diagnostic.x.v1\",\"kind\":\"diagnostic\",\"owner\":\"engine\",\"schema\":\"proto/verse/engine-diagnostics-v1.json\",\"codec\":\"metaverse-engine/agent/why.coax\",\"step\":\"new\"},{\"id\":\"engine.diagnostic.x.v1\",\"kind\":\"diagnostic\",\"owner\":\"engine\",\"schema\":\"proto/verse/engine-diagnostics-v1.json\",\"codec\":\"metaverse-engine/agent/\",\"check\":\"c\",\"step\":\"new\"},{\"id\":\"engine.diagnostic.x.v1\",\"kind\":\"diagnostic\",\"owner\":\"engine\",\"schema\":\"proto/verse/engine-diagnostics-v1.json\",\"check\":\"c\",\"step\":\"new\"}]";
+  #assert jv_parse(r[..], bad, nodes[..]);
+  for k: 0..<12 { #assert wc_row_fault(r[0], jv_at(r[0], 0, k)).count > 0; }
+  #assert wc_diagnostic_id_fault("engine.diagnostic.not-in-state.v1", "engine") == "" && wc_diagnostic_id_fault("engine.diagnostic.not-in-state.v1", "world").count > 0;
 }
 #test "domain events: a good event row passes; a bad name, a missing owner, or a verb not in past tense fails" {
   nodes: [128] JvNode; r: [1] Jv; used: [4] bool;

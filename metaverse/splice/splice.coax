@@ -32,7 +32,19 @@ Splice :: struct {
   world_gen: int;             // counts the world's writes: the page copies the store when it changes
   gallery: bool;              // ?scene=N: the still scenes; without it the page is the game
   game: [1] SpGame;           // the vertical slice (splice-game.coax)
+  // What `why ID` reads of the page (why.coax, #13429), and its last answer, which the host reads back
+  aspect: f32 = 1.7778; held: bool; live_over: bool;
+  drive: [1] Drive;           // the agent driver's lists and its last answer (metaverse-engine/agent/drive.coax)
 }
+// The page's facts for a `why` answer.
+sp_page :: (s: [] Splice) -> SyPage {
+  return SyPage.{aspect = s[0].aspect, held = s[0].held, gallery = s[0].gallery, draws_cap = s[0].draws.count, world_over = s[0].over, live_over = s[0].live_over, store_cap = SP_WORLD_WORDS};
+}
+// A driver's command (coax drive, message 700): the answer is kept in the driver for the host to read.
+splice_drive :: (s: [] Splice, text: string) {
+  _ := sy_drive(s[0].game[..], s[0].ld[..], sp_page(s), s[0].drive[..], text, s[0].time);
+}
+splice_drive_out :: (s: [] Splice) -> string #export_c #effects(all) { return ifx s.count > 0 then drv_said(s[0].drive[..]) else ""; }
 
 // A scene's look: its anime variant (metaverse/style-preset.coax ANIME_*), the clock it is seen at, and
 // where its key light comes from.
@@ -326,6 +338,7 @@ splice_fact :: (s: [] Splice, k: int) -> int #export_c #effects(all) {
   return -1;
 }
 splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all) {
+  if kind == 700 && s.count > 0 { splice_drive(s, body); return; }
   if kind == 610 && s.count > 0 && body.count > 0 {   // a moment of the game to stand in: "0" to "10"
     n := 0;
     for i: 0..<body.count { d := cast(int) body[i] - 48; if d >= 0 && d <= 9 { n = n * 10 + d; } }
@@ -397,6 +410,7 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
     s[0].over = pen[0].over; s[0].world_gen += 1;
   }
   step := ifx still then 0.0f32 else clamp(dt, 0, 0.1);
+  s[0].held = still; s[0].aspect = width / height;
   s[0].time += step;
   t := s[0].time;
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
@@ -409,6 +423,8 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
     pen := [1] Pen.[Pen.{graybox = g[0].gray}];
     g_live(g, live, pen[..]);
     s[0].live_n = pen[0].n;
+    s[0].live_over = pen[0].over;
+    drv_frame(s[0].drive[..], width, height, dpr, false); sy_list(g, s[0].drive[..]);
     lights: [LIGHTS * LIGHT_FLOATS] f32;
     g_lights(g, lights[..]);
     for i: 0..<LIGHTS * LIGHT_FLOATS { u[U_LIGHTS + i] = lights[i]; }

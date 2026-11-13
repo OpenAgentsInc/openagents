@@ -19,6 +19,7 @@ for people and agents who change the code.
 | `layer.coax` | The colliders (a World of entities) and the edit layer |
 | `layer-draw.coax` | The layer's draw: a mesh for each kind, a row for each placed piece |
 | `walk.coax` | The walk replay: the second check of a layer |
+| `why.coax`, `why-checks.coax` | The answers to `coax drive ... "why ID"` and what `tree` lists: the diagnostic chain walked from the game's state (#13429) |
 | `layer-fixture.coax` | A fixture layer: a piece beside every kept-clear zone |
 | `layer-checks.coax`, `walk-checks.coax` | The checks |
 | `splice-export.coax`, `splice-run.aescript` | The Unreal exporter and its scripted run |

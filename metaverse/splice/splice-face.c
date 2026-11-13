@@ -87,9 +87,12 @@ EXPORT("coaxial_pointer_lock") void coaxial_pointer_lock(uint32_t state, int32_t
 // The interface is ink on paper: the overlay blends source over (gpu/splice.coax fx_fs).
 EXPORT("coaxial_fx_alpha_v1") uint32_t coaxial_fx_alpha_v1(void) { return 1; }
 
-static uint8_t inbox[1024];   /* the page's facts (kind 600), read for ?scene= */
+static uint8_t inbox[1024];   /* the page's facts (kind 600), read for ?scene=; a driver's command (kind 700) */
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
+// A driver's command (coax drive, kind 700) is answered in the state; the host reads the answer here.
+EXPORT("coaxial_drive_out") uint32_t coaxial_drive_out(uint32_t state) { return (uint32_t)(uintptr_t)splice_drive_out(at(state)).data; }
+EXPORT("coaxial_drive_out_len") uint32_t coaxial_drive_out_len(uint32_t state) { return (uint32_t)splice_drive_out(at(state)).count; }
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) length = sizeof inbox;
   splice_message(at(state), kind, (coax_string){(const char *)inbox, (int64_t)length});
