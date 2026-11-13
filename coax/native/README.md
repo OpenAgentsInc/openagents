@@ -111,6 +111,9 @@ sign updates. Its pinned fallback URL is
 `https://oa-updates-157437760789.us-central1.run.app`.
 DNS retains `CNAME ghs.googlehosted.com`; Google provisions the custom-domain
 TLS certificate. The fallback works while that certificate is pending.
+The deployed service's dedicated identity `native-updates-reader` has only
+bucket object-viewer access. Its reproducible revision is pinned by image
+digest in [cloud-run.yaml](cloud-run.yaml).
 
 This replaces the historical `oa-updates` deployment from `4954eb2fc0`,
 without executing or restoring its old JavaScript server. Broader rollout,

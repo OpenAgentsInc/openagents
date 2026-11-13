@@ -60,7 +60,7 @@ targets:
         INFOPLIST_KEY_NSCameraUsageDescription: "OpenAgents uses the camera when you choose to scan a code."
         INFOPLIST_KEY_NSFaceIDUsageDescription: "OpenAgents verifies your identity when you approve a protected action."
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "OpenAgents listens only when you turn voice on."
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         SWIFT_OBJC_BRIDGING_HEADER: NativeBridge.h
         HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated"]
         GCC_OPTIMIZATION_LEVEL: "2"

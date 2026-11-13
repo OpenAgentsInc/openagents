@@ -41,7 +41,7 @@ PY
   -exportOptionsPlist "$out/ExportOptions.plist" -exportPath "$out/upload"
 # The build's dSYMs, kept by UUID so a crash report's frames resolve to lines (#13379,
 # coax/web/symbols.sh app-frame). Never stops a release.
-"$(cd "$(dirname "$0")/../.." && pwd)/coax/web/symbols.sh" app "$out/OpenAgents.xcarchive" || echo "release: the dSYMs were not kept (coax/web/symbols.sh app $out/OpenAgents.xcarchive)" >&2
+../../coax/web/symbols.sh app "$out/OpenAgents.xcarchive" || echo "release: the dSYMs were not kept (coax/web/symbols.sh app $out/OpenAgents.xcarchive)" >&2
 keys="$(mktemp -d)"
 trap 'rm -rf "$keys"' EXIT
 cp "$ASC_API_PRIVATE_KEY_PATH" "$keys/AuthKey_$ASC_API_KEY_ID.p8"

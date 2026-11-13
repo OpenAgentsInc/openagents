@@ -246,8 +246,12 @@ su_loads :: (text: string, path: string, a: [] SuArena, loads: [] string, from: 
 // Under apps/openagents-web/, metaverse/, metaverse-engine/ (the engine core), everglade/ (the game), rules/ (the SRD rules: its
 // check files ran as suites under metaverse-engine/rules/srd/ and stopped when the folder moved, #13270), coax/web/ or coax/lib/,
 // and not in a hidden folder (.dev scratch).
+#test "Coax Native installed policy and starter are checked suites" {
+  #assert su_in("coax/native/updates-policy.coax") && su_in("coax/native/starter/app.coax");
+  #assert !su_in("coax/native/.scratch/app.coax");
+}
 su_in :: (path: string) -> bool {
-  roots := [7] string.["apps/openagents-web/", "metaverse/", "metaverse-engine/", "everglade/", "rules/", "coax/web/", "coax/lib/"];
+  roots := [8] string.["apps/openagents-web/", "metaverse/", "metaverse-engine/", "everglade/", "rules/", "coax/web/", "coax/lib/", "coax/native/"];
   for r: roots { if su_starts(path, 0, r) { return !su_contains(path, "/."); } }
   return false;
 }

@@ -1,0 +1,29 @@
+# Existing bucket, reader identity and public invoker binding are prerequisites.
+# Apply: gcloud run services replace coax/native/cloud-run.yaml --region us-central1
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: oa-updates
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/execution-environment: gen2
+        autoscaling.knative.dev/maxScale: '2'
+    spec:
+      serviceAccountName: native-updates-reader@openagentsgemini.iam.gserviceaccount.com
+      containers:
+        - image: us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/coaxial-serve@sha256:7f2cd392d6dcc127a7517f0f1f11e214f2da895ecaa089d84794b48f45d43d67
+          command: [serve]
+          args: [/site, --static, --host-dir, /site/., --cache, '0']
+          ports: [{containerPort: 8080}]
+          resources:
+            limits: {cpu: '1', memory: 512Mi}
+          volumeMounts: [{name: site, mountPath: /site}]
+      volumes:
+        - name: site
+          csi:
+            driver: gcsfuse.run.googleapis.com
+            readOnly: true
+            volumeAttributes:
+              bucketName: openagentsgemini-native-updates
