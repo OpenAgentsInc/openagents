@@ -13,6 +13,7 @@
 #   counts against the manifest; every vertex position and colour and every triangle count
 #   against world.glb; the material's compile errors; each reference shot against a render of
 #   the same camera; and that no file outside Generated/ changed.
+# It also points the project's Config at the level: the game starts on it and the cook includes it.
 # Needs the AethyrBridge plugin (collision box, marker and manifest classes, and the editor
 # checks Python cannot do itself).
 import hashlib
@@ -611,6 +612,25 @@ after = content_outside(content_dir, generated_rel)
 changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
 check(len(changed) == 0, "files outside Generated/ changed: " + ", ".join(changed[:8]))
 report["outside_generated_changed"] = changed
+
+# ---- the project starts on, and cooks, the imported level
+def set_ini(path, section, key, value, add=False):
+    lines = open(path).read().split("\n") if os.path.exists(path) else []
+    entry = ("+" if add else "") + key + "=" + value
+    if entry in lines:
+        return
+    if not add:
+        lines = [l for l in lines if not l.startswith(key + "=")]
+    if section not in lines:
+        lines += ["", section]
+    lines.insert(lines.index(section) + 1, entry)
+    with open(path, "w") as f:
+        f.write("\n".join(lines).rstrip("\n") + "\n")
+
+
+config_dir = os.path.join(unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir()), "Config")
+set_ini(os.path.join(config_dir, "DefaultEngine.ini"), "[/Script/EngineSettings.GameMapsSettings]", "GameDefaultMap", level_path + "." + "L_" + game)
+set_ini(os.path.join(config_dir, "DefaultGame.ini"), "[/Script/UnrealEd.ProjectPackagingSettings]", "MapsToCook", '(FilePath="%s")' % level_path, add=True)
 
 report["ok"] = len(failures) == 0
 with open(REPORT, "w") as f:

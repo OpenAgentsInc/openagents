@@ -79,7 +79,34 @@ SpGame :: struct {
   drag: int; drag_x: f32; drag_y: f32; drag_far: bool;   // the edit bay: what is being dragged (-1 nothing; 0..5 a have)
   drop: [6 * 4] f32;           // the timeline's slots this frame: three parts, three cards
   panels: int; last_pick: int;
+  // What moves, by kind, this frame (g_thing), for a host that draws some kinds itself, and what
+  // has happened since a host last asked (g_event). Neither changes what the page draws.
+  things: [THINGS * THING_FLOATS] f32; thing_first: [THINGS] int; thing_count: [THINGS] int; thing_n: int;
+  hide: [TK_KINDS] bool;       // kinds a host draws itself: listed, but not written to the live store; outlives a reset
+  events: [EVENTS] int; event_n: int;
 }
+
+// ---- Things and events, for a host that shows the game with its own models and sounds
+// (the Unreal bridge, docs/unreal/2026-11-12-aethyr-to-unreal-exporter-spec.md step 3).
+// A thing: kind, variant, x, y, z, yaw, scale, and the phase of its movement.
+TK_SMUGGLER :: 0; TK_DIGGER :: 1; TK_RAIDER :: 2; TK_IMPERIAL :: 3; TK_DJ :: 4; TK_BOSS :: 5; TK_ROVER :: 6; TK_PICKUP :: 7; TK_KINDS :: 8;
+THINGS :: 48; THING_FLOATS :: 8; EVENTS :: 16;
+EV_SPLICE_CORE :: 100; EV_RESTORED :: 101; EV_DEPLOY :: 102;   // below 100 an event is the message it came with (MSG_*)
+
+// Before a thing's shapes: lists it, and says whether to write them (-1: a host draws this kind).
+g_thing :: (g: [] SpGame, p: [] Pen, kind: int, variant: int, f: Frame, scale: f32, phase: f32) -> int {
+  k := g[0].thing_n;
+  if k >= THINGS { return ifx g[0].hide[kind] then -1 else THINGS; }   // past the list: drawn as ever, not listed
+  o := k * THING_FLOATS;
+  g[0].things[o] = cast(f32) kind; g[0].things[o + 1] = cast(f32) variant;
+  g[0].things[o + 2] = f.o.x; g[0].things[o + 3] = f.o.y; g[0].things[o + 4] = f.o.z;
+  g[0].things[o + 5] = atan2(f.z.x, f.z.z); g[0].things[o + 6] = scale; g[0].things[o + 7] = phase;
+  g[0].thing_first[k] = p[0].n; g[0].thing_count[k] = 0; g[0].thing_n = k + 1;
+  return ifx g[0].hide[kind] then -1 else k;
+}
+// After a thing's shapes: how many vertices it wrote.
+g_thing_end :: (g: [] SpGame, p: [] Pen, k: int) { if k >= 0 && k < THINGS { g[0].thing_count[k] = p[0].n - g[0].thing_first[k]; } }
+g_event :: (g: [] SpGame, e: int) { if g[0].event_n < EVENTS { g[0].events[g[0].event_n] = e; g[0].event_n += 1; } }
 
 // ---- Colours (the Game UI board): paper, shade, ink, heat orange, glow blue
 PAPER :: () -> KitTint { return kit_tint(0.918, 0.859, 0.769); }
@@ -154,14 +181,16 @@ g_respawn :: (g: [] SpGame) {
 }
 g_reset :: (g: [] SpGame) {
   gray := g[0].gray;   // the graybox toggle is the viewer's, not the run's
+  hide: [TK_KINDS] bool; for k: 0..<TK_KINDS { hide[k] = g[0].hide[k]; }   // and what a host draws is the host's
   g[0] = SpGame.{};
   g[0].gray = gray;
+  for k: 0..<TK_KINDS { g[0].hide[k] = hide[k]; }
   g_layout(g);
   g[0].mode = M_TITLE; g[0].zone = Z_VILLAGE; g[0].phase = PH_DAWN; g[0].drag = -1;
   g[0].px = VIL_X; g[0].pz = VIL_Z - 3; g[0].yaw = 0; g[0].hearts = T_HEARTS; g[0].rail_v = T_RAIL_SPEED;
   g_foes(g);
 }
-g_say :: (g: [] SpGame, m: int) { g[0].msg = m; g[0].msg_t = 3.5; }
+g_say :: (g: [] SpGame, m: int) { g[0].msg = m; g[0].msg_t = 3.5; g_event(g, m); }
 // The Digger beside you: where it stands when it is not at work.
 g_bot_home :: (g: [] SpGame) { g[0].bot_state = BOT_FOLLOW; g[0].bot_x = g[0].px - sin(g[0].yaw) * 1.7 - cos(g[0].yaw) * 1.1; g[0].bot_z = g[0].pz - cos(g[0].yaw) * 1.7 + sin(g[0].yaw) * 1.1; g[0].bot_yaw = g[0].yaw; }
 g_enter_mine :: (g: [] SpGame) { g[0].zone = Z_MINE; g[0].mode = M_PLAY; g[0].phase = PH_DAY; g[0].px = START_X; g[0].pz = START_Z; g[0].yaw = PI; g[0].pitch = 0; g_bot_home(g); g_keep(g); }
@@ -323,7 +352,7 @@ g_step :: (g: [] SpGame, dt: f32) {
   if g[0].msg_t > 0 { g[0].msg_t -= dt; if g[0].msg_t <= 0 { g[0].msg = MSG_NONE; } }
   if g[0].flash > 0 { g[0].flash = hi(0, g[0].flash - dt * 1.6); }
   if g[0].mode == M_BANNER { g[0].banner_t -= dt; if g[0].banner_t <= 0 { g_respawn(g); g[0].mode = M_PLAY; } return; }
-  if g[0].mode == M_MEMORY { g[0].mem_t += dt; if g[0].mem_t >= T_MEMORY { g[0].mode = M_RESTORED; } return; }
+  if g[0].mode == M_MEMORY { g[0].mem_t += dt; if g[0].mem_t >= T_MEMORY { g[0].mode = M_RESTORED; g_event(g, EV_RESTORED); } return; }
   if g[0].mode == M_BAY { if g[0].heat > 0 { g[0].heat = hi(0, g[0].heat - T_HEAT_COOL * dt); } return; }
   if g[0].mode == M_RIDE {
     // the rover follows the rail; W and S change its speed; the sensor ping stops it halfway
@@ -466,7 +495,7 @@ g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
     if key == '5' { g_place(g, H_TREADS, -1); return true; }
     if key == '6' { g_place(g, H_BATTERY, -1); return true; }
     if key == 'c' || key == 'C' || key == -3 { g[0].strip_n = 0; return true; }
-    if key == 'x' || key == 'X' { if g[0].have[H_CORE] { g[0].mode = M_MEMORY; g[0].mem_t = 0; } return true; }
+    if key == 'x' || key == 'X' { if g[0].have[H_CORE] { g[0].mode = M_MEMORY; g[0].mem_t = 0; g_event(g, EV_SPLICE_CORE); } return true; }
     if enter { g_deploy(g); return true; }
     return false;
   }
@@ -700,6 +729,7 @@ g_draw_rover :: (buf: [] u32, p: [] Pen, at: Point, yaw: f32) {
 }
 g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   t := g[0].t; blue := GLOW();
+  g[0].thing_n = 0;
   if g[0].mode == M_MEMORY {
     // robots and people working side by side, all hologram blue
     for i: 0..<3 {
@@ -717,7 +747,8 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   }
   if g[0].zone == Z_RAIL {
     c := rail_at(g[0].rail_s);
-    g_draw_rover(buf, p, v3(c.x, 0.2, c.z), rail_yaw(g[0].rail_s));
+    rk := g_thing(g, p, TK_ROVER, 0, frame_at(v3(c.x, 0.2, c.z), rail_yaw(g[0].rail_s)), 1.5, g[0].rail_s);
+    if rk >= 0 { g_draw_rover(buf, p, v3(c.x, 0.2, c.z), rail_yaw(g[0].rail_s)); g_thing_end(g, p, rk); }
     if !g[0].taken[H_BATTERY] {
       at := v3(pick_x(H_BATTERY), 0.75 + sin(t * 2.2) * 0.12, pick_z(H_BATTERY));
       kit_pen(p, 72, MAT_SKIN, t3(1.0, 0.72, 0.30)); box(buf, p, frame_at(at, t * 1.2), 0.26, 0.34, 0.2);
@@ -730,12 +761,15 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   if !blink {
     // the smuggler: a cylinder, with a visor band that shows which way it faces
     pf := frame_at(v3(g[0].px, y, g[0].pz), g[0].yaw);
+    sk := g_thing(g, p, TK_SMUGGLER, 0, pf, 1, g[0].stride);
+    if sk >= 0 {
     kit_pen(p, 60, MAT_SKIN, t3(0.76, 0.34, 0.20));
     tube(buf, p, pf, 1.6, 0.42, 0.42, 0.42, 0.42, 14, true);
     kit_pen(p, 61, MAT_WINDOW, INK());
     box(buf, p, kit_at(pf, 0, 1.25, 0.36), 0.3, 0.1, 0.08);
     kit_pen(p, 62, MAT_SKIN, t3(0.93, 0.86, 0.70));
     tube(buf, p, kit_at(pf, 0, 1.6, 0), 0.08, 0.46, 0.46, 0.46, 0.46, 14, true);
+    g_thing_end(g, p, sk); }
   }
   if g[0].zone != Z_MINE { return; }
   if g[0].have[H_CORE] { kit_pen(p, 66, MAT_GLOW, blue); ball(buf, p, v3(g[0].px - sin(g[0].yaw) * 0.45, y + 1.2, g[0].pz - cos(g[0].yaw) * 0.45), 0.24, 10); }
@@ -744,6 +778,8 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     if g[0].taken[i] || pick_zone(i) != Z_MINE { continue; }
     at := v3(pick_x(i), ground_y(pick_x(i), pick_z(i)) + 0.75 + sin(t * 2.2 + cast(f32) i) * 0.12, pick_z(i));
     f := frame_at(at, t * 1.2 + cast(f32) i);
+    pk := g_thing(g, p, TK_PICKUP, i, f, 1, t);
+    if pk < 0 { continue; }
     if i == PICK_PLUS { f = frame_move(f, v3(at.x, at.y + 0.55, at.z)); kit_pen(p, 70 + i, MAT_GLOW, blue); box(buf, p, frame_turn(f, 0, 0.6), 0.3, 0.3, 0.3); }
     else if i >= PICK_CELL { kit_pen(p, 70 + i, MAT_GLOW, t3(1.0, 0.72, 0.30)); box(buf, p, f, 0.14, 0.26, 0.14); kit_pen(p, 80 + i, MAT_CLOTH, INK()); box(buf, p, kit_at(f, 0, 0.3, 0), 0.07, 0.05, 0.07); }
     else if i >= H_MOVE {
@@ -753,6 +789,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
       kit_pen(p, 70 + i, MAT_SKIN, t3(0.93, 0.88, 0.76));
       if i == H_ARM { tube(buf, p, frame_turn(f, 0, 1.2), 0.9, 0.3, 0.3, 0.02, 0.02, 6, true); } else { box(buf, p, f, 0.2, 0.28, 0.6); }
     }
+    g_thing_end(g, p, pk);
   }
   // the rubble and the boss wall, until the Digger opens them
   if !g[0].rubble_gone {
@@ -766,7 +803,11 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   }
   if g[0].bot {
     shake := ifx g[0].bot_state == BOT_FAIL then sin(t * 40) * 0.06 else 0.0f32;
+    df := frame_at(v3(g[0].bot_x + shake, ground_y(g[0].bot_x, g[0].bot_z), g[0].bot_z), g[0].bot_yaw);
+    dk := g_thing(g, p, TK_DIGGER, ifx g[0].have[H_PLUS] then 1 else 0, df, 0.85, t);
+    if dk >= 0 {
     kit_digger(buf, p, frame_at(v3(g[0].bot_x + shake, ground_y(g[0].bot_x, g[0].bot_z), g[0].bot_z), g[0].bot_yaw), 0.85, 95, t3(0.93, 0.88, 0.76), INK(), HEAT(), ifx g[0].have[H_PLUS] then blue else t3(1.0, 0.72, 0.30), true, true, true, g[0].bot_spin);
+    g_thing_end(g, p, dk); }
   }
   // the party's people: raiders dancing where they stand, Imperial robots on patrol
   for i: 0..<FOES {
@@ -779,20 +820,29 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
       dance := !g[0].fhost[i];
       beat := t * 7.5 + cast(f32) i * 1.3;
       f := frame_at(v3(g[0].fx[i] + reel, fy + (ifx dance then abs(sin(beat)) * 0.22 else 0.0f32), g[0].fz[i]), ifx dance then sin(beat * 0.5) * 0.9 + cast(f32) i else face);
+      fk := g_thing(g, p, TK_RAIDER, ifx g[0].fhost[i] then 1 else 0, f, 1.15, ifx dance then beat else t * 9);
+      if fk >= 0 {
       kit_figure(buf, p, f, 1.15, 100 + i * 5, t3(0.16, 0.12, 0.18), t3(0.16, 0.12, 0.18), t3(0.10, 0.08, 0.12), t3(0.30, 0.14, 0.20), ifx dance then beat else t * 9);
       kit_pen(p, 104 + i * 5, MAT_GLOW, ifx g[0].fhost[i] then t3(1.0, 0.30, 0.12) else t3(1.0, 0.36, 0.62));
       box(buf, p, kit_at(f, 0, 1.9, 0.19), 0.12, 0.03, 0.02);
+      g_thing_end(g, p, fk); }
     } else {
       // an Imperial robot: white plates, an orange band, a red eye once it has seen you
       k := 0.5 + 0.5 * sin(t * 0.35 + cast(f32) i * 1.7);
       walk := atan2((foe_bx(i) - foe_ax(i)) * cos(t * 0.35 + cast(f32) i * 1.7), (foe_bz(i) - foe_az(i)) * cos(t * 0.35 + cast(f32) i * 1.7));
       f := frame_at(v3(g[0].fx[i] + reel, fy, g[0].fz[i]), ifx g[0].fhost[i] then face else walk);
+      ik := g_thing(g, p, TK_IMPERIAL, ifx g[0].fhost[i] then 1 else 0, f, 0.8, t);
+      if ik >= 0 {
       kit_robot(buf, p, f, 0.8, 100 + i * 5, t3(0.92, 0.93, 0.96), HEAT(), ifx g[0].fhost[i] then t3(1.0, 0.22, 0.12) else t3(0.95, 0.95, 1.0), t3(0.20, 0.20, 0.28), ifx g[0].fhost[i] then 0.7 else 0.0f32);
+      g_thing_end(g, p, ik); }
     }
   }
   // the DJ at the booth, the dance floor's tiles changing colour on the beat, beams from the truss
   dj := frame_at(v3(-13.6, 1.0 + abs(sin(t * 7.5)) * 0.12, -51.5), PI * 0.5);
+  jk := g_thing(g, p, TK_DJ, 0, dj, 1.2, t * 7.5);
+  if jk >= 0 {
   kit_figure(buf, p, dj, 1.2, 160, t3(0.36, 0.86, 0.96), t3(0.90, 0.72, 0.58), INK(), t3(1.0, 0.36, 0.62), t * 7.5);
+  g_thing_end(g, p, jk); }
   step := cast(int) (t * 1.9);
   for i: 0..<20 {
     c := (i + (i / 5) + step) % 3;
@@ -807,7 +857,10 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   // the banned bot, its arm and its three weak points
   bf := frame_at(v3(BOSS_X, 0, BOSS_Z), 0);
   grey := t3(0.40, 0.40, 0.46);
+  bk := g_thing(g, p, TK_BOSS, ifx g[0].boss_down then 1 else 0, bf, 1.25, g[0].boss_t);
+  if bk >= 0 {
   kit_mech(buf, p, bf, 1.25, 130, ifx g[0].boss_down then grey else t3(0.22, 0.34, 0.56), ifx g[0].boss_down then t3(0.3, 0.3, 0.34) else blue, t3(0.12, 0.14, 0.24), ifx g[0].boss_down then t3(0.3, 0.3, 0.34) else blue);
+  g_thing_end(g, p, bk); }
   if !g[0].boss_down && g[0].wall_gone {
     a := boss_arm(g);
     warn := g[0].boss_t > T_SWEEP_EVERY - T_SWEEP_WARN && g[0].boss_t <= T_SWEEP_EVERY && fract(t * 6) < 0.5;

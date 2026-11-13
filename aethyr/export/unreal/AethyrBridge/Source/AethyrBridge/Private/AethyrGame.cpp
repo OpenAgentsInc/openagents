@@ -98,6 +98,9 @@ AAethyrGame::AAethyrGame()
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(RootComponent);
 	Camera->bConstrainAspectRatio = false;
+	// the angle the host sets is the horizontal one, whatever the window's shape
+	Camera->bOverrideAspectRatioAxisConstraint = true;
+	Camera->AspectRatioAxisConstraint = AspectRatio_MaintainXFOV;
 	Sky = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Sky"));
 	Sky->SetupAttachment(RootComponent);
 	Sky->SetCollisionEnabled(ECollisionEnabled::NoCollision);

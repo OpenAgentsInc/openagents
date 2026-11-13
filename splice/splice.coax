@@ -403,6 +403,27 @@ splice_pointer :: (s: [] Splice, x: f32, y: f32, phase: int) -> bool #export_c #
 coaxial_splice_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
 coaxial_splice_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
 coaxial_splice_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
+// For a host that draws some kinds of thing itself and plays sounds (splice-game.coax, "Things
+// and events"). The list is the last frame's: kind, variant, x, y, z, yaw, scale, phase each.
+splice_things :: (s: [] Splice, out: [] f32) -> int #export_c #effects(all) {
+  if s.count < 1 || s[0].gallery { return 0; }
+  g := s[0].game[..]; n := g[0].thing_n;
+  if n * THING_FLOATS > out.count { n = out.count / THING_FLOATS; }
+  for i: 0..<n * THING_FLOATS { out[i] = g[0].things[i]; }
+  return n;
+}
+// Where thing k's vertices are in the live store: its first vertex, and how many (0 when hidden).
+splice_thing_first :: (s: [] Splice, k: int) -> int #export_c #effects(all) { return ifx s.count > 0 && k >= 0 && k < s[0].game[0].thing_n then s[0].game[0].thing_first[k] else 0; }
+splice_thing_count :: (s: [] Splice, k: int) -> int #export_c #effects(all) { return ifx s.count > 0 && k >= 0 && k < s[0].game[0].thing_n then s[0].game[0].thing_count[k] else 0; }
+splice_thing_hide :: (s: [] Splice, kind: int, hide: bool) #export_c #effects(all) { if s.count > 0 && kind >= 0 && kind < TK_KINDS { s[0].game[0].hide[kind] = hide; } }
+// What has happened since the last call, oldest first; the list is emptied.
+splice_events :: (s: [] Splice, out: [] f32) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  g := s[0].game[..]; n := g[0].event_n; if n > out.count { n = out.count; }
+  for i: 0..<n { out[i] = cast(f32) g[0].events[i]; }
+  g[0].event_n = 0;
+  return n;
+}
 splice_world_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].world_n; }
 splice_world_version :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].world_gen; }
 splice_live_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].live_n; }

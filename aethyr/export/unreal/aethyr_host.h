@@ -35,6 +35,18 @@ void aethyr_message(void *state, int kind, const char *body, size_t length);
 /* A fact of the run for checks and logs; what each number means is the world's (its -ue-face.c). */
 int aethyr_fact(void *state, int k);
 
+/* What moves, by kind, for a host that draws some kinds with its own models. aethyr_things
+ * copies the last frame's list into out (cap floats) and returns how many things: eight floats
+ * each, kind, variant, x, y, z, yaw, scale, phase. A hidden kind is listed but not written to the
+ * live store. aethyr_thing_first and _count give thing k's vertices in the live store. */
+int aethyr_things(void *state, float *out, int cap);
+int aethyr_thing_first(void *state, int k);
+int aethyr_thing_count(void *state, int k);
+void aethyr_thing_hide(void *state, int kind, int hide);
+/* What has happened since the last call, oldest first, one number each (the manifest names
+ * them); the list is emptied. Returns how many. */
+int aethyr_events(void *state, float *out, int cap);
+
 #ifdef __cplusplus
 }
 #endif

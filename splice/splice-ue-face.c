@@ -51,3 +51,9 @@ void aethyr_message(void *state, int kind, const char *body, size_t length) {
   splice_message(at(state), kind, (coax_string){body, (int64_t)length});
 }
 int aethyr_fact(void *state, int k) { return (int)splice_fact(at(state), k); }
+// what moves, by kind, and what has happened (splice-game.coax, "Things and events")
+int aethyr_things(void *state, float *out, int cap) { return (int)splice_things(at(state), (coax_v_f32){out, cap}); }
+int aethyr_thing_first(void *state, int k) { return (int)splice_thing_first(at(state), k); }
+int aethyr_thing_count(void *state, int k) { return (int)splice_thing_count(at(state), k); }
+void aethyr_thing_hide(void *state, int kind, int hide) { splice_thing_hide(at(state), kind, hide != 0); }
+int aethyr_events(void *state, float *out, int cap) { return (int)splice_events(at(state), (coax_v_f32){out, cap}); }
