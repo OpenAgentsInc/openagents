@@ -78,6 +78,7 @@ bool mesh_route(const request *q);         // mesh.c: authenticated native Syste
 bool anime_route(const request *q);        // anime.c: typed Anime Lab directions
 bool worldbuilder_route(const request *q); // worldbuilder.c: /create-world's chat, the day's $50 cap and anti-flood
 bool world_files_project_route(const request *q);   // worlds.c: /api/projects/SLUG/files, a project's attachments (#13468)
+int world_files_turn(const request *q, PGconn *db, char **out, char *words, size_t cap);   // worlds.c: a world turn's opened attachments joined to its request (#13468)
 bool worlds_route(const request *q);       // worlds.c: a world's document by ID, its edits, its dev and live revisions and its imported assets (world-policy.coax)
 bool site_identity(const request *q, PGconn *db, char who[65], bool *signed_req, bool *payload, bool *unseen);
 bool inference_route(const request *q);   // inference.c: POST /api/v1/inference, our models for the Mac app

@@ -148,3 +148,14 @@ esf_open :: (h: [] EsTest) {
   es_test_press(h[..], "files.link");
   #assert coaxial_editor_fetching(s) == ES_HOW_SAY && esf_head(s) == "world.file.link.v1 world https://example.com/garage\nname https://example.com/garage\n";
 }
+
+#test "the agent's turn lists the attachments by name, note and tags, never their bytes" {
+  h: [1] EsTest; s := h[0].s[..]; turn: [1] WorldTurn; scratch: [WT_BYTES] u8;
+  esf_open(h[..]);
+  es_test_press(h[..], "agent");
+  #assert coaxial_editor_act_kind(s) == ES_TURN;
+  a := s[0].acts[0]; text := cast(string) a[0..<coaxial_editor_act_len(s)];
+  #assert wt_read(turn[..], text, scratch[..]) && turn[0].nf == 3 && cast(string) turn[0].f_id[0][..] == "00112233445566aa";
+  #assert esf_at(text, "a 00112233445566aa image 2000 RaiderGarage.png\nan The raiders' garage at night\nat garage,raiders\n") > 0;
+  #assert esf_at(text, "a 00112233445566cc link 0 The design doc\nat design\n") > 0 && esf_at(text, "docs.google.com") < 0;
+}

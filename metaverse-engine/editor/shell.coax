@@ -26,7 +26,7 @@
 
 ES_INBOX :: 200704;    // a model (EM_BYTES), a field's text, or a file of code as typed (RC_TEXT, and room to see that it is longer), from the host
 ES_CSS :: 24576;
-ES_ACT :: 8192;        // bytes one action for the page takes (a template placed is a batch of up to PL_PARTS spawns)
+ES_ACT :: 24576;       // bytes one action for the page takes (a template placed is a batch of up to PL_PARTS spawns; a turn is WT_BYTES with its attachments)
 ES_ACTS :: 4;          // actions that wait for the page
 ES_DRAFT :: 16;        // bytes typed into a number's field
 ES_CLICK :: 1; ES_INPUT :: 2; ES_SUBMIT :: 3; ES_MODEL :: 6;
@@ -754,6 +754,16 @@ es_turn :: (s: [] EdShell) -> bool {
   if m[0].here { n = wt_here(room, n, m[0].here_x, m[0].here_z); }
   for k: 0..<m[0].nk { if k < WT_KINDS { n = wt_kind(room, n, m[0].kind_id[k], cast(string) m[0].kind_name[k][0..<m[0].kind_n[k]]); } }
   if n < 0 { return true; }   // a world whose kinds alone do not fit is not told: the turn goes without it
+  // the attachments the world's server listed (shell-files.coax): their names, notes and tags, never their bytes
+  if s[0].fl.have {
+    l := s[0].fl.l[..];
+    for k: 0..<l[0].n {
+      if k >= WT_FILES { break; }
+      next := wt_file(room, n, fw_id_of(l, k), l[0].f[k].kind, l[0].f[k].bytes, fw_name_of(l, k), fw_note_of(l, k), fw_tags_of(l, k));
+      if next < 0 { continue; }
+      n = next;
+    }
+  }
   listed := 0;
   for k: 0..<m[0].ne {
     if listed >= WT_THINGS { break; }

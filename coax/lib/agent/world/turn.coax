@@ -8,6 +8,11 @@
 //                                           revision, the selected thing's ID (0: none)
 //   here X Z                                the point last tapped, whole centimetres; left out until one is
 //   k KIND NAME                             a kind a thing can be: its content ID and its name
+//   a ID KIND BYTES NAME                    an attachment of the world or its project (#13468,
+//                                           world.files.v1): its ID, image, document or link, its
+//                                           size and its name; never its bytes
+//   an NOTE                                 the attachment's note; left out for none
+//   at TAGS                                 its tags, comma-separated; left out for none
 //   e ID KIND X Z YAW                       a thing: its ID, its kind, where it stands in whole
 //                                           centimetres, its turn in whole degrees
 //   more N                                  things the world holds that are not listed; left out for none
@@ -15,6 +20,8 @@
 // world.plan.v1, what a hosted turn asks the editor to do, a step a line, carried out as one
 // batch of world.edit.v1 edits the page sends as its own (so the server's rules answer):
 //   world.plan.v1 WORLD REV                 the world and the revision the plan was made from
+//                                           (a hosted turn may first ask to open attachments: route
+//                                           "open", wp_reply's p.open; the page then asks again with them)
 //   place KIND X Z YAW                      a new thing of a kind
 //   move ID X Z                             a thing to a place
 //   turn ID YAW                             a thing to a heading
@@ -42,14 +49,18 @@ WT_WORLD :: 32;        // bytes in a world's ID
 WT_NAME :: 40;         // bytes in a kind's or a world's name
 WT_KINDS :: 64;        // kinds a turn lists
 WT_THINGS :: 128;      // things a turn lists; the rest are counted in `more`
-WT_BYTES :: 12288;     // bytes a turn may take
+WT_FILES :: 24;        // attachments a turn lists (#13468); the rest are left out
+WT_FID :: 16; WT_FNAME :: 100; WT_FNOTE :: 200; WT_FTAGS :: 120;   // an attachment's ID, name, note and tags, in bytes (world.files.v1's)
+WT_FKIND :: [4] string.["", "image", "document", "link"];
+WT_BYTES :: 24576;     // bytes a turn may take
 WT_REACH :: 10000000;  // centimetres either way a place may be
 WT_ID_MAX :: 2147483647;
 WP_STEPS :: 16;        // steps in one plan
 WP_BYTES :: 1024;      // bytes a plan may take
 WP_SAY :: 2000;        // bytes of what a hosted turn says
 WP_REPLY :: 8192;      // bytes of the model's answer read
-WP_PROMPT :: 16384;    // bytes of the instructions a hosted world turn is asked with
+WP_PROMPT :: 32768;    // bytes of the instructions a hosted world turn is asked with
+WP_OPEN :: 3;          // attachments a hosted turn may open (route "open")
 WC_URL :: 200;         // bytes in a card's picture's address
 WC_BYTES :: 400;       // bytes a card may take
 
@@ -74,6 +85,10 @@ WorldTurn :: struct {
   nk: int; kind_id: [WT_KINDS] int; kind_name: [WT_KINDS] [WT_NAME] u8; kind_n: [WT_KINDS] int;
   nt: int; t_id: [WT_THINGS] int; t_kind: [WT_THINGS] int; t_x: [WT_THINGS] int; t_z: [WT_THINGS] int; t_yaw: [WT_THINGS] int;
   more: int;
+  nf: int; f_id: [WT_FILES] [WT_FID] u8; f_kind: [WT_FILES] int; f_bytes: [WT_FILES] int;
+  f_name: [WT_FILES] [WT_FNAME] u8; f_name_n: [WT_FILES] int;
+  f_note: [WT_FILES] [WT_FNOTE] u8; f_note_n: [WT_FILES] int;
+  f_tags: [WT_FILES] [WT_FTAGS] u8; f_tags_n: [WT_FILES] int;
 }
 WorldStep :: struct { tool: int; kind: int; id: int; x: int; z: int; yaw: int; percent: int = 100; }
 WorldPlan :: struct {
@@ -82,6 +97,7 @@ WorldPlan :: struct {
   world: [WT_WORLD] u8; world_n: int; rev: int;
   n: int; steps: [WP_STEPS] WorldStep;
   say: [WP_SAY] u8; say_n: int;
+  nopen: int; open: [WP_OPEN] [WT_FID] u8;   // route "open": the attachments the model asks to see before it answers
 }
 WorldCard :: struct {
   ok: bool;
@@ -147,6 +163,16 @@ wt_kind_name :: (t: [] WorldTurn, kind: int) -> string {
   for k: 0..<t[0].nk { if t[0].kind_id[k] == kind { return cast(string) t[0].kind_name[k][0..<t[0].kind_n[k]]; } }
   return "";
 }
+// An attachment's place in the turn's list, or -1.
+wt_file_at :: (t: [] WorldTurn, id: string) -> int {
+  for k: 0..<t[0].nf { if cast(string) t[0].f_id[k][..] == id { return k; } }
+  return -1;
+}
+wt_fid_ok :: (s: string) -> bool {
+  if s.count != WT_FID { return false; }
+  for b: s { if !((b >= '0' && b <= '9') || (b >= 'a' && b <= 'f')) { return false; } }
+  return true;
+}
 // A thing's place in the turn's list, or -1.
 wt_thing_at :: (t: [] WorldTurn, id: int) -> int {
   for k: 0..<t[0].nt { if t[0].t_id[k] == id { return k; } }
@@ -181,6 +207,21 @@ wt_thing :: (out: [] u8, at: int, id: int, kind: int, x: int, z: int, yaw: int) 
   n = json_raw(out, n, " "); n = json_write_int(out, n, yaw);
   return json_raw(out, n, "\n");
 }
+// An attachment: its ID, kind (1 image, 2 document, 3 link), size and name, then its note and tags where it has them.
+wt_file :: (out: [] u8, at: int, id: string, kind: int, bytes: int, name: string, note: string, tags: string) -> int {
+  if at < 0 || !wt_fid_ok(id) || kind < 1 || kind > 3 || bytes < 0 || !wt_text_ok(name, WT_FNAME) { return -1; }
+  if (note.count > 0 && !wt_text_ok(note, WT_FNOTE)) || (tags.count > 0 && (!wt_text_ok(tags, WT_FTAGS) || wt_parts(tags, ' ') != 1)) { return -1; }
+  kinds := WT_FKIND;
+  n := json_raw(out, at, "a "); n = json_raw(out, n, id); n = json_raw(out, n, " "); n = json_raw(out, n, kinds[kind]);
+  n = json_raw(out, n, " "); n = json_write_int(out, n, bytes); n = json_raw(out, n, " "); n = json_raw(out, n, name); n = json_raw(out, n, "\n");
+  if note.count > 0 { n = json_raw(out, n, "an "); n = json_raw(out, n, note); n = json_raw(out, n, "\n"); }
+  if tags.count > 0 { n = json_raw(out, n, "at "); n = json_raw(out, n, tags); n = json_raw(out, n, "\n"); }
+  return n;
+}
+wt_file_of :: (t: [] WorldTurn, out: [] u8, at: int, k: int) -> int {
+  return wt_file(out, at, cast(string) t[0].f_id[k][..], t[0].f_kind[k], t[0].f_bytes[k], cast(string) t[0].f_name[k][0..<t[0].f_name_n[k]],
+                 cast(string) t[0].f_note[k][0..<t[0].f_note_n[k]], cast(string) t[0].f_tags[k][0..<t[0].f_tags_n[k]]);
+}
 wt_more :: (out: [] u8, at: int, count: int) -> int {
   if count < 1 { return -1; }
   n := json_raw(out, at, "more "); n = json_write_int(out, n, count);
@@ -191,13 +232,14 @@ wt_write :: (t: [] WorldTurn, out: [] u8) -> string {
   n := wt_begin(out, wt_word(t), t[0].live, t[0].rev, t[0].sel);
   if t[0].here { n = wt_here(out, n, t[0].here_x, t[0].here_z); }
   for k: 0..<t[0].nk { n = wt_kind(out, n, t[0].kind_id[k], cast(string) t[0].kind_name[k][0..<t[0].kind_n[k]]); }
+  for k: 0..<t[0].nf { n = wt_file_of(t, out, n, k); }
   for k: 0..<t[0].nt { n = wt_thing(out, n, t[0].t_id[k], t[0].t_kind[k], t[0].t_x[k], t[0].t_z[k], t[0].t_yaw[k]); }
   if t[0].more > 0 { n = wt_more(out, n, t[0].more); }
   return ifx n < 0 || n > WT_BYTES then "" else cast(string) out[0..<n];
 }
 // Reads a turn. False for any bytes wt_write would not write.
 wt_read :: (t: [] WorldTurn, text: string, scratch: [] u8) -> bool {
-  t[0].ok = false; t[0].world_n = 0; t[0].nk = 0; t[0].nt = 0; t[0].more = 0; t[0].here = false; t[0].sel = 0; t[0].rev = 0;
+  t[0].ok = false; t[0].world_n = 0; t[0].nk = 0; t[0].nt = 0; t[0].more = 0; t[0].here = false; t[0].sel = 0; t[0].rev = 0; t[0].nf = 0;
   if text.count < WT_SCHEMA.count || text.count > WT_BYTES { return false; }
   head := wt_part(text, '\n', 0);
   if wt_part(head, ' ', 0) != WT_SCHEMA || wt_parts(head, ' ') != 5 { return false; }
@@ -219,6 +261,18 @@ wt_read :: (t: [] WorldTurn, text: string, scratch: [] u8) -> bool {
       t[0].t_id[k] = wt_num(wt_part(line, ' ', 1)).v; t[0].t_kind[k] = wt_num(wt_part(line, ' ', 2)).v;
       t[0].t_x[k] = wt_num(wt_part(line, ' ', 3)).v; t[0].t_z[k] = wt_num(wt_part(line, ' ', 4)).v; t[0].t_yaw[k] = wt_num(wt_part(line, ' ', 5)).v;
       t[0].nt += 1;
+    } else if word == "a" && t[0].nf < WT_FILES {
+      k := t[0].nf; kinds := WT_FKIND;
+      id := wt_part(line, ' ', 1);
+      if id.count != WT_FID { return false; }
+      for c, j: id { t[0].f_id[k][j] = c; }
+      t[0].f_kind[k] = 0; for j: 1..<4 { if wt_part(line, ' ', 2) == kinds[j] { t[0].f_kind[k] = j; } }
+      t[0].f_bytes[k] = wt_num(wt_part(line, ' ', 3)).v;
+      t[0].f_name_n[k] = wt_copy(t[0].f_name[k][..], wt_rest(line, 4)); t[0].f_note_n[k] = 0; t[0].f_tags_n[k] = 0;
+      t[0].nf += 1;
+    } else if (word == "an" || word == "at") && t[0].nf > 0 {
+      k := t[0].nf - 1;
+      if word == "an" { t[0].f_note_n[k] = wt_copy(t[0].f_note[k][..], wt_rest(line, 1)); } else { t[0].f_tags_n[k] = wt_copy(t[0].f_tags[k][..], wt_rest(line, 1)); }
     } else if word == "more" { t[0].more = wt_num(wt_part(line, ' ', 1)).v; }
     else if line.count > 0 || i + 1 < lines { return false; }
   }
@@ -229,7 +283,7 @@ wt_read :: (t: [] WorldTurn, text: string, scratch: [] u8) -> bool {
 // The turn in words, put after the person's message for an agent that is told in its message (an
 // agent on the person's own computer, or the hosted agent): the world, the selection and the point
 // last tapped.
-WT_WORDS :: 600;
+WT_WORDS :: 12288;
 wt_words :: (t: [] WorldTurn, out: [] u8) -> string {
   n := json_raw(out, 0, "[The editor is open on the world "); n = json_raw(out, n, wt_word(t));
   n = json_raw(out, n, ifx t[0].live then ", live lane, revision " else ", dev lane, revision "); n = json_write_int(out, n, t[0].rev);
@@ -246,7 +300,20 @@ wt_words :: (t: [] WorldTurn, out: [] u8) -> string {
     n = json_raw(out, n, " Here, the point last tapped: x "); n = json_write_int(out, n, t[0].here_x);
     n = json_raw(out, n, " z "); n = json_write_int(out, n, t[0].here_z); n = json_raw(out, n, " cm.");
   }
-  n = json_raw(out, n, " Read and change it with the realm world tools.]");
+  n = json_raw(out, n, " Read and change it with the realm world tools.");
+  // the attachments, never their bytes: a local agent reads one with the realm command
+  if t[0].nf > 0 {
+    kinds := WT_FKIND;
+    n = json_raw(out, n, " Attached to the world and its project (read one with `openagents realm file-read "); n = json_raw(out, n, wt_word(t)); n = json_raw(out, n, " ID`):");
+    for k: 0..<t[0].nf {
+      n = json_raw(out, n, ifx k == 0 then " " else "; "); n = json_raw(out, n, cast(string) t[0].f_name[k][0..<t[0].f_name_n[k]]);
+      n = json_raw(out, n, " ("); n = json_raw(out, n, kinds[t[0].f_kind[k]]); n = json_raw(out, n, ", ID "); n = json_raw(out, n, cast(string) t[0].f_id[k][..]); n = json_raw(out, n, ")");
+      if t[0].f_note_n[k] > 0 { n = json_raw(out, n, ": "); n = json_raw(out, n, cast(string) t[0].f_note[k][0..<t[0].f_note_n[k]]); }
+      if t[0].f_tags_n[k] > 0 { n = json_raw(out, n, " ["); n = json_raw(out, n, cast(string) t[0].f_tags[k][0..<t[0].f_tags_n[k]]); n = json_raw(out, n, "]"); }
+    }
+    n = json_raw(out, n, ".");
+  }
+  n = json_raw(out, n, "]");
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 // ---- the plan
@@ -343,12 +410,12 @@ wp_line :: (s: WorldStep, t: [] WorldTurn, out: [] u8) -> string {
 // row of WT_TOOL. A step names every field; the ones its tool does not use are 0.
 wp_schema :: (out: [] u8) -> string {
   tools := WT_TOOL;
-  n := json_raw(out, 0, "{\"type\":\"object\",\"properties\":{\"route\":{\"type\":\"string\",\"enum\":[\"talk\",\"edit\"]},\"say\":{\"type\":\"string\"},\"steps\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"tool\":{\"type\":\"string\",\"enum\":[");
+  n := json_raw(out, 0, "{\"type\":\"object\",\"properties\":{\"route\":{\"type\":\"string\",\"enum\":[\"talk\",\"edit\",\"open\"]},\"say\":{\"type\":\"string\"},\"open\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"steps\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"tool\":{\"type\":\"string\",\"enum\":[");
   for k: 0..<WT_TOOLS { if k > 0 { n = json_raw(out, n, ","); } n = json_write_string(out, n, tools[k]); }
   n = json_raw(out, n, "]}");
   fields := [6] string.["kind", "id", "x", "z", "yaw", "percent"];
   for f: fields { n = json_raw(out, n, ",\""); n = json_raw(out, n, f); n = json_raw(out, n, "\":{\"type\":\"integer\"}"); }
-  n = json_raw(out, n, "},\"required\":[\"tool\",\"kind\",\"id\",\"x\",\"z\",\"yaw\",\"percent\"],\"additionalProperties\":false}}},\"required\":[\"route\",\"say\",\"steps\"],\"additionalProperties\":false}");
+  n = json_raw(out, n, "},\"required\":[\"tool\",\"kind\",\"id\",\"x\",\"z\",\"yaw\",\"percent\"],\"additionalProperties\":false}}},\"required\":[\"route\",\"say\",\"open\",\"steps\"],\"additionalProperties\":false}");
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 // What a hosted world turn is told: who it is, the tools (from their rows) and the world as the turn has it.
@@ -356,11 +423,20 @@ wp_system :: (t: [] WorldTurn, scratch: [] u8, out: [] u8) -> string {
   tools := WT_TOOL; notes := WT_TOOL_NOTE;
   n := json_raw(out, 0, "You are OpenAgents, in the editor of a world a person has open. Speak as \"we\". Answer with a route, what to say, and steps.\nroute \"talk\": the person asks or talks and nothing in the world changes; steps is empty and say is the answer, in Markdown where it helps.\nroute \"edit\": the person wants the world changed; steps are the changes in order, at most 16, and say is one short sentence of what was done.\nA step's tool is one of:\n");
   for k: 0..<WT_TOOLS { n = json_raw(out, n, "- "); n = json_raw(out, n, tools[k]); n = json_raw(out, n, ": "); n = json_raw(out, n, notes[k]); n = json_raw(out, n, "\n"); }
-  n = json_raw(out, n, "A field a tool does not use is 0. Use only kinds and thing IDs from the lists below. \"Here\" and \"this\" mean the point last tapped and the selected thing. Places are centimetres; x runs east and z south. If the request cannot be done with these tools, route \"talk\" and say why.\nThe world now (k is a kind: ID and name; e is a thing: ID, kind, x, z, heading; the first line ends with the selected thing's ID, 0 for none):\n");
+  n = json_raw(out, n, "A field a tool does not use is 0. Use only kinds and thing IDs from the lists below. \"Here\" and \"this\" mean the point last tapped and the selected thing. Places are centimetres; x runs east and z south. If the request cannot be done with these tools, route \"talk\" and say why.\nThe maker's attachments (lines a: ID, kind, size in bytes and name; an: its note; at: its tags) are reference files for this world, such as concept art and design notes. To answer from what one shows or says, route \"open\" with open listing the IDs of at most 3 of them, steps empty and say empty: they come with the next message, and you answer then. Open only attachments in the list. With route talk or edit, open is empty.\nThe world now (k is a kind: ID and name; e is a thing: ID, kind, x, z, heading; the first line ends with the selected thing's ID, 0 for none):\n");
   n = json_raw(out, n, wt_write(t, scratch));
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
-WP_NODES :: 16 + WP_STEPS * 16;
+// The same instructions for the turn's second ask, with the attachments it opened: it answers now.
+wp_system_opened :: (t: [] WorldTurn, opened: string, scratch: [] u8, out: [] u8) -> string {
+  base := wp_system(t, scratch, out);
+  n := base.count;
+  if n == 0 { return ""; }
+  n = json_raw(out, n, "\nYou opened these attachments, and they come with the last message: "); n = json_raw(out, n, opened);
+  n = json_raw(out, n, ". Answer now with route talk or edit; open is empty. Say which attachment you looked at, and when one was too large to read whole, say so.\n");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+WP_NODES :: 24 + WP_STEPS * 16;
 // Reads the model's answer into a plan for the turn's world. False when it is not an answer under
 // the schema, or a step names a kind or a thing the turn does not list: then say holds why.
 wp_reply :: (p: [] WorldPlan, t: [] WorldTurn, reply: string) -> bool #effects(all) {
@@ -375,7 +451,23 @@ wp_reply :: (p: [] WorldPlan, t: [] WorldTurn, reply: string) -> bool #effects(a
   if rn < 0 || sn < 0 || jv_kind(d, steps) != JV_ARRAY { return false; }
   p[0].say_n = sn;
   route := cast(string) word[0..<rn];
+  p[0].nopen = 0;
   if route == "talk" { p[0].ok = sn > 0; return p[0].ok; }
+  if route == "open" {
+    // the attachments to see first: each one of the turn's, at most WP_OPEN, none twice
+    o := jv_get(d, 0, "open"); id: [WT_FID + 1] u8;
+    if jv_kind(d, o) != JV_ARRAY || jv_len(d, o) < 1 { return false; }
+    for i: 0..<jv_len(d, o) {
+      k := jv_str(d, jv_at(d, o, i), id[..]);
+      if k != WT_FID || wt_file_at(t, cast(string) id[0..<k]) < 0 { p[0].say_n = wt_copy(p[0].say[..], "That did not go: the model asked to open an attachment this world does not have."); return false; }
+      seen := false; for j: 0..<p[0].nopen { if cast(string) p[0].open[j][..] == cast(string) id[0..<k] { seen = true; } }
+      if seen || p[0].nopen >= WP_OPEN { continue; }
+      for c, j: id[0..<k] { p[0].open[p[0].nopen][j] = c; }
+      p[0].nopen += 1;
+    }
+    p[0].ok = true;
+    return true;
+  }
   if route != "edit" || jv_len(d, steps) < 1 || jv_len(d, steps) > WP_STEPS { return false; }
   tools := WT_TOOL;
   for i: 0..<jv_len(d, steps) {
@@ -452,6 +544,22 @@ WT_TEST_TURN :: "world.turn.v1 splice dev 7 2\nhere 420 -75\nk 1001 Cargo crate\
   #assert wt_words(t, h[0].a[..]) == "[The editor is open on the world splice, dev lane, revision 7. Selected: thing 2, Parked rover, at x -40 z 600 cm. Here, the point last tapped: x 420 z -75 cm. Read and change it with the realm world tools.]";
   #assert wt_read(t, "world.turn.v1 splice live 3 0\n", h[0].s[..]);
   #assert wt_words(t, h[0].a[..]) == "[The editor is open on the world splice, live lane, revision 3. Nothing is selected. Read and change it with the realm world tools.]";
+}
+WT_TEST_FILES :: "world.turn.v1 splice dev 7 0\nk 1001 Cargo crate\na 00112233445566aa image 4032348 RaiderGarage.png\nan The raiders' garage, outside\nat garage,raiders\na 00112233445566bb document 900 Garage notes.md\ne 1 1001 350 -1200 90\n";
+#test "a turn lists the attachments, never their bytes, and a hosted turn may ask to open them first" {
+  h: [1] WtTest; t := h[0].t[..]; p := h[0].p[..];
+  #assert wt_read(t, WT_TEST_FILES, h[0].s[..]) && t[0].nf == 2 && t[0].f_kind[0] == 1 && t[0].f_bytes[0] == 4032348 && t[0].f_tags_n[1] == 0;
+  #assert wt_write(t, h[0].a[..]) == WT_TEST_FILES && wt_file_at(t, "00112233445566bb") == 1 && wt_file_at(t, "0011223344556600") == -1;
+  w := wt_words(t, h[0].a[..]);
+  #assert w.count > 0 && cast(string) w[w.count - 143..<w.count] == "RaiderGarage.png (image, ID 00112233445566aa): The raiders' garage, outside [garage,raiders]; Garage notes.md (document, ID 00112233445566bb).]";
+  bad := [4] string.["world.turn.v1 splice dev 7 0\nan a note first\n", "world.turn.v1 splice dev 7 0\na 0011 image 1 x.png\n",
+    "world.turn.v1 splice dev 7 0\na 00112233445566aa picture 1 x.png\n", "world.turn.v1 splice dev 7 0\ne 1 1001 350 -1200 90\na 00112233445566aa image 1 x.png\n"];
+  for b: bad { #assert !wt_read(t, b, h[0].s[..]); }
+  #assert wp_reply(p, t, "{\"route\":\"open\",\"say\":\"\",\"open\":[\"00112233445566aa\",\"00112233445566aa\"],\"steps\":[]}") && p[0].nopen == 1 && !p[0].edit && cast(string) p[0].open[0][..] == "00112233445566aa";
+  #assert !wp_reply(p, t, "{\"route\":\"open\",\"say\":\"\",\"open\":[\"0011223344556600\"],\"steps\":[]}") && p[0].say_n > 20;
+  #assert !wp_reply(p, t, "{\"route\":\"open\",\"say\":\"\",\"open\":[],\"steps\":[]}");
+  sys := wp_system_opened(t, "RaiderGarage.png", h[0].s[..], h[0].b[..]);
+  #assert sys.count > WT_TEST_FILES.count && wt_rest(sys, 0).count >= 0;
 }
 WP_TEST_PLAN :: "world.plan.v1 splice 7\nplace 1001 420 -75 90\nmove 2 100 -200\nturn 1 -45\nsize 2 150\nremove 1\n";
 #test "a plan reads as it was written; an undo stands alone" {

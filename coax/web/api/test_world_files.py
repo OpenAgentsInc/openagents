@@ -203,6 +203,49 @@ if os.path.exists(cli):
           and "garage.md" in listed and wf_bucket["objects"].get(f"test/attachments/{big}") == open(doc.name, "rb").read(), (run.stdout, run.stderr))
     os.unlink(doc.name)
 
+# A hosted world turn opens attachments (chat.c /api/chat/complete with "attachments"; the editor's Gemini turn): each
+# joins the request's last message, the text as text and an image as the file itself, before the model is asked; a
+# link is its address; a turn reads 8 MB at most. Only those who may see the attachments may open them.
+if "infer_seen" in globals():   # test_inference.py's fake model, when it ran
+    def wf_put(scope, name, data):
+        a = f"world.file.upload.v1 {scope} {len(data)} {name}\n{hashlib.sha256(data).hexdigest()}\n".encode()
+        s1, b1, _ = wf_call("POST", L, a, keyfile=member)
+        if s1 == 200 and b" put " in b1:
+            urllib.request.urlopen(urllib.request.Request(b1.decode().split(" ")[4].strip(), data=data, method="PUT")).read()
+        t = wf_call("POST", L + "/done", a, keyfile=member)[1].decode()
+        return t.split("did attached ", 1)[1].strip() if "did attached " in t else ""
+    note = b"# The raiders' garage\nA low hangar of rusted panels; three rovers under one roof.\n"
+    tid, iid = wf_put("world", "garage-note.md", note), wf_put("world", "garage-art.png", png)
+    infer_mode["status"] = 200
+    sql(f"delete from inference.account_day where pubkey = '{infer_admin}'")
+    def wf_turn(ids, keyfile=admin):
+        ask = {"model": "google/gemini-3.8-flash", "stream": False, "messages": [{"role": "system", "content": "the world"}, {"role": "user", "content": "what does the garage look like?"}],
+               "attachments": {"world": "splice", "ids": ids}}
+        before = len(infer_seen)
+        s1, b1, _ = wf_call("POST", "/api/chat/complete", json.dumps(ask).encode(), keyfile=keyfile)
+        return s1, b1.decode(), (infer_seen[-1]["body"] if len(infer_seen) > before else None)
+    s1, b1, sent = wf_turn([tid, iid, lid])
+    parts = sent["messages"][-1]["content"] if sent else []
+    check("files: a world turn's opened attachments join its last message: the note as text, the image as itself, the link as its address",
+          s1 == 200 and "attachments" not in sent and parts[0] == {"type": "text", "text": "what does the garage look like?"}
+          and parts[1]["text"] == "Attachment garage-note.md:" and parts[2]["text"] == note.decode()
+          and parts[3]["text"] == "Attachment garage-art.png:" and parts[4]["image_url"]["url"] == "data:image/png;base64," + __import__("base64").b64encode(png).decode()
+          and parts[5]["text"].startswith("Attachment ") and "Its page was not opened." in parts[5]["text"] and len(parts) == 6, (s1, b1[:200], parts and [p.get("text", "")[:60] for p in parts]))
+    check("files: the system message is left as it was", sent and sent["messages"][0] == {"role": "system", "content": "the world"})
+    s1, b1, sent = wf_turn([iid], keyfile=stranger)
+    check("files: someone who may not see them opens none, and the model is not asked", s1 in (401, 403) and sent is None, (s1, b1[:200]))
+    s1, b1, sent = wf_turn(["0011223344556677"])
+    check("files: an attachment no longer there is said in words", s1 == 200 and sent["messages"][-1]["content"][1]["text"] == "That attachment is no longer on this world.", (s1, b1[:200]))
+    s1, b1, sent = wf_turn([tid, tid, tid, tid])
+    check("files: a turn opens three at most", s1 == 400 and sent is None, (s1, b1[:200]))
+    big = b"\x89PNG\r\n\x1a\n" + bytes(9 * 1024 * 1024)
+    bid = wf_put("world", "huge.png", big)
+    s1, b1, sent = wf_turn([bid])
+    check("files: a file over what a turn reads is said to be too large, and not read", s1 == 200 and sent["messages"][-1]["content"][1]["text"]
+          == "Attachment huge.png is 10 MB. A turn reads 8 MB of attachments at most, so it was not read." and len(sent["messages"][-1]["content"]) == 2, (s1, b1[:200]))
+    for _id in (tid, iid, bid):
+        wf_call("POST", L, f"world.file.detach.v1 {_id}\n".encode(), keyfile=member)
+
 # Attachments are private and never reach a player or a pack (INVARIANTS.md).
 check("files: attaching changed no pack and no world document",
       sql("SELECT count(*) || ':' || coalesce(string_agg(hash, ',' ORDER BY hash), '') FROM verse.world_packs") == packs_before

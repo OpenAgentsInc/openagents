@@ -194,6 +194,8 @@ ChatWeb :: struct {
   world: [1] WorldTurn;              // the world the editor round this conversation has open, as last told; none on /chat
   wwire: [WT_BYTES] u8; wwire_n: int;   // its bytes, as they go with a turn
   planned: [WP_BYTES] u8; planned_n: int;   // a hosted turn's plan, until the page has taken it to its editor
+  opened: [WP_OPEN] [WT_FID] u8; nopened: int;   // the attachments a hosted turn asked to open (#13468): its second ask carries them
+  pmodel: int;                       // the model a hosted turn in the editor went to
   card_due: [WT_WORLD] u8; card_due_n: int;   // a world an agent's tool named: its card is read when the page is free
   live: bool;                        // the last message is an answer still coming
   status: int;                       // the stream's HTTP status once a piece has come
@@ -840,11 +842,28 @@ cw_complete :: (s: [] ChatWeb, model: int) -> bool {
   }
   ids := CW_MODEL_IDS; names := CW_MODEL_NAMES;
   if in_world {
+    s[0].pmodel = model;
     // a turn in the editor: the model answers under the world tools' schema, talk or a plan (turn.coax). Which
     // it is, and which tools, is its typed answer; the answer comes whole.
     prompt: [WP_PROMPT] u8; scratch: [WT_BYTES] u8; schema: [1024] u8; body: [CW_REQUEST] u8;
-    req := GwRequest.{model = ids[model], system = wp_system(s[0].world[..], scratch[..], prompt[..]), messages = messages[0..<n], schema = wp_schema(schema[..]), schema_name = "world_turn", effort = "low", stream = false};
+    // its second ask, after it asked to open attachments: their names in the instructions, their IDs beside the
+    // messages; the API reads them from the world's store and puts them in the last message (chat.c)
+    names_of: [WT_FNAME * WP_OPEN + 8] u8; on := 0;
+    for k: 0..<s[0].nopened {
+      at := wt_file_at(s[0].world[..], cast(string) s[0].opened[k][..]);
+      if at < 0 { continue; }
+      if on > 0 { on = cw_put(names_of[..], on, ", "); }
+      on = cw_put(names_of[..], on, cast(string) s[0].world[0].f_name[at][0..<s[0].world[0].f_name_n[at]]);
+    }
+    system := ifx s[0].nopened > 0 then wp_system_opened(s[0].world[..], cast(string) names_of[0..<on], scratch[..], prompt[..]) else wp_system(s[0].world[..], scratch[..], prompt[..]);
+    req := GwRequest.{model = ids[model], system = system, messages = messages[0..<n], schema = wp_schema(schema[..]), schema_name = "world_turn", effort = "low", stream = false};
     bn := gw_chat_body(req, 0, body[..]);
+    if bn > 1 && s[0].nopened > 0 && body[bn - 1] == '}' {
+      bn = json_raw(body[..], bn - 1, ",\"attachments\":{\"world\":"); bn = json_write_string(body[..], bn, wt_word(s[0].world[..]));
+      bn = json_raw(body[..], bn, ",\"ids\":[");
+      for k: 0..<s[0].nopened { if k > 0 { bn = json_raw(body[..], bn, ","); } bn = json_write_string(body[..], bn, cast(string) s[0].opened[k][..]); }
+      bn = json_raw(body[..], bn, "]}}");
+    }
     return bn > 0 && req.system.count > 0 && req.schema.count > 0 && cw_go(s, CF_PLAN, "/api/chat/complete", cast(string) body[0..<bn]);
   }
   system: [1024] u8;
@@ -895,6 +914,7 @@ cw_send :: (s: [] ChatWeb) {
     return;
   }
   cw_add(s, cast(string) s[0].draft[lo..<hi], CW_YOU, CW_ANSWER);
+  s[0].nopened = 0;   // a new message: a hosted turn may open attachments again
   sent := ifx cw_claude_model(model) || model == CW_GEMINI_AGENT then cw_turn_send(s, model, cw_text(s, s[0].count - 1)) else cw_complete(s, model);
   cw_add(s, "", CW_AGENT, CW_ANSWER);
   names := CW_MODEL_NAMES;
@@ -1030,6 +1050,25 @@ cw_plan_read :: (s: [] ChatWeb, body: string) {
   }
   if !wp_reply(plan[..], s[0].world[..], reply) {
     cw_say(s, ifx plan[0].say_n > 0 && plan[0].say_n < CW_ERROR then cast(string) plan[0].say[0..<plan[0].say_n] else "The model's answer could not be read. Send it again.");
+    return;
+  }
+  if plan[0].nopen > 0 {
+    // it asks to see attachments first: they show as what it opened, and it is asked again with them
+    if s[0].nopened > 0 { cw_say(s, "The model asked to open attachments again instead of answering. Send it again."); return; }
+    k := s[0].count - 1; meta := s[0].meta[k]; meta_n := s[0].meta_n[k];
+    s[0].count = k; s[0].total -= 1; s[0].pool_n = s[0].at[k];
+    line: [WT_FNAME + 8] u8;
+    for i: 0..<plan[0].nopen {
+      s[0].opened[i] = plan[0].open[i];
+      at := wt_file_at(s[0].world[..], cast(string) plan[0].open[i][..]);
+      ln := cw_put(line[..], 0, "Open "); ln = cw_put(line[..], ln, ifx at < 0 then "an attachment" else cast(string) s[0].world[0].f_name[at][0..<s[0].world[0].f_name_n[at]]);
+      cw_tool(s, cast(string) line[0..<ln]);
+    }
+    s[0].nopened = plan[0].nopen;
+    cw_add(s, "", CW_AGENT, CW_ANSWER);
+    k = s[0].count - 1; s[0].meta[k] = meta; s[0].meta_n[k] = meta_n;
+    if !cw_complete(s, s[0].pmodel) { cw_say(s, "The attachments could not be asked for. Send it again."); return; }
+    s[0].live = true;
     return;
   }
   if plan[0].edit {
@@ -2114,6 +2153,26 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
   cw_test_enter(s, "composer");
   cw_test_planned(s, "{\"route\":\"edit\",\"say\":\"Done.\",\"steps\":[{\"tool\":\"remove\",\"kind\":0,\"id\":9,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}");
   #assert !s[0].live && coaxial_chatweb_act_kind(s) == 0 && cw_test_has(cast(string) s[0].error[0..<s[0].error_n], "a thing that is not in this world");
+}
+#test "in the editor a Gemini turn may open attachments first: it says what it opened and is asked again with them" {
+  h: [1] CwTest; s := h[0].s[..];
+  cw_test_open(s, "{\"claude\":null}");
+  cw_test_world(s, "world.turn.v1 splice dev 7 0\nk 1001 Cargo crate\na 00112233445566aa image 4032348 RaiderGarage.png\nan The raiders' garage\nat garage,raiders\ne 1 1001 350 -1200 90\n");
+  cw_test_type(s, "composer", "what does the garage look like?");
+  cw_test_enter(s, "composer");
+  #assert cw_test_has(cw_test_body(s), "a 00112233445566aa image 4032348 RaiderGarage.png") && !cw_test_has(cw_test_body(s), "\"attachments\"");
+  cw_test_planned(s, "{\"route\":\"open\",\"say\":\"\",\"open\":[\"00112233445566aa\"],\"steps\":[]}");
+  body := cw_test_body(s);
+  #assert s[0].flight == CF_PLAN && s[0].live && s[0].nopened == 1 && s[0].who[1] == CW_TOOL && cw_text(s, 1) == "Open RaiderGarage.png";
+  #assert cw_test_has(body, ",\"attachments\":{\"world\":\"splice\",\"ids\":[\"00112233445566aa\"]}}") && cw_test_has(body, "You opened these attachments, and they come with the last message: RaiderGarage.png.");
+  cw_test_planned(s, "{\"route\":\"talk\",\"say\":\"A low hangar of rusted panels.\",\"open\":[],\"steps\":[]}");
+  #assert !s[0].live && s[0].count == 3 && cw_text(s, 2) == "A low hangar of rusted panels.";
+  // asked to open again instead of answering: said, and nothing more is asked
+  cw_test_type(s, "composer", "and inside?");
+  cw_test_enter(s, "composer");
+  cw_test_planned(s, "{\"route\":\"open\",\"say\":\"\",\"open\":[\"00112233445566aa\"],\"steps\":[]}");
+  cw_test_planned(s, "{\"route\":\"open\",\"say\":\"\",\"open\":[\"00112233445566aa\"],\"steps\":[]}");
+  #assert !s[0].live && cw_test_has(cast(string) s[0].error[0..<s[0].error_n], "open attachments again");
 }
 #test "on /chat an agent's realm world tool brings the world's card after its run: the name, what it holds and a link to its editor" {
   ts: [1] CwTest; s := ts[0].s[..];

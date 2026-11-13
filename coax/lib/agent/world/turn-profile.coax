@@ -34,7 +34,7 @@ wtp_rejects :: (d: Jv, list: int, which: int, w: [] WtpWork) -> bool {
 wtp_turn :: (d: Jv, w: [] WtpWork) -> bool {
   t := w[0].t[..]; p := w[0].p[..]; nb: [128] u8;
   if wtp_str(d, jv_get(d, 0, "schema"), nb[..]) != WT_SCHEMA { return false; }
-  if wtp_lim(d, "world_bytes") != WT_WORLD || wtp_lim(d, "name_bytes") != WT_NAME || wtp_lim(d, "kinds") != WT_KINDS || wtp_lim(d, "things") != WT_THINGS || wtp_lim(d, "bytes") != WT_BYTES { return false; }
+  if wtp_lim(d, "world_bytes") != WT_WORLD || wtp_lim(d, "name_bytes") != WT_NAME || wtp_lim(d, "kinds") != WT_KINDS || wtp_lim(d, "things") != WT_THINGS || wtp_lim(d, "bytes") != WT_BYTES || wtp_lim(d, "files") != WT_FILES { return false; }
   if wtp_lim(d, "plan_steps") != WP_STEPS || wtp_lim(d, "plan_bytes") != WP_BYTES || wtp_lim(d, "say_bytes") != WP_SAY { return false; }
   if !wtp_rejects(d, jv_get(d, 0, "rejected"), 0, w) { return false; }
   empty := wtp_str(d, jv_get(d, jv_get(d, 0, "empty"), "wire"), w[0].wire[..]);

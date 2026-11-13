@@ -11,7 +11,8 @@
   "name_bytes": 40,
   "kinds": 64,
   "things": 128,
-  "bytes": 12288,
+  "bytes": 24576,
+  "files": 24,
   "plan_steps": 16,
   "plan_bytes": 1024,
   "say_bytes": 2000
@@ -20,6 +21,9 @@
   "world.turn.v1 WORLD LANE REV SELECTED",
   "here X Z",
   "k KIND NAME",
+  "a ID KIND BYTES NAME",
+  "an NOTE",
+  "at TAGS",
   "e ID KIND X Z YAW",
   "more N"
  ],

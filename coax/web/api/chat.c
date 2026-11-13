@@ -342,6 +342,20 @@ bool chat_route(const request *q) {
     return inference_ask(q, owner, true);
   }
   if (!strcmp(op, "key")) { chat_key(q, pubkey, false); return true; }
+  // A world turn that asked to open attachments (the editor's Gemini turn, #13468) names them; worlds.c joins each to
+  // the request's last message, under the Files pane's access and a turn's byte limit.
+  bool opens = false;
+  for (size_t k = 0; !strcmp(op, "complete") && !opens && k + 13 <= q->body_len; k++) opens = !memcmp(q->body + k, "\"attachments\"", 13);
+  if (opens) {
+    char *joined = NULL, words[200], out[260];
+    int s = world_files_turn(q, db, &joined, words, sizeof words);
+    if (s != 200) { snprintf(out, sizeof out, "{\"error\":\"%s\"}", words); reply(q->fd, s, out); return true; }
+    request with = *q;
+    with.body = joined; with.body_len = strlen(joined);
+    bool done = inference_ask(&with, pubkey, true);
+    free(joined);
+    return done;
+  }
   // The rebuilt /chat page (apps/openagents-web/chat-web.coax): a Chat Completions request, answered by
   // our inference route's own ask (inference.c: Vertex, its caps and its metering) as it comes.
   if (!strcmp(op, "complete")) return inference_ask(q, pubkey, true);

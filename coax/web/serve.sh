@@ -36,7 +36,8 @@ fi
 port_file="$(mktemp)"; coder_log="$(mktemp)"
 trap 'kill ${serve_pid:-} ${api_pid:-} ${coder_pid:-} 2>/dev/null || true; rm -f "$port_file" "$coder_log"' EXIT
 echo "serve: starting the local API for /chat and the editor's agent (a minute or two the first time)"
-OA_SERVE_PORT_FILE="$port_file" "$here/api/test.sh" --serve "http://$listen" & api_pid=$!
+# The editor's Gemini turn opens attachments from the dev server's own store (serve.c files_local, #13468).
+OA_WORLD_FILES_DIR="$(cd "$1" && pwd -P)/build/.worlds" OA_SERVE_PORT_FILE="$port_file" "$here/api/test.sh" --serve "http://$listen" & api_pid=$!
 # Coder's local routes for the agents on this machine, from this checkout, on a port of its own. A harness
 # never opens a browser sign-in from here: an agent with no login shows as not ready (Settings, This machine).
 if [[ -z "${OA_SERVE_NO_CODER:-}" ]]; then

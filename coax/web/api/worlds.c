@@ -753,6 +753,115 @@ bool world_files_project_route(const request *q) {
   return true;
 }
 
+// ---- what a hosted world turn opened (chat.c, POST /api/chat/complete with "attachments": {"world", "ids"}; the
+// editor's Gemini turn, docs/protocol/world-turn-v1.md). Each attachment the model asked to open joins the request's
+// last message: a line naming it, then its text or the file itself (an image or a PDF, which the model reads), up to
+// WF_TURN_BYTES for the turn together; past that, or for a link, words in its place. The same access as the Files
+// pane's. The worker reads the files itself (at most 8 MB, an admin's turn). Nothing about a file is logged.
+#define TURN_OPENS 3
+// One part joined to the last message: words, then (how WF_TURN_TEXT or WF_TURN_FILE) the bytes. The new body, or NULL.
+static char *turn_join(PGconn *db, const char *body, const char *said, int how, const unsigned char *data, size_t n, const char *type) {
+  char hows[4]; snprintf(hows, sizeof hows, "%d", how);
+  const char *v[5] = {body, said, hows, data ? (const char *)data : "", type};
+  int len[5] = {0, 0, 0, data ? (int)n : 0, 0}, fmt[5] = {0, 0, 0, 1, 0};
+  PGresult *r = PQexecParams(db,
+    "SELECT jsonb_set(b, ARRAY['messages', (jsonb_array_length(b->'messages') - 1)::text, 'content'], "
+    "(CASE WHEN jsonb_typeof(b->'messages'->-1->'content') = 'array' THEN b->'messages'->-1->'content' "
+    "ELSE jsonb_build_array(jsonb_build_object('type', 'text', 'text', coalesce(b->'messages'->-1->>'content', ''))) END) "
+    "|| jsonb_build_array(jsonb_build_object('type', 'text', 'text', $2::text)) "
+    "|| CASE $3 WHEN '1' THEN jsonb_build_array(jsonb_build_object('type', 'text', 'text', convert_from($4::bytea, 'UTF8'))) "
+    "WHEN '2' THEN jsonb_build_array(jsonb_build_object('type', 'image_url', 'image_url', jsonb_build_object('url', "
+    "'data:' || $5 || ';base64,' || translate(encode($4::bytea, 'base64'), E'\\n', '')))) ELSE '[]'::jsonb END)::text "
+    "FROM (SELECT $1::jsonb b) s", 5, NULL, v, len, fmt, 0);
+  char *out = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 ? strdup(PQgetvalue(r, 0, 0)) : NULL;
+  PQclear(r);   // its error may quote the file: never logged
+  return out;
+}
+#ifdef OA_LOCAL_SERVE
+// The dev server's store (metaverse-engine/tools/files-local.coax), when serve.sh names it: a file under it, malloc'd.
+static unsigned char *turn_local(const char *dir, const char *a, const char *b, const char *c, size_t cap, size_t *n) {
+  char path[1200]; snprintf(path, sizeof path, "%s/%s%s%s", dir, a, b, c);
+  FILE *f = fopen(path, "rb");
+  unsigned char *out = f ? malloc(cap + 1) : NULL;
+  *n = out ? fread(out, 1, cap + 1, f) : 0;
+  if (f) fclose(f);
+  if (out && *n > cap) { free(out); out = NULL; }
+  if (out) out[*n] = 0;
+  return out;
+}
+#endif
+int world_files_turn(const request *q, PGconn *db, char **out, char *words, size_t cap) {
+  *out = NULL;
+  char *body = malloc(q->body_len + 1);
+  if (!body) { snprintf(words, cap, "memory"); return 503; }
+  memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
+  const char *v[1] = {body};
+  PGresult *r = PQexecParams(db, "SELECT coalesce(b->'attachments'->>'world', ''), coalesce((SELECT string_agg(x, ' ') FROM "
+                                 "jsonb_array_elements_text(CASE WHEN jsonb_typeof(b->'attachments'->'ids') = 'array' THEN b->'attachments'->'ids' ELSE '[]' END) x), ''), "
+                                 "(b - 'attachments')::text, jsonb_array_length(b->'attachments'->'ids') FROM (SELECT $1::jsonb b) s", 1, NULL, v, NULL, NULL, 0);
+  free(body);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); snprintf(words, cap, "not JSON"); return 400; }
+  char world[40], ids[TURN_OPENS * 20 + 8];
+  bool fits = strlen(PQgetvalue(r, 0, 0)) < sizeof world && strlen(PQgetvalue(r, 0, 1)) < sizeof ids && atoi(PQgetvalue(r, 0, 3)) <= TURN_OPENS;
+  snprintf(world, sizeof world, "%s", PQgetvalue(r, 0, 0)); snprintf(ids, sizeof ids, "%s", PQgetvalue(r, 0, 1));
+  char *b = strdup(PQgetvalue(r, 0, 2));
+  PQclear(r);
+  if (!fits || !wf_world_ok(cs(world)) || !b) { free(b); snprintf(words, cap, "attachments is {world, ids: at most %d}", TURN_OPENS); return 400; }
+  coax_string ps = wf_project(cs(world));
+  char project[56]; snprintf(project, sizeof project, "%.*s", (int)ps.count, ps.data);
+  int64_t verdict = files_may(q, db, project);
+  if (verdict != 0) { free(b); coax_string w = wf_words(verdict); snprintf(words, cap, "%.*s", (int)w.count, w.data); return (int)wf_status(verdict); }
+  files_ctx x = {0};
+  bool ok;
+  const char *dir = NULL;
+#ifdef OA_LOCAL_SERVE
+  dir = getenv("OA_WORLD_FILES_DIR");
+  if (dir && !*dir) dir = NULL;
+#endif
+  if (dir) {
+#ifdef OA_LOCAL_SERVE
+    size_t wn = 0, pn = 0;
+    unsigned char *wl = turn_local(dir, world, ".files", "", 200000, &wn), *pl = project[0] ? turn_local(dir, "project.", project, ".files", 200000, &pn) : NULL;
+    snprintf(x.world, sizeof x.world, "%s", world); snprintf(x.project, sizeof x.project, "%s", project);
+    ok = (x.w = calloc(1, sizeof *x.w)) && wf_load(fw_of(&x), cs(world), cs(project), csn(wl ? (const char *)wl : "", wn), csn(pl ? (const char *)pl : "", pn), 0, 0);
+    free(wl); free(pl);
+#else
+    ok = false;
+#endif
+  } else ok = files_load(db, &x, world, project, false);
+  if (!ok) { free(b); free(x.w); snprintf(words, cap, "not read"); return 500; }
+  long long left = wf_turn_bytes();
+  char said[1400];
+  for (char *id = strtok(ids, " "); id && b; id = strtok(NULL, " ")) {
+    int64_t i = wf_find(fw_of(&x), cs(id));
+    if (i < 0) { char *nb = turn_join(db, b, "That attachment is no longer on this world.", 0, NULL, 0, ""); free(b); b = nb; continue; }
+    int64_t how = wf_turn_how(fw_of(&x), i), bytes = wf_file_bytes(fw_of(&x), i);
+    int64_t sn = wf_turn_said(fw_of(&x), i, left, (coax_v_u8){(uint8_t *)said, sizeof said - 1});
+    if (sn < 0) sn = 0;
+    said[sn] = 0;
+    unsigned char *data = NULL; size_t n = 0;
+    if (how != 3 && bytes <= left) {
+      coax_string h = wf_file_hash(fw_of(&x), i);
+      char hash[65]; snprintf(hash, sizeof hash, "%.*s", (int)h.count, h.data);
+#ifdef OA_LOCAL_SERVE
+      if (dir) data = turn_local(dir, "files/", hash, "", (size_t)bytes, &n);
+#endif
+      if (!dir) { char object[200]; files_object(hash, object, sizeof object); data = drops_fetch(object, (size_t)bytes, &n); }
+      if (!data || (long long)n != bytes) { free(data); data = NULL; snprintf(said + sn, sizeof said - (size_t)sn, " Its file could not be read."); }
+      else left -= bytes;
+    }
+    coax_string t = wf_file_type(fw_of(&x), i);
+    char type[64]; snprintf(type, sizeof type, "%.*s", (int)t.count, t.data);
+    char *nb = turn_join(db, b, said, data ? (int)how : 0, data, n, type);
+    if (!nb && data) nb = turn_join(db, b, "That attachment could not be read as text.", 0, NULL, 0, "");
+    free(data); free(b); b = nb;
+  }
+  free(x.w);
+  if (!b) { snprintf(words, cap, "the attachments were not joined to the request"); return 500; }
+  *out = b;
+  return 200;
+}
+
 bool worlds_route(const request *q) {
   static const char root[] = "/api/worlds/";
   size_t rl = sizeof root - 1;

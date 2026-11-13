@@ -22,6 +22,9 @@ which sends it with every turn after. It never leaves the page as these bytes.
 | `world.turn.v1 WORLD LANE REV SELECTED` | The world's ID, its lane (`dev` or `live`), the lane's revision, and the selected thing's ID (0 for none). |
 | `here X Z` | The point last tapped. Left out until one is tapped. |
 | `k KIND NAME` | A kind a thing can be: its content ID and its name. At most 64. |
+| `a ID KIND BYTES NAME` | An attachment of the world or its project (#13468): its ID, its kind (`image`, `document` or `link`), its size and its name. At most 24. Never its bytes. |
+| `an NOTE` | The attachment above's note. Left out for none. |
+| `at TAGS` | Its tags, joined by commas. Left out for none. |
 | `e ID KIND X Z YAW` | A thing: its ID, its kind, where it stands and its heading. At most 128. |
 | `more N` | Things the world holds that are not listed. Left out for none. |
 
@@ -34,6 +37,9 @@ How a turn carries it depends on who answers:
   and their edits show in the open editor as any outside edit does.
 - **A model that only answers** (the Gemini models): the turn is a hosted world turn, below.
 
+The turn in words lists the attachments too, with the command that reads one
+(`openagents realm file-read WORLD ID`), so an agent on your computer reads them itself.
+
 ## The hosted world tools and the plan: `world.plan.v1`
 
 A hosted world turn is one model call under a schema (`wp_schema`). The model answers a route,
@@ -41,6 +47,22 @@ what to say and steps:
 
 - `talk`: nothing changes. What it says is the answer.
 - `edit`: the steps are the changes, in order.
+- `open`: the model wants to see attachments before it answers. `open` lists the IDs of at most
+  3 of them, from the turn's `a` lines; the steps and what to say are empty.
+
+When the model takes `open`, the conversation shows a line "Open NAME" for each and asks again:
+the same messages under the same schema, with words that say what was opened, and the request
+carries `"attachments": {"world": WORLD, "ids": [...]}`. The server (`chat.c`, then `worlds.c`
+`world_files_turn`) checks that whoever asks may see the world's attachments, removes that key
+and joins each attachment to the last message: a line that names it, then a text file's text,
+or an image or a PDF as the file itself, which the model reads. A link is its address; its page
+is not opened. A turn reads 8 MB of attachments at most. A file over what is left is not read,
+and the line in its place says how large it is and that it was not read, so the answer can say
+so. The second answer must be `talk` or `edit`; a second `open` is refused in words. Nothing
+about a file is logged.
+
+On the dev server the local API reads the dev server's own store (`serve.sh` names it in
+`OA_WORLD_FILES_DIR`); deployed, it reads the private bucket.
 
 Each step names one of the hosted world tools. They are the rows of `WT_TOOL`, and the schema
 and the instructions are written from those rows.

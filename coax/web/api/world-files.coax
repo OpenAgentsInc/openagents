@@ -80,6 +80,33 @@ wf_file_hash :: (w: [] FlWork, i: int) -> string #export_c #effects(all) { retur
 wf_file_bytes :: (w: [] FlWork, i: int) -> int #export_c #effects(all) { return w[0].m[0].f[i].bytes; }
 wf_file_type :: (w: [] FlWork, i: int) -> string #export_c #effects(all) { return fw_type(fw_name_of(w[0].m[..], i)); }
 wf_read_part :: () -> int #export_c #effects(all) { return FW_READ_PART; }
+
+// ---- what a hosted world turn opened (/api/chat/complete with "attachments"; docs/protocol/world-turn-v1.md)
+WF_TURN_BYTES :: 8 * 1024 * 1024;   // what one turn reads of its attachments, all together
+WF_TURN_TEXT :: 1;                  // handed to the model as text
+WF_TURN_FILE :: 2;                  // handed as the file itself (an image or a PDF), which the model reads
+WF_TURN_LINK :: 3;                  // a link: its address, never its page
+wf_turn_bytes :: () -> int #export_c #effects(all) { return WF_TURN_BYTES; }
+// Any attachment of this ID (a link too): its place, or -1.
+wf_find :: (w: [] FlWork, id: string) -> int #export_c #effects(all) { return ifx fw_id_ok(id) then fw_find(w[0].m[..], id) else -1; }
+wf_file_name :: (w: [] FlWork, i: int) -> string #export_c #effects(all) { return fw_name_of(w[0].m[..], i); }
+wf_file_url :: (w: [] FlWork, i: int) -> string #export_c #effects(all) { return fw_url_of(w[0].m[..], i); }
+// How attachment i is handed to the model.
+wf_turn_how :: (w: [] FlWork, i: int) -> int #export_c #effects(all) {
+  if !w[0].m[0].f[i].hashed { return WF_TURN_LINK; }
+  return ifx fw_is_text(fw_name_of(w[0].m[..], i)) then WF_TURN_TEXT else WF_TURN_FILE;
+}
+// The line before a file's text or the file, or the words in its place: it was read (left: bytes the turn may
+// still read), a link, or too large to read whole. out holds it.
+wf_turn_said :: (w: [] FlWork, i: int, left: int, out: [] u8) -> int #export_c #effects(all) {
+  name := fw_name_of(w[0].m[..], i); bytes := w[0].m[0].f[i].bytes;
+  n := fw_put(out, 0, "Attachment "); n = fw_put(out, n, name);
+  if !w[0].m[0].f[i].hashed { n = fw_put(out, n, ": a link to "); n = fw_put(out, n, fw_url_of(w[0].m[..], i)); return fw_put(out, n, ". Its page was not opened."); }
+  if bytes <= left { return fw_put(out, n, ":"); }
+  n = fw_put(out, n, " is "); n = fw_put_int(out, n, (bytes + 1048575) / 1048576);
+  n = fw_put(out, n, " MB. A turn reads "); n = fw_put_int(out, n, WF_TURN_BYTES / 1048576);
+  return fw_put(out, n, " MB of attachments at most, so it was not read.");
+}
 // Whether an object of this SHA-256 is still named by any list of the project: the caller asks each
 // stored list (a detach removes a file only when none names it).
 wf_names :: (text: string, hash: string) -> bool #export_c #effects(all) {
@@ -98,6 +125,17 @@ wf_upload_answer :: (put: bool, hash: string, bytes: int, url: string, out: [] u
   #assert wf_may(true, true, false, false, true) == WF_NOT_MEMBER && wf_may(true, true, false, true, false) == WF_NOT_MEMBER;
   #assert wf_status(WF_NOT_MEMBER) == 403 && wf_status(WR_LOG_IN) == 401 && wf_status(WR_CROSS) == 403 && wf_words(WF_NOT_MEMBER).count > 20;
   #assert wf_project("splice") == "verse" && wf_project("nowhere") == "";
+}
+#test "what a turn is told of each attachment it opened: read, a link, or too large to read whole" {
+  h: [1] FlWork; w := h[..]; o: [300] u8;
+  t := "world.files.v1 splice verse 0 0 26214400 200 1073741824\nf 00112233445566aa world image 2000 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1 local a.png\nf 00112233445566bb world link 0 - 1 local x\nu https://example.com/x\nf 00112233445566cc world document 900 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a09 1 local garage.md\n";
+  #assert wf_load(w, "splice", "verse", t, "", 0, 0);
+  a := wf_find(w, "00112233445566aa"); b := wf_find(w, "00112233445566bb"); c := wf_find(w, "00112233445566cc");
+  #assert a >= 0 && b >= 0 && c >= 0 && wf_find(w, "nope") == -1 && wf_file(w, "00112233445566bb") == -1;
+  #assert wf_turn_how(w, a) == WF_TURN_FILE && wf_turn_how(w, b) == WF_TURN_LINK && wf_turn_how(w, c) == WF_TURN_TEXT;
+  n := wf_turn_said(w, a, WF_TURN_BYTES, o[..]); #assert cast(string) o[0..<n] == "Attachment a.png:";
+  n = wf_turn_said(w, a, 1000, o[..]); #assert cast(string) o[0..<n] == "Attachment a.png is 1 MB. A turn reads 8 MB of attachments at most, so it was not read.";
+  n = wf_turn_said(w, b, 0, o[..]); #assert cast(string) o[0..<n] == "Attachment x: a link to https://example.com/x. Its page was not opened.";
 }
 #test "a stored list's count and bytes, and whether it names a file" {
   t := "world.files.v1 splice verse 0 0 26214400 200 1073741824\nf 00112233445566aa world image 2000 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 1 local a.png\nf 00112233445566bb world link 0 - 1 local x\nu https://example.com/x\n";

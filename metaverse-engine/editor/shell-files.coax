@@ -147,7 +147,7 @@ es_fl_sent :: (s: [] EdShell, status: int, length: int) {
   listed := status == 200 && fw_read(next, body, s[0].fl.scratch[..]) && fw_world_of(next) == cast(string) w[0..<m[0].world_n];
   if flight == ES_FL_LIST {
     // any answer but this world's list: no Files here (a server with no such route, or someone who is not a member)
-    if listed { s[0].fl.l[0] = next[0]; s[0].fl.have = true; }
+    if listed { s[0].fl.l[0] = next[0]; s[0].fl.have = true; s[0].turn_due = true; }   // the agent's next turn is told of them
     return;
   }
   if flight == ES_FL_NAME && status == 200 {
@@ -175,7 +175,7 @@ es_fl_sent :: (s: [] EdShell, status: int, length: int) {
     es_fl_say(s, ES_FL_SAID_NO, ifx r.ok && r.words_n > 0 then cast(string) words[0..<r.words_n] else "That was not done: the world's server did not answer.");
     return;
   }
-  s[0].fl.l[0] = next[0];
+  s[0].fl.l[0] = next[0]; s[0].turn_due = true;
   es_fl_did(s);
   l := s[0].fl.l[..];
   // what was removed closes, and comes off the pin
