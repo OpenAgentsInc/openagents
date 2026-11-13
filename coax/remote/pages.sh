@@ -39,6 +39,27 @@ resolve() {   # rev: the full commit
 }
 has() { gcloud storage ls "gs://$bucket/pages/$1/MANIFEST" > /dev/null 2>&1; }
 
+# get OBJECT FILE: one object of the store (its name under the bucket) into FILE; 0 when written.
+# Over the storage JSON API with curl and the account's token (#13489): on the Mac `gcloud storage
+# cp` can sit in its worker processes for most of an hour without moving a byte, where curl takes
+# the same 56 MB archive in seconds. The token goes to curl on its standard input, never on its
+# command line. A transfer under 1 KB/s for 60 s stops. With no token (no account), or a curl
+# that fails but not with 404, `gcloud storage cp` is tried, bounded by 15 minutes.
+get() {
+  local token code
+  token="$(gcloud auth print-access-token 2> /dev/null)"
+  if [[ -n "$token" ]]; then
+    code="$(printf 'header = "Authorization: Bearer %s"\n' "$token" |
+      curl -s --config - --connect-timeout 15 --speed-limit 1024 --speed-time 60 -w '%{http_code}' -o "$2" \
+        "https://storage.googleapis.com/storage/v1/b/$bucket/o/${1//\//%2F}?alt=media")"
+    [[ "$code" != 200 ]] || return 0
+    rm -f "$2"
+    [[ "$code" != 404 ]] || return 1
+  fi
+  if command -v timeout > /dev/null; then timeout 900 gcloud storage cp "gs://$bucket/$1" "$2" --quiet > /dev/null 2>&1
+  else gcloud storage cp "gs://$bucket/$1" "$2" --quiet > /dev/null 2>&1; fi
+}
+
 nearest() {   # commit: one listing of the store, then Git
   local stored
   stored="$(gcloud storage ls "gs://$bucket/pages/*/MANIFEST" 2> /dev/null | sed -n 's|.*/pages/\([0-9a-f]\{40\}\)/MANIFEST$|\1|p')"
@@ -52,7 +73,7 @@ fetch() {   # commit dir [built]: 0 fetched and checked, 1 none (or it doesn't c
   # The homepage's seed is this build's own capture, never an earlier commit's.
   [[ "${3:-}" != built ]] || only=(--exclude 'apps/openagents-web/build/home-seed' apps/openagents-web/build)
   tmp="$(mktemp -d)"
-  gcloud storage cp "gs://$bucket/pages/$commit/MANIFEST" "$tmp/MANIFEST" --quiet > /dev/null 2>&1 || { rm -rf "$tmp"; say "none stored for ${commit:0:10}"; return 1; }
+  get "pages/$commit/MANIFEST" "$tmp/MANIFEST" || { rm -rf "$tmp"; say "none stored for ${commit:0:10}"; return 1; }
   local tree want sum
   tree="$(git rev-parse "$commit^{tree}")"
   want="$(awk '$1 == "tar" { print $2 }' "$tmp/MANIFEST")"
@@ -60,7 +81,7 @@ fetch() {   # commit dir [built]: 0 fetched and checked, 1 none (or it doesn't c
         "$(sed -n 3p "$tmp/MANIFEST")" != "tree $tree" || -z "$want" ]]; then
     say "the stored MANIFEST for ${commit:0:10} doesn't name its tree $tree; not using it"; rm -rf "$tmp"; return 1
   fi
-  gcloud storage cp "gs://$bucket/pages/$commit/pages.tar.gz" "$tmp/pages.tar.gz" --quiet > /dev/null 2>&1 || { rm -rf "$tmp"; say "could not download ${commit:0:10}'s pages"; return 1; }
+  get "pages/$commit/pages.tar.gz" "$tmp/pages.tar.gz" || { rm -rf "$tmp"; say "could not download ${commit:0:10}'s pages"; return 1; }
   sum="$(shasum -a 256 < "$tmp/pages.tar.gz" | cut -c1-64)"
   [[ "$sum" == "$want" ]] || { say "${commit:0:10}'s pages.tar.gz has SHA-256 $sum, its MANIFEST says $want; not using it"; rm -rf "$tmp"; return 1; }
   mkdir -p "$dir" && tar -xzf "$tmp/pages.tar.gz" -C "$dir" ${only[@]+"${only[@]}"} || { rm -rf "$tmp"; say "could not unpack into $dir"; return 1; }

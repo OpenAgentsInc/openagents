@@ -257,7 +257,9 @@ the MANIFEST's tree against the commit's and the archive's SHA-256. When it
 doesn't, it builds them once on a host (`apps/openagents-web/build.sh` in
 release mode, from the commit's own files), stores them, and fetches them.
 While one caller builds a commit, every other caller waits for it instead of
-building it again.
+building it again. A fetch downloads over the storage JSON API with curl and
+the account's token: on the Mac `gcloud storage cp` could sit for most of an
+hour on the 56 MB archive, which curl takes in about 5 s (#13489).
 
 To drive pages headless, fetch main's pages and rebuild only what you changed:
 
