@@ -114,6 +114,11 @@ not a flat folder scan.
 
 ### The editor shell
 
+- **The scene stands in a frame.** The bar lies across the top and a pane
+  stands the whole height on each side. The canvas is the part of the window
+  between them, so the world's own interface is inside the frame and nothing
+  of the world is under a pane. On a window too narrow for a frame the panes
+  lie over the scene as before.
 - **Opening it:** `?edit` on a page, or EDIT for an owner or admin. The shell
   loads with the page's own module; the world module never loads the chat
   module, and the chat never loads a world module (`contexts.txt`).

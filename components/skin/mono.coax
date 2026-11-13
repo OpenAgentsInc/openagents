@@ -364,6 +364,8 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   // a long menu is two columns, and a very long one three, so its last row is still on the screen
   n = mc(out, n, ".pane .menu.pop:has(>.row:nth-of-type(10)){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:min(560px,calc(100vw - 48px))}");
   n = mc(out, n, ".pane .menu.pop:has(>.row:nth-of-type(25)){grid-template-columns:repeat(3,minmax(0,1fr));width:min(820px,calc(100vw - 48px))}");
+  // over a scene, the panes are its frame: a side pane stands the whole height, and each pane is solid, so the scene is the part between them
+  n = mc(out, n, ".dock-over>.pane{background:var(--ground)}@media (min-width:761px){.dock-over>.pane-l,.dock-over>.pane-r{align-self:stretch}}");
   n = mc(out, n, "@media (max-width:760px){.dock,.dock:has(.pane-w){grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.pane-l,.pane-r{max-height:38vh;align-self:start}.pane-r{grid-column:2}.pane-w{grid-column:1/-1}}");
   // the strip's menus lie over the side panes; on a narrow window a menu opens under its select across the strip, so all of it is on the screen (#13422)
   n = mc(out, n, ".pane-t{z-index:2}@media (max-width:760px){.pane-t .anchor{position:static;display:block}.pane-t .menu.pop{top:auto;left:8px;right:8px;margin-top:6px}}");

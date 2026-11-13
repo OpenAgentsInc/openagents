@@ -3888,7 +3888,7 @@ function editorCarry(shell, x) {
 // The part of the window the shell's panes leave free, for a page that asks (coaxial_edit_room_v1): message
 // 525, "X0 Y0 X1 Y1" in CSS pixels. A pane that lies across is a strip above or below it; a narrow one is a side.
 function editorRoom() {
-  if (!engine?.exports.coaxial_edit_room_v1 || !arena) return;
+  if (!arena || !document.getElementById("coaxial-editor")) return;
   const w = innerWidth, h = innerHeight;
   let x0 = 0, y0 = 0, x1 = w, y1 = h;
   for (const pane of document.querySelectorAll("#coaxial-editor .pane")) {
@@ -3898,11 +3898,30 @@ function editorRoom() {
     else if (r.left + r.width / 2 < w / 2) x0 = Math.max(x0, r.right);
     else x1 = Math.min(x1, r.left);
   }
-  const room = [x0, y0, x1, y1].map(Math.round).join(" ");
-  if (room === editorRoomTold) return;
-  editorRoomTold = room;
-  send(525, room);
+  // The scene stands in a frame the panes make: the canvas is the part of the window they leave free, so the
+  // world's own interface is inside it too, and nothing of the world is under a pane.
+  const gap = editorGap();
+  x0 = Math.round(x0 > 0 ? x0 + gap : 0); y0 = Math.round(y0 > 0 ? y0 + gap : 0);
+  x1 = Math.round(x1 < w ? x1 - gap : w); y1 = Math.round(y1 < h ? y1 - gap : h);
+  // a side with no pane keeps the dock's own margin, once there is a frame at all
+  if (x0 > 0 || y0 > 0 || x1 < w || y1 < h) { x0 = Math.max(x0, gap); y0 = Math.max(y0, gap); x1 = Math.min(x1, w - gap); y1 = Math.min(y1, h - gap); }
+  if (x1 - x0 < 160 || y1 - y0 < 120) { x0 = 0; y0 = 0; x1 = w; y1 = h; }   // no room for a frame: the panes lie over the scene
+  const frame = [x0, y0, x1, y1].join(" ");
+  if (frame === editorRoomTold) return;
+  editorRoomTold = frame;
+  Object.assign(canvas.style, { left: x0 + "px", top: y0 + "px", width: (x1 - x0) + "px", height: (y1 - y0) + "px", right: "auto", bottom: "auto" });
+  canvasAt = [x0, y0];
+  document.documentElement.dataset.coaxialEditFrame = frame;
+  // a page that asks is told its room: all of the canvas now, in the canvas's own pixels
+  if (engine?.exports.coaxial_edit_room_v1) send(525, `0 0 ${x1 - x0} ${y1 - y0}`);
 }
+// The space between a pane and the scene's frame: the dock's own gap.
+function editorGap() {
+  const dock = document.querySelector("#coaxial-editor .dock");
+  return dock ? parseFloat(getComputedStyle(dock).rowGap) || 0 : 0;
+}
+// Where the canvas's corner is in the window (CSS pixels): the window's corner, but in the editor's frame.
+let canvasAt = [0, 0];
 addEventListener("resize", () => editorRoom());
 // The shell's word that the world's import pack is the one of this SHA-256 (526, "URL HASH"; #13420). A deployed page
 // has no dev server to tell its tabs, so the pack this page loaded from that address is fetched again by the hash and
@@ -4395,11 +4414,11 @@ for (const [type, phase] of [["pointerdown", 0], ["pointermove", 1], ["pointerup
     const touch = e.pointerType !== "mouse", now = performance.now();
     if (touch) touchAt = now;
     else if (now - touchAt < AFTER_TOUCH_MS) return;
-    let x = e.clientX, y = e.clientY, ph = phase;
+    let x = e.clientX - canvasAt[0], y = e.clientY - canvasAt[1], ph = phase;
     // the pointer held (mouselook): a move only turns the camera, and a press is at the reticle
     if (!touch && looking()) {
       if (phase === 1) { call("coaxial_look_delta", e.movementX || 0, e.movementY || 0); return; }
-      const r = canvas.getBoundingClientRect(); x = r.left + r.width / 2; y = r.top + r.height / 2;
+      const r = canvas.getBoundingClientRect(); x = r.width / 2; y = r.height / 2;
     }
     if (touch) {
       if (phase === 0) touches.set(e.pointerId, { t: now, x0: x, y0: y, x, y });
