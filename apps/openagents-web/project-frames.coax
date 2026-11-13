@@ -321,7 +321,7 @@ pf_9 :: () {
   s2: [1] ProjectState; t2: [1] Tree; w2: [1] Work; l2: [1] Live;
   page_says(l2[..], "951b70f9fa97d8214e0c9f3ff392a1dd1668e61561ef21a2a69168d382452e18 verse");
   n = coaxial_project_frame(s2[..], t2[..], w2[..], l2[..], out[..], uniforms[..], 640, 900, 1, 0.016, true);
-  #assert n > 3000 && w2[0].baked == baked_index("verse") && w2[0].baked > 0 && same(w2[0].name, "Verse") && same(w2[0].text, VERSE_WORK_ITEMS);
+  #assert n > 3000 && w2[0].baked == baked_index("verse") && w2[0].baked > 0 && same(w2[0].name, "Metaverse") && same(w2[0].text, VERSE_WORK_ITEMS);
   s3: [1] ProjectState; t3: [1] Tree; w3: [1] Work; l3: [1] Live;
   page_says(l3[..], "1111111111111111111111111111111111111111111111111111111111111111 elsewhere");
   n = coaxial_project_frame(s3[..], t3[..], w3[..], l3[..], out[..], uniforms[..], 640, 900, 1, 0.016, true);
