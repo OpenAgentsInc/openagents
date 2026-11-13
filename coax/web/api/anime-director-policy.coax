@@ -4,8 +4,8 @@
 // not an empirical calibration result. No words are searched to choose a direction.
 #load "../../lib/json/json.coax";
 #load "../../lib/nostr/json.coax";
-#load "../../../metaverse/anime/director.coax";
-#load "../../../metaverse/anime/render-profile.coax";
+#load "../../../metaverse-engine/anime/director.coax";
+#load "../../../metaverse-engine/anime/render-profile.coax";
 #load "anime-route-policy.coax";
 #load "anime-director-checks.coax" #test;
 #load "anime-director-render-checks.coax" #test;

@@ -18,7 +18,7 @@
 // least CLOSE_HOLD; a flash cut is FLASH_FRAMES white frames. The engine
 // adds its own framing ("auto" shots) when a direction's subject is off
 // the shot, so what is directed is always seen; those are marked auto.
-//   coax/bin/coax test metaverse/anime/director.coax
+//   coax/bin/coax test metaverse-engine/anime/director.coax
 
 // ---- The catalogue (anime-lab.md, Directions)
 AD_ENTER :: 0; AD_EXIT :: 1; AD_ACT :: 2; AD_EMOTE :: 3; AD_CAST :: 4; AD_FX :: 5;

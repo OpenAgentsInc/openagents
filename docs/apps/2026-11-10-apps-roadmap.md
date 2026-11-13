@@ -149,7 +149,7 @@ Today the same job is done several ways:
 | `coder/tui/` (`coder.coax`, `codex.coax`, `session.coax`) | Coder's terminal: the same engines, its own session log | On the shared engines (2026-11-10, Claude Code; 2026-11-11, Codex, Cursor, Microcoder and Antigravity); its own session log |
 | `apps/metaverse-engine-desktop/chat.coax` | The Forge's chat | Runs Coder as a child and reads its JSONL |
 | `apps/everglade-desktop/next.coax`, `tiers.coax` | Next issue, and Golemancy's issue rating | On the shared Claude engine with their own options (2026-11-10) |
-| `apps/everglade-desktop/golems.coax`, `os/verse-agents.coax`, `coax/lib/agent/observe/processes.coax` | Which agents are working on this machine | One walker, `coax/lib/agent/observe/transcripts.coax` (2026-11-10); the third lists processes |
+| `coder/golemancy/golems.coax`, `os/verse-agents.coax`, `coax/lib/agent/observe/processes.coax` | Which agents are working on this machine | One walker, `coax/lib/agent/observe/transcripts.coax` (2026-11-10); the third lists processes |
 | `coax/web/agent/chat.coax`, `turn.coax` | `/chat` and the project agent on the server | On the shared Claude engine; the wire is written from the record (2026-11-10) |
 
 The target is three shared layers under `coax/lib/agent/`, and nothing above

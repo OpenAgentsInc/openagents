@@ -6,8 +6,8 @@
 // frame, UTF-8) are the descriptor's and are enforced by the generated code.
 // Scalars and strings that are zero or empty are omitted on encode; a
 // FrameDecision carries explicit presence bits instead.
-//   coax/bin/coax test metaverse/voice-wire.coax
-#import_proto "../proto/descriptors/voice.pb" as V;
+//   coax/bin/coax test metaverse-engine/net/voice-wire.coax
+#import_proto "../../proto/descriptors/voice.pb" as V;
 
 MAX_FRAME :: 16384;
 

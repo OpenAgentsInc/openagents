@@ -54,18 +54,10 @@ route coax/web/api/private.c  # private projects: hand-built bodies; the api.v1 
 route coax/web/api/villa.c  # the villa: hand-built bodies; the api.v1 envelope (#13250)
 
 # Codecs outside their owning context's folders (#13316).
-codec orbit-session-v2 apps/openagents-web/orbit-session.coax  # room-session codec still lives in apps/openagents-web/ (#13316)
 codec openagents.metareal.haunt.v1alpha1 metaverse/haunt.coax  # engine codec still lives in metaverse/ (#13316)
-codec openagents.voice.v1alpha1 metaverse/voice-wire.coax  # room-session codec still lives in metaverse/ (#13316)
 codec openagents.metareal.home.v1alpha1 metaverse/home.coax  # engine codec still lives in metaverse/ (#13316)
-codec openagents.cache.github.v1 apps/everglade-desktop/next-context.coax  # coder Golemancy codec still lives in apps/everglade-desktop/ (#13316)
-codec golems-cache apps/everglade-desktop/golems.coax  # coder Golemancy codec still lives in apps/everglade-desktop/ (#13316)
-codec issue-claim-file apps/everglade-desktop/next-context.coax  # coder Golemancy codec still lives in apps/everglade-desktop/ (#13316)
 codec aethyr.icecream.mesh-bands.controls.v1 metaverse/icecream/check-mesh-band-controls.coax  # engine codec still lives in metaverse/icecream/ (#13316)
 codec aethyr.icecream.mesh-bands.native.v1 metaverse/icecream/check_mesh_bands.py  # engine codec still lives in metaverse/icecream/ (#13316)
 codec aethyr.icecream.mesh.checks.v1 metaverse/icecream/check-mesh-band-tooling.coax  # engine codec still lives in metaverse/icecream/ (#13316)
 codec everglade.native-benchmark.v1 metaverse/gpu/vk-realm.c  # engine codec still lives in metaverse/gpu/ (#13316)
-codec openagents.project-work-seed.v1 apps/openagents-cli/project-publish.coax  # projects codec still lives in apps/openagents-cli/ (#13316)
-codec openagents.project-work.v1 apps/openagents-cli/project-publish.coax  # projects codec still lives in apps/openagents-cli/ (#13316)
-codec anime.* metaverse/anime/  # engine codec still lives in metaverse/anime/ (#13316)
 shape ocarina-material-pack-ocm1  # E1: a four-character format listed with its one codec; its profile and check are owed (#13304)

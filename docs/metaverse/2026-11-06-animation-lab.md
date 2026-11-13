@@ -44,7 +44,7 @@ Draconia, The Guardian").
 | Speaking | `metaverse-engine/audio/speak.coax`, `coax/web/tool.sh speak` | Text to speech, word timing, visemes and moods on a MetaHuman face, rendered to video |
 | Echo port | `metaverse/valley/echo*.coax`, `metaverse/tools/valley-echo-*`, `metaverse-engine/tools/unreal-echo-sdk/` | Echo's mesh, 334 joints, 24 clips and source walking profile, in a private pack |
 | Slay face | `metaverse/valley/slay-shot.coax`, `slay-shot-play.coax` (#12962) | Slay's facial clips on Echo, with a fixed source-shot view |
-| Anime director | `metaverse/anime/director.coax`, `take.coax`, `stage.coax`, `coax/web/api/anime-director-policy.coax` | Words to typed directions with confidence; `.take` files (`anime.v1`); timeline grammar |
+| Anime director | `metaverse-engine/anime/director.coax`, `take.coax`, `stage.coax`, `coax/web/api/anime-director-policy.coax` | Words to typed directions with confidence; `.take` files (`anime.v1`); timeline grammar |
 | Labs CLI | `apps/openagents-cli/labs.coax`, `docs/cli/2026-11-01-openagents-labs.md` | `labs shot`, `clip`, `frames`, `cut`, `compare`, `anime` |
 | Private packs | `docs/metaverse/private-assets.md`, `docs/metaverse/metahuman-support.md` | Licensed data stays out of git, addressed by SHA-256, resolved owner-locally |
 
@@ -85,7 +85,7 @@ on them.
 ## The model
 
 Six document types. Each is JSON with a schema name, bounds, and a Coax
-`#authority` admission procedure, the way `metaverse/anime/take.coax` admits
+`#authority` admission procedure, the way `metaverse-engine/anime/take.coax` admits
 `anime.v1` takes.
 
 ### Rig (`anim.rig.v1`)

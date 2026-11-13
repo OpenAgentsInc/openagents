@@ -150,7 +150,7 @@ Owning contexts (`owner` slugs, from [`docs/architecture/contexts.md`](../docs/a
 | `payments` | Payments and wallet | `pay/`, `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/`, `coax/lib/nostr/vault-wallet.coax` |
 | `coder` | Coder and agents | `coder/`, `coax/lib/agent/`, `coax/lib/microcoder/`, `coax/lib/gateway/`, `coax/lib/repo/`, `coax/web/repo/`, `coax/web/agent/` |
 | `chat` | Chat | `components/zeron/`, `apps/openagents-web/chat.coax`, `coax/web/api/chat.c` |
-| `projects` | Projects | `coax/web/api/private.c`, `coax/web/api/drops.c` |
+| `projects` | Projects | `coax/web/api/private.c`, `coax/web/api/drops.c`, `coax/web/project/` |
 | `nostr` | Nostr | `nostr/`, `coax/lib/nostr/` |
 | `psionic` | Psionic and inference | `psionic/`, `coax/lib/systemone/`, `coax/web/api/inference.c` |
 | `engine` | Engine (the Metaverse Engine) | `metaverse-engine/` (outside `rules/`, `session/`, `net/`, `forge/`) |

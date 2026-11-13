@@ -567,7 +567,7 @@ ffmpeg, whisper-cli, pw-record) is missing. `dictate` adds 9 no speech and
 | `account_rules.coax` | `#authority`: origins, machine names, a device login's poll states, logout's plan, JSON strings, the terminal QR text |
 | `project.coax` | the `project` domain: the config, the key, reading and folding the relay, `list` and `show` |
 | `project-write.coax` | claim, release, note, plan, done, status, move and respread, signed with the project key |
-| `project-publish.coax` | `check` and `publish`: the work files as announcements, issues, revisions, statuses and the order |
+| `coax/web/project/project-publish.coax` | `check` and `publish`: the work files as announcements, issues, revisions, statuses and the order |
 | `project-review.coax` | `review`: an independent review file signed with the reviewer's key; `review report` and `review keygen` |
 | `review-rules.coax` | the review report's rules: a diff's weakened checks, a review's validity |
 | `project-page.coax` | `snapshot`, `index` and `bake`: the page's tables, Markdown and lists from the relay |

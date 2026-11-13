@@ -36,7 +36,7 @@ consent and explicit grants, never by the words spoken.
    voice comes from (chapter 6's stable `EntityId`), or none for a flat
    narrator. An `Utterance` carries text up to 600 bytes, a priority, and
    `interruptible`, `spatial` and `batch` flags (`WUtterance` in
-   [`metaverse/voice-wire.coax`](../../metaverse/voice-wire.coax)).
+   [`metaverse-engine/net/voice-wire.coax`](../../metaverse-engine/net/voice-wire.coax)).
 2. **Frames and turns.** Uplink audio arrives in 20 ms frames (`FRAME`, 320
    samples at 16 kHz; `MAX_IN` 960 at 48 kHz). The turn machine moves
    through `TURN_IDLE`, `TURN_SPEAKING`, `TURN_TRAILING` and `TURN_ENDED`,
@@ -173,7 +173,7 @@ record at the end ([record](../../docs/verification/verse-parakeet-2026-11-02/RE
   activity, end of turn, barge-in and the jitter buffer, checked on
   recorded fixtures.
 - [metaverse/voice-floor.coax](../../metaverse/voice-floor.coax),
-  [metaverse/voice-wire.coax](../../metaverse/voice-wire.coax) and
+  [metaverse-engine/net/voice-wire.coax](../../metaverse-engine/net/voice-wire.coax) and
   [pay/voice-meter.coax](../../pay/voice-meter.coax): consent and
   floors, the `openagents.voice.v1alpha1.Frame` wire (16 KiB frames), and
   metering.

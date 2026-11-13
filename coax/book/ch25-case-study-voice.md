@@ -74,7 +74,7 @@ can't: talk to audio hardware, open sockets, and make HTTPS calls.
 | --- | --- | --- |
 | The schema | `proto/openagents/voice/v1alpha1/voice.proto` | Every message on the wire, with its bounds |
 | The engine | `metaverse/voice.coax` | Resampling, levels, voice activity, end of turn, barge-in, jitter buffer, gain, features, decisions |
-| The wire | `metaverse/voice-wire.coax` | Frame codecs, generated from the schema |
+| The wire | `metaverse-engine/net/voice-wire.coax` | Frame codecs, generated from the schema |
 | The floor | `metaverse/voice-floor.coax` | Consent, who holds the floor, media epochs (`#authority`) |
 | The meter | `pay/voice-meter.coax` | Free tier, prices, whether a turn may run (`#authority`) |
 | The C face | `metaverse/platform/voice.h`, `voice.c` | A stable C API over the four libraries |
@@ -144,7 +144,7 @@ Chapter 18 showed how a schema reaches Coax. The repository's
 `proto/descriptors/voice.pb` from it. Then a single directive in the wire
 file generates every codec:
 
-Filename: metaverse/voice-wire.coax
+Filename: metaverse-engine/net/voice-wire.coax
 
 ```jai
 #import_proto "../proto/descriptors/voice.pb" as V;
@@ -171,7 +171,7 @@ types and plain structs the C face can fill in. Each builder follows the
 rule Chapter 18 described for generated setters: an edit reads one scratch
 buffer and writes the other, so the two alternate.
 
-Filename: metaverse/voice-wire.coax
+Filename: metaverse-engine/net/voice-wire.coax
 
 ```jai
 pick :: (k: int, a: [] u8, b: [] u8) -> [] u8 { return ifx k % 2 == 0 then a else b; }

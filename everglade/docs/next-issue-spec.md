@@ -41,10 +41,10 @@ In Everglade for desktop, the **Next issue** button at the top right:
 The same context is available from the command line, without the app:
 
 ```sh
-coax/web/tool.sh apps/everglade-desktop/next-context.coax context --prompt "focus on the desktop app"
-coax/web/tool.sh apps/everglade-desktop/next-context.coax work 13134 --repo-dir ~/work/openagents   # the worktree and the issue, whole
-coax/web/tool.sh apps/everglade-desktop/next-context.coax status     # the caches and their ages
-coax/web/tool.sh apps/everglade-desktop/next-context.coax usage      # the ledger, summed
+coax/web/tool.sh coder/golemancy/next-context.coax context --prompt "focus on the desktop app"
+coax/web/tool.sh coder/golemancy/next-context.coax work 13134 --repo-dir ~/work/openagents   # the worktree and the issue, whole
+coax/web/tool.sh coder/golemancy/next-context.coax status     # the caches and their ages
+coax/web/tool.sh coder/golemancy/next-context.coax usage      # the ledger, summed
 ```
 
 ## 2. Your priorities
@@ -285,7 +285,7 @@ and `scores`. To rate every open issue at once (one Haiku session, about
 $0.01 for 27 issues):
 
 ```sh
-coax/web/tool.sh apps/everglade-desktop/next-context.coax context > ctx.txt
+coax/web/tool.sh coder/golemancy/next-context.coax context > ctx.txt
 coax/web/tool.sh apps/everglade-desktop/tiers.coax ctx.txt [--model claude-sonnet-5-5]
 ```
 

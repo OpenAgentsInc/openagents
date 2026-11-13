@@ -14,10 +14,10 @@
 // the south. The engine adds a few reactions of its own, named here: the
 // heroes turn to face what appears behind them, everyone near a huge
 // impact recoils, and a spell's impact shakes the camera.
-//   coax/bin/coax test metaverse/anime/stage.coax --library
+//   coax/bin/coax test metaverse-engine/anime/stage.coax --library
 
 #load "director.coax";
-#load "../../metaverse-engine/cam/cinematic.coax";
+#load "../cam/cinematic.coax";
 
 // ---- The stage's marks
 COURT :: 12.0f32;                    // m: the courtyard's half width (walls at ±COURT)

@@ -3,7 +3,7 @@
  * engine. Everything that decides anything lives in Coax:
  *   metaverse/voice.coax        engine: resample, levels, VAD, turns, barge-in,
  *                              jitter buffer, gain/duck/rate, decisions
- *   metaverse/voice-wire.coax   Frame codecs (generated from voice.pb)
+ *   metaverse-engine/net/voice-wire.coax   Frame codecs (generated from voice.pb)
  *   metaverse/voice-floor.coax  consent, input floor, media epochs (#authority)
  *   pay/voice-meter.coax  free tier and pricing (#authority)
  * This file owns storage (the opaque structs wrap the Coax state), converts

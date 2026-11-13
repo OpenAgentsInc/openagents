@@ -36,7 +36,7 @@ done
 # case-insensitive disk (so the engine is VoiceEngine, not Voice). Floor and
 # meter are #authority: their checks run in this compile.
 # The meter is the Payments context's (pay/, #13320).
-for pair in metaverse/voice:VoiceEngine metaverse/voice-wire:VoiceWire metaverse/voice-floor:VoiceFloor pay/voice-meter:VoiceMeter; do
+for pair in metaverse/voice:VoiceEngine metaverse-engine/net/voice-wire:VoiceWire metaverse/voice-floor:VoiceFloor pay/voice-meter:VoiceMeter; do
   "$compiler" c "${pair%%:*}.coax" --library --header "$out/${pair##*:}.h" > "$out/${pair##*:}.c.tmp"
   mv "$out/${pair##*:}.c.tmp" "$out/${pair##*:}.c"
 done

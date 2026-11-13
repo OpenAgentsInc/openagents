@@ -1,6 +1,6 @@
 // Pure catalogue, director/public reply and recorded-take append policy. Effects
 // keep the old bytes across the request and compare/rename under their file lock.
-#load "../../metaverse/anime/take.coax";
+#load "../../metaverse-engine/anime/take.coax";
 #load "../../coax/web/api/anime-director-policy.coax";
 #load "../../coax/lib/nostr/base64.coax";
 #load "account_rules.coax";

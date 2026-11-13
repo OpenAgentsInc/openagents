@@ -15,7 +15,7 @@
 // "quick-1v1" and "quick-2v2" are the matchmaking names (ol-quick-match). Up to OLR_ROOMS rooms of
 // ROOM_PLAYERS seats.
 #load "../../../apps/openagents-web/orbitleague-game.coax";   // the match, its physics and the frozen profile's wire
-#load "../../../apps/openagents-web/orbit-session.coax";       // the v2 profile's admission, controls and fields
+#load "../../../metaverse-engine/net/orbit-session.coax";       // the v2 profile's admission, controls and fields
 #load "../../../apps/openagents-web/orbit-snapshot.coax";      // and its snapshot
 #load "room-checks.coax";
 

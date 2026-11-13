@@ -19,7 +19,7 @@
 #load "../../coax/lib/json/json.coax";
 #load "project-rules.coax";
 #load "project-write.coax";
-#load "project-publish.coax";
+#load "../../coax/web/project/project-publish.coax";
 #load "review-rules.coax";
 #load "project-review.coax";
 #load "project-page.coax";

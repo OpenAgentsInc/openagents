@@ -2,8 +2,8 @@
 // desktop app as everglade-golems; the Golems board in the Workshop (golem-board.coax) shows what
 // it prints.
 //
-//   coax/web/tool.sh apps/everglade-desktop/golems.coax snapshot --now SECONDS [--tz SECONDS] [--hours H]
-//   coax/web/tool.sh apps/everglade-desktop/golems.coax refresh --now SECONDS [--tz SECONDS] --repo-dir DIR [--force]
+//   coax/web/tool.sh coder/golemancy/golems.coax snapshot --now SECONDS [--tz SECONDS] [--hours H]
+//   coax/web/tool.sh coder/golemancy/golems.coax refresh --now SECONDS [--tz SECONDS] --repo-dir DIR [--force]
 //
 // An agent is one Claude Code session: a transcript under ~/.claude/projects/PROJECT/ (the
 // session) or PROJECT/SESSION/subagents/ (an agent that session started). So the board shows the

@@ -5,18 +5,18 @@
 // part first (the issues, oldest first, so a new issue appends and the prompt cache's prefix
 // holds), then what changes (commits, recent prompts, the prompt in hand).
 //
-//   coax/web/tool.sh apps/everglade-desktop/next-context.coax context [--refresh] [--ttl SECONDS] [--prompt TEXT] [--repo OWNER/REPO] [--author LOGIN]
+//   coax/web/tool.sh coder/golemancy/next-context.coax context [--refresh] [--ttl SECONDS] [--prompt TEXT] [--repo OWNER/REPO] [--author LOGIN]
 //       prints the message on stdout; stderr says what came from cache and how old it is.
 //       Only issues filed by LOGIN (NC_AUTHOR unless given) are read: an agent with a shell is
 //       never handed a stranger's text
-//   coax/web/tool.sh apps/everglade-desktop/next-context.coax work NUMBER --repo-dir CHECKOUT [--owner PID]
+//   coax/web/tool.sh coder/golemancy/next-context.coax work NUMBER --repo-dir CHECKOUT [--owner PID]
 //       makes a fresh worktree for the issue off origin/main beside CHECKOUT (CHECKOUT-issue-NUMBER;
 //       an existing one is reused) and prints its path on the first line, then the issue whole
 //       from the cache, for the coding agent. --owner writes PID beside the worktree's git data,
 //       and a worktree whose owner is another process still running is refused, so two agents
 //       never work one issue's worktree
-//   coax/web/tool.sh apps/everglade-desktop/next-context.coax status     the caches and their ages, as JSON
-//   coax/web/tool.sh apps/everglade-desktop/next-context.coax usage      the AI call ledger, summed by purpose and model
+//   coax/web/tool.sh coder/golemancy/next-context.coax status     the caches and their ages, as JSON
+//   coax/web/tool.sh coder/golemancy/next-context.coax usage      the AI call ledger, summed by purpose and model
 //
 // A fetch is `gh` (your own login) through /bin/sh, written to a temporary file and renamed, so a
 // failed fetch leaves the old cache. The wall clock is a file's modification time: the tool

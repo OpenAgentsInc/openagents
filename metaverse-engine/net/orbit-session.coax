@@ -1,10 +1,10 @@
 // Orbit League's additive authoritative profile. The unversioned reported-car wire stays frozen.
 #module "orbit.session";
 #authority;
-#load "../../metaverse-engine/net/session.coax";
-#load "../../metaverse-engine/net/record.coax";
-#load "../../metaverse-engine/net/row.coax";
-#load "../../metaverse-engine/net/replication.coax";
+#load "session.coax";
+#load "record.coax";
+#load "row.coax";
+#load "replication.coax";
 
 ORB_VERSION :: 2;ORB_FIELDS :: 16;ORB_FUEL :: 14;ORB_LIFE :: 15;
 ORB_CLIENT_BYTES :: 256;ORB_INPUT_STALE_MS :: 1000;ORB_MALFORMED :: 9;

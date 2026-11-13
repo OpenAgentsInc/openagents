@@ -1,7 +1,7 @@
 // Whole authoritative Orbit v2 snapshots. The independently written contract lives in proto/verse.
 #module "orbit.snapshot";
 #authority;
-#load "orbit-session.coax";
+#load "../../metaverse-engine/net/orbit-session.coax";
 ORB_ROWS :: 5;
 OrbFields :: struct {ok:bool;v:[ORB_FIELDS]s32;}
 OrbRow :: struct {ok:bool;id:int;v:[ORB_FIELDS]s32;}

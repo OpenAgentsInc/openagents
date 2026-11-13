@@ -1,6 +1,6 @@
 // tiers.coax: rate every open issue with Golemancy's rubric and say which model would work each.
 //
-//   coax/web/tool.sh apps/everglade-desktop/next-context.coax context > /tmp/ctx.txt
+//   coax/web/tool.sh coder/golemancy/next-context.coax context > /tmp/ctx.txt
 //   coax/web/tool.sh apps/everglade-desktop/tiers.coax /tmp/ctx.txt [--model claude-haiku-5-5] [--family claude|gemini]
 //
 // The input is the picker's own message (next-context context): the open issues, the

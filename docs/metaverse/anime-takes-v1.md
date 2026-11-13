@@ -2,7 +2,7 @@
 
 This document defines the `anime.v1` JSON recorded-take profile for
 [#12633](https://github.com/OpenAgentsInc/openagents/issues/12633). The authority
-is [`metaverse/anime/take.coax`](../../metaverse/anime/take.coax); the page is
+is [`metaverse-engine/anime/take.coax`](../../metaverse-engine/anime/take.coax); the page is
 [`animelab.coax`](../../apps/openagents-web/animelab.coax). The words, recorded
 times, and held catalogue answers belong to the take. Loading one performs no
 speech recognition, selector call, or asset generation.
@@ -158,7 +158,7 @@ keys nested in confidence metadata cannot shadow a selected field or `p`.
 
 ## Static support and asset boundaries
 
-[`render-profile.coax`](../../metaverse/anime/render-profile.coax) is the shared
+[`render-profile.coax`](../../metaverse-engine/anime/render-profile.coax) is the shared
 authority used by the API and take holder. It distinguishes existing distinct
 poses, emotions, fireball, supported entrance/camera/effect combinations,
 cut/flash/smash transitions, and hold/speed-lines beats from catalogue options

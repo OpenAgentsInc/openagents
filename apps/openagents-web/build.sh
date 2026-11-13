@@ -333,7 +333,7 @@ timed character-host "$here/../../coax/web/wasm.sh" "$here/character-host.coax" 
 characterhost=$!
 timed valleyworld "$here/../../coax/web/wasm.sh" "$here/valleyworld.coax" "$here/valleyworld-face.c" "$here/build/valleyworld.wasm" &
 valleyworld=$!
-# /worlds/anime-lab: direct an anime (docs/metaverse/anime-lab.md): the director and stage (metaverse/anime/), the
+# /worlds/anime-lab: direct an anime (docs/metaverse/anime-lab.md): the director and stage (metaverse-engine/anime/), the
 # anime style's block from its own library (animelab-style.coax). (animelab.wgsl loads metaverse/style.coax in gpu/animelab.coax.)
 old timed animelab "$here/../../coax/web/wasm.sh" "$here/animelab.coax" "$here/animelab-face.c" "$here/build/animelab.wasm" "$here/animelab-style.coax" &
 animelab=$!

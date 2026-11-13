@@ -477,7 +477,7 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
     || codec == "coax/lib/nostr/vault-wallet.coax"; }   // the wallet backup's codec stays below Nostr (docs/architecture/contexts.md)
   if owner == "coder" { return wc_under(codec, "coder/") || wc_under(codec, "coax/lib/agent/") || wc_under(codec, "coax/lib/microcoder/") || wc_under(codec, "coax/lib/gateway/") || wc_under(codec, "coax/lib/repo/") || wc_under(codec, "coax/web/repo/") || wc_under(codec, "coax/web/agent/"); }
   if owner == "chat" { return wc_under(codec, "components/zeron/") || wc_under(codec, "apps/openagents-web/chat.coax") || wc_under(codec, "coax/web/api/chat.c"); }
-  if owner == "projects" { return wc_under(codec, "coax/web/api/private.c") || wc_under(codec, "coax/web/api/drops.c"); }
+  if owner == "projects" { return wc_under(codec, "coax/web/api/private.c") || wc_under(codec, "coax/web/api/drops.c") || wc_under(codec, "coax/web/project/"); }
   if owner == "nostr" { return wc_under(codec, "nostr/") || (wc_under(codec, "coax/lib/nostr/") && codec != "coax/lib/nostr/vault-wallet.coax"); }
   if owner == "psionic" { return wc_under(codec, "psionic/") || wc_under(codec, "coax/lib/systemone/") || wc_under(codec, "coax/web/api/inference.c"); }
   if owner == "engine" { return wc_under(codec, "metaverse-engine/") && !wc_under(codec, "metaverse-engine/session/") && !wc_under(codec, "metaverse-engine/net/") && !wc_under(codec, "metaverse-engine/editor/"); }
@@ -490,7 +490,7 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
       && !wc_under(codec, "coax/lib/bitcoin/") && !wc_under(codec, "coax/lib/lightning/") && !wc_under(codec, "coax/lib/lnaddr/")
       && !wc_under(codec, "coax/lib/systemone/") && !wc_under(codec, "coax/web/room/") && !wc_starts(codec, "coax/web/api/auth") && codec != "coax/web/api/agent-wire.coax"
       && !wc_under(codec, "coax/web/api/worldbuilder.c") && !wc_under(codec, "coax/web/api/realms.c")
-      && !wc_under(codec, "coax/web/api/chat.c") && !wc_under(codec, "coax/web/api/private.c") && !wc_under(codec, "coax/web/api/drops.c")
+      && !wc_under(codec, "coax/web/api/chat.c") && !wc_under(codec, "coax/web/api/private.c") && !wc_under(codec, "coax/web/api/drops.c") && !wc_under(codec, "coax/web/project/")
       && !wc_under(codec, "coax/web/api/inference.c") && !wc_under(codec, "coax/web/api/analytics.c")
       && !wc_under(codec, "coax/web/api/email.c") && !wc_under(codec, "coax/web/api/jobs.c") && !wc_under(codec, "coax/web/api/access.c");
   }
@@ -947,6 +947,7 @@ WC_T_QUIET :: WcRun.{quiet = true};
   #assert wc_row_fault(d, jv_at(d, 0, 10)) == "" && wc_row_fault(d, jv_at(d, 0, 11)) == "";
   #assert wc_owner_has("coder", "coax/lib/repo/wire.coax") && wc_owner_has("coder", "coax/web/agent/chat.coax") && !wc_owner_has("toolchain", "coax/lib/repo/wire.coax") && wc_owner_has("coder", "coder/tui/acp.coax") && wc_owner_has("coder", "coax/lib/agent/claude/") && !wc_owner_has("coder", "coax/lib/nostr/");
   #assert wc_owner_has("room-session", "metaverse-engine/session/relay.coax") && !wc_owner_has("room-session", "metaverse-engine/session/ledger.coax") && wc_owner_has("items", "metaverse-engine/session/ledger.coax");
+  #assert wc_owner_has("projects", "coax/web/project/project-publish.coax") && !wc_owner_has("toolchain", "coax/web/project/x.coax");
   #assert wc_owner_has("toolchain", "coax/web/wire-check.coax") && !wc_owner_has("toolchain", "coax/lib/nostr/") && !wc_owner_has("toolchain", "coax/web/api/auth.c");
   #assert wc_owner_has("engine", "metaverse-engine/render/x.coax") && !wc_owner_has("engine", "rules/srd/x.coax") && !wc_owner_has("engine", "metaverse-engine/editor/x.coax");
   #assert wc_known_owner("realm-tools") && wc_owner_has("realm-tools", "metaverse/tools/") && wc_owner_has("realm-tools", "metaverse/tools/valley-profile.coax") && !wc_owner_has("realm-tools", "metaverse-engine/tools/x.coax") && !wc_owner_has("engine", "metaverse/tools/x.coax") && !wc_owner_has("realm-tools", "metaverse/valley/x.coax");

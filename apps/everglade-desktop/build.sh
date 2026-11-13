@@ -163,14 +163,14 @@ xcrun -sdk macosx swiftc -O -Xcc -I"$work/c" -import-objc-header "$work/c/bridge
   -Xlinker -export_dynamic -Xlinker -stack_size -Xlinker 0x20000000 -o "$app/Contents/MacOS/Everglade"
 # The context program: built as any Coax tool is (tool.sh keeps the executable by the compiler's
 # hash; an unknown verb builds it and does nothing else), then copied in beside the app's own.
-"$repo/coax/web/tool.sh" "$here/next-context.coax" build-only >/dev/null 2>&1 || true
+"$repo/coax/web/tool.sh" "$repo/coder/golemancy/next-context.coax" build-only >/dev/null 2>&1 || true
 tool="$repo/coax/web/build/tools/next-context-$(shasum -a 256 "$coax" | cut -d ' ' -f 1)"
-[[ -x "$tool" ]] || { echo "build.sh: next-context did not build; run coax/web/tool.sh apps/everglade-desktop/next-context.coax status" >&2; exit 1; }
+[[ -x "$tool" ]] || { echo "build.sh: next-context did not build; run coax/web/tool.sh coder/golemancy/next-context.coax status" >&2; exit 1; }
 cp "$tool" "$app/Contents/MacOS/everglade-next"
 # The Golems board's reader (golems.coax), the same way.
-"$repo/coax/web/tool.sh" "$here/golems.coax" build-only >/dev/null 2>&1 || true
+"$repo/coax/web/tool.sh" "$repo/coder/golemancy/golems.coax" build-only >/dev/null 2>&1 || true
 tool="$repo/coax/web/build/tools/golems-$(shasum -a 256 "$coax" | cut -d ' ' -f 1)"
-[[ -x "$tool" ]] || { echo "build.sh: golems did not build; run coax/web/tool.sh apps/everglade-desktop/golems.coax snapshot --now 1" >&2; exit 1; }
+[[ -x "$tool" ]] || { echo "build.sh: golems did not build; run coax/web/tool.sh coder/golemancy/golems.coax snapshot --now 1" >&2; exit 1; }
 cp "$tool" "$app/Contents/MacOS/everglade-golems"
 # The checkout a worktree for an issue branches off: the main one, whichever worktree builds this.
 dirname "$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)" > "$app/Contents/Resources/repo.txt"

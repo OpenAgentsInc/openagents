@@ -40,7 +40,7 @@ today and the folder it owns as the layout settles (#13270, DDD.6).
 | **Realm import tools** | `metaverse/tools/` | `metaverse/tools/` (the Valley, Kokiri, Slay and Ocarina importers and packers, moved out of `metaverse-engine/tools/`, #13270) | Supporting | Engine, Realm authoring (`metaverse-engine/editor/pack.coax`), `coax/lib/` | Offline tools that turn a realm's source assets into its packs. They own the `valley.*` and `kokiri.*` record families (`proto/registry.json`, owner `realm-tools`). Never shipped or loaded by a page. |
 | **Protocol (published language)** | `proto/` | `proto/` (`proto/registry.json`, `.proto` schemas, wire profiles) | Supporting (published language) | None (schemas and catalogue; codecs live in their owning contexts, DDD.5) | Canonical protobuf schemas and wire shape registry ([`proto/README.md`](../../proto/README.md)), gated by `coax/web/tool.sh wire-check`. |
 | **Coax toolchain** | `coax/` | `coax/` (`coax/bin/`, `coax/lib/`, `coax/web/`) | Supporting | Host C11 toolchain | Compiler, standard libraries, mutation tester, compat checker and Coaxial web runtime. |
-| **Anime Lab's API rules** | `coax/web/api/anime-*` | Same | Supporting (a realm on the engine) | Engine, `coax/lib/` | The words-to-catalogue rules of Anime Lab (`metaverse/anime/`). A context so its API rules are not judged as toolchain code. |
+| **Anime Lab's API rules** | `coax/web/api/anime-*` | Same | Supporting (a realm on the engine) | Engine, `coax/lib/` | The words-to-catalogue rules of Anime Lab (`metaverse-engine/anime/`). A context so its API rules are not judged as toolchain code. |
 | **Analytics, email, jobs, access** | `coax/web/api/` (`analytics.c`, `email.c`, `jobs.c`, `access.c`) | Same, plus SQL `analytics.*`, `email.*`, `jobs.*`, `access.*` | Generic | `coax/lib/`, Identity (where route access applies) | Operational plumbing routes and background queues. |
 
 Three contexts are the product's core for the game and agent lines today:
@@ -125,7 +125,7 @@ DDD relationship kinds used here:
 | **Payments and wallet -> Nostr and callers** | Wallet logic in `pay/wallet.coax`, maker pay in `pay/makerpay-policy.coax`, LNURL in `coax/lib/lnaddr/` | **Open host service + published language** | One payments context folder, `pay/` (DDD.9, #13320), exposing an `#authority` policy API internally and LNURL / Nostr zaps externally. |
 | **Coder <- Psionic and third-party agents** | `proto/registry.json` holds 12 `external` rows (Claude Code, Codex, Cursor, ACP, MCP, LNURL, Nostr NIPs) alongside `coax/lib/gateway/` and `psionic.*` | **Anticorruption layer (ACL)** (keep and name) | Each `external` row's codec folder is the sole parser for that third-party format and outputs our own record types. |
 | **Coder -> Chat** | `apps/openagents-web/chat.coax` and `components/zeron/` render Coder threads and turns directly | **Conformist** | Same product family; Chat conforms to Coder's thread and turn model rather than translating it. |
-| **Coder -> Golemancy (`apps/everglade-desktop/`)** | `apps/everglade-desktop/golems.coax` reads Coder session transcripts and presents agents as golems | **Anticorruption layer (ACL)** | Game terminology ("golem") over agent session records (`openagents.session.v1`) is an explicit view/translation layer. |
+| **Coder -> Golemancy (`apps/everglade-desktop/`)** | `coder/golemancy/golems.coax` reads Coder session transcripts and presents agents as golems | **Anticorruption layer (ACL)** | Game terminology ("golem") over agent session records (`openagents.session.v1`) is an explicit view/translation layer. |
 | **Coder, Room session, Psionic -> Protocol (`proto/`)** | 98 rows in `proto/registry.json` checked by `coax/web/tool.sh wire-check`, with allowlist burn-down in progress | **Published language** | Every wire shape, persisted save and cross-context domain event has one registry row, an `owner` context (DDD.5) and one codec file. |
 
 ## Dependency direction rules
@@ -164,7 +164,7 @@ AAA layout (#13257) lands:
      recommends. It gets a context of its own only if golems gain durable
      game-world state that is not a Coder transcript.
    - *Audit recommendation:* a view and **anticorruption layer** over Coder in
-     `apps/everglade-desktop/golems.coax`, translating `openagents.session.v1`
+     `coder/golemancy/golems.coax`, translating `openagents.session.v1`
      transcripts and agent tasks into golem words without introducing a second
      agent state store.
    - *Alternative:* promote Golemancy to a separate game context if golems

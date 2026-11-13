@@ -54,7 +54,7 @@ It builds on what exists today:
 - [`verse`](../../metaverse)
 - [`metaverse-engine/editor`](../../metaverse-engine/editor)
 - [`apps/openagents-cli/realm.coax`](../../apps/openagents-cli/realm.coax)
-- [`apps/openagents-cli/project-publish.coax`](../../apps/openagents-cli/project-publish.coax)
+- [`coax/web/project/project-publish.coax`](../../coax/web/project/project-publish.coax)
 - [`coax/lib/nostr/ext`](../../coax/lib/nostr/ext)
 - [`coax/lib/x402`](../../coax/lib/x402)
 - [`coax/lib/nostr/nipmv.coax`](../../coax/lib/nostr/nipmv.coax)

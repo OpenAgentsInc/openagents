@@ -22,7 +22,7 @@
 
 cxproc_wall_us :: () -> int #foreign #effects(all);
 
-ND_CONTEXT :: "apps/everglade-desktop/next-context.coax";
+ND_CONTEXT :: "coder/golemancy/next-context.coax";
 W :: 1320.0; H :: 880.0;    // the view the presses are made in (nothing is drawn)
 
 nd_put :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }

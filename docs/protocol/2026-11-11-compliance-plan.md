@@ -104,7 +104,7 @@ and fixture), **external** (third party), **keep** (local, one program),
 | `openagents.next-issue.decision.v1`, `decisions.jsonl` | `next.coax:433`; appended by `Sources/Workshop.swift:402` and `next-drive.coax:85` | The Workshop writes it; no file in the repository reads it | none | Move: C6 |
 | Tier rubric (`scope`, `ambiguity`, `risk`, `depth`, `delegable`) | `coax/lib/agent/tier.coax:109` | Sent to the model as its answer schema; read by `next.coax`, `tiers.coax` | none | Move: C6 |
 | Price tables | `golems.coax:193` (cents) and `coax/lib/gateway/card.coax:36` (`GW_RATES`, micro-USD; `gw_price` in `rates.coax:33` reads it) | Golems board, gateway | none | Delete `gs_price` in C6; use `rates.coax` |
-| Golems cache `golem5`, snapshot lines `T G M Q`, `issues.tsv`, `hosts.txt` | `apps/everglade-desktop/golems.coax:40-62,471-499` | `golem-board.coax`, same app | none | Keep. A cache one app writes and reads; the name carries its version |
+| Golems cache `golem5`, snapshot lines `T G M Q`, `issues.tsv`, `hosts.txt` | `coder/golemancy/golems.coax:40-62,471-499` | `golem-board.coax`, same app | none | Keep. A cache one app writes and reads; the name carries its version |
 | Remote-host pull | `golems.coax:736` (`ssh find`, `rsync`) | Copies other tools' transcripts | none | External. No shape of ours |
 | Issue claim file `everglade-owner` (a pid) | `next-context.coax:430` | The Workshop | none | Keep |
 | `openagents.coder.agents.v1`, `openagents.models.v1` | `coax/lib/agent/observe/processes.coax:50`, `apps/openagents-cli/models.coax:38` | `apps/metaverse-engine-desktop/setup.coax` | `cli/local/v1/inventory.proto`, unused | Move: wave 2 (C7) |
@@ -144,7 +144,7 @@ Wave 2 steps done:
 
 ## Area 2: Everglade
 
-Generated codecs in the game area: `metaverse/haunt.coax`, `metaverse/voice-wire.coax`
+Generated codecs in the game area: `metaverse/haunt.coax`, `metaverse-engine/net/voice-wire.coax`
 and `metaverse/home.coax`. None is Everglade's.
 
 ### Inventory
@@ -164,7 +164,7 @@ and `metaverse/home.coax`. None is Everglade's.
 | WebTransport framing (mark byte, channels, 1,200-byte datagrams) | `metaverse-engine/net/transport.coax`, `room-wt.coax` | Shared | `aethyr-transport-v1.json` | Pinned: E3 |
 | Old wire (`H 1`) | `coax/web/room/room-oldwire.coax` | Ends 2026-11-12 | none | Delete: E1 |
 | Session v4 profile | `proto/verse/everglade-session-v4.json` | No code reads it | — | Delete: E1 |
-| Orbit League v2 frames | `apps/openagents-web/orbit-session.coax` (with `orbit-snapshot.coax`) | Shared | Profile, checked by `orbit-wire-profile.coax` | Pin. Compliant |
+| Orbit League v2 frames | `metaverse-engine/net/orbit-session.coax` (with `orbit-snapshot.coax`) | Shared | Profile, checked by `orbit-wire-profile.coax` | Pin. Compliant |
 | Seat ticket v2/v3 (HMAC-SHA256) | Written by C `snprintf` in `coax/web/api/player.c:524` and by Coax `tk_sign*` in `room-ticket.coax:230-268` (the dev stand-in and the checks); read by `room-ticket.coax` `tk_check` | One writer since E5 (`seat_ticket_hmac_write`) | `proto/verse/seat-ticket-hmac-v1.json` | Done: E5 |
 | Ticket v4 resume envelope (signed) | `metaverse-engine/session/resume-payload.coax`, `resume-envelope.coax` | Shared, exported to C | none | Pin: E5 adds fixtures |
 | Character checkpoint v2/v3 (signed, stored in `verse.character_checkpoints_v2`) | `metaverse-engine/session/character-checkpoint.coax`; SQL rewrites v3 to v2 at `player.c:350`; v1 keys duplicated in `coax/web/api/checkpoint-policy.coax` | Room, API | JSON Schema, unchecked | Pin: wave 2 (E7). Golden for the SQL rewrite |

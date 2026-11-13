@@ -888,7 +888,7 @@ intent but does not mutate a stage or schedule a take. Checks:
 the two authorities' mutation gates, and the finite render-profile checks.
 Contract: `docs/metaverse/2026-11-02-anime-director-api.md`.
 
-Recorded `anime.v1` takes enter through `metaverse/anime/take.coax`
+Recorded `anime.v1` takes enter through `metaverse-engine/anime/take.coax`
 (`#authority`): bounded JSON, catalogue fields, exact thousandth confidence,
 ordered line intervals and a bounded timeline are checked before replacement.
 The accepted state owns its source/word bytes and numeric offsets; no view into
@@ -897,7 +897,7 @@ base64url in `take64` or raw message 701. A refused initial request displays a
 refusal with no demo fallback; a refused replacement preserves the accepted
 take and clock. An absent take keeps the built-in session.
 
-The API and take holder share `metaverse/anime/render-profile.coax`
+The API and take holder share `metaverse-engine/anime/render-profile.coax`
 (`#authority`). Slot 6 has no stock body in `draw_cast`, so directions relying
 on that body remain heard, as do unsupported effects/poses and every arbitrary
 `make`. Recorded words and heard-only answers remain caption data. They cannot
@@ -906,7 +906,7 @@ executable answers enter the unchanged `anime_timeline` grammar. The format
 caps documents at 32 KiB, lines/answers at 16 and duration at 600 seconds. The
 declared frame budget is unchanged; transport buffers carry the full document
 and cache keys include the full URL.
-Checks: `metaverse/anime/take-checks.coax`, the two authorities' mutation gates,
+Checks: `metaverse-engine/anime/take-checks.coax`, the two authorities' mutation gates,
 `apps/openagents-web/animelab-take-checks.coax`, and the headless
 `coax/web/anime-take-probe.coax`. Format: `docs/metaverse/anime-takes-v1.md`.
 
@@ -4874,7 +4874,7 @@ cameras/map/rotation/reset) and the existing `HomeUITests`.
 
 The schema is `proto/openagents/voice/v1alpha1/voice.proto`; one `Frame` is one
 WebSocket binary message, encoded and decoded only by the generated Coax codec
-(`metaverse/voice-wire.coax`), with no second hand-written codec.
+(`metaverse-engine/net/voice-wire.coax`), with no second hand-written codec.
 
 - **Turns are Coax decisions.** `metaverse/voice.coax` decides when a turn starts
   and ends, barge-in and the media epoch. The phone sends uplink audio only for

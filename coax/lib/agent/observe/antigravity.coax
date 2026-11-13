@@ -1,5 +1,5 @@
 // Antigravity's transcripts, read (GitHub #13193): what the Golems board
-// (apps/everglade-desktop/golems.coax) needs to show an agy conversation working
+// (coder/golemancy/golems.coax) needs to show an agy conversation working
 // and waiting like a Claude Code session. transcripts.coax finds them
 // (~/.gemini/antigravity-cli/brain/ID/.system_generated/logs/transcript.jsonl, one
 // folder a conversation, as agy 1.5.6 keeps them); this reads one record at a time.

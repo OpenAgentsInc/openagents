@@ -232,7 +232,7 @@ three hooded figures and a dark lord.
 
 Built (A2), November 2:
 
-- **The director** is `metaverse/anime/director.coax`: the catalogue (the
+- **The director** is `metaverse-engine/anime/director.coax`: the catalogue (the
   table above, plus `hesitant` among the feelings), `anime_read` holding
   each of the decision model's answers (one flat JSON object a direction,
   catalogue words and a confidence `p`, as the typed selector returns them)
@@ -244,7 +244,7 @@ Built (A2), November 2:
   0.5 nothing plays, 0.5 to 0.85 plays with a "did you mean" chip. When a
   direction's subject is off the shot the engine adds its own framing
   (marked ENGINE in the caption). Its checks cover all of that.
-- **The stage** is `metaverse/anime/stage.coax`: the timeline at a moment t
+- **The stage** is `metaverse-engine/anime/stage.coax`: the timeline at a moment t
   (poses blended, the cast's wind-up and release, feelings, who has
   entered, spells in flight and their bursts, smoke, rubble, the breach,
   the draw-in's phases, the frame's flash, impact frame, speed lines and

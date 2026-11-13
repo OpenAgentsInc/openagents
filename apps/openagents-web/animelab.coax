@@ -2,9 +2,9 @@
 // your voice (docs/metaverse/anime-lab.md). ?stage=direct plays the demo: a
 // simulated directing session, each spoken line heard (partial words, then
 // final), turned by the director into typed directions over the catalogue
-// (metaverse/anime/director.coax: the decision model's answers are recorded in
+// (metaverse-engine/anime/director.coax: the decision model's answers are recorded in
 // the session as the typed selector returns them, with their confidences),
-// and the scene playing them (metaverse/anime/stage.coax) in the anime style's
+// and the scene playing them (metaverse-engine/anime/stage.coax) in the anime style's
 // action variant (docs/metaverse/art-styles.md, Anime): the courtyard of
 // Skyreach Academy at dusk, our own cliff-top school of magic. One line asks
 // for something that isn't in stock, an ink dragon, and it draws in: ink
@@ -21,8 +21,8 @@
 // timeline under the anime grammar, and played by the stage.
 //   coax/bin/coax test apps/openagents-web/animelab.coax
 
-#load "../../metaverse/anime/stage.coax";
-#load "../../metaverse/anime/take.coax";
+#load "../../metaverse-engine/anime/stage.coax";
+#load "../../metaverse-engine/anime/take.coax";
 #load "../../coax/lib/nostr/block/fi-base64url.coax";
 #load "../../metaverse-engine/ui/font.coax";
 #load "../../metaverse-engine/core/budget.coax";

@@ -17,13 +17,13 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/verse-voice.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 coax=coax/bin/coax
 # The meter is the Payments context's (pay/voice-meter.coax, #13320).
-for f in metaverse/voice metaverse/voice-wire metaverse/voice-floor pay/voice-meter; do
+for f in metaverse/voice metaverse-engine/net/voice-wire metaverse/voice-floor pay/voice-meter; do
   "$coax" test "$f.coax" --steps 20000000 | tail -1 | sed "s|^|${f#*/}: |"
 done
 for f in metaverse/voice-floor pay/voice-meter; do
   "$coax" mutate "$f.coax" | tail -1 | sed "s|^|${f#*/} mutate: |"
 done
-for pair in metaverse/voice:VoiceEngine metaverse/voice-wire:VoiceWire metaverse/voice-floor:VoiceFloor pay/voice-meter:VoiceMeter; do
+for pair in metaverse/voice:VoiceEngine metaverse-engine/net/voice-wire:VoiceWire metaverse/voice-floor:VoiceFloor pay/voice-meter:VoiceMeter; do
   src=${pair%%:*}; base=${pair##*:}
   "$coax" c "$src.coax" --library --header "$work/$base.h" > "$work/$base.c"
 done

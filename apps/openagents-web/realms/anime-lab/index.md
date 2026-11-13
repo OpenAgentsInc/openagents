@@ -13,8 +13,8 @@ Direct an anime with your voice, at https://openagents.com/worlds/anime-lab. It 
 
 ## How it is made
 
-- `metaverse/anime/director.coax` is the director: the catalogue of directions, reading the decision model's answers, the session and the timeline with the anime grammar, with its checks.
-- `metaverse/anime/stage.coax` plays a timeline at a moment: who stands where, their poses and feelings, the effects, the draw-in, and the camera's shots flown with `metaverse-engine/cam/cinematic.coax`.
+- `metaverse-engine/anime/director.coax` is the director: the catalogue of directions, reading the decision model's answers, the session and the timeline with the anime grammar, with its checks.
+- `metaverse-engine/anime/stage.coax` plays a timeline at a moment: who stands where, their poses and feelings, the effects, the draw-in, and the camera's shots flown with `metaverse-engine/cam/cinematic.coax`.
 - `apps/openagents-web/animelab.coax` is the world and its overlay; `animelab-cast.coax` and `animelab-world.coax` build the cast (with the engine's cel mesh writers, `metaverse-engine/render/cel-mesh.coax`), the academy and the effects; `animelab-style.coax` gives the anime style's numbers; `gpu/animelab.coax` is its shaders, written to `animelab.wgsl`.
 - `docs/metaverse/anime-lab.md` in the OpenAgents repository is the plan: live voice, partial words, Psionic's decision model and the makers come next.
 

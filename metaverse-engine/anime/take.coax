@@ -1,10 +1,10 @@
 // Owned anime.v1 recorded takes. Admission and scheduling are Coax policy; no
 // stored descriptor borrows input/message memory. Only numeric offsets survive.
 #load "../../coax/lib/json/json.coax";
-#load "../../coax/lib/nostr/json.coax";
+#load "../anim/json.coax";   // the engine's JSON admission (json_utf8)
 #load "director.coax";
 #load "render-profile.coax";
-#load "take-checks.coax";
+#load "take-checks.coax" #test;
 #authority;
 
 ANIME_TAKE_BYTES :: 32768; ANIME_TAKE_LINES :: 16; ANIME_TAKE_ANSWERS :: 16;

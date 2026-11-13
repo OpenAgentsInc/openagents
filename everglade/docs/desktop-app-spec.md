@@ -816,7 +816,7 @@ Click a card to see that agent: its card, then
 
 ### Where the data comes from
 
-`everglade-golems` (`apps/everglade-desktop/golems.coax`) has two commands. It asks no model.
+`everglade-golems` (`coder/golemancy/golems.coax`) has two commands. It asks no model.
 
 - `snapshot --now SECONDS --tz SECONDS` prints the board's lines. It reads each Claude Code
   transcript under `~/.claude/projects/` (and `PROJECT/SESSION/subagents/`) once: what it
@@ -838,7 +838,7 @@ Click a card to see that agent: its card, then
   up to about 4 minutes behind.
 
 Run them yourself with
-`coax/web/tool.sh apps/everglade-desktop/golems.coax snapshot --now $(date +%s)`.
+`coax/web/tool.sh coder/golemancy/golems.coax snapshot --now $(date +%s)`.
 
 `--golems` opens the board at launch, and in `--shot` it waits for the first read.
 `--golems-view N` picks a view for a shot: 1 the first agent, 2 narrow, 3 narrow with the
