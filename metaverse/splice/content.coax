@@ -46,7 +46,10 @@
 //                                           (metaverse-engine/world/flow.coax, #13485)
 //   beats       id area from to             the time of day moves on (FROM to TO) where the player stands
 //                                           in an area (flow.coax, #13485)
-// The actors, plans, clock, scripts, portals, starts and beats tables came after revision 2 shipped. Tables saved at revision 2 without them
+//   board       id on casual fast           the player's hoverboard (row 1, metaverse-engine/action/hoverboard.coax,
+//                                           #13485): on or off, and its casual and very fast speeds in
+//                                           centimetres a second. `openagents realm world-board` sets it
+// The actors, plans, clock, scripts, portals, starts, beats and board tables came after revision 2 shipped. Tables saved at revision 2 without them
 // read with the shipped ones put in (sc_upgrade), so every saved world document still opens.
 // Places and lengths are centimetres. `looks` is a table of its own because a table has eight
 // columns at most. An edit or a save names a piece by its ID; names are for people and agents.
@@ -59,14 +62,16 @@
 #load "../../metaverse-engine/script/rows.coax";   // the world's script rows (#13467)
 #load "../../metaverse-engine/world/portal.coax";  // the world's portals (#13485)
 #load "../../metaverse-engine/world/flow.coax";    // where a run starts and where the day moves on (#13485)
+#load "../../metaverse-engine/action/hoverboard.coax";   // the board table's row (#13485)
 
-SC_TABLES :: 16;
-SC_ACTORS :: 0; SC_AREAS :: 1; SC_BEATS :: 2; SC_CLOCK :: 3; SC_CREDITS :: 4; SC_DOLLY :: 5; SC_KEPT :: 6; SC_MARKS :: 7; SC_LOOKS :: 8; SC_MENU :: 9; SC_PIECES :: 10; SC_PLANS :: 11; SC_PORTALS :: 12; SC_SCRIPTS :: 13; SC_STARTS :: 14; SC_TEMPLATES :: 15;
+SC_TABLES :: 17;
+SC_ACTORS :: 0; SC_AREAS :: 1; SC_BEATS :: 2; SC_BOARD :: 3; SC_CLOCK :: 4; SC_CREDITS :: 5; SC_DOLLY :: 6; SC_KEPT :: 7; SC_MARKS :: 8; SC_LOOKS :: 9; SC_MENU :: 10; SC_PIECES :: 11; SC_PLANS :: 12; SC_PORTALS :: 13; SC_SCRIPTS :: 14; SC_STARTS :: 15; SC_TEMPLATES :: 16;
 SC_TEMPLATE_MAX :: 32;   // templates a world keeps
 SC_HEAD :: [SC_TABLES] string.[
   "table actors id name:text",
   "table areas id name:text x:cm z:cm hx:int hz:int r:int",
   FLW_BEATS,
+  BOARD_TABLE,
   "table clock id when:text",
   "table credits id line:text",
   "table dolly id x:cm y:cm z:cm ax:cm ay:cm az:cm secs:int",
@@ -80,7 +85,7 @@ SC_HEAD :: [SC_TABLES] string.[
   SRW_TABLE,
   FLW_STARTS,
   "table templates id name:text parts:text"];
-SC_TABLE_NAME :: [SC_TABLES] string.["actors", "areas", "beats", "clock", "credits", "dolly", "kept_clear", "landmarks", "looks", "menu", "pieces", "plans", "portals", "scripts", "starts", "templates"];
+SC_TABLE_NAME :: [SC_TABLES] string.["actors", "areas", "beats", "board", "clock", "credits", "dolly", "kept_clear", "landmarks", "looks", "menu", "pieces", "plans", "portals", "scripts", "starts", "templates"];
 SC_NAME :: 24;          // bytes of a row's name kept for a refusal or a listing
 SC_AREA_MAX :: 8; SC_KEPT_MAX :: 48; SC_MARK_MAX :: 96; SC_PIECE_MAX :: 32;
 SC_SCALE_MIN :: 100; SC_SCALE_MAX :: 4000;   // a piece's size, thousandths
@@ -107,6 +112,7 @@ SpContent :: struct {
   clock: int = -1;                // the editor's time of day: -1 the story's, else 0 dawn to 3 night
   actor: [SC_FOES] [SC_NAME] u8; actor_n: [SC_FOES] int;   // each foe's name (the actors table)
   scripts: [SH_SCRIPTS] ScriptRow; script_n: int;          // the scripts the world runs (the scripts table)
+  board: BoardRow;                                         // the player's hoverboard (the board table)
   // the front screens (front.coax): the menu's rows (each a key, 1 + its place in SC_MENU_KEYS, and its label),
   // the credits' lines, and the title camera's path (metres from the rover, and seconds a leg)
   menu: [SC_MENU_MAX] int; menu_label: [SC_MENU_MAX] [SC_LINE] u8; menu_label_n: [SC_MENU_MAX] int; menu_n: int;
@@ -161,6 +167,7 @@ sc_ok :: (d: [] ContentDoc) -> bool {
 // NPL_ code, npc-plan.coax), a point outside the mine, a foe without a plan for a time of day, or a
 // clock that is not one of SC_CLOCK_WORD. `row`: the plan row it was, when one.
 SCP_OK :: 0; SCP_PLAN :: 40; SCP_OUTSIDE :: 60; SCP_MISSING :: 61; SCP_CLOCK :: 62; SCP_ACTORS :: 63;
+SCP_BOARD :: 64;    // + a BRW_ code (metaverse-engine/action/hoverboard.coax): the board's row does not hold
 SCP_SCRIPT :: 70;   // + an SRW_ code (metaverse-engine/script/rows.coax): a script row that does not read
 SCP_SCRIPT_WHO :: 78;   // a script row for a foe the world does not have
 SCP_MENU :: 80; SCP_CREDITS :: 81; SCP_DOLLY :: 82;   // the front screens' tables (front.coax)
@@ -197,6 +204,9 @@ sc_plans_check :: (d: [] ContentDoc) -> ScPlanWhy {
   words := SC_CLOCK_WORD; known := false;
   for w: words { if ct_str(d, SC_CLOCK, 0, 1) == w { known = true; } }
   if !known { return ScPlanWhy.{why = SCP_CLOCK, id = 1}; }
+  if ct_rows(d, SC_BOARD) != 1 { return ScPlanWhy.{why = SCP_BOARD + BRW_ID}; }
+  bw := board_row_why(ct_get(d, SC_BOARD, 0, 0), ct_str(d, SC_BOARD, 0, 1), ct_get(d, SC_BOARD, 0, 2), ct_get(d, SC_BOARD, 0, 3));
+  if bw != BRW_OK { return ScPlanWhy.{why = SCP_BOARD + bw}; }
   if ct_rows(d, SC_SCRIPTS) > SH_SCRIPTS { return ScPlanWhy.{why = SCP_SCRIPT + SRW_BAD_ID}; }
   for r: 0..<ct_rows(d, SC_SCRIPTS) {
     row: [1] ScriptRow; id := ct_get(d, SC_SCRIPTS, r, 0);
@@ -278,11 +288,12 @@ sc_plans_words :: (text: string, out: [] u8) -> string {
   if c.why == SCP_DOLLY { n = ct_put(out, n, "the title camera's path has 1 to 8 rows, each taking 1 second or more"); }
   if c.why == SCP_MISSING { n = ct_put(out, n, "every foe keeps a plan for dawn, day, dusk and night: set a plan's cells, never drop its row"); }
   if c.why == SCP_CLOCK { n = ct_put(out, n, "the clock's row 1 is story, dawn, day, dusk or night"); }
+  if c.why > SCP_BOARD && c.why < SCP_SCRIPT { n = ct_put(out, n, board_row_words(c.why - SCP_BOARD)); }
   if c.why == SCP_ACTORS { n = ct_put(out, n, "the actors table names foes 1 to 9, one row each: rename one, never drop or add a row"); }
   return ifx n > out.count then "" else cast(string) out[0..<n];
 }
 // Tables saved at revision 2 before some of Splice's tables were (the actors, plans, clock, scripts,
-// portals, starts and beats came later): the same tables with each missing one put in, as shipped,
+// portals, starts, beats and board came later): the same tables with each missing one put in, as shipped,
 // where it sorts, into out. Tables that have them all, that hold a table Splice does not have, or
 // are not Splice's at all, come back as they were.
 sc_upgrade :: (text: string, out: [] u8) -> string {
@@ -389,6 +400,7 @@ sc_load :: (c: [] SpContent, text: string) -> bool {
   words := SC_CLOCK_WORD;
   for w, k: words { if ct_str(d[..], SC_CLOCK, 0, 1) == w { c[0].clock = k - 1; } }
   for r: 0..<SC_FOES { c[0].actor_n[r] = sc_name(c[0].actor[r][..], ct_str(d[..], SC_ACTORS, r, 1)); }
+  c[0].board = board_row_read(ct_get(d[..], SC_BOARD, 0, 0), ct_str(d[..], SC_BOARD, 0, 1), ct_get(d[..], SC_BOARD, 0, 2), ct_get(d[..], SC_BOARD, 0, 3));
   c[0].script_n = ct_rows(d[..], SC_SCRIPTS);
   for r: 0..<c[0].script_n {
     row: [1] ScriptRow;
@@ -575,6 +587,20 @@ sc_plan :: (c: [] SpContent, i: int, when: int) -> NplPlan {
   n = ct_put(t[..], 0, before); before = cast(string) t[0..<n];
   before = sc_cut(before, sc_shipped_table(SC_SHIPPED, "plans"), o[..]);
   #assert sc_upgrade(before, up[..]) == SC_SHIPPED;
+}
+#test "the board's row: off as shipped, on with two speeds, and a row that does not hold is refused in words; tables saved before it get it" {
+  c: [1] SpContent; o: [CT_BODY] u8; w: [300] u8; up: [CT_BODY] u8;
+  #assert sc_load(c[..], SC_SHIPPED) && c[0].board.ok && !c[0].board.on && c[0].board.casual == BOARD_CASUAL && c[0].board.fast == BOARD_FAST;
+  on := sc_swap("\n1|off|700|2200\n", "\n1|on|900|2600\n", o[..]);
+  #assert sc_load(c[..], on) && c[0].board.on && c[0].board.casual == 900 && c[0].board.fast == 2600;
+  bad := sc_swap("\n1|off|700|2200\n", "\n1|on|900|800\n", o[..]);
+  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "the very fast speed is faster than the casual one, and at most 6000 centimetres a second";
+  bad = sc_swap("\n1|off|700|2200\n", "\n1|maybe|900|2600\n", o[..]);
+  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "the board is on or off";
+  bad = sc_swap("\n1|off|700|2200\n", "\n", o[..]);
+  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "the board table has one row, row 1";
+  before := sc_cut(SC_SHIPPED, sc_shipped_table(SC_SHIPPED, "board"), o[..]);
+  #assert before.count < SC_SHIPPED.count && sc_upgrade(before, up[..]) == SC_SHIPPED && sc_load(c[..], before) && c[0].board.ok && !c[0].board.on;
 }
 #test "a script row names a module by its hash and whom it drives; a row that does not read is refused in words" {
   c: [1] SpContent; o: [CT_BODY] u8; w: [300] u8;

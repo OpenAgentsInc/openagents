@@ -145,6 +145,22 @@ and `world-script-run --for "kind 1"`). Anything else the
 plans cannot express is a change to `splice-game.coax` (`g_foes_step`) on a dev server, which
 rebuilds and swaps the engine on save and keeps the world's plans and state.
 
+### The hoverboard
+
+The table `board` gives the player a hoverboard (#13485): one row, `on` or `off`, and its casual
+and very fast speeds in centimetres a second. As shipped it is off. Turn it on with the realm
+tooling, not in code:
+
+```sh
+openagents realm world-board splice on --casual 700 --fast 2200 --origin http://127.0.0.1:PORT
+```
+
+The editor's agent does the same with the `realm_world_board` tool. In play, B calls the board up
+and steps off, Q switches between casual and very fast, W and S speed up and slow, A and D carve,
+and Space hops. The board is the Metaverse Engine's (`metaverse-engine/action/hoverboard.coax`, on
+its mount); Splice Bots' own colliders push it, and the camera widens, pulls back and shakes at speed,
+with Anime Lab's speed lines.
+
 ### Edits
 
 `layer.coax` holds the layer as a scene in the engine's edit log (`metaverse-engine/editor/edit.coax`). Places

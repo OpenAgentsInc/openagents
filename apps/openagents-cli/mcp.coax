@@ -34,7 +34,7 @@ mcp_schema_kind :: (o: [] Jo, kind: string) {
   jo_obj(o);
   b := rc_bound(kind);
   if kind == "bool" { jo_key(o, "type"); jo_str(o, "boolean"); }
-  else if kind == "id" || kind == "waitms" || kind == "cm" || kind == "value" || kind == "kind" || kind == "foe" || kind == "speed" || kind == "notice" || kind == "place" {
+  else if kind == "id" || kind == "waitms" || kind == "cm" || kind == "value" || kind == "kind" || kind == "foe" || kind == "speed" || kind == "boardspeed" || kind == "notice" || kind == "place" {
     jo_key(o, "type"); jo_str(o, "integer"); jo_key(o, "minimum"); jo_int(o, b.min); jo_key(o, "maximum"); jo_int(o, b.max);
   } else if kind == "seconds" {
     jo_key(o, "type"); jo_str(o, "integer"); jo_key(o, "minimum"); jo_int(o, b.min); jo_key(o, "maximum"); jo_int(o, b.max);

@@ -1,0 +1,251 @@
+// Hoverboards (#13485): a board you call up under your feet and ride at one of two speeds, casual
+// and very fast. It is a mount (metaverse-engine/action/mount.coax): the board is a Mount you ride
+// from the moment you call it, its two speeds are the mount's walk and gallop, and its steering,
+// acceleration, carving (it turns slower the faster it goes), jump and collision are mount_step's.
+// This module adds what makes it a board:
+//
+//   the board (Board): the Mount, which speed is picked, and how it hovers, leans and rushes;
+//   calling it up and stepping off (board_up, board_down), and the speed switch (board_switch);
+//   the handling (board_tune): a world's two speeds in centimetres a second made a MountTune: a short
+//   body that steps over a kerb, quick to speed up, slow to coast down, carving wide at speed;
+//   the feel (board_step): the hover bob, the lean into a carve, the nose lifting as it speeds up,
+//   and the rush (0 to 1: how far past casual it goes), which a realm turns into a wider view, a
+//   camera pulled back, speed lines and a shake (board_fov, board_back, board_shake);
+//   a realm's own colliders (board_resolve): a realm that pushes its player out of its walls itself
+//   steps the board with no boxes, pushes the board's middle, and hands back where it ended; the
+//   board keeps the speed along the wall and loses the speed into it, so it slides;
+//   the world's setting (the board table, BOARD_TABLE): whether a world gives the player a board and
+//   its two speeds, as a row of the world's content tables. `openagents realm world-board` sets it
+//   (apps/openagents-cli/realm-world.coax), and so does the editor's agent with realm_world_board.
+//
+// Nothing here draws: the board's mesh is metaverse-engine/kit/machines.coax kit_hoverboard.
+// Splice Bots (metaverse/splice/splice-game.coax) rides it.
+//   coax/bin/coax test metaverse-engine/action/hoverboard.coax --library
+#module "metaverse.engine.action.hoverboard";
+#load "mount.coax";
+
+// ---- the world's setting: the board table, one row
+BOARD_TABLE :: "table board id on:text casual:int fast:int";
+BOARD_SPEED_MIN :: 100;     // cm/s: the slowest speed a world may set
+BOARD_SPEED_MAX :: 6000;    // cm/s: the fastest (216 km/h)
+BOARD_CASUAL :: 700;        // cm/s a world's casual speed is unless it sets one (a fast run)
+BOARD_FAST :: 2200;         // cm/s its very fast speed is (79 km/h)
+BRW_OK :: 0; BRW_ID :: 1; BRW_ON :: 2; BRW_CASUAL :: 3; BRW_FAST :: 4;
+// The row as the game reads it: speeds in centimetres a second.
+BoardRow :: struct { ok: bool; on: bool; casual: int = BOARD_CASUAL; fast: int = BOARD_FAST; }
+// Why a row of the board table does not hold (BRW_OK when it does).
+board_row_why :: (id: int, on: string, casual: int, fast: int) -> int {
+  if id != 1 { return BRW_ID; }
+  if on != "on" && on != "off" { return BRW_ON; }
+  if casual < BOARD_SPEED_MIN || casual > BOARD_SPEED_MAX { return BRW_CASUAL; }
+  if fast <= casual || fast > BOARD_SPEED_MAX { return BRW_FAST; }
+  return BRW_OK;
+}
+board_row_words :: (why: int) -> string {
+  if why == BRW_ID { return "the board table has one row, row 1"; }
+  if why == BRW_ON { return "the board is on or off"; }
+  if why == BRW_CASUAL { return "the casual speed is 100 to 6000 centimetres a second"; }
+  if why == BRW_FAST { return "the very fast speed is faster than the casual one, and at most 6000 centimetres a second"; }
+  return "";
+}
+board_row_read :: (id: int, on: string, casual: int, fast: int) -> BoardRow {
+  if board_row_why(id, on, casual, fast) != BRW_OK { return BoardRow.{}; }
+  return BoardRow.{ok = true, on = on == "on", casual = casual, fast = fast};
+}
+// The row's text as a whole-row cell edit writes it ("1|on|700|2200"), into out ("" when it does not fit).
+board_row_text :: (on: bool, casual: int, fast: int, out: [] u8) -> string {
+  n := bw_put(out, 0, "1|"); n = bw_put(out, n, ifx on then "on|" else "off|");
+  n = bw_int(out, n, casual); n = bw_put(out, n, "|"); n = bw_int(out, n, fast);
+  return ifx n < 0 || n > out.count then "" else cast(string) out[0..<n];
+}
+bw_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for c, i: s { out[at + i] = c; }
+  return at + s.count;
+}
+bw_int :: (out: [] u8, at: int, v: int) -> int {
+  if at < 0 { return -1; }
+  d: [20] u8; k := 0; x := ifx v < 0 then -v else v;
+  while true { d[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 || k >= 19 { break; } }
+  n := at;
+  if v < 0 { n = bw_put(out, n, "-"); }
+  while k > 0 && n >= 0 { k -= 1; if n >= out.count { return -1; } out[n] = d[k]; n += 1; }
+  return n;
+}
+
+// ---- the handling
+BOARD_HOVER :: 0.3;        // m the deck floats over the ground
+BOARD_BOB :: 0.05;         // m it bobs up and down at rest
+BOARD_BOB_HZ :: 1.2;       // its bobs a second
+BOARD_LEAN :: 0.42;        // rad the rider leans into a full carve at speed
+BOARD_NOSE :: 0.12;        // rad the nose lifts at full acceleration
+BOARD_FOV :: 0.24;         // rad the view widens by at full rush
+BOARD_BACK :: 2.2;         // m the camera pulls back by at full rush
+BOARD_SHAKE :: 0.035;      // m the camera shakes by at full rush
+// A world's two speeds (cm/s) as a mount's handling.
+board_tune :: (casual_cms: int, fast_cms: int) -> MountTune {
+  c := f32(casual_cms) / 100; f := f32(fast_cms) / 100;
+  if !(c > 0) { c = f32(BOARD_CASUAL) / 100; }
+  if !(f > c) { f = c * 2; }
+  a := f / 2.4;   // reaches its top speed from standing in 2.4 s, casual sooner
+  if a < 4 { a = 4; }
+  return MountTune.{walk = c, gallop = f, back = 2.0, accel = a, brake = a * 0.7,
+    turn_walk = 2.8, turn_gallop = 1.15, turn_still = 2.4,
+    radius = 0.35, half_length = 0.5, low = 0.45, high = 1.9, brush_high = 0.35, brush_wide = 0.6,
+    reach = 1.5, side = 0.7, rider_radius = 0.3, mount_s = 0.2, dismount_s = 0.2,
+    stride_walk = 3.0, stride_gallop = 9.0, idle_s = 1.0 / f32(BOARD_BOB_HZ), gallop_from = (c + f) / 2,
+    jump_v = 5.4, gravity = 16.0};
+}
+
+// ---- the board
+Board :: struct {
+  m: Mount;                // where it is, its heading and speed, who rides it
+  fast: bool;              // the very fast speed is picked
+  bob: f32;                // the hover bob's phase, 0 to 1
+  lean: f32;               // rad, rolled toward the carve: positive leans right
+  nose: f32;               // rad, positive lifts the nose
+  rush: f32;               // 0 to 1: how far past casual it goes, eased
+}
+board_riding :: (b: Board) -> bool { return b.m.on && b.m.state == MOUNT_RIDDEN; }
+// Calls the board up under `who`, standing at (x, z) facing `face`: ridden at once, at rest. Keeps the speed picked.
+board_up :: (b: [] Board, who: int, x: f32, z: f32, face: f32) {
+  fast := b[0].fast;
+  b[0] = Board.{m = mount_place(x, z, face), fast = fast};
+  b[0].m.state = MOUNT_RIDDEN; b[0].m.rider = who;
+}
+// Steps off: the rider stands where the board was, and it is gone.
+board_down :: (b: [] Board) { fast := b[0].fast; b[0] = Board.{fast = fast}; }
+board_switch :: (b: [] Board) { b[0].fast = !b[0].fast; }
+mtb_ease :: (v: f32, to: f32, rate: f32, dt: f32) -> f32 { k := mt_clamp(rate * dt, 0, 1); return v + (to - v) * k; }
+// One step of riding, dt seconds: forward -1 to 1, turn -1 (left) to 1 (right), jump held. walls and n
+// are mount_step's boxes (n 0: the realm resolves its own colliders after, board_resolve).
+board_step :: (b: [] Board, t: MountTune, forward: f32, turn: f32, jump: bool, dt: f32, walls: [] f32, n: int) {
+  if !(dt > 0) || !board_riding(b[0]) { return; }
+  d := ifx dt > 0.1 then 0.1f32 else dt;
+  v0 := b[0].m.speed;
+  m := [1] Mount.[b[0].m];
+  mount_step(m[..], t, MountIn.{forward = forward, turn = turn, gallop = b[0].fast, jump = jump}, d, walls, n);
+  b[0].m = m[0];
+  s := mt_abs(b[0].m.speed);
+  carve := mt_clamp(turn, -1, 1) * mt_clamp(s / t.walk, 0, 1) * (ifx b[0].fast then 1.0f32 else 0.7f32);
+  b[0].lean = mtb_ease(b[0].lean, carve * f32(BOARD_LEAN), 7, d);
+  b[0].nose = mtb_ease(b[0].nose, mt_clamp((b[0].m.speed - v0) / d / t.accel, -1, 1) * f32(BOARD_NOSE), 5, d);
+  b[0].rush = mtb_ease(b[0].rush, mt_clamp((s - t.walk) / (t.gallop - t.walk), 0, 1), 2.5, d);
+  b[0].bob += d * f32(BOARD_BOB_HZ) * (1 + b[0].rush); b[0].bob -= floor(b[0].bob);
+}
+// Where a realm's own colliders put the board's middle after a step: it takes the place, keeps its
+// speed along the wall it met and loses what went into it.
+board_resolve :: (b: [] Board, x: f32, z: f32, dt: f32) {
+  px := x - b[0].m.x; pz := z - b[0].m.z;
+  b[0].m.x = x; b[0].m.z = z;
+  if px * px + pz * pz < 0.000001 || !(dt > 0) { return; }
+  b[0].m.blocked = true;
+  step := b[0].m.speed * dt;   // along the heading, this step
+  if mt_abs(step) < 0.0001 { return; }
+  back := px * sin(b[0].m.face) + pz * cos(b[0].m.face);   // how far it was pushed along its heading
+  b[0].m.speed *= mt_clamp((step + back) / step, 0, 1);
+}
+// How high its deck floats over the ground under it: the hover, the bob (smaller at speed) and a jump.
+board_lift :: (b: Board) -> f32 { return f32(BOARD_HOVER) + f32(BOARD_BOB) * sin(b.bob * 6.2831853) * (1 - 0.6 * b.rush) + b.m.hop; }
+// The sense of speed: the view's field (rad) from a realm's own, how far back the camera sits, a
+// shake (m, by time t), and the speed lines (0 to 1).
+board_fov :: (b: Board, fov: f32) -> f32 { return fov + f32(BOARD_FOV) * b.rush; }
+board_back :: (b: Board) -> f32 { return f32(BOARD_BACK) * b.rush; }
+board_shake :: (b: Board, t: f32) -> [3] f32 {
+  a := f32(BOARD_SHAKE) * b.rush * b.rush;
+  return [3] f32.[a * sin(t * 47.0), a * 0.6 * sin(t * 61.0 + 1.3), a * sin(t * 53.0 + 2.1)];
+}
+board_lines :: (b: Board) -> f32 { return mt_clamp((b.rush - 0.3) / 0.7, 0, 1); }
+
+// ---- checks
+BT_DT :: 1.0f32 / 60;
+bt_ride :: (b: [] Board, t: MountTune, forward: f32, turn: f32, steps: int) {
+  none: [6] f32;
+  for k: 0..<steps { board_step(b, t, forward, turn, false, BT_DT, none[..], 0); }
+}
+#test "the board table's row: on or off and two speeds, the fast one faster; its text is a whole row" {
+  #assert board_row_why(1, "on", 700, 2200) == BRW_OK && board_row_why(1, "off", 100, 6000) == BRW_OK;
+  #assert board_row_why(2, "on", 700, 2200) == BRW_ID && board_row_why(1, "yes", 700, 2200) == BRW_ON && board_row_why(1, "", 700, 2200) == BRW_ON;
+  #assert board_row_why(1, "on", 99, 2200) == BRW_CASUAL && board_row_why(1, "on", 6001, 6002) == BRW_CASUAL;
+  #assert board_row_why(1, "on", 700, 700) == BRW_FAST && board_row_why(1, "on", 700, 6001) == BRW_FAST && board_row_why(1, "on", 700, 701) == BRW_OK;
+  for w: 1..<5 { #assert board_row_words(w).count > 10; }
+  #assert board_row_words(BRW_OK) == "";
+  r := board_row_read(1, "on", 800, 2400); #assert r.ok && r.on && r.casual == 800 && r.fast == 2400;
+  r = board_row_read(1, "off", 800, 2400); #assert r.ok && !r.on;
+  r = board_row_read(1, "on", 800, 700); #assert !r.ok && !r.on && r.casual == BOARD_CASUAL && r.fast == BOARD_FAST;
+  o: [32] u8;
+  #assert board_row_text(true, 700, 2200, o[..]) == "1|on|700|2200" && board_row_text(false, 100, 6000, o[..]) == "1|off|100|6000";
+  #assert board_row_text(true, 700, 2200, o[0..<8]) == "" && BOARD_TABLE == "table board id on:text casual:int fast:int";
+  #assert board_row_why(1, "on", BOARD_CASUAL, BOARD_FAST) == BRW_OK;
+}
+#test "called up it is ridden at once where you stand; stepped off it is gone, and it keeps the speed picked" {
+  b: [1] Board;
+  #assert !board_riding(b[0]);
+  board_up(b[..], 3, 2, 5, 1); #assert board_riding(b[0]) && b[0].m.rider == 3 && b[0].m.x == 2 && b[0].m.z == 5 && b[0].m.face == 1 && !b[0].fast;
+  board_switch(b[..]); #assert b[0].fast;
+  bt_ride(b[..], board_tune(700, 2200), 1, 0, 60);
+  board_down(b[..]); #assert !board_riding(b[0]) && b[0].fast && b[0].m.speed == 0;
+  board_up(b[..], 3, 0, 0, 0); #assert b[0].fast && b[0].m.speed == 0;
+  board_switch(b[..]); #assert !b[0].fast;
+  // not riding, a step does nothing
+  board_down(b[..]); none: [6] f32; board_step(b[..], board_tune(700, 2200), 1, 0, false, BT_DT, none[..], 0); #assert b[0].m.z == 0 && b[0].m.speed == 0;
+}
+#test "casual and very fast: it speeds up to each, the fast one in under three seconds, and coasts back down to casual" {
+  t := board_tune(700, 2200); b: [1] Board; board_up(b[..], 0, 0, 0, 0);
+  #assert t.walk == 7 && t.gallop == 22 && t.accel > 9 && t.brake < t.accel;
+  bt_ride(b[..], t, 1, 0, 60); #assert b[0].m.speed == 7;
+  board_switch(b[..]); bt_ride(b[..], t, 1, 0, 100); #assert b[0].m.speed > 20 && b[0].m.speed <= 22;
+  bt_ride(b[..], t, 1, 0, 40); #assert b[0].m.speed == 22 && b[0].m.z > 30;
+  board_switch(b[..]); bt_ride(b[..], t, 1, 0, 30); #assert b[0].m.speed > 15;   // it coasts, it does not stop dead
+  bt_ride(b[..], t, 1, 0, 200); #assert b[0].m.speed == 7;
+  bt_ride(b[..], t, 0, 0, 300); #assert b[0].m.speed == 0;
+  // a world's speeds that do not hold are made to
+  u := board_tune(0, 0); #assert u.walk == 7 && u.gallop == 14;
+  u = board_tune(900, 500); #assert u.walk == 9 && u.gallop == 18;
+  #assert board_tune(100, 200).accel == 4;
+}
+#test "it carves: wide at speed, tight slow, and the rider leans into the turn" {
+  t := board_tune(700, 2200); b: [1] Board; board_up(b[..], 0, 0, 0, 0);
+  bt_ride(b[..], t, 1, 0, 60); f0 := b[0].m.face;
+  bt_ride(b[..], t, 1, 1, 30); slow := f0 - b[0].m.face;
+  #assert slow > 0 && b[0].lean > 0.2;   // a right turn lowers the heading and leans right
+  board_switch(b[..]); bt_ride(b[..], t, 1, 0, 200); f1 := b[0].m.face; #assert mt_abs(b[0].lean) < 0.01;
+  bt_ride(b[..], t, 1, 1, 30); fast := f1 - b[0].m.face;
+  #assert fast > 0 && fast < slow * 0.6 && b[0].lean > 0.3;
+  bt_ride(b[..], t, 1, -1, 60); #assert b[0].lean < -0.3;
+}
+#test "it hovers and bobs, the nose lifts as it speeds up, and the rush grows only past casual" {
+  t := board_tune(700, 2200); b: [1] Board; board_up(b[..], 0, 0, 0, 0);
+  lo := 1.0f32; hi := 0.0f32;
+  for k: 0..<120 { bt_ride(b[..], t, 0, 0, 1); l := board_lift(b[0]); if l < lo { lo = l; } if l > hi { hi = l; } }
+  #assert lo > 0.2 && hi < 0.4 && hi - lo > 0.08;
+  bt_ride(b[..], t, 1, 0, 10); #assert b[0].nose > 0.05;
+  bt_ride(b[..], t, 1, 0, 120); #assert b[0].nose < 0.01 && b[0].rush < 0.01 && board_fov(b[0], 0.8) < 0.81 && board_lines(b[0]) == 0;
+  board_switch(b[..]); bt_ride(b[..], t, 1, 0, 360);
+  #assert b[0].rush > 0.95 && board_fov(b[0], 0.8) > 1.0 && board_back(b[0]) > 2 && board_lines(b[0]) > 0.9;
+  s := board_shake(b[0], 0.3); #assert mt_abs(s[0]) <= 0.035 && mt_abs(s[1]) <= 0.035 && mt_abs(s[0]) + mt_abs(s[2]) > 0;
+  board_switch(b[..]); bt_ride(b[..], t, 1, 0, 400); #assert b[0].rush < 0.05;
+}
+#test "a realm's own wall: pushed back it loses the speed into the wall, pushed aside it keeps it" {
+  t := board_tune(700, 2200); b: [1] Board; board_up(b[..], 0, 0, 0, 0);
+  bt_ride(b[..], t, 1, 0, 60);
+  z := b[0].m.z; board_resolve(b[..], 0, z - 7 * BT_DT, BT_DT); #assert b[0].m.speed == 0 && b[0].m.blocked && b[0].m.z == z - 7 * BT_DT;
+  bt_ride(b[..], t, 1, 0, 60); v := b[0].m.speed;
+  board_resolve(b[..], 0.2, b[0].m.z, BT_DT); #assert b[0].m.speed == v && b[0].m.x == 0.2;
+  board_resolve(b[..], 0.2, b[0].m.z - v * BT_DT * 0.5, BT_DT); #assert mt_abs(b[0].m.speed - v * 0.5) < 0.01;
+  b[0].m.blocked = false; board_resolve(b[..], b[0].m.x, b[0].m.z, BT_DT); #assert !b[0].m.blocked;
+}
+#test "it jumps and lands with the mount's jump, and a mount's box stops it" {
+  t := board_tune(700, 2200); b: [1] Board; board_up(b[..], 0, 0, 0, 0); none: [6] f32;
+  board_step(b[..], t, 1, 0, true, BT_DT, none[..], 0);
+  hop := 0.0f32; for k: 0..<30 { board_step(b[..], t, 1, 0, true, BT_DT, none[..], 0); if b[0].m.hop > hop { hop = b[0].m.hop; } }
+  #assert hop > 0.7 && board_lift(b[0]) > f32(BOARD_HOVER);
+  for k: 0..<60 { board_step(b[..], t, 1, 0, false, BT_DT, none[..], 0); }
+  #assert b[0].m.hop == 0;
+  wall := [6] f32.[-5, 0, 6, 5, 3, 7]; board_up(b[..], 0, 0, 0, 0);
+  for k: 0..<300 { board_step(b[..], t, 1, 0, false, BT_DT, wall[..], 1); #assert b[0].m.z + t.half_length + t.radius <= 6.001; }
+  // a kerb under its step does not
+  kerb := [6] f32.[-5, 0, 6, 5, 0.3, 7]; board_up(b[..], 0, 0, 0, 0);
+  for k: 0..<120 { board_step(b[..], t, 1, 0, false, BT_DT, kerb[..], 1); }
+  #assert b[0].m.z > 8;
+}

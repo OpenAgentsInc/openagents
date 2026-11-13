@@ -189,6 +189,29 @@ kit_rover :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, body: KitTint,
   tube(buf, p, frame_at(fp(f, -0.5 * s, 1.3 * s, -1.2 * s), 0), 1.2 * s, 0.04 * s, 0.04 * s, 0.03 * s, 0.03 * s, 6, true);
 }
 
+// The hoverboard (metaverse-engine/action/hoverboard.coax): a deck along the frame's z with a kicked
+// nose and tail, a stripe, and two thrusters under it that glow brighter and trail longer with
+// `thrust` (0 at rest to 1 at full rush). The frame stands at the deck's underside; 1.3 m long at s 1.
+kit_hoverboard :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, deck: KitTint, stripe: KitTint, glow: KitTint, thrust: f32) {
+  kit_pen(p, obj, MAT_SKIN, deck);
+  box(buf, p, kit_at(f, 0, 0.04 * s, 0), 0.22 * s, 0.035 * s, 0.5 * s);
+  box(buf, p, frame_turn(kit_at(f, 0, 0.07 * s, 0.6 * s), 0, -0.35), 0.2 * s, 0.03 * s, 0.13 * s);    // the nose, kicked up
+  box(buf, p, frame_turn(kit_at(f, 0, 0.07 * s, -0.6 * s), 0, 0.35), 0.2 * s, 0.03 * s, 0.13 * s);    // the tail
+  kit_pen(p, obj + 1, MAT_FLAT, stripe);
+  box(buf, p, kit_at(f, 0, 0.078 * s, 0), 0.05 * s, 0.006 * s, 0.46 * s);
+  kit_pen(p, obj + 2, MAT_CLOTH, kit_tint(0.16, 0.15, 0.14));
+  for i: 0..<2 { box(buf, p, kit_at(f, 0, -0.02 * s, (ifx i == 0 then 0.32f32 else -0.32f32) * s), 0.15 * s, 0.04 * s, 0.09 * s); }
+  kit_pen(p, obj + 3, MAT_GLOW, glow);
+  k := ifx thrust < 0 then 0.0f32 else ifx thrust > 1 then 1.0f32 else thrust;
+  for i: 0..<2 {
+    z := (ifx i == 0 then 0.32f32 else -0.32f32) * s;
+    box(buf, p, kit_at(f, 0, -0.07 * s, z), 0.11 * s, 0.012 * s, 0.06 * s);
+    ball(buf, p, fp(f, 0, -0.1 * s, z - 0.05 * k * s), (0.05 + 0.03 * k) * s, 8);
+  }
+  // at speed the jet trails out behind
+  if k > 0.05 { tube(buf, p, frame_turn(kit_at(f, 0, -0.08 * s, -0.42 * s), 0, -1.5707963), (0.2 + 0.9 * k) * s, 0.05 * s, 0.05 * s, 0.01 * s, 0.01 * s, 6, false); }
+}
+
 // The wind turbine: a mast, a nacelle facing the frame's z and three blades at `spin` radians.
 kit_turbine :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, mast: KitTint, blade: KitTint, spin: f32) {
   kit_pen(p, obj, MAT_SKIN, mast);
@@ -282,6 +305,15 @@ kit_figure :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, cloak: KitTin
   small: [600] u32;
   q := [1] Pen.[Pen.{}];
   kit_robot(small[..], q[..], frame_at(v3(0, 0, 0), 0), 1, 20, w, w, w, k, 1);
+  #assert q[0].over && q[0].n * VERTEX_WORDS <= small.count;
+}
+#test "a hoverboard is written at the scale it is given, and its jet trails only at speed" {
+  buf: [60000] u32; w := kit_tint(1, 1, 1);
+  a := [1] Pen.[Pen.{}]; kit_hoverboard(buf[..], a[..], frame_at(v3(0, 0, 0), 0), 1, 30, w, w, w, 0);
+  b := [1] Pen.[Pen.{}]; kit_hoverboard(buf[..], b[..], frame_at(v3(0, 0, 0), 0), 1, 30, w, w, w, 1);
+  #assert a[0].n > 0 && !a[0].over && b[0].n > a[0].n && !b[0].over;
+  small: [300] u32; q := [1] Pen.[Pen.{}];
+  kit_hoverboard(small[..], q[..], frame_at(v3(0, 0, 0), 0), 1, 30, w, w, w, 1);
   #assert q[0].over && q[0].n * VERTEX_WORDS <= small.count;
 }
 #test "kit_rand is deterministic and in [0, 1)" {

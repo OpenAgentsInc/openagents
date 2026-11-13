@@ -120,7 +120,7 @@ Every limit is shown here and none is hidden. Past one, the engine refuses or dr
 | bytes in a frame a room sends | 3800 | `WIRE_SERVER_FRAME` in `everglade/shared/everglade-wire.coax` |
 | ms the item ledger remembers an operation id | 86400000 | `LEDGER_KEEP` in `metaverse-engine/session/ledger.coax` |
 | bytes in a content document | 65536 | `CT_BODY` in `metaverse-engine/content/tables.coax` |
-| tables in a content document | 16 | `CT_TABLES` in `metaverse-engine/content/tables.coax` |
+| tables in a content document | 24 | `CT_TABLES` in `metaverse-engine/content/tables.coax` |
 | columns in a table, its id among them | 8 | `CT_COLS` in `metaverse-engine/content/tables.coax` |
 | rows in a content document | 1024 | `CT_ROWS` in `metaverse-engine/content/tables.coax` |
 | bytes in a document's, a table's or a column's name | 15 | `CT_NAME` in `metaverse-engine/content/tables.coax` |
@@ -194,4 +194,4 @@ table ability id name:text
 128|Rage
 ```
 
-reference sha256: 128cad6851422fa1a7555f36c33f182cf26d19892d28c0e4e7182228acf2ab3b
+reference sha256: 4cc9e2a2df8d7be57b4dad960f2f3a654f969e2bbf623c884f163568b4863155

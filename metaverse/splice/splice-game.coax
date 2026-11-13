@@ -94,6 +94,8 @@ SpGame :: struct {
   px: f32; pz: f32; yaw: f32; pitch: f32; stride: f32;
   fwd: bool; back: bool; left: bool; right: bool; turn_l: bool; turn_r: bool;
   look_free: bool;             // the cursor is free (Escape, or the browser refused to hold it)
+  jump: bool;                  // Space is held: the hoverboard hops
+  board: [1] Board;            // the hoverboard (metaverse-engine/action/hoverboard.coax), when the world's board table gives one (#13485)
   hearts: int; heat: f32; hit_cool: f32;
   have: [HAVES] bool; taken: [PICKS] bool;
   scrap: int; cells: int;      // robot pieces won in fights, battery cells found: to trade for battery juice later
@@ -437,8 +439,36 @@ g_walk :: (g: [] SpGame, dt: f32) {
   if go != 0 || side != 0 { g[0].stride += dt * 9; }
   g_collide(g);
 }
+// ---- The hoverboard (#13485): the world's board table gives it (realm world-board), B calls it up
+// and steps off, Q switches casual and very fast, W and S speed up and slow, A and D carve, Space hops.
+// The engine's board (metaverse-engine/action/hoverboard.coax) steps it; Splice Bots' own colliders push it.
+g_board_tune :: (g: [] SpGame) -> MountTune { return board_tune(g[0].c[0].board.casual, g[0].c[0].board.fast); }
+g_board_given :: (g: [] SpGame) -> bool { return g[0].c[0].board.ok && g[0].c[0].board.on; }
+g_riding :: (g: [] SpGame) -> bool { return board_riding(g[0].board[0]); }
+g_board_key :: (g: [] SpGame) {
+  if g_riding(g) { board_down(g[0].board[..]); return; }
+  if g_board_given(g) { board_up(g[0].board[..], 0, g[0].px, g[0].pz, g[0].yaw); g[0].stride = 0; }   // you stand on it
+}
+g_ride :: (g: [] SpGame, dt: f32) {
+  b := g[0].board[..];
+  // the run put you somewhere else (a respawn, the mine's mouth): the board comes with you
+  if dist2(b[0].m.x, b[0].m.z, g[0].px, g[0].pz) > 1 { board_up(b, 0, g[0].px, g[0].pz, g[0].yaw); }
+  b[0].m.face = g[0].yaw;   // the mouse turns it too
+  go := (ifx g[0].fwd then 1.0f32 else 0.0f32) - (ifx g[0].back then 1.0f32 else 0.0f32);
+  turn := (ifx g[0].right || g[0].turn_r then 1.0f32 else 0.0f32) - (ifx g[0].left || g[0].turn_l then 1.0f32 else 0.0f32);
+  none: [6] f32;
+  board_step(b, g_board_tune(g), go, turn, g[0].jump, dt, none[..], 0);
+  g[0].px = b[0].m.x; g[0].pz = b[0].m.z;
+  g_collide(g);
+  board_resolve(b, g[0].px, g[0].pz, dt);
+  g[0].yaw = b[0].m.face;
+}
+// The walk, or the board when you ride one.
+g_move :: (g: [] SpGame, dt: f32) { if g_riding(g) { g_ride(g, dt); } else { g_walk(g, dt); } }
 g_step :: (g: [] SpGame, dt: f32) {
   g[0].t += dt;
+  // off the board when play stops (the edit bay, the rail, a banner, the front screens) or the world takes it away
+  if g_riding(g) && (g[0].mode != M_PLAY || !g_board_given(g)) { board_down(g[0].board[..]); }
   fr_autosave(g, dt);   // the run this browser keeps (front.coax)
   if fr_front(g) { if g[0].mode == M_CREW { g[0].fr[0].turn += dt * 0.35; } return; }
   if g[0].msg_t > 0 { g[0].msg_t -= dt; if g[0].msg_t <= 0 { g[0].msg = MSG_NONE; } }
@@ -461,11 +491,11 @@ g_step :: (g: [] SpGame, dt: f32) {
   if g[0].mode != M_PLAY { return; }
   if g[0].zone == Z_VILLAGE {
     if g[0].pass_t > 0 { g[0].pass_t -= dt; if g[0].pass_t <= 0 { g[0].zone = Z_RAIL; g[0].mode = M_RIDE; g[0].phase = PH_DAY; g[0].rail_s = 0; } return; }
-    g_walk(g, dt);
+    g_move(g, dt);
     if g[0].pz > g[0].at.scan_z { g[0].pass_t = T_PASS; }   // through the scanner beam: Heat is cool, pass
     return;
   }
-  g_walk(g, dt);
+  g_move(g, dt);
   if g[0].zone == Z_RAIL { return; }
   if g[0].hit_cool > 0 { g[0].hit_cool -= dt; }
   if g[0].rubble_gone && g[0].phase == PH_DUSK && g[0].pz < g[0].at.rubble_z - 1 { g[0].phase = PH_NIGHT; }   // into the passage: night
@@ -621,6 +651,7 @@ g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
   if key == 'd' || key == 'D' { g[0].right = down; return true; }
   if key == -4 { g[0].turn_l = down; return true; }
   if key == -5 { g[0].turn_r = down; return true; }
+  if key == ' ' { g[0].jump = down; if g[0].mode == M_PLAY && g_riding(g) { return true; } }
   if !down { return false; }
   enter := key == -2 || key == ' ';
   if g[0].mode == M_RESTORED { if enter || key == 'r' || key == 'R' { g_reset(g); g_begin(g); return true; } return false; }
@@ -642,6 +673,8 @@ g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
     if key == 'e' || key == 'E' { g_use(g); return true; }
     if key == -15 { return g_open_bay(g) || true; }
     if key == 'f' || key == 'F' { g_stun(g); return true; }
+    if (key == 'b' || key == 'B') && g_board_given(g) { g_board_key(g); return true; }
+    if (key == 'q' || key == 'Q') && g_board_given(g) { board_switch(g[0].board[..]); return true; }
   }
   return false;
 }
@@ -898,7 +931,15 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   if !blink {
     // the smuggler: listed here, drawn as your character from its walk poses in the piece store (front.coax fr_player)
     pf := frame_at(v3(g[0].px, y, g[0].pz), g[0].yaw);
+    bd := g[0].board[0]; riding := g_riding(g);
+    if riding {
+      // on the board: its deck hovers and bobs, the nose lifts as it speeds up, and the rider leans into the carve
+      df := frame_turn(frame_turn(frame_at(v3(g[0].px, y + board_lift(bd), g[0].pz), g[0].yaw), 2, bd.lean), 0, -bd.nose);
+      pf = kit_at(df, 0, 0.075, 0);
+    }
     sk := g_thing(g, p, TK_SMUGGLER, 0, pf, 0.85, g[0].stride);
+    // the board under you, in the live store (the character stands on it: fr_player lifts it by the hover)
+    if riding && sk >= 0 { kit_hoverboard(buf, p, frame_move(pf, fp(pf, 0, -0.075, 0)), 1, 196, INK(), HEAT(), blue, bd.rush + 0.15); }
     g_thing_end(g, p, sk);
   }
   if g[0].zone != Z_MINE { return; }
@@ -1059,12 +1100,19 @@ g_camera :: (g: [] SpGame) -> CamNow {
     return CamNow.{eye = v3(c.x - sin(y) * 10, 4.6 + g[0].pitch * 4, c.z - cos(y) * 10), at = v3(c.x + sin(y) * 6, 2.0, c.z + cos(y) * 6), fov = 0.82};
   }
   y := ifx g[0].zone == Z_MINE then ground_y(g, g[0].px, g[0].pz) else 0.0f32;
+  bd := g[0].board[0]; riding := g_riding(g);
+  if riding { y += board_lift(bd); }   // on the board you ride its hover
   head := v3(g[0].px, y + 1.7, g[0].pz);
   back := v3(-sin(g[0].yaw), 0, -cos(g[0].yaw));
-  reach := ifx g[0].zone == Z_VILLAGE then 4.0f32 else 6.5f32;
+  reach := (ifx g[0].zone == Z_VILLAGE then 4.0f32 else 6.5f32) + (ifx riding then board_back(bd) else 0.0f32);   // pulled back at speed
   for i: 1..<14 { d := cast(f32) i * 0.5; if d > reach { break; } if g_inside(g, head.x + back.x * d, head.z + back.z * d) { reach = hi(0.8, d - 0.6); break; } }
   lift := ifx g[0].zone == Z_VILLAGE then 0.18f32 else 0.33f32;
   eye := v3(head.x + back.x * reach, y + 1.9 + reach * (lift + g[0].pitch * 0.6), head.z + back.z * reach);
+  if riding {
+    // the sense of speed: a wider view and a shake, from the engine's board
+    k := board_shake(bd, t); eye = v3(eye.x + k[0], eye.y + k[1], eye.z + k[2]);
+    return CamNow.{eye = eye, at = v3(head.x - back.x * 3, y + 1.5, head.z - back.z * 3), fov = board_fov(bd, 0.82)};
+  }
   return CamNow.{eye = eye, at = v3(head.x - back.x * 3, y + 1.5, head.z - back.z * 3), fov = 0.82};
 }
 // The time-of-day presets (dawn, day, dusk, night) as an anime variant and clock.
@@ -1276,6 +1324,17 @@ g_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   ui_panel(g, u, pad, pad, pad + 150 * k, pad + 50 * k, paper, 0.96);
   n = ui_box(out, n, pad, pad, pad + 150 * k, pad + 50 * k, 3 * k, ink);
   for i: 0..<T_HEARTS { n = ui_heart(out, n, pad + (34 + cast(f32) i * 41) * k, pad + 23 * k, 30 * k, i < g[0].hearts, paper); }
+  // under them: the hoverboard, when the world gives one: what it is doing, and its keys
+  if g_board_given(g) && g[0].mode == M_PLAY {
+    y0 := pad + 58 * k; bd := g[0].board[0]; on := g_riding(g);
+    ui_panel(g, u, pad, y0, pad + 236 * k, y0 + 50 * k, ifx on then ink else paper, 0.96);
+    n = ui_box(out, n, pad, y0, pad + 236 * k, y0 + 50 * k, 3 * k, ink);
+    fg := ifx on then paper else ink;
+    what := ifx !on then "BOARD OFF" else ifx bd.fast then "BOARD · VERY FAST" else "BOARD · CASUAL";
+    n = ui_text(out, n, what, pad + 12 * k, y0 + 20 * k, 9.5 * k, ifx on && bd.fast then HEAT() else fg);
+    if on { n = ui_right(out, n, num(buf[..], "", cast(int) (abs(bd.m.speed) * 3.6 + 0.5), " km/h"), pad + 224 * k, y0 + 20 * k, 9.5 * k, fg); }
+    n = ui_text(out, n, ifx on then "B off · Q casual or fast · Space hop" else "B board · Q casual or fast", pad + 12 * k, y0 + 40 * k, 7.5 * k, fg);
+  }
   // top centre: the phase, four chips on an ink bar
   bw := 380 * k; bx := w * 0.5 - bw * 0.5;
   ui_panel(g, u, bx, pad, bx + bw, pad + 38 * k, ink, 0.97);
@@ -1605,6 +1664,41 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
   #assert g_key(g[..], 'w', true);
   for i: 0..<600 { g_step(g[..], 0.02); }
   #assert abs(g[0].px) < 0.01 && abs(g[0].pz - (g[0].at.rubble_z + 1 + T_RADIUS)) < 0.01;
+}
+// The hoverboard (#13485): only when the world's board table gives it; B on and off, Q casual and very fast.
+#test "the board: B calls it only when the world gives one, it rides at casual and very fast, walls slide it, and B steps off" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 5);
+  #assert !g_board_given(g[..]) && !g_key(g[..], 'b', true) && !g_riding(g[..]);   // shipped: no board, B does nothing
+  g[0].c[0].board = board_row_read(1, "on", 700, 2200);
+  #assert g_key(g[..], 'b', true) && g_riding(g[..]) && !g[0].board[0].fast;
+  // the open ground of the mine's mouth toward the scrap room: casual first
+  g[0].px = 0; g[0].pz = -3; g[0].yaw = PI; g[0].board[0].m.x = 0; g[0].board[0].m.z = -3;
+  #assert g_key(g[..], 'w', true);
+  for i: 0..<60 { g_step(g[..], 1.0f32 / 60); }
+  #assert abs(g[0].board[0].m.speed - 7) < 0.01 && g[0].pz < -6;
+  // the rubble stops it head on, and its speed goes into the wall
+  for i: 0..<600 { g_step(g[..], 1.0f32 / 60); }
+  #assert g[0].pz >= g[0].at.rubble_z + 1 + T_RADIUS - 0.01 && g[0].board[0].m.speed < 1;
+  #assert g_key(g[..], 'q', true) && g[0].board[0].fast && g_camera(g[..]).fov == board_fov(g[0].board[0], 0.82);
+  // B steps off where it is, and walking takes over
+  z := g[0].pz;
+  #assert g_key(g[..], 'b', true) && !g_riding(g[..]) && g[0].pz == z;
+  // the edit bay, or the world taking the board away, puts you on your feet
+  #assert g_key(g[..], 'b', true) && g_riding(g[..]);
+  g[0].c[0].board = board_row_read(1, "off", 700, 2200); g_step(g[..], 1.0f32 / 60); #assert !g_riding(g[..]) && !g_key(g[..], 'b', true);
+}
+#test "the board at very fast reaches its speed on the open desert, carves, and the view widens" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 5); g[0].zone = Z_RAIL; g[0].mode = M_PLAY;
+  c := rail_at(g[..], T_RAIL_PING); g[0].px = c.x + 6; g[0].pz = c.z - 20; g[0].yaw = 0;   // beside the stopped rover
+  g[0].c[0].board = board_row_read(1, "on", 700, 2200);
+  #assert g_key(g[..], 'b', true) && g_key(g[..], 'q', true) && g_key(g[..], 'w', true);
+  top := 0.0f32; for i: 0..<150 { g_step(g[..], 1.0f32 / 60); if g[0].board[0].m.speed > top { top = g[0].board[0].m.speed; } }
+  #assert top > 15 && g[0].board[0].rush > 0.3 && g_camera(g[..]).fov > 0.85;
+  y0 := g[0].yaw; #assert g_key(g[..], 'd', true);
+  for i: 0..<20 { g_step(g[..], 1.0f32 / 60); }
+  #assert g[0].yaw < y0 && g[0].board[0].lean > 0.1;
 }
 // The whole run with the keys a player presses; long walks are stood in for by placing the smuggler.
 // 0 when it plays from the title to SCENE RESTORED and back, else the number of the beat that failed.

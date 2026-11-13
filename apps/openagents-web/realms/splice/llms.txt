@@ -9,7 +9,7 @@ The site's index is [llms.txt](https://openagents.com/llms.txt). Look a Coax nam
 - realm: splice
 - page: `/worlds/splice` (module `splice`, source `apps/openagents-web/realms/splice/`)
 - wire: none. The page decides the simulation; there is no room to speak to
-- content: `metaverse/splice/content/splice.content`, revision 2, sha256 `02ea6a4adc2173a41cdb4a6d602bd945bb051b38ad3402a3f192d8b75a1520c1`
+- content: `metaverse/splice/content/splice.content`, revision 2, sha256 `b15893e6d0d15c746f1a918a234a8bb7c3b7e911aaee15bb2209ab6e299ad491`
 - diagnostics: `engine-diagnostics-v1`, 17 codes, sha256 `55aa5a9b50ff02e1256e64909abf901a29f9c98a1575ae6b669281410b69c31c` (`proto/verse/engine-diagnostics-v1.json`)
 - language: Coax; the compiler's version is in `coax/release-status.json` and what it claims to do in `coax/book/capability-claims.json`
 - reference: the last line of this file is the sha256 of everything above it. Two builds with the same line have the same reference
@@ -48,6 +48,7 @@ From `metaverse-engine/editor/authority.coax` (INVARIANTS.md, "Authoring never w
 | `actors` | `id name:text` | 9 |
 | `areas` | `id name:text x:cm z:cm hx:int hz:int r:int` | 4 |
 | `beats` | `id area:int from:text to:text` | 0 |
+| `board` | `id on:text casual:int fast:int` | 1 |
 | `clock` | `id when:text` | 1 |
 | `credits` | `id line:text` | 7 |
 | `dolly` | `id x:cm y:cm z:cm ax:cm ay:cm az:cm secs:int` | 3 |
@@ -94,7 +95,7 @@ Every limit is shown here and none is hidden. Past one, the engine refuses or dr
 | entities one collision question looks at | 64 | `SL_NEAR` in `metaverse/splice/layer.coax` |
 | kinds of piece in the pieces table | 32 | `SC_PIECE_MAX` in `metaverse/splice/content.coax` |
 | bytes in a content document | 65536 | `CT_BODY` in `metaverse-engine/content/tables.coax` |
-| tables in a content document | 16 | `CT_TABLES` in `metaverse-engine/content/tables.coax` |
+| tables in a content document | 24 | `CT_TABLES` in `metaverse-engine/content/tables.coax` |
 | columns in a table, its id among them | 8 | `CT_COLS` in `metaverse-engine/content/tables.coax` |
 | rows in a content document | 1024 | `CT_ROWS` in `metaverse-engine/content/tables.coax` |
 | bytes in a document's, a table's or a column's name | 15 | `CT_NAME` in `metaverse-engine/content/tables.coax` |
@@ -139,6 +140,7 @@ Every limit is shown here and none is hidden. Past one, the engine refuses or dr
 | `openagents realm world-plan ID FOE WHEN DO [--route "X Z, X Z"] [--speed CM/S] [--notice CM] [--on chase\|call\|flee\|ignore] [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | set what actor FOE does at WHEN (dawn, day, dusk, night): stand, dance, sleep, guard, patrol, wander or follow; without --route its route is cut or grown to fit; one edit, one undo step |
 | `openagents realm world-route ID FOE WHEN "X Z, X Z" [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | set actor FOE's route at WHEN: X Z points in centimetres joined by commas (patrol 2 to 8, a loop ends where it starts; guard the post then where it looks; wander "X Z R"; follow "foe N") |
 | `openagents realm world-time ID story\|dawn\|day\|dusk\|night [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | the editor's time of day: the actors keep it and the light is it (story: the run's own clock); play is not changed |
+| `openagents realm world-board ID on\|off [--casual CM/S] [--fast CM/S] [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | give the player a hoverboard or take it away, with its casual and very fast speeds in centimetres a second (100 to 6000; the fast one faster); what you leave out stays; one edit, one undo step |
 | `openagents realm world-scripts ID` | the world's stored realm scripts, one a line: name, hash, bytes, handlers, what it may do and call, whether it is switched off and whether its source is kept; then the limits |
 | `openagents realm world-script-compile ID FILE.coax --name NAME [--dry-run] [--key K]` | send a realm script's Coax source to be compiled, checked and stored; the answer is the stored script's hash and what it may do, or the compiler's words |
 | `openagents realm world-script-put ID FILE.wasm --name NAME [--fields NAME.json] [--dry-run] [--key K]` | store a built script module (coax/web/script.sh writes NAME.wasm and NAME.json; --fields NAME.json keeps its state across a swap); the answer is its hash and what it may do |
@@ -201,4 +203,4 @@ table actors id name:text
 1|Raider 1
 ```
 
-reference sha256: c2c73b9fee6b99be79056e8305a2c7be22b563ecde1655768f917b7773af0b39
+reference sha256: 7c49bdb550ec6ff46824163fa8055f0821abcc3e2e8db2a3808b2bc9197241d9

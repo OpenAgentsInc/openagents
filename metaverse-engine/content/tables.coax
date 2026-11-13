@@ -24,7 +24,7 @@
 
 CT_MAGIC :: "aethyr.content.v1";
 CT_BODY :: 65536;         // the longest document, in bytes
-CT_TABLES :: 16;
+CT_TABLES :: 24;         // tables in a document (Splice Bots holds 17, #13485)
 CT_COLS :: 8;             // columns in a table, its ID among them
 CT_ROWS :: 1024;          // rows in a document
 CT_NAME :: 15;            // bytes in a name: the document's, a table's, a column's
@@ -447,12 +447,12 @@ ct_read :: (d: [] ContentDoc, text: string) -> bool #effects(all) {
   // the writer's buffer: the document's own length fits, one byte less does not
   #assert ct_read(d[..], CT_FIXTURE);
   s := CT_FIXTURE; #assert ct_write(d[..], o[0..<s.count]) == s && ct_write(d[..], o[0..<s.count - 1]) == "";
-  // sixteen tables and eight columns: the last of each answers, one past it is nothing
+  // CT_TABLES tables and eight columns: the last of each answers, one past it is nothing
   n := ct_put(b[..], 0, "aethyr.content.v1 big 1\nreach 1\n");
   for i: 0..<CT_TABLES { n = ct_put(b[..], n, "table t"); n = ct_put_int(b[..], n, 10 + i); n = ct_put(b[..], n, " id a:int b:int c:int d:int e:int f:int g:text\n1|1|2|3|4|5|6|x\n"); }
-  #assert ct_read(d[..], cast(string) b[0..<n]) && ct_rows(d[..], 15) == 1 && ct_rows(d[..], 16) == 0 && ct_cols(d[..], 15) == 8 && ct_cols(d[..], 16) == 0 && ct_cols(d[..], -1) == 0;
-  #assert ct_get(d[..], 15, 0, 6) == 6 && ct_get(d[..], 15, 0, 8) == 0 && ct_get(d[..], 16, 0, 0) == 0 && ct_str(d[..], 15, 0, 7) == "x" && ct_str(d[..], 15, 0, 8) == "" && ct_str(d[..], 16, 0, 7) == "";
-  #assert ct_get(d[..], 15, 1, 0) == 0 && ct_get(d[..], 14, 1, 0) == 0 && ct_str(d[..], 14, 1, 7) == "" && ct_col(d[..], 15, "g") == 7 && ct_col(d[..], 16, "id") == -1;
+  #assert ct_read(d[..], cast(string) b[0..<n]) && ct_rows(d[..], CT_TABLES - 1) == 1 && ct_rows(d[..], CT_TABLES) == 0 && ct_cols(d[..], CT_TABLES - 1) == 8 && ct_cols(d[..], CT_TABLES) == 0 && ct_cols(d[..], -1) == 0;
+  #assert ct_get(d[..], CT_TABLES - 1, 0, 6) == 6 && ct_get(d[..], CT_TABLES - 1, 0, 8) == 0 && ct_get(d[..], CT_TABLES, 0, 0) == 0 && ct_str(d[..], CT_TABLES - 1, 0, 7) == "x" && ct_str(d[..], CT_TABLES - 1, 0, 8) == "" && ct_str(d[..], CT_TABLES, 0, 7) == "";
+  #assert ct_get(d[..], CT_TABLES - 1, 1, 0) == 0 && ct_get(d[..], CT_TABLES - 2, 1, 0) == 0 && ct_str(d[..], CT_TABLES - 2, 1, 7) == "" && ct_col(d[..], CT_TABLES - 1, "g") == 7 && ct_col(d[..], CT_TABLES, "id") == -1;
   // a full document read twice is the same document: nothing is left from the first read
   n = ct_put(b[..], 0, "aethyr.content.v1 big 1\nreach 1\ntable t id s:text\n");
   for r: 0..<8 { n = ct_put_int(b[..], n, r + 1); n = ct_put(b[..], n, "|"); for i: 0..<CT_TEXT / 8 { b[n] = 'a'; n += 1; } n = ct_put(b[..], n, "\n"); }

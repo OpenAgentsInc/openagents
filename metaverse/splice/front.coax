@@ -348,6 +348,7 @@ fr_player :: (g: [] SpGame, d: [] SpLayerDraw, pieces: [] u32, places: [] u32, d
   pose := ifx crew then 0 else lo_int(cp_pose_of(g[0].stride, FR_POSES), f[0].posed_n - 1);
   x := g[0].px; z := g[0].pz; yaw := g[0].yaw;
   y := ifx g[0].zone == Z_MINE then ground_y(g, x, z) else 0.0f32;
+  if g_riding(g) { y += board_lift(g[0].board[0]) + 0.075; }   // on the hoverboard's deck (#13485)
   if crew { s := fr_stand(g); x = s.x; z = s.z; y = 0; yaw = PI + f[0].turn; }
   o := d[0].place_n * SD_ROW;
   places[o] = f32_bits(x); places[o + 1] = f32_bits(y); places[o + 2] = f32_bits(z); places[o + 3] = 0;

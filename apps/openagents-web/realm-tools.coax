@@ -2,7 +2,7 @@
 //   coax/web/tool.sh apps/openagents-cli/tool-labels.coax --write
 // Do not edit: each realm_* MCP tool's name, effect, label and many, for the chat's tool rows (#13481).
 RealmTool :: struct { name: string; effect: string; label: string; many: string; }
-REALM_TOOLS :: [64] RealmTool.[
+REALM_TOOLS :: [65] RealmTool.[
   RealmTool.{name="realm_list",effect="read",label="List your realms",many="List your realms"},
   RealmTool.{name="realm_show",effect="read",label="Show realm {slug}",many="Show realms"},
   RealmTool.{name="realm_new",effect="spend",label="Make a realm[: {words}]",many="Make realms"},
@@ -57,6 +57,7 @@ REALM_TOOLS :: [64] RealmTool.[
   RealmTool.{name="realm_world_plan",effect="write",label="Set foe {foe}'s {daytime} plan: {act}",many="Set foe plans"},
   RealmTool.{name="realm_world_route",effect="write",label="Set foe {foe}'s {daytime} route",many="Set foe routes"},
   RealmTool.{name="realm_world_time",effect="write",label="Set the time of day to {clock}",many="Set the time of day"},
+  RealmTool.{name="realm_world_board",effect="write",label="Turn the hoverboard {on}",many="Set the hoverboard"},
   RealmTool.{name="realm_world_scripts",effect="read",label="List {slug}'s scripts",many="List scripts"},
   RealmTool.{name="realm_world_script_compile",effect="write",label="Compile {file} as script {name}",many="Compile scripts"},
   RealmTool.{name="realm_world_script_put",effect="write",label="Store {file} as script {name}",many="Store scripts"},

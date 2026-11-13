@@ -420,7 +420,7 @@ cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool #effects(all) {
 #load "../../coax/lib/sys/args.coax";
 
 #test "the realm catalogue covers reads and revisioned writes with unique verbs" {
-  #assert REALM_COMMANDS.count == 64;
+  #assert REALM_COMMANDS.count == 65;
   for i: 0..<REALM_COMMANDS.count {
     c := REALM_COMMANDS[i];
     #assert c.domain == "realm" && c.verb.count > 0 && c.help.count > 0;
@@ -500,7 +500,7 @@ cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool #effects(all) {
 }
 
 #test "realm routes and methods match the published command contract" {
-  routes := [64] string.["/mine","","/plan","/visibility","/publish","/fork","shot","/doc","/asks","/proposals","/panes","/switch","/revise","/asks","/asks/:id/delete","/asks/:id/done","/rows/:row/delete","/save","/save","/save","/save","/place","/settings","/lore","/quest","/proposals/:id/accept","/proposals/:id/decline","/undo","/redo","batch","seat","seat","seat","seat","seat","seat","seat","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","files","files","files","files","files"];
+  routes := [65] string.["/mine","","/plan","/visibility","/publish","/fork","shot","/doc","/asks","/proposals","/panes","/switch","/revise","/asks","/asks/:id/delete","/asks/:id/done","/rows/:row/delete","/save","/save","/save","/save","/place","/settings","/lore","/quest","/proposals/:id/accept","/proposals/:id/decline","/undo","/redo","batch","seat","seat","seat","seat","seat","seat","seat","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","world","files","files","files","files","files"];
   for i: 0..<REALM_COMMANDS.count {
     #assert REALM_COMMANDS[i].route == routes[i];
     method := ifx i == 6 || i >= 29 then "LOCAL" else ifx i == 0 || i == 1 || (i >= 7 && i <= 10) then "GET" else "POST";
@@ -700,7 +700,7 @@ rc_effect_note :: (c: CliCommand, out: [] u8) -> string #effects(all) {
 CliCommand :: struct { domain: string = "realm"; verb: string; effect: string; approval: string; method: string; route: string; arguments: string; optional: int; flags: string; usage: string; help: string; label: string; many: string; }
 // The seat rows (route "seat") drive one realm open in headless Chrome on this computer, as a
 // visitor (apps/openagents-cli/realm-play.coax, docs/metaverse/realm-seat.md).
-REALM_COMMANDS :: [64] CliCommand.[
+REALM_COMMANDS :: [65] CliCommand.[
   CliCommand.{verb="list",effect="read",approval="none",method="GET",route="/mine",help="your realms",label="List your realms",many="List your realms"},
   CliCommand.{verb="show",effect="read",approval="none",method="GET",route="",arguments="slug",usage="SLUG",help="the realm's spec and page",label="Show realm {slug}",many="Show realms"},
   CliCommand.{verb="new",effect="spend",approval="owner",method="POST",route="/plan",arguments="newwords",flags="--from:id|--style:style|--time:time|--camera:camera|--ground:ground",usage="\"WORDS\" [--style S] [--time T] [--camera C] [--ground G] | --from PLAN",help="plan words and make a private realm; --from PLAN makes an existing plan",label="Make a realm[: {words}]",many="Make realms"},
@@ -755,6 +755,7 @@ REALM_COMMANDS :: [64] CliCommand.[
   CliCommand.{verb="world-plan",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|foe|daytime|act",flags="--route:route|--speed:speed|--notice:notice|--on:onnotice|--rev:id|--shot:shotfile",usage="ID FOE WHEN DO [--route \"X Z, X Z\"] [--speed CM/S] [--notice CM] [--on chase|call|flee|ignore] [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="set what actor FOE does at WHEN (dawn, day, dusk, night): stand, dance, sleep, guard, patrol, wander or follow; without --route its route is cut or grown to fit; one edit, one undo step",label="Set foe {foe}'s {daytime} plan: {act}",many="Set foe plans"},
   CliCommand.{verb="world-route",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|foe|daytime|route",flags="--rev:id|--shot:shotfile",usage="ID FOE WHEN \"X Z, X Z\" [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="set actor FOE's route at WHEN: X Z points in centimetres joined by commas (patrol 2 to 8, a loop ends where it starts; guard the post then where it looks; wander \"X Z R\"; follow \"foe N\")",label="Set foe {foe}'s {daytime} route",many="Set foe routes"},
   CliCommand.{verb="world-time",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|clock",flags="--rev:id|--shot:shotfile",usage="ID story|dawn|day|dusk|night [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="the editor's time of day: the actors keep it and the light is it (story: the run's own clock); play is not changed",label="Set the time of day to {clock}",many="Set the time of day"},
+  CliCommand.{verb="world-board",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|onoff",flags="--casual:boardspeed|--fast:boardspeed|--rev:id|--shot:shotfile",usage="ID on|off [--casual CM/S] [--fast CM/S] [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="give the player a hoverboard or take it away, with its casual and very fast speeds in centimetres a second (100 to 6000; the fast one faster); what you leave out stays; one edit, one undo step",label="Turn the hoverboard {on}",many="Set the hoverboard"},
   // a world's realm scripts (realm-world.coax, docs/protocol/world-scripts-v1.md, #13467): stored by hash, run by a row of its scripts table
   CliCommand.{verb="world-scripts",effect="read",approval="none",method="LOCAL",route="world",arguments="slug",usage="ID",help="the world's stored realm scripts, one a line: name, hash, bytes, handlers, what it may do and call, whether it is switched off and whether its source is kept; then the limits",label="List {slug}'s scripts",many="List scripts"},
   CliCommand.{verb="world-script-compile",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|file",flags="--name:sname",usage="ID FILE.coax --name NAME [--dry-run] [--key K]",help="send a realm script's Coax source to be compiled, checked and stored; the answer is the stored script's hash and what it may do, or the compiler's words",label="Compile {file} as script {name}",many="Compile scripts"},
@@ -943,6 +944,7 @@ rc_bound :: (kind: string) -> CliBound #effects(all) {
   if kind == "clock" { return CliBound.{min=3,max=5}; }
   if kind == "route" { return CliBound.{min=3,max=160}; }
   if kind == "speed" { return CliBound.{min=0,max=800}; }
+  if kind == "boardspeed" { return CliBound.{min=100,max=6000}; }   // a hoverboard's speeds (metaverse-engine/action/hoverboard.coax BOARD_SPEED_*)
   if kind == "notice" { return CliBound.{min=0,max=3000}; }
   // a world's attachments (realm-files.coax; metaverse-engine/editor/file-wire.coax)
   if kind == "fileid" { return CliBound.{min=16,max=16}; }
@@ -1007,6 +1009,7 @@ rc_value :: (kind: string, value: string) -> bool #effects(all) {
   if kind == "target" { for c: value { if c < 32 || c == 127 { return false; } } }
   if kind == "foe" { return cli_count(value,1,99) >= 1; }
   if kind == "speed" { return cli_count(value,0,800) >= 0; }
+  if kind == "boardspeed" { return cli_count(value,100,6000) >= 100; }
   if kind == "notice" { return cli_count(value,0,3000) >= 0; }
   if kind == "daytime" { for w: CLI_DAYTIME { if w == value { return true; } } return false; }
   if kind == "clock" { if value == "story" { return true; } for w: CLI_DAYTIME { if w == value { return true; } } return false; }
@@ -1064,7 +1067,8 @@ CLI_PLAN_ON :: [4] string.["chase", "call", "flee", "ignore"];
   #assert rc_value("daytime","dawn") && rc_value("daytime","night") && !rc_value("daytime","story") && !rc_value("daytime","noon") && rc_value("clock","story") && rc_value("clock","dusk") && !rc_value("clock","noon");
   #assert rc_value("act","patrol") && rc_value("act","follow") && !rc_value("act","fly") && rc_value("onnotice","flee") && !rc_value("onnotice","panic");
   #assert rc_value("route","0 0") && rc_value("route","850 -4500, 850 -5700") && !rc_value("route","0 0|1") && !rc_value("route","0") && !rc_value("route","a\nb");
-  for k: [8] string.["foe","daytime","act","onnotice","clock","route","speed","notice"] { #assert rc_bound(k).max > 0 && rc_why(k).count > 10; }
+  for k: [9] string.["foe","daytime","act","onnotice","clock","route","speed","notice","boardspeed"] { #assert rc_bound(k).max > 0 && rc_why(k).count > 10; }
+  #assert rc_value("boardspeed","100") && rc_value("boardspeed","6000") && !rc_value("boardspeed","99") && !rc_value("boardspeed","6001") && !rc_value("boardspeed","x");
   for w: CLI_DAYTIME { #assert w.count >= rc_bound("daytime").min && w.count <= rc_bound("daytime").max && rc_value("clock", w); }
   for w: CLI_PLAN_DO { #assert w.count >= rc_bound("act").min && w.count <= rc_bound("act").max; }
   for w: CLI_PLAN_ON { #assert w.count >= rc_bound("onnotice").min && w.count <= rc_bound("onnotice").max; }
@@ -1382,6 +1386,7 @@ rc_why :: (kind: string) -> string #effects(all) {
   if kind == "onnotice" { return "--on is chase, call, flee or ignore"; }
   if kind == "route" { return "a route is 3 to 160 bytes: \"X Z\" points in whole centimetres joined by commas, \"X Z R\" for wander, \"foe N\" for follow"; }
   if kind == "speed" { return "--speed is whole centimetres a second from 0 to 800"; }
+  if kind == "boardspeed" { return "a hoverboard's speed is whole centimetres a second from 100 to 6000"; }
   if kind == "notice" { return "--notice is whole centimetres from 0 to 3000 (0: it never notices)"; }
   if kind == "fileid" { return "FID is an attachment's 16 hex digits (realm files ID lists them)"; }
   if kind == "scope" { return "--scope is world or project"; }

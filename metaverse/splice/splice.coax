@@ -575,9 +575,10 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   if s[0].gallery { shadow_rows(u, key); } else { sp_shadow_rows(u, key, view.at); }
   put4(u, U_SIZE, width, height, t, dpr);
   ink := hi(1, lo(width, height) / 720);
-  // a hit or a breakthrough flashes; Splice draws no speed lines, and a speed below zero asks its
-  // post and overlay passes for the graybox (gpu/splice.coax)
-  put4(u, U_FX, flash, 0, ifx !s[0].gallery && g[0].gray then -1.0f32 else 0.0f32, ink);
+  // a hit or a breakthrough flashes; speed lines only on the hoverboard at speed (#13485), and a speed
+  // below zero asks its post and overlay passes for the graybox (gpu/splice.coax)
+  lines := ifx !s[0].gallery && g_riding(g) && g[0].mode == M_PLAY then board_lines(g[0].board[0]) * 0.8f32 else 0.0f32;
+  put4(u, U_FX, flash, 0, ifx !s[0].gallery && g[0].gray then -1.0f32 else lines, ink);
   put4(u, U_DRAW, 0, 0, 0, -1);
   put4(u, U_MISC, ifx animelab_phone(width, dpr) then 1.0f32 else 0.0f32, 0.5, 0.45, 1);
   s[0].draws[0] = 0; s[0].draws[1] = cast(u32) s[0].world_n; s[0].draws[2] = 0x80000000; s[0].draws[3] = 1;

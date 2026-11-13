@@ -263,6 +263,7 @@ second `world_*` family.
 | `realm world-plan ID FOE WHEN DO [--route "X Z, X Z"] [--speed CM/S] [--notice CM] [--on chase\|call\|flee\|ignore]` | `realm_world_plan` | `plan FOE WHEN DO` | Sets what actor FOE does at WHEN. Without `--route` the old route is cut or grown to fit the new DO. One edit: the plan's whole row |
 | `realm world-route ID FOE WHEN "X Z, X Z"` | `realm_world_route` | `route FOE WHEN X Z, X Z` | Sets actor FOE's route at WHEN |
 | `realm world-time ID story\|dawn\|day\|dusk\|night` | `realm_world_time` | `time WHEN` | The editor's time of day: the light and every actor follow it. Play keeps the run's own clock |
+| `realm world-board ID on\|off [--casual CM/S] [--fast CM/S]` | `realm_world_board` | | Gives the player a hoverboard or takes it away, with its casual and very fast speeds (100 to 6000 cm/s; the fast one faster). What you leave out stays. One edit: the board table's whole row |
 
 Places are whole centimetres. Each write answers
 [one result](realm-result-v1.md): the new revision, or the refusal in words.

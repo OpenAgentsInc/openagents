@@ -18,6 +18,9 @@
 //                                        an actor's plan, its route, the editor's time of day: each a
 //                                        cell edit of the world's plans or clock table (one undo step;
 //                                        metaverse-engine/ai/npc-plan.coax holds what a plan takes)
+//   realm world-board ID on|off [--casual CM/S] [--fast CM/S]
+//                                        the player's hoverboard and its two speeds: a cell edit of the
+//                                        world's board table (metaverse-engine/action/hoverboard.coax, #13485)
 //   realm world-scripts ID               the world's stored scripts and the store's limits (#13467)
 //   realm world-script-compile ID FILE.coax --name NAME, world-script-put ID FILE.wasm --name NAME
 //                                        store a script: its source compiled by the server, or a built module
@@ -30,6 +33,7 @@
 #load "../../metaverse-engine/editor/op-result.coax";
 #load "../../metaverse-engine/ai/npc-plan.coax";   // an actor's plan: its words, a route reshaped, its row (#13466)
 #load "../../metaverse-engine/script/store.coax";  // a world's stored scripts: the list, a refusal, a report's answer (#13467)
+#load "../../metaverse-engine/action/hoverboard.coax";   // the board table's row (#13485)
 
 RW_ANSWER :: 400000;     // a state with its document
 RW_LINES :: 65536;       // an apply file
@@ -163,6 +167,49 @@ rw_holds :: (content: string, edit: WorldEdit) -> bool #effects(all) {
   head := ct_part(table, '\n', 0);
   for k: 2..<ct_parts(head, ' ') { if ct_part(ct_part(head, ' ', k), ':', 0) == col { return ct_part(row, '|', k - 2) == text; } }
   return false;
+}
+// world-board: the board table's row 1 as the world's dev tables hold it, with what the arguments change
+// (on or off, --casual, --fast), written as its whole row. 1, or -N with the words when the world has no
+// board table or the speeds do not hold, or -1.
+rw_board_edit :: (a: [] Args, content: string, e: [] WorldEdit, words: [] u8) -> int {
+  on := cli_onoff(positional(a, 3));
+  if on < 0 { return -1; }
+  table := rw_table(content, "board"); row := rw_row(table, 1);
+  if ct_parts(row, '|') != 4 {
+    n := forge_put(words, 0, "this world has no hoverboard to give: its content has no board table (");
+    n = forge_put(words, n, BOARD_TABLE); n = forge_put(words, n, ")");
+    return ifx n < 0 then -1 else -n;
+  }
+  casual := ct_num(rc_option(a, "world-board", "--casual", ct_part(row, '|', 2))).v;
+  fast := ct_num(rc_option(a, "world-board", "--fast", ct_part(row, '|', 3))).v;
+  why := board_row_why(1, ifx on == 1 then "on" else "off", casual, fast);
+  if why != BRW_OK { n := forge_put(words, 0, board_row_words(why)); return ifx n < 0 then -1 else -n; }
+  out: [64] u8;
+  text := board_row_text(on == 1, casual, fast, out[..]);
+  if text.count == 0 { return -1; }
+  e[0] = rw_cell("board", 1, "*", text);
+  return ifx we_valid(e[0]) then 1 else -1;
+}
+#test "the hoverboard from the command line is the board table's whole row; what is left out stays, and speeds that do not hold are refused in words" {
+  a: [1] Args; e: [1] WorldEdit; o: [WE_LINE] u8; words: [200] u8;
+  content := "aethyr.content.v1 splice 2\nreach 30000\ntable board id on:text casual:int fast:int\n1|off|700|2200\ntable clock id when:text\n1|story\n";
+  for s: [4] string.["realm","world-board","splice","on"] { #assert args_add(a[..],s); }
+  #assert rw_board_edit(a[..], content, e[..], words[..]) == 1 && we_write(e[0], o[..]) == "{\"op\":\"cell\",\"table\":\"board\",\"row\":1,\"col\":\"*\",\"v\":\"1|on|700|2200\"}";
+  #assert !rw_holds(content, e[0]) && rw_holds("table board id on:text casual:int fast:int\n1|on|700|2200\n", e[0]);
+  a[0] = Args.{}; for s: [8] string.["realm","world-board","splice","on","--casual","900","--fast","3000"] { #assert args_add(a[..],s); }
+  #assert rw_board_edit(a[..], content, e[..], words[..]) == 1 && cast(string) e[0].text[0..<e[0].text_n] == "1|on|900|3000";
+  a[0] = Args.{}; for s: [6] string.["realm","world-board","splice","off","--fast","2500"] { #assert args_add(a[..],s); }
+  #assert rw_board_edit(a[..], content, e[..], words[..]) == 1 && cast(string) e[0].text[0..<e[0].text_n] == "1|off|700|2500";
+  a[0] = Args.{}; for s: [6] string.["realm","world-board","splice","on","--casual","2500"] { #assert args_add(a[..],s); }
+  n := rw_board_edit(a[..], content, e[..], words[..]);
+  #assert n < -1 && cast(string) words[0..<-n] == "the very fast speed is faster than the casual one, and at most 6000 centimetres a second";
+  a[0] = Args.{}; for s: [4] string.["realm","world-board","splice","on"] { #assert args_add(a[..],s); }
+  n = rw_board_edit(a[..], "aethyr.content.v1 x 1\nreach 1\ntable clock id when:text\n1|story\n", e[..], words[..]);
+  #assert n < -1 && cast(string) words[0..<-n] == "this world has no hoverboard to give: its content has no board table (table board id on:text casual:int fast:int)";
+  a[0] = Args.{}; for s: [4] string.["realm","world-board","splice","maybe"] { #assert args_add(a[..],s); }
+  #assert rw_board_edit(a[..], content, e[..], words[..]) == -1;
+  // the command's bounds are the engine's
+  #assert rc_bound("boardspeed").min == BOARD_SPEED_MIN && rc_bound("boardspeed").max == BOARD_SPEED_MAX;
 }
 // world-plan and world-route: actor FOE's plan at WHEN, as it is in the world's dev tables, with what
 // the arguments change, written as its whole row: one edit that holds, since a new DO takes a route of
@@ -364,12 +411,13 @@ rw_write :: (a: [] Args, r: [] Rep, profile: string, verb: string, slug: string,
   words := OpWords.{verb = verb, realm = slug, effect = c.effect, page = rw_page(slug, w[0].page[..]), key = rc_option(a, verb, "--key", "")};
   n := rw_edits(a, verb, w[0].e[..]);
   same := false;
-  if verb == "world-plan" || verb == "world-route" || verb == "world-time" || verb == "world-script-run" {
+  if verb == "world-plan" || verb == "world-route" || verb == "world-time" || verb == "world-script-run" || verb == "world-board" {
     // the plan or the clock as the dev tables hold it now, changed by the arguments
     cres := api_call(a, profile, "GET", rw_path(slug, "/content?lane=dev", w[0].path[..]), "", w[0].content[..]);
     if !api_ok(cres) { words.words = api_why(cast(string) w[0].content[0..<cres.n], w[0].words[..]); return rw_answer(r, w, or_of_status(ifx cres.error == HTTP_OK then cres.status else 0, 0), words); }
     content := cast(string) w[0].content[0..<cres.n];
     if verb == "world-script-run" { n = rw_script_row(a, content, w[0].e[..], w[0].words[..]); }
+    else if verb == "world-board" { n = rw_board_edit(a, content, w[0].e[..], w[0].words[..]); }
     else if verb != "world-time" { n = rw_plan_edit(a, verb, content, w[0].e[..], w[0].words[..]); }
     if n < -1 { words.words = cast(string) w[0].words[0..<-n]; return rw_answer(r, w, OpResult.{state = OR_REFUSED, code = ORC_BAD_REQUEST}, words); }
     // already so: done, at the revision it stands at, with nothing sent (an agent that sets what is there is not refused)
