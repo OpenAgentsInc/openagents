@@ -312,7 +312,9 @@ valleycanyon 117000
 # Her motion when a world moves her (#12996): the locomotion graph at the world's pace, TF0290's shot
 # admitted and checked for her cast's wind-up, and the fix layers (metaverse-engine/character/fix.coax: planted
 # feet, the head's look, the orb hand's reach): 61,013 bytes.
-character-host 64000
+# Her clip choice as a table on the blend graph Everglade's bodies use (metaverse-engine/character/echo-graph.coax
+# on graph.coax, #13306, 647b9874b1): 67,544 bytes.
+character-host 70000
 # Valley's bounded source-page admission, source LOD selection and index-bank ABI add ~4 KiB.
 # Keep the shared canyon code's Slay replay control and face-view hero lighting.
 # Spatial source companions, bounded tree admission and independent exact-range cuts add ~4.3 KiB.
