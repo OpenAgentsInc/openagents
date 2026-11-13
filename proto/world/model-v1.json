@@ -22,7 +22,10 @@
     "route_bytes": 160,
     "scripts": 8,
     "script_kinds": 8,
-    "script_name_bytes": 48
+    "script_name_bytes": 48,
+    "lists": 4,
+    "switches": 96,
+    "label_bytes": 48
   },
   "lines": [
     "editor.model.v1 WORLD LANE REV UNDO REDO SELECTED",
@@ -47,6 +50,9 @@
     "scripts NAME",
     "sk KIND NAME",
     "s ID NAME HASH FOR",
+    "atonce",
+    "list TABLE COLUMN TITLE",
+    "sw ROW ON LABEL",
     "here X Z",
     "no WORDS"
   ],
@@ -90,7 +96,9 @@
     "editor.model.v1 splice dev 0 0 0 0\ncols\nas 0\n",
     "editor.model.v1 splice dev 0 0 0 0\ncols\np 1 dusk patrol\n",
     "editor.model.v1 splice dev 0 0 0 0\ncols\ns 1 a 528d kind 1\n",
-    "editor.model.v1 splice dev 0 0 0 0\ncols\ns 9 a 528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5 kind 1\n"
+    "editor.model.v1 splice dev 0 0 0 0\ncols\ns 9 a 528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5 kind 1\n",
+    "editor.model.v1 fairy-forest dev 0 0 0 0\ncols\nsw 1 1 Lanterns\n",
+    "editor.model.v1 fairy-forest dev 0 0 0 0\ncols\nlist rows on Features\nsw 1 yes Lanterns\n"
   ],
   "local": {
     "wire": "editor.model.v1 create-world dev 12 3 1 0\ncols x z yaw kind\nk 786 Cottage (house)\ne 1 786 350 0 -1200 90 150\nall 1203 4096\nkinds 788\nlocal\nland 100 4000\nm 1 Grass\nm 3 Sand\nm 0 Bare grid\nhere 420 -75\n",
@@ -120,5 +128,12 @@
     "kinds": 2,
     "rows": 2,
     "table": "scripts"
+  },
+  "lists": {
+    "about": "A realm's world (#13478): no things and one lane, with its board and the tools its visitors get as two lists of switches. A switch is a cell edit of the list's table and column, to 0 or 1.",
+    "wire": "editor.model.v1 fairy-forest dev 9 2 0 0\ncols\natonce\nlist rows on Features\nsw 1 1 Glowing mushrooms\nsw 2 0 A bridge over the stream\nlist tools on Tools visitors get\nsw 1 1 build\nsw 3 0 jump\n",
+    "lists": 2,
+    "switches": 4,
+    "at_once": true
   }
 }

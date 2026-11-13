@@ -1,0 +1,64 @@
+// The checks of the shell's lists of switches (shell-lists.coax, GitHub #13478). shell.coax loads this
+// file with `#load ... #test;`.
+
+// A realm's world as its page tells it: no things, one lane, the board and the tools. `on2` is row 2's switch.
+es_test_lists :: (h: [] EsTest, rev: int, on2: bool) {
+  s := h[0].s[..]; out := h[0].text[..];
+  none: [WE_COLS] bool;
+  n := em_begin(out, "fairy-forest", 0, rev, 1, 0, 0);
+  n = em_cols(out, n, none[..]);
+  n = em_at_once(out, n);
+  n = em_list(out, n, "rows", "on", "Features");
+  n = em_switch(out, n, 1, true, "Glowing mushrooms");
+  n = em_switch(out, n, 2, on2, "A bridge over the stream");
+  n = em_list(out, n, "tools", "on", "Tools visitors get");
+  n = em_switch(out, n, 3, false, "jump");
+  for i: 0..<n { s[0].inbox[i] = out[i]; }
+  coaxial_editor_event(s, ES_MODEL, 0, n);
+}
+
+#test "a world of lists: each list under its title with a switch a row, no viewport tools, no Things and no Publish" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; d := s[0].dom[..]; o: [160] u8;
+  es_test_lists(h[..], 9, false); es_test_frames(h[..], 1);
+  #assert es_lists_only(s[0].model[..]) && tr_find(t, "list.0") > 0 && tr_find(t, "list.1") > 0 && tr_find(t, "sw.0") > 0 && tr_find(t, "sw.1") > 0 && tr_find(t, "sw.2") > 0 && tr_find(t, "sw.3") < 0;
+  #assert tr_text_of(t, tr_find(t, "sw.1.n")) == "A bridge over the stream" && tr_attr_of(t, tr_find(t, "sw.0"), AT_PRESSED) == "true" && tr_attr_of(t, tr_find(t, "sw.1"), AT_PRESSED) == "false" && tr_text_of(t, tr_find(t, "sw.1.l")) == "Off";
+  // the lists are in the one side, each header closed, and the side is named for the world
+  #assert t[0].nodes[tr_find(t, "sw.0.row")].parent == tr_find(t, "one.b") && t[0].nodes[tr_find(t, "list.1")].parent == tr_find(t, "one.b") && tr_text_of(t, tr_find(t, "one.h")) == "World";
+  // undo and redo are the world's; a world of one lane has nothing to publish, and one with no things has no tool, grid, fly or Things
+  #assert tr_find(t, "undo") > 0 && tr_find(t, "redo") > 0 && tr_find(t, "publish") < 0 && tr_find(t, "when") < 0;
+  #assert tr_find(t, "tool") < 0 && tr_find(t, "grid") < 0 && tr_find(t, "fly") < 0 && tr_find(t, "run") < 0 && tr_find(t, "step") < 0 && tr_find(t, "sim") < 0 && tr_find(t, "things") < 0 && tr_find(t, "one.none") < 0;
+  // a press is the row's cell, set to the other value, made from the model's revision
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "sw.1"), 0);
+  #assert es_test_cell(h[..], 9, o[..]) == "rows 2 on 1"; coaxial_editor_act_done(s);
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "sw.0"), 0);
+  #assert es_test_cell(h[..], 9, o[..]) == "rows 1 on 0"; coaxial_editor_act_done(s);
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "sw.2"), 0);
+  #assert es_test_cell(h[..], 9, o[..]) == "tools 3 on 1"; coaxial_editor_act_done(s);
+  // the next model says the row is on: the switch shows it, and a press now turns it off
+  es_test_lists(h[..], 10, true); es_test_frames(h[..], 1);
+  #assert tr_attr_of(t, tr_find(t, "sw.1"), AT_PRESSED) == "true" && tr_text_of(t, tr_find(t, "sw.1.l")) == "On";
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "sw.1"), 0);
+  #assert es_test_cell(h[..], 10, o[..]) == "rows 2 on 0"; coaxial_editor_act_done(s);
+  // a press that is no switch's is not taken
+  #assert !es_lists_click(s, "sw.9") && !es_lists_click(s, "sw.") && !es_lists_click(s, "undo") && s[0].nacts == 0;
+}
+#test "a world with things and lists keeps its tools and Things, and shows the lists above them" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; out := h[0].text[..];
+  cols: [WE_COLS] bool; cols[WEC_X] = true;
+  n := em_begin(out, "splice", 0, 3, 0, 0, 0);
+  n = em_cols(out, n, cols[..]);
+  n = em_kind(out, n, 1001, "Cargo crate");
+  n = em_entity(out, n, 1, 1001, 350, 0, -1200, 90, 100);
+  n = em_list(out, n, "rules", "on", "Rules");
+  n = em_switch(out, n, 1, true, "Night falls");
+  for i: 0..<n { s[0].inbox[i] = out[i]; }
+  coaxial_editor_event(s, ES_MODEL, 0, n); es_test_frames(h[..], 1);
+  #assert !es_lists_only(s[0].model[..]) && tr_find(t, "sw.0") > 0 && tr_find(t, "tool") > 0 && tr_find(t, "fly") > 0 && tr_find(t, "things") > 0 && tr_find(t, "publish") > 0 && tr_text_of(t, tr_find(t, "one.h")) == "Selected";
+  // a list with no rows says so
+  n = em_begin(out, "fairy-forest", 0, 4, 0, 0, 0);
+  n = em_cols(out, n, cols[0..<0]);
+  n = em_list(out, n, "rows", "on", "Features");
+  for i: 0..<n { s[0].inbox[i] = out[i]; }
+  coaxial_editor_event(s, ES_MODEL, 0, n); es_test_frames(h[..], 1);
+  #assert es_lists_only(s[0].model[..]) && tr_find(t, "list.none.0") > 0 && tr_find(t, "publish") > 0;
+}

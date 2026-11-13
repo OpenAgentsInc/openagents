@@ -24,6 +24,7 @@
 #load "shell-actors.coax";                      // the actors: the time of day, the Actors list and the selected actor's plan (#13466)
 #load "shell-files.coax";                       // the Files pane: the world's and its project's attachments, never a player's (#13468)
 #load "shell-scripts.coax";                     // the Scripts pane: a realm script written, built, run, swapped, published and reported (#13467)
+#load "shell-lists.coax";                       // lists of switches: a realm's board and its tools (#13478)
 #load "shell-revs.coax";                        // the revisions: what the newest step changed, in the bar, and the Revisions list (#13485)
 
 ES_INBOX :: 200704;    // a model (EM_BYTES), a field's text, or a file of code as typed (RC_TEXT, and room to see that it is longer), from the host
@@ -384,16 +385,19 @@ es_build :: (s: [] EdShell) {
   undo := k_button(t, u, "undo", "Undo", ifx m[0].undo > 0 then BS_PLAIN else BS_DISABLED);
   redo := k_button(t, u, "redo", "Redo", ifx m[0].redo > 0 then BS_PLAIN else BS_DISABLED);
   // a world kept on this device has no live lane: nothing to publish
-  if !m[0].local {
+  if !m[0].local && !m[0].at_once {
     pub := k_button(t, u, "publish", "Publish", BS_PRIMARY);
     whens := ES_WHEN; notes := ES_WHEN_NOTE;
     k_select_begin(t, u, "when", whens[s[0].when], "When a publish reaches people", s[0].open == ES_OPEN_WHEN);
     if s[0].open == ES_OPEN_WHEN { for k: 0..<2 { r := k_row(t, u, tr_join(buf[..], "when.", k), whens[k], notes[k], k == s[0].when); } }
     k_select_end(t, s[0].open == ES_OPEN_WHEN);
   }
-  // the viewport: the tool the pointer is, the grid a move snaps to, a new thing at the point last tapped, the camera and the clock
+  // the viewport: the tool the pointer is, the grid a move snaps to, a new thing at the point last tapped, the camera and the clock.
+  // A world that is only lists of switches has no thing to pick or move: it has none of these (shell-lists.coax)
   tools := ES_TOOL; tnotes := ES_TOOL_NOTE; grids := ES_GRID;
   landing := es_landing(s);
+  plain := es_lists_only(m);
+  if !plain {
   k_select_begin(t, u, "tool", ifx landing then ES_LAND else tools[ifx s[0].tool < ES_TOOLS then s[0].tool else 0], "What the pointer does in the world", s[0].open == ES_OPEN_TOOL);
   if s[0].open == ES_OPEN_TOOL {
     for k: 0..<ES_TOOLS { r := k_row(t, u, tr_join(buf[..], "tool.", k), tools[k], tnotes[k], k == s[0].tool); }
@@ -452,6 +456,7 @@ es_build :: (s: [] EdShell) {
   run := k_button(t, u, "run", ifx s[0].paused then "Play" else "Pause", BS_PLAIN);
   step := k_button(t, u, "step", "Step", BS_PLAIN);
   sim := k_button(t, u, "sim", ifx s[0].sim then "Stop simulating" else "Simulate", BS_PLAIN);
+  }
   agent := k_button(t, u, "agent", ifx s[0].agent then "Hide agent" else "Agent", BS_PLAIN);
   // assets: only where the world's server answered with its list. Closed, its button still takes a dropped file
   asseting := s[0].assets && s[0].as_have;
@@ -482,9 +487,11 @@ es_build :: (s: [] EdShell) {
   // the editor's one side, on the right: what is selected, then the world's things and actors; the realm's code,
   // the assets, the files or the scripts take its place while one of them is open
   if !coding && !asseting && !filing && !scripting && !revising {
-  right := k_pane(t, u, "one", DK_RIGHT, "Selected");
+  right := k_pane(t, u, "one", DK_RIGHT, ifx plain then "World" else "Selected");
   es_fl_build_pin(s);   // a picture pinned beside the scene (shell-files.coax)
   es_build_said(s);
+  es_build_lists(s);    // a realm's board and its tools, each row a switch (shell-lists.coax)
+  if !plain {
   if s[0].ngroup > 0 {
     grp := k_card(t, u, "group", "Group");
     n = ct_put_int(line[..], 0, s[0].ngroup); n = ct_put(line[..], n, ifx s[0].ngroup == 1 then " thing" else " things");
@@ -561,6 +568,7 @@ es_build :: (s: [] EdShell) {
     tr_close(t);
   }
   es_build_actors(s);
+  }
   k_pane_end(t);
   }
   // the foot: the chat's own conversation, which the page's host puts in the slot (coax/web/host.js). Once
@@ -637,6 +645,7 @@ es_click :: (s: [] EdShell, id: string) {
   names := [14] string.["when", "kind", "tool", "grid", "add", "count", "file", "brush", "mat", "licence", "clock", "pdo", "pon", "sfor"];
   for name, k: names { if id == name { s[0].open = ifx was == k + 1 then ES_OPEN_NONE else k + 1; return; } }
   if es_rv_click(s, id) { return; }
+  if s[0].have && es_lists_click(s, id) { return; }
   if es_as_click(s, id) { if s[0].assets { s[0].files = false; } return; }
   if es_fl_click(s, id) { return; }
   if es_sc_click(s, id) { return; }
@@ -720,7 +729,7 @@ es_click :: (s: [] EdShell, id: string) {
   }
   if id == "undo" && m[0].undo > 0 { es_batch(s, WB_UNDO, none); }
   else if id == "redo" && m[0].redo > 0 { es_batch(s, WB_REDO, none); }
-  else if id == "publish" && !m[0].local {
+  else if id == "publish" && !m[0].local && !m[0].at_once {
     // a world that runs scripts: the shell sends the publish, so a script that would do more can be asked about (shell-scripts.coax)
     what := ifx s[0].when == 1 then WB_PUBLISH_NEXT else WB_PUBLISH_NOW;
     if !es_sc_publish(s, what, false) { es_batch(s, what, none); }
@@ -1792,4 +1801,5 @@ es_test_local :: (h: [] EsTest, listed: int, in_all: int) {
 #load "shell-files-checks.coax" #test;    // the Files pane (#13468)
 #load "shell-actors-checks.coax" #test;   // the actors (#13466)
 #load "shell-scripts-checks.coax" #test;  // the Scripts pane (#13467)
+#load "shell-lists-checks.coax" #test;    // lists of switches (#13478)
 #load "shell-revs-checks.coax" #test;     // the revisions (#13485)

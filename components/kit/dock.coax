@@ -2,11 +2,13 @@
 // document, a map) and leave it showing (GitHub #13416). A dock is a layer over the page that
 // takes no press itself; a pane is a panel on one of its sides with a strip of controls or a
 // body that scrolls inside it; a prop is a field with its name beside it; a stepper is a value with
-// a button to lower it and one to raise it; a slider is a value dragged along a line. Each builds nodes in
+// a button to lower it and one to raise it; a slider is a value dragged along a line; a switch row is a
+// named thing that is on or off. Each builds nodes in
 // the tree and nothing else; every look is the skin's (components/skin/mono.coax, mono_dock_css).
 //   coax/bin/coax test components/kit/dock.coax
 
 #load "frames.coax";
+#load "settings.coax";   // the one switch (k_switch)
 
 DK_TOP :: 0; DK_LEFT :: 1; DK_RIGHT :: 2; DK_BOTTOM :: 3;
 DK_WIDE :: 4;          // the right side, wide: a pane that holds a file of code
@@ -75,6 +77,19 @@ k_fact :: (t: [] Tree, id: string, name: string, value: string) -> int {
   return p;
 }
 
+// Switch row: a named thing that is on or off (a board's row, a tool visitors get): its name, a line under it
+// when it has one, and the switch at its right (settings.coax k_switch). Answers the switch's node (its id is `id`).
+k_switch_row :: (t: [] Tree, id: string, title: string, meta: string, on: bool) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8;
+  r := tr_open(t, tr_cat(ida[..], id, ".row"), TG_DIV, "swr");
+  c := tr_open(t, tr_cat(idb[..], id, ".w"), TG_DIV, "col");
+  n := tr_leaf(t, tr_cat(idc[..], id, ".n"), TG_SPAN, "swr-t", title);
+  if meta.count > 0 { m := tr_leaf(t, tr_cat(idd[..], id, ".m"), TG_SPAN, "meta", meta); }
+  tr_close(t);
+  sw := k_switch(t, id, title, on);
+  tr_close(t);
+  return sw;
+}
 // Stepper: a named value that is stepped, not typed: its name, a button that lowers it, what it is
 // now, and a button that raises it (a brush's radius, a count). The buttons' ids are `id` with
 // ".less" and ".more"; one at its end can't be pressed. Answers the value's node (its id is `id`).
@@ -180,6 +195,13 @@ DkTest :: struct { t: [1] Tree; u: [1] Ui; }
   tr_begin(t);
   mo := k_meter(t, "over", "Costliest call", "20,000 of 20,000", 1.4);
   #assert tr_attr_of(t, tr_find(t, "over.f"), AT_VARS) == "--p:1";
+  // a switch row: its name, a line under it, and the switch, which says On or Off in words
+  tr_begin(t);
+  sr := k_switch_row(t, "row.2", "Lanterns", "lanterns", true);
+  so := k_switch_row(t, "tool.1", "build", "", false);
+  #assert sr == tr_find(t, "row.2") && tr_class(t, sr) == "sw" && tr_attr_of(t, sr, AT_PRESSED) == "true" && tr_attr_of(t, sr, AT_LABEL) == "Lanterns" && tr_text_of(t, tr_find(t, "row.2.l")) == "On";
+  #assert tr_class(t, tr_find(t, "row.2.row")) == "swr" && tr_text_of(t, tr_find(t, "row.2.n")) == "Lanterns" && tr_text_of(t, tr_find(t, "row.2.m")) == "lanterns" && t[0].nodes[sr].parent == tr_find(t, "row.2.row");
+  #assert tr_attr_of(t, so, AT_PRESSED) == "false" && tr_text_of(t, tr_find(t, "tool.1.l")) == "Off" && tr_find(t, "tool.1.m") < 0 && t[0].depth == 0;
   tr_begin(t);
   d = k_dock(t, "dock", false);
   w := k_pane(t, u, "code", DK_WIDE, "Code");

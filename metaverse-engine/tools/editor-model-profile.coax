@@ -15,7 +15,7 @@ emp_str :: (d: Jv, at: int, out: [] u8) -> string {
   return ifx n >= 0 then cast(string) out[0..<n] else "";
 }
 emp_check :: (profile_json: string, w: [] EmpWork) -> bool {
-  nodes: [512] JvNode; da: [1] Jv;
+  nodes: [640] JvNode; da: [1] Jv;
   if !jv_parse(da[..], profile_json, nodes[..]) { return false; }
   d := da[0]; m := w[0].m[..];
   nb: [128] u8; cb: [256] u8;
@@ -59,6 +59,12 @@ emp_check :: (profile_json: string, w: [] EmpWork) -> bool {
   if sw.count == 0 || !em_read(m, sw, w[0].scratch[..]) || em_write(m, w[0].out[..]) != sw { return false; }
   stb := m[0].stable;
   if jv_int(d, jv_get(d, scr, "kinds"), -1) != m[0].nsk || jv_int(d, jv_get(d, scr, "rows"), -1) != m[0].ns || emp_str(d, jv_get(d, scr, "table"), nb[..]) != cast(string) stb[0..<m[0].stable_n] { return false; }
+  // lists of switches and a world of one lane (#13478)
+  if jv_int(d, jv_get(d, lim, "lists"), 0) != EM_LISTS || jv_int(d, jv_get(d, lim, "switches"), 0) != EM_SWITCHES || jv_int(d, jv_get(d, lim, "label_bytes"), 0) != EM_LABEL { return false; }
+  lst := jv_get(d, 0, "lists");
+  lsw := emp_str(d, jv_get(d, lst, "wire"), w[0].wire[..]);
+  if lsw.count == 0 || !em_read(m, lsw, w[0].scratch[..]) || em_write(m, w[0].out[..]) != lsw { return false; }
+  if jv_int(d, jv_get(d, lst, "lists"), -1) != m[0].nl || jv_int(d, jv_get(d, lst, "switches"), -1) != m[0].nw || jv_kind(d, jv_get(d, lst, "at_once")) != JV_TRUE || !m[0].at_once { return false; }
   empty := emp_str(d, jv_get(d, jv_get(d, 0, "empty"), "wire"), w[0].wire[..]);
   if empty.count == 0 || !em_read(m, empty, w[0].scratch[..]) || m[0].ne != 0 || m[0].lane != 1 { return false; }
   rej := jv_get(d, 0, "rejected");

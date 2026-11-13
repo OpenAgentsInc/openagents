@@ -39,6 +39,7 @@ WebPage :: struct {
   work: [4] bool;                    // the work log's run, group, refused row and its Show all are open
   row: int; model: int; thing: int; grouped: [3] bool;
   radius: int = 2;   // the dock's stepper: which of its five steps it stands at
+  lit: [2] bool;     // the dock's switch rows: which of the two are on
   switched: bool = true;   // the settings page's switch
   section: int;            // the settings page's section shown
   answer: int;                       // the approval notice: 0 not answered, 1 allowed, 2 denied
@@ -262,6 +263,11 @@ wg_build :: (s: [] WebPage) {
   // a meter: an amount against its limit, the limit in the words too
   mt := k_meter(t, "dock.spent", "Budget", "5,000 of 20,000", 0.25);
   tr_close(t);
+  // switch rows: a list of named things that are each on or off (a realm's board, the tools its visitors get)
+  bh := k_header(t, u, "dock.board", "Features");
+  tr_close(t);
+  sw0 := k_switch_row(t, "dock.sw.0", "Glowing mushrooms", "", s[0].lit[0]);
+  sw1 := k_switch_row(t, "dock.sw.1", "A bridge over the stream", "Off until the stream is dug", s[0].lit[1]);
   k_pane_end(t);
   dfoot := k_pane(t, u, "dock.foot", DK_BOTTOM, "Agent");
   fm := k_meta(t, "dock.foot.note", "A foot across the bottom. In the editor its slot holds the chat's conversation.");
@@ -332,6 +338,8 @@ wg_click :: (s: [] WebPage, id: string) {
   else if wg_index(id, "model.") >= 0 { s[0].model = wg_index(id, "model."); }
   else if wg_index(id, "st.nav.") >= 0 && wg_index(id, "st.nav.") < 2 { s[0].section = wg_index(id, "st.nav."); }
   else if id == "st.side.sw" { s[0].switched = !s[0].switched; }
+  else if id == "dock.sw.0" { s[0].lit[0] = !s[0].lit[0]; }
+  else if id == "dock.sw.1" { s[0].lit[1] = !s[0].lit[1]; }
 }
 
 // ---------------------------------------------------------------- the face's calls
@@ -404,6 +412,11 @@ WgTest :: struct { s: [1] WebPage; }
   coaxial_kit_event(s, WG_CLICK, dm_find(s[0].dom[..], "dock.radius.more"), 0);
   _ := coaxial_kit_frame(s, 0.016, true);
   #assert s[0].radius == 4 && tr_text_of(t, tr_find(t, "dock.radius")) == "32 m" && tr_has(t, tr_find(t, "dock.radius.more"), AT_DISABLED) && !tr_has(t, tr_find(t, "dock.radius.less"), AT_DISABLED);
+  // a switch row: its name, its line and the switch; a press turns it on
+  #assert tr_text_of(t, tr_find(t, "dock.sw.1.n")) == "A bridge over the stream" && tr_text_of(t, tr_find(t, "dock.sw.1.m")) == "Off until the stream is dug" && tr_text_of(t, tr_find(t, "dock.sw.1.l")) == "Off" && tr_find(t, "dock.sw.0.m") < 0;
+  coaxial_kit_event(s, WG_CLICK, dm_find(s[0].dom[..], "dock.sw.1"), 0);
+  _ = coaxial_kit_frame(s, 0.016, true);
+  #assert s[0].lit[1] && !s[0].lit[0] && tr_text_of(t, tr_find(t, "dock.sw.1.l")) == "On" && tr_attr_of(t, tr_find(t, "dock.sw.1"), AT_PRESSED) == "true";
   coaxial_kit_event(s, WG_CLICK, dm_find(s[0].dom[..], "thing.1"), 0);
   n = coaxial_kit_frame(s, 0.016, true);
   #assert s[0].thing == 1 && tr_text_of(t, tr_find(t, "dock.card.h")) == "Parked rover";

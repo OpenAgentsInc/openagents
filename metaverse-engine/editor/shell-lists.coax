@@ -1,0 +1,46 @@
+// The editor shell's lists of switches (GitHub #13478): a world whose content tables hold rows that are
+// each on or off (a realm's board, the tools its visitors get) shows each table as a list under its title,
+// a switch on every row. The model says all of it (shell-model.coax: list, sw, atonce). shell.coax loads
+// this file; it is kit components like the rest of the shell and names no colour, face or size.
+//
+// A press is a cell edit of the list's table and column, to 0 or 1, so it is one undo step and the
+// world's server answers it. The switch moves when the next model says the row did.
+
+// A world that is lists and nothing else: no thing to pick, place or move, so the shell leaves out the
+// viewport's tools and the Things list.
+es_lists_only :: (m: [] EdModel) -> bool {
+  if m[0].nl == 0 || m[0].ne > 0 || m[0].nk > 0 || m[0].all || m[0].land || m[0].na > 0 { return false; }
+  for c: 0..<WE_COLS { if m[0].cols[c] { return false; } }
+  return true;
+}
+// The lists, each under its title: a row's name and its switch.
+es_build_lists :: (s: [] EdShell) {
+  t := s[0].tree[..]; u := s[0].ui[..]; m := s[0].model[..]; buf: [UI_ID] u8; buf2: [UI_ID] u8;
+  for l: 0..<m[0].nl {
+    title := m[0].l_title[l];
+    head := k_header(t, u, tr_join(buf[..], "list.", l), cast(string) title[0..<m[0].l_title_n[l]]);
+    tr_close(t);   // the header holds only its title
+    rows := 0;
+    for k: 0..<m[0].nw {
+      if m[0].w_list[k] != l { continue; }
+      label := m[0].w_label[k];
+      sw := k_switch_row(t, tr_join(buf2[..], "sw.", k), cast(string) label[0..<m[0].w_label_n[k]], "", m[0].w_on[k]);
+      rows += 1;
+    }
+    if rows == 0 { none := k_meta(t, tr_join(buf2[..], "list.none.", l), "Nothing here yet."); }
+  }
+}
+// A press on a switch: the row's cell, set to the other value. True when the press was a switch's.
+es_lists_click :: (s: [] EdShell, id: string) -> bool {
+  m := s[0].model[..];
+  k := es_index(id, "sw.");
+  if k < 0 || k >= m[0].nw || m[0].w_list[k] < 0 || m[0].w_list[k] >= m[0].nl { return false; }
+  l := m[0].w_list[k];
+  e := WorldEdit.{ok = true, op = WE_CELL, id = m[0].w_row[k]};
+  tb := m[0].l_table[l]; col := m[0].l_col[l];
+  e.table_n = ct_copy(e.table[..], cast(string) tb[0..<m[0].l_table_n[l]]);
+  e.name_n = ct_copy(e.name[..], cast(string) col[0..<m[0].l_col_n[l]]);
+  e.text_n = ct_copy(e.text[..], ifx m[0].w_on[k] then "0" else "1");
+  es_batch(s, WB_APPLY, e);
+  return true;
+}
