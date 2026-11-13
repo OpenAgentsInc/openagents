@@ -1,0 +1,118 @@
+// Stencil letters: block capitals and digits painted on a wall or a panel, each stroke a thin box,
+// built with the cel mesh writers (metaverse-engine/render/cel-mesh.coax) like the other kits. A
+// letter is strokes on a grid 4 wide and 6 high; the text stands on the frame's origin (its middle
+// at the bottom), reads along the frame's x, rises along its y and faces its z. Nothing here draws
+// or decides; it only writes triangles. Splice Bots' garage letters its bays with it (A1, A2, AB...).
+//   coax/bin/coax test --library metaverse-engine/kit/stencil.coax
+#load "machines.coax";
+
+STENCIL_W :: 4.0f32; STENCIL_H :: 6.0f32; STENCIL_GAP :: 1.6f32;
+STENCIL_MAX_STROKES :: 10;   // the most strokes one letter has (B)
+// A letter's strokes: four digits a stroke, from x y to x y on the grid (x 0 to 4, y 0 to 6). A
+// character with no strokes (a space, or one not here) only takes its room.
+stencil_strokes :: (c: int) -> string {
+  if c == 'A' { return "00040426264444400343"; }
+  if c == 'B' { return "0006063636454544443333033342424141303000"; }
+  if c == 'C' { return "460606000040"; }
+  if c == 'D' { return "000606363645454141303000"; }
+  if c == 'E' { return "4606060000400333"; }
+  if c == 'F' { return "460606000333"; }
+  if c == 'G' { return "46060600004040424222"; }
+  if c == 'H' { return "000640460343"; }
+  if c == 'I' { return "163626201030"; }
+  if c == 'J' { return "464040101001"; }
+  if c == 'K' { return "000603460340"; }
+  if c == 'L' { return "06000040"; }
+  if c == 'M' { return "0006062323464640"; }
+  if c == 'N' { return "000606404046"; }
+  if c == 'O' { return "0006064646404000"; }
+  if c == 'P' { return "0006064646434303"; }
+  if c == 'Q' { return "00060646464040002240"; }
+  if c == 'R' { return "00060646464343031340"; }
+  if c == 'S' { return "46060603034343404000"; }
+  if c == 'T' { return "06462620"; }
+  if c == 'U' { return "060000404046"; }
+  if c == 'V' { return "06202046"; }
+  if c == 'W' { return "0600002121404046"; }
+  if c == 'X' { return "00460640"; }
+  if c == 'Y' { return "062323462320"; }
+  if c == 'Z' { return "064646000040"; }
+  if c == '0' { return "00060646464040000046"; }
+  if c == '1' { return "142626201030"; }
+  if c == '2' { return "06464643430303000040"; }
+  if c == '3' { return "0646464040001343"; }
+  if c == '4' { return "060303434640"; }
+  if c == '5' { return "46060603034343404000"; }
+  if c == '6' { return "46060600004040434303"; }
+  if c == '7' { return "06464620"; }
+  if c == '8' { return "00060646464040000343"; }
+  if c == '9' { return "06460603034346404000"; }
+  if c == '-' { return "0343"; }
+  return "";
+}
+// How wide a text is, in metres, at letter height h.
+stencil_width :: (text: string, h: f32) -> f32 {
+  if text.count == 0 { return 0; }
+  u := h / STENCIL_H;
+  return (cast(f32) text.count * (STENCIL_W + STENCIL_GAP) - STENCIL_GAP) * u;
+}
+// One stroke: a box from local (ax, ay) to (bx, by) on the frame's face, `thick` across and `deep` out.
+stencil_stroke :: (buf: [] u32, p: [] Pen, f: Frame, ax: f32, ay: f32, bx: f32, by: f32, thick: f32, deep: f32) {
+  a := fp(f, ax, ay, 0); b := fp(f, bx, by, 0);
+  d := sub(b, a); span := length(d);
+  x := unit_or(d, f.x); y := cross(f.z, x);
+  mid := times(add(a, b), 0.5);
+  box(buf, p, Frame.{o = add(mid, times(f.z, deep * 0.5)), x = x, y = y, z = f.z}, span * 0.5 + thick * 0.5, thick * 0.5, deep * 0.5);
+}
+// The text in block capitals `h` metres tall, its strokes `h` / 8 thick, standing out `deep` from the
+// face, in colour c. Lower case is drawn as capitals.
+kit_stencil :: (buf: [] u32, p: [] Pen, f: Frame, text: string, h: f32, deep: f32, obj: int, c: KitTint) {
+  kit_pen(p, obj, MAT_FLAT, c);
+  u := h / STENCIL_H; thick := h / 8;
+  x0 := -stencil_width(text, h) * 0.5;
+  for i: 0..<text.count {
+    k := cast(int) text[i];
+    if k >= 'a' && k <= 'z' { k = k - 32; }
+    s := stencil_strokes(k);
+    left := x0 + cast(f32) i * (STENCIL_W + STENCIL_GAP) * u;
+    for j: 0..<s.count / 4 {
+      o := j * 4;
+      ax := cast(f32) (cast(int) s[o] - 48); ay := cast(f32) (cast(int) s[o + 1] - 48);
+      bx := cast(f32) (cast(int) s[o + 2] - 48); by := cast(f32) (cast(int) s[o + 3] - 48);
+      stencil_stroke(buf, p, f, left + ax * u, ay * u, left + bx * u, by * u, thick, deep);
+    }
+  }
+}
+
+#test "every letter and digit has strokes on the grid, at most ten, and a space has none" {
+  all := "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-";
+  for i: 0..<all.count {
+    s := stencil_strokes(cast(int) all[i]);
+    #assert s.count > 0 && s.count % 4 == 0 && s.count / 4 <= STENCIL_MAX_STROKES;
+    for j: 0..<s.count {
+      v := cast(int) s[j] - 48;
+      #assert v >= 0 && v <= (ifx j % 2 == 0 then 4 else 6);
+    }
+  }
+  #assert stencil_strokes(' ') == "" && stencil_strokes('?') == "";
+}
+#test "a text is a box a stroke, centred on the frame, on the face, as tall as asked" {
+  buf: [4000 * VERTEX_WORDS] u32;
+  pen := [1] Pen.[Pen.{}];
+  kit_stencil(buf[..], pen[..], frame_at(v3(0, 0, 0), 0), "A1", 3, 0.1, 9, kit_tint(1, 0, 0));
+  #assert !pen[0].over && pen[0].n == (5 + 3) * 36;
+  lo_x := 1000.0f32; hi_x := -1000.0f32; lo_y := 1000.0f32; hi_y := -1000.0f32; lo_z := 1000.0f32; hi_z := -1000.0f32;
+  for i: 0..<pen[0].n {
+    o := i * VERTEX_WORDS;
+    x := f32_from_bits(buf[o]); y := f32_from_bits(buf[o + 1]); z := f32_from_bits(buf[o + 2]);
+    lo_x = lo(lo_x, x); hi_x = hi(hi_x, x); lo_y = lo(lo_y, y); hi_y = hi(hi_y, y); lo_z = lo(lo_z, z); hi_z = hi(hi_z, z);
+  }
+  w := stencil_width("A1", 3);
+  #assert abs(w - (2 * 4 + 1.6) * 0.5) < 0.001;
+  #assert abs(lo_x + hi_x) < 0.6 && hi_x - lo_x > w - 0.6 && hi_x - lo_x < w + 0.5;   // "1" sits inside its cell
+  #assert lo_y > -0.3 && hi_y < 3.3 && hi_y > 2.9;   // a stroke reaches half its thickness past its ends
+  #assert lo_z > -0.001 && hi_z < 0.101;
+  pen2 := [1] Pen.[Pen.{}];
+  kit_stencil(buf[..], pen2[..], frame_at(v3(0, 0, 0), 0), "a 1", 3, 0.1, 9, kit_tint(1, 0, 0));
+  #assert pen2[0].n == pen[0].n;
+}
