@@ -5,7 +5,8 @@
 // Two writers. glb_from_cel is the plain one (the axis fixture, GitHub #13399): vertices in
 // order, colours as the pen's sRGB bytes. glb_world is the exporter's (#13400): triangles
 // grouped by material class and ground cell, vertices welded behind an index, colours linear
-// as glTF asks, and each vertex's parameter and object number in TEXCOORD_0.
+// as glTF asks, each vertex's parameter and object number in TEXCOORD_0 and its material class
+// in TEXCOORD_1.
 //   coax/bin/coax test --library aethyr/export/glb-write.coax
 #load "../render/cel-mesh.coax";
 #load "../../coax/lib/json/json.coax";
@@ -127,7 +128,7 @@ glb_from_cel :: (buf: [] u32, parts: [] GlbPart, out: [] u8) -> int #effects(all
 // ---- The world writer
 
 GLB_GROUPS :: 1024;
-GLB_WORLD_VERTEX_BYTES :: 48;   // position 12, normal 12, colour 16 (linear, alpha 1), parameter and object 8
+GLB_WORLD_VERTEX_BYTES :: 56;   // position 12, normal 12, colour 16 (linear, alpha 1), parameter and object 8, material class 8
 GLB_TABLE :: 262144;
 
 // One mesh of the world: a material class inside one ground cell. Its name is w_mMM_xXXX_zZZZ,
@@ -222,6 +223,7 @@ glb_world :: (buf: [] u32, vertices: int, cell: f32, out: [] u8, scratch: [] u8,
         col := buf[i + 4];
         glb_u32(scratch, bin + 24, f32_bits(lut[col & 255])); glb_u32(scratch, bin + 28, f32_bits(lut[(col >> 8) & 255])); glb_u32(scratch, bin + 32, f32_bits(lut[(col >> 16) & 255])); glb_u32(scratch, bin + 36, f32_bits(1));
         glb_u32(scratch, bin + 40, buf[i + 5]); glb_u32(scratch, bin + 44, f32_bits(cast(f32) ((buf[i + 3] >> 24) & 255)));
+        glb_u32(scratch, bin + 48, f32_bits(cast(f32) ((col >> 24) & 255))); glb_u32(scratch, bin + 52, 0);
         bin += GLB_WORLD_VERTEX_BYTES; g.vertices += 1;
       }
       g.triangles += 1;
@@ -254,20 +256,20 @@ glb_world :: (buf: [] u32, vertices: int, cell: f32, out: [] u8, scratch: [] u8,
     jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], glb_name(groups[gi], name[..]));
     jo_key(o[..], "primitives"); jo_arr(o[..]); jo_obj(o[..]);
     jo_key(o[..], "attributes"); jo_obj(o[..]);
-    jo_key(o[..], "POSITION"); jo_int(o[..], gi * 5); jo_key(o[..], "NORMAL"); jo_int(o[..], gi * 5 + 1); jo_key(o[..], "COLOR_0"); jo_int(o[..], gi * 5 + 2); jo_key(o[..], "TEXCOORD_0"); jo_int(o[..], gi * 5 + 3);
+    jo_key(o[..], "POSITION"); jo_int(o[..], gi * 6); jo_key(o[..], "NORMAL"); jo_int(o[..], gi * 6 + 1); jo_key(o[..], "COLOR_0"); jo_int(o[..], gi * 6 + 2); jo_key(o[..], "TEXCOORD_0"); jo_int(o[..], gi * 6 + 3); jo_key(o[..], "TEXCOORD_1"); jo_int(o[..], gi * 6 + 5);
     jo_end(o[..]);
-    jo_key(o[..], "indices"); jo_int(o[..], gi * 5 + 4); jo_key(o[..], "material"); jo_int(o[..], 0); jo_key(o[..], "mode"); jo_int(o[..], 4);
+    jo_key(o[..], "indices"); jo_int(o[..], gi * 6 + 4); jo_key(o[..], "material"); jo_int(o[..], 0); jo_key(o[..], "mode"); jo_int(o[..], 4);
     jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
   }
   jo_end(o[..]);
   jo_key(o[..], "accessors"); jo_arr(o[..]);
   for gi: 0..<n {
     g := groups[gi];
-    for a: 0..<5 {
-      off := ifx a == 0 then 0 else ifx a == 1 then 12 else ifx a == 2 then 24 else ifx a == 3 then 40 else 0;
+    for a: 0..<6 {   // position, normal, colour, parameter and object, the indices, material class
+      off := ifx a == 0 then 0 else ifx a == 1 then 12 else ifx a == 2 then 24 else ifx a == 3 then 40 else ifx a == 5 then 48 else 0;
       jo_obj(o[..]); jo_key(o[..], "bufferView"); jo_int(o[..], gi * 2 + (ifx a == 4 then 1 else 0)); jo_key(o[..], "byteOffset"); jo_int(o[..], off);
       jo_key(o[..], "componentType"); jo_int(o[..], ifx a == 4 then 5125 else 5126); jo_key(o[..], "count"); jo_int(o[..], ifx a == 4 then g.triangles * 3 else g.vertices);
-      jo_key(o[..], "type"); jo_str(o[..], ifx a == 4 then "SCALAR" else ifx a == 2 then "VEC4" else ifx a == 3 then "VEC2" else "VEC3");
+      jo_key(o[..], "type"); jo_str(o[..], ifx a == 4 then "SCALAR" else ifx a == 2 then "VEC4" else ifx a == 3 || a == 5 then "VEC2" else "VEC3");
       if a == 0 {
         jo_key(o[..], "min"); jo_arr(o[..]); for c: 0..<3 { glb_num(o[..], g.lo[c]); } jo_end(o[..]);
         jo_key(o[..], "max"); jo_arr(o[..]); for c: 0..<3 { glb_num(o[..], g.hi[c]); } jo_end(o[..]);

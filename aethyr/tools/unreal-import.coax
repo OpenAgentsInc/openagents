@@ -7,6 +7,8 @@
 // AethyrHost.uproject: the bare host project (aethyr/export/unreal/project) is copied there.
 // The AethyrBridge plugin's source is copied into the project's Plugins/ every time.
 // The report is PROJECT_DIR/Saved/aethyr-import-report.json, the rendered shots are beside it.
+// When the bundle has rules/, they are copied into the plugin before the build, and after the
+// import the game itself plays the bundle's scripted run; every expected line must be printed.
 // Exit 0: imported and every check passed. 1: a check failed or a step did not run. 2: usage.
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
@@ -72,6 +74,19 @@ tool_main :: () -> int #export_c #effects(all) {
   copy := [4] string.["/bin/cp", "-R", plugin, plugins];
   if ui_run(copy[..], none, 60000) != 0 { return ui_fail("could not copy the AethyrBridge plugin"); }
 
+  // the world's rules, when the bundle has them: the plugin compiles what is in Private/Rules/
+  c0: [4200] u8; c1: [4200] u8; c2: [4200] u8; c3: [4200] u8;
+  bundle_rules := fs_join(bundle, "rules", c0[..]);
+  has_rules := fs_kind(fs_join(bundle_rules, "aethyr_host.h", c1[..])) == FS_FILE;
+  plugin_rules := fs_join(plugins, "AethyrBridge/Source/AethyrBridge/Private/Rules", c2[..]);
+  clear := [3] string.["/bin/rm", "-rf", plugin_rules];
+  if ui_run(clear[..], none, 60000) != 0 { return ui_fail("could not clear the plugin's rules"); }
+  if has_rules {
+    rules_made := fs_mkdir(plugin_rules);
+    rules_copy := [4] string.["/bin/cp", "-R", ui_cat(bundle_rules, "/.", c3[..]), plugin_rules];
+    if ui_run(rules_copy[..], none, 60000) != 0 { return ui_fail("could not copy the rules into the plugin"); }
+  }
+
   print("unreal-import: building %Editor\n", stem);
   t0: [256] u8; t1: [4200] u8;
   build := [8] string.["/bin/bash", ubt, ui_cat(stem, "Editor", t0[..]), "Mac", "Development", ui_cat("-project=", project, t1[..]), "-NoHotReload", "-NoHotReloadFromIDE"];
@@ -90,6 +105,32 @@ tool_main :: () -> int #export_c #effects(all) {
   if n < 1 { print("unreal-import: the editor wrote no report (exit status %); see ~/Library/Logs/Unreal Engine/%Editor/\n", status, stem); return 1; }
   body := cast(string) text[0..<n];
   if !ui_has(body, "\"ok\": true") { print("%", body); return ui_fail("a check failed; the report is above"); }
-  print("unreal-import: ok, report %\n", report);
+  print("unreal-import: imported, report %\n", report);
+  if !has_rules { print("unreal-import: ok (the bundle has no rules, so no run was played)\n"); return 0; }
+
+  // the scripted run, played by the game itself: every line the bundle expects must be printed
+  g0: [4200] u8; g1: [4200] u8; g2: [4200] u8; g3: [4200] u8; g4: [4200] u8;
+  run_log := fs_join(fs_join(dir, "Saved", g0[..]), "aethyr-run.log", g1[..]);
+  gone := fs_remove(run_log);
+  level := "/Game/Aethyr/Splice/Generated/L_Splice";
+  mtext: [1048576] u8; mn := fs_read(fs_join(bundle, "manifest.json", g2[..]), mtext[..]);
+  if mn > 0 && !ui_has(cast(string) mtext[0..<mn], "\"name\":\"Splice\"") { return ui_fail("only Splice's level name is known to the run step yet"); }
+  play := [10] string.[editor, project, level, "-game", "-RenderOffscreen", "-unattended", "-nosplash", "-AethyrScript", "-AethyrExit", ui_cat("-abslog=", run_log, g3[..])];
+  print("unreal-import: playing the scripted run in the game\n");
+  played := ui_run(play[..], none, 1800000);
+  ltext: [4194304] u8; ln := fs_read(run_log, ltext[..]);
+  etext: [65536] u8; en := fs_read(fs_join(bundle_rules, "run.expected", g4[..]), etext[..]);
+  if ln < 1 || en < 1 { return ui_fail("the game wrote no log, or the bundle has no run.expected"); }
+  logged := cast(string) ltext[0..<ln]; at := 0; lines := 0;
+  while at < en {
+    end := at; while end < en && etext[end] != '\n' { end += 1; }
+    want := cast(string) etext[at..<end];
+    if want.count > 0 {
+      if !ui_has(logged, want) { print("unreal-import: the game did not print: %\n", want); return ui_fail("the scripted run inside Unreal differs from the bundle's"); }
+      lines += 1;
+    }
+    at = end + 1;
+  }
+  print("unreal-import: ok, the game printed all % expected lines of the run\n", lines);
   return 0;
 }

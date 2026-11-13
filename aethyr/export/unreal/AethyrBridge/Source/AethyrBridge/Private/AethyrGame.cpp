@@ -3,11 +3,14 @@
 #include "Camera/CameraComponent.h"
 #include "CanvasItem.h"
 #include "Components/SceneComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
+#include "Engine/Font.h"
 #include "Engine/FontFace.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
+#include "ShowFlags.h"
 #include "EngineUtils.h"
 #include "Fonts/CompositeFont.h"
 #include "Fonts/FontMeasure.h"
@@ -50,6 +53,26 @@ namespace
 
 	float SrgbToLinear(float C) { return C <= 0.04045f ? C / 12.92f : FMath::Pow((C + 0.055f) / 1.055f, 2.4f); }
 
+	// The graybox rule (aethyr/render/graybox.coax): how much of a colour's hue is kept. Orange to
+	// yellow from `Warm` saturation up, cyan from `Cyan` up, everything else none.
+	float GrayKeep(float R, float G, float B, float Warm, float Cyan)
+	{
+		const float Mx = FMath::Max3(R, G, B), Mn = FMath::Min3(R, G, B), Span = Mx - Mn;
+		if (Span < 0.0001f) { return 0.0f; }
+		const float Sat = Span / Mx;
+		float Lo = 1.0f;
+		if (B <= G && R >= G * 0.85f && (G - B) > Span * 0.15f) { Lo = Warm; }
+		const float Gb = FMath::Min(G, B);
+		if (R <= Gb && (Gb - R) > Span * 0.6f) { Lo = Cyan; }
+		const float T = FMath::Clamp((Sat - Lo) / 0.1f, 0.0f, 1.0f);
+		return T * T * (3.0f - 2.0f * T);
+	}
+	void Gray(float& R, float& G, float& B, float Warm, float Cyan)
+	{
+		const float K = GrayKeep(R, G, B, Warm, Cyan), L = 0.2126f * R + 0.7152f * G + 0.0722f * B;
+		R = FMath::Lerp(L, R, K); G = FMath::Lerp(L, G, K); B = FMath::Lerp(L, B, K);
+	}
+
 	void ScriptLine(const char* Text) { UE_LOG(LogAethyr, Display, TEXT("%hs"), Text); }
 
 	struct FKeyCode { FKey Key; int32 Code; };
@@ -75,6 +98,12 @@ AAethyrGame::AAethyrGame()
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(RootComponent);
 	Camera->bConstrainAspectRatio = false;
+	Sky = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Sky"));
+	Sky->SetupAttachment(RootComponent);
+	Sky->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Sky->SetCastShadow(false);
+	Sky->SetUsingAbsoluteScale(true);
+	Sky->SetWorldScale3D(FVector(3000.0));   // the engine's sphere is 50 units in radius: 1.5 km
 }
 
 void AAethyrGame::BeginPlay()
@@ -119,6 +148,22 @@ void AAethyrGame::BeginPlay()
 		Player->SetViewTarget(this);
 		Player->bShowMouseCursor = true;
 	}
+	// The world's materials write the picture's final colours themselves (the cel look's tone is
+	// part of the look), so Unreal's own tone curve, exposure and lens effects are off.
+	if (GEngine && GEngine->GameViewport)
+	{
+		FEngineShowFlags& Flags = GEngine->GameViewport->EngineShowFlags;
+		Flags.SetTonemapper(false);
+		Flags.SetEyeAdaptation(false);
+		Flags.SetBloom(false);
+		Flags.SetMotionBlur(false);
+		Flags.SetAmbientOcclusion(false);
+		Flags.SetVignette(false);
+		Flags.SetGrain(false);
+		Flags.SetLensFlares(false);
+		Flags.SetAntiAliasing(!FParse::Param(FCommandLine::Get(), TEXT("AethyrNoAA")));
+	}
+	bInput = !FParse::Param(FCommandLine::Get(), TEXT("AethyrNoInput"));
 	if (LiveMaterial) { Live->SetMaterial(0, LiveMaterial); }
 }
 
@@ -202,6 +247,7 @@ void AAethyrGame::UpdateCamera()
 	const FVector Up = DirToUnreal(U[UpAt], U[UpAt + 1], U[UpAt + 2]);
 	if (Forward.IsNearlyZero()) { return; }
 	Camera->SetWorldLocationAndRotation(Eye, FRotationMatrix::MakeFromXZ(Forward, Up).Rotator());
+	Sky->SetWorldLocation(Eye);
 	// the world's angle is vertical; Unreal's is horizontal
 	const float Tan = U[EyeAt + 3], Aspect = U[ForwardAt + 3];
 	if (Tan > 0 && Aspect > 0) { Camera->SetFieldOfView(FMath::RadiansToDegrees(2.0f * FMath::Atan(Tan * Aspect))); }
@@ -228,7 +274,7 @@ void AAethyrGame::Tick(float DeltaSeconds)
 #if AETHYR_HAS_RULES
 	if (!State) { return; }
 	APlayerController* Player = GetWorld()->GetFirstPlayerController();
-	if (Player) { SendKeys(Player); }
+	if (Player && bInput) { SendKeys(Player); }
 	FVector2D Size(1280, 800);
 	if (GEngine && GEngine->GameViewport) { GEngine->GameViewport->GetViewportSize(Size); }
 	if (Size.X < 1 || Size.Y < 1) { Size = FVector2D(1280, 800); }
@@ -264,28 +310,33 @@ void AAethyrHUD::DrawHUD()
 	for (TActorIterator<AAethyrGame> It(GetWorld()); It; ++It) { Game = *It; break; }
 	if (!Game || !Canvas) { return; }
 	const TArray<float>& U = Game->UniformBlock();
+	const bool bGray = Game->FxAt + 2 < U.Num() && U[Game->FxAt + 2] < -0.5f;
 	// panels: flat rectangles under everything (x0, y0, x1, y1, then colour and alpha)
 	for (int32 P = 0; P < Game->PanelCount; P++)
 	{
 		const int32 At = Game->PanelsAt + P * 8;
 		if (At + 8 > U.Num() || U[At + 7] <= 0) { continue; }
-		FCanvasTileItem Tile(FVector2D(U[At], U[At + 1]), FVector2D(U[At + 2] - U[At], U[At + 3] - U[At + 1]), FLinearColor(SrgbToLinear(U[At + 4]), SrgbToLinear(U[At + 5]), SrgbToLinear(U[At + 6]), U[At + 7]));
+		float Pr = U[At + 4], Pg = U[At + 5], Pb = U[At + 6];
+		if (bGray) { Gray(Pr, Pg, Pb, 0.62f, 0.38f); }
+		FCanvasTileItem Tile(FVector2D(U[At], U[At + 1]), FVector2D(U[At + 2] - U[At], U[At + 3] - U[At + 1]), FLinearColor(SrgbToLinear(Pr), SrgbToLinear(Pg), SrgbToLinear(Pb), U[At + 7]));
 		Tile.BlendMode = SE_BLEND_Translucent;
 		Canvas->DrawItem(Tile);
 	}
 	const int32 F = Game->OverlayFloats();
 	const float* V = Game->Overlay().GetData();
 	const int32 Quads = F >= 12 ? Game->OverlayVertices() / 6 : 0;
-	auto FaceFont = [](const UFontFace* Face)
+	auto FaceFont = [this](const UFontFace* Face)
 	{
-		TSharedRef<FStandaloneCompositeFont> Font = MakeShared<FStandaloneCompositeFont>();
+		// a runtime font holding the one face: what a Font asset made from it would be
+		UFont* Font = NewObject<UFont>(this);
+		Font->FontCacheType = EFontCacheType::Runtime;
 		FTypefaceEntry Entry(TEXT("Regular"));
 		Entry.Font = FFontData(Face);
-		Font->DefaultTypeface.Fonts.Add(Entry);
+		Font->GetMutableInternalCompositeFont().DefaultTypeface.Fonts.Add(Entry);
 		return Font;
 	};
-	if (!TextFont.IsValid() && Game->TextFace) { TextFont = FaceFont(Game->TextFace); }
-	if (!TitleFont.IsValid() && Game->TitleFace) { TitleFont = FaceFont(Game->TitleFace); }
+	if (!TextFont && Game->TextFace) { TextFont = FaceFont(Game->TextFace); }
+	if (!TitleFont && Game->TitleFace) { TitleFont = FaceFont(Game->TitleFace); }
 	TArray<FCanvasUVTri> Tris;
 	auto Flush = [&]()
 	{
@@ -308,14 +359,16 @@ void AAethyrHUD::DrawHUD()
 	{
 		const float* A = V + Q * 6 * F;
 		const float Mode = A[11];
-		const FLinearColor Colour(SrgbToLinear(A[8]), SrgbToLinear(A[9]), SrgbToLinear(A[10]), FMath::Min(A[6], 1.0f));
+		float Tr = A[8], Tg = A[9], Tb = A[10];
+		if (bGray) { Gray(Tr, Tg, Tb, 0.62f, 0.38f); }
+		const FLinearColor Colour(SrgbToLinear(Tr), SrgbToLinear(Tg), SrgbToLinear(Tb), FMath::Min(A[6], 1.0f));
 		if (Mode > 3.5f && Mode < 5.5f)
 		{
 			// a glyph: its cell in the atlas says which character; draw that character in the face
 			Flush();
 			const bool bTitle = Mode > 4.5f;
-			const TSharedPtr<const FCompositeFont>& Face = bTitle ? TitleFont : TextFont;
-			if (!Face.IsValid() || !FSlateApplication::IsInitialized()) { continue; }
+			const UFont* Face = bTitle ? TitleFont : TextFont;
+			if (!Face || !FSlateApplication::IsInitialized()) { continue; }
 			const int32 Cell = FMath::RoundToInt(A[2] * 16.0f) + FMath::RoundToInt(A[3] * 7.0f) * 16;
 			const uint32 Code = Cell < 95 ? 32 + Cell : (Cell - 95 < 16 ? Extra[Cell - 95] : '?');
 			const float S = A[4] / 64.0f;

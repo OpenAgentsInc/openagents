@@ -33,6 +33,11 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Aethyr")
 	TObjectPtr<UCameraComponent> Camera;
 
+	// The sky: a great sphere seen from inside, kept round the eye. The importer gives it its
+	// mesh and material.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Aethyr")
+	TObjectPtr<class UStaticMeshComponent> Sky;
+
 	// The material the live mesh is drawn with (the world's meshes carry their own).
 	UPROPERTY(EditAnywhere, Category = "Aethyr")
 	TObjectPtr<UMaterialInterface> LiveMaterial;
@@ -54,6 +59,8 @@ public:
 	int32 ForwardAt = 24;
 	UPROPERTY(EditAnywhere, Category = "Aethyr")
 	int32 UpAt = 32;
+	UPROPERTY(EditAnywhere, Category = "Aethyr")
+	int32 FxAt = 52;
 	UPROPERTY(EditAnywhere, Category = "Aethyr")
 	int32 PanelsAt = 64;
 	UPROPERTY(EditAnywhere, Category = "Aethyr")
@@ -79,6 +86,7 @@ private:
 	uint32 LiveVersion = 0;
 	bool bMouseHeld = false;
 	bool bPointerDown = false;
+	bool bInput = true;
 	double LogAt = 0;
 	double FrameSeconds = 0;
 	double HostSeconds = 0;
@@ -97,8 +105,11 @@ public:
 	virtual void DrawHUD() override;
 
 private:
-	TSharedPtr<const struct FCompositeFont> TextFont;
-	TSharedPtr<const struct FCompositeFont> TitleFont;
+	UPROPERTY(Transient)
+	TObjectPtr<class UFont> TextFont;
+
+	UPROPERTY(Transient)
+	TObjectPtr<class UFont> TitleFont;
 };
 
 UCLASS()

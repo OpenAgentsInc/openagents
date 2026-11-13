@@ -8,6 +8,7 @@
 // to splice-game.coax is not exported until it is listed here.
 #import "Basic";
 #load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/proc.coax";
 #load "splice-game.coax";
 #load "../aethyr/export/bundle.coax";
 
@@ -35,6 +36,21 @@ sx_file_name :: (prefix: string, i: int, tail: string, out: [] u8) -> string {
   out[n] = cast,trunc(u8) (48 + i); n += 1;
   for c: tail { out[n] = c; n += 1; }
   return cast(string) out[0..<n];
+}
+
+// A source file of the repository into the bundle's rules/, under the same name or another.
+sx_copy :: (from: string, dir: string, name: string, work: [] u8) -> bool #effects(all) {
+  p0: [4096] u8; p1: [4096] u8;
+  n := fs_read(from, work);
+  return n > 0 && fs_write(fs_join(fs_join(dir, "rules", p0[..]), name, p1[..]), cast(string) work[0..<n]);
+}
+// The world's C: what `coax c UNIT --library` prints, and its header, into rules/.
+sx_emit :: (unit: string, dir: string, c_name: string, h_name: string, work: [] u8) -> bool #effects(all) {
+  p0: [4096] u8; p1: [4096] u8; p2: [4096] u8; err: [65536] u8;
+  rules := fs_join(dir, "rules", p0[..]);
+  argv := [8] string.["coax/bin/coax", "c", unit, "--library", "--build-profile", "release", "--header", fs_join(rules, h_name, p1[..])];
+  r := proc_run(argv[..], 600000, work, err[..]);
+  return r.started == 0 && r.status == 0 && !r.cut && r.out_n > 0 && fs_write(fs_join(rules, c_name, p2[..]), cast(string) work[0..<r.out_n]);
 }
 
 tool_main :: () -> int #export_c #effects(all) {
@@ -72,7 +88,7 @@ tool_main :: () -> int #export_c #effects(all) {
   ex_str(j, "file", "world.glb"); ex_str(j, "sha256", sha); ex_int(j, "bytes", w.bytes);
   ex_num(j, "cell_metres", EX_CELL); ex_int(j, "triangles", w.triangles); ex_int(j, "source_vertices", w.vertices); ex_int(j, "vertices", w.welded);
   ex_p3(j, "min", w.lo[0], w.lo[1], w.lo[2]); ex_p3(j, "max", w.hi[0], w.hi[1], w.hi[2]);
-  ex_str(j, "attributes", "POSITION, NORMAL, COLOR_0 (linear), TEXCOORD_0 (x: the cel vertex parameter, y: its object number)");
+  ex_str(j, "attributes", "POSITION, NORMAL, COLOR_0 (linear), TEXCOORD_0 (x: the cel vertex parameter, y: its object number), TEXCOORD_1 (x: the material class)");
   jo_key(j, "groups"); jo_arr(j);
   for gi: 0..<w.groups {
     gr := groups[gi];
@@ -134,6 +150,14 @@ tool_main :: () -> int #export_c #effects(all) {
   sx_tune(j, "T_RAIL", T_RAIL); sx_tune(j, "T_RAIL_PING", T_RAIL_PING); sx_tune(j, "T_RAIL_SPEED", T_RAIL_SPEED); sx_tune(j, "T_RAIL_SLOW", T_RAIL_SLOW); sx_tune(j, "T_RAIL_FAST", T_RAIL_FAST);
   jo_end(j);
 
+  // where the uniform block a frame writes holds what a host reads (animelab.coax U_*; floats)
+  jo_key(j, "uniforms"); jo_obj(j);
+  ex_int(j, "floats", UNIFORM_FLOATS); ex_int(j, "eye", U_EYE); ex_int(j, "forward", U_FWD); ex_int(j, "right", U_RIGHT); ex_int(j, "up", U_UP);
+  ex_int(j, "fx", U_FX); ex_int(j, "draw", U_DRAW); ex_int(j, "misc", U_MISC);
+  ex_int(j, "panels", U_PANELS); ex_int(j, "panel_count", PANELS); ex_int(j, "panel_floats", PANEL_FLOATS);
+  ex_int(j, "lights", U_LIGHTS); ex_int(j, "light_count", 8); ex_int(j, "style", U_STYLE);
+  jo_end(j);
+
   // the codes g_key takes: a letter is its character code, the rest are these
   jo_key(j, "keys"); jo_obj(j);
   ex_int(j, "enter", -2); ex_int(j, "left", -4); ex_int(j, "right", -5); ex_int(j, "up", -6); ex_int(j, "down", -7); ex_int(j, "space", 32);
@@ -162,6 +186,48 @@ tool_main :: () -> int #export_c #effects(all) {
     n := fs_read(fs_join("apps/openagents-web/realms/splice/assets/fonts", f, path[..]), font[..]);
     out_path: [4096] u8;
     if n < 1 || !fs_write(fs_join(fs_join(dir, "fonts", path[..]), f, out_path[..]), cast(string) font[0..<n]) { print("splice-export: could not copy the font % (run from the repository root)\n", f); return 1; }
+  }
+  // ---- the rules: the game as C behind the native host interface, the scripted run, and the
+  // lines that run prints when the C is built and run here (what any host must print too)
+  work: [4194304] u8;
+  if !fs_mkdir(fs_join(dir, "rules", path[..])) { print("splice-export: could not make rules/\n"); return 1; }
+  if !sx_emit("splice/splice.coax", dir, "splice.c", "splice.h", work[..]) || !sx_emit("apps/openagents-web/animelab-style.coax", dir, "animelab-style.c", "Animelab-style.h", work[..]) {
+    print("splice-export: the Coax compiler did not emit the rules' C (run from the repository root)\n"); return 1;
+  }
+  if !sx_copy("splice/splice-ue-face.c", dir, "splice-ue-face.c", work[..]) || !sx_copy("aethyr/export/unreal/aethyr_host.h", dir, "aethyr_host.h", work[..]) ||
+     !sx_copy("aethyr/export/unreal/aethyr_script.c", dir, "aethyr_script.c", work[..]) || !sx_copy("splice/splice-run.aescript", dir, "run.aescript", work[..]) {
+    print("splice-export: could not copy the host interface into rules/\n"); return 1;
+  }
+  {
+    // the script as a C string, for a host with no files (the web build)
+    sn := fs_read("splice/splice-run.aescript", work[..]);
+    text: [262144] u8; tn := 0;
+    head := "/* Generated by splice-export: run.aescript as a C string. */\nstatic const char AETHYR_RUN_SCRIPT[] =\n  \"";
+    for c: head { text[tn] = c; tn += 1; }
+    for i: 0..<sn {
+      c := work[i];
+      if c == '\n' { tail := "\\n\"\n  \""; for t: tail { text[tn] = t; tn += 1; } continue; }
+      if c == '"' || c == '\\' { text[tn] = '\\'; tn += 1; }
+      if c != '\r' { text[tn] = c; tn += 1; }
+    }
+    tail := "\";\n"; for t: tail { text[tn] = t; tn += 1; }
+    p0: [4096] u8; p1: [4096] u8;
+    if sn < 1 || !fs_write(fs_join(fs_join(dir, "rules", p0[..]), "aethyr_run_script.h", p1[..]), cast(string) text[0..<tn]) { print("splice-export: could not write the script header\n"); return 1; }
+  }
+  {
+    r0: [4096] u8; r1: [4096] u8; r2: [4096] u8; r3: [4096] u8; r4: [4096] u8; r5: [4096] u8; r6: [4096] u8; i0: [4200] u8; err: [65536] u8;
+    rules := fs_join(dir, "rules", r0[..]);
+    exe := fs_join(rules, "aethyr-script.tmp", r1[..]);
+    inc: [4200] u8; n := 0; for c: "-I" { inc[n] = c; n += 1; } for c: rules { inc[n] = c; n += 1; }
+    cc := [16] string.["/usr/bin/clang", "-std=c11", "-O1", "-ffp-contract=off", "-fno-fast-math", "-w", "-DAETHYR_SCRIPT_MAIN", cast(string) inc[0..<n],
+                       fs_join(rules, "splice.c", r2[..]), fs_join(rules, "animelab-style.c", r3[..]), fs_join(rules, "splice-ue-face.c", r4[..]), fs_join(rules, "aethyr_script.c", r5[..]), "-o", exe, "-lm", "-Wno-everything"];
+    built := proc_run(cc[..], 600000, work[..], err[..]);
+    if built.started != 0 || built.status != 0 { print("splice-export: clang could not build the rules for the reference run\n%\n", cast(string) err[0..<built.err_n]); return 1; }
+    run := [2] string.[exe, fs_join(rules, "run.aescript", r6[..])];
+    ran := proc_run(run[..], 600000, work[..], err[..]);
+    removed := fs_remove(exe);
+    if ran.started != 0 || ran.status != 0 || ran.out_n < 1 { print("splice-export: the scripted run failed here:\n%\n", cast(string) work[0..<ran.out_n]); return 1; }
+    if !fs_write(fs_join(rules, "run.expected", i0[..]), cast(string) work[0..<ran.out_n]) { print("splice-export: could not write run.expected\n"); return 1; }
   }
   print("splice-export: % groups, % triangles, % vertices welded from %, world.glb % bytes\n", w.groups, w.triangles, w.welded, w.vertices, w.bytes);
   return 0;
