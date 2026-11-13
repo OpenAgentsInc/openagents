@@ -1,0 +1,169 @@
+// An SSH entry for a boat box, fresh after each resume (GitHub #13474,
+// stages 2 and 3). A resumed box has a new address and new host keys, so
+// after every resume we register our public key (bt_sshkey), and rewrite
+// two things from its answer:
+//
+//   ~/.ssh/config                 a block "Host boat-ID" between marker lines
+//   ~/.openagents/boat/known_hosts  one line "boat-ID KEYTYPE KEY", the host key
+//                                 boat reported, checked strictly
+//
+// so `ssh boat-bx_fwh3xnws` (and Coder's --on boat:ID, which is then the ssh:
+// route) reaches the box with its host key checked. These are pure text
+// functions over the files' contents; the caller reads and writes them.
+
+#load "wire.coax";
+
+BT_SSH_KNOWN :: "/.openagents/boat/known_hosts";   // under $HOME
+
+// "boat-ID": the alias the entry is under.
+bt_ssh_alias :: (out: [] u8, id: string) -> string {
+  if !bt_id_ok(id) { return ""; }
+  n := json_raw(out, json_raw(out, 0, "boat-"), id);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// Characters a host, user or key may hold, so they go into ssh's files as they are.
+bt_ssh_plain :: (s: string, spaces: bool) -> bool {
+  if s.count == 0 { return false; }
+  for c: s {
+    ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_' || c == ':' || c == '+' || c == '/' || c == '=' || c == '@' || c == '[' || c == ']';
+    if !ok && !(spaces && c == ' ') { return false; }
+  }
+  return true;
+}
+
+BtSshAt :: struct { host: string; port: int; user: string; ok: bool; }
+
+// Where to connect: sshEndpoint ("user@host", "host:port", "user@host:port",
+// "ssh://user@host:port"), else the machine's IP and the user boat named.
+bt_ssh_at :: (s: BtSsh) -> BtSshAt {
+  a := BtSshAt.{port = 22, user = s.user, host = s.ip};
+  e := s.endpoint;
+  if e.count > 6 && cast(string) e[0..<6] == "ssh://" { e = cast(string) e[6..<e.count]; }
+  if e.count > 0 {
+    at := -1; for c, i: e { if c == '@' { at = i; } }
+    if at >= 0 { a.user = cast(string) e[0..<at]; e = cast(string) e[at + 1..<e.count]; }
+    colon := -1; for c, i: e { if c == ':' { colon = i; } }
+    if colon > 0 && e[0] != '[' {
+      p := json_int(cast(string) e[colon + 1..<e.count]);
+      if p.ok && p.value > 0 && p.value < 65536 { a.port = p.value; e = cast(string) e[0..<colon]; }
+    }
+    if e.count > 0 { a.host = e; }
+  }
+  a.ok = bt_ssh_plain(a.host, false) && bt_ssh_plain(a.user, false) && a.host[0] != '-' && a.user[0] != '-';
+  return a;
+}
+
+// The config block for the box, markers included; "" when the answer can't make a safe one.
+bt_ssh_block :: (out: [] u8, id: string, s: BtSsh, known: string) -> string {
+  ab: [32] u8; alias := bt_ssh_alias(ab[..], id);
+  a := bt_ssh_at(s);
+  if alias.count == 0 || !a.ok || !bt_ssh_plain(known, false) { return ""; }
+  n := json_raw(out, 0, "# boat "); n = json_raw(out, n, id); n = json_raw(out, n, " (coax/lib/boat/ssh.coax rewrites this after each resume)\n");
+  n = json_raw(out, n, "Host "); n = json_raw(out, n, alias);
+  n = json_raw(out, n, "\n  HostName "); n = json_raw(out, n, a.host);
+  n = json_raw(out, n, "\n  Port "); n = json_write_int(out, n, a.port);
+  n = json_raw(out, n, "\n  User "); n = json_raw(out, n, a.user);
+  n = json_raw(out, n, "\n  HostKeyAlias "); n = json_raw(out, n, alias);
+  n = json_raw(out, n, "\n  UserKnownHostsFile "); n = json_raw(out, n, known);
+  n = json_raw(out, n, "\n  StrictHostKeyChecking yes\n  ServerAliveInterval 30\n# end boat "); n = json_raw(out, n, id); n = json_raw(out, n, "\n");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// The known_hosts line for the box: "boat-ID KEYTYPE KEY". "" unless the host key is one.
+bt_ssh_known_line :: (out: [] u8, id: string, s: BtSsh) -> string {
+  ab: [32] u8; alias := bt_ssh_alias(ab[..], id);
+  k := s.host_key;
+  while k.count > 0 && (k[k.count - 1] == '\n' || k[k.count - 1] == ' ') { k = cast(string) k[0..<k.count - 1]; }
+  if alias.count == 0 || !bt_ssh_plain(k, true) || !(k.count > 12 && (cast(string) k[0..<4] == "ssh-" || cast(string) k[0..<6] == "ecdsa-")) { return ""; }
+  n := json_raw(out, json_raw(out, json_raw(out, 0, alias), " "), k); n = json_raw(out, n, "\n");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+bt_ssh_line_at :: (t: string, i: int) -> int { j := i; while j < t.count && t[j] != '\n' { j += 1; } return ifx j < t.count then j + 1 else j; }
+
+bt_ssh_starts :: (t: string, i: int, p: string) -> bool { return i + p.count <= t.count && cast(string) t[i..<i + p.count] == p; }
+
+// config with the box's block replaced (or added at the end); the rest kept byte for byte.
+bt_ssh_config :: (out: [] u8, config: string, id: string, block: string) -> string {
+  if block.count == 0 || !bt_id_ok(id) { return ""; }
+  mb: [64] u8; me: [64] u8;
+  m1 := json_raw(mb[..], json_raw(mb[..], 0, "# boat "), id); m1 = json_raw(mb[..], m1, " ");
+  m2 := json_raw(me[..], json_raw(me[..], 0, "# end boat "), id);
+  begin := cast(string) mb[0..<m1]; end := cast(string) me[0..<m2];
+  n := 0; i := 0; put := false;
+  while i < config.count {
+    j := bt_ssh_line_at(config, i);
+    if bt_ssh_starts(config, i, begin) {
+      k := j;   // skip to the end marker's line, inclusive
+      while k < config.count && !bt_ssh_starts(config, k, end) { k = bt_ssh_line_at(config, k); }
+      if k < config.count { k = bt_ssh_line_at(config, k); }
+      if !put { n = json_raw(out, n, block); put = true; }
+      i = k; continue;
+    }
+    n = json_raw(out, n, cast(string) config[i..<j]);
+    i = j;
+  }
+  if !put {
+    if n > 0 && out[n - 1] != '\n' { n = json_raw(out, n, "\n"); }
+    if n > 0 { n = json_raw(out, n, "\n"); }
+    n = json_raw(out, n, block);
+  }
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// known_hosts with the box's line replaced (or added); other lines kept.
+bt_ssh_known :: (out: [] u8, known: string, id: string, line: string) -> string {
+  if line.count == 0 { return ""; }
+  ab: [32] u8; alias := bt_ssh_alias(ab[..], id);
+  pb: [40] u8; pn := json_raw(pb[..], json_raw(pb[..], 0, alias), " "); pre := cast(string) pb[0..<pn];
+  n := 0; i := 0;
+  while i < known.count {
+    j := bt_ssh_line_at(known, i);
+    if !bt_ssh_starts(known, i, pre) {
+      n = json_raw(out, n, cast(string) known[i..<j]);
+      if j == known.count && j > i && known[j - 1] != '\n' { n = json_raw(out, n, "\n"); }
+    }
+    i = j;
+  }
+  n = json_raw(out, n, line);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+#test "ssh: where to connect, from boat's endpoint or its IP" {
+  a := bt_ssh_at(BtSsh.{user = "user", endpoint = "user@203.0.113.17", ip = "203.0.113.17"});
+  #assert a.ok && a.host == "203.0.113.17" && a.user == "user" && a.port == 22;
+  a = bt_ssh_at(BtSsh.{user = "user", endpoint = "ssh://dev@box.example:2222"});
+  #assert a.ok && a.host == "box.example" && a.user == "dev" && a.port == 2222;
+  a = bt_ssh_at(BtSsh.{user = "user", endpoint = "box.example:99999", ip = "203.0.113.9"});
+  #assert a.port == 22;
+  a = bt_ssh_at(BtSsh.{user = "user", ip = "203.0.113.9"});
+  #assert a.ok && a.host == "203.0.113.9" && a.port == 22;
+  #assert !bt_ssh_at(BtSsh.{user = "user", ip = "1.2.3.4; rm -rf /"}).ok && !bt_ssh_at(BtSsh.{user = "-oProxyCommand=x", ip = "1.2.3.4"}).ok && !bt_ssh_at(BtSsh.{user = "user"}).ok;
+}
+
+#test "ssh: the block, the known_hosts line, and both files rewritten in place" {
+  s := BtSsh.{user = "user", endpoint = "user@203.0.113.17", ip = "203.0.113.17", host_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHost\n", ok = true};
+  b: [1024] u8;
+  blk := bt_ssh_block(b[..], "bx_fwh3xnws", s, "/home/me/.openagents/boat/known_hosts");
+  #assert blk == "# boat bx_fwh3xnws (coax/lib/boat/ssh.coax rewrites this after each resume)\nHost boat-bx_fwh3xnws\n  HostName 203.0.113.17\n  Port 22\n  User user\n  HostKeyAlias boat-bx_fwh3xnws\n  UserKnownHostsFile /home/me/.openagents/boat/known_hosts\n  StrictHostKeyChecking yes\n  ServerAliveInterval 30\n# end boat bx_fwh3xnws\n";
+  #assert bt_ssh_block(b[..], "nope", s, "/k") == "" && bt_ssh_block(b[..], "bx_fwh3xnws", s, "/a b") == "";
+  kb: [256] u8;
+  line := bt_ssh_known_line(kb[..], "bx_fwh3xnws", s);
+  #assert line == "boat-bx_fwh3xnws ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHost\n";
+  #assert bt_ssh_known_line(kb[..], "bx_fwh3xnws", BtSsh.{host_key = "x"}) == "" && bt_ssh_known_line(kb[..], "bx_fwh3xnws", BtSsh.{host_key = "ssh-ed25519 AAAA;rm"}) == "";
+  o: [4096] u8;
+  first := bt_ssh_config(o[..], "Host mac\n  User me", "bx_fwh3xnws", blk);
+  #assert first.count > 0 && bt_ssh_starts(first, 0, "Host mac\n  User me\n\n# boat bx_fwh3xnws ");
+  keep: [4096] u8; for ch, i: first { keep[i] = ch; }
+  s2 := s; s2.endpoint = "user@198.51.100.4"; s2.ip = "198.51.100.4";
+  b2: [1024] u8; blk2 := bt_ssh_block(b2[..], "bx_fwh3xnws", s2, "/home/me/.openagents/boat/known_hosts");
+  o2: [4096] u8;
+  again := bt_ssh_config(o2[..], cast(string) keep[0..<first.count], "bx_fwh3xnws", blk2);
+  #assert again.count == first.count && cast(string) again[first.count - blk.count..<again.count] == blk2 && bt_ssh_starts(again, 0, "Host mac\n  User me\n\n# boat bx_fwh3xnws ");
+  #assert bt_ssh_config(o2[..], "", "bx_fwh3xnws", blk2) == blk2 && bt_ssh_config(o2[..], "x", "bx_fwh3xnws", "") == "";
+  k1: [1024] u8;
+  kh := bt_ssh_known(k1[..], "github.com ssh-ed25519 AAAA\nboat-bx_fwh3xnws ssh-ed25519 OLD\nboat-bx_sg2zeu8d ssh-rsa B", "bx_fwh3xnws", line);
+  #assert kh == "github.com ssh-ed25519 AAAA\nboat-bx_sg2zeu8d ssh-rsa B\nboat-bx_fwh3xnws ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHost\n";
+  #assert bt_ssh_known(k1[..], "", "bx_fwh3xnws", line) == line && bt_ssh_known(k1[..], "a\n", "bx_fwh3xnws", "") == "";
+}

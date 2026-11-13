@@ -81,6 +81,28 @@ in seconds); without it the pre-push hook skips `wire-check` and `coax test`.
   `--dangerously-skip-permissions` it also asks you to accept that mode once
   per box.
 
+## From Coax: `tool.sh boat`
+
+Stage 2 put the same steps behind the Coax SDK (`coax/lib/boat/`) and the
+dev box policy (`coax/lib/boat/policy.coax`), so they work without the boat
+CLI and hold to our caps:
+
+```sh
+export BOAT_HOSTED=1                          # hosted boat is opt-in; the key is BOAT_API_KEY or ~/.openagents/boat/api-key (0600)
+coax/web/tool.sh boat ls                      # our boxes, the caps, today's spend
+coax/web/tool.sh boat resume bx_fwh3xnws --hours 12   # start it; writes Host boat-bx_fwh3xnws into ~/.ssh/config
+ssh -t boat-bx_fwh3xnws tmux new -A -s claude # attach, host key checked
+coax/web/tool.sh boat stop bx_fwh3xnws
+coax/web/tool.sh boat cost                    # spent today, what the boxes up will add, the plan's hours left
+coax/web/tool.sh boat up --name oa-devbox-2   # a new box from the template, in the oa-devbox environment
+```
+
+The caps: sizes `small`, `default` and `large` (`large` unless asked), at
+most 2 of our boxes (`oa-devbox-*`) up, an auto-stop of 15 minutes to 24
+hours (12 unless asked, never off), and $5.00 of box time a UTC day,
+counting what the boxes up will cost until they auto-stop. A start that
+would cross the cap is cut short or refused. `ls` and `cost` print them all.
+
 ## Stop
 
 ```sh

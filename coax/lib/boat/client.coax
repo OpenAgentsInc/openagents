@@ -17,6 +17,7 @@
 // records each request it would have sent; nothing leaves the process.
 
 #load "wire.coax";
+#load "policy.coax";
 #load "../gateway/transport.coax";
 
 BtFake :: struct {
@@ -35,6 +36,7 @@ BoatClient :: struct {
   connect_timeout_s: int = 10;
   curl: string = "curl";
   fake: [] BtFake;       // non-empty: answer from it, send nothing
+  retries: bool = true;  // send a safe call again when boat says it can help (policy.coax, bp_retry_wait)
 }
 
 // The base URL's host, between the scheme and the first '/', ':' or end.
@@ -210,8 +212,41 @@ BtResp :: struct {
   error: BtError;        // kind none on a 2xx
 }
 
-// Sends one request and reads the whole answer into out.
+// Sends one request and reads the whole answer into out. A call that is
+// safe to send again (a GET or DELETE of a read, or one carrying an
+// Idempotency-Key) is retried when boat says that can help, as
+// bp_retry_wait says; a command, stop or resume is sent once, except when
+// boat says it never ran (restoring).
 bt_call :: (c: BoatClient, method: string, path: string, body: string, headers: [] string, out: [] u8, ar: [] ClArena) -> BtResp {
+  safe := method == "GET";
+  for h: headers { if h.count > 16 && cast(string) h[0..<16] == "Idempotency-Key:" { safe = true; } }
+  r: BtResp;
+  for attempt: 0..<BP_RETRIES + 1 {
+    r = bt_call_once(c, method, path, body, headers, out, ar);
+    if !c.retries || !bt_failed(r.error) { return r; }
+    k := r.error.kind;
+    retryable := r.error.retryable || k == BtErrKind.transport || k == BtErrKind.server;
+    w := bp_retry_wait(safe || k == BtErrKind.restoring, retryable, r.error.retry_after_s, attempt);
+    if w < 0 { return r; }
+    bt_pause(c, w);
+  }
+  return r;
+}
+
+// A pause between tries: a child `sleep`, so no clock binding is declared
+// twice in a program that also has its own. Nothing waits in a fake.
+bt_pause :: (c: BoatClient, seconds: int) {
+  if c.fake.count > 0 || seconds <= 0 { return; }
+  h := cxproc_new();
+  if h < 0 { return; }
+  nb: [24] u8; n := json_write_int(nb[..], 0, seconds);
+  if cl_push(h, CL_FIELD_ARG, "sleep") && cl_push(h, CL_FIELD_ARG, cast(string) nb[0..<n]) && cxproc_spawn(h) == 0 {
+    x := cxproc_close_stdin(h); w := cxproc_wait(h, seconds * 1000 + 2000);
+  }
+  y := cxproc_release(h);
+}
+
+bt_call_once :: (c: BoatClient, method: string, path: string, body: string, headers: [] string, out: [] u8, ar: [] ClArena) -> BtResp {
   s: [1] BtStream;
   e := bt_open(c, method, path, body, headers, "application/json", s[..]);
   if bt_failed(e) { return BtResp.{error = e}; }

@@ -1,0 +1,160 @@
+// The dev box policy (GitHub #13474, stage 2): what our side allows on boat,
+// whatever boat itself would. Plain facts in, a code out; the tool
+// (coax/web/boat.coax), Coder's boat route and the API ask here and do what
+// it says. Every limit is a constant below, shown by `tool.sh boat ls` and
+// `cost` and in the conversation; the owner changes them here.
+//
+//   sizes          small, default and large; large unless asked (xlarge needs
+//                  the $100 plan, which we don't have)
+//   boxes at once  2 of ours up (named oa-devbox-*)
+//   auto-stop      from 15 minutes to 24 hours, 12 hours unless asked; never
+//                  off. A start is cut short so the day's cap holds
+//   daily cap      $5.00 of box time a UTC day, all our boxes together
+//   retries        only a call that is safe to send again (a GET, a create
+//                  with an Idempotency-Key, or one boat says never ran), at
+//                  most 4 times, after boat's Retry-After (60 s at most) or
+//                  1, 2, 4, 8 s
+//
+// Money is in millicents (1/100,000 of a dollar), whole numbers.
+//   coax/bin/coax test coax/lib/boat/policy.coax
+//   coax/bin/coax mutate coax/lib/boat/policy.coax
+#authority;
+
+BP_PREFIX :: "oa-devbox";              // our boxes' names start so; the policy counts only those
+BP_TYPE :: "large";
+BP_MAX_UP :: 2;
+BP_TTL_MIN_S :: 900;
+BP_TTL_DEFAULT_S :: 43200;
+BP_TTL_MAX_S :: 86400;
+BP_DAY_CAP_MC :: 500000;               // $5.00
+BP_RETRIES :: 4;
+BP_RETRY_AFTER_MAX_S :: 60;
+
+// boat's price an hour while a box runs (docs.boat.dev, 2026-11-13), in millicents.
+bp_rate_mc :: (type: string) -> int #effects(all) {
+  if type == "small" { return 1800; }
+  if type == "default" { return 3600; }
+  if type == "large" { return 7200; }
+  return -1;
+}
+
+// What seconds of a box of type cost, rounded up to a whole millicent; -1 for a size we don't use.
+bp_cost_mc :: (type: string, seconds: int) -> int #effects(all) {
+  r := bp_rate_mc(type);
+  if r == -1 || seconds < 0 { return -1; }
+  return (r * seconds + 3599) / 3600;
+}
+
+// The auto-stop for an ask: the default for none (0), the ask itself from
+// 15 minutes to 24 hours, -1 (refused) outside them.
+bp_ttl :: (asked_s: int) -> int #effects(all) {
+  if asked_s == 0 { return BP_TTL_DEFAULT_S; }
+  if asked_s < BP_TTL_MIN_S || asked_s > BP_TTL_MAX_S { return -1; }
+  return asked_s;
+}
+
+// How long a start may run: the auto-stop asked for, cut short (cut) so the
+// day stays under the cap, given what the day has cost (spent_mc) and what
+// each box already up will cost until it auto-stops (committed_mc). ttl_s 0
+// when not even the shortest auto-stop fits, or the size is one we don't use.
+BpRun :: struct { ttl_s: int; cut: bool; }
+
+bp_run :: (type: string, ttl_s: int, spent_mc: int, committed_mc: int) -> BpRun #effects(all) {
+  left := BP_DAY_CAP_MC - spent_mc - committed_mc;
+  fit := left * 3600 / bp_rate_mc(type);         // negative for a size we don't use, or no money left
+  r := BpRun.{ttl_s = ttl_s, cut = fit < ttl_s};
+  if r.cut { r.ttl_s = fit; }
+  if r.ttl_s < BP_TTL_MIN_S { r.ttl_s = 0; }
+  return r;
+}
+
+BP_OK :: 0;
+BP_SIZE :: 1;           // a size we don't use
+BP_TOO_MANY :: 2;       // BP_MAX_UP of ours are up already
+BP_CAP :: 3;            // the day's cap leaves less than the shortest auto-stop
+BP_NOT_OURS :: 4;       // a name outside BP_PREFIX
+BP_BOAT :: 5;           // boat itself says no start now (canStart false)
+
+// Whether a box may start (create or resume) now.
+//   type: its size; ours: its name starts with BP_PREFIX; up: how many of ours are up
+//   (not counting this one); can_start: boat's own answer (GET /limits).
+//   The auto-stop a start may use is bp_run's.
+bp_admit :: (type: string, ours: bool, up: int, can_start: bool, ttl_s: int, spent_mc: int, committed_mc: int) -> int #effects(all) {
+  if !ours { return BP_NOT_OURS; }
+  if bp_rate_mc(type) == -1 { return BP_SIZE; }
+  if up >= BP_MAX_UP { return BP_TOO_MANY; }
+  if bp_run(type, ttl_s, spent_mc, committed_mc).ttl_s == 0 { return BP_CAP; }
+  if !can_start { return BP_BOAT; }
+  return BP_OK;
+}
+
+bp_ours :: (name: string) -> bool #effects(all) {
+  return name.count >= BP_PREFIX.count && cast(string) name[0..<BP_PREFIX.count] == BP_PREFIX;
+}
+
+// The refusal in words, for the screen and the conversation.
+bp_words :: (code: int) -> string #effects(all) {
+  if code == BP_SIZE { return "the size is small, default or large"; }
+  if code == BP_TOO_MANY { return "2 dev boxes are up already: stop one first"; }
+  if code == BP_CAP { return "today's $5.00 cap is used up, counting the boxes still up"; }
+  if code == BP_NOT_OURS { return "not a dev box: their names start oa-devbox"; }
+  if code == BP_BOAT { return "boat says no start now (see boat limits)"; }
+  return "";
+}
+
+// How long to wait before sending a call again, or -1 for never.
+//   safe: the call may be sent twice (a GET, a create with an Idempotency-Key,
+//   or boat said it never ran); retryable: the error says a retry can help;
+//   retry_after_s: boat's wait (0 for none); attempt: 0 for the first retry.
+bp_retry_wait :: (safe: bool, retryable: bool, retry_after_s: int, attempt: int) -> int #effects(all) {
+  if !safe || !retryable || attempt < 0 || attempt >= BP_RETRIES { return -1; }
+  if retry_after_s > BP_RETRY_AFTER_MAX_S { return -1; }   // an hour or a day limit: waiting here won't help
+  if retry_after_s > 0 { return retry_after_s; }
+  return 1 << attempt;
+}
+
+#test "prices: by the second, rounded up; sizes we don't use cost -1" {
+  #assert bp_rate_mc("small") == 1800 && bp_rate_mc("default") == 3600 && bp_rate_mc("large") == 7200 && bp_rate_mc("xlarge") == -1 && bp_rate_mc("") == -1;
+  #assert bp_cost_mc("large", 3600) == 7200 && bp_cost_mc("large", 43200) == 86400 && bp_cost_mc("large", 1) == 2 && bp_cost_mc("large", 0) == 0;
+  #assert bp_cost_mc("small", 1) == 1 && bp_cost_mc("default", 3599) == 3599 && bp_cost_mc("default", 3601) == 3601 && bp_cost_mc("small", 3) == 2;
+  #assert bp_cost_mc("xlarge", 10) == -1 && bp_cost_mc("large", -1) == -1;
+}
+
+#test "auto-stop: 12 hours unless asked, 15 minutes to 24 hours, never off" {
+  #assert bp_ttl(0) == 43200 && bp_ttl(-5) == -1 && bp_ttl(1) == -1 && bp_ttl(899) == -1 && bp_ttl(900) == 900;
+  #assert bp_ttl(3600) == 3600 && bp_ttl(86400) == 86400 && bp_ttl(86401) == -1;
+}
+
+#test "the day's cap cuts a start short, and refuses one that can't run 15 minutes" {
+  r := bp_run("large", 43200, 0, 0);
+  #assert r.ttl_s == 43200 && !r.cut;
+  r = bp_run("large", 250000, 0, 0); #assert r.ttl_s == 250000 && !r.cut;     // exactly the cap
+  r = bp_run("large", 250001, 0, 0); #assert r.ttl_s == 250000 && r.cut;
+  r = bp_run("large", 43200, 450000, 0); #assert r.ttl_s == 25000 && r.cut;
+  r = bp_run("large", 43200, 0, 450000); #assert r.ttl_s == 25000 && r.cut;
+  r = bp_run("large", 43200, 400000, 50000); #assert r.ttl_s == 25000 && r.cut;
+  r = bp_run("large", 24999, 450000, 0); #assert r.ttl_s == 24999 && !r.cut;
+  r = bp_run("large", 43200, 500000 - 1800, 0); #assert r.ttl_s == 900 && r.cut;
+  r = bp_run("large", 43200, 500000 - 1799, 0); #assert r.ttl_s == 0;
+  r = bp_run("large", 899, 0, 0); #assert r.ttl_s == 0 && !r.cut;
+  r = bp_run("small", 900, 0, 0); #assert r.ttl_s == 900;
+  r = bp_run("xlarge", 43200, 0, 0); #assert r.ttl_s == 0 && r.cut;
+  r = bp_run("large", 43200, 600000, 0); #assert r.ttl_s == 0 && r.cut;
+}
+
+#test "admission: ours, a size we use, under 2 up, inside the cap, and boat says yes" {
+  #assert bp_admit("large", true, 0, true, 43200, 0, 0) == BP_OK && bp_admit("large", true, 1, true, 43200, 0, 0) == BP_OK;
+  #assert bp_admit("large", true, 2, true, 43200, 0, 0) == BP_TOO_MANY && bp_admit("large", true, 3, true, 43200, 0, 0) == BP_TOO_MANY;
+  #assert bp_admit("xlarge", true, 0, true, 43200, 0, 0) == BP_SIZE && bp_admit("large", false, 0, true, 43200, 0, 0) == BP_NOT_OURS;
+  #assert bp_admit("large", true, 0, true, 43200, 499000, 0) == BP_CAP && bp_admit("large", true, 0, false, 43200, 0, 0) == BP_BOAT;
+  #assert bp_ours("oa-devbox-1") && bp_ours("oa-devbox") && !bp_ours("oa-devbo") && !bp_ours("my-oa-devbox") && !bp_ours("");
+  #assert bp_words(BP_SIZE) == "the size is small, default or large" && bp_words(BP_TOO_MANY) == "2 dev boxes are up already: stop one first";
+  #assert bp_words(BP_CAP) == "today's $5.00 cap is used up, counting the boxes still up" && bp_words(BP_NOT_OURS) == "not a dev box: their names start oa-devbox";
+  #assert bp_words(BP_BOAT) == "boat says no start now (see boat limits)" && bp_words(BP_OK) == "";
+}
+
+#test "retries: only safe calls, only when they can help, after boat's wait or 1, 2, 4, 8 s" {
+  #assert bp_retry_wait(true, true, 0, 0) == 1 && bp_retry_wait(true, true, 0, 1) == 2 && bp_retry_wait(true, true, 0, 3) == 8 && bp_retry_wait(true, true, 0, 4) == -1;
+  #assert bp_retry_wait(true, true, 1, 2) == 1 && bp_retry_wait(true, true, 5, 0) == 5 && bp_retry_wait(true, true, 60, 2) == 60 && bp_retry_wait(true, true, 61, 0) == -1 && bp_retry_wait(true, true, 3600, 0) == -1;
+  #assert bp_retry_wait(false, true, 0, 0) == -1 && bp_retry_wait(true, false, 0, 0) == -1 && bp_retry_wait(true, true, 0, -1) == -1;
+}

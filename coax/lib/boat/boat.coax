@@ -16,6 +16,7 @@
 // and is followed with an attach stream from a stored cursor.
 
 #load "client.coax";
+#load "ssh.coax";
 
 // ---- account
 
@@ -91,19 +92,6 @@ bt_delete :: (c: BoatClient, id: string, out: [] u8, ar: [] ClArena) -> BtResp {
 bt_usage :: (c: BoatClient, id: string, since: string, out: [] u8, ar: [] ClArena) -> BtResp {
   pb: [BT_PATH_MAX] u8; none: [1] string;
   return bt_call(c, "GET", bt_usage_path(pb[..], id, since), "", none[0..<0], out, ar);
-}
-
-// A pause between polls: a child `sleep`, so no clock binding is declared
-// twice in a program that also has its own. Nothing waits in a fake.
-bt_pause :: (c: BoatClient, seconds: int) {
-  if c.fake.count > 0 || seconds <= 0 { return; }
-  h := cxproc_new();
-  if h < 0 { return; }
-  nb: [24] u8; n := json_write_int(nb[..], 0, seconds);
-  if cl_push(h, CL_FIELD_ARG, "sleep") && cl_push(h, CL_FIELD_ARG, cast(string) nb[0..<n]) && cxproc_spawn(h) == 0 {
-    x := cxproc_close_stdin(h); w := cxproc_wait(h, seconds * 1000 + 2000);
-  }
-  y := cxproc_release(h);
 }
 
 BtWait :: struct {

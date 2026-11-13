@@ -65,7 +65,7 @@ BtCheck :: struct {
 bt_check_init :: (k: [] BtCheck, answers: [] string) -> BoatClient {
   k[0].ar[0] = ClArena.{buf = k[0].arena[..]};
   k[0].fake[0] = BtFake.{answers = answers, log = k[0].log[..]};
-  return BoatClient.{base = "http://127.0.0.1:8790/api/v1", fake = k[0].fake[..]};
+  return BoatClient.{base = "http://127.0.0.1:8790/api/v1", fake = k[0].fake[..], retries = false};
 }
 
 bt_check_get :: (c: BoatClient, k: [] BtCheck) -> BtError { k[0].ar[0].at = 0; return bt_get(c, "bx_fwh3xnws", k[0].out[..], k[0].ar[..]).error; }
@@ -457,4 +457,27 @@ bt_has :: (s: string, part: string) -> bool {
   #assert bt_env_set(c, "env_7c1q", "A", "", k[0].out[..], k[0].ar[..]).error.kind == BtErrKind.config;
   #assert bt_env_create(c, "a b", k[0].out[..], k[0].ar[..]).error.kind == BtErrKind.config;
   #assert bt_read_envs(k[0].ar[..], "{}", e[..]) == -1;
+}
+
+#test "retries: a GET again after a 503 and a cut connection; a create only with its key; a command only when it never ran" {
+  k: [1] BtCheck; answers := [6] string.[BT_FX_NO_MACHINE, BT_FX_GET_READY, BT_FX_RESTORING, BT_FX_CMD, BT_FX_DIRECT_FAILED, BT_FX_RATE];
+  c := bt_check_init(k[..], answers[..]); c.retries = true;
+  r := bt_get(c, "bx_fwh3xnws", k[0].out[..], k[0].ar[..]);
+  #assert !bt_failed(r.error) && bt_read_sandbox(k[0].ar[..], r.body).state == "ready";
+  r = bt_run(c, "bx_fwh3xnws", "true", "", 5, k[0].out[..], k[0].ar[..]);
+  #assert !bt_failed(r.error) && bt_read_command(k[0].ar[..], r.body).success;
+  r = bt_run(c, "bx_fwh3xnws", "true", "", 5, k[0].out[..], k[0].ar[..]);
+  #assert r.error.kind == BtErrKind.may_be_running;
+  r = bt_create(c, BtCreate.{}, "", k[0].out[..], k[0].ar[..]);
+  #assert r.error.kind == BtErrKind.rate_limited && k[0].fake[0].next == 6;
+  k2: [1] BtCheck; a2 := [3] string.[BT_FX_NO_MACHINE, BT_FX_NO_MACHINE, BT_FX_CREATE];
+  c2 := bt_check_init(k2[..], a2[..]); c2.retries = true;
+  r = bt_create(c2, BtCreate.{}, "", k2[0].out[..], k2[0].ar[..]);
+  #assert r.error.kind == BtErrKind.unavailable && k2[0].fake[0].next == 1;
+  r = bt_create(c2, BtCreate.{}, "idem-1", k2[0].out[..], k2[0].ar[..]);
+  #assert !bt_failed(r.error) && k2[0].fake[0].next == 3;
+  k3: [1] BtCheck; a3: [1] string;
+  c3 := bt_check_init(k3[..], a3[0..<0]); c3.retries = true;
+  r = bt_get(c3, "bx_fwh3xnws", k3[0].out[..], k3[0].ar[..]);
+  #assert r.error.kind == BtErrKind.transport && bt_check_log(k3[..]) == "GET /sandboxes/bx_fwh3xnws\nGET /sandboxes/bx_fwh3xnws\nGET /sandboxes/bx_fwh3xnws\nGET /sandboxes/bx_fwh3xnws\nGET /sandboxes/bx_fwh3xnws\n";
 }
