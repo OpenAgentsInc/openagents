@@ -5,10 +5,10 @@ defines the architecture; it does not implement a new runtime or migrate an
 app. Implementation is unassigned and unscheduled. Before a stage starts,
 record its implementer, start date and bounded acceptance workload here.
 
-Coax Native is the shared application framework for writing native apps in
-Coax. An app defines its state, actions and components once. Platform hosts
-present those components, deliver input and execute admitted effects. The
-same app can contain ordinary forms, chat, GPU surfaces and Metaverse Engine
+Coax Native is the shared application framework for writing native apps and
+websites in Coax. An app defines its state, actions and components once.
+Platform hosts present those components, deliver input and execute admitted
+effects. The same app can contain ordinary forms, chat, GPU surfaces and Metaverse Engine
 realms, and can be operated through one agent interface on every qualified
 host.
 
@@ -21,9 +21,14 @@ it introduces neither JavaScript business logic nor a second UI language.
 
 ## Scope and existing contracts
 
-Coax is the language and compiler. Coaxial is the web framework. Coax Native
-names their shared app model and the native development, host and packaging
-contract. It assembles the existing component system and hosts rather than
+Coax is the language and compiler. Coax Native is the umbrella app framework;
+**Coax Native Web** is its browser target. **Coaxial** is deprecated as the
+public framework name. Existing `coax/web/` paths, `coaxial_*` exports,
+development endpoints and published host contracts retain their identities.
+The [web specification](web.md) describes that target. Coax Native defines
+the shared app model, development, hosts, packaging and
+[signed code delivery](native-updates.md). It assembles the existing
+component system and hosts rather than
 creating another component library. The Metaverse Engine remains the owner
 of worlds, simulation, room sessions, GPU render plans and authored audio.
 An ordinary form app need not link the engine, Psionic or an agent engine.
@@ -101,9 +106,14 @@ Coax app
 ```
 
 The runtime is a library compiled into the app, with caller-owned bounded
-storage. It is not the compiler's interpreter and does not execute an Exact
-plan. A portable description of elements is data consumed by backends;
-application actions remain compiled Coax procedures.
+storage. It does not execute an Exact plan or embed the compiler's evaluator.
+The native profile links compiled Coax procedures. The proposed portable app
+profile executes Coax-generated Wasm behind the same app/service boundary,
+so compatible actions and view composition can update over the air while
+the native host remains installed. That executor must reuse/factor the
+existing realm-script interpreter and qualify a separate app profile; the
+current restricted script VM cannot load full app modules. A portable
+description of elements is data consumed by presentation backends.
 
 Each app declares capacities for state, elements, text pools, realized list
 rows, queued events/effects and retained payload bytes. Admission precedes
@@ -440,13 +450,24 @@ bound to the exact generated executable. An iOS dev reload uses a separately
 qualified development path or rebuild; desktop dynamic-library support does
 not imply equivalent iOS loading support.
 
-Native code ships through platform distribution. A hosted web surface updates
-through the web release process. Signed data/asset bundles, a baked first
-frame and broader live updates are later, separately specified features.
-Native delivery of executable Coax/Wasm is not inferred from support for
-asset updates. Any future bundle format needs atomic installation, immutable
-identity, compatibility checks, anti-rollback policy and an embedded fallback.
-Follow platform distribution rules and preserve the existing release gates.
+Native runtime code ships through platform distribution. Compatible portable
+Coax app code and content ship through **Coax Native Updates**, defined in
+[native-updates.md](native-updates.md): runtime fingerprints, signed manifests,
+content-addressed artifacts, channels/cohorts, atomic staging, safe activation,
+trial health and data-compatible rollback. This is a core delivery path, not
+limited to data bundles. Code linked into a mobile executable still needs a
+native release; code already expressed in an eligible installed Wasm execution
+profile can use OTA. New SDKs, entitlements, native APIs or capability ceilings
+require a native runtime update.
+
+The maximum portable profile moves changing app composition, actions,
+navigation and ordinary rules into updateable Coax modules. Protected native
+services retain secrets, permission checks, spend floors and recovery. A
+hosted web surface can update through the existing web process; signed,
+offline-capable package launch is a separate proposed adoption. Store
+eligibility is checked separately from technical execution, especially for
+iOS interpreted code and software offered inside the app. A baked first
+frame remains a separately qualified startup optimization.
 
 Persistent desktop app data uses the shared `~/.openagents/` helpers, with
 the existing engine and model subdirectories. Mobile adapters map the same
@@ -509,7 +530,12 @@ specification authorizes no app rewrite or default-renderer switch on its own.
 | 4. Desktop adoption | Reuse shared Apple/Linux UI hosts and their current driver; compose a chat or settings flow | Same accepted operations on qualified backends; idle scheduling and accessibility checked on actual hosts |
 | 5. Wallet and realm composition | Migrate wallet presentation/state and a realm route incrementally, preserving the existing domain authorities | No seed replacement, no duplicated send, policy refusals preserved, correct modal/realm lifecycle, physical-device gates recorded |
 | 6. Android and packaging | Extend existing Android adapters; finish templates, diagnostics and reproducible packages | Same app acceptance case plus actual Android input/service/device evidence; one documented setup path |
-| 7. Later optimizations | Native state carry, baked initial UI and optional signed data delivery | Independent compatibility, ownership, startup and recovery evidence for each feature |
+| 7. Later optimizations | Native state carry and baked initial UI | Independent compatibility, ownership and startup evidence for each feature |
+
+The [Updates stages U1–U7](native-updates.md#implementation-and-qualification)
+run alongside these app stages. Signed delivery begins with the existing
+embedded-web path, followed by the separately qualified native-control app
+executor; it does not wait until every host or optimization is built.
 
 For iOS, keep `com.openagents.app`, its App Store record, Keychain services,
 wallet seed, backup and authentication semantics. Migrate the shell and one
@@ -533,8 +559,8 @@ logic into the framework.
   existing consumers.
 - Device driver transport and attachment authorization for iOS and Android.
 - The first measured device/OS workloads and acceptable performance thresholds.
-- The policy and scope for any production data-bundle delivery beyond existing
-  web deployments; executable updates remain a separate decision.
+- The first store-eligible executable update workload and app Wasm validation/
+  execution profile, under the delivery architecture in `native-updates.md`.
 
 These are implementation admission decisions. They do not defer the central
 architecture: compiled Coax application logic, shared components, explicit
@@ -561,3 +587,6 @@ platform effects and one agent interface over every qualified presentation.
   [protocol registration](../proto/README.md),
   [web field carry](web/state-keep.js) and
   [invariants](../INVARIANTS.md).
+- Delivery: [Coax Native Updates](native-updates.md). The cumulative OpenAgents
+  book and broader naming/documentation migration is tracked in
+  [#13512](https://github.com/OpenAgentsInc/openagents/issues/13512).

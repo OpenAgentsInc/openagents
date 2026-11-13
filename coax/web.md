@@ -1,4 +1,20 @@
-# Coaxial: the Coax web framework for openagents.com (proposal)
+# Coax Native Web
+
+Naming decision, 2026-11-13: **Coax Native Web** is the browser target of
+[Coax Native](native.md). **Coaxial** is the former public name, retained
+below in historical decisions and technical compatibility spellings.
+Existing `coax/web/` paths, commands, `coaxial_*` exports and published
+contracts keep their identity; this is not a wire or ABI rename.
+
+[Coax Native Updates](native-updates.md) defines the proposed signed delivery
+path for compatible Coax-generated Wasm code, assets and embedded web
+experiences. Ordinary web releases remain available through the existing
+deployment process. Verified offline packages, runtime compatibility and
+native-shell recovery require separate implementation and evidence.
+Browser HTTPS delivery does not establish an embedded native trust root,
+and an iOS web view does not remove distribution eligibility requirements.
+The cumulative app/site book migration is tracked in
+[#13512](https://github.com/OpenAgentsInc/openagents/issues/13512).
 
 Status: **the first slice runs (2026-10-28): the openagents.com splash on a
 Coax engine in WebGPU, with `coax serve` hot reload. The rest is a proposal.**

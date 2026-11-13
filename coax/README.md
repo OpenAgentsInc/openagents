@@ -4,7 +4,7 @@
 Current compiler: **coax0 0.52.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Everything Coax lives in this folder, at the root of the openagents repo.
-Building a Coaxial page or a realm? Read [start-here.md](start-here.md) first.
+Building a Coax Native Web page or a realm? Read [start-here.md](start-here.md) first.
 
 | Path | What |
 | --- | --- |
@@ -13,8 +13,9 @@ Building a Coaxial page or a realm? Read [start-here.md](start-here.md) first.
 | [`ROADMAP.md`](ROADMAP.md) | What to build next, dependencies, real consumers and completion gates for the full language |
 | [`STATUS.md`](STATUS.md), [`RELEASE.md`](RELEASE.md) | Generated current status and the single-source release/drift workflow |
 | [`verification-differential.md`](verification-differential.md) | Checked-AST authored native execution, bounded conformance probes and reduction |
-| [`web.md`](web.md) | Proposal: the Coax web framework for openagents.com (Coaxial), with open questions |
+| [`web.md`](web.md) | Coax Native Web, the browser target (formerly Coaxial), with historical decisions and open work |
 | [`native.md`](native.md) | Proposal: Coax Native, the shared app model, native hosts, platform services and agent interface |
+| [`native-updates.md`](native-updates.md) | Proposal: signed OTA code/content delivery, execution profiles, runtime compatibility, rollouts and recovery |
 | [`font.md`](font.md) | Proposal: Filament, the stroke font Coaxial pages draw text with |
 | [`grammar.ebnf`](grammar.ebnf) | The bootstrap grammar for what coax0 accepts |
 | [`script-profile.md`](script-profile.md) | The realm-script profile: what `#script "name";` makes the compiler enforce, and `coax script` |
