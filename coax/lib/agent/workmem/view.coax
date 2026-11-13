@@ -1,0 +1,336 @@
+// Views of the run store for the model (GitHub #13444 part 1: "the model is
+// shown the relevant part each step; nothing is dropped, only not shown").
+// Each view is plain text in the caller's buffer, never longer than the byte
+// budget the caller passes, and the same bytes for the same store.
+//
+//   wm_view_known     what I know that is still current: findings, then the ranges read
+//   wm_view_changed   what changed: every edit, with the lines it wrote
+//   wm_view_open      what is open: requirements and checks that stop the run finishing, and why
+//   wm_view_stale     what an edit to one file made stale (wm_put_* says how many; this names them)
+//
+// A row is one line and is shown whole or not at all. When a section's rows
+// do not all fit, the rows shown are the ones with the highest score (a
+// finding or edit: the newest; a read: the latest use, and each further use
+// counts as eight lines newer), and a last line says how many were left out.
+//
+// The rows shown are always in the order they were made, oldest first, and a
+// row's text never changes once written. So while everything fits, a new row
+// only adds a line at the end of its section, and a prompt cache can serve
+// everything before it. To keep the whole prompt append-only, a caller can
+// place the sections apart (wm_view_findings, wm_view_reads). A view's start
+// changes only when a row goes stale or the budget forces rows out.
+//
+// The rows:
+//   F3 verified by run 2: TEXT [a.coax:2-9, b.coax:1-1]
+//   F4 guess: TEXT [a.coax:40-44]
+//   R7 a.coax 1-120          (R7 a.coax 1-end: a whole file whose length was not recorded)
+//   C0 a.coax 12-14 56dfd13f->9a0b1c2d
+//   requirement 0: requirement still open: TEXT
+//   check unit: check never ran: COMMAND
+#load "store.coax";
+#load "../../nostr/json.coax";      // the writer: json_raw, json_write_int
+
+WV_FINDINGS :: 1; WV_READS :: 2; WV_CHANGES :: 3; WV_STALE_READS :: 4; WV_STALE_FINDINGS :: 5;
+WV_ROW :: 1024;               // a row's bytes, at most; a longer text is cut
+WV_TEXT :: 600;               // bytes of a finding's, requirement's or command's text in a row
+WV_TRAILER :: 32;             // room kept for "[+N more not shown]"
+WV_USE :: 8;                  // one more use of a read counts as this many lines newer
+
+WvT :: struct { t: [1] WmT; out: [8192] u8; out2: [8192] u8; }
+// A store with three files, six reads (one used three times), two findings, an edit and a requirement.
+wv_t_fill :: (t: [] WmT) {
+  s := t[0].s[..]; out := t[0].line[..];
+  a := wm_hash("a"); b := wm_hash("b"); c := wm_hash("c"); o := wm_hash("ok");
+  _ = wm_put_header(s, "r", "/w", out);
+  _ = wm_put_read(s, "a.coax", a, 1, 40, out);          // R0
+  _ = wm_put_read(s, "b.coax", b, 1, 10, out);          // R1
+  _ = wm_put_read(s, "a.coax", a, 41, 80, out);         // R2
+  _ = wm_put_read(s, "a.coax", a, 1, 40, out);          // R0 again
+  _ = wm_put_read(s, "a.coax", a, 1, 40, out);          // and again
+  _ = wm_put_read(s, "c.coax", c, 1, WM_END, out);      // R3
+  src := [1] WmSrc.[WmSrc.{path = "a.coax", from = 3, to = 9, hash = a}];
+  _ = wm_put_finding(s, "tick is a float\nhere", -1, src[..], out);     // F0
+  _ = wm_put_run(s, WmRunIn.{command = "coax test b.coax", check = "unit", exit = 0, ms = 3, output = o, bytes = 2}, out);
+  src[0] = WmSrc.{path = "b.coax", from = 1, to = 1, hash = b};
+  _ = wm_put_finding(s, "b passes", 0, src[..], out);                   // F1
+  _ = wm_put_read(s, "b.coax", b, 11, 20, out);         // R4
+  _ = wm_put_read(s, "c.coax", c, 5, 6, out);           // R5
+}
+
+#test "known: findings, then reads, oldest first; the same bytes each time" #steps 100000000 {
+  w: [1] WvT; t := w[0].t[..]; s := t[0].s[..];
+  wv_t_fill(t);
+  v := wm_view_known(s, 4096, w[0].out[..]);
+  #assert v == "Findings (current):\nF0 guess: tick is a float here [a.coax:3-9]\nF1 verified by run 0: b passes [b.coax:1-1]\nReads (current):\nR0 a.coax 1-40\nR1 b.coax 1-10\nR2 a.coax 41-80\nR3 c.coax 1-end\nR4 b.coax 11-20\nR5 c.coax 5-6\n";
+  #assert wm_view_known(s, 4096, w[0].out2[..]) == v;
+}
+
+#test "known: a new row only adds a line at the end of its section" #steps 100000000 {
+  w: [1] WvT; t := w[0].t[..]; s := t[0].s[..]; out := t[0].line[..];
+  wv_t_fill(t);
+  reads := wm_view_reads(s, 4096, w[0].out[..]);
+  findings := wm_view_findings(s, 4096, w[0].out2[..]);
+  rn := reads.count; fn := findings.count;
+  _ = wm_put_read(s, "a.coax", wm_hash("a"), 81, 90, out);
+  _ = wm_put_read(s, "b.coax", wm_hash("b"), 1, 10, out);      // a repeat: no new row, no change
+  src: [1] WmSrc;
+  _ = wm_put_finding(s, "newer", -1, src[0..<0], out);
+  keep: [8192] u8; kf: [8192] u8;
+  for c, i: reads { keep[i] = c; }
+  for c, i: findings { kf[i] = c; }
+  after := wm_view_reads(s, 4096, w[0].out[..]);
+  #assert after.count == rn + 16 && after[0..<rn] == cast(string) keep[0..<rn] && after[rn..<after.count] == "R6 a.coax 81-90\n";
+  fafter := wm_view_findings(s, 4096, w[0].out2[..]);
+  #assert fafter[0..<fn] == cast(string) kf[0..<fn] && fafter[fn..<fafter.count] == "F2 guess: newer []\n";
+}
+
+#test "known under small budgets: never over, whole rows, the best-scored rows, and how many were left out" #steps 400000000 {
+  w: [1] WvT; t := w[0].t[..]; s := t[0].s[..];
+  wv_t_fill(t);
+  full := wm_view_known(s, 4096, w[0].out[..]).count;
+  for budget: 0..<full + 2 {
+    v := wm_view_known(s, budget, w[0].out[..]);
+    #assert v.count <= budget;
+    #assert v.count == 0 || v[v.count - 1] == 10;
+    if budget >= full { #assert v.count == full; }
+  }
+  #assert wm_view_known(s, 4096, w[0].out[0..<10]).count == 0;      // the buffer bounds it too
+  // reads alone: 6 rows of 15 or 16 bytes under "Reads (current):\n" (17)
+  // room for three rows and the trailer: the newest use (R5, R4) and the most used (R0: line 6 + 2 uses * 8)
+  v := wm_view_reads(s, 17 + 15 + 16 + 14 + 32, w[0].out[..]);
+  #assert v == "Reads (current):\nR0 a.coax 1-40\nR4 b.coax 11-20\nR5 c.coax 5-6\n[+3 more not shown]\n";
+  v = wm_view_reads(s, 17 + 15 + 32, w[0].out[..]);
+  #assert v == "Reads (current):\nR0 a.coax 1-40\n[+5 more not shown]\n";
+  // the best row does not fit: nothing smaller jumps ahead of it
+  v = wm_view_reads(s, 17 + 14 + 32, w[0].out[..]);
+  #assert v == "Reads (current):\n[+6 more not shown]\n";
+  v = wm_view_reads(s, 17 + 32, w[0].out[..]);
+  #assert v == "Reads (current):\n[+6 more not shown]\n";
+  #assert wm_view_reads(s, 30, w[0].out[..]) == "";
+  // findings come first in "known": with room for little, they are what is shown
+  v = wm_view_known(s, 110, w[0].out[..]);
+  #assert v == "Findings (current):\nF0 guess: tick is a float here [a.coax:3-9]\nF1 verified by run 0: b passes [b.coax:1-1]\n";
+}
+
+#test "an edit: stale rows leave the current view and are named; what changed; what is open" #steps 100000000 {
+  w: [1] WvT; t := w[0].t[..]; s := t[0].s[..]; out := t[0].line[..];
+  wv_t_fill(t);
+  a2 := wm_hash("a2");
+  c := wm_put_change(s, "a.coax", wm_hash("a"), a2, 12, 14, 2, 90, out);
+  #assert c.ok && c.stale_reads == 2 && c.stale_findings == 1;
+  v := wm_view_known(s, 4096, w[0].out[..]);
+  #assert v == "Findings (current):\nF1 verified by run 0: b passes [b.coax:1-1]\nReads (current):\nR1 b.coax 1-10\nR3 c.coax 1-end\nR4 b.coax 11-20\nR5 c.coax 5-6\n";
+  v = wm_view_stale(s, c.file, 4096, w[0].out[..]);
+  #assert v == "Stale reads (the file changed after):\nR0 a.coax 1-40\nR2 a.coax 41-80\nStale findings (a source changed after):\nF0 guess: tick is a float here [a.coax:3-9]\n";
+  #assert wm_view_stale(s, wm_file(s, "b.coax"), 4096, w[0].out[..]) == "";
+  v = wm_view_changed(s, 4096, w[0].out[..]);
+  #assert v == "Changes:\nC0 a.coax 12-14 ca978112->2c3a4249\n";
+  _ = wm_put_change(s, "b.coax", wm_hash("b"), wm_hash("b2"), 1, 0, 0, 0, out);      // lines removed: nothing written
+  v = wm_view_changed(s, 4096, w[0].out[..]);
+  #assert v == "Changes:\nC0 a.coax 12-14 ca978112->2c3a4249\nC1 b.coax 1-0 3e23e816->4814d920\n";
+  v = wm_view_changed(s, 9 + 33 + 32, w[0].out[..]);
+  #assert v == "Changes:\nC1 b.coax 1-0 3e23e816->4814d920\n[+1 more not shown]\n";
+  // open
+  #assert wm_view_open(s, 4096, w[0].out[..]) == "";
+  _ = wm_put_check(s, "unit", "coax test b.coax", out);
+  _ = wm_put_requirement(s, "ticks are integers", out);
+  _ = wm_put_requirement(s, "the HUD shows them", out);
+  v = wm_view_open(s, 4096, w[0].out[..]);
+  #assert v == "Open:\nrequirement 0: requirement still open: ticks are integers\nrequirement 1: requirement still open: the HUD shows them\ncheck unit: check passed before the tree changed; run it again: coax test b.coax\n";
+  v = wm_view_open(s, 100, w[0].out[..]);
+  #assert v == "Open:\nrequirement 0: requirement still open: ticks are integers\n[+2 more not shown]\n";
+  run := wm_put_run(s, WmRunIn.{command = "coax test b.coax", check = "unit", exit = 0, ms = 3, output = wm_hash("ok"), bytes = 2}, out);
+  e := [1] WmEvid.[WmEvid.{kind = WF_RUN, id = run.id}];
+  _ = wm_put_status(s, 0, WF_DONE, e[..], out);
+  _ = wm_put_status(s, 1, WF_DONE, e[..], out);
+  #assert wm_view_open(s, 4096, w[0].out[..]) == "";
+  why: [4] WfReason;
+  #assert wm_may_finish(s, why[..]).ok;
+}
+
+#test "a long text is cut inside its row, on a character" {
+  w: [1] WvT; t := w[0].t[..]; s := t[0].s[..]; out := t[0].line[..];
+  _ = wm_put_header(s, "r", "/w", out);
+  long: [2000] u8;
+  for i: 0..<1000 { long[2 * i] = 0xc3; long[2 * i + 1] = 0xa9; }      // 1000 x "é"
+  src: [1] WmSrc;
+  #assert wm_put_finding(s, cast(string) long[..], -1, src[0..<0], out).ok;
+  v := wm_view_findings(s, 4096, w[0].out[..]);
+  #assert v.count == 20 + 10 + 600 + 3 + 4 && v[20 + 10 + 599] == 0xa9 && v[20 + 10 + 600] == '.';
+}
+
+// ------------------------------------------------------------------ rows
+
+// text into out from n with newlines as spaces, at most WV_TEXT bytes (cut on a character, then "...").
+wv_text :: (out: [] u8, n: int, text: string) -> int {
+  if n < 0 { return -1; }
+  cut := text.count;
+  if cut > WV_TEXT { cut = WV_TEXT; while cut > 0 && (text[cut] & 0xc0) == 0x80 { cut -= 1; } }
+  if n + cut > out.count { return -1; }
+  for i: 0..<cut { c := text[i]; out[n + i] = ifx c == 10 || c == 13 then cast(u8) ' ' else c; }
+  return ifx cut < text.count then json_raw(out, n + cut, "...") else n + cut;
+}
+wv_range :: (out: [] u8, n: int, from: int, to: int) -> int {
+  m := json_write_int(out, n, from); m = json_raw(out, m, "-");
+  return ifx to >= WM_END then json_raw(out, m, "end") else json_write_int(out, m, to);
+}
+wv_hash8 :: (out: [] u8, n: int, h: [32] u8) -> int { hb: [64] u8; return json_raw(out, n, wm_hex(h, hb[..])[0..<8]); }
+
+wv_finding :: (s: [] WmStore, i: int, row: [] u8) -> int {
+  f := s[0].findings[i];
+  n := json_write_int(row, json_raw(row, 0, "F"), i);
+  if f.verified { n = json_write_int(row, json_raw(row, n, " verified by run "), f.run); n = json_raw(row, n, ": "); }
+  else { n = json_raw(row, n, " guess: "); }
+  n = wv_text(row, n, f.text); n = json_raw(row, n, " [");
+  for k: f.first..<f.first + f.count {
+    src := s[0].sources[k];
+    if k > f.first { n = json_raw(row, n, ", "); }
+    n = json_raw(row, n, s[0].files[src.file].path); n = json_raw(row, n, ":"); n = wv_range(row, n, src.from, src.to);
+  }
+  return json_raw(row, n, "]\n");
+}
+wv_read :: (s: [] WmStore, i: int, row: [] u8) -> int {
+  r := s[0].reads[i];
+  n := json_write_int(row, json_raw(row, 0, "R"), i); n = json_raw(row, n, " ");
+  n = json_raw(row, n, s[0].files[r.file].path); n = json_raw(row, n, " ");
+  return json_raw(row, wv_range(row, n, r.from, r.to), "\n");
+}
+wv_change :: (s: [] WmStore, i: int, row: [] u8) -> int {
+  c := s[0].changes[i];
+  n := json_write_int(row, json_raw(row, 0, "C"), i); n = json_raw(row, n, " ");
+  n = json_raw(row, n, s[0].files[c.file].path); n = json_raw(row, n, " ");
+  n = wv_range(row, n, c.from, c.to); n = json_raw(row, n, " ");
+  n = wv_hash8(row, n, c.before); n = json_raw(row, n, "->");
+  return json_raw(row, wv_hash8(row, n, c.after), "\n");
+}
+
+// Rows of a section: how many there are, a row's score (-1: not in this section), and its text.
+wv_rows :: (s: [] WmStore, what: int) -> int {
+  if what == WV_FINDINGS || what == WV_STALE_FINDINGS { return s[0].nfindings; }
+  if what == WV_CHANGES { return s[0].nchanges; }
+  return s[0].nreads;
+}
+wv_score :: (s: [] WmStore, what: int, file: int, i: int) -> int {
+  if what == WV_FINDINGS { return ifx wm_finding_stale(s, i) then -1 else s[0].findings[i].seq; }
+  if what == WV_READS { r := s[0].reads[i]; return ifx wm_read_stale(s, i) then -1 else r.last + WV_USE * (r.uses - 1); }
+  if what == WV_CHANGES { return s[0].changes[i].seq; }
+  if what == WV_STALE_READS { r := s[0].reads[i]; return ifx r.file == file && wm_read_stale(s, i) then r.last else -1; }
+  return ifx wm_finding_about(s, i, file) && wm_finding_stale(s, i) then s[0].findings[i].seq else -1;
+}
+// The row's line into row: its length, or -1 when it is longer than a row may be (it is then never shown).
+wv_row :: (s: [] WmStore, what: int, i: int, row: [] u8) -> int {
+  if what == WV_FINDINGS || what == WV_STALE_FINDINGS { return wv_finding(s, i, row); }
+  if what == WV_CHANGES { return wv_change(s, i, row); }
+  return wv_read(s, i, row);
+}
+
+wv_trailer :: (out: [] u8, n: int, left: int) -> int {
+  m := json_write_int(out, json_raw(out, n, "[+"), left);
+  return json_raw(out, m, " more not shown]\n");
+}
+
+// One section appended to out from at, ending at or before limit: the title,
+// the rows that fit (the best-scored when not all do) in the order they were
+// made, and how many were left out. Nothing when there are no rows, or when
+// not even the title and that last line fit.
+wv_section :: (s: [] WmStore, what: int, file: int, title: string, out: [] u8, at: int, limit: int) -> int {
+  score: [WM_READS] int; size: [WM_READS] int; pick: [WM_READS] bool; row: [WV_ROW] u8;
+  end := ifx limit < out.count then limit else out.count;
+  rows := wv_rows(s, what); n := 0; total := 0;
+  for i: 0..<rows {
+    score[i] = wv_score(s, what, file, i);
+    if score[i] < 0 { continue; }
+    size[i] = wv_row(s, what, i, row[..]);
+    if size[i] < 0 { score[i] = -1; continue; }
+    n += 1; total += size[i];
+  }
+  if n == 0 { return at; }
+  room := end - at - title.count; left := n;
+  if total <= room {
+    for i: 0..<rows { pick[i] = score[i] >= 0; }
+    left = 0;
+  } else {
+    room -= WV_TRAILER;
+    if room < 0 { return at; }
+    while left > 0 {
+      best := -1;
+      for i: 0..<rows { if score[i] >= 0 && !pick[i] && (best < 0 || score[i] >= score[best]) { best = i; } }
+      if size[best] > room { break; }
+      pick[best] = true; room -= size[best]; left -= 1;
+    }
+  }
+  m := json_raw(out[0..<end], at, title);
+  for i: 0..<rows {
+    if !pick[i] { continue; }
+    k := wv_row(s, what, i, row[..]);
+    m = json_raw(out[0..<end], m, cast(string) row[0..<k]);
+  }
+  if left > 0 { m = wv_trailer(out[0..<end], m, left); }
+  return ifx m < 0 then at else m;
+}
+
+// ------------------------------------------------------------------ views
+
+wm_view_findings :: (s: [] WmStore, budget: int, out: [] u8) -> string {
+  return cast(string) out[0..<wv_section(s, WV_FINDINGS, -1, "Findings (current):\n", out, 0, budget)];
+}
+wm_view_reads :: (s: [] WmStore, budget: int, out: [] u8) -> string {
+  return cast(string) out[0..<wv_section(s, WV_READS, -1, "Reads (current):\n", out, 0, budget)];
+}
+// What I know that is still current: findings first, then the ranges read, with what is left of the budget.
+wm_view_known :: (s: [] WmStore, budget: int, out: [] u8) -> string {
+  n := wv_section(s, WV_FINDINGS, -1, "Findings (current):\n", out, 0, budget);
+  return cast(string) out[0..<wv_section(s, WV_READS, -1, "Reads (current):\n", out, n, budget)];
+}
+// What changed: every edit and the lines of the new content it wrote.
+wm_view_changed :: (s: [] WmStore, budget: int, out: [] u8) -> string {
+  return cast(string) out[0..<wv_section(s, WV_CHANGES, -1, "Changes:\n", out, 0, budget)];
+}
+// The reads and findings that are stale because this file changed.
+wm_view_stale :: (s: [] WmStore, file: int, budget: int, out: [] u8) -> string {
+  n := wv_section(s, WV_STALE_READS, file, "Stale reads (the file changed after):\n", out, 0, budget);
+  return cast(string) out[0..<wv_section(s, WV_STALE_FINDINGS, file, "Stale findings (a source changed after):\n", out, n, budget)];
+}
+
+// A reason of finish.coax as words.
+wm_why_text :: (why: int) -> string {
+  if why == WF_REQ_OPEN { return "requirement still open"; }
+  if why == WF_REQ_FAILED { return "requirement marked failed"; }
+  if why == WF_REQ_UNPROVEN { return "marked done, but no evidence holds on the tree as it is now"; }
+  if why == WF_CHECK_NEVER { return "check never ran"; }
+  if why == WF_CHECK_FAILING { return "check's latest run failed"; }
+  if why == WF_CHECK_STALE { return "check passed before the tree changed; run it again"; }
+  return "the record's rows do not fit together";
+}
+// One reason as a line: the row it is about, why, and the row's text.
+wm_reason_line :: (s: [] WmStore, r: WfReason, row: [] u8) -> int {
+  n := 0; text := "";
+  if r.why == WF_CHECK_NEVER || r.why == WF_CHECK_FAILING || r.why == WF_CHECK_STALE {
+    n = json_raw(row, json_raw(row, 0, "check "), s[0].checks[r.row].name); text = s[0].checks[r.row].command;
+  } else {
+    n = json_write_int(row, json_raw(row, 0, "requirement "), r.row);
+    if r.row < s[0].nreqs { text = s[0].reqs[r.row].text; }
+  }
+  n = json_raw(row, n, ": "); n = json_raw(row, n, wm_why_text(r.why)); n = json_raw(row, n, ": ");
+  return json_raw(row, wv_text(row, n, text), "\n");
+}
+// What is open: each requirement and check that stops the run finishing
+// (finish.coax), in the record's order. Empty when the run may finish.
+wm_view_open :: (s: [] WmStore, budget: int, out: [] u8) -> string {
+  why: [WM_REQS + WM_CHECKS] WfReason; row: [WV_ROW] u8;
+  v := wm_may_finish(s, why[..]);
+  end := ifx budget < out.count then budget else out.count;
+  if v.ok || end < 0 { return ""; }
+  total := 6;
+  for i: 0..<v.count { k := wm_reason_line(s, why[i], row[..]); total += ifx k < 0 then 0 else k; }
+  room := end - 6 - (ifx total <= end then 0 else WV_TRAILER);
+  if room < 0 { return ""; }
+  n := json_raw(out[0..<end], 0, "Open:\n"); left := v.count;
+  for i: 0..<v.count {
+    k := wm_reason_line(s, why[i], row[..]);
+    if k < 0 || k > room { break; }
+    n = json_raw(out[0..<end], n, cast(string) row[0..<k]); room -= k; left -= 1;
+  }
+  if left > 0 { n = wv_trailer(out[0..<end], n, left); }
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}

@@ -1,0 +1,44 @@
+{
+  "profile": "openagents.workmem",
+  "id": "openagents.workmem.v1",
+  "source": "coax/lib/agent/workmem/store.coax",
+  "check": "coax/web/tool.sh coax/lib/agent/workmem/workmem.coax profile proto/coder/workmem-v1.json",
+  "spec": "coax/lib/agent/workmem/README.md",
+  "transport": "a file, DIR/log.jsonl (for a Coder session DIR is ~/.openagents/coder/sessions/ID.workmem): one JSON object a line, each ended by \\n; compact (no spaces), keys in the order below. A text named by a sha256 is the file DIR/text/SHA256.",
+  "about": "A run of a coding agent on one requirement, written by hand, not by the codec. Each line applied to a store is accepted; its values written through store.coax are its line byte for byte; the views, the finish rule's answer and the tree digest of the store they make are the ones below. The lines under refused are each refused by that store.",
+  "lines": [
+    "{\"kind\":\"workmem\",\"schema\":\"openagents.workmem.v1\",\"run\":\"20261113-101500-204\",\"root\":\"/w/app\"}",
+    "{\"kind\":\"requirement\",\"text\":\"the battle clock counts in integer ticks\"}",
+    "{\"kind\":\"check\",\"name\":\"clock\",\"command\":\"coax/bin/coax test clock.coax\"}",
+    "{\"kind\":\"file\",\"path\":\"clock.coax\",\"sha256\":\"78ecd0ae65a0b5e94a5b7c3f97a6d320845e7e8dda78a9b48e601183461d20f3\",\"bytes\":44,\"lines\":2}",
+    "{\"kind\":\"read\",\"path\":\"clock.coax\",\"sha256\":\"78ecd0ae65a0b5e94a5b7c3f97a6d320845e7e8dda78a9b48e601183461d20f3\",\"from\":1,\"to\":2}",
+    "{\"kind\":\"file\",\"path\":\"hud.coax\",\"sha256\":\"f4964fb6432cb17169501fcbc6e13631ab133bba21ace1b5f71ae23e2458b3b4\",\"bytes\":20,\"lines\":1}",
+    "{\"kind\":\"read\",\"path\":\"hud.coax\",\"sha256\":\"f4964fb6432cb17169501fcbc6e13631ab133bba21ace1b5f71ae23e2458b3b4\",\"from\":1,\"to\":1}",
+    "{\"kind\":\"read\",\"path\":\"clock.coax\",\"sha256\":\"78ecd0ae65a0b5e94a5b7c3f97a6d320845e7e8dda78a9b48e601183461d20f3\",\"from\":2,\"to\":2}",
+    "{\"kind\":\"finding\",\"text\":\"tick is an f32 and advances by 0.016\",\"verified\":false,\"sources\":[{\"path\":\"clock.coax\",\"from\":1,\"to\":2,\"sha256\":\"78ecd0ae65a0b5e94a5b7c3f97a6d320845e7e8dda78a9b48e601183461d20f3\"}]}",
+    "{\"kind\":\"run\",\"command\":\"coax/bin/coax test clock.coax\",\"check\":\"clock\",\"exit\":1,\"timed_out\":false,\"ms\":412,\"output\":\"727f284fca03fddd92d80cbbf1c2e3b33e6bc02099656bf7c315000b9a478254\",\"bytes\":28}",
+    "{\"kind\":\"change\",\"path\":\"clock.coax\",\"before\":\"78ecd0ae65a0b5e94a5b7c3f97a6d320845e7e8dda78a9b48e601183461d20f3\",\"after\":\"9a47b835a9c88ea928479ca17c117dbb0cd2312d39393607bac8c4ab1dbd3aab\",\"from\":1,\"to\":2,\"bytes\":40,\"lines\":2}",
+    "{\"kind\":\"run\",\"command\":\"coax/bin/coax test clock.coax\",\"check\":\"clock\",\"exit\":0,\"timed_out\":false,\"ms\":398,\"output\":\"aae7c2c15f1710c9c379a4ce993998d35685ddbf1a4294fbcd289788bc14ec7c\",\"bytes\":28}",
+    "{\"kind\":\"run\",\"command\":\"git status --short\",\"exit\":0,\"timed_out\":true,\"ms\":30000,\"output\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"bytes\":0}",
+    "{\"kind\":\"finding\",\"text\":\"the clock's check passes with \\\"tick: int\\\"\",\"verified\":true,\"run\":1,\"sources\":[{\"path\":\"clock.coax\",\"from\":1,\"to\":1,\"sha256\":\"9a47b835a9c88ea928479ca17c117dbb0cd2312d39393607bac8c4ab1dbd3aab\"},{\"path\":\"hud.coax\",\"from\":1,\"to\":1,\"sha256\":\"f4964fb6432cb17169501fcbc6e13631ab133bba21ace1b5f71ae23e2458b3b4\"}]}",
+    "{\"kind\":\"requirement\",\"text\":\"the HUD shows whole ticks\"}",
+    "{\"kind\":\"status\",\"requirement\":0,\"status\":\"done\",\"evidence\":[{\"kind\":\"change\",\"id\":0},{\"kind\":\"run\",\"id\":1},{\"kind\":\"finding\",\"id\":1}]}",
+    "{\"kind\":\"status\",\"requirement\":1,\"status\":\"failed\",\"evidence\":[]}"
+  ],
+  "refused": [
+    "{\"kind\":\"workmem\",\"schema\":\"openagents.workmem.v1\",\"run\":\"again\",\"root\":\"/w\"}",
+    "{\"kind\":\"change\",\"path\":\"clock.coax\",\"before\":\"78ecd0ae65a0b5e94a5b7c3f97a6d320845e7e8dda78a9b48e601183461d20f3\",\"after\":\"f4964fb6432cb17169501fcbc6e13631ab133bba21ace1b5f71ae23e2458b3b4\",\"from\":1,\"to\":1,\"bytes\":0,\"lines\":0}",
+    "{\"kind\":\"finding\",\"text\":\"verified with no run\",\"verified\":true,\"sources\":[]}",
+    "{\"kind\":\"status\",\"requirement\":0,\"status\":\"done\",\"evidence\":[{\"kind\":\"run\",\"id\":9}]}",
+    "{\"kind\":\"status\",\"requirement\":0,\"status\":\"finished\",\"evidence\":[]}",
+    "{\"kind\":\"read\",\"path\":\"clock.coax\",\"sha256\":\"9a47b835a9c88ea928479ca17c117dbb0cd2312d39393607bac8c4ab1dbd3aab\",\"from\":0,\"to\":3}",
+    "{\"kind\":\"note\",\"text\":\"a kind of another log\"}"
+  ],
+  "views": {
+    "known": "Findings (current):\nF1 verified by run 1: the clock's check passes with \"tick: int\" [clock.coax:1-1, hud.coax:1-1]\nReads (current):\nR1 hud.coax 1-1\n",
+    "changed": "Changes:\nC0 clock.coax 1-2 78ecd0ae->9a47b835\n",
+    "open": "Open:\nrequirement 1: requirement marked failed: the HUD shows whole ticks\n"
+  },
+  "may_finish": false,
+  "tree": "2750c711b3544d0ec2afc38acfb198e9f8a105684473e2995818edd88c7a9577"
+}

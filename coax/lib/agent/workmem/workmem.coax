@@ -1,0 +1,342 @@
+// The run store's command line (GitHub #13444): look into a store, replay a
+// recorded run's reads against one, and check the store on real files.
+//   coax/web/tool.sh coax/lib/agent/workmem/workmem.coax show DIR [--budget N]
+//       the store in DIR (file.coax): its counts, the three views at N bytes each (default 8192), and whether the run may finish
+//   coax/web/tool.sh coax/lib/agent/workmem/workmem.coax replay TRACE...
+//       an RLM coder trace's effects (`--- effect read(...) -> N bytes`) through a store: how many reads it would have answered without a fetch
+//   coax/web/tool.sh coax/lib/agent/workmem/workmem.coax profile proto/coder/workmem-v1.json
+//       the fixture: every line through the one writer is its bytes, the log read back is the store, the views are the fixture's
+//   coax/web/tool.sh coax/lib/agent/workmem/workmem.coax selftest
+//       a scratch tree, real files, a real command, the folder opened again: prints "workmem selftest: ok"
+#import "Basic";
+#load "file.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/args.coax";
+#load "../../sys/proc.coax";
+
+// ------------------------------------------------------------------ replay
+
+// What a recorded run's effects come to in a store. reads: its read and
+// lines calls; known: those whose every line the store already had at the
+// file's current content (no fetch needed); bytes: what the calls returned.
+WrReplay :: struct { effects: int; reads: int; known: int; bytes: int; known_bytes: int; edits: int; runs: int; refused: int; }
+
+// A file's content at a version, named: the trace has no content, only that an edit happened.
+wr_version :: (path: string, version: int) -> [32] u8 {
+  b: [WM_PATH + 32] u8; n := json_write_int(b[..], json_raw(b[..], json_raw(b[..], 0, path), "#"), version);
+  return wm_hash(cast(string) b[0..<ifx n < 0 then 0 else n]);
+}
+wr_number :: (text: string) -> int {
+  v := 0;
+  for c: text { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); if v > WM_END { return -1; } }
+  return ifx text.count == 0 then -1 else v;
+}
+// The piece of a comma-separated argument list from at: its end.
+wr_arg_end :: (args: string, at: int) -> int {
+  i := at;
+  while i < args.count && !(args[i] == ',' && i + 1 < args.count && args[i + 1] == ' ') { i += 1; }
+  return i;
+}
+
+#test "replay: a trace's reads, edits and runs through a store" #steps 200000000 {
+  t: [1] WmT; s := t[0].s[..];
+  trace := "noise\n--- effect count_lines(a.coax) -> 4 bytes\n--- effect read(a.coax) -> 1000 bytes\n--- effect lines(a.coax, 10, 20) -> 300 bytes\n--- effect read(a.coax) -> 1000 bytes\n--- effect lines(b.coax, 1, 50) -> 500 bytes\n--- effect lines(b.coax, 40, 60) -> 200 bytes\n--- effect lines(b.coax, 20, 60) -> 400 bytes\n--- effect sh(coax test a.coax, 120) -> 30 bytes\n--- effect edit(a.coax, [10 bytes], [20 bytes]) -> 99 bytes\n--- effect read(a.coax) -> 1010 bytes\n--- effect lines(a.coax, 10, 20) -> 300 bytes\n--- effect lines(b.coax, 1, 5) -> 50 bytes\n--- effect search(x, a.coax, 200, 0) -> 9 bytes\n--- output ---\n--- effect read(c.coax) -> 7 bytes";
+  _ = wm_put_header(s, "replay", "", t[0].line[..]);
+  r := wr_replay(s, trace, t[0].line[..]);
+  // known: lines 10-20 of a after the whole read; the second whole read; b 20-60 (1-50 and 40-60 cover it); a 10-20 after the re-read; b 1-5
+  #assert r.effects == 14 && r.reads == 10 && r.known == 5 && r.edits == 1 && r.runs == 1 && r.refused == 0;
+  #assert r.bytes == 1000 + 300 + 1000 + 500 + 200 + 400 + 1010 + 300 + 50 + 7 && r.known_bytes == 300 + 1000 + 400 + 300 + 50;
+  #assert s[0].read_calls == 10 && s[0].read_known == 5 && s[0].nchanges == 1 && s[0].nruns == 1 && s[0].files[0].versions == 2;
+}
+
+wr_replay :: (s: [] WmStore, trace: string, line: [] u8) -> WrReplay {
+  r: WrReplay; at := 0; mark := "--- effect ";
+  while at < trace.count {
+    end := at;
+    while end < trace.count && trace[end] != 10 { end += 1; }
+    l := trace[at..<end]; at = end + 1;
+    if l.count <= mark.count || l[0..<mark.count] != mark { continue; }
+    open := mark.count;
+    while open < l.count && l[open] != '(' { open += 1; }
+    close := l.count - 1;
+    while close > open && !(l[close] == ')' && close + 4 <= l.count && l[close..<close + 4] == ") ->") { close -= 1; }
+    if close <= open { continue; }
+    name := l[mark.count..<open]; args := l[open + 1..<close];
+    be := close + 5;
+    while be < l.count && l[be] >= '0' && l[be] <= '9' { be += 1; }
+    bytes := ifx close + 5 <= l.count then wr_number(l[close + 5..<be]) else -1;
+    if bytes < 0 { bytes = 0; }
+    r.effects += 1;
+    e1 := wr_arg_end(args, 0); path := args[0..<e1];
+    f := wm_file(s, path); version := ifx f >= 0 then s[0].files[f].versions else 1;
+    if name == "read" || name == "lines" {
+      from := 1; to := WM_END;
+      if name == "lines" {
+        e2 := wr_arg_end(args, e1 + 2);
+        from = ifx e1 + 2 <= args.count then wr_number(args[e1 + 2..<e2]) else -1;
+        to = ifx e2 + 2 <= args.count then wr_number(args[e2 + 2..<args.count]) else -1;
+      }
+      p := wm_put_read(s, path, wr_version(path, version), from, to, line);
+      if !p.ok { r.refused += 1; continue; }
+      r.reads += 1; r.bytes += bytes;
+      if p.known { r.known += 1; r.known_bytes += bytes; }
+    } else if name == "edit" || name == "replace_lines" || name == "write" {
+      p := wm_put_change(s, path, wr_version(path, version), wr_version(path, version + 1), 1, 1, 0, 0, line);
+      if !p.ok { r.refused += 1; continue; }
+      r.edits += 1;
+    } else if name == "sh" {
+      p := wm_put_run(s, WmRunIn.{command = path, exit = 0, output = wm_hash(""), bytes = bytes}, line);
+      if !p.ok { r.refused += 1; continue; }
+      r.runs += 1;
+    }
+  }
+  return r;
+}
+
+WmTool :: struct { w: [1] Wmf; u: [1] Wmf; s: [1] WmStore; big: [16777216] u8; out: [1048576] u8; err: [65536] u8; pool: [262144] u8; np: int; }
+
+wt_replay :: (m: [] WmTool, a: [] Args) -> int {
+  if args_count(a) < 2 { tool_errln("usage: workmem replay TRACE..."); return 2; }
+  total: WrReplay;
+  for i: 1..<args_count(a) {
+    n := fs_read(args_at(a, i), m[0].big[..]);
+    if n < 0 { tool_err("workmem: can't read "); tool_errln(args_at(a, i)); return 1; }
+    m[0].s[0] = WmStore.{};
+    _ = wm_put_header(m[0].s[..], "replay", "", m[0].w[0].line[..]);
+    r := wr_replay(m[0].s[..], cast(string) m[0].big[0..<n], m[0].w[0].line[..]);
+    print("%\n  reads %, answered by the store % (% %%), fetched %\n  bytes read %, bytes the store had % (% %%)\n  edits %, commands %, files %, refused lines %\n",
+      args_at(a, i), r.reads, r.known, ifx r.reads > 0 then r.known * 100 / r.reads else 0, r.reads - r.known,
+      r.bytes, r.known_bytes, ifx r.bytes > 0 then r.known_bytes * 100 / r.bytes else 0, r.edits, r.runs, m[0].s[0].nfiles, r.refused);
+    total.reads += r.reads; total.known += r.known; total.bytes += r.bytes; total.known_bytes += r.known_bytes;
+  }
+  if args_count(a) > 2 {
+    print("all\n  reads %, answered by the store % (% %%)\n  bytes read %, bytes the store had % (% %%)\n", total.reads, total.known, ifx total.reads > 0 then total.known * 100 / total.reads else 0,
+      total.bytes, total.known_bytes, ifx total.bytes > 0 then total.known_bytes * 100 / total.bytes else 0);
+  }
+  return 0;
+}
+
+// ------------------------------------------------------------------ show
+
+wt_show :: (m: [] WmTool, a: [] Args) -> int {
+  if args_count(a) < 2 { tool_errln("usage: workmem show DIR [--budget N]"); return 2; }
+  budget := args_whole(args_value(a, "--budget", "8192"));
+  if budget < 0 || budget > m[0].out.count { tool_errln("workmem: --budget is a number of bytes, at most 1048576"); return 2; }
+  w := m[0].w[..];
+  l := wmf_load(w, args_at(a, 1));
+  if l.lines < 0 { tool_err("workmem: no store in "); tool_errln(args_at(a, 1)); return 1; }
+  if l.bad != 0 { print("line % of the log is not a line of this store; the lines before it:\n", l.bad); }
+  s := w[0].s[..]; hb: [64] u8;
+  print("run %  workspace %\n", s[0].run, s[0].root);
+  print("% lines: % files, % reads (% calls, % the store already had), % findings, % changes, % runs, % requirements, % checks\n",
+    s[0].seq, s[0].nfiles, s[0].nreads, s[0].read_calls, s[0].read_known, s[0].nfindings, s[0].nchanges, s[0].nruns, s[0].nreqs, s[0].nchecks);
+  print("tree %\n\n", wm_hex(wm_tree(s), hb[..]));
+  print("%", wm_view_known(s, budget, m[0].out[..]));
+  print("%", wm_view_changed(s, budget, m[0].out[..]));
+  for i: 0..<s[0].nruns {
+    r := s[0].runs[i];
+    print("run %: exit % in % ms, % bytes of output in text/%: %", i, r.exit, r.ms, r.bytes, wm_hex(r.output, hb[..]), r.command);
+    print("%\n", ifx r.timed_out then " (timed out)" else "");
+  }
+  for i: 0..<s[0].nreqs { print("requirement % (%): %\n", i, WM_STATUS[s[0].reqs[i].status], s[0].reqs[i].text); }
+  open := wm_view_open(s, budget, m[0].out[..]);
+  print("%", open);
+  print("%\n", ifx open.count == 0 then "may finish: yes" else "may finish: no");
+  return ifx l.bad != 0 then 1 else 0;
+}
+
+// ------------------------------------------------------------------ profile
+
+wt_str :: (m: [] WmTool, d: Jv, at: int, key: string) -> string {
+  n := jv_str(d, jv_get(d, at, key), m[0].pool[m[0].np..<m[0].pool.count]);
+  if n < 0 { return ""; }
+  from := m[0].np; m[0].np += n;
+  return cast(string) m[0].pool[from..<from + n];
+}
+wt_hash :: (d: Jv, at: int, key: string) -> [32] u8 { return wm_unhex(jv_raw(d, jv_get(d, at, key))).h; }
+wt_int :: (d: Jv, at: int, key: string) -> int { return jv_int(d, jv_get(d, at, key), -1); }
+
+// A fixture line's values through the writer, on store s.
+wt_rewrite :: (m: [] WmTool, s: [] WmStore, text: string, out: [] u8) -> WmPut {
+  nodes: [512] JvNode; dd: [1] Jv;
+  if !jv_parse(dd[..], text, nodes[..]) { return WmPut.{}; }
+  d := dd[0]; kind := wt_str(m, d, 0, "kind");
+  if kind == "workmem" { return wm_put_header(s, wt_str(m, d, 0, "run"), wt_str(m, d, 0, "root"), out); }
+  if kind == "file" { return wm_put_file(s, wt_str(m, d, 0, "path"), wt_hash(d, 0, "sha256"), wt_int(d, 0, "bytes"), wt_int(d, 0, "lines"), out); }
+  if kind == "read" { return wm_put_read(s, wt_str(m, d, 0, "path"), wt_hash(d, 0, "sha256"), wt_int(d, 0, "from"), wt_int(d, 0, "to"), out); }
+  if kind == "finding" {
+    src: [16] WmSrc; list := jv_get(d, 0, "sources"); n := jv_len(d, list);
+    if n > 16 { return WmPut.{}; }
+    for i: 0..<n { e := jv_at(d, list, i); src[i] = WmSrc.{path = wt_str(m, d, e, "path"), from = wt_int(d, e, "from"), to = wt_int(d, e, "to"), hash = wt_hash(d, e, "sha256")}; }
+    return wm_put_finding(s, wt_str(m, d, 0, "text"), wt_int(d, 0, "run"), src[0..<n], out);
+  }
+  if kind == "change" {
+    return wm_put_change(s, wt_str(m, d, 0, "path"), wt_hash(d, 0, "before"), wt_hash(d, 0, "after"), wt_int(d, 0, "from"), wt_int(d, 0, "to"), wt_int(d, 0, "bytes"), wt_int(d, 0, "lines"), out);
+  }
+  if kind == "run" {
+    return wm_put_run(s, WmRunIn.{command = wt_str(m, d, 0, "command"), check = wt_str(m, d, 0, "check"), exit = jv_int(d, jv_get(d, 0, "exit"), 1), timed_out = jv_bool(d, jv_get(d, 0, "timed_out")),
+      ms = wt_int(d, 0, "ms"), output = wt_hash(d, 0, "output"), bytes = wt_int(d, 0, "bytes")}, out);
+  }
+  if kind == "check" { return wm_put_check(s, wt_str(m, d, 0, "name"), wt_str(m, d, 0, "command"), out); }
+  if kind == "requirement" { return wm_put_requirement(s, wt_str(m, d, 0, "text"), out); }
+  if kind == "status" {
+    ev: [32] WmEvid; list := jv_get(d, 0, "evidence"); n := jv_len(d, list);
+    if n > 32 { return WmPut.{}; }
+    for i: 0..<n { e := jv_at(d, list, i); ev[i] = WmEvid.{kind = wm_index(WM_EVIDENCE[..], wt_str(m, d, e, "kind")), id = wt_int(d, e, "id")}; }
+    return wm_put_status(s, wt_int(d, 0, "requirement"), wm_index(WM_STATUS[..], wt_str(m, d, 0, "status")), ev[0..<n], out);
+  }
+  return WmPut.{};
+}
+
+wt_check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok   %\n", what); return 0; }
+  print("  FAIL %\n", what);
+  return 1;
+}
+
+// The fixture holds the codec: its lines are written by hand, not by store.coax.
+wt_profile :: (m: [] WmTool, a: [] Args) -> int {
+  if args_count(a) < 2 { tool_errln("usage: workmem profile proto/coder/workmem-v1.json"); return 2; }
+  n := fs_read(args_at(a, 1), m[0].big[0..<4194304]);
+  pn: [8192] JvNode; dd: [1] Jv;
+  if n < 0 || !jv_parse(dd[..], cast(string) m[0].big[0..<n], pn[..]) { tool_errln("workmem: the profile is not JSON"); return 1; }
+  d := dd[0]; bad := 0;
+  bad += wt_check(wt_str(m, d, 0, "id") == WM_SCHEMA, "the profile's id is the schema the header writes");
+  lines := jv_get(d, 0, "lines");
+  read := m[0].w[0].s[..]; written := m[0].u[0].s[..];
+  read[0] = WmStore.{}; written[0] = WmStore.{};
+  kinds: [10] int; line: [WM_LINE] u8; fixture: [WM_LINE] u8;
+  for i: 0..<jv_len(d, lines) {
+    fn := jv_str(d, jv_at(d, lines, i), fixture[0..<WM_LINE - 1]);
+    if fn < 0 { bad += wt_check(false, "a fixture line is a string"); continue; }
+    text := cast(string) fixture[0..<fn];
+    ap := wm_apply(read, text);
+    if ap.ok { kinds[ap.kind] += 1; }
+    p := wt_rewrite(m, written, text, line[..]);
+    same := p.ok && p.line.count == fn + 1 && p.line[0..<fn] == text;
+    if !ap.ok || !same { print("  line %: %\n   written: %", i + 1, text, p.line); }
+    bad += wt_check(ap.ok && same, "a line reads, and its values written are its bytes");
+  }
+  all := true;
+  for k: WM_K_HEADER..<kinds.count { if kinds[k] == 0 { all = false; print("  no line of kind %\n", WM_KINDS[k]); } }
+  bad += wt_check(all, "every kind of line has a fixture line");
+  refused := jv_get(d, 0, "refused");
+  for i: 0..<jv_len(d, refused) {
+    fn := jv_str(d, jv_at(d, refused, i), fixture[..]);
+    ok := fn >= 0 && !wm_apply(read, cast(string) fixture[0..<fn]).ok;
+    if !ok { print("  refused %: %\n", i + 1, cast(string) fixture[0..<ifx fn < 0 then 0 else fn]); }
+    bad += wt_check(ok, "a line the store must refuse is refused");
+  }
+  views := jv_get(d, 0, "views");
+  o1 := m[0].out[0..<65536]; o2 := m[0].out[65536..<131072];
+  for name: [3] string.["known", "changed", "open"] {
+    want := wt_str(m, d, views, name);
+    v1 := ifx name == "known" then wm_view_known(read, 4096, o1) else ifx name == "changed" then wm_view_changed(read, 4096, o1) else wm_view_open(read, 4096, o1);
+    v2 := ifx name == "known" then wm_view_known(written, 4096, o2) else ifx name == "changed" then wm_view_changed(written, 4096, o2) else wm_view_open(written, 4096, o2);
+    if v1 != want { print("  the % view:\n%", name, v1); }
+    bad += wt_check(v1 == want && v2 == want, "a view of the log read and of the log written is the fixture's");
+  }
+  why: [8] WfReason; hb: [64] u8;
+  v := wm_may_finish(read, why[..]);
+  bad += wt_check(v.ok == jv_bool(d, jv_get(d, 0, "may_finish")), "the finish rule's answer is the fixture's");
+  bad += wt_check(wm_hex(wm_tree(read), hb[..]) == wt_str(m, d, 0, "tree"), "the tree digest is the fixture's");
+  if bad == 0 { print("profile holds\n"); return 0; }
+  print("profile fails: %\n", bad);
+  return 1;
+}
+
+// ------------------------------------------------------------------ selftest
+
+wt_sh :: (m: [] WmTool, w: [] Wmf, cwd: string, command: string, check: string) -> WmPut {
+  cmd: [8192] u8; n := json_raw(cmd[..], json_raw(cmd[..], json_raw(cmd[..], json_raw(cmd[..], 0, "cd '"), cwd), "' && "), command);
+  argv := [3] string.["sh", "-c", cast(string) cmd[0..<ifx n < 0 then 0 else n]];
+  t0 := proc_now_ms();
+  r := proc_run(argv[..], 20000, m[0].out[..], m[0].err[..]);
+  return wmf_run(w, command, check, ifx r.started == 0 then r.status else 127, r.timed_out, proc_now_ms() - t0, cast(string) m[0].out[0..<r.out_n]);
+}
+
+wt_selftest :: (m: [] WmTool) -> int {
+  bad := 0; w := m[0].w[..]; s := w[0].s[..];
+  tb: [1024] u8; tmp := fs_temp("workmem-", tb[..]);
+  rb: [1100] u8; root := fs_join(tmp, "tree", rb[..]);
+  db: [1100] u8; dir := fs_join(tmp, "store", db[..]);
+  ab: [1200] u8; a_path := fs_join(root, "a.txt", ab[..]);
+  bb: [1200] u8; b_path := fs_join(root, "sub/b.txt", bb[..]);
+  sb: [1200] u8;
+  bad += wt_check(tmp.count > 0 && fs_mkdir(fs_join(root, "sub", sb[..])), "a scratch tree");
+  a1 := "one\ntwo\nthree\nfour\nfive\n"; a2 := "one\nTWO\nthree\nfour\nfive\n"; b1 := "alpha\nbeta\n";
+  bad += wt_check(fs_write(a_path, a1) && fs_write(b_path, b1), "two files");
+  hb: [64] u8;
+  bad += wt_check(wmf_dir("/home/me", "20261113-1", sb[..]) == "/home/me/.openagents/coder/sessions/20261113-1.workmem", "a session's folder");
+
+  bad += wt_check(wmf_open(w, dir, "run-1", root) && s[0].seq == 1 && s[0].run == "run-1" && s[0].root == root, "a new store: the folder, the header");
+  bad += wt_check(wmf_requirement(w, "line two is upper case").id == 0 && wmf_check(w, "upper", "grep -q TWO a.txt").id == 0, "a requirement and the task's check");
+  r := wmf_read(w, "a.txt", a1, 1, 3);
+  bad += wt_check(r.ok && !r.known && s[0].nfiles == 1 && s[0].files[0].lines == 5, "a read records the file's content and the range");
+  r = wmf_read(w, "a.txt", a1, 2, 3);
+  bad += wt_check(r.ok && r.known, "lines inside it: the store already has them");
+  bad += wt_check(wmf_recall(w, "a.txt", 2, 3, m[0].out[..]) == "two\nthree\n" && wmf_recall(w, "a.txt", 2, 4, m[0].out[..]) == "", "shown again from the store, with no read of the workspace; a wider range is not");
+  r = wmf_read(w, "sub/b.txt", b1, 1, 99);
+  bad += wt_check(r.ok && s[0].reads[r.id].to == 2, "a range past the end is the file's lines");
+  bad += wt_check(wmf_finding_at(w, "line two is lower case", -1, "a.txt", 2, 2).id == 0 && wmf_finding_at(w, "b has two lines", -1, "sub/b.txt", 1, 2).id == 1, "two guesses with their sources");
+  run := wt_sh(m, w, root, "grep -q TWO a.txt", "upper");
+  bad += wt_check(run.ok && s[0].runs[run.id].exit == 1, "the check runs for real and fails");
+  why: [8] WfReason;
+  v := wm_may_finish(s, why[..]);
+  bad += wt_check(!v.ok && v.count == 2 && why[0].why == WF_REQ_OPEN && why[1].why == WF_CHECK_FAILING, "may not finish: the requirement is open, the check fails");
+
+  // the edit, written to the workspace by the loop and told to the store
+  bad += wt_check(fs_write(a_path, a2), "the edit lands in the workspace");
+  c := wmf_change(w, "a.txt", a1, a2);
+  bad += wt_check(c.ok && c.stale_reads == 2 && c.stale_findings == 1 && s[0].changes[c.id].from == 2 && s[0].changes[c.id].to == 2, "the change: lines 2-2, two reads and one finding stale");
+  bad += wt_check(wm_view_stale(s, c.file, 4096, m[0].out[..]) == "Stale reads (the file changed after):\nR0 a.txt 1-3\nR1 a.txt 2-3\nStale findings (a source changed after):\nF0 guess: line two is lower case [a.txt:2-2]\n", "and which");
+  bad += wt_check(wmf_recall(w, "a.txt", 2, 3, m[0].out[..]) == "" && wmf_recall(w, "sub/b.txt", 1, 2, m[0].out[..]) == "alpha\nbeta\n", "the old lines are no longer shown as current; b's are");
+  n := wmf_text_get(w, s[0].changes[c.id].before, m[0].out[..]);
+  bad += wt_check(n == a1.count && cast(string) m[0].out[0..<n] == a1 && wmf_text_get(w, s[0].changes[c.id].after, m[0].out[..]) == a2.count, "both versions' texts are kept");
+  run = wt_sh(m, w, root, "grep -q TWO a.txt && echo found", "upper");
+  n = wmf_output(w, run.id, m[0].out[..]);
+  bad += wt_check(run.ok && s[0].runs[run.id].exit == 0 && n == 5 && cast(string) m[0].out[0..<n] == "found", "the check passes; its whole output is kept");
+  v = wm_may_finish(s, why[..]);
+  bad += wt_check(!v.ok && v.count == 1 && why[0].why == WF_REQ_OPEN, "still may not finish: the requirement is open");
+  ev := [2] WmEvid.[WmEvid.{kind = WF_CHANGE, id = c.id}, WmEvid.{kind = WF_RUN, id = run.id}];
+  bad += wt_check(wmf_status(w, 0, WF_DONE, ev[..]).ok && wm_may_finish(s, why[..]).ok, "done with the change and the passing run as evidence: may finish");
+  bad += wt_check(wmf_finding_at(w, "line two is upper case now", run.id, "a.txt", 2, 2).ok && s[0].findings[2].verified, "a verified finding names its run");
+  known := wm_view_known(s, 4096, m[0].out[..]);
+  bad += wt_check(known == "Findings (current):\nF1 guess: b has two lines [sub/b.txt:1-2]\nF2 verified by run 1: line two is upper case now [a.txt:2-2]\nReads (current):\nR2 sub/b.txt 1-2\n", "what I know that is still current");
+
+  // the process ends; another opens the folder
+  seq := s[0].seq; tree := wm_tree(s);
+  u := m[0].u[..]; t := u[0].s[..];
+  bad += wt_check(wmf_open(u, dir, "ignored", "ignored") && t[0].seq == seq && t[0].run == "run-1" && wm_same(wm_tree(t), tree), "the folder opened again is the same store");
+  bad += wt_check(wm_view_known(t, 4096, m[0].out[65536..<131072]) == known && wm_may_finish(t, why[..]).ok && t[0].read_known == 1, "with the same views and the same answer");
+  bad += wt_check(wmf_refresh(u).changed == 0 && t[0].seq == seq, "nothing changed in the workspace: a refresh writes nothing");
+  // something outside the store changes a file (a command, a person)
+  bad += wt_check(fs_write(a_path, a1), "the workspace changes behind the store");
+  f := wmf_refresh(u);
+  v = wm_may_finish(t, why[..]);
+  bad += wt_check(f.changed == 1 && !v.ok && v.count == 2 && why[0].why == WF_REQ_UNPROVEN && why[1].why == WF_CHECK_STALE, "a refresh sees it: the evidence no longer holds, the check must run again");
+  bad += wt_check(wm_view_open(t, 4096, m[0].out[..]) == "Open:\nrequirement 0: marked done, but no evidence holds on the tree as it is now: line two is upper case\ncheck upper: check passed before the tree changed; run it again: grep -q TWO a.txt\n", "what is open says so");
+  bad += wt_check(!wm_read_stale(t, 0) && wm_recall_ok(u, m), "the first reads are current again: the file is back at the content they read");
+  // a crash cuts the last line short
+  lb: [1200] u8; logp := wmf_log_path(u, lb[..]);
+  size := fs_size(logp);
+  bad += wt_check(fs_append(logp, "{\"kind\":\"read\",\"pa") && wmf_open(w, dir, "", "") && s[0].seq == t[0].seq && fs_size(logp) == size, "a line a crash cut short is cut off, and the store opens");
+  bad += wt_check(fs_append(logp, "{\"kind\":\"nope\"}\n") && !wmf_open(w, dir, "", ""), "a log with a line that is not this store's does not open");
+  bad += wt_check(fs_remove(tmp), "the scratch tree removed");
+  if bad == 0 { print("workmem selftest: ok\n"); return 0; }
+  print("workmem selftest: % failed\n", bad);
+  return 1;
+}
+wm_recall_ok :: (u: [] Wmf, m: [] WmTool) -> bool { return wmf_recall(u, "a.txt", 1, 3, m[0].out[..]) == "one\ntwo\nthree\n"; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; m: [1] WmTool;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: workmem show DIR [--budget N] | replay TRACE... | profile FILE | selftest"); return 2; }
+  cmd := args_at(a[..], 0);
+  if cmd == "show" { return wt_show(m[..], a[..]); }
+  if cmd == "replay" { return wt_replay(m[..], a[..]); }
+  if cmd == "profile" { return wt_profile(m[..], a[..]); }
+  if cmd == "selftest" { return wt_selftest(m[..]); }
+  tool_err("workmem: no command "); tool_errln(cmd);
+  return 2;
+}
