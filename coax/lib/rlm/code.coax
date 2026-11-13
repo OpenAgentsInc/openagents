@@ -75,7 +75,7 @@ RcEnv :: struct {
   intel: bool; coax: string; ix_state: int;
   ix: [1] Ix;
   decls: [RC_DECLS] IxDecl; uses: [RC_USES] IxUse; diags: [RC_DIAGS] IxDiag; fx: [RC_FX] IxEffect; via: [FS_PATH_MAX] u8;
-  xops: [12] int; asked: int; unanswered: int; stale_edits: int;
+  xops: [RC_XMOST] int; asked: int; unanswered: int; stale_edits: int;
   // --memory: the run store and its counts; read_turn: the turn each read row was first read at, plus one
   memory: bool;
   wm: [1] Wmf;
@@ -460,13 +460,14 @@ rc_drive :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, task: string, live: bool)
 //             passed on the files as they are
 
 RC_ENV_INTEL :: [8] string.["defines name:s", "uses name:s file:s=", "show name:s file:s=", "exports path:s", "check path:s", "explain code:s", "effects path:s proc:s=", "replace name:s seen_hash:s text:s file:s="];
-RC_ENV_MEMORY :: [4] string.["note text:s path:s= a:i=0 b:i=0", "known", "changed", "open_items"];
-RC_XOPS :: [12] string.["defines", "uses", "show", "exports", "check", "explain", "effects", "replace", "note", "known", "changed", "open_items"];
+RC_ENV_MEMORY :: [5] string.["note text:s path:s= a:i=0 b:i=0", "known", "changed", "open_items", "recall path:s a:i=0 b:i=0"];
+RC_XOPS :: [13] string.["defines", "uses", "show", "exports", "check", "explain", "effects", "replace", "note", "known", "changed", "open_items", "recall"];
+RC_XMOST :: 16;                  // room for the flags' functions
 RC_XINTEL :: 8;                  // the first of RC_XOPS are --intel's, the rest --memory's
 RC_XREPLACE :: 7;
 
 RC_INTEL_NOTE :: "\n\nThe Coax compiler answers questions about .coax files. Its answers are certain where a search is a guess, so ask it first:\n- defines(name): where name is declared: kind, file and lines\n- uses(name, file=\"\"): every place name is used, with the procedure or check it is written in; file says which declaration you mean when several files declare the name\n- show(name, file=\"\"): one declaration's lines numbered; its first line gives the file, the lines and their hash\n- exports(path): what a file declares\n- check(path): the file's diagnostics as a list of dicts with code, line, message and fix; an empty list is a clean file\n- explain(code): what a diagnostic code such as E0315 means\n- effects(path, proc=\"\"): what a procedure may do (foreign calls, traps, I/O), with a call path to each\n- replace(name, seen_hash, text, file=\"\"): replaces the whole declaration with text. seen_hash is the hash show(name) gave. If the declaration changed since you read it, nothing is written and you get its text and hash as they are now; else you get the new lines numbered, their hash and the file's diagnostics\nPrefer show(name) to lines for a declaration you can name, uses(name) to search for a symbol, and replace to edit when you rewrite a whole declaration. Call check(path) after every edit of a .coax file. When the compiler can't answer, the function returns text that starts \"no answer:\" and says why (check returns one dict with code \"no answer\"); use search and lines for that question. Each answer is bounded and says how many records it left out.";
-RC_MEMORY_NOTE :: "\n\nYou have a working memory. What you read, change and run is recorded in it as you go, with no action from you, and it outlives this conversation:\n- note(text, path=\"\", a=0, b=0): records a finding, with the lines of the file it is about; it stays current until that file changes\n- known(): what is still current: your findings, then the lines you have read\n- changed(): every edit so far and the lines it wrote\n- open_items(): what still stops FINAL\nWhen lines or show returns lines you already have at the file's current version, its first line says so: you are reading the same thing again. Call known() before you read again, and note what you learn when you learn it. A check the task names (a command it quotes in backticks) has passed only when its latest run exited 0 after your last edit. FINAL before that is refused and lists what is open. FINAL is also refused when a file has fewer checks (#test, #forall) or fewer #assert than when the run started, has lost its #authority line, or is a compatibility baseline that changed: put it back, or say why in FINAL so that a person can decide.";
+RC_MEMORY_NOTE :: "\n\nYou have a working memory. What you read, change and run is recorded in it as you go, with no action from you, and it outlives this conversation:\n- note(text, path=\"\", a=0, b=0): records a finding, with the lines of the file it is about; it stays current until that file changes\n- known(): what is still current: your findings, then the lines you have read\n- changed(): every edit so far and the lines it wrote\n- open_items(): what still stops FINAL\n- recall(path, a=0, b=0): lines a to b of a file, numbered, from the memory: the file is not read (the whole file when a and b are 0). When the memory does not have those lines as the file is now, it says so in a line that starts \"recall:\", and you read them with lines\nWhen lines or show returns lines you already have at the file's current version, its first line says so: you are reading the same thing again. Call known() before you read again, use recall for lines it lists, and note what you learn when you learn it. A check the task names (a command it quotes in backticks) has passed only when its latest run exited 0 after your last edit. FINAL before that is refused and lists what is open. FINAL is also refused when a file has fewer checks (#test, #forall) or fewer #assert than when the run started, has lost its #authority line, or is a compatibility baseline that changed: put it back, or say why in FINAL so that a person can decide.";
 
 RC_ANS :: 24000;                 // bytes of one compiler answer at most
 RC_VIEW :: 6000;                 // bytes of known(), changed() and open_items() at most
@@ -614,6 +615,7 @@ rc_memory_fn :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, q: RcReq) -> RcResult
     t := rc_open(env);
     return rc_ok(ifx t.count > 0 then rs_copy(r, t) else "nothing is open: FINAL will be accepted");
   }
+  if op == "recall" { return rc_ok(rc_recall(env, r, rc_rel(env, q.f[1]), rc_int(q.f[2]), rc_int(q.f[3]))); }
   // note(text, path, a, b)
   text := q.f[1]; path := q.f[2];
   if text.count == 0 { return rc_ok("note: give the finding's text"); }
@@ -636,6 +638,36 @@ rc_memory_fn :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, q: RcReq) -> RcResult
   at := r[0].nh;
   if !(rs_put(r, "noted F") && rs_put_int(r, p.id)) { r[0].nh = at; return rc_ok("noted"); }
   return rc_ok(rs_take(r, at));
+}
+
+// recall(path, a, b): lines a..b of the file as the memory has them, numbered as lines numbers
+// them, under a line that says where they come from. No file is read. When the memory does not
+// have every one of them at the file's current content: a line that starts "recall:" and says
+// what to do.
+rc_recall :: (env: [] RcEnv, r: [] Rs, path: string, a: int, b: int) -> string {
+  w := env[0].wm[..]; s := w[0].s[..];
+  f := wm_file(s, path);
+  if f < 0 || s[0].files[f].versions == 0 { return rs_cat(r, rs_cat(r, "recall: the memory has nothing of ", path), ": read it with lines(path, a, b)"); }
+  total := s[0].files[f].lines;
+  from := ifx a < 1 then 1 else a; to := ifx b < 1 || b > total then total else b;
+  at := r[0].nh;
+  if to < from {
+    ok := rs_put(r, "recall: ") && rs_put(r, path) && rs_put(r, " has ") && rs_put_int(r, total) && rs_put(r, " lines as the memory knows it: there are no lines ") && rs_put_int(r, from) && rs_put(r, " on");
+    if !ok { r[0].nh = at; return "recall: no such lines"; }
+    return rs_take(r, at);
+  }
+  t := wmf_recall_file(w, path, from, to);
+  if !t.ok {
+    ok := rs_put(r, "recall: the memory does not have lines ") && rs_put_int(r, from) && rs_put(r, "-") && rs_put_int(r, to) && rs_put(r, " of ") && rs_put(r, path) && rs_put(r, " as the file is now (it changed after they were read, or they were not all read). Read them with lines('") && rs_put(r, path) && rs_put(r, "', ") && rs_put_int(r, from) && rs_put(r, ", ") && rs_put_int(r, to) && rs_put(r, "); known() lists the lines the memory has.");
+    if !ok { r[0].nh = at; return "recall: the memory does not have those lines as the file is now: read them with lines(path, a, b)"; }
+    return rs_take(r, at);
+  }
+  c := rp_numbered(t.text, from, to, env[0].show[..], 0, RC_SHOW - 200);
+  n := c.n;
+  if c.cut { n = rp_put(env[0].show[..], n, "[cut: ask for lines "); n = rp_put_int(env[0].show[..], n, c.next); n = rp_put(env[0].show[..], n, " on]\n"); }
+  ok := rs_put(r, "[from memory, the file was not read: ") && rs_put(r, path) && rs_put(r, " ") && rs_put_int(r, from) && rs_put(r, "-") && rs_put_int(r, to) && rs_put(r, "]\n") && rs_put(r, cast(string) env[0].show[0..<n]);
+  if !ok { r[0].nh = at; return "recall: the run's memory is full"; }
+  return rs_take(r, at);
 }
 
 rc_intel_fn :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, q: RcReq) -> RcResult {
@@ -852,7 +884,7 @@ rc_extend :: (m: [] RcMem, intel: bool, coax: string, memory_dir: string) -> str
     if ws[0].nfindings + ws[0].nreads + ws[0].nchanges > 0 {
       at = r[0].nh;
       ok = rs_put(r, "Your working memory is from an earlier run in this repository: ") && rs_put_int(r, ws[0].nfindings) && rs_put(r, " findings, ") && rs_put_int(r, ws[0].nreads) && rs_put(r, " reads and ") && rs_put_int(r, ws[0].nchanges);
-      ok = ok && rs_put(r, " edits are recorded. known() lists what is still current, and changed() the edits.\n\n") && rs_put(r, RC_FIRST);
+      ok = ok && rs_put(r, " edits are recorded. known() lists what is still current, changed() the edits, and recall(path, a, b) gives lines it has without reading the file again.\n\n") && rs_put(r, RC_FIRST);
       if !ok { r[0].nh = at; return "the run's memory is full"; }
       st[0].first_tpl = rs_take(r, at);
     }
@@ -879,7 +911,7 @@ RcMem :: struct {
   snap_names: [2 * RC_NAMES] string; snap_vals: [2 * RC_NAMES] RsVal; snap_lists: [2 * RC_LISTS] RsList; snap_cells: [2 * RC_CELLS] RsVal;
   st: [1] RlmState; r: [1] Rs;
   none: [1] string;
-  more: [12] string;             // the flags' functions (rc_extend)
+  more: [RC_XMOST] string;       // the flags' functions (rc_extend)
   live: [1] RlmLive;
   env: [1] RcEnv;
   task: [1048576] u8;
@@ -1119,7 +1151,7 @@ rc_names :: (text: string, name: string) -> bool {
 #test "the flags' functions: each is in its prompt section, counted under its name, and no section has a brace the prompt would read as a key" {
   for spec, i: RC_ENV_INTEL { #assert rs_word(spec) == RC_XOPS[i] && rc_names(RC_INTEL_NOTE, rs_word(spec)); }
   for spec, i: RC_ENV_MEMORY { #assert rs_word(spec) == RC_XOPS[RC_XINTEL + i] && rc_names(RC_MEMORY_NOTE, rs_word(spec)); }
-  #assert RC_XOPS[RC_XREPLACE] == "replace" && RC_ENV_INTEL.count == RC_XINTEL && RC_ENV_INTEL.count + RC_ENV_MEMORY.count == RC_XOPS.count;
+  #assert RC_XOPS[RC_XREPLACE] == "replace" && RC_ENV_INTEL.count == RC_XINTEL && RC_ENV_INTEL.count + RC_ENV_MEMORY.count == RC_XOPS.count && RC_XOPS.count <= RC_XMOST;
   // none of them is a function the environment already has
   for x: RC_XOPS { for spec: RS_ENV { #assert rs_word(spec) != x; } }
   #assert rs_count_sub(RC_INTEL_NOTE, "{") == 0 && rs_count_sub(RC_MEMORY_NOTE, "{") == 0 && rs_count_sub(RC_SYSTEM, "{WORKER}") == 1;
@@ -1455,13 +1487,23 @@ rc_selftest_more :: (profile: string, coax: string) -> int {
   rc_drive(m[0].env[..], m[0].r[..], m[0].st[..], "Say again that these are shapes. The check is `sh test.sh`.", false);
   st = m[0].st[..]; env = m[0].env[..];
   tr = cast(string) st[0].trace[0..<st[0].ntr];
-  rc_expect_true(c[..], "a new run on a memory's folder is told what it holds, before its task", rc_has(st[0].msgs[0].text, "Your working memory is from an earlier run in this repository: 0 findings, 2 reads and 1 edits are recorded. known() lists what is still current, and changed() the edits.\n\nYour task:\n\nSay again"), st[0].msgs[0].text);
+  rc_expect_true(c[..], "a new run on a memory's folder is told what it holds, before its task", rc_has(st[0].msgs[0].text, "Your working memory is from an earlier run in this repository: 0 findings, 2 reads and 1 edits are recorded. known() lists what is still current, changed() the edits, and recall(path, a, b) gives lines it has without reading the file again.\n\nYour task:\n\nSay again"), st[0].msgs[0].text);
   rc_expect_true(c[..], "a new run on the same folder knows what the last one read, and says a read of it is a repeat", why == "" && rc_said(st, "Reads (current):\n") && rc_said(st, "shapes.coax 4-6\n") && rc_said(st, "0 [already read in an earlier run: you have these lines, and known() lists what you have]\n     4\tarea :: (s: Shape) -> int {\n"), tr);
   rc_expect_true(c[..], "a check that passed before an edit is open again", rc_said(st, "FINAL was refused (1 of at most 2 refusals)") && rc_said(st, "check sh test.sh: check passed before the tree changed; run it again: sh test.sh\n"), tr);
   rc_expect_true(c[..], "after two refusals FINAL is accepted, and the report says what is unproven", st[0].answer == "three" && env[0].finish_refused == 2 && st[0].turns == 3, tr);
   line = rc_report(m, ln[..], lbuf[..], 1000);
   rc_expect_true(c[..], "the report line: finishes refused and the unproven check", rc_has(line, "\"finishes_refused\":2,") && rc_has(line, "\"unproven\":[\"check sh test.sh: check passed before the tree changed; run it again: sh test.sh\"]}") && !rc_has(line, "\"intel\""), line);
   print("%\n", line);
+  // recall: a new run on the first memory's folder gets lines the earlier run read, and no file is read
+  roots5 := [2] string.["```repl\nprint(recall('main.coax', 2, 3))\nprint(recall('./main.coax', 4, 9))\nprint(recall('main.coax'))\nprint(recall('shapes.coax', 1, 1))\nprint(recall('clock.coax', 1, 2))\nprint(recall('main.coax', 9, 12))\n```", "FINAL(recalled)"];
+  why = rc_scripted_more(m, RC_LIMITS, cwd, profile, roots5[..], false, "", mem1);
+  rc_drive(m[0].env[..], m[0].r[..], m[0].st[..], "Say what main.coax loads.", false);
+  st = m[0].st[..]; env = m[0].env[..];
+  tr = cast(string) st[0].trace[0..<st[0].ntr];
+  rc_expect_true(c[..], "recall on a memory opened again: the lines an earlier run read, numbered, under a line that says no file was read", why == "" && rc_said(st, "REPL output:\n[from memory, the file was not read: main.coax 2-3]\n     2\t#load \"clock.coax\";\n     3\t#load \"part.coax\";\n\n"), tr);
+  rc_expect_true(c[..], "recall of lines the memory has only in part, of a file that changed since, of a file never read, and past the end: each says so and what to do", rc_said(st, "\nrecall: the memory does not have lines 4-6 of main.coax as the file is now (it changed after they were read, or they were not all read). Read them with lines('main.coax', 4, 6); known() lists the lines the memory has.\nrecall: the memory does not have lines 1-6 of main.coax as the file is now") && rc_said(st, "\nrecall: the memory does not have lines 1-1 of shapes.coax as the file is now") && rc_said(st, "\nrecall: the memory has nothing of clock.coax: read it with lines(path, a, b)\nrecall: main.coax has 6 lines as the memory knows it: there are no lines 9 on\n"), tr);
+  line = rc_report(m, ln[..], lbuf[..], 1000);
+  rc_expect_true(c[..], "recall is counted in the report, and the run made no read: no read or lines effect, no read row", st[0].answer == "recalled" && env[0].ops[1] == 0 && env[0].ops[2] == 0 && env[0].mem_reads == 0 && env[0].xops[12] == 6 && !rc_has(tr, "--- effect lines(") && !rc_has(tr, "--- effect read(") && rc_has(tr, "--- effect recall(main.coax, 2, 3) -> ") && rc_has(line, "\"open_items\":0,\"recall\":6,\"unproven\":[]}"), line);
   // the run may not weaken what checks it: a command deletes a #test in a file the run never read (its baseline is git's)
   roots3 := [3] string.["```repl\nr = sh(\"sed -i '/#test/d' shapes.coax\")\nprint(r['exit'])\nFINAL('one')\n```", "FINAL(two)", "FINAL(three)"];
   why = rc_scripted_more(m, RC_LIMITS, cwd, profile, roots3[..], false, "", mem3);

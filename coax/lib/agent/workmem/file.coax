@@ -20,8 +20,8 @@
 // finish rule refuses a run that weakened a check, an #authority line or a
 // compatibility baseline). The loop gives it with wmf_baseline (git.coax
 // does, in a checkout); a file with none given has the content this process
-// first knew for it: what the folder had when it was opened, or the first
-// content given here. Baselines are this process's and are not in the log.
+// first knew for it: what the workspace had when the run started (wmf_start,
+// for a folder opened again), or the first content given here. Baselines are this process's and are not in the log.
 // wmf_may_finish and wmf_view_open count each changed file then and now
 // (weak.coax) and ask the rule.
 //
@@ -166,14 +166,25 @@ wmf_read :: (w: [] Wmf, path: string, text: string, from: int, to: int) -> WmPut
 // workspace: for showing the model again what it has already read. "" when
 // the store has not seen all of those lines at the file's current content.
 wmf_recall :: (w: [] Wmf, path: string, from: int, to: int, out: [] u8) -> string {
-  s := w[0].s[..]; f := wm_file(s, path);
-  if !wm_seen_file(s, f, from, to) { return ""; }
-  n := wmf_text_get(w, s[0].files[f].hash, w[0].text[..]);
-  if n < 0 { return ""; }
-  part := wm_lines_of(cast(string) w[0].text[0..<n], from, to);
+  t := wmf_recall_file(w, path, from, to);
+  if !t.ok { return ""; }
+  part := wm_lines_of(t.text, from, to);
   if part.count > out.count { return ""; }
   for c, i: part { out[i] = c; }
   return cast(string) out[0..<part.count];
+}
+
+// The same question, answered with the file's whole text as the store has it
+// (in w.text, until the next call here): for a caller that numbers the lines
+// itself. ok is false when the store has not seen all of lines from..to at
+// the file's current content.
+WmfText :: struct { ok: bool; text: string; }
+wmf_recall_file :: (w: [] Wmf, path: string, from: int, to: int) -> WmfText {
+  s := w[0].s[..]; f := wm_file(s, path);
+  if !wm_seen_file(s, f, from, to) { return WmfText.{}; }
+  n := wmf_text_get(w, s[0].files[f].hash, w[0].text[..]);
+  if n < 0 { return WmfText.{}; }
+  return WmfText.{ok = true, text = cast(string) w[0].text[0..<n]};
 }
 
 // An edit: the file's content went from before to after. Both texts are
@@ -235,6 +246,18 @@ wmf_refresh :: (w: [] Wmf) -> WmfRefresh {
 }
 
 // ------------------------------------------------------------------ baselines and the weakened rule
+
+// A run starts on this folder: looks at every file the store knows
+// (wmf_refresh), so what changed between runs is stale now and not later,
+// and takes each file's content now as its baseline. Call it after wmf_open
+// (git.coax wmg_start does).
+wmf_start :: (w: [] Wmf) -> WmfRefresh {
+  r := wmf_refresh(w);
+  for f: 0..<w[0].s[0].nfiles {
+    if w[0].s[0].files[f].versions > 0 { w[0].base[f] = w[0].s[0].files[f].hash; w[0].base_set[f] = WMF_BASE_FIRST; }
+  }
+  return r;
+}
 
 // The file's content in the workspace now, into w.text: its length (0 for a
 // file that is gone), or -1 when it can't be read (or is over WMF_TEXT).

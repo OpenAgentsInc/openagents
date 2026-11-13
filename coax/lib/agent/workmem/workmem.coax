@@ -372,6 +372,9 @@ wt_selftest_weak :: (m: [] WmTool) -> int {
   // the folder opened again: the run starts from what it holds
   u := m[0].u[..];
   bad += wt_check(wmf_open(u, dir, "", "") && wmf_may_finish(u, why[..]).ok && fs_write(rule, WT_RULE_ONE) && wmf_refresh(u).changed == 1 && !wmf_may_finish(u, why[..]).ok && why[0].why == WF_WEAK_CHECKS, "opened again, the content the folder holds is the baseline of the new run");
+  bad += wt_check(fs_write(rule, WT_RULE) && wmf_refresh(u).changed == 1 && wmf_recall_file(u, "rule.coax", 2, 3).ok && wmf_recall_file(u, "rule.coax", 2, 3).text == WT_RULE && !wmf_recall_file(u, "wire.surface", 1, 1).ok && !wmf_recall_file(u, "nope.coax", 1, 1).ok, "the whole text of a file whose lines the store has, for a caller that numbers them; not of one it has not read");
+  bad += wt_check(fs_write(rule, WT_RULE_BARE) && wmf_open(u, dir, "", "") && wmf_recall(u, "rule.coax", 1, 5, m[0].out[..]) == WT_RULE && !wmg_start(u, g) && wmf_recall(u, "rule.coax", 1, 5, m[0].out[..]) == "", "a file changed between runs: the run's start looks at it, and its old lines are no longer recalled as current");
+  bad += wt_check(wmf_may_finish(u, why[..]).ok && wmf_view_open(u, 4096, m[0].out[..]) == "", "and the #authority line it lost before the run started is not the run's: its baseline is its content at the start");
   bad += wt_check(fs_write(rule, WT_RULE), "the rule file as it was");
 
   // in a checkout: git gives the baseline of files the run never read

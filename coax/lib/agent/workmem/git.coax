@@ -5,9 +5,11 @@
 // first time the loop reads or writes it, and a shell command (`sed -i`) can
 // change a file the run never read. Git knows:
 //
-//   wmg_start(w, g)      when the run starts, after wmf_open: the commit the
-//                        workspace is at, and, for each file that already
-//                        differs from it, its content now as its baseline
+//   wmg_start(w, g)      when the run starts, after wmf_open: every file the
+//                        store knows is looked at (wmf_start); then the
+//                        commit the workspace is at, and, for each file that
+//                        already differs from it, its content now as its
+//                        baseline
 //   wmg_refresh(w, g)    before the rule is asked: every file `git diff
 //                        --name-status START` reports gets `git show
 //                        START:PATH` as its baseline (a file added since has
@@ -15,8 +17,8 @@
 //                        store knows
 //
 // then file.coax wmf_may_finish and wmf_view_open. Outside a checkout (or in
-// one with no commit yet) wmg_start says false, wmg_refresh is wmf_refresh,
-// and a file's baseline is the first content the store saw.
+// one with no commit yet) wmg_start is wmf_start and says false, wmg_refresh
+// is wmf_refresh, and a file's baseline is the first content the store saw.
 //
 // Not seen: a file git does not track that a command changed before the
 // store saw it, a file over 4 MB, and a path git quotes (a quote, a
@@ -42,6 +44,7 @@ WmGit :: struct {
 // (and g.on false) when the workspace is not in a git checkout with a commit.
 wmg_start :: (w: [] Wmf, g: [] WmGit) -> bool {
   g[0].on = false; g[0].start = ""; g[0].given = 0; g[0].skipped = 0;
+  began := wmf_start(w);
   root := w[0].s[0].root;
   if root.count == 0 { return false; }
   argv := [6] string.["git", "-C", root, "rev-parse", "--verify", "HEAD"];

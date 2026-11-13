@@ -160,7 +160,10 @@ sandbox profile, as the tool does; `replace` writes through Microcoder's exact e
 `--memory` (`[--session ID | --memory-dir DIR]`): the run store of `coax/lib/agent/workmem/`, in
 `~/.openagents/coder/sessions/ID.workmem` (a new session each run unless `--session` names one;
 a folder made for another workspace is refused; one opened again says what it holds in a line
-before the task). The driver records with no action from the model:
+before the task, and names `known`, `changed` and `recall`). When a run starts on a folder opened
+again, the store looks at every file it knows, so lines of a file that changed between runs are
+stale from the start and `recall` does not return them. The driver records with no action from the
+model:
 `read`, `lines` and `show` as reads, `edit`, `replace_lines`, `write` and `replace` as changes, and
 each `sh` as a run (the store looks at its files again first, so a file the command changed is seen).
 
@@ -170,7 +173,13 @@ each `sh` as a run (the store looks at its files again first, so a file the comm
 | `known()` | findings, then reads, that are still current (6,000 bytes at most; the view says how many rows it left out) |
 | `changed()` | every edit and the lines it wrote |
 | `open_items()` | what stops `FINAL` now |
+| `recall(path, a=0, b=0)` | lines a to b of a file, numbered, from the store, under a line `[from memory, the file was not read: PATH A-B]`; the whole file when a and b are 0. No file is read. When the store does not have every one of those lines at the file's current content, a line that starts `recall:` says so and names the `lines` call to make |
 
+- **`recall` (#13444).** `known()` lists ranges, not text, so a run on a memory opened again used
+  to read the files again. `recall` returns the text of a range the store has. It counts against
+  the 512 reads a run and is counted in the report, but it is not a read of the file: no read row
+  is made and the turn's read count does not rise. The store's idea of a file is as of its last
+  look: the run's start, each edit, and each `sh`.
 - **Repeat reads.** `lines` and `show` of lines the store already has at the file's current content
   return them under a first line `[already read at turn N: ...]`. `read` returns the file's text
   and nothing else (its value is often written back), and is counted. Each turn's note gains a line

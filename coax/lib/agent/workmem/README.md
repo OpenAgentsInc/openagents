@@ -140,7 +140,8 @@ read. Baselines belong to the process and are not in the log, so
   gives each file it reports the content `git show START:PATH` has (a file
   added since has none).
 - Otherwise a file's baseline is the first content this process knew for it:
-  what the folder held when it was opened, or the first content the loop gave.
+  what the workspace had when the run started (`wmf_start`, which `wmg_start`
+  calls, for a folder opened again), or the first content the loop gave.
 - `wmf_baseline(w, path, text)` sets one directly.
 
 Not seen: a file git does not track that a command changed before the store
@@ -280,9 +281,9 @@ runs. It gives them to `file.coax`:
 
 | When the loop | It calls | And uses |
 | --- | --- | --- |
-| starts a run | `wmf_open(w, dir, run, root)`, then `wmg_start(w, g)`; `wmf_requirement`, `wmf_check` for the task's rows | `wmg_start` is false outside a checkout, and nothing else changes |
+| starts a run | `wmf_open(w, dir, run, root)`, then `wmg_start(w, g)`; `wmf_requirement`, `wmf_check` for the task's rows | `wmg_start` looks at every file a reopened folder knows (`wmf_start`), so what changed between runs is stale from the start. It is false outside a checkout, and nothing else changes |
 | reads a file or a range | `wmf_read(w, path, whole_text, from, to)` | `known`: the model already had these lines |
-| wants to show lines again | `wmf_recall(w, path, from, to, out)` | the lines from the store, with no read; `""` when they are not current |
+| wants to show lines again | `wmf_recall(w, path, from, to, out)`, or `wmf_recall_file(w, path, from, to)` for the whole text to number | the lines from the store, with no read; `""` (`ok` false) when they are not current |
 | applies an edit | `wmf_change(w, path, before_text, after_text)` | the row's `from` and `to`; `stale_reads`, `stale_findings`, `wm_view_stale` |
 | runs a command | `wmf_run(w, command, check, exit, timed_out, ms, output)`, then `wmf_refresh(w)` | the run row's number, for a verified finding or as evidence |
 | records a note | `wmf_finding_at(w, text, run, path, from, to)`; `run` is -1 for a guess | |
@@ -306,6 +307,7 @@ The RLM coder is wired (`coax/lib/rlm/README.md`, "Compiler questions and
 working memory"): `read`, `lines` and `show` call `wmf_read`; `edit`,
 `replace_lines`, `write` and `replace` call `wmf_change`; `sh` calls
 `wmf_run`; `note`, `known`, `changed` and `open_items` reach the findings
-and views; the root's `FINAL` meets `wmf_may_finish`.
+and views; `recall` is `wmf_recall_file`; the root's `FINAL` meets
+`wmf_may_finish`.
 For Microcoder: the state rendered each step (`state.coax`) gains the views,
 and `finished: true` is refused while `wmf_may_finish` says no.
