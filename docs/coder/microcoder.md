@@ -229,9 +229,11 @@ else the worker's own. After `ended`, the worker writes one line
   left out. When the compiler can't answer, the result starts `no answer:`
   with exit 1 and the model uses `git grep` and `view`.
 - A view ends with the file's hash, and `show` gives a declaration's. An edit
-  may name that hash in `seen`; when the file is no longer what was read, the
-  edit is refused as stale, nothing is written, and the result has the lines
-  as they are now.
+  may name that hash in `seen` (12 hex digits at least); when the file is no
+  longer what was read, the edit is refused as stale, nothing is written, and
+  the result has the lines as they are now. An edit may also name the hash
+  the file had when its action began, so several edits of one file in one
+  action all name the hash that was read.
 - An edit with `name` replaces that whole declaration (`ix_replace`).
 - An applied edit of a `.coax` file returns the lines it wrote, the file's new
   hash and its check.
@@ -245,6 +247,10 @@ else the worker's own. After `ended`, the worker writes one line
   It is never compacted.
 - A view of lines the store already has, unchanged, starts with a line that
   says so.
+- After 12 steps with no change in the store, one note tells the model to
+  make its first edit. Without it, both arms read for 45 to 52 steps on
+  #13435 and edited nothing; with it, the first edit came at step 13
+  (docs/research/2026-11-13-compiler-aware-runs.md).
 - The finish rule (`workmem/finish.coax`): `finished` is refused while a check
   the task quotes in backticks has not passed on the files as they are, or
   while the run has weakened what checks it (fewer `#test`, `#forall` or
