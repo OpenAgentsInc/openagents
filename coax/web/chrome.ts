@@ -135,6 +135,46 @@ export function launch(profile: string, flags: string[] = []): ReturnType<typeof
 // it (2026-10-31: a release rolled back because its Chrome didn't start).
 export const CANNOT_RUN = 75
 
+// On Linux the first WebGPU device a fresh headless Chrome makes is lost: its GPU process starts
+// again (Dawn says "A valid external Instance reference no longer exists") and that first page
+// finds no adapter, so it shows "no WebGPU" (coderos-4080, Chrome 152, Vulkan). warmGpu makes one
+// device on a blank page of its own (a secure context) and draws one cleared frame, until a device
+// stays (at most 4 tries), then closes the tab, so the check's first page starts on a GPU that holds.
+export async function warmGpu(port: string, tries = 4): Promise<boolean> {
+  const page = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("<!doctype html>", { headers: { "content-type": "text/html" } }) })
+  let ws: WebSocket | null = null, target = ""
+  try {
+    const t = await (await fetch(`http://127.0.0.1:${port}/json/new?http://127.0.0.1:${page.port}/`, { method: "PUT", signal: AbortSignal.timeout(5000) })).json()
+    target = t.id
+    ws = new WebSocket(t.webSocketDebuggerUrl)
+    await new Promise((r, j) => { ws!.addEventListener("open", r, { once: true }); ws!.addEventListener("error", j, { once: true }) })
+    let id = 0
+    const pending = new Map<number, (v: any) => void>()
+    ws.addEventListener("message", (e) => { const m = JSON.parse(String(e.data)); if (m.id) { pending.get(m.id)?.(m); pending.delete(m.id) } })
+    const evaluate = (expression: string) => new Promise<any>((r) => { pending.set(++id, r); ws!.send(JSON.stringify({ id, method: "Runtime.evaluate", params: { expression, awaitPromise: true, returnByValue: true } })) })
+    const once = `(async () => {
+      if (!isSecureContext) return "insecure"
+      const a = await navigator.gpu?.requestAdapter(); if (!a) return "no adapter"
+      const d = await a.requestDevice(), c = new OffscreenCanvas(4, 4).getContext("webgpu")
+      c.configure({ device: d, format: "bgra8unorm" })
+      const e = d.createCommandEncoder()
+      e.beginRenderPass({ colorAttachments: [{ view: c.getCurrentTexture().createView(), loadOp: "clear", storeOp: "store" }] }).end()
+      d.queue.submit([e.finish()]); await d.queue.onSubmittedWorkDone()
+      const held = await Promise.race([d.lost.then(() => "lost"), new Promise((r) => setTimeout(() => r("ok"), 300))])
+      d.destroy(); return held
+    })().catch((e) => "threw " + e.message)`
+    for (let k = 0; k < tries; k++) {
+      await Bun.sleep(k ? 500 : 200)
+      if ((await evaluate(once)).result?.result?.value === "ok") return true
+    }
+    return false
+  } catch { return false } finally {
+    try { ws?.close() } catch {}
+    if (target) await fetch(`http://127.0.0.1:${port}/json/close/${target}`).catch(() => {})
+    page.stop(true)
+  }
+}
+
 // launch(), waited for: up to `tries` Chromes, each on a fresh profile, until
 // one says its DevTools port and answers on it. One that doesn't is killed
 // (only that one: its own pid) with its profile, and another started. When
@@ -151,7 +191,9 @@ export async function startChrome(prefix: string, flags: string[] = [], tries = 
     const until = Date.now() + wait
     while (Date.now() < until && proc.exitCode === null) {
       if (/^\d+$/.test(port())) {
-        try { if ((await fetch(`http://127.0.0.1:${port()}/json/version`, { signal: AbortSignal.timeout(2000) })).ok) return { proc, profile, port: port() } } catch {}
+        let up = false
+        try { up = (await fetch(`http://127.0.0.1:${port()}/json/version`, { signal: AbortSignal.timeout(2000) })).ok } catch {}
+        if (up) { if (process.platform !== "darwin") await warmGpu(port()); return { proc, profile, port: port() } }
       }
       await Bun.sleep(50)
     }
