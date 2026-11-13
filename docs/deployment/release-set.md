@@ -19,7 +19,7 @@ only after the ones before it:
 | Step | What runs | It stops when |
 | --- | --- | --- |
 | The API | `coax/web/api/deploy.sh` (staging, then production). Skipped when the API already runs the commit | The deploy fails, or the API's health names another build |
-| The rooms, on staging | The protocol bots play staging's shard as it is. `coax/web/room/vm-deploy.sh deploy --staging` puts the new room there. The bots play it again | The canary fails (below). Staging goes back to its room |
+| The rooms, on staging | The protocol bots play staging's shard as it is (not when that room speaks a wire version behind the bots': it would refuse them all). `coax/web/room/vm-deploy.sh deploy --staging` puts the new room there. The bots play it again | The canary fails (below). Staging goes back to its room |
 | The rooms, in production | `vm-deploy.sh canary K --release NAME` puts the release the set staged on one shard. Its windows are read beside the other shards' for the canary's time. Then `vm-deploy.sh deploy --release NAME` moves the rest | The canary fails, or staging no longer runs `NAME` (below). The canary shard goes back; the other shards never moved |
 | The page | `coax/web/release.sh --ref COMMIT` | A live shard's pins (engine, rules, world) are not the page's, or the shard does not speak the page's wire version. A page ahead of its rooms strands every player (#13163, #13387) |
 

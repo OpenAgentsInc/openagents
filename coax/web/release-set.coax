@@ -397,8 +397,16 @@ rl_ship_locked :: (a: [] Args, e: RlEnv, head: string, version: string, lock: st
   db: [1200] u8; fa: [1] Rl; rl_s(fa[..], rl_dir(e, db[..])); rl_s(fa[..], "/"); rl_s(fa[..], version); rl_s(fa[..], ".others.txt");
   fb: [1] Rl; rl_s(fb[..], rl_dir(e, db[..])); rl_s(fb[..], "/"); rl_s(fb[..], version); rl_s(fb[..], ".canary.txt");
   others: [1] RsShard; canary: [1] RsShard;
-  print("  rooms: the bots on staging's shard as it is (% players, % s): the others' numbers\n", players, seconds);
-  if !rl_bots(st_env, players, seconds, rl_text(fa[..]), others[..]) { others[0] = RsShard.{}; print("  rooms: the bots left no record of the shard as it is: the canary is judged by itself\n"); }
+  // The room staging runs now may be a wire version behind this checkout's bots (a release that raises
+  // the wire): it would refuse every one of them, so no numbers are taken before (#13398).
+  sp: [1] RsPins; sb: [32768] u8;
+  if rl_pins(rl_vitals(st_env, 1, sb[..]), sp[..]) && !rs_wire_speaks(WIRE_VERSION, sp[0].wire_lo, sp[0].wire_hi) {
+    others[0] = RsShard.{};
+    print("  rooms: staging's room speaks wire % to %, and this release's bots speak %: no bots before the new room; the canary is judged by itself\n", sp[0].wire_lo, sp[0].wire_hi, WIRE_VERSION);
+  } else {
+    print("  rooms: the bots on staging's shard as it is (% players, % s): the others' numbers\n", players, seconds);
+    if !rl_bots(st_env, players, seconds, rl_text(fa[..]), others[..]) { others[0] = RsShard.{}; print("  rooms: the bots left no record of the shard as it is: the canary is judged by itself\n"); }
+  }
   print("  rooms: staging takes the new room%\n", ifx seed.count > 0 then " (a seeded bad build)" else "");
   dr := [7] string.["coax/web/room/vm-deploy.sh", "deploy", "--staging", "--lock", lock, "--seed-tick-us", seed];
   st := rl_run(ifx seed.count > 0 then dr[..] else dr[0..<5], 3600, out[..], got[..]);
