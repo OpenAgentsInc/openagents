@@ -16,13 +16,13 @@ API_C="api.c analytics.c admin.c player.c rooms.c npc.c room.c private.c drops.c
   anime.c seats.c nostr.c email.c jobs.c relay.c verse_packs.c worldbuilder.c auth.c auth-seal-unit.c
   lnaddr.c lnaddr-unit.c agents.c agent-wire-unit.c agent-attest-unit.c auth-recover.c auth-life.c
   auth-recover-crypto-unit.c auth-device.c auth-device-crypto-unit.c push.c passkeys.c passkey-verify-unit.c
-  wallet.c wallet-vault-unit.c ticket-sign-unit.c service.c worlds.c splice-world-unit.c"
+  wallet.c wallet-vault-unit.c ticket-sign-unit.c service.c worlds.c splice-world-unit.c scripts.c script-store-unit.c"
 API_COAX="npc-personas anime-director-policy seat-policy progress-policy item-policy moderation-policy
   character-policy worldbuilder-policy auth-policy auth-recover-policy auth-life-policy
   auth-device-policy passkey-policy pay/wallet-policy:wallet-policy service-policy service-wire realm-wire auth-push seat-wire jobs-wire email-wire packs-wire world-policy"
 API_COAX_WRAPPED="mesh-gemini auth-seal pay/lnaddr-policy:lnaddr-policy agent-wire agent-attest auth-recover-crypto
   auth-device-crypto passkey-verify pay/wallet-vault-store:wallet-vault ticket-sign
-  metaverse/splice/world-api:splice-world"
+  metaverse/splice/world-api:splice-world script-store"
 api_sources() {
   local a="$1" work="$2" coax="$3" root u src name
   root="$(cd "$a/../../.." && pwd)"

@@ -27,6 +27,8 @@
 //                                                and licence, then an upload is opened in the private bucket for exactly that
 //                                                many bytes at PREFIX/worlds/<id>/files/SHA256 (drops.c), and its address is
 //                                                answered; `kept` when the bucket has the file already
+//   .../api/worlds/<id>/scripts...               the world's realm scripts: scripts.c (#13467). A publish here takes
+//        POST /api/worlds/<id>?confirm=HASH,HASH    the hashes of the scripts the publisher confirms (409 lists them)
 //   POST /api/worlds/<id>/assets/done            the same ask again, once the file is sent: the object is read back, its size and
 //                                                SHA-256 are checked against its name (a wrong object is deleted), and it is
 //                                                imported into dev's pack. The answer is the list with what it did, or 422 in words
@@ -116,6 +118,7 @@ static bool run(PGconn *db, const char *sql, int n, const char *const *v) {
   return ok;
 }
 static void rollback(PGconn *db) { PQclear(PQexec(db, "ROLLBACK")); }
+void world_refuse(int fd, int status, const char *words) { refuse(fd, status, cs(words), -1); }
 // A world's import pack of this hash: malloc'd, its length in *n. "" names no pack: an empty one, *n 0. NULL when it can't be read.
 static char *pack_read(PGconn *db, const char *id, const char *hash, size_t *n) {
   *n = 0;
@@ -196,6 +199,28 @@ static bool world_shown(PGconn *db, const request *q, const char *id, const worl
   bool shown = ok && !hidden && spec;
   free(spec);
   return shown;
+}
+// A lane's content tables as text: the world's own, or the ones the build shipped with. malloc'd; NULL when they can't be made.
+static char *tables_of(const char *kind, const char *stored) {
+  char *out = strcmp(kind, "splice") ? NULL : malloc(WORLD_DOC + 1);
+  int64_t n = out ? splice_world_tables(cs(stored ? stored : ""), (coax_v_u8){(uint8_t *)out, WORLD_DOC}) : -1;
+  if (n < 0) { free(out); return NULL; }
+  out[n] = 0;
+  return out;
+}
+bool world_scripts_world(PGconn *db, const char *id, bool lock, char *tables[3]) {
+  world_row w;
+  if (tables) tables[0] = tables[1] = tables[2] = NULL;
+  if (!wr_world_ok(cs(id)) || !row_read(db, id, lock, &w)) return false;
+  // scripts run where a world's content tables have a scripts table: Splice's. A realm's world (#13422) names none.
+  bool ok = w.exists && !strcmp(w.kind, "splice") && wr_loads(cs(id), cs(w.kind));
+  if (ok && tables) {
+    tables[0] = tables_of(w.kind, w.dev_tables);
+    if (w.live_rev > 0) tables[1] = tables_of(w.kind, w.live_tables);
+    if (w.prev_rev > 0) tables[2] = tables_of(w.kind, w.prev_tables);
+  }
+  row_free(&w);
+  return ok;
 }
 
 // pins: the build that reads the revision answered (engine, rules, content, wire), so an answer names what it touched (#13437).
@@ -282,6 +307,15 @@ static void world_publish(const request *q, PGconn *db, const char *id, world_ro
   int64_t when = wr_when(what);
   int64_t v = wr_publish(when, base, w->dev_rev, w->live_from, pins[0], pins[1], pins[2], pins[3], has_live, w->live_pins[0], w->live_pins[1], w->live_pins[2], w->live_pins[3]);
   if (v != 0) { rollback(db); refuse(q->fd, (int)wr_publish_status(v), wr_publish_words(v), -1); return; }
+  if (!strcmp(w->kind, "splice")) {
+    // the scripts dev's rows name: one that is new, or does more than live's, needs the publisher's confirmation (#13467)
+    char *dev_t = tables_of(w->kind, w->dev_tables), *live_t = has_live ? tables_of(w->kind, w->live_tables) : NULL;
+    bool ok = dev_t && (!has_live || live_t);
+    if (!ok) { rollback(db); refuse(q->fd, 500, cs("not read"), -1); }
+    else if (!(ok = scripts_publish_ok(q, db, id, dev_t, live_t))) rollback(db);
+    free(dev_t); free(live_t);
+    if (!ok) return;
+  }
   bool keeps = wr_keeps(has_live, pins[0], pins[1], pins[2], pins[3], w->live_pins[0], w->live_pins[1], w->live_pins[2], w->live_pins[3]);
   size_t n = 0;
   char *doc = doc_of(w->kind, w->dev_doc, &n);
@@ -447,6 +481,14 @@ static void world_post(const request *q, PGconn *db, const char *id) {
     goto done;
   }
   out_doc[n[0]] = 0; did[n[1]] = 0; inv[n[2]] = 0; out_tables[n[6]] = 0;
+  if (n[6] > 0 && !strcmp(w.kind, "splice")) {
+    // the batch changed the content tables: a script row it newly names must name a module the world stores that is
+    // not switched off (script-policy.coax, #13467)
+    char *was = tables_of(w.kind, w.dev_tables), said[240];
+    bool read = was != NULL, ok = read && scripts_edit_ok(db, id, was, out_tables, said, sizeof said);
+    free(was);
+    if (!ok) { rollback(db); refuse(q->fd, read ? 422 : 500, cs(read ? said : "not read"), -1); goto done; }
+  }
   char dry[4] = "";
   if (api_query(q, "dry", dry, sizeof dry) && dry[0] == '1') {
     // a dry run: the world's own code carried it out in a copy; nothing is saved (#13436)
@@ -1023,6 +1065,12 @@ bool worlds_route(const request *q) {
     else if (get) files_get(q, fdb, id, project);
     else files_post(q, fdb, id, project, files_done);
     return true;
+  }
+  if (!strncmp(tail, "/scripts", 8) && (get || post) && wr_world_ok(cs(id))) {
+    // a world's realm scripts (#13467): scripts.c
+    PGconn *sdb = api_db();
+    if (!sdb) { refuse(q->fd, 503, cs("no database"), -1); return true; }
+    if (scripts_route(q, sdb, id, tail)) return true;
   }
   if ((!get && !post) || !wr_world_ok(cs(id)) || (*tail && strcmp(tail, "/events") && !content && !card && !assets && !pack && !done) || (*tail && !get && !assets && !done) || (done && !post)) { refuse(q->fd, 404, cs("not found"), -1); return true; }
   PGconn *db = api_db();

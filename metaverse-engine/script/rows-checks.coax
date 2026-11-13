@@ -29,3 +29,43 @@ RK_HASH :: "528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5";
   #assert srw_pick(rows[..], 2, 7) == 3 && srw_pick(rows[0..<0], 1, 1) == -1;
   #assert srw_drives(rows[2], 9, 7) && !srw_drives(rows[2], 9, 0) && !srw_drives(ScriptRow.{}, 0, 0);
 }
+// A content document with a scripts table between two others, as a world's tables hold it.
+RK_OTHER :: "628d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5";
+RK_DOC :: "aethyr.content.v1 demo 3\nreach 4000\ntable point id name:text x:cm z:cm\n1|Old oak|-1200|350\ntable scripts id name:text hash:text for:text\n1|pacer|528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5|kind 1\n3|guard|628d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5|who 2\ntable zone id name:text\n1|Gate\n";
+// RK_DOC with its first `was` replaced by `with`, into out.
+rk_swap :: (was: string, with: string, out: [] u8) -> string {
+  s := RK_DOC;
+  for a: 0..<s.count - was.count + 1 {
+    if s[a..<a + was.count] != was { continue; }
+    n := ct_put(out, 0, s[0..<a]); n = ct_put(out, n, with); n = ct_put(out, n, s[a + was.count..<s.count]);
+    return cast(string) out[0..<n];
+  }
+  return "";
+}
+#test "a scan reads every row of the scripts table; a document with no such table names none" {
+  d: [1] ContentDoc; rows: [SH_SCRIPTS] ScriptRow; bad: [2] int; o: [1024] u8;
+  #assert ct_read(d[..], RK_DOC) && srw_scan(d[..], rows[..], bad[..]) == 2 && bad[0] == 0 && bad[1] == SRW_OK;
+  #assert rows[0].ok && rows[0].slot == 0 && rows[0].by_kind && rows[0].n == 1 && cast(string) rows[0].name[0..<rows[0].name_n] == "pacer" && cast(string) rows[0].hash[..] == RK_HASH;
+  #assert rows[1].ok && rows[1].slot == 2 && !rows[1].by_kind && rows[1].n == 2 && cast(string) rows[1].hash[..] == RK_OTHER;
+  #assert srw_names(rows[0..<2], RK_HASH) && srw_names(rows[0..<2], RK_OTHER) && !srw_names(rows[0..<1], RK_OTHER) && !srw_names(rows[0..<0], RK_HASH) && !srw_names(rows[0..<2], "");
+  none := "aethyr.content.v1 demo 3\nreach 4000\ntable point id name:text x:cm z:cm\n1|Old oak|-1200|350\n";
+  #assert ct_read(d[..], none) && srw_scan(d[..], rows[..], bad[..]) == 0;
+  // a table with its head and no rows names none
+  #assert ct_read(d[..], rk_swap("1|pacer|528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5|kind 1\n3|guard|628d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5|who 2\n", "", o[..])) && srw_scan(d[..], rows[..], bad[..]) == 0;
+}
+#test "a scan refuses a scripts table of another shape, and a row that does not read, by its ID and why" {
+  d: [1] ContentDoc; rows: [SH_SCRIPTS] ScriptRow; bad: [2] int; o: [1024] u8;
+  shapes := [4] string.["table scripts id name:text hash:text", "table scripts id name:text hash:text for:int", "table scripts id name:text code:text for:text", "table scripts id hash:text name:text for:text"];
+  for shape: shapes {
+    text := rk_swap("table scripts id name:text hash:text for:text", shape, o[..]);
+    if shape == shapes[0] { text = "aethyr.content.v1 demo 3\nreach 4000\ntable scripts id name:text hash:text\n1|pacer|x\n"; }
+    if shape == shapes[1] { text = "aethyr.content.v1 demo 3\nreach 4000\ntable scripts id name:text hash:text for:int\n1|pacer|x|1\n"; }
+    #assert ct_read(d[..], text) && srw_scan(d[..], rows[..], bad[..]) == SRW_SCAN_TABLE;
+  }
+  #assert ct_read(d[..], rk_swap("3|guard", "9|guard", o[..])) && srw_scan(d[..], rows[..], bad[..]) == SRW_SCAN_ROW && bad[0] == 9 && bad[1] == SRW_BAD_ID;
+  #assert ct_read(d[..], rk_swap("3|guard", "3|Guard", o[..])) && srw_scan(d[..], rows[..], bad[..]) == SRW_SCAN_ROW && bad[0] == 3 && bad[1] == SRW_BAD_NAME;
+  #assert ct_read(d[..], rk_swap("|528d", "|528D", o[..])) && srw_scan(d[..], rows[..], bad[..]) == SRW_SCAN_ROW && bad[0] == 1 && bad[1] == SRW_BAD_HASH;
+  #assert ct_read(d[..], rk_swap("who 2", "all", o[..])) && srw_scan(d[..], rows[..], bad[..]) == SRW_SCAN_ROW && bad[0] == 3 && bad[1] == SRW_BAD_FOR;
+  // more rows than the caller has room for: the first row past it is refused by its ID
+  #assert ct_read(d[..], RK_DOC) && srw_scan(d[..], rows[0..<1], bad[..]) == SRW_SCAN_ROW && bad[0] == 3 && bad[1] == SRW_BAD_ID;
+}

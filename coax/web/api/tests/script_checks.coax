@@ -1,0 +1,228 @@
+// A world's realm scripts through the API's routes (GitHub #13467; docs/protocol/world-scripts-v1.md),
+// against test.sh's throwaway Postgres and API: who may store, a module stored only when the check
+// passes with a manifest written from its bytes, the bytes served by hash, an edit that may name only a
+// stored module that is not switched off, a publish that asks about a new or growing script and goes on
+// once it is confirmed, the world's room for modules and its collection, reports, an admin's switch-off,
+// and a source compiled by the job (when SCRIPT_JOB_READY says this machine has the Wasm toolchain).
+// Every body is read through the codec the API writes it with (metaverse-engine/script/store.coax,
+// manifest.coax; a world's state through metaverse-engine/editor/world-edit.coax).
+//   API=... PGURL=... PSQL=... SIGN=... ADMIN_KEY=... OTHER_KEY=... coax/web/tool.sh coax/web/api/tests/script_checks.coax
+// tool.sh: stack-gib 1
+#load "api_harness.coax";
+#load "../../../../metaverse-engine/editor/world-edit.coax";
+#load "../../../../metaverse-engine/script/store.coax";
+#load "../../../../metaverse-engine/script/wasm-make.coax";
+
+SK_PATH :: "/api/worlds/splice";
+Sk :: struct {
+  doc: [200000] u8; did: [WE_BATCH_BODY] u8; scratch: [400000] u8; st: WorldState;
+  a: [2048] u8; a_n: int; b: [2048] u8; b_n: int; c: [2048] u8; c_n: int;      // three modules
+  ha: [64] u8; hb: [64] u8; hc: [64] u8;
+  words: [SS_WORDS] u8; detail: [SS_DETAIL] u8; r: [1] SsRefusal; nodes: [2048] JvNode; d: [1] Jv;
+  mf: [1] ScriptManifest; why: [SS_WHY] u8; world: [32] u8; source: [70000] u8;
+}
+// A call, signed by `key` ("" for nobody): its status. extra: one more header ("" for none).
+sk_call :: (t: [] Ap, key: string, method: string, path: string, body: string, extra: string) -> int {
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], path);
+  sig: [4096] u8; auth: [1] Sb; h: [3] string; n := 0;
+  h[n] = "Content-Type: application/octet-stream"; n += 1;
+  if key != "" {
+    s := ap_nostr(t, key, method, sb_text(url[..]), body, method == "POST", sig[..]);
+    sb(auth[..], "Authorization: Nostr "); sb(auth[..], s);
+    h[n] = sb_text(auth[..]); n += 1;
+  }
+  if extra != "" { h[n] = extra; n += 1; }
+  return ap_call(t, method, path, body, h[0..<n]);
+}
+sk_path :: (p: [] Sb, tail: string, more: string) -> string { sb_clear(p); sb(p, SK_PATH); sb(p, tail); sb(p, more); return sb_text(p); }
+// The answer's refusal: its code (SSC_NONE when the answer is none), the rest in k.
+sk_refusal :: (t: [] Ap, k: [] Sk) -> int {
+  return ifx ss_refusal_read(ap_body(t), k[0].r[..], k[0].words[..], k[0].detail[..], k[0].nodes[..]) then k[0].r[0].code else SSC_NONE;
+}
+sk_words :: (k: [] Sk) -> string { return cast(string) k[0].words[0..<k[0].r[0].words_n]; }
+// The world's plain refusal ({"error":WORDS}).
+sk_error :: (t: [] Ap, k: [] Sk) -> string {
+  r := we_refusal_read(ap_body(t), k[0].words[..]);
+  return ifx r.ok then cast(string) k[0].words[0..<r.words_n] else "";
+}
+// A batch POSTed by the admin: its status; the state in k when it is one. query: "" or "?confirm=...".
+sk_batch :: (t: [] Ap, k: [] Sk, rev: int, what: string, edits: string, query: string) -> int {
+  b: [1] Sb; sb(b[..], "{\"schema\":\"world.edit.v1\",\"rev\":"); sb_int(b[..], rev); sb(b[..], ",\"do\":\""); sb(b[..], what); sb(b[..], "\",\"edits\":["); sb(b[..], edits); sb(b[..], "]}");
+  p: [1] Sb;
+  st := sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "", query), sb_text(b[..]), "");
+  k[0].st = we_state_read(ap_body(t), k[0].doc[..], k[0].did[..], k[0].scratch[..]);
+  return st;
+}
+// A cell edit that sets script row `id` to name `hash` ("" drops the row).
+sk_row :: (out: [] Sb, id: int, name: string, hash: string) -> string {
+  sb_clear(out); sb(out, "{\"op\":\"cell\",\"table\":\"scripts\",\"row\":"); sb_int(out, id); sb(out, ",\"col\":\"*\",\"v\":\"");
+  if hash != "" { sb_int(out, id); sb(out, "|"); sb(out, name); sb(out, "|"); sb(out, hash); sb(out, "|kind 1"); }
+  sb(out, "\"}");
+  return sb_text(out);
+}
+sk_hash :: (bytes: [] u8, out: [] u8) -> bool { return S_hex(S_hash(cast(string) bytes), out); }
+sk_reset :: (t: [] Ap) {
+  ap_do(t, "DELETE FROM verse.script_reports; DELETE FROM verse.script_off; DELETE FROM verse.world_outbox WHERE world = 'splice'; DELETE FROM verse.world_steps WHERE world = 'splice'; DELETE FROM verse.world_docs WHERE id = 'splice'; INSERT INTO verse.world_docs (id, kind) VALUES ('splice', 'splice'); DELETE FROM auth.limit_counts WHERE name LIKE 'script-%';");
+}
+
+sk_checks :: (t: [] Ap, k: [] Sk, other: string, compiles: bool) {
+  p: [1] Sb; e: [1] Sb; q: [400] u8; nothing := WB_NOTHING; echo := WB_ECHO;
+  ra := [2] int.[SA_X, SA_MOVE]; rb := [3] int.[SA_X, SA_MOVE, SA_STRIKE]; rc := [1] int.[SA_X];
+  k[0].a_n = wb_module(k[0].a[..], ra[..], nothing[..], 0, echo[..]); k[0].b_n = wb_module(k[0].b[..], rb[..], nothing[..], 0, echo[..]); k[0].c_n = wb_module(k[0].c[..], rc[..], nothing[..], 0, echo[..]);
+  made := k[0].a_n > 0 && k[0].b_n > 0 && k[0].c_n > 0 && sk_hash(k[0].a[0..<k[0].a_n], k[0].ha[..]) && sk_hash(k[0].b[0..<k[0].b_n], k[0].hb[..]) && sk_hash(k[0].c[0..<k[0].c_n], k[0].hc[..]);
+  ma := cast(string) k[0].a[0..<k[0].a_n]; mb := cast(string) k[0].b[0..<k[0].b_n]; mc := cast(string) k[0].c[0..<k[0].c_n];
+  ha := cast(string) k[0].ha[..]; hb := cast(string) k[0].hb[..]; hc := cast(string) k[0].hc[..];
+  sk_reset(t);
+  // ---- reading a world with none
+  st := ap_call(t, "GET", sk_path(p[..], "/scripts", ""), "", t[0].no[0..<0]);
+  h := ss_list_read(k[0].d[..], ap_body(t), k[0].nodes[..], k[0].world[..]);
+  ap_check(t, "scripts: a world's list reads before it stores any: the limits, and no script", made && st == 200 && h.ok && h.count == 0 && h.limits.stored == SS_STORED && h.limits.scripts == SH_SCRIPTS && h.limits.uploads_a_day == SS_UPLOADS_DAY && (h.limits.compiler == 1) == compiles && cast(string) k[0].world[0..<h.world_n] == "splice", ap_body(t));
+  ap_check(t, "scripts: a world nobody made has none, and a path that is no route is not found", ap_call(t, "GET", "/api/worlds/nope/scripts", "", t[0].no[0..<0]) == 404 && ap_call(t, "GET", sk_path(p[..], "/scripts/x", ""), "", t[0].no[0..<0]) == 404 && ap_call(t, "GET", sk_path(p[..], "/scriptsx", ""), "", t[0].no[0..<0]) == 404, ap_body(t));
+  // ---- who may store
+  st = sk_call(t, "", "POST", sk_path(p[..], "/scripts", "?name=pacer"), ma, "");
+  ap_check(t, "scripts: a module nobody signed is asked to log in", st == 401 && sk_error(t, k) == "log in", ap_body(t));
+  st = sk_call(t, other, "POST", sk_path(p[..], "/scripts", "?name=pacer"), ma, "");
+  ap_check(t, "scripts: someone who is neither the world's owner or admin nor a site admin is refused", st == 403 && sk_error(t, k) == "only the world's owner and admins store its scripts", ap_body(t));
+  st = sk_call(t, "", "POST", sk_path(p[..], "/scripts", "?name=pacer"), ma, "Origin: https://evil.example");
+  ap_check(t, "scripts: a module from another site's page is refused, and nothing was stored so far", st == 403 && sk_error(t, k) == "cross-site" && ap_sql(t, "SELECT count(*) FROM verse.world_scripts", q[..]) == "0", ap_body(t));
+  // ---- storing
+  st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts", "?name=pacer"), ma, "X-Script-Fields: [{\"name\":\"turn_at\",\"type\":\"f32\",\"at\":4,\"size\":4}]");
+  ok := sm_read(ap_body(t), k[0].mf[..]);
+  ap_check(t, "scripts: an admin's module that passes the check is stored, and the answer is the manifest written from its bytes", st == 200 && ok && cast(string) k[0].mf[0].hash[..] == ha && k[0].mf[0].bytes == k[0].a_n && k[0].mf[0].calls == (1 << SA_X) | (1 << SA_MOVE) && k[0].mf[0].layout.n == 1 && cast(string) k[0].mf[0].name[0..<k[0].mf[0].name_n] == "pacer", ap_body(t));
+  ap_check(t, "scripts: the row holds the bytes under their hash, the manifest and who stored it", ap_sql(t, "SELECT count(*) || ' ' || max(hash) || ' ' || max(octet_length(bytes)) || ' ' || (max(encode(sha256(bytes), 'hex')) = max(hash)) || ' ' || (max(length(author)) > 0) || ' ' || (max(source) IS NULL) FROM verse.world_scripts WHERE world = 'splice'", q[..]) == sb_text_of4(e[..], "1 ", ha, " ", k[0].a_n, " true true true"), "");
+  st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts", "?name=other-name"), ma, "");
+  ap_check(t, "scripts: the same bytes again are kept as they were stored: one row, the first manifest", st == 200 && sm_read(ap_body(t), k[0].mf[..]) && cast(string) k[0].mf[0].name[0..<k[0].mf[0].name_n] == "pacer" && ap_sql(t, "SELECT count(*) FROM verse.world_scripts", q[..]) == "1", ap_body(t));
+  st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts", "?name=pacer"), ma[0..<ma.count - 3], "");
+  ap_check(t, "scripts: a module the check refuses is not stored: 422 with the code, the refusal's name and the byte", st == 422 && sk_refusal(t, k) == SSC_MODULE && k[0].r[0].detail_n > 0 && k[0].r[0].at >= 0 && ap_sql(t, "SELECT count(*) FROM verse.world_scripts", q[..]) == "1", ap_body(t));
+  st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts", "?name=pacer"), "not a module at all", "");
+  ap_check(t, "scripts: bytes that are no module are refused as not-wasm", st == 422 && sk_refusal(t, k) == SSC_MODULE && cast(string) k[0].detail[0..<k[0].r[0].detail_n] == "not-wasm", ap_body(t));
+  st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts", "?name=Pacer"), ma, "");
+  bad_name := st == 400 && sk_refusal(t, k) == SSC_BAD;
+  st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts", "?name=pacer"), ma, "X-Script-Fields: {}");
+  ap_check(t, "scripts: a name or state fields that do not read are refused, 400", bad_name && st == 400 && sk_refusal(t, k) == SSC_BAD, ap_body(t));
+  // ---- serving
+  st = ap_call(t, "GET", sk_path(p[..], "/scripts/", ha), "", t[0].no[0..<0]);
+  ap_check(t, "scripts: the module is served by its hash, as WebAssembly, to be kept for good", st == 200 && ap_body(t) == ma && ap_header(t, "Content-Type") == "application/wasm" && ap_has(ap_header(t, "Cache-Control"), "immutable"), ap_header(t, "Cache-Control"));
+  st = ap_call(t, "GET", sk_path(p[..], "/scripts/", hb), "", t[0].no[0..<0]);
+  ap_check(t, "scripts: a hash the world has not stored is 404 with its code", st == 404 && sk_refusal(t, k) == SSC_NOT_STORED, ap_body(t));
+  st = ap_call(t, "GET", sk_path(p[..], "/scripts", ""), "", t[0].no[0..<0]);
+  h = ss_list_read(k[0].d[..], ap_body(t), k[0].nodes[..], k[0].world[..]);
+  en := ss_list_entry(k[0].d[..], 0, k[0].mf[..], k[0].why[..]);
+  ap_check(t, "scripts: the list holds the stored script's manifest, on and with no source", st == 200 && h.ok && h.count == 1 && en.ok && !en.off && !en.source && cast(string) k[0].mf[0].hash[..] == ha, ap_body(t));
+  // ---- an edit names only what the world stores
+  st = sk_batch(t, k, 0, "apply", sk_row(e[..], 1, "pacer", hb), "");
+  ap_check(t, "scripts: an edit that names a module the world has not stored is refused in words, and nothing is saved", st == 422 && sk_error(t, k) == "script 1: this world has stored no module of that hash: store the module first" && ap_sql(t, "SELECT dev_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "0", ap_body(t));
+  st = sk_batch(t, k, 0, "apply", sk_row(e[..], 1, "pacer", ha), "");
+  ap_check(t, "scripts: an edit that names a stored module is saved", st == 200 && k[0].st.ok && k[0].st.rev == 1, ap_body(t));
+  // ---- a publish asks about what is new or grows
+  st = sk_batch(t, k, 1, "publish-now", "", "");
+  ap_check(t, "scripts: a publish that adds a script is refused, 409, listing the script and what it may do", st == 409 && sk_refusal(t, k) == SSC_GROWS && k[0].r[0].asks_n == 1 && k[0].r[0].asks[0].fresh && cast(string) k[0].r[0].asks[0].hash[..] == ha && k[0].r[0].asks[0].grows.calls == (1 << SA_X) | (1 << SA_MOVE) && k[0].r[0].asks[0].grows.powers == 3 && ap_sql(t, "SELECT live_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "0", ap_body(t));
+  st = sk_batch(t, k, 1, "publish-now", "", sb_text_of2(p[..], "?confirm=", hb));
+  ap_check(t, "scripts: confirming another hash confirms nothing", st == 409 && sk_refusal(t, k) == SSC_GROWS, ap_body(t));
+  st = sk_batch(t, k, 1, "publish-now", "", sb_text_of2(p[..], "?confirm=", ha));
+  ap_check(t, "scripts: with the script's hash confirmed, the publish goes on", st == 200 && k[0].st.ok && k[0].st.live == 1, ap_body(t));
+  // a version that does more: the engine's strike
+  st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts", "?name=pacer"), mb, "");
+  stored_b := st == 200;
+  st = sk_batch(t, k, 1, "apply", sk_row(e[..], 1, "pacer", hb), "");
+  edited := st == 200 && k[0].st.rev == 2;
+  st = sk_batch(t, k, 2, "publish-now", "", "");
+  ap_check(t, "scripts: a new version that adds a call and a power is asked about, with only what it adds", stored_b && edited && st == 409 && sk_refusal(t, k) == SSC_GROWS && k[0].r[0].asks_n == 1 && !k[0].r[0].asks[0].fresh && k[0].r[0].asks[0].grows.calls == 1 << SA_STRIKE && k[0].r[0].asks[0].grows.powers == 4 && k[0].r[0].asks[0].grows.handlers == 0, ap_body(t));
+  st = sk_batch(t, k, 2, "publish-now", "", sb_text_of2(p[..], "?confirm=", hb));
+  grown := st == 200 && k[0].st.live == 2;
+  // a version that does less publishes unasked
+  st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts", "?name=pacer"), mc, "");
+  stored_c := st == 200;
+  st = sk_batch(t, k, 2, "apply", sk_row(e[..], 1, "pacer", hc), "");
+  edited = st == 200 && k[0].st.rev == 3;
+  st = sk_batch(t, k, 3, "publish-now", "", "");
+  ap_check(t, "scripts: a version that only drops calls and powers publishes with no confirmation", grown && stored_c && edited && st == 200 && k[0].st.live == 3, ap_body(t));
+  // ---- reports and the switch
+  st = sk_call(t, "", "POST", sk_path(p[..], sb_text_of2(e[..], "/scripts/", hb), "/report"), "it strikes players at the gate", "");
+  ap_check(t, "scripts: a report nobody signed is asked to log in", st == 401, ap_body(t));
+  st = sk_call(t, other, "POST", sk_path(p[..], sb_text_of2(e[..], "/scripts/", hb), "/report"), "it strikes players at the gate", "");
+  hash: [64] u8;
+  ap_check(t, "scripts: any account that is logged in reports a script, with a reason", st == 200 && ss_done_read(ap_body(t), hash[..]) == 0 && cast(string) hash[..] == hb && ap_sql(t, "SELECT count(*) || ' ' || max(status) || ' ' || max(why) FROM verse.script_reports", q[..]) == "1 open it strikes players at the gate", ap_body(t));
+  st = sk_call(t, other, "POST", sk_path(p[..], sb_text_of2(e[..], "/scripts/", hb), "/report"), "a \"quoted\" reason", "");
+  bad_why := st == 400 && sk_refusal(t, k) == SSC_BAD;
+  st = sk_call(t, other, "POST", sk_path(p[..], "/scripts/0000000000000000000000000000000000000000000000000000000000000000", "/report"), "spam", "");
+  ap_check(t, "scripts: a report with no plain reason, or of a module the world does not store, is refused", bad_why && st == 404 && sk_refusal(t, k) == SSC_NOT_STORED && ap_sql(t, "SELECT count(*) FROM verse.script_reports", q[..]) == "1", ap_body(t));
+  st = sk_call(t, other, "GET", "/api/admin/scripts/reports", "", "");
+  not_admin := st == 403;
+  st = sk_call(t, t[0].admin_key, "GET", "/api/admin/scripts/reports", "", "");
+  rep := ss_reports_entry(ap_body(t), 0, 1);
+  ap_check(t, "scripts: an admin reads the open reports; nobody else does", not_admin && st == 200 && ss_reports_count(ap_body(t)) == 1 && rep.ok && cast(string) rep.hash[..] == hb && rep.status == 0 && cast(string) rep.why[0..<rep.why_n] == "it strikes players at the gate", ap_body(t));
+  st = sk_call(t, other, "POST", sb_text_of3(p[..], "/api/admin/scripts/", hb, "/off"), "it strikes players", "");
+  not_admin = st == 403;
+  st = sk_call(t, t[0].admin_key, "POST", sb_text_of3(p[..], "/api/admin/scripts/", hb, "/off"), "", "");
+  no_why := st == 400;
+  st = sk_call(t, t[0].admin_key, "POST", sb_text_of3(p[..], "/api/admin/scripts/", hb, "/off"), "it strikes players", "");
+  ap_check(t, "scripts: an admin switches a module off with a reason, and its open reports are marked removed", not_admin && no_why && st == 200 && ss_done_read(ap_body(t), hash[..]) == 1 && ap_sql(t, "SELECT (SELECT why FROM verse.script_off) || ' ' || (SELECT status FROM verse.script_reports)", q[..]) == "it strikes players removed", ap_body(t));
+  st = ap_call(t, "GET", sk_path(p[..], "/scripts/", hb), "", t[0].no[0..<0]);
+  ap_check(t, "scripts: a module that is switched off is not served: 410 with its code and why", st == 410 && sk_refusal(t, k) == SSC_WITHDRAWN && ap_has(sk_words(k), "it strikes players"), ap_body(t));
+  st = ap_call(t, "GET", sk_path(p[..], "/scripts", ""), "", t[0].no[0..<0]);
+  h = ss_list_read(k[0].d[..], ap_body(t), k[0].nodes[..], k[0].world[..]);
+  off_n := 0; off_why := false;
+  for i: 0..<h.count { en = ss_list_entry(k[0].d[..], i, k[0].mf[..], k[0].why[..]); if en.off { off_n += 1; off_why = cast(string) k[0].why[0..<en.why_n] == "it strikes players" && cast(string) k[0].mf[0].hash[..] == hb; } }
+  ap_check(t, "scripts: the list says which script is off and why, so a page and a room skip it", st == 200 && h.ok && h.count == 3 && off_n == 1 && off_why, ap_body(t));
+  st = sk_batch(t, k, 3, "apply", sk_row(e[..], 2, "guard", hb), "");
+  ap_check(t, "scripts: no new edit names a module that is switched off", st == 422 && sk_error(t, k) == "script 2: that script is switched off, so no edit names it", ap_body(t));
+  st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts", "?name=pacer"), mb, "");
+  ap_check(t, "scripts: and it is not stored again", st == 410 && sk_refusal(t, k) == SSC_WITHDRAWN, ap_body(t));
+  ap_check(t, "scripts: the world's published revision stays as it was", ap_sql(t, "SELECT live_rev FROM verse.world_docs WHERE id = 'splice'", q[..]) == "3", "");
+  st = sk_call(t, t[0].admin_key, "POST", sb_text_of3(p[..], "/api/admin/scripts/", hb, "/on"), "", "");
+  on := st == 200 && ss_done_read(ap_body(t), hash[..]) == 2;
+  st = ap_call(t, "GET", sk_path(p[..], "/scripts/", hb), "", t[0].no[0..<0]);
+  ap_check(t, "scripts: switched back on, it is served again", on && st == 200 && ap_body(t) == mb, "");
+  st = sk_call(t, other, "POST", sk_path(p[..], sb_text_of2(e[..], "/scripts/", hc), "/report"), "spam", "");
+  reported := st == 200;
+  st = sk_call(t, t[0].admin_key, "POST", sb_text_of3(p[..], "/api/admin/scripts/", hc, "/keep"), "", "");
+  ap_check(t, "scripts: an admin keeps a reported script: its report is marked kept and it stays on", reported && st == 200 && ss_done_read(ap_body(t), hash[..]) == 3 && ap_sql(t, "SELECT string_agg(status, ' ' ORDER BY id) FROM verse.script_reports", q[..]) == "removed kept" && ap_call(t, "GET", sk_path(p[..], "/scripts/", hc), "", t[0].no[0..<0]) == 200, ap_body(t));
+  // ---- the world's room: 64 modules; one that no revision names is collected a day after it was stored
+  rd := [2] int.[SA_X, SA_STOP]; md: [2048] u8;
+  dn := wb_module(md[..], rd[..], nothing[..], 0, echo[..]);
+  ap_do(t, "INSERT INTO verse.world_scripts (world, hash, bytes, manifest, author, at_ms) SELECT 'splice', lpad(to_hex(g), 64, 'f'), '\\x0061736d01000000', '{\"schema\":\"realm.script.v1\"}', 'acct_fill', (extract(epoch from now()) * 1000)::bigint FROM generate_series(1, 61) g");
+  st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts", "?name=guard"), cast(string) md[0..<dn], "");
+  ap_check(t, "scripts: a world that stores 64 modules takes no more, and the refusal says the limit", dn > 0 && st == 422 && sk_refusal(t, k) == SSC_FULL && k[0].r[0].limit == SS_STORED && ap_sql(t, "SELECT count(*) FROM verse.world_scripts", q[..]) == "64", ap_body(t));
+  ap_do(t, "UPDATE verse.world_scripts SET at_ms = at_ms - 2 * 86400000::bigint WHERE author = 'acct_fill'");
+  st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts", "?name=guard"), cast(string) md[0..<dn], "");
+  ap_check(t, "scripts: modules a day old that no revision names are collected to make room; the newer and the named stay", st == 200 && ap_sql(t, "SELECT count(*) || ' ' || count(*) FILTER (WHERE author = 'acct_fill') FROM verse.world_scripts", q[..]) == "4 0", ap_body(t));
+  // ---- a source compiled by the job
+  src_n := fs_read("metaverse-engine/script/examples/pacer.coax", k[0].source[..]);
+  source := cast(string) k[0].source[0..<ifx src_n < 0 then 0 else src_n];
+  st = sk_call(t, other, "POST", sk_path(p[..], "/scripts/compile", "?name=pacer"), source, "");
+  ap_check(t, "scripts: only who may store compiles", src_n > 0 && st == 403, ap_body(t));
+  st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts/compile", "?name=pacer"), source, "");
+  if !compiles {
+    ap_check(t, "scripts: a server with no compile job says so, 503 (this machine has no Wasm toolchain: the compile checks did not run)", st == 503 && sk_refusal(t, k) == SSC_NO_COMPILER, ap_body(t));
+    return;
+  }
+  ok = sm_read(ap_body(t), k[0].mf[..]);
+  compiled: [64] u8; compiled = k[0].mf[0].hash;
+  ap_check(t, "scripts: a source is compiled by the job, checked and stored, and the answer is its manifest", st == 200 && ok && cast(string) k[0].mf[0].name[0..<k[0].mf[0].name_n] == "pacer" && k[0].mf[0].handlers == 1 | (1 << RH_HIT) && k[0].mf[0].layout.n == 2, ap_body(t));
+  ap_check(t, "scripts: the row keeps the source it was compiled from, and its bytes are its hash's", ap_sql(t, "SELECT (source IS NOT NULL) || ' ' || (encode(sha256(bytes), 'hex') = hash) || ' ' || length(source) FROM verse.world_scripts WHERE source IS NOT NULL", q[..]) == sb_text_of4(e[..], "true true", "", " ", src_n, ""), "");
+  st = sk_call(t, t[0].admin_key, "GET", sk_path(p[..], sb_text_of2(e[..], "/scripts/", cast(string) compiled[..]), "/source"), "", "");
+  got_source := st == 200 && ap_body(t) == source;
+  st = ap_call(t, "GET", sk_path(p[..], sb_text_of2(e[..], "/scripts/", cast(string) compiled[..]), "/source"), "", t[0].no[0..<0]);
+  hidden := st == 401;
+  st = sk_call(t, t[0].admin_key, "GET", sk_path(p[..], sb_text_of2(e[..], "/scripts/", hc), "/source"), "", "");
+  ap_check(t, "scripts: who may store reads a compiled script's source; nobody else does, and an uploaded module has none", got_source && hidden && st == 404 && sk_refusal(t, k) == SSC_NOT_STORED, ap_body(t));
+  st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts/compile", "?name=s"), "#script \"s\";\n#import \"Basic\";\n", "");
+  ap_check(t, "scripts: a source the job refuses is 422 with its code and the job's words", st == 422 && sk_refusal(t, k) == SSC_SOURCE && ap_has(sk_words(k), "may use only") && ap_has(sk_words(k), "the compile job's limits"), ap_body(t));
+  st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts/compile", "?name=other"), source, "");
+  ap_check(t, "scripts: a source whose own name is not the one asked for is refused", st == 422 && sk_refusal(t, k) == SSC_SOURCE && ap_has(sk_words(k), "is not the name asked for"), ap_body(t));
+  st = sk_call(t, t[0].admin_key, "POST", sk_path(p[..], "/scripts/compile", "?name=pacer"), "", "");
+  ap_check(t, "scripts: an empty source is no request", st == 400 && sk_refusal(t, k) == SSC_BAD && k[0].r[0].limit == SS_SOURCE, ap_body(t));
+}
+sb_text_of2 :: (s: [] Sb, a: string, b: string) -> string { sb_clear(s); sb(s, a); sb(s, b); return sb_text(s); }
+sb_text_of3 :: (s: [] Sb, a: string, b: string, c: string) -> string { sb_clear(s); sb(s, a); sb(s, b); sb(s, c); return sb_text(s); }
+sb_text_of4 :: (s: [] Sb, a: string, b: string, c: string, n: int, d: string) -> string { sb_clear(s); sb(s, a); sb(s, b); sb(s, c); sb_int(s, n); sb(s, d); return sb_text(s); }
+
+tool_main :: () -> int #export_c #effects(all) {
+  t: [1] Ap; k := [1] Sk.[Sk.{}];
+  if !ap_open(t[..]) { return 2; }
+  kb: [2048] u8; other := proc_getenv("OTHER_KEY", kb[..]); rb: [16] u8;
+  if t[0].sign == "" || t[0].admin_key == "" || other == "" { tool_errln("script checks: SIGN, ADMIN_KEY and OTHER_KEY come from coax/web/api/test.sh"); return 2; }
+  sk_checks(t[..], k[..], other, proc_getenv("SCRIPT_JOB_READY", rb[..]) == "1");
+  return ap_done(t[..], "script checks");
+}

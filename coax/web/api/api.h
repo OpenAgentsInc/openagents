@@ -20,6 +20,7 @@ typedef struct {
 double api_now_ms(void);
 void api_log(const char *fmt, ...);
 void api_respond(int fd, int status, const char *type, const char *extra_headers, const void *body, size_t n);
+void api_respond_immutable(int fd, const char *type, const void *body, size_t n);   // a 200 named by its bytes' hash: cached for good, no cookie
 void api_json(int fd, int status, const char *json);
 PGconn *api_db(void);
 PGconn *api_db_new(void);   // a connection of its own (a child process's)
@@ -79,6 +80,16 @@ bool anime_route(const request *q);        // anime.c: typed Anime Lab direction
 bool worldbuilder_route(const request *q); // worldbuilder.c: /create-world's chat, the day's $50 cap and anti-flood
 bool world_files_project_route(const request *q);   // worlds.c: /api/projects/SLUG/files, a project's attachments (#13468)
 int world_files_turn(const request *q, PGconn *db, char **out, char *words, size_t cap);   // worlds.c: a world turn's opened attachments joined to its request (#13468)
+// worlds.c for scripts.c: the world's refusal ({"error":WORDS}); whether world `id` is one this build serves, and
+// (tables not NULL) its three lanes' content tables as text, malloc'd: dev, live, the one before the last pin
+// change; NULL for a lane that holds no revision. lock: its row is held to the transaction's end.
+void world_refuse(int fd, int status, const char *words);
+bool world_scripts_world(PGconn *db, const char *id, bool lock, char *tables[3]);
+// scripts.c: a world's realm scripts (script-policy.coax, #13467)
+bool scripts_route(const request *q, PGconn *db, const char *id, const char *tail);   // /api/worlds/<id>/scripts...
+bool scripts_admin_route(const request *q);                                           // /api/admin/scripts/...: reports and the switch
+bool scripts_edit_ok(PGconn *db, const char *id, const char *was, const char *now, char *why, size_t cap);
+bool scripts_publish_ok(const request *q, PGconn *db, const char *id, const char *dev, const char *live);
 bool worlds_route(const request *q);       // worlds.c: a world's document by ID, its edits, its dev and live revisions and its imported assets (world-policy.coax)
 bool site_identity(const request *q, PGconn *db, char who[65], bool *signed_req, bool *payload, bool *unseen);
 bool inference_route(const request *q);   // inference.c: POST /api/v1/inference, our models for the Mac app

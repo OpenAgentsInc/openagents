@@ -37,7 +37,7 @@ began=$SECONDS
 # build host (oa-build-1, 2026-11-11, seconds): longest first, each to the part
 # with the least so far, so the parts take about as long as each other.
 API_PARTS="checks:20 py:721 room_checks:25 checkpoint2_checks:4 verse_packs:3 auth_checks:4 auth_recover_checks:9 agent_checks:8
-  auth_life_checks:8 passkey_checks:8 lnaddr_checks:11 auth_device_checks:5 wallet_checks:6 realm_doc_checks:3 realm_record_checks:3 world_checks:8 workers_checks:95 cli-auth:17 anime:13 realms:8 audit:1"
+  auth_life_checks:8 passkey_checks:8 lnaddr_checks:11 auth_device_checks:5 wallet_checks:6 realm_doc_checks:3 realm_record_checks:3 world_checks:8 script_checks:8 workers_checks:95 cli-auth:17 anime:13 realms:8 audit:1"
 part=""
 if [[ "${1:-}" == --part ]]; then part="${2:-}"; shift 2 || true; fi
 if [[ -n "$part" ]]; then
@@ -282,6 +282,18 @@ if [[ $serve == 1 ]]; then
   fi
   local_model+=(OA_INFERENCE_TOKEN_FILE="$token_file")
 fi
+# The realm scripts' compile job (#13467, tests/script_checks.coax): the local tool through its wrapper, where this
+# machine has the Wasm toolchain and the job's own check passes its first case; else the API has no job and the
+# checks say the compile route's did not run. SCRIPT_JOB_READY tells the checks which.
+script_job=""
+if [[ $serve == 0 && -x "$cli_coax" ]] && runs script_checks && [[ -z "${API_TESTS_ONLY:-}" || ",$API_TESTS_ONLY," == *",script_checks.coax,"* ]]; then
+  if (cd "$repo_root" && COAX="$cli_coax" coax/web/script-job.sh --warm) > /dev/null 2>&1 &&
+     (cd "$repo_root" && COAX="$cli_coax" coax/web/script-job.sh metaverse-engine/script/examples/pacer.coax pacer "$work/script-warm") > /dev/null 2>&1; then
+    script_job="$repo_root/coax/web/script-job.sh"
+  else echo "api: no compile job here (no Wasm toolchain): the compile route's checks do not run" >&2; fi
+fi
+export SCRIPT_JOB_READY="${script_job:+1}"
+OA_SCRIPT_JOB="$script_job" COAX="$cli_coax" \
 OA_CHAT_RUNNER_URL="http://127.0.0.1:$CHAT_PORT" OA_CHAT_DAILY_USD=1 \
 OA_AGENT_PROJECTS=agent-proj OA_AGENT_WAKE_URL="http://127.0.0.1:$WAKE_PORT/wake" OA_AGENT_WAKE_TOKEN=test-wake \
 OA_PROJECT_KEK="$(openssl rand -hex 32)" OA_PUBLISH_RELAY="ws://127.0.0.1:$RELAY_PORT" OA_SITE_BUCKET=site-test \
@@ -372,7 +384,7 @@ if [[ -x "$cli_coax" ]]; then
   # the vitals fault check and the owner and travel checks. API_TESTS_ONLY runs them when it names them (room_checks.coax).
   # API_BIN: the region check starts a second API on a promoted replica of this database.
   coax_failed=0
-  for f in room_checks checkpoint2_checks verse_packs auth_checks auth_recover_checks agent_checks auth_life_checks passkey_checks lnaddr_checks auth_device_checks wallet_checks realm_doc_checks realm_record_checks world_checks workers_checks; do
+  for f in room_checks checkpoint2_checks verse_packs auth_checks auth_recover_checks agent_checks auth_life_checks passkey_checks lnaddr_checks auth_device_checks wallet_checks realm_doc_checks realm_record_checks world_checks script_checks workers_checks; do
     [[ -z "${API_TESTS_ONLY:-}" || ",$API_TESTS_ONLY," == *",$f.coax,"* ]] || continue
     runs "$f" || continue
     (cd "$repo_root" && API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pgbin/psql" COAX="$cli_coax" API_BIN="$work/api" RESEND_PORT="$RESEND_PORT" \

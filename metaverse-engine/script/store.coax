@@ -1,0 +1,458 @@
+// A world's stored scripts, as a server keeps and answers them (GitHub #13467,
+// docs/protocol/world-scripts-v1.md, proto/world/script-store-v1.json). A world names a script by its
+// module's hash (rows.coax); a server stores the module's bytes under that hash once the module check
+// passes (wasm.coax, host.coax), with the manifest it wrote from the checked bytes (manifest.coax).
+// This file is the one codec of what the server answers about them, and the one list of its limits and
+// refusal codes:
+//
+//   world.scripts.v1          a world's stored scripts: the limits, then each script's manifest and
+//                             whether it is switched off, ascending by hash. A page and a room skip a
+//                             script that is off
+//   world.script.refusal.v1   a refusal with a diagnostic code: a refused module (the refusal's name
+//                             and the byte), a hash the world has not stored, a script switched off, a
+//                             limit reached, and a publish that needs a confirmation, with what each
+//                             script adds
+//   world.script.reports.v1   the open reports of scripts, for an admin
+//   world.script.done.v1      what a report, a switch-off or a switch-on did
+//
+// It also holds what a server works with (SsWork): the two slots a module is checked in, a world's
+// script rows by lane and the facts of each stored module. Nothing here reads a database, a file or a
+// clock, and nothing here decides who may do what: that is coax/web/api/script-policy.coax.
+//   coax/bin/coax test metaverse-engine/script/store.coax --library
+
+#load "manifest.coax";
+#load "rows.coax";
+
+SS_LIST :: "world.scripts.v1";
+SS_REFUSAL :: "world.script.refusal.v1";
+SS_REPORTS :: "world.script.reports.v1";
+SS_DONE :: "world.script.done.v1";
+
+#load "store-limits.coax";   // the limits and the codes' numbers
+SS_WORDS :: 600;            // a refusal's words
+SS_DETAIL :: 32;
+SS_OUT :: SS_STORED * (SM_TEXT + SS_WHY + 64) + 1024;   // the longest world.scripts.v1
+SS_LANES :: 3;              // dev, live and the revision before the last pin change
+
+SSC_NAMES :: [SSC_CODES] string.["", "refused-module", "bad-face", "not-stored", "withdrawn", "grows", "store-full", "rate", "no-compiler", "refused-source", "bad-request"];
+SSC_OWN :: [SSC_CODES] string.["", "", "",
+  "engine.diagnostic.script-not-stored.v1", "engine.diagnostic.script-withdrawn.v1", "engine.diagnostic.script-grows.v1",
+  "engine.diagnostic.script-store-full.v1", "engine.diagnostic.script-rate.v1", "engine.diagnostic.script-no-compiler.v1",
+  "engine.diagnostic.script-refused-source.v1", "engine.diagnostic.script-bad-request.v1"];
+// Whether doing the same thing again can help with no change to the script or the world: a publish
+// repeated with its confirmation, and a limit that lifts with time.
+SSC_RETRY :: [SSC_CODES] bool.[false, false, false, false, false, true, false, true, false, false, false];
+SSC_MEANS :: [SSC_CODES] string.["",
+  "The module check refused the bytes. The detail is the refusal and the byte it is about.",
+  "The module's face answered out of range: its version, its state's place or size, or its slot count.",
+  "The world has stored no module of this hash. Store the module, then name it.",
+  "The module is switched off everywhere. It is not served, and no new edit names it. The words say why.",
+  "A publish adds a script, or lets a script do more than the live one: a handler, a power or a call. Nothing was published. Repeat it with the hashes listed, to confirm each.",
+  "The world stores as many modules as it may. A module no revision names is collected a day after it was stored.",
+  "The author's daily limit for this is spent. The answer says the limit and when it lifts.",
+  "This server compiles no source. Build the module with coax/web/script.sh and store its bytes.",
+  "The compile job refused the source. The words are the compiler's, or the job's limit that was reached.",
+  "The request is not one this route takes: a name, a hash, a reason or a body that does not read."];
+ssc_id :: (code: int) -> string {
+  if code == SSC_MODULE { return SD_IDS[SD_REFUSED]; }
+  if code == SSC_FACE { return SD_IDS[SD_FACE]; }
+  return ifx code > SSC_FACE && code < SSC_CODES then SSC_OWN[code] else "";
+}
+ssc_of :: (id: string) -> int {
+  for c: 1..<SSC_CODES { if ssc_id(c) == id { return c; } }
+  return SSC_NONE;
+}
+ssc_retry :: (code: int) -> bool { return code > SSC_NONE && code < SSC_CODES && SSC_RETRY[code]; }
+
+// A reason: 1 to SS_WHY printable ASCII bytes, with no quote and no backslash, so it is written as it is.
+ss_why_ok :: (why: string) -> bool {
+  if why.count < 1 || why.count > SS_WHY { return false; }
+  for c: why { if c < 32 || c > 126 || c == '"' || c == '\\' { return false; } }
+  return true;
+}
+ss_same :: (a: [] u8, n: int, s: string) -> bool {
+  if n != s.count { return false; }
+  for c, i: s { if a[i] != c { return false; } }
+  return true;
+}
+
+// ---- what a server works with
+
+// The facts of a stored module, from its manifest.
+SsHave :: struct { hash: [64] u8; name: [SM_NAME] u8; name_n: int; handlers: int; powers: int; calls: int; off: bool; }
+// A script a publish asks the publisher about: a row that is new, or one that does more than live's.
+SsAsk :: struct { name: [SM_NAME] u8; name_n: int; hash: [64] u8; fresh: bool; grows: ScriptGrowth; }
+SsWork :: struct {
+  slot: [2] ScriptSlot;                         // where a module is checked: [1] is the scratch
+  mf: ScriptManifest;                           // the manifest of the module last checked
+  text: [SM_TEXT] u8; text_n: int;              // and its bytes
+  doc: [1] ContentDoc;
+  rows: [SS_LANES * SH_SCRIPTS] ScriptRow; rows_n: [SS_LANES] int;
+  have: [SS_STORED] SsHave; have_n: int;
+  asks: [SH_SCRIPTS] SsAsk; asks_n: int;
+  out: [SS_OUT] u8; out_n: int;                 // an answer
+  words: [SS_WORDS] u8; words_n: int;           // a refusal's words
+  nodes: [1024] JvNode;
+}
+ss_say :: (w: [] SsWork, words: string) { n := ct_put(w[0].words[..], 0, words); w[0].words_n = ifx n > w[0].words.count then 0 else n; }
+ss_said :: (w: [] SsWork) -> string { return cast(string) w[0].words[0..<w[0].words_n]; }
+ss_answer :: (w: [] SsWork) -> string { return cast(string) w[0].out[0..<w[0].out_n]; }
+ss_manifest :: (w: [] SsWork) -> string { return cast(string) w[0].text[0..<w[0].text_n]; }
+
+// A module's bytes checked and loaded, and its manifest written from them into w (ss_manifest). name:
+// the author's; fields: the state record's fields as the JSON array sm_fields reads ("": none). 0, or
+// why not; for SSM_REFUSED and SSM_FACE the reason is slot [1]'s last diagnostic.
+SSM_OK :: 0; SSM_REFUSED :: 1; SSM_FACE :: 2; SSM_NAME :: 3; SSM_FIELDS :: 4;
+ss_module :: (w: [] SsWork, bytes: [] u8, name: string, fields: string) -> int {
+  layout: [1] ScriptLayout; d: [1] Jv;
+  if fields.count > 0 && (!jv_parse(d[..], fields, w[0].nodes[..]) || !sm_fields(d[0], 0, layout[..])) { w[0].mf = ScriptManifest.{}; w[0].text_n = 0; return SSM_FIELDS; }
+  return ss_module_laid(w, bytes, name, layout[0]);
+}
+// The same with the fields already read (a compile job's manifest gives them: sm_read).
+ss_module_laid :: (w: [] SsWork, bytes: [] u8, name: string, layout: ScriptLayout) -> int {
+  w[0].mf = ScriptManifest.{}; w[0].text_n = 0;
+  if !sm_name_ok(name) { return SSM_NAME; }
+  sh_unload(w[0].slot[0..<1]);
+  code := sh_load(w[0].slot[0..<1], w[0].slot[1..<2], bytes, layout);
+  if code != 0 { return ifx code == SD_REFUSED then SSM_REFUSED else SSM_FACE; }
+  // a field past the record this module keeps is not this module's
+  for i: 0..<layout.n { if cast(int) layout.fields[i].at + cast(int) layout.fields[i].size > w[0].slot[0].state_size { return SSM_FIELDS; } }
+  w[0].mf = sm_of(w[0].slot[0..<1], name, layout);
+  text := sm_write(w[0].mf, w[0].text[..]);
+  if text.count == 0 { w[0].mf = ScriptManifest.{}; return SSM_FIELDS; }
+  w[0].text_n = text.count;
+  return SSM_OK;
+}
+// The refusal of the module last checked: its name (WM_REFUSAL_NAMES) and the byte it is about.
+ss_refused_name :: (w: [] SsWork) -> string {
+  why := cast(int) w[0].slot[1].last.detail;
+  return ifx w[0].slot[1].last.code == SD_REFUSED && why > 0 && why < WM_REFUSALS then WM_REFUSAL_NAMES[why] else "";
+}
+ss_refused_at :: (w: [] SsWork) -> int { return ifx w[0].slot[1].last.code == SD_REFUSED then cast(int) w[0].slot[1].last.line else -1; }
+
+// The stored modules' facts: cleared, then one added a stored manifest. False for a text that is no
+// manifest, or one too many.
+ss_have_clear :: (w: [] SsWork) { w[0].have_n = 0; }
+ss_have_add :: (w: [] SsWork, manifest: string, off: bool) -> bool {
+  mf: [1] ScriptManifest;
+  if w[0].have_n >= SS_STORED || !sm_read(manifest, mf[..]) { return false; }
+  h := SsHave.{hash = mf[0].hash, name = mf[0].name, name_n = mf[0].name_n, handlers = mf[0].handlers, powers = mf[0].powers, calls = mf[0].calls, off = off};
+  w[0].have[w[0].have_n] = h; w[0].have_n += 1;
+  return true;
+}
+// Which stored module has this hash, or -1.
+ss_have :: (w: [] SsWork, hash: string) -> int {
+  for i: 0..<w[0].have_n { if ss_same(w[0].have[i].hash[..], 64, hash) { return i; } }
+  return -1;
+}
+
+// A lane's script rows read from its content tables into w: how many, or SRW_SCAN_TABLE,
+// SRW_SCAN_ROW (with the words in w) or SS_SCAN_DOC for tables that do not read.
+SS_SCAN_DOC :: -3;
+ss_scan :: (w: [] SsWork, lane: int, tables: string) -> int {
+  if lane < 0 || lane >= SS_LANES { return SS_SCAN_DOC; }
+  w[0].rows_n[lane] = 0; bad: [2] int;
+  if !ct_read(w[0].doc[..], tables) { ss_say(w, "the world's content tables do not read"); return SS_SCAN_DOC; }
+  n := srw_scan(w[0].doc[..], w[0].rows[lane * SH_SCRIPTS..<(lane + 1) * SH_SCRIPTS], bad[..]);
+  if n == SRW_SCAN_TABLE { ss_say(w, "the scripts table is: table scripts id name:text hash:text for:text"); return n; }
+  if n == SRW_SCAN_ROW { ss_say(w, srw_why(bad[1])); return n; }
+  w[0].rows_n[lane] = n;
+  return n;
+}
+ss_rows :: (w: [] SsWork, lane: int) -> [] ScriptRow { return w[0].rows[lane * SH_SCRIPTS..<lane * SH_SCRIPTS + w[0].rows_n[lane]]; }
+// Whether any lane's rows name this hash.
+ss_named :: (w: [] SsWork, hash: string) -> bool {
+  for lane: 0..<SS_LANES { if srw_names(ss_rows(w, lane), hash) { return true; } }
+  return false;
+}
+
+// ---- world.scripts.v1: one compact JSON document in one form
+//   {"schema":"world.scripts.v1","world":ID,"limits":{...},"scripts":[{"manifest":MANIFEST,"off":false,"why":"","source":false},...]}
+// MANIFEST is the stored realm.script.v1 object, the bytes sm_write wrote. The scripts ascend by hash.
+
+SsLimits :: struct { scripts: int; module_bytes: int; stored: int; call_fuel: int; tick_fuel: int; uploads_a_day: int; compiles_a_day: int; reports_a_day: int; source_bytes: int; why_bytes: int; compiler: int; }
+// compiles: whether this server compiles a source (limits.compiler is 1 or 0).
+ss_limits :: (compiles: bool) -> SsLimits {
+  return SsLimits.{scripts = SH_SCRIPTS, module_bytes = WM_BYTES, stored = SS_STORED, call_fuel = SH_CALL_FUEL, tick_fuel = SH_TICK_FUEL,
+                   uploads_a_day = SS_UPLOADS_DAY, compiles_a_day = SS_COMPILES_DAY, reports_a_day = SS_REPORTS_DAY, source_bytes = SS_SOURCE, why_bytes = SS_WHY,
+                   compiler = ifx compiles then 1 else 0};
+}
+SS_LIMITS :: 11;
+SS_LIMIT_NAMES :: [SS_LIMITS] string.["scripts", "module_bytes", "stored", "call_fuel", "tick_fuel", "uploads_a_day", "compiles_a_day", "reports_a_day", "source_bytes", "why_bytes", "compiler"];
+ss_limit :: (l: SsLimits, k: int) -> int {
+  v := [SS_LIMITS] int.[l.scripts, l.module_bytes, l.stored, l.call_fuel, l.tick_fuel, l.uploads_a_day, l.compiles_a_day, l.reports_a_day, l.source_bytes, l.why_bytes, l.compiler];
+  return ifx k >= 0 && k < SS_LIMITS then v[k] else -1;
+}
+ss_world_ok :: (id: string) -> bool {
+  // a world's ID, as the world routes hold it (metaverse-engine/editor/world-edit.coax we_world_ok)
+  if id.count < 1 || id.count > 48 || !((id[0] >= 'a' && id[0] <= 'z') || (id[0] >= '0' && id[0] <= '9')) { return false; }
+  for c: id { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+// The document's start into out at 0: where it ends, or over out.count when it does not fit.
+ss_list_begin :: (out: [] u8, world: string, l: SsLimits) -> int {
+  row: [512] u8; o: [1] Jo; jo_start(o[..], row[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], SS_LIST);
+  jo_key(o[..], "world"); jo_str(o[..], world);
+  jo_key(o[..], "limits"); jo_obj(o[..]);
+  for name, k: SS_LIMIT_NAMES { jo_key(o[..], name); jo_int(o[..], ss_limit(l, k)); }
+  jo_end(o[..]);
+  jo_key(o[..], "scripts");
+  if o[0].bad || !ss_world_ok(world) { return out.count + 1; }
+  n := ct_put(out, 0, jo_text(o[..]));
+  return ct_put(out, n, "[");
+}
+// One script at n: where it ends. source: the server keeps the source it was compiled from. first: no script stands before it. The caller adds them ascending by hash.
+ss_list_add :: (out: [] u8, n: int, manifest: string, off: bool, why: string, source: bool, first: bool) -> int {
+  if n > out.count || manifest.count > SM_TEXT || (why.count > 0 && !ss_why_ok(why)) || (off && why.count == 0) || (!off && why.count > 0) { return out.count + 1; }
+  at := ct_put(out, n, ifx first then "{\"manifest\":" else ",{\"manifest\":");
+  at = ct_put(out, at, manifest); at = ct_put(out, at, ifx off then ",\"off\":true,\"why\":\"" else ",\"off\":false,\"why\":\"");
+  at = ct_put(out, at, why);
+  return ct_put(out, at, ifx source then "\",\"source\":true}" else "\",\"source\":false}");
+}
+ss_list_end :: (out: [] u8, n: int) -> int { return ifx n > out.count then n else ct_put(out, n, "]}"); }
+
+SS_LIST_NODES :: 16384;     // nodes a full list is read with
+SsHead :: struct { ok: bool; world_n: int; limits: SsLimits; count: int; }
+SsEntry :: struct { ok: bool; off: bool; source: bool; why_n: int; }
+// Script i of a parsed list: its manifest into mf, whether it is off, and why into `why`.
+ss_list_entry :: (d: [] Jv, i: int, mf: [] ScriptManifest, why: [] u8) -> SsEntry {
+  e: SsEntry; v := d[0];
+  mf[0] = ScriptManifest.{};
+  row := jv_at(v, jv_get(v, 0, "scripts"), i);
+  if !d[0].ok || i < 0 || jv_kind(v, row) != JV_OBJECT { return e; }
+  e.off = jv_bool(v, jv_get(v, row, "off")); e.source = jv_bool(v, jv_get(v, row, "source")); e.why_n = jv_str(v, jv_get(v, row, "why"), why);
+  manifest := jv_raw(v, jv_get(v, row, "manifest"));
+  if e.why_n < 0 || !sm_read(manifest, mf[..]) { return e; }
+  again: [SM_TEXT + SS_WHY + 64] u8;
+  m := ss_list_add(again[..], 0, manifest, e.off, cast(string) why[0..<e.why_n], e.source, true);
+  if m > again.count || cast(string) again[0..<m] != jv_raw(v, row) { mf[0] = ScriptManifest.{}; return e; }
+  e.ok = true;
+  return e;
+}
+// A list read into d (which the caller then asks for each script): its world into `world`, the
+// limits, how many scripts. Not ok for any bytes but the ones the writer writes, scripts ascending by hash.
+ss_list_read :: (d: [] Jv, text: string, nodes: [] JvNode, world: [] u8) -> SsHead {
+  h: SsHead; again: [600] u8; id: [40] u8;
+  if !jv_parse(d[..], text, nodes) { d[0].ok = false; return h; }
+  v := d[0]; l: SsLimits; d[0].ok = false;
+  n := jv_str(v, jv_get(v, 0, "schema"), id[..]);
+  h.world_n = jv_str(v, jv_get(v, 0, "world"), world);
+  if n < 0 || cast(string) id[0..<n] != SS_LIST || h.world_n < 1 { return h; }
+  lim := jv_get(v, 0, "limits");
+  l.scripts = jv_int(v, jv_get(v, lim, "scripts"), -1); l.module_bytes = jv_int(v, jv_get(v, lim, "module_bytes"), -1); l.stored = jv_int(v, jv_get(v, lim, "stored"), -1);
+  l.call_fuel = jv_int(v, jv_get(v, lim, "call_fuel"), -1); l.tick_fuel = jv_int(v, jv_get(v, lim, "tick_fuel"), -1); l.uploads_a_day = jv_int(v, jv_get(v, lim, "uploads_a_day"), -1);
+  l.compiles_a_day = jv_int(v, jv_get(v, lim, "compiles_a_day"), -1); l.reports_a_day = jv_int(v, jv_get(v, lim, "reports_a_day"), -1); l.source_bytes = jv_int(v, jv_get(v, lim, "source_bytes"), -1);
+  l.why_bytes = jv_int(v, jv_get(v, lim, "why_bytes"), -1); l.compiler = jv_int(v, jv_get(v, lim, "compiler"), -1);
+  scripts := jv_get(v, 0, "scripts");
+  if jv_kind(v, scripts) != JV_ARRAY || jv_len(v, scripts) > SS_STORED { return h; }
+  h.limits = l; h.count = jv_len(v, scripts);
+  m := ss_list_begin(again[..], cast(string) world[0..<h.world_n], l);
+  if m > again.count || m > text.count || cast(string) again[0..<m] != text[0..<m] { return h; }
+  // each script in its one form, one after another with a comma between, ascending by hash; then the close
+  d[0].ok = true;
+  mf: [1] ScriptManifest; why: [SS_WHY] u8; before: [64] u8; at := m;
+  for i: 0..<h.count {
+    raw := jv_raw(v, jv_at(v, scripts, i));
+    e := ss_list_entry(d, i, mf[..], why[..]);
+    if i > 0 { if at >= text.count || text[at] != ',' { d[0].ok = false; return h; } at += 1; }
+    if !e.ok || at + raw.count > text.count || text[at..<at + raw.count] != raw || (i > 0 && !ct_before(cast(string) before[..], cast(string) mf[0].hash[..])) { d[0].ok = false; return h; }
+    before = mf[0].hash; at += raw.count;
+  }
+  if at + 2 != text.count || text[at..<text.count] != "]}" { d[0].ok = false; return h; }
+  h.ok = true;
+  return h;
+}
+
+// ---- world.script.refusal.v1
+
+SsRefusal :: struct { ok: bool; code: int; words_n: int; detail_n: int; at: int = -1; limit: int; left_ms: int; asks_n: int; asks: [SH_SCRIPTS] SsAsk; }
+ss_bits_write :: (o: [] Jo, key: string, bits: int, kind: int) {
+  jo_key(o, key); jo_arr(o);
+  if kind == 0 { for name, h: RH_NAMES { if (bits & (1 << h)) != 0 { jo_str(o, name); } } }
+  if kind == 1 { for name, p: SM_POWERS { if (bits & (1 << p)) != 0 { jo_str(o, name); } } }
+  if kind == 2 { for c, r: SCRIPT_API { if (bits & (1 << r)) != 0 { jo_str(o, c.name); } } }
+  jo_end(o);
+}
+ss_handler_bits :: (d: Jv, at: int) -> int {
+  bits := 0; word: [SH_NAME] u8;
+  if jv_kind(d, at) != JV_ARRAY { return -1; }
+  for i: 0..<jv_len(d, at) {
+    n := jv_str(d, jv_at(d, at, i), word[..]); found := -1;
+    if n < 1 { return -1; }
+    for name, h: RH_NAMES { if name == cast(string) word[0..<n] { found = h; } }
+    if found < 0 || (bits >> found) != 0 { return -1; }
+    bits = bits | (1 << found);
+  }
+  return bits;
+}
+// A refusal into out. detail: a refused module's refusal name ("" otherwise); at: the byte it is
+// about (-1: none); limit: the limit that was reached (0: none); left_ms: when a daily limit lifts
+// (0: not that); asks: what a publish asks the publisher to confirm.
+ss_refusal_write :: (code: int, words: string, detail: string, at: int, limit: int, left_ms: int, asks: [] SsAsk, out: [] u8) -> string {
+  if code <= SSC_NONE || code >= SSC_CODES || words.count < 1 || words.count > SS_WORDS || detail.count > SS_DETAIL || at < -1 || limit < 0 || left_ms < 0 || asks.count > SH_SCRIPTS { return ""; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], SS_REFUSAL);
+  jo_key(o[..], "code"); jo_str(o[..], ssc_id(code));
+  jo_key(o[..], "retry"); jo_bool(o[..], ssc_retry(code));
+  jo_key(o[..], "error"); jo_str(o[..], words);
+  jo_key(o[..], "detail"); jo_str(o[..], detail);
+  jo_key(o[..], "at"); jo_int(o[..], at);
+  jo_key(o[..], "limit"); jo_int(o[..], limit);
+  jo_key(o[..], "left_ms"); jo_int(o[..], left_ms);
+  jo_key(o[..], "asks"); jo_arr(o[..]);
+  for i: 0..<asks.count {
+    a := asks[i];
+    if !sm_name_ok(cast(string) a.name[0..<a.name_n]) || !srw_hash_ok(cast(string) a.hash[..]) { return ""; }
+    jo_obj(o[..]);
+    jo_key(o[..], "name"); jo_str(o[..], cast(string) a.name[0..<a.name_n]);
+    jo_key(o[..], "hash"); jo_str(o[..], cast(string) a.hash[..]);
+    jo_key(o[..], "new"); jo_bool(o[..], a.fresh);
+    ss_bits_write(o[..], "handlers", a.grows.handlers, 0); ss_bits_write(o[..], "powers", a.grows.powers, 1); ss_bits_write(o[..], "calls", a.grows.calls, 2);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]); jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+// A refusal read: its words and detail into the caller's room. Not ok for any bytes but the writer's.
+ss_refusal_read :: (text: string, r: [] SsRefusal, words: [] u8, detail: [] u8, nodes: [] JvNode) -> bool {
+  r[0] = SsRefusal.{}; d: [1] Jv; id: [80] u8; v: SsRefusal;
+  if text.count == 0 || !jv_parse(d[..], text, nodes) { return false; }
+  j := d[0];
+  n := jv_str(j, jv_get(j, 0, "schema"), id[..]);
+  if n < 0 || cast(string) id[0..<n] != SS_REFUSAL { return false; }
+  n = jv_str(j, jv_get(j, 0, "code"), id[..]);
+  v.code = ifx n < 0 then SSC_NONE else ssc_of(cast(string) id[0..<n]);
+  v.words_n = jv_str(j, jv_get(j, 0, "error"), words); v.detail_n = jv_str(j, jv_get(j, 0, "detail"), detail);
+  v.at = jv_int(j, jv_get(j, 0, "at"), -2); v.limit = jv_int(j, jv_get(j, 0, "limit"), -1); v.left_ms = jv_int(j, jv_get(j, 0, "left_ms"), -1);
+  asks := jv_get(j, 0, "asks");
+  if v.code == SSC_NONE || v.words_n < 1 || v.detail_n < 0 || jv_kind(j, asks) != JV_ARRAY || jv_len(j, asks) > SH_SCRIPTS { return false; }
+  v.asks_n = jv_len(j, asks);
+  for i: 0..<v.asks_n {
+    row := jv_at(j, asks, i); a: SsAsk; hash: [80] u8;
+    a.name_n = jv_str(j, jv_get(j, row, "name"), a.name[..]);
+    hn := jv_str(j, jv_get(j, row, "hash"), hash[..]);
+    if a.name_n < 1 || hn != 64 { return false; }
+    for k: 0..<64 { a.hash[k] = hash[k]; }
+    a.fresh = jv_bool(j, jv_get(j, row, "new"));
+    a.grows.handlers = ss_handler_bits(j, jv_get(j, row, "handlers")); a.grows.powers = sm_bits(j, jv_get(j, row, "powers"), false); a.grows.calls = sm_bits(j, jv_get(j, row, "calls"), true);
+    if a.grows.handlers < 0 || a.grows.powers < 0 || a.grows.calls < 0 { return false; }
+    v.asks[i] = a;
+  }
+  again: [SS_WORDS * 2 + SH_SCRIPTS * 1200 + 400] u8;
+  if ss_refusal_write(v.code, cast(string) words[0..<v.words_n], cast(string) detail[0..<v.detail_n], v.at, v.limit, v.left_ms, v.asks[0..<v.asks_n], again[..]) != text { return false; }
+  v.ok = true; r[0] = v;
+  return true;
+}
+
+// Line k of text (0 and up), without its newline; "" past the end.
+ss_line :: (text: string, k: int) -> string {
+  at := 0; ln := 0;
+  while at < text.count {
+    end := at;
+    while end < text.count && text[end] != '\n' { end += 1; }
+    if ln == k { return text[at..<end]; }
+    at = end + 1; ln += 1;
+  }
+  return "";
+}
+// Whether text is exactly `lines` lines, each ended by a newline.
+ss_lines_are :: (text: string, lines: int) -> bool {
+  if text.count == 0 || text[text.count - 1] != '\n' { return false; }
+  n := 0;
+  for c: text { if c == '\n' { n += 1; } }
+  return n == lines;
+}
+// ---- world.script.reports.v1: a head line, a line a report, a closing line; and world.script.done.v1
+
+SS_STATUS :: [3] string.["open", "kept", "removed"];
+SsReport :: struct { ok: bool; id: int; world: [48] u8; world_n: int; hash: [64] u8; by: [80] u8; by_n: int; why: [SS_WHY] u8; why_n: int; at: int; status: int; }
+ss_by_ok :: (by: string) -> bool {
+  if by.count < 1 || by.count > 80 { return false; }
+  for c: by { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-') { return false; } }
+  return true;
+}
+ss_reports_begin :: (out: [] u8, count: int) -> int {
+  if count < 0 { return out.count + 1; }
+  n := ct_put(out, 0, "{\"schema\":\""); n = ct_put(out, n, SS_REPORTS); n = ct_put(out, n, "\",\"count\":"); n = ct_put_int(out, n, count);
+  return ct_put(out, n, ",\"reports\":[\n");
+}
+ss_reports_add :: (out: [] u8, n: int, id: int, world: string, hash: string, by: string, why: string, at: int, status: int, last: bool) -> int {
+  if n > out.count || id < 1 || !ss_world_ok(world) || !srw_hash_ok(hash) || !ss_by_ok(by) || !ss_why_ok(why) || at < 1 || status < 0 || status > 2 { return out.count + 1; }
+  row: [700] u8; o: [1] Jo; jo_start(o[..], row[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "id"); jo_int(o[..], id);
+  jo_key(o[..], "world"); jo_str(o[..], world);
+  jo_key(o[..], "hash"); jo_str(o[..], hash);
+  jo_key(o[..], "by"); jo_str(o[..], by);
+  jo_key(o[..], "why"); jo_str(o[..], why);
+  jo_key(o[..], "at"); jo_int(o[..], at);
+  jo_key(o[..], "status"); jo_str(o[..], SS_STATUS[status]);
+  jo_end(o[..]);
+  if o[0].bad { return out.count + 1; }
+  at_n := ct_put(out, n, jo_text(o[..]));
+  return ct_put(out, at_n, ifx last then "\n" else ",\n");
+}
+ss_reports_end :: (out: [] u8, n: int) -> int { return ifx n > out.count then n else ct_put(out, n, "]}\n"); }
+// How many reports a list holds, or -1 for bytes that are not a list's head and close.
+ss_reports_count :: (text: string) -> int {
+  again: [120] u8; head := ss_line(text, 0);
+  if head.count < 12 || head.count > 100 { return -1; }
+  // the count is the digits before ,"reports":[
+  tail := ",\"reports\":["; start := "{\"schema\":\"world.script.reports.v1\",\"count\":";
+  if head.count <= start.count + tail.count || head[0..<start.count] != start { return -1; }
+  count := ct_num(head[start.count..<head.count - tail.count]);
+  if !count.ok { return -1; }
+  m := ss_reports_begin(again[..], count.v);
+  if m != head.count + 1 || cast(string) again[0..<head.count] != head || ss_line(text, count.v + 1) != "]}" || !ss_lines_are(text, count.v + 2) { return -1; }
+  return count.v;
+}
+// Report i of a list of `count`.
+ss_reports_entry :: (text: string, i: int, count: int) -> SsReport {
+  r: SsReport; nodes: [32] JvNode; d: [1] Jv; word: [80] u8; again: [800] u8;
+  if i < 0 || i >= count { return r; }
+  line := ss_line(text, i + 1); last := i == count - 1;
+  if line.count < 4 || (!last && line[line.count - 1] != ',') { return r; }
+  body := ifx last then line else line[0..<line.count - 1];
+  if !jv_parse(d[..], body, nodes[..]) { return r; }
+  v := d[0];
+  r.id = jv_int(v, jv_get(v, 0, "id"), -1); r.world_n = jv_str(v, jv_get(v, 0, "world"), r.world[..]); r.by_n = jv_str(v, jv_get(v, 0, "by"), r.by[..]);
+  r.why_n = jv_str(v, jv_get(v, 0, "why"), r.why[..]); r.at = jv_int(v, jv_get(v, 0, "at"), -1);
+  hn := jv_str(v, jv_get(v, 0, "hash"), word[..]);
+  if hn != 64 || r.world_n < 1 || r.by_n < 1 || r.why_n < 1 { return r; }
+  for k: 0..<64 { r.hash[k] = word[k]; }
+  sn := jv_str(v, jv_get(v, 0, "status"), word[..]); r.status = -1;
+  for name, s: SS_STATUS { if sn > 0 && name == cast(string) word[0..<sn] { r.status = s; } }
+  m := ss_reports_add(again[..], 0, r.id, cast(string) r.world[0..<r.world_n], cast(string) r.hash[..], cast(string) r.by[0..<r.by_n], cast(string) r.why[0..<r.why_n], r.at, r.status, last);
+  if m > again.count || m != line.count + 1 || cast(string) again[0..<line.count] != line { return r; }
+  r.ok = true;
+  return r;
+}
+
+SS_DID :: [4] string.["report", "off", "on", "keep"];
+// What a report, a switch-off, a switch-on or a keep did: which, and the module's hash.
+ss_done_write :: (did: int, hash: string, out: [] u8) -> string {
+  if did < 0 || did > 3 || !srw_hash_ok(hash) { return ""; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], SS_DONE);
+  jo_key(o[..], "did"); jo_str(o[..], SS_DID[did]);
+  jo_key(o[..], "hash"); jo_str(o[..], hash);
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+// Which a done says (-1: the bytes are not one), its hash into `hash`.
+ss_done_read :: (text: string, hash: [] u8) -> int {
+  nodes: [16] JvNode; d: [1] Jv; word: [80] u8; again: [200] u8;
+  if !jv_parse(d[..], text, nodes[..]) || hash.count < 64 { return -1; }
+  n := jv_str(d[0], jv_get(d[0], 0, "did"), word[..]); did := -1;
+  for name, k: SS_DID { if n > 0 && name == cast(string) word[0..<n] { did = k; } }
+  if jv_str(d[0], jv_get(d[0], 0, "hash"), word[..]) != 64 { return -1; }
+  if ss_done_write(did, cast(string) word[0..<64], again[..]) != text { return -1; }
+  for k: 0..<64 { hash[k] = word[k]; }
+  return did;
+}
+
+#load "store-checks.coax" #test;

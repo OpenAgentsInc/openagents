@@ -167,7 +167,8 @@ confirms.
   predicts.
 - **Not open to everyone on day one.** Today's rule stands: realm code is
   ours or a reviewed PR. Stages 1 to 4 keep that rule, with scripts written
-  by us and our agents. Stage 5 is a separate decision.
+  by us and our agents. Stage 5 is a separate decision. (The owner made it on
+  2026-11-13: the rule is lifted for realm scripts only.)
 
 ## Stages
 
@@ -225,6 +226,8 @@ Kept current as stages land (#13467). The contract as built is
 | The interpreter: budget, owned memory, traps as values, rollback | built | `metaverse-engine/script/interp.coax` |
 | The host: a tick of a world's scripts, diagnostics, switch-off | built | `metaverse-engine/script/host.coax` |
 | The manifest and the frame and result bytes | built | `metaverse-engine/script/manifest.coax`, `frame.coax` |
+| Scripts in the world document: stored by hash behind the check, the edit rule, the publish rule | built | `coax/web/api/scripts.c`, `script-policy.coax`, `script-store.coax`, `metaverse-engine/script/store.coax`; [the contract](../protocol/world-scripts-v1.md) |
+| Other authors: the compile job, quotas, reports and the switch-off | built for a developer's machine; a server has no job yet | `metaverse-engine/tools/script-job.coax`, `coax/web/script-job.sh`, `OA_SCRIPT_JOB` |
 | A world's script rows (`ID\|NAME\|HASH\|FOR` in a content table) | built | `metaverse-engine/script/rows.coax`, Splice's `scripts` table |
 | Splice's raider and Imperial robot as scripts | built | `metaverse/splice/scripts/`, `metaverse/splice/scripts.coax` |
 | The page's script module and its loader | built | `apps/openagents-web/script-host.coax`, `metaverse-engine/script/loader.coax`, `coax/web/host.js` "A realm's scripts" |

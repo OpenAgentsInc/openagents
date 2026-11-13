@@ -1,0 +1,162 @@
+// The realm-script routes' work on a world's rows and stored modules (GitHub #13467; COAX.md "Where
+// API rules go"; docs/protocol/world-scripts-v1.md): what coax/web/api/scripts.c and worlds.c call.
+// Every decision is script-policy.coax's (#authority), which this unit carries: here they are
+// applied to the rows of a world's content tables and the facts of its stored modules, and the
+// answers are written with the one codec (metaverse-engine/script/store.coax). A module is checked
+// with the engine's own check and load (host.coax), and its manifest is written from the checked
+// bytes (manifest.coax).
+//   coax/bin/coax test coax/web/api/script-store.coax --library
+#load "script-policy.coax";
+#load "../../../metaverse-engine/script/store.coax";
+
+// ---- the bytes, for C
+
+wsp_name_ok :: (name: string) -> bool #export_c #effects(all) { return sm_name_ok(name); }
+wsp_hash_ok :: (hash: string) -> bool #export_c #effects(all) { return srw_hash_ok(hash); }
+wsp_why_ok :: (why: string) -> bool #export_c #effects(all) { return ss_why_ok(why); }
+wsp_out :: (w: [] SsWork) -> string #export_c #effects(all) { return ss_answer(w); }
+wsp_said :: (w: [] SsWork) -> string #export_c #effects(all) { return ss_said(w); }
+wsp_manifest :: (w: [] SsWork) -> string #export_c #effects(all) { return ss_manifest(w); }
+wsp_hash :: (w: [] SsWork) -> string #export_c #effects(all) { return ifx w[0].mf.ok then cast(string) w[0].mf.hash[..] else ""; }
+// A refusal into w's answer: its bytes' length (0 when it did not fit: the caller answers 500).
+// words: "" for the code's own.
+wsp_refuse :: (w: [] SsWork, code: int, words: string, limit: int, left_ms: int) -> int #export_c #effects(all) {
+  none: [1] SsAsk;
+  made := ss_refusal_write(code, ifx words.count > 0 then words else wsp_words(code), "", -1, limit, left_ms, none[0..<0], w[0].out[..]);
+  w[0].out_n = made.count;
+  return made.count;
+}
+// A module's bytes checked, and its manifest written from them into w (wsp_manifest, wsp_hash): 200.
+// Or the status of a refusal that is in w's answer: 422 for a module the check refused (the
+// refusal's name and the byte) or whose face is out of range, 400 for a name or fields that do
+// not read.
+wsp_module :: (w: [] SsWork, bytes: [] u8, name: string, fields: string) -> int #export_c #effects(all) {
+  return wsp_checked(w, ss_module(w, bytes, name, fields));
+}
+// The same for what a compile job made: its manifest gives the name and the fields, and nothing
+// else of it is believed. name: the name the author asked for, which the script's own must be.
+wsp_compiled :: (w: [] SsWork, bytes: [] u8, name: string, made: string) -> int #export_c #effects(all) {
+  mf: [1] ScriptManifest;
+  if !sm_read(made, mf[..]) || !ss_same(mf[0].name[..], mf[0].name_n, name) {
+    n := wsp_refuse(w, SSC_SOURCE, "the script's own name, in its #script line, is not the name asked for", 0, 0);
+    return 422;
+  }
+  return wsp_checked(w, ss_module_laid(w, bytes, name, mf[0].layout));
+}
+wsp_checked :: (w: [] SsWork, verdict: int) -> int #effects(all) {
+  if verdict == SSM_OK { return 200; }
+  none: [1] SsAsk; made := "";
+  if verdict == SSM_REFUSED { made = ss_refusal_write(SSC_MODULE, wsp_words(SSC_MODULE), ss_refused_name(w), ss_refused_at(w), 0, 0, none[0..<0], w[0].out[..]); }
+  else if verdict == SSM_FACE { made = ss_refusal_write(SSC_FACE, wsp_words(SSC_FACE), "", -1, 0, 0, none[0..<0], w[0].out[..]); }
+  else if verdict == SSM_NAME { made = ss_refusal_write(SSC_BAD, "a script's name is lowercase letters, digits and hyphens, a letter first, at most 48", "", -1, 0, 0, none[0..<0], w[0].out[..]); }
+  else { made = ss_refusal_write(SSC_BAD, "the state fields are a JSON array of {name, type, at, size} inside the module's state record", "", -1, 0, 0, none[0..<0], w[0].out[..]); }
+  w[0].out_n = made.count;
+  return ifx verdict == SSM_REFUSED || verdict == SSM_FACE then 422 else 400;
+}
+// The stored modules' facts, and a lane's rows (store.coax).
+wsp_have_clear :: (w: [] SsWork) #export_c #effects(all) { ss_have_clear(w); }
+wsp_have_add :: (w: [] SsWork, manifest: string, off: bool) -> bool #export_c #effects(all) { return ss_have_add(w, manifest, off); }
+// lane: 0 dev (for an edit: the tables as the batch leaves them), 1 live (for an edit: the tables
+// as they were), 2 the revision before the last pin change. How many rows, or below 0 with words.
+wsp_scan :: (w: [] SsWork, lane: int, tables: string) -> int #export_c #effects(all) { return ss_scan(w, lane, tables); }
+// A lane that holds no revision names no script.
+wsp_scan_none :: (w: [] SsWork, lane: int) #export_c #effects(all) { if lane >= 0 && lane < SS_LANES { w[0].rows_n[lane] = 0; } }
+wsp_named :: (w: [] SsWork, hash: string) -> bool #export_c #effects(all) { return ss_named(w, hash); }
+
+// An edit, once the realm's own check has passed: lane 0 holds the rows as the batch leaves them,
+// lane 1 the rows as they were, and the facts the world's stored modules. A row whose hash the old
+// rows did not name must name a module the world stores that is not switched off. 0, or 422 with
+// the words in w (wsp_said).
+wsp_edit :: (w: [] SsWork) -> int #export_c #effects(all) {
+  new := ss_rows(w, 0); old := ss_rows(w, 1);
+  for i: 0..<new.count {
+    r := new[i]; hash := cast(string) r.hash[..];
+    if srw_names(old, hash) { continue; }
+    at := ss_have(w, hash);
+    code := wsp_row(at >= 0, at >= 0 && w[0].have[at].off);
+    if code == SSC_NONE { continue; }
+    n := ct_put(w[0].words[..], 0, "script "); n = ct_put_int(w[0].words[..], n, r.slot + 1); n = ct_put(w[0].words[..], n, ": ");
+    n = ct_put(w[0].words[..], n, ifx code == SSC_WITHDRAWN then "that script is switched off, so no edit names it" else "this world has stored no module of that hash: store the module first");
+    w[0].words_n = n;
+    return 422;
+  }
+  return 0;
+}
+// A publish: lane 0 holds dev's rows, lane 1 live's (none when nothing is live), and the facts the
+// world's stored modules. 0 when it may go on. 409 with a refusal in w's answer that lists each
+// script the publisher has not confirmed and what it adds; 422 when a row names a module the world
+// has not stored.
+wsp_publish :: (w: [] SsWork, confirm: string) -> int #export_c #effects(all) {
+  dev := ss_rows(w, 0); live := ss_rows(w, 1);
+  w[0].asks_n = 0;
+  for i: 0..<dev.count {
+    r := dev[i]; hash := cast(string) r.hash[..];
+    at := ss_have(w, hash);
+    if at < 0 { n := wsp_refuse(w, SSC_NOT_STORED, "", 0, 0); return 422; }
+    mine := w[0].have[at];
+    new := ScriptManifest.{handlers = mine.handlers, powers = mine.powers, calls = mine.calls};
+    // against each live row of the same name: it grows when it has what none of them has
+    fresh := true; g := ScriptGrowth.{handlers = mine.handlers, powers = mine.powers, calls = mine.calls};
+    for k: 0..<live.count {
+      l := live[k]; la := ss_have(w, cast(string) l.hash[..]);
+      if !ss_same(l.name[..], l.name_n, cast(string) r.name[0..<r.name_n]) || la < 0 { continue; }
+      old := ScriptManifest.{handlers = w[0].have[la].handlers, powers = w[0].have[la].powers, calls = w[0].have[la].calls};
+      one := sm_growth(old, new);
+      g = ifx fresh then one else ScriptGrowth.{handlers = g.handlers & one.handlers, powers = g.powers & one.powers, calls = g.calls & one.calls};
+      fresh = false;
+    }
+    if !wsp_asks(fresh, sm_grows(g), srw_names(live, hash), wsp_confirmed(confirm, hash)) { continue; }
+    // one ask a hash
+    seen := false;
+    for k: 0..<w[0].asks_n { if ss_same(w[0].asks[k].hash[..], 64, hash) { seen = true; } }
+    if seen { continue; }
+    w[0].asks[w[0].asks_n] = SsAsk.{name = r.name, name_n = r.name_n, hash = r.hash, fresh = fresh, grows = g};
+    w[0].asks_n += 1;
+  }
+  if w[0].asks_n == 0 { return 0; }
+  made := ss_refusal_write(SSC_GROWS, wsp_words(SSC_GROWS), "", -1, 0, 0, w[0].asks[0..<w[0].asks_n], w[0].out[..]);
+  w[0].out_n = made.count;
+  return 409;
+}
+
+// world.scripts.v1 into w's answer: begun, a script added (ascending by hash), ended. Each answers
+// whether it still fits; the end answers the bytes' length (0: it did not fit).
+wsp_list_begin :: (w: [] SsWork, world: string, compiles: bool) -> bool #export_c #effects(all) {
+  w[0].out_n = ss_list_begin(w[0].out[..], world, ss_limits(compiles));
+  return w[0].out_n <= w[0].out.count;
+}
+wsp_list_add :: (w: [] SsWork, manifest: string, off: bool, why: string, source: bool, first: bool) -> bool #export_c #effects(all) {
+  w[0].out_n = ss_list_add(w[0].out[..], w[0].out_n, manifest, off, why, source, first);
+  return w[0].out_n <= w[0].out.count;
+}
+wsp_list_end :: (w: [] SsWork) -> int #export_c #effects(all) {
+  n := ss_list_end(w[0].out[..], w[0].out_n);
+  w[0].out_n = ifx n > w[0].out.count then 0 else n;
+  return w[0].out_n;
+}
+// world.script.reports.v1, the same way.
+wsp_reports_begin :: (w: [] SsWork, count: int) -> bool #export_c #effects(all) {
+  w[0].out_n = ss_reports_begin(w[0].out[..], count);
+  return w[0].out_n <= w[0].out.count;
+}
+wsp_reports_add :: (w: [] SsWork, id: int, world: string, hash: string, by: string, why: string, at: int, status: string, last: bool) -> bool #export_c #effects(all) {
+  which := -1;
+  for name, s: SS_STATUS { if name == status { which = s; } }
+  w[0].out_n = ss_reports_add(w[0].out[..], w[0].out_n, id, world, hash, by, why, at, which, last);
+  return w[0].out_n <= w[0].out.count;
+}
+wsp_reports_end :: (w: [] SsWork) -> int #export_c #effects(all) {
+  n := ss_reports_end(w[0].out[..], w[0].out_n);
+  w[0].out_n = ifx n > w[0].out.count then 0 else n;
+  return w[0].out_n;
+}
+// world.script.done.v1 into w's answer: its length. did: report, off, on or keep.
+wsp_done :: (w: [] SsWork, did: string, hash: string) -> int #export_c #effects(all) {
+  which := -1;
+  for name, k: SS_DID { if name == did { which = k; } }
+  made := ss_done_write(which, hash, w[0].out[..]);
+  w[0].out_n = made.count;
+  return made.count;
+}
+
+#load "script-store-checks.coax" #test;

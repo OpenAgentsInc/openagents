@@ -1,0 +1,134 @@
+// Checks proto/world/script-store-v1.json against the stored scripts' codec (GitHub #13467,
+// metaverse-engine/script/store.coax): the profile is written from the code, so the check is that the
+// file is exactly what the code writes now. It pins
+//   - the limits a server states and the refusal codes (number, id, name, retry, meaning);
+//   - a fixture of each shape, made here through the codec and read back through it: a world's list
+//     (world.scripts.v1) with one script on and one off, a refused module's refusal and a publish's
+//     confirmation (world.script.refusal.v1), the open reports (world.script.reports.v1) and what a
+//     switch-off did (world.script.done.v1).
+// Usage, at the repository root:
+//   coax/web/tool.sh metaverse-engine/tools/script-store-profile.coax proto/world/script-store-v1.json           check
+//   coax/web/tool.sh metaverse-engine/tools/script-store-profile.coax proto/world/script-store-v1.json --write   write
+#import "Basic";
+#load "../script/store.coax";
+#load "../script/wasm-make.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+TPF_CHECK :: "coax/web/tool.sh metaverse-engine/tools/script-store-profile.coax proto/world/script-store-v1.json";
+TPF_BYTES :: 131072;
+TpfOut :: struct { n: int; full: bool; }
+TpfWork :: struct { w: [1] SsWork; b: [2048] u8; a: [SM_TEXT] u8; c: [SM_TEXT] u8; ha: [64] u8; hc: [64] u8; row: [16384] u8; doc: [32768] u8; nodes: [2048] JvNode; }
+
+tpf_put :: (out: [] u8, w: [] TpfOut, s: string) {
+  for c: s { if w[0].n < out.count { out[w[0].n] = c; w[0].n += 1; } else { w[0].full = true; } }
+}
+#test "text is appended until the buffer is full" {
+  out: [4] u8; w: [1] TpfOut;
+  tpf_put(out[..], w[..], "abc"); #assert cast(string) out[0..<w[0].n] == "abc" && !w[0].full;
+  tpf_put(out[..], w[..], "de"); #assert w[0].n == 4 && w[0].full;
+}
+// One "name": value member line; `last` leaves the comma off. text: the value is a string to quote.
+tpf_member :: (out: [] u8, w: [] TpfOut, k: [] TpfWork, key: string, value: string, text: bool, last: bool) {
+  tpf_put(out, w, " \""); tpf_put(out, w, key); tpf_put(out, w, "\": ");
+  if text { o: [1] Jo; jo_start(o[..], k[0].row[..]); jo_str(o[..], value); tpf_put(out, w, jo_text(o[..])); } else { tpf_put(out, w, value); }
+  tpf_put(out, w, ifx last then "\n" else ",\n");
+}
+// A module whose imports are `rows`, checked under `name`: its manifest into keep and its hash into hash.
+tpf_make :: (k: [] TpfWork, rows: [] int, name: string, fields: string, keep: [] u8, hash: [] u8) -> string {
+  nothing := WB_NOTHING; echo := WB_ECHO;
+  n := wb_module(k[0].b[..], rows, nothing[..], 0, echo[..]);
+  if n < 0 || ss_module(k[0].w[..], k[0].b[0..<n], name, fields) != SSM_OK { return ""; }
+  for i: 0..<64 { hash[i] = k[0].w[0].mf.hash[i]; }
+  return cast(string) keep[0..<ct_put(keep, 0, ss_manifest(k[0].w[..]))];
+}
+
+tpf_text :: (k: [] TpfWork, out: [] u8) -> string {
+  w: [1] TpfOut; o: [1] Jo; row := k[0].row[..];
+  tpf_put(out, w[..], "{\n");
+  tpf_member(out, w[..], k, "profile", "world-scripts-v1", true, false);
+  tpf_member(out, w[..], k, "version", "1", false, false);
+  tpf_member(out, w[..], k, "title", "A world's stored scripts v1: the list (world.scripts.v1), a refusal, the reports and a done", true, false);
+  tpf_member(out, w[..], k, "check", TPF_CHECK, true, false);
+  tpf_member(out, w[..], k, "spec", "docs/protocol/world-scripts-v1.md", true, false);
+  tpf_member(out, w[..], k, "schema", SS_LIST, true, false);
+  jo_start(o[..], row); jo_arr(o[..]); jo_str(o[..], SS_LIST); jo_str(o[..], SS_REFUSAL); jo_str(o[..], SS_REPORTS); jo_str(o[..], SS_DONE); jo_end(o[..]);
+  tpf_member(out, w[..], k, "schemas", jo_text(o[..]), false, false);
+  tpf_member(out, w[..], k, "rule", "A code's number and retry are never changed, and a number is never used again. A limit is stated in the list and in the refusal it causes.", true, false);
+  l := ss_limits(true);
+  jo_start(o[..], row); jo_obj(o[..]);
+  for name, i: SS_LIMIT_NAMES { jo_key(o[..], name); jo_int(o[..], ss_limit(l, i)); }
+  jo_key(o[..], "keep_ms"); jo_int(o[..], SS_KEEP_MS); jo_key(o[..], "words_bytes"); jo_int(o[..], SS_WORDS);
+  jo_end(o[..]); tpf_member(out, w[..], k, "limits", jo_text(o[..]), false, false);
+  tpf_put(out, w[..], " \"codes\": [\n");
+  for name, c: SSC_NAMES {
+    if c == 0 { continue; }
+    jo_start(o[..], row); jo_obj(o[..]);
+    jo_key(o[..], "number"); jo_int(o[..], c); jo_key(o[..], "id"); jo_str(o[..], ssc_id(c)); jo_key(o[..], "name"); jo_str(o[..], name);
+    jo_key(o[..], "retry"); jo_bool(o[..], ssc_retry(c)); jo_key(o[..], "means"); jo_str(o[..], SSC_MEANS[c]);
+    jo_end(o[..]);
+    tpf_put(out, w[..], "  "); tpf_put(out, w[..], jo_text(o[..])); tpf_put(out, w[..], ifx c == SSC_CODES - 1 then "\n" else ",\n");
+  }
+  tpf_put(out, w[..], " ],\n \"fixtures\": {\n");
+  // two modules: one that reads and moves, one that also strikes
+  ra := [2] int.[SA_X, SA_MOVE]; rc := [3] int.[SA_X, SA_MOVE, SA_STRIKE];
+  a := tpf_make(k, ra[..], "pacer", "[{\"name\":\"turn_at\",\"type\":\"f32\",\"at\":4,\"size\":4}]", k[0].a[..], k[0].ha[..]);
+  c := tpf_make(k, rc[..], "pacer", "", k[0].c[..], k[0].hc[..]);
+  if a == "" || c == "" { return ""; }
+  a_first := ct_before(cast(string) k[0].ha[..], cast(string) k[0].hc[..]);
+  // the list: the script that strikes is switched off
+  doc := k[0].doc[..];
+  n := ss_list_begin(doc, "splice", l);
+  n = ss_list_add(doc, n, ifx a_first then a else c, !a_first, ifx a_first then "" else "it strikes players at the gate", a_first, true);
+  n = ss_list_add(doc, n, ifx a_first then c else a, a_first, ifx a_first then "it strikes players at the gate" else "", !a_first, false);
+  n = ss_list_end(doc, n);
+  d: [1] Jv; world: [32] u8;
+  if n > doc.count || !ss_list_read(d[..], cast(string) doc[0..<n], k[0].nodes[..], world[..]).ok { return ""; }
+  tpf_member(out, w[..], k, "list", cast(string) doc[0..<n], true, false);
+  // a refused module, and a publish that asks about the version that strikes
+  none: [1] SsAsk; words: [SS_WORDS] u8; detail: [SS_DETAIL] u8; r: [1] SsRefusal;
+  made := ss_refusal_write(SSC_MODULE, "the module check refused the bytes", "import", 41, 0, 0, none[0..<0], doc);
+  if made == "" || !ss_refusal_read(made, r[..], words[..], detail[..], k[0].nodes[..]) { return ""; }
+  tpf_member(out, w[..], k, "refused_module", made, true, false);
+  asks: [1] SsAsk;
+  for ch, i: "pacer" { asks[0].name[i] = ch; } asks[0].name_n = 5; asks[0].hash = k[0].hc; asks[0].grows = ScriptGrowth.{powers = 4, calls = 1 << SA_STRIKE};
+  made = ss_refusal_write(SSC_GROWS, "these scripts are new or do more than the live ones: confirm each by its hash", "", -1, 0, 0, asks[..], doc);
+  if made == "" || !ss_refusal_read(made, r[..], words[..], detail[..], k[0].nodes[..]) || r[0].asks_n != 1 { return ""; }
+  tpf_member(out, w[..], k, "publish_asks", made, true, false);
+  made = ss_refusal_write(SSC_RATE, "that is the day's limit for this. Try again later", "", -1, SS_UPLOADS_DAY, 3600000, none[0..<0], doc);
+  if made == "" || !ss_refusal_read(made, r[..], words[..], detail[..], k[0].nodes[..]) { return ""; }
+  tpf_member(out, w[..], k, "limit", made, true, false);
+  // the reports, and a done
+  n = ss_reports_begin(doc, 1);
+  n = ss_reports_add(doc, n, 7, "splice", cast(string) k[0].hc[..], "acct_ab12", "it strikes players at the gate", 1762190000000, 0, true);
+  n = ss_reports_end(doc, n);
+  if n > doc.count || ss_reports_count(cast(string) doc[0..<n]) != 1 || !ss_reports_entry(cast(string) doc[0..<n], 0, 1).ok { return ""; }
+  tpf_member(out, w[..], k, "reports", cast(string) doc[0..<n], true, false);
+  hash: [64] u8;
+  made = ss_done_write(1, cast(string) k[0].hc[..], doc);
+  if made == "" || ss_done_read(made, hash[..]) != 1 { return ""; }
+  tpf_member(out, w[..], k, "done", made, true, true);
+  tpf_put(out, w[..], " }\n}\n");
+  if w[0].full { return ""; }
+  return cast(string) out[0..<w[0].n];
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 || args_count(a[..]) > 2 || (args_count(a[..]) == 2 && args_at(a[..], 1) != "--write") {
+    tool_errln("usage: script-store-profile.coax PROFILE.json [--write]");
+    return 2;
+  }
+  path := args_at(a[..], 0); write := args_count(a[..]) == 2;
+  work: [1] TpfWork; made: [TPF_BYTES] u8; have: [TPF_BYTES] u8;
+  text := tpf_text(work[..], made[..]);
+  if text == "" { tool_errln("script-store-profile: the profile could not be written from the code"); return 1; }
+  n := fs_read(path, have[..]);
+  if n >= 0 && cast(string) have[0..<n] == text { print("script-store-profile: % is what the code writes (% bytes)\n", path, text.count); return 0; }
+  if write {
+    if !fs_write(path, text) { tool_err("script-store-profile: cannot write "); tool_errln(path); return 2; }
+    print("wrote %\n", path);
+    return 0;
+  }
+  print("script-store-profile: % is not what the code writes now. If the change is meant, write it: % --write\n", path, TPF_CHECK);
+  return 1;
+}

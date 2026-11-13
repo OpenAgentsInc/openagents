@@ -1,0 +1,82 @@
+// Checks the compile job end to end (GitHub #13467; metaverse-engine/tools/script-job.coax through its
+// wrapper, coax/web/script-job.sh): it compiles the sample script; refuses a source with a second
+// #load, a foreign procedure and a source over the size limit before any compiler runs; refuses a source
+// that runs long inside its time limit; and leaves nothing in its temporary directory. Run at the
+// repository root, on a machine with the Wasm toolchain (coax/web/toolchain.sh):
+//   coax/web/tool.sh metaverse-engine/tools/script-job-check.coax
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../script/manifest.coax";
+
+JC_LIMIT_MS :: 75000;   // the job's own limit is 60 s; a job that is not back by then failed this check
+JcWork :: struct { out: [65536] u8; err: [65536] u8; wasm: [WM_BYTES + 1] u8; text: [SM_TEXT + 1] u8; big: [70000] u8; s: [2] ScriptSlot; list: [1] FsList; }
+jc_has :: (s: string, part: string) -> bool {
+  for a: 0..<s.count - part.count + 1 { if s[a..<a + part.count] == part { return true; } }
+  return false;
+}
+#test "a part is found anywhere in a text" { #assert jc_has("abc", "bc") && jc_has("abc", "") && !jc_has("abc", "cd") && !jc_has("", "a"); }
+// The job run on a source: its exit status (-1: it did not come back), its words in w[0].out.
+jc_run :: (w: [] JcWork, source: string, name: string, out_dir: string, n: [] int, ms: [] int) -> int {
+  argv := [4] string.["coax/web/script-job.sh", source, name, out_dir];
+  began := proc_now_ms();
+  r := proc_run(argv[..], JC_LIMIT_MS, w[0].out[..], w[0].err[..]);
+  ms[0] = proc_now_ms() - began; n[0] = r.out_n;
+  return ifx r.started != 0 || r.timed_out then -1 else r.status;
+}
+jc_say :: (ok: bool, what: string, failed: [] int) {
+  print("% %\n", ifx ok then "ok  " else "FAIL", what);
+  if !ok { failed[0] += 1; }
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  work: [1] JcWork; w := work[..]; failed: [1] int; n: [1] int; ms: [1] int; tb: [1024] u8; p: [4] [1400] u8;
+  dir := fs_temp("script-job-check-", tb[..]);
+  if dir == "" { tool_errln("script-job-check: no temporary directory"); return 2; }
+  out_dir := fs_join(dir, "out", p[0][..]);
+  // 1. the sample script: a module that passes the check, and a manifest that reads
+  st := jc_run(w, "metaverse-engine/script/examples/pacer.coax", "pacer", out_dir, n[..], ms[..]);
+  bytes := fs_read(fs_join(out_dir, "pacer.wasm", p[1][..]), w[0].wasm[..]); tn := fs_read(fs_join(out_dir, "pacer.json", p[2][..]), w[0].text[..]);
+  mf: [1] ScriptManifest;
+  loaded := bytes > 0 && bytes <= WM_BYTES && sh_load(w[0].s[0..<1], w[0].s[1..<2], w[0].wasm[0..<bytes], ScriptLayout.{}) == 0;
+  jc_say(st == 0 && loaded && tn > 0 && sm_read(cast(string) w[0].text[0..<tn], mf[..]) && cast(string) mf[0].name[0..<mf[0].name_n] == "pacer" && mf[0].bytes == bytes, "the job compiles pacer.coax to a module that passes the check, with its manifest", failed[..]);
+  if st != 0 { print("%\n", cast(string) w[0].out[0..<n[0]]); }
+  // 2. refused before any compiler runs
+  src := fs_join(dir, "s.coax", p[3][..]);
+  cases := [4] string.[
+    "#script \"s\";\n#load \"api.coax\";\n#load \"../../coax/lib/sys/fs.coax\";\nMind :: struct #persisted { n: s32; }\non_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) { mind[0].n += 1; }\n",
+    "#script \"s\";\n#load \"api.coax\";\nsecret :: () -> s32 #foreign;\nMind :: struct #persisted { n: s32; }\non_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) { mind[0].n += secret(); }\n",
+    "#script \"s\";\n#import \"Basic\";\n",
+    "#script \"s\";\n#import_proto \"x.pb\";\n"];
+  wants := [4] string.["a script loads only the script API", "a script's source may use only", "a script's source may use only", "a script's source may use only"];
+  for text, i: cases {
+    wrote := fs_write(src, text);
+    st = jc_run(w, src, "s", out_dir, n[..], ms[..]);
+    jc_say(wrote && st == 1 && jc_has(cast(string) w[0].out[0..<n[0]], wants[i]) && jc_has(cast(string) w[0].out[0..<n[0]], "the compile job's limits") && ms[0] < 10000 && !fs_exists(fs_join(out_dir, "s.wasm", p[1][..])),
+           ifx i == 0 then "a source with a second #load is refused before a compiler runs" else (ifx i == 1 then "a source with a #foreign is refused" else (ifx i == 2 then "a source with an #import is refused" else "a source with an #import_proto is refused")), failed[..]);
+  }
+  // 3. over the size limit
+  head := "#script \"s\";\n#load \"api.coax\";\n"; bn := 0;
+  for c: head { w[0].big[bn] = c; bn += 1; }
+  while bn < 65537 { w[0].big[bn] = ' '; bn += 1; }
+  wrote := fs_write(src, cast(string) w[0].big[0..<bn]);
+  st = jc_run(w, src, "s", out_dir, n[..], ms[..]);
+  jc_say(wrote && st == 1 && jc_has(cast(string) w[0].out[0..<n[0]], "over 65,536 bytes"), "a source over 65,536 bytes is refused", failed[..]);
+  // 4. a source that runs long at compile time is refused inside the job's time limit
+  long := "#script \"s\";\n#load \"api.coax\";\nMind :: struct #persisted { n: s32; }\nspin :: () -> s32 { n: s32 = 0; while true { n = n ^ 1; } return n; }\nSPUN :: #run spin();\non_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) { mind[0].n += SPUN; }\n";
+  wrote = fs_write(src, long);
+  st = jc_run(w, src, "s", out_dir, n[..], ms[..]);
+  jc_say(wrote && st == 1 && ms[0] < 65000 && !fs_exists(fs_join(out_dir, "s.wasm", p[1][..])), "a source whose #run never ends is refused inside the time limit", failed[..]);
+  if st != 1 { print("status % after % ms\n%\n", st, ms[0], cast(string) w[0].out[0..<n[0]]); }
+  // 5. a script that names itself otherwise makes no module under the name asked for
+  wrote = fs_write(src, "#script \"other\";\n#load \"api.coax\";\nMind :: struct #persisted { n: s32; }\non_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) { mind[0].n += 1; }\n");
+  st = jc_run(w, src, "s", out_dir, n[..], ms[..]);
+  jc_say(wrote && st == 1 && jc_has(cast(string) w[0].out[0..<n[0]], "is not the name asked for"), "a script whose own name is not the one asked for is refused", failed[..]);
+  // clean up what this check made
+  names := [3] string.["pacer.wasm", "pacer.json", "s.wasm"];
+  for name: names { gone := fs_remove(fs_join(out_dir, name, p[1][..])); }
+  gone := fs_remove(fs_join(out_dir, "s.json", p[1][..])); gone = fs_remove(src); gone = fs_remove(out_dir); gone = fs_remove(dir);
+  print("script-job-check: % failed\n", failed[0]);
+  return ifx failed[0] == 0 then 0 else 1;
+}

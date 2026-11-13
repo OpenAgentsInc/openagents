@@ -1,0 +1,59 @@
+// Checks of the realm-script routes' rules (script-policy.coax).
+WSPK_A :: "528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5";
+WSPK_B :: "628d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5";
+
+#test "script routes: the world's owner, its admins and site admins store, from this site; anyone logged in reports" {
+  #assert wsp_role("owner") == WSP_ROLE_OWNER && wsp_role("admin") == WSP_ROLE_ADMIN && wsp_role("visitor") == WSP_ROLE_NONE && wsp_role("") == WSP_ROLE_NONE && wsp_role("Owner") == WSP_ROLE_NONE;
+  #assert wsp_may(true, true, true, WSP_ROLE_NONE, true) == WSP_OK && wsp_may(true, true, false, WSP_ROLE_OWNER, true) == WSP_OK && wsp_may(true, true, false, WSP_ROLE_ADMIN, true) == WSP_OK;
+  #assert wsp_may(true, true, false, WSP_ROLE_NONE, true) == WSP_NOT_ALLOWED && wsp_may(true, true, false, 3, true) == WSP_NOT_ALLOWED && wsp_may(true, true, false, -1, true) == WSP_NOT_ALLOWED;
+  #assert wsp_may(false, true, true, WSP_ROLE_OWNER, true) == WSP_CROSS && wsp_may(true, false, true, WSP_ROLE_OWNER, true) == WSP_LOG_IN && wsp_may(true, true, true, WSP_ROLE_OWNER, false) == WSP_NO_WORLD;
+  // the order: another site's page learns nothing; a stranger is asked to log in before anything is said of the world
+  #assert wsp_may(false, false, false, WSP_ROLE_NONE, false) == WSP_CROSS && wsp_may(true, false, false, WSP_ROLE_NONE, false) == WSP_LOG_IN && wsp_may(true, true, false, WSP_ROLE_NONE, false) == WSP_NOT_ALLOWED;
+  #assert wsp_may_report(true, true, true) == WSP_OK && wsp_may_report(false, true, true) == WSP_CROSS && wsp_may_report(true, false, true) == WSP_LOG_IN && wsp_may_report(true, true, false) == WSP_NO_WORLD && wsp_may_report(false, false, false) == WSP_CROSS && wsp_may_report(true, false, false) == WSP_LOG_IN;
+  status := [5] int.[200, 403, 401, 403, 404];
+  for v: 0..<5 { #assert wsp_may_status(v) == status[v] && (wsp_may_words(v).count > 0) == (v != WSP_OK); for o: 0..<v { #assert wsp_may_words(o) != wsp_may_words(v); } }
+  #assert wsp_may_status(5) == 400 && wsp_may_status(-1) == 400 && wsp_may_words(5) == "" && wsp_may_words(-1) == "";
+}
+#test "script routes: a store is held to the switch-off, the day's uploads and the world's room, in that order" {
+  #assert wsp_put(false, 1, false, 0) == SSC_NONE && wsp_put(false, SS_UPLOADS_DAY, false, SS_STORED - 1) == SSC_NONE;
+  #assert wsp_put(true, 1, false, 0) == SSC_WITHDRAWN && wsp_put(true, SS_UPLOADS_DAY + 1, true, SS_STORED) == SSC_WITHDRAWN;
+  #assert wsp_put(false, SS_UPLOADS_DAY + 1, false, 0) == SSC_RATE && wsp_put(false, SS_UPLOADS_DAY + 1, true, SS_STORED) == SSC_RATE;
+  #assert wsp_put(false, 1, false, SS_STORED) == SSC_FULL && wsp_put(false, 1, false, SS_STORED + 1) == SSC_FULL;
+  // a module the world stores already is kept, and takes no room
+  #assert wsp_put(false, 1, true, SS_STORED) == SSC_NONE && wsp_put(false, 1, true, 0) == SSC_NONE;
+  #assert wsp_collect(false, SS_KEEP_MS) && wsp_collect(false, SS_KEEP_MS + 1) && !wsp_collect(false, SS_KEEP_MS - 1) && !wsp_collect(true, SS_KEEP_MS) && !wsp_collect(true, 0) && !wsp_collect(false, 0);
+  #assert wsp_get(true, false) == SSC_NONE && wsp_get(false, false) == SSC_NOT_STORED && wsp_get(true, true) == SSC_WITHDRAWN && wsp_get(false, true) == SSC_NOT_STORED;
+}
+#test "script routes: a compile needs a made, a source within its size and the day's compiles; a report a reason, a stored module and the limits" {
+  #assert wsp_compile(true, 1, 1) == SSC_NONE && wsp_compile(true, SS_SOURCE, SS_COMPILES_DAY) == SSC_NONE;
+  #assert wsp_compile(false, 1, 1) == SSC_NO_COMPILER && wsp_compile(false, 0, SS_COMPILES_DAY + 1) == SSC_NO_COMPILER;
+  #assert wsp_compile(true, 0, 1) == SSC_BAD && wsp_compile(true, SS_SOURCE + 1, 1) == SSC_BAD && wsp_compile(true, -1, 1) == SSC_BAD && wsp_compile(true, 0, SS_COMPILES_DAY + 1) == SSC_BAD;
+  #assert wsp_compile(true, 1, SS_COMPILES_DAY + 1) == SSC_RATE;
+  #assert wsp_report(true, true, true, 1) == SSC_NONE && wsp_report(true, true, true, SS_REPORTS_DAY) == SSC_NONE;
+  #assert wsp_report(true, false, true, 1) == SSC_BAD && wsp_report(false, false, false, SS_REPORTS_DAY + 1) == SSC_BAD;
+  #assert wsp_report(false, true, true, 1) == SSC_NOT_STORED && wsp_report(false, true, false, SS_REPORTS_DAY + 1) == SSC_NOT_STORED;
+  #assert wsp_report(true, true, false, 1) == SSC_RATE && wsp_report(true, true, true, SS_REPORTS_DAY + 1) == SSC_RATE;
+  #assert wsp_row(true, false) == SSC_NONE && wsp_row(false, false) == SSC_NOT_STORED && wsp_row(false, true) == SSC_NOT_STORED && wsp_row(true, true) == SSC_WITHDRAWN;
+}
+#test "script routes: a publish asks about a row that is new or grows, unless live runs that hash or the publisher named it" {
+  #assert wsp_asks(true, false, false, false) && wsp_asks(false, true, false, false) && wsp_asks(true, true, false, false) && !wsp_asks(false, false, false, false);
+  #assert !wsp_asks(true, true, true, false) && !wsp_asks(true, true, false, true) && !wsp_asks(true, true, true, true) && !wsp_asks(false, false, true, true);
+  #assert wsp_confirmed(WSPK_A, WSPK_A) && !wsp_confirmed("", WSPK_A) && !wsp_confirmed(WSPK_B, WSPK_A);
+  both := "628d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5,528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5";
+  #assert wsp_confirmed(both, WSPK_A) && wsp_confirmed(both, WSPK_B) && !wsp_confirmed(both[0..<both.count - 1], WSPK_A) && wsp_confirmed(both[0..<both.count - 1], WSPK_B) && !wsp_confirmed(both, "") && !wsp_confirmed(",", "") && !wsp_confirmed(both[1..<both.count], WSPK_B);
+  #assert wsp_confirmed(",528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5", WSPK_A);
+  long := "528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5a";
+  #assert !wsp_confirmed(both[0..<63], both[0..<63]) && !wsp_confirmed(long, long) && wsp_confirmed(long[0..<64], long[0..<64]);
+  #assert wsp_bad() == SSC_BAD && wsp_source() == SSC_SOURCE && wsp_lifts(SSC_RATE) && !wsp_lifts(SSC_FULL) && !wsp_lifts(SSC_NONE) && wsp_full(SSC_FULL) && !wsp_full(SSC_RATE) && !wsp_full(SSC_NONE);
+}
+#test "script routes: each code has its status, its words and the limit it states" {
+  status := [SSC_CODES] int.[200, 422, 422, 404, 410, 409, 422, 429, 503, 422, 400];
+  #assert SS_STORED == 64 && SS_UPLOADS_DAY == 200 && SS_COMPILES_DAY == 100 && SS_REPORTS_DAY == 20 && SS_SOURCE == 65536 && SS_KEEP_MS == 86400000;
+  for c: 0..<SSC_CODES {
+    #assert wsp_status(c) == status[c] && (wsp_words(c).count > 0) == (c != SSC_NONE);
+    for o: 1..<c { #assert wsp_words(o) != wsp_words(c); }
+  }
+  #assert wsp_status(SSC_CODES) == 422 && wsp_status(-1) == 422 && wsp_words(SSC_CODES) == "" && wsp_words(-1) == "";
+  #assert wsp_limit(SSC_FULL, false, false) == SS_STORED && wsp_limit(SSC_FULL, true, true) == SS_STORED && wsp_limit(SSC_RATE, false, false) == SS_UPLOADS_DAY && wsp_limit(SSC_RATE, true, false) == SS_COMPILES_DAY && wsp_limit(SSC_RATE, false, true) == SS_REPORTS_DAY && wsp_limit(SSC_RATE, true, true) == SS_REPORTS_DAY;
+  #assert wsp_limit(SSC_BAD, true, false) == SS_SOURCE && wsp_limit(SSC_BAD, false, false) == 0 && wsp_limit(SSC_NONE, true, true) == 0 && wsp_limit(SSC_MODULE, true, false) == 0 && wsp_limit(SSC_GROWS, false, true) == 0;
+}

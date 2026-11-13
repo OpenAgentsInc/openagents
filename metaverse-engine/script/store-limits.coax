@@ -1,0 +1,27 @@
+// The limits and the refusal codes of a world's stored scripts (GitHub #13467,
+// docs/protocol/world-scripts-v1.md), as plain numbers with no load of their own: the server's rules
+// (coax/web/api/script-policy.coax) and the codec that states them (store.coax) read the same ones.
+
+// ---- the limits, stated in world.scripts.v1 and in every refusal that one of them causes
+SS_STORED :: 64;            // the modules one world stores
+SS_UPLOADS_DAY :: 200;      // the modules one author sends in a day
+SS_COMPILES_DAY :: 100;     // the sources one author has compiled in a day
+SS_REPORTS_DAY :: 20;       // the reports one account sends in a day
+SS_SOURCE :: 65536;         // a source's bytes
+SS_WHY :: 160;              // a reason's bytes: of a report, of a switch-off
+SS_KEEP_MS :: 86400000;     // a stored module no lane names is kept at least this long
+SS_DAY_MS :: 86400000;
+
+// ---- the refusal codes (proto/README.md "Diagnostic codes"). A number is never changed or used again.
+SSC_NONE :: 0;
+SSC_MODULE :: 1;        // the module check refused the bytes: frame.coax's refused-module
+SSC_FACE :: 2;          // the module's face answered out of range: frame.coax's bad-face
+SSC_NOT_STORED :: 3;    // the world has stored no module of this hash
+SSC_WITHDRAWN :: 4;     // the module is switched off everywhere: it is not served and no new edit names it
+SSC_GROWS :: 5;         // a publish adds a script, or lets one do more: the publisher confirms each
+SSC_FULL :: 6;          // the world stores as many modules as it may
+SSC_RATE :: 7;          // the author's daily limit is spent
+SSC_NO_COMPILER :: 8;   // this server compiles no source
+SSC_SOURCE :: 9;        // the compile job refused the source: the words are its own
+SSC_BAD :: 10;          // the request is not one this route takes
+SSC_CODES :: 11;

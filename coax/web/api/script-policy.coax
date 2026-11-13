@@ -1,0 +1,173 @@
+// The realm-script routes' rules (GitHub #13467; COAX.md "Where API rules go";
+// docs/protocol/world-scripts-v1.md): what coax/web/api/scripts.c asks before it stores, serves,
+// compiles, reports or switches off a world's script module, and what worlds.c asks before it saves
+// an edit or publishes. scripts.c reads the facts (migrations/0186_world_scripts.sql), asks here,
+// and writes what these answers say; the database decides nothing, and scripts.c builds no byte of
+// its own.
+//
+//   who may store        the world's owner or admins, or a site admin, from this site (wsp_may).
+//                        Today's one world kind, splice, has no owner: site admins only
+//   what is stored       only a module that passes the check (metaverse-engine/script/wasm.coax,
+//                        host.coax): its manifest is written from the checked bytes, never from
+//                        what the author sent, except its name and its state fields (wsp_module)
+//   the limits           64 stored modules a world, 200 uploads and 100 compiles an author a day,
+//                        20 reports an account a day (metaverse-engine/script/store.coax), stated in
+//                        world.scripts.v1 and in the refusal each causes
+//   an edit              a script row that newly names a hash the world has not stored, or one
+//                        that is switched off, is refused (wsp_edit)
+//   a publish            a row that is new, or whose module has a handler, a power or a call the
+//                        live one of the same name lacks, needs the publisher's confirmation by
+//                        hash (wsp_publish); a version that only drops them needs none
+//   a switch-off         a module switched off is not served (410) and no new edit names it
+// The decisions are here, as plain facts in and a code out. script-store.coax applies them to a
+// world's rows and stored modules and writes the bytes (metaverse-engine/script/store.coax).
+//   coax/bin/coax test coax/web/api/script-policy.coax --library
+//   coax/bin/coax mutate coax/web/api/script-policy.coax --library --root-only
+#authority;
+#load "../../../metaverse-engine/script/store-limits.coax";
+
+// ---- who
+
+WSP_OK :: 0;
+WSP_CROSS :: 1;        // a write from another site's page
+WSP_LOG_IN :: 2;       // nobody is logged in
+WSP_NOT_ALLOWED :: 3;  // logged in, but neither the world's owner or admin nor a site admin
+WSP_NO_WORLD :: 4;     // no world has this ID
+WSP_ROLE_NONE :: 0; WSP_ROLE_ADMIN :: 1; WSP_ROLE_OWNER :: 2;
+// A realm role as verse.edit_role words it: owner, admin, or anything else for neither.
+wsp_role :: (word: string) -> int #export_c #effects(all) {
+  return ifx word == "owner" then WSP_ROLE_OWNER else (ifx word == "admin" then WSP_ROLE_ADMIN else WSP_ROLE_NONE);
+}
+// Who may store or compile a script for a world: the world's owner or one of its admins, or a site
+// admin; from this site, logged in. This is wider than who may write the rest of the world's
+// document (world-policy.coax wr_write: site admins), for scripts only.
+wsp_may :: (same_site: bool, known: bool, site_admin: bool, role: int, exists: bool) -> int #export_c #effects(all) {
+  if !same_site { return WSP_CROSS; }
+  if !known { return WSP_LOG_IN; }
+  if !site_admin && role != WSP_ROLE_ADMIN && role != WSP_ROLE_OWNER { return WSP_NOT_ALLOWED; }
+  if !exists { return WSP_NO_WORLD; }
+  return WSP_OK;
+}
+// Who may report a script: any account that is logged in, from this site.
+wsp_may_report :: (same_site: bool, known: bool, exists: bool) -> int #export_c #effects(all) {
+  if !same_site { return WSP_CROSS; }
+  if !known { return WSP_LOG_IN; }
+  if !exists { return WSP_NO_WORLD; }
+  return WSP_OK;
+}
+wsp_may_status :: (verdict: int) -> int #export_c #effects(all) {
+  if verdict == WSP_OK { return 200; }
+  if verdict == WSP_LOG_IN { return 401; }
+  if verdict == WSP_CROSS || verdict == WSP_NOT_ALLOWED { return 403; }
+  if verdict == WSP_NO_WORLD { return 404; }
+  return 400;
+}
+wsp_may_words :: (verdict: int) -> string #export_c #effects(all) {
+  if verdict == WSP_CROSS { return "cross-site"; }
+  if verdict == WSP_LOG_IN { return "log in"; }
+  if verdict == WSP_NOT_ALLOWED { return "only the world's owner and admins store its scripts"; }
+  if verdict == WSP_NO_WORLD { return "no such world"; }
+  return "";
+}
+
+// ---- the decisions, each a refusal code of store.coax (SSC_NONE: go on)
+
+// A module that passed the check, about to be stored. off: its hash is switched off; today: the
+// author's uploads in the last day, this one counted; already: the world stores this hash; count:
+// the modules the world stores. A module already stored is kept, and takes no room.
+wsp_put :: (off: bool, today: int, already: bool, count: int) -> int #export_c #effects(all) {
+  if off { return SSC_WITHDRAWN; }
+  if today > SS_UPLOADS_DAY { return SSC_RATE; }
+  if already { return SSC_NONE; }
+  if count >= SS_STORED { return SSC_FULL; }
+  return SSC_NONE;
+}
+// Whether a stored module may be collected to make room: no lane's rows name it, and it was stored
+// at least a day ago.
+wsp_collect :: (named: bool, age_ms: int) -> bool #export_c #effects(all) { return !named && age_ms >= SS_KEEP_MS; }
+// A read of a module's bytes.
+wsp_get :: (stored: bool, off: bool) -> int #export_c #effects(all) {
+  if !stored { return SSC_NOT_STORED; }
+  if off { return SSC_WITHDRAWN; }
+  return SSC_NONE;
+}
+// A source to compile. runner: this server has a compile job; bytes: the source's; today: the
+// author's compiles in the last day, this one counted.
+wsp_compile :: (runner: bool, bytes: int, today: int) -> int #export_c #effects(all) {
+  if !runner { return SSC_NO_COMPILER; }
+  if bytes < 1 || bytes > SS_SOURCE { return SSC_BAD; }
+  if today > SS_COMPILES_DAY { return SSC_RATE; }
+  return SSC_NONE;
+}
+// A report. stored: the world stores the hash; why_ok: the reason reads (ss_why_ok); minute_ok:
+// the account is under its reports a minute; today: its reports in the last day, this one counted.
+wsp_report :: (stored: bool, why_ok: bool, minute_ok: bool, today: int) -> int #export_c #effects(all) {
+  if !why_ok { return SSC_BAD; }
+  if !stored { return SSC_NOT_STORED; }
+  if !minute_ok || today > SS_REPORTS_DAY { return SSC_RATE; }
+  return SSC_NONE;
+}
+// A script row an edit newly names.
+wsp_row :: (stored: bool, off: bool) -> int #export_c #effects(all) {
+  if !stored { return SSC_NOT_STORED; }
+  if off { return SSC_WITHDRAWN; }
+  return SSC_NONE;
+}
+// Whether a publish asks the publisher about a row. fresh: live has no row of its name; grows: it
+// has a handler, a power or a call that no live row of its name has; live: live names this very
+// hash already; confirmed: the publisher named the hash.
+wsp_asks :: (fresh: bool, grows: bool, live: bool, confirmed: bool) -> bool #export_c #effects(all) {
+  if live || confirmed { return false; }
+  return fresh || grows;
+}
+// The limit a refusal states (0: none), and the HTTP status a code answers with.
+wsp_limit :: (code: int, compile: bool, report: bool) -> int #export_c #effects(all) {
+  if code == SSC_FULL { return SS_STORED; }
+  if code == SSC_RATE { return ifx report then SS_REPORTS_DAY else (ifx compile then SS_COMPILES_DAY else SS_UPLOADS_DAY); }
+  if code == SSC_BAD && compile { return SS_SOURCE; }
+  return 0;
+}
+wsp_status :: (code: int) -> int #export_c #effects(all) {
+  if code == SSC_NONE { return 200; }
+  if code == SSC_NOT_STORED { return 404; }
+  if code == SSC_WITHDRAWN { return 410; }
+  if code == SSC_GROWS { return 409; }
+  if code == SSC_RATE { return 429; }
+  if code == SSC_NO_COMPILER { return 503; }
+  if code == SSC_BAD { return 400; }
+  return 422;   // a refused module or source, a bad face, a full store
+}
+wsp_words :: (code: int) -> string #export_c #effects(all) {
+  if code == SSC_NOT_STORED { return "this world has stored no script module of that hash"; }
+  if code == SSC_WITHDRAWN { return "that script is switched off"; }
+  if code == SSC_GROWS { return "these scripts are new or do more than the live ones: confirm each by its hash"; }
+  if code == SSC_FULL { return "this world stores as many script modules as it may: 64. One that no revision names is collected a day after it was stored"; }
+  if code == SSC_RATE { return "that is the day's limit for this. Try again later"; }
+  if code == SSC_NO_COMPILER { return "compiling is not available here: build the module with coax/web/script.sh and store its bytes"; }
+  if code == SSC_SOURCE { return "the compile job refused the source"; }
+  if code == SSC_BAD { return "send a module's bytes (8 to 65,536), a source (1 to 65,536 bytes), a name, a hash or a reason this route takes"; }
+  if code == SSC_FACE { return "the module's face answers are out of range"; }
+  if code == SSC_MODULE { return "the module check refused the bytes"; }
+  return "";
+}
+
+// Whether `confirm` (hashes joined by commas) names this hash.
+wsp_confirmed :: (confirm: string, hash: string) -> bool #effects(all) {
+  if hash.count != 64 { return false; }
+  start := 0;
+  for i: 0..<confirm.count + 1 {
+    if i != confirm.count && confirm[i] != ',' { continue; }
+    if confirm[start..<i] == hash { return true; }
+    start = i + 1;
+  }
+  return false;
+}
+// The codes C names without a number of its own.
+wsp_bad :: () -> int #export_c #effects(all) { return SSC_BAD; }
+wsp_source :: () -> int #export_c #effects(all) { return SSC_SOURCE; }
+// Whether a code is a limit that lifts with time (the refusal then says when).
+wsp_lifts :: (code: int) -> bool #export_c #effects(all) { return code == SSC_RATE; }
+// Whether a store was refused for room alone, so that collecting can help.
+wsp_full :: (code: int) -> bool #export_c #effects(all) { return code == SSC_FULL; }
+
+#load "script-policy-checks.coax" #test;

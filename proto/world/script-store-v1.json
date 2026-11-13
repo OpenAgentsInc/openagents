@@ -1,0 +1,31 @@
+{
+ "profile": "world-scripts-v1",
+ "version": 1,
+ "title": "A world's stored scripts v1: the list (world.scripts.v1), a refusal, the reports and a done",
+ "check": "coax/web/tool.sh metaverse-engine/tools/script-store-profile.coax proto/world/script-store-v1.json",
+ "spec": "docs/protocol/world-scripts-v1.md",
+ "schema": "world.scripts.v1",
+ "schemas": ["world.scripts.v1","world.script.refusal.v1","world.script.reports.v1","world.script.done.v1"],
+ "rule": "A code's number and retry are never changed, and a number is never used again. A limit is stated in the list and in the refusal it causes.",
+ "limits": {"scripts":8,"module_bytes":65536,"stored":64,"call_fuel":20000,"tick_fuel":400000,"uploads_a_day":200,"compiles_a_day":100,"reports_a_day":20,"source_bytes":65536,"why_bytes":160,"compiler":1,"keep_ms":86400000,"words_bytes":600},
+ "codes": [
+  {"number":1,"id":"engine.diagnostic.script-refused-module.v1","name":"refused-module","retry":false,"means":"The module check refused the bytes. The detail is the refusal and the byte it is about."},
+  {"number":2,"id":"engine.diagnostic.script-bad-face.v1","name":"bad-face","retry":false,"means":"The module's face answered out of range: its version, its state's place or size, or its slot count."},
+  {"number":3,"id":"engine.diagnostic.script-not-stored.v1","name":"not-stored","retry":false,"means":"The world has stored no module of this hash. Store the module, then name it."},
+  {"number":4,"id":"engine.diagnostic.script-withdrawn.v1","name":"withdrawn","retry":false,"means":"The module is switched off everywhere. It is not served, and no new edit names it. The words say why."},
+  {"number":5,"id":"engine.diagnostic.script-grows.v1","name":"grows","retry":true,"means":"A publish adds a script, or lets a script do more than the live one: a handler, a power or a call. Nothing was published. Repeat it with the hashes listed, to confirm each."},
+  {"number":6,"id":"engine.diagnostic.script-store-full.v1","name":"store-full","retry":false,"means":"The world stores as many modules as it may. A module no revision names is collected a day after it was stored."},
+  {"number":7,"id":"engine.diagnostic.script-rate.v1","name":"rate","retry":true,"means":"The author's daily limit for this is spent. The answer says the limit and when it lifts."},
+  {"number":8,"id":"engine.diagnostic.script-no-compiler.v1","name":"no-compiler","retry":false,"means":"This server compiles no source. Build the module with coax/web/script.sh and store its bytes."},
+  {"number":9,"id":"engine.diagnostic.script-refused-source.v1","name":"refused-source","retry":false,"means":"The compile job refused the source. The words are the compiler's, or the job's limit that was reached."},
+  {"number":10,"id":"engine.diagnostic.script-bad-request.v1","name":"bad-request","retry":false,"means":"The request is not one this route takes: a name, a hash, a reason or a body that does not read."}
+ ],
+ "fixtures": {
+ "list": "{\"schema\":\"world.scripts.v1\",\"world\":\"splice\",\"limits\":{\"scripts\":8,\"module_bytes\":65536,\"stored\":64,\"call_fuel\":20000,\"tick_fuel\":400000,\"uploads_a_day\":200,\"compiles_a_day\":100,\"reports_a_day\":20,\"source_bytes\":65536,\"why_bytes\":160,\"compiler\":1},\"scripts\":[{\"manifest\":{\"schema\":\"realm.script.v1\",\"name\":\"pacer\",\"hash\":\"4332d221d977e556307c0bee403fb6580059fd5252cc809fd33a5a0a144184d3\",\"bytes\":205,\"pages\":1,\"state\":{\"size\":16,\"slots\":4,\"fields\":[{\"name\":\"turn_at\",\"type\":\"f32\",\"at\":4,\"size\":4}]},\"handlers\":[\"on_tick\"],\"powers\":[\"read\",\"write\"],\"calls\":[\"sa_x\",\"sa_move\"]},\"off\":false,\"why\":\"\",\"source\":true},{\"manifest\":{\"schema\":\"realm.script.v1\",\"name\":\"pacer\",\"hash\":\"5e932bd5d500dccc4f8e60f81fecba1180cfe757a36e05d672d6d3e5467e5186\",\"bytes\":226,\"pages\":1,\"state\":{\"size\":16,\"slots\":4,\"fields\":[]},\"handlers\":[\"on_tick\"],\"powers\":[\"read\",\"write\",\"engine\"],\"calls\":[\"sa_x\",\"sa_move\",\"sa_strike\"]},\"off\":true,\"why\":\"it strikes players at the gate\",\"source\":false}]}",
+ "refused_module": "{\"schema\":\"world.script.refusal.v1\",\"code\":\"engine.diagnostic.script-refused-module.v1\",\"retry\":false,\"error\":\"the module check refused the bytes\",\"detail\":\"import\",\"at\":41,\"limit\":0,\"left_ms\":0,\"asks\":[]}",
+ "publish_asks": "{\"schema\":\"world.script.refusal.v1\",\"code\":\"engine.diagnostic.script-grows.v1\",\"retry\":true,\"error\":\"these scripts are new or do more than the live ones: confirm each by its hash\",\"detail\":\"\",\"at\":-1,\"limit\":0,\"left_ms\":0,\"asks\":[{\"name\":\"pacer\",\"hash\":\"5e932bd5d500dccc4f8e60f81fecba1180cfe757a36e05d672d6d3e5467e5186\",\"new\":false,\"handlers\":[],\"powers\":[\"engine\"],\"calls\":[\"sa_strike\"]}]}",
+ "limit": "{\"schema\":\"world.script.refusal.v1\",\"code\":\"engine.diagnostic.script-rate.v1\",\"retry\":true,\"error\":\"that is the day's limit for this. Try again later\",\"detail\":\"\",\"at\":-1,\"limit\":200,\"left_ms\":3600000,\"asks\":[]}",
+ "reports": "{\"schema\":\"world.script.reports.v1\",\"count\":1,\"reports\":[\n{\"id\":7,\"world\":\"splice\",\"hash\":\"5e932bd5d500dccc4f8e60f81fecba1180cfe757a36e05d672d6d3e5467e5186\",\"by\":\"acct_ab12\",\"why\":\"it strikes players at the gate\",\"at\":1762190000000,\"status\":\"open\"}\n]}\n",
+ "done": "{\"schema\":\"world.script.done.v1\",\"did\":\"off\",\"hash\":\"5e932bd5d500dccc4f8e60f81fecba1180cfe757a36e05d672d6d3e5467e5186\"}"
+ }
+}

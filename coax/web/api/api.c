@@ -120,6 +120,18 @@ void api_respond(int fd, int status, const char *type, const char *extra_headers
   if (n) send_all(fd, body, n);
 }
 
+// A 200 whose bytes are named by their own hash, so they never change: kept by any cache for good.
+// It carries no cookie: the answer is the same for everyone.
+void api_respond_immutable(int fd, const char *type, const void *body, size_t n) {
+  char head[400];
+  int h = snprintf(head, sizeof head,
+                   "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %zu\r\nCache-Control: public, max-age=31536000, immutable\r\n"
+                   "X-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n", type, n);
+  if (h < 0 || h >= (int)sizeof head) { api_log("response head too long (%d)", h); return; }
+  send_all(fd, head, (size_t)h);
+  if (n) send_all(fd, body, n);
+}
+
 void api_json(int fd, int status, const char *json) {
   api_respond(fd, status, "application/json", NULL, json, strlen(json));
 }
@@ -350,6 +362,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   if (npc_route(&q)) return;
   if (anime_route(&q)) return;
   if (worldbuilder_route(&q)) return;
+  if (scripts_admin_route(&q)) return;   // before the admin routes: /api/admin/scripts/... is its (scripts.c, #13467)
   if (worlds_route(&q)) return;
   if (world_files_project_route(&q)) return;
   if (inference_route(&q)) return;

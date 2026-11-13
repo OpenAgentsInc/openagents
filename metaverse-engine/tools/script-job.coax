@@ -1,0 +1,251 @@
+// The compile job for a realm script someone else wrote (GitHub #13467,
+// docs/research/2026-11-13-realm-scripts.md, INVARIANTS.md "Other authors' scripts are compiled in a job
+// with no secrets, and only the checked module is trusted"). The compiler, clang and the linker are not
+// a sandbox, so a source we did not write is compiled here and nowhere else. Run it through its wrapper,
+// which takes the environment away, applies this file's limits and denies the network where the
+// platform can:
+//   coax/web/script-job.sh SOURCE.coax NAME OUTDIR
+// It writes OUTDIR/NAME.wasm and OUTDIR/NAME.json (realm.script.v1) and exits 0, or prints why not and
+// exits 1 (2: usage, or a job that could not be set up). What it does:
+//   1. The source is at most 65,536 bytes of text, and names no file. Before any compiler runs, every
+//      `#word` in it is held to a list (SJ_WORDS): `#load` only as the whole line `#load "api.coax";` (or
+//      `#load "../api.coax";`, as the repository's examples write it), and no `#import`, `#import_proto`,
+//      `#foreign`, `#export` or any directive not listed. The scan does not parse: a `#word` in a comment
+//      or a string is held to the list too. So a hostile source cannot make the compiler read another
+//      file, whose lines its diagnostics could quote.
+//   2. It is compiled in a new, empty temporary directory that holds only the source and copies of
+//      metaverse-engine/script/api.coax. The build is the one everyone runs
+//      (metaverse-engine/tools/script-build.coax), whose last step is the module check.
+//   3. The whole job has SJ_WALL_MS; the wrapper adds the CPU, file-size and memory limits below.
+// The job's answer is not trusted. The server checks the module's bytes as it checks any upload
+// (metaverse-engine/script/wasm.coax) and writes the manifest from them; from the job's manifest it takes
+// only the script's name and state fields.
+//   coax/bin/coax test metaverse-engine/tools/script-job.coax --library
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+// ---- the limits, stated here and nowhere else. The wrapper reads them with --limits.
+SJ_SOURCE :: 65536;          // a source's bytes
+SJ_WALL_MS :: 60000;         // the whole job, by the clock
+SJ_CPU_S :: 60;              // CPU seconds of the job and of each process it starts (ulimit -t)
+SJ_FILE_KB :: 16384;         // the largest file the job may write (ulimit -f, in 1024-byte blocks)
+SJ_MEMORY_KB :: 2097152;     // address space, where the platform enforces it (ulimit -v: Linux; macOS does not)
+SJ_OUT :: 65536;             // the build's words that are kept
+SJ_WORDS_KEPT :: 560;        // and how many of them a refusal says
+SJ_LIMITS_SAID :: "the compile job's limits: a source of 65,536 bytes, 60 seconds, 60 CPU seconds, files of 16 MiB";
+
+// The directives a script's source may use. Anything else after a '#' is refused before a compiler runs.
+SJ_WORDS :: [10] string.["script", "load", "effects", "export_c", "persisted", "test", "assert", "forall", "steps", "run"];
+SJ_LOADS :: [2] string.["#load \"api.coax\";", "#load \"../api.coax\";"];
+SJ_OK :: 0; SJ_BIG :: 1; SJ_EMPTY :: 2; SJ_BYTE :: 3; SJ_DIRECTIVE :: 4; SJ_LOAD :: 5;
+
+sj_word_byte :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
+// The line of text that holds byte `at`, without its newline or a carriage return, and with the
+// spaces and tabs at its ends cut.
+sj_line :: (text: string, at: int) -> string {
+  a := at; b := at;
+  while a > 0 && text[a - 1] != '\n' { a -= 1; }
+  while b < text.count && text[b] != '\n' { b += 1; }
+  while a < b && (text[a] == ' ' || text[a] == '\t') { a += 1; }
+  while b > a && (text[b - 1] == ' ' || text[b - 1] == '\t' || text[b - 1] == '\r') { b -= 1; }
+  return text[a..<b];
+}
+// Whether a source may be handed to the compiler: SJ_OK, or why not, with the byte in at[0].
+sj_scan :: (text: string, at: [] int) -> int {
+  at[0] = 0;
+  if text.count > SJ_SOURCE { return SJ_BIG; }
+  if text.count == 0 { return SJ_EMPTY; }
+  for c, i: text { if c == 0 || (c < 32 && c != '\n' && c != '\r' && c != '\t') || c == 127 { at[0] = i; return SJ_BYTE; } }
+  for c, i: text {
+    if c != '#' { continue; }
+    end := i + 1;
+    while end < text.count && sj_word_byte(text[end]) { end += 1; }
+    word := text[i + 1..<end];
+    // a '#' with no letter after it is no directive: an issue number in a comment
+    if word.count == 0 || (word[0] >= '0' && word[0] <= '9') { continue; }
+    known := false;
+    for w: SJ_WORDS { if w == word { known = true; } }
+    at[0] = i;
+    if !known { return SJ_DIRECTIVE; }
+    if word == "load" {
+      line := sj_line(text, i); whole := false;
+      for l: SJ_LOADS { if l == line { whole = true; } }
+      if !whole { return SJ_LOAD; }
+    }
+  }
+  at[0] = 0;
+  return SJ_OK;
+}
+sj_why :: (why: int) -> string {
+  if why == SJ_BIG { return "the source is over 65,536 bytes"; }
+  if why == SJ_EMPTY { return "the source is empty"; }
+  if why == SJ_BYTE { return "the source holds a byte that is not text"; }
+  if why == SJ_DIRECTIVE { return "a script's source may use only #script, #load \"api.coax\";, #effects, #export_c, #persisted, #test, #assert, #forall, #steps and #run (a '#' word in a comment or a string counts too)"; }
+  if why == SJ_LOAD { return "a script loads only the script API, as the whole line #load \"api.coax\"; and nothing else"; }
+  return "";
+}
+// A script's name: lowercase letters, digits and hyphens, a letter first, at most 48 (the compiler's rule).
+sj_name_ok :: (name: string) -> bool {
+  if name.count < 1 || name.count > 48 { return false; }
+  for c, i: name {
+    lower := c >= 'a' && c <= 'z';
+    if !lower && (i == 0 || !((c >= '0' && c <= '9') || c == '-')) { return false; }
+  }
+  return true;
+}
+// The line number (1 and up) of byte `at`.
+sj_line_number :: (text: string, at: int) -> int {
+  n := 1;
+  for i: 0..<at { if text[i] == '\n' { n += 1; } }
+  return n;
+}
+// text with every `was` taken out, into out: the job's own directory is not part of what a refusal says.
+sj_without :: (text: string, was: string, out: [] u8) -> string {
+  n := 0; i := 0;
+  while i < text.count {
+    if was.count > 0 && i + was.count <= text.count && text[i..<i + was.count] == was { i += was.count; continue; }
+    if n < out.count { out[n] = text[i]; n += 1; }
+    i += 1;
+  }
+  return cast(string) out[0..<n];
+}
+
+#test "the job hands the compiler only a source that loads the script API and uses the listed directives" {
+  at: [1] int;
+  good := "// a script (#13467)\n#script \"pacer\";\n#load \"api.coax\";\nMind :: struct #persisted { n: s32; }\non_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) { mind[0].n += 1; }\n#test \"t\" #steps 100 { #assert 1 == 1; }\n";
+  #assert sj_scan(good, at[..]) == SJ_OK && at[0] == 0;
+  #assert sj_scan("#script \"a\";\n  #load \"../api.coax\";  \r\n", at[..]) == SJ_OK;
+  // a second file, by any spelling
+  loads := [8] string.["#load \"other.coax\";", "#load \"/etc/passwd\";", "#load \"api.coax\"; #load \"x.coax\";", "#load \"api.coax\" #test;", "#load\"api.coax\";", "#load \"../../coax/lib/sys/fs.coax\";", "x := 1; #load \"api.coax\";", "#load \"api.coax\";// more"];
+  for l: loads { #assert sj_scan(l, at[..]) == SJ_LOAD; }
+  #assert sj_scan("a := 1;\n#load \"other.coax\";\n", at[..]) == SJ_LOAD && at[0] == 8;
+  // what reaches outside the script: refused by name, and anything not on the list
+  words := [9] string.["#import \"Basic\";", "#import_proto \"x.pb\";", "f :: () #foreign;", "g :: () #export;", "#module \"m\";", "#authority;", "#script_api;", "#exports", "#Load \"x\";"];
+  for w: words { #assert sj_scan(w, at[..]) == SJ_DIRECTIVE; }
+  // a '#' word counts in a comment and in a string too; a number after '#' is no directive
+  #assert sj_scan("// see #import\n", at[..]) == SJ_DIRECTIVE && at[0] == 7 && sj_scan("s := \"#foreign\";", at[..]) == SJ_DIRECTIVE && sj_scan("// #13467 and # alone and #", at[..]) == SJ_OK && sj_scan("x #9lives", at[..]) == SJ_OK;
+  // size and bytes
+  #assert sj_scan("", at[..]) == SJ_EMPTY;
+  zero := [3] u8.['a', 0, 'b']; bell := [3] u8.['a', 7, 'b']; del := [2] u8.['a', 127];
+  #assert sj_scan(cast(string) zero[..], at[..]) == SJ_BYTE && at[0] == 1 && sj_scan(cast(string) bell[..], at[..]) == SJ_BYTE && sj_scan(cast(string) del[..], at[..]) == SJ_BYTE && sj_scan("a\tb\r\nc", at[..]) == SJ_OK;
+  for why: 1..<6 { #assert sj_why(why).count > 15; for o: 1..<why { #assert sj_why(o) != sj_why(why); } }
+  #assert sj_why(SJ_OK) == "" && sj_why(6) == "";
+}
+#test "the job's size limit is exact" #steps 400000000 {
+  big: [SJ_SOURCE + 1] u8; at: [1] int;
+  for i: 0..<SJ_SOURCE + 1 { big[i] = ' '; }
+  #assert sj_scan(cast(string) big[0..<SJ_SOURCE], at[..]) == SJ_OK && sj_scan(cast(string) big[..], at[..]) == SJ_BIG;
+}
+#test "names, lines and a refusal's words" {
+  #assert sj_name_ok("pacer") && sj_name_ok("a-2") && !sj_name_ok("") && !sj_name_ok("Pacer") && !sj_name_ok("9a") && !sj_name_ok("a/b") && !sj_name_ok("a.b") && !sj_name_ok("..");
+  #assert sj_line("a\n  #load \"x\";\t\r\nb", 5) == "#load \"x\";" && sj_line("abc", 1) == "abc" && sj_line("a\n\nb", 2) == "";
+  #assert sj_line_number("a\nb\nc", 0) == 1 && sj_line_number("a\nb\nc", 2) == 2 && sj_line_number("a\nb\nc", 4) == 3;
+  out: [64] u8;
+  #assert sj_without("/tmp/j1/w/pacer.coax:3: bad /tmp/j1/w/x", "/tmp/j1/w/", out[..]) == "pacer.coax:3: bad x" && sj_without("abc", "", out[..]) == "abc" && sj_without("abc", "abcd", out[..]) == "abc";
+}
+
+SjWork :: struct { source: [SJ_SOURCE + 1] u8; api: [65536] u8; out: [SJ_OUT] u8; clean: [SJ_OUT] u8; made: [65537] u8; list: [1] FsList; }
+sj_path :: (a: string, b: string, out: [] u8) -> string { return fs_join(a, b, out); }
+// Everything in a directory the job made, then the directory (two levels are all it makes).
+sj_remove :: (w: [] SjWork, dir: string) {
+  names: [64] [256] u8; lens: [64] int; n := fs_list(dir, w[0].list[..]); p: [1400] u8;
+  count := ifx n < 0 then 0 else (ifx n > 64 then 64 else n);
+  for i: 0..<count { e := fs_entry(w[0].list[..], i); lens[i] = ifx e.count > 256 then 0 else e.count; for k: 0..<lens[i] { names[i][k] = e[k]; } }
+  for i: 0..<count {
+    path := sj_path(dir, cast(string) names[i][0..<lens[i]], p[..]);
+    if lens[i] == 0 || path == "" { continue; }
+    if fs_kind(path) == 2 { q: [1400] u8; inner := fs_list(path, w[0].list[..]); for k: 0..<(ifx inner < 0 then 0 else inner) { gone := fs_remove(sj_path(path, fs_entry(w[0].list[..], k), q[..])); } }
+    gone := fs_remove(path);
+  }
+  gone := fs_remove(dir);
+}
+sj_refuse :: (words: string) -> int {
+  print("%\n%\n", words, SJ_LIMITS_SAID);
+  return 1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  if args_count(a[..]) == 1 && args_at(a[..], 0) == "--limits" {
+    print("wall_ms %\ncpu_s %\nfile_kb %\nmemory_kb %\nsource_bytes %\n", SJ_WALL_MS, SJ_CPU_S, SJ_FILE_KB, SJ_MEMORY_KB, SJ_SOURCE);
+    return 0;
+  }
+  if args_count(a[..]) != 3 || args_at(a[..], 0).count == 0 || args_at(a[..], 0)[0] == '-' {
+    tool_errln("usage: coax/web/script-job.sh SOURCE.coax NAME OUTDIR   (or --limits)");
+    return 2;
+  }
+  source := args_at(a[..], 0); name := args_at(a[..], 1); out_dir := args_at(a[..], 2);
+  rb: [1024] u8; repo := proc_getenv("COAX_TOOL_REPO", rb[..]);
+  if repo == "" { tool_errln("script-job: run it through coax/web/script-job.sh"); return 2; }
+  if !sj_name_ok(name) { return sj_refuse("a script's name is lowercase letters, digits and hyphens, a letter first, at most 48"); }
+  work: [1] SjWork; w := work[..];
+  n := fs_read(source, w[0].source[..]);
+  if n < 0 { tool_err("script-job: no file "); tool_errln(source); return 2; }
+  text := cast(string) w[0].source[0..<n]; at: [1] int;
+  why := sj_scan(text, at[..]);
+  if why != SJ_OK {
+    if why == SJ_DIRECTIVE || why == SJ_LOAD || why == SJ_BYTE { print("line %: ", sj_line_number(text, at[0])); }
+    return sj_refuse(sj_why(why));
+  }
+  // a new directory that holds the source and the script API, and nothing else
+  p: [8] [1400] u8; tb: [1024] u8;
+  dir := fs_temp("script-job-", tb[..]);
+  api_path := sj_path(repo, "metaverse-engine/script/api.coax", p[0][..]);
+  api_n := ifx dir == "" then -1 else fs_read(api_path, w[0].api[..]);
+  inner := sj_path(dir, "w", p[1][..]); made := sj_path(dir, "out", p[2][..]);
+  file: [64] u8; fn := 0;
+  for c: name { file[fn] = c; fn += 1; }
+  for c: ".coax" { file[fn] = c; fn += 1; }
+  src := sj_path(inner, cast(string) file[0..<fn], p[3][..]);
+  ok := api_n > 0 && inner != "" && made != "" && src != "" && fs_mkdir(inner) && fs_write(src, text)
+     && fs_write(sj_path(inner, "api.coax", p[4][..]), cast(string) w[0].api[0..<api_n]) && fs_write(sj_path(dir, "api.coax", p[5][..]), cast(string) w[0].api[0..<api_n]);
+  if !ok { if dir != "" { sj_remove(w, dir); } tool_errln("script-job: the job's directory could not be made"); return 2; }
+  // the build everyone runs, at the repository root, with what is left of the job's time
+  began := proc_now_ms();
+  tool := sj_path(repo, "coax/web/tool.sh", p[6][..]);
+  argv := [6] string.[tool, "metaverse-engine/tools/script-build.coax", src, "--out", made, "--quiet"];
+  h := proc_new(); started := h >= 0;
+  for x: argv { started = started && proc_arg(h, x); }
+  started = started && proc_cwd(h, repo) && proc_err_to_out(h) && proc_start(h) == 0;
+  if !started { sj_remove(w, dir); tool_errln("script-job: the build could not be started"); return 2; }
+  out_n := 0; timed_out := false; line: [4096] u8;
+  while true {
+    left := SJ_WALL_MS - (proc_now_ms() - began);
+    k := ifx left <= 0 then PROC_TIMEOUT else proc_line(h, left, line[..]);
+    if k == PROC_EOF || k == PROC_ERROR { break; }
+    if k == PROC_TIMEOUT { timed_out = true; break; }
+    if k == PROC_TOO_LONG { continue; }
+    if out_n > 0 && out_n < SJ_OUT { w[0].out[out_n] = '\n'; out_n += 1; }
+    for i: 0..<k { if out_n < SJ_OUT { w[0].out[out_n] = line[i]; out_n += 1; } }
+  }
+  if timed_out { killed := proc_kill(h, PROC_SIGKILL); }
+  status := proc_wait(h, 2000);
+  if status == PROC_RUNNING { killed := proc_kill(h, PROC_SIGKILL); status = proc_wait(h, 2000); timed_out = true; }
+  released := proc_release(h);
+  code := 0;
+  if timed_out { code = sj_refuse("the build ran past the job's time limit"); }
+  else if status != 0 {
+    // the job's own directory is not part of what a refusal says: the file's own name stays
+    said := sj_without(cast(string) w[0].out[0..<out_n], sj_path(inner, "", p[7][..]), w[0].clean[..]);
+    words := ifx said.count > SJ_WORDS_KEPT then said[0..<SJ_WORDS_KEPT] else said;
+    code = sj_refuse(ifx words.count > 0 then words else (ifx status > 128 then "the build was stopped by a limit of the job" else "the build refused the source"));
+  } else {
+    // the module and its manifest, under the name asked for: a script that names itself otherwise made neither
+    names := [2] string.[".wasm", ".json"]; q: [2] [1400] u8; leaf: [64] u8;
+    wrote := fs_mkdir(out_dir) || fs_kind(out_dir) == 2;
+    for ext: names {
+      ln := 0;
+      for c: name { leaf[ln] = c; ln += 1; }
+      for c: ext { leaf[ln] = c; ln += 1; }
+      got := fs_read(sj_path(made, cast(string) leaf[0..<ln], q[0][..]), w[0].made[..]);
+      if got < 1 || got > 65536 { code = sj_refuse("the script's own name, in its #script line, is not the name asked for"); break; }
+      wrote = wrote && fs_write(sj_path(out_dir, cast(string) leaf[0..<ln], q[1][..]), cast(string) w[0].made[0..<got]);
+    }
+    if code == 0 && !wrote { tool_errln("script-job: the module could not be written"); code = 2; }
+  }
+  sj_remove(w, dir);
+  return code;
+}

@@ -1,0 +1,140 @@
+// Checks of the realm-script routes' work (script-store.coax).
+
+// A module whose imports are `rows`, checked into w under `name`; its manifest's bytes into keep.
+wspk_make :: (w: [] SsWork, rows: [] int, name: string, keep: [] u8) -> string {
+  b: [2048] u8;
+  n := sk_module(b[..], rows);
+  if n < 0 || wsp_module(w, b[0..<n], name, "") != 200 { return ""; }
+  return cast(string) keep[0..<ct_put(keep, 0, wsp_manifest(w))];
+}
+// A world's tables with these script rows ("" for a document with no scripts table).
+wspk_tables :: (rows: string, out: [] u8) -> string {
+  n := ct_put(out, 0, "aethyr.content.v1 demo 3\nreach 4000\n");
+  if rows.count > 0 { n = ct_put(out, n, "table scripts id name:text hash:text for:text\n"); n = ct_put(out, n, rows); }
+  return cast(string) out[0..<n];
+}
+wspk_row :: (out: [] u8, n: int, id: int, name: string, hash: string) -> int {
+  at := ct_put_int(out, n, id); at = ct_put(out, at, "|"); at = ct_put(out, at, name); at = ct_put(out, at, "|"); at = ct_put(out, at, hash);
+  return ct_put(out, at, "|kind 1\n");
+}
+
+#test "script routes: a module is stored only when the check passes, with a manifest written from its bytes; a refusal names the code, the refusal and the byte" #steps 2000000000 {
+  w: [1] SsWork; b: [2048] u8; rows := [3] int.[SA_X, SA_MOVE, SA_STRIKE]; words: [SS_WORDS] u8; detail: [SS_DETAIL] u8; r: [1] SsRefusal; nodes: [1024] JvNode; back: [1] ScriptManifest;
+  n := sk_module(b[..], rows[..]);
+  #assert wsp_hash(w[..]) == "" && wsp_module(w[..], b[0..<n], "raider", SK_FIELDS) == 200 && sm_read(wsp_manifest(w[..]), back[..]) && wsp_hash(w[..]) == cast(string) back[0].hash[..] && back[0].layout.n == 1 && back[0].bytes == n;
+  hb: [64] u8;
+  #assert S_hex(S_hash(cast(string) b[0..<n]), hb[..]) && wsp_hash(w[..]) == cast(string) hb[..];
+  // refused: the code is the module check's, the detail its refusal's name, the byte where
+  #assert wsp_module(w[..], b[0..<n - 3], "raider", "") == 422 && ss_refusal_read(wsp_out(w[..]), r[..], words[..], detail[..], nodes[..]) && r[0].code == SSC_MODULE && r[0].detail_n > 0 && r[0].at >= 0 && wsp_manifest(w[..]) == "" && wsp_hash(w[..]) == "";
+  #assert cast(string) detail[0..<r[0].detail_n] == ss_refused_name(w[..]) && r[0].at == ss_refused_at(w[..]) && cast(string) words[0..<r[0].words_n] == wsp_words(SSC_MODULE);
+  #assert wsp_module(w[..], b[0..<n], "Raider", "") == 400 && ss_refusal_read(wsp_out(w[..]), r[..], words[..], detail[..], nodes[..]) && r[0].code == SSC_BAD && r[0].at == -1 && cast(string) words[0..<10] == "a script's";
+  #assert wsp_module(w[..], b[0..<n], "raider", "{}") == 400 && ss_refusal_read(wsp_out(w[..]), r[..], words[..], detail[..], nodes[..]) && r[0].code == SSC_BAD && cast(string) words[0..<16] == "the state fields";
+  // a module whose face answers out of range: its record is said to be 0 bytes
+  #assert wsp_checked(w[..], SSM_FACE) == 422 && ss_refusal_read(wsp_out(w[..]), r[..], words[..], detail[..], nodes[..]) && r[0].code == SSC_FACE && r[0].at == -1 && r[0].detail_n == 0 && cast(string) words[0..<r[0].words_n] == wsp_words(SSC_FACE);
+  // what a compile made made: the name and the fields are its manifest's, the rest is read from the bytes
+  made: [SM_TEXT] u8; jn := 0;
+  #assert wsp_module(w[..], b[0..<n], "raider", SK_FIELDS) == 200;
+  jn = ct_put(made[..], 0, wsp_manifest(w[..]));
+  #assert wsp_compiled(w[..], b[0..<n], "raider", cast(string) made[0..<jn]) == 200 && wsp_manifest(w[..]) == cast(string) made[0..<jn];
+  #assert wsp_compiled(w[..], b[0..<n], "pacer", cast(string) made[0..<jn]) == 422 && ss_refusal_read(wsp_out(w[..]), r[..], words[..], detail[..], nodes[..]) && r[0].code == SSC_SOURCE && cast(string) words[0..<17] == "the script's own ";
+  #assert wsp_compiled(w[..], b[0..<n], "raider", "{}") == 422 && ss_refusal_read(wsp_out(w[..]), r[..], words[..], detail[..], nodes[..]) && r[0].code == SSC_SOURCE;
+  // a made that lies about the bytes changes nothing: other bytes under its manifest are read for what they are
+  fewer := [2] int.[SA_X, SA_MOVE]; m := sk_module(b[..], fewer[..]);
+  #assert wsp_compiled(w[..], b[0..<m], "raider", cast(string) made[0..<jn]) == 200 && sm_read(wsp_manifest(w[..]), back[..]) && back[0].calls == (1 << SA_X) | (1 << SA_MOVE) && back[0].bytes == m && wsp_manifest(w[..]) != cast(string) made[0..<jn];
+  #assert wsp_compiled(w[..], b[0..<m - 3], "raider", cast(string) made[0..<jn]) == 422 && ss_refusal_read(wsp_out(w[..]), r[..], words[..], detail[..], nodes[..]) && r[0].code == SSC_MODULE;
+  // a refusal by code: its own words, or the ones given; the limit and when it lifts
+  #assert wsp_refuse(w[..], SSC_RATE, "", SS_UPLOADS_DAY, 5000) > 0 && ss_refusal_read(wsp_out(w[..]), r[..], words[..], detail[..], nodes[..]) && r[0].code == SSC_RATE && r[0].limit == SS_UPLOADS_DAY && r[0].left_ms == 5000 && cast(string) words[0..<r[0].words_n] == wsp_words(SSC_RATE);
+  #assert wsp_refuse(w[..], SSC_SOURCE, "E0981: a script may not print", 0, 0) > 0 && ss_refusal_read(wsp_out(w[..]), r[..], words[..], detail[..], nodes[..]) && cast(string) words[0..<r[0].words_n] == "E0981: a script may not print";
+  #assert wsp_refuse(w[..], SSC_NONE, "", 0, 0) == 0 && wsp_out(w[..]) == "";
+}
+#test "script routes: an edit may newly name only a module the world stores that is not switched off" #steps 2000000000 {
+  w: [1] SsWork; ka: [SM_TEXT] u8; kb: [SM_TEXT] u8; t: [1024] u8; rows: [600] u8; ha: [64] u8; hb: [64] u8;
+  ra := [2] int.[SA_X, SA_MOVE]; rb := [3] int.[SA_X, SA_MOVE, SA_STRIKE];
+  a := wspk_make(w[..], ra[..], "pacer", ka[..]); ha = w[0].mf.hash;
+  b := wspk_make(w[..], rb[..], "pacer", kb[..]); hb = w[0].mf.hash;
+  #assert a.count > 0 && b.count > 0 && cast(string) ha[..] != cast(string) hb[..];
+  wsp_have_clear(w[..]);
+  #assert wsp_have_add(w[..], a, false) && wsp_have_add(w[..], b, true) && !wsp_have_add(w[..], "{}", false);
+  n := wspk_row(rows[..], 0, 1, "pacer", cast(string) ha[..]);
+  // no tables named scripts before; one row after, naming a stored module
+  #assert wsp_scan(w[..], 1, wspk_tables("", t[..])) == 0 && wsp_scan(w[..], 0, wspk_tables(cast(string) rows[0..<n], t[..])) == 1 && wsp_edit(w[..]) == 0;
+  #assert wsp_named(w[..], cast(string) ha[..]) && !wsp_named(w[..], cast(string) hb[..]);
+  // a module that is switched off is not named by a new edit
+  n = wspk_row(rows[..], n, 2, "pacer", cast(string) hb[..]);
+  #assert wsp_scan(w[..], 0, wspk_tables(cast(string) rows[0..<n], t[..])) == 2 && wsp_edit(w[..]) == 422 && wsp_said(w[..]) == "script 2: that script is switched off, so no edit names it";
+  // but a row that named it before the edit stays, whatever else the edit changes
+  #assert wsp_scan(w[..], 1, wspk_tables(cast(string) rows[0..<n], t[..])) == 2 && wsp_edit(w[..]) == 0;
+  // a hash the world has not stored
+  n = wspk_row(rows[..], n, 5, "guard", RK_OTHER);
+  #assert wsp_scan(w[..], 0, wspk_tables(cast(string) rows[0..<n], t[..])) == 3 && wsp_edit(w[..]) == 422 && wsp_said(w[..]) == "script 5: this world has stored no module of that hash: store the module first";
+  wsp_scan_none(w[..], 1); wsp_scan_none(w[..], -1); wsp_scan_none(w[..], SS_LANES);
+  #assert ss_rows(w[..], 1).count == 0 && ss_rows(w[..], 0).count == 3;
+  // rows taken away are no edit to refuse
+  #assert wsp_scan(w[..], 0, wspk_tables("", t[..])) == 0 && wsp_edit(w[..]) == 0;
+  #assert wsp_scan(w[..], 0, "not tables") == SS_SCAN_DOC && wsp_said(w[..]).count > 0;
+}
+#test "script routes: a publish asks about each new or growing script by hash, lists what it adds, and goes on once each is confirmed" #steps 2000000000 {
+  w: [1] SsWork; ka: [SM_TEXT] u8; kb: [SM_TEXT] u8; kc: [SM_TEXT] u8; t: [1024] u8; rows: [600] u8; ha: [64] u8; hb: [64] u8; hc: [64] u8;
+  words: [SS_WORDS] u8; detail: [SS_DETAIL] u8; r: [1] SsRefusal; nodes: [1024] JvNode; confirm: [200] u8;
+  ra := [2] int.[SA_X, SA_MOVE]; rb := [3] int.[SA_X, SA_MOVE, SA_STRIKE]; rc := [1] int.[SA_X];
+  a := wspk_make(w[..], ra[..], "pacer", ka[..]); ha = w[0].mf.hash;      // reads and writes
+  b := wspk_make(w[..], rb[..], "pacer", kb[..]); hb = w[0].mf.hash;      // the same and the engine's strike
+  c := wspk_make(w[..], rc[..], "pacer", kc[..]); hc = w[0].mf.hash;      // reads only
+  wsp_have_clear(w[..]);
+  #assert wsp_have_add(w[..], a, false) && wsp_have_add(w[..], b, false) && wsp_have_add(w[..], c, false);
+  sa := cast(string) ha[..]; sb := cast(string) hb[..]; sc := cast(string) hc[..];
+  // nothing live: a first script is new, and is asked about
+  n := wspk_row(rows[..], 0, 1, "pacer", sa);
+  #assert wsp_scan(w[..], 0, wspk_tables(cast(string) rows[0..<n], t[..])) == 1 && wsp_scan(w[..], 1, wspk_tables("", t[..])) == 0;
+  #assert wsp_publish(w[..], "") == 409 && ss_refusal_read(wsp_out(w[..]), r[..], words[..], detail[..], nodes[..]) && r[0].code == SSC_GROWS && r[0].asks_n == 1 && r[0].asks[0].fresh && cast(string) r[0].asks[0].hash[..] == sa;
+  #assert r[0].asks[0].grows.handlers == 1 && r[0].asks[0].grows.powers == 3 && r[0].asks[0].grows.calls == (1 << SA_X) | (1 << SA_MOVE) && cast(string) r[0].asks[0].name[0..<r[0].asks[0].name_n] == "pacer";
+  #assert wsp_publish(w[..], sa) == 0 && wsp_publish(w[..], sb) == 409;
+  // live runs a: publishing it again asks nothing; the version that adds the strike is asked about, with what it adds
+  #assert wsp_scan(w[..], 1, wspk_tables(cast(string) rows[0..<n], t[..])) == 1 && wsp_publish(w[..], "") == 0;
+  n = wspk_row(rows[..], 0, 1, "pacer", sb);
+  #assert wsp_scan(w[..], 0, wspk_tables(cast(string) rows[0..<n], t[..])) == 1 && wsp_publish(w[..], "") == 409 && ss_refusal_read(wsp_out(w[..]), r[..], words[..], detail[..], nodes[..]) && r[0].asks_n == 1 && !r[0].asks[0].fresh;
+  #assert r[0].asks[0].grows.handlers == 0 && r[0].asks[0].grows.powers == 4 && r[0].asks[0].grows.calls == 1 << SA_STRIKE && cast(string) r[0].asks[0].hash[..] == sb;
+  #assert wsp_publish(w[..], sa) == 409 && wsp_publish(w[..], sb) == 0;
+  // a version that only drops calls and powers publishes unasked
+  n = wspk_row(rows[..], 0, 1, "pacer", sc);
+  #assert wsp_scan(w[..], 0, wspk_tables(cast(string) rows[0..<n], t[..])) == 1 && wsp_publish(w[..], "") == 0;
+  // another name is new, whatever it may do; two rows of one hash are one ask; each ask is confirmed by its hash
+  n = wspk_row(rows[..], 0, 1, "pacer", sc); n = wspk_row(rows[..], n, 2, "raider", sc); n = wspk_row(rows[..], n, 3, "raider", sb); n = wspk_row(rows[..], n, 4, "raider", sb);
+  #assert wsp_scan(w[..], 0, wspk_tables(cast(string) rows[0..<n], t[..])) == 4 && wsp_publish(w[..], "") == 409 && ss_refusal_read(wsp_out(w[..]), r[..], words[..], detail[..], nodes[..]) && r[0].asks_n == 2;
+  #assert r[0].asks[0].fresh && cast(string) r[0].asks[0].hash[..] == sc && cast(string) r[0].asks[0].name[0..<r[0].asks[0].name_n] == "raider" && r[0].asks[1].fresh && cast(string) r[0].asks[1].hash[..] == sb && r[0].asks[1].grows.calls == (1 << SA_X) | (1 << SA_MOVE) | (1 << SA_STRIKE);
+  m := ct_put(confirm[..], 0, sc); m = ct_put(confirm[..], m, ","); m = ct_put(confirm[..], m, sb);
+  #assert wsp_publish(w[..], sc) == 409 && ss_refusal_read(wsp_out(w[..]), r[..], words[..], detail[..], nodes[..]) && r[0].asks_n == 1 && cast(string) r[0].asks[0].hash[..] == sb && wsp_publish(w[..], cast(string) confirm[0..<m]) == 0;
+  // live has two rows named pacer, a and c: b grows only by what neither has; c grows by nothing
+  n = wspk_row(rows[..], 0, 1, "pacer", sc); n = wspk_row(rows[..], n, 2, "pacer", sa);
+  #assert wsp_scan(w[..], 1, wspk_tables(cast(string) rows[0..<n], t[..])) == 2;
+  n = wspk_row(rows[..], 0, 1, "pacer", sb);
+  #assert wsp_scan(w[..], 0, wspk_tables(cast(string) rows[0..<n], t[..])) == 1 && wsp_publish(w[..], "") == 409 && ss_refusal_read(wsp_out(w[..]), r[..], words[..], detail[..], nodes[..]) && r[0].asks[0].grows.calls == 1 << SA_STRIKE && r[0].asks[0].grows.powers == 4 && !r[0].asks[0].fresh;
+  // a live row whose module the world no longer stores gives nothing to compare with: the row is new
+  wsp_have_clear(w[..]);
+  #assert wsp_have_add(w[..], b, false) && wsp_publish(w[..], "") == 409 && ss_refusal_read(wsp_out(w[..]), r[..], words[..], detail[..], nodes[..]) && r[0].asks[0].fresh && r[0].asks[0].grows.powers == 7;
+  // a dev row naming a module the world has not stored is not published
+  wsp_have_clear(w[..]);
+  #assert wsp_publish(w[..], sb) == 422 && ss_refusal_read(wsp_out(w[..]), r[..], words[..], detail[..], nodes[..]) && r[0].code == SSC_NOT_STORED;
+  // a world with no script rows publishes as before
+  #assert wsp_scan(w[..], 0, wspk_tables("", t[..])) == 0 && wsp_publish(w[..], "") == 0;
+}
+#test "script routes: the list, the reports and a done are the codec's bytes" #steps 2000000000 {
+  w: [1] SsWork; ka: [SM_TEXT] u8; ra := [2] int.[SA_X, SA_MOVE]; nodes: [2048] JvNode; d: [1] Jv; world: [32] u8; mf: [1] ScriptManifest; why: [SS_WHY] u8; hash: [64] u8;
+  a := wspk_make(w[..], ra[..], "pacer", ka[..]);
+  #assert a.count > 0 && wspk_make(w[..], ra[..], "Pacer", ka[..]) == "";
+  a = wspk_make(w[..], ra[..], "pacer", ka[..]);
+  #assert wsp_list_begin(w[..], "splice", true) && wsp_list_add(w[..], a, true, "spam", true, true) && wsp_list_end(w[..]) > 0;
+  h := ss_list_read(d[..], wsp_out(w[..]), nodes[..], world[..]);
+  #assert h.ok && h.count == 1 && h.limits.compiler == 1 && ss_list_entry(d[..], 0, mf[..], why[..]).off && ss_list_entry(d[..], 0, mf[..], why[..]).source;
+  #assert wsp_list_begin(w[..], "splice", false) && wsp_list_end(w[..]) > 0 && ss_list_read(d[..], wsp_out(w[..]), nodes[..], world[..]).limits.compiler == 0;
+  #assert !wsp_list_begin(w[..], "Splice", true) && !wsp_list_add(w[..], a, false, "", false, true) && wsp_list_end(w[..]) == 0 && wsp_out(w[..]) == "";
+  #assert wsp_list_begin(w[..], "splice", true) && !wsp_list_add(w[..], a, true, "", false, true) && wsp_list_end(w[..]) == 0;
+  #assert wsp_reports_begin(w[..], 1) && wsp_reports_add(w[..], 7, "splice", RK_HASH, "acct_ab12", "spam", 1762190000000, "open", true) && wsp_reports_end(w[..]) > 0 && ss_reports_count(wsp_out(w[..])) == 1;
+  r := ss_reports_entry(wsp_out(w[..]), 0, 1);
+  #assert r.ok && r.id == 7 && r.status == 0;
+  #assert wsp_reports_begin(w[..], 1) && wsp_reports_add(w[..], 7, "splice", RK_HASH, "acct_ab12", "spam", 1762190000000, "removed", true) && wsp_reports_end(w[..]) > 0 && ss_reports_entry(wsp_out(w[..]), 0, 1).status == 2;
+  #assert wsp_reports_begin(w[..], 1) && !wsp_reports_add(w[..], 7, "splice", RK_HASH, "acct_ab12", "spam", 1762190000000, "shut", true) && wsp_reports_end(w[..]) == 0 && !wsp_reports_begin(w[..], -1);
+  l := ss_limits(true);
+  #assert l.stored == SS_STORED && l.uploads_a_day == SS_UPLOADS_DAY && wsp_name_ok("pacer") && !wsp_name_ok("Pacer") && wsp_hash_ok(RK_HASH) && !wsp_hash_ok("528d") && wsp_why_ok("spam") && !wsp_why_ok("");
+  #assert wsp_done(w[..], "off", RK_HASH) > 0 && ss_done_read(wsp_out(w[..]), hash[..]) == 1 && wsp_done(w[..], "keep", RK_HASH) > 0 && ss_done_read(wsp_out(w[..]), hash[..]) == 3 && wsp_done(w[..], "gone", RK_HASH) == 0 && wsp_done(w[..], "on", "528d") == 0;
+}

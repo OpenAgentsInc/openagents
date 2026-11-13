@@ -8080,7 +8080,14 @@ The editor's Code pane (E12, #13421;
 [docs/protocol/realm-code-v1.md](docs/protocol/realm-code-v1.md)) reads and
 writes source files through one route, `POST /coaxial/code` on `coax serve`
 while it watches. Owner decision, 2026-11-13: realm code is ours, or arrives
-as a pull request. No path lets a visitor's code run for anyone.
+as a pull request. The rule has one exception, made by the owner the same
+day: a realm script, which someone else may write for a world and which runs
+only as a checked module behind the script API (see "A world names a script
+by hash, and the server stores only modules that pass the check", "A
+script's new version may do less, never more, unasked", "Other authors'
+scripts are compiled in a job with no secrets, and only the checked module is
+trusted" and "A script can be reported and switched off"). No other path lets
+a visitor's code run for anyone, and there is no separate realm origin.
 
 - **The dev server only.** `--static` (a deployed page's server), the API and
   the realm origin have no such route. The route answers only this computer's
@@ -8382,3 +8389,131 @@ deleted; attaching leaves `verse.world_packs` and `verse.world_docs` as they
 were and the player's pack holds no attachment byte; the service log names no
 file); `world-files.coax` and `metaverse-engine/editor/file-store.coax`
 tests (the rule, the limits, the scan, a freed file).
+
+## A world names a script by hash, and the server stores only modules that pass the check
+
+A world's content tables name each script it runs by the SHA-256 of its
+module (#13467; `metaverse-engine/script/rows.coax`,
+[docs/protocol/world-scripts-v1.md](docs/protocol/world-scripts-v1.md)). The
+API stores a module's bytes under that hash, a world at a time
+(`verse.world_scripts`, migration 0186; `coax/web/api/scripts.c`).
+
+- **Only what passes the check.** A stored module went through the same
+  check and load a page and a room run (`metaverse-engine/script/host.coax`
+  `sh_load`). A refused module is answered 422 with the refusal's name and
+  the byte, and no row is written.
+- **The manifest is the server's.** It is written from the checked bytes.
+  The author gives the name and the state record's fields, and nothing else
+  they send is believed. A field outside the module's own state record is
+  refused.
+- **Who may store.** The world's owner or one of its admins, or a site
+  admin, logged in, from this site (`wsp_may`). Today's one world kind,
+  `splice`, has no owner, so today that is the site's admins. Who may write
+  the rest of a world's document is unchanged.
+- **Stated limits.** 64 stored modules a world, 200 uploads and 100 compiles
+  an author a day, 20 reports an account a day. Each is in
+  `world.scripts.v1` and in the refusal it causes. A full store collects
+  only modules that no revision names and that are a day old.
+- **An edit names only what is stored.** A script row that newly names a
+  hash the world has not stored, or one that is switched off, is refused
+  after the realm's own check, in words. `world.edit.v1` is unchanged.
+- **Authoring only.** Storing a script writes authored state. Nothing in
+  these routes runs a script or reaches a character record or the ledger.
+
+Checks: `coax/bin/coax test coax/web/api/script-policy.coax --library` and
+`coax/bin/coax mutate coax/web/api/script-policy.coax --library --root-only`
+(zero survivors); `coax/bin/coax test coax/web/api/script-store.coax --library`
+("a module is stored only when the check passes", "an edit may newly name
+only a module the world stores that is not switched off");
+`coax/bin/coax test metaverse-engine/script/store.coax --library`;
+`coax/web/tool.sh metaverse-engine/tools/script-store-profile.coax proto/world/script-store-v1.json`;
+`coax/web/api/tests/script_checks.coax` through `coax/web/api/test.sh` (the
+routes against a throwaway API and Postgres).
+
+## A script's new version may do less, never more, unasked
+
+A publish copies dev's script rows to live (#13467). Before it does, each
+dev row is compared with live's rows of the same name
+(`coax/web/api/script-store.coax` `wsp_publish`, `wsp_asks`;
+`metaverse-engine/script/manifest.coax` `sm_growth`).
+
+- **What needs a confirmation.** A row whose name live does not have, and a
+  row whose module has a handler, a power or a call that no live module of
+  its name has.
+- **What needs none.** A version that only drops handlers, powers or calls,
+  and a hash that live already runs.
+- **The confirmation is by hash.** The publisher repeats the batch with
+  `?confirm=HASH,HASH`. A hash confirms only itself. Without it the publish
+  is refused, 409, with each script and exactly what it adds, so a page can
+  show the change. Nothing is published.
+- **A row with no stored module is not published** (422).
+
+Checks: `coax/bin/coax test coax/web/api/script-store.coax --library` ("a
+publish asks about each new or growing script by hash, lists what it adds,
+and goes on once each is confirmed");
+`coax/bin/coax test coax/web/api/script-policy.coax --library` ("a publish
+asks about a row that is new or grows, unless live runs that hash or the
+publisher named it");
+`coax/bin/coax test metaverse-engine/script/manifest.coax --library` ("the
+publish rule"); `coax/web/api/tests/script_checks.coax`.
+
+## Other authors' scripts are compiled in a job with no secrets, and only the checked module is trusted
+
+The compiler, clang and the linker are not a sandbox (#13467;
+[coax/script-profile.md](coax/script-profile.md)). A source someone else
+wrote is compiled only by the compile job
+(`metaverse-engine/tools/script-job.coax` through `coax/web/script-job.sh`),
+which the API runs when `OA_SCRIPT_JOB` names it.
+
+- **The source names no file.** Before any compiler runs, a source is
+  refused unless every `#word` in it is on the job's list, with `#load` only
+  as the whole line `#load "api.coax";` (or `#load "../api.coax";`). No
+  `#import`, `#import_proto`, `#foreign` or `#export`.
+- **An empty directory, hard limits, no environment.** The job compiles in a
+  new directory that holds only the source and the script API. It has 60
+  seconds, 60 CPU seconds a process and files of 16 MiB, and the limits are
+  said in every refusal. The API passes it no variable but where the tools
+  are; the wrapper starts it with `env -i`.
+- **The network is denied where the platform can** (`sandbox-exec` on
+  macOS, a network namespace on Linux), and
+  `OA_SCRIPT_JOB_SANDBOX=required` refuses to run where it cannot.
+- **Its answer is not trusted.** The server checks the module's bytes as it
+  checks any upload and writes the manifest from them. From the job it takes
+  the script's name and state fields only. A job that lies about the bytes
+  changes nothing.
+- **A server with no job compiles nothing** (503, `no-compiler`).
+- **Not enforced, and stated.** The wrapper does not hide the file system
+  from reads, and macOS enforces no memory limit. A server runs the job as a
+  user that holds nothing, with no network and no service account.
+
+Checks: `coax/web/tool.sh metaverse-engine/tools/script-job-check.coax`;
+`coax/bin/coax test metaverse-engine/tools/script-job.coax --library` ("the
+job hands the compiler only a source that loads the script API and uses the
+listed directives"); `coax/bin/coax test coax/web/api/script-store.coax --library`
+("a job that lies about the bytes changes nothing" is part of "a module is
+stored only when the check passes"); `coax/web/api/tests/script_checks.coax`
+(the compile route, on a machine with the Wasm toolchain).
+
+## A script can be reported and switched off
+
+Any account that is logged in reports a stored script with a short reason
+(#13467; `verse.script_reports`). A site admin reads the open reports and
+keeps the script or switches its module off by hash, with a reason
+(`verse.script_off`).
+
+- **Off everywhere.** A module that is switched off is not served (410, with
+  why), is not stored again and is not named by any new edit, in every
+  world.
+- **A world keeps its revision.** Published rows that name the module stay.
+  `world.scripts.v1` says the script is off and why, and the page and the
+  room skip it. A thing whose script is skipped walks its plan.
+- **Reports are limited.** 6 a minute and 20 a day an account, with a reason
+  of at most 160 plain bytes.
+- **It can be switched back on.**
+
+Checks: `coax/bin/coax test coax/web/api/script-policy.coax --library` ("a
+compile needs a job ...; a report a reason, a stored module and the limits",
+"a store is held to the switch-off, the day's uploads and the world's room");
+`coax/web/api/tests/script_checks.coax` ("a module that is switched off is
+not served", "no new edit names a module that is switched off", "the
+world's published revision stays as it was").

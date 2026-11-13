@@ -1,0 +1,239 @@
+// Checks of a world's stored scripts as a server answers them (store.coax).
+
+// A module made by the test writer (wasm-make.coax) whose imports are `rows`, into b: its length.
+sk_module :: (b: [] u8, rows: [] int) -> int {
+  nothing := WB_NOTHING; echo := WB_ECHO;
+  return wb_module(b, rows, nothing[..], 0, echo[..]);
+}
+// text with its first `was` replaced by `with`, into out ("" when `was` is not in it).
+sk_swap :: (text: string, was: string, with: string, out: [] u8) -> string {
+  for a: 0..<text.count - was.count + 1 {
+    if text[a..<a + was.count] != was { continue; }
+    n := ct_put(out, 0, text[0..<a]); n = ct_put(out, n, with); n = ct_put(out, n, text[a + was.count..<text.count]);
+    return ifx n > out.count then "" else cast(string) out[0..<n];
+  }
+  return "";
+}
+SK_FIELDS :: "[{\"name\":\"turn_at\",\"type\":\"f32\",\"at\":4,\"size\":4}]";
+
+#test "store: each code has an id that carries its name, its words, and reads back to its number" {
+  for c: 1..<SSC_CODES {
+    id := ssc_id(c); name := SSC_NAMES[c];
+    #assert id.count > 30 && SSC_MEANS[c].count > 30 && ssc_of(id) == c && name.count > 3;
+    want: [80] u8; n := ct_put(want[..], 0, "engine.diagnostic.script-"); n = ct_put(want[..], n, name); n = ct_put(want[..], n, ".v1");
+    #assert cast(string) want[0..<n] == id;
+    for o: 1..<c { #assert ssc_id(o) != id; }
+  }
+  #assert ssc_id(SSC_MODULE) == SD_IDS[SD_REFUSED] && ssc_id(SSC_FACE) == SD_IDS[SD_FACE] && ssc_id(SSC_NONE) == "" && ssc_id(SSC_CODES) == "" && ssc_id(-1) == "";
+  #assert ssc_of("") == SSC_NONE && ssc_of("engine.diagnostic.script-trap.v1") == SSC_NONE;
+  #assert ssc_retry(SSC_GROWS) && ssc_retry(SSC_RATE) && !ssc_retry(SSC_MODULE) && !ssc_retry(SSC_FULL) && !ssc_retry(SSC_NONE) && !ssc_retry(SSC_CODES) && !ssc_retry(-1);
+  #assert ss_why_ok("it strikes players at the gate") && !ss_why_ok("") && !ss_why_ok("a \"quote\"") && !ss_why_ok("a\\b") && !ss_why_ok("line\nline") && !ss_why_ok("café") && !ss_why_ok("a\0b");
+  long: [SS_WHY + 1] u8; for i: 0..<SS_WHY + 1 { long[i] = 'a'; }
+  #assert ss_why_ok(cast(string) long[0..<SS_WHY]) && !ss_why_ok(cast(string) long[..]);
+}
+#test "store: a module that passes the check gets a manifest written from its bytes; one that does not is refused by name and byte" #steps 2000000000 {
+  w: [1] SsWork; b: [2048] u8; rows := [3] int.[SA_X, SA_MOVE, SA_STRIKE];
+  n := sk_module(b[..], rows[..]);
+  #assert n > 0 && ss_module(w[..], b[0..<n], "raider", SK_FIELDS) == SSM_OK;
+  back: [1] ScriptManifest;
+  #assert sm_read(ss_manifest(w[..]), back[..]) && cast(string) back[0].name[0..<back[0].name_n] == "raider" && back[0].bytes == n && back[0].layout.n == 1 && back[0].calls == (1 << SA_X) | (1 << SA_MOVE) | (1 << SA_STRIKE);
+  hb: [64] u8;
+  #assert S_hex(S_hash(cast(string) b[0..<n]), hb[..]) && cast(string) hb[..] == cast(string) w[0].mf.hash[..] && ss_refused_name(w[..]) == "" && ss_refused_at(w[..]) == -1;
+  // the same bytes again give the same manifest: a slot that was loaded is loaded fresh
+  first: [SM_TEXT] u8; fn := ct_put(first[..], 0, ss_manifest(w[..]));
+  #assert ss_module(w[..], b[0..<n], "raider", SK_FIELDS) == SSM_OK && ss_manifest(w[..]) == cast(string) first[0..<fn];
+  // with no fields the manifest names none
+  #assert ss_module(w[..], b[0..<n], "raider", "") == SSM_OK && sm_read(ss_manifest(w[..]), back[..]) && back[0].layout.n == 0;
+  // the name and the fields are the author's, and are held to their rules
+  #assert ss_module(w[..], b[0..<n], "Raider", "") == SSM_NAME && ss_manifest(w[..]) == "" && !w[0].mf.ok && ss_module(w[..], b[0..<n], "", "") == SSM_NAME;
+  #assert ss_module(w[..], b[0..<n], "raider", "{}") == SSM_FIELDS && ss_module(w[..], b[0..<n], "raider", "[") == SSM_FIELDS && ss_manifest(w[..]) == "";
+  // a field past the record the module keeps (16 bytes here) is not this module's
+  #assert ss_module(w[..], b[0..<n], "raider", "[{\"name\":\"far\",\"type\":\"f32\",\"at\":13,\"size\":4}]") == SSM_FIELDS && !w[0].mf.ok;
+  #assert ss_module(w[..], b[0..<n], "raider", "[{\"name\":\"edge\",\"type\":\"f32\",\"at\":12,\"size\":4}]") == SSM_OK;
+  // a refused module: cut short, and not a module at all
+  #assert ss_module(w[..], b[0..<n - 3], "raider", "") == SSM_REFUSED && ss_refused_name(w[..]).count > 0 && ss_refused_at(w[..]) >= 0 && ss_manifest(w[..]) == "" && !w[0].mf.ok;
+  junk := [8] u8.[1, 2, 3, 4, 5, 6, 7, 8];
+  #assert ss_module(w[..], junk[..], "raider", "") == SSM_REFUSED && ss_refused_name(w[..]) == "not-wasm";
+  big: [WM_BYTES + 1] u8;
+  #assert ss_module(w[..], big[..], "raider", "") == SSM_REFUSED && ss_refused_name(w[..]) == "too-big";
+}
+#test "store: the stored modules' facts are their manifests', and a lane's rows are read from its tables" #steps 2000000000 {
+  w: [1] SsWork; b: [2048] u8; rows := [2] int.[SA_X, SA_MOVE]; keep: [SM_TEXT] u8;
+  n := sk_module(b[..], rows[..]);
+  #assert ss_module(w[..], b[0..<n], "pacer", "") == SSM_OK;
+  kn := ct_put(keep[..], 0, ss_manifest(w[..])); hash: [64] u8; hash = w[0].mf.hash;
+  ss_have_clear(w[..]);
+  #assert ss_have(w[..], cast(string) hash[..]) == -1 && ss_have_add(w[..], cast(string) keep[0..<kn], true) && ss_have(w[..], cast(string) hash[..]) == 0 && w[0].have[0].off && w[0].have[0].calls == (1 << SA_X) | (1 << SA_MOVE) && w[0].have[0].handlers == 1;
+  #assert ss_same(w[0].have[0].name[..], w[0].have[0].name_n, "pacer") && !ss_same(w[0].have[0].name[..], w[0].have[0].name_n, "pace") && !ss_same(w[0].have[0].name[..], w[0].have[0].name_n, "pacex");
+  #assert !ss_have_add(w[..], "{}", false) && w[0].have_n == 1 && ss_have(w[..], RK_OTHER) == -1 && ss_have(w[..], "") == -1;
+  for i: 1..<SS_STORED { #assert ss_have_add(w[..], cast(string) keep[0..<kn], false); }
+  #assert w[0].have_n == SS_STORED && !ss_have_add(w[..], cast(string) keep[0..<kn], false) && ss_have(w[..], cast(string) hash[..]) == 0;
+  ss_have_clear(w[..]);
+  #assert w[0].have_n == 0 && ss_have(w[..], cast(string) hash[..]) == -1;
+  // rows
+  o: [1024] u8;
+  #assert ss_scan(w[..], 0, RK_DOC) == 2 && ss_rows(w[..], 0).count == 2 && ss_rows(w[..], 1).count == 0 && ss_named(w[..], RK_HASH) && ss_named(w[..], RK_OTHER);
+  #assert ss_scan(w[..], 2, rk_swap("3|guard|628d", "3|guard|728d", o[..])) == 2 && ss_named(w[..], "728d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5") && !ss_named(w[..], "828d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5");
+  #assert ss_scan(w[..], 0, "not tables") == SS_SCAN_DOC && ss_said(w[..]) == "the world's content tables do not read" && ss_rows(w[..], 0).count == 0 && ss_named(w[..], RK_HASH);
+  #assert ss_scan(w[..], 2, rk_swap("who 2", "all", o[..])) == SRW_SCAN_ROW && ss_said(w[..]) == srw_why(SRW_BAD_FOR) && !ss_named(w[..], RK_HASH);
+  #assert ss_scan(w[..], 1, rk_swap("table scripts id name:text hash:text for:text", "table scripts id name:text hash:text fox:text", o[..])) == SRW_SCAN_TABLE && ss_said(w[..]).count > 30;
+  #assert ss_scan(w[..], -1, RK_DOC) == SS_SCAN_DOC && ss_scan(w[..], SS_LANES, RK_DOC) == SS_SCAN_DOC && ss_scan(w[..], SS_LANES - 1, RK_DOC) == 2;
+  ss_say(w[..], "said"); #assert ss_said(w[..]) == "said";
+  for i: 0..<SS_WORDS + 1 { w[0].out[i] = 'a'; }
+  ss_say(w[..], cast(string) w[0].out[0..<SS_WORDS + 1]); #assert ss_said(w[..]) == "";
+  w[0].out_n = 3; #assert ss_answer(w[..]) == "aaa";
+}
+#test "store: a list is one compact JSON document, its scripts ascending by hash, and reads back; any other bytes are refused" #steps 2000000000 {
+  w: [1] SsWork; b: [2048] u8; rows := [2] int.[SA_X, SA_MOVE]; more := [3] int.[SA_X, SA_MOVE, SA_STRIKE]; a: [SM_TEXT] u8; c: [SM_TEXT] u8; out: [32768] u8; alt: [32768] u8;
+  n := sk_module(b[..], rows[..]);
+  #assert ss_module(w[..], b[0..<n], "pacer", SK_FIELDS) == SSM_OK;
+  an := ct_put(a[..], 0, ss_manifest(w[..])); ha: [64] u8; ha = w[0].mf.hash;
+  n = sk_module(b[..], more[..]);
+  #assert ss_module(w[..], b[0..<n], "guard", "") == SSM_OK;
+  cn := ct_put(c[..], 0, ss_manifest(w[..])); hc: [64] u8; hc = w[0].mf.hash;
+  // lo: the manifest whose hash is the lower
+  a_first := ct_before(cast(string) ha[..], cast(string) hc[..]);
+  hlo: [64] u8; hhi: [64] u8; hlo = ifx a_first then ha else hc; hhi = ifx a_first then hc else ha;
+  lo := ifx a_first then cast(string) a[0..<an] else cast(string) c[0..<cn]; hi := ifx a_first then cast(string) c[0..<cn] else cast(string) a[0..<an];
+  at := ss_list_begin(out[..], "splice", ss_limits(true));
+  at = ss_list_add(out[..], at, lo, false, "", true, true);
+  at = ss_list_add(out[..], at, hi, true, "it strikes players at the gate", false, false);
+  at = ss_list_end(out[..], at);
+  #assert at <= out.count;
+  text := cast(string) out[0..<at];
+  head := "{\"schema\":\"world.scripts.v1\",\"world\":\"splice\",\"limits\":{\"scripts\":8,\"module_bytes\":65536,\"stored\":64,\"call_fuel\":20000,\"tick_fuel\":400000,\"uploads_a_day\":200,\"compiles_a_day\":100,\"reports_a_day\":20,\"source_bytes\":65536,\"why_bytes\":160,\"compiler\":1},\"scripts\":[{\"manifest\":{\"schema\":\"realm.script.v1\",";
+  tail := ",\"off\":true,\"why\":\"it strikes players at the gate\",\"source\":false}]}";
+  #assert text[0..<head.count] == head && text[text.count - tail.count..<text.count] == tail;
+  nodes: [2048] JvNode; d: [1] Jv; world: [32] u8; mf: [1] ScriptManifest; why: [SS_WHY] u8;
+  h := ss_list_read(d[..], text, nodes[..], world[..]);
+  #assert h.ok && cast(string) world[0..<h.world_n] == "splice" && h.count == 2 && h.limits.compiler == 1 && h.limits.scripts == SH_SCRIPTS && h.limits.module_bytes == WM_BYTES && h.limits.stored == SS_STORED && h.limits.call_fuel == SH_CALL_FUEL && h.limits.tick_fuel == SH_TICK_FUEL;
+  #assert h.limits.uploads_a_day == SS_UPLOADS_DAY && h.limits.compiles_a_day == SS_COMPILES_DAY && h.limits.reports_a_day == SS_REPORTS_DAY && h.limits.source_bytes == SS_SOURCE && h.limits.why_bytes == SS_WHY;
+  e := ss_list_entry(d[..], 0, mf[..], why[..]);
+  #assert e.ok && !e.off && e.source && e.why_n == 0 && mf[0].ok && cast(string) mf[0].hash[..] == cast(string) hlo[..];
+  e = ss_list_entry(d[..], 1, mf[..], why[..]);
+  #assert e.ok && e.off && !e.source && cast(string) why[0..<e.why_n] == "it strikes players at the gate" && cast(string) mf[0].hash[..] == cast(string) hhi[..];
+  #assert !ss_list_entry(d[..], 2, mf[..], why[..]).ok && !mf[0].ok && !ss_list_entry(d[..], -1, mf[..], why[..]).ok;
+  // a world with none
+  m := ss_list_end(alt[..], ss_list_begin(alt[..], "splice", ss_limits(false)));
+  none := cast(string) alt[0..<m];
+  h = ss_list_read(d[..], none, nodes[..], world[..]);
+  #assert m <= alt.count && h.ok && h.count == 0 && h.limits.compiler == 0 && !ss_list_entry(d[..], 0, mf[..], why[..]).ok;
+  // what the writer refuses
+  small: [64] u8;
+  #assert ss_list_begin(small[..], "splice", ss_limits(true)) > small.count && ss_list_begin(alt[..], "Splice", ss_limits(true)) > alt.count;
+  #assert ss_list_add(alt[..], 0, lo, true, "", false, true) > alt.count && ss_list_add(alt[..], 0, lo, false, "why", false, true) > alt.count && ss_list_add(alt[..], 0, lo, true, "a\"b", false, true) > alt.count;
+  #assert ss_list_add(alt[..], alt.count + 1, lo, false, "", false, true) > alt.count && ss_list_end(alt[..], alt.count + 1) == alt.count + 1 && ss_list_add(small[..], 0, lo, false, "", false, true) > small.count && ss_list_add(alt[..], 0, lo, false, "", false, true) <= alt.count;
+  #assert !ss_world_ok("") && ss_world_ok("9a") && !ss_world_ok("-a") && !ss_world_ok("a_b") && ss_world_ok("a-9") && !ss_world_ok("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvw") && ss_world_ok("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuv");
+  #assert ss_limit(ss_limits(true), 0) == SH_SCRIPTS && ss_limit(ss_limits(true), 10) == 1 && ss_limit(ss_limits(true), SS_LIMITS) == -1 && ss_limit(ss_limits(true), -1) == -1;
+  // other bytes: a space, a changed key, another schema, bytes after the close, a script out of form or out of order
+  edits := [9] [2] string.[
+    [2] string.["\"world\":\"splice\"", "\"world\": \"splice\""],
+    [2] string.["\"stored\":64", "\"kept\":64"],
+    [2] string.["world.scripts.v1", "world.scripts.v2"],
+    [2] string.["false}]}", "false}]} "],
+    [2] string.["false}]}", "false}]"],
+    [2] string.[",\"off\":false,\"why\":\"\",", ",\"why\":\"\",\"off\":false,"],
+    [2] string.["},{\"manifest\"", "}, {\"manifest\""],
+    [2] string.["\"scripts\":[{", "\"scripts\":[ {"],
+    [2] string.["realm.script.v1", "realm.script.v2"]
+  ];
+  for ed: edits { bad := sk_swap(text, ed[0], ed[1], alt[..]); #assert bad.count > 0; #assert !ss_list_read(d[..], bad, nodes[..], world[..]).ok; #assert !d[0].ok; }
+  at = ss_list_begin(alt[..], "splice", ss_limits(true));
+  at = ss_list_end(alt[..], ss_list_add(alt[..], ss_list_add(alt[..], at, hi, false, "", false, true), lo, false, "", false, false));
+  #assert at <= alt.count && !ss_list_read(d[..], cast(string) alt[0..<at], nodes[..], world[..]).ok;
+  at = ss_list_begin(alt[..], "splice", ss_limits(true));
+  at = ss_list_end(alt[..], ss_list_add(alt[..], ss_list_add(alt[..], at, lo, false, "", false, true), lo, false, "", false, false));
+  #assert !ss_list_read(d[..], cast(string) alt[0..<at], nodes[..], world[..]).ok;
+  #assert !ss_list_read(d[..], "", nodes[..], world[..]).ok && !ss_list_read(d[..], "{}", nodes[..], world[..]).ok && !ss_list_read(d[..], "[", nodes[..], world[..]).ok && !ss_list_read(d[..], text, nodes[0..<8], world[..]).ok;
+  #assert ss_line("a\nb", 1) == "b" && ss_line("", 0) == "" && ss_line("a\n", 3) == "" && ss_lines_are("a\nb\n", 2) && !ss_lines_are("a\nb", 2) && !ss_lines_are("a\nb\n", 1) && !ss_lines_are("a\nb\n", 3) && !ss_lines_are("", 0);
+}
+#test "store: a refusal carries its code, words, the module's refusal and what a publish asks; it reads back, and other bytes do not" {
+  out: [4096] u8; alt: [4096] u8; words: [SS_WORDS] u8; detail: [SS_DETAIL] u8; r: [1] SsRefusal; nodes: [1024] JvNode; none: [1] SsAsk;
+  text := ss_refusal_write(SSC_MODULE, "the module check refused the bytes: import at byte 41", "import", 41, 0, 0, none[0..<0], out[..]);
+  #assert text == "{\"schema\":\"world.script.refusal.v1\",\"code\":\"engine.diagnostic.script-refused-module.v1\",\"retry\":false,\"error\":\"the module check refused the bytes: import at byte 41\",\"detail\":\"import\",\"at\":41,\"limit\":0,\"left_ms\":0,\"asks\":[]}";
+  #assert ss_refusal_read(text, r[..], words[..], detail[..], nodes[..]) && r[0].ok && r[0].code == SSC_MODULE && r[0].at == 41 && cast(string) detail[0..<r[0].detail_n] == "import" && cast(string) words[0..<r[0].words_n] == "the module check refused the bytes: import at byte 41" && r[0].asks_n == 0;
+  asks: [2] SsAsk;
+  for ch, i: "pacer" { asks[0].name[i] = ch; } asks[0].name_n = 5; for ch, i: RK_HASH { asks[0].hash[i] = ch; } asks[0].fresh = true;
+  asks[0].grows = ScriptGrowth.{handlers = 1 | (1 << RH_HIT), powers = 7, calls = (1 << SA_X) | (1 << SA_STRIKE)};
+  for ch, i: "guard" { asks[1].name[i] = ch; } asks[1].name_n = 5; for ch, i: RK_OTHER { asks[1].hash[i] = ch; }
+  asks[1].grows = ScriptGrowth.{calls = 1 << SA_STRIKE};
+  made := ss_refusal_write(SSC_GROWS, "confirm what these scripts add", "", -1, 0, 0, asks[..], out[..]);
+  #assert made.count > 0 && ss_refusal_read(made, r[..], words[..], detail[..], nodes[..]) && r[0].code == SSC_GROWS && r[0].at == -1 && r[0].asks_n == 2;
+  #assert r[0].asks[0].fresh && !r[0].asks[1].fresh && r[0].asks[0].grows.handlers == 1 | (1 << RH_HIT) && r[0].asks[0].grows.powers == 7 && r[0].asks[0].grows.calls == (1 << SA_X) | (1 << SA_STRIKE) && r[0].asks[1].grows.calls == 1 << SA_STRIKE && r[0].asks[1].grows.handlers == 0;
+  #assert cast(string) r[0].asks[1].hash[..] == RK_OTHER && cast(string) r[0].asks[0].name[0..<r[0].asks[0].name_n] == "pacer";
+  bad := sk_swap(made, "\"retry\":true", "\"retry\":false", alt[..]);
+  #assert bad.count > 0 && !ss_refusal_read(bad, r[..], words[..], detail[..], nodes[..]) && !r[0].ok;
+  bad = sk_swap(made, "[\"on_tick\",\"on_hit\"]", "[\"on_hit\",\"on_tick\"]", alt[..]);
+  #assert bad.count > 0 && !ss_refusal_read(bad, r[..], words[..], detail[..], nodes[..]);
+  bad = sk_swap(made, "world.script.refusal.v1", "world.script.refusal.v2", alt[..]);
+  #assert !ss_refusal_read(bad, r[..], words[..], detail[..], nodes[..]) && !ss_refusal_read("", r[..], words[..], detail[..], nodes[..]) && !ss_refusal_read("{}", r[..], words[..], detail[..], nodes[..]);
+  bad = sk_swap(made, "script-grows", "script-grew", alt[..]);
+  #assert !ss_refusal_read(bad, r[..], words[..], detail[..], nodes[..]);
+  bad = sk_swap(made, RK_OTHER, "628d", alt[..]);
+  #assert bad.count > 0 && !ss_refusal_read(bad, r[..], words[..], detail[..], nodes[..]);
+  bad = sk_swap(made, "\"powers\":[\"read\",\"write\",\"engine\"]", "\"powers\":[\"fly\"]", alt[..]);
+  #assert bad.count > 0 && !ss_refusal_read(bad, r[..], words[..], detail[..], nodes[..]);
+  bad = sk_swap(made, "\"handlers\":[\"on_tick\",\"on_hit\"]", "\"handlers\":[\"on_tick\",\"on_tick\"]", alt[..]);
+  #assert bad.count > 0 && !ss_refusal_read(bad, r[..], words[..], detail[..], nodes[..]);
+  bad = sk_swap(made, "\"handlers\":[\"on_tick\",\"on_hit\"]", "\"handlers\":[\"\"]", alt[..]);
+  #assert bad.count > 0 && !ss_refusal_read(bad, r[..], words[..], detail[..], nodes[..]);
+  bad = sk_swap(made, "\"handlers\":[\"on_tick\",\"on_hit\"]", "\"handlers\":7", alt[..]);
+  #assert bad.count > 0 && !ss_refusal_read(bad, r[..], words[..], detail[..], nodes[..]);
+  // a limit, with when it lifts
+  made = ss_refusal_write(SSC_RATE, "that is today's uploads", "", -1, SS_UPLOADS_DAY, 3600000, none[0..<0], out[..]);
+  #assert ss_refusal_read(made, r[..], words[..], detail[..], nodes[..]) && r[0].limit == SS_UPLOADS_DAY && r[0].left_ms == 3600000 && ssc_retry(r[0].code);
+  // what the writer refuses
+  #assert ss_refusal_write(SSC_NONE, "x", "", -1, 0, 0, none[0..<0], out[..]) == "" && ss_refusal_write(SSC_CODES, "x", "", -1, 0, 0, none[0..<0], out[..]) == "" && ss_refusal_write(SSC_BAD, "", "", -1, 0, 0, none[0..<0], out[..]) == "";
+  #assert ss_refusal_write(SSC_BAD, "x", "", -2, 0, 0, none[0..<0], out[..]) == "" && ss_refusal_write(SSC_BAD, "x", "", -1, -1, 0, none[0..<0], out[..]) == "" && ss_refusal_write(SSC_BAD, "x", "", -1, 0, -1, none[0..<0], out[..]) == "" && ss_refusal_write(SSC_BAD, "x", "", -1, 0, 0, none[0..<0], out[0..<20]) == "";
+  long: [SS_WORDS + 1] u8; for i: 0..<SS_WORDS + 1 { long[i] = 'a'; }
+  #assert ss_refusal_write(SSC_BAD, cast(string) long[..], "", -1, 0, 0, none[0..<0], out[..]) == "" && ss_refusal_write(SSC_BAD, "x", cast(string) long[0..<SS_DETAIL + 1], -1, 0, 0, none[0..<0], out[..]) == "";
+  nameless: [1] SsAsk; for ch, i: RK_HASH { nameless[0].hash[i] = ch; }
+  #assert ss_refusal_write(SSC_GROWS, "x", "", -1, 0, 0, nameless[..], out[..]) == "";
+  hashless: [1] SsAsk; hashless[0].name[0] = 'a'; hashless[0].name_n = 1;
+  #assert ss_refusal_write(SSC_GROWS, "x", "", -1, 0, 0, hashless[..], out[..]) == "";
+  many: [SH_SCRIPTS + 1] SsAsk;
+  #assert ss_refusal_write(SSC_GROWS, "x", "", -1, 0, 0, many[..], out[..]) == "";
+}
+#test "store: the reports and what a report or a switch did are written and read in one form" {
+  out: [4096] u8; alt: [4096] u8;
+  n := ss_reports_begin(out[..], 2);
+  n = ss_reports_add(out[..], n, 7, "splice", RK_HASH, "acct_ab12", "it strikes players at the gate", 1762190000000, 0, false);
+  n = ss_reports_add(out[..], n, 9, "splice", RK_OTHER, "f3a9", "spam", 1762190000500, 2, true);
+  n = ss_reports_end(out[..], n);
+  #assert n <= out.count;
+  text := cast(string) out[0..<n];
+  nodes: [128] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], text, nodes[..]) && jv_len(d[0], jv_get(d[0], 0, "reports")) == 2 && ss_reports_count(text) == 2;
+  r := ss_reports_entry(text, 0, 2);
+  #assert r.ok && r.id == 7 && cast(string) r.world[0..<r.world_n] == "splice" && cast(string) r.hash[..] == RK_HASH && cast(string) r.by[0..<r.by_n] == "acct_ab12" && cast(string) r.why[0..<r.why_n] == "it strikes players at the gate" && r.at == 1762190000000 && r.status == 0;
+  r = ss_reports_entry(text, 1, 2);
+  #assert r.ok && r.id == 9 && r.status == 2 && cast(string) r.hash[..] == RK_OTHER && !ss_reports_entry(text, 2, 2).ok && !ss_reports_entry(text, -1, 2).ok;
+  m := ss_reports_end(alt[..], ss_reports_begin(alt[..], 0));
+  #assert cast(string) alt[0..<m] == "{\"schema\":\"world.script.reports.v1\",\"count\":0,\"reports\":[\n]}\n" && ss_reports_count(cast(string) alt[0..<m]) == 0;
+  #assert ss_reports_count("") == -1 && ss_reports_count("{}") == -1 && ss_reports_count(sk_swap(text, "\"count\":2", "\"count\":1", alt[..])) == -1 && ss_reports_count(sk_swap(text, "\"count\":2", "\"count\":02", alt[..])) == -1 && ss_reports_count(sk_swap(text, "\"count\":2", "\"count\":x", alt[..])) == -1 && ss_reports_count(sk_swap(text, "]}\n", "]}\n\n{}", alt[..])) == -1;
+  #assert ss_reports_count(sk_swap(text, "{\"schema\"", "{\"scheme\"", alt[..])) == -1;
+  bad := sk_swap(text, "\"status\":\"open\"", "\"status\":\"shut\"", alt[..]);
+  #assert bad.count > 0 && ss_reports_count(bad) == 2 && !ss_reports_entry(bad, 0, 2).ok && ss_reports_entry(bad, 1, 2).ok;
+  bad = sk_swap(text, "\"id\":7,", "\"id\": 7,", alt[..]);
+  #assert bad.count > 0 && !ss_reports_entry(bad, 0, 2).ok;
+  bad = sk_swap(text, RK_HASH, "528d", alt[..]);
+  #assert bad.count > 0 && !ss_reports_entry(bad, 0, 2).ok;
+  bad = sk_swap(text, "\"open\"},\n", "\"open\"}\n", alt[..]);
+  #assert bad.count > 0 && !ss_reports_entry(bad, 0, 2).ok;
+  // what the writer refuses
+  #assert ss_reports_begin(alt[..], -1) > alt.count && ss_reports_add(alt[..], 0, 0, "splice", RK_HASH, "a", "why", 1, 0, true) > alt.count && ss_reports_add(alt[..], 0, 1, "Splice", RK_HASH, "a", "why", 1, 0, true) > alt.count;
+  #assert ss_reports_add(alt[..], 0, 1, "splice", "528d", "a", "why", 1, 0, true) > alt.count && ss_reports_add(alt[..], 0, 1, "splice", RK_HASH, "A b", "why", 1, 0, true) > alt.count && ss_reports_add(alt[..], 0, 1, "splice", RK_HASH, "a", "", 1, 0, true) > alt.count;
+  #assert ss_reports_add(alt[..], 0, 1, "splice", RK_HASH, "a", "why", 0, 0, true) > alt.count && ss_reports_add(alt[..], 0, 1, "splice", RK_HASH, "a", "why", 1, 3, true) > alt.count && ss_reports_add(alt[..], 0, 1, "splice", RK_HASH, "a", "why", 1, -1, true) > alt.count;
+  #assert ss_reports_add(alt[..], alt.count + 1, 1, "splice", RK_HASH, "a", "why", 1, 0, true) > alt.count && ss_reports_end(alt[..], alt.count + 1) == alt.count + 1 && ss_reports_add(alt[..], 0, 1, "splice", RK_HASH, "a", "why", 1, 0, true) <= alt.count;
+  #assert !ss_by_ok("") && ss_by_ok("acct_9-a") && !ss_by_ok("a.b");
+  // done
+  hash: [64] u8;
+  for name, k: SS_DID {
+    made := ss_done_write(k, RK_HASH, alt[..]);
+    #assert made.count > 0 && ss_done_read(made, hash[..]) == k && cast(string) hash[..] == RK_HASH;
+  }
+  made := ss_done_write(1, RK_HASH, alt[..]);
+  #assert made == "{\"schema\":\"world.script.done.v1\",\"did\":\"off\",\"hash\":\"528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5\"}";
+  #assert ss_done_write(-1, RK_HASH, alt[..]) == "" && ss_done_write(4, RK_HASH, alt[..]) == "" && ss_done_write(1, "528d", alt[..]) == "" && ss_done_write(1, RK_HASH, alt[0..<20]) == "";
+  #assert ss_done_read("{}", hash[..]) == -1 && ss_done_read("", hash[..]) == -1 && ss_done_read(made, hash[0..<63]) == -1 && ss_done_read(sk_swap(made, "\"off\"", "\"gone\"", out[..]), hash[..]) == -1 && ss_done_read(sk_swap(made, "{\"schema\"", "{ \"schema\"", out[..]), hash[..]) == -1;
+}

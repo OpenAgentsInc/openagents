@@ -12,9 +12,12 @@
 //   FOR    whom it drives: "kind K" (every thing of the realm's kind K) or "who N" (the realm's actor N,
 //          1 and up, as in its plans)
 // A row says nothing of what the script may do: that is the module's manifest, read from the bytes.
+// srw_scan reads every row of a content document's `scripts` table: what a server, a page and a room
+// each ask to learn which scripts a revision of a world names.
 //   coax/bin/coax test metaverse-engine/script/rows.coax --library
 
 #load "frame.coax";
+#load "../content/tables.coax";
 
 SRW_TABLE :: "table scripts id name:text hash:text for:text";
 SRW_NAME :: 48;
@@ -88,6 +91,35 @@ srw_pick :: (rows: [] ScriptRow, kind: int, who: int) -> int {
     if best < 0 || (mine && !best_who) || (mine == best_who && r.slot < best) { best = r.slot; best_who = mine; }
   }
   return best;
+}
+
+// ---- a world's rows, from its content tables (aethyr.content.v1, ../content/tables.coax)
+
+SRW_SCAN_TABLE :: -1;   // the document has a table named scripts whose columns are not SRW_TABLE's
+SRW_SCAN_ROW :: -2;     // a row does not read: bad[0] is its ID, bad[1] why (SRW_BAD_*)
+// Every row of the document's `scripts` table into rows, in the table's order (ascending by ID): how
+// many. A document with no `scripts` table names no scripts: 0. A table of another shape, or a row
+// that does not read, names none either: SRW_SCAN_TABLE or SRW_SCAN_ROW, and nothing is run. A table
+// holds at most SH_SCRIPTS rows, because an ID is 1 to SH_SCRIPTS and a table's IDs differ.
+srw_scan :: (d: [] ContentDoc, rows: [] ScriptRow, bad: [] int) -> int {
+  bad[0] = 0; bad[1] = SRW_OK;
+  t := ct_table(d, "scripts");
+  if t < 0 { return 0; }
+  if ct_cols(d, t) != 4 || ct_col_name(d, t, 1) != "name" || ct_col_name(d, t, 2) != "hash" || ct_col_name(d, t, 3) != "for" { return SRW_SCAN_TABLE; }
+  for k: 1..<4 { if d[0].t[t].kind[k] != CT_STR { return SRW_SCAN_TABLE; } }
+  n := ct_rows(d, t); one: [1] ScriptRow;
+  for r: 0..<n {
+    id := ct_get(d, t, r, 0);
+    why := ifx r < rows.count then srw_read(id, ct_str(d, t, r, 1), ct_str(d, t, r, 2), ct_str(d, t, r, 3), one[..]) else SRW_BAD_ID;
+    if why != SRW_OK { bad[0] = id; bad[1] = why; return SRW_SCAN_ROW; }
+    rows[r] = one[0];
+  }
+  return n;
+}
+// Whether any of the rows names this hash.
+srw_names :: (rows: [] ScriptRow, hash: string) -> bool {
+  for i: 0..<rows.count { r := rows[i]; if r.ok && cast(string) r.hash[..] == hash { return true; } }
+  return false;
 }
 
 #load "rows-checks.coax" #test;

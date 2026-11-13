@@ -22631,6 +22631,62 @@ ALTER SEQUENCE verse.sandbox_pieces_id_seq OWNED BY verse.sandbox_pieces.id;
 
 
 --
+-- Name: script_off; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.script_off (
+    hash text NOT NULL,
+    why text NOT NULL,
+    at_ms bigint NOT NULL,
+    by text NOT NULL,
+    CONSTRAINT script_off_at_ms_check CHECK ((at_ms > 0)),
+    CONSTRAINT script_off_by_check CHECK (((length(by) >= 1) AND (length(by) <= 80))),
+    CONSTRAINT script_off_hash_check CHECK ((hash ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT script_off_why_check CHECK (((length(why) >= 1) AND (length(why) <= 160)))
+);
+
+
+--
+-- Name: script_reports; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.script_reports (
+    id bigint NOT NULL,
+    world text NOT NULL,
+    hash text NOT NULL,
+    reporter text NOT NULL,
+    why text NOT NULL,
+    at_ms bigint NOT NULL,
+    status text DEFAULT 'open'::text NOT NULL,
+    CONSTRAINT script_reports_at_ms_check CHECK ((at_ms > 0)),
+    CONSTRAINT script_reports_hash_check CHECK ((hash ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT script_reports_reporter_check CHECK (((length(reporter) >= 1) AND (length(reporter) <= 80))),
+    CONSTRAINT script_reports_status_check CHECK ((status = ANY (ARRAY['open'::text, 'kept'::text, 'removed'::text]))),
+    CONSTRAINT script_reports_why_check CHECK (((length(why) >= 1) AND (length(why) <= 160))),
+    CONSTRAINT script_reports_world_check CHECK ((world ~ '^[a-z0-9][a-z0-9-]{0,47}$'::text))
+);
+
+
+--
+-- Name: script_reports_id_seq; Type: SEQUENCE; Schema: verse; Owner: -
+--
+
+CREATE SEQUENCE verse.script_reports_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: script_reports_id_seq; Type: SEQUENCE OWNED BY; Schema: verse; Owner: -
+--
+
+ALTER SEQUENCE verse.script_reports_id_seq OWNED BY verse.script_reports.id;
+
+
+--
 -- Name: seats_id_seq; Type: SEQUENCE; Schema: verse; Owner: -
 --
 
@@ -22811,6 +22867,27 @@ CREATE TABLE verse.world_packs (
     CONSTRAINT world_packs_at_ms_check CHECK ((at_ms > 0)),
     CONSTRAINT world_packs_bytes_check CHECK (((octet_length(bytes) >= 1) AND (octet_length(bytes) <= 1048576))),
     CONSTRAINT world_packs_hash_check CHECK ((hash ~ '^[0-9a-f]{64}$'::text))
+);
+
+
+--
+-- Name: world_scripts; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.world_scripts (
+    world text NOT NULL,
+    hash text NOT NULL,
+    bytes bytea NOT NULL,
+    manifest text NOT NULL,
+    author text NOT NULL,
+    source text,
+    at_ms bigint NOT NULL,
+    CONSTRAINT world_scripts_at_ms_check CHECK ((at_ms > 0)),
+    CONSTRAINT world_scripts_author_check CHECK (((length(author) >= 1) AND (length(author) <= 80))),
+    CONSTRAINT world_scripts_bytes_check CHECK (((octet_length(bytes) >= 8) AND (octet_length(bytes) <= 65536))),
+    CONSTRAINT world_scripts_hash_check CHECK ((hash ~ '^[0-9a-f]{64}$'::text)),
+    CONSTRAINT world_scripts_manifest_check CHECK ((("left"(manifest, 1) = '{'::text) AND (length(manifest) <= 8192))),
+    CONSTRAINT world_scripts_source_check CHECK (((source IS NULL) OR ((length(source) >= 1) AND (length(source) <= 65536))))
 );
 
 
@@ -23316,6 +23393,13 @@ ALTER TABLE ONLY verse.room_stats ALTER COLUMN id SET DEFAULT nextval('verse.roo
 --
 
 ALTER TABLE ONLY verse.sandbox_pieces ALTER COLUMN id SET DEFAULT nextval('verse.sandbox_pieces_id_seq'::regclass);
+
+
+--
+-- Name: script_reports id; Type: DEFAULT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.script_reports ALTER COLUMN id SET DEFAULT nextval('verse.script_reports_id_seq'::regclass);
 
 
 --
@@ -24975,6 +25059,22 @@ ALTER TABLE ONLY verse.sandbox_pieces
 
 
 --
+-- Name: script_off script_off_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.script_off
+    ADD CONSTRAINT script_off_pkey PRIMARY KEY (hash);
+
+
+--
+-- Name: script_reports script_reports_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.script_reports
+    ADD CONSTRAINT script_reports_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: seats seats_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
 --
 
@@ -25036,6 +25136,14 @@ ALTER TABLE ONLY verse.world_outbox
 
 ALTER TABLE ONLY verse.world_packs
     ADD CONSTRAINT world_packs_pkey PRIMARY KEY (world, hash);
+
+
+--
+-- Name: world_scripts world_scripts_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.world_scripts
+    ADD CONSTRAINT world_scripts_pkey PRIMARY KEY (world, hash);
 
 
 --
@@ -25846,6 +25954,20 @@ CREATE INDEX sandbox_pieces_ms ON verse.sandbox_pieces USING btree (ms);
 --
 
 CREATE INDEX sandbox_pieces_player ON verse.sandbox_pieces USING btree (player, ms);
+
+
+--
+-- Name: script_reports_hash; Type: INDEX; Schema: verse; Owner: -
+--
+
+CREATE INDEX script_reports_hash ON verse.script_reports USING btree (hash);
+
+
+--
+-- Name: script_reports_open; Type: INDEX; Schema: verse; Owner: -
+--
+
+CREATE INDEX script_reports_open ON verse.script_reports USING btree (id) WHERE (status = 'open'::text);
 
 
 --
@@ -26779,6 +26901,14 @@ ALTER TABLE ONLY verse.world_outbox
 
 ALTER TABLE ONLY verse.world_packs
     ADD CONSTRAINT world_packs_world_fkey FOREIGN KEY (world) REFERENCES verse.world_docs(id) ON DELETE CASCADE;
+
+
+--
+-- Name: world_scripts world_scripts_world_fkey; Type: FK CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.world_scripts
+    ADD CONSTRAINT world_scripts_world_fkey FOREIGN KEY (world) REFERENCES verse.world_docs(id) ON DELETE CASCADE;
 
 
 --
