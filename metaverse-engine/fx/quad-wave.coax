@@ -1,0 +1,34 @@
+// A wave field (engine): one small procedure of plain f32 arithmetic that is the same checked source
+// on every target. The quad world's shader calls it for every pixel of a WAVE face
+// (metaverse-engine/fx/gpu-quads.coax, lowered to WGSL), and a page calls it on the CPU, through C
+// and WebAssembly, for a grid of cells (metaverse/lab-walk.coax lab_wave_cells). Coax Lab's "one
+// source, three targets" station stands the two side by side.
+//   coax/bin/coax test metaverse-engine/fx/quad-wave.coax
+// Rings spreading from two centres and crossing, at x and y across the face (-1 to 1) and t seconds:
+// 0 in a trough, 1 on a crest.
+qfx_wave :: (x:f32,y:f32,t:f32)->f32 {
+  ax:f32=x+0.55f32;
+  ay:f32=y+0.25f32;
+  bx:f32=x-0.6f32;
+  by:f32=y-0.35f32;
+  a:f32=sin((sqrt((ax*ax)+(ay*ay))*5.0f32)-(t*1.8f32));
+  b:f32=sin((sqrt((bx*bx)+(by*by))*6.5f32)-(t*1.3f32));
+  return 0.5f32+(0.25f32*(a+b));
+}
+// How bright a wave's height is drawn: dark in the troughs, a sharp line of light on each crest.
+qfx_wave_light :: (h:f32)->f32 {
+  return 0.04f32+(0.5f32*h*h)+(1.6f32*h*h*h*h*h*h);
+}
+#test "wave field: every height is 0 to 1, it moves with time, and a crest is brighter than a trough" {
+  low:f32=1.0f32; high:f32=0.0f32;
+  for i:0..<21 { for j:0..<21 {
+    h:=qfx_wave((cast(f32)i*0.1f32)-1.0f32,(cast(f32)j*0.1f32)-1.0f32,0.7f32);
+    #assert h>= -0.0001f32 && h<=1.0001f32;
+    if h<low { low=h; } if h>high { high=h; }
+  } }
+  #assert high-low>0.8f32;
+  moved:f32=0.0f32;
+  for i:0..<21 { x:=(cast(f32)i*0.1f32)-1.0f32; moved+=abs(qfx_wave(x,0.1f32,0.0f32)-qfx_wave(x,0.1f32,0.4f32)); }
+  #assert moved>1.0f32;
+  #assert qfx_wave_light(1.0f32)>qfx_wave_light(0.5f32) && qfx_wave_light(0.5f32)>qfx_wave_light(0.0f32) && qfx_wave_light(0.0f32)>0.0f32;
+}

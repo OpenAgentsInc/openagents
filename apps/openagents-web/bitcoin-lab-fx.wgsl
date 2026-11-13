@@ -70,6 +70,10 @@ fn coax_p_particle_over_fs(p_p: coax_t12) -> vec4f {
   {
     return coax_p_qfx_glyph(l_p);
   }
+  if ((l_kind == 0x1.800000p2f))
+  {
+    return coax_p_qfx_wave_face(l_p);
+  }
   l_dist = coax_p_wg_length3(coax_p_sub3(l_p.z, coax_p_v3(coax_at_u(i32(16i)), coax_at_u(i32(17i)), coax_at_u(i32(18i)))));
   l_fade = exp(((-l_dist) / 0x1.7c0000p7f));
   if ((l_kind == 0x1.400000p2f))
@@ -338,6 +342,18 @@ fn coax_p_qfx_glyph(p_p: coax_t12) -> vec4f {
   l_a = (l_m * exp(((-l_dist) / 0x1.040000p8f)));
   return coax_p_qfx_rgba(coax_p_scale3(coax_p_v3(l_p.w.x, l_p.w.y, l_p.w.z), (l_p.w.w * l_a)), l_a);
 }
+fn coax_p_qfx_wave_face(p_p: coax_t12) -> vec4f {
+  var l_p: coax_t12 = p_p;
+  var l_dist: f32;
+  var l_h: f32;
+  var l_c: vec3f;
+  var l_a: f32;
+  l_dist = coax_p_wg_length3(coax_p_sub3(l_p.z, coax_p_v3(coax_at_u(i32(16i)), coax_at_u(i32(17i)), coax_at_u(i32(18i)))));
+  l_h = coax_p_qfx_wave((l_p.y.x * (l_p.f5.x / coax_p_fmax(l_p.f5.y, 0x1.a36e2ep-14f))), l_p.y.y, l_p.f4.y);
+  l_c = coax_p_scale3(coax_p_v3(l_p.w.x, l_p.w.y, l_p.w.z), coax_p_qfx_wave_light(l_h));
+  l_a = coax_p_saturate(l_p.w.w);
+  return coax_p_qfx_rgba(coax_p_scale3(coax_p_qfx_fog(l_c, l_dist), l_a), l_a);
+}
 fn coax_p_v3(p_x: f32, p_y: f32, p_z: f32) -> vec3f {
   var l_x: f32 = p_x;
   var l_y: f32 = p_y;
@@ -497,6 +513,28 @@ fn coax_p_wg_u32_f(p_x: f32) -> u32 {
     return 4294967040u;
   }
   return u32(l_x);
+}
+fn coax_p_qfx_wave(p_x: f32, p_y: f32, p_t: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_y: f32 = p_y;
+  var l_t: f32 = p_t;
+  var l_ax: f32;
+  var l_ay: f32;
+  var l_bx: f32;
+  var l_by: f32;
+  var l_a: f32;
+  var l_b: f32;
+  l_ax = (l_x + 0x1.19999ap-1f);
+  l_ay = (l_y + 0x1.000000p-2f);
+  l_bx = (l_x - 0x1.333334p-1f);
+  l_by = (l_y - 0x1.666666p-2f);
+  l_a = sin(((sqrt(((l_ax * l_ax) + (l_ay * l_ay))) * 0x1.400000p2f) - (l_t * 0x1.ccccccp0f)));
+  l_b = sin(((sqrt(((l_bx * l_bx) + (l_by * l_by))) * 0x1.a00000p2f) - (l_t * 0x1.4cccccp0f)));
+  return (0x1.000000p-1f + (0x1.000000p-2f * (l_a + l_b)));
+}
+fn coax_p_qfx_wave_light(p_h: f32) -> f32 {
+  var l_h: f32 = p_h;
+  return ((0x1.47ae14p-5f + ((0x1.000000p-1f * l_h) * l_h)) + ((((((0x1.99999ap0f * l_h) * l_h) * l_h) * l_h) * l_h) * l_h));
 }
 fn coax_p_mix(p_a: f32, p_b: f32, p_t: f32) -> f32 {
   var l_a: f32 = p_a;

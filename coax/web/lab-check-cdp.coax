@@ -1,4 +1,4 @@
-// What the lab walks' checks share (bitcoin-lab-check.coax, nostr-lab-check.coax): a script's answer
+// What the lab walks' checks share (bitcoin-lab-check.coax, and lab-tour.coax for nostr-lab-check.coax and coax-lab-check.coax): a script's answer
 // from the page, a key, and a picture of the frame the GPU drew.
 #load "../lib/net/cdp.coax";
 

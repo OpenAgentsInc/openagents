@@ -22,13 +22,16 @@
 //             ay.w its bottom three, ink.w its light
 //   4 GLOW    a soft round light, added: ink.w its strength
 //   5 BEAM    a bar of light, added, bright along its middle (its x): ink.w its strength
+//   6 WAVE    a face lit for every pixel by the wave field (metaverse-engine/fx/quad-wave.coax): ax.w the
+//             time, s; ink.w how opaque
 // The camera is the page's pinhole, read from its uniforms as everglade/client/gpu/gpu-puff.coax reads it:
 // size 0, eye 16 (then the focal length, px), forward 20 (then the centre's x), right 24 (then
 // the centre's y), up 28. Depth is the raster scene's (everglade/scene/gpu/fivelab.coax fivelab_project).
 #load "../gpu/wgsl.coax";
 #load "../render/noise.coax";
+#load "quad-wave.coax";
 
-QFX_SKY :: 0.0f32; QFX_FLOOR :: 1.0f32; QFX_PANEL :: 2.0f32; QFX_GLYPH :: 3.0f32; QFX_GLOW :: 4.0f32; QFX_BEAM :: 5.0f32;
+QFX_SKY :: 0.0f32; QFX_FLOOR :: 1.0f32; QFX_PANEL :: 2.0f32; QFX_GLYPH :: 3.0f32; QFX_GLOW :: 4.0f32; QFX_BEAM :: 5.0f32; QFX_WAVE :: 6.0f32;
 QFX_NEAR :: 0.1f32;   // everglade/scene/gpu/fivelab.coax FIVELAB_NEAR, FIVELAB_FAR
 QFX_FAR :: 900.0f32;
 QuadRow :: struct {at:V4; ax:V4; ay:V4; ink:V4;}
@@ -193,6 +196,14 @@ qfx_glyph :: (p:QuadP,u:[]f32)->V4 {
   a:f32=m*exp(-dist/260.0f32);
   return qfx_rgba(scale3(v3(p.ink.x,p.ink.y,p.ink.z),p.ink.w*a),a);
 }
+// A WAVE face: the wave field's height at this pixel, as light in the quad's ink.
+qfx_wave_face :: (p:QuadP,u:[]f32)->V4 {
+  dist:f32=wg_length3(sub3(p.world,v3(u[16],u[17],u[18])));
+  h:f32=qfx_wave(p.corner.x*(p.side.x/fmax(p.side.y,0.0001f32)),p.corner.y,p.look.y);
+  c:V3=scale3(v3(p.ink.x,p.ink.y,p.ink.z),qfx_wave_light(h));
+  a:f32=saturate(p.ink.w);
+  return qfx_rgba(scale3(qfx_fog(c,dist),a),a);
+}
 qfx_particle_over_fs :: (p:QuadP,u:[]f32)->V4 {
   kind:f32=p.look.x;
   if (kind==QFX_SKY) {
@@ -203,6 +214,7 @@ qfx_particle_over_fs :: (p:QuadP,u:[]f32)->V4 {
   if (kind==QFX_FLOOR) { return qfx_floor(p,u); }
   if (kind==QFX_PANEL) { return qfx_panel(p,u); }
   if (kind==QFX_GLYPH) { return qfx_glyph(p,u); }
+  if (kind==QFX_WAVE) { return qfx_wave_face(p,u); }
   dist:f32=wg_length3(sub3(p.world,v3(u[16],u[17],u[18])));
   fade:f32=exp(-dist/190.0f32);
   if (kind==QFX_BEAM) {
@@ -265,6 +277,14 @@ qfx_test_camera :: (u:[]f32) {
   #assert south.y>between.y*2.0f32 && north.y>between.y*2.0f32 && mouth.y<north.y*0.6f32;
   // no hub: the one lane, as before
   p.ink=v4(0.0f32,0.0f32,0.0f32,0.0f32); p.world=v3(28.5f32,0.0f32,-6.3f32); one:=qfx_floor(p,u[..]); #assert one.y<rail.y*0.5f32;
+}
+#test "quad world: a wave face is the wave field's light at each pixel, across its whole width" {
+  u:[32]f32; qfx_test_camera(u[..]);
+  p:QuadP; p.look=v4(QFX_WAVE,0.7f32,0.0f32,0.0f32); p.ink=v4(0.2f32,0.8f32,1.0f32,1.0f32); p.world=v3(0.0f32,2.0f32,5.0f32); p.side=v4(2.0f32,1.0f32,0.8f32,0.0f32);
+  p.corner=v2(0.5f32,-0.25f32); at:=qfx_wave_face(p,u[..]);
+  want:=qfx_wave_light(qfx_wave(1.0f32,-0.25f32,0.7f32))*0.8f32;
+  #assert at.w==1.0f32 && abs(at.y-qfx_fog(v3(0.0f32,want,0.0f32),5.0f32).y)<0.0001f32;
+  p.look.y=1.9f32; later:=qfx_wave_face(p,u[..]); #assert abs(later.y-at.y)>0.0001f32;
 }
 #test "quad world: a panel's rim is brighter than its middle, and a see-through one is premultiplied" {
   u:[32]f32; qfx_test_camera(u[..]);
