@@ -228,6 +228,20 @@ class Conformance(unittest.TestCase):
         twice = run([COMPILER, 'mutate', root, '--unit', low, '--unit', str(low).replace('/low', '/./low')])
         self.assertNotEqual(twice.returncode, 0); self.assertIn('a second time', twice.stderr)
 
+    def test_stats_name_the_baseline_and_the_fallback(self):
+        if self.sources: self.skipTest('explicit files given')
+        expected = {'selective': 'selective schedule', 'strings': 'full schedule for every mutant: a check can allocate strings',
+                    'borrowed': 'full schedule for every mutant: a check can keep a view'}
+        for name, phrase in expected.items():
+            path = Path(self.tmp.name) / f'{name}.coax'; path.write_text(CASES[name])
+            lines = [x for x in mutate(path).stderr.splitlines() if x.startswith('mutation-baseline ')]
+            self.assertEqual(len(lines), 1, name)
+            self.assertRegex(lines[0], r'^mutation-baseline [0-9]+\.[0-9] s, [0-9]+ steps over [0-9]+ checks; ')
+            self.assertIn(phrase, lines[0])
+        path = Path(self.tmp.name) / 'selective.coax'
+        forced = run([COMPILER, 'mutate', path, '--mutation-stats', '--mutation-reference']).stderr
+        self.assertIn('full schedule for every mutant: --mutation-reference asks for it', forced)
+
     def test_several_units_real(self):
         if self.sources: self.skipTest('explicit files given')
         for relative in MULTI_UNIT_REAL:

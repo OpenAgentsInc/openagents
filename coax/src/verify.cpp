@@ -2008,6 +2008,17 @@ struct MutationBaseline {
   uint64_t steps = 0;
 };
 
+// Why every mutant runs the full schedule, or "" when it is selective.
+static std::string fallback_reasons(const MutationOptions &opt, const MutationFacts &f) {
+  std::string why;
+  auto add = [&](const char *s) { why += (why.empty() ? "" : "; ") + std::string(s); };
+  if (opt.reference) add("--mutation-reference asks for it");
+  if (f.borrowed) add("a check can keep a view into storage across checks");
+  if (f.strings) add("a check can allocate strings");
+  if (f.unstable) add("the unmutated checks changed compile-time storage");
+  return why;
+}
+
 // One unit's mutants against the baseline (or merged shard records), and its
 // report: byte for byte what `coax mutate FILE --unit UNIT` prints alone.
 // `killers` gathers the unit's killer lines for --killers.
@@ -2199,6 +2210,16 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
     baseline.facts.strings = mutation_allocates_string(file);
     baseline.facts.unstable = unstable;
     baseline.facts.selective = MS_selective(opt.reference, baseline.facts.borrowed, baseline.facts.strings, baseline.facts.unstable);
+    // The fixed cost every mutant is measured against, and why the schedule
+    // is full when it is (#13581).
+    if (opt.stats) {
+      const std::string why = fallback_reasons(opt, baseline.facts);
+      fprintf(stderr, "mutation-baseline %.1f s, %llu steps over %d check%s; %s%s\n", baseline.seconds,
+              (unsigned long long)baseline.steps, (int)file->checks.count, file->checks.count == 1 ? "" : "s",
+              baseline.facts.selective ? "selective schedule: a mutant skips the checks that never enter its procedure"
+                                       : "full schedule for every mutant: ",
+              why.c_str());
+    }
   }
   std::string killers;
   int status = 0;
