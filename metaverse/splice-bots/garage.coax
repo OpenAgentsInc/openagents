@@ -29,6 +29,7 @@ GA_BERM :: 46.0f32;            // m: the rim's slope down to the desert outside
 GA_DOOR :: 3.0f32;             // m: half the width of the entry's tunnel
 GA_HALL :: 3.2f32;             // m: half the width of the hallway into the mountain (the boss wall reaches into its sides)
 GA_HALL_LONG :: 32.0f32;       // m: the hallway's length, from the back wall to the lab
+GA_HALL_SKIN :: 0.05f32;       // m: the hallway's white walls stand this far in front of the rock behind them
 GA_LAB_R :: 24.0f32;           // m: the round lab's radius, inside its wall; its middle is the boss's
 GA_LAB_TALL :: 9.0f32;         // m: its ceiling
 GA_LAB_SIDES :: 24;            // its round wall in straight pieces; the one at the south is the hallway's mouth
@@ -269,7 +270,10 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   // the hallway into the mountain, past section E1: the white lab's own walls, unlit by the sky, so neither dusk nor night tints them
   back := g[0].at.gar_z - rb; end := back - GA_HALL_LONG;
   kit_pen(p, 221, MAT_FLAT, kit_tint(0.90, 0.90, 0.88));
-  block(buf, p, -GA_HALL - 5, 0, (back + end + 1) * 0.5, 5, 12, (GA_HALL_LONG + 1) * 0.5); block(buf, p, GA_HALL + 5, 0, (back + end + 1) * 0.5, 5, 12, (GA_HALL_LONG + 1) * 0.5);
+  // a hair in front of the rock's face (the layout's walls, which g_world draws purple in the same place): level
+  // with it the rock won the depth test and the hallway showed lavender from the lab's mouth
+  w := GA_HALL + 5 - GA_HALL_SKIN;
+  block(buf, p, -w, 0, (back + end + 1) * 0.5, 5, 12, (GA_HALL_LONG + 1) * 0.5); block(buf, p, w, 0, (back + end + 1) * 0.5, 5, 12, (GA_HALL_LONG + 1) * 0.5);
   block(buf, p, 0, 10, (back + end) * 0.5, GA_HALL + 0.1, 4, GA_HALL_LONG * 0.5);
   ga_draw_lab(g, buf, p);
 }

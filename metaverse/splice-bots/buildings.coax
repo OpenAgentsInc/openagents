@@ -17,11 +17,12 @@ BL_CREAM :: () -> KitTint { return kit_tint(0.93, 0.88, 0.80); }
 
 // The outer shell of section k from angle a0 to a1, left open by `cut` either side of a (the entry): from
 // the rim's edge ro, BL_COURSES courses step down to the desert GA_BERM out, each a dusted tread and a
-// riser that bulges out at its waist.
-bl_course :: (g: [] SpGame, buf: [] u32, p: [] Pen, a0: f32, a1: f32, ro: f32) {
+// riser that bulges out at its waist. A course whose riser comes down under `low` is left out.
+bl_course :: (g: [] SpGame, buf: [] u32, p: [] Pen, a0: f32, a1: f32, ro: f32, low: f32) {
   run := GA_BERM / cast(f32) BL_COURSES; rise := GA_RIM / cast(f32) BL_COURSES;
   for j: 0..<BL_COURSES {
     r := ro + run * cast(f32) (j + 1); y := GA_RIM - rise * cast(f32) j;
+    if y - rise < low { continue; }
     kit_pen(p, 218, MAT_WORLD, BL_TREAD());
     ga_strip(g, buf, p, a0, a1, r - run, y, r, y, 3, false);
     kit_pen(p, 228, MAT_WORLD, BL_STONE());
@@ -32,7 +33,10 @@ bl_course :: (g: [] SpGame, buf: [] u32, p: [] Pen, a0: f32, a1: f32, ro: f32) {
 bl_shell :: (g: [] SpGame, buf: [] u32, p: [] Pen, k: int, a0: f32, a1: f32, ro: f32) {
   a := ga_angle(k); cut := ifx k == GA_ENTRY then GA_DOOR / ro else 0.0f32;
   run := GA_BERM / cast(f32) BL_COURSES; rise := GA_RIM / cast(f32) BL_COURSES;
-  if cut > 0 { bl_course(g, buf, p, a0, a - cut, ro); bl_course(g, buf, p, a + cut, a1, ro); } else { bl_course(g, buf, p, a0, a1, ro); }
+  // over the hallway the lower courses would stand inside the lab, across it in front of the boss (#13552):
+  // only those above the lab's ceiling are drawn there
+  low := ifx k == GA_HALLWAY then GA_LAB_TALL else 0.0f32;
+  if cut > 0 { bl_course(g, buf, p, a0, a - cut, ro, low); bl_course(g, buf, p, a + cut, a1, ro, low); } else { bl_course(g, buf, p, a0, a1, ro, low); }
   // a raider banner over every third section and either side of the entry, on the first riser
   for i: 0..<3 {
     want := ifx k == GA_ENTRY then i != 1 else i == 1 && k % 3 == 1;
@@ -97,4 +101,21 @@ bl_stage :: (g: [] SpGame, n: int) {
   #assert abs(GA_RIM / cast(f32) BL_COURSES * cast(f32) BL_COURSES - GA_RIM) < 0.001 && BL_BEAD > 0;
   // the raised door's lowest slat clears a rover train (2.85 m) and the drill mech's reach
   #assert BL_DOOR_Y - 0.35 > 6;
+}
+#test "no course of the garage's outer shell stands inside the boss lab: from the hallway's mouth its lowest courses hid the boss (#13552)" #steps 80000000 {
+  g := [1] SpGame.[SpGame.{}]; g_stage(g[..], 34);
+  buf: [8000 * VERTEX_WORDS] u32; pen := [1] Pen.[Pen.{}];
+  c := ga_lab_mid(g[..]); h := ga_span() * 0.5; ro := ga_back(g[..]) + GA_BACK + 6; seen := 0; near := 0;
+  for k: 0..<GA_SECTIONS {
+    pen[0].n = 0; a := ga_angle(k);
+    bl_shell(g[..], buf[..], pen[..], k, a - h, a + h, ro);
+    #assert !pen[0].over;
+    for i: 0..<pen[0].n {
+      o := i * VERTEX_WORDS; x := f32_from_bits(buf[o]); y := f32_from_bits(buf[o + 1]); z := f32_from_bits(buf[o + 2]);
+      seen += 1; d := dist2(x, z, c.x, c.z);
+      if d < GA_LAB_R + 8 { near += 1; }   // the courses still come round the lab outside its wall, and over its ceiling
+      #assert d > GA_LAB_R + 1 || y >= GA_LAB_TALL;
+    }
+  }
+  #assert seen > 1000 && near > 0;
 }
