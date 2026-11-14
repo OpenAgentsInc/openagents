@@ -2355,10 +2355,11 @@ static int usage() {
           "       coax compat --emit MODULE.coax           retain native LP64 compatibility manifest\n"
           "       coax test    file.coax [--steps N] [--slots N] [--only SUBSTR] [--list] [--profile steps] [--evidence FILE]\n"
           "       coax mutate  file.coax [--jobs N] [--shard I/N | --merge RECORD...] [--evidence FILE]\n"
-          "                    [--root-only | --unit PART.coax] [--killers FILE] [--source-order]\n"
+          "                    [--root-only | --unit PART.coax...] [--killers FILE] [--source-order]\n"
           "                    [--mutation-reference] [--mutation-stats] [--mutation-trace]\n"
           "                    --root-only mutates entry-source procedures; all baseline checks still run\n"
-          "                    --unit PART.coax mutates one loaded unit's procedures; every check still runs\n"
+          "                    --unit PART.coax mutates one loaded unit's procedures; every check still runs;\n"
+          "                    repeated, the checks' unmutated pass runs once and each unit reports in turn\n"
           "                    --killers FILE runs each mutant's last killing check first and records\n"
           "                    this run's; the verdicts are the same with or without it\n"
           "                    each mutant tries its likely killers first (the file's, then this run's,\n"
@@ -2715,8 +2716,8 @@ static int main_impl(int argc, char **argv) {
     else if (a == "--bindings" && i + 1 < argc && cmd == "wgsl" && bindings.empty()) bindings = argv[++i];
     else if (a == "--strip" && i + 1 < argc && cmd == "wgsl" && strip.empty()) strip = argv[++i];
     else if (a == "--fragment" && i + 1 < argc && (cmd == "spirv" || cmd == "metal") && kernel.empty() && fill.empty() && stroke.empty() && fragment.empty()) fragment = argv[++i];
-    else if (a == "--root-only" && cmd == "mutate" && mutation.unit.empty()) mutation.root_only = true;
-    else if (a == "--unit" && cmd == "mutate" && i + 1 < argc && mutation.unit.empty() && !mutation.root_only) mutation.unit = argv[++i];
+    else if (a == "--root-only" && cmd == "mutate" && mutation.units.empty()) mutation.root_only = true;
+    else if (a == "--unit" && cmd == "mutate" && i + 1 < argc && !mutation.root_only) mutation.units.push_back(argv[++i]);
     else if (a == "--killers" && cmd == "mutate" && i + 1 < argc && mutation.killers.empty()) mutation.killers = argv[++i];
     else if (a == "--source-order" && cmd == "mutate") mutation.source_order = true;
     else if (a == "--mutation-reference" && cmd == "mutate") mutation.reference = true;
@@ -2823,6 +2824,17 @@ static int main_impl(int argc, char **argv) {
   if (mutation.shards && !mutation.merge.empty()) {
     fprintf(stderr, "coax: --shard runs one part; --merge combines finished parts. Use one of them\n");
     return 1;
+  }
+  // Several --unit share one baseline and print one report each (#13581).
+  // A shard record, a merge, a trace and an evidence file each describe one
+  // mutant set, so they take one --unit.
+  if (mutation.units.size() > 1) {
+    const char *one = mutation.shards ? "--shard" : !mutation.merge.empty() ? "--merge" : mutation.trace ? "--mutation-trace"
+                    : !g_evidence.path.empty() ? "--evidence" : nullptr;
+    if (one) {
+      fprintf(stderr, "coax: %s describes one mutant set; give it one --unit, or run each unit on its own\n", one);
+      return 1;
+    }
   }
 #ifdef COAX_BOOTSTRAP_IMPORTER
   if(cmd=="checks-c"){fprintf(stderr,"coax: native check emission requires the final compiler, not build-only stage0\n");return 1;}

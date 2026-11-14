@@ -8,6 +8,9 @@ status must all be identical.
 
   python3 coax/tests/mutation_parallel.py                  synthetic cases + quick real files
   python3 coax/tests/mutation_parallel.py FILE.coax...     those files only (e.g. a Psionic unit)
+
+Several `--unit` in one invocation share one baseline (#13581): each unit's
+report, statistics line and the exit status must equal its own run's.
 """
 import os
 from pathlib import Path
@@ -21,6 +24,8 @@ ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parent
 COMPILER = Path(os.environ.get('COAX_TEST_COMPILER', ROOT / 'bin/coax'))
 TIMEOUT = int(os.environ.get('COAX_MUTATION_TIMEOUT', '3600'))
+# Real #authority roots whose loaded units are compared run together and alone (#13581).
+MULTI_UNIT_REAL = ['coax/lib/bitcoin/hash160.coax']
 QUICK_REAL = ['pay/wallet.coax', 'coax/lib/compiler/mutation-schedule.coax', 'coax/lib/compiler/budget.coax',
               'coax/lib/crypto/bytes.coax', 'coax/lib/nostr/hex.coax']
 
@@ -68,6 +73,14 @@ f :: (x:int)->int { return x*3; }
 lonely :: ()->int { return 7; }
 main :: () {}
 ''',
+}
+
+# A root with two loaded units: `low` has a survivor, `high` none.
+MULTI_UNIT = {
+    'low.coax': 'low :: (x:int)->int { if x>10 { return x-3; } return x+1; }\n',
+    'high.coax': 'high :: (x:int)->int { return x*2; }\n',
+    'root.coax': '#load "low.coax";\n#load "high.coax";\n'
+                 '#test "low" { #assert low(1)==2; }\n#test "high" { #assert high(3)==6 && high(0)==0; }\nmain :: () {}\n',
 }
 
 
@@ -178,6 +191,52 @@ class Conformance(unittest.TestCase):
         self.assertTrue(any(r.returncode for r in statuses))
         self.assertTrue(all(r.stdout.startswith('coax-mutation-shard v1') for r in statuses))
         self.assertTrue(any('mutant survived' in r.stderr for r in statuses))
+
+    def check_units_together(self, source, units, *extra, compare_stats=True):
+        """Units run together equal the same units run one at a time. The statistics
+        line counts checks, which only the source order fixes for every --jobs."""
+        def stats(r):
+            return [x for x in r.stderr.splitlines() if x.startswith('mutation-scheduling ')]
+        alone = [run([COMPILER, 'mutate', source, '--unit', u, '--mutation-stats', *extra]) for u in units]
+        together = run([COMPILER, 'mutate', source, *sum((['--unit', u] for u in units), []), '--mutation-stats', *extra])
+        self.assertEqual(together.stdout, ''.join(r.stdout for r in alone), together.stderr)
+        if compare_stats: self.assertEqual(stats(together), sum((stats(r) for r in alone), []))
+        self.assertEqual(together.returncode, 1 if any(r.returncode for r in alone) else 0)
+        return alone, together
+
+    def test_several_units_synthetic(self):
+        if self.sources: self.skipTest('explicit files given')
+        for name, text in MULTI_UNIT.items(): (Path(self.tmp.name) / name).write_text(text)
+        root = Path(self.tmp.name) / 'root.coax'
+        low, high = Path(self.tmp.name) / 'low.coax', Path(self.tmp.name) / 'high.coax'
+        for jobs in ('1', '8'):
+            alone, together = self.check_units_together(root, [low, high], '--jobs', jobs, '--source-order')
+            self.assertNotEqual(alone[0].returncode, 0); self.assertEqual(alone[1].returncode, 0)
+            self.assertIn('mutant survived', together.stdout)
+        # --killers: one file holds every unit's killers, and reading it changes no report
+        # (only how many checks run, so the statistics are not compared).
+        killers = Path(self.tmp.name) / 'killers.tsv'
+        _, first = self.check_units_together(root, [low, high], '--killers', killers, compare_stats=False)
+        recorded = killers.read_text()
+        self.assertIn('low.coax\tlow', recorded); self.assertIn('high.coax\thigh', recorded)
+        again = run([COMPILER, 'mutate', root, '--unit', low, '--unit', high, '--killers', killers])
+        self.assertEqual((again.returncode, again.stdout), (first.returncode, first.stdout))
+        # What describes one mutant set takes one --unit; a unit named twice is refused.
+        for extra in (['--shard', '1/2'], ['--merge', killers], ['--mutation-trace'], ['--evidence', Path(self.tmp.name) / 'e.json']):
+            r = run([COMPILER, 'mutate', root, '--unit', low, '--unit', high, *extra])
+            self.assertNotEqual(r.returncode, 0, extra); self.assertIn('give it one --unit', r.stderr)
+        twice = run([COMPILER, 'mutate', root, '--unit', low, '--unit', str(low).replace('/low', '/./low')])
+        self.assertNotEqual(twice.returncode, 0); self.assertIn('a second time', twice.stderr)
+
+    def test_several_units_real(self):
+        if self.sources: self.skipTest('explicit files given')
+        for relative in MULTI_UNIT_REAL:
+            with self.subTest(file=relative):
+                path = REPO / relative
+                units = [(path.parent / line.split('"')[1]).resolve() for line in path.read_text().splitlines()
+                         if line.startswith('#load "')]
+                self.assertGreaterEqual(len(units), 2)
+                self.check_units_together(path, units, '--jobs', '8', '--source-order')
 
 
 if __name__ == '__main__':
