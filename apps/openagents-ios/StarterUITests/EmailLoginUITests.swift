@@ -25,6 +25,18 @@ final class EmailLoginUITests:XCTestCase {
         app.webViews.buttons["LOG IN"].tap()
         XCTAssertTrue(app.webViews.staticTexts["My first saved chat"].waitForExistence(timeout:15))
         XCTAssertTrue(app.webViews.staticTexts["Another saved chat"].exists)
+        // Exercise real WebKit gestures on the OTA surface, not a browser mock.
+        let title=app.webViews.staticTexts["My first saved chat"]
+        let frame=title.frame
+        app.webViews.firstMatch.pinch(withScale:2,velocity:1)
+        XCTAssertEqual(title.frame.width,frame.width,accuracy:1)
+        XCTAssertEqual(title.frame.minX,frame.minX,accuracy:1)
+        app.webViews.firstMatch.pinch(withScale:0.5,velocity:-1)
+        XCTAssertEqual(title.frame.width,frame.width,accuracy:1)
+        XCTAssertEqual(title.frame.minX,frame.minX,accuracy:1)
+        title.doubleTap()
+        XCTAssertEqual(title.frame.width,frame.width,accuracy:1)
+        XCTAssertEqual(title.frame.minX,frame.minX,accuracy:1)
         let shot=XCTAttachment(screenshot:app.screenshot());shot.name="Email login and account chats via OTA";shot.lifetime = .keepAlways;add(shot)
         // Let the signed package complete its unchanged foreground health window.
         let health=expectation(description:"foreground health")
@@ -36,5 +48,24 @@ final class EmailLoginUITests:XCTestCase {
         XCTAssertTrue(email.waitForExistence(timeout:10))
         app.terminate();app.launch()
         XCTAssertTrue(email.waitForExistence(timeout:15))
+    }
+
+    // Run after the OTA flow, on the healthy package with the keyboard closed.
+    func testViewportDoesNotZoom() {
+        let app=XCUIApplication()
+        app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13491"]
+        app.launch()
+        let title=app.webViews.staticTexts["Log in"]
+        XCTAssertTrue(title.waitForExistence(timeout:20))
+        let frame=title.frame
+        app.webViews.firstMatch.pinch(withScale:2,velocity:1)
+        XCTAssertEqual(title.frame.width,frame.width,accuracy:1)
+        XCTAssertEqual(title.frame.minX,frame.minX,accuracy:1)
+        app.webViews.firstMatch.pinch(withScale:0.5,velocity:-1)
+        XCTAssertEqual(title.frame.width,frame.width,accuracy:1)
+        XCTAssertEqual(title.frame.minX,frame.minX,accuracy:1)
+        title.doubleTap()
+        XCTAssertEqual(title.frame.width,frame.width,accuracy:1)
+        XCTAssertEqual(title.frame.minX,frame.minX,accuracy:1)
     }
 }

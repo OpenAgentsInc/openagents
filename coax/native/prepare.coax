@@ -17,10 +17,10 @@ tool_main :: () -> int #export_c #effects(all) {
   jo_put(o[..],"</string><string>https://oa-updates-157437760789.us-central1.run.app/runtimes/");jo_put(o[..],cast(string)r[..]);
   jo_put(o[..],"</string></array></dict></plist>");
   if !fs_write("apps/openagents-ios/Native.plist",jo_text(o[..])) { return 1; }
-  names:=[9]string.["apps/openagents-ios/extras/index.html","apps/openagents-ios/home/host.js","coax/web/dom-host.js","coax/web/shell.js","components/zeron/fonts/Geist.ttf","components/zeron/fonts/Geist-Medium.ttf","components/zeron/fonts/Geist-SemiBold.ttf","components/zeron/fonts/GeistMono.ttf","apps/openagents-ios/extras/host.js"];
-  targets:=[9]string.["index.html","native.js","coaxial/dom-host.js","coaxial/shell.js","build/zeron/Geist.ttf","build/zeron/Geist-Medium.ttf","build/zeron/Geist-SemiBold.ttf","build/zeron/GeistMono.ttf","extras.js"];
+  names:=[10]string.["apps/openagents-ios/extras/index.html","apps/openagents-ios/home/host.js","coax/web/dom-host.js","coax/web/shell.js","components/zeron/fonts/Geist.ttf","components/zeron/fonts/Geist-Medium.ttf","components/zeron/fonts/Geist-SemiBold.ttf","components/zeron/fonts/GeistMono.ttf","apps/openagents-ios/extras/host.js","coax/native/starter/viewport.js"];
+  targets:=[10]string.["index.html","native.js","coaxial/dom-host.js","coaxial/shell.js","build/zeron/Geist.ttf","build/zeron/Geist-Medium.ttf","build/zeron/Geist-SemiBold.ttf","build/zeron/GeistMono.ttf","extras.js","viewport.js"];
   data:[2097152]u8; path:[4096]u8;
   ok:=fs_mkdir("apps/openagents-ios/Starter/coaxial");ok=fs_mkdir("apps/openagents-ios/Starter/build/zeron");
-  for i:0..<9 {n:=fs_read(names[i],data[..]);if n<0 || !fs_write(fs_join("apps/openagents-ios/Starter",targets[i],path[..]),cast(string)data[0..<n]) {return 1;}}
+  for i:0..<10 {n:=fs_read(names[i],data[..]);if n<0 || !fs_write(fs_join("apps/openagents-ios/Starter",targets[i],path[..]),cast(string)data[0..<n]) {return 1;}}
   print("starter: Updates %\n",ifx updates then "enabled" else "disabled");return 0;
 }

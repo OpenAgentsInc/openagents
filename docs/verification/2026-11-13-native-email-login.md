@@ -130,3 +130,18 @@ endpoint served generation 4 with all 11 artifact hashes verified and the
 signed envelope identical to the tested package.
 Evidence is retained outside the repository under
 `~/.openagents/releases/openagents-ios-1069-ota4/`.
+
+## Generation 5 fixed viewport
+
+The owner reported page zoom from pinches. The shared starter now loads
+`viewport.js`: a fixed window with an internal vertical scroller, constrained
+viewport metadata, touch/gesture zoom cancellation and visible-height updates
+when the keyboard opens. Both starter HTML entry points use the same host glue;
+the package preparation and publication inventory include it. The native SDK
+and both Wasm applications are unchanged from generation 4.
+
+Signed generation 5 passed the retained-1069 OTA/email/history/relaunch/logout
+flow in 66.301 seconds. A separate real WebKit test checks geometry after each
+pinch-in, pinch-out and double-tap: all passed in 7.662 seconds. Keyboard code
+entry and login buttons remained reachable. Resource preparation and JS syntax
+checks passed. No native app source was rebuilt for these observations.

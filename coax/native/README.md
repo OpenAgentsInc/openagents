@@ -78,7 +78,7 @@ coax/web/tool.sh coax/native/prepare.coax
 mkdir -p /tmp/native-release
 coax/web/tool.sh coax/native/package.coax apps/openagents-ios/Starter \
   com.openagents.app "$(cat apps/openagents-ios/Generated/runtime.txt)" 1 \
-  /tmp/native-release/manifest.json index.html native.js extras.js coaxial/dom-host.js \
+  /tmp/native-release/manifest.json index.html native.js extras.js viewport.js coaxial/dom-host.js \
   coaxial/shell.js build/app.wasm build/extras.wasm build/zeron/Geist.ttf \
   build/zeron/Geist-Medium.ttf build/zeron/Geist-SemiBold.ttf build/zeron/GeistMono.ttf
 coax/web/tool.sh coax/native/publish.coax apps/openagents-ios/Starter \
