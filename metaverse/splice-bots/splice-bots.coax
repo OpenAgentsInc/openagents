@@ -563,10 +563,10 @@ splice_pointer :: (s: [] Splice, x: f32, y: f32, phase: int) -> bool #export_c #
  #assert splice_touch(s[..],640,240,3,41);splice_touch_step(s[..]);
  #assert !s[0].thumbs.look_on && s[0].game[0].pitch==pitch;
 }
-#test "#13552: focus lost mid-hold lets every key go: she stops walking, a held jump is cut, Ctrl's sprint ends, and Sniper's throttle and handbrake let go" #steps 4000000000 #traversal 2000000000 {
+#test "#13552: focus lost mid-hold lets every key go: she stops walking, a held jump is cut, Z's sprint ends, and Sniper's throttle and handbrake let go" #steps 4000000000 #traversal 2000000000 {
   s := [1] Splice.[Splice.{}]; s[0].started = true; g := s[0].game[..];
   g_stage(g, 5); #assert g[0].mode == M_PLAY;
-  #assert splice_key(s[..], 'w', true) && splice_key(s[..], -14, true);
+  #assert splice_key(s[..], 'w', true) && splice_key(s[..], 'z', true);
   for i: 0..<60 { g_step(g, 1.0f32 / 60); }
   #assert g[0].fwd && stance_fast(g[0].dr[0].st);
   splice_blur(s[..]);

@@ -55,7 +55,7 @@ FL_M_HEIGHT :: 1.75f32;    // her height as the first character stands (the crea
 FL_M_JUMP :: FL_JUMP * FL_JUMP / (2 * FL_GRAVITY) - FL_JUMP / 128;   // 1.28: the top of one jump
 FL_M_DOUBLE :: FL_M_JUMP + FL_JUMP * JUMP_AIR * FL_JUMP * JUMP_AIR / (2 * FL_GRAVITY) - FL_JUMP * JUMP_AIR / 128;   // 2.98: the second Space at the first one's top
 FL_M_LEDGE :: FL_M_JUMP + FL_STEP;   // 1.58: the highest top one jump lands her on
-FL_M_WALK :: T_WALK;       // 5.6: her speed on foot (no sprint)
+FL_M_WALK :: T_WALK;       // 5.6: her speed on foot (Z or W W sprints at STANCE_SPRINT_PACE)
 FL_M_SNEAK :: T_WALK * STANCE_SNEAK_PACE;   // 2.52: her speed while she sneaks (hold Left Shift)
 FL_M_BOARD :: 7.0f32; FL_M_BOARD_FAST :: 22.0f32;   // the hoverboard's casual and fast (the board table, content/splice.content); Q Q is super fast (board_super_cms)
 

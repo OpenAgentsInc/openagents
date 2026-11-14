@@ -879,7 +879,7 @@ g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
   return false;
 }
 // Focus lost (alt-tab, a click outside the page): every held key and button lets go, as if each were
-// released, so she and Sniper stop and nothing is held when focus comes back (#13552). Walking, Ctrl's
+// released, so she and Sniper stop and nothing is held when focus comes back (#13552). Walking, Z's
 // sprint and W W, Space (a rising jump is cut, as a let-go), Q on the board, R's wheel (closed, no
 // order), the drive's W S A D and handbrake, and the edit bay's drag.
 g_blur :: (g: [] SpGame) {
@@ -1723,7 +1723,7 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
 }
 // The hoverboard (#13485): only when the world's board table gives it; everything on Q (#13505).
 sp_q :: (g: [] SpGame) -> bool { t := g_key(g, 'q', true); _ := g_key(g, 'q', false); return t; }
-#test "the board: Q calls it only when the world gives one, Q switches casual and fast, Q Q is super fast, holding Q steps off; Ctrl held or W W rides very fast" #steps 60000000 {
+#test "the board: Q calls it only when the world gives one, Q switches casual and fast, Q Q is super fast, holding Q steps off; Z held or W W rides very fast" #steps 60000000 {
   g := [1] SpGame.[SpGame.{}];
   g_stage(g[..], 5);
   g[0].c[0].board = board_row_read(1, "off", 700, 2200);
@@ -1738,9 +1738,10 @@ sp_q :: (g: [] SpGame) -> bool { t := g_key(g, 'q', true); _ := g_key(g, 'q', fa
   // the rubble stops it head on, and its speed goes into the wall
   for i: 0..<600 { g_step(g[..], 1.0f32 / 60); }
   #assert g[0].pz >= g[0].at.rubble_z + 1 + T_RADIUS - 0.01 && g[0].board[0].m.speed < 1;
-  // Ctrl held rides very fast, and so does a double tap of W held; letting go is casual again
-  #assert g_key(g[..], -14, true); g_step(g[..], 1.0f32 / 60); #assert g[0].board[0].fast;
-  _ = g_key(g[..], -14, false); g_step(g[..], 1.0f32 / 60); #assert !g[0].board[0].fast;
+  // Z held rides very fast, and so does a double tap of W held; letting go is casual again; Ctrl is no key of the game's
+  #assert !g_key(g[..], -14, true); g_step(g[..], 1.0f32 / 60); #assert !g[0].board[0].fast;
+  #assert g_key(g[..], 'z', true); g_step(g[..], 1.0f32 / 60); #assert g[0].board[0].fast;
+  _ = g_key(g[..], 'z', false); g_step(g[..], 1.0f32 / 60); #assert !g[0].board[0].fast;
   _ = g_key(g[..], 'w', false); _ = g_key(g[..], 'w', true); _ = g_key(g[..], 'w', false); _ = g_key(g[..], 'w', true);
   g_step(g[..], 1.0f32 / 60); #assert g[0].board[0].fast;
   _ = g_key(g[..], 'w', false); g_step(g[..], 1.0f32 / 60); #assert !g[0].board[0].fast;
@@ -1798,6 +1799,17 @@ sp_q :: (g: [] SpGame) -> bool { t := g_key(g, 'q', true); _ := g_key(g, 'q', fa
   for i: 0..<FL_CROUCH_POSES { #assert seen[i]; }
   _ = g_key(g[..], 'w', false); _ = g_key(g[..], -13, false);
   #assert !d_sneaking(g[..]) && d_pace(g[..]) == 1;
+  // the sprint on foot (playtest 3): Z held, or a double tap of W from the first press of the run, half as fast again
+  g_stage(g[..], 5); g[0].px = 0; g[0].pz = 0; g[0].yaw = PI;
+  #assert g_key(g[..], 'z', true) && g_key(g[..], 'w', true);
+  for i: 0..<50 { g_step(g[..], 0.02); }
+  #assert -g[0].pz > T_WALK * STANCE_SPRINT_PACE * 0.9 && -g[0].pz < T_WALK * STANCE_SPRINT_PACE * 1.05;
+  _ = g_key(g[..], 'z', false); _ = g_key(g[..], 'w', false); g_step(g[..], 0.02);
+  #assert d_pace(g[..]) == 1;
+  g_stage(g[..], 5);
+  _ = g_key(g[..], 'w', true); g_step(g[..], 0.02); _ = g_key(g[..], 'w', false); g_step(g[..], 0.02); _ = g_key(g[..], 'w', true);
+  #assert d_pace(g[..]) == STANCE_SPRINT_PACE;
+  _ = g_key(g[..], 'w', false);
   // her crouched poses: the knees bend deep and the hips drop, with her feet under her
   for i: 0..<FL_CROUCH_POSES { l := fl_crouch_limbs(i); #assert l.knee[0] > FL_CROUCH_KNEE * 0.99 && l.knee[1] > FL_CROUCH_KNEE * 0.99 && l.leg[0] > 0.2 && l.leg[1] > 0.2; }
   m := cb_form(cd_first().body); #assert cp_lift(m, fl_crouch_limbs(0)) > 0.1 && fl_crouch_stride(m) > 0.3 && fl_crouch_stride(m) < 4 * (m.joint[CJ_R_HIP].y - m.joint[CJ_R_FOOT].y) * sin(FL_SWING);
@@ -2826,7 +2838,7 @@ hv_drop_on :: (g: [] SpGame, d: int) -> bool {
   g[0].have[H_PLUS] = true;
   #assert hv_goal(g[..]).name == "DRILL MECH";   // the DRILL+ is no step: the goal stays the drill mech (#13505 playtest 2)
   // the hoverboard's panel and its keys
-  #assert HV_BOARD_HINT == "Q board · hold Ctrl or double-tap W: very fast";
+  #assert HV_SPRINT_HINT == "hold Z or double-tap W: sprint";
   // BAD CUT: Esc quits to the title; its buttons are RESPAWN AT ROVER and QUIT TO TITLE
   g_stage(g[..], 14); _ = hv_draw(g[..], b[..]);
   #assert hv_btn(g[..], -2) >= 0 && hv_btn(g[..], -1) >= 0 && hv_kept(g[..], buf[..]) == "Digger · drill arm · treads · battery · 2 cards";

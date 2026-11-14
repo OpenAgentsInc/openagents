@@ -80,7 +80,7 @@ SpDir :: struct {
   move: int; moves: int;                  // the last battle move key (1 to 4) and presses not yet taken
   q_held: bool; q_since: f32 = 1000; q_hold: f32 = -1;   // Q is down, seconds since its last press, how long held (-1: this press won't step off)
   super: bool;                            // the board rides super fast (a double tap of Q)
-  q_fast: bool;                           // Q has the board fast (Q switches it); Ctrl held or a double tap of W rides very fast too
+  q_fast: bool;                           // Q has the board fast (Q switches it); Z held or a double tap of W rides very fast too
   wheel: Wheel;                           // Hold R: the bot wheel, open while R is held (metaverse-engine/ui/wheel.coax)
   sw: f32 = 1280; sh: f32 = 800;          // the screen at the last frame: the pointer's crosshair
   sel: DPoint = DPoint.{kind = DP_NONE, i = -1};   // what the crosshair has selected (digger-orders.coax)
@@ -374,8 +374,10 @@ d_key :: (g: [] SpGame, key: int, down: bool) -> int {
   }
   if d[0].map && down && (key == 'm' || key == 'M' || key == -1 || key == 'e' || key == 'E') { d_map_close(g); return 1; }   // the map closes with M, Esc or E
   if key == -13 { d[0].st = stance_sneak(d[0].st, down); return ifx g[0].mode == M_PLAY then 1 else 0; }   // Shift: sneak while held
-  if key == -14 { d[0].st = stance_hold(d[0].st, down); return ifx g[0].mode == M_PLAY then 1 else 0; }   // Ctrl: very fast on the board
-  if key == 'w' || key == 'W' || key == -6 { d[0].st = stance_forward(d[0].st, down); return -1; }   // a double tap of W: very fast on the board; W still walks
+  // Z held, or a double tap of W: sprint on foot, very fast on the board (W still walks). Not Ctrl: not
+  // every keyboard has one, and Ctrl with W closes a browser's tab. Left Shift is sneak.
+  if key == 'z' || key == 'Z' { d[0].st = stance_hold(d[0].st, down); return ifx g[0].mode == M_PLAY then 1 else 0; }
+  if key == 'w' || key == 'W' || key == -6 { d[0].st = stance_forward(d[0].st, down); return -1; }
   if key == 'q' || key == 'Q' { return d_board_q(g, down); }
   if key == 'r' || key == 'R' { return d_wheel_key(g, down); }
   if d[0].wheel.open && down && key >= '1' && key < '1' + DW_N { d[0].wheel = wheel_set(d[0].wheel, key - '1'); return 1; }
@@ -503,7 +505,7 @@ d_pre :: (g: [] SpGame, dt: f32) {
     if d[0].q_hold >= T_Q_OFF { g_board_key(g); d[0].q_hold = -1; d[0].super = false; d[0].q_fast = false; g[0].board[0].fast = false; }
   }
   if !g_riding(g) { d[0].super = false; d[0].q_fast = false; }
-  else { g[0].board[0].fast = d[0].q_fast || stance_fast(d[0].st); }   // Q's fast, or Ctrl held, or a double tap of W held
+  else { g[0].board[0].fast = d[0].q_fast || stance_fast(d[0].st); }   // Q's fast, or Z held, or a double tap of W held
   if d[0].say_t > 0 { d[0].say_t -= dt; if d[0].say_t <= 0 { d[0].say = DS_NONE; } }
 }
 // After the walk: Heat's floor and Digger.
@@ -700,7 +702,7 @@ D_KEYS :: 17;
 d_controls :: () -> [D_KEYS * 2] string {
   return [D_KEYS * 2] string.[
     "W A S D", "Walk", "Mouse", "Look; scroll to zoom", "Space", "Jump; again in the air to jump higher", "Hold Shift", "Sneak: crouch, slower, harder to sense",
-    "Q", "Hoverboard on, then casual or fast", "Hold Ctrl or W W", "Hoverboard very fast; Q Q super fast, hold Q off",
+    "Q", "Hoverboard on, then casual or fast; Q Q super fast; hold Q to get off", "Hold Z or W W", "Sprint; on the hoverboard, very fast",
     "E", "Interact, enter the rover, swap a core, tow or charge Digger", "Tab", "Edit bay, inside Sniper", "I", "Inventory",
     "Left click", "Point Digger: dig, pick up, attack", "F", "Stun a robot within 2 m", "1 2 3 4", "Battle moves",
     "Hold R", "Bot wheel: dig, pick up, attack, follow, charge", "M", "Map", "O", "Change outfit, inside Sniper", "Esc", "Pause", "G", "Graybox"];

@@ -263,8 +263,8 @@ The key map follows the slice's beat sheet (#13505). The pause screen (Esc) list
 | Hold Left Shift | Sneak: she crouches and walks at 45 % of her speed, the view sinks, and Imperial robots sense her from half as far |
 | Q | Hoverboard: the first press steps on at casual speed, then each press switches casual and fast |
 | Double-tap Q | Hoverboard super fast (the fast speed times 1.6, `board_super_cms`) |
-| Hold Ctrl, or double-tap W and hold it | Hoverboard very fast (the fast speed) while held |
-| Hold Q | Step off the hoverboard |
+| Hold Z, or double-tap W and hold it | Sprint: on foot half as fast again (`STANCE_SPRINT_PACE`); on the hoverboard very fast (the fast speed). Not Ctrl, which not every keyboard has and which with W closes a browser tab; Left Shift is sneak |
+| Hold Q | Step off the hoverboard (the board's panel says so all the while she rides) |
 | E | Interact: enter the rover, take the core, go through a portal, swap a core, tow a powered-down Digger; beside a hurt Digger with a battery cell, charge him |
 | Tab | The edit bay, only inside Sniper (the rover) |
 | I | The inventory: six slots. A click on a slot drops what is in it; a click on CELLS charges Digger when he wants it |
@@ -654,7 +654,7 @@ openagents realm world-board splice on --casual 700 --fast 2200 --origin http://
 The editor's agent does the same with the `realm_world_board` tool. As shipped it is on (#13505). In
 play, everything is on Q: Q calls the board up at casual speed, each Q after switches casual and
 fast, a double tap of Q (within 0.3 s) rides super fast, and holding Q for half a second steps off.
-Holding Ctrl, or a double tap of W held, rides very fast too. W and S speed up and slow, A and D carve, and Space hops. The board is the Metaverse Engine's (`metaverse-engine/action/hoverboard.coax`, on
+Holding Z, or a double tap of W held, rides very fast too (on foot, the same keys sprint). W and S speed up and slow, A and D carve, and Space hops. The board is the Metaverse Engine's (`metaverse-engine/action/hoverboard.coax`, on
 its mount); Splice Bots' own colliders push it, and the camera widens, pulls back and shakes at speed,
 with Anime Lab's speed lines.
 

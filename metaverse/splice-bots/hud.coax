@@ -251,18 +251,20 @@ hv_gauges :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   n = hv_gauge(out, n, cx, cy, r, g[0].heat / T_HEAT_MAX, warm, "HEAT", k, a);
   return hv_mid(out, n, F_TITLE, hv_band(g[0].heat), cx, cy + 3 * k, ifx g[0].heat >= 66 then 4 * k else 5.5 * k, ifx warm then HV_ORANGE() else HV_CREAM(), a);
 }
-// The hoverboard, when the world gives one: what it is doing, its speed, and its keys. Over the gauges.
-HV_BOARD_HINT :: "Q board · hold Ctrl or double-tap W: very fast";
+// The hoverboard, when the world gives one: what it is doing, its speed, how to get on or off (plainly,
+// all the while she rides: playtest 3), and the sprint. Over the gauges.
+HV_SPRINT_HINT :: "hold Z or double-tap W: sprint";
 hv_board :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
   n := at; k := q.k;
   if !g_board_given(g) || g[0].mode != M_PLAY { return n; }
   bd := g[0].board[0]; on := g_riding(g); buf: [32] u8;
-  sa := ro_safe(q.w, q.h); x0 := sa.x0; x1 := x0 + 330 * k; y1 := sa.y1 - 110 * k; y0 := y1 - 48 * k;   // over the gauges
+  sa := ro_safe(q.w, q.h); x0 := sa.x0; x1 := x0 + 330 * k; y1 := sa.y1 - 110 * k; y0 := y1 - 64 * k;   // over the gauges
   n = hv_rect(out, n, x0, y0, x1, y1, HV_PANEL(), 0.94);
   what := ifx !on then "BOARD OFF" else ifx g[0].dr[0].super then "BOARD · SUPER FAST" else ifx bd.fast then "BOARD · VERY FAST" else "BOARD · CASUAL";
   n = hv_text(out, n, F_TITLE, what, x0 + 14 * k, y0 + 20 * k, 7.5 * k, ifx on && bd.fast then HV_ORANGE() else HV_CREAM(), 1);
   if on { n = hv_right(out, n, F_MONO, num(buf[..], "", cast(int) (abs(bd.m.speed) * 3.6 + 0.5), " KM/H"), x1 - 14 * k, y0 + 20 * k, 7 * k, HV_CREAM(), 1); }
-  return hv_text(out, n, F_MONO, HV_BOARD_HINT, x0 + 14 * k, y0 + 38 * k, 6.5 * k, HV_DIM(), 1);
+  n = hv_text(out, n, F_TITLE, ifx on then "HOLD Q: GET OFF" else "Q: GET ON", x0 + 14 * k, y0 + 38 * k, 7 * k, HV_CREAM(), 1);
+  return hv_text(out, n, F_MONO, ifx on then "Q: fast · hold Z or W W: very fast" else HV_SPRINT_HINT, x0 + 14 * k, y0 + 54 * k, 6.5 * k, HV_DIM(), 1);
 }
 // The bot slots: Digger on 1, two empty, then the stun on F.
 hv_slots :: (g: [] SpGame, out: [] f32, at: int, q: Ui) -> int {
@@ -568,7 +570,7 @@ hv_bay :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   n = hv_mid(out, n, F_TITLE, "SPLICE + RESTORE", (kx0 + kx1) * 0.5, (by0 + by1) * 0.5 + 1 * k, 9 * k, ifx core then HV_DARK() else dim, 1);
   n = hv_mid(out, n, F_MONO, ifx core then "PRESS X" else "NEEDS THE BANNED CORE", (kx0 + kx1) * 0.5, (by0 + by1) * 0.5 + 18 * k, 5.5 * k, ifx core then HV_PANEL() else dim, 1);
   // the keys
-  n = hv_right(out, n, F_TITLE, "DRAG TO SLOT    C CLEAR    TAB CLOSE", w - 54 * k, h - 19 * k, 6 * k, cream, 1);
+  n = hv_right(out, n, F_TITLE, "DRAG TO SLOT    C CLEAR    ESC CLOSE", w - 54 * k, h - 19 * k, 6 * k, cream, 1);
   // what is being dragged follows the pointer
   if g[0].drag >= 0 {
     dt := d_kind_name(g[0].drag); dw := ui_w(F_TITLE, dt, 8 * k) + 30 * k;
