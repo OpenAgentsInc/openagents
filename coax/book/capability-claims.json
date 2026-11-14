@@ -286,7 +286,7 @@
     {
       "id": "psionic.language.current",
       "document": "psionic/book/PLAN.md",
-      "scope": "Current shared compiler and bounded Psionic consumers, including nominal/formal scalar units and initial concrete native-C affine point/vector types; full transforms, compiler clocks, other targets and full robot migrations remain separate. Reviewed after #12867: Metal graphics emission is a graphics path and does not qualify Psionic Metal or WebGPU compute beyond the bounded kernels named. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82's WGSL compute entries serve the engine's GPU cull only and qualify no Psionic browser compute; cdf2eedd13 adds checks only. Reviewed for #13516: target.browser is renamed \"Coax Native Web browser path\" and its meaning names the browser's DOM for text surfaces; no compute, layout or target qualification changes. Reviewed for #13451: typed uniform blocks are a WGSL graphics binding form and qualify no Psionic compute. Reviewed again for #13451: nested typed blocks and arrays of vec4s are the same graphics binding form; no compute qualification. Reviewed for #13541/#13551: dba31bf6e7 moves EnvBlock's file to metaverse-engine/render/shade/env-block.coax in native-gpu.md; a path change only, no compute qualification.",
+      "scope": "Current shared compiler and bounded Psionic consumers, including nominal/formal scalar units and initial concrete native-C affine point/vector types; full transforms, compiler clocks, other targets and full robot migrations remain separate. Reviewed after #12867: Metal graphics emission is a graphics path and does not qualify Psionic Metal or WebGPU compute beyond the bounded kernels named. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82's WGSL compute entries serve the engine's GPU cull only and qualify no Psionic browser compute; cdf2eedd13 adds checks only. Reviewed for #13516: target.browser is renamed \"Coax Native Web browser path\" and its meaning names the browser's DOM for text surfaces; no compute, layout or target qualification changes. Reviewed for #13451: typed uniform blocks are a WGSL graphics binding form and qualify no Psionic compute. Reviewed again for #13451: nested typed blocks and arrays of vec4s are the same graphics binding form; no compute qualification. Reviewed for #13541/#13551: dba31bf6e7 moves EnvBlock's file to metaverse-engine/render/shade/env-block.coax in native-gpu.md; a path change only, no compute qualification. Reviewed for #13539/#13561/#13569: e16e4a8fce makes `coax wgsl` copy a parameter the body only reads into a let rather than a variable (NVIDIA pipeline build time); emitted graphics code only, no compute qualification. 4b10cf1e74 drops the removed Nights from native-gpu.md's list of glade_frame readers; no capability change.",
       "text_sha256": "7f0dc4b94142d897dfcc449a061683ab4d7f60b5b7af9949835fee2462284f84",
       "features": [
         {
@@ -349,11 +349,11 @@
         },
         {
           "path": "coax/lib/compiler/wgsl.coax",
-          "sha256": "104a9024d07fc75327894e4569d3fb45b822335bfccdaf0d3c97280c0e037783"
+          "sha256": "4d05e7ffce81b54fd405c839b532a98eeed384f7d4ce7a69808f10cdd9427e70"
         },
         {
           "path": "docs/metaverse/native-gpu.md",
-          "sha256": "0d1ebc518f7f53bf30118543bc1086cbefc505ee1ee93ec4033d4b05d07b11c4"
+          "sha256": "376e1d7ace1bec3dd4e80dd7dd3128d6ab042f28d8d4c7fd460fa359526f6be6"
         },
         {
           "path": "coax/QUANTITIES.md",
@@ -442,7 +442,7 @@
     {
       "id": "coax.wgsl.current",
       "document": "coax/book/ch17-gpu.md",
-      "scope": "Bounded direct WGSL graphics emission and the named Everglade source consumer; planned shader syntax, general layouts and Psionic browser compute remain separate. Reviewed after #12867: `coax metal --vertex/--fragment` adds a separate Metal graphics writer over the same checked tree; the WGSL path and its refusals are unchanged. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82 adds bounded `coax wgsl --computes` entries with `atomic` storage bindings for the engine's GPU cluster cull (metaverse-engine/render/geometry/cull.coax); Psionic browser compute remains separate. cdf2eedd13 adds checks only; 4c7669373d and c50fcbbf15 change Everglade's bindings for one zone and sun-shadow atlas tiles. Reviewed for #13516: target.browser is renamed \"Coax Native Web browser path\" and its meaning names the browser's DOM for text surfaces; no compute, layout or target qualification changes. Reviewed for #13451: `coax wgsl` adds typed uniform blocks (`uniform` with no count for a []STRUCT of vec4s and f32s in fours, read at u[0]); Metal and SPIR-V gain checks only, and no page uses the form yet. Reviewed again for #13451: a typed block may nest typed blocks and fixed arrays of vec4s or of blocks at 16-byte offsets (Metal and SPIR-V gain checks only), and Everglade II's shaders read their uniforms as one (E2U). Reviewed for #13541/#13551: dba31bf6e7 moves EnvBlock's file to metaverse-engine/render/shade/env-block.coax in native-gpu.md; a path change only, no compute qualification.",
+      "scope": "Bounded direct WGSL graphics emission and the named Everglade source consumer; planned shader syntax, general layouts and Psionic browser compute remain separate. Reviewed after #12867: `coax metal --vertex/--fragment` adds a separate Metal graphics writer over the same checked tree; the WGSL path and its refusals are unchanged. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82 adds bounded `coax wgsl --computes` entries with `atomic` storage bindings for the engine's GPU cluster cull (metaverse-engine/render/geometry/cull.coax); Psionic browser compute remains separate. cdf2eedd13 adds checks only; 4c7669373d and c50fcbbf15 change Everglade's bindings for one zone and sun-shadow atlas tiles. Reviewed for #13516: target.browser is renamed \"Coax Native Web browser path\" and its meaning names the browser's DOM for text surfaces; no compute, layout or target qualification changes. Reviewed for #13451: `coax wgsl` adds typed uniform blocks (`uniform` with no count for a []STRUCT of vec4s and f32s in fours, read at u[0]); Metal and SPIR-V gain checks only, and no page uses the form yet. Reviewed again for #13451: a typed block may nest typed blocks and fixed arrays of vec4s or of blocks at 16-byte offsets (Metal and SPIR-V gain checks only), and Everglade II's shaders read their uniforms as one (E2U). Reviewed for #13541/#13551: dba31bf6e7 moves EnvBlock's file to metaverse-engine/render/shade/env-block.coax in native-gpu.md; a path change only, no compute qualification. Reviewed for #13539/#13561/#13569: e16e4a8fce makes `coax wgsl` copy a parameter the body only reads into a let rather than a variable (NVIDIA pipeline build time); emitted graphics code only, no compute qualification. 4b10cf1e74 drops the removed Nights from native-gpu.md's list of glade_frame readers; no capability change.",
       "text_sha256": "4a593a91eb143f061fb948f11119f1e6f62a1e1629db334786aeb190920e94eb",
       "features": [
         {
@@ -453,7 +453,7 @@
       "evidence": [
         {
           "path": "coax/lib/compiler/wgsl.coax",
-          "sha256": "104a9024d07fc75327894e4569d3fb45b822335bfccdaf0d3c97280c0e037783"
+          "sha256": "4d05e7ffce81b54fd405c839b532a98eeed384f7d4ce7a69808f10cdd9427e70"
         },
         {
           "path": "coax/src/shader.cpp",
@@ -461,7 +461,7 @@
         },
         {
           "path": "docs/metaverse/native-gpu.md",
-          "sha256": "0d1ebc518f7f53bf30118543bc1086cbefc505ee1ee93ec4033d4b05d07b11c4"
+          "sha256": "376e1d7ace1bec3dd4e80dd7dd3128d6ab042f28d8d4c7fd460fa359526f6be6"
         },
         {
           "path": "apps/openagents-web/gpu/everglade-v1/gpu.module",
