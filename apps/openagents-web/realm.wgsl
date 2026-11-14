@@ -434,11 +434,7 @@ fn coax_p_wg_cvt_u3f3(p_p: vec3f) -> coax_t16 {
 fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b > l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b > l_a));
 }
 fn coax_p_clampf(p_x: f32, p_low: f32, p_high: f32) -> f32 {
   let l_x: f32 = p_x;
@@ -550,15 +546,7 @@ fn coax_p_wg_add_f3f3(p_a: vec3f, p_b: vec3f) -> vec3f {
 }
 fn coax_p_wg_u32_f(p_x: f32) -> u32 {
   let l_x: f32 = p_x;
-  if ((!(l_x > 0.0f)))
-  {
-    return 0u;
-  }
-  if ((l_x >= 0x1.fffffep31f))
-  {
-    return 4294967040u;
-  }
-  return u32(l_x);
+  return select(0u, u32(coax_p_fmin(l_x, 0x1.fffffep31f)), (l_x > 0.0f));
 }
 fn coax_p_wg_sub_f3f3(p_a: vec3f, p_b: vec3f) -> vec3f {
   let l_a: vec3f = p_a;
@@ -655,11 +643,7 @@ fn coax_p_wg_add_f2f2(p_a: vec2f, p_b: vec2f) -> vec2f {
 fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b < l_a));
 }
 fn coax_p_wg_make_f4_f3f(p_p0: vec3f, p_p1: f32) -> vec4f {
   let l_p0: vec3f = p_p0;
@@ -926,19 +910,7 @@ fn coax_p_u2(p_x: u32, p_y: u32) -> coax_t29 {
 }
 fn coax_p_wg_i32_f(p_x: f32) -> i32 {
   let l_x: f32 = p_x;
-  if ((l_x != l_x))
-  {
-    return 0i;
-  }
-  if ((l_x <= (-0x1.000000p31f)))
-  {
-    return (-2147483647i - 1i);
-  }
-  if ((l_x >= 0x1.fffffep30f))
-  {
-    return 2147483520i;
-  }
-  return i32(l_x);
+  return select(i32(coax_p_fmax(coax_p_fmin(l_x, 0x1.fffffep30f), (-0x1.000000p31f))), 0i, (l_x != l_x));
 }
 fn coax_p_i2(p_x: i32, p_y: i32) -> coax_t27 {
   let l_x: i32 = p_x;
@@ -1179,20 +1151,12 @@ fn coax_p_render_filter_layer8_grad(p_uv: vec2f, p_layer: i32, p_dx: vec2f, p_dy
 fn coax_p_wg_max_i(p_a: i32, p_b: i32) -> i32 {
   let l_a: i32 = p_a;
   let l_b: i32 = p_b;
-  if ((l_b > l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b > l_a));
 }
 fn coax_p_wg_min_i(p_a: i32, p_b: i32) -> i32 {
   let l_a: i32 = p_a;
   let l_b: i32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b < l_a));
 }
 fn coax_p_render_footprint(p_width: i32, p_height: i32, p_du_dx: f32, p_dv_dx: f32, p_du_dy: f32, p_dv_dy: f32, p_bias: f32) -> coax_t33 {
   let l_width: i32 = p_width;

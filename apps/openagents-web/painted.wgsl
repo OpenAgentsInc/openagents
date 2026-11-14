@@ -348,24 +348,12 @@ fn coax_p_sty_is(p_material: f32, p_which: i32) -> bool {
 }
 fn coax_p_wg_u32_f(p_x: f32) -> u32 {
   let l_x: f32 = p_x;
-  if ((!(l_x > 0.0f)))
-  {
-    return 0u;
-  }
-  if ((l_x >= 0x1.fffffep31f))
-  {
-    return 4294967040u;
-  }
-  return u32(l_x);
+  return select(0u, u32(coax_p_fmin(l_x, 0x1.fffffep31f)), (l_x > 0.0f));
 }
 fn coax_p_wg_max_u(p_a: u32, p_b: u32) -> u32 {
   let l_a: u32 = p_a;
   let l_b: u32 = p_b;
-  if ((l_b > l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b > l_a));
 }
 fn coax_p_sty_hash2(p_x: f32, p_y: f32) -> f32 {
   let l_x: f32 = p_x;
@@ -413,11 +401,7 @@ fn coax_p_sty_table(p_x: f32, p_z: f32, p_field: i32) -> f32 {
 fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b < l_a));
 }
 fn coax_p_sty_path(p_x: f32, p_z: f32) -> f32 {
   let l_x: f32 = p_x;
@@ -484,11 +468,7 @@ fn coax_p_sty_noise2(p_x: f32, p_y: f32) -> f32 {
 fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b > l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b > l_a));
 }
 fn coax_p_sty_grass_colour(p_x: f32, p_z: f32, p_along: f32) -> vec3f {
   let l_x: f32 = p_x;
@@ -1518,20 +1498,12 @@ fn coax_p_render_noise_permute(p_word: u32) -> u32 {
 fn coax_p_wg_max_i(p_a: i32, p_b: i32) -> i32 {
   let l_a: i32 = p_a;
   let l_b: i32 = p_b;
-  if ((l_b > l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b > l_a));
 }
 fn coax_p_wg_min_i(p_a: i32, p_b: i32) -> i32 {
   let l_a: i32 = p_a;
   let l_b: i32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b < l_a));
 }
 fn coax_p_wg_atan01(p_x: f32) -> f32 {
   let l_x: f32 = p_x;

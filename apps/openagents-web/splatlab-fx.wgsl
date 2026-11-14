@@ -401,11 +401,7 @@ fn coax_p_sl_weight(p_p: coax_t15) -> f32 {
 fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b < l_a));
 }
 fn coax_p_sl_static(p_st: coax_t10) -> coax_t14 {
   let l_st: coax_t10 = p_st;
@@ -901,11 +897,7 @@ fn coax_p_scale3(p_a: vec3f, p_k: f32) -> vec3f {
 fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b > l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b > l_a));
 }
 fn coax_p_sl_norm2(p_a: vec2f) -> vec2f {
   let l_a: vec2f = p_a;

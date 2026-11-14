@@ -385,11 +385,7 @@ fn coax_p_cl_clampi(p_x: i32, p_low: i32, p_high: i32) -> i32 {
 fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b > l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b > l_a));
 }
 fn coax_p_cl_seen(p_error: f32, p_s: vec4f) -> f32 {
   let l_error: f32 = p_error;
@@ -435,11 +431,7 @@ fn coax_p_m4_apply(p_m: coax_t11, p_v: vec4f) -> vec4f {
 fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b < l_a));
 }
 fn coax_p_cl_priority(p_seen: f32, p_t: f32) -> u32 {
   let l_seen: f32 = p_seen;

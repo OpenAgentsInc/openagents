@@ -615,11 +615,7 @@ fn coax_p_v3(p_x: f32, p_y: f32, p_z: f32) -> vec3f {
 fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b > l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b > l_a));
 }
 fn coax_p_cv_scene_shade(p_s: coax_t12, p_dx: vec2f, p_dy: vec2f) -> vec4f {
   let l_s: coax_t12 = p_s;
@@ -1317,11 +1313,7 @@ fn coax_p_normalize3(p_a: vec3f) -> vec3f {
 fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b < l_a));
 }
 fn coax_p_cv_orb_shade(p_s: coax_t12) -> vec4f {
   let l_s: coax_t12 = p_s;

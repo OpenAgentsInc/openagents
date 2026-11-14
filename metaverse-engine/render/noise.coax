@@ -66,11 +66,14 @@ render_noise_mix3 :: (x:u32,y:u32,z:u32)->u32 #effects(all) {
 render_noise_unit :: (word:u32)->f32 #effects(all) {
   return cast(f32)(word>>8)*0.000000059604644775390625f32;
 }
+// The nonfinite fallback is a choice (ifx, a WGSL select), not a branch: a shader inlines these
+// many times over, and NVIDIA's Linux compiler took 35 s instead of 6 on v1 Everglade's scene_fs
+// when each of a loop's 28 noise calls carried its own early return (#13562).
 render_noise2 :: (x:f32,y:f32)->f32 #effects(all) {
-  if !render_noise_coordinate_ok(x) || !render_noise_coordinate_ok(y) {return 0;}
-  return render_noise_unit(render_noise_mix2(render_noise_cell(x),render_noise_cell(y)));
+  ok:=render_noise_coordinate_ok(x) && render_noise_coordinate_ok(y);
+  return ifx ok then render_noise_unit(render_noise_mix2(render_noise_cell(x),render_noise_cell(y))) else 0.0f32;
 }
 render_noise3 :: (x:f32,y:f32,z:f32)->f32 #effects(all) {
-  if !render_noise_coordinate_ok(x) || !render_noise_coordinate_ok(y) || !render_noise_coordinate_ok(z) {return 0;}
-  return render_noise_unit(render_noise_mix3(render_noise_cell(x),render_noise_cell(y),render_noise_cell(z)));
+  ok:=render_noise_coordinate_ok(x) && render_noise_coordinate_ok(y) && render_noise_coordinate_ok(z);
+  return ifx ok then render_noise_unit(render_noise_mix3(render_noise_cell(x),render_noise_cell(y),render_noise_cell(z))) else 0.0f32;
 }

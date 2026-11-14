@@ -60,15 +60,17 @@ m4_at :: (u:[]f32,at:int)->M4 {
              c2=v4(u[at+8],u[at+9],u[at+10],u[at+11]),c3=v4(u[at+12],u[at+13],u[at+14],u[at+15])};
 }
 
-// WGSL's scalar builtins.
+// WGSL's scalar builtins. Each picks with ifx (a WGSL select), never an early return: a shader
+// inlines them thousands of times, and every such branch inside a loop costs NVIDIA's Linux
+// compiler time out of all proportion (v1 Everglade's scene_fs, #13562).
 mix :: (a:f32,b:f32,t:f32)->f32 {return a+(b-a)*t;}
-fmin :: (a:f32,b:f32)->f32 {if b<a {return b;} return a;}
-fmax :: (a:f32,b:f32)->f32 {if b>a {return b;} return a;}
+fmin :: (a:f32,b:f32)->f32 {return ifx b<a then b else a;}
+fmax :: (a:f32,b:f32)->f32 {return ifx b>a then b else a;}
 clampf :: (x:f32,low:f32,high:f32)->f32 {return fmin(fmax(x,low),high);}
 saturate :: (x:f32)->f32 {return clampf(x,0.0f32,1.0f32);}
 fract :: (x:f32)->f32 {return x-floor(x);}
 smoothstep :: (a:f32,b:f32,x:f32)->f32 {t:=saturate((x-a)/(b-a));return t*t*(3.0f32-2.0f32*t);}
-stepf :: (edge:f32,x:f32)->f32 {if x<edge {return 0.0f32;} return 1.0f32;}
+stepf :: (edge:f32,x:f32)->f32 {return ifx x<edge then 0.0f32 else 1.0f32;}
 
 // Resources. Fields are the CPU's; on the GPU each is a binding.
 Tex2D :: struct {width:int; height:int; texels:[]V4;}

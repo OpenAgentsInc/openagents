@@ -110,30 +110,27 @@ wg_atan :: (x:f32)->f32 {return wg_atan2(x,1.0f32);}
 // asin and acos on [-1, 1] by atan2 of the other leg (outside it WGSL's are undefined; these clamp).
 wg_asin :: (x:f32)->f32 {return wg_atan2(x,sqrt(fmax(1.0f32-x*x,0.0f32)));}
 wg_acos :: (x:f32)->f32 {return wg_atan2(sqrt(fmax(1.0f32-x*x,0.0f32)),x);}
-wg_min_i :: (a:s32,b:s32)->s32 {if b<a {return b;} return a;}
-wg_max_i :: (a:s32,b:s32)->s32 {if b>a {return b;} return a;}
+wg_min_i :: (a:s32,b:s32)->s32 {return ifx b<a then b else a;}
+wg_max_i :: (a:s32,b:s32)->s32 {return ifx b>a then b else a;}
 wg_clamp_i :: (x:s32,low:s32,high:s32)->s32 {return wg_min_i(wg_max_i(x,low),high);}
-wg_abs_i :: (x:s32)->s32 {if x<0 {return -x;} return x;}
-wg_sign_i :: (x:s32)->s32 {if x>0 {return 1;} if x<0 {return -1;} return 0;}
-wg_min_u :: (a:u32,b:u32)->u32 {if b<a {return b;} return a;}
-wg_max_u :: (a:u32,b:u32)->u32 {if b>a {return b;} return a;}
+wg_abs_i :: (x:s32)->s32 {return ifx x<0 then -x else x;}
+wg_sign_i :: (x:s32)->s32 {return ifx x>0 then 1 else ifx x<0 then -1 else 0;}
+wg_min_u :: (a:u32,b:u32)->u32 {return ifx b<a then b else a;}
+wg_max_u :: (a:u32,b:u32)->u32 {return ifx b>a then b else a;}
 wg_clamp_u :: (x:u32,low:u32,high:u32)->u32 {return wg_min_u(wg_max_u(x,low),high);}
 
-// Conversions as WGSL's: a float to an integer clamps to the range (NaN is 0).
+// Conversions as WGSL's: a float to an integer clamps to the range (NaN is 0). Chosen by ifx,
+// with no branch (shader.coax "WGSL's scalar builtins", #13562); ifx evaluates only the arm it
+// takes, so on the CPU a NaN never reaches the cast.
 wg_u32_f :: (x:f32)->u32 {
-  if !(x>0) {return 0;}
-  if x>=4294967040.0f32 {return 4294967040;}
-  return cast(u32)x;
+  return ifx x>0 then cast(u32)fmin(x,4294967040.0f32) else 0;
 }
 wg_i32_f :: (x:f32)->s32 {
-  if x!=x {return 0;}
-  if x<= -2147483648.0f32 {return -2147483647-1;}
-  if x>=2147483520.0f32 {return 2147483520;}
-  return cast(s32)x;
+  return ifx x!=x then 0 else cast(s32)fmax(fmin(x,2147483520.0f32),-2147483648.0f32);
 }
-wg_f32_b :: (b:bool)->f32 {if b {return 1.0f32;} return 0.0f32;}
-wg_u32_b :: (b:bool)->u32 {if b {return 1;} return 0;}
-wg_i32_b :: (b:bool)->s32 {if b {return 1;} return 0;}
+wg_f32_b :: (b:bool)->f32 {return ifx b then 1.0f32 else 0.0f32;}
+wg_u32_b :: (b:bool)->u32 {return ifx b then 1 else 0;}
+wg_i32_b :: (b:bool)->s32 {return ifx b then 1 else 0;}
 wg_f32_bits_i :: (x:s32)->f32 {return f32_from_bits(cast,trunc(u32)x);}
 wg_i32_bits_f :: (x:f32)->s32 {return cast,trunc(s32)f32_bits(x);}
 
@@ -201,6 +198,12 @@ wg_load_depth :: (t:TexDepth,c:I2,level:s32)->f32 {return gpu_load_depth(t,c.x,c
   #assert wg_at3u(ub[..],1).x==0xC0000000 && wg_at3i(ub[..],0).x==7 && wg_at4i(ub[..],0).w== -2147483647-1 && wg_at2u(ub[..],0).y==0xC0000000;
   #assert wg_u32_f(-3)==0 && wg_u32_f(3.9f32)==3 && wg_u32_f(5000000000.0f32)==4294967040 && wg_u32_f(0)==0;
   #assert wg_i32_f(-3.9f32)== -3 && wg_i32_f(-5000000000.0f32)== -2147483647-1 && wg_i32_f(5000000000.0f32)==2147483520 && wg_i32_f(7)==7;
+  // a NaN is 0 and each limit is itself, with no branch on the way (#13562); fmin and fmax keep
+  // their first operand when either is a NaN, as the branches they replaced did
+  zero:=0.0f32;nan:=zero/zero;
+  #assert wg_u32_f(nan)==0 && wg_i32_f(nan)==0 && wg_u32_f(4294967040.0f32)==4294967040 && wg_u32_f(0.5f32)==0;
+  #assert wg_i32_f(2147483520.0f32)==2147483520 && wg_i32_f(-2147483648.0f32)== -2147483647-1 && wg_i32_f(-0.5f32)==0;
+  #assert fmin(nan,1)!=fmin(nan,1) && fmin(1,nan)==1 && fmax(nan,1)!=fmax(nan,1) && fmax(1,nan)==1;
   #assert wg_f32_b(true)==1 && wg_f32_b(false)==0 && wg_u32_b(true)==1 && wg_u32_b(false)==0 && wg_i32_b(true)==1 && wg_i32_b(false)==0;
   #assert wg_f32_bits_i(1065353216)==1 && wg_i32_bits_f(1)==1065353216 && wg_f32_bits_i(-1073741824)== -2;
   c:=wg_unpack4x8unorm(0xFF800000);

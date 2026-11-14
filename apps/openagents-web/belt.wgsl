@@ -259,19 +259,7 @@ fn coax_p_belt_belt_dust(p_p: vec2f) -> f32 {
 }
 fn coax_p_wg_i32_f(p_x: f32) -> i32 {
   let l_x: f32 = p_x;
-  if ((l_x != l_x))
-  {
-    return 0i;
-  }
-  if ((l_x <= (-0x1.000000p31f)))
-  {
-    return (-2147483647i - 1i);
-  }
-  if ((l_x >= 0x1.fffffep30f))
-  {
-    return 2147483520i;
-  }
-  return i32(l_x);
+  return select(i32(coax_p_fmax(coax_p_fmin(l_x, 0x1.fffffep30f), (-0x1.000000p31f))), 0i, (l_x != l_x));
 }
 fn coax_p_wg_at4(p_at: i32) -> vec4f {
   let l_at: i32 = p_at;
@@ -425,11 +413,7 @@ fn coax_p_belt_panel(p_p: vec2f, p_under: vec3f, p_r: vec4f, p_s: vec4f) -> vec3
 fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b > l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b > l_a));
 }
 fn coax_p_smoothstep(p_a: f32, p_b: f32, p_x: f32) -> f32 {
   let l_a: f32 = p_a;
@@ -556,6 +540,11 @@ fn coax_p_belt_fbm(p_p: vec2f) -> f32 {
     }
   }
   return (l_v / 0x1.c00000p-1f);
+}
+fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
+  let l_a: f32 = p_a;
+  let l_b: f32 = p_b;
+  return select(l_a, l_b, (l_b < l_a));
 }
 fn coax_p_wg_add_f2f2(p_a: vec2f, p_b: vec2f) -> vec2f {
   let l_a: vec2f = p_a;
@@ -703,15 +692,6 @@ fn coax_p_belt_surface(p_kind: i32, p_n: vec3f, p_seed: f32, p_spin: f32) -> vec
   l_crater = coax_p_smoothstep(0x1.19999ap-1f, 0x1.666666p-1f, coax_p_belt_fbm(coax_p_wg_mul_f2f(l_uv, 0x1.400000p2f)));
   return coax_p_wg_mul_f3f(coax_p_wg_mix_f3f3f(coax_p_v3(0x1.51eb86p-1f, 0x1.70a3d8p-1f, 0x1.8f5c28p-1f), coax_p_v3(0x1.70a3d8p-2f, 0x1.851eb8p-2f, 0x1.ae147ap-2f), l_crater), (0x1.b33334p-1f + (0x1.333334p-2f * coax_p_belt_fbm(coax_p_wg_mul_f2f(l_uv, 0x1.a00000p3f)))));
 }
-fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
-  let l_a: f32 = p_a;
-  let l_b: f32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
-}
 fn coax_p_BELT_GREY_LIGHT() -> vec3f {
   return coax_p_v3(0x1.8f5c28p-1f, 0x1.8f5c28p-1f, 0x1.8f5c28p-1f);
 }
@@ -798,11 +778,9 @@ fn coax_p_wg_mul_f2f2(p_a: vec2f, p_b: vec2f) -> vec2f {
 fn coax_p_render_noise2(p_x: f32, p_y: f32) -> f32 {
   let l_x: f32 = p_x;
   let l_y: f32 = p_y;
-  if (((!coax_p_render_noise_coordinate_ok(l_x)) || (!coax_p_render_noise_coordinate_ok(l_y))))
-  {
-    return 0.0f;
-  }
-  return coax_p_render_noise_unit(coax_p_render_noise_mix2(coax_p_render_noise_cell(l_x), coax_p_render_noise_cell(l_y)));
+  var l_ok: bool;
+  l_ok = (coax_p_render_noise_coordinate_ok(l_x) && coax_p_render_noise_coordinate_ok(l_y));
+  return select(0.0f, coax_p_render_noise_unit(coax_p_render_noise_mix2(coax_p_render_noise_cell(l_x), coax_p_render_noise_cell(l_y))), l_ok);
 }
 fn coax_p_wg_floor_f2(p_p0: vec2f) -> vec2f {
   let l_p0: vec2f = p_p0;

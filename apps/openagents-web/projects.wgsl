@@ -249,11 +249,7 @@ fn coax_p_projects_hash(p_p: vec2f) -> f32 {
 fn coax_p_stepf(p_edge: f32, p_x: f32) -> f32 {
   let l_edge: f32 = p_edge;
   let l_x: f32 = p_x;
-  if ((l_x < l_edge))
-  {
-    return 0.0f;
-  }
-  return 0x1.000000p0f;
+  return select(0x1.000000p0f, 0.0f, (l_x < l_edge));
 }
 fn coax_p_wg_make_f3_f(p_p0: f32) -> vec3f {
   let l_p0: f32 = p_p0;
@@ -307,11 +303,7 @@ fn coax_p_projects_panel(p_p: vec2f, p_under: vec3f, p_r: vec4f, p_s: vec4f) -> 
 fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b > l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b > l_a));
 }
 fn coax_p_wg_log2(p_x: f32) -> f32 {
   let l_x: f32 = p_x;
@@ -326,11 +318,7 @@ fn coax_p_clampf(p_x: f32, p_low: f32, p_high: f32) -> f32 {
 fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b < l_a));
 }
 fn coax_p_wg_make_f4_f3f(p_p0: vec3f, p_p1: f32) -> vec4f {
   let l_p0: vec3f = p_p0;

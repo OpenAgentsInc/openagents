@@ -431,11 +431,7 @@ fn coax_p_wg_add_f3f3(p_a: vec3f, p_b: vec3f) -> vec3f {
 fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b < l_a));
 }
 fn coax_p_wg_length2(p_a: vec2f) -> f32 {
   let l_a: vec2f = p_a;
@@ -765,11 +761,7 @@ fn coax_p_myrealm_sea_at(p_q: vec2f, p_mirror: vec3f) -> vec3f {
 fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b > l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b > l_a));
 }
 fn coax_p_clampf(p_x: f32, p_low: f32, p_high: f32) -> f32 {
   let l_x: f32 = p_x;
@@ -908,15 +900,7 @@ fn coax_p_myrealm_quad(p_v: u32) -> vec2f {
 }
 fn coax_p_wg_u32_f(p_x: f32) -> u32 {
   let l_x: f32 = p_x;
-  if ((!(l_x > 0.0f)))
-  {
-    return 0u;
-  }
-  if ((l_x >= 0x1.fffffep31f))
-  {
-    return 4294967040u;
-  }
-  return u32(l_x);
+  return select(0u, u32(coax_p_fmin(l_x, 0x1.fffffep31f)), (l_x > 0.0f));
 }
 fn coax_p_wg_cross3(p_a: vec3f, p_b: vec3f) -> vec3f {
   let l_a: vec3f = p_a;
@@ -1032,11 +1016,7 @@ fn coax_p_wg_pow_f3f3(p_p0: vec3f, p_p1: vec3f) -> vec3f {
 fn coax_p_stepf(p_edge: f32, p_x: f32) -> f32 {
   let l_edge: f32 = p_edge;
   let l_x: f32 = p_x;
-  if ((l_x < l_edge))
-  {
-    return 0.0f;
-  }
-  return 0x1.000000p0f;
+  return select(0x1.000000p0f, 0.0f, (l_x < l_edge));
 }
 fn coax_p_mix(p_a: f32, p_b: f32, p_t: f32) -> f32 {
   let l_a: f32 = p_a;
@@ -1398,11 +1378,9 @@ fn coax_p_wg_max_f2f2(p_p0: vec2f, p_p1: vec2f) -> vec2f {
 fn coax_p_render_noise2(p_x: f32, p_y: f32) -> f32 {
   let l_x: f32 = p_x;
   let l_y: f32 = p_y;
-  if (((!coax_p_render_noise_coordinate_ok(l_x)) || (!coax_p_render_noise_coordinate_ok(l_y))))
-  {
-    return 0.0f;
-  }
-  return coax_p_render_noise_unit(coax_p_render_noise_mix2(coax_p_render_noise_cell(l_x), coax_p_render_noise_cell(l_y)));
+  var l_ok: bool;
+  l_ok = (coax_p_render_noise_coordinate_ok(l_x) && coax_p_render_noise_coordinate_ok(l_y));
+  return select(0.0f, coax_p_render_noise_unit(coax_p_render_noise_mix2(coax_p_render_noise_cell(l_x), coax_p_render_noise_cell(l_y))), l_ok);
 }
 fn coax_p_render_sample_layer8_grad(p_uv: vec2f, p_layer: i32, p_dx: vec2f, p_dy: vec2f, p_bias: f32) -> vec4f {
   let l_uv: vec2f = p_uv;

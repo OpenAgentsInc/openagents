@@ -283,11 +283,7 @@ fn coax_p_newland_hash(p_p: vec2f) -> f32 {
 fn coax_p_stepf(p_edge: f32, p_x: f32) -> f32 {
   let l_edge: f32 = p_edge;
   let l_x: f32 = p_x;
-  if ((l_x < l_edge))
-  {
-    return 0.0f;
-  }
-  return 0x1.000000p0f;
+  return select(0x1.000000p0f, 0.0f, (l_x < l_edge));
 }
 fn coax_p_wg_make_f3_f(p_p0: f32) -> vec3f {
   let l_p0: f32 = p_p0;
@@ -359,11 +355,7 @@ fn coax_p_newland_panel(p_p: vec2f, p_under: vec3f, p_r: vec4f, p_s: vec4f) -> v
 fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b > l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b > l_a));
 }
 fn coax_p_wg_log2(p_x: f32) -> f32 {
   let l_x: f32 = p_x;
@@ -393,11 +385,7 @@ fn coax_p_render_sans_sample(p_uv: vec2f, p_lod: f32) -> vec4f {
 fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b < l_a));
 }
 fn coax_p_wg_make_f4_f3f(p_p0: vec3f, p_p1: f32) -> vec4f {
   let l_p0: vec3f = p_p0;
@@ -447,11 +435,9 @@ fn coax_p_newland_noise(p_p: vec2f) -> f32 {
 fn coax_p_render_noise2(p_x: f32, p_y: f32) -> f32 {
   let l_x: f32 = p_x;
   let l_y: f32 = p_y;
-  if (((!coax_p_render_noise_coordinate_ok(l_x)) || (!coax_p_render_noise_coordinate_ok(l_y))))
-  {
-    return 0.0f;
-  }
-  return coax_p_render_noise_unit(coax_p_render_noise_mix2(coax_p_render_noise_cell(l_x), coax_p_render_noise_cell(l_y)));
+  var l_ok: bool;
+  l_ok = (coax_p_render_noise_coordinate_ok(l_x) && coax_p_render_noise_coordinate_ok(l_y));
+  return select(0.0f, coax_p_render_noise_unit(coax_p_render_noise_mix2(coax_p_render_noise_cell(l_x), coax_p_render_noise_cell(l_y))), l_ok);
 }
 fn coax_p_fract(p_x: f32) -> f32 {
   let l_x: f32 = p_x;

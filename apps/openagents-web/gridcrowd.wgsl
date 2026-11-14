@@ -239,15 +239,7 @@ fn coax_p_v4(p_x: f32, p_y: f32, p_z: f32, p_w: f32) -> vec4f {
 }
 fn coax_p_wg_u32_f(p_x: f32) -> u32 {
   let l_x: f32 = p_x;
-  if ((!(l_x > 0.0f)))
-  {
-    return 0u;
-  }
-  if ((l_x >= 0x1.fffffep31f))
-  {
-    return 4294967040u;
-  }
-  return u32(l_x);
+  return select(0u, u32(coax_p_fmin(l_x, 0x1.fffffep31f)), (l_x > 0.0f));
 }
 fn coax_p_gridcrowd_person(p_id: u32, p_h: u32) -> coax_t15 {
   let l_id: u32 = p_id;
@@ -460,11 +452,7 @@ fn coax_p_wg_make_f4_f3f(p_p0: vec3f, p_p1: f32) -> vec4f {
 fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b > l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b > l_a));
 }
 fn coax_p_clampf(p_x: f32, p_low: f32, p_high: f32) -> f32 {
   let l_x: f32 = p_x;
@@ -474,19 +462,7 @@ fn coax_p_clampf(p_x: f32, p_low: f32, p_high: f32) -> f32 {
 }
 fn coax_p_wg_i32_f(p_x: f32) -> i32 {
   let l_x: f32 = p_x;
-  if ((l_x != l_x))
-  {
-    return 0i;
-  }
-  if ((l_x <= (-0x1.000000p31f)))
-  {
-    return (-2147483647i - 1i);
-  }
-  if ((l_x >= 0x1.fffffep30f))
-  {
-    return 2147483520i;
-  }
-  return i32(l_x);
+  return select(i32(coax_p_fmax(coax_p_fmin(l_x, 0x1.fffffep30f), (-0x1.000000p31f))), 0i, (l_x != l_x));
 }
 fn coax_p_wg_normalize3(p_a: vec3f) -> vec3f {
   let l_a: vec3f = p_a;
@@ -527,6 +503,11 @@ fn coax_p_smoothstep(p_a: f32, p_b: f32, p_x: f32) -> f32 {
   var l_t: f32;
   l_t = coax_p_saturate(((l_x - l_a) / (l_b - l_a)));
   return ((l_t * l_t) * (0x1.800000p1f - (0x1.000000p1f * l_t)));
+}
+fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
+  let l_a: f32 = p_a;
+  let l_b: f32 = p_b;
+  return select(l_a, l_b, (l_b < l_a));
 }
 fn coax_p_gridcrowd_cf(p_i: u32) -> f32 {
   let l_i: u32 = p_i;
@@ -642,15 +623,6 @@ fn coax_p_scale2(p_a: vec2f, p_k: f32) -> vec2f {
   let l_a: vec2f = p_a;
   let l_k: f32 = p_k;
   return vec2f((l_a.x * l_k), (l_a.y * l_k));
-}
-fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
-  let l_a: f32 = p_a;
-  let l_b: f32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
 }
 fn coax_p_normalize3(p_a: vec3f) -> vec3f {
   let l_a: vec3f = p_a;

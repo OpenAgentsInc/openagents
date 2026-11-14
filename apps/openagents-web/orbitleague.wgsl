@@ -433,20 +433,12 @@ fn coax_p_orbitleague_trace(p_px: vec2f, p_HULL: array<vec4f, 45>) -> vec3f {
 fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b > l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b > l_a));
 }
 fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b < l_a));
 }
 fn coax_p_wg_mul_f3f(p_a: vec3f, p_b: f32) -> vec3f {
   let l_a: vec3f = p_a;
@@ -2170,11 +2162,7 @@ fn coax_p_orbitleague_curve_n(p_p: vec3f) -> vec3f {
 fn coax_p_stepf(p_edge: f32, p_x: f32) -> f32 {
   let l_edge: f32 = p_edge;
   let l_x: f32 = p_x;
-  if ((l_x < l_edge))
-  {
-    return 0.0f;
-  }
-  return 0x1.000000p0f;
+  return select(0x1.000000p0f, 0.0f, (l_x < l_edge));
 }
 fn coax_p_orbitleague_car_side(p_c: coax_t15) -> f32 {
   let l_c: coax_t15 = p_c;
@@ -2595,19 +2583,7 @@ fn coax_p_orbitleague_mesh_cast(p_o: vec3f, p_d: vec3f) -> coax_t18 {
 }
 fn coax_p_wg_i32_f(p_x: f32) -> i32 {
   let l_x: f32 = p_x;
-  if ((l_x != l_x))
-  {
-    return 0i;
-  }
-  if ((l_x <= (-0x1.000000p31f)))
-  {
-    return (-2147483647i - 1i);
-  }
-  if ((l_x >= 0x1.fffffep30f))
-  {
-    return 2147483520i;
-  }
-  return i32(l_x);
+  return select(i32(coax_p_fmax(coax_p_fmin(l_x, 0x1.fffffep30f), (-0x1.000000p31f))), 0i, (l_x != l_x));
 }
 fn coax_p_orbitleague_hull_cast(p_o: vec3f, p_d: vec3f, p_first: i32, p_count: i32, p_HULL: array<vec4f, 45>) -> coax_t19 {
   let l_o: vec3f = p_o;
@@ -2778,11 +2754,9 @@ fn coax_p_render_noise3(p_x: f32, p_y: f32, p_z: f32) -> f32 {
   let l_x: f32 = p_x;
   let l_y: f32 = p_y;
   let l_z: f32 = p_z;
-  if ((((!coax_p_render_noise_coordinate_ok(l_x)) || (!coax_p_render_noise_coordinate_ok(l_y))) || (!coax_p_render_noise_coordinate_ok(l_z))))
-  {
-    return 0.0f;
-  }
-  return coax_p_render_noise_unit(coax_p_render_noise_mix3(coax_p_render_noise_cell(l_x), coax_p_render_noise_cell(l_y), coax_p_render_noise_cell(l_z)));
+  var l_ok: bool;
+  l_ok = ((coax_p_render_noise_coordinate_ok(l_x) && coax_p_render_noise_coordinate_ok(l_y)) && coax_p_render_noise_coordinate_ok(l_z));
+  return select(0.0f, coax_p_render_noise_unit(coax_p_render_noise_mix3(coax_p_render_noise_cell(l_x), coax_p_render_noise_cell(l_y), coax_p_render_noise_cell(l_z))), l_ok);
 }
 fn coax_p_render_noise_coordinate_ok(p_x: f32) -> bool {
   let l_x: f32 = p_x;

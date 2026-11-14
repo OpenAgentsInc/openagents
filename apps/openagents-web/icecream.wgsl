@@ -280,15 +280,7 @@ fn coax_p_v3(p_x: f32, p_y: f32, p_z: f32) -> vec3f {
 }
 fn coax_p_wg_u32_f(p_x: f32) -> u32 {
   let l_x: f32 = p_x;
-  if ((!(l_x > 0.0f)))
-  {
-    return 0u;
-  }
-  if ((l_x >= 0x1.fffffep31f))
-  {
-    return 4294967040u;
-  }
-  return u32(l_x);
+  return select(0u, u32(coax_p_fmin(l_x, 0x1.fffffep31f)), (l_x > 0.0f));
 }
 fn coax_p_wg_unpack4x8snorm(p_x: u32) -> vec4f {
   let l_x: u32 = p_x;
@@ -306,11 +298,7 @@ fn coax_p_wg_dot3(p_a: vec3f, p_b: vec3f) -> f32 {
 fn coax_p_wg_min_u(p_a: u32, p_b: u32) -> u32 {
   let l_a: u32 = p_a;
   let l_b: u32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b < l_a));
 }
 fn coax_p_wg_mul_f3f(p_a: vec3f, p_b: f32) -> vec3f {
   let l_a: vec3f = p_a;
@@ -325,11 +313,7 @@ fn coax_p_wg_min_f3f3(p_p0: vec3f, p_p1: vec3f) -> vec3f {
 fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b > l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b > l_a));
 }
 fn coax_p_icecream_clip_of(p_w: vec3f) -> vec4f {
   let l_w: vec3f = p_w;
@@ -474,6 +458,11 @@ fn coax_p_wg_add_f3f3(p_a: vec3f, p_b: vec3f) -> vec3f {
   let l_b: vec3f = p_b;
   return coax_p_v3((l_a.x + l_b.x), (l_a.y + l_b.y), (l_a.z + l_b.z));
 }
+fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
+  let l_a: f32 = p_a;
+  let l_b: f32 = p_b;
+  return select(l_a, l_b, (l_b < l_a));
+}
 fn coax_p_wg_byte(p_x: u32, p_at: u32) -> u32 {
   let l_x: u32 = p_x;
   let l_at: u32 = p_at;
@@ -488,15 +477,6 @@ fn coax_p_wg_snorm8(p_b: u32) -> f32 {
     l_s = (l_s - 0x1.000000p8f);
   }
   return coax_p_fmax((l_s / 0x1.fc0000p6f), (-0x1.000000p0f));
-}
-fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
-  let l_a: f32 = p_a;
-  let l_b: f32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
 }
 fn coax_p_wg_at4(p_at: i32) -> vec4f {
   let l_at: i32 = p_at;
@@ -620,19 +600,7 @@ fn coax_p_wg_max_f2f2(p_p0: vec2f, p_p1: vec2f) -> vec2f {
 }
 fn coax_p_wg_i32_f(p_x: f32) -> i32 {
   let l_x: f32 = p_x;
-  if ((l_x != l_x))
-  {
-    return 0i;
-  }
-  if ((l_x <= (-0x1.000000p31f)))
-  {
-    return (-2147483647i - 1i);
-  }
-  if ((l_x >= 0x1.fffffep30f))
-  {
-    return 2147483520i;
-  }
-  return i32(l_x);
+  return select(i32(coax_p_fmax(coax_p_fmin(l_x, 0x1.fffffep30f), (-0x1.000000p31f))), 0i, (l_x != l_x));
 }
 fn coax_p_length3(p_a: vec3f) -> f32 {
   let l_a: vec3f = p_a;

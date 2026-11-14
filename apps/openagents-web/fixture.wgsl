@@ -539,11 +539,7 @@ fn coax_p_wg_add_f3f3(p_a: vec3f, p_b: vec3f) -> vec3f {
 fn coax_p_wg_min_u(p_a: u32, p_b: u32) -> u32 {
   let l_a: u32 = p_a;
   let l_b: u32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b < l_a));
 }
 fn coax_p_fixture_caster_stretch(p_i: u32) -> f32 {
   let l_i: u32 = p_i;
@@ -583,24 +579,12 @@ fn coax_p_fixture_st(p_i: u32) -> vec4f {
 }
 fn coax_p_wg_u32_f(p_x: f32) -> u32 {
   let l_x: f32 = p_x;
-  if ((!(l_x > 0.0f)))
-  {
-    return 0u;
-  }
-  if ((l_x >= 0x1.fffffep31f))
-  {
-    return 4294967040u;
-  }
-  return u32(l_x);
+  return select(0u, u32(coax_p_fmin(l_x, 0x1.fffffep31f)), (l_x > 0.0f));
 }
 fn coax_p_wg_max_u(p_a: u32, p_b: u32) -> u32 {
   let l_a: u32 = p_a;
   let l_b: u32 = p_b;
-  if ((l_b > l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b > l_a));
 }
 fn coax_p_FIXTURE_EYE() -> vec3f {
   return coax_p_v3(0.0f, 0x1.c00000p0f, 0x1.000000p3f);
@@ -733,11 +717,7 @@ fn coax_p_wg_sub_f3f3(p_a: vec3f, p_b: vec3f) -> vec3f {
 fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b > l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b > l_a));
 }
 fn coax_p_metaverse_style_tip(p_c: f32, p_ch: f32, p_lift: f32) -> f32 {
   let l_c: f32 = p_c;
@@ -1225,14 +1205,17 @@ fn coax_p_metaverse_style_shadow_depth(p_along: f32, p_reach: f32) -> f32 {
   let l_reach: f32 = p_reach;
   return (0x1.000000p-1f - (l_along / (0x1.000000p2f * coax_p_st_max(l_reach, 0x1.0624dep-10f))));
 }
+fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
+  let l_a: f32 = p_a;
+  let l_b: f32 = p_b;
+  return select(l_a, l_b, (l_b < l_a));
+}
 fn coax_p_render_noise2(p_x: f32, p_y: f32) -> f32 {
   let l_x: f32 = p_x;
   let l_y: f32 = p_y;
-  if (((!coax_p_render_noise_coordinate_ok(l_x)) || (!coax_p_render_noise_coordinate_ok(l_y))))
-  {
-    return 0.0f;
-  }
-  return coax_p_render_noise_unit(coax_p_render_noise_mix2(coax_p_render_noise_cell(l_x), coax_p_render_noise_cell(l_y)));
+  var l_ok: bool;
+  l_ok = (coax_p_render_noise_coordinate_ok(l_x) && coax_p_render_noise_coordinate_ok(l_y));
+  return select(0.0f, coax_p_render_noise_unit(coax_p_render_noise_mix2(coax_p_render_noise_cell(l_x), coax_p_render_noise_cell(l_y))), l_ok);
 }
 fn coax_p_st_sat(p_x: f32) -> f32 {
   let l_x: f32 = p_x;
@@ -1274,15 +1257,6 @@ fn coax_p_metaverse_style_segment(p_x: f32, p_z: f32, p_ax: f32, p_az: f32, p_bx
 }
 fn coax_p_FIXTURE_PATH1() -> vec4f {
   return coax_p_v4(0x1.000000p1f, (-0x1.4cccccp2f), 0x1.000000p4f, (-0x1.0cccccp3f));
-}
-fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
-  let l_a: f32 = p_a;
-  let l_b: f32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
 }
 fn coax_p_FIXTURE_POND() -> vec4f {
   return coax_p_v4(0x1.666666p-1f, 0.0f, 0x1.59999ap1f, 0x1.800000p0f);
@@ -1760,19 +1734,7 @@ fn coax_p_render_sample_layer8_bias(p_uv: vec2f, p_layer: i32, p_bias: f32) -> v
 }
 fn coax_p_wg_i32_f(p_x: f32) -> i32 {
   let l_x: f32 = p_x;
-  if ((l_x != l_x))
-  {
-    return 0i;
-  }
-  if ((l_x <= (-0x1.000000p31f)))
-  {
-    return (-2147483647i - 1i);
-  }
-  if ((l_x >= 0x1.fffffep30f))
-  {
-    return 2147483520i;
-  }
-  return i32(l_x);
+  return select(i32(coax_p_fmax(coax_p_fmin(l_x, 0x1.fffffep30f), (-0x1.000000p31f))), 0i, (l_x != l_x));
 }
 fn coax_p_i2(p_x: i32, p_y: i32) -> coax_t33 {
   let l_x: i32 = p_x;
@@ -2151,11 +2113,7 @@ fn coax_p_fixture_path_albedo(p_q: vec2f) -> vec3f {
 fn coax_p_stepf(p_edge: f32, p_x: f32) -> f32 {
   let l_edge: f32 = p_edge;
   let l_x: f32 = p_x;
-  if ((l_x < l_edge))
-  {
-    return 0.0f;
-  }
-  return 0x1.000000p0f;
+  return select(0x1.000000p0f, 0.0f, (l_x < l_edge));
 }
 fn coax_p_fixture_map_lit(p_p: vec3f, p_n: vec3f) -> f32 {
   let l_p: vec3f = p_p;

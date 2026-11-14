@@ -106,11 +106,7 @@ fn coax_p_fabs(p_x: f32) -> f32 {
 fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
   let l_a: f32 = p_a;
   let l_b: f32 = p_b;
-  if ((l_b < l_a))
-  {
-    return l_b;
-  }
-  return l_a;
+  return select(l_a, l_b, (l_b < l_a));
 }
 fn coax_p_fract(p_x: f32) -> f32 {
   let l_x: f32 = p_x;
