@@ -166,7 +166,8 @@ RS_FEATURE_WORDS :: 2;   // 128 features
 // made (`both`: no Disadvantage from 5 feet).
 RsWeapon :: struct { reach_ft:int = 5; id: string; name: string; dice: int; sides: int; damage: int; finesse: bool; mastery: int; range_ft: int; long_ft: int;
                      ability: int = -1; bare: bool; plus_dice: int; plus_sides: int; plus_flat: int; plus_kind: int; both: bool;
-                     adv_dice: int; adv_sides: int; }   // more of `damage` when the roll had Advantage (a Goblin's)
+                     adv_dice: int; adv_sides: int;   // more of `damage` when the roll had Advantage (a Goblin's)
+                     martial: bool; light: bool; }   // the table's Martial category and Light property (p. 90); a stat block's attack is neither
 W_UNARMED :: 0; W_GREATAXE :: 1; W_SHORTSWORD :: 2; W_SHORTBOW :: 3;
 W_GREATSWORD :: 4; W_LONGSWORD :: 5; W_MACE :: 6; W_LONGBOW :: 7; W_DAGGER :: 8;
 W_SLAM :: 9;   // the Zombie's Slam (a stat block's own: Str, 1d8 Bludgeoning)
@@ -649,14 +650,14 @@ rs_zombie :: (name: string, team: int) -> RsCreature {
 rs_weapon :: (w: int) -> RsWeapon {
   if w >= W_SPEAR { return rs_npc_weapon(w); }
   if w == W_SLAM { return RsWeapon.{id = "slam", name = "Slam", dice = 1, sides = 8, damage = RS_BLUDGEONING, finesse = false, mastery = M_NONE, range_ft = 5, long_ft = 5}; }
-  if w == W_GREATAXE { return RsWeapon.{id = "greataxe", name = "Greataxe", dice = 1, sides = 12, damage = RS_SLASHING, finesse = false, mastery = M_CLEAVE, range_ft = 5, long_ft = 5}; }
-  if w == W_SHORTSWORD { return RsWeapon.{id = "shortsword", name = "Shortsword", dice = 1, sides = 6, damage = RS_PIERCING, finesse = true, mastery = M_VEX, range_ft = 5, long_ft = 5}; }
+  if w == W_GREATAXE { return RsWeapon.{id = "greataxe", name = "Greataxe", dice = 1, sides = 12, damage = RS_SLASHING, finesse = false, mastery = M_CLEAVE, range_ft = 5, long_ft = 5, martial = true}; }
+  if w == W_SHORTSWORD { return RsWeapon.{id = "shortsword", name = "Shortsword", dice = 1, sides = 6, damage = RS_PIERCING, finesse = true, mastery = M_VEX, range_ft = 5, long_ft = 5, martial = true, light = true}; }
   if w == W_SHORTBOW { return RsWeapon.{id = "shortbow", name = "Shortbow", dice = 1, sides = 6, damage = RS_PIERCING, finesse = false, mastery = M_VEX, range_ft = 80, long_ft = 320}; }
-  if w == W_GREATSWORD { return RsWeapon.{id = "greatsword", name = "Greatsword", dice = 2, sides = 6, damage = RS_SLASHING, finesse = false, mastery = M_GRAZE, range_ft = 5, long_ft = 5}; }
-  if w == W_LONGSWORD { return RsWeapon.{id = "longsword", name = "Longsword", dice = 1, sides = 8, damage = RS_SLASHING, finesse = false, mastery = M_SAP, range_ft = 5, long_ft = 5}; }
+  if w == W_GREATSWORD { return RsWeapon.{id = "greatsword", name = "Greatsword", dice = 2, sides = 6, damage = RS_SLASHING, finesse = false, mastery = M_GRAZE, range_ft = 5, long_ft = 5, martial = true}; }
+  if w == W_LONGSWORD { return RsWeapon.{id = "longsword", name = "Longsword", dice = 1, sides = 8, damage = RS_SLASHING, finesse = false, mastery = M_SAP, range_ft = 5, long_ft = 5, martial = true}; }
   if w == W_MACE { return RsWeapon.{id = "mace", name = "Mace", dice = 1, sides = 6, damage = RS_BLUDGEONING, finesse = false, mastery = M_SAP, range_ft = 5, long_ft = 5}; }
-  if w == W_LONGBOW { return RsWeapon.{id = "longbow", name = "Longbow", dice = 1, sides = 8, damage = RS_PIERCING, finesse = false, mastery = M_SLOW, range_ft = 150, long_ft = 600}; }
-  if w == W_DAGGER { return RsWeapon.{id = "dagger", name = "Dagger", dice = 1, sides = 4, damage = RS_PIERCING, finesse = true, mastery = M_NICK, range_ft = 5, long_ft = 5}; }
+  if w == W_LONGBOW { return RsWeapon.{id = "longbow", name = "Longbow", dice = 1, sides = 8, damage = RS_PIERCING, finesse = false, mastery = M_SLOW, range_ft = 150, long_ft = 600, martial = true}; }
+  if w == W_DAGGER { return RsWeapon.{id = "dagger", name = "Dagger", dice = 1, sides = 4, damage = RS_PIERCING, finesse = true, mastery = M_NICK, range_ft = 5, long_ft = 5, light = true}; }
   return RsWeapon.{id = "unarmed-strike", name = "Unarmed Strike", dice = 0, sides = 0, damage = RS_BLUDGEONING, finesse = false, mastery = M_NONE, range_ft = 5, long_ft = 5};
 }
 // The ability an attack with weapon w uses: Strength, or Dexterity for a Finesse weapon or a Monk's
@@ -669,10 +670,27 @@ rs_attack_ability :: (c: RsCreature, w: int) -> int {
   if dex_ok && c.score[RS_DEX] > c.score[RS_STR] { return RS_DEX; }
   return RS_STR;
 }
-// The Archery fighting style (p. 88): +2 to attack rolls with Ranged weapons.
+// Whether c is proficient with weapon w, by its class's Weapon Proficiencies (SRD 5.2.1, each class's
+// Core Traits): every class has Simple weapons; the Barbarian, Fighter, Paladin and Ranger Martial ones
+// too; the Monk Martial weapons with the Light property, the Rogue those with Finesse or Light. Unarmed
+// Strike and a stat block's own attacks (whose bonus already holds its proficiency) are never Martial.
+rs_weapon_proficient :: (c: RsCreature, w: int) -> bool {
+  wp := rs_weapon(w); k := c.klass;
+  if !wp.martial || k < 0 || k >= RS_CLASSES || k == RS_MONSTER { return true; }
+  if k == RS_BARBARIAN || k == RS_FIGHTER || k == RS_PALADIN || k == RS_RANGER { return true; }
+  if k == RS_MONK { return wp.light; }
+  if k == RS_ROGUE { return wp.finesse || wp.light; }
+  return false;
+}
+// Whether c is proficient with both weapons it holds (its melee weapon, and its ranged one if any).
+rs_kit_proficient :: (c: RsCreature) -> bool { return rs_weapon_proficient(c, c.weapon) && (c.ranged < 0 || rs_weapon_proficient(c, c.ranged)); }
+// A weapon attack's bonus: the ability's modifier, and the Proficiency Bonus only with a weapon c is
+// proficient with (anyone can attack with any weapon, p. 89). The Archery fighting style (p. 88): +2
+// to attack rolls with Ranged weapons.
 rs_weapon_attack :: (c: RsCreature, w: int) -> int {
   far := ifx rs_has_feature(c, RS_FT_ARCHERY) && rs_weapon(w).range_ft > 5 then 2 else 0;
-  return rs_proficiency(c.level) + rs_mod(c.score[rs_attack_ability(c, w)]) + far;
+  pb := ifx rs_weapon_proficient(c, w) then rs_proficiency(c.level) else 0;
+  return pb + rs_mod(c.score[rs_attack_ability(c, w)]) + far;
 }
 // A limited use: its count now and its most.
 rs_use_set :: (c: [] RsCreature, u: int, n: int) { c[0].uses[u] = n; c[0].uses_max[u] = n; }
@@ -983,6 +1001,25 @@ rs_recent_at :: (book: [] RsLog, i: int) -> RsEvent {
   return book[0].ev[(book[0].head + book[0].count - 1 - i) % RS_EVENTS];
 }
 
+#test "weapon proficiency: every class adds its Proficiency Bonus with Simple weapons, only its own Martial ones get it, and a stat block always has it" {
+  wiz := rs_wizard("W", 0, 5); dex := rs_mod(wiz.score[RS_DEX]);
+  #assert rs_weapon_attack(wiz, W_DAGGER) == 3 + rs_mod(rs_max(wiz.score[RS_STR], wiz.score[RS_DEX])) && rs_weapon_attack(wiz, W_SHORTBOW) == 3 + dex;
+  #assert rs_weapon_attack(wiz, W_LONGBOW) == dex && rs_weapon_attack(wiz, W_UNARMED) == 3 + rs_mod(wiz.score[RS_STR]);
+  r := rs_ranger("R", 0, 5); #assert rs_weapon_attack(r, W_LONGBOW) == 3 + rs_mod(r.score[RS_DEX]) + (ifx rs_has_feature(r, RS_FT_ARCHERY) then 2 else 0);
+  for k: [4] int.[RS_DRUID, RS_WIZARD, RS_WARLOCK, RS_BARD] { c := wiz; c.klass = k; #assert !rs_weapon_proficient(c, W_LONGBOW) && !rs_weapon_proficient(c, W_SHORTSWORD) && rs_weapon_proficient(c, W_MACE) && rs_weapon_proficient(c, W_DAGGER); }
+  for k: [3] int.[RS_CLERIC, RS_SORCERER, RS_WIZARD] { c := wiz; c.klass = k; #assert !rs_weapon_proficient(c, W_GREATAXE) && !rs_weapon_proficient(c, W_GREATSWORD) && !rs_weapon_proficient(c, W_LONGSWORD) && rs_weapon_proficient(c, W_SHORTBOW); }
+  for k: [5] int.[RS_BARBARIAN, RS_FIGHTER, RS_PALADIN, RS_RANGER, RS_MONSTER] { c := wiz; c.klass = k; #assert rs_weapon_proficient(c, W_LONGBOW) && rs_weapon_proficient(c, W_GREATAXE); }
+  m := wiz; m.klass = RS_MONK; #assert rs_weapon_proficient(m, W_SHORTSWORD) && !rs_weapon_proficient(m, W_LONGBOW) && !rs_weapon_proficient(m, W_LONGSWORD);
+  g := wiz; g.klass = RS_ROGUE; #assert rs_weapon_proficient(g, W_SHORTSWORD) && !rs_weapon_proficient(g, W_LONGBOW) && !rs_weapon_proficient(g, W_GREATSWORD);
+  s := wiz; s.klass = -1; #assert rs_weapon_proficient(s, W_LONGBOW);
+  // a stat block's own attacks: a Cultist's Pact Blade on a Warlock's class
+  p := wiz; p.klass = RS_WARLOCK; #assert rs_weapon_proficient(p, W_PACT_BLADE) && rs_weapon_proficient(p, W_SLAM) && rs_weapon_proficient(p, W_HEAVY_CROSSBOW);
+  // every class's own kit is a weapon it is proficient with
+  #assert rs_kit_proficient(rs_druid("", 0, 1)) && rs_kit_proficient(rs_wizard("", 0, 1)) && rs_kit_proficient(rs_warlock("", 0, 1, 0)) && rs_kit_proficient(rs_barbarian("", 0, 1));
+  #assert rs_kit_proficient(rs_monk("", 0, 1)) && rs_kit_proficient(rs_bard("", 0, 1)) && rs_kit_proficient(rs_cleric("", 0, 1)) && rs_kit_proficient(rs_fighter("", 0, 1));
+  #assert rs_kit_proficient(rs_paladin("", 0, 1)) && rs_kit_proficient(rs_ranger("", 0, 1)) && rs_kit_proficient(rs_rogue("", 0, 1)) && rs_kit_proficient(rs_sorcerer("", 0, 1));
+  lent := rs_wizard("", 0, 1); lent.ranged = W_LONGBOW; #assert !rs_kit_proficient(lent);
+}
 #test "ability modifiers and proficiency follow the SRD's tables" {
   #assert rs_mod(1) == -5 && rs_mod(8) == -1 && rs_mod(9) == -1 && rs_mod(10) == 0 && rs_mod(11) == 0;
   #assert rs_mod(16) == 3 && rs_mod(17) == 3 && rs_mod(20) == 5 && rs_mod(30) == 10;
