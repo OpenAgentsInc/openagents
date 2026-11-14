@@ -258,6 +258,8 @@ class Tab {
     await t.send("Page.enable")
     // golden mode on every page of the walk: particles, flicker and other effects hold still (host.js coaxial_golden)
     await t.send("Page.addScriptToEvaluateOnNewDocument", { source: "globalThis.coaxialGolden = true" })
+    // on Linux the canvas is read back from the GPU for each shot (gpuOverlay), so it can be asked for
+    if (process.platform === "linux") await t.send("Page.addScriptToEvaluateOnNewDocument", { source: "globalThis.coaxialRenderCapture = true" })
     if (!root) await t.send("Page.addScriptToEvaluateOnNewDocument", { source: "Object.defineProperty(Navigator.prototype, 'sendBeacon', { value: () => false })" })
     return t
   }
@@ -280,7 +282,38 @@ class Tab {
   }
   send(method: string, params: any = {}) { return new Promise<any>((r) => { this.pending.set(++this.id, r); this.ws.send(JSON.stringify({ id: this.id, method, params })) }) }
   async evaluate(expression: string) { return (await this.send("Runtime.evaluate", { expression, returnByValue: true })).result?.result?.value }
-  async shot() { return Buffer.from((await this.send("Page.captureScreenshot", { format: "png" })).result.data, "base64") }
+  async shot() {
+    const over = process.platform === "linux" && await this.gpuOverlay()
+    const bytes = Buffer.from((await this.send("Page.captureScreenshot", { format: "png" })).result.data, "base64")
+    if (over) await this.evaluate("document.getElementById('coaxial-golden-gpu')?.remove(), true")
+    return bytes
+  }
+  // Headless Chrome on Linux (coderos-4080: Chrome 152, NVIDIA, Vulkan) composites no WebGPU canvas
+  // into a screenshot: it comes back white where the canvas is. The page's own GPU readback of its
+  // next frame (host.js captureFrame, coaxial.renderCapture) is drawn into a 2D canvas laid exactly
+  // over it, which the screenshot does keep, and taken away after. false when the page has none.
+  async gpuOverlay(): Promise<boolean> {
+    const r = await this.send("Runtime.evaluate", { awaitPromise: true, returnByValue: true, expression: `(async () => {
+      const c = globalThis.coaxial, k = document.getElementById("coaxial")
+      if (!c?.captureFrame || !k || !k.width) return false
+      c.renderCapture = null
+      if (!c.captureFrame()) return false
+      const end = performance.now() + 4000
+      while (!c.renderCapture && performance.now() < end) await new Promise((r) => setTimeout(r, 16))   // a timer, not a frame: a tab the browser stops drawing would wait forever
+      const r = c.renderCapture
+      if (!r || !r.bytes || r.row_bytes !== r.width * 4) return false
+      const o = document.createElement("canvas"); o.id = "coaxial-golden-gpu"; o.width = r.width; o.height = r.height
+      const g = o.getContext("2d"), d = g.createImageData(r.width, r.height), b = r.bytes, bgra = String(r.format).startsWith("bgra")
+      for (let i = 0; i < b.length; i += 4) { d.data[i] = b[i + (bgra ? 2 : 0)]; d.data[i + 1] = b[i + 1]; d.data[i + 2] = b[i + (bgra ? 0 : 2)]; d.data[i + 3] = 255 }
+      g.putImageData(d, 0, 0)
+      const at = k.getBoundingClientRect(), z = getComputedStyle(k).zIndex
+      o.style.cssText = \`position:fixed;left:\${at.left}px;top:\${at.top}px;width:\${at.width}px;height:\${at.height}px;pointer-events:none;z-index:\${z === "auto" ? 0 : z}\`
+      k.after(o)
+      await new Promise((r) => setTimeout(r, 100))
+      return true
+    })()` })
+    return r.result?.result?.value === true
+  }
   async until(test: () => Promise<boolean>, ms: number) { const end = Date.now() + ms; while (Date.now() < end) { if (await test()) return true; await Bun.sleep(200) } return false }
   check(ok: boolean, what: string) { this.lines.push((ok ? "  ok    " : "  FAIL  ") + what); if (!ok) failed.push(what) }
   log(line: string) { this.lines.push(line) }

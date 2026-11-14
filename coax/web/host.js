@@ -333,8 +333,9 @@ function agentPinned() {
   globalThis.coaxialAgentSession = pin;   // room-worker.js: the room on the agent's clock, its seed and date the pin's
   return pin;
 }
-// Explicit local observation can retain normal animation and simulation.
-const captureRequested = probe || (dev && globalThis.coaxialRenderCapture === true);
+// Explicit local observation can retain normal animation and simulation. A golden walk asks for it
+// where a headless screenshot loses the WebGPU canvas (Linux: coax/web/goldens.ts, gpuOverlay).
+const captureRequested = probe || ((dev || globalThis.coaxialGolden === true) && globalThis.coaxialRenderCapture === true);
 const mediaNoticeTrace = captureRequested ? [] : null;
 let mediaNoticeDropped = 0;
 let probeArmed = probe && !new URLSearchParams(location.search).has("probe-manual");
