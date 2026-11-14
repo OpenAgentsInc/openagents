@@ -29,7 +29,7 @@ GA_BERM :: 46.0f32;            // m: the rim's slope down to the desert outside
 GA_DOOR :: 3.0f32;             // m: half the width of the entry's tunnel
 GA_HALL :: 3.2f32;             // m: half the width of the hallway into the mountain (the boss wall reaches into its sides)
 GA_HALL_LONG :: 32.0f32;       // m: the hallway's length, from the back wall to the lab
-GA_HALL_SKIN :: 0.05f32;       // m: the hallway's white walls stand this far in front of the rock behind them
+GA_ROCK_SKIN :: 0.15f32;       // m: the hallway's and the lab's white walls stand this far in front of the rock round them (the layout's walls, their bands 12 cm proud)
 GA_LAB_R :: 24.0f32;           // m: the round lab's radius, inside its wall; its middle is the boss's
 GA_LAB_TALL :: 9.0f32;         // m: its ceiling
 GA_LAB_SIDES :: 24;            // its round wall in straight pieces; the one at the south is the hallway's mouth
@@ -270,9 +270,9 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   // the hallway into the mountain, past section E1: the white lab's own walls, unlit by the sky, so neither dusk nor night tints them
   back := g[0].at.gar_z - rb; end := back - GA_HALL_LONG;
   kit_pen(p, 221, MAT_FLAT, kit_tint(0.90, 0.90, 0.88));
-  // a hair in front of the rock's face (the layout's walls, which g_world draws purple in the same place): level
-  // with it the rock won the depth test and the hallway showed lavender from the lab's mouth
-  w := GA_HALL + 5 - GA_HALL_SKIN;
+  // in front of the rock's face and its bands (the layout's walls, which g_world draws purple in the same place):
+  // level with it the rock won the depth test and the hallway showed lavender from the lab's mouth
+  w := GA_HALL + 5 - GA_ROCK_SKIN;
   block(buf, p, -w, 0, (back + end + 1) * 0.5, 5, 12, (GA_HALL_LONG + 1) * 0.5); block(buf, p, w, 0, (back + end + 1) * 0.5, 5, 12, (GA_HALL_LONG + 1) * 0.5);
   block(buf, p, 0, 10, (back + end) * 0.5, GA_HALL + 0.1, 4, GA_HALL_LONG * 0.5);
   ga_draw_lab(g, buf, p);
@@ -286,7 +286,8 @@ ga_draw_lab :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   for i: 0..<GA_LAB_SIDES { a := cast(f32) i * da; tri(buf, p, v3(c.x, 0.02, c.z), ga_round(c, a - da * 0.5, r + 1, 0.02), ga_round(c, a + da * 0.5, r + 1, 0.02), up, up, up); }
   kit_pen(p, 223, MAT_FLAT, kit_tint(0.94, 0.95, 0.96));
   half := (r + 1) * tan(da * 0.5) + 0.05;
-  for i: 1..<GA_LAB_SIDES { a := cast(f32) i * da; box(buf, p, frame_at(ga_round(c, a, r + 0.5, GA_LAB_TALL * 0.5), a), half, GA_LAB_TALL * 0.5, 0.5); }
+  // in from the rock's square round it, which meets the round wall at its east, north and west and showed lavender there
+  for i: 1..<GA_LAB_SIDES { a := cast(f32) i * da; box(buf, p, frame_at(ga_round(c, a, r + 0.5 - GA_ROCK_SKIN, GA_LAB_TALL * 0.5), a), half, GA_LAB_TALL * 0.5, 0.5); }
   kit_pen(p, 224, MAT_FLAT, kit_tint(0.86, 0.88, 0.90));
   for i: 0..<GA_LAB_SIDES { a := cast(f32) i * da; tri(buf, p, v3(c.x, GA_LAB_TALL, c.z), ga_round(c, a + da * 0.5, r + 1, GA_LAB_TALL), ga_round(c, a - da * 0.5, r + 1, GA_LAB_TALL), dn, dn, dn); }
   block(buf, p, c.x, GA_LAB_TALL, c.z + r, GA_HALL + 0.5, 3, 1);   // the lintel over the mouth
