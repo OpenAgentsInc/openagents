@@ -55,7 +55,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get("Authorization") != "Bearer oa_at_fixture":
                 return self.answer(401, {})
             if self.path.endswith("thread/v1"):
-                key = body.get("id") or "m_01234567890123456789"
+                key = body.get("id") or f"m_{len(threads)+1:020x}"
                 current = threads.get(key, {}).get("revision", 0)
                 if body["revision"] != current:
                     return self.answer(409, {})
