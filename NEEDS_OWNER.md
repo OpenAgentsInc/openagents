@@ -1,5 +1,22 @@
 # Owner actions
 
+## Native message rendering and keyboard, build 1072 (2026-11-13)
+
+Install OpenAgents **1072** from Owner in TestFlight when available. Send a
+message asking for headings, a list, a table and a fenced code example.
+Check formatted selectable text, Copy message and Copy code, then reopen
+the saved conversation. Tap the conversation or a blank area outside the
+composer: the keyboard should dismiss and the draft should stay intact.
+Scroll up while a reply is pending; the view should preserve your reading
+position. More remains in the fixed toolbar. The native balance path is
+retained and its two fixture checks passed.
+
+The shared Coax parser and native semantic text projection replace the raw
+message labels. This requires 1072; subsequent compatible Coax/parser/UI
+updates can use its signed runtime feed. The existing model transport still
+delivers whole replies. See `docs/verification/2026-11-13-native-markdown.md`
+and `coax/native/composer.md`. This supersedes the earlier install sections.
+
 ## Native chat composer, build 1071 (2026-11-13)
 
 Install OpenAgents **1071**, now VALID and verified in the existing Owner
