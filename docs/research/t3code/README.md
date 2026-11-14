@@ -68,6 +68,10 @@ when adapting this design to Coax Native.
    verified T3 behavior.
 8. [Source map and audit method](08-source-map.md): pinned entry points,
    dependency versions, verification scope and reproducibility.
+9. [Current OpenAgents gap analysis](09-current-gap-analysis.md): the newer
+   OpenAgents baseline through native Projects/1085, remaining implementation
+   gaps, priorities and acceptance scenarios. Read this before treating the
+   earlier implementation proposal as a list of still-missing features.
 
 ## Scope and confidence
 
