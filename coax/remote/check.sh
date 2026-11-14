@@ -31,6 +31,7 @@
 #   coax/remote/check.sh module NAME      one module of the web build (a bisect)
 #   coax/remote/check.sh reports          tools-check, test-remote.sh, test-after.sh, test-vm-deploy.sh, the serve image's compile, everglade-parity, wire-check, layer-check,
 #                                         the native apps' realms (metaverse/native/app-realms.coax, #13389),
+#                                         the desktop app's Coax units compiling (#13588),
 #                                         the native hosts' controls all the component library's (coax/native/stock-style.coax, #13580),
 #                                         packs paged by cell (metaverse-engine/host/check-pack-cells.coax, #13304),
 #                                         the apps' packs admitted (metaverse-engine/tools/pack-seal.coax --check, #13304),
@@ -277,6 +278,7 @@ reports() {
   visuals
   generated
   pack_reader_c
+  desktop_units
   packs_admitted
   host_core
   format_profiles
@@ -300,6 +302,12 @@ visuals() { step check-visuals coax/web/check-visuals.sh apps/openagents-web || 
 generated() {
   step realm-pages bun coax/web/realms.ts --check || status=1
   step changelog-page coax/web/tool.sh coax/web/changelog-page.coax --check || status=1
+}
+# The Coax units apps/everglade-desktop/build.sh compiles to C, the OpenAgents chat among them
+# (apps/openagents-desktop/zeron/linux.coax): each must compile, so a change that takes one
+# over a checker budget fails here and not only in the app's build (#13588).
+desktop_units() {
+  step desktop-units bash -c 'r=0; for u in apps/everglade-desktop/desktop.coax apps/everglade-desktop/model.coax everglade/workshop/temple.coax metaverse-engine/host/core/core-face.coax metaverse-engine/host/native-audio.coax apps/openagents-desktop/zeron/linux.coax; do coax/bin/coax c "$u" --library > /dev/null || { echo "desktop-units: $u does not compile"; r=1; }; done; coax/bin/coax c apps/openagents-desktop/lab-sign.coax --run-steps 250000000 --library > /dev/null || { echo "desktop-units: apps/openagents-desktop/lab-sign.coax does not compile"; r=1; }; exit $r' || status=1
 }
 # metaverse/native/pack-table-gen.h is the C the compiler writes for the one pack reader's face
 # (#13304): the native realm host includes it, since most of the builds that compile
@@ -602,6 +610,7 @@ reports_since() {
   fi
   # Its sources: the reader, its face and the compiler that writes the C.
   if grep -Eq '^(metaverse-engine/host/(pack-table|pack-cells|frame-plan\.h|core/)|metaverse-engine/tools/host-core-flat\.coax|metaverse/native/(pack-table|host-core)-gen\.h|coax/(src|lib/compiler|bootstrap)/|coax/VERSION)' "$out/changed"; then pack_reader_c; fi
+  if grep -Eq '^(apps/(everglade|openagents)-desktop/|components/|everglade/|metaverse-engine/|coax/(lib|src|bootstrap)/)' "$out/changed"; then desktop_units; fi
   if grep -Eq '^(metaverse-engine/render/(frame-plan|passes|types)\.coax|metaverse-engine/host/frame-plan\.h|metaverse-engine/tools/frame-plan-header\.coax)' "$out/changed"; then frame_plan_h; fi
   if grep -Eq '^(metaverse-engine/render/(frame-plan|passes|types)\.coax|metaverse-engine/host/(frame-plan\.h|core/)|metaverse-engine/tools/frame-plan-fixture\.coax)' "$out/changed"; then frame_plan_walk; fi
   if grep -Eq '^(apps/openagents-web/(realms|og/)|coax/web/og\.ts)' "$out/changed"; then

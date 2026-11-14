@@ -7,7 +7,10 @@
 # Everglade II's pack, on the shared Mac host (apps/shared/host/apple/ui-host.m, the ui-host.h
 # contract OpenAgents uses) with the app's Metal layer and callbacks in Swift (Sources/Workshop.swift).
 #   apps/everglade-desktop/build.sh [--open [APP ARGS...]]
-set -euo pipefail
+set -Eeuo pipefail
+shopt -s inherit_errexit 2>/dev/null || true   # bash 4.4+: a failing step inside $(...) fails the build too
+# A step that fails stops the build with a non-zero exit, naming its line (#13588).
+trap 'echo "build.sh: line $LINENO failed (status $?): $BASH_COMMAND" >&2; exit 1' ERR
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 coax="${COAX:-$repo/coax/bin/coax}"
@@ -63,7 +66,8 @@ build_realm() {   # NAME: build/realm/NAME/libNAME.dylib, and a copy in the app'
 # the scene has millions of vertices a frame, and its vertex stage takes about 45% longer in the
 # safe mode on this Mac (19.4 ms against 13.5 ms a frame at 990 by 660).
 emit_pair() {   # REALM ROLE SOURCE VERTEX FRAGMENT
-  "$coax" metal "$("$repo/metaverse/native/build.sh" --gpu "$3")" --vertex "$4" --fragment "$5" -o "$work/c/$1-$2.metal" 2> "$app/Contents/Resources/$1/$2.bind"
+  local gpu; gpu="$("$repo/metaverse/native/build.sh" --gpu "$3")"
+  "$coax" metal "$gpu" --vertex "$4" --fragment "$5" -o "$work/c/$1-$2.metal" 2> "$app/Contents/Resources/$1/$2.bind"
   xcrun -sdk macosx metal -w -fmetal-math-mode=relaxed -fmetal-math-fp32-functions=precise "$work/c/$1-$2.metal" -o "$app/Contents/Resources/$1/$2.metallib"
 }
 # A realm's eight pairs: the page's six from SOURCE (its entries begin PREFIX_), the particles' two
