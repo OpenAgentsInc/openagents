@@ -86,3 +86,43 @@ sd_apply :: (p: Point, row: [] u32) -> Point {
   c := f32_from_bits(row[4]); s := f32_from_bits(row[5]);
   return v3(p.x * c + p.z * s + f32_from_bits(row[0]), p.y + f32_from_bits(row[1]), p.z * c - p.x * s + f32_from_bits(row[2]));
 }
+
+// A charger standing within SD_CABLE metres of a rover train is plugged into it (playtest 2): a
+// cable runs from the charger's outlet, sags close to the ground, and climbs to the nearest point on
+// the train's side. Drawn live, so a charger moved in the editor takes its cable with it.
+SD_CABLE :: 4.0f32;
+sd_kit_of :: (g: [] SpGame, mesh: int) -> int { r := sc_piece(g[0].c[..], mesh); return ifx r < 0 then -1 else g[0].c[0].pieces[r].kit; }
+sd_scale_of :: (g: [] SpGame, mesh: int) -> f32 { r := sc_piece(g[0].c[..], mesh); return ifx r < 0 then 1.0f32 else g[0].c[0].pieces[r].scale; }
+sd_cables :: (g: [] SpGame, buf: [] u32, p: [] Pen) -> int {
+  n := g[0].layer[0].st[0].n; drawn := 0;
+  for i: 0..<n {
+    c := g[0].layer[0].items[i];
+    if sd_kit_of(g, c.mesh) != PK_CHARGER { continue; }
+    cs := sd_scale_of(g, c.mesh);
+    a := fp(frame_at(v3(c.x, c.y, c.z), c.yaw), 0.3 * cs, 0.9 * cs, -0.05 * cs);
+    for j: 0..<n {
+      t := g[0].layer[0].items[j];
+      if sd_kit_of(g, t.mesh) != PK_TRAIN { continue; }
+      ts := sd_scale_of(g, t.mesh); tf := frame_at(v3(t.x, t.y, t.z), t.yaw);
+      long := TRAIN_CAB + cast(f32) TRAIN_CARS * (TRAIN_CAR + TRAIN_GAP);
+      zf := long * 0.5 + 0.7;
+      d := sub(a, tf.o); lx := dot(d, tf.x); lz := dot(d, tf.z);
+      bx := clamp(lx, -1.2 * ts, 1.2 * ts); bz := clamp(lz, (zf - long + 0.4) * ts, (zf - 0.4) * ts);
+      if (lx - bx) * (lx - bx) + (lz - bz) * (lz - bz) > SD_CABLE * SD_CABLE { continue; }
+      b := fp(tf, bx, 1.0 * ts, bz);
+      sag := lo(a.y, b.y) - c.y - 0.06;
+      side := unit_or(cross(sub(b, a), v3(0, 1, 0)), v3(1, 0, 0));
+      kit_pen(p, 97, MAT_CLOTH, INK());
+      prev := a; k := 14;
+      for s: 1..<k + 1 {
+        u := cast(f32) s / cast(f32) k;
+        q := add(add(a, times(sub(b, a), u)), v3(0, -sag * sin(PI * u), 0));
+        limb(buf, p, prev, q, 0.05, 0.05, side, 6);
+        prev = q;
+      }
+      box(buf, p, frame_at(b, t.yaw), 0.09, 0.09, 0.09);   // the socket on the train's side
+      drawn += 1;
+    }
+  }
+  return drawn;
+}

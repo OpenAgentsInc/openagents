@@ -177,6 +177,6 @@ sp_piece_measure :: (w: [] SpMeshScratch, kit: int, s: f32) -> SpFoot {
 #test "a mesa 20 m tall and a rover train twice its size still fit a kind's mesh" {
   w: [1] SpMeshScratch;
   mesa := sp_piece_measure(w[..], PK_MESA, 2); train := sp_piece_measure(w[..], PK_TRAIN, 2);
-  #assert !mesa.over && mesa.top > 20 && mesa.hx > 14 && !train.over && train.hz > 17 && train.top > 7;
+  #assert !mesa.over && mesa.top > 20 && mesa.hx > 14 && !train.over && train.hz > 17 && train.top > 5.5;   // 2.85 m roofs at size 2
   for k: PK_SOLAR..<PK_KITS { #assert !sp_piece_measure(w[..], k, 1).over; }
 }

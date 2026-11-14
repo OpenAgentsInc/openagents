@@ -1079,6 +1079,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   if g[0].mode != M_DRIVE { g_rover_at(g, buf, p, frame_at(v3(g[0].at.rover_x, 0, g[0].at.rover_z), 0.2), 180, 1); }
   if fr_front(g) { fr_live(g, buf, p); return; }
   if g[0].mode == M_MEMORY { sb_memory_live(g, buf, p); return; }   // the hologram (splice-battle.coax)
+  if g[0].mode != M_DRIVE { _ := sd_cables(g, buf, p); }   // chargers plugged into the parked rover train (layer-draw.coax)
   if g[0].mode == M_BAY {
     // the Digger on the bay's stage, wearing the hardware spliced into it
     cast_digger(buf, p, frame_at(v3(g[0].at.bay_x, 0.05, g[0].at.bay_z), 0.7 + sin(t * 0.5) * 0.25), 1.15, 50, ifx g[0].have[H_PLUS] then blue else CAST_AMBER(),
@@ -2200,6 +2201,14 @@ sp_way_gap :: (g: [] SpGame, long: bool, i: int) -> f32 {
 g_shipped_at :: (g: [] SpGame, kind: int) -> Point {
   for i: 0..<g[0].layer[0].st[0].n { e := g[0].layer[0].items[i]; if e.mesh == kind { return v3(e.x, 0, e.z); } }
   return v3(0, 0, 0);
+}
+#test "the rover train stands at the solar farm with a charger plugged into it by a cable" {
+  g := [1] SpGame.[SpGame.{}];
+  g_reset(g[..]); #assert spw_shipped(g[..]) == SPW_SHIPPED_N;   // the moved charger still passes the layer's check
+  buf: [40000] u32; pen := [1] Pen.[Pen.{}];
+  #assert sd_cables(g[..], buf[..], pen[..]) == 1 && pen[0].n > 0 && !pen[0].over;
+  low := 9.0f32; for i: 0..<pen[0].n { low = lo(low, f32_from_bits(buf[i * VERTEX_WORDS + 1])); }
+  #assert low > 0.0 && low < 0.2;   // it sags to just above the sand
 }
 #test "the run plays from the title to SCENE RESTORED: the solar farm by day, Sniper's room, the drive, the garage, the boss" #steps 800000000 {
   g := [1] SpGame.[SpGame.{}];

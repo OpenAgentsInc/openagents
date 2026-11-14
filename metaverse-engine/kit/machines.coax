@@ -343,7 +343,7 @@ kit_prism :: (buf: [] u32, p: [] Pen, f: Frame, b0: f32, b1: f32, t0: f32, t1: f
 }
 
 // One car of the rover train, from zb (its back) to zf (its front), on two track units. The cab
-// car has a wedge nose with a dark windshield, headlights and a mast; the last car a rear hatch
+// car has a wedge nose with a dark windshield and headlights; the last car a rear hatch
 // open on a lowered ramp. Every car has angled roof plates, side armour, an orange diagonal stripe
 // and a glow strip down each side.
 kit_train_car :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, zb: f32, zf: f32, cab: bool, last: bool, body: KitTint, stripe: KitTint, glow: KitTint, dark: KitTint) {
@@ -381,12 +381,6 @@ kit_train_car :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, zb: f32, z
     kit_pen(p, obj + 5, MAT_GLOW, glow);
     box(buf, p, kit_at(f, -0.8 * s, 1.62 * s, (zf + 0.01) * s), 0.18 * s, 0.06 * s, 0.02 * s);
     box(buf, p, kit_at(f, 0.8 * s, 1.62 * s, (zf + 0.01) * s), 0.18 * s, 0.06 * s, 0.02 * s);
-    // the mast: a pole with a crossbar and a light on top
-    kit_pen(p, obj + 3, MAT_CLOTH, dark);
-    tube(buf, p, kit_at(f, 0.55 * s, 2.85 * s, (zb + 0.7) * s), 0.8 * s, 0.045 * s, 0.045 * s, 0.03 * s, 0.03 * s, 6, true);
-    box(buf, p, kit_at(f, 0.55 * s, 3.4 * s, (zb + 0.7) * s), 0.22 * s, 0.025 * s, 0.025 * s);
-    kit_pen(p, obj + 5, MAT_GLOW, glow);
-    ball(buf, p, fp(f, 0.55 * s, 3.7 * s, (zb + 0.7) * s), 0.08 * s, 8);
   } else {
     box(buf, p, kit_at(f, 0, 1.6 * s, zc * s), 1.2 * s, 0.85 * s, hz * s);
     kit_prism(buf, p, f, -1.2 * s, 1.2 * s, -0.85 * s, 0.85 * s, 2.45 * s, 2.85 * s, zb * s, zf * s);
@@ -430,8 +424,7 @@ kit_train_car :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, zb: f32, z
 // The rover train: a long tracked desert rover of four cars joined by dark accordion couplers,
 // facing the frame's z: a wedge-nosed cab car ahead, then box cars, the last with its rear hatch
 // open on a lowered ramp. Cream armour (body), an orange stripe (stripe), glow strips and lights
-// (glow), dark treads, windows and couplers (dark). 18 m long, 2.85 m to its roofs and 3.8 m to the
-// mast's light at s 1.
+// (glow), dark treads, windows and couplers (dark). 18 m long and 2.85 m to its roofs at s 1.
 TRAIN_CAB :: 4.0f32; TRAIN_CAR :: 3.4f32; TRAIN_GAP :: 0.5f32; TRAIN_CARS :: 3;   // m at s 1: the cab, a box car, a coupler, how many box cars
 kit_train :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, body: KitTint, stripe: KitTint, glow: KitTint, dark: KitTint) {
   long := TRAIN_CAB + cast(f32) TRAIN_CARS * (TRAIN_CAR + TRAIN_GAP);

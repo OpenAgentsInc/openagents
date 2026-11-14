@@ -160,7 +160,7 @@ table pieces id name:text kit:text scale:int look:ref.looks hx:int hz:int top:in
 120|Solar row|solar|1000|20|525|55|134
 121|Charger|charger|1000|1|63|34|264
 122|Mesa|mesa|1000|1|775|615|1075
-123|Rover train|train|1000|1|127|901|378
+123|Rover train|train|1000|1|127|901|285
 124|Loft bunk|bunk|1000|1|97|101|196
 125|Desk|desk|1000|1|120|107|135
 126|Workbench arm|arm|1000|1|70|40|164
