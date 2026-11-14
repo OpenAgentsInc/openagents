@@ -10,8 +10,6 @@ BL_BEAD :: 0.35f32;         // m: how far a course's waist stands out of its ris
 BL_YARD_CLEAR :: 6.0f32;    // m: the room over the parked rover train's roofs the yard keeps clear (the camera's boom)
 BL_DOOR_Y :: 9.0f32;        // m: the raised roll-up door's foot over the entry
 BL_BANNER_W :: 5.0f32; BL_BANNER_H :: 11.0f32;   // m: a raider banner over the rim
-BL_STONE :: () -> KitTint { return kit_tint(0.52, 0.47, 0.43); }   // printed concrete: warm grey
-BL_TREAD :: () -> KitTint { return kit_tint(0.40, 0.34, 0.30); }   // a course's top, dusted brown
 BL_BROWN :: () -> KitTint { return kit_tint(0.20, 0.16, 0.14); }   // frames, doors, bars
 BL_RED :: () -> KitTint { return kit_tint(0.72, 0.18, 0.14); }     // the raiders' banner cloth
 BL_CREAM :: () -> KitTint { return kit_tint(0.93, 0.88, 0.80); }
@@ -66,9 +64,9 @@ bl_course :: (g: [] SpGame, buf: [] u32, p: [] Pen, a0: f32, a1: f32, ro: f32, l
   for j: 0..<BL_COURSES {
     r := ro + run * cast(f32) (j + 1); y := GA_RIM - rise * cast(f32) j;
     if y - rise < low { continue; }
-    kit_pen(p, 218, MAT_WORLD, BL_TREAD());
+    kit_pen(p, 218, MAT_WORLD, ga_col(GC_TREAD));
     bl_ring(g, buf, p, a0, a1, r - run, y, r, y, 3);
-    kit_pen(p, 228, MAT_WORLD, BL_STONE());
+    kit_pen(p, 228, MAT_WORLD, ga_col(GC_STONE));
     bl_ring(g, buf, p, a0, a1, r, y, r + BL_BEAD, y - rise * 0.5, 3);
     bl_ring(g, buf, p, a0, a1, r + BL_BEAD, y - rise * 0.5, r, y - rise, 3);
   }
@@ -84,7 +82,7 @@ bl_yard_faces :: (g: [] SpGame, buf: [] u32, p: [] Pen, ro: f32) {
   run := GA_BERM / cast(f32) BL_COURSES; rise := GA_RIM / cast(f32) BL_COURSES;
   f := ga_yard_z(g); X := GA_YARD_X; corner := sqrt(f * f + X * X); foot := ga_foot(g);
   gx := g[0].at.gar_x; gz := g[0].at.gar_z; door := f * tan(GA_DOOR / ro);
-  kit_pen(p, 227, MAT_WORLD, BL_STONE());
+  kit_pen(p, 227, MAT_WORLD, ga_col(GC_STONE));
   for j: 0..<BL_COURSES {
     r0 := ro + run * cast(f32) j; r1 := r0 + run; y := GA_RIM - rise * cast(f32) j;
     // along the face: where the circles r0 to r1 cross it, either side of the entry's cut
@@ -136,7 +134,7 @@ bl_shell :: (g: [] SpGame, buf: [] u32, p: [] Pen, k: int, a0_in: f32, a1_in: f3
   // mine mouth's face (the yard past it is open sky, #13552). Each stands on the layout's wall under it,
   // or where none stands (the scrap room, the mouth's way in) is the cut's edge only, a course deep, so
   // none stands where she walks with no wall to stop her
-  kit_pen(p, 227, MAT_WORLD, BL_STONE());
+  kit_pen(p, 227, MAT_WORLD, ga_col(GC_STONE));
   rb := ga_back(g); face := ga_yard_z(g);
   for j: 0..<BL_COURSES + 1 {
     r0 := ifx j == 0 then rb else ro + run * cast(f32) (j - 1); r1 := ifx j == 0 then ro else r0 + run;
@@ -161,8 +159,6 @@ bl_shell :: (g: [] SpGame, buf: [] u32, p: [] Pen, k: int, a0_in: f32, a1_in: f3
     kit_pen(p, 208 + j % 2, MAT_FLAT, ifx j % 2 == 0 then GA_YELLOW() else GA_DARK());
     box(buf, p, kit_at(df, (cast(f32) j - 3.5) * GA_DOOR / 4, BL_DOOR_Y, 0.25), GA_DOOR / 8, 0.35, 0.12);
   }
-  kit_pen(p, 210, MAT_GLOW, kit_tint(1.0, 0.82, 0.48));
-  for i: 0..<2 { box(buf, p, kit_at(df, (cast(f32) i - 0.5) * GA_DOOR * 1.2, BL_DOOR_Y - 0.5, 0.3), 0.6, 0.12, 0.12); }
 }
 
 // The village's ring wall: printed panels round the landmark, one left open for the gate, with a
@@ -180,6 +176,7 @@ bl_village :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
 // Stills of the buildings (g_stage, the page's message 640): 40 the garage's entry from the desert at
 // dusk, 41 its shell from the desert a quarter way round, 42 the village's printed wall by day.
 bl_stage :: (g: [] SpGame, n: int) {
+  #if BUILD_DEBUG { ga_stage(g, n); }
   if n < 40 || n > 42 { return; }
   g_stage_set(g, 7); g_foes(g);
   if n == 42 { g[0].phase = PH_DAY; g[0].px = g[0].at.vil_x - 12; g[0].pz = g[0].at.vil_z - 12; }

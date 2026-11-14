@@ -17,10 +17,10 @@ KS_GARAGE_BAY :: 0;
 // reads that, so the page's module leaves it out.
 KS_ROWS :: [KS_N] string.["garage_bay", "section_sign", "rock_wall", "mountain_hallway", "solar_row", "charger", "sniper_interior", "raider_mech", "drill_mech", "imperial_robot", "boss_lab", "landmark_rock", "mountain"];
 KS_ABOUT :: [KS_N] string.[
-  "a bay of the ring: floor, back wall, roof and its band, the lamps, the pier after it (garage.coax ga_draw)",
+  "a bay of the ring: floor, back wall, roof and its band, the pier after it (garage.coax ga_draw; its LEDs move with the clock, ga_leds)",
   "a section's letters on the rim's white panel, named from GA_NAMES (garage.coax)",
   "the raiders' rock wall across the old entrance bay, which Digger drills (the rubble)",
-  "the hallway north into the mountain and its barricade, which only the drill mech breaks (garage.coax, splice-game.coax)",
+  "the hallway north into the mountain and the rubble across it, which only the drill mech breaks (garage.coax, splice-game.coax)",
   "a line of solar banks in the farm's rows (farm.coax ff_mesh)",
   "a charging post: the rover's, and one at each Imperial pad (pieces kind 121)",
   "the rover's cabin and its furniture (drive.coax dv_room_draw, the shipped pieces)",

@@ -394,9 +394,8 @@ Imperial robot come at you through where he stands while he fights it (`d_stage`
 - **The drill mech.** It waits in the empty section C1, due east (landmark 81, else the middle of C1's bay), and
   the compass's objective is DRILL MECH once the rubble is open. E beside it swaps Digger's core in: its
   lenses turn Digger's amber and it follows you; Digger's body waits dark. The compass then says BLOCKED
-  HALLWAY: the raiders' barricade across E1's hallway, straight across the ring from the entry (packed
-  rock, a yellow X of girders, BLOCKED, flashing lamps, and an orange beacon over it while the mech has
-  the core). Led within 10 m of it, the mech drills it on its own (E there asks it too); nothing else
+  HALLWAY: the rock wall's rubble piled across E1's hallway, straight across the ring from the entry, to its
+  ceiling (the same piece, `g_rubble`), and an orange beacon over it while the mech has the core. Led within 10 m of it, the mech drills it on its own (E there asks it too); nothing else
   breaks it. Until the hallway is open an E beside the mech leaves the core in, so it is never left
   empty on the way. DRILL+ in the vault is optional: Digger's DRILL is the run's drill. A check plays
   from the garage's door to the boss's fall with keys and the mouse alone, following the compass.

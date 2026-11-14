@@ -135,14 +135,48 @@ clamp_i :: (v: int, a: int, b: int) -> int { return ifx v < a then a else ifx v 
 GA_ROW :: 1000;   // a pier's row in the World: GA_ROW + 3k to + 3k + 2, its three parts (the pier after section k)
 // A passage through each pier near the back wall, so the bays join up all the way round: the night's
 // long way back runs through them, under the roofs, out of the rave's sight (#13552).
-GA_PASS :: 1.7f32;          // m: half the passage's width
-GA_PASS_H :: 3.6f32;        // m: its lintel
+// Each is wide and tall enough for the drill mech to walk through beside her (#13584 playtest 3: it
+// pushed into the old 3.4 m ones); ga_fits says whether a body fits one.
+GA_PASS :: 3.2f32;          // m: half the passage's width
+GA_PASS_H :: 6.5f32;        // m: its lintel
 ga_pass_r :: (g: [] SpGame) -> f32 { return ga_back(g) - 7; }   // its middle, out from the field's middle
 // A stadium from a to b, `half` thick, `tall` high: a wall the walking rules push you out of.
 ga_wall :: (g: [] SpGame, row: int, ax: f32, az: f32, bx: f32, bz: f32, half: f32, tall: f32) {
   dx := bx - ax; dz := bz - az; l := sqrt(dx * dx + dz * dz) * 0.5;
   if l < 0.01 { return; }
   _ := sl_round(g, SK_WALL, row, (ax + bx) * 0.5, 0, (az + bz) * 0.5, atan2(dx, dz), SH_ALONG_Z, half, l, tall);
+}
+// Whether a body r round and `top` tall fits through an opening `half` wide each side under `lintel`.
+ga_fits :: (half: f32, lintel: f32, r: f32, top: f32) -> bool { return half > r + 0.2 && lintel > top + 0.2; }
+// Where a big walker (the drill mech) at (x, z) in the bays heads to reach (tx, tz) in another bay:
+// to the passage in the pier between, on its own side, then through it to the far side. Where the
+// passage is too small for it (ga_fits), the near side's mouth is as far as it goes: it stops there
+// instead of pushing in (#13584). Anywhere else, straight to (tx, tz).
+ga_way :: (g: [] SpGame, x: f32, z: f32, tx: f32, tz: f32, r: f32, top: f32) -> Point {
+  kb := ga_in_bay(g, x, z); kt := ga_in_bay(g, tx, tz);
+  if kb < 0 || kt < 0 || kb == kt { return v3(tx, 0, tz); }
+  s := ifx (kt - kb + GA_SECTIONS) % GA_SECTIONS <= GA_SECTIONS / 2 then 1.0f32 else -1.0f32;
+  b := ga_angle(kb) + s * ga_span() * 0.5; pr := ga_pass_r(g); off := (GA_PIER + r + 0.6) / pr;
+  near := ga_pt(g, b - s * off, pr, 0);
+  if !ga_fits(GA_PASS, GA_PASS_H, r, top) { return near; }
+  // its distance from the pier's line: still short of the mouth, to the mouth first
+  a := atan2(x - g[0].at.gar_x, z - g[0].at.gar_z) - b;
+  if abs(sin(a)) * ga_reach(g, x, z) > (GA_PIER + r + 1.2) || abs(ga_reach(g, x, z) - pr) > GA_PASS - r { return near; }
+  return ga_pt(g, b + s * off, pr, 0);
+}
+// The passage check's walls for a big walker r round that stepped to (x, z): the back wall and the
+// lab's wall put it back in, as they do her, and a pier puts it out to its side, so it slides along
+// one. Where the passage between two bays is too small for it, ga_way stops it at the mouth.
+ga_body_push :: (g: [] SpGame, x: f32, z: f32, r: f32) -> Point {
+  q := ga_push(g, x, z, r); q = ga_lab_push(g, q.x, q.z, r);
+  d := ga_reach(g, q.x, q.z);
+  if d < g[0].at.gar_r - r || d > ga_back(g) || abs(d - ga_pass_r(g)) < GA_PASS - r { return q; }   // on the field, past the back wall, in a passage
+  k := ga_section_of(g, q.x, q.z); a := atan2(q.x - g[0].at.gar_x, q.z - g[0].at.gar_z) - ga_angle(k);
+  while a > PI { a -= TAU; } while a < -PI { a += TAU; }
+  in := GA_PIER + r - d * sin(ga_span() * 0.5 - abs(a));   // how far into the nearer pier
+  if in <= 0 { return q; }
+  s := ifx a > 0 then -in else in; b := ga_angle(k) + (ifx a > 0 then 0.5f32 else -0.5f32) * ga_span();
+  return v3(q.x + cos(b) * s, 0, q.z - sin(b) * s);   // out along the ring, toward its section's middle
 }
 // The piers between the bays, each from the field's edge to the back wall in two halves (so no part
 // reaches further than a cell's half diagonal): World entities, so an edit can't stand a piece in one.
@@ -195,10 +229,31 @@ ga_layout :: (g: [] SpGame) {
 }
 
 // ---- the triangles
-// Colours: the pit's concrete and rust, the raiders' yellow, the Empire's white.
-GA_CONCRETE :: () -> KitTint { return kit_tint(0.56, 0.56, 0.55); }   // poured grey concrete, not canyon rock (#13505)
-GA_RUST :: () -> KitTint { return kit_tint(0.15, 0.15, 0.16); }     // black-stained concrete
-GA_DIRT :: () -> KitTint { return kit_tint(0.86, 0.66, 0.48); }
+// The garage's colours, one table (#13584): dark, slightly warm concrete throughout until the founders'
+// colour pictures come, then this table is the one edit. Red, green, blue a row. Doors stand lightest,
+// then the piers, the walls, the floors and the roofs darkest, so a player reads them apart.
+GC_FIELD :: 0; GC_TRACK :: 1; GC_FLOOR :: 2; GC_WALL :: 3; GC_STAIN :: 4; GC_DOOR :: 5; GC_ROOF :: 6;
+GC_PIER :: 7; GC_RIM :: 8; GC_WALK :: 9; GC_STONE :: 10; GC_TREAD :: 11; GC_LED :: 12; GC_LED_OFF :: 13;
+GA_COLOURS :: [42] f32.[
+  0.38, 0.33, 0.28,   // the field (the rave floor): concrete dust
+  0.31, 0.27, 0.23,   // the rings the mechs' tracks wore into it
+  0.27, 0.25, 0.23,   // a bay's floor
+  0.36, 0.33, 0.30,   // a bay's back wall
+  0.21, 0.19, 0.18,   // a stained wall
+  0.52, 0.49, 0.44,   // a shut roll-up door
+  0.19, 0.18, 0.17,   // a roof and its underside
+  0.44, 0.41, 0.37,   // a pier between bays
+  0.33, 0.30, 0.27,   // the rim's wall over the bays
+  0.26, 0.24, 0.22,   // the rim's walk
+  0.34, 0.31, 0.28,   // the outer shell's printed courses
+  0.28, 0.25, 0.22,   // a course's top
+  1.00, 0.80, 0.16,   // an LED lit (night)
+  0.30, 0.28, 0.22];  // an LED off (day)
+ga_col :: (i: int) -> KitTint { return kit_tint(GA_COLOURS[i * 3], GA_COLOURS[i * 3 + 1], GA_COLOURS[i * 3 + 2]); }
+// The game's clock as the garage reads it: its LEDs are on at night only.
+ga_night :: (g: [] SpGame) -> bool { return g[0].phase == PH_NIGHT; }
+// The pen an LED is drawn with: yellow and lit at night, a dull shape by day.
+ga_led :: (g: [] SpGame, p: [] Pen, obj: int) { kit_pen(p, obj, ifx ga_night(g) then MAT_GLOW else MAT_FLAT, ga_col(ifx ga_night(g) then GC_LED else GC_LED_OFF)); }
 GA_YELLOW :: () -> KitTint { return kit_tint(0.96, 0.76, 0.16); }
 GA_DARK :: () -> KitTint { return kit_tint(0.10, 0.08, 0.08); }
 GA_PANEL :: () -> KitTint { return kit_tint(0.93, 0.90, 0.84); }
@@ -230,9 +285,9 @@ ga_frame :: (g: [] SpGame, a: f32, r: f32, y: f32) -> Frame { return frame_at(ga
 ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   rf := g[0].at.gar_r; rb := ga_back(g); h := ga_span() * 0.5;
   // the field: packed dirt, with the rings the mechs' tracks have worn into it
-  kit_pen(p, 200, MAT_WORLD, GA_DIRT());
+  kit_pen(p, 200, MAT_WORLD, ga_col(GC_FIELD));
   ga_strip(g, buf, p, 0, TAU, 0, 0.01, rf + 0.5, 0.01, 72, false);
-  kit_pen(p, 201, MAT_WORLD, kit_tint(0.76, 0.56, 0.42));
+  kit_pen(p, 201, MAT_WORLD, ga_col(GC_TRACK));
   for i: 0..<3 { r := rf * (0.3 + cast(f32) i * 0.24); ga_strip(g, buf, p, 0, TAU, r, 0.015, r + 1.2, 0.015, 72, false); }
   // the centre: a purple circle in the middle of the rave floor
   kit_pen(p, 199, MAT_FLAT, kit_tint(0.56, 0.42, 0.66));
@@ -243,9 +298,9 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     gap := ga_gap(k) / rb;
     bay := ks_begin(p);   // the bay, to the pier after it: the kit slot garage_bay (kits.coax)
     // the bay's floor, its back wall (around the gap, if any) and the way out at its back
-    kit_pen(p, 202, MAT_WORLD, GA_CONCRETE());
+    kit_pen(p, 202, MAT_WORLD, ga_col(GC_FLOOR));
     ga_strip(g, buf, p, a0, a1, rf, 0.012, rb, 0.012, 3, false);
-    kit_pen(p, 203 + k % 2, MAT_WORLD, ifx k % 3 == 1 then GA_RUST() else kit_tint(0.46, 0.46, 0.46));
+    kit_pen(p, 203 + k % 2, MAT_WORLD, ga_col(ifx k % 3 == 1 then GC_STAIN else GC_WALL));
     if gap > 0 {
       ga_strip(g, buf, p, a0, a - gap, rb, 0, rb, GA_ROOF, 2, false); ga_strip(g, buf, p, a + gap, a1, rb, 0, rb, GA_ROOF, 2, false);
       ga_strip(g, buf, p, a - gap, a + gap, rb, GA_ROOF - 3, rb, GA_ROOF, 1, false);   // the lintel over the opening
@@ -254,25 +309,22 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
       // its old way outside, shut: a grey roll-up door in the back wall, from inside the wall to GA_OFF_WALL
       // off its face, so only the two real openings (the entry and the hallway) are dark (#13552)
       face := ga_face(a0, a1, rb, 3, a) - GA_OFF_WALL;
-      kit_pen(p, 205, MAT_FLAT, kit_tint(0.42, 0.42, 0.44));
+      kit_pen(p, 205, MAT_FLAT, ga_col(GC_DOOR));
       box(buf, p, ga_frame(g, a, (face + rb) * 0.5, 3.2), 3.0, 3.2, (rb - face) * 0.5);
       kit_pen(p, 206, MAT_FLAT, GA_YELLOW());
       box(buf, p, ga_frame(g, a, (face - 0.1 + rb) * 0.5, 6.6), 3.4, 0.25, (rb - face + 0.1) * 0.5);
     }
     // the roof's slab, its underside, and the yellow and black band along its edge
-    kit_pen(p, 207, MAT_WORLD, kit_tint(0.40, 0.40, 0.41));
+    kit_pen(p, 207, MAT_WORLD, ga_col(GC_ROOF));
     ga_strip(g, buf, p, a0, a1, rf - 0.6, GA_ROOF + GA_LEDGE, rb + GA_BACK, GA_ROOF + GA_LEDGE, 3, false);
     ga_strip(g, buf, p, a0, a1, rf - 0.6, GA_ROOF, rb, GA_ROOF, 3, true);
     for j: 0..<12 {
       kit_pen(p, 208 + j % 2, MAT_FLAT, ifx j % 2 == 0 then GA_YELLOW() else GA_DARK());
       ga_strip(g, buf, p, a0 + (a1 - a0) * cast(f32) j / 12, a0 + (a1 - a0) * cast(f32) (j + 1) / 12, rf - 0.6, GA_ROOF, rf - 0.6, GA_ROOF + GA_LEDGE, 1, false);
     }
-    // two lamps under the roof
-    kit_pen(p, 210, MAT_GLOW, kit_tint(1.0, 0.82, 0.48));
-    for j: 0..<2 { o := ifx j == 0 then -0.45f32 else 0.45f32; c := ga_pt(g, a + h * o, rf + GA_BAY * 0.45, GA_ROOF - 0.4); block(buf, p, c.x, c.y, c.z, 1.6, 0.25, 0.4); }
     // the pier after it: a buttress from the floor to the rim, wider at its foot
     b := a1; pf := ga_frame(g, b, rf + GA_BAY * 0.5, 0);
-    kit_pen(p, 211, MAT_WORLD, GA_CONCRETE());
+    kit_pen(p, 211, MAT_WORLD, ga_col(GC_PIER));
     pr := ga_pass_r(g); i0 := rf - 1.5; i1 := pr - GA_PASS; o1 := rb + 1.5;
     box(buf, p, frame_move(pf, ga_pt(g, b, (i0 + i1) * 0.5, GA_ROOF * 0.5 + 1)), GA_PIER, GA_ROOF * 0.5 + 1, (i1 - i0) * 0.5);
     box(buf, p, frame_move(pf, ga_pt(g, b, (pr + GA_PASS + o1) * 0.5, GA_ROOF * 0.5 + 1)), GA_PIER, GA_ROOF * 0.5 + 1, (o1 - pr - GA_PASS) * 0.5);
@@ -281,7 +333,7 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     box(buf, p, frame_move(pf, ga_pt(g, b, rf - 1.55, 1.2)), GA_PIER + 0.1, 1.2, 0.1);   // on the pier's face to the field
     ks_end(g, KS_GARAGE_BAY, p, bay);
     // the rim's wall over the bays, set back, with the section's letters on a white panel
-    kit_pen(p, 213 + k % 2, MAT_WORLD, ifx k % 4 == 1 then GA_RUST() else kit_tint(0.50, 0.50, 0.50));
+    kit_pen(p, 213 + k % 2, MAT_WORLD, ga_col(ifx k % 4 == 1 then GC_STAIN else GC_RIM));
     ga_strip(g, buf, p, a0, a1, rf + GA_SET, GA_ROOF + GA_LEDGE, rf + GA_SET, GA_RIM, 3, false);
     kit_pen(p, 215, MAT_FLAT, GA_PANEL());
     box(buf, p, ga_frame(g, a, rf + GA_SET - 0.2, 18.5), 6.5, 4.2, 0.2);
@@ -289,14 +341,12 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     // the rim: its walk, a post with a lamp at each pier, and the long slope down to the desert outside
     // at the entry (A1) the rim and its slope are cut open down to the desert: the way in you see from outside
     ro := ga_shell_in(g); cut := ifx k == GA_ENTRY then GA_DOOR / ro else 0.0f32;
-    kit_pen(p, 217, MAT_WORLD, kit_tint(0.36, 0.36, 0.37));
+    kit_pen(p, 217, MAT_WORLD, ga_col(GC_WALK));
     if cut > 0 { ga_strip(g, buf, p, a0, a - cut, rf + GA_SET, GA_RIM, ro, GA_RIM, 2, false); ga_strip(g, buf, p, a + cut, a1, rf + GA_SET, GA_RIM, ro, GA_RIM, 2, false); }
     else { ga_strip(g, buf, p, a0, a1, rf + GA_SET, GA_RIM, ro, GA_RIM, 3, false); }
     bl_shell(g, buf, p, k, a0, a1, ro);   // the outer shell down to the desert, printed, and the entry's bay (buildings.coax)
     kit_pen(p, 219, MAT_CLOTH, GA_DARK());
     tube(buf, p, frame_at(ga_pt(g, a1, rf + GA_SET + 0.6, GA_RIM), 0), 4.0, 0.12, 0.12, 0.1, 0.1, 5, true);
-    kit_pen(p, 220, MAT_GLOW, kit_tint(1.0, 0.86, 0.50));
-    ball(buf, p, ga_pt(g, a1, rf + GA_SET + 0.6, GA_RIM + 4.2), 0.4, 6);
   }
   // the hallway into the mountain, past section E1: the white lab's own walls, unlit by the sky, so neither dusk nor night tints them
   back := g[0].at.gar_z - rb; end := back - GA_HALL_LONG;
@@ -307,6 +357,18 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   block(buf, p, -w, 0, (back + end + 1) * 0.5, 5, 12, (GA_HALL_LONG + 1) * 0.5); block(buf, p, w, 0, (back + end + 1) * 0.5, 5, 12, (GA_HALL_LONG + 1) * 0.5);
   block(buf, p, 0, 10, (back + end) * 0.5, GA_HALL + 0.1, 4, GA_HALL_LONG * 0.5);
   ga_draw_lab(g, buf, p);
+}
+// The garage's LEDs, drawn with what moves so the game's clock turns them on (#13584): two under each
+// bay's roof and one on each rim post, a dull shape by day and lit yellow at night.
+ga_leds :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  rf := g[0].at.gar_r; h := ga_span() * 0.5;
+  for k: 0..<GA_SECTIONS {
+    a := ga_angle(k);
+    ga_led(g, p, 210);
+    for j: 0..<2 { o := ifx j == 0 then -0.45f32 else 0.45f32; c := ga_pt(g, a + h * o, rf + GA_BAY * 0.45, GA_ROOF - 0.4); block(buf, p, c.x, c.y, c.z, 1.6, 0.25, 0.4); }
+    ga_led(g, p, 220);
+    ball(buf, p, ga_pt(g, a + h, rf + GA_SET + 0.6, GA_RIM + 4.2), 0.4, 6);
+  }
 }
 // The old-world lab (#13552): a round white room, the hallway coming in at its south. Its floor, its
 // round wall in GA_LAB_SIDES pieces (none at the mouth) and its ceiling; round the wall, four old machines
@@ -332,7 +394,7 @@ ga_draw_lab :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   block(buf, p, c.x, GA_LAB_TALL - 1.6, c.z + r - 0.1, GA_HALL + 0.3, 0.12, 0.08);
 }
 
-// The lamps of the three bays nearest you, into the light slots 2, 3 and 5 (g_lights); in the lab, its
+// At night, the LEDs of the three bays nearest you, into the light slots 2, 3 and 5 (g_lights); in the lab, its
 // white ceiling lights in the same slots.
 ga_lights :: (g: [] SpGame, l: [] f32) {
   if ga_in_lab(g, g[0].px, g[0].pz) {
@@ -341,14 +403,27 @@ ga_lights :: (g: [] SpGame, l: [] f32) {
     for i: 0..<3 { light_put(l, slots[i], v3(c.x, GA_LAB_TALL - 0.8, c.z + GA_LAB_R * 0.6 * cast(f32) (1 - i)), 22, 1.0, 1.0, 1.0, 1.1); }
     return;
   }
-  if !ga_inside(g, g[0].px, g[0].pz) { return; }
+  if !ga_inside(g, g[0].px, g[0].pz) || !ga_night(g) { return; }   // the LEDs are off by day
   k := ga_section_of(g, g[0].px, g[0].pz);
   slots := [3] int.[2, 3, 5];
   for i: 0..<3 {
     s := (k + i - 1 + GA_SECTIONS) % GA_SECTIONS;
     c := ga_at(g, s, g[0].at.gar_r + GA_BAY * 0.45);
-    light_put(l, slots[i], v3(c.x, GA_ROOF - 1.2, c.z), 16, 1.0, 0.80, 0.45, 1.2);
+    light_put(l, slots[i], v3(c.x, GA_ROOF - 1.2, c.z), 16, 1.0, 0.80, 0.16, 1.2);
   }
+}
+// The garage's stills for the dev server (#13584): 43 a bay by day, its LEDs off; 44 the same at night,
+// lit yellow; 45 the rubble across the hallway, the mech beside her; 46 the mech following her through
+// the passage from C1 into C2.
+ga_stage :: (g: [] SpGame, n: int) {
+  if n < 43 || n > 46 { return; }
+  g_stage_set(g, 7); g_foes(g); t := g[0].bt[..];
+  if n <= 44 { g[0].phase = ifx n == 43 then PH_DAY else PH_NIGHT; ga_look_into(g, 4); g[0].pitch = 0.1; return; }
+  t[0].mech_core = true; t[0].mech_used = true;
+  if n == 45 { g[0].px = -2; g[0].pz = g[0].at.wall_z + 16; g[0].yaw = PI; t[0].mech_x = 4; t[0].mech_z = g[0].pz - 2; return; }
+  b := ga_angle(GA_EMPTY) + ga_span() * 0.5; pr := ga_pass_r(g);
+  q := ga_pt(g, b + 0.07, pr, 0); g[0].px = q.x; g[0].pz = q.z; g[0].yaw = b - PI * 0.5;
+  m := ga_pt(g, b - 0.05, pr - 1, 0); t[0].mech_x = m.x; t[0].mech_z = m.z;
 }
 // Stand at the mouth of section k's bay, looking in (for the stills of a moment, g_stage).
 ga_look_into :: (g: [] SpGame, k: int) {
@@ -392,4 +467,41 @@ ga_look_into :: (g: [] SpGame, k: int) {
   g_stage(g[..], 35); t[0].dino_x = c.x + 1; t[0].dino_yaw = 0; g[0].boss_t = 0;
   for i: 0..<300 { t[0].think = 10; t[0].idle = 0; g_step(g[..], 0.02); }   // neither side's cards: no hits, no stuns
   #assert dist2(t[0].dino_x, t[0].dino_z, c.x, c.z) < 0.06 && abs(t[0].dino_yaw - SB_BOSS_FACE) < 0.01;
+}
+#test "the passages between the bays fit the drill mech; a body too big for one stops at its mouth, and one that fits goes through (#13584)" #steps 80000000 {
+  g := [1] SpGame.[SpGame.{}]; g_reset(g[..]);
+  #assert ga_fits(GA_PASS, GA_PASS_H, SB_MECH_R, SB_MECH_TOP) && !ga_fits(GA_PASS, GA_PASS_H, GA_PASS, SB_MECH_TOP) && !ga_fits(GA_PASS, GA_PASS_H, SB_MECH_R, GA_PASS_H);
+  pr := ga_pass_r(g[..]); k := GA_EMPTY;
+  // from the middle of C1's bay at the passage's radius to the next bay's: through the pier after it
+  a := ga_pt(g[..], ga_angle(k), pr, 0); b := ga_pt(g[..], ga_angle(k + 1), pr, 0);
+  x := a.x; z := a.z;
+  for i: 0..<600 {
+    w := ga_way(g[..], x, z, b.x, b.z, SB_MECH_R, SB_MECH_TOP);
+    dx := w.x - x; dz := w.z - z; d := sqrt(dx * dx + dz * dz); st := lo(d, 0.1);
+    if d > 0.001 { q := ga_body_push(g[..], x + dx / d * st, z + dz / d * st, SB_MECH_R); x = q.x; z = q.z; }
+  }
+  #assert dist2(x, z, b.x, b.z) < 0.5;
+  // a body too tall for the passage goes to its mouth on its own side and stays there
+  x = a.x; z = a.z;
+  for i: 0..<600 {
+    w := ga_way(g[..], x, z, b.x, b.z, SB_MECH_R, GA_PASS_H);
+    dx := w.x - x; dz := w.z - z; d := sqrt(dx * dx + dz * dz); st := lo(d, 0.1);
+    if d > 0.001 { q := ga_body_push(g[..], x + dx / d * st, z + dz / d * st, SB_MECH_R); x = q.x; z = q.z; }
+  }
+  #assert ga_in_bay(g[..], x, z) == k && abs(ga_reach(g[..], x, z) - pr) < 0.5;
+  // walked into a pier's side, it is put out beside it, not into it
+  c := ga_pt(g[..], ga_angle(k) + ga_span() * 0.5 - 0.005f32, g[0].at.gar_r + 4, 0); h := ga_body_push(g[..], c.x, c.z, SB_MECH_R);
+  #assert ga_in_bay(g[..], h.x, h.z) == k && abs(dist2(h.x, h.z, c.x, c.z) - (GA_PIER + SB_MECH_R - (g[0].at.gar_r + 4) * sin(0.005f32))) < 0.1;
+}
+#test "the garage's LEDs are a dull shape by day and lit yellow at night, by the game's clock; its colours come from one table" {
+  g := [1] SpGame.[SpGame.{}]; g_reset(g[..]); p := [1] Pen.[Pen.{}];
+  g[0].phase = PH_DUSK; #assert !ga_night(g[..]);
+  g[0].phase = PH_NIGHT; #assert ga_night(g[..]);
+  y := ga_col(GC_LED); #assert y.r > 0.9 && y.g > 0.7 && y.b < 0.3;
+  // dark concrete: the floors darker than the walls, the walls than the doors, and warm (red over blue)
+  f := ga_col(GC_FLOOR); w := ga_col(GC_WALL); d := ga_col(GC_DOOR);
+  #assert f.r < w.r && w.r < d.r && d.r < 0.6 && f.r > f.b && w.r > w.b;
+  l: [LIGHTS * LIGHT_FLOATS] f32; g[0].px = g[0].at.gar_x; g[0].pz = g[0].at.gar_z + g[0].at.gar_r + 5;
+  g[0].phase = PH_DAY; ga_lights(g[..], l[..]); day := l[2 * LIGHT_FLOATS + 3];
+  g[0].phase = PH_NIGHT; ga_lights(g[..], l[..]); #assert day == 0 && l[2 * LIGHT_FLOATS + 3] != 0;
 }
