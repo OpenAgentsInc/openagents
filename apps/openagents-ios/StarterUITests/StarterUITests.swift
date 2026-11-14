@@ -4,8 +4,8 @@ final class StarterUITests:XCTestCase {
     // Select explicitly with a published feed matching this build's resources.
     func testIdenticalLivePackageDoesNotPrompt() {
         let app=XCUIApplication();app.launchArguments=["-OAAutomation","YES","-OAAPIOrigin","http://127.0.0.1:13493"];app.launch()
-        if !app.buttons["Check for updates"].waitForExistence(timeout:3) {app.showAppSettings()}
-        let check=app.buttons["Check for updates"]
+        if !app.buttons["app.updates"].waitForExistence(timeout:3) {app.showAppSettings()}
+        let check=app.buttons["app.updates"]
         XCTAssertTrue(check.waitForExistence(timeout:20))
         XCTAssertFalse(app.alerts["Update ready"].waitForExistence(timeout:10))
         check.tap()
@@ -19,9 +19,9 @@ final class StarterUITests:XCTestCase {
     }
     func testEmbeddedCoaxAccountModuleRuns() {
         let app=XCUIApplication(); app.launchArguments=["-OAAutomation","YES"]; app.launch()
-        if !app.buttons["Check for updates"].waitForExistence(timeout:3) {app.showAppSettings()}
-        XCTAssertTrue(app.buttons["Check for updates"].waitForExistence(timeout:20))
-        XCTAssertTrue(app.buttons["Build details"].exists)
+        if !app.buttons["app.updates"].waitForExistence(timeout:3) {app.showAppSettings()}
+        XCTAssertTrue(app.buttons["app.updates"].waitForExistence(timeout:20))
+        XCTAssertTrue(app.buttons["app.details"].exists)
         let shot=XCTAttachment(screenshot:app.screenshot());shot.name="Embedded Coax account surface";shot.lifetime = .keepAlways;add(shot)
     }
     // Select explicitly after publishing the live demonstration package.

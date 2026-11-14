@@ -1477,3 +1477,10 @@ not a pending request for a key.
       Worlds are in the history footer. Simulator checks cover the installed
       navigation and send/reopen flow with independent local account/computer
       fixtures; this final check uses the owner's real phone and computers.
+
+## iOS 1085 shorter interface (2026-11-14)
+
+- [ ] On TestFlight **1085**, reopen the app and apply the OTA, or use
+      **Settings → Updates**. Generation **2** contains the shorter interface
+      and icon actions. Confirm the appearance on the physical phone; the
+      twelve native/simulator checks passed.
