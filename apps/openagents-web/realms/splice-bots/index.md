@@ -88,7 +88,7 @@ slots: press I and click a slot to drop what is in it.
 The five characters of the slice are our own designs (`splice-cast.coax`): the Smuggler, the Rover,
 the Digger, a raider and the banned bot. To review them outside the game, open `?scene=17` (the
 line-up at true sizes), `?scene=18` to `?scene=22` (one each) or `?scene=23` (the line-up from
-behind).
+behind) on the dev server (`coax serve`); the live page opens the game.
 
 ## Look
 
@@ -136,8 +136,9 @@ notes are in `metaverse/splice-bots/README.md`, "Edit layer".
 
 ## Still scenes
 
-`?scene=N` on the address, 0 to 16, shows a still view instead of the game, drawn from
-Pinterest references for the look:
+On the dev server (`coax serve`), `?scene=N` on the address, 0 to 16, shows a still view instead
+of the game, drawn from Pinterest references for the look. The live page's module leaves the
+still scenes out and opens the game:
 
 - **0 Dunes** (the default): the robot on a dune floor under lavender mesas, at dusk.
 - **1 Arch**: the robot in the shadow of a red post-and-lintel arch.

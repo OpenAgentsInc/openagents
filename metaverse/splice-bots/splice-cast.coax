@@ -9,7 +9,7 @@
 //   cast_raider     the party mine's dark silhouette: spiked shoulders, a crest, a pipe
 //   cast_boss       the banned bot: an old-world factory giant with two blue eyes
 //
-// The game draws them (splice-game.coax g_live, g_world) and ?scene=17..22 stands them on a plinth
+// The game draws them (splice-game.coax g_live, g_world) and ?scene=17..22 on the dev server stands them on a plinth
 // to review (splice-bots.coax). Every one faces its frame's z.
 #load "../../metaverse-engine/kit/machines.coax";
 #load "digger.coax";
