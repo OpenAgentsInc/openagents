@@ -53,6 +53,30 @@ logic; there is still no npm, bundler or JavaScript framework. This narrows
 worlds, labs and the splash. Reasons and design:
 [the chat audit, section 10](../docs/audits/2026-11-11-chat-zero-base-audit.md#decision-the-web-chat-is-drawn-by-the-browser).
 
+### Rendering assessment (2026-11-14): DOM with GPU components
+
+The owner wants shared animated components in ordinary HTML pages and several
+inline world views. Keep the browser text/form decision above. Extend the
+Coax tree/DOM applier with explicit GPU-island mounts, as specified in
+[components/rendering.md](../components/rendering.md#dom-pages-with-gpu-components).
+This is proposed work; the current DOM backend does not already mount them.
+
+DOM reserves each island's outer box; the shared Coax component renderer owns
+its interior. Compatible trusted islands can share a WebGPU device, atlases,
+pipelines and scheduling. A canvas is not required for each button, nor is a
+whole HTML page forced under one fixed GPU overlay. Resize, DPR, clipping,
+scroll/zoom, focus, accessibility and destruction belong to the contract.
+Without WebGPU, DOM text remains usable and islands declare alternatives.
+
+Trusted scene views can render into owned textures or canvas mounts. Realms
+running someone else's code retain the separate-site sandbox and typed
+messages in [realm-origin.md](../docs/metaverse/realm-origin.md); no raw GPU
+texture or account credential bridge across frames is implied. A popup in
+one GPU island cannot capture arbitrary DOM or another origin for its blur.
+See the [Arcade animation catalog](../docs/arcade/06-rendering-and-animation.md)
+for the first completeness cases; ordinary DOM text is not migrated to GPU
+merely to make those cases available.
+
 ## Built so far
 
 For cold-load measurements, run `coax/web/serve.sh apps/openagents-web --static

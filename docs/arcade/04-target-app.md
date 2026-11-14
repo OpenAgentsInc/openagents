@@ -3,6 +3,12 @@
 Audited at `openagents` commit `450ca4738f941d5ff7b6141812a2f89a0e3b4f0f`
 (origin/main, 2026-11-14). Issue: #13607.
 
+**Rendering addendum, 2026-11-14:** [audit 06](06-rendering-and-animation.md)
+and [components/rendering.md](../../components/rendering.md) specify the new
+GPU component/motion and mixed-surface target. The installed UIKit runtime
+described here remains real; the proposed target is not an OTA capability of
+that runtime. The dated requirements at the end supplement this fixed audit.
+
 Another thread is building OpenAgents iOS right now. Recent commits touch the
 Projects and Usage screens. This doc describes `main` at the commit above. Check
 `apps/openagents-ios/README.md` for builds after 1085.
@@ -644,3 +650,31 @@ Not read: `docs/reuse.md`, `components/spec.md`, the book chapters,
    channels)?
 10. Can the module read the wall clock directly, or only through events?
     (`created_at` needs it.)
+
+## 2026-11-14: additional rendering requirements
+
+The initial target inspection does not qualify a GPU component UI. At
+`96825b529e` the shared GPU backend exists, but `gpu_draws` skips arcs and
+images; it has no complete arbitrary transform/effect compositor. The shared
+ARWES motion code provides easing and timelines, not the complete Arcade
+spring/gesture catalog. The Android Vulkan carrier exists, but is not proof
+of IME, AutoFill, TalkBack or an entire mobile app.
+
+The native component runtime must add shared Coax motion/paint, GPU image and
+blur resources, a presentation clock independent of app-data work, native
+text/composition and semantic bridges. Compatibility UIKit views can stay
+while those paths are qualified. New component state/layout/paint remains
+in `components/`; the host only provides platform effects and bindings.
+
+For several inline worlds, `PageHost.m:130` has `phCurrent` explicitly binding
+one open page. Audit every static page state and asynchronous callback,
+introduce explicit per-view context/generation through a versioned adapter,
+and compose admitted scene outputs with one aggregate budget. Full-screen
+world success does not qualify three independent embedded worlds.
+
+The one-build objective must include these installed capabilities as well as
+the Nostr ops. A new compositor, effect pipeline or host/input/semantic ABI
+needs a binary/fingerprint change; later compatible component/motion code can
+ship by Update. No default changes before the gallery, actual iOS/Android
+editing/accessibility, web-island and multi-scene performance/recovery gates
+in [the rendering plan](../../components/rendering.md#delivery-order-and-acceptance).

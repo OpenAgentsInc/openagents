@@ -6,6 +6,13 @@ onto the OpenAgents component kit for OpenAgents iOS. The owner's rule for
 the port: bring the whole design and component library over, but replace
 Arcade's cyan with white and grayscale, as the current app uses.
 
+**Dated addendum, 2026-11-14:** [audit 06](06-rendering-and-animation.md)
+requires every animation, including dormant/demo behavior, in the shared
+library/gallery. It supersedes Part B's recommendations to drop/simplify
+glow, blur, frame highlights, custom spinners and typing. The historical
+source description remains; [components/rendering.md](../../components/rendering.md)
+defines the recommended GPU visual target and native/DOM boundaries.
+
 Part A describes Arcade as it is. Part B is the adaptation. Arcade paths are
 relative to `/Users/christopherdavid/work/arcade`; OpenAgents paths are
 relative to the openagents repository root.
@@ -1363,3 +1370,27 @@ OpenAgents:
 6. Arcade's live list rows draw remote avatars from `void.cat` placeholders.
    What OpenAgents iOS shows when a Nostr profile has no picture (initials,
    mark, or blank) is a product choice not made here.
+
+## 2026-11-14: animation completeness and rendering direction
+
+The owner now requires the complete [A01–A28 catalog](06-rendering-and-animation.md#complete-source-animation-catalog).
+An unreachable component still gets a runnable specimen. Preserve frame
+enter/highlight/focus, both spinners, path-trim swipe feedback, springs, reply
+height/opacity, drawer/icon morph, list/tab stagger, toggles, pressed fill,
+lifted popup blur, gradient pulse, splash blur, typing/caret, GIF cadence,
+transient confirmation, route/sheet transitions and keyboard/scroll behavior.
+Source bugs and unspecified library defaults are recorded in 06; do not
+claim exact runtime parity from these source descriptions alone.
+
+This changes **library scope**, not a requirement to add a tab bar, a Faerie
+persona, city art or an animated splash to the product. Grayscale is the
+production skin; source-parity fixtures retain the evidence for comparison.
+
+The recommended implementation is shared GPU paint/motion for custom native
+components, using native text input and accessibility adapters. Web retains
+DOM text and adds opt-in GPU component/scene islands. Extend the root kit and
+its existing renderer; do not rebuild all appearance separately in Swift and
+Android. Existing native controls remain compatible during qualification.
+Part B's system-control substitutions are therefore migration options, not
+the final reusable component architecture. All source/history claims above
+remain tied to their audited revision.

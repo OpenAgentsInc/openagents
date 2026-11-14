@@ -99,6 +99,14 @@ undo was hand-rolled and had no redo, while the OpenAgents Metaverse Engine's ed
 
 ## How to check before writing
 
+For component animation and mixed GPU/native/DOM presentation, reuse
+`components/core/arwes/motion.coax`, `components/paint/`, the shared GPU shader
+and host carriers. [The rendering plan](../components/rendering.md) names the
+missing capabilities, mobile text/accessibility bridges and scene-view
+composition. [The Arcade catalog](arcade/06-rendering-and-animation.md) names
+every required reference animation. Extend these owners; do not create another
+per-app animation engine or widget library.
+
 1. Search for the thing by what it does, not by your name for it:
    `git grep -n -i "redo\|undo" -- '*.coax'`.
 2. Read the shared module's header comment and its checks.

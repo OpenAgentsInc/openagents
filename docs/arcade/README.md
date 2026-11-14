@@ -27,6 +27,16 @@ grayscale (issue #13607).
 | [03-design-and-components.md](03-design-and-components.md) | Arcade's tokens, type, motion, every component and screen layout, then the grayscale mapping onto the mono skin and the kit |
 | [04-target-app.md](04-target-app.md) | OpenAgents iOS and Coax Native at `450ca4738f`: screens, controls, state, networking, crypto, the Update versus TestFlight line, and what the port needs from the host |
 | [05-port-plan.md](05-port-plan.md) | The plan: scope and a disposition for every inventory row, the Nostr design, the one native build, the design system, phases with issues to file, ownership, owner decisions, risks |
+| [06-rendering-and-animation.md](06-rendering-and-animation.md) | Complete animation catalog (A01–A28), CPU/UI-thread versus GPU assessment, shared native GPU visuals with platform services, DOM GPU islands and several inline worlds |
+
+**2026-11-14 rendering update:** the owner requires every Arcade animation to
+be portable, including dormant/demo effects. Part 06 and
+[components/rendering.md](../../components/rendering.md) supersede earlier
+recommendations to discard glow, blur, typing or custom spinner behavior.
+All need gallery specimens; which ones appear in the app is a separate product
+choice. The recommended target is shared GPU visuals on iOS/Android with native
+input/accessibility services, and DOM text with GPU islands on web. This is a
+plan, not an implemented switch. Phase 0 now includes that component foundation.
 
 Headline findings:
 
@@ -66,9 +76,10 @@ Headline findings:
   glow and HUD tab bar were tried and mostly backed out.
 - Every Arcade token maps to a mono gray: cyan washes to SURFACE and RAISED,
   hairlines to LINE_DIM, accents to INK_MUTED and INK.
-- Keep the corner frames, swipe to reply and the frame enter motion; drop the
-  glow, city art, Faerie and typing GIF; replace Space Grotesk and
-  Protomolecule with DM Sans and GeistMono.
+- Part 03 originally kept frame/swipe motion and dropped glow/typing. Part 06
+  supersedes that scope: preserve every animation capability, including the
+  custom popup blur and animated image, in reusable specimens. Production uses
+  grayscale tokens, DM Sans and GeistMono; no separate Faerie product is added.
 - Native needs images, avatars, rows, switches, long press, swipe and a
   confirm; the drawn frame view already exists (see 05 §0, C2).
 - Its list of non-gray colours in the native app predates commit
@@ -97,6 +108,19 @@ Headline findings:
 - 16 Nostr work items (G1 to G16, one of them on the relay) belong to the Nostr owner.
 - 18 owner decisions, the eight that block Phase 0 first.
 
+**06, rendering and animation**
+
+- Arcade mixes Reanimated UI-thread work, Skia drawing, JS timers, native
+  transitions and a GIF. “Animated” does not mean its state runs in a shader.
+- Reuse `components/` rather than importing GPUI/Skia or writing two widget
+  sets. CPU Coax evaluates interaction/layout/motion; GPU draws and composites.
+- Existing GPU primitives skip arcs/images. Springs, transform groups,
+  image/background blur and scene composition need implementation.
+- UIKit/Android still supply IME, AutoFill, accessibility and system services.
+  DOM text stays DOM and can contain GPU islands.
+- Three inline worlds require per-view state/callbacks and aggregate GPU
+  budgeting; today's Apple `phCurrent` binds one page at a time.
+
 ## Decisions waiting on the owner
 
 The full list, with options, recommendations, reasons and what each blocks,
@@ -119,6 +143,9 @@ that block Phase 0:
   target at `450ca4738f` (04's header). Do not edit them to track later
   work; a correction to an audit's reading of its own revision is fine and
   says so.
+- Part 06 is a dated addendum. Its source catalog stays pinned; architecture
+  status and implementation evidence update through the plan and component
+  rendering specification. A recommendation is not a passed device check.
 - The port's issues update [05-port-plan.md](05-port-plan.md): when an issue
   lands, mark its row in section 5; when the owner decides, move the decision
   out of section 7 into a "Decided" note with the date; when main changes a

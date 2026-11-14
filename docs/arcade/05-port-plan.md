@@ -5,6 +5,14 @@ folder. It decides what the port builds, in what order, on which modules,
 and who builds each part. It files no issues: section 5 lists them for the
 port's tracker.
 
+**2026-11-14 rendering amendment:** the owner requires every Arcade animation
+ported to the shared Coax component library, including dormant/demo effects.
+[Audit 06](06-rendering-and-animation.md) is the completeness list;
+[components/rendering.md](../../components/rendering.md) is the architecture
+recommendation and acceptance plan. Shared GPU visuals with platform text/
+accessibility services supersede building a permanent per-platform widget
+set. The shipped UIKit runtime is retained until the new path qualifies.
+
 | Input | Revision |
 | --- | --- |
 | Arcade, read-only clone `~/work/arcade` | `3f10e1e` (2023-08-05), `app/arclib` at `542ecec` |
@@ -51,6 +59,9 @@ disagrees with one, this plan uses the fact in the right-hand column.
 | C9 | Navigation | 03 B5.4: keep three tabs, drop the drawer | The app is drawer-based (`NativeWorkspace`); there is no native tab control. Decision D7 recommends the drawer. | 04 §1.3, §5, risk 7. |
 | C10 | Where joined channels and settings go | 01 §12.1: `nip78.coax` app data or `nip51-private.coax` | Joined groups: kind 10009 (NIP-51 simple groups). Private follows: kind 30000 private items. Settings: kind 30078 (NIP-78), NIP-44 to self, or the account. Never kind 0, 10003 or 30040. | 02 B6, which checked kinds against today's registry. |
 | C11 | NIP status | 01 open question 7: the nips clone was missing | The clone exists at `~/work/projects/repos/nips` (`1fb3a95`); 02 checked every status there. | 02 header. |
+| C12 | Animation scope, amended 2026-11-14 | 03/this plan drop glow, GIF/splash/typing and replace custom blur/spinners | Every A01–A28 case in 06 gets a reusable shared gallery specimen, including dormant code. Product screens can choose quieter variants. | Owner request; 06's pinned source catalog. |
+| C13 | Permanent component renderer, amended 2026-11-14 | K controls drawn separately through the Swift host | Recommend shared GPU paint/motion for new native component visuals, native text/accessibility services, DOM text with GPU islands. Current UIKit remains compatible until qualification. | `components/rendering.md`; no speed/parity claim without actual-host evidence. |
+| C14 | Identity assumption, amended 2026-11-14 | The phone key is the primary npub | Account-managed identities were subsequently approved and deployed; reconcile the Nostr ops with that custody before treating a phone key as canonical. Rendering does not decide identity. | `docs/protocol/account-identity-v1.md`; existing linked keys remain preserved. |
 
 ---
 
@@ -260,6 +271,13 @@ together in **one** build so that every later phase ships by signed Update.
 The principle from `coax/nostr.md` §5 holds throughout: the script gets
 effects, never keys.
 
+The component foundation below is now part of that objective. The original
+N1–N12/K1–K11 list does not include a complete GPU compositor, autonomous
+motion runtime or qualified mobile IME/accessibility bridge. Do not promise
+all animation/scene capabilities over the air to build 1085. Consolidate the
+new installed contracts once qualified; additional unqualified capabilities
+can require later binaries. Nostr library/service work can proceed separately.
+
 ### 3.2 Every native operation and control
 
 "Exists" is as of `5bf0d987e0`. The op table is
@@ -286,20 +304,24 @@ effects, never keys.
 | N11 | HTTP path additions to `cn_api` / `nwp_account` | The media upload route (D5), and a NIP-05 fetch if the host does it (Q3) | Phases 1 and 5 | Policy exists; paths depend on D5 |
 | N12 | APNs registration (`aps-environment production`, `registerForRemoteNotifications`, `AppAuth.pushTarget`) | Push | Only if D6 says push in v1 | No (entitlement is development only) |
 
-**Controls and roles** (`NativeProgram.swift` maps tags to roles;
-`NativeControls.swift` and `NativeChrome.swift` draw them; everything is drawn
-from the mono skin to pass `stock-style.coax`)
+**Controls and roles.** The table's “Exists” column describes the original
+native projection. The amended permanent target is shared kit state/layout/
+paint/motion, consumed by the GPU runtime with native semantic/text adapters.
+`NativeChrome.swift` remains the compatibility implementation for current
+screens. Extend it only where the migration needs a platform bridge; do not
+write a second complete set of component visuals there or in Android. Skin
+roles and the existing style gate still apply to host-owned chrome.
 
 | # | Control | Purpose | Needed by | Exists? |
 | --- | --- | --- | --- | --- |
-| K1 | `img` role: a remote HTTPS image with a cache, aspect fit and a loading state | Message images, banners, group pictures | Phases 1, 2, 5 | No `img` mapping (04 §2.2) |
-| K2 | Avatar: K1 in a circle drawn by `NativeChrome`, with a fallback per D8 | Every row and message | Phase 2 | No |
+| K1 | Shared image component: admitted decode/cache, GPU image primitive, aspect fit and loading state; compatible native role where needed | Message images, banners, group pictures | Phases 1, 2, 5 | No `img` mapping (04 §2.2); GPU image primitive currently skipped |
+| K2 | Avatar: K1 in the shared circular frame, with a fallback per D8 | Every row and message | Phase 2 | Shared image/resource path and semantic avatar binding needed |
 | K3 | Row with avatar, title, line, time and trailing actions (`k_row`, `k_row_with`) | Inbox, contacts, members, groups | Phase 2 | Button `MB_ROW` variant exists; no avatar row |
-| K4 | Switch (`k_switch`, `k_switch_row`) drawn in the skin | Private follow, group flags | Phase 2 | No; `UISwitch` fails the style check (C4) |
-| K5 | Long press on a message or row that opens `NativeMenu` | Copy, reply, mute, leave | Phase 2 | `NativeMenu` exists; no long press |
-| K6 | Swipe to reply on a message, with the progress ring (`NativeRingView` or a `CAShapeLayer` `strokeEnd`) and a light haptic on completion | Row 35 | Phase 2 | No swipe actions, no haptics (04 §2.2) |
+| K4 | Switch (`k_switch`, `k_switch_row`) drawn and animated by the shared kit, with semantic switch state | Private follow, group flags | Phase 2 | GPU controls exist; tree/native adaptation and A16 parity needed; no separate UISwitch appearance |
+| K5 | Shared long-press menu, with owned background blur/lift (A18); native haptic effect | Copy, reply, mute, leave | Phase 2 | `NativeMenu` is compatible today; shared gesture/effect path needed |
+| K6 | Shared swipe-to-reply state, translated message, arc trim and spring completion (A07–A10); native light-haptic effect | Row 35 | Phase 2 | No swipe actions, no haptics (04 §2.2); GPU arc path needed |
 | K7 | Message from another author: avatar, name and time on the left, in the skin's bubble or unframed (D11) | Every conversation | Phase 2 | `NativeMessage` frames the person's own message only |
-| K8 | Confirm dialog (title, body, two actions) on the existing `role=dialog` sheet | Leave group, remove contact, Log out, replace key | Phases 1 to 4 | Sheet exists; no confirm variant |
+| K8 | Confirm component (title, body, two actions), shared modal/focus semantics; existing dialog as compatibility surface | Leave group, remove contact, Log out, replace key | Phases 1 to 4 | Sheet exists; shared confirm/transition variant needed |
 | K9 | Reply quote row above the composer, dismissible | Row 35 | Phase 2 | `NativeComposer` exists; no quote row |
 | K10 | Attachment thumbnail row in the composer | Row 40 | Phase 5 | No |
 | K11 | Enabling the composer Plus menu to hold New message, New group, Find groups, Attach | Row 15 | Phase 2 | Plus menu exists (New chat, Clear draft); new items are module data (verify in the issue whether they need a binary) |
@@ -360,6 +382,10 @@ one 44-high underline (04 §1.4).
 
 From 03 B3, with C2 and C4 applied. **E** existing kit component, **X**
 extend, **N** new in `components/kit`. Native column names the Phase 0 item.
+Existing Swift types below identify compatibility views. Under C13, new
+permanent visual/motion implementations are shared GPU components, with
+platform services and text/semantic adapters; the table does not require a
+second Swift/Android widget implementation.
 
 | Arcade component | Kit | Cat. | Native |
 | --- | --- | --- | --- |
@@ -404,19 +430,22 @@ the mono skin, so `/components` shows it and the web gets it too
 
 ### 4.3 Signature elements
 
-03 B2.3's calls stand, with two updates from C2 and C3.
+The table records production presentation choices. C12 and audit 06 supersede
+any inference that “Drop” removes an animation from the library: every source
+animation remains required in the reusable gallery, including glow, typing,
+custom spinner and popup blur. C13 replaces permanent per-platform painting.
 
 | Element | Call |
 | --- | --- |
-| Corner-bracket frame | Keep, in gray, through the skin's frames on `NativeFrameView` (already native) |
-| Frame enter animation | Keep as the skin's enter motion (0.55 s, stagger 0.035 s, reduced-motion fallback) |
-| Frame press highlight | Simplify to one fill step (SURFACE to PRESSED) |
-| Glow (wordmark, spinner, gradient, spotlight) | Drop |
+| Corner-bracket frame | Keep in gray through shared frame geometry; `NativeFrameView` is the current compatibility view |
+| Frame enter animation | Preserve A01's 200 ms source specimen; the production skin can retain its 0.55 s enter and 0.035 s stagger, with reduced motion |
+| Frame press highlight | Shared animated highlight (A02); preserve 200 ms source specimen, skin supplies production gray values |
+| Glow (wordmark, spinner, gradient, spotlight) | Optional on product screens; retain the full reusable effect and motion specimens (06) |
 | City background | Drop (D15) |
 | Faerie persona and image | Drop; the agent uses the OpenAgents mark (D13) |
-| Typing GIF | Replace with the waiting state `NativeMessage` already shows |
+| Typing GIF | Keep the existing waiting state in product chat; A23's animated-image playback remains required in the gallery |
 | Swipe to reply with donut | Keep, in gray (K6) |
-| Long-press blur menu | Simplify to `NativeMenu` on long press (K5) |
+| Long-press blur menu | Shared lifted popup and background blur (A18); `NativeMenu` is the compatibility path and system-owned menus remain platform services |
 | Translucent cyan glass | Flat grays (4.1) |
 | Square bubbles with a timestamp | Keep the frame idea: main already frames the person's message (C3); D11 |
 | Space Grotesk, Protomolecule | Replace (4.4) |
@@ -474,9 +503,27 @@ Owner abbreviations (section 6): **NO** Nostr owner, **iOS** the iOS thread,
 
 ### Phase 0: native foundation (one TestFlight build)
 
+**First: the component and motion foundation.** These are additional planned
+work packages, not filed issues. Follow the full requirements in
+`components/rendering.md`; none is proven by this documentation change.
+
+| Work package | Scope | Done when |
+| --- | --- | --- |
+| P0-R0 | Versioned surface/motion/resource/semantic contracts and source fixtures | All A01–A28 mapped, source defaults/bugs recorded, new shapes have `proto/` owners before implementation |
+| P0-R1 | Extend shared paint/backend and ARWES motion | Arcs/images, transform/clip/opacity groups, gradients/blur, springs, gestures and cancellation have numeric/render evidence |
+| P0-R2 | One animated component gallery on Metal, Android Vulkan and WebGPU | Every A row works, including dormant effects; grayscale/reduced-motion variants and per-platform pictures; no per-app widget copy |
+| P0-R3 | Native text and semantic bridges | Real iOS/Android IME, code AutoFill, selection, fallback fonts, VoiceOver/TalkBack, focus and bounded realization pass |
+| P0-R4 | DOM GPU islands and three scene views | HTML text plus GPU components, three independent worlds, clipping/input/audio/budget/lifecycle/device-loss checks; authored-realm sandbox intact |
+
+The app migration is incremental after these capabilities qualify. Keep
+current UIKit fixes shipping while this work proceeds. Nostr service work
+can progress independently of the component migration.
+
 Ends with: a TestFlight build whose Settings shows "Your Nostr key" with the
 phone's npub, and a hidden diagnostics row that connects to
 relay.openagents.com, authenticates (NIP-42) and round-trips a signed event.
+The rendering foundation must also pass its actual-host gates before the
+build selects GPU components by default.
 Blocked by D1, D2, D3, D4, D5, D6, D7, D8.
 
 | Issue | Scope | Done when | Owner | Depends on |
@@ -488,10 +535,10 @@ Blocked by D1, D2, D3, D4, D5, D6, D7, D8.
 | P0-5 Gift-wrap keys and random | Add N4 and N5. | A NIP-17 message built by `nip17_send` with these ops opens with `nip17_open` on another key; the ephemeral secret is zeroed after the call. | NO | P0-3, P0-4 |
 | P0-6 Nostr login ops | Add N8 to the op table; add N7 if D3 allows import. | The phone logs in with its key against the local API; `linkNostr` links it to an email account; import (if in scope) replaces the key after Face ID and a confirm. | iOS | D3 |
 | P0-7 Clock and photo pick | Answer 04 open question 10 and add N9 only if needed; add N10. | The module stamps `created_at` from the wall clock; a picked photo returns bytes and a type to the module. | iOS | — |
-| P0-8 Image and avatar roles | K1, K2 (with the D8 fallback), drawn in `NativeChrome`. | A screen with 50 avatars and 5 images loads from a local server, caches, and passes `stock-style.coax`. | iOS (PA writes the kit side) | D8 |
-| P0-9 Rows, switch, menu, swipe, confirm, reply bar | K3 to K9 and K11, each a kit component with its native control; haptic inside K6 and K5. | The `/components` page shows each on the web; XCTest drives each on the simulator; `stock-style.coax` passes. | PA (kit) + iOS (native) | D7 |
+| P0-8 Image and avatar components | K1, K2 with D8 fallback on the shared paint/resource path; native decode/cache/input effects only. | 50 avatars and 5 images cache and draw on the shared gallery's targets; failure/loading semantics and resource caps pass. | PA (kit) + iOS (host) | D8, P0-R1 |
+| P0-9 Rows, switch, menu, swipe, confirm, reply bar | K3 to K9 and K11 with shared motion/paint; native text/semantic/haptic adapters. | Same component specimens and every relevant A row pass on Metal/Vulkan/WebGPU, with actual mobile editing/accessibility and style checks. | PA (kit) + iOS (host) | D7, P0-R2, P0-R3 |
 | P0-10 Fix the stale send colour line | Edit `coax/native/composer.md` line 50 to name the ACTION button. | The doc names no non-gray colour. | PA | — |
-| P0-11 Contract and release | Collect P0-1 to P0-9 in one runtime fingerprint; runtime oracle and XCTest green; TestFlight upload with release notes; record verification JSON. | The build is on TestFlight and an Update to it from main applies. | iOS | all above |
+| P0-11 Contract and release | Collect qualified P0 rendering/native capabilities in one runtime fingerprint; runtime oracle and actual-host checks; TestFlight upload and verification record. | The embedded package is current, a compatible Update applies/rolls back, old runtime feeds still work, and no unqualified renderer is made default. | iOS | all above, P0-R0 to P0-R4 for the full rendering target |
 
 Headless: P0-3 to P0-5 vectors (Coax side), kit components on `/components`,
 P0-10. Device or simulator: P0-1, P0-2, P0-6 to P0-9, P0-11.
@@ -638,6 +685,15 @@ build mixes two threads' risk and the next build's date is not ours. Blocks:
 P0-11.
 
 **D3. Identity.** (02 B14.5, 02 Q7; 03 B5.7; 04 Q5, risk 8; 01 row 9)
+
+**Subsequent owner decision:** account-managed identity keys are approved and
+deployed (`docs/protocol/account-identity-v1.md`). The phone-first options
+below predate that decision. Do not ask the owner to choose custody again or
+silently mint/link a replacement canonical identity. Reconcile messaging's
+sign/encrypt/import contracts with managed and existing independently linked
+identities; the current managed-identity API does not expose private keys or
+arbitrary signing. That protocol work is separate from the rendering choice.
+
 - (a) Key: keep only the phone's `nsec-v1`, or also allow importing an nsec
   or hex key (Arcade's "Enter access key")?
 - (b) Multiple identities per phone?
@@ -722,8 +778,9 @@ Options: (a) keep main's framed bubble (the skin's dim bubble frame) for the
 person's own message and frame others' messages the same way; (b) rounded
 bubbles.
 Recommendation: (a). Reason: main already frames, it matches `/chat` and
-Arcade's square framed bubbles, and rounded corners outside
-`NativeChrome.swift` fail the style check. Blocks: K7.
+Arcade's square framed bubbles. Shared GPU components take the frame and its
+motion from the skin; the Swift compatibility path keeps its existing style
+gate. This does not remove any source-parity animation specimen. Blocks: K7.
 
 **D12. Marketplace and listings?** (01 rows 56 to 59; 02 B14.6; 03 B5.8; 04 Q9)
 Options: (a) defer; when it returns, NIP-99 listings priced in BTC or sats,
@@ -765,6 +822,9 @@ virtual list in `apps/shared/native` in the Phase 0 build.
 Recommendation: (a), and measure busy NIP-29 groups in Phase 4 before
 deciding on a second build. Reason: paging is how history already works
 within the 4096-node cap. Blocks: nothing in Phase 0 under (a).
+The new GPU runtime must additionally realize/layout only bounded visible
+rows and preserve text/semantic identity (P0-R3); paging is not permission
+to reshape and repaint the whole loaded history on each animation frame.
 
 ### Settled by main or by this plan (from the source lists)
 

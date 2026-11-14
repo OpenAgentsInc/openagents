@@ -5819,6 +5819,16 @@ draw it:
   stay in Coax. A page names its module (`data-app`), and its app's
   `build.sh` builds that module.
 
+The owner's 2026-11-14 component-composition request extends the text-surface
+model with **explicit GPU islands** (proposed; `components/rendering.md`). A
+Coax-built DOM subtree may mount a shared GPU component or scene view while
+its surrounding document remains browser-rendered text. The DOM applier must
+own those mounts; no hand-written visible HTML, JS widget state or arbitrary
+CSS overlay is introduced. Geometry, clipping, focus, accessibility and input
+ownership must agree across the boundary. Authored realms retain the isolated
+realm-origin/`realm-frame.v1` policy below; composition does not grant texture,
+cookie or credential access across origins.
+
 On both, there is no hand-written visible HTML, no CSS-styled overlay and no
 DOM UI built by JavaScript outside `dom-host.js`'s applier. There is still
 no npm, bundler or JavaScript framework. TypeScript exists only where the
@@ -5826,7 +5836,9 @@ browser's crypto and Nostr plumbing need it (`coax/web/unlock/`: phrase
 checks, NIP-44, NIP-59, NIP-42, key storage); it hands results to Coax as
 data and draws nothing.
 
-Allowed HTML, none of it visible to a WebGPU visitor:
+On a full GPU surface, allowed HTML (none visible inside that surface to a
+WebGPU visitor; DOM text surrounding a declared island follows the text-surface
+rule above):
 - the `<canvas>`;
 - text for search engines, agents and screen readers, clipped out of sight
   while the GPU draws (the `.gpu main` rule);

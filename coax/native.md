@@ -9,6 +9,13 @@ Written 2026-11-13. Status: framework specification with the initial native
 iOS account surface implemented by /root on 2026-11-13. Other target and
 verification stages below remain proposals, not claims about this release.
 
+Rendering assessment, 2026-11-14: [shared component rendering](../components/rendering.md)
+recommends GPU visuals for the new native component set on iOS and Android,
+with native text/accessibility services, and GPU islands within DOM web pages.
+The shipped UIKit/JSC starter remains the compatibility path until the new
+gallery, input/semantics and multi-scene gates pass. This changes the target
+architecture, not the installed runtime or its current capabilities.
+
 The OpenAgents desktop replacement is a planned consumer on **Mac and Linux
 first, Windows later**. Its environment service and cross-computer behavior
 are specified in the [environment application profile](../docs/protocol/environments-claude-and-world-editing.md#31-one-desktop-product-two-independent-lifetimes).
@@ -16,8 +23,8 @@ are specified in the [environment application profile](../docs/protocol/environm
 ### Alignment with Exact
 
 Exact's iOS host presents UIKit controls; its web host presents DOM elements.
-WebViews are optional content surfaces, not the app renderer. That is also
-the Coax Native default. A native app must not substitute a full-screen
+WebViews are optional content surfaces, not the app renderer. Those UIKit/DOM
+projections are also the shipped Coax Native starter paths. A native app must not substitute a full-screen
 WebView merely to make executable OTA delivery convenient.
 
 The initial native-control execution profile compiles Coax through the
@@ -103,7 +110,12 @@ surface: shared GPU components for custom visuals, DOM for browser text,
 native controls for native forms, and system-owned presentations for OS
 services. The initial native text/control projection is implemented; this is not a
 claim that the GPU component kit runs as UIKit controls.
-Realm rendering stays GPU-first.
+Realm rendering stays GPU-first. The 2026-11-14
+[component rendering assessment](../components/rendering.md) extends this:
+the recommended new native visual target is the shared GPU component backend,
+retaining platform editing/accessibility and system services. Browser text
+stays DOM and can contain explicit GPU component/scene islands. It is not an
+all-canvas replacement for the browser's text and document semantics.
 
 ## Layers and execution ownership
 
@@ -317,9 +329,10 @@ An SDK presentation failure cannot roll back an already completed payment.
 
 | Surface | Presentation | Required behavior |
 | --- | --- | --- |
-| Native form or list | Proposed UIKit/AppKit controls; Android controls as separately qualified | Shared actions and route state; native text, scrolling, keyboard and accessibility |
-| Custom app UI or realm HUD | Existing component GPU backend and skins | Shared layout, edit buffer, hit testing and accessibility projection |
+| Existing native-control surface | Shipped UIKit projection; other control adapters separately qualified | Compatibility, native editing and accessibility while migration is qualified |
+| New native component UI or realm HUD | Recommended shared component GPU backend and skins | Shared layout/motion/paint; native IME/AutoFill, semantic bridges, selection, hit testing and bounded scrolling are required |
 | Browser text surface | Existing DOM backend and frames kit | Actual browser text input, selection and accessibility; no canvas imitation of these |
+| GPU component within browser text | Proposed explicit GPU-island mount in the Coax tree | DOM owns outer layout; shared GPU components own the interior; one input/semantic owner, clipping and lifecycle |
 | Realm | Existing engine host contract | Preserve room authority, render admission, replay and lifecycle |
 | Terminal | Existing terminal backend | Semantic text/actions with declared visual omissions |
 | System service | OS-owned picker, passkey, biometric, share or permission UI | Typed request/result, cancellation and ownership; never reimplement the system prompt |
@@ -330,6 +343,13 @@ that is unavailable, only if that declared fallback preserves the required
 input and accessibility contract. Otherwise the surface refuses explicitly.
 Changing presentation at runtime preserves app state and retires old owners.
 Terminal support does not imply a terminal can play a realm or scan a camera.
+
+The [rendering contract](../components/rendering.md) defines CPU motion versus
+GPU drawing, native/DOM editing boundaries, texture/effect admission and several
+scene views. It reuses `components/` and the existing hosts. Installing that
+runtime needs a binary/fingerprint change; compatible component logic and
+motion descriptions can then use Updates. No new rendering capability is
+implied for existing fingerprints.
 
 The first native-control set is text, button, field, toggle, scroll and keyed
 list. Implement the semantics needed by the first consumer, not the entire

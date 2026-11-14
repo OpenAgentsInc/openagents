@@ -1,5 +1,12 @@
 # Components: one component system for every OpenAgents and Metaverse app (spec, draft)
 
+**Rendering assessment, 2026-11-14:** [rendering.md](rendering.md) specifies
+the recommended GPU visual target for new Coax Native components, native
+input/accessibility adapters, DOM pages with GPU islands, all Arcade motion,
+and several embedded scene views. It extends the layers below; it is not a
+claim that the shipped UIKit app or Android host already provides that path.
+New controls and animations belong here once, not in an app-private kit.
+
 Written 2026-11-10. Status: Phase 1 (the move), Phase 2 (the layers and
 the chat set on them) and Phase 3 (skins and the gallery) are done: the
 chat components paint display lists in their skin's roles, colours, faces
@@ -36,7 +43,8 @@ Golemancers' Workshop), the OpenAgents Metaverse Engine, Coder's terminal and th
 ```
 components/
   spec.md          this file
-  README.md        how to use a component and add one (not written yet)
+  README.md        how to find, use and extend the shared components
+  rendering.md     GPU/native/DOM composition, motion and scene-view requirements
   core/            what a component is: state and rules, no pixels
                    (color, text, edit, markdown, syntax, hud: the game HUD's rules)
   layout/          sizes and positions from state, a width and a skin
@@ -228,7 +236,7 @@ defect, and a check finds it.
   The Mac apps (OpenAgents and the Metaverse Engine) build the emitted Metal; the
   hand-written `Zeron.metal` is gone (2026-11-10, #13156), and the Mac
   goldens pass with it (at most 0.05% of pixels off, at glyph edges).
-- **`backend/dom.coax`** (decided 2026-11-11, not built): the element table
+- **`backend/dom.coax`** (decided 2026-11-11; built since that decision): the element table
   to browser elements, as a list of changes keyed by id that the web host
   applies. The browser lays out and draws the text. The web chat is its
   first user
@@ -246,10 +254,41 @@ A realm draws components in a pass of its own after the scene, with the
 component shader. Existing HUD parts keep their own pass until they move
 (Phase 5).
 
-The host supplies three things and no more: a glyph and icon atlas with its
-metrics, a place to put vertices, and input events. That contract is written
-once in `components/backend/host.h`, and is what the shared hosts of the apps
-roadmap implement.
+The original host face supplies atlas metrics, vertex storage and input.
+Its actual shared C contract is `apps/shared/host/linux/ui-host.h`, reused by
+the Apple and Android carriers; `components/backend/host.h` was an intended
+path and was never created. [Rendering and composition](rendering.md) extends
+those owners for motion, textures, semantics, input methods and scene views;
+it does not add another host or copy their layout/paint rules.
+
+### Motion and composed surfaces (2026-11-14)
+
+Motion is component state evaluated by shared Coax CPU code and rendered by
+the chosen backend. Extend `core/arwes/motion.coax`; keep skin timings and
+shared gesture/cancellation rules. GPU drawing alone does not free animations
+from a blocked application loop. The proposed installed presentation runtime
+must sample retained animation requests without per-property JSC/Swift calls.
+
+The paint/backend extension needs arcs, images, transform/opacity groups,
+nested clips, sweep/radial gradients and bounded offscreen blur/composition.
+`PRIM_ARC` and `PRIM_IMAGE` are currently skipped by `gpu_draws`; their names
+in the primitive list above are not evidence of a working implementation.
+Keep one source for shader math; additional effect passes are generated from
+Coax. Preserve existing vertex/profile consumers through versioned adapters.
+
+The component tree supplies one semantic identity for pixels, presented
+hit-test bounds, selection, focus, accessibility and automation. Native input
+methods and system presentations remain platform adapters. DOM text remains
+DOM; an explicitly mounted subtree can use a GPU island. A scene-view
+component consumes engine-owned output through the app compositor without
+loading the engine into the component layers. Several worlds require isolated
+lifetimes, shared resource budgets and explicit input/audio ownership.
+
+Every animation in [the Arcade catalog](../docs/arcade/06-rendering-and-animation.md)
+needs a shared gallery specimen, including dormant/demo animations. Product
+choices to omit glow, a splash or tabs do not remove library capability.
+See [delivery and qualification](rendering.md#delivery-order-and-acceptance)
+before selecting the GPU presentation as the mobile default.
 
 ## What a component is
 
