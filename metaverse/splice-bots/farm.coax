@@ -62,6 +62,39 @@ ff_push :: (x: f32, z: f32, r: f32) -> Point {
   if lo(inner, outer) < pz { return v3(ifx inner < outer then FF_XW - r else ff_x1() + r, 0, z); }
   return v3(x, 0, ifx dz < 0 then zc - FF_HZ - r else zc + FF_HZ + r);
 }
+// The aisles as a graph, for a walker that goes round the rows (Digger, director.coax d_route): a node at
+// each end of each aisle, FF_END m past the rows' ends, the aisle north of the north row and south of the
+// south row too; links along each aisle and round each end from one aisle to the next. Node 2a is aisle
+// a's west end, 2a + 1 its east end, the aisles from the north (metaverse-engine/world/path-graph.coax).
+FF_AISLES :: FF_ROWS + 1;
+FF_NODES :: FF_AISLES * 2;
+FF_LINKS :: FF_AISLES + FF_ROWS * 2;
+FF_END :: 4.0f32;                // m past a row's end where its aisles' corner stands
+ff_aisle_z :: (a: int) -> f32 { return FF_ZN + (cast(f32) a - 0.5) * FF_ROW_DZ; }
+ff_aisles :: (nodes: [] f32, links: [] int) {
+  for a: 0..<FF_AISLES {
+    nodes[a * 4] = FF_XW - FF_END; nodes[a * 4 + 1] = ff_aisle_z(a);
+    nodes[a * 4 + 2] = ff_x1() + FF_END; nodes[a * 4 + 3] = ff_aisle_z(a);
+    links[a * 2] = a * 2; links[a * 2 + 1] = a * 2 + 1;   // along the aisle
+  }
+  for r: 0..<FF_ROWS {
+    k := FF_AISLES * 2 + r * 4;
+    links[k] = r * 2; links[k + 1] = r * 2 + 2;           // round the row's west end
+    links[k + 2] = r * 2 + 1; links[k + 3] = r * 2 + 3;   // and its east end
+  }
+}
+// (x, z) out of a row's whole band (its lines and the gaps between them), to its nearer side or past
+// its nearer end: where a walker that can't climb onto the glass waits for her when she is on it.
+ff_off_rows :: (x: f32, z: f32, r: f32) -> Point {
+  if x < FF_XW - r || x > ff_x1() + r { return v3(x, 0, z); }
+  row := clamp_i(cast(int) floor((z - FF_ZN) / FF_ROW_DZ + 0.5), 0, FF_ROWS - 1);
+  zc := FF_ZN + cast(f32) row * FF_ROW_DZ; half := cast(f32) (FF_PER / 2) * FF_LINE_DZ + FF_HZ + r;
+  dz := z - zc; pz := half - abs(dz);
+  if pz <= 0 { return v3(x, 0, z); }
+  inner := x - (FF_XW - r); outer := ff_x1() + r - x;
+  if lo(inner, outer) < pz { return v3(ifx inner < outer then FF_XW - r else ff_x1() + r, 0, z); }
+  return v3(x, 0, ifx dz < 0 then zc - half else zc + half);
+}
 // The low edge of a bank's glass: below it she is held out of the line, above it she stands on it.
 ff_low :: () -> f32 { return FF_TOP - FF_HZ * sin(SOLAR_TILT) / cos(SOLAR_TILT); }
 // The top of the line under (x, z) as a floor (metaverse-engine/physics/stand.coax), after k in out: how

@@ -449,16 +449,32 @@ bot_toward :: (g: [] SpGame, tx: f32, tz: f32, speed: f32, dt: f32) -> f32 {
   if d > 0.25 { g[0].bot_yaw = atan2(dx, dz); }
   return d - step;
 }
+// Digger's step toward (tx, tz) (bot_toward), ending out of the robots' bodies (g_apart): how far is left.
+d_apart_step :: (g: [] SpGame, tx: f32, tz: f32, speed: f32, dt: f32) -> f32 {
+  ox := g[0].bot_x; oz := g[0].bot_z;
+  left := bot_toward(g, tx, tz, speed, dt);
+  q := g_apart(g, ox, oz, g[0].bot_x, g[0].bot_z, T_BOT_R, FOES); g[0].bot_x = q.x; g[0].bot_z = q.z;
+  return left;
+}
 g_bot :: (g: [] SpGame, dt: f32) {
   if !g[0].bot || (d_busy(g) && g[0].bot_state == BOT_FOLLOW) { return; }   // on an errand of his own, or powered down (director.coax)
   if sb_holds_digger(g) { return; }   // his core is in the drill mech, or he is fielded in a battle (splice-battle.coax)
   face := ifx g[0].bot_wall then g[0].at.wall_z + 1 else g[0].at.rubble_z + 1;
   if g[0].bot_state == BOT_FOLLOW {
     // always next to you: at your left, a little ahead (g_bot_spot), never between the camera and you (camera.coax)
-    h := cm_follow_spot(g, g[0].bot_x, g[0].bot_z, T_BOT_R, T_BOT_LEFT, -T_BOT_BACK); tx := h.x; tz := h.z;
+    h := cm_follow_spot(g, g[0].bot_x, g[0].bot_z, T_BOT_R, T_BOT_LEFT, -T_BOT_BACK);
+    if g[0].zone == Z_MINE { h = ff_off_rows(h.x, h.z, T_BOT_R); }   // she is up on the glass: he waits beside the row
+    // round a row by the aisles when one stands between them, never through it (director.coax d_toward)
+    w := d_toward(g, h.x, h.z, dt); round := w.ok && (w.x != h.x || w.z != h.z);
+    tx := ifx w.ok then w.x else h.x; tz := ifx w.ok then w.z else h.z;
     d := dist2(g[0].bot_x, g[0].bot_z, tx, tz);
-    if d > 0.15 { left := bot_toward(g, tx, tz, T_FOLLOW * cm_follow_pace(g, g[0].bot_x, g[0].bot_z, T_BOT_R, clamp(d / 1.5, 0.15, 1.6)), dt); if left > 12 { g[0].bot_x = tx; g[0].bot_z = tz; } }
+    // round a row, and back to her side after it, as fast as he goes: never a jump to her side across it
+    if round { g[0].dr[0].rt_back = true; }
+    if g[0].dr[0].rt_back && !round && dist2(g[0].bot_x, g[0].bot_z, h.x, h.z) < 12 { g[0].dr[0].rt_back = false; }
+    if g[0].dr[0].rt_back { _ := d_apart_step(g, tx, tz, T_FOLLOW * 1.6, dt); }
+    else if d > 0.15 { left := d_apart_step(g, tx, tz, T_FOLLOW * cm_follow_pace(g, g[0].bot_x, g[0].bot_z, T_BOT_R, clamp(d / 1.5, 0.15, 1.6)), dt); if left > 12 { g[0].bot_x = tx; g[0].bot_z = tz; } }
     q := cm_keep_off(g, g[0].bot_x, g[0].bot_z, T_BOT_R);
+    if g[0].zone == Z_MINE { q = ff_push(q.x, q.z, T_BOT_R); }   // pushed off her, never into a line of the farm
     if g[0].zone == Z_MINE { q = sb_boss_off(g, q.x, q.z, T_BOT_R); }   // never in the boss's body or tail (splice-battle.coax)
     g[0].bot_x = q.x; g[0].bot_z = q.z;
     return;
@@ -499,10 +515,32 @@ g_hurt :: (g: [] SpGame) {
   g[0].hearts -= 1; g[0].hit_cool = T_HIT_COOL; g[0].flash = 0.35; g_say(g, MSG_HIT);
   if g[0].hearts <= 0 { g[0].mode = M_BANNER; g[0].banner = B_CUT; g[0].banner_t = T_BANNER; }
 }
+T_FOE_R :: 0.45f32;   // m: a robot's body on the ground
 g_foe_walls :: (g: [] SpGame, i: int) {
-  q := sl_push(g, g[0].fx[i], g[0].fz[i], 0.45, true);
-  q = ga_push(g, q.x, q.z, 0.45);
+  q := sl_push(g, g[0].fx[i], g[0].fz[i], T_FOE_R, true);
+  q = ga_push(g, q.x, q.z, T_FOE_R);
   g[0].fx[i] = q.x; g[0].fz[i] = q.z;
+}
+// The bots' bodies on the ground, x, z, radius each: robot i at i (the ones in play, at the farm and the
+// garage), Digger at FOES (when his body is his own: not his core in the drill mech, not fielded).
+G_BODIES :: FOES + 1;
+g_bodies :: (g: [] SpGame, out: [] f32) {
+  for i: 0..<G_BODIES { out[i * 3] = 1000000; out[i * 3 + 1] = 1000000; out[i * 3 + 2] = 0; }
+  if g[0].zone == Z_MINE { for i: 0..<FOES { if g_foe_in(g, i) { out[i * 3] = g[0].fx[i]; out[i * 3 + 1] = g[0].fz[i]; out[i * 3 + 2] = T_FOE_R; } } }
+  if g[0].bot && !sb_holds_digger(g) { out[FOES * 3] = g[0].bot_x; out[FOES * 3 + 1] = g[0].bot_z; out[FOES * 3 + 2] = T_BOT_R; }
+}
+// A bot of radius r that stood at (ox, oz) and stepped to (x, z), out of the other bots' bodies (`skip` its
+// own): the engine's steering keeps bodies apart (metaverse-engine/ai/steer.coax nav_apart_at), so a robot
+// that steps into Digger in a close fight stops at his side, and he at a robot's.
+g_apart :: (g: [] SpGame, ox: f32, oz: f32, x: f32, z: f32, r: f32, skip: int) -> Point {
+  b: [G_BODIES * 3] f32; g_bodies(g, b[..]);
+  p := nav_apart_at(r, ox, oz, x, z, b[..], skip);
+  return v3(p[0], 0, p[1]);
+}
+// Robot i's step from (ox, oz) settled: out of the other bots, then out of the walls.
+g_foe_settle :: (g: [] SpGame, i: int, ox: f32, oz: f32) {
+  q := g_apart(g, ox, oz, g[0].fx[i], g[0].fz[i], T_FOE_R, i); g[0].fx[i] = q.x; g[0].fz[i] = q.z;
+  g_foe_walls(g, i);
 }
 // The tail's angle round the boss, 2.6 its heading (sb_arm_angle): behind it until the sweep, then half way
 // round over its frame's x side to its head, lying there while it rests. Facing east at home, that is the
@@ -681,6 +719,7 @@ g_foes_step :: (g: [] SpGame, dt: f32) {
       if out { continue; }
     }
     if g[0].fstag[i] > 0 { g[0].fstag[i] -= dt; g[0].ak[0].ft[i] = 0; continue; }   // a stun or a knock breaks off its blow
+    ox := g[0].fx[i]; oz := g[0].fz[i];
     imperial := i >= F_RAIDERS;
     pl := sc_plan(g[0].c[..], i, g_phase(g));
     d := dist2(g[0].px, g[0].pz, g[0].fx[i], g[0].fz[i]);
@@ -695,7 +734,7 @@ g_foes_step :: (g: [] SpGame, dt: f32) {
     if !spoke && g[0].fflee[i] && (d > T_GIVE_UP || g[0].unseen) { g[0].fflee[i] = false; }
     if !spoke && g[0].fhost[i] && pl.act == NPD_GUARD && pl.n > 0 && dist2(g[0].fx[i], g[0].fz[i], mp_m(pl.x[0]), mp_m(pl.z[0])) > hi(2 * see, 4) { g[0].fhost[i] = false; }
     // near enough, it strikes: wind-up, lock, blow, recovery, standing its ground (splice-battle.coax sb_blow, #13552)
-    if sb_blow(g, i, d, spoke, dt) { g_foe_walls(g, i); continue; }
+    if sb_blow(g, i, d, spoke, dt) { g_foe_settle(g, i, ox, oz); continue; }
     lead := ifx pl.act == NPD_FOLLOW && pl.lead >= 1 && pl.lead <= FOES then pl.lead - 1 else i;
     gl := mp_goal(pl, g[0].t, cast(f32) i * 1.7, i, g[0].fx[lead], g[0].fz[lead], g[0].fyaw[lead]);
     tx := gl.x; tz := gl.z; sp := gl.speed;
@@ -710,7 +749,7 @@ g_foes_step :: (g: [] SpGame, dt: f32) {
       g[0].fx[i] += ex / el * lo(sp * dt, el); g[0].fz[i] += ez / el * lo(sp * dt, el);
       if sp * dt > 0.0001 { g[0].fyaw[i] = atan2(ex, ez); }
     } else if gl.look { g[0].fyaw[i] = atan2(gl.look_x - g[0].fx[i], gl.look_z - g[0].fz[i]); }
-    g_foe_walls(g, i);
+    g_foe_settle(g, i, ox, oz);
   }
 }
 
@@ -887,7 +926,7 @@ g_look :: (g: [] SpGame, dx: f32, dy: f32) {
 g_lock :: (g: [] SpGame, status: int) { d_lock(g, status); g[0].look_free = status != 1; }
 
 // A moment of the run to stand in (the page's message 640, "N"): for stills and checks of each beat.
-g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); g_foes(g); if g[0].bot { g_bot_home(g); } sb_stage(g, n); dv_stage(g, n); cm_stage(g, n); bl_stage(g, n); mr_stage(g, n); }
+g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); g_foes(g); if g[0].bot { g_bot_home(g); } sb_stage(g, n); dv_stage(g, n); cm_stage(g, n); bl_stage(g, n); mr_stage(g, n); d_stage(g, n); }
 g_stage_set :: (g: [] SpGame, n: int) {
   g_reset(g); g[0].mode = M_PLAY;
   if n == 0 { g[0].mode = M_TITLE; return; }

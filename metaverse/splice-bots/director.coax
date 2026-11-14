@@ -29,6 +29,7 @@
 #load "../../metaverse-engine/action/carry.coax";
 #load "../../metaverse-engine/action/vitals.coax";
 #load "../../metaverse-engine/ui/wheel.coax";   // Hold R: the bot wheel
+#load "../../metaverse-engine/world/route-graph.coax";   // the way round the solar rows by the aisles (d_route)
 #load "digger-orders.coax";   // commanding him: the selection, his answer, the marker, the drill's phases (#13552)
 
 T_ROOM :: 6;                 // inventory slots
@@ -88,6 +89,9 @@ SpDir :: struct {
   o_yes: bool; o_ack: f32 = 9;            // taken (a nod) or refused (a shake), seconds since
   o_kick: f32 = 9; o_kd: f32; o_burst: f32 = 9; o_plus: bool;   // a strike's lunge (+) or the break's recoil (-), the rubble flying
   o_look: f32;                            // his nose turned toward what he looks at
+  rt: RouteSeen; rt_t: f32; rt_gx: f32; rt_gz: f32;   // his way round the rows: the point he walks toward, seconds to the next plan, and the goal it is for (d_toward)
+  rt_back: bool;                          // following her, he came round a row and is still walking back to her side (g_bot)
+  rc: RouteSeen; rc_bx: f32; rc_bz: f32; rc_gx: f32; rc_gz: f32 = 100000;   // the reticle's last answer, and where he and the target stood for it (d_reach)
   bag_x: f32; bag_y: f32; bag_s: f32; bag_gap: f32;   // the grid as last drawn, for a click
 }
 
@@ -226,6 +230,11 @@ d_give_cell :: (g: [] SpGame, reach: f32) -> bool {
   g[0].cells -= 1; g[0].dr[0].cell = true; d_say(g, DS_CELL);
   return true;
 }
+// He lets an order at (tx, tz) go when she has gone off from both him and it: past T_LEASH from each. On
+// his way round a row he can be further from her than that while she stands by what she sent him to.
+d_leashed :: (g: [] SpGame, tx: f32, tz: f32) -> bool {
+  return dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) > T_LEASH && dist2(g[0].px, g[0].pz, tx, tz) > T_LEASH;
+}
 // His next step toward (tx, tz) would go into something solid: he never walks through it.
 d_held :: (g: [] SpGame, tx: f32, tz: f32) -> bool {
   bx := g[0].bot_x; bz := g[0].bot_z; d := dist2(bx, bz, tx, tz);
@@ -261,10 +270,12 @@ d_bot :: (g: [] SpGame, dt: f32) {
     i := d[0].task_i;
     gone := ifx i == PICKS then !d_sensor_here(g) else g[0].taken[i];
     if gone { d_task_end(g); return; }
-    if dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) > T_LEASH { d_give_up(g, DS_LEASH); return; }
     at := d_fetch_at(g, i);
-    if d_held(g, at[0], at[1]) { d_give_up(g, DS_BLOCKED); return; }
-    if bot_toward(g, at[0], at[1], T_BOT_GO, dt) > T_FETCH_REACH { return; }
+    if d_leashed(g, at[0], at[1]) { d_give_up(g, DS_LEASH); return; }
+    w := d_toward(g, at[0], at[1], dt);   // round the solar rows by the aisles when a row stands between
+    if !w.ok || d_held(g, w.x, w.z) { d_give_up(g, DS_BLOCKED); return; }
+    left := d_apart_step(g, w.x, w.z, T_BOT_GO, dt);
+    if w.x != at[0] || w.z != at[1] || left > T_FETCH_REACH { return; }
     if i == PICKS {
       // the first splice's payoff: his drill digs the sensor out (spins up with its sound, shudders, then the
       // break throws him back) and he senses twice as far
@@ -281,9 +292,11 @@ d_bot :: (g: [] SpGame, dt: f32) {
   if d[0].task == DJ_FIGHT {
     f := d[0].task_i;
     if f < 0 || f >= FOES || !g_foe_in(g, f) { d_task_end(g); return; }
-    if dist2(g[0].px, g[0].pz, g[0].fx[f], g[0].fz[f]) > T_LEASH { d_give_up(g, DS_LEASH); return; }
-    if d_held(g, g[0].fx[f], g[0].fz[f]) { d_give_up(g, DS_BLOCKED); return; }   // a robot that went behind something solid
-    if bot_toward(g, g[0].fx[f], g[0].fz[f], T_BOT_GO, dt) > T_STRIKE_REACH { return; }
+    if d_leashed(g, g[0].fx[f], g[0].fz[f]) { d_give_up(g, DS_LEASH); return; }
+    w := d_toward(g, g[0].fx[f], g[0].fz[f], dt);   // a robot that went behind a row: round it
+    if !w.ok || d_held(g, w.x, w.z) { d_give_up(g, DS_BLOCKED); return; }   // nothing joins them, or something solid stands in the way
+    left := d_apart_step(g, w.x, w.z, T_BOT_GO, dt);
+    if w.x != g[0].fx[f] || w.z != g[0].fz[f] || left > T_STRIKE_REACH { return; }
     d[0].task_t += dt;
     if d[0].task_t < T_STRIKE { return; }
     d[0].task_t = 0; d[0].o_kick = 0; d[0].o_kd = 1; snd_play(g, SND_HIT);   // his strike: a lunge
@@ -323,7 +336,11 @@ d_aim :: (r: VpRay, x: f32, y: f32, z: f32, size: f32, keep: f32, best: [] f32) 
 // The left click in play: Digger digs, picks up or attacks what she points at.
 d_point :: (g: [] SpGame) -> int {
   if !g[0].bot { return DP_NONE; }
-  p := d_pointed(g); d := g[0].dr[..];
+  return d_command(g, d_pointed(g));
+}
+// An order at p, as her click gives it: answered at once, and taken when he can.
+d_command :: (g: [] SpGame, p: DPoint) -> int {
+  d := g[0].dr[..];
   why := d_can(g, p);
   d_ack(g, p, why);   // answered at once: taken, or refused with the reason (digger-orders.coax)
   if why != DS_NONE { return DP_NONE; }

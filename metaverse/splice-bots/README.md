@@ -44,7 +44,7 @@ Run the checks:
 ```sh
 coax/bin/coax test metaverse/splice-bots/splice-bots.coax                 # everything, about 10 seconds
 coax/web/tool.sh metaverse/splice-bots/tools/content-check.coax metaverse/splice-bots/content/splice.content --check
-coax/remote/remote.sh run -- coax/remote/check.sh module splice   # the module builds inside its budget
+coax/remote/remote.sh run -- coax/remote/check.sh module splice-bots   # the module builds inside its budget
 ```
 
 ## State and authority
@@ -307,13 +307,23 @@ something, see what is selected and the command it gives, then click.
   orders' reach (`T_POINT_FAR`) says TOO FAR instead of nothing.
 - **Answering.** Every click gets an answer at once. He nods when he takes the order, and a ring
   snaps in round the target. When he can't, he shakes his head, the target gets a cross and the
-  line says why: nothing there, too far, no way there (something solid is in his straight way: what
-  holds her back holds him, the placed pieces, the garage's walls, the solar farm's rows, the peaks and
-  the garage's rim, `d_solid`), the bag full, him powered down, parts missing for a dig, or the hallway
-  wall only the drill mech breaks.
+  line says why: nothing there, too far, no way there (no way joins him and it: what holds her back
+  holds him, the placed pieces, the garage's walls, the solar farm's rows, the peaks and the garage's
+  rim, `d_solid`), the bag full, him powered down, parts missing for a dig, or the hallway wall only the
+  drill mech breaks.
 - **Going.** He goes to the target himself, at any distance his orders reach, and holds the order
-  until the target is gone or you are `T_LEASH` away. He never walks into something solid: a robot that
-  goes behind a row while he chases it, or a way that closes, and he stops short. The ring is dashed
+  until the target is gone or you have gone `T_LEASH` from both him and it. When a solar row stands
+  between, he goes round its nearer end by the aisles (`d_route`: the farm's aisles as a graph,
+  `ff_aisles`, searched by the engine's `metaverse_route_seen` in
+  `metaverse-engine/world/route-graph.coax`), never through the glass. He never walks into something
+  solid: a robot that goes where no way joins (down between two of a row's lines), or a way that
+  closes, and he stops short.
+- **Following.** With no order he keeps at your side. When you cross a row over its glass, he goes
+  round the row's end by the same aisles and walks back to your side at his top pace, never a jump to
+  it; while you stand on the glass he waits beside the row (`ff_off_rows`).
+- **Bodies.** His body and the robots' push apart (`g_apart`, the engine's `nav_apart_at` in
+  `metaverse-engine/ai/steer.coax`): a robot that comes at you through where he stands stops at his
+  side and goes round him, and he stops at a robot's body. The ring is dashed
   and turning while he is on his way, pulses while he works, and opens out green when he is done.
   When he lets an order go instead (you too far, no way any more, the bag full when he gets there),
   he shakes his head, the ring becomes a cross and the line says why: never the green of a job done.
@@ -335,7 +345,11 @@ Digger tunables:
 | `T_POINT_FAR` | 40 m | `director.coax` | How far his orders reach |
 | `T_POINT_SEE` | 80 m | `digger-orders.coax` | How far the reticle still names a thing, to say TOO FAR past `T_POINT_FAR`: twice his reach, so a robot across the farm is named, not silent |
 | `T_AIM_KEEP` | 1.6 | `digger-orders.coax` | How much wider the selected thing's cone is |
-| `T_LEASH` | 45 m | `digger-orders.coax` | He lets an order go when you are this far from him or his target |
+| `T_LEASH` | 45 m | `digger-orders.coax` | He lets an order go when you are this far from both him and his target (on his way round a row he can be further from you) |
+| `FF_END` | 4 m | `farm.coax` | How far past a row's end the aisles' corners stand, where he turns round it |
+| `T_ROUTE_PLAN` | 0.5 s | `digger-orders.coax` | How often he plans his way round again while a row stands between (and at each corner) |
+| `T_ROUTE_KEEP` | 1 m | `digger-orders.coax` | The reticle plans a way round again only when he or the target has moved this far |
+| `T_BOT_R`, `T_FOE_R` | 0.55, 0.45 m | `splice-game.coax` | His body and a robot's, as they push apart |
 | `T_GIVE_UP_FIGHT` | 25 m | `director.coax` | The bot wheel's reach for ATTACK and CHARGE |
 | `T_ACK` | 0.35 s | `digger-orders.coax` | The marker snaps in this long before it shows his progress |
 | `T_NOD` | 0.5 s | `digger-orders.coax` | His nod, or his head shake |
@@ -354,6 +368,9 @@ Digger tunables:
 
 For a playtest, open the dev page at `?stage=7&rubble` (the dev server only): you start with Digger
 built, the rubble ahead of you.
+`?stage=52` sends him for the Drill Arm across the farm's south row (he goes round its east end),
+`?stage=53` has you across a row from him (he follows round its west end), and `?stage=54` has an
+Imperial robot come at you through where he stands while he fights it (`d_stage`).
 
 ## Battles, the drill mech, the boss and the ending
 

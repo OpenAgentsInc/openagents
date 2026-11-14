@@ -83,7 +83,40 @@ d_way :: (g: [] SpGame, bx: f32, bz: f32, tx: f32, tz: f32) -> bool {
   }
   return true;
 }
-d_path :: (g: [] SpGame, p: DPoint) -> bool { a := d_at(g, p.kind, p.i); return d_way(g, g[0].bot_x, g[0].bot_z, a.x, a.z); }
+// His way from (bx, bz) to (tx, tz): straight when nothing stands in it, else round the solar rows by the
+// farm's aisles (farm.coax ff_aisles; the engine's way round, metaverse-engine/world/path-graph.coax): the
+// point to walk toward now and the whole way's length, or not ok when no way joins them.
+d_route :: (g: [] SpGame, bx: f32, bz: f32, tx: f32, tz: f32) -> RouteSeen {
+  if d_way(g, bx, bz, tx, tz) { return RouteSeen.{x = tx, z = tz, way = dist2(bx, bz, tx, tz), ok = true}; }
+  if g[0].zone != Z_MINE || sp_in_room(g) { return RouteSeen.{x = tx, z = tz}; }
+  n: [FF_NODES * 2] f32; l: [FF_LINKS * 2] int; ff_aisles(n[..], l[..]);
+  fs: [FF_NODES] bool; ts: [FF_NODES] bool;
+  for k: 0..<FF_NODES { fs[k] = d_way(g, bx, bz, n[k * 2], n[k * 2 + 1]); ts[k] = d_way(g, n[k * 2], n[k * 2 + 1], tx, tz); }
+  return metaverse_route_seen(n[..], l[..], v3(bx, 0, bz), v3(tx, 0, tz), fs[..], ts[..]);
+}
+// The reticle's answer, kept while he and the target stand within T_ROUTE_KEEP of where they stood for it:
+// asked every frame, it plans a way round only when one of them has moved.
+T_ROUTE_KEEP :: 1.0f32;   // metres
+d_reach :: (g: [] SpGame, tx: f32, tz: f32) -> bool {
+  d := g[0].dr[..]; bx := g[0].bot_x; bz := g[0].bot_z;
+  if dist2(bx, bz, d[0].rc_bx, d[0].rc_bz) < T_ROUTE_KEEP && dist2(tx, tz, d[0].rc_gx, d[0].rc_gz) < T_ROUTE_KEEP { return d[0].rc.ok; }
+  d[0].rc = d_route(g, bx, bz, tx, tz); d[0].rc_bx = bx; d[0].rc_bz = bz; d[0].rc_gx = tx; d[0].rc_gz = tz;
+  return d[0].rc.ok;
+}
+d_path :: (g: [] SpGame, p: DPoint) -> bool { a := d_at(g, p.kind, p.i); return d_reach(g, a.x, a.z); }
+// Where he walks now on his way to (tx, tz): the goal itself while the straight way is open, else the
+// point his last plan gave, planned again every T_ROUTE_PLAN, at it, or when the goal has moved.
+T_ROUTE_PLAN :: 0.5f32;   // seconds
+d_toward :: (g: [] SpGame, tx: f32, tz: f32, dt: f32) -> RouteSeen {
+  d := g[0].dr[..]; bx := g[0].bot_x; bz := g[0].bot_z;
+  d[0].rt_t -= dt;
+  if d_way(g, bx, bz, tx, tz) { d[0].rt_t = 0; return RouteSeen.{x = tx, z = tz, way = dist2(bx, bz, tx, tz), ok = true}; }
+  at := dist2(bx, bz, d[0].rt.x, d[0].rt.z) < 0.6;   // inside the graph's ARRIVE: the plan heads on past it
+  if d[0].rt_t <= 0 || at || dist2(tx, tz, d[0].rt_gx, d[0].rt_gz) > T_ROUTE_KEEP {
+    d[0].rt = d_route(g, bx, bz, tx, tz); d[0].rt_t = T_ROUTE_PLAN; d[0].rt_gx = tx; d[0].rt_gz = tz;
+  }
+  return d[0].rt;
+}
 // Why Digger can't take an order at p, or DS_NONE when he can.
 DS_BLOCKED :: 25; DS_MECH :: 26; DS_PARTS :: 27; DS_NEED_DRILL :: 28; DS_FAR :: 29; DS_LEASH :: 30;
 d_can :: (g: [] SpGame, p: DPoint) -> int {
@@ -152,6 +185,22 @@ d_ord_tick :: (g: [] SpGame, dt: f32) {
   work := ifx k == DP_DIG then g[0].bot_state == BOT_RUN else dist2(g[0].bot_x, g[0].bot_z, d[0].o_x, d[0].o_z) <= near + 0.3;
   want_s := ifx work then OS_WORK else OS_GO;
   if (s != OS_TAKEN || d[0].o_t >= T_ACK) && s != want_s { d_ord_set(g, want_s); }
+}
+
+// Digger's own stills (g_stage, ?stage=N): 52 she sends him for the Drill Arm across the farm's south
+// row, 53 she has crossed the row's glass and he follows round it, 54 an Imperial robot comes for her
+// through where he stands, 2.5 m off, as he fights it.
+d_stage :: (g: [] SpGame, n: int) {
+  if n < 52 || n > 54 { return; }
+  g_stage_set(g, 5); g_foes(g);
+  g[0].phase = PH_DAY; g[0].look_free = false; g[0].pitch = 0;
+  if n == 52 { g[0].px = -838; g[0].pz = -140; g[0].yaw = 0; g_bot_home(g); _ := d_command(g, DPoint.{kind = DP_PICK, i = H_ARM}); }
+  if n == 53 { g[0].px = -900; g[0].pz = ff_aisle_z(3) + 2; g[0].yaw = 0; g_bot_home(g); g[0].pz = ff_aisle_z(4) - 1; g[0].yaw = atan2(FF_XW - 4 - g[0].px, ff_aisle_z(3) - g[0].pz); }   // looking at the row's west end
+  if n == 54 {
+    f := F_RAIDERS; g[0].px = -700; g[0].pz = -60; g[0].yaw = PI; g_bot_home(g);
+    g[0].bot_x = -700; g[0].bot_z = -63; g[0].fx[f] = -700.05; g[0].fz[f] = -65.5; g[0].fhost[f] = true;
+    _ := d_command(g, DPoint.{kind = DP_FOE, i = f}); g[0].yaw = PI + 0.75;   // the camera sees them from the side
+  }
 }
 
 // ---- the drill card, in its phases
@@ -339,24 +388,48 @@ d_select_hud :: (g: [] SpGame, out: [] f32, q: Ui, at: int, cx: f32, cy: f32) ->
     g[0].dr[0].o_kick = T_KICK * 0.5; a = d_act(g[..]); #assert a.push < 0 && a.pitch < 0;   // thrown back, nose up
   }
 }
-#test "Digger's way: a solar row stops it and the reticle says so, a chase stops short of a row, a robot past his reach is TOO FAR, and an order he lets go is a cross with the reason" #steps 400000000 {
+#test "Digger's way: round a solar row's end to a part across it, never through the glass; NO WAY THERE where nothing joins; a chase goes round, and stops short where it can't; a robot past his reach is TOO FAR, and an order he lets go is a cross with the reason" #steps 2000000000 {
   g := [1] SpGame.[SpGame.{}];
   g_stage(g[..], 5); g[0].mode = M_PLAY; g[0].look_free = false;
   // in the aisle north of the farm's south row, the Drill Arm across it: no way there, before and after a click
   g[0].px = -838; g[0].pz = -140; g[0].yaw = 0; g_bot_home(g[..]);
   arm := DPoint.{kind = DP_PICK, i = H_ARM};
   #assert pick_z(g[..], H_ARM) > -121 && ff_line(-838, -126, 0) >= 0 && d_solid(g[..], -838, -126) && !d_solid(g[..], -838, -136);
-  #assert d_can(g[..], arm) == DS_BLOCKED && d_label(arm, DS_BLOCKED) == "NO WAY THERE";
-  // from the open ground south of the rows the same part is his
+  // no straight way, but round the row's nearer end by the aisles: PICK UP, and he goes and gets it
+  #assert !d_way(g[..], g[0].bot_x, g[0].bot_z, pick_x(g[..], H_ARM), pick_z(g[..], H_ARM));
+  #assert d_can(g[..], arm) == DS_NONE && d_label(arm, DS_NONE) == "PICK UP";
+  r := d_route(g[..], g[0].bot_x, g[0].bot_z, pick_x(g[..], H_ARM), pick_z(g[..], H_ARM));
+  #assert r.ok && r.x == ff_x1() + FF_END && r.z == ff_aisle_z(3);   // the east end is the nearer from x -838
+  {
+    d := g[0].dr[..]; d[0].task = DJ_FETCH; d[0].task_i = H_ARM; d[0].o_st = OS_GO; d[0].o_kind = DP_PICK; d[0].o_i = H_ARM;
+    east := -10000.0f32; steps := 0;
+    while steps < 2000 && !g[0].taken[H_ARM] {
+      d_bot(g[..], 1.0f32 / 60); steps += 1;
+      #assert !d_solid(g[..], g[0].bot_x, g[0].bot_z) && (d[0].task == DJ_FETCH || g[0].taken[H_ARM]);   // never in the glass, never given up
+      east = hi(east, g[0].bot_x);
+    }
+    #assert g[0].taken[H_ARM] && east > ff_x1() + T_BOT_R;   // went round past the row's east end and took it
+    g[0].taken[H_ARM] = false; g[0].have[H_ARM] = false; g[0].at.pick_x[H_ARM] = -838; g[0].at.pick_z[H_ARM] = -116;
+  }
+  // a part down between two of a row's lines: nothing joins it to the aisles, NO WAY THERE
+  g[0].px = -838; g[0].pz = -140; g_bot_home(g[..]);
+  g[0].at.pick_z[H_ARM] = ff_line_z(10) - FF_LINE_DZ * 0.5;
+  #assert !d_solid(g[..], -838, pick_z(g[..], H_ARM)) && d_can(g[..], arm) == DS_BLOCKED && d_label(arm, DS_BLOCKED) == "NO WAY THERE";
+  g[0].at.pick_z[H_ARM] = -116;
+  // from the open ground south of the rows the same part is his, straight
   g[0].px = -838; g[0].pz = -100; g_bot_home(g[..]); #assert d_can(g[..], arm) == DS_NONE;
   // and he never walks into a row for a part he senses: his sensor wants a way to it
   g[0].px = -838; g[0].pz = -134; g[0].bot_x = -838; g[0].bot_z = -131; g[0].at.pick_x[H_ARM] = -838; g[0].at.pick_z[H_ARM] = -127.5;
   #assert dist2(g[0].bot_x, g[0].bot_z, -838, -127.5) < d_range(g[..]) && d_sense(g[..]) == -1;   // in range, a line of glass between
   g[0].at.pick_z[H_ARM] = -134.5; #assert d_sense(g[..]) == H_ARM;                                  // in range in the open aisle: his
-  // a robot he chases goes behind the row: he stops short of the glass, shakes his head and says why
+  // a robot he chases goes behind the row: he goes round it, never through the glass
   g[0].bot_x = -860; g[0].bot_z = -136; g[0].px = -861; g[0].pz = -138; g[0].fx[5] = -860; g[0].fz[5] = -112;
   #assert g_foe_in(g[..], 5);
   d := g[0].dr[..]; d[0].task = DJ_FIGHT; d[0].task_i = 5; d[0].o_st = OS_GO; d[0].o_kind = DP_FOE; d[0].o_i = 5;
+  for i: 0..<60 { d_bot(g[..], 0.05); #assert !d_solid(g[..], g[0].bot_x, g[0].bot_z) && d[0].task == DJ_FIGHT; }
+  #assert g[0].bot_x > -860 + 15 && abs(g[0].bot_z - ff_aisle_z(3)) < 1;   // along the aisle toward the row's east end
+  // it goes down between two lines, where nothing joins: he stops short of the glass, shakes his head and says why
+  g[0].bot_x = -860; g[0].bot_z = -136; g[0].fz[5] = ff_line_z(10) - FF_LINE_DZ * 0.5;
   glitch := g[0].snd[0].fired[SND_GLITCH];
   for i: 0..<60 { d_bot(g[..], 0.05); #assert !d_solid(g[..], g[0].bot_x, g[0].bot_z); }
   #assert d[0].task == DJ_NONE && d[0].say == DS_BLOCKED && d[0].o_st == OS_NO && !d[0].o_yes && g[0].snd[0].fired[SND_GLITCH] == glitch + 1;
@@ -386,4 +459,60 @@ d_select_hud :: (g: [] SpGame, out: [] f32, q: Ui, at: int, cx: f32, cy: f32) ->
   for k: 0..<3 { g[0].have[k] = true; g[0].slot[k] = true; } g[0].strip[0] = H_MOVE; g[0].strip[1] = H_DRILL; g[0].strip_n = 2;
   g[0].px = out.x; g[0].pz = out.z; g_bot_home(g[..]);
   #assert d_can(g[..], s) == DS_NONE && objective(g[..]) == "Try the drill: look at the buried sensor and click. Digger digs it out.";
+}
+#test "following her, Digger goes round a solar row she runs across the top of, never through the glass, and never jumps to her side" #steps 2000000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 5); g[0].mode = M_PLAY; g[0].look_free = false;
+  for f: 0..<FOES { g[0].fhp[f] = 0; }   // the robots out of it
+  // in the aisle north of the south row, facing south across it
+  g[0].px = -900; g[0].pz = ff_aisle_z(3) + 2; g[0].yaw = 0; g_bot_home(g[..]);
+  #assert !d_solid(g[..], g[0].bot_x, g[0].bot_z) && !d_busy(g[..]) && g[0].bot_state == BOT_FOLLOW;
+  dt := 1.0f32 / 60; west := 10000.0f32; most := 0.0f32; on_top := false;
+  for k: 0..<60 * 40 {
+    // she runs south over the row's glass to the aisle beyond, in two seconds, and stands there
+    u := clamp01(cast(f32) k / 120); g[0].pz = ff_aisle_z(3) + 2 + u * (ff_aisle_z(4) - ff_aisle_z(3) - 2);
+    if ff_line(g[0].px, g[0].pz, 0) >= 0 && d_solid(g[..], g[0].px, g[0].pz) { on_top = true; }
+    bx := g[0].bot_x; bz := g[0].bot_z;
+    g_bot(g[..], dt);
+    #assert !d_solid(g[..], g[0].bot_x, g[0].bot_z);   // never in the glass
+    most = hi(most, dist2(bx, bz, g[0].bot_x, g[0].bot_z));
+    west = lo(west, g[0].bot_x);
+  }
+  #assert on_top;   // she was up on the row's glass on the way
+  #assert west < FF_XW - T_BOT_R;   // he went round the row's west end, the nearer from x -900
+  #assert most < T_FOLLOW * 1.6 * dt + 0.05;   // a walk all the way, never a jump to her side
+  #assert dist2(g[0].px, g[0].pz, g[0].bot_x, g[0].bot_z) < 3;   // and he is at her side again
+}
+#test "bots' bodies push apart: a robot that steps into Digger in a close fight stops at his side, and he at a robot's" #steps 400000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 5); g[0].mode = M_PLAY;
+  f := F_RAIDERS;   // an Imperial robot
+  #assert g_foe_in(g[..], f);
+  for j: 0..<FOES { if j != f { g[0].fhp[j] = 0; } }
+  // Digger between her and the robot, 2.5 m from it: it comes for her, straight through where he stands
+  g[0].px = -700; g[0].pz = -60; g[0].bot_x = -700; g[0].bot_z = -63; g[0].fx[f] = -700.05; g[0].fz[f] = -65.5; g[0].fhost[f] = true;
+  need := T_FOE_R + T_BOT_R - 0.001;
+  for k: 0..<300 {
+    g_foes_step(g[..], 1.0f32 / 60);
+    #assert dist2(g[0].fx[f], g[0].fz[f], g[0].bot_x, g[0].bot_z) >= need;
+  }
+  // it went round him toward her, never through
+  #assert dist2(g[0].fx[f], g[0].fz[f], g[0].px, g[0].pz) < SB_BLOW_START + 0.1;
+  // Digger steps toward a robot: he stops at its body
+  g[0].bot_x = -690; g[0].bot_z = -60; g[0].fx[f] = -687; g[0].fz[f] = -60;
+  for k: 0..<60 { _ := d_apart_step(g[..], -687, -60, T_BOT_GO, 1.0f32 / 60); #assert dist2(g[0].fx[f], g[0].fz[f], g[0].bot_x, g[0].bot_z) >= need; }
+  #assert dist2(g[0].fx[f], g[0].fz[f], g[0].bot_x, g[0].bot_z) < need + 0.05;   // right at its side
+  // and a robot in the drill mech's place or a downed one is no body: his core in the mech, he is none
+  b: [G_BODIES * 3] f32; g_bodies(g[..], b[..]);
+  #assert b[FOES * 3 + 2] == T_BOT_R && b[f * 3 + 2] == T_FOE_R && b[0 * 3 + 2] == 0;
+}
+#test "Digger's stills: 52 sends him round the south row, 53 has her across it from him, 54 has a robot 2.5 m off him as he fights it" {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 52);
+  #assert g[0].dr[0].task == DJ_FETCH && g[0].dr[0].task_i == H_ARM && g[0].dr[0].o_yes;
+  #assert !d_way(g[..], g[0].bot_x, g[0].bot_z, pick_x(g[..], H_ARM), pick_z(g[..], H_ARM));
+  g_stage(g[..], 53);
+  #assert !d_way(g[..], g[0].bot_x, g[0].bot_z, g[0].px, g[0].pz) && !d_busy(g[..]);
+  g_stage(g[..], 54);
+  #assert g[0].dr[0].task == DJ_FIGHT && g[0].dr[0].task_i == F_RAIDERS && abs(dist2(g[0].bot_x, g[0].bot_z, g[0].fx[F_RAIDERS], g[0].fz[F_RAIDERS]) - 2.5) < 0.01;
 }
