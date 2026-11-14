@@ -32,21 +32,21 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
   if s[0].menu>0 {
     x=tr_open(t,"extras.shade",TG_DIV,"nextras-shade");tr_close(t);
     x=tr_open(t,"extras.panel",TG_SECTION,"nextras-panel");tr_attr(t,x,AT_ROLE,"dialog");tr_attr(t,x,AT_LABEL,"Extras");
-    x=k_link(t,"extras.close","Close");
-    if s[0].menu==1 {x=k_text(t,u,"extras.title",TG_H2,"","Extras");x=k_button(t,u,"extras.bitcoin","Bitcoin balance",BS_PLAIN);}
+    x=k_icon_button(t,"extras.close",IC_X,"Close extras");
+    if s[0].menu==1 {x=k_text(t,u,"extras.title",TG_H2,"","Extras");x=k_button(t,u,"extras.bitcoin","Bitcoin",BS_PLAIN);}
     else {
-      x=k_text(t,u,"wallet.title",TG_H2,"","Bitcoin balance");
-      x=k_text(t,u,"wallet.readonly",TG_P,"","Read-only · Spark mainnet");
-      if s[0].loading {x=k_text(t,u,"wallet.loading",TG_P,"","Refreshing balance…");}
+      x=k_text(t,u,"wallet.title",TG_H2,"","Bitcoin");
+      x=k_text(t,u,"wallet.readonly",TG_P,"","Read only");
+      if s[0].loading {x=k_text(t,u,"wallet.loading",TG_P,"","Loading…");}
       else if s[0].balance[0].status==1 {
         amount:[64]u8;o:[1]Jo;jo_start(o[..],amount[..]);jo_int(o[..],s[0].balance[0].sats);jo_put(o[..]," sats");
         x=k_text(t,u,"wallet.amount",TG_P,"amount",jo_text(o[..]));
       } else {
         code:=s[0].balance[0].status;
-        text:=ifx code==2 then "No existing wallet was found on this phone." else ifx code==3 then "Unlock this phone, then refresh." else ifx code==4 then "The saved wallet could not be read. It has been left unchanged." else "Balance unavailable. Check your connection and refresh.";
+        text:=ifx code==2 then "No wallet on this phone" else ifx code==3 then "Unlock phone, then refresh." else ifx code==4 then "Wallet unreadable · unchanged" else "Offline. Refresh to retry.";
         x=k_text(t,u,"wallet.unavailable",TG_P,"",text);
       }
-      if !s[0].loading {x=k_button(t,u,"wallet.refresh","Refresh balance",BS_PLAIN);}
+      if !s[0].loading {x=k_icon_button(t,"wallet.refresh",IC_ARROW_ROTATE_CW,"Refresh balance");}
     }
     tr_close(t);
   }

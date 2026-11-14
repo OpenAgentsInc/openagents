@@ -16,12 +16,12 @@ final class EmailLoginUITests:XCTestCase {
         app.buttons["Send code"].tap()
         let code=app.textFields["Email code"]
         XCTAssertTrue(code.waitForExistence(timeout:10))
-        app.buttons["Send a new code"].tap()
+        app.buttons["login.resend"].tap()
         XCTAssertTrue(code.waitForExistence(timeout:10));code.tap();code.typeText("123456")
         app.buttons["Log in"].tap()
         XCTAssertTrue(app.staticTexts["That code isn't right. 4 tries left."].waitForExistence(timeout:10))
         // A new email also clears the field through the shared component value command.
-        app.buttons["Send a new code"].tap()
+        app.buttons["login.resend"].tap()
         XCTAssertTrue(code.waitForExistence(timeout:10));code.tap();code.typeText("415926")
         app.buttons["Log in"].tap()
         XCTAssertTrue(app.buttons["My first saved chat"].waitForExistence(timeout:15))

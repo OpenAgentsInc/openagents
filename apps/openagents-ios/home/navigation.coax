@@ -89,7 +89,7 @@ na_nav_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
  x=tr_open(t,"nav.search-wrap",TG_DIV,"navigation-search");x=k_input(t,u,"nav.search","Search chats","Search chats","search","off");tr_close(t);
  x=k_side_folds(t,"nav.sidebar");visible:=0;account_matches:=0;for i:0..<s[0].chats[0].n {r:=s[0].chats[0].items[i];if nav_match(n,cast(string)r.title[0..<r.title_n],"Account") {account_matches+=1;}}
  n[0].page_size=nav_page_size(n,account_matches>0);budget:=n[0].page_size;
- if n[0].creating {x=k_text(t,u,"nav.new.title",TG_H2,"","New conversation");x=k_text(t,u,"nav.new.about",TG_P,"meta","Choose where it runs");}
+ if n[0].creating {x=k_text(t,u,"nav.new.title",TG_H2,"","Choose computer");}
  for host:0..<b[0].catalog[0].n {
   entry:=b[0].catalog[0].entries[host];name:=cast(string)entry.label[0..<entry.nl];g:=n[0].groups[host];count:=0;
   for i:0..<n[0].n {r:=n[0].rows[i];if r.host==host && nav_match(n,cast(string)r.session.title[0..<r.session.nt],name) {count+=1;}}
@@ -97,30 +97,29 @@ na_nav_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
   if n[0].nq>0 && count==0 {continue;}
   id:[96]u8;x=k_side_mark(t,tr_join(id[..],"nav.group.",host),name,count);
   if !g.loaded {a:[96]u8;x=k_text(t,u,tr_join(a[..],"nav.loading.",host),TG_P,"meta","Loading chats…");}
-  else if g.failed {a:[96]u8;x=k_text(t,u,tr_join(a[..],"nav.failed.",host),TG_P,"meta","Unavailable. Refresh to retry.");}
-  else if count==0 {a:[96]u8;x=k_text(t,u,tr_join(a[..],"nav.empty.",host),TG_P,"meta",ifx g.complete then "No conversations yet" else "History is incomplete");}
+  else if g.failed {a:[96]u8;x=k_text(t,u,tr_join(a[..],"nav.failed.",host),TG_P,"meta","Offline");}
+  else if count==0 {a:[96]u8;x=k_text(t,u,tr_join(a[..],"nav.empty.",host),TG_P,"meta",ifx g.complete then "No chats yet" else "Incomplete history");}
   matched:=0;shown:=0;for i:0..<n[0].n {r:=n[0].rows[i];if r.host!=host || !nav_match(n,cast(string)r.session.title[0..<r.session.nt],name) || visible>=NAV_VISIBLE {continue;}matched+=1;if matched<=g.offset || shown>=budget {continue;}shown+=1;
    a:[96]u8;current:=s[0].page==4 && s[0].environments[0].selected>=0 && cast(string)s[0].environments[0].catalog[0].entries[s[0].environments[0].selected].host[..]==cast(string)entry.host[..] && cast(string)s[0].environments[0].session[0..<s[0].environments[0].ns]==cast(string)r.session.id[0..<r.session.ni];
    x=k_row(t,u,nav_row_id(n,i,a[..]),cast(string)r.session.title[0..<r.session.nt],ifx r.session.busy then "Working" else ifx !r.session.managed then "Read only" else "",current);visible+=1;
   }
-  if g.offset>0 {latest:[96]u8;x=k_link(t,tr_join(latest[..],"nav.latest.",host),"Latest conversations");}
-  if count>g.offset+shown || g.nc>0 {more:[96]u8;x=k_link(t,tr_join(more[..],"nav.more.",host),"Earlier conversations");}
-  else if g.loaded && !g.complete && !g.failed {partial:[96]u8;x=k_text(t,u,tr_join(partial[..],"nav.partial.",host),TG_P,"meta","Discovery is incomplete. Refresh if a chat is missing.");}
+  if g.offset>0 {latest:[96]u8;x=k_link(t,tr_join(latest[..],"nav.latest.",host),"Latest");}
+  if count>g.offset+shown || g.nc>0 {more:[96]u8;x=k_link(t,tr_join(more[..],"nav.more.",host),"Earlier");}
+  else if g.loaded && !g.complete && !g.failed {partial:[96]u8;x=k_text(t,u,tr_join(partial[..],"nav.partial.",host),TG_P,"meta","Incomplete history");}
  }
  if n[0].creating {x=k_row(t,u,"nav.account.new","OpenAgents","Account chat",false);}
  else {
   x=k_side_mark(t,"nav.account.heading","Account",s[0].chats[0].n);
   matched:=0;shown:=0;for i:0..<s[0].chats[0].n {r:=s[0].chats[0].items[i];if visible>=NAV_VISIBLE || !nav_match(n,cast(string)r.title[0..<r.title_n],"Account") {continue;}matched+=1;if matched<=n[0].account_at || shown>=budget {continue;}shown+=1;id:[96]u8;x=k_row(t,u,tr_join(id[..],"nav.account.",i),cast(string)r.title[0..<r.title_n],"",s[0].page==3 && cast(string)s[0].thread[0].id[0..<s[0].thread[0].id_n]==cast(string)r.id[0..<r.id_n]);visible+=1;}
-  if n[0].account_at>0 {x=k_link(t,"nav.account.latest","Latest account chats");}
-  if account_matches>n[0].account_at+shown {x=k_link(t,"nav.account.older","Earlier account chats");}
-  if visible==0 && n[0].started && !b[0].flight && n[0].next>=b[0].catalog[0].n {x=k_text(t,u,"nav.no-results",TG_P,"meta",ifx n[0].nq>0 then "No matching loaded titles" else "No saved conversations yet");}
-  if visible>=NAV_VISIBLE {x=k_text(t,u,"nav.limit",TG_P,"meta","Use Earlier conversations or search to browse more history.");}
+  if n[0].account_at>0 {x=k_link(t,"nav.account.latest","Latest");}
+  if account_matches>n[0].account_at+shown {x=k_link(t,"nav.account.older","Earlier");}
+  if visible==0 && n[0].started && !b[0].flight && n[0].next>=b[0].catalog[0].n {x=k_text(t,u,"nav.no-results",TG_P,"meta",ifx n[0].nq>0 then "No matching titles" else "No chats yet");}
  }
  if n[0].nn>0 {x=k_text(t,u,"nav.note",TG_P,"meta",cast(string)n[0].note[0..<n[0].nn]);}
  k_side_end(t);}
  x=tr_open(t,"nav.footer",TG_FOOTER,"side-f");x=k_row(t,u,"nav.settings","Settings","",false);tr_close(t);tr_close(t);
  if n[0].settings {
   x=tr_open(t,"nav.settings.panel",TG_SECTION,"");tr_attr(t,x,AT_ROLE,"dialog");tr_attr(t,x,AT_LABEL,"Settings");x=k_text(t,u,"nav.settings.title",TG_H2,"","Settings");
-  x=k_link(t,"nav.settings.close","Close settings");x=k_link(t,"app.updates","Check for updates");x=k_link(t,"app.details","Build details");x=k_link(t,"usage.open","Usage");x=k_link(t,"extras.more","Extras");x=k_link(t,"account.logout","Log out");if s[0].note_n>0 {x=k_text(t,u,"nav.settings.note",TG_P,"meta",cast(string)s[0].note[0..<s[0].note_n]);}tr_close(t);
+  x=k_icon_button(t,"nav.settings.close",IC_X,"Close settings");x=k_link(t,"app.updates","Updates");x=k_link(t,"app.details","About");x=k_link(t,"usage.open","Usage");x=k_link(t,"extras.more","Extras");x=k_link(t,"account.logout","Log out");if s[0].note_n>0 {x=k_text(t,u,"nav.settings.note",TG_P,"meta",cast(string)s[0].note[0..<s[0].note_n]);}tr_close(t);
  }
 }

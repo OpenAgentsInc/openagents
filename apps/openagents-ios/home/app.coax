@@ -268,20 +268,19 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
   if s[0].usage[0].active {pu_render(s[0].usage[..],t,u,s[0].usage[0].intent_host>=0);}
   else if s[0].page==5 {na_projects_render(s,t,u);}
   else if s[0].page>=6 && s[0].page<=9 {na_project_render(s,t,u);}
-  else if s[0].page<0 {x=k_text(t,u,"account.starting",TG_P,"","Opening your account…");}
+  else if s[0].page<0 {x=k_text(t,u,"account.starting",TG_P,"","Loading…");}
   else if s[0].page==0 {
-    x=k_text(t,u,"login.title",TG_H1,"","Log in");x=k_text(t,u,"login.about",TG_P,"","Use the same email as openagents.com. We'll send you a 6-digit code.");
+    x=k_text(t,u,"login.title",TG_H1,"","Log in");
     x=k_input(t,u,"login.email","you@example.com","Email address","email","email");if busy {tr_attr(t,x,AT_DISABLED,"disabled");}
     x=k_button(t,u,"login.send",ifx busy then "Sending code…" else "Send code",ifx busy then BS_BUSY else BS_PRIMARY);
     if s[0].worlds_available {x=k_button(t,u,"world.library","Worlds",ifx busy then BS_DISABLED else BS_PLAIN);}
     if s[0].local_available {x=k_button(t,u,"environments.local","Use this computer",ifx busy then BS_DISABLED else BS_PLAIN);}
   } else if s[0].page==1 {
-    x=k_text(t,u,"login.title",TG_H1,"","Check your email");x=k_text(t,u,"login.sent",TG_P,"",cast(string)s[0].email[0..<s[0].email_n]);
-    x=k_text(t,u,"login.help",TG_P,"","Enter the 6-digit code from your email. It works for 10 minutes and 5 tries.");
+    x=k_text(t,u,"login.title",TG_H1,"","Email code");x=k_text(t,u,"login.sent",TG_P,"",cast(string)s[0].email[0..<s[0].email_n]);
     x=k_input(t,u,"login.code","000000","Email code","tel","one-time-code");if busy {tr_attr(t,x,AT_DISABLED,"disabled");}
     x=k_button(t,u,"login.verify",ifx busy then "Checking code…" else "Log in",ifx busy then BS_BUSY else BS_PRIMARY);
-    x=k_link(t,"login.resend","Send a new code");if busy {tr_attr(t,x,AT_DISABLED,"");}
-    x=k_link(t,"login.change","Use another email");if busy {tr_attr(t,x,AT_DISABLED,"");}
+    x=k_icon_button(t,"login.resend",IC_ARROW_ROTATE_CW,"Resend email code");if busy {tr_attr(t,x,AT_DISABLED,"");}
+    x=k_icon_button(t,"login.change",IC_X,"Change email");if busy {tr_attr(t,x,AT_DISABLED,"");}
   } else if s[0].page==4 {
     eu_render(s[0].environments[..],t,u,s[0].markdown[..]);
   } else if s[0].page==3 {
@@ -289,13 +288,12 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
     if s[0].workspace && !s[0].world_mode {x=k_side_open(t,"nav.toggle","Show chats");x=k_text(t,u,"chat.name",TG_SPAN,"","OpenAgents");x=k_icon_button(t,"nav.new",IC_PLUS,"New chat");if s[0].project_thread_n>0 {x=k_link(t,"project.chat.back","Project");}}
     else {x=k_button(t,u,"chat.back",ifx s[0].world_mode then "Back to editor" else "Your chats",ifx busy then BS_DISABLED else BS_PLAIN);x=k_text(t,u,"chat.name",TG_SPAN,"",ifx s[0].world_mode then "World agent" else "OpenAgents");}tr_close(t);
     x=tr_open(t,"chat.messages",TG_SECTION,"transcript");tr_attr(t,x,AT_STATE,ifx s[0].thread[0].id_n>0 then cast(string)s[0].thread[0].id[0..<s[0].thread[0].id_n] else "new");
-    if s[0].thread[0].n==0 {x=k_text(t,u,"chat.welcome",TG_P,"","What would you like to work on?");}
     for k:0..<s[0].thread[0].n {id:[96]u8;m:=s[0].thread[0].messages[k];
       x=k_message(t,u,tr_join(id[..],"message.",k),m.assistant,s[0].markdown[..],cast(string)m.text[0..<m.n]);
     }
     if s[0].purpose==5 && busy {x=k_reply_open(t,"chat.thinking",true,true);x=k_text(t,u,"chat.thinking.text",TG_P,"","Thinking…");tr_close(t);}
     tr_close(t);
-    if s[0].retry {x=k_button(t,u,"chat.retry","Retry this turn",ifx busy then BS_DISABLED else BS_PLAIN);}
+    if s[0].retry {x=k_icon_button(t,"chat.retry",IC_ARROW_ROTATE_CW,"Retry turn");if busy {tr_attr(t,x,AT_DISABLED,"");}}
     if s[0].purpose==6 && !busy {x=k_button(t,u,"chat.save","Save reply",BS_PRIMARY);}
     f:=k_composer_begin(t,u,"chat.composer","Message");if busy {tr_attr(t,f,AT_DISABLED,"disabled");}
     k_composer_end(t,u,"chat.composer",ifx s[0].purpose==5 && busy then "Stop" else "Send",(s[0].purpose==5 && busy) || (!busy && s[0].draft_n>0 && s[0].purpose!=6));frame:=tr_find(t,"chat.composer.frame");if frame>=0 {tr_attr(t,frame,AT_TITLE,"Gemini 4 Hydrogen");}
@@ -308,9 +306,9 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
     if s[0].worlds_available {x=k_button(t,u,"world.library","Worlds",ifx busy then BS_DISABLED else BS_PLAIN);}
     x=k_button(t,u,"environments.open","Your computers",ifx busy then BS_DISABLED else BS_PLAIN);
     if s[0].local_available {x=k_button(t,u,"environments.local","This computer · offline access",ifx busy then BS_DISABLED else BS_PLAIN);}
-    x=k_link(t,"chats.refresh",ifx busy then "Loading chats…" else "Refresh chats");if busy {tr_attr(t,x,AT_DISABLED,"");}
+    x=k_icon_button(t,"chats.refresh",IC_ARROW_ROTATE_CW,"Refresh chats");if busy {tr_attr(t,x,AT_DISABLED,"");}
     count:=s[0].chats[0].n;
-    if count==0 && !busy && s[0].note_n==0 {x=k_text(t,u,"chats.empty",TG_P,"","No saved account chats yet.");}
+    if count==0 && !busy && s[0].note_n==0 {x=k_text(t,u,"chats.empty",TG_P,"","No chats yet");}
     for k:0..<count {
       id:[96]u8;row:=s[0].chats[0].items[k];label:=cast(string)row.title[0..<row.title_n];
       x=k_row(t,u,tr_join(id[..],"chat.",k),ifx label.count>0 then label else "Untitled chat","",false);if busy {tr_attr(t,x,AT_DISABLED,"");}
@@ -318,7 +316,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
     x=k_link(t,"account.logout","Log out");if busy {tr_attr(t,x,AT_DISABLED,"");}
   }
   if s[0].note_n>0 {x=k_text(t,u,"account.note",TG_P,"note",cast(string)s[0].note[0..<s[0].note_n]);tr_attr(t,x,AT_LIVE,"polite");}
-  if (!s[0].workspace || s[0].page<2) && s[0].page!=3 && s[0].page!=4 {x=tr_open(t,"app.tools",TG_FOOTER,"");x=k_link(t,"app.updates","Check for updates");if busy {tr_attr(t,x,AT_DISABLED,"");}x=k_link(t,"app.details","Build details");if busy {tr_attr(t,x,AT_DISABLED,"");}tr_close(t);}
+  if (!s[0].workspace || s[0].page<2) && s[0].page!=3 && s[0].page!=4 {x=tr_open(t,"app.tools",TG_FOOTER,"");x=k_icon_button(t,"app.updates",IC_ARROW_ROTATE_CW,"Check for updates");if busy {tr_attr(t,x,AT_DISABLED,"");}x=k_icon_button(t,"app.details",IC_SETTINGS,"Build details");if busy {tr_attr(t,x,AT_DISABLED,"");}tr_close(t);}
   tr_close(t);
   if s[0].copied_n>0 {copy:=tr_find(t,cast(string)s[0].copied[0..<s[0].copied_n]);if copy>=0 {tr_attr(t,copy,AT_LABEL,"Copied");for k:copy+1..<t[0].n {if t[0].nodes[k].parent==copy && t[0].nodes[k].tag==TG_SPAN {tr_text(t,k,"Copied");break;}}}}
   if s[0].action==0 && s[0].environments[0].action!=0 {e:=s[0].environments[..];s[0].action=e[0].action;s[0].out_n=na_copy(s[0].outbox[..],cast(string)e[0].body[0..<e[0].nb]);e[0].action=0;}

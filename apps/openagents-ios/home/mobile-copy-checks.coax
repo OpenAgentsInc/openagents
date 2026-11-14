@@ -1,0 +1,31 @@
+// Rendered copy budgets: fixed app chrome, without user/provider content.
+#load "app.coax";
+#load "../../shared/copy-budget.coax";
+#load "../../../coax/lib/sys/tool.coax";
+COPY_SCREENS :: 11;
+copy_screen :: (which:int,t:[]Tree) {
+ s:[1]Starter;s[0].ready=true;s[0].workspace=true;s[0].dirty=true;s[0].page=which;s[0].worlds_available=true;u:[1]Ui;md:[1]MdDoc;ui_begin(u[..],0,true);tr_begin(t);
+ if which==0 || which==1 {_ = st_frame(s[..],0,true);t[0]=s[0].tree[0];}
+ if which==2 {na_home_render(s[..],t,u[..]);}
+ if which==3 {e:=s[0].environments[..];e[0].page=2;e[0].selected=0;e[0].catalog[0].n=1;e[0].ns=1;eu_render(e,t,u[..],md[..]);}
+ if which==4 {s[0].page=7;s[0].project[0].may=true;s[0].project[0].ndrop=1;na_project_render(s[..],t,u[..]);}
+ if which==5 {s[0].page=8;_ = pja_load_draft(s[0].project[..],"{\"status\":\"ready\",\"draft\":{\"card\":{\"name\":\"\"}}}");na_project_render(s[..],t,u[..]);}
+ if which==6 {s[0].page=8;s[0].project[0].confirm=1;na_project_render(s[..],t,u[..]);}
+ if which==7 {s[0].usage[0].catalog_ready=true;pu_render(s[0].usage[..],t,u[..],false);}
+ if which==8 {s[0].usage[0].catalog_ready=true;s[0].usage[0].catalog[0].n=1;s[0].usage[0].states[0]=2;s[0].usage[0].form=true;pu_render(s[0].usage[..],t,u[..],false);}
+ if which==9 {s[0].navigation[0].settings=true;na_nav_render(s[..],t,u[..]);}
+ if which==10 {na_projects_render(s[..],t,u[..]);}
+}
+copy_screen_words :: (which:int)->int {t:[1]Tree;copy_screen(which,t[..]);return copy_tree_words(t[..],ifx which==9 then "nav.settings.panel" else "");}
+copy_total :: ()->int {n:=0;for i:0..<COPY_SCREENS {n+=copy_screen_words(i);}return n;}
+// Baseline 5fc963163c: [25,34,17,21,36,38,20,32,49,12,8] = 292 words.
+#test "mobile app chrome stays below half its pre-edit word count" #steps 100000000 {#assert copy_total()<=146;}
+#test "icon actions retain accessible names and explicit publication consent" {
+ t:[1]Tree;copy_screen(1,t[..]);at:=tr_find(t[..],"login.resend");#assert tr_class(t[..],at)=="ib" && tr_attr_of(t[..],at,AT_LABEL)=="Resend email code";
+ copy_screen(6,t[..]);#assert tr_find(t[..],"project.confirm")>=0 && tr_find(t[..],"project.cancel")>=0 && tr_text_of(t[..],tr_find(t[..],"project.confirm.about"))=="Contents become public.";
+ s:[1]Starter;s[0].page=8;s[0].project[0].confirm=2;u:[1]Ui;ui_begin(u[..],0,true);tr_begin(t[..]);na_project_render(s[..],t[..],u[..]);#assert tr_text_of(t[..],tr_find(t[..],"project.confirm.about"))=="Cannot be undone.";
+}
+tool_main :: ()->int #export_c #effects(all) {
+ for i:0..<COPY_SCREENS {b:[96]u8;tool_err(tr_join(b[..],"screen ",i));tool_err(": ");tool_errln(tr_join(b[..],"",copy_screen_words(i)));}
+ b:[96]u8;tool_errln(tr_join(b[..],"total: ",copy_total()));return 0;
+}
