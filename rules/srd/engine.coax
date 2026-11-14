@@ -647,18 +647,25 @@ rs_zombie :: (name: string, team: int) -> RsCreature {
   return c[0];
 }
 
+// The weapons the classes hold and the Zombie's Slam, by number (W_UNARMED to W_SLAM): rs_weapon reads one
+// place rather than walking them (#13593).
+RS_WEAPONS :: [W_SPEAR] RsWeapon.[
+  RsWeapon.{id = "unarmed-strike", name = "Unarmed Strike", dice = 0, sides = 0, damage = RS_BLUDGEONING, finesse = false, mastery = M_NONE, range_ft = 5, long_ft = 5},
+  RsWeapon.{id = "greataxe", name = "Greataxe", dice = 1, sides = 12, damage = RS_SLASHING, finesse = false, mastery = M_CLEAVE, range_ft = 5, long_ft = 5, martial = true},
+  RsWeapon.{id = "shortsword", name = "Shortsword", dice = 1, sides = 6, damage = RS_PIERCING, finesse = true, mastery = M_VEX, range_ft = 5, long_ft = 5, martial = true, light = true},
+  RsWeapon.{id = "shortbow", name = "Shortbow", dice = 1, sides = 6, damage = RS_PIERCING, finesse = false, mastery = M_VEX, range_ft = 80, long_ft = 320},
+  RsWeapon.{id = "greatsword", name = "Greatsword", dice = 2, sides = 6, damage = RS_SLASHING, finesse = false, mastery = M_GRAZE, range_ft = 5, long_ft = 5, martial = true},
+  RsWeapon.{id = "longsword", name = "Longsword", dice = 1, sides = 8, damage = RS_SLASHING, finesse = false, mastery = M_SAP, range_ft = 5, long_ft = 5, martial = true},
+  RsWeapon.{id = "mace", name = "Mace", dice = 1, sides = 6, damage = RS_BLUDGEONING, finesse = false, mastery = M_SAP, range_ft = 5, long_ft = 5},
+  RsWeapon.{id = "longbow", name = "Longbow", dice = 1, sides = 8, damage = RS_PIERCING, finesse = false, mastery = M_SLOW, range_ft = 150, long_ft = 600, martial = true},
+  RsWeapon.{id = "dagger", name = "Dagger", dice = 1, sides = 4, damage = RS_PIERCING, finesse = true, mastery = M_NICK, range_ft = 5, long_ft = 5, light = true},
+  RsWeapon.{id = "slam", name = "Slam", dice = 1, sides = 8, damage = RS_BLUDGEONING, finesse = false, mastery = M_NONE, range_ft = 5, long_ft = 5}
+];
 rs_weapon :: (w: int) -> RsWeapon {
   if w >= W_SPEAR { return rs_npc_weapon(w); }
-  if w == W_SLAM { return RsWeapon.{id = "slam", name = "Slam", dice = 1, sides = 8, damage = RS_BLUDGEONING, finesse = false, mastery = M_NONE, range_ft = 5, long_ft = 5}; }
-  if w == W_GREATAXE { return RsWeapon.{id = "greataxe", name = "Greataxe", dice = 1, sides = 12, damage = RS_SLASHING, finesse = false, mastery = M_CLEAVE, range_ft = 5, long_ft = 5, martial = true}; }
-  if w == W_SHORTSWORD { return RsWeapon.{id = "shortsword", name = "Shortsword", dice = 1, sides = 6, damage = RS_PIERCING, finesse = true, mastery = M_VEX, range_ft = 5, long_ft = 5, martial = true, light = true}; }
-  if w == W_SHORTBOW { return RsWeapon.{id = "shortbow", name = "Shortbow", dice = 1, sides = 6, damage = RS_PIERCING, finesse = false, mastery = M_VEX, range_ft = 80, long_ft = 320}; }
-  if w == W_GREATSWORD { return RsWeapon.{id = "greatsword", name = "Greatsword", dice = 2, sides = 6, damage = RS_SLASHING, finesse = false, mastery = M_GRAZE, range_ft = 5, long_ft = 5, martial = true}; }
-  if w == W_LONGSWORD { return RsWeapon.{id = "longsword", name = "Longsword", dice = 1, sides = 8, damage = RS_SLASHING, finesse = false, mastery = M_SAP, range_ft = 5, long_ft = 5, martial = true}; }
-  if w == W_MACE { return RsWeapon.{id = "mace", name = "Mace", dice = 1, sides = 6, damage = RS_BLUDGEONING, finesse = false, mastery = M_SAP, range_ft = 5, long_ft = 5}; }
-  if w == W_LONGBOW { return RsWeapon.{id = "longbow", name = "Longbow", dice = 1, sides = 8, damage = RS_PIERCING, finesse = false, mastery = M_SLOW, range_ft = 150, long_ft = 600, martial = true}; }
-  if w == W_DAGGER { return RsWeapon.{id = "dagger", name = "Dagger", dice = 1, sides = 4, damage = RS_PIERCING, finesse = true, mastery = M_NICK, range_ft = 5, long_ft = 5, light = true}; }
-  return RsWeapon.{id = "unarmed-strike", name = "Unarmed Strike", dice = 0, sides = 0, damage = RS_BLUDGEONING, finesse = false, mastery = M_NONE, range_ft = 5, long_ft = 5};
+  // a number below the table (a stat block's own attack, W_STAT_ATTACK) is an Unarmed Strike, which is
+  // also the table's first, so w <= 0 and w < 1 there give the same weapon
+  return RS_WEAPONS[ifx w < 0 then W_UNARMED else w]; // mutant: equivalent
 }
 // The ability an attack with weapon w uses: Strength, or Dexterity for a Finesse weapon or a Monk's
 // Martial Arts when it is the higher.
