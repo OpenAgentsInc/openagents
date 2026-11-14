@@ -17,6 +17,7 @@
 
 #load "../../../everglade/world/ground.coax";   // the admitted tiles (it loads plant.coax)
 #load "../../../everglade/world/camp.coax";     // the goblin camp's props
+#load "../../../everglade/scene/surfaces.coax";   // the surface each kit vertex's id names: the catalog's U rows (#13545)
 
 E2_PACK_BUDGET :: 67108864;
 #test "everglade2 static vertices retain positions beyond the people quantization box" {
@@ -245,6 +246,8 @@ tool_main :: ()->int #export_c #effects(all) {
  gp_familiar_catalog(c[..],famfirst[..],famcount[..],in/4,vn/4);
  if monsters {gp_e2_catalog(c[..],w[..],in/4,vn/4);}
  for i:0..<w[0].nt {sb_put(c[..],"T ");sb_int(c[..],w[0].layers+i);sb_put(c[..]," glade/");sb_int(c[..],i);sb_put(c[..]," 250\n");}
+ // the surfaces the vertices' ids name (everglade/scene/surfaces.coax; material-pack.coax --holds checks a pack for them)
+ ub:[1024]u8;un:=e2s_rows(ub[..]);if un<0 {ph_die("everglade2 surface rows overflow");}sb_put(c[..],cast(string)ub[0..<un]);
  lb:[2200000]u8;ln:=e2g_record_lines(rec[0..<rn],lb[..]);if ln<0 {ph_die("everglade2 ground record lines overflow");}sb_put(c[..],cast(string)lb[0..<ln]);
  count:=ne+w[0].nt;at:=32+count*48;gp_word(w[0].out[..],0,0x314b5056);put_u32(w[0].out[..],4,count);put_u32(w[0].out[..],12,E2_PACK_BUDGET);put_u32(w[0].out[..],16,32);put_u32(w[0].out[..],20,at);
  for i:0..<ne {r:=table+i*48;kind:=int(old[r]);off:=gl_u32(old,r+4);size:=gl_u32(old,r+8);start:=at;

@@ -318,6 +318,8 @@ rig_checks() {
 # last step of a pack build is metaverse-engine/tools/pack-seal.coax.
 packs_admitted() {
   step packs-admitted bash -c 'set -e; t="$(mktemp -d)"; gzip -dc apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz > "$t/glade.pack"; r=0; coax/web/tool.sh metaverse-engine/tools/pack-seal.coax --check apps/openagents-web/realms/everglade2/assets/everglade2.pack "$t/glade.pack" || r=1; rm -f "$t/glade.pack"; rmdir "$t"; exit $r' || status=1
+  # and Everglade II's names the surface of each id its kit vertices carry (everglade/scene/surfaces.coax, #13545)
+  step pack-surfaces coax/web/tool.sh everglade/model/tools/material-pack.coax --holds apps/openagents-web/realms/everglade2/assets/everglade2.pack || status=1
 }
 # The one C host core (metaverse-engine/host/core, #13304) does what the engine says: its conformance
 # driver, built here with face addresses as pointers and as 32-bit offsets, over fixtures Coax

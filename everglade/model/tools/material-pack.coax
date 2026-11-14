@@ -1,0 +1,100 @@
+// Everglade's surfaces into a pack's catalog (GitHub #13545): the "U ID NAME" rows that name, for
+// each material id the pack's kit vertices carry in their normal word's top byte, the surface asset
+// whose record the page registers there (everglade/scene/surfaces.coax e2s_rows, e2s_register).
+// metaverse/tools/assets/everglade2_pack.coax writes the rows when it builds the pack; this puts them
+// into a pack already built, the tracked one, and checks that a pack carries them.
+//   material-pack --into IN.pack OUT.pack   IN with its catalog's U rows replaced by Everglade's, every
+//                                           other entry byte for byte (pack-entry.coax pke_catalog)
+//   material-pack --holds PACK              PACK's catalog's U rows are Everglade's, in order
+// A pack that already carries the world's cells (kind 8, cell-pack.coax) is refused: the cells'
+// lines name places in the pack, so the rows go in before them. The tracked pack stays sealed:
+// `pack-seal.coax OUT.pack X.pack` writes OUT again byte for byte.
+// Run: coax/web/tool.sh everglade/model/tools/material-pack.coax ...
+// tool.sh: release
+// tool.sh: stack-gib 8
+#import "Basic";
+#load "../../scene/surfaces.coax";
+#load "../../../metaverse-engine/character/material.coax" as cmat;
+#load "pack-entry.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/args.coax";
+
+MPK_PACK :: 419430400;      // a pack at most, 400 MiB (rig-pack.coax's)
+MPK_CATALOG :: 16777216;
+
+// The U rows of catalog `t`, in order, into out: the bytes, -1 when out is too small.
+mpk_rows_of :: (t: string, out: [] u8) -> int {
+  n := 0; at := 0;
+  while at < t.count {
+    e := at; while e < t.count && t[e] != '\n' { e += 1; }
+    if e - at > 1 && t[at] == E2S_ROW && t[at + 1] == ' ' {
+      if n + e - at + 1 > out.count { return -1; }
+      for q: at..<e { out[n] = t[q]; n += 1; } out[n] = '\n'; n += 1;
+    }
+    at = e + 1;
+  }
+  return n;
+}
+// `pack` with its catalog's U rows replaced by Everglade's (after its other lines), into out: the size,
+// -1 refused (not a pack, a pack with its cells in, no room).
+mpk_into :: (pack: [] u8, out: [] u8, body: [] u8) -> int {
+  t: [1] PackTable;
+  if !pack_table(cast(string) pack, pack.count, t[..]) || t[0].count < 1 || t[0].entries[0].kind != PACK_CATALOG { return -1; }
+  for k: 0..<t[0].count { if t[0].entries[k].kind == PACK_CELLS { return -1; } }
+  cat := t[0].entries[0];
+  bn := pke_strip(cast(string) pack[cat.at..<cat.at + cat.n], "U", body);
+  if bn < 0 { return -1; }
+  rn := e2s_rows(body[bn..<body.count]);
+  if rn < 0 { return -1; }
+  return pke_catalog(pack, t[..], body, bn + rn, out);
+}
+// Whether `pack`'s catalog carries Everglade's U rows, in order, and no others.
+mpk_holds :: (pack: [] u8) -> bool {
+  t: [1] PackTable;
+  if !pack_table(cast(string) pack, pack.count, t[..]) || t[0].count < 1 || t[0].entries[0].kind != PACK_CATALOG { return false; }
+  cat := t[0].entries[0]; got: [1024] u8; want: [1024] u8;
+  gn := mpk_rows_of(cast(string) pack[cat.at..<cat.at + cat.n], got[..]); wn := e2s_rows(want[..]);
+  return gn > 0 && gn == wn && cast(string) got[0..<gn] == cast(string) want[0..<wn];
+}
+#test "a pack takes Everglade's surface rows in place of any it had, keeps every other entry, and then holds them" {
+  cat := "bytes 0000000000\nL 0 Kit|CC0|u\nU 3 e2/surface/old\nC a 1 2 3\n";
+  p: [512] u8; for ch, i: "VPK1" { p[i] = ch; } pack_put32(p[..], 4, 2); pack_put32(p[..], 12, 4096); pack_put32(p[..], 16, 32); pack_put32(p[..], 20, 128);
+  at := 128; p[32] = 1; p[33] = 255; pack_put32(p[..], 36, at); pack_put32(p[..], 40, cat.count); for ch, i: "catalog" { p[48 + i] = ch; } for ch: cat { p[at] = ch; at += 1; } at = ((at + 3) / 4) * 4;
+  p[80] = 2; p[81] = 255; pack_put32(p[..], 84, at); pack_put32(p[..], 88, 4); for ch, i: "vertices" { p[96 + i] = ch; } for k: 0..<4 { p[at + k] = cast(u8) (200 + k); } at += 4; pack_put32(p[..], 8, at);
+  #assert !mpk_holds(p[0..<at]);
+  o: [2048] u8; body: [1024] u8; n := mpk_into(p[0..<at], o[..], body[..]); #assert n > 0 && mpk_holds(o[0..<n]);
+  t: [1] PackTable; #assert pack_table(cast(string) o[0..<n], n, t[..]) && t[0].count == 2 && o[t[0].entries[1].at] == 200;
+  c := cast(string) o[t[0].entries[0].at..<t[0].entries[0].at + t[0].entries[0].n]; rows: [1024] u8; rn := e2s_rows(rows[..]);
+  #assert c[0..<25] == "L 0 Kit|CC0|u\nC a 1 2 3\nU" && c[24..<24 + rn] == cast(string) rows[0..<rn];
+  // the page reads every surface back from it
+  mats: [cmat.CM_MAX * cmat.CM_FLOATS] f32; #assert e2s_register(c, mats[..]) == E2S_COUNT;
+  // again: the same bytes; and a catalog with one row more no longer holds them
+  o2: [2048] u8; #assert mpk_into(o[0..<n], o2[..], body[..]) == n && cast(string) o2[0..<n] == cast(string) o[0..<n];
+  #assert mpk_rows_of("U 1 a\nT 0 b\nU 2 c\n", rows[..]) == 12 && mpk_rows_of("U 1 a\n", rows[0..<5]) == -1;
+  // a pack with its cells in, not a pack: refused
+  o[80] = cast(u8) PACK_CELLS; #assert mpk_into(o[0..<n], o2[..], body[..]) == -1; o[80] = cast(u8) PACK_VERTICES;
+  #assert mpk_into(p[0..<at - 4], o2[..], body[..]) == -1 && !mpk_holds(p[0..<4]);
+}
+
+MpkTool :: struct { pack: [MPK_PACK] u8; out: [MPK_PACK] u8; body: [MPK_CATALOG] u8; }
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  mode := ifx args_count(a[..]) >= 2 then args_at(a[..], 0) else "";
+  w: [1] MpkTool;
+  if mode == "--into" && args_count(a[..]) == 3 {
+    size := fs_read(args_at(a[..], 1), w[0].pack[..]);
+    if size < 32 { tool_errln("material-pack: can't read the pack"); return 1; }
+    n := mpk_into(w[0].pack[0..<size], w[0].out[..], w[0].body[..]);
+    if n < 0 { tool_errln("material-pack: the pack is refused, already carries its cells, or grows past 400 MiB"); return 1; }
+    if !fs_write(args_at(a[..], 2), cast(string) w[0].out[0..<n]) { return 1; }
+    print("material-pack: % surface rows; the pack % bytes (was %)\n", E2S_COUNT, n, size); return 0;
+  }
+  if mode == "--holds" && args_count(a[..]) == 2 {
+    size := fs_read(args_at(a[..], 1), w[0].pack[..]);
+    if size < 32 || !mpk_holds(w[0].pack[0..<size]) { tool_errln("material-pack: the pack's catalog does not carry Everglade's surface rows (everglade/scene/surfaces.coax); write them with --into"); return 1; }
+    print("material-pack: the pack carries Everglade's % surface rows\n", E2S_COUNT); return 0;
+  }
+  tool_errln("usage: material-pack --into IN.pack OUT.pack | --holds PACK"); return 2;
+}

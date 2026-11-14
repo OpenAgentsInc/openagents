@@ -191,6 +191,9 @@ e2g_table :: (t: [] e2tt.TerrainMaterial) {
   t[2].gain = [2] f32.[0.96, 0.08]; t[2].gain_scale = E2G_GRAIN; t[2].gain_offset = 7;
   t[3] = e2g_material(E2G_PATH, [3] f32.[0.67, 0.60, 0.35], [3] f32.[0.685, 0.615, 0.35]);
 }
+// The table's roughness, a layer each in order: what the ground's material records carry
+// (everglade/scene/surfaces.coax e2s_terrain_register, #13545).
+e2g_roughness :: (out: [] f32) { t: [4] e2tt.TerrainMaterial; e2g_table(t[..]); for k: 0..<4 { if k < out.count { out[k] = t[k].roughness; } } }
 // The linear albedo at (x, z) with weights w (the table's IDs in order): metaverse-engine/render/shade/terrain-shade.coax's
 // equations, as the ground shader evaluates them (everglade/client/gpu/everglade2.coax e2_ground_albedo).
 e2g_albedo :: (t: [] e2tt.TerrainMaterial, w: [4] f32, x: f32, z: f32) -> [3] f32 {

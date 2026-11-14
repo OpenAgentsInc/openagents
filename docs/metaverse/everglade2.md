@@ -307,6 +307,21 @@ shades with `metaverse-engine/render/shade/character-material.coax`. Roughness n
 metal, so characters stay matte. `?maps=0` turns the maps off, and `?film` adds skin wrap, cloth
 sheen and hair highlights.
 
+The world's surfaces are records of the same table (#13541, #13545). Each kit vertex carries a
+material id in its normal word's top byte, and the catalog's `U ID NAME` rows say which surface
+asset each id is (`U 1 e2/surface/leaves`, `U 6 e2/surface/bark`, ...). The page registers
+Everglade's record for each named surface (`everglade/scene/surfaces.coax`) at slot 112 + id. The
+vertex stage reads wind, tiling and the placement's tint from the record, and the fragment stage
+reads the shading flags and the fill. The ground's four materials (meadow, autumn, litter, path) have
+records too, at slots 123 to 126, and each one names its layer of the ground's table. The ground's
+weights read those records. `everglade2_pack.coax` writes the rows. To put them into a built pack:
+
+```sh
+P=apps/openagents-web/realms/everglade2/assets/everglade2.pack
+coax/web/tool.sh everglade/model/tools/material-pack.coax --into "$P" /tmp/everglade2-rows.pack && mv /tmp/everglade2-rows.pack "$P"
+coax/web/tool.sh everglade/model/tools/material-pack.coax --holds "$P"   # coax/remote/check.sh's pack-surfaces
+```
+
 ### The cat (#13112)
 
 The glade has a cat (`everglade/creatures/cat.coax`, the game layer's, wired in by

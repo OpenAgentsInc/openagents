@@ -218,7 +218,10 @@ e2_catalog :: (s: [] E2, whole: string, rec: [] u8, rest: [] u8) #export_c #effe
   text := e2_catalog_rest(whole, rest);
   figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text); e2w_catalog(s, text); e2b_catalog(s, text); e2rv_catalog(s, text); e2rg_catalog(s, text);
   s[0].mats_n = cmat.cm_table(text, s[0].mat_table[..], s[0].mats[..]);
-  _ := e2s_register(s[0].mats[..]); s[0].mats_v += 1;   // the world's surfaces after the colour layers, in the same table (#13541)
+  // the world's surfaces after the colour layers, in the same table (#13541), from the pack's surface
+  // rows (#13545), and the ground's materials after them
+  _ := e2s_register(text, s[0].mats[..]);
+  rough: [E2S_TERRAINS] f32; e2g_roughness(rough[..]); _ = e2s_terrain_register(rough[..], s[0].mats[..]); s[0].mats_v += 1;
   for b: 0..<E2_BUCKETS { s[0].kit_first[b] = 0; s[0].kit_count[b] = 0; }
   at := 0; any := false;
   while at < text.count {

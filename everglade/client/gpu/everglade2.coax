@@ -52,33 +52,35 @@ e2_vis_c :: (c:V4,w:u32)->V4 {return v4(c.x,c.y,c.z,c.w+4.0f32*cast(f32)(w>>24))
  c:=e2_vis_c(v4(1,2,3,2.25f32),w);#assert c.x==1 && c.z==3 && c.w==2.25f32+508.0f32 && e2_inst_fade(c)== -63.0f32/64.0f32;
  #assert e2_vis_c(v4(0,0,0,1.5f32),e2_vis_word(7,0)).w==1.5f32 && e2_vis_row(e2_vis_word(0,65))==0;
 }
-e2_kit_vs :: (id:u32,instance:u32,u:[]E2U,vertices:[]u32,inst:[]u32,items:[]V4)->FivelabS {
- w:=inst[cast(int)(instance-cast(u32)E2_KIT_BASE)];q:=e2_vis_row(w);return e2_kit_place(id,items[q*2],e2_vis_c(items[q*2+1],w),u,vertices);
+e2_kit_vs :: (id:u32,instance:u32,u:[]E2U,vertices:[]u32,inst:[]u32,items:[]V4,mats:[]V4)->FivelabS {
+ w:=inst[cast(int)(instance-cast(u32)E2_KIT_BASE)];q:=e2_vis_row(w);return e2_kit_place(id,items[q*2],e2_vis_c(items[q*2+1],w),u,vertices,mats);
 }
-// One vertex of a kit piece placed at a (x y z yaw) with c (vertical and horizontal scale, tint).
-e2_kit_place :: (id:u32,a:V4,c:V4,u:[]E2U,vertices:[]u32)->FivelabS {
+// One vertex of a kit piece placed at a (x y z yaw) with c (vertical and horizontal scale, tint). The
+// normal word's top byte is the surface the pack names for it (everglade/scene/surfaces.coax, its
+// "U" rows): its record says whether it sways, tiles its texture and takes the placement's tint.
+e2_kit_place :: (id:u32,a:V4,c:V4,u:[]E2U,vertices:[]u32,mats:[]V4)->FivelabS {
  b:u32=add_wrap(wg_u32_f(u[0].glade.x),mul_wrap(id,8));
  source:V3=v3(f32_from_bits(vertices[cast(int)b]),f32_from_bits(vertices[cast(int)add_wrap(b,1)]),f32_from_bits(vertices[cast(int)add_wrap(b,2)]));
- normal:u32=vertices[cast(int)add_wrap(b,3)];kind:u32=(normal>>24)&7;
+ normal:u32=vertices[cast(int)add_wrap(b,3)];id8:=cast(int)(normal>>24);m:=e2_surface_id(id8,mats);
  p:=cg_instance_point(source,v3(a.x,a.y,a.z),c.x,c.y,a.w);
- if ((kind==1)||(kind==2)||(kind==3)) {sway:=sin(a.x*0.37f32+a.z*0.21f32+u[0].f.view.z*1.1f32)+sin(a.z*0.53f32+u[0].f.view.z*0.7f32)*0.35f32;p.x=p.x+sway*0.05f32*saturate(source.y*0.18f32)*c.x;}
+ if (e2_surf_is(m,cmat.CM_S_WIND)) {sway:=sin(a.x*0.37f32+a.z*0.21f32+u[0].f.view.z*1.1f32)+sin(a.z*0.53f32+u[0].f.view.z*0.7f32)*0.35f32;p.x=p.x+sway*0.05f32*saturate(source.y*0.18f32)*c.x;}
  nw:V4=wg_unpack4x8snorm(normal);cs:=cos(a.w);sn:=sin(a.w);
  n:=normalize3(v3((nw.x*cs+nw.z*sn)/c.y,nw.y/c.x,(-nw.x*sn+nw.z*cs)/c.y));
- uv:V2=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]);if (kind==6) {uv=v2(uv.x*64.0f32-32.0f32,uv.y*64.0f32-32.0f32);}
- vt:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,5)]);t:=ifx (kind==1)||(kind==4) then e2_unpack_tint(c) else v3(1,1,1);
+ uv:V2=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]);if (e2_surf_is(m,cmat.CM_S_TILED)) {uv=v2(uv.x*64.0f32-32.0f32,uv.y*64.0f32-32.0f32);}
+ vt:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,5)]);t:=ifx e2_surf_is(m,cmat.CM_S_PLACED) then e2_unpack_tint(c) else v3(1,1,1);
  o:FivelabS;o.pos=fivelab_project(p,u[0].f);o.world=p;o.normal=n;o.uv=uv;o.slice=vertices[cast(int)add_wrap(b,6)];
- o.tint=ifx kind==1 then t else mul3(v3(vt.x,vt.y,vt.z),t);o.dye=v4(e2_inst_fade(c),0,0,12);o.local=v3(cast(f32)kind,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0);o.who=0;
- if (kind==2) {
+ o.tint=ifx e2_surf_is(m,cmat.CM_S_LEAVES) then t else mul3(v3(vt.x,vt.y,vt.z),t);o.dye=v4(e2_inst_fade(c),0,0,12);o.local=v3(cast(f32)id8,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0);o.who=0;
+ if (e2_surf_is(m,cmat.CM_S_GRASS)) {
   // a grass tuft is shaded as the glade's grass (cg_instanced_vs): its height up the blade, its
   // root colour the piece's tint, its tips lighter, gold where the land is autumn
   height:=saturate(source.y);autumn:=e2_gold(a.x,a.z);base:=e2_unpack_tint(c);
-  o.tint=mix3(base,v3(0.65f32+0.28f32*autumn,0.88f32-0.20f32*autumn,0.07f32),height);o.local=v3(2,height,1);
+  o.tint=mix3(base,v3(0.65f32+0.28f32*autumn,0.88f32-0.20f32*autumn,0.07f32),height);o.local=v3(cast(f32)id8,height,1);
  }
  return o;
 }
 // ---- the grass field (everglade/world/field.coax): a tuft a cell, placed here from the draw's block
 // code and the cell's own hash, so the CPU only picks the blocks in view.
-e2_field_vs :: (id:u32,instance:u32,u:[]E2U,vertices:[]u32)->FivelabS {
+e2_field_vs :: (id:u32,instance:u32,u:[]E2U,vertices:[]u32,mats:[]V4)->FivelabS {
  o:FivelabS;o.pos=v4(0,0,-2,1);
  local:=instance-cast(u32)E2_FIELD_BASE;cell:=local&255;rest:=local>>8;blk:=rest>>2;
  row:=cast(u32)E2_FIELD_ROW;tier:=blk/(row*row);bb:=blk-tier*row*row;bz:=bb/row;bx:=bb-bz*row;
@@ -103,7 +105,7 @@ e2_field_vs :: (id:u32,instance:u32,u:[]E2U,vertices:[]u32)->FivelabS {
  au:=e2_gold(x,z);dark:=1.0f32-0.38f32*woods;
  tr:=(0.30f32+0.26f32*au)*dark;tg:=0.48f32*dark;tb:=0.055f32*dark;
  c:=v4(sv,sh,floor(tr*255.0f32+0.5f32)*256.0f32+floor(tg*255.0f32+0.5f32),tb+2.0f32);
- o=e2_kit_place(id,v4(x,e2_height(x,z),z,e2_unit(e2_field_hash(fx,fz,cast(u32)3))*6.2831853f32),c,u,vertices);
+ o=e2_kit_place(id,v4(x,e2_height(x,z),z,e2_unit(e2_field_hash(fx,fz,cast(u32)3))*6.2831853f32),c,u,vertices,mats);
  o.dye.x=1.0f32-shown;return o;
 }
 // An Everglade kit prop (21: the pack's M rows, everglade/client/bench.coax): its 12-word vertex (position,
@@ -117,7 +119,7 @@ e2_prop_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]E2U,vertices:[]u32)->Fivelab
  w:V3=add3(v3(m.a.x,m.a.y,m.a.z),v3(p.x*cs+p.z*sn,p.y,-p.x*sn+p.z*cs));
  o:FivelabS;o.pos=fivelab_project(w,u[0].f);o.world=w;o.normal=v3(n.x*cs+n.z*sn,n.y,-n.x*sn+n.z*cs);
  o.uv=v2(f32_from_bits(vertices[cast(int)add_wrap(b,6)]),f32_from_bits(vertices[cast(int)add_wrap(b,7)]));o.slice=(w8>>24)&255;
- o.tint=v3(t.x,t.y,t.z);o.dye=v4(0.0f32,0.0f32,0.0f32,12.0f32);o.local=v3(10.0f32,0.0f32,0.0f32);o.who=instance;
+ o.tint=v3(t.x,t.y,t.z);o.dye=v4(0.0f32,0.0f32,0.0f32,12.0f32);o.local=v3(f32(E2S_MODEL_TEXTURE),0.0f32,0.0f32);o.who=instance;
  return o;
 }
 #test "a kit prop's vertex: its float position turned a quarter by its record and set at a, its layer and tint from word 8" {
@@ -152,7 +154,7 @@ e2_dragon_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]E2U,bake:[]V4)->FivelabS {
  rgb:=q.w;r:=floor(rgb/65536.0f32);g:=floor((rgb-r*65536.0f32)/256.0f32);b:=rgb-r*65536.0f32-g*256.0f32;
  o:FivelabS;o.pos=fivelab_project(p,u[0].f);o.world=p;o.normal=normalize3(add3(add3(scale3(cx,n.x),scale3(ey,n.y)),scale3(fz,n.z)));
  o.uv=v2(0.5f32,0.5f32);o.slice=cast(u32)0;o.tint=v3(r/255.0f32,g/255.0f32,b/255.0f32);o.dye=v4(0,0,0,12.0f32);
- o.local=v3(9.0f32,0.0f32,0.0f32);o.who=instance;
+ o.local=v3(f32(E2S_MODEL_COLOUR),0.0f32,0.0f32);o.who=instance;
  return o;
 }
 #test "a streamed dragon corner: its vertex by number, placed by its record's columns, lit by its triangle's normal, coloured from its whole number" {
@@ -170,10 +172,10 @@ e2_dragon_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]E2U,bake:[]V4)->FivelabS {
  o=e2_dragon_vs(0,4,m,u[..],bake[..]);#assert abs(o.tint.x-1)<0.0001 && abs(o.tint.y-128.0f32/255.0f32)<0.0001 && abs(o.tint.z-64.0f32/255.0f32)<0.0001;
  o=e2_dragon_vs(4,4,m,u[..],bake[..]);#assert abs(o.normal.y-1)<0.0001 && abs(o.world.z+9)<0.0001;
 }
-everglade2_scene_vs :: (id:u32,instance:u32,u:[]E2U,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]u32,items:[]V4,ground:[]V4)->FivelabS {
+everglade2_scene_vs :: (id:u32,instance:u32,u:[]E2U,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]u32,items:[]V4,ground:[]V4,mats:[]V4)->FivelabS {
  if (instance>=cast(u32)E2_TILE_BASE) {return e2_tile_vs(id,instance,u,objects,ground);}
- if (instance>=cast(u32)E2_FIELD_BASE) {return e2_field_vs(id,instance,u,vertices);}
- if (instance>=cast(u32)E2_KIT_BASE) {return e2_kit_vs(id,instance,u,vertices,inst,items);}
+ if (instance>=cast(u32)E2_FIELD_BASE) {return e2_field_vs(id,instance,u,vertices,mats);}
+ if (instance>=cast(u32)E2_KIT_BASE) {return e2_kit_vs(id,instance,u,vertices,inst,items,mats);}
  if (instance<cast(u32)65536) {mp:=objects[cast(int)instance];if (mp.d.w>20.5f32 && mp.d.w<21.5f32) {return e2_prop_vs(id,instance,mp,u,vertices);}if (mp.d.w>22.5f32 && mp.d.w<23.5f32) {return e2_dragon_vs(id,instance,mp,u,bake);}}
  o:=fivelab_scene_place(id,instance,u[0].f,vertices,objects,bake);
  // a monster's frame (18) or a held weapon (19, everglade/server/creatures.coax, everglade/client/guard.coax):
@@ -192,6 +194,7 @@ everglade2_scene_vs :: (id:u32,instance:u32,u:[]E2U,vertices:[]u32,objects:[]Fiv
 #test "a grass tuft stands in one place at one size wherever the eye is, and only fades" #steps 4000000000 {
  // one template vertex (a grass blade's, kind 2) at the pack's start
  vtx:[8]u32;vtx[0]=f32_bits(0.3f32);vtx[1]=f32_bits(1.0f32);vtx[2]=f32_bits(0.2f32);vtx[3]=cast(u32)2<<24;
+ mats:[cmat.CM_MAX*4]V4;mats[(E2S_BASE+2)*4+3]=v4(f32(e2s_surface(2).surface),1,-1,0);   // its surface, grass (everglade/scene/surfaces.coax)
  u:[1]E2U;u[0].f.view.x=1280;u[0].f.view.y=720;u[0].f.eye.w=900;u[0].f.fwd.x=0;u[0].f.fwd.y=0;u[0].f.fwd.z= -1;u[0].f.right.x=1;u[0].f.up.y=1;u[0].f.halo.w=1;u[0].f.knobs.x=1;
  seen:=0;faded:=0;
  for t:0..<4 {for i:0..<300 {
@@ -204,7 +207,7 @@ everglade2_scene_vs :: (id:u32,instance:u32,u:[]E2U,vertices:[]u32,objects:[]Fiv
   for k:0..<240 {
    ex:=e2_road_x(-120.0f32+f32(ifx k<120 then k else 239-k)*0.5f32);ez:= -120.0f32+f32(ifx k<120 then k else 239-k)*0.5f32;
    u[0].f.eye.x=ex;u[0].f.eye.y=e2_height(ex,ez)+2;u[0].f.eye.z=ez;
-   o:=e2_field_vs(0,inst,u[..],vtx[..]);
+   o:=e2_field_vs(0,inst,u[..],vtx[..],mats[..]);
    if (o.pos.z< -1.5f32) {continue;}
    #assert o.dye.x>=0 && o.dye.x<1;
    if (o.dye.x>0) {faded+=1;}
@@ -248,11 +251,11 @@ e2_body_fade :: (s:FivelabS,objects:[]FivelabObj)->f32 {
  if (s.dye.w>11.5f32) {return 0;}
  w:=objects[cast(int)s.who].f.w;return ifx w>2.0005f32 && w<3.0f32 then w-2.0f32 else 0.0f32;
 }
-everglade2_shadow_vs :: (id:u32,instance:u32,u:[]E2U,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]u32,items:[]V4,ground:[]V4)->E2Shadow {
+everglade2_shadow_vs :: (id:u32,instance:u32,u:[]E2U,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]u32,items:[]V4,ground:[]V4,mats:[]V4)->E2Shadow {
  o:E2Shadow;o.pos=v4(0,0,-2,1);
  k:=cast(int)u[0].casc.head.y;
  if (u[0].f.pass.z<1.5f32 || u[0].casc.head.x<0.5f32 || k<0 || k>3) {return o;}
- s:=everglade2_scene_vs(id,instance,u,vertices,objects,bake,inst,items,ground);if (s.dye.w>11.5f32 && s.local.x<0.5f32) {return o;}
+ s:=everglade2_scene_vs(id,instance,u,vertices,objects,bake,inst,items,ground,mats);if (e2_sky(s,mats)) {return o;}
  q:=e2_casc_place(s.world,u,k);o.pos=e2_casc_clip(q,u,k);o.edge=v2(q.x,q.y);o.uv=s.uv;o.slice=s.slice;o.fade=e2_body_fade(s,objects);return o;
 }
 everglade2_shadow_fs :: (s:E2Shadow,sheets:Tex2DArray,sheet:Sampler) {
@@ -350,7 +353,7 @@ e2_tile_vs :: (id:u32,instance:u32,u:[]E2U,objects:[]FivelabObj,ground:[]V4)->Fi
  if (t.keep<0.5f32) {return o;}
  m:=objects[0];nw:=wg_unpack4x8snorm(cast(u32)t.n);
  o.pos=fivelab_project(t.p,u[0].f);o.world=t.p;o.normal=v3(nw.x,nw.y,nw.z);o.uv=wg_unpack2x16unorm(cast(u32)0x7fff7fff);o.slice=cast(u32)0;
- o.tint=v3(0,0,0);o.dye=v4(ifx m.d.w<16.5f32 && m.c.x>0.5f32 then 1.0f32 else 0.0f32,0.0f32,0.0f32,12.0f32);o.local=v3(5,0,0);o.who=cast(u32)0;
+ o.tint=v3(0,0,0);o.dye=v4(ifx m.d.w<16.5f32 && m.c.x>0.5f32 then 1.0f32 else 0.0f32,0.0f32,0.0f32,12.0f32);o.local=v3(f32(E2S_GROUND),0,0);o.who=cast(u32)0;
  return o;
 }
 // ---- the ground: drawn from the admitted material table and the canopy's bake (#13052)
@@ -376,13 +379,21 @@ e2_ground_weights :: (x:f32,z:f32)->V4 {
  c=e2_ground_layer(x,z,2);w=v4(engine_terrain_over(w.x,c,0),engine_terrain_over(w.y,c,0),engine_terrain_over(w.z,c,0),engine_terrain_over(w.w,c,1));
  return w;
 }
-e2_ground_albedo :: (x:f32,z:f32,ground:[]V4)->V3 {
+// The ground's albedo at (x, z): each weight is one of the ground's material records (everglade/scene/surfaces.coax
+// E2S_TERRAIN + k), whose colour multiplies the layer of the ground's table it names.
+e2_ground_albedo :: (x:f32,z:f32,ground:[]V4,mats:[]V4)->V3 {
  w:=e2_ground_weights(x,z);out:=v3(0,0,0);
- if (w.x>0.0f32) {out=add3(out,scale3(e2_ground_material(x,z,ground,0,w),w.x));}
- if (w.y>0.0f32) {out=add3(out,scale3(e2_ground_material(x,z,ground,1,w),w.y));}
- if (w.z>0.0f32) {out=add3(out,scale3(e2_ground_material(x,z,ground,2,w),w.z));}
- if (w.w>0.0f32) {out=add3(out,scale3(e2_ground_material(x,z,ground,3,w),w.w));}
+ if (w.x>0.0f32) {out=add3(out,scale3(e2_ground_record(x,z,ground,mats,0,w),w.x));}
+ if (w.y>0.0f32) {out=add3(out,scale3(e2_ground_record(x,z,ground,mats,1,w),w.y));}
+ if (w.z>0.0f32) {out=add3(out,scale3(e2_ground_record(x,z,ground,mats,2,w),w.z));}
+ if (w.w>0.0f32) {out=add3(out,scale3(e2_ground_record(x,z,ground,mats,3,w),w.w));}
  return out;
+}
+// Ground record k's linear albedo at (x, z): black when it names no layer of the table.
+e2_ground_record :: (x:f32,z:f32,ground:[]V4,mats:[]V4,k:int,w:V4)->V3 {
+ at:=(E2S_TERRAIN+k)*4;c:=mats[at];layer:=cast(int)floor(mats[at+3].z+0.5f32);
+ if (layer<0 || layer>=E2S_TERRAINS) {return v3(0,0,0);}
+ return mul3(e2_ground_material(x,z,ground,layer,w),v3(c.x,c.y,c.z));
 }
 e2_ground_at :: (ground:[]V4,k:int)->f32 {v:=ground[E2_GROUND_AO+k/4];r:=k%4;return ifx r==0 then v.x else ifx r==1 then v.y else ifx r==2 then v.z else v.w;}
 // The canopy's AO on the ground at (x, z) (metaverse-engine/render/shade/bake.coax bake_sample at no height), eased to 1
@@ -410,6 +421,10 @@ e2_ground_ao :: (x:f32,z:f32,ground:[]V4)->f32 {
  got:=e2_ground_material(3,4,g[..],2,w);
  gain:=engine_terrain_gain(3,4,0.9,0.2,1.5,7);
  #assert abs(got.x-engine_terrain_decode(0.2,0.6,0.75,gain))<0.000001 && abs(got.y-engine_terrain_decode(0.3,0.3,0.75,gain))<0.000001;
+ // a ground record names its layer and tints it; one naming no layer is black
+ mats:[cmat.CM_MAX*4]V4;mats[(E2S_TERRAIN+1)*4]=v4(0.5,1,2,5);mats[(E2S_TERRAIN+1)*4+3]=v4(32,1,2,0);mats[(E2S_TERRAIN+3)*4+3]=v4(32,1,-1,0);
+ rg:=e2_ground_record(3,4,g[..],mats[..],1,w);#assert rg.x==got.x*0.5f32 && rg.y==got.y && rg.z==got.z*2.0f32;
+ #assert e2_ground_record(3,4,g[..],mats[..],3,w).x==0;
  // the weights are the layers over the meadow, adding to one
  ww:=e2_ground_weights(-4.2,-8.8);
  #assert abs(ww.x+ww.y+ww.z+ww.w-1)<0.00001;
@@ -425,13 +440,17 @@ e2_ground_ao :: (x:f32,z:f32,ground:[]V4)->f32 {
 }
 // A world surface's record in the material table (everglade/scene/surfaces.coax): its flags and fill.
 E2Surf :: struct {flags:u32;fill:f32;}
-e2_surface :: (s:FivelabS,mats:[]V4)->E2Surf {
- k:=cast(int)(s.local.x+0.5f32);if (k<0 || k>=E2S_COUNT) {k=0;}
+e2_surface :: (s:FivelabS,mats:[]V4)->E2Surf {return e2_surface_id(cast(int)(s.local.x+0.5f32),mats);}
+// Surface id k's record (an id past the surfaces reads as a plain textured one's).
+e2_surface_id :: (id:int,mats:[]V4)->E2Surf {
+ k:=id;if (k<0 || k>=E2S_COUNT) {k=E2S_MODEL_TEXTURE;}
  d:=mats[(E2S_BASE+k)*4+3];return E2Surf.{flags=cast(u32)cast(int)(d.x+0.5f32),fill=d.y};
 }
 e2_surf_is :: (m:E2Surf,flag:int)->bool {return (m.flags&cast(u32)flag)!=cast(u32)0;}
+// Whether a world surface is the painted sky plate (its record's CM_S_SKY): drawn as its texel, casting no shadow.
+e2_sky :: (s:FivelabS,mats:[]V4)->bool {return s.dye.w>11.5f32 && e2_surf_is(e2_surface(s,mats),cmat.CM_S_SKY);}
 e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]E2U,shadow:f32,table:[]V4,mats:[]V4)->V4 {
- if (s.local.x<0.5f32) {return v4(pow(tex.x,0.62f32),pow(tex.y,0.75f32),tex.z*0.965f32,1);}
+ if (e2_surf_is(e2_surface(s,mats),cmat.CM_S_SKY)) {return v4(pow(tex.x,0.62f32),pow(tex.y,0.75f32),tex.z*0.965f32,1);}
  m:=e2_surface(s,mats);n:=normalize3(add3(s.normal,v3(0,0.0001f32,0)));
  foliage:=e2_surf_is(m,cmat.CM_S_FOLIAGE);grass:=e2_surf_is(m,cmat.CM_S_GRASS);leaves:=e2_surf_is(m,cmat.CM_S_LEAVES);ground:=e2_surf_is(m,cmat.CM_S_TERRAIN);
  petal:=e2_surf_is(m,cmat.CM_S_PETAL);stone:=e2_surf_is(m,cmat.CM_S_STONE);sand:=e2_surf_is(m,cmat.CM_S_SAND);
@@ -442,7 +461,7 @@ e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]E2U,shadow:f32,table:[]V4
  if (e2_surf_is(m,cmat.CM_S_TINTED)) {albedo=cg_decode(s.tint);}
  // the ground's colour is the admitted material table's at this point (the pack's vertex colours
  // are no longer read); the hand-set gold, woods and trail below are this realm's look on top
- if (ground) {albedo=e2_ground_albedo(s.world.x,s.world.z,table);}
+ if (ground) {albedo=e2_ground_albedo(s.world.x,s.world.z,table,mats);}
  if (ground) {trail:=e2_path(s.world.x,s.world.z);// the gold is a sunlit hilltop's: steep banks keep more of their olive, and broad patches vary
   steep:=0.55f32+0.45f32*smoothstep(0.80f32,0.95f32,n.y);
   // inside the ridge cut on the walk to Everglade (past the main shot's view) the banks stay a grassy olive
@@ -556,9 +575,9 @@ cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]E2U,objects:[]FivelabObj,visib
 everglade2_scene_fs :: (s:FivelabS,front:bool,u:[]E2U,objects:[]FivelabObj,mats:[]V4,ground:[]V4,sheets:Tex2DArray,sheet:Sampler,data:Tex2DArray,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->Everglade2Lit {
  deriv:=CcDeriv.{px=v3(gpu_dpdx_fine(s.world.x),gpu_dpdx_fine(s.world.y),gpu_dpdx_fine(s.world.z)),py=v3(gpu_dpdy_fine(s.world.x),gpu_dpdy_fine(s.world.y),gpu_dpdy_fine(s.world.z)),ux=v2(gpu_dpdx_fine(s.uv.x),gpu_dpdx_fine(s.uv.y)),uy=v2(gpu_dpdy_fine(s.uv.x),gpu_dpdy_fine(s.uv.y))};
  uv:=s.uv;ray:=add3(v3_of(u[0].f.fwd),add3(scale3(v3_of(u[0].f.right),(s.pos.x-u[0].f.fwd.w)/u[0].f.eye.w),scale3(v3_of(u[0].f.up),(u[0].f.right.w-s.pos.y)/u[0].f.eye.w)));plate:=cg_sky_uv(ray);
- if (s.dye.w>11.5f32 && s.local.x<0.5f32) {uv=v2(clampf(plate.x,0.001f32,0.999f32),clampf(plate.y,0.001f32,0.999f32));}
+ if (e2_sky(s,mats)) {uv=v2(clampf(plate.x,0.001f32,0.999f32),clampf(plate.y,0.001f32,0.999f32));}
  tex:=render_sample_layer8_bias(sheets,sheet,uv,cast(s32)s.slice,1);
- if (s.dye.w>11.5f32 && s.local.x<0.5f32) {
+ if (e2_sky(s,mats)) {
   // the painted plate follows the frame's resolved sky (#13067): the glade's record tints it by 1
   rd:=normalize3(ray);sky:=mix3(cg_decode(cg_sky(u[0].env,rd,v3_of(u[0].f.halo),u[0].f.view.z)),mul3(v3(tex.x,tex.y,tex.z),cg_sky_tint(u[0].env,rd)),cg_sky_plate_weight(plate));tex=v4(sky.x,sky.y,sky.z,1);
  }
@@ -569,7 +588,7 @@ everglade2_scene_fs :: (s:FivelabS,front:bool,u:[]E2U,objects:[]FivelabObj,mats:
  if (s.dye.w>11.5f32) {c=e2_environment_fs(s,tex,front,u,e2_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp),ground,mats);}
  else {c=cc_player_fs(s,tex,front,u,objects,e2_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp),mats,data,sheet,deriv);}
  n:=normalize3(s.normal);z:=dot3(sub3(s.world,v3_of(u[0].f.eye)),v3_of(u[0].f.fwd));
- sky:=s.dye.w>11.5f32 && s.local.x<0.5f32;foliage:=s.dye.w>11.5f32 && !sky && e2_surf_is(e2_surface(s,mats),cmat.CM_S_FOLIAGE);
+ sky:=e2_sky(s,mats);foliage:=s.dye.w>11.5f32 && !sky && e2_surf_is(e2_surface(s,mats),cmat.CM_S_FOLIAGE);
  indirect:=c.w;packed:=cg_normal_pack(n);
  c.w=ifx sky then 0.0f32 else ifx foliage then 0.4f32 else 0.12f32;
  return Everglade2Lit.{c=c,aux=v4(packed.x,packed.y,indirect,ifx sky then 0.0f32 else ifx foliage then -z else z)};

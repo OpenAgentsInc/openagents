@@ -1,44 +1,126 @@
-// Everglade's world surfaces as material records (#13541): one record a surface the kit's pieces,
-// the ground and the props are drawn with, in the one material table the characters' records are
-// in (metaverse-engine/character/material.coax, store 3 of Everglade II's page). A piece's surface
-// is the 3-bit kind its pack's vertices carry (and 9 and 10 for the props and baked models), so
-// surface k is record E2S_BASE + k. Registered once, when the catalog's table is made; the passes
-// read the flags and the fill (everglade/client/gpu/everglade2.coax e2_environment_fs), not the kind.
+// Everglade's world surfaces as material records (#13541, #13545): one record a surface the kit's
+// pieces, the ground and the props are drawn with, in the one material table the characters' records
+// are in (metaverse-engine/character/material.coax, store 3 of Everglade II's page).
+//
+// A surface is an asset of the pack by its name (E2S_NAMES: "e2/surface/leaves", ...). The pack names
+// the material id its vertices carry for each one in a catalog row, "U ID NAME", which the pack tools
+// write (e2s_rows: metaverse/tools/assets/everglade2_pack.coax, and everglade/model/tools/material-pack.coax
+// into a built pack). A kit vertex's normal word carries that id in its top byte, and the props and
+// baked models are drawn with the ids of the two model surfaces. The page registers the records from
+// those rows when the catalog comes (e2s_register): surface id k is record E2S_BASE + k, and the passes
+// read its flags and fill there (everglade/client/gpu/everglade2.coax e2_surface), never an id.
+//
+// The ground's materials (everglade/world/ground.coax e2g_table, aethyr.terrain.materials.v1) have
+// records of their own after the surfaces, E2S_TERRAIN + k for the table's layer k: the ground's
+// weights read them (e2_ground_albedo), and each names its layer of the ground's table.
 //   coax/bin/coax test everglade/scene/surfaces.coax
 #module "everglade.scene.surfaces";
 #load "../../metaverse-engine/character/material.coax" as cmat;
 
-E2S_COUNT :: 11;                          // kinds 0 to 10
+E2S_COUNT :: 11;                          // surface ids 0 to 10
 E2S_BASE :: cmat.CM_MAX - 16;             // their records' first slot: after every colour layer the packs have
-E2S_SKY :: 0;                             // the painted sky plate: drawn as its texel, not shaded
+E2S_GROUND :: 5;                          // the ground's tiles, drawn from its record (everglade/world/ground.coax)
+E2S_MODEL_COLOUR :: 9;                    // a baked model in its vertex colour (the horse, the dragon)
+E2S_MODEL_TEXTURE :: 10;                  // a model's texture times its vertex colour (the kit props, the monsters, the Sword)
+E2S_TERRAIN :: E2S_BASE + E2S_COUNT;      // the ground's materials' records, one a layer of its table
+E2S_TERRAINS :: 4;                        // the ground's layers: meadow, autumn, litter, path (ground.coax e2g_table)
+E2S_ROW :: 'U';                           // a pack catalog's surface row: "U ID NAME"
+E2S_NAMES :: [E2S_COUNT] string.["e2/surface/sky", "e2/surface/leaves", "e2/surface/grass", "e2/surface/flowers", "e2/surface/rock", "e2/surface/ground",
+  "e2/surface/bark", "e2/surface/mushroom", "e2/surface/gold", "e2/surface/model-colour", "e2/surface/model-texture"];
 
-// The record of surface `kind`.
-e2s_surface :: (kind: int) -> cmat.CharMaterial {
+// The record of the surface called `name`, or of kind -1 (no record) for a name Everglade doesn't have.
+e2s_named :: (name: string) -> cmat.CharMaterial {
   m := cmat.cm_kind(cmat.CM_KIND_SURFACE);
-  if kind == 1 { m.surface = cmat.CM_S_FOLIAGE | cmat.CM_S_LEAVES | cmat.CM_S_TINTED | cmat.CM_S_WIND; }   // a crown's leaves
-  if kind == 2 { m.surface = cmat.CM_S_FOLIAGE | cmat.CM_S_GRASS | cmat.CM_S_TINTED | cmat.CM_S_WIND; }    // grass
-  if kind == 3 { m.surface = cmat.CM_S_PETAL | cmat.CM_S_WIND; }                                          // flowers
-  if kind == 4 { m.surface = cmat.CM_S_STONE; m.fill = 0.78; }                                           // rock
-  if kind == 5 { m.surface = cmat.CM_S_TERRAIN; }                                                        // the ground
-  if kind == 6 { m.fill = 1.5; }                                                                         // a tiled surface
-  if kind == 7 { m.surface = cmat.CM_S_SAND; }
-  if kind == 8 { m.surface = cmat.CM_S_SAND | cmat.CM_S_TINTED; }
-  if kind == 9 { m.surface = cmat.CM_S_TINTED; }                                                         // a model in its vertex colour
-  return m;                                                                                               // 0 and 10: their texel times the tint
+  if name == E2S_NAMES[1] { m.surface = cmat.CM_S_FOLIAGE | cmat.CM_S_LEAVES | cmat.CM_S_TINTED | cmat.CM_S_WIND | cmat.CM_S_PLACED; return m; }   // a crown's leaves
+  if name == E2S_NAMES[2] { m.surface = cmat.CM_S_FOLIAGE | cmat.CM_S_GRASS | cmat.CM_S_TINTED | cmat.CM_S_WIND; return m; }                       // grass
+  if name == E2S_NAMES[3] { m.surface = cmat.CM_S_PETAL | cmat.CM_S_WIND; return m; }                                                             // flowers
+  if name == E2S_NAMES[4] { m.surface = cmat.CM_S_STONE | cmat.CM_S_PLACED; m.fill = 0.78; return m; }                                           // rock
+  if name == E2S_NAMES[5] { m.surface = cmat.CM_S_TERRAIN; return m; }                                                                           // the ground
+  if name == E2S_NAMES[6] { m.surface = cmat.CM_S_TILED; m.fill = 1.5; return m; }                                                               // bark, tiled
+  if name == E2S_NAMES[7] { m.surface = cmat.CM_S_SAND; return m; }
+  if name == E2S_NAMES[8] { m.surface = cmat.CM_S_SAND | cmat.CM_S_TINTED; return m; }
+  if name == E2S_NAMES[9] { m.surface = cmat.CM_S_TINTED; return m; }                                                                            // a model in its vertex colour
+  if name == E2S_NAMES[0] { m.surface = cmat.CM_S_SKY; return m; }                                                                             // the painted sky plate
+  if name == E2S_NAMES[10] { return m; }                                                                                                         // a texel times the tint
+  m.kind = -1; return m;
 }
-// The surfaces into the packed table `out` (cmat.CM_FLOATS a record): how many, or 0 when refused.
-e2s_register :: (out: [] f32) -> int {
-  t: [E2S_COUNT] cmat.CharMaterial;
-  for k: 0..<E2S_COUNT { t[k] = e2s_surface(k); }
-  return cmat.cm_surfaces(t[..], E2S_BASE, out);
+// The record of surface id `k` as Everglade's packs number them (E2S_NAMES' order).
+e2s_surface :: (k: int) -> cmat.CharMaterial { return e2s_named(E2S_NAMES[k]); }
+
+// The pack's surface rows, "U ID NAME" a line, into out: the bytes written, -1 when out is too small.
+e2s_rows :: (out: [] u8) -> int {
+  n := 0;
+  for name, k: E2S_NAMES {
+    if n + name.count + 8 > out.count { return -1; }
+    out[n] = E2S_ROW; out[n + 1] = ' '; n += 2;
+    if k >= 10 { out[n] = cast(u8) ('0' + k / 10); n += 1; }
+    out[n] = cast(u8) ('0' + k % 10); out[n + 1] = ' '; n += 2;
+    for ch: name { out[n] = ch; n += 1; }
+    out[n] = '\n'; n += 1;
+  }
+  return n;
+}
+// A catalog's surface row: its id and name, or id -1 for a line that isn't one.
+E2sRow :: struct { id: int = -1; name: string; }
+e2s_row :: (line: string) -> E2sRow {
+  if line.count < 5 || line[0] != E2S_ROW || line[1] != ' ' { return E2sRow.{}; }
+  at := 2; id := 0; digits := 0;
+  while at < line.count && line[at] >= '0' && line[at] <= '9' && digits < 3 { id = id * 10 + cast(int) (line[at] - '0'); at += 1; digits += 1; }
+  if digits == 0 || at + 1 >= line.count || line[at] != ' ' { return E2sRow.{}; }
+  name := line[at + 1..<line.count];
+  for ch: name { if ch == ' ' { return E2sRow.{}; } }
+  return E2sRow.{id = id, name = name};
+}
+// The surfaces catalog `t` names, registered into the packed table `out` (cmat.CM_FLOATS a record) at
+// E2S_BASE + id: how many, or 0 when refused (a pack without the rows, an id twice or past
+// E2S_COUNT, a name Everglade has no record for); then none is written, and those slots keep the
+// defaults the table was packed with (cm_table), a plain surface at full fill.
+e2s_register :: (t: string, out: [] f32) -> int {
+  rec: [E2S_COUNT] cmat.CharMaterial; seen: [E2S_COUNT] bool; n := 0; at := 0;
+  for k: 0..<E2S_COUNT { rec[k] = cmat.cm_kind(cmat.CM_KIND_SURFACE); }
+  while at < t.count {
+    e := at; while e < t.count && t[e] != '\n' { e += 1; }
+    line := t[at..<e]; at = e + 1;
+    if line.count < 2 || line[0] != E2S_ROW || line[1] != ' ' { continue; }
+    r := e2s_row(line);
+    if r.id < 0 || r.id >= E2S_COUNT || seen[r.id] { return 0; }
+    m := e2s_named(r.name);
+    if m.kind < 0 { return 0; }
+    rec[r.id] = m; seen[r.id] = true; n += 1;
+  }
+  if n == 0 { return 0; }
+  return ifx cmat.cm_surfaces(rec[..], E2S_BASE, out) == E2S_COUNT then n else 0;
+}
+// The ground's materials' records into `out`, one a layer of the ground's table (`roughness`, the
+// table's in order): layer k at E2S_TERRAIN + k. How many, or 0 when refused.
+e2s_terrain_register :: (roughness: [] f32, out: [] f32) -> int {
+  if roughness.count != E2S_TERRAINS { return 0; }
+  rec: [E2S_TERRAINS] cmat.CharMaterial;
+  for k: 0..<E2S_TERRAINS { rec[k] = cmat.cm_kind(cmat.CM_KIND_SURFACE); rec[k].surface = cmat.CM_S_TERRAIN; rec[k].terrain = k; rec[k].roughness = roughness[k]; }
+  return cmat.cm_surfaces(rec[..], E2S_TERRAIN, out);
 }
 
-#test "every surface is admitted and goes after the colour layers" {
+E2S_TEST_CATALOG :: "T 0 T_Knight_BaseColor.png 4\nU 0 e2/surface/sky\nU 1 e2/surface/leaves\nU 2 e2/surface/grass\nU 3 e2/surface/flowers\nU 4 e2/surface/rock\nU 5 e2/surface/ground\nU 6 e2/surface/bark\nU 7 e2/surface/mushroom\nU 8 e2/surface/gold\nU 9 e2/surface/model-colour\nU 10 e2/surface/model-texture\n";
+#test "the pack's rows name every surface, and registering them puts each after the colour layers" {
+  rows: [512] u8; n := e2s_rows(rows[..]); head := "T 0 T_Knight_BaseColor.png 4\n"; #assert n > 0 && cast(string) rows[0..<n] == E2S_TEST_CATALOG[head.count..<E2S_TEST_CATALOG.count];
+  #assert e2s_rows(rows[0..<n - 1]) == -1;
   out: [cmat.CM_MAX * cmat.CM_FLOATS] f32;
-  #assert e2s_register(out[..]) == E2S_COUNT && E2S_BASE + E2S_COUNT <= cmat.CM_MAX;
-  for k: 0..<E2S_COUNT { at := (E2S_BASE + k) * cmat.CM_FLOATS; #assert out[at + 3] == f32(cmat.CM_KIND_SURFACE) && cmat.cm_check(e2s_surface(k), 0) == cmat.CM_OK; }
+  #assert e2s_register(E2S_TEST_CATALOG, out[..]) == E2S_COUNT && E2S_TERRAIN + E2S_TERRAINS <= cmat.CM_MAX;
+  for k: 0..<E2S_COUNT { at := (E2S_BASE + k) * cmat.CM_FLOATS; #assert out[at + 3] == f32(cmat.CM_KIND_SURFACE) && out[at + 12] == f32(e2s_surface(k).surface) && cmat.cm_check(e2s_surface(k), 0) == cmat.CM_OK; }
   #assert out[(E2S_BASE + 4) * cmat.CM_FLOATS + 13] == 0.78f32 && out[(E2S_BASE + 6) * cmat.CM_FLOATS + 13] == 1.5f32 && out[(E2S_BASE + 5) * cmat.CM_FLOATS + 12] == f32(cmat.CM_S_TERRAIN);
-  short: [(E2S_BASE + E2S_COUNT) * cmat.CM_FLOATS - 1] f32; #assert e2s_register(short[..]) == 0;
+  short: [(E2S_BASE + E2S_COUNT) * cmat.CM_FLOATS - 1] f32; #assert e2s_register(E2S_TEST_CATALOG, short[..]) == 0;
+}
+#test "a pack's ids, not Everglade's order, place the records; a bad row refuses them all" {
+  out: [cmat.CM_MAX * cmat.CM_FLOATS] f32;
+  for i: 0..<out.count { out[i] = 7; }
+  #assert e2s_register("U 3 e2/surface/rock\nU 1 e2/surface/grass\n", out[..]) == 2;
+  #assert out[(E2S_BASE + 3) * cmat.CM_FLOATS + 12] == f32(cmat.CM_S_STONE | cmat.CM_S_PLACED) && out[(E2S_BASE + 1) * cmat.CM_FLOATS + 12] == f32(e2s_surface(2).surface);
+  #assert out[(E2S_BASE + 0) * cmat.CM_FLOATS + 12] == 0 && out[(E2S_BASE + 0) * cmat.CM_FLOATS + 13] == 1;   // a surface it doesn't name is plain
+  for i: 0..<out.count { out[i] = 7; }
+  #assert e2s_register("U 1 e2/surface/leaves\nU 1 e2/surface/rock\n", out[..]) == 0 && e2s_register("U 11 e2/surface/rock\n", out[..]) == 0;
+  #assert e2s_register("U 2 e2/surface/moss\n", out[..]) == 0 && e2s_register("U x e2/surface/rock\n", out[..]) == 0 && e2s_register("U 2 a b\n", out[..]) == 0;
+  #assert e2s_register("T 0 a 1\nUx 2 e2/surface/rock\n", out[..]) == 0 && out[E2S_BASE * cmat.CM_FLOATS] == 7;
+  #assert e2s_row("U 12 n").id == 12 && e2s_row("U 1234 n").id == -1 && e2s_row("U 1 ").id == -1 && e2s_row("V 1 n").id == -1;
 }
 #test "the flags are the shader's kinds as they were: foliage 1 and 2, the tint's albedo 1, 2, 8 and 9" {
   for k: 0..<E2S_COUNT {
@@ -46,6 +128,15 @@ e2s_register :: (out: [] f32) -> int {
     #assert ((f & cmat.CM_S_FOLIAGE) != 0) == (k == 1 || k == 2) && ((f & cmat.CM_S_LEAVES) != 0) == (k == 1) && ((f & cmat.CM_S_GRASS) != 0) == (k == 2);
     #assert ((f & cmat.CM_S_TINTED) != 0) == (k == 1 || k == 2 || k == 8 || k == 9) && ((f & cmat.CM_S_SAND) != 0) == (k == 7 || k == 8);
     #assert ((f & cmat.CM_S_PETAL) != 0) == (k == 3) && ((f & cmat.CM_S_STONE) != 0) == (k == 4) && ((f & cmat.CM_S_TERRAIN) != 0) == (k == 5);
-    #assert ((f & cmat.CM_S_WIND) != 0) == (k >= 1 && k <= 3);
+    // the vertex stage's: wind 1 to 3, the tiled uv 6, the placement's tint 1 and 4
+    #assert ((f & cmat.CM_S_SKY) != 0) == (k == 0) && ((f & cmat.CM_S_WIND) != 0) == (k >= 1 && k <= 3) && ((f & cmat.CM_S_TILED) != 0) == (k == 6) && ((f & cmat.CM_S_PLACED) != 0) == (k == 1 || k == 4);
   }
+  #assert e2s_named("e2/surface/moss").kind == -1 && e2s_named("").kind == -1;
+}
+#test "the ground's layers have records of their own after the surfaces, each naming its layer" {
+  out: [cmat.CM_MAX * cmat.CM_FLOATS] f32;
+  r := [4] f32.[1, 0.9, 1, 0.8];
+  #assert e2s_terrain_register(r[..], out[..]) == E2S_TERRAINS && e2s_terrain_register(r[0..<3], out[..]) == 0;
+  for k: 0..<E2S_TERRAINS { at := (E2S_TERRAIN + k) * cmat.CM_FLOATS; #assert out[at] == 1 && out[at + 4] == r[k] && out[at + 12] == f32(cmat.CM_S_TERRAIN) && out[at + 14] == f32(k); }
+  bad := [4] f32.[1, 1, 1.5, 1]; #assert e2s_terrain_register(bad[..], out[..]) == 0;
 }
