@@ -85,3 +85,47 @@ fake upstream. XCTest exercises native geometry, editor retention and
 email → compose → send → reply → relaunch → reopen. The portable artifact
 is compared with real WebAssembly before release. Production model service
 verification and owner phone acceptance are recorded with the release.
+
+
+## Native messages, build 1072
+
+The phone adapts T3 Code's `ThreadFeed.tsx` and
+`native/EnrichedMarkdownText.tsx` at the same reference commit: selectable
+native text, right-aligned user bubbles, unframed assistant prose, separate
+code and table views, copy actions, stable message views and end-follow
+scrolling that yields when the reader scrolls back. It reuses
+`components/core/markdown.coax`, `components/kit/frames.coax` and the
+transcript's extracted `components/core/scroll.coax`; no T3 parser or second
+Markdown implementation is installed. Its MIT notice is retained with the
+shared UIKit projection. Font provenance and OFL are in `components/fonts/`.
+
+`k_message` builds semantic articles. The one parser retains heading levels,
+combined inline marks, nested-list/task metadata and table alignment. It
+can opt into thematic-break blocks; existing consumers retain their old
+rule omission. Native TextKit lays out those semantics, preserves selection,
+and supports horizontal scrolling for wide code and tables. Code-copy uses
+raw code, while message-copy uses the original message source. A bounded
+rich-tree fallback shows the complete source if the shared tree budget or
+parser block/run budget would be exceeded.
+
+Clipboard and tapped links are installed platform effects with the service
+bodies in `proto/coax-native/clipboard-v1.json` and `open-link-v1.json` and
+the one Coax codec `text-services-wire.coax`. Links pass the shared URI parser
+and `text-link-policy.coax` in both application and installed host. Only
+HTTP(S) documents open; no account headers are passed to them. Copy actions
+can complete alongside a chat request without changing its turn state.
+
+Tapping the conversation or blank area outside the composer dismisses the
+keyboard. The recognizer preserves button/link actions and long-press text
+selection; composer controls keep their normal keyboard behavior. Header
+toolbars remain outside the scrolling transcript. Near the end, new content
+and keyboard layout changes follow the end; scrolling back suspends that
+follow until the reader reaches the end or sends another turn.
+
+Build 1072 installs the semantic text renderer and these platform effects.
+The message/state/parser code remains Coax and can update over the air within
+this runtime. The existing whole-response chat transport, storage and model
+admission are unchanged. This release does not add token streaming, T3's
+work/tool log, math/Mermaid engines, Markdown image loading or new syntax
+lexers. Code fences remain selectable monospace text with their language
+and Copy control.

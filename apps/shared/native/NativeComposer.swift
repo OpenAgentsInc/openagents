@@ -19,9 +19,7 @@ import CoreText
         if #available(iOS 26.0,*) {glass=UIVisualEffectView(effect:UIGlassEffect(style:.regular))}
         else {glass=UIVisualEffectView(effect:UIBlurEffect(style:.systemMaterialDark))}
         super.init(frame:frame)
-        for name in ["DMSans-Regular","DMSans-Medium"] {
-            if let url=Bundle.main.url(forResource:name,withExtension:"ttf") {CTFontManagerRegisterFontsForURL(url as CFURL,.process,nil)}
-        }
+        _=NativeTypography.registered
         layer.shadowColor=UIColor.black.cgColor;layer.shadowOpacity=0.35;layer.shadowOffset=CGSize(width:0,height:6);layer.shadowRadius=28
         addSubview(glass);glass.clipsToBounds=true
         for v in [editor,placeholder,plus,model,mic,send] {glass.contentView.addSubview(v)}

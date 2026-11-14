@@ -27,6 +27,7 @@ MD_TASK_NONE :: 0; MD_TASK_OPEN :: 1; MD_TASK_DONE :: 2;
 MD_LINKS :: 8192;             // bytes of link targets kept
 // Block kinds.
 MB_PARA :: 0; MB_LIST :: 1; MB_CODE :: 2; MB_QUOTE :: 3; MB_TABLE :: 4;
+MB_RULE :: 5;
 // A table's column alignment (parser.rs TableAlign; none reads as left).
 MA_LEFT :: 0; MA_CENTER :: 1; MA_RIGHT :: 2;
 MD_TABLE_COLS :: 16;          // columns kept; a row's cells past them are dropped
@@ -56,6 +57,7 @@ MdBlock :: struct {
   cols: int;
   lang_at: int; lang_n: int;
   part: int;                  // which source text it came from (a row id's part)
+  heading: int;               // 1..6 on a heading paragraph; 0 otherwise
 }
 MdDoc :: struct {
   text: [MD_TEXT] u8; n: int;
@@ -63,6 +65,14 @@ MdDoc :: struct {
   runs: [MD_RUNS] MdRun; nr: int;
   items: [MD_ITEMS] MdItem; ni: int;
   links: [MD_LINKS] u8; nlink: int;
+  keep_rules: bool;           // old consumers keep their historical rule omission
+}
+
+#test "heading levels and opt-in thematic breaks use the one parser" {
+  d:[1]MdDoc;d[0].keep_rules=true;n:=md_parse(d[..],"# Title\n\n---\n\n### Code `value`",0);
+  #assert n==3 && d[0].blocks[0].heading==1 && d[0].blocks[1].kind==MB_RULE && d[0].blocks[2].heading==3;
+  #assert md_block_text(d[..],2)=="Code value";
+  runs:=md_block_runs(d[..],2);#assert runs[runs.count-1].style==MD_CODE && (runs[runs.count-1].marks & MD_STRONG)!=0;
 }
 
 md_str :: (doc: [] MdDoc, at: int, n: int) -> string { return cast(string) doc[0].text[at..<at + n]; }
@@ -557,7 +567,7 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
       continue;
     }
     // a rule draws nothing here
-    if md_rule(line) { i = e + 1; continue; }
+    if md_rule(line) {if doc[0].keep_rules {b:=md_new_block(doc,MB_RULE,part);if b<0 {return doc[0].nb-before;}} i = e + 1; continue; }
     // a heading: its own paragraph, all bold (render.rs sets headings in the strong weight)
     hk := md_heading(line);
     if hk > 0 {
@@ -565,7 +575,8 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
       if b < 0 { return doc[0].nb - before; }
       at := doc[0].n; r0 := doc[0].nr;
       first_run := md_inline(doc, cast(string) line[hk..<line.count], at);
-      for q: r0..<doc[0].nr { doc[0].runs[q].style = MD_BOLD; }
+      for q: r0..<doc[0].nr {if doc[0].runs[q].style==MD_CODE {doc[0].runs[q].marks=doc[0].runs[q].marks | MD_STRONG;}else {doc[0].runs[q].style = MD_BOLD;}}
+      doc[0].blocks[b].heading=hk-1;
       doc[0].blocks[b].at = at; doc[0].blocks[b].n = doc[0].n - at;
       doc[0].blocks[b].run0 = r0; doc[0].blocks[b].runs = doc[0].nr - r0;
       i = e + 1;

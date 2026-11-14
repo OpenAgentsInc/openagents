@@ -1,0 +1,11 @@
+{
+  "schema": "coax.native.clipboard.v1",
+  "transport": "Installed native account service 9 clipboard.write",
+  "fields": {
+    "text": "UTF-8 string, at most 65536 bytes"
+  },
+  "effect": "Explicit user copy/tap only. Clipboard is never read by the service.",
+  "golden": {
+    "text": "Hello"
+  }
+}

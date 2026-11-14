@@ -24,9 +24,10 @@ TG_SVG :: 27; TG_USE :: 28;      // an icon: an svg holding a use of the icon's 
 TG_INPUT :: 29;                  // a one-line field (AT_TYPE says what kind: a password's is hidden as it is typed)
 TG_IMG :: 30;                    // a picture from this site (k_image: AT_SRC is a path here)
 TG_IFRAME :: 31;                 // a document from this site shown paged by the browser (k_document: a PDF)
-TG_COUNT :: 32;
-TG_NAMES :: [32] string.["div", "span", "button", "textarea", "a", "h1", "h2", "h3", "p", "ul", "ol", "li", "pre", "code",
-  "section", "header", "nav", "main", "strong", "em", "blockquote", "del", "footer", "table", "tr", "th", "td", "svg", "use", "input", "img", "iframe"];
+TG_H4 :: 32; TG_H5 :: 33; TG_H6 :: 34; TG_HR :: 35;
+TG_COUNT :: 36;
+TG_NAMES :: [36] string.["div", "span", "button", "textarea", "a", "h1", "h2", "h3", "p", "ul", "ol", "li", "pre", "code",
+  "section", "header", "nav", "main", "strong", "em", "blockquote", "del", "footer", "table", "tr", "th", "td", "svg", "use", "input", "img", "iframe", "h4", "h5", "h6", "hr"];
 
 // Attributes, and their names in the browser. AT_FRAME is set by tr_frame.
 AT_HREF :: 0; AT_LABEL :: 1; AT_PLACEHOLDER :: 2; AT_ROLE :: 3; AT_HIDDEN :: 4; AT_EXPANDED :: 5; AT_PRESSED :: 6;
@@ -40,10 +41,11 @@ AT_VARS :: 18;       // numbers the stylesheet reads as custom properties ("--p:
 AT_DROP :: 19;       // a place files are dropped on or picked from (k_drop): what the picker offers (".glb,.png"); the host hands a file's name and size to the page
 AT_MIN :: 20; AT_MAX :: 21; AT_STEP :: 22;   // a slider's ends and its step (k_slider), as whole numbers in text
 AT_SRC :: 23;        // where a picture or a document is (k_image, k_document): a path on this site, never another origin's
-AT_COUNT :: 24;
-AT_NAMES :: [24] string.["href", "aria-label", "placeholder", "role", "aria-hidden", "aria-expanded", "aria-pressed",
+AT_LEVEL :: 24; AT_VALUE :: 25; AT_CHECKED :: 26;
+AT_COUNT :: 27;
+AT_NAMES :: [27] string.["href", "aria-label", "placeholder", "role", "aria-hidden", "aria-expanded", "aria-pressed",
   "disabled", "data-state", "data-frame", "aria-current", "rows", "data-lang", "aria-live", "autofocus", "title", "type", "autocomplete", "style", "data-drop",
-  "min", "max", "step", "src"];
+  "min", "max", "step", "src", "aria-level", "value", "aria-checked"];
 
 TrNode :: struct {
   id_at: int; id_n: int;

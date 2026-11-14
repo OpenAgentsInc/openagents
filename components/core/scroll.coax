@@ -1,0 +1,9 @@
+// One end-follow rule for transcripts. Hosts supply their measured geometry.
+#test "short content, exact end and a reader above the end" {
+  #assert scroll_max(20,40)==0 && scroll_max(100,40)==60;
+  #assert scroll_at_end(100,40,60,0) && !scroll_at_end(100,40,59,0);
+  #assert scroll_at_end(100,40,42,18) && !scroll_at_end(100,40,41,18);
+  #assert scroll_at_end(20,40,0,0);
+}
+scroll_max :: (content:f32,viewport:f32)->f32 #export_c #effects(all) {m:=content-viewport;return ifx m<0 then 0.0f32 else m;}
+scroll_at_end :: (content:f32,viewport:f32,offset:f32,slack:f32)->bool #export_c #effects(all) {return offset>=scroll_max(content,viewport)-slack;}

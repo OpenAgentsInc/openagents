@@ -1,0 +1,4 @@
+// The installed platform text contract, generated once with each native build.
+#load "../../components/core/scroll.coax";
+#load "../../components/skin/native-chat.coax";
+#load "text-link-policy.coax";

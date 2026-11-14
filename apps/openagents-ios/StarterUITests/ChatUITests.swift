@@ -21,8 +21,14 @@ final class ChatUITests:XCTestCase {
         XCTAssertTrue(send.isEnabled)
         let compact=XCTAttachment(screenshot:app.screenshot());compact.name="T3 compact native composer";compact.lifetime = .keepAlways;add(compact)
         send.tap()
-        let reply=app.staticTexts["Hello from the account agent."]
+        let reply=app.textViews.matching(NSPredicate(format:"value == %@","Hello from the account agent.")).firstMatch
         XCTAssertTrue(reply.waitForExistence(timeout:20));XCTAssertEqual(editor.value as? String,"");XCTAssertTrue(app.keyboards.firstMatch.exists)
+        app.scrollViews.firstMatch.coordinate(withNormalizedOffset:CGVector(dx:0.02,dy:0.4)).tap()
+        let dismissed=XCTNSPredicateExpectation(predicate:NSPredicate(format:"exists == false"),object:app.keyboards.firstMatch)
+        XCTAssertEqual(XCTWaiter.wait(for:[dismissed],timeout:5),.completed)
+        let copy=app.buttons["message.1.copy"];XCTAssertTrue(copy.exists);copy.tap()
+        XCTAssertTrue(app.buttons.matching(identifier:"message.1.copy").matching(NSPredicate(format:"label == %@","Copied")).firstMatch.waitForExistence(timeout:5))
+        let rich=XCTAttachment(screenshot:app.screenshot());rich.name="Coax Markdown native conversation";rich.lifetime = .keepAlways;add(rich)
         app.buttons["chat.back"].tap()
         let saved=app.buttons["Hello from iPhone"];XCTAssertTrue(saved.waitForExistence(timeout:15))
         app.terminate();app.launch();XCTAssertTrue(saved.waitForExistence(timeout:15));saved.tap()

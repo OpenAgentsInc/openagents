@@ -28,7 +28,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
     dm_style(d,cast(string)s[0].css[0..<n]);
   }
   ui_begin(u,s[0].time,reduced);tr_begin(t);
-  x:=tr_open(t,"extras.more-wrap",TG_DIV,"nextras-more");x=k_button(t,u,"extras.more","More",BS_PLAIN);tr_close(t);
+  x:=tr_open(t,"extras.more-wrap",TG_NAV,"nextras-more");tr_attr(t,x,AT_ROLE,"toolbar");x=k_button(t,u,"extras.more","More",BS_PLAIN);tr_close(t);
   if s[0].menu>0 {
     x=tr_open(t,"extras.shade",TG_DIV,"nextras-shade");tr_close(t);
     x=tr_open(t,"extras.panel",TG_SECTION,"nextras-panel");tr_attr(t,x,AT_ROLE,"dialog");tr_attr(t,x,AT_LABEL,"Extras");

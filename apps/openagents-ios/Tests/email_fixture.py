@@ -62,7 +62,7 @@ class Handler(BaseHTTPRequestHandler):
                 body.update(id=key, revision=current+1)
                 threads[key] = body
                 return self.answer(200, body)
-            return self.answer(200, {"choices":[{"message":{"role":"assistant","content":"Hello from the account agent."},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":6}})
+            return self.answer(200, {"choices":[{"message":{"role":"assistant","content":"Hello from the account agent.\n\n## Shared Markdown\n\n**Bold**, *italic*, ~~strike~~ and `inline code`. [Docs](https://openagents.com).\n\n- [x] done\n  - nested item\n\n| Left | Right |\n| :--- | ---: |\n| one | two |\n\n> A quote\n\n```coax\nx := 1;\n```"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":6}})
         if self.path == "/api/auth/email/start":
             if body != dict(email="ada@example.com", client="app"):
                 return self.answer(400, {"error": "Unexpected email request"})

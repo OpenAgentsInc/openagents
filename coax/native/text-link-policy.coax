@@ -1,0 +1,19 @@
+// Links open only by an explicit tap, with no account headers or credentials.
+#load "../lib/net/uri.coax";
+#authority;
+#test "native text links admit web documents, including fragments, only" {
+  #assert nt_link("https://openagents.com") && nt_link("http://example.com/a?q=1#part");
+  #assert nt_link("https://example.com/#");
+  #assert !nt_link("https://a.test/#\n") && !nt_link("https://a.test/#\\x");
+  for s:[9]string.["","javascript:alert(1)","file:///etc/passwd","data:text/html,x","wss://example.com","https://user@example.com","https://","https://a.test/\n","//example.com"] {#assert !nt_link(s);}
+  long:[4097]u8;for i:0..<long.count {long[i]='a';}prefix:="https://a/#";for i:0..<prefix.count {long[i]=prefix[i];}
+  #assert nt_link(cast(string)long[0..<4096]) && !nt_link(cast(string)long[..]);
+  #assert nt_link("https://a/#!~") && !nt_link("https://a/# ");
+  long[prefix.count]=127;#assert !nt_link(cast(string)long[0..<prefix.count+1]);
+}
+nt_link :: (url:string)->bool #export_c #effects(all) {
+  if url.count>4096 {return false;}
+  for c:url {if c<33 || c>126 || c=='\\' {return false;}}
+  head:[4096]u8;n:=0;for c:url {if c=='#' {break;}head[n]=c;n+=1;}
+  p:=uri_parse(cast(string)head[0..<n]);return p.ok && (p.scheme==URI_HTTPS || p.scheme==URI_HTTP);
+}

@@ -1,0 +1,15 @@
+// Storage preflight for the shared Markdown-to-component-tree projection.
+// These are conservative byte/node costs, not visual dimensions. Preserve room
+// for the remaining bounded transcript as plain source when rich nodes won't fit.
+#load "markdown.coax";
+#load "tree.coax";
+md_tree_rich_fits :: (doc:[]MdDoc,bytes:int,nodes:int)->bool {
+  cost:=doc[0].n+doc[0].nlink+doc[0].nr*350+doc[0].ni*200+doc[0].nb*200;
+  count:=doc[0].nr*6+doc[0].ni*3+doc[0].nb*5;
+  return cost+60000<=bytes && count+128<=nodes && doc[0].nb<MD_BLOCKS && doc[0].nr<MD_RUNS && doc[0].ni<MD_ITEMS;
+}
+#test "rich projection budget reserves the plain remainder and declines exhausted node tables" {
+  d:[1]MdDoc;d[0].n=1;#assert md_tree_rich_fits(d[..],60001,128);
+  #assert !md_tree_rich_fits(d[..],60000,128) && !md_tree_rich_fits(d[..],60001,127);
+  d[0].nr=MD_RUNS;#assert !md_tree_rich_fits(d[..],10000000,10000000);
+}

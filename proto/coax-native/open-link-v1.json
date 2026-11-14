@@ -1,0 +1,11 @@
+{
+  "schema": "coax.native.open-link.v1",
+  "transport": "Installed native account service 10 link.open",
+  "fields": {
+    "url": "UTF-8 string, at most 4096 bytes"
+  },
+  "effect": "Only installed Coax-admitted HTTP(S) documents; no auth headers. Fragments supported. All other schemes refused.",
+  "golden": {
+    "url": "https://openagents.com/#chat"
+  }
+}

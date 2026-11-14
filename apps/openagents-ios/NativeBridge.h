@@ -7,3 +7,5 @@
 #include "../shared/host/apple/phone-drive.h"
 
 #include "Generated/NativeComposer.h"
+
+#include "Generated/NativeText.h"

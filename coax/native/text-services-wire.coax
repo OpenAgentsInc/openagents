@@ -1,0 +1,10 @@
+// The installed clipboard/open-link service bodies; one codec for each profile.
+#load "../lib/json/json.coax";
+nt_service_body :: (link:bool,value:string,out:[]u8)->int {
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],ifx link then "url" else "text");jo_str(o[..],value);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+#test "native clipboard and link profiles escape exact service bodies" {
+  b:[256]u8;n:=nt_service_body(false,"a\n\"b\"",b[..]);#assert cast(string)b[0..<n]=="{\"text\":\"a\\n\\\"b\\\"\"}";
+  n=nt_service_body(true,"https://openagents.com/#chat",b[..]);#assert cast(string)b[0..<n]=="{\"url\":\"https://openagents.com/#chat\"}";
+  small:[1]u8;#assert nt_service_body(false,"x",small[..])== -1;
+}

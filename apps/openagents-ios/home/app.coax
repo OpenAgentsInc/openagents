@@ -5,6 +5,8 @@
 #load "../../../coax/lib/json/json.coax";
 #load "../../shared/app-login.coax";
 #load "../../../coax/web/api/account-chat-wire.coax";
+#load "../../../coax/native/text-services-wire.coax";
+#load "../../../coax/native/text-link-policy.coax";
 #load "../../../coax/web/api/chat-history-wire.coax"; // shared account-history codec
 
 Starter :: struct {
@@ -13,6 +15,7 @@ Starter :: struct {
   note:[512]u8;note_n:int;outbox:[131072]u8;out_n:int;inbox:[1048576]u8;
   chats:[1]ChatHistory;selected:int= -1;
   thread:[1]AccountThread;draft:[4096]u8;draft_n:int;wire:[65536]u8;retry:bool;
+  markdown:[1]MdDoc;copied:[96]u8;copied_n:int;text_busy:bool;
   tree:[1]Tree;dom:[1]Dom;ui:[1]Ui;sets:[MF_COUNT]AfSettings;css:[24576]u8;
 }
 na_copy :: (out:[]u8,text:string)->int {n:=ifx text.count<out.count then text.count else out.count;for i:0..<n {out[i]=text[i];}return n;}
@@ -89,7 +92,22 @@ na_send :: (s:[]Starter) {
   #assert s[0].draft_n==5 && s[0].thread[0].n==0 && s[0].flight==0;
   s[0].flight=4;s[0].purpose=5;na_reply(s[..],4,429,"{}",false);#assert s[0].retry && s[0].flight==0;
 }
+// Text effects may complete alongside a model request; they never replace its
+// flight/purpose or trigger a model retry.
+na_text_effect :: (s:[]Starter,link:bool,value:string,id:string) {
+  if s[0].text_busy || s[0].action!=0 {return;}
+  if link && !nt_link(value) {na_note(s,"This link cannot be opened.");return;}
+  n:=nt_service_body(link,value,s[0].outbox[..]);if n<0 {na_note(s,"Text action is too large.");return;}
+  s[0].out_n=n;s[0].action=ifx link then 10 else 9;s[0].text_busy=true;
+  if !link {s[0].copied_n=na_copy(s[0].copied[..],id);}s[0].dirty=true;
+}
+#test "copy while an answer is pending cannot replace the model request" {
+  s:[1]Starter;s[0].flight=4;s[0].purpose=5;na_text_effect(s[..],false,"literal **source**","message.0.copy");
+  #assert s[0].action==9 && s[0].flight==4 && s[0].purpose==5;
+  na_reply(s[..],9,0,"{}",false);#assert !s[0].text_busy && s[0].flight==4 && s[0].purpose==5;
+}
 na_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool) {
+  if op==9 || op==10 {s[0].text_busy=false;if failed {s[0].copied_n=0;na_note(s,"The text action could not finish.");}s[0].dirty=true;return;}
   if op!=s[0].flight {return;}s[0].flight=0;s[0].dirty=true;
   nodes:[48]JvNode;d:[1]Jv;ok:=jv_parse(d[..],raw,nodes[..]);v:=d[0];
   if op==8 {s[0].purpose=0;s[0].retry=true;na_note(s,"Stopped. You can retry this turn.");return;}
@@ -177,7 +195,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
   }
   // Account fields stay still while the keyboard moves and code replies arrive.
   ui_begin(u,s[0].time,true);tr_begin(t);root:=tr_open(t,"account.app",TG_MAIN,"account-app");
-  x:=k_text(t,u,"account.brand",TG_P,"","OPENAGENTS");busy:=s[0].flight!=0;
+  if s[0].page!=3 {x:=k_text(t,u,"account.brand",TG_P,"","OPENAGENTS");}x:= -1;busy:=s[0].flight!=0;
   if s[0].page<0 {x=k_text(t,u,"account.starting",TG_P,"","Opening your account…");}
   else if s[0].page==0 {
     x=k_text(t,u,"login.title",TG_H1,"","Log in");x=k_text(t,u,"login.about",TG_P,"","Use the same email as openagents.com. We'll send you a 6-digit code.");
@@ -191,14 +209,15 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
     x=k_button(t,u,"login.resend","Send a new code",ifx busy then BS_DISABLED else BS_PLAIN);
     x=k_button(t,u,"login.change","Use another email",ifx busy then BS_DISABLED else BS_PLAIN);
   } else if s[0].page==3 {
-    x=k_button(t,u,"chat.back","Your chats",ifx busy then BS_DISABLED else BS_PLAIN);
-    x=k_text(t,u,"chat.heading",TG_H2,"","OpenAgents");
+    x=tr_open(t,"chat.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");
+    x=k_button(t,u,"chat.back","Your chats",ifx busy then BS_DISABLED else BS_PLAIN);x=k_text(t,u,"chat.name",TG_SPAN,"","OpenAgents");tr_close(t);
+    x=tr_open(t,"chat.messages",TG_SECTION,"transcript");tr_attr(t,x,AT_STATE,ifx s[0].thread[0].id_n>0 then cast(string)s[0].thread[0].id[0..<s[0].thread[0].id_n] else "new");
     if s[0].thread[0].n==0 {x=k_text(t,u,"chat.welcome",TG_P,"","What would you like to work on?");}
     for k:0..<s[0].thread[0].n {id:[96]u8;m:=s[0].thread[0].messages[k];
-      if m.assistant {x=k_text(t,u,tr_join(id[..],"message.",k),TG_P,"assistant",cast(string)m.text[0..<m.n]);}
-      else {x=k_user(t,u,tr_join(id[..],"message.",k),cast(string)m.text[0..<m.n]);}
+      x=k_message(t,u,tr_join(id[..],"message.",k),m.assistant,s[0].markdown[..],cast(string)m.text[0..<m.n]);
     }
-    if s[0].purpose==5 && busy {x=k_text(t,u,"chat.thinking",TG_P,"","Thinking…");}
+    if s[0].purpose==5 && busy {x=k_reply_open(t,"chat.thinking",true,true);x=k_text(t,u,"chat.thinking.text",TG_P,"","Thinking…");tr_close(t);}
+    tr_close(t);
     if s[0].retry {x=k_button(t,u,"chat.retry","Retry this turn",ifx busy then BS_DISABLED else BS_PLAIN);}
     if s[0].purpose==6 && !busy {x=k_button(t,u,"chat.save","Save reply",BS_PRIMARY);}
     f:=k_composer_begin(t,u,"chat.composer","Message");if busy {tr_attr(t,f,AT_DISABLED,"disabled");}
@@ -217,10 +236,12 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
   }
   if s[0].note_n>0 {x=k_text(t,u,"account.note",TG_P,"note",cast(string)s[0].note[0..<s[0].note_n]);tr_attr(t,x,AT_LIVE,"polite");}
   if s[0].page!=3 {x=tr_open(t,"app.tools",TG_FOOTER,"");x=k_button(t,u,"app.updates","Check for updates",ifx busy then BS_DISABLED else BS_PLAIN);x=k_button(t,u,"app.details","Build details",ifx busy then BS_DISABLED else BS_PLAIN);tr_close(t);}
-  tr_close(t);ui_end(u);s[0].dirty=false;return dm_flush(d,t,s[0].sets[..]);
+  tr_close(t);
+  if s[0].copied_n>0 {copy:=tr_find(t,cast(string)s[0].copied[0..<s[0].copied_n]);if copy>=0 {tr_attr(t,copy,AT_LABEL,"Copied");for k:copy+1..<t[0].n {if t[0].nodes[k].parent==copy && t[0].nodes[k].tag==TG_SPAN {tr_text(t,k,"Copied");break;}}}}
+  ui_end(u);s[0].dirty=false;return dm_flush(d,t,s[0].sets[..]);
 }
 st_event :: (s:[]Starter,kind:int,slot:int,n:int) #export_c #effects(all) {
-  if kind>=100 && kind<209 {op:=ifx kind>=200 then kind-200 else kind-100;if n>=0 && n<=1048576 {na_reply(s,op,slot,cast(string)s[0].inbox[0..<n],kind>=200);}return;}
+  if kind>=100 && kind<211 {op:=ifx kind>=200 then kind-200 else kind-100;if n>=0 && n<=1048576 {na_reply(s,op,slot,cast(string)s[0].inbox[0..<n],kind>=200);}return;}
   i:= -1;for k:0..<s[0].tree[0].n {if s[0].dom[0].of[k]==slot {i=k;break;}}id:=tr_id(s[0].tree[..],i);
   if kind==2 && n>=0 && s[0].flight==0 {
     if id=="login.email" && n<=254 {s[0].email_n=na_copy(s[0].email[..],cast(string)s[0].inbox[0..<n]);}
@@ -229,6 +250,11 @@ st_event :: (s:[]Starter,kind:int,slot:int,n:int) #export_c #effects(all) {
   if kind==2 && id=="chat.composer" && s[0].flight==0 && n>=0 {
     if n<=4096 {s[0].draft_n=na_copy(s[0].draft[..],cast(string)s[0].inbox[0..<n]);}
     else {dm_value(s[0].dom[..],"chat.composer",cast(string)s[0].draft[0..<s[0].draft_n]);na_note(s,"Messages can be up to 4,096 bytes.");}
+  }
+  if kind==1 {
+    for k:0..<s[0].thread[0].n {a:[96]u8;b:[96]u8;if id==tr_cat(b[..],tr_join(a[..],"message.",k),".copy") {m:=s[0].thread[0].messages[k];na_text_effect(s,false,cast(string)m.text[0..<m.n],id);return;}}
+    code:=k_code_copy(s[0].tree[..],i);if code.count>0 {na_text_effect(s,false,code,id);return;}
+    if i>=0 && s[0].tree[0].nodes[i].tag==TG_A {na_text_effect(s,true,tr_attr_of(s[0].tree[..],i,AT_HREF),id);return;}
   }
   if kind==1 && id=="chat.composer.send" && s[0].purpose==5 && s[0].flight==4 {s[0].flight=0;na_request(s,8,"");return;}
   if kind==1 && s[0].flight==0 {

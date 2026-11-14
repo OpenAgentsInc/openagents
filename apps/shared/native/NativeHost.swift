@@ -86,7 +86,7 @@ import AuthenticationServices
             let (op,body)=try p.action()
             if op==0 {continue}
             let owner=epoch,extra=(p === programs.last)
-            let ops=["","auth.state","auth.emailStart","auth.emailVerify","http","auth.logout","updates.check","updates.status","http.cancel"]
+            let ops=["","auth.state","auth.emailStart","auth.emailVerify","http","auth.logout","updates.check","updates.status","http.cancel","clipboard.write","link.open"]
             guard extra || op>0 && op<ops.count else {throw NativeFailure.refused("Unsupported service")}
             let args=(try? JSONSerialization.jsonObject(with:Data(body.utf8))) as? [String:Any] ?? [:]
             if !extra && op==8 {httpEpoch=UUID();httpTask?.cancel();httpTask=nil}
@@ -155,6 +155,13 @@ import AuthenticationServices
             let challenge=try await AppAuth.shared.passkeyChallenge(); let p=NativePasskey(window); passkey=p; defer { passkey=nil }
             _ = try await AppAuth.shared.passkeyLogin(challenge,try await p.get(challenge)); return ["loggedIn":true]
         case "auth.logout": await AppAuth.shared.logout(); return ["loggedIn":false]
+        case "clipboard.write":
+            guard let text=b["text"] as? String,text.utf8.count<=65536 else {throw NativeFailure.refused("Text is too large")}
+            UIPasteboard.general.string=text;return ["copied":true]
+        case "link.open":
+            let raw=b["url"] as? String ?? ""
+            guard raw.withCString({nt_link(coax_string(data:$0,count:Int64(raw.utf8.count)))}),let url=URL(string:raw),await UIApplication.shared.open(url) else {throw NativeFailure.refused("This link cannot be opened")}
+            return ["opened":true]
         case "http.cancel": return ["cancelled":true]
         case "http":
             let path=b["path"] as? String ?? "", method=b["method"] as? String ?? "GET", body=b["body"] as? String ?? ""

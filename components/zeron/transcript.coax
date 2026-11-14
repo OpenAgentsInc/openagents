@@ -18,6 +18,7 @@
 // wording): it is connected to nothing; a sent message is appended as a
 // user bubble. Based on Zeron by Wing, MIT.
 
+#load "../core/scroll.coax";
 #load "tools.coax";
 #load "../kit/markdown.coax";   // Markdown blocks: laid out and painted by the component
 
@@ -705,8 +706,7 @@ t_layout :: (t: [] Transcript, a: [] Atlas, th: Theme, x: f32, w: f32, bottom_pa
 // ---------------------------------------------------------------- scrolling and painting
 
 t_max_scroll :: (t: [] Transcript) -> f32 {
-  m := t[0].content_h - t[0].view_h;
-  return ifx m < 0 then 0.0f32 else m;
+  return scroll_max(t[0].content_h,t[0].view_h);
 }
 t_clamp :: (t: [] Transcript) {
   m := t_max_scroll(t);

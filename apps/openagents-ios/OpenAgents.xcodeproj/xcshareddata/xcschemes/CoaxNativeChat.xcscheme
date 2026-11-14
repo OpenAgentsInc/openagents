@@ -52,7 +52,7 @@
             </BuildableReference>
             <SelectedTests>
                <Test
-                  Identifier = "NativeProgramTests">
+                  Identifier = "NativeMarkdownTests">
                </Test>
             </SelectedTests>
          </TestableReference>

@@ -1,0 +1,8 @@
+// Regular phone text skin, adapted from T3 Code f313d0a6cb (MIT).
+// SDK hosts perform text measurement and paint these roles.
+NativeChatSkin :: struct {body:f64;line:f64;code:f64;radius:f64;padding:f64;gap:f64;bubble_fraction:f64;ink:u32;strong:u32;muted:u32;link:u32;code_bg:u32;bubble:u32;border:u32;}
+nt_skin :: ()->NativeChatSkin #export_c #effects(all) {
+  return NativeChatSkin.{body=16,line=23,code=14.4,radius=20,padding=12.25,gap=8,bubble_fraction=0.85,ink=0xe5e5e5ff,strong=0xf5f5f5ff,muted=0x999999ff,link=0x8cb4ffff,code_bg=0x191919ff,bubble=0x262626ff,border=0x383838ff};
+}
+
+nt_heading :: (level:int)->f64 #export_c #effects(all) {sizes:=[7]f64.[16,21,19,17,16,15,14];return ifx level>=1 && level<=6 then sizes[level] else 16.0;}

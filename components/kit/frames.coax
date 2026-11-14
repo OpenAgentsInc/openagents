@@ -23,7 +23,7 @@
 //   coax/bin/coax test components/kit/frames.coax
 
 #load "../core/tree.coax";
-#load "../core/markdown.coax";
+#load "../core/markdown-tree.coax";
 #load "../core/icons.coax";
 #load "../core/arwes/motion.coax";
 #load "../skin/mono.coax";
@@ -31,6 +31,27 @@
 UI_BIRTHS :: 384;
 UI_ID :: 96;          // bytes of an id built here
 BS_PLAIN :: 0; BS_PRIMARY :: 1; BS_DISABLED :: 2;
+
+#test "message Markdown retains headings, combined marks, nested/task lists and table alignment" {
+  t:[1]Tree;u:[1]Ui;d:[1]MdDoc;tr_begin(t[..]);ui_begin(u[..],0,true);
+  x:=k_message(t[..],u[..],"message.0",true,d[..],"## Heading\n\n**bold** and *italic* and ~~gone~~ and [**link**](https://example.com).\n\n- [x] done\n  - child\n\n| L | R |\n|:---|---:|\n| a | b |\n\n---");
+  #assert tr_class(t[..],x)=="msg-ai" && tr_attr_of(t[..],x,AT_ROLE)=="article";
+  #assert t[0].nodes[tr_find(t[..],"message.0.body.b0")].tag==TG_H2;
+  checked:=false;level:=false;em:=false;del:=false;rule:=false;right:=false;
+  for k:0..<t[0].n {node:=t[0].nodes[k];if node.tag==TG_EM {em=true;}if node.tag==TG_DEL {del=true;}if node.tag==TG_HR {rule=true;}
+    if tr_attr_of(t[..],k,AT_CHECKED)=="true" {checked=true;}if tr_attr_of(t[..],k,AT_LEVEL)=="2" {level=true;}
+    if node.tag==TG_TD && tr_attr_of(t[..],k,AT_STATE)=="right" {right=true;}
+  }
+  #assert em && del && rule && checked && level && right;
+}
+#test "code copy returns exact raw code and bounded messages fall back without clipping source" {
+  t:[1]Tree;u:[1]Ui;d:[1]MdDoc;tr_begin(t[..]);ui_begin(u[..],0,true);
+  x:=k_message(t[..],u[..],"m",true,d[..],"```coax\nx := 1;\n```");
+  #assert k_code_copy(t[..],tr_find(t[..],"m.body.b0.copy"))=="x := 1;";
+  #assert k_code_copy(t[..],-1)=="";
+  tr_begin(t[..]);t[0].pool_n=TR_POOL-60020;raw:="**hello**";x=k_message(t[..],u[..],"f",true,d[..],raw);
+  #assert tr_text_of(t[..],tr_find(t[..],"f.plain"))==raw;
+}
 
 // When a node first appeared: its id's hash and the second it starts to enter.
 UiBirth :: struct { h: int; born: f32; seen: bool; }
@@ -266,9 +287,10 @@ k_inline :: (t: [] Tree, doc: [] MdDoc, id: string, text: string, runs: [] MdRun
   ida: [UI_ID] u8; idb: [UI_ID] u8;
   at := 0; k := 0; part := 0;
   while at < text.count {
-    to := text.count; tag := TG_SPAN; link := "";
+    to := text.count; tag := TG_SPAN; link := "";strong:=false;italic:=false;strike:=false;code:=false;
     if k < runs.count && runs[k].from <= at {
       r := runs[k];
+      strong=r.style==MD_BOLD || (r.marks & MD_STRONG)!=0;italic=(r.marks & MD_ITALIC)!=0;strike=(r.marks & MD_STRIKE)!=0;code=r.style==MD_CODE;
       to = ifx r.to > text.count then text.count else r.to;
       if (r.marks & MD_LINK) != 0 { tag = TG_A; link = md_link(doc, r); }
       else if r.style == MD_CODE { tag = TG_CODE; }
@@ -278,8 +300,15 @@ k_inline :: (t: [] Tree, doc: [] MdDoc, id: string, text: string, runs: [] MdRun
       k += 1;
     } else if k < runs.count { to = ifx runs[k].from > text.count then text.count else runs[k].from; }
     if to <= at { break; }
-    n := tr_leaf(t, tr_join(idb[..], tr_cat(ida[..], id, "."), part), tag, "", cast(string) text[at..<to]);
+    runid:=tr_join(idb[..],tr_cat(ida[..],id,"."),part);
+    n := tr_open(t,runid,tag,"");opened:=1;
     if tag == TG_A { tr_attr(t, n, AT_HREF, link); }
+    extra:[UI_ID]u8;
+    if strong && tag!=TG_STRONG {z:=tr_open(t,tr_cat(extra[..],runid,".s"),TG_STRONG,"");opened+=1;}
+    if italic && tag!=TG_EM {z:=tr_open(t,tr_cat(extra[..],runid,".e"),TG_EM,"");opened+=1;}
+    if strike && tag!=TG_DEL {z:=tr_open(t,tr_cat(extra[..],runid,".d"),TG_DEL,"");opened+=1;}
+    if code && tag!=TG_CODE {z:=tr_open(t,tr_cat(extra[..],runid,".c"),TG_CODE,"");opened+=1;}
+    tr_text(t,t[0].stack[t[0].depth-1],cast(string)text[at..<to]);for z:0..<opened {tr_close(t);}
     at = to; part += 1;
   }
 }
@@ -303,7 +332,7 @@ k_agent :: (t: [] Tree, u: [] Ui, id: string, doc: [] MdDoc) -> int {
     block := doc[0].blocks[b];
     bid := tr_join(idb[..], tr_cat(ida[..], id, ".b"), b);
     if block.kind == MB_PARA {
-      p := tr_open(t, bid, TG_P, "");
+      headings:=[7]int.[TG_P,TG_H1,TG_H2,TG_H3,TG_H4,TG_H5,TG_H6];p := tr_open(t, bid, headings[block.heading], "");
       k_inline(t, doc, bid, md_block_text(doc, b), md_block_runs(doc, b));
       tr_close(t);
     } else if block.kind == MB_CODE {
@@ -314,6 +343,13 @@ k_agent :: (t: [] Tree, u: [] Ui, id: string, doc: [] MdDoc) -> int {
         item := block.item0 + q;
         iid := tr_join(idc[..], tr_cat(ida[..], bid, ".i"), q);
         li := tr_open(t, iid, ifx block.kind == MB_QUOTE then TG_P else TG_LI, "");
+        item_info:=doc[0].items[item];num:[24]u8;
+        if block.kind==MB_LIST {
+          tr_attr(t,li,AT_LEVEL,tr_join(num[..],"",item_info.depth+1));
+          tr_attr(t,li,AT_VALUE,tr_join(num[..],"",item_info.number));
+          tr_attr(t,li,AT_STATE,ifx item_info.ordered then "ordered" else "bullet");
+          if item_info.task!=MD_TASK_NONE {tr_attr(t,li,AT_CHECKED,ifx item_info.task==MD_TASK_DONE then "true" else "false");}
+        }
         k_inline(t, doc, iid, md_item_text(doc, item), md_item_runs(doc, item));
         tr_close(t);
       }
@@ -329,16 +365,36 @@ k_agent :: (t: [] Tree, u: [] Ui, id: string, doc: [] MdDoc) -> int {
           idd: [UI_ID] u8; ide: [UI_ID] u8;
           cid := tr_join(ide[..], tr_cat(idd[..], rid, ".c"), c);
           cell := tr_open(t, cid, ifx r == 0 then TG_TH else TG_TD, "");
+          tr_attr(t,cell,AT_STATE,ifx doc[0].items[item].number==MA_RIGHT then "right" else ifx doc[0].items[item].number==MA_CENTER then "center" else "left");
           k_inline(t, doc, cid, md_item_text(doc, item), md_item_runs(doc, item));
           tr_close(t);
         }
         tr_close(t);
       }
       tr_close(t);
-    }
+    } else if block.kind==MB_RULE {rule:=tr_leaf(t,bid,TG_HR,"","");}
   }
   tr_close(t);
   return i;
+}
+// A shared message is one semantic article. The host preserves its native
+// selection while the rest of the app changes. Rich-node exhaustion falls back
+// to the complete source, reserving space for the remainder of a transcript.
+k_message :: (t:[]Tree,u:[]Ui,id:string,assistant:bool,doc:[]MdDoc,source:string)->int {
+  i:=tr_open(t,id,TG_DIV,ifx assistant then "msg-ai" else "msg-user");tr_attr(t,i,AT_ROLE,"article");
+  doc[0].n=0;doc[0].nb=0;doc[0].nr=0;doc[0].ni=0;doc[0].nlink=0;doc[0].keep_rules=true;n:=md_parse(doc,source,0);
+  a:[UI_ID]u8;b:[UI_ID]u8;
+  if !md_tree_rich_fits(doc,TR_POOL-t[0].pool_n,TR_NODES-t[0].n) {
+    p:=tr_leaf(t,tr_cat(a[..],id,".plain"),TG_P,"",source);
+  }else {p:=k_agent(t,u,tr_cat(a[..],id,".body"),doc);}
+  c:=k_button(t,u,tr_cat(b[..],id,".copy"),"Copy message",BS_PLAIN);tr_close(t);return i;
+}
+k_code_copy :: (t:[]Tree,button:int)->string {
+  if button<0 || button>=t[0].n {return "";}p:=t[0].nodes[button].parent;
+  if p<0 || tr_class(t,p)!="code-h" {return "";}p=t[0].nodes[p].parent;
+  if p<0 || tr_class(t,p)!="code" {return "";}
+  for k:p+1..<t[0].n {if t[0].nodes[k].parent==p && t[0].nodes[k].tag==TG_PRE {return tr_text_of(t,k);}}
+  return "";
 }
 // The agent's message in a transcript: a node around its answer. While the answer is still coming it
 // says so, and the skin marks where the text has got to (a caret at its end, or alone while nothing has
@@ -814,7 +870,7 @@ k_menu :: (t: [] Tree, u: [] Ui, id: string, label: string) -> int {
   #assert tr_text_of(t, tr_find(t, "drop.t")) == "Drop a file here, or press to pick one" && tr_text_of(t, tr_find(t, "drop.m")) == "512 KB at most";
   #assert !tr_has(t, b, AT_DROP) && tr_has(t, b, AT_DISABLED) && tr_attr_of(t, b, AT_STATE) == "busy" && tr_find(t, "busy.m") < 0;
   #assert t[0].nodes[f].tag == TG_DIV && tr_class(t, f) == "file" && tr_text_of(t, tr_find(t, "file.1.t")) == "rock" && tr_text_of(t, tr_find(t, "file.1.m")) == "Mesh, 2 KB" && tr_find(t, "file.2.m") < 0;
-  names := AT_NAMES; #assert names[AT_DROP] == "data-drop" && names[AT_STEP] == "step" && names[AT_SRC] == "src" && AT_COUNT == 24;
+  names := AT_NAMES; #assert names[AT_DROP] == "data-drop" && names[AT_STEP] == "step" && names[AT_SRC] == "src" && AT_COUNT == 27;
 }
 #test "an image and a document from this site, and nothing from anywhere else" {
   h: [1] DkDropTest; t := h[0].t[..];
