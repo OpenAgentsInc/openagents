@@ -561,7 +561,11 @@ taken back and it stops there, so it drives round buildings, never through them.
 desert: no mesas or dune hills across it, and no invisible fence north of the garage yard. E parks
 it where it stands and she steps out at its left. From then on Sniper is where she parked it: its
 collider, its door into the cabin, the cabin's door out, the edit bay, its charger, the respawn and
-the compass's ROVER all follow it, and the rover at the farm's charger is gone from there. Driving
+the compass's ROVER all follow it, and the rover at the farm's charger is gone from there. Its
+collider, on the drive and parked, is the rover train's own footprint (the `pieces` row, about 18 m
+from the cab's nose to the last car's ramp, 2.85 m to its roofs), the same as at the farm: she,
+Digger and the camera stop at every car, the back ones too (#13552). The `Rover` landmark, where the
+drive parks it, stands clear of the mine mouth's lane and walls for a train that long. Driving
 into the garage yard turns the day to dusk. Tables saved before the `portals`, `starts` and `beats` tables get them empty,
 so such a world keeps its older opening in the dome village (#13505).
 

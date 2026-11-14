@@ -179,12 +179,17 @@ sl_sync :: (g: [] SpGame) {
     item := g[0].layer[0].items[i];
     row := sc_piece(c, item.mesh);
     if row < 0 { continue; }
-    p := c[0].pieces[row];
-    if p.hz >= p.hx { _ = sl_round(g, item.mesh, item.id, item.x, item.y, item.z, item.yaw, SH_ALONG_Z, p.hx, p.hz - p.hx, p.top); }
-    else { _ = sl_round(g, item.mesh, item.id, item.x, item.y, item.z, item.yaw, SH_ALONG_X, p.hz, p.hx - p.hz, p.top); }
+    _ = sl_piece_body(g, item.mesh, item.id, row, item.x, item.y, item.z, item.yaw);
   }
   _ = world_commit(w);
   g[0].layer[0].built = g[0].layer[0].rev;
+}
+// A piece's collider: the stadium round its footprint (its row of the `pieces` table, as sl_foot),
+// as tall as its top. A placed piece's, and Sniper's where she parks it (drive.coax dv_sync).
+sl_piece_body :: (g: [] SpGame, kind: int, id: int, row: int, x: f32, y: f32, z: f32, yaw: f32) -> int {
+  p := g[0].c[0].pieces[row];
+  if p.hz >= p.hx { return sl_round(g, kind, id, x, y, z, yaw, SH_ALONG_Z, p.hx, p.hz - p.hx, p.top); }
+  return sl_round(g, kind, id, x, y, z, yaw, SH_ALONG_X, p.hz, p.hx - p.hz, p.top);
 }
 // Whether slot s blocks now: the rubble and the boss wall stop blocking once the Digger opens
 // them. `tall`: only what stands taller than SL_TALL (what the camera and the party's people meet).

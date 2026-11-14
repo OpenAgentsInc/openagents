@@ -242,7 +242,7 @@ g_places :: (g: [] SpGame) -> bool {
   c := g[0].c[..]; a: SpPlaces; ok := c[0].ok;
   need := [17] int.[LM_DANCE, LM_ROVER, LM_POST, LM_CRATE, LM_START, LM_RUBBLE, LM_WALL, LM_BOSS, LM_DECK_S, LM_DECK_N, LM_BAY, LM_MEM, LM_VIL, LM_SCAN, LM_RAIL, LM_VIL_START, LM_RAIL_STOP];
   for id: need { ok = ok && sc_mark(c, id).id == id; }
-  m := sc_mark(c, LM_ROVER); a.rover_x = m.x; a.rover_z = m.z; a.rover_yaw = 0.2;
+  m := sc_mark(c, LM_ROVER); a.rover_x = m.x; a.rover_z = m.z; a.rover_yaw = PI + 0.2;   // its cab to the mine mouth, its ramp open to the desert (#13552)
   m = sc_mark(c, LM_POST); a.post_x = m.x; a.post_z = m.z;
   m = sc_mark(c, LM_CRATE); a.crate_x = m.x; a.crate_z = m.z;
   m = sc_mark(c, LM_START); a.start_x = m.x; a.start_z = m.z;
@@ -1562,7 +1562,7 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
   g_reset(g[..]);
   #assert g[0].c[0].ok && g_places(g[..]);
   a := g[0].at;
-  #assert a.rover_x == 6.0 && a.rover_z == 5.0 && a.post_x == 2.6 && a.post_z == 6.5 && abs(a.crate_x - 38.31) < 0.001 && abs(a.crate_z + 52.04) < 0.001 && a.start_x == 0.0 && a.start_z == 9.0;
+  #assert a.rover_x == 12.0 && a.rover_z == 7.0 && a.post_x == 2.6 && a.post_z == 6.5 && abs(a.crate_x - 38.31) < 0.001 && abs(a.crate_z + 52.04) < 0.001 && a.start_x == 0.0 && a.start_z == 9.0;
   #assert a.rubble_z == -34.0 && a.wall_z == -351.0 && a.boss_x == 0.0 && a.boss_z == -406.0;
   #assert a.deck_x == -141.0 && a.deck_z0 == -204.0 && a.deck_z1 == -186.0 && DECK_Y == 0.9 && RAMP == 3.0;
   #assert a.bay_x == -500.0 && a.bay_z == 636.0 && a.mem_x == -500.0 && a.mem_z == 700.0;   // far south, out of sight of the plain (#13552)
@@ -1580,7 +1580,7 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
   stop := rail_at(g[..], T_RAIL_PING);
   #assert abs(stop.x + 2.6 - sc_mark(c, LM_RAIL_STOP).x) < 0.01 && stop.z == sc_mark(c, LM_RAIL_STOP).z;
   // the tables outlive a reset, and a landmark the game needs must be in them
-  g_reset(g[..]); #assert g[0].c[0].ok && g[0].at.rover_x == 6.0;
+  g_reset(g[..]); #assert g[0].c[0].ok && g[0].at.rover_x == 12.0;
   g[0].c[0].mark_n = 3; #assert !g_places(g[..]);
 }
 #test "the right cut opens the rubble and the wrong cut does not" {
@@ -2192,8 +2192,8 @@ g_run_to_garage :: (g: [] SpGame) -> int {
 }
 // The rest of the run, from stepping out at the garage to SCENE RESTORED and back to a new run.
 g_run_from_garage :: (g: [] SpGame) -> int {
-  // at Sniper parked by the garage: the edit bay sends Digger at the raiders' rock wall
-  g[0].px = g[0].at.rover_x - 3; g[0].pz = g[0].at.rover_z; g_bot_home(g); g_step(g, 0.02);
+  // at Sniper parked by the garage, at its door (where she stepped out): the edit bay sends Digger at the raiders' rock wall
+  dp := dv_door(g); g[0].px = dp.x; g[0].pz = dp.z; g_bot_home(g); g_step(g, 0.02);
   if !(g_key(g, -15, true) && g[0].mode == M_BAY) { return 13; }
   if !(g_key(g, -2, true)) { return 17; }
   if !(g[0].bot && g[0].bot_state == BOT_GO) { return 18; }
@@ -2319,7 +2319,12 @@ sp_way_at :: (g: [] SpGame, long: bool, i: int) -> Point { return ifx long then 
 sp_way_n :: (long: bool) -> int { return ifx long then SP_LONG_WAY else SP_RAVE_WAY; }
 // Walks from the core to Sniper's door one way; false when a place on it can't be reached.
 sp_night_walk :: (g: [] SpGame, k: [] SwWalker, long: bool) -> bool {
-  for i: 0..<sp_way_n(long) { p := sp_way_at(g, long, i); if !sw_walk(g, k, p.x, p.z, ifx i == sp_way_n(long) - 1 then 0.8f32 else 1.2f32) { return false; } }   // Sniper's door as the walk replay reaches it
+  for i: 0..<sp_way_n(long) {
+    p := sp_way_at(g, long, i);
+    e := ifx i == sp_way_n(long) - 1 && dv_away(g) then dv_round_end(g, g[0].px, g[0].pz) else -1;
+    for side: [2] f32.[-1, 1] { if e >= 0 { r := dv_round_at(g, e, side); if !sw_walk(g, k, r.x, r.z, 1.2) { return false; } } }   // round the train, not through it (drive.coax)
+    if !sw_walk(g, k, p.x, p.z, ifx i == sp_way_n(long) - 1 then 0.8f32 else 1.2f32) { return false; }   // Sniper's door as the walk replay reaches it
+  }
   return true;
 }
 // The nearest any leg of a way comes to a segment from (ax, az) to (bx, bz).

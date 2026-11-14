@@ -510,7 +510,7 @@ sc_drop_kept :: (c: [] SpContent, row: int) {
   #assert sc_load(c[..], SC_SHIPPED) && c[0].ok && c[0].rev >= 1;
   #assert c[0].area_n == 7 && c[0].kept_n >= 20 && c[0].mark_n >= 40 && c[0].piece_n >= 15 && c[0].piece_n <= 30;
   rover := sc_mark(c[..], 1);
-  #assert rover.id == 1 && sc_mark_name(c[..], sc_mark_row(c[..], 1)) == "Rover" && sc_mark_row(c[..], 19) == -1 && sc_kept_name(c[..], 0) == "Village start" && sc_area_name(c[..], 3) == "Mine" && rover.x == 6 && rover.z == 5 && rover.r == 4.5;
+  #assert rover.id == 1 && sc_mark_name(c[..], sc_mark_row(c[..], 1)) == "Rover" && sc_mark_row(c[..], 19) == -1 && sc_kept_name(c[..], 0) == "Village start" && sc_area_name(c[..], 3) == "Mine" && rover.x == 12 && rover.z == 7 && rover.r == 4.5;
   #assert sc_mark(c[..], 0).id == 0 && sc_mark(c[..], 9999).id == 0 && sc_mark(c[..], 19).id == 0;
   p := sc_piece(c[..], 101);
   #assert p >= 0 && sc_piece_name(c[..], p) == "Parked rover" && c[0].pieces[p].kit == PK_ROVER && c[0].pieces[p].scale == 1.5 && c[0].pieces[p].a == 0xEDE0C2;

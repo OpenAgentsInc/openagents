@@ -9,7 +9,7 @@ The site's index is [llms.txt](https://openagents.com/llms.txt). Look a Coax nam
 - realm: splice-bots
 - page: `/worlds/splice-bots` (module `splice-bots`, source `apps/openagents-web/realms/splice-bots/`)
 - wire: none. The page decides the simulation; there is no room to speak to
-- content: `metaverse/splice-bots/content/splice.content`, revision 4, sha256 `56c435fcf9ab0cdacd3fa7f46f8c52cc6ec62ddda4c38f0d551340debef04e9d`
+- content: `metaverse/splice-bots/content/splice.content`, revision 4, sha256 `5cfb5be0644a41e46974fb8f29c57130d839f0de107c03692a42836cf884450c`
 - diagnostics: `engine-diagnostics-v1`, 17 codes, sha256 `55aa5a9b50ff02e1256e64909abf901a29f9c98a1575ae6b669281410b69c31c` (`proto/verse/engine-diagnostics-v1.json`)
 - language: Coax; the compiler's version is in `coax/release-status.json` and what it claims to do in `coax/book/capability-claims.json`
 - reference: the last line of this file is the sha256 of everything above it. Two builds with the same line have the same reference
@@ -206,4 +206,4 @@ table actors id name:text
 1|Raider 1
 ```
 
-reference sha256: 20e80196dd13ff5ad3b3b09747acec3ecbf1f77e2215c4e57b52f66b44e7f28e
+reference sha256: 6866e216eb54487a2ef2533919005fd3ee481fa1e192559978cb704d6a61b486

@@ -126,9 +126,8 @@ cm_blocked :: (g: [] SpGame, x: f32, y: f32, z: f32, pad: f32, roof: f32) -> boo
 // The bodies that move: Digger beside her, the drill mech, and in its chamber the boss.
 cm_body_at :: (g: [] SpGame, x: f32, y: f32, z: f32, pad: f32) -> bool {
   if g[0].zone != Z_MINE { return false; }
-  t := g[0].bt[0];
   if g[0].bot && y < T_BOT_TOP + pad && dist2(x, z, g[0].bot_x, g[0].bot_z) < T_BOT_R + pad { return true; }
-  if y < SB_MECH_TOP + pad && dist2(x, z, t.mech_x, t.mech_z) < SB_MECH_R + pad { return true; }
+  if y < SB_MECH_TOP + pad && dist2(x, z, g[0].bt[0].mech_x, g[0].bt[0].mech_z) < SB_MECH_R + pad { return true; }   // its fields, not a copy of the battle
   if (g[0].wall_gone || g[0].boss_down) && y < CM_BOSS_TOP + pad && cm_boss_in(g, x, z, pad) { return true; }
   return false;
 }
