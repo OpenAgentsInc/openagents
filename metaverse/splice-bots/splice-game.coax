@@ -14,8 +14,9 @@
 #load "content.coax";
 #load "layer.coax";
 #load "garage.coax";             // the raider mine garage: the ring of lettered bays, the hallway and the lab (#13505)
-#load "drive.coax";
-#load "farm.coax";               // the solar farm's field: long lines of banks to the edge of the ground, the low sun and the haze (playtest 2)              // the drive from the solar farm to the garage, and the rover's room (#13505)
+#load "camera.coax";             // the follow camera behind her (playtest 2)
+#load "drive.coax";              // the drive from the solar farm to the garage, and the rover's room (#13505)
+#load "farm.coax";               // the solar farm's field: long lines of banks to the edge of the ground, the low sun and the haze (playtest 2)
 #load "walk.coax";
 #load "layer-fixture.coax";
 #load "layer-draw.coax";
@@ -27,7 +28,8 @@
 #load "sound.coax";                // the sound table and the moments each sound plays (#13505)
 #load "sound-checks.coax" #test;
 #load "layer-checks.coax" #test;   // the colliders' and the layer's checks
-#load "walk-checks.coax" #test;    // the walk replay's, the fixture layer's and the kept-clear zones' checks
+#load "walk-checks.coax" #test;
+#load "camera-checks.coax" #test;  // the follow camera's checks (playtest 2)    // the walk replay's, the fixture layer's and the kept-clear zones' checks
 #load "replay.coax";
 #load "replay-checks.coax" #test;   // the outcome replay's checks, and each check's broken variant
 #load "world-checks.coax" #test;   // the world document's and the saved batch's checks
@@ -154,6 +156,7 @@ SpGame :: struct {
   dr: [1] SpDir;               // the Director's systems (director.coax): her stance, Digger's errands and health, the grid, the map, pause
   bt: [1] SpBattle;            // the bots' battles, the drill mech, the raider mech, the boss and the ending (splice-battle.coax)
   snd: [1] SpSound;            // what sounds, and what the page is told to play (sound.coax)
+  cam: [1] SpCam;             // the follow camera's eased boom (camera.coax)
   hv: [1] SpHud;               // the HUD: hidden or not, the toasts, the gauges' fades, the edit bay's picked item (hud.coax)
 }
 
@@ -323,6 +326,7 @@ g_say :: (g: [] SpGame, m: int) { g[0].msg = m; g[0].msg_t = 3.5; g_event(g, m);
 // Where Digger follows: at her left, a little ahead, so the camera behind her shows him beside her, clear of
 // the objective panel at the bottom right and the board panel at the bottom left (left of her is (cos yaw, -sin yaw)).
 T_BOT_BACK :: -0.4f32; T_BOT_LEFT :: 1.5f32;
+T_BOT_R :: 0.55f32; T_BOT_TOP :: 1.3f32;   // m: Digger's body as the camera meets it (camera.coax)
 g_bot_spot :: (g: [] SpGame) -> Point { y := g[0].yaw; return v3(g[0].px - sin(y) * T_BOT_BACK + cos(y) * T_BOT_LEFT, 0, g[0].pz - cos(y) * T_BOT_BACK - sin(y) * T_BOT_LEFT); }
 g_bot_home :: (g: [] SpGame) { g[0].bot_state = BOT_FOLLOW; h := g_bot_spot(g); g[0].bot_x = h.x; g[0].bot_z = h.z; g[0].bot_yaw = g[0].yaw; }
 g_enter_mine :: (g: [] SpGame) { g[0].zone = Z_MINE; g[0].mode = M_PLAY; g[0].phase = PH_DAY; g[0].px = g[0].at.start_x; g[0].pz = g[0].at.start_z; g[0].yaw = PI; g[0].pitch = 0; g_bot_home(g); g_keep(g); }
@@ -598,11 +602,12 @@ g_step :: (g: [] SpGame, dt: f32) {
   d_pre(g, dt);   // the stance's time and the board's speed (director.coax)
   if g[0].zone == Z_VILLAGE {
     if g[0].pass_t > 0 { g[0].pass_t -= dt; if g[0].pass_t <= 0 { g[0].zone = Z_RAIL; g[0].mode = M_RIDE; g[0].phase = PH_DAY; g[0].rail_s = 0; } return; }
-    g_move(g, dt);
+    g_move(g, dt); cm_step(g, dt);
     if g[0].pz > g[0].at.scan_z { g[0].pass_t = T_PASS; }   // through the scanner beam: Heat is cool, pass
     return;
   }
   g_move(g, dt);
+  cm_step(g, dt);   // the camera eases after her (camera.coax)
   dv_desk(g);       // at the rover's desk Sniper puts the deep-garage map up (drive.coax)
   sb_step(g, dt);   // battles, the drill mech, the raider mech and the boss (splice-battle.coax)
   if g[0].zone == Z_RAIL { d_post(g, dt); g_bot(g, dt); return; }
@@ -835,7 +840,7 @@ g_look :: (g: [] SpGame, dx: f32, dy: f32) {
 g_lock :: (g: [] SpGame, status: int) { d_lock(g, status); g[0].look_free = status != 1; }
 
 // A moment of the run to stand in (the page's message 610, "N"): for stills and checks of each beat.
-g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); g_foes(g); if g[0].bot { g_bot_home(g); } sb_stage(g, n); dv_stage(g, n); }
+g_stage :: (g: [] SpGame, n: int) { g_stage_set(g, n); g_foes(g); if g[0].bot { g_bot_home(g); } sb_stage(g, n); dv_stage(g, n); cm_stage(g, n); }
 g_stage_set :: (g: [] SpGame, n: int) {
   g_reset(g); g[0].mode = M_PLAY;
   if n == 0 { g[0].mode = M_TITLE; return; }
@@ -1096,7 +1101,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   // the smuggler
   y := g_feet_y(g);
   blink := g[0].hit_cool > 0 && fract(t * 8) < 0.5;
-  if !blink {
+  if !blink && !cm_too_near(g) {   // the camera this near her head: her body is left out of the view (camera.coax)
     // the smuggler: listed here, drawn as your character from its walk poses in the piece store (front.coax fr_player)
     pf := frame_at(v3(g[0].px, y, g[0].pz), g_face(g));
     bd := g[0].board[0]; riding := g_riding(g);
@@ -1244,7 +1249,6 @@ g_plan_marks :: (g: [] SpGame, buf: [] u32, p: [] Pen, i: int) {
 
 // ---- The camera and the look
 g_camera :: (g: [] SpGame) -> CamNow {
-  t := g[0].t;
   if g[0].mode == M_BAY { return CamNow.{eye = v3(g[0].at.bay_x + 3.4, 2.4, g[0].at.bay_z + 8.6), at = v3(g[0].at.bay_x, 0.6, g[0].at.bay_z), fov = 0.62}; }
   if g[0].mode == M_MEMORY || g[0].mode == M_RESTORED { return sb_memory_camera(g); }
   if fr_front(g) { return fr_camera(g); }   // the rover on the rail and the dolly past it (front.coax)
@@ -1253,33 +1257,14 @@ g_camera :: (g: [] SpGame) -> CamNow {
     c := rail_at(g, g[0].rail_s); y := rail_yaw(g, g[0].rail_s);
     return CamNow.{eye = v3(c.x - sin(y) * 10, 4.6 + g[0].pitch * 4, c.z - cos(y) * 10), at = v3(c.x + sin(y) * 6, 2.0, c.z + cos(y) * 6), fov = 0.82};
   }
-  y := g_cam_y(g) - d_crouch(g);   // sneaking, the view sinks
-  bd := g[0].board[0]; riding := g_riding(g);
-  if riding { y += board_lift(bd); }   // on the board you ride its hover
-  head := v3(g[0].px, y + 1.7, g[0].pz);
-  back := v3(-sin(g[0].yaw), 0, -cos(g[0].yaw));
-  reach := (ifx g[0].zone == Z_VILLAGE then 4.0f32 else 6.5f32) + (ifx riding then board_back(bd) else 0.0f32);   // pulled back at speed
-  room := g[0].zone == Z_MINE && sp_in_room(g);
-  if room { reach = lo(reach, DV_ROOM_REACH); }   // in the rover's cabin: in close, under its ceiling (drive.coax)
-  for i: 1..<14 { d := cast(f32) i * 0.5; if d > reach { break; } if g_inside(g, head.x + back.x * d, head.z + back.z * d) || g_big_at(g, head.x + back.x * d, head.z + back.z * d, 0.8) { reach = hi(0.8, d - 0.6); break; } }
-  lift := ifx g[0].zone == Z_VILLAGE then 0.18f32 else 0.33f32;
-  // a big body ahead (the drill mech, the boss): the view rises to see over it (#13505 playtest)
-  over := g_big_ahead(g, head.x, head.z, -back.x, -back.z);
-  eye := v3(head.x + back.x * reach, y + 1.9 + reach * (lift + g[0].pitch * 0.6) + over * 4.5, head.z + back.z * reach);
-  if room { eye.y = clamp(eye.y, 0.6, DV_ROOM_H - 0.45); }
-  if riding {
-    // the sense of speed: a wider view and a shake, from the engine's board
-    k := board_shake(bd, t); eye = v3(eye.x + k[0], eye.y + k[1], eye.z + k[2]);
-    return CamNow.{eye = eye, at = v3(head.x - back.x * 3, y + 1.5, head.z - back.z * 3), fov = board_fov(bd, 0.82)};
-  }
-  return CamNow.{eye = eye, at = v3(head.x - back.x * 3, y + 1.5, head.z - back.z * 3), fov = 0.82};
+  return cm_follow(g);   // behind her on foot and on the board (camera.coax)
 }
 // The big bodies the camera keeps clear of: the drill mech and, in its chamber, the boss. Whether
 // (x, z) is within `pad` of one.
 g_big_at :: (g: [] SpGame, x: f32, z: f32, pad: f32) -> bool {
   if g[0].zone != Z_MINE { return false; }
   t := g[0].bt[0];
-  if dist2(x, z, t.mech_x, t.mech_z) < 2.4 + pad { return true; }
+  if dist2(x, z, t.mech_x, t.mech_z) < SB_MECH_R + pad { return true; }
   if (g[0].wall_gone || g[0].boss_down) && dist2(x, z, t.dino_x, t.dino_z) < 3.2 + pad { return true; }
   return false;
 }
@@ -1290,7 +1275,7 @@ g_big_ahead :: (g: [] SpGame, x: f32, z: f32, fx: f32, fz: f32) -> f32 {
   t := g[0].bt[0]; best := 0.0f32;
   for k: 0..<2 {
     if k == 1 && !(g[0].wall_gone || g[0].boss_down) { continue; }
-    bx := ifx k == 0 then t.mech_x else t.dino_x; bz := ifx k == 0 then t.mech_z else t.dino_z; r := ifx k == 0 then 2.4f32 else 3.2f32;
+    bx := ifx k == 0 then t.mech_x else t.dino_x; bz := ifx k == 0 then t.mech_z else t.dino_z; r := ifx k == 0 then SB_MECH_R else 3.2f32;
     along := (bx - x) * fx + (bz - z) * fz;
     if along < 0 || along > 12 { continue; }
     off := abs((bx - x) * fz - (bz - z) * fx);

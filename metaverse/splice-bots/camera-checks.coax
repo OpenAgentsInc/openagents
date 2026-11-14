@@ -1,0 +1,87 @@
+// The follow camera's checks (camera.coax, playtest 2). splice-game.coax loads this file with `#load ... #test;`.
+
+// Steps `frames` of 1/60 s and keeps the worst: the largest change in a step of the eye's distance
+// from her head or its height over it (a jump), the nearest it came to her head, and whether it was
+// ever inside a body.
+CcWatch :: struct { jump: f32; near: f32 = 1000; in_body: bool; moved: f32; }
+cc_watch :: (g: [] SpGame, frames: int, w: CcWatch) -> CcWatch {
+  out := w; c0 := g_camera(g); p0 := cm_pivot(g);
+  r0 := length(sub(c0.eye, p0)); y0 := c0.eye.y - p0.y; e0 := c0.eye;
+  for i: 0..<frames {
+    g_step(g, 1.0f32 / 60);
+    c := g_camera(g); p := cm_pivot(g);
+    r := length(sub(c.eye, p)); y := c.eye.y - p.y;
+    out.jump = hi(out.jump, hi(abs(r - r0), abs(y - y0)));
+    out.near = lo(out.near, r);
+    out.moved = hi(out.moved, length(sub(c.eye, e0)));
+    if cm_body_at(g, c.eye.x, c.eye.y, c.eye.z, 0) { out.in_body = true; }
+    r0 = r; y0 = y; e0 = c.eye;
+  }
+  return out;
+}
+CC_SLACK :: 0.05f32;   // m: the room is found to a few centimetres
+cc_farm :: (g: [] SpGame) { g_reset(g); _ := spw_shipped(g); g_begin(g); }
+
+#test "playtest 2: at the solar farm the camera never moves with no input, and walking and turning among the pieces it eases" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}];
+  cc_farm(g[..]);
+  w := cc_watch(g[..], 600, CcWatch.{});
+  #assert w.moved == 0;   // ten seconds standing: not a hair
+  for a: 0..<4 {
+    cc_farm(g[..]);
+    g[0].yaw = f32(a) * 1.571 + 0.785; g[0].fwd = true; g[0].turn_l = true;
+    w = cc_watch(g[..], 240, CcWatch.{});
+    // past the panels, the chargers and the rover train: no step jumps a quarter metre, and she never fills the view
+    #assert w.jump < 0.25 && w.near >= CM_MIN - CC_SLACK && !w.in_body;
+  }
+}
+#test "playtest 2: while Digger drills the rock wall the camera keeps its distance and does not jump, and over her head with her back to the wall" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_reset(g[..]); _ := spw_shipped(g[..]); g_stage(g[..], 5);
+  for i: 0..<5 { g[0].have[i] = true; }
+  for i: 0..<3 { g[0].slot[i] = true; }
+  g[0].bot = true; g_bot_home(g[..]);
+  g[0].strip[0] = H_MOVE; g[0].strip[1] = H_DRILL; g[0].strip_n = 2;
+  g[0].px = 0; g[0].pz = g[0].at.rubble_z + 1.5; g[0].yaw = PI; g_bot_home(g[..]);   // at the wall
+  g_deploy(g[..]); w := cc_watch(g[..], 600, CcWatch.{});                            // Digger runs past her and drills
+  #assert w.jump < 0.25 && w.near >= CM_MIN - CC_SLACK && !w.in_body;
+  // her back to the wall, a step from it: the camera is over her head, not in it
+  g[0].yaw = 0; g[0].cam[0].ready = false;
+  _ = cc_watch(g[..], 60, CcWatch.{});
+  c := g_camera(g[..]); #assert length(sub(c.eye, cm_pivot(g[..]))) >= CM_MIN - CC_SLACK && c.eye.y > cm_pivot(g[..]).y + 2;
+}
+#test "playtest 2: on the hoverboard the camera is pulled back, and in a tight spot it rises before it comes in" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}];
+  cc_farm(g[..]);
+  #assert g_board_given(g[..]);
+  g_board_key(g[..]); g[0].fwd = true;
+  w := cc_watch(g[..], 120, CcWatch.{});
+  #assert g_riding(g[..]) && cm_want(g[..]) >= 6.5 + CM_BOARD_BACK && w.near >= CM_MIN - CC_SLACK;   // further back than on foot
+  // on the board against the rock wall in the tunnel: never her head filling the view
+  g_reset(g[..]); _ = spw_shipped(g[..]); g_stage(g[..], 5); g[0].px = 0; g[0].pz = g[0].at.rubble_z + 1.6;
+  g_board_key(g[..]); g[0].turn_l = true;
+  w = cc_watch(g[..], 160, CcWatch.{});
+  #assert w.near >= CM_MIN - CC_SLACK && !w.in_body;
+}
+#test "playtest 2: the drill mech is about twice her height, follows at her side clear of her, and the camera is never inside it" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 7);
+  t := g[0].bt[..];
+  g[0].px = t[0].mech_x + 2; g[0].pz = t[0].mech_z;
+  #assert g_key(g[..], 'e', true) && t[0].mech_core;
+  #assert SB_MECH_TOP < T_BOT_TOP * 4 && SB_MECH_TOP > 1.7 * 2;
+  for i: 0..<30 { g_step(g[..], 1.0f32 / 60); }   // it steps off her first
+  closest := 1000.0f32; w := CcWatch.{};
+  for leg: 0..<4 {
+    g[0].fwd = true; g[0].turn_l = leg % 2 == 0; g[0].turn_r = leg == 1;
+    for i: 0..<45 { w = cc_watch(g[..], 1, w); closest = lo(closest, dist2(t[0].mech_x, t[0].mech_z, g[0].px, g[0].pz)); }
+    g[0].fwd = false; g[0].turn_l = false; g[0].turn_r = false;
+    for i: 0..<20 { w = cc_watch(g[..], 1, w); closest = lo(closest, dist2(t[0].mech_x, t[0].mech_z, g[0].px, g[0].pz)); }
+  }
+  #assert closest >= SB_MECH_R + T_RADIUS;
+  #assert !w.in_body;
+  #assert w.near >= CM_MIN - CC_SLACK;
+  // standing, it settles at her left, a stride out from its own side
+  for i: 0..<120 { g_step(g[..], 1.0f32 / 30); }
+  h := sb_mech_spot(g[..]); #assert dist2(t[0].mech_x, t[0].mech_z, h.x, h.z) < 0.5;
+}

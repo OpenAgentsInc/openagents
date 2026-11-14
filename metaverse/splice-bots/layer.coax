@@ -312,6 +312,28 @@ sl_touch :: (g: [] SpGame, e: SlSeg, from: int, tall: bool, gates: bool, skip: i
 sl_inside :: (g: [] SpGame, x: f32, z: f32, pad: f32) -> bool {
   return sl_touch(g, SlSeg.{ax = x, az = z, bx = x, bz = z, r = pad}, SK_WALL, true, true, -1) >= 0;
 }
+// Whether the point (x, y, z), padded, is inside something the camera meets, by its height too: a
+// piece is solid from where it stands to its top, so the camera passes over a low panel and stops
+// at a tall wall (camera.coax). The rubble and the boss wall stand SL_GATE_TOP high while they stand.
+SL_GATE_TOP :: 6.0f32;
+sl_inside_at :: (g: [] SpGame, x: f32, y: f32, z: f32, pad: f32) -> bool {
+  ids: [SL_NEAR] int; n := sl_near(g, x, z, pad, ids[..]);
+  e := SlSeg.{ax = x, az = z, bx = x, bz = z, r = pad};
+  for i: 0..<n {
+    s := ids[i]; kind := sl_i(g, WI_KIND, s);
+    gate := kind == SK_RUBBLE || kind == SK_BOSS_WALL;
+    if !sl_solid(g, s, !gate) { continue; }
+    low := sl_f(g, WF_Y, s); top := ifx gate then SL_GATE_TOP else low + sl_f(g, WF_HEIGHT, s);
+    if y < low - pad || y > top + pad { continue; }
+    if g[0].ws[0].shape[s] == SH_BOX {
+      if sl_seg_box(e, g[0].ws[0].ox[s], g[0].ws[0].oz[s], g[0].ws[0].ex[s], g[0].ws[0].ez[s]) < pad { return true; }
+    } else {
+      o := sl_seg(g, s);
+      if sl_seg_seg(e, o) < pad + o.r { return true; }
+    }
+  }
+  return false;
+}
 // The World and Splice's own columns as one number: equal collider sets give equal digests, so a
 // replay of the same edits compares it a step at a time.
 sl_digest :: (g: [] SpGame) -> int {

@@ -41,6 +41,9 @@ SB_MECH_REACH :: 3.5f32;    // E this near the mech swaps the core
 SB_HALL_REACH :: 6.0f32;    // E this near the blocked hallway has the mech drill
 SB_DRILL_TIME :: 3.0f32;    // seconds the mech drills the hallway
 SB_AUTO_DRILL :: 10.0f32;   // m: the mech with Digger's core this near the blocked hallway starts drilling it on its own (#13505 playtest 2)
+// The drill mech's size (playtest 2: at 1.25 it stood on top of her): about twice her height, and
+// its body's radius and top as the camera and her keep clear of them.
+SB_MECH_S :: 0.95f32; SB_MECH_R :: 1.85f32; SB_MECH_TOP :: 4.6f32;
 SB_MECH_SPEED :: 7.0f32; SB_BODY_SPEED :: 5.0f32;
 // The raider mech's chase on the drive: it keeps watch beside the route, a third of the way from the rail stop to the
 // garage; it gives chase when Sniper passes within SB_RM_NOTICE, runs beside it at SB_RM_SIDE, claws it within
@@ -390,12 +393,20 @@ sb_mech_step :: (g: [] SpGame, dt: f32) {
     // led to the blocked hallway, it starts drilling it on its own: no key to find (#13505 playtest 2)
     t[0].drill_t = SB_DRILL_TIME; g_say(g, SBM_DRILLING);
   } else if t[0].mech_core && g[0].zone == Z_MINE && !(sb_fighting(g) && sb_fielded(g) == SB_MECH) {
-    // a step behind you and to your left, behind Digger
-    tx := g[0].px - sin(g[0].yaw) * 3.2 + cos(g[0].yaw) * 2.2; tz := g[0].pz - cos(g[0].yaw) * 3.2 - sin(g[0].yaw) * 2.2;
+    // at your left, its own width and a stride out, a little ahead (playtest 2: behind you it stood on
+    // top of you and in the camera's way)
+    h := sb_mech_spot(g); tx := h.x; tz := h.z;
     _ := sb_toward(mx[..], mz[..], my[..], tx, tz, SB_MECH_SPEED * clamp(dist2(mx[0], mz[0], tx, tz) / 3, 0.2, 1.6), 0.3, dt);
+    q := cm_keep_off(g, mx[0], mz[0], SB_MECH_R); mx[0] = q.x; mz[0] = q.z;
   }
   if dist2(mx[0], mz[0], t[0].mech_x, t[0].mech_z) > 0.001 { t[0].mech_step += dt * 5; }
   t[0].mech_x = mx[0]; t[0].mech_z = mz[0]; t[0].mech_yaw = my[0];
+}
+// Where the mech follows: at her left, its radius and SB_MECH_GAP out from her, SB_MECH_AHEAD ahead.
+SB_MECH_GAP :: 1.4f32; SB_MECH_AHEAD :: 0.6f32;
+sb_mech_spot :: (g: [] SpGame) -> Point {
+  y := g[0].yaw; side := SB_MECH_R + SB_MECH_GAP;
+  return v3(g[0].px + sin(y) * SB_MECH_AHEAD + cos(y) * side, 0, g[0].pz + cos(y) * SB_MECH_AHEAD - sin(y) * side);
 }
 // The drive (M_RIDE, splice-game.coax g_step): the raider mech's chase and a battle with it from Sniper.
 sb_ride :: (g: [] SpGame, dt: f32) {
@@ -645,10 +656,10 @@ sb_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     // the drill mech: raider yellow, dead lenses until Digger's core lights them in his amber; the drill turns as it works
     f := frame_at(v3(t.mech_x, ground_y(g, t.mech_x, t.mech_z), t.mech_z), t.mech_yaw);
     lit := t.mech_core; glow := ifx lit then CAST_AMBER() else kit_tint(0.30, 0.30, 0.32);
-    kit_mech(buf, p, f, 1.25, 220, SB_YELLOW(), glow, INK(), glow);
+    kit_mech(buf, p, f, SB_MECH_S, 220, SB_YELLOW(), glow, INK(), glow);
     spin := ifx t.drill_t > 0 || (sb_fighting(g) && sb_fielded(g) == SB_MECH) then tm * 20 else 0.0f32;
-    sb_drill(buf, p, f, 1.25, 224, spin);
-    if lit { kit_pen(p, 227, MAT_GLOW, CAST_AMBER()); ball(buf, p, fp(f, -0.4 * 1.25, 3.7 * 1.25, 1.12 * 1.25), 0.16, 10); }
+    sb_drill(buf, p, f, SB_MECH_S, 224, spin);
+    if lit { kit_pen(p, 227, MAT_GLOW, CAST_AMBER()); ball(buf, p, fp(f, -0.4 * SB_MECH_S, 3.7 * SB_MECH_S, 1.12 * SB_MECH_S), 0.16, 10); }
     // the boss: a dinosaur glowing blue; grey once it is down. Its weak points: armoured blue, bright and
     // pulsing while open, dark once stunned
     if g[0].wall_gone || g[0].boss_down {
@@ -746,7 +757,7 @@ sb_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, n0: int) -> int {
   buf: [64] u8;
   // a bar over the battle's bots (the Director's plates draw Digger's and the foot foes', director.coax)
   if g[0].zone == Z_MINE {
-    if t.mech_used || dist2(g[0].px, g[0].pz, t.mech_x, t.mech_z) < 20 { n = sb_head_bar(g, out, u, n, q, sb_rec(g, SB_MECH), v3(t.mech_x, 6.4, t.mech_z), mine); }
+    if t.mech_used || dist2(g[0].px, g[0].pz, t.mech_x, t.mech_z) < 20 { n = sb_head_bar(g, out, u, n, q, sb_rec(g, SB_MECH), v3(t.mech_x, 5.1 * SB_MECH_S, t.mech_z), mine); }
     if g[0].wall_gone && !g[0].boss_down { n = sb_head_bar(g, out, u, n, q, sb_rec(g, SB_BOSS), v3(t.dino_x, 4.4, t.dino_z), GLOW_INK()); }
   }
   if (sb_desert(g) && (g[0].mode == M_PLAY || g[0].mode == M_RIDE)) || (g[0].mode == M_DRIVE && (t.rm_hunt || sb_fighting(g))) {

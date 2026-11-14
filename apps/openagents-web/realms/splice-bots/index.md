@@ -122,7 +122,7 @@ The code is in `metaverse/splice-bots/`, and `metaverse/splice-bots/README.md` d
   cel kits and mesh writers.
 
 A page script can stand the game at one beat with `coaxial.send(610, "N")`, N from 0 (title) to
-19, for stills and checks.
+33, for stills and checks.
 
 The fonts are in `realms/splice/assets/fonts/` with their Open Font Licences.
 

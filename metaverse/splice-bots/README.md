@@ -17,6 +17,7 @@ for people and agents who change the code.
 | `digger.coax`, `digger-mesh.coax`, `digger-gait.coax` | The Digger: the designer's model, 29,998 triangles with smooth normals as a compact bit stream in the kit's flat fills, its rig turned in code (the walk, the standing breath, the sensor's look) and his stride. `tools/digger-rig.py` (Blender) writes the table and `assets/digger-rigged.glb`, the rigged model with idle and walk clips |
 | `sound.coax`, `sound-checks.coax`, `tools/sounds.coax` | The sound table, the moments each sound plays, its checks, and the tool that writes the placeholder files (below) |
 | `hud.coax` | The HUD and the edit bay in the SPLICE UI v2 frame (#13505): the compass and the objective, pickup toasts, the interact prompt, the gauges that fade while full or cool, the bot slots, the objective card; H hides it. The edit bay's inventory grid, the picked item's card, the stage, the hardware slots and the behavior strip. The compass, fades and toasts are `metaverse-engine/ui/hud-readout.coax` |
+| `camera.coax`, `camera-checks.coax` | The follow camera behind her on foot and on the hoverboard (below), and its checks |
 | `director.coax` | The Director's systems (#13505): the key map, sneaking, Digger picking up parts by his sensor's range, pointing him with a left click, the inventory grid, Heat's sensing range, the health bars, towing and charging Digger, the map and pause |
 | `gpu/splice-bots.coax` | The shaders: Anime Lab's cel pass, the placed pieces' instances, and the ink overlay |
 | `splice-face.c`, `splice-ue-face.c` | The C faces for the browser and for a native host |
@@ -90,6 +91,25 @@ the mine the checkpoint's inventory and what is open (the rubble, the boss wall,
 core) is written as `splice.run.v1` when it changed. CONTINUE puts you back beside Sniper with them
 (at night once the boss is down). SCENE RESTORED and a new run let
 it go.
+
+## The camera
+
+`camera.coax` is the one camera behind her on foot and on the hoverboard, in every zone (playtest 2).
+It is a boom from her head out behind her, 6.5 m (4 m in the dome village, 1.5 m more on the board
+and more again at speed). Each step it looks for room along the boom in three dimensions: a placed
+piece blocks it only up to the piece's top, so it passes over the farm's low panels; tall walls, the
+garage's rock, the rock wall while it stands, Digger, the drill mech and the boss stop it. Where the
+boom has no room it swings up before it comes in, as far as straight over her head, and it is never
+nearer her head than 2.6 m where any way has room (`CM_MIN`); nearer than 1.2 m her body is not
+drawn. The angle and length ease on the engine's spring, and it also looks where she is turning, so
+it moves before it meets anything. Nothing else moves it: standing still, it stands still. The eye
+is never further out than the room the boom has that frame.
+
+Stills 30 to 33 (`coaxial.send(610, "N")`) are the camera's: the farm, Digger drilling the rock
+wall, the board at speed, the drill mech following.
+
+The drill mech is drawn at 0.95 (about twice her height; it was 1.25) and follows at her left, its
+own radius and 1.4 m out from her, a little ahead; it is never nearer her than its radius and hers.
 
 ## Controls
 

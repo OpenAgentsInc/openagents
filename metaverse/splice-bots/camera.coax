@@ -1,0 +1,261 @@
+// Splice Bots' follow camera (playtest 2): the one camera behind her on foot and on the hoverboard,
+// in every zone. splice-game.coax g_camera hands its walking case here.
+//
+// It is a boom from her head out behind her. Each step (cm_step) it looks for room along that
+// boom in three dimensions: a piece blocks it only up to the piece's top (sl_inside_at), so the
+// eye passes over the farm's low panels, and a tall wall, the garage's rock, Digger, the drill mech
+// and the boss all stop it. Where the boom has no room it swings up before it comes in, and never
+// nearer her head than CM_MIN where any way has room, so she never fills the view. The boom's angle
+// and length ease on a critically damped spring (the engine's, metaverse-engine/cam/follow.coax),
+// and nothing moves it but her: standing still, the camera stands still. Drawn, the eye is never
+// further out than the room the boom has this frame (cm_room), so it is never inside a wall or a body.
+//   coax/bin/coax test metaverse/splice-bots/splice-bots.coax
+
+#load "../../metaverse-engine/cam/follow.coax" as cmf;
+
+CM_CLEAR :: 0.3f32;     // m the eye keeps from a wall or a body
+CM_EARLY :: 0.6f32;     // m wider the step looks, so the boom starts to move before the eye meets anything
+CM_MIN :: 2.6f32;       // m: the nearest the eye comes to her head while any way out has room
+CM_START :: 0.5f32;     // m out from her head the boom is first looked along (her own head is not in its way)
+CM_SAMPLE :: 0.4f32;    // m between the points the boom is looked at
+CM_RISE_STEP :: 0.2f32;
+CM_RISE_MAX :: 1.55f32; // radians: the steepest the boom swings up to find room, over her head (her back to a tall wall)
+CM_OVER :: 0.75f32;     // radians the boom swings up to see over a big body ahead
+CM_RISE_TIME :: 0.3f32; // s: the spring's time for the boom's angle
+CM_OUT_TIME :: 0.45f32; // s: backing out once a wall lets go
+CM_IN_TIME :: 0.12f32;  // s: coming in before a wall
+CM_CUT :: 6.0f32;       // m: further than this in a step is a cut, and the camera starts where it should be
+CM_LOOK_AHEAD :: 0.3f32; // s of her turning the boom looks ahead
+CM_HEAD :: 1.7f32;      // m: the boom's pivot, her head, over her feet
+CM_FOV :: 0.82f32;
+CM_BOARD_BACK :: 1.5f32; // m further back on the hoverboard, before its speed pulls it back more
+
+// The camera's eased state, in the game (SpGame.cam).
+SpCam :: struct {
+  ready: bool;              // eased at least once since she was put somewhere
+  rise: f32; rise_v: f32;   // the boom's angle up from level (radians), and its spring's speed
+  dist: f32; dist_v: f32;   // its length (m)
+  over: f32; over_v: f32;   // how far it has swung up for a big body ahead, 0 to 1
+  x: f32; z: f32; yaw: f32; // where she was and faced at the last step
+  yaw_v: f32;               // how fast she turns (radians a second), eased
+}
+
+// One spring step of `time` seconds: the engine's critically damped spring, whose time is 0.1 s,
+// run on a clock scaled to `time`.
+cm_ease :: (cur: f32, vel: [] f32, dest: f32, dt: f32, time: f32) -> f32 {
+  k := f32(cmf.FOLLOW_SPRING_TIME) / time;
+  a := cmf.follow_spring_axis(cur, vel[0] / k, dest, dt * k);
+  vel[0] = a.vel * k;
+  return a.at;
+}
+
+// Her height the camera follows: the jump's third, sinking as she sneaks, the board's hover.
+cm_feet :: (g: [] SpGame) -> f32 {
+  y := g_cam_y(g) - d_crouch(g);
+  if g_riding(g) { y += board_lift(g[0].board[0]); }
+  return y;
+}
+cm_pivot :: (g: [] SpGame) -> Point { return v3(g[0].px, cm_feet(g) + CM_HEAD, g[0].pz); }
+// How far out the boom wants to be: closer in the dome village, pulled back at speed on the board.
+cm_want :: (g: [] SpGame) -> f32 {
+  r := ifx g[0].zone == Z_VILLAGE then 4.0f32 else 6.5f32;
+  if g[0].zone == Z_MINE && sp_in_room(g) { r = DV_ROOM_REACH; }   // in the rover's cabin: in close (drive.coax)
+  if g_riding(g) { r += CM_BOARD_BACK + board_back(g[0].board[0]); }
+  return r;
+}
+// The boom's resting angle: a little over her head, more as the view looks down.
+cm_base :: (g: [] SpGame, want: f32) -> f32 {
+  lift := ifx g[0].zone == Z_VILLAGE then 0.18f32 else 0.33f32;
+  return atan2(0.2 + want * (lift + g[0].pitch * 0.6), want);
+}
+cm_dir :: (yaw: f32, rise: f32) -> Point { c := cos(rise); return v3(-sin(yaw) * c, sin(rise), -cos(yaw) * c); }
+
+// Whether the camera at (x, y, z), padded, is in something: the ground, the village dome's wall, the
+// rock round the garage, a placed piece or wall up to its top, or a body.
+cm_blocked :: (g: [] SpGame, x: f32, y: f32, z: f32, pad: f32, roof: f32) -> bool {
+  if y < g_ground(g, x, z) + pad || y > roof - pad { return true; }
+  if g[0].zone == Z_VILLAGE && g_inside(g, x, z) { return true; }
+  q := ga_push(g, x, z, pad); if q.x != x || q.z != z { return true; }
+  if sl_inside_at(g, x, y, z, pad) { return true; }
+  return cm_body_at(g, x, y, z, pad);
+}
+// The bodies that move: Digger beside her, the drill mech, and in its chamber the boss.
+cm_body_at :: (g: [] SpGame, x: f32, y: f32, z: f32, pad: f32) -> bool {
+  if g[0].zone != Z_MINE { return false; }
+  t := g[0].bt[0];
+  if g[0].bot && y < T_BOT_TOP + pad && dist2(x, z, g[0].bot_x, g[0].bot_z) < T_BOT_R + pad { return true; }
+  if y < SB_MECH_TOP + pad && dist2(x, z, t.mech_x, t.mech_z) < SB_MECH_R + pad { return true; }
+  if (g[0].wall_gone || g[0].boss_down) && dist2(x, z, t.dino_x, t.dino_z) < 3.2 + pad { return true; }
+  return false;
+}
+// How far out along `dir` from `from` the camera has room, up to `far`, keeping `pad` from what it meets.
+cm_room :: (g: [] SpGame, from: Point, dir: Point, far: f32, pad: f32) -> f32 {
+  roof := ifx g[0].zone == Z_MINE && sp_in_room(g) then DV_ROOM_H else 1000000.0f32;   // the rover's cabin has a ceiling (drive.coax)
+  if roof > 1000 && cm_open(g, from, dir, far, pad) { return far; }   // nothing near the boom at all: one look, not a march
+  // near her head the pad narrows, so a wall she stands beside is not in the boom's way
+  d := CM_START; free := 0.0f32;
+  while true {
+    if d > far { d = far; }
+    if cm_hit(g, from, dir, d, pad, roof) {
+      // between the last free point and this one, halved four times: the room changes smoothly, not a sample at a time
+      hit := d;
+      for k: 0..<5 { m := (free + hit) * 0.5; if cm_hit(g, from, dir, m, pad, roof) { hit = m; } else { free = m; } }
+      return free;
+    }
+    free = d;
+    if d >= far { return far; }
+    d += CM_SAMPLE;
+  }
+  return far;
+}
+cm_hit :: (g: [] SpGame, from: Point, dir: Point, d: f32, pad: f32, roof: f32) -> bool {
+  return cm_blocked(g, from.x + dir.x * d, from.y + dir.y * d, from.z + dir.z * d, lo(pad, 0.1 + d * 0.25), roof);
+}
+// Whether nothing the camera meets is anywhere near the boom from `from` along `dir` for `far`
+// metres: no collider within its reach whose top is above the boom's foot, no body near its line,
+// the garage's rock and the ground well clear. Most steps in the open answer here with one look.
+cm_open :: (g: [] SpGame, from: Point, dir: Point, far: f32, pad: f32) -> bool {
+  if g[0].zone == Z_VILLAGE || dir.y < 0 { return false; }
+  half := far * 0.5; mx := from.x + dir.x * half; mz := from.z + dir.z * half; r := half + pad;
+  ids: [SL_NEAR] int; n := sl_near(g, mx, mz, r, ids[..]);
+  for i: 0..<n {
+    s := ids[i]; kind := sl_i(g, WI_KIND, s); gate := kind == SK_RUBBLE || kind == SK_BOSS_WALL;
+    if !sl_solid(g, s, !gate) { continue; }
+    top := ifx gate then SL_GATE_TOP else sl_f(g, WF_Y, s) + sl_f(g, WF_HEIGHT, s);
+    if top + pad >= from.y { return false; }   // it may reach the boom: look properly
+  }
+  ex := from.x + dir.x * far; ez := from.z + dir.z * far;
+  if from.y < g_ground(g, from.x, from.z) + 1 || from.y + dir.y * far < g_ground(g, ex, ez) + pad + 0.5 { return false; }
+  if g[0].zone == Z_MINE {
+    d := dist2(mx, mz, g[0].at.gar_x, g[0].at.gar_z);
+    if d + r >= ga_back(g) - 0.5 && d - r <= ga_back(g) + GA_BACK * 2 + 0.5 { return false; }   // near the garage's back wall
+    t := g[0].bt[0];
+    if g[0].bot && cm_flat_gap(from.x, from.z, ex, ez, g[0].bot_x, g[0].bot_z) < T_BOT_R + pad { return false; }
+    if cm_flat_gap(from.x, from.z, ex, ez, t.mech_x, t.mech_z) < SB_MECH_R + pad { return false; }
+    if (g[0].wall_gone || g[0].boss_down) && cm_flat_gap(from.x, from.z, ex, ez, t.dino_x, t.dino_z) < 3.2 + pad { return false; }
+  }
+  return true;
+}
+// How far the point (px, pz) is from the segment a-b, on the ground.
+cm_flat_gap :: (ax: f32, az: f32, bx: f32, bz: f32, px: f32, pz: f32) -> f32 {
+  dx := bx - ax; dz := bz - az; l := dx * dx + dz * dz;
+  k := ifx l < 0.000001 then 0.0f32 else clamp(((px - ax) * dx + (pz - az) * dz) / l, 0, 1);
+  return dist2(px, pz, ax + dx * k, az + dz * k);
+}
+// Where the boom should be: of the angles from its rest up, the one that costs least, a metre of
+// length lost against CM_RISE_COST metres for each radian it swings up and CM_STAY for each radian
+// away from where it is now, so it rises over a low thing rather than pump in and out, and holds
+// its choice. It looks wider than the draw does (CM_EARLY), and also where she is turning to
+// (`ahead` radians of yaw), so it moves before the boom meets anything.
+CmAim :: struct { rise: f32; dist: f32; }
+CM_RISE_COST :: 3.0f32; CM_STAY :: 1.5f32; CM_SHORT :: 4.0f32;
+cm_aim :: (g: [] SpGame, over: f32, now: f32, ahead: f32) -> CmAim {
+  p := cm_pivot(g); want := cm_want(g); base := cm_base(g, want) + over * CM_OVER;
+  best := CmAim.{rise = base, dist = -1}; cost := 1000000.0f32;
+  a := base;
+  while a <= CM_RISE_MAX + 0.001 {
+    if (a - base) * CM_RISE_COST >= cost { break; }   // no steeper angle can cost less
+    dir := cm_dir(g[0].yaw, a);
+    room := cm_room(g, p, dir, want, CM_CLEAR + CM_EARLY);
+    if abs(ahead) > 0.05 { room = lo(room, cm_room(g, p, cm_dir(g[0].yaw + ahead, a), want, CM_CLEAR + CM_EARLY)); }
+    // the early look never brings it nearer than CM_MIN where the draw's own room allows that
+    if room < CM_MIN { room = lo(cm_room(g, p, dir, want, CM_CLEAR), CM_MIN); }
+    // short of CM_MIN costs CM_SHORT times as much: she must not fill the view
+    c := (want - room) + hi(0, CM_MIN - room) * CM_SHORT + (a - base) * CM_RISE_COST + (ifx now < 0 then 0.0f32 else abs(a - now) * CM_STAY);
+    if c < cost { cost = c; best = CmAim.{rise = a, dist = room}; }
+    if a < CM_RISE_MAX && a + CM_RISE_STEP > CM_RISE_MAX { a = CM_RISE_MAX; } else { a += CM_RISE_STEP; }
+  }
+  return best;
+}
+// A step of the camera: the boom eases toward where it should be. Put somewhere (a respawn, a door,
+// the run's start), it starts there.
+cm_step :: (g: [] SpGame, dt: f32) {
+  c := g[0].cam[..];
+  over := g_big_ahead(g, g[0].px, g[0].pz, sin(g[0].yaw), cos(g[0].yaw));
+  cut := !c[0].ready || dist2(c[0].x, c[0].z, g[0].px, g[0].pz) > CM_CUT;
+  if cut { c[0].over = over; c[0].over_v = 0; }
+  else { v := [1] f32.[c[0].over_v]; c[0].over = cm_ease(c[0].over, v[..], over, dt, CM_RISE_TIME); c[0].over_v = v[0]; }
+  // how fast she turns, eased, for the look ahead
+  turn := ifx cut then 0.0f32 else atan2(sin(g[0].yaw - c[0].yaw), cos(g[0].yaw - c[0].yaw)) / hi(dt, 0.001);
+  c[0].yaw_v = ifx cut then 0.0f32 else c[0].yaw_v + (turn - c[0].yaw_v) * lo(1, dt * 12);
+  aim := cm_aim(g, c[0].over, ifx cut then -1.0f32 else c[0].rise, clamp(c[0].yaw_v * CM_LOOK_AHEAD, -0.8, 0.8));
+  if cut {
+    c[0].rise = aim.rise; c[0].dist = aim.dist; c[0].rise_v = 0; c[0].dist_v = 0;
+  } else {
+    v := [1] f32.[c[0].rise_v]; c[0].rise = cm_ease(c[0].rise, v[..], aim.rise, dt, CM_RISE_TIME); c[0].rise_v = v[0];
+    w := [1] f32.[c[0].dist_v]; c[0].dist = cm_ease(c[0].dist, w[..], aim.dist, dt, ifx aim.dist < c[0].dist then CM_IN_TIME else CM_OUT_TIME); c[0].dist_v = w[0];
+  }
+  c[0].ready = true; c[0].x = g[0].px; c[0].z = g[0].pz; c[0].yaw = g[0].yaw;
+}
+// The camera behind her, as drawn: the eased boom, never further out than its room this frame.
+cm_follow :: (g: [] SpGame) -> CamNow {
+  c := g[0].cam[0];
+  if !c.ready || dist2(c.x, c.z, g[0].px, g[0].pz) > CM_CUT {
+    // not stepped since she was put here (a still, a check): where the step would ease to
+    c.over = g_big_ahead(g, g[0].px, g[0].pz, sin(g[0].yaw), cos(g[0].yaw));
+    a := cm_aim(g, c.over, -1, 0); c.rise = a.rise; c.dist = a.dist;
+  }
+  p := cm_pivot(g); dir := cm_dir(g[0].yaw, c.rise);
+  d := lo(c.dist, cm_room(g, p, dir, c.dist, CM_CLEAR));
+  // a wall swept in faster than the boom eased (she turned with her back to it): up, not into her head
+  need := lo(c.dist, CM_MIN);
+  if d < need {
+    a := c.rise + CM_RISE_STEP; best := d; best_dir := dir;
+    while a <= CM_RISE_MAX + CM_RISE_STEP && best < need {
+      e := cm_dir(g[0].yaw, lo(a, CM_RISE_MAX)); r := lo(c.dist, cm_room(g, p, e, c.dist, CM_CLEAR));
+      if r > best { best = r; best_dir = e; }
+      a += CM_RISE_STEP;
+    }
+    d = best; dir = best_dir; c.rise = hi(c.rise, atan2(dir.y, sqrt(dir.x * dir.x + dir.z * dir.z)));
+  }
+  eye := v3(p.x + dir.x * d, p.y + dir.y * d, p.z + dir.z * d);
+  // the look: ahead of her at chest height; swung up, it comes back toward her so she stays in view
+  y := cm_feet(g);
+  ahead := v3(g[0].px + sin(g[0].yaw) * 3, y + 1.5, g[0].pz + cos(g[0].yaw) * 3);
+  k := clamp((c.rise - cm_base(g, cm_want(g))) / 0.8, 0, 1) * 0.7;
+  at := v3(ahead.x + (g[0].px - ahead.x) * k, ahead.y + (y + 1.1 - ahead.y) * k, ahead.z + (g[0].pz - ahead.z) * k);
+  if g_riding(g) {
+    // the sense of speed: a wider view and a shake, from the engine's board
+    bd := g[0].board[0]; s := board_shake(bd, g[0].t);
+    return CamNow.{eye = v3(eye.x + s[0], eye.y + s[1], eye.z + s[2]), at = at, fov = board_fov(bd, CM_FOV)};
+  }
+  return CamNow.{eye = eye, at = at, fov = CM_FOV};
+}
+
+// A body of radius r at (x, z) pushed off her: never nearer her middle than r, her own circle and a hand.
+CM_HAND :: 0.3f32;
+cm_keep_off :: (g: [] SpGame, x: f32, z: f32, r: f32) -> Point {
+  dx := x - g[0].px; dz := z - g[0].pz; d := sqrt(dx * dx + dz * dz); keep := r + T_RADIUS + CM_HAND;
+  if d >= keep { return v3(x, 0, z); }
+  if d < 0.0001 { dx = cos(g[0].yaw); dz = -sin(g[0].yaw); d = 1; }   // on her: out to her left
+  return v3(g[0].px + dx / d * keep, 0, g[0].pz + dz / d * keep);
+}
+
+// Whether the eye is so near her head that her body would fill the view: then it is not drawn.
+CM_TOO_NEAR :: 1.2f32;
+cm_too_near :: (g: [] SpGame) -> bool {
+  if g[0].mode != M_PLAY { return false; }
+  return length(sub(g_camera(g).eye, cm_pivot(g))) < CM_TOO_NEAR;
+}
+
+// The camera's own stills (g_stage, the page's message 610): 30 the solar farm on foot among the
+// pieces, 31 Digger drilling the rock wall, 32 the hoverboard at speed, 33 the drill mech following.
+cm_stage :: (g: [] SpGame, n: int) {
+  if n < 30 || n > 33 { return; }
+  if n == 30 || n == 32 {
+    g_reset(g); g_begin(g); g[0].yaw += 2.3; g_bot_home(g);
+    if n == 32 { g_board_key(g); g[0].fwd = true; }
+    return;
+  }
+  g_stage_set(g, 5); g_foes(g);
+  for i: 0..<5 { g[0].have[i] = true; g[0].taken[i] = true; }
+  for i: 0..<3 { g[0].slot[i] = true; }
+  g[0].bot = true; g[0].strip[0] = H_MOVE; g[0].strip[1] = H_DRILL; g[0].strip_n = 2;
+  if n == 31 { g[0].px = 1.2; g[0].pz = g[0].at.rubble_z + 3.5; g[0].yaw = PI - 0.4; g_bot_home(g); g_deploy(g); return; }
+  // 33: past the rock wall at dusk, Digger's core in the mech, which stands at her left
+  g_stage_set(g, 7); g_foes(g);
+  g[0].px = g[0].at.gar_x + 6; g[0].pz = g[0].at.gar_z + 20; g[0].yaw = PI;   // the open field in the garage's ring
+  g[0].bot_x = g[0].px + 6; g[0].bot_z = g[0].pz + 8;   // Digger's body waits where the core came out
+  t := g[0].bt[..]; t[0].mech_core = true; t[0].mech_used = true;
+  h := sb_mech_spot(g); t[0].mech_x = h.x; t[0].mech_z = h.z; t[0].mech_yaw = g[0].yaw;
+}
