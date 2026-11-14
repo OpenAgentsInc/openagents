@@ -213,15 +213,15 @@ eu_press :: (e:[]EnvironmentApp,id:string) #effects(all) {
 eu_render :: (e:[]EnvironmentApp,t:[]Tree,u:[]Ui,markdown:[]MdDoc) #effects(all) {
   busy:=e[0].flight || e[0].random;x:= -1;
   if e[0].page==0 {
-    x=k_text(t,u,"env.title",TG_H1,"","Your computers");x=k_button(t,u,"env.close","Account chats",BS_PLAIN);
+    x=k_text(t,u,"env.title",TG_H1,"","Your computers");x=k_link(t,"env.close","Account chats");
     if e[0].catalog[0].ok && e[0].catalog[0].n==0 && !busy {x=k_text(t,u,"env.empty",TG_P,"","No computers are connected to this account.");}
-    for i:0..<e[0].catalog[0].n {b:[96]u8;row:=e[0].catalog[0].entries[i];x=k_button(t,u,tr_join(b[..],"environment.",i),cast(string)row.label[0..<row.nl],ifx busy then BS_DISABLED else BS_PLAIN);}
+    for i:0..<e[0].catalog[0].n {b:[96]u8;row:=e[0].catalog[0].entries[i];x=k_row(t,u,tr_join(b[..],"environment.",i),cast(string)row.label[0..<row.nl],"",false);if busy {tr_attr(t,x,AT_DISABLED,"");}}
   } else if e[0].page==1 {
-    row:=e[0].catalog[0].entries[e[0].selected];x=k_text(t,u,"env.title",TG_H1,"",cast(string)row.label[0..<row.nl]);x=k_button(t,u,"env.close","All chats",BS_PLAIN);
-    x=k_button(t,u,"env.new","New Claude chat",ifx busy || e[0].uncertain then BS_DISABLED else BS_PRIMARY);x=k_button(t,u,"env.refresh","Refresh",ifx busy then BS_DISABLED else BS_PLAIN);
+    row:=e[0].catalog[0].entries[e[0].selected];x=k_text(t,u,"env.title",TG_H1,"",cast(string)row.label[0..<row.nl]);x=k_link(t,"env.close","All chats");
+    x=k_button(t,u,"env.new","New Claude chat",ifx busy || e[0].uncertain then BS_DISABLED else BS_PRIMARY);x=k_link(t,"env.refresh","Refresh");if busy {tr_attr(t,x,AT_DISABLED,"");}
     if e[0].view[0].ok && !e[0].view[0].complete && e[0].view[0].nc==0 && e[0].view[0].ne==0 && !busy {x=k_text(t,u,"env.partial",TG_P,"","Some conversations could not be indexed. Refresh if a chat is missing.");}
-    for i:0..<e[0].view[0].ns {b:[96]u8;s:=e[0].view[0].sessions[i];x=k_button(t,u,tr_join(b[..],"environment.session.",i),cast(string)s.title[0..<s.nt],ifx busy then BS_DISABLED else BS_PLAIN);}
-    if e[0].view[0].nc>0 {x=k_button(t,u,"env.more","More conversations",ifx busy then BS_DISABLED else BS_PLAIN);}
+    for i:0..<e[0].view[0].ns {b:[96]u8;s:=e[0].view[0].sessions[i];x=k_row(t,u,tr_join(b[..],"environment.session.",i),cast(string)s.title[0..<s.nt],"",false);if busy {tr_attr(t,x,AT_DISABLED,"");}}
+    if e[0].view[0].nc>0 {x=k_link(t,"env.more","More conversations");if busy {tr_attr(t,x,AT_DISABLED,"");}}
   } else {
     row:=e[0].catalog[0].entries[e[0].selected];x=tr_open(t,"env.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_button(t,u,"env.sessions","Chats",BS_PLAIN);x=k_text(t,u,"env.executing",TG_SPAN,"",cast(string)row.label[0..<row.nl]);
     showing:=busy && (e[0].sync_requested || !e[0].view[0].ok || cast(string)e[0].view[0].method[0..<e[0].view[0].nm]!="ReadSession" || cast(string)e[0].request[0].method[0..<e[0].request[0].nm]!="ReadSession");

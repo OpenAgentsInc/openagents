@@ -51,7 +51,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
  if !s[0].ready {s[0].ready=true;builder_reset(s[0].builder[..]);_:=mono_frames(s[0].sets[..]);wl_list(s);}
  wl_pump(s);if !s[0].dirty {return 0;}s[0].dirty=false;t:=s[0].tree[..];u:=s[0].ui[..];b:=s[0].builder[..];ui_begin(u,0,true);tr_begin(t);root:=tr_open(t,"worlds.library",TG_MAIN,"");x:=k_text(t,u,"worlds.title",TG_H1,"",ifx s[0].page==0 then "Worlds" else "Create a world");held:=s[0].flight!=0;
  if s[0].page==0 {
-  x=k_button(t,u,"worlds.splice","Splice Bots",ifx held then BS_DISABLED else BS_PRIMARY);x=k_button(t,u,"worlds.everglade","Everglade",ifx held then BS_DISABLED else BS_PRIMARY);
+  x=k_button(t,u,"worlds.splice","Splice Bots",ifx held then BS_DISABLED else BS_PLAIN);x=k_button(t,u,"worlds.everglade","Everglade",ifx held then BS_DISABLED else BS_PLAIN);
   x=k_text(t,u,"worlds.download",TG_P,"","World assets download when you open a world and are cached for later visits.");
   x=k_button(t,u,"worlds.create","Create a world",ifx held then BS_DISABLED else BS_PRIMARY);x=k_button(t,u,"worlds.refresh","Refresh your worlds",ifx held then BS_DISABLED else BS_PLAIN);
   x=k_text(t,u,"worlds.mine",TG_H2,"","Worlds you can edit");

@@ -32,7 +32,7 @@ st_frame :: (s:[]Starter,dt:f32,reduced:bool)->int #export_c #effects(all) {
   if s[0].menu>0 {
     x=tr_open(t,"extras.shade",TG_DIV,"nextras-shade");tr_close(t);
     x=tr_open(t,"extras.panel",TG_SECTION,"nextras-panel");tr_attr(t,x,AT_ROLE,"dialog");tr_attr(t,x,AT_LABEL,"Extras");
-    x=k_button(t,u,"extras.close","Close",BS_PLAIN);
+    x=k_link(t,"extras.close","Close");
     if s[0].menu==1 {x=k_text(t,u,"extras.title",TG_H2,"","Extras");x=k_button(t,u,"extras.bitcoin","Bitcoin balance",BS_PLAIN);}
     else {
       x=k_text(t,u,"wallet.title",TG_H2,"","Bitcoin balance");
