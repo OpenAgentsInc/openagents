@@ -613,6 +613,14 @@ requests (`aethyr_request`):
 A host that draws you itself hides the smuggler (`aethyr_thing_hide`), and the page then does not
 draw your character.
 
+#### Kit slots
+
+The level is blocked out in grey kit shapes first and dressed after. `SX_KITS` in `splice-export.coax` is
+the one named table of the level's kit slots (garage bay, section sign, rock wall, mountain hallway, solar
+row, charger, Sniper's interior, the raider mech, the drill mech, an Imperial robot, the boss lab, a
+landmark rock, the mountain), written into the bundle's `manifest.json` as `kits`. A row `kit.NAME` of the
+host's overrides table names the kit piece for that slot. The importer does not swap them yet.
+
 #### The jam build
 
 The jam entry is an Unreal web build (UE 5.9's Wasm target) of slice 1 that plays with no server. By

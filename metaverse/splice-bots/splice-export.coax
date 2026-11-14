@@ -12,6 +12,26 @@
 #load "splice-game.coax";
 #load "../../metaverse-engine/export/bundle.coax";
 
+// The level's kit slots (#13552, layout per the level spec): the one named table of the pieces a level
+// designer swaps in for the grey blockout, by name, through the host's overrides table (a row kit.NAME;
+// metaverse-engine/export/unreal/README.md "Replacing things"). Each slot: its name, then what it is
+// now and where it is drawn. Block out first; dress by name after.
+SX_KIT_N :: 13;
+SX_KITS :: [SX_KIT_N * 2] string.[
+  "garage_bay", "a bay of the ring: floor, back wall, roof and its band, the pier after it (garage.coax ga_draw)",
+  "section_sign", "a section's letters on the rim's white panel, named from GA_NAMES (garage.coax)",
+  "rock_wall", "the raiders' rock wall across the old entrance bay, which Digger drills (the rubble)",
+  "mountain_hallway", "the hallway north into the mountain and its barricade, which only the drill mech breaks (garage.coax, splice-game.coax)",
+  "solar_row", "a line of solar banks in the farm's rows (farm.coax ff_mesh)",
+  "charger", "a charging post: Sniper's, and one at each Imperial pad (pieces kind 121)",
+  "sniper_interior", "Sniper's cabin and its furniture (drive.coax dv_room_draw, the shipped pieces)",
+  "raider_mech", "the raider mech on the drive (splice-battle.coax)",
+  "drill_mech", "the drill mech in the empty section (splice-battle.coax, kit_mech)",
+  "imperial_robot", "an Imperial robot (the foes' draw)",
+  "boss_lab", "the old-world lab and the boss in it (garage.coax, kit_dino)",
+  "landmark_rock", "one of the three landmark rocks (plain.coax, kit_mound)",
+  "mountain", "the mountain's two peaks north of the garage (plain.coax, land_peak)"];
+
 ceil :: (x: f64) -> f64 #foreign #effects(all);   // libm's, for the PNG writer (coax/lib/image/pillow.coax)
 
 SX_SHOTS :: 6;
@@ -277,6 +297,10 @@ tool_main :: () -> int #export_c #effects(all) {
     }
     jo_end(j); jo_end(j);
   }
+  // the level's kit slots (SX_KITS): an overrides row kit.NAME names the kit piece that replaces that slot's grey blockout
+  jo_key(j, "kits"); jo_obj(j);
+  for k: 0..<SX_KIT_N { ex_str(j, SX_KITS[k * 2], SX_KITS[k * 2 + 1]); }
+  jo_end(j);
   // what aethyr_events reports, by number
   jo_key(j, "events"); jo_obj(j);
   ex_int(j, "bad-cut", MSG_BAD_CUT); ex_int(j, "rubble-open", MSG_OPEN); ex_int(j, "wall-broke", MSG_BROKE); ex_int(j, "boss-down", MSG_DOWN); ex_int(j, "hurt", MSG_HIT);

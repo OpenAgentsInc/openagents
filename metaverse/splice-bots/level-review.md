@@ -107,7 +107,15 @@ North is -z and east +x, as the compass shows (`hud.coax`).
 - **Change.** The deck's floor ends where it is drawn (`DECK_W`, 4 m).
 - **Playtest.** Walking behind the deck, her feet stay on the floor.
 
-## 9. A rim overlook into the garage (PROPOSED)
+## 9. Kit slots by name (BUILT, the swap PROPOSED)
+
+- **Experience.** A designer dresses the grey blockout piece by piece without touching layout code.
+- **Change.** One named table of the level's kit slots (`SX_KITS`, `splice-export.coax`), in the
+  bundle's manifest as `kits`; a `kit.NAME` row of the host's overrides table names the replacement.
+  The importer honouring those rows is the follow-up.
+- **Playtest.** A dressed bay drops in for every bay at once, and the walk and the checks still pass.
+
+## 10. A rim overlook into the garage (PROPOSED)
 
 - **Experience.** From the parking spot she climbs the rim's outer slope and looks down on the whole
   ring: the drill mech in its section, the rave, the hallway. It rewards climbing, shows the next
@@ -116,14 +124,14 @@ North is -z and east +x, as the compass shows (`hud.coax`).
   inner edge so the overlook is not a way in past the rock wall.
 - **Playtest.** Players who climb it point at the drill mech before the compass names it.
 
-## 10. Something on top of each landmark rock (PROPOSED)
+## 11. Something on top of each landmark rock (PROPOSED)
 
 - **Experience.** Climbing a rock is its own reward today (the view). A battery cell or a part on each
   top would pay off the detour and teach that heights hide things.
 - **Change.** A pickup row on each rock's top (the progression lane's tables).
 - **Playtest.** Players who see one on the first rock climb the other two.
 
-## 11. The farm's haze hides the rocks (PROPOSED)
+## 12. The farm's haze hides the rocks (PROPOSED)
 
 - **Experience.** The dust haze that gives the farm its scale fades the two northern rocks to pale
   shapes from the start.
