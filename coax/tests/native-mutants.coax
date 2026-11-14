@@ -15,7 +15,10 @@
 // this repository (REAL below), or the units given instead of them.
 // Then a check within its budget as native code and over it in the evaluator
 // (tests/native-mutants/heavy.coax, #13602): the baseline passes and every
-// mutant dies. Then the cases where native code can't run: without a C compiler, with one
+// mutant dies. Then checks the evaluator cannot run (tests/native-mutants/
+// traversal.coax, slots.coax and nan.coax, #13605): each runs as native code
+// for every mutant, and without native code their mutants are not decided.
+// Then the cases where native code can't run: without a C compiler, with one
 // that rejects the binary, and for checks the binary can't hold, the run
 // says why once and reports what a run without --native reports.
 // Then a schedule in chunks (#13587): for the fixtures and every unit, the
@@ -264,6 +267,24 @@ after :: (text: string, tag: string) -> Number {
 }
 
 // The same report and trace for every --jobs, cut into chunks or not (#13587).
+// left NAME [FLAGS...] (#13605): tests/native-mutants/NAME.coax, whose first
+// check the evaluator cannot run, at --jobs 1 and 8 with native checks on:
+// "left status=S same" when the report, the trace and the status agree; then
+// the count of "evaluator cannot run" lines, the summary, the native loop
+// mutants stopped by ticks, and 1 when the run with native checks off still
+// fails before any mutation. undecided: the same file with a C compiler that
+// refuses the mutant binary, its summary and the not-decided count.
+LEFT_FUNCTIONS :: "left() { u=tests/native-mutants/$1.coax; shift; env -u COAX_NATIVE_CHECKS COAX_NATIVE_MUTANTS_TRACE=1 \"$C\" mutate $u --library \"$@\" --jobs 1 --mutation-trace > \"$D/l1.out\" 2> \"$D/l1.err\"; a=$?; env -u COAX_NATIVE_CHECKS \"$C\" mutate $u --library \"$@\" --jobs 8 --mutation-trace > \"$D/l8.out\" 2> \"$D/l8.err\"; b=$?; s=different; cmp -s \"$D/l1.out\" \"$D/l8.out\" && [ \"$(grep ^mutation-outcome \"$D/l1.err\")\" = \"$(grep ^mutation-outcome \"$D/l8.err\")\" ] && [ $a = $b ] && s=same; echo \"left status=$a $s\"; grep -c '^evaluator cannot run' \"$D/l1.out\"; tail -1 \"$D/l1.out\"; grep -o ' [0-9]* ticks' \"$D/l1.err\"; COAX_NATIVE_CHECKS=0 \"$C\" mutate $u --library \"$@\" --jobs 4 > /dev/null 2> \"$D/l0.err\"; grep -c 'the checks fail before any mutation' \"$D/l0.err\"; }; undecided() { u=tests/native-mutants/$1.coax; shift; printf '#!/bin/sh\\ncase \"$*\" in *coax-native-mutants*) exit 1;; esac\\nexec cc \"$@\"\\n' > \"$D/cc\"; chmod +x \"$D/cc\"; env -u COAX_NATIVE_CHECKS COAX_CC=\"$D/cc\" \"$C\" mutate $u --library \"$@\" --jobs 4 > \"$D/u.out\" 2> \"$D/u.err\"; echo \"undecided status=$?\"; tail -1 \"$D/u.out\"; grep -c ': mutant not decided: ' \"$D/u.out\"; }";
+
+left_case :: (compiler: string, dir: string, args: string, want: string, what: string) -> int {
+  out: [4096] u8; body: [8192] u8;
+  parts := [4] string.[LEFT_FUNCTIONS, "; ", args, ""];
+  r := run(compiler, dir, joined(parts[..], body[..]), out[..]);
+  line := cast(string) out[0..<r.out_n];
+  print("%\n", line);
+  return check(has(line, want), what);
+}
+
 same_for_every_jobs :: (compiler: string, dir: string, name: string, path: string) -> int {
   out: [4096] u8; body: [8192] u8;
   parts := [5] string.["jobs ", name, " '", path, "' --library"];
@@ -307,6 +328,19 @@ tool_main :: () -> int #export_c #effects(all) {
   print("%", heavy);
   bad += check(has(heavy, "heavy status=0\n17 mutants, 17 killed, 0 survived\n1\n1"),
                "a check that passes as native code but needs more evaluator steps than its budget passes the baseline, and every mutant dies within ten times its steps");
+
+  // Checks the evaluator cannot run (#13605): over its traversal limit, over
+  // its value-slot limit, on a NaN bit pattern (E0412). Native code passed
+  // each, so it is left out of the evaluator's schedules and runs as native
+  // code for each mutant; a mutant that loops forever there runs out of ticks.
+  bad += left_case(compiler, dir, "left traversal --traversal 200000", "left status=0 same\n1\n25 mutants, 25 killed, 0 survived\n 2 ticks\n1",
+                   "a check over the evaluator's traversal limit is run as native code for each mutant, the same for every --jobs");
+  bad += left_case(compiler, dir, "left slots --slots 3000", "left status=0 same\n1\n13 mutants, 13 killed, 0 survived\n 1 ticks\n1",
+                   "a check over the evaluator's value-slot limit is run as native code for each mutant, the same for every --jobs");
+  bad += left_case(compiler, dir, "left nan", "left status=0 same\n1\n18 mutants, 16 killed, 0 survived, 2 marked equivalent\n 1 ticks\n1",
+                   "a check on a NaN bit pattern the evaluator refuses (E0412) is run as native code for each mutant, the same for every --jobs");
+  bad += left_case(compiler, dir, "undecided traversal --traversal 200000", "undecided status=0\n25 mutants, 4 killed, 0 survived, 21 not decided\n21",
+                   "when native code can't run the mutants, those only a left-out check reaches are reported as not decided, each by name");
   // A schedule in chunks: the same report and trace for every --jobs (#13587).
   bad += same_for_every_jobs(compiler, dir, "mix", "tests/native-mutants/mix.coax");
   bad += same_for_every_jobs(compiler, dir, "chunks", "tests/native-mutants/chunks.coax");

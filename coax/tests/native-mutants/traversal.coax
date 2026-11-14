@@ -1,0 +1,29 @@
+// #13605: a check over the evaluator's traversal limit (run with --traversal
+// 200000) that native code passes, so the evaluator cannot run it. `sum`
+// is reached only by that check: native code decides its mutants, and the
+// one that drops `i += 1` loops forever and still runs out of native ticks.
+// `bump` is reached by both checks; the evaluator decides its mutants.
+
+Cells :: struct { v: [256] int; }
+
+fill :: (c: Cells, k: int) -> Cells #effects(all) {
+  out := c;
+  i := 0;
+  while i < 256 { out.v[i] = i * k + 1; i += 1; }
+  return out;
+}
+sum :: (c: Cells) -> int #effects(all) {
+  s := 0;
+  i := 0;
+  while i < 256 { s += c.v[i]; i += 1; }
+  return s;
+}
+bump :: (x: int) -> int #effects(all) { return x * 2 + 1; }
+
+#test "many copies, then a sum" {
+  c: Cells;
+  k := 0;
+  while k < 400 { c = fill(c, k); k += 1; }
+  #assert sum(c) == 399 * 32640 + 256 && bump(3) == 7;
+}
+#test "a bump" { #assert bump(0) == 1 && bump(5) == 11; }

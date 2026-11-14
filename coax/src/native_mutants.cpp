@@ -5,12 +5,17 @@
 // process that runs its scheduled checks as native code and stops at the
 // first that fails.
 //
-// Native code never decides a verdict. A native kill names the check the
+// Native code decides no verdict, with one exception. A native kill names the check the
 // evaluator runs first for that mutant, and only that check's failure in the
 // evaluator is the kill. A native survivor gets no hint and runs the
 // evaluator's whole schedule. So the report is the one coax mutate prints
 // without --native, byte for byte, and a difference between native code and
-// the evaluator is a failure of the native path, reported on stderr.
+// the evaluator is a failure of the native path, reported on stderr. The
+// exception (#13605): a check the evaluator cannot run (the baseline left it
+// out: a limit or a value only the evaluator has) runs last for every
+// mutant, in source order, after every check the evaluator would confirm,
+// and a native kill there is the verdict. Without --native the pass runs
+// for those checks.
 //
 // The decisions are Coax (lib/compiler/mutation-schedule.coax: NM_tick_limit,
 // NM_wall_ms, NM_killed, NM_compare, MS_run); this file moves processes.
@@ -39,6 +44,8 @@ struct NativeMutants {
   std::vector<int32_t> rows;      // by check index: its row in the binary's table, or -1
   size_t emitted = 0, checks = 0;
   size_t runs = 0, first = 0;     // checks the mutant processes began; mutants killed by the first check they ran
+  std::vector<uint8_t> left_ran;  // by mutant: every check the evaluator cannot run ran for it as native code (#13605)
+  bool for_left_out = false;      // run without --native, for the checks the evaluator cannot run
   double emit = 0, compile = 0, baseline = 0, run = 0;
   std::chrono::steady_clock::time_point began;  // when the native pass began: after the evaluator's unmutated run
 };
@@ -173,8 +180,12 @@ static void native_mutant_pool(size_t tasks, uint64_t workers, double first_limi
 static void native_mutants(File *file, const std::vector<Mutant> &mutants, const std::vector<size_t> &owned,
                            const std::vector<uint64_t> &base, const std::vector<std::vector<const ProcDecl *>> &paths,
                            bool selective, std::vector<int32_t> *hints, const std::vector<std::vector<int32_t>> &likely,
-                           const MutationOptions &opt, NativeMutants *native) {
+                           const MutationOptions &opt, NativeMutants *native, const std::vector<uint8_t> &cannot = {}) {
   const size_t total = mutants.size(), checks = (size_t)file->checks.count;
+  bool left = false;  // a check the evaluator cannot run (#13605)
+  for (uint8_t c : cannot) left = left || c;
+  auto left_out = [&](int32_t c) { return (size_t)c < cannot.size() && cannot[(size_t)c]; };
+  native->left_ran.assign(total, 0);
   native->outcome.assign(total, NM_NOT_RUN);
   native->killer.assign(total, -1);
   native->judged.assign(checks, 0);
@@ -189,6 +200,10 @@ static void native_mutants(File *file, const std::vector<Mutant> &mutants, const
       if (g_json_errors) return;  // no text in a JSON stream
       if (!native->ran) {
         if (native->why.empty()) return;
+        if (native->for_left_out) {
+          fprintf(stderr, "coax: mutate: native code cannot run the mutants (%s), so no check the evaluator cannot run decides a mutant\n", native->why.c_str());
+          return;
+        }
         fprintf(stderr, "coax: mutate --native: %s; the evaluator runs every mutant's checks, as without --native\n", native->why.c_str());
         return;
       }
@@ -333,6 +348,11 @@ static void native_mutants(File *file, const std::vector<Mutant> &mutants, const
     return std::to_string(row) + " " + std::to_string((unsigned long long)NM_tick_limit(ticks[row])) + "\n";
   };
   std::map<const ProcDecl *, Schedule> schedules;
+  // The checks the evaluator cannot run come last for every mutant, in
+  // source order, whatever the procedure (their paths stop where the
+  // evaluator did): their verdict is native code's (#13605).
+  bool left_judged = true;
+  for (int32_t c = 0; c < (int32_t)checks; c++) if (left_out(c) && !native->judged[(size_t)c]) left_judged = false;
   for (size_t i : owned) {
     if (!has_switch[i]) continue;
     const ProcDecl *owner = mutants[i].owner;
@@ -340,6 +360,7 @@ static void native_mutants(File *file, const std::vector<Mutant> &mutants, const
     Schedule s;
     std::vector<int32_t> later;
     for (int32_t c : cheap) {
+      if (left_out(c)) continue;
       const auto &path = paths[(size_t)c];
       const bool entered = !owner || std::find(path.begin(), path.end(), owner) != path.end();
       if (!MS_run(selective, entered)) continue;
@@ -347,6 +368,11 @@ static void native_mutants(File *file, const std::vector<Mutant> &mutants, const
       (entered ? s.order : later).push_back(c);
     }
     s.order.insert(s.order.end(), later.begin(), later.end());
+    for (int32_t c = 0; c < (int32_t)checks; c++) {
+      if (!left_out(c)) continue;
+      if (native->judged[(size_t)c]) s.order.push_back(c);
+      else s.whole = false;
+    }
     s.path = dir + "/schedule" + std::to_string(schedules.size());
     std::string text;
     for (int32_t c : s.order) {
@@ -375,7 +401,7 @@ static void native_mutants(File *file, const std::vector<Mutant> &mutants, const
     const Schedule &s = schedules[mutants[i].owner];
     const int32_t hint = hints->empty() ? -1 : (*hints)[i];
     auto add = [&](int32_t c) {
-      if (c < 0 || c == hint || first.size() >= 8 || std::find(first.begin(), first.end(), c) != first.end()) return;
+      if (c < 0 || c == hint || left_out(c) || first.size() >= 8 || std::find(first.begin(), first.end(), c) != first.end()) return;
       if (std::find(s.order.begin(), s.order.end(), c) != s.order.end()) first.push_back(c);
     };
     if (i < likely.size()) for (int32_t c : likely[i]) add(c);
@@ -413,7 +439,7 @@ static void native_mutants(File *file, const std::vector<Mutant> &mutants, const
       std::vector<std::string> args = {exe, "m", std::to_string(i + 1), schedule};
       // The check a --killers file names for it runs first, when native code runs it at all.
       const int32_t first = hints->empty() ? -1 : (*hints)[i];
-      if (first >= 0 && (size_t)first < checks && native->judged[(size_t)first]) args.push_back(std::to_string(native->rows[(size_t)first]));
+      if (first >= 0 && (size_t)first < checks && !left_out(first) && native->judged[(size_t)first]) args.push_back(std::to_string(native->rows[(size_t)first]));
       return args;
     },
     [&](size_t t, const std::string &text) -> double {
@@ -446,6 +472,13 @@ static void native_mutants(File *file, const std::vector<Mutant> &mutants, const
     });
   native->run = seconds_since(t0);
   native->ran = true;
+  // Ran every left-out check, or was killed by one: they come last, so a
+  // mutant got to them when native code ran it through, or one killed it.
+  for (size_t i : owned) {
+    const bool through = native->outcome[i] == NM_SURVIVED || native->outcome[i] == NM_SURVIVED_PART;
+    const bool by_left = NM_killed(native->outcome[i]) && native->killer[i] >= 0 && left_out(native->killer[i]);
+    native->left_ran[i] = left && left_judged && has_switch[i] && (through || by_left);
+  }
 
   if (hints->empty()) hints->assign(total, -1);
   for (size_t i : owned)

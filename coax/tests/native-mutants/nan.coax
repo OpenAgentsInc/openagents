@@ -1,0 +1,20 @@
+// #13605: a check on a NaN bit pattern, which the evaluator refuses (E0412)
+// and native code runs, so the evaluator cannot run it. `quiet` is reached
+// only by that check: native code decides its mutants, and the one that drops
+// `i += 1` loops forever and still runs out of native ticks. `twice` is
+// reached by both checks; the evaluator decides its mutants.
+
+quiet :: (n: int) -> int #effects(all) {
+  q := 0;
+  i := 0;
+  while i < n {
+    x := f32_from_bits(0x7fc00000 + cast(u32) i); // mutant: equivalent (each of these bit patterns is a NaN)
+    if x != x { q += 1; }
+    i += 1;
+  }
+  return q;
+}
+twice :: (x: int) -> int #effects(all) { return x * 2 + 3; }
+
+#test "quiet NaNs" { #assert quiet(5) == 5 && twice(1) == 5; }
+#test "twice" { #assert twice(0) == 3 && twice(4) == 11; }

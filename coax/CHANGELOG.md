@@ -90,6 +90,13 @@ Commit: [`09101c58f972b76c8fcdd6f9315d1026b6a95837`](https://github.com/OpenAgen
   `--killers` the native kills are written when the native pass ends, so an
   interrupted run doesn't search again. The nightly sweep runs with
   `--native --mutation-stats` and reports the `limits` and `disagree` counts.
+- Follow-up 2026-11-14 (#13605): a check that passes as native code but fails
+  in `coax mutate`'s baseline evaluator, over its traversal or value-slot
+  limit or on a NaN bit pattern (`E0412`), no longer fails the baseline. It is
+  left out of the evaluator's schedules, native code runs it last for each
+  mutant, and a native kill there is the verdict; a loop still runs out of
+  ticks. The report names each such check and why, and counts a mutant native
+  code could not run it for as "not decided". `coax mutate` takes `--slots N`.
 
 ## 0.51.2 — Phase Storage Accounting — 2026-11-05
 

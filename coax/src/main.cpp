@@ -2354,7 +2354,7 @@ static int usage() {
           "       coax compat OLD NEW [--baseline BASE]  compare concrete published surfaces\n"
           "       coax compat --emit MODULE.coax           retain native LP64 compatibility manifest\n"
           "       coax test    file.coax [--steps N] [--slots N] [--only SUBSTR] [--list] [--profile steps] [--evidence FILE]\n"
-          "       coax mutate  file.coax [--jobs N] [--shard I/N | --merge RECORD...] [--evidence FILE]\n"
+          "       coax mutate  file.coax [--jobs N] [--slots N] [--shard I/N | --merge RECORD...] [--evidence FILE]\n"
           "                    [--root-only | --unit PART.coax...] [--killers FILE] [--source-order]\n"
           "                    [--changed [REF]] [--mutation-reference] [--mutation-stats] [--mutation-trace]\n"
           "                    [--native]\n"
@@ -2683,7 +2683,7 @@ static int main_impl(int argc, char **argv) {
     }
     else if (a == "--list" && cmd == "test") list = true;
     else if (a == "--profile" && cmd == "test" && i + 1 < argc && std::string(argv[i + 1]) == "steps" && !profile_steps) { profile_steps = true; ++i; }
-    else if (a == "--slots" && i + 1 < argc && (cmd == "test" || cmd == "check" || cmd == "c" || cmd == "build" || cmd == "run" ||
+    else if (a == "--slots" && i + 1 < argc && (cmd == "test" || cmd == "mutate" || cmd == "check" || cmd == "c" || cmd == "build" || cmd == "run" ||
                                                  cmd == "lib" || cmd == "header")) {
       // A smaller value-slot limit for the checks than the test limit (a shared
       // machine's memory); on a compile, for the checks an #authority file runs.
@@ -2696,7 +2696,7 @@ static int main_impl(int argc, char **argv) {
         fprintf(stderr, "coax: --slots requires a positive count at most %llu\n", (unsigned long long)CB_test_slot_limit());
         return 1;
       }
-      if (cmd != "test") g_check_slots = test_slots;
+      if (cmd != "test" && cmd != "mutate") g_check_slots = test_slots;
     }
     else if (a == "--steps" && i + 1 < argc && cmd == "test") {
       const char *value = argv[++i];

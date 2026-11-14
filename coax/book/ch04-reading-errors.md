@@ -556,7 +556,7 @@ use all the machine's memory. Each bound is a fixed amount of one resource:
 | --- | --- | --- | --- |
 | Compile-time steps | 100,000 per compile; 20,000,000 per check | `E0400` | `#run_steps N;`, `--run-steps N`; `#steps N` on a check, `coax test --steps N` |
 | Compile-time traversal work | 134,217,728 value and field visits per compile or check | `E0400` | `--traversal N`; `#traversal N` on a check |
-| Compile-time value slots | 1,572,864 per compile; 33,554,432 for checks | `E0400` | Fixed; `coax test --slots N` only lowers it |
+| Compile-time value slots | 1,572,864 per compile; 33,554,432 for checks | `E0400` | Fixed; `coax test --slots N` and `coax mutate --slots N` only lower it |
 | Generic instances | 256, or one per 8 syntax nodes in a larger program | `E0339` | Fixed |
 | Checker node store | 16 times the program's own nodes | `E0381` | Fixed |
 

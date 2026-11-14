@@ -133,8 +133,8 @@ gives a mutant's check ten times its measured unmutated steps and never fewer
 than 10,000, capped by the check's `#steps` when that is larger than its
 measured steps (`MS_mutant_budget`). `tests/native-mutants/heavy.coax` is a
 check of about 30,000,000 evaluator steps: it passes the baseline, and its
-mutant that loops forever runs out. Native code gives it ten times its unmutated ticks and
-never fewer than 10,000 (`NM_tick_limit`). Ticks bound every loop and every
+mutant that loops forever runs out. Native code gives a mutant's check ten
+times its unmutated ticks and never fewer than 10,000 (`NM_tick_limit`). Ticks bound every loop and every
 call, so a mutant that loops or recurses forever stops. A wall-time limit of
 twenty times the check's unmutated time, and never under ten seconds
 (`NM_wall_ms`), stops anything ticks can't see.
@@ -145,6 +145,35 @@ evaluator's answer is the report's: a native kill the evaluator doesn't
 confirm runs the whole schedule there, and a native survivor does too. The
 same holds for the rules only the evaluator has: its call depth (`E0403`), a
 read of an unset local (`E0405`) and a non-finite result (`E0412`).
+
+## Checks the evaluator cannot run
+
+Native code has no traversal limit, no value-slot limit and no rule against a
+NaN bit pattern, and the evaluator has all three. So a check `coax test`
+passes can still fail in the baseline's evaluator: over the aggregate
+traversal limit, over the value-slot limit (the checks' slots add up in one
+evaluator), or on `f32_from_bits(0x7fc00000)` (`E0412`). Such a check, failed
+by the evaluator and passed as native code (`MS_evaluator_cannot`), doesn't
+fail the baseline. It is left out of every mutant's evaluator schedule
+(`MS_scheduled`), and native code runs it for each mutant, with or without
+`--native`. It runs last in each native schedule, after the checks the
+evaluator would confirm, in source order. A native kill there is the
+mutant's verdict, the one place native code decides one (`MS_verdict`). A
+mutant that loops forever there runs out of native ticks. The report names
+each such check and why:
+
+```text
+evaluator cannot run #test 'many copies, then a sum' (E0400 compile-time aggregate traversal limit exceeded: 200001 value and field visits needed, the limit is 200000 at tests/native-mutants/traversal.coax:13:10): native code runs it for each mutant
+```
+
+A mutant that passes every check the evaluator runs is a survivor when
+native code ran the left-out checks for it. When native code could not (no
+mutant binary, or the site isn't in it), the mutant is not decided: the report
+names it and says why, and the summary counts it (`25 mutants, 4 killed, 0
+survived, 21 not decided`). A mutant not decided doesn't fail the run. A
+check that fails both in the evaluator and as native code fails the baseline
+as before. `coax mutate --slots N` gives the checks a smaller value-slot
+limit, as `coax test --slots N` does.
 
 ## What native code can't judge
 
@@ -236,7 +265,13 @@ holds a mutant two checks kill, the later one the heaviest, so it runs and
 fails first, and the earlier stays the killer. `tests/native-mutants/resume.coax`
 is stopped after its native pass and run again: the file holds the native
 kills, every mutant dies on its recorded check, and the report is that of a
-run that was never stopped. `tests/run.sh --only native_mutants` runs it.
+run that was never stopped. `tests/native-mutants/traversal.coax`, `slots.coax`
+and `nan.coax` each hold a check the evaluator cannot run (`--traversal
+200000`, `--slots 3000`, a NaN bit pattern): every mutant gets a verdict, the
+same at `--jobs 1` and `--jobs 8`, a loop mutant runs out of ticks, and with
+native checks off the baseline still fails. With a C compiler that refuses
+the mutant binary, the traversal fixture's mutants that only the left-out
+check reaches are not decided. `tests/run.sh --only native_mutants` runs it.
 
 ## Measured
 

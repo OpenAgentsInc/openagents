@@ -120,8 +120,14 @@ struct PassedCheck {
 static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::vector<uint64_t> *steps = nullptr, int32_t *failures = nullptr,
                            std::vector<std::vector<const ProcDecl *>> *paths = nullptr, bool *unstable = nullptr,
                            const std::string *only = nullptr, int32_t *ran = nullptr, bool profile = false,
-                           const std::vector<PassedCheck> *passed = nullptr, const std::vector<uint64_t> *budgets = nullptr) {
+                           const std::vector<PassedCheck> *passed = nullptr, const std::vector<uint64_t> *budgets = nullptr,
+                           std::vector<std::string> *cannot = nullptr) {
   bool ok = true;
+  // cannot (coax mutate's baseline, #13605): a check the evaluator fails and
+  // native code passed is not a failure; its entry says why the evaluator
+  // cannot run it, and every other entry is "".
+  if (cannot) cannot->assign((size_t)file->checks.count, "");
+  bool left_out = false;
   std::vector<const ProcDecl *> executed;
   if (failures) *failures = 0;
   if (ran) *ran = 0;
@@ -179,6 +185,15 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
     std::string name = to_std(c->name);
     evidence_claim({kind, name, r.passed ? "" : r.code, r.passed ? "" : r.message, r.counterexample,
                     EV_check(true, r.passed, !r.passed && r.code == "E0400"), r.cases, r.steps, r.passed ? c->loc : r.loc});
+    if (!r.passed && cannot && MS_evaluator_cannot(false, native_passed(file, (size_t)index))) {
+      std::string why = r.message.substr(0, r.message.find('\n'));
+      if (why.size() > 160) why = why.substr(0, 157) + "...";
+      if (r.over_budget) why = "out of steps: " + std::to_string(r.steps) + " used, its budget is " + std::to_string(r.budget);
+      const auto point = source_point(file->src, r.loc);
+      (*cannot)[(size_t)index] = r.code + " " + why + " at " + point.path + ":" + std::to_string(point.loc.line) + ":" + std::to_string(point.loc.col);
+      left_out = true;
+      continue;
+    }
     if (r.passed) {
       if (verbose) {
         if (child && child->native)
@@ -242,7 +257,8 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
     // Execution coverage is a claim of its own: it needs every check to pass.
     bool covered = true;
     std::string missing;
-    if (ok && !only) {
+    // A check left out ran only part of its work here: native code ran all of it.
+    if (ok && !only && !left_out) {
       for (const ProcDecl *p : file->procs) {
         if (!SU_check_required(p->authority,p->root_source,false) || p->foreign || str_eq(p->name, "main")) continue;
         if (std::find(executed.begin(), executed.end(), p) == executed.end()) {
@@ -634,7 +650,11 @@ struct MutationRun {
   const std::vector<int32_t> *cheap;                // every check, cheapest unmutated run first
   const std::vector<size_t> *owned;                 // this run's mutants by position
   const MutantResult *slots;                        // their results by position, as they finish
+  const std::vector<uint8_t> *cannot = nullptr;     // per check: 1 when the evaluator cannot run it (#13605)
 };
+
+// Can the evaluator run check c? Not one the baseline left out (#13605).
+static bool evaluates(const MutationRun &run, int32_t c) { return !run.cannot || !(*run.cannot)[(size_t)c]; }
 
 // The order a mutant's checks run in when the order is free (#12646). Only
 // the order: every check the schedule runs is still run until one fails, so
@@ -707,7 +727,7 @@ static MutantResult evaluate_mutant(const MutationRun &run, size_t index, size_t
     for (int32_t i : likely_order(run, index, position)) {
       const auto &path = (*run.paths)[(size_t)i];
       bool entered = !mu.owner || std::find(path.begin(), path.end(), mu.owner) != path.end();
-      if (!MS_run(run.selective, entered)) { ++r.skipped; continue; }
+      if (!MS_scheduled(run.selective, entered, evaluates(run, i))) { ++r.skipped; continue; }
       const uint64_t budget = MS_mutant_budget((*run.base)[(size_t)i], file->checks[i]->steps);
       ++r.invocations;
       killed = mutant_check_fails(file, file->checks[i], budget, &r);
@@ -724,7 +744,7 @@ static MutantResult evaluate_mutant(const MutationRun &run, size_t index, size_t
   if (hint >= 0) {
     const auto &path = (*run.paths)[(size_t)hint];
     bool entered = !mu.owner || std::find(path.begin(), path.end(), mu.owner) != path.end();
-    if (MS_run(run.selective, entered)) {
+    if (MS_scheduled(run.selective, entered, evaluates(run, hint))) {
       const uint64_t budget = MS_mutant_budget((*run.base)[(size_t)hint], file->checks[hint]->steps);
       ++r.invocations;
       killed = mutant_check_fails(file, file->checks[hint], budget, &r);
@@ -737,7 +757,7 @@ static MutantResult evaluate_mutant(const MutationRun &run, size_t index, size_t
     if (i == hint) continue;  // it ran above and passed
     const auto &path = (*run.paths)[(size_t)i];
     bool entered = !mu.owner || std::find(path.begin(), path.end(), mu.owner) != path.end();
-    if (!MS_run(run.selective, entered)) { ++r.skipped; continue; }
+    if (!MS_scheduled(run.selective, entered, evaluates(run, i))) { ++r.skipped; continue; }
     // Ten times the baseline's steps (MS_mutant_budget, #13602); a mutant that
     // needs more than the check's own budget fails that check.
     const uint64_t budget = MS_mutant_budget((*run.base)[(size_t)i], file->checks[i]->steps);
@@ -1770,7 +1790,7 @@ static std::vector<int32_t> chunk_order(const MutationRun &run, size_t index) {
   const Mutant &mu = (*run.mutants)[index];
   const int32_t count = run.file->checks.count;
   int32_t hint = run.hints ? (*run.hints)[index] : -1;
-  if (hint < 0 || hint >= count || !MS_run(run.selective, mutant_enters(run, mu, hint))) hint = -1;
+  if (hint < 0 || hint >= count || !MS_scheduled(run.selective, mutant_enters(run, mu, hint), evaluates(run, hint))) hint = -1;
   std::vector<int32_t> order;
   if (hint >= 0) order.push_back(hint);
   for (int32_t i = 0; i < count; i++) if (i != hint) order.push_back(i);
@@ -1797,7 +1817,7 @@ static MutationWork plan_work(const MutationRun &run, const std::vector<size_t> 
     cm.order = chunk_order(run, owned[k]);
     const Mutant &mu = (*run.mutants)[owned[k]];
     for (int32_t c : cm.order) {
-      const bool runs = MS_run(run.selective, mutant_enters(run, mu, c));
+      const bool runs = MS_scheduled(run.selective, mutant_enters(run, mu, c), evaluates(run, c));
       cm.scheduled.push_back(runs);
       if (!runs) continue;
       heaviest = std::max(heaviest, cost(c));
@@ -2093,7 +2113,7 @@ static bool merge_records(const MutationOptions &opt, const std::string &fingerp
       long long killer = 0;
       unsigned long long invocations = 0, skipped = 0;
       if (tag != "outcome" || !(fields >> index >> killer >> invocations >> skipped) || index >= total ||
-          !MS_shard_owns(index, s, n) || killer < -1 || (*results)[index].done)
+          !MS_shard_owns(index, s, n) || killer < -2 || (*results)[index].done)
         return bad("invalid outcome line '" + line + "'");
       (*results)[index] = {(int32_t)killer, 1, invocations, skipped};
       count++;
@@ -2365,6 +2385,9 @@ struct MutationBaseline {
   double seconds = 0;
   uint64_t steps = 0;
   const std::set<const ProcDecl *> *changed = nullptr;  // --changed: the procedures it keeps
+  // Per check: why the evaluator cannot run it, or "" (#13605). Native code
+  // passed it; the mutants run it as native code.
+  std::vector<std::string> cannot;
 };
 
 // Why every mutant runs the full schedule, or "" when it is selective.
@@ -2411,6 +2434,8 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
   bool sharded = opt.shards != 0;
   std::vector<size_t> owned;
   NativeMutants native;  // --native: what native code found, for the comparison after the evaluator
+  bool left = false;     // a check the evaluator cannot run (#13605)
+  std::vector<uint8_t> by_left(total, 0);  // per mutant: killed as native code by such a check
   if (merging) {
     if (!merge_records(opt, fingerprint, total, &results, &facts)) {
       g_evidence.infrastructure = true;
@@ -2426,7 +2451,21 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
     // --native: the scheduled checks as native code first. A native kill
     // becomes that mutant's hint, so the evaluator confirms it with one check;
     // a native survivor has none and runs the evaluator's whole schedule.
-    if (opt.native) native_mutants(file, m.mutants, owned, baseline.base, baseline.paths, facts.selective, &hints, likely, opt, &native);
+    // The checks the evaluator cannot run (#13605) need native code for every
+    // mutant, with or without --native.
+    std::vector<uint8_t> cannot((size_t)file->checks.count, 0);
+    for (size_t c = 0; c < baseline.cannot.size() && c < cannot.size(); c++) cannot[c] = !baseline.cannot[c].empty();
+    for (uint8_t c : cannot) left = left || c;
+    native.for_left_out = !opt.native;
+    if (opt.native || left)
+      native_mutants(file, m.mutants, owned, baseline.base, baseline.paths, facts.selective, &hints, likely, opt, &native, cannot);
+    // A native kill by a check the evaluator cannot run is that mutant's
+    // verdict (MS_verdict); the evaluator runs the others.
+    std::vector<size_t> evaluated;
+    for (size_t i : owned) {
+      by_left[i] = left && native.ran && NM_killed(native.outcome[i]) && native.killer[i] >= 0 && cannot[(size_t)native.killer[i]];
+      if (!by_left[i]) evaluated.push_back(i);
+    }
     // --killers: the native kills go into the file now, so a run stopped
     // while the evaluator confirms them starts again from them (#13587).
     if (opt.native && native.ran && !opt.killers.empty() && !sharded)
@@ -2440,7 +2479,8 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
       std::stable_sort(cheap.begin(), cheap.end(), [&](int32_t a, int32_t b) { return base[(size_t)a] < base[(size_t)b]; });
     }
     MutationRun run{file, &m.mutants, &base, &baseline.paths, facts.selective, hints.empty() ? nullptr : &hints,
-                    likely.empty() || cheap.empty() ? nullptr : &likely, cheap.empty() ? nullptr : &cheap, nullptr, nullptr};
+                    likely.empty() || cheap.empty() ? nullptr : &likely, cheap.empty() ? nullptr : &cheap, nullptr, nullptr,
+                    left ? &cannot : nullptr};
     // The most mutation workers at once: --jobs N, else $COAX_MUTATE_JOBS,
     // else $COAX_JOBS, else the machine-wide budget; the pool decides how
     // many run at a time (evaluate_work).
@@ -2452,11 +2492,20 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
     const bool every = every_env && *every_env && strcmp(every_env, "0") != 0;
     std::vector<uint8_t> chunked(total, 0);
     for (size_t i : owned) chunked[i] = MS_chunked(native.ran, native.ran ? native.outcome[i] : 0, every);
-    const MutationWork work = plan_work(run, owned, chunked, jobs);
+    const MutationWork work = plan_work(run, evaluated, chunked, jobs);
     uint64_t workers = std::min<uint64_t>(jobs, work.items.size());
-    if (!evaluate_work(run, owned, work, workers, &results)) {
+    if (!evaluate_work(run, evaluated, work, workers, &results)) {
       g_evidence.infrastructure = true;
       return 1;
+    }
+    // Each verdict (MS_verdict): killed, survived, or not decided (-2) when
+    // it passed every check the evaluator ran and native code could not run
+    // the others for it.
+    for (size_t i : owned) {
+      const bool ran = native.ran && native.left_ran[i];
+      const uint32_t verdict = MS_verdict(results[i].killer >= 0, by_left[i], left, ran);
+      if (by_left[i]) { results[i] = MutantResult(); results[i].killer = native.killer[i]; results[i].done = 1; }
+      else if (verdict == 2) results[i].killer = -2;  // MS_UNDECIDED (constants are not exported to C)
     }
     if (opt.stats && !work.chunked.empty())
       fprintf(stderr, "mutation-chunks %zu mutant%s in %zu chunk%s, at most %llu worker%s at once\n", work.chunked.size(),
@@ -2471,12 +2520,13 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
   // A complete run (not one shard) records its killers for the next run.
   if (!opt.killers.empty() && !sharded) *killers += killer_lines(file, mutant_keys(file, m.mutants), results);
   uint64_t invocations = 0, skipped = 0;
-  std::vector<const Mutant *> survivors;
+  std::vector<const Mutant *> survivors, undecided;
   size_t equivalent = 0;
   for (size_t i : owned) {
     invocations += results[i].invocations;
     skipped += results[i].skipped;
     if (results[i].killer >= 0) continue;
+    if (results[i].killer == -2) { undecided.push_back(&m.mutants[i]); continue; }
     if (marked_equivalent(file->src, m.mutants[i].loc)) equivalent++;
     else survivors.push_back(&m.mutants[i]);
   }
@@ -2522,15 +2572,32 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
     }
     if (!unreached.empty()) fprintf(report, "not reached by any check: %s\n", unreached.c_str());
   }
+  // What the evaluator could not run, and the mutants left without a verdict (#13605).
+  for (size_t c = 0; c < baseline.cannot.size(); c++) {
+    if (baseline.cannot[c].empty()) continue;
+    const CheckDecl *check = file->checks[(int32_t)c];
+    fprintf(report, "evaluator cannot run %s '%s' (%s): native code runs it for each mutant\n", check->forall ? "#forall" : "#test",
+            to_std(check->name).c_str(), baseline.cannot[c].c_str());
+  }
+  if (!undecided.empty()) {
+    const std::string why = !native.ran ? native.why : "a check the evaluator cannot run did not pass as native code with mutation switches, or the site is not in the native binary";
+    for (const Mutant *mu : undecided) {
+      auto point = source_point(file->src, diagnostic_loc(file->src, mu->loc));
+      fprintf(report, "%s:%d:%d: mutant not decided: %s\n", point.path.c_str(), point.loc.line, point.loc.col, mu->what.c_str());
+    }
+    fprintf(report, "%zu mutant%s not decided: %s passed every check the evaluator can run, and native code could not run the others (%s)\n",
+            undecided.size(), undecided.size() == 1 ? "" : "s", undecided.size() == 1 ? "it" : "they", why.c_str());
+  }
   if (sharded) {
     fprintf(report, "shard %llu/%llu: %zu of %zu mutant%s, %zu killed, %zu survived", (unsigned long long)opt.shard,
             (unsigned long long)opt.shards, owned.size(), total, total == 1 ? "" : "s",
-            owned.size() - survivors.size() - equivalent, survivors.size());
+            owned.size() - survivors.size() - equivalent - undecided.size(), survivors.size());
   } else {
     fprintf(report, "%zu mutant%s, %zu killed, %zu survived", total, total == 1 ? "" : "s",
-            total - survivors.size() - equivalent, survivors.size());
+            total - survivors.size() - equivalent - undecided.size(), survivors.size());
   }
   if (equivalent) fprintf(report, ", %zu marked equivalent", equivalent);
+  if (!undecided.empty()) fprintf(report, ", %zu not decided", undecided.size());
   fprintf(report, "\n");
   // --changed: a change with nothing to mutate passes (#13583).
   const bool nothing_changed = baseline.changed && m.mutants.empty();
@@ -2546,7 +2613,7 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
               ",\"col\":" + std::to_string(point.loc.col) + ",\"mutant\":\"" + json_escape_basic(mu->what) + "\"}";
     }
     g_evidence.mutation_detail = "\"mutants\":" + std::to_string(total) + ",\"evaluated\":" + std::to_string(owned.size()) +
-        ",\"killed\":" + std::to_string(owned.size() - survivors.size() - equivalent) + ",\"survived\":[" + rows + "]" +
+        ",\"killed\":" + std::to_string(owned.size() - survivors.size() - equivalent - undecided.size()) + ",\"survived\":[" + rows + "]" +
         ",\"marked_equivalent\":" + std::to_string(equivalent) + ",\"unreached\":\"" + json_escape_basic(unreached) + "\"" +
         ",\"scope\":\"" + (opt.root_only ? "root-only" : unit.empty() ? "all" : "unit") + "\"" +
         (baseline.changed ? ",\"changed_since\":\"" + json_escape_basic(opt.changed) + "\",\"changed_procedures\":" + std::to_string(changed_procs) : std::string()) +
@@ -2554,6 +2621,11 @@ static int mutate_unit(Arena *arena, File *file, const MutationOptions &opt, con
         (sharded ? "[" + std::to_string(opt.shard) + "," + std::to_string(opt.shards) + "]" : std::string("null")) +
         ",\"merged_records\":" + std::to_string(opt.merge.size()) + ",\"scheduling\":\"" + (facts.selective ? "selective" : "full") +
         "\",\"per_check_budget\":\"max(10000, 10 x the unmutated check's steps)\"";
+    if (left) {
+      size_t cannot_count = 0;
+      for (const std::string &c : baseline.cannot) cannot_count += !c.empty();
+      g_evidence.mutation_detail += ",\"evaluator_cannot_run\":" + std::to_string(cannot_count) + ",\"not_decided\":" + std::to_string(undecided.size());
+    }
   }
   if (opt.stats) fprintf(stderr, "mutation-scheduling %s checks=%llu skipped=%llu borrowed=%d strings=%d unstable=%d\n",
                          facts.selective ? "selective" : "full", (unsigned long long)invocations,
@@ -2606,16 +2678,30 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
     const size_t count = (size_t)file->checks.count;
     std::vector<uint64_t> budgets(count, 0);
     const bool native_first = native_mode() != NativeMode::off && g_evidence.path.empty();
-    if (native_first) native_run(file, std::vector<bool>(count, true), TEST_STEPS);
+    if (native_first) {
+      // The native plan sets the test's storage limits; --slots keeps its own for the evaluator.
+      const uint64_t slot_limit = file->ct_memory->slot_limit;
+      native_run(file, std::vector<bool>(count, true), TEST_STEPS);
+      file->ct_memory->slot_limit = slot_limit;
+      file->ct_memory->reset_peaks();
+    }
     for (size_t i = 0; i < count; i++)
       budgets[i] = MS_baseline_budget(native_first && native_passed(file, i), file->checks[(int32_t)i]->steps, TEST_STEPS);
-    if (!run_all_checks(file, TEST_STEPS, false, &baseline.base, nullptr, &baseline.paths, &unstable, nullptr, nullptr, false, nullptr, &budgets)) {
+    // A check the evaluator fails and native code passed is left out of the
+    // evaluator's schedules (#13605); native code runs it for each mutant.
+    if (!run_all_checks(file, TEST_STEPS, false, &baseline.base, nullptr, &baseline.paths, &unstable, nullptr, nullptr, false, nullptr, &budgets,
+                        native_first ? &baseline.cannot : nullptr)) {
       g_evidence.mutation_detail = "\"reason\":\"the checks fail before any mutation\"";
       fprintf(stderr, "coax: the checks fail before any mutation; make them pass first\n");
       return 1;
     }
     baseline.seconds = seconds_since(began);
     for (uint64_t s : baseline.base) baseline.steps += s;
+    size_t cannot_count = 0;
+    for (const std::string &c : baseline.cannot) cannot_count += !c.empty();
+    if (opt.stats && cannot_count)
+      fprintf(stderr, "mutation-baseline %zu check%s passed as native code and the evaluator cannot run %s; native code runs %s for each mutant\n",
+              cannot_count, cannot_count == 1 ? "" : "s", cannot_count == 1 ? "it" : "them", cannot_count == 1 ? "it" : "them");
     size_t over = 0;
     uint64_t most = 0;
     for (size_t i = 0; i < count; i++) {

@@ -803,7 +803,10 @@ forever doesn't hang the run: each check gets ten times its unmutated steps,
 with a minimum of 10,000, and running out counts as a kill. The baseline runs
 the checks as native code first, like `coax test`, so a check that passes there
 and needs more than 20,000,000 evaluator steps still passes the baseline, and
-its mutants get ten times the steps it really took.
+its mutants get ten times the steps it really took. A check that passes as native code but that the
+evaluator can't run at all, over its traversal or value-slot limit or on a
+NaN bit pattern, is left out of the evaluator's work: native code runs it for
+each mutant, and the report names it and why.
 
 To avoid repeating independent work, Coax records which procedures each
 baseline check entered and can skip a check for a mutant in an unentered

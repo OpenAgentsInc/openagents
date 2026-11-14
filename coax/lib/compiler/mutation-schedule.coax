@@ -261,6 +261,38 @@ MS_mutant_budget :: (base:u64,own:u64)->u64 #export_c #effects(all) {
  return budget;
 }
 
+// Checks the evaluator cannot run (#13605). A check that fails in the
+// baseline's evaluator and passed as native code hit a limit only the
+// evaluator has: its traversal, value-slot or step limit, or a value it
+// refuses, such as a NaN bit pattern (E0412). It is left out of every
+// mutant's evaluator schedule, and native code runs it for each mutant: a
+// native kill there is that mutant's kill, a mutant that loops forever still
+// runs out of native ticks. A check that failed in both is a real failure.
+#forall "a check is left out only when the evaluator fails it and native code passed it" evaluator:bool, native:bool {
+ #assert MS_evaluator_cannot(evaluator,native)==(!evaluator && native);
+}
+MS_evaluator_cannot :: (evaluator_passed:bool,native_passed:bool)->bool #export_c #effects(all) {return !evaluator_passed && native_passed;}
+#forall "the evaluator runs a check for a mutant only when it can, and as the schedule says" selective:bool, entered:bool, evaluable:bool {
+ #assert MS_scheduled(selective,entered,evaluable)==(evaluable && (!selective || entered));
+}
+MS_scheduled :: (selective:bool,entered:bool,evaluable:bool)->bool #export_c #effects(all) {return evaluable && MS_run(selective,entered);}
+// A mutant's verdict: 1 killed (by the evaluator, or as native code by a
+// check the evaluator cannot run), 0 survived, 2 not decided: it passed every
+// check the evaluator ran, and native code could not run the left-out checks
+// for it. The report counts a mutant not decided, and says why.
+MS_SURVIVED :: cast(u32) 0;
+MS_KILLED :: cast(u32) 1;
+MS_UNDECIDED :: cast(u32) 2;
+#forall "a kill is a kill; a survivor is one only when every left-out check ran for it" evaluator:bool, native:bool, left:bool, ran:bool {
+ want:=ifx evaluator || native then MS_KILLED else ifx left && !ran then MS_UNDECIDED else MS_SURVIVED;
+ #assert MS_verdict(evaluator,native,left,ran)==want;
+}
+MS_verdict :: (evaluator_killed:bool,native_killed_left_out:bool,left_out:bool,left_out_ran:bool)->u32 #export_c #effects(all) {
+ if evaluator_killed || native_killed_left_out {return MS_KILLED;}
+ if left_out && !left_out_ran {return MS_UNDECIDED;}
+ return MS_SURVIVED;
+}
+
 // A native survivor's schedule across the mutation workers (#13587,
 // coax/docs/native-mutants.md). A mutant native code ran without a kill has
 // its scheduled checks cut into chunks, in the order its verdict reads them,

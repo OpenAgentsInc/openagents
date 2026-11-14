@@ -1,0 +1,21 @@
+// #13605: a check over the evaluator's value-slot limit (run with --slots
+// 3000) that native code passes, so the evaluator cannot run it. `total` is
+// reached only by that check: native code decides its mutants, and the one
+// that drops `i += 1` loops forever and still runs out of native ticks.
+// `half` is reached by both checks; the evaluator decides its mutants.
+
+total :: (v: [] int) -> int #effects(all) {
+  s := 0;
+  i := 0;
+  while i < v.count { s += v[i]; i += 1; }
+  return s;
+}
+half :: (x: int) -> int #effects(all) { return x / 2 + 1; }
+
+#test "a large table" {
+  t: [4096] int;
+  i := 0;
+  while i < 4096 { t[i] = (i & 7) + 1; i += 1; }
+  #assert total(t[..]) == 512 * 36 && half(8) == 5;
+}
+#test "a half" { #assert half(0) == 1 && half(6) == 4; }
