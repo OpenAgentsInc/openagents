@@ -11,6 +11,12 @@ inspector, a transform plus Undo, and an Agent change with the world visible
 behind its sheet. Creator/admin rights are unchanged. Physical touch, motion,
 audio and the actual account's acceptance remain owner observations.
 
+A read-only production check on November 14 found that the existing
+`chris@openagents.com` email account is on the team but has no world-creator
+grant. Its Create flow therefore retains the site's invite gate. The owner
+choice to enable creator access for this account is pending; public play and
+the TestFlight release do not depend on that grant.
+
 ## Computer connection repair, build1074 (2026-11-14)
 
 The owner has already installed1074. The server correction is live; tap
