@@ -1134,6 +1134,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   rv := cm_rover(g);
   if rv.ok && (dv_away(g) || cm_faded(g)) { n0 := p[0].n; g_rover_at(g, buf, p, frame_at(v3(rv.x, rv.y, rv.z), rv.yaw), 180, 1); cm_dissolve(g, buf, n0, p[0].n); }
   if fr_front(g) { fr_live(g, buf, p); return; }
+  if g[0].zone == Z_MINE && !sp_in_room(g) && (g[0].mode == M_PLAY || g[0].mode == M_DRIVE || g[0].mode == M_BANNER) { pl_far(g, buf, p); }   // the mountain, where the camera is (plain.coax)
   if g[0].mode == M_MEMORY { sb_memory_live(g, buf, p); return; }   // the hologram (splice-battle.coax)
   if g[0].mode != M_DRIVE { _ := sd_cables(g, buf, p); }   // chargers plugged into the parked rover train (layer-draw.coax)
   if g[0].mode == M_BAY {

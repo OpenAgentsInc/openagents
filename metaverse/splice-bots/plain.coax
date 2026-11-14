@@ -77,7 +77,7 @@ pl_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   kit_pen(p, 1, MAT_WORLD, t3(0.90, 0.68, 0.48));
   quad(buf, p, v3(PL_X0 - PL_FAR, 0, PL_Z0 - PL_FAR), v3(PL_X1 + PL_FAR, 0, PL_Z0 - PL_FAR), v3(PL_X1 + PL_FAR, 0, PL_Z1 + PL_FAR), v3(PL_X0 - PL_FAR, 0, PL_Z1 + PL_FAR));
   for i: 0..<PL_ROCKS { kit_mound(buf, p, 2, t3(0.74, 0.72, 0.71), t3(0.56, 0.55, 0.57), pl_rock(i), PL_ROCK_H[i], PL_ROCK_W[i]); }
-  for i: 0..<PL_PEAKS { land_peak(buf, p, 5, ifx i == 0 then t3(0.62, 0.46, 0.60) else t3(0.56, 0.42, 0.56), pl_peak(i), PL_TOP[i * 3], PL_TOP[i * 3 + 1], PL_TOP[i * 3 + 2]); }
+  // the mountain's peaks are drawn live (pl_far), where the camera is
   // the edge: an orange boundary flag every PL_STAKE metres round the plain, a pole and a pennant flying
   // along the edge so she sees its face from inside (#13584: bare sticks did not say what they were);
   // the Imperial robots' charging pads at the farm
@@ -92,6 +92,41 @@ pl_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   }
   kit_pen(p, 62, MAT_FLAT, t3(0.86, 0.86, 0.84));
   for i: 0..<2 { tube(buf, p, frame_at(v3(PL_FARM_PADS[i * 2], 0, PL_FARM_PADS[i * 2 + 1]), 0), 0.05, PL_PAD_R, PL_PAD_R, PL_PAD_R, PL_PAD_R, 16, true); }
+}
+
+// The far destination in flat dark purple (#13584): the mountain north of the garage, always, and from
+// far off the garage's outer shell too, the purple mass on the horizon the level map draws. Flat, they
+// keep their colour at any distance (the haze paled the lit rock and the shell to the sky's colour).
+// The camera sees 400 m (animelab FAR): each corner further than PL_SEEN is drawn toward the eye along
+// its own line of sight, so the shape covers the same part of the picture and is never clipped. Near,
+// a peak is the peak itself, the one pl_push holds her out of; the shell's stand-in, a little nearer
+// than the shell so it covers it, gives way to the garage's own shell PL_SHELL_NEAR m out from its foot.
+PL_SEEN :: 380.0f32;
+PL_SHELL_NEAR :: 60.0f32;    // m: near enough that the shell's own dark concrete is barely hazed
+PL_SHELL_SIDES :: 40;
+pl_seen :: (e: Point, v: Point, most: f32) -> Point { d := length(sub(v, e)); return add(e, times(sub(v, e), lo(most, PL_SEEN / hi(d, 0.001)))); }
+pl_far :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  if !g[0].cam[0].seen { return; }
+  e := g[0].cam[0].last.eye;
+  for i: 0..<PL_PEAKS {
+    pts := pl_peak(i); t := pl_seen(e, v3(PL_TOP[i * 3], PL_TOP[i * 3 + 1], PL_TOP[i * 3 + 2]), 1);
+    kit_pen(p, 5, MAT_FLAT, ifx i == 0 then t3(0.30, 0.21, 0.35) else t3(0.27, 0.19, 0.32));
+    for k: 0..<PL_PEAK_SIDES {
+      j := (k + 1) % PL_PEAK_SIDES;
+      land_face(buf, p, pl_seen(e, v3(pts[k * 2], 0, pts[k * 2 + 1]), 1), pl_seen(e, v3(pts[j * 2], 0, pts[j * 2 + 1]), 1), t, t);
+    }
+  }
+  gx := g[0].at.gar_x; gz := g[0].at.gar_z; ro := ga_shell_in(g); rf := ga_foot(g);
+  if dist2(e.x, e.z, gx, gz) < rf + PL_SHELL_NEAR { return; }
+  kit_pen(p, 6, MAT_FLAT, t3(0.25, 0.18, 0.31));
+  for k: 0..<PL_SHELL_SIDES {
+    a0 := cast(f32) k * TAU / cast(f32) PL_SHELL_SIDES; a1 := cast(f32) (k + 1) * TAU / cast(f32) PL_SHELL_SIDES;
+    top0 := pl_seen(e, v3(gx + sin(a0) * ro, GA_RIM + 0.5, gz + cos(a0) * ro), 0.97); top1 := pl_seen(e, v3(gx + sin(a1) * ro, GA_RIM + 0.5, gz + cos(a1) * ro), 0.97);
+    foot0 := pl_seen(e, v3(gx + sin(a0) * (rf + 1), 0, gz + cos(a0) * (rf + 1)), 0.97); foot1 := pl_seen(e, v3(gx + sin(a1) * (rf + 1), 0, gz + cos(a1) * (rf + 1)), 0.97);
+    land_face(buf, p, foot0, foot1, top1, top0);
+    ctr := pl_seen(e, v3(gx, GA_RIM + 0.5, gz), 0.97);
+    land_face(buf, p, top0, top1, ctr, ctr);   // its top, so the far side's slope never shows through
+  }
 }
 
 #test "the plain as the level spec lays it out: the farm west, the garage east, three rocks off the road she can climb, the mountain north, an edge" {
