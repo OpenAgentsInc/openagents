@@ -41,7 +41,9 @@ milestone 128000
 # /nostr-chat, Nostr from scratch as a scripted chat on the same components (nostr-chat.coax): the frames set and the
 # library's signing, relay, NIP-44 and NIP-59 code it runs in the page: 309,585 bytes measured 2026-11-12 on a Linux build host;
 # 375,115 as a workbench with a stage beside the transcript (components/kit/stage.coax, six staged steps and their stylesheet); about 6% room.
-nostr-chat 398000
+# 410,371 measured 2026-11-13 once the library's relay scopes reads and moderation to NIP-29 groups and answers NIP-67's
+# finish (abceb6d324, #13382; the page runs that relay in process); about 5% room.
+nostr-chat 431000
 components 210000
 # /kit, the control kit's page (kit.coax): 80,287 bytes measured 2026-11-11 on a Linux build host; about 10% room.
 # With the dock (components/kit/dock.coax, #13416: panes, props and facts, and their section on the page): 89,924 bytes measured 2026-11-13 on a Mac; about 11% room.
