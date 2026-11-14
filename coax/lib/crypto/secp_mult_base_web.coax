@@ -29,7 +29,17 @@ smb_web_table :: (width: int,spacing: int) -> [128] SgPoint #effects(all) {
 SMB_WEB_TABLE :: #run smb_web_table(7,37);
 smb_web_width :: () -> int #effects(all) { return 7; }
 smb_web_spacing :: () -> int #effects(all) { return 37; }
+// k*G for a secret k: the fixed-work 5x52 comb of secp_ct_group.coax
+// (#13454). The seven-tooth comb below remains its reference.
 smb_multiply_web :: (scalar: ScScalar) -> SgPoint #export_c #effects(all) {
+  return sg32_to_point(cg_to_sg32(cg_comb(scalar)));
+}
+#forall "the 5x52 comb equals the seven-tooth comb" seed: 0..<6 #steps 2000000000 {
+  k: ScScalar; for i: 0..<8 { k.limbs[i] = cast,trunc(u32)(mul_wrap(cast(u64)(seed*8+i+1),2654435761)); }
+  if seed == 0 { k = SC_N; } if seed == 1 { k = sc_sub(SC_N,sc_small(1)); }
+  #assert sg_equal_mask(smb_multiply_web(k),smb_multiply_web_comb(k)) == CB_MAX64;
+}
+smb_multiply_web_comb :: (scalar: ScScalar) -> SgPoint #effects(all) {
   // Current mutable-view ABI requires a local copy of the immutable table.
   // This scratch copy contains public points and is part of the stack budget.
   table := SMB_WEB_TABLE;

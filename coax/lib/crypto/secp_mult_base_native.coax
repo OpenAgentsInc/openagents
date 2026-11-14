@@ -26,7 +26,17 @@ smb_native_table :: (width: int,spacing: int) -> [256] SgPoint #effects(all) {
 SMB_NATIVE_TABLE :: #run smb_native_table(8,32);
 smb_native_width :: () -> int #effects(all) { return 8; }
 smb_native_spacing :: () -> int #effects(all) { return 32; }
+// The fixed-work 5x52 comb (#13454), as smb_multiply_web; the eight-tooth
+// comb below remains a reference.
 smb_multiply_native :: (scalar: ScScalar) -> SgPoint #export_c #effects(all) {
+  return sg32_to_point(cg_to_sg32(cg_comb(scalar)));
+}
+#forall "the 5x52 comb equals the eight-tooth comb" seed: 0..<4 #steps 2000000000 {
+  k: ScScalar; for i: 0..<8 { k.limbs[i] = cast,trunc(u32)(mul_wrap(cast(u64)(seed*8+i+7),2246822519)); }
+  if seed == 0 { k = ScScalar.{}; }
+  #assert sg_equal_mask(smb_multiply_native(k),smb_multiply_native_comb(k)) == CB_MAX64;
+}
+smb_multiply_native_comb :: (scalar: ScScalar) -> SgPoint #effects(all) {
   table := SMB_NATIVE_TABLE;
   return smb_comb(scalar,table[..],smb_native_width(),smb_native_spacing());
 }

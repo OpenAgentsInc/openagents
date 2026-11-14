@@ -19,10 +19,9 @@ static public and fixed-work variants from one authoring schedule. Public
 carries use comparisons; secret callers never reach those `_vartime`
 helpers. There is no runtime arithmetic-profile switch. Carries use bit operations, normalization uses
 masked subtraction, and column selection depends only on a public loop
-index. Owned numeric workspaces are wiped. Signing and ECDH retain their
-existing fixed-work group formulas and table selection. An unreleased
-Schnorr signature continues to use the existing self-verifier. This does
-not authorize variable-time verification of unreleased signatures.
+index. Owned numeric workspaces are wiped. An unreleased Schnorr signature
+continues to use the fixed-work self-verifier. This does not authorize
+variable-time verification of unreleased signatures.
 
 The public G table has width 10 and 256 packed affine points. Its immutable
 2,048 words are indexed directly: disassembly exposed, and this change
@@ -35,6 +34,78 @@ BIP-340 challenge hashing starts from its tagged SHA-256 midstate. Batch
 verification, recovery, Taproot, public BIP-32 derivation, MuSig2 and FROST
 public operations use the fast group; the earlier field/group remain their
 references. Relay and script entry files have explicit compile-time budgets.
+
+## Signing and ECDH on the 5×52 field
+
+`secp_ct_group.coax` is a fixed-work group on the shared 5×52 field for
+secret scalars. Signing (`k·G`, `1/k`), ECDH (`k·P`, `1/Z`) and the BIP-340
+self-verifier (`s·G - e·P` and its final sum) run on it:
+
+- Products split each limb product at bit 52 into separate 64-bit low and
+  high columns, which cannot overflow, so no carry is detected; two carry
+  passes and folds by `2^260` and `2^256` (mod p) give magnitude 1.
+  Inputs may have magnitude up to 8; the checks cover every magnitude.
+- Addition is libsecp256k1's complete `secp256k1_gej_add_ge` formula,
+  degenerate case (`y1 = -y2`, `x1 = βx2`) included, scaled by 2 instead of
+  halved. Every condition is a mask and every choice a masked select.
+- `k·G` is a comb of 8 blocks, 4 teeth, spacing 8 (7 doublings, 64 affine
+  additions) over the generated `secp_ct_table.coax`; each lookup reads
+  all 16 entries of its block. `k·P` keeps the signed radix-16 digits of
+  `smc_multiply`.
+- `1/Z` is Fermat's fixed chain (255 squares, 15 products). `1/k mod n`
+  is `k^(n-2)` with 4-bit windows of the public exponent; its products use
+  32-bit columns with three folds by `2^256 - n` and one masked
+  subtraction, any 256-bit inputs.
+
+The 26-bit comb, ladder and Montgomery inverse stay as references, and
+`#forall` checks compare each new path with its reference. Tables, digits,
+scalars and accumulators are erased; products and coordinates live in
+by-value locals, as in every group formula (the register and copy limits
+below apply).
+
+Linux x86-64 build host, GCC 12.2 `-O2`, release build, process CPU time,
+paired runs against libsecp256k1 v0.8.0 (µs):
+
+| Operation | Before | After | libsecp256k1 |
+| --- | ---: | ---: | ---: |
+| ECDSA sign | 562.15 | 126.11 | 25.41 |
+| BIP-340 sign | 2569.66 | 320.47 | 36.54 |
+| ECDSA verify (unchanged code) | 62.27 | 62.11 | 38.28 |
+| BIP-340 verify (unchanged code) | 63.69 | 63.59 | 38.75 |
+
+Parts (`secp_bench.sh --release 0 signparts`): `k·G` 47.3 µs, `k·P`
+150.9 µs, `1/k` 28.2 µs (the Montgomery chain took 86.3 µs), field inverse
+6.5 µs, one HMAC-SHA256 5.9 µs. In Node v22.11.0 (`secp_bench.sh --wasm`,
+which now times the signers too), ECDSA signing went from 873.39 to
+235.23 µs and BIP-340 signing from 4,213.33 to 974.41 µs; the benchmark
+module shrank from 226,872 to 203,069 bytes.
+
+Wasm SIMD by compiler flag is a measured dead end: the same benchmark C
+built with `-msimd128` verifies in 239.01 (ECDSA) and 238.71 µs (BIP-340)
+against 245.04 and 243.57 µs without it in the same run, within the noise
+between runs, and `-msimd128 -O3` in 241.98 and 244.75 µs. Wasm SIMD has no 64×64→128-bit product, so the 5×52 columns do
+not vectorize; a SIMD field would need its own 26-bit lane layout
+(`i64x2.extmul_low_i32x4_u`), written by hand.
+
+What remains to libsecp256k1's signing time, measured: BIP-340 signing's
+self-verification spends 151 µs in `k·P` (256 doublings at 0.2 µs, 64
+additions at 0.85 µs); GLV would halve the doublings. ECDSA's `1/k` (28 µs)
+would drop to a few µs with a constant-time divsteps inverse, as
+libsecp256k1 uses.
+
+Checks: every touched Coax suite (`coax test ... --library --run-steps
+250000000`); `schnorr_sign_libsecp.py` (3,100 signatures equal to
+libsecp256k1's) and `ecdsa_sign_libsecp.py` (1,200); the native and Wasm
+suites `secp_base.py`, `secp_mult_const.py`, `ecdh_vectors.py`,
+`schnorr_self_verify.py`, `schnorr_sign.py` and `ecdsa_sign.py`. The
+Valgrind probes on NixOS (valgrind 3.26) pass: the ECDSA signer reports only
+its `ec_declassify` line, the BIP-340 signer only `sw_key`, `sm_equation`
+and `sw_publish`, and the release self-verifier no candidate-dependent
+branch or address; every positive control is flagged. The ECDSA probe's
+planted branch now follows `ec_seed`, which replaced `ec_candidates` in the
+signer, and the self-verifier probe counts checked `coax_mul_u64` traps
+with the other checked-arithmetic traps (1,758 a candidate, none outside
+them; Valgrind's 1,000-report cap is lifted).
 
 ## Qualification limits
 

@@ -1,0 +1,141 @@
+// The checks of secp_ct_group.coax. The reference is chapter 15's group
+// law on the 26-bit field (secp_group.coax), with k*G by plain double and
+// add: every point the fixed-work group produces must be the point it
+// produces.
+// Checks: coax test coax/lib/crypto/secp_ct_group.coax --library
+
+cgt_point :: (k:u32)->SgPoint #effects(all) {
+  p:=sg_generator();r:=sg_infinity();for i:0..<k {r=sg_add_valid(r,p);}return r;
+}
+cgt_base :: (input:ScScalar)->SgPoint #effects(all) {
+  k:=sc_normalize(input);r:=sg_infinity();
+  for i:0..<256 {bit:=255-i;r=sg_double_valid(r);if ((k.limbs[bit/32]>>(bit%32))&1)==1 {r=sg_add_valid(r,sg_generator());}}
+  return r;
+}
+cgt_same :: (a:Cg,b:SgPoint)->bool #effects(all) {return sg_equal_mask(sg32_to_point(cg_to_sg32(a)),b)==CB_MAX64;}
+cgt_scalar :: (seed:int)->ScScalar #effects(all) {
+  r:ScScalar;state:=mul_wrap(cast(u64)(seed+1),0x9E3779B97F4A7C15);
+  for i:0..<8 {state=add_wrap(mul_wrap(state,6364136223846793005),1442695040888963407);r.limbs[i]=cast,trunc(u32)(state>>32);}
+  return r;
+}
+#test "conversion round trips the generator, a scaled point and infinity" {
+  g:=sg_generator();#assert cgt_same(cg_from_sg32(sg32_from_point(g)),g);
+  inf:=cg_from_sg32(sg32_infinity());#assert inf.inf==CB_MAX64 && cgt_same(inf,sg_infinity());
+  two:=sg32_double(sg32_from_point(g));#assert cg_from_sg32(two).inf==0 && cgt_same(cg_from_sg32(two),sg_double_valid(g));
+}
+#test "doubling agrees with the reference, at z = 1, at another z, and at infinity" {
+  g:=sg_generator();a:=cg_from_sg32(sg32_from_point(g));
+  #assert cgt_same(cg_double(a),sg_double_valid(g));
+  #assert cgt_same(cg_double(cg_double(a)),cgt_point(4));
+  #assert cg_double(cg_infinity()).inf==CB_MAX64;
+}
+#forall "Jacobian addition covers distinct, equal, opposite and infinite points" left:0..<4,right:0..<4 #steps 400000000 {
+  p:=cgt_point(cast(u32)left+1);q:=cgt_point(cast(u32)right+1);
+  a:=cg_double(cg_from_sg32(sg32_from_point(p)));b:=cg_from_sg32(sg32_from_point(q));   // a = 2p, at z != 1
+  want:=sg_add_valid(sg_double_valid(p),q);
+  #assert cgt_same(cg_add(a,b),want) && cgt_same(cg_add(b,a),want);
+  #assert cgt_same(cg_add(a,a),sg_double_valid(sg_double_valid(p)));
+  negative:=b;negative.y=cg_weak(fe_negate(b.y,1));
+  #assert cgt_same(cg_add(b,negative),sg_infinity()) && cg_add(b,negative).inf==CB_MAX64;
+  #assert cgt_same(cg_add(a,cg_infinity()),sg_double_valid(p)) && cgt_same(cg_add(cg_infinity(),b),q);
+  #assert cg_add(cg_infinity(),cg_infinity()).inf==CB_MAX64;
+}
+#forall "affine addition covers distinct, equal, opposite and infinite points" left:0..<4,right:0..<4 #steps 400000000 {
+  p:=cgt_point(cast(u32)left+1);q:=cgt_point(cast(u32)right+1);
+  a:=cg_double(cg_from_sg32(sg32_from_point(p)));
+  qa:=sg_to_affine_valid(q);b:=Cga.{x=cg_from_field(qa.x),y=cg_from_field(qa.y)};
+  #assert cgt_same(cg_add_affine(a,b),sg_add_valid(sg_double_valid(p),q));
+  same:=cg_from_sg32(sg32_from_point(q));#assert cgt_same(cg_add_affine(same,b),sg_double_valid(q));
+  negative:=b;negative.y=cg_weak(fe_negate(b.y,1));
+  #assert cgt_same(cg_add_affine(same,negative),sg_infinity()) && cg_add_affine(same,negative).inf==CB_MAX64;
+  #assert cgt_same(cg_add_affine(cg_infinity(),b),q);
+  skipped:=b;skipped.inf=CB_MAX64;#assert cgt_same(cg_add_affine(a,skipped),sg_double_valid(p));
+  #assert cg_add_affine(cg_infinity(),skipped).inf==CB_MAX64;
+}
+#test "the degenerate case y1 = -y2, x1 = beta*x2 takes the other slope" #steps 400000000 {
+  // b = -(lambda*G) = (beta*Gx, -Gy): M = 0 and R = 0, but b != -G.
+  g:=sg_generator();ga:=sg_to_affine_valid(g);beta:=Fe.{n=[5]u64.[2652195750478318,2059588628732947,3435101582848073,124274446989802,135142927197564]};
+  x:=cg_mul(cg_from_field(ga.x),beta);y:=cg_weak(fe_negate(cg_from_field(ga.y),1));
+  b:=Cga.{x=x,y=y};bj:=Cg.{x=x,y=y,z=fe_one()};
+  reference:=SgPoint.{x=sg32_to_field(fc_to32(x)),y=sg32_to_field(fc_to32(y)),z=sg_generator().z};
+  #assert sg_valid_mask(reference)==CB_MAX64;
+  want:=sg_add_valid(g,reference);a:=cg_from_sg32(sg32_from_point(g));
+  #assert cgt_same(cg_add_affine(a,b),want) && cgt_same(cg_add(a,bj),want) && cgt_same(cg_add(bj,a),want);
+  // The same pair at another z.
+  a2:=cg_double(a);a2=cg_add(a2,cg_from_sg32(sg32_from_point(sg_negate(g).value)));   // G again, z != 1
+  #assert cgt_same(cg_add_affine(a2,b),want) && cgt_same(cg_add(a2,bj),want);
+}
+#forall "the inverse equals the public inverse" seed:0..<8 #steps 400000000 {
+  raw:=cgt_scalar(seed);w:[4]u64;for i:0..<4 {w[i]=cast(u64)raw.limbs[2*i]|(cast(u64)raw.limbs[2*i+1]<<32);}
+  a:=fe_normalize(fe_from_words(w));if seed==0 {a=fe_small(2);}
+  inverse:=fc_normalize(cg_inverse(a));want:=fe_normalize(fe_inverse_vartime(a));
+  for i:0..<5 {#assert inverse.n[i]==want.n[i];}
+  zero:Fe;z:=fc_normalize(cg_inverse(zero));for i:0..<5 {#assert z.n[i]==0;}
+}
+#test "comb digits read four bits eight apart in one limb" {
+  k:ScScalar;k.limbs[3]=(cast(u32)1<<5)|(cast(u32)1<<21)|(cast(u32)1<<29);
+  #assert cg_comb_digit(k,3,5)==13 && cg_comb_digit(k,3,1)==0 && cg_comb_digit(k,3,0)==0 && cg_comb_digit(k,2,5)==0;
+  k.limbs[3]=0xFFFFFFFF;for row:0..<8 {#assert cg_comb_digit(k,3,row)==15;}
+}
+#forall "every comb entry is its teeth's multiple of G" block:0..<8,entry:0..<16 #steps 400000000 {
+  e:=cg_comb_entry(block,cast(u64)entry);#assert (e.inf==CB_MAX64)==(entry==0);
+  if entry!=0 {
+    want:=sg_infinity();
+    for tooth:0..<4 {if ((entry>>tooth)&1)==1 {k:ScScalar;at:=32*block+8*tooth;k.limbs[at/32]=cast(u32)1<<(at%32);want=sg_add_valid(want,cgt_base(k));}}
+    #assert cgt_same(Cg.{x=e.x,y=e.y,z=fe_one()},want);
+  }
+}
+#forall "the comb multiplies G as the reference does" seed:0..<12 #steps 2000000000 {
+  k:=cgt_scalar(seed);
+  if seed==0 {k=ScScalar.{};} if seed==1 {k=sc_small(1);} if seed==2 {k=sc_sub(SC_N,sc_small(1));}
+  if seed==3 {k=SC_N;} if seed==4 {for i:0..<8 {k.limbs[i]=0xFFFFFFFF;}} if seed==5 {k=sc_small(0x80000000);}
+  #assert cgt_same(cg_comb(k),cgt_base(k));
+  #assert (cg_comb(k).inf==CB_MAX64)==(seed==0 || seed==3);
+}
+
+#forall "the fixed-work scalar product equals the Montgomery product" seed:0..<24 #steps 400000000 {
+  a:=sc_normalize(cgt_scalar(seed));b:=sc_normalize(cgt_scalar(seed+100));
+  if seed==0 {a=sc_sub(SC_N,sc_small(1));b=a;} if seed==1 {a=ScScalar.{};} if seed==2 {a=sc_small(1);}
+  if seed==3 {for i:0..<8 {a.limbs[i]=0xFFFFFFFF;b.limbs[i]=0xFFFFFFFF;}a=sc_normalize(a);b=sc_normalize(b);}
+  #assert sc_equal(cg_scalar_mul(a,b),sc_mul(a,b));
+}
+#test "the scalar product reduces inputs at or above n, through its last subtraction" {
+  // 1*b leaves b in place, so b from n to 2^256 - 1 reaches the masked
+  // subtraction with the low words plus c at or above 2^256. (The other
+  // trigger, bit 256 after the third fold, is checked against a model of
+  // this code over chosen 512-bit products; no 256-bit pair is known.)
+  b:=SC_N;b.limbs[0]+=5;
+  #assert sc_equal(cg_scalar_mul(sc_small(1),b),sc_small(5)) && sc_equal(cg_scalar_mul(b,sc_small(1)),sc_small(5));
+  #assert sc_is_zero(cg_scalar_mul(sc_small(1),SC_N));
+  ones:ScScalar;for i:0..<8 {ones.limbs[i]=0xFFFFFFFF;}
+  r:=sc_normalize(ones);
+  #assert sc_equal(cg_scalar_mul(sc_small(1),ones),r) && sc_equal(cg_scalar_mul(ones,ones),sc_mul(r,r));
+}
+#forall "the fixed-work scalar inverse equals chapter 14's" seed:0..<6 #steps 400000000 {
+  a:=sc_normalize(cgt_scalar(seed));if seed==0 {a=sc_sub(SC_N,sc_small(1));} if seed==1 {a=sc_small(1);}
+  #assert sc_equal(cg_scalar_inverse(a),sc_inverse(a).value) && sc_equal(cg_scalar_mul(cg_scalar_inverse(a),a),sc_small(1));
+  #assert sc_is_zero(cg_scalar_inverse(ScScalar.{}));
+}
+#forall "the zero mask sees 0 and p at every magnitude, and nothing else" m:1..<9,limb:0..<5 {
+  p:=Fe.{n=[5]u64.[FE_P0,FE_M52,FE_M52,FE_M52,FE_M48]};zero:Fe;
+  #assert cg_zero_mask(zero)==CB_MAX64 && cg_zero_mask(p)==CB_MAX64 && cg_zero_mask(fe_scale(p,cast(u64)m))==CB_MAX64;
+  one:Fe;one.n[limb]=1;
+  #assert cg_zero_mask(one)==0 && cg_zero_mask(fe_add(p,one))==0 && cg_zero_mask(fe_add(fe_scale(p,cast(u64)m),one))==0;
+  #assert cg_zero_mask(fe_negate(one,cast(u64)m))==0 && cg_zero_mask(fe_add(fe_negate(one,cast(u64)m),one))==CB_MAX64;
+}
+cgt_max :: (m:u64)->Fe #effects(all) {return Fe.{n=[5]u64.[2*m*FE_M52,2*m*FE_M52,2*m*FE_M52,2*m*FE_M52,2*m*FE_M48]};}
+#forall "split-column products and squares equal the public ones at every magnitude" m:1..<9,k:1..<9 {
+  a:=cgt_max(cast(u64)m);b:=cgt_max(cast(u64)k);
+  #assert fe_equal_vartime(cg_mul(a,b),fe_mul(a,b)) && fe_equal_vartime(cg_sqr(a),fe_sqr(a));
+  r:=cg_mul(a,b);s:=cg_sqr(a);
+  for i:0..<4 {#assert r.n[i]<=2*FE_M52 && s.n[i]<=2*FE_M52;}
+  #assert r.n[4]<=FE_M48 && s.n[4]<=FE_M48;
+  b.n[cast(int)(m%5)]=0;#assert fe_equal_vartime(cg_mul(a,b),fe_mul(a,b));
+}
+#forall "split-column products equal the public ones on seeded values" seed:0..<64 {
+  x:=cgt_scalar(seed);y:=cgt_scalar(seed+64);a:Fe;b:Fe;
+  for i:0..<4 {a.n[i]=((cast(u64)x.limbs[i]<<24)^cast(u64)x.limbs[i+4]) & FE_M52;b.n[i]=((cast(u64)y.limbs[i]<<24)^cast(u64)y.limbs[i+4]) & FE_M52;}
+  a.n[4]=(cast(u64)x.limbs[7]<<16) & FE_M48;b.n[4]=(cast(u64)y.limbs[0]<<16) & FE_M48;
+  a=fe_scale(a,cast(u64)(seed%8+1));
+  #assert fe_equal_vartime(cg_mul(a,b),fe_mul(a,b)) && fe_equal_vartime(cg_sqr(a),fe_sqr(a)) && fe_equal_vartime(cg_sqr(b),fe_mul(b,b));
+}

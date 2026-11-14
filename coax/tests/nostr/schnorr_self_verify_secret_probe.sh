@@ -5,7 +5,7 @@
 # candidate, each under memcheck with the candidate undefined. The release
 # build (the one served and shipped) must show no memcheck error from
 # ssv_step; the checked build's overflow and bounds traps (coax_add_u64,
-# coax_sub_u64, coax_index) branch on candidate-derived values by design and
+# coax_sub_u64, coax_mul_u64, coax_index) branch on candidate-derived values by design and
 # are counted, not gated. The variable-time verifier must be flagged in both
 # builds. Valgrind and its headers come from nixpkgs; CC defaults to gcc.
 set -euo pipefail
@@ -19,11 +19,11 @@ for mode in checked release; do
   coax/bin/coax c coax/lib/crypto/schnorr_self_verify.coax --library --header "$d/schnorr-self-verify.h" --run-steps 250000000 "${flag[@]}" > "$d/$mode.c"
   "${CC:-gcc}" -std=c11 -O2 -g -I"$d" -I"$vgdev/include" "$d/$mode.c" coax/tests/nostr/schnorr_self_verify_secret_probe.c -o "$d/$mode"
   for args in "" "x invalid"; do
-    out="$("$vg/bin/valgrind" --tool=memcheck --error-exitcode=9 --track-origins=yes -q "$d/$mode" $args 2>"$d/err")" && rc=0 || rc=$?
+    out="$("$vg/bin/valgrind" --tool=memcheck --error-exitcode=9 --error-limit=no --track-origins=yes -q "$d/$mode" $args 2>"$d/err")" && rc=0 || rc=$?
     n="$(grep -c 'depends on uninitialised\|Use of uninitialised' "$d/err" || true)"
     if [[ $rc -ne 0 && $rc -ne 9 ]]; then fail=1;echo "FAIL $mode ${args:-valid}: Valgrind could not run the probe";cat "$d/err";
     elif [[ $mode == checked ]]; then
-      other="$(grep -A1 'depends on uninitialised\|Use of uninitialised' "$d/err" | grep ' at ' | grep -v -c 'coax_add_u64\|coax_sub_u64\|coax_index\|cb_span\|cb_load_word32\|ssv_load_scalar' || true)"
+      other="$(grep -A1 'depends on uninitialised\|Use of uninitialised' "$d/err" | grep ' at ' | grep -v -c 'coax_add_u64\|coax_sub_u64\|coax_mul_u64\|coax_index\|cb_span\|cb_load_word32\|ssv_load_scalar' || true)"
       echo "note $mode ${args:-valid}: $out, $n checked-mode trap reports ($other outside the checked-arithmetic and bounds traps)"
       [[ $other -eq 0 ]] || { fail=1;head -30 "$d/err"; }
     elif [[ $rc -ne 0 ]]; then fail=1;echo "FAIL $mode ${args:-valid}: memcheck reported candidate-dependent behaviour";head -20 "$d/err";else echo "ok   $mode ${args:-valid}: $out, no candidate-dependent branch or address";fi

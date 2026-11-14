@@ -26,7 +26,7 @@ cp coax/tests/bitcoin/ecdsa_sign_secret_probe.c "$d/probe.c"
 # PLANT=1 adds one branch on a key bit to the generated signer, after the
 # nonce derivation; the probe must then fail.
 if [[ "${PLANT:-}" == 1 ]]; then
-  sed -i.orig 's/^  coax_p_ec_candidates(l_key, l_hash, l_w);$/&\n  { static volatile int planted; if ((l_key).data[31] \& 1) planted++; }/' "$d/release.c"
+  sed -i.orig 's/^  coax_p_ec_seed(l_key, l_hash, l_data, l_w);$/&\n  { static volatile int planted; if ((l_key).data[31] \& 1) planted++; }/' "$d/release.c"
   grep -q 'static volatile int planted' "$d/release.c" || { echo "FAIL the planted branch was not inserted";exit 1; }
 fi
 # The allowed lines: ec_declassify's body and the one line that calls it.

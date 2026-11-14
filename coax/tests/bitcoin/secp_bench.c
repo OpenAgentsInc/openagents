@@ -45,6 +45,16 @@ static int phase5(int i,const uint8_t *s) { (void)s; return phase_call(i,5); }
 static int phase6(int i,const uint8_t *s) { (void)s; return phase_call(i,6); }
 static int phase7(int i,const uint8_t *s) { (void)s; return phase_call(i,7); }
 static int phase8(int i,const uint8_t *s) { (void)s; return phase_call(i,8); }
+static int part_call(int i,int mode){uint8_t out[32];return bench_sign_part(v(hash[i],32),v(out,32),mode);}
+static int part0(int i,const uint8_t *s){(void)s;return part_call(i,0);}
+static int part1(int i,const uint8_t *s){(void)s;return part_call(i,1);}
+static int part2(int i,const uint8_t *s){(void)s;return part_call(i,2);}
+static int part3(int i,const uint8_t *s){(void)s;return part_call(i,3);}
+static int part4(int i,const uint8_t *s){(void)s;return part_call(i,4);}
+static int part5(int i,const uint8_t *s){(void)s;return part_call(i,5);}
+static int part6(int i,const uint8_t *s){(void)s;return part_call(i,6);}
+static int part7(int i,const uint8_t *s){(void)s;return part_call(i,7);}
+static int part8(int i,const uint8_t *s){(void)s;return part_call(i,8);}
 static int inverse0(int i, const uint8_t *unused) { uint8_t out[32]; (void)unused; return bench_inverse(v(hash[i],32),v(out,32),0); }
 static int inverse1(int i, const uint8_t *unused) { uint8_t out[32]; (void)unused; return bench_inverse(v(hash[i],32),v(out,32),1); }
 static int inverse2(int i, const uint8_t *unused) { uint8_t out[32]; (void)unused; return bench_inverse(v(hash[i],32),v(out,32),2); }
@@ -106,6 +116,12 @@ int main(int argc, char **argv) {
     printf("msm %.3f; affine %.3f; table %.3f; doubles %.3f us\n",rate(phase5,NULL,N),rate(phase6,NULL,N),rate(phase7,NULL,N),rate(phase8,NULL,N));
     return 0;
   }
+  if (argc > 2 && !strcmp(argv[2], "signparts")) {
+    printf("scalar inverse: fixed %.2f us; Montgomery %.2f us\n", rate(part0,NULL,N), rate(part1,NULL,N));
+    printf("k*G %.2f us; k*P %.2f us; field inverse %.2f us; HMAC %.2f us; lift %.2f us\n", rate(part2,NULL,N), rate(part3,NULL,N), rate(part5,NULL,N), rate(part4,NULL,N), rate(part6,NULL,N));
+    printf("129 fixed doubles %.2f us; 64 fixed additions %.2f us\n", rate(part7,NULL,N), rate(part8,NULL,N));
+    return 0;
+  }
   if (argc > 2 && !strcmp(argv[2], "inverses")) {
     printf("field inverse: divsteps %.2f us; chain %.2f us\n", rate(inverse0,NULL,N),rate(inverse1,NULL,N));
     printf("scalar inverse: divsteps %.2f us; binary %.2f us\n", rate(inverse2,NULL,N),rate(inverse3,NULL,N));
@@ -114,6 +130,7 @@ int main(int argc, char **argv) {
   if (argc > 2 && !strcmp(argv[2], "dump")) {
     for (int i = 0; i < N; i++) {
       hexline(hash[i], 32); hexline(pub33[i], 33); hexline(xonly[i], 32); hexline(ecdsa[i], 64); hexline(schnorr[i], 64);
+      hexline(secret[i], 32); hexline(aux[i], 32);
     }
     return 0;
   }

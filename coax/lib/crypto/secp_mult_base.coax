@@ -5,6 +5,7 @@
 // still requires authored-guard discharge and target/object/JIT review.
 #load "secp_group32.coax";
 #load "secp_scalar.coax";
+#load "secp_ct_group.coax";
 #authority;
 
 #test "comb profile boundaries are independently admitted" {

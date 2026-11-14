@@ -1033,7 +1033,7 @@ ec_sign :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork, out: [] u8) -
   #assert sp_base(w[0].k, w[0].point[..]) && sp_x(w[0].point[..], w[0].x[..]);
   w[0].r = sc_reduce_bytes(w[0].x[..]).value;            // r = x(kG) mod n
   z := sc_reduce_bytes(hash).value;                      // z = h mod n
-  w[0].kinv = sc_inverse(w[0].k).value;
+  w[0].kinv = cg_scalar_inverse(w[0].k);                 // fixed work (secp_ct_group.coax)
   w[0].s = sc_mul(w[0].kinv, sc_add(z, sc_mul(w[0].r, w[0].key[0].safe)));   // s = (z + r*d) / k
   w[0].high = ec_high(w[0].s);
   w[0].s = sc_select(w[0].high, sc_negate(w[0].s), w[0].s);                // the low half

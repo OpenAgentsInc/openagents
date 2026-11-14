@@ -35,3 +35,17 @@ bench_phase :: (input:[]u8,key:[]u8,signature:[]u8,out:[]u8,mode:int) -> bool #e
   if mode==3 {return fe_store(fe_sqr(a.value),out);}
   return fe_store(fe_sqrt_vartime(a.value).value,out);
 }
+// Secret-path parts (#13454): scalar inverses, the two point
+// multiplications, the affine inverse, a 97-byte HMAC and a public lift.
+bench_sign_part :: (input:[]u8,out:[]u8,mode:int) -> bool #export_c #effects(all) {
+  k:=sc_reduce_bytes(input).value;
+  if mode==0 {return sc_store(cg_scalar_inverse(k),out);}
+  if mode==1 {return sc_store(sc_inverse(k).value,out);}
+  if mode==2 {return sf_store(sg_normalize(smb_multiply_web(k)).x,out);}
+  if mode==3 {return sf_store(sg_normalize(smc_multiply(k,sg_generator()).value).x,out);}
+  if mode==4 {buf:[97]u8;for i:0..<32 {buf[i]=input[i];}return hmac_sha256_checked(input,buf[..],out,false)==SHA_OK;}
+  if mode==5 {a:Sf32;for i:0..<8 {a.limb[i]=cb_load_be32(input,i*4).value;}r:=ef_inverse(a);for i:0..<8 {stored:=cb_store_be32(out,i*4,r.limb[i]);}return true;}
+  if mode==6 {p:=sg_lift_x_public(input);return p.ok || !p.ok;}
+  if mode==7 {g:=cg_from_sg32(sg32_from_point(sg_generator()));for i:0..<129 {g=cg_double(g);}return sf_store(sg_normalize(sg32_to_point(cg_to_sg32(g))).x,out);}
+  g:=cg_from_sg32(sg32_from_point(sg_generator()));a:=g;for i:0..<64 {a=cg_add(a,g);}return sf_store(sg_normalize(sg32_to_point(cg_to_sg32(a))).x,out);
+}

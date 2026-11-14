@@ -1,5 +1,6 @@
 // Experimental full-domain fused total field reductions for ECDH.
 #load "secp_group32.coax";
+#load "secp_ct_group.coax";
 #authority;
 #test "fused reducers accept full-width and canonical edges" {
   max:Sf32;for i:0..<8 {max.limb[i]=cast(u32)SF32_WORD;}
@@ -86,20 +87,7 @@ ef_schedule_valid :: (chain:[12]SfChainStep)->bool #effects(all) {
 #forall "schedule validation rejects a bad step at each position" index:0..<12 {
   chain:=SF_FIELD_CHAIN;chain[index].left=index+1;#assert !ef_schedule_valid(chain);
 }
-// Public fixed exponent schedule inherited from the reviewed field chain.
-ef_square_n :: (a:Sf32,count:int)->Sf32 #effects(all) {
-  // Private: count is supplied by the validated public exponent schedule.
-  r:=a;defer {secure_zero(r.limb[..]);#assert crypto_zeroed(r.limb[..]);}for i:0..<count {r=ef_field_sqr(r);}return r;
-}
-ef_inverse :: (a:Sf32)->Sf32 #effects(all) {
-  cache:[13]Sf32;defer {for i:0..<13 {secure_zero(cache[i].limb[..]);}for item:cache {for word:item.limb {#assert word==0;}}}cache[0]=a;
-  for i:0..<12 {
-    step:=SF_FIELD_CHAIN[i];
-    cache[i+1]=ef_field_mul(ef_square_n(cache[step.left],step.squares),cache[step.right]);
-  }
-  power9:=ef_field_mul(ef_field_sqr(cache[1]),cache[1]);defer {secure_zero(power9.limb[..]);#assert crypto_zeroed(power9.limb[..]);}
-  power45:=ef_field_mul(ef_square_n(power9,2),power9);defer {secure_zero(power45.limb[..]);#assert crypto_zeroed(power45.limb[..]);}
-  return ef_field_mul(ef_square_n(cache[12],10),power45);
-}
+// The fixed chain on the shared 5x52 field (secp_ct_group.coax, #13454).
+ef_inverse :: (a:Sf32)->Sf32 #effects(all) {return fc_to32(cg_inverse(fc_from32(a)));}
 
 ef_field_sqr :: (a:Sf32) -> Sf32 #effects(all) {return fc_square32(a);}

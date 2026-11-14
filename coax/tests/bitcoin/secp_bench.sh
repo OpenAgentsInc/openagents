@@ -14,7 +14,7 @@
 # Each row is the best of 7 passes over 256 seeded keys and signatures, in
 # microseconds per call. Signing in Coax is slow, so SIGN_COUNT (default 256)
 # can lower the number of signatures timed. --wasm builds the same C for
-# wasm32 (coax/web/toolchain.sh's clang) and times the two verifiers in Node
+# wasm32 (coax/web/toolchain.sh's clang) and times the verifiers and signers in Node
 # on the same keys and signatures; libsecp256k1 is not built for Wasm here.
 # `0 agree COUNT` times nothing: it compares both libraries' decisions on
 # COUNT more seeded cases, most of them changed signatures, keys and hashes.

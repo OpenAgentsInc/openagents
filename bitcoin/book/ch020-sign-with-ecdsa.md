@@ -231,7 +231,7 @@ ec_sign :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork, out: [] u8) -
   #assert sp_base(w[0].k, w[0].point[..]) && sp_x(w[0].point[..], w[0].x[..]);
   w[0].r = sc_reduce_bytes(w[0].x[..]).value;            // r = x(kG) mod n
   z := sc_reduce_bytes(hash).value;                      // z = h mod n
-  w[0].kinv = sc_inverse(w[0].k).value;
+  w[0].kinv = cg_scalar_inverse(w[0].k);                 // fixed work (secp_ct_group.coax)
   w[0].s = sc_mul(w[0].kinv, sc_add(z, sc_mul(w[0].r, w[0].key[0].safe)));   // s = (z + r*d) / k
   w[0].high = ec_high(w[0].s);
   w[0].s = sc_select(w[0].high, sc_negate(w[0].s), w[0].s);                // the low half
@@ -274,8 +274,11 @@ this way:
 - **`k·G`.** `sp_base` uses the fixed-base comb of chapter 16, which reads
   every table entry. `sp_x` converts to affine with a field inversion by a
   fixed exponent.
-- **`k^-1`.** `sc_inverse` raises `k` to the fixed power `n - 2`, the same
-  multiplications for every `k` (chapter 14).
+- **`k^-1`.** `cg_scalar_inverse` raises `k` to the fixed power `n - 2`,
+  four exponent bits at a time, the same multiplications for every `k`. Its
+  products work on 32-bit columns with no carry detection and subtract `n`
+  with a mask (`secp_ct_group.coax`; chapter 14's `sc_inverse` is its
+  reference).
 - **Low-S and validity.** Masks again, and `ec_nonzero` ORs limbs.
 - **The one fact revealed.** `ec_declassify` turns the validity mask into a
   branch. That reveals whether the key was valid and whether an event of

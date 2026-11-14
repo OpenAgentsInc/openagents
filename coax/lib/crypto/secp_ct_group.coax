@@ -1,0 +1,540 @@
+// Fixed-work secp256k1 group on the shared 5x52 field, for secret scalars
+// (issue #13454): signing nonces and keys, ECDH, and the BIP-340 signer's
+// self-check of a signature it has not released.
+//
+// Products and squares (cg_mul, cg_sqr) detect no carry at all, unlike
+// the _vartime columns of secp_fe_columns.coax. Every condition is a mask
+// and every choice a masked select; table lookups visit every entry.
+// Coordinates are carried at magnitude 1 (cg_weak) between group
+// operations, so the magnitude of each intermediate is a fixed property of
+// the formula, not of the data.
+//
+// Addition is the complete formula of libsecp256k1's secp256k1_gej_add_ge,
+// written out for Jacobian and affine second operands: with T = U1 + U2,
+// M = S1 + S2 and R = T^2 - U1*U2, the slope is R/(M*Z) except when
+// M = R = 0 (y1 = -y2 and x1 = beta*x2), where (S1 - S2)/((U1 - U2)*Z) is
+// used instead. Equal points double through the same formula; opposite
+// points give Z3 = 0. libsecp256k1 halves Y3; this file scales the result
+// by 2 instead (X3*4, Y3*4, Z3*2), the same point.
+//
+// Infinity is the inf mask; its coordinates are not read.
+// Source-level schedule only: target timing, compiler copies of secrets and
+// production-secret approval are separate gates (secp_fe_ct.coax).
+// Checks: coax test coax/lib/crypto/secp_ct_group.coax --library
+#load "secp_group32.coax";
+#load "secp_scalar.coax";
+#load "secp_ct_table.coax";
+#load "secp_ct_group-checks.coax" #test;
+#authority;
+Cg :: struct {x:Fe;y:Fe;z:Fe;inf:u64;}
+Cga :: struct {x:Fe;y:Fe;inf:u64;}
+
+// ---------- field: fixed-work products and masks ----------
+// a*b and a^2 mod p for operands of magnitude at most 8, results of
+// magnitude 1, with no carry detection at all. Limbs are below 2^56, so
+// each limb product P (from mul_wide) is below 2^113 and splits into
+// P = L + 2^52*H with L = P mod 2^52 and H below 2^61. Column k collects
+// at most five L (below 2^55) at limb k and their H (below 2^63) at limb
+// k + 1, in plain 64-bit sums that cannot overflow. One carry pass makes
+// ten 52-bit limbs; limbs 5 to 9 fold down by 2^260 = FE_R (mod p), each
+// product split the same way; a second pass and a fold of what stands
+// above 2^256 by FE_R1 leave limbs 0, 2 and 3 below 2^52, limb 1 below
+// 2^52 + 2^37 and limb 4 below 2^48. Products stay in registers: there
+// is no named workspace to erase; secret coordinates live in by-value
+// locals, as in every group formula (qualification limits in
+// docs/verification/2026-11-13-secp-followups/README.md).
+// Value = sum over k of (l_k + h_k)*2^(52k): l at limbs 0 to 8, h at 1 to 9.
+cg_reduce_columns :: (l0:u64,l1:u64,l2:u64,l3:u64,l4:u64,l5:u64,l6:u64,l7:u64,l8:u64,h1:u64,h2:u64,h3:u64,h4:u64,h5:u64,h6:u64,h7:u64,h8:u64,h9:u64)->Fe #inline #effects(all) {
+  t:=l0;e0:=t & FE_M52;t=l1+h1+(t>>52);e1:=t & FE_M52;t=l2+h2+(t>>52);e2:=t & FE_M52;
+  t=l3+h3+(t>>52);e3:=t & FE_M52;t=l4+h4+(t>>52);e4:=t & FE_M52;t=l5+h5+(t>>52);e5:=t & FE_M52;
+  t=l6+h6+(t>>52);e6:=t & FE_M52;t=l7+h7+(t>>52);e7:=t & FE_M52;t=l8+h8+(t>>52);e8:=t & FE_M52;
+  t=h9+(t>>52);e9:=t & FE_M52;e10:=t>>52;   // e10 is 0 for magnitude-8 operands; kept for any input
+  // Limbs 5 to 10 fold down by 2^260 = FE_R (mod p), each product split at bit 52.
+  p:=mul_wide(e5,FE_R);f0:=e0+(p.lo & FE_M52);g1:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(e6,FE_R);f1:=e1+(p.lo & FE_M52);g2:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(e7,FE_R);f2:=e2+(p.lo & FE_M52);g3:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(e8,FE_R);f3:=e3+(p.lo & FE_M52);g4:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(e9,FE_R);f4:=e4+(p.lo & FE_M52);g5:=((p.lo>>52)|(p.hi<<12))+e10*FE_R;
+  t=f0;r0:=t & FE_M52;t=f1+g1+(t>>52);r1:=t & FE_M52;t=f2+g2+(t>>52);r2:=t & FE_M52;
+  t=f3+g3+(t>>52);r3:=t & FE_M52;t=f4+g4+(t>>52);r4:=t & FE_M52;t=g5+(t>>52);
+  // What stands at 2^256 and above folds by FE_R1.
+  p=mul_wide((r4>>48)|(t<<4),FE_R1);
+  t=r0+(p.lo & FE_M52);
+  return Fe.{n=[5]u64.[t & FE_M52,r1+((p.lo>>52)|(p.hi<<12))+(t>>52),r2,r3,r4 & FE_M48]};
+}
+cg_mul :: (a:Fe,b:Fe)->Fe #inline #effects(all) {
+  p:CoaxU64Product;
+  p=mul_wide(a.n[0],b.n[0]);l0:=p.lo & FE_M52;h1:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[0],b.n[1]);l1:=p.lo & FE_M52;h2:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[0],b.n[2]);l2:=p.lo & FE_M52;h3:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[0],b.n[3]);l3:=p.lo & FE_M52;h4:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[0],b.n[4]);l4:=p.lo & FE_M52;h5:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[1],b.n[0]);l1+=p.lo & FE_M52;h2+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[1],b.n[1]);l2+=p.lo & FE_M52;h3+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[1],b.n[2]);l3+=p.lo & FE_M52;h4+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[1],b.n[3]);l4+=p.lo & FE_M52;h5+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[1],b.n[4]);l5:=p.lo & FE_M52;h6:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[2],b.n[0]);l2+=p.lo & FE_M52;h3+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[2],b.n[1]);l3+=p.lo & FE_M52;h4+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[2],b.n[2]);l4+=p.lo & FE_M52;h5+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[2],b.n[3]);l5+=p.lo & FE_M52;h6+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[2],b.n[4]);l6:=p.lo & FE_M52;h7:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[3],b.n[0]);l3+=p.lo & FE_M52;h4+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[3],b.n[1]);l4+=p.lo & FE_M52;h5+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[3],b.n[2]);l5+=p.lo & FE_M52;h6+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[3],b.n[3]);l6+=p.lo & FE_M52;h7+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[3],b.n[4]);l7:=p.lo & FE_M52;h8:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[4],b.n[0]);l4+=p.lo & FE_M52;h5+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[4],b.n[1]);l5+=p.lo & FE_M52;h6+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[4],b.n[2]);l6+=p.lo & FE_M52;h7+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[4],b.n[3]);l7+=p.lo & FE_M52;h8+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[4],b.n[4]);l8:=p.lo & FE_M52;h9:=(p.lo>>52)|(p.hi<<12);
+  return cg_reduce_columns(l0,l1,l2,l3,l4,l5,l6,l7,l8,h1,h2,h3,h4,h5,h6,h7,h8,h9);
+}
+cg_sqr :: (a:Fe)->Fe #inline #effects(all) {
+  d0:=a.n[0]<<1;d1:=a.n[1]<<1;d2:=a.n[2]<<1;d3:=a.n[3]<<1;
+  p:CoaxU64Product;
+  p=mul_wide(a.n[0],a.n[0]);l0:=p.lo & FE_M52;h1:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(d0,a.n[1]);l1:=p.lo & FE_M52;h2:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(d0,a.n[2]);l2:=p.lo & FE_M52;h3:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(d0,a.n[3]);l3:=p.lo & FE_M52;h4:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(d0,a.n[4]);l4:=p.lo & FE_M52;h5:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[1],a.n[1]);l2+=p.lo & FE_M52;h3+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(d1,a.n[2]);l3+=p.lo & FE_M52;h4+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(d1,a.n[3]);l4+=p.lo & FE_M52;h5+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(d1,a.n[4]);l5:=p.lo & FE_M52;h6:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[2],a.n[2]);l4+=p.lo & FE_M52;h5+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(d2,a.n[3]);l5+=p.lo & FE_M52;h6+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(d2,a.n[4]);l6:=p.lo & FE_M52;h7:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[3],a.n[3]);l6+=p.lo & FE_M52;h7+=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(d3,a.n[4]);l7:=p.lo & FE_M52;h8:=(p.lo>>52)|(p.hi<<12);
+  p=mul_wide(a.n[4],a.n[4]);l8:=p.lo & FE_M52;h9:=(p.lo>>52)|(p.hi<<12);
+  return cg_reduce_columns(l0,l1,l2,l3,l4,l5,l6,l7,l8,h1,h2,h3,h4,h5,h6,h7,h8,h9);
+}
+cg_sqr_n :: (a:Fe,count:int)->Fe #effects(all) {
+  // count is a public constant of the exponent chain.
+  r:=a;for i:0..<count {r=cg_sqr(r);}return r;
+}
+// The same value at magnitude 1, for any magnitude up to 32.
+cg_weak :: (a:Fe)->Fe #inline #effects(all) {r:Fe;fe_weak_into(a.n[..],r.n[..]);return r;}
+// a where mask is all ones, b where it is zero; one value_barrier serves
+// the five limbs.
+cg_select :: (mask:u64,a:Fe,b:Fe)->Fe #inline #effects(all) {
+  m:=value_barrier(mask);r:Fe;for i:0..<5 {r.n[i]=b.n[i]^((a.n[i]^b.n[i])&m);}return r;
+}
+// All ones when a is 0 mod p (any magnitude up to 32), else zero. After
+// cg_weak the value is below 2^256 + 2^49 < 2p, so it is 0 mod p exactly
+// when it is 0 or p (libsecp256k1's fe_normalizes_to_zero).
+cg_zero_mask :: (a:Fe)->u64 #effects(all) {
+  r:=cg_weak(a);
+  zero:=r.n[0]|r.n[1]|r.n[2]|r.n[3]|r.n[4];
+  p:=(r.n[0]^FE_P0)|(r.n[1]^FE_M52)|(r.n[2]^FE_M52)|(r.n[3]^FE_M52)|(r.n[4]^FE_M48);
+  return sg_word_equal(zero,0)|sg_word_equal(p,0);
+}
+// 1/a by Fermat, a^(p-2), with libsecp256k1's fixed chain: 255 squares and
+// 15 products. 1/0 is 0.
+cg_inverse :: (a:Fe)->Fe #effects(all) {
+  x2:=cg_mul(cg_sqr(a),a);x3:=cg_mul(cg_sqr(x2),a);
+  x6:=cg_mul(cg_sqr_n(x3,3),x3);x9:=cg_mul(cg_sqr_n(x6,3),x3);x11:=cg_mul(cg_sqr_n(x9,2),x2);
+  x22:=cg_mul(cg_sqr_n(x11,11),x11);x44:=cg_mul(cg_sqr_n(x22,22),x22);x88:=cg_mul(cg_sqr_n(x44,44),x44);
+  x176:=cg_mul(cg_sqr_n(x88,88),x88);x220:=cg_mul(cg_sqr_n(x176,44),x44);x223:=cg_mul(cg_sqr_n(x220,3),x3);
+  t:=cg_mul(cg_sqr_n(x223,23),x22);t=cg_mul(cg_sqr_n(t,5),a);t=cg_mul(cg_sqr_n(t,3),x2);
+  return cg_mul(cg_sqr_n(t,2),a);
+}
+
+// ---------- conversions ----------
+cg_from_field :: (a:SecpField)->Fe #effects(all) {return fc_from32(sg32_from_field(a));}
+cg_infinity :: ()->Cg #effects(all) {r:Cg;r.inf=CB_MAX64;return r;}
+// A canonical 8x32 point; z = 0 is infinity.
+cg_from_sg32 :: (p:Sg32)->Cg #effects(all) {
+  r:Cg;r.x=fc_from32(p.x);r.y=fc_from32(p.y);r.z=fc_from32(p.z);r.inf=cg_zero_mask(r.z);return r;
+}
+// Canonical coordinates; infinity is sg32_infinity().
+cg_to_sg32 :: (p:Cg)->Sg32 #effects(all) {
+  r:Sg32;r.x=fc_to32(p.x);r.y=fc_to32(p.y);r.z=fc_to32(p.z);return sg32_choose(p.inf,sg32_infinity(),r);
+}
+
+// ---------- group ----------
+// 2p: A = X^2, B = Y^2, C = B^2, D = 2((X + B)^2 - A - C), E = 3A,
+// X3 = E^2 - 2D, Y3 = E(D - X3) - 8C, Z3 = 2YZ (one product, five squares).
+// y is never 0 on secp256k1, so Z3 = 0 only at infinity.
+cg_double :: (p:Cg)->Cg #effects(all) {
+  a:=cg_sqr(p.x);b:=cg_sqr(p.y);c:=cg_sqr(b);
+  d:=cg_weak(fe_add(fe_add(cg_sqr(fe_add(p.x,b)),fe_negate(a,1)),fe_negate(c,1)));   // 5 -> 1
+  d=fe_add(d,d);                                                                    // 2
+  e:=fe_scale(a,3);                                                                 // 3
+  r:Cg;r.x=cg_weak(fe_add(cg_sqr(e),fe_negate(fe_add(d,d),4)));                    // 1 + 5
+  r.y=cg_weak(fe_add(cg_mul(e,fe_add(d,fe_negate(r.x,1))),fe_negate(fe_scale(c,8),8)));   // 1 + 9
+  r.z=cg_weak(fe_scale(cg_mul(p.y,p.z),2));r.inf=p.inf;return r;
+}
+// The shared tail: U1, U2, S1, S2 at magnitude 1 and z, the product of the
+// two inputs' Z (magnitude 1). Returns the sum, finite unless Z3 = 0.
+cg_add_finish :: (u1:Fe,u2:Fe,s1:Fe,s2:Fe,z:Fe)->Cg #effects(all) {
+  t:=fe_add(u1,u2);m:=fe_add(s1,s2);                                // 2, 2
+  rr:=fe_add(cg_sqr(t),cg_mul(u1,fe_negate(u2,1)));                  // T^2 - U1*U2: 2
+  degenerate:=cg_zero_mask(m)&cg_zero_mask(rr);
+  ralt:=cg_select(degenerate,fe_scale(s1,2),rr);                     // S1 - S2 = 2*S1 there: 2
+  malt:=cg_select(degenerate,fe_add(u1,fe_negate(u2,1)),m);          // 3
+  n:=cg_sqr(malt);q:=cg_mul(fe_negate(t,2),n);                       // Q = -T*Malt^2: 1
+  n=cg_select(degenerate,m,cg_sqr(n));                               // M^3*Malt: Malt^4, or M = 0: 2
+  x:=fe_add(cg_sqr(ralt),q);                                         // 2
+  y:=fe_negate(fe_add(cg_mul(fe_add(fe_scale(x,2),q),ralt),n),3);    // 2*Y3 at this scale: 4
+  r:Cg;r.x=cg_weak(fe_scale(x,4));r.y=cg_weak(fe_scale(y,4));r.z=cg_weak(fe_scale(cg_mul(z,malt),2));
+  r.inf=cg_zero_mask(r.z);return r;
+}
+// a + b for Jacobian points (eleven products, five squares).
+cg_add :: (a:Cg,b:Cg)->Cg #effects(all) {
+  z1z1:=cg_sqr(a.z);z2z2:=cg_sqr(b.z);
+  r:=cg_add_finish(cg_mul(a.x,z2z2),cg_mul(b.x,z1z1),cg_mul(cg_mul(a.y,z2z2),b.z),cg_mul(cg_mul(b.y,z1z1),a.z),cg_mul(a.z,b.z));
+  r=cg_choose(a.inf,b,r);return cg_choose(b.inf,a,r);
+}
+// a + b for an affine b (seven products, five squares); b.inf skips it.
+cg_add_affine :: (a:Cg,b:Cga)->Cg #effects(all) {
+  zz:=cg_sqr(a.z);
+  r:=cg_add_finish(a.x,cg_mul(b.x,zz),a.y,cg_mul(cg_mul(b.y,zz),a.z),a.z);
+  lifted:=Cg.{x=b.x,y=b.y,z=fe_one(),inf=b.inf};
+  r=cg_choose(a.inf,lifted,r);return cg_choose(b.inf,a,r);
+}
+cg_choose :: (mask:u64,a:Cg,b:Cg)->Cg #effects(all) {
+  return Cg.{x=cg_select(mask,a.x,b.x),y=cg_select(mask,a.y,b.y),z=cg_select(mask,a.z,b.z),inf=cb_ct_select64(mask,a.inf,b.inf)};
+}
+
+// ---------- k*G: a comb of 8 blocks, 4 teeth, spacing 8 ----------
+// Bit 32b + 8t + r of k is tooth t of block b in row r, so row r's digit
+// for block b is four bits of k's limb b. k*G = sum over r of 2^r times
+// the sum over b of CG_COMB_WORDS's entry for that digit: 7 doublings and
+// 64 affine additions, each lookup reading all 16 entries of its block.
+cg_comb_digit :: (k:ScScalar,block:int,row:int)->u64 #effects(all) {
+  limb:=cast(u64)k.limbs[block];digit:u64;
+  for tooth:0..<4 {digit|=((limb>>(tooth*8+row))&1)<<tooth;}return digit;
+}
+cg_comb_entry :: (block:int,digit:u64)->Cga #effects(all) {
+  // The chosen words become the returned point's coordinates, which live in
+  // by-value locals like every coordinate here; the scratch is not erased.
+  words:[8]u64;
+  for entry:0..<16 {
+    mask:=sg_word_equal(digit,cast(u64)entry);at:=(block*16+entry)*8;
+    for i:0..<8 {words[i]^=(words[i]^CG_COMB_WORDS[at+i])&mask;}
+  }
+  return Cga.{x=fe_from_words([4]u64.[words[0],words[1],words[2],words[3]]),y=fe_from_words([4]u64.[words[4],words[5],words[6],words[7]]),inf=sg_word_equal(digit,0)};
+}
+cg_comb :: (input:ScScalar)->Cg #effects(all) {
+  k:=sc_normalize(input);defer {secure_zero(k.limbs[..]);#assert crypto_zeroed(k.limbs[..]);}
+  r:=cg_infinity();
+  for round:0..<CG_SPACING {
+    if round>0 {r=cg_double(r);}   // a public loop index
+    for block:0..<CG_BLOCKS {r=cg_add_affine(r,cg_comb_entry(block,cg_comb_digit(k,block,CG_SPACING-1-round)));}
+  }
+  return r;
+}
+
+// ---------- scalars modulo n, in eight 32-bit words, fixed work ----------
+// a*b mod n with no carry detection (libsecp256k1's scalar_reduce_512 on
+// 32-bit words): each 32x32 product P = L + 2^32*H adds L to its column and
+// H to the next, in 64-bit sums far from overflow, and a carry pass makes
+// 32-bit words. Words 8 and up fold three times by c = 2^256 - n (129
+// bits); the result is below 2n, and n is subtracted once by a mask when
+// bit 256 is set or the low words plus c reach 2^256. Any 256-bit inputs.
+CG_M32 :: cast(u64) 0xFFFFFFFF;
+cg_scalar_mul :: (a:ScScalar,b:ScScalar)->ScScalar #effects(all) {
+  a0:=cast(u64)a.limbs[0];b0:=cast(u64)b.limbs[0];
+  a1:=cast(u64)a.limbs[1];b1:=cast(u64)b.limbs[1];
+  a2:=cast(u64)a.limbs[2];b2:=cast(u64)b.limbs[2];
+  a3:=cast(u64)a.limbs[3];b3:=cast(u64)b.limbs[3];
+  a4:=cast(u64)a.limbs[4];b4:=cast(u64)b.limbs[4];
+  a5:=cast(u64)a.limbs[5];b5:=cast(u64)b.limbs[5];
+  a6:=cast(u64)a.limbs[6];b6:=cast(u64)b.limbs[6];
+  a7:=cast(u64)a.limbs[7];b7:=cast(u64)b.limbs[7];
+  // The 512-bit product, sixteen 32-bit words w0 to w15.
+  wp:u64;
+  wl0:u64;wh0:u64;
+  wl1:u64;wh1:u64;
+  wl2:u64;wh2:u64;
+  wl3:u64;wh3:u64;
+  wl4:u64;wh4:u64;
+  wl5:u64;wh5:u64;
+  wl6:u64;wh6:u64;
+  wl7:u64;wh7:u64;
+  wl8:u64;wh8:u64;
+  wl9:u64;wh9:u64;
+  wl10:u64;wh10:u64;
+  wl11:u64;wh11:u64;
+  wl12:u64;wh12:u64;
+  wl13:u64;wh13:u64;
+  wl14:u64;wh14:u64;
+  wl15:u64;wh15:u64;
+  wl16:u64;wh16:u64;
+  wp=a0*b0;wl0+=wp & CG_M32;wh1+=wp>>32;
+  wp=a0*b1;wl1+=wp & CG_M32;wh2+=wp>>32;
+  wp=a0*b2;wl2+=wp & CG_M32;wh3+=wp>>32;
+  wp=a0*b3;wl3+=wp & CG_M32;wh4+=wp>>32;
+  wp=a0*b4;wl4+=wp & CG_M32;wh5+=wp>>32;
+  wp=a0*b5;wl5+=wp & CG_M32;wh6+=wp>>32;
+  wp=a0*b6;wl6+=wp & CG_M32;wh7+=wp>>32;
+  wp=a0*b7;wl7+=wp & CG_M32;wh8+=wp>>32;
+  wp=a1*b0;wl1+=wp & CG_M32;wh2+=wp>>32;
+  wp=a1*b1;wl2+=wp & CG_M32;wh3+=wp>>32;
+  wp=a1*b2;wl3+=wp & CG_M32;wh4+=wp>>32;
+  wp=a1*b3;wl4+=wp & CG_M32;wh5+=wp>>32;
+  wp=a1*b4;wl5+=wp & CG_M32;wh6+=wp>>32;
+  wp=a1*b5;wl6+=wp & CG_M32;wh7+=wp>>32;
+  wp=a1*b6;wl7+=wp & CG_M32;wh8+=wp>>32;
+  wp=a1*b7;wl8+=wp & CG_M32;wh9+=wp>>32;
+  wp=a2*b0;wl2+=wp & CG_M32;wh3+=wp>>32;
+  wp=a2*b1;wl3+=wp & CG_M32;wh4+=wp>>32;
+  wp=a2*b2;wl4+=wp & CG_M32;wh5+=wp>>32;
+  wp=a2*b3;wl5+=wp & CG_M32;wh6+=wp>>32;
+  wp=a2*b4;wl6+=wp & CG_M32;wh7+=wp>>32;
+  wp=a2*b5;wl7+=wp & CG_M32;wh8+=wp>>32;
+  wp=a2*b6;wl8+=wp & CG_M32;wh9+=wp>>32;
+  wp=a2*b7;wl9+=wp & CG_M32;wh10+=wp>>32;
+  wp=a3*b0;wl3+=wp & CG_M32;wh4+=wp>>32;
+  wp=a3*b1;wl4+=wp & CG_M32;wh5+=wp>>32;
+  wp=a3*b2;wl5+=wp & CG_M32;wh6+=wp>>32;
+  wp=a3*b3;wl6+=wp & CG_M32;wh7+=wp>>32;
+  wp=a3*b4;wl7+=wp & CG_M32;wh8+=wp>>32;
+  wp=a3*b5;wl8+=wp & CG_M32;wh9+=wp>>32;
+  wp=a3*b6;wl9+=wp & CG_M32;wh10+=wp>>32;
+  wp=a3*b7;wl10+=wp & CG_M32;wh11+=wp>>32;
+  wp=a4*b0;wl4+=wp & CG_M32;wh5+=wp>>32;
+  wp=a4*b1;wl5+=wp & CG_M32;wh6+=wp>>32;
+  wp=a4*b2;wl6+=wp & CG_M32;wh7+=wp>>32;
+  wp=a4*b3;wl7+=wp & CG_M32;wh8+=wp>>32;
+  wp=a4*b4;wl8+=wp & CG_M32;wh9+=wp>>32;
+  wp=a4*b5;wl9+=wp & CG_M32;wh10+=wp>>32;
+  wp=a4*b6;wl10+=wp & CG_M32;wh11+=wp>>32;
+  wp=a4*b7;wl11+=wp & CG_M32;wh12+=wp>>32;
+  wp=a5*b0;wl5+=wp & CG_M32;wh6+=wp>>32;
+  wp=a5*b1;wl6+=wp & CG_M32;wh7+=wp>>32;
+  wp=a5*b2;wl7+=wp & CG_M32;wh8+=wp>>32;
+  wp=a5*b3;wl8+=wp & CG_M32;wh9+=wp>>32;
+  wp=a5*b4;wl9+=wp & CG_M32;wh10+=wp>>32;
+  wp=a5*b5;wl10+=wp & CG_M32;wh11+=wp>>32;
+  wp=a5*b6;wl11+=wp & CG_M32;wh12+=wp>>32;
+  wp=a5*b7;wl12+=wp & CG_M32;wh13+=wp>>32;
+  wp=a6*b0;wl6+=wp & CG_M32;wh7+=wp>>32;
+  wp=a6*b1;wl7+=wp & CG_M32;wh8+=wp>>32;
+  wp=a6*b2;wl8+=wp & CG_M32;wh9+=wp>>32;
+  wp=a6*b3;wl9+=wp & CG_M32;wh10+=wp>>32;
+  wp=a6*b4;wl10+=wp & CG_M32;wh11+=wp>>32;
+  wp=a6*b5;wl11+=wp & CG_M32;wh12+=wp>>32;
+  wp=a6*b6;wl12+=wp & CG_M32;wh13+=wp>>32;
+  wp=a6*b7;wl13+=wp & CG_M32;wh14+=wp>>32;
+  wp=a7*b0;wl7+=wp & CG_M32;wh8+=wp>>32;
+  wp=a7*b1;wl8+=wp & CG_M32;wh9+=wp>>32;
+  wp=a7*b2;wl9+=wp & CG_M32;wh10+=wp>>32;
+  wp=a7*b3;wl10+=wp & CG_M32;wh11+=wp>>32;
+  wp=a7*b4;wl11+=wp & CG_M32;wh12+=wp>>32;
+  wp=a7*b5;wl12+=wp & CG_M32;wh13+=wp>>32;
+  wp=a7*b6;wl13+=wp & CG_M32;wh14+=wp>>32;
+  wp=a7*b7;wl14+=wp & CG_M32;wh15+=wp>>32;
+  wt:u64;
+  wt=wl0+wh0+(wt>>32);w0:=wt & CG_M32;
+  wt=wl1+wh1+(wt>>32);w1:=wt & CG_M32;
+  wt=wl2+wh2+(wt>>32);w2:=wt & CG_M32;
+  wt=wl3+wh3+(wt>>32);w3:=wt & CG_M32;
+  wt=wl4+wh4+(wt>>32);w4:=wt & CG_M32;
+  wt=wl5+wh5+(wt>>32);w5:=wt & CG_M32;
+  wt=wl6+wh6+(wt>>32);w6:=wt & CG_M32;
+  wt=wl7+wh7+(wt>>32);w7:=wt & CG_M32;
+  wt=wl8+wh8+(wt>>32);w8:=wt & CG_M32;
+  wt=wl9+wh9+(wt>>32);w9:=wt & CG_M32;
+  wt=wl10+wh10+(wt>>32);w10:=wt & CG_M32;
+  wt=wl11+wh11+(wt>>32);w11:=wt & CG_M32;
+  wt=wl12+wh12+(wt>>32);w12:=wt & CG_M32;
+  wt=wl13+wh13+(wt>>32);w13:=wt & CG_M32;
+  wt=wl14+wh14+(wt>>32);w14:=wt & CG_M32;
+  wt=wl15+wh15+(wt>>32);w15:=wt & CG_M32;
+  // Fold words 8 and up by c = 2^256 - n: below 2^386, then 2^260, then 2^256 + 2^133.
+  mp:u64;
+  ml0:u64;mh0:u64;
+  ml1:u64;mh1:u64;
+  ml2:u64;mh2:u64;
+  ml3:u64;mh3:u64;
+  ml4:u64;mh4:u64;
+  ml5:u64;mh5:u64;
+  ml6:u64;mh6:u64;
+  ml7:u64;mh7:u64;
+  ml8:u64;mh8:u64;
+  ml9:u64;mh9:u64;
+  ml10:u64;mh10:u64;
+  ml11:u64;mh11:u64;
+  ml12:u64;mh12:u64;
+  ml13:u64;mh13:u64;
+  ml0=w0;
+  ml1=w1;
+  ml2=w2;
+  ml3=w3;
+  ml4=w4;
+  ml5=w5;
+  ml6=w6;
+  ml7=w7;
+  mp=w8*0x2FC9BEBF;ml0+=mp & CG_M32;mh1+=mp>>32;
+  mp=w8*0x402DA173;ml1+=mp & CG_M32;mh2+=mp>>32;
+  mp=w8*0x50B75FC4;ml2+=mp & CG_M32;mh3+=mp>>32;
+  mp=w8*0x45512319;ml3+=mp & CG_M32;mh4+=mp>>32;
+  ml4+=w8;
+  mp=w9*0x2FC9BEBF;ml1+=mp & CG_M32;mh2+=mp>>32;
+  mp=w9*0x402DA173;ml2+=mp & CG_M32;mh3+=mp>>32;
+  mp=w9*0x50B75FC4;ml3+=mp & CG_M32;mh4+=mp>>32;
+  mp=w9*0x45512319;ml4+=mp & CG_M32;mh5+=mp>>32;
+  ml5+=w9;
+  mp=w10*0x2FC9BEBF;ml2+=mp & CG_M32;mh3+=mp>>32;
+  mp=w10*0x402DA173;ml3+=mp & CG_M32;mh4+=mp>>32;
+  mp=w10*0x50B75FC4;ml4+=mp & CG_M32;mh5+=mp>>32;
+  mp=w10*0x45512319;ml5+=mp & CG_M32;mh6+=mp>>32;
+  ml6+=w10;
+  mp=w11*0x2FC9BEBF;ml3+=mp & CG_M32;mh4+=mp>>32;
+  mp=w11*0x402DA173;ml4+=mp & CG_M32;mh5+=mp>>32;
+  mp=w11*0x50B75FC4;ml5+=mp & CG_M32;mh6+=mp>>32;
+  mp=w11*0x45512319;ml6+=mp & CG_M32;mh7+=mp>>32;
+  ml7+=w11;
+  mp=w12*0x2FC9BEBF;ml4+=mp & CG_M32;mh5+=mp>>32;
+  mp=w12*0x402DA173;ml5+=mp & CG_M32;mh6+=mp>>32;
+  mp=w12*0x50B75FC4;ml6+=mp & CG_M32;mh7+=mp>>32;
+  mp=w12*0x45512319;ml7+=mp & CG_M32;mh8+=mp>>32;
+  ml8+=w12;
+  mp=w13*0x2FC9BEBF;ml5+=mp & CG_M32;mh6+=mp>>32;
+  mp=w13*0x402DA173;ml6+=mp & CG_M32;mh7+=mp>>32;
+  mp=w13*0x50B75FC4;ml7+=mp & CG_M32;mh8+=mp>>32;
+  mp=w13*0x45512319;ml8+=mp & CG_M32;mh9+=mp>>32;
+  ml9+=w13;
+  mp=w14*0x2FC9BEBF;ml6+=mp & CG_M32;mh7+=mp>>32;
+  mp=w14*0x402DA173;ml7+=mp & CG_M32;mh8+=mp>>32;
+  mp=w14*0x50B75FC4;ml8+=mp & CG_M32;mh9+=mp>>32;
+  mp=w14*0x45512319;ml9+=mp & CG_M32;mh10+=mp>>32;
+  ml10+=w14;
+  mp=w15*0x2FC9BEBF;ml7+=mp & CG_M32;mh8+=mp>>32;
+  mp=w15*0x402DA173;ml8+=mp & CG_M32;mh9+=mp>>32;
+  mp=w15*0x50B75FC4;ml9+=mp & CG_M32;mh10+=mp>>32;
+  mp=w15*0x45512319;ml10+=mp & CG_M32;mh11+=mp>>32;
+  ml11+=w15;
+  mt:u64;
+  mt=ml0+mh0+(mt>>32);m0:=mt & CG_M32;
+  mt=ml1+mh1+(mt>>32);m1:=mt & CG_M32;
+  mt=ml2+mh2+(mt>>32);m2:=mt & CG_M32;
+  mt=ml3+mh3+(mt>>32);m3:=mt & CG_M32;
+  mt=ml4+mh4+(mt>>32);m4:=mt & CG_M32;
+  mt=ml5+mh5+(mt>>32);m5:=mt & CG_M32;
+  mt=ml6+mh6+(mt>>32);m6:=mt & CG_M32;
+  mt=ml7+mh7+(mt>>32);m7:=mt & CG_M32;
+  mt=ml8+mh8+(mt>>32);m8:=mt & CG_M32;
+  mt=ml9+mh9+(mt>>32);m9:=mt & CG_M32;
+  mt=ml10+mh10+(mt>>32);m10:=mt & CG_M32;
+  mt=ml11+mh11+(mt>>32);m11:=mt & CG_M32;
+  mt=ml12+mh12+(mt>>32);m12:=mt & CG_M32;
+  qp:u64;
+  ql0:u64;qh0:u64;
+  ql1:u64;qh1:u64;
+  ql2:u64;qh2:u64;
+  ql3:u64;qh3:u64;
+  ql4:u64;qh4:u64;
+  ql5:u64;qh5:u64;
+  ql6:u64;qh6:u64;
+  ql7:u64;qh7:u64;
+  ql8:u64;qh8:u64;
+  ql9:u64;qh9:u64;
+  ql0=m0;
+  ql1=m1;
+  ql2=m2;
+  ql3=m3;
+  ql4=m4;
+  ql5=m5;
+  ql6=m6;
+  ql7=m7;
+  qp=m8*0x2FC9BEBF;ql0+=qp & CG_M32;qh1+=qp>>32;
+  qp=m8*0x402DA173;ql1+=qp & CG_M32;qh2+=qp>>32;
+  qp=m8*0x50B75FC4;ql2+=qp & CG_M32;qh3+=qp>>32;
+  qp=m8*0x45512319;ql3+=qp & CG_M32;qh4+=qp>>32;
+  ql4+=m8;
+  qp=m9*0x2FC9BEBF;ql1+=qp & CG_M32;qh2+=qp>>32;
+  qp=m9*0x402DA173;ql2+=qp & CG_M32;qh3+=qp>>32;
+  qp=m9*0x50B75FC4;ql3+=qp & CG_M32;qh4+=qp>>32;
+  qp=m9*0x45512319;ql4+=qp & CG_M32;qh5+=qp>>32;
+  ql5+=m9;
+  qp=m10*0x2FC9BEBF;ql2+=qp & CG_M32;qh3+=qp>>32;
+  qp=m10*0x402DA173;ql3+=qp & CG_M32;qh4+=qp>>32;
+  qp=m10*0x50B75FC4;ql4+=qp & CG_M32;qh5+=qp>>32;
+  qp=m10*0x45512319;ql5+=qp & CG_M32;qh6+=qp>>32;
+  ql6+=m10;
+  qp=m11*0x2FC9BEBF;ql3+=qp & CG_M32;qh4+=qp>>32;
+  qp=m11*0x402DA173;ql4+=qp & CG_M32;qh5+=qp>>32;
+  qp=m11*0x50B75FC4;ql5+=qp & CG_M32;qh6+=qp>>32;
+  qp=m11*0x45512319;ql6+=qp & CG_M32;qh7+=qp>>32;
+  ql7+=m11;
+  qp=m12*0x2FC9BEBF;ql4+=qp & CG_M32;qh5+=qp>>32;
+  qp=m12*0x402DA173;ql5+=qp & CG_M32;qh6+=qp>>32;
+  qp=m12*0x50B75FC4;ql6+=qp & CG_M32;qh7+=qp>>32;
+  qp=m12*0x45512319;ql7+=qp & CG_M32;qh8+=qp>>32;
+  ql8+=m12;
+  qt:u64;
+  qt=ql0+qh0+(qt>>32);q0:=qt & CG_M32;
+  qt=ql1+qh1+(qt>>32);q1:=qt & CG_M32;
+  qt=ql2+qh2+(qt>>32);q2:=qt & CG_M32;
+  qt=ql3+qh3+(qt>>32);q3:=qt & CG_M32;
+  qt=ql4+qh4+(qt>>32);q4:=qt & CG_M32;
+  qt=ql5+qh5+(qt>>32);q5:=qt & CG_M32;
+  qt=ql6+qh6+(qt>>32);q6:=qt & CG_M32;
+  qt=ql7+qh7+(qt>>32);q7:=qt & CG_M32;
+  qt=ql8+qh8+(qt>>32);q8:=qt & CG_M32;
+  rp:u64;
+  rl0:u64;rh0:u64;
+  rl1:u64;rh1:u64;
+  rl2:u64;rh2:u64;
+  rl3:u64;rh3:u64;
+  rl4:u64;rh4:u64;
+  rl5:u64;rh5:u64;
+  rl6:u64;rh6:u64;
+  rl7:u64;rh7:u64;
+  rl8:u64;rh8:u64;
+  rl9:u64;rh9:u64;
+  rl0=q0;
+  rl1=q1;
+  rl2=q2;
+  rl3=q3;
+  rl4=q4;
+  rl5=q5;
+  rl6=q6;
+  rl7=q7;
+  rp=q8*0x2FC9BEBF;rl0+=rp & CG_M32;rh1+=rp>>32;
+  rp=q8*0x402DA173;rl1+=rp & CG_M32;rh2+=rp>>32;
+  rp=q8*0x50B75FC4;rl2+=rp & CG_M32;rh3+=rp>>32;
+  rp=q8*0x45512319;rl3+=rp & CG_M32;rh4+=rp>>32;
+  rl4+=q8;
+  rt:u64;
+  rt=rl0+rh0+(rt>>32);r0:=rt & CG_M32;
+  rt=rl1+rh1+(rt>>32);r1:=rt & CG_M32;
+  rt=rl2+rh2+(rt>>32);r2:=rt & CG_M32;
+  rt=rl3+rh3+(rt>>32);r3:=rt & CG_M32;
+  rt=rl4+rh4+(rt>>32);r4:=rt & CG_M32;
+  rt=rl5+rh5+(rt>>32);r5:=rt & CG_M32;
+  rt=rl6+rh6+(rt>>32);r6:=rt & CG_M32;
+  rt=rl7+rh7+(rt>>32);r7:=rt & CG_M32;
+  rt=rl8+rh8+(rt>>32);r8:=rt & CG_M32;
+  // r8 is 0 or 1 and r < 2n: subtract n once, as adding c, when r8 is set or r0..r7 + c reaches 2^256.
+  t:u64;
+  t=r0+0x2FC9BEBF+(t>>32);s0:=t & CG_M32;
+  t=r1+0x402DA173+(t>>32);s1:=t & CG_M32;
+  t=r2+0x50B75FC4+(t>>32);s2:=t & CG_M32;
+  t=r3+0x45512319+(t>>32);s3:=t & CG_M32;
+  t=r4+1+(t>>32);s4:=t & CG_M32;
+  t=r5+(t>>32);s5:=t & CG_M32;
+  t=r6+(t>>32);s6:=t & CG_M32;
+  t=r7+(t>>32);s7:=t & CG_M32;
+  mask:=value_barrier(sg_word_equal(r8|(t>>32),0)^CB_MAX64);
+  return ScScalar.{limbs=[8]u32.[cast,trunc(u32)(r0^((r0^s0)&mask)),cast,trunc(u32)(r1^((r1^s1)&mask)),cast,trunc(u32)(r2^((r2^s2)&mask)),cast,trunc(u32)(r3^((r3^s3)&mask)),cast,trunc(u32)(r4^((r4^s4)&mask)),cast,trunc(u32)(r5^((r5^s5)&mask)),cast,trunc(u32)(r6^((r6^s6)&mask)),cast,trunc(u32)(r7^((r7^s7)&mask))]};
+}
+// 1/a mod n as a^(n-2), four exponent bits at a time. The exponent is
+// public, so its digits may choose the table entry and skip a zero digit.
+// 1/0 is 0.
+cg_scalar_inverse :: (a:ScScalar)->ScScalar #effects(all) {
+  table:[16]ScScalar;defer {for i:0..<16 {secure_zero(table[i].limbs[..]);}for e:table {for w:e.limbs {#assert w==0;}}}
+  table[1]=sc_normalize(a);for i:2..<16 {table[i]=cg_scalar_mul(table[i-1],table[1]);}
+  e:=SC_N_MINUS_TWO;acc:=table[cast(int)((e.limbs[7]>>28)&15)];
+  for window:1..<64 {
+    at:=63-window;digit:=cast(int)((e.limbs[at/8]>>((at%8)*4))&15);
+    for i:0..<4 {acc=cg_scalar_mul(acc,acc);}
+    if digit!=0 {acc=cg_scalar_mul(acc,table[digit]);}
+  }
+  return acc;
+}

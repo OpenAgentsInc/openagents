@@ -276,10 +276,11 @@ ssv_clear :: (work:[]SsvWork)->u64 #effects(all) {fresh:SsvWork;work[0]=fresh;re
 // never the candidate, and r must equal candidate[0..<32] (a masked compare),
 // or the result is refused.
 ssv_prepare :: (message:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWork)->u64 #effects(all) {
-  point:=sg_lift_x_public(public_key);cleared:=ssv_clear(work);if !point.ok {return cleared;}
+  // The key is public: the 5x52 lift may vary in time (#13454).
+  point:=fg_lift_x_vartime(public_key);cleared:=ssv_clear(work);if !point.ok {return cleared;}
   // The lifted public key is stored before the copy loops, so the audit's
   // loop rule doesn't taint it with the candidate.
-  work[0].peer=point.value;
+  work[0].peer=fg_to_point_vartime(fg_from_affine(point.value));
   for i:0..<32 {work[0].key[i]=public_key[i];}for j:0..<64 {work[0].candidate[j]=candidate[j];}
   work[0].bound=cb_ct_equal(r,candidate[0..<32]);
   if !ssv_challenge(message,public_key,r,work) {return ssv_clear(work);}
@@ -296,7 +297,7 @@ ssv_finish :: (message:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWork
   if !ssv_challenge(message,public_key,r,work) {return ssv_clear(work);}
   work[0].bound&=ssv_scalar_mask_equal(stored,work[0].negative_e);
   work[0].sg=sg32_from_point(smb_multiply_web(work[0].s[0].value));
-  work[0].sum=sg32_add(work[0].sg,work[0].ep);ssv_affine(work[0].sum,work);
+  work[0].sum=cg_to_sg32(cg_add(cg_from_sg32(work[0].sg),cg_from_sg32(work[0].ep)));ssv_affine(work[0].sum,work);
   a:=work[0].affine[0];
   result:=ssv_combine(work[0].r[0].below,work[0].s[0].below,a.finite,a.even,sg32_mask_equal(a.x,work[0].r[0].value),work[0].bound);
   cleared:=ssv_clear(work);return result;

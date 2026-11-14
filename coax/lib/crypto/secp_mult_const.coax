@@ -3,6 +3,7 @@
 // target-code constant-time behavior or production-secret approval.
 #load "secp_group32.coax";
 #load "secp_scalar.coax";
+#load "secp_ct_group.coax";
 #authority;
 SmcDigits :: struct { magnitude: [65] u64; negative: [65] u64; }
 
@@ -169,6 +170,43 @@ smc_peer_bounded :: (peer: SgPoint) -> bool #effects(all) {
 // validity and normalization. Mathematical infinity remains admitted; ECDH
 // peer admission and target-code timing are separate gates.
 smc_multiply :: (input: ScScalar,peer: SgPoint) -> SgResult #export_c #effects(all) {
+  if !smc_peer_bounded(peer) { refused: SgResult; refused.value = sg_infinity(); return refused; }
+  valid := sg_valid_mask(peer); admitted := sg_choose(valid,sg_normalize(peer),sg_infinity());
+  result := smc_multiply_cg(input,cg_from_sg32(sg32_from_point(admitted)));
+  finished:SgResult;finished.value=sg32_to_point(sg32_choose(valid,cg_to_sg32(result),sg32_infinity()));
+  finished.ok=valid==CB_MAX64;return finished;
+}
+// The same digits, table and complete-mask selections on the fixed-work
+// 5x52 group of secp_ct_group.coax (#13454). point is valid or infinity.
+smc_multiply_cg :: (input: ScScalar,point: Cg) -> Cg #effects(all) {
+  table: [9] Cg;defer {for i: 0..<9 {secure_zero(table[i].x.n[..]);secure_zero(table[i].y.n[..]);secure_zero(table[i].z.n[..]);}for e: table {for w: e.x.n {#assert w == 0;}for w: e.y.n {#assert w == 0;}for w: e.z.n {#assert w == 0;}}}
+  table[0] = cg_infinity(); table[1] = point; table[2] = cg_double(point);
+  for i: 3..<9 { table[i] = cg_add(table[i-1],point); }
+  digits := smc_recode(input);defer {secure_zero(digits.magnitude[..]);#assert crypto_zeroed(digits.magnitude[..]);}defer {secure_zero(digits.negative[..]);#assert crypto_zeroed(digits.negative[..]);}
+  result := smc_cg_signed(smc_cg_pick(table[..],digits.magnitude[64]),digits.negative[64]);
+  for round: 0..<64 {
+    for bit: 0..<4 { result = cg_double(result); }
+    at := 63-round;
+    result = cg_add(result,smc_cg_signed(smc_cg_pick(table[..],digits.magnitude[at]),digits.negative[at]));
+  }
+  return result;
+}
+smc_cg_pick :: (table: [] Cg,which: u64) -> Cg #effects(all) {
+  chosen := cg_infinity();
+  for i: 0..<table.count { chosen = cg_choose(sg_word_equal(which,cast(u64) i),table[i],chosen); }
+  return chosen;
+}
+smc_cg_signed :: (point: Cg,negative: u64) -> Cg #effects(all) {
+  r := point; r.y = cg_select(negative,cg_weak(fe_negate(point.y,1)),point.y); return r;
+}
+#forall "the 5x52 ladder equals the 8x32 ladder" seed: 0..<4 #steps 2000000000 {
+  k: ScScalar; for i: 0..<8 { k.limbs[i] = cast,trunc(u32)(mul_wrap(cast(u64)(seed*8+i+3),2654435761)); }
+  if seed == 0 { k = sc_sub(SC_N,sc_small(1)); }
+  p := sg_double_valid(sg_double_valid(sg_generator()));
+  #assert sg_equal_mask(smc_multiply(k,p).value,smc_multiply_sg32(k,p).value) == CB_MAX64;
+}
+// The 8x32 ladder smc_multiply used before #13454, kept as its reference.
+smc_multiply_sg32 :: (input: ScScalar,peer: SgPoint) -> SgResult #effects(all) {
   if !smc_peer_bounded(peer) { refused: SgResult; refused.value = sg_infinity(); return refused; }
   valid := sg_valid_mask(peer); admitted := sg_choose(valid,sg_normalize(peer),sg_infinity());
   table := smc_table(sg32_from_point(admitted)); digits := smc_recode(input);
