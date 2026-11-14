@@ -17,6 +17,9 @@ requirements belong to [components/rendering.md](../../components/rendering.md).
 The manifest declares React Native 0.71.8, Reanimated `^3.3.0` and React
 Native Skia `^0.1.193`, plus Gesture Handler, React Navigation, bottom sheets
 and native media. These are manifest ranges, not proof of installed versions.
+The same revision's `yarn.lock` resolves Reanimated **3.4.0**, Skia
+**0.1.197**, Gesture Handler **2.9.0**, native-stack **6.9.13** and bottom
+sheet **4.4.7**. Use those versions for reference traces, not today's defaults.
 All directly imported `Animated` objects found in app code come from
 **Reanimated**, not React Native's core `Animated`. Some Skia components use
 its older `useTiming`, `useSpring`, `runTiming` and value APIs. Other effects
@@ -39,6 +42,20 @@ behavior is recorded without inventing its unspecified curve or duration.
 All rows need a runnable gallery specimen, normal and reduced-motion cases,
 stable semantic IDs and interruption/lifecycle checks. Product inclusion is
 separate: a dormant tab-bar specimen does not add tabs to our app.
+
+Pinned Reanimated 3.4.0 source supplies the otherwise implicit defaults:
+[`withTiming`](https://raw.githubusercontent.com/software-mansion/react-native-reanimated/3.4.0/src/reanimated2/animation/timing.ts)
+uses 300 ms and in/out quadratic easing. This applies to the unspecified
+return, reply-bar, switch and menu timing calls; an explicit duration keeps
+that easing unless the caller overrides it.
+[`withSpring`](https://raw.githubusercontent.com/software-mansion/react-native-reanimated/3.4.0/src/reanimated2/animation/spring.ts)
+defaults to mass 1, damping 10, stiffness 100, velocity 0, overshoot unclamped,
+rest displacement 0.01 and rest speed 2; its per-frame delta is capped at
+64 ms. A10 overrides mass/clamping; A14 uses the defaults. Its 2000 ms
+duration default is not a two-second limit for these physics-configured calls:
+duration mode activates only with the relevant caller configuration. These
+are source facts, not measured device traces, and must not be substituted
+for Skia's separate spring/timing or the native navigation/sheet curves.
 
 | ID | Source and reachability | Motion / implementation read in source | Shared port requirement |
 | --- | --- | --- | --- |
@@ -82,8 +99,8 @@ The audit covered imports, animation/value/gesture calls, timers, navigation,
 sheets and the GIF, not just filenames containing “Animated”. Arcade has no
 reduced-motion handling. Add it on every target. Older audit wording that
 claims A21 certainly stops at blur 300 is corrected here by reading the closure.
-Unspecified library defaults and library-owned transitions need pinned-version
-numeric traces or captured reference frames before claiming exact parity;
+Skia/library-owned transitions and the pinned defaults still need numeric
+traces or captured reference frames before claiming exact parity;
 this source-only audit cannot certify their device behavior.
 
 ## Rendering assessment
