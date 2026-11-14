@@ -1776,22 +1776,37 @@ sp_q :: (g: [] SpGame) -> bool { t := g_key(g, 'q', true); _ := g_key(g, 'q', fa
   #assert g[0].yaw < y0 && g[0].board[0].lean > 0.1;
 }
 // ---- The Director's systems (director.coax, #13505 part A)
-#test "Shift is off (#13552): no sneak, no crouch, no slower walk; an Imperial robot senses her from its notice, farther with Heat" #steps 60000000 {
+#test "Shift sneaks (#13505): a crouched walk at 45 % of her speed, a lower view, and Imperial robots sense her from half as far" #steps 60000000 {
   g := [1] SpGame.[SpGame.{}];
   g_stage(g[..], 5); g[0].px = 0; g[0].pz = 0; g[0].yaw = PI;
   eye := g_camera(g[..]).eye.y;
-  #assert g_key(g[..], -13, true) && !d_sneaking(g[..]) && d_pace(g[..]) == 1 && g_camera(g[..]).eye.y == eye;
+  #assert fl_pose(g[..]) < 0;   // standing, the gait's pose
+  #assert g_key(g[..], -13, true) && d_sneaking(g[..]) && d_pace(g[..]) == STANCE_SNEAK_PACE;
+  #assert fl_pose(g[..]) >= FR_POSES + FL_P_CROUCH && fl_pose(g[..]) < FR_POSES + FL_MORE_POSES;   // crouched
   #assert g_key(g[..], 'w', true);
   for i: 0..<50 { g_step(g[..], 0.02); }
-  #assert -g[0].pz > T_WALK * 0.95;   // a second at her full speed, less the first tenth of a second's start
+  #assert -g[0].pz > FL_M_SNEAK * 0.9 && -g[0].pz < FL_M_SNEAK * 1.05;   // a second at her sneaking speed
+  #assert g_camera(g[..]).eye.y < eye - T_CROUCH * 0.5 && g[0].fl[0].fwd > FL_CROUCH_LEAN * 0.5;   // the view sinks, she stoops
+  seen: [FL_CROUCH_POSES] bool;   // the crouched walk steps through its poses as she goes
+  for i: 0..<60 { g_step(g[..], 0.02); p := fl_pose(g[..]) - FR_POSES - FL_P_CROUCH; #assert p >= 0 && p < FL_CROUCH_POSES; seen[p] = true; }
+  for i: 0..<FL_CROUCH_POSES { #assert seen[i]; }
   _ = g_key(g[..], 'w', false); _ = g_key(g[..], -13, false);
+  #assert !d_sneaking(g[..]) && d_pace(g[..]) == 1;
+  // her crouched poses: the knees bend deep and the hips drop, with her feet under her
+  for i: 0..<FL_CROUCH_POSES { l := fl_crouch_limbs(i); #assert l.knee[0] > FL_CROUCH_KNEE * 0.99 && l.knee[1] > FL_CROUCH_KNEE * 0.99 && l.leg[0] > 0.2 && l.leg[1] > 0.2; }
+  m := cb_form(cd_first().body); #assert cp_lift(m, fl_crouch_limbs(0)) > 0.1 && fl_crouch_stride(m) > 0.3 && fl_crouch_stride(m) < 4 * (m.joint[CJ_R_HIP].y - m.joint[CJ_R_FOOT].y) * sin(FL_SWING);
+  // an Imperial robot senses her from its notice, farther with Heat, and half as far while she sneaks
   h := [1] SpGame.[SpGame.{}];
   g_stage(h[..], 8); h[0].heat = 0;
   h[0].px = h[0].fx[5] - 6; h[0].pz = h[0].fz[5];
-  #assert g_key(h[..], -13, true);
   g_step(h[..], 0.02);
   #assert !h[0].fhost[5] && d_noticed(h[..], 5) == 5;
-  h[0].heat = 60; h[0].px = h[0].fx[5] - 4; h[0].pz = h[0].fz[5];
+  #assert g_key(h[..], -13, true);
+  #assert d_noticed(h[..], 5) == 5 * STANCE_SNEAK_SEEN;
+  h[0].heat = 60; h[0].px = h[0].fx[5] - 5; h[0].pz = h[0].fz[5];   // 5 m: inside 9.2 m walking, outside 4.6 m sneaking
+  g_step(h[..], 0.02);
+  #assert !h[0].fhost[5] && d_noticed(h[..], 5) == (5 + 60 * T_NOTICE_HEAT) * STANCE_SNEAK_SEEN;
+  _ = g_key(h[..], -13, false);
   g_step(h[..], 0.02);
   #assert h[0].fhost[5] && d_noticed(h[..], 5) == 5 + 60 * T_NOTICE_HEAT;
 }
@@ -2244,9 +2259,9 @@ g_run_from_garage :: (g: [] SpGame) -> int {
   g[0].px = pick_x(g, PICK_CELL) + 1; g[0].pz = pick_z(g, PICK_CELL) - 1;
   for i: 0..<200 { g_step(g, 0.02); if g[0].cells == 1 { break; } }
   if !(g[0].cells == 1) { return 21; }
-  // Shift is off (#13552), and the garage at dusk is quiet: the raiders are out scavenging and the
+  // she sneaks in, and the garage at dusk is quiet: the raiders are out scavenging and the
   // Imperial robots recharging at the solar farm, so no one is in the ring or its bays (#13505)
-  if !(g_key(g, -13, true) && !d_sneaking(g)) { return 22; }
+  if !(g_key(g, -13, true) && d_sneaking(g)) { return 22; }
   g[0].px = g[0].at.dance_x + 2; g[0].pz = g[0].at.dance_z; g_bot_home(g); g_step(g, 0.02);
   for i: 0..<FOES { if g_foe_in(g, i) || ga_inside(g, g[0].fx[i], g[0].fz[i]) || g[0].fhost[i] { return 23; } }
   _ = g_key(g, -13, false);

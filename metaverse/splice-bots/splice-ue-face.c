@@ -23,7 +23,7 @@ static uint32_t live[LIVE_WORDS];
 // The edit layer's stores, as splice-face.c keeps them (layer-draw.coax): store 2 every kind of
 // placed piece's mesh, written once, then your walk poses; store 3 a row for each placed piece and
 // one for you. aethyr_instanced hands a host the draws of them.
-#define PIECE_WORDS ((80000u + 10u * 30000u) * 6u)    /* layer-draw.coax SD_PIECE_WORDS */
+#define PIECE_WORDS ((100000u + 21u * 34000u) * 6u)    /* layer-draw.coax SD_PIECE_WORDS */
 #define PLACE_WORDS ((65u + 540u) * 8u)   /* layer-draw.coax SD_PLACE_WORDS: a row a placed piece, the player's, then the solar farm's 540 banks (farm.coax FF_BANKS) */
 static uint32_t pieces[PIECE_WORDS];
 static uint32_t places[PLACE_WORDS];

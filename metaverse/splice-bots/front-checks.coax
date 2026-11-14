@@ -194,3 +194,14 @@ fc_cell :: (table: string, row: int, col: string, value: string) -> WorldEdit {
   _ = fr_player(g[..], d[..], pieces[..], places[..], draws[..], 3);
   #assert g[0].fr[0].pose_gen == gen + 1 && g[0].fr[0].posed_n <= 2;
 }
+
+#test "the piece store holds every pose of the first character after the kinds' meshes: the walk, the air poses, the board's and the crouched walk" #steps 8000000000 #traversal 4000000000 {
+  g := [1] SpGame.[SpGame.{}]; fc_fresh(g[..]);
+  d := [1] SpLayerDraw.[SpLayerDraw.{mesh_n = SD_KIND_VERTS, mesh_gen = 1, place_n = 2}];
+  pieces: [SD_PIECE_WORDS] u32; places: [SD_PLACE_WORDS] u32; draws: [64] u32;
+  g[0].mode = M_PLAY;
+  for i: 0..<FR_ALL { _ := fr_player(g[..], d[..], pieces[..], places[..], draws[..], 3); }
+  #assert g[0].fr[0].posed_n == FR_ALL && !g[0].fr[0].posed_over;
+  big := 0; for i: 0..<FR_ALL { big = hi_int(big, g[0].fr[0].pose_count[i]); }
+  #assert big <= CW_BUDGET && g[0].fr[0].crouch_m > 0.3 && g[0].fr[0].crouch_m < g[0].fr[0].stride_m;
+}

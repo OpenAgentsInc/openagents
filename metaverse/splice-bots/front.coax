@@ -22,7 +22,7 @@ FR_CONTINUE :: 1; FR_NEW :: 2; FR_CREDITS :: 3;   // a menu row's key (content.c
 FR_USE :: 100; FR_BACK :: 101;          // the creation screen's two plain rows; its value rows are the CP_* fields
 FR_FIELDS :: [6] int.[CP_BODY, CP_OUTFIT, CP_HEIGHT, CP_SKIN, CP_HAIR, CP_MARK];
 FR_POSES :: 10;                         // the walk cycle's poses, written once a character
-FR_ALL :: FR_POSES + FL_AIR_POSES;      // and after them the air poses (feel.coax)
+FR_ALL :: FR_POSES + FL_MORE_POSES;     // and after them the air poses, the board's and the crouched walk's (feel.coax)
 FR_OBJ :: 246;                          // the player's first object number (objects 246 to 255)
 FR_RUN_TEXT :: 192;
 FR_RUN_HEAD :: "splice.run.v1";
@@ -51,6 +51,7 @@ SpFront :: struct {
   posed_doc: int = -1; posed_mesh: int = -1; posed_gray: bool; posed_n: int; posed_over: bool;
   pose_first: [FR_ALL] int; pose_count: [FR_ALL] int; pose_n: int; pose_gen: int; row_gen: int; row: bool;
   stride_m: f32;                         // m one whole gait of this character covers (its legs at FL_SWING): her stride follows it
+  crouch_m: f32;                         // and one whole crouched gait (feel.coax fl_crouch_stride)
 }
 
 fr_start :: (g: [] SpGame) {
@@ -371,7 +372,7 @@ fr_player :: (g: [] SpGame, d: [] SpLayerDraw, pieces: [] u32, places: [] u32, d
     wrote := 0;
     while f[0].posed_n < need && wrote < 2 {
       i := f[0].posed_n; f[0].pose_first[i] = pen[0].n; wrote += 1;
-      l := ifx i < FR_POSES then cp_gait(cp_pose_stride(i, FR_POSES), FL_SWING, FL_KNEE) else fl_limbs(i - FR_POSES);
+      l := ifx i < FR_POSES then cp_gait(cp_pose_stride(i, FR_POSES), FL_SWING, FL_KNEE) else fl_more_limbs(i - FR_POSES);
       cp_write_pose(pieces, pen[..], frame_at(v3(0, 0, 0), 0), f[0].doc[0], l, FR_OBJ);
       if pen[0].over { f[0].posed_over = true; pen[0].n = f[0].pose_first[i]; break; }
       f[0].pose_count[i] = pen[0].n - f[0].pose_first[i]; f[0].posed_n += 1;
@@ -379,6 +380,7 @@ fr_player :: (g: [] SpGame, d: [] SpLayerDraw, pieces: [] u32, places: [] u32, d
     f[0].pose_n = pen[0].n - d[0].mesh_n; f[0].pose_gen += 1;
     f[0].posed_doc = f[0].doc_gen; f[0].posed_mesh = d[0].mesh_gen; f[0].posed_gray = g[0].gray;
     m := cb_form(f[0].doc[0].body); f[0].stride_m = 4 * (m.joint[CJ_R_HIP].y - m.joint[CJ_R_FOOT].y) * sin(FL_SWING);   // two steps, each foot's whole swing
+    f[0].crouch_m = fl_crouch_stride(m);
   }
   if f[0].posed_n < 1 || (at + 1) * 4 > draws.count || (d[0].place_n + 1) * SD_ROW > places.count { return at; }
   // the gait at her stride, or an air pose (feel.coax fl_pose)

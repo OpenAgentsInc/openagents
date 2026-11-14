@@ -20,7 +20,7 @@ for people and agents who change the code.
 | `camera.coax`, `camera-checks.coax` | The follow camera behind her on foot and on the hoverboard (below), and its checks |
 | `digger-orders.coax` | Commanding Digger (#13552): the reticle's selection and command, his answer to each order, the marker on his target, the drill card's windup, bite, shudder and break, and where he looks (see Commanding Digger) |
 | `feel.coax` | How she moves (#13552): the walk, the jump's coyote time and buffer, her air poses, squash and lean, the movement demo, and the tunables and level metrics (see Movement and feel) |
-| `director.coax` | The Director's systems (#13505): the key map (Shift is taken and does nothing), Digger picking up parts by his sensor's range, pointing him with a left click, the inventory grid, Heat's sensing range, the health bars, towing and charging Digger, the map and pause |
+| `director.coax` | The Director's systems (#13505): the key map (hold Left Shift to sneak), Digger picking up parts by his sensor's range, pointing him with a left click, the inventory grid, Heat's sensing range, the health bars, towing and charging Digger, the map and pause |
 | `gpu/splice-bots.coax` | The shaders: Anime Lab's cel pass, the placed pieces' instances, and the ink overlay |
 | `splice-face.c`, `splice-ue-face.c` | The C faces for the browser and for a native host |
 | `content/splice.content`, `content.coax` | The content tables and their reader |
@@ -125,9 +125,12 @@ drawn while your keys already move her. `feel.coax` holds every number:
 | `FL_SOFT` | 3 m/s | stepping off a crate has no squash and no landing pose |
 | `FL_DECK` | 16 /s | she steps up onto the hoverboard's deck and down off it over about 0.15 s, never a pop |
 | `FL_BOARD_LEAN` | 0.7 | on the board she leans with its carve and nose |
+| `FL_CROUCH_SWING`, `FL_CROUCH_HIP`, `FL_CROUCH_KNEE` | 0.4, 0.7, 1.3 rad | sneaking: short steps on deep knees, her feet under her hips and her hips about 0.17 m lower; the crouched stride is measured from her legs too (`fl_crouch_stride`), so her feet keep pace |
+| `FL_CROUCH_ARM`, `FL_CROUCH_LEAN` | 0.45 rad, 0.15 | sneaking: arms forward and low, and a slight stoop |
 
 Her poses are takeoff (a knee drives up), second jump (tucked, knees in, arms back), fall (arms
-out front), landing (a wide, low stance) and her stance on the board (knees soft, arms out). The Q
+out front), landing (a wide, low stance), her stance on the board (knees soft, arms out) and the
+crouched walk's six (while she sneaks). The Q
 controls are unchanged: the board rolls off at her walking speed when she steps on, and when she
 steps off she runs on at up to her walking speed and stops as she always does. Each footstep and hard landing plays `SND_STEP` and `SND_LAND`,
 off like every other sound.
@@ -141,7 +144,8 @@ walk and jump in `splice-game.coax`):
 | `FL_M_JUMP` | 1.28 m | the top of one jump |
 | `FL_M_DOUBLE` | 2.98 m | the top of a second jump taken at the first one's top |
 | `FL_M_LEDGE` | 1.58 m | the highest top one jump lands her on (jump plus step) |
-| `FL_M_WALK` | 5.6 m/s | her one speed on foot: no sneak (Shift is off) and no sprint |
+| `FL_M_WALK` | 5.6 m/s | her speed on foot (no sprint) |
+| `FL_M_SNEAK` | 2.52 m/s | her speed while she sneaks (hold Left Shift: 45 % of her walk) |
 | `FL_M_BOARD`, `FL_M_BOARD_FAST` | 7 m/s, 22 m/s | the hoverboard's casual and fast speeds (the `board` table); double-tap Q is super fast |
 
 The movement demo plays her keys on the game's own clock: `coaxial.send(640, "5")`, then
@@ -255,7 +259,7 @@ The key map follows the slice's beat sheet (#13505). The pause screen (Esc) list
 | W A S D, mouse | Walk and look |
 | Mouse wheel, or two fingers on a trackpad | Zoom the camera in or out |
 | Space | Jump; a second Space in the air jumps again, higher (on the hoverboard, hop) |
-| Left Shift | Nothing for now: sneaking is off until it has its own pose |
+| Hold Left Shift | Sneak: she crouches and walks at 45 % of her speed, the view sinks, and Imperial robots sense her from half as far |
 | Q | Hoverboard: the first press steps on at casual speed, then each press switches casual and fast |
 | Double-tap Q | Hoverboard super fast (the fast speed times 1.6, `board_super_cms`) |
 | Hold Ctrl, or double-tap W and hold it | Hoverboard very fast (the fast speed) while held |

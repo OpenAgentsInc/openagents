@@ -6,7 +6,7 @@
 //   coax/bin/coax test metaverse/splice-bots/splice-game.coax
 SD_ROW :: 8;            // words a placed piece: x, y, z, squash, cos turn, sin turn, lean x, lean z (f32 bits; the player's only, else 0)
 SD_BASE :: 2;           // a placed piece's instance number is SD_BASE + its row: 0 and 1 are the world's and the live store's
-SD_PIECE_WORDS :: (SD_KIND_VERTS + FR_POSES * CW_BUDGET) * VERTEX_WORDS;   // the piece store: every kind's mesh, then the player's walk poses (front.coax)
+SD_PIECE_WORDS :: (SD_KIND_VERTS + FR_ALL * CW_BUDGET) * VERTEX_WORDS;   // the piece store: every kind's mesh, then the player's poses (front.coax FR_ALL), each up to a dressed character's budget (the first takes 25,000 to 30,000 vertices a pose)
 SD_KIND_VERTS :: 100000;   // the kinds' meshes' share of it: the shipped kinds (the solar farm's and Sniper's room's with them, #13505) and one of each kit at size 1 take about 82,000 vertices (#13485)
 SD_KIT_ROWS :: KS_PLACE_MAX * 2;   // the dressed kit slots' places (kits.coax): rows for all of them together
 SD_PLACE_WORDS :: (SL_ITEMS + 1 + FF_BANKS + SD_KIT_ROWS) * SD_ROW;   // the place store: a row a placed piece, the player's, the solar farm's field (farm.coax), then the dressed kit slots
