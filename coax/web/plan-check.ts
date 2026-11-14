@@ -5,8 +5,11 @@
 //   coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9624 --static
 //   bun coax/web/plan-check.ts [http://127.0.0.1:9624] [--only a,b] [--seconds 8]
 // A page drawn by its own render package (data-render, RenderHost) says "renderer": it has no built-in order.
-// Exit 1 when a page differs or refuses its plan; each line says which and the first differing call.
-import { goldenPages } from "./golden-pages"
+// A page that became the app shell (data-shell) is read in the frame it holds itself in (PAGE_ENGINE).
+// Exit 1 when a page differs, refuses its plan on any frame (with no built-in order to fall back on, a refused
+// frame is drawn as nothing), has no host or draws no frame in time; each line says which and the first
+// differing call.
+import { goldenPages, PAGE_ENGINE } from "./golden-pages"
 import { startChrome } from "./chrome"
 
 const args = process.argv.slice(2)
@@ -45,12 +48,12 @@ for (const name of names) {
   let s: any = null
   while (Date.now() < end) {
     await Bun.sleep(500)
-    s = await evaluate("globalThis.coaxial?.framePlan ? { ...coaxial.framePlan(), renderer: !!coaxial.renderStatus } : null")
+    s = await evaluate(`(() => { const c = ${PAGE_ENGINE}; return c?.framePlan ? { ...c.framePlan(), renderer: !!c.renderStatus } : null })()`)
     if (s && s.checked >= 30) break
   }
   // a page drawn by its render package (RenderHost) has no built-in order to compare
-  const verdict = !s ? "no host" : s.renderer ? "renderer" : s.differing ? "DIFFERS" : s.refused && !s.frames ? "REFUSED" : !s.checked ? "not drawn" : "ok"
-  if (verdict === "DIFFERS" || verdict === "REFUSED") bad++
+  const verdict = !s ? "no host" : s.renderer ? "renderer" : s.differing ? "DIFFERS" : s.refused ? "REFUSED" : !s.checked ? "not drawn" : "ok"
+  if (verdict !== "ok" && verdict !== "renderer") bad++
   console.log(`${verdict.padEnd(9)} ${name.padEnd(28)} ${s ? `frames ${s.frames} checked ${s.checked} differing ${s.differing} refused ${s.refused} ops ${s.ops}` : ""}${errors.length ? `  errors: ${errors.slice(0, 2).join(" | ")}` : ""}`)
   if (s?.first) console.log(`          first at ${JSON.stringify(s.first)}`)
 }

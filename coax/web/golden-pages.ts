@@ -19,6 +19,12 @@ import { existsSync, readFileSync, statSync } from "node:fs"
 import { dirname, join, normalize } from "node:path"
 import { worlds } from "./realms"
 
+// An expression for a page's engine (globalThis.coaxial): the top window's, or, when the page became the
+// app shell (shell.js: a page of the shell's, data-shell, opened at the top of the window holds itself in
+// a frame beside the side; #13487), the held frame's at the same address; undefined while neither has one.
+// goldens.ts and plan-check.ts read every page through it.
+export const PAGE_ENGINE = `(() => { if (globalThis.coaxial) return globalThis.coaxial; const f = document.querySelector("iframe.held"); try { return f && f.contentWindow.location.pathname === location.pathname ? f.contentWindow.coaxial : undefined } catch { return undefined } })()`
+
 // GOLDEN_PAGES_ROOT: another checkout's pages and inputs, with this file's
 // rules (golden-check.sh on a commit from before this file existed).
 const ROOT = process.env.GOLDEN_PAGES_ROOT || join(import.meta.dir, "../..")

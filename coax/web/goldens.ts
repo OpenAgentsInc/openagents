@@ -55,7 +55,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { inflateSync } from "node:zlib"
 import { type World } from "./realms"
-import { goldenPages, GOLDEN_DIR, type Page } from "./golden-pages"
+import { goldenPages, GOLDEN_DIR, PAGE_ENGINE, type Page } from "./golden-pages"
 import { classify, missingGolden } from "./golden-policy"
 import { startChrome } from "./chrome"
 
@@ -228,10 +228,8 @@ async function launch(): Promise<string> {
   return c.port
 }
 
-// The page's engine: the top window's, or, when the page became the app shell (shell.js: a page of the
-// shell's, data-shell, opened at the top of the window holds itself in a frame beside the side; #13487),
-// the held frame's, at the same address. FIELD: ready or sceneReady.
-const engine = (field: string) => `(() => { if (globalThis.coaxial?.${field} === true) return true; const f = document.querySelector("iframe.held"); try { return !!f && f.contentWindow.location.pathname === location.pathname && f.contentWindow.coaxial?.${field} === true } catch { return false } })()`
+// The page's engine (golden-pages.ts PAGE_ENGINE: the top window's or the held frame's) has FIELD (ready or sceneReady) true.
+const engine = (field: string) => `(${PAGE_ENGINE}?.${field} === true)`
 
 class Tab {
   ws!: WebSocket

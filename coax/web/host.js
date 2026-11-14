@@ -3467,7 +3467,9 @@ function draw(now) {
       ask[15] = post ? Math.max(0, Math.min(gpu.blooms.length, x.coaxial_bloom_passes_v1 ? x.coaxial_bloom_passes_v1(st) : gpu.blooms.length)) : 0;
       if (gpu.shadow && gpu.shadowTiles) {
         const count = Math.max(0, x.coaxial_shadow_v1(st, 6));
-        ask[16] = tile + 1; ask[17] = count; ask[18] = x.coaxial_shadow_v1(st, 7);
+        // the tiles cleared first are read only for a frame that draws a tile, as the built-in order reads them
+        // (a page says -1 for them on a frame with none: everglade_shadow_field)
+        ask[16] = tile + 1; ask[17] = count; ask[18] = tile >= 0 ? x.coaxial_shadow_v1(st, 7) : 0;
         for (let k = 0; k < count && k < 8; k++) for (let j = 0; j < 4; j++) ask[19 + k * 4 + j] = x.coaxial_shadow_v1(st, 16 + 4 * k + j);
         if (tile >= 0) for (let j = 0; j < 4; j++) ask[51 + j] = x.coaxial_shadow_v1(st, 1 + j);   // what the tile's draws are cut to
       }
