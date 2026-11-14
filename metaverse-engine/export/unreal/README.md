@@ -135,6 +135,12 @@ phase (its eighth number) is one cycle of the clip, so the feet cover the
 ground the rules moved it. Other clips loop on the clock. One clip gives way
 to the next at once; there is no blend yet, and no animation blueprint.
 
+A skeletal mesh that has vertex colours wears the look's cel material in
+place of its own, as the world's things do: a vertex's colour is its flat
+fill, the second UV set's u is its cel material (1 skin, 2 hair, 10 cloth)
+and the first's u is 1. `character-fit.py --fills` writes a mesh that way. A
+mesh with no vertex colours keeps its own materials.
+
 `-AethyrThingBeside=CM` leaves the world drawing a replaced kind and stands
 the replacement that many centimetres to its side, to compare the two in one
 picture.

@@ -300,6 +300,9 @@ def build_look():
     cel = make("M_AeCel", AE_CEL, {"WP": unreal.MaterialExpressionWorldPosition, "NW": unreal.MaterialExpressionVertexNormalWS, "VC": unreal.MaterialExpressionVertexColor,
                                    "UVA": unreal.MaterialExpressionTextureCoordinate, "UVB": unreal.MaterialExpressionTextureCoordinate})
     sky = make("M_AeSky", AE_SKY, {"WP": unreal.MaterialExpressionWorldPosition})
+    # a thing with a skeleton may wear the cel look (README, "A thing with a skeleton"): a cooked build needs the use saved
+    cel.set_editor_property("used_with_skeletal_mesh", True)
+    mel.recompile_material(cel)
 
     # the ink: a post-process pass from depth alone (the forward web tier has no normals to read),
     # so it draws silhouettes and not creases. A pixel is inked when a neighbour is farther by

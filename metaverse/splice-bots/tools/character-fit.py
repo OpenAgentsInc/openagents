@@ -6,6 +6,15 @@
 # library's clips and every clip made for Everglade play on the result.
 #   Blender -b --factory-startup -P character-fit.py -- IN.glb|IN.fbx LIBRARY.glb OUT.glb OUT.json
 #           [--height M] [--clips A,B,...] [--reach M] [--fbx DIR]
+# --fills PALETTE.json (with --fbx) gives the FBX mesh flat fills in place of its texture, for the
+# game's own cel material in Unreal (M_AeCel reads a vertex's colour, its material from the second
+# UV set's u and its parameter from the first's): the texture is read once at each triangle, the
+# triangles are grouped into a few colours (k-means, then each takes the majority of its
+# neighbours, so a region has no speckle), and each group takes the palette entry nearest it:
+#   [{"near": [r, g, b], "to": [r, g, b], "mat": 10, "back": true}, ...]   colours 0 to 1, sRGB
+# "to" is the fill, "mat" the cel material (metaverse-engine/render/cel-mesh.coax: 1 skin, 2 hair,
+# 10 cloth). An entry with "back" also takes skin-coloured triangles behind her head (a mane's
+# underside holds whatever the texture had there).
 # --fbx DIR also writes FBX files for Unreal: DIR/NAME.fbx (the mesh on the skeleton, no clip) and
 # DIR/NAME@CLIP.fbx (the skeleton and one clip each), NAME being OUT's. The bridge's "thing." row
 # takes the first as a skeletal mesh and the others as its "anim." rows (metaverse-engine/export/unreal/README.md).
@@ -297,14 +306,87 @@ bpy.ops.export_scene.gltf(filepath=OUT, export_format="GLB", use_selection=True,
     export_def_bones=False, export_anim_single_armature=True)
 info["bytes"] = os.path.getsize(OUT)
 FBX = opt("--fbx", "")
+FILLS = opt("--fills", "")
+def flat_fills(ob, palette):
+    import numpy as np
+    from collections import Counter, defaultdict
+    me = ob.data; me.calc_loop_triangles()
+    img = None
+    for m in me.materials:
+        if m and m.node_tree:
+            for n in m.node_tree.nodes:
+                if n.type == "TEX_IMAGE" and n.image and n.image.size[0] > 1: img = n.image
+    if not img or not me.uv_layers.active: raise SystemExit("character-fit: --fills needs the mesh's texture")
+    Wd, Hd = img.size
+    px = np.empty(Wd * Hd * 4, dtype=np.float32); img.pixels.foreach_get(px); px = px.reshape(Hd, Wd, 4)[:, :, :3]
+    uv = me.uv_layers.active.data
+    polys = list(me.polygons)
+    col = np.zeros((len(polys), 3), dtype=np.float32)
+    for pi, pl in enumerate(polys):
+        us = np.array([tuple(uv[l].uv) for l in pl.loop_indices]); c = us.mean(0); smp = []
+        for u, v in [c] + [c * 0.4 + q * 0.6 for q in us[:4]]:
+            smp.append(px[min(Hd - 1, max(0, int((v % 1) * Hd))), min(Wd - 1, max(0, int((u % 1) * Wd)))])
+        col[pi] = np.median(np.array(smp), axis=0)
+    K = 10; cs = [col[0]]
+    while len(cs) < K:
+        d = np.min(np.stack([((col - c) ** 2).sum(1) for c in cs]), axis=0); cs.append(col[int(d.argmax())])
+    cs = np.array(cs)
+    for _ in range(20):
+        k = np.argmin(((col[:, None, :] - cs[None, :, :]) ** 2).sum(2), axis=1)
+        for i in range(K):
+            if (k == i).any(): cs[i] = col[k == i].mean(0)
+    P = [ob.matrix_world @ v.co for v in me.vertices]
+    key = lambda vi: (round(P[vi].x, 4), round(P[vi].y, 4), round(P[vi].z, 4))
+    edge = defaultdict(list)
+    for pi, pl in enumerate(polys):
+        ks = [key(v) for v in pl.vertices]
+        for a in range(len(ks)): edge[tuple(sorted((ks[a], ks[(a + 1) % len(ks)])))].append(pi)
+    nb = defaultdict(set)
+    for ps in edge.values():
+        for a in ps:
+            for b in ps:
+                if a != b: nb[a].add(b)
+    k = list(k)
+    for _ in range(4):
+        new = []
+        for pi in range(len(polys)):
+            votes = Counter(k[o] for o in nb[pi]); votes[k[pi]] += 1.5
+            new.append(votes.most_common(1)[0][0])
+        k = new
+    k = np.array(k)
+    big = [i for i in range(K) if (k == i).sum() >= 0.005 * len(polys)]
+    for i in range(K):
+        if i not in big and (k == i).any(): k[k == i] = big[int(((cs[big] - cs[i]) ** 2).sum(1).argmin())]
+    for i in big: cs[i] = col[k == i].mean(0)
+    entry = {i: min(range(len(palette)), key=lambda e: float(((cs[i] - np.array(palette[e]["near"])) ** 2).sum())) for i in big}
+    pe = [entry[int(x)] for x in k]
+    back = [e for e in range(len(palette)) if palette[e].get("back")]
+    if back:
+        yb = Q.data.bones["Head"].head_local.y + 0.03
+        for pi, pl in enumerate(polys):
+            if palette[pe[pi]].get("mat") == 1 and min(P[v].y for v in pl.vertices) > yb and abs(sum(P[v].x for v in pl.vertices) / len(pl.vertices)) < 0.3: pe[pi] = back[0]
+    ca = me.color_attributes.new("Col", "BYTE_COLOR", "CORNER"); me.color_attributes.active_color = ca; me.color_attributes.render_color_index = me.color_attributes.find("Col")
+    while len(me.uv_layers) < 2: me.uv_layers.new(name="AeMat")
+    u0, u1 = me.uv_layers[0].data, me.uv_layers[1].data
+    lin = lambda c: c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    for pi, pl in enumerate(polys):
+        e = palette[pe[pi]]; r, g, b = [lin(x) for x in e["to"]]   # Blender keeps a colour attribute linear and writes it sRGB
+        for l in pl.loop_indices:
+            ca.data[l].color = (r, g, b, 1.0); u0[l].uv = (1.0, 0.0); u1[l].uv = (float(e.get("mat", 10)), 0.0)
+    tally = Counter(pe)
+    print("FILLS", [(palette[e].get("name", e), tally[e]) for e in sorted(tally)])
+    return {str(palette[e].get("name", e)): tally[e] for e in tally}
 if FBX:
     os.makedirs(FBX, exist_ok=True)
+    if FILLS: info["fills"] = flat_fills(char, json.load(open(FILLS)))
     stem = os.path.splitext(os.path.basename(OUT))[0]
     common = dict(use_selection=True, add_leaf_bones=False, apply_unit_scale=True, apply_scale_options="FBX_SCALE_UNITS",
-                  axis_forward="-Z", axis_up="Y", use_armature_deform_only=False, mesh_smooth_type="FACE", path_mode="COPY", embed_textures=True)
+                  axis_forward="-Z", axis_up="Y", use_armature_deform_only=False, mesh_smooth_type="FACE", path_mode="COPY", embed_textures=True, colors_type="LINEAR")
     tracks = list(Q.animation_data.nla_tracks)
     for tr in tracks: tr.mute = True
+    Q.data.pose_position = "REST"; bpy.context.view_layer.update()   # the mesh is bound as it rests, whatever clip was last looked at
     bpy.ops.export_scene.fbx(filepath=os.path.join(FBX, stem + ".fbx"), object_types={"ARMATURE", "MESH"}, bake_anim=False, **common)
+    Q.data.pose_position = "POSE"; bpy.context.view_layer.update()
     bpy.ops.object.select_all(action="DESELECT"); Q.select_set(True); bpy.context.view_layer.objects.active = Q
     for tr in tracks:
         act = tr.strips[0].action

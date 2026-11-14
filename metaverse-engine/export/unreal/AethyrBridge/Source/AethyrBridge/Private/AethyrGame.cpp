@@ -685,7 +685,13 @@ void AAethyrGame::UpdateThings()
 				SkinPool.Add(Made); SkinNow.AddDefaulted();
 			}
 			USkeletalMeshComponent* C = SkinPool[Skinned]; FSkinNow& Now = SkinNow[Skinned]; Skinned++;
-			if (C->GetSkeletalMeshAsset() != *Skin) { C->SetSkeletalMeshAsset(*Skin); Now = FSkinNow(); }
+			if (C->GetSkeletalMeshAsset() != *Skin)
+			{
+				C->SetSkeletalMeshAsset(*Skin); Now = FSkinNow();
+				// a mesh that carries fills (vertex colours) wears the look's own cel material, as the
+				// world's things do: its colour a vertex, its material in the second UV set's u
+				if (LiveMaterial && (*Skin)->GetHasVertexColors()) { for (int32 Slot = 0; Slot < C->GetNumMaterials(); Slot++) { C->SetMaterial(Slot, LiveMaterial); } }
+			}
 			const FVector At = ToUnreal(T[2], T[3], T[4]);
 			// its speed over the ground, from where it was (a step of more than 3 m is the run placing it)
 			const float Moved = Now.bSeen ? FVector::Dist2D(At, Now.Last) / Units : 0.0f;

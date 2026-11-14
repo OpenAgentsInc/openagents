@@ -119,11 +119,14 @@ private:
 	// A kind whose "thing.NAME" row is a skeletal mesh: a component for each one of that kind on
 	// screen, and its clips, the "anim.NAME..." rows (README, "A thing with a skeleton"). A clip is
 	// picked from the thing's variant and its speed over the ground, which is measured here.
+	// (held here, so a clip not playing this minute is not collected)
+	UPROPERTY(Transient)
 	TMap<int32, TObjectPtr<class USkeletalMesh>> NativeSkins;
+	UPROPERTY(Transient)
 	TMap<FString, TObjectPtr<class UAnimSequenceBase>> Clips;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<class USkeletalMeshComponent>> SkinPool;
-	struct FSkinNow { FVector Last = FVector::ZeroVector; float Speed = 0.0f; float Phase = 0.0f; bool bSeen = false; TObjectPtr<class UAnimSequenceBase> Clip; };
+	struct FSkinNow { FVector Last = FVector::ZeroVector; float Speed = 0.0f; float Phase = 0.0f; bool bSeen = false; const class UAnimSequenceBase* Clip = nullptr; };
 	TArray<FSkinNow> SkinNow;
 	float ThingBeside = 0.0f;   // -AethyrThingBeside=CM: a replaced kind is drawn by the world too, the replacement this far to its side
 	class UAnimSequenceBase* ClipFor(const FString& Kind, int32 Variant, float Speed, bool& bGait) const;
