@@ -102,9 +102,10 @@ RsSpellSelection :: struct { selected: [6] u64; known: [6] u64; cantrips: int; p
   for word: c[0].spells.selected { #assert word == 0; }
 }
 
+// Each RS_CLASS's SRD_CLASSES entry, -1 for a class with no spell list: one table, not one a call.
+RS_SOURCE_CLASS :: [13] int.[2,7,6,-1,-1,-1,0,1,-1,3,4,-1,5];
 rs_source_class :: (klass: int) -> int #effects(all) {
-  map := [13] int.[2,7,6,-1,-1,-1,0,1,-1,3,4,-1,5];
-  return ifx klass >= 0 && klass < map.count then map[klass] else -1;
+  return ifx klass >= 0 && klass < RS_SOURCE_CLASS.count then RS_SOURCE_CLASS[klass] else -1;
 }
 rs_prepare_level :: (klass: int, level: int) -> int #effects(all) {
   if level < 1 || level > 20 || rs_source_class(klass) < 0 { return 0; }
