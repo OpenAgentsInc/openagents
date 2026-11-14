@@ -2006,7 +2006,7 @@ talk_open :: (s: [] MyRealm, t: [] Track, p: int) {
   if !may_talk(s) || p < 0 || p >= s[0].people { return; }
   if s[0].talk_p != p { s[0].talk_n = 0; s[0].talk_wait = false; s[0].ask_due = false; }
   s[0].talk_p = p; s[0].typed_n = 0; s[0].caption_n = 0;
-  s[0].pane = PANE_NONE; s[0].map_open = false; s[0].ed[0].pane = REDIT_SHUT; s[0].ed[0].typing = false;
+  s[0].pane = PANE_NONE; s[0].map_open = false; s[0].ed[0].pane = REDIT_SHUT;
   s[0].held = 0;   // the keys now type
   redit_read_panes_too(s[0].ed[..]);   // its lore
   if track_begin(t, "realm-talk-open") { track_bool(t, "owner", s[0].owner); track_end(t); }

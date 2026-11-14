@@ -2091,7 +2091,6 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
     pb := s[0].ed[0].plate_box[i];
     plate(s, u, Box.{x0 = pb.x0, y0 = pb.y0, x1 = pb.x1, y1 = pb.y1}, s[0].ed[0].plate_alpha[i], s[0].ed[0].plate_look[i]);
   }
-  if redit_typing(s[0].ed[..]) { tb := redit_type_box(s[0].ed[..]); s[0].field[0] = tb.x0; s[0].field[1] = tb.y0; s[0].field[2] = tb.x1; s[0].field[3] = tb.y1; }
   n = ffq_hud(s, out, u, n);
   n = ffu_hud(s, out, u, n, you);   // UPGRADE beside your fairy, and its pane
   if move_on {

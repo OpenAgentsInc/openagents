@@ -4,7 +4,8 @@ Build your own realm ([realm-builder.md](realm-builder.md)) gave a made realm a 
 settings and the ACCEPT/DECLINE cards. Every realm now has them (the settings, the board's switches and
 placing now in the editor shell, #13506; the cards in the shell's agent strip, #13527): Everglade, Hecate's Cemetery, the
 Grid, Fairy Forest, Dead Gears, Ice Cream Man, the Haunted House and every made realm. If you can
-edit a realm, EDIT opens the same layer in each one.
+edit a realm, EDIT opens the same list in each one, FEATURES, with OPEN THE EDITOR under it;
+everything else is edited in the editor shell (EDIT's panes are gone, #13530).
 
 ## Who may edit
 
@@ -49,9 +50,9 @@ one-a-player-every-2-seconds pace. No words are matched anywhere: the model pick
 `RealmEdit` (`ed: [1] RealmEdit`) and wires small hooks:
 
 - each frame: `redit_start(ed, SLUG)`, `redit_step(ed, time, width, height, dpr)`;
-- input: `redit_key` (0 not ours, 1 used, 2 typed text for the host), `redit_pointer`;
-- drawing: `redit_hud(ed, out, at, anchor)` draws EDIT in the box the realm gives and the open pane
-  under it; the realm draws `plate_box[0..<plate_n]` with its own `plate`;
+- input: `redit_key` (0 not ours, 1 used; the layer takes no typing, so `redit_typing` is false), `redit_pointer`;
+- drawing: `redit_hud(ed, out, at, anchor)` draws EDIT in the box the realm gives and, open,
+  FEATURES under it; the realm draws `plate_box[0..<plate_n]` with its own `plate`;
 - actions: `redit_take_action(ed, outbox)` first in the realm's action (action 34: words for the
   editor's agent strip, below);
 - the editor shell's realm steps: `redit_realm(ed, text)` for message 530 (`REDIT_MSG_REALM`), and
@@ -125,7 +126,9 @@ on a made realm and 400 m on a hand-built one, a made realm's 64 changes) is
 `coax/web/api/realm-place-policy.coax`; SQL only writes the rows (0193). Everglade has no realm
 world, so its board's voice switch has no route until its board moves into its own world (#13477).
 
-What is left of the layer's EDIT, and where each goes (#13515):
+What was left of the layer's EDIT, and where each went (#13515). With all of it moved, the EDIT pane
+is gone (#13530): the layer's one button, EDIT, opens FEATURES (the board's rows and OPEN THE
+EDITOR) with no tabs over them.
 
 | Item | Becomes | State |
 |---|---|---|
@@ -219,9 +222,8 @@ its answer to `redit_heard(ed, word, row, on, pane, out)`. The other realm pages
 their owners talk to the agent strip (above). `redit_heard` and `redit_switch` stay for those
 callers and for a made realm's spoken commands for screen readers.
 
-EDIT opens one pane at a time (the panes rule, metaverse/fairy-forest/README.md "Making the world:
-panes"): FEATURES (the board's rows, below, and OPEN THE EDITOR). A visitor's proposal waits in
-the editor's agent strip, not in EDIT (#13527).
+FEATURES is all EDIT opens (#13530): the board's rows, below, and OPEN THE EDITOR. A visitor's
+proposal waits in the editor's agent strip (#13527).
 Your computer and Your agent are in Settings, This machine (below, "Your computer").
 
 Lore and quests (ff-panes, migration 0055; #13526): a realm says, each frame, which of its
@@ -268,7 +270,7 @@ admin does; theirs are paced and counted under their key's hash.
 
 ## What you asked for: the feature list
 
-FEATURES, the first pane EDIT opens in every realm, lists the board's rows (what the realm's code
+FEATURES, all EDIT opens in every realm, lists the board's rows (what the realm's code
 switches; the editor shell switches it, #13506), each IN IT or NOT IN IT YET, and OPEN THE EDITOR.
 A list too long for the pane says how many more the editor has. The asks live in the editor's agent
 strip (#13528, above): it adds, revises and deletes them, and a hosted turn sees each ask's state.

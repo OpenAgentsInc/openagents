@@ -77,7 +77,7 @@ ANCHOR :: RBox.{x0 = 1300, y0 = 16, x1 = 1380, y1 = 54};
   #assert e[0].role == REDIT_OWNER && e[0].row_n == 2 && redit_key_of(e[..], 1) == "props:wagon" && !redit_row_on(e[..], "props:wagon");
 }
 
-#test "only an owner or admin gets EDIT; it opens one pane at a time" {
+#test "only an owner or admin gets EDIT, which opens FEATURES with no tabs over it (#13530)" {
   v: [1] RealmEdit;
   out: [20000 * VERTEX_FLOATS] f32;
   opened(v[..], "the-grid", VISITOR);
@@ -86,14 +86,15 @@ ANCHOR :: RBox.{x0 = 1300, y0 = 16, x1 = 1380, y1 = 54};
   e: [1] RealmEdit;
   opened(e[..], "the-grid", HAND);
   n := redit_hud(e[..], out[..], 0, ANCHOR);
-  #assert n > 0 && e[0].shown[RB_EDIT] && !e[0].shown[RB_TAB] && e[0].plate_n == 1;
+  #assert n > 0 && e[0].shown[RB_EDIT] && e[0].plate_n == 1;
   #assert tap(e[..], e[0].boxes[RB_EDIT]) && e[0].pane == REDIT_BOARD;
   n = redit_hud(e[..], out[..], 0, ANCHOR);
   #assert e[0].row_shown[0] && e[0].row_shown[1];
   #assert e[0].plate_n <= REDIT_PLATES;
   for b: 0..<RB_N { if e[0].shown[b] { #assert e[0].boxes[b].x1 <= 1440 && e[0].boxes[b].y1 <= 900 && e[0].boxes[b].x0 >= 0; } }
-  // no SETTINGS tab: the visitors' tools are the editor's (#13506); and a page that does not know its path offers no OPEN THE EDITOR
-  #assert !e[0].shown[RB_TAB + 1] && !e[0].shown[RB_TAB + 2] && !e[0].shown[RB_OPEN];
+  // only FEATURES: no tab, no SETTINGS (the visitors' tools are the editor's, #13506); and a page that does not know its path
+  // offers no OPEN THE EDITOR
+  for b: 0..<RB_N { #assert !e[0].shown[b] || b == RB_EDIT; }
   // Esc closes it
   #assert redit_key(e[..], REDIT_KEY_ESCAPE, true) == 1 && e[0].pane == REDIT_SHUT;
   #assert redit_key(e[..], 'w', true) == 0;
@@ -176,12 +177,12 @@ said_is :: (e: [] RealmEdit, text: string) -> bool {
   #assert e[0].pane == REDIT_BOARD && !e[0].asks_due;   // nobody asked for the asks: the layer reads none
   _ := redit_hud(e[..], out[..], 0, ANCHOR);
   #assert e[0].row_shown[0] && e[0].row_shown[1] && e[0].shown[RB_OPEN] && e[0].plate_n <= REDIT_PLATES;
-  for b: 0..<RB_N { if e[0].shown[b] { #assert b == RB_EDIT || b == RB_TAB || b == RB_OPEN; } }
-  // shut, nothing under EDIT; V and Enter are the realm's own keys
+  for b: 0..<RB_N { if e[0].shown[b] { #assert b == RB_EDIT || b == RB_OPEN; } }
+  // shut, nothing under EDIT; V and Enter are the realm's own keys, and the layer never takes typing
   redit_toggle(e[..]);
   _ = redit_hud(e[..], out[..], 0, ANCHOR);
   for b: 0..<RB_N { #assert !e[0].shown[b] || b == RB_EDIT; }
-  #assert redit_key(e[..], 'v', true) == 0 && redit_key(e[..], REDIT_KEY_ENTER, true) == 0 && !redit_typing(e[..]);
+  #assert redit_key(e[..], 'v', true) == 0 && redit_key(e[..], -2, true) == 0 && !redit_typing(e[..]);
 }
 
 #test "FEATURES on a phone: everything fits the width, and a long board says how many more the editor has" {

@@ -5,9 +5,8 @@
 //
 // The server decides everything (coax/web/api/migrations/0050_realm_edit.sql): GET
 // /api/playtest/realms/<slug> says the viewer's role, the board's rows and the tools the realm's code
-// honours. An owner or an admin gets EDIT; it opens one pane at a time (the panes rule,
-// metaverse/fairy-forest/README.md): FEATURES (each row IN IT or NOT IN IT YET, the asks, talking or
-// typing revises the board through the model). A visitor gets
+// honours. An owner or an admin gets EDIT, which opens FEATURES: each row IN IT or NOT IN IT YET, and OPEN THE
+// EDITOR, where all of it is edited. EDIT has no panes or tabs of its own any more (#13530). A visitor gets
 // nothing from here but the realm's own tools.
 //
 // What is a world edit lives in the editor shell, not here (#13506): switching the board's rows and the
@@ -53,14 +52,15 @@ REDIT_TOOLS :: 6; REDIT_THING :: 16;
 REDIT_PLACED :: 64; REDIT_PLATES :: 8;
 REDIT_SLUG :: 64; REDIT_URL :: 200; REDIT_BODY :: 1400; REDIT_TYPED :: 200; REDIT_NOTE :: 100; REDIT_OUT :: 32;
 REDIT_UNKNOWN :: 0; REDIT_VISITOR :: 1; REDIT_ADMIN :: 2; REDIT_OWNER :: 3;
-REDIT_SHUT :: 0; REDIT_BOARD :: 1;   // 4 and 5 were LORE and QUEST (#13526); 6 and 7 YOUR COMPUTER and YOUR AGENT (#13529)
+REDIT_SHUT :: 0; REDIT_BOARD :: 1;   // FEATURES shut or open; 4 and 5 were LORE and QUEST (#13526), 6 and 7 YOUR COMPUTER and YOUR AGENT (#13529)
 REQ_E_NONE :: 0; REQ_E_SPEC :: 1; REQ_E_SWITCH :: 2; REQ_E_REVISE :: 6;
 REQ_E_PANES :: 8; REQ_E_ASKS :: 11; REQ_E_ADD :: 12; REQ_E_DELETE :: 13;
 REQ_E_LOOK :: 15;   // a look: the strip's question about the screen, with the frame
 REQ_E_SWITCH_REV :: 17;   // a row switched: the realm's world's revision first, then the cell edit (#13514)
-// buttons: EDIT and the tab (FEATURES) (6 and 7 were the cards', #13527; 4, 5, 10, 11 and 17 the asks' and the
-// voice's, #13528; 8 and 9 the lore's and quest's SAVE and LORE <-> QUEST, #13526)
-RB_EDIT :: 0; RB_TAB :: 1;
+// buttons: EDIT, which opens and shuts FEATURES (1 was the EDIT pane's one tab, #13530; 6 and 7 the cards',
+// #13527; 4, 5, 10, 11 and 17 the asks' and the voice's, #13528; 8 and 9 the lore's and quest's SAVE and
+// LORE <-> QUEST, #13526)
+RB_EDIT :: 0;
 // (12 to 16 and 18 to 21 were YOUR COMPUTER's and YOUR AGENT's, which are Settings' now: #13529)
 // FEATURES' OPEN THE EDITOR: this page again with ?edit, where the shell switches, sets and places (#13506)
 RB_OPEN :: 22; RB_N :: 23;
@@ -71,7 +71,7 @@ REDIT_ACT_COPY :: 2;   // coax/web/host.js: the outbox's text to the clipboard
 REDIT_ASKS :: 24; REDIT_WORDS :: 120;
 ASK_WAITING :: 0; ASK_APPLIED :: 1; ASK_REMOVING :: 2;
 REDIT_LORES :: 12; REDIT_QUESTS :: 12; REDIT_DRAFT :: 400; REDIT_PART :: 160;
-REDIT_MSG_TEXT :: 1; REDIT_FACTS :: 600;
+REDIT_FACTS :: 600;
 REDIT_MSG_BATCH :: 520;   // the editor shell's world.edit.v1 batch (metaverse-engine/editor/shell.coax ES_BATCH)
 REDIT_HTTP_FRAME :: 32;   // coax/web/HTTP.md: the next frame drawn goes with the JSON body as its "image"
 REDIT_REPLY :: 300;       // a look's answer (the server keeps 300 characters)
@@ -81,7 +81,7 @@ REDIT_MSG_REALM :: 530; REDIT_ACT_AGENT :: 34;
 REDIT_JOBS :: 16;         // realm steps waiting to go (a plan holds at most 16: turn.coax WP_STEPS)
 REDIT_JOB_ASK :: 1; REDIT_JOB_REVISE :: 2; REDIT_JOB_UNASK :: 3; REDIT_JOB_UNROW :: 4; REDIT_JOB_LOOK :: 5;
 REDIT_SAID :: 1200;       // bytes of words waiting for the strip
-REDIT_KEY_ESCAPE :: -1; REDIT_KEY_ENTER :: -2; REDIT_KEY_BACKSPACE :: -3;
+REDIT_KEY_ESCAPE :: -1;
 REDIT_TOOL_NAMES :: [REDIT_TOOLS] string.["build", "fly", "jump", "map", "talk", "voice"];
 
 RBox :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
@@ -101,8 +101,6 @@ RealmEdit :: struct {
   press: int; finger: int;
   plate_n: int; plate_box: [REDIT_PLATES] RBox; plate_alpha: [REDIT_PLATES] f32; plate_look: [REDIT_PLATES] f32;
   note: [REDIT_NOTE] u8; note_n: int; note_at: f32;
-  // typing (LORE's and QUEST's fields)
-  typing: bool; typed: [REDIT_TYPED] u8; typed_n: int;
   // the one request in flight, and what to send next
   req_url: [REDIT_URL] u8; req_url_n: int; req_body: [REDIT_BODY] u8; req_body_n: int; req_flags: int;
   req_ready: bool; req_id: int; req_what: int; req_at: f32;
@@ -119,7 +117,6 @@ RealmEdit :: struct {
   quest_part: [REDIT_QUESTS * 5 * REDIT_PART] u8; quest_part_n: [REDIT_QUESTS * 5] int;   // ask, three steps, reward
   panes_due: bool; panes_asked: bool; panes_version: int;
   world_chars: int;   // the world's lore and quests as the panes were last read for (realm-page.coax rp_chars_rev)
-  type_box: RBox;   // where what you type is drawn: a phone's keyboard field goes there
   // what its owner asked for: read once a world asks for them (asks_wanted), again after each change; asks_v
   // moves with each read, so the world is told again
   ask_n: int; ask_id: [REDIT_ASKS] int; ask_state: [REDIT_ASKS] int;
@@ -154,10 +151,10 @@ redit_tool :: (e: [] RealmEdit, name: string) -> bool {
 redit_placed_thing :: (e: [] RealmEdit, i: int) -> string { return cast(string) e[0].placed_thing[i * REDIT_THING..<i * REDIT_THING + e[0].placed_thing_n[i]]; }
 // The server changed the realm since the last time a realm asked: switch its features again.
 redit_changed :: (e: [] RealmEdit) -> bool { c := e[0].changed; e[0].changed = false; return c; }
-redit_typing :: (e: [] RealmEdit) -> bool { return e[0].typing; }
+// Whether the layer takes what is typed: never now. Its fields moved to the editor shell (#13526, #13528,
+// #13530); the realms that ask before they take a key go on asking.
+redit_typing :: (e: [] RealmEdit) -> bool { return false; }
 redit_open :: (e: [] RealmEdit) -> bool { return e[0].pane != REDIT_SHUT; }
-// Where what you type is drawn (a phone's keyboard field goes there), while redit_typing.
-redit_type_box :: (e: [] RealmEdit) -> RBox { return e[0].type_box; }
 
 // ---- the panes everyone reads: lore and quests
 redit_lore_who :: (e: [] RealmEdit, i: int) -> string { return cast(string) e[0].lore_who[i * REDIT_KEY..<i * REDIT_KEY + e[0].lore_who_n[i]]; }
@@ -286,7 +283,7 @@ redit_read :: (e: [] RealmEdit, text: string) -> bool {
   }
   // a made realm's spec says owner 1 to its owner and admins before it says the role
   if owner && e[0].role < REDIT_ADMIN { e[0].role = REDIT_ADMIN; }
-  if !redit_may(e) { e[0].pane = REDIT_SHUT; e[0].typing = false; }
+  if !redit_may(e) { e[0].pane = REDIT_SHUT; }
   return got;
 }
 
@@ -374,7 +371,7 @@ redit_next :: (e: [] RealmEdit) {
   if e[0].asks_due && redit_may(e) { e[0].asks_due = false; redit_ask(e, REQ_E_ASKS, "/asks", 0, false); return; }
   if e[0].panes_due && e[0].ready { e[0].panes_due = false; redit_ask(e, REQ_E_PANES, "/panes", 0, false); return; }
   // edits from elsewhere (the CLI, Coder, another tab): an owner's page reads its spec again every second
-  if e[0].ready && redit_may(e) && !e[0].typing && e[0].time - e[0].watched_at > REDIT_WATCH {
+  if e[0].ready && redit_may(e) && e[0].time - e[0].watched_at > REDIT_WATCH {
     e[0].watched_at = e[0].time; e[0].asked = true; redit_ask(e, REQ_E_SPEC, "", 0, false);
   }
 }
@@ -541,10 +538,6 @@ redit_message :: (e: [] RealmEdit, kind: int, text: string) -> bool #export_c #e
     if p_page.count + 6 <= REDIT_URL { e[0].page_n = redit_copy(e[0].page[..], p_page); }
     return false; }
   if kind >= HTTP_KIND && kind < HTTP_KIND + 8 && e[0].req_id >= 0 && kind - HTTP_KIND == e[0].req_id { redit_answer(e, text); return true; }
-  if kind == REDIT_MSG_TEXT && e[0].typing {
-    for i: 0..<text.count { if e[0].typed_n < REDIT_TYPED && text[i] >= 32 { e[0].typed[e[0].typed_n] = text[i]; e[0].typed_n += 1; } }
-    return true;
-  }
   return false;
 }
 // ---- actions out: the realm passes them on from its own p_outbox
@@ -624,22 +617,13 @@ redit_page_of :: (url: string) -> string {
   b := a; while b < url.count && url[b] != '?' && url[b] != '#' { b += 1; }
   return url[a..<b];
 }
+// FEATURES opened or shut (`pane` REDIT_BOARD or REDIT_SHUT); by a character too, whose lore and quest are the
+// editor shell's to write (#13526).
 redit_pane :: (e: [] RealmEdit, pane: int) {
   if !redit_may(e) { return; }
   e[0].pane = ifx e[0].pane == pane then REDIT_SHUT else pane;
-  e[0].typing = false;
 }
-redit_toggle :: (e: [] RealmEdit) {
-  if e[0].pane != REDIT_SHUT { e[0].pane = REDIT_SHUT; e[0].typing = false; return; }
-  e[0].typing = false;
-  // by a character too: its lore and quest are the editor shell's to write (#13526)
-  redit_pane(e, REDIT_BOARD);
-}
-redit_send_typed :: (e: [] RealmEdit) {
-  w := cast(string) e[0].typed[0..<e[0].typed_n];
-  e[0].typing = false;
-  e[0].typed_n = 0;
-}
+redit_toggle :: (e: [] RealmEdit) { if e[0].pane != REDIT_SHUT { e[0].pane = REDIT_SHUT; } else { redit_pane(e, REDIT_BOARD); } }
 
 // Each frame: the clock and the next request.
 redit_step :: (e: [] RealmEdit, time: f32, width: f32, height: f32, dpr: f32) {
@@ -707,16 +691,9 @@ redit_edit_model :: (e: [] RealmEdit) -> string #export_c #effects(all) { return
 // admins and the site's). The host asks again until it does (coax/web/host.js, coaxial_edit_own).
 redit_edit_own :: (e: [] RealmEdit) -> bool #export_c #effects(all) { e[0].shell_asked = true; return redit_may(e); }
 
-// ---- input: 0 not this layer's, 1 used, 2 typed text the host should send (the realm does nothing with it)
+// ---- input: 0 not this layer's, 1 used (2 was typed text the host should send: the layer takes none now, #13530)
 
 redit_key :: (e: [] RealmEdit, key: int, p_down: bool) -> int {
-  if e[0].typing {
-    if !p_down { return 2; }
-    if key == REDIT_KEY_ENTER { redit_send_typed(e); return 1; }
-    if key == REDIT_KEY_ESCAPE { e[0].typing = false; e[0].typed_n = 0; return 1; }
-    if key == REDIT_KEY_BACKSPACE { if e[0].typed_n > 0 { e[0].typed_n -= 1; while e[0].typed_n > 0 && (e[0].typed[e[0].typed_n] & 0xC0) == 0x80 { e[0].typed_n -= 1; } } return 1; }
-    return 2;
-  }
   if e[0].pane == REDIT_SHUT { return 0; }
   if key == REDIT_KEY_ESCAPE && p_down { redit_toggle(e); return 1; }
   return 0;
@@ -731,7 +708,6 @@ redit_over :: (e: [] RealmEdit, x: f32, y: f32) -> bool {
 }
 redit_press :: (e: [] RealmEdit, b: int) {
   if b == RB_EDIT { redit_toggle(e); return; }
-  if b >= RB_TAB && b < RB_TAB + 3 { p := b - RB_TAB + 1; if e[0].pane != p { redit_pane(e, p); } return; }
   if b == RB_OPEN { redit_open_editor(e); return; }
 }
 redit_pointer :: (e: [] RealmEdit, x: f32, y: f32, phase: int, id: int) -> bool {
@@ -799,7 +775,7 @@ redit_check :: (out: [] f32, at: int, x: f32, y: f32, size: f32, on: bool, k: f3
   return n;
 }
 
-// EDIT in the p_box the realm gives (an owner's or admin's only), and the open pane under it. Returns
+// EDIT in the p_box the realm gives (an owner's or admin's only), and FEATURES under it when open. Returns
 // the vertices drawn so far; the plates to draw are plate_box[0..<plate_n].
 redit_hud :: (e: [] RealmEdit, out: [] f32, at: int, anchor: RBox) -> int {
   e[0].plate_n = 0;
@@ -817,21 +793,10 @@ redit_hud :: (e: [] RealmEdit, out: [] f32, at: int, anchor: RBox) -> int {
   x1 := x0 + pw;
   redit_plate(e, RBox.{x0 = x0, y0 = y0, x1 = x1, y1 = y1}, 0.9, 0);
   pad := 14 * k;
-  // the tabs: one pane at a time
-  tabs := [1] string.["FEATURES"];   // SETTINGS and IDEAS are the editor's (#13506, #13527); COMPUTER and AGENT are Settings' (#13529)
-  p_tab_of: [1] int; p_tabs := 1;   // which of tabs each shown tab is
-  tw := (pw - 2 * pad - f32(p_tabs - 1) * 6 * k) / f32(p_tabs);
-  for p_ti: 0..<p_tabs {
-    t := p_tab_of[p_ti];
-    bx := x0 + pad + f32(p_ti) * (tw + 6 * k);
-    label := tabs[t];
-    p_tb := RB_TAB + t;
-    p_tp := t + 1;
-    n = redit_button(e, out, n, p_tb, RBox.{x0 = bx, y0 = y0 + pad, x1 = bx + tw, y1 = y0 + pad + 30 * k}, label, e[0].pane == p_tp);
-  }
-  y := y0 + pad + 30 * k + 18 * k;
+  // FEATURES itself: no tabs over it, since it is all EDIT opens (#13530)
+  y := y0 + pad;
   room := pw - 2 * pad;
-  if e[0].pane == REDIT_BOARD { n = redit_board(e, out, n, x0 + pad, y, room, y1 - pad); }
+  n = redit_board(e, out, n, x0 + pad, y, room, y1 - pad);
   if e[0].note_n > 0 {
     n = redit_text(e, out, n, cast(string) e[0].note[0..<e[0].note_n], x0 + pad, y1 - pad, 7 * k, redit_parch(k, 0.9), room);
   }
@@ -930,11 +895,10 @@ redit_wrap :: (e: [] RealmEdit, out: [] f32, at: int, text: string, x: f32, y: f
 }
 
 // What a headless check reads (a realm's probe passes f - its base): 4 * b + 0..3 the button b's box
-// in device pixels (-1 while it isn't shown), 96 the pane open, 98 typing (88, 89 and 97 were YOUR AGENT's and
-// YOUR COMPUTER's, #13529).
+// in device pixels (-1 while it isn't shown), 96 the list open (88, 89 and 97 were YOUR AGENT's and YOUR
+// COMPUTER's, #13529; 98 whether the layer took typing, #13530).
 redit_probe :: (e: [] RealmEdit, f: int) -> int {
   if f == 96 { return e[0].pane; }
-  if f == 98 { return ifx e[0].typing then 1 else 0; }
   b := f / 4; side := f % 4;
   if f < 0 || b >= RB_N || !e[0].shown[b] { return -1; }
   bx := e[0].boxes[b];
