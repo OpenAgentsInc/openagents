@@ -2,7 +2,7 @@
 // studio's wardrobe and class pane, the bar, its card and the room's rest and aid controls, the GFX
 // control and the frame rate) and, in a dev build, admin mode's CLASSES column, drawn on the four
 // screens of hud-overlap.coax: the studio for every class, the world for every class, in the room
-// with its rest controls, with your coin, the BAG button and your quests under the map (#13381), a
+// with its rest controls, not connected, with your coin, the BAG button and your quests under the map (#13381), a
 // slot's card shown, and admin mode. It prints each finding once; see
 // hud-overlap.coax.
 //   coax/web/tool.sh apps/openagents-web/hud-overlap-everglade2.coax
@@ -48,6 +48,10 @@ h2_room :: (s: [] E2) {
   e2n_record(n, cast(string) frame[0..<count]);
   e2n_record(n, "z 0 0 1");
 }
+// No room for a while (#13589): the page says it is not connected, over the bar.
+h2_offline :: (s: [] E2) {
+  n := s[0].net[..]; n[0].want = true; n[0].state = E2N_DOWN; n[0].unseated_at = 1; n[0].mono = 1 + E2N_OFFLINE_MS;
+}
 // The room says your record (#13381): your coin, the BAG button and three quests under way stand under
 // the map (everglade/client/bag.coax), as many as the page ever shows there.
 h2_record :: (s: [] E2) {
@@ -91,6 +95,10 @@ tool_main :: () -> int #export_c #effects(all) {
         s[0].casts[0].menu = ids[j]; s[0].casts[0].side_hover = -1; s[0].casts[0].menu_hover = 0;
         h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "world, class menu", false);
       }
+    }
+    {
+      s: [1] E2; h2_world(s[..], FB_CL_RANGER, v); h2_offline(s[..]);
+      h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "world, not connected", false);
     }
     {
       s: [1] E2; h2_world(s[..], FB_CL_WIZARD, v); s[0].casts[0].hover = 0;

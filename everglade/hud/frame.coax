@@ -1,0 +1,107 @@
+// The world HUD's frame, every Everglade zone's (#13594): where its top parts stand on a page W by H
+// CSS px. Your portrait plate top left, the map ring top right with the place's ribbon and the clock
+// under it, the column with your coin, the BAG button and your quests (under the map, or on a short
+// page between the plate and the map), and a place's banner across the upper screen. everglade/hud/parts.coax
+// eg_world and bag.coax eg_own_layout draw by these numbers, and a host that draws a button of its own
+// over the world (the Mac app's Worlds, apps/everglade-desktop/scenes.coax) asks eg_frame_host where it
+// stands clear of them all. Plain numbers in and out; it loads nothing.
+//   coax/bin/coax test --library everglade/hud/frame.coax
+
+EgBox :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+EG_PORTRAIT_W :: 330.0;     // CSS px: the plate's full width at its widest
+EG_PORTRAIT_H :: 76.0;      // its height
+EG_PLATE_LINES :: 40.0;     // under it: its spell gems and the conditions held
+EG_PLACE_HALF :: 100.0;     // half the place's ribbon under the map at its widest (eg_map)
+EG_COLUMN_TALL :: 236.0;    // the column at its tallest: the BAG button, three quests, how many more, what dropped
+EgFrame :: struct {
+  phone: bool;              // a phone's page (narrower than 700 or shorter than 500): smaller parts, nearer the corners
+  mr: f32; top: f32;        // the map ring's radius, and the top edge the plate and the map stand from
+  mx: f32; my: f32;         // the ring's middle
+  plate: EgBox;             // your portrait plate
+  map: EgBox;               // the ring with the place's ribbon and the clock under it
+  col: EgBox;               // the column's width, from its top (the BAG button's) down as far as it can reach
+  col_top: bool;            // the column stands at the top, between the plate and the map
+}
+eg_frame :: (W: f32, H: f32) -> EgFrame {
+  f: EgFrame;
+  f.phone = W < 700 || H < 500;
+  f.mr = ifx f.phone then 40.0f32 else 70.0f32; f.top = ifx f.phone then 14.0f32 else 16.0f32;
+  f.mx = W - (f.mr + 22); f.my = f.top + f.mr + 10;
+  // the plate as wide as the map leaves it
+  wide := W - (2 * f.mr + 44) - 20; if wide > EG_PORTRAIT_W { wide = EG_PORTRAIT_W; }
+  px := ifx f.phone then 8.0f32 else 14.0f32;
+  f.plate = EgBox.{x0 = px, y0 = f.top, x1 = px + wide, y1 = f.top + EG_PORTRAIT_H};
+  left := W - 4 - 2 * EG_PLACE_HALF; if left > f.mx - f.mr - 8 { left = f.mx - f.mr - 8; }
+  f.map = EgBox.{x0 = left, y0 = f.top, x1 = f.mx + f.mr + 8, y1 = f.my + f.mr + 50};
+  // the column: under the map, or, on a short page with the width for it, between the plate and the map
+  edge := ifx f.phone then 8.0f32 else 14.0f32; cw := ifx f.phone then 210.0f32 else 240.0f32;
+  if cw > W - 2 * edge { cw = W - 2 * edge; }
+  x1 := W - edge; x0 := x1 - cw; y := f.top + 2 * f.mr + 66;
+  if H < 500 {
+    right := W - (2 * f.mr + 52); l := f.plate.x1 + 10;
+    if right - l >= 150 { x1 = right; x0 = ifx right - l > cw then right - cw else l; y = f.top; f.col_top = true; }
+  }
+  f.col = EgBox.{x0 = x0, y0 = y, x1 = x1, y1 = y + EG_COLUMN_TALL};
+  return f;
+}
+eg_frame_meets :: (a: EgBox, b: EgBox) -> bool { return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
+// The plate with its lines under it: what a part over the world keeps clear of.
+eg_frame_plate :: (f: EgFrame) -> EgBox { b := f.plate; b.y1 += EG_PLATE_LINES; return b; }
+// Where a host's own button, bw by bh, stands over the world: at the middle of the top edge where that
+// is clear of the plate, the map and the column; else under the map's clock at the right; else under
+// the plate's lines at the left.
+eg_frame_host :: (W: f32, H: f32, bw: f32, bh: f32) -> EgBox {
+  f := eg_frame(W, H); plate := eg_frame_plate(f);
+  at := [3] EgBox.[
+    EgBox.{x0 = (W - bw) * 0.5, y0 = 10, x1 = (W + bw) * 0.5, y1 = 10 + bh},
+    EgBox.{x0 = f.map.x1 - bw, y0 = f.map.y1 + 8, x1 = f.map.x1, y1 = f.map.y1 + 8 + bh},
+    EgBox.{x0 = plate.x0, y0 = plate.y1 + 8, x1 = plate.x0 + bw, y1 = plate.y1 + 8 + bh}];
+  for b: at { if !eg_frame_meets(b, plate) && !eg_frame_meets(b, f.map) && !eg_frame_meets(b, f.col) { return b; } }
+  return at[2];
+}
+// The middle of a place's banner (half its width, 42 px tall) at a fifth of the way down the page, or
+// lower where that would cross the plate or the map.
+eg_frame_banner :: (W: f32, H: f32, half: f32) -> f32 {
+  f := eg_frame(W, H); y := H * 0.22;
+  for b: [2] EgBox.[eg_frame_plate(f), f.map] {
+    if eg_frame_meets(EgBox.{x0 = W * 0.5 - half, y0 = y - 21, x1 = W * 0.5 + half, y1 = y + 21}, b) { y = b.y1 + 8 + 21; }
+  }
+  return y;
+}
+
+#test "eg frame: a desktop's parts in the corners, a phone's smaller, and a short page's column at the top" {
+  d := eg_frame(1280, 800);
+  #assert !d.phone && d.mr == 70 && d.mx == 1188 && d.my == 96 && d.plate.x0 == 14 && d.plate.x1 == 344 && d.plate.y1 == 92;
+  #assert d.map.x0 == 1076 && d.map.x1 == 1266 && d.map.y1 == 216 && !d.col_top && d.col.x1 == 1266 && d.col.x0 == 1026 && d.col.y0 == 222;
+  p := eg_frame(390, 844);     // a phone upright: the plate gives the map its room
+  #assert p.phone && p.mr == 40 && p.plate.x0 == 8 && p.plate.x1 == 8 + 390 - 124 - 20 && p.col.y0 == 160 && p.col.x0 == 390 - 8 - 210;
+  s := eg_frame(640, 400);     // a short page: the column between the plate and the map
+  #assert s.phone && s.col_top && s.col.x0 == 348 && s.col.x1 == 508 && s.col.y0 == 14 && s.map.x0 == 436;
+  n := eg_frame(620, 400);     // too narrow for that: under the map
+  #assert !n.col_top && n.col.y0 == 160;
+  t := eg_frame(800, 300); #assert t.phone && t.col_top && t.col.x0 == 800 - 132 - 210;   // room for its whole width
+  w := eg_frame(200, 400); #assert w.col.x1 - w.col.x0 == 200 - 16;   // a page narrower than the column
+  #assert eg_frame_plate(d).y1 == 132 && eg_frame_meets(d.plate, d.plate) && !eg_frame_meets(d.plate, d.map);
+}
+#test "eg frame: a host's button stands clear of the plate, the map and the column" {
+  c := eg_frame_host(1280, 800, 92, 32);     // a desktop: the middle of the top edge
+  #assert c.x0 == 594 && c.y0 == 10 && c.y1 == 42;
+  r := eg_frame_host(640, 400, 92, 32);      // a small window: the plate reaches the middle, so under the map
+  #assert r.x1 == eg_frame(640, 400).map.x1 && r.y0 == eg_frame(640, 400).map.y1 + 8 && r.x1 - r.x0 == 92 && r.y1 - r.y0 == 32;
+  l := eg_frame_host(700, 800, 92, 32);      // the column under the map too: under the plate's lines
+  pl := eg_frame_plate(eg_frame(700, 800));
+  #assert l.x0 == pl.x0 && l.y0 == pl.y1 + 8;
+  // on every page from 600 by 360 up, inside it and clear of all three
+  for W: [6] f32.[600, 640, 700, 800, 1024, 1920] {
+    for H: [5] f32.[360, 400, 500, 768, 1080] {
+      b := eg_frame_host(W, H, 92, 32); f := eg_frame(W, H);
+      #assert b.x0 >= 0 && b.x1 <= W && b.y1 <= H && !eg_frame_meets(b, eg_frame_plate(f)) && !eg_frame_meets(b, f.map) && !eg_frame_meets(b, f.col);
+    }
+  }
+}
+#test "eg frame: a place's banner a fifth of the way down, or under the plate and the map where it would cross them" {
+  #assert eg_frame_banner(1280, 800, 200) == 800 * 0.22;
+  #assert eg_frame_banner(640, 400, 178) == eg_frame(640, 400).map.y1 + 29;     // past the plate's lines, then the map
+  #assert eg_frame_banner(1280, 400, 100) == 400 * 0.22;     // a wide short page: clear of both where it is
+  b := eg_frame_banner(390, 844, 150); #assert b >= 844 * 0.22 && b - 21 >= eg_frame_plate(eg_frame(390, 844)).y1;
+}

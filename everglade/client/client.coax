@@ -1210,7 +1210,8 @@ e2_fps :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
  n:=e2_gfx_control(s,out,p,s[0].width-16*k-fw-14*k,base);
  return cc.fps_draw(s[0].creator[0].ui,s[0].fps_counter[0],out,n,s[0].width,base+16*k,k);
 }
-// The plaque's baseline, from y up: clear of the class bar's slots and its emblem over the middle,
+// The plaque's baseline, from y up: clear of the class bar's slots, and over the middle of its
+// emblem and the words over it (a refusal, "Not connected", everglade/hud/windows.coax eg_bar_refused),
 // wherever they share its width (x0..x1). On a phone the bar spans the page, so the plaque sits over
 // all of it.
 e2_fps_clear :: (s: [] E2, x0: f32, x1: f32, y: f32) -> f32 {
@@ -1218,7 +1219,7 @@ e2_fps_clear :: (s: [] E2, x0: f32, x1: f32, y: f32) -> f32 {
   w := s[0].width; h := s[0].height; top := y + 1000;
   for i: 0..<s[0].casts[0].bar_n { b := e2k_box(s[0].casts[..], i, w, h, k);
     if b[2] > b[0] && b[2] > x0 - 8 * k && b[0] < x1 + 8 * k {
-      t := b[1] - 8 * k; mid := w * 0.5; if x0 < mid + 30 * k && x1 > mid - 30 * k { t = b[1] - 32 * k; }   // the emblem's medallion
+      t := b[1] - 8 * k; mid := w * 0.5; if x0 < mid + 30 * k && x1 > mid - 30 * k { t = b[1] - f32(EG_BAR_WORDS) * k; }   // the emblem's medallion and the words over it
       if t < top { top = t; } } }
   if top < y + 1000 && base + 16 * k > top { base = top - 16 * k; }
   return base;

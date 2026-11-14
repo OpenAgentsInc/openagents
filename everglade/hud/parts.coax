@@ -6,6 +6,7 @@
 // Experimental both draw through these. Each part lays its frames (hud_emit) before its words, so
 // the words sit on the iron. Sizes are CSS px times k (device px a CSS px).
 //   coax/bin/coax test everglade/scene/charactercreator.coax --only "eg "
+#load "frame.coax";   // where the world's parts stand on a page (eg_frame)
 
 // What a unit frame says: your portrait plate, or your target's frame beside it. A number the page
 // does not know yet is left out, never guessed: max 0 (no room yet) draws no health bar; ac 0 no
@@ -24,7 +25,6 @@ EgPortrait :: struct {
   combat: f32;    // 0 to 1: how far the medallion's ring glows red (a zone pulses it while you fight)
   lit: bool;      // the pointer is over it, and a press opens its menus: its ring brightens
 }
-EG_PORTRAIT_W :: 330.0;   // CSS px: the plate's full width at its widest
 eg_say :: (out: [] f32, n: int, t: string, x: f32, y: f32, cap: f32, role: int, a: f32, k: f32, centre: bool) -> int {
   return hud_say(out, n, t, x, y, cap, hud_text(eg_tokens(), role), a, k, centre);
 }
@@ -210,10 +210,10 @@ eg_bar_slot_at :: (ui: [] UitTrace, tray: int, i: int) -> int {
 
 // The map ring top right: the land round you within reach metres, turned with your view, ahead up.
 // Things on it (EgDot): 0 a friend, 1 a foe, 2 a guard, 3 the path, 4 open ground (r its radius,
-// metres). zone and clock under it. Returns the end.
+// metres). zone and clock under it, the ribbon moved in from the right to end by `right`. Returns the end.
 EgDot :: struct { x: f32; z: f32; kind: int; r: f32; }
 EG_DOT_FRIEND :: 0; EG_DOT_FOE :: 1; EG_DOT_GUARD :: 2; EG_DOT_PATH :: 3; EG_DOT_OPEN :: 4;
-eg_map :: (ui: [] UitTrace, out: [] f32, at: int, cx: f32, cy: f32, r: f32, k: f32, you_x: f32, you_z: f32, fx: f32, fz: f32,
+eg_map :: (ui: [] UitTrace, out: [] f32, at: int, cx: f32, cy: f32, r: f32, k: f32, right: f32, you_x: f32, you_z: f32, fx: f32, fz: f32,
            reach: f32, dots: [] EgDot, nd: int, zone: string, clock: string, a: f32) -> int {
   t := eg_tokens(); l: [1] HudList;
   fl := sqrt(fx * fx + fz * fz); ffx := ifx fl > 0.0001 then fx / fl else 0.0f32; ffz := ifx fl > 0.0001 then fz / fl else -1.0f32;
@@ -246,12 +246,13 @@ eg_map :: (ui: [] UitTrace, out: [] f32, at: int, cx: f32, cy: f32, r: f32, k: f
   hud_circle(l[..], nx, ny, 8 * k, 1.2 * k, t.trim, hud_mix(t.trim, t.frame_mid, 0.5));
   // the place's ribbon under the ring
   zy := cy + r + 20 * k; zw := 8 * k + face_width(zone, 9 * k, HUD_FACE_TITLE) * 0.5 + 18 * k;
-  hud_banner(l[..], t, cx, zy, zw, 22 * k, 1, k);
+  zx := ifx cx + zw > right then right - zw else cx;
+  hud_banner(l[..], t, zx, zy, zw, 22 * k, 1, k);
   eg_fade_list(l[..], a);
   v := hud_emit(out, at, l[..]);
   v = eg_say(out, v, "N", nx, ny + 3.5 * k, 7 * k, HUD_TEXT_TITLE, a, k, true);
-  v = eg_say(out, v, zone, cx, zy + 4.5 * k, 9 * k, HUD_TEXT_TITLE, a, k, true);
-  if clock.count > 0 { v = eg_say(out, v, clock, cx, zy + 26 * k, 8 * k, HUD_TEXT_NUMBER, a, k, true); }
+  v = eg_say(out, v, zone, zx, zy + 4.5 * k, 9 * k, HUD_TEXT_TITLE, a, k, true);
+  if clock.count > 0 { v = eg_say(out, v, clock, zx, zy + 26 * k, 8 * k, HUD_TEXT_NUMBER, a, k, true); }
   return v;
 }
 // The time of day (0 midnight to 1) as a 24-hour clock, "HH:MM".
@@ -265,9 +266,15 @@ eg_clock :: (day: f32, b: [] u8) -> int {
   b: [8] u8; #assert cast(string) b[0..<eg_clock(0.5, b[..])] == "12:00" && cast(string) b[0..<eg_clock(0.75 + 1.0 / 1440 * 7, b[..])] == "18:07";
   #assert cast(string) b[0..<eg_clock(0, b[..])] == "00:00" && cast(string) b[0..<eg_clock(0.99999, b[..])] == "23:59";
   out: [60000] f32; d: [2] EgDot; d[0] = EgDot.{x = 0, z = -20, kind = EG_DOT_FOE}; d[1] = EgDot.{x = 0, z = 0, kind = EG_DOT_OPEN, r = 17};
-  nt: [] UitTrace; n := eg_map(nt, out[..], 0, 300, 100, 70, 1, 0, 0, 0, -1, 60, d[..], 2, "The Glade", "12:00", 1);
+  nt: [] UitTrace; n := eg_map(nt, out[..], 0, 300, 100, 70, 1, 1000, 0, 0, 0, -1, 60, d[..], 2, "The Glade", "12:00", 1);
   #assert n > 0;
   for q: 0..<n { #assert out[q * VERTEX_FLOATS] > 300 - 120 && out[q * VERTEX_FLOATS] < 300 + 120 && out[q * VERTEX_FLOATS + 1] < 100 + 70 + 60; }
+  // near the page's right edge the place's ribbon, its name and the clock move in to end there
+  wide := eg_map(nt, out[..], 0, 270, 100, 40, 1, 1000, 0, 0, 0, -1, 60, d[..], 2, "The Sunlit Path", "12:00", 1);
+  far: f32 = 0; for q: 0..<wide { if out[q * VERTEX_FLOATS] > far { far = out[q * VERTEX_FLOATS]; } }
+  e := eg_map(nt, out[..], 0, 270, 100, 40, 1, 330, 0, 0, 0, -1, 60, d[..], 2, "The Sunlit Path", "12:00", 1);
+  near: f32 = 0; for q: 0..<e { if out[q * VERTEX_FLOATS] > near { near = out[q * VERTEX_FLOATS]; } }
+  #assert e > 0 && far > 332 && near <= 332;   // within an edge's soft pixel or two
 }
 
 // A plate over a creature: its name, and its health under it while known (share in 0..1; -1 none).
@@ -356,11 +363,13 @@ eg_title :: (b: [] u8, t: string) -> string {
 }
 // A place reached: its name on a ribbon across the upper screen, age seconds into its life.
 EG_BANNER_S :: 3.6;
+// Half the banner's width, CSS px.
+eg_banner_half :: (title: string) -> f32 { return face_width(title, 22.5, HUD_FACE_TITLE) * 0.5 + 60; }
 eg_banner :: (out: [] f32, at: int, w: f32, y: f32, k: f32, title: string, age: f32) -> int {
   a := hud_banner_alpha(age, f32(EG_BANNER_S));
   if !(a > 0) { return at; }
   t := eg_tokens(); l: [1] HudList; cap := 15 * k;
-  half := face_width(title, cap * 1.5, HUD_FACE_TITLE) * 0.5 + 60 * k;
+  half := eg_banner_half(title) * k;
   hud_banner(l[..], t, w * 0.5, y, half, 42 * k, a, k);
   v := hud_emit(out, at, l[..]);
   return eg_say(out, v, title, w * 0.5, y + cap * 0.75, cap, HUD_TEXT_BANNER, a, k, true);
@@ -393,25 +402,19 @@ EgWorld :: struct { you_x: f32; you_z: f32; fx: f32; fz: f32; reach: f32 = 60; p
 eg_meets :: (a: HudPrim, b: HudPrim) -> bool { return a.x1 > a.x0 && b.x1 > b.x0 && a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
 // ui: the layout trace (metaverse-engine/ui/trace.coax), when the overlap check attaches one; empty for none.
 eg_world :: (ui: [] UitTrace, out: [] f32, at: int, w: f32, h: f32, k: f32, wd: EgWorld, dots: [] EgDot, nd: int, p: EgPortrait) -> int {
-  W := w / k; phone := W < 700 || h / k < 500;
-  mr := ifx phone then 40.0f32 else 70.0f32; top := ifx phone then 14.0f32 else 16.0f32;
-  mcx := w - (mr + 22) * k; mcy := (top + mr + 10) * k; v := at;
-  if !eg_meets(wd.cover, hud_box(mcx - (mr + 8) * k, top * k, mcx + (mr + 8) * k, mcy + (mr + 30) * k)) {
-    v = eg_map(ui, out, v, mcx, mcy, mr * k, k, wd.you_x, wd.you_z, wd.fx, wd.fz, wd.reach, dots, nd, wd.place, wd.clock, 1);
+  f := eg_frame(w / k, h / k); mr := f.mr; v := at;
+  mcx := f.mx * k; mcy := f.my * k;
+  if !eg_meets(wd.cover, hud_box(mcx - (mr + 8) * k, f.top * k, mcx + (mr + 8) * k, mcy + (mr + 30) * k)) {
+    v = eg_map(ui, out, v, mcx, mcy, mr * k, k, w - 4 * k, wd.you_x, wd.you_z, wd.fx, wd.fz, wd.reach, dots, nd, wd.place, wd.clock, 1);
   }
-  // the plate stays under its own menus, which hang from its foot
-  wide := W - (2 * mr + 44) - 20; if wide > f32(EG_PORTRAIT_W) { wide = f32(EG_PORTRAIT_W); }
-  px := ifx phone then 8.0f32 else 14.0f32;
-  v = eg_portrait(ui, out, v, px * k, top * k, wide, k, p, 1);
-  return eg_banner(out, v, w, h * 0.22, k, wd.place, wd.since);
+  // the plate stays under its own menus, which hang from its foot; the banner passes under both
+  v = eg_portrait(ui, out, v, f.plate.x0 * k, f.plate.y0 * k, f.plate.x1 - f.plate.x0, k, p, 1);
+  return eg_banner(out, v, w, eg_frame_banner(w / k, h / k, eg_banner_half(wd.place)) * k, k, wd.place, wd.since);
 }
 // Where eg_world puts your portrait plate on a w by h page (device px).
 eg_world_portrait :: (w: f32, h: f32, k: f32) -> HudPrim {
-  W := w / k; phone := W < 700 || h / k < 500;
-  mr := ifx phone then 40.0f32 else 70.0f32; top := ifx phone then 14.0f32 else 16.0f32;
-  wide := W - (2 * mr + 44) - 20; if wide > f32(EG_PORTRAIT_W) { wide = f32(EG_PORTRAIT_W); }
-  px := ifx phone then 8.0f32 else 14.0f32;
-  return eg_portrait_box(px * k, top * k, wide, k);
+  b := eg_frame(w / k, h / k).plate;
+  return eg_portrait_box(b.x0 * k, b.y0 * k, b.x1 - b.x0, k);
 }
 #test "eg plates: the frame's plates placed and drawn, a covered name counted on the one over it, none past most" #steps 400000000 {
   out: [60000] f32; p: [1] HudPlates;

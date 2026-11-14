@@ -21,6 +21,7 @@
 #load "workshop.coax";
 #load "account.coax";   // your account's card, on a host that offers a login (sc_login_offer)
 #load "crash-ask.coax"; // the question after a crash, on a host that draws its own (sc_crash_ask, #13379)
+#load "../../everglade/hud/frame.coax";   // where the realm's own parts stand on the page, for the Worlds button (#13594)
 
 SC_LIST :: 0; SC_MAIN :: 1; SC_WORKSHOP :: 2; SC_RANGE :: 3; SC_EXPERIMENTAL :: 4; SC_BTCLAB :: 5;
 SC_WORLDS :: 5;
@@ -89,8 +90,10 @@ sc_row_at :: (s: []Scenes, x: f32, y: f32) -> int {
   for i: 0..<SC_WORLDS { b := sc_row(s, i); if x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height { return i; } }
   return -1;
 }
-// The Worlds button, under a scene's title. Over a realm, which has no title of ours, it sits at
-// the middle of the top edge, between the realm's own panels in the corners. An upright phone has
+// The Worlds button, under a scene's title. Over a realm, which has no title of ours, it stands where
+// the world's frame leaves room for it (everglade/hud/frame.coax eg_frame_host): the middle of the top
+// edge, between the realm's own panels in the corners, or on a small window where your plate reaches
+// the middle, under the map or under your plate (#13594). An upright phone has
 // no room there: the realm's name plate runs the width of its top (#13152). There the button is in
 // the band beside the notch, over the realm's picture, which begins under that band; a narrow screen
 // with no such band has it at the right, under the name plate.
@@ -98,7 +101,7 @@ SC_NARROW :: 600.0;      // points: narrower than this, a realm's top edge is it
 SC_NOTCH_BAND :: 44.0;   // points: a top inset this deep has room for the button beside the notch
 sc_back :: (s: []Scenes) -> HudBox {
   if sc_in_realm(s) {
-    if s[0].width >= SC_NARROW { return HudBox.{x = (s[0].width - 92) * 0.5, y = s[0].safe_top + 10, width = 92, height = 32}; }
+    if s[0].width >= SC_NARROW { b := eg_frame_host(s[0].width, s[0].height - s[0].safe_top, 92, 32); return HudBox.{x = b.x0, y = s[0].safe_top + b.y0, width = 92, height = 32}; }
     if s[0].safe_top >= SC_NOTCH_BAND { return HudBox.{x = 22 + s[0].safe_left, y = s[0].safe_top - 36, width = 92, height = 30}; }
     return HudBox.{x = s[0].width - 104, y = s[0].safe_top + 92, width = 92, height = 32};
   }
@@ -385,6 +388,10 @@ sc_camera :: (s: []Scenes, width: f32, height: f32, d: f32, out: []f32) -> bool 
   // the button alone: far fewer strokes than the list, and none of a card's
   #assert n > 0 && n < 400 && n < list;
   b := sc_back(s[..]); #assert b.x > 500 && b.x + b.width < 780 && b.y < 40 && sc_on_worlds(s[..], b.x + 4, b.y + 4) && !sc_on_worlds(s[..], 600, 400) && !sc_on_worlds(s[..], 40, 20);
+  // a small window (640 by 400): the realm's plate reaches the middle, so the button stands under its map
+  m := sc_draw(s[..], out[..], 640, 400, 2, 0.016); w := sc_back(s[..]);
+  #assert m > 0 && w.x == 640 - 14 - 92 && w.y > 150 && w.y + w.height < 400 && sc_on_worlds(s[..], w.x + 4, w.y + 4) && !sc_on_worlds(s[..], 320, 20);
+  _ := sc_draw(s[..], out[..], 1280, 800, 2, 0.016);
   sc_pointer(s[..], b.x + 4, b.y + 4, 0); sc_pointer(s[..], b.x + 4, b.y + 4, 2);
   #assert sc_scene(s[..]) == SC_LIST && !sc_on_worlds(s[..], b.x + 4, b.y + 4);
   // without the realm the same row opens the card, as before

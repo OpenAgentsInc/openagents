@@ -30,25 +30,14 @@ EgOwn :: struct {
   more: int;                // quests not shown here
   loot_y: f32;              // the dropped item's baseline
 }
-// The column for a page w by h (k device px a CSS px) with `quests` quests under way: where eg_world
-// leaves room under its map (everglade/hud/parts.coax eg_world: the same sizes). cover is an open
-// menu's box (eg_menu_cover).
+// The column for a page w by h (k device px a CSS px) with `quests` quests under way: where the
+// world's frame puts it (everglade/hud/frame.coax eg_frame: under the map, or on a short page between
+// your plate and the map). cover is an open menu's box (eg_menu_cover).
 eg_own_layout :: (w: f32, h: f32, k: f32, quests: int, cover: cc.HudPrim) -> EgOwn {
   g: EgOwn;
-  W := w / k; phone := W < 700 || h / k < 500;
-  mr := ifx phone then 40.0f32 else 70.0f32; top := ifx phone then 14.0f32 else 16.0f32;
-  edge := ifx phone then 8.0f32 else 14.0f32; wide := ifx phone then 210.0f32 else 240.0f32;
-  g.phone = phone;
-  if wide > W - 2 * edge { wide = W - 2 * edge; }
-  g.x1 = w - edge * k; g.x0 = g.x1 - wide * k;
-  y := (top + mr + 10 + mr + 56) * k;
-  // a short page (a phone on its side) has no height under the map: the column stands between your
-  // plate and the map, at the top, when there is width for it there
-  if h / k < 500 {
-    plate := cc.eg_world_portrait(w, h, k);
-    right := w - (2 * mr + 44 + 8) * k; left := plate.x1 + 10 * k;
-    if right - left >= 150 * k { g.x1 = right; g.x0 = ifx right - left > wide * k then right - wide * k else left; y = top * k; }
-  }
+  f := cc.eg_frame(w / k, h / k);
+  g.phone = f.phone;
+  g.x0 = f.col.x0 * k; g.x1 = f.col.x1 * k; y := f.col.y0 * k;
   g.bag = cc.hud_box(g.x1 - 92 * k, y, g.x1, y + 44 * k);
   g.coin_x = g.bag.x0 - 12 * k; g.coin_y = y + 28 * k;
   g.row_y = y + 44 * k + 16 * k; g.row_h = 44 * k;
@@ -88,7 +77,8 @@ eg_own :: (ui: [] cc.UitTrace, out: [] f32, at: int, g: EgOwn, k: f32, lines: []
   v = cc.hud_say(out, v, ifx b.touch then "BAG" else "BAG   B", (g.bag.x0 + g.bag.x1) * 0.5, (g.bag.y0 + g.bag.y1) * 0.5 + 4 * k, 11.5 * k, body, a, k, true);
   cb: [24] u8; cn := cc.eg_int(cb[..], 0, b.coin); cn = cc.eg_put(cb[..], cn, " coin");
   coin := cast(string) cb[0..<cn];
-  v = cc.hud_say(out, v, coin, g.coin_x - cc.face_width(coin, 14 * k * body.scale, body.face), g.coin_y, 14 * k, body, a, k, false);
+  cs := eg_own_fit(coin, 14 * k, body, g.coin_x - g.x0);   // smaller where the column is narrow: it stays inside it
+  v = cc.hud_say(out, v, coin, g.coin_x - cc.face_width(coin, cs * body.scale, body.face), g.coin_y, cs, body, a, k, false);
   room := g.x1 - g.x0 - 24 * k;
   for i: 0..<g.rows {
     y := g.row_y + f32(i) * g.row_h;
@@ -244,6 +234,10 @@ eg_bag :: (ui: [] cc.UitTrace, out: [] f32, at: int, g: EgBag, k: f32, lines: []
   v := eg_own(ui, out[..], 0, g, 1, lines[..], EgOwnLook.{coin = 25});
   #assert v > 0 && eg_own(ui, out[..], 0, g, 1, lines[..], EgOwnLook.{coin = 25, loot = "Wolf pelt", loot_a = 1}) > v;
   off := g; off.on = false; #assert eg_own(ui, out[..], 0, off, 1, lines[..], EgOwnLook.{}) == 0;
+  // a short page (640 by 400): the column between the plate and the map, its coin words inside it (#13594)
+  sp := eg_own_layout(640, 400, 1, 0, none); sv := eg_own(ui, out[..], 0, sp, 1, lines[0..<0], EgOwnLook.{coin = 0});
+  lo: f32 = 640; for q: 0..<sv { if out[q * cc.VERTEX_FLOATS] < lo { lo = out[q * cc.VERTEX_FLOATS]; } }
+  #assert sv > 0 && sp.x0 >= cc.eg_world_portrait(640, 400, 1).x1 && lo >= sp.x0 - 6;   // a glyph's box runs some 5 px past its ink
   body := cc.hud_text(cc.eg_tokens(), cc.HUD_TEXT_NUMBER);
   #assert eg_own_fit("Wolf", 14, body, 400) == 14 && eg_own_fit("A very long name of a thing that will not fit", 14, body, 60) == 14 * 0.7;
 }
