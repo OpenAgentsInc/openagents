@@ -22,7 +22,7 @@ final class ChatUITests:XCTestCase {
         let compact=XCTAttachment(screenshot:app.screenshot());compact.name="T3 compact native composer";compact.lifetime = .keepAlways;add(compact)
         send.tap()
         let reply=app.staticTexts["Hello from the account agent."]
-        XCTAssertTrue(reply.waitForExistence(timeout:20));XCTAssertEqual(editor.value as? String,"")
+        XCTAssertTrue(reply.waitForExistence(timeout:20));XCTAssertEqual(editor.value as? String,"");XCTAssertTrue(app.keyboards.firstMatch.exists)
         app.buttons["chat.back"].tap()
         let saved=app.buttons["Hello from iPhone"];XCTAssertTrue(saved.waitForExistence(timeout:15))
         app.terminate();app.launch();XCTAssertTrue(saved.waitForExistence(timeout:15));saved.tap()
