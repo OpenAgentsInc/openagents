@@ -1,0 +1,145 @@
+{
+  "recorded_at": "2026-11-14T09:18:50.341241+00:00",
+  "release": {
+    "version": "1.0.0",
+    "build": 1075,
+    "bundle": "com.openagents.app",
+    "source_commit": "a9e1321d3e525179cd1193903eaafa98e4409ba3",
+    "source_tag": "openagents-ios-1075",
+    "apple_state": "VALID",
+    "internal_beta_state": "IN_BETA_TESTING",
+    "verified_group": "Owner",
+    "runtime": "119ca4bd820e9768e1188f4926b77fd24f53adc0f27eec3fd8991abfa559d69d",
+    "ipa_bytes": 18700181,
+    "ipa_sha256": "f68ca6d0abe874a61a00b24c00d66ad71627e018af5c2f18e2e4b8735cb53967",
+    "bundled_world_packs": 0
+  },
+  "updates": {
+    "generation": 1,
+    "file_count": 20,
+    "envelope_sha256": "5210cd80184ca1b5b35fd4483cf015f4b777876363922915e42575743e80f4e6",
+    "origins": [
+      "https://updates.openagents.com",
+      "https://oa-updates-157437760789.us-central1.run.app"
+    ],
+    "verification": "Both endpoints returned the exact signed envelope and every archived artifact. The final-runtime fresh-install/relaunch UI regression passed; only highwater.cnu exists, with no pending/current package, resource directory or trial."
+  },
+  "assets": {
+    "public_origin": "https://storage.googleapis.com/openagentsgemini-native-world-assets/objects/",
+    "delivery": "Immutable SHA-256 objects; whole size/hash verification before readiness; required files before opening, optional images on demand, other optional media in background; verified cache reused offline.",
+    "profiles": {
+      "myrealm": {
+        "producer_identity": "8bc66b89dfac658600196f35866737ee37f218577cdc7a9a444d873405ccb4cb",
+        "files": 1427,
+        "required_bytes": 1665548,
+        "total_bytes": 34927573
+      },
+      "everglade2": {
+        "producer_identity": "693b3ff934ae9b7ead8d0d381a7146c16811ae5e9d835673f0d453ed99610a27",
+        "files": 1428,
+        "required_bytes": 59935304,
+        "total_bytes": 94749329
+      },
+      "splice-bots": {
+        "producer_identity": "f1301dffd7d02b0e8bba3c07fa5da1295801dafd2eb905070ece6d7508a17740",
+        "files": 26,
+        "required_bytes": 201048,
+        "total_bytes": 437144
+      },
+      "everglade": {
+        "producer_identity": "32741f8bc5aaff02f67f28f5a357e462f055189a6d70e7321125c0fe6854cbf2",
+        "files": 1427,
+        "required_bytes": 33983756,
+        "total_bytes": 67245781
+      }
+    }
+  },
+  "api": {
+    "production_revision": "oa-api-00160-d5m",
+    "staging_revision": "oa-api-staging-00222-bsq",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-api@sha256:788436c1663ccbf227f018a947a2a26d4ebb6feceb4b566a03e7d9bc0dc6994a",
+    "routes": [
+      "/api/chat/world/player/v1",
+      "/api/chat/world/complete/v1"
+    ],
+    "admission": "Verified email session binds its own guest player through the shared policy; creator/admin rights and the production invite gate remain in force."
+  },
+  "verification": {
+    "native_world_suite": {
+      "passed": 7,
+      "failed": 0,
+      "coverage": [
+        "Four native producers on Metal with actual texture readback and addresses above 32 bits",
+        "Cache, offline reuse, corruption, truncation, oversize and cancellation",
+        "Shared Builder and editor programs, typed revision fences, world agent/composer request and auth recovery"
+      ]
+    },
+    "installed_worlds_ui": {
+      "passed": 1,
+      "failed": 0,
+      "coverage": "Fresh app, real public asset delivery, no WebView, portrait New run/character/use and Enter Everglade touch paths; five screenshots inspected."
+    },
+    "fresh_install_live_updates_ui": {
+      "passed": 1,
+      "failed": 0,
+      "test": "StarterUITests/testIdenticalLivePackageDoesNotPrompt"
+    },
+    "account_world_api": {
+      "checks": 35,
+      "failed": 0,
+      "coverage": [
+        "Delivered-code email session with a local mail oracle",
+        "Account/player binding and cross-account refusal",
+        "Approved creator makes a private world, lists and reads it, applies a typed edit, rejects a stale revision, undoes, refuses a stranger",
+        "Existing metered world inference adapter with a local provider oracle"
+      ]
+    },
+    "coax_checks": {
+      "splice_bots": 1179,
+      "installed_profiles": 1,
+      "everglade_join": 10
+    },
+    "authority_mutants": {
+      "path_policy": {
+        "killed": 32,
+        "survived": 0
+      },
+      "worlds_policy": {
+        "killed": 57,
+        "survived": 0
+      },
+      "account_chat_policy": {
+        "killed": 47,
+        "survived": 0
+      }
+    },
+    "gates": [
+      "tools-check",
+      "wire-check",
+      "layer-check",
+      "components-check",
+      "everglade-parity",
+      "state-keep",
+      "agent-reference",
+      "wgsl",
+      "touched Coax suites"
+    ],
+    "qualification_source": "Native world tests and screenshots use product code 42cb61a03e. The released source adds framework version metadata and the owner-access note; the final-runtime update regression uses the released metadata/resources."
+  },
+  "scope": [
+    "Splice Bots and the main Everglade town play through the installed Metal host; Everglade Forest and saved-world template are installed producer profiles.",
+    "Shared world setup, document planning, feature board, make/revise, account world library and native editor sheet.",
+    "Inspector, tools, transforms, undo/redo, assets, files, revision/publishing controls when exposed by the realm, and revision-fenced world-agent edits through the existing metered Gemini 4 Hydrogen route."
+  ],
+  "bounds": [
+    "The generic Apple PageHost is not the canonical MetalRealm renderer; separate water/grass passes are not adopted here.",
+    "Downloaded realm scripts may be authored, built and assigned for web players; this iOS host does not execute them.",
+    "Code editing requires a server exposing that capability. Agent attachment-open requests are displayed; automatic attachment read-back is not installed.",
+    "No asset-cache eviction UI yet.",
+    "Native producers, SDK capabilities and shaders require a native build; compatible UI/editor/chat logic, inventories and content use signed Updates.",
+    "Production world creation requires an existing creator grant; the email account checked for the owner currently lacks one and the owner choice to enable it is pending.",
+    "Physical-device touch, motion, audio, suspension, offline reopening and real-account authoring acceptance remain in NEEDS_OWNER.md."
+  ],
+  "local_artifacts": "/Users/christopherdavid/.openagents/releases/openagents-ios-1075-final",
+  "release_validation_correction": "The first upload was refused for missing CFBundleShortVersionString on the four new frameworks. Project-level marketing metadata was added, every embedded bundle was checked, and the corrected IPA was accepted and processed VALID."
+}

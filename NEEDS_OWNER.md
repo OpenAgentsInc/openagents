@@ -2,7 +2,7 @@
 
 ## iPhone worlds acceptance, build 1075
 
-After TestFlight processes 1075, install it and open **Worlds**. Open Splice
+Install TestFlight 1075 (VALID, verified in Owner) and open **Worlds**. Open Splice
 Bots and Everglade; the first visit downloads their assets. Check portrait
 and landscape touch controls, sound after a gesture, suspension and reopening
 offline after an initial successful visit. Sign in with the existing email

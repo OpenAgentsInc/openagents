@@ -78,8 +78,9 @@ sheet above the Metal view. It retains the inspector, tools, transform fields,
 undo/redo, assets, files, actor plans, lists, revision history and publishing
 where a realm exposes them. The Agent sheet uses the account composer and
 component Markdown parser. Typed plans retain the turn's revision and follow
-the realm's normal batch and ownership path. Inference uses the existing team
-meter; the answer is saved before its edit is handed to the editor.
+the realm's normal batch and ownership path. Inference uses the existing
+metered Gemini 4 Hydrogen world route; the answer is saved before its edit
+is handed to the editor.
 
 This SDK uses the generic Apple PageHost, not the canonical MetalRealm
 renderer. Scene, shadow, particles, bloom and HUD are adopted; separate water
@@ -94,6 +95,16 @@ Focused schemes: `CoaxNativeWorlds` checks Metal readback, generated native
 programs, cache integrity and cancellation. `CoaxNativeWorldsLive` opens both
 games in the installed app through real public downloads. Physical acceptance
 is tracked in root `NEEDS_OWNER.md`.
+
+1075 is **VALID / IN_BETA_TESTING**, verified in the existing **Owner** group.
+The release is frozen at tag `openagents-ios-1075`; subsequent game commits on
+main are separate from this binary. Its 18.7 MB IPA contains no world packs.
+The generation-1 feed has all 20 released portable resources and inventories,
+verified against the archive through both public update endpoints. A fresh
+installed-app check and relaunch stored only its signed generation high-water
+mark, without a duplicate download or update prompt. See the
+[release evidence](../../docs/verification/2026-11-14-native-worlds-1075.json)
+for exact runtime, source, artifact, tests and current bounds.
 
 ## Build and check
 
