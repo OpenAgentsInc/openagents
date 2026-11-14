@@ -38,14 +38,25 @@ ea_config_read :: (raw:string,c:[]EaConfiguration)->bool #effects(all) {
   if c[0].nw<1 || c[0].nl<1 || !ea_id(cast(string)c[0].device[..],64) || !ea_id(cast(string)c[0].grant[..],64) {return false;}
   k:=jv_kind(j,jv_get(j,0,"enabled"));if k!=JV_TRUE && k!=JV_FALSE {return false;}c[0].enabled=k==JV_TRUE;return true;
 }
+// A turn's model and effort are optional: a request without them keeps the
+// conversation's (a new one starts on the computer's default), and peers
+// without this field still read every request that leaves them out.
 EaRequest :: struct {
   method:[32]u8;nm:int;workspace:[64]u8;nw:int;session:[128]u8;ns:int;
   command:[32]u8;nc:int;generation:int;revision:int;text:[16384]u8;nt:int;
   interaction:[128]u8;ni:int;allow:bool;before:int;expires:int;issued:int;
+  model:[64]u8;nmo:int;effort:[16]u8;nef:int;
 }
-EaSession :: struct {id:[128]u8;ni:int;workspace:[64]u8;nw:int;title:[256]u8;nt:int;managed:bool;control:[32]u8;nc:int;generation:int;revision:int;busy:bool;interaction:[128]u8;nr:int;updated:int;}
+EaSession :: struct {id:[128]u8;ni:int;workspace:[64]u8;nw:int;title:[256]u8;nt:int;managed:bool;control:[32]u8;nc:int;generation:int;revision:int;busy:bool;interaction:[128]u8;nr:int;updated:int;model:[64]u8;nmo:int;effort:[16]u8;nef:int;}
+// What the computer's Claude offers a turn: its models and effort levels.
+// Bit k of a model's ladder is level k; a model with no ladder takes no effort.
+// The default model's id is "default" (the CLI's own choice, no --model).
+EA_MODELS :: 12;EA_LEVELS :: 8;
+EaModel :: struct {id:[64]u8;ni:int;label:[48]u8;nl:int;ladder:int;}
+EaLevel :: struct {id:[16]u8;ni:int;label:[24]u8;nl:int;}
+EaOffer :: struct {models:[EA_MODELS]EaModel;n:int;levels:[EA_LEVELS]EaLevel;nv:int;default_level:int;}
 EaItem :: struct {id:[128]u8;ni:int;role:[16]u8;nr:int;text_at:int;nt:int;tool:[128]u8;nk:int;complete:bool;}
-EaView :: struct {ok:bool;host:[64]u8;nh:int;label:[80]u8;nl:int;method:[32]u8;nm:int;sessions:[128]EaSession;ns:int;items:[64]EaItem;ni:int;text:[49152]u8;text_n:int;error:[64]u8;ne:int;complete:bool;cursor:[128]u8;nc:int;command:[32]u8;nq:int;status:[32]u8;nt:int;epoch:[128]u8;np:int;}
+EaView :: struct {ok:bool;host:[64]u8;nh:int;label:[80]u8;nl:int;method:[32]u8;nm:int;sessions:[128]EaSession;ns:int;items:[64]EaItem;ni:int;text:[49152]u8;text_n:int;error:[64]u8;ne:int;complete:bool;cursor:[128]u8;nc:int;command:[32]u8;nq:int;status:[32]u8;nt:int;epoch:[128]u8;np:int;offer:EaOffer;}
 ea_text_put :: (v:[]EaView,text:string)->int #effects(all) {
   if text.count>16384 || v[0].text_n+text.count>v[0].text.count {return -1;}
   at:=v[0].text_n;for c,i:text {v[0].text[at+i]=c;}v[0].text_n+=text.count;return at;
@@ -56,15 +67,26 @@ ea_item_text :: (v:[]EaView,i:int)->string #effects(all) {
 }
 ea_copy :: (out:[]u8,s:string)->int #effects(all) {if s.count>out.count {return -1;}for c,i:s {out[i]=c;}return s.count;}
 ea_field :: (d:Jv,key:string,out:[]u8)->int #effects(all) {return jv_str(d,jv_get(d,0,key),out);}
+// A model or effort id: lowercase letters, digits, '.' and '-'.
+ea_choice :: (id:string)->bool #effects(all) {
+  if id.count==0 {return false;}
+  for c:id {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='.' || c=='-') {return false;}}return true;
+}
+// An optional choice field of object `at`: 0 when absent, -1 when present but not an id.
+ea_optional :: (d:Jv,at:int,key:string,out:[]u8)->int #effects(all) {
+  k:=jv_get(d,at,key);if k<0 {return 0;}n:=jv_str(d,k,out);
+  if n<1 || !ea_choice(cast(string)out[0..<n]) {return -1;}return n;
+}
 ea_read :: (raw:string,q:[]EaRequest)->bool #export_c #effects(all) {
   q[0]=EaRequest.{};nodes:[64]JvNode;d:[1]Jv;
   if raw.count>24576 || !jv_parse(d[..],raw,nodes[..]) || jv_kind(d[0],0)!=JV_OBJECT {return false;}
-  v:=d[0];fields:=[12]string.["method","workspace_id","session_id","command_id","generation","expected_revision","text","interaction_id","allow","before","expires_at_ms","issued_at_ms"];seen:[12]bool;
+  v:=d[0];fields:=[14]string.["method","workspace_id","session_id","command_id","generation","expected_revision","text","interaction_id","allow","before","expires_at_ms","issued_at_ms","model","effort"];seen:[14]bool;
   for i:0..<jv_len(v,0) {known:=false;k:=jv_key(v,jv_at(v,0,i));for key,j:fields {if k==key {if seen[j] {return false;}seen[j]=true;known=true;}}if !known {return false;}}
   q[0].nm=ea_field(v,"method",q[0].method[..]);q[0].nw=ea_field(v,"workspace_id",q[0].workspace[..]);
   q[0].ns=ea_field(v,"session_id",q[0].session[..]);q[0].nc=ea_field(v,"command_id",q[0].command[..]);
   q[0].nt=ea_field(v,"text",q[0].text[..]);q[0].ni=ea_field(v,"interaction_id",q[0].interaction[..]);
-  if q[0].nm<1 || q[0].nw<0 || q[0].ns<0 || q[0].nc<0 || q[0].nt<0 || q[0].ni<0 {return false;}
+  q[0].nmo=ea_optional(v,0,"model",q[0].model[..]);q[0].nef=ea_optional(v,0,"effort",q[0].effort[..]);
+  if q[0].nm<1 || q[0].nw<0 || q[0].ns<0 || q[0].nc<0 || q[0].nt<0 || q[0].ni<0 || q[0].nmo<0 || q[0].nef<0 {return false;}
   q[0].generation=jv_int(v,jv_get(v,0,"generation"),-1);q[0].revision=jv_int(v,jv_get(v,0,"expected_revision"),-1);
   q[0].before=jv_int(v,jv_get(v,0,"before"),-1);b:=jv_kind(v,jv_get(v,0,"allow"));
   q[0].expires=jv_int(v,jv_get(v,0,"expires_at_ms"),-1);q[0].issued=jv_int(v,jv_get(v,0,"issued_at_ms"),-1);
@@ -80,7 +102,9 @@ ea_write :: (q:[]EaRequest,out:[]u8)->int #effects(all) {
   jo_key(o[..],"generation");jo_int(o[..],q[0].generation);jo_key(o[..],"expected_revision");jo_int(o[..],q[0].revision);
   jo_key(o[..],"text");jo_str(o[..],cast(string)q[0].text[0..<q[0].nt]);
   jo_key(o[..],"interaction_id");jo_str(o[..],cast(string)q[0].interaction[0..<q[0].ni]);
-  jo_key(o[..],"allow");jo_bool(o[..],q[0].allow);jo_key(o[..],"before");jo_int(o[..],q[0].before);jo_key(o[..],"expires_at_ms");jo_int(o[..],q[0].expires);jo_key(o[..],"issued_at_ms");jo_int(o[..],q[0].issued);jo_end(o[..]);
+  jo_key(o[..],"allow");jo_bool(o[..],q[0].allow);jo_key(o[..],"before");jo_int(o[..],q[0].before);jo_key(o[..],"expires_at_ms");jo_int(o[..],q[0].expires);jo_key(o[..],"issued_at_ms");jo_int(o[..],q[0].issued);
+  if q[0].nmo>0 {jo_key(o[..],"model");jo_str(o[..],cast(string)q[0].model[0..<q[0].nmo]);}
+  if q[0].nef>0 {jo_key(o[..],"effort");jo_str(o[..],cast(string)q[0].effort[0..<q[0].nef]);}jo_end(o[..]);
   return ifx o[0].bad then -1 else o[0].n;
 }
 ea_read_body :: (method:string,id:string,before:string,out:[]u8)->int #export_c #effects(all) {
@@ -94,7 +118,8 @@ ea_summary :: (o:[]Jo,s_in:EaSession) #effects(all) {
   jo_obj(o);jo_key(o,"session_id");jo_str(o,cast(string)s.id[0..<s.ni]);jo_key(o,"workspace_id");jo_str(o,cast(string)s.workspace[0..<s.nw]);
   jo_key(o,"title");jo_str(o,cast(string)s.title[0..<s.nt]);jo_key(o,"origin");jo_str(o,ifx s.managed then "managed" else "observed-native");
   jo_key(o,"control");jo_str(o,cast(string)s.control[0..<s.nc]);jo_key(o,"generation");jo_int(o,s.generation);jo_key(o,"revision");jo_int(o,s.revision);
-  jo_key(o,"busy");jo_bool(o,s.busy);jo_key(o,"interaction_id");jo_str(o,cast(string)s.interaction[0..<s.nr]);jo_key(o,"updated_at_ms");jo_int(o,s.updated);jo_end(o);
+  jo_key(o,"busy");jo_bool(o,s.busy);jo_key(o,"interaction_id");jo_str(o,cast(string)s.interaction[0..<s.nr]);jo_key(o,"updated_at_ms");jo_int(o,s.updated);
+  if s.nmo>0 {jo_key(o,"model");jo_str(o,cast(string)s.model[0..<s.nmo]);}if s.nef>0 {jo_key(o,"effort");jo_str(o,cast(string)s.effort[0..<s.nef]);}jo_end(o);
 }
 ea_item :: (o:[]Jo,m_in:EaItem,text:string) #effects(all) {
   m:=m_in;
@@ -108,8 +133,36 @@ ea_view_write :: (v:[]EaView,out:[]u8)->int #effects(all) {
   jo_key(o[..],"items");jo_arr(o[..]);for i:0..<v[0].ni {ea_item(o[..],v[0].items[i],ea_item_text(v,i));}jo_end(o[..]);
   jo_key(o[..],"error");jo_str(o[..],cast(string)v[0].error[0..<v[0].ne]);jo_key(o[..],"complete");jo_bool(o[..],v[0].complete);
   jo_key(o[..],"next_cursor");jo_str(o[..],cast(string)v[0].cursor[0..<v[0].nc]);jo_key(o[..],"command_id");jo_str(o[..],cast(string)v[0].command[0..<v[0].nq]);
-  jo_key(o[..],"command_status");jo_str(o[..],cast(string)v[0].status[0..<v[0].nt]);jo_key(o[..],"source_epoch");jo_str(o[..],cast(string)v[0].epoch[0..<v[0].np]);jo_end(o[..]);
+  jo_key(o[..],"command_status");jo_str(o[..],cast(string)v[0].status[0..<v[0].nt]);jo_key(o[..],"source_epoch");jo_str(o[..],cast(string)v[0].epoch[0..<v[0].np]);
+  if v[0].offer.n>0 {ea_offer_write(o[..],v[..]);}jo_end(o[..]);
   return ifx o[0].bad then -1 else o[0].n;
+}
+ea_offer_write :: (o:[]Jo,v:[]EaView) #effects(all) {
+  jo_key(o,"efforts");jo_arr(o);
+  for i:0..<v[0].offer.nv {l:=v[0].offer.levels[i];jo_obj(o);jo_key(o,"effort_id");jo_str(o,cast(string)l.id[0..<l.ni]);jo_key(o,"display_name");jo_str(o,cast(string)l.label[0..<l.nl]);jo_end(o);}
+  jo_end(o);d:=v[0].offer.default_level;
+  jo_key(o,"default_effort");jo_str(o,ifx d>=0 && d<v[0].offer.nv then cast(string)v[0].offer.levels[d].id[0..<v[0].offer.levels[d].ni] else "");
+  jo_key(o,"models");jo_arr(o);
+  for i:0..<v[0].offer.n {m:=v[0].offer.models[i];jo_obj(o);jo_key(o,"model_id");jo_str(o,cast(string)m.id[0..<m.ni]);jo_key(o,"display_name");jo_str(o,cast(string)m.label[0..<m.nl]);
+    jo_key(o,"efforts");jo_arr(o);for k:0..<v[0].offer.nv {if (m.ladder & (1<<k))!=0 {l:=v[0].offer.levels[k];jo_str(o,cast(string)l.id[0..<l.ni]);}}jo_end(o);jo_end(o);}
+  jo_end(o);
+}
+// The offer is optional (an older computer sends none); one that is present is whole.
+ea_offer_read :: (j:Jv,v:[]EaView)->bool #effects(all) {
+  models:=jv_get(j,0,"models");if models<0 {return true;}
+  levels:=jv_get(j,0,"efforts");f:=v[0].offer.levels[..];
+  if jv_kind(j,models)!=JV_ARRAY || jv_kind(j,levels)!=JV_ARRAY || jv_len(j,models)>EA_MODELS || jv_len(j,levels)>EA_LEVELS {return false;}
+  v[0].offer.nv=jv_len(j,levels);v[0].offer.default_level= -1;def:[16]u8;nd:=ea_optional(j,0,"default_effort",def[..]);
+  for i:0..<v[0].offer.nv {row:=jv_at(j,levels,i);l:=v[0].offer.levels[i];l.ni=ea_optional(j,row,"effort_id",l.id[..]);l.nl=jv_str(j,jv_get(j,row,"display_name"),l.label[..]);
+    if l.ni<1 || l.nl<1 {return false;}v[0].offer.levels[i]=l;if nd>0 && cast(string)l.id[0..<l.ni]==cast(string)def[0..<nd] {v[0].offer.default_level=i;}}
+  v[0].offer.n=jv_len(j,models);
+  for i:0..<v[0].offer.n {row:=jv_at(j,models,i);m:=v[0].offer.models[i];m.ni=ea_optional(j,row,"model_id",m.id[..]);m.nl=jv_str(j,jv_get(j,row,"display_name"),m.label[..]);
+    if m.ni<1 || m.nl<1 {return false;}list:=jv_get(j,row,"efforts");if jv_kind(j,list)!=JV_ARRAY {return false;}
+    for k:0..<jv_len(j,list) {id:[16]u8;n:=jv_str(j,jv_at(j,list,k),id[..]);found:= -1;
+      for x:0..<v[0].offer.nv {l:=v[0].offer.levels[x];if n>0 && cast(string)l.id[0..<l.ni]==cast(string)id[0..<n] {found=x;}}
+      if found<0 {return false;}m.ladder|=1<<found;}
+    v[0].offer.models[i]=m;}
+  return true;
 }
 ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   v[0]=EaView.{};nodes:[4096]JvNode;d:[1]Jv;if raw.count>1048576 || !jv_parse(d[..],raw,nodes[..]) {return false;}j:=d[0];
@@ -127,12 +180,14 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
     origin:=jv_raw(j,jv_get(j,row,"origin"));if origin!="managed" && origin!="observed-native" {return false;}s.managed=origin=="managed";
     s.nc=jv_str(j,jv_get(j,row,"control"),s.control[..]);s.nr=jv_str(j,jv_get(j,row,"interaction_id"),s.interaction[..]);
     s.generation=jv_int(j,jv_get(j,row,"generation"),-1);s.revision=jv_int(j,jv_get(j,row,"revision"),-1);s.updated=jv_int(j,jv_get(j,row,"updated_at_ms"),-1);s.busy=jv_bool(j,jv_get(j,row,"busy"));
-    if s.ni<1 || s.nw<0 || s.nt<0 || s.nc<1 || s.nr<0 || s.generation<0 || s.revision<0 || s.updated<0 {return false;}v[0].sessions[i]=s;
+    s.nmo=ea_optional(j,row,"model",s.model[..]);s.nef=ea_optional(j,row,"effort",s.effort[..]);
+    if s.ni<1 || s.nw<0 || s.nt<0 || s.nc<1 || s.nr<0 || s.generation<0 || s.revision<0 || s.updated<0 || s.nmo<0 || s.nef<0 {return false;}v[0].sessions[i]=s;
   }
   for i:0..<v[0].ni {m:=v[0].items[i];row:=jv_at(j,items,i);
     m.ni=jv_str(j,jv_get(j,row,"item_id"),m.id[..]);m.nr=jv_str(j,jv_get(j,row,"role"),m.role[..]);m.text_at=v[0].text_n;end:=ifx v[0].text_n+16384<v[0].text.count then v[0].text_n+16384 else v[0].text.count;m.nt=jv_str(j,jv_get(j,row,"text"),v[0].text[v[0].text_n..<end]);m.nk=jv_str(j,jv_get(j,row,"tool_name"),m.tool[..]);m.complete=jv_bool(j,jv_get(j,row,"complete"));
     if m.ni<1 || m.nr<1 || m.nt<0 || m.nk<0 {return false;}v[0].text_n+=m.nt;v[0].items[i]=m;
   }
+  if !ea_offer_read(j,v) {return false;}
   v[0].ok=true;return true;
 }
 
@@ -159,4 +214,28 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   #assert !ea_read("{\"method\":\"RunCommand\"}",r[..]);
   #assert !ea_read("{\"method\":\"ReadSession\",\"method\":\"SendMessage\"}",r[..]);
   #assert !ea_read("[]",r[..]);
+}
+
+#test "a turn's model and effort are optional, bounded ids, and absent ones are never written" {
+  q:[1]EaRequest;q[0].nm=ea_copy(q[0].method[..],"OpenSession");q[0].nt=ea_copy(q[0].text[..],"hi");
+  out:[24576]u8;n:=ea_write(q[..],out[..]);r:[1]EaRequest;
+  #assert n>0 && ea_read(cast(string)out[0..<n],r[..]) && r[0].nmo==0 && r[0].nef==0;
+  plain:=cast(string)out[0..<n];found:=false;for i:0..<plain.count-7 {if cast(string)plain[i..<i+7]=="\"model\"" {found=true;}}#assert !found;
+  q[0].nmo=ea_copy(q[0].model[..],"claude-opus-5-5");q[0].nef=ea_copy(q[0].effort[..],"xhigh");n=ea_write(q[..],out[..]);
+  #assert n>0 && ea_read(cast(string)out[0..<n],r[..]) && cast(string)r[0].model[0..<r[0].nmo]=="claude-opus-5-5" && cast(string)r[0].effort[0..<r[0].nef]=="xhigh";
+  #assert !ea_read("{\"method\":\"OpenSession\",\"workspace_id\":\"default\",\"session_id\":\"\",\"command_id\":\"\",\"generation\":0,\"expected_revision\":0,\"text\":\"hi\",\"interaction_id\":\"\",\"allow\":false,\"before\":0,\"expires_at_ms\":0,\"issued_at_ms\":0,\"model\":\"--dangerously\\nskip\"}",r[..]);
+  #assert !ea_read("{\"method\":\"OpenSession\",\"workspace_id\":\"default\",\"session_id\":\"\",\"command_id\":\"\",\"generation\":0,\"expected_revision\":0,\"text\":\"hi\",\"interaction_id\":\"\",\"allow\":false,\"before\":0,\"expires_at_ms\":0,\"issued_at_ms\":0,\"effort\":\"\"}",r[..]);
+}
+#test "a computer's offer and a session's choice survive the view codec; an offer naming an unknown effort is refused" {
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nm=ea_copy(v[0].method[..],"ListSessions");
+  o:=v[0].offer;o.nv=2;o.levels[0].ni=ea_copy(o.levels[0].id[..],"low");o.levels[0].nl=ea_copy(o.levels[0].label[..],"Low");o.levels[1].ni=ea_copy(o.levels[1].id[..],"high");o.levels[1].nl=ea_copy(o.levels[1].label[..],"High");o.default_level=1;
+  o.n=2;o.models[0].ni=ea_copy(o.models[0].id[..],"default");o.models[0].nl=ea_copy(o.models[0].label[..],"Default");o.models[0].ladder=3;
+  o.models[1].ni=ea_copy(o.models[1].id[..],"claude-haiku-4-5");o.models[1].nl=ea_copy(o.models[1].label[..],"Haiku 4.5");v[0].offer=o;
+  v[0].ns=1;v[0].sessions[0].ni=ea_copy(v[0].sessions[0].id[..],"s1");v[0].sessions[0].nc=ea_copy(v[0].sessions[0].control[..],"available");v[0].sessions[0].nmo=ea_copy(v[0].sessions[0].model[..],"default");v[0].sessions[0].nef=ea_copy(v[0].sessions[0].effort[..],"high");
+  out:[16384]u8;n:=ea_view_write(v[..],out[..]);r:[1]EaView;#assert n>0 && ea_view_read(cast(string)out[0..<n],r[..]);
+  #assert r[0].offer.n==2 && r[0].offer.nv==2 && r[0].offer.default_level==1 && r[0].offer.models[0].ladder==3 && r[0].offer.models[1].ladder==0;
+  #assert cast(string)r[0].sessions[0].effort[0..<r[0].sessions[0].nef]=="high";
+  #assert ea_view_read("{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"\",\"method\":\"ListSessions\",\"sessions\":[],\"items\":[],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\",\"efforts\":[{\"effort_id\":\"low\",\"display_name\":\"Low\"}],\"default_effort\":\"low\",\"models\":[{\"model_id\":\"x\",\"display_name\":\"X\",\"efforts\":[\"low\"]}]}",r[..]) && r[0].offer.models[0].ladder==1;
+  #assert !ea_view_read("{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"\",\"method\":\"ListSessions\",\"sessions\":[],\"items\":[],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\",\"efforts\":[{\"effort_id\":\"low\",\"display_name\":\"Low\"}],\"default_effort\":\"low\",\"models\":[{\"model_id\":\"x\",\"display_name\":\"X\",\"efforts\":[\"max\"]}]}",r[..]);
+  v[0].offer=EaOffer.{};n=ea_view_write(v[..],out[..]);#assert n>0 && ea_view_read(cast(string)out[0..<n],r[..]) && r[0].offer.n==0;
 }

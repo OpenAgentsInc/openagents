@@ -7,8 +7,16 @@
       "bytes": "{\"method\":\"OpenSession\",\"workspace_id\":\"default\",\"session_id\":\"22222222222222222222222222222222\",\"command_id\":\"11111111111111111111111111111111\",\"generation\":0,\"expected_revision\":0,\"text\":\"Hello\\nClaude\",\"interaction_id\":\"\",\"allow\":false,\"before\":0,\"expires_at_ms\":1700000300000,\"issued_at_ms\":1700000000000}"
     },
     {
+      "kind": "request",
+      "bytes": "{\"method\":\"SendMessage\",\"workspace_id\":\"default\",\"session_id\":\"22222222222222222222222222222222\",\"command_id\":\"33333333333333333333333333333333\",\"generation\":1,\"expected_revision\":2,\"text\":\"Continue\",\"interaction_id\":\"\",\"allow\":false,\"before\":0,\"expires_at_ms\":1700000300000,\"issued_at_ms\":1700000000000,\"model\":\"claude-opus-5-5\",\"effort\":\"xhigh\"}"
+    },
+    {
       "kind": "view",
       "bytes": "{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"Mac\",\"method\":\"ReadSession\",\"sessions\":[{\"session_id\":\"22222222222222222222222222222222\",\"workspace_id\":\"default\",\"title\":\"Hello Claude\",\"origin\":\"managed\",\"control\":\"available\",\"generation\":1,\"revision\":2,\"busy\":false,\"interaction_id\":\"\",\"updated_at_ms\":1700000000000}],\"items\":[{\"item_id\":\"0\",\"role\":\"assistant\",\"text\":\"**Hello**, Claude.\",\"tool_name\":\"\",\"complete\":true}],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\"}"
+    },
+    {
+      "kind": "view",
+      "bytes": "{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"Mac\",\"method\":\"ListSessions\",\"sessions\":[{\"session_id\":\"22222222222222222222222222222222\",\"workspace_id\":\"default\",\"title\":\"Hello Claude\",\"origin\":\"managed\",\"control\":\"available\",\"generation\":1,\"revision\":2,\"busy\":false,\"interaction_id\":\"\",\"updated_at_ms\":1700000000000,\"model\":\"claude-opus-5-5\",\"effort\":\"xhigh\"}],\"items\":[],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\",\"efforts\":[{\"effort_id\":\"low\",\"display_name\":\"Low\"},{\"effort_id\":\"xhigh\",\"display_name\":\"X-High\"}],\"default_effort\":\"xhigh\",\"models\":[{\"model_id\":\"default\",\"display_name\":\"Default\",\"efforts\":[\"low\",\"xhigh\"]},{\"model_id\":\"claude-opus-5-5\",\"display_name\":\"Opus 5.5\",\"efforts\":[\"low\",\"xhigh\"]},{\"model_id\":\"claude-haiku-4-5\",\"display_name\":\"Haiku 4.5\",\"efforts\":[]}]}"
     },
     {
       "kind": "configuration",

@@ -18,6 +18,12 @@ message RuntimeRequest {
   int64 before = 10 [json_name = "before"];
   int64 expires_at_ms = 11 [json_name = "expires_at_ms"]; // max five-minute logical intent, unchanged on retry
   int64 issued_at_ms = 12 [json_name = "issued_at_ms"]; // host allows 60 seconds of caller skew; reads use zero
+  // OpenSession/SendMessage only. Absent: the conversation keeps its own (a new one
+  // starts on the computer's default). Present: a model_id/effort_id from the view's
+  // offer, [a-z0-9.-]; one the computer does not offer is refused model_unavailable.
+  // Writers omit them when unset, so a request without them is unchanged on the wire.
+  optional string model = 13 [json_name = "model"];
+  optional string effort = 14 [json_name = "effort"];
 }
 message RuntimeItem {
   string item_id = 1 [json_name = "item_id"];
@@ -37,6 +43,19 @@ message RuntimeSession {
   bool busy = 8 [json_name = "busy"];
   string interaction_id = 9 [json_name = "interaction_id"];
   int64 updated_at_ms = 10 [json_name = "updated_at_ms"];
+  optional string model = 11 [json_name = "model"]; // the managed conversation's model_id
+  optional string effort = 12 [json_name = "effort"]; // its effort_id; absent for a model with none
+}
+// One effort level the computer's Claude takes.
+message RuntimeEffort {
+  string effort_id = 1 [json_name = "effort_id"]; // low, medium, high, xhigh, max, ultracode, ultrathink
+  string display_name = 2 [json_name = "display_name"];
+}
+// One model the computer's Claude starts a turn on; "default" is the CLI's own choice.
+message RuntimeModel {
+  string model_id = 1 [json_name = "model_id"];
+  string display_name = 2 [json_name = "display_name"];
+  repeated string efforts = 3 [json_name = "efforts"]; // effort_ids it takes, each listed in the view's efforts
 }
 message RuntimeView {
   string schema = 1 [json_name = "schema"]; // openagents.environment.runtime.v1alpha1
@@ -51,6 +70,10 @@ message RuntimeView {
   string command_id = 10 [json_name = "command_id"];
   string command_status = 11 [json_name = "command_status"]; // accepted, completed, unknown, refused
   string source_epoch = 12 [json_name = "source_epoch"]; // observed page cut; never a SESS generation
+  // The offer: written together or not at all (an older computer sends none).
+  repeated RuntimeEffort efforts = 13 [json_name = "efforts"]; // at most 8
+  optional string default_effort = 14 [json_name = "default_effort"];
+  repeated RuntimeModel models = 15 [json_name = "models"]; // at most 12
 }
 // Private local configuration; never returned in a RuntimeView.
 message RuntimeConfiguration {

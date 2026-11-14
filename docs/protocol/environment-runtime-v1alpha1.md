@@ -58,6 +58,20 @@ Terminal transcripts are inert and read only; the app starts a separately
 owned managed conversation to control Claude. It never silently switches to
 hosted inference. Provider credentials stay on the chosen computer.
 
+Every view from an updated computer carries its Claude offer: the models a
+new conversation can start on (from the engine's catalog, with `default`
+for the CLI's own choice) and the effort levels each one takes. The phone and
+desktop clients show a **Model** and an **Effort** picker above the composer
+from that offer, and `OpenSession` and `SendMessage` name the chosen
+`model` and `effort`. The computer starts Claude Code with `--model` and
+`--effort`. On a running conversation it switches the model in place, and a
+new effort restarts the CLI with that message, resuming the session. The
+computer refuses a model or effort it does not offer with
+`model_unavailable`. Each managed session summary names its current model
+and effort. Writers leave both fields out when nothing is chosen. A computer
+that sends no offer gets requests without them, and its clients show no
+pickers.
+
 The service retains four managed process slots. Capacity refuses explicitly.
 Closing/quit detaches the client. A service restart recovers saved histories
 as observe-only/unknown instead of guessing that an old native writer can

@@ -167,7 +167,7 @@ es_rpc_call :: (args:[]Args)->int #effects(all) {
   tool_errln("Environment did not return an admitted reply. No command is automatically replayed.");return 3;
 }
 es_snapshot :: (h:[]HsHost,q:[]EaRequest,grant:string,v:[]EaView) #effects(all) {
-  e:=h[0].environment[..];v[0]=EaView.{};v[0].nh=ea_copy(v[0].host[..],cast(string)h[0].xhex[..]);
+  e:=h[0].environment[..];v[0]=EaView.{};v[0].nh=ea_copy(v[0].host[..],cast(string)h[0].xhex[..]);es_offer(v);
   c:=e[0].configuration[..];v[0].nl=ea_copy(v[0].label[..],cast(string)c[0].label[0..<c[0].nl]);v[0].nm=ea_copy(v[0].method[..],cast(string)q[0].method[0..<q[0].nm]);v[0].complete=true;
   for i:0..<ES_SLOTS {g:=e[0].slots[i].grant;if e[0].slots[i].occupied && cast(string)g[..]==grant {v[0].sessions[v[0].ns]=e[0].slots[i].summary;v[0].ns+=1;}}
   id:=cast(string)q[0].session[0..<q[0].ns];k:=es_find(e,id,grant);if k<0 {return;}
@@ -209,6 +209,47 @@ es_project :: (s:[]Session,q:[]EaRequest,v:[]EaView) #effects(all) {
 }
 
 es_refuse :: (v:[]EaView,code:string) #effects(all) {v[0].ne=ea_copy(v[0].error[..],code);v[0].complete=false;}
+// What a new conversation can start on: the engine's own catalog (the one a
+// fresh slot starts with), its unnamed CLI default named "default".
+es_offer :: (v:[]EaView) #effects(all) {
+  c:=[1]AgCatalog.[claude_catalog()];o:=v[0].offer;o=EaOffer.{};
+  o.nv=ifx c[0].levels<EA_LEVELS then c[0].levels else EA_LEVELS;o.default_level=c[0].default_level;
+  for k:0..<o.nv {o.levels[k].ni=ea_copy(o.levels[k].id[..],c[0].level_id[k]);o.levels[k].nl=ea_copy(o.levels[k].label[..],c[0].level_label[k]);}
+  for k:0..<c[0].n {if o.n>=EA_MODELS {break;}m:=o.models[o.n];
+    m.ni=ea_copy(m.id[..],ifx c[0].id[k].count==0 then "default" else c[0].id[k]);m.nl=ea_copy(m.label[..],ifx c[0].id[k].count==0 then "Default" else c[0].label[k]);m.ladder=c[0].ladder[k]&((1<<o.nv)-1);
+    if m.ni>0 && m.nl>0 {o.models[o.n]=m;o.n+=1;}}
+  v[0].offer=o;
+}
+// The engine's model and level for a turn's choice (absent: unchanged); false
+// when this computer's Claude does not offer it.
+es_choice :: (cat:[]AgCatalog,q:[]EaRequest,model:[]int,level:[]int)->bool #effects(all) {
+  if q[0].nmo>0 {
+    id:=cast(string)q[0].model[0..<q[0].nmo];k:=claude_find(cat,ifx id=="default" then "" else id);
+    if k<0 && id=="default" {k=0;}if k<0 {return false;}model[0]=k;
+  }
+  if q[0].nef>0 {
+    id:=cast(string)q[0].effort[0..<q[0].nef];k:= -1;for i:0..<cat[0].levels {if cat[0].level_id[i]==id {k=i;}}
+    if k<0 || (cat[0].ladder[model[0]]&(1<<k))==0 {return false;}level[0]=k;
+  }
+  return true;
+}
+// The conversation's model and effort as the views name them.
+es_mark :: (slot:[]EsSlot) #effects(all) {
+  e:=slot[0].engine[..];id:=e[0].cat[0].id[e[0].model];lv:=ag_level_for(e[0].cat[..],e[0].model,e[0].effort);
+  slot[0].summary.nmo=ea_copy(slot[0].summary.model[..],ifx id.count==0 then "default" else id);if slot[0].summary.nmo<0 {slot[0].summary.nmo=0;}
+  slot[0].summary.nef=ifx lv>=0 then ea_copy(slot[0].summary.effort[..],e[0].cat[0].level_id[lv]) else 0;if slot[0].summary.nef<0 {slot[0].summary.nef=0;}
+}
+#test "a turn runs on the offered model and effort and refuses one this computer does not offer" {
+  cat:=[1]AgCatalog.[claude_catalog()];q:[1]EaRequest;m:=[1]int.[0];l:=[1]int.[2];
+  #assert es_choice(cat[..],q[..],m[..],l[..]) && m[0]==0 && l[0]==2;
+  q[0].nmo=ea_copy(q[0].model[..],"claude-opus-5-5");q[0].nef=ea_copy(q[0].effort[..],"max");
+  #assert es_choice(cat[..],q[..],m[..],l[..]) && cat[0].id[m[0]]=="claude-opus-5-5" && cat[0].level_id[l[0]]=="max";
+  q[0].nmo=ea_copy(q[0].model[..],"claude-haiku-4-5");m[0]=0;#assert !es_choice(cat[..],q[..],m[..],l[..]);
+  q[0].nef=0;#assert es_choice(cat[..],q[..],m[..],l[..]) && cat[0].id[m[0]]=="claude-haiku-4-5";
+  q[0].nmo=ea_copy(q[0].model[..],"claude-unknown-9");#assert !es_choice(cat[..],q[..],m[..],l[..]);
+  q[0].nmo=ea_copy(q[0].model[..],"default");#assert es_choice(cat[..],q[..],m[..],l[..]) && m[0]==0;
+  v:[1]EaView;es_offer(v[..]);#assert v[0].offer.n==cat[0].n && cast(string)v[0].offer.models[0].id[0..<v[0].offer.models[0].ni]=="default" && v[0].offer.nv==7;
+}
 es_saved_summary :: (h:[]HsHost,id:string,grant:string,summary:[]EaSession)->bool #effects(all) {
   if !ea_id(id,32) || !ea_id(grant,64) {return false;}
   slot:[1]EsSlot;slot[0].summary.ni=ea_copy(slot[0].summary.id[..],id);ncopy:=ea_copy(slot[0].grant[..],grant);
@@ -291,11 +332,15 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
     home:[1024]u8;exe:[1200]u8;p:=fs_join(proc_getenv("HOME",home[..]),".local/bin/claude",exe[..]);if fs_kind(p)==FS_FILE {engine[0].claude_n=ea_copy(engine[0].claude[..],p);}
     summary:=slot[0].summary;summary.ni=ea_copy(summary.id[..],id);summary.nw=ea_copy(summary.workspace[..],"default");summary.nt=ea_copy(summary.title[..],hs_cut(cast(string)q[0].text[0..<q[0].nt],200));
     summary.managed=true;summary.nc=ea_copy(summary.control[..],"available");summary.generation=cxproc_wall_us()/1000;slot[0].summary=summary;
+    m:=[1]int.[engine[0].model];l:=[1]int.[engine[0].effort];
+    if !es_choice(engine[0].cat[..],q,m[..],l[..]) {slot[0].occupied=false;es_refuse(v,"model_unavailable");return;}
   } else {
     if k<0 {es_refuse(v,"not_found");return;}
     slot:=e[0].slots[k..<k+1];summary:=slot[0].summary;
     if slot[0].failed || cast(string)summary.control[0..<summary.nc]!="available" || ea_command(q[0].generation,summary.generation,q[0].revision,summary.revision,method=="SendMessage" && summary.busy,false)!=0 {es_refuse(v,"conflict");return;}
     if method=="SendMessage" && !ea_text(cast(string)q[0].text[0..<q[0].nt]) {es_refuse(v,"malformed");return;}
+    m:=[1]int.[slot[0].engine[0].model];l:=[1]int.[slot[0].engine[0].effort];
+    if method=="SendMessage" && !es_choice(slot[0].engine[0].cat[..],q,m[..],l[..]) {es_refuse(v,"model_unavailable");return;}
     if method=="RespondInteraction" && (summary.nr==0 || cast(string)summary.interaction[0..<summary.nr]!=cast(string)q[0].interaction[0..<q[0].ni]) {es_refuse(v,"interaction_expired");return;}
   }
   slot:=e[0].slots[k..<k+1];
@@ -303,7 +348,12 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
   // never automatically dispatched again, including after a service restart.
   if !fs_replace_durable(file,cast(string)command[0..<n]) {if method=="OpenSession" {slot[0].occupied=false;}es_refuse(v,"storage_unavailable");return;}
   slot[0].summary.revision+=1;
-  if method=="OpenSession" || method=="SendMessage" {e_send(slot[0].engine[..],slot[0].s[..],cast(string)q[0].text[0..<q[0].nt]);}
+  if method=="OpenSession" || method=="SendMessage" {
+    // The chosen model reaches a running CLI now; a new effort restarts it with this message.
+    engine:=slot[0].engine[..];m:=[1]int.[engine[0].model];l:=[1]int.[engine[0].effort];
+    if es_choice(engine[0].cat[..],q,m[..],l[..]) {if m[0]!=engine[0].model {e_set_model(engine,m[0]);}engine[0].effort=l[0];}
+    es_mark(slot);e_send(engine,slot[0].s[..],cast(string)q[0].text[0..<q[0].nt]);
+  }
   else if method=="StopTurn" {e_stop(slot[0].engine[..],slot[0].s[..]);}
   else if method=="RespondInteraction" {e_answer(slot[0].engine[..],slot[0].s[..],q[0].allow);}
   slot[0].summary.busy=slot[0].s[0].live;slot[0].summary.nr=0;es_tick(h);es_snapshot(h,q,grant,v);
