@@ -181,7 +181,7 @@ def report(path, max_tris=0):
             d = head(j["ball_l"]) - head(j["foot_l"]); d.z = 0
             if d.length > 1e-4:
                 d.normalize(); sk["faces"] = [round(d.x, 3), round(d.y, 3)]
-                sk["turn_to_front_deg"] = round(math.degrees(math.atan2(d.x, -d.y)), 1)   # 0: it faces -y, Blender's front
+                sk["turn_to_front_deg"] = round(math.degrees(-math.atan2(d.x, -d.y)), 1)   # the turn about z that faces it to -y, Blender's front; 0: it does
         if "upperarm_l" in j and "lowerarm_l" in j:
             d = head(j["lowerarm_l"]) - head(j["upperarm_l"])
             sk["arm_below_level_deg"] = round(math.degrees(math.atan2(-d.z, abs(d.x))), 1)

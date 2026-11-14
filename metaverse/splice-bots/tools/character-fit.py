@@ -54,7 +54,7 @@ if missing: raise SystemExit("character-fit: joints not found: " + ", ".join(mis
 hw = lambda n: H.matrix_world @ H.data.bones[n].head_local
 turn = 0.0
 toe = (hw(J["ball_l"]) - hw(J["foot_l"])) if "ball_l" in J else None
-if toe is not None and Vector((toe.x, toe.y)).length > 1e-4: turn = math.atan2(toe.x, -toe.y)
+if toe is not None and Vector((toe.x, toe.y)).length > 1e-4: turn = -math.atan2(toe.x, -toe.y)   # the turn about z that points her toes at -y
 P = [char.matrix_world @ v.co for v in char.data.vertices]
 z0 = min(p.z for p in P); h0 = max(p.z for p in P) - z0
 scale = (HEIGHT / h0) if HEIGHT else (1.0 if 1.2 <= h0 <= 2.2 else 1.75 / h0)
