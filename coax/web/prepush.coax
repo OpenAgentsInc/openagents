@@ -38,6 +38,7 @@
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
 #load "../lib/sys/proc.coax";
+#load "prepush-host.coax";
 
 PP_BUF :: 16777216;        // git log --raw over 24 hours (about 0.3 MB on 2026-11-11), diffs
 PP_PATHS :: 65536;         // files one commit changes
@@ -442,16 +443,19 @@ pp_stop :: (j: [] PpJob) {
   r := proc_release(j[0].h);
   j[0].running = false; j[0].timed_out = true; j[0].ms = proc_now_ms() - j[0].t0;
 }
-pp_text :: (j: [] PpJob) -> string { return cast(string) j[0].out[0..<j[0].n]; }
+pp_job_text :: (jobs: [] PpJob, k: int) -> string { return cast(string) jobs[k].out[0..<jobs[k].n]; }
+// Milliseconds as whole seconds, to the nearest.
+pp_secs :: (ms: int) -> int { return (ms + 500) / 1000; }
 // The last lines of a job's output, indented, at most `lines` of them.
-pp_tail :: (text: string, lines: int) {
+pp_tail :: (r: [] PpRun, text: string, lines: int) {
   n := 0;
   for c: text { if c == '\n' { n += 1; } }
   from := n - lines; k := 0; i := 0;
-  while i < text.count {
+  // At i == text.count the line is empty and not printed, so `<=` here prints the same lines.
+  while i < text.count {   // mutant: equivalent
     j := i;
     while j < text.count && text[j] != '\n' { j += 1; }
-    if k >= from && j > i { print("      %\n", cast(string) text[i..<j]); }
+    if k >= from && j > i { pp_say(r, "      ", cast(string) text[i..<j], "\n", "", ""); }
     i = j + 1; k += 1;
   }
 }
@@ -565,9 +569,6 @@ pp_shaders :: (changed: string) -> bool {
   #assert !pp_shaders("coax/web/host.js\ndocs/a.md\n") && !pp_shaders("");
 }
 
-// Whether the hook's cached compiler is the build for this tree's compiler sources (its
-// fingerprint, coax/provenance.sh), which the hook says with OA_PREPUSH_COAX_EXACT=1.
-pp_exact :: () -> bool { b: [8] u8; return proc_getenv("OA_PREPUSH_COAX_EXACT", b[..]) == "1"; }
 
 // The checks for a push whose merge base with main is base and whose changes are `changed`;
 // Which checks run (PP_RUN_* bits). wire-check reads the tree's compiler (registry rows name
@@ -580,15 +581,47 @@ pp_plan :: (has_compiler: bool, tests: bool) -> int {
   if has_compiler { run |= PP_RUN_WIRE; if tests { run |= PP_RUN_SUITES; } }
   return run;
 }
-// 1 when one failed, 0 otherwise (a check cut off by the time limit or with no host is named).
-// The report checks read the checkout; the suites run on a host from commit itself.
-pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: string) -> int {
-  t0 := proc_now_ms();
-  deadline := t0 + seconds * 1000;
-  jobs: [PP_JOBS] PpJob;
-  none_b: [1] string; none := none_b[0..<0];
-  docs := pp_only_docs(changed);
-  if docs { print("prepush: the push changes only documents; no checks to run\n"); return 0; }
+// ---- the checks of a push: a plan, its steps and its report
+//
+// The pure half of running the checks (#13601). pp_begin plans a run from what the machine says
+// (PpEnv), pp_tick reads the jobs after each poll, pp_remote_started takes the remote job's start,
+// and pp_verdicts writes the end of the report. coax/web/prepush-host.coax's pp_checks starts, polls,
+// sleeps and stops the real jobs between them; pp_fake_checks below does the same on a fake machine,
+// so the checks run every decision with no process, no wait and no output.
+PP_POLL_MS :: 25;          // between polls of the running jobs
+PP_REMOTE :: 6;            // the job slot of `coax test` on a host
+PP_ARGS :: 10;             // words in a job's command
+PP_WAIT :: 0; PP_START_REMOTE :: 1; PP_DONE :: 2;   // pp_tick's answers
+// What the machine says: the environment (OA_PREPUSH_TESTS, COAX, OA_PREPUSH_COAX_OWN_STALE,
+// OA_PREPUSH_COAX_EXACT) and whether coax/bin/coax and the file COAX names exist.
+PpEnv :: struct { tests: string; coax: string; own_stale: string; exact: string; has_compiler: bool; cached_exists: bool; }
+PpRun :: struct {
+  t0: int; deadline: int; seconds: int; tests: bool; changed: string; base: string; commit: string;
+  order: [PP_JOBS] int; norder: int;                   // the jobs to start, in order
+  name: [PP_JOBS] string; argv: [PP_JOBS] [PP_ARGS] string; argc: [PP_JOBS] int; env: string;
+  start_failed: bool; busy: bool; remote_started: bool; remote_skip: string; pool_off: string; pool_b: [1024] u8;
+  suites_b: [65536] u8; suites: string;
+  out: [16384] u8; n: int; shown: int;               // the report, and how much of it is printed
+}
+pp_say :: (r: [] PpRun, a: string, b: string, c: string, d: string, e: string) {
+  parts := [5] string.[a, b, c, d, e];
+  for p: parts { for ch: p { r[0].out[r[0].n] = ch; r[0].n += 1; } }
+}
+pp_report :: (r: [] PpRun) -> string { return cast(string) r[0].out[0..<r[0].n]; }
+// Job slot k runs argv, after the jobs planned before it.
+pp_want :: (r: [] PpRun, k: int, name: string, argv: [] string) {
+  r[0].order[r[0].norder] = k; r[0].norder += 1;
+  r[0].name[k] = name; r[0].argc[k] = argv.count;
+  for q: 0..<argv.count { r[0].argv[k][q] = argv[q]; }
+}
+pp_args :: (r: [] PpRun, k: int) -> [] string { return r[0].argv[k][0..<r[0].argc[k]]; }
+
+// The plan for a push whose merge base with main is base and whose changes are `changed`, at time
+// now (ms): false when there is nothing to run (the push changes only documents).
+pp_begin :: (r: [] PpRun, e: PpEnv, base: string, commit: string, changed: string, seconds: int, now: int) -> bool {
+  if pp_only_docs(changed) { pp_say(r, "prepush: the push changes only documents; no checks to run\n", "", "", "", ""); return false; }
+  r[0].t0 = now; r[0].deadline = now + seconds * 1000; r[0].seconds = seconds;
+  r[0].changed = changed; r[0].base = base; r[0].commit = commit;
   tc := [2] string.["coax/web/tool.sh", "tools-check"];
   ep := [2] string.["coax/web/tool.sh", "everglade-parity"];
   wc := [4] string.["coax/web/tool.sh", "wire-check", "--base", base];
@@ -607,95 +640,274 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
   wg := [4] string.["coax/web/tool.sh", "coax/web/wgsl-module.coax", "--site", "--check"];
   // the changelog page is what coax/CHANGELOG.md writes (#13592); --write regenerates it
   cl := [3] string.["coax/web/tool.sh", "coax/web/changelog-page.coax", "--check"];
-  tests := true;
-  hb: [64] u8;
-  if proc_getenv("OA_PREPUSH_TESTS", hb[..]) == "0" { tests = false; print("prepush: OA_PREPUSH_TESTS=0: no coax test\n"); }
-  has_compiler := fs_exists("coax/bin/coax");
+  tests := e.tests != "0";
+  if !tests { pp_say(r, "prepush: OA_PREPUSH_TESTS=0: no coax test\n", "", "", "", ""); }
+  has_compiler := e.has_compiler;
   // agent-reference and wgsl need only a compiler, not the tree's own: the hook sets $COAX to
   // the tree's coax/bin/coax when it was built from this tree's compiler sources, or else to a
   // cached build (a fresh worktree has none; one copied from elsewhere can be days old).
-  cxb: [4096] u8; cached := proc_getenv("COAX", cxb[..]);
-  sb: [8] u8; own_stale := proc_getenv("OA_PREPUSH_COAX_OWN_STALE", sb[..]) == "1";
-  some_compiler := has_compiler || (cached.count > 0 && fs_exists(cached));
+  own_stale := e.own_stale == "1";
+  some_compiler := has_compiler || (e.coax.count > 0 && e.cached_exists);
   where := ifx !has_compiler then " (no coax/bin/coax here)" else ifx own_stale then " (this checkout's coax/bin/coax was not built from its compiler sources: coax/build.sh rebuilds it)" else "";
-  if (!has_compiler || own_stale) && some_compiler { print("prepush: agent-reference and wgsl use the compiler %", cached); print("%", where); print("%\n", ifx pp_exact() then ", built from this tree's compiler sources" else "; it was built from other compiler sources, so a wgsl failure after a change under coax/lib/compiler/ may be the compiler's: run coax/build.sh"); }
+  // OA_PREPUSH_COAX_EXACT=1: the hook's cached compiler is the build for this tree's compiler sources (its
+  // fingerprint, coax/provenance.sh)
+  if (!has_compiler || own_stale) && some_compiler { pp_say(r, "prepush: agent-reference and wgsl use the compiler ", e.coax, where, ifx e.exact == "1" then ", built from this tree's compiler sources\n" else "; it was built from other compiler sources, so a wgsl failure after a change under coax/lib/compiler/ may be the compiler's: run coax/build.sh\n", ""); }
   run := pp_plan(has_compiler, tests);
-  if !has_compiler { print("prepush: wire-check and coax test skipped: this checkout has no coax/bin/coax (coax/build.sh installs it in seconds); the after-landing check runs them\n"); }
-  ok := pp_start(jobs[0..<1], "tools-check", tc[..], none);
-  ok = pp_start(jobs[1..<2], "everglade-parity", ep[..], none) && ok;
-  if (run & PP_RUN_WIRE) != 0 { ok = pp_start(jobs[2..<3], "wire-check", wc[..], none) && ok; }
-  ok = pp_start(jobs[3..<4], "layer-check", lc[..], none) && ok;
-  ok = pp_start(jobs[7..<8], "state-keep", sk[..], none) && ok;
-  if some_compiler { ok = pp_start(jobs[8..<9], "agent-reference", ar[..], none) && ok; }
-  if has_compiler && pp_drives(changed) { ok = pp_start(jobs[9..<10], "drive-hit-check", dh[..], none) && ok; }
-  if some_compiler && pp_shaders(changed) { ok = pp_start(jobs[10..<11], "wgsl", wg[..], none) && ok; }
-  if some_compiler && pp_changelog(changed) { ok = pp_start(jobs[11..<12], "changelog-page", cl[..], none) && ok; }
-  tests = (run & PP_RUN_SUITES) != 0;
-  if tests {
-    ok = pp_start(jobs[4..<5], "suites --list", sl[..], none) && ok;
-    ok = pp_start(jobs[5..<6], "remote.sh status", rs[..], none) && ok;
+  if !has_compiler { pp_say(r, "prepush: wire-check and coax test skipped: this checkout has no coax/bin/coax (coax/build.sh installs it in seconds); the after-landing check runs them\n", "", "", "", ""); }
+  pp_want(r, 0, "tools-check", tc[..]);
+  pp_want(r, 1, "everglade-parity", ep[..]);
+  if (run & PP_RUN_WIRE) != 0 { pp_want(r, 2, "wire-check", wc[..]); }
+  pp_want(r, 3, "layer-check", lc[..]);
+  pp_want(r, 7, "state-keep", sk[..]);
+  if some_compiler { pp_want(r, 8, "agent-reference", ar[..]); }
+  if has_compiler && pp_drives(changed) { pp_want(r, 9, "drive-hit-check", dh[..]); }
+  if some_compiler && pp_shaders(changed) { pp_want(r, 10, "wgsl", wg[..]); }
+  if some_compiler && pp_changelog(changed) { pp_want(r, 11, "changelog-page", cl[..]); }
+  r[0].tests = (run & PP_RUN_SUITES) != 0;
+  if r[0].tests {
+    pp_want(r, 4, "suites --list", sl[..]);
+    pp_want(r, 5, "remote.sh status", rs[..]);
   }
-  if !ok { print("prepush: note: a check could not start\n"); }
-  suites_buf: [65536] u8; suites := "";
-  remote_started := false; remote_skip := ""; pool_off := "";
-  while proc_now_ms() < deadline {
-    busy := false;
-    for k: 0..<PP_JOBS { pp_poll(jobs[k..<k + 1]); busy = busy || jobs[k].running; }
-    // the touched suites go to a host once the list and the host status are in
-    if tests && !remote_started && remote_skip.count == 0 && jobs[4].started && !jobs[4].running && jobs[5].started && !jobs[5].running {
-      if jobs[4].status != 0 { remote_skip = "the suite list failed"; }
+  return true;
+}
+// A planned job started (ok) or did not; once all have tried, pp_starts_done says so if one did not.
+pp_started :: (r: [] PpRun, ok: bool) { if !ok { r[0].start_failed = true; } }
+pp_starts_done :: (r: [] PpRun) { if r[0].start_failed { pp_say(r, "prepush: note: a check could not start\n", "", "", "", ""); } }
+// Whether the run may go on polling at time now.
+pp_time_left :: (r: [] PpRun, now: int) -> bool { return now < r[0].deadline; }
+// After a poll of every job: PP_START_REMOTE when the touched suites go to a host now (the list
+// and the host status are in; the command is slot PP_REMOTE's), PP_DONE when nothing runs, else PP_WAIT.
+pp_tick :: (r: [] PpRun, jobs: [] PpJob) -> int {
+  busy := false;
+  for k: 0..<PP_JOBS { busy = busy || jobs[k].running; }
+  r[0].busy = busy;
+  if r[0].tests && !r[0].remote_started && r[0].remote_skip.count == 0 && jobs[4].started && !jobs[4].running && jobs[5].started && !jobs[5].running {
+    if jobs[4].status != 0 { r[0].remote_skip = "the suite list failed"; }
+    else {
+      r[0].suites = pp_touched_suites(pp_job_text(jobs, 4), r[0].changed, r[0].suites_b[..]);
+      if r[0].suites.count == 0 { r[0].remote_skip = "the push changes no suite"; }
+      else if !pp_free_host(pp_job_text(jobs, 5)) {
+        // kept in the run: the job's output is the caller's
+        po := [1] string.[pp_last_after(pp_job_text(jobs, 5), "the pool is off: ")];
+        r[0].pool_off = pp_cat(r[0].pool_b[..], po[..]);
+        r[0].remote_skip = "no build host is running with a free slot (idle hosts stop after 15 minutes; coax/remote/remote.sh up starts one; coax/remote/remote.sh status)";
+      }
       else {
-        suites = pp_touched_suites(pp_text(jobs[4..<4 + 1]), changed, suites_buf[..]);
-        if suites.count == 0 { remote_skip = "the push changes no suite"; }
-        else if !pp_free_host(pp_text(jobs[5..<5 + 1])) {
-          pool_off = pp_last_after(pp_text(jobs[5..<5 + 1]), "the pool is off: ");
-          remote_skip = ifx pool_off.count > 0 then "the pool is off" else "no build host is running with a free slot (idle hosts stop after 15 minutes; coax/remote/remote.sh up starts one; coax/remote/remote.sh status)";
-        }
-        else {
-          // the pushed commit itself on the host, its files left there (check.sh only, as AGENTS.md says)
-          ra := [8] string.["coax/remote/remote.sh", "run", "--no-fallback", "--commit", commit, "--", "coax/remote/check.sh", "only"];
-          // with the merge base: the #authority suites also mutate the procedures the push changed (#13583)
-          rargv: [10] string; for q: 0..<8 { rargv[q] = ra[q]; } rargv[8] = suites; rargv[9] = base;
-          env := [1] string.["OA_REMOTE_WAIT=15"];
-          remote_started = pp_start(jobs[6..<7], "coax test", rargv[..], env[..]);
-          if !remote_started { remote_skip = "remote.sh did not start"; }
-          busy = busy || remote_started;
-        }
+        // the pushed commit itself on the host, its files left there (check.sh only, as AGENTS.md says)
+        // with the merge base: the #authority suites also mutate the procedures the push changed (#13583)
+        ra := [8] string.["coax/remote/remote.sh", "run", "--no-fallback", "--commit", "", "--", "coax/remote/check.sh", "only"];
+        pp_want(r, PP_REMOTE, "coax test", ra[..]);
+        r[0].argv[PP_REMOTE][4] = r[0].commit;
+        r[0].argv[PP_REMOTE][8] = r[0].suites; r[0].argv[PP_REMOTE][9] = r[0].base; r[0].argc[PP_REMOTE] = 10;
+        r[0].env = "OA_REMOTE_WAIT=15";
+        return PP_START_REMOTE;
       }
     }
-    if !busy { break; }
-    proc_sleep(25);
   }
-  for k: 0..<PP_JOBS { pp_stop(jobs[k..<k + 1]); }
-  // the verdicts
-  failed := 0;
+  return ifx busy then PP_WAIT else PP_DONE;
+}
+// The remote job started (ok) or did not: whether to go on polling.
+pp_remote_started :: (r: [] PpRun, ok: bool) -> bool {
+  r[0].remote_started = ok;
+  if !ok { r[0].remote_skip = "remote.sh did not start"; }
+  return r[0].busy || ok;
+}
+// The verdicts of the jobs, stopped, at time now: 1 when one failed, 0 otherwise (a check cut off
+// by the time limit or with no host is named). red: the checks already failing on main.
+pp_verdicts :: (r: [] PpRun, jobs: [] PpJob, red: string, now: int) -> int {
+  failed := false;
+  nb: [24] u8; sb: [24] u8; tb: [24] u8;
   for k: 0..<PP_JOBS {
     if !jobs[k].started || k == 5 { continue; }
-    name := jobs[k].name; s := jobs[k].status;
-    secs := (jobs[k].ms + 500) / 1000;
-    if jobs[k].timed_out { print("prepush: % skipped: still running at the % s limit (OA_PREPUSH_SECONDS); the after-landing check runs it\n", name, seconds); continue; }
-    if k == 4 { if s != 0 { print("prepush: suites --list failed (status %); coax test skipped\n", s); } continue; }
-    if k == 6 && s == 97 {
-      why := pp_last_after(pp_text(jobs[k..<k + 1]), "remote: ");
+    name := jobs[k].name; s := pp_itoa(jobs[k].status, nb[..]);
+    secs := pp_itoa(pp_secs(jobs[k].ms), sb[..]);
+    if jobs[k].timed_out { pp_say(r, "prepush: ", name, " skipped: still running at the ", pp_itoa(r[0].seconds, tb[..]), " s limit (OA_PREPUSH_SECONDS); the after-landing check runs it\n"); continue; }
+    if k == 4 { if jobs[k].status != 0 { pp_say(r, "prepush: suites --list failed (status ", s, "); coax test skipped\n", "", ""); } continue; }
+    if k == PP_REMOTE && jobs[k].status == 97 {
+      why := pp_last_after(pp_job_text(jobs, k), "remote: ");
       if why.count == 0 { why = "no build host could take it"; }
-      print("prepush: coax test skipped: % (% s; coax/remote/remote.sh status)\n", why, secs); continue;
+      pp_say(r, "prepush: coax test skipped: ", why, " (", secs, " s; coax/remote/remote.sh status)\n"); continue;
     }
-    if s == 0 { print("prepush: % passed (% s)\n", name, secs); continue; }
-    excused := red.count > 0 && pp_has(red, name);
-    if k == 6 { excused = false; }
-    if s == 1 && !excused {
-      print("prepush: % FAILED (% s):\n", name, secs); pp_tail(pp_text(jobs[k..<k + 1]), 12); failed += 1;
-    } else if s == 1 {
-      print("prepush: % fails, and is on main's red list already (coax/remote/after.sh state): not this push's\n", name);
+    if jobs[k].status == 0 { pp_say(r, "prepush: ", name, " passed (", secs, " s)\n"); continue; }
+    excused := pp_has(red, name);
+    if k == PP_REMOTE { excused = false; }
+    if jobs[k].status == 1 && !excused {
+      pp_say(r, "prepush: ", name, " FAILED (", secs, " s):\n"); pp_tail(r, pp_job_text(jobs, k), 12); failed = true;
+    } else if jobs[k].status == 1 {
+      pp_say(r, "prepush: ", name, " fails, and is on main's red list already (coax/remote/after.sh state): not this push's\n", "", "");
     } else {
-      print("prepush: % could not run (status %); not counted:\n", name, s); pp_tail(pp_text(jobs[k..<k + 1]), 4);
+      pp_say(r, "prepush: ", name, " could not run (status ", s, "); not counted:\n"); pp_tail(r, pp_job_text(jobs, k), 4);
     }
   }
-  if tests && pool_off.count > 0 { print("prepush: coax test skipped: the pool is off: % (coax/remote/remote.sh status)\n", pool_off); }
-  else if tests && remote_skip.count > 0 { print("prepush: coax test skipped: %\n", remote_skip); }
-  if tests && remote_started && suites.count > 0 { print("prepush: coax test ran %\n", suites); }
-  print("prepush: checks took % s\n", (proc_now_ms() - t0 + 500) / 1000);
-  return ifx failed == 0 then 0 else 1;
+  if r[0].tests && r[0].pool_off != "" { pp_say(r, "prepush: coax test skipped: the pool is off: ", r[0].pool_off, " (coax/remote/remote.sh status)\n", "", ""); }
+  else if r[0].tests && r[0].remote_skip != "" { pp_say(r, "prepush: coax test skipped: ", r[0].remote_skip, "\n", "", ""); }
+  if r[0].tests && r[0].remote_started { pp_say(r, "prepush: coax test ran ", r[0].suites, "\n", "", ""); }
+  pp_say(r, "prepush: checks took ", pp_itoa(pp_secs(now - r[0].t0), nb[..]), " s\n", "", "");
+  return ifx failed then 1 else 0;
+}
+
+// A fake machine for the checks: its environment, and for each job slot whether it starts, the
+// time it ends (-1: never), its status, time and output; what each job was started with (its
+// words, each followed by a space), and a clock that moves only by PP_POLL_MS a sleep.
+PpFake :: struct {
+  e: PpEnv; now: int;
+  start_ok: [PP_JOBS] bool; done_at: [PP_JOBS] int; status: [PP_JOBS] int; ms: [PP_JOBS] int; text: [PP_JOBS] string;
+  argv: [PP_JOBS] string; env: [PP_JOBS] string; words: [8192] u8; wn: int;
+  r: [1] PpRun;
+}
+// Every job starts, and ends at once with status 0 and no output.
+pp_fake :: (f: [] PpFake) { for k: 0..<PP_JOBS { f[0].start_ok[k] = true; } }
+pp_fake_words :: (f: [] PpFake, words: [] string) -> string {
+  from := f[0].wn;
+  for w: words { for c: w { f[0].words[f[0].wn] = c; f[0].wn += 1; } f[0].words[f[0].wn] = ' '; f[0].wn += 1; }
+  return cast(string) f[0].words[from..<f[0].wn];
+}
+pp_fake_start :: (f: [] PpFake, jobs: [] PpJob, k: int, env: [] string) -> bool {
+  f[0].argv[k] = pp_fake_words(f, pp_args(f[0].r[..], k)); f[0].env[k] = pp_fake_words(f, env);
+  if !f[0].start_ok[k] { return false; }
+  jobs[k].name = f[0].r[0].name[k]; jobs[k].started = true; jobs[k].running = true;
+  return true;
+}
+pp_fake_poll :: (f: [] PpFake, jobs: [] PpJob, k: int) {
+  if !jobs[k].running || f[0].done_at[k] < 0 || f[0].now < f[0].done_at[k] { return; }
+  jobs[k].running = false; jobs[k].status = f[0].status[k]; jobs[k].ms = f[0].ms[k];
+  for c: f[0].text[k] { jobs[k].out[jobs[k].n] = c; jobs[k].n += 1; }
+}
+// pp_checks (coax/web/prepush-host.coax) on the fake machine: its report is pp_report(f[0].r[..]).
+pp_fake_checks :: (f: [] PpFake, base: string, commit: string, changed: string, seconds: int, red: string) -> int {
+  r := f[0].r[..];
+  none_b: [1] string; none := none_b[0..<0];
+  if !pp_begin(r, f[0].e, base, commit, changed, seconds, f[0].now) { return 0; }
+  jobs: [PP_JOBS] PpJob;
+  for q: 0..<r[0].norder { pp_started(r, pp_fake_start(f, jobs[..], r[0].order[q], none)); }
+  pp_starts_done(r);
+  while pp_time_left(r, f[0].now) {
+    for k: 0..<PP_JOBS { pp_fake_poll(f, jobs[..], k); }
+    a := pp_tick(r, jobs[..]);
+    if a == PP_START_REMOTE { env := [1] string.[r[0].env]; if !pp_remote_started(r, pp_fake_start(f, jobs[..], PP_REMOTE, env[..])) { break; } }
+    else if a == PP_DONE { break; }
+    f[0].now += PP_POLL_MS;
+  }
+  for k: 0..<PP_JOBS { if jobs[k].running { jobs[k].timed_out = true; } }
+  return pp_verdicts(r, jobs[..], red, f[0].now);
+}
+
+// The checks of a push on a fake machine: what each push starts, the report it writes and how
+// long it waits, with no process (#13601).
+#test "the runner: a push of documents only starts nothing" {
+  h: [1] PpFake; pp_fake(h[..]);
+  #assert pp_fake_checks(h[..], "B", "C", "README.md\n", 120, "") == 0 && h[0].argv[0] == "";
+  #assert pp_report(h[0].r[..]) == "prepush: the push changes only documents; no checks to run\n";
+}
+#test "the runner: every check passes, and the touched suite goes to a host once the list and the status are in" {
+  h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
+  h[0].ms[0] = 1499; h[0].ms[1] = 1500; h[0].ms[3] = 499; h[0].ms[7] = 500; h[0].ms[8] = 2499; h[0].ms[9] = 2500; h[0].ms[6] = 3000;
+  h[0].text[4] = "metaverse/b.coax  default\n";
+  h[0].text[5] = "oa-build-1 z RUNNING 1.2.3.4 free slots: 2\n"; h[0].done_at[5] = 25; h[0].status[5] = 3;
+  h[0].done_at[6] = 75;
+  r := pp_fake_checks(h[..], "B", "C", "coax/web/drive.coax\ncoax/CHANGELOG.md\nmetaverse/b.coax\n", 120, "");
+  #assert r == 0 && h[0].now == 75;
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (1 s)\nprepush: everglade-parity passed (2 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: coax test passed (3 s)\nprepush: state-keep passed (1 s)\nprepush: agent-reference passed (2 s)\nprepush: drive-hit-check passed (3 s)\nprepush: wgsl passed (0 s)\nprepush: changelog-page passed (0 s)\nprepush: coax test ran metaverse/b.coax\nprepush: checks took 0 s\n";
+  #assert h[0].argv[6] == "coax/remote/remote.sh run --no-fallback --commit C -- coax/remote/check.sh only metaverse/b.coax B " && h[0].env[6] == "OA_REMOTE_WAIT=15 " && h[0].env[0] == "";
+  #assert h[0].argv[2] == "coax/web/tool.sh wire-check --base B " && h[0].argv[3] == "coax/web/tool.sh layer-check --base B " && h[0].argv[4] == "coax/web/tool.sh suites --since B --list ";
+  #assert h[0].argv[11] == "coax/web/tool.sh coax/web/changelog-page.coax --check " && h[0].argv[9] == "coax/web/tool.sh drive-hit-check ";
+}
+#test "the runner: failures, the red list, a check that can't run, one cut off at the limit, one that can't start" {
+  h: [1] PpFake; pp_fake(h[..]);
+  h[0].e.coax = "c"; h[0].e.cached_exists = true; h[0].now = 1000;
+  h[0].status[0] = 1; h[0].text[0] = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n";
+  h[0].status[1] = 1;
+  h[0].status[3] = 2; h[0].text[3] = "a\nb\n\nc\nd\ne\n";
+  h[0].done_at[8] = -1; h[0].start_ok[10] = false;
+  r := pp_fake_checks(h[..], "B", "C", "a.coax\n", 1, "everglade-parity\n");
+  #assert r == 1 && h[0].now == 2000 && h[0].argv[10] == "coax/web/tool.sh coax/web/wgsl-module.coax --site --check ";
+  #assert pp_report(h[0].r[..]) == "prepush: agent-reference and wgsl use the compiler c (no coax/bin/coax here); it was built from other compiler sources, so a wgsl failure after a change under coax/lib/compiler/ may be the compiler's: run coax/build.sh\nprepush: wire-check and coax test skipped: this checkout has no coax/bin/coax (coax/build.sh installs it in seconds); the after-landing check runs them\nprepush: note: a check could not start\nprepush: tools-check FAILED (0 s):\n      2\n      3\n      4\n      5\n      6\n      7\n      8\n      9\n      10\n      11\n      12\n      13\nprepush: everglade-parity fails, and is on main's red list already (coax/remote/after.sh state): not this push's\nprepush: layer-check could not run (status 2); not counted:\n      c\n      d\n      e\nprepush: state-keep passed (0 s)\nprepush: agent-reference skipped: still running at the 1 s limit (OA_PREPUSH_SECONDS); the after-landing check runs it\nprepush: checks took 1 s\n";
+}
+#test "the runner: OA_PREPUSH_TESTS=0, and a checkout whose own compiler is stale uses the exact cached one" {
+  h: [1] PpFake; pp_fake(h[..]);
+  h[0].e.tests = "0"; h[0].e.has_compiler = true; h[0].e.own_stale = "1"; h[0].e.coax = "/c/coax"; h[0].e.cached_exists = true; h[0].e.exact = "1";
+  #assert pp_fake_checks(h[..], "B", "C", "README.txt\n", 120, "") == 0 && h[0].now == 0 && h[0].argv[4] == "" && h[0].argv[5] == "";
+  #assert pp_report(h[0].r[..]) == "prepush: OA_PREPUSH_TESTS=0: no coax test\nprepush: agent-reference and wgsl use the compiler /c/coax (this checkout's coax/bin/coax was not built from its compiler sources: coax/build.sh rebuilds it), built from this tree's compiler sources\nprepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: checks took 0 s\n";
+}
+#test "the runner: no compiler at all, from an empty COAX or one that names no file" {
+  h: [1] PpFake; pp_fake(h[..]); h[0].e.cached_exists = true; h[0].done_at[0] = -1;
+  #assert pp_fake_checks(h[..], "B", "C", "a.coax\n", 1, "") == 0 && h[0].now == 1000;
+  #assert pp_report(h[0].r[..]) == "prepush: wire-check and coax test skipped: this checkout has no coax/bin/coax (coax/build.sh installs it in seconds); the after-landing check runs them\nprepush: tools-check skipped: still running at the 1 s limit (OA_PREPUSH_SECONDS); the after-landing check runs it\nprepush: everglade-parity passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: checks took 1 s\n";
+  g: [1] PpFake; pp_fake(g[..]); g[0].e.coax = "/x";
+  #assert pp_fake_checks(g[..], "B", "C", "a.coax\n", 120, "") == 0;
+  #assert pp_report(g[0].r[..]) == "prepush: wire-check and coax test skipped: this checkout has no coax/bin/coax (coax/build.sh installs it in seconds); the after-landing check runs them\nprepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: checks took 0 s\n";
+}
+#test "the runner, a push that changes a suite: the suite list fails" {
+  h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
+  h[0].text[4] = "metaverse/b.coax  default\n"; h[0].text[5] = "oa-build-1 z RUNNING 1.2.3.4 free slots: 2\n";
+  h[0].status[4] = 1;
+  r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
+  #assert r == 0 && h[0].now == 0;
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: suites --list failed (status 1); coax test skipped\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax test skipped: the suite list failed\nprepush: checks took 0 s\n";
+}
+#test "the runner, a push that changes a suite: no suite it changes is listed" {
+  h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
+  h[0].text[4] = "metaverse/b.coax  default\n"; h[0].text[5] = "oa-build-1 z RUNNING 1.2.3.4 free slots: 2\n";
+  h[0].text[4] = "coax/web/x.coax  default\n";
+  r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
+  #assert r == 0 && h[0].now == 0;
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax test skipped: the push changes no suite\nprepush: checks took 0 s\n";
+}
+#test "the runner, a push that changes a suite: the pool is off" {
+  h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
+  h[0].text[4] = "metaverse/b.coax  default\n"; h[0].text[5] = "oa-build-1 z RUNNING 1.2.3.4 free slots: 2\n";
+  h[0].text[5] = "the pool is off: x. Fix: y\n";
+  r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
+  #assert r == 0 && h[0].now == 0;
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax test skipped: the pool is off: x (coax/remote/remote.sh status)\nprepush: checks took 0 s\n";
+}
+#test "the runner, a push that changes a suite: no host has a free slot" {
+  h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
+  h[0].text[4] = "metaverse/b.coax  default\n"; h[0].text[5] = "oa-build-1 z RUNNING 1.2.3.4 free slots: 2\n";
+  h[0].text[5] = "oa-build-1 z RUNNING 1.2.3.4 free slots: 0\n";
+  r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
+  #assert r == 0 && h[0].now == 0;
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax test skipped: no build host is running with a free slot (idle hosts stop after 15 minutes; coax/remote/remote.sh up starts one; coax/remote/remote.sh status)\nprepush: checks took 0 s\n";
+}
+#test "the runner, a push that changes a suite: remote.sh does not start" {
+  h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
+  h[0].text[4] = "metaverse/b.coax  default\n"; h[0].text[5] = "oa-build-1 z RUNNING 1.2.3.4 free slots: 2\n";
+  h[0].start_ok[6] = false; h[0].done_at[8] = 50;
+  r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
+  #assert r == 0 && h[0].now == 50;
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax test skipped: remote.sh did not start\nprepush: checks took 0 s\n";
+}
+#test "the runner, a push that changes a suite: the list comes after the status, and no host could take it" {
+  h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
+  h[0].text[4] = "metaverse/b.coax  default\n"; h[0].text[5] = "oa-build-1 z RUNNING 1.2.3.4 free slots: 2\n";
+  h[0].done_at[4] = 25; h[0].status[6] = 97; h[0].text[6] = "remote: x\nremote: no host. Fix: up\n"; h[0].ms[6] = 1500;
+  r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
+  #assert r == 0 && h[0].now == 50;
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: coax test skipped: no host (2 s; coax/remote/remote.sh status)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax test ran metaverse/b.coax\nprepush: checks took 0 s\n";
+}
+#test "the runner, a push that changes a suite: no host could take it, and it said nothing" {
+  h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
+  h[0].text[4] = "metaverse/b.coax  default\n"; h[0].text[5] = "oa-build-1 z RUNNING 1.2.3.4 free slots: 2\n";
+  h[0].status[6] = 97;
+  r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
+  #assert r == 0 && h[0].now == 25;
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: coax test skipped: no build host could take it (0 s; coax/remote/remote.sh status)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax test ran metaverse/b.coax\nprepush: checks took 0 s\n";
+}
+#test "the runner, a push that changes a suite: it fails, and the red list never excuses it" {
+  h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
+  h[0].text[4] = "metaverse/b.coax  default\n"; h[0].text[5] = "oa-build-1 z RUNNING 1.2.3.4 free slots: 2\n";
+  h[0].status[6] = 1; h[0].text[6] = "e";
+  r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
+  #assert r == 1 && h[0].now == 25;
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: coax test FAILED (0 s):\n      e\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax test ran metaverse/b.coax\nprepush: checks took 0 s\n";
+}
+#test "the runner, a push that changes a suite: the list can't start" {
+  h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
+  h[0].text[4] = "metaverse/b.coax  default\n"; h[0].text[5] = "oa-build-1 z RUNNING 1.2.3.4 free slots: 2\n";
+  h[0].start_ok[4] = false;
+  r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
+  #assert r == 0 && h[0].now == 0;
+  #assert pp_report(h[0].r[..]) == "prepush: note: a check could not start\nprepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: checks took 0 s\n";
 }
 
 // ---- the bypass

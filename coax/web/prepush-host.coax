@@ -1,0 +1,35 @@
+// The pre-push check's machine (coax/web/prepush.coax, #13601): pp_checks runs the plan and the
+// steps prepush.coax decides (pp_begin, pp_tick, pp_remote_started, pp_verdicts) with real jobs,
+// the real clock and real output. It only starts, polls, sleeps, stops and prints; every decision is
+// prepush.coax's, whose checks run the same steps on a fake machine (pp_fake_checks).
+// 1 when a check failed, 0 otherwise.
+pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: string) -> int {
+  r: [1] PpRun;
+  b1: [64] u8; b2: [4096] u8; b3: [8] u8; b4: [8] u8;
+  e := PpEnv.{tests = proc_getenv("OA_PREPUSH_TESTS", b1[..]), coax = proc_getenv("COAX", b2[..]),
+              own_stale = proc_getenv("OA_PREPUSH_COAX_OWN_STALE", b3[..]), exact = proc_getenv("OA_PREPUSH_COAX_EXACT", b4[..]),
+              has_compiler = fs_exists("coax/bin/coax")};
+  e.cached_exists = e.coax.count > 0 && fs_exists(e.coax);
+  more := pp_begin(r[..], e, base, commit, changed, seconds, proc_now_ms());
+  pp_show(r[..]);
+  if !more { return 0; }
+  jobs: [PP_JOBS] PpJob;
+  none_b: [1] string; none := none_b[0..<0];
+  for q: 0..<r[0].norder { k := r[0].order[q]; pp_started(r[..], pp_start(jobs[k..<k + 1], r[0].name[k], pp_args(r[..], k), none)); }
+  pp_starts_done(r[..]); pp_show(r[..]);
+  while pp_time_left(r[..], proc_now_ms()) {
+    for k: 0..<PP_JOBS { pp_poll(jobs[k..<k + 1]); }
+    a := pp_tick(r[..], jobs[..]);
+    if a == PP_START_REMOTE {
+      env := [1] string.[r[0].env];
+      if !pp_remote_started(r[..], pp_start(jobs[PP_REMOTE..<PP_REMOTE + 1], r[0].name[PP_REMOTE], pp_args(r[..], PP_REMOTE), env[..])) { break; }
+    } else if a == PP_DONE { break; }
+    proc_sleep(PP_POLL_MS);
+  }
+  for k: 0..<PP_JOBS { pp_stop(jobs[k..<k + 1]); }
+  failed := pp_verdicts(r[..], jobs[..], red, proc_now_ms());
+  pp_show(r[..]);
+  return failed;
+}
+// Prints what the report says that is not printed yet.
+pp_show :: (r: [] PpRun) { print("%", cast(string) r[0].out[r[0].shown..<r[0].n]); r[0].shown = r[0].n; }
