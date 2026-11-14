@@ -1,0 +1,27 @@
+{
+  "schema": "openagents.chat.project-link.v1",
+  "route": "POST /api/chat/project/v1; GET /api/chat/project/v1?project=SLUG returns unchanged openagents.chat.history.v1",
+  "golden": {
+    "schema": "openagents.chat.project-link.v1",
+    "project": "mobile-kit",
+    "thread": "m_00000000000000000001"
+  },
+  "reply": {
+    "linked": true
+  },
+  "completion_schema": "openagents.chat.project-turn.v1",
+  "completion_route": "POST /api/chat/project/complete/v1",
+  "completion_fields": {
+    "schema": "openagents.chat.project-turn.v1",
+    "project": "lowercase slug, at most 64 bytes",
+    "thread": "unchanged openagents.chat.thread.v1"
+  },
+  "authority": "Exact person account owns thread; canonical principal is a member of private project or owner of published drop project. Association immutable for a thread. Same team funding gate as account chat. Context read from that project's stored document, never from client authority claims. No v1 thread changes.",
+  "account_owner": {
+    "schema": "openagents.project.account-owner.v1",
+    "fields": {
+      "account": "opaque person account ID",
+      "owner": "64 lowercase hex opaque ownership handle; not a signing key"
+    }
+  }
+}

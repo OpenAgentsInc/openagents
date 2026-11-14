@@ -1277,13 +1277,14 @@ static void world_list(const request *q, PGconn *db) {
 static void project_list(const request *q, PGconn *db) {
   const auth_principal *p = auth_principal_of(q);
   char out[4096]; size_t n = 0;
-  if (p && p->pubkey[0]) {
-    const char *v[1] = {p->pubkey};
+  char owner[65];bool account_owner=project_subject(q,db,owner);
+  if (p && (p->pubkey[0] || account_owner)) {
+    const char *v[2] = {p->pubkey,account_owner ? owner:""};
     PGresult *r = PQexecParams(db,
       "SELECT slug, name FROM ("
       " SELECT d.slug, coalesce(nullif(d.doc->>'title', ''), d.slug) AS name FROM projects.docs d WHERE projects.role(d.slug, $1) = 'member'"
-      " UNION SELECT j.slug, j.name FROM drops.projects j WHERE j.owner = $1 AND j.published_ms IS NOT NULL"
-      ") x ORDER BY lower(name), slug LIMIT 24", 1, NULL, v, NULL, NULL, 0);
+      " UNION SELECT j.slug, j.name FROM drops.projects j WHERE j.owner IN ($1,$2) AND j.published_ms IS NOT NULL"
+      ") x ORDER BY lower(name), slug LIMIT 24", 2, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("projects: %s", PQerrorMessage(db)); PQclear(r); refuse(q->fd, 500, cs("not read"), -1); return; }
     for (int k = 0; k < PQntuples(r); k++) {
       char name[64];

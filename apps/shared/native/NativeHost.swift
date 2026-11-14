@@ -32,6 +32,7 @@ import Security
     var health: Task<Void,Never>?
     var passkey: NativePasskey?
     private let wallet=SparkHost()
+    private let documents=NativeDocuments()
     private let surface=NativeControls()
     private lazy var workspace=NativeWorkspace(detail:surface)
     private var dialog:NativeControls?
@@ -48,7 +49,7 @@ import Security
         load()
     }
     func load() {
-        epoch=UUID();health?.cancel();programs=[]
+        epoch=UUID();health?.cancel();documents.release();programs=[]
         let directory=updates.boot()
         do {
             programs=try [NativeProgram(directory:directory,module:"app"),NativeProgram(directory:directory,module:"extras")]
@@ -92,7 +93,7 @@ import Security
             let (op,body)=try p.action()
             if op==0 {continue}
             let owner=epoch,extra=(p === programs.last)
-            let ops=["","auth.state","auth.emailStart","auth.emailVerify","http","auth.logout","updates.check","updates.status","http.cancel","clipboard.write","link.open","environment.commandIDs","environment.wait","world.open"]
+            let ops=["","auth.state","auth.emailStart","auth.emailVerify","http","auth.logout","updates.check","updates.status","http.cancel","clipboard.write","link.open","environment.commandIDs","environment.wait","world.open","documents.pick","documents.upload","documents.release"]
             guard extra || op>0 && op<ops.count else {throw NativeFailure.refused("Unsupported service")}
             var args=(try? JSONSerialization.jsonObject(with:Data(body.utf8))) as? [String:Any] ?? [:]
             if !extra && op==13 {args["nativeWire"]=body}
@@ -181,6 +182,11 @@ import Security
             let n=out.withUnsafeMutableBufferPointer {wb_encode(observation.status,observation.sats,coax_v_u8(data:$0.baseAddress,count:Int64($0.count)))}
             guard n>0 else {throw NativeFailure.refused("Balance unavailable")}
             return ["record":String(decoding:out.prefix(Int(n)),as:UTF8.self)]
+        case "documents.pick":
+            if let name=b["name"] as? String,let text=b["text"] as? String {return try documents.stage(name:name,data:Data(text.utf8))}
+            return try await documents.pick(dialog ?? self)
+        case "documents.upload":return try await documents.put(token:b["token"] as? String ?? "",url:b["url"] as? String ?? "")
+        case "documents.release":documents.release();return ["released":true]
         case "auth.state": return ["loggedIn":AppAuth.shared.loggedIn,"worldsAvailable":true]
         case "auth.emailStart": return ["pending":try await AppAuth.shared.emailStart(b["email"] as? String ?? "")]
         case "auth.emailVerify": _ = try await AppAuth.shared.emailVerify(code:b["code"] as? String ?? "",pending:b["pending"] as? String ?? ""); return ["loggedIn":true]

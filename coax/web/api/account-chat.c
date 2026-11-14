@@ -33,7 +33,69 @@ static void ac_player(const request *q,const auth_principal *p) {
   PGresult *commit=PQexec(db,"COMMIT");ok=PQresultStatus(commit)==PGRES_COMMAND_OK;PQclear(commit);
   if (ok) ac_reply(q->fd,PQgetvalue(r,0,0),strlen(PQgetvalue(r,0,0)));else api_error(q->fd,503,"Player could not join the account.");PQclear(r);
 }
+
+// Resolve account ownership separately from legacy Nostr member identity.
+bool project_subject(const request *q,PGconn *db,char out[65]) {
+ const auth_principal *p=auth_principal_of(q);out[0]=0;
+ if (!p || !pc_principal(p->kind,p->session[0]!=0,acs(p->account))) return false;
+ unsigned char owner[64];if (!pc_owner(acs(p->account),(coax_v_u8){owner,64})) return false;
+ char value[65];memcpy(value,owner,64);value[64]=0;
+ const char *v[]={p->account,value};
+ PGresult *r=PQexecParams(db,"INSERT INTO drops.account_owners_v1(account,owner) VALUES($1,$2) ON CONFLICT(account) DO UPDATE SET account=EXCLUDED.account RETURNING owner",2,NULL,v,NULL,NULL,0);
+ bool ok=PQresultStatus(r)==PGRES_TUPLES_OK && PQntuples(r)==1;if(ok) snprintf(out,65,"%s",PQgetvalue(r,0,0));PQclear(r);return ok;
+}
+
+static bool ac_project(const request *q) {
+  bool complete=!strcmp(q->path,"/api/chat/project/complete/v1");
+  const auth_principal *p=auth_principal_of(q);
+  if (!p || !act_owns(p->kind,acs(p->account),acs(p->account))) {api_error(q->fd,401,"Log in first.");return true;}
+  bool post=!strcmp(q->method,"POST");char project[82]={0},thread[25]={0};
+  if (post) {
+    if (!auth_same_site(q) || !pc_read((coax_string){q->body,(int64_t)q->body_len},complete,(coax_v_u8){(uint8_t *)project,64},(coax_v_u8){(uint8_t *)thread,24})) {api_error(q->fd,400,"Invalid project chat request.");return true;}
+  } else if (!complete && !strcmp(q->method,"GET")) {api_query(q,"project",project,sizeof project);}
+  else {api_error(q->fd,405,"GET or POST this.");return true;}
+  if (!pc_bound(acs(project),acs(project))) {api_error(q->fd,400,"Invalid project slug.");return true;}
+  PGconn *db=api_db();if (!db) {api_error(q->fd,503,"Project storage unavailable.");return true;}
+  char subject[65];if (!project_subject(q,db,subject)) {api_error(q->fd,503,"Project identity unavailable.");return true;}
+  const char *facts[]={project,p->pubkey,subject};
+  PGresult *context=PQexecParams(db,
+    "SELECT coalesce(projects.member_of($1,$2),''),coalesce((SELECT owner FROM drops.projects WHERE slug=$1 AND published_ms IS NOT NULL AND owner IN($2,$3)),''),"
+    "coalesce((SELECT left(doc::text,12000) FROM projects.docs WHERE slug=$1),(SELECT left(name||E'\\n'||line,12000) FROM drops.projects WHERE slug=$1),'')",3,NULL,facts,NULL,NULL,0);
+  bool read=PQresultStatus(context)==PGRES_TUPLES_OK && PQntuples(context)==1;
+  bool member=read && (pc_member(acs(p->pubkey),acs(PQgetvalue(context,0,0)),acs(PQgetvalue(context,0,1))) || pc_member(acs(subject),acs(""),acs(PQgetvalue(context,0,1))));
+  if (!pc_access(p->kind,acs(p->account),acs(p->account),member)) {PQclear(context);api_error(q->fd,read ? 404:503,read ? "not found":"Project storage unavailable.");return true;}
+  if (!post) {
+    const char *values[]={p->account,project};
+    PGresult *r=PQexecParams(db,"SELECT a.account,a.id,a.title,'google/gemini-4-hydrogen',j.project,a.updated_ms::text,'false' FROM chat.account_threads_v1 a JOIN chat.project_threads_v1 j ON j.account=a.account AND j.thread=a.id WHERE a.account=$1 AND j.project=$2 ORDER BY a.updated_ms DESC,a.id DESC LIMIT 60",2,NULL,values,NULL,NULL,0);PQclear(context);
+    if (PQresultStatus(r)!=PGRES_TUPLES_OK) {PQclear(r);api_error(q->fd,503,"Project chats unavailable.");return true;}
+    return chat_history_rows(q,r);
+  }
+  if (complete) {
+    const char *binding[]={p->account,thread};
+    PGresult *bound=PQexecParams(db,"SELECT project FROM chat.project_threads_v1 WHERE account=$1 AND thread=$2",2,NULL,binding,NULL,NULL,0);
+    bool exact=PQresultStatus(bound)==PGRES_TUPLES_OK && PQntuples(bound)==1 && pc_bound(acs(project),acs(PQgetvalue(bound,0,0)));PQclear(bound);
+    if (!exact) {PQclear(context);api_error(q->fd,409,"Save this project conversation before inference.");return true;}
+    if (!act_funded(p->kind,acs(p->account),p->team)) {PQclear(context);api_error(q->fd,403,"Agent chat is currently available to the team beta.");return true;}
+    unsigned char body[131072];int64_t n=pc_completion((coax_string){q->body,(int64_t)q->body_len},acs(PQgetvalue(context,0,2)),(coax_v_u8){body,sizeof body});PQclear(context);
+    if (n<1) {api_error(q->fd,400,"Invalid project conversation.");return true;}
+    char subject[96],who[65];unsigned char digest[32];snprintf(subject,sizeof subject,"openagents.account-chat.v1:%s",p->account);SHA256((const unsigned char *)subject,strlen(subject),digest);for (int i=0;i<32;i++) snprintf(who+2*i,3,"%02x",digest[i]);
+    request next=*q;next.body=(const char *)body;next.body_len=(size_t)n;return inference_ask(&next,who,true);
+  }
+  PQclear(context);
+  const char *values[]={p->account,thread,project};
+  PQclear(PQexec(db,"BEGIN"));
+  PGresult *r=PQexecParams(db,"SELECT a.account,coalesce(j.project,'') FROM chat.account_threads_v1 a LEFT JOIN chat.project_threads_v1 j ON j.account=a.account AND j.thread=a.id WHERE a.account=$1 AND a.id=$2 FOR UPDATE OF a",2,NULL,values,NULL,NULL,0);
+  bool found=PQresultStatus(r)==PGRES_TUPLES_OK && PQntuples(r)==1;
+  bool may=found && pc_access(p->kind,acs(p->account),acs(PQgetvalue(r,0,0)),member) && pc_relink(acs(PQgetvalue(r,0,1)),acs(project));PQclear(r);
+  if (!may) {PQclear(PQexec(db,"ROLLBACK"));api_error(q->fd,409,"This saved conversation cannot be linked to that project.");return true;}
+  r=PQexecParams(db,"INSERT INTO chat.project_threads_v1(account,thread,project) VALUES($1,$2,$3) ON CONFLICT (account,thread) DO NOTHING",3,NULL,values,NULL,NULL,0);bool ok=PQresultStatus(r)==PGRES_COMMAND_OK;PQclear(r);
+  PGresult *commit=PQexec(db,ok ? "COMMIT":"ROLLBACK");ok=ok && PQresultStatus(commit)==PGRES_COMMAND_OK;PQclear(commit);
+  unsigned char linked[32];int64_t linked_n=pc_link_reply((coax_v_u8){linked,sizeof linked});
+  if (ok && linked_n>0) ac_reply(q->fd,(const char *)linked,(size_t)linked_n);else api_error(q->fd,503,"Project chat link could not be saved.");return true;
+}
+
 bool account_chat_route(const request *q) {
+  if (!strcmp(q->path,"/api/chat/project/v1") || !strcmp(q->path,"/api/chat/project/complete/v1")) return ac_project(q);
   bool world=!strcmp(q->path,"/api/chat/world/complete/v1"),player=!strcmp(q->path,"/api/chat/world/player/v1");
   bool complete=world || !strcmp(q->path,"/api/chat/complete/v1"),thread=!strcmp(q->path,"/api/chat/thread/v1");
   if (!complete && !thread && !player) return false;

@@ -13,18 +13,17 @@
 }
 na_shell_press :: (s:[]Starter,id:string)->bool {
  home:=id=="nav.home";projects:=id=="nav.projects" || id=="projects.refresh";world:=id=="world.library" || id=="home.worlds" || id=="home.splice" || id=="home.everglade";send:=id=="chat.composer.send" && s[0].workspace && s[0].page==2;
- for i:0..<s[0].projects_n {b:[96]u8;if id==tr_join(b[..],"projects.item.",i) {p:=s[0].projects[i];url:[160]u8;na_text_effect(s,true,tr_cat(url[..],"https://openagents.com/projects/",cast(string)p.id[0..<p.id_n]),"");return true;}}
- if !home && !projects && !world && !send && id!="projects.web" {return false;}
+ if !home && !projects && !world && !send {return false;}
  n:=s[0].navigation[..];e:=s[0].environments[..];
  if s[0].flight!=0 || e[0].flight || e[0].random || s[0].action!=0 {n[0].np=ea_copy(n[0].pending[..],id);return true;}
- if e[0].uncertain || s[0].usage[0].uncertain {nav_note(n,"Reconnect to resolve the current command before changing places.");return true;}
+ if e[0].uncertain || s[0].usage[0].uncertain || s[0].project[0].uncertain {nav_note(n,"Reconnect to resolve the current command before changing places.");return true;}
  if send {na_send(s);return true;}
- if id=="projects.web" {na_text_effect(s,true,"https://openagents.com/projects","");return true;}
+
  s[0].usage[0].active=false;n[0].open=false;n[0].settings=false;
  if world {if id=="home.splice" {na_world(s,"splice-bots","/worlds/splice-bots",false);}else if id=="home.everglade" {na_world(s,"everglade2","/worlds/everglade2",false);}else {na_world(s,"catalog","/worlds",false);}return true;}
  na_nav_keep(s);e[0].active=false;
  if projects {s[0].page=5;na_http(s,"/api/projects","",90);return true;}
- s[0].page=2;s[0].thread[0]=AccountThread.{};na_nav_restore(s);return true;
+ s[0].page=2;s[0].project_thread_n=0;s[0].thread[0]=AccountThread.{};na_nav_restore(s);return true;
 }
 na_home_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
  x:=tr_open(t,"home.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_side_open(t,"nav.toggle","Show navigation");x=k_text(t,u,"home.name",TG_SPAN,"","OpenAgents");tr_close(t);
@@ -41,10 +40,10 @@ na_projects_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool)->boo
  na_nav_pending(s);return true;
 }
 na_projects_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
- x:=tr_open(t,"projects.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_side_open(t,"nav.toggle","Show navigation");x=k_text(t,u,"projects.title",TG_SPAN,"","Projects");x=k_icon_button(t,"projects.refresh",IC_ARROW_ROTATE_CW,"Refresh projects");tr_close(t);
+ x:=tr_open(t,"projects.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_side_open(t,"nav.toggle","Show navigation");x=k_text(t,u,"projects.title",TG_SPAN,"","Projects");x=k_icon_button(t,"projects.refresh",IC_ARROW_ROTATE_CW,"Refresh projects");x=k_icon_button(t,"projects.new",IC_PLUS,"New project");tr_close(t);
  if s[0].flight!=0 {x=k_text(t,u,"projects.loading",TG_P,"meta","Loading your projects…");}
  else if s[0].projects_failed {x=k_text(t,u,"projects.failed",TG_P,"","Projects could not be loaded. Refresh to retry.");}
  else if s[0].projects_n==0 {x=k_text(t,u,"projects.empty",TG_P,"","No projects were returned for this account.");}
- for i:0..<s[0].projects_n {p:=s[0].projects[i];id:[96]u8;x=k_row(t,u,tr_join(id[..],"projects.item.",i),cast(string)p.name[0..<p.name_n],"Open on openagents.com",false);}
- x=k_link(t,"projects.web","Browse projects on openagents.com");
+ for i:0..<s[0].projects_n {p:=s[0].projects[i];id:[96]u8;x=k_row(t,u,tr_join(id[..],"projects.item.",i),cast(string)p.name[0..<p.name_n],"",false);}
+
 }

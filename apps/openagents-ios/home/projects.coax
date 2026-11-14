@@ -1,0 +1,153 @@
+// Native assembly of the existing projects, drops and agent contracts.
+#test "project rows open a native member read and never emit a browser link" {
+ s:[1]Starter;s[0].workspace=true;s[0].page=5;s[0].projects_n=1;s[0].projects[0].id_n=na_copy(s[0].projects[0].id[..],"mobile-kit");
+ #assert na_project_press(s[..],"projects.item.0") && s[0].page==6 && s[0].action==4 && s[0].purpose==91;
+ #assert na_project_request_path(s[..])=="/projects/mobile-kit/api/state";
+}
+na_project_request_path :: (s:[]Starter)->string {d:[1]Jv;n:[16]JvNode;_:=jv_parse(d[..],cast(string)s[0].outbox[0..<s[0].out_n],n[..]);return jv_raw(d[0],jv_get(d[0],0,"path"));}
+na_project_http :: (s:[]Starter,op:string,body:string,purpose:int) {buf:[256]u8;p:=s[0].project[..];na_http(s,pja_path(true,pja_slug(p),op,buf[..]),body,purpose);}
+na_drop_http :: (s:[]Starter,op:string,body:string,purpose:int) {buf:[256]u8;p:=s[0].project[..];na_http(s,pja_path(false,pja_drop(p),op,buf[..]),body,purpose);}
+na_project_effect :: (s:[]Starter,op:int,body:string) {if s[0].flight!=0 {return;}s[0].action=op;s[0].flight=op;s[0].out_n=na_copy(s[0].outbox[..],body);s[0].dirty=true;}
+na_project_open :: (s:[]Starter,slug:string,title:string) {
+ if !pj_slug(slug) {return;}na_nav_keep(s);s[0].project[0]=ProjectApp.{};p:=s[0].project[..];p[0].ns=pja_copy(p[0].slug[..],slug);p[0].nt=na_copy(p[0].title[..],title);s[0].environments[0].active=false;s[0].usage[0].active=false;s[0].page=6;s[0].navigation[0].open=false;na_project_http(s,"state","",91);
+}
+na_project_new :: (s:[]Starter,grow:bool) {p:=s[0].project[..];if !grow {p[0]=ProjectApp.{};}p[0].grow=grow;p[0].ndrop=0;p[0].ndraft=0;p[0].ninfo=0;p[0].nl=0;p[0].confirm=0;p[0].uncertain=false;s[0].page=7;s[0].navigation[0].open=false;na_http(s,"/api/drops/me","",95);}
+na_project_press :: (s:[]Starter,id:string)->bool {
+ p:=s[0].project[..];chosen:= -1;for i:0..<s[0].projects_n {b:[96]u8;if id==tr_join(b[..],"projects.item.",i) {chosen=i;}}
+ known:=chosen>=0 || id=="projects.new" || id=="project.back" || id=="project.refresh" || id=="project.grow" || id=="project.chat" || id=="project.chats" || id=="project.chat.new" || id=="project.chat.back" || id=="project.reconnect" || id=="project.message.send" || id=="project.notes.add" || id=="project.files.add" || id=="project.read" || id=="project.review" || id=="project.field.save" || id=="project.field.close" || id=="project.fields.next" || id=="project.fields.prev" || id=="project.publish" || id=="project.discard" || id=="project.confirm" || id=="project.cancel";
+ for i:0..<p[0].fields[0].n {b:[96]u8;if id==tr_join(b[..],"project.field.",i) {known=true;}}
+ for i:0..<60 {b:[96]u8;if id==tr_join(b[..],"project.saved.",i) || id==tr_join(b[..],"project.resume.",i) || id==tr_join(b[..],"project.stop.",i) || id==tr_join(b[..],"project.undo.",i) || id==tr_join(b[..],"project.agree.",i) || id==tr_join(b[..],"project.tool.",i) {known=true;}}
+ if !known {return false;}
+ if s[0].flight!=0 || s[0].action!=0 || s[0].environments[0].flight || s[0].environments[0].random {s[0].navigation[0].np=ea_copy(s[0].navigation[0].pending[..],id);return true;}
+ if s[0].environments[0].uncertain || s[0].usage[0].uncertain {na_note(s,"Reconnect to resolve the current request first.");return true;}
+ if p[0].uncertain && id!="project.reconnect" {pja_note(p,"Refresh the saved result before another action.");return true;}
+ if chosen>=0 {r:=s[0].projects[chosen];na_project_open(s,cast(string)r.id[0..<r.id_n],cast(string)r.name[0..<r.name_n]);return true;}
+ if id=="projects.new" {na_nav_keep(s);s[0].environments[0].active=false;na_project_new(s,false);return true;}
+ if id=="project.back" {s[0].page=5;s[0].project_thread_n=0;na_http(s,"/api/projects","",90);return true;}
+ if id=="project.refresh" || id=="project.reconnect" {p[0].uncertain=false;if s[0].page==7 || s[0].page==8 {if p[0].nfile_id>0 {path:[96]u8;o:[1]Jo;jo_start(o[..],path[..]);jo_put(o[..],"files/");jo_put(o[..],cast(string)p[0].file_id[0..<p[0].nfile_id]);jo_put(o[..],"/done");na_drop_http(s,jo_text(o[..]),"{}",101);return true;}if p[0].ndrop>0 {na_drop_http(s,"draft","",98);}else {na_http(s,"/api/drops","",96);}}else if s[0].page==9 {na_project_http(s,"talk","",105);}else {na_project_http(s,"state","",91);}return true;}
+ if id=="project.grow" {if p[0].nk!=64 {pja_note(p,"This project has no publishing key available. Its owner must adopt it on the server before adding work.");return true;}na_project_new(s,true);return true;}
+ if id=="project.chat.back" {na_nav_keep(s);s[0].page=6;if !p[0].private_project {b:[160]u8;p[0].request=1;na_http(s,tr_cat(b[..],"/api/chat/project/v1?project=",pja_slug(p)),"",93);}return true;}
+ if id=="project.chat" {s[0].page=9;na_project_http(s,"talk","",105);return true;}
+ if id=="project.chats" {b:[160]u8;s[0].page=6;p[0].request=1;na_http(s,tr_cat(b[..],"/api/chat/project/v1?project=",pja_slug(p)),"",93);return true;}
+ if id=="project.chat.new" {na_nav_keep(s);na_new(s);s[0].project_thread_n=na_copy(s[0].project_thread[..],pja_slug(p));return true;}
+ for i:0..<p[0].chats[0].n {b:[96]u8;if id==tr_join(b[..],"project.saved.",i) {r:=p[0].chats[0].items[i];s[0].project_thread_n=na_copy(s[0].project_thread[..],pja_slug(p));path:[128]u8;na_http(s,tr_cat(path[..],"/api/chat/thread/v1?id=",cast(string)r.id[0..<r.id_n]),"",3);return true;}}
+ if id=="project.message.send" {if p[0].nm==0 || !p[0].agent {return true;}b:[8192]u8;n:=pj_body("text",cast(string)p[0].message[0..<p[0].nm],b[..]);p[0].nlast=pja_copy(p[0].last[..],cast(string)p[0].message[0..<p[0].nm]);na_project_http(s,"ask",cast(string)b[0..<n],104);return true;}
+ if id=="project.files.add" || id=="project.notes.add" {if p[0].ndrop==0 {p[0].request=ifx id=="project.notes.add" then 2 else 3;b:[256]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);if p[0].grow {jo_key(o[..],"project");jo_str(o[..],pja_slug(p));jo_key(o[..],"pubkey");jo_str(o[..],cast(string)p[0].key[0..<p[0].nk]);}jo_end(o[..]);na_http(s,"/api/drops",jo_text(o[..]),99);}else {na_project_pick(s,id=="project.notes.add");}return true;}
+ if id=="project.read" {na_drop_http(s,"draft","{}",98);return true;}
+ if id=="project.review" {s[0].page=8;return true;}
+ for i:0..<p[0].turns {b:[96]u8;if id==tr_join(b[..],"project.tool.",i) {p[0].tools[i] = !p[0].tools[i];return true;}}
+ if id=="project.field.close" {p[0].field= -1;return true;}
+ if id=="project.fields.next" {if p[0].field_at+16<p[0].fields[0].n {p[0].field_at+=16;}return true;}
+ if id=="project.fields.prev" {p[0].field_at=ifx p[0].field_at>=16 then p[0].field_at-16 else 0;return true;}
+ for i:0..<p[0].fields[0].n {b:[96]u8;if id==tr_join(b[..],"project.field.",i) {d:[1]Jv;nodes:[4096]JvNode;_:=jv_parse(d[..],cast(string)p[0].draft[0..<p[0].ndraft],nodes[..]);f:=p[0].fields[0].fields[i];p[0].field=i;p[0].ne=ifx f.node<0 then 0 else ifx f.kind==JV_TRUE then pja_copy(p[0].edit[..],"yes") else ifx f.kind==JV_FALSE then pja_copy(p[0].edit[..],"no") else jv_str(d[0],f.node,p[0].edit[..]);if p[0].ne<0 {p[0].field= -1;pja_note(p,"This field exceeds the 20,000-byte editor limit.");}else {dm_value(s[0].dom[..],"project.edit",cast(string)p[0].edit[0..<p[0].ne]);}return true;}}
+ if id=="project.field.save" {if p[0].field<0 {return true;}b:[24000]u8;path:[1024]u8;n:=jf_path(p[0].fields[0].fields[p[0].field],path[..]);o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"path");jo_raw(o[..],cast(string)path[0..<n]);jo_key(o[..],"value");jo_str(o[..],cast(string)p[0].edit[0..<p[0].ne]);jo_end(o[..]);na_drop_http(s,"draft/edit",jo_text(o[..]),98);return true;}
+ if id=="project.publish" {d:[1]Jv;nodes:[4096]JvNode;if !jv_parse(d[..],cast(string)p[0].draft[0..<p[0].ndraft],nodes[..]) || jv_raw(d[0],jv_get(d[0],0,"status"))!="ready" {pja_note(p,"Wait for a complete draft before publishing.");return true;}}
+ if id=="project.publish" || id=="project.discard" {p[0].confirm=ifx id=="project.publish" then 1 else 2;return true;}
+ if id=="project.cancel" {p[0].confirm=0;return true;}
+ if id=="project.confirm" {if p[0].confirm>0 {na_drop_http(s,ifx p[0].confirm==1 then "publish" else "discard","{}",ifx p[0].confirm==1 then 102 else 103);p[0].confirm=0;}return true;}
+ d:[1]Jv;nodes:[2048]JvNode;if jv_parse(d[..],cast(string)p[0].drops[0..<p[0].nl],nodes[..]) {list:=jv_get(d[0],0,"drops");for i:0..<jv_len(d[0],list) {b:[96]u8;if id==tr_join(b[..],"project.resume.",i) {p[0].ndrop=jv_str(d[0],jv_get(d[0],jv_at(d[0],list,i),"id"),p[0].drop[..]);if p[0].ndrop>0 {na_drop_http(s,"","",97);}return true;}}}
+ for i:0..<p[0].turns {row:=cast(string)p[0].talk[p[0].ts[i]..<p[0].te[i]];b:[96]u8;undo:=id==tr_join(b[..],"project.undo.",i);stop:=id==tr_join(b[..],"project.stop.",i);agree:=id==tr_join(b[..],"project.agree.",i);if undo || stop || agree {body:[256]u8;n:=pj_body(ifx agree then "goal" else "turn",pj_cell(row,1),body[..]);na_project_http(s,ifx agree then "agree" else ifx stop then "stop" else "undo",cast(string)body[0..<n],106);return true;}}
+ return true;
+}
+na_project_pick :: (s:[]Starter,notes:bool) {p:=s[0].project[..];if notes && p[0].nnotes==0 {pja_note(p,"Write a few notes first.");return;}b:[24000]u8;n:=nd_pick_body(ifx notes then "notes.md" else "",ifx notes then cast(string)p[0].notes[0..<p[0].nnotes] else "",b[..]);na_project_effect(s,14,cast(string)b[0..<n]);}
+na_project_edit :: (s:[]Starter,id:string,text:string)->bool {p:=s[0].project[..];if id=="project.edit" || id=="project.notes" || id=="project.message" {if id=="project.edit" {n:=pja_copy(p[0].edit[..],text);if n>=0 {p[0].ne=n;}}else if id=="project.notes" {n:=pja_copy(p[0].notes[..],text);if n>=0 {p[0].nnotes=n;}}else {n:=pja_copy(p[0].message[..],text);if n>=0 {p[0].nm=n;}}return true;}return false;}
+na_project_reply :: (s:[]Starter,op:int,status:int,raw:string,failed:bool)->bool {
+ p:=s[0].project[..];purpose:=s[0].purpose;
+ if op==14 && s[0].flight==14 {s[0].flight=0;s[0].dirty=true;d:[1]Jv;n:[32]JvNode;if failed || !jv_parse(d[..],raw,n[..]) {pja_note(p,"No file was chosen. Try again.");return true;}if jv_bool(d[0],jv_get(d[0],0,"cancelled")) {return true;}p[0].nToken=jv_str(d[0],jv_get(d[0],0,"token"),p[0].token[..]);p[0].nfile=jv_str(d[0],jv_get(d[0],0,"name"),p[0].file[..]);p[0].bytes=jv_int(d[0],jv_get(d[0],0,"bytes"),0);if p[0].nToken<1 || p[0].nfile<1 || !nd_size(p[0].bytes,ND_BYTES) {pja_note(p,"The chosen file is unavailable.");return true;}b:[1024]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],cast(string)p[0].file[0..<p[0].nfile]);jo_key(o[..],"bytes");jo_int(o[..],p[0].bytes);jo_end(o[..]);na_drop_http(s,"files",jo_text(o[..]),100);return true;}
+ if op==15 && s[0].flight==15 {s[0].flight=0;s[0].dirty=true;if failed || status<200 || status>=300 {pja_note(p,"The upload did not confirm. Refresh the drop before choosing that file again.");p[0].uncertain=true;return true;}path:[96]u8;o:[1]Jo;jo_start(o[..],path[..]);jo_put(o[..],"files/");jo_put(o[..],cast(string)p[0].file_id[0..<p[0].nfile_id]);jo_put(o[..],"/done");na_drop_http(s,jo_text(o[..]),"{}",101);return true;}
+ if op==16 && s[0].flight==16 {s[0].flight=0;s[0].dirty=true;return true;}
+ if purpose==108 && op==12 && s[0].flight==12 {s[0].flight=0;s[0].purpose=0;s[0].dirty=true;if p[0].wait>0 {p[0].wait-=1;}return true;}
+ if op!=4 || purpose<91 || purpose>107 {return false;}s[0].flight=0;s[0].purpose=0;s[0].dirty=true;
+ d:[1]Jv;nodes:[4096]JvNode;json:=jv_parse(d[..],raw,nodes[..]);v:=d[0];
+ if status==401 {na_history_clear(s);s[0].account_ready=false;s[0].page=0;na_note(s,"Log in again to manage projects.");return true;}
+ if purpose==105 && status==404 {p[0].agent=false;p[0].nc=0;p[0].turns=0;pja_note(p,"This project has no hosted agent enabled, or its access changed.");return true;}
+ if purpose==91 && status==404 {p[0].private_project=false;p[0].nd=0;p[0].nc=0;p[0].rows=0;p[0].turns=0;p[0].agent=false;p[0].loaded=false;b:[160]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],"/projects/");jo_put(o[..],pja_slug(p));jo_put(o[..],"/index.md");na_http(s,jo_text(o[..]),"",92);return true;}
+ if failed || status<200 || status>=300 {if purpose==105 {p[0].wait=5;}if purpose==94 {s[0].retry=true;na_note(s,"The project chat link did not save. Retry checks the same saved conversation before starting the model.");return true;}err:[512]u8;message:=ifx json then pj_text(v,jv_get(v,0,"error"),err[..]) else "";pja_note(p,ifx message.count>0 then message else "The request did not finish. Refresh to check its saved result.");if (failed || status==0) && p[0].mutation {p[0].uncertain=true;}return true;}
+ if purpose==91 {p[0].nd=pja_copy(p[0].data[..],raw);if p[0].nd<0 {pja_note(p,"The project exceeds this view's limit.");return true;}p[0].rows=pj_index(raw,p[0].starts[..],p[0].ends[..]);if p[0].rows<1 {pja_note(p,"The project returned an unreadable document.");return true;}p[0].private_project=true;p[0].loaded=true;p[0].agent=false;for i:0..<p[0].rows {row:=raw[p[0].starts[i]..<p[0].ends[i]];if row[0]=='P' {p[0].nt=na_copy(p[0].title[..],pj_cell(row,1));}}na_project_http(s,"talk","",105);return true;}
+ if purpose==92 {if raw.count<1 || raw[0]!='#' || raw.count>p[0].article.count {pja_note(p,"This project is unavailable or you no longer have access.");return true;}p[0].na=pja_copy(p[0].article[..],raw);p[0].loaded=true;marker:="kind 30621 by ";for i:0..<raw.count {if i+marker.count+64<=raw.count && raw[i..<i+marker.count]==marker {key:=raw[i+marker.count..<i+marker.count+64];if cnu_hex(key) {p[0].nk=pja_copy(p[0].key[..],key);break;}}}return true;}
+ if purpose==93 {next:=chh_read(raw);if !next.ok {pja_note(p,"The project chat list could not be read.");}else {p[0].chats[0]=next;}return true;}
+ if purpose==94 {if !json || jv_len(v,0)!=1 || !jv_bool(v,jv_get(v,0,"linked")) {s[0].retry=true;na_note(s,"The project link was not confirmed. Retry this saved turn.");return true;}s[0].project_link_pending=false;na_complete(s);return true;}
+ if purpose==95 {p[0].may=json && jv_bool(v,jv_get(v,0,"may"));if !p[0].may {pja_note(p,"This account cannot create project drops yet.");return true;}na_http(s,"/api/drops","",96);return true;}
+ if purpose==96 {if !json || jv_kind(v,jv_get(v,0,"drops"))!=JV_ARRAY || raw.count>p[0].drops.count {pja_note(p,"Your drafts could not be read.");return true;}p[0].nl=pja_copy(p[0].drops[..],raw);return true;}
+ if purpose==97 {p[0].ninfo=pja_copy(p[0].drop_info[..],raw);if p[0].ninfo<0 {p[0].ninfo=0;pja_note(p,"The drop file list exceeds this view’s limit.");return true;}na_drop_http(s,"draft","",98);return true;}
+ if purpose==98 {if !pja_load_draft(p,raw) {p[0].uncertain=true;pja_note(p,"The draft could not be read completely. Refresh to retry.");return true;}p[0].field= -1;status_text:=jv_raw(v,jv_get(v,0,"status"));if status_text=="ready" {s[0].page=8;}else if status_text=="reading" {p[0].wait=2;}else if status_text=="failed" {buf:[512]u8;pja_note(p,pj_text(v,jv_get(v,0,"note"),buf[..]));}return true;}
+ if purpose==99 {p[0].ndrop=jv_str(v,jv_get(v,0,"id"),p[0].drop[..]);if p[0].ndrop<1 {pja_note(p,"No drop ID was returned. Refresh drafts before trying again.");return true;}na_project_pick(s,p[0].request==2);return true;}
+ if purpose==100 {p[0].nfile_id=jv_str(v,jv_path(v,0,"file.id"),p[0].file_id[..]);p[0].nu=jv_str(v,jv_get(v,0,"upload"),p[0].upload[..]);if p[0].nfile_id<1 || p[0].nu<1 {pja_note(p,"The server did not open an upload.");return true;}b:[4608]u8;n:=nd_put_body(cast(string)p[0].token[0..<p[0].nToken],cast(string)p[0].upload[0..<p[0].nu],b[..]);na_project_effect(s,15,cast(string)b[0..<n]);return true;}
+ if purpose==101 {p[0].nfile_id=0;p[0].nToken=0;p[0].nnotes=0;dm_value(s[0].dom[..],"project.notes","");if jv_raw(v,jv_path(v,0,"file.status"))!="scanned" {pja_note(p,"The server refused this file. It will not be used in the draft.");}else {pja_note(p,"File kept. Add more, or read the drop to draft the project.");}na_drop_http(s,"","",97);return true;}
+ if purpose==102 {if json && jv_kind(v,jv_get(v,0,"published"))==JV_OBJECT {name:[1024]u8;slug:[64]u8;dd:[1]Jv;dn:[4096]JvNode;_:=jv_parse(dd[..],cast(string)p[0].draft[0..<p[0].ndraft],dn[..]);nn:=jv_str(dd[0],jv_path(dd[0],0,"draft.card.name"),name[..]);ns:=jv_str(dd[0],jv_path(dd[0],0,"draft.card.slug"),slug[..]);if p[0].grow {ns=pja_copy(slug[..],pja_slug(p));nn=pja_copy(name[..],cast(string)p[0].title[0..<p[0].nt]);}if ns>0 && nn>0 {na_project_open(s,cast(string)slug[0..<ns],cast(string)name[0..<nn]);}}else {pja_note(p,"The draft is approved. Publication is not confirmed; refresh before retrying Publish.");}return true;}
+ if purpose==103 {p[0]=ProjectApp.{};s[0].page=5;na_http(s,"/api/projects","",90);return true;}
+ if purpose==104 {p[0].nm=0;dm_value(s[0].dom[..],"project.message","");na_project_http(s,"talk","",105);return true;}
+ if purpose==105 {p[0].nc=pja_copy(p[0].talk[..],raw);if p[0].nc<0 {pja_note(p,"The conversation exceeds this view's limit.");return true;}p[0].turns=pj_index(raw,p[0].ts[..],p[0].te[..]);if p[0].turns<1 {p[0].agent=false;pja_note(p,"The project conversation returned an unreadable response.");return true;}p[0].agent=false;p[0].busy=false;for i:0..<p[0].turns {row:=raw[p[0].ts[i]..<p[0].te[i]];if row[0]=='Z' {p[0].agent=true;p[0].busy=pj_cell(row,3)=="1";}}p[0].wait=ifx p[0].busy then 2 else 20;return true;}
+ if purpose==106 {na_project_http(s,"talk","",105);return true;}
+ return true;
+}
+na_project_tick :: (s:[]Starter) {p:=s[0].project[..];if s[0].navigation[0].open || s[0].usage[0].active || s[0].flight!=0 || s[0].action!=0 || p[0].uncertain {return;}
+ if (s[0].page==9 || s[0].page==6 && p[0].private_project) && p[0].agent {if p[0].wait==0 {na_project_http(s,ifx s[0].page==6 then "state" else "talk","",ifx s[0].page==6 then 91 else 105);}else {s[0].purpose=108;na_request(s,12,"");}}
+ if (s[0].page==7 || s[0].page==8) && p[0].wait>0 {s[0].purpose=108;na_request(s,12,"");}else if s[0].page==7 && p[0].ndraft>0 {d:[1]Jv;n:[4096]JvNode;if jv_parse(d[..],cast(string)p[0].draft[0..<p[0].ndraft],n[..]) && jv_raw(d[0],jv_get(d[0],0,"status"))=="reading" {na_drop_http(s,"draft","",98);}}
+}
+na_project_header :: (t:[]Tree,u:[]Ui,label:string) {x:=tr_open(t,"project.header",TG_HEADER,"");tr_attr(t,x,AT_ROLE,"toolbar");x=k_side_open(t,"nav.toggle","Show navigation");x=k_text(t,u,"project.title",TG_SPAN,"",label);x=k_icon_button(t,"project.refresh",IC_ARROW_ROTATE_CW,"Refresh project");tr_close(t);}
+na_project_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
+ p:=s[0].project[..];na_project_header(t,u,ifx s[0].page==7 then (ifx p[0].grow then "Add to project" else "New project") else ifx s[0].page==8 then "Review draft" else cast(string)p[0].title[0..<p[0].nt]);x:=k_link(t,"project.back","Projects");
+ if p[0].nn>0 {x=k_text(t,u,"project.note",TG_P,"note",cast(string)p[0].note[0..<p[0].nn]);}
+ if p[0].uncertain {x=k_link(t,"project.reconnect","Check saved result");return;}
+ if p[0].confirm>0 {x=k_text(t,u,"project.confirm.title",TG_H2,"",ifx p[0].confirm==1 then "Publish this reviewed draft?" else "Discard this draft and its files?");x=k_text(t,u,"project.confirm.about",TG_P,"",ifx p[0].confirm==1 then "The reviewed contents become public. Continue only after checking every section." else "This cannot be undone.");x=k_button(t,u,"project.confirm",ifx p[0].confirm==1 then "Publish" else "Discard",ifx p[0].confirm==1 then BS_PRIMARY else BS_DESTRUCTIVE);x=k_link(t,"project.cancel","Cancel");return;}
+ if s[0].page==7 {na_project_drop_render(s,t,u);return;}
+ if s[0].page==8 {na_project_review_render(s,t,u);return;}
+ if s[0].page==9 {na_project_talk_render(s,t,u);return;}
+ if !p[0].loaded {x=k_text(t,u,"project.loading",TG_P,"meta","Loading project…");return;}
+ if p[0].private_project {
+  x=k_link(t,"project.chat","Open project chat");
+  for i:0..<p[0].rows {row:=cast(string)p[0].data[p[0].starts[i]..<p[0].ends[i]];id:[96]u8;text:[4096]u8;o:[1]Jo;jo_start(o[..],text[..]);
+   if row[0]=='P' {x=k_text(t,u,tr_join(id[..],"project.summary.",i),TG_P,"",pj_cell(row,2));}
+   if row[0]=='G' {jo_put(o[..],pj_cell(row,4));jo_put(o[..]," · ");jo_put(o[..],pj_cell(row,2));}
+   if row[0]=='D' {x=k_text(t,u,tr_join(id[..],"project.day.",i),TG_H2,"",pj_cell(row,2));}
+   if row[0]=='M' {jo_put(o[..],pj_cell(row,5));jo_put(o[..]," · ");jo_put(o[..],pj_cell(row,3));jo_put(o[..],"\n");jo_put(o[..],pj_cell(row,6));}
+   if row[0]=='I' {jo_put(o[..],pj_cell(row,4));jo_put(o[..]," · ");jo_put(o[..],pj_cell(row,3));jo_put(o[..],"\n");jo_put(o[..],pj_cell(row,5));}
+   if row[0]=='C' {x=k_text(t,u,tr_join(id[..],"project.list.",i),TG_H2,"",pj_cell(row,2));}
+   if o[0].n>0 {x=k_text(t,u,tr_join(id[..],"project.fact.",i),TG_P,"",jo_text(o[..]));}
+  }
+ }else {x=k_link(t,"project.grow","Add files or work to project");x=k_link(t,"project.chats","Your project chats");if p[0].request==1 {x=k_link(t,"project.chat.new","New project chat");for i:0..<p[0].chats[0].n {b:[96]u8;r:=p[0].chats[0].items[i];x=k_row(t,u,tr_join(b[..],"project.saved.",i),cast(string)r.title[0..<r.title_n],"",false);}}x=k_message(t,u,"project.document",true,s[0].markdown[..],cast(string)p[0].article[0..<p[0].na]);}
+}
+na_project_drop_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
+ p:=s[0].project[..];x:=k_text(t,u,"project.drop.about",TG_P,"","Add notes, documents, images or models. The agent will draft the project for you to review before publication.");
+ if !p[0].may {return;}
+ x=k_code_field(t,u,"project.notes","","Project notes");tr_attr(t,x,AT_VALUE,cast(string)p[0].notes[0..<p[0].nnotes]);x=k_link(t,"project.notes.add","Add these notes");x=k_link(t,"project.files.add","Choose a file");
+ d:[1]Jv;nodes:[2048]JvNode;if jv_parse(d[..],cast(string)p[0].drop_info[0..<p[0].ninfo],nodes[..]) {v:=d[0];list:=jv_get(v,0,"files");for i:0..<jv_len(v,list) {b:[96]u8;name:[256]u8;status:[64]u8;row:=jv_at(v,list,i);x=k_text(t,u,tr_join(b[..],"project.file.",i),TG_P,"",pj_text(v,jv_get(v,row,"name"),name[..]));x=k_text(t,u,tr_join(b[..],"project.file.status.",i),TG_P,"meta",pj_text(v,jv_get(v,row,"status"),status[..]));}}
+ if p[0].ndrop>0 {x=k_link(t,"project.read","Read files and draft project");x=k_link(t,"project.discard","Discard drop");}
+ if jv_parse(d[..],cast(string)p[0].drops[0..<p[0].nl],nodes[..]) {v:=d[0];list:=jv_get(v,0,"drops");x=k_text(t,u,"project.drafts.title",TG_H2,"","Saved drafts");for i:0..<jv_len(v,list) {row:=jv_at(v,list,i);status:=jv_raw(v,jv_get(v,row,"status"));if status!="open" && status!="approved" {continue;}target:=jv_get(v,row,"project");if (p[0].grow && jv_raw(v,target)!=pja_slug(p)) || (!p[0].grow && jv_kind(v,target)==JV_STRING && jv_raw(v,target).count>0) {continue;}b:[96]u8;name:[80]u8;x=k_row(t,u,tr_join(b[..],"project.resume.",i),pj_text(v,jv_get(v,row,"id"),name[..]),"Continue draft",false);}}
+}
+na_project_review_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
+ x:= -1;p:=s[0].project[..];if p[0].field>=0 {f:=p[0].fields[0].fields[p[0].field];label:[768]u8;x=k_text(t,u,"project.field.title",TG_H2,"",jf_label(f,label[..]));x=k_code_field(t,u,"project.edit","","Field value");tr_attr(t,x,AT_VALUE,cast(string)p[0].edit[0..<p[0].ne]);x=k_link(t,"project.field.save","Save field");x=k_link(t,"project.field.close","Cancel edit");return;}
+ d:[1]Jv;nodes:[4096]JvNode;if !jv_parse(d[..],cast(string)p[0].draft[0..<p[0].ndraft],nodes[..]) {return;}v:=d[0];if jv_raw(v,jv_get(v,0,"status"))!="ready" {x=k_text(t,u,"project.draft.waiting",TG_P,"meta","The draft is not ready. Refresh to check its status.");return;}
+ x=k_text(t,u,"project.review.about",TG_P,"","Review each section. Tap any field to edit its complete value. Empty a string-list item to remove it; use Add for a new one.");
+ for i:p[0].field_at..<p[0].fields[0].n {if i>=p[0].field_at+16 {break;}f:=p[0].fields[0].fields[i];label:[768]u8;value:[512]u8;id:[96]u8;preview:=ifx f.node<0 then "Add item" else ifx f.kind==JV_TRUE then "yes" else ifx f.kind==JV_FALSE then "no" else pj_text(v,f.node,value[..]);x=k_row(t,u,tr_join(id[..],"project.field.",i),jf_label(f,label[..]),ifx preview.count>0 then preview else "Tap to edit complete value",false);}
+ if p[0].field_at>0 {x=k_link(t,"project.fields.prev","Previous fields");}if p[0].field_at+16<p[0].fields[0].n {x=k_link(t,"project.fields.next","More fields");}
+ x=k_link(t,"project.publish",ifx p[0].grow then "Accept additions" else "Publish project");x=k_link(t,"project.discard","Discard draft");
+}
+na_project_talk_render :: (s:[]Starter,t:[]Tree,u:[]Ui) {
+ x:= -1;p:=s[0].project[..];x=k_link(t,"project.chat.back","Project overview");x=tr_open(t,"project.transcript",TG_SECTION,"transcript");tr_attr(t,x,AT_STATE,pja_slug(p));
+ for i:0..<p[0].turns {row:=cast(string)p[0].talk[p[0].ts[i]..<p[0].te[i]];id:[96]u8;
+  if row[0]=='U' {x=k_message(t,u,tr_join(id[..],"project.user.",i),false,s[0].markdown[..],pj_cell(row,6));answer:=pj_cell(row,7);if answer.count>0 {x=k_message(t,u,tr_join(id[..],"project.answer.",i),true,s[0].markdown[..],answer);}state:=pj_cell(row,3);if state=="queued" || state=="running" {x=k_text(t,u,tr_join(id[..],"project.working.",i),TG_P,"meta",pj_cell(row,13));x=k_link(t,tr_join(id[..],"project.stop.",i),"Stop turn");}if pj_cell(row,11)=="1" {x=k_link(t,tr_join(id[..],"project.undo.",i),"Undo turn");}err:=pj_cell(row,8);if err.count>0 {x=k_text(t,u,tr_join(id[..],"project.turn.error.",i),TG_P,"note",err);}}
+  if row[0]=='E' {x=k_tool(t,u,tr_join(id[..],"project.tool.",i),ifx pj_cell(row,3)=="agent.edit" then "Edit" else "Agent",pj_cell(row,1),p[0].tools[i],"",pj_cell(row,4));}
+  if row[0]=='G' {for g:0..<p[0].rows {goal:=cast(string)p[0].data[p[0].starts[g]..<p[0].ends[g]];if goal[0]=='G' && pj_cell(goal,1)==pj_cell(row,1) {x=k_text(t,u,tr_join(id[..],"project.proposal.",i),TG_P,"",pj_cell(goal,4));}}x=k_link(t,tr_join(id[..],"project.agree.",i),"Agree to proposed goal");x=k_text(t,u,tr_join(id[..],"project.agreement.",i),TG_P,"meta",pj_cell(row,2));}
+ }tr_close(t);
+ if p[0].agent {f:=k_composer_begin(t,u,"project.message","Message project agent");k_composer_end(t,u,"project.message","Send",p[0].nm>0 && !p[0].busy && (s[0].flight==0 || s[0].flight==12));}else {x=k_text(t,u,"project.no-agent",TG_P,"meta","This project has no hosted agent enabled.");}
+}
+#test "draft publication needs a ready draft and an explicit confirmation" {
+ s:[1]Starter;s[0].workspace=true;s[0].page=8;#assert na_project_press(s[..],"project.publish") && s[0].flight==0 && s[0].project[0].confirm==0;
+ p:=s[0].project[..];p[0].ndrop=pja_copy(p[0].drop[..],"d_123");#assert pja_load_draft(p,"{\"status\":\"ready\",\"draft\":{\"card\":{\"name\":\"Test\"}}}");#assert na_project_press(s[..],"project.publish") && p[0].confirm==1 && s[0].flight==0;
+ #assert na_project_press(s[..],"project.confirm") && s[0].purpose==102 && na_project_request_path(s[..])=="/api/drops/d_123/publish";
+}
+#test "a lost draft mutation checks the saved result without repeating the write" {
+ s:[1]Starter;s[0].workspace=true;s[0].page=8;p:=s[0].project[..];p[0].ndrop=pja_copy(p[0].drop[..],"d_123");na_drop_http(s[..],"draft/edit","{}",98);s[0].action=0;na_reply(s[..],4,0,"",true);#assert p[0].uncertain;
+ #assert na_project_press(s[..],"project.reconnect") && s[0].purpose==98 && na_project_request_path(s[..])=="/api/drops/d_123/draft" && !p[0].mutation;
+}
+#test "project inference cannot begin before its saved transcript is linked" {
+ s:[1]Starter;s[0].workspace=true;s[0].page=3;s[0].project_thread_n=na_copy(s[0].project_thread[..],"mobile-kit");s[0].project_link_pending=true;_:=na_copy(s[0].thread[0].id[..],"m_00000000000000000001");s[0].thread[0].id_n=22;
+ na_complete(s[..]);#assert s[0].purpose==94 && na_project_request_path(s[..])=="/api/chat/project/v1";
+ s[0].action=0;na_reply(s[..],4,503,"{}",false);#assert s[0].retry && s[0].project_link_pending && s[0].flight==0;
+}
+
+#test "draft field edits encode a complete JSON value after their path" {
+ s:[1]Starter;s[0].workspace=true;p:=s[0].project[..];p[0].ndrop=pja_copy(p[0].drop[..],"d_123");#assert pja_load_draft(p,"{\"status\":\"ready\",\"draft\":{\"card\":{\"name\":\"A\"}}}");p[0].field=0;p[0].ne=pja_copy(p[0].edit[..],"New name");#assert na_project_press(s[..],"project.field.save");d:[1]Jv;n:[64]JvNode;body:[24000]u8;#assert jv_parse(d[..],cast(string)s[0].outbox[0..<s[0].out_n],n[..]);size:=jv_str(d[0],jv_get(d[0],0,"body"),body[..]);#assert size>0 && jv_parse(d[..],cast(string)body[0..<size],n[..]) && jv_len(d[0],jv_get(d[0],0,"path"))==2 && jv_raw(d[0],jv_get(d[0],0,"value"))=="New name";
+}

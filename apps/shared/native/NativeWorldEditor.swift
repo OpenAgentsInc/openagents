@@ -3,14 +3,15 @@ import UIKit
 import UniformTypeIdentifiers
 import CryptoKit
 
-@MainActor final class NativeWorldEditor:UIViewController,UIAdaptivePresentationControllerDelegate,UIDocumentPickerDelegate {
+@MainActor final class NativeWorldEditor:UIViewController,UIAdaptivePresentationControllerDelegate {
     private let program:NativeProgram
     private let controls=NativeControls()
     private let network:NativeWorldNetwork
     private let send:(Int32,String)->Void
     private let directory:URL
     private var ended=false,wantsChat=false
-    private var pickerID:String?,offered:Data?
+    private var offered:Data?
+    private let documents=NativeDocuments()
     private var conversation:NativeWorldConversation?
     private let upload=NativeWorldSession()
     private var uploadJob:Task<Void,Never>?
@@ -64,8 +65,7 @@ import CryptoKit
             guard let offered,let url=URL(string:path),url.scheme=="https",url.host != nil,url.user==nil,url.password==nil else {reply(kind,400,"");return}
             uploadJob=Task { [weak self] in
                 guard let self else {return};do {
-                    var q=URLRequest(url:url);q.httpMethod="PUT" // no cookies, bearer, player key, Origin or content-type
-                    let (_,response)=try await upload.session.upload(for:q,from:offered);guard !ended else {return};reply(kind,(response as? HTTPURLResponse)?.statusCode ?? 0,"")
+                    let status=try await NativeDocuments.put(offered,url:path,session:upload.session);guard !ended else {return};reply(kind,status,"")
                 }catch {if !ended {reply(kind,0,"")}}
             };return
         }
@@ -84,19 +84,17 @@ import CryptoKit
         }
     }
     private func pick(_ id:String,accept:String) {
-        guard presentedViewController==nil else {return};pickerID=id
         let types=accept.split(separator:",").compactMap {UTType(filenameExtension:String($0).trimmingCharacters(in:CharacterSet(charactersIn:". ")))}
-        let picker=UIDocumentPickerViewController(forOpeningContentTypes:types.isEmpty ? [.data]:types,asCopy:true);picker.delegate=self;present(picker,animated:true)
+        uploadJob=Task { [weak self] in
+            guard let self else {return}
+            do {
+                let result=try await documents.pick(self,types:types.isEmpty ? [.data]:types)
+                guard !ended,result["cancelled"] as? Bool != true,let token=result["token"] as? String,let slot=program.nodes.first(where:{$0.value.id==id})?.key else {return}
+                offered=documents.data(token);documents.release()
+                try program.event(10,slot,"\(result["bytes"] as? Int ?? 0) \(result["name"] as? String ?? "")");pump()
+            }catch {if !ended {failure(error)}}
+        }
     }
-    func documentPicker(_ controller:UIDocumentPickerViewController,didPickDocumentsAt urls:[URL]) {
-        guard let id=pickerID,let url=urls.first,let slot=program.nodes.first(where:{$0.value.id==id})?.key else {return};pickerID=nil
-        do {
-            let size=try url.resourceValues(forKeys:[.fileSizeKey]).fileSize ?? 0
-            offered=size<=67108864 ? try Data(contentsOf:url,options:.mappedIfSafe):nil
-            try program.event(10,slot,"\(size) \(url.lastPathComponent)");pump()
-        }catch {failure(error)}
-    }
-    func documentPickerWasCancelled(_ controller:UIDocumentPickerViewController) {pickerID=nil}
     private func reply(_ kind:Int,_ status:Int,_ body:String) {
         do {if kind==401 {try program.event(4,status,body);try program.event(5,status,"")}else {try program.event(11,status,body)};pump()}catch {failure(error)}
     }

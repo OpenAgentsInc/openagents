@@ -1,0 +1,14 @@
+// Ephemeral native file leases. Bytes never pass through the UI tree or a URL.
+#load "../lib/json/json.coax";
+#authority;
+ND_BYTES :: 67108864;
+#test "document upload effects cannot carry files to another origin" {
+ #assert nd_upload("https://storage.googleapis.com/upload/storage/v1/b/a?upload_id=x");
+ for s:[6]string.["http://storage.googleapis.com/x","https://evil.test/x","https://storage.googleapis.com.evil/x","https://user@storage.googleapis.com/x","file:///tmp/x",""] {#assert !nd_upload(s);}
+ #assert nd_size(1,67108864) && !nd_size(0,67108864) && !nd_size(67108865,67108864) && !nd_size(1,67108865);
+}
+nd_size :: (size:int,limit:int)->bool #export_c #effects(all) {return size>0 && limit<=ND_BYTES && size<=limit;}
+nd_upload :: (url:string)->bool #export_c #effects(all) {root:="https://storage.googleapis.com/";if url.count<=root.count || url.count>4096 || url[0..<root.count]!=root {return false;}for c:url {if c<=32 || c>=127 || c=='\\' || c=='#' {return false;}}return true;}
+
+#forall "upload bytes are printable and cannot carry fragments or escapes" byte:0..<129 {b:[33]u8;root:="https://storage.googleapis.com/";for c,i:root {b[i]=c;}b[root.count]=cast(u8)byte;#assert nd_upload(cast(string)b[0..<root.count+1])==(byte>32 && byte<127 && byte!=92 && byte!=35);}
+#test "upload URL and file size boundaries are exact" {b:[4097]u8;root:="https://storage.googleapis.com/";for i:0..<b.count {b[i]='a';}for c,i:root {b[i]=c;}#assert nd_upload(cast(string)b[0..<4096]) && !nd_upload(cast(string)b[..]) && !nd_upload(root);#assert !nd_size(0,1) && !nd_size(-1,1) && !nd_size(1,0) && !nd_size(1,-1) && !nd_size(2,1) && nd_size(1,1);}

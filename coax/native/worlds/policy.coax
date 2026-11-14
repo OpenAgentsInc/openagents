@@ -46,6 +46,25 @@ nwp_received :: (expected:int,actual:int,hash:string,observed:string,cancelled:b
 }
 nwp_account :: (path:string)->bool #export_c #effects(all) {
  if !cnp_path(path) {return false;}stem:=cnp_stem(path);
+ if stem=="/api/drops" || uri_prefix(stem,"/api/drops/") {return true;}
+ project_root:="/projects/";
+ if uri_prefix(stem,project_root) {
+  end:=project_root.count;while end<stem.count && stem[end]!='/' {end+=1;}
+  if end==stem.count {return false;}
+  for tail:[9]string.["/index.md","/api/state","/api/talk","/api/ask","/api/stop","/api/undo","/api/agree","/api/status","/api/message"] {
+   if stem[end..<stem.count]==tail {return nwp_project_slug(stem[project_root.count..<end]);}
+  }return false;
+ }
  if stem=="/api/projects" || stem=="/api/worlds" || stem=="/api/auth/viewer" || stem=="/api/auth/account" {return true;}
  for root:[4]string.["/api/worlds/","/api/playtest/","/api/projects/","/api/chat/"] {if uri_prefix(stem,root) {return true;}}return false;
 }
+
+#test "project SDK paths admit only project screens and member operations" {
+ #assert nwp_account("/api/drops") && nwp_account("/api/drops/d_123/draft") && nwp_account("/projects/coax/index.md") && nwp_account("/projects/my-project/api/ask");
+ #assert !nwp_account("/projects/x/api/key") && !nwp_account("/projects/x/api/push") && !nwp_account("/projects/x/secret") && !nwp_account("/projects/-x/api/state") && !nwp_account("/projects/x/../state");
+}
+
+nwp_project_slug :: (slug:string)->bool #effects(all) {if slug.count<1 || slug.count>64 || slug[0]=='-' {return false;}for c:slug {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}return true;}
+#forall "project slugs retain their own bound, independent of world IDs" length:0..<67 {b:[80]u8;for i:0..<length {b[i]='a';}#assert nwp_project_slug(cast(string)b[0..<length])==(length>0 && length<=64);}
+#forall "project slug bytes are closed" byte:0..<128 {b:=[3]u8.['a',0,'z'];b[1]=cast(u8)byte;#assert nwp_project_slug(cast(string)b[..])==((byte>=97 && byte<=122) || (byte>=48 && byte<=57) || byte==45);}
+#test "a project root alone is not an authorized API" {#assert !nwp_account("/projects/x") && !nwp_account("/projects/x/whatever") && !nwp_account("/projects//api/state");}

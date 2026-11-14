@@ -3,3 +3,5 @@
 #load "../../components/skin/native-chat.coax";
 #load "text-link-policy.coax";
 #load "workspace.coax";
+
+#load "documents.coax";

@@ -47,6 +47,7 @@
 // the old /signin, goes to /login.
 
 #load "projects.coax";
+#load "../../coax/lib/project/wire.coax";
 
 PV_MAX_VERTICES :: 240000;
 PV_INBOX :: 262144;
@@ -178,15 +179,7 @@ coaxial_private_bind :: (h: [] PrivateHost) #export_c #effects(all) {
 pv_line :: (s: [] PrivateState, i: int) -> string { return cast(string) s[0].data[s[0].line_at[i]..<s[0].line_end[i]]; }
 pv_kind :: (s: [] PrivateState, i: int) -> u8 { return s[0].data[s[0].line_at[i]]; }
 // The col-th value of a line (0 is its kind).
-pv_cell :: (s: [] PrivateState, i: int, col: int) -> string {
-  from := s[0].line_at[i]; to := s[0].line_end[i];
-  k := from; c := 0;
-  while c < col && k < to { if s[0].data[k] == '|' { c += 1; } k += 1; }
-  if c < col { return ""; }
-  j := k;
-  while j < to && s[0].data[j] != '|' { j += 1; }
-  return cast(string) s[0].data[k..<j];
-}
+pv_cell :: (s: [] PrivateState, i: int, col: int) -> string {return pj_cell(pv_line(s,i),col);}
 pv_index :: (s: [] PrivateState) {
   s[0].line_n = 0;
   at := 0; n := s[0].data_n;
@@ -217,15 +210,7 @@ pv_nth :: (s: [] PrivateState, kind: u8, k: int) -> int {
 }
 // The same over the agent's conversation.
 ta_kind :: (s: [] PrivateState, i: int) -> u8 { return s[0].tdata[s[0].tline_at[i]]; }
-ta_cell :: (s: [] PrivateState, i: int, col: int) -> string {
-  from := s[0].tline_at[i]; to := s[0].tline_end[i];
-  k := from; c := 0;
-  while c < col && k < to { if s[0].tdata[k] == '|' { c += 1; } k += 1; }
-  if c < col { return ""; }
-  j := k;
-  while j < to && s[0].tdata[j] != '|' { j += 1; }
-  return cast(string) s[0].tdata[k..<j];
-}
+ta_cell :: (s: [] PrivateState, i: int, col: int) -> string {return pj_cell(cast(string)s[0].tdata[s[0].tline_at[i]..<s[0].tline_end[i]],col);}
 ta_index :: (s: [] PrivateState) {
   s[0].tline_n = 0;
   at := 0; n := s[0].tdata_n;
