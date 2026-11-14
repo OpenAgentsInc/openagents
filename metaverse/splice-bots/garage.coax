@@ -235,9 +235,9 @@ ga_layout :: (g: [] SpGame) {
 GC_FIELD :: 0; GC_TRACK :: 1; GC_FLOOR :: 2; GC_WALL :: 3; GC_STAIN :: 4; GC_DOOR :: 5; GC_ROOF :: 6;
 GC_PIER :: 7; GC_RIM :: 8; GC_WALK :: 9; GC_STONE :: 10; GC_TREAD :: 11; GC_LED :: 12; GC_LED_OFF :: 13;
 GA_COLOURS :: [42] f32.[
-  0.38, 0.33, 0.28,   // the field (the rave floor): concrete dust
-  0.31, 0.27, 0.23,   // the rings the mechs' tracks wore into it
-  0.27, 0.25, 0.23,   // a bay's floor
+  0.32, 0.28, 0.24,   // the field (the rave floor): concrete dust
+  0.26, 0.23, 0.20,   // the rings the mechs' tracks wore into it
+  0.15, 0.14, 0.13,   // a bay's floor
   0.36, 0.33, 0.30,   // a bay's back wall
   0.21, 0.19, 0.18,   // a stained wall
   0.52, 0.49, 0.44,   // a shut roll-up door
@@ -418,7 +418,7 @@ ga_lights :: (g: [] SpGame, l: [] f32) {
 ga_stage :: (g: [] SpGame, n: int) {
   if n < 43 || n > 46 { return; }
   g_stage_set(g, 7); g_foes(g); t := g[0].bt[..];
-  if n <= 44 { g[0].phase = ifx n == 43 then PH_DAY else PH_NIGHT; ga_look_into(g, 4); g[0].pitch = 0.1; return; }
+  if n <= 44 { g[0].phase = ifx n == 43 then PH_DAY else PH_NIGHT; ga_look_into(g, 4); c := ga_at(g, 4, g[0].at.gar_r - 12); g[0].px = c.x; g[0].pz = c.z; g[0].pitch = -0.3; return; }
   t[0].mech_core = true; t[0].mech_used = true;
   if n == 45 { g[0].px = -2; g[0].pz = g[0].at.wall_z + 16; g[0].yaw = PI; t[0].mech_x = 4; t[0].mech_z = g[0].pz - 2; return; }
   b := ga_angle(GA_EMPTY) + ga_span() * 0.5; pr := ga_pass_r(g);
