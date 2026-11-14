@@ -5,6 +5,20 @@
  one:[1]int;#assert pj_index("P|a\nP|b\n",one[..],one[..])== -1;
 }
 pj_index :: (raw:string,starts:[]int,ends:[]int)->int {n:=0;at:=0;while at<raw.count {end:=at;while end<raw.count && raw[end]!='\n' {end+=1;}if end>at+1 && raw[at+1]=='|' {if n>=starts.count || n>=ends.count {return -1;}starts[n]=at;ends[n]=end;n+=1;}at=end+1;}return n;}
+// The same lines, but an answer with more than the view holds keeps the first ones that fit (the
+// website's private page), where pj_index refuses it (the native clients).
+pj_index_fit :: (raw:string,starts:[]int,ends:[]int)->int {n:=pj_index(raw,starts,ends);if n>=0 {return n;}kept:=0;while kept<starts.count && kept<ends.count {kept+=1;}return kept;}
+#test "private rows: empty, no last newline, CRLF, skipped kinds, a long line, and the bound" {
+ a:[4]int;b:[4]int;#assert pj_index("",a[..],b[..])==0 && pj_index_fit("",a[..],b[..])==0;
+ #assert pj_index("\n|x\nP",a[..],b[..])==0;
+ n:=pj_index("\n\nP\nP|\n|x\nab|c\nY|a\r\nZ|",a[..],b[..]);#assert n==3 && a[0]==4 && b[0]==6 && a[1]==15 && b[1]==19 && a[2]==20 && b[2]==22;
+ long:[3002]u8;long[0]='L';long[1]='|';for i:2..<3002 {long[i]='x';}#assert pj_index(cast(string)long[..],a[..],b[..])==1 && a[0]==0 && b[0]==3002;
+ #assert pj_index("A|\nB|\nC|\nD|\n",a[..],b[..])==4 && pj_index_fit("A|\nB|\nC|\nD|",a[..],b[..])==4;
+ #assert pj_index("A|\nB|\nC|\nD|\nE|",a[..],b[..])== -1;
+ a[3]=0;#assert pj_index_fit("A|\nB|\nC|\nD|\nE|\n",a[..],b[..])==4 && a[3]==9 && b[3]==11;
+ #assert pj_index_fit("A|",a[0..<0],b[0..<0])==0 && pj_index_fit("A|\nB|\nC|\nD|",a[0..<3],b[..])==3;
+ c:[2]int;#assert pj_index_fit("A|\nB|\nC|",c[..],b[..])==2 && pj_index_fit("A|\nB|\nC|",b[..],c[..])==2 && pj_index_fit("A|\nB|",c[..],b[..])==2;
+}
 pj_cell :: (row:string,col:int)->string {at:=0;c:=0;while at<row.count && c<col {if row[at]=='|' {c+=1;}at+=1;}if c!=col {return "";}end:=at;while end<row.count && row[end]!='|' {end+=1;}return row[at..<end];}
 pj_slug :: (value:string)->bool {if value.count<1 || value.count>64 || value[0]=='-' {return false;}for c:value {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}return true;}
 pj_object :: (v:Jv,node:int,out:[]u8)->int {o:[1]Jo;jo_start(o[..],out);jv_write(v,node,o[..]);return ifx o[0].bad then -1 else o[0].n;}

@@ -180,18 +180,8 @@ pv_line :: (s: [] PrivateState, i: int) -> string { return cast(string) s[0].dat
 pv_kind :: (s: [] PrivateState, i: int) -> u8 { return s[0].data[s[0].line_at[i]]; }
 // The col-th value of a line (0 is its kind).
 pv_cell :: (s: [] PrivateState, i: int, col: int) -> string {return pj_cell(pv_line(s,i),col);}
-pv_index :: (s: [] PrivateState) {
-  s[0].line_n = 0;
-  at := 0; n := s[0].data_n;
-  while at < n {
-    stop := at;
-    while stop < n && s[0].data[stop] != '\n' { stop += 1; }
-    if stop > at + 1 && s[0].data[at + 1] == '|' && s[0].line_n < PV_LINES {
-      s[0].line_at[s[0].line_n] = at; s[0].line_end[s[0].line_n] = stop; s[0].line_n += 1;
-    }
-    at = stop + 1;
-  }
-}
+// The answer's lines (pj_index_fit, the line rule native clients read with): the first PV_LINES of a longer one.
+pv_index :: (s: [] PrivateState) { s[0].line_n = pj_index_fit(cast(string) s[0].data[0..<s[0].data_n], s[0].line_at[..], s[0].line_end[..]); }
 // The first line of a kind, or -1.
 pv_first :: (s: [] PrivateState, kind: u8) -> int {
   for i: 0..<s[0].line_n { if pv_kind(s, i) == kind { return i; } }
@@ -211,18 +201,7 @@ pv_nth :: (s: [] PrivateState, kind: u8, k: int) -> int {
 // The same over the agent's conversation.
 ta_kind :: (s: [] PrivateState, i: int) -> u8 { return s[0].tdata[s[0].tline_at[i]]; }
 ta_cell :: (s: [] PrivateState, i: int, col: int) -> string {return pj_cell(cast(string)s[0].tdata[s[0].tline_at[i]..<s[0].tline_end[i]],col);}
-ta_index :: (s: [] PrivateState) {
-  s[0].tline_n = 0;
-  at := 0; n := s[0].tdata_n;
-  while at < n {
-    stop := at;
-    while stop < n && s[0].tdata[stop] != '\n' { stop += 1; }
-    if stop > at + 1 && s[0].tdata[at + 1] == '|' && s[0].tline_n < PV_TLINES {
-      s[0].tline_at[s[0].tline_n] = at; s[0].tline_end[s[0].tline_n] = stop; s[0].tline_n += 1;
-    }
-    at = stop + 1;
-  }
-}
+ta_index :: (s: [] PrivateState) { s[0].tline_n = pj_index_fit(cast(string) s[0].tdata[0..<s[0].tdata_n], s[0].tline_at[..], s[0].tline_end[..]); }
 ta_first :: (s: [] PrivateState, kind: u8) -> int {
   for i: 0..<s[0].tline_n { if ta_kind(s, i) == kind { return i; } }
   return -1;
@@ -2764,4 +2743,36 @@ pv_tap :: (s: [] PrivateState, id: int) -> bool {
   #assert a.blue > a.red && !a.sans && pv_lit(p, false).blue > pv_lit(p, false).red;
   b := pv_bitcoin(p);
   #assert b.red > b.blue;
+}
+
+// pv_index and ta_index keep the state's lines as they always have (#13604): a
+// line is KIND| and more, a line without one is skipped, the line ends before
+// its '\n' (a '\r' stays in it), the last line needs no '\n', and an answer with
+// more lines than the page holds keeps the first ones it holds.
+#test "the state's lines: skipped kinds, CRLF, no last newline and a long line" {
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; s[0].data = data[..];
+  s[0].data_n = 0; pv_index(s[..]); #assert s[0].line_n == 0;
+  n := pv_put(s[0].data, 0, "\n\nP\nP|\n|x\nab|c\nY|a|b\r\nZ|"); s[0].data_n = n; pv_index(s[..]);
+  #assert s[0].line_n == 3 && pv_line(s[..], 0) == "P|" && pv_line(s[..], 1) == "Y|a|b\r" && pv_line(s[..], 2) == "Z|";
+  #assert pv_cell(s[..], 1, 2) == "b\r" && pv_cell(s[..], 2, 1) == "";
+  n = pv_put(s[0].data, 0, "L|"); for i: 0..<3000 { s[0].data[n + i] = 'x'; } n += 3000; s[0].data_n = n; pv_index(s[..]);
+  #assert s[0].line_n == 1 && s[0].line_at[0] == 0 && s[0].line_end[0] == 3002;
+  s[0].data_n = 1; pv_index(s[..]); #assert s[0].line_n == 0;   // only what the answer holds is read
+}
+#test "the state keeps its first PV_LINES lines, at the bound and one over" {
+  s: [1] PrivateState; data: [PV_LINES * 3 + 16] u8; s[0].data = data[..];
+  n := 0; for i: 0..<PV_LINES { n = pv_put(s[0].data, n, "A|\n"); } s[0].data_n = n; pv_index(s[..]);
+  #assert s[0].line_n == PV_LINES && s[0].line_end[PV_LINES - 1] == n - 1;
+  n = pv_put(s[0].data, n, "B|\nC|"); s[0].data_n = n; pv_index(s[..]);
+  #assert s[0].line_n == PV_LINES && pv_count(s[..], 'B') == 0 && pv_count(s[..], 'C') == 0 && pv_kind(s[..], PV_LINES - 1) == 'A';
+}
+#test "the conversation's lines keep the same contract and its own bound" {
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; s[0].data = data[..];
+  s[0].tdata_n = 0; ta_index(s[..]); #assert s[0].tline_n == 0;
+  n := pv_put(s[0].tdata[..], 0, "Z|0|10|1\r\nx\nU|hi"); s[0].tdata_n = n; ta_index(s[..]);
+  #assert s[0].tline_n == 2 && ta_cell(s[..], 0, 3) == "1\r" && ta_cell(s[..], 1, 1) == "hi";
+  n = 0; for i: 0..<PV_TLINES { n = pv_put(s[0].tdata[..], n, "U|\n"); } s[0].tdata_n = n; ta_index(s[..]);
+  #assert s[0].tline_n == PV_TLINES && s[0].tline_end[PV_TLINES - 1] == n - 1;
+  n = pv_put(s[0].tdata[..], n, "E|"); s[0].tdata_n = n; ta_index(s[..]);
+  #assert s[0].tline_n == PV_TLINES && ta_count(s[..], 'E') == 0;
 }
