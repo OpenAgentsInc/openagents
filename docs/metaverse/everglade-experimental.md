@@ -426,22 +426,3 @@ Bushes use walk-through foliage volumes at 80% of normal movement pace; their bo
 Nearby solid scene objects with gaps narrower than the player are grouped where a bounded collision footprint fits, reducing the chance of being squeezed between opposing item boxes.
 
 Enemies yield when the player pushes through them. If the player becomes trapped in intersecting props, the walker temporarily releases overlapping props while retaining structural walls; an unresolved structural trap returns the player to the last clear position, or the spawn if none is available.
-
-## Private NWN reference specimen
-
-[Lady Aribeth's installed NWN model](everglade-experimental-aribeth.md) has been
-rendered in a private local copy of this world's scene pack. The note records
-its original model/texture identities, conversion tools, actual headless render
-and limitations. The public scene pack does not include the NWN payloads.
-
-[Ten private NWN comparison pairs](everglade-experimental-comparison.md) add
-labeled props, furniture, vegetation, a weapon and a creature beside this realm's
-existing Quaternius counterparts in the local specimen pack.
-
-[Three private NWN terrain sections](everglade-experimental-biomes.md) compare
-native campaign forest, farmland and desert tiles in small patches at
-the northern meadow edge, retaining the rest of the existing grass and scenery.
-
-[Aribeth's four native animations](everglade-experimental-aribeth-animations.md)
-now cycle in the local specimen scene, with an on-character clip label and a
-close local view. The biome sections and comparison gallery remain present.

@@ -46,9 +46,6 @@
 #load "fivelab-siege.coax";
 #load "fivelab-film.coax";   // ?stage=armies, siege, horde: film stages for clips (docs/metaverse/clips.md)
 #load "../../../../everglade/sound.coax" as exsound;
-#load "../../../../metaverse/experimental-comparison.coax" as compare;
-#load "../../../../metaverse/experimental-biomes.coax" as biomes;
-#load "../../../../metaverse/experimental-aribeth.coax" as nwna;
 #load "../../../../metaverse/experimental-terrain.coax" as xterrain;
 #load "../../../../metaverse-engine/world/building.coax" as building;
 #load "../../../../everglade/world/housewright.coax" as hw;   // the housewright showcase's labels (lab_showcase_titles)
@@ -141,7 +138,6 @@ Lab :: struct {
   ride_view: int;  // a stage's &view=side or &view=rear: the camera beside or behind the rider, close (0: the stage's own)
   ride_fire_at: f32;   // the dragon-fire stage: when (stage seconds) the dragon breathed
   w: [1] EgZone;   // the zone (everglade/zone.coax): the scene, your class's bar and rules, your body, the keys held, the figures' stores
-  aribeth_state:[1]nwna.Aribeth;
   started: bool;
   battle: [1] RsBattle; zones: [RS_ZONES] RsZone;   // the battle, and its lasting areas (its creatures and squares are army and squares: bt)
   seen: int;                       // the battle log's events already shown
@@ -373,8 +369,8 @@ has_eff :: (b: [] RsBattle, i: int, kind: int) -> bool {
   for k: 0..<RS_EFFECTS { if b[0].c[i].eff[k].kind == kind { return true; } }
   return false;
 }
-// The pack's catalog arrived (fivelab-face.c): Experimental's Aribeth keeps her clips here; the rest is the zone's.
-lab_catalog :: (s: [] Lab, text: string) #export_c #effects(all) { s[0].w[0].creator[0].aribeth=s[0].aribeth_state[..]; zone_catalog(s[0].w[..], text); }
+// The pack's catalog arrived (fivelab-face.c): it is the zone's.
+lab_catalog :: (s: [] Lab, text: string) #export_c #effects(all) { zone_catalog(s[0].w[..], text); }
 // The figures' instances for the frame (the objects store) and their draws; the count of draws.
 // The graphics governor is the zone's (everglade/zone.coax zone_quality_frame): the tabletop's pages run it too.
 lab_quality_frame :: (s: [] Lab, dt: f32, w: f32, h: f32, dpr: f32, golden: bool) #export_c #effects(all) { zone_quality_frame(s[0].w[..], dt, w, h, dpr, golden); }
@@ -2640,23 +2636,6 @@ lab_top_bar :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int 
   return ln_button(out, n, s[0].back, "WORLDS", s[0].pressing == 1, WHITE, k);
 }
 
-#test "Aribeth local view and absent animation label are bounded" {
- s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1/worlds/everglade-experimental?aribeth=1\n");#assert s[0].w[0].put_on && s[0].w[0].put_x==0 && s[0].w[0].put_z== -1.5 && s[0].w[0].creator[0].dist==4.5;
- b:[16]f32;#assert lab_aribeth_label(s[..],b[..],0,1600,1000,1)==0;
- lab_catalog(s[..],"C glade/aribeth0 0 3 248 0 3 0\nA aribeth pause1 0 1 2000\n");#assert s[0].aribeth_state[0].ready && s[0].w[0].creator[0].aribeth.count==1;
- lab_catalog(s[..],"C glade/environment 3 6 250 20 3 0\n");#assert !s[0].aribeth_state[0].ready;
-}
-lab_aribeth_label :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
- if s[0].w[0].creator[0].aribeth.count==0 {return at;}a:=s[0].w[0].creator[0].aribeth[0];pose:=nwna.arb_sample(a,s[0].w[0].creator[0].clock);
- if !pose.valid {return at;}p:=xc_proj(s[0].w[0].xc[..],1.8,2.15,-2);
- if !p.ok || p.x<60*k || p.x>w-60*k || p.y<45*k || p.y>h-90*k || at+4000>MAX_VERTICES {return at;}
- label:[32]u8;name:=nwna.arb_clip_label(a,pose.clip,label[..]);n:=cc.text(out,at,"ARIBETH",p.x-24*k,p.y-12*k,10*k,ink_col(k,1,0.95,0.8));
- return cc.text(out,n,name,p.x-f32(name.count)*2.7*k,p.y+3*k,9*k,ink_col(k,0.75,0.9,1));
-}
-// Labels belong to the loaded private comparison pack, not the public scene.
-#test "biome labels are absent without the private terrain catalog marker" {
- s:[1]Lab;b:[16]f32;#assert lab_pack_titles(s[..],b[..],0,1600,1000,1)==0;
-}
 // The housewright showcase (metaverse/experimental-terrain.coax exp_showcase): each house's label on
 // the board of its sign, the tier on one line and the stage under it ("Woven hut" over "2 of 4:
 // walls woven"), sized to the board as you see it, for the houses within 16 m.
@@ -2705,24 +2684,6 @@ lab_showcase_titles :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
     n=cc.text(out,n,tier,plate.sx-cc.face_width(tier,z,0)*0.5,y,z,ink_col(k,1,0.95,0.8));
     n=cc.text(out,n,stage,plate.sx-cc.face_width(stage,z*0.82,0)*0.5,y+z*1.25,z*0.82,ink_col(k,1,0.9,0.7));}
   return n;
-}
-// The loaded private packs' titles over their stations (each pair's, NWN's and Quaternius's side; each
-// biome's), on the shared plates (metaverse-engine/ui/hud-plates.coax, everglade/hud/parts.coax eg_plates).
-lab_pack_titles :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
- bp:=s[0].w[0].creator[0].biomes_present;cp:=s[0].w[0].creator[0].comparison_present;if (!bp && !cp) || s[0].w[0].creator[0].field {return at;}
- pl:=s[0].heads[..];view:=xc_plate_view(s[0].w[0].xc[..],w,h);
- cc.hud_plates_begin(pl);pl[0].far=0;
- if cp {
-  for i:0..<compare.CMP_N {p:=compare.cmp_site(i);
-   cc.hud_plates_ink(pl,cc.hud_plates_add(pl,p.x,0.35+p.span,p.z,p.title,-1,false,false,1),1,0.95,0.8);
-   cc.hud_plates_ink(pl,cc.hud_plates_add(pl,p.left_x,0.5,p.z+1.15,"NWN",-1,false,false,1),0.75,0.9,1);
-   cc.hud_plates_ink(pl,cc.hud_plates_add(pl,p.right_x,0.5,p.z+1.15,"QUATERNIUS",-1,false,false,1),0.75,1,0.8);
-  }
- }
- if bp {
-  for i:0..<biomes.BIO_N {p:=biomes.bio_site(i);cc.hud_plates_ink(pl,cc.hud_plates_add(pl,p.x,0.25,p.z+10.5,p.title,-1,false,false,1),1,0.95,0.8);}
- }
- return cc.eg_plates(out,at,pl,view,k,MAX_VERTICES-4000);
 }
 
 // ?stage=NAME (#13107): a named setup owns the camera, the sun and the clock, with no HUD, and runs
@@ -2864,8 +2825,6 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
     // the world, its bar and the mount's keys are the zone's (everglade/zone.coax); the labels are Experimental's
     n := zone_draw(s[0].w[..],out,u,width,height,dpr,dt,still);
     if zone_world(s[0].w[..]) {
-      n = lab_pack_titles(s,out,n,width,height,hi(dpr,0.5));
-      n = lab_aribeth_label(s,out,n,width,height,hi(dpr,0.5));
       n = lab_showcase_titles(s,out,n,width,height,hi(dpr,0.5));
       if s[0].ride_dev >= LAB_STAGE_DRAGONBACK { n = 0; s[0].w[0].xc[0].media_n = 0; if u.count > 11 { u[11] = 1; } }   // a riding stage is a shot: the world alone, no HUD or bar
     }
@@ -3111,13 +3070,6 @@ url_number :: (q: string, key: string) -> int {
 lab_dev_cell :: (s: [] Lab, facts: string) {
  i:=0;while i<facts.count {e:=i;while e<facts.count && facts[e]!='\n' {e+=1;}line:=facts[i..<e];i=e+1;
   if line.count<4 || line[0..<4]!="url=" {continue;}q:=line[4..<line.count];
-  if url_number(q,"aribeth")==1 {s[0].w[0].put_on=true;s[0].w[0].put_x=0;s[0].w[0].put_y=0;s[0].w[0].put_z= -1.5;s[0].w[0].put_face=0;s[0].w[0].creator[0].yaw=0;s[0].w[0].creator[0].pitch=0.25;s[0].w[0].creator[0].dist=4.5;s[0].w[0].xc[0].open=false;}
-  bio:=url_number(q,"biome");if bio>=0 && bio<=biomes.BIO_N {
-   p:=biomes.bio_site(ifx bio==0 then 1 else bio-1);s[0].w[0].put_on=true;s[0].w[0].put_x=ifx bio==0 then 35 else p.x;s[0].w[0].put_y=0.025;s[0].w[0].put_z=ifx bio==0 then 73 else p.z+3;s[0].w[0].put_face=0;s[0].w[0].creator[0].yaw=0;s[0].w[0].creator[0].pitch=ifx bio==0 then 1.15 else ifx bio==1 then 0.85 else 0.65;s[0].w[0].creator[0].dist=ifx bio==0 then 75 else ifx bio==1 then 24 else 15;s[0].w[0].xc[0].open=false;
-  }
-  cmp:=url_number(q,"compare");if cmp>=0 && cmp<=compare.CMP_N {
-   p:=compare.cmp_site(ifx cmp==0 then 2 else cmp-1);s[0].w[0].put_on=true;s[0].w[0].put_x=ifx cmp==0 then 31 else p.x;s[0].w[0].put_y=0.2;s[0].w[0].put_z=ifx cmp==0 then 12 else p.z+1;s[0].w[0].put_face=0;s[0].w[0].creator[0].yaw=0;s[0].w[0].creator[0].pitch=ifx cmp==0 then 1.2 else 0.4;s[0].w[0].creator[0].dist=ifx cmp==0 then 28 else 5;s[0].w[0].xc[0].open=false;
-  }
   cl:=url_number(q,"class");if cl>=0 && cl<FB_CL_N {xc_set_class(s[0].w[0].xc[..],cl);}
   rd:=url_number(q,"ride");if rd>0 && rd<=3 {s[0].ride_dev=rd;}
   if url_has(q,"stage=dragonback") {s[0].ride_dev=LAB_STAGE_DRAGONBACK;s[0].w[0].xc[0].open=false;} if url_has(q,"stage=horseback") {s[0].ride_dev=LAB_STAGE_HORSEBACK;s[0].w[0].xc[0].open=false;} if url_has(q,"stage=horse-archer") {s[0].ride_dev=LAB_STAGE_HORSE_ARCHER;s[0].w[0].xc[0].open=false;} if url_has(q,"stage=dragon-fire") {s[0].ride_dev=LAB_STAGE_DRAGONFIRE;s[0].w[0].xc[0].open=false;} if url_has(q,"view=side") {s[0].ride_view=1;} if url_has(q,"view=rear") {s[0].ride_view=2;}
@@ -3132,17 +3084,6 @@ lab_dev_cell :: (s: [] Lab, facts: string) {
   yaw:=url_number(q,"yaw");a:=ifx yaw>=0 then f32(yaw)*0.0174533 else 0.0f32;
   s[0].w[0].put_on=true;s[0].w[0].put_x=xdungeon.dg_x(n%xdungeon.DG_COLS)+f32(xdungeon.DG_CELL)*0.5;s[0].w[0].put_y=0;s[0].w[0].put_z=xdungeon.dg_z(n/xdungeon.DG_COLS)-f32(xdungeon.DG_CELL)*0.5;s[0].w[0].put_face=a;s[0].w[0].creator[0].yaw=a;
  }
-}
-#test "local biome views frame the three native terrain sections" {
- {s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1/worlds/everglade-experimental?biome=0\n");#assert s[0].w[0].put_on && s[0].w[0].put_x==35 && s[0].w[0].put_z==73 && s[0].w[0].creator[0].dist==75;}
- {t:[1]Lab;lab_dev_cell(t[..],"url=http://localhost/worlds/everglade-experimental?biome=1\n");p:=biomes.bio_site(0);#assert t[0].w[0].put_x==p.x && t[0].w[0].put_z==p.z+3 && t[0].w[0].creator[0].dist==24 && !t[0].w[0].xc[0].open;}
-}
-#test "a local comparison view can frame all ten pairs or one station" {
- {s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1/worlds/everglade-experimental?compare=0\n");
- #assert s[0].w[0].put_on && s[0].w[0].put_z==12 && s[0].w[0].creator[0].dist==28 && s[0].w[0].put_x==31 && !s[0].w[0].xc[0].open;}
- {t:[1]Lab;lab_dev_cell(t[..],"url=http://localhost/worlds/everglade-experimental?compare=10\n");p:=compare.cmp_site(9);
- #assert t[0].w[0].put_on && t[0].w[0].put_x==p.x && t[0].w[0].put_z==p.z+1 && t[0].w[0].creator[0].dist==5;
- b:[16]f32;#assert lab_pack_titles(t[..],b[..],0,1600,1000,1)==0;}
 }
 #test "a local page can start you in a dungeon cell" {
  // one Lab at a time: each block's Lab is gone before the next is made (two at once is most of the check's value slots)
