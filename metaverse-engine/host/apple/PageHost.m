@@ -53,7 +53,7 @@ typedef uintptr_t A;
  F(A,sound_bank_storage,(A)) F(uint32_t,sound_bank_storage_bytes,(A)) F(A,mesh_bounds_v1,(A)) \
  F(A,rig_v1,(A,uint32_t)) F(void,rig_ready_v1,(A,uint32_t)) F(uint32_t,frame_plan_v1,(A,uint32_t,uint32_t *,uint32_t))
 // Optional browser editor exports. Counts remain u32; addresses are native.
-#define PH_EDITOR(F) F(int32_t,edit_rev,(A)) F(A,edit_model,(A)) F(uint32_t,edit_model_len,(A)) F(uint32_t,edit_own,(A)) F(void,page,(A,int32_t))
+#define PH_EDITOR(F) F(int32_t,field_probe,(A,int32_t)) F(int32_t,edit_rev,(A)) F(A,edit_model,(A)) F(uint32_t,edit_model_len,(A)) F(uint32_t,edit_own,(A)) F(void,page,(A,int32_t))
 typedef struct {
 #define PH_FN(result,name,args) result (*name) args;
  PH_FACE(PH_FN)
@@ -1293,6 +1293,8 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
  A p = x.drive_out(state); size_t n = x.drive_out_len(state);
  return p && n ? [[NSString alloc] initWithBytes:(void *)p length:n encoding:NSUTF8StringEncoding] : @"";
 }
+// A field the page's checks read (host.js coaxial.fieldProbe): -1 when the realm has none.
+- (int32_t)fieldProbe:(int32_t)field { return !closed && x.field_probe ? x.field_probe(state, field) : -1; }
 - (int32_t)mouselook { return !closed && x.mouselook ? x.mouselook(state) : 0; }
 - (void)pointerLock:(int32_t)status { if (!closed && x.pointer_lock) x.pointer_lock(state, status); }
 - (void)look:(CGPoint)travel { if (!closed && x.look_delta) x.look_delta(state, (float)travel.x, (float)travel.y); }

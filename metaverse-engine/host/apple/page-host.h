@@ -74,6 +74,8 @@
 // A command for the realm's agent driver (metaverse-engine/agent/drive.coax: tree, walk-to ID, face ID,
 // use ABILITY on ID, status ...), and its answer; nil when the realm has no driver.
 - (NSString *)drive:(NSString *)command;
+// A field the page's checks read, as host.js's coaxial.fieldProbe (the realm's coaxial_field_probe); -1 if none.
+- (int32_t)fieldProbe:(int32_t)field;
 // 2 while the page wants the pointer held (mouselook). The host says what it did: 1 held, 0 let go, 2 couldn't.
 - (int32_t)mouselook;
 - (void)pointerLock:(int32_t)status;

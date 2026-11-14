@@ -23,7 +23,7 @@
 //       browser would join it), nothing of yours is kept, and --do STEPS plays input first: `key:w:2` holds a key two seconds,
 //       `tap:640,400` clicks a point, `drag:600,400,700,400` drags from one point to another, `text:Ada` types, `wait:1` waits, `look` holds the pointer as
 //       mouselook asks, `press:2:1` holds a mouse button a second at the middle, `turn:40,0` moves
-//       the held mouse, `down:2` and `up:2` hold and let go a button around other steps, `drive:walk-to guard` asks the realm's agent driver, `near:guard:20:60` waits until the driver lists ID within METRES (SECONDS at most); steps are split by `;`.
+//       the held mouse, `down:2` and `up:2` hold and let go a button around other steps, `drive:walk-to guard` asks the realm's agent driver, `probe:214,216` prints the realm's check fields, `near:guard:20:60` waits until the driver lists ID within METRES (SECONDS at most); steps are split by `;`.
 //       A realm's sound is rendered offline in the shot's time, never played: stderr says what it
 //       did (the packets, the voices, the names played, the loudest sample), --audio OUT.wav writes it.
 //       --quality TIER starts the realm with that graphics tier kept (auto when none is).
@@ -199,9 +199,9 @@ final class Workshop {
     c.web = res.appendingPathComponent("web").path
     // A shot keeps nothing of yours: its storage is a folder of its own, gone when it ends.
     c.store = pageShot ? shotStore : FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/everglade/realm").path
-    // The page the web opens this world on. Everglade's room is the site's (wss://openagents.com/api/room/);
-    // Experimental has no room on the web either.
-    c.origin = "https://openagents.com"; c.path = r.path + (shotRoom.isEmpty ? "" : "?room=" + shotRoom)
+    // The page the web opens this world on. Everglade's room is the site's (wss://openagents.com/api/room/),
+    // or in a development build the one on this Mac that local-room.sh started; Experimental has no room on the web either.
+    c.origin = Workshop.roomOrigin; c.path = r.path + (shotRoom.isEmpty ? "" : "?room=" + shotRoom)
     c.realm = r.realm; c.slot = r.slot; c.style = "painterly"; c.clock = "fixed:0.5"
     c.offline = pageOffline
     // This app is built from a checkout, so who runs it is the team: its sessions are marked as a
@@ -420,6 +420,22 @@ final class Workshop {
   var nextReply = ""
   var nextRuns: Int32 = 0
   var framesEvery = 6
+  // A development build plays against a room on this Mac, as the web's dev server does (coax/web/serve.sh,
+  // #13589): EVERGLADE_ROOM_ORIGIN=http://127.0.0.1:PORT, which apps/everglade-desktop/local-room.sh sets
+  // after starting coax/web/room/bin/room --dev of the same checkout. Only a loopback http origin counts.
+  // A release build (EVERGLADE_RELEASE=1 build.sh, no -D EVERGLADE_DEV) always plays in the site's room.
+  static let roomOrigin: String = {
+    #if EVERGLADE_DEV
+    if let o = ProcessInfo.processInfo.environment["EVERGLADE_ROOM_ORIGIN"] {
+      for host in ["http://127.0.0.1:", "http://localhost:"] where o.hasPrefix(host) {
+        let port = o.dropFirst(host.count)
+        if !port.isEmpty, port.count <= 5, port.allSatisfy({ $0.isASCII && $0.isNumber }) { return o }
+      }
+      FileHandle.standardError.write(Data("Everglade: EVERGLADE_ROOM_ORIGIN must be http://127.0.0.1:PORT; playing in the site's room\n".utf8))
+    }
+    #endif
+    return "https://openagents.com"
+  }()
   var shotRoom = ""   // --room CODE: a shot's own room on the site (a check's pair-e2-NAME), apart from everyone's
   var shotScale: Float = 2, shotRealtime = false, lastShotFrame = CACurrentMediaTime()
   var doSteps = "", framesDir = "", shotAudio = "", shotLooks = false, recording = false
@@ -524,6 +540,10 @@ final class Workshop {
         if !found { FileHandle.standardError.write(Data("near: \(part[1]) never came within \(metres) m\n".utf8)) }
       }
       else if verb == "turn", part.count > 1 { let xy = part[1].split(separator: ",").compactMap { Double($0) }; if xy.count == 2 { page.look(CGPoint(x: xy[0], y: xy[1])); run(0.1) } }
+      else if verb == "probe", part.count > 1 {   // `probe:214,216` says the realm's check fields (host.js coaxial.fieldProbe) on stderr
+        let said = part[1].split(separator: ",").compactMap { Int32($0) }.map { "\($0)=\(page.fieldProbe($0))" }.joined(separator: " ")
+        FileHandle.standardError.write(Data("probe \(said)\n".utf8)); run(1.0 / 60)
+      }
       else if verb == "record" { recording = true }
       else if (verb == "down" || verb == "up"), part.count > 1, let b = Int32(part[1]) {   // a mouse button at the middle, held until its `up`: `down:2;turn:40,0;up:2` aims a draw
         page.pointer(CGPoint(x: CGFloat(width) / CGFloat(shotScale * 2), y: CGFloat(height) / CGFloat(shotScale * 2)), phase: verb == "down" ? 0 : 2, button: b); run(1.0 / 60)

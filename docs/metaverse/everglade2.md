@@ -535,6 +535,13 @@ room and has none says "Not connected. Shots and spells need the server." over t
 asking. `coax/web/tool.sh dev-room-check` checks both in headless Chrome: an Attack arrow counts
 through `serve.sh`, and with the room stopped the notice shows.
 
+The Mac app has the same: `apps/everglade-desktop/local-room.sh --scene 3` starts the room server
+of the checkout and opens the app (a development build of `build.sh`) seated in it, through
+`EVERGLADE_ROOM_ORIGIN=http://127.0.0.1:PORT`. A release build (`EVERGLADE_RELEASE=1 build.sh`)
+ignores the variable. Without it the app plays in the site's room, which runs production's release:
+what the checkout adds plays there only once it ships. A shot's `--do` can read the page's
+check fields: `probe:214,216,217` prints arrows loosed, arrows up and arrows landed.
+
 Admin mode works only on this machine. Three checks guard it:
 
 - It exists only in dev builds. `everglade/client/client.coax` calls `everglade/client/admin.coax` only inside

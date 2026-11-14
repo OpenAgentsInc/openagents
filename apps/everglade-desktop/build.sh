@@ -176,7 +176,10 @@ if (( units_only )); then
   echo "linked the app's C units: $work/c/units.o"; exit 0
 fi
 printf '#include "%s"\n#import "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n' "$here/face.h" "$repo/metaverse-engine/host/apple/page-host.h" "$repo/metaverse-engine/host/apple/audio-host.h" "$repo/apps/shared/host/apple/ui-host-apple.h" "$oa/linux/chat.h" "$repo/metaverse-engine/host/pack-table.h" > "$work/c/bridge.h"
-xcrun -sdk macosx swiftc -O -Xcc -I"$work/c" -import-objc-header "$work/c/bridge.h" "$here"/Sources/*.swift "$repo/metaverse-engine/host/apple/PageAudio.swift" "$repo/apps/metaverse-engine-desktop/Sources/MetalAudio.swift" "$work/c/ui-host.o" "$work/c/page-host.o" "$work/c/engine-core-face.o" "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/next-face.o" "$work/c/temple.o" "$work/c/place-face.o" "$work/c/process.o" "$work/c/chat"/{zeron,lab-sign,chat,dictation-none,zeron-face,store-file-native,ct-atlas}.o \
+# A development build may play against a room on this Mac (local-room.sh, EVERGLADE_ROOM_ORIGIN); a release
+# build (EVERGLADE_RELEASE=1) leaves that out and plays only in the site's room.
+swift_dev=(-D EVERGLADE_DEV); [[ "${EVERGLADE_RELEASE:-}" != 1 ]] || swift_dev=()
+xcrun -sdk macosx swiftc -O ${swift_dev[@]+"${swift_dev[@]}"} -Xcc -I"$work/c" -import-objc-header "$work/c/bridge.h" "$here"/Sources/*.swift "$repo/metaverse-engine/host/apple/PageAudio.swift" "$repo/apps/metaverse-engine-desktop/Sources/MetalAudio.swift" "$work/c/ui-host.o" "$work/c/page-host.o" "$work/c/engine-core-face.o" "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/next-face.o" "$work/c/temple.o" "$work/c/place-face.o" "$work/c/process.o" "$work/c/chat"/{zeron,lab-sign,chat,dictation-none,zeron-face,store-file-native,ct-atlas}.o \
   -framework AppKit -framework Metal -framework MetalKit -framework QuartzCore -framework ImageIO -framework CoreGraphics -framework CoreText -framework AVFoundation -framework UniformTypeIdentifiers -lm -lz \
   -Xlinker -export_dynamic -Xlinker -stack_size -Xlinker 0x20000000 -o "$app/Contents/MacOS/Everglade"
 # The context program: built as any Coax tool is (tool.sh keeps the executable by the compiler's
