@@ -45,7 +45,7 @@ key -15
 frames 5 20
 expect 0 1
 # E at the desk: Sniper drives you to the garage, and it is dusk when you step out
-msg 611 -9730 26000
+msg 611 -49730 26000
 frames 2 20
 key e
 frames 5 20
