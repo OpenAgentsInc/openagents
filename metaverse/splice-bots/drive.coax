@@ -114,6 +114,7 @@ dv_arrive :: (g: [] SpGame) {
   w := dv_way_in(g);
   if dist2(g[0].px, g[0].pz, w.x, w.z) < DV_FACE_NEAR { g[0].yaw = atan2(w.x - g[0].px, w.z - g[0].pz); g_bot_home(g); }
   g_beats(g);   // where you step out: the garage yard's beat makes it dusk
+  g[0].leave_at = g[0].t;   // and the raiders are on their way out as she arrives
 }
 DV_FACE_NEAR :: 90.0f32;   // m: stepping out this near the way in, she faces it
 // The garage's least-used opening: the mouth of the old entrance bay's tunnel through the back wall (A1).

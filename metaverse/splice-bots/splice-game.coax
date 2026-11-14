@@ -44,6 +44,7 @@ T_NOTICE :: 5.0f32; T_NOTICE_HEAT :: 0.07f32; T_RAIDER_SPEED :: 3.5f32; T_RAIDER
 T_USE_RANGE :: 4.5f32;        // the rover prompt's range
 T_PICK_RANGE :: 2.2f32; T_SAVE_RANGE :: 5.0f32;
 T_CARD_TIME :: 2.4f32;        // the Digger's card interval
+T_LEAVING :: 22.0f32;         // s: the raiders are seen walking off from the garage after Sniper pulls in
 T_MOVE_SHORT :: 1.9f32; T_MOVE_MAX :: 5.0f32; T_DRILL_REACH :: 2.6f32; T_BAD_CUT :: 2.0f32;
 T_SWEEP_EVERY :: 4.6f32; T_SWEEP_TIME :: 1.3f32; T_SWEEP_WARN :: 0.9f32; T_ARM :: 6.2f32;
 T_STUN_RANGE :: 2.0f32; T_STUN_TIME :: 12.0f32;
@@ -133,6 +134,7 @@ SpGame :: struct {
   stun: [3] f32; boss_t: f32; boss_down: bool; core_taken: bool;
   rail_s: f32; rail_v: f32; pinged: bool; pass_t: f32;
   banner: int; banner_t: f32; msg: int; msg_t: f32; mem_t: f32; flash: f32;
+  leave_at: f32 = -100;   // when the raiders started off from the garage as Sniper pulled in (drive.coax dv_arrive): drawn walking away for a while
   walls: [WALLS * 5] f32; wall_n: int;
   btn: [BUTTONS * 4] f32; btn_key: [BUTTONS] int; btn_n: int;
   drag: int; drag_x: f32; drag_y: f32; drag_far: bool;   // the edit bay: what is being dragged (-1 nothing; 0..5 a have)
@@ -983,6 +985,33 @@ g_rover_at :: (g: [] SpGame, buf: [] u32, p: [] Pen, f: Frame, obj: int, k: f32)
   sp_piece_write(buf, p, pc.kit, pc.scale * k, f, obj, sp_tint(pc.a), sp_tint(pc.b), sp_tint(pc.c), INK());
 }
 g_draw_rover :: (g: [] SpGame, buf: [] u32, p: [] Pen, at: Point, yaw: f32) { g_rover_at(g, buf, p, frame_at(at, yaw), 150, 1); }
+// The raiders' rock wall across the tunnel (#13505): rocks of many sizes, the big ones low. While
+// Digger's DRILL (or DRILL+) card bites it, the top rocks shake loose and dust falls, more as the card goes on.
+g_rubble_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
+  rz := g[0].at.rubble_z; t := g[0].t;
+  card := ifx g[0].bot_state == BOT_RUN && g[0].bot_step >= 0 && g[0].bot_step < g[0].strip_n then g[0].strip[g[0].bot_step] else -1;
+  drill := (card == H_DRILL || card == H_PLUS) && !g[0].bot_wall && g[0].bot_z - (rz + 1) <= T_DRILL_REACH;
+  k := ifx drill then clamp(g[0].bot_t / T_CARD_TIME, 0, 1) else 0.0f32;
+  kit_pen(p, 90, MAT_WORLD, t3(0.56, 0.36, 0.28));
+  for i: 0..<25 {
+    f := cast(f32) i; row := i / 5;
+    sz := (0.55 + kit_rand(f + 11) * 0.85) * (1.3 - cast(f32) row * 0.12);
+    loose := drill && row >= 3 && kit_rand(f + 21) < k * 0.9;   // the top rocks come away as the drill bites
+    y := 0.6 + cast(f32) row * 1.25; z := rz + (kit_rand(f) - 0.5) * 0.8;
+    if loose { y = lo(y, 0.4 + (1 - k) * y); z = rz + 0.8 + k * 1.2; }
+    shake := ifx drill then sin(t * 40 + f) * 0.04 else 0.0f32;
+    ellipsoid(buf, p, frame_at(v3(-2.6 + cast(f32) (i % 5) * 1.3 + shake, y, z), kit_rand(f + 5) * 6), 0.85 * sz, 0.72 * sz, 0.8 * sz, 7, 4, 0);
+  }
+  kit_pen(p, 91, MAT_WORLD, t3(0.48, 0.31, 0.24));   // small stones packed between
+  for i: 0..<14 { f := cast(f32) i + 40; ball(buf, p, v3(-2.8 + kit_rand(f) * 5.6, 0.2 + kit_rand(f + 1) * 5.4, rz + 0.45 + kit_rand(f + 2) * 0.3), 0.18 + kit_rand(f + 3) * 0.22, 5); }
+  if !drill { return; }
+  kit_pen(p, 94, MAT_FLAT, t3(0.86, 0.74, 0.60));   // dust drifting down the face, thicker as the card goes on
+  n := 6 + cast(int) (k * 22);
+  for j: 0..<n {
+    f := cast(f32) j + 70; u := t * 0.55 + kit_rand(f); u = u - cast(f32) cast(int) u;
+    ball(buf, p, v3(-2.6 + kit_rand(f + 1) * 5.2 + sin(t + f) * 0.2, 5.8 * (1 - u), rz + 1.0 + kit_rand(f + 2) * 1.4 + u * 0.6), 0.10 + u * 0.22, 5);
+  }
+}
 g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   t := g[0].t; blue := GLOW();
   g[0].thing_n = 0;
@@ -1048,10 +1077,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   }
   d_live(g, buf, p);   // the better sensor (director.coax)
   // the rubble and the boss wall, until the Digger opens them
-  if !g[0].rubble_gone {
-    kit_pen(p, 90, MAT_WORLD, t3(0.56, 0.36, 0.28));
-    for i: 0..<25 { k := cast(f32) i; ellipsoid(buf, p, frame_at(v3(-2.6 + cast(f32) (i % 5) * 1.3, 0.6 + cast(f32) (i / 5) * 1.25, g[0].at.rubble_z + (kit_rand(k) - 0.5) * 0.8), kit_rand(k + 5) * 6), 0.85, 0.72, 0.8, 7, 4, 0); }
-  }
+  if !g[0].rubble_gone { g_rubble_live(g, buf, p); }
   if !g[0].wall_gone {
     kit_pen(p, 92, MAT_WORLD, t3(0.34, 0.26, 0.40)); block(buf, p, 0, 0, g[0].at.wall_z, 4, 9, 1);
     kit_pen(p, 93, MAT_GLOW, blue);
@@ -1064,6 +1090,19 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     if dk >= 0 {
     cast_digger(buf, p, df, 0.85, 190, d_tint(g, ifx sb_holds_digger(g) && sb_fielded(g) != SB_DIGGER then t3(0.32, 0.32, 0.34) else ifx g[0].have[H_PLUS] then blue else CAST_AMBER()), true, true, true, g[0].bot_spin, cast_colour());   // his lights go dark while his core is in the drill mech
     g_thing_end(g, p, dk); }
+  }
+  // the raiders leaving the garage as she arrives: out of its entry and off along the road, out of play
+  lu := t - g[0].leave_at;
+  if lu >= 0 && lu < T_LEAVING && g[0].zone == Z_MINE {
+    for i: 0..<F_RAIDERS {
+      // up the cut from the tunnel in a file, past her, then off along the desert to either side
+      sd := ifx i % 2 == 0 then -1.0f32 else 1.0f32; w := lu * 4.2; z0 := -12 - cast(f32) i * 4; run := 18 - z0;
+      lx := sd * 1.6; lz := z0 + w; ly := 0.0f32;
+      if w > run { lx = sd * (1.6 + (w - run)); lz = 18 + (w - run) * 0.3; ly = sd * PI * 0.5; }
+      f := frame_at(v3(lx, ground_y(g, lx, lz), lz), ly);
+      lk := g_thing(g, p, TK_RAIDER, 0, f, 0.95, t * 9);
+      if lk >= 0 { cast_raider(buf, p, f, 0.95, 100 + i * 5, t3(1.0, 0.36, 0.62), t * 9, cast_colour()); g_thing_end(g, p, lk); }
+    }
   }
   // the party's people: raiders dancing where they stand, Imperial robots on patrol
   for i: 0..<FOES {
