@@ -14,6 +14,8 @@
 #                                             OA_REMOTE_STATE, OA_REMOTE_HOST and CLOUDSDK_CONFIG are kept when set);
 #                                             on macOS it prints the crontab line
 #   coax/remote/mutation-sweep.sh uninstall   stop the timer
+#   coax/remote/mutation-sweep.sh timer [ARGS...]  the timer's start: when no sweep is running, move the
+#                                             checkout to origin/main and run that commit's script with ARGS
 # docs/metaverse/remote-builds.md, "The nightly mutation sweep".
 set -euo pipefail
 here="$(cd "$(dirname "$0")/../.." && pwd -P)"
@@ -48,7 +50,7 @@ After=network-online.target
 Type=oneshot
 TimeoutStartSec=infinity
 Environment=$env_line
-ExecStart=$(command -v bash) -c "cd '$dir' || exit 1; git fetch -q origin main && git checkout -q --detach origin/main; exec coax/remote/mutation-sweep.sh ${OA_SWEEP_ARGS:-}"
+ExecStart=$(command -v bash) -c "cd '$dir' && exec coax/remote/mutation-sweep.sh timer ${OA_SWEEP_ARGS:-}"
 StandardOutput=append:${dir%/*}/timer.out
 StandardError=append:${dir%/*}/timer.out
 EOF
@@ -74,12 +76,20 @@ EOF
     systemctl --user daemon-reload
     exit 0 ;;
 esac
+lock="${dir%/*}/sweep.lock"
+running() { local pid; pid="$(cat "$lock/pid" 2> /dev/null || true)"; [[ -n "$pid" ]] && kill -0 "$pid" 2> /dev/null; }
+if [[ "${1:-}" == timer ]]; then
+  shift
+  # The checkout moves only between sweeps: a running one reads it.
+  if running; then echo "mutation-sweep.sh: a sweep is running (pid $(cat "$lock/pid")); this night's start does nothing" >&2; exit 0; fi
+  make_checkout
+  git -C "$dir" fetch -q origin main && git -C "$dir" checkout -q --detach origin/main
+  exec "$dir/coax/remote/mutation-sweep.sh" "$@"
+fi
 make_checkout
 # One sweep at a time: the lock is a folder holding the running sweep's pid.
-lock="${dir%/*}/sweep.lock"
 if ! mkdir "$lock" 2> /dev/null; then
-  pid="$(cat "$lock/pid" 2> /dev/null || true)"
-  if [[ -n "$pid" ]] && kill -0 "$pid" 2> /dev/null; then echo "mutation-sweep.sh: a sweep is running (pid $pid); not starting another" >&2; exit 1; fi
+  if running; then echo "mutation-sweep.sh: a sweep is running (pid $(cat "$lock/pid")); not starting another" >&2; exit 1; fi
   rm -f "$lock/pid"; rmdir "$lock" 2> /dev/null || true
   mkdir "$lock"
 fi

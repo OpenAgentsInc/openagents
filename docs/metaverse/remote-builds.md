@@ -1055,8 +1055,10 @@ systemctl --user list-timers com.openagents.mutation-sweep.timer
 coax/remote/mutation-sweep.sh uninstall    # stop it
 ```
 
-The timer's service moves the sweep's checkout to `origin/main` before it
-starts, so each night runs that night's script. Its output is
+The timer's service (`mutation-sweep.sh timer`) moves the sweep's checkout
+to `origin/main` before it starts, so each night runs that night's script;
+while a sweep is still running it does nothing, so a long night never
+overlaps the next. Its output is
 `~/.openagents/mutation-sweep/timer.out`. On macOS `install` prints the
 crontab line instead.
 
