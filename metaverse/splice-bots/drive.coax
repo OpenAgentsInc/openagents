@@ -52,6 +52,8 @@ DV_ROOM_IN :: 0.5f32;             // m: the cabin's inside, in from the area's e
 DV_ROOM_H :: 4.2f32;              // m: its ceiling
 DV_ROOM_T :: 0.3f32;              // m: its walls' thickness
 DV_ROOM_REACH :: 3.6f32;          // m: the camera stays this near her inside, under the ceiling
+DV_FRONT_Y0 :: 0.85f32; DV_FRONT_Y1 :: 2.7f32;   // m: the front window's sill and head
+DV_BAY_HX :: 1.8f32; DV_BAY_D :: 0.8f32; DV_BAY_H :: 0.95f32;   // m: the edit bay console's half width, depth and height
 DV_WINDOW_KIND :: 127;            // the Window wall piece: a painted desert behind each one in the cabin
 SpRoom :: struct { ok: bool; x0: f32; x1: f32; z0: f32; z1: f32; door_x: f32; door_z: f32; door: bool; }
 // The cabin: the inside of the area that holds a vehicle door's TO, and the leave portal's point in it.
@@ -83,6 +85,8 @@ dv_room_walls :: (g: [] SpGame) {
   if !r.ok { return; }
   g_wall(g, r.x0 - t, r.x1 + t, r.z0 - t, r.z0, H); g_wall(g, r.x0 - t, r.x1 + t, r.z1, r.z1 + t, H);
   g_wall(g, r.x0 - t, r.x0, r.z0, r.z1, H); g_wall(g, r.x1, r.x1 + t, r.z0, r.z1, H);
+  cx := (r.x0 + r.x1) * 0.5;
+  g_wall(g, cx - DV_BAY_HX, cx + DV_BAY_HX, r.z1 - DV_BAY_D, r.z1, DV_BAY_H);   // the edit bay's console
 }
 // The cabin drawn into the world (g_world): its floor, walls, ceiling, the ribs of the hull, the lights
 // and the door.
@@ -99,7 +103,21 @@ dv_room_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   wall := t3(0.88, 0.82, 0.72);
   kit_pen(p, 83, MAT_WORLD, wall);
   block(buf, p, cx, 0, r.z0 - t * 0.5, hx + t, H, t * 0.5); block(buf, p, cx, 0, r.z1 + t * 0.5, hx + t, H, t * 0.5);
-  block(buf, p, r.x0 - t * 0.5, 0, cz, t * 0.5, H, hz); block(buf, p, r.x1 + t * 0.5, 0, cz, t * 0.5, H, hz);
+  block(buf, p, r.x0 - t * 0.5, 0, cz, t * 0.5, H, hz);
+  // the front (the right wall, +x): one big window across all of it, the wall only under and over it
+  block(buf, p, r.x1 + t * 0.5, 0, cz, t * 0.5, DV_FRONT_Y0, hz); block(buf, p, r.x1 + t * 0.5, DV_FRONT_Y1, cz, t * 0.5, H - DV_FRONT_Y1, hz);
+  dv_front_view(buf, p, r.x1 + t * 0.6, r.z0, r.z1);
+  kit_pen(p, 96, MAT_SKIN, HEAT());   // its orange frame: sill, head and three mullions
+  block(buf, p, r.x1 - 0.06, DV_FRONT_Y0 - 0.08, cz, 0.12, 0.08, hz); block(buf, p, r.x1 - 0.04, DV_FRONT_Y1, cz, 0.08, 0.08, hz);
+  for i: 1..<4 { block(buf, p, r.x1 - 0.03, DV_FRONT_Y0, r.z0 + (r.z1 - r.z0) * cast(f32) i / 4, 0.05, DV_FRONT_Y1 - DV_FRONT_Y0, 0.05); }
+  // the corners rounded off: a panel across each, so the cabin is a rounded rectangle
+  kit_pen(p, 83, MAT_WORLD, wall);
+  for c: 0..<4 {
+    sx := ifx c % 2 == 0 then 1.0f32 else -1.0f32; sz := ifx c < 2 then 1.0f32 else -1.0f32;
+    x := ifx c % 2 == 0 then r.x0 else r.x1; z := ifx c < 2 then r.z0 else r.z1;
+    box(buf, p, kit_at(frame_at(v3(x + sx * 0.32, 0, z + sz * 0.32), ifx sx * sz > 0 then PI * 0.25 else -PI * 0.25), 0, H * 0.5, 0), 0.5, H * 0.5, 0.1);
+  }
+  dv_bay_console(buf, p, cx, r.z1);
   kit_pen(p, 84, MAT_FLAT, t3(0.80, 0.75, 0.68));
   block(buf, p, cx, H, cz, hx + t, 0.2, hz + t);
   // the hull's ribs across the ceiling and down the walls, and a dark baseboard
@@ -136,6 +154,31 @@ dv_room_face :: (r: SpRoom, x: f32, z: f32) -> Frame {
   if k == 1 { return frame_at(v3(x, 0, r.z1), PI); }
   if k == 2 { return frame_at(v3(r.x0, 0, z), PI * 0.5); }
   return frame_at(v3(r.x1, 0, z), -PI * 0.5);
+}
+// The front window's painted view, a flat desert seen out of the right wall from z0 to z1: the sky, a
+// low sun, far mesas, the dunes and the sand. It stands in the wall, so nothing outside shows.
+dv_front_view :: (buf: [] u32, p: [] Pen, x: f32, z0: f32, z1: f32) {
+  f := frame_at(v3(x, 0, (z0 + z1) * 0.5), -PI * 0.5); hw := (z1 - z0) * 0.5;
+  y0 := DV_FRONT_Y0; y1 := DV_FRONT_Y1;
+  kit_pen(p, 191, MAT_FLAT, t3(0.98, 0.84, 0.64)); box(buf, p, kit_at(f, 0, (y0 + y1) * 0.5, 0), hw, (y1 - y0) * 0.5, 0.01);
+  kit_pen(p, 192, MAT_FLAT, t3(0.99, 0.93, 0.80)); box(buf, p, kit_at(f, hw * 0.35, y1 - 0.42, 0.015), 0.25, 0.25, 0.004);
+  kit_pen(p, 193, MAT_FLAT, t3(0.72, 0.56, 0.74));
+  box(buf, p, kit_at(f, -hw * 0.55, y0 + 0.62, 0.02), 1.1, 0.3, 0.004); box(buf, p, kit_at(f, -hw * 0.1, y0 + 0.55, 0.02), 0.7, 0.2, 0.004); box(buf, p, kit_at(f, hw * 0.6, y0 + 0.58, 0.02), 1.3, 0.24, 0.004);
+  kit_pen(p, 194, MAT_FLAT, t3(0.93, 0.74, 0.50)); box(buf, p, kit_at(f, 0, y0 + 0.28, 0.025), hw, 0.28, 0.004);
+  kit_pen(p, 195, MAT_FLAT, t3(0.86, 0.62, 0.42)); box(buf, p, kit_at(f, -hw * 0.2, y0 + 0.1, 0.03), hw * 0.7, 0.1, 0.004);
+}
+// The edit bay's console at the middle of the back of the cabin (the wall at z1): a wide desk with
+// six slots along its top, one a part, and a screen over it. Tab opens the bay.
+dv_bay_console :: (buf: [] u32, p: [] Pen, cx: f32, z1: f32) {
+  zc := z1 - DV_BAY_D * 0.5;
+  kit_pen(p, 92, MAT_SKIN, t3(0.30, 0.30, 0.36)); block(buf, p, cx, 0, zc, DV_BAY_HX, DV_BAY_H - 0.06, DV_BAY_D * 0.5);
+  kit_pen(p, 93, MAT_FLAT, t3(0.88, 0.82, 0.72)); block(buf, p, cx, DV_BAY_H - 0.06, zc, DV_BAY_HX + 0.04, 0.06, DV_BAY_D * 0.5 + 0.04);
+  for i: 0..<6 {
+    x := cx - DV_BAY_HX + DV_BAY_HX * (cast(f32) i + 0.5) / 3;
+    kit_pen(p, 94, MAT_FLAT, t3(0.14, 0.13, 0.16)); block(buf, p, x, DV_BAY_H, zc - 0.05, 0.2, 0.012, 0.2);
+    kit_pen(p, 97, MAT_GLOW, CAST_CYAN()); block(buf, p, x, DV_BAY_H, zc + 0.17, 0.2, 0.016, 0.022);
+  }
+  kit_pen(p, 98, MAT_GLOW, t3(0.36, 0.78, 0.86)); block(buf, p, cx, DV_BAY_H + 0.45, z1 - 0.04, DV_BAY_HX * 0.6, 0.45, 0.02);
 }
 // Each frame (g_live): behind every window in the cabin, a painted desert on the wall: the sky, far
 // mesas, the dunes and the sand.
@@ -327,9 +370,9 @@ dv_stage :: (g: [] SpGame, n: int) {
   }
   if n == 26 { ga_look_into(g, ga_in_bay(g, sc_mark(g[0].c[..], 81).x, sc_mark(g[0].c[..], 81).z)); }
   if n == 27 { g[0].px = 0; g[0].pz = g[0].at.wall_z + 40; g[0].yaw = PI; g[0].pitch = 0; }
-  if n == 28 {   // inside Sniper's cabin by day, at its door, looking in
+  if n == 28 {   // inside Sniper's cabin by day, a few steps in from its door, looking at the front
     r := dv_room(g);
-    if r.ok && r.door { g[0].phase = PH_DAY; g[0].mode = M_PLAY; g[0].px = r.door_x; g[0].pz = r.door_z + 1.2; g[0].yaw = 0; g[0].pitch = 0; g_bot_home(g); }
+    if r.ok && r.door { g[0].phase = PH_DAY; g[0].mode = M_PLAY; g[0].px = r.door_x + 4.5; g[0].pz = r.door_z; g[0].yaw = PI * 0.5; g[0].pitch = 0; g_bot_home(g); }
   }
   if n == 29 {   // the solar farm by day, beside Sniper's rover train and the charger plugged into it
     tr := g_shipped_at(g, 123);

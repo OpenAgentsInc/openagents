@@ -440,9 +440,9 @@ spw_batch :: (g: [] SpGame, x: [] SpwWork, doc: string, body: string, fenced: bo
 }
 // The pieces a world holds before its first edit (#13505): the solar farm where a run starts (its
 // panels and chargers and Sniper's rover train, the plains left clear for props placed by hand) and the
-// rover's room, far out to the west where nothing on the road sees it (its windows, the loft bunk, the desk, the workbench arm and
-// the sofa). One row a piece: its kind (content ID), where it stands in centimetres, its turn in degrees.
-SPW_SHIPPED_N :: 26;
+// rover's room, far out to the west where nothing on the road sees it (its two window strips, the loft bunk, the desk and the
+// workbench arm; the front window, the edit bay's console and the door are the cabin's own, drive.coax). One row a piece: its kind (content ID), where it stands in centimetres, its turn in degrees.
+SPW_SHIPPED_N :: 18;
 SPW_SHIPPED :: [SPW_SHIPPED_N * 4] int.[
   120, 1800, 33600, 0,
   120, 1800, 34100, 0,
@@ -457,19 +457,11 @@ SPW_SHIPPED :: [SPW_SHIPPED_N * 4] int.[
   121, 2800, 36000, 180,
   121, 3200, 36000, 180,
   123, 300, 34800, 0,
-  127, -50200, 26425, 0,
-  127, -49900, 26425, 0,
-  127, -49600, 26425, 0,
-  127, -50350, 25575, 0,
-  127, -49650, 25575, 0,
-  127, -50575, 25750, 90,
-  127, -50575, 26050, 90,
-  127, -49425, 25850, 90,
-  127, -49425, 26150, 90,
-  124, -50490, 26330, 0,
-  125, -49575, 26000, -90,
-  126, -49750, 26340, 180,
-  128, -50350, 25660, 0];
+  127, -50150, 25575, 0,
+  127, -49850, 25575, 0,
+  124, -50490, 25670, 0,
+  125, -49650, 25725, 0,
+  126, -49580, 26200, -90];
 // The shipped pieces placed into the layer, each through the layer's check: how many stand, or minus
 // the row the check refused, less one.
 spw_shipped :: (g: [] SpGame) -> int {

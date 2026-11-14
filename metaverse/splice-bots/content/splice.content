@@ -204,8 +204,8 @@ table plans id who:int when:text do:text route:text speed:int notice:int on:text
 92|9|dusk|stand|14500 1500|0|0|ignore
 93|9|night|patrol|1500 -20800, -1500 -20800|180|500|chase
 table portals id name:text from:text to:text yaw:int r:int
-1|Enter the rover|kind 123|-50000 25730|0|900
-2|Leave the rover|at -50000 25590|1000 34800|90|120
+1|Enter the rover|kind 123|-50420 26000|90|900
+2|Leave the rover|at -50560 26000|1000 34800|90|120
 3|Drive to the garage|kind 125|ride 0 1000|180|250
 table scripts id name:text hash:text for:text
 table starts id when:text at:text yaw:int

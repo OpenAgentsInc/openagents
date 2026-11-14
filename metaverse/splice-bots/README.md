@@ -282,8 +282,12 @@ the copy the page is built with. Run it after every edit.
 
 As shipped, a new run starts at the solar farm by day. E at the rover train goes into the room
 inside the rover: a closed cabin of its own, 12 m by 9 m (`drive.coax` `dv_room`), with a floor,
-four solid walls, a ceiling and a painted desert behind its windows, so nothing of the world shows
-and no one walks out. E at its door goes back out beside Sniper. Inside, the camera stays close and
+four solid walls with rounded corners, a ceiling and a painted desert behind its windows, so
+nothing of the world shows and no one walks out. Seen from above, the front is on the right: one big
+window across the whole front wall, the loft bunk and its ladder top left, the desk with its screens
+top right, two window strips on the top wall, the workbench arm on the right by the front, and the
+edit bay's console with its six slots at the bottom middle (Tab opens the bay). The door is in the
+back wall, on the left; E at it goes back out beside Sniper. Inside, the camera stays close and
 under the ceiling. E at the desk there starts the drive to the garage, and the garage yard turns
 the day to dusk. Tables saved before the `portals`, `starts` and `beats` tables get them empty,
 so such a world keeps its older opening in the dome village (#13505).

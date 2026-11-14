@@ -34,7 +34,7 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
   g := [1] SpGame.[SpGame.{}];
   lc_mine(g[..]);
   w := sl_world(g[..]);
-  #assert world_ready(w) && g[0].ws[0].refused == 0 && g[0].wall_n == 24 && g[0].wall_n <= WALLS;
+  #assert world_ready(w) && g[0].ws[0].refused == 0 && g[0].wall_n == 25 && g[0].wall_n <= WALLS;   // the cabin: four walls and the edit bay console
   seen: [WALLS] int; gates := 0; boss := 0; stop := 0; piers := 0;
   for s: 0..<world_high(w) {
     #assert world_at(w, s) != ENTITY_NONE && world_has(w, s, WORLD_TRANSFORM | WORLD_BODY | WORLD_KIND | WORLD_ROW) && !world_has(w, s, WORLD_HEALTH);

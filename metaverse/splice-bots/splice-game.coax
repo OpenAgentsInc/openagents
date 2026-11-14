@@ -2497,6 +2497,15 @@ FlowTest :: struct { o: [5] [CT_BODY] u8; }
   #assert g_key(g[..], 'e', true) && sp_in_room(g[..]);
   r := dv_room(g[..]);
   #assert r.ok && r.door && r.x1 - r.x0 >= 11 && r.z1 - r.z0 >= 8.5;   // roomier than before: 12 m by 9 m
+  // the layout (front +x on the right, the top the low-z wall): the door in the back wall, the bunk
+  // top-left, the desk top-right, the workbench arm right by the front, the window strips on the top wall
+  cx := (r.x0 + r.x1) * 0.5; cz := (r.z0 + r.z1) * 0.5;
+  bk := g_shipped_at(g[..], 124); dk := g_shipped_at(g[..], 125); am := g_shipped_at(g[..], 126);
+  #assert r.door_x < r.x0 + 1 && abs(r.door_z - cz) < 0.5;
+  #assert bk.x < cx - 3 && bk.z < cz && dk.x > cx + 2 && dk.z < cz && am.x > cx + 3 && am.z >= cz - 0.5;
+  strips := 0;
+  for i: 0..<g[0].layer[0].st[0].n { e := g[0].layer[0].items[i]; if e.mesh == DV_WINDOW_KIND && dv_room_has(r, e.x, e.z) { #assert e.z < r.z0 + 0.5; strips += 1; } }
+  #assert strips == 2;
   // eight ways from the middle, a long walk each: she never leaves the cabin
   for k: 0..<8 {
     g[0].px = (r.x0 + r.x1) * 0.5; g[0].pz = (r.z0 + r.z1) * 0.5 + 1; g[0].yaw = cast(f32) k * TAU / 8; g[0].pitch = 0;
@@ -2513,7 +2522,7 @@ FlowTest :: struct { o: [5] [CT_BODY] u8; }
   c0 := g_camera(g[..]);
   #assert c0.eye.x > r.x0 && c0.eye.x < r.x1 && c0.eye.z > r.z0 && c0.eye.z < r.z1 && c0.eye.y < DV_ROOM_H;
   // E at the door: outside by the rover train
-  g[0].px = r.door_x; g[0].pz = r.door_z + 0.3; g[0].dr[0].map = false;
+  g[0].px = r.door_x + 0.3; g[0].pz = r.door_z; g[0].dr[0].map = false;
   #assert g_key(g[..], 'e', true) && !sp_in_room(g[..]) && dist2(g[0].px, g[0].pz, tr.x, tr.z) < 10;
 }
 sp_map_up :: (g: [] SpGame) -> bool { g[0].dr[0].map = true; g[0].look_free = false; return g[0].dr[0].map; }
