@@ -200,25 +200,27 @@ EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return (uint32_t)walk_at(state)->draw_n; }
 // Two stores: the instances' rows, and the ground's samples (worldbuilder-land.coax wb_land_gpu). Each
 // is sent again only when its version changes.
-// Four stores: the instances' rows, the ground's samples (worldbuilder-land.coax wb_land_gpu), the
-// figure's instances (the zone's records) and the baked clips. Each is sent again only when its version changes.
-EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 4u; }
+// Five stores: the instances' rows, the ground's samples (worldbuilder-land.coax wb_land_gpu), the
+// figure's instances (the zone's records), the baked clips and the people's material table (everglade/zone.coax
+// zone_materials, from the character pack's catalog). Each is sent again only when its version changes.
+EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 5u; }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) {
   return k == 0 ? (uint32_t)sizeof(((coax_t_WorldBuilder *)0)->objects) : k == 1 ? (uint32_t)sizeof(((coax_t_WorldBuilder *)0)->ground)
-       : k == 2 ? (uint32_t)(4096u * 24u * 4u) : (uint32_t)sizeof bake;
+       : k == 2 ? (uint32_t)(4096u * 24u * 4u) : k == 4 ? (uint32_t)sizeof(((coax_t_EgZone *)0)->mats.e) : (uint32_t)sizeof bake;
 }
 EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
   return k == 0 ? (uint32_t)(uintptr_t)state_at(state)->objects.e : k == 1 ? (uint32_t)(uintptr_t)state_at(state)->ground.e
-       : k == 2 ? (uint32_t)(uintptr_t)zone_at(state)->records.e : (uint32_t)(uintptr_t)bake;
+       : k == 2 ? (uint32_t)(uintptr_t)zone_at(state)->records.e : k == 4 ? (uint32_t)(uintptr_t)zone_at(state)->mats.e : (uint32_t)(uintptr_t)bake;
 }
 EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) {
   if (k == 0) return (uint32_t)worldbuilder_store_bytes(at(state));
   if (k == 1) return (uint32_t)worldbuilder_ground_bytes(at(state));
   if (k == 2) { uint32_t n = 0; coax_t_Bodies *b = &zone_at(state)->bodies.e[0]; for (int64_t d = 0; d < b->draw_n && d < figure_draws; d++) n += b->draws.e[d * 4 + 3]; if (n > 4096u) n = 4096u; return n * 24u * 4u; }
+  if (k == 4) return (uint32_t)sizeof(((coax_t_EgZone *)0)->mats.e);
   return (uint32_t)sizeof bake;
 }
 EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) {
-  return k == 0 ? (uint32_t)worldbuilder_scene_version(at(state)) : k == 1 ? (uint32_t)worldbuilder_ground_version(at(state)) : k == 2 ? frames : baked;
+  return k == 0 ? (uint32_t)worldbuilder_scene_version(at(state)) : k == 1 ? (uint32_t)worldbuilder_ground_version(at(state)) : k == 2 ? frames : k == 4 ? (uint32_t)zone_at(state)->mats_v : baked;
 }
 // The store is copied only when the world changed (its version), not every frame.
 

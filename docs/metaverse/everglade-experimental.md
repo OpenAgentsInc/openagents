@@ -336,6 +336,28 @@ gzip -n -6 -c /tmp/glade-new.pack > apps/openagents-web/realms/everglade-experim
 `--sort` leaves a sorted pack as it is. A pack whose seed counts differ from
 the file's is drawn whole, every seed, as before the sort.
 
+The glade's surfaces are material records
+([#13550](https://github.com/OpenAgentsInc/openagents/issues/13550)), the same table
+Everglade II reads (`everglade/scene/surfaces.coax`). Each environment vertex carries
+its surface's id in its normal word's top byte, 0 to 8, and the catalog's `U ID NAME`
+rows name the surface for each id. Seven of them are Everglade II's own (the sky, leaves,
+grass, flowers, bark, sand as `e2/surface/mushroom`, and a model in its vertex colour).
+Two belong to the glade. `glade/surface/rock` is stone, a village atlas face where the
+vertex is marked 100 + its tile (`CM_S_VILLAGE`), and a town material where its tint is
+one (`CM_S_TOWN`). `glade/surface/ground` takes the vertex's colour, because these pages
+have no ground table. The page puts the records in its material table
+(`everglade/zone.coax` `zone_materials`), the face's third store, and
+`character-glade.coax` reads them, never an id. A tiled surface's record says how often
+its texture repeats (bark 64, a village face 8). `character_glade_pack.coax` writes the
+rows. To put them into the built pack:
+
+```sh
+gzip -dc apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz > /tmp/glade.pack
+coax/web/tool.sh everglade/model/tools/material-pack.coax --into /tmp/glade.pack /tmp/glade-new.pack glade
+coax/web/tool.sh everglade/model/tools/material-pack.coax --holds /tmp/glade-new.pack glade   # coax/remote/check.sh's glade-surfaces
+gzip -n -6 -c /tmp/glade-new.pack > apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz
+```
+
 The Archery Range realm ([spec](../../everglade/docs/archery-range-spec.md))
 draws its butts, sky faces, posts and chalk line from the same pack, as one mesh
 (`C glade/range`, built by `everglade/range/place.coax`). Append it the same way,

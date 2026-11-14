@@ -66,7 +66,7 @@ e2_kit_place :: (id:u32,a:V4,c:V4,u:[]E2U,vertices:[]u32,mats:[]V4)->FivelabS {
  if (e2_surf_is(m,cmat.CM_S_WIND)) {sway:=sin(a.x*0.37f32+a.z*0.21f32+u[0].f.view.z*1.1f32)+sin(a.z*0.53f32+u[0].f.view.z*0.7f32)*0.35f32;p.x=p.x+sway*0.05f32*saturate(source.y*0.18f32)*c.x;}
  nw:V4=wg_unpack4x8snorm(normal);cs:=cos(a.w);sn:=sin(a.w);
  n:=normalize3(v3((nw.x*cs+nw.z*sn)/c.y,nw.y/c.x,(-nw.x*sn+nw.z*cs)/c.y));
- uv:V2=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]);if (e2_surf_is(m,cmat.CM_S_TILED)) {uv=v2(uv.x*64.0f32-32.0f32,uv.y*64.0f32-32.0f32);}
+ uv:V2=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]);if (e2_surf_is(m,cmat.CM_S_TILED)) {uv=e2_tiled_uv(uv,m);}
  vt:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,5)]);t:=ifx e2_surf_is(m,cmat.CM_S_PLACED) then e2_unpack_tint(c) else v3(1,1,1);
  o:FivelabS;o.pos=fivelab_project(p,u[0].f);o.world=p;o.normal=n;o.uv=uv;o.slice=vertices[cast(int)add_wrap(b,6)];
  o.tint=ifx e2_surf_is(m,cmat.CM_S_LEAVES) then t else mul3(v3(vt.x,vt.y,vt.z),t);o.dye=v4(e2_inst_fade(c),0,0,12);o.local=v3(cast(f32)id8,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0);o.who=0;
@@ -177,7 +177,7 @@ everglade2_scene_vs :: (id:u32,instance:u32,u:[]E2U,vertices:[]u32,objects:[]Fiv
  if (instance>=cast(u32)E2_FIELD_BASE) {return e2_field_vs(id,instance,u,vertices,mats);}
  if (instance>=cast(u32)E2_KIT_BASE) {return e2_kit_vs(id,instance,u,vertices,inst,items,mats);}
  if (instance<cast(u32)65536) {mp:=objects[cast(int)instance];if (mp.d.w>20.5f32 && mp.d.w<21.5f32) {return e2_prop_vs(id,instance,mp,u,vertices);}if (mp.d.w>22.5f32 && mp.d.w<23.5f32) {return e2_dragon_vs(id,instance,mp,u,bake);}}
- o:=fivelab_scene_place(id,instance,u[0].f,vertices,objects,bake);
+ o:=fivelab_scene_place(id,instance,u[0].f,vertices,objects,bake,mats);
  // a monster's frame (18) or a held weapon (19, everglade/server/creatures.coax, everglade/client/guard.coax):
  // its record's f.w is the share of its pixels the dither drops as it thins in or out
  if (instance<cast(u32)65536) {m0:=objects[cast(int)instance];if (m0.d.w>17.5f32 && m0.d.w<19.5f32) {o.dye.x=m0.f.w;}}
@@ -438,17 +438,7 @@ e2_ground_ao :: (x:f32,z:f32,ground:[]V4)->f32 {
  g[1]=v4(6,0.5,0,4);
  #assert e2_ground_ao(1,-1,g[..])==1;
 }
-// A world surface's record in the material table (everglade/scene/surfaces.coax): its flags and fill.
-E2Surf :: struct {flags:u32;fill:f32;}
-e2_surface :: (s:FivelabS,mats:[]V4)->E2Surf {return e2_surface_id(cast(int)(s.local.x+0.5f32),mats);}
-// Surface id k's record (an id past the surfaces reads as a plain textured one's).
-e2_surface_id :: (id:int,mats:[]V4)->E2Surf {
- k:=id;if (k<0 || k>=E2S_COUNT) {k=E2S_MODEL_TEXTURE;}
- d:=mats[(E2S_BASE+k)*4+3];return E2Surf.{flags=cast(u32)cast(int)(d.x+0.5f32),fill=d.y};
-}
-e2_surf_is :: (m:E2Surf,flag:int)->bool {return (m.flags&cast(u32)flag)!=cast(u32)0;}
-// Whether a world surface is the painted sky plate (its record's CM_S_SKY): drawn as its texel, casting no shadow.
-e2_sky :: (s:FivelabS,mats:[]V4)->bool {return s.dye.w>11.5f32 && e2_surf_is(e2_surface(s,mats),cmat.CM_S_SKY);}
+// A world surface's record (E2Surf, e2_surface, e2_surf_is, e2_sky): everglade/scene/gpu/surface-record.coax, which the older glade reads too.
 e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]E2U,shadow:f32,table:[]V4,mats:[]V4)->V4 {
  if (e2_surf_is(e2_surface(s,mats),cmat.CM_S_SKY)) {return v4(pow(tex.x,0.62f32),pow(tex.y,0.75f32),tex.z*0.965f32,1);}
  m:=e2_surface(s,mats);n:=normalize3(add3(s.normal,v3(0,0.0001f32,0)));
@@ -542,7 +532,7 @@ CcDeriv :: struct {px:V3;py:V3;ux:V2;uy:V2;}
 cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]E2U,objects:[]FivelabObj,visibility:f32,mats:[]V4,data:Tex2DArray,sheet:Sampler,d:CcDeriv)->V4 {
  m:=objects[cast(int)s.who];at:=cast(int)s.slice*4;ma:=mats[at];mb:=mats[at+1];mc:=mats[at+2];kind:=cast(int)(ma.w+0.5f32);
  albedo:=cc_albedo(v3(tex.x,tex.y,tex.z),s.dye,s.tint,v3(ma.x,ma.y,ma.z),mc.z>0.5f32);
- if (m.f.w>1.5f32 && s.slice==FIVELAB_EYE_LAYER) {
+ if (m.f.w>1.5f32 && e2_eye_layer(s.slice,mats)) {
   iris:=saturate((tex.x-fmax(tex.y,tex.z))*5.0f32);shade:=clampf(metaverse_style_luma(tex.x,tex.y,tex.z)*3.0f32,0.15f32,1.3f32);
   albedo=mix3(albedo,scale3(cg_decode(v3(m.f.x,m.f.y,m.f.z)),shade),iris);
  }

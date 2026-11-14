@@ -1,0 +1,32 @@
+// A world surface's record in a glade page's material table (everglade/scene/surfaces.coax, #13541,
+// #13545, #13550), read on the GPU: its flags, its fill and how many times its texture repeats. Every
+// glade page binds the table as `mats` (a record four vec4s, metaverse-engine/character/material.coax
+// cm_pack) and registers its pack's surfaces at E2S_BASE + id: Everglade II's passes, the older glade's
+// (character-glade.coax) and the people's (fivelab.coax) read them here, never a vertex's id.
+// Loaded by character-glade.coax in fivelab.coax's unit, where its checks run (coax test everglade/scene/gpu/fivelab.coax).
+#load "../../../metaverse-engine/character/material.coax" as cmat;
+#load "../surfaces.coax";
+E2Surf :: struct {flags:u32;fill:f32;tiles:f32;}
+e2_surface :: (s:FivelabS,mats:[]V4)->E2Surf {return e2_surface_id(cast(int)(s.local.x+0.5f32),mats);}
+// Surface id k's record (an id past the surfaces reads as a plain textured one's).
+e2_surface_id :: (id:int,mats:[]V4)->E2Surf {
+ k:=id;if (k<0 || k>=E2S_COUNT) {k=E2S_MODEL_TEXTURE;}
+ d:=mats[(E2S_BASE+k)*4+3];return E2Surf.{flags=cast(u32)cast(int)(d.x+0.5f32),fill=d.y,tiles=d.w};
+}
+e2_surf_is :: (m:E2Surf,flag:int)->bool {return (m.flags&cast(u32)flag)!=cast(u32)0;}
+// Whether a world surface is the painted sky plate (its record's CM_S_SKY): drawn as its texel, casting no shadow.
+e2_sky :: (s:FivelabS,mats:[]V4)->bool {return s.dye.w>11.5f32 && e2_surf_is(e2_surface(s,mats),cmat.CM_S_SKY);}
+// A tiled uv: the pack's 0 to 1 spans the record's tiles, centred (bark's 64, a village face's 8).
+e2_tiled_uv :: (uv:V2,m:E2Surf)->V2 {return v2(uv.x*m.tiles-m.tiles*0.5f32,uv.y*m.tiles-m.tiles*0.5f32);}
+// A village face: its record's CM_S_VILLAGE, and its vertex marked 100 + its atlas tile.
+e2_village :: (m:E2Surf,marker:f32)->bool {return e2_surf_is(m,cmat.CM_S_VILLAGE) && marker>=100.0f32;}
+// A character's colour layer is the eye's (its record's kind, cm_table: T_Eye_*).
+e2_eye_layer :: (slice:u32,mats:[]V4)->bool {return cast(int)(mats[cast(int)slice*4].w+0.5f32)==cmat.CM_KIND_EYE;}
+#test "a surface's record reads its flags, fill and repeats, and an id past the surfaces reads as a textured model" {
+ mats:[cmat.CM_MAX*4]V4;mats[(E2S_BASE+6)*4+3]=v4(512,1.5,-1,64);mats[(E2S_BASE+E2S_MODEL_TEXTURE)*4+3]=v4(0,1,-1,0);mats[(E2S_BASE+4)*4+3]=v4(4096+16,0.78,-1,8);
+ b:=e2_surface_id(6,mats[..]);#assert e2_surf_is(b,cmat.CM_S_TILED) && b.fill==1.5f32 && b.tiles==64;
+ uv:=e2_tiled_uv(v2(0.5,1),b);#assert uv.x==0 && uv.y==32;
+ #assert e2_surface_id(40,mats[..]).fill==1 && e2_surface_id(-1,mats[..]).flags==0;
+ r:=e2_surface_id(4,mats[..]);#assert e2_village(r,100) && !e2_village(r,99.5) && !e2_village(b,120);
+ mats[32*4]=v4(1,1,1,f32(cmat.CM_KIND_EYE));#assert e2_eye_layer(cast(u32)32,mats[..]) && !e2_eye_layer(cast(u32)31,mats[..]);
+}

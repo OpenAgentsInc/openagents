@@ -5,6 +5,8 @@
 #load "../../metaverse-engine/core/sticks.coax";
 #load "../../metaverse-engine/render/shade/environment-frame.coax" as envf;
 #load "../../metaverse/nights/light.coax" as spring;
+#load "../../metaverse-engine/character/material.coax" as nmat;   // the material table the shader reads (`mats`, #13550)
+#load "../../everglade/scene/surfaces.coax";
 VERTEX_FLOATS ::16;
 NIGHT_HEROES ::32;
 NIGHT_ENV ::208;
@@ -22,12 +24,24 @@ Nights ::struct {
  clock:f32;clip_clock:f32;clip:int;forced:int= -1;width:f32=1280;height:f32=800;d:f32=1;drag:bool;drag_id:int;px:f32;py:f32;look_x:f32;look_y:f32;
  light:[108]f32;light_n:int;ground_grass:int= -1;ground_earth:int= -1;ground_repeat:f32=1.6;ground_ready:bool;
  records:[48]f32;draws:[8]u32;draw_n:int;revision:int;
+ // the material table (the face's third store, everglade/scene/gpu/surface-record.coax): the pack's colour layers, then its surfaces
+ mats:[nmat.CM_MAX*nmat.CM_FLOATS]f32;mat_table:[nmat.CM_MAX]nmat.CharMaterial;mats_v:int;
+}
+// The material table from catalog t (cm_table, e2s_register). The private pack (docs/metaverse/
+// everglade-nights-experimental.md) is built outside this repository and its catalog names no surfaces yet:
+// its environment's vertices number them as the older glade's packs do, so a catalog with no U rows takes
+// those (e2s_glade_rows); one with rows takes its own.
+night_materials :: (s:[]Nights,t:string) {
+ _:=nmat.cm_table(t,s[0].mat_table[..],s[0].mats[..]);
+ if e2s_rows_in(t)>0 {_=e2s_register(t,s[0].mats[..]);}
+ else {rows:[512]u8;n:=e2s_glade_rows(rows[..]);if n>0 {_=e2s_register(cast(string)rows[0..<n],s[0].mats[..]);}}
+ s[0].mats_v+=1;
 }
 night_num :: (t:string)->int {if t.count==0 {return -1;}v:=0;for i:0..<t.count {if t[i]<'0' || t[i]>'9' {return -1;}d:=int(t[i]-'0');if v>(134217728-d)/10 {return -1;}v=v*10+d;}return v;}
 night_real :: (t:string)->f32 {if t.count==0 {return 0;}sign:=1.0f32;p:=0;if t[0]=='-' {sign= -1;p=1;}v:=0.0f32;share:=0.0f32;for i:p..<t.count {if t[i]=='.' && share==0 {share=0.1;continue;}if t[i]<'0' || t[i]>'9' {return 0;}d:=f32(t[i]-'0');if share>0 {v+=d*share;share*=0.1;}else {v=v*10+d;}if v>100000 {return 0;}}return sign*v;}
 night_copy :: (out:[]u8,t:string)->int {n:=ifx t.count<out.count then t.count else out.count;for i:0..<n {out[i]=ifx t[i]=='_' then ' ' else t[i];}return n;}
 night_catalog :: (s:[]Nights,t:string) #export_c #effects(all) {
- nui.catalog(s[0].ui[..],t);s[0].ground_grass= -1;s[0].ground_earth= -1;s[0].ground_repeat=1.6;s[0].ground_ready=false;s[0].menu=false;s[0].ui_down=0;
+ nui.catalog(s[0].ui[..],t);night_materials(s,t);s[0].ground_grass= -1;s[0].ground_earth= -1;s[0].ground_repeat=1.6;s[0].ground_ready=false;s[0].menu=false;s[0].ui_down=0;
  for h:0..<32 {s[0].heroes[h]=NHero.{};}s[0].env=NFrame.{};s[0].hero_n=0;s[0].palette_n=1;s[0].palette_stride=1;s[0].skin_n=1;s[0].hair_n=1;s[0].dye_n=1;s[0].zone_n=0;s[0].box_n=0;s[0].ready=false;s[0].bad=false;
  at:=0;while at<t.count {e:=at;while e<t.count && t[e]!='\n' {e+=1;}row:=t[at..<e];at=e+1;w:[12]string;wn:=0;p:=0;
  while p<row.count {while p<row.count && (row[p]==' ' || row[p]=='\t' || row[p]=='\r') {p+=1;}if p>=row.count {break;}q:=p;while p<row.count && row[p]!=' ' && row[p]!='\t' && row[p]!='\r' {p+=1;}if wn<12 {w[wn]=row[q..<p];wn+=1;}else {s[0].bad=true;}}
@@ -175,6 +189,11 @@ night_ui_draw :: (s:[]Nights,out:[]f32)->int {
 main :: () {}
 night_fixture :: (s:[]Nights) {
  night_catalog(s,"C nights/environment 0 3 250 0 3 0\nC nights/hero0/frame0 3 3 248 0 3 0\nH nights 0 Female_Cloth\nP nights 0 1 0 0\nA nights 0 pause1 0 1 1000\nV nights 18 1\nQ nights 2 3 3\nZ nights FOREST -30 -30 30 30 0 0 0\nZ nights RURAL 29 -20 70 20 0 40 0\nZ nights CITY 69 -20 110 20 0 80 0\nB nights 10 10 12 12\n");
+}
+#test "Nights' material table: a catalog without surface rows takes the older glade's, one with rows its own" {
+ s:[1]Nights;night_catalog(s[..],"T 0 nwn/grass 240\n");
+ #assert s[0].mats_v==1 && s[0].mats[(E2S_BASE+6)*nmat.CM_FLOATS+12]==f32(nmat.CM_S_TILED) && s[0].mats[(E2S_BASE+0)*nmat.CM_FLOATS+12]==f32(nmat.CM_S_SKY);
+ night_catalog(s[..],"U 6 e2/surface/rock\n");#assert s[0].mats_v==2 && s[0].mats[(E2S_BASE+6)*nmat.CM_FLOATS+12]==f32(nmat.CM_S_STONE|nmat.CM_S_PLACED) && s[0].mats[(E2S_BASE+0)*nmat.CM_FLOATS+12]==0;
 }
 #test "Nights source catalog admission resets and rejects incomplete actors" {
  s:[1]Nights;night_fixture(s[..]);#assert s[0].ready && s[0].hero_n==1 && s[0].heroes[0].gender==1;

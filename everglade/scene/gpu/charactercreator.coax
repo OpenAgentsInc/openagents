@@ -7,7 +7,7 @@ charactercreator_bg_fs :: (pos:V4,u:[]f32,frame:[]f32)->CharacterCreatorBg {
  eye:=wg_at3(u,16);rd:=normalize3(add3(wg_at3(u,20),add3(scale3(wg_at3(u,24),(pos.x-u[23])/u[19]),scale3(wg_at3(u,28),(u[27]-pos.y)/u[19]))));
  sky:=cg_decode(cg_sky(paint_env_of(u),rd,wg_at3(u,32),u[2]));return CharacterCreatorBg.{c=v4(sky.x,sky.y,sky.z,0),depth=1};
 }
-charactercreator_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->FivelabS {return fivelab_scene_place(id,instance,glade_frame(u),vertices,objects,bake);}
+charactercreator_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,mats:[]V4)->FivelabS {return fivelab_scene_place(id,instance,glade_frame(u),vertices,objects,bake,mats);}
 #test "creator player sunlight follows normals and shadow visibility while retaining sky fill" {
  sun:=normalize3(v3(-0.45,0.78,-0.42));view:=v3(0,0,1);base:=v3(0.4,0.25,0.12);u:=paint_env_glade_u();
  lit:=cc_player_light(u[..],base,sun,view,1);shade:=cc_player_light(u[..],base,sun,view,0);back:=cc_player_light(u[..],base,scale3(sun,-1),view,1);
@@ -22,11 +22,11 @@ cc_player_light :: (u:[]f32,albedo:V3,n:V3,view:V3,visibility:f32)->V3 {
  irradiance:=add3(cg_irradiance(paint_env_of(u),n,direct,1,visibility),scale3(v3(0.85f32,0.72f32,0.52f32),fill));
  return mul3(albedo,irradiance);
 }
-cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visibility:f32)->V4 {
+cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visibility:f32,mats:[]V4)->V4 {
  m:=objects[cast(int)s.who];
  // The array sampler already decodes sRGB. Dye masks are authored in display space.
  display:=cg_encode(v3(tex.x,tex.y,tex.z));albedo:=mul3(cg_decode(fivelab_dye(display,s.dye)),cg_decode(s.tint));
- if (m.f.w>1.5f32 && s.slice==FIVELAB_EYE_LAYER) {
+ if (m.f.w>1.5f32 && e2_eye_layer(s.slice,mats)) {
   iris:=saturate((tex.x-fmax(tex.y,tex.z))*5.0f32);shade:=clampf(metaverse_style_luma(tex.x,tex.y,tex.z)*3.0f32,0.15f32,1.3f32);
   albedo=mix3(albedo,scale3(cg_decode(v3(m.f.x,m.f.y,m.f.z)),shade),iris);
  }
@@ -44,20 +44,22 @@ cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visib
  if (!dark) {colour=cg_atmosphere(paint_env_of(u),colour,eye,s.world);}
  return v4(colour.x,colour.y,colour.z,share);
 }
-charactercreator_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->CharacterCreatorLit {
+// A scene pixel: a glade surface (dye.w over 11.5) by its record in `mats`, else a figure.
+charactercreator_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,mats:[]V4,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->CharacterCreatorLit {
  uv:=s.uv;ray:=add3(wg_at3(u,20),add3(scale3(wg_at3(u,24),(s.pos.x-u[23])/u[19]),scale3(wg_at3(u,28),(u[27]-s.pos.y)/u[19])));plate:=cg_sky_uv(ray);
- if (s.dye.w>11.5f32 && s.local.x<0.5f32) {uv=v2(clampf(plate.x,0.001f32,0.999f32),clampf(plate.y,0.001f32,0.999f32));}
- if (s.dye.w>11.5f32 && s.local.x>3.5f32 && s.local.x<4.5f32 && s.local.y>=100.0f32) {uv=cg_village_uv(uv,s.local.y);}
+ sky:=e2_sky(s,mats);
+ if sky {uv=v2(clampf(plate.x,0.001f32,0.999f32),clampf(plate.y,0.001f32,0.999f32));}
+ if (s.dye.w>11.5f32 && e2_village(e2_surface(s,mats),s.local.y)) {uv=cg_village_uv(uv,s.local.y);}
  tex:=render_sample_layer8_bias(sheets,sheet,uv,cast(s32)s.slice,1);
- if (s.dye.w>11.5f32 && s.local.x<0.5f32) {
-  sky:=mix3(cg_decode(cg_sky(paint_env_of(u),normalize3(ray),wg_at3(u,32),u[2])),v3(tex.x,tex.y,tex.z),cg_sky_plate_weight(plate));tex=v4(sky.x,sky.y,sky.z,1);
+ if sky {
+  plate_sky:=mix3(cg_decode(cg_sky(paint_env_of(u),normalize3(ray),wg_at3(u,32),u[2])),v3(tex.x,tex.y,tex.z),cg_sky_plate_weight(plate));tex=v4(plate_sky.x,plate_sky.y,plate_sky.z,1);
  }
  if (tex.w<0.35f32 || (s.dye.w>12.5f32 && s.local.z>0.0f32)) {gpu_demote_helper();}
  c:V4;
- if (s.dye.w>11.5f32) {c=cg_environment_fs(s,tex,front,u,cg_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp));}
- else {c=cc_player_fs(s,tex,front,u,objects,cg_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp));}
+ if (s.dye.w>11.5f32) {c=cg_environment_fs(s,tex,front,u,cg_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp),mats);}
+ else {c=cc_player_fs(s,tex,front,u,objects,cg_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp),mats);}
  n:=normalize3(s.normal);z:=dot3(sub3(s.world,wg_at3(u,16)),wg_at3(u,20));
- sky:=s.dye.w>11.5f32 && s.local.x<0.5f32;foliage:=s.dye.w>11.5f32 && s.local.x>0.5f32 && s.local.x<2.5f32;
+ foliage:=s.dye.w>11.5f32 && !sky && e2_surf_is(e2_surface(s,mats),cmat.CM_S_FOLIAGE);
  indirect:=c.w;packed:=cg_normal_pack(n);
  c.w=ifx sky then 0.0f32 else ifx foliage then 0.4f32 else 0.12f32;
  return CharacterCreatorLit.{c=c,aux=v4(packed.x,packed.y,indirect,ifx sky then 0.0f32 else ifx foliage then -z else z)};

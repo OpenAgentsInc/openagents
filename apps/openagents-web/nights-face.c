@@ -31,11 +31,12 @@ EXPORT("coaxial_draws") uint32_t draws(uint32_t p){return(uint32_t)(uintptr_t)st
 EXPORT("coaxial_draw_count") uint32_t draw_count(uint32_t p){return state(p)->draw_n;}
 EXPORT("coaxial_shadow_draws_v1") uint32_t shadow_draws(uint32_t p){return(uint32_t)(uintptr_t)state(p)->draws.e;}
 EXPORT("coaxial_shadow_draw_count_v1") uint32_t shadow_count(uint32_t p){return state(p)->draw_n;}
-EXPORT("coaxial_stores") uint32_t stores(void){return 2;}
-EXPORT("coaxial_store") uint32_t store(uint32_t p,int32_t i){return i==0?(uint32_t)(uintptr_t)state(p)->records.e:(uint32_t)(uintptr_t)dummy_bake;}
-EXPORT("coaxial_store_cap") uint32_t store_cap(int32_t i){return i==0?sizeof(state(0)->records.e):sizeof dummy_bake;}
+/* three stores: the records, the bake, the material table (nights.coax night_materials) */
+EXPORT("coaxial_stores") uint32_t stores(void){return 3;}
+EXPORT("coaxial_store") uint32_t store(uint32_t p,int32_t i){return i==0?(uint32_t)(uintptr_t)state(p)->records.e:i==2?(uint32_t)(uintptr_t)state(p)->mats.e:(uint32_t)(uintptr_t)dummy_bake;}
+EXPORT("coaxial_store_cap") uint32_t store_cap(int32_t i){return i==0?sizeof(state(0)->records.e):i==2?sizeof(state(0)->mats.e):sizeof dummy_bake;}
 EXPORT("coaxial_store_bytes") uint32_t store_bytes(uint32_t p,int32_t i){(void)p;return store_cap(i);}
-EXPORT("coaxial_store_version") uint32_t store_version(uint32_t p,int32_t i){return i==0?state(p)->revision:1;}
+EXPORT("coaxial_store_version") uint32_t store_version(uint32_t p,int32_t i){return i==0?state(p)->revision:i==2?(uint32_t)state(p)->mats_v:1;}
 EXPORT("coaxial_inbox") uint32_t incoming(uint32_t p){(void)p;return(uint32_t)(uintptr_t)inbox;}
 EXPORT("coaxial_inbox_cap") uint32_t incoming_cap(void){return sizeof inbox;}
 EXPORT("coaxial_message") void message(uint32_t p,int32_t kind,uint32_t n){if(n<=sizeof inbox)night_message(view(p),kind,(coax_string){(const char*)inbox,n});}

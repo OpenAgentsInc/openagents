@@ -3,7 +3,8 @@
 // kind CM_KIND_SURFACE and its surface flags (CM_S_*: foliage, grass, leaves, petals, stone, the
 // ground's table, an albedo from the vertex tint, sand, wind, a tiled texture, the placement's tint, the sky)
 // with the share of sky light it takes (fill); since #13545 a ground material's record names its
-// layer of the ground's material table (terrain). One record per surface, with defined defaults: an empty
+// layer of the ground's material table (terrain); since #13550 a tiled surface's record says how many times its
+// texture repeats (tiles), and the older glade's village and town are surface flags. One record per surface, with defined defaults: an empty
 // record is a matte cloth at roughness 0.8 with no maps, as OpenPBR's empty closure is its defaults.
 // Every Quaternius part (Character Create, Everglade II's player and people, the Fantasy wardrobe)
 // names its material by its colour layer, so a part's material ID is its layer: the table holds one
@@ -34,7 +35,10 @@ CM_S_WIND :: 256;      // it sways in the wind (the vertex stage)
 CM_S_TILED :: 512;     // its texture repeats: the pack's uv in 0 to 1 spans 64 tiles (the vertex stage)
 CM_S_PLACED :: 1024;   // the placement's tint colours its vertex colour (the vertex stage; with CM_S_LEAVES, in its place)
 CM_S_SKY :: 2048;      // a painted sky plate: drawn as its texel, unshaded, casting no shadow
-CM_S_ALL :: 4095;
+CM_S_VILLAGE :: 4096;  // a vertex marked 100 + k is a face of the village atlas's tile k: its uv repeats `tiles` times in that tile, its texel times its tint at full fill
+CM_S_TOWN :: 8192;     // a face whose tint is one of the town's materials, south of the road's end, is painted as that material (character-glade.coax cg_town_material)
+CM_S_ALL :: 16383;
+CM_TILES_MAX :: 256;   // a tiled texture's repeats at most
 CM_TERRAINS :: 16;     // the layers a ground's material table holds (metaverse-engine/world/terrain-tile.coax TERRAIN_MATERIALS_MAX)
 CM_NONE :: -1;          // no map
 CM_MAX :: 128;          // records in one table: one per colour layer
@@ -55,6 +59,7 @@ CharMaterial :: struct {
   surface: int = 0;       // a surface's flags (CM_S_*); 0 for a character
   fill: f32 = 1;          // the share of the sky's light it takes
   terrain: int = CM_NONE; // a ground material's layer of the ground's table (aethyr.terrain.materials.v1), CM_S_TERRAIN only
+  tiles: int = 0;         // how many times its texture repeats over the pack's uv 0 to 1 (CM_S_TILED, or a CM_S_VILLAGE face); 0 when it doesn't
 }
 CM_OK :: 0;
 CM_KIND :: 1;        // a kind it doesn't know
@@ -68,6 +73,7 @@ CM_TABLE :: 8;       // no records, or more than CM_MAX
 CM_SURFACE :: 9;     // surface flags past CM_S_ALL, or on a character's kind
 CM_FILL :: 10;       // a fill outside 0 to 4, or NaN
 CM_TERRAIN :: 11;    // a ground layer past the table's, or on a record that isn't CM_S_TERRAIN
+CM_TILES :: 12;      // tiles past CM_TILES_MAX or below 0, none on a tiled or village surface, or some on another
 // Why one record can't be drawn with a pack of `data` data layers, or CM_OK.
 cm_check :: (m: CharMaterial, data: int) -> int {
   if m.kind < 0 || m.kind >= CM_KINDS { return CM_KIND; }
@@ -80,6 +86,7 @@ cm_check :: (m: CharMaterial, data: int) -> int {
   if m.surface < 0 || m.surface > CM_S_ALL || (m.surface != 0 && m.kind != CM_KIND_SURFACE) { return CM_SURFACE; }
   if !(m.fill >= 0 && m.fill <= 4) { return CM_FILL; }
   if m.terrain < CM_NONE || m.terrain >= CM_TERRAINS || (m.terrain != CM_NONE && (m.surface & CM_S_TERRAIN) == 0) { return CM_TERRAIN; }
+  if m.tiles < 0 || m.tiles > CM_TILES_MAX || ((m.surface & (CM_S_TILED | CM_S_VILLAGE)) != 0) != (m.tiles > 0) { return CM_TILES; }
   return CM_OK;
 }
 CmRefusal :: struct { index: int = -1; reason: int = CM_OK; }
@@ -101,12 +108,12 @@ cm_kind :: (kind: int) -> CharMaterial {
   return m;
 }
 // One record as four vec4s: (r, g, b, kind), (roughness, metalness, normal, orm),
-// (strength, sheen, dye, flags: 1 occlusion + 2 orm_metal), (surface flags, fill, terrain, 0). Maps and terrain are -1 for none.
+// (strength, sheen, dye, flags: 1 occlusion + 2 orm_metal), (surface flags, fill, terrain, tiles). Maps and terrain are -1 for none.
 cm_pack :: (m: CharMaterial, out: [] f32) {
   out[0] = m.r; out[1] = m.g; out[2] = m.b; out[3] = cast(f32) m.kind;
   out[4] = m.roughness; out[5] = m.metalness; out[6] = cast(f32) m.normal; out[7] = cast(f32) m.orm;
   out[8] = m.strength; out[9] = m.sheen; out[10] = ifx m.dye then 1.0f32 else 0.0f32; out[11] = (ifx m.occlusion then 1.0f32 else 0.0f32) + (ifx m.orm_metal then 2.0f32 else 0.0f32);
-  out[12] = cast(f32) m.surface; out[13] = m.fill; out[14] = cast(f32) m.terrain; out[15] = 0;
+  out[12] = cast(f32) m.surface; out[13] = m.fill; out[14] = cast(f32) m.terrain; out[15] = cast(f32) m.tiles;
 }
 // A world's surfaces, registered once after the colour layers' records: record k of `surfaces` goes
 // to slot `base + k` of the packed table `out`. The surfaces written, or 0 when one is refused or
@@ -203,11 +210,16 @@ cm_table :: (t: string, table: [] CharMaterial, out: [] f32) -> int {
   b := m; b.kind = CM_KINDS; #assert cm_check(b, 4) == CM_KIND; b.kind = -1; #assert cm_check(b, 4) == CM_KIND;
   b = m; b.surface = CM_S_FOLIAGE; #assert cm_check(b, 4) == CM_SURFACE; b.kind = CM_KIND_SURFACE; #assert cm_check(b, 4) == CM_OK;
   b.surface = CM_S_ALL + 1; #assert cm_check(b, 4) == CM_SURFACE; b.surface = -1; #assert cm_check(b, 4) == CM_SURFACE;
-  b.surface = CM_S_ALL; b.fill = 4.5; #assert cm_check(b, 4) == CM_FILL; b.fill = nan; #assert cm_check(b, 4) == CM_FILL; b.fill = 0; #assert cm_check(b, 4) == CM_OK;
+  b.surface = CM_S_ALL; b.tiles = 1; b.fill = 4.5; #assert cm_check(b, 4) == CM_FILL; b.fill = nan; #assert cm_check(b, 4) == CM_FILL; b.fill = 0; #assert cm_check(b, 4) == CM_OK;
   // a ground layer: only on the ground's surface, and only one its table has
   b = cm_kind(CM_KIND_SURFACE); b.terrain = 0; #assert cm_check(b, 4) == CM_TERRAIN; b.surface = CM_S_TERRAIN | CM_S_WIND; #assert cm_check(b, 4) == CM_OK;
   b.terrain = CM_TERRAINS - 1; #assert cm_check(b, 4) == CM_OK; b.terrain = CM_TERRAINS; #assert cm_check(b, 4) == CM_TERRAIN; b.terrain = -2; #assert cm_check(b, 4) == CM_TERRAIN;
   b.terrain = CM_NONE; b.surface = 0; #assert cm_check(b, 4) == CM_OK;
+  // a repeat count: only on a tiled or village surface, which must have one
+  b = cm_kind(CM_KIND_SURFACE); b.surface = CM_S_TILED; #assert cm_check(b, 4) == CM_TILES; b.tiles = 64; #assert cm_check(b, 4) == CM_OK;
+  b.tiles = CM_TILES_MAX; #assert cm_check(b, 4) == CM_OK; b.tiles = CM_TILES_MAX + 1; #assert cm_check(b, 4) == CM_TILES; b.tiles = -1; #assert cm_check(b, 4) == CM_TILES;
+  b.surface = CM_S_STONE | CM_S_VILLAGE | CM_S_TOWN; b.tiles = 8; #assert cm_check(b, 4) == CM_OK; b.tiles = 0; #assert cm_check(b, 4) == CM_TILES;
+  b.surface = CM_S_STONE; b.tiles = 8; #assert cm_check(b, 4) == CM_TILES; b.tiles = 0; #assert cm_check(b, 4) == CM_OK;
   b = m; b.g = 4.5; #assert cm_check(b, 4) == CM_COLOUR; b.g = nan; #assert cm_check(b, 4) == CM_COLOUR; b.g = -0.1; #assert cm_check(b, 4) == CM_COLOUR;
   b = m; b.roughness = 1.01; #assert cm_check(b, 4) == CM_ROUGH; b.roughness = nan; #assert cm_check(b, 4) == CM_ROUGH;
   b = m; b.metalness = -0.01; #assert cm_check(b, 4) == CM_METAL; b.metalness = nan; #assert cm_check(b, 4) == CM_METAL;
@@ -254,7 +266,8 @@ CM_TEST_CATALOG :: "L 6 x\nT 0 T_Regular_Male_Dark_BaseColor.png 4\nT 1 T_Knight
   #assert cm_surfaces(two[..], 5, out[..]) == 0 && cm_surfaces(two[0..<0], 0, out[..]) == 0 && cm_surfaces(two[..], -1, out[..]) == 0;
   two[1].kind = CM_KIND_CLOTH; #assert cm_surfaces(two[..], 0, out[..]) == 0 && out[12] == 7;
   two[1] = rock; two[1].fill = -1; #assert cm_surfaces(two[..], 0, out[..]) == 0 && out[12] == 7;
-  // a character's record packs no surface and no ground layer: its fourth vec4 is (0, 1, -1, 0)
+  // a character's record packs no surface, no ground layer and no repeats: its fourth vec4 is (0, 1, -1, 0)
   c: [CM_FLOATS] f32; cm_pack(cm_kind(CM_KIND_SKIN), c[..]); #assert c[12] == 0 && c[13] == 1 && c[14] == -1 && c[15] == 0;
-  g := cm_kind(CM_KIND_SURFACE); g.surface = CM_S_TERRAIN; g.terrain = 3; cm_pack(g, c[..]); #assert c[12] == 32 && c[14] == 3;
+  g := cm_kind(CM_KIND_SURFACE); g.surface = CM_S_TERRAIN; g.terrain = 3; cm_pack(g, c[..]); #assert c[12] == 32 && c[14] == 3 && c[15] == 0;
+  g = cm_kind(CM_KIND_SURFACE); g.surface = CM_S_TILED; g.tiles = 64; cm_pack(g, c[..]); #assert c[12] == 512 && c[15] == 64;
 }

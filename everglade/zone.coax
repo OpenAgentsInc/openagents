@@ -45,6 +45,8 @@
 #load "zone-touch.coax";      // a phone: which finger is the thumb's stick, JUMP, and the dragon's UP and DOWN (#13151)
 #load "../metaverse-engine/render/shade/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
 #load "../metaverse-engine/render/geometry/mesh-cull.coax" as mc;
+#load "../metaverse-engine/character/material.coax" as zmat;   // the page's material table: the people's colour layers and the glade's surfaces (#13550)
+#load "scene/surfaces.coax";
 #load "../metaverse-engine/render/ghost.coax" as ghost;   // your figure as a ghost, when a zone asks (EgZone.ghost, zone_figure_blend)   // the glade's environment mesh, drawn by the runs in view (zone_mesh_cull, #13168)
 
 // The strokes a frame may draw and the uniforms it writes (everglade/scene/gpu/charactercreator.bindings).
@@ -82,6 +84,10 @@ EgZone :: struct {
   // the figures (everglade/scene/bodies.coax): their playback, the frame's instances (the face's objects store) and the shadow tiles' draws
   bodies: [1] figs.Bodies;
   records: [figs.BD_RECORDS * figs.BD_REC_FLOATS] f32;
+  // the material table (the face's third store, `mats` in everglade/scene/gpu/surface-record.coax): a record
+  // a colour layer of the pack (cm_table), then the glade's surfaces its catalog's U rows name (e2s_register);
+  // mats_v moves each time a catalog fills it
+  mats: [zmat.CM_MAX * zmat.CM_FLOATS] f32; mat_table: [zmat.CM_MAX] zmat.CharMaterial; mats_v: int;
   shadow_draws: [4096] u32; shadow_n: int;
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
   // your body: the face walked it this frame, its feet (metres) and facing, a place the face puts it first, and the last clear place
@@ -293,11 +299,33 @@ zone_you :: (s: [] EgZone, x: f32, y: f32, z: f32, face: f32, airborne: bool, to
 // The pack's catalog arrived (fivelab-face.c): the figures' parts.
 zone_catalog :: (s: [] EgZone, text: string) #export_c #effects(all) {
   figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text);
+  zone_materials(s, text);
   // the glade's environment mesh, or on the open field its meadow's ground (180 thousand triangles at the
-  // range, #13190): its boxes asked of the host, 8 words a vertex; a sky vertex (kind 0, the normal word's
-  // bits 24 to 27: everglade/scene/gpu/character-glade.coax cg_environment_vs) is in screen space, so its run is always drawn
+  // range, #13190): its boxes asked of the host, 8 words a vertex; a sky vertex (the normal word's bits 24
+  // to 27 the sky's id, its record CM_S_SKY: everglade/scene/gpu/character-glade.coax cg_environment_vs) is in
+  // screen space, so its run is always drawn
   c := s[0].creator[..]; m := zone_cull_mesh(c[0]);
-  mc.mesh_cull_want(s[0].glade_cull[..], m.first, m.count, m.word, 8, 3, 0x0f000000, 0);
+  mc.mesh_cull_want(s[0].glade_cull[..], m.first, m.count, m.word, 8, 3, 0x0f000000, zone_sky_word(text));
+}
+// The sky's id as the cull compares it, the normal word's bits 24 to 27 (0 for a pack whose rows don't name it).
+zone_sky_word :: (text: string) -> u32 { sky := e2s_id_of(text, E2S_NAMES[0]); id: u32 = ifx sky >= 0 && sky < 16 then cast(u32) sky else 0; return id << 24; }
+// The material table from catalog `text`: the colour layers' records, then the surfaces its U rows name at
+// E2S_BASE + id (a pack of people only names none, and those slots stay plain surfaces).
+zone_materials :: (s: [] EgZone, text: string) {
+  _ := zmat.cm_table(text, s[0].mat_table[..], s[0].mats[..]);
+  _ = e2s_register(text, s[0].mats[..]);
+  s[0].mats_v += 1;
+}
+#test "a glade pack's catalog fills the zone's material table: the people's layers, then its surfaces" {
+  s: [1] EgZone; rows: [512] u8; rn := e2s_glade_rows(rows[..]);
+  t: [1024] u8; head := "T 0 T_Knight_BaseColor.png 4\nT 1 T_Eye_Brown.png 4\n"; n := 0;
+  for ch: head { t[n] = ch; n += 1; } for k: 0..<rn { t[n] = rows[k]; n += 1; }
+  zone_materials(s[..], cast(string) t[0..<n]);
+  #assert s[0].mats_v == 1 && s[0].mats[1 * zmat.CM_FLOATS + 3] == f32(zmat.CM_KIND_EYE) && s[0].mats[3] == f32(zmat.CM_KIND_CLOTH);
+  #assert s[0].mats[(E2S_BASE + 4) * zmat.CM_FLOATS + 12] == f32(e2s_named("glade/surface/rock").surface) && s[0].mats[(E2S_BASE + 0) * zmat.CM_FLOATS + 12] == f32(zmat.CM_S_SKY);
+  #assert zone_sky_word(cast(string) t[0..<n]) == 0 && zone_sky_word("U 3 e2/surface/sky\n") == 0x03000000 && zone_sky_word("") == 0;
+  // a people pack names no surfaces: its slots stay plain
+  zone_materials(s[..], head); #assert s[0].mats_v == 2 && s[0].mats[(E2S_BASE + 4) * zmat.CM_FLOATS + 12] == 0;
 }
 
 // The clips baked into the bake store, once (fivelab-face.c).

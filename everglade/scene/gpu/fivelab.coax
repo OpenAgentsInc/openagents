@@ -729,12 +729,13 @@ fivelab_block_vs :: (id:u32,instance:u32,m:FivelabObj,gf:GladeFrame,bake:[]V4)->
   return o;
 }
 // 5E Lab's scene entry: its uniforms are a []f32, read through their frame head (#13451).
-fivelab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->FivelabS {return fivelab_scene_place(id,instance,glade_frame(u),vertices,objects,bake);}
+fivelab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,mats:[]V4)->FivelabS {return fivelab_scene_place(id,instance,glade_frame(u),vertices,objects,bake,mats);}
 // A scene vertex under the frame head gf: every glade page's scene (Everglade II's, the studio's, WorldBuilder's people).
-fivelab_scene_place :: (id:u32,instance:u32,gf:GladeFrame,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->FivelabS {
-  if (gf.pass.z>1.5f32 && instance>=65536) {m0:=objects[cast(int)((instance>>16)-1)];if (m0.d.w>19.5f32) {return cg_meadow_vs(id,instance,m0,gf,vertices);}return cg_instanced_vs(id,instance,m0,gf,vertices);}   // 20: the open meadow (character-glade.coax)
+// `mats` is the page's material table (metaverse-engine/character/material.coax): the glade's surfaces' records.
+fivelab_scene_place :: (id:u32,instance:u32,gf:GladeFrame,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,mats:[]V4)->FivelabS {
+  if (gf.pass.z>1.5f32 && instance>=65536) {m0:=objects[cast(int)((instance>>16)-1)];if (m0.d.w>19.5f32) {return cg_meadow_vs(id,instance,m0,gf,vertices,mats);}return cg_instanced_vs(id,instance,m0,gf,vertices);}   // 20: the open meadow (character-glade.coax)
   m:FivelabObj=objects[cast(int)instance];
-  if (m.d.w>15.5f32) {return cg_environment_vs(id,instance,m,gf,vertices);}
+  if (m.d.w>15.5f32) {return cg_environment_vs(id,instance,m,gf,vertices,mats);}
   if (wg_fmod(m.d.w,8.0f32)>3.5f32) { return fivelab_block_vs(id,instance,m,gf,bake); }
   b:u32=add_wrap(wg_u32_f(m.b.w),mul_wrap(id,6));
   xy:V2=wg_unpack2x16unorm(vertices[cast(int)b]);
@@ -803,15 +804,16 @@ fivelab_dye :: (t:V3,dye:V4)->V3 {
   dyed:V3=scale3(v3(dye.x,dye.y,dye.z),clampf(light/usual,0.0f32,1.6f32));
   return mix3(t,dyed,mask*share);
 }
-FIVELAB_EYE_LAYER :: cast(u32)32; // the pack's layer of the people's eyes (T_Eye_Brown)
-fivelab_scene_colour :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj)->V4 {
+// A figure's pixel. Its colour layer's record in `mats` (cm_table: one a layer) says which layer is
+// the eyes (CM_KIND_EYE, the pack's T_Eye_*), whose iris the studio tints and a skeleton's socket glows.
+fivelab_scene_colour :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,mats:[]V4)->V4 {
   m:FivelabObj=objects[cast(int)s.who];
   if (tex.w<0.35f32) { gpu_demote_helper(); }
   t:f32=u[2];
   albedo:V3=mul3(fivelab_dye(v3(tex.x,tex.y,tex.z),s.dye),s.tint);
   glow:V3=v3(0.0f32,0.0f32,0.0f32);
   // Studio-only record marker; retain the eye texture pupil, whites and highlights.
-  if ((m.f.w>1.5f32)&&(s.slice==FIVELAB_EYE_LAYER)) {
+  if ((m.f.w>1.5f32)&&e2_eye_layer(s.slice,mats)) {
     iris:f32=saturate((tex.x-fmax(tex.y,tex.z))*5.0f32);
     shade:f32=clampf(metaverse_style_luma(tex.x,tex.y,tex.z)*3.0f32,0.15f32,1.3f32);
     albedo=mix3(albedo,scale3(v3(m.f.x,m.f.y,m.f.z),shade),iris);
@@ -830,7 +832,7 @@ fivelab_scene_colour :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabO
       albedo=scale3(v3(0.8f32,0.75f32,0.62f32),0.85f32);
     }
     if ((p.y>0.86f32)&&(p.y<0.98f32)&&(abs(p.x)<0.2f32)) { albedo=scale3(albedo,0.45f32); }
-    if (s.slice==FIVELAB_EYE_LAYER) { albedo=v3(0.02f32,0.01f32,0.01f32); glow=v3(1.2f32,0.3f32,0.08f32); }
+    if e2_eye_layer(s.slice,mats) { albedo=v3(0.02f32,0.01f32,0.01f32); glow=v3(1.2f32,0.3f32,0.08f32); }
   }
   n:V3=normalize3(add3(s.normal,v3(0.0f32,0.00001f32,0.0f32)));
   if (!front) { n=scale3(n,-1.0f32); }
@@ -974,7 +976,7 @@ fivelab_hud_fs :: (v:FivelabV,gf:GladeFrame,sans_atlas:Tex2D,sans_sampler:Sample
 
 // ---- the vector helpers this file calls
 
-fivelab_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:Tex2DArray,sheet:Sampler)->V4 {
+fivelab_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,mats:[]V4,sheets:Tex2DArray,sheet:Sampler)->V4 {
  tex:=render_sample_layer8_bias(sheets,sheet,s.uv,cast(s32)s.slice,1);
- return fivelab_scene_colour(s,tex,front,u,objects);
+ return fivelab_scene_colour(s,tex,front,u,objects,mats);
 }

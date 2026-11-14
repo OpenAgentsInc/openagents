@@ -140,15 +140,17 @@ EXPORT("coaxial_shadow_atlas_v1") uint32_t coaxial_shadow_atlas_v1(cx_face_addr 
 EXPORT("coaxial_shadow_v1") int32_t coaxial_shadow_v1(cx_face_addr state, int32_t field) { return (int32_t)zone_shadow_field(zone(state), field); }
 EXPORT("coaxial_shadow_event_v1") void coaxial_shadow_event_v1(cx_face_addr state, int32_t kind, int32_t arg) { zone_shadow_event(zone(state), kind, arg); }
 EXPORT("coaxial_layers_side_v1") uint32_t coaxial_layers_side_v1(cx_face_addr state) { return (uint32_t)zone_layers_side(zone(state)); }
-EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 2; }
-EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return k == 0 ? (uint32_t)sizeof(((coax_t_EgZone *)0)->records.e) : (uint32_t)sizeof bake; }
-EXPORT("coaxial_store") cx_face_addr coaxial_store(cx_face_addr state, int32_t k) { return k == 0 ? (cx_face_addr)(uintptr_t)zone_at(state)->records.e : (cx_face_addr)(uintptr_t)bake; }
+/* Three stores: the figures' instances, the baked clips, and the material table (everglade/zone.coax
+   zone_materials: the people's colour layers and the glade's surfaces, everglade/scene/gpu/surface-record.coax). */
+EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 3; }
+EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return k == 0 ? (uint32_t)sizeof(((coax_t_EgZone *)0)->records.e) : k == 2 ? (uint32_t)sizeof(((coax_t_EgZone *)0)->mats.e) : (uint32_t)sizeof bake; }
+EXPORT("coaxial_store") cx_face_addr coaxial_store(cx_face_addr state, int32_t k) { return k == 0 ? (cx_face_addr)(uintptr_t)zone_at(state)->records.e : k == 2 ? (cx_face_addr)(uintptr_t)zone_at(state)->mats.e : (cx_face_addr)(uintptr_t)bake; }
 EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(cx_face_addr state, int32_t k) {
   if (k == 0) { uint32_t n = 0; coax_t_Bodies *b = &zone_at(state)->bodies.e[0]; for (int64_t d = 0; d < b->draw_n; d++) n += b->draws.e[d * 4 + 3]; return n * 24u * 4u; }
-  return (uint32_t)sizeof bake;
+  return k == 2 ? (uint32_t)sizeof(((coax_t_EgZone *)0)->mats.e) : (uint32_t)sizeof bake;
 }
-// The instances every frame; the bake once, when it is made.
-EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr state, int32_t k) { (void)state; return k == 0 ? frames : baked; }
+// The instances every frame; the bake once, when it is made; the materials when a catalog fills them.
+EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr state, int32_t k) { return k == 0 ? frames : k == 2 ? (uint32_t)zone_at(state)->mats_v : baked; }
 
 static coax_v_t_LabWalk walk(cx_face_addr state) { return (coax_v_t_LabWalk){walk_at(state), 1}; }
 // A hub's keys first (lab-walk.coax lab_key: the index, the next station and the one before), then the zone's.

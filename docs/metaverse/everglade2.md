@@ -322,6 +322,10 @@ coax/web/tool.sh everglade/model/tools/material-pack.coax --into "$P" /tmp/everg
 coax/web/tool.sh everglade/model/tools/material-pack.coax --holds "$P"   # coax/remote/check.sh's pack-surfaces
 ```
 
+The older glade pages (Experimental, the Druid, the three labs, the Nights) read the same records at
+the same slots (#13550). Their pack's rows name seven of these surfaces and two of the glade's own
+(docs/metaverse/everglade-experimental.md). Bark's record says it repeats 64 times (`tiles`).
+
 ### The cat (#13112)
 
 The glade has a cat (`everglade/creatures/cat.coax`, the game layer's, wired in by
