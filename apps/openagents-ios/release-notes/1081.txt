@@ -1,0 +1,1 @@
+The shared mono HUD controls from issue 13580 now cover the app: consistent buttons, fields, composer, tool rows, headers, menus and world controls. Keeps the full-screen worlds and corrected Splice Bots camera from 1080.
