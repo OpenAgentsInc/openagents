@@ -1,0 +1,13 @@
+_coaxial_socket_open
+_coaxial_socket_send
+_coaxial_socket_close
+_coaxial_http
+_coaxial_http_bounded
+_coaxial_http_cancel
+_coaxial_now_ms
+_coaxial_measure_ms
+_coaxial_storage_get
+_coaxial_storage_put
+_guard_http
+_guard_cancel
+_guard_now_ms

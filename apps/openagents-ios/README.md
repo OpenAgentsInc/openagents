@@ -108,6 +108,13 @@ for exact runtime, source, artifact, tests and current bounds.
 
 ## Build and check
 
+Build 1076 corrected the device's writable world cache/save paths. Its archive
+still stripped native world callbacks from the executable, so opening a world
+could terminate the app. Build 1077 preserves the explicit host exports and
+limits each producer to its page face. The release wrapper now checks the actual
+archive's Mach-O imports and exports; Debug/testability exports cannot satisfy
+that gate. This native linking correction requires a TestFlight install.
+
 `apps/openagents-ios/build.sh` generates on a remote build host and builds
 with Xcode on this Mac's slots. XcodeGen is required. No simulator window
 needs to be opened.

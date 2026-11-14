@@ -1,0 +1,33 @@
+// Check the actual stripped Apple app, not a test host (ENABLE_TESTABILITY
+// exports symbols that an archive otherwise hides). Every producer import
+// from the executable must be present in its Mach-O export trie.
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/proc.coax";
+#test "Mach-O names match whole tokens, and a missing archive export fails" {
+  #assert nwl_token("  0x123 _coaxial_http\n", "_coaxial_http");
+  #assert !nwl_token("  0x123 _coaxial_http_bounded\n", "_coaxial_http");
+  #assert nwl_missing(" _coaxial_http (from <flat-namespace>)\n _malloc (from libSystem)\n", " 0x123 _coaxial_http\n")==0;
+  #assert nwl_missing(" _coaxial_http (from <flat-namespace>)\n", " 0x0 __mh_execute_header\n")==1;
+  #assert nwl_missing(" _coaxial_storage_get (from <flat-namespace>)\n", " 0x123 _coaxial_storage_get\n")==0;
+}
+nwl_token :: (text:string,name:string)->bool {
+  i:=0;while i<text.count {while i<text.count && text[i]<=' ' {i+=1;}e:=i;while e<text.count && text[e]>' ' {e+=1;}if text[i..<e]==name {return true;}i=e;}return false;
+}
+nwl_missing :: (imports:string,exports:string)->int {
+  bad:=0;i:=0;while i<imports.count {e:=i;while e<imports.count && imports[e]!='\n' {e+=1;}line:=imports[i..<e];
+    if nwl_token(line,"<flat-namespace>)") {a:=0;while a<line.count && line[a]<=' ' {a+=1;}b:=a;while b<line.count && line[b]>' ' {b+=1;}name:=line[a..<b];if !nwl_token(exports,name) {bad+=1;}}
+    i=e+1;
+  }return bad;
+}
+tool_main :: ()->int #export_c #effects(all) {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {tool_errln("link-check /path/to/OpenAgents.app");return 2;}
+  root:=args_at(a[..],0);p:[4][4096]u8;out:[1048576]u8;err:[65536]u8;
+  binary:=fs_join(root,"OpenAgents",p[0][..]);args:=[4]string.["xcrun","dyld_info","-exports",binary];r:=proc_run(args[..],30000,out[..],err[..]);
+  if r.started!=0 || r.status!=0 || r.timed_out || r.out_n>=out.count {tool_errln("Could not read the executable's exports");return 1;}exports:=cast(string)out[0..<r.out_n];bad:=0;
+  for name:[4]string.["SpliceBotsRuntime","EvergladeRuntime","EvergladeForestRuntime","MadeRealmRuntime"] {
+    folder:[256]u8;n:=0;for c:name {folder[n]=c;n+=1;}for c:".framework" {folder[n]=c;n+=1;}
+    frameworks:=fs_join(root,"Frameworks",p[1][..]);dir:=fs_join(frameworks,cast(string)folder[0..<n],p[2][..]);file:=fs_join(dir,name,p[3][..]);imports:[65536]u8;call:=[4]string.["xcrun","dyld_info","-imports",file];q:=proc_run(call[..],30000,imports[..],err[..]);
+    if q.started!=0 || q.status!=0 || q.timed_out || q.out_n>=imports.count {tool_errln(name);return 1;}missing:=nwl_missing(cast(string)imports[0..<q.out_n],exports);bad+=missing;print("native links: %, % missing\n",name,missing);
+  }return ifx bad==0 then 0 else 1;
+}

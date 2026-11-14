@@ -1,10 +1,12 @@
 # Owner actions
 
-## iPhone worlds acceptance, build 1075
+## iPhone worlds acceptance, build 1077
 
 Build 1075 is superseded: its download/state paths tried to write beside the
-iOS container's Library, which a real phone refuses. Build 1076 is being
-qualified with the paths inside Library/Application Support instead.
+iOS container's Library, which a real phone refuses. Build 1076 corrects those
+paths but the owner reported a crash opening Splice Bots. The archived
+executable stripped callbacks needed by all four world frameworks. Build 1077
+preserves the explicit host exports and adds an archive-level link gate.
 
 Install the corrected TestFlight build and open **Worlds**. Open Splice
 Bots and Everglade; the first visit downloads their assets. Check portrait

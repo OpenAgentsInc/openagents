@@ -1,0 +1,1 @@
+Fixes the crash when opening Splice Bots and the other native worlds. The release build now preserves the native network, storage, socket and clock callbacks used by world engines. World assets continue downloading separately and are cached inside the writable app Library. Includes an archive-level regression gate for every world framework.

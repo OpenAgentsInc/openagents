@@ -426,6 +426,16 @@ and `rh_send` is `engine_core_send`, through `host-core-gen.h` (above). The Work
 layers (`AEPageHost packImage:device:` and `blockLayers:device:`), so it uploads the same block
 build the realms do.
 
+The Apple app and its dynamically loaded producers have an explicit link boundary.
+`apple/page-host.exports` keeps the executable's HTTP, storage, socket and clock
+callbacks; `apple/page-producer.exports` exposes only the page face from each
+producer. The iOS Release target strips non-global symbols, preserving those
+exports. `used` and `visibility("default")` alone do not survive an archive's
+default `strip` step. `coax/web/tool.sh coax/native/worlds/link-check.coax
+/path/to/OpenAgents.app` checks every producer's flat-namespace imports against
+the finished executable's export trie. The iOS release wrapper runs this after
+archiving. A Debug/testability build is insufficient evidence for that boundary.
+
 A pack's rig entry (kind 7, #13306) is delivered through two optional exports, so the numbered
 assets don't move: `coaxial_rig_v1(state, bytes)` gives where the face wants the rig's bytes, and
 `coaxial_rig_ready_v1(state, bytes)` says they are in (0 when they didn't fit).

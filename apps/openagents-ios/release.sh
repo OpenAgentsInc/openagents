@@ -30,6 +30,7 @@ cp Generated/runtime.txt "$out/runtime.txt"
   -destination generic/platform=iOS -derivedDataPath "$out/dd" -archivePath "$out/OpenAgents.xcarchive" \
   DEVELOPMENT_TEAM=HQWSG26L43 CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$sha1" \
   OA_APP_PROVISIONING_PROFILE="OpenAgents App Store" archive
+../../coax/web/tool.sh ../../coax/native/worlds/link-check.coax "$out/OpenAgents.xcarchive/Products/Applications/OpenAgents.app"
 python3 - "$out/ExportOptions.plist" "$sha1" <<'PY'
 import plistlib,sys
 with open(sys.argv[1],'wb') as file:
