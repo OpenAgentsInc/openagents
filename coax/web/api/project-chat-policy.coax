@@ -19,3 +19,6 @@ pc_bound :: (project:string,linked:string)->bool #export_c #effects(all) {return
  for kind:0..<6 {if kind!=2 {#assert !pc_principal(kind,true,"acct_one");}}
 }
 pc_principal :: (kind:int,session:bool,account:string)->bool #export_c #effects(all) {return kind==2 && session && account.count>0;}
+
+#test "limited and frozen sessions keep reads without project writes" {#assert pc_change(false,false);#assert !pc_change(true,false) && !pc_change(false,true) && !pc_change(true,true);}
+pc_change :: (limited:bool,frozen:bool)->bool #export_c #effects(all) {return !limited && !frozen;}

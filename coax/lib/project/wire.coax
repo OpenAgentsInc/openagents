@@ -1,6 +1,5 @@
 // Existing private-project page lines and drops JSON, shared by native clients.
 #load "../json/json.coax";
-#load "../repo/lines.coax";
 #test "private rows preserve empty cells and refuse an overfull index" {
  a:[4]int;b:[4]int;n:=pj_index("P|Title|Summary|3\nZ|0|10|1\n",a[..],b[..]);#assert n==2 && pj_cell("P|Title|Summary|3",2)=="Summary" && pj_cell("G|g||",2)=="";
  one:[1]int;#assert pj_index("P|a\nP|b\n",one[..],one[..])== -1;

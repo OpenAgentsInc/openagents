@@ -41,6 +41,7 @@
 //   OA_DRAFT_MODEL   the drafting model (gemini-4-hydrogen, on the global endpoint)
 //   OA_DRAFT_URL     its generateContent URL (tests point it at a fake)
 #include "api.h"
+#include "account-chat-wire.generated.h"
 #include "nostr.h"
 #include "relay.h"
 #include <ctype.h>
@@ -254,6 +255,7 @@ static bool who(const request *q, PGconn *db, char pk[65], bool *signed_req) {
   }
   // An admin logged in with a session of ours (auth.c: /login, or the admin page's signed link).
   const auth_principal *p = auth_principal_of(q);
+  if (p && !strcmp(q->method,"POST") && !pc_change(p->limited,p->frozen!=0)) return false;
   if (p && p->session[0] && p->pubkey[0] && admin_is(p->pubkey)) { memcpy(pk, p->pubkey, 65); return true; }
   if (project_subject(q,db,pk)) return true;
   if (p && p->session[0] && p->pubkey[0]) { memcpy(pk,p->pubkey,65);return true; }
