@@ -601,7 +601,7 @@ d_map :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
   n = d_map_hint(out, n, x0 + mw - 70 * k, y0 - 40 * k, k);
   // north (lower z) is up: x right, z down the page reversed
   for i: 0..<g[0].wall_n {
-    o := i * 5; if g[0].walls[o + 4] <= 0 { continue; }
+    o := i * 5; if g[0].walls[o + 4] <= 0 || dv_room_has(room, g[0].walls[o], g[0].walls[o + 2]) { continue; }
     a := x0 + (g[0].walls[o] - lx) * sc; b := x0 + (g[0].walls[o + 1] - lx) * sc;
     c := y0 + (hz - g[0].walls[o + 3]) * sc; e := y0 + (hz - g[0].walls[o + 2]) * sc;
     n = ui_box(out, n, a, c, b, e, 1.5 * k, ink);

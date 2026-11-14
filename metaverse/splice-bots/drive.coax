@@ -76,12 +76,13 @@ dv_room :: (g: [] SpGame) -> SpRoom {
   return r;
 }
 dv_room_has :: (r: SpRoom, x: f32, z: f32) -> bool { return r.ok && x > r.x0 - DV_ROOM_T - 0.01 && x < r.x1 + DV_ROOM_T + 0.01 && z > r.z0 - DV_ROOM_T - 0.01 && z < r.z1 + DV_ROOM_T + 0.01; }
-// The cabin's walls as colliders (g_layout): drawn apart (height 0), corners closed.
+// The cabin's walls as colliders (g_layout), as tall as its ceiling so the camera meets them too, corners
+// closed. They are drawn apart (dv_room_draw), not as the mine's rock walls.
 dv_room_walls :: (g: [] SpGame) {
-  r := dv_room(g); t := DV_ROOM_T;
+  r := dv_room(g); t := DV_ROOM_T; H := DV_ROOM_H;
   if !r.ok { return; }
-  g_wall(g, r.x0 - t, r.x1 + t, r.z0 - t, r.z0, 0); g_wall(g, r.x0 - t, r.x1 + t, r.z1, r.z1 + t, 0);
-  g_wall(g, r.x0 - t, r.x0, r.z0, r.z1, 0); g_wall(g, r.x1, r.x1 + t, r.z0, r.z1, 0);
+  g_wall(g, r.x0 - t, r.x1 + t, r.z0 - t, r.z0, H); g_wall(g, r.x0 - t, r.x1 + t, r.z1, r.z1 + t, H);
+  g_wall(g, r.x0 - t, r.x0, r.z0, r.z1, H); g_wall(g, r.x1, r.x1 + t, r.z0, r.z1, H);
 }
 // The cabin drawn into the world (g_world): its floor, walls, ceiling, the ribs of the hull, the lights
 // and the door.
@@ -102,7 +103,7 @@ dv_room_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   kit_pen(p, 84, MAT_FLAT, t3(0.80, 0.75, 0.68));
   block(buf, p, cx, H, cz, hx + t, 0.2, hz + t);
   // the hull's ribs across the ceiling and down the walls, and a dark baseboard
-  kit_pen(p, 85, MAT_SKIN, t3(0.70, 0.62, 0.54));
+  kit_pen(p, 85, MAT_FLAT, t3(0.70, 0.62, 0.54));   // flat: the ribs cast no stripes of shadow
   n := cast(int) (hx / 1.5);
   for i: 0..<n + 1 {
     x := r.x0 + 0.1 + (r.x1 - r.x0 - 0.2) * cast(f32) i / cast(f32) hi_int(n, 1);
@@ -309,7 +310,7 @@ dv_room_hint :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
 
 // Moments for stills and checks (g_stage): 25, a drive two fifths of the way (the world's first ride
 // portal: none, no drive); 26, the empty section where the drill mech stands; 27, the field at dusk,
-// facing the blocked hallway straight across from the entry.
+// facing the blocked hallway straight across from the entry; 28, inside Sniper's cabin at its door.
 dv_stage :: (g: [] SpGame, n: int) {
   if n == 25 {
     g[0].have[H_DRILL] = true; g[0].phase = PH_DAY;
@@ -325,6 +326,10 @@ dv_stage :: (g: [] SpGame, n: int) {
   }
   if n == 26 { ga_look_into(g, ga_in_bay(g, sc_mark(g[0].c[..], 81).x, sc_mark(g[0].c[..], 81).z)); }
   if n == 27 { g[0].px = 0; g[0].pz = g[0].at.wall_z + 40; g[0].yaw = PI; g[0].pitch = 0; }
+  if n == 28 {   // inside Sniper's cabin by day, at its door, looking in
+    r := dv_room(g);
+    if r.ok && r.door { g[0].phase = PH_DAY; g[0].mode = M_PLAY; g[0].px = r.door_x; g[0].pz = r.door_z + 1.2; g[0].yaw = 0; g[0].pitch = 0; g_bot_home(g); }
+  }
 }
 
 // While it drives: a strip along the bottom, who drives and where, and the key that gets you there now.

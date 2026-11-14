@@ -882,9 +882,10 @@ g_world :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   kit_dunes(buf, p, 3, t3(0.93, 0.74, 0.50), 12, 50, 40, 28, 60, 5, 11);
   kit_rocks(buf, p, 4, t3(0.66, 0.36, 0.28), 14, 60, 0, 8, 5, 16, 0.3, 1.0);
   kit_mesas(buf, p, 5, t3(0.62, 0.46, 0.60), 11, 140, -470, 36, 40, 70);   // the mountain past the garage, where the hallway goes
+  room := dv_room(g);
   for i: 0..<g[0].wall_n {
     o := i * 5; h := g[0].walls[o + 4];
-    if h < 1 { continue; }
+    if h < 1 || dv_room_has(room, g[0].walls[o], g[0].walls[o + 2]) { continue; }   // the rover's cabin draws its own (drive.coax)
     deep := g[0].walls[o + 3] <= -40;
     face := ifx deep then t3(0.62, 0.42, 0.56) else t3(0.84, 0.46, 0.32);
     band := ifx deep then t3(0.50, 0.32, 0.50) else t3(0.72, 0.34, 0.26);
@@ -2422,6 +2423,11 @@ FlowTest :: struct { o: [5] [CT_BODY] u8; }
     c := g_camera(g[..]);
     #assert c.eye.x > r.x0 && c.eye.x < r.x1 && c.eye.z > r.z0 && c.eye.z < r.z1 && c.eye.y < DV_ROOM_H && c.eye.y > 0;
   }
+  // the still at the cabin's door looks in from inside it
+  g_stage(g[..], 28); r = dv_room(g[..]);
+  #assert sp_in_room(g[..]) && g[0].mode == M_PLAY;
+  c0 := g_camera(g[..]);
+  #assert c0.eye.x > r.x0 && c0.eye.x < r.x1 && c0.eye.z > r.z0 && c0.eye.z < r.z1 && c0.eye.y < DV_ROOM_H;
   // E at the door: outside by the rover train
   g[0].px = r.door_x; g[0].pz = r.door_z + 0.3; g[0].dr[0].map = false;
   #assert g_key(g[..], 'e', true) && !sp_in_room(g[..]) && dist2(g[0].px, g[0].pz, tr.x, tr.z) < 10;
