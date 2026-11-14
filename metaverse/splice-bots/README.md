@@ -426,7 +426,7 @@ The script exports, imports into `~/UnrealProjects/SpliceSlice1`, puts the sound
 (the playable folder is `OUT/web/Wasm`), plays the run in headless Chrome at 1440x900 (fixture
 `splice-play` in `metaverse-engine/export/unreal/web-fixtures.json`), then real keys (fixture
 `splice-keys`: a click on the title, a new run, the farm on foot with Digger, Q, I, M and Esc; shots in
-`OUT/keys`), and zips the playable folder as `OUT/SpliceBots_Splicebots.zip`, refusing one of 1 GB or
+`OUT/keys`), and fixture `splice-digger` (the mouse turns the view to Digger at the farm: `OUT/digger/turn12.png`), and zips the playable folder as `OUT/SpliceBots_Splicebots.zip`, refusing one of 1 GB or
 more. About 15 minutes on a quiet Mac.
 
 - `~/UnrealProjects/SpliceExport` is the earlier Tier 1-2 build, kept as it was (its web build is in

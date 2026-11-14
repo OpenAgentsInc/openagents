@@ -61,10 +61,13 @@ echo "jam-build: 5/6 the run in headless Chrome at 1440x900"
 grep -h -o 'AETHYR_PLAY .*' "$out"/browser/*/console.log "$out"/browser/console.log 2>/dev/null | sort -u > "$out/browser.lines" || true
 grep -q 'AETHYR_PLAY done' "$out/browser.lines" || { cat "$out/browser.lines"; tail -20 "$out/browser.log"; echo "jam-build: the run did not finish in the browser" >&2; exit 1; }
 
-echo "jam-build: 5b real keys in headless Chrome: the title, a new run, the farm on foot with Digger (shots in $out/keys)"
+echo "jam-build: 5b real keys in headless Chrome: the title, a new run, the farm on foot, then Digger turned to (shots in $out/keys, $out/digger)"
 (cd "$engine/Engine/Platforms/Wasm/Build/Tools/web" && ../../../../../Binaries/ThirdParty/Python3/Mac/bin/python3 webrun.py run --stage "$stage" \
   --fixtures "$repo/metaverse-engine/export/unreal/web-fixtures.json" --fixture splice-keys --headless --query tier=forward --out "$out/keys") > "$out/keys.log" 2>&1 || true
 grep -q 'AETHYR_STATE mode 1 ' "$out/keys/console.log" || { tail -20 "$out/keys.log"; echo "jam-build: real keys did not start a run in the browser" >&2; exit 1; }
+(cd "$engine/Engine/Platforms/Wasm/Build/Tools/web" && ../../../../../Binaries/ThirdParty/Python3/Mac/bin/python3 webrun.py run --stage "$stage" \
+  --fixtures "$repo/metaverse-engine/export/unreal/web-fixtures.json" --fixture splice-digger --headless --query tier=forward --out "$out/digger") > "$out/digger.log" 2>&1 || true
+[[ -f "$out/digger/turn12.png" ]] || echo "jam-build: no Digger shot (see $out/digger.log)"
 grep -h -o 'AETHYR_SOUND [^"]*' "$out"/browser/console.log "$out"/keys/console.log 2>/dev/null | sort | uniq -c | sort -rn > "$out/sounds-played.txt" || true
 echo "jam-build: sounds the browser runs played: $(wc -l < "$out/sounds-played.txt" | tr -d ' ') kinds (see $out/sounds-played.txt)"
 

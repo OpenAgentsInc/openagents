@@ -109,6 +109,21 @@
         "--input",
         "3:shot=title;4:click=720,450;5:key=Enter;7:key=Enter;9:shot=farm;10:down=w;16:up=w;17:shot=walked;18:key=q;19:down=w;23:up=w;24:shot=board;25:key=q;26:key=i;27:shot=bag;28:key=i;29:key=m;30:shot=map;31:key=m;32:key=Escape;33:shot=pause"
       ]
+    },
+    "splice-digger": {
+      "about": "Splice Bots at 1440x900: a new run from the title, then the mouse turns the view toward Digger at the solar farm; shots start and turn6..turn24 (more turn each).",
+      "args": "-log {harness}",
+      "stop_after_ready": 30,
+      "stop_after": 0,
+      "timeout": 300,
+      "page": [
+        "--viewport",
+        "1440x900",
+        "--input-anchor",
+        "READY",
+        "--input",
+        "3:click=720,450;4:key=Enter;6:key=Enter;10:shot=start;11:move=720,450;11.3:move=760,450;11.5:move=800,450;11.6:move=840,450;11.8:move=880,450;11.9:move=920,450;12.1:move=960,450;12.2:shot=turn6;12.5:move=1000,450;12.7:move=1040,450;12.8:move=1080,450;13.0:move=1120,450;13.1:move=1160,450;13.3:move=1200,450;13.4:shot=turn12;13.7:move=1240,450;13.9:move=1280,450;14.0:move=1320,450;14.2:move=1360,450;14.3:move=1400,450;14.5:move=1440,450;14.6:shot=turn18;14.9:move=1480,450;15.1:move=1520,450;15.2:move=1560,450;15.4:move=1600,450;15.5:move=1640,450;15.7:move=1680,450;15.8:shot=turn24"
+      ]
     }
   }
 }
