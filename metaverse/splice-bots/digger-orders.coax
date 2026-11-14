@@ -75,13 +75,14 @@ d_path :: (g: [] SpGame, p: DPoint) -> bool {
   return true;
 }
 // Why Digger can't take an order at p, or DS_NONE when he can.
-DS_BLOCKED :: 25; DS_MECH :: 26; DS_PARTS :: 27;
+DS_BLOCKED :: 25; DS_MECH :: 26; DS_PARTS :: 27; DS_NEED_DRILL :: 28;
 d_can :: (g: [] SpGame, p: DPoint) -> int {
   if d_down(g) { return DS_DOWN; }
   if p.kind == DP_NONE { return DS_NOTHING; }
   if p.kind == DP_PICK && !d_fits(g, d_kind_of(p.i)) { return DS_FULL; }
   if p.kind == DP_DIG && p.i == 1 { return DS_MECH; }
   if p.kind == DP_DIG && !(g[0].slot[0] && g[0].slot[1] && g[0].slot[2] && g[0].strip_n > 0) { return DS_PARTS; }
+  if p.kind == DP_SENSOR && !g_spliced(g) { return DS_NEED_DRILL; }   // it is buried: the first splice's drill digs it out
   if p.kind != DP_DIG && !d_path(g, p) { return DS_BLOCKED; }
   return DS_NONE;
 }
@@ -91,8 +92,9 @@ d_label :: (p: DPoint, why: int) -> string {
   if why == DS_FULL { return "BAG FULL"; }
   if why == DS_MECH { return "DRILL MECH ONLY"; }
   if why == DS_PARTS { return "NEEDS PARTS"; }
+  if why == DS_NEED_DRILL { return "NEEDS DRILL"; }
   if why == DS_BLOCKED { return "NO WAY THERE"; }
-  return ifx p.kind == DP_DIG then "DIG" else ifx p.kind == DP_FOE then "ATTACK" else "PICK UP";
+  return ifx p.kind == DP_DIG then "DIG" else ifx p.kind == DP_FOE then "ATTACK" else ifx p.kind == DP_SENSOR then "DIG OUT" else "PICK UP";
 }
 // His answer to a command: taken (a nod, a click, the marker snapping in) or refused (a shake, a
 // glitch, a cross on the target, and the reason).
@@ -160,6 +162,7 @@ d_act :: (g: [] SpGame) -> DgAct {
       a.push = 0.10 * e + 0.012 * f * sin(t * 41); a.pitch = 0.05 * e + 0.025 * f * (0.4 + u) * sin(t * 53);
     }
   }
+  if d_sensor_digging(g) { a.push = 0.08 + 0.012 * sin(t * 41); a.pitch = 0.05 + 0.02 * sin(t * 53); }   // the drill in the ground
   if d.o_kick < T_KICK { b := sin(PI * d.o_kick / T_KICK) * (1 - 0.5 * d.o_kick / T_KICK); a.push += d.o_kd * 0.16 * b; a.pitch += d.o_kd * 0.12 * b; }
   return a;
 }

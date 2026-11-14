@@ -203,7 +203,8 @@ powers up) over about a second; his BATTERY gauge shows CHARGING and fills as it
 gone: dropping cells drops only the ones you still carry.
 
 Digger follows you and picks up every part within his sensor's range (`T_SENSE`, 4 m; twice that with
-the better sensor that lies in the scrap room); you can't choose, so you make room in the inventory. A part he
+the better sensor buried by the start, which he digs out once the first splice gives him the DRILL
+card: the first splice's payoff, `T_SENSOR_DIG` 1.2 s of drilling); you can't choose, so you make room in the inventory. A part he
 can't fit stays where it is. What you drop he leaves until you have walked away from it. Hardware
 spliced into him and cards on his strip are his, not yours.
 
@@ -367,6 +368,7 @@ The tunables, in one table at the top of `splice-battle.coax` (seconds unless na
 | `SB_JUMP_CLEAR` | 0.45 m | A single jump (about 1.1 m) clears it for most of its arc |
 | `SB_TAIL_W` | 0.7 m | The tail hits within this of its line (its drawn width plus her body), so the hit is where the tail is seen and the swing passes her in about 0.12 s: a jump started in the third of a second before it reaches her clears it |
 | `SB_CLAW_R`, `SB_CHARGE_W` | 2.4 m, 2.4 m | The hit areas the warnings draw |
+| `SB_CLAW_PACE`, `SB_CLAW_TURN` | 2 m/s, 0.08 rad | On the drive Sniper is a real vehicle that can't jump its speed or leave the ring in a lock's time, so a claw misses when she changes pace (braking with S at the lock does it) or swerves off her heading (a hard steer turns about 0.12 rad by the impact) |
 | `SB_CUE` | 0.9 | HIT or DODGED shows long enough to read, short enough to clear before the next wind-up |
 
 How far an Imperial robot senses her: its plan's `notice` (the `plans` table) plus `T_NOTICE_HEAT`
