@@ -152,13 +152,13 @@ fl_squash :: (g: [] SpGame) -> f32 {
 }
 
 // ---- The movement demo (page message 615, for clips and checks): her keys on the game's own clock,
-// from between two solar rows at the farm: start, stop at a row, jump onto it, stop on its panels,
+// from an aisle of the farm's field: start, stop at a row, jump onto it, stop on its panels,
 // reverse off it, then a jump and a second jump that air control steers back onto the row.
 FL_DEMO_N :: 13;
 FL_DEMO :: [FL_DEMO_N * 3] int.[   // centiseconds, key, down
   30, 'w', 1,  75, ' ', 1,  85, ' ', 0,  105, 'w', 0,  190, 's', 1,  250, 's', 0,
   280, ' ', 1,  285, 'w', 1,  290, ' ', 0,  315, ' ', 1,  325, ' ', 0,  343, 'w', 0,  500, 0, 0];
-FL_DEMO_X :: 20.0f32; FL_DEMO_Z :: 338.6f32;
+FL_DEMO_X :: -850.0f32; FL_DEMO_Z :: -171.4f32;   // 2.4 m north of the farm's second row (farm.coax ff_line_z(3), -169), in the aisle
 fl_demo_start :: (g: [] SpGame) { g[0].px = FL_DEMO_X; g[0].pz = FL_DEMO_Z; g[0].yaw = 0; g[0].face_off = 0; g[0].fl[0].demo_t = 0; g[0].fl[0].demo_i = 0; }
 fl_demo :: (g: [] SpGame, dt: f32) {
   f := g[0].fl[..];

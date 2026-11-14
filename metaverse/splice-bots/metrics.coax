@@ -1,6 +1,6 @@
 // The metrics room (#13552, the level spec's checklist): a grey room off the map where a level designer
 // sees the build's own numbers side by side, every one read from the constant the game plays by, so the
-// room is never out of date. Her height and her jump and double jump on a pole; walk, sneak and the
+// room is never out of date. Her height, her jump, the top one jump lands on and her double jump on a pole (feel.coax); walk, sneak and the
 // board's three speeds as lanes as long as each goes in a second; Digger's sensor range and an Imperial
 // robot's sensing at each Heat as rings round a spot; and Sniper, the drill mech and the boss as grey
 // blocks of their size, beside a post of her height. Not on the player's route: the dev stage 40 puts
@@ -26,9 +26,6 @@ mr_speed :: (g: [] SpGame, i: int) -> f32 {
   if i == 3 { return fast; }
   return cast(f32) board_super_cms(b.fast) / 100;
 }
-// Her jump's top, and the double jump's pressed at that top.
-mr_jump :: () -> f32 { return FL_JUMP * FL_JUMP / (2 * FL_GRAVITY); }
-mr_double :: () -> f32 { v := FL_JUMP * JUMP_AIR; return mr_jump() + v * v / (2 * FL_GRAVITY); }
 // An Imperial robot's sensing at Heat h, walking (sneaking halves it).
 mr_sense :: (h: f32) -> f32 { return T_NOTICE + h * T_NOTICE_HEAT; }
 // Her height: the character you play as.
@@ -62,10 +59,10 @@ mr_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     mr_put(b[..], nb, x, 0, z0 - v * 0.5, 0.08, 0.02, v * 0.5, 0.3); mr_put(b[..], nb + 1, x, 0, z0 - v, 0.6, 0.5, 0.15, 0.3); nb += 2;
     mr_put(sg[..], ns, x, 1.6, z0 + 1.2, v, 0, 0, 0); sl[ns] = names[i]; ns += 1;
   }
-  // the pole: her height, her jump and her double jump
-  hs := [3] f32.[mr_height(g), mr_jump(), mr_double()]; hn := [3] string.["HEIGHT", "JUMP", "DOUBLE"];
-  mr_put(b[..], nb, -4, 0, 8, 0.15, mr_double() + 0.6, 0.15, 0.7); nb += 1;
-  for i: 0..<3 { mr_put(b[..], nb, -4, hs[i] - 0.03, 8, 0.6, 0.06, 0.25, 0.22); nb += 1; mr_put(sg[..], ns, -1.4, hs[i] + 0.35, 8, hs[i], 0, 0, 0); sl[ns] = hn[i]; ns += 1; }
+  // the pole: her height, her jump, the highest top one jump lands her on, and her double jump (feel.coax's FL_M_)
+  hs := [4] f32.[mr_height(g), FL_M_JUMP, FL_M_LEDGE, FL_M_DOUBLE]; hn := [4] string.["HEIGHT", "JUMP", "LEDGE", "DOUBLE"];
+  mr_put(b[..], nb, -4, 0, 8, 0.15, FL_M_DOUBLE + 0.6, 0.15, 0.7); nb += 1;
+  for i: 0..<4 { mr_put(b[..], nb, -4, hs[i] - 0.03, 8, 0.6, 0.06, 0.25, 0.22); nb += 1; mr_put(sg[..], ns, -1.4, hs[i] + 0.35, 8, hs[i], 0, 0, 0); sl[ns] = hn[i]; ns += 1; }
   // the sizes, north: Sniper, the boss and a post of her height as blocks, the drill mech as a drum
   long := TRAIN_CAB + cast(f32) TRAIN_CARS * (TRAIN_CAR + TRAIN_GAP); bz := 6 - MR_HZ;
   mr_put(b[..], nb, -20, 0, bz, long * 0.5, MR_ROOF, 1.2, 0.66); mr_put(b[..], nb + 1, 14, 0, bz, MR_BOSS_LONG * 0.5, MR_BOSS_TALL, 1.6, 0.66); mr_put(b[..], nb + 2, 6, 0, bz, 0.25, mr_height(g), 0.25, 0.66); nb += 3;
@@ -118,7 +115,7 @@ mr_stage :: (g: [] SpGame, n: int) {
   #assert dist2(MR_X, MR_Z, PL_X1, PL_Z0) > 450 && !mr_in(g[0].at.rover_x, g[0].at.rover_z);
   // the numbers are the game's
   #assert mr_speed(g[..], 0) == T_WALK && abs(mr_speed(g[..], 1) - T_WALK * 0.45) < 0.01 && mr_speed(g[..], 2) == 7 && mr_speed(g[..], 3) == 22 && abs(mr_speed(g[..], 4) - 35.2) < 0.01;
-  #assert abs(mr_jump() - 1.35) < 0.01 && mr_double() > mr_jump() * 2 && mr_sense(0) == T_NOTICE && abs(mr_sense(50) - 8.5) < 0.001;
+  #assert FL_M_DOUBLE > FL_M_JUMP * 2 && mr_sense(0) == T_NOTICE && abs(mr_sense(50) - 8.5) < 0.001;
   s: [32] u8; #assert mr_text(s[..], "WALK", 5.6) == "WALK 5.6" && mr_text(s[..], "HEAT", 0) == "HEAT 0.0" && mr_text(s[..], "M", 12.25) == "M 12.3";
   // the boss's block is its mesh's size
   buf: [60000 * VERTEX_WORDS] u32; pen := [1] Pen.[Pen.{}];
