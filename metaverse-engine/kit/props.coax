@@ -39,8 +39,10 @@ kit_solar :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glass: KitTint
 }
 
 // A long bank of solar panels for a field seen from far off (Splice Bots' solar farm draws hundreds as
-// instances): `panels` panels side by side under one tilted sheet of glass in a thin frame, a line
-// between each two, on posts ahead and behind at every second panel, joined by two rails. The rows'
+// instances): `panels` panes of glass side by side on one tilted frame, a gap between each two where
+// the frame shows, on posts ahead and behind at every second panel, joined by two rails. No line is
+// laid on the glass: a strip millimetres over it fights the glass for depth and thins below a pixel
+// far off, and flashed as white dashes whenever the camera moved (#13584). The rows'
 // rhythm in a fraction of kit_solar's triangles: 2.1 m a panel, 1.2 m deep, 1.35 m tall at s 1.
 // It stands on the ground facing the frame's z, centred on the frame's x.
 kit_solar_bank :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glass: KitTint, frame: KitTint, dark: KitTint, panels: int) {
@@ -49,7 +51,9 @@ kit_solar_bank :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glass: Ki
   fy := y - 0.08 * c - 0.45 * sn; fz := -0.08 * sn + 0.45 * c;
   by := y - 0.08 * c + 0.45 * sn; bz := -0.08 * sn - 0.45 * c;
   half := cast(f32) n * SOLAR_PITCH * 0.5;
-  kit_pen(p, obj, MAT_CLOTH, dark);
+  // the posts and rails flat (unlit, no rim): a cloth's rim lit the rails' edges under the glass
+  // into thin bright lines far off (#13584)
+  kit_pen(p, obj, MAT_FLAT, dark);
   box(buf, p, kit_at(f, 0, fy * s, fz * s), half * s, 0.04 * s, 0.04 * s);
   box(buf, p, kit_at(f, 0, by * s, bz * s), half * s, 0.04 * s, 0.04 * s);
   for i: 0..<n / 2 + 1 {
@@ -61,10 +65,7 @@ kit_solar_bank :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glass: Ki
   kit_pen(p, obj + 1, MAT_FLAT, frame);
   box(buf, p, g, (half - 0.05) * s, 0.03 * s, 0.6 * s);
   kit_pen(p, obj + 2, MAT_WINDOW, glass);
-  box(buf, p, kit_at(g, 0, 0.02 * s, 0), (half - 0.09) * s, 0.02 * s, 0.56 * s);
-  kit_pen(p, obj + 3, MAT_FLAT, frame);
-  for i: 1..<n { box(buf, p, kit_at(g, (cast(f32) i * SOLAR_PITCH - half) * s, 0.042 * s, 0), 0.03 * s, 0.004 * s, 0.56 * s); }
-  box(buf, p, kit_at(g, 0, 0.042 * s, 0), (half - 0.09) * s, 0.004 * s, 0.008 * s);
+  for i: 0..<n { box(buf, p, kit_at(g, ((cast(f32) i + 0.5) * SOLAR_PITCH - half) * s, 0.02 * s, 0), (SOLAR_PITCH * 0.5 - 0.04) * s, 0.02 * s, 0.56 * s); }
 }
 
 // A charging post: a plinth, a tall printed concrete body with a screen and a glow strip, a cap with a light on top,

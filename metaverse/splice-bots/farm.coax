@@ -109,7 +109,26 @@ ff_floors :: (x: f32, z: f32, out: [] f32, k: int) -> int {
 
 // The bank's mesh, after the kinds' meshes in the piece store (layer-draw.coax sd_meshes).
 ff_mesh :: (pieces: [] u32, pen: [] Pen) {
-  kit_solar_bank(pieces, pen, frame_at(v3(0, 0, 0), 0), 1, PIECE_OBJ, sp_tint(1845312), sp_tint(12107464), INK(), FF_PANELS);
+  kit_solar_bank(pieces, pen, frame_at(v3(0, 0, 0), 0), 1, PIECE_OBJ, sp_tint(1845312), sp_tint(3949650), INK(), FF_PANELS);   // dark steel: a pale frame's edges flashed far off (#13584)
+  ff_bed(pieces, pen);
+}
+// Under each bank, the ground of its row in the glass's shade: a bed FF_BED high over its line's whole cell
+// (one bank's pitch long, one line's spacing deep), so the beds of a row meet, sloped gently down to
+// the sand at their outer edges. Without it the bright sand showed through the slots between two
+// lines of glass far off, thinner than a pixel, and flashed as pale lines when the camera moved (#13584).
+// It is the ground's own object (no ink line where it meets the sand) and its slopes are too gentle
+// for a crease.
+FF_BED :: 0.07f32;               // m: the bed's top over the sand (above the depth buffer's step at 300 m)
+FF_BED_RUN :: 1.2f32;            // m: its slope out to the sand
+ff_bed :: (pieces: [] u32, pen: [] Pen) {
+  hx := FF_PITCH * 0.5; hz := FF_LINE_DZ * 0.5; h := FF_BED; r := FF_BED_RUN;
+  kit_pen(pen, 1, MAT_WORLD, t3(0.46, 0.38, 0.38));   // the shade under the glass
+  // up-facing as cel-mesh quad winds them: the top, then the slopes north, south, west and east
+  quad(pieces, pen, v3(-hx, h, hz), v3(hx, h, hz), v3(hx, h, -hz), v3(-hx, h, -hz));
+  quad(pieces, pen, v3(-hx, h, -hz), v3(hx, h, -hz), v3(hx + r, 0, -hz - r), v3(-hx - r, 0, -hz - r));
+  quad(pieces, pen, v3(-hx - r, 0, hz + r), v3(hx + r, 0, hz + r), v3(hx, h, hz), v3(-hx, h, hz));
+  quad(pieces, pen, v3(-hx - r, 0, hz + r), v3(-hx, h, hz), v3(-hx, h, -hz), v3(-hx - r, 0, -hz - r));
+  quad(pieces, pen, v3(hx, h, hz), v3(hx + r, 0, hz + r), v3(hx + r, 0, -hz - r), v3(hx, h, -hz));
 }
 // The field's rows from row `at` of the place store: how many it wrote (0 when they don't all fit).
 ff_rows :: (places: [] u32, at: int) -> int {
