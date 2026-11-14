@@ -9,7 +9,7 @@
 // world gave already (rs_use, rs_use_zones) stays, each part on its own.
 rs_have :: (b: [] RsBattle, r: [] RsRoom) #effects(all) {
   if b[0].c.count == 0 { b[0].c = r[0].c[..]; }
-  if b[0].occ.count == 0 { b[0].occ = r[0].occ[..]; }
+  if b[0].occ.count == 0 { b[0].occ = r[0].occ[..]; b[0].occ_used = -1; }
   if b[0].zone.count == 0 { b[0].zone = r[0].zone[..]; }
 }
 // A world's own table of lasting areas, for a battle with more casters than RS_ZONES: it starts
@@ -23,7 +23,7 @@ rs_truth_zones :: (b: [] RsBattle) -> int #effects(all) { return rs_min(b[0].zon
 // A world's own room for creatures and squares (kept in its state, beside the battle), for a
 // battle bigger than RS_MAX: it starts empty.
 rs_use :: (b: [] RsBattle, c: [] RsCreature, occ: [] int) #effects(all) {
-  b[0].c = c; b[0].occ = occ; b[0].n = 0;
+  b[0].c = c; b[0].occ = occ; b[0].n = 0; b[0].occ_used = -1;
   rs_reset(b);
 }
 // The most creatures the battle can hold.
@@ -62,6 +62,7 @@ rs_indexed :: (b: [] RsBattle) -> bool #effects(all) { return b[0].w > 0 && b[0]
 // two share, as the scan finds it).
 rs_index :: (b: [] RsBattle) #effects(all) {
   if !rs_indexed(b) { return; }
+  rs_occ_mark(b);
   for q: 0..<(b[0].w * b[0].h) { b[0].occ[q] = 0; }
   i := b[0].n - 1;
   while i >= 0 {
@@ -70,10 +71,14 @@ rs_index :: (b: [] RsBattle) #effects(all) {
     i -= 1;
   }
 }
+// The grid's squares count as written (occ_used, battle.coax: what rs_reset clears); a battle that
+// doesn't know its squares keeps clearing them all.
+rs_occ_mark :: (b: [] RsBattle) #effects(all) { if b[0].occ_used >= 0 { b[0].occ_used = rs_max(b[0].occ_used, b[0].w * b[0].h); } }
 // Creature i to the square (x, y), keeping the index: a world's own moves (a fresh creature in a
 // slot, a placement) go through here.
 rs_place :: (b: [] RsBattle, i: int, x: int, y: int) #effects(all) {
   if rs_indexed(b) {
+    rs_occ_mark(b);
     ox := b[0].c[i].x; oy := b[0].c[i].y;
     if ox >= 0 && oy >= 0 && ox < b[0].w && oy < b[0].h && b[0].occ[oy * b[0].w + ox] == i + 1 { b[0].occ[oy * b[0].w + ox] = 0; }
     if x >= 0 && y >= 0 && x < b[0].w && y < b[0].h && b[0].occ[y * b[0].w + x] == 0 { b[0].occ[y * b[0].w + x] = i + 1; }
@@ -93,7 +98,11 @@ rs_reset :: (b: [] RsBattle) #effects(all) {
   b[0].rest_clock=RsRestClock.{}; rs_rest_schedule_reset(b);
   b[0].clock = 0; b[0].w = 0; b[0].h = 0; b[0].turn_no = 0; b[0].guards = 0; b[0].aff_used = false; b[0].who = 0;
   b[0].turn = RsTurn.{}; b[0].reaction_frame=RsReactionFrame.{}; rs_reset_world(b);
-  for q: 0..<b[0].occ.count { b[0].occ[q] = 0; }
+  // the squares the battle used, every one when it doesn't know them (occ_used), zeroed at once
+  // (secure_zero: the language's one form that zeroes a view whole)
+  used := ifx b[0].occ_used < 0 then b[0].occ.count else b[0].occ_used;
+  secure_zero(b[0].occ[0..<used]);
+  b[0].occ_used = 0;
 }
 rs_inside :: (z: RsZone, x: int, y: int) -> bool #effects(all) {
   if !z.on || x < z.x0 || x > z.x1 || y < z.y0 || y > z.y1 { return false; }
@@ -363,6 +372,34 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone #ef
   rs_reset(d[..]); #assert d[0].c[0].hp == 0 && d[0].c[1].hp == 4;
   // a battle with no room takes its own before it clears
   e: [1] RsBattle; e_room: [1] RsRoom; rs_have(e[..], e_room[..]); rs_reset(e[..]); #assert e[0].c.count == RS_MAX && e[0].occ.count == RS_SQUARES;
+}
+#test "grid: a reset clears the squares the battle used, and every square of a room it doesn't know" {
+  b: [1] RsBattle; b_room: [1] RsRoom;
+  #assert b[0].occ_used == -1;
+  rs_reset(b[..]); #assert b[0].occ_used == 0 && b[0].occ.count == 0;   // no room yet: nothing to clear
+  b_room[0].occ[RS_SQUARES - 1] = 4; b_room[0].occ[0] = 4;              // a room with squares from before
+  rs_have(b[..], b_room[..]); #assert b[0].occ_used == -1;
+  b[0].w = 6; b[0].h = 4; a := rs_add(b[..], rs_fighter("A", 0, 1), 5, 3);
+  #assert b[0].occ[23] == a + 1 && b[0].occ_used == -1;                 // still unknown past the grid
+  rs_reset(b[..]); #assert b[0].occ[RS_SQUARES - 1] == 0 && b[0].occ[0] == 0 && b[0].occ[23] == 0 && b[0].occ_used == 0;
+  // a known battle: a 6 by 4 grid uses its 24 squares, and a reset clears those
+  b[0].occ[100] = 5;                                                    // by hand, unused: a reset leaves it
+  rs_reset(b[..]); #assert b[0].occ[100] == 5 && b[0].occ_used == 0;
+  b[0].w = 6; b[0].h = 4; a = rs_add(b[..], rs_fighter("A", 0, 1), 5, 3); #assert b[0].occ[23] == a + 1 && b[0].occ_used == 24;
+  b[0].occ[0] = 7; b[0].occ[24] = 7;
+  rs_reset(b[..]); #assert b[0].occ[23] == 0 && b[0].occ[0] == 0 && b[0].occ[24] == 7 && b[0].occ[100] == 5 && b[0].occ_used == 0;
+  // rs_index uses its grid; a smaller grid after keeps the larger's squares counted
+  b[0].w = 5; b[0].h = 5; rs_index(b[..]); #assert b[0].occ_used == 25 && b[0].occ[24] == 0;
+  b[0].w = 2; b[0].h = 3; rs_index(b[..]); #assert b[0].occ_used == 25;
+  b[0].occ[24] = 3; rs_reset(b[..]); #assert b[0].occ[24] == 0 && b[0].occ[100] == 5;
+  // a grid too big to index writes nothing and counts nothing
+  b[0].w = 9000; b[0].h = 1; a = rs_add(b[..], rs_fighter("A", 0, 1), 1, 0); rs_index(b[..]); #assert b[0].occ_used == 0;
+  // given a world's squares (rs_use), or a room after a reset, a battle doesn't know them
+  rs_reset(b[..]); occ: [40] int; occ[39] = 2; c: [4] RsCreature;
+  rs_use(b[..], c[..], occ[..]); #assert occ[39] == 0 && b[0].occ_used == 0;
+  d: [1] RsBattle; d_room: [1] RsRoom; rs_reset(d[..]); #assert d[0].occ_used == 0;
+  d_room[0].occ[RS_SQUARES - 1] = 6; rs_have(d[..], d_room[..]); #assert d[0].occ_used == -1;
+  rs_reset(d[..]); #assert d_room[0].occ[RS_SQUARES - 1] == 0 && d[0].occ_used == 0;
 }
 #test "grid: a square is in a zone inside its bounds; a round zone and a Line also by distance, a Line by its width and its side" {
   z := RsZone.{on = true, x0 = 2, y0 = 3, x1 = 5, y1 = 7};

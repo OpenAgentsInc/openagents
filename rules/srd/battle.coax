@@ -172,6 +172,10 @@ RsBattle :: struct {
   // of every creature: kept by rs_add, rs_place, rs_step_to and the pushes, and rebuilt at each
   // turn's start (rs_index) for whatever a world moved by hand.
   occ: [] int;
+  // The squares rs_place and rs_index have written since the last rs_reset: occ[0..<occ_used], so a
+  // reset clears what the battle used, not the whole room. -1: squares it doesn't know (a battle new
+  // or given a room), so the next reset clears them all.
+  occ_used: int = -1;
   terrain: [RS_TERRAINS] RsTerrain; covers: [RS_COVERS] RsCover;   // the world's admitted geometry (cover.coax)
   // The world moves creatures only through rs_add, rs_place and the engine's own steps and pushes, so
   // the index stays right and a turn's start needn't rebuild it (5E Lab's crowds: 70,000 squares).
