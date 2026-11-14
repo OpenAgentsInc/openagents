@@ -998,9 +998,11 @@ compiler there and runs `coax/web/tool.sh mutation-sweep`
    suite: the one whose `#load` closure reaching it is smallest, so its
    baseline is the cheapest.
 2. Each suite's files are split into one part per eight files, at most
-   four. A part is one `coax mutate SUITE --unit A --unit B ...` on a host
-   through `remote.sh run`, so its files share one baseline; every part
-   repeats it, which is why a suite splits only when it has many files. At
+   four. A part is one `coax mutate SUITE --unit A --unit B ... --native
+   --mutation-stats` on a host through `remote.sh run`, so its files share
+   one baseline; every part repeats it, which is why a suite splits only
+   when it has many files. Native code finds each mutant's killer and the
+   evaluator confirms it (`coax/docs/native-mutants.md`). At
    most six parts run at once (`--jobs`). The first run, on 2026-11-14,
    took parts of 3 to 12 minutes for the web app's suites.
 3. Each part reads and rewrites its killers file in the checkout's
@@ -1008,7 +1010,10 @@ compiler there and runs `coax/web/tool.sh mutation-sweep`
    snapshot and brings back, so the next night tries last night's killers
    first.
 4. The parts' reports become one table, a row a file, with each file's
-   survivors under it. The script replaces the body of one open issue,
+   survivors under it, and one line of native counts summed over the files:
+   `limits=` (mutants where only native ticks and evaluator steps differ)
+   and `disagree=` (a coax bug in the native path), with each such mutant
+   listed, so a drift between the two shows. Neither changes a verdict. The script replaces the body of one open issue,
    "Nightly mutation sweep: survivors in #authority files", and files it the
    first night. `mutation-sweep/report.md` keeps the whole report and
    `sweep.log` beside the checkout keeps every night's output.

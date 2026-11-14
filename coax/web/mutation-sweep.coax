@@ -7,8 +7,13 @@
 //      `coax mutate SUITE --unit A --unit B ... --killers K` (one baseline for all its files,
 //      #13581) on the build pool (coax/remote/remote.sh run: its hosts, slots and spend cap),
 //      at most --jobs at once; K is that part's killers file from the last night, which the
-//      run then rewrites, so a night only repeats the checks that killed last time first
-//   3. the parts' reports joined: one row a file, its survivors under it
+//      run then rewrites, so a night only repeats the checks that killed last time first.
+//      Each part runs with --native --mutation-stats (#13587): native code finds each mutant's
+//      killer and the evaluator confirms it, and the run's stderr comes with its stdout, so the
+//      sweep reads every unit's `native-mutants agree= limits= disagree=` line
+//   3. the parts' reports joined: one row a file, its survivors under it, and the native
+//      counts summed: limits (native ticks against evaluator steps) and disagreements (a coax
+//      bug in the native path; never a verdict), each listed, so a drift shows
 //   4. one tracking issue, its body replaced with the night's report (gh); --dry-run prints it
 // State lives in --state DIR (default mutation-sweep/ at the checkout's root, untracked, so
 // remote.sh sends the killers files with the snapshot and brings the rewritten ones back):
@@ -148,6 +153,45 @@ ms_suites :: (list: string, only: string, keep: [] MsText, out: [] MsSuite) -> i
   #assert ms_suites(list, "pay/w.coax", k[..], s[..]) == 1 && s[0].path == "pay/w.coax";
 }
 
+// The native counts of a part's output: its `native-mutants agree=A limits=L disagree=D
+// not-compared=N ...` lines summed (one a unit; --native --mutation-stats).
+MsNative :: struct { agree: int; limits: int; disagree: int; apart: int; units: int; }
+// The digits after key in line, -1 when key isn't there or no digit follows.
+ms_field :: (line: string, key: string) -> int {
+  i := 0;
+  while i + key.count <= line.count {
+    if cast(string) line[i..<i + key.count] == key {
+      e := i + key.count; v := 0; any := false;
+      while e < line.count && line[e] >= '0' && line[e] <= '9' && v < 100000000000 { v = v * 10 + cast(int)(line[e] - '0'); e += 1; any = true; }
+      return ifx any then v else -1;
+    }
+    i += 1;
+  }
+  return -1;
+}
+ms_native :: (out: string) -> MsNative {
+  n: MsNative;
+  i := 0;
+  while i < out.count {
+    j := i;
+    while j < out.count && out[j] != '\n' { j += 1; }
+    line := cast(string) out[i..<j]; i = j + 1;
+    if !ms_starts(line, "native-mutants agree=") { continue; }
+    a := ms_field(line, "agree="); l := ms_field(line, " limits="); d := ms_field(line, " disagree="); x := ms_field(line, " not-compared=");
+    if a < 0 || l < 0 || d < 0 || x < 0 { continue; }
+    n.agree += a; n.limits += l; n.disagree += d; n.apart += x; n.units += 1;
+  }
+  return n;
+}
+#test "a part's native counts are its units' lines summed" {
+  out := "native-mutants agree=10 limits=1 disagree=0 not-compared=2 emit=0.01 run=1.00\nmutation scope: unit a.coax (x)\nnative-mutant-limits 4 a.coax:1:2: y\nnative-mutants agree=5 limits=0 disagree=3 not-compared=0 emit=0.01\nnative-mutants agree=x\n";
+  n := ms_native(out);
+  #assert n.units == 2 && n.agree == 15 && n.limits == 1 && n.disagree == 3 && n.apart == 2;
+  #assert ms_field("a=1 b=22", " b=") == 22 && ms_field("a=1", "c=") == -1 && ms_field("a=", "a=") == -1;
+  e := ms_native("4 mutants, 4 killed, 0 survived\n");
+  #assert e.units == 0 && e.agree == 0;
+}
+
 // One file's result in a part's output: from its "mutation scope: unit FILE" line to its counts line.
 MsUnit :: struct { path: string; line: string; survivors: int; at: int; end: int; }
 ms_unit :: (out: string, from: int) -> MsUnit {
@@ -269,6 +313,7 @@ tool_main :: () -> int #export_c #effects(all) {
         ok = ok && proc_arg(h, "--") && proc_arg(h, "coax/bin/coax") && proc_arg(h, "mutate") && proc_arg(h, s.path);
         for u: 0..<s.nunits { if u % parts[p].parts == parts[p].part { ok = ok && proc_arg(h, "--unit") && proc_arg(h, ms_item(s.units, u)); } }
         ok = ok && proc_arg(h, "--killers") && proc_arg(h, ms_part_file(state, "killers", s.path, parts[p].part + 1, ".tsv", kp[..]));
+        ok = ok && proc_arg(h, "--native") && proc_arg(h, "--mutation-stats") && proc_err_to_out(h);
         if s.library { ok = ok && proc_arg(h, "--library"); }
         if s.root_only { ok = ok && proc_arg(h, "--root-only"); }
         if s.run_steps.count > 0 { ok = ok && proc_arg(h, "--run-steps") && proc_arg(h, s.run_steps); }
@@ -323,6 +368,8 @@ tool_main :: () -> int #export_c #effects(all) {
   ms_put(rep[..], "Kill a survivor with a check, or mark an equivalent one as chapter 11 says, with a reason a reviewer can check.\n\n");
   ms_put(rep[..], "| File | Suite | Result |\n|---|---|---|\n");
   total := 0; with := 0; reported := 0;
+  native: MsNative;
+  drift_b: [MS_TEXT] u8; drift: [1] MsText; drift[0].bytes = drift_b[..]; drifts := 0;
   for p: 0..<np {
     s := suites[parts[p].suite];
     if !parts[p].ok {
@@ -331,6 +378,19 @@ tool_main :: () -> int #export_c #effects(all) {
     }
     k := fs_read(ms_part_file(state, "parts", s.path, parts[p].part + 1, ".out", op[..]), big[..]);
     out := ifx k > 0 then cast(string) big[0..<k] else "";
+    pn := ms_native(out);
+    native.agree += pn.agree; native.limits += pn.limits; native.disagree += pn.disagree; native.apart += pn.apart; native.units += pn.units;
+    // each mutant where they differ, as the run said it
+    i0 := 0;
+    while i0 < out.count {
+      j := i0;
+      while j < out.count && out[j] != '\n' { j += 1; }
+      l3 := cast(string) out[i0..<j]; i0 = j + 1;
+      if ms_starts(l3, "native-mutant-limits ") || ms_starts(l3, "coax: native mutants disagree with the evaluator: ") {
+        drifts += 1;
+        if drifts <= MS_SHOW { ms_put(drift[..], l3); ms_put(drift[..], "\n"); }
+      }
+    }
     at := 0;
     while true {
       u := ms_unit(out, at);
@@ -359,6 +419,18 @@ tool_main :: () -> int #export_c #effects(all) {
   ms_put(rep[..], " of "); ms_put(rep[..], ms_itoa(reported, nb2[..])); ms_put(rep[..], " files reported; ");
   ms_put(rep[..], ms_itoa(failed, nb2[..])); ms_put(rep[..], " of "); ms_put(rep[..], ms_itoa(np, nb2[..]));
   ms_put(rep[..], " parts could not run. Run: `coax/remote/mutation-sweep.sh` (coax/web/mutation-sweep.coax).\n");
+  // native code against the evaluator (#13587): a limit or a disagreement here is a drift to look at
+  ms_put(rep[..], "\nNative code against the evaluator (`--native`, over "); ms_put(rep[..], ms_itoa(native.units, nb2[..]));
+  ms_put(rep[..], " files): agree="); ms_put(rep[..], ms_itoa(native.agree, nb2[..]));
+  ms_put(rep[..], " limits="); ms_put(rep[..], ms_itoa(native.limits, nb2[..]));
+  ms_put(rep[..], " disagree="); ms_put(rep[..], ms_itoa(native.disagree, nb2[..]));
+  ms_put(rep[..], " not-compared="); ms_put(rep[..], ms_itoa(native.apart, nb2[..]));
+  ms_put(rep[..], ". `limits` counts mutants where only native ticks and evaluator steps differ; `disagree` is a coax bug in the native path. Neither changes a verdict.\n");
+  if drifts > 0 {
+    ms_put(rep[..], "\n```\n"); ms_put(rep[..], ms_text(drift[..]));
+    if drifts > MS_SHOW { ms_put(rep[..], "... and "); ms_put(rep[..], ms_itoa(drifts - MS_SHOW, nb2[..])); ms_put(rep[..], " more\n"); }
+    ms_put(rep[..], "```\n");
+  }
   body := ms_text(rep[..]); extra := ms_text(detail[..]);
   full_b: [MS_TEXT] u8; fn := 0;
   for c: body { if fn < full_b.count { full_b[fn] = c; fn += 1; } }
@@ -371,7 +443,7 @@ tool_main :: () -> int #export_c #effects(all) {
   for i: 0..<cut { final_b[bn] = full_b[i]; bn += 1; }
   if fn > MS_BODY { for c: "\n\n(cut here: report.md in the sweep's state folder holds all of it)\n" { final_b[bn] = c; bn += 1; } }
   final := cast(string) final_b[0..<bn];
-  print("mutation-sweep: % survivors in % of % files, % of % parts failed, in % s\n", total, with, reported, failed, np, (proc_now_ms() - t0) / 1000);
+  print("mutation-sweep: % survivors in % of % files, % of % parts failed, in % s; native limits=% disagree=%\n", total, with, reported, failed, np, (proc_now_ms() - t0) / 1000, native.limits, native.disagree);
   if dry { print("%", final); return ifx failed > 0 then 1 else 0; }
 
   // 4. the one tracking issue: the number kept in STATE/issue, else the open one with this title, else a new one
