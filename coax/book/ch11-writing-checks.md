@@ -994,6 +994,45 @@ $ coax mutate split.coax
 6 mutants, 6 killed, 0 survived
 ```
 
+### Running mutants as native code
+
+A mutant's checks run in the compile-time evaluator, which pays for every
+node it visits. Under a large root that adds up: a mutant that survives runs
+every check, so it costs what the whole unmutated run costs. `--native` runs
+each mutant's checks as native code first:
+
+```shell
+$ coax mutate split.coax --native
+6 mutants, 6 killed, 0 survived
+```
+
+After the unmutated checks pass, the compiler writes the checks and what they
+reach to C once, with every mutation site behind a switch, and compiles that
+once with the host C compiler. Each mutant is then one process: it sets the
+switch, runs the mutant's scheduled checks and stops at the first that
+fails. A check fails there when it traps, when it tries output or a host
+effect, when it crashes, or when it runs past ten times the work its
+unmutated run needed. Native code counts that work in ticks, one for each
+procedure entered and each loop iteration, with a minimum of 10,000.
+
+Native code never decides a verdict. A native kill only names a check, as a
+`--killers` file does: the evaluator runs that check first, and only its
+failure there counts. A mutant native code didn't kill runs the evaluator's
+whole schedule, as before. So the report, the counts and the exit status are
+the ones a run without `--native` gives, byte for byte.
+
+If native code and the evaluator differ on a mutant, the evaluator's answer
+stands and the run says so on standard error. A difference is expected only
+where their limits differ: ticks are not steps, and native code has no call
+depth limit. Any other difference is a compiler bug in the native path.
+`--mutation-stats` adds a `native-mutants` line with the counts and times.
+
+`--native` needs a C compiler (`$COAX_CC`, else `cc`). Without one, or for
+checks the compiler can't write as C, the run says why once and continues as
+without the flag. `coax/docs/native-mutants.md` describes the emitted C, the
+limits and the environment variables; `coax/tests/native-mutants.coax`
+compares both runs mutant for mutant on real `#authority` units.
+
 ### Survivors that can't be killed
 
 Now let's mutate the full file: Listing 11-3 plus the fairness rule of

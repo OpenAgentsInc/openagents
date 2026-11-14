@@ -1,0 +1,280 @@
+// coax mutate --native against the evaluator, mutant for mutant (#13582,
+// coax/docs/native-mutants.md).
+//   coax/web/tool.sh coax/tests/native-mutants.coax COMPILER [UNIT.coax ...]
+// Run from coax/. Each unit is mutated twice: by the evaluator alone, with
+// --mutation-trace naming every mutant's outcome, and with --native, with
+// COAX_NATIVE_MUTANTS_REPORT naming what native code found. The two must
+// print the same report, byte for byte, and end with the same status, and
+// for every mutant:
+//   - one native code killed is one the evaluator killed;
+//   - one that survived every check as native code survived in the evaluator;
+//   - one native code could not judge whole (no switch for its site, or a
+//     check only the evaluator runs) is the evaluator's, and is counted.
+// A disagreement makes the native run exit 3 (COAX_NATIVE_MUTANTS_STRICT).
+// The units: tests/native-mutants/mix.coax, then real #authority units of
+// this repository (REAL below), or the units given instead of them.
+// Then the cases where native code can't run: without a C compiler, with one
+// that rejects the binary, and for checks the binary can't hold, the run
+// says why once and reports what a run without --native reports.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/sys/fs.coax";
+
+check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok   %\n", what); return 0; }
+  print("  FAIL %\n", what);
+  return 1;
+}
+
+// Whether part occurs anywhere in text.
+has :: (text: string, part: string) -> bool {
+  for at: 0..<text.count - part.count + 1 {
+    same := true;
+    for j: 0..<part.count { if text[at + j] != part[j] { same = false; break; } }
+    if same { return true; }
+  }
+  return false;
+}
+#test "has finds a part anywhere and nothing that is not there" {
+  #assert has("abc", "a") && has("abc", "bc") && has("abc", "abc") && has("abc", "");
+  #assert !has("abc", "abcd") && !has("abc", "cb") && !has("", "a") && !has("ab", "bb");
+}
+
+// Whether text has part at position at.
+starts :: (text: string, at: int, part: string) -> bool {
+  if at < 0 || at + part.count > text.count { return false; }
+  for j: 0..<part.count { if text[at + j] != part[j] { return false; } }
+  return true;
+}
+#test "starts compares a part at one position" {
+  #assert starts("abcd", 0, "ab") && starts("abcd", 2, "cd") && starts("abcd", 4, "") && starts("abcd", 1, "bcd");
+  #assert !starts("abcd", 3, "de") && !starts("abcd", -1, "a") && !starts("abcd", 1, "ab") && !starts("ab", 0, "abc");
+}
+
+// A mutant's outcome in one run. 0 unknown.
+KILLED :: 1;
+SURVIVED :: 2;   // every check passed
+PART :: 3;       // native code only: it ran some of the checks, or none
+MUTANTS :: 65536;
+Outcomes :: struct { of: [MUTANTS] u8; n: int; bad: bool; }
+
+// A decimal number at text[at]; .next is the position after it, -1 when there is none.
+Number :: struct { value: int; next: int = -1; }
+number :: (text: string, at: int) -> Number {
+  r: Number;
+  i := at;
+  negative := i < text.count && text[i] == '-';
+  if negative { i += 1; }
+  first := i;
+  while i < text.count && text[i] >= '0' && text[i] <= '9' && r.value < 100000000 { r.value = r.value * 10 + cast(int)(text[i] - '0'); i += 1; }
+  if i == first { return r; }
+  if negative { r.value = -r.value; }
+  r.next = i;
+  return r;
+}
+#test "number reads a signed decimal and where it ends" {
+  a := number("12 -1", 0); #assert a.value == 12 && a.next == 2;
+  b := number("12 -1", 3); #assert b.value == -1 && b.next == 5;
+  c := number("x", 0); #assert c.next == -1;
+  d := number("-", 0); #assert d.next == -1;
+  e := number("7", 1); #assert e.next == -1;
+}
+
+set :: (o: [] Outcomes, index: int, outcome: u8) {
+  if index < 0 || index >= MUTANTS || o[0].of[index] != 0 { o[0].bad = true; return; }
+  o[0].of[index] = outcome;
+  if index >= o[0].n { o[0].n = index + 1; }
+}
+
+// The evaluator's outcomes from --mutation-trace: "mutation-outcome INDEX
+// KILLER" lines on stderr, KILLER -1 for a survivor.
+read_trace :: (text: string, o: [] Outcomes) {
+  at := 0;
+  while at < text.count {
+    if starts(text, at, "mutation-outcome ") {
+      index := number(text, at + 17);
+      killer := ifx index.next < 0 then index else number(text, index.next + 1);
+      if killer.next < 0 { o[0].bad = true; } else { set(o, index.value, ifx killer.value < 0 then SURVIVED else KILLED); }
+    }
+    while at < text.count && text[at] != '\n' { at += 1; }
+    at += 1;
+  }
+}
+// Native code's outcomes from COAX_NATIVE_MUTANTS_REPORT: "INDEX\tOUTCOME\t..." lines.
+read_report :: (text: string, o: [] Outcomes) {
+  at := 0;
+  while at < text.count {
+    index := number(text, at);
+    if index.next < 0 || index.next >= text.count || text[index.next] != '\t' { o[0].bad = true; }
+    else {
+      word := index.next + 1;
+      outcome: u8 = KILLED;
+      if starts(text, word, "survived\t") { outcome = SURVIVED; }
+      else if starts(text, word, "survived-part\t") || starts(text, word, "not-run\t") { outcome = PART; }
+      else if !(starts(text, word, "trap\t") || starts(text, word, "refusal\t") || starts(text, word, "crash\t") || starts(text, word, "ticks\t") || starts(text, word, "wall\t")) { o[0].bad = true; }
+      set(o, index.value, outcome);
+    }
+    while at < text.count && text[at] != '\n' { at += 1; }
+    at += 1;
+  }
+}
+#test "a trace and a report give each mutant one outcome" {
+  e: [1] Outcomes; n: [1] Outcomes;
+  read_trace("spatial operators: 1\nmutation-outcome 0 3\nmutation-outcome 1 -1\nmutation-outcome 2 0\n", e[..]);
+  #assert !e[0].bad && e[0].n == 3 && e[0].of[0] == KILLED && e[0].of[1] == SURVIVED && e[0].of[2] == KILLED;
+  read_report("0\ttrap\tcheck a\tu\tp\t0\tw\n1\tsurvived\t\tu\tp\t1\tw\n2\tnot-run\t\tu\tp\t2\tw\n3\tsurvived-part\t\tu\tp\t3\tw\n4\tticks\tc\tu\tp\t4\tw\n", n[..]);
+  #assert !n[0].bad && n[0].n == 5 && n[0].of[0] == KILLED && n[0].of[1] == SURVIVED && n[0].of[2] == PART && n[0].of[3] == PART && n[0].of[4] == KILLED;
+}
+#test "a repeated mutant, an unknown outcome and a broken line are refused" {
+  a: [1] Outcomes; read_trace("mutation-outcome 0 1\nmutation-outcome 0 1\n", a[..]); #assert a[0].bad;
+  b: [1] Outcomes; read_report("0\tpassed\t\n", b[..]); #assert b[0].bad;
+  c: [1] Outcomes; read_report("zero\ttrap\t\n", c[..]); #assert c[0].bad;
+  d: [1] Outcomes; read_trace("mutation-outcome 4\n", d[..]); #assert d[0].bad;
+}
+
+// Native code against the evaluator, mutant for mutant.
+Compared :: struct { mutants: int; killed: int; survived: int; evaluator_only: int; differ: int; first: int = -1; }
+compare :: (e: [] Outcomes, n: [] Outcomes) -> Compared {
+  r: Compared;
+  r.mutants = ifx e[0].n > n[0].n then e[0].n else n[0].n;
+  for i: 0..<r.mutants {
+    a := e[0].of[i]; b := n[0].of[i];
+    if b == PART && a != 0 { r.evaluator_only += 1; }
+    else if a == KILLED && b == KILLED { r.killed += 1; }
+    else if a == SURVIVED && b == SURVIVED { r.survived += 1; }
+    else { r.differ += 1; if r.first < 0 { r.first = i; } }
+  }
+  return r;
+}
+#test "compare counts agreement, what only the evaluator judged, and every difference" {
+  e: [1] Outcomes; n: [1] Outcomes;
+  read_trace("mutation-outcome 0 3\nmutation-outcome 1 -1\nmutation-outcome 2 0\nmutation-outcome 3 -1\nmutation-outcome 4 2\n", e[..]);
+  read_report("0\ttrap\tc\n1\tsurvived\t\n2\tnot-run\t\n3\tsurvived-part\t\n4\tcrash\tc\n", n[..]);
+  r := compare(e[..], n[..]);
+  #assert r.mutants == 5 && r.killed == 2 && r.survived == 1 && r.evaluator_only == 2 && r.differ == 0 && r.first == -1;
+  f: [1] Outcomes; read_report("0\tsurvived\t\n1\ttrap\tc\n2\ttrap\tc\n", f[..]);
+  r = compare(e[..], f[..]);
+  #assert r.differ == 4 && r.first == 0 && r.killed == 1;
+}
+
+// Runs body in sh with C the compiler and D the scratch directory; out gets stdout and stderr.
+run :: (compiler: string, dir: string, body: string, out: [] u8) -> ProcRun {
+  argv := [8] string.["sh", "-c", "C=$1; D=$2; eval \"$3\"; eval \"$4\"", "sh", compiler, dir, FUNCTIONS, body];
+  err: [1024] u8;
+  return proc_run(argv[..], 1800000, out, err[..]);
+}
+// pair NAME UNIT [FLAGS...]: mutates UNIT by the evaluator alone (with the
+// trace) and with --native (strict, with the report), and prints one line:
+// NAME, the two exit statuses, and "same" when the two reports on stdout are
+// the same bytes. also NAME UNIT ENV [FLAGS...]: the --native run again under
+// ENV, compared with pair's evaluator run.
+FUNCTIONS :: "pair() { n=$1; u=$2; shift 2; COAX_NATIVE_CHECKS=0 \"$C\" mutate \"$u\" \"$@\" --jobs 4 --mutation-trace > \"$D/$n.e.out\" 2> \"$D/$n.e.err\"; e=$?; COAX_NATIVE_CHECKS=0 \"$C\" mutate \"$u\" \"$@\" --jobs 4 > \"$D/$n.p.out\" 2> \"$D/$n.p.err\"; p=$?; COAX_NATIVE_CHECKS=0 COAX_NATIVE_MUTANTS_STRICT=1 COAX_NATIVE_MUTANTS_TRACE=1 COAX_NATIVE_MUTANTS_REPORT=\"$D/$n.report\" \"$C\" mutate \"$u\" \"$@\" --jobs 4 --native > \"$D/$n.n.out\" 2> \"$D/$n.n.err\"; s=$?; same=different; cmp -s \"$D/$n.p.out\" \"$D/$n.n.out\" && cmp -s \"$D/$n.p.out\" \"$D/$n.e.out\" && same=same; echo \"$n evaluator=$e plain=$p native=$s $same\"; }; also() { n=$1; u=$2; v=$3; shift 3; env $v COAX_NATIVE_CHECKS=0 \"$C\" mutate \"$u\" \"$@\" --jobs 4 --native > \"$D/$n.a.out\" 2> \"$D/$n.a.err\"; s=$?; same=different; cmp -s \"$D/$n.p.out\" \"$D/$n.a.out\" && same=same; echo \"$n native=$s $same\"; }";
+
+// Real #authority units, from the repository root.
+REAL :: [7] string.["../rules/srd/long-rest-state.coax", "../rules/srd/import-policy.coax", "../rules/srd/long-rest-timing.coax",
+                    "../pay/wallet.coax", "lib/compiler/budget.coax", "lib/crypto/bytes.coax", "lib/nostr/hex.coax"];
+
+Scratch :: struct { e: [4194304] u8; n: [4194304] u8; err: [1048576] u8; eo: [1] Outcomes; no: [1] Outcomes; }
+
+// One unit, both ways. Returns the failures.
+unit :: (compiler: string, dir: string, name: string, path: string, real: bool, s: [] Scratch) -> int {
+  bad := 0;
+  out: [4096] u8;
+  body: [8192] u8; bn := 0;
+  for c: "pair " { body[bn] = c; bn += 1; }
+  for c: name { body[bn] = c; bn += 1; }
+  for c: " '" { body[bn] = c; bn += 1; }
+  for c: path { body[bn] = c; bn += 1; }
+  for c: "' --library" { body[bn] = c; bn += 1; }
+  r := run(compiler, dir, cast(string) body[0..<bn], out[..]);
+  line := cast(string) out[0..<r.out_n];
+  print("%\n", line);
+  bad += check(has(line, " same") && (has(line, "evaluator=0 plain=0 native=0 ") || has(line, "evaluator=1 plain=1 native=1 ")), "the report and the status are the evaluator's, byte for byte");
+
+  file: [4608] u8; fn := 0;
+  for c: dir { file[fn] = c; fn += 1; }
+  for c: "/" { file[fn] = c; fn += 1; }
+  for c: name { file[fn] = c; fn += 1; }
+  stem := fn;
+  for c: ".e.err" { file[fn] = c; fn += 1; }
+  en := fs_read(cast(string) file[0..<fn], s[0].e[..]);
+  fn = stem;
+  for c: ".report" { file[fn] = c; fn += 1; }
+  nn := fs_read(cast(string) file[0..<fn], s[0].n[..]);
+  fn = stem;
+  for c: ".n.err" { file[fn] = c; fn += 1; }
+  rn := fs_read(cast(string) file[0..<fn], s[0].err[..]);
+  said := ifx rn < 0 then "" else cast(string) s[0].err[0..<rn];
+  bad += check(en >= 0 && nn > 0 && rn >= 0, "the trace and native code's report were written");
+  if en < 0 || nn <= 0 { return bad + 1; }
+  for i: 0..<MUTANTS { s[0].eo[0].of[i] = 0; s[0].no[0].of[i] = 0; }
+  s[0].eo[0].n = 0; s[0].eo[0].bad = false; s[0].no[0].n = 0; s[0].no[0].bad = false;
+  read_trace(cast(string) s[0].e[0..<en], s[0].eo[..]);
+  read_report(cast(string) s[0].n[0..<nn], s[0].no[..]);
+  c := compare(s[0].eo[..], s[0].no[..]);
+  print("  % mutants: % killed and % survived in both, % left to the evaluator, % differ\n", c.mutants, c.killed, c.survived, c.evaluator_only, c.differ);
+  bad += check(!s[0].eo[0].bad && !s[0].no[0].bad && c.mutants > 0 && s[0].eo[0].n == s[0].no[0].n, "both runs name the same mutants, each once");
+  bad += check(c.differ == 0, "native kills and survivors are the evaluator's, mutant for mutant");
+  if c.differ != 0 { print("    first difference: mutant %\n", c.first); }
+  bad += check(!has(said, "disagree") && has(said, "coax: native mutants: "), "native code ran and reported no disagreement");
+  if real { bad += check(c.killed + c.survived > 0 && c.evaluator_only * 4 <= c.mutants, "native code judged at least three quarters of the mutants"); }
+  return bad;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: native-mutants.coax COMPILER [UNIT.coax ...]"); return 2; }
+  compiler := args_at(a[..], 0);
+  bad := 0;
+  out: [65536] u8;
+  dir_out: [4096] u8;
+  r := run(compiler, "", "mktemp -d \"${TMPDIR:-/tmp}/coax-native-mutants-test.XXXXXX\"", dir_out[..]);
+  if r.status != 0 || r.out_n < 2 { tool_errln("native-mutants: cannot make a scratch directory"); return 1; }
+  dir := cast(string) dir_out[0..<r.out_n];
+  if dir[dir.count - 1] == '\n' { dir = cast(string) dir_out[0..<r.out_n - 1]; }
+  s: [1] Scratch;
+
+  // The fixture: every kind of native stop, survivors and what only the evaluator judges.
+  bad += unit(compiler, dir, "mix", "tests/native-mutants/mix.coax", false, s[..]);
+  mixed := cast(string) s[0].n[0..<fs_read_or_zero(dir, "/mix.report", s[0].n[..])];
+  bad += check(has(mixed, "\ttrap\t") && has(mixed, "\tticks\t") && has(mixed, "\trefusal\t") && has(mixed, "\tsurvived\t") && has(mixed, "\tsurvived-part\t"),
+               "the fixture has a trap, a tick limit, a refusal, a survivor and a mutant only the evaluator judges whole");
+
+  // Real #authority units.
+  names := [10] string.["u0", "u1", "u2", "u3", "u4", "u5", "u6", "u7", "u8", "u9"];
+  given := args_count(a[..]) - 1;
+  if given > 10 { given = 10; }
+  if given > 0 { for i: 0..<given { bad += unit(compiler, dir, names[i], args_at(a[..], i + 1), true, s[..]); } }
+  else { for i: 0..<REAL.count { bad += unit(compiler, dir, names[i], REAL[i], true, s[..]); } }
+
+  // No C compiler: said once, and the run is the evaluator's.
+  r = run(compiler, dir, "also mix tests/native-mutants/mix.coax COAX_CC=/nonexistent/cc --library; grep -c 'mutate --native: no C compiler' \"$D/mix.a.err\"", out[..]);
+  t := cast(string) out[0..<r.out_n];
+  bad += check(has(t, "mix native=1 same\n1"), "without a C compiler the run says so once and reports as without --native");
+
+  // A C compiler that rejects the binary.
+  r = run(compiler, dir, "also mix tests/native-mutants/mix.coax COAX_CC=false --library; grep -c 'mutate --native: the C compiler failed on the mutant binary' \"$D/mix.a.err\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "mix native=1 same\n1"), "a C compiler that rejects the binary is said once, and the run reports as without --native");
+
+  // Checks the binary can't hold (a #forall of 65 bindings): emission refuses.
+  r = run(compiler, dir, "pair wide tests/native-mutants/wide.coax --library; grep -c \"mutate --native: the checks can't be emitted\" \"$D/wide.n.err\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, " same\n1") && !has(t, "native=3"), "a graph emission refuses says so once and reports as without --native");
+
+  r = run(compiler, dir, "case \"$D\" in */coax-native-mutants-test.*) find \"$D\" -depth -delete;; esac", out[..]);
+  if bad == 0 { print("native-mutants: ok\n"); return 0; }
+  print("native-mutants: % failed\n", bad);
+  return 1;
+}
+
+// The bytes of DIR + NAME read into out: their count, 0 when the file can't be read.
+fs_read_or_zero :: (dir: string, name: string, out: [] u8) -> int {
+  path: [4608] u8; n := 0;
+  for c: dir { path[n] = c; n += 1; }
+  for c: name { path[n] = c; n += 1; }
+  got := fs_read(cast(string) path[0..<n], out);
+  return ifx got < 0 then 0 else got;
+}

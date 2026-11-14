@@ -114,6 +114,8 @@ unit_check_reuse() { web/tool.sh tests/check-reuse.coax "$COAX_ABS"; }
 unit_serve() { web/tool.sh tests/serve.coax "$COAX_ABS"; }
 unit_parallel_checks() { COAX_NATIVE_CHECKS=0 web/tool.sh tests/parallel-checks.coax "$COAX_ABS"; }
 unit_job_budget() { COAX_NATIVE_CHECKS=0 web/tool.sh tests/job_budget.coax "$COAX_ABS"; }
+# coax mutate --native against the evaluator, mutant for mutant (#13582).
+unit_native_mutants() { web/tool.sh tests/native-mutants.coax "$COAX_ABS"; }
 # A sample of units that compare stdout and stderr between compiles, run with
 # every build over the load limit ($COAX_JOBS_LOAD_NOW, src/jobs.cpp): a
 # notice reaching compared output fails them (GitHub #12939).
@@ -291,7 +293,7 @@ UNITS=(pass fail examples pulse python native strict_math native_checks lexer pa
   build_profiles semantic_profiles checker systemone results book sources reflection library_tools
   sequence bounded kept clock debugging nostr constant_time wrapping inline integer_ops nominal_ids handles effect_contracts script_profile transactions compat mul_wide cuda proto_cap proto proto_policy
   proto_message verify wire_checks generated_checks wire_core importer_checks fingerprint_checks
-  unit_algebra unit_forms spatial_policy borrow_summary spatial_operators spatial proto_json)
+  unit_algebra unit_forms spatial_policy borrow_summary spatial_operators spatial proto_json native_mutants)
 
 usage() { echo "usage: tests/run.sh [--list | --only UNIT... | --part I/N]" >&2; exit 2; }
 selected=()
