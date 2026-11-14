@@ -2010,7 +2010,8 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   // They were 190 to 199, which the cells' view (180 to 193) and the world by cell (194 to 198) answer first.
   if field == 210 { return cast(int)(s[0].you_x * 1000); } if field == 211 { return cast(int)(s[0].you_z * 1000); }
   if field == 212 { return cast(int)(e2_show_face(s) * 1000); } if field == 213 { return s[0].casts[0].shown; }
-  if field >= 214 && field <= 219 { return e2bw_probe(s, field); }   // the arrows (everglade/client/arrows.coax)
+  if field >= 214 && field <= 219 { return e2bw_probe(s, field); }
+  if field == 220 { return ifx e2n_offline(s[0].net[..]) then 1 else 0; }   // the page says it is not connected (#13589)   // the arrows (everglade/client/arrows.coax)
   if field == 7 { return cast(int)((s[0].eye[1] - s[0].you_y) * 100); }
   if field == 8 { return cast(int)((s[0].you_y - e2_height(s[0].you_x, s[0].you_z)) * 100); }
   // 9 the bake's publish status (0 live, -1 not yet), 10 the baked AO at you (thousandths), 11 its crowns
@@ -2137,8 +2138,6 @@ e2_net_probe :: (s: [] E2, f: int) -> int {
   if f == 52 { return n[0].look_n; } if f == 54 { return n[0].pings; }
   // 84 the times this page sat again and said where it stood (A), 85 the room's first word on you after
   // the last of them less where you were drawn (mm, -1 none), 86 the ms from losing the room to it (#13057)
-  // 87 the page says it is not connected (e2n_offline, #13589)
-  if f == 87 { return ifx e2n_offline(n) then 1 else 0; }
   if f == 84 { return n[0].agains; } if f == 85 { return n[0].back_fix_mm; } if f == 86 { return n[0].back_ms; }
   if f == 53 { c := 0; for e: 0..<E2N_ENTS { en := n[0].ents[e]; if en.live && en.kind == WK_PLAYER && en.seat != n[0].seat && en.name_n > 0 { c += 1; } } return c; }
   if f == 55 { return ifx n[0].pings > 0 then n[0].ping_rtt[net_ping_best(n[0].ping_rtt[..], n[0].pings)] else -1; }

@@ -89,7 +89,7 @@ if [[ -z "${OA_SERVE_NO_ROOM:-}" ]]; then
     room_port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')"
     room_log="${TMPDIR:-/tmp}/oa-serve-room-$room_port.log"
     "$room_bin" --listen 127.0.0.1 --port "$room_port" --dev "$here/room/dev" > "$room_log" 2>&1 & room_pid=$!
-    room_args=(--room "$room_port"); echo "serve: the room answers on 127.0.0.1:$room_port (its log: $room_log)"
+    room_args=(--room "$room_port"); echo "serve: the room answers on 127.0.0.1:$room_port (pid $room_pid, its log: $room_log)"
   fi
 fi
 COAXIAL_MODE=dev "$here/build/serve" "$@" --api "$(cat "$port_file")" ${local_args[@]+"${local_args[@]}"} ${room_args[@]+"${room_args[@]}"} & serve_pid=$!

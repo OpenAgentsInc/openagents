@@ -1,0 +1,142 @@
+// A plain dev server gives room-backed pages their room, and a page with no room says so (#13589).
+//   coax/web/tool.sh dev-room-check [--page PORT]
+// Starts coax/web/serve.sh apps/openagents-web on PORT (default 8977) with a throwaway database and
+// no Coder, then, in headless Chrome (coax/web/tool.sh shot):
+//   1. /worlds/archery-range with no query string sits in the room serve.sh started, and Attack (7)
+//      looses an arrow the room counts: the tally's shots go up.
+//   2. With that room stopped, a fresh page says "Not connected" (field probe 220, e2n_offline)
+//      within E2N_OFFLINE_MS and a little.
+// Stops the server (and so the API and the room) at the end. Prints ok/FAIL lines; exit 1 on a FAIL.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+
+cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
+cxtool_out_flush :: () -> int #foreign #effects(all);
+
+// A text being built.
+Dr :: struct { b: [8192] u8; n: int; }
+dr_s :: (t: [] Dr, s: string) { for c: s { if t[0].n < t[0].b.count { t[0].b[t[0].n] = c; t[0].n += 1; } } }
+dr_i :: (t: [] Dr, v: int) {
+  d: [24] u8; k := 0; x := ifx v < 0 then -v else v;
+  if v < 0 { dr_s(t, "-"); }
+  if x == 0 { d[0] = '0'; k = 1; }
+  while x > 0 { d[k] = cast,trunc(u8) ('0' + x % 10); x /= 10; k += 1; }
+  for i: 0..<k { if t[0].n < t[0].b.count { t[0].b[t[0].n] = d[k - 1 - i]; t[0].n += 1; } }
+}
+dr_text :: (t: [] Dr) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+
+// The repository's root from this tool's own binary (ROOT/coax/web/build/tools/NAME-HASH, tool.sh).
+dr_root :: (self: string) -> string {
+  r := self;
+  for i: 0..<5 {
+    k := r.count - 1;
+    while k > 0 && r[k] != '/' { k -= 1; }
+    r = r[0..<k];
+  }
+  return r;
+}
+
+// The numbers after "RESULT " in text, up to want of them; how many were read (0: no RESULT line).
+dr_result :: (text: string, out: [] int) -> int {
+  i := 0;
+  while i + 7 <= text.count && text[i..<i + 7] != "RESULT " { i += 1; }
+  if i + 7 > text.count { return 0; }
+  i += 7; n := 0;
+  while i < text.count && text[i] != '\n' && n < out.count {
+    while i < text.count && text[i] == ' ' { i += 1; }
+    neg := i < text.count && text[i] == '-'; if neg { i += 1; }
+    v := 0; any := false;
+    while i < text.count && text[i] >= '0' && text[i] <= '9' { v = v * 10 + cast(int) (text[i] - '0'); i += 1; any = true; }
+    if !any { break; }
+    out[n] = ifx neg then -v else v; n += 1;
+  }
+  return n;
+}
+// The number after "TAG" on serve's line, or -1.
+dr_after :: (line: string, tag: string) -> int {
+  i := 0;
+  while i + tag.count <= line.count && line[i..<i + tag.count] != tag { i += 1; }
+  if i + tag.count > line.count { return -1; }
+  i += tag.count; v := 0; any := false;
+  while i < line.count && line[i] >= '0' && line[i] <= '9' { v = v * 10 + cast(int) (line[i] - '0'); i += 1; any = true; }
+  return ifx any then v else -1;
+}
+
+// 1: seated, then Attack; RESULT SEATED SHOTS_BEFORE SHOTS_AFTER (-1 no tally, or the page never sat).
+DR_SHOOT :: "(async()=>{const w=ms=>new Promise(r=>setTimeout(r,ms));const n=()=>{const m=document.body.innerText.match(/ARROWS\\n\\d+ of (\\d+)/);return m?+m[1]:-1};for(let i=0;i<40&&!(coaxial.fieldProbe(40)===2&&coaxial.fieldProbe(41)>=0);i++)await w(500);const seated=coaxial.fieldProbe(40)===2&&coaxial.fieldProbe(41)>=0?1:0;await w(1500);const before=n();const t=[window,document,document.querySelector('canvas')].filter(Boolean);for(const x of t)x.dispatchEvent(new KeyboardEvent('keydown',{key:'7',code:'Digit7',bubbles:true}));await w(120);for(const x of t)x.dispatchEvent(new KeyboardEvent('keyup',{key:'7',code:'Digit7',bubbles:true}));let after=n();for(let i=0;i<12&&after<=before;i++){await w(250);after=n();}return 'RESULT '+seated+' '+before+' '+after;})()";
+// 2: the room stopped; RESULT NOTICE MS (the time from the engine's first frame to the notice, -1 never).
+DR_NOTICE :: "(async()=>{const w=ms=>new Promise(r=>setTimeout(r,ms));for(let i=0;i<40&&coaxial.fieldProbe(40)<0;i++)await w(250);const t0=performance.now();for(let i=0;i<40;i++){if(coaxial.fieldProbe(220)===1)return 'RESULT 1 '+Math.round(performance.now()-t0);await w(100);}return 'RESULT 0 -1';})()";
+
+dr_shot :: (root: string, url: string, js: string, out: [] u8, err: [] u8, png: string) -> string {
+  tool: [1] Dr; dr_s(tool[..], root); dr_s(tool[..], "/coax/web/tool.sh");
+  a := [8] string.[dr_text(tool[..]), "shot", url, png, "1280x720", "4000", "--eval", js];
+  r := proc_run(a[..], 300000, out, err);
+  return cast(string) out[0..<r.out_n];
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("usage: dev-room-check [--page PORT]"); return 2; }
+  port := 8977;
+  if args_count(a[..]) == 2 && args_at(a[..], 0) == "--page" { port = args_whole(args_at(a[..], 1)); }
+  else if args_count(a[..]) != 0 { tool_errln("usage: dev-room-check [--page PORT]"); return 2; }
+  if port < 1 || port > 65535 || port == 9538 { tool_errln("dev-room-check: pick another port"); return 2; }
+  sb: [4096] u8; sn := cxproc_self_path(sb[..]);
+  if sn <= 0 || sn > sb.count { tool_errln("dev-room-check: can't find this tool's own path"); return 1; }
+  root := dr_root(cast(string) sb[0..<sn]);
+  serve: [1] Dr; dr_s(serve[..], root); dr_s(serve[..], "/coax/web/serve.sh");
+  app: [1] Dr; dr_s(app[..], root); dr_s(app[..], "/apps/openagents-web");
+  listen: [1] Dr; dr_s(listen[..], "127.0.0.1:"); dr_i(listen[..], port);
+  h := proc_new();
+  if h < 0 { tool_errln("dev-room-check: can't start serve.sh"); return 1; }
+  ok := proc_err_to_out(h) && proc_gentle(h) && proc_env(h, "OA_SERVE_NO_CODER=1") && proc_env(h, "BROWSER=/usr/bin/true");
+  sa := [5] string.[dr_text(serve[..]), dr_text(app[..]), "--listen", dr_text(listen[..]), "--fresh"];
+  for x: sa { ok = ok && proc_arg(h, x); }
+  if !ok || proc_start(h) != 0 { r := proc_release(h); tool_errln("dev-room-check: can't start serve.sh"); return 1; }
+  // serve's lines until it serves: the room's pid on the way (15 minutes: the API and the room may build)
+  room_pid := -1; up := false;
+  deadline := proc_now_ms() + 900000;
+  line: [65536] u8;
+  while !up && proc_now_ms() < deadline {
+    n := proc_line(h, 1000, line[..]);
+    if n == PROC_EOF || n == PROC_ERROR { break; }
+    if n < 0 { continue; }
+    t := cast(string) line[0..<n];
+    if t.count > 30 && t[0..<30] == "serve: the room answers on 127" { room_pid = dr_after(t, "(pid "); }
+    if t.count > 11 && t[0..<11] == "coax serve:" { up = true; }
+  }
+  fails := 0;
+  if !up { print("FAIL dev-room: serve.sh never served\n"); fails += 1; }
+  if up && room_pid < 0 { print("FAIL dev-room: serve.sh started no room\n"); fails += 1; }
+  url: [1] Dr; dr_s(url[..], "http://"); dr_s(url[..], dr_text(listen[..])); dr_s(url[..], "/worlds/archery-range");
+  out: [65536] u8; err: [16384] u8; v: [4] int;
+  if up && room_pid > 0 {
+    // the page's own build runs on the first start (watching): asked again until the engine loads
+    got := 0;
+    for attempt: 0..<20 {
+      text := dr_shot(root, dr_text(url[..]), DR_SHOOT, out[..], err[..], "/dev/null");
+      got = dr_result(text, v[..]);
+      if got == 3 { break; }
+      proc_sleep(15000);
+    }
+    if got != 3 { print("FAIL dev-room: the page never loaded\n"); fails += 1; }
+    else if v[0] != 1 { print("FAIL dev-room: /worlds/archery-range never sat in the room\n"); fails += 1; }
+    else if v[2] <= v[1] { print("FAIL dev-room: Attack loosed no arrow the room counted (shots % -> %)\n", v[1], v[2]); fails += 1; }
+    else { print("ok   dev-room: through serve.sh, Attack's arrow counted (shots % -> %)\n", v[1], v[2]); }
+    pid: [1] Dr; dr_i(pid[..], room_pid);
+    ka := [2] string.["kill", dr_text(pid[..])];
+    kr := proc_run(ka[..], 10000, out[..], err[..]);
+    proc_sleep(1000);
+    text := dr_shot(root, dr_text(url[..]), DR_NOTICE, out[..], err[..], "/dev/null");
+    if dr_result(text, v[..]) != 2 || v[0] != 1 { print("FAIL dev-room: with the room stopped the page never said it is not connected\n"); fails += 1; }
+    else { print("ok   dev-room: with the room stopped, \"Not connected\" showed after % ms\n", v[1]); }
+  }
+  f := cxtool_out_flush();
+  k := proc_kill(h, PROC_SIGTERM);
+  st := proc_wait(h, 20000);
+  if st == PROC_RUNNING { k2 := proc_kill(h, PROC_SIGKILL); st2 := proc_wait(h, 5000); }
+  r := proc_release(h);
+  return ifx fails > 0 then 1 else 0;
+}

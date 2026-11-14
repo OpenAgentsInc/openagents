@@ -528,6 +528,13 @@ coax/web/tool.sh coax/web/room/local.coax --room 8950 --page 8949 --static
 
 Then open `http://127.0.0.1:8949/worlds/everglade2?admin&relay=ws://localhost:8950`.
 
+A plain dev server has a room too: `coax/web/serve.sh apps/openagents-web` starts the room server
+(`--dev`) beside the API and sends `/api/room/` and the seat tickets to it, so
+`/worlds/archery-range` and `/worlds/everglade2` play with no `?relay=` (#13589). A page that wants a
+room and has none says "Not connected. Shots and spells need the server." over the bar and keeps
+asking. `coax/web/tool.sh dev-room-check` checks both in headless Chrome: an Attack arrow counts
+through `serve.sh`, and with the room stopped the notice shows.
+
 Admin mode works only on this machine. Three checks guard it:
 
 - It exists only in dev builds. `everglade/client/client.coax` calls `everglade/client/admin.coax` only inside
