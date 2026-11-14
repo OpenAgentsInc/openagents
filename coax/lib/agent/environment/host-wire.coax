@@ -1,4 +1,6 @@
 // The Coder environment profile above frozen NIP-HOST carriage.
+// Its inherited HOST fixtures build tables at compile time, as host-profile does.
+// coax/bin/coax test coax/lib/agent/environment/host-wire.coax --library --run-steps 250000000
 #load "../../nostr/host/browser.coax";
 #load "wire.coax";
 
