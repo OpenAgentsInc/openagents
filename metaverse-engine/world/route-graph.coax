@@ -1,0 +1,136 @@
+// A walker's way over a graph of nodes and links: the search, and a way round what stands between.
+//
+// Nodes are x, z pairs and links two node numbers each, as a realm's paths are
+// (metaverse-engine/world/path-graph.coax, which searches with rg_settle). Where a long wall or a row of a
+// field stands between a walker and its goal, its nodes stand round the walls (an aisle's two ends, a
+// doorway) and its links run where nothing stands. The realm says which nodes the walker sees straight
+// from where it is (from_sees, one per node) and which see the goal (to_sees), by its own test of what
+// holds a walker back (a closure-free language: it fills them). metaverse_route_seen answers the point to
+// walk toward now and how far the whole way is, or not ok when no way joins them. Splice Bots' Digger goes
+// round the solar farm's rows by their aisles this way (metaverse/splice-bots/digger-orders.coax d_route).
+//   coax/bin/coax test --library metaverse-engine/world/route-graph.coax
+
+#load "../core/points.coax";
+
+RG_MAX :: 64;                  // nodes at most
+RG_SHUT :: 1000000000.0;       // the cost of a node from which the goal can't be reached
+RG_ARRIVE :: 0.8;              // metres: at a node, it heads on past it
+
+rg_at :: (nodes: [] f32, k: int) -> Point { return v3(nodes[k * 2], 0, nodes[k * 2 + 1]); }
+rg_gap :: (a: Point, b: Point) -> f32 { return sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z)); }
+rg_link_ok :: (nodes: [] f32, links: [] int, i: int) -> bool {
+  a := links[i * 2]; b := links[i * 2 + 1]; m := nodes.count / 2;
+  return a >= 0 && b >= 0 && a < m && b < m && a != b;
+}
+
+// Each node's cost to the goal over the links, from the costs it starts with (RG_SHUT: not from there):
+// Dijkstra over the first cost.count nodes (at most RG_MAX), settling the cheapest and relaxing its links.
+rg_settle :: (nodes: [] f32, links: [] int, cost: [] f32) {
+  count := cost.count;
+  if count > RG_MAX { count = RG_MAX; }
+  done: [RG_MAX] bool;
+  for round: 0..<count {
+    best := -1;
+    for k: 0..<count { if !done[k] && cost[k] < f32(RG_SHUT) && (best < 0 || cost[k] < cost[best]) { best = k; } }
+    if best < 0 { break; }
+    done[best] = true;
+    for i: 0..<links.count / 2 {
+      if !rg_link_ok(nodes, links, i) { continue; }
+      a := links[i * 2]; b := links[i * 2 + 1];
+      if a >= count || b >= count { continue; }
+      other := ifx a == best then b else ifx b == best then a else -1;
+      if other < 0 || done[other] { continue; }
+      through := cost[best] + rg_gap(rg_at(nodes, a), rg_at(nodes, b));
+      if through < cost[other] { cost[other] = through; }
+    }
+  }
+}
+
+RouteSeen :: struct { x: f32; z: f32; way: f32; ok: bool; }
+
+// The point to walk toward now from `from` to reach `to`, where only the links and the straight ways the
+// flags open are sure. A node nearer from than RG_ARRIVE is the one it stands at: it heads on past it.
+metaverse_route_seen :: (nodes: [] f32, links: [] int, from: Point, to: Point, from_sees: [] bool, to_sees: [] bool) -> RouteSeen #export_c #effects(all) {
+  count := nodes.count / 2;
+  if count > RG_MAX { count = RG_MAX; }
+  if count > from_sees.count { count = from_sees.count; }
+  if count > to_sees.count { count = to_sees.count; }
+  cost: [RG_MAX] f32;
+  for k: 0..<count { cost[k] = ifx to_sees[k] then rg_gap(rg_at(nodes, k), to) else f32(RG_SHUT); }
+  rg_settle(nodes, links, cost[0..<count]);
+  out := RouteSeen.{x = to.x, z = to.z, way = f32(RG_SHUT), ok = false};
+  for k: 0..<count {
+    if !from_sees[k] || cost[k] >= f32(RG_SHUT) { continue; }
+    n := rg_at(nodes, k); gap := rg_gap(from, n);
+    if gap > f32(RG_ARRIVE) {
+      if gap + cost[k] < out.way { out = RouteSeen.{x = n.x, z = n.z, way = gap + cost[k], ok = true}; }
+      continue;
+    }
+    // standing at k: on to `to` when k sees it, else along k's cheapest link
+    if to_sees[k] && gap + rg_gap(n, to) < out.way { out = RouteSeen.{x = to.x, z = to.z, way = gap + rg_gap(n, to), ok = true}; }
+    for i: 0..<links.count / 2 {
+      if !rg_link_ok(nodes, links, i) { continue; }
+      a := links[i * 2]; b := links[i * 2 + 1];
+      j := ifx a == k then b else ifx b == k then a else -1;
+      if j < 0 || j >= count || cost[j] >= f32(RG_SHUT) { continue; }
+      m := rg_at(nodes, j); w := gap + rg_gap(n, m) + cost[j];
+      if w < out.way { out = RouteSeen.{x = m.x, z = m.z, way = w, ok = true}; }
+    }
+  }
+  return out;
+}
+
+// ---- Checks
+
+// Two aisles either side of a wall along z = 0 from x = -50 to 50: a node at each aisle's two ends.
+RG_WALL_NODES :: [8] f32.[-55, -5, 55, -5, -55, 5, 55, 5];
+RG_WALL_LINKS :: [8] int.[0, 1, 2, 3, 0, 2, 1, 3];
+rg_wall_sees :: (n: [] f32, x: f32, z: f32, out: [] bool) {
+  for k: 0..<n.count / 2 {
+    nx := n[k * 2]; nz := n[k * 2 + 1];
+    shut := false;   // the straight line crosses z = 0 inside the wall's length
+    if (z < 0) != (nz < 0) { t := z / (z - nz); cx := x + (nx - x) * t; shut = cx > -50 && cx < 50; }
+    out[k] = !shut;
+  }
+}
+#test "a way round a wall: to the near end of its aisle, round, and none where nothing joins" {
+  n := RG_WALL_NODES; l := RG_WALL_LINKS;
+  fs: [4] bool; ts: [4] bool;
+  from := v3(-20, 0, -5); to := v3(-20, 0, 5);
+  rg_wall_sees(n[..], from.x, from.z, fs[..]); rg_wall_sees(n[..], to.x, to.z, ts[..]);
+  r := metaverse_route_seen(n[..], l[..], from, to, fs[..], ts[..]);
+  #assert r.ok && r.x == -55 && r.z == -5 && abs(r.way - 80) < 0.01;   // the west end is nearer: 35 + 10 + 35
+  // past the middle, the east end
+  from = v3(30, 0, -5); rg_wall_sees(n[..], from.x, from.z, fs[..]);
+  r = metaverse_route_seen(n[..], l[..], from, to, fs[..], ts[..]);
+  #assert r.ok && r.x == 55 && r.z == -5 && abs(r.way - (25 + 10 + 75)) < 0.01;
+  // standing at the west end: round to the node across, then on to the goal it sees
+  from = v3(-55, 0, -5.3); rg_wall_sees(n[..], from.x, from.z, fs[..]);
+  r = metaverse_route_seen(n[..], l[..], from, to, fs[..], ts[..]);
+  #assert r.ok && r.x == -55 && r.z == 5;
+  from = v3(-55, 0, 4.7); rg_wall_sees(n[..], from.x, from.z, fs[..]);
+  r = metaverse_route_seen(n[..], l[..], from, to, fs[..], ts[..]);
+  #assert r.ok && r.x == to.x && r.z == to.z && abs(r.way - (0.3 + 35)) < 0.01;
+  // a node it can't see is never its aim; with no node seen there is no way
+  from = v3(-20, 0, -5); rg_wall_sees(n[..], from.x, from.z, fs[..]); fs[0] = false;
+  r = metaverse_route_seen(n[..], l[..], from, to, fs[..], ts[..]);
+  #assert r.ok && r.x == 55 && r.z == -5;
+  fs[1] = false;
+  #assert !metaverse_route_seen(n[..], l[..], from, to, fs[..], ts[..]).ok;
+  // with the links round the ends cut, nothing joins the aisles
+  rg_wall_sees(n[..], from.x, from.z, fs[..]);
+  cut := [4] int.[0, 1, 2, 3];
+  #assert !metaverse_route_seen(n[..], cut[..], from, to, fs[..], ts[..]).ok;
+  // fewer flags than nodes: only the nodes flagged count
+  #assert !metaverse_route_seen(n[..], l[..], from, to, fs[0..<2], ts[0..<2]).ok;
+}
+#test "the search settles each node's cost over the links, and a shut node stays shut with no link to it" {
+  n := RG_WALL_NODES; l := [6] int.[0, 1, 0, 2, 1, 3];
+  c := [4] f32.[f32(RG_SHUT), f32(RG_SHUT), f32(RG_SHUT), 2];
+  rg_settle(n[..], l[..], c[..]);
+  #assert c[3] == 2 && abs(c[1] - 12) < 0.01 && abs(c[0] - 122) < 0.01 && abs(c[2] - 132) < 0.01;
+  l2 := [2] int.[0, 1];
+  c = [4] f32.[f32(RG_SHUT), 5, f32(RG_SHUT), f32(RG_SHUT)];
+  rg_settle(n[..], l2[..], c[..]);
+  #assert abs(c[0] - 115) < 0.01 && c[2] == f32(RG_SHUT) && c[3] == f32(RG_SHUT);
+}

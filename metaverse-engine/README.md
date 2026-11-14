@@ -177,7 +177,7 @@ The engine modules that were in `metaverse/` moved here in one scripted commit
 | `move/player.coax` | The walking controller's C surface over `move/walk.coax` |
 | `cam/camera.coax`, `cam/cinematic.coax`, `cam/arrange.coax`, `cam/spacecam.coax` | The overview, dolly and free orbit; authored flights; the close-up arranging view; the floating-origin space camera |
 | `core/points.coax` | The points and arithmetic the world modules share (was `metaverse/space.coax`; `core/space.coax` here is the typed spaces) |
-| `physics/stand.coax`, `world/path-graph.coax`, `move/path-follower.coax`, `world/lanes.coax`, `physics/throw.coax`, `anim/flock.coax` | Floors to stand on; garden paths, the ground levelled along them and routes; followers of those paths; lanes and their targeting; thrown and carried things; a following flock |
+| `physics/stand.coax`, `world/path-graph.coax`, `world/route-graph.coax`, `move/path-follower.coax`, `world/lanes.coax`, `physics/throw.coax`, `anim/flock.coax` | Floors to stand on; garden paths, the ground levelled along them and routes; a way round long walls by a graph's nodes; followers of those paths; lanes and their targeting; thrown and carried things; a following flock |
 | `core/sticks.coax` | The touch controls: move stick, look finger, pinch, tap, the hotbar's slot |
 | `anim/figure.coax`, `anim/motion.coax`, `anim/skin.coax` | Soft figures, keyframed motions, skinned clips |
 | `core/math-d.coax` | Vectors and quaternions in f64 (`D2`, `D3`, `DQ`), which orbits, the space camera, water and the simulation package share |

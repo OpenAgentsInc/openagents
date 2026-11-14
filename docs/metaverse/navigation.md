@@ -66,6 +66,20 @@ Experimental, it runs on the page's frame.
 - The Experimental monsters chase, circle and leash on it (`hostile_steer`). The dungeon's doorway
   graph supplies their waypoints between rooms.
 
+## A long way round, by a graph
+
+The window covers 20 m and the cells' long way 32 m. A wall longer than that (a row of a field 150 m
+long) needs a graph: nodes where the walls end (an aisle's two ends, a doorway) and links where
+nothing stands. `metaverse_route_seen` in
+[`metaverse-engine/world/route-graph.coax`](../../metaverse-engine/world/route-graph.coax) answers the
+point to walk toward now and the whole way's length. The realm says, by its own test of what holds a
+walker back, which nodes the walker sees straight and which see the goal. Splice Bots' Digger goes round
+the solar farm's rows this way (`d_route`, the farm's aisles from `ff_aisles`). The garden paths'
+`metaverse_route_next` (`path-graph.coax`) uses the same search over its links.
+
+A walker that isn't steered by the service keeps its body out of others with `nav_apart_at`, the same
+rule `nav_move` uses: Splice Bots' robots and Digger push apart this way (`g_apart`).
+
 ## Navigation cells
 
 A creature that moves by the world's navigation cells never needs the zone's own stand test. The

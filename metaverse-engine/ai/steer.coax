@@ -251,16 +251,19 @@ nav_toward :: (x: f32, z: f32, gx: f32, gz: f32, pace: f32) -> [2] f32 #effects(
 // Where a step to (x, z) ends among `bodies` (x, z, radius each; `skip` is its own, -1 none):
 // pushed out of each it would overlap, twice round, and back where it stood if that still
 // leaves it deeper in one than it began.
-nav_apart :: (a: NavAgent, t: NavTune, x: f32, z: f32, bodies: [] f32, skip: int) -> [2] f32 #effects(all) {
+nav_apart :: (a: NavAgent, t: NavTune, x: f32, z: f32, bodies: [] f32, skip: int) -> [2] f32 #effects(all) { return nav_apart_at(t.body, a.x, a.z, x, z, bodies, skip); }
+// The same for any body of radius `body` that stood at (ax, az) before its step, steered by the
+// service or not (a realm's own walker, a companion): bodies never end a step inside each other.
+nav_apart_at :: (body: f32, ax: f32, az: f32, x: f32, z: f32, bodies: [] f32, skip: int) -> [2] f32 #effects(all) {
   nx := x; nz := z; n := bodies.count / 3;
   for pass_n: 0..<2 {
     for j: 0..<n {
       if j == skip { continue; }
-      bx := bodies[j * 3]; bz := bodies[j * 3 + 1]; need := t.body + bodies[j * 3 + 2];
+      bx := bodies[j * 3]; bz := bodies[j * 3 + 1]; need := body + bodies[j * 3 + 2];
       dx := nx - bx; dz := nz - bz; d := nav_len(dx, dz);
       if d >= need { continue; }
       if d < f32(NAV_STEER_NEAR) {
-        dx = a.x - bx; dz = a.z - bz; d = nav_len(dx, dz);
+        dx = ax - bx; dz = az - bz; d = nav_len(dx, dz);
         if d < f32(NAV_STEER_NEAR) { dx = 1; dz = 0; d = 1; }
       }
       nx = bx + dx / d * need; nz = bz + dz / d * need;
@@ -268,9 +271,9 @@ nav_apart :: (a: NavAgent, t: NavTune, x: f32, z: f32, bodies: [] f32, skip: int
   }
   for j: 0..<n {
     if j == skip { continue; }
-    bx := bodies[j * 3]; bz := bodies[j * 3 + 1]; need := t.body + bodies[j * 3 + 2];
+    bx := bodies[j * 3]; bz := bodies[j * 3 + 1]; need := body + bodies[j * 3 + 2];
     now := nav_len(nx - bx, nz - bz);
-    if now < need - 0.001 && now < nav_len(a.x - bx, a.z - bz) { return [2] f32.[a.x, a.z]; }
+    if now < need - 0.001 && now < nav_len(ax - bx, az - bz) { return [2] f32.[ax, az]; }
   }
   return [2] f32.[nx, nz];
 }
@@ -510,6 +513,37 @@ nav_t_tick :: (a: [] NavAgent, t: NavTune, w: [] NavWindow, tx: f32, tz: f32, bo
   bodies := [3] f32.[0.2, 0, 0.35];
   p := nav_apart(b, t2, 0.1, 0, bodies[..], -1);
   #assert p[0] < -0.49 && p[0] > -0.51 && p[1] == 0;
+}
+
+#test "any body's step ends out of the others: pushed to their edge, round twice, out the way it came when on a middle, and back where it stood when that leaves it deeper" {
+  // the expected points from an independent model of the same rule, worked in doubles
+  one := [3] f32.[1, -2, 0.5];
+  p := nav_apart_at(0.5, 4, -2, 1.3, -1.6, one[..], -1);
+  #assert abs(p[0] - 1.6) < 0.0001 && abs(p[1] + 1.2) < 0.0001;               // to the edge, along the way out
+  p = nav_apart_at(0.5, 4, -2, 1.3, -1.6, one[..], 0);
+  #assert p[0] == 1.3 && p[1] == -1.6;                                         // its own body is skipped
+  p = nav_apart_at(0.5, 2.5, -1, 1, -2, one[..], -1);
+  #assert abs(p[0] - 1.83205) < 0.0001 && abs(p[1] + 1.44530) < 0.0001;       // on the middle: out toward where it stood
+  p = nav_apart_at(0.5, 1, -1.99995, 1, -2, one[..], -1);
+  #assert p[0] == 2 && p[1] == -2;                                             // stood there too: out along x
+  far := [3] f32.[5, 5, 0.5];
+  p = nav_apart_at(0.5, 4, -2, 1.3, -1.6, far[..], -1);
+  #assert p[0] == 1.3 && p[1] == -1.6;                                         // clear of it: as stepped
+  two := [6] f32.[0, 0, 0.5, 1.1, -0.4, 0.4];
+  p = nav_apart_at(0.5, -1.3, 2, 0.4, -0.3, two[..], -1);
+  #assert abs(p[0] - 0.36375) < 0.002 && abs(p[1] + 0.93149) < 0.002;         // the second round settles it
+  two = [6] f32.[0, 0, 0.5, 1.3, -0.9, 0.5];
+  p = nav_apart_at(0.5, 0.3, 0, 0.9, -0.4, two[..], -1);
+  #assert abs(p[0] - 0.90936) < 0.002 && abs(p[1] - 0.02054) < 0.002;         // two rounds, not three
+  two = [6] f32.[0, 0, 0.5, 1.8, 0, 0.5];
+  p = nav_apart_at(0.5, 0.9, 3, 0.9, 0.3, two[..], -1);
+  #assert p[0] == 0.9 && p[1] == 3;                                            // squeezed between: back where it stood
+  two = [6] f32.[1, -2, 0.5, 2.2, -2.3, 0.2];
+  p = nav_apart_at(0.5, 1.5, -2.6, 1.5, -2.1, two[..], -1);
+  #assert abs(p[0] - 1.81098) < 0.002 && abs(p[1] + 1.71805) < 0.002;         // still in one, but less deep than it began: kept
+  three := [9] f32.[9, 9, 0.5, 1, -2, 0.5, 2.38, -2.48, 0.5];
+  p = nav_apart_at(0.5, 4.2, 1, 2.18, -2.34, three[..], -1);
+  #assert p[0] == 4.2 && p[1] == 1;                                            // the second of three is the one left deeper
 }
 
 #test "the leash: past it, it walks home and waits; it comes again when the target is back within it" #steps 400000000 {

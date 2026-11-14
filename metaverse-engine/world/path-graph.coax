@@ -12,6 +12,7 @@
 #load "../core/points.coax";
 #load "../physics/ground.coax";
 #load "../physics/ground-point.coax";
+#load "route-graph.coax";   // the search over the links, and the way round walls (metaverse_route_seen)
 
 // rim_from and rim shape the bowl's edge: a city wider than a garden
 // moves it out and eases it (everglade/legacy/v1/plan.coax).
@@ -160,24 +161,8 @@ flat_gap :: (a: Point, b: Point) -> f32 { return sqrt((a.x - b.x) * (a.x - b.x) 
 costs :: (nodes: [] f32, links: [] int, to: Point, cost: [] f32) -> int {
   m := lo(f32(nodes.count / NODE), f32(lo(f32(MAX_NODES), f32(cost.count))));
   count := cast(int) m;
-  done: [MAX_NODES] bool;
-  for k: 0..<count { cost[k] = flat_gap(node_at(nodes, k), to) * f32(OFF_PATH); done[k] = false; }
-  // Dijkstra over at most MAX_NODES nodes: settle the cheapest, relax its links.
-  for round: 0..<count {
-    best := -1;
-    for k: 0..<count { if !done[k] && (best < 0 || cost[k] < cost[best]) { best = k; } }
-    if best < 0 { break; }
-    done[best] = true;
-    for i: 0..<links.count / LINK {
-      if !link_ok(nodes, links, i) { continue; }
-      a := links[i * LINK]; b := links[i * LINK + 1];
-      if a >= count || b >= count { continue; }
-      other := ifx a == best then b else ifx b == best then a else -1;
-      if other < 0 || done[other] { continue; }
-      through := cost[best] + flat_gap(node_at(nodes, a), node_at(nodes, b));
-      if through < cost[other] { cost[other] = through; }
-    }
-  }
+  for k: 0..<count { cost[k] = flat_gap(node_at(nodes, k), to) * f32(OFF_PATH); }
+  rg_settle(nodes, links, cost[0..<count]);   // Dijkstra over the links (route-graph.coax)
   return count;
 }
 
