@@ -200,3 +200,11 @@ The application JavaScript artifact is 583225 bytes, SHA-256
 Actual phone appearance, typing and suggestions remain in NEEDS_OWNER.md.
 The owner uses Gmail/another mail app; a .oneTimeCode field does not establish
 that the system can access or suggest codes from that inbox.
+
+Final screenshot review found that an unhandled two-finger pinch could reach
+a button even when scale stayed fixed. NativeControls now consumes pinches
+with a UIKit recognizer. The focused real-gesture regression passed in
+7.712 seconds and asserts both unchanged geometry and no accidental build
+details action. This host-only correction yields runtime `fac1ef0050b1946ebedb4fe5ac6ec8e18f55304e2663f47b86976a5036c17797`.
+Application artifacts are byte-identical to the earlier signed flow. The
+pre-correction archive was retained separately and was not uploaded.

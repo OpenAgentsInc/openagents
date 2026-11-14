@@ -23,6 +23,9 @@ final class NativeControls: UIViewController {
         view.backgroundColor = .systemBackground
         let scroll = UIScrollView(); scroll.translatesAutoresizingMaskIntoConstraints = false
         scroll.keyboardDismissMode = .interactive
+        // A fixed native form consumes pinches. Otherwise the two touches can
+        // reach different buttons even though the scroll view has no zoom view.
+        scroll.addGestureRecognizer(UIPinchGestureRecognizer(target:nil,action:nil))
         view.addSubview(scroll)
         stack.axis = .vertical; stack.spacing = 16; stack.translatesAutoresizingMaskIntoConstraints = false
         scroll.addSubview(stack)

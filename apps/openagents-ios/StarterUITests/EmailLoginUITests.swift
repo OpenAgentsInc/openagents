@@ -68,5 +68,6 @@ final class EmailLoginUITests:XCTestCase {
         title.doubleTap()
         XCTAssertEqual(title.frame.width,frame.width,accuracy:1)
         XCTAssertEqual(title.frame.minX,frame.minX,accuracy:1)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format:"label CONTAINS %@","Runtime ")).firstMatch.exists)
     }
 }
