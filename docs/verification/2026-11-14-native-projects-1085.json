@@ -1,0 +1,181 @@
+{
+  "state": "deployed",
+  "build": 1085,
+  "bundle": "com.openagents.app",
+  "version": "1.0.0",
+  "frontend_source": "240638bbbf",
+  "qualification_source": "ffd17e8d97",
+  "runtime": "2d68783d8dcf339c1914ea28688a0baa0ce00c83a695288286aa93aeb3d5b750",
+  "updates": {
+    "generation": 1,
+    "files": 20,
+    "envelope_sha256": "c97e88379a870c35a96642d435c21543b366601a69b3696422eab8393869d637",
+    "feed": [
+      {
+        "origin": "https://updates.openagents.com",
+        "files": 20,
+        "generation": 1,
+        "envelope_sha256": "c97e88379a870c35a96642d435c21543b366601a69b3696422eab8393869d637"
+      },
+      {
+        "origin": "https://oa-updates-157437760789.us-central1.run.app",
+        "files": 20,
+        "generation": 1,
+        "envelope_sha256": "c97e88379a870c35a96642d435c21543b366601a69b3696422eab8393869d637"
+      }
+    ],
+    "fresh_install": {
+      "files": [
+        "highwater.cnu"
+      ],
+      "envelope_matches_public": true
+    }
+  },
+  "testflight": "VALID / IN_BETA_TESTING; Owner group",
+  "api": {
+    "source": "4e5ad57488",
+    "main_equivalent": "66bb287e35; fixture Origin correction in ffd17e8d97",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-api@sha256:263f4d4a95b8c305696e218ac6ce4ed7db916c17afe36416454b397d80fc03b7",
+    "staging": "oa-api-staging-00225-s5h",
+    "production": "oa-api-00163-h9n",
+    "migrations": [
+      "0198_project_chats.sql",
+      "0199_account_project_owners.sql",
+      "0200_project_owner_lifecycle.sql"
+    ],
+    "account": {
+      "account": {
+        "team": true,
+        "creator": true,
+        "strong_authenticators": 0,
+        "owner_mapping_insert": true,
+        "project_chat_insert": true,
+        "private_owner": true
+      },
+      "public_refusals": {
+        "/api/chat/project/v1?project=unavailable": 401,
+        "/api/drops/me": 401
+      }
+    },
+    "checks": {
+      "history_and_projects": 55,
+      "failures": 0,
+      "sanitizers": "ASan/UBSan",
+      "seconds": 325,
+      "command": "API_TESTS_ONLY=history_checks.coax coax/web/api/test.sh --part 2/4 on a Linux build host",
+      "compiler": "existing qualified Linux compiler 21ead1535a7bf959af916b847a9fbd02699720fc4079b460d77b7d89b5829a58; standalone remote checkout avoided waiting for unrelated compiler mutation jobs"
+    }
+  },
+  "tests": {
+    "coax_app": {
+      "passed": 558,
+      "failed": 0
+    },
+    "native_and_ui": {
+      "devicesAndConfigurations": [
+        {
+          "device": {
+            "architecture": "arm64",
+            "deviceId": "E05572F4-80EE-4A27-A672-688527A30D5E",
+            "deviceName": "Coax Native Starter",
+            "modelName": "iPhone 17 Pro",
+            "osBuildNumber": "23F77",
+            "osVersion": "26.5",
+            "platform": "iOS Simulator"
+          },
+          "expectedFailures": 0,
+          "failedTests": 0,
+          "passedTests": 8,
+          "skippedTests": 0,
+          "testPlanConfiguration": {
+            "configurationId": "1",
+            "configurationName": "Test Scheme Action"
+          }
+        }
+      ],
+      "environmentDescription": "CoaxNativeProjects \u00b7 Built with macOS 26.4",
+      "expectedFailures": 0,
+      "failedTests": 0,
+      "finishTime": 1794689414.788,
+      "passedTests": 8,
+      "result": "Passed",
+      "skippedTests": 0,
+      "startTime": 1794689353.894,
+      "statistics": [],
+      "testFailures": [],
+      "title": "Test - CoaxNativeProjects",
+      "topInsights": [],
+      "totalTestCount": 8
+    },
+    "fresh_install": {
+      "devicesAndConfigurations": [
+        {
+          "device": {
+            "architecture": "arm64",
+            "deviceId": "E05572F4-80EE-4A27-A672-688527A30D5E",
+            "deviceName": "Coax Native Starter",
+            "modelName": "iPhone 17 Pro",
+            "osBuildNumber": "23F77",
+            "osVersion": "26.5",
+            "platform": "iOS Simulator"
+          },
+          "expectedFailures": 0,
+          "failedTests": 0,
+          "passedTests": 1,
+          "skippedTests": 0,
+          "testPlanConfiguration": {
+            "configurationId": "1",
+            "configurationName": "Test Scheme Action"
+          }
+        }
+      ],
+      "environmentDescription": "CoaxNativeNavigation \u00b7 Built with macOS 26.4",
+      "expectedFailures": 0,
+      "failedTests": 0,
+      "finishTime": 1794689710.603,
+      "passedTests": 1,
+      "result": "Passed",
+      "skippedTests": 0,
+      "startTime": 1794689665.89,
+      "statistics": [],
+      "testFailures": [],
+      "title": "Test - CoaxNativeNavigation",
+      "topInsights": [],
+      "totalTestCount": 1
+    },
+    "mutants": {
+      "world_policy": 103,
+      "document_policy": 29,
+      "project_chat_policy": 25,
+      "surviving": 0,
+      "scope": "root policy units"
+    },
+    "gates": [
+      "tools-check",
+      "wire-check",
+      "components-check",
+      "layer-check",
+      "native stock-style",
+      "compiler-generated JavaScript versus WebAssembly oracle",
+      "exported IPA four-producer link check",
+      "deep/strict code signature",
+      "both live feeds and all 20 artifact hashes"
+    ]
+  },
+  "regressions": [
+    "Draft projection uses state-owned scratch rather than overflowing the installed Wasm stack.",
+    "Field-edit paths are inserted as JSON values before the next key.",
+    "Gateway message views remain backed by the owned transcript through serialization; the real model route passes ASan/UBSan.",
+    "A failed recovery read keeps unresolved project writes blocked until files and draft state can be read.",
+    "Overflowing escaped notes and edits are refused explicitly.",
+    "Account owner handles participate in the existing export/purge resolution without becoming signing keys or stronger authenticators."
+  ],
+  "worlds": "Four Generated/Worlds source trees and producer identities match the frozen 1084/1083 release; Splice Bots and current Everglade II remain unchanged. All four stripped-framework import gates pass. Five dSYMs are in the shared symbols bucket.",
+  "limits": [
+    "Files: positive size up to 64 MiB, private SDK byte lease; pasted notes and edits: 20,000 source bytes, with explicit encoded-request refusal.",
+    "Drafts: 768 editable leaves, depth 8, 16 per review page; overflow refuses incomplete review.",
+    "Private member chats keep existing membership, server-agent enablement and stronger-login gates; account project chats keep existing funded-model admission.",
+    "Physical document consent and real-account acceptance are recorded in NEEDS_OWNER.md."
+  ],
+  "follow_up": "https://github.com/OpenAgentsInc/openagents/issues/13604"
+}

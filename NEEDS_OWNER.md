@@ -1,9 +1,21 @@
 # Owner actions
 
+## Native Projects, build 1085
+
+Install **1085** from TestFlight and open **Projects** from the drawer. With
+`chris@openagents.com`, create a project from notes or a document, review/edit
+its draft and confirm publication. Reopen its saved project chat and try Add
+files or work. For an existing private member project, verify its shared agent
+conversation, Stop/Undo and goal agreement. The full native create/review/
+publish/chat/reopen flow and fresh-install update deduplication passed in the
+simulator; physical document consent and real-account acceptance remain owner
+observations. The existing creator grant is used; no Nostr key is required for
+new account-owned projects.
+
 ## Mobile drawer and home, build 1083
 
-1083 is **VALID / IN_BETA_TESTING**, verified in the existing **Owner** group.
-Install 1083 from TestFlight. Check the menu’s Chat, Projects
+Superseded by 1085. The 1083 drawer/home checks passed in the existing
+**Owner** group. On the latest build, check the menu’s Chat, Projects
 and Worlds destinations, tap outside the drawer to close it, and reopen it
 with a left-edge swipe. Type a draft, switch places/chats, and return to it.
 Try both home world shortcuts; Everglade opens the current Everglade II world.

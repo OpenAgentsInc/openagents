@@ -50,6 +50,28 @@ compatible presentation changes can use Updates. The
 [runtime contract](../../docs/protocol/environment-runtime-v1alpha1.md) records
 the implemented scope and current bounds.
 
+## Native Projects, build 1085
+
+The drawer’s **Projects** opens native UIKit screens composed in Coax. Create a
+project from pasted notes or the system document picker, resume saved drops,
+read the agent’s draft, edit its complete fields, confirm publication, and add
+work to an existing published project. These are the web’s existing drop,
+review, publication and grow contracts. Private member projects open their
+existing shared agent conversation, with compact tool rows, Stop, Undo and
+goal agreement. Public projects have account-owned saved project conversations;
+opening or returning to them stays in the app.
+
+Email-only accounts receive an opaque ownership handle, separate from Nostr
+signing keys. The existing creator grant controls project creation; private
+member access and stronger-login requirements retain their existing rules.
+The [protocol and bounds](../../docs/protocol/native-projects.md) describe the
+versioned associations and document leases. The document effects require 1084
+or later; 1085 includes recovery and encoded-input fixes. Compatible
+presentation and application logic can use signed Updates.
+
+The project test scheme is `CoaxNativeProjects`. The release record is
+[here](../../docs/verification/2026-11-14-native-projects-1085.json).
+
 ## Streamed worlds, build 1075
 
 **Worlds** opens Splice Bots and the current Everglade (the Everglade II forest
