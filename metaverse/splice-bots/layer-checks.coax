@@ -49,7 +49,7 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
   }
   for i: 0..<g[0].wall_n { #assert seen[i] >= 1; }
   #assert seen[0] == 3 && gates == 2 && boss == 1 && stop == 1;   // the mine mouth's 40 m wall in three parts
-  #assert piers == GA_SECTIONS * 2;   // the garage's piers, each in two parts (garage.coax)
+  #assert piers == GA_SECTIONS * 3;   // the garage's piers, each in three parts round its passage (garage.coax)
   #assert world_count(w) > 90 && world_count(w) < SL_CAP - SL_ITEMS && g[0].ws[0].reach < SL_CELL;
 }
 #test "a step asks the index, not the list: it looks at a few entities of more than ninety" {

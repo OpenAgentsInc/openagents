@@ -31,7 +31,7 @@ SB_DIGGER :: 0; SB_MECH :: 1; SB_SNIPER :: 2; SB_RAIDER :: 3; SB_BOSS :: 4; SB_B
 SBC_MOVE :: 1; SBC_DRILL :: 2; SBC_PLUS :: 3; SBC_SLAM :: 4; SBC_STOMP :: 5; SBC_FLARE :: 6; SBC_ARM :: 7; SBC_CLAW :: 8; SBC_BITE :: 9; SBC_TAIL :: 10;
 // What a battle is: none, the raider mech against Sniper, the boss against the drill mech.
 SBF_NONE :: 0; SBF_DESERT :: 1; SBF_BOSS :: 2;
-LM_MECH :: 81; LM_RAIDER_MECH :: 92;      // where the drill mech waits (the tables' "Drill mech", in section C2), where the raider mech keeps watch
+LM_MECH :: 81; LM_RAIDER_MECH :: 92;      // where the drill mech waits (the tables' "Drill mech", in the empty section, C1), where the raider mech keeps watch
 // The messages (msg_text hands MSG >= SBM_FIRST here).
 SBM_FIRST :: 50; SBM_CORE_IN :: 50; SBM_CORE_OUT :: 51; SBM_DRILLING :: 52; SBM_NEED_MECH :: 53; SBM_HUNT :: 54;
 SBM_RM_GONE :: 56; SBM_RM_DOWN :: 57; SBM_SNIPER_DOWN :: 58; SBM_BOSS :: 59; SBM_CHARGES :: 60; SBM_OPEN :: 61; SBM_SHUT :: 62;
@@ -158,7 +158,7 @@ sb_reset :: (g: [] SpGame) {
   t[0].bots[SB_SNIPER] = bb_bot(SB_SNIPER, 24, 80, 10);
   t[0].bots[SB_RAIDER] = bb_bot(SB_RAIDER, 16, 60, 8);
   t[0].bots[SB_BOSS] = bb_bot(SB_BOSS, 70, 120, 10);
-  // in the empty section's bay (C2), facing the field; without a row, the middle of that bay
+  // in the empty section's bay (C1), facing the field; without a row, the middle of that bay
   h := ga_bay_at(g, GA_EMPTY); m := sb_mark(g, LM_MECH, h.x, h.z); t[0].mech_x = m.x; t[0].mech_z = m.z;
   t[0].mech_yaw = atan2(g[0].at.gar_x - m.x, g[0].at.gar_z - m.z);
   sb_rm_home(g);
@@ -758,7 +758,7 @@ sb_objective :: (g: [] SpGame) -> string {
   if g[0].wall_gone { return ifx sb_open(g) then "Stun its 3 weak points with F." else "Battle the boss: 1-4. Open its weak points."; }
   if t.drill_t > 0 { return "The mech is drilling."; }
   if t.mech_core { return "Lead the mech to the blocked hallway (E1), across the field."; }
-  if g[0].rubble_gone && g[0].bot { return "Find the drill mech in section C2. Swap Digger's core into it."; }
+  if g[0].rubble_gone && g[0].bot { return "Find the drill mech in section C1. Swap Digger's core into it."; }
   return "";
 }
 // The key prompt for what is in reach, or "" (the HUD's prompt line).

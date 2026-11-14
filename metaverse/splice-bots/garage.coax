@@ -1,10 +1,12 @@
-// The raider mine garage (GitHub #13505, slice 1 part B): a round pit dug into the desert and open to
-// the sky, its middle a field about three football fields across, and bays round its edge, half under
-// the rim, in lettered sections (A1, A2, AB, B1 ... HA), each with its own way out. The player comes in
-// from the north through the least-used opening (the mine mouth, the raiders' rock wall and the tunnel),
-// into the old entrance bay A1. Section C2, a quarter of the way round, is the one the raiders left
-// empty on their dusk trip, where the drill mech stands. Straight across from A1, section E1 opens on a
-// hallway into the mountain, blocked until the drill mech breaks it; past it is the old-world lab.
+// The raider mine garage (GitHub #13505, slice 1 part B; layout per the level spec, #13552): a round pit
+// dug into the desert and open to the sky, its middle a field about 270 m across (the rave floor, a purple
+// circle at its centre), and bays round its edge, half under the rim, in 24 named sections (GA_NAMES, the
+// one table of their names), each a quarter of an hour round the clock. North is -z. The player comes in
+// from the south, where Sniper parks, through the least-used opening (the mine mouth, the scrap room and
+// the tunnel) and the raiders' rock wall, into the old entrance bay A1 at 6 o'clock. C1 at 3 o'clock is
+// the section the raiders left empty on their dusk trip, where the drill mech waits; G1 at 9 o'clock is
+// the work bay with its catwalk. Straight across from A1, E1 at 12 o'clock opens on a hallway north into
+// the mountain, blocked until the drill mech breaks it; past it is the old-world lab.
 //
 // Where it stands and how big it is are the landmark "Garage" (its middle, and the field's radius); the
 // bays, the rim and the hallway are measured from it. Its walls are colliders in the World (layer.coax
@@ -20,6 +22,7 @@ GA_BACK :: 2.5f32;             // m: half the back wall's thickness
 GA_ROOF :: 11.0f32;            // m: a bay's roof
 GA_LEDGE :: 2.0f32;            // m: the roof's slab
 GA_RIM :: 24.0f32;             // m: the rim over the field
+GA_CENTRE :: 45.0f32;          // m: the purple circle at the rave floor's centre
 GA_SET :: 8.0f32;              // m: how far the rim's wall stands back from the field's edge
 GA_BERM :: 46.0f32;            // m: the rim's slope down to the desert outside
 GA_DOOR :: 3.0f32;             // m: half the width of the entry's tunnel
@@ -27,7 +30,7 @@ GA_HALL :: 3.2f32;             // m: half the width of the hallway into the moun
 GA_HALL_LONG :: 32.0f32;       // m: the hallway's length, from the back wall to the lab
 GA_LAB_X :: 24.0f32; GA_LAB_Z :: 46.0f32;   // m: the lab's half width and its depth
 GA_ENTRY :: 0;                 // A1: the old entrance bay, north, where the tunnel comes in
-GA_EMPTY :: 7;                 // C2: the section the raiders left empty, where the drill mech stands
+GA_EMPTY :: 6;                 // C1, due east: the section the raiders left empty, where the drill mech stands (layout per the level spec, #13552)
 GA_HALLWAY :: 12;              // E1: straight across from A1, the hallway into the mountain
 LM_GARAGE :: 80;               // the landmark: the field's middle, and its radius
 GA_X :: 0.0f32; GA_Z :: -195.0f32; GA_R :: 135.0f32;   // where it is when the tables have no landmark for it
@@ -54,13 +57,10 @@ ga_at :: (g: [] SpGame, k: int, r: f32) -> Point { return ga_pt(g, ga_angle(k), 
 // A bay's middle.
 ga_bay_at :: (g: [] SpGame, k: int) -> Point { return ga_at(g, k, g[0].at.gar_r + GA_BAY * 0.5); }
 // The section's name: A1, A2, AB, B1, B2, BC, ... H1, H2, HA.
-ga_name :: (k: int, out: [] u8) -> string {
-  if out.count < 2 || k < 0 || k >= GA_SECTIONS { return ""; }
-  l := k / 3; m := k % 3;
-  out[0] = cast(u8) ('A' + l);
-  out[1] = ifx m == 0 then cast(u8) '1' else ifx m == 1 then cast(u8) '2' else cast(u8) ('A' + (l + 1) % 8);
-  return cast(string) out[0..<2];
-}
+// The sections' names, A1 at 6 o'clock and on round past 3 o'clock (C1): the letters are not fixed yet,
+// so they live here and nowhere else.
+GA_NAMES :: [GA_SECTIONS] string.["A1", "A2", "AB", "B1", "B2", "BC", "C1", "C2", "CD", "D1", "D2", "DE", "E1", "E2", "EF", "F1", "F2", "FG", "G1", "G2", "GH", "H1", "H2", "HA"];
+ga_name :: (k: int, out: [] u8) -> string { return ifx k < 0 || k >= GA_SECTIONS then "" else GA_NAMES[k]; }
 // The section a point is in, by its angle round the field (0 to 23), and how far out it is.
 ga_section_of :: (g: [] SpGame, x: f32, z: f32) -> int {
   a := atan2(x - g[0].at.gar_x, z - g[0].at.gar_z) + ga_span() * 0.5;
@@ -81,7 +81,12 @@ ga_gap :: (k: int) -> f32 { return ifx k == GA_ENTRY then GA_DOOR else ifx k == 
 clamp_i :: (v: int, a: int, b: int) -> int { return ifx v < a then a else ifx v > b then b else v; }
 
 // ---- the colliders
-GA_ROW :: 1000;   // a pier's row in the World: GA_ROW + 2k and + 2k + 1, its two halves (the pier after section k)
+GA_ROW :: 1000;   // a pier's row in the World: GA_ROW + 3k to + 3k + 2, its three parts (the pier after section k)
+// A passage through each pier near the back wall, so the bays join up all the way round: the night's
+// long way back runs through them, under the roofs, out of the rave's sight (#13552).
+GA_PASS :: 1.7f32;          // m: half the passage's width
+GA_PASS_H :: 3.6f32;        // m: its lintel
+ga_pass_r :: (g: [] SpGame) -> f32 { return ga_back(g) - 7; }   // its middle, out from the field's middle
 // A stadium from a to b, `half` thick, `tall` high: a wall the walking rules push you out of.
 ga_wall :: (g: [] SpGame, row: int, ax: f32, az: f32, bx: f32, bz: f32, half: f32, tall: f32) {
   dx := bx - ax; dz := bz - az; l := sqrt(dx * dx + dz * dz) * 0.5;
@@ -93,10 +98,12 @@ ga_wall :: (g: [] SpGame, row: int, ax: f32, az: f32, bx: f32, bz: f32, half: f3
 ga_colliders :: (g: [] SpGame) {
   rf := g[0].at.gar_r; rb := ga_back(g); h := ga_span() * 0.5;
   for k: 0..<GA_SECTIONS {
-    b := ga_angle(k) + h; mid := (rf + GA_PIER + rb) * 0.5;
-    p0 := ga_pt(g, b, rf + GA_PIER, 0); p1 := ga_pt(g, b, mid, 0); p2 := ga_pt(g, b, rb, 0);
-    ga_wall(g, GA_ROW + k * 2, p0.x, p0.z, p1.x, p1.z, GA_PIER, GA_ROOF);
-    ga_wall(g, GA_ROW + k * 2 + 1, p1.x, p1.z, p2.x, p2.z, GA_PIER, GA_ROOF);
+    // each part a stadium whose round ends reach GA_PIER past its line: the field's edge, and the passage's two sides
+    b := ga_angle(k) + h; r0 := ga_pass_r(g) - GA_PASS - GA_PIER; mid := (rf + GA_PIER + r0) * 0.5;
+    p0 := ga_pt(g, b, rf + GA_PIER, 0); p1 := ga_pt(g, b, mid, 0); p2 := ga_pt(g, b, r0, 0); p3 := ga_pt(g, b, ga_pass_r(g) + GA_PASS + GA_PIER, 0); p4 := ga_pt(g, b, rb, 0);
+    ga_wall(g, GA_ROW + k * 3, p0.x, p0.z, p1.x, p1.z, GA_PIER, GA_ROOF);
+    ga_wall(g, GA_ROW + k * 3 + 1, p1.x, p1.z, p2.x, p2.z, GA_PIER, GA_ROOF);
+    ga_wall(g, GA_ROW + k * 3 + 2, p3.x, p3.z, p4.x, p4.z, GA_PIER, GA_ROOF);
   }
 }
 // The back wall behind the bays is round: a body of radius r inside the garage stays r in front of it,
@@ -177,6 +184,9 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   ga_strip(g, buf, p, 0, TAU, 0, 0.01, rf + 0.5, 0.01, 72, false);
   kit_pen(p, 201, MAT_WORLD, kit_tint(0.76, 0.56, 0.42));
   for i: 0..<3 { r := rf * (0.3 + cast(f32) i * 0.24); ga_strip(g, buf, p, 0, TAU, r, 0.015, r + 1.2, 0.015, 72, false); }
+  // the centre: a purple circle in the middle of the rave floor
+  kit_pen(p, 199, MAT_FLAT, kit_tint(0.56, 0.42, 0.66));
+  ga_strip(g, buf, p, 0, TAU, 0, 0.02, GA_CENTRE, 0.02, 48, false);
   name: [2] u8;
   for k: 0..<GA_SECTIONS {
     a := ga_angle(k); a0 := a - h; a1 := a + h;
@@ -190,9 +200,10 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
       ga_strip(g, buf, p, a - gap, a + gap, rb, GA_ROOF - 3, rb, GA_ROOF, 1, false);   // the lintel over the opening
     } else {
       ga_strip(g, buf, p, a0, a1, rb, 0, rb, GA_ROOF, 3, false);
-      // its own way outside: a dark mouth in the back wall, from inside the wall to GA_OFF_WALL off its face
+      // its old way outside, shut: a grey roll-up door in the back wall, from inside the wall to GA_OFF_WALL
+      // off its face, so only the two real openings (the entry and the hallway) are dark (#13552)
       face := ga_face(a0, a1, rb, 3, a) - GA_OFF_WALL;
-      kit_pen(p, 205, MAT_FLAT, GA_DARK());
+      kit_pen(p, 205, MAT_FLAT, kit_tint(0.42, 0.42, 0.44));
       box(buf, p, ga_frame(g, a, (face + rb) * 0.5, 3.2), 3.0, 3.2, (rb - face) * 0.5);
       kit_pen(p, 206, MAT_FLAT, GA_YELLOW());
       box(buf, p, ga_frame(g, a, (face - 0.1 + rb) * 0.5, 6.6), 3.4, 0.25, (rb - face + 0.1) * 0.5);
@@ -211,7 +222,10 @@ ga_draw :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     // the pier after it: a buttress from the floor to the rim, wider at its foot
     b := a1; pf := ga_frame(g, b, rf + GA_BAY * 0.5, 0);
     kit_pen(p, 211, MAT_WORLD, GA_CONCRETE());
-    box(buf, p, frame_move(pf, ga_pt(g, b, rf + GA_BAY * 0.5, GA_ROOF * 0.5 + 1)), GA_PIER, GA_ROOF * 0.5 + 1, GA_BAY * 0.5 + 1.5);
+    pr := ga_pass_r(g); i0 := rf - 1.5; i1 := pr - GA_PASS; o1 := rb + 1.5;
+    box(buf, p, frame_move(pf, ga_pt(g, b, (i0 + i1) * 0.5, GA_ROOF * 0.5 + 1)), GA_PIER, GA_ROOF * 0.5 + 1, (i1 - i0) * 0.5);
+    box(buf, p, frame_move(pf, ga_pt(g, b, (pr + GA_PASS + o1) * 0.5, GA_ROOF * 0.5 + 1)), GA_PIER, GA_ROOF * 0.5 + 1, (o1 - pr - GA_PASS) * 0.5);
+    box(buf, p, frame_move(pf, ga_pt(g, b, pr, (GA_PASS_H + GA_ROOF + 2) * 0.5)), GA_PIER, (GA_ROOF + 2 - GA_PASS_H) * 0.5, GA_PASS);
     kit_pen(p, 212, MAT_FLAT, GA_YELLOW());
     box(buf, p, frame_move(pf, ga_pt(g, b, rf - 1.55, 1.2)), GA_PIER + 0.1, 1.2, 0.1);   // on the pier's face to the field
     // the rim's wall over the bays, set back, with the section's letters on a white panel

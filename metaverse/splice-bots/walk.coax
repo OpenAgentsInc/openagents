@@ -41,8 +41,9 @@ SW_ROUTE :: [SW_LEGS * 3] int.[
   SWL_STAGE, 5, 0,   SWL_START, 21, 0,  SWL_WALK, 22, 80,  SWL_WALK, 23, 80,  SWL_WALK, 24, 80,  SWL_WALK, 25, 80,  SWL_START, 4, 0,   SWL_WALK, 61, 80,  SWL_WALK, 2, 80,
   SWL_LANE, 0, 0,    SWL_GATE, 0, 0,
   SWL_WALK, 62, 80,  SWL_WALK, 63, 80,  SWL_WALK, 64, 60,  SWL_WALK, 27, 80,  SWL_WALK, 65, 60,  SWL_WALK, 28, 80,  SWL_WALK, 66, 60,  SWL_WALK, 26, 80,
-  SWL_WALK, 66, 60,  SWL_WALK, 65, 60,  SWL_WALK, 64, 60,  SWL_WALK, 67, 80,  SWL_WALK, 68, 80,  SWL_WALK, 69, 80,  SWL_WALK, 71, 60,  SWL_WALK, 29, 80,
-  SWL_WALK, 71, 60,  SWL_WALK, 69, 80,  SWL_WALK, 70, 80,  SWL_WALK, 81, 300,
+  // the work bay's catwalk in G1, beside G2, then back round to the stash crate, B2 and the drill mech in the empty section (#13552)
+  SWL_WALK, 66, 60,  SWL_WALK, 70, 80,  SWL_WALK, 69, 80,  SWL_WALK, 68, 80,  SWL_WALK, 65, 60,  SWL_WALK, 64, 60,  SWL_WALK, 67, 80,  SWL_WALK, 63, 80,
+  SWL_WALK, 71, 60,  SWL_WALK, 29, 80,  SWL_WALK, 71, 60,  SWL_WALK, 81, 300,
   SWL_LANE, 1, 0,    SWL_GATE, 1, 0,
   SWL_WALK, 73, 80,  SWL_WALK, 6, 80,   SWL_WALK, 72, 80,  SWL_WEAK, 0, 150,  SWL_WEAK, 1, 150,  SWL_WEAK, 2, 150,  SWL_WALK, 72, 80];
 

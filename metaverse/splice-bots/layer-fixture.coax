@@ -30,14 +30,14 @@ SL_FIXTURE :: [SL_FIXTURE_N * 5] int.[
   19, 113, -12654, -16449, 0,     // G2's bay mouth
   20, 118, -14392, -16014, -140,  // the DRILL+ part: a banned bot standing guard
   21, 117, 3631, -5554, 0,        // the stash crate's side
-  22, 113, 13690, -20250, 0,      // the south ramp
-  23, 113, 14030, -19500, 0,      // the catwalk
-  24, 113, 13690, -18750, 0,      // the north ramp
+  22, 113, -13690, -20250, 0,      // the south ramp
+  23, 113, -14030, -19500, 0,      // the catwalk
+  24, 113, -13690, -18750, 0,      // the north ramp
   25, 113, 11345, -13290, 0,      // B2's bay mouth
   26, 103, 12817, -12570, -60,    // battery cell 3: a crab-bot in B2
   27, 113, 230, -34600, 0,        // the drill line
   28, 117, -240, -34920, 0,       // the boss wall
-  31, 113, 14006, -24053, 0];     // the drill mech's bay
+  31, 113, 14500, -20300, 0];     // the drill mech's bay
 // Places the fixture's pieces, each through the check: how many stand, or minus the row the check
 // refused, less one.
 sl_fixture :: (g: [] SpGame) -> int {

@@ -398,12 +398,16 @@ g_inside :: (g: [] SpGame, x: f32, z: f32) -> bool {
   return sl_inside(g, x, z, 0.3);
 }
 // The catwalk: a deck along the party's east wall, a ramp at each end.
-on_deck :: (g: [] SpGame, x: f32, z: f32) -> bool { return x > g[0].at.deck_x - 0.2 && z > g[0].at.deck_z0 && z < g[0].at.deck_z1; }
+on_deck :: (g: [] SpGame, x: f32, z: f32) -> bool { return (x - g[0].at.deck_x) * deck_s(g) > -0.2 && z > g[0].at.deck_z0 && z < g[0].at.deck_z1; }
+// The way the deck reaches from its rail: out from the field's middle (+1 on the east side, -1 on the west).
+DECK_W :: 4.0f32;   // m: the deck's width out from its rail, as drawn (its floor ended 12 m out, over bare floor)
+deck_s :: (g: [] SpGame) -> f32 { return ifx g[0].at.deck_x < g[0].at.gar_x then -1.0f32 else 1.0f32; }
 ground_y :: (g: [] SpGame, x: f32, z: f32) -> f32 {
-  if z <= g[0].at.deck_z0 || z >= g[0].at.deck_z1 || x < g[0].at.deck_x - 3 || x > g[0].at.deck_x + 12 { return pl_ground(x, z); }   // the landmark rocks (plain.coax)
-  if x >= g[0].at.deck_x { return DECK_Y; }
+  u := (x - g[0].at.deck_x) * deck_s(g);   // across the deck, out from its rail
+  if z <= g[0].at.deck_z0 || z >= g[0].at.deck_z1 || u < -3 || u > DECK_W { return pl_ground(x, z); }   // the landmark rocks (plain.coax)
+  if u >= 0 { return DECK_Y; }
   ramp := z < g[0].at.deck_z0 + RAMP || z > g[0].at.deck_z1 - RAMP;
-  if ramp { return clamp((x - (g[0].at.deck_x - 3)) / 3, 0, 1) * DECK_Y; }
+  if ramp { return clamp((u + 3) / 3, 0, 1) * DECK_Y; }
   return 0;
 }
 near_rover :: (g: [] SpGame, r: f32) -> bool {
@@ -878,7 +882,7 @@ g_stage_set :: (g: [] SpGame, n: int) {
   if n == 12 { g[0].mode = M_RESTORED; g[0].mem_t = T_MEMORY; }
   if n == 13 { g[0].mode = M_BANNER; g[0].banner = B_SWEEP; g[0].banner_t = 100; }
   if n == 14 { g[0].mode = M_BANNER; g[0].banner = B_CUT; g[0].banner_t = 100; }
-  if n == 15 { g[0].px = g[0].at.deck_x + 1.5; g[0].pz = (g[0].at.deck_z0 + g[0].at.deck_z1) * 0.5; g[0].yaw = PI; }
+  if n == 15 { g[0].px = g[0].at.deck_x + 1.5 * deck_s(g); g[0].pz = (g[0].at.deck_z0 + g[0].at.deck_z1) * 0.5; g[0].yaw = PI; }
   if n >= 16 { g[0].wall_gone = false; g[0].have[H_PLUS] = false; g[0].taken[PICK_PLUS] = false; g[0].heat = 20; }
   if n == 16 { ga_look_into(g, 19); }                                         // the vault bay (G2) and its one blue piece
   if n == 17 { ga_look_into(g, 23); }                                         // the bar bay (HA)
@@ -911,12 +915,13 @@ g_world :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
   ball(buf, p, v3(g[0].at.post_x, 3.4, g[0].at.post_z), 0.3, 10);
   kit_crate(buf, p, frame_at(v3(g[0].at.crate_x, 0, g[0].at.crate_z), 0), 27, t3(0.70, 0.52, 0.36), INK(), GLOW(), 1.5);
   kit_rocks(buf, p, 30, t3(0.52, 0.36, 0.34), 14, 70, 0, -17, 5, 8.2, 0.4, 1.1);
-  // the work bay's catwalk (section C1): a deck along the bay, a ramp at each end, a rail between them
+  // the work bay's catwalk (section G1, due west): a deck along the bay, a ramp at each end, a rail between them
   kit_pen(p, 32, MAT_WORLD, t3(0.48, 0.36, 0.44));
-  block(buf, p, g[0].at.deck_x + 2, 0, (g[0].at.deck_z0 + g[0].at.deck_z1) * 0.5, 2, DECK_Y, (g[0].at.deck_z1 - g[0].at.deck_z0) * 0.5);
+  ds := deck_s(g);
+  block(buf, p, g[0].at.deck_x + 2 * ds, 0, (g[0].at.deck_z0 + g[0].at.deck_z1) * 0.5, 2, DECK_Y, (g[0].at.deck_z1 - g[0].at.deck_z0) * 0.5);
   for i: 0..<2 {
     z0 := ifx i == 0 then g[0].at.deck_z0 else g[0].at.deck_z1 - RAMP; z1 := z0 + RAMP;
-    quad(buf, p, v3(g[0].at.deck_x - 3, 0.02, z0), v3(g[0].at.deck_x - 3, 0.02, z1), v3(g[0].at.deck_x, DECK_Y, z1), v3(g[0].at.deck_x, DECK_Y, z0));
+    land_face(buf, p, v3(g[0].at.deck_x - 3 * ds, 0.02, z0), v3(g[0].at.deck_x - 3 * ds, 0.02, z1), v3(g[0].at.deck_x, DECK_Y, z1), v3(g[0].at.deck_x, DECK_Y, z0));
   }
   kit_pen(p, 33, MAT_CLOTH, INK());
   for i: 0..<7 { tube(buf, p, frame_at(v3(g[0].at.deck_x, DECK_Y, g[0].at.deck_z0 + RAMP + cast(f32) i * 2.0), 0), 1.0, 0.06, 0.06, 0.06, 0.06, 6, true); }
@@ -1500,11 +1505,11 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
   a := g[0].at;
   #assert a.rover_x == 6.0 && a.rover_z == 5.0 && a.post_x == 2.6 && a.post_z == 6.5 && abs(a.crate_x - 38.31) < 0.001 && abs(a.crate_z + 52.04) < 0.001 && a.start_x == 0.0 && a.start_z == 9.0;
   #assert a.rubble_z == -34.0 && a.wall_z == -351.0 && a.boss_x == 0.0 && a.boss_z == -406.0;
-  #assert a.deck_x == 141.0 && a.deck_z0 == -204.0 && a.deck_z1 == -186.0 && DECK_Y == 0.9 && RAMP == 3.0;
+  #assert a.deck_x == -141.0 && a.deck_z0 == -204.0 && a.deck_z1 == -186.0 && DECK_Y == 0.9 && RAMP == 3.0;
   #assert a.bay_x == -500.0 && a.bay_z == 636.0 && a.mem_x == -500.0 && a.mem_z == 700.0;   // far south, out of sight of the plain (#13552)
   #assert a.vil_x == 175.0 && a.vil_z == -75.0 && a.vil_r == 7.0 && a.scan_z == -65.0 && a.rail_x == 175.0 && a.rail_z == -55.0;
   // the first five lie at the solar farm (the hardware, then the two cards nearer the start, #13552), the rest in the garage's bays (#13505)
-  px := [PICKS] f32.[-838, -843, -840, -809, -815, -143.92, -38.31, -104.65, 128.17, 143]; pz := [PICKS] f32.[-110, -106, -102, -94, -90, -156.44, -52.04, -90.35, -121, -199.5];
+  px := [PICKS] f32.[-838, -843, -840, -809, -815, -143.92, -38.31, -104.65, 128.17, -143]; pz := [PICKS] f32.[-110, -106, -102, -94, -90, -156.44, -52.04, -90.35, -121, -199.5];   // cell 4 on the work bay's catwalk, G1 (#13552)
   for i: 0..<PICKS { #assert abs(pick_x(g[..], i) - px[i]) < 0.001 && abs(pick_z(g[..], i) - pz[i]) < 0.001; }
   // the rave round the garage's middle
   ax := [FOES] f32.[-4.4, 0.6, 5.6, -1.4, -20.4, 10.1, -22.4, -22.4, -36.4]; az := [FOES] f32.[-191.8, -195.8, -190.8, -188.8, -187.8, -188.8, -189.8, -200.8, -190.8];
@@ -1585,10 +1590,11 @@ g_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
   #assert g[0].px >= -4 + T_RADIUS - 0.001;
   g[0].px = 0; g[0].pz = g[0].at.rubble_z + 1.2; g_collide(g[..]);    // the rubble blocks the tunnel until it is drilled
   #assert g[0].pz >= g[0].at.rubble_z + 1 + T_RADIUS - 0.001;
-  g[0].px = g[0].at.deck_x - 0.3; g[0].pz = (g[0].at.deck_z0 + g[0].at.deck_z1) * 0.5; g_collide(g[..]);    // the rail between the ramps
-  #assert g[0].px <= g[0].at.deck_x - 0.12 - T_RADIUS + 0.001;
-  g[0].px = g[0].at.deck_x - 0.3; g[0].pz = g[0].at.deck_z1 - 1; g_collide(g[..]);   // a ramp is open
-  #assert g[0].px == g[0].at.deck_x - 0.3 && ground_y(g[..], g[0].at.deck_x, g[0].at.deck_z1 - 1) == DECK_Y && ground_y(g[..], g[0].at.deck_x - 1.5, (g[0].at.deck_z0 + g[0].at.deck_z1) * 0.5) == 0;
+  ds := deck_s(g[..]); #assert ds == -1;   // the work bay is G1, due west: the deck reaches west from its rail
+  g[0].px = g[0].at.deck_x - 0.3 * ds; g[0].pz = (g[0].at.deck_z0 + g[0].at.deck_z1) * 0.5; g_collide(g[..]);    // the rail between the ramps
+  #assert (g[0].px - g[0].at.deck_x) * ds <= -0.12 - T_RADIUS + 0.001;
+  g[0].px = g[0].at.deck_x - 0.3 * ds; g[0].pz = g[0].at.deck_z1 - 1; g_collide(g[..]);   // a ramp is open
+  #assert g[0].px == g[0].at.deck_x - 0.3 * ds && ground_y(g[..], g[0].at.deck_x, g[0].at.deck_z1 - 1) == DECK_Y && ground_y(g[..], g[0].at.deck_x - 1.5 * ds, (g[0].at.deck_z0 + g[0].at.deck_z1) * 0.5) == 0;
 }
 #test "a stunned weak point wakes, so all three must be down together" #steps 60000000 {
   g := [1] SpGame.[SpGame.{}];
@@ -2218,8 +2224,8 @@ g_run_from_garage :: (g: [] SpGame) -> int {
   for i: 0..<400 { g_step(g[..], 0.02); if !d_down(g[..]) { break; } }
   #assert !d_down(g[..]);
 }
-// The night return (#13505): after the boss, back to Sniper on foot, the long way round the field's
-// edge under the rim, past the bays, or the shortcut across the field through the rave, where the
+// The night return (#13505): after the boss, back to Sniper on foot, the long way west through the bays
+// under the rim, or the shortcut across the field through the rave, where the
 // Imperial robots patrol. Each is a list of places, walked with the walk replay's walker (walk.coax).
 SP_RAVE_WAY :: 5;
 sp_rave_way :: (g: [] SpGame, i: int) -> Point {
@@ -2227,13 +2233,14 @@ sp_rave_way :: (g: [] SpGame, i: int) -> Point {
   ids := [SP_RAVE_WAY] int.[73, 16, 63, 62, 61];   // the hallway's mouth, the dance floor, the field by A1, the tunnel, Sniper's door
   m := sc_mark(c, ids[i]); return v3(m.x, 0, m.z);
 }
-SP_LONG_WAY :: 10;
+SP_LONG_WAY :: 16;
 sp_long_way :: (g: [] SpGame, i: int) -> Point {
   c := g[0].c[..];
   if i == 0 { m := sc_mark(c, 73); return v3(m.x, 0, m.z); }
-  if i >= SP_LONG_WAY - 3 { ids := [3] int.[63, 62, 61]; m := sc_mark(c, ids[i - (SP_LONG_WAY - 3)]); return v3(m.x, 0, m.z); }
-  // round the east side of the field, a few metres in from the bays: from the hallway's side (south) to the entry's (north)
-  return ga_pt(g, PI - cast(f32) i * PI / cast(f32) (SP_LONG_WAY - 3), g[0].at.gar_r - 6, 0);
+  if i >= SP_LONG_WAY - 2 { ids := [2] int.[62, 61]; m := sc_mark(c, ids[i - (SP_LONG_WAY - 2)]); return v3(m.x, 0, m.z); }
+  // west from the hallway's section E1 through each bay in turn and the passages in their piers, round to A1 by the tunnel
+  // (layout per the level spec, #13552): a bay's middle line, as far out as puts the way between two bays through the passage
+  return ga_at(g, GA_HALLWAY + i - 1, ga_pass_r(g) / cos(ga_span() * 0.5));
 }
 sp_way_at :: (g: [] SpGame, long: bool, i: int) -> Point { return ifx long then sp_long_way(g, i) else sp_rave_way(g, i); }
 sp_way_n :: (long: bool) -> int { return ifx long then SP_LONG_WAY else SP_RAVE_WAY; }
@@ -2693,14 +2700,14 @@ hv_drop_on :: (g: [] SpGame, d: int) -> bool {
 }
 
 // ---- Battles, the drill mech, the boss and the ending (splice-battle.coax, #13505 part C)
-#test "the drill mech: it waits in the empty section C2, E swaps Digger's core in, its lights turn his, it follows you, and led to the blocked hallway it drills it on its own (#13505 playtest 2)" #steps 200000000 {
+#test "the drill mech: it waits in the empty section C1, E swaps Digger's core in, its lights turn his, it follows you, and led to the blocked hallway it drills it on its own (#13505 playtest 2)" #steps 200000000 {
   g := [1] SpGame.[SpGame.{}];
   g_stage(g[..], 7);   // dusk past the rubble, Digger built with MOVE and DRILL
   t := g[0].bt[..];
   #assert !t[0].mech_core && !sb_holds_digger(g[..]);
   // in the empty section, far from the entry: the compass points at it
   #assert ga_in_bay(g[..], t[0].mech_x, t[0].mech_z) == GA_EMPTY && dist2(t[0].mech_x, t[0].mech_z, 0, g[0].at.rubble_z) > 100;
-  #assert hv_goal(g[..]).name == "DRILL MECH" && sb_objective(g[..]) == "Find the drill mech in section C2. Swap Digger's core into it.";
+  #assert hv_goal(g[..]).name == "DRILL MECH" && sb_objective(g[..]) == "Find the drill mech in section C1. Swap Digger's core into it.";
   g[0].px = 1; g[0].pz = g[0].at.wall_z + 3;                              // the hallway without the mech: nothing
   #assert g_key(g[..], 'e', true) && g[0].msg == SBM_NEED_MECH && t[0].drill_t == 0;
   g[0].px = t[0].mech_x + 2; g[0].pz = t[0].mech_z;

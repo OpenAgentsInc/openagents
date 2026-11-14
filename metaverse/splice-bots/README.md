@@ -288,7 +288,7 @@ built, the rubble ahead of you.
 - **Cards.** Digger's cards are the ones spliced onto his strip (MOVE, DRILL, DRILL+), the software
   in his core. The drill mech uses the same cards with its giant arm (DRILL hits twice as hard) and
   adds SLAM and STOMP. Sniper holds MOVE, ARM and FLARE.
-- **The drill mech.** It waits in the empty section C2 (landmark 81, else the middle of C2's bay), and
+- **The drill mech.** It waits in the empty section C1, due east (landmark 81, else the middle of C1's bay), and
   the compass's objective is DRILL MECH once the rubble is open. E beside it swaps Digger's core in: its
   lenses turn Digger's amber and it follows you; Digger's body waits dark. The compass then says BLOCKED
   HALLWAY: the raiders' barricade across E1's hallway, straight across the ring from the entry (packed
@@ -315,8 +315,8 @@ built, the rubble ahead of you.
   and night falls. You lose if your health or the mech's runs out: back at the checkpoint, the boss
   whole again and the mech repaired at the hallway.
 - **The night return.** After the boss, night falls and she goes back to Sniper on foot: the long way
-  round the field's edge under the rim, past the bays, or the shortcut across the field through the
-  rave, where Imperial 3 and 4 patrol across her way at night. They sense her by Heat (two banned
+  west from the hallway through the bays, under their roofs and through the passage in each pier, round
+  to the old entrance bay, or the shortcut straight across the field through the rave, where Imperial 3 and 4 patrol across her way at night. They sense her by Heat (two banned
   pieces: 8.5 m). A check walks both ways with
   the walk replay's walker, and the run takes the shortcut.
 - **The ending.** SPLICE CORE in Sniper's edit bay plays the 15-second memory hologram with its
