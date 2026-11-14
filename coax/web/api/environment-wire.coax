@@ -8,5 +8,5 @@ ea_proxy :: (host:string,grant:string,epoch:string,relay:string,keyfile:string,i
   if !ea_id(host,64) || !ea_id(grant,64) {return -1;}
   args:=[14]string.[program,"rpc","--host",host,"--grant",grant,"--epoch",epoch,"--relay",relay,"--browser-key",keyfile,"--request-file",input];
   error:[1024]u8;r:=proc_run(args[..],35000,out,error[..]);
-  if r.started!=0 || r.status!=0 || r.timed_out || r.out_n<1 {return -1;}return r.out_n;
+  if r.started!=0 {return -1000-r.started;}if r.timed_out {return -3000;}if r.status!=0 {return -2000-r.status;}if r.out_n<1 {return -4000;}return r.out_n;
 }

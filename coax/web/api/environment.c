@@ -49,6 +49,6 @@ bool environment_route(const request *q) {
   unsigned char *out=malloc(1048576);int64_t n= -1;
   if (saved && out) n=ea_proxy(es(PQgetvalue(r,0,0)),es(PQgetvalue(r,0,2)),es(PQgetvalue(r,0,3)),es(PQgetvalue(r,0,4)),es(key),es(path),es(program && *program ? program:"/usr/local/bin/environment-host"),(coax_v_u8){out,1048576});
   unlink(path);PQclear(r);
-  if (n<1) api_error(q->fd,503,"Computer unavailable. An uncertain command is never resent automatically.");else env_reply(q->fd,out,(size_t)n);
+  if (n<1) {api_log("environment broker unavailable: saved=%d result=%lld",saved,(long long)n);api_error(q->fd,503,"Computer unavailable. An uncertain command is never resent automatically.");}else env_reply(q->fd,out,(size_t)n);
   free(out);return true;
 }
