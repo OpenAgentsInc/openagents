@@ -1,6 +1,6 @@
 // battle-affect.coax's own checks (GitHub #13287): each step's procedure called directly, against its
 // own numbers, its whole event and what it leaves on the creature. battle.coax loads this with `#test`.
-//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-affect.coax
+//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-affect.coax --traversal 16000000000
 
 // The i-th newest event, whole: its kind, spell, caster, target, amount, damage, feature and exact text.
 af_ev :: (b: [] RsBattle, i: int, kind: int, spell: int, by: int, to: int, amount: int, damage: int, feat: int, text: string) -> bool {
@@ -19,4 +19,995 @@ af_ev :: (b: [] RsBattle, i: int, kind: int, spell: int, by: int, to: int, amoun
   e := rs_emanation(SP_SPIRIT_GUARDIANS);
   #assert k >= 0 && e.on && e.sp == SP_SPIRIT_GUARDIANS && e.feet == 15 && e.level == 3 && e.name == "Spirit Guardians";
   #assert e.st.kind == RS_S_GUARD && e.st.a == s.steps[k].a && e.st.b == 8 && e.st.c == RS_WIS && e.st.a == 3 && e.st.d == 1;
+}
+
+// A level 5 Cleric (Ama) first and a Fighter (Garr, 40 Hit Points, 20 hurt) second, 10 feet apart, on
+// the Cleric's turn, with fixed dice (a die of n sides gives n / 2).
+af_stage :: (b: [] RsBattle) {
+  b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true; b[0].clock = 1000;
+  _ := rs_add(b, rs_cleric("Ama", 0, 5), 1, 1);
+  g := rs_add(b, rs_fighter("Garr", 1, 3), 3, 1); b[0].c[g].hp = 20; b[0].c[g].hp_max = 40;
+  b[0].who = 0; b[0].turn = RsTurn.{};
+  b[0].c[0].conc_until = 5000;
+}
+// A spell of no area for the steps' records: its level, Concentration and duration.
+af_spell :: (level: int, conc: bool, dur: int) -> RsSpell { s: RsSpell; s.level = level; s.concentration = conc; s.duration_s = dur; s.part_of = -1; s.name = "Test"; return s; }
+// Step st of spell s, from the Cleric (0) on the Fighter (1), with slot `slot`.
+af_do :: (b: [] RsBattle, a: [] RsAffect, s: RsSpell, st: RsStep, slot: int, keep: bool) {
+  scope: [1] RsDamageScope;
+  rs_affect_step(b, a, 0, 1, SP_BLESS, slot, -1, keep, s, scope[..], 0, 0, st);
+}
+// The first record of `kind` on creature j, or an empty one.
+af_eff :: (c: RsCreature, kind: int) -> RsEffect {
+  for e: c.eff { if e.kind == kind { return e; } }
+  return RsEffect.{};
+}
+af_same :: (e: RsEffect, kind: int, cond: int, by: int, spell: int, until: int, turn_end: int, save: int, dc: int) -> bool {
+  return e.kind == kind && e.cond == cond && e.by == by && e.spell == spell && e.until == until && e.turn_end == turn_end && e.save == save && e.dc == dc;
+}
+
+#test "affect: Healing: its dice, more a slot level above, the caster's modifier, Disciple of Life; the line, waking, the grave's chill" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]);
+  a: [1] RsAffect; s := af_spell(1, false, 0);
+  b[0].c[0].score[RS_WIS] = 16; mod := rs_mod(b[0].c[0].score[b[0].c[0].spell_ability]); #assert mod == 3 && b[0].c[0].spell_ability == RS_WIS;
+  b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_DISCIPLE, false);
+  // 2d8 (fixed: 4 each), a d8 more a level: at slot 3, 4d8 = 16; plus the modifier
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_HEAL, a = 2, b = 8, c = 1, d = 1}, 3, false);
+  #assert b[0].c[1].hp == 20 + 16 + 3 && af_ev(b[..], 0, RS_EV_HEAL, SP_BLESS, 0, 1, 19, 0, RS_FT_NONE, "  Garr regains 19 Hit Points");
+  // no modifier (c 0), and a slot below the level adds no dice
+  b[0].c[1].hp = 20; af_do(b[..], a[..], af_spell(2, false, 0), RsStep.{kind = RS_S_HEAL, a = 2, b = 8, c = 0, d = 1}, 1, false);
+  #assert b[0].c[1].hp == 28;
+  // a modifier from the ability that casts: a Fighter casting with Strength's score (none set: index 0)
+  b[0].c[1].hp = 20; b[0].c[0].spell_ability = -1; b[0].c[0].score[RS_STR] = 18;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_HEAL, a = 1, b = 8, c = 1}, 1, false);
+  #assert b[0].c[1].hp == 20 + 4 + 4; b[0].c[0].spell_ability = RS_WIS;
+  // Disciple of Life: 2 + the slot's level, with a slot, of a spell of level 1 or more
+  b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_DISCIPLE, true);
+  b[0].c[1].hp = 20; af_do(b[..], a[..], s, RsStep.{kind = RS_S_HEAL, a = 1, b = 8}, 2, false);
+  #assert b[0].c[1].hp == 20 + 4 + 4 && af_ev(b[..], 0, RS_EV_HEAL, SP_BLESS, 0, 1, 8, 0, RS_FT_NONE, "  Garr regains 8 Hit Points (Disciple of Life +4)");
+  b[0].c[1].hp = 20; af_do(b[..], a[..], s, RsStep.{kind = RS_S_HEAL, a = 1, b = 8}, 0, false); #assert b[0].c[1].hp == 24;
+  b[0].c[1].hp = 20; af_do(b[..], a[..], af_spell(0, false, 0), RsStep.{kind = RS_S_HEAL, a = 1, b = 8}, 1, false); #assert b[0].c[1].hp == 24;
+  b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_DISCIPLE, false);
+  // one at 0 wakes; at 1 it is up already; the chill stops it
+  b[0].c[1].hp = 0; b[0].c[1].cond = RS_UNCONSCIOUS | RS_PRONE;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_HEAL, a = 1, b = 2}, 1, false);
+  #assert b[0].c[1].hp == 1 && af_ev(b[..], 0, RS_EV_HEAL, SP_BLESS, 0, 1, 1, 0, RS_FT_NONE, "  Garr regains 1 Hit Points and wakes");
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_HEAL, a = 1, b = 2}, 1, false);
+  #assert b[0].c[1].hp == 2 && af_ev(b[..], 0, RS_EV_HEAL, SP_BLESS, 0, 1, 1, 0, RS_FT_NONE, "  Garr regains 1 Hit Points");
+  b[0].c[1].hp = 0; b[0].c[1].cond = RS_BLINDED;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_HEAL, a = 1, b = 2}, 1, false);
+  #assert af_ev(b[..], 0, RS_EV_HEAL, SP_BLESS, 0, 1, 1, 0, RS_FT_NONE, "  Garr regains 1 Hit Points and wakes");
+  b[0].c[1].hp = 0; b[0].c[1].cond = 0;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_HEAL, a = 0, b = 2}, 1, false);
+  #assert b[0].c[1].hp == 0 && af_ev(b[..], 0, RS_EV_HEAL, SP_BLESS, 0, 1, 0, 0, RS_FT_NONE, "  Garr regains 0 Hit Points");
+  b[0].c[1].hp = 10; b[0].c[1].eff[0] = RsEffect.{kind = EF_NOHEAL, by = 0, spell = SP_CHILL_TOUCH, until = 9000, save = -1};
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_HEAL, a = 1, b = 8}, 1, false);
+  #assert b[0].c[1].hp == 10 && af_ev(b[..], 0, RS_EV_HEAL, SP_BLESS, 0, 1, 0, 0, RS_FT_NONE, "  Garr regains 0 Hit Points: the grave's chill stops it");
+}
+#test "affect: the records a step leaves: Aid, a condition, Faerie Fire's outline, Hex, Hunter's Mark, a glow, a glimmer, a mock, the grave's chill, a halt" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]);
+  a: [1] RsAffect; s := af_spell(2, false, 60); next := rs_next_turn_tick(b[..], 0);
+  garr := b[0].c[1];
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_AID, a = 5}, 3, false);
+  #assert af_same(af_eff(b[0].c[1], EF_AID), EF_AID, 10, 0, SP_BLESS, 1000 + rs_secs(60), 0, -1, 0) && af_ev(b[..], 0, RS_EV_CONDITION, -1, 0, 1, SP_BLESS, 0, RS_FT_NONE, "Ama increases current and maximum Hit Points");
+  b[0].c[1] = garr; seq := b[0].book[0].seq;
+  for k: 0..<RS_EFFECTS { b[0].c[1].eff[k] = RsEffect.{kind = EF_BLESS, by = 1, spell = SP_BLESS, until = 9000, save = -1}; }
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_AID, a = 5}, 3, false); #assert b[0].book[0].seq == seq;   // no place: nothing said
+  b[0].c[1] = garr;
+  // a condition for the spell's duration, at its DC; Prone is a bit, told, and no record
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_CONDITION, a = RS_POISONED}, 2, false);
+  #assert af_same(af_eff(b[0].c[1], EF_COND), EF_COND, RS_POISONED, 0, SP_BLESS, 1000 + rs_secs(60), 0, -1, rs_dc(b[..], 0)) && af_ev(b[..], 0, RS_EV_CONDITION, SP_BLESS, 0, 1, RS_POISONED, 0, RS_FT_NONE, "  Garr is Poisoned");
+  b[0].c[1] = garr;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_CONDITION, a = RS_PRONE}, 2, false);
+  #assert rs_has(b[0].c[1], RS_PRONE) && af_eff(b[0].c[1], EF_COND).kind == EF_NONE && af_ev(b[..], 0, RS_EV_CONDITION, SP_BLESS, 0, 1, RS_PRONE, 0, RS_FT_NONE, "  Garr is Prone");
+  b[0].c[1] = garr; b[0].c[1].immune_cond = RS_POISONED | RS_PRONE; seq = b[0].book[0].seq;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_CONDITION, a = RS_POISONED}, 2, false);
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_CONDITION, a = RS_PRONE}, 2, false);
+  #assert b[0].book[0].seq == seq && !rs_has(b[0].c[1], RS_PRONE) && af_eff(b[0].c[1], EF_COND).kind == EF_NONE;
+  b[0].c[1] = garr;
+  // Restrained by a lasting area: the zone's record, its index the cond
+  scope: [1] RsDamageScope;
+  rs_affect_step(b[..], a[..], 0, 1, SP_ENTANGLE, 1, 0, false, s, scope[..], 0, 0, RsStep.{kind = RS_S_CONDITION, a = RS_RESTRAINED});
+  #assert af_same(af_eff(b[0].c[1], EF_ZONE_RESTRAIN), EF_ZONE_RESTRAIN, 0, 0, SP_ENTANGLE, 1000 + rs_secs(60), 0, -1, rs_dc(b[..], 0));
+  b[0].c[1] = garr;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_CONDITION, a = RS_RESTRAINED}, 2, false);
+  #assert af_same(af_eff(b[0].c[1], EF_COND), EF_COND, RS_RESTRAINED, 0, SP_BLESS, 1000 + rs_secs(60), 0, -1, rs_dc(b[..], 0));
+  b[0].c[1] = garr; b[0].c[1].cond = RS_INVISIBLE;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_OUTLINE, a = 10}, 1, false);
+  #assert af_same(af_eff(b[0].c[1], EF_OUTLINED), EF_OUTLINED, 0, 0, SP_BLESS, 5000, 0, -1, 0) && !rs_has(b[0].c[1], RS_INVISIBLE)
+    && af_ev(b[..], 0, RS_EV_CONDITION, SP_BLESS, 0, 1, 0, 0, RS_FT_NONE, "  Garr is outlined: attacks against it have Advantage");
+  b[0].c[1] = garr; b[0].c[1].cond = RS_INVISIBLE | RS_POISONED; b[0].c[0].note[RS_NT_CURSE_FREE] = 1;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_GLOW, a = 10}, 0, false);
+  #assert af_same(af_eff(b[0].c[1], EF_GLOW), EF_GLOW, 0, 0, SP_BLESS, b[0].c[0].turn_at + rs_beat(b[..]), 0, -1, 0) && b[0].c[1].cond == RS_POISONED;
+  b[0].c[1] = garr;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_HEX, a = RS_DEX}, 1, false);
+  #assert af_same(af_eff(b[0].c[1], EF_HEX), EF_HEX, RS_DEX, 0, SP_BLESS, 5000, 0, -1, 0) && b[0].c[0].note[RS_NT_CURSE_FREE] == 0
+    && af_ev(b[..], 0, RS_EV_CONDITION, SP_BLESS, 0, 1, 0, 0, RS_FT_NONE, "  Garr is hexed: 1d6 Necrotic more from each of Ama's hits, Disadvantage on DEX checks");
+  b[0].c[1] = garr; b[0].c[0].note[RS_NT_CURSE_FREE] = 1;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_MARK}, 1, false);
+  #assert af_same(af_eff(b[0].c[1], EF_MARK), EF_MARK, 0, 0, SP_BLESS, 5000, 0, -1, 0) && b[0].c[0].note[RS_NT_CURSE_FREE] == 0
+    && af_ev(b[..], 0, RS_EV_CONDITION, SP_BLESS, 0, 1, 0, 0, RS_FT_NONE, "  Garr is marked: 1d6 Force more from each of Ama's hits");
+  b[0].c[1] = garr;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_EXPOSE}, 0, false);
+  #assert af_same(af_eff(b[0].c[1], EF_EXPOSED), EF_EXPOSED, 0, 0, SP_BLESS, next, 1, -1, 0) && af_ev(b[..], 0, RS_EV_CONDITION, SP_BLESS, 0, 1, 0, 0, RS_FT_NONE, "  Garr glimmers: the next attack roll against it has Advantage");
+  b[0].c[1] = garr;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_MOCK}, 0, false);
+  #assert af_same(af_eff(b[0].c[1], EF_WEAK), EF_WEAK, 0, 0, SP_BLESS, rs_own_turn_end(b[..], 1), 2, -1, 0) && af_ev(b[..], 0, RS_EV_CONDITION, SP_BLESS, 0, 1, 0, 0, RS_FT_NONE, "  Garr has Disadvantage on its next attack roll");
+  b[0].c[1] = garr;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_NOHEAL}, 0, false);
+  #assert af_same(af_eff(b[0].c[1], EF_NOHEAL), EF_NOHEAL, 0, 0, SP_BLESS, next, 1, -1, 0);
+  b[0].c[1] = garr;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_HALT}, 1, false);
+  #assert af_same(af_eff(b[0].c[1], EF_HALT_PENDING), EF_HALT_PENDING, 0, 0, SP_BLESS, 0, 0, -1, 0) && af_ev(b[..], 0, RS_EV_CONDITION, SP_BLESS, 0, 1, 0, 0, RS_FT_NONE, "  Garr will halt on its next turn: no move, action or Bonus Action");
+  // after a save it passed, none of these that wait on a failure
+  b[0].c[1] = garr; a[0].ran_save = true; a[0].saved = true; seq = b[0].book[0].seq;
+  for kind: [6] int.[RS_S_CONDITION, RS_S_OUTLINE, RS_S_MOCK, RS_S_HALT, RS_S_BOON, RS_S_DAZE] { af_do(b[..], a[..], s, RsStep.{kind = kind, a = ifx kind == RS_S_BOON then EF_BLESS else RS_POISONED}, 1, false); }
+  #assert b[0].book[0].seq == seq;
+  for e: b[0].c[1].eff { #assert e.kind == EF_NONE; }
+  // a save it failed: they do
+  a[0].saved = false;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_HALT}, 1, false); #assert af_eff(b[0].c[1], EF_HALT_PENDING).kind == EF_HALT_PENDING;
+}
+#test "affect: a push: straight away from the caster, a square at a time, stopped by the grid's edge or a creature; told in feet" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]);
+  a: [1] RsAffect; s := af_spell(1, false, 0);
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_PUSH, a = 10}, 1, false);
+  #assert b[0].c[1].x == 5 && b[0].c[1].y == 1 && af_ev(b[..], 0, RS_EV_PUSH, SP_BLESS, 0, 1, 10, 0, RS_FT_NONE, "  Garr is pushed 10 feet");
+  rs_place(b[..], 1, 17, 1);
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_PUSH, a = 20}, 1, false);
+  #assert b[0].c[1].x == 19 && af_ev(b[..], 0, RS_EV_PUSH, SP_BLESS, 0, 1, 10, 0, RS_FT_NONE, "  Garr is pushed 10 feet");   // the edge
+  seq := b[0].book[0].seq;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_PUSH, a = 20}, 1, false);
+  #assert b[0].c[1].x == 19 && b[0].book[0].seq == seq;   // nowhere to go: nothing told
+  // diagonally, and up to a creature in the way
+  rs_place(b[..], 1, 3, 3); o := rs_add(b[..], rs_fighter("Wall", 1, 3), 6, 6);
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_PUSH, a = 15}, 1, false);
+  #assert b[0].c[1].x == 5 && b[0].c[1].y == 5 && af_ev(b[..], 0, RS_EV_PUSH, SP_BLESS, 0, 1, 10, 0, RS_FT_NONE, "  Garr is pushed 10 feet");
+  // toward the low edges: west and north
+  rs_place(b[..], 0, 5, 5); rs_place(b[..], 1, 1, 1);
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_PUSH, a = 15}, 1, false);
+  #assert b[0].c[1].x == 0 && b[0].c[1].y == 0;
+  // the dead are not pushed; one down but alive is
+  rs_place(b[..], 0, 1, 1); rs_place(b[..], 1, 3, 1); b[0].c[1].hp = 0; b[0].c[1].dead = true;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_PUSH, a = 10}, 1, false); #assert b[0].c[1].x == 3;
+  b[0].c[1].dead = false;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_PUSH, a = 10}, 1, false); #assert b[0].c[1].x == 5;
+  // a save it passed: no push
+  b[0].c[1].hp = 20; a[0].ran_save = true; a[0].saved = true;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_PUSH, a = 10}, 1, false); #assert b[0].c[1].x == 5;
+  a[0].ran_save = false;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_PUSH, a = 10}, 1, false); #assert b[0].c[1].x == 7;
+  #assert o >= 0;
+}
+#test "affect: Temporary Hit Points: dice, plus, more a slot level above; Fiendish Vigor's at their highest; the larger kept" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]);
+  a: [1] RsAffect; s := af_spell(1, false, 0);
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_TEMP, a = 2, b = 4, c = 4, d = 5}, 3, false);
+  #assert b[0].c[1].temp == 2 + 2 + 4 + 10 && af_ev(b[..], 0, RS_EV_HEAL, SP_BLESS, 0, 1, 18, 0, RS_FT_NONE, "  Garr gains 18 Temporary Hit Points");
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_TEMP, a = 1, b = 4, c = 4, d = 5}, 0, false);
+  #assert b[0].c[1].temp == 18 && af_ev(b[..], 0, RS_EV_HEAL, SP_BLESS, 0, 1, 6, 0, RS_FT_NONE, "  Garr gains 6 Temporary Hit Points");   // the larger kept
+  b[0].c[1].temp = 0;
+  af_do(b[..], a[..], af_spell(2, false, 0), RsStep.{kind = RS_S_TEMP, a = 1, b = 4, c = 4, d = 5}, 1, false); #assert b[0].c[1].temp == 6;   // a slot below the level adds nothing
+  // at will (Fiendish Vigor), with no slot: the die at its highest
+  b[0].c[1].temp = 0; v := af_spell(1, false, 0); v.at_will = RS_FT_FIENDISH_VIGOR;
+  b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_FIENDISH_VIGOR, true);
+  af_do(b[..], a[..], v, RsStep.{kind = RS_S_TEMP, a = 2, b = 4, c = 4, d = 5}, 0, false); #assert b[0].c[1].temp == 12;
+  b[0].c[1].temp = 0; af_do(b[..], a[..], v, RsStep.{kind = RS_S_TEMP, a = 2, b = 4, c = 4, d = 5}, 1, false); #assert b[0].c[1].temp == 8;
+  b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_FIENDISH_VIGOR, false);
+  b[0].c[1].temp = 0; af_do(b[..], a[..], v, RsStep.{kind = RS_S_TEMP, a = 2, b = 4, c = 4, d = 5}, 0, false); #assert b[0].c[1].temp == 8;
+}
+#test "affect: a timed condition: to the end of the caster's next turn, or a minute with a save; none it can't take; a passed save ends a lone Concentration" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]);
+  a: [1] RsAffect; s := af_spell(2, true, 60); next := rs_next_turn_tick(b[..], 0);
+  garr := b[0].c[1];
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_TIMED, a = RS_BLINDED, b = 1}, 2, false);
+  #assert af_same(af_eff(b[0].c[1], EF_COND), EF_COND, RS_BLINDED, 0, SP_BLESS, next, 1, -1, 0)
+    && af_ev(b[..], 0, RS_EV_CONDITION, SP_BLESS, 0, 1, RS_BLINDED, 0, RS_FT_NONE, "  Garr is Blinded until the end of Ama's next turn");
+  b[0].c[1] = garr;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_TIMED, a = RS_PARALYZED, b = 2, c = RS_WIS}, 2, false);
+  #assert af_same(af_eff(b[0].c[1], EF_COND), EF_COND, RS_PARALYZED, 0, SP_BLESS, 1000 + rs_secs(60), 0, RS_WIS, rs_dc(b[..], 0))
+    && af_ev(b[..], 0, RS_EV_CONDITION, SP_BLESS, 0, 1, RS_PARALYZED, 0, RS_FT_NONE, "  Garr is Paralyzed for up to a minute");
+  b[0].c[1] = garr; b[0].c[1].immune_cond = RS_PARALYZED; seq := b[0].book[0].seq;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_TIMED, a = RS_PARALYZED, b = 2, c = RS_WIS}, 2, false);
+  #assert b[0].book[0].seq == seq && af_eff(b[0].c[1], EF_COND).kind == EF_NONE;
+  b[0].c[1] = garr;
+  // a passed save: nothing; a one-target Concentration spell of this caster's ends, unless it is kept
+  a[0].ran_save = true; a[0].saved = true;
+  for mode: 0..<5 {
+    b[0].c[0].conc = ifx mode == 3 then SP_HEX else SP_BLESS;
+    t := s; if mode == 1 { t.concentration = false; } if mode == 2 { t.area = RS_A_SPHERE; }
+    af_do(b[..], a[..], t, RsStep.{kind = RS_S_TIMED, a = RS_BLINDED, b = 1}, 2, mode == 4);
+    #assert b[0].c[0].conc == (ifx mode == 0 then -1 else ifx mode == 3 then SP_HEX else SP_BLESS) && af_eff(b[0].c[1], EF_COND).kind == EF_NONE;
+  }
+  // the save ran and failed: it holds
+  a[0].saved = false; b[0].c[0].conc = SP_BLESS;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_TIMED, a = RS_BLINDED, b = 1}, 2, false); #assert b[0].c[0].conc == SP_BLESS && rs_has(b[0].c[1], RS_BLINDED);
+  // a save that passed but never ran is no save
+  b[0].c[1] = garr; a[0].ran_save = false; a[0].saved = true;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_TIMED, a = RS_BLINDED, b = 1}, 2, false); #assert rs_has(b[0].c[1], RS_BLINDED);
+}
+#test "affect: Ray of Enfeeblement: a failure enfeebles for the duration with a Con save; a success is Disadvantage once and ends the spell" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]);
+  a: [1] RsAffect; s := af_spell(2, true, 60); next := rs_next_turn_tick(b[..], 0);
+  garr := b[0].c[1];
+  b[0].c[0].conc = SP_BLESS;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_ENFEEBLE}, 2, false);
+  #assert af_same(af_eff(b[0].c[1], EF_ENFEEBLED), EF_ENFEEBLED, 0, 0, SP_BLESS, 1000 + rs_secs(60), 0, RS_CON, rs_dc(b[..], 0)) && b[0].c[0].conc == SP_BLESS
+    && af_ev(b[..], 0, RS_EV_CONDITION, SP_BLESS, 0, 1, 0, 0, RS_FT_NONE, "  Garr is enfeebled: 1d8 off its damage, Disadvantage on Strength");
+  b[0].c[1] = garr; a[0].saved = true;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_ENFEEBLE}, 2, true);
+  #assert af_same(af_eff(b[0].c[1], EF_WEAK), EF_WEAK, 0, 0, SP_BLESS, next, 0, -1, 0) && b[0].c[0].conc == SP_BLESS
+    && af_ev(b[..], 0, RS_EV_CONDITION, SP_BLESS, 0, 1, 0, 0, RS_FT_NONE, "  Garr shrugs it off: Disadvantage on its next attack roll");
+  b[0].c[1] = garr; af_do(b[..], a[..], s, RsStep.{kind = RS_S_ENFEEBLE}, 2, false); #assert b[0].c[0].conc == -1;
+  b[0].c[1] = garr; b[0].c[0].conc = SP_HEX; af_do(b[..], a[..], s, RsStep.{kind = RS_S_ENFEEBLE}, 2, false); #assert b[0].c[0].conc == SP_HEX;
+}
+#test "affect: Divine Smite's step, Hypnotic Pattern's stupor, Spirit Guardians' circle, a boon's five lines, Lesser Restoration, and a step of no kind" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]);
+  a: [1] RsAffect; s := af_spell(1, true, 60);
+  garr := b[0].c[1];
+  // smite: the hit's Critical, and dice more on an Undead or a Fiend
+  b[0].turn.last_crit = true; af_do(b[..], a[..], s, RsStep.{kind = RS_S_SMITE, a = 1, b = 8}, 1, false); #assert a[0].crit && a[0].bane == 0;
+  b[0].turn.last_crit = false; b[0].c[1].undead = true; af_do(b[..], a[..], s, RsStep.{kind = RS_S_SMITE, a = 1, b = 8}, 1, false); #assert !a[0].crit && a[0].bane == 1;
+  a[0] = RsAffect.{}; b[0].c[1] = garr; b[0].c[1].fiend = true; af_do(b[..], a[..], s, RsStep.{kind = RS_S_SMITE, a = 2, b = 8}, 1, false); #assert a[0].bane == 2;
+  a[0] = RsAffect.{}; b[0].c[1] = garr;
+  // daze: Charmed and Incapacitated while the caster concentrates; none on one it can't Charm
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_DAZE, a = RS_CHARMED | RS_INCAPACITATED}, 3, false);
+  #assert af_same(af_eff(b[0].c[1], EF_DAZED), EF_DAZED, RS_CHARMED | RS_INCAPACITATED, 0, SP_BLESS, 5000, 0, -1, 0)
+    && af_ev(b[..], 0, RS_EV_CONDITION, SP_BLESS, 0, 1, 0, 0, RS_FT_NONE, "  Garr is Charmed and Incapacitated, Speed 0");
+  b[0].c[1] = garr; b[0].c[1].immune_cond = RS_CHARMED | RS_INCAPACITATED; seq := b[0].book[0].seq;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_DAZE, a = RS_CHARMED | RS_INCAPACITATED}, 3, false);
+  #assert b[0].book[0].seq == seq && af_eff(b[0].c[1], EF_DAZED).kind == EF_NONE;
+  b[0].c[1] = garr;
+  // the circle: its slot kept, told of the caster
+  g := s; g.area_ft = 15;
+  af_do(b[..], a[..], g, RsStep.{kind = RS_S_GUARD}, 4, false);
+  #assert b[0].c[0].conc_slot == 4 && af_ev(b[..], 0, RS_EV_CONDITION, SP_BLESS, 0, 0, 0, 0, RS_FT_NONE, "  spirits circle Ama 15 feet round");
+  // boons: while it concentrates, or for the duration; Guidance's record keeps the log's place
+  kinds := [5] int.[EF_BLESS, EF_BANE, EF_GUIDANCE, EF_PROTECTION, EF_FAITH];
+  lines := [5] string.["  Garr is blessed: 1d4 more on its attack rolls and saves", "  Garr is baned: 1d4 less on its attack rolls and saves",
+                       "  Garr is guided: 1d4 more on checks with the chosen skill", "  Garr is protected from Evil and Good", "  Garr has +2 AC"];
+  for k: 0..<5 {
+    b[0].c[1] = garr;
+    t := s; t.concentration = k != 4;
+    seq = b[0].book[0].seq;
+    af_do(b[..], a[..], t, RsStep.{kind = RS_S_BOON, a = kinds[k], b = 7}, 1, false);
+    #assert af_same(af_eff(b[0].c[1], kinds[k]), kinds[k], 7, 0, SP_BLESS, ifx k == 4 then 1000 + rs_secs(60) else 5000, 0, -1, ifx k == 2 then seq else 0)
+      && af_ev(b[..], 0, RS_EV_CONDITION, SP_BLESS, 0, 1, 0, 0, RS_FT_NONE, lines[k]);
+  }
+  // Lesser Restoration: a condition it has ends, told; none, nothing
+  b[0].c[1] = garr; b[0].c[1].cond = RS_POISONED; b[0].c[1].eff[0] = RsEffect.{kind = EF_COND, cond = RS_POISONED, by = 0, spell = SP_RAY_OF_SICKNESS, until = 9000, save = -1};
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_RESTORE, a = 0}, 2, false);
+  #assert !rs_has(b[0].c[1], RS_POISONED) && af_ev(b[..], 0, RS_EV_CONDITION, -1, 0, 1, SP_BLESS, 0, RS_FT_NONE, "Ama ends a condition");
+  seq = b[0].book[0].seq; af_do(b[..], a[..], s, RsStep.{kind = RS_S_RESTORE, a = 0}, 2, false); #assert b[0].book[0].seq == seq;
+  // a step with no procedure here (an area's own) does nothing
+  b[0].c[1] = garr; was := b[0].c[1]; seq = b[0].book[0].seq;
+  for kind: [4] int.[0, RS_S_TERRAIN, RS_S_REPEAT, 99] { af_do(b[..], a[..], s, RsStep.{kind = kind, a = 1, b = 1}, 1, false); }
+  #assert b[0].book[0].seq == seq && b[0].c[1].hp == was.hp;
+  for e: b[0].c[1].eff { #assert e.kind == EF_NONE; }
+}
+#test "affect: a spell attack: hit at the AC, a miss stops the steps, Potent Cantrip's half on a cantrip's miss, a Critical Hit on one Paralyzed within 5 feet, Innate Sorcery's Advantage" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]);
+  b[0].c[0].score[RS_WIS] = 16; bonus := rs_spell_attack(b[0].c[0]); #assert bonus == 6;
+  s := af_spell(1, false, 0); c := af_spell(0, false, 0);
+  b[0].c[1].ac = 16;
+  a: [1] RsAffect;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_ATTACK, a = 0}, 1, false);
+  #assert a[0].ran_attack && a[0].attack_hit && !a[0].crit && !a[0].stop && !a[0].potent_miss
+    && af_ev(b[..], 0, RS_EV_ATTACK, SP_BLESS, 0, 1, 16, 0, RS_FT_NONE, "  attack 10 + 6 = 16 vs AC 16: hit");
+  b[0].c[1].ac = 17; a[0] = RsAffect.{};
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_ATTACK, a = 0}, 1, false);
+  #assert a[0].ran_attack && !a[0].attack_hit && a[0].stop && !a[0].potent_miss && af_ev(b[..], 0, RS_EV_MISS, SP_BLESS, 0, 1, 16, 0, RS_FT_NONE, "  attack 10 + 6 = 16 vs AC 17: miss");
+  // Potent Cantrip: a cantrip's miss is half damage, and the steps go on; not a leveled spell's
+  b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_POTENT_CANTRIP, true); a[0] = RsAffect.{};
+  af_do(b[..], a[..], c, RsStep.{kind = RS_S_ATTACK, a = 0}, 0, false);
+  #assert a[0].potent_miss && !a[0].stop && af_ev(b[..], 0, RS_EV_MISS, SP_BLESS, 0, 1, 16, 0, RS_FT_NONE, "  attack 10 + 6 = 16 vs AC 17: miss (Potent Cantrip: half damage)");
+  a[0] = RsAffect.{}; af_do(b[..], a[..], s, RsStep.{kind = RS_S_ATTACK, a = 0}, 1, false); #assert !a[0].potent_miss && a[0].stop;
+  b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_POTENT_CANTRIP, false);
+  a[0] = RsAffect.{}; af_do(b[..], a[..], c, RsStep.{kind = RS_S_ATTACK, a = 0}, 0, false); #assert !a[0].potent_miss && a[0].stop;
+  // Paralyzed within 5 feet: a hit is a Critical Hit (and attacks against it have Advantage); at 10 feet, no Critical
+  b[0].c[1].ac = 16; b[0].c[1].cond = RS_PARALYZED; rs_place(b[..], 1, 2, 1); a[0] = RsAffect.{};
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_ATTACK, a = 1}, 1, false);
+  #assert a[0].crit && a[0].attack_hit && af_ev(b[..], 0, RS_EV_ATTACK, SP_BLESS, 0, 1, 16, 1, RS_FT_NONE, "  attack 10 (Advantage) + 6 = 16 vs AC 16: critical hit");
+  rs_place(b[..], 1, 3, 1); a[0] = RsAffect.{};
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_ATTACK, a = 0}, 1, false);
+  #assert !a[0].crit && a[0].attack_hit && af_ev(b[..], 0, RS_EV_ATTACK, SP_BLESS, 0, 1, 16, 0, RS_FT_NONE, "  attack 10 (Advantage) + 6 = 16 vs AC 16: hit");
+  b[0].c[1].cond = 0;
+  // a ranged spell attack beside a foe has Disadvantage; a melee one doesn't
+  rs_place(b[..], 1, 2, 1); a[0] = RsAffect.{};
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_ATTACK, a = 0}, 1, false); #assert af_ev(b[..], 0, RS_EV_ATTACK, SP_BLESS, 0, 1, 16, 0, RS_FT_NONE, "  attack 10 (Disadvantage) + 6 = 16 vs AC 16: hit");
+  a[0] = RsAffect.{};
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_ATTACK, a = 1}, 1, false); #assert af_ev(b[..], 0, RS_EV_ATTACK, SP_BLESS, 0, 1, 16, 0, RS_FT_NONE, "  attack 10 + 6 = 16 vs AC 16: hit");
+  // Innate Sorcery: Advantage; with a Disadvantage, neither
+  b[0].c[0].eff[0] = RsEffect.{kind = EF_INNATE, by = 0, spell = -1, until = 9000, save = -1}; a[0] = RsAffect.{};
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_ATTACK, a = 1}, 1, false); #assert af_ev(b[..], 0, RS_EV_ATTACK, SP_BLESS, 0, 1, 16, 0, RS_FT_NONE, "  attack 10 (Advantage) + 6 = 16 vs AC 16: hit");
+  a[0] = RsAffect.{};
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_ATTACK, a = 0}, 1, false); #assert af_ev(b[..], 0, RS_EV_ATTACK, SP_BLESS, 0, 1, 16, 0, RS_FT_NONE, "  attack 10 + 6 = 16 vs AC 16: hit");
+}
+#test "affect: a save: its line, total and DC, success or failure; one that fails on its own says why; Dexterity's cover" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]);
+  b[0].c[0].score[RS_WIS] = 16; dc := rs_dc(b[..], 0); #assert dc == 14;
+  s := af_spell(1, false, 0); a: [1] RsAffect;
+  garr := b[0].c[1];
+  wis := 10 + rs_save_bonus(b[0].c[1], RS_WIS); con := 10 + rs_save_bonus(b[0].c[1], RS_CON);
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_SAVE, a = RS_WIS}, 1, false);
+  l: [1] RsLine; rs_add_text(l[..], "  Garr WIS save "); rs_add_int(l[..], wis); rs_add_text(l[..], " vs DC 14: "); rs_add_text(l[..], ifx wis >= 14 then "success" else "failure");
+  #assert a[0].ran_save && a[0].saved == (wis >= 14) && af_ev(b[..], 0, RS_EV_SAVE, SP_BLESS, 0, 1, wis, ifx wis >= 14 then 1 else 0, RS_FT_NONE, cast(string) l[0].buf[0..<l[0].n]);
+  b[0].c[1].score[RS_CON] = 30; con = 10 + rs_save_bonus(b[0].c[1], RS_CON); a[0] = RsAffect.{};
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_SAVE, a = RS_CON}, 1, false);
+  l[0] = rs_line(); rs_add_text(l[..], "  Garr CON save "); rs_add_int(l[..], con); rs_add_text(l[..], " vs DC 14: success");
+  #assert con >= 14 && a[0].saved && af_ev(b[..], 0, RS_EV_SAVE, SP_BLESS, 0, 1, con, 1, RS_FT_NONE, cast(string) l[0].buf[0..<l[0].n]);
+  b[0].c[1] = garr;
+  // Strength and Dexterity saves fail on their own: Paralyzed, Petrified, Stunned, Unconscious
+  conds := [4] int.[RS_PARALYZED, RS_PETRIFIED, RS_STUNNED, RS_UNCONSCIOUS]; why := [4] string.["Paralyzed", "Petrified", "Stunned", "Unconscious"];
+  for k: 0..<4 {
+    b[0].c[1] = garr; b[0].c[1].cond = conds[k]; b[0].c[1].score[RS_DEX] = 30; a[0] = RsAffect.{};
+    af_do(b[..], a[..], s, RsStep.{kind = RS_S_SAVE, a = RS_DEX}, 1, false);
+    ev := rs_recent_at(b[0].book[..], 0);
+    l[0] = rs_line(); rs_add_text(l[..], "  Garr DEX save fails ("); rs_add_text(l[..], why[k]); rs_add_text(l[..], ")");
+    #assert !a[0].saved && ev.kind == RS_EV_SAVE && ev.damage == 0 && cast(string) ev.text[0..<ev.text_n] == cast(string) l[0].buf[0..<l[0].n];
+  }
+  // Dexterity's cover from the caster: +2 behind Half Cover
+  b[0].c[1] = garr; a[0] = RsAffect.{};
+  dex := 10 + rs_save_bonus(b[0].c[1], RS_DEX);
+  #assert rs_cover_put(b[..], 0, 1, RS_COVER_HALF);
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_SAVE, a = RS_DEX}, 1, false);
+  #assert rs_recent_at(b[0].book[..], 0).amount == dex + 2;
+  a[0] = RsAffect.{}; af_do(b[..], a[..], s, RsStep.{kind = RS_S_SAVE, a = RS_STR}, 1, false);
+  #assert rs_recent_at(b[0].book[..], 0).amount == 10 + rs_save_bonus(b[0].c[1], RS_STR);   // no cover on a Strength save
+}
+// Garr's Hit Points back to 200, and the newest event's text is `want`.
+af_fresh :: (b: [] RsBattle) { b[0].c[1].hp = 200; b[0].c[1].hp_max = 200; }
+af_said :: (b: [] RsBattle, back: int, want: string) -> bool { ev := rs_recent_at(b[0].book[..], back); return cast(string) ev.text[0..<ev.text_n] == want; }
+#test "affect: damage: its dice, a cantrip's by tier, more a slot level above, Divine Smite's more, doubled on a Critical Hit; its line and event" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]); af_fresh(b[..]);
+  a: [1] RsAffect; s := af_spell(1, false, 0); c := af_spell(0, false, 0);
+  fire := RsStep.{kind = RS_S_DAMAGE, a = 2, b = 6, c = RS_FIRE, d = 1};
+  af_do(b[..], a[..], s, fire, 1, false);
+  #assert b[0].c[1].hp == 194 && af_ev(b[..], 0, RS_EV_DAMAGE, SP_BLESS, 0, 1, 6, RS_FIRE, RS_FT_NONE, "  Garr takes 6 Fire (2d6)");
+  af_fresh(b[..]); af_do(b[..], a[..], s, fire, 3, false); #assert b[0].c[1].hp == 188 && af_said(b[..], 0, "  Garr takes 12 Fire (4d6)");
+  af_fresh(b[..]); af_do(b[..], a[..], af_spell(2, false, 0), fire, 1, false); #assert b[0].c[1].hp == 194;   // a slot below its level: none more
+  // a cantrip: its dice by the caster's tier (level 5: two times), no slot dice; with the tier off (a beam's), its own
+  af_fresh(b[..]); af_do(b[..], a[..], c, fire, 0, false); #assert b[0].c[1].hp == 188 && af_said(b[..], 0, "  Garr takes 12 Fire (4d6)");
+  af_fresh(b[..]); a[0].tier_dice = false; af_do(b[..], a[..], c, fire, 2, false); #assert b[0].c[1].hp == 188 && af_said(b[..], 0, "  Garr takes 12 Fire (4d6)");   // (then a slot's dice count)
+  af_fresh(b[..]); af_do(b[..], a[..], c, fire, 0, false); #assert b[0].c[1].hp == 194;
+  a[0] = RsAffect.{};
+  af_fresh(b[..]); af_do(b[..], a[..], s, RsStep.{kind = RS_S_DAMAGE, a = 2, b = 6, c = RS_FIRE}, 3, false); #assert b[0].c[1].hp == 194;   // d 0: no slot dice
+  // Divine Smite's dice on an Undead, and a Critical Hit doubles all
+  a[0].bane = 1; af_fresh(b[..]); af_do(b[..], a[..], s, fire, 1, false); #assert b[0].c[1].hp == 191 && af_said(b[..], 0, "  Garr takes 9 Fire (3d6)");
+  a[0].crit = true; af_fresh(b[..]); af_do(b[..], a[..], s, fire, 1, false); #assert b[0].c[1].hp == 182 && af_said(b[..], 0, "  Garr takes 18 Fire (6d6)");
+  a[0] = RsAffect.{};
+  // a spell's flat plus
+  p := s; p.plus = 3; af_fresh(b[..]); af_do(b[..], a[..], p, fire, 1, false); #assert b[0].c[1].hp == 191 && af_said(b[..], 0, "  Garr takes 9 Fire (2d6 + 3)");
+  p.plus = -2; af_fresh(b[..]); af_do(b[..], a[..], p, fire, 1, false); #assert b[0].c[1].hp == 196 && af_said(b[..], 0, "  Garr takes 4 Fire (2d6 + -2)");
+  // resisted, vulnerable, immune
+  af_fresh(b[..]); b[0].c[1].resist = 1 << RS_FIRE; af_do(b[..], a[..], s, fire, 1, false);
+  #assert b[0].c[1].hp == 197 && af_ev(b[..], 0, RS_EV_DAMAGE, SP_BLESS, 0, 1, 3, RS_FIRE, RS_FT_NONE, "  Garr takes 6 Fire (2d6), resisted");
+  af_fresh(b[..]); b[0].c[1].resist = 0; b[0].c[1].vulnerable = 1 << RS_FIRE; af_do(b[..], a[..], s, fire, 1, false);
+  #assert b[0].c[1].hp == 188 && af_ev(b[..], 0, RS_EV_DAMAGE, SP_BLESS, 0, 1, 12, RS_FIRE, RS_FT_NONE, "  Garr takes 6 Fire (2d6), vulnerable");
+  af_fresh(b[..]); b[0].c[1].vulnerable = 0; b[0].c[1].immune = 1 << RS_FIRE; af_do(b[..], a[..], s, fire, 1, false);
+  #assert b[0].c[1].hp == 200 && af_ev(b[..], 0, RS_EV_DAMAGE, SP_BLESS, 0, 1, 0, RS_FIRE, RS_FT_NONE, "  Garr takes 6 Fire (2d6), immune");
+  b[0].c[1].immune = 0;
+  // a Critical Hit's damage drops one at 0 with two failures
+  b[0].c[1].hp = 0; b[0].c[1].cond = RS_UNCONSCIOUS; a[0].crit = true; af_do(b[..], a[..], s, RsStep.{kind = RS_S_DAMAGE, a = 1, b = 2, c = RS_FIRE}, 1, false);
+  #assert b[0].c[1].death_fail == 2;
+}
+#test "affect: damage on a save: half when its first step says so or Potent Cantrip's, none otherwise; a Potent miss halves; Elemental Affinity once; Agonizing Blast; enfeebled" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]); af_fresh(b[..]);
+  a: [1] RsAffect; fire := RsStep.{kind = RS_S_DAMAGE, a = 4, b = 6, c = RS_FIRE};
+  half := af_spell(1, false, 0); half.steps[0] = RsStep.{kind = RS_S_SAVE, a = RS_DEX, b = RS_ON_SAVE_HALF}; half.step_n = 2;
+  none := half; none.steps[0].b = RS_ON_SAVE_NONE;
+  other := half; other.steps[0] = RsStep.{kind = RS_S_ATTACK, b = RS_ON_SAVE_HALF};
+  a[0].ran_save = true; a[0].saved = true;
+  af_do(b[..], a[..], half, fire, 1, false); #assert b[0].c[1].hp == 194 && af_said(b[..], 0, "  Garr takes 6 Fire (4d6)");
+  af_fresh(b[..]); af_do(b[..], a[..], none, fire, 1, false); #assert b[0].c[1].hp == 200 && af_said(b[..], 0, "  Garr takes 0 Fire (4d6)");
+  af_fresh(b[..]); af_do(b[..], a[..], other, fire, 1, false); #assert b[0].c[1].hp == 200;
+  // a save that ran and failed, or passed and never ran: all of it
+  a[0].saved = false; af_fresh(b[..]); af_do(b[..], a[..], none, fire, 1, false); #assert b[0].c[1].hp == 188;
+  a[0].ran_save = false; a[0].saved = true; af_fresh(b[..]); af_do(b[..], a[..], none, fire, 1, false); #assert b[0].c[1].hp == 188;
+  // Potent Cantrip: a cantrip's save is half, a leveled spell's is not
+  b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_POTENT_CANTRIP, true);
+  a[0] = RsAffect.{ran_save = true, saved = true, tier_dice = false};
+  c := none; c.level = 0;
+  af_fresh(b[..]); af_do(b[..], a[..], c, fire, 0, false); #assert b[0].c[1].hp == 194;
+  af_fresh(b[..]); af_do(b[..], a[..], none, fire, 1, false); #assert b[0].c[1].hp == 200;
+  b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_POTENT_CANTRIP, false);
+  af_fresh(b[..]); af_do(b[..], a[..], c, fire, 0, false); #assert b[0].c[1].hp == 200;
+  // a Potent miss: half
+  a[0] = RsAffect.{potent_miss = true, tier_dice = false}; af_fresh(b[..]); af_do(b[..], a[..], c, fire, 0, false); #assert b[0].c[1].hp == 194;
+  a[0] = RsAffect.{};
+  // Elemental Affinity: its type's damage gets the Charisma modifier, once a cast of one target; an area's every time
+  b[0].c[0].score[RS_CHA] = 16; b[0].c[0].rank[RS_RK_AFFINITY] = RS_FIRE; b[0].aff_used = false;
+  s := af_spell(1, false, 0);
+  af_fresh(b[..]); af_do(b[..], a[..], s, fire, 1, false); #assert b[0].c[1].hp == 185 && af_said(b[..], 0, "  Garr takes 15 Fire (4d6)") && b[0].aff_used;   // (the line names no modifier)
+  af_fresh(b[..]); af_do(b[..], a[..], s, fire, 1, false); #assert b[0].c[1].hp == 188;
+  ar := s; ar.area = RS_A_SPHERE;
+  af_fresh(b[..]); af_do(b[..], a[..], ar, fire, 1, false); #assert b[0].c[1].hp == 185;
+  b[0].aff_used = false; af_fresh(b[..]); af_do(b[..], a[..], ar, fire, 1, false); #assert b[0].c[1].hp == 185 && !b[0].aff_used;
+  af_fresh(b[..]); af_do(b[..], a[..], s, RsStep.{kind = RS_S_DAMAGE, a = 4, b = 6, c = RS_COLD}, 1, false); #assert b[0].c[1].hp == 188;   // another type
+  b[0].c[0].rank[RS_RK_AFFINITY] = 0; b[0].aff_used = false;
+  af_fresh(b[..]); af_do(b[..], a[..], s, RsStep.{kind = RS_S_DAMAGE, a = 4, b = 6, c = 0}, 1, false); #assert b[0].c[1].hp == 188;   // none chosen is no type
+  // Agonizing Blast: the chosen cantrip's damage gets the Charisma modifier
+  b[0].c[0].rank[RS_RK_AGONIZING] = SP_BLESS; a[0].tier_dice = false;
+  af_fresh(b[..]); af_do(b[..], a[..], c, RsStep.{kind = RS_S_DAMAGE, a = 1, b = 10, c = RS_FORCE}, 0, false);
+  #assert b[0].c[1].hp == 192 && af_said(b[..], 0, "  Garr takes 8 Force (1d10 + 3)");
+  af_fresh(b[..]); af_do(b[..], a[..], s, RsStep.{kind = RS_S_DAMAGE, a = 1, b = 10, c = RS_FORCE}, 1, false); #assert b[0].c[1].hp == 195;   // a leveled spell: no
+  b[0].c[0].rank[RS_RK_AGONIZING] = SP_HEX;
+  af_fresh(b[..]); af_do(b[..], a[..], c, RsStep.{kind = RS_S_DAMAGE, a = 1, b = 10, c = RS_FORCE}, 0, false); #assert b[0].c[1].hp == 195;
+  // enfeebled: a d8 off, told
+  b[0].c[0].eff[0] = RsEffect.{kind = EF_ENFEEBLED, by = 1, spell = SP_RAY_OF_ENFEEBLEMENT, until = 9000, save = RS_CON};
+  af_fresh(b[..]); af_do(b[..], a[..], s, fire, 1, false); #assert b[0].c[1].hp == 192 && af_said(b[..], 0, "  Garr takes 8 Fire (4d6, -4 enfeebled)");
+}
+#test "affect: a hit's damage brings Hex and Hunter's Mark; a save's damage doesn't" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]); af_fresh(b[..]);
+  b[0].c[1].eff[0] = RsEffect.{kind = EF_HEX, cond = RS_STR, by = 0, spell = SP_HEX, until = 9000, save = -1};
+  a: [1] RsAffect; s := af_spell(1, false, 0); fire := RsStep.{kind = RS_S_DAMAGE, a = 2, b = 6, c = RS_FIRE};
+  af_do(b[..], a[..], s, fire, 1, false); #assert b[0].c[1].hp == 194;
+  a[0].attack_hit = true; af_fresh(b[..]); af_do(b[..], a[..], s, fire, 1, false); #assert b[0].c[1].hp == 191;
+  a[0].crit = true; af_fresh(b[..]); af_do(b[..], a[..], s, fire, 1, false); #assert b[0].c[1].hp == 200 - 12 - 6;
+}
+#test "affect: Finger of Death: a Humanoid it killed rises at the start of the caster's next turn; not one alive, not a beast, not one already rising" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]);
+  a: [1] RsAffect; s := af_spell(7, false, 0); rise := RsStep.{kind = RS_S_RISE};
+  b[0].c[1].humanoid = true; b[0].c[1].rise_by = -1; garr := b[0].c[1];
+  af_do(b[..], a[..], s, rise, 7, false); #assert b[0].c[1].rise_by == -1;   // alive
+  b[0].c[1].dead = true; b[0].c[1].hp = 0;
+  af_do(b[..], a[..], s, rise, 7, false);
+  #assert b[0].c[1].rise_by == 0 && b[0].c[1].rise_at == b[0].c[0].turn_at + rs_beat(b[..])
+    && af_ev(b[..], 0, RS_EV_CONDITION, SP_BLESS, 0, 1, 0, 0, RS_FT_NONE, "  Garr will rise as a Zombie at the start of Ama's next turn");
+  seq := b[0].book[0].seq; b[0].c[1].rise_by = 0; b[0].c[1].rise_at = 7;
+  af_do(b[..], a[..], s, rise, 7, false); #assert b[0].c[1].rise_at == 7 && b[0].book[0].seq == seq;   // already rising (by the first creature)
+  // off the caster's own turn: the start of its next turn is its turn_at
+  b[0].c[1] = garr; b[0].c[1].dead = true; b[0].c[1].hp = 0; b[0].who = 1;
+  af_do(b[..], a[..], s, rise, 7, false); #assert b[0].c[1].rise_by == 0 && b[0].c[1].rise_at == b[0].c[0].turn_at;
+  b[0].who = 0; b[0].c[1] = garr; b[0].c[1].dead = true; b[0].c[1].humanoid = false; seq = b[0].book[0].seq;
+  af_do(b[..], a[..], s, rise, 7, false); #assert b[0].c[1].rise_by == -1 && b[0].book[0].seq == seq;
+}
+// A program of two steps with the effect demand of none: a save and a damage, run whole.
+#test "affect: the program: every step in order, a missed attack stops it, a Potent miss runs only damage, beams keep their dice, Concentration lost stops it" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]); af_fresh(b[..]);
+  b[0].c[0].score[RS_WIS] = 16; b[0].c[1].ac = 30; scope: [1] RsDamageScope;
+  s := af_spell(1, false, 0); s.step_n = 3;
+  s.steps[0] = RsStep.{kind = RS_S_ATTACK}; s.steps[1] = RsStep.{kind = RS_S_DAMAGE, a = 2, b = 6, c = RS_FIRE}; s.steps[2] = RsStep.{kind = RS_S_EXPOSE};
+  rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 1, -1, false, s, scope[..], 0);
+  #assert b[0].c[1].hp == 200 && af_eff(b[0].c[1], EF_EXPOSED).kind == EF_NONE;   // missed: no more
+  b[0].c[1].ac = 1; rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 1, -1, false, s, scope[..], 0);
+  #assert b[0].c[1].hp == 194 && af_eff(b[0].c[1], EF_EXPOSED).kind == EF_EXPOSED;
+  // a cantrip that misses with Potent Cantrip: the damage, halved, and no other step
+  b[0].c[1].eff[0] = RsEffect.{}; af_fresh(b[..]); b[0].c[1].ac = 30;
+  c := s; c.level = 0; b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_POTENT_CANTRIP, true);
+  rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 0, -1, false, c, scope[..], 0);
+  #assert b[0].c[1].hp == 200 - 6 && af_eff(b[0].c[1], EF_EXPOSED).kind == EF_NONE;   // 4d6 at tier 2 is 12, halved
+  b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_POTENT_CANTRIP, false);
+  // a beam's cantrip (a REPEAT step with c 1) keeps its dice: the beams are the tier
+  b[0].c[1].ac = 1; af_fresh(b[..]);
+  beam := c; beam.steps[2] = RsStep.{kind = RS_S_REPEAT, a = 1, c = 1};
+  rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 0, -1, false, beam, scope[..], 0); #assert b[0].c[1].hp == 194;
+  af_fresh(b[..]); beam.steps[2].c = 0;
+  rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 0, -1, false, beam, scope[..], 0); #assert b[0].c[1].hp == 188;
+  af_fresh(b[..]); beam.steps[2] = RsStep.{kind = RS_S_HEAL, a = 0, b = 1, c = 1};   // c 1 on a step that is no REPEAT
+  rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 0, -1, false, beam, scope[..], 0); #assert b[0].c[1].hp == 188 + 3;
+  // a Concentration spell the caster no longer holds does nothing
+  af_fresh(b[..]); k := s; k.concentration = true; b[0].c[0].conc = SP_HEX;
+  rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 1, -1, false, k, scope[..], 0); #assert b[0].c[1].hp == 200;
+  b[0].c[0].conc = SP_BLESS; rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 1, -1, false, k, scope[..], 0); #assert b[0].c[1].hp == 194;
+  // no place for what it would leave: nothing at all
+  af_fresh(b[..]); t := s; t.steps[2] = RsStep.{kind = RS_S_CONDITION, a = RS_POISONED};
+  for q: 0..<RS_EFFECTS { b[0].c[1].eff[q] = RsEffect.{kind = EF_BLESS, by = 1, spell = SP_BLESS, until = 9000, save = -1}; }
+  rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 1, -1, false, t, scope[..], 0); #assert b[0].c[1].hp == 200;
+  b[0].c[1].eff[RS_EFFECTS - 1] = RsEffect.{};
+  rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 1, -1, false, t, scope[..], 0); #assert b[0].c[1].hp == 194 && rs_has(b[0].c[1], RS_POISONED) || af_eff(b[0].c[1], EF_COND).cond == RS_POISONED;
+}
+#test "affect: an area spell's Total Cover keeps it off; Magic Missile against Shield: the ward first, then no damage, told" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]); af_fresh(b[..]);
+  scope: [1] RsDamageScope;
+  s := af_spell(1, false, 0); s.area = RS_A_SPHERE; s.area_ft = 20; s.step_n = 1; s.steps[0] = RsStep.{kind = RS_S_DAMAGE, a = 2, b = 6, c = RS_FIRE};
+  #assert rs_cover_put(b[..], 0, 1, RS_COVER_TOTAL);
+  rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 1, -1, false, s, scope[..], 0);
+  #assert b[0].c[1].hp == 200;
+  n := s; n.area = RS_A_NONE; rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 1, -1, false, n, scope[..], 0); #assert b[0].c[1].hp == 194;   // (one target: cover is the request's)
+  #assert rs_cover_put(b[..], 0, 1, RS_COVER_NONE);
+  af_fresh(b[..]); rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 1, -1, false, s, scope[..], 0); #assert b[0].c[1].hp == 194;
+  // Magic Missile: one already warded takes none
+  m := rs_spell(SP_MAGIC_MISSILE); #assert m.shield_stops;
+  af_fresh(b[..]); b[0].c[1].eff[0] = RsEffect.{kind = EF_SHIELD, by = 1, spell = SP_SHIELD, until = 9000, save = -1};
+  rs_affect_program_scoped(b[..], 0, 1, SP_MAGIC_MISSILE, 1, -1, false, m, scope[..], 0);
+  #assert b[0].c[1].hp == 200 && af_ev(b[..], 0, RS_EV_DAMAGE, SP_MAGIC_MISSILE, 0, 1, 0, RS_FORCE, RS_FT_NONE, "  Garr takes no damage from Magic Missile (Shield)");
+  // one not warded with no Shield to cast takes it
+  b[0].c[1].eff[0] = RsEffect.{}; af_fresh(b[..]);
+  rs_affect_program_scoped(b[..], 0, 1, SP_MAGIC_MISSILE, 1, -1, false, m, scope[..], 0); #assert b[0].c[1].hp < 200;
+}
+#test "affect: Repelling Blast pushes 10 feet on a hit with the chosen cantrip, stopped by the edge or a creature; not a leveled spell's, not the dead" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]); af_fresh(b[..]);
+  b[0].c[1].ac = 1; scope: [1] RsDamageScope;
+  c := af_spell(0, false, 0); c.step_n = 2; c.steps[0] = RsStep.{kind = RS_S_ATTACK}; c.steps[1] = RsStep.{kind = RS_S_DAMAGE, a = 1, b = 2, c = RS_FORCE};
+  b[0].c[0].rank[RS_RK_REPELLING] = SP_BLESS;
+  rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 0, -1, false, c, scope[..], 0);
+  #assert b[0].c[1].x == 5 && af_ev(b[..], 0, RS_EV_PUSH, SP_BLESS, 0, 1, 10, 0, RS_FT_NONE, "  Repelling Blast pushes Garr 10 feet");
+  rs_place(b[..], 1, 18, 1); rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 0, -1, false, c, scope[..], 0);
+  #assert b[0].c[1].x == 19 && af_ev(b[..], 0, RS_EV_PUSH, SP_BLESS, 0, 1, 5, 0, RS_FT_NONE, "  Repelling Blast pushes Garr 5 feet");
+  seq := b[0].book[0].seq; rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 0, -1, false, c, scope[..], 0);
+  #assert b[0].c[1].x == 19 && rs_recent_at(b[0].book[..], 0).kind != RS_EV_PUSH;   // nowhere: nothing said
+  // up and left, to the corner; and up to a creature in the way
+  rs_place(b[..], 0, 5, 5); rs_place(b[..], 1, 1, 1); rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 0, -1, false, c, scope[..], 0);
+  #assert b[0].c[1].x == 0 && b[0].c[1].y == 0;
+  rs_place(b[..], 0, 1, 1); rs_place(b[..], 1, 3, 3); o := rs_add(b[..], rs_fighter("Wall", 1, 3), 5, 5);
+  rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 0, -1, false, c, scope[..], 0); #assert b[0].c[1].x == 4 && b[0].c[1].y == 4 && o >= 0;
+  // another cantrip, a leveled spell, a miss, the dead: no push
+  rs_place(b[..], 1, 3, 1); b[0].c[0].rank[RS_RK_REPELLING] = SP_HEX;
+  rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 0, -1, false, c, scope[..], 0); #assert b[0].c[1].x == 3;
+  b[0].c[0].rank[RS_RK_REPELLING] = SP_BLESS; l := c; l.level = 1;
+  rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 1, -1, false, l, scope[..], 0); #assert b[0].c[1].x == 3;
+  b[0].c[1].ac = 30; rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 0, -1, false, c, scope[..], 0); #assert b[0].c[1].x == 3;
+  b[0].c[1].ac = 1; b[0].c[1].hp = 1; b[0].c[1].hp_max = 1; b[0].c[1].score[RS_CON] = 1;
+  rs_affect_program_scoped(b[..], 0, 1, SP_BLESS, 0, -1, false, c, scope[..], 0); #assert b[0].c[1].dead && b[0].c[1].x == 3;
+}
+// A Warlock first, concentrating on Hex on the second (down, its curse on Dexterity), a third 20 feet off.
+af_hex :: (b: [] RsBattle) {
+  b[0].w = 40; b[0].h = 8; b[0].dice[0].fixed = true; b[0].clock = 1000;
+  w := rs_add(b, rs_warlock("Vesk", 0, 3, SP_ELDRITCH_BLAST), 1, 1);
+  t := rs_add(b, rs_fighter("Brand", 1, 3), 3, 1); u := rs_add(b, rs_fighter("Rowan", 1, 3), 5, 1);
+  b[0].c[t].hp = 0;
+  b[0].c[w].conc = SP_HEX; b[0].c[w].conc_until = 9000;
+  b[0].c[t].eff[3] = RsEffect.{kind = EF_HEX, cond = RS_DEX, by = w, spell = SP_HEX, until = 9000, save = -1};
+  b[0].c[w].note[RS_NT_CURSE_FREE] = 1; b[0].c[w].note[RS_NT_CURSE_AFTER] = b[0].c[w].turn_at - 1;
+  b[0].who = w; b[0].turn = RsTurn.{};
+  #assert u == 2;
+}
+#test "affect: Hex moves: a Bonus Action on a later turn than its target dropped, while the Warlock holds it; its ability goes with it" #steps 400000000 {
+  for mode: 0..<13 {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_hex(b[..]);
+    j := 2;
+    if mode == 1 { b[0].who = 1; }
+    if mode == 2 { b[0].turn.bonus = true; }
+    if mode == 3 { b[0].c[0].cond = RS_STUNNED; }
+    if mode == 4 { b[0].c[0].conc = SP_FIRE_BOLT; }
+    if mode == 5 { b[0].c[0].note[RS_NT_CURSE_FREE] = 0; }
+    if mode == 6 { b[0].c[0].note[RS_NT_CURSE_AFTER] = b[0].c[0].turn_at; }
+    if mode == 7 { j = -1; }
+    if mode == 8 { j = b[0].n; b[0].c[j] = b[0].c[2]; }
+    if mode == 9 { b[0].c[2].hp = 0; }
+    if mode == 10 { rs_place(b[..], 2, 1 + 1 + rs_spell(SP_HEX).range_ft / RS_SQUARE, 1); }
+    if mode == 11 { for k: 0..<RS_EFFECTS { b[0].c[2].eff[k] = RsEffect.{kind = EF_BLESS, by = 2, spell = SP_BLESS, until = 9000, save = -1}; } }
+    if mode == 12 { for k: 0..<RS_EFFECTS { b[0].c[2].eff[k] = RsEffect.{kind = EF_BLESS, by = 2, spell = SP_BLESS, until = 9000, save = -1}; } b[0].c[2].eff[5] = RsEffect.{kind = EF_HEX, cond = RS_CON, by = 0, spell = SP_HEX, until = 9000, save = -1}; }
+    ok := rs_hex_move(b[..], 0, j);
+    #assert ok == (mode == 0 || mode == 12);
+    if !ok { #assert !b[0].turn.bonus || mode == 2; #assert b[0].c[1].eff[3].kind == EF_HEX || mode == 12; continue; }
+    #assert b[0].turn.bonus && b[0].c[1].eff[3].kind == EF_NONE && b[0].c[0].note[RS_NT_CURSE_FREE] == 0;
+    e := af_eff(b[0].c[2], EF_HEX);
+    #assert af_same(e, EF_HEX, ifx mode == 12 then RS_CON else RS_DEX, 0, SP_HEX, 9000, 0, -1, 0);   // the last record's ability
+    for k: 0..<RS_EFFECTS { if k != 5 && mode == 12 { #assert b[0].c[2].eff[k].kind == EF_BLESS; } }
+    #assert af_ev(b[..], 0, RS_EV_CAST, SP_HEX, 0, 2, 0, 0, RS_FT_NONE, "Vesk moves Hex to Rowan");
+  }
+  // in range at its edge; Hunter's Mark moves as well, and a record with no ability carries Strength
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_hex(b[..]);
+  rs_place(b[..], 2, 1 + rs_spell(SP_HEX).range_ft / RS_SQUARE, 1); #assert rs_hex_move(b[..], 0, 2);
+  b2: [1] RsBattle; b2_room: [1] RsRoom; rs_have(b2[..], b2_room[..]); af_hex(b2[..]);
+  b2[0].c[0].conc = SP_HUNTERS_MARK; b2[0].c[1].eff[3] = RsEffect.{kind = EF_MARK, by = 0, spell = SP_HUNTERS_MARK, until = 9000, save = -1};
+  #assert rs_hex_move(b2[..], 0, 2) && af_eff(b2[0].c[2], EF_MARK).kind == EF_MARK && b2[0].c[1].eff[3].kind == EF_NONE;
+  b3: [1] RsBattle; b3_room: [1] RsRoom; rs_have(b3[..], b3_room[..]); af_hex(b3[..]); b3[0].c[1].eff[3] = RsEffect.{};
+  #assert rs_hex_move(b3[..], 0, 2) && af_eff(b3[0].c[2], EF_HEX).cond == RS_STR;
+}
+// A Druid first, holding Entangle's zone 0; a Fighter second, Restrained by it, on its turn.
+af_held :: (b: [] RsBattle, str: int) {
+  b[0].w = 16; b[0].h = 8; b[0].dice[0].fixed = true;
+  _ := rs_add(b, rs_druid("Caster", 0, 3), 1, 1);
+  _ = rs_add(b, rs_fighter("Garr", 1, 3), 2, 1);
+  b[0].c[0].conc = SP_ENTANGLE; b[0].c[1].score[RS_STR] = str; b[0].c[1].uses[RS_USE_WIND] = 0;   // (no Tactical Mind)
+  b[0].zone[0] = RsZone.{on = true, spell = SP_ENTANGLE, by = 0, until = 60};
+  #assert rs_put_effect(b, 1, RsEffect.{kind = EF_ZONE_RESTRAIN, cond = 0, by = 0, spell = SP_ENTANGLE, until = 60, save = -1});
+  b[0].who = 1; b[0].turn = RsTurn.{};
+}
+#test "affect: escaping Entangle: an Action's Strength (Athletics) check against its caster's DC; free, or still held; told" #steps 400000000 {
+  for mode: 0..<8 {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_held(b[..], ifx mode == 1 then 1 else 30);
+    #assert rs_has(b[0].c[1], RS_RESTRAINED) && b[0].c[1].restrained_by == 0;
+    if mode == 2 { b[0].who = 0; }
+    if mode == 3 { b[0].turn.action = true; }
+    if mode == 4 { b[0].c[1].cond |= RS_STUNNED; }
+    if mode == 5 { b[0].zone[0].on = false; }
+    if mode == 6 { b[0].c[1].restrained_by = -1; }
+    if mode == 7 { b[0].c[1].eff[5] = RsEffect.{kind = EF_COND, cond = RS_RESTRAINED, by = 0, spell = SP_HOLD_PERSON, until = 60, save = -1}; }
+    ok := rs_escape(b[..], 1);
+    dc := rs_spell_dc(b[0].c[0]);
+    if mode >= 2 && mode <= 6 { #assert !ok && rs_has(b[0].c[1], RS_RESTRAINED) && b[0].turn.action == (mode == 3) && b[0].book[0].seq == 0; continue; }
+    #assert b[0].turn.action && b[0].book[0].seq == 1;
+    ev := rs_recent_at(b[0].book[..], 0);
+    l: [1] RsLine; rs_add_text(l[..], "Garr strains against the plants: STR (Athletics) "); rs_add_int(l[..], ev.amount); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
+    rs_add_text(l[..], ifx mode == 1 then ": still held" else ": free");
+    #assert ev.kind == RS_EV_CONDITION && ev.spell.value == -1 && ev.by.value == 1 && ev.to.value == 1 && cast(string) ev.text[0..<ev.text_n] == cast(string) l[0].buf[0..<l[0].n];
+    if mode == 1 { #assert !ok && rs_has(b[0].c[1], RS_RESTRAINED) && b[0].c[1].restrained_by == 0 && ev.amount < dc; }
+    else {
+      #assert ok && ev.amount >= dc && b[0].c[1].restrained_by == -1 && af_eff(b[0].c[1], EF_ZONE_RESTRAIN).kind == EF_NONE;
+      #assert rs_has(b[0].c[1], RS_RESTRAINED) == (mode == 7);   // another hold keeps it Restrained
+    }
+  }
+}
+#test "affect: shaking one out of Hypnotic Pattern: an Action within 5 feet, of another dazed creature; told" #steps 400000000 {
+  for mode: 0..<9 {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]);
+    rs_place(b[..], 1, 2, 1);
+    b[0].c[1].eff[2] = RsEffect.{kind = EF_DAZED, cond = RS_CHARMED | RS_INCAPACITATED, by = 1, spell = SP_HYPNOTIC_PATTERN, until = 9000, save = -1};
+    i := 0; j := 1;
+    if mode == 1 { i = -1; } if mode == 2 { j = -1; } if mode == 3 { j = b[0].n; b[0].c[j] = b[0].c[1]; } if mode == 4 { j = 0; }
+    if mode == 5 { b[0].who = 1; } if mode == 6 { b[0].turn.action = true; } if mode == 7 { b[0].c[0].cond = RS_STUNNED; }
+    if mode == 8 { rs_place(b[..], 1, 3, 1); }
+    ok := rs_shake(b[..], i, j);
+    #assert ok == (mode == 0);
+    if !ok { #assert b[0].c[1].eff[2].kind == EF_DAZED && b[0].book[0].seq == 0; continue; }
+    #assert b[0].c[1].eff[2].kind == EF_NONE && b[0].turn.action && af_ev(b[..], 0, RS_EV_END, SP_HYPNOTIC_PATTERN, 0, 1, 0, 0, RS_FT_NONE, "Ama shakes Garr out of its stupor");
+    #assert !rs_shake(b[..], 0, 1);   // nothing left to shake
+  }
+  // past the battle's count is no one, even with a stupor
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]);
+  n := b[0].n; b[0].c[n] = b[0].c[0]; b[0].who = n;
+  #assert !rs_shake(b[..], n, 1);
+}
+// A Cleric (team 0) first holding Spirit Guardians (15 feet), cast with slot `slot`; a Fighter foe second.
+af_guard :: (b: [] RsBattle, slot: int) {
+  b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true; b[0].turn_no = 4;
+  _ := rs_add(b, rs_cleric("Ama", 0, 5), 1, 1);
+  g := rs_add(b, rs_fighter("Garr", 1, 3), 4, 1); b[0].c[g].hp = 200; b[0].c[g].hp_max = 200;
+  b[0].c[0].conc = SP_SPIRIT_GUARDIANS; b[0].c[0].conc_slot = slot; b[0].guards = 1;
+}
+#test "affect: Spirit Guardians: a foe within its reach saves once a turn; 3d8 Radiant, a d8 more a slot level above, half on a success" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_guard(b[..], 3);
+  dc := rs_dc(b[..], 0); wis := 10 + rs_save_bonus(b[0].c[1], RS_WIS);
+  #assert wis < dc && rs_guarded(b[..], 1) && !rs_guarded(b[..], 0);
+  rs_guardians(b[..], 1);
+  l: [1] RsLine; rs_add_text(l[..], "  Garr meets Ama's Spirit Guardians: WIS save "); rs_add_int(l[..], wis); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc); rs_add_text(l[..], ": 12 Radiant");
+  #assert b[0].c[1].hp == 188 && b[0].c[1].note[RS_NT_EMANATION_TURN] == 5 && af_ev(b[..], 0, RS_EV_DAMAGE, SP_SPIRIT_GUARDIANS, 0, 1, 12, RS_RADIANT, RS_FT_NONE, cast(string) l[0].buf[0..<l[0].n]);
+  rs_guardians(b[..], 1); #assert b[0].c[1].hp == 188;   // once a turn
+  b[0].turn_no = 5; rs_guardians(b[..], 1); #assert b[0].c[1].hp == 176;
+  // a higher slot: a d8 more each level; a success: half; resisted
+  b[0].turn_no = 6; b[0].c[0].conc_slot = 5; rs_guardians(b[..], 1); #assert b[0].c[1].hp == 176 - 20;
+  b[0].turn_no = 7; b[0].c[0].conc_slot = 2; rs_guardians(b[..], 1); #assert b[0].c[1].hp == 156 - 12;   // below its level: none more
+  b[0].turn_no = 8; b[0].c[0].conc_slot = 3; b[0].c[1].score[RS_WIS] = 30; wis = 10 + rs_save_bonus(b[0].c[1], RS_WIS);
+  rs_guardians(b[..], 1);
+  l[0] = rs_line(); rs_add_text(l[..], "  Garr meets Ama's Spirit Guardians: WIS save "); rs_add_int(l[..], wis); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc); rs_add_text(l[..], ": half, 6 Radiant");
+  #assert b[0].c[1].hp == 144 - 6 && af_said(b[..], 0, cast(string) l[0].buf[0..<l[0].n]);
+  b[0].turn_no = 9; b[0].c[1].resist = 1 << RS_RADIANT; rs_guardians(b[..], 1); #assert b[0].c[1].hp == 138 - 3;
+}
+#test "affect: Spirit Guardians reach no one when none stand, an ally, one past its reach, one that is down; Speed is halved only in a foe's" #steps 400000000 {
+  for mode: 0..<7 {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_guard(b[..], 3);
+    if mode == 1 { b[0].guards = 0; }
+    if mode == 2 { b[0].c[1].team = 0; }
+    if mode == 3 { rs_place(b[..], 1, 5, 1); }
+    if mode == 4 { b[0].c[1].hp = 0; }
+    if mode == 5 { b[0].c[0].conc = SP_HEX; }
+    if mode == 6 { b[0].c[0].conc = -1; }
+    hp := b[0].c[1].hp;
+    rs_guardians(b[..], 1);
+    #assert (b[0].c[1].hp == hp) == (mode != 0);
+    #assert rs_guarded(b[..], 1) == (mode == 0 || mode == 4);
+  }
+  // at its edge, 15 feet
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_guard(b[..], 3); rs_place(b[..], 1, 4, 1);
+  #assert rs_feet_to(b[..], 0, 1) == 15 && rs_guarded(b[..], 1);
+  // the second guardian of a foe's: the first one met covers the turn
+  c := rs_add(b[..], rs_cleric("Bram", 0, 5), 6, 1); b[0].c[c].conc = SP_SPIRIT_GUARDIANS; b[0].c[c].conc_slot = 3;
+  rs_guardians(b[..], 1); #assert b[0].c[1].hp == 188 && rs_recent_at(b[0].book[..], 0).by.value == 0;
+  // a creature past the count holds none
+  b2: [1] RsBattle; b2_room: [1] RsRoom; rs_have(b2[..], b2_room[..]); af_guard(b2[..], 3); b2[0].c[0].conc = -1;
+  b2[0].c[b2[0].n] = b2[0].c[0]; b2[0].c[b2[0].n].conc = SP_SPIRIT_GUARDIANS;
+  rs_guardians(b2[..], 1); #assert b2[0].c[1].hp == 200 && !rs_guarded(b2[..], 1);
+}
+#test "affect: a step into a foe's Spirit Guardians, or its own Emanation onto a foe, asks the save; a step costs its square and marks the turn moved" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_guard(b[..], 3);
+  rs_place(b[..], 1, 5, 1); rs_start_turn(b[..], 1); b[0].turn_no = 4; f0 := rs_turn_feet(b[0].turn);
+  #assert !b[0].turn.moved && rs_step_to(b[..], 1, 4, 1) && b[0].c[1].x == 4 && b[0].turn.moved && rs_turn_feet(b[0].turn) == f0 - 5 && b[0].c[1].hp == 188;
+  #assert rs_step_to(b[..], 1, 5, 1) && b[0].c[1].hp == 188;   // out again: nothing
+  #assert !rs_step_to(b[..], 1, 7, 1) && b[0].c[1].x == 5;   // not a neighbouring square
+  // the Cleric steps toward it: its Emanation reaches the Fighter, once this turn
+  b[0].turn_no = 5; b[0].who = 0; b[0].turn = RsTurn.{move_left = 6, move_tracked = true};
+  #assert rs_step_to(b[..], 0, 2, 1) && b[0].c[1].hp == 176;
+  #assert rs_step_to(b[..], 0, 1, 1) && rs_step_to(b[..], 0, 2, 1) && b[0].c[1].hp == 176;
+  // with no Emanation standing, a step asks nothing
+  b[0].turn_no = 6; b[0].guards = 0; b[0].who = 1; b[0].turn = RsTurn.{move_left = 6, move_tracked = true};
+  #assert rs_step_to(b[..], 1, 4, 1) && b[0].c[1].hp == 176;
+  // its own Emanation spares itself and allies: a Cleric stepping beside a friend asks nothing of it
+  b2: [1] RsBattle; b2_room: [1] RsRoom; rs_have(b2[..], b2_room[..]); af_guard(b2[..], 3); b2[0].c[1].team = 0; rs_place(b2[..], 1, 6, 1);
+  b2[0].who = 0; b2[0].turn = RsTurn.{move_left = 6, move_tracked = true};
+  #assert rs_step_to(b2[..], 0, 2, 1) && b2[0].c[1].hp == 200;
+}
+#test "affect: the wrappers: one target's program by its spell, keeping or dropping the Concentration a passed save leaves nothing to" #steps 400000000 {
+  for mode: 0..<4 {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]); af_fresh(b[..]);
+    b[0].c[1].score[RS_WIS] = 30; b[0].c[0].conc = SP_HOLD_PERSON; b[0].c[0].conc_until = 9000;
+    scope: [1] RsDamageScope;
+    if mode == 0 { rs_affect(b[..], 0, 1, SP_HOLD_PERSON, 2, -1); }
+    if mode == 1 { rs_affect_as(b[..], 0, 1, SP_HOLD_PERSON, 2, -1, true); }
+    if mode == 2 { rs_affect_program(b[..], 0, 1, SP_HOLD_PERSON, 2, -1, false, rs_spell(SP_HOLD_PERSON)); }
+    if mode == 3 { rs_affect_scoped(b[..], 0, 1, SP_HOLD_PERSON, 2, -1, scope[..]); }
+    #assert !rs_has(b[0].c[1], RS_PARALYZED) && rs_recent_at(b[0].book[..], 0).kind == RS_EV_SAVE;
+    #assert b[0].c[0].conc == (ifx mode == 1 then SP_HOLD_PERSON else -1);
+  }
+  // the program is the spell's: Fire Bolt's damage through rs_affect
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]); af_fresh(b[..]); b[0].c[1].ac = 1;
+  rs_affect(b[..], 0, 1, SP_FIRE_BOLT, 0, -1); #assert b[0].c[1].hp < 200;
+}
+#test "affect: an Enfeebled caster's spell attack has no Disadvantage (it is no Strength attack); a natural 20 is a Critical Hit, on seeded dice" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]); b[0].c[0].score[RS_WIS] = 16; b[0].c[1].ac = 16;
+  b[0].c[0].eff[0] = RsEffect.{kind = EF_ENFEEBLED, by = 1, spell = SP_RAY_OF_ENFEEBLEMENT, until = 9000, save = RS_CON};
+  a: [1] RsAffect; s := af_spell(1, false, 0);
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_ATTACK, a = 1}, 1, false);
+  #assert af_ev(b[..], 0, RS_EV_ATTACK, SP_BLESS, 0, 1, 16, 0, RS_FT_NONE, "  attack 10 + 6 = 16 vs AC 16: hit");
+  crits := 0; hits := 0;
+  for seed: 1..<81 {
+    x: [1] RsBattle; x_room: [1] RsRoom; rs_have(x[..], x_room[..]); af_stage(x[..]); x[0].dice[0].fixed = false; x[0].dice[0].state = cast(u64) (seed * 31337);
+    m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]); af_stage(m[..]); m[0].dice[0].fixed = false; m[0].dice[0].state = cast(u64) (seed * 31337);
+    x[0].c[1].ac = 30; m[0].c[1].ac = 30;   // only a 20 hits
+    r := rs_roll_attack_from(m[..], 0, 1, 0, rs_spell_attack(m[0].c[0]), 20, true, 0);
+    a[0] = RsAffect.{};
+    af_do(x[..], a[..], s, RsStep.{kind = RS_S_ATTACK}, 1, false);
+    #assert a[0].crit == r.crit && a[0].attack_hit == r.hit && rs_recent_at(x[0].book[..], 0).damage == (ifx r.crit then 1 else 0);
+    if r.crit { crits += 1; } if r.hit { hits += 1; }
+  }
+  #assert crits > 0 && hits == crits;
+}
+#test "affect: a save that fails on its own names the first reason it has; a held Bardic Inspiration die is told; Dexterity's cover from an area's point" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]); b[0].c[0].score[RS_WIS] = 16;
+  s := af_spell(1, false, 0); a: [1] RsAffect; garr := b[0].c[1];
+  conds := [4] int.[RS_PARALYZED, RS_PETRIFIED, RS_STUNNED, RS_UNCONSCIOUS]; why := [4] string.["Paralyzed", "Petrified", "Stunned", "Unconscious"];
+  for k: 0..<4 {
+    b[0].c[1] = garr; b[0].c[1].cond = conds[k] | RS_BLINDED; a[0] = RsAffect.{};   // Blinded too: no reason of its own
+    af_do(b[..], a[..], s, RsStep.{kind = RS_S_SAVE, a = RS_STR}, 1, false);
+    l: [1] RsLine; rs_add_text(l[..], "  Garr STR save fails ("); rs_add_text(l[..], why[k]); rs_add_text(l[..], ")");
+    #assert af_said(b[..], 0, cast(string) l[0].buf[0..<l[0].n]);
+  }
+  // a Bardic Inspiration die it holds is rolled on a failure and told
+  b[0].c[1] = garr; b[0].c[1].score[RS_WIS] = 10; b[0].c[1].eff = rs_state_value_put(b[0].c[1].eff, EF_INSPIRED, 6); a[0] = RsAffect.{};
+  seq := b[0].book[0].seq;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_SAVE, a = RS_WIS}, 1, false);
+  #assert rs_saw(b[..], seq, " (3 Inspiration) vs DC 14");
+  b[0].c[1] = garr; a[0] = RsAffect.{}; seq = b[0].book[0].seq;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_SAVE, a = RS_WIS}, 1, false); #assert !rs_saw(b[..], seq, "Inspiration");
+  // an area at a point: the cover from its point, not the caster's
+  b[0].c[1] = garr; dex := 10 + rs_save_bonus(b[0].c[1], RS_DEX);
+  ar := s; ar.area = RS_A_SPHERE; ar.area_ft = 20; ar.range_ft = 150;
+  #assert rs_cover_put(b[..], 0, 1, RS_COVER_HALF);
+  a[0] = RsAffect.{}; af_do(b[..], a[..], ar, RsStep.{kind = RS_S_SAVE, a = RS_DEX}, 1, false); #assert rs_recent_at(b[0].book[..], 0).amount == dex;
+  #assert rs_cover_put(b[..], RS_COVER_ORIGIN, 1, RS_COVER_THREE);
+  a[0] = RsAffect.{}; af_do(b[..], a[..], ar, RsStep.{kind = RS_S_SAVE, a = RS_DEX}, 1, false); #assert rs_recent_at(b[0].book[..], 0).amount == dex + 5;
+}
+#test "affect: Elemental Affinity for Acid; one save's roll is shared by the targets of a cast, an attack's is not; a d8 off for the enfeebled, told down to 1" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]); af_fresh(b[..]);
+  a: [1] RsAffect; s := af_spell(1, false, 0);
+  b[0].c[0].score[RS_CHA] = 16; b[0].c[0].rank[RS_RK_AFFINITY] = RS_ACID; #assert RS_ACID == 1;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_DAMAGE, a = 2, b = 6, c = RS_ACID}, 1, false); #assert b[0].c[1].hp == 200 - 9;
+  b[0].c[0].rank[RS_RK_AFFINITY] = 0;
+  // one scope, two targets' worth: a save's damage rolls once, an attack's each time
+  scope: [1] RsDamageScope; st := RsStep.{kind = RS_S_DAMAGE, a = 2, b = 6, c = RS_FIRE};
+  a[0] = RsAffect.{ran_save = true}; r0 := b[0].dice[0].rolled;
+  rs_affect_step(b[..], a[..], 0, 1, SP_BLESS, 1, -1, false, s, scope[..], 0, 0, st); rs_affect_step(b[..], a[..], 0, 1, SP_BLESS, 1, -1, false, s, scope[..], 0, 0, st);
+  #assert b[0].dice[0].rolled == r0 + 2;
+  scope2: [1] RsDamageScope; a[0] = RsAffect.{ran_save = true, ran_attack = true}; r0 = b[0].dice[0].rolled;
+  rs_affect_step(b[..], a[..], 0, 1, SP_BLESS, 1, -1, false, s, scope2[..], 0, 0, st); rs_affect_step(b[..], a[..], 0, 1, SP_BLESS, 1, -1, false, s, scope2[..], 0, 0, st);
+  #assert b[0].dice[0].rolled == r0 + 4;
+  scope3: [1] RsDamageScope; a[0] = RsAffect.{ran_attack = true}; r0 = b[0].dice[0].rolled;
+  rs_affect_step(b[..], a[..], 0, 1, SP_BLESS, 1, -1, false, s, scope3[..], 0, 0, st); rs_affect_step(b[..], a[..], 0, 1, SP_BLESS, 1, -1, false, s, scope3[..], 0, 0, st);
+  #assert b[0].dice[0].rolled == r0 + 4;
+  // enfeebled on seeded dice: the d8's every face is told, 1 too
+  ones := 0;
+  for seed: 1..<61 {
+    x: [1] RsBattle; x_room: [1] RsRoom; rs_have(x[..], x_room[..]); af_stage(x[..]); af_fresh(x[..]); x[0].dice[0].fixed = false; x[0].dice[0].state = cast(u64) (seed * 7919);
+    x[0].c[0].eff[0] = RsEffect.{kind = EF_ENFEEBLED, by = 1, spell = SP_RAY_OF_ENFEEBLEMENT, until = 9000, save = RS_CON};
+    d: [1] RsDice; d[0] = x[0].dice[0]; sc: [1] RsDamageScope;
+    want := rs_damage_roll(d[..], sc[..], 0, false, 3, 6, 0, 0, true);
+    a[0] = RsAffect.{};
+    af_do(x[..], a[..], s, RsStep.{kind = RS_S_DAMAGE, a = 3, b = 6, c = RS_FIRE}, 1, false);
+    l: [1] RsLine; rs_add_text(l[..], "  Garr takes "); rs_add_int(l[..], want.amount); rs_add_text(l[..], " Fire (3d6");
+    if want.weak > 0 { rs_add_text(l[..], ", -"); rs_add_int(l[..], want.weak); rs_add_text(l[..], " enfeebled"); }
+    rs_add_text(l[..], ")");
+    #assert af_said(x[..], 0, cast(string) l[0].buf[0..<l[0].n]) && x[0].c[1].hp == 200 - want.amount;
+    if want.weak == 1 { ones += 1; }
+  }
+  #assert ones > 0;
+}
+#test "affect: Disciple of Life with a 1st-level slot; Lesser Restoration on the first creature" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]);
+  a: [1] RsAffect; s := af_spell(1, false, 0);
+  b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_DISCIPLE, true);
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_HEAL, a = 1, b = 8}, 1, false);
+  #assert b[0].c[1].hp == 20 + 4 + 3 && af_said(b[..], 0, "  Garr regains 7 Hit Points (Disciple of Life +3)");
+  scope: [1] RsDamageScope;
+  b[0].c[0].cond = RS_POISONED; b[0].c[0].eff[1] = RsEffect.{kind = EF_COND, cond = RS_POISONED, by = 1, spell = SP_RAY_OF_SICKNESS, until = 9000, save = -1};
+  rs_affect_step(b[..], a[..], 1, 0, SP_BLESS, 2, -1, false, s, scope[..], 1, 0, RsStep.{kind = RS_S_RESTORE});
+  #assert !rs_has(b[0].c[0], RS_POISONED) && af_said(b[..], 0, "Garr ends a condition");
+}
+#test "affect: a push and Repelling Blast stop at each edge of the grid and at the first creature; a single square is told" #steps 400000000 {
+  for mode: 0..<2 {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+    blocker := rs_add(b[..], rs_fighter("Wall", 1, 3), 9, 4);              // the first creature
+    t := rs_add(b[..], rs_fighter("Garr", 1, 3), 1, 3); b[0].c[t].hp = 200; b[0].c[t].hp_max = 200; b[0].c[t].ac = 1;
+    c := rs_add(b[..], rs_warlock("Vesk", 0, 3, SP_ELDRITCH_BLAST), 3, 3); b[0].c[c].rank[RS_RK_REPELLING] = SP_BLESS;
+    a: [1] RsAffect; s := af_spell(0, false, 0); s.step_n = 2; s.steps[0] = RsStep.{kind = RS_S_ATTACK}; s.steps[1] = RsStep.{kind = RS_S_DAMAGE, a = 1, b = 2, c = RS_FORCE};
+    scope: [1] RsDamageScope;
+    // west to the edge: one square of the two
+    if mode == 0 { rs_affect_step(b[..], a[..], c, t, SP_BLESS, 0, -1, false, s, scope[..], c, 0, RsStep.{kind = RS_S_PUSH, a = 15}); }
+    else { rs_affect_program_scoped(b[..], c, t, SP_BLESS, 0, -1, false, s, scope[..], c); }
+    #assert b[0].c[t].x == 0 && b[0].c[t].y == 3 && rs_recent_at(b[0].book[..], 0).amount == 5;
+    #assert af_said(b[..], 0, ifx mode == 0 then "  Garr is pushed 5 feet" else "  Repelling Blast pushes Garr 5 feet");
+    // south to the bottom edge
+    rs_place(b[..], c, 5, 4); rs_place(b[..], t, 5, 6);
+    if mode == 0 { a[0] = RsAffect.{}; rs_affect_step(b[..], a[..], c, t, SP_BLESS, 0, -1, false, s, scope[..], c, 0, RsStep.{kind = RS_S_PUSH, a = 15}); }
+    else { rs_affect_program_scoped(b[..], c, t, SP_BLESS, 0, -1, false, s, scope[..], c); }
+    #assert b[0].c[t].y == 7 && b[0].c[t].x == 5;
+    // up to the first creature of the battle
+    rs_place(b[..], c, 5, 4); rs_place(b[..], t, 7, 4);
+    if mode == 0 { a[0] = RsAffect.{}; rs_affect_step(b[..], a[..], c, t, SP_BLESS, 0, -1, false, s, scope[..], c, 0, RsStep.{kind = RS_S_PUSH, a = 15}); }
+    else { rs_affect_program_scoped(b[..], c, t, SP_BLESS, 0, -1, false, s, scope[..], c); }
+    #assert b[0].c[t].x == 8 && b[0].c[blocker].x == 9;
+  }
+}
+#test "affect: Faerie Fire outlines one that failed its save; an outline or a glow ends Invisible and nothing else" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]);
+  a: [1] RsAffect; s := af_spell(1, true, 60);
+  a[0] = RsAffect.{ran_save = true};
+  b[0].c[1].cond = RS_INVISIBLE | RS_BLINDED;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_OUTLINE}, 1, false);
+  #assert af_eff(b[0].c[1], EF_OUTLINED).kind == EF_OUTLINED && b[0].c[1].cond == RS_BLINDED;
+  b[0].c[1].cond = RS_INVISIBLE | RS_BLINDED;
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_GLOW}, 0, false);
+  #assert b[0].c[1].cond == RS_BLINDED;
+}
+#test "affect: Magic Missile at one who can cast Shield: the ward goes up first, and the darts do nothing" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  c := rs_add(b[..], rs_cleric("Ama", 0, 5), 1, 1);
+  w := rs_add(b[..], rs_wizard("Mordra", 1, 3), 4, 1); slots := b[0].c[w].slots[1]; hp := b[0].c[w].hp;
+  scope: [1] RsDamageScope; m := rs_spell(SP_MAGIC_MISSILE);
+  rs_affect_program_scoped(b[..], c, w, SP_MAGIC_MISSILE, 1, -1, false, m, scope[..], c);
+  #assert rs_effect(b[0].c[w], EF_SHIELD) && b[0].c[w].reacted && b[0].c[w].slots[1] == slots - 1 && b[0].c[w].hp == hp;
+}
+// A Warlock third holding Hex; its old target and the new one are the first two.
+#test "affect: Hex moves from or to the first creature; a place another's record holds is no place; one free place is enough" #steps 400000000 {
+  for mode: 0..<4 {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 8; b[0].dice[0].fixed = true; b[0].clock = 1000;
+    first := rs_add(b[..], rs_fighter("First", 1, 3), 3, 1); second := rs_add(b[..], rs_fighter("Second", 1, 3), 5, 1);
+    w := rs_add(b[..], rs_warlock("Vesk", 0, 3, SP_ELDRITCH_BLAST), 1, 1);
+    old := ifx mode == 1 then second else first; new := ifx mode == 1 then first else second;
+    b[0].c[old].hp = 0;
+    b[0].c[w].conc = SP_HEX; b[0].c[w].conc_until = 9000;
+    b[0].c[old].eff[2] = RsEffect.{kind = EF_HEX, cond = RS_WIS, by = w, spell = SP_HEX, until = 9000, save = -1};
+    b[0].c[w].note[RS_NT_CURSE_FREE] = 1; b[0].c[w].note[RS_NT_CURSE_AFTER] = b[0].c[w].turn_at - 1;
+    b[0].who = w; b[0].turn = RsTurn.{};
+    if mode >= 2 {
+      for k: 0..<RS_EFFECTS { b[0].c[new].eff[k] = RsEffect.{kind = EF_BLESS, by = new, spell = SP_BLESS, until = 9000, save = -1}; }
+      b[0].c[new].eff[4] = RsEffect.{kind = EF_HEX, cond = RS_CON, by = old, spell = SP_HEX, until = 9000, save = -1};   // another's Hex
+      if mode == 3 { b[0].c[new].eff[6] = RsEffect.{}; }   // and one place free
+    }
+    ok := rs_hex_move(b[..], w, new);
+    #assert ok == (mode != 2);
+    if ok { #assert af_eff(b[0].c[new], EF_HEX).by == w || b[0].c[new].eff[6].by == w; #assert b[0].c[old].eff[2].kind == EF_NONE; }
+    else { #assert b[0].c[old].eff[2].kind == EF_HEX && !b[0].turn.bonus; }
+    if mode <= 1 { #assert af_same(af_eff(b[0].c[new], EF_HEX), EF_HEX, RS_WIS, w, SP_HEX, 9000, 0, -1, 0); }
+  }
+}
+#test "affect: escaping: one not Restrained is refused; the check is Athletics, and a Frightened one blinded to its fear makes it plainly; other zones' holds stay" #steps 4000000000 {
+  // Blinded but not Restrained, with a zone named: refused
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_held(b[..], 30);
+  for k: 0..<RS_EFFECTS { b[0].c[1].eff[k] = RsEffect.{}; } b[0].c[1].cond = RS_BLINDED; b[0].c[1].restrained_by = 0;
+  #assert !rs_escape(b[..], 1) && !b[0].turn.action;
+  // the check, worked out again: Athletics, with its proficiency; Frightened of one it can't see
+  for seed: 1..<25 {
+    x: [1] RsBattle; x_room: [1] RsRoom; rs_have(x[..], x_room[..]); af_held(x[..], 10); x[0].dice[0].fixed = false; x[0].dice[0].state = cast(u64) (seed * 977);
+    m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]); af_held(m[..], 10); m[0].dice[0].fixed = false; m[0].dice[0].state = cast(u64) (seed * 977);
+    blind := seed % 2 == 0;
+    x[0].c[1].cond |= RS_FRIGHTENED; m[0].c[1].cond |= RS_FRIGHTENED;   // a raw bit: no known source, so the request's sight decides
+    if blind { x[0].c[1].cond |= RS_BLINDED; m[0].c[1].cond |= RS_BLINDED; }
+    dc := rs_spell_dc(m[0].c[0]);
+    want := rs_ability_check(m[..], 1, RsAbilityRequest.{ability = RS_STR, skill = SK_ATHLETICS, dc = dc, fear_visible = !blind});
+    r0 := x[0].dice[0].rolled;
+    _ := rs_escape(x[..], 1);
+    ev := rs_recent_at(x[0].book[..], 0);
+    #assert ev.amount == want.total && ev.damage == 0 && x[0].dice[0].state == m[0].dice[0].state && x[0].dice[0].rolled == m[0].dice[0].rolled;
+  }
+}
+#test "affect: a free creature keeps another zone's hold; a raw binding with no record is let go, and the bit clears unless a record still holds it; Tactical Mind is told" #steps 400000000 {
+  // another zone's hold stays, and keeps it Restrained
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_held(b[..], 30);
+  b[0].zone[1] = RsZone.{on = true, spell = SP_ENTANGLE, by = 0, until = 60};
+  #assert rs_put_effect(b[..], 1, RsEffect.{kind = EF_ZONE_RESTRAIN, cond = 1, by = 0, spell = SP_ENTANGLE, until = 60, save = -1});
+  b[0].c[1].restrained_by = 0;
+  #assert rs_escape(b[..], 1);
+  k1 := -1; for k: 0..<RS_EFFECTS { if b[0].c[1].eff[k].kind == EF_ZONE_RESTRAIN { #assert b[0].c[1].eff[k].cond == 1; k1 = k; } }
+  #assert k1 >= 0 && rs_has(b[0].c[1], RS_RESTRAINED);
+  // a raw binding: no record; let go, and the bit cleared; a record of another kind (Bless) or one that holds nothing Restrained (Blinded) doesn't hold it
+  for mode: 0..<3 {
+    x: [1] RsBattle; x_room: [1] RsRoom; rs_have(x[..], x_room[..]); af_held(x[..], 30);
+    for k: 0..<RS_EFFECTS { x[0].c[1].eff[k] = RsEffect.{}; }
+    x[0].c[1].cond = RS_RESTRAINED | RS_BLINDED; x[0].c[1].restrained_by = 0;
+    if mode == 1 { x[0].c[1].eff[0] = RsEffect.{kind = EF_BLESS, by = 0, spell = SP_BLESS, until = 60, save = -1}; }
+    if mode == 2 { x[0].c[1].eff[0] = RsEffect.{kind = EF_COND, cond = RS_BLINDED, by = 0, spell = SP_BLINDNESS, until = 60, save = -1}; }
+    #assert rs_escape(x[..], 1) && x[0].c[1].restrained_by == -1 && !rs_has(x[0].c[1], RS_RESTRAINED) && rs_has(x[0].c[1], RS_BLINDED);
+  }
+  // a raw binding to another zone stays
+  y: [1] RsBattle; y_room: [1] RsRoom; rs_have(y[..], y_room[..]); af_held(y[..], 30);
+  y[0].zone[1] = RsZone.{on = true, spell = SP_ENTANGLE, by = 0, until = 60};
+  #assert rs_put_effect(y[..], 1, RsEffect.{kind = EF_ZONE_RESTRAIN, cond = 1, by = 0, spell = SP_ENTANGLE, until = 60, save = -1});
+  y[0].c[1].restrained_by = 1;
+  #assert rs_escape(y[..], 1);
+  // Tactical Mind: a failed check gets a d10 from a Second Wind, told
+  t: [1] RsBattle; t_room: [1] RsRoom; rs_have(t[..], t_room[..]); af_held(t[..], 1); t[0].c[1].uses[RS_USE_WIND] = 2;
+  seq := t[0].book[0].seq;
+  _ := rs_escape(t[..], 1);
+  #assert rs_saw(t[..], seq, " (Tactical Mind +5) vs DC ") && rs_recent_at(t[0].book[..], 0).damage == 0;
+}
+#test "affect: shaking the first creature out of its stupor; one past the battle's count can't shake, even beside it" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  d := rs_add(b[..], rs_fighter("Dazed", 1, 3), 2, 1); s := rs_add(b[..], rs_cleric("Ama", 0, 5), 1, 1);
+  b[0].c[d].eff[0] = RsEffect.{kind = EF_DAZED, cond = RS_CHARMED | RS_INCAPACITATED, by = 1, spell = SP_HYPNOTIC_PATTERN, until = 9000, save = -1};
+  b[0].who = s; b[0].turn = RsTurn.{};
+  n := b[0].n; b[0].c[n] = b[0].c[s]; b[0].who = n;
+  #assert !rs_shake(b[..], n, d) && b[0].c[d].eff[0].kind == EF_DAZED;
+  b[0].who = s;
+  #assert d == 0 && rs_shake(b[..], s, d) && b[0].c[d].eff[0].kind == EF_NONE;
+}
+#test "affect: a step reprices what is left when Speed has changed; with nothing left it is refused; it ends a rest and drags one held" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  f := rs_add(b[..], rs_fighter("Garr", 0, 3), 5, 3);
+  rs_start_turn(b[..], f); f0 := rs_turn_feet(b[0].turn); #assert f0 == 30;
+  // halved now: what is left is repriced before the step's 5 feet
+  b[0].c[f].eff[0] = RsEffect.{kind = EF_HALVED, by = -1, spell = -1, until = 9000, save = -1};
+  #assert rs_step_to(b[..], f, 6, 3) && rs_turn_feet(b[0].turn) == 15 - 5;
+  b[0].turn.move_left = 0; b[0].turn.move_feet = 0;
+  #assert !rs_step_to(b[..], f, 7, 3) && b[0].c[f].x == 6;
+  b[0].c[f].eff[0] = RsEffect.{};
+  // a rest it had begun ends with a step
+  rs_start_turn(b[..], f); b[0].c[f].rest.phase = 1;
+  #assert rs_step_to(b[..], f, 7, 3) && b[0].c[f].rest.phase == 0;
+  // the one it grapples comes along
+  g := rs_add(b[..], rs_fighter("Held", 1, 3), 6, 3);
+  b[0].c[f].grappling = g; b[0].c[g].cond |= RS_GRAPPLED;
+  #assert rs_step_to(b[..], f, 8, 3) && b[0].c[g].x == 7 && b[0].c[g].y == 3;
+}
+#test "affect: its own Emanation onto the first creature; at its edge; a creature's save against it, worked out again on seeded dice; plain damage is no Critical Hit" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true; b[0].turn_no = 4;
+  foe := rs_add(b[..], rs_fighter("Garr", 1, 3), 5, 1); b[0].c[foe].hp = 200; b[0].c[foe].hp_max = 200;
+  c := rs_add(b[..], rs_cleric("Ama", 0, 5), 1, 1); b[0].c[c].conc = SP_SPIRIT_GUARDIANS; b[0].c[c].conc_slot = 3; b[0].guards = 1;
+  b[0].who = c; b[0].turn = RsTurn.{move_left = 6, move_tracked = true};
+  #assert rs_step_to(b[..], c, 2, 1) && rs_feet_to(b[..], c, foe) == 15 && b[0].c[foe].hp == 188;
+  // seeded: the save as the rules make it, and the same dice after
+  for seed: 1..<21 {
+    x: [1] RsBattle; x_room: [1] RsRoom; rs_have(x[..], x_room[..]); af_guard(x[..], 3); x[0].dice[0].fixed = false; x[0].dice[0].state = cast(u64) (seed * 1009);
+    m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]); af_guard(m[..], 3); m[0].dice[0].fixed = false; m[0].dice[0].state = cast(u64) (seed * 1009);
+    sv := rs_saving_throw_magic(m[..], 1, RS_WIS, rs_dc(m[..], 0), 0);
+    amount := rs_sum(m[0].dice[..], 3, 8); if sv.passed { amount = amount / 2; }
+    rs_guardians(x[..], 1);
+    #assert x[0].c[1].hp == 200 - amount && x[0].dice[0].state == m[0].dice[0].state && x[0].dice[0].rolled == m[0].dice[0].rolled;
+  }
+  // plain damage on one at 0 Hit Points: one failure, not a Critical Hit's two
+  z: [1] RsBattle; z_room: [1] RsRoom; rs_have(z[..], z_room[..]); af_stage(z[..]);
+  z[0].c[1].hp = 0; z[0].c[1].cond = RS_UNCONSCIOUS;
+  rs_damage_plain(z[..], 0, 1, 1, RS_RADIANT, SP_SPIRIT_GUARDIANS);
+  #assert z[0].c[1].death_fail == 1;
+}
+
+#test "affect: Reckless Attack's Advantage is a Strength attack's, not a spell's; cover from the one delivering it; Shield up already is not cast again; a Difficult square past what is left" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); af_stage(b[..]); b[0].c[0].score[RS_WIS] = 16; b[0].c[1].ac = 16;
+  b[0].c[0].eff[0] = RsEffect.{kind = EF_RECKLESS, by = 0, spell = -1, until = 9000, save = -1};
+  a: [1] RsAffect; s := af_spell(1, false, 0);
+  #assert rs_aura_on(b[0].c[0], EF_RECKLESS, b[0].clock);
+  af_do(b[..], a[..], s, RsStep.{kind = RS_S_ATTACK, a = 1}, 1, false);
+  #assert af_said(b[..], 0, "  attack 10 + 6 = 16 vs AC 16: hit");
+  b[0].c[0].eff[0] = RsEffect.{};
+  // a one-target Dexterity save: the cover from the creature it comes from (a familiar's touch), not the caster's
+  o := rs_add(b[..], rs_fighter("Courier", 0, 3), 2, 2);
+  #assert rs_cover_put(b[..], o, 1, RS_COVER_HALF);
+  dex := 10 + rs_save_bonus(b[0].c[1], RS_DEX); scope: [1] RsDamageScope; a[0] = RsAffect.{};
+  rs_affect_step(b[..], a[..], 0, 1, SP_BLESS, 1, -1, false, s, scope[..], o, 0, RsStep.{kind = RS_S_SAVE, a = RS_DEX});
+  #assert rs_recent_at(b[0].book[..], 0).amount == dex + 2;
+  a[0] = RsAffect.{}; rs_affect_step(b[..], a[..], 0, 1, SP_BLESS, 1, -1, false, s, scope[..], 0, 0, RsStep.{kind = RS_S_SAVE, a = RS_DEX});
+  #assert rs_recent_at(b[0].book[..], 0).amount == dex;
+  // Magic Missile at one whose Shield is up: the darts do nothing, and no second Shield is cast
+  w := rs_add(b[..], rs_wizard("Mordra", 1, 3), 6, 1); rs_shield_begin(b[0].c[w..<w+1]); slots := b[0].c[w].slots[1]; hp := b[0].c[w].hp;
+  #assert rs_effect(b[0].c[w], EF_SHIELD);
+  rs_affect_program_scoped(b[..], 0, w, SP_MAGIC_MISSILE, 1, -1, false, rs_spell(SP_MAGIC_MISSILE), scope[..], 0);
+  #assert b[0].c[w].slots[1] == slots && !b[0].c[w].reacted && b[0].c[w].hp == hp;
+  // 5 feet left, and the next square is Difficult Terrain: refused, no move
+  f := rs_add(b[..], rs_fighter("Walker", 0, 3), 10, 5);
+  rs_start_turn(b[..], f); b[0].turn.move_left = 1; b[0].turn.move_feet = 0;
+  b[0].zone[0] = RsZone.{on = true, spell = SP_ENTANGLE, by = 0, until = 9000, difficult = true, x0 = 11, y0 = 5, x1 = 11, y1 = 5};
+  #assert rs_difficult(b[..], 11, 5) && !rs_step_to(b[..], f, 11, 5) && b[0].c[f].x == 10;
+  #assert rs_step_to(b[..], f, 9, 5) && b[0].c[f].x == 9;
 }

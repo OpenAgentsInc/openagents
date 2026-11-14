@@ -100,6 +100,8 @@ rs_dropped :: (b: [] RsBattle, by: int, j: int) #effects(all) {
 rs_world_damage :: (b: [] RsBattle, by: int, j: int, amount: int) #effects(all) { rs_damage_dealt(b, by, j, amount, false, false, -1); }
 // An amount already counted against Resistance and the rest, of damage type `kind`. To what follows
 // here a type is one thing only: Radiant or not (Undead Fortitude saves against no Radiant damage).
+// Damage that is no Critical Hit (an aura's, a lasting area's).
+rs_damage_plain :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, spell: int) #effects(all) { rs_damage(b, by, j, amount, kind, false, spell); }
 rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: bool, spell: int) #effects(all) {
   rs_damage_dealt(b, by, j, amount, kind == RS_RADIANT, crit, spell);
 }
