@@ -802,6 +802,7 @@ g_pointer :: (g: [] SpGame, x: f32, y: f32, phase: int) -> bool {
 g_mouselook :: (g: [] SpGame) -> int { return ifx (g[0].mode == M_PLAY || g[0].mode == M_RIDE) && !g[0].look_free && !d_cursor(g) then 2 else 1; }
 g_look :: (g: [] SpGame, dx: f32, dy: f32) {
   if g[0].mode != M_PLAY && g[0].mode != M_RIDE { return; }
+  if d_wheel_look(g, dx, dy) { return; }   // Hold R: the pointer picks on the bot wheel (director.coax)
   g[0].yaw -= dx * T_LOOK; g[0].pitch = clamp(g[0].pitch + dy * T_LOOK, -0.35, 0.7);
 }
 g_lock :: (g: [] SpGame, status: int) { d_lock(g, status); g[0].look_free = status != 1; }
@@ -2476,6 +2477,27 @@ sb_drive_check :: (g: [] SpGame) {
   t[0].mech_x = 0; t[0].mech_z = -116;    // just behind her: the camera comes in front of it
   e := g_camera(g[..]).eye; #assert !g_big_at(g[..], e.x, e.z, 0);
 }
+#test "Hold R: the bot wheel opens, the mouse or 1 to 4 picks, and letting go has Digger dig, pick up, attack or follow" #steps 200000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 7); g[0].px = 0; g[0].pz = -20; g_bot_home(g[..]); g_step(g[..], 0.02);
+  y0 := g[0].yaw;
+  #assert g_key(g[..], 'r', true) && g[0].dr[0].wheel.open;
+  g_look(g[..], 0, 80);   // the mouse down: ATTACK, and the view does not turn
+  #assert wheel_pick(g[0].dr[0].wheel) == DW_ATTACK && g[0].yaw == y0;
+  #assert g_key(g[..], 'r', false) && !g[0].dr[0].wheel.open && g[0].dr[0].say == DS_NO_FOE;   // dusk: no one to attack
+  // 4 picks FOLLOW
+  #assert g_key(g[..], 'r', true) && g_key(g[..], '4', true) && g_key(g[..], 'r', false) && g[0].dr[0].say == DS_FOLLOW && g[0].bot_state == BOT_FOLLOW;
+  // up: DIG; the way is open here at dusk, so the boss wall: he drives to his work
+  #assert g_key(g[..], 'r', true); g_look(g[..], 0, -80); #assert g_key(g[..], 'r', false) && g[0].bot_state == BOT_GO;
+  // right: PICK UP the nearest part in his range
+  g_key_wheel_follow(g[..]);
+  g[0].taken[PICK_CELL] = false; g[0].px = pick_x(g[..], PICK_CELL) + 1; g[0].pz = pick_z(g[..], PICK_CELL); g_bot_home(g[..]);
+  g[0].bot_x = pick_x(g[..], PICK_CELL) + 1.5; g[0].bot_z = pick_z(g[..], PICK_CELL);
+  #assert g_key(g[..], 'r', true); g_look(g[..], 80, 0); #assert g_key(g[..], 'r', false) && (g[0].dr[0].task == DJ_FETCH || g[0].dr[0].say == DS_NO_PART);
+  // let go in the middle: nothing
+  #assert g_key(g[..], 'r', true) && g_key(g[..], 'r', false) && !g[0].dr[0].wheel.open;
+}
+g_key_wheel_follow :: (g: [] SpGame) { _ := g_key(g, 'r', true); _ = g_key(g, '4', true); _ = g_key(g, 'r', false); }
 #test "the boss: phase one sweeps, phase two charges below half health and is dazed after; its weak points open only while it reels; three stuns power it down and night falls" #steps 60000000 {
   g := [1] SpGame.[SpGame.{}];
   g_stage(g[..], 10); for i: 0..<3 { g[0].stun[i] = 0; }

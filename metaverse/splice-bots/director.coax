@@ -25,6 +25,7 @@
 #load "../../metaverse-engine/move/stance.coax";
 #load "../../metaverse-engine/action/carry.coax";
 #load "../../metaverse-engine/action/vitals.coax";
+#load "../../metaverse-engine/ui/wheel.coax";   // Hold R: the bot wheel
 
 T_ROOM :: 6;                 // inventory slots
 T_SENSE :: 4.0f32;           // metres: Digger's sensor
@@ -53,6 +54,10 @@ DP_NONE :: 0; DP_PICK :: 1; DP_FOE :: 2; DP_DIG :: 3; DP_SENSOR :: 4;
 // the Director's own lines
 DS_NONE :: 0; DS_FULL :: 1; DS_DOWN :: 2; DS_NOTHING :: 3; DS_TOW :: 4; DS_UP :: 5; DS_SENSOR :: 6; DS_BAY :: 7; DS_DROP :: 8;
 DS_KEEP :: 9; DS_STUN :: 10; DS_FETCH :: 11; DS_FIGHT :: 12; DS_POWERED :: 13; DS_HERE :: 14; DS_DIG :: 15; DS_MOVE :: 16;
+DS_FOLLOW :: 17; DS_NO_PART :: 18; DS_NO_FOE :: 19; DS_NO_DIG :: 20;
+// the bot wheel's choices (Hold R), clockwise from the top
+DW_DIG :: 0; DW_PICK :: 1; DW_ATTACK :: 2; DW_FOLLOW :: 3; DW_N :: 4;
+DW_WORDS :: [DW_N] string.["DIG", "PICK UP", "ATTACK", "FOLLOW"];
 
 SpDir :: struct {
   st: Stance;
@@ -66,6 +71,7 @@ SpDir :: struct {
   move: int; moves: int;                  // the last battle move key (1 to 4) and presses not yet taken
   q_held: bool; q_since: f32 = 1000; q_hold: f32 = -1;   // Q is down, seconds since its last press, how long held (-1: this press won't step off)
   super: bool;                            // the board rides super fast (a double tap of Q)
+  wheel: Wheel;                           // Hold R: the bot wheel, open while R is held (metaverse-engine/ui/wheel.coax)
   sw: f32 = 1280; sh: f32 = 800;          // the screen at the last frame: the pointer's crosshair
   bag_x: f32; bag_y: f32; bag_s: f32; bag_gap: f32;   // the grid as last drawn, for a click
 }
@@ -88,6 +94,10 @@ d_text :: (m: int) -> string {
   if m == DS_HERE { return "Drop it where Digger can find it again."; }
   if m == DS_DIG { return "Digger digs."; }
   if m == DS_MOVE { return "No battle. Moves 1 to 4 are for bot battles."; }
+  if m == DS_FOLLOW { return "Digger follows you."; }
+  if m == DS_NO_PART { return "No part in Digger's range."; }
+  if m == DS_NO_FOE { return "No robot near to attack."; }
+  if m == DS_NO_DIG { return "Nothing here for Digger to dig."; }
   return "";
 }
 
@@ -281,7 +291,7 @@ d_point :: (g: [] SpGame) -> int {
 d_in_rover :: (g: [] SpGame) -> bool { return g[0].zone == Z_MINE && (near_rover(g, T_USE_RANGE) || sp_in_room(g)); }   // at Sniper, or in its room (drive.coax)
 d_cursor :: (g: [] SpGame) -> bool { d := g[0].dr[0]; return d.paused || d.bag; }
 d_pause :: (g: [] SpGame) {
-  d := g[0].dr[..]; d[0].paused = true; d[0].bag = false; d[0].map = false;
+  d := g[0].dr[..]; d[0].paused = true; d[0].bag = false; d[0].map = false; d[0].wheel = Wheel.{};
   g[0].fwd = false; g[0].back = false; g[0].left = false; g[0].right = false; g[0].turn_l = false; g[0].turn_r = false;
   d[0].st = Stance.{since = d[0].st.since};
 }
@@ -297,6 +307,8 @@ d_key :: (g: [] SpGame, key: int, down: bool) -> int {
   }
   if key == -13 { d[0].st = stance_sneak(d[0].st, down); return ifx g[0].mode == M_PLAY then 1 else 0; }
   if key == 'q' || key == 'Q' { return d_board_q(g, down); }
+  if key == 'r' || key == 'R' { return d_wheel_key(g, down); }
+  if d[0].wheel.open && down && key >= '1' && key <= '4' { d[0].wheel = wheel_set(d[0].wheel, key - '1'); return 1; }
   if !down || g[0].mode != M_PLAY { return -1; }
   if key == 'i' || key == 'I' { d[0].bag = !d[0].bag; d[0].map = false; return 1; }
   if key == 'm' || key == 'M' { d[0].map = !d[0].map; d[0].bag = false; return 1; }
@@ -323,6 +335,71 @@ d_board_q :: (g: [] SpGame, down: bool) -> int {
   else { b[0].fast = true; }
   d[0].q_since = 0; d[0].q_hold = 0;
   return 1;
+}
+// Hold R: the bot wheel opens; the pointer (or 1 to 4) picks what Digger does; letting go confirms it.
+d_wheel_key :: (g: [] SpGame, down: bool) -> int {
+  d := g[0].dr[..];
+  if !down {
+    if !d[0].wheel.open { return -1; }
+    pick := wheel_close(d[0].wheel); d[0].wheel = Wheel.{};
+    if pick >= 0 { d_order(g, pick); }
+    return 1;
+  }
+  if d[0].wheel.open { return 1; }   // a key repeat
+  if g[0].mode != M_PLAY || !g[0].bot || d[0].paused { return -1; }   // the game's (R restarts after the ending)
+  d[0].bag = false; d[0].map = false;
+  d[0].wheel = wheel_open(DW_N);
+  return 1;
+}
+// The pointer moves the wheel's choice while it is open: true when it took the movement.
+d_wheel_look :: (g: [] SpGame, dx: f32, dy: f32) -> bool {
+  d := g[0].dr[..];
+  if !d[0].wheel.open { return false; }
+  d[0].wheel = wheel_move(d[0].wheel, dx, dy);
+  return true;
+}
+// What the wheel's choice has Digger do: dig the way ahead, fetch the nearest part in his range,
+// attack the nearest robot near her, or come back to her side.
+d_order :: (g: [] SpGame, pick: int) {
+  d := g[0].dr[..];
+  if !g[0].bot { return; }
+  if d_down(g) { d_say(g, DS_DOWN); return; }
+  if pick == DW_FOLLOW { d_task_end(g); g[0].bot_state = BOT_FOLLOW; d_say(g, DS_FOLLOW); return; }
+  if pick == DW_DIG {
+    if g[0].zone != Z_MINE || (g[0].rubble_gone && g[0].wall_gone) { d_say(g, DS_NO_DIG); return; }
+    d_task_end(g); d_say(g, DS_DIG); g_deploy(g); return;
+  }
+  if g[0].bot_state != BOT_FOLLOW { g[0].bot_state = BOT_FOLLOW; }   // called off his cut
+  if pick == DW_PICK {
+    i := d_sense(g);
+    if i < 0 { d_say(g, DS_NO_PART); return; }
+    if i < PICKS { d[0].left[i] = false; }
+    d[0].task = DJ_FETCH; d[0].task_i = i; d_say(g, DS_FETCH); return;
+  }
+  if pick == DW_ATTACK {
+    best := -1; bd := T_GIVE_UP_FIGHT;
+    if g[0].zone == Z_MINE { for i: 0..<FOES { if g_foe_in(g, i) { e := dist2(g[0].px, g[0].pz, g[0].fx[i], g[0].fz[i]); if e < bd { bd = e; best = i; } } } }
+    if best < 0 { d_say(g, DS_NO_FOE); return; }
+    d[0].task = DJ_FIGHT; d[0].task_i = best; d[0].task_t = T_STRIKE * 0.5; d_say(g, DS_FIGHT); return;
+  }
+}
+// The wheel, in the middle of the screen: four choices round a ring, the one picked lit.
+d_wheel_draw :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
+  n := at; k := q.k; w := g[0].dr[0].wheel; cx := q.w * 0.5; cy := q.h * 0.5; r := 120 * k;
+  lit := wheel_pick(w);
+  ui_panel(g, u, cx - r - 90 * k, cy - r - 46 * k, cx + r + 90 * k, cy + r + 46 * k, PAPER(), 0.9);
+  n = ui_box(out, n, cx - r - 90 * k, cy - r - 46 * k, cx + r + 90 * k, cy + r + 46 * k, 3 * k, INK());
+  n = ui_mid(out, n, "DIGGER", cx, cy + 4 * k, 10 * k, INK());
+  for i: 0..<DW_N {
+    p := wheel_at(DW_N, i, cx, cy, r); on := i == lit; c := ifx on then HEAT() else INK();
+    hw := 64 * k;
+    if on { n = ui_seg(out, n, p[0] - hw + 10 * k, p[1], p[0] + hw - 10 * k, p[1], 16 * k, HEAT(), 0.25); }
+    n = ui_box(out, n, p[0] - hw, p[1] - 18 * k, p[0] + hw, p[1] + 18 * k, ifx on then 3 * k else 1.5 * k, c);
+    n = ui_mid(out, n, DW_WORDS[i], p[0], p[1] + 4 * k, 9 * k, c);
+    buf: [8] u8; n = ui_mid(out, n, num(buf[..], "", i + 1, ""), p[0], p[1] - 24 * k, 7 * k, c);
+  }
+  n = ui_mid(out, n, "Move the mouse to pick · let go of R", cx, cy + r + 34 * k, 8 * k, INK());
+  return n;
 }
 // E at a powered-down Digger: tow him (or let him go).
 d_use :: (g: [] SpGame) -> bool {
@@ -505,14 +582,14 @@ d_map :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
   return n;
 }
 // The controls, as the sheet maps them: shown on the pause screen.
-D_KEYS :: 15;
+D_KEYS :: 16;
 d_controls :: () -> [D_KEYS * 2] string {
   return [D_KEYS * 2] string.[
     "W A S D", "Walk", "Mouse", "Look", "Space", "Jump", "Hold Shift", "Sneak: slower, harder to sense",
     "Q", "Hoverboard on, then casual or fast", "Q Q, hold Q", "Hoverboard super fast; hold Q to step off",
     "E", "Interact, enter the rover, swap a core, tow Digger", "Tab", "Edit bay, inside Sniper", "I", "Inventory",
     "Left click", "Point Digger: dig, pick up, attack", "F", "Stun a robot within 2 m", "1 2 3 4", "Battle moves",
-    "M", "Map", "Esc", "Pause", "G", "Graybox"];
+    "Hold R", "Bot wheel: dig, pick up, attack, follow", "M", "Map", "Esc", "Pause", "G", "Graybox"];
 }
 d_pause_screen :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
   n := at; k := q.k; ink := INK(); paper := PAPER();
@@ -545,6 +622,7 @@ d_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
     n = ui_seg(out, n, q.w * 0.5 - mw * 0.5 + 18 * k, y0, q.w * 0.5 + mw * 0.5 - 18 * k, y0, 18 * k, INK(), 0.92);
     n = ui_mid(out, n, t, q.w * 0.5, y0 + 4 * k, 10 * k, PAPER());
   }
+  if d.wheel.open && !d.paused { n = d_wheel_draw(g, out, u, q, n); }
   if d.bag { n = d_bag(g, out, u, q, n); }
   if d.map { n = d_map(g, out, u, q, n); }
   if d.paused { n = d_pause_screen(g, out, u, q, n); }

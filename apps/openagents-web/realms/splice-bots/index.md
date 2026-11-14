@@ -76,6 +76,8 @@ slots: press I and click a slot to drop what is in it.
   attacks it.
 - **F** stuns a robot within 2 m, or a weak point of the banned bot.
 - **1, 2, 3, 4** are a bot's battle moves; in a battle **E** swaps Digger's core into your other bot.
+- Hold **R** for the bot wheel: move the mouse toward DIG, PICK UP, ATTACK or FOLLOW (or press
+  1 to 4) and let go of **R** to tell the Digger.
 - **M** shows the deep-garage map.
 - **Esc** pauses and lists the controls.
 - **G** switches graybox on and off: the whole world in grays, with only orange, yellow and cyan

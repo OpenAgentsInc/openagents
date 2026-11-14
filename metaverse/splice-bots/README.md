@@ -106,6 +106,7 @@ The key map follows the slice's beat sheet (#13505). The pause screen (Esc) list
 | Left click | Point Digger at what is under the crosshair: he digs it, picks it up or attacks it |
 | F | Stun a robot within 2 m for 4 seconds |
 | 1 to 4 | A bot's battle moves (`d_take_move` hands each press to the battle) |
+| Hold R | The bot wheel: move the mouse (or press 1 to 4) to pick DIG, PICK UP, ATTACK or FOLLOW, and let go of R to give Digger the order (`metaverse-engine/ui/wheel.coax`) |
 | M | The deep-garage map |
 | Esc | Pause; letting go of the pointer pauses too |
 

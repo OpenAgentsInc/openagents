@@ -1,0 +1,75 @@
+// A radial wheel: hold a key, push the pointer (or a stick) toward one of N choices round a circle,
+// let go to take it. Nothing here draws or reads keys: a realm keeps a Wheel, opens it while its key
+// is held (wheel_open), feeds it the pointer's movement (wheel_move) or a choice's number
+// (wheel_set), draws the choices where wheel_at puts them with the one wheel_pick returns lit, and
+// on the key's release takes wheel_close's choice (-1: let go in the middle, nothing). Choice 0 is
+// straight up, and the rest go round clockwise. Splice Bots' bot wheel (Hold R) keeps one
+// (metaverse/splice-bots/director.coax).
+//   coax/bin/coax test metaverse-engine/ui/wheel.coax --library
+#module "metaverse.engine.wheel";
+#load "../core/angle.coax";
+
+WHEEL_MAX :: 8;              // choices at most
+WHEEL_DEAD :: 24.0f32;       // pointer units from the middle that pick nothing
+WHEEL_REACH :: 120.0f32;     // the pointer's offset is held within this of the middle
+WHEEL_TAU :: 6.2831853f32;
+
+Wheel :: struct {
+  open: bool;
+  n: int;                    // choices, 2 to WHEEL_MAX
+  x: f32; y: f32;            // the pointer's offset from the middle: x right, y down
+  set: int = -1;             // a choice picked by number while open (wins over the pointer), or -1
+}
+
+wheel_open :: (n: int) -> Wheel {
+  k := ifx n < 2 then 2 else ifx n > WHEEL_MAX then WHEEL_MAX else n;
+  return Wheel.{open = true, n = k};
+}
+// The pointer moved by (dx, dy) while the wheel is open: its offset, held within WHEEL_REACH.
+wheel_move :: (w: Wheel, dx: f32, dy: f32) -> Wheel {
+  if !w.open { return w; }
+  o := w; o.x += dx; o.y += dy; o.set = -1;
+  l := sqrt(o.x * o.x + o.y * o.y);
+  if l > WHEEL_REACH { o.x = o.x / l * WHEEL_REACH; o.y = o.y / l * WHEEL_REACH; }
+  return o;
+}
+// A choice picked by its number (0 to n - 1) while open; anything else is ignored.
+wheel_set :: (w: Wheel, i: int) -> Wheel { if !w.open || i < 0 || i >= w.n { return w; } o := w; o.set = i; return o; }
+// The choice lit now: the one picked by number, else the one the pointer leans toward, else -1.
+wheel_pick :: (w: Wheel) -> int {
+  if !w.open { return -1; }
+  if w.set >= 0 { return w.set; }
+  if w.x * w.x + w.y * w.y < WHEEL_DEAD * WHEEL_DEAD { return -1; }
+  a := angle_atan2(w.x, -w.y);   // 0 straight up, clockwise
+  if a < 0 { a += WHEEL_TAU; }
+  span := WHEEL_TAU / cast(f32) w.n;
+  i := cast(int) floor((a + span * 0.5) / span);
+  return ifx i >= w.n then 0 else i;
+}
+// The key let go: the wheel closes, and its choice (-1 for none).
+wheel_close :: (w: Wheel) -> int { return wheel_pick(w); }
+// Where choice i sits round a wheel of radius r about (cx, cy), on screen (y down).
+wheel_at :: (n: int, i: int, cx: f32, cy: f32, r: f32) -> [2] f32 {
+  k := ifx n < 1 then 1 else n;
+  a := cast(f32) i * WHEEL_TAU / cast(f32) k;
+  return [2] f32.[cx + sin(a) * r, cy - cos(a) * r];
+}
+
+#test "a wheel of four: up, right, down and left pick 0 to 3; the middle picks nothing; a number wins until the pointer moves" {
+  w := wheel_open(4);
+  #assert w.open && w.n == 4 && wheel_pick(w) == -1;
+  #assert wheel_pick(wheel_move(w, 0, -60)) == 0 && wheel_pick(wheel_move(w, 60, 0)) == 1;
+  #assert wheel_pick(wheel_move(w, 0, 60)) == 2 && wheel_pick(wheel_move(w, -60, 0)) == 3;
+  #assert wheel_pick(wheel_move(w, 10, -10)) == -1;   // inside the dead middle
+  #assert wheel_pick(wheel_move(w, 40, -55)) == 0 && wheel_pick(wheel_move(w, 55, -40)) == 1;
+  s := wheel_set(w, 2); #assert wheel_close(s) == 2 && wheel_pick(wheel_set(s, 9)) == 2;
+  #assert wheel_pick(wheel_move(s, 60, 0)) == 1;
+  closed: Wheel; #assert wheel_pick(closed) == -1 && wheel_pick(wheel_move(closed, 60, 0)) == -1;
+}
+#test "the pointer's offset stays within reach, so a turn back is quick; choices sit round the circle clockwise from the top" {
+  w := wheel_move(wheel_open(4), 900, 0);
+  #assert abs(w.x - WHEEL_REACH) < 0.01 && wheel_pick(wheel_move(w, -WHEEL_REACH - 60, 0)) == 3;
+  p := wheel_at(4, 0, 100, 100, 50); #assert abs(p[0] - 100) < 0.01 && abs(p[1] - 50) < 0.01;
+  p = wheel_at(4, 1, 100, 100, 50); #assert abs(p[0] - 150) < 0.01 && abs(p[1] - 100) < 0.01;
+  #assert wheel_open(1).n == 2 && wheel_open(20).n == WHEEL_MAX;
+}
