@@ -64,7 +64,7 @@ cm_reach :: (g: [] SpGame) -> f32 {
   r := ifx g[0].zone == Z_VILLAGE then 4.0f32 else 6.5f32;
   if g[0].zone == Z_MINE && sp_in_room(g) { r = DV_ROOM_REACH; }   // in the rover's cabin: in close (drive.coax)
   if g_riding(g) { r += CM_BOARD_BACK + board_back(g[0].board[0]); }
-  return r;
+  return r + CM_BOSS_BACK * cm_boss_ahead(g);   // back a little to take the boss in too
 }
 // How far out the boom wants to be: the rest scaled by the wheel, never nearer than CM_ZOOM_NEAR.
 cm_want :: (g: [] SpGame) -> f32 { return hi(CM_ZOOM_NEAR, cm_reach(g) * g[0].zoom); }
@@ -97,12 +97,53 @@ cm_body_at :: (g: [] SpGame, x: f32, y: f32, z: f32, pad: f32) -> bool {
   t := g[0].bt[0];
   if g[0].bot && y < T_BOT_TOP + pad && dist2(x, z, g[0].bot_x, g[0].bot_z) < T_BOT_R + pad { return true; }
   if y < SB_MECH_TOP + pad && dist2(x, z, t.mech_x, t.mech_z) < SB_MECH_R + pad { return true; }
-  if (g[0].wall_gone || g[0].boss_down) && dist2(x, z, t.dino_x, t.dino_z) < 3.2 + pad { return true; }
+  if (g[0].wall_gone || g[0].boss_down) && y < CM_BOSS_TOP + pad && cm_boss_in(g, x, z, pad) { return true; }
   return false;
+}
+// The boss's body, or only the round she collides with (layer.coax, 2.1 m) when she stands in its
+// reach (at its tail, at a weak point): the camera is never put out of her own head by it.
+cm_boss_in :: (g: [] SpGame, x: f32, z: f32, pad: f32) -> bool {
+  t := g[0].bt[0];
+  if dist2(x, z, t.dino_x, t.dino_z) < CM_BOSS_CORE + pad { return true; }
+  if cm_boss_gap(g, g[0].px, g[0].pz) < CM_BOSS_R + CM_CLEAR { return false; }
+  return cm_boss_gap(g, x, z) < CM_BOSS_R + pad;
+}
+// The boss as the camera meets it: its body and tail along the way it faces, CM_BOSS_HALF each
+// way from its middle, CM_BOSS_R round, up to CM_BOSS_TOP (it is 3.7 m tall and 7 m long).
+CM_BOSS_HALF :: 2.6f32; CM_BOSS_R :: 1.5f32; CM_BOSS_TOP :: 4.0f32;
+CM_BOSS_CORE :: 1.65f32; // m: the round she collides with, less her own radius (layer.coax sl_round of SK_BOSS)
+CM_BOSS_BACK :: 1.5f32;  // m further back with the boss ahead
+CM_BOSS_LOOK :: 0.6f32;  // how far the look turns toward the point between her and the boss
+CM_BOSS_RISE :: 0.2f32;  // radians the boom swings up by the boss while coming in still leaves CM_MIN
+cm_boss_gap :: (g: [] SpGame, x: f32, z: f32) -> f32 {
+  t := g[0].bt[0]; fx := sin(t.dino_yaw) * CM_BOSS_HALF; fz := cos(t.dino_yaw) * CM_BOSS_HALF;
+  return cm_flat_gap(t.dino_x - fx, t.dino_z - fz, t.dino_x + fx, t.dino_z + fz, x, z);
+}
+// How much the standing boss is ahead of her and near, 0 to 1: the camera frames the two of them.
+cm_boss_ahead :: (g: [] SpGame) -> f32 {
+  t := g[0].bt[0]; dx := t.dino_x - g[0].px; dz := t.dino_z - g[0].pz; d := sqrt(dx * dx + dz * dz);
+  if d < 0.001 { return 0; }
+  return cm_boss_near(g) * clamp((dx * sin(g[0].yaw) + dz * cos(g[0].yaw)) / d * 2, 0, 1);
+}
+// How near the standing boss is, 0 to 1 (1 within 14 m). Near it the boom comes in before it
+// swings up, so the camera stays low enough to read the fight rather than look down on it.
+cm_boss_near :: (g: [] SpGame) -> f32 {
+  if g[0].zone != Z_MINE || !g[0].wall_gone || g[0].boss_down { return 0; }
+  t := g[0].bt[0];
+  return clamp((22 - dist2(t.dino_x, t.dino_z, g[0].px, g[0].pz)) / 8, 0, 1);
+}
+// The ceiling over her, if she is indoors: the rover's cabin (drive.coax), the lab's at 9 m and
+// the hallway's into it at 10 m (garage.coax). Under one, the eye never shows the sky.
+CM_LAB_ROOF :: 9.0f32; CM_HALL_ROOF :: 10.0f32;
+cm_roof :: (g: [] SpGame) -> f32 {
+  if g[0].zone != Z_MINE { return 1000000; }
+  if sp_in_room(g) { return DV_ROOM_H; }
+  if !ga_in_lab(g, g[0].px, g[0].pz) { return 1000000; }
+  return ifx g[0].pz < g[0].at.gar_z - ga_back(g) - GA_HALL_LONG then CM_LAB_ROOF else CM_HALL_ROOF;
 }
 // How far out along `dir` from `from` the camera has room, up to `far`, keeping `pad` from what it meets.
 cm_room :: (g: [] SpGame, from: Point, dir: Point, far: f32, pad: f32) -> f32 {
-  roof := ifx g[0].zone == Z_MINE && sp_in_room(g) then DV_ROOM_H else 1000000.0f32;   // the rover's cabin has a ceiling (drive.coax)
+  roof := cm_roof(g);
   if roof > 1000 && cm_open(g, from, dir, far, pad) { return far; }   // nothing near the boom at all: one look, not a march
   // near her head the pad narrows, so a wall she stands beside is not in the boom's way
   d := CM_START; free := 0.0f32;
@@ -144,7 +185,7 @@ cm_open :: (g: [] SpGame, from: Point, dir: Point, far: f32, pad: f32) -> bool {
     t := g[0].bt[0];
     if g[0].bot && cm_flat_gap(from.x, from.z, ex, ez, g[0].bot_x, g[0].bot_z) < T_BOT_R + pad { return false; }
     if cm_flat_gap(from.x, from.z, ex, ez, t.mech_x, t.mech_z) < SB_MECH_R + pad { return false; }
-    if (g[0].wall_gone || g[0].boss_down) && cm_flat_gap(from.x, from.z, ex, ez, t.dino_x, t.dino_z) < 3.2 + pad { return false; }
+    if (g[0].wall_gone || g[0].boss_down) && cm_flat_gap(from.x, from.z, ex, ez, t.dino_x, t.dino_z) < CM_BOSS_HALF + CM_BOSS_R + pad { return false; }
   }
   return true;
 }
@@ -164,16 +205,21 @@ CM_RISE_COST :: 3.0f32; CM_STAY :: 1.5f32; CM_SHORT :: 4.0f32;
 cm_aim :: (g: [] SpGame, over: f32, now: f32, ahead: f32) -> CmAim {
   p := cm_pivot(g); want := cm_want(g); base := cm_base(g, want) + over * CM_OVER;
   best := CmAim.{rise = base, dist = -1}; cost := 1000000.0f32;
+  near_boss := cm_boss_near(g); rise_cost := CM_RISE_COST * (1 + near_boss);
   a := base;
   while a <= CM_RISE_MAX + 0.001 {
     if (a - base) * CM_RISE_COST >= cost { break; }   // no steeper angle can cost less
+    // by the boss it swings up over it only where coming in would bring it nearer than CM_MIN
+    if near_boss > 0.5 && a - base > CM_BOSS_RISE && best.dist >= CM_MIN { break; }
     dir := cm_dir(g[0].yaw, a);
     room := cm_room(g, p, dir, want, CM_CLEAR + CM_EARLY);
     if abs(ahead) > 0.05 { room = lo(room, cm_room(g, p, cm_dir(g[0].yaw + ahead, a), want, CM_CLEAR + CM_EARLY)); }
     // the early look never brings it nearer than CM_MIN where the draw's own room allows that
+    kept := room >= CM_MIN;
     if room < CM_MIN { room = lo(cm_room(g, p, dir, want, CM_CLEAR), CM_MIN); }
-    // short of CM_MIN costs CM_SHORT times as much: she must not fill the view
-    c := (want - room) + hi(0, CM_MIN - room) * CM_SHORT + (a - base) * CM_RISE_COST + (ifx now < 0 then 0.0f32 else abs(a - now) * CM_STAY);
+    // short of CM_MIN costs CM_SHORT times as much: she must not fill the view; by the boss, rising
+    // costs double, but not where it is what keeps CM_MIN
+    c := (want - room) + hi(0, CM_MIN - room) * CM_SHORT + (a - base) * (ifx kept then rise_cost else CM_RISE_COST) + (ifx now < 0 then 0.0f32 else abs(a - now) * CM_STAY);
     if c < cost { cost = c; best = CmAim.{rise = a, dist = room}; }
     if a < CM_RISE_MAX && a + CM_RISE_STEP > CM_RISE_MAX { a = CM_RISE_MAX; } else { a += CM_RISE_STEP; }
   }
@@ -194,7 +240,9 @@ cm_step :: (g: [] SpGame, dt: f32) {
   if cut {
     c[0].rise = aim.rise; c[0].dist = aim.dist; c[0].rise_v = 0; c[0].dist_v = 0;
   } else {
-    v := [1] f32.[c[0].rise_v]; c[0].rise = cm_ease(c[0].rise, v[..], aim.rise, dt, CM_RISE_TIME); c[0].rise_v = v[0];
+    // pulled in short of CM_MIN (a body swept in behind her), it swings up as fast as it came in
+    up_time := ifx c[0].dist < CM_MIN && aim.rise > c[0].rise then CM_IN_TIME else CM_RISE_TIME;
+    v := [1] f32.[c[0].rise_v]; c[0].rise = cm_ease(c[0].rise, v[..], aim.rise, dt, up_time); c[0].rise_v = v[0];
     w := [1] f32.[c[0].dist_v]; c[0].dist = cm_ease(c[0].dist, w[..], aim.dist, dt, ifx aim.dist < c[0].dist then CM_IN_TIME else CM_OUT_TIME); c[0].dist_v = w[0];
   }
   c[0].ready = true; c[0].x = g[0].px; c[0].z = g[0].pz; c[0].yaw = g[0].yaw;
@@ -226,6 +274,12 @@ cm_follow :: (g: [] SpGame) -> CamNow {
   ahead := v3(g[0].px + sin(g[0].yaw) * 3, y + 1.5, g[0].pz + cos(g[0].yaw) * 3);
   k := clamp((c.rise - cm_base(g, cm_want(g))) / 0.8, 0, 1) * 0.7;
   at := v3(ahead.x + (g[0].px - ahead.x) * k, ahead.y + (y + 1.1 - ahead.y) * k, ahead.z + (g[0].pz - ahead.z) * k);
+  // the standing boss ahead: the look goes part way to it, so the two of them are in the frame
+  b := cm_boss_ahead(g) * CM_BOSS_LOOK;
+  if b > 0 {
+    t := g[0].bt[0]; mid := v3((g[0].px + t.dino_x) * 0.5, y + 1.8, (g[0].pz + t.dino_z) * 0.5);
+    at = v3(at.x + (mid.x - at.x) * b, at.y + (mid.y - at.y) * b, at.z + (mid.z - at.z) * b);
+  }
   if g_riding(g) {
     // the sense of speed: a wider view and a shake, from the engine's board
     bd := g[0].board[0]; s := board_shake(bd, g[0].t);

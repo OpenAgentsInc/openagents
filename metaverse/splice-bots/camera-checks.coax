@@ -119,3 +119,28 @@ cc_farm :: (g: [] SpGame) { g_reset(g); _ := spw_shipped(g); g_begin(g); }
   for i: 0..<120 { g_step(g[..], 1.0f32 / 60); }
   #assert !cm_in_line(cm_line(g[..]), t[0].mech_x, t[0].mech_z, SB_MECH_R) && dist2(t[0].mech_x, t[0].mech_z, g[0].px, g[0].pz) >= SB_MECH_R + T_RADIUS;
 }
+#test "#13552: in the boss fight the camera frames her and the boss low, never inside its body, its tail or the lab's ceiling" #steps 4000000000 #traversal 2000000000 {
+  g := [1] SpGame.[SpGame.{}];
+  for k: 0..<8 {
+    for h: 0..<2 {
+      g_reset(g[..]); _ := spw_shipped(g[..]); g_stage(g[..], 10); g[0].stun[0] = 100;   // the boss held still
+      t := g[0].bt[0]; a := f32(k) * PI * 0.25;
+      g[0].px = t.dino_x + sin(a) * 7; g[0].pz = t.dino_z + cos(a) * 7;   // 7 m from it, all round
+      g[0].yaw = ifx h == 0 then atan2(t.dino_x - g[0].px, t.dino_z - g[0].pz) else atan2(g[0].px - t.dino_x, g[0].pz - t.dino_z);
+      w := cc_watch(g[..], 40, CcWatch.{});
+      c := g_camera(g[..]); d := sub(c.at, c.eye); dl := length(d);
+      #assert !w.in_body && w.near >= CM_MIN - CC_SLACK && c.eye.y < CM_LAB_ROOF - CM_CLEAR;
+      #assert -d.y / dl < 0.3;   // looking down under about 17 degrees, not on top of the fight
+      if h == 0 {
+        // facing it: she and the boss both near the middle of the view
+        bv := sub(v3(t.dino_x, 1.8, t.dino_z), c.eye); hv := sub(v3(g[0].px, cm_feet(g[..]) + 1, g[0].pz), c.eye);
+        #assert dot(bv, d) / (length(bv) * dl) > 0.95 && dot(hv, d) / (length(hv) * dl) > 0.95;
+      }
+    }
+  }
+  // the fight running, she circles it: never inside the boss as it turns and charges
+  g_reset(g[..]); _ := spw_shipped(g[..]); g_stage(g[..], 10);
+  t := g[0].bt[0]; g[0].px = t.dino_x + 7; g[0].pz = t.dino_z; g[0].fwd = true; g[0].turn_l = true;
+  w := cc_watch(g[..], 300, CcWatch.{});
+  #assert !w.in_body && w.near >= CM_MIN - 0.1;   // as it swings into the boom, the boom eases out from it a few centimetres late
+}

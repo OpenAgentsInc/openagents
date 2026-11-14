@@ -179,6 +179,13 @@ on her side away from the camera's line, and one standing in that line steps out
 The wheel, or two fingers on a trackpad, zooms the boom from 3 m off her head out to 1.6 times its
 rest (`cm_wheel`). The zoom is yours, not the run's: a respawn keeps it. There is no first person.
 
+In the boss fight the camera frames her and the boss together: with the boss ahead it backs off
+1.5 m and its look turns part way to the point between them, and it does not swing up over the
+boss as it does over the drill mech. Near the boss the boom comes in before it swings up, so it
+stays low. The boss meets the camera as its real body, a capsule along the way it faces up to its
+3.7 m top. Under the lab's 9 m ceiling, the hallway's 10 m one and the rover cabin's, the eye stays
+inside.
+
 ### Tunables
 
 Every camera timing and distance is a constant at the top of `camera.coax`:
@@ -203,6 +210,11 @@ Every camera timing and distance is a constant at the top of `camera.coax`:
 | `CM_BOARD_BACK` | 1.5 m | How much further back it sits on the hoverboard |
 | `CM_TOO_NEAR` | 1.2 m | Nearer than this her body is not drawn |
 | `CM_LINE_PAD` | 0.4 m | What Digger and the mech keep between themselves and the camera's line |
+| `CM_BOSS_HALF`, `CM_BOSS_R`, `CM_BOSS_TOP` | 2.6 m, 1.5 m, 4 m | The boss's body as the camera meets it |
+| `CM_BOSS_BACK` | 1.5 m | How much further back the camera sits with the boss ahead |
+| `CM_BOSS_LOOK` | 0.6 | How far the look turns toward the point between her and the boss |
+| `CM_BOSS_RISE` | 0.2 rad | How far the boom swings up by the boss while coming in still leaves `CM_MIN` |
+| `CM_LAB_ROOF`, `CM_HALL_ROOF` | 9 m, 10 m | The lab's and the hallway's ceilings |
 
 ## Controls
 

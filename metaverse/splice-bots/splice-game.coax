@@ -1262,8 +1262,8 @@ g_big_ahead :: (g: [] SpGame, x: f32, z: f32, fx: f32, fz: f32) -> f32 {
   if g[0].zone != Z_MINE { return 0; }
   t := g[0].bt[0]; best := 0.0f32;
   for k: 0..<2 {
-    if k == 1 && !(g[0].wall_gone || g[0].boss_down) { continue; }
-    bx := ifx k == 0 then t.mech_x else t.dino_x; bz := ifx k == 0 then t.mech_z else t.dino_z; r := ifx k == 0 then SB_MECH_R else 3.2f32;
+    if k == 1 && !g[0].boss_down { continue; }   // the standing boss is framed with her instead (camera.coax cm_boss_ahead)
+    bx := ifx k == 0 then t.mech_x else t.dino_x; bz := ifx k == 0 then t.mech_z else t.dino_z; r := ifx k == 0 then SB_MECH_R else CM_BOSS_HALF + CM_BOSS_R;
     along := (bx - x) * fx + (bz - z) * fz;
     if along < 0 || along > 12 { continue; }
     off := abs((bx - x) * fz - (bz - z) * fx);
